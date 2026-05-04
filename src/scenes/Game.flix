@@ -44,8 +44,8 @@ mod Game {
 
     /// 初期ウィンドウサイズ（OS ピクセル単位）。design とは独立して指定でき、
     /// design 側がウィンドウいっぱいに引き伸ばし描画される
-    pub def windowWi(): Int32 = 1024
-    pub def windowHi(): Int32 = 896
+    pub def windowWi(): Int32 = 832
+    pub def windowHi(): Int32 = 624
 
     pub def start(): Unit \ {GameEngine.Game, Fs.FileRead, Fs.FileWrite,
                               Chan, NonDet, IO, Fs.Glob, Fs.ModificationTime} =
