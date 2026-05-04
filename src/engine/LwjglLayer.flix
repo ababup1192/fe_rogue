@@ -659,7 +659,7 @@ mod LwjglLayer {
         GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_FORWARD_COMPAT, GL11.GL_TRUE);
         GLFW.glfwWindowHint(GLFW.GLFW_RESIZABLE, GL11.GL_TRUE);
 
-        let window = GLFW.glfwCreateWindow(config#screenWidth, config#screenHeight, config#title, MemoryUtil.NULL, MemoryUtil.NULL);
+        let window = GLFW.glfwCreateWindow(config#windowWidth, config#windowHeight, config#title, MemoryUtil.NULL, MemoryUtil.NULL);
         GLFW.glfwMakeContextCurrent(window);
         GLFW.glfwSwapInterval(1);
         discard GL.createCapabilities();
@@ -676,8 +676,8 @@ mod LwjglLayer {
         GL11.glEnable(GL11.GL_BLEND);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
 
-        let screenW = Int32.toFloat64(config#screenWidth);
-        let screenH = Int32.toFloat64(config#screenHeight);
+        let screenW = Int32.toFloat64(config#designWidth);
+        let screenH = Int32.toFloat64(config#designHeight);
 
         let spriteShader = createShaderProgram(vertexShaderSource(), fragmentShaderSource());
         setProjectionMatrix(spriteShader, screenW, screenH);

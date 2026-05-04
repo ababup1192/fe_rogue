@@ -143,21 +143,77 @@ mod CharacterBody2D {
         if (collides) (body, true)
         else (CharacterBody2D.CharacterBody2D({position = targetPos | r}), false)
 
-    /// velocity に基づいて位置を更新する（Godot move_and_slide 準拠）
+    /// velocity に基づいて位置を更新する（Godot move_and_slide 準拠）。
     ///
-    /// Godot では衝突検出 + 衝突面に沿ったスライド処理を行うが、
-    /// 衝突応答は本エンジンのスコープ外のため、
-    /// 現在は velocity * delta で位置を更新するのみ。
-    /// 将来の衝突応答実装時にスライドロジックを追加する想定。
+    /// 静的衝突体（StaticBody2D + TileMapLayer の壁セル）と衝突した場合、
+    /// 衝突面の法線方向に押し出してから接線方向に velocity をスライドし、
+    /// `maxSlides` 回まで残り motion で再試行する（角での詰まりを回避するため）。
+    /// velocity は接線成分のみが残るため、壁に垂直な速度は失われる（Godot 同等）。
     ///
     /// Godot との違い:
     ///   - Godot では引数なし（内部で physics delta を使用）だが、
-    ///     本エンジンでは純粋関数のため delta を明示的に受け取る
+    ///     本エンジンでは純粋関数のため delta と scene を明示的に受け取る
     ///   - 戻り値は更新後の CharacterBody2D（Godot は bool を返す）
-    pub def moveAndSlide(delta: Float64, body: CharacterBody2D): CharacterBody2D =
+    ///   - is_on_floor() / is_on_wall() / is_on_ceiling() フラグは未対応
+    ///     （upDirection / floorMaxAngle はフィールドとして存在するが本実装では未使用）
+    pub def moveAndSlide(delta: Float64, scene: Scene[s],
+                          body: CharacterBody2D): CharacterBody2D =
         let CharacterBody2D.CharacterBody2D(r) = body;
-        let motion = Vec2.mul(r#velocity, delta);
-        CharacterBody2D.CharacterBody2D({position = Vec2.add(r#position, motion) | r})
+        match r#collisionShape {
+            case None =>
+                // 衝突形状なしなら衝突判定不可。velocity * delta で素直に移動
+                let motion = Vec2.mul(r#velocity, delta);
+                CharacterBody2D.CharacterBody2D({position = Vec2.add(r#position, motion) | r})
+            case Some(shape) =>
+                let statics = PhysicsStep.collectStaticColliders(scene);
+                let initialMotion = Vec2.mul(r#velocity, delta);
+                let outcome = slideLoop(shape, statics, r#maxSlides, r#position,
+                                          initialMotion, r#velocity);
+                CharacterBody2D.CharacterBody2D({
+                    position = outcome#position,
+                    velocity = outcome#velocity
+                    | r
+                })
+        }
+
+    /// moveAndSlide の内部スライドループ。
+    /// 残り motion で targetPos に動こうとし、衝突したら MTV で押し出してから
+    /// motion / velocity を法線方向にスライド、slidesLeft 回まで再試行する。
+    def slideLoop(shape: CollisionShape2D,
+                   statics: List[(NodePath, Vec2.Vec2, CollisionShape2D)],
+                   slidesLeft: Int32, pos: Vec2.Vec2,
+                   motion: Vec2.Vec2, velocity: Vec2.Vec2):
+                  {position = Vec2.Vec2, velocity = Vec2.Vec2} =
+        if (slidesLeft <= 0 or Vec2.lengthSquared(motion) < 1.0e-8)
+            {position = pos, velocity = velocity}
+        else {
+            let targetPos = Vec2.add(pos, motion);
+            let hit = List.find(match (_, sPos, sShape) ->
+                CollisionShape2D.checkOverlap(targetPos, shape, sPos, sShape),
+                statics);
+            match hit {
+                case None =>
+                    // 衝突なし: そのまま移動して終了
+                    {position = targetPos, velocity = velocity}
+                case Some((_, colliderPos, colliderShape)) =>
+                    match CollisionShape2D.resolveOverlap(targetPos, shape,
+                                                            colliderPos, colliderShape) {
+                        case None =>
+                            // MTV 計算不能（Capsule 同士など）: 元位置に留めて停止
+                            {position = pos, velocity = Vec2.zero()}
+                        case Some(mtv) =>
+                            // 衝突面の法線方向に押し出す
+                            let correctedPos = Vec2.add(targetPos, mtv);
+                            // 法線方向を MTV から取得して motion / velocity をスライド
+                            let normal = Vec2.normalized(mtv);
+                            let slidMotion = Vec2.slide(motion, normal);
+                            let slidVelocity = Vec2.slide(velocity, normal);
+                            // 残り motion で再帰
+                            slideLoop(shape, statics, slidesLeft - 1,
+                                       correctedPos, slidMotion, slidVelocity)
+                    }
+            }
+        }
 }
 
 // ── CanvasItem 実装 ──

@@ -346,21 +346,51 @@ mod SceneLoader {
             case None => Err(JsonError(Root, Set#{"FontAtlas (loadSceneWithFont required for Label2D)"}))
             case Some(font) =>
                 forM (
-                    tag         <- parseTagField(tagParser, map);
-                    text        <- (Json.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
-                    pos         <- parseVec2("pos", map);
-                    fontSize    <- (Json.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
-                    centeredOpt <- (Json.getAtKeyOpt(Root, "centered", map): Result[Json.JsonError, Option[Bool]]);
-                    visibleOpt  <- (Json.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
-                    zIndexOpt   <- (Json.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
+                    tag        <- parseTagField(tagParser, map);
+                    text       <- (Json.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
+                    pos        <- parseVec2("pos", map);
+                    fontSize   <- (Json.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
+                    hAlignOpt  <- (Json.getAtKeyOpt(Root, "horizontalAlignment", map):
+                                     Result[Json.JsonError, Option[String]]);
+                    vAlignOpt  <- (Json.getAtKeyOpt(Root, "verticalAlignment", map):
+                                     Result[Json.JsonError, Option[String]]);
+                    hAlign     <- parseHorizontalAlignment(hAlignOpt);
+                    vAlign     <- parseVerticalAlignment(vAlignOpt);
+                    visibleOpt <- (Json.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+                    zIndexOpt  <- (Json.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
                 ) yield {
                     let label = Label2D.make(text, font, fontSize)
                         |> Node2D.setPosition(pos)
-                        |> applyLabelCentered(centeredOpt)
+                        |> Label2D.setHorizontalAlignment(hAlign)
+                        |> Label2D.setVerticalAlignment(vAlign)
                         |> applyLabelVisible(visibleOpt)
                         |> applyLabelZIndex(zIndexOpt);
                     EngineNode.Label2DWithState(label, tag)
                 }
+        }
+
+    /// JSON の文字列を HorizontalAlignment に変換する。省略時は Left
+    def parseHorizontalAlignment(opt: Option[String]): Result[Json.JsonError, HorizontalAlignment] =
+        match opt {
+            case None           => Ok(HorizontalAlignment.Left)
+            case Some("left")   => Ok(HorizontalAlignment.Left)
+            case Some("center") => Ok(HorizontalAlignment.Center)
+            case Some("right")  => Ok(HorizontalAlignment.Right)
+            case Some("fill")   => Ok(HorizontalAlignment.Fill)
+            case Some(other)    =>
+                Err(JsonError(Root, Set#{"left|center|right|fill (got: ${other})"}))
+        }
+
+    /// JSON の文字列を VerticalAlignment に変換する。省略時は Top
+    def parseVerticalAlignment(opt: Option[String]): Result[Json.JsonError, VerticalAlignment] =
+        match opt {
+            case None           => Ok(VerticalAlignment.Top)
+            case Some("top")    => Ok(VerticalAlignment.Top)
+            case Some("center") => Ok(VerticalAlignment.Center)
+            case Some("bottom") => Ok(VerticalAlignment.Bottom)
+            case Some("fill")   => Ok(VerticalAlignment.Fill)
+            case Some(other)    =>
+                Err(JsonError(Root, Set#{"top|center|bottom|fill (got: ${other})"}))
         }
 
     // ========================================================================
@@ -395,12 +425,6 @@ mod SceneLoader {
         match opt {
             case Some(visible) => CanvasItem.setVisible(visible, button)
             case None          => button
-        }
-
-    def applyLabelCentered(opt: Option[Bool], label: Label2D): Label2D =
-        match opt {
-            case Some(centered) => Label2D.setCentered(centered, label)
-            case None           => label
         }
 
     def applyLabelVisible(opt: Option[Bool], label: Label2D): Label2D =

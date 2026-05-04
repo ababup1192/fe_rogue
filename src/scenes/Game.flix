@@ -37,8 +37,15 @@ mod Game {
 
     /// デザイン解像度。プレイヤーをズームインで見せるため、マップ全体（208×208）より
     /// 小さい 128×128（= 8×8 グリッド分）で切り出す。Camera2D 追従でビューが動く。
-    pub def screenWi(): Int32 = 128
-    pub def screenHi(): Int32 = 128
+    /// この値はカメラのビューポートと投影行列の基準で、ウィンドウサイズに合わせて
+    /// 引き伸ばし表示される（Godot の Stretch Mode = canvas_items 相当）
+    pub def designWi(): Int32 = 128
+    pub def designHi(): Int32 = 128
+
+    /// 初期ウィンドウサイズ（OS ピクセル単位）。design とは独立して指定でき、
+    /// design 側がウィンドウいっぱいに引き伸ばし描画される
+    pub def windowWi(): Int32 = 1024
+    pub def windowHi(): Int32 = 896
 
     pub def start(): Unit \ {GameEngine.Game, Fs.FileRead, Fs.FileWrite,
                               Chan, NonDet, IO, Fs.Glob, Fs.ModificationTime} =

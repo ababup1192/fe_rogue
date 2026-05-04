@@ -84,10 +84,15 @@ mod EditableNode {
         let width = List.foldLeft(Float64.max, 0.0, lineWidths);
         let lineHeight = (atlas#ascent + atlas#descent + atlas#lineGap) * scale;
         let height = lineHeight * Int32.toFloat64(Int32.max(1, List.length(lines)));
-        // Label2D の centered は X 方向のみ。Y は globalPos がベースライン上端
-        let topLeftOffset = if (record#centered)
-            {x = -width / 2.0, y = 0.0}
-        else {x = 0.0, y = 0.0};
+        // Label2D の topLeftOffset は horizontalAlignment のみ反映する
+        // （verticalAlignment はテキストブロック全体に効く描画オフセットで、
+        //  矩形サイズには影響しないため labelRectInfo のスコープ外）
+        let topLeftOffset = match record#horizontalAlignment {
+            case HorizontalAlignment.Left   => {x = 0.0,            y = 0.0}
+            case HorizontalAlignment.Center => {x = -width / 2.0,   y = 0.0}
+            case HorizontalAlignment.Right  => {x = -width,         y = 0.0}
+            case HorizontalAlignment.Fill   => {x = 0.0,            y = 0.0}
+        };
         {size = {x = width, y = height}, topLeftOffset = topLeftOffset}
 
     /// 1 パス分の EditableEntry を構築する。Sprite2D / AnimatedSprite2D / TextureButton / Label2D 以外は None。

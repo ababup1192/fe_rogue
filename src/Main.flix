@@ -2,8 +2,10 @@ def main(): Unit \ {IO, Chan, NonDet} =
     if (GameEngine.ensureMainThread()) ()
     else {
         let config: GameEngine.EngineConfig = {
-            screenWidth = Game.screenWi(),
-            screenHeight = Game.screenHi(),
+            designWidth = Game.designWi(),
+            designHeight = Game.designHi(),
+            windowWidth = Game.windowWi(),
+            windowHeight = Game.windowHi(),
             title = "New Game",
             textureManifest = { name = "inca_tileset",
                                   path = "sprites/Inca_front_by_Kronbits-extended.png",

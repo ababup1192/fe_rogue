@@ -25,12 +25,22 @@ mod GameEngine {
     pub type alias TextureRegistry = Map[String, TextureInfo]
 
     /// エンジン初期化に必要な設定
-    /// maxDeltaTime: getDeltaTime が返す値の上限（秒）。初回フレームのウィンドウ初期化遅延や
-    ///               フォーカス復帰時の巨大 dt による物理破綻（tunneling 等）を防ぐ。
-    ///               クランプ無効化したい場合は Float64.maxValue() を渡す。
+    ///
+    /// designWidth / designHeight:
+    ///   ゲーム側の論理解像度（カメラのビューポート / 投影行列の基準）。
+    ///   ピクセルアートゲームでは小さく固定し、ウィンドウサイズに引き伸ばす運用が定番。
+    /// windowWidth / windowHeight:
+    ///   起動時の OS ウィンドウサイズ（ピクセル）。design とは独立して指定でき、
+    ///   `Stretch Mode = canvas_items` 風に design 側がウィンドウいっぱいに描画される。
+    /// maxDeltaTime:
+    ///   getDeltaTime が返す値の上限（秒）。初回フレームのウィンドウ初期化遅延や
+    ///   フォーカス復帰時の巨大 dt による物理破綻（tunneling 等）を防ぐ。
+    ///   クランプ無効化したい場合は Float64.maxValue() を渡す。
     pub type alias EngineConfig = {
-        screenWidth = Int32,
-        screenHeight = Int32,
+        designWidth = Int32,
+        designHeight = Int32,
+        windowWidth = Int32,
+        windowHeight = Int32,
         title = String,
         textureManifest = List[TextureEntry],
         fontManifest = List[FontEntry],
