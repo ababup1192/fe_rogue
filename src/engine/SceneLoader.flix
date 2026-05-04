@@ -281,20 +281,61 @@ mod SceneLoader {
             EngineNode.Area2DWithState(area, tag)
         }
 
+    /// JSON の 1 アニメーション定義を SpriteFrames.Animation に変換する
+    def parseAnimation(animMap: Map[String, Json.JsonElement]):
+                        Result[Json.JsonError, SpriteFrames.Animation] =
+        forM (
+            loops      <- (Json.getAtKey(Root, "loop", animMap): Result[Json.JsonError, Bool]);
+            speed      <- (Json.getAtKey(Root, "speed", animMap): Result[Json.JsonError, Float64]);
+            frameMaps  <- (Json.getAtKey(Root, "frames", animMap):
+                            Result[Json.JsonError, List[Map[String, Json.JsonElement]]]);
+            frames     <- Result.traverse(parseFrame, frameMaps)
+        ) yield ({loop = loops, speed = speed, frames = frames}: SpriteFrames.Animation)
+
+    /// JSON の 1 フレーム定義を SpriteFrames.Frame に変換する。duration は任意（デフォルト 1.0）
+    def parseFrame(frameMap: Map[String, Json.JsonElement]):
+                    Result[Json.JsonError, SpriteFrames.Frame] =
+        forM (
+            texture     <- (Json.getAtKey(Root, "texture", frameMap): Result[Json.JsonError, String]);
+            durationOpt <- (Json.getAtKeyOpt(Root, "duration", frameMap):
+                             Result[Json.JsonError, Option[Float64]])
+        ) yield ({texture = texture,
+                  duration = Option.getWithDefault(1.0, durationOpt)}: SpriteFrames.Frame)
+
+    /// JSON の spriteFrames オブジェクトを SpriteFrames リソースに変換する
+    def parseSpriteFrames(sfMap: Map[String, Json.JsonElement]):
+                           Result[Json.JsonError, SpriteFrames] =
+        Map.toList(sfMap)
+            |> List.foldLeft((acc, pair) ->
+                let (name, json) = pair;
+                forM (
+                    sf       <- acc;
+                    animMap  <- match json {
+                        case JsonObject(m) => Ok(m)
+                        case _             => Err(JsonError(Root, Set#{"JsonObject for animation '${name}'"}))
+                    };
+                    anim     <- parseAnimation(animMap)
+                ) yield SpriteFrames.addAnimation(name, anim, sf),
+                Ok(SpriteFrames.empty()))
+
     def buildAnimatedSprite2D(tagParser: Option[String] -> Result[Json.JsonError, t],
                                map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
         forM (
-            tag              <- parseTagField(tagParser, map);
-            pos              <- parseVec2("pos", map);
-            scale            <- parseVec2("scale", map);
-            animations       <- (Json.getAtKey(Root, "animations", map): Result[Json.JsonError, Map[String, List[String]]]);
-            initialAnimation <- (Json.getAtKey(Root, "initialAnimation", map): Result[Json.JsonError, String]);
-            fps              <- (Json.getAtKey(Root, "fps", map): Result[Json.JsonError, Float64])
+            tag            <- parseTagField(tagParser, map);
+            pos            <- parseVec2("pos", map);
+            scale          <- parseVec2("scale", map);
+            sfMap          <- (Json.getAtKey(Root, "spriteFrames", map):
+                                Result[Json.JsonError, Map[String, Json.JsonElement]]);
+            spriteFrames   <- parseSpriteFrames(sfMap);
+            animation      <- (Json.getAtKey(Root, "animation", map): Result[Json.JsonError, String]);
+            autoplayOpt    <- (Json.getAtKeyOpt(Root, "autoplay", map):
+                                Result[Json.JsonError, Option[String]]);
+            speedScaleOpt  <- (Json.getAtKeyOpt(Root, "speedScale", map):
+                                Result[Json.JsonError, Option[Float64]])
         ) yield {
-            let sprite = AnimatedSprite2D.make(animations,
-                initialAnimation = initialAnimation,
-                fps = fps,
-                pos, scale);
+            let sprite = AnimatedSprite2D.make(spriteFrames, {animation = animation}, pos, scale)
+                |> AnimatedSprite2D.setAutoplay(Option.getWithDefault("", autoplayOpt))
+                |> AnimatedSprite2D.setSpeedScale(Option.getWithDefault(1.0, speedScaleOpt));
             EngineNode.AnimSprite2DWithState(sprite, tag)
         }
 

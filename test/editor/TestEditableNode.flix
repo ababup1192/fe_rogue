@@ -90,10 +90,15 @@ mod TestEditableNode {
     /// AnimatedSprite2D も編集対象として拾われる。
     /// 矩形サイズは現フレームのテクスチャ × scale
     def testCollectAllAnimatedSprite(): Unit \ {Assert, GameEngine.Game} =
-        let anim = AnimatedSprite2D.make(
-            Map#{"flap" => "frame_a" :: "frame_b" :: Nil},
-            {initialAnimation = "flap"},
-            {fps = 10.0},
+        let frames: List[SpriteFrames.Frame] =
+            {texture = "frame_a", duration = 1.0} ::
+            {texture = "frame_b", duration = 1.0} :: Nil;
+        let flapAnim: SpriteFrames.Animation =
+            {loop = true, speed = 10.0, frames = frames};
+        let sf = SpriteFrames.empty()
+            |> SpriteFrames.addAnimation("flap", flapAnim);
+        let anim = AnimatedSprite2D.make(sf,
+            {animation = "flap"},
             {x = 0.0, y = 0.0},
             {x = 2.0, y = 2.0});
         let s: Scene[NodeTag] = Scene.empty();

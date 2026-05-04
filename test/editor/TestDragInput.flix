@@ -74,7 +74,7 @@ mod TestDragInput {
             prevZ = false,
             rootJsonIndex = Map.empty()
         };
-        let next = DragInput.applyDrag({x = 150.0, y = 150.0}, state, scene);
+        let next = DragInput.applyDrag({x = 150.0, y = 150.0}, Camera2D.identityTransform(), state, scene);
         let pos = Scene.globalPositionAt("hero" :: Nil, next);
         Assert.assertEq(expected = (100.0, 100.0), (pos#x, pos#y))
 
@@ -85,7 +85,7 @@ mod TestDragInput {
         let state = draggingState("hero.json", "hero" :: Nil,
                                   {x = 50.0, y = 50.0},  // dragOrigin
                                   {x = 100.0, y = 100.0});  // nodeOrigin
-        let next = DragInput.applyDrag({x = 80.0, y = 70.0}, state, scene);
+        let next = DragInput.applyDrag({x = 80.0, y = 70.0}, Camera2D.identityTransform(), state, scene);
         let pos = Scene.globalPositionAt("hero" :: Nil, next);
         // 100 + (80 - 50) = 130, 100 + (70 - 50) = 120
         Assert.assertEq(expected = (130.0, 120.0), (pos#x, pos#y))
@@ -98,7 +98,7 @@ mod TestDragInput {
                                   {x = 50.0, y = 50.0},
                                   {x = 100.0, y = 100.0});
         // delta = (0.4, 0.6) → スナップで (0, 1)
-        let next = DragInput.applyDrag({x = 50.4, y = 50.6}, state, scene);
+        let next = DragInput.applyDrag({x = 50.4, y = 50.6}, Camera2D.identityTransform(), state, scene);
         let pos = Scene.globalPositionAt("hero" :: Nil, next);
         Assert.assertEq(expected = (100.0, 101.0), (pos#x, pos#y))
 
@@ -173,7 +173,7 @@ mod TestDragInput {
                                   {x = 100.0, y = 100.0});  // nodeOrigin
         let (newState, _) = DragInput.handleMouse(
             {pos = {x = 100.0, y = 100.0}, leftDown = false},
-            {x = 0.0, y = 0.0},
+            Camera2D.identityTransform(),
             state, scene);
         // ドラッグ状態がクリアされている
         Assert.assertEq(

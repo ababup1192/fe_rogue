@@ -16,11 +16,11 @@ mod Picking {
     /// z-index が同値のときは entries の後ろ（preorder で後 = より深い／後発）を採用
     pub def pickTopAt(mousePos: Vec2.Vec2,
                       entries: List[EditableNode.EditableEntry],
-                      cameraOffset: Vec2.Vec2,
+                      transform: Camera2D.ViewTransform,
                       scene: Scene[NodeTag]):
             Option[(EditableNode.EditableEntry, Vec2.Vec2)] =
         entries
-            |> List.filterMap(entry -> hitInfo(mousePos, entry, cameraOffset, scene))
+            |> List.filterMap(entry -> hitInfo(mousePos, entry, transform, scene))
             |> highestZ
             |> Option.map(hit -> (hit#entry, hit#screenPos))
 
@@ -34,11 +34,13 @@ mod Picking {
 
     /// マウスが entry の bbox 内なら HitInfo を返す
     def hitInfo(mousePos: Vec2.Vec2, entry: EditableNode.EditableEntry,
-                cameraOffset: Vec2.Vec2, scene: Scene[NodeTag]): Option[HitInfo] =
-        let screenPos = Scene.screenPositionAt(entry#nodePath, cameraOffset, scene);
-        if (Rect2.hasPoint(mousePos, makeBBox(screenPos, entry)))
+                transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): Option[HitInfo] =
+        let box = EditableNode.screenBox(entry, transform, scene);
+        let rect: Rect2.Rect2 = {position = box#topLeft, size = box#size};
+        if (Rect2.hasPoint(mousePos, rect))
             Some({z = Scene.effectiveZIndexAt(entry#nodePath, scene),
-                  entry = entry, screenPos = screenPos})
+                  entry = entry,
+                  screenPos = Scene.screenPositionAt(entry#nodePath, transform, scene)})
         else None
 
     /// hits の中から z 最大を返す。同値時は後発（preorder で後）を優先するため `>=` 比較
@@ -49,7 +51,8 @@ mod Picking {
                 case Some(b) => if (cand#z >= b#z) Some(cand) else best
             }, None, hits)
 
-    /// グローバル位置と EditableEntry から表示矩形 Rect2 を作る
+    /// グローバル位置と EditableEntry から zoom 無視の表示矩形 Rect2 を作る（純粋ジオメトリ）。
+    /// zoom を反映した矩形が必要なら `EditableNode.screenBox` を使う
     pub def makeBBox(refPos: Vec2.Vec2,
                      entry: EditableNode.EditableEntry): Rect2.Rect2 =
         let topLeft = Vec2.add(refPos, entry#topLeftOffset);

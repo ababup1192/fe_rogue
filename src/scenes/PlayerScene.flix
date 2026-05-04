@@ -32,9 +32,12 @@ mod PlayerScene {
     def cameraName(): String = "Camera"
 
     def playerTexture(): String = "character_sheet"
-    def textureSize(): Vec2.Vec2 = {x = 80.0, y = 32.0}
-    def regionPos(): Vec2.Vec2 = {x = 0.0, y = 0.0}
-    def regionSize(): Vec2.Vec2 = {x = 16.0, y = 16.0}
+
+    /// character_sheet（80×32）のグリッド分割: 5 列 × 2 行 = 16×16 タイルが 10 個並ぶ
+    def spriteHframes(): Int32 = 5
+    def spriteVframes(): Int32 = 2
+    /// 表示するセル index（左上 = 0）
+    def spriteFrame(): Int32 = 0
 
     def tileSize(): Float64 = 16.0
     def collisionSize(): Vec2.Vec2 = {x = 14.0, y = 14.0}
@@ -65,14 +68,10 @@ mod PlayerScene {
                     width  = collisionSize()#x,
                     height = collisionSize()#y
                 })));
-        let sprite = Sprite2D.makeRegion({
-            texture       = playerTexture(),
-            position      = Vec2.zero(),
-            displayScale  = {x = 1.0, y = 1.0},
-            regionPosPx   = regionPos(),
-            regionSizePx  = regionSize(),
-            textureSizePx = textureSize()
-        });
+        let sprite = Sprite2D.make(playerTexture(), Vec2.zero(), {x = 1.0, y = 1.0})
+            |> Sprite2D.setHframes(spriteHframes())
+            |> Sprite2D.setVframes(spriteVframes())
+            |> Sprite2D.setFrame(spriteFrame());
         let camera = Camera2D.make(Vec2.zero()) |> Camera2D.setZoom({x = 0.5, y = 0.5});
         scene
             |> Scene.addNode(name(),

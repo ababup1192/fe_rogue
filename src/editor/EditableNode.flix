@@ -50,6 +50,20 @@ mod EditableNode {
         if (centered) {x = -size#x / 2.0, y = -size#y / 2.0}
         else {x = 0.0, y = 0.0}
 
+    /// EditableEntry の表示矩形（topLeft + size）を、レンダラと同じスクリーン座標系で返す。
+    /// CanvasLayer 配下なら transform.scale を適用しない（HUD はカメラの zoom を受けない）
+    pub def screenBox(entry: EditableEntry, transform: Camera2D.ViewTransform,
+                       scene: Scene[NodeTag]): {topLeft = Vec2.Vec2, size = Vec2.Vec2} =
+        let refPos = Scene.screenPositionAt(entry#nodePath, transform, scene);
+        let s = if (Scene.isUnderCanvasLayer(entry#nodePath, scene))
+                    {x = 1.0, y = 1.0}
+                else transform#scale;
+        let scaledOffset = {x = entry#topLeftOffset#x * s#x,
+                            y = entry#topLeftOffset#y * s#y};
+        let topLeft = Vec2.add(refPos, scaledOffset);
+        let size = {x = entry#width * s#x, y = entry#height * s#y};
+        {topLeft = topLeft, size = size}
+
     /// Label2D の表示矩形を計算する。FontAtlas のグリフ advance 合計から幅、
     /// ascent + descent から高さを出す。改行 (\n) があれば最も長い行を採用 + 行数分の高さ
     pub def labelRectInfo(label: Label2D): {size = Vec2.Vec2, topLeftOffset = Vec2.Vec2} =
@@ -106,14 +120,17 @@ mod EditableNode {
             case _ => None
         }
 
-    /// Sprite2D の矩形情報。texture サイズが未登録のときは None
+    /// Sprite2D の矩形情報。texture サイズが未登録のときは None。
+    /// region/hframes/vframes/frame でセル分割している場合はセルサイズに揃える
     def spriteRectInfo(sprite: Sprite2D):
             Option[{size = Vec2.Vec2, topLeftOffset = Vec2.Vec2}] \ GameEngine.Game =
         let Sprite2D.Sprite2D(record) = sprite;
         GameEngine.Game.getTextureInfo(record#texture)
             |> Option.map(info -> {
-                let size = {x = info#width * record#scale#x,
-                            y = info#height * record#scale#y};
+                let texSize: Vec2.Vec2 = {x = info#width, y = info#height};
+                let uv = Sprite2D.computeUv(sprite, texSize);
+                let size = {x = info#width * record#scale#x * uv#uvScale#x,
+                            y = info#height * record#scale#y * uv#uvScale#y};
                 {size = size,
                  topLeftOffset = boxTopLeftOffset(record#centered, size)}
             })

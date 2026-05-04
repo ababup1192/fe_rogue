@@ -215,26 +215,44 @@ mod EngineNode {
         case _ => node
     }
 
-    /// Sprite2D を Drawable に変換する
-    /// centered=false（背景）の場合は scale を uvScale にしてタイリングする
-    pub def spriteToDrawable(sprite: Sprite2D, globalPos: Vec2.Vec2): GameEngine.Drawable =
+    /// Sprite2D を Drawable に変換する。
+    /// region / hframes / vframes / frame から GPU シェーダ用 uvOffset/uvScale を計算するため
+    /// テクスチャサイズが必要で、Game eff を要求する。
+    /// テクスチャ未登録時は bug! でクラッシュする。
+    /// centered=false かつ region 未指定・分割なしの場合は scale を uvScale にして
+    /// タイリング描画する（背景用）。
+    pub def spriteToDrawable(sprite: Sprite2D, globalPos: Vec2.Vec2):
+                              GameEngine.Drawable \ GameEngine.Game =
         let Sprite2D.Sprite2D(r) = sprite;
-        // uvScale=(1,1) かつ centered=false ならタイリング扱い（背景用）として scale を uv にも反映する。
-        // それ以外は明示的に設定された uvOffset/uvScale を尊重する（アトラス切り出し対応）
-        let isFullTexture = r#uvScale#x == 1.0 and r#uvScale#y == 1.0
-                            and r#uvOffset#x == 0.0 and r#uvOffset#y == 0.0;
+        let texInfo = match GameEngine.Game.getTextureInfo(r#texture) {
+            case Some(info) => info
+            case None       => bug!("EngineNode.spriteToDrawable: texture '${r#texture}' not registered")
+        };
+        let texSize: Vec2.Vec2 = {x = texInfo#width, y = texInfo#height};
+        let uv = Sprite2D.computeUv(sprite, texSize);
+        // 切り出しなし (regionRect=None, hframes=vframes=1, frame=0) かつ centered=false なら
+        // 背景タイリング扱いで scale を uv にも反映する
+        let isFullTexture = Option.isEmpty(r#regionRect) and r#hframes == 1
+                            and r#vframes == 1 and r#frame == 0;
         let uvSc: Vec2.Vec2 =
             if (isFullTexture and not r#centered) r#scale
-            else r#uvScale;
+            else uv#uvScale;
+        // セル分割／領域指定が有効なときは描画矩形をセルサイズに合わせる必要がある。
+        // レンダラは `displayW = texInfo#width * drawable#scale#x` で矩形を決めるため、
+        // scale に uvScale を掛けて (texSize * scale * uvScale = cellSize * scale) にする
+        let drawScale: Vec2.Vec2 =
+            if (isFullTexture) r#scale
+            else {x = r#scale#x * uv#uvScale#x,
+                  y = r#scale#y * uv#uvScale#y};
         {
             texture = r#texture,
             position = globalPos,
-            scale = r#scale,
+            scale = drawScale,
             rotation = r#rotation,
             color = r#modulate,
             alpha = 1.0f32,
             centered = r#centered,
-            uvOffset = r#uvOffset,
+            uvOffset = uv#uvOffset,
             uvScale = uvSc,
             zIndex = r#zIndex
         }
@@ -611,7 +629,8 @@ instance CollisionObject2D[EngineNode[s]] {
 // ── Renderable 実装 ──
 
 instance GameEngine.Renderable[EngineNode[s]] {
-    pub def toDrawables(node: EngineNode[s], globalPos: Vec2.Vec2): List[GameEngine.Drawable] =
+    pub def toDrawables(node: EngineNode[s], globalPos: Vec2.Vec2):
+                         List[GameEngine.Drawable] \ GameEngine.Game =
         match node {
             case EngineNode.Sprite2DWithState(sprite, _) =>
                 EngineNode.spriteToDrawable(sprite, globalPos) :: Nil

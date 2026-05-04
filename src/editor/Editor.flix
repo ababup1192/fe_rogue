@@ -149,11 +149,11 @@ mod Editor {
             scene
         } else {
             // エディタ ON 時のマウス処理。カメラ追従中のノード（bird など）も
-            // 正しく当たり判定できるよう cameraOffset を計算して渡す
-            let cameraOffset = activeCameraOffset(scene);
+            // 正しく当たり判定できるよう ViewTransform を計算して渡す
+            let transform = activeCameraTransform(scene);
             let mouse = {pos = mousePos, leftDown = mouseLeft};
             let (afterMouseState, afterMouseScene) =
-                DragInput.handleMouse(mouse, cameraOffset, stateAfterToggle, scene);
+                DragInput.handleMouse(mouse, transform, stateAfterToggle, scene);
             // ドラッグ中でなければ矢印キーで微調整できる
             let nudgedScene = if (Option.isEmpty(afterMouseState#dragOrigin))
                 KeyboardNudge.applyNudge(afterMouseState, curArrows, afterMouseScene)
@@ -165,7 +165,7 @@ mod Editor {
             else
                 nudgedScene;
             // ハンドル hover / リサイズ中ならリサイズ用カーソル、それ以外は通常カーソル
-            updateCursor(mousePos, cameraOffset, afterMouseState, finalScene);
+            updateCursor(mousePos, transform, afterMouseState, finalScene);
             EditorState.put({prevMouseLeft = mouseLeft,
                              prevArrowKeys = curArrows,
                              prevZ = zNow | afterMouseState});
@@ -174,18 +174,18 @@ mod Editor {
 
     /// 現在のリサイズ状態またはマウス hover に応じてカーソル形状を更新する。
     /// 優先順位: リサイズドラッグ中 > 選択ノードのハンドル hover > Default
-    def updateCursor(mousePos: Vec2.Vec2, cameraOffset: Vec2.Vec2,
+    def updateCursor(mousePos: Vec2.Vec2, transform: Camera2D.ViewTransform,
                      stateData: EditorStateData,
                      scene: Scene[NodeTag]): Unit \ {GameEngine.Game} =
         let cursor = match stateData#resizeOrigin {
             case Some(origin) => cursorForHandle(origin#handle)
-            case None         => hoverCursor(mousePos, cameraOffset, stateData, scene)
+            case None         => hoverCursor(mousePos, transform, stateData, scene)
         };
         GameEngine.Game.setCursor(cursor)
 
     /// 選択中ノードのハンドル領域に hover していればそのハンドル用カーソル、
     /// 外していれば Default を返す
-    def hoverCursor(mousePos: Vec2.Vec2, cameraOffset: Vec2.Vec2,
+    def hoverCursor(mousePos: Vec2.Vec2, transform: Camera2D.ViewTransform,
                     stateData: EditorStateData,
                     scene: Scene[NodeTag]): GameEngine.Cursor \ GameEngine.Game =
         match stateData#selected {
@@ -195,10 +195,7 @@ mod Editor {
                 match EditableNode.findByNodePath(ctx, nodePath) {
                     case None => GameEngine.Cursor.Default
                     case Some(entry) =>
-                        let refPos = Scene.screenPositionAt(nodePath, cameraOffset, scene);
-                        let topLeft = Vec2.add(refPos, entry#topLeftOffset);
-                        let box = {topLeft = topLeft,
-                                   size = {x = entry#width, y = entry#height}};
+                        let box = EditableNode.screenBox(entry, transform, scene);
                         match ResizeHandle.hitTest(mousePos, box) {
                             case None         => GameEngine.Cursor.Default
                             case Some(handle) => cursorForHandle(handle)
@@ -253,15 +250,16 @@ mod Editor {
                 restored
         }
 
-    /// 現在のシーンの有効カメラからビューポートオフセットを計算する。
-    /// カメラがなければゼロ（CanvasLayer のみのシーン等）
-    def activeCameraOffset(scene: Scene[NodeTag]): Vec2.Vec2 \ GameEngine.Game =
+    /// 現在のシーンの有効カメラから ViewTransform を計算する。
+    /// カメラがなければ identity（CanvasLayer のみのシーン等）
+    def activeCameraTransform(scene: Scene[NodeTag]):
+            Camera2D.ViewTransform \ GameEngine.Game =
         match Scene.findActiveCamera(scene) {
             case Some((cam, globalPos)) =>
                 let vp = GameEngine.Game.getViewportRect();
-                Camera2D.getViewportOffset(cam, globalPos,
+                Camera2D.getViewTransform(cam, globalPos,
                     {viewportWidth = vp#size#x, viewportHeight = vp#size#y})
-            case None => Vec2.zero()
+            case None => Camera2D.identityTransform()
         }
 
     /// HotReload watcher の通知をノンブロッキングで消費する。
@@ -278,13 +276,13 @@ mod Editor {
         if (not stateData#on) scene
         else {
             let mousePos = GameEngine.Game.getMousePosition();
-            let cameraOffset = activeCameraOffset(scene);
+            let transform = activeCameraTransform(scene);
             scene
-                |> Overlay.addCollisionShapes(cameraOffset)
+                |> Overlay.addCollisionShapes(transform)
                 |> Overlay.addEditorIndicator(fontAtlas)
                 |> Overlay.addSelectionBox(stateData#rootJsonIndex, stateData#selected,
-                                           cameraOffset)
+                                           transform)
                 |> Overlay.addHoverBox(stateData#rootJsonIndex, mousePos, stateData#selected,
-                                       cameraOffset)
+                                       transform)
         }
 }

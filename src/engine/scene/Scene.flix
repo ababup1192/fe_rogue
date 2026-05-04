@@ -567,17 +567,23 @@ pub mod Scene {
         };
         nodeZ + ctx#zOffset + ctx#layerOffset
 
+    /// パスのノードが CanvasLayer 配下かどうかを返す（toDrawables の判定と一致）。
+    /// CanvasLayer 配下のノードは HUD としてカメラ変換を受けない
+    pub def isUnderCanvasLayer(path: NodePath, scene: Scene[s]): Bool =
+        let ctx = drawContext(path, scene);
+        ctx#underCanvasLayer
+
     /// パスのノードがレンダラ上で実際に描画されるスクリーン座標を返す。
-    /// CanvasLayer 配下のノードはカメラオフセットを受けないので worldPos のまま、
-    /// それ以外（ゲームワールドのノード）は worldPos - cameraOffset。
+    /// CanvasLayer 配下のノードはカメラの ViewTransform を受けないので worldPos のまま、
+    /// それ以外（ゲームワールドのノード）は `Camera2D.applyToWorldPos` で変換する。
     /// toDrawables のスクリーン位置計算と同じロジックで、エディタの当たり判定や
     /// 選択枠描画位置がレンダラと一致する
-    pub def screenPositionAt(path: NodePath, cameraOffset: Vec2.Vec2,
+    pub def screenPositionAt(path: NodePath, transform: Camera2D.ViewTransform,
                              scene: Scene[s]): Vec2.Vec2 =
         let worldPos = globalPositionAt(path, scene);
         let ctx = drawContext(path, scene);
         if (ctx#underCanvasLayer) worldPos
-        else Vec2.sub(worldPos, cameraOffset)
+        else Camera2D.applyToWorldPos(transform, worldPos)
 
     // ========================================================================
     // 描画（制約なし — EngineNode の Renderable を直接使用）
@@ -606,11 +612,18 @@ pub mod Scene {
         let d2 = {color = mc | d1};
         {rotation = d2#rotation + parentRotation | d2}
 
+    /// Drawable の表示倍率を transform.scale でスケールする
+    /// （ColorRect は scale が表示サイズそのまま、Sprite は scale * texSize が表示サイズ）
+    def applyZoomScale(scaleVec: Vec2.Vec2, d: GameEngine.Drawable): GameEngine.Drawable =
+        let s = d#scale;
+        {scale = {x = s#x * scaleVec#x, y = s#y * scaleVec#y} | d}
+
     /// 可視ノードを Drawable のリストに変換する
     /// 各ノードが複数 Drawable を返せるよう flatMap ベースで処理する
     /// 祖先の visible/modulate/zIndex が自動的に子ノードに伝播する（Godot 準拠）
-    /// cameraOffset: カメラのビューポートオフセット。CanvasLayer 配下のノードには適用しない
-    pub def toDrawables(cameraOffset: Vec2.Vec2, scene: Scene[s]): List[GameEngine.Drawable] =
+    /// transform: カメラの ViewTransform。CanvasLayer 配下のノードには適用しない
+    pub def toDrawables(transform: Camera2D.ViewTransform,
+                         scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
         preorderPaths(scene)
             |> List.flatMap(path ->
                 let ctx = drawContext(path, scene);
@@ -622,10 +635,13 @@ pub mod Scene {
                             if (CanvasItem.isVisible(engineNode)) {
                                 let worldPos = globalPositionAt(path, scene);
                                 let screenPos = if (ctx#underCanvasLayer) worldPos
-                                                else Vec2.sub(worldPos, cameraOffset);
+                                                else Camera2D.applyToWorldPos(transform, worldPos);
                                 let drawables = GameEngine.Renderable.toDrawables(engineNode, screenPos);
                                 let zOff = ctx#zOffset + ctx#layerOffset;
-                                List.map(applyDrawContext(zOff, ctx#modulate, ctx#rotation), drawables)
+                                let withCtx = List.map(applyDrawContext(zOff, ctx#modulate, ctx#rotation), drawables);
+                                // CanvasLayer 配下以外はサイズも zoom で変換する
+                                if (ctx#underCanvasLayer) withCtx
+                                else List.map(applyZoomScale(transform#scale), withCtx)
                             } else Nil
                         case None => Nil
                     }

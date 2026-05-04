@@ -1,45 +1,50 @@
 /// アニメーション付きスプライト（Godot AnimatedSprite2D 準拠）
 /// see: https://docs.godotengine.org/ja/4.x/classes/class_animatedsprite2d.html
 ///
-/// 複数のフレーム（テクスチャ）を切り替えてアニメーションを表示する。
+/// SpriteFrames リソースを参照して、アニメーション名 → フレーム列を切り替えながら表示する。
+/// 各アニメーションは独自の loop / speed (FPS) を持ち、各フレームは duration 倍率で
+/// 表示時間を個別に伸縮できる。speedScale は再生全体の速度倍率。
 ///
 ///   AnimatedSprite2D
 ///     +-- CanvasItem: visible, zIndex, modulate
 ///     +-- Node2D: position, rotation, scale, skew
-///     +-- animations: アニメーション定義 (名前 → テクスチャ名リスト)
-///     +-- currentAnimation: 再生中のアニメーション名
-///     +-- currentFrame: 現在のフレームインデックス
-///     +-- fps: 秒あたりのフレーム数
+///     +-- spriteFrames: 参照する SpriteFrames リソース
+///     +-- animation: 現在再生中のアニメ名
+///     +-- frame: 現在表示中のフレーム index
+///     +-- frameProgress: 現フレーム内の進捗（0.0..1.0）
+///     +-- speedScale: 再生速度の倍率
+///     +-- autoplay: 起動時に自動再生するアニメ名（"" なら無効）
 ///     +-- playing: 再生中フラグ
 pub enum AnimatedSprite2D {
     case AnimatedSprite2D({
-        visible = Bool,                            // 表示フラグ
-        zIndex = Int32,                            // 描画順
-        modulate = Color,                          // 色変調
-        position = Vec2.Vec2,                      // 位置
-        rotation = Float64,                        // 回転（ラジアン）
-        scale = Vec2.Vec2,                         // スケール
-        skew = Float64,                            // スキュー
-        animations = Map[String, List[String]],    // アニメーション定義
-        currentAnimation = String,                 // 再生中アニメーション名
-        currentFrame = Int32,                      // 現在フレーム
-        fps = Float64,                             // フレームレート
-        elapsed = Float64,                         // 経過時間アキュムレータ
-        playing = Bool,                            // 再生中フラグ
-        centered = Bool,                           // 中心を原点にするか
-        offset = Vec2.Vec2,                        // 描画オフセット
-        flipH = Bool,                              // 水平反転
-        flipV = Bool                               // 垂直反転
+        visible = Bool,
+        zIndex = Int32,
+        modulate = Color,
+        position = Vec2.Vec2,
+        rotation = Float64,
+        scale = Vec2.Vec2,
+        skew = Float64,
+        centered = Bool,
+        offset = Vec2.Vec2,
+        flipH = Bool,
+        flipV = Bool,
+        spriteFrames = SpriteFrames,
+        animation = String,
+        frame = Int32,
+        frameProgress = Float64,
+        speedScale = Float64,
+        autoplay = String,
+        playing = Bool
     })
 }
 
 mod AnimatedSprite2D {
 
-    /// AnimatedSprite2D を生成する
+    /// AnimatedSprite2D を生成する。
+    /// `animation` で指定したアニメから即時再生開始する（autoplay は空にする）。
     pub def make(
-        animations: Map[String, List[String]],
-        initialAnimation: {initialAnimation = String},
-        fps: {fps = Float64},
+        spriteFrames: SpriteFrames,
+        animation: {animation = String},
         position: Vec2.Vec2,
         scale: Vec2.Vec2
     ): AnimatedSprite2D =
@@ -51,65 +56,130 @@ mod AnimatedSprite2D {
             rotation = 0.0,
             scale = scale,
             skew = 0.0,
-            animations = animations,
-            currentAnimation = initialAnimation#initialAnimation,
-            currentFrame = 0,
-            fps = fps#fps,
-            elapsed = 0.0,
-            playing = true,
             centered = true,
             offset = {x = 0.0, y = 0.0},
             flipH = false,
-            flipV = false
+            flipV = false,
+            spriteFrames = spriteFrames,
+            animation = animation#animation,
+            frame = 0,
+            frameProgress = 0.0,
+            speedScale = 1.0,
+            autoplay = "",
+            playing = true
         })
 
-    /// 現在のフレームのテクスチャ名を返す
+    /// autoplay 指定で AnimatedSprite2D を生成する。autoplay と animation が同名で開始する。
+    pub def makeWithAutoplay(
+        spriteFrames: SpriteFrames,
+        autoplay: {autoplay = String},
+        position: Vec2.Vec2,
+        scale: Vec2.Vec2
+    ): AnimatedSprite2D =
+        AnimatedSprite2D.AnimatedSprite2D({
+            visible = true,
+            zIndex = 0,
+            modulate = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+            position = position,
+            rotation = 0.0,
+            scale = scale,
+            skew = 0.0,
+            centered = true,
+            offset = {x = 0.0, y = 0.0},
+            flipH = false,
+            flipV = false,
+            spriteFrames = spriteFrames,
+            animation = autoplay#autoplay,
+            frame = 0,
+            frameProgress = 0.0,
+            speedScale = 1.0,
+            autoplay = autoplay#autoplay,
+            playing = true
+        })
+
+    /// 現在のフレームのテクスチャ名を返す（アニメや frame index が無効なら "" を返す）
     pub def currentTexture(sprite: AnimatedSprite2D): String =
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
-        match Map.get(r#currentAnimation, r#animations) {
-            case Some(frames) =>
-                match List.drop(r#currentFrame, frames) {
-                    case tex :: _ => tex
-                    case Nil => ""
-                }
-            case None => ""
-        }
+        SpriteFrames.frameTexture(r#animation, r#frame, r#spriteFrames)
+            |> Option.getWithDefault("")
 
-    /// 時間経過に応じてフレームを進める
+    /// 時間経過に応じてフレームを進める。
+    /// 進捗計算: progress += delta / (1 / (anim.speed * speedScale) * frame.duration)
+    /// loop=false で最終フレームに到達したら playing=false にして停止する。
     pub def advanceFrame(delta: Float64, sprite: AnimatedSprite2D): AnimatedSprite2D =
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
         if (not r#playing) sprite
+        else match SpriteFrames.getAnimation(r#animation, r#spriteFrames) {
+            case None       => sprite
+            case Some(anim) =>
+                let frames = anim#frames;
+                let totalFrames = List.length(frames);
+                if (totalFrames == 0) sprite
+                else if (anim#speed * r#speedScale <= 0.0) sprite
+                else {
+                    // frame index を有効範囲にクランプ（外部で setFrame されたとき等の安全ガード）
+                    let clampedFrame =
+                        if (r#frame < 0) 0
+                        else if (r#frame >= totalFrames) totalFrames - 1
+                        else r#frame;
+                    let baseDuration = 1.0 / (anim#speed * r#speedScale);
+                    let advanced = stepProgress(delta, clampedFrame, r#frameProgress,
+                                                  frames, totalFrames, anim#loop, baseDuration);
+                    AnimatedSprite2D.AnimatedSprite2D({
+                        frame = advanced#frame,
+                        frameProgress = advanced#progress,
+                        playing = advanced#playing
+                        | r
+                    })
+                }
+        }
+
+    /// 1 delta 分の進捗を消費して frame / progress / playing を返す内部関数。
+    /// 高 fps × 短い frameDuration で 1 delta が複数フレームをまたぐケースに対応する。
+    def stepProgress(remainingDelta: Float64, frame: Int32, progress: Float64,
+                     frames: List[SpriteFrames.Frame], totalFrames: Int32, loops: Bool,
+                     baseDuration: Float64):
+                     {frame = Int32, progress = Float64, playing = Bool} =
+        let currentFrame = match List.nth(frame, frames) {
+            case Some(f) => f
+            case None    => {texture = "", duration = 1.0}  // ガード（クランプ後なので通常起きない）
+        };
+        let frameDuration = baseDuration * currentFrame#duration;
+        if (frameDuration <= 0.0)
+            {frame = frame, progress = 0.0, playing = true}
         else {
-            let newElapsed = r#elapsed + delta;
-            let frameDuration = 1.0 / r#fps;
-            if (newElapsed >= frameDuration) {
-                let totalFrames = match Map.get(r#currentAnimation, r#animations) {
-                    case Some(fs) => List.length(fs)
-                    case None => 1
-                };
-                let nextFrame = if (totalFrames <= 1) 0
-                                else Int32.remainder(r#currentFrame + 1, totalFrames);
-                AnimatedSprite2D.AnimatedSprite2D({
-                    currentFrame = nextFrame,
-                    elapsed = newElapsed - frameDuration
-                    | r
-                })
-            } else {
-                AnimatedSprite2D.AnimatedSprite2D({elapsed = newElapsed | r})
+            let progressIncrement = remainingDelta / frameDuration;
+            let newProgress = progress + progressIncrement;
+            if (newProgress < 1.0)
+                {frame = frame, progress = newProgress, playing = true}
+            else {
+                // 1 フレーム消費して次へ
+                let nextFrame = frame + 1;
+                let consumedDelta = (1.0 - progress) * frameDuration;
+                let leftoverDelta = remainingDelta - consumedDelta;
+                if (nextFrame >= totalFrames) {
+                    if (loops)
+                        // 先頭に戻って残り delta を続ける
+                        stepProgress(leftoverDelta, 0, 0.0, frames, totalFrames, loops, baseDuration)
+                    else
+                        // 最終フレームで停止
+                        {frame = totalFrames - 1, progress = 0.0, playing = false}
+                } else
+                    stepProgress(leftoverDelta, nextFrame, 0.0, frames, totalFrames, loops, baseDuration)
             }
         }
 
-    /// アニメーションを再生する（Godot 準拠）
-    /// 同じアニメーションなら再開（フレーム維持）、違えばリセットして再生
+    /// アニメーションを再生する（Godot 準拠）。
+    /// 同じアニメ名なら現フレームから再開、違えば frame=0 にリセットして再生。
     pub def play(animationName: String, sprite: AnimatedSprite2D): AnimatedSprite2D =
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
-        if (r#currentAnimation == animationName)
+        if (r#animation == animationName)
             AnimatedSprite2D.AnimatedSprite2D({playing = true | r})
         else
             AnimatedSprite2D.AnimatedSprite2D({
-                currentAnimation = animationName,
-                currentFrame = 0,
-                elapsed = 0.0,
+                animation = animationName,
+                frame = 0,
+                frameProgress = 0.0,
                 playing = true
                 | r
             })
@@ -119,10 +189,10 @@ mod AnimatedSprite2D {
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
         AnimatedSprite2D.AnimatedSprite2D({playing = false | r})
 
-    /// 現在のアニメーション名を取得する
-    pub def getCurrentAnimation(sprite: AnimatedSprite2D): String =
+    /// 現在のアニメーション名を取得する（Godot の `animation` プロパティ）
+    pub def getAnimation(sprite: AnimatedSprite2D): String =
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
-        r#currentAnimation
+        r#animation
 
     /// 水平反転を設定する
     pub def setFlipH(h: Bool, sprite: AnimatedSprite2D): AnimatedSprite2D =
@@ -134,10 +204,25 @@ mod AnimatedSprite2D {
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
         AnimatedSprite2D.AnimatedSprite2D({flipV = v | r})
 
-    /// フレームレートを設定する
-    pub def setFps(fps: Float64, sprite: AnimatedSprite2D): AnimatedSprite2D =
+    /// 再生速度の倍率を設定する（1.0 = 通常、2.0 = 2 倍速、0.5 = 半速）
+    pub def setSpeedScale(speedScale: Float64, sprite: AnimatedSprite2D): AnimatedSprite2D =
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
-        AnimatedSprite2D.AnimatedSprite2D({fps = fps | r})
+        AnimatedSprite2D.AnimatedSprite2D({speedScale = speedScale | r})
+
+    /// autoplay 対象のアニメ名を設定する（"" で無効化）
+    pub def setAutoplay(name: String, sprite: AnimatedSprite2D): AnimatedSprite2D =
+        let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
+        AnimatedSprite2D.AnimatedSprite2D({autoplay = name | r})
+
+    /// 表示フレーム index を直接設定する（progress は 0 にリセット）
+    pub def setFrame(frame: Int32, sprite: AnimatedSprite2D): AnimatedSprite2D =
+        let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
+        AnimatedSprite2D.AnimatedSprite2D({frame = frame, frameProgress = 0.0 | r})
+
+    /// SpriteFrames リソースを差し替える
+    pub def setSpriteFrames(spriteFrames: SpriteFrames, sprite: AnimatedSprite2D): AnimatedSprite2D =
+        let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
+        AnimatedSprite2D.AnimatedSprite2D({spriteFrames = spriteFrames | r})
 }
 
 // ── CanvasItem 実装 ──

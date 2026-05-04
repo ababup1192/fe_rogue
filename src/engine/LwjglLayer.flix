@@ -96,9 +96,10 @@ mod LwjglLayer {
         "uniform mat4 projection;\n" +
         "uniform vec2 layerPos;\n" +
         "uniform float tileSize;\n" +
+        "uniform vec2 tileScale;\n" +
         "void main() {\n" +
-        "    vec2 worldPos = layerPos + instPos + vertex.xy * tileSize;\n" +
-        "    gl_Position = projection * vec4(worldPos, 0.0, 1.0);\n" +
+        "    vec2 screenPos = layerPos + (instPos + vertex.xy * tileSize) * tileScale;\n" +
+        "    gl_Position = projection * vec4(screenPos, 0.0, 1.0);\n" +
         "    TexCoords = instUVO + vertex.zw * instUVS;\n" +
         "    FragAlpha = instA;\n" +
         "}\n"
@@ -371,12 +372,15 @@ mod LwjglLayer {
     /// 1 draw call で TileMapLayer のすべてのタイルを描画する。
     def drawTileMapInstanced(tileShader: Int32, texId: Int32, tileVao: Int32,
                               layerPos: Vec2.Vec2, tileSize: Float64,
+                              tileScale: Vec2.Vec2,
                               color: Color, tileCount: Int32): Unit \ IO =
         GL20.glUseProgram(tileShader);
         let layerPosLoc = GL20.glGetUniformLocation(tileShader, "layerPos");
         GL20.glUniform2f(layerPosLoc, f32(layerPos#x), f32(layerPos#y));
         let tileSizeLoc = GL20.glGetUniformLocation(tileShader, "tileSize");
         GL20.glUniform1f(tileSizeLoc, f32(tileSize));
+        let tileScaleLoc = GL20.glGetUniformLocation(tileShader, "tileScale");
+        GL20.glUniform2f(tileScaleLoc, f32(tileScale#x), f32(tileScale#y));
         let colorLoc = GL20.glGetUniformLocation(tileShader, "layerColor");
         GL20.glUniform3f(colorLoc, color#r, color#g, color#b);
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -433,7 +437,8 @@ mod LwjglLayer {
             List.forEach(tm -> match Map.get(tm#textureName, registry) {
                 case Some(texInfo) =>
                     drawTileMapInstanced(tileShader, texInfo#id, tm#tileVaoId,
-                                         tm#position, tm#tileSize, tm#color, tm#tileCount)
+                                         tm#position, tm#tileSize, tm#tileScale,
+                                         tm#color, tm#tileCount)
                 case None => ()
             }, sortedTiles);
             // sprites: zIndex 昇順で描画

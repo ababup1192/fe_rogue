@@ -43,7 +43,7 @@ def entry32Centered(name: NodeName): EditableNode.EditableEntry = {
 def testPickTopAtSingleHit(): Unit \ Assert =
     let scene = sceneWithSprite("a", {x = 100.0, y = 100.0}, 0i32);
     let entries = entry32Centered("a") :: Nil;
-    let result = Picking.pickTopAt({x = 100.0, y = 100.0}, entries, {x = 0.0, y = 0.0}, scene);
+    let result = Picking.pickTopAt({x = 100.0, y = 100.0}, entries, Camera2D.identityTransform(), scene);
     match result {
         case Some((entry, globalPos)) =>
             Assert.assertEq(
@@ -57,14 +57,14 @@ def testPickTopAtSingleHit(): Unit \ Assert =
 def testPickTopAtMissReturnsNone(): Unit \ Assert =
     let scene = sceneWithSprite("a", {x = 100.0, y = 100.0}, 0i32);
     let entries = entry32Centered("a") :: Nil;
-    let result = Picking.pickTopAt({x = 500.0, y = 500.0}, entries, {x = 0.0, y = 0.0}, scene);
+    let result = Picking.pickTopAt({x = 500.0, y = 500.0}, entries, Camera2D.identityTransform(), scene);
     Assert.assertEq(expected = true, Option.isEmpty(result))
 
 /// entries が空なら None
 @Test
 def testPickTopAtEmptyEntriesReturnsNone(): Unit \ Assert =
     let scene: Scene[NodeTag] = Scene.empty();
-    let result = Picking.pickTopAt({x = 0.0, y = 0.0}, Nil, {x = 0.0, y = 0.0}, scene);
+    let result = Picking.pickTopAt({x = 0.0, y = 0.0}, Nil, Camera2D.identityTransform(), scene);
     Assert.assertEq(expected = true, Option.isEmpty(result))
 
 // ========================================================================
@@ -81,7 +81,7 @@ def testPickTopAtPicksHigherZIndex(): Unit \ Assert =
         "b", {x = 100.0, y = 100.0}, 10i32);
     // entries の順序は a, b（a が先頭でも結果は b）
     let entries = entry32Centered("a") :: entry32Centered("b") :: Nil;
-    let result = Picking.pickTopAt({x = 100.0, y = 100.0}, entries, {x = 0.0, y = 0.0}, scene);
+    let result = Picking.pickTopAt({x = 100.0, y = 100.0}, entries, Camera2D.identityTransform(), scene);
     match result {
         case Some((entry, _)) =>
             Assert.assertEq(expected = "b" :: Nil, entry#nodePath)
@@ -95,7 +95,7 @@ def testPickTopAtPicksHigherZRegardlessOfOrder(): Unit \ Assert =
         "a", {x = 100.0, y = 100.0}, 0i32,
         "b", {x = 100.0, y = 100.0}, 10i32);
     let entries = entry32Centered("b") :: entry32Centered("a") :: Nil;
-    let result = Picking.pickTopAt({x = 100.0, y = 100.0}, entries, {x = 0.0, y = 0.0}, scene);
+    let result = Picking.pickTopAt({x = 100.0, y = 100.0}, entries, Camera2D.identityTransform(), scene);
     match result {
         case Some((entry, _)) =>
             Assert.assertEq(expected = "b" :: Nil, entry#nodePath)
@@ -109,7 +109,7 @@ def testPickTopAtTieBreaksToLaterEntry(): Unit \ Assert =
         "a", {x = 100.0, y = 100.0}, 5i32,
         "b", {x = 100.0, y = 100.0}, 5i32);
     let entries = entry32Centered("a") :: entry32Centered("b") :: Nil;
-    let result = Picking.pickTopAt({x = 100.0, y = 100.0}, entries, {x = 0.0, y = 0.0}, scene);
+    let result = Picking.pickTopAt({x = 100.0, y = 100.0}, entries, Camera2D.identityTransform(), scene);
     match result {
         case Some((entry, _)) =>
             Assert.assertEq(expected = "b" :: Nil, entry#nodePath)
@@ -124,7 +124,7 @@ def testPickTopAtNonOverlappingHitsCorrectOne(): Unit \ Assert =
         "a", {x = 50.0, y = 50.0}, 0i32,
         "b", {x = 200.0, y = 200.0}, 0i32);
     let entries = entry32Centered("a") :: entry32Centered("b") :: Nil;
-    let result = Picking.pickTopAt({x = 200.0, y = 200.0}, entries, {x = 0.0, y = 0.0}, scene);
+    let result = Picking.pickTopAt({x = 200.0, y = 200.0}, entries, Camera2D.identityTransform(), scene);
     match result {
         case Some((entry, _)) =>
             Assert.assertEq(expected = "b" :: Nil, entry#nodePath)

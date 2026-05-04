@@ -53,11 +53,14 @@ mod GameEngine {
         zIndex = Int32
     }
 
-    /// TileMapLayer のインスタンス描画コマンド（1 draw call）
+    /// TileMapLayer のインスタンス描画コマンド（1 draw call）。
+    /// `tileScale` はカメラの zoom を反映するスクリーン倍率で、シェーダ側で
+    /// (instPos + vertex * tileSize) に乗算する。zoom 未指定時は (1, 1)
     pub type alias TileMapRenderCmd = {
         textureName = String,
         tileSize    = Float64,
         position    = Vec2.Vec2,
+        tileScale   = Vec2.Vec2,
         color       = Color,
         zIndex      = Int32,
         tileVaoId   = Int32,
@@ -74,9 +77,11 @@ mod GameEngine {
     }
 
     /// ノードを Drawable のリストに変換する能力を表す trait
-    /// Label2D 等、1 ノードから複数 Drawable を生成するケースに対応
+    /// Label2D 等、1 ノードから複数 Drawable を生成するケースに対応。
+    /// Sprite2D の region/hframes/vframes/frame から UV を計算するためにテクスチャ
+    /// サイズを参照する必要があり、Game eff を要求する。
     pub trait Renderable[n] {
-        pub def toDrawables(node: n, globalPos: Vec2.Vec2): List[Drawable]
+        pub def toDrawables(node: n, globalPos: Vec2.Vec2): List[Drawable] \ Game
     }
 
     /// キーボードキー
@@ -221,19 +226,20 @@ mod GameEngine {
     /// CanvasLayer 配下のノード（HUD 等）にはカメラオフセットを適用しない
     /// TileMapLayer はインスタンシング経由で描画する（1 draw call）
     pub def render(scene: Scene[s]): Unit \ Game =
-        let cameraOffset = match Scene.findActiveCamera(scene) {
+        let transform = match Scene.findActiveCamera(scene) {
             case Some((cam, globalPos)) =>
                 let vp = Game.getViewportRect();
-                Camera2D.getViewportOffset(cam, globalPos,
+                Camera2D.getViewTransform(cam, globalPos,
                     {viewportWidth = vp#size#x, viewportHeight = vp#size#y})
-            case None => Vec2.zero()
+            case None => Camera2D.identityTransform()
         };
-        let sprites = Scene.toDrawables(cameraOffset, scene);
+        let sprites = Scene.toDrawables(transform, scene);
         let tileMaps: List[TileMapRenderCmd] =
             List.filterMap(p -> match Scene.getEngineNode(p, scene) {
                 case Some(EngineNode.TileMapLayerWithState(tm, _)) =>
-                    let globalPos = Vec2.sub(Scene.globalPositionAt(p, scene), cameraOffset);
-                    Some(TileMapLayer.toRenderCmd(globalPos, tm))
+                    let layerScreenPos =
+                        Camera2D.applyToWorldPos(transform, Scene.globalPositionAt(p, scene));
+                    Some(TileMapLayer.toRenderCmd(layerScreenPos, transform#scale, tm))
                 case _ => None
             }, Scene.preorderPaths(scene));
         Game.renderCommands(sprites, tileMaps)

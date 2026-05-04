@@ -78,7 +78,7 @@ mod TestOverlay {
         let s: Scene[NodeTag] = Scene.empty();
         let scene = s;
         let result = withMockTexture32(() ->
-            Overlay.addSelectionBox(Map.empty(), None, {x = 0.0, y = 0.0}, scene));
+            Overlay.addSelectionBox(Map.empty(), None, Camera2D.identityTransform(), scene));
         let boxLayerAbsent = Option.isEmpty(
             Scene.getEngineNode("_editor_box_layer" :: Nil, result));
         Assert.assertEq(expected = true, boxLayerAbsent)
@@ -93,7 +93,7 @@ mod TestOverlay {
         let result = Overlay.addSelectionBox(
             Map.empty(),
             Some(("hero.json", "hero" :: Nil)),
-            {x = 0.0, y = 0.0},
+            Camera2D.identityTransform(),
             scene);
         let boxLayerAbsent = Option.isEmpty(
             Scene.getEngineNode("_editor_box_layer" :: Nil, result));
@@ -116,7 +116,8 @@ mod TestOverlay {
         let index = Map#{"hero" => "hero.json"};
         // マウスはスプライト矩形の遥か外
         let result = Overlay.addHoverBox(index, {x = 500.0, y = 500.0}, None,
-                                         {x = 0.0, y = 0.0}, scene);
+                                         Camera2D.identityTransform(),
+                                         scene);
         let hoverLayerAbsent = Option.isEmpty(
             Scene.getEngineNode("_editor_hover_layer" :: Nil, result));
         Assert.assertEq(expected = true, hoverLayerAbsent)
@@ -138,7 +139,7 @@ mod TestOverlay {
             index,
             {x = 100.0, y = 100.0},
             Some(("hero.json", "hero" :: Nil)),
-            {x = 0.0, y = 0.0},
+            Camera2D.identityTransform(),
             scene);
         let hoverLayerAbsent = Option.isEmpty(
             Scene.getEngineNode("_editor_hover_layer" :: Nil, result));
@@ -162,7 +163,7 @@ mod TestOverlay {
             index,
             {x = 200.0, y = 200.0},
             Some(("hero.json", "hero" :: Nil)),
-            {x = 0.0, y = 0.0},
+            Camera2D.identityTransform(),
             scene);
         let isCanvasLayer = node -> match node {
             case EngineNode.CanvasLayerWithState(_, _) => true
@@ -187,7 +188,7 @@ mod TestOverlay {
         let result = Overlay.addSelectionBox(
             index,
             Some(("hero.json", "hero" :: Nil)),
-            {x = 0.0, y = 0.0},
+            Camera2D.identityTransform(),
             scene);
         let isColorRect = node -> match node {
             case EngineNode.ColorRectWithState(_, _) => true
@@ -220,7 +221,7 @@ mod TestOverlay {
         let s: Scene[NodeTag] = Scene.empty();
         let scene = s |> Scene.addNode("hero",
             EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag));
-        let result = Overlay.addCollisionShapes({x = 0.0, y = 0.0}, scene);
+        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), scene);
         let children = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result);
         Assert.assertEq(expected = (true, 0), (Option.nonEmpty(
             Scene.getEngineNode("_editor_collision_layer" :: Nil, result)),
@@ -235,7 +236,7 @@ mod TestOverlay {
         let s: Scene[NodeTag] = Scene.empty();
         let scene = s |> Scene.addNode("trigger",
             EngineNode.Area2DWithState(area, NodeTag.NoTag));
-        let result = Overlay.addCollisionShapes({x = 0.0, y = 0.0}, scene);
+        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), scene);
         let children = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result);
         // 内側 fill 1 + 上下左右の outline 4 = 5
         Assert.assertEq(expected = 5, List.length(children))
@@ -253,7 +254,7 @@ mod TestOverlay {
         let s: Scene[NodeTag] = Scene.empty();
         let scene = s |> Scene.addNode("ball",
             EngineNode.Area2DWithState(area, NodeTag.NoTag));
-        let result = Overlay.addCollisionShapes({x = 0.0, y = 0.0}, scene);
+        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), scene);
         let count = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result)
             |> List.length;
         Assert.assertEq(expected = 29, count)
@@ -267,7 +268,7 @@ mod TestOverlay {
         let s: Scene[NodeTag] = Scene.empty();
         let scene = s |> Scene.addNode("box",
             EngineNode.Area2DWithState(area, NodeTag.NoTag));
-        let result = Overlay.addCollisionShapes({x = 0.0, y = 0.0}, scene);
+        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), scene);
         let alphas = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result)
             |> List.map(childName ->
                 match Scene.getEngineNode("_editor_collision_layer" :: childName :: Nil, result) {

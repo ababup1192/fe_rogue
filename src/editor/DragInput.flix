@@ -20,10 +20,10 @@ mod DragInput {
 
     /// マウスの押下／継続／離脱を判定し、選択 / ドラッグ更新 / リサイズ / 書き戻し を
     /// ディスパッチする。
-    /// cameraOffset はカメラ追従中のノード（CanvasLayer 配下でないもの）を選択するため
+    /// transform はカメラ追従中のノード（CanvasLayer 配下でないもの）を選択するため
     /// に必要。Editor.handleInput で `Scene.findActiveCamera` から計算して渡す
     pub def handleMouse(mouse: MouseSnapshot,
-                        cameraOffset: Vec2.Vec2,
+                        transform: Camera2D.ViewTransform,
                         stateData: Editor.EditorStateData,
                         scene: Scene[NodeTag]):
             (Editor.EditorStateData, Scene[NodeTag]) \
@@ -32,13 +32,13 @@ mod DragInput {
         let pressedNow = mouse#leftDown and not prevLeft;       // 押下したフレーム
         let releasedNow = (not mouse#leftDown) and prevLeft;    // 離した（ドロップ）フレーム
         if (pressedNow) {
-            handleMouseDown(mouse#pos, cameraOffset, stateData, scene)
+            handleMouseDown(mouse#pos, transform, stateData, scene)
         } else if (mouse#leftDown and Option.nonEmpty(stateData#resizeOrigin)) {
             // リサイズ中: 選択ノードの scale + position を更新（書き戻しはまだしない）
-            (stateData, applyResize(mouse#pos, stateData, scene))
+            (stateData, applyResize(mouse#pos, transform, stateData, scene))
         } else if (mouse#leftDown and Option.nonEmpty(stateData#dragOrigin)) {
             // ドラッグ中: 選択ノードの位置を更新（書き戻しはまだしない）
-            (stateData, applyDrag(mouse#pos, stateData, scene))
+            (stateData, applyDrag(mouse#pos, transform, stateData, scene))
         } else if (releasedNow and Option.nonEmpty(stateData#resizeOrigin)) {
             // リサイズドロップ: 最終 scale + position を JSON に書き戻し
             saveResizedNode(stateData, scene)
@@ -50,24 +50,33 @@ mod DragInput {
         }
 
     /// ドラッグ中: マウスの移動量に応じてノードのグローバル位置を更新する。
+    /// マウスは screen 座標、ノード位置は world 座標なので、delta を transform で
+    /// 逆変換してから足し合わせる（zoom 0.5 ならマウス 1px 移動 = world 2px 移動）。
     /// ピクセル単位に整数スナップして「カクカク」動かす（drop 時の保存値とも一致する）。
     /// 単体テストしやすいよう pub。状態 + シーンに対して pure
-    pub def applyDrag(mousePos: Vec2.Vec2, stateData: Editor.EditorStateData,
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def applyDrag(mousePos: Vec2.Vec2, transform: Camera2D.ViewTransform,
+                       stateData: Editor.EditorStateData,
+                       scene: Scene[NodeTag]): Scene[NodeTag] =
         match (stateData#selected, stateData#dragOrigin, stateData#nodeOrigin) {
             case (Some((_, nodePath)), Some(dragOrigin), Some(nodeOrigin)) =>
-                let delta = Vec2.sub(mousePos, dragOrigin);
-                let newGlobalPos = snapVec2(Vec2.add(nodeOrigin, delta));
+                let screenDelta = Vec2.sub(mousePos, dragOrigin);
+                let worldDelta = if (Scene.isUnderCanvasLayer(nodePath, scene))
+                                     screenDelta
+                                 else
+                                     Camera2D.screenToWorldSize(transform, screenDelta);
+                let newGlobalPos = snapVec2(Vec2.add(nodeOrigin, worldDelta));
                 Scene.setGlobalPositionAt(nodePath, newGlobalPos, scene)
             case _ => scene
         }
 
     /// リサイズ中: マウス移動量から新しい bbox を計算し、scale と position を更新する。
+    /// bbox は screen 座標で扱い、最終的な world 位置は transform で逆変換する。
     /// scale は (新サイズ / 旧サイズ × 旧 scale)、position は新 bbox 左上から
     /// topLeftOffset を引いて求める（centered=true のスプライトなら新中心になる）。
     /// 単体テストしやすいよう pub。状態 + シーンに対して pure
-    pub def applyResize(mousePos: Vec2.Vec2, stateData: Editor.EditorStateData,
-                        scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def applyResize(mousePos: Vec2.Vec2, transform: Camera2D.ViewTransform,
+                         stateData: Editor.EditorStateData,
+                         scene: Scene[NodeTag]): Scene[NodeTag] =
         match (stateData#selected, stateData#dragOrigin, stateData#resizeOrigin) {
             case (Some((_, nodePath)), Some(dragOrigin), Some(origin)) =>
                 let delta = Vec2.sub(mousePos, dragOrigin);
@@ -79,12 +88,16 @@ mod DragInput {
                                   y = safeRatio(newBox#size#y, origin#boxSize#y)};
                 let newScale = {x = origin#scale#x * scaleRatio#x,
                                 y = origin#scale#y * scaleRatio#y};
-                // 新 bbox 左上からの逆算で新しいワールド座標を出す。
-                // topLeftOffset は centered=true なら -size/2 のような相対値なので、
-                // 新サイズに合わせて再スケーリングする
-                let newOffset = scaleTopLeftOffset(origin#topLeftOffset,
-                                                    origin#boxSize, newBox#size);
-                let newWorldPos = snapVec2(Vec2.sub(newBox#topLeft, newOffset));
+                // 新 bbox 左上からの逆算で新しい world 座標を出す。
+                // topLeftOffset は entry の world 単位（centered=true なら -worldSize/2）なので、
+                // 新スケール比で再スケーリングしてから world 座標から引く
+                let newOffsetWorld = scaleTopLeftOffset(origin#topLeftOffset,
+                                                         origin#boxSize, newBox#size);
+                let worldTopLeft = if (Scene.isUnderCanvasLayer(nodePath, scene))
+                                       newBox#topLeft
+                                   else
+                                       Camera2D.screenToWorldPos(transform, newBox#topLeft);
+                let newWorldPos = snapVec2(Vec2.sub(worldTopLeft, newOffsetWorld));
                 scene
                     |> Scene.mapEngineNode(nodePath, Node2D.setScale(newScale))
                     |> Scene.setGlobalPositionAt(nodePath, newWorldPos)
@@ -117,16 +130,16 @@ mod DragInput {
     /// pickTopAt で掴んで移動ドラッグを開始する。
     /// nodeOrigin にはノードのワールド座標を入れる（applyDrag は delta 加算のみ使うため
     /// screen と world の差は影響しない）
-    def handleMouseDown(mousePos: Vec2.Vec2, cameraOffset: Vec2.Vec2,
+    def handleMouseDown(mousePos: Vec2.Vec2, transform: Camera2D.ViewTransform,
                         stateData: Editor.EditorStateData,
                         scene: Scene[NodeTag]):
             (Editor.EditorStateData, Scene[NodeTag]) \ GameEngine.Game =
-        match tryStartResize(mousePos, cameraOffset, stateData, scene) {
+        match tryStartResize(mousePos, transform, stateData, scene) {
             case Some(newState) => (newState, scene)
             case None =>
                 let ctx = {rootJsonIndex = stateData#rootJsonIndex, scene = scene};
                 let entries = EditableNode.collectAll(ctx);
-                let hit = Picking.pickTopAt(mousePos, entries, cameraOffset, scene);
+                let hit = Picking.pickTopAt(mousePos, entries, transform, scene);
                 match hit {
                     case None =>
                         ({selected = None, dragOrigin = None, nodeOrigin = None,
@@ -146,7 +159,7 @@ mod DragInput {
 
     /// 選択中ノードがあり、マウスがそのリサイズハンドル領域内にあるかを判定する。
     /// hit していれば「リサイズドラッグ開始済み」の EditorStateData を返す
-    def tryStartResize(mousePos: Vec2.Vec2, cameraOffset: Vec2.Vec2,
+    def tryStartResize(mousePos: Vec2.Vec2, transform: Camera2D.ViewTransform,
                        stateData: Editor.EditorStateData,
                        scene: Scene[NodeTag]):
             Option[Editor.EditorStateData] \ GameEngine.Game =
@@ -157,10 +170,7 @@ mod DragInput {
                 match EditableNode.findByNodePath(ctx, nodePath) {
                     case None => None
                     case Some(entry) =>
-                        let refPos = Scene.screenPositionAt(nodePath, cameraOffset, scene);
-                        let topLeft = Vec2.add(refPos, entry#topLeftOffset);
-                        let box = {topLeft = topLeft,
-                                   size = {x = entry#width, y = entry#height}};
+                        let box = EditableNode.screenBox(entry, transform, scene);
                         match ResizeHandle.hitTest(mousePos, box) {
                             case None => None
                             case Some(handle) =>
@@ -171,8 +181,8 @@ mod DragInput {
                                 };
                                 let resizeOrigin: Editor.ResizeOrigin = {
                                     handle = handle,
-                                    boxTopLeftScreen = topLeft,
-                                    boxSize = {x = entry#width, y = entry#height},
+                                    boxTopLeftScreen = box#topLeft,
+                                    boxSize = box#size,
                                     scale = nodeScale,
                                     worldPos = nodeWorld,
                                     topLeftOffset = entry#topLeftOffset

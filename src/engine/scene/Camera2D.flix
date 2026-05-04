@@ -381,30 +381,77 @@ mod Camera2D {
     pub def isCurrent(camera: Camera2D): Bool =
         isEnabled(camera)
 
-    /// カメラ位置からビューポート変換オフセットを計算する
+    /// カメラのビュー変換（screenPos = worldPos * scale - offset）。
     ///
-    /// シーンの描画時に各ノードの位置からこの値を引くことで、
-    /// カメラの視点でのスクリーン座標に変換できる。
-    /// CanvasLayer 配下のノードにはこのオフセットを適用しない。
+    /// Godot 4 の Camera2D 同様、zoom はビューポートに見えるサイズの倍率で、
+    /// `zoom > 1` で寄り、`zoom < 1` で引きになる。CanvasLayer 配下のノードには
+    /// 適用しない（HUD はカメラと無関係なため）
+    pub type alias ViewTransform = { offset = Vec2.Vec2, scale = Vec2.Vec2 }
+
+    /// 何も変換しない単位 ViewTransform（カメラ未配置時のフォールバック）
+    pub def identityTransform(): ViewTransform =
+        { offset = Vec2.zero(), scale = {x = 1.0, y = 1.0} }
+
+    /// world 座標を screen 座標に変換する: `screen = world * scale - offset`
+    pub def applyToWorldPos(transform: ViewTransform, worldPos: Vec2.Vec2): Vec2.Vec2 =
+        {x = worldPos#x * transform#scale#x - transform#offset#x,
+         y = worldPos#y * transform#scale#y - transform#offset#y}
+
+    /// world 単位のサイズを screen 単位に変換する（zoom で寄った分だけ大きく見える）
+    pub def applyToWorldSize(transform: ViewTransform, worldSize: Vec2.Vec2): Vec2.Vec2 =
+        {x = worldSize#x * transform#scale#x,
+         y = worldSize#y * transform#scale#y}
+
+    /// screen 座標を world 座標に逆変換する（マウス入力 → world 変換に使う）。
+    /// scale が 0 の軸は zoom 無し扱い（落とし穴防止）
+    pub def screenToWorldPos(transform: ViewTransform, screenPos: Vec2.Vec2): Vec2.Vec2 =
+        let sx = transform#scale#x;
+        let sy = transform#scale#y;
+        {x = if (sx == 0.0) screenPos#x + transform#offset#x
+             else (screenPos#x + transform#offset#x) / sx,
+         y = if (sy == 0.0) screenPos#y + transform#offset#y
+             else (screenPos#y + transform#offset#y) / sy}
+
+    /// screen 単位のサイズを world 単位に逆変換する。
+    /// scale が 0 の軸は元のまま（落とし穴防止）
+    pub def screenToWorldSize(transform: ViewTransform, screenSize: Vec2.Vec2): Vec2.Vec2 =
+        let sx = transform#scale#x;
+        let sy = transform#scale#y;
+        {x = if (sx == 0.0) screenSize#x else screenSize#x / sx,
+         y = if (sy == 0.0) screenSize#y else screenSize#y / sy}
+
+    /// カメラから ViewTransform を計算する。
+    ///
+    /// シーンの描画時に各ノードの worldPos を `applyToWorldPos` に通すことで
+    /// カメラの視点での screen 座標に変換できる。CanvasLayer 配下のノードには
+    /// この transform を適用しない。
     ///
     /// アンカーモードによって計算が異なる:
-    ///   - DragCenter: position+offset がビューポート中心
-    ///   - FixedTopLeft: position+offset がビューポート左上
+    ///   - DragCenter: position+offset がビューポート中心。zoom はその中心まわりに作用
+    ///   - FixedTopLeft: position+offset がビューポート左上。zoom は左上原点で作用
     /// `globalPos` はシーンツリーから求めた Camera ノードのワールド座標。
     /// Godot 同様、Camera を他ノードの子にしたとき親の変換を反映できる。
-    pub def getViewportOffset(camera: Camera2D, globalPos: Vec2.Vec2,
-                                viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): Vec2.Vec2 =
+    pub def getViewTransform(camera: Camera2D, globalPos: Vec2.Vec2,
+                              viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): ViewTransform =
         let Camera2D.Camera2D(r) = camera;
+        let zoom = r#zoom;
         match r#anchorMode {
             case Camera2DAnchorMode.DragCenter =>
+                // screen = (world - screenCenter) * zoom + halfScreen
+                //        = world * zoom - (screenCenter * zoom - halfScreen)
                 let screenCenter = getScreenCenterPosition(camera, globalPos);
                 let halfW = viewportSize#viewportWidth / 2.0;
                 let halfH = viewportSize#viewportHeight / 2.0;
-                {x = screenCenter#x - halfW, y = screenCenter#y - halfH}
+                { scale = zoom,
+                  offset = {x = screenCenter#x * zoom#x - halfW,
+                            y = screenCenter#y * zoom#y - halfH} }
             case Camera2DAnchorMode.FixedTopLeft =>
+                // screen = (world - (globalPos + offset)) * zoom
+                //        = world * zoom - (globalPos + offset) * zoom
                 let rawX = globalPos#x + r#offset#x;
                 let rawY = globalPos#y + r#offset#y;
-                {x = rawX, y = rawY}
+                { scale = zoom,
+                  offset = {x = rawX * zoom#x, y = rawY * zoom#y} }
         }
 }
 

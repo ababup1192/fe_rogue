@@ -35,7 +35,7 @@ mod Overlay {
     /// （オーバーレイ自体が CanvasLayer なのでカメラの影響を受けず、screen 座標 = 描画位置）
     pub def addSelectionBox(rootJsonIndex: Map[NodeName, String],
                             selected: Option[(String, NodePath)],
-                            cameraOffset: Vec2.Vec2,
+                            transform: Camera2D.ViewTransform,
                             scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         match selected {
             case None => scene
@@ -44,10 +44,7 @@ mod Overlay {
                 match EditableNode.findByNodePath(ctx, nodePath) {
                     case None => scene
                     case Some(entry) =>
-                        let refPos = Scene.screenPositionAt(nodePath, cameraOffset, scene);
-                        let topLeft = Vec2.add(refPos, entry#topLeftOffset);
-                        let box = {topLeft = topLeft,
-                                   size = {x = entry#width, y = entry#height}};
+                        let box = EditableNode.screenBox(entry, transform, scene);
                         scene
                             |> addOutline(box, selectionStyle())
                             |> addResizeHandles(box)
@@ -82,19 +79,16 @@ mod Overlay {
     pub def addHoverBox(rootJsonIndex: Map[NodeName, String],
                         mousePos: Vec2.Vec2,
                         selected: Option[(String, NodePath)],
-                        cameraOffset: Vec2.Vec2,
+                        transform: Camera2D.ViewTransform,
                         scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let ctx = {rootJsonIndex = rootJsonIndex, scene = scene};
         let entries = EditableNode.collectAll(ctx);
-        match Picking.pickTopAt(mousePos, entries, cameraOffset, scene) {
+        match Picking.pickTopAt(mousePos, entries, transform, scene) {
             case None => scene
             case Some((entry, _)) =>
                 if (isSelectedPath(entry#nodePath, selected)) scene
                 else {
-                    let refPos = Scene.screenPositionAt(entry#nodePath, cameraOffset, scene);
-                    let topLeft = Vec2.add(refPos, entry#topLeftOffset);
-                    let box = {topLeft = topLeft,
-                               size = {x = entry#width, y = entry#height}};
+                    let box = EditableNode.screenBox(entry, transform, scene);
                     addOutline(box, hoverStyle(), scene)
                 }
         }
@@ -110,7 +104,7 @@ mod Overlay {
     /// Godot のデバッグ表示風に薄い水色の半透明で塗りつぶす。
     /// 描画プリミティブは ColorRect しかないため、円・カプセルはスキャンラインで近似する。
     /// 形状の中心座標は `Scene.screenPositionAt` を使い、レンダラの描画位置と一致させる
-    pub def addCollisionShapes(cameraOffset: Vec2.Vec2,
+    pub def addCollisionShapes(transform: Camera2D.ViewTransform,
                                scene: Scene[NodeTag]): Scene[NodeTag] =
         let layerName = collisionLayerName();
         let layer = CanvasLayer.make(collisionLayerIndex());
@@ -118,12 +112,12 @@ mod Overlay {
             EngineNode.CanvasLayerWithState(layer, NodeTag.NoTag), scene);
         Scene.preorderPaths(scene)
             |> List.foldLeft((accScene, path) ->
-                addShapeAtPath(layerName, path, cameraOffset, scene, accScene), withLayer)
+                addShapeAtPath(layerName, path, transform, scene, accScene), withLayer)
 
     /// 指定パスのノードに衝突形状があれば、それを構成する塗り矩形を CanvasLayer の子に追加する。
     /// 形状の中心座標は `Scene.screenPositionAt` を使い、選択枠と同じくカメラ追従を尊重する
     def addShapeAtPath(layerName: String, path: NodePath,
-                       cameraOffset: Vec2.Vec2,
+                       transform: Camera2D.ViewTransform,
                        sourceScene: Scene[NodeTag],
                        acc: Scene[NodeTag]): Scene[NodeTag] =
         match Scene.getEngineNode(path, sourceScene) {
@@ -131,12 +125,32 @@ mod Overlay {
             case Some(node) => match CollisionObject2D.getCollisionShape(node) {
                 case None => acc
                 case Some(shape) =>
-                    let center = Scene.screenPositionAt(path, cameraOffset, sourceScene);
+                    let center = Scene.screenPositionAt(path, transform, sourceScene);
+                    let scaledShape = if (Scene.isUnderCanvasLayer(path, sourceScene))
+                                          shape
+                                      else
+                                          scaleShape(shape, transform#scale);
                     let style = collisionStyle();
-                    let rects = collisionShapeToFillRects(center, shape, style);
+                    let rects = collisionShapeToFillRects(center, scaledShape, style);
                     let pathTag = pathToTag(path);
                     appendFillRects(layerName, pathTag, rects, style, acc)
             }
+        }
+
+    /// 衝突形状の寸法を transform.scale で拡縮する。
+    /// 円・カプセルの radius は scale.x、矩形の height とカプセル height は scale.y を使う
+    /// （等方 zoom を前提）
+    def scaleShape(shape: CollisionShape2D, scale: Vec2.Vec2): CollisionShape2D =
+        match shape {
+            case CollisionShape2D.RectShape2D(r) =>
+                CollisionShape2D.RectShape2D({width  = r#width * scale#x,
+                                              height = r#height * scale#y})
+            case CollisionShape2D.CircleShape2D(c) =>
+                CollisionShape2D.CircleShape2D({radius = c#radius * scale#x})
+            case CollisionShape2D.CapsuleShape2D(c) =>
+                CollisionShape2D.CapsuleShape2D({radius   = c#radius * scale#x,
+                                                  height   = c#height * scale#y,
+                                                  vertical = c#vertical})
         }
 
     /// 衝突形状を、塗りつぶし用の矩形リストへ変換する。

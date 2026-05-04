@@ -35,13 +35,17 @@ pub type alias TileData = {
 
 mod TileMapLayer {
 
-    /// TileMapLayer を TileMapRenderCmd に変換する（GameEngine.render 内で使用）
-    pub def toRenderCmd(globalPos: Vec2.Vec2, tileMap: TileMapLayer): GameEngine.TileMapRenderCmd =
+    /// TileMapLayer を TileMapRenderCmd に変換する（GameEngine.render 内で使用）。
+    /// `position` は既にカメラ ViewTransform を適用したスクリーン座標、
+    /// `tileScale` は ViewTransform.scale（zoom）。シェーダ側でタイル本体に乗算する
+    pub def toRenderCmd(layerScreenPos: Vec2.Vec2, tileScale: Vec2.Vec2,
+                         tileMap: TileMapLayer): GameEngine.TileMapRenderCmd =
         let TileMapLayer.TileMapLayer(r) = tileMap;
         let atlas = r#tileSet#atlasSource;
         { textureName = atlas#textureName,
           tileSize    = atlas#tileSize,
-          position    = globalPos,
+          position    = layerScreenPos,
+          tileScale   = tileScale,
           color       = r#modulate,
           zIndex      = r#zIndex,
           tileVaoId   = r#tileVaoId,
