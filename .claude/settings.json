@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(gh repo delete *)",
+      "Bash(gh repo archive *)",
+      "Bash(gh release delete *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh pr close *)",
+      "Bash(gh issue close *)",
+      "Bash(gh secret set *)",
+      "Bash(gh secret delete *)",
+      "Bash(gh api -X DELETE *)",
+      "Bash(gh api --method DELETE *)"
+    ],
+    "allow": [
+      "Bash(rtk *)",
+      "Bash(ls *)",
+      "Bash(cd *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(wc *)",
+      "Bash(diff *)",
+      "Bash(stat *)",
+      "Bash(du *)",
+      "Bash(git *)",
+      "Bash(devbox *)",
+      "Bash(gh *)",
+      "Bash(unzip *)",
+      "Read",
+      "Glob",
+      "Grep",
+      "Web",
+      "WebFetch",
+      "WebSearch",
+      "Skill"
+    ]
+  }
+}
