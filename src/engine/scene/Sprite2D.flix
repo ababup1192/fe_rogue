@@ -20,12 +20,14 @@ pub enum Sprite2D {
         centered = Bool,        // 中心を原点にするか
         offset = Vec2.Vec2,    // 描画オフセット
         flipH = Bool,           // 水平反転
-        flipV = Bool            // 垂直反転
+        flipV = Bool,           // 垂直反転
+        uvOffset = Vec2.Vec2,  // テクスチャ領域オフセット（正規化 0..1）
+        uvScale = Vec2.Vec2    // テクスチャ領域スケール（正規化 0..1, デフォルト (1,1)=全体）
     })
 }
 
 mod Sprite2D {
-    /// デフォルト値で Sprite2D を生成する
+    /// デフォルト値で Sprite2D を生成する（テクスチャ全体を表示）
     pub def make(texture: String, position: Vec2.Vec2, scale: Vec2.Vec2): Sprite2D =
         Sprite2D.Sprite2D({
             position = position,
@@ -39,7 +41,46 @@ mod Sprite2D {
             centered = true,
             offset = {x = 0.0, y = 0.0},
             flipH = false,
-            flipV = false
+            flipV = false,
+            uvOffset = {x = 0.0, y = 0.0},
+            uvScale = {x = 1.0, y = 1.0}
+        })
+
+    /// テクスチャアトラスから矩形領域を切り出して表示する Sprite2D を生成する。
+    /// regionPosPx / regionSizePx はテクスチャ内のピクセル座標、textureSizePx は元画像のピクセルサイズ。
+    /// displayScale = (1, 1) で region がピクセルパーフェクト表示される（regionSizePx に等しい）。
+    /// 内部 scale フィールドは「全画像サイズ × scale = 描画サイズ」の関係から逆算される。
+    pub def makeRegion(config: {
+        texture       = String,
+        position      = Vec2.Vec2,
+        displayScale  = Vec2.Vec2,
+        regionPosPx   = Vec2.Vec2,
+        regionSizePx  = Vec2.Vec2,
+        textureSizePx = Vec2.Vec2
+    }): Sprite2D =
+        let texSize = config#textureSizePx;
+        let regPos  = config#regionPosPx;
+        let regSize = config#regionSizePx;
+        let uvOff: Vec2.Vec2 = {x = regPos#x / texSize#x,  y = regPos#y / texSize#y};
+        let uvSc:  Vec2.Vec2 = {x = regSize#x / texSize#x, y = regSize#y / texSize#y};
+        // 描画サイズ = textureSize × scale なので、region サイズで描画するため
+        // scale = uvScale × displayScale とする
+        let scl: Vec2.Vec2 = {x = uvSc#x * config#displayScale#x, y = uvSc#y * config#displayScale#y};
+        Sprite2D.Sprite2D({
+            position = config#position,
+            rotation = 0.0,
+            scale = scl,
+            skew = 0.0,
+            visible = true,
+            zIndex = 0,
+            modulate = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+            texture = config#texture,
+            centered = true,
+            offset = {x = 0.0, y = 0.0},
+            flipH = false,
+            flipV = false,
+            uvOffset = uvOff,
+            uvScale = uvSc
         })
 
     /// テクスチャ名を変更する
@@ -68,8 +109,8 @@ mod Sprite2D {
             color = r#modulate,
             alpha = 1.0f32,
             centered = r#centered,
-            uvOffset = {x = 0.0, y = 0.0},
-            uvScale = {x = 1.0, y = 1.0},
+            uvOffset = r#uvOffset,
+            uvScale = r#uvScale,
             zIndex = r#zIndex
         }
 }

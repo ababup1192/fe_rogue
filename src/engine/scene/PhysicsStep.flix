@@ -65,9 +65,11 @@ pub mod PhysicsStep {
     /// Godot の RigidBody2D ↔ StaticBody2D 自動衝突解決相当。
     /// RigidBody2D 側の collisionExceptions に登録された path のペアは skip
     /// （Godot add_collision_exception_with 相当）。
-    pub def resolveStaticCollisions(scene: Scene[s]): Scene[s] =
+    /// シーン内のすべての静的衝突体（StaticBody2D + TileMapLayer の壁セル）を集める。
+    /// resolveStaticCollisions が物理応答に、RayCast2D が線分クエリに、それぞれ共有して使う。
+    pub def collectStaticColliders(scene: Scene[s]):
+            List[(NodePath, Vec2.Vec2, CollisionShape2D)] =
         let paths = Scene.preorderPaths(scene);
-        // 衝突対象になる静的ボディ情報を先に集める（このパス中、静的ボディは動かない）
         let staticBodies: List[(NodePath, Vec2.Vec2, CollisionShape2D)] =
             List.filterMap(p -> match Scene.getEngineNode(p, scene) {
                 case Some(EngineNode.StaticBody2DWithState(body, _)) =>
@@ -80,6 +82,18 @@ pub mod PhysicsStep {
                     else None
                 case _ => None
             }, paths);
+        let tileWalls: List[(NodePath, Vec2.Vec2, CollisionShape2D)] =
+            List.flatMap(p -> match Scene.getEngineNode(p, scene) {
+                case Some(EngineNode.TileMapLayerWithState(tileMap, _)) =>
+                    TileMapLayer.expandWallShapes(Scene.globalPositionAt(p, scene), tileMap)
+                    |> List.map(match (center, shape) -> (p, center, shape))
+                case _ => Nil
+            }, paths);
+        List.append(staticBodies, tileWalls)
+
+    pub def resolveStaticCollisions(scene: Scene[s]): Scene[s] =
+        let paths = Scene.preorderPaths(scene);
+        let allStatics = collectStaticColliders(scene);
         // 各 RigidBody2D に対して全 static body との分離を順次適用
         List.foldLeft((sc, path) ->
             match Scene.getEngineNode(path, sc) {
@@ -87,7 +101,7 @@ pub mod PhysicsStep {
                     match CollisionObject2D.getCollisionShape(body) {
                         case Some(shape) =>
                             let pos = Scene.globalPositionAt(path, sc);
-                            resolveOneRigid(path, pos, shape, body, staticBodies, sc)
+                            resolveOneRigid(path, pos, shape, body, allStatics, sc)
                         case None => sc
                     }
                 case _ => sc

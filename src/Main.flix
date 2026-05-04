@@ -5,7 +5,12 @@ def main(): Unit \ {IO, Chan, NonDet} =
             screenWidth = Game.screenWi(),
             screenHeight = Game.screenHi(),
             title = "New Game",
-            textureManifest = Nil,
+            textureManifest = { name = "inca_tileset",
+                                  path = "sprites/Inca_front_by_Kronbits-extended.png",
+                                  hasAlpha = true }
+                                :: { name = "character_sheet",
+                                     path = "sprites/character_sheet_grid_16.png",
+                                     hasAlpha = true } :: Nil,
             fontManifest = Nil,
             soundManifest = Nil,
             clearColor = {r = 0.2f32, g = 0.2f32, b = 0.2f32},
@@ -14,7 +19,6 @@ def main(): Unit \ {IO, Chan, NonDet} =
         run {
             Game.start()
         } with LwjglLayer.withLwjgl(config)
-          with Math.Random.runWithIO
           with Fs.FileRead.runWithIO
           with Fs.FileWrite.runWithIO
           with Fs.Glob.runWithIO

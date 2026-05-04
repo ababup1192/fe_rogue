@@ -11,6 +11,7 @@ mod LwjglLayer {
     import org.lwjgl.opengl.GL20
     import org.lwjgl.opengl.GL30
     import org.lwjgl.opengl.GL33
+    import org.lwjgl.opengl.GL31
     import org.lwjgl.stb.STBImage
     import org.lwjgl.stb.STBTruetype
     import org.lwjgl.stb.STBTTBakedChar
@@ -81,6 +82,38 @@ mod LwjglLayer {
         "    } else {\n" +
         "        color = vec4(spriteColor, spriteAlpha);\n" +
         "    }\n" +
+        "}\n"
+
+    def tileVertexShaderSource(): String =
+        "#version 330 core\n" +
+        "layout (location = 0) in vec4 vertex;\n" +
+        "layout (location = 1) in vec2 instPos;\n" +
+        "layout (location = 2) in vec2 instUVO;\n" +
+        "layout (location = 3) in vec2 instUVS;\n" +
+        "layout (location = 4) in float instA;\n" +
+        "out vec2 TexCoords;\n" +
+        "out float FragAlpha;\n" +
+        "uniform mat4 projection;\n" +
+        "uniform vec2 layerPos;\n" +
+        "uniform float tileSize;\n" +
+        "void main() {\n" +
+        "    vec2 worldPos = layerPos + instPos + vertex.xy * tileSize;\n" +
+        "    gl_Position = projection * vec4(worldPos, 0.0, 1.0);\n" +
+        "    TexCoords = instUVO + vertex.zw * instUVS;\n" +
+        "    FragAlpha = instA;\n" +
+        "}\n"
+
+    def tileFragmentShaderSource(): String =
+        "#version 330 core\n" +
+        "in vec2 TexCoords;\n" +
+        "in float FragAlpha;\n" +
+        "out vec4 color;\n" +
+        "uniform sampler2D image;\n" +
+        "uniform vec3 layerColor;\n" +
+        "void main() {\n" +
+        "    vec4 t = texture(image, TexCoords);\n" +
+        "    color = vec4(layerColor * t.rgb, t.a * FragAlpha);\n" +
+        "    if (color.a < 0.01) discard;\n" +
         "}\n"
 
     // ========================================================================
@@ -279,6 +312,80 @@ mod LwjglLayer {
         GL30.glBindVertexArray(0)
 
     // ========================================================================
+    // Tile Map Instanced Rendering
+    // ========================================================================
+
+    /// タイルインスタンスデータを GPU VBO にアップロードする（一度だけ呼ぶ）。
+    /// 各インスタンスは 7 floats: instPos(2) + instUVO(2) + instUVS(2) + instA(1) = 28 bytes
+    def buildTileInstanceVBO(instances: List[GameEngine.TileInstance]): Int32 \ IO =
+        let count = List.length(instances);
+        let data = Array.empty(Static, count * 7);
+        let _ = List.foldLeft((i, inst) -> {
+            let base = i * 7;
+            let px = inst#px;
+            Array.put(f32(px#x),       base + 0, data);
+            Array.put(f32(px#y),       base + 1, data);
+            let uvOff = inst#uvOff;
+            Array.put(f32(uvOff#x),    base + 2, data);
+            Array.put(f32(uvOff#y),    base + 3, data);
+            let uvSc = inst#uvSc;
+            Array.put(f32(uvSc#x),     base + 4, data);
+            Array.put(f32(uvSc#y),     base + 5, data);
+            Array.put(inst#alpha,      base + 6, data);
+            i + 1
+        }, 0, instances);
+        let vbo = GL15.glGenBuffers();
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, data, GL15.GL_STATIC_DRAW);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        vbo
+
+    /// TileMapLayer 専用 VAO を構築する。
+    /// loc 0: 共有 quad VBO（vertex.xy = 局所座標, vertex.zw = UV）
+    /// loc 1-4: per-instance VBO（divisor=1）
+    def buildTileMapVAO(quadVBO: Int32, instanceVBO: Int32): Int32 \ IO =
+        let vao = GL30.glGenVertexArrays();
+        GL30.glBindVertexArray(vao);
+        // 共有 quad VBO（loc 0）
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, quadVBO);
+        GL20.glEnableVertexAttribArray(0);
+        GL20.glVertexAttribPointer(0, 4, GL11.GL_FLOAT, false, 16, 0i64);
+        // インスタンス VBO（loc 1-4, divisor=1）
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, instanceVBO);
+        GL20.glEnableVertexAttribArray(1);
+        GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, 28, 0i64);
+        GL33.glVertexAttribDivisor(1, 1);
+        GL20.glEnableVertexAttribArray(2);
+        GL20.glVertexAttribPointer(2, 2, GL11.GL_FLOAT, false, 28, 8i64);
+        GL33.glVertexAttribDivisor(2, 1);
+        GL20.glEnableVertexAttribArray(3);
+        GL20.glVertexAttribPointer(3, 2, GL11.GL_FLOAT, false, 28, 16i64);
+        GL33.glVertexAttribDivisor(3, 1);
+        GL20.glEnableVertexAttribArray(4);
+        GL20.glVertexAttribPointer(4, 1, GL11.GL_FLOAT, false, 28, 24i64);
+        GL33.glVertexAttribDivisor(4, 1);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+        vao
+
+    /// 1 draw call で TileMapLayer のすべてのタイルを描画する。
+    def drawTileMapInstanced(tileShader: Int32, texId: Int32, tileVao: Int32,
+                              layerPos: Vec2.Vec2, tileSize: Float64,
+                              color: Color, tileCount: Int32): Unit \ IO =
+        GL20.glUseProgram(tileShader);
+        let layerPosLoc = GL20.glGetUniformLocation(tileShader, "layerPos");
+        GL20.glUniform2f(layerPosLoc, f32(layerPos#x), f32(layerPos#y));
+        let tileSizeLoc = GL20.glGetUniformLocation(tileShader, "tileSize");
+        GL20.glUniform1f(tileSizeLoc, f32(tileSize));
+        let colorLoc = GL20.glGetUniformLocation(tileShader, "layerColor");
+        GL20.glUniform3f(colorLoc, color#r, color#g, color#b);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
+        GL30.glBindVertexArray(tileVao);
+        GL31.glDrawArraysInstanced(GL11.GL_TRIANGLES, 0, 6, tileCount);
+        GL30.glBindVertexArray(0)
+
+    // ========================================================================
     // Viewport Calculation (Stretch Mode)
     // ========================================================================
 
@@ -301,29 +408,42 @@ mod LwjglLayer {
             (0, vpY, vpW, vpH)
         }
 
-    /// ビューポート計算・レターボックス処理を含むフレーム描画処理。
-    /// render ハンドラとリサイズコールバックの両方から呼ばれる。
-    def renderFrame(shader: Int32, vao: Int32, registry: GameEngine.TextureRegistry,
-                    clearColor: Color, designW: Float64, designH: Float64,
-                    fbW: Int32, fbH: Int32, drawables: List[GameEngine.Drawable]): Unit \ IO =
+    /// renderFrameMixed: sprites + tileMaps 混合版。tileMaps は zIndex 順で sprites の前に描画する。
+    /// 通常の dungeon ユースケースでは TileMapLayer は背景（zIndex=0）として配置されるため、
+    /// 単純化として TileMapLayer 群を先に、Sprite 群を後に描く。
+    def renderFrameMixed(spriteShader: Int32, tileShader: Int32, vao: Int32,
+                          registry: GameEngine.TextureRegistry,
+                          clearColor: Color, designW: Float64, designH: Float64,
+                          fbW: Int32, fbH: Int32,
+                          sprites: List[GameEngine.Drawable],
+                          tileMaps: List[GameEngine.TileMapRenderCmd]): Unit \ IO =
         if (fbW > 0 and fbH > 0) {
             let (vpX, vpY, vpW, vpH) = calcViewport(fbW, fbH, designW, designH);
-            // フレームバッファ全体を黒でクリア（レターボックス/ピラーボックス領域）
             GL11.glViewport(0, 0, fbW, fbH);
             GL11.glClearColor(0.0f32, 0.0f32, 0.0f32, 1.0f32);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-            // ゲーム領域にビューポートを設定
             GL11.glViewport(vpX, vpY, vpW, vpH);
             GL11.glEnable(GL11.GL_SCISSOR_TEST);
             GL11.glScissor(vpX, vpY, vpW, vpH);
             GL11.glClearColor(clearColor#r, clearColor#g, clearColor#b, 1.0f32);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
             GL11.glDisable(GL11.GL_SCISSOR_TEST);
+            // tileMaps: zIndex 昇順で 1 draw call ずつ描画
+            let sortedTiles = List.sortBy(tm -> tm#zIndex, tileMaps);
+            List.forEach(tm -> match Map.get(tm#textureName, registry) {
+                case Some(texInfo) =>
+                    drawTileMapInstanced(tileShader, texInfo#id, tm#tileVaoId,
+                                         tm#position, tm#tileSize, tm#color, tm#tileCount)
+                case None => ()
+            }, sortedTiles);
+            // sprites: zIndex 昇順で描画
+            let sortedSprites = List.sortBy(d -> d#zIndex, sprites);
             List.forEach(drawable -> {
                 if (String.isEmpty(drawable#texture)) {
-                    // テクスチャなし（ColorRect）: scale をそのままピクセルサイズとして使う
                     let displaySize: Vec2.Vec2 = drawable#scale;
-                    drawSprite(shader, 0, vao, drawable#position, displaySize, drawable#color, drawable#alpha, drawable#uvOffset, drawable#uvScale, drawable#rotation, false)
+                    drawSprite(spriteShader, 0, vao, drawable#position, displaySize,
+                               drawable#color, drawable#alpha, drawable#uvOffset,
+                               drawable#uvScale, drawable#rotation, false)
                 } else {
                     match Map.get(drawable#texture, registry) {
                         case Some(texInfo) =>
@@ -331,14 +451,16 @@ mod LwjglLayer {
                             let displayH = texInfo#height * drawable#scale#y;
                             let displaySize: Vec2.Vec2 = {x = displayW, y = displayH};
                             let pos: Vec2.Vec2 = if (drawable#centered)
-                                {x = drawable#position#x - displayW / 2.0, y = drawable#position#y - displayH / 2.0}
-                            else
-                                drawable#position;
-                            drawSprite(shader, texInfo#id, vao, pos, displaySize, drawable#color, drawable#alpha, drawable#uvOffset, drawable#uvScale, drawable#rotation, true)
+                                {x = drawable#position#x - displayW / 2.0,
+                                 y = drawable#position#y - displayH / 2.0}
+                            else drawable#position;
+                            drawSprite(spriteShader, texInfo#id, vao, pos, displaySize,
+                                       drawable#color, drawable#alpha, drawable#uvOffset,
+                                       drawable#uvScale, drawable#rotation, true)
                         case None => ()
                     }
                 }
-            }, drawables)
+            }, sortedSprites)
         } else ()
 
     // ========================================================================
@@ -552,10 +674,13 @@ mod LwjglLayer {
         let screenW = Int32.toFloat64(config#screenWidth);
         let screenH = Int32.toFloat64(config#screenHeight);
 
-        let shader = createShaderProgram(vertexShaderSource(), fragmentShaderSource());
-        setProjectionMatrix(shader, screenW, screenH);
+        let spriteShader = createShaderProgram(vertexShaderSource(), fragmentShaderSource());
+        setProjectionMatrix(spriteShader, screenW, screenH);
 
-        let (vao, _vbo) = initSpriteRenderer();
+        let tileShader = createShaderProgram(tileVertexShaderSource(), tileFragmentShaderSource());
+        setProjectionMatrix(tileShader, screenW, screenH);
+
+        let (vao, quadVBO) = initSpriteRenderer();
 
         println("Loading textures...");
         let registry0 = loadTextureRegistry(config#textureManifest);
@@ -588,8 +713,9 @@ mod LwjglLayer {
 
         let timeHolder = Array#{System.nanoTime()} @ Static;
 
-        // リサイズ中の再描画用に最後のフレームの描画リストを保持する
-        let drawablesHolder = Array#{(Nil: List[GameEngine.Drawable])} @ Static;
+        // リサイズ中の再描画用に最後のフレームの描画コマンドを保持する（sprites + tileMaps）
+        let renderStateHolder = Array#{((Nil: List[GameEngine.Drawable]),
+                                         (Nil: List[GameEngine.TileMapRenderCmd]))} @ Static;
 
         // 4 種のスタンダードカーソルを起動時に作成して再利用する。
         // setCursor 呼び出しの度に都度作成 / 破棄すると重く、リーク源にもなる
@@ -610,8 +736,10 @@ mod LwjglLayer {
         // フレームバッファサイズ変更コールバックで再描画を行う
         discard GLFW.glfwSetFramebufferSizeCallback(window, new GLFWFramebufferSizeCallbackI {
             def invoke(_this: GLFWFramebufferSizeCallbackI, cbWindow: Int64, width: Int32, height: Int32): Unit \ IO = {
-                renderFrame(shader, vao, registry, config#clearColor, screenW, screenH,
-                            width, height, Array.get(0, drawablesHolder));
+                let (sprites, tileMaps) = Array.get(0, renderStateHolder);
+                renderFrameMixed(spriteShader, tileShader, vao, registry,
+                                 config#clearColor, screenW, screenH,
+                                 width, height, sprites, tileMaps);
                 GLFW.glfwSwapBuffers(cbWindow)
             }
         });
@@ -634,8 +762,8 @@ mod LwjglLayer {
                 k(())
             }
         } with handler GameEngine.Game {
-            def render(drawables, k) = {
-                Array.put(drawables, 0, drawablesHolder);
+            def renderCommands(sprites, tileMaps, k) = {
+                Array.put((sprites, tileMaps), 0, renderStateHolder);
                 let stack = MemoryStack.stackPush();
                 let wBuf = stack.mallocInt(1);
                 let hBuf = stack.mallocInt(1);
@@ -643,9 +771,16 @@ mod LwjglLayer {
                 let fbW = wBuf.get(0);
                 let fbH = hBuf.get(0);
                 discard MemoryStack.stackPop();
-                renderFrame(shader, vao, registry, config#clearColor, screenW, screenH, fbW, fbH, drawables);
+                renderFrameMixed(spriteShader, tileShader, vao, registry,
+                                 config#clearColor, screenW, screenH, fbW, fbH,
+                                 sprites, tileMaps);
                 GLFW.glfwSwapBuffers(window);
                 k(())
+            }
+            def initTileBuffer(instances, k) = {
+                let instanceVBO = buildTileInstanceVBO(instances);
+                let tileVao = buildTileMapVAO(quadVBO, instanceVBO);
+                k((tileVao, List.length(instances)))
             }
             def shouldClose(k) = {
                 GLFW.glfwPollEvents();

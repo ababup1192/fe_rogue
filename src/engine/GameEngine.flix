@@ -39,7 +39,7 @@ mod GameEngine {
         maxDeltaTime = Float64
     }
 
-    /// 描画用データ: render ハンドラに渡す
+    /// 描画用データ: renderCommands ハンドラに渡す
     pub type alias Drawable = {
         texture = String,
         position = Vec2.Vec2,
@@ -51,6 +51,26 @@ mod GameEngine {
         uvOffset = Vec2.Vec2,
         uvScale = Vec2.Vec2,
         zIndex = Int32
+    }
+
+    /// TileMapLayer のインスタンス描画コマンド（1 draw call）
+    pub type alias TileMapRenderCmd = {
+        textureName = String,
+        tileSize    = Float64,
+        position    = Vec2.Vec2,
+        color       = Color,
+        zIndex      = Int32,
+        tileVaoId   = Int32,
+        tileCount   = Int32
+    }
+
+    /// GPU インスタンスバッファ 1 タイル分のデータ
+    /// LDTKLoader が生成し、initTileBuffer で GPU にアップロードする。
+    pub type alias TileInstance = {
+        px    = Vec2.Vec2,
+        uvOff = Vec2.Vec2,
+        uvSc  = Vec2.Vec2,
+        alpha = Float32
     }
 
     /// ノードを Drawable のリストに変換する能力を表す trait
@@ -116,7 +136,10 @@ mod GameEngine {
     /// ゲームエフェクト: 描画・ウィンドウ制御・時間取得・キー入力・マウス入力・フォント・
     /// ビューポート・マウスカーソル形状切り替え
     pub eff Game {
-        def render(drawables: List[Drawable]): Unit
+        /// zIndex 混合で sprites と tileMaps を 1 フレーム描画する
+        def renderCommands(sprites: List[Drawable], tileMaps: List[TileMapRenderCmd]): Unit
+        /// タイルインスタンスデータを GPU VBO にアップロードし (vaoId, count) を返す
+        def initTileBuffer(instances: List[TileInstance]): (Int32, Int32)
         def shouldClose(): Bool
         /// 前フレームからの経過時間（秒）。EngineConfig#maxDeltaTime で上限クランプ済み
         def getDeltaTime(): Float64
@@ -196,6 +219,7 @@ mod GameEngine {
     /// シーンを描画する
     /// アクティブな Camera2D があれば、ビューポートオフセットを計算して描画に適用する
     /// CanvasLayer 配下のノード（HUD 等）にはカメラオフセットを適用しない
+    /// TileMapLayer はインスタンシング経由で描画する（1 draw call）
     pub def render(scene: Scene[s]): Unit \ Game =
         let cameraOffset = match Scene.findActiveCamera(scene) {
             case Some(cam) =>
@@ -203,7 +227,15 @@ mod GameEngine {
                 Camera2D.getViewportOffset(cam, {viewportWidth = vp#size#x, viewportHeight = vp#size#y})
             case None => Vec2.zero()
         };
-        Scene.toDrawables(cameraOffset, scene) |> Game.render
+        let sprites = Scene.toDrawables(cameraOffset, scene);
+        let tileMaps: List[TileMapRenderCmd] =
+            List.filterMap(p -> match Scene.getEngineNode(p, scene) {
+                case Some(EngineNode.TileMapLayerWithState(tm, _)) =>
+                    let globalPos = Vec2.sub(Scene.globalPositionAt(p, scene), cameraOffset);
+                    Some(TileMapLayer.toRenderCmd(globalPos, tm))
+                case _ => None
+            }, Scene.preorderPaths(scene));
+        Game.renderCommands(sprites, tileMaps)
 
     // ========================================================================
     // プラットフォーム

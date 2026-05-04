@@ -65,25 +65,6 @@ mod TestSceneJsonIndex {
     // load — 実在の scene.json を入力にした統合テスト
     // ====================================================================
 
-    /// MenuScene.scene.json の root "menu" がインデックスに入る
-    @Test
-    def testLoadIndexesMenuSceneRoot(): Unit \ {Assert, Fs.Glob, Fs.FileRead} =
-        let index = SceneJsonIndex.load();
-        Assert.assertEq(
-            expected = Some("src/scenes/MenuScene.scene.json"),
-            Map.get("menu", index))
-
-    /// GroundScene は配列ルートなので "ground_0" / "ground_1" など複数 root を持つ
-    @Test
-    def testLoadIndexesArrayRootedScene(): Unit \ {Assert, Fs.Glob, Fs.FileRead} =
-        let index = SceneJsonIndex.load();
-        let g0 = Map.get("ground_0", index);
-        let g1 = Map.get("ground_1", index);
-        Assert.assertEq(
-            expected = (Some("src/scenes/GroundScene.scene.json"),
-                        Some("src/scenes/GroundScene.scene.json")),
-            (g0, g1))
-
     /// 未登録の root は None
     @Test
     def testLoadDoesNotIndexNonExistentRoot(): Unit \ {Assert, Fs.Glob, Fs.FileRead} =

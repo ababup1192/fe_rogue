@@ -123,6 +123,26 @@ mod CharacterBody2D {
         let CharacterBody2D.CharacterBody2D(r) = body;
         CharacterBody2D.CharacterBody2D({maxSlides = count | r})
 
+    /// motion ベクトル分だけ移動を試み、移動先で静的衝突体（StaticBody2D + TileMapLayer の壁）
+    /// と重なる場合は元の位置に留まる。Godot move_and_collide のグリッド離散版。
+    /// 衝突体の集合は `PhysicsStep.collectStaticColliders` から取得するため、
+    /// 呼び出し側は TileMapLayer 等の衝突源を直接参照する必要がない。
+    /// 戻り値: (更新後ボディ, 衝突発生フラグ)
+    pub def moveAndCollide(motion: Vec2.Vec2, scene: Scene[s],
+                            body: CharacterBody2D): (CharacterBody2D, Bool) =
+        let CharacterBody2D.CharacterBody2D(r) = body;
+        let targetPos = Vec2.add(r#position, motion);
+        let collides = match r#collisionShape {
+            case None => false
+            case Some(shape) =>
+                let statics = PhysicsStep.collectStaticColliders(scene);
+                List.exists(match (_, sPos, sShape) ->
+                    CollisionShape2D.checkOverlap(targetPos, shape, sPos, sShape),
+                    statics)
+        };
+        if (collides) (body, true)
+        else (CharacterBody2D.CharacterBody2D({position = targetPos | r}), false)
+
     /// velocity に基づいて位置を更新する（Godot move_and_slide 準拠）
     ///
     /// Godot では衝突検出 + 衝突面に沿ったスライド処理を行うが、

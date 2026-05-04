@@ -15,7 +15,8 @@ mod TestEditableNode {
     def withMockTextureSize(width: Float64, height: Float64,
                             f: Unit -> a \ ef + GameEngine.Game): a \ ef =
         run f() with handler GameEngine.Game {
-            def render(_, k) = k(())
+            def renderCommands(_, _, k) = k(())
+            def initTileBuffer(_, k) = k((0i32, 0i32))
             def shouldClose(k) = k(false)
             def getDeltaTime(k) = k(0.016)
             def isKeyPressed(_, k) = k(false)

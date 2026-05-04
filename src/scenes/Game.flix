@@ -1,41 +1,53 @@
+/// シーンノードに紐づくゲーム状態タグ。各 Scene 固有の Data 型を内部に持つ。
 pub enum NodeTag {
+    case Player(PlayerScene.Data)
     case NoTag
 }
 
 instance Node[NodeTag] {
     type Aef = {}
+    redef physicsProcess(delta: Float64,
+                          node: EngineNode[NodeTag],
+                          path: NodePath,
+                          scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) =
+        match node {
+            case EngineNode.Body2DWithState(_, NodeTag.Player(_)) =>
+                PlayerScene.physicsProcess(delta, node, path, scene)
+            case _ => (node, scene)
+        }
 }
 
 instance InputEvent.InputHandler[NodeTag] {
     type Aef = {}
-}
-
-instance ButtonEvent.ButtonHandler[NodeTag] {
-    type Aef = {}
-}
-
-instance AreaEvent.AreaHandler[NodeTag] {
-    type Aef = {}
-    pub def onAreaEntered(_selfPath: NodePath, _selfState: NodeTag,
-                          _otherPath: NodePath, _otherState: NodeTag,
-                          scene: Scene[NodeTag]): Scene[NodeTag] =
-        scene
-}
-
-instance NodeRemovedHandler[NodeTag] {
-    type Aef = {}
+    redef onKeyPressed(key: GameEngine.Key,
+                        scene: Scene[NodeTag]): Scene[NodeTag] =
+        let dir =
+            if      (key == GameEngine.Key.W or key == GameEngine.Key.Up)    Some((0, -1))
+            else if (key == GameEngine.Key.S or key == GameEngine.Key.Down)  Some((0,  1))
+            else if (key == GameEngine.Key.A or key == GameEngine.Key.Left)  Some((-1, 0))
+            else if (key == GameEngine.Key.D or key == GameEngine.Key.Right) Some((1,  0))
+            else None;
+        match dir {
+            case Some((dCol, dRow)) => PlayerScene.requestMove(dCol, dRow, scene)
+            case None => scene
+        }
 }
 
 mod Game {
 
-    pub def screenWi(): Int32 = 1280
-    pub def screenHi(): Int32 = 720
+    /// デザイン解像度。プレイヤーをズームインで見せるため、マップ全体（208×208）より
+    /// 小さい 128×128（= 8×8 グリッド分）で切り出す。Camera2D 追従でビューが動く。
+    pub def screenWi(): Int32 = 128
+    pub def screenHi(): Int32 = 128
 
     pub def start(): Unit \ {GameEngine.Game, Fs.FileRead, Fs.FileWrite,
                               Chan, NonDet, IO, Fs.Glob, Fs.ModificationTime} =
         region rc {
             run {
-                gameLoop(Scene.empty())
+                let scene = Scene.empty()
+                    |> MapScene.add
+                    |> PlayerScene.add;
+                gameLoop(scene)
             } with Editor.withState(rc)
         }
 
@@ -46,16 +58,13 @@ mod Game {
             GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
         else {
             let dt = GameEngine.Game.getDeltaTime();
-            let sceneAfterEditor = Editor.handleInput(scene);
-            let updatedScene = if (Editor.isOn()) sceneAfterEditor
-                               else sceneAfterEditor
-                                   |> GameEngine.process(delta = dt, paused = false)
-                                   |> GameEngine.physicsProcess(delta = dt, paused = false,
-                                                                gravity = PhysicsStep.defaultGravity())
-                                   |> GameEngine.handleInput
-                                   |> GameEngine.handleButtons
-                                   |> GameEngine.handleCollisions;
-            GameEngine.render(updatedScene);
-            gameLoop(updatedScene)
+            let afterEditor = Editor.handleInput(scene);
+            let updated = if (Editor.isOn()) afterEditor
+                          else afterEditor
+                              |> GameEngine.handleInput
+                              |> GameEngine.physicsProcess(delta = dt, paused = false,
+                                                            gravity = Vec2.zero());
+            GameEngine.render(updated);
+            gameLoop(updated)
         }
 }

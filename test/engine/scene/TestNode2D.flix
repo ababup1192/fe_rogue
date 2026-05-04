@@ -9,20 +9,7 @@ mod TestNode2D {
 
     /// テスト用ヘルパー: 原点に配置したデフォルト Sprite2D を作る
     def mkSprite(): Sprite2D =
-        Sprite2D.Sprite2D({
-            position = {x = 0.0, y = 0.0},
-            rotation = 0.0,
-            scale = {x = 1.0, y = 1.0},
-            skew = 0.0,
-            visible = true,
-            zIndex = 0,
-            modulate = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
-            texture = "",
-            centered = true,
-            offset = {x = 0.0, y = 0.0},
-            flipH = false,
-            flipV = false
-        })
+        Sprite2D.make("", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0})
 
     /// Float64 の近似比較（許容誤差 0.001）
     def approx(a: Float64, b: Float64): Bool =
