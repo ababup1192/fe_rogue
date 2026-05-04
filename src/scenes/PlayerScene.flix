@@ -1,17 +1,14 @@
-/// PlayerScene — プレイヤーキャラクター（CharacterBody2D）と追従カメラ
+/// PlayerScene — プレイヤーキャラクター（CharacterBody2D）と子 Sprite / 子 Camera
 ///
-/// ノード構造:
+/// ノード構造（Godot 準拠）:
 ///   Player (CharacterBody2D, NodeTag.Player(Data))
-///     └─ Sprite (Sprite2D, 描画専用)
-///   Camera (Camera2D, 兄弟ノード)
-///
-/// Camera は Player の兄弟として配置する。
-/// （Scene.findActiveCamera は Camera 自身の position（local）を使うため、
-///   子ノード化すると Player の位置を反映できない）
-/// 追従は physicsProcess で Player の new position を Camera にコピーして実現する。
+///     ├─ Sprite (Sprite2D, 描画専用)
+///     └─ Camera (Camera2D, 親追従でビューが Player を中心に表示)
 ///
 /// 移動指示は `Data#pendingMotion` に積み、physicsProcess が CharacterBody2D.moveAndCollide で
 /// 消費する（衝突応答はエンジン側に委譲）。
+/// Camera は Player の子なので、`findActiveCamera` がシーンツリーから求めた global 座標を
+/// 介して自動追従する（手動同期不要）。
 mod PlayerScene {
 
     // ────────────────────────────────────────────────────────
@@ -57,10 +54,8 @@ mod PlayerScene {
 
     def initialData(): Data = { pendingMotion = Vec2.zero() }
 
-    pub def cameraPath(): NodePath = cameraName() :: Nil
-
-    /// プレイヤー（CharacterBody2D + 子 Sprite）と兄弟ノードの Camera を Scene に追加する。
-    /// Camera は Player と同じワールド座標から開始する。
+    /// プレイヤー（CharacterBody2D）と子 Sprite / 子 Camera を Scene に追加する。
+    /// Sprite と Camera は Player のローカル原点 (0, 0) に配置する（親追従）。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
         let (col, row) = initialGrid();
         let initPos = gridToWorld(col, row);
@@ -78,13 +73,13 @@ mod PlayerScene {
             regionSizePx  = regionSize(),
             textureSizePx = textureSize()
         });
-        let camera = Camera2D.make(initPos);
+        let camera = Camera2D.make(Vec2.zero()) |> Camera2D.setZoom({x = 0.5, y = 0.5});
         scene
             |> Scene.addNode(name(),
                 EngineNode.Body2DWithState(body, NodeTag.Player(initialData())))
             |> Scene.addChildAt(playerPath(), spriteName(),
                 EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
-            |> Scene.addNode(cameraName(),
+            |> Scene.addChildAt(playerPath(), cameraName(),
                 EngineNode.Camera2DWithState(camera, NodeTag.NoTag))
 
     // ────────────────────────────────────────────────────────
@@ -102,7 +97,7 @@ mod PlayerScene {
         scene |> mapPlayer((body, data) -> (body, {pendingMotion = motion | data}))
 
     /// pendingMotion を消費して CharacterBody2D を移動・衝突応答させる。
-    /// 移動が発生した場合は Camera を同じ位置に追従させる。
+    /// Camera は子ノードなので親子変換で自動追従される（手動同期不要）。
     /// Game.flix の Node[NodeTag] redef からディスパッチされる。
     pub def physicsProcess(_delta: Float64,
                             node: EngineNode[NodeTag],
@@ -111,30 +106,17 @@ mod PlayerScene {
                            (EngineNode[NodeTag], Scene[NodeTag]) =
         match node {
             case EngineNode.Body2DWithState(body, NodeTag.Player(data)) =>
-                // 移動指示が空なら何もしない（毎フレーム呼ばれるが指示があるときだけ動く）
-                if (Vec2.isZeroApprox(data#pendingMotion)) (node, scene)
-                else
-                    // 移動指示の分だけ動かす。壁などの衝突体に当たれば手前で止まり、
-                    // collided=true が返るが今は無視する。
-                    let (movedBody, _collided) =
-                        CharacterBody2D.moveAndCollide(data#pendingMotion, scene, body);
-                    // 同じ移動指示が次フレームでも再実行されないよう、消化済みとして
-                    // pendingMotion をゼロに戻す（input によって次の指示が積まれるまで待機）。
-                    let cleared: Data = {pendingMotion = Vec2.zero() | data};
-                    let newPos = Node2D.getPosition(movedBody);
-                    let updatedScene = followCamera(newPos, scene);
-                    (EngineNode.Body2DWithState(movedBody, NodeTag.Player(cleared)),
-                     updatedScene)
+                // Godot 同様、毎フレーム無条件に move_and_collide を呼ぶ。
+                // motion がゼロベクトルでも moveAndCollide は安全（位置は変わらない）。
+                // 壁などの衝突体に当たれば手前で止まり、collided=true が返るが今は使わない。
+                let (movedBody, _collided) =
+                    CharacterBody2D.moveAndCollide(data#pendingMotion, scene, body);
+                // 同じ指示を次フレームでも繰り返し実行しないよう消化済みとしてリセット。
+                // input によって次の指示が積まれるまで待機する。
+                let cleared: Data = {pendingMotion = Vec2.zero() | data};
+                (EngineNode.Body2DWithState(movedBody, NodeTag.Player(cleared)), scene)
             case _ => (node, scene)
         }
-
-    /// Camera ノードの位置を pos に合わせる（Player の動きにカメラを追従させる）
-    def followCamera(pos: Vec2.Vec2, scene: Scene[NodeTag]): Scene[NodeTag] =
-        scene |> Scene.mapEngineNode(cameraPath(), en -> match en {
-            case EngineNode.Camera2DWithState(cam, st) =>
-                EngineNode.Camera2DWithState(Node2D.setPosition(pos, cam), st)
-            case other => other
-        })
 
     // ────────────────────────────────────────────────────────
     // (E) ボイラプレート — pattern match を関数化

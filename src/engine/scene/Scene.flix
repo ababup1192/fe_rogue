@@ -490,13 +490,16 @@ pub mod Scene {
     // カメラ
     // ========================================================================
 
-    /// シーン内の有効な Camera2D を探して返す
-    pub def findActiveCamera(scene: Scene[s]): Option[Camera2D] =
+    /// シーン内の有効な Camera2D を探し、Camera 本体と **そのワールド座標** を返す。
+    /// global 座標は階層を辿って計算するため、Camera が他ノードの子になっていても
+    /// 正しい追従位置が得られる（Godot の Camera2D 親追従と同等）。
+    pub def findActiveCamera(scene: Scene[s]): Option[(Camera2D, Vec2.Vec2)] =
         preorderPaths(scene)
             |> List.findMap(path ->
                 match getEngineNode(path, scene) {
                     case Some(EngineNode.Camera2DWithState(cam, _)) =>
-                        if (Camera2D.isEnabled(cam)) Some(cam)
+                        if (Camera2D.isEnabled(cam))
+                            Some((cam, globalPositionAt(path, scene)))
                         else None
                     case _ => None
                 }

@@ -222,9 +222,10 @@ mod GameEngine {
     /// TileMapLayer はインスタンシング経由で描画する（1 draw call）
     pub def render(scene: Scene[s]): Unit \ Game =
         let cameraOffset = match Scene.findActiveCamera(scene) {
-            case Some(cam) =>
+            case Some((cam, globalPos)) =>
                 let vp = Game.getViewportRect();
-                Camera2D.getViewportOffset(cam, {viewportWidth = vp#size#x, viewportHeight = vp#size#y})
+                Camera2D.getViewportOffset(cam, globalPos,
+                    {viewportWidth = vp#size#x, viewportHeight = vp#size#y})
             case None => Vec2.zero()
         };
         let sprites = Scene.toDrawables(cameraOffset, scene);

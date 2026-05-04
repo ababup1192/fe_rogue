@@ -352,10 +352,12 @@ mod Camera2D {
     ///     |         = screen center   |
     ///     |                           |
     ///     +---------------------------+
-    pub def getScreenCenterPosition(camera: Camera2D): Vec2.Vec2 =
+    /// `globalPos` はシーンツリーから求めた Camera ノードのワールド座標。
+    /// Camera が他ノードの子のときも親の変換を反映できるよう、呼び出し側が渡す。
+    pub def getScreenCenterPosition(camera: Camera2D, globalPos: Vec2.Vec2): Vec2.Vec2 =
         let Camera2D.Camera2D(r) = camera;
-        let rawX = r#position#x + r#offset#x;
-        let rawY = r#position#y + r#offset#y;
+        let rawX = globalPos#x + r#offset#x;
+        let rawY = globalPos#y + r#offset#y;
         let clampedX = rawX
             |> Float64.max(Int32.toFloat64(r#limitLeft))
             |> Float64.min(Int32.toFloat64(r#limitRight));
@@ -388,17 +390,20 @@ mod Camera2D {
     /// アンカーモードによって計算が異なる:
     ///   - DragCenter: position+offset がビューポート中心
     ///   - FixedTopLeft: position+offset がビューポート左上
-    pub def getViewportOffset(camera: Camera2D, viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): Vec2.Vec2 =
+    /// `globalPos` はシーンツリーから求めた Camera ノードのワールド座標。
+    /// Godot 同様、Camera を他ノードの子にしたとき親の変換を反映できる。
+    pub def getViewportOffset(camera: Camera2D, globalPos: Vec2.Vec2,
+                                viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): Vec2.Vec2 =
         let Camera2D.Camera2D(r) = camera;
         match r#anchorMode {
             case Camera2DAnchorMode.DragCenter =>
-                let screenCenter = getScreenCenterPosition(camera);
+                let screenCenter = getScreenCenterPosition(camera, globalPos);
                 let halfW = viewportSize#viewportWidth / 2.0;
                 let halfH = viewportSize#viewportHeight / 2.0;
                 {x = screenCenter#x - halfW, y = screenCenter#y - halfH}
             case Camera2DAnchorMode.FixedTopLeft =>
-                let rawX = r#position#x + r#offset#x;
-                let rawY = r#position#y + r#offset#y;
+                let rawX = globalPos#x + r#offset#x;
+                let rawY = globalPos#y + r#offset#y;
                 {x = rawX, y = rawY}
         }
 }

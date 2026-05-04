@@ -257,9 +257,9 @@ mod Editor {
     /// カメラがなければゼロ（CanvasLayer のみのシーン等）
     def activeCameraOffset(scene: Scene[NodeTag]): Vec2.Vec2 \ GameEngine.Game =
         match Scene.findActiveCamera(scene) {
-            case Some(cam) =>
+            case Some((cam, globalPos)) =>
                 let vp = GameEngine.Game.getViewportRect();
-                Camera2D.getViewportOffset(cam,
+                Camera2D.getViewportOffset(cam, globalPos,
                     {viewportWidth = vp#size#x, viewportHeight = vp#size#y})
             case None => Vec2.zero()
         }
