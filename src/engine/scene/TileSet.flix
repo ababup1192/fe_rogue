@@ -17,6 +17,10 @@ pub type alias TileSet = { atlasSource = TileSetAtlasSource }
 
 mod TileSet {
     pub def make(source: TileSetAtlasSource): TileSet = { atlasSource = source }
+
+    /// Godot: tile_set.tile_size。本プロジェクトはタイル正方形なので Float64 単一値
+    pub def tileSize(tileSet: TileSet): Float64 =
+        tileSet#atlasSource#tileSize
 }
 
 mod TileSetAtlasSource {

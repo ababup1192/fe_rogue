@@ -18,6 +18,7 @@ pub enum TileMapLayer {
         tileSet = TileSet,            // タイルセット
         tiles = List[TileData],       // タイル一覧
         collisionCells = List[Vec2.Vec2], // 衝突グリッドセル
+        gridSize = Vec2.Vec2i,        // マップのグリッド寸法（__cWid, __cHei）
         tileVaoId = Int32,            // GPU VAO ID（0 = 未初期化）
         tileCount = Int32             // インスタンス数
     })
@@ -68,7 +69,8 @@ mod TileMapLayer {
     /// デフォルト値で TileMapLayer を構築するビルドヘルパー
     pub def make(config: { tileSet = TileSet,
                             tiles = List[TileData],
-                            collisionCells = List[Vec2.Vec2] }): TileMapLayer =
+                            collisionCells = List[Vec2.Vec2],
+                            gridSize = Vec2.Vec2i }): TileMapLayer =
         TileMapLayer.TileMapLayer({
             position       = Vec2.zero(),
             rotation       = 0.0,
@@ -80,9 +82,74 @@ mod TileMapLayer {
             tileSet        = config#tileSet,
             tiles          = config#tiles,
             collisionCells = config#collisionCells,
+            gridSize       = config#gridSize,
             tileVaoId      = 0,
             tileCount      = 0
         })
+
+    // ────────────────────────────────────────────────────────
+    // Godot TileMapLayer 準拠のクエリ API
+    // ────────────────────────────────────────────────────────
+
+    /// Godot: tile_set.tile_size のショートカット（タイル正方形）
+    pub def tileSize(tileMap: TileMapLayer): Float64 =
+        let TileMapLayer.TileMapLayer(r) = tileMap;
+        TileSet.tileSize(r#tileSet)
+
+    /// Godot: get_used_rect()
+    /// position は (0,0) 固定（LDTK は座標オフセット無し）、size は gridSize
+    pub def getUsedRect(tileMap: TileMapLayer):
+            { position = Vec2.Vec2i, size = Vec2.Vec2i } =
+        let TileMapLayer.TileMapLayer(r) = tileMap;
+        { position = Vec2.zeroI(), size = r#gridSize }
+
+    /// Godot: map_to_local(coords)
+    /// グリッド座標 → セル中心のローカルピクセル座標
+    /// world 座標が必要な場合は呼び出し側で
+    ///   Vec2.add(Scene.globalPositionAt(path, scene), local)
+    /// と合成する（Godot で言う to_global(local)）
+    pub def mapToLocal(coords: Vec2.Vec2i, tileMap: TileMapLayer): Vec2.Vec2 =
+        let s = tileSize(tileMap);
+        let v = Vec2.fromI(coords);
+        { x = v#x * s + s / 2.0,
+          y = v#y * s + s / 2.0 }
+
+    /// Godot: local_to_map(local_position)
+    /// ローカルピクセル座標 → グリッド座標。範囲外でも値を返す（負値あり得る）。
+    /// floor 切り捨てを使い、負値でも正しい結果になる
+    /// （truncate だと -0.5 → 0、floor なら -1 が正解）。
+    pub def localToMap(localPos: Vec2.Vec2, tileMap: TileMapLayer): Vec2.Vec2i =
+        let s = tileSize(tileMap);
+        Vec2.toIFloor(Vec2.div(localPos, s))
+
+    /// Godot: get_cell_source_id(coords)
+    /// 空セル（範囲外含む）: -1
+    /// 壁セル: 0（本プロジェクトは intGrid 二値構造、source は 1 種類のみ）
+    pub def getCellSourceId(coords: Vec2.Vec2i, tileMap: TileMapLayer): Int32 =
+        let TileMapLayer.TileMapLayer(r) = tileMap;
+        if (not isInBounds(coords, tileMap)) -1
+        else
+            let target = Vec2.fromI(coords);
+            if (List.exists(c -> c#x == target#x and c#y == target#y, r#collisionCells))
+                0
+            else
+                -1
+
+    // ── Godot 拡張（本プロジェクト固有の便宜 API）──
+
+    /// 範囲チェック: getUsedRect 内に収まるか
+    pub def isInBounds(coords: Vec2.Vec2i, tileMap: TileMapLayer): Bool =
+        let TileMapLayer.TileMapLayer(r) = tileMap;
+        coords#x >= 0 and coords#x < r#gridSize#x and
+        coords#y >= 0 and coords#y < r#gridSize#y
+
+    /// 衝突セルか（getCellSourceId(coords, layer) != -1 の薄いラッパ）
+    pub def isWall(coords: Vec2.Vec2i, tileMap: TileMapLayer): Bool =
+        getCellSourceId(coords, tileMap) != -1
+
+    /// 範囲内 かつ 壁でない ⇒ 床
+    pub def isFloor(coords: Vec2.Vec2i, tileMap: TileMapLayer): Bool =
+        isInBounds(coords, tileMap) and not isWall(coords, tileMap)
 
     /// GPU リソース ID を設定する（LDTKLoader が initTileBuffer の結果を書き込む）
     pub def withGpuResources(tileVaoId: Int32, tileCount: Int32,

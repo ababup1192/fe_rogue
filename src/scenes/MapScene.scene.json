@@ -1,0 +1,6 @@
+{
+  "type": "TileMapLayer",
+  "name": "DungeonLevel0",
+  "ldtkPath": "title_map/World_Level_0.ldtkl",
+  "textureName": "inca_tileset"
+}

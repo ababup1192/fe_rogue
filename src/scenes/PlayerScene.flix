@@ -5,6 +5,10 @@
 ///     ├─ Sprite (Sprite2D, 描画専用)
 ///     └─ Camera (Camera2D, 親追従でビューが Player を中心に表示)
 ///
+/// シーン構造とプロパティは PlayerScene.scene.json で管理し、`add` 時に
+/// SceneLoader でロードする。NodeTag のデータ（pendingMotion 等）だけは
+/// JSON に含めず、ロード後に `Scene.setState` で書き込む。
+///
 /// 移動指示は `Data#pendingMotion` に積み、physicsProcess が CharacterBody2D.moveAndCollide で
 /// 消費する（衝突応答はエンジン側に委譲）。
 /// Camera は Player の子なので、`findActiveCamera` がシーンツリーから求めた global 座標を
@@ -28,58 +32,25 @@ mod PlayerScene {
     def name(): String = "Player"
     pub def playerPath(): NodePath = name() :: Nil
 
-    def spriteName(): String = "Sprite"
-    def cameraName(): String = "Camera"
-
-    def playerTexture(): String = "character_sheet"
-
-    /// character_sheet（80×32）のグリッド分割: 5 列 × 2 行 = 16×16 タイルが 10 個並ぶ
-    def spriteHframes(): Int32 = 5
-    def spriteVframes(): Int32 = 2
-    /// 表示するセル index（左上 = 0）
-    def spriteFrame(): Int32 = 0
-
-    def tileSize(): Float64 = 16.0
-    def collisionSize(): Vec2.Vec2 = {x = 14.0, y = 14.0}
-
-    /// プレイヤー初期グリッド座標（マップの開けた床面）
-    pub def initialGrid(): (Int32, Int32) = (5, 5)
+    def sceneJsonPath(): String = "src/scenes/PlayerScene.scene.json"
 
     // ────────────────────────────────────────────────────────
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
-    /// グリッド座標 (col, row) を world ピクセル座標（タイル中心）に変換する
-    pub def gridToWorld(col: Int32, row: Int32): Vec2.Vec2 =
-        let s = tileSize();
-        { x = Int32.toFloat64(col) * s + s / 2.0,
-          y = Int32.toFloat64(row) * s + s / 2.0 }
-
     def initialData(): Data = { pendingMotion = Vec2.zero() }
 
-    /// プレイヤー（CharacterBody2D）と子 Sprite / 子 Camera を Scene に追加する。
-    /// Sprite と Camera は Player のローカル原点 (0, 0) に配置する（親追従）。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let (col, row) = initialGrid();
-        let initPos = gridToWorld(col, row);
-        let body = CharacterBody2D.make(initPos, moveSpeed = 0.0)
-            |> CharacterBody2D.setCollisionShape(
-                Some(CollisionShape2D.RectShape2D({
-                    width  = collisionSize()#x,
-                    height = collisionSize()#y
-                })));
-        let sprite = Sprite2D.make(playerTexture(), Vec2.zero(), {x = 1.0, y = 1.0})
-            |> Sprite2D.setHframes(spriteHframes())
-            |> Sprite2D.setVframes(spriteVframes())
-            |> Sprite2D.setFrame(spriteFrame());
-        let camera = Camera2D.make(Vec2.zero()) |> Camera2D.setZoom({x = 0.5, y = 0.5});
-        scene
-            |> Scene.addNode(name(),
-                EngineNode.Body2DWithState(body, NodeTag.Player(initialData())))
-            |> Scene.addChildAt(playerPath(), spriteName(),
-                EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
-            |> Scene.addChildAt(playerPath(), cameraName(),
-                EngineNode.Camera2DWithState(camera, NodeTag.NoTag))
+    /// PlayerScene.scene.json から Player / Sprite / Camera を読み込んで Scene に追加する。
+    /// JSON にはノード構造とプロパティのみが入っており、NodeTag のデータは
+    /// ここで Scene.setState によって注入する。
+    /// 全ノードは constTagParser により NoTag でロードし、Player ノードだけ
+    /// ここで NodeTag.Player(initialData()) に差し替える。
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {GameEngine.Game, Fs.FileRead} =
+        SceneLoader.loadScene(sceneJsonPath(),
+                              SceneLoader.constTagParser(NodeTag.NoTag),
+                              scene)
+            |> Scene.setState(playerPath(), NodeTag.Player(initialData()))
 
     // ────────────────────────────────────────────────────────
     // (D) ロジック
@@ -87,13 +58,20 @@ mod PlayerScene {
 
     /// 入力イベント等から呼ばれ、1 グリッド分の移動指示を pendingMotion に積む。
     /// 実際の移動は次の physicsProcess で行われる。
-    pub def requestMove(dCol: Int32, dRow: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let s = tileSize();
-        let motion: Vec2.Vec2 = {
-            x = Int32.toFloat64(dCol) * s,
-            y = Int32.toFloat64(dRow) * s
-        };
+    /// tileSize はマップから取得する（MapScene.add が先に呼ばれている前提）。
+    pub def requestMove(d: Vec2.Vec2i, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let layer = getMapLayer(scene);
+        let s = TileMapLayer.tileSize(layer);
+        let motion = Vec2.mul(Vec2.fromI(d), s);
         scene |> mapPlayer((body, data) -> (body, {pendingMotion = motion | data}))
+
+    /// MapScene が登録した TileMapLayer を取り出す。MapScene.add が
+    /// PlayerScene.add より先に呼ばれている前提（src/scenes/Game.flix 参照）。
+    def getMapLayer(scene: Scene[NodeTag]): TileMapLayer =
+        match Scene.getEngineNode(MapScene.mapPath(), scene) {
+            case Some(EngineNode.TileMapLayerWithState(layer, _)) => layer
+            case _ => bug!("PlayerScene: MapScene must be added before PlayerScene")
+        }
 
     /// pendingMotion を消費して CharacterBody2D を移動・衝突応答させる。
     /// Camera は子ノードなので親子変換で自動追従される（手動同期不要）。

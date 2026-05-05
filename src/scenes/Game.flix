@@ -21,15 +21,15 @@ instance InputEvent.InputHandler[NodeTag] {
     type Aef = {}
     redef onKeyPressed(key: GameEngine.Key,
                         scene: Scene[NodeTag]): Scene[NodeTag] =
-        let dir =
-            if      (key == GameEngine.Key.W or key == GameEngine.Key.Up)    Some((0, -1))
-            else if (key == GameEngine.Key.S or key == GameEngine.Key.Down)  Some((0,  1))
-            else if (key == GameEngine.Key.A or key == GameEngine.Key.Left)  Some((-1, 0))
-            else if (key == GameEngine.Key.D or key == GameEngine.Key.Right) Some((1,  0))
+        let dir: Option[Vec2.Vec2i] =
+            if      (key == GameEngine.Key.W or key == GameEngine.Key.Up)    Some(Vec2.upI())
+            else if (key == GameEngine.Key.S or key == GameEngine.Key.Down)  Some(Vec2.downI())
+            else if (key == GameEngine.Key.A or key == GameEngine.Key.Left)  Some(Vec2.leftI())
+            else if (key == GameEngine.Key.D or key == GameEngine.Key.Right) Some(Vec2.rightI())
             else None;
         match dir {
-            case Some((dCol, dRow)) => PlayerScene.requestMove(dCol, dRow, scene)
-            case None => scene
+            case Some(d) => PlayerScene.requestMove(d, scene)
+            case None    => scene
         }
 }
 

@@ -72,6 +72,7 @@ mod LDTKLoader {
 
         let tileSize = getFloat(getField("__gridSize", wallLayer));
         let cWid     = getInt(getField("__cWid", wallLayer));
+        let cHei     = getInt(getField("__cHei", wallLayer));
 
         // タイル一覧を解析
         let autoTiles = getArr(getField("autoLayerTiles", wallLayer));
@@ -140,7 +141,8 @@ mod LDTKLoader {
         let tileLayer = TileMapLayer.make({
             tileSet        = tileSet,
             tiles          = tiles,
-            collisionCells = collisionCells
+            collisionCells = collisionCells,
+            gridSize       = ({x = cWid, y = cHei}: Vec2.Vec2i)
         }) |> TileMapLayer.withGpuResources(tileVaoId, tileCount);
 
         { tileLayer = tileLayer }

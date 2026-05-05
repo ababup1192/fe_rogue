@@ -5,6 +5,9 @@ mod Vec2 {
 
     pub type alias Vec2 = {x = Float64, y = Float64}
 
+    /// 整数 2D ベクトル（Godot Vector2i 相当）。グリッド座標等に使う。
+    pub type alias Vec2i = {x = Int32, y = Int32}
+
     // ========================================================================
     // Math Helpers
     // ========================================================================
@@ -195,4 +198,34 @@ mod Vec2 {
 
     pub def slide(v: Vec2, n: Vec2): Vec2 =
         sub(v, mul(n, dot(v, n)))
+
+    // ========================================================================
+    // Vec2i (Godot Vector2i)
+    // ========================================================================
+
+    pub def zeroI(): Vec2i = {x = 0, y = 0}
+
+    pub def oneI(): Vec2i = {x = 1, y = 1}
+
+    pub def upI(): Vec2i    = {x =  0, y = -1}
+    pub def downI(): Vec2i  = {x =  0, y =  1}
+    pub def leftI(): Vec2i  = {x = -1, y =  0}
+    pub def rightI(): Vec2i = {x =  1, y =  0}
+
+    pub def addI(a: Vec2i, b: Vec2i): Vec2i =
+        {x = a#x + b#x, y = a#y + b#y}
+
+    pub def subI(a: Vec2i, b: Vec2i): Vec2i =
+        {x = a#x - b#x, y = a#y - b#y}
+
+    /// Vec2i → Vec2（Godot: Vector2(Vector2i)）
+    pub def fromI(v: Vec2i): Vec2 =
+        {x = Int32.toFloat64(v#x), y = Int32.toFloat64(v#y)}
+
+    /// Vec2 → Vec2i（floor 切り捨て）。負値でも正しく動く
+    /// （truncate だと -0.5 → 0、floor なら -1 が正解）。
+    /// Godot: Vector2i(Vector2.floor()) 相当
+    pub def toIFloor(v: Vec2): Vec2i =
+        {x = Float64.floor(v#x) |> Float64.tryToInt32 |> Option.getWithDefault(0i32),
+         y = Float64.floor(v#y) |> Float64.tryToInt32 |> Option.getWithDefault(0i32)}
 }

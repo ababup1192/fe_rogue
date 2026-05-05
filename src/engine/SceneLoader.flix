@@ -12,8 +12,13 @@
 //
 // 対応ノード型:
 //   CanvasLayer / Sprite2D / AnimatedSprite2D / Label2D / TextureButton /
-//   StaticBody2D / RigidBody2D / Area2D
+//   StaticBody2D / RigidBody2D / Area2D / CharacterBody2D / Camera2D / TileMapLayer
 // 対応 collision shape: RectShape2D / CircleShape2D
+//
+// 注:
+//   TileMapLayer は LDTKLoader 経由で `.ldtkl` を読むため GameEngine.Game eff を要求する。
+//   このため loadScene 全体の eff に GameEngine.Game が含まれる（TileMapLayer を使わない
+//   JSON では実質 no-op）。
 
 mod SceneLoader {
     use Json.JsonElement.{JsonObject, JsonArray}
@@ -27,17 +32,25 @@ mod SceneLoader {
     /// JSON ファイルを読み込み、scene にノードツリーを追加して返す。
     /// tagParser: JSON の "tag" 文字列（None = キーなし）をゲーム固有の t に変換する関数。
     /// Label2D を含む JSON では loadSceneWithFont を使うこと（FontAtlas が必須）。
+    /// TileMapLayer を含む JSON では LDTKLoader が GameEngine.Game eff を要求するため
+    /// 呼び出し側もそのスコープから呼ぶ必要がある。
     /// 失敗時は bug! でクラッシュする
     pub def loadScene(path: String, tagParser: Option[String] -> Result[Json.JsonError, t],
-                      scene: Scene[t]): Scene[t] \ Fs.FileRead =
+                      scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
         loadSceneCore(path, tagParser, None, scene)
 
     /// FontAtlas 付きで JSON ファイルを読み込む（Label2D を含むシーン用）。
     /// その他は loadScene と同じ振る舞い
     pub def loadSceneWithFont(path: String, fontAtlas: FontAtlas,
                               tagParser: Option[String] -> Result[Json.JsonError, t],
-                              scene: Scene[t]): Scene[t] \ Fs.FileRead =
+                              scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
         loadSceneCore(path, tagParser, Some(fontAtlas), scene)
+
+    /// JSON 側のタグ文字列を無視し、常に与えた値を返す tagParser を作る。
+    /// scene.json 側にタグ情報を載せない（= ロード後に Scene.setState で個別注入する）
+    /// 方針のシーンで使う標準ヘルパー。
+    pub def constTagParser(tag: t): Option[String] -> Result[Json.JsonError, t] =
+        _ -> Ok(tag)
 
     // ========================================================================
     // 内部実装
@@ -45,7 +58,7 @@ mod SceneLoader {
 
     def loadSceneCore(path: String, tagParser: Option[String] -> Result[Json.JsonError, t],
                       fontAtlas: Option[FontAtlas],
-                      scene: Scene[t]): Scene[t] \ Fs.FileRead =
+                      scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
         let content = run { Fs.ReadFile.read(path) } with Fs.ReadFile.runWithFileRead;
         let result = forM (
             text     <- content |> Result.mapErr(e -> "failed to read: ${e}");
@@ -65,12 +78,15 @@ mod SceneLoader {
 
     def addJsonAtTop(tagParser: Option[String] -> Result[Json.JsonError, t],
                      fontAtlas: Option[FontAtlas], json: Json.JsonElement,
-                     scene: Scene[t]): Result[Json.JsonError, Scene[t]] =
+                     scene: Scene[t]): Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
         match json {
             case JsonObject(_)  => addJsonAt(Nil, tagParser, fontAtlas, json, scene)
             case JsonArray(arr) =>
                 List.foldLeft(
-                    (acc, child) -> Result.flatMap(s -> addJsonAt(Nil, tagParser, fontAtlas, child, s), acc),
+                    (acc, child) -> match acc {
+                        case Err(e) => Err(e)
+                        case Ok(s)  => addJsonAt(Nil, tagParser, fontAtlas, child, s)
+                    },
                     Ok(scene),
                     Vector.toList(arr))
             case _ => Err(JsonError(Root, Set#{"JsonObject or JsonArray"}))
@@ -78,21 +94,26 @@ mod SceneLoader {
 
     def addJsonAt(parentPath: NodePath, tagParser: Option[String] -> Result[Json.JsonError, t],
                   fontAtlas: Option[FontAtlas], json: Json.JsonElement,
-                  scene: Scene[t]): Result[Json.JsonError, Scene[t]] =
+                  scene: Scene[t]): Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
         match json {
             case JsonObject(map) =>
-                forM (
+                let header = forM (
                     nodeType   <- (Json.getAtKey(Root, "type", map): Result[Json.JsonError, String]);
                     name       <- (Json.getAtKey(Root, "name", map): Result[Json.JsonError, String]);
-                    engineNode <- buildByType(tagParser, nodeType, fontAtlas, map);
-                    groups     <- parseGroups(map);
-                    outScene   <- {
-                        let nodePath = parentPath ::: name :: Nil;
-                        let added = addAt(parentPath, name, engineNode, scene)
-                            |> applyGroups(nodePath, groups);
-                        addChildren(nodePath, tagParser, fontAtlas, map, added)
-                    }
-                ) yield outScene
+                    groups     <- parseGroups(map)
+                ) yield (nodeType, name, groups);
+                match header {
+                    case Err(e) => Err(e)
+                    case Ok((nodeType, name, groups)) =>
+                        match buildByType(tagParser, nodeType, fontAtlas, map) {
+                            case Err(e) => Err(e)
+                            case Ok(engineNode) =>
+                                let nodePath = parentPath ::: name :: Nil;
+                                let added = addAt(parentPath, name, engineNode, scene)
+                                    |> applyGroups(nodePath, groups);
+                                addChildren(nodePath, tagParser, fontAtlas, map, added)
+                        }
+                }
             case _ => Err(JsonError(Root, Set#{"JsonObject"}))
         }
 
@@ -105,12 +126,15 @@ mod SceneLoader {
 
     def addChildren(parentPath: NodePath, tagParser: Option[String] -> Result[Json.JsonError, t],
                     fontAtlas: Option[FontAtlas], map: Map[String, Json.JsonElement],
-                    scene: Scene[t]): Result[Json.JsonError, Scene[t]] =
+                    scene: Scene[t]): Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
         match Map.get("children", map) {
             case None                 => Ok(scene)
             case Some(JsonArray(arr)) =>
                 List.foldLeft(
-                    (acc, child) -> Result.flatMap(s -> addJsonAt(parentPath, tagParser, fontAtlas, child, s), acc),
+                    (acc, child) -> match acc {
+                        case Err(e) => Err(e)
+                        case Ok(s)  => addJsonAt(parentPath, tagParser, fontAtlas, child, s)
+                    },
                     Ok(scene),
                     Vector.toList(arr))
             case Some(_) => Err(JsonError(Root, Set#{"JsonArray"}))
@@ -125,16 +149,19 @@ mod SceneLoader {
 
     def buildByType(tagParser: Option[String] -> Result[Json.JsonError, t],
                     nodeType: String, fontAtlas: Option[FontAtlas],
-                    map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
+                    map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] \ {GameEngine.Game, Fs.FileRead} =
         match nodeType {
-            case "CanvasLayer"      => buildCanvasLayer(tagParser, map)
-            case "Sprite2D"         => buildSprite2D(tagParser, map)
-            case "TextureButton"    => buildTextureButton(tagParser, map)
-            case "StaticBody2D"     => buildStaticBody2D(tagParser, map)
-            case "Label2D"          => buildLabel2D(tagParser, fontAtlas, map)
-            case "RigidBody2D"      => buildRigidBody2D(tagParser, map)
-            case "Area2D"           => buildArea2D(tagParser, map)
-            case "AnimatedSprite2D" => buildAnimatedSprite2D(tagParser, map)
+            case "CanvasLayer"      => checked_ecast(buildCanvasLayer(tagParser, map))
+            case "Sprite2D"         => checked_ecast(buildSprite2D(tagParser, map))
+            case "TextureButton"    => checked_ecast(buildTextureButton(tagParser, map))
+            case "StaticBody2D"     => checked_ecast(buildStaticBody2D(tagParser, map))
+            case "Label2D"          => checked_ecast(buildLabel2D(tagParser, fontAtlas, map))
+            case "RigidBody2D"      => checked_ecast(buildRigidBody2D(tagParser, map))
+            case "Area2D"           => checked_ecast(buildArea2D(tagParser, map))
+            case "AnimatedSprite2D" => checked_ecast(buildAnimatedSprite2D(tagParser, map))
+            case "CharacterBody2D"  => checked_ecast(buildCharacterBody2D(tagParser, map))
+            case "Camera2D"         => checked_ecast(buildCamera2D(tagParser, map))
+            case "TileMapLayer"     => buildTileMapLayer(tagParser, map)
             case unknown            =>
                 Err(JsonError(Root, Set#{"known node type (got: ${unknown})"}))
         }
@@ -211,18 +238,40 @@ mod SceneLoader {
     def buildSprite2D(tagParser: Option[String] -> Result[Json.JsonError, t],
                       map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
         forM (
-            tag        <- parseTagField(tagParser, map);
-            pos        <- parseVec2("pos", map);
-            scale      <- parseVec2("scale", map);
-            texture    <- (Json.getAtKey(Root, "texture", map): Result[Json.JsonError, String]);
-            zIndexOpt  <- (Json.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
-            visibleOpt <- (Json.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]])
+            tag         <- parseTagField(tagParser, map);
+            pos         <- parseVec2("pos", map);
+            scale       <- parseVec2("scale", map);
+            texture     <- (Json.getAtKey(Root, "texture", map): Result[Json.JsonError, String]);
+            rotationOpt <- (Json.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
+            skewOpt     <- (Json.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
+            zIndexOpt   <- (Json.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            visibleOpt  <- (Json.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            flipHOpt    <- (Json.getAtKeyOpt(Root, "flipH", map): Result[Json.JsonError, Option[Bool]]);
+            flipVOpt    <- (Json.getAtKeyOpt(Root, "flipV", map): Result[Json.JsonError, Option[Bool]]);
+            hframesOpt  <- (Json.getAtKeyOpt(Root, "hframes", map): Result[Json.JsonError, Option[Int32]]);
+            vframesOpt  <- (Json.getAtKeyOpt(Root, "vframes", map): Result[Json.JsonError, Option[Int32]]);
+            frameOpt    <- (Json.getAtKeyOpt(Root, "frame", map): Result[Json.JsonError, Option[Int32]])
         ) yield {
             let sprite = Sprite2D.make(texture, pos, scale)
+                |> applyOpt(rotationOpt, setSpriteRotation)
+                |> applyOpt(skewOpt, setSpriteSkew)
                 |> applyZIndex(zIndexOpt)
-                |> applyVisible(visibleOpt);
+                |> applyVisible(visibleOpt)
+                |> applyOpt(flipHOpt, Sprite2D.setFlipH)
+                |> applyOpt(flipVOpt, Sprite2D.setFlipV)
+                |> applyOpt(hframesOpt, Sprite2D.setHframes)
+                |> applyOpt(vframesOpt, Sprite2D.setVframes)
+                |> applyOpt(frameOpt, Sprite2D.setFrame);
             EngineNode.Sprite2DWithState(sprite, tag)
         }
+
+    // ── Node2D / CanvasItem 経由のフィールド適用に使う型固定ラッパー ──
+
+    def setSpriteRotation(rot: Float64, sprite: Sprite2D): Sprite2D =
+        Node2D.setRotation(rot, sprite)
+
+    def setSpriteSkew(skew: Float64, sprite: Sprite2D): Sprite2D =
+        Node2D.setSkew(skew, sprite)
 
     def buildTextureButton(tagParser: Option[String] -> Result[Json.JsonError, t],
                            map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
@@ -339,6 +388,188 @@ mod SceneLoader {
             EngineNode.AnimSprite2DWithState(sprite, tag)
         }
 
+    def buildCharacterBody2D(tagParser: Option[String] -> Result[Json.JsonError, t],
+                              map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
+        forM (
+            tag             <- parseTagField(tagParser, map);
+            pos             <- parseVec2("pos", map);
+            shape           <- parseShape(map);
+            moveSpeedOpt    <- (Json.getAtKeyOpt(Root, "moveSpeed", map): Result[Json.JsonError, Option[Float64]]);
+            velocityOpt     <- parseVec2Opt("velocity", map);
+            scaleOpt        <- parseVec2Opt("scale", map);
+            rotationOpt     <- (Json.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
+            skewOpt         <- (Json.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
+            visibleOpt      <- (Json.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt       <- (Json.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            monitoringOpt   <- (Json.getAtKeyOpt(Root, "monitoring", map): Result[Json.JsonError, Option[Bool]]);
+            monitorableOpt  <- (Json.getAtKeyOpt(Root, "monitorable", map): Result[Json.JsonError, Option[Bool]]);
+            priorityOpt     <- (Json.getAtKeyOpt(Root, "priority", map): Result[Json.JsonError, Option[Int32]]);
+            upDirectionOpt  <- parseVec2Opt("upDirection", map);
+            floorMaxAngleOpt <- (Json.getAtKeyOpt(Root, "floorMaxAngle", map): Result[Json.JsonError, Option[Float64]]);
+            maxSlidesOpt    <- (Json.getAtKeyOpt(Root, "maxSlides", map): Result[Json.JsonError, Option[Int32]])
+        ) yield {
+            let body = CharacterBody2D.make(pos, {moveSpeed = Option.getWithDefault(0.0, moveSpeedOpt)})
+                |> CharacterBody2D.setCollisionShape(Some(shape))
+                |> applyOpt(velocityOpt, CharacterBody2D.setVelocity)
+                |> applyOpt(scaleOpt, setBody2DScale)
+                |> applyOpt(rotationOpt, setBody2DRotation)
+                |> applyOpt(skewOpt, setBody2DSkew)
+                |> applyOpt(visibleOpt, setBody2DVisible)
+                |> applyOpt(zIndexOpt, setBody2DZIndex)
+                |> applyOpt(monitoringOpt, CharacterBody2D.setMonitoring)
+                |> applyOpt(monitorableOpt, CharacterBody2D.setMonitorable)
+                |> applyOpt(priorityOpt, CharacterBody2D.setPriority)
+                |> applyOpt(upDirectionOpt, CharacterBody2D.setUpDirection)
+                |> applyOpt(floorMaxAngleOpt, CharacterBody2D.setFloorMaxAngle)
+                |> applyOpt(maxSlidesOpt, CharacterBody2D.setMaxSlides);
+            EngineNode.Body2DWithState(body, tag)
+        }
+
+    def setBody2DScale(scale: Vec2.Vec2, body: CharacterBody2D): CharacterBody2D =
+        Node2D.setScale(scale, body)
+
+    def setBody2DRotation(rot: Float64, body: CharacterBody2D): CharacterBody2D =
+        Node2D.setRotation(rot, body)
+
+    def setBody2DSkew(skew: Float64, body: CharacterBody2D): CharacterBody2D =
+        Node2D.setSkew(skew, body)
+
+    def setBody2DVisible(v: Bool, body: CharacterBody2D): CharacterBody2D =
+        CanvasItem.setVisible(v, body)
+
+    def setBody2DZIndex(z: Int32, body: CharacterBody2D): CharacterBody2D =
+        CanvasItem.setZIndex(z, body)
+
+    def buildCamera2D(tagParser: Option[String] -> Result[Json.JsonError, t],
+                      map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
+        forM (
+            tag                     <- parseTagField(tagParser, map);
+            pos                     <- parseVec2("pos", map);
+            offsetOpt               <- parseVec2Opt("offset", map);
+            zoomOpt                 <- parseVec2Opt("zoom", map);
+            scaleOpt                <- parseVec2Opt("scale", map);
+            rotationOpt             <- (Json.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
+            skewOpt                 <- (Json.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
+            visibleOpt              <- (Json.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt               <- (Json.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            enabledOpt              <- (Json.getAtKeyOpt(Root, "enabled", map): Result[Json.JsonError, Option[Bool]]);
+            anchorModeOpt           <- (Json.getAtKeyOpt(Root, "anchorMode", map): Result[Json.JsonError, Option[String]]);
+            anchorMode              <- parseAnchorMode(anchorModeOpt);
+            processCallbackOpt      <- (Json.getAtKeyOpt(Root, "processCallback", map): Result[Json.JsonError, Option[String]]);
+            processCallback         <- parseProcessCallback(processCallbackOpt);
+            ignoreRotationOpt       <- (Json.getAtKeyOpt(Root, "ignoreRotation", map): Result[Json.JsonError, Option[Bool]]);
+            limitLeftOpt            <- (Json.getAtKeyOpt(Root, "limitLeft", map): Result[Json.JsonError, Option[Int32]]);
+            limitTopOpt             <- (Json.getAtKeyOpt(Root, "limitTop", map): Result[Json.JsonError, Option[Int32]]);
+            limitRightOpt           <- (Json.getAtKeyOpt(Root, "limitRight", map): Result[Json.JsonError, Option[Int32]]);
+            limitBottomOpt          <- (Json.getAtKeyOpt(Root, "limitBottom", map): Result[Json.JsonError, Option[Int32]]);
+            limitSmoothedOpt        <- (Json.getAtKeyOpt(Root, "limitSmoothed", map): Result[Json.JsonError, Option[Bool]]);
+            posSmoothEnabledOpt     <- (Json.getAtKeyOpt(Root, "positionSmoothingEnabled", map): Result[Json.JsonError, Option[Bool]]);
+            posSmoothSpeedOpt       <- (Json.getAtKeyOpt(Root, "positionSmoothingSpeed", map): Result[Json.JsonError, Option[Float64]]);
+            rotSmoothEnabledOpt     <- (Json.getAtKeyOpt(Root, "rotationSmoothingEnabled", map): Result[Json.JsonError, Option[Bool]]);
+            rotSmoothSpeedOpt       <- (Json.getAtKeyOpt(Root, "rotationSmoothingSpeed", map): Result[Json.JsonError, Option[Float64]]);
+            dragHEnabledOpt         <- (Json.getAtKeyOpt(Root, "dragHorizontalEnabled", map): Result[Json.JsonError, Option[Bool]]);
+            dragVEnabledOpt         <- (Json.getAtKeyOpt(Root, "dragVerticalEnabled", map): Result[Json.JsonError, Option[Bool]]);
+            dragLeftOpt             <- (Json.getAtKeyOpt(Root, "dragLeftMargin", map): Result[Json.JsonError, Option[Float64]]);
+            dragRightOpt            <- (Json.getAtKeyOpt(Root, "dragRightMargin", map): Result[Json.JsonError, Option[Float64]]);
+            dragTopOpt              <- (Json.getAtKeyOpt(Root, "dragTopMargin", map): Result[Json.JsonError, Option[Float64]]);
+            dragBottomOpt           <- (Json.getAtKeyOpt(Root, "dragBottomMargin", map): Result[Json.JsonError, Option[Float64]])
+        ) yield {
+            let camera = Camera2D.make(pos)
+                |> applyOpt(offsetOpt, Camera2D.setOffset)
+                |> applyOpt(zoomOpt, Camera2D.setZoom)
+                |> applyOpt(scaleOpt, setCameraScale)
+                |> applyOpt(rotationOpt, setCameraRotation)
+                |> applyOpt(skewOpt, setCameraSkew)
+                |> applyOpt(visibleOpt, setCameraVisible)
+                |> applyOpt(zIndexOpt, setCameraZIndex)
+                |> applyOpt(enabledOpt, Camera2D.setEnabled)
+                |> Camera2D.setAnchorMode(anchorMode)
+                |> Camera2D.setProcessCallback(processCallback)
+                |> applyOpt(ignoreRotationOpt, Camera2D.setIgnoreRotation)
+                |> applyOpt(limitLeftOpt, Camera2D.setLimitLeft)
+                |> applyOpt(limitTopOpt, Camera2D.setLimitTop)
+                |> applyOpt(limitRightOpt, Camera2D.setLimitRight)
+                |> applyOpt(limitBottomOpt, Camera2D.setLimitBottom)
+                |> applyOpt(limitSmoothedOpt, Camera2D.setLimitSmoothed)
+                |> applyOpt(posSmoothEnabledOpt, Camera2D.setPositionSmoothingEnabled)
+                |> applyOpt(posSmoothSpeedOpt, Camera2D.setPositionSmoothingSpeed)
+                |> applyOpt(rotSmoothEnabledOpt, Camera2D.setRotationSmoothingEnabled)
+                |> applyOpt(rotSmoothSpeedOpt, Camera2D.setRotationSmoothingSpeed)
+                |> applyOpt(dragHEnabledOpt, Camera2D.setDragHorizontalEnabled)
+                |> applyOpt(dragVEnabledOpt, Camera2D.setDragVerticalEnabled)
+                |> applyOpt(dragLeftOpt, Camera2D.setDragLeftMargin)
+                |> applyOpt(dragRightOpt, Camera2D.setDragRightMargin)
+                |> applyOpt(dragTopOpt, Camera2D.setDragTopMargin)
+                |> applyOpt(dragBottomOpt, Camera2D.setDragBottomMargin);
+            EngineNode.Camera2DWithState(camera, tag)
+        }
+
+    def setCameraScale(scale: Vec2.Vec2, cam: Camera2D): Camera2D =
+        Node2D.setScale(scale, cam)
+
+    def setCameraRotation(rot: Float64, cam: Camera2D): Camera2D =
+        Node2D.setRotation(rot, cam)
+
+    def setCameraSkew(skew: Float64, cam: Camera2D): Camera2D =
+        Node2D.setSkew(skew, cam)
+
+    def setCameraVisible(v: Bool, cam: Camera2D): Camera2D =
+        CanvasItem.setVisible(v, cam)
+
+    def setCameraZIndex(z: Int32, cam: Camera2D): Camera2D =
+        CanvasItem.setZIndex(z, cam)
+
+    /// "DragCenter" / "FixedTopLeft" を Camera2DAnchorMode に変換する。省略時は DragCenter
+    def parseAnchorMode(opt: Option[String]): Result[Json.JsonError, Camera2DAnchorMode] =
+        match opt {
+            case None                  => Ok(Camera2DAnchorMode.DragCenter)
+            case Some("DragCenter")    => Ok(Camera2DAnchorMode.DragCenter)
+            case Some("FixedTopLeft")  => Ok(Camera2DAnchorMode.FixedTopLeft)
+            case Some(other)           =>
+                Err(JsonError(Root, Set#{"DragCenter|FixedTopLeft (got: ${other})"}))
+        }
+
+    /// "PhysicsProcess" / "IdleProcess" を Camera2DProcessCallback に変換する。省略時は IdleProcess
+    def parseProcessCallback(opt: Option[String]): Result[Json.JsonError, Camera2DProcessCallback] =
+        match opt {
+            case None                    => Ok(Camera2DProcessCallback.IdleProcess)
+            case Some("PhysicsProcess")  => Ok(Camera2DProcessCallback.PhysicsProcess)
+            case Some("IdleProcess")     => Ok(Camera2DProcessCallback.IdleProcess)
+            case Some(other)             =>
+                Err(JsonError(Root, Set#{"PhysicsProcess|IdleProcess (got: ${other})"}))
+        }
+
+    /// LDTK レベル（.ldtkl）を読み込んで TileMapLayer ノードを構築する。
+    /// JSON フィールド: ldtkPath / textureName / marginX / marginY / spacingX / spacingY
+    def buildTileMapLayer(tagParser: Option[String] -> Result[Json.JsonError, t],
+                          map: Map[String, Json.JsonElement]):
+                          Result[Json.JsonError, EngineNode[t]] \ {GameEngine.Game, Fs.FileRead} =
+        let header = forM (
+            tag         <- parseTagField(tagParser, map);
+            ldtkPath    <- (Json.getAtKey(Root, "ldtkPath", map): Result[Json.JsonError, String]);
+            textureName <- (Json.getAtKey(Root, "textureName", map): Result[Json.JsonError, String]);
+            marginXOpt  <- (Json.getAtKeyOpt(Root, "marginX", map): Result[Json.JsonError, Option[Float64]]);
+            marginYOpt  <- (Json.getAtKeyOpt(Root, "marginY", map): Result[Json.JsonError, Option[Float64]]);
+            spacingXOpt <- (Json.getAtKeyOpt(Root, "spacingX", map): Result[Json.JsonError, Option[Float64]]);
+            spacingYOpt <- (Json.getAtKeyOpt(Root, "spacingY", map): Result[Json.JsonError, Option[Float64]])
+        ) yield {
+            tag = tag,
+            config = ({
+                path        = ldtkPath,
+                textureName = textureName,
+                marginX     = Option.getWithDefault(0.0, marginXOpt),
+                marginY     = Option.getWithDefault(0.0, marginYOpt),
+                spacingX    = Option.getWithDefault(0.0, spacingXOpt),
+                spacingY    = Option.getWithDefault(0.0, spacingYOpt)
+            }: LDTKLoader.LDTKLoaderConfig)
+        };
+        match header {
+            case Err(e) => Err(e)
+            case Ok(h)  =>
+                let levelData = LDTKLoader.loadLevel(h#config);
+                Ok(EngineNode.TileMapLayerWithState(levelData#tileLayer, h#tag))
+        }
+
     def buildLabel2D(tagParser: Option[String] -> Result[Json.JsonError, t],
                      fontAtlas: Option[FontAtlas],
                      map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
@@ -396,6 +627,15 @@ mod SceneLoader {
     // ========================================================================
     // ビルダー用ヘルパー（任意フィールド適用）
     // ========================================================================
+
+    /// Option[a] が Some なら setter(x, target) を適用し、None なら target をそのまま返す。
+    /// 単相な setter（例: `Sprite2D.setHframes`）と組み合わせてビルダー内のオプション
+    /// フィールド適用を 1 行で書くために使う
+    def applyOpt(opt: Option[a], setter: (a, b) -> b, target: b): b =
+        match opt {
+            case Some(x) => setter(x, target)
+            case None    => target
+        }
 
     def applyZIndex(opt: Option[Int32], sprite: Sprite2D): Sprite2D =
         match opt {
