@@ -3,6 +3,7 @@
     {
       "frame": 0,
       "hframes": 5,
+      "vframes": 2,
       "name": "Sprite",
       "pos": [
         0,
@@ -13,8 +14,7 @@
         1
       ],
       "texture": "character_sheet",
-      "type": "Sprite2D",
-      "vframes": 2
+      "type": "Sprite2D"
     },
     {
       "name": "Camera",
@@ -24,8 +24,8 @@
       ],
       "type": "Camera2D",
       "zoom": [
-        0.5,
-        0.5
+        0.75,
+        0.75
       ]
     }
   ],
