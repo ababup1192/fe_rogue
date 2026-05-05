@@ -3,6 +3,7 @@ pub enum NodeTag {
     case Player(PlayerScene.Data)
     case Map(MapScene.Data)
     case MoveRange(MoveRangeScene.Data)
+    case Log(LogScene.Data)
     case NoTag
 }
 
@@ -30,14 +31,23 @@ instance Node[NodeTag] {
 // プレイヤーの現在位置から再計算する。Tween 中は受け付けない（移動の途中で
 // 範囲が中継セル基準で更新されるのを防ぐ）。
 instance InputEvent.InputHandler[NodeTag] {
-    type Aef = {Tween.Scheduler}
+    type Aef = {Tween.Scheduler, GameLogger.GameLogger}
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
-                       Scene[NodeTag] \ {Tween.Scheduler} =
+                       Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
         let isConfirm = key == GameEngine.Key.Z
                         or key == GameEngine.Key.Space
                         or key == GameEngine.Key.Enter;
-        if (isConfirm and not Tween.Scheduler.isActive(PlayerScene.playerPath()))
-            MoveRangeScene.refresh(scene)
+        if (isConfirm and not Tween.Scheduler.isActive(PlayerScene.playerPath())) {
+            // 敵ターン開始 → 敵攻撃（固定文字列の仮実装）→ ターン終了 → 次のプレイヤーターン
+            // を 1 フレーム内に連続発火する。実 enemy ロジック・実ダメージ計算は別タスク。
+            // フォントアトラスが ASCII 範囲しか持たないため当面は英語表記で運用する
+            GameLogger.GameLogger.enemyLog("Enemy Turn");
+            GameLogger.GameLogger.enemyLog("Enemy attacks Player for 3 dmg");
+            GameLogger.GameLogger.endTurn();
+            let next = MoveRangeScene.refresh(scene);
+            GameLogger.GameLogger.playerLog("Player Turn");
+            next
+        }
         else scene
 }
 
@@ -65,10 +75,13 @@ mod Game {
                 let scene = Scene.empty()
                     |> MapScene.add
                     |> PlayerScene.add
-                    |> MoveRangeScene.add;
+                    |> MoveRangeScene.add
+                    |> LogScene.add;
+                GameLogger.GameLogger.playerLog("Player Turn");
                 gameLoop(sceneRef, scene)
             } with Editor.withState(rc)
               with Tween.withScheduler(rc)   // tweensRef は内部に隠蔽
+              with GameLogger.withLogger(rc) // entriesRef は内部に隠蔽
               with handler BoardQuery {
                   def board(k) =
                       let curScene = Ref.get(sceneRef);
@@ -94,7 +107,8 @@ mod Game {
     def gameLoop(sceneRef: Ref[Scene[NodeTag], r], scene: Scene[NodeTag]):
                  Unit \ {GameEngine.Game, Fs.FileRead, Fs.FileWrite,
                          Editor.EditorState, EditHistory.Rewind,
-                         BoardQuery, Tween.Scheduler, Math.Random, IO, r} =
+                         BoardQuery, Tween.Scheduler, GameLogger.GameLogger,
+                         Math.Random, IO, r} =
         if (GameEngine.Game.shouldClose() or
             GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
         else {
@@ -109,10 +123,12 @@ mod Game {
                               |> GameEngine.handleInput
                               |> GameEngine.physicsProcess(delta = dt, paused = false,
                                                             gravity = Vec2.zero())
-                              |> Tween.tickAll(dt);   // engine プラミング 1 行
+                              |> Tween.tickAll(dt)   // engine プラミング 1 行
+                              |> LogScene.flushFromEffect;
             // scene.json が変わったらシーンを丸ごと組み直す（プレイ中状態はリセット）
             let next = if (Editor.pollReload())
-                           Scene.empty() |> MapScene.add |> PlayerScene.add |> MoveRangeScene.add
+                           Scene.empty() |> MapScene.add |> PlayerScene.add
+                                         |> MoveRangeScene.add |> LogScene.add
                        else updated;
             GameEngine.render(next);
             gameLoop(sceneRef, next)
