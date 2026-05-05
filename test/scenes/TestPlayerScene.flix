@@ -4,12 +4,12 @@
 // 公開 API（requestMove / getPlayerData / physicsProcess）経由で確認する。
 //
 // 位置はピクセルではなくグリッド座標 (col, row) で表現し、
-// TileMapLayer.mapToLocal 経由でローカル座標に変換することで意図を読みやすくする。
-// テスト用のマップは tileSize=16、gridSize=13×13。初期グリッドは (5, 5)。
+// gridPos 経由でワールド座標に変換することで意図を読みやすくする。
+// テスト用 tileSize は 16。初期グリッドは (5, 5)。
 //
-// 注: PlayerScene.add は scene.json をロードする副作用関数になったので、テストでは
-// 同等の構造を直接組み立てる。requestMove は scene 内の TileMapLayer から
-// tileSize を取得するため、テストでも MapScene.mapPath() に TileMapLayer を登録する。
+// PlayerScene.requestMove は MapQuery effect で tileSize を要求するので、
+// テストでは withTestTileSize でモックハンドラを注入する。MapScene の存在も
+// TileMapLayer の構築も不要。
 
 mod TestPlayerScene {
 
@@ -17,41 +17,38 @@ mod TestPlayerScene {
     // ヘルパー — テスト共通のシーン構築・取り出し
     // ========================================================================
 
-    /// テスト用の最小 TileMapLayer（衝突セル無し、tileSize=16、gridSize=13×13）
-    def testTileMap(): TileMapLayer =
-        let atlas = TileSetAtlasSource.make({
-            textureName = "test",
-            marginX = 0.0, marginY = 0.0,
-            spacingX = 0.0, spacingY = 0.0
-        });
-        let atlasFilled: TileSetAtlasSource = {
-            texWidth = 16.0, texHeight = 16.0, tileSize = 16.0 | atlas
-        };
-        TileMapLayer.make({
-            tileSet        = TileSet.make(atlasFilled),
-            tiles          = Nil,
-            collisionCells = Nil,
-            gridSize       = ({x = 13, y = 13}: Vec2.Vec2i)
-        })
+    /// テスト用 tileSize（PlayerScene.scene.json と整合）
+    def testTileSize(): Float64 = 16.0
 
-    /// グリッド座標 → ローカル座標。マップが原点にあるのでローカル＝ワールド
+    /// MapQuery effect を tileSize 固定で解決するハンドラ。
+    /// PlayerScene.requestMove を呼ぶテストはこれで包む。
+    def withTestTileSize(thunk: Unit -> a \ ef): a \ (ef - MapQuery) =
+        run { thunk() } with handler MapQuery {
+            def tileSize(k)             = k(testTileSize())
+            def getUsedRect(k)          = k({position = Vec2.zeroI(), size = {x = 13, y = 13}})
+            def isWall(_coords, k)      = k(false)
+            def isFloor(_coords, k)     = k(true)
+            def mapToLocal(coords, k)   =
+                let s = testTileSize();
+                let v = Vec2.fromI(coords);
+                k({x = v#x * s + s / 2.0, y = v#y * s + s / 2.0})
+        }
+
+    /// グリッド座標 → ワールド座標（マップが原点にあるのでローカル＝ワールド）
     def gridPos(col: Int32, row: Int32): Vec2.Vec2 =
-        TileMapLayer.mapToLocal(({x = col, y = row}: Vec2.Vec2i), testTileMap())
-
-    /// マップ名（MapScene.mapPath と一致させる必要がある）
-    def mapName(): String = "DungeonLevel0"
+        let s = testTileSize();
+        {x = Int32.toFloat64(col) * s + s / 2.0,
+         y = Int32.toFloat64(row) * s + s / 2.0}
 
     /// プレイヤー 1 体だけのシーンを作る（JSON ロードを介さず CharacterBody2D を直接構築）。
     /// 値は PlayerScene.scene.json と整合させること。
-    /// requestMove のため MapScene.mapPath() に TileMapLayer も登録する。
+    /// MapQuery が tileSize を返すだけなので、TileMapLayer は登録不要。
     def emptyPlayerScene(): Scene[NodeTag] =
         let pos = gridPos(5, 5);
         let body = CharacterBody2D.make(pos, {moveSpeed = 0.0})
             |> CharacterBody2D.setCollisionShape(
                 Some(CollisionShape2D.RectShape2D({width = 14.0, height = 14.0})));
         Scene.empty()
-            |> Scene.addNode(mapName(),
-                EngineNode.TileMapLayerWithState(testTileMap(), NodeTag.NoTag))
             |> Scene.addNode("Player",
                 EngineNode.Body2DWithState(body,
                     NodeTag.Player({pendingMotion = Vec2.zero()})))
@@ -80,14 +77,16 @@ mod TestPlayerScene {
     /// 右 1 グリッドの要求 → pendingMotion = (16, 0)
     @Test
     def testRequestMoveStoresGridMotion(): Unit \ Assert =
-        let after = PlayerScene.requestMove(Vec2.rightI(), emptyPlayerScene());
+        let after = withTestTileSize(() ->
+            PlayerScene.requestMove(Vec2.rightI(), emptyPlayerScene()));
         let m = (PlayerScene.getPlayerData(after))#pendingMotion;
         Assert.assertEq(expected = (16.0, 0.0), (m#x, m#y))
 
     /// 上 1 グリッドの要求 → pendingMotion = (0, -16)
     @Test
     def testRequestMoveUpward(): Unit \ Assert =
-        let after = PlayerScene.requestMove(Vec2.upI(), emptyPlayerScene());
+        let after = withTestTileSize(() ->
+            PlayerScene.requestMove(Vec2.upI(), emptyPlayerScene()));
         let m = (PlayerScene.getPlayerData(after))#pendingMotion;
         Assert.assertEq(expected = (0.0, -16.0), (m#x, m#y))
 
@@ -99,7 +98,8 @@ mod TestPlayerScene {
     /// 指示は消化されて 0 に戻る。
     @Test
     def testPhysicsProcessMovesAndClears(): Unit \ Assert =
-        let scene = emptyPlayerScene() |> PlayerScene.requestMove(Vec2.rightI());
+        let scene = withTestTileSize(() ->
+            emptyPlayerScene() |> PlayerScene.requestMove(Vec2.rightI()));
         let stepped = stepOnce(scene);
         let pos = playerPos(stepped);
         let m = (PlayerScene.getPlayerData(stepped))#pendingMotion;
@@ -124,7 +124,8 @@ mod TestPlayerScene {
     /// pendingMotion は 0 に戻る（次フレームで同じ指示は積まれていないので連射にならない）
     @Test
     def testPhysicsProcessBlockedByWall(): Unit \ Assert =
-        let scene = walledPlayerScene() |> PlayerScene.requestMove(Vec2.rightI());
+        let scene = withTestTileSize(() ->
+            walledPlayerScene() |> PlayerScene.requestMove(Vec2.rightI()));
         let stepped = stepOnce(scene);
         let pos = playerPos(stepped);
         let m = (PlayerScene.getPlayerData(stepped))#pendingMotion;

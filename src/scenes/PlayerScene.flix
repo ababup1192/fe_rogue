@@ -58,20 +58,13 @@ mod PlayerScene {
 
     /// 入力イベント等から呼ばれ、1 グリッド分の移動指示を pendingMotion に積む。
     /// 実際の移動は次の physicsProcess で行われる。
-    /// tileSize はマップから取得する（MapScene.add が先に呼ばれている前提）。
-    pub def requestMove(d: Vec2.Vec2i, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let layer = getMapLayer(scene);
-        let s = TileMapLayer.tileSize(layer);
+    /// tileSize は MapQuery effect 経由で取得する（PlayerScene は MapScene の
+    /// 存在・パスを知らない。実体は Game.start で注入される handler が答える）。
+    pub def requestMove(d: Vec2.Vec2i, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ MapQuery =
+        let s = MapQuery.tileSize();
         let motion = Vec2.mul(Vec2.fromI(d), s);
         scene |> mapPlayer((body, data) -> (body, {pendingMotion = motion | data}))
-
-    /// MapScene が登録した TileMapLayer を取り出す。MapScene.add が
-    /// PlayerScene.add より先に呼ばれている前提（src/scenes/Game.flix 参照）。
-    def getMapLayer(scene: Scene[NodeTag]): TileMapLayer =
-        match Scene.getEngineNode(MapScene.mapPath(), scene) {
-            case Some(EngineNode.TileMapLayerWithState(layer, _)) => layer
-            case _ => bug!("PlayerScene: MapScene must be added before PlayerScene")
-        }
 
     /// pendingMotion を消費して CharacterBody2D を移動・衝突応答させる。
     /// Camera は子ノードなので親子変換で自動追従される（手動同期不要）。

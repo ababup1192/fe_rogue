@@ -18,9 +18,9 @@ instance Node[NodeTag] {
 }
 
 instance InputEvent.InputHandler[NodeTag] {
-    type Aef = {}
+    type Aef = MapQuery
     redef onKeyPressed(key: GameEngine.Key,
-                        scene: Scene[NodeTag]): Scene[NodeTag] =
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ MapQuery =
         let dir: Option[Vec2.Vec2i] =
             if      (key == GameEngine.Key.W or key == GameEngine.Key.Up)    Some(Vec2.upI())
             else if (key == GameEngine.Key.S or key == GameEngine.Key.Down)  Some(Vec2.downI())
@@ -50,20 +50,38 @@ mod Game {
     pub def start(): Unit \ {GameEngine.Game, Fs.FileRead, Fs.FileWrite,
                               Chan, NonDet, IO, Fs.Glob, Fs.ModificationTime} =
         region rc {
+            // MapQuery handler が現在のシーンを読むための窓口（毎フレーム gameLoop が更新）
+            let sceneRef = Ref.fresh(rc, Scene.empty());
             run {
                 let scene = Scene.empty()
                     |> MapScene.add
                     |> PlayerScene.add;
-                gameLoop(scene)
+                gameLoop(sceneRef, scene)
             } with Editor.withState(rc)
+              with handler MapQuery {
+                  def tileSize(k) =
+                      k(TileMapLayer.tileSize(MapScene.getMapLayer(Ref.get(sceneRef))))
+                  def getUsedRect(k) =
+                      k(TileMapLayer.getUsedRect(MapScene.getMapLayer(Ref.get(sceneRef))))
+                  def isWall(coords, k) =
+                      k(TileMapLayer.isWall(coords, MapScene.getMapLayer(Ref.get(sceneRef))))
+                  def isFloor(coords, k) =
+                      k(TileMapLayer.isFloor(coords, MapScene.getMapLayer(Ref.get(sceneRef))))
+                  def mapToLocal(coords, k) =
+                      k(TileMapLayer.mapToLocal(coords, MapScene.getMapLayer(Ref.get(sceneRef))))
+              }
         }
 
-    def gameLoop(scene: Scene[NodeTag]):
+    def gameLoop(sceneRef: Ref[Scene[NodeTag], r], scene: Scene[NodeTag]):
                  Unit \ {GameEngine.Game, Fs.FileRead, Fs.FileWrite,
-                         Editor.EditorState, EditHistory.Rewind} =
+                         Editor.EditorState, EditHistory.Rewind, MapQuery, r} =
         if (GameEngine.Game.shouldClose() or
             GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
         else {
+            // MapQuery handler が読む窓口を毎フレーム最新の scene に更新する。
+            // input/process/physics より前に置けば、handler はその後で常に
+            // 「フレーム頭の scene」を読み返せる（タイル定義は不変のため十分）。
+            Ref.put(scene, sceneRef);
             let dt = GameEngine.Game.getDeltaTime();
             let afterEditor = Editor.handleInput(scene);
             let updated = if (Editor.isOn()) afterEditor
@@ -72,6 +90,6 @@ mod Game {
                               |> GameEngine.physicsProcess(delta = dt, paused = false,
                                                             gravity = Vec2.zero());
             GameEngine.render(updated);
-            gameLoop(updated)
+            gameLoop(sceneRef, updated)
         }
 }
