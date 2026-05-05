@@ -1,15 +1,17 @@
 // PlayerScene のテスト
 //
-// プレイヤーの移動指示の扱い（pendingMotion）と physicsProcess による移動／衝突の挙動を
-// 公開 API（requestMove / getPlayerData / physicsProcess）経由で確認する。
+// PlayerScene は moveTo(target) で gridPos を即更新し、見た目の補間は engine の
+// `Tween` モジュールに委ねる。壁判定は BoardLogic の責務なので PlayerScene 自身は考えない。
 //
-// 位置はピクセルではなくグリッド座標 (col, row) で表現し、
-// gridPos 経由でワールド座標に変換することで意図を読みやすくする。
-// テスト用 tileSize は 16。初期グリッドは (5, 5)。
+// 検証する観点:
+//   - moveTo が gridPos を即更新する（world 座標は tween がまだ進めていないので元のまま）
+//   - moveTo が Tween をスケジュールし、tickAll で target の world 座標に snap する
+//   - tween 進行中は isMoving が true、snap 後は false（Tween.Scheduler.isActive の委譲）
 //
-// PlayerScene.requestMove は MapQuery effect で tileSize を要求するので、
-// テストでは withTestTileSize でモックハンドラを注入する。MapScene の存在も
-// TileMapLayer の構築も不要。
+// 個々の tween の advance/snap の正しさ自体は engine 層の TestTween で検証済みなので、
+// ここでは「moveTo → tickAll で実際に target に到達する」という end-to-end の繋がりのみ確認する。
+//
+// テスト用 tileSize は 16、初期グリッドは PlayerScene.initialGrid() = (5, 5)。
 
 mod TestPlayerScene {
 
@@ -20,117 +22,95 @@ mod TestPlayerScene {
     /// テスト用 tileSize（PlayerScene.scene.json と整合）
     def testTileSize(): Float64 = 16.0
 
-    /// MapQuery effect を tileSize 固定で解決するハンドラ。
-    /// PlayerScene.requestMove を呼ぶテストはこれで包む。
-    def withTestTileSize(thunk: Unit -> a \ ef): a \ (ef - MapQuery) =
-        run { thunk() } with handler MapQuery {
-            def tileSize(k)             = k(testTileSize())
-            def getUsedRect(k)          = k({position = Vec2.zeroI(), size = {x = 13, y = 13}})
-            def isWall(_coords, k)      = k(false)
-            def isFloor(_coords, k)     = k(true)
-            def mapToLocal(coords, k)   =
-                let s = testTileSize();
-                let v = Vec2.fromI(coords);
-                k({x = v#x * s + s / 2.0, y = v#y * s + s / 2.0})
+    /// テスト用ワールド座標換算（マップ globalPos が原点なので local == world）
+    def testGridToWorld(coords: Vec2.Vec2i): Vec2.Vec2 =
+        let s = testTileSize();
+        let v = Vec2.fromI(coords);
+        {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
+
+    /// テスト用 MapSnapshot — 床のみ・13×13 サイズ・grid↔world は testGridToWorld で固定
+    def testSnapshot(): MapSnapshot =
+        {
+            tileSize    = testTileSize(),
+            usedRect    = {position = Vec2.zeroI(), size = ({x = 13, y = 13}: Vec2.Vec2i)},
+            isWall      = _ -> false,
+            isFloor     = _ -> true,
+            mapToLocal  = c -> testGridToWorld(c),
+            gridToWorld = c -> testGridToWorld(c)
         }
 
-    /// グリッド座標 → ワールド座標（マップが原点にあるのでローカル＝ワールド）
-    def gridPos(col: Int32, row: Int32): Vec2.Vec2 =
-        let s = testTileSize();
-        {x = Int32.toFloat64(col) * s + s / 2.0,
-         y = Int32.toFloat64(row) * s + s / 2.0}
+    /// Tween.Scheduler のスタブ handler。schedule の登録を捨てて何もしない。
+    /// PlayerScene.moveTo の gridPos 更新だけを検証したいテスト用。
+    def withNoopTween(thunk: Unit -> a \ ef): a \ (ef - Tween.Scheduler) =
+        run { thunk() } with handler Tween.Scheduler {
+            def schedule(_, k) = k()
+            def isActive(_, k) = k(false)
+            def cancel(_, k) = k()
+            def consumeUpdates(_, k) = k(Nil)
+        }
 
     /// プレイヤー 1 体だけのシーンを作る（JSON ロードを介さず CharacterBody2D を直接構築）。
-    /// 値は PlayerScene.scene.json と整合させること。
-    /// MapQuery が tileSize を返すだけなので、TileMapLayer は登録不要。
+    /// 初期 gridPos は PlayerScene.initialGrid()、pos はそれと整合する pixel 座標。
     def emptyPlayerScene(): Scene[NodeTag] =
-        let pos = gridPos(5, 5);
+        let initial = PlayerScene.initialGrid();
+        let pos = testGridToWorld(initial);
         let body = CharacterBody2D.make(pos, {moveSpeed = 0.0})
             |> CharacterBody2D.setCollisionShape(
                 Some(CollisionShape2D.RectShape2D({width = 14.0, height = 14.0})));
         Scene.empty()
             |> Scene.addNode("Player",
                 EngineNode.Body2DWithState(body,
-                    NodeTag.Player({pendingMotion = Vec2.zero()})))
-
-    /// プレイヤーの右隣セル (col=6, row=5) に 16×16 の壁を置いたシーンを作る（衝突応答の確認用）
-    def walledPlayerScene(): Scene[NodeTag] =
-        let wallPos = gridPos(6, 5);
-        let wall = StaticBody2D.make(wallPos,
-            CollisionShape2D.RectShape2D({width = 16.0, height = 16.0}));
-        emptyPlayerScene()
-            |> Scene.addNode("Wall",
-                EngineNode.StaticBody2DWithState(wall, NodeTag.NoTag))
+                    NodeTag.Player({gridPos = initial})))
 
     /// プレイヤーのワールド座標を取り出す
-    def playerPos(scene: Scene[NodeTag]): Vec2.Vec2 =
+    def playerWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
         Scene.globalPositionAt(PlayerScene.playerPath(), scene)
 
-    /// 1 フレーム分の物理処理を進める（delta は値が結果に効かないので適当な 0.016 を渡す）
-    def stepOnce(scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.physicsProcessAll(0.016, false, scene)
-
     // ========================================================================
-    // requestMove — 入力指示を Player の pendingMotion に積む
+    // moveTo — gridPos を即更新、tween は engine に委譲
     // ========================================================================
 
-    /// 右 1 グリッドの要求 → pendingMotion = (16, 0)
+    /// moveTo 直後: gridPos は target に更新される。world 座標は tween がまだ進んでいないので
+    /// 元の位置のまま（noop tween で確認）
     @Test
-    def testRequestMoveStoresGridMotion(): Unit \ Assert =
-        let after = withTestTileSize(() ->
-            PlayerScene.requestMove(Vec2.rightI(), emptyPlayerScene()));
-        let m = (PlayerScene.getPlayerData(after))#pendingMotion;
-        Assert.assertEq(expected = (16.0, 0.0), (m#x, m#y))
-
-    /// 上 1 グリッドの要求 → pendingMotion = (0, -16)
-    @Test
-    def testRequestMoveUpward(): Unit \ Assert =
-        let after = withTestTileSize(() ->
-            PlayerScene.requestMove(Vec2.upI(), emptyPlayerScene()));
-        let m = (PlayerScene.getPlayerData(after))#pendingMotion;
-        Assert.assertEq(expected = (0.0, -16.0), (m#x, m#y))
-
-    // ========================================================================
-    // physicsProcess — 移動指示を消化して位置を更新し、指示は次フレームに残らない
-    // ========================================================================
-
-    /// 右へ動かす指示を 1 ステップ進めるとグリッドが (5, 5) → (6, 5) に進み、
-    /// 指示は消化されて 0 に戻る。
-    @Test
-    def testPhysicsProcessMovesAndClears(): Unit \ Assert =
-        let scene = withTestTileSize(() ->
-            emptyPlayerScene() |> PlayerScene.requestMove(Vec2.rightI()));
-        let stepped = stepOnce(scene);
-        let pos = playerPos(stepped);
-        let m = (PlayerScene.getPlayerData(stepped))#pendingMotion;
-        let expected = gridPos(6, 5);
+    def testMoveToUpdatesGridPosImmediately(): Unit \ Assert =
+        let target: Vec2.Vec2i = {x = 6, y = 5};
+        let initialPos = testGridToWorld(PlayerScene.initialGrid());
+        let after = withNoopTween(() ->
+            PlayerScene.moveTo(testSnapshot(), target, emptyPlayerScene()));
+        let data = PlayerScene.getPlayerData(after);
+        let pos = playerWorldPos(after);
         Assert.assertEq(
-            expected = (expected#x, expected#y, 0.0, 0.0),
-            (pos#x, pos#y, m#x, m#y))
+            expected = (6, 5, initialPos#x, initialPos#y),
+            (data#gridPos#x, data#gridPos#y, pos#x, pos#y))
 
-    /// 移動指示が空のフレームでは physicsProcess を呼んでも位置は初期グリッド (5, 5) のまま
+    /// moveTo 後の流れを実 Tween で end-to-end 検証する。
+    ///
+    ///   moveTo 直後:        world は initial のまま、isMoving = true（tween アクティブ）
+    ///   tickAll(1.0) 後:    world は target に snap、isMoving = false（tween 終了）
+    ///
+    /// 1.0 秒は slideDuration (= 16/120 ≈ 0.133 秒) より十分大きいので必ず snap する。
+    /// Player(5,5) → (6,5) なので initial = (88, 88), target = (104, 88)
+    /// （16 × 5 + 8 = 88、16 × 6 + 8 = 104）。
     @Test
-    def testPhysicsProcessIsNoOpWhenIdle(): Unit \ Assert =
-        let stepped = stepOnce(emptyPlayerScene());
-        let pos = playerPos(stepped);
-        let expected = gridPos(5, 5);
-        Assert.assertEq(expected = (expected#x, expected#y), (pos#x, pos#y))
-
-    // ========================================================================
-    // 衝突応答 — 壁にぶつかったら動かず、指示はそれでも消化される
-    // ========================================================================
-
-    /// 壁の方向 (右) に進もうとすると、初期グリッド (5, 5) のまま動かず、
-    /// pendingMotion は 0 に戻る（次フレームで同じ指示は積まれていないので連射にならない）
-    @Test
-    def testPhysicsProcessBlockedByWall(): Unit \ Assert =
-        let scene = withTestTileSize(() ->
-            walledPlayerScene() |> PlayerScene.requestMove(Vec2.rightI()));
-        let stepped = stepOnce(scene);
-        let pos = playerPos(stepped);
-        let m = (PlayerScene.getPlayerData(stepped))#pendingMotion;
-        let expected = gridPos(5, 5);
-        Assert.assertEq(
-            expected = (expected#x, expected#y, 0.0, 0.0),
-            (pos#x, pos#y, m#x, m#y))
+    def testMoveToSchedulesTweenAndSnaps(): Unit \ Assert =
+        region rc {
+            let target: Vec2.Vec2i = {x = 6, y = 5};
+            let initialWorld = testGridToWorld(PlayerScene.initialGrid());
+            let targetWorld = testGridToWorld(target);
+            let result = run {
+                let scene1 = PlayerScene.moveTo(testSnapshot(), target, emptyPlayerScene());
+                let posBefore = playerWorldPos(scene1);
+                let activeBefore = PlayerScene.isMoving();
+                let scene2 = Tween.tickAll(1.0, scene1);
+                let posAfter = playerWorldPos(scene2);
+                let activeAfter = PlayerScene.isMoving();
+                (posBefore#x, posBefore#y, activeBefore,
+                 posAfter#x, posAfter#y, activeAfter)
+            } with Tween.withScheduler(rc);
+            Assert.assertEq(
+                expected = (initialWorld#x, initialWorld#y, true,
+                             targetWorld#x, targetWorld#y, false),
+                result)
+        }
 }

@@ -7,14 +7,20 @@
 /// 衝突クエリが透過的に利用する（PlayerScene 等は内部実装を知らない）。
 ///
 /// 他シーンが「マップ 1 マスのピクセルサイズ」「セルが床か壁か」などを問い合わせる
-/// 際は MapQuery effect を経由する。実体は Game.start が sceneRef を closure に
-/// 抱えて handler を注入する（PlayerScene 等は MapScene の存在を知らずに使える）。
-pub eff MapQuery {
-    def tileSize(): Float64
-    def getUsedRect(): { position = Vec2.Vec2i, size = Vec2.Vec2i }
-    def isWall(coords: Vec2.Vec2i): Bool
-    def isFloor(coords: Vec2.Vec2i): Bool
-    def mapToLocal(coords: Vec2.Vec2i): Vec2.Vec2
+/// 際は `MapSnapshot` レコードを経由する。関数フィールドにフレーム時点の TileMapLayer と
+/// Map global を捕獲したクロージャが入り、何度呼んでも同じフレームの結果を返す。
+///
+/// 取得は `BoardQuery` effect の戻り値（Board）に含まれる形で行う。MapSnapshot 単体を
+/// effect で公開する MapQuery 経路は廃止し、Board を盤面情報の唯一の入口に統一した。
+pub type alias MapSnapshot = {
+    tileSize    = Float64,
+    usedRect    = { position = Vec2.Vec2i, size = Vec2.Vec2i },
+    isWall      = Vec2.Vec2i -> Bool,
+    isFloor     = Vec2.Vec2i -> Bool,
+    mapToLocal  = Vec2.Vec2i -> Vec2.Vec2,
+    // gridToWorld: mapToLocal と違い Map の global position 加算済み
+    // （呼び出し側が MapScene の位置を知らずに済む）
+    gridToWorld = Vec2.Vec2i -> Vec2.Vec2
 }
 
 mod MapScene {
