@@ -15,6 +15,9 @@ mod LwjglLayer {
     import org.lwjgl.stb.STBImage
     import org.lwjgl.stb.STBTruetype
     import org.lwjgl.stb.STBTTBakedChar
+    import org.lwjgl.stb.STBTTPackedchar
+    import org.lwjgl.stb.STBTTPackContext
+    import org.lwjgl.stb.STBTTPackRange
     import org.lwjgl.stb.STBTTFontinfo
     import org.lwjgl.stb.STBVorbis
     import org.lwjgl.openal.AL
@@ -472,10 +475,51 @@ mod LwjglLayer {
     // Font Atlas Baking (STBTruetype)
     // ========================================================================
 
+    /// LogScene 等で使う日本語ロガー文用の漢字。連続範囲ではなく個別指定で
+     /// アトラスにベイクする。将来追加する場合はここに足すだけでよい。
+    def kanjiCodepoints(): List[Int32] =
+        0x6575 ::    // 敵
+        0x653B ::    // 攻
+        0x6483 ::    // 撃
+        0x5473 ::    // 味
+        0x65B9 ::    // 方
+        0x6570 ::    // 数
+        0x6B8B ::    // 残
+        0x7D42 ::    // 終
+        0x4E86 ::    // 了
+        0x958B ::    // 開
+        0x59CB ::    // 始
+        Nil
+
+    /// stbtt_PackFontRanges でベイクされる単一レンジの記述。
+    /// `firstCp = 0` のとき `array` の個別 cp が使われる（stbtt の仕様）。
+    type alias BakeRange = {
+        firstCp = Int32,
+        count   = Int32,
+        cps     = List[Int32]   // firstCp != 0 ならダミー（連続範囲扱い）
+    }
+
+    /// 1 グリフ分のメトリクスを STBTTPackedchar の address から取り出す
+    def packedCharMetrics(addr: Int64, bitmapSizeF: Float64): TextLayout.GlyphMetrics \ IO =
+        let x0 = Int32.toFloat64(Int16.toInt32(STBTTPackedchar.nx0(addr)));
+        let y0 = Int32.toFloat64(Int16.toInt32(STBTTPackedchar.ny0(addr)));
+        let x1 = Int32.toFloat64(Int16.toInt32(STBTTPackedchar.nx1(addr)));
+        let y1 = Int32.toFloat64(Int16.toInt32(STBTTPackedchar.ny1(addr)));
+        {
+            xOff    = Float32.toFloat64(STBTTPackedchar.nxoff(addr)),
+            yOff    = Float32.toFloat64(STBTTPackedchar.nyoff(addr)),
+            glyphW  = x1 - x0,
+            glyphH  = y1 - y0,
+            advance = Float32.toFloat64(STBTTPackedchar.nxadvance(addr)),
+            s0      = x0 / bitmapSizeF,
+            t0      = y0 / bitmapSizeF,
+            s1      = x1 / bitmapSizeF,
+            t1      = y1 / bitmapSizeF
+        }
+
     def bakeFontAtlas(entry: GameEngine.FontEntry): (FontAtlas, GameEngine.TextureInfo) \ IO =
-        let bitmapSize = 512;
-        let charCount = 96;   // ASCII 32-127
-        let firstChar = 32;
+        let bitmapSize  = 1024;
+        let bitmapSizeF = Int32.toFloat64(bitmapSize);
 
         // フォントファイルを ByteBuffer に読み込む
         let fis = new FileInputStream(entry#path);
@@ -488,7 +532,6 @@ mod LwjglLayer {
         // フォント情報を初期化し、em ベースの補正サイズを算出
         // STBTruetype: ScaleForPixelHeight → ascent-descent = fontSize
         // Godot/FreeType: em ベース → 1em = fontSize
-        // フォントの ascent-descent > unitsPerEm の場合、STBTruetype は小さくなるため補正が必要
         let fontInfo = STBTTFontinfo.malloc();
         discard STBTruetype.stbtt_InitFont(fontInfo, fontBuffer);
         let emScale = Float32.toFloat64(
@@ -497,8 +540,7 @@ mod LwjglLayer {
             STBTruetype.stbtt_ScaleForPixelHeight(fontInfo, f32(entry#fontSize)));
         let bakeSize = entry#fontSize * emScale / phScale;
 
-        // フォントの正式メトリクスを取得（hhea テーブル: ascent/descent/lineGap）
-        // em スケールで算出（Godot/FreeType 互換）
+        // フォントの正式メトリクスを取得（hhea: ascent/descent/lineGap, em スケール）
         let metricStack = MemoryStack.stackPush();
         let ascentBuf = metricStack.mallocInt(1);
         let descentBuf = metricStack.mallocInt(1);
@@ -510,11 +552,50 @@ mod LwjglLayer {
         discard MemoryStack.stackPop();
         fontInfo.free();
 
-        // em 補正済みサイズでフォントを焼き込む
+        // ベイク対象レンジ: ASCII (95) + ひらがな (96) + カタカナ (96) + 個別漢字
+        let kanji      = kanjiCodepoints();
+        let kanjiCount = List.length(kanji);
+        let rangesSpec: List[BakeRange] =
+            { firstCp = 0x20,   count = 95,         cps = Nil   } ::    // ASCII 0x20-0x7E
+            { firstCp = 0x3040, count = 96,         cps = Nil   } ::    // ひらがな
+            { firstCp = 0x30A0, count = 96,         cps = Nil   } ::    // カタカナ
+            { firstCp = 0,      count = kanjiCount, cps = kanji } ::    // 漢字（個別）
+            Nil;
+        let numRanges = List.length(rangesSpec);
+
+        // 各レンジ用 chardata と漢字 cp の IntBuffer を確保
+        let cdataList = List.map(r -> STBTTPackedchar.malloc(r#count), rangesSpec);
+        let kanjiBuf  = BufferUtils.createIntBuffer(Int32.max(1, kanjiCount));
+        List.forEach(cp -> { discard kanjiBuf.put(cp); () }, kanji);
+        discard kanjiBuf.flip();
+
+        // STBTTPackRange を numRanges 個確保し、各レンジを設定
+        let ranges = STBTTPackRange.calloc(numRanges);
+        let specsWithCdata = List.zip(rangesSpec, cdataList);
+        let specsIndexed   = List.zip(List.range(0, numRanges), specsWithCdata);
+        List.forEach(entry2 -> {
+            let (i, pair) = entry2;
+            let (spec, cdata) = pair;
+            discard ranges.position(i);
+            discard ranges.font_size(f32(bakeSize));
+            discard ranges.first_unicode_codepoint_in_range(spec#firstCp);
+            discard ranges.num_chars(spec#count);
+            discard ranges.chardata_for_range(cdata);
+            // firstCp = 0 の場合は array_of_unicode_codepoints を使う
+            if (spec#firstCp == 0) {
+                discard ranges.array_of_unicode_codepoints(kanjiBuf)
+            } else ()
+        }, specsIndexed);
+        discard ranges.position(0);
+
+        // pack
         discard fontBuffer.position(0);
-        let cdata = STBTTBakedChar.malloc(charCount);
         let bitmap = BufferUtils.createByteBuffer(bitmapSize * bitmapSize);
-        discard STBTruetype.stbtt_BakeFontBitmap(fontBuffer, f32(bakeSize), bitmap, bitmapSize, bitmapSize, firstChar, cdata);
+        let pc = STBTTPackContext.malloc();
+        discard STBTruetype.stbtt_PackBegin(pc, bitmap, bitmapSize, bitmapSize, 0, 1, MemoryUtil.NULL);
+        discard STBTruetype.stbtt_PackFontRanges(pc, fontBuffer, 0, ranges);
+        STBTruetype.stbtt_PackEnd(pc);
+        pc.free();
 
         // GL_RED テクスチャとしてアップロード + swizzle で RGBA 化
         discard bitmap.position(0);
@@ -531,34 +612,27 @@ mod LwjglLayer {
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL33.GL_TEXTURE_SWIZZLE_B, GL11.GL_ONE);
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL33.GL_TEXTURE_SWIZZLE_A, GL11.GL_RED);
 
-        // グリフメトリクスを構築（静的アクセサで各フィールドを取得）
-        // グリフは bakeSize で焼かれているが、atlas#fontSize = entry#fontSize (em ベース)
-        // → Label2D の scale = 1.0 でそのまま em ベースの表示サイズになる
-        let bitmapSizeF = Int32.toFloat64(bitmapSize);
-        let baseAddr = cdata.address();
-        let structSize = 20i64;   // STBTTBakedChar: 4 shorts (8B) + 3 floats (12B) = 20B
-        let glyphs = List.range(0, charCount) |> List.foldLeft((acc, i) -> {
-            let cp = firstChar + i;
-            let addr = baseAddr + Int32.toInt64(i) * structSize;
-            let x0 = Int32.toFloat64(Int16.toInt32(STBTTBakedChar.nx0(addr)));
-            let y0 = Int32.toFloat64(Int16.toInt32(STBTTBakedChar.ny0(addr)));
-            let x1 = Int32.toFloat64(Int16.toInt32(STBTTBakedChar.nx1(addr)));
-            let y1 = Int32.toFloat64(Int16.toInt32(STBTTBakedChar.ny1(addr)));
-            let gm: TextLayout.GlyphMetrics = {
-                xOff = Float32.toFloat64(STBTTBakedChar.nxoff(addr)),
-                yOff = Float32.toFloat64(STBTTBakedChar.nyoff(addr)),
-                glyphW = x1 - x0,
-                glyphH = y1 - y0,
-                advance = Float32.toFloat64(STBTTBakedChar.nxadvance(addr)),
-                s0 = x0 / bitmapSizeF,
-                t0 = y0 / bitmapSizeF,
-                s1 = x1 / bitmapSizeF,
-                t1 = y1 / bitmapSizeF
-            };
-            Map.insert(cp, gm, acc)
-        }, Map.empty());
+        // グリフメトリクスを Map に詰める。STBTTPackedchar は 28 byte (4 shorts + 5 floats)
+        let structSize = 28i64;
+        let glyphs = List.foldLeft((acc, pair) -> {
+            let (spec, cdata) = pair;
+            let baseAddr = cdata.address();
+            let count = spec#count;
+            // 連続レンジか配列レンジかで cp の取り出し方が変わる
+            let cpAt = if (spec#firstCp == 0)
+                          (i -> Option.getWithDefault(0, List.nth(i, spec#cps)))
+                      else
+                          (i -> spec#firstCp + i);
+            List.range(0, count) |> List.foldLeft((acc2, i) -> {
+                let addr = baseAddr + Int32.toInt64(i) * structSize;
+                let gm = packedCharMetrics(addr, bitmapSizeF);
+                Map.insert(cpAt(i), gm, acc2)
+            }, acc)
+        }, Map.empty(), specsWithCdata);
 
-        cdata.free();
+        // 後始末
+        List.forEach(cd -> cd.free(), cdataList);
+        ranges.free();
 
         let texName = "font_${entry#name}";
         let texInfo: GameEngine.TextureInfo = { id = texId, width = bitmapSizeF, height = bitmapSizeF };

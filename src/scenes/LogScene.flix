@@ -38,8 +38,8 @@ mod LogScene {
     def maxLinesDefault(): Int32 = 5
     /// fontManifest で登録した name と一致させる
     def fontName(): String = "ui"
-    /// 論理 px のフォントサイズ。BestTen-DOT を NEAREST で縮小描画するので、
-    /// 4〜5 px ぐらいまで小さくしてもピクセルが鋭く読める
+    /// 論理 px のフォントサイズ。fontManifest のベイクサイズ (16) と整数比 0.25 で
+    /// 縮小し、ベイクの細部情報を活かしつつコンパクトに表示する
     def fontSize(): Float64 = 4.0
     /// 行高（論理 px）。fontSize より少し広めに取り、ascent/descent ぶんの余裕を確保する
     def lineHeight(): Float64 = 5.0
@@ -49,9 +49,8 @@ mod LogScene {
     def panelHeight(): Float64 = 28.0
     /// 背景色（黒）
     def bgColor(): Color = {r = 0.0f32, g = 0.0f32, b = 0.0f32}
-    /// 背景の不透明度。半透明にすると下のマップ色が透けて文字の見え方が
-    /// 行ごとに変わってしまうため、完全不透明にする
-    def bgAlpha(): Float32 = 1.0f32
+    /// 背景の不透明度（半透明黒）
+    def bgAlpha(): Float32 = 0.6f32
     /// CanvasLayer のレイヤー番号。盤面より前面に出す
     def drawLayer(): Int32 = 1
 

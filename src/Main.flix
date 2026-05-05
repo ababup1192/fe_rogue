@@ -17,7 +17,7 @@ def main(): Unit \ {IO, Chan, NonDet} =
                                      path = "sprites/move_tile.png",
                                      hasAlpha = true } :: Nil,
             fontManifest = { name = "ui", path = "fonts/BestTen-DOT.otf",
-                              fontSize = 12.0 } :: Nil,
+                              fontSize = 16.0 } :: Nil,
             soundManifest = Nil,
             clearColor = {r = 0.2f32, g = 0.2f32, b = 0.2f32},
             maxDeltaTime = 0.05

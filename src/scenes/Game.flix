@@ -39,13 +39,12 @@ instance InputEvent.InputHandler[NodeTag] {
                         or key == GameEngine.Key.Enter;
         if (isConfirm and not Tween.Scheduler.isActive(PlayerScene.playerPath())) {
             // 敵ターン開始 → 敵攻撃（固定文字列の仮実装）→ ターン終了 → 次のプレイヤーターン
-            // を 1 フレーム内に連続発火する。実 enemy ロジック・実ダメージ計算は別タスク。
-            // フォントアトラスが ASCII 範囲しか持たないため当面は英語表記で運用する
-            GameLogger.GameLogger.enemyLog("Enemy Turn");
-            GameLogger.GameLogger.enemyLog("Enemy attacks Player for 3 dmg");
+            // を 1 フレーム内に連続発火する。実 enemy ロジック・実ダメージ計算は別タスク
+            GameLogger.GameLogger.enemyLog("敵のターン");
+            GameLogger.GameLogger.enemyLog("敵の攻撃 味方に3ダメージ");
             GameLogger.GameLogger.endTurn();
             let next = MoveRangeScene.refresh(scene);
-            GameLogger.GameLogger.playerLog("Player Turn");
+            GameLogger.GameLogger.playerLog("味方のターン");
             next
         }
         else scene
@@ -77,7 +76,7 @@ mod Game {
                     |> PlayerScene.add
                     |> MoveRangeScene.add
                     |> LogScene.add;
-                GameLogger.GameLogger.playerLog("Player Turn");
+                GameLogger.GameLogger.playerLog("T1 味方のターン");
                 gameLoop(sceneRef, scene)
             } with Editor.withState(rc)
               with Tween.withScheduler(rc)   // tweensRef は内部に隠蔽
