@@ -1,8 +1,9 @@
 /// MapScene — ダンジョンマップ（TileMapLayer）を Scene に追加する
 ///
-/// シーン構造とプロパティ（LDTK パス・タイルセットテクスチャ名等）は
-/// MapScene.scene.json で管理し、SceneLoader が TileMapLayer ビルダーから
-/// LDTKLoader を呼んで `.ldtkl` を読み込む。
+/// 複数の LDTK モジュール（部屋・通路）を `DungeonComposer.compose` でマージし、
+/// 1 枚の TileMapLayer としてシーンに登録する。第一歩として
+/// `Level_0 + Pathway_1 + Level_1` を横一直線（Overlap 配置）で連結する。
+///
 /// 衝突セルは TileMapLayer 内部に格納され、PhysicsStep / RayCast2D / CharacterBody2D の
 /// 衝突クエリが透過的に利用する（PlayerScene 等は内部実装を知らない）。
 ///
@@ -29,14 +30,37 @@ mod MapScene {
     def name(): String = "DungeonLevel0"
     pub def mapPath(): NodePath = name() :: Nil
 
-    def sceneJsonPath(): String = "src/scenes/MapScene.scene.json"
+    /// 全モジュールが共有するタイルセットのテクスチャ名
+    def textureName(): String = "inca_tileset"
+
+    /// 第一歩のダンジョン構成: Level_0 + Pathway_1 + Level_1 の横連結（Overlap 配置）。
+    ///   Level_0(0,0)   cols 0..12,  右ドア (12,6)
+    ///   Pathway_1(8,0) cols 8..20,  左ドア (12,6) 右ドア (16,6)
+    ///   Level_1(16,0)  cols 16..28, 左ドア (16,6)
+    /// Door セル (12,6) と (16,6) は両モジュールが重なる位置で、
+    /// openDoors に含めることで壁から床に書き換える。
+    /// Level_0/1 の上下ドア (6,0)/(6,12) は openDoors に含めないので壁のまま残る。
+    def modules(): List[DungeonComposer.ModuleSpec] =
+        ({ ldtkPath = "title_map/World_Level_0.ldtkl",
+            offsetGrid = ({x = 0,  y = 0}: Vec2.Vec2i) }: DungeonComposer.ModuleSpec) ::
+        ({ ldtkPath = "title_map/World_Pathway_1.ldtkl",
+            offsetGrid = ({x = 8,  y = 0}: Vec2.Vec2i) }: DungeonComposer.ModuleSpec) ::
+        ({ ldtkPath = "title_map/World_Level_1.ldtkl",
+            offsetGrid = ({x = 16, y = 0}: Vec2.Vec2i) }: DungeonComposer.ModuleSpec) ::
+        Nil
+
+    def openDoors(): List[Vec2.Vec2i] =
+        ({x = 12, y = 6}: Vec2.Vec2i) ::
+        ({x = 16, y = 6}: Vec2.Vec2i) ::
+        Nil
 
     // (C) 構築
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead} =
-        SceneLoader.loadScene(sceneJsonPath(),
-                              SceneLoader.constTagParser(NodeTag.NoTag),
-                              scene)
+        let layer = DungeonComposer.compose(textureName(), modules(), openDoors());
+        Scene.addNode(name(),
+                       EngineNode.TileMapLayerWithState(layer, NodeTag.NoTag),
+                       scene)
 
     // ────────────────────────────────────────────────────────
     // (D) MapQuery effect の実体
