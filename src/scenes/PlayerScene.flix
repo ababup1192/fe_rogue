@@ -66,14 +66,20 @@ mod PlayerScene {
     /// 目標グリッドへの移動を開始する。**壁判定は呼び出し側（BoardLogic）が済ませている前提**で、
     /// PlayerScene 自身は衝突判定を考えない。
     ///
-    /// gridPos を即更新（論理位置）し、`Tween.Scheduler.tweenPosition` で
-    /// 見た目の補間を engine に委ねる（Godot の `tween.tween_property(self, "position", ...)` 同等）。
-    pub def moveTo(map: MapSnapshot, target: Vec2.Vec2i, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ Tween.Scheduler =
+    /// gridPos を target に更新した Data と、 そのままの body を返す。
+    /// 同時に `Tween.Scheduler.tweenPosition` で見た目の補間を engine に委ねる
+    /// （Godot の `tween.tween_property(self, "position", ...)` 同等）。
+    /// scene は `startWorld` を読むだけで変換しない。 戻り値の (body, data) を
+    /// 呼び出し側が `EngineNode.Body2DWithState(body, NodeTag.Player(data))` に
+    /// 組み立てて scene に書き戻す責務を持つ。
+    pub def moveTo(map: MapSnapshot, target: Vec2.Vec2i,
+                    body: CharacterBody2D, _data: Data,
+                    scene: Scene[NodeTag]): (CharacterBody2D, Data)
+                    \ Tween.Scheduler =
         let targetWorld = map#gridToWorld(target);
         let startWorld = Scene.globalPositionAt(playerPath(), scene);
         Tween.tweenPosition(playerPath(), startWorld, targetWorld, slideDuration());
-        scene |> mapPlayer((body, _data) -> (body, {gridPos = target}))
+        (body, {gridPos = target})
 
     /// プレイヤーが現在 tween 中（次の入力を受け付けない状態）か。
     /// physicsProcess は連打や長押しでもこの間は moveTo を発火しない。
@@ -92,28 +98,18 @@ mod PlayerScene {
                            (EngineNode[NodeTag], Scene[NodeTag])
                            \ {GameEngine.Game, BoardQuery, Tween.Scheduler} =
         match node {
-            case EngineNode.Body2DWithState(_, NodeTag.Player(_)) =>
+            case EngineNode.Body2DWithState(body, NodeTag.Player(data)) =>
                 if (isMoving()) (node, scene)
                 else
-                    match readHeldDirection() {
-                        case None    => (node, scene)
-                        case Some(d) =>
-                            let board = BoardQuery.board();
-                            match BoardLogic.tryMove(board, d) {
-                                case None         => (node, scene)
-                                case Some(target) =>
-                                    // moveTo は scene 内の Player ノードの gridPos を更新するが、
-                                    // Scene.foldNodes は f が返した (newEn, s1) のうち newEn で
-                                    // path 位置を上書きするため、戻り値の node も更新後の scene
-                                    // から取り直さないと gridPos が古い値に巻き戻る。
-                                    let nextScene = moveTo(board#map, target, scene);
-                                    let nextNode = match Scene.getEngineNode(playerPath(), nextScene) {
-                                        case Some(en) => en
-                                        case None     => node
-                                    };
-                                    (nextNode, nextScene)
-                            }
-                    }
+                    let board = BoardQuery.board();
+                    let movement = forM (
+                        dir    <- readHeldDirection();
+                        target <- BoardLogic.tryMove(board, dir)
+                    ) yield {
+                        let (newBody, newData) = moveTo(board#map, target, body, data, scene);
+                        (EngineNode.Body2DWithState(newBody, NodeTag.Player(newData)), scene)
+                    };
+                    Option.getWithDefault((node, scene), movement)
             case _ => (node, scene)
         }
 

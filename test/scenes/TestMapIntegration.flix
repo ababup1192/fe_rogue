@@ -244,6 +244,21 @@ mod TestMapIntegration {
     def playerWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
         Scene.globalPositionAt(PlayerScene.playerPath(), scene)
 
+    /// scene 内 Player の (body, data) を moveTo に渡し、 戻り値で scene を更新する。
+    /// 直接 PlayerScene.moveTo を呼ぶと (body, data) の取り出し / scene 書き戻しが
+    /// 各テストに散らばるため、 1 か所に閉じ込める薄いラッパ。
+    def applyMove(map: MapSnapshot, target: Vec2.Vec2i, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ Tween.Scheduler =
+        match Scene.getEngineNode(PlayerScene.playerPath(), scene) {
+            case Some(EngineNode.Body2DWithState(body, NodeTag.Player(data))) =>
+                let (newBody, newData) =
+                    PlayerScene.moveTo(map, target, body, data, scene);
+                Scene.setEngineNode(PlayerScene.playerPath(),
+                    EngineNode.Body2DWithState(newBody, NodeTag.Player(newData)),
+                    scene)
+            case _ => bug!("applyMove: expected Player at playerPath")
+        }
+
     /// 4 方向それぞれの単発 moveTo を end-to-end で検証する。
     /// moveTo + tickAll(1.0) で必ず target world にスナップする
     /// （slideDuration = 16/120 ≈ 0.133 秒なので 1.0 秒で確実に完了）。
@@ -259,13 +274,13 @@ mod TestMapIntegration {
             let snapshot = realMapSnapshot();
             let result = run {
                 // right
-                let scene1 = PlayerScene.moveTo(snapshot, {x = 6, y = 5}, emptyPlayerScene());
+                let scene1 = applyMove(snapshot, {x = 6, y = 5}, emptyPlayerScene());
                 let posR = playerWorldPos(Tween.tickAll(1.0, scene1));
                 // up
-                let scene2 = PlayerScene.moveTo(snapshot, {x = 5, y = 4}, emptyPlayerScene());
+                let scene2 = applyMove(snapshot, {x = 5, y = 4}, emptyPlayerScene());
                 let posU = playerWorldPos(Tween.tickAll(1.0, scene2));
                 // left
-                let scene3 = PlayerScene.moveTo(snapshot, {x = 4, y = 5}, emptyPlayerScene());
+                let scene3 = applyMove(snapshot, {x = 4, y = 5}, emptyPlayerScene());
                 let posL = playerWorldPos(Tween.tickAll(1.0, scene3));
                 (posR#x, posR#y, posU#x, posU#y, posL#x, posL#y)
             } with Tween.withScheduler(rc);
@@ -310,7 +325,7 @@ mod TestMapIntegration {
                 match BoardLogic.tryMove(board, dir) {
                     case None         => (steps, scene)   // 壁で停止
                     case Some(target) =>
-                        let scene1 = PlayerScene.moveTo(snapshot, target, scene);
+                        let scene1 = applyMove(snapshot, target, scene);
                         let scene2 = Tween.tickAll(1.0, scene1);
                         loop(steps + 1, scene2)
                 }
@@ -387,7 +402,7 @@ mod TestMapIntegration {
                     case Some(t) => t
                     case None    => bug!("(1,5) up should be open")
                 };
-                let scene1 = PlayerScene.moveTo(snapshot, target, scene0);
+                let scene1 = applyMove(snapshot, target, scene0);
                 let scene2 = Tween.tickAll(1.0, scene1);
                 let grid = PlayerScene.getGridPos(scene2);
                 let world = playerWorldPos(scene2);

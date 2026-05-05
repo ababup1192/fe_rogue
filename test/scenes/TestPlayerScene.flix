@@ -66,6 +66,21 @@ mod TestPlayerScene {
     def playerWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
         Scene.globalPositionAt(PlayerScene.playerPath(), scene)
 
+    /// scene 内 Player の (body, data) を moveTo に渡し、 戻り値で scene を更新する。
+    /// 直接 PlayerScene.moveTo を呼ぶと (body, data) の取り出し / scene 書き戻しが
+    /// 各テストに散らばるため、 1 か所に閉じ込める薄いラッパ。
+    def applyMove(map: MapSnapshot, target: Vec2.Vec2i, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ Tween.Scheduler =
+        match Scene.getEngineNode(PlayerScene.playerPath(), scene) {
+            case Some(EngineNode.Body2DWithState(body, NodeTag.Player(data))) =>
+                let (newBody, newData) =
+                    PlayerScene.moveTo(map, target, body, data, scene);
+                Scene.setEngineNode(PlayerScene.playerPath(),
+                    EngineNode.Body2DWithState(newBody, NodeTag.Player(newData)),
+                    scene)
+            case _ => bug!("applyMove: expected Player at playerPath")
+        }
+
     // ========================================================================
     // moveTo — gridPos を即更新、tween は engine に委譲
     // ========================================================================
@@ -77,7 +92,7 @@ mod TestPlayerScene {
         let target: Vec2.Vec2i = {x = 6, y = 5};
         let initialPos = testGridToWorld(PlayerScene.initialGrid());
         let after = withNoopTween(() ->
-            PlayerScene.moveTo(testSnapshot(), target, emptyPlayerScene()));
+            applyMove(testSnapshot(), target, emptyPlayerScene()));
         let data = PlayerScene.getPlayerData(after);
         let pos = playerWorldPos(after);
         Assert.assertEq(
@@ -99,7 +114,7 @@ mod TestPlayerScene {
             let initialWorld = testGridToWorld(PlayerScene.initialGrid());
             let targetWorld = testGridToWorld(target);
             let result = run {
-                let scene1 = PlayerScene.moveTo(testSnapshot(), target, emptyPlayerScene());
+                let scene1 = applyMove(testSnapshot(), target, emptyPlayerScene());
                 let posBefore = playerWorldPos(scene1);
                 let activeBefore = PlayerScene.isMoving();
                 let scene2 = Tween.tickAll(1.0, scene1);
