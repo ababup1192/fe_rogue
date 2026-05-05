@@ -73,34 +73,22 @@ mod DungeonComposer {
         let tileSet  = firstRaw#tileSet;
         let tileSize = firstRaw#tileSize;
 
-        // 2. modules の順に「先勝ち」マージする。
-        //    - 既に同じ px 位置にタイルを置いたモジュールがあれば、後続のそこにあるタイルは捨てる。
-        //    - 既に同じセルに collision がある場合も、後続の collision は捨てる。
-        //    モジュール内部の重複（同 px に flip 違いを 2 枚重ねる）は維持する。
-        let (mergedTiles, mergedCollisions) =
+        // 2. modules の順に collisionCells を「先勝ち」でマージする
+        //    （同じセルに既に collision があれば後続を捨てる）。
+        //    タイルは auto-tile で完全再生成するためここではマージ不要。
+        let mergedCollisions =
             List.foldLeft(acc -> raw -> {
-                let (accTiles, accCells) = acc;
-                let usedPxs: List[Vec2.Vec2] = List.map(t -> t#px, accTiles);
-                let newTiles = List.filter(
-                    tile -> not List.exists(p -> vec2Eq(p, tile#px), usedPxs),
-                    raw#tiles);
                 let newCells = List.filter(
-                    cell -> not List.exists(c -> vec2Eq(c, cell), accCells),
+                    cell -> not List.exists(c -> vec2Eq(c, cell), acc),
                     raw#collisionCells);
-                (List.append(accTiles, newTiles), List.append(accCells, newCells))
-            }, (Nil, Nil), placed);
+                List.append(acc, newCells)
+            }, Nil, placed);
 
         // 3. openDoors（ワールド座標）に該当する壁を取り除く
         let doorCellsF: List[Vec2.Vec2] = List.map(c -> Vec2.fromI(c), openDoors);
-        let doorPxs:    List[Vec2.Vec2] = List.map(c -> Vec2.mul(Vec2.fromI(c), tileSize),
-                                                    openDoors);
-
         let openedCollisions =
             List.filter(cell -> not (doorCellsF |> List.exists(d -> vec2Eq(d, cell))),
                         mergedCollisions);
-        let openedTiles =
-            List.filter(tile -> not (doorPxs |> List.exists(p -> vec2Eq(p, tile#px))),
-                        mergedTiles);
 
         // 4. 全体の grid サイズ（モジュール bounding box）
         let mergedGridSize = boundingBoxGridSize(modules, placed);
@@ -112,16 +100,51 @@ mod DungeonComposer {
         let voidWalls = collectVoidCells(mergedGridSize, coveredRects);
         let withVoid = List.append(openedCollisions, voidWalls);
 
-        // 6. GPU インスタンスを 1 回だけアップロード
-        let instances = LDTKLoader.buildTileInstances(openedTiles, tileSet, tileSize);
+        // 6. auto-tile: マージ後の merged intGrid に LDTK の auto-rule を再適用して
+        //    タイルを再生成する。各モジュールが独立に焼いた壁スプライトを破棄し、
+        //    境界の neighborhood に応じた一貫したタイル並びにする。
+        //    intGrid 上は void セルも壁(=1)扱い（OOB 値と同じ）として周縁の判定を正しく
+        //    保つが、出力タイルは「いずれかのモジュールが content として持つ cell」だけに
+        //    限定する（void 領域に巨大な wall-fill ブロックが出来るのを防ぐ）。
+        let ruleSet = LDTKRules.loadRules("title_map/FE.ldtk");
+        let intGrid = buildIntGridFn(withVoid);
+        let tex = textureSize(tileSet);
+        let allAutoTiles = LDTKRules.applyRules(ruleSet, intGrid, mergedGridSize, tex);
+        // content rect を 1 cell 外側に拡張した範囲を「描画対象」とする。
+        // これでモジュール周縁の void wall（外周フレーム）が描画される一方、
+        // 2 cell 以上離れた deep void は黒のまま残る。
+        let paddedRects = List.map(expandRect, coveredRects);
+        let autoTiles = List.filter(tile -> {
+            let cellX = Float64.tryToInt32(tile#px#x / tileSize) |> Option.getWithDefault(0i32);
+            let cellY = Float64.tryToInt32(tile#px#y / tileSize) |> Option.getWithDefault(0i32);
+            anyContains(paddedRects, ({x = cellX, y = cellY}: Vec2.Vec2i))
+        }, allAutoTiles);
+
+        // 7. GPU インスタンスを 1 回だけアップロード
+        let instances = LDTKLoader.buildTileInstances(autoTiles, tileSet, tileSize);
         let (tileVaoId, tileCount) = GameEngine.Game.initTileBuffer(instances);
 
         TileMapLayer.make({
             tileSet        = tileSet,
-            tiles          = openedTiles,
+            tiles          = autoTiles,
             collisionCells = withVoid,
             gridSize       = mergedGridSize
         }) |> TileMapLayer.withGpuResources(tileVaoId, tileCount)
+
+    /// merged collisionCells から `(x, y) -> 1 if wall else 0` の関数を作る。
+    /// この関数は範囲外を呼び出されないことを前提（範囲外処理は LDTKRules が行う）。
+    def buildIntGridFn(collisions: List[Vec2.Vec2]): (Int32, Int32) -> Int32 =
+        (x, y) -> {
+            let cx = Int32.toFloat64(x);
+            let cy = Int32.toFloat64(y);
+            if (List.exists(c -> c#x == cx and c#y == cy, collisions)) 1i32
+            else 0i32
+        }
+
+    /// TileSet から atlas のピクセル寸法を取り出す。
+    def textureSize(tileSet: TileSet): { width = Float64, height = Float64 } =
+        { width  = tileSet#atlasSource#texWidth,
+          height = tileSet#atlasSource#texHeight }
 
     /// 各モジュールの「content bbox」（= 衝突セルのワールド座標 bbox）一覧を返す。
     /// 衝突セルが空なモジュールは bbox が空なので除外（影響しない）。
@@ -168,6 +191,13 @@ mod DungeonComposer {
             cell#x >= mn#x and cell#x < mx#x and
             cell#y >= mn#y and cell#y < mx#y
         }, rects)
+
+    /// rect を上下左右に 1 cell 拡張する。
+    /// auto-tile 描画対象の判定で「content の外周 1 cell 分」を含めるために使う。
+    def expandRect(r: (Vec2.Vec2i, Vec2.Vec2i)): (Vec2.Vec2i, Vec2.Vec2i) =
+        let (mn, mx) = r;
+        (({x = mn#x - 1, y = mn#y - 1}: Vec2.Vec2i),
+         ({x = mx#x + 1, y = mx#y + 1}: Vec2.Vec2i))
 
     /// Vec2 (Float64) → Vec2i (Int32) 変換（座標は整数 cell として保存されている前提）。
     def vec2ToI(v: Vec2.Vec2): Vec2.Vec2i =
