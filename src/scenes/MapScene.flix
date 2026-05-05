@@ -33,31 +33,41 @@ mod MapScene {
     /// 全モジュールが共有するタイルセットのテクスチャ名
     def textureName(): String = "inca_tileset"
 
-    /// 第一歩のダンジョン構成: Level_0 + Pathway_1 + Level_1 の横連結（Overlap 配置）。
-    ///   Level_0(0,0)   cols 0..12,  右ドア (12,6)
-    ///   Pathway_1(8,0) cols 8..20,  左ドア (12,6) 右ドア (16,6)
-    ///   Level_1(16,0)  cols 16..28, 左ドア (16,6)
-    /// Door セル (12,6) と (16,6) は両モジュールが重なる位置で、
-    /// openDoors に含めることで壁から床に書き換える。
-    /// Level_0/1 の上下ドア (6,0)/(6,12) は openDoors に含めないので壁のまま残る。
-    def modules(): List[DungeonComposer.ModuleSpec] =
-        ({ ldtkPath = "title_map/World_Level_0.ldtkl",
-            offsetGrid = ({x = 0,  y = 0}: Vec2.Vec2i) }: DungeonComposer.ModuleSpec) ::
-        ({ ldtkPath = "title_map/World_Pathway_1.ldtkl",
-            offsetGrid = ({x = 8,  y = 0}: Vec2.Vec2i) }: DungeonComposer.ModuleSpec) ::
-        ({ ldtkPath = "title_map/World_Level_1.ldtkl",
-            offsetGrid = ({x = 16, y = 0}: Vec2.Vec2i) }: DungeonComposer.ModuleSpec) ::
+    /// 第一歩のダンジョン構成: Level_0 + Pathway_1 + Level_1 の横連結（Overlap 配置 + 部屋優先）。
+    /// modulePaths の順番が DungeonComposer の dedup 優先度を決める（先勝ち）。
+    /// 部屋を先・通路を後ろに置くことで Overlap 領域では部屋の壁スプライトが残り、
+    /// 通路の corridor wall は重ならない位置にだけ追加される。
+    /// 各 SideConnection の Door grid 座標は Composer が `doors` 一覧の
+    /// min-x/max-x/min-y/max-y で自動解決し、offsetGrid / openDoors も BFS で導出される。
+    /// 結果として Level_0/1 の上下ドア (Top/Bottom) は連結に含めていないので壁のまま残る。
+    def modulePaths(): List[String] =
+        "title_map/World_Level_0.ldtkl"  ::   // index 0 (anchor / 部屋優先)
+        "title_map/World_Level_1.ldtkl"  ::   // index 1 (部屋優先)
+        "title_map/World_Pathway_1.ldtkl" ::  // index 2 (通路は最後＝先勝ち dedup で部屋が勝つ)
         Nil
 
-    def openDoors(): List[Vec2.Vec2i] =
-        ({x = 12, y = 6}: Vec2.Vec2i) ::
-        ({x = 16, y = 6}: Vec2.Vec2i) ::
+    /// 連結グラフ（Side 指定）:
+    ///   Level_0 (idx 0) Right  ↔  Pathway_1 (idx 2) Left
+    ///   Pathway_1 (idx 2) Right ↔  Level_1 (idx 1) Left
+    def sideConnections(): List[DungeonComposer.SideConnection] =
+        ({ a = ({moduleIndex = 0, side = DungeonComposer.DoorSide.Right}
+                : DungeonComposer.SideRef),
+           b = ({moduleIndex = 2, side = DungeonComposer.DoorSide.Left}
+                : DungeonComposer.SideRef) }
+           : DungeonComposer.SideConnection) ::
+        ({ a = ({moduleIndex = 2, side = DungeonComposer.DoorSide.Right}
+                : DungeonComposer.SideRef),
+           b = ({moduleIndex = 1, side = DungeonComposer.DoorSide.Left}
+                : DungeonComposer.SideRef) }
+           : DungeonComposer.SideConnection) ::
         Nil
 
     // (C) 構築
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead} =
-        let layer = DungeonComposer.compose(textureName(), modules(), openDoors());
+        let layer = DungeonComposer.composeFromSideConnections(textureName(),
+                                                                modulePaths(),
+                                                                sideConnections());
         Scene.addNode(name(),
                        EngineNode.TileMapLayerWithState(layer, NodeTag.NoTag),
                        scene)
