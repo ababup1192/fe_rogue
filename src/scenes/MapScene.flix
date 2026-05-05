@@ -26,6 +26,13 @@ pub type alias MapSnapshot = {
 
 mod MapScene {
 
+    /// MapScene の TileMapLayer ノードに紐づくデータ。
+    /// `anchorOffset` は modulePaths[0] の正規化後 offsetGrid（負 offset 回避のための shift 量と等しい）。
+    /// PlayerScene 等が「anchor 部屋の中央付近」をスポーン位置とするために参照する。
+    pub type alias Data = {
+        anchorOffset = Vec2.Vec2i
+    }
+
     // (B) 定数
     def name(): String = "DungeonLevel0"
     pub def mapPath(): NodePath = name() :: Nil
@@ -33,43 +40,26 @@ mod MapScene {
     /// 全モジュールが共有するタイルセットのテクスチャ名
     def textureName(): String = "inca_tileset"
 
-    /// 第一歩のダンジョン構成: Level_0 + Pathway_1 + Level_1 の横連結（Overlap 配置 + 部屋優先）。
-    /// modulePaths の順番が DungeonComposer の dedup 優先度を決める（先勝ち）。
-    /// 部屋を先・通路を後ろに置くことで Overlap 領域では部屋の壁スプライトが残り、
-    /// 通路の corridor wall は重ならない位置にだけ追加される。
-    /// 各 SideConnection の Door grid 座標は Composer が `doors` 一覧の
-    /// min-x/max-x/min-y/max-y で自動解決し、offsetGrid / openDoors も BFS で導出される。
-    /// 結果として Level_0/1 の上下ドア (Top/Bottom) は連結に含めていないので壁のまま残る。
-    def modulePaths(): List[String] =
-        "title_map/World_Level_0.ldtkl"  ::   // index 0 (anchor / 部屋優先)
-        "title_map/World_Level_1.ldtkl"  ::   // index 1 (部屋優先)
-        "title_map/World_Pathway_1.ldtkl" ::  // index 2 (通路は最後＝先勝ち dedup で部屋が勝つ)
-        Nil
-
-    /// 連結グラフ（Side 指定）:
-    ///   Level_0 (idx 0) Right  ↔  Pathway_1 (idx 2) Left
-    ///   Pathway_1 (idx 2) Right ↔  Level_1 (idx 1) Left
-    def sideConnections(): List[DungeonComposer.SideConnection] =
-        ({ a = ({moduleIndex = 0, side = DungeonComposer.DoorSide.Right}
-                : DungeonComposer.SideRef),
-           b = ({moduleIndex = 2, side = DungeonComposer.DoorSide.Left}
-                : DungeonComposer.SideRef) }
-           : DungeonComposer.SideConnection) ::
-        ({ a = ({moduleIndex = 2, side = DungeonComposer.DoorSide.Right}
-                : DungeonComposer.SideRef),
-           b = ({moduleIndex = 1, side = DungeonComposer.DoorSide.Left}
-                : DungeonComposer.SideRef) }
-           : DungeonComposer.SideConnection) ::
-        Nil
+    /// ランダム生成設定: 部屋数と利用可能な部屋・通路 LDTK プール。
+    /// roomCount を増やすほどダンジョンが大きくなる。配置不能なら部屋数を減らして続行。
+    def generatorConfig(): DungeonGenerator.Config = {
+        roomPaths      = "title_map/World_Level_0.ldtkl" ::
+                         "title_map/World_Level_1.ldtkl" :: Nil,
+        horizontalPath = "title_map/World_Pathway_1.ldtkl",
+        verticalPath   = "title_map/World_Pathway_2.ldtkl",
+        roomCount      = 5
+    }
 
     // (C) 構築
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {GameEngine.Game, Fs.FileRead} =
-        let layer = DungeonComposer.composeFromSideConnections(textureName(),
-                                                                modulePaths(),
-                                                                sideConnections());
+            \ {GameEngine.Game, Fs.FileRead, Math.Random, IO} =
+        let plan = DungeonGenerator.generate(textureName(), generatorConfig());
+        let result = DungeonComposer.composeFromSideConnections(textureName(),
+                                                                 plan#modulePaths,
+                                                                 plan#sideConnections);
+        let mapData: Data = { anchorOffset = result#anchorOffset };
         Scene.addNode(name(),
-                       EngineNode.TileMapLayerWithState(layer, NodeTag.NoTag),
+                       EngineNode.TileMapLayerWithState(result#layer, NodeTag.Map(mapData)),
                        scene)
 
     // ────────────────────────────────────────────────────────
@@ -82,5 +72,13 @@ mod MapScene {
         match Scene.getEngineNode(mapPath(), scene) {
             case Some(EngineNode.TileMapLayerWithState(layer, _)) => layer
             case _ => bug!("MapScene: TileMapLayer not found at ${mapPath()}")
+        }
+
+    /// MapScene.add が記録した anchor の正規化後 offset を取り出す。
+    /// PlayerScene が「anchor 部屋の中央付近」をスポーン位置とするのに使う。
+    pub def getAnchorOffset(scene: Scene[NodeTag]): Vec2.Vec2i =
+        match Scene.getEngineNode(mapPath(), scene) {
+            case Some(EngineNode.TileMapLayerWithState(_, NodeTag.Map(data))) => data#anchorOffset
+            case _ => bug!("MapScene: anchor offset not found at ${mapPath()} (NodeTag.Map missing)")
         }
 }

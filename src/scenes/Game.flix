@@ -1,6 +1,7 @@
 /// シーンノードに紐づくゲーム状態タグ。各 Scene 固有の Data 型を内部に持つ。
 pub enum NodeTag {
     case Player(PlayerScene.Data)
+    case Map(MapScene.Data)
     case NoTag
 }
 
@@ -44,7 +45,8 @@ mod Game {
     pub def windowHi(): Int32 = 624
 
     pub def start(): Unit \ {GameEngine.Game, Fs.FileRead, Fs.FileWrite,
-                              Chan, NonDet, IO, Fs.Glob, Fs.ModificationTime} =
+                              Chan, NonDet, IO, Fs.Glob, Fs.ModificationTime,
+                              Math.Random} =
         region rc {
             // BoardQuery handler が現在のシーンを読むための窓口（毎フレーム gameLoop が更新）
             let sceneRef = Ref.fresh(rc, Scene.empty());
@@ -80,7 +82,7 @@ mod Game {
     def gameLoop(sceneRef: Ref[Scene[NodeTag], r], scene: Scene[NodeTag]):
                  Unit \ {GameEngine.Game, Fs.FileRead, Fs.FileWrite,
                          Editor.EditorState, EditHistory.Rewind,
-                         BoardQuery, Tween.Scheduler, r} =
+                         BoardQuery, Tween.Scheduler, Math.Random, IO, r} =
         if (GameEngine.Game.shouldClose() or
             GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
         else {

@@ -26,4 +26,5 @@ def main(): Unit \ {IO, Chan, NonDet} =
           with Fs.Glob.runWithIO
           with Fs.ModificationTime.runWithFileTime
           with Fs.FileTime.runWithIO
+          with Math.Random.runWithIO
     }

@@ -105,16 +105,74 @@ mod DungeonComposer {
         // 4. 全体の grid サイズ（モジュール bounding box）
         let mergedGridSize = boundingBoxGridSize(modules, placed);
 
-        // 5. GPU インスタンスを 1 回だけアップロード
+        // 5. void-fill: どのモジュールの content にもカバーされていない in-bounds セルを
+        //    強制的に collision に追加する（描画タイルは無し ＝ 真っ黒）。
+        //    pathway の bbox 内空セルや、隣接するモジュール間の隙間を player から不可侵にする。
+        let coveredRects = contentRectsOf(placed);
+        let voidWalls = collectVoidCells(mergedGridSize, coveredRects);
+        let withVoid = List.append(openedCollisions, voidWalls);
+
+        // 6. GPU インスタンスを 1 回だけアップロード
         let instances = LDTKLoader.buildTileInstances(openedTiles, tileSet, tileSize);
         let (tileVaoId, tileCount) = GameEngine.Game.initTileBuffer(instances);
 
         TileMapLayer.make({
             tileSet        = tileSet,
             tiles          = openedTiles,
-            collisionCells = openedCollisions,
+            collisionCells = withVoid,
             gridSize       = mergedGridSize
         }) |> TileMapLayer.withGpuResources(tileVaoId, tileCount)
+
+    /// 各モジュールの「content bbox」（= 衝突セルのワールド座標 bbox）一覧を返す。
+    /// 衝突セルが空なモジュールは bbox が空なので除外（影響しない）。
+    /// 戻り値の rect は (minInclusive, maxExclusive) のペア。
+    def contentRectsOf(placed: List[LDTKLoader.LDTKLevelRaw]): List[(Vec2.Vec2i, Vec2.Vec2i)] =
+        List.filterMap(raw -> {
+            match raw#collisionCells {
+                case Nil => None
+                case head :: rest =>
+                    let initMin: Vec2.Vec2i = vec2ToI(head);
+                    let initMax: Vec2.Vec2i = ({x = initMin#x + 1, y = initMin#y + 1}: Vec2.Vec2i);
+                    let (mn, mx) = List.foldLeft(acc -> cell -> {
+                        let (curMin, curMax) = acc;
+                        let ci = vec2ToI(cell);
+                        let newMin: Vec2.Vec2i =
+                            {x = Int32.min(curMin#x, ci#x),
+                             y = Int32.min(curMin#y, ci#y)};
+                        let newMax: Vec2.Vec2i =
+                            {x = Int32.max(curMax#x, ci#x + 1),
+                             y = Int32.max(curMax#y, ci#y + 1)};
+                        (newMin, newMax)
+                    }, (initMin, initMax), rest);
+                    Some((mn, mx))
+            }
+        }, placed)
+
+    /// gridSize 内の全セルを走査し、どの coveredRect にも入っていないものを返す。
+    def collectVoidCells(gridSize: Vec2.Vec2i,
+                          coveredRects: List[(Vec2.Vec2i, Vec2.Vec2i)]): List[Vec2.Vec2] =
+        let xs = List.range(0, gridSize#x);
+        let ys = List.range(0, gridSize#y);
+        List.flatMap(y ->
+            List.filterMap(x -> {
+                let ci: Vec2.Vec2i = {x = x, y = y};
+                if (anyContains(coveredRects, ci)) None
+                else Some(({x = Int32.toFloat64(x), y = Int32.toFloat64(y)}: Vec2.Vec2))
+            }, xs),
+            ys)
+
+    /// 指定セルがいずれかの rect (minInclusive..maxExclusive) に含まれるか。
+    def anyContains(rects: List[(Vec2.Vec2i, Vec2.Vec2i)], cell: Vec2.Vec2i): Bool =
+        List.exists(r -> {
+            let (mn, mx) = r;
+            cell#x >= mn#x and cell#x < mx#x and
+            cell#y >= mn#y and cell#y < mx#y
+        }, rects)
+
+    /// Vec2 (Float64) → Vec2i (Int32) 変換（座標は整数 cell として保存されている前提）。
+    def vec2ToI(v: Vec2.Vec2): Vec2.Vec2i =
+        {x = Float64.tryToInt32(v#x) |> Option.getWithDefault(0i32),
+         y = Float64.tryToInt32(v#y) |> Option.getWithDefault(0i32)}
 
     /// 1 モジュールをロードして offsetGrid 分だけタイル / 衝突セルを平行移動する。
     /// 戻り値は offset 適用済みの LDTKLevelRaw。
@@ -187,14 +245,24 @@ mod DungeonComposer {
         b = DoorRef
     }
 
+    /// 高レベル API の戻り値。`anchorOffset` は modulePaths[0] の正規化後 offsetGrid。
+    /// プレイヤー初期位置や Camera 注視点など「anchor 部屋の世界座標」を必要とする
+    /// 上流（MapScene 等）が使う。
+    pub type alias ComposeResult = {
+        layer        = TileMapLayer,
+        anchorOffset = Vec2.Vec2i
+    }
+
     /// 連結グラフから offsetGrid と openDoors を自動導出して compose を呼ぶ。
     /// modulePaths[0] をアンカー（offset (0,0)）として固定し、connections を
     /// BFS で辿って各モジュールの offsetGrid を決定する。
+    /// その後、すべての offset の最小値が (0,0) になるよう正規化する
+    /// （Top / Left 方向の連結で発生する負 offset を非負領域に収める）。
     /// modulePaths の順序はそのまま compose に伝わる ＝ 「先勝ち dedup」の優先度。
     /// 部屋を先・通路を後ろに置くと、Overlap 領域で部屋スプライトが残る。
     pub def composeFromConnections(textureName: String,
                                     modulePaths: List[String],
-                                    connections: List[Connection]): TileMapLayer
+                                    connections: List[Connection]): ComposeResult
             \ { GameEngine.Game, Fs.FileRead } =
         let n = List.length(modulePaths);
         if (n == 0) bug!("DungeonComposer: modulePaths must not be empty")
@@ -209,24 +277,40 @@ mod DungeonComposer {
                 modulePaths);
             // 2. 連結整合性の事前検査（早期 bug! で打ち間違いを検出）
             let _ = validateConnections(connections, raws, n);
-            // 3. BFS で各モジュールの offsetGrid を算出
-            let offsets = bfsOffsets(connections);
+            // 3. BFS で各モジュールの offsetGrid を算出（anchor (0,0) 基準）
+            let rawOffsets = bfsOffsets(connections);
             // 4. 孤立モジュール検査（アンカーから到達不能なら bug!）
             let _ = List.forEach(i ->
-                match Map.get(i, offsets) {
+                match Map.get(i, rawOffsets) {
                     case Some(_) => ()
                     case None    => bug!("DungeonComposer: module ${i} is not connected to anchor (modulePaths[0])")
                 },
                 List.range(0, n));
-            // 5. openDoors を構築（connection ごとに a 側の world 座標を集める）
+            // 5. 正規化: 全 offsets の min を (0,0) に揃えるよう一律シフト
+            let minOff   = computeMinOffset(rawOffsets);
+            let shift    = Vec2.subI(Vec2.zeroI(), minOff);
+            let offsets  = shiftOffsets(rawOffsets, shift);
+            let anchorOffset = lookupOffset(0, offsets);
+            // 6. openDoors を構築（正規化後 offsets で）
             let openDoors = List.map(c -> {
                 let off = lookupOffset(c#a#moduleIndex, offsets);
                 Vec2.addI(off, c#a#grid)
             }, connections);
-            // 6. ModuleSpec リストを modulePaths 順に組み立てる（順序＝優先度）
+            // 7. ModuleSpec リストを modulePaths 順に組み立てる
             let modules = buildModuleSpecs(modulePaths, offsets);
-            // 7. 既存 compose に委譲
-            compose(textureName, modules, openDoors)
+            // 8. 既存 compose に委譲
+            let layer = compose(textureName, modules, openDoors);
+            { layer = layer, anchorOffset = anchorOffset }
+
+    /// offsets の値の min(x, y) を求める。各次元の最小は別々のモジュールから来ても良い。
+    def computeMinOffset(offsets: Map[Int32, Vec2.Vec2i]): Vec2.Vec2i =
+        Map.foldLeft(acc -> off -> {
+            {x = Int32.min(acc#x, off#x), y = Int32.min(acc#y, off#y)}
+        }, ({x = 0i32, y = 0i32}: Vec2.Vec2i), offsets)
+
+    /// 全 offsets に shift を加える（要素を Vec2.addI(shift, off) に置換）。
+    def shiftOffsets(offsets: Map[Int32, Vec2.Vec2i], shift: Vec2.Vec2i): Map[Int32, Vec2.Vec2i] =
+        Map.map(off -> Vec2.addI(shift, off), offsets)
 
     /// offsets から特定モジュールの offset を取り出す。未配置なら bug!。
     def lookupOffset(i: Int32, offsets: Map[Int32, Vec2.Vec2i]): Vec2.Vec2i =
@@ -328,6 +412,25 @@ mod DungeonComposer {
         case Bottom
     }
 
+    /// 反対側の辺を返す（Right ↔ Left, Top ↔ Bottom）。通路の両端の連結に使う。
+    pub def oppositeSide(side: DoorSide): DoorSide = match side {
+        case DoorSide.Left   => DoorSide.Right
+        case DoorSide.Right  => DoorSide.Left
+        case DoorSide.Top    => DoorSide.Bottom
+        case DoorSide.Bottom => DoorSide.Top
+    }
+
+    /// 左右辺かどうか。横通路（Pathway_1）と縦通路（Pathway_2）の選択に使う。
+    pub def isHorizontalSide(side: DoorSide): Bool = match side {
+        case DoorSide.Left  => true
+        case DoorSide.Right => true
+        case _              => false
+    }
+
+    /// 4 辺の全列挙。生成器が「空き辺」を走査するときに使う。
+    pub def allSides(): List[DoorSide] =
+        DoorSide.Left :: DoorSide.Right :: DoorSide.Top :: DoorSide.Bottom :: Nil
+
     /// Side 指定で Door を参照する。grid 座標は `composeFromSideConnections` が
     /// 内部で解決する。
     pub type alias SideRef = {
@@ -348,7 +451,7 @@ mod DungeonComposer {
     /// （現在の LDTK 構成では 1 辺 1 Door なので一意になる）。
     pub def composeFromSideConnections(textureName: String,
                                         modulePaths: List[String],
-                                        sideConnections: List[SideConnection]): TileMapLayer
+                                        sideConnections: List[SideConnection]): ComposeResult
             \ { GameEngine.Game, Fs.FileRead } =
         let n = List.length(modulePaths);
         if (n == 0) bug!("DungeonComposer: modulePaths must not be empty")
@@ -397,5 +500,19 @@ mod DungeonComposer {
                     case DoorSide.Bottom => (a, b) -> if (b#y > a#y) b else a
                 };
                 List.foldLeft(acc -> d -> pick(acc, d), head, rest)
+        }
+
+    /// Generator 等の外部利用向けに公開した版。Doors 空なら None。
+    pub def doorBySide(side: DoorSide, doors: List[Vec2.Vec2i]): Option[Vec2.Vec2i] =
+        match doors {
+            case Nil => None
+            case head :: rest =>
+                let pick = match side {
+                    case DoorSide.Left   => (a, b) -> if (b#x < a#x) b else a
+                    case DoorSide.Right  => (a, b) -> if (b#x > a#x) b else a
+                    case DoorSide.Top    => (a, b) -> if (b#y < a#y) b else a
+                    case DoorSide.Bottom => (a, b) -> if (b#y > a#y) b else a
+                };
+                Some(List.foldLeft(acc -> d -> pick(acc, d), head, rest))
         }
 }

@@ -39,9 +39,12 @@ mod PlayerScene {
 
     def sceneJsonPath(): String = "src/scenes/PlayerScene.scene.json"
 
-    /// プレイヤーの初期グリッド座標。PlayerScene.scene.json の `pos` と
-    /// 整合させる必要がある（タイル中心座標で 16 倍 + 8 のオフセット）。
+    /// anchor 部屋内でのスポーン相対座標（5, 5 = 13×13 部屋の中心付近）。
+    /// 実際のワールドグリッドは MapScene.getAnchorOffset(scene) と加算して決定する。
     pub def initialGrid(): Vec2.Vec2i = {x = 5, y = 5}
+
+    /// LDTK のタイルサイズ（ピクセル）。Marker2D の position 計算に使う。
+    def tileSize(): Float64 = 16.0
 
     /// 1 マス分の slide にかかる時間（秒）。Godot の tween_property の duration 相当
     def slideDuration(): Float64 = 16.0 / 120.0   // ≈ 0.133 秒
@@ -50,19 +53,33 @@ mod PlayerScene {
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
-    def initialData(): Data = { gridPos = initialGrid() }
-
     /// PlayerScene.scene.json から Player / Sprite / Camera を読み込んで Scene に追加する。
-    /// JSON にはノード構造とプロパティのみが入っており、NodeTag のデータは
-    /// ここで Scene.setState によって注入する。
-    /// 全ノードは constTagParser により NoTag でロードし、Player ノードだけ
-    /// ここで NodeTag.Player(initialData()) に差し替える。
+    /// JSON のノード構造を読んだ後、MapScene が記録した anchor offset を加算して
+    /// プレイヤーの Marker2D position と NodeTag.Player(Data).gridPos を spawnGrid に揃える。
+    /// MapScene.add 済み（NodeTag.Map が登録済み）であることが前提。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead} =
+        let anchor = MapScene.getAnchorOffset(scene);
+        let spawnGrid = Vec2.addI(anchor, initialGrid());
         SceneLoader.loadScene(sceneJsonPath(),
                               SceneLoader.constTagParser(NodeTag.NoTag),
                               scene)
-            |> Scene.setState(playerPath(), NodeTag.Player(initialData()))
+            |> setSpawn(spawnGrid)
+
+    /// 読み込んだ Player の Marker2D position と NodeTag を spawnGrid に同期させる。
+    /// セル中心座標 = spawnGrid * tileSize + tileSize/2 の慣習に合わせる。
+    def setSpawn(spawnGrid: Vec2.Vec2i, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let s = tileSize();
+        let spawnPx: Vec2.Vec2 = {
+            x = Int32.toFloat64(spawnGrid#x) * s + s / 2.0,
+            y = Int32.toFloat64(spawnGrid#y) * s + s / 2.0
+        };
+        Scene.mapEngineNode(playerPath(), node -> match node {
+            case EngineNode.Marker2DWithState(marker, _) =>
+                EngineNode.Marker2DWithState(Node2D.setPosition(spawnPx, marker),
+                                              NodeTag.Player({gridPos = spawnGrid}))
+            case other => other
+        }, scene)
 
     // ────────────────────────────────────────────────────────
     // (D) ロジック
