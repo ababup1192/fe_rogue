@@ -39,8 +39,9 @@ mod PlayerScene {
 
     def sceneJsonPath(): String = "src/scenes/PlayerScene.scene.json"
 
-    /// anchor 部屋内でのスポーン相対座標（5, 5 = 13×13 部屋の中心付近）。
-    /// 実際のワールドグリッドは MapScene.getAnchorOffset(scene) と加算して決定する。
+    /// プレイヤーの「ローカル」初期グリッド座標（13×13 部屋の中心付近）。
+    /// 本番（add）では MapScene.getSpawnGrid を使うので未参照だが、
+    /// 単体テストで「想定通りのスポーン位置」を再現するために残してある。
     pub def initialGrid(): Vec2.Vec2i = {x = 5, y = 5}
 
     /// LDTK のタイルサイズ（ピクセル）。Marker2D の position 計算に使う。
@@ -54,13 +55,12 @@ mod PlayerScene {
     // ────────────────────────────────────────────────────────
 
     /// PlayerScene.scene.json から Player / Sprite / Camera を読み込んで Scene に追加する。
-    /// JSON のノード構造を読んだ後、MapScene が記録した anchor offset を加算して
-    /// プレイヤーの Marker2D position と NodeTag.Player(Data).gridPos を spawnGrid に揃える。
+    /// MapScene が記録した spawnGrid（anchor 内で壁でないと保証されたセル）を読み、
+    /// プレイヤーの Marker2D position と NodeTag.Player(Data).gridPos を揃える。
     /// MapScene.add 済み（NodeTag.Map が登録済み）であることが前提。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead} =
-        let anchor = MapScene.getAnchorOffset(scene);
-        let spawnGrid = Vec2.addI(anchor, initialGrid());
+        let spawnGrid = MapScene.getSpawnGrid(scene);
         SceneLoader.loadScene(sceneJsonPath(),
                               SceneLoader.constTagParser(NodeTag.NoTag),
                               scene)

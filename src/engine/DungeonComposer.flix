@@ -245,12 +245,15 @@ mod DungeonComposer {
         b = DoorRef
     }
 
-    /// 高レベル API の戻り値。`anchorOffset` は modulePaths[0] の正規化後 offsetGrid。
-    /// プレイヤー初期位置や Camera 注視点など「anchor 部屋の世界座標」を必要とする
-    /// 上流（MapScene 等）が使う。
+    /// 高レベル API の戻り値。
+    /// - `anchorOffset` は modulePaths[0] の正規化後 offsetGrid。
+    /// - `spawnGrid` は anchor 内で「壁でない」と保証されたセルのワールド座標。
+    ///   anchor 部屋の中心に最も近い床セルを採用する。
+    ///   PlayerScene 等のスポーン位置に使うことで、(5,5) が壁の LDTK でも安全。
     pub type alias ComposeResult = {
         layer        = TileMapLayer,
-        anchorOffset = Vec2.Vec2i
+        anchorOffset = Vec2.Vec2i,
+        spawnGrid    = Vec2.Vec2i
     }
 
     /// 連結グラフから offsetGrid と openDoors を自動導出して compose を呼ぶ。
@@ -291,16 +294,54 @@ mod DungeonComposer {
             let shift    = Vec2.subI(Vec2.zeroI(), minOff);
             let offsets  = shiftOffsets(rawOffsets, shift);
             let anchorOffset = lookupOffset(0, offsets);
-            // 6. openDoors を構築（正規化後 offsets で）
+            // 6. anchor 内の床セル（壁でないセル）でセンターに最近のものを spawnGrid とする
+            let anchorRaw = match List.head(raws) {
+                case Some(r) => r
+                case None    => bug!("DungeonComposer: raws is empty")
+            };
+            let spawnGrid = findSpawnInAnchor(anchorRaw, anchorOffset);
+            // 7. openDoors を構築（正規化後 offsets で）
             let openDoors = List.map(c -> {
                 let off = lookupOffset(c#a#moduleIndex, offsets);
                 Vec2.addI(off, c#a#grid)
             }, connections);
-            // 7. ModuleSpec リストを modulePaths 順に組み立てる
+            // 8. ModuleSpec リストを modulePaths 順に組み立てる
             let modules = buildModuleSpecs(modulePaths, offsets);
-            // 8. 既存 compose に委譲
+            // 9. 既存 compose に委譲
             let layer = compose(textureName, modules, openDoors);
-            { layer = layer, anchorOffset = anchorOffset }
+            { layer = layer, anchorOffset = anchorOffset, spawnGrid = spawnGrid }
+
+    /// anchor のローカル collisionCells を見て「壁でない」セルのうち
+    /// グリッド中心に最も近いものを返す。戻り値はワールド座標（anchorOffset 加算済み）。
+    /// 床セルが 1 つも無ければ bug!（部屋なら通常あり得ない）。
+    def findSpawnInAnchor(anchorRaw: LDTKLoader.LDTKLevelRaw,
+                           anchorOffset: Vec2.Vec2i): Vec2.Vec2i =
+        let gridSize = anchorRaw#gridSize;
+        let cx = gridSize#x / 2;
+        let cy = gridSize#y / 2;
+        let center: Vec2.Vec2i = {x = cx, y = cy};
+        let walls = anchorRaw#collisionCells;
+        // 「local cell が壁か」: collisionCells は Float64 だが整数値を保持しているので == で比較
+        let isLocalWall = c -> List.exists(w ->
+            Float64.tryToInt32(w#x) == Some(c#x) and
+            Float64.tryToInt32(w#y) == Some(c#y), walls);
+        // 全セルを列挙（行優先）
+        let allCells: List[Vec2.Vec2i] =
+            List.range(0, gridSize#y) |> List.flatMap(y ->
+                List.range(0, gridSize#x) |> List.map(x -> ({x = x, y = y}: Vec2.Vec2i)));
+        // 壁でないセルだけ残し、中心に最近のものを選ぶ
+        let nonWalls = List.filter(c -> not isLocalWall(c), allCells);
+        match nonWalls {
+            case Nil => bug!("DungeonComposer: anchor has no floor cell")
+            case head :: rest =>
+                let distSq = c -> {
+                    let d = Vec2.subI(c, center);
+                    d#x * d#x + d#y * d#y
+                };
+                let best = List.foldLeft(acc -> c ->
+                    if (distSq(c) < distSq(acc)) c else acc, head, rest);
+                Vec2.addI(anchorOffset, best)
+        }
 
     /// offsets の値の min(x, y) を求める。各次元の最小は別々のモジュールから来ても良い。
     def computeMinOffset(offsets: Map[Int32, Vec2.Vec2i]): Vec2.Vec2i =

@@ -27,10 +27,12 @@ pub type alias MapSnapshot = {
 mod MapScene {
 
     /// MapScene の TileMapLayer ノードに紐づくデータ。
-    /// `anchorOffset` は modulePaths[0] の正規化後 offsetGrid（負 offset 回避のための shift 量と等しい）。
-    /// PlayerScene 等が「anchor 部屋の中央付近」をスポーン位置とするために参照する。
+    /// - `anchorOffset` は modulePaths[0] の正規化後 offsetGrid（負 offset 回避のための shift 量）。
+    /// - `spawnGrid` は anchor 部屋の中で「壁でない」と保証されたセルのワールド座標。
+    ///   PlayerScene が安全なスポーン地点として使う（LDTK によって部屋の中央が壁になっていても OK）。
     pub type alias Data = {
-        anchorOffset = Vec2.Vec2i
+        anchorOffset = Vec2.Vec2i,
+        spawnGrid    = Vec2.Vec2i
     }
 
     // (B) 定数
@@ -57,7 +59,8 @@ mod MapScene {
         let result = DungeonComposer.composeFromSideConnections(textureName(),
                                                                  plan#modulePaths,
                                                                  plan#sideConnections);
-        let mapData: Data = { anchorOffset = result#anchorOffset };
+        let mapData: Data = { anchorOffset = result#anchorOffset,
+                               spawnGrid    = result#spawnGrid };
         Scene.addNode(name(),
                        EngineNode.TileMapLayerWithState(result#layer, NodeTag.Map(mapData)),
                        scene)
@@ -75,10 +78,17 @@ mod MapScene {
         }
 
     /// MapScene.add が記録した anchor の正規化後 offset を取り出す。
-    /// PlayerScene が「anchor 部屋の中央付近」をスポーン位置とするのに使う。
     pub def getAnchorOffset(scene: Scene[NodeTag]): Vec2.Vec2i =
+        getMapData(scene)#anchorOffset
+
+    /// anchor 内の床セルとして保証されたスポーン地点（ワールド座標）を取り出す。
+    /// PlayerScene.add がプレイヤーをここに配置する。
+    pub def getSpawnGrid(scene: Scene[NodeTag]): Vec2.Vec2i =
+        getMapData(scene)#spawnGrid
+
+    def getMapData(scene: Scene[NodeTag]): Data =
         match Scene.getEngineNode(mapPath(), scene) {
-            case Some(EngineNode.TileMapLayerWithState(_, NodeTag.Map(data))) => data#anchorOffset
-            case _ => bug!("MapScene: anchor offset not found at ${mapPath()} (NodeTag.Map missing)")
+            case Some(EngineNode.TileMapLayerWithState(_, NodeTag.Map(data))) => data
+            case _ => bug!("MapScene: NodeTag.Map not found at ${mapPath()}")
         }
 }
