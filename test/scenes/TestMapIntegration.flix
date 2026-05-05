@@ -228,33 +228,31 @@ mod TestMapIntegration {
     // (4) PlayerScene.moveTo end-to-end — 単発入力で正しい方向にtweenが向くか
     // ========================================================================
 
-    /// プレイヤーシーン構築（JSON ロード回避、CharacterBody2D 直接生成）。
+    /// プレイヤーシーン構築（JSON ロード回避、Marker2D 直接生成）。
     /// world 位置は initialGrid のタイル中心 = (88, 88)。
     def emptyPlayerScene(): Scene[NodeTag] =
         let initial = PlayerScene.initialGrid();
         let initialWorld = TileMapLayer.mapToLocal(initial, realTileMapLayer());
-        let body = CharacterBody2D.make(initialWorld, {moveSpeed = 0.0})
-            |> CharacterBody2D.setCollisionShape(
-                Some(CollisionShape2D.RectShape2D({width = 14.0, height = 14.0})));
+        let marker = Marker2D.make(initialWorld);
         Scene.empty()
             |> Scene.addNode("Player",
-                EngineNode.Body2DWithState(body, NodeTag.Player({gridPos = initial})))
+                EngineNode.Marker2DWithState(marker, NodeTag.Player({gridPos = initial})))
 
     /// プレイヤー world 座標
     def playerWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
         Scene.globalPositionAt(PlayerScene.playerPath(), scene)
 
-    /// scene 内 Player の (body, data) を moveTo に渡し、 戻り値で scene を更新する。
-    /// 直接 PlayerScene.moveTo を呼ぶと (body, data) の取り出し / scene 書き戻しが
+    /// scene 内 Player の (marker, data) を moveTo に渡し、 戻り値で scene を更新する。
+    /// 直接 PlayerScene.moveTo を呼ぶと (marker, data) の取り出し / scene 書き戻しが
     /// 各テストに散らばるため、 1 か所に閉じ込める薄いラッパ。
     def applyMove(map: MapSnapshot, target: Vec2.Vec2i, scene: Scene[NodeTag]):
             Scene[NodeTag] \ Tween.Scheduler =
         match Scene.getEngineNode(PlayerScene.playerPath(), scene) {
-            case Some(EngineNode.Body2DWithState(body, NodeTag.Player(data))) =>
-                let (newBody, newData) =
-                    PlayerScene.moveTo(map, target, body, data, scene);
+            case Some(EngineNode.Marker2DWithState(marker, NodeTag.Player(data))) =>
+                let (newMarker, newData) =
+                    PlayerScene.moveTo(map, target, marker, data, scene);
                 Scene.setEngineNode(PlayerScene.playerPath(),
-                    EngineNode.Body2DWithState(newBody, NodeTag.Player(newData)),
+                    EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
                     scene)
             case _ => bug!("applyMove: expected Player at playerPath")
         }
@@ -342,8 +340,8 @@ mod TestMapIntegration {
             scene
                 |> Scene.setGlobalPositionAt(PlayerScene.playerPath(), world)
                 |> Scene.mapEngineNode(PlayerScene.playerPath(), engineNode -> match engineNode {
-                    case EngineNode.Body2DWithState(body, NodeTag.Player(_)) =>
-                        EngineNode.Body2DWithState(body, NodeTag.Player({gridPos = grid}))
+                    case EngineNode.Marker2DWithState(marker, NodeTag.Player(_)) =>
+                        EngineNode.Marker2DWithState(marker, NodeTag.Player({gridPos = grid}))
                     case other => other
                 })
         }

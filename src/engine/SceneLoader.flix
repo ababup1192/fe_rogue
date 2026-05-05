@@ -12,7 +12,8 @@
 //
 // 対応ノード型:
 //   CanvasLayer / Sprite2D / AnimatedSprite2D / Label2D / TextureButton /
-//   StaticBody2D / RigidBody2D / Area2D / CharacterBody2D / Camera2D / TileMapLayer
+//   StaticBody2D / RigidBody2D / Area2D / CharacterBody2D / Marker2D /
+//   Camera2D / TileMapLayer
 // 対応 collision shape: RectShape2D / CircleShape2D
 //
 // 注:
@@ -160,6 +161,7 @@ mod SceneLoader {
             case "Area2D"           => checked_ecast(buildArea2D(tagParser, map))
             case "AnimatedSprite2D" => checked_ecast(buildAnimatedSprite2D(tagParser, map))
             case "CharacterBody2D"  => checked_ecast(buildCharacterBody2D(tagParser, map))
+            case "Marker2D"         => checked_ecast(buildMarker2D(tagParser, map))
             case "Camera2D"         => checked_ecast(buildCamera2D(tagParser, map))
             case "TileMapLayer"     => buildTileMapLayer(tagParser, map)
             case unknown            =>
@@ -439,6 +441,41 @@ mod SceneLoader {
 
     def setBody2DZIndex(z: Int32, body: CharacterBody2D): CharacterBody2D =
         CanvasItem.setZIndex(z, body)
+
+    def buildMarker2D(tagParser: Option[String] -> Result[Json.JsonError, t],
+                      map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
+        forM (
+            tag         <- parseTagField(tagParser, map);
+            pos         <- parseVec2("pos", map);
+            scaleOpt    <- parseVec2Opt("scale", map);
+            rotationOpt <- (Json.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
+            skewOpt     <- (Json.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
+            visibleOpt  <- (Json.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt   <- (Json.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
+        ) yield {
+            let marker = Marker2D.make(pos)
+                |> applyOpt(scaleOpt, setMarker2DScale)
+                |> applyOpt(rotationOpt, setMarker2DRotation)
+                |> applyOpt(skewOpt, setMarker2DSkew)
+                |> applyOpt(visibleOpt, setMarker2DVisible)
+                |> applyOpt(zIndexOpt, setMarker2DZIndex);
+            EngineNode.Marker2DWithState(marker, tag)
+        }
+
+    def setMarker2DScale(scale: Vec2.Vec2, marker: Marker2D): Marker2D =
+        Node2D.setScale(scale, marker)
+
+    def setMarker2DRotation(rot: Float64, marker: Marker2D): Marker2D =
+        Node2D.setRotation(rot, marker)
+
+    def setMarker2DSkew(skew: Float64, marker: Marker2D): Marker2D =
+        Node2D.setSkew(skew, marker)
+
+    def setMarker2DVisible(v: Bool, marker: Marker2D): Marker2D =
+        CanvasItem.setVisible(v, marker)
+
+    def setMarker2DZIndex(z: Int32, marker: Marker2D): Marker2D =
+        CanvasItem.setZIndex(z, marker)
 
     def buildCamera2D(tagParser: Option[String] -> Result[Json.JsonError, t],
                       map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =

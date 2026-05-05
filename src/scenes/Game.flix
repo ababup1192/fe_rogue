@@ -16,7 +16,7 @@ instance Node[NodeTag] {
                          (EngineNode[NodeTag], Scene[NodeTag])
                          \ {GameEngine.Game, BoardQuery, Tween.Scheduler} =
         match node {
-            case EngineNode.Body2DWithState(_, NodeTag.Player(_)) =>
+            case EngineNode.Marker2DWithState(_, NodeTag.Player(_)) =>
                 PlayerScene.physicsProcess(delta, node, path, scene)
             case _ => (node, scene)
         }

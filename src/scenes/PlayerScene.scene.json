@@ -1,25 +1,38 @@
 {
-  "type": "CharacterBody2D",
-  "name": "Player",
-  "pos": [88, 88],
-  "shape": {"kind": "RectShape2D", "width": 14, "height": 14},
-  "moveSpeed": 0.0,
   "children": [
     {
-      "type": "Sprite2D",
-      "name": "Sprite",
-      "pos": [0, 0],
-      "scale": [1, 1],
-      "texture": "character_sheet",
+      "frame": 0,
       "hframes": 5,
-      "vframes": 2,
-      "frame": 0
+      "name": "Sprite",
+      "pos": [
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "texture": "character_sheet",
+      "type": "Sprite2D",
+      "vframes": 2
     },
     {
-      "type": "Camera2D",
       "name": "Camera",
-      "pos": [0, 0],
-      "zoom": [0.5, 0.5]
+      "pos": [
+        0,
+        0
+      ],
+      "type": "Camera2D",
+      "zoom": [
+        0.5,
+        0.5
+      ]
     }
-  ]
+  ],
+  "name": "Player",
+  "pos": [
+    88,
+    88
+  ],
+  "type": "Marker2D"
 }

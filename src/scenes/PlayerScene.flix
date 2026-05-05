@@ -1,9 +1,14 @@
-/// PlayerScene — プレイヤーキャラクター（CharacterBody2D）と子 Sprite / 子 Camera
+/// PlayerScene — プレイヤーキャラクター（Marker2D）と子 Sprite / 子 Camera
 ///
 /// ノード構造（Godot 準拠）:
-///   Player (CharacterBody2D, NodeTag.Player(Data))
+///   Player (Marker2D, NodeTag.Player(Data))
 ///     ├─ Sprite (Sprite2D, 描画専用)
 ///     └─ Camera (Camera2D, 親追従でビューが Player を中心に表示)
+///
+/// 親が Marker2D なのは、移動が完全にグリッド + Tween 駆動で物理応答を持たないため。
+/// 壁判定は BoardLogic がグリッド上で済ませ、見た目の補間は Tween に委ねるので、
+/// CharacterBody2D の velocity / move_and_slide / CollisionShape は不要。
+/// 将来エネミーとの押し合いなど物理連動が必要になったら CharacterBody2D に格上げする。
 ///
 /// シーン構造とプロパティは PlayerScene.scene.json で管理し、`add` 時に
 /// SceneLoader でロードする。NodeTag の Data はロード後に `Scene.setState` で書き込む。
@@ -66,20 +71,20 @@ mod PlayerScene {
     /// 目標グリッドへの移動を開始する。**壁判定は呼び出し側（BoardLogic）が済ませている前提**で、
     /// PlayerScene 自身は衝突判定を考えない。
     ///
-    /// gridPos を target に更新した Data と、 そのままの body を返す。
+    /// gridPos を target に更新した Data と、 そのままの marker を返す。
     /// 同時に `Tween.Scheduler.tweenPosition` で見た目の補間を engine に委ねる
     /// （Godot の `tween.tween_property(self, "position", ...)` 同等）。
-    /// scene は `startWorld` を読むだけで変換しない。 戻り値の (body, data) を
-    /// 呼び出し側が `EngineNode.Body2DWithState(body, NodeTag.Player(data))` に
+    /// scene は `startWorld` を読むだけで変換しない。 戻り値の (marker, data) を
+    /// 呼び出し側が `EngineNode.Marker2DWithState(marker, NodeTag.Player(data))` に
     /// 組み立てて scene に書き戻す責務を持つ。
     pub def moveTo(map: MapSnapshot, target: Vec2.Vec2i,
-                    body: CharacterBody2D, _data: Data,
-                    scene: Scene[NodeTag]): (CharacterBody2D, Data)
+                    marker: Marker2D, _data: Data,
+                    scene: Scene[NodeTag]): (Marker2D, Data)
                     \ Tween.Scheduler =
         let targetWorld = map#gridToWorld(target);
         let startWorld = Scene.globalPositionAt(playerPath(), scene);
         Tween.tweenPosition(playerPath(), startWorld, targetWorld, slideDuration());
-        (body, {gridPos = target})
+        (marker, {gridPos = target})
 
     /// プレイヤーが現在 tween 中（次の入力を受け付けない状態）か。
     /// physicsProcess は連打や長押しでもこの間は moveTo を発火しない。
@@ -98,7 +103,7 @@ mod PlayerScene {
                            (EngineNode[NodeTag], Scene[NodeTag])
                            \ {GameEngine.Game, BoardQuery, Tween.Scheduler} =
         match node {
-            case EngineNode.Body2DWithState(body, NodeTag.Player(data)) =>
+            case EngineNode.Marker2DWithState(marker, NodeTag.Player(data)) =>
                 if (isMoving()) (node, scene)
                 else
                     let board = BoardQuery.board();
@@ -106,8 +111,8 @@ mod PlayerScene {
                         dir    <- readHeldDirection();
                         target <- BoardLogic.tryMove(board, dir)
                     ) yield {
-                        let (newBody, newData) = moveTo(board#map, target, body, data, scene);
-                        (EngineNode.Body2DWithState(newBody, NodeTag.Player(newData)), scene)
+                        let (newMarker, newData) = moveTo(board#map, target, marker, data, scene);
+                        (EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)), scene)
                     };
                     Option.getWithDefault((node, scene), movement)
             case _ => (node, scene)
@@ -126,13 +131,13 @@ mod PlayerScene {
     // (E) ボイラプレート — pattern match を関数化
     // ────────────────────────────────────────────────────────
 
-    /// Player の CharacterBody2D と Data をまとめて変換する
-    pub def mapPlayer(f: (CharacterBody2D, Data) -> (CharacterBody2D, Data),
+    /// Player の Marker2D と Data をまとめて変換する
+    pub def mapPlayer(f: (Marker2D, Data) -> (Marker2D, Data),
                        scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(playerPath(), engineNode -> match engineNode {
-            case EngineNode.Body2DWithState(body, NodeTag.Player(data)) =>
-                let (newBody, newData) = f(body, data);
-                EngineNode.Body2DWithState(newBody, NodeTag.Player(newData))
+            case EngineNode.Marker2DWithState(marker, NodeTag.Player(data)) =>
+                let (newMarker, newData) = f(marker, data);
+                EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData))
             case other => other
         }, scene)
 
