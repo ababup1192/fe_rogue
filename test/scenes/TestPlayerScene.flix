@@ -58,7 +58,10 @@ mod TestPlayerScene {
         Scene.empty()
             |> Scene.addNode("Player",
                 EngineNode.Marker2DWithState(marker,
-                    NodeTag.Player({gridPos = initial})))
+                    NodeTag.Player({
+                        gridPos   = initial,
+                        moveTiles = PlayerScene.defaultMoveTiles()
+                    })))
 
     /// プレイヤーのワールド座標を取り出す
     def playerWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =

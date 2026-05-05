@@ -2,6 +2,7 @@
 pub enum NodeTag {
     case Player(PlayerScene.Data)
     case Map(MapScene.Data)
+    case MoveRange(MoveRangeScene.Data)
     case NoTag
 }
 
@@ -25,9 +26,19 @@ instance Node[NodeTag] {
 
 // 方向移動は PlayerScene.physicsProcess が key state を polling して処理する
 // （onKeyPressed は押下エッジ専用で押しっぱなしを検知できないため）。
-// 将来エッジ専用入力（決定ボタン等）が必要になればここに redef onKeyPressed を足す。
+// 決定キー (Z / Space / Enter) のエッジで「ターンエンド」扱い ＝ MoveRangeScene を
+// プレイヤーの現在位置から再計算する。Tween 中は受け付けない（移動の途中で
+// 範囲が中継セル基準で更新されるのを防ぐ）。
 instance InputEvent.InputHandler[NodeTag] {
-    type Aef = {}
+    type Aef = {Tween.Scheduler}
+    redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
+                       Scene[NodeTag] \ {Tween.Scheduler} =
+        let isConfirm = key == GameEngine.Key.Z
+                        or key == GameEngine.Key.Space
+                        or key == GameEngine.Key.Enter;
+        if (isConfirm and not Tween.Scheduler.isActive(PlayerScene.playerPath()))
+            MoveRangeScene.refresh(scene)
+        else scene
 }
 
 mod Game {
@@ -53,7 +64,8 @@ mod Game {
             run {
                 let scene = Scene.empty()
                     |> MapScene.add
-                    |> PlayerScene.add;
+                    |> PlayerScene.add
+                    |> MoveRangeScene.add;
                 gameLoop(sceneRef, scene)
             } with Editor.withState(rc)
               with Tween.withScheduler(rc)   // tweensRef は内部に隠蔽
@@ -100,7 +112,7 @@ mod Game {
                               |> Tween.tickAll(dt);   // engine プラミング 1 行
             // scene.json が変わったらシーンを丸ごと組み直す（プレイ中状態はリセット）
             let next = if (Editor.pollReload())
-                           Scene.empty() |> MapScene.add |> PlayerScene.add
+                           Scene.empty() |> MapScene.add |> PlayerScene.add |> MoveRangeScene.add
                        else updated;
             GameEngine.render(next);
             gameLoop(sceneRef, next)

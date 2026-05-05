@@ -250,7 +250,7 @@ mod EngineNode {
             scale = drawScale,
             rotation = r#rotation,
             color = r#modulate,
-            alpha = 1.0f32,
+            alpha = r#alpha,
             centered = r#centered,
             uvOffset = uv#uvOffset,
             uvScale = uvSc,

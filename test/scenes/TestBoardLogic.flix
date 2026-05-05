@@ -107,4 +107,63 @@ mod TestBoardLogic {
         };
         let result = BoardLogic.tryMove(board, Vec2.rightI());
         Assert.assertEq(expected = (false, 0, 0), unpackOption(result))
+
+    // ========================================================================
+    // tryMoveWithRange — `allowed` 述語で目標を弾けるか
+    // ========================================================================
+
+    /// `allowed` が常に true なら `tryMove` と同じく Some(target) を返す。
+    @Test
+    def testTryMoveWithRangeAllowed(): Unit \ Assert =
+        let board = boardWithPlayer(emptySnapshot(5, 5), ({x = 2, y = 2}: Vec2.Vec2i));
+        let result = BoardLogic.tryMoveWithRange(board, Vec2.rightI(), _ -> true);
+        Assert.assertEq(expected = (true, 3, 2), unpackOption(result))
+
+    /// `allowed` が false を返すセルへは進めない（壁と同じ扱い）。
+    @Test
+    def testTryMoveWithRangeBlocked(): Unit \ Assert =
+        let board = boardWithPlayer(emptySnapshot(5, 5), ({x = 2, y = 2}: Vec2.Vec2i));
+        let result = BoardLogic.tryMoveWithRange(board, Vec2.rightI(), _ -> false);
+        Assert.assertEq(expected = (false, 0, 0), unpackOption(result))
+
+    // ========================================================================
+    // reachableCells — BFS の到達範囲
+    // ========================================================================
+
+    /// origin (0,0) で maxSteps = 0 なら origin だけが返る。
+    @Test
+    def testReachableCellsZeroSteps(): Unit \ Assert =
+        let isFloor = _ -> true;
+        let cells = BoardLogic.reachableCells(isFloor, ({x = 0, y = 0}: Vec2.Vec2i), 0);
+        Assert.assertEq(expected = 1, List.length(cells))
+
+    /// 全床無限平面で origin (0,0)、maxSteps = 5 → マンハッタン距離 ≤ 5 の 61 セル
+    /// (1 + 4 + 8 + 12 + 16 + 20)。BFS が 4 方向 + 範囲打ち切りで動くことを確認。
+    @Test
+    def testReachableCellsFiveStepsOpen(): Unit \ Assert =
+        let isFloor = _ -> true;
+        let cells = BoardLogic.reachableCells(isFloor, ({x = 0, y = 0}: Vec2.Vec2i), 5);
+        Assert.assertEq(expected = 61, List.length(cells))
+
+    /// origin が isFloor 述語を満たさない場合でも origin は visited 初期値として含まれる。
+    /// （BFS 展開は `isFloor` で制限されるが、出発点は強制的に許容）
+    @Test
+    def testReachableCellsIncludesOrigin(): Unit \ Assert =
+        let isFloor = _ -> false;
+        let cells = BoardLogic.reachableCells(isFloor, ({x = 3, y = 7}: Vec2.Vec2i), 5);
+        Assert.assertEq(expected = (1, 3, 7),
+                         (List.length(cells),
+                          (List.head(cells) |> Option.map(c -> c#x) |> Option.getWithDefault(-1)),
+                          (List.head(cells) |> Option.map(c -> c#y) |> Option.getWithDefault(-1))))
+
+    /// 壁 1 マス（(1,0)) で経路が遮られる場合、(2,0) は迂回でしか届かない。
+    /// origin (0,0) maxSteps=2 なら通常 (2,0) が含まれるが、壁があると到達 3 ステップ
+    /// 必要なので含まれない。
+    @Test
+    def testReachableCellsBlockedByWall(): Unit \ Assert =
+        let wall: Vec2.Vec2i = {x = 1, y = 0};
+        let isFloor = c -> not (c#x == wall#x and c#y == wall#y);
+        let cells = BoardLogic.reachableCells(isFloor, ({x = 0, y = 0}: Vec2.Vec2i), 2);
+        let hasFarRight = List.exists(c -> c#x == 2 and c#y == 0, cells);
+        Assert.assertEq(expected = false, hasFarRight)
 }

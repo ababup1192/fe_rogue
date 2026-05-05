@@ -26,8 +26,11 @@ mod PlayerScene {
 
     /// プレイヤー固有の状態。
     /// gridPos: 盤面上の駒の論理位置。moveTo で即座に更新される。BoardLogic が読む値。
+    /// moveTiles: 1 ターンに移動できるマス数（FE の「移動力」相当）。MoveRangeScene が
+    ///   この値を BFS の深さに使う。キャラクターごとに変えられるよう `Data` に持たせる。
     pub type alias Data = {
-        gridPos = Vec2.Vec2i
+        gridPos   = Vec2.Vec2i,
+        moveTiles = Int32
     }
 
     // ────────────────────────────────────────────────────────
@@ -49,6 +52,10 @@ mod PlayerScene {
 
     /// 1 マス分の slide にかかる時間（秒）。Godot の tween_property の duration 相当
     def slideDuration(): Float64 = 16.0 / 120.0   // ≈ 0.133 秒
+
+    /// プレイヤー初期の移動力（マス）。`Data#moveTiles` の初期値として使う。
+    /// 装備や状態異常で書き換えたい場合は `mapPlayer` で moveTiles を更新する。
+    pub def defaultMoveTiles(): Int32 = 5
 
     // ────────────────────────────────────────────────────────
     // (C) 構築
@@ -77,7 +84,10 @@ mod PlayerScene {
         Scene.mapEngineNode(playerPath(), node -> match node {
             case EngineNode.Marker2DWithState(marker, _) =>
                 EngineNode.Marker2DWithState(Node2D.setPosition(spawnPx, marker),
-                                              NodeTag.Player({gridPos = spawnGrid}))
+                                              NodeTag.Player({
+                                                  gridPos   = spawnGrid,
+                                                  moveTiles = defaultMoveTiles()
+                                              }))
             case other => other
         }, scene)
 
@@ -95,13 +105,13 @@ mod PlayerScene {
     /// 呼び出し側が `EngineNode.Marker2DWithState(marker, NodeTag.Player(data))` に
     /// 組み立てて scene に書き戻す責務を持つ。
     pub def moveTo(map: MapSnapshot, target: Vec2.Vec2i,
-                    marker: Marker2D, _data: Data,
+                    marker: Marker2D, data: Data,
                     scene: Scene[NodeTag]): (Marker2D, Data)
                     \ Tween.Scheduler =
         let targetWorld = map#gridToWorld(target);
         let startWorld = Scene.globalPositionAt(playerPath(), scene);
         Tween.tweenPosition(playerPath(), startWorld, targetWorld, slideDuration());
-        (marker, {gridPos = target})
+        (marker, {gridPos = target | data})
 
     /// プレイヤーが現在 tween 中（次の入力を受け付けない状態）か。
     /// physicsProcess は連打や長押しでもこの間は moveTo を発火しない。
@@ -124,9 +134,15 @@ mod PlayerScene {
                 if (isMoving()) (node, scene)
                 else
                     let board = BoardQuery.board();
+                    // 移動範囲（move_tile が敷かれているセル）でフィルタする。
+                    // MoveRangeScene 未登録時は isInRange が常に false を返すため
+                    // 起動直後のフレームではプレイヤーが動けない可能性があるが、
+                    // start() が MoveRangeScene.add を済ませてから gameLoop に入るので
+                    // 実機では問題にならない。
+                    let allowed = c -> MoveRangeScene.isInRange(c, scene);
                     let movement = forM (
                         dir    <- readHeldDirection();
-                        target <- BoardLogic.tryMove(board, dir)
+                        target <- BoardLogic.tryMoveWithRange(board, dir, allowed)
                     ) yield {
                         let (newMarker, newData) = moveTo(board#map, target, marker, data, scene);
                         (EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)), scene)
@@ -168,4 +184,8 @@ mod PlayerScene {
     /// プレイヤーの現在グリッド座標。BoardLogic 等が移動可否判定の起点として使う
     pub def getGridPos(scene: Scene[NodeTag]): Vec2.Vec2i =
         getPlayerData(scene)#gridPos
+
+    /// プレイヤーの移動力（マス）。MoveRangeScene が BFS の深さに使う
+    pub def getMoveTiles(scene: Scene[NodeTag]): Int32 =
+        getPlayerData(scene)#moveTiles
 }

@@ -14,7 +14,8 @@
         1
       ],
       "texture": "character_sheet",
-      "type": "Sprite2D"
+      "type": "Sprite2D",
+      "zIndex": 10
     },
     {
       "name": "Camera",

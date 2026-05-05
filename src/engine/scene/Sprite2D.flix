@@ -22,7 +22,8 @@ pub enum Sprite2D {
         skew = Float64,                  // スキュー（ラジアン）
         visible = Bool,                  // 表示フラグ
         zIndex = Int32,                  // 描画順
-        modulate = Color,                // 色変調
+        modulate = Color,                // 色変調（{r, g, b}、不透明度は alpha フィールドで指定）
+        alpha = Float32,                 // 不透明度 0.0–1.0。Color にアルファが無いため別フィールド
         texture = String,                // テクスチャパス
         centered = Bool,                 // 中心を原点にするか
         offset = Vec2.Vec2,             // 描画オフセット
@@ -46,6 +47,7 @@ mod Sprite2D {
             visible = true,
             zIndex = 0,
             modulate = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+            alpha = 1.0f32,
             texture = texture,
             centered = true,
             offset = {x = 0.0, y = 0.0},
@@ -56,6 +58,11 @@ mod Sprite2D {
             vframes = 1,
             frame = 0
         })
+
+    /// 不透明度を設定する（0.0 = 完全透明、1.0 = 不透明）
+    pub def setAlpha(alpha: Float32, sprite: Sprite2D): Sprite2D =
+        let Sprite2D.Sprite2D(r) = sprite;
+        Sprite2D.Sprite2D({alpha = alpha | r})
 
     /// テクスチャ名を変更する
     pub def setTexture(texture: String, sprite: Sprite2D): Sprite2D =

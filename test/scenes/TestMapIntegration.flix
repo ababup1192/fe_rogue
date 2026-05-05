@@ -236,7 +236,11 @@ mod TestMapIntegration {
         let marker = Marker2D.make(initialWorld);
         Scene.empty()
             |> Scene.addNode("Player",
-                EngineNode.Marker2DWithState(marker, NodeTag.Player({gridPos = initial})))
+                EngineNode.Marker2DWithState(marker,
+                    NodeTag.Player({
+                        gridPos   = initial,
+                        moveTiles = PlayerScene.defaultMoveTiles()
+                    })))
 
     /// プレイヤー world 座標
     def playerWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
@@ -340,8 +344,9 @@ mod TestMapIntegration {
             scene
                 |> Scene.setGlobalPositionAt(PlayerScene.playerPath(), world)
                 |> Scene.mapEngineNode(PlayerScene.playerPath(), engineNode -> match engineNode {
-                    case EngineNode.Marker2DWithState(marker, NodeTag.Player(_)) =>
-                        EngineNode.Marker2DWithState(marker, NodeTag.Player({gridPos = grid}))
+                    case EngineNode.Marker2DWithState(marker, NodeTag.Player(data)) =>
+                        EngineNode.Marker2DWithState(marker,
+                            NodeTag.Player({gridPos = grid | data}))
                     case other => other
                 })
         }

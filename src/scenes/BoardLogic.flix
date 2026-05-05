@@ -20,7 +20,49 @@ mod BoardLogic {
     /// Player を dir 方向に 1 マス進めるか試みる。
     /// 進めるなら Some(目標座標)、壁・範囲外、または盤上に Player がいなければ None。
     pub def tryMove(board: Board, dir: Vec2.Vec2i): Option[Vec2.Vec2i] =
+        tryMoveWithRange(board, dir, _ -> true)
+
+    /// `tryMove` に「移動可能セル」述語による追加制約を加える版。
+    /// 範囲表示（move_tile）の外には踏み込めないようにする用途で `MoveRangeScene.isInRange`
+    /// 等を渡す。`allowed` が常に true なら `tryMove` と同じ挙動。
+    pub def tryMoveWithRange(board: Board, dir: Vec2.Vec2i,
+                              allowed: Vec2.Vec2i -> Bool): Option[Vec2.Vec2i] =
         Board.playerPos(board) |> Option.flatMap(player ->
             let target = stepTarget(player, dir);
-            if (isWalkable(board, target)) Some(target) else None)
+            if (isWalkable(board, target) and allowed(target)) Some(target) else None)
+
+    /// 4 方向 BFS で `origin` から最大 `maxSteps` ステップ以内に到達できる床セルの一覧を返す。
+    /// `origin` 自身も結果に含む（距離 0）。
+    /// `isFloor` は「そのセルが歩行可能か（床か）」を判定する述語。
+    /// `MapSnapshot` を直接受け取らないことで、テストや別経路でも合成しやすくする。
+    pub def reachableCells(isFloor: Vec2.Vec2i -> Bool,
+                            origin: Vec2.Vec2i,
+                            maxSteps: Int32): List[Vec2.Vec2i] =
+        let initVisited = origin :: Nil;
+        let initQueue   = (origin, 0i32) :: Nil;
+        bfs(isFloor, maxSteps, initVisited, initQueue)
+
+    /// BFS のキューを 1 セルずつ消化する。`visited` は到達済みセル（順序保持）。
+    /// 深さ `maxSteps` に達した節点はそれ以上展開しない。
+    def bfs(isFloor: Vec2.Vec2i -> Bool,
+             maxSteps: Int32,
+             visited: List[Vec2.Vec2i],
+             queue: List[(Vec2.Vec2i, Int32)]): List[Vec2.Vec2i] =
+        match queue {
+            case Nil => visited
+            case (cur, depth) :: rest =>
+                if (depth >= maxSteps) bfs(isFloor, maxSteps, visited, rest)
+                else
+                    let dirs = Vec2.upI() :: Vec2.downI()
+                                :: Vec2.leftI() :: Vec2.rightI() :: Nil;
+                    let candidates = List.map(d -> Vec2.addI(cur, d), dirs);
+                    let fresh = List.filter(c ->
+                        isFloor(c) and
+                        not List.exists(v -> v#x == c#x and v#y == c#y, visited),
+                        candidates);
+                    let newVisited = List.append(visited, fresh);
+                    let newQueue   = List.append(rest,
+                        List.map(c -> (c, depth + 1), fresh));
+                    bfs(isFloor, maxSteps, newVisited, newQueue)
+        }
 }
