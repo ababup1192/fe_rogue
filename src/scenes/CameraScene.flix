@@ -9,13 +9,19 @@
 ///   Camera (Camera2D, NodeTag.NoTag)
 ///
 /// 追従ルール（`TurnPhase.State.get` で分岐）:
-///   - PlayerCursor → カーソルのワールド座標
-///   - PlayerMoving → 直前の位置を維持。ただしプレイヤーが画面外に出たら追従に切替
-///   - EnemyTurn    → プレイヤーのワールド座標（敵ターン中は味方を映す）
+///   - PlayerCursor    → カーソルのワールド座標
+///   - PlayerMoving    → 選択中味方のワールド座標（drag margin で「画面内なら据え置き」が
+///                        engine の Camera2D 側で自動的に効く）
+///   - PlayerAttack    → カーソルのワールド座標（赤マスを動くカーソルに追従）
+///   - PlayerAutoMove  → 旗のワールド座標
+///   - EnemyTurn       → プレイヤーのワールド座標（敵ターン中は味方を映す）
 ///
-/// **ビューポートサイズ**:
-///   designWi/Hi (= 128) と Camera の zoom (= 0.5) から、世界における「見えている矩形」の
-///   半幅は `designWi / (2 * zoomX)` = 128 で求まる。これを `isPlayerVisible` の判定に使う。
+/// **追従の滑らかさ**:
+///   `CameraScene.scene.json` の `positionSmoothingEnabled` / `dragHorizontalEnabled` /
+///   `dragLeftMargin` 等で engine 組込の追従プロパティを宣言しており、
+///   smoothing と drag margin は `Camera2D.process` が毎フレーム適用する。
+///   CameraScene の責務は「フェーズ → どのノードを見るか」だけ（target 選択）。
+///   滑らか追従や画面端マージンは engine が担当するため、手書きの `isPlayerVisible` 等は撤廃。
 mod CameraScene {
 
     // ────────────────────────────────────────────────────────
@@ -25,61 +31,70 @@ mod CameraScene {
     def name(): String = "Camera"
     pub def cameraPath(): NodePath = name() :: Nil
 
-    /// Player を子にしていた頃と同じズーム倍率を踏襲する（見え方を維持する）
-    def defaultZoom(): Vec2.Vec2 = {x = 0.5, y = 0.5}
+    /// scene.json への相対パス（cwd = プロジェクトルート想定）
+    def scenePath(): String = "src/scenes/CameraScene.scene.json"
 
     // ────────────────────────────────────────────────────────
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
     /// MapScene + PlayerScene 登録済みの scene にトップレベル Camera2D を追加する。
-    /// 初期位置は id=0 のプレイヤー座標（パーティの代表位置）。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
+    /// レイアウトと追従パラメータ（zoom / smoothing / drag margin）は scene.json
+    /// に閉じ込めてあり、CameraScene 側は「フェーズ → target」のディスパッチだけ持つ。
+    /// 初期 smoothPosition は scene.json の pos (0,0) になるが、最初の `update` で
+    /// 正しいフォーカス位置に上書きされる（drag margin で 1〜2 フレーム後に追従完了）。
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {GameEngine.Game, Fs.FileRead} =
         let initial = focusedPlayerWorldPos(0, scene);
-        let cam = Camera2D.make(initial)
-                  |> Camera2D.setZoom(defaultZoom());
-        Scene.addNode(name(),
-            EngineNode.Camera2DWithState(cam, NodeTag.NoTag),
-            scene)
+        SceneLoader.loadScene(scenePath(),
+                               SceneLoader.constTagParser(NodeTag.NoTag),
+                               scene)
+            // パーティ先頭の位置で position と smoothPosition を初期化して、
+            // ゲーム開始時点のスナップ違和感を消す
+            |> Scene.mapEngineNode(cameraPath(),
+                n -> EngineNode.mapCamera2D(c ->
+                    c |> Node2D.setPosition(initial)
+                      |> Camera2D.setSmoothPosition(initial), n))
 
     // ────────────────────────────────────────────────────────
     // (D) ロジック
     // ────────────────────────────────────────────────────────
 
     /// gameLoop が毎フレーム末尾で呼ぶ更新フック。
-    /// Tween による Player / Cursor の世界座標が反映された後に実行する。
-    pub def update(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {TurnPhase.State, SelectedPlayer.State} =
+    /// Tween / AnimationPlayer による Player / Cursor の世界座標が反映された後に実行する。
+    /// 動作:
+    ///   1. フェーズに応じてターゲット NodePath の world 位置を取る
+    ///   2. Camera2D.position に target をセット（engine の追従計算の入力）
+    ///   3. Camera2D.process(delta, viewport, ...) で smoothPosition を進める
+    /// 「画面内なら維持」「滑らかに追従」は engine の drag margin / smoothing が代替する。
+    pub def update(delta: Duration.Duration, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State} =
         let phase = TurnPhase.State.get();
         let selected = SelectedPlayer.State.get()#id;
         let target = computeTarget(phase, selected, scene);
+        let vp = GameEngine.Game.getViewportRect();
+        let viewport = {viewportWidth = vp#size#x, viewportHeight = vp#size#y};
         Scene.mapEngineNode(cameraPath(),
-            n -> Node2D.setPosition(target, n), scene)
+            n -> EngineNode.mapCamera2D(c ->
+                c |> Node2D.setPosition(target)
+                  |> Camera2D.process(delta, viewport), n),
+            scene)
 
-    /// 各フェーズでカメラが向かうべきターゲット位置を計算する。
-    /// `PlayerMoving` で「画面内なら維持」する分岐がここにあるため、計算は純粋関数で書く。
+    /// 各フェーズでカメラが向かうべきターゲット位置を計算する純粋関数。
     /// `selected` が None のときはパーティの代表（id=0、または最初のアクティブ）の位置に向く。
+    /// PlayerMoving の「画面内なら維持」は engine の drag margin が引き受けるため、
+    /// この関数は単に「選択中味方の位置」を返すだけになる。
     def computeTarget(phase: TurnPhase.Phase,
                        selected: Option[Int32],
                        scene: Scene[NodeTag]): Vec2.Vec2 =
         let focusId = focusIdOf(selected, scene);
         let focusPos = focusedPlayerWorldPos(focusId, scene);
         match phase {
-            case TurnPhase.Phase.PlayerCursor =>
-                cursorWorldPos(scene)
-            case TurnPhase.Phase.PlayerMoving =>
-                let camPos = currentPos(scene);
-                if (isPlayerVisible(camPos, focusPos)) camPos
-                else focusPos
-            case TurnPhase.Phase.PlayerAttack =>
-                // 攻撃フェーズはカーソルが赤マスを動く。PlayerCursor と同じく
-                // カーソル追従でターゲットを表示できるようにする。
-                cursorWorldPos(scene)
-            case TurnPhase.Phase.PlayerAutoMove =>
-                // 自動移動中は旗（行き先）を映して、味方が歩いてくるのを見守る。
-                flagWorldPos(scene)
-            case TurnPhase.Phase.EnemyTurn =>
-                focusPos
+            case TurnPhase.Phase.PlayerCursor   => cursorWorldPos(scene)
+            case TurnPhase.Phase.PlayerMoving   => focusPos
+            case TurnPhase.Phase.PlayerAttack   => cursorWorldPos(scene)
+            case TurnPhase.Phase.PlayerAutoMove => flagWorldPos(scene)
+            case TurnPhase.Phase.EnemyTurn      => focusPos
         }
 
     /// 「いまカメラが向くべき」プレイヤー id を選ぶ。
@@ -119,18 +134,4 @@ mod CameraScene {
             case Some(_) => Scene.globalPositionAt(FlagScene.flagPath(), scene)
             case None    => Vec2.zero()
         }
-
-    /// カメラ自身の現在ワールド座標。
-    def currentPos(scene: Scene[NodeTag]): Vec2.Vec2 =
-        Scene.globalPositionAt(cameraPath(), scene)
-
-    /// `camPos` を中心としたビューポート内に `playerPos` があるか。
-    /// half-extent は designWi/Hi と zoom から逆算する（zoom 0.5 で 256x256 世界 px）。
-    /// 完全に画面外（境界 1 px 外）になったときに false を返す保守的な判定。
-    def isPlayerVisible(camPos: Vec2.Vec2, playerPos: Vec2.Vec2): Bool =
-        let halfW = Int32.toFloat64(Game.designWi()) / (2.0 * defaultZoom()#x);
-        let halfH = Int32.toFloat64(Game.designHi()) / (2.0 * defaultZoom()#y);
-        let dx = Float64.abs(playerPos#x - camPos#x);
-        let dy = Float64.abs(playerPos#y - camPos#y);
-        dx <= halfW and dy <= halfH
 }

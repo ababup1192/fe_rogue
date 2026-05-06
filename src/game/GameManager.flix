@@ -58,11 +58,12 @@ mod GameManager {
         }
 
     /// 全フェーズに共通する描画準備の尾部（カメラ追従 → ログ反映 → スクロール）。
-    def commonEpilogue(scene: Scene[NodeTag]): Scene[NodeTag]
+    /// delta はカメラ smoothing の毎フレーム補間に使う。
+    def commonEpilogue(dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameLogger.GameLogger,
                 TurnPhase.State, SelectedPlayer.State} =
         scene
-            |> CameraScene.update
+            |> CameraScene.update(dt)
             |> LogScene.flushFromEffect
             |> LogScene.tickScroll
 
@@ -79,7 +80,7 @@ mod GameManager {
             |> Tween.tickAll(dt)
             |> AnimationPlayer.tickAll(dt)
             |> dispatchAnimationEvents
-            |> commonEpilogue
+            |> commonEpilogue(dt)
 
     /// PlayerAutoMove 中のフレーム: AutoMove.step + Tween tick + AnimationPlayer tick → エピローグ。
     /// 自動移動中に攻撃モーションは発生し得ないが、敵の death_blink がここで完了する可能性があるので
@@ -95,7 +96,7 @@ mod GameManager {
             |> Tween.tickAll(dt)
             |> AnimationPlayer.tickAll(dt)
             |> dispatchAnimationEvents
-            |> commonEpilogue
+            |> commonEpilogue(dt)
 
     /// 通常入力フェーズ（PlayerCursor / PlayerMoving / PlayerAttack）のフレーム:
     /// 入力 → 物理 → Tween / Animation / 完了イベント発火 → エピローグ。
@@ -112,7 +113,7 @@ mod GameManager {
             |> Tween.tickAll(dt)
             |> AnimationPlayer.tickAll(dt)
             |> dispatchAnimationEvents
-            |> commonEpilogue
+            |> commonEpilogue(dt)
 
     /// scene.json 変更を検知したときの再構築。敵ターンキュー・選択・フェーズを
     /// 初期状態に戻し、buildPlayingScene でフルリビルド → 初期 spawn を保存し直す。

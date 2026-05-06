@@ -55,7 +55,12 @@ pub enum Camera2D {
         dragLeftMargin = Float64,
         dragRightMargin = Float64,
         dragTopMargin = Float64,
-        dragBottomMargin = Float64
+        dragBottomMargin = Float64,
+        // 内部状態: 前フレームまでに到達した「実際に view が中心としている位置」。
+        // `position` はゲームロジックがセットしたターゲット。`process` が delta ごとに
+        // smoothPosition を position へ向けて補間する（drag margin を経て smoothing で滑らかに）。
+        // smoothing/drag/limit のいずれも無効なら、getViewTransform は position をそのまま使う。
+        smoothPosition = Vec2.Vec2
     })
 }
 
@@ -99,7 +104,9 @@ mod Camera2D {
             dragLeftMargin = 0.2,
             dragRightMargin = 0.2,
             dragTopMargin = 0.2,
-            dragBottomMargin = 0.2
+            dragBottomMargin = 0.2,
+            // 初期は position と同値（`process` が走るまでは即座にカメラがそこを映す）
+            smoothPosition = position
         })
 
     /// offset 付きで Camera2D を生成する
@@ -340,6 +347,92 @@ mod Camera2D {
     // メソッド（Godot Camera2D 準拠）
     // ========================================================================
 
+    /// `smoothPosition` を取得する（描画用の実視点位置。`process` で更新される）
+    pub def getSmoothPosition(camera: Camera2D): Vec2.Vec2 =
+        let Camera2D.Camera2D(r) = camera;
+        r#smoothPosition
+
+    /// `smoothPosition` を直接設定する（カメラを瞬間移動させたい場合の保険）。
+    /// 通常は `process` 経由で smoothing/drag を介して更新される。
+    pub def setSmoothPosition(smoothPosition: Vec2.Vec2, camera: Camera2D): Camera2D =
+        let Camera2D.Camera2D(r) = camera;
+        Camera2D.Camera2D({smoothPosition = smoothPosition | r})
+
+    /// smoothing / drag のいずれかが有効か。`getViewTransform` が
+    /// `smoothPosition` を使うか `position` を使うかの分岐に用いる。
+    /// すべて無効なら従来挙動（position 直読み）を保つ — 後方互換のための判定。
+    pub def isFollowingActive(camera: Camera2D): Bool =
+        let Camera2D.Camera2D(r) = camera;
+        r#positionSmoothingEnabled
+            or r#dragHorizontalEnabled
+            or r#dragVerticalEnabled
+
+    /// カメラの毎フレーム追従処理（Godot Camera2D の `_process` 相当）。
+    /// `position` を「ターゲット」、`smoothPosition` を「実際に映している点」として、
+    /// drag margin → smoothing lerp → limit clamp の順で `smoothPosition` を更新する。
+    /// 純粋関数（カメラの新インスタンスを返す）。`viewportSize` はビューポート px サイズで、
+    /// 内部で zoom を反映した world 単位の半幅・半高に変換する。
+    ///
+    /// Godot 互換性:
+    ///   - drag margin は world 単位で `viewport / 2 / zoom × dragXMargin` の矩形
+    ///   - smoothing は単純 lerp (`speed * delta` を t、夾着クランプ)
+    ///   - limit は hard clamp（`limitSmoothed = true` モードは未対応）
+    pub def process(delta: Duration.Duration,
+                    viewportSize: {viewportWidth = Float64, viewportHeight = Float64},
+                    camera: Camera2D): Camera2D =
+        let Camera2D.Camera2D(r) = camera;
+        let target = r#position;
+        let smooth = r#smoothPosition;
+        // zoom が 0 の軸は 1 として扱う（落とし穴防止、getViewTransform の流儀に合わせる）
+        let zx = if (r#zoom#x == 0.0) 1.0 else r#zoom#x;
+        let zy = if (r#zoom#y == 0.0) 1.0 else r#zoom#y;
+        let worldHalfW = viewportSize#viewportWidth / 2.0 / zx;
+        let worldHalfH = viewportSize#viewportHeight / 2.0 / zy;
+        // 1. drag margin: target が `smooth` 周りの margin 矩形を超えたら logical を引っ張る。
+        //    内部に居るなら logical = smooth で据え置き（カメラは止まる）。
+        let logicalX =
+            if (r#dragHorizontalEnabled) {
+                let rightBound = smooth#x + worldHalfW * r#dragRightMargin;
+                let leftBound  = smooth#x - worldHalfW * r#dragLeftMargin;
+                if (target#x > rightBound) target#x - worldHalfW * r#dragRightMargin
+                else if (target#x < leftBound) target#x + worldHalfW * r#dragLeftMargin
+                else smooth#x
+            }
+            else target#x;
+        let logicalY =
+            if (r#dragVerticalEnabled) {
+                let bottomBound = smooth#y + worldHalfH * r#dragBottomMargin;
+                let topBound    = smooth#y - worldHalfH * r#dragTopMargin;
+                if (target#y > bottomBound) target#y - worldHalfH * r#dragBottomMargin
+                else if (target#y < topBound) target#y + worldHalfH * r#dragTopMargin
+                else smooth#y
+            }
+            else target#y;
+        // 2. smoothing: smoothPosition が logical へ単純 lerp で近づく。
+        //    `speed * delta > 1` のとき夾着クランプして overshoot を防ぐ。
+        let nextX =
+            if (r#positionSmoothingEnabled) {
+                let t = Float64.min(1.0,
+                    r#positionSmoothingSpeed * Duration.toSeconds(delta));
+                smooth#x + (logicalX - smooth#x) * t
+            }
+            else logicalX;
+        let nextY =
+            if (r#positionSmoothingEnabled) {
+                let t = Float64.min(1.0,
+                    r#positionSmoothingSpeed * Duration.toSeconds(delta));
+                smooth#y + (logicalY - smooth#y) * t
+            }
+            else logicalY;
+        // 3. limit hard clamp: smoothPosition がマップ外を映さないように矩形に押し込む
+        let clampedX = nextX
+            |> Float64.max(Int32.toFloat64(r#limitLeft))
+            |> Float64.min(Int32.toFloat64(r#limitRight));
+        let clampedY = nextY
+            |> Float64.max(Int32.toFloat64(r#limitTop))
+            |> Float64.min(Int32.toFloat64(r#limitBottom));
+        Camera2D.Camera2D({smoothPosition = {x = clampedX, y = clampedY} | r})
+
     /// 画面中央のワールド座標を返す（Godot get_screen_center_position 準拠）
     ///
     /// position + offset がスクロール制限でクランプされた座標を返す。
@@ -431,28 +524,63 @@ mod Camera2D {
     ///   - FixedTopLeft: position+offset がビューポート左上。zoom は左上原点で作用
     /// `globalPos` はシーンツリーから求めた Camera ノードのワールド座標。
     /// Godot 同様、Camera を他ノードの子にしたとき親の変換を反映できる。
+    /// smoothing / drag のいずれかが有効なら、view 中心は `position` ではなく
+    /// `smoothPosition`（process が更新する補間後の値）を起点に計算する。
+    /// すべて無効なら従来通り `globalPos`（= 親変換込みの position）を起点にする — 後方互換。
     pub def getViewTransform(camera: Camera2D, globalPos: Vec2.Vec2,
                               viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): ViewTransform =
         let Camera2D.Camera2D(r) = camera;
         let zoom = r#zoom;
+        // 追従が有効なら smoothPosition を使う。Camera2D が scene root に居る前提で
+        // smoothPosition はワールド座標扱い（CameraScene が常に root に置く）。
+        let viewBase = if (isFollowingActive(camera)) r#smoothPosition else globalPos;
         match r#anchorMode {
             case Camera2DAnchorMode.DragCenter =>
                 // screen = (world - screenCenter) * zoom + halfScreen
                 //        = world * zoom - (screenCenter * zoom - halfScreen)
-                let screenCenter = getScreenCenterPosition(camera, globalPos);
+                let screenCenter = clampedScreenCenter(viewBase, r);
                 let halfW = viewportSize#viewportWidth / 2.0;
                 let halfH = viewportSize#viewportHeight / 2.0;
                 { scale = zoom,
                   offset = {x = screenCenter#x * zoom#x - halfW,
                             y = screenCenter#y * zoom#y - halfH} }
             case Camera2DAnchorMode.FixedTopLeft =>
-                // screen = (world - (globalPos + offset)) * zoom
-                //        = world * zoom - (globalPos + offset) * zoom
-                let rawX = globalPos#x + r#offset#x;
-                let rawY = globalPos#y + r#offset#y;
+                // screen = (world - (viewBase + offset)) * zoom
+                //        = world * zoom - (viewBase + offset) * zoom
+                let rawX = viewBase#x + r#offset#x;
+                let rawY = viewBase#y + r#offset#y;
                 { scale = zoom,
                   offset = {x = rawX * zoom#x, y = rawY * zoom#y} }
         }
+
+    /// 任意の base ワールド座標に offset を加え、limit 矩形でクランプして screen center を返す。
+    /// `getScreenCenterPosition` の汎用化（base を引数化）。
+    /// getViewTransform が smoothPosition / globalPos のいずれを起点にするかを切替可能にする。
+    def clampedScreenCenter(base: Vec2.Vec2,
+                             r: {position = Vec2.Vec2, rotation = Float64, scale = Vec2.Vec2,
+                                 skew = Float64, visible = Bool, zIndex = Int32, modulate = Color,
+                                 offset = Vec2.Vec2, zoom = Vec2.Vec2, enabled = Bool,
+                                 anchorMode = Camera2DAnchorMode,
+                                 processCallback = Camera2DProcessCallback,
+                                 ignoreRotation = Bool,
+                                 limitLeft = Int32, limitTop = Int32,
+                                 limitRight = Int32, limitBottom = Int32,
+                                 limitSmoothed = Bool,
+                                 positionSmoothingEnabled = Bool, positionSmoothingSpeed = Float64,
+                                 rotationSmoothingEnabled = Bool, rotationSmoothingSpeed = Float64,
+                                 dragHorizontalEnabled = Bool, dragVerticalEnabled = Bool,
+                                 dragLeftMargin = Float64, dragRightMargin = Float64,
+                                 dragTopMargin = Float64, dragBottomMargin = Float64,
+                                 smoothPosition = Vec2.Vec2}): Vec2.Vec2 =
+        let rawX = base#x + r#offset#x;
+        let rawY = base#y + r#offset#y;
+        let clampedX = rawX
+            |> Float64.max(Int32.toFloat64(r#limitLeft))
+            |> Float64.min(Int32.toFloat64(r#limitRight));
+        let clampedY = rawY
+            |> Float64.max(Int32.toFloat64(r#limitTop))
+            |> Float64.min(Int32.toFloat64(r#limitBottom));
+        {x = clampedX, y = clampedY}
 }
 
 // ── CanvasItem 実装 ──
