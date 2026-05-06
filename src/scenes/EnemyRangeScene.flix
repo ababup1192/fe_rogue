@@ -64,7 +64,7 @@ mod EnemyRangeScene {
                 let layer   = MapScene.getMapLayer(cleared);
                 // FE 流: 壁のみ通れない。味方マスや他敵マスも「想定移動範囲」として
                 // 表示する（プレイヤーは「もし誰も居なければここまで来られる」を読む）
-                let cells = BoardLogic.reachableCells(
+                let cells = Board.reachableCells(
                     c -> TileMapLayer.isFloor(c, layer),
                     data#gridPos,
                     data#moveTiles);

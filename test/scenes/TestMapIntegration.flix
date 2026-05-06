@@ -14,7 +14,7 @@
 //
 // 検証する観点:
 //   - TileMapLayer.isFloor / isWall が ASCII マップの真値と一致
-//   - BoardLogic.tryMove が初期 (5,5) からの 4 方向で期待値を返す
+//   - Board.tryMove が初期 (5,5) からの 4 方向で期待値を返す
 //     （特に Down は壁で None — 「壁がないのにとまる」の真相確認）
 //   - PlayerScene.moveTo の targetWorld がタイル中心ピクセル座標に一致
 //     （「矢印と違う方向」の Vec2 マッピング検証）
@@ -164,7 +164,7 @@ mod TestMapIntegration {
             result)
 
     // ========================================================================
-    // (2) BoardLogic.tryMove が実マップの初期 (5,5) で期待方向を返すか
+    // (2) Board.tryMove が実マップの初期 (5,5) で期待方向を返すか
     // ========================================================================
 
     /// ★最重要★ Player(5,5) からの 4 方向 tryMove 結果。
@@ -177,10 +177,10 @@ mod TestMapIntegration {
     def testTryMoveFromInitialPosition(): Unit \ Assert =
         let source: Vec2.Vec2i = {x = 5, y = 5};
         let board = realBoardWithPlayerAt(source);
-        let up    = BoardLogic.tryMove(board, source, Vec2.upI())    |> unpackOption;
-        let down  = BoardLogic.tryMove(board, source, Vec2.downI())  |> unpackOption;
-        let left  = BoardLogic.tryMove(board, source, Vec2.leftI())  |> unpackOption;
-        let right = BoardLogic.tryMove(board, source, Vec2.rightI()) |> unpackOption;
+        let up    = Board.tryMove(board, source, Vec2.upI())    |> unpackOption;
+        let down  = Board.tryMove(board, source, Vec2.downI())  |> unpackOption;
+        let left  = Board.tryMove(board, source, Vec2.leftI())  |> unpackOption;
+        let right = Board.tryMove(board, source, Vec2.rightI()) |> unpackOption;
         Assert.assertEq(
             expected = ((true,  5, 4),    // up    → 床
                         (false, 0, 0),    // down  → 壁
@@ -198,7 +198,7 @@ mod TestMapIntegration {
     def testDownBlockedAtFiveFive(): Unit \ Assert =
         let source: Vec2.Vec2i = {x = 5, y = 5};
         let board = realBoardWithPlayerAt(source);
-        let result = BoardLogic.tryMove(board, source, Vec2.downI());
+        let result = Board.tryMove(board, source, Vec2.downI());
         Assert.assertEq(expected = (false, 0, 0), unpackOption(result))
 
     // ========================================================================
@@ -277,7 +277,7 @@ mod TestMapIntegration {
     ///   right (6,5) → ( 104.0,  88.0)
     ///   up    (5,4) → (  88.0,  72.0)
     ///   left  (4,5) → (  72.0,  88.0)
-    ///   ※ down は壁なので moveTo を呼ばない。BoardLogic.tryMove で None。
+    ///   ※ down は壁なので moveTo を呼ばない。Board.tryMove で None。
     @Test
     def testMoveToEndsAtCorrectWorldPos(): Unit \ Assert =
         region rc {
@@ -312,7 +312,7 @@ mod TestMapIntegration {
     //     c) 「一番左 (1,5) から上を押すと斜め右上に進む」
     //          → 期待: (1,5)→(1,4) のみ。x 座標は変わらない
     //
-    //   これらをコードロジック（BoardLogic + PlayerScene + Tween）で再現できるか。
+    //   これらをコードロジック（Board + PlayerScene + Tween）で再現できるか。
     //   再現できなければ、バグは入力 handler（GameEngine.Game.isKeyPressed）または
     //   レンダリング層（Camera2D / TileMapLayer 描画）にある。
     // ========================================================================
@@ -332,7 +332,7 @@ mod TestMapIntegration {
                     map    = snapshot,
                     pieces = (Piece.Player(0), player) :: Nil
                 };
-                match BoardLogic.tryMove(board, player, dir) {
+                match Board.tryMove(board, player, dir) {
                     case None         => (steps, scene)   // 壁で停止
                     case Some(target) =>
                         let scene1 = applyMove(snapshot, target, scene);
@@ -410,7 +410,7 @@ mod TestMapIntegration {
                     pieces = (Piece.Player(0), source) :: Nil
                 };
                 let dir = Vec2.upI();
-                let target = match BoardLogic.tryMove(board, source, dir) {
+                let target = match Board.tryMove(board, source, dir) {
                     case Some(t) => t
                     case None    => bug!("(1,5) up should be open")
                 };

@@ -1,7 +1,7 @@
 // PlayerScene のテスト（multi-player 版）
 //
 // PlayerScene は moveTo(id, target, ...) で gridPos を即更新し、見た目の補間は engine の
-// `Tween` モジュールに委ねる。壁判定は BoardLogic の責務なので PlayerScene 自身は考えない。
+// `Tween` モジュールに委ねる。壁判定は Board の責務なので PlayerScene 自身は考えない。
 //
 // 検証する観点:
 //   - moveTo が gridPos を即更新する

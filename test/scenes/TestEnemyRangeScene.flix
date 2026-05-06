@@ -1,7 +1,7 @@
 /// EnemyRangeScene のシーン操作（足し引き）が一貫していることを検証する。
 ///
-/// 範囲内セル列挙の正しさ自体は `BoardLogic.reachableCells` が担っており、
-/// `TestBoardLogic` が網羅しているので、ここでは「scene にノードが入る／出る」
+/// 範囲内セル列挙の正しさ自体は `Board.reachableCells` が担っており、
+/// `TestBoard` が網羅しているので、ここでは「scene にノードが入る／出る」
 /// プラミングのみ検証する。具体的には:
 ///   - 何も無いシーンで `clear` を呼んでも壊れない（保険動作）
 ///   - `currentEnemyId` / `reachable` は EnemyRange 未登録なら None / Nil を返す

@@ -66,7 +66,7 @@ mod AutoMove {
                     else
                         // 都度フレッシュな board で BFS する（直前の味方の移動を反映）。
                         let board = Game.buildBoard(scene);
-                        match EnemyAI.bfsPath(board, p#gridPos, flag) {
+                        match Board.bfsPath(board, p#gridPos, flag) {
                             case None       => scene   // 経路なし
                             case Some(path) =>
                                 if (List.length(path) <= stopRadius()) scene
@@ -120,7 +120,7 @@ mod AutoMove {
     def isSettledFor(board: Board, src: Vec2.Vec2i, flag: Vec2.Vec2i): Bool =
         if (alreadyClose(src, flag)) true
         else
-            match EnemyAI.bfsPath(board, src, flag) {
+            match Board.bfsPath(board, src, flag) {
                 case None       => true   // 経路なし → これ以上進めない
                 case Some(path) => List.length(path) <= stopRadius()
             }

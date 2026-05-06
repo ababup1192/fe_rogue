@@ -1,7 +1,7 @@
 /// MoveRangeScene — プレイヤーの「今ターン移動可能なマス」を可視化する
 ///
 /// FE 風のターン制移動を提供する。プレイヤーの現在位置から 4 方向 BFS で
-/// `maxMoveTiles` ステップ以内の床セルを `BoardLogic.reachableCells` で求め、
+/// `maxMoveTiles` ステップ以内の床セルを `Board.reachableCells` で求め、
 /// 各セルに半透明の `move_tile` Sprite2D を子として並べる。
 ///
 /// ノード構造:
@@ -57,7 +57,7 @@ mod MoveRangeScene {
     // ────────────────────────────────────────────────────────
 
     /// MapScene + PlayerScene が登録済みのシーンに MoveRange ノードと各セルの Sprite2D
-    /// 子を追加する。**選択中プレイヤー** の位置を origin に `BoardLogic.reachableCells`
+    /// 子を追加する。**選択中プレイヤー** の位置を origin に `Board.reachableCells`
     /// で範囲を求める。未選択（PlayerCursor / EnemyTurn 等）なら何も描画しない。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
         match SelectedPlayer.State.get() {
@@ -79,7 +79,7 @@ mod MoveRangeScene {
         let enemyCells = EnemyScene.getAll(scene) |> List.map(e -> e#gridPos);
         let isBlocked = c ->
                 List.exists(p -> p#x == c#x and p#y == c#y, enemyCells);
-        let cells = BoardLogic.reachableCells(
+        let cells = Board.reachableCells(
             c -> TileMapLayer.isFloor(c, layer) and not isBlocked(c),
             origin,
             steps);

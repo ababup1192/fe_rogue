@@ -1,4 +1,4 @@
-/// EnemyAI — 敵の sense（検知）と chase（追跡）の純粋ロジック
+/// EnemyAI — 敵 1 体の sense（検知）と chase（追跡）を決定する純粋ロジック
 ///
 /// 1 体ごとに `decideAction(board, enemy) -> (EnemyAction, Data)` を呼んで
 /// 「次のターンに取る行動」と「Data の更新（alerted フラグ等）」を返す。
@@ -18,6 +18,7 @@
 /// 形で実現する。これにより 1 体ずつ・縦横 1 マスずつ動く UX が成立する。
 ///
 /// **BFS の障害物（Q7-A）**: 壁 + 他敵駒。プレイヤー駒は障害にしない（追跡先なので）。
+/// 経路探索の本体は `Board.bfsPath` に集約してあり、ここからは呼び出すだけ。
 /// **行動順（Q6-A）**: 呼び出し側が id 昇順で並べてから 1 体ずつ呼ぶ。
 mod EnemyAI {
 
@@ -57,7 +58,7 @@ mod EnemyAI {
                         case None              => (EnemyAction.Skip(enemy#id), updated)
                         case Some(targetEntry) =>
                             let (_, target) = targetEntry;
-                            match bfsPath(board, enemy#gridPos, target) {
+                            match Board.bfsPath(board, enemy#gridPos, target) {
                                 case None       => (EnemyAction.Wait(enemy#id), updated)
                                 case Some(path) =>
                                     match List.head(dropLast(path)) {
@@ -92,65 +93,6 @@ mod EnemyAI {
         }
 
     // ════════════════════════════════════════════════════════
-    // 4 方向 BFS — 最短経路（リスト）を返す
-    // ════════════════════════════════════════════════════════
-
-    /// `source` から `goal` への最短経路を返す。経路無しなら None。
-    /// 戻り値は **source を含まない** 順序付きリスト（先頭 = 1 歩目、末尾 = goal）。
-    /// 障害物 = 壁 + 他駒（自分・goal のセルは通行可）。
-    /// 隣接判定は呼び出し側が済ませている前提（source == goal は使用想定外）。
-    /// AutoMove も同じ「他駒を避けつつ goal へ向かう」追跡を行うため `pub` にする。
-    pub def bfsPath(board: Board, source: Vec2.Vec2i,
-                     goal: Vec2.Vec2i): Option[List[Vec2.Vec2i]] =
-        let isOpen = c -> bfsIsOpen(board, c, source, goal);
-        let initVisited = source :: Nil;
-        // queue: (current, pathReversedFromSource) — pathReversedFromSource は source から
-        //   current までの経路を末尾 cons で積んだもの（reverse すれば 1 歩目 → goal）。
-        let initQueue: List[(Vec2.Vec2i, List[Vec2.Vec2i])] = (source, Nil) :: Nil;
-        bfsLoop(isOpen, goal, initVisited, initQueue)
-
-    def bfsLoop(isOpen: Vec2.Vec2i -> Bool,
-                 goal: Vec2.Vec2i,
-                 visited: List[Vec2.Vec2i],
-                 queue: List[(Vec2.Vec2i, List[Vec2.Vec2i])]):
-                Option[List[Vec2.Vec2i]] =
-        match queue {
-            case Nil => None
-            case (cur, pathRev) :: rest =>
-                if (vecEqI(cur, goal)) Some(List.reverse(pathRev))
-                else
-                    let dirs = Vec2.upI() :: Vec2.downI()
-                                :: Vec2.leftI() :: Vec2.rightI() :: Nil;
-                    let neighbors = List.map(d -> Vec2.addI(cur, d), dirs);
-                    let fresh = List.filter(c ->
-                        isOpen(c) and not isInList(c, visited),
-                        neighbors);
-                    let withPath = List.map(c -> (c, c :: pathRev), fresh);
-                    let newVisited = List.append(visited, fresh);
-                    let newQueue   = List.append(rest, withPath);
-                    bfsLoop(isOpen, goal, newVisited, newQueue)
-        }
-
-    /// リストの末尾 1 要素を除いた残りを返す。長さ 0/1 なら Nil。
-    /// BFS 経路から goal（= プレイヤーセル）を取り除き「踏める範囲」だけ取り出すのに使う。
-    def dropLast(list: List[a]): List[a] =
-        match list {
-            case Nil      => Nil
-            case _ :: Nil => Nil
-            case x :: rest => x :: dropLast(rest)
-        }
-
-    /// BFS で「踏める」と判定するセルの述語。
-    /// - 床でなければ NG
-    /// - source（自分） / goal（プレイヤー）は通行可
-    /// - 他駒（他の敵 or 別の駒）が居れば NG
-    def bfsIsOpen(board: Board, c: Vec2.Vec2i,
-                   source: Vec2.Vec2i, goal: Vec2.Vec2i): Bool =
-        if (not BoardLogic.isWalkable(board, c)) false
-        else if (vecEqI(c, source) or vecEqI(c, goal)) true
-        else not Board.isOccupied(c, board)
-
-    // ════════════════════════════════════════════════════════
     // ヘルパー
     // ════════════════════════════════════════════════════════
 
@@ -159,9 +101,12 @@ mod EnemyAI {
         let dy = Int32.abs(a#y - b#y);
         (dx == 1 and dy == 0) or (dx == 0 and dy == 1)
 
-    def vecEqI(a: Vec2.Vec2i, b: Vec2.Vec2i): Bool =
-        a#x == b#x and a#y == b#y
-
-    def isInList(c: Vec2.Vec2i, list: List[Vec2.Vec2i]): Bool =
-        List.exists(v -> vecEqI(v, c), list)
+    /// リストの末尾 1 要素を除いた残りを返す。長さ 0/1 なら Nil。
+    /// `Board.bfsPath` の結果（goal を含む）から「踏める範囲」だけ取り出すのに使う。
+    def dropLast(list: List[a]): List[a] =
+        match list {
+            case Nil      => Nil
+            case _ :: Nil => Nil
+            case x :: rest => x :: dropLast(rest)
+        }
 }

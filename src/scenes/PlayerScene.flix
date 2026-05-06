@@ -23,7 +23,7 @@
 ///
 /// 移動は moveTo(id, target) で論理位置（gridPos）を即更新し、
 /// 見た目は engine 層の `Tween` モジュールに委ねる。**壁・他駒の判定は
-/// 呼び出し側（BoardLogic / MoveRangeScene）が moveTo を呼ぶ前に済ませている前提**。
+/// 呼び出し側（Board / MoveRangeScene）が moveTo を呼ぶ前に済ませている前提**。
 mod PlayerScene {
 
     // ────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ mod PlayerScene {
     // (D) ロジック — 移動
     // ────────────────────────────────────────────────────────
 
-    /// 目標グリッドへの移動を開始する。**壁判定は呼び出し側（BoardLogic）が済ませている前提**。
+    /// 目標グリッドへの移動を開始する。**壁判定は呼び出し側（Board）が済ませている前提**。
     /// gridPos を即更新し、見た目は Tween に委ねる。
     pub def moveTo(id: Int32, map: MapSnapshot, target: Vec2.Vec2i,
                     marker: Marker2D, data: Data,
@@ -247,7 +247,7 @@ mod PlayerScene {
                     let allowed = c -> MoveRangeScene.isInRange(c, scene);
                     let movement = forM (
                         dir    <- readHeldDirection();
-                        target <- BoardLogic.tryMoveWithRange(board, data#gridPos,
+                        target <- Board.tryMoveWithRange(board, data#gridPos,
                                                                 dir, allowed)
                     ) yield {
                         let (newMarker, newData) =
