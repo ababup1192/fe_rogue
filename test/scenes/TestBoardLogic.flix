@@ -25,12 +25,13 @@ mod TestBoardLogic {
     def emptySnapshot(w: Int32, h: Int32): MapSnapshot =
         let inB = c -> c#x >= 0 and c#x < w and c#y >= 0 and c#y < h;
         {
-            tileSize    = testTileSize(),
-            usedRect    = {position = Vec2.zeroI(), size = ({x = w, y = h}: Vec2.Vec2i)},
-            isWall      = c -> not inB(c),
-            isFloor     = c -> inB(c),
-            mapToLocal  = c -> testGridToWorld(c),
-            gridToWorld = c -> testGridToWorld(c)
+            tileSize     = testTileSize(),
+            usedRect     = {position = Vec2.zeroI(), size = ({x = w, y = h}: Vec2.Vec2i)},
+            isWall       = c -> not inB(c),
+            isFloor      = c -> inB(c),
+            mapToLocal   = c -> testGridToWorld(c),
+            gridToWorld  = c -> testGridToWorld(c),
+            moduleOfCell = _ -> None
         }
 
     /// w×h サイズの盤面で、wall の 1 マスだけ壁、ほかは床。範囲外も壁扱い。
@@ -38,12 +39,13 @@ mod TestBoardLogic {
         let inB = c -> c#x >= 0 and c#x < w and c#y >= 0 and c#y < h;
         let isW = c -> c#x == wall#x and c#y == wall#y;
         {
-            tileSize    = testTileSize(),
-            usedRect    = {position = Vec2.zeroI(), size = ({x = w, y = h}: Vec2.Vec2i)},
-            isWall      = c -> not inB(c) or isW(c),
-            isFloor     = c -> inB(c) and not isW(c),
-            mapToLocal  = c -> testGridToWorld(c),
-            gridToWorld = c -> testGridToWorld(c)
+            tileSize     = testTileSize(),
+            usedRect     = {position = Vec2.zeroI(), size = ({x = w, y = h}: Vec2.Vec2i)},
+            isWall       = c -> not inB(c) or isW(c),
+            isFloor      = c -> inB(c) and not isW(c),
+            mapToLocal   = c -> testGridToWorld(c),
+            gridToWorld  = c -> testGridToWorld(c),
+            moduleOfCell = _ -> None
         }
 
     /// snapshot と Player 位置から Board を組む
@@ -124,6 +126,17 @@ mod TestBoardLogic {
     def testTryMoveWithRangeBlocked(): Unit \ Assert =
         let board = boardWithPlayer(emptySnapshot(5, 5), ({x = 2, y = 2}: Vec2.Vec2i));
         let result = BoardLogic.tryMoveWithRange(board, Vec2.rightI(), _ -> false);
+        Assert.assertEq(expected = (false, 0, 0), unpackOption(result))
+
+    /// 他駒（敵）が居るマスへは入れない。pieces に Enemy(0) を進行先 (3,2) に置く。
+    @Test
+    def testTryMoveBlockedByEnemy(): Unit \ Assert =
+        let board: Board = {
+            map    = emptySnapshot(5, 5),
+            pieces = (Piece.Player, ({x = 2, y = 2}: Vec2.Vec2i))
+                  :: (Piece.Enemy(0), ({x = 3, y = 2}: Vec2.Vec2i)) :: Nil
+        };
+        let result = BoardLogic.tryMoveWithRange(board, Vec2.rightI(), _ -> true);
         Assert.assertEq(expected = (false, 0, 0), unpackOption(result))
 
     // ========================================================================

@@ -21,7 +21,12 @@ pub type alias MapSnapshot = {
     mapToLocal  = Vec2.Vec2i -> Vec2.Vec2,
     // gridToWorld: mapToLocal と違い Map の global position 加算済み
     // （呼び出し側が MapScene の位置を知らずに済む）
-    gridToWorld = Vec2.Vec2i -> Vec2.Vec2
+    gridToWorld  = Vec2.Vec2i -> Vec2.Vec2,
+    // moduleOfCell: ワールドグリッド座標 → 包含モジュール idx。
+    // 部屋優先で「先勝ち」（modulePaths の若い idx を返す）。
+    // どのモジュールにも含まれない場合（void 領域）は None。
+    // 「同じ部屋／通路にいる」検知やモジュール内セル列挙の起点に使う。
+    moduleOfCell = Vec2.Vec2i -> Option[Int32]
 }
 
 mod MapScene {
@@ -32,7 +37,14 @@ mod MapScene {
     ///   PlayerScene が安全なスポーン地点として使う（LDTK によって部屋の中央が壁になっていても OK）。
     pub type alias Data = {
         anchorOffset = Vec2.Vec2i,
-        spawnGrid    = Vec2.Vec2i
+        spawnGrid    = Vec2.Vec2i,
+        // 配置済み全モジュールのワールド bbox（idx 順）。
+        // 「セル → モジュール idx」逆引きや、敵スポーン候補セルの列挙に使う。
+        // anchor を除く部屋判定 / 通路除外もこのリストから判定する（idx < roomCount）。
+        placements   = List[DungeonComposer.ModulePlacement],
+        // 部屋数。modulePaths が「部屋を先・通路を後ろ」で並ぶ前提なので
+        // idx < roomCount なら「部屋」、それ以外は「通路」と判定できる。
+        roomCount    = Int32
     }
 
     // (B) 定数
@@ -69,7 +81,9 @@ mod MapScene {
                                                                  plan#modulePaths,
                                                                  plan#sideConnections);
         let mapData: Data = { anchorOffset = result#anchorOffset,
-                               spawnGrid    = result#spawnGrid };
+                               spawnGrid    = result#spawnGrid,
+                               placements   = result#placements,
+                               roomCount    = plan#roomCount };
         // Floor 装飾レイヤーを Walls の下（zIndex < Walls）に重ねる。
         // tilemap_floor テクスチャを使用、衝突なし、auto-rule 再適用なし。
         let floorRaw = DungeonComposer.composeDecorationLayer(floorTextureName(),
@@ -102,6 +116,30 @@ mod MapScene {
     /// PlayerScene.add がプレイヤーをここに配置する。
     pub def getSpawnGrid(scene: Scene[NodeTag]): Vec2.Vec2i =
         getMapData(scene)#spawnGrid
+
+    /// 配置済み全モジュールのワールド bbox（idx 順）。EnemyScene のスポーン候補列挙や
+    /// `moduleOfCell` の構築に使う。
+    pub def getPlacements(scene: Scene[NodeTag]): List[DungeonComposer.ModulePlacement] =
+        getMapData(scene)#placements
+
+    /// 部屋数。`idx < roomCount` なら部屋、それ以外は通路と判定できる。
+    pub def getRoomCount(scene: Scene[NodeTag]): Int32 =
+        getMapData(scene)#roomCount
+
+    /// `placements` を「先勝ち（idx 昇順）」で走査し、`coord` を含む最初のモジュール idx を返す。
+    /// modulePaths は「部屋を先・通路を後ろ」で並ぶため、部屋優先で逆引きできる。
+    /// MapSnapshot.moduleOfCell の実装。
+    pub def moduleOfCellIn(coord: Vec2.Vec2i,
+                            placements: List[DungeonComposer.ModulePlacement]): Option[Int32] =
+        List.findMap(p -> {
+            let minX = p#offset#x;
+            let minY = p#offset#y;
+            let maxX = p#offset#x + p#gridSize#x;
+            let maxY = p#offset#y + p#gridSize#y;
+            if (coord#x >= minX and coord#x < maxX
+                and coord#y >= minY and coord#y < maxY) Some(p#idx)
+            else None
+        }, placements)
 
     def getMapData(scene: Scene[NodeTag]): Data =
         match Scene.getEngineNode(mapPath(), scene) {

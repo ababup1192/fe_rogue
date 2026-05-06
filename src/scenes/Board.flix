@@ -11,7 +11,8 @@
 /// Scene と TileMapLayer から構築してクロージャに包み、フレーム内で固定して返す。
 pub enum Piece with Eq {
     case Player
-    // 将来: case Enemy(...), case Item(...)
+    case Enemy(Int32)
+    // 将来: case Item(...)
 }
 
 pub type alias Board = {
@@ -31,5 +32,21 @@ mod Board {
     pub def playerPos(board: Board): Option[Vec2.Vec2i] =
         List.findMap(entry -> match entry {
             case (Piece.Player, pos) => Some(pos)
+            case _                   => None
+        }, board#pieces)
+
+    /// 盤面上の敵駒一覧（id, gridPos）。pieces 順を保つ。
+    pub def enemyPositions(board: Board): List[(Int32, Vec2.Vec2i)] =
+        List.filterMap(entry -> match entry {
+            case (Piece.Enemy(id), pos) => Some((id, pos))
+            case _                      => None
+        }, board#pieces)
+
+    /// 任意の駒（Player / Enemy）が `coord` を占有しているか。
+    /// Vec2i は record alias なのでフィールド比較する。
+    pub def isOccupied(coord: Vec2.Vec2i, board: Board): Bool =
+        List.exists(entry -> {
+            let (_, pos) = entry;
+            pos#x == coord#x and pos#y == coord#y
         }, board#pieces)
 }

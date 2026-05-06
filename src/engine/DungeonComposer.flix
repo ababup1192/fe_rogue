@@ -275,6 +275,16 @@ mod DungeonComposer {
         b = DoorRef
     }
 
+    /// 配置済み 1 モジュールのワールド bbox。
+    /// `idx` は `modulePaths` 上の 0-base index（先勝ち優先度と一致）。
+    /// `offset` は正規化後の offsetGrid。`gridSize` は LDTK の元寸法。
+    /// 「セル → モジュール index」逆引きや、敵スポーン候補セルの列挙に使う。
+    pub type alias ModulePlacement = {
+        idx      = Int32,
+        offset   = Vec2.Vec2i,
+        gridSize = Vec2.Vec2i
+    }
+
     /// 高レベル API の戻り値。
     /// - `anchorOffset` は modulePaths[0] の正規化後 offsetGrid。
     /// - `spawnGrid` は anchor 内で「壁でない」と保証されたセルのワールド座標。
@@ -282,11 +292,14 @@ mod DungeonComposer {
     ///   PlayerScene 等のスポーン位置に使うことで、(5,5) が壁の LDTK でも安全。
     /// - `moduleSpecs` は配置決定後の (path, offsetGrid) リスト。
     ///   別レイヤー（Floor 等）を同じ配置で重ねて描画する際に使う。
+    /// - `placements` は配置済み全モジュールのワールド bbox（offset + gridSize）。
+    ///   moduleSpecs と同じ idx 順で並ぶ。
     pub type alias ComposeResult = {
         layer        = TileMapLayer,
         anchorOffset = Vec2.Vec2i,
         spawnGrid    = Vec2.Vec2i,
-        moduleSpecs  = List[ModuleSpec]
+        moduleSpecs  = List[ModuleSpec],
+        placements   = List[ModulePlacement]
     }
 
     /// 連結グラフから offsetGrid と openDoors を自動導出して compose を呼ぶ。
@@ -340,10 +353,12 @@ mod DungeonComposer {
             }, connections);
             // 8. ModuleSpec リストを modulePaths 順に組み立てる
             let modules = buildModuleSpecs(modulePaths, offsets);
+            // 8'. ModulePlacement リスト（offset + gridSize）を idx 順に組み立てる
+            let placements = buildPlacements(raws, offsets);
             // 9. 既存 compose に委譲
             let layer = compose(textureName, modules, openDoors);
             { layer = layer, anchorOffset = anchorOffset, spawnGrid = spawnGrid,
-              moduleSpecs = modules }
+              moduleSpecs = modules, placements = placements }
 
     /// anchor のローカル collisionCells を見て「壁でない」セルのうち
     /// グリッド中心に最も近いものを返す。戻り値はワールド座標（anchorOffset 加算済み）。
@@ -393,6 +408,18 @@ mod DungeonComposer {
             case Some(o) => o
             case None    => bug!("DungeonComposer: no offset computed for module ${i}")
         }
+
+    /// raws と offsets を組み合わせて ModulePlacement リストにする（idx 順）。
+    /// raws は modulePaths と同じ並びで loadLevelRaw 済み前提。
+    def buildPlacements(raws: List[LDTKLoader.LDTKLevelRaw],
+                         offsets: Map[Int32, Vec2.Vec2i]): List[ModulePlacement] =
+        let (_, reversed) = List.foldLeft(acc -> raw -> {
+            let (i, list) = acc;
+            let off = lookupOffset(i, offsets);
+            let p: ModulePlacement = { idx = i, offset = off, gridSize = raw#gridSize };
+            (i + 1, p :: list)
+        }, (0, Nil), raws);
+        List.reverse(reversed)
 
     /// modulePaths を offsets と組み合わせて ModuleSpec リストにする（modulePaths 順を維持）。
     def buildModuleSpecs(modulePaths: List[String],

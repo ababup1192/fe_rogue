@@ -9,7 +9,9 @@
 /// Scene の構造や PlayerScene の Data には依存しない（テストは Board を直接合成可能）。
 mod BoardLogic {
 
-    /// 指定セルが歩行可能か（マップ範囲内 かつ 壁ではない）
+    /// 指定セルが歩行可能か（マップ範囲内 かつ 壁ではない）。
+    /// 駒の占有は別途 `Board.isOccupied` でチェックする（自分自身が source にいる
+    /// ケースを呼び出し側が制御できるよう、ここでは地形のみ見る）。
     pub def isWalkable(board: Board, coord: Vec2.Vec2i): Bool =
         board#map#isFloor(coord)
 
@@ -29,7 +31,10 @@ mod BoardLogic {
                               allowed: Vec2.Vec2i -> Bool): Option[Vec2.Vec2i] =
         Board.playerPos(board) |> Option.flatMap(player ->
             let target = stepTarget(player, dir);
-            if (isWalkable(board, target) and allowed(target)) Some(target) else None)
+            // 床 + 範囲内 + 他駒に占有されていない（敵駒に重ねない）
+            if (isWalkable(board, target)
+                and allowed(target)
+                and not Board.isOccupied(target, board)) Some(target) else None)
 
     /// 4 方向 BFS で `origin` から最大 `maxSteps` ステップ以内に到達できる床セルの一覧を返す。
     /// `origin` 自身も結果に含む（距離 0）。

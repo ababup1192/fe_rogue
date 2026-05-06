@@ -65,8 +65,12 @@ mod MoveRangeScene {
         // 移動力はキャラごとに違う想定なので Player の Data から読む。
         // MoveRangeScene はマス数の出所を 1 か所（PlayerScene.Data#moveTiles）に集約する。
         let steps  = PlayerScene.getMoveTiles(scene);
+        // 敵マスは BFS の通行可能セルから除外する（Q5-A: FE 流の視覚的明示）。
+        // BoardLogic.reachableCells は単一の述語しか取らないので、ここで合成する。
+        let enemyCells = EnemyScene.getAll(scene) |> List.map(e -> e#gridPos);
+        let isEnemy = c -> List.exists(p -> p#x == c#x and p#y == c#y, enemyCells);
         let cells  = BoardLogic.reachableCells(
-            c -> TileMapLayer.isFloor(c, layer),
+            c -> TileMapLayer.isFloor(c, layer) and not isEnemy(c),
             origin,
             steps);
         // 描画は origin（プレイヤーが立っているマス）を除外する：自分自身のマスに

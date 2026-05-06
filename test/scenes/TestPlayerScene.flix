@@ -31,12 +31,13 @@ mod TestPlayerScene {
     /// テスト用 MapSnapshot — 床のみ・13×13 サイズ・grid↔world は testGridToWorld で固定
     def testSnapshot(): MapSnapshot =
         {
-            tileSize    = testTileSize(),
-            usedRect    = {position = Vec2.zeroI(), size = ({x = 13, y = 13}: Vec2.Vec2i)},
-            isWall      = _ -> false,
-            isFloor     = _ -> true,
-            mapToLocal  = c -> testGridToWorld(c),
-            gridToWorld = c -> testGridToWorld(c)
+            tileSize     = testTileSize(),
+            usedRect     = {position = Vec2.zeroI(), size = ({x = 13, y = 13}: Vec2.Vec2i)},
+            isWall       = _ -> false,
+            isFloor      = _ -> true,
+            mapToLocal   = c -> testGridToWorld(c),
+            gridToWorld  = c -> testGridToWorld(c),
+            moduleOfCell = _ -> None
         }
 
     /// Tween.Scheduler のスタブ handler。schedule の登録を捨てて何もしない。

@@ -27,9 +27,12 @@ mod DungeonGenerator {
     }
 
     /// composeFromSideConnections に渡す入力一式。
+    /// `modulePaths` は「部屋を先・通路を後ろ」で並ぶため、
+    /// `roomCount` で部屋と通路の境界を呼び出し側が判別できる。
     pub type alias Plan = {
         modulePaths     = List[String],
-        sideConnections = List[SideConnection]
+        sideConnections = List[SideConnection],
+        roomCount       = Int32
     }
 
     /// LDTK ファイルから取り出した寸法と Door 一覧（生成中に何度も参照する）。
@@ -339,7 +342,9 @@ mod DungeonGenerator {
                 b = ({moduleIndex = t, side = c#toSide}:   SideRef)
             }: SideConnection)
         }, List.reverse(state#conns));   // 元の追加順に戻す（読みやすさのため）
-        { modulePaths = modulePaths, sideConnections = sideConnections }
+        { modulePaths     = modulePaths,
+          sideConnections = sideConnections,
+          roomCount       = List.length(rooms) }
 
     def lookupRemap(oldIdx: Int32, m: Map[Int32, Int32]): Int32 =
         match Map.get(oldIdx, m) {

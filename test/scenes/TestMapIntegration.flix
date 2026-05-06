@@ -103,12 +103,13 @@ mod TestMapIntegration {
     def realMapSnapshot(): MapSnapshot =
         let layer = realTileMapLayer();
         {
-            tileSize    = TileMapLayer.tileSize(layer),
-            usedRect    = TileMapLayer.getUsedRect(layer),
-            isWall      = c -> TileMapLayer.isWall(c, layer),
-            isFloor     = c -> TileMapLayer.isFloor(c, layer),
-            mapToLocal  = c -> TileMapLayer.mapToLocal(c, layer),
-            gridToWorld = c -> TileMapLayer.mapToLocal(c, layer)
+            tileSize     = TileMapLayer.tileSize(layer),
+            usedRect     = TileMapLayer.getUsedRect(layer),
+            isWall       = c -> TileMapLayer.isWall(c, layer),
+            isFloor      = c -> TileMapLayer.isFloor(c, layer),
+            mapToLocal   = c -> TileMapLayer.mapToLocal(c, layer),
+            gridToWorld  = c -> TileMapLayer.mapToLocal(c, layer),
+            moduleOfCell = _ -> None
         }
 
     /// 指定位置に Player 駒だけがある盤面

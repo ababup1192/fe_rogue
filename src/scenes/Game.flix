@@ -1,6 +1,7 @@
 /// シーンノードに紐づくゲーム状態タグ。各 Scene 固有の Data 型を内部に持つ。
 pub enum NodeTag {
     case Player(PlayerScene.Data)
+    case Enemy(EnemyScene.Data)
     case Map(MapScene.Data)
     case MoveRange(MoveRangeScene.Data)
     case Log(LogScene.Data)
@@ -27,25 +28,27 @@ instance Node[NodeTag] {
 
 // 方向移動は PlayerScene.physicsProcess が key state を polling して処理する
 // （onKeyPressed は押下エッジ専用で押しっぱなしを検知できないため）。
-// 決定キー (Z / Space / Enter) のエッジで「ターンエンド」扱い ＝ MoveRangeScene を
-// プレイヤーの現在位置から再計算する。Tween 中は受け付けない（移動の途中で
-// 範囲が中継セル基準で更新されるのを防ぐ）。
+// 決定キー (Z / Space / Enter) のエッジで「ターンエンド」扱い ＝ 敵ターンキューに
+// 全敵の step を populate するだけ。実際の敵移動処理は gameLoop が毎フレーム
+// 1 step ずつ進めるので、敵は 1 体ずつ・1 マスずつ動くように見える。
+// Tween 中（味方移動中）は受け付けない。敵ターン中（キュー非空）は gameLoop 側で
+// 入力ハンドリング自体をスキップするので、ここで再チェックする必要はない。
 instance InputEvent.InputHandler[NodeTag] {
-    type Aef = {Tween.Scheduler, GameLogger.GameLogger}
+    type Aef = {Tween.Scheduler, GameLogger.GameLogger, EnemyTurn.Queue}
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
-                       Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+                       Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger,
+                                          EnemyTurn.Queue} =
         let isConfirm = key == GameEngine.Key.Z
                         or key == GameEngine.Key.Space
                         or key == GameEngine.Key.Enter;
         if (isConfirm and not Tween.Scheduler.isActive(PlayerScene.playerPath())) {
-            // 敵ターン開始 → 敵攻撃（固定文字列の仮実装）→ ターン終了 → 次のプレイヤーターン
-            // を 1 フレーム内に連続発火する。実 enemy ロジック・実ダメージ計算は別タスク
+            // キューに全敵分の step を積む。各敵の初期 remaining = moveTiles。
+            let steps = EnemyScene.getAll(scene)
+                |> List.sortBy(e -> e#id)
+                |> List.map(e -> ({id = e#id, remaining = e#moveTiles}: EnemyTurn.Step));
+            EnemyTurn.Queue.replace(steps);
             GameLogger.GameLogger.enemyLog("敵のターン");
-            GameLogger.GameLogger.enemyLog("敵の攻撃 味方に3ダメージ");
-            GameLogger.GameLogger.endTurn();
-            let next = MoveRangeScene.refresh(scene);
-            GameLogger.GameLogger.playerLog("味方のターン");
-            next
+            scene
         }
         else scene
 }
@@ -58,6 +61,89 @@ mod Game {
     /// 引き伸ばし表示される（Godot の Stretch Mode = canvas_items 相当）
     pub def designWi(): Int32 = 128
     pub def designHi(): Int32 = 128
+
+    /// 敵ターンキューの先頭 step を 1 つ進める。Tween がアクティブなら何もしない。
+    /// gameLoop が毎フレーム呼ぶ。
+    /// 動作:
+    ///   1) キュー先頭が居る敵の Tween がアクティブ（前の step が再生中）なら待つ
+    ///   2) 先頭 step を pop して `EnemyAI.decideAction` で 1 マス分の行動を決める
+    ///   3) 行動を適用（Move なら Tween 開始 + remaining-1 で pushFront、Attack なら
+    ///      ログのみ、Skip/Wait は無動作）
+    ///   4) キューが空になったらターン終了処理（MoveRange 再構築 + 味方ターン宣言）
+    pub def stepEnemyTurn(scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Tween.Scheduler, GameLogger.GameLogger, EnemyTurn.Queue} =
+        match EnemyTurn.Queue.peekFront() {
+            case None       => scene   // 敵ターンではない
+            case Some(step) =>
+                if (Tween.Scheduler.isActive(EnemyScene.enemyPath(step#id))) scene
+                else
+                    // 先頭 step を消費して 1 マス進める
+                    let _ = EnemyTurn.Queue.popFront();
+                    let next = applyOneStep(step, scene);
+                    // キューが空 = 全敵の全 step が完了した = ターン終了
+                    if (EnemyTurn.Queue.isEmpty()) finishEnemyTurn(next)
+                    else next
+        }
+
+    /// step 1 つぶんの行動を適用する。Move なら Tween で 1 マス進めて remaining-1 を
+    /// pushFront、Attack ならログ、Skip/Wait は無動作（remaining も捨てる）。
+    def applyOneStep(step: EnemyTurn.Step, scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Tween.Scheduler, GameLogger.GameLogger, EnemyTurn.Queue} =
+        match EnemyScene.get(step#id, scene) {
+            case None       => scene   // 既に除外済み（将来の死亡時など）
+            case Some(data) =>
+                let board = buildBoard(scene);
+                let (action, updated) = EnemyAI.decideAction(board, data);
+                let withAlert = EnemyScene.mapEnemy(step#id,
+                    d -> {alerted = updated#alerted | d}, scene);
+                match action {
+                    case EnemyAI.EnemyAction.Move(id, target) =>
+                        let moved = EnemyScene.moveTo(id, target, board#map, withAlert);
+                        // 残り step があれば次の 1 マス分を継続して pushFront
+                        if (step#remaining > 1)
+                            EnemyTurn.Queue.pushFront({id = id,
+                                                        remaining = step#remaining - 1})
+                        else ();
+                        moved
+                    case EnemyAI.EnemyAction.Attack(id) =>
+                        GameLogger.GameLogger.enemyLog("敵${id}の攻撃");
+                        withAlert
+                    case EnemyAI.EnemyAction.Wait(_) => withAlert
+                    case EnemyAI.EnemyAction.Skip(_) => withAlert
+                }
+        }
+
+    /// 敵ターンの後始末: ターン番号繰り上げ + MoveRange 再構築 + 味方ターン宣言。
+    def finishEnemyTurn(scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {GameLogger.GameLogger} =
+        GameLogger.GameLogger.endTurn();
+        let next = MoveRangeScene.refresh(scene);
+        GameLogger.GameLogger.playerLog("味方のターン");
+        next
+
+    /// 現在の scene から Board (MapSnapshot + 駒一覧) を組み立てる。
+    /// BoardQuery handler と「敵ターン処理（onKeyPressed）」の双方が呼ぶ。
+    /// 後者は 1 体動かすたびに最新の scene から組み直して、駒の更新を反映させる。
+    pub def buildBoard(scene: Scene[NodeTag]): Board =
+        let layer       = MapScene.getMapLayer(scene);
+        let mapGlobal   = Scene.globalPositionAt(MapScene.mapPath(), scene);
+        let placements  = MapScene.getPlacements(scene);
+        let map: MapSnapshot = {
+            tileSize     = TileMapLayer.tileSize(layer),
+            usedRect     = TileMapLayer.getUsedRect(layer),
+            isWall       = c -> TileMapLayer.isWall(c, layer),
+            isFloor      = c -> TileMapLayer.isFloor(c, layer),
+            mapToLocal   = c -> TileMapLayer.mapToLocal(c, layer),
+            gridToWorld  = c -> Vec2.add(mapGlobal, TileMapLayer.mapToLocal(c, layer)),
+            moduleOfCell = c -> MapScene.moduleOfCellIn(c, placements)
+        };
+        let player  = PlayerScene.getGridPos(scene);
+        let enemies = EnemyScene.getAll(scene)
+            |> List.map(e -> (Piece.Enemy(e#id), e#gridPos));
+        {
+            map    = map,
+            pieces = (Piece.Player, player) :: enemies
+        }
 
     /// 初期ウィンドウサイズ（OS ピクセル単位）。design とは独立して指定でき、
     /// design 側がウィンドウいっぱいに引き伸ばし描画される
@@ -74,6 +160,7 @@ mod Game {
                 let scene = Scene.empty()
                     |> MapScene.add
                     |> PlayerScene.add
+                    |> EnemyScene.add
                     |> MoveRangeScene.add
                     |> LogScene.add;
                 GameLogger.GameLogger.playerLog("T1 味方のターン");
@@ -81,25 +168,9 @@ mod Game {
             } with Editor.withState(rc)
               with Tween.withScheduler(rc)   // tweensRef は内部に隠蔽
               with GameLogger.withLogger(rc) // entriesRef は内部に隠蔽
+              with EnemyTurn.withQueue(rc)   // 敵ターンキュー（1 step / 1 frame 駆動）
               with handler BoardQuery {
-                  def board(k) =
-                      let curScene = Ref.get(sceneRef);
-                      let layer = MapScene.getMapLayer(curScene);
-                      let mapGlobal = Scene.globalPositionAt(MapScene.mapPath(), curScene);
-                      let map: MapSnapshot = {
-                          tileSize    = TileMapLayer.tileSize(layer),
-                          usedRect    = TileMapLayer.getUsedRect(layer),
-                          isWall      = coords -> TileMapLayer.isWall(coords, layer),
-                          isFloor     = coords -> TileMapLayer.isFloor(coords, layer),
-                          mapToLocal  = coords -> TileMapLayer.mapToLocal(coords, layer),
-                          gridToWorld = coords ->
-                              Vec2.add(mapGlobal, TileMapLayer.mapToLocal(coords, layer))
-                      };
-                      let player = PlayerScene.getGridPos(curScene);
-                      k({
-                          map    = map,
-                          pieces = (Piece.Player, player) :: Nil
-                      })
+                  def board(k) = k(buildBoard(Ref.get(sceneRef)))
               }
         }
 
@@ -107,6 +178,7 @@ mod Game {
                  Unit \ {GameEngine.Game, Fs.FileRead, Fs.FileWrite,
                          Editor.EditorState, EditHistory.Rewind,
                          BoardQuery, Tween.Scheduler, GameLogger.GameLogger,
+                         EnemyTurn.Queue,
                          Math.Random, IO, r} =
         if (GameEngine.Game.shouldClose() or
             GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
@@ -117,18 +189,32 @@ mod Game {
             Ref.put(scene, sceneRef);
             let dt = GameEngine.Game.getDeltaTime();
             let afterEditor = Editor.handleInput(scene);
+            // 敵ターン（キュー非空）中は入力をブロックして 1 step ずつ進める。
+            // プレイヤーターン中は通常の handleInput / physicsProcess を回す。
+            let inEnemyPhase = not EnemyTurn.Queue.isEmpty();
             let updated = if (Editor.isOn()) afterEditor
-                          else afterEditor
-                              |> GameEngine.handleInput
-                              |> GameEngine.physicsProcess(delta = dt, paused = false,
-                                                            gravity = Vec2.zero())
-                              |> Tween.tickAll(dt)   // engine プラミング 1 行
-                              |> LogScene.flushFromEffect
-                              |> LogScene.tickScroll;
+                          else if (inEnemyPhase)
+                              afterEditor
+                                  |> stepEnemyTurn
+                                  |> Tween.tickAll(dt)
+                                  |> LogScene.flushFromEffect
+                                  |> LogScene.tickScroll
+                          else
+                              afterEditor
+                                  |> GameEngine.handleInput
+                                  |> GameEngine.physicsProcess(delta = dt, paused = false,
+                                                                gravity = Vec2.zero())
+                                  |> Tween.tickAll(dt)   // engine プラミング 1 行
+                                  |> LogScene.flushFromEffect
+                                  |> LogScene.tickScroll;
             // scene.json が変わったらシーンを丸ごと組み直す（プレイ中状態はリセット）
-            let next = if (Editor.pollReload())
+            let next = if (Editor.pollReload()) {
+                           // ホットリロード時は敵ターンキューも空にしてプレイヤーターンに戻す
+                           EnemyTurn.Queue.replace(Nil);
                            Scene.empty() |> MapScene.add |> PlayerScene.add
+                                         |> EnemyScene.add
                                          |> MoveRangeScene.add |> LogScene.add
+                       }
                        else updated;
             GameEngine.render(next);
             gameLoop(sceneRef, next)
