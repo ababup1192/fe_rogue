@@ -28,31 +28,18 @@ mod EnemyScene {
     /// `homeModuleIdx` はスポーンしたときの部屋 idx（検知判定の補助情報）。
     /// `moveTiles` は 1 ターンに進めるマス数（FE の「移動力」相当）。
     /// EnemyAI が BFS パスからこの値ぶんだけ進めて 1 マスずつ Tween する。
-    /// `hp` は残り体力。0 になると `dying` に状態が入って点滅消滅アニメに入る。
-    /// `dying = Some(_)` の敵は `EnemyTurn.Queue` から除外され、行動しない。
+    /// `hp` は残り体力。0 になると `isDying = true` がセットされ、`death_blink`
+    /// アニメーションが再生される。アニメ終了で GameManager がノードを scene から削除する。
+    /// `isDying = true` の敵は `EnemyTurn.Queue` / `findIdAt` などから除外され、行動しない。
     pub type alias Data = {
-        id            = Int32,
-        gridPos       = Vec2.Vec2i,
-        alerted       = Bool,
-        homeModuleIdx = Int32,
-        moveTiles     = Int32,
-        hp            = Int32,
-        dying         = Option[DyingState],
-        attacking     = Option[AttackAnim.State]
-    }
-
-    /// 死亡演出中の状態。`tickDeaths` がフレームごとに進める。
-    /// `remainingBlinks` は残り点滅サイクル数（1 サイクル = FadingOut + FadingIn）。
-    pub type alias DyingState = {
-        remainingBlinks = Int32,
-        phase           = BlinkPhase
-    }
-
-    /// 点滅 1 サイクル内のサブフェーズ。
-    /// FadingOut: 1.0 → 0.5、FadingIn: 0.5 → 1.0。
-    pub enum BlinkPhase with Eq, ToString {
-        case FadingOut
-        case FadingIn
+        id             = Int32,
+        gridPos        = Vec2.Vec2i,
+        alerted        = Bool,
+        homeModuleIdx  = Int32,
+        moveTiles      = Int32,
+        hp             = Int32,
+        isDying        = Bool,
+        attackTargetId = Option[Int32]
     }
 
     /// スポーン時の中間表現。`add` 内のループで部屋ごとに積み上げ、最後に Marker2D へ展開する。
@@ -95,18 +82,39 @@ mod EnemyScene {
     def slideDuration(): Duration.Duration =
         Duration.frames(count = 16, fps = 120)
 
-    /// 死亡点滅 1 フェーズ（FadingOut または FadingIn）の所要時間（150 ミリ秒）。
-    /// 3 サイクル × 2 フェーズ = 約 0.9 秒で完了する想定。
-    def blinkDuration(): Duration.Duration = 150 |> Duration.millis
-
-    /// 死亡演出の点滅サイクル数（半透明→不透明を 1 サイクルとして 3 回）。
-    def blinkCycles(): Int32 = 3
+    /// 死亡点滅アニメーションの全長。3 サイクル（半透明 → 不透明）× 2 フェーズ × 150ms。
+    def deathBlinkLength(): Duration.Duration = 900 |> Duration.millis
 
     /// 死亡演出時の半透明 alpha 値（点滅の谷）。
     def dimAlpha(): Float32 = 0.3f32
 
     /// 通常時 / 点滅の山の alpha 値。
     def fullAlpha(): Float32 = 1.0f32
+
+    /// `death_blink` アニメーション。1 → 0.3 → 1 → 0.3 → 1 → 0.3 → 1 を均等な 6 区間で
+    /// 並べて 3 サイクルの点滅を表現する。target は子 Sprite ノードの alpha。
+    /// アニメ完了時の `finished` イベント (owner=enemyPath, name="death_blink") を
+    /// GameManager がディスパッチして bonus.ogg + Scene.removeAt を実行する。
+    def deathBlinkAnimation(targetSprite: NodePath): AnimationPlayer.Animation =
+        let alphaKeys: List[AnimationPlayer.AlphaKey] =
+            ({time = 0.0,        alpha = fullAlpha()}: AnimationPlayer.AlphaKey) ::
+            ({time = 1.0 / 6.0,  alpha = dimAlpha() }: AnimationPlayer.AlphaKey) ::
+            ({time = 2.0 / 6.0,  alpha = fullAlpha()}: AnimationPlayer.AlphaKey) ::
+            ({time = 3.0 / 6.0,  alpha = dimAlpha() }: AnimationPlayer.AlphaKey) ::
+            ({time = 4.0 / 6.0,  alpha = fullAlpha()}: AnimationPlayer.AlphaKey) ::
+            ({time = 5.0 / 6.0,  alpha = dimAlpha() }: AnimationPlayer.AlphaKey) ::
+            ({time = 1.0,        alpha = fullAlpha()}: AnimationPlayer.AlphaKey) ::
+            Nil;
+        let track: AnimationPlayer.Track = {
+            target = targetSprite,
+            prop   = AnimationPlayer.Property.Alpha(alphaKeys)
+        };
+        {
+            name    = "death_blink",
+            length  = deathBlinkLength(),
+            tracks  = track :: Nil,
+            methods = Nil
+        }
 
     /// "Enemy_3" のようなトップレベルノード名。
     pub def enemyName(id: Int32): String = "Enemy_${id}"
@@ -199,14 +207,14 @@ mod EnemyScene {
         };
         let marker = Marker2D.make(pos);
         let data: Data = {
-            id            = sp#id,
-            gridPos       = sp#gridPos,
-            alerted       = false,
-            homeModuleIdx = sp#moduleIdx,
-            moveTiles     = defaultMoveTiles(),
-            hp            = defaultHp(),
-            dying         = None,
-            attacking     = None
+            id             = sp#id,
+            gridPos        = sp#gridPos,
+            alerted        = false,
+            homeModuleIdx  = sp#moduleIdx,
+            moveTiles      = defaultMoveTiles(),
+            hp             = defaultHp(),
+            isDying        = false,
+            attackTargetId = None
         };
         let sprite = Sprite2D.make(textureName(), Vec2.zero(), Vec2.one())
                         |> Sprite2D.setHframes(hframes())
@@ -261,81 +269,45 @@ mod EnemyScene {
         Tween.tweenPosition(enemyPath(id), startWorld, targetWorld, slideDuration());
         mapEnemy(id, d -> {gridPos = target | d}, scene)
 
-    /// 指定セルに居る（生きている）敵の id を返す。`dying = Some(_)` の敵は対象外。
+    /// 指定セルに居る（生きている）敵の id を返す。死亡演出中の敵は対象外。
     /// PlayerAttack フェーズで「カーソルが赤マス上の敵に乗っているか」の判定に使う。
     pub def findIdAt(coord: Vec2.Vec2i, scene: Scene[NodeTag]): Option[Int32] =
         getAll(scene)
             |> List.findMap(d ->
-                if (Option.isEmpty(d#dying)
+                if (not d#isDying
                     and d#gridPos#x == coord#x
                     and d#gridPos#y == coord#y) Some(d#id)
                 else None)
 
     // ────────────────────────────────────────────────────────
-    // (E) 死亡演出 — alpha 点滅 → 削除
+    // (E) 死亡演出 — death_blink アニメ → finished で Scene 削除
     // ────────────────────────────────────────────────────────
 
     /// 敵 id の HP を 0 にして死亡演出を開始する。
-    /// `dying = Some({remainingBlinks = blinkCycles, phase = FadingOut})` を立て、
-    /// 最初の FadingOut tween（alpha 1.0 → 0.3）を登録する。以降の進行は
-    /// `tickDeaths` が毎フレームの Tween 完了をトリガに進める。
+    /// `isDying = true` を立てて `death_blink` アニメーションを再生する。
+    /// アニメ完了で GameManager が `completeDeath` を呼んでノード削除と bonus 再生を行う。
     pub def startDeathAnimation(id: Int32,
                                  scene: Scene[NodeTag]): Scene[NodeTag]
-            \ Tween.Scheduler =
-        Tween.tweenAlpha(spritePath(id), fullAlpha(), dimAlpha(), blinkDuration());
-        mapEnemy(id, d -> {
-            hp    = 0,
-            dying = Some({remainingBlinks = blinkCycles(), phase = BlinkPhase.FadingOut})
-            | d
-        }, scene)
+            \ AnimationPlayer.Scheduler =
+        AnimationPlayer.play(enemyPath(id), deathBlinkAnimation(spritePath(id)));
+        mapEnemy(id, d -> {hp = 0, isDying = true | d}, scene)
 
-    /// 死亡演出を 1 フレーム進める。`gameLoop` が `Tween.tickAll` の直後に呼ぶ。
-    /// 各 dying 敵について、現在の alpha tween が完了していれば次フェーズへ進める。
-    /// 1 サイクル = FadingOut + FadingIn。最後のサイクルが終わるとノードを scene から削除し、
-    /// **bonus.ogg を再生する**（damage の後に bonus が鳴るタイミング保証）。
-    pub def tickDeaths(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, GameEngine.Audio} =
-        let dyingIds = getAll(scene)
-            |> List.filterMap(d -> match d#dying {
-                case Some(s) => Some((d#id, s))
-                case None    => None
-            });
-        List.foldLeft((sc, entry) -> {
-            let (id, s) = entry;
-            // 進行中の tween があれば次フレームで再判定。完了している場合のみ進める。
-            if (Tween.Scheduler.isActive(spritePath(id))) sc
-            else advanceDying(id, s, sc)
-        }, scene, dyingIds)
+    /// `death_blink` 完了時に GameManager が呼ぶ後始末。
+    /// bonus.ogg を再生し、ノードを scene から削除する（damage の後に bonus が鳴る順序保証）。
+    pub def completeDeath(id: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameEngine.Audio =
+        AudioStreamPlayer.play("bonus");
+        Scene.removeAt(enemyPath(id), scene)
 
-    /// 1 体ぶんの dying 状態を 1 ステップ進める内部関数。
-    /// FadingOut 完了 → FadingIn を開始 / FadingIn 完了 → 残りサイクルを減らして次の
-    /// FadingOut を開始、または 0 になったら **bonus.ogg を鳴らしてノード削除**。
-    def advanceDying(id: Int32, s: DyingState,
-                      scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameEngine.Audio} =
-        match s#phase {
-            case BlinkPhase.FadingOut =>
-                // 半透明まで落ちた → 不透明に戻す（FadingIn）
-                Tween.tweenAlpha(spritePath(id), dimAlpha(), fullAlpha(), blinkDuration());
-                mapEnemy(id, d ->
-                    {dying = Some({phase = BlinkPhase.FadingIn | s}) | d}, scene)
-            case BlinkPhase.FadingIn =>
-                // 1 サイクル完了
-                let leftAfter = s#remainingBlinks - 1;
-                if (leftAfter <= 0) {
-                    // 最後のサイクル終了 → bonus.ogg 再生 + ノード削除
-                    AudioStreamPlayer.play("bonus");
-                    Scene.removeAt(enemyPath(id), scene)
-                }
-                else {
-                    // 次のサイクル：再び FadingOut を開始
-                    Tween.tweenAlpha(spritePath(id), fullAlpha(), dimAlpha(), blinkDuration());
-                    mapEnemy(id, d -> {
-                        dying = Some({remainingBlinks = leftAfter,
-                                       phase           = BlinkPhase.FadingOut})
-                        | d
-                    }, scene)
-                }
+    /// `Enemy_<id>` 形式の NodePath から id を取り出す。それ以外なら None。
+    /// AnimationPlayer の finished イベントを scene 別に振り分けるために使う。
+    pub def idFromPath(path: NodePath): Option[Int32] =
+        match path {
+            case name :: Nil =>
+                if (String.startsWith({prefix = "Enemy_"}, name))
+                    String.dropLeft(6, name) |> Int32.fromString
+                else None
+            case _ => None
         }
 
     // ────────────────────────────────────────────────────────
@@ -359,92 +331,55 @@ mod EnemyScene {
         List.foldLeft((sc, sp) -> addOneEnemy(sp, sc), cleared, spawns)
 
     // ────────────────────────────────────────────────────────
-    // (G) 体当たり攻撃モーション
+    // (G) 体当たり攻撃モーション — AnimationPlayer ベース
     // ────────────────────────────────────────────────────────
 
     /// 敵 id の体当たり攻撃モーションを開始する。
-    /// `targetGrid` は攻撃対象（プレイヤー）のグリッド位置、`targetPlayerId` はその id。
-    /// Forward 用の Tween を登録し、`attacking = Some({Forward, ...})` を立てる。
-    /// HP 適用 / damage.ogg 再生は **重なる瞬間（Forward 完了時）** に `tickAttacks` が行う。
+    /// `attack_lunge` アニメーションを再生し `attackTargetId = Some(targetPlayerId)` を立てる。
+    /// 中点で `attack:hit` メソッド、終端で finished が GameManager に届き、
+    /// それぞれダメージ適用・後始末（味方死亡なら handlePlayerDeath）が走る。
     pub def startAttack(id: Int32, targetPlayerId: Int32,
                          targetGrid: Vec2.Vec2i,
-                         scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                         scene: Scene[NodeTag]): Scene[NodeTag]
+            \ AnimationPlayer.Scheduler =
         match get(id, scene) {
             case None    => scene
             case Some(d) =>
-                let originGrid = d#gridPos;
-                let startWorld = cellCenter(originGrid);
-                let endWorld   = cellCenter(targetGrid);
-                Tween.tweenPosition(enemyPath(id), startWorld, endWorld,
-                                     AttackAnim.phaseDuration());
-                let s: AttackAnim.State = {
-                    phase     = AttackAnim.Phase.Forward,
-                    targetId  = targetPlayerId,
-                    targetPos = targetGrid,
-                    originPos = originGrid
-                };
-                mapEnemy(id, dd -> {attacking = Some(s) | dd}, scene)
+                AnimationPlayer.play(enemyPath(id),
+                    PlayerScene.attackLungeAnimation(enemyPath(id),
+                                                       d#gridPos, targetGrid));
+                mapEnemy(id, dd -> {attackTargetId = Some(targetPlayerId) | dd}, scene)
         }
-
-    /// グリッド座標 → セル中心ワールド座標。
-    def cellCenter(c: Vec2.Vec2i): Vec2.Vec2 =
-        let s = tileSize();
-        {x = Int32.toFloat64(c#x) * s + s / 2.0,
-         y = Int32.toFloat64(c#y) * s + s / 2.0}
 
     /// scene 内に攻撃モーション中の敵が居れば true。stepEnemyTurn が次ステップに進んで
     /// 良いかの判定に使う（攻撃モーション中はキューを進めない）。
     pub def anyAttacking(scene: Scene[NodeTag]): Bool =
-        List.exists(d -> Option.nonEmpty(d#attacking), getAll(scene))
+        List.exists(d -> Option.nonEmpty(d#attackTargetId), getAll(scene))
 
-    /// 敵攻撃モーションを毎フレーム進める。`gameLoop` が `Tween.tickAll` 直後に呼ぶ。
-    /// 重なり瞬間（Forward 完了）に damage.ogg を鳴らしプレイヤーに HP 1 ダメージを与える。
-    /// プレイヤー HP が 0 になった場合は `onPlayerDied` コールバックで知らせる
-    /// （戻り値は (scene, killedPlayerIds) のタプル）。
-    pub def tickAttacks(scene: Scene[NodeTag]): (Scene[NodeTag], List[Int32])
-            \ {Tween.Scheduler, GameEngine.Audio, GameLogger.GameLogger} =
-        let attackingIds = getAll(scene)
-            |> List.filterMap(d -> match d#attacking {
-                case Some(s) => Some((d#id, s))
-                case None    => None
-            });
-        List.foldLeft((acc, entry) -> {
-            let (sc, killed) = acc;
-            let (id, s) = entry;
-            if (Tween.Scheduler.isActive(enemyPath(id))) (sc, killed)
-            else
-                let (next, killedPlayer) = advanceAttack(id, s, sc);
-                (next, List.append(killed, killedPlayer))
-        }, (scene, (Nil: List[Int32])), attackingIds)
-
-    /// 1 体ぶんの敵攻撃モーションを 1 フェーズ進める内部関数。
+    /// `attack:hit` メソッド発火時に GameManager から呼ばれるダメージ適用。
     /// 戻り値は (新 scene, HP=0 になったプレイヤー id のリスト)。
-    def advanceAttack(id: Int32, s: AttackAnim.State,
-                       scene: Scene[NodeTag]):
+    /// killedIds が空でないとき呼び出し側は handlePlayerDeath を発火する。
+    pub def applyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {Tween.Scheduler, GameEngine.Audio, GameLogger.GameLogger} =
-        match s#phase {
-            case AttackAnim.Phase.Forward =>
-                // 重なり瞬間: damage.ogg + プレイヤーに HP 1 ダメージ
-                AudioStreamPlayer.play("damage");
-                let targetId = s#targetId;
-                let (damaged, killedIds) = applyDamageToPlayer(id, targetId, scene);
-                // Returning tween 開始
-                let startWorld = cellCenter(s#targetPos);
-                let endWorld   = cellCenter(s#originPos);
-                Tween.tweenPosition(enemyPath(id), startWorld, endWorld,
-                                     AttackAnim.phaseDuration());
-                let s2: AttackAnim.State = {phase = AttackAnim.Phase.Returning | s};
-                let next = mapEnemy(id, d -> {attacking = Some(s2) | d}, damaged);
-                (next, killedIds)
-            case AttackAnim.Phase.Returning =>
-                // Returning 完了 → attacking クリア
-                let cleared = mapEnemy(id, d -> {attacking = None | d}, scene);
-                (cleared, Nil)
+            {GameEngine.Audio, GameLogger.GameLogger} =
+        match get(enemyId, scene) {
+            case None    => (scene, Nil)
+            case Some(d) =>
+                match d#attackTargetId {
+                    case None             => (scene, Nil)
+                    case Some(targetPlayerId) =>
+                        AudioStreamPlayer.play("damage");
+                        applyDamageToPlayer(enemyId, targetPlayerId, scene)
+                }
         }
 
+    /// `attack_lunge` finished 時に呼ばれる。`attackTargetId` をクリアする。
+    pub def clearAttackTarget(enemyId: Int32,
+                               scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapEnemy(enemyId, d -> {attackTargetId = None | d}, scene)
+
     /// プレイヤー targetId に 1 ダメージ。HP=0 なら killedIds に追加して返す
-    /// （呼び出し側 Game.flix が handlePlayerDeath を発火する）。
+    /// （呼び出し側 GameManager が handlePlayerDeath を発火する）。
     /// HP の減算と死亡判定は `Combat.damage` に集約してある。
     def applyDamageToPlayer(enemyId: Int32, targetId: Int32,
                              scene: Scene[NodeTag]):

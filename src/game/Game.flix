@@ -18,14 +18,16 @@ pub enum NodeTag {
 // それ以外のフェーズ（`EnemyTurn`）では gameLoop 側が physicsProcess パイプライン
 // 自体を呼ばないので no-op で良い。
 instance Node[NodeTag] {
-    type Aef = {GameEngine.Game, BoardQuery, Tween.Scheduler,
+    type Aef = {GameEngine.Game, BoardQuery,
+                 Tween.Scheduler, AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State}
     redef physicsProcess(delta: Duration.Duration,
                           node: EngineNode[NodeTag],
                           path: NodePath,
                           scene: Scene[NodeTag]):
                          (EngineNode[NodeTag], Scene[NodeTag])
-                         \ {GameEngine.Game, BoardQuery, Tween.Scheduler,
+                         \ {GameEngine.Game, BoardQuery,
+                             Tween.Scheduler, AnimationPlayer.Scheduler,
                              GameLogger.GameLogger, TurnPhase.State,
                              SelectedPlayer.State} =
         let phase = TurnPhase.State.get();
@@ -55,10 +57,12 @@ instance Node[NodeTag] {
 //   PlayerAttack + Z/X : 敵マスで Z → 攻撃モーション開始、X / 空マスで Z → 行動終了
 //   EnemyTurn / PlayerAutoMove : 入力無視（自動進行）
 instance InputEvent.InputHandler[NodeTag] {
-    type Aef = {BoardQuery, Tween.Scheduler, GameLogger.GameLogger, EnemyTurn.Queue,
+    type Aef = {BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
+                 GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State}
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                        Scene[NodeTag] \ {BoardQuery, Tween.Scheduler,
+                                          AnimationPlayer.Scheduler,
                                           GameLogger.GameLogger,
                                           EnemyTurn.Queue, TurnPhase.State,
                                           SelectedPlayer.State} =
@@ -108,6 +112,7 @@ mod Game {
                 gameLoop(sceneRef, scene)
             } with Editor.withState(rc)
               with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽
+              with AnimationPlayer.withScheduler(rc)  // 名前付きアニメ + イベントドレイン
               with GameLogger.withLogger(rc)      // ログエントリは内部に隠蔽
               with EnemyTurn.withQueue(rc)        // 敵ターンキュー（1 step / 1 frame 駆動）
               with TurnPhase.withState(rc)        // 味方ターン内のサブフェーズ + 敵ターン
@@ -125,7 +130,8 @@ mod Game {
                  Unit \ {GameEngine.Game, GameEngine.Audio,
                          Fs.FileRead, Fs.FileWrite,
                          Editor.EditorState, EditHistory.Rewind,
-                         BoardQuery, Tween.Scheduler, GameLogger.GameLogger,
+                         BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
+                         GameLogger.GameLogger,
                          EnemyTurn.Queue, TurnPhase.State,
                          SelectedPlayer.State, InitialSpawns.State,
                          Math.Random, IO, r} =

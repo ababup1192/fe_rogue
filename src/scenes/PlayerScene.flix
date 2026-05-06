@@ -36,14 +36,16 @@ mod PlayerScene {
     /// moveTiles: 1 ターンに移動できるマス数（FE の「移動力」相当）。
     /// hp: 残り体力。0 になるとゲームオーバー（同マップ初期化）。
     /// waited: 行動済みフラグ。true なら灰色表示・選択不可。
-    /// attacking: 体当たり攻撃モーション中なら Some(...)。tickAttacks が状態を進める。
+    /// attackTargetId: 体当たり攻撃モーション中なら Some(被攻撃者 id)。
+    ///   `attack_lunge` アニメーションの method 発火 / finished 時に GameManager が
+    ///   この値を読んでダメージ適用 / commit を行う。アニメ完了で None に戻す。
     pub type alias Data = {
-        id        = Int32,
-        gridPos   = Vec2.Vec2i,
-        moveTiles = Int32,
-        hp        = Int32,
-        waited    = Bool,
-        attacking = Option[AttackAnim.State]
+        id             = Int32,
+        gridPos        = Vec2.Vec2i,
+        moveTiles      = Int32,
+        hp             = Int32,
+        waited         = Bool,
+        attackTargetId = Option[Int32]
     }
 
     /// スポーン時の中間表現。`add` で配置するセルの id/gridPos を持つ。
@@ -166,12 +168,12 @@ mod PlayerScene {
         };
         let marker = Marker2D.make(pos);
         let data: Data = {
-            id        = sp#id,
-            gridPos   = sp#gridPos,
-            moveTiles = defaultMoveTiles(),
-            hp        = defaultHp(),
-            waited    = false,
-            attacking = None
+            id             = sp#id,
+            gridPos        = sp#gridPos,
+            moveTiles      = defaultMoveTiles(),
+            hp             = defaultHp(),
+            waited         = false,
+            attackTargetId = None
         };
         let sprite = Sprite2D.make(textureName(), Vec2.zero(), Vec2.one())
                         |> Sprite2D.setHframes(hframes())
@@ -382,32 +384,61 @@ mod PlayerScene {
         }
 
     // ────────────────────────────────────────────────────────
-    // (H) 体当たり攻撃モーション
+    // (H) 体当たり攻撃モーション — AnimationPlayer ベース
     // ────────────────────────────────────────────────────────
 
+    /// 体当たりの片道（origin → target）所要時間。Forward + Returning の合計が
+    /// アニメ全長になる。視認性を保つため移動 (16/120) より速めに設定する。
+    def attackPhaseDuration(): Duration.Duration =
+        Duration.frames(count = 16, fps = 200)   // ≈ 0.08 秒 / 片道
+
+    /// `attack_lunge` アニメーション。
+    /// - position track: origin → target → origin の 3 keyframe
+    /// - method "attack:hit": 中点（target に重なる瞬間）で発火 → ダメージ適用 + SE 再生
+    /// - finished: 攻撃モーション終了 → GameManager が waited 確定 / 次状態へ
+    ///
+    /// `targetPath` は攻撃側マーカー（PlayerScene なら `playerPath(id)`）。
+    /// アニメ全長は 2 phase 分で、method "attack:hit" は phase 1 つぶん経過した時点
+    /// （正規化 t = 0.5）で発火する。
+    pub def attackLungeAnimation(targetPath: NodePath,
+                                  originGrid: Vec2.Vec2i,
+                                  targetGrid: Vec2.Vec2i):
+                                 AnimationPlayer.Animation =
+        let phase    = attackPhaseDuration();
+        let total    = Duration.add(phase, phase);
+        let originW  = cellCenter(originGrid);
+        let targetW  = cellCenter(targetGrid);
+        let posKeys: List[AnimationPlayer.PosKey] =
+            ({time = 0.0, pos = originW}: AnimationPlayer.PosKey) ::
+            ({time = 0.5, pos = targetW}: AnimationPlayer.PosKey) ::
+            ({time = 1.0, pos = originW}: AnimationPlayer.PosKey) ::
+            Nil;
+        let track: AnimationPlayer.Track = {
+            target = targetPath,
+            prop   = AnimationPlayer.Property.Position(posKeys)
+        };
+        let methodHit: AnimationPlayer.MethodKey = {time = phase, name = "attack:hit"};
+        {
+            name    = "attack_lunge",
+            length  = total,
+            tracks  = track :: Nil,
+            methods = methodHit :: Nil
+        }
+
     /// プレイヤー id の体当たり攻撃モーションを開始する。
-    /// `targetGrid` は攻撃対象（敵）のグリッド位置、`targetEnemyId` はその id。
-    /// Forward 用の Tween を登録し、`attacking = Some({Forward, ...})` を立てる。
-    /// HP 適用 / damage.ogg 再生は **重なる瞬間（Forward 完了時）** に `tickAttacks`
-    /// が行うのでここでは呼ばない。
+    /// AnimationPlayer に `attack_lunge` を登録し、`attackTargetId = Some(targetEnemyId)` を
+    /// 立てるだけ。中点で `attack:hit` メソッド、終端で finished が GameManager に届き、
+    /// それぞれダメージ適用と waited 確定が行われる。
     pub def startAttack(id: Int32, targetEnemyId: Int32,
                          targetGrid: Vec2.Vec2i,
-                         scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                         scene: Scene[NodeTag]): Scene[NodeTag]
+            \ AnimationPlayer.Scheduler =
         match get(id, scene) {
             case None    => scene
             case Some(d) =>
-                let originGrid = d#gridPos;
-                let startWorld = cellCenter(originGrid);
-                let endWorld   = cellCenter(targetGrid);
-                Tween.tweenPosition(playerPath(id), startWorld, endWorld,
-                                     AttackAnim.phaseDuration());
-                let s: AttackAnim.State = {
-                    phase     = AttackAnim.Phase.Forward,
-                    targetId  = targetEnemyId,
-                    targetPos = targetGrid,
-                    originPos = originGrid
-                };
-                mapPlayer(id, dd -> {attacking = Some(s) | dd}, scene)
+                AnimationPlayer.play(playerPath(id),
+                    attackLungeAnimation(playerPath(id), d#gridPos, targetGrid));
+                mapPlayer(id, dd -> {attackTargetId = Some(targetEnemyId) | dd}, scene)
         }
 
     /// グリッド座標 → セル中心ワールド座標（add 内部の式と同じ）
@@ -416,64 +447,52 @@ mod PlayerScene {
         {x = Int32.toFloat64(c#x) * s + s / 2.0,
          y = Int32.toFloat64(c#y) * s + s / 2.0}
 
-    /// scene 内に **攻撃モーション中** のプレイヤーが居れば true。
-    /// stepEnemyTurn 等の「敵の行動を進めて良いか」のガードに使う想定（プレイヤー攻撃は
-    /// 普段プレイヤーターン中なので、この関数は将来の混在シナリオ用の保険）。
+    /// scene 内に攻撃モーション中のプレイヤーが居れば true。
+    /// stepEnemyTurn 等の「敵の行動を進めて良いか」のガードに使う将来用の保険。
     pub def anyAttacking(scene: Scene[NodeTag]): Bool =
-        List.exists(d -> Option.nonEmpty(d#attacking), getAll(scene))
+        List.exists(d -> Option.nonEmpty(d#attackTargetId), getAll(scene))
 
-    /// プレイヤー攻撃モーションを毎フレーム進める。`gameLoop` が `Tween.tickAll` 直後に呼ぶ。
-    /// 戻り値は (scene, completed) のタプルで、completed は「**Returning が完了した
-    /// プレイヤー**」の id 一覧。呼び出し側 (Game.flix) はこれを受けて
-    /// commitWaitedAndAdvance などを発火する。
-    pub def tickAttacks(scene: Scene[NodeTag]): (Scene[NodeTag], List[Int32])
-            \ {Tween.Scheduler, GameEngine.Audio, GameLogger.GameLogger} =
-        let attackingIds = getAll(scene)
-            |> List.filterMap(d -> match d#attacking {
-                case Some(s) => Some((d#id, s))
-                case None    => None
-            });
-        List.foldLeft((acc, entry) -> {
-            let (sc, completed) = acc;
-            let (id, s) = entry;
-            if (Tween.Scheduler.isActive(playerPath(id))) (sc, completed)
-            else
-                let (next, doneId) = advanceAttack(id, s, sc);
-                (next, List.append(completed, doneId))
-        }, (scene, (Nil: List[Int32])), attackingIds)
-
-    /// 1 体ぶんの攻撃モーションを 1 フェーズ進める内部関数。
-    /// 戻り値は (新 scene, Returning 完了したなら [id] / それ以外 [])。
-    def advanceAttack(id: Int32, s: AttackAnim.State,
-                       scene: Scene[NodeTag]):
-            (Scene[NodeTag], List[Int32])
-            \ {Tween.Scheduler, GameEngine.Audio, GameLogger.GameLogger} =
-        match s#phase {
-            case AttackAnim.Phase.Forward =>
-                // 重なった瞬間: damage.ogg を鳴らし、対象敵に 1 ダメージを適用
-                AudioStreamPlayer.play("damage");
-                let targetId = s#targetId;
-                let damaged = applyDamageToEnemy(targetId, scene);
-                // Returning tween を開始（target → origin）
-                let startWorld = cellCenter(s#targetPos);
-                let endWorld   = cellCenter(s#originPos);
-                Tween.tweenPosition(playerPath(id), startWorld, endWorld,
-                                     AttackAnim.phaseDuration());
-                let s2: AttackAnim.State = {phase = AttackAnim.Phase.Returning | s};
-                let next = mapPlayer(id, d -> {attacking = Some(s2) | d}, damaged);
-                (next, Nil)
-            case AttackAnim.Phase.Returning =>
-                // Returning 完了 → attacking をクリアして「完了 id」として返す
-                let cleared = mapPlayer(id, d -> {attacking = None | d}, scene);
-                (cleared, id :: Nil)
+    /// `attack:hit` メソッド発火時に GameManager から呼ばれるダメージ適用。
+    /// 当該 player の `attackTargetId` を読み、対応する敵に 1 ダメージ + SE + ログを出す。
+    /// HP <= 0 なら EnemyScene.startDeathAnimation を発火する（death_blink 開始）。
+    pub def applyAttackHit(playerId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
+                              GameLogger.GameLogger} =
+        match get(playerId, scene) {
+            case None    => scene
+            case Some(d) =>
+                match d#attackTargetId {
+                    case None         => scene
+                    case Some(enemyId) =>
+                        AudioStreamPlayer.play("damage");
+                        applyDamageToEnemy(enemyId, scene)
+                }
         }
 
-    /// 敵 id にダメージ 1 を与える。HP <= 0 で死亡演出を開始（bonus は death animation
-    /// 終了時に EnemyScene.tickDeaths が再生する）。
+    /// `attack_lunge` finished 時に GameManager から呼ばれる。
+    /// `attackTargetId` をクリアする。waited 確定 / 次フェーズへの遷移は GameManager の
+    /// `commitWaitedAndAdvance` が担当する。
+    pub def clearAttackTarget(playerId: Int32,
+                               scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId, d -> {attackTargetId = None | d}, scene)
+
+    /// `Player_<id>` 形式の NodePath から id を取り出す。それ以外なら None。
+    /// AnimationPlayer の event 振り分けに使う。
+    pub def idFromPath(path: NodePath): Option[Int32] =
+        match path {
+            case name :: Nil =>
+                if (String.startsWith({prefix = "Player_"}, name))
+                    String.dropLeft(7, name) |> Int32.fromString
+                else None
+            case _ => None
+        }
+
+    /// 敵 id にダメージ 1 を与える。HP <= 0 で死亡演出を開始（bonus は death_blink
+    /// 完了時に GameManager が再生する）。
     /// ログは「敵N にダメージ 残りHPM」を重なりタイミングで残す。
     /// HP の減算と死亡判定は `Combat.damage` に集約してある。
     def applyDamageToEnemy(enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger} =
         match EnemyScene.get(enemyId, scene) {
             case None    => scene
             case Some(enemy) =>

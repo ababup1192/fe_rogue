@@ -34,6 +34,17 @@ mod TestCursorScene {
             def consumeUpdates(_, k) = k(Nil)
         }
 
+    /// AnimationPlayer.Scheduler のスタブ。snag / 攻撃アニメは流さず、すべて停止扱い。
+    def withNoopAnim(thunk: Unit -> a \ ef): a \ (ef - AnimationPlayer.Scheduler) =
+        run { thunk() } with handler AnimationPlayer.Scheduler {
+            def schedule(_, k) = k()
+            def isPlaying(_, k) = k(false)
+            def stop(_, k) = k()
+            def cancelAll(k) = k()
+            def consumeTick(_, k) = k(({propertyUpdates = Nil}: AnimationPlayer.Tick))
+            def drainEvents(k) = k(({methods = Nil, finished = Nil}: AnimationPlayer.EventBundle))
+        }
+
     /// プレイヤー id=0 1 体だけを (gridPos) に置いた scene を組む。
     /// JSON ロードを介さず Marker2D を直接構築する。
     def sceneWithPlayer(gridPos: Vec2.Vec2i): Scene[NodeTag] =
@@ -43,12 +54,12 @@ mod TestCursorScene {
             |> Scene.addNode(PlayerScene.playerName(0),
                 EngineNode.Marker2DWithState(marker,
                     NodeTag.Player({
-                        id        = 0,
-                        gridPos   = gridPos,
-                        moveTiles = PlayerScene.defaultMoveTiles(),
-                        hp        = PlayerScene.defaultHp(),
-                        waited    = false,
-                        attacking = None
+                        id             = 0,
+                        gridPos        = gridPos,
+                        moveTiles      = PlayerScene.defaultMoveTiles(),
+                        hp             = PlayerScene.defaultHp(),
+                        waited         = false,
+                        attackTargetId = None
                     })))
 
     /// SelectedPlayer.State のスタブ handler（未選択を返す）。
@@ -95,13 +106,13 @@ mod TestCursorScene {
     @Test
     def testSnapToPlayerResetsCursorAndHover(): Unit \ Assert =
         let player: Vec2.Vec2i = {x = 4, y = 4};
-        let result = withNoSelection(() -> withNoopTween(() ->
+        let result = withNoSelection(() -> withNoopTween(() -> withNoopAnim(() ->
             let scene = CursorScene.add(sceneWithPlayer(player));
             // カーソルを (10, 10) に移し、ホバー履歴も Some(99) に偽装
             let drifted = scene |> CursorScene.mapCursor((m, d) ->
                 (m, {gridPos = ({x = 10, y = 10}: Vec2.Vec2i),
                      lastHoveredEnemyId = Some(99) | d}));
             let snapped = CursorScene.snapToPlayer(drifted);
-            cursorState(snapped)));
+            cursorState(snapped))));
         Assert.assertEq(expected = (4, 4, (None: Option[Int32])), result)
 }

@@ -61,7 +61,7 @@ mod EnemyAI {
                             match Board.bfsPath(board, enemy#gridPos, target) {
                                 case None       => (EnemyAction.Wait(enemy#id), updated)
                                 case Some(path) =>
-                                    match List.head(dropLast(path)) {
+                                    match List.init(path) |> Option.flatMap(List.head) {
                                         case Some(step) =>
                                             (EnemyAction.Move(enemy#id, step), updated)
                                         case None       =>
@@ -101,12 +101,4 @@ mod EnemyAI {
         let dy = Int32.abs(a#y - b#y);
         (dx == 1 and dy == 0) or (dx == 0 and dy == 1)
 
-    /// リストの末尾 1 要素を除いた残りを返す。長さ 0/1 なら Nil。
-    /// `Board.bfsPath` の結果（goal を含む）から「踏める範囲」だけ取り出すのに使う。
-    def dropLast(list: List[a]): List[a] =
-        match list {
-            case Nil      => Nil
-            case _ :: Nil => Nil
-            case x :: rest => x :: dropLast(rest)
-        }
 }

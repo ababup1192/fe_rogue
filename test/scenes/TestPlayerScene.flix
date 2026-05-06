@@ -54,12 +54,12 @@ mod TestPlayerScene {
             |> Scene.addNode(PlayerScene.playerName(0),
                 EngineNode.Marker2DWithState(marker,
                     NodeTag.Player({
-                        id        = 0,
-                        gridPos   = initial,
-                        moveTiles = PlayerScene.defaultMoveTiles(),
-                        hp        = PlayerScene.defaultHp(),
-                        waited    = false,
-                        attacking = None
+                        id             = 0,
+                        gridPos        = initial,
+                        moveTiles      = PlayerScene.defaultMoveTiles(),
+                        hp             = PlayerScene.defaultHp(),
+                        waited         = false,
+                        attackTargetId = None
                     })))
 
     /// プレイヤー id のワールド座標を取り出す

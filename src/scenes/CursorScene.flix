@@ -35,14 +35,14 @@ mod CursorScene {
     ///   別方向への切替で `holdSteps` を 0 にリセットする。
     /// `holdSteps`: 同方向に連続で進んだマス数。`computeSlideDuration` で
     ///   1 マス分のスライド時間を初速 → 最高速に補間するのに使う。
-    /// `snagTimer`: 駒（味方/敵）に乗ったときの「引っかかり」残時間。
-    ///   isPositive の間は方向入力を捨てる。Tween 完了 + snag 経過で次の移動が始まる。
+    /// 駒（味方/敵）に乗ったときの「引っかかり」は AnimationPlayer の `snag` 空アニメ
+    /// で表現する。`AnimationPlayer.Scheduler.isPlaying(cursorPath())` が true の間は
+    /// 方向入力を捨てる。`snag` アニメ完了 + Tween 完了で次の移動が始まる。
     pub type alias Data = {
         gridPos            = Vec2.Vec2i,
         lastHoveredEnemyId = Option[Int32],
         holdDir            = Option[Vec2.Vec2i],
-        holdSteps          = Int32,
-        snagTimer          = Duration.Duration
+        holdSteps          = Int32
     }
 
     // ────────────────────────────────────────────────────────
@@ -82,6 +82,16 @@ mod CursorScene {
     /// 「引っかかった」感触になる長さ。
     def snagDuration(): Duration.Duration = 150 |> Duration.millis
 
+    /// `snag` アニメーション。tracks / methods を持たない純粋なタイマー用途で、
+    /// `AnimationPlayer.Scheduler.isPlaying(cursorPath())` がこの長さの間 true を返す。
+    def snagAnimation(): AnimationPlayer.Animation =
+        {
+            name    = "snag",
+            length  = snagDuration(),
+            tracks  = Nil,
+            methods = Nil
+        }
+
     /// `holdSteps` から 1 マス分のスライド時間を線形補間する。
     /// 0 ステップなら初速、stepsToMaxSpeed 以上で最高速に張り付く。
     def computeSlideDuration(steps: Int32): Duration.Duration =
@@ -108,8 +118,7 @@ mod CursorScene {
             gridPos            = initial,
             lastHoveredEnemyId = None,
             holdDir            = None,
-            holdSteps          = 0,
-            snagTimer          = Duration.zero()
+            holdSteps          = 0
         };
         scene
             |> Scene.addNode(name(),
@@ -137,26 +146,22 @@ mod CursorScene {
     /// 毎フレーム engine から呼ばれる `physicsProcess`。
     /// `PlayerCursor` フェーズのみ動かす（Game.flix が NodeTag マッチで dispatch する）。
     /// 入力ゲートは 3 段:
-    ///   1. snagTimer > 0 → 駒上での「引っかかり」中。`delta` 引いて入力捨てる
+    ///   1. `snag` アニメ再生中 → 駒上での「引っかかり」中。入力捨てる
     ///   2. Tween 中 → 補間中。入力捨てる
     ///   3. それ以外 → 方向キーを読み、加速度を計算して 1 マス進める
-    /// 移動後のセルに駒（味方/敵）が居れば snagTimer をセット + holdSteps をリセット
+    /// 移動後のセルに駒（味方/敵）が居れば `snag` を再生 + holdSteps をリセット
     /// （次は再加速）。敵に乗ったら EnemyRangeScene を再構築 + ログを出す（既存）。
-    pub def physicsProcess(delta: Duration.Duration,
+    pub def physicsProcess(_delta: Duration.Duration,
                             node: EngineNode[NodeTag],
                             _path: NodePath,
                             scene: Scene[NodeTag]):
                            (EngineNode[NodeTag], Scene[NodeTag])
-                           \ {GameEngine.Game, BoardQuery, Tween.Scheduler,
+                           \ {GameEngine.Game, BoardQuery,
+                               Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
-                if (Duration.isPositive(data#snagTimer)) {
-                    let next = Duration.subClampedToZero(data#snagTimer, delta);
-                    let nextData = {snagTimer = next | data};
-                    (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)),
-                     scene)
-                }
+                if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
                 else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
                 else
                     match readHeldDirection() {
@@ -187,6 +192,8 @@ mod CursorScene {
                                 let (hovered, updatedScene) =
                                     handleHoverChange(movedData, board, scene);
                                 let onPiece = Board.isOccupied(target, board);
+                                if (onPiece) AnimationPlayer.play(cursorPath(), snagAnimation())
+                                else ();
                                 let finalData = applyHoldUpdate(hovered, dir,
                                                                  nextSteps, onPiece);
                                 (EngineNode.Marker2DWithState(newMarker,
@@ -207,14 +214,13 @@ mod CursorScene {
             case None => 0
         }
 
-    /// 移動成立後の Data に hold/snag 関連を反映する。
-    /// 駒の上に乗ったら snag 発動 + holdSteps を 0 に戻す（停止 → 再加速）。
+    /// 移動成立後の Data に hold 関連を反映する。
+    /// 駒の上に乗ったら holdSteps を 0 に戻す（snag アニメ再生で停止 → 再加速）。
     /// 駒が居なければ holdSteps をそのまま nextSteps に進める。
     def applyHoldUpdate(data: Data, dir: Vec2.Vec2i, nextSteps: Int32,
                          onPiece: Bool): Data =
         if (onPiece)
-            {holdDir = Some(dir), holdSteps = 0,
-             snagTimer = snagDuration() | data}
+            {holdDir = Some(dir), holdSteps = 0 | data}
         else
             {holdDir = Some(dir), holdSteps = nextSteps | data}
 
@@ -285,21 +291,17 @@ mod CursorScene {
     /// 加速ロジック（hold steps + computeSlideDuration）は `physicsProcess` と共通。
     ///
     /// Game.flix が NodeTag マッチで dispatch する。
-    pub def physicsProcessAttack(delta: Duration.Duration,
+    pub def physicsProcessAttack(_delta: Duration.Duration,
                                   node: EngineNode[NodeTag],
                                   _path: NodePath,
                                   scene: Scene[NodeTag]):
                                  (EngineNode[NodeTag], Scene[NodeTag])
-                                 \ {GameEngine.Game, Tween.Scheduler,
+                                 \ {GameEngine.Game,
+                                     Tween.Scheduler, AnimationPlayer.Scheduler,
                                      SelectedPlayer.State} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
-                if (Duration.isPositive(data#snagTimer)) {
-                    let next = Duration.subClampedToZero(data#snagTimer, delta);
-                    let nextData = {snagTimer = next | data};
-                    (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)),
-                     scene)
-                }
+                if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
                 else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
                 else
                     match readHeldDirection() {
@@ -328,6 +330,8 @@ mod CursorScene {
                                     moveStep(candidate, marker, data, slide);
                                 let onEnemy =
                                     not Option.isEmpty(EnemyScene.findIdAt(candidate, scene));
+                                if (onEnemy) AnimationPlayer.play(cursorPath(), snagAnimation())
+                                else ();
                                 let finalData = applyHoldUpdate(movedData, dir,
                                                                  nextSteps, onEnemy);
                                 (EngineNode.Marker2DWithState(newMarker,
@@ -375,18 +379,19 @@ mod CursorScene {
     /// 敵ターン突入時 / キャンセル復帰時 / プレイヤー移動完了時に呼んで、
     /// 「次にカーソル選択フェーズに戻ったとき味方の上から始まる」状態を作る。
     pub def snapToPlayer(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, SelectedPlayer.State} =
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              SelectedPlayer.State} =
         let target = snapTargetPos(scene);
         let world = cellCenter(target);
-        // 進行中の Tween をキャンセルして即座に位置を確定させる。
+        // 進行中の Tween / snag アニメをキャンセルして即座に位置を確定させる。
         Tween.Scheduler.cancel(cursorPath());
+        AnimationPlayer.Scheduler.stop(cursorPath());
         let snapped = Scene.setGlobalPositionAt(cursorPath(), world, scene);
         mapCursor((m, d) ->
             (m, {gridPos            = target,
                  lastHoveredEnemyId = None,
                  holdDir            = None,
-                 holdSteps          = 0,
-                 snagTimer          = Duration.zero() | d}),
+                 holdSteps          = 0 | d}),
             snapped)
 
     /// snap 先のセルを決める:

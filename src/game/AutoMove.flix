@@ -27,7 +27,8 @@ mod AutoMove {
     /// PlayerAutoMove フェーズ中に毎フレーム呼ぶ。`GameManager.tickAutoMoveFrame` のパイプライン要素。
     /// 旗が立っていない / アクティブ味方が居ない場合は防御的に PlayerCursor に戻す。
     pub def step(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, GameLogger.GameLogger,
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                GameLogger.GameLogger,
                 TurnPhase.State, SelectedPlayer.State} =
         match FlagScene.getTargetPos(scene) {
             case None       => exitToCursor(scene)   // 旗無し（防御的）
@@ -86,10 +87,10 @@ mod AutoMove {
 
     /// アクティブな味方と「生きている」敵が同じモジュール idx に居るか。
     /// `EnemyAI.sameModuleAsAnyPlayer` と同じ条件を AutoMove 側からも使うため、
-    /// 直接 EnemyScene / PlayerScene を見て判定する（dying は除外）。
+    /// 直接 EnemyScene / PlayerScene を見て判定する（isDying は除外）。
     def anyEnemyDetected(scene: Scene[NodeTag], board: Board): Bool =
         let aliveEnemies = EnemyScene.getAll(scene)
-            |> List.filter(d -> Option.isEmpty(d#dying));
+            |> List.filter(d -> not d#isDying);
         let active = activePlayers(scene);
         List.exists(e -> {
             match board#map#moduleOfCell(e#gridPos) {
@@ -139,8 +140,8 @@ mod AutoMove {
     /// PlayerAutoMove → PlayerCursor に戻す共通処理。
     /// 旗を消し、カーソルを再表示、選択中（or アクティブ先頭）の味方にスナップする。
     def exitToCursor(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, TurnPhase.State,
-                              SelectedPlayer.State} =
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              TurnPhase.State, SelectedPlayer.State} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         scene
             |> FlagScene.clear

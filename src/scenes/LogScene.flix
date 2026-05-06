@@ -179,11 +179,10 @@ mod LogScene {
 
     /// 0..1 の Float32 を 0..255 の 2 桁 hex に変換する。範囲外はクランプ。
     def floatChannelToHex(f: Float32): String =
-        let scaled = Float32.round(f * 255.0f32);
-        let i = match Float32.tryToInt32(scaled) {
-            case Some(n) => Int32.max(0, Int32.min(255, n))
-            case None    => 0
-        };
+        let i = Float32.round(f * 255.0f32)
+                |> Float32.tryToInt32
+                |> Option.map(n -> Int32.max(0, Int32.min(255, n)))
+                |> Option.getWithDefault(0);
         hexDigit(i / 16) + hexDigit(Int32.remainder(i, 16))
 
     /// 0..15 の Int32 を 1 文字の hex 文字列に変換する

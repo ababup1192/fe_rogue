@@ -109,7 +109,7 @@ mod MoveRangeScene {
     /// `cells` を順に列挙して半透明 Sprite2D を `Tile_<idx>` として子追加する。
     /// `Vec2.one()` スケールで、テクスチャ自身を 16×16 として描く前提。
     def addTileChildren(cells: List[Vec2.Vec2i], scene: Scene[NodeTag]): Scene[NodeTag] =
-        let indexed = List.zip(List.range(0, List.length(cells)), cells);
+        let indexed = List.zipWithIndex(cells);
         List.foldLeft(acc -> entry -> {
             let (idx, cell) = entry;
             let pos: Vec2.Vec2 = cellCenter(cell);
