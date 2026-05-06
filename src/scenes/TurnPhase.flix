@@ -69,3 +69,133 @@ mod TurnPhase {
             }
         }
 }
+
+/// TurnRules — 「フェーズ × 入力 × 盤面 → 次にどう遷移するか」の純粋ルール
+///
+/// 入力ハンドラから `decide(context)` を呼ぶと、その状況で起きる遷移を `Transition`
+/// として返す。Game.flix 側はこれを match して、対応する Scene 操作 / effect handler
+/// を起動する（実体の副作用は呼び出し側に閉じ込めて、ここは純粋に保つ）。
+///
+/// `Phase` enum と同居させているのは、両者が同じ「ターン進行」というデータ構造を
+/// 中心にした処理だから（Phase 単独で別ファイルにすると分割しすぎる）。
+mod TurnRules {
+
+    /// プレイヤーが押した決定 / キャンセルのどちらか。
+    /// 実際のキー（Z / X / Space / Enter）からの変換は呼び出し側が行う。
+    pub enum Input with Eq, ToString {
+        case Confirm
+        case Cancel
+    }
+
+    /// 1 回の入力に対して起きる遷移。`Stay` は何もしないことを表す（無効入力など）。
+    /// 各バリアントは Scene 操作 / effect handler 起動に必要な情報を全部抱える
+    /// （apply 側で再ルックアップしないで済むように）。
+    ///
+    /// 位置は `Vec2.Vec2i` ではなく `(x, y)` の Int32 ペアで持つ。
+    /// （Vec2i は record alias で auto-derive Eq に対応していないため。）
+    pub enum Transition with Eq, ToString {
+        /// 何も起きない（入力無効・条件未成立）
+        case Stay
+        /// PlayerCursor 中、カーソル位置にアクティブ味方が居て選択した
+        case CursorSelectPlayer(Int32)
+        /// PlayerCursor 中、カーソルが空き床マスで旗を立てる（PlayerAutoMove へ向かう）
+        /// 引数: (旗を立てるマスの x, y)
+        case CursorPlantFlag(Int32, Int32)
+        /// PlayerMoving 中の Confirm: 攻撃フェーズに移る
+        case MovingEnterAttack
+        /// PlayerMoving 中の Cancel: 選択駒を origin に戻して PlayerCursor へ
+        case MovingCancel
+        /// PlayerAttack 中の Confirm: 生きている敵に攻撃成立
+        /// 引数: (attackerId, defenderId, defender の x, defender の y)
+        case AttackHit(Int32, Int32, Int32, Int32)
+        /// PlayerAttack 中の Cancel: 攻撃せず waited にして次のセレクトへ
+        case AttackSkip
+    }
+
+    /// `decide` に渡すコンテキスト一式。Scene[NodeTag] / Tween / 各 effect から
+    /// 「いま判断に必要な値」だけを抜き出した record。テストでは直接合成できる。
+    ///
+    /// フィールドの意味:
+    ///   - `phase`: 現在のフェーズ（TurnPhase.State.get の値）
+    ///   - `input`: 押されたキーの分類（Confirm / Cancel）
+    ///   - `board`: 盤面スナップショット（BoardQuery.board の値）
+    ///   - `cursor`: カーソルのグリッド位置（CursorScene.getGridPos の値）
+    ///   - `selected`: 選択中味方 id（SelectedPlayer.State.get の値）
+    ///   - `waitedPlayerIds`: 既に行動済みの味方 id（findActiveIdAt で除外する用）
+    ///   - `dyingEnemyIds`: 死亡演出中の敵 id（findIdAt で除外する用）
+    ///   - `playerBusy`: 選択中味方が Tween 中なら true（Confirm/Cancel のガードに使う）
+    pub type alias Context = {
+        phase           = TurnPhase.Phase,
+        input           = Input,
+        board           = Board,
+        cursor          = Vec2.Vec2i,
+        selected        = Option[Int32],
+        waitedPlayerIds = List[Int32],
+        dyingEnemyIds   = List[Int32],
+        playerBusy      = Bool
+    }
+
+    /// フェーズ × 入力 × 盤面 → 遷移を決める。Scene/effect を一切触らない純粋関数。
+    pub def decide(context: Context): Transition =
+        match (context#phase, context#input) {
+            case (TurnPhase.Phase.PlayerCursor, Input.Confirm) =>
+                match activePlayerAt(context) {
+                    case Some(playerId) => Transition.CursorSelectPlayer(playerId)
+                    case None           =>
+                        // アクティブ味方が居ない: 床マスで誰も占有していなければ旗を立てる。
+                        // それ以外（壁・敵上・waited 味方上）は何もしない。
+                        if (context#board#map#isFloor(context#cursor)
+                            and not Board.isOccupied(context#cursor, context#board))
+                            Transition.CursorPlantFlag(context#cursor#x, context#cursor#y)
+                        else Transition.Stay
+                }
+            case (TurnPhase.Phase.PlayerMoving, Input.Confirm) =>
+                if (context#playerBusy) Transition.Stay
+                else Transition.MovingEnterAttack
+            case (TurnPhase.Phase.PlayerMoving, Input.Cancel) =>
+                if (context#playerBusy) Transition.Stay
+                else Transition.MovingCancel
+            case (TurnPhase.Phase.PlayerAttack, Input.Confirm) =>
+                // 生きている敵が cursor に居て、かつ選択中駒があれば攻撃成立
+                match (aliveEnemyAt(context), context#selected) {
+                    case (Some(defenderId), Some(attackerId)) =>
+                        Transition.AttackHit(attackerId, defenderId,
+                            context#cursor#x, context#cursor#y)
+                    case _ => Transition.Stay
+                }
+            case (TurnPhase.Phase.PlayerAttack, Input.Cancel) =>
+                Transition.AttackSkip
+            // EnemyTurn / PlayerAutoMove は入力無視（自動進行で抜ける）
+            case _ => Transition.Stay
+        }
+
+    /// cursor 位置にアクティブ（waited でない）な味方の id を返す。居なければ None。
+    /// PlayerScene.findActiveIdAt の純粋版（Board と waitedPlayerIds から復元）。
+    def activePlayerAt(context: Context): Option[Int32] =
+        Board.playerPositions(context#board)
+            |> List.findMap(entry -> {
+                let (playerId, position) = entry;
+                if (samePosition(position, context#cursor)
+                    and not isInList(playerId, context#waitedPlayerIds))
+                    Some(playerId)
+                else None
+            })
+
+    /// cursor 位置に「生きている」敵の id を返す。居なければ None。
+    /// EnemyScene.findIdAt の純粋版（Board と dyingEnemyIds から復元）。
+    def aliveEnemyAt(context: Context): Option[Int32] =
+        Board.enemyPositions(context#board)
+            |> List.findMap(entry -> {
+                let (enemyId, position) = entry;
+                if (samePosition(position, context#cursor)
+                    and not isInList(enemyId, context#dyingEnemyIds))
+                    Some(enemyId)
+                else None
+            })
+
+    def samePosition(a: Vec2.Vec2i, b: Vec2.Vec2i): Bool =
+        a#x == b#x and a#y == b#y
+
+    def isInList(target: Int32, list: List[Int32]): Bool =
+        List.exists(value -> value == target, list)
+}

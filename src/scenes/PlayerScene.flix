@@ -297,17 +297,6 @@ mod PlayerScene {
             case other => other
         }, scene)
 
-    /// 指定セル上に居る **アクティブな（waited = false）** プレイヤーの id を返す。
-    /// PlayerCursor で「カーソルが操作可能な味方の上にあるか」を判定するのに使う。
-    pub def findActiveIdAt(coord: Vec2.Vec2i,
-                            scene: Scene[NodeTag]): Option[Int32] =
-        getAll(scene)
-            |> List.findMap(d ->
-                if (not d#waited
-                    and d#gridPos#x == coord#x
-                    and d#gridPos#y == coord#y) Some(d#id)
-                else None)
-
     /// 指定セル上の全プレイヤー（waited 含む）の id を返す。
     /// 敵が攻撃する隣接プレイヤーの判定など、waited 含めて見たいときに使う。
     pub def findIdAt(coord: Vec2.Vec2i,

@@ -46,23 +46,14 @@ instance Node[NodeTag] {
         }
 }
 
-// 決定キー（Z / Space / Enter）とキャンセルキー（X）はフェーズで意味を変える:
-//   PlayerCursor:
-//     Z = カーソル位置の **アクティブな** 味方を選択
-//         - waited な味方マス・敵マス・空マスは無視
-//         - アクティブな味方なら SelectedPlayer をセット → PlayerMoving に遷移
-//     X = 何もしない（キャンセル元の状態が無いため）
-//   PlayerMoving:
-//     Z = PlayerAttack に遷移（移動有無を問わず）
-//     X = キャンセル → PlayerCursor に戻る（waited にはしない・選択もクリア）
-//   PlayerAttack:
-//     Z = カーソルが赤マス上の敵に乗っていればダメージ
-//         → 選択中味方を waited にして次セレクトへ（全員 waited なら敵ターン）
-//         空マスでは何もしない（攻撃成立せず行動も終わらない）
-//     X = 攻撃スキップ
-//         → 選択中味方を waited にして次セレクトへ（全員 waited なら敵ターン）
-//   EnemyTurn: 入力は無視
-// Tween 中（選択中味方の移動中）は Z/X を受け付けない。
+// 決定キー（Z / Space / Enter）/ キャンセルキー（X）の意味はフェーズで変わる。
+// 判断ロジックは `TurnRules.decide` に集約してあり、ここでは
+// 「キー → Input → 判断 → apply」という配線だけを行う。
+//
+//   PlayerCursor + Z   : 味方マス → 選択 / 床マス → 旗を立てる / それ以外 → 何もしない
+//   PlayerMoving + Z/X : Tween 中はガード。Z で攻撃フェーズ、X で origin へ戻して PlayerCursor
+//   PlayerAttack + Z/X : 敵マスで Z → 攻撃モーション開始、X / 空マスで Z → 行動終了
+//   EnemyTurn / PlayerAutoMove : 入力無視（自動進行）
 instance InputEvent.InputHandler[NodeTag] {
     type Aef = {BoardQuery, Tween.Scheduler, GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State}
@@ -75,27 +66,9 @@ instance InputEvent.InputHandler[NodeTag] {
                         or key == GameEngine.Key.Space
                         or key == GameEngine.Key.Enter;
         let isCancel  = key == GameEngine.Key.X;
-        // 選択中プレイヤーが Tween 中なら playerBusy = true
-        let playerBusy = match SelectedPlayer.State.get() {
-            case Some(id) => Tween.Scheduler.isActive(PlayerScene.playerPath(id))
-            case None     => false
-        };
-        match TurnPhase.State.get() {
-            case TurnPhase.Phase.PlayerCursor =>
-                if (isConfirm) Game.handleConfirmInCursor(scene)
-                else scene
-            case TurnPhase.Phase.PlayerMoving =>
-                if (isConfirm and not playerBusy) Game.handleEnterAttackPhase(scene)
-                else if (isCancel and not playerBusy) Game.handleCancel(scene)
-                else scene
-            case TurnPhase.Phase.PlayerAttack =>
-                if (isConfirm) Game.handleConfirmInAttack(scene)
-                else if (isCancel) Game.handleCancelAttack(scene)
-                else scene
-            // 自動移動中は入力を無視（停止条件で自動的に PlayerCursor に戻る）。
-            case TurnPhase.Phase.PlayerAutoMove => scene
-            case TurnPhase.Phase.EnemyTurn      => scene
-        }
+        if (isConfirm) Game.handleInput(TurnRules.Input.Confirm, scene)
+        else if (isCancel) Game.handleInput(TurnRules.Input.Cancel, scene)
+        else scene
 }
 
 mod Game {
@@ -108,40 +81,85 @@ mod Game {
     pub def designHi(): Int32 = 128
 
     // ────────────────────────────────────────────────────────
-    // フェーズ遷移ハンドラ — 入力ハンドラから呼ばれる「フェーズ + Scene の同期更新」
+    // 入力ハンドラ — TurnRules.decide に判断を委譲し、結果を Scene に反映する
     // ────────────────────────────────────────────────────────
 
-    /// `PlayerCursor` 中に Z が押されたときの処理。
-    /// カーソル位置にアクティブな（waited = false）味方が居れば、その駒を選択して
-    /// `PlayerMoving` に遷移する。
-    /// アクティブ味方が居らず、空の床マス（壁・敵・waited 味方が居ない）なら
-    /// **旗を立てて `PlayerAutoMove` に遷移**（号令）する。
-    /// waited 上・敵上・壁では何もしない。
-    pub def handleConfirmInCursor(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {BoardQuery, GameLogger.GameLogger,
-                              TurnPhase.State, SelectedPlayer.State} =
-        let cursorPos = CursorScene.getGridPos(scene);
-        match PlayerScene.findActiveIdAt(cursorPos, scene) {
-            case Some(id) =>
-                SelectedPlayer.State.put(Some(id));
-                // 選択時のグリッド位置を origin として記録（キャンセルで戻す用）
-                SelectedPlayer.State.putOrigin(Some(PlayerScene.getGridPos(id, scene)));
-                TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
-                scene
-                    |> EnemyRangeScene.clear
-                    |> MoveRangeScene.refresh   // 選択駒の青マスを構築
-                    |> CursorScene.setVisible(false)
-            case None =>
-                let board = BoardQuery.board();
-                if (board#map#isFloor(cursorPos)
-                    and not Board.isOccupied(cursorPos, board))
-                    handlePlantFlag(cursorPos, scene)
-                else scene
+    /// 1 回のキー入力（Confirm / Cancel）を処理する。
+    /// 1. 現フレームの状態から `TurnRules.Context` を組み立てる
+    /// 2. `TurnRules.decide` で次の遷移を決める（純粋関数）
+    /// 3. `applyTransition` で実際の Scene 更新と effect 起動を行う
+    pub def handleInput(input: TurnRules.Input, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {BoardQuery, Tween.Scheduler, GameLogger.GameLogger,
+                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+        let context = buildTurnContext(input, scene);
+        applyTransition(TurnRules.decide(context), scene)
+
+    /// 現在のシーンと各 effect handler から `TurnRules.Context` を組み立てる。
+    /// 「判断に必要な値だけ」を抜き出し、判断ロジック自身は純粋に保つための入口。
+    def buildTurnContext(input: TurnRules.Input, scene: Scene[NodeTag]):
+            TurnRules.Context \ {BoardQuery, Tween.Scheduler,
+                                  TurnPhase.State, SelectedPlayer.State} =
+        let selected = SelectedPlayer.State.get();
+        let busy = match selected {
+            case Some(id) => Tween.Scheduler.isActive(PlayerScene.playerPath(id))
+            case None     => false
+        };
+        let waitedIds = PlayerScene.getAll(scene)
+            |> List.filterMap(d -> if (d#waited) Some(d#id) else None);
+        let dyingIds = EnemyScene.getAll(scene)
+            |> List.filterMap(e -> if (Option.isEmpty(e#dying)) None else Some(e#id));
+        {
+            phase           = TurnPhase.State.get(),
+            input           = input,
+            board           = BoardQuery.board(),
+            cursor          = CursorScene.getGridPos(scene),
+            selected        = selected,
+            waitedPlayerIds = waitedIds,
+            dyingEnemyIds   = dyingIds,
+            playerBusy      = busy
         }
 
-    /// 空マス上で Z が押されたときの処理。旗を立てて PlayerAutoMove に遷移する。
-    /// 自動移動中は赤レンジは出ないので EnemyRangeScene を消し、カーソルも非表示にする。
-    def handlePlantFlag(target: Vec2.Vec2i, scene: Scene[NodeTag]):
+    /// `decide` が返した `Transition` をシーンに適用する。
+    /// このマッチが「ゲームの中心ルールが画面にどう反映されるか」を一覧できる窓口。
+    def applyTransition(transition: TurnRules.Transition,
+                         scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger,
+                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+        match transition {
+            case TurnRules.Transition.Stay                       => scene
+            case TurnRules.Transition.CursorSelectPlayer(playerId) =>
+                applySelectPlayer(playerId, scene)
+            case TurnRules.Transition.CursorPlantFlag(targetX, targetY) =>
+                applyPlantFlag({x = targetX, y = targetY}, scene)
+            case TurnRules.Transition.MovingEnterAttack          =>
+                applyEnterAttackPhase(scene)
+            case TurnRules.Transition.MovingCancel               =>
+                applyCancelMove(scene)
+            case TurnRules.Transition.AttackHit(attackerId, defenderId, defX, defY) =>
+                applyAttackHit(attackerId, defenderId, {x = defX, y = defY}, scene)
+            case TurnRules.Transition.AttackSkip                 =>
+                commitWaitedAndAdvance(scene)
+        }
+
+    // ────────────────────────────────────────────────────────
+    // Transition 各バリアントの適用
+    // ────────────────────────────────────────────────────────
+
+    /// アクティブな味方マスで Z: 選択して PlayerMoving へ。
+    /// 選択時のグリッド位置を origin として記録（X キャンセルで戻すため）。
+    def applySelectPlayer(playerId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+        SelectedPlayer.State.put(Some(playerId));
+        SelectedPlayer.State.putOrigin(Some(PlayerScene.getGridPos(playerId, scene)));
+        TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
+        scene
+            |> EnemyRangeScene.clear
+            |> MoveRangeScene.refresh   // 選択駒の青マスを構築
+            |> CursorScene.setVisible(false)
+
+    /// 空マスで Z: 旗を立てて PlayerAutoMove へ（号令）。
+    /// 自動移動中は赤レンジを出さないので EnemyRangeScene を消し、カーソルも隠す。
+    def applyPlantFlag(target: Vec2.Vec2i, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State} =
         GameLogger.playerLog("旗を立てた");
         TurnPhase.State.put(TurnPhase.Phase.PlayerAutoMove);
@@ -150,9 +168,9 @@ mod Game {
             |> FlagScene.plant(target)
             |> CursorScene.setVisible(false)
 
-    /// `PlayerMoving` 中に Z が押されたときの処理。攻撃フェーズに遷移する。
-    /// 選択は維持。青マスを消して赤マスを出し、カーソルを選択中駒の位置にスナップする。
-    pub def handleEnterAttackPhase(scene: Scene[NodeTag]):
+    /// PlayerMoving + Z: 攻撃フェーズへ。選択は維持し、青マスを消して赤マスを出す。
+    /// カーソルを選択中駒の位置にスナップする。
+    def applyEnterAttackPhase(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, TurnPhase.State,
                               SelectedPlayer.State} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
@@ -162,33 +180,31 @@ mod Game {
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToPlayer
 
-    /// `PlayerAttack` 中に Z が押されたときの処理。
-    /// カーソル位置に「生きている」敵が居れば **体当たりモーションを開始** する。
-    /// damage / HP 適用 / waited セットは Returning 完了後に `tickPlayerAttacksAndAdvance`
-    /// が引き受ける。空マスは何もしない（行動も終わらない）。
-    pub def handleConfirmInAttack(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, SelectedPlayer.State,
-                              GameLogger.GameLogger} =
-        let cursor = CursorScene.getGridPos(scene);
-        match EnemyScene.findIdAt(cursor, scene) {
-            case None         => scene
-            case Some(enemyId) =>
-                match SelectedPlayer.State.get() {
-                    case None    => scene
-                    case Some(playerId) =>
-                        GameLogger.playerLog(
-                            "味方${playerId}の攻撃");
-                        PlayerScene.startAttack(playerId, enemyId, cursor, scene)
-                }
-        }
-
-    /// `PlayerAttack` 中に X が押されたときの処理。攻撃をスキップしてその駒を waited に。
-    /// 全員 waited なら敵ターン、まだ残っていれば PlayerCursor に戻る。
-    pub def handleCancelAttack(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State,
+    /// PlayerMoving + X: 選択駒を **選択時の位置に瞬間移動で戻し**、選択解除して PlayerCursor。
+    /// キャンセル → 再選択の繰り返しで「実質ターン制限なしの自由移動」を防ぐ。
+    def applyCancelMove(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, TurnPhase.State,
                               SelectedPlayer.State} =
-        commitWaitedAndAdvance(scene)
+        let restored = match (SelectedPlayer.State.get(),
+                              SelectedPlayer.State.getOrigin()) {
+            case (Some(id), Some(origin)) => PlayerScene.snapTo(id, origin, scene)
+            case _                         => scene
+        };
+        SelectedPlayer.State.put(None);
+        SelectedPlayer.State.putOrigin(None);
+        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
+        restored
+            |> MoveRangeScene.clear
+            |> CursorScene.setVisible(true)
+            |> CursorScene.snapToPlayer
+
+    /// PlayerAttack + 敵マスで Z: 体当たりモーションを開始する。
+    /// HP 適用 / waited セットは Returning 完了後に `tickPlayerAttacksAndAdvance` で行う。
+    def applyAttackHit(attackerId: Int32, defenderId: Int32,
+                        defenderPos: Vec2.Vec2i, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+        GameLogger.playerLog("味方${attackerId}の攻撃");
+        PlayerScene.startAttack(attackerId, defenderId, defenderPos, scene)
 
     /// PlayerAttack を抜けるときの共通処理:
     ///   1) 選択中駒を waited に（灰色 modulate）
@@ -227,27 +243,6 @@ mod Game {
         TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
         GameLogger.enemyLog("敵のターン");
         scene |> PlayerAttackRangeScene.clear
-
-    /// `PlayerMoving` 中に X が押されたときの処理。`PlayerCursor` に戻り、選択を解除する。
-    /// **waited にはしない** が、選択中駒は **選択時の位置（origin）に瞬間移動で戻す**。
-    /// これによりキャンセル → 再選択の繰り返しで「実質ターン制限なしの自由移動」が
-    /// 起きるのを防ぐ（駒は cancel で必ず原点復帰）。
-    pub def handleCancel(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, TurnPhase.State,
-                              SelectedPlayer.State} =
-        // 選択中駒を origin に戻す（origin が無ければ no-op、防御的）
-        let restored = match (SelectedPlayer.State.get(),
-                              SelectedPlayer.State.getOrigin()) {
-            case (Some(id), Some(origin)) => PlayerScene.snapTo(id, origin, scene)
-            case _                         => scene
-        };
-        SelectedPlayer.State.put(None);
-        SelectedPlayer.State.putOrigin(None);
-        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
-        restored
-            |> MoveRangeScene.clear   // 選択解除につき青マスを消す
-            |> CursorScene.setVisible(true)
-            |> CursorScene.snapToPlayer
 
     // ────────────────────────────────────────────────────────
     // 敵ターン進行 — gameLoop が毎フレーム 1 step ずつ呼ぶ
