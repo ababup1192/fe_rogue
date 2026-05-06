@@ -451,7 +451,7 @@ mod EnemyScene {
             case None    => (scene, Nil)
             case Some(p) =>
                 let newHp = p#hp - 1;
-                GameLogger.GameLogger.enemyLog(
+                GameLogger.enemyLog(
                     "敵${enemyId}が味方${targetId}を攻撃 残りHP${newHp}");
                 let damaged = PlayerScene.mapPlayer(targetId,
                     d -> {hp = newHp | d}, scene);

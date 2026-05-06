@@ -143,7 +143,7 @@ mod Game {
     /// 自動移動中は赤レンジは出ないので EnemyRangeScene を消し、カーソルも非表示にする。
     def handlePlantFlag(target: Vec2.Vec2i, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State} =
-        GameLogger.GameLogger.playerLog("旗を立てた");
+        GameLogger.playerLog("旗を立てた");
         TurnPhase.State.put(TurnPhase.Phase.PlayerAutoMove);
         scene
             |> EnemyRangeScene.clear
@@ -176,7 +176,7 @@ mod Game {
                 match SelectedPlayer.State.get() {
                     case None    => scene
                     case Some(playerId) =>
-                        GameLogger.GameLogger.playerLog(
+                        GameLogger.playerLog(
                             "味方${playerId}の攻撃");
                         PlayerScene.startAttack(playerId, enemyId, cursor, scene)
                 }
@@ -225,7 +225,7 @@ mod Game {
             |> List.map(e -> ({id = e#id, remaining = e#moveTiles}: EnemyTurn.Step));
         EnemyTurn.Queue.replace(steps);
         TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
-        GameLogger.GameLogger.enemyLog("敵のターン");
+        GameLogger.enemyLog("敵のターン");
         scene |> PlayerAttackRangeScene.clear
 
     /// `PlayerMoving` 中に X が押されたときの処理。`PlayerCursor` に戻り、選択を解除する。
@@ -326,7 +326,7 @@ mod Game {
                               EnemyTurn.Queue, TurnPhase.State,
                               InitialEnemies.State, InitialPlayers.State,
                               SelectedPlayer.State} =
-        GameLogger.GameLogger.gameOverLog("ゲームオーバー");
+        GameLogger.gameOverLog("ゲームオーバー");
         EnemyTurn.Queue.replace(Nil);
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         SelectedPlayer.State.put(None);
@@ -372,14 +372,14 @@ mod Game {
     def finishEnemyTurn(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, GameLogger.GameLogger, TurnPhase.State,
                 SelectedPlayer.State} =
-        GameLogger.GameLogger.endTurn();
+        GameLogger.endTurn();
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         let next = scene
             |> PlayerScene.clearAllWaited        // 全員アクティブに戻す
             |> MoveRangeScene.clear              // 未選択につき青マスは無し
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToPlayer;
-        GameLogger.GameLogger.playerLog("味方のターン");
+        GameLogger.playerLog("味方のターン");
         next
 
     /// 現在の scene から Board (MapSnapshot + 駒一覧) を組み立てる。
@@ -442,7 +442,7 @@ mod Game {
                 InitialPlayers.State.put(PlayerScene.snapshotSpawns(scene));
                 // BGM はゲーム開始時に再生（looping = true で曲が終わってもループする）
                 AudioStreamPlayer.play("bgm");
-                GameLogger.GameLogger.playerLog("T1 味方のターン");
+                GameLogger.playerLog("T1 味方のターン");
                 gameLoop(sceneRef, scene)
             } with Editor.withState(rc)
               with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽

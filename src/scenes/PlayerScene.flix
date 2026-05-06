@@ -487,7 +487,7 @@ mod PlayerScene {
             case None    => scene
             case Some(e) =>
                 let newHp = e#hp - 1;
-                GameLogger.GameLogger.playerLog("敵${enemyId}にダメージ 残りHP${newHp}");
+                GameLogger.playerLog("敵${enemyId}にダメージ 残りHP${newHp}");
                 if (newHp <= 0) EnemyScene.startDeathAnimation(enemyId, scene)
                 else EnemyScene.mapEnemy(enemyId, d -> {hp = newHp | d}, scene)
         }

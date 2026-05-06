@@ -99,8 +99,8 @@ mod SceneLoader {
         match json {
             case JsonObject(map) =>
                 let header = forM (
-                    nodeType   <- (Json.getAtKey(Root, "type", map): Result[Json.JsonError, String]);
-                    name       <- (Json.getAtKey(Root, "name", map): Result[Json.JsonError, String]);
+                    nodeType   <- (Json.FromJson.getAtKey(Root, "type", map): Result[Json.JsonError, String]);
+                    name       <- (Json.FromJson.getAtKey(Root, "name", map): Result[Json.JsonError, String]);
                     groups     <- parseGroups(map)
                 ) yield (nodeType, name, groups);
                 match header {
@@ -175,7 +175,7 @@ mod SceneLoader {
     def parseVec2(key: String,
                   map: Map[String, Json.JsonElement]): Result[Json.JsonError, Vec2.Vec2] =
         forM (
-            pair <- (Json.getAtKey(Root, key, map): Result[Json.JsonError, (Float64, Float64)])
+            pair <- (Json.FromJson.getAtKey(Root, key, map): Result[Json.JsonError, (Float64, Float64)])
         ) yield {
             let (x, y) = pair;
             {x = x, y = y}
@@ -184,7 +184,7 @@ mod SceneLoader {
     def parseVec2Opt(key: String,
                      map: Map[String, Json.JsonElement]): Result[Json.JsonError, Option[Vec2.Vec2]] =
         forM (
-            opt <- (Json.getAtKeyOpt(Root, key, map): Result[Json.JsonError, Option[(Float64, Float64)]])
+            opt <- (Json.FromJson.getAtKeyOpt(Root, key, map): Result[Json.JsonError, Option[(Float64, Float64)]])
         ) yield match opt {
             case Some((x, y)) => Some({x = x, y = y})
             case None         => None
@@ -194,19 +194,19 @@ mod SceneLoader {
     def parseTagField(tagParser: Option[String] -> Result[Json.JsonError, t],
                       map: Map[String, Json.JsonElement]): Result[Json.JsonError, t] =
         forM (
-            tagOpt <- (Json.getAtKeyOpt(Root, "tag", map): Result[Json.JsonError, Option[String]]);
+            tagOpt <- (Json.FromJson.getAtKeyOpt(Root, "tag", map): Result[Json.JsonError, Option[String]]);
             tag    <- tagParser(tagOpt)
         ) yield tag
 
     def parseGroups(map: Map[String, Json.JsonElement]): Result[Json.JsonError, List[String]] =
         forM (
-            opt <- (Json.getAtKeyOpt(Root, "groups", map): Result[Json.JsonError, Option[List[String]]])
+            opt <- (Json.FromJson.getAtKeyOpt(Root, "groups", map): Result[Json.JsonError, Option[List[String]]])
         ) yield Option.getWithDefault(Nil, opt)
 
     def parseShape(map: Map[String, Json.JsonElement]): Result[Json.JsonError, CollisionShape2D] =
         forM (
-            shapeMap <- (Json.getAtKey(Root, "shape", map): Result[Json.JsonError, Map[String, Json.JsonElement]]);
-            kind     <- (Json.getAtKey(Root, "kind", shapeMap): Result[Json.JsonError, String]);
+            shapeMap <- (Json.FromJson.getAtKey(Root, "shape", map): Result[Json.JsonError, Map[String, Json.JsonElement]]);
+            kind     <- (Json.FromJson.getAtKey(Root, "kind", shapeMap): Result[Json.JsonError, String]);
             shape    <- buildShape(kind, shapeMap)
         ) yield shape
 
@@ -215,12 +215,12 @@ mod SceneLoader {
         match kind {
             case "RectShape2D" =>
                 forM (
-                    width  <- (Json.getAtKey(Root, "width", map): Result[Json.JsonError, Float64]);
-                    height <- (Json.getAtKey(Root, "height", map): Result[Json.JsonError, Float64])
+                    width  <- (Json.FromJson.getAtKey(Root, "width", map): Result[Json.JsonError, Float64]);
+                    height <- (Json.FromJson.getAtKey(Root, "height", map): Result[Json.JsonError, Float64])
                 ) yield CollisionShape2D.RectShape2D({width = width, height = height})
             case "CircleShape2D" =>
                 forM (
-                    radius <- (Json.getAtKey(Root, "radius", map): Result[Json.JsonError, Float64])
+                    radius <- (Json.FromJson.getAtKey(Root, "radius", map): Result[Json.JsonError, Float64])
                 ) yield CollisionShape2D.CircleShape2D({radius = radius})
             case unknown =>
                 Err(JsonError(Root, Set#{"known shape kind (got: ${unknown})"}))
@@ -234,7 +234,7 @@ mod SceneLoader {
                          map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
         forM (
             tag       <- parseTagField(tagParser, map);
-            drawLayer <- (Json.getAtKey(Root, "layer", map): Result[Json.JsonError, Int32])
+            drawLayer <- (Json.FromJson.getAtKey(Root, "layer", map): Result[Json.JsonError, Int32])
         ) yield EngineNode.CanvasLayerWithState(CanvasLayer.make(drawLayer), tag)
 
     def buildSprite2D(tagParser: Option[String] -> Result[Json.JsonError, t],
@@ -243,16 +243,16 @@ mod SceneLoader {
             tag         <- parseTagField(tagParser, map);
             pos         <- parseVec2("pos", map);
             scale       <- parseVec2("scale", map);
-            texture     <- (Json.getAtKey(Root, "texture", map): Result[Json.JsonError, String]);
-            rotationOpt <- (Json.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
-            skewOpt     <- (Json.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
-            zIndexOpt   <- (Json.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
-            visibleOpt  <- (Json.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
-            flipHOpt    <- (Json.getAtKeyOpt(Root, "flipH", map): Result[Json.JsonError, Option[Bool]]);
-            flipVOpt    <- (Json.getAtKeyOpt(Root, "flipV", map): Result[Json.JsonError, Option[Bool]]);
-            hframesOpt  <- (Json.getAtKeyOpt(Root, "hframes", map): Result[Json.JsonError, Option[Int32]]);
-            vframesOpt  <- (Json.getAtKeyOpt(Root, "vframes", map): Result[Json.JsonError, Option[Int32]]);
-            frameOpt    <- (Json.getAtKeyOpt(Root, "frame", map): Result[Json.JsonError, Option[Int32]])
+            texture     <- (Json.FromJson.getAtKey(Root, "texture", map): Result[Json.JsonError, String]);
+            rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
+            skewOpt     <- (Json.FromJson.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
+            zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            flipHOpt    <- (Json.FromJson.getAtKeyOpt(Root, "flipH", map): Result[Json.JsonError, Option[Bool]]);
+            flipVOpt    <- (Json.FromJson.getAtKeyOpt(Root, "flipV", map): Result[Json.JsonError, Option[Bool]]);
+            hframesOpt  <- (Json.FromJson.getAtKeyOpt(Root, "hframes", map): Result[Json.JsonError, Option[Int32]]);
+            vframesOpt  <- (Json.FromJson.getAtKeyOpt(Root, "vframes", map): Result[Json.JsonError, Option[Int32]]);
+            frameOpt    <- (Json.FromJson.getAtKeyOpt(Root, "frame", map): Result[Json.JsonError, Option[Int32]])
         ) yield {
             let sprite = Sprite2D.make(texture, pos, scale)
                 |> applyOpt(rotationOpt, setSpriteRotation)
@@ -282,10 +282,10 @@ mod SceneLoader {
             pos               <- parseVec2("pos", map);
             scale             <- parseVec2("scale", map);
             size              <- parseVec2("size", map);
-            textureNormal     <- (Json.getAtKey(Root, "textureNormal", map): Result[Json.JsonError, String]);
-            texturePressedOpt <- (Json.getAtKeyOpt(Root, "texturePressed", map): Result[Json.JsonError, Option[String]]);
-            centeredOpt       <- (Json.getAtKeyOpt(Root, "centered", map): Result[Json.JsonError, Option[Bool]]);
-            visibleOpt        <- (Json.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]])
+            textureNormal     <- (Json.FromJson.getAtKey(Root, "textureNormal", map): Result[Json.JsonError, String]);
+            texturePressedOpt <- (Json.FromJson.getAtKeyOpt(Root, "texturePressed", map): Result[Json.JsonError, Option[String]]);
+            centeredOpt       <- (Json.FromJson.getAtKeyOpt(Root, "centered", map): Result[Json.JsonError, Option[Bool]]);
+            visibleOpt        <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]])
         ) yield {
             let button = TextureButton.make(textureNormal, size)
                 |> Node2D.setPosition(pos)
@@ -310,7 +310,7 @@ mod SceneLoader {
             tag               <- parseTagField(tagParser, map);
             pos               <- parseVec2("pos", map);
             shape             <- parseShape(map);
-            gravityScaleOpt   <- (Json.getAtKeyOpt(Root, "gravityScale", map): Result[Json.JsonError, Option[Float64]]);
+            gravityScaleOpt   <- (Json.FromJson.getAtKeyOpt(Root, "gravityScale", map): Result[Json.JsonError, Option[Float64]]);
             linearVelocityOpt <- parseVec2Opt("linearVelocity", map)
         ) yield {
             let body = RigidBody2D.make(pos, shape)
@@ -325,7 +325,7 @@ mod SceneLoader {
             tag           <- parseTagField(tagParser, map);
             pos           <- parseVec2("pos", map);
             shape         <- parseShape(map);
-            monitoringOpt <- (Json.getAtKeyOpt(Root, "monitoring", map): Result[Json.JsonError, Option[Bool]])
+            monitoringOpt <- (Json.FromJson.getAtKeyOpt(Root, "monitoring", map): Result[Json.JsonError, Option[Bool]])
         ) yield {
             let area = Area2D.make(pos, shape)
                 |> applyMonitoring(monitoringOpt);
@@ -336,9 +336,9 @@ mod SceneLoader {
     def parseAnimation(animMap: Map[String, Json.JsonElement]):
                         Result[Json.JsonError, SpriteFrames.Animation] =
         forM (
-            loops      <- (Json.getAtKey(Root, "loop", animMap): Result[Json.JsonError, Bool]);
-            speed      <- (Json.getAtKey(Root, "speed", animMap): Result[Json.JsonError, Float64]);
-            frameMaps  <- (Json.getAtKey(Root, "frames", animMap):
+            loops      <- (Json.FromJson.getAtKey(Root, "loop", animMap): Result[Json.JsonError, Bool]);
+            speed      <- (Json.FromJson.getAtKey(Root, "speed", animMap): Result[Json.JsonError, Float64]);
+            frameMaps  <- (Json.FromJson.getAtKey(Root, "frames", animMap):
                             Result[Json.JsonError, List[Map[String, Json.JsonElement]]]);
             frames     <- Result.traverse(parseFrame, frameMaps)
         ) yield ({loop = loops, speed = speed, frames = frames}: SpriteFrames.Animation)
@@ -347,8 +347,8 @@ mod SceneLoader {
     def parseFrame(frameMap: Map[String, Json.JsonElement]):
                     Result[Json.JsonError, SpriteFrames.Frame] =
         forM (
-            texture     <- (Json.getAtKey(Root, "texture", frameMap): Result[Json.JsonError, String]);
-            durationOpt <- (Json.getAtKeyOpt(Root, "duration", frameMap):
+            texture     <- (Json.FromJson.getAtKey(Root, "texture", frameMap): Result[Json.JsonError, String]);
+            durationOpt <- (Json.FromJson.getAtKeyOpt(Root, "duration", frameMap):
                              Result[Json.JsonError, Option[Float64]])
         ) yield ({texture = texture,
                   duration = Option.getWithDefault(1.0, durationOpt)}: SpriteFrames.Frame)
@@ -375,13 +375,13 @@ mod SceneLoader {
             tag            <- parseTagField(tagParser, map);
             pos            <- parseVec2("pos", map);
             scale          <- parseVec2("scale", map);
-            sfMap          <- (Json.getAtKey(Root, "spriteFrames", map):
+            sfMap          <- (Json.FromJson.getAtKey(Root, "spriteFrames", map):
                                 Result[Json.JsonError, Map[String, Json.JsonElement]]);
             spriteFrames   <- parseSpriteFrames(sfMap);
-            animation      <- (Json.getAtKey(Root, "animation", map): Result[Json.JsonError, String]);
-            autoplayOpt    <- (Json.getAtKeyOpt(Root, "autoplay", map):
+            animation      <- (Json.FromJson.getAtKey(Root, "animation", map): Result[Json.JsonError, String]);
+            autoplayOpt    <- (Json.FromJson.getAtKeyOpt(Root, "autoplay", map):
                                 Result[Json.JsonError, Option[String]]);
-            speedScaleOpt  <- (Json.getAtKeyOpt(Root, "speedScale", map):
+            speedScaleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "speedScale", map):
                                 Result[Json.JsonError, Option[Float64]])
         ) yield {
             let sprite = AnimatedSprite2D.make(spriteFrames, {animation = animation}, pos, scale)
@@ -396,19 +396,19 @@ mod SceneLoader {
             tag             <- parseTagField(tagParser, map);
             pos             <- parseVec2("pos", map);
             shape           <- parseShape(map);
-            moveSpeedOpt    <- (Json.getAtKeyOpt(Root, "moveSpeed", map): Result[Json.JsonError, Option[Float64]]);
+            moveSpeedOpt    <- (Json.FromJson.getAtKeyOpt(Root, "moveSpeed", map): Result[Json.JsonError, Option[Float64]]);
             velocityOpt     <- parseVec2Opt("velocity", map);
             scaleOpt        <- parseVec2Opt("scale", map);
-            rotationOpt     <- (Json.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
-            skewOpt         <- (Json.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
-            visibleOpt      <- (Json.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
-            zIndexOpt       <- (Json.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
-            monitoringOpt   <- (Json.getAtKeyOpt(Root, "monitoring", map): Result[Json.JsonError, Option[Bool]]);
-            monitorableOpt  <- (Json.getAtKeyOpt(Root, "monitorable", map): Result[Json.JsonError, Option[Bool]]);
-            priorityOpt     <- (Json.getAtKeyOpt(Root, "priority", map): Result[Json.JsonError, Option[Int32]]);
+            rotationOpt     <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
+            skewOpt         <- (Json.FromJson.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
+            visibleOpt      <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt       <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            monitoringOpt   <- (Json.FromJson.getAtKeyOpt(Root, "monitoring", map): Result[Json.JsonError, Option[Bool]]);
+            monitorableOpt  <- (Json.FromJson.getAtKeyOpt(Root, "monitorable", map): Result[Json.JsonError, Option[Bool]]);
+            priorityOpt     <- (Json.FromJson.getAtKeyOpt(Root, "priority", map): Result[Json.JsonError, Option[Int32]]);
             upDirectionOpt  <- parseVec2Opt("upDirection", map);
-            floorMaxAngleOpt <- (Json.getAtKeyOpt(Root, "floorMaxAngle", map): Result[Json.JsonError, Option[Float64]]);
-            maxSlidesOpt    <- (Json.getAtKeyOpt(Root, "maxSlides", map): Result[Json.JsonError, Option[Int32]])
+            floorMaxAngleOpt <- (Json.FromJson.getAtKeyOpt(Root, "floorMaxAngle", map): Result[Json.JsonError, Option[Float64]]);
+            maxSlidesOpt    <- (Json.FromJson.getAtKeyOpt(Root, "maxSlides", map): Result[Json.JsonError, Option[Int32]])
         ) yield {
             let body = CharacterBody2D.make(pos, {moveSpeed = Option.getWithDefault(0.0, moveSpeedOpt)})
                 |> CharacterBody2D.setCollisionShape(Some(shape))
@@ -448,10 +448,10 @@ mod SceneLoader {
             tag         <- parseTagField(tagParser, map);
             pos         <- parseVec2("pos", map);
             scaleOpt    <- parseVec2Opt("scale", map);
-            rotationOpt <- (Json.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
-            skewOpt     <- (Json.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
-            visibleOpt  <- (Json.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
-            zIndexOpt   <- (Json.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
+            rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
+            skewOpt     <- (Json.FromJson.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
+            visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
         ) yield {
             let marker = Marker2D.make(pos)
                 |> applyOpt(scaleOpt, setMarker2DScale)
@@ -485,31 +485,31 @@ mod SceneLoader {
             offsetOpt               <- parseVec2Opt("offset", map);
             zoomOpt                 <- parseVec2Opt("zoom", map);
             scaleOpt                <- parseVec2Opt("scale", map);
-            rotationOpt             <- (Json.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
-            skewOpt                 <- (Json.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
-            visibleOpt              <- (Json.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
-            zIndexOpt               <- (Json.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
-            enabledOpt              <- (Json.getAtKeyOpt(Root, "enabled", map): Result[Json.JsonError, Option[Bool]]);
-            anchorModeOpt           <- (Json.getAtKeyOpt(Root, "anchorMode", map): Result[Json.JsonError, Option[String]]);
+            rotationOpt             <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
+            skewOpt                 <- (Json.FromJson.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
+            visibleOpt              <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt               <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            enabledOpt              <- (Json.FromJson.getAtKeyOpt(Root, "enabled", map): Result[Json.JsonError, Option[Bool]]);
+            anchorModeOpt           <- (Json.FromJson.getAtKeyOpt(Root, "anchorMode", map): Result[Json.JsonError, Option[String]]);
             anchorMode              <- parseAnchorMode(anchorModeOpt);
-            processCallbackOpt      <- (Json.getAtKeyOpt(Root, "processCallback", map): Result[Json.JsonError, Option[String]]);
+            processCallbackOpt      <- (Json.FromJson.getAtKeyOpt(Root, "processCallback", map): Result[Json.JsonError, Option[String]]);
             processCallback         <- parseProcessCallback(processCallbackOpt);
-            ignoreRotationOpt       <- (Json.getAtKeyOpt(Root, "ignoreRotation", map): Result[Json.JsonError, Option[Bool]]);
-            limitLeftOpt            <- (Json.getAtKeyOpt(Root, "limitLeft", map): Result[Json.JsonError, Option[Int32]]);
-            limitTopOpt             <- (Json.getAtKeyOpt(Root, "limitTop", map): Result[Json.JsonError, Option[Int32]]);
-            limitRightOpt           <- (Json.getAtKeyOpt(Root, "limitRight", map): Result[Json.JsonError, Option[Int32]]);
-            limitBottomOpt          <- (Json.getAtKeyOpt(Root, "limitBottom", map): Result[Json.JsonError, Option[Int32]]);
-            limitSmoothedOpt        <- (Json.getAtKeyOpt(Root, "limitSmoothed", map): Result[Json.JsonError, Option[Bool]]);
-            posSmoothEnabledOpt     <- (Json.getAtKeyOpt(Root, "positionSmoothingEnabled", map): Result[Json.JsonError, Option[Bool]]);
-            posSmoothSpeedOpt       <- (Json.getAtKeyOpt(Root, "positionSmoothingSpeed", map): Result[Json.JsonError, Option[Float64]]);
-            rotSmoothEnabledOpt     <- (Json.getAtKeyOpt(Root, "rotationSmoothingEnabled", map): Result[Json.JsonError, Option[Bool]]);
-            rotSmoothSpeedOpt       <- (Json.getAtKeyOpt(Root, "rotationSmoothingSpeed", map): Result[Json.JsonError, Option[Float64]]);
-            dragHEnabledOpt         <- (Json.getAtKeyOpt(Root, "dragHorizontalEnabled", map): Result[Json.JsonError, Option[Bool]]);
-            dragVEnabledOpt         <- (Json.getAtKeyOpt(Root, "dragVerticalEnabled", map): Result[Json.JsonError, Option[Bool]]);
-            dragLeftOpt             <- (Json.getAtKeyOpt(Root, "dragLeftMargin", map): Result[Json.JsonError, Option[Float64]]);
-            dragRightOpt            <- (Json.getAtKeyOpt(Root, "dragRightMargin", map): Result[Json.JsonError, Option[Float64]]);
-            dragTopOpt              <- (Json.getAtKeyOpt(Root, "dragTopMargin", map): Result[Json.JsonError, Option[Float64]]);
-            dragBottomOpt           <- (Json.getAtKeyOpt(Root, "dragBottomMargin", map): Result[Json.JsonError, Option[Float64]])
+            ignoreRotationOpt       <- (Json.FromJson.getAtKeyOpt(Root, "ignoreRotation", map): Result[Json.JsonError, Option[Bool]]);
+            limitLeftOpt            <- (Json.FromJson.getAtKeyOpt(Root, "limitLeft", map): Result[Json.JsonError, Option[Int32]]);
+            limitTopOpt             <- (Json.FromJson.getAtKeyOpt(Root, "limitTop", map): Result[Json.JsonError, Option[Int32]]);
+            limitRightOpt           <- (Json.FromJson.getAtKeyOpt(Root, "limitRight", map): Result[Json.JsonError, Option[Int32]]);
+            limitBottomOpt          <- (Json.FromJson.getAtKeyOpt(Root, "limitBottom", map): Result[Json.JsonError, Option[Int32]]);
+            limitSmoothedOpt        <- (Json.FromJson.getAtKeyOpt(Root, "limitSmoothed", map): Result[Json.JsonError, Option[Bool]]);
+            posSmoothEnabledOpt     <- (Json.FromJson.getAtKeyOpt(Root, "positionSmoothingEnabled", map): Result[Json.JsonError, Option[Bool]]);
+            posSmoothSpeedOpt       <- (Json.FromJson.getAtKeyOpt(Root, "positionSmoothingSpeed", map): Result[Json.JsonError, Option[Float64]]);
+            rotSmoothEnabledOpt     <- (Json.FromJson.getAtKeyOpt(Root, "rotationSmoothingEnabled", map): Result[Json.JsonError, Option[Bool]]);
+            rotSmoothSpeedOpt       <- (Json.FromJson.getAtKeyOpt(Root, "rotationSmoothingSpeed", map): Result[Json.JsonError, Option[Float64]]);
+            dragHEnabledOpt         <- (Json.FromJson.getAtKeyOpt(Root, "dragHorizontalEnabled", map): Result[Json.JsonError, Option[Bool]]);
+            dragVEnabledOpt         <- (Json.FromJson.getAtKeyOpt(Root, "dragVerticalEnabled", map): Result[Json.JsonError, Option[Bool]]);
+            dragLeftOpt             <- (Json.FromJson.getAtKeyOpt(Root, "dragLeftMargin", map): Result[Json.JsonError, Option[Float64]]);
+            dragRightOpt            <- (Json.FromJson.getAtKeyOpt(Root, "dragRightMargin", map): Result[Json.JsonError, Option[Float64]]);
+            dragTopOpt              <- (Json.FromJson.getAtKeyOpt(Root, "dragTopMargin", map): Result[Json.JsonError, Option[Float64]]);
+            dragBottomOpt           <- (Json.FromJson.getAtKeyOpt(Root, "dragBottomMargin", map): Result[Json.JsonError, Option[Float64]])
         ) yield {
             let camera = Camera2D.make(pos)
                 |> applyOpt(offsetOpt, Camera2D.setOffset)
@@ -583,12 +583,12 @@ mod SceneLoader {
                           Result[Json.JsonError, EngineNode[t]] \ {GameEngine.Game, Fs.FileRead} =
         let header = forM (
             tag         <- parseTagField(tagParser, map);
-            ldtkPath    <- (Json.getAtKey(Root, "ldtkPath", map): Result[Json.JsonError, String]);
-            textureName <- (Json.getAtKey(Root, "textureName", map): Result[Json.JsonError, String]);
-            marginXOpt  <- (Json.getAtKeyOpt(Root, "marginX", map): Result[Json.JsonError, Option[Float64]]);
-            marginYOpt  <- (Json.getAtKeyOpt(Root, "marginY", map): Result[Json.JsonError, Option[Float64]]);
-            spacingXOpt <- (Json.getAtKeyOpt(Root, "spacingX", map): Result[Json.JsonError, Option[Float64]]);
-            spacingYOpt <- (Json.getAtKeyOpt(Root, "spacingY", map): Result[Json.JsonError, Option[Float64]])
+            ldtkPath    <- (Json.FromJson.getAtKey(Root, "ldtkPath", map): Result[Json.JsonError, String]);
+            textureName <- (Json.FromJson.getAtKey(Root, "textureName", map): Result[Json.JsonError, String]);
+            marginXOpt  <- (Json.FromJson.getAtKeyOpt(Root, "marginX", map): Result[Json.JsonError, Option[Float64]]);
+            marginYOpt  <- (Json.FromJson.getAtKeyOpt(Root, "marginY", map): Result[Json.JsonError, Option[Float64]]);
+            spacingXOpt <- (Json.FromJson.getAtKeyOpt(Root, "spacingX", map): Result[Json.JsonError, Option[Float64]]);
+            spacingYOpt <- (Json.FromJson.getAtKeyOpt(Root, "spacingY", map): Result[Json.JsonError, Option[Float64]])
         ) yield {
             tag = tag,
             config = ({
@@ -615,17 +615,17 @@ mod SceneLoader {
             case Some(font) =>
                 forM (
                     tag        <- parseTagField(tagParser, map);
-                    text       <- (Json.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
+                    text       <- (Json.FromJson.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
                     pos        <- parseVec2("pos", map);
-                    fontSize   <- (Json.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
-                    hAlignOpt  <- (Json.getAtKeyOpt(Root, "horizontalAlignment", map):
+                    fontSize   <- (Json.FromJson.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
+                    hAlignOpt  <- (Json.FromJson.getAtKeyOpt(Root, "horizontalAlignment", map):
                                      Result[Json.JsonError, Option[String]]);
-                    vAlignOpt  <- (Json.getAtKeyOpt(Root, "verticalAlignment", map):
+                    vAlignOpt  <- (Json.FromJson.getAtKeyOpt(Root, "verticalAlignment", map):
                                      Result[Json.JsonError, Option[String]]);
                     hAlign     <- parseHorizontalAlignment(hAlignOpt);
                     vAlign     <- parseVerticalAlignment(vAlignOpt);
-                    visibleOpt <- (Json.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
-                    zIndexOpt  <- (Json.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
+                    visibleOpt <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+                    zIndexOpt  <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
                 ) yield {
                     let label = Label2D.make(text, font, fontSize)
                         |> Node2D.setPosition(pos)

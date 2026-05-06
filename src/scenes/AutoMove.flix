@@ -34,7 +34,7 @@ mod AutoMove {
             case Some(flag) =>
                 let board = Game.buildBoard(scene);
                 if (anyEnemyDetected(scene, board)) {
-                    GameLogger.GameLogger.playerLog("敵に発見された");
+                    GameLogger.playerLog("敵に発見された");
                     exitToCursor(scene)
                 }
                 else {

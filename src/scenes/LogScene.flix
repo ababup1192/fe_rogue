@@ -93,7 +93,7 @@ mod LogScene {
     /// drain が空の場合は何もしない。
     pub def flushFromEffect(scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
-        let drained = GameLogger.GameLogger.drainEntries();
+        let drained = GameLogger.drainEntries();
         match drained {
             case Nil => scene
             case _   => append(drained, scene)

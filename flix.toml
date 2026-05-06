@@ -2,11 +2,11 @@
 name        = "playground_flix"
 description = "test"
 version     = "0.1.0"
-flix        = "0.71.0"
+flix        = "0.72.0"
 authors     = ["John Doe <john@example.com>"]
 
 [dependencies]
-"github:mlutze/flix-json" = "0.13.1"
+"github:mlutze/flix-json" = "0.13.2"
 
 [mvn-dependencies]
 "com.formdev:flatlaf" = "3.7.1"

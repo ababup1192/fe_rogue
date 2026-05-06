@@ -26,30 +26,7 @@ mod GPUParticles2D {
         startScale = Float64,
         endScale = Float64
     }
-}
 
-pub enum GPUParticles2D {
-    case GPUParticles2D({
-        position = Vec2.Vec2,
-        rotation = Float64,
-        scale = Vec2.Vec2,
-        skew = Float64,
-        visible = Bool,
-        zIndex = Int32,
-        modulate = Color,
-        texture = String,
-        particleLifetime = Float64,
-        emitInterval = Float64,
-        startAlpha = Float32,
-        endAlpha = Float32,
-        startScale = Float64,
-        endScale = Float64,
-        particles = List[GPUParticles2D.Particle],
-        emitTimer = Float64
-    })
-}
-
-mod GPUParticles2D {
     /// Config からパラメータを名前付きで渡して生成する
     pub def make(config: Config): GPUParticles2D =
         let effectiveLifetime = config#lifetime / config#speedScale;
@@ -116,6 +93,27 @@ mod GPUParticles2D {
                 zIndex = r#zIndex
             }
         }, r#particles)
+}
+
+pub enum GPUParticles2D {
+    case GPUParticles2D({
+        position = Vec2.Vec2,
+        rotation = Float64,
+        scale = Vec2.Vec2,
+        skew = Float64,
+        visible = Bool,
+        zIndex = Int32,
+        modulate = Color,
+        texture = String,
+        particleLifetime = Float64,
+        emitInterval = Float64,
+        startAlpha = Float32,
+        endAlpha = Float32,
+        startScale = Float64,
+        endScale = Float64,
+        particles = List[GPUParticles2D.Particle],
+        emitTimer = Float64
+    })
 }
 
 // -- CanvasItem 実装 --

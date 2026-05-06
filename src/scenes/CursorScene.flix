@@ -239,7 +239,7 @@ mod CursorScene {
         else
             let nextScene = match enemyId {
                 case Some(id) =>
-                    GameLogger.GameLogger.playerLog("敵${id}を捕捉");
+                    GameLogger.playerLog("敵${id}を捕捉");
                     EnemyRangeScene.refreshFor(id, scene)
                 case None =>
                     EnemyRangeScene.clear(scene)
