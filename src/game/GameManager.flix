@@ -117,15 +117,16 @@ mod GameManager {
     /// scene.json 変更を検知したときの再構築。敵ターンキュー・選択・フェーズを
     /// 初期状態に戻し、buildPlayingScene でフルリビルド → 初期 spawn を保存し直す。
     /// プレイ中状態はリセットされる。
+    /// 旧シーンの playback は AnimationPlayer.tickAll の auto-stop が
+    /// 「owner ノードが scene から消えたら自動停止」してくれるので、ここでは
+    /// 明示的に cancelAll を呼ばない。
     def handleHotReload(): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
-                AnimationPlayer.Scheduler,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 InitialSpawns.State} =
         EnemyTurn.Queue.replace(Nil);
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         SelectedPlayer.State.put(SelectedPlayer.cleared());
-        AnimationPlayer.Scheduler.cancelAll();
         let rebuilt = buildPlayingScene();
         InitialSpawns.State.put({
             enemies = EnemyScene.snapshotSpawns(rebuilt),
@@ -385,9 +386,8 @@ mod GameManager {
         EnemyTurn.Queue.replace(Nil);
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         SelectedPlayer.State.put(SelectedPlayer.cleared());
-        // 進行中のアニメ（敵 attack_lunge、敵 death_blink 等）は再構築するノードに対して
-        // 古い座標を書き戻し続けてしまうので、リセット前に全停止する。
-        AnimationPlayer.Scheduler.cancelAll();
+        // 進行中アニメ（敵 attack_lunge / 敵 death_blink 等）は AnimationPlayer.tickAll の
+        // auto-stop が次フレームで掃除する（owner ノードが respawn 時に一度 removeAt されるため）。
         let initial = InitialSpawns.State.get();
         scene
             |> PlayerScene.respawnFromInitial(initial#players)
@@ -438,17 +438,18 @@ mod GameManager {
         let afterFinished = List.foldLeft(applyFinishedEvent, afterMethods, bundle#finished);
         afterFinished
 
-    /// 1 つの method イベントを適用する。owner / name で分岐する。
-    /// `attack:hit` 中点発火: owner が Player_<id> ならその味方からターゲット敵へ、
+    /// 1 つの method イベントを適用する。owner と AnimEvent.Tag で分岐する。
+    /// `Tag.AttackHit` 中点発火: owner が Player_<id> ならその味方からターゲット敵へ、
     /// Enemy_<id> ならその敵からターゲット味方へ 1 ダメージ + SE + ログ。
     /// 敵攻撃で味方 HP=0 のときはこの場で `handlePlayerDeath` を発火する（即時リセット）。
+    /// 未知の name は `parseTag = None` で no-op。
     def applyMethodEvent(scene: Scene[NodeTag], event: AnimationPlayer.Event):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                               GameLogger.GameLogger, Tween.Scheduler,
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, InitialSpawns.State} =
-        match event#name {
-            case "attack:hit" =>
+        match AnimEvent.parseTag(event#name) {
+            case Some(AnimEvent.Tag.AttackHit) =>
                 match PlayerScene.idFromPath(event#owner) {
                     case Some(playerId) =>
                         PlayerScene.applyAttackHit(playerId, scene)
@@ -457,29 +458,30 @@ mod GameManager {
                             case Some(enemyId) =>
                                 let (next, killed) =
                                     EnemyScene.applyAttackHit(enemyId, scene);
-                                if (List.length(killed) > 0) handlePlayerDeath(next)
+                                if (List.nonEmpty(killed)) handlePlayerDeath(next)
                                 else next
                             case None => scene
                         }
                 }
+            // 他の Tag は method として発火しない設計（finished のみ）
             case _ => scene
         }
 
     /// 1 つの finished イベントを適用する。owner で「どの Scene のノードか」を判定し、
-    /// name で「何のアニメーションだったか」を確認して後始末を呼ぶ。
-    /// 知らない (owner, name) は no-op（防御的）。
+    /// AnimEvent.Tag で「どのアニメーションだったか」を確認して後始末を呼ぶ。
+    /// 未知の name は `parseTag = None` で no-op（防御的）。
     def applyFinishedEvent(scene: Scene[NodeTag], event: AnimationPlayer.Event):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameEngine.Audio, GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State} =
-        match event#name {
-            case "death_blink" =>
+        match AnimEvent.parseTag(event#name) {
+            case Some(AnimEvent.Tag.DeathBlink) =>
                 match EnemyScene.idFromPath(event#owner) {
                     case Some(id) => EnemyScene.completeDeath(id, scene)
                     case None     => scene
                 }
-            case "attack_lunge" =>
+            case Some(AnimEvent.Tag.AttackLunge) =>
                 match PlayerScene.idFromPath(event#owner) {
                     case Some(playerId) =>
                         // 味方攻撃完了 → attackTargetId をクリア → waited 確定 + 次フェーズ
@@ -492,6 +494,7 @@ mod GameManager {
                             case None => scene
                         }
                 }
+            // Tag.AttackHit は method 専用、Tag.Snag は finished で何もしない
             case _ => scene
         }
 

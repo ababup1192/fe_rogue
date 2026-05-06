@@ -108,8 +108,12 @@ mod AnimationPlayer {
         /// 指定 owner の playback を即時停止する
         def stop(owner: NodePath): Unit
         /// 全 playback と未配送イベントを一括破棄する。
-        /// ゲームオーバーリセット / ホットリロードのように scene 全体を作り直す場面で呼ぶ。
+        /// 通常は `tickAll` の auto-stop で十分だが、ゲームオーバー等で
+        /// 「次フレームを待たずに即時クリーンしたい」場合の保険として用意してある。
         def cancelAll(): Unit
+        /// 現在再生中の全 playback の owner NodePath 一覧。
+        /// `tickAll` の冒頭で「scene から消えた owner の playback を破棄する」auto-stop に使う。
+        def activeOwners(): List[NodePath]
         /// engine 内部用: `tickAll` が呼ぶ。delta 進めて property 更新を返し、
         /// 完了 / メソッドイベントは内部 buffer に溜める。
         def consumeTick(delta: Duration.Duration): Tick
@@ -197,6 +201,8 @@ mod AnimationPlayer {
                 }
                 def isPlaying(target, k) =
                     k(Ref.get(activeRef) |> List.exists(p -> p#owner == target))
+                def activeOwners(k) =
+                    k(Ref.get(activeRef) |> List.map(p -> p#owner))
                 def consumeTick(delta, k) = {
                     let pbs = Ref.get(activeRef);
                     let pending = Ref.get(pendingRef);
@@ -275,12 +281,24 @@ mod AnimationPlayer {
     // ════════════════════════════════════════════════════════
 
     /// `Tween.tickAll` と同じ立ち位置のフレームエントリ。
-    /// プロパティ更新だけを scene に書き戻す。method / finished イベントは
-    /// 内部 buffer に溜まるので、呼び出し側 (GameManager) が `drainEvents` で取り出して
-    /// ゲームロジックを進める。
+    /// 動作:
+    ///   1. **auto-stop**: 再生中 playback の owner が scene 上に居なければ stop する。
+    ///      ゲームオーバーリセット / ホットリロードでノードが破棄された後に
+    ///      古い playback が次フレームで残骸となるのを防ぐ
+    ///   2. プロパティ更新を scene に書き戻す
+    ///   3. method / finished イベントは内部 buffer に溜まるので、呼び出し側
+    ///      (GameManager) が `drainEvents` で取り出してゲームロジックを進める
     /// target ノードが scene から消えていれば、そのプロパティ更新は無視する
-    /// （playback 自体は length 経過まで残るが副作用は出ない）。
+    /// （auto-stop で playback も同時に破棄されているはず）。
     pub def tickAll(delta: Duration.Duration, scene: Scene[s]): Scene[s] \ Scheduler =
+        // 1. auto-stop: scene から消えた owner の playback を破棄
+        let owners = Scheduler.activeOwners();
+        List.forEach(o -> match Scene.getEngineNode(o, scene) {
+            case None    => Scheduler.stop(o)
+            case Some(_) => ()
+        }, owners);
+        // 2. tick 1 フレーム分: プロパティ更新は scene に書き戻し、
+        //    method / finished は内部 buffer に溜める
         let tick = Scheduler.consumeTick(delta);
         List.foldLeft((sc, u) ->
             match Scene.getEngineNode(u#target, sc) {

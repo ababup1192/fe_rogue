@@ -408,7 +408,7 @@ pub mod Scene {
             case None => scene
             case Some(engineNode) =>
                 let pp = initPath(path);
-                let parentGlobal = if (List.length(pp) == 0)
+                let parentGlobal = if (List.isEmpty(pp))
                                        Vec2.zero()
                                    else
                                        globalPositionAt(pp, scene);

@@ -117,8 +117,8 @@ mod PlayerScene {
         let cells     = pickPlayerSpawns(spawnGrid, partySize(), layer);
         // cells が partySize に満たない場合（極端に狭い anchor）は重複セルを許容して埋める
         let padded    = padCells(cells, spawnGrid, partySize());
-        let spawns: List[Spawn] = List.zip(List.range(0, partySize()), padded)
-            |> List.map(t -> { let (id, c) = t; ({id = id, gridPos = c}: Spawn) });
+        let spawns: List[Spawn] = padded
+            |> List.mapWithIndex(id -> c -> ({id = id, gridPos = c}: Spawn));
         List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), scene, spawns)
 
     /// spawnGrid を中心に N 個の床セルを近い順で選ぶ。`isFloor` で篩い、
@@ -417,9 +417,12 @@ mod PlayerScene {
             target = targetPath,
             prop   = AnimationPlayer.Property.Position(posKeys)
         };
-        let methodHit: AnimationPlayer.MethodKey = {time = phase, name = "attack:hit"};
+        let methodHit: AnimationPlayer.MethodKey = {
+            time = phase,
+            name = AnimEvent.tagToString(AnimEvent.Tag.AttackHit)
+        };
         {
-            name    = "attack_lunge",
+            name    = AnimEvent.tagToString(AnimEvent.Tag.AttackLunge),
             length  = total,
             tracks  = track :: Nil,
             methods = methodHit :: Nil

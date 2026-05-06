@@ -86,7 +86,7 @@ mod CursorScene {
     /// `AnimationPlayer.Scheduler.isPlaying(cursorPath())` がこの長さの間 true を返す。
     def snagAnimation(): AnimationPlayer.Animation =
         {
-            name    = "snag",
+            name    = AnimEvent.tagToString(AnimEvent.Tag.Snag),
             length  = snagDuration(),
             tracks  = Nil,
             methods = Nil

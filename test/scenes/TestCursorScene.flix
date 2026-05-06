@@ -41,6 +41,7 @@ mod TestCursorScene {
             def isPlaying(_, k) = k(false)
             def stop(_, k) = k()
             def cancelAll(k) = k()
+            def activeOwners(k) = k(Nil)
             def consumeTick(_, k) = k(({propertyUpdates = Nil}: AnimationPlayer.Tick))
             def drainEvents(k) = k(({methods = Nil, finished = Nil}: AnimationPlayer.EventBundle))
         }

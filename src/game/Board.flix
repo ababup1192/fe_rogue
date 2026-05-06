@@ -74,23 +74,12 @@ mod Board {
     /// プレイヤーが居なければ None。EnemyAI が追跡 target を決めるのに使う。
     pub def nearestPlayer(enemyPos: Vec2.Vec2i,
                            board: Board): Option[(Int32, Vec2.Vec2i)] =
-        let withDist = List.map(p -> {
-            let (id, pos) = p;
-            let dx = Int32.abs(pos#x - enemyPos#x);
-            let dy = Int32.abs(pos#y - enemyPos#y);
-            (dx + dy, id, pos)
-        }, playerPositions(board));
-        match withDist {
-            case Nil       => None
-            case x :: rest =>
-                let best = List.foldLeft((acc, t) -> {
-                    let (d1, _, _) = acc;
-                    let (d2, _, _) = t;
-                    if (d2 < d1) t else acc
-                }, x, rest);
-                let (_, id, pos) = best;
-                Some((id, pos))
-        }
+        let manhattan = entry -> {
+            let (_, pos) = entry;
+            Int32.abs(pos#x - enemyPos#x) + Int32.abs(pos#y - enemyPos#y)
+        };
+        playerPositions(board)
+            |> List.minimumBy((a, b) -> Order.compare(manhattan(a), manhattan(b)))
 
     /// `pos` の上下左右に居る最初のプレイヤー駒の (id, position) を返す。
     /// EnemyAI の Attack 判定で「隣接する誰かを 1 体攻撃」するのに使う。

@@ -110,7 +110,7 @@ mod EnemyScene {
             prop   = AnimationPlayer.Property.Alpha(alphaKeys)
         };
         {
-            name    = "death_blink",
+            name    = AnimEvent.tagToString(AnimEvent.Tag.DeathBlink),
             length  = deathBlinkLength(),
             tracks  = track :: Nil,
             methods = Nil

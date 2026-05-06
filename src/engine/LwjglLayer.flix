@@ -574,7 +574,7 @@ mod LwjglLayer {
         // STBTTPackRange を numRanges 個確保し、各レンジを設定
         let ranges = STBTTPackRange.calloc(numRanges);
         let specsWithCdata = List.zip(rangesSpec, cdataList);
-        let specsIndexed   = List.zip(List.range(0, numRanges), specsWithCdata);
+        let specsIndexed   = List.zipWithIndex(specsWithCdata);
         List.forEach(entry2 -> {
             let (i, pair) = entry2;
             let (spec, cdata) = pair;
