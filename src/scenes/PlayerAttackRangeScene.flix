@@ -60,7 +60,7 @@ mod PlayerAttackRangeScene {
     pub def show(scene: Scene[NodeTag]):
             Scene[NodeTag] \ SelectedPlayer.State =
         let cleared = clear(scene);
-        match SelectedPlayer.State.get() {
+        match SelectedPlayer.State.get()#id {
             case None     => cleared
             case Some(id) =>
                 match PlayerScene.get(id, cleared) {

@@ -11,8 +11,8 @@
 /// 際は `MapSnapshot` レコードを経由する。関数フィールドにフレーム時点の TileMapLayer と
 /// Map global を捕獲したクロージャが入り、何度呼んでも同じフレームの結果を返す。
 ///
-/// 取得は `BoardQuery` effect の戻り値（Board）に含まれる形で行う。MapSnapshot 単体を
-/// effect で公開する MapQuery 経路は廃止し、Board を盤面情報の唯一の入口に統一した。
+/// 取得は `BoardQuery` effect の戻り値（Board）に含まれる形で行う。Board が盤面情報の
+/// 唯一の入口。
 pub type alias MapSnapshot = {
     tileSize    = Float64,
     usedRect    = { position = Vec2.Vec2i, size = Vec2.Vec2i },
@@ -97,7 +97,7 @@ mod MapScene {
                               EngineNode.TileMapLayerWithState(result#layer, NodeTag.Map(mapData)))
 
     // ────────────────────────────────────────────────────────
-    // (D) MapQuery effect の実体
+    // (D) Scene からの取り出しヘルパ
     // ────────────────────────────────────────────────────────
 
     /// scene 内に登録された TileMapLayer を取り出す。

@@ -342,7 +342,7 @@ mod CursorScene {
     /// 未選択（None）の場合は false。
     def isSelectedPlayerCell(cell: Vec2.Vec2i,
                               scene: Scene[NodeTag]): Bool \ SelectedPlayer.State =
-        match SelectedPlayer.State.get() {
+        match SelectedPlayer.State.get()#id {
             case None     => false
             case Some(id) =>
                 match PlayerScene.get(id, scene) {
@@ -394,7 +394,7 @@ mod CursorScene {
     ///   2. なければアクティブな最初のプレイヤー
     ///   3. それも無ければ id=0 (waited 含む)
     def snapTargetPos(scene: Scene[NodeTag]): Vec2.Vec2i \ SelectedPlayer.State =
-        match SelectedPlayer.State.get() {
+        match SelectedPlayer.State.get()#id {
             case Some(id) =>
                 match PlayerScene.get(id, scene) {
                     case Some(d) => d#gridPos

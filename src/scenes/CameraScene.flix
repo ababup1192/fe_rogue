@@ -51,7 +51,7 @@ mod CameraScene {
     pub def update(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {TurnPhase.State, SelectedPlayer.State} =
         let phase = TurnPhase.State.get();
-        let selected = SelectedPlayer.State.get();
+        let selected = SelectedPlayer.State.get()#id;
         let target = computeTarget(phase, selected, scene);
         Scene.mapEngineNode(cameraPath(),
             n -> Node2D.setPosition(target, n), scene)

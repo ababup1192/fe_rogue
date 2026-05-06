@@ -60,7 +60,7 @@ mod MoveRangeScene {
     /// 子を追加する。**選択中プレイヤー** の位置を origin に `Board.reachableCells`
     /// で範囲を求める。未選択（PlayerCursor / EnemyTurn 等）なら何も描画しない。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
-        match SelectedPlayer.State.get() {
+        match SelectedPlayer.State.get()#id {
             case None     => scene   // 未選択 → 表示なし
             case Some(id) =>
                 match PlayerScene.get(id, scene) {

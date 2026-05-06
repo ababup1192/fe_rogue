@@ -24,7 +24,7 @@ mod AutoMove {
     // (A) 公開: 1 フレーム分の進行
     // ────────────────────────────────────────────────────────
 
-    /// PlayerAutoMove フェーズ中に毎フレーム呼ぶ。`Game.gameLoop` のパイプライン要素。
+    /// PlayerAutoMove フェーズ中に毎フレーム呼ぶ。`GameManager.tickAutoMoveFrame` のパイプライン要素。
     /// 旗が立っていない / アクティブ味方が居ない場合は防御的に PlayerCursor に戻す。
     pub def step(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, GameLogger.GameLogger,
@@ -32,7 +32,7 @@ mod AutoMove {
         match FlagScene.getTargetPos(scene) {
             case None       => exitToCursor(scene)   // 旗無し（防御的）
             case Some(flag) =>
-                let board = Game.buildBoard(scene);
+                let board = GameManager.buildBoard(scene);
                 if (anyEnemyDetected(scene, board)) {
                     GameLogger.playerLog("敵に発見された");
                     exitToCursor(scene)
@@ -65,7 +65,7 @@ mod AutoMove {
                     if (alreadyClose(p#gridPos, flag)) scene
                     else
                         // 都度フレッシュな board で BFS する（直前の味方の移動を反映）。
-                        let board = Game.buildBoard(scene);
+                        let board = GameManager.buildBoard(scene);
                         match Board.bfsPath(board, p#gridPos, flag) {
                             case None       => scene   // 経路なし
                             case Some(path) =>
@@ -110,7 +110,7 @@ mod AutoMove {
         let active = activePlayers(scene);
         if (List.isEmpty(active)) true
         else
-            let board = Game.buildBoard(scene);
+            let board = GameManager.buildBoard(scene);
             List.forAll(p ->
                 not Tween.Scheduler.isActive(PlayerScene.playerPath(p#id))
                 and isSettledFor(board, p#gridPos, flag),

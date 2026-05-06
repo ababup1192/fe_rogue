@@ -54,10 +54,8 @@ mod TestCursorScene {
     /// SelectedPlayer.State のスタブ handler（未選択を返す）。
     def withNoSelection(thunk: Unit -> a \ ef): a \ (ef - SelectedPlayer.State) =
         run { thunk() } with handler SelectedPlayer.State {
-            def get(k) = k(None)
+            def get(k) = k(SelectedPlayer.cleared())
             def put(_, k) = k()
-            def getOrigin(k) = k(None)
-            def putOrigin(_, k) = k()
         }
 
     /// `add` 後の (gridPos, lastHoveredEnemyId) を 1 タプルにまとめて取り出す
