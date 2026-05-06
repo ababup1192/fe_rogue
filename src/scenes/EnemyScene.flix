@@ -37,7 +37,8 @@ mod EnemyScene {
         homeModuleIdx = Int32,
         moveTiles     = Int32,
         hp            = Int32,
-        dying         = Option[DyingState]
+        dying         = Option[DyingState],
+        attacking     = Option[AttackAnim.State]
     }
 
     /// 死亡演出中の状態。`tickDeaths` がフレームごとに進める。
@@ -203,7 +204,8 @@ mod EnemyScene {
             homeModuleIdx = sp#moduleIdx,
             moveTiles     = defaultMoveTiles(),
             hp            = defaultHp(),
-            dying         = None
+            dying         = None,
+            attacking     = None
         };
         let sprite = Sprite2D.make(textureName(), Vec2.zero(), Vec2.one())
                         |> Sprite2D.setHframes(hframes())
@@ -288,8 +290,10 @@ mod EnemyScene {
 
     /// 死亡演出を 1 フレーム進める。`gameLoop` が `Tween.tickAll` の直後に呼ぶ。
     /// 各 dying 敵について、現在の alpha tween が完了していれば次フェーズへ進める。
-    /// 1 サイクル = FadingOut + FadingIn。最後のサイクルが終わるとノードを scene から削除する。
-    pub def tickDeaths(scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+    /// 1 サイクル = FadingOut + FadingIn。最後のサイクルが終わるとノードを scene から削除し、
+    /// **bonus.ogg を再生する**（damage の後に bonus が鳴るタイミング保証）。
+    pub def tickDeaths(scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Tween.Scheduler, GameEngine.Audio} =
         let dyingIds = getAll(scene)
             |> List.filterMap(d -> match d#dying {
                 case Some(s) => Some((d#id, s))
@@ -304,9 +308,10 @@ mod EnemyScene {
 
     /// 1 体ぶんの dying 状態を 1 ステップ進める内部関数。
     /// FadingOut 完了 → FadingIn を開始 / FadingIn 完了 → 残りサイクルを減らして次の
-    /// FadingOut を開始、または 0 になったらノード削除。
+    /// FadingOut を開始、または 0 になったら **bonus.ogg を鳴らしてノード削除**。
     def advanceDying(id: Int32, s: DyingState,
-                      scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                      scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, GameEngine.Audio} =
         match s#phase {
             case BlinkPhase.FadingOut =>
                 // 半透明まで落ちた → 不透明に戻す（FadingIn）
@@ -316,9 +321,11 @@ mod EnemyScene {
             case BlinkPhase.FadingIn =>
                 // 1 サイクル完了
                 let leftAfter = s#remainingBlinks - 1;
-                if (leftAfter <= 0)
-                    // 最後のサイクル終了 → ノード削除（Tween は target 消失で auto-cancel）
+                if (leftAfter <= 0) {
+                    // 最後のサイクル終了 → bonus.ogg 再生 + ノード削除
+                    AudioStreamPlayer.play("bonus");
                     Scene.removeAt(enemyPath(id), scene)
+                }
                 else {
                     // 次のサイクル：再び FadingOut を開始
                     Tween.tweenAlpha(spritePath(id), fullAlpha(), dimAlpha(), blinkDuration());
@@ -349,4 +356,106 @@ mod EnemyScene {
         let cleared = List.foldLeft((sc, d) -> Scene.removeAt(enemyPath(d#id), sc),
                                      scene, getAll(scene));
         List.foldLeft((sc, sp) -> addOneEnemy(sp, sc), cleared, spawns)
+
+    // ────────────────────────────────────────────────────────
+    // (G) 体当たり攻撃モーション
+    // ────────────────────────────────────────────────────────
+
+    /// 敵 id の体当たり攻撃モーションを開始する。
+    /// `targetGrid` は攻撃対象（プレイヤー）のグリッド位置、`targetPlayerId` はその id。
+    /// Forward 用の Tween を登録し、`attacking = Some({Forward, ...})` を立てる。
+    /// HP 適用 / damage.ogg 再生は **重なる瞬間（Forward 完了時）** に `tickAttacks` が行う。
+    pub def startAttack(id: Int32, targetPlayerId: Int32,
+                         targetGrid: Vec2.Vec2i,
+                         scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        match get(id, scene) {
+            case None    => scene
+            case Some(d) =>
+                let originGrid = d#gridPos;
+                let startWorld = cellCenter(originGrid);
+                let endWorld   = cellCenter(targetGrid);
+                Tween.tweenPosition(enemyPath(id), startWorld, endWorld,
+                                     AttackAnim.phaseDuration());
+                let s: AttackAnim.State = {
+                    phase     = AttackAnim.Phase.Forward,
+                    targetId  = targetPlayerId,
+                    targetPos = targetGrid,
+                    originPos = originGrid
+                };
+                mapEnemy(id, dd -> {attacking = Some(s) | dd}, scene)
+        }
+
+    /// グリッド座標 → セル中心ワールド座標。
+    def cellCenter(c: Vec2.Vec2i): Vec2.Vec2 =
+        let s = tileSize();
+        {x = Int32.toFloat64(c#x) * s + s / 2.0,
+         y = Int32.toFloat64(c#y) * s + s / 2.0}
+
+    /// scene 内に攻撃モーション中の敵が居れば true。stepEnemyTurn が次ステップに進んで
+    /// 良いかの判定に使う（攻撃モーション中はキューを進めない）。
+    pub def anyAttacking(scene: Scene[NodeTag]): Bool =
+        List.exists(d -> Option.nonEmpty(d#attacking), getAll(scene))
+
+    /// 敵攻撃モーションを毎フレーム進める。`gameLoop` が `Tween.tickAll` 直後に呼ぶ。
+    /// 重なり瞬間（Forward 完了）に damage.ogg を鳴らしプレイヤーに HP 1 ダメージを与える。
+    /// プレイヤー HP が 0 になった場合は `onPlayerDied` コールバックで知らせる
+    /// （戻り値は (scene, killedPlayerIds) のタプル）。
+    pub def tickAttacks(scene: Scene[NodeTag]): (Scene[NodeTag], List[Int32])
+            \ {Tween.Scheduler, GameEngine.Audio, GameLogger.GameLogger} =
+        let attackingIds = getAll(scene)
+            |> List.filterMap(d -> match d#attacking {
+                case Some(s) => Some((d#id, s))
+                case None    => None
+            });
+        List.foldLeft((acc, entry) -> {
+            let (sc, killed) = acc;
+            let (id, s) = entry;
+            if (Tween.Scheduler.isActive(enemyPath(id))) (sc, killed)
+            else
+                let (next, killedPlayer) = advanceAttack(id, s, sc);
+                (next, List.append(killed, killedPlayer))
+        }, (scene, (Nil: List[Int32])), attackingIds)
+
+    /// 1 体ぶんの敵攻撃モーションを 1 フェーズ進める内部関数。
+    /// 戻り値は (新 scene, HP=0 になったプレイヤー id のリスト)。
+    def advanceAttack(id: Int32, s: AttackAnim.State,
+                       scene: Scene[NodeTag]):
+            (Scene[NodeTag], List[Int32]) \
+            {Tween.Scheduler, GameEngine.Audio, GameLogger.GameLogger} =
+        match s#phase {
+            case AttackAnim.Phase.Forward =>
+                // 重なり瞬間: damage.ogg + プレイヤーに HP 1 ダメージ
+                AudioStreamPlayer.play("damage");
+                let targetId = s#targetId;
+                let (damaged, killedIds) = applyDamageToPlayer(id, targetId, scene);
+                // Returning tween 開始
+                let startWorld = cellCenter(s#targetPos);
+                let endWorld   = cellCenter(s#originPos);
+                Tween.tweenPosition(enemyPath(id), startWorld, endWorld,
+                                     AttackAnim.phaseDuration());
+                let s2: AttackAnim.State = {phase = AttackAnim.Phase.Returning | s};
+                let next = mapEnemy(id, d -> {attacking = Some(s2) | d}, damaged);
+                (next, killedIds)
+            case AttackAnim.Phase.Returning =>
+                // Returning 完了 → attacking クリア
+                let cleared = mapEnemy(id, d -> {attacking = None | d}, scene);
+                (cleared, Nil)
+        }
+
+    /// プレイヤー targetId に 1 ダメージ。HP=0 なら killedIds に追加して返す
+    /// （呼び出し側 Game.flix が handlePlayerDeath を発火する）。
+    def applyDamageToPlayer(enemyId: Int32, targetId: Int32,
+                             scene: Scene[NodeTag]):
+            (Scene[NodeTag], List[Int32]) \ GameLogger.GameLogger =
+        match PlayerScene.get(targetId, scene) {
+            case None    => (scene, Nil)
+            case Some(p) =>
+                let newHp = p#hp - 1;
+                GameLogger.GameLogger.enemyLog(
+                    "敵${enemyId}が味方${targetId}を攻撃 残りHP${newHp}");
+                let damaged = PlayerScene.mapPlayer(targetId,
+                    d -> {hp = newHp | d}, scene);
+                if (newHp <= 0) (damaged, targetId :: Nil)
+                else (damaged, Nil)
+        }
 }

@@ -248,7 +248,8 @@ mod TestMapIntegration {
                         gridPos   = initial,
                         moveTiles = PlayerScene.defaultMoveTiles(),
                         hp        = PlayerScene.defaultHp(),
-                        waited    = false
+                        waited    = false,
+                        attacking = None
                     })))
 
     /// プレイヤー id=0 の world 座標

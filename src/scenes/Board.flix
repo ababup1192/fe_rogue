@@ -49,6 +49,14 @@ mod Board {
             pos#x == coord#x and pos#y == coord#y
         }, board#pieces)
 
+    /// 敵駒だけが `coord` を占有しているか（味方駒や空マスは false）。
+    /// プレイヤーの移動判定で「味方をすり抜ける」を実現するために使う。
+    pub def isEnemyAt(coord: Vec2.Vec2i, board: Board): Bool =
+        List.exists(entry -> match entry {
+            case (Piece.Enemy(_), pos) => pos#x == coord#x and pos#y == coord#y
+            case _                      => false
+        }, board#pieces)
+
     /// `enemyPos` から最も Manhattan 距離が近いプレイヤー駒を返す。
     /// 同距離の場合は id の小さい方（pieces 順の先頭）を選ぶ。
     /// プレイヤーが居なければ None。EnemyAI が追跡 target を決めるのに使う。

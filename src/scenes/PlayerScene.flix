@@ -36,12 +36,14 @@ mod PlayerScene {
     /// moveTiles: 1 ターンに移動できるマス数（FE の「移動力」相当）。
     /// hp: 残り体力。0 になるとゲームオーバー（同マップ初期化）。
     /// waited: 行動済みフラグ。true なら灰色表示・選択不可。
+    /// attacking: 体当たり攻撃モーション中なら Some(...)。tickAttacks が状態を進める。
     pub type alias Data = {
         id        = Int32,
         gridPos   = Vec2.Vec2i,
         moveTiles = Int32,
         hp        = Int32,
-        waited    = Bool
+        waited    = Bool,
+        attacking = Option[AttackAnim.State]
     }
 
     /// スポーン時の中間表現。`add` で配置するセルの id/gridPos を持つ。
@@ -167,7 +169,8 @@ mod PlayerScene {
             gridPos   = sp#gridPos,
             moveTiles = defaultMoveTiles(),
             hp        = defaultHp(),
-            waited    = false
+            waited    = false,
+            attacking = None
         };
         let sprite = Sprite2D.make(textureName(), Vec2.zero(), Vec2.one())
                         |> Sprite2D.setHframes(hframes())
@@ -198,6 +201,21 @@ mod PlayerScene {
     /// 指定 id のプレイヤーが現在 tween 中（次の入力を受け付けない状態）か。
     pub def isMoving(id: Int32): Bool \ Tween.Scheduler =
         Tween.Scheduler.isActive(playerPath(id))
+
+    /// 指定 id のプレイヤーを `target` グリッドに **瞬間移動** で戻す。
+    /// 進行中の Tween があればキャンセルし、Marker2D の world 位置と Data#gridPos を
+    /// 同時に target に揃える。PlayerMoving 中のキャンセルで「選択時の位置」に戻すのに使う。
+    pub def snapTo(id: Int32, target: Vec2.Vec2i,
+                    scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        let s = tileSize();
+        let world: Vec2.Vec2 = {
+            x = Int32.toFloat64(target#x) * s + s / 2.0,
+            y = Int32.toFloat64(target#y) * s + s / 2.0
+        };
+        Tween.Scheduler.cancel(playerPath(id));
+        scene
+            |> Scene.setGlobalPositionAt(playerPath(id), world)
+            |> mapPlayer(id, d -> {gridPos = target | d})
 
     /// 毎フレーム engine から呼ばれる。**選択中プレイヤーのみ** 動かす。
     /// Game.flix の Node[NodeTag] redef からは PlayerMoving フェーズで
@@ -359,5 +377,106 @@ mod PlayerScene {
         match get(id, scene) {
             case Some(d) => d#waited
             case None    => false
+        }
+
+    // ────────────────────────────────────────────────────────
+    // (H) 体当たり攻撃モーション
+    // ────────────────────────────────────────────────────────
+
+    /// プレイヤー id の体当たり攻撃モーションを開始する。
+    /// `targetGrid` は攻撃対象（敵）のグリッド位置、`targetEnemyId` はその id。
+    /// Forward 用の Tween を登録し、`attacking = Some({Forward, ...})` を立てる。
+    /// HP 適用 / damage.ogg 再生は **重なる瞬間（Forward 完了時）** に `tickAttacks`
+    /// が行うのでここでは呼ばない。
+    pub def startAttack(id: Int32, targetEnemyId: Int32,
+                         targetGrid: Vec2.Vec2i,
+                         scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        match get(id, scene) {
+            case None    => scene
+            case Some(d) =>
+                let originGrid = d#gridPos;
+                let startWorld = cellCenter(originGrid);
+                let endWorld   = cellCenter(targetGrid);
+                Tween.tweenPosition(playerPath(id), startWorld, endWorld,
+                                     AttackAnim.phaseDuration());
+                let s: AttackAnim.State = {
+                    phase     = AttackAnim.Phase.Forward,
+                    targetId  = targetEnemyId,
+                    targetPos = targetGrid,
+                    originPos = originGrid
+                };
+                mapPlayer(id, dd -> {attacking = Some(s) | dd}, scene)
+        }
+
+    /// グリッド座標 → セル中心ワールド座標（add 内部の式と同じ）
+    def cellCenter(c: Vec2.Vec2i): Vec2.Vec2 =
+        let s = tileSize();
+        {x = Int32.toFloat64(c#x) * s + s / 2.0,
+         y = Int32.toFloat64(c#y) * s + s / 2.0}
+
+    /// scene 内に **攻撃モーション中** のプレイヤーが居れば true。
+    /// stepEnemyTurn 等の「敵の行動を進めて良いか」のガードに使う想定（プレイヤー攻撃は
+    /// 普段プレイヤーターン中なので、この関数は将来の混在シナリオ用の保険）。
+    pub def anyAttacking(scene: Scene[NodeTag]): Bool =
+        List.exists(d -> Option.nonEmpty(d#attacking), getAll(scene))
+
+    /// プレイヤー攻撃モーションを毎フレーム進める。`gameLoop` が `Tween.tickAll` 直後に呼ぶ。
+    /// 戻り値は (scene, completed) のタプルで、completed は「**Returning が完了した
+    /// プレイヤー**」の id 一覧。呼び出し側 (Game.flix) はこれを受けて
+    /// commitWaitedAndAdvance などを発火する。
+    pub def tickAttacks(scene: Scene[NodeTag]): (Scene[NodeTag], List[Int32])
+            \ {Tween.Scheduler, GameEngine.Audio, GameLogger.GameLogger} =
+        let attackingIds = getAll(scene)
+            |> List.filterMap(d -> match d#attacking {
+                case Some(s) => Some((d#id, s))
+                case None    => None
+            });
+        List.foldLeft((acc, entry) -> {
+            let (sc, completed) = acc;
+            let (id, s) = entry;
+            if (Tween.Scheduler.isActive(playerPath(id))) (sc, completed)
+            else
+                let (next, doneId) = advanceAttack(id, s, sc);
+                (next, List.append(completed, doneId))
+        }, (scene, (Nil: List[Int32])), attackingIds)
+
+    /// 1 体ぶんの攻撃モーションを 1 フェーズ進める内部関数。
+    /// 戻り値は (新 scene, Returning 完了したなら [id] / それ以外 [])。
+    def advanceAttack(id: Int32, s: AttackAnim.State,
+                       scene: Scene[NodeTag]):
+            (Scene[NodeTag], List[Int32])
+            \ {Tween.Scheduler, GameEngine.Audio, GameLogger.GameLogger} =
+        match s#phase {
+            case AttackAnim.Phase.Forward =>
+                // 重なった瞬間: damage.ogg を鳴らし、対象敵に 1 ダメージを適用
+                AudioStreamPlayer.play("damage");
+                let targetId = s#targetId;
+                let damaged = applyDamageToEnemy(targetId, scene);
+                // Returning tween を開始（target → origin）
+                let startWorld = cellCenter(s#targetPos);
+                let endWorld   = cellCenter(s#originPos);
+                Tween.tweenPosition(playerPath(id), startWorld, endWorld,
+                                     AttackAnim.phaseDuration());
+                let s2: AttackAnim.State = {phase = AttackAnim.Phase.Returning | s};
+                let next = mapPlayer(id, d -> {attacking = Some(s2) | d}, damaged);
+                (next, Nil)
+            case AttackAnim.Phase.Returning =>
+                // Returning 完了 → attacking をクリアして「完了 id」として返す
+                let cleared = mapPlayer(id, d -> {attacking = None | d}, scene);
+                (cleared, id :: Nil)
+        }
+
+    /// 敵 id にダメージ 1 を与える。HP <= 0 で死亡演出を開始（bonus は death animation
+    /// 終了時に EnemyScene.tickDeaths が再生する）。
+    /// ログは「敵N にダメージ 残りHPM」を重なりタイミングで残す。
+    def applyDamageToEnemy(enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+        match EnemyScene.get(enemyId, scene) {
+            case None    => scene
+            case Some(e) =>
+                let newHp = e#hp - 1;
+                GameLogger.GameLogger.playerLog("敵${enemyId}にダメージ 残りHP${newHp}");
+                if (newHp <= 0) EnemyScene.startDeathAnimation(enemyId, scene)
+                else EnemyScene.mapEnemy(enemyId, d -> {hp = newHp | d}, scene)
         }
 }

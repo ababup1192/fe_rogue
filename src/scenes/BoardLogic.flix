@@ -29,14 +29,15 @@ mod BoardLogic {
     /// `tryMove` に「移動可能セル」述語による追加制約を加える版。
     /// 範囲表示（move_tile）の外には踏み込めないようにする用途で `MoveRangeScene.isInRange`
     /// 等を渡す。`allowed` が常に true なら `tryMove` と同じ挙動。
+    /// **味方駒は通過可能**（`Board.isEnemyAt` で敵だけブロックする）。
     pub def tryMoveWithRange(board: Board, source: Vec2.Vec2i,
                               dir: Vec2.Vec2i,
                               allowed: Vec2.Vec2i -> Bool): Option[Vec2.Vec2i] =
         let target = stepTarget(source, dir);
-        // 床 + 範囲内 + 他駒に占有されていない（敵駒や他味方に重ねない）
+        // 床 + 範囲内 + 敵駒に占有されていない（味方駒は通過可）
         if (isWalkable(board, target)
             and allowed(target)
-            and not Board.isOccupied(target, board)) Some(target) else None
+            and not Board.isEnemyAt(target, board)) Some(target) else None
 
     /// 4 方向 BFS で `origin` から最大 `maxSteps` ステップ以内に到達できる床セルの一覧を返す。
     /// `origin` 自身も結果に含む（距離 0）。

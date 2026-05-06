@@ -58,7 +58,8 @@ mod TestPlayerScene {
                         gridPos   = initial,
                         moveTiles = PlayerScene.defaultMoveTiles(),
                         hp        = PlayerScene.defaultHp(),
-                        waited    = false
+                        waited    = false,
+                        attacking = None
                     })))
 
     /// プレイヤー id のワールド座標を取り出す

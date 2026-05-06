@@ -24,7 +24,10 @@ def main(): Unit \ {IO, Chan, NonDet} =
                                      hasAlpha = true } :: Nil,
             fontManifest = { name = "ui", path = "fonts/BestTen-DOT.otf",
                               fontSize = 16.0 } :: Nil,
-            soundManifest = Nil,
+            soundManifest = { name = "bgm",    path = "audio/bgm.ogg",    looping = true }
+                              :: { name = "damage", path = "audio/damage.ogg", looping = false }
+                              :: { name = "bonus",  path = "audio/bonus.ogg",  looping = false }
+                              :: Nil,
             clearColor = {r = 0.2f32, g = 0.2f32, b = 0.2f32},
             maxDeltaTime = 0.05
         };

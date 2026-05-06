@@ -47,7 +47,8 @@ mod TestCursorScene {
                         gridPos   = gridPos,
                         moveTiles = PlayerScene.defaultMoveTiles(),
                         hp        = PlayerScene.defaultHp(),
-                        waited    = false
+                        waited    = false,
+                        attacking = None
                     })))
 
     /// SelectedPlayer.State のスタブ handler（未選択を返す）。
@@ -55,6 +56,8 @@ mod TestCursorScene {
         run { thunk() } with handler SelectedPlayer.State {
             def get(k) = k(None)
             def put(_, k) = k()
+            def getOrigin(k) = k(None)
+            def putOrigin(_, k) = k()
         }
 
     /// `add` 後の (gridPos, lastHoveredEnemyId) を 1 タプルにまとめて取り出す

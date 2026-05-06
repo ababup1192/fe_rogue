@@ -74,14 +74,11 @@ mod MoveRangeScene {
         let layer  = MapScene.getMapLayer(scene);
         let origin = PlayerScene.getGridPos(id, scene);
         let steps  = PlayerScene.getMoveTiles(id, scene);
-        // 通行不可の判定: 壁・敵駒・**自分以外の味方駒** を除外する。
+        // 通行不可の判定: 壁・敵駒のみ。**味方駒はすり抜け可能** にする
+        // （プレイヤー同士は障壁にならない仕様）。
         let enemyCells = EnemyScene.getAll(scene) |> List.map(e -> e#gridPos);
-        let allyCells  = PlayerScene.getAll(scene)
-            |> List.filter(d -> d#id != id)
-            |> List.map(d -> d#gridPos);
         let isBlocked = c ->
-                List.exists(p -> p#x == c#x and p#y == c#y, enemyCells)
-                or List.exists(p -> p#x == c#x and p#y == c#y, allyCells);
+                List.exists(p -> p#x == c#x and p#y == c#y, enemyCells);
         let cells = BoardLogic.reachableCells(
             c -> TileMapLayer.isFloor(c, layer) and not isBlocked(c),
             origin,
