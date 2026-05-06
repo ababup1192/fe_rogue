@@ -31,37 +31,30 @@ mod FlagScene {
 
     def name(): String = "Flag"
     pub def flagPath(): NodePath = name() :: Nil
-    def spriteName(): String = "Sprite"
 
-    /// `flag.png` テクスチャ名（Main.flix の textureManifest と整合）
-    def textureName(): String = "flag"
+    /// scene.json への相対パス（cwd = プロジェクトルート想定）
+    def scenePath(): String = "src/scenes/FlagScene.scene.json"
 
-    /// LDTK タイルサイズ（ピクセル）。MapScene と揃える
+    /// LDTK タイルサイズ（ピクセル）。MapScene と揃える。
+    /// `plant` でグリッド → ワールド座標変換に使う（add 後に位置更新するため残す）。
     def tileSize(): Float64 = 16.0
-
-    /// 旗の描画 zIndex。床より上、味方/敵 (= 10) よりは下。
-    /// 駒の上に被る位置に立てた場合でも駒が前面に表示される。
-    def spriteZIndex(): Int32 = 5
 
     // ────────────────────────────────────────────────────────
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
     /// MapScene 登録済みの scene に旗ノードを追加する。
+    /// レイアウト（Marker2D + 子 Sprite2D, テクスチャ, zIndex, 初期不可視）は
+    /// `FlagScene.scene.json` に閉じ込めてあり、ロード後にゲーム状態 (`Data`) を
+    /// `Scene.setState` で後付け注入する分業。
     /// 初期は planted = false（非表示）。`plant` を呼んで初めて表示される。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let initial: Vec2.Vec2i = {x = 0, y = 0};
-        let pos = cellCenter(initial);
-        let marker = Marker2D.make(pos)
-                        |> CanvasItem.setVisible(false);
-        let sprite = Sprite2D.make(textureName(), Vec2.zero(), Vec2.one())
-                        |> CanvasItem.setZIndex(spriteZIndex());
-        let data: Data = {gridPos = initial, planted = false};
-        scene
-            |> Scene.addNode(name(),
-                              EngineNode.Marker2DWithState(marker, NodeTag.Flag(data)))
-            |> Scene.addChild(name(), spriteName(),
-                               EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {GameEngine.Game, Fs.FileRead} =
+        let initialData: Data = {gridPos = {x = 0, y = 0}, planted = false};
+        SceneLoader.loadScene(scenePath(),
+                               SceneLoader.constTagParser(NodeTag.NoTag),
+                               scene)
+            |> Scene.setState(flagPath(), NodeTag.Flag(initialData))
 
     // ────────────────────────────────────────────────────────
     // (D) ロジック

@@ -1,0 +1,16 @@
+{
+  "name": "Flag",
+  "type": "Marker2D",
+  "pos": [0, 0],
+  "visible": false,
+  "children": [
+    {
+      "name": "Sprite",
+      "type": "Sprite2D",
+      "texture": "flag",
+      "pos": [0, 0],
+      "scale": [1, 1],
+      "zIndex": 5
+    }
+  ]
+}
