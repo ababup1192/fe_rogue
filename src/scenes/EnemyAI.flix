@@ -99,8 +99,9 @@ mod EnemyAI {
     /// 戻り値は **source を含まない** 順序付きリスト（先頭 = 1 歩目、末尾 = goal）。
     /// 障害物 = 壁 + 他駒（自分・goal のセルは通行可）。
     /// 隣接判定は呼び出し側が済ませている前提（source == goal は使用想定外）。
-    def bfsPath(board: Board, source: Vec2.Vec2i,
-                 goal: Vec2.Vec2i): Option[List[Vec2.Vec2i]] =
+    /// AutoMove も同じ「他駒を避けつつ goal へ向かう」追跡を行うため `pub` にする。
+    pub def bfsPath(board: Board, source: Vec2.Vec2i,
+                     goal: Vec2.Vec2i): Option[List[Vec2.Vec2i]] =
         let isOpen = c -> bfsIsOpen(board, c, source, goal);
         let initVisited = source :: Nil;
         // queue: (current, pathReversedFromSource) — pathReversedFromSource は source から

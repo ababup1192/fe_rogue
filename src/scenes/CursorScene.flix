@@ -31,9 +31,18 @@ mod CursorScene {
     /// `lastHoveredEnemyId`: 直前フレームでカーソルが乗っていた敵 id。
     ///   None ↔ Some(id) や Some(a) ↔ Some(b) の遷移をログ・赤レンジ再構築の
     ///   トリガーに使う。同じ id の間は no-op に倒すためのキャッシュ。
+    /// `holdDir`: 直前フレームに方向キーが押されていた向き。None ↔ Some の遷移と
+    ///   別方向への切替で `holdSteps` を 0 にリセットする。
+    /// `holdSteps`: 同方向に連続で進んだマス数。`computeSlideDuration` で
+    ///   1 マス分のスライド時間を初速 → 最高速に補間するのに使う。
+    /// `snagTimer`: 駒（味方/敵）に乗ったときの「引っかかり」残時間（秒）。
+    ///   > 0 の間は方向入力を捨てる。Tween 完了 + snag 経過で次の移動が始まる。
     pub type alias Data = {
         gridPos            = Vec2.Vec2i,
-        lastHoveredEnemyId = Option[Int32]
+        lastHoveredEnemyId = Option[Int32],
+        holdDir            = Option[Vec2.Vec2i],
+        holdSteps          = Int32,
+        snagTimer          = Float64
     }
 
     // ────────────────────────────────────────────────────────
@@ -54,9 +63,30 @@ mod CursorScene {
     /// 駒の上に被せても視認できるようにする。
     def spriteZIndex(): Int32 = 20
 
-    /// 1 マス分のスライド時間（秒）。プレイヤー (16/120 ≒ 0.133) より高速にして、
-    /// FE のカーソルらしいキビキビ感を出す。
-    def slideDuration(): Float64 = 16.0 / 240.0   // ≈ 0.067 秒
+    /// 動き出し（押した直後の 1 マス目）のスライド時間。最高速より遅くして、
+    /// 「ぽんと押したら一瞬の溜めの後に動く」 FE 風のフィーリングを出す。
+    def initialSlideDuration(): Float64 = 16.0 / 100.0   // ≈ 0.160 秒
+
+    /// 押しっぱなしのときに収束する最高速。プレイヤー (16/120 ≒ 0.133) より高速で、
+    /// 連続移動時のキビキビ感を担保する。
+    def minSlideDuration(): Float64 = 16.0 / 240.0       // ≈ 0.067 秒
+
+    /// 最高速に達するまでの連続ステップ数。0 → initial、>= stepsToMaxSpeed → min。
+    /// 間は線形補間（computeSlideDuration）。
+    def stepsToMaxSpeed(): Int32 = 3
+
+    /// 駒（味方/敵）のマスに乗った後、入力を捨てる秒数。
+    /// 最高速 1 マス（0.067s）の 2 倍強で、押しっぱなしのリズムから明確にズレて
+    /// 「引っかかった」感触になる長さ。
+    def snagDuration(): Float64 = 0.15
+
+    /// `holdSteps` から 1 マス分のスライド時間を線形補間する。
+    /// 0 ステップなら初速、stepsToMaxSpeed 以上で最高速に張り付く。
+    def computeSlideDuration(steps: Int32): Float64 =
+        if (steps >= stepsToMaxSpeed()) minSlideDuration()
+        else
+            let t = Int32.toFloat64(steps) / Int32.toFloat64(stepsToMaxSpeed());
+            initialSlideDuration() + (minSlideDuration() - initialSlideDuration()) * t
 
     // ────────────────────────────────────────────────────────
     // (C) 構築
@@ -70,7 +100,13 @@ mod CursorScene {
         let marker = Marker2D.make(pos);
         let sprite = Sprite2D.make(textureName(), Vec2.zero(), Vec2.one())
                         |> CanvasItem.setZIndex(spriteZIndex());
-        let data: Data = { gridPos = initial, lastHoveredEnemyId = None };
+        let data: Data = {
+            gridPos            = initial,
+            lastHoveredEnemyId = None,
+            holdDir            = None,
+            holdSteps          = 0,
+            snagTimer          = 0.0
+        };
         scene
             |> Scene.addNode(name(),
                               EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)))
@@ -96,9 +132,13 @@ mod CursorScene {
 
     /// 毎フレーム engine から呼ばれる `physicsProcess`。
     /// `PlayerCursor` フェーズのみ動かす（Game.flix が NodeTag マッチで dispatch する）。
-    /// Tween 中なら入力を捨て、そうでなければ方向キーで 1 マス分の移動を試み、
-    /// 移動後のセルに敵が居れば `EnemyRangeScene` を再構築 + ログを出す。
-    pub def physicsProcess(_delta: Float64,
+    /// 入力ゲートは 3 段:
+    ///   1. snagTimer > 0 → 駒上での「引っかかり」中。`delta` 引いて入力捨てる
+    ///   2. Tween 中 → 補間中。入力捨てる
+    ///   3. それ以外 → 方向キーを読み、加速度を計算して 1 マス進める
+    /// 移動後のセルに駒（味方/敵）が居れば snagTimer をセット + holdSteps をリセット
+    /// （次は再加速）。敵に乗ったら EnemyRangeScene を再構築 + ログを出す（既存）。
+    pub def physicsProcess(delta: Float64,
                             node: EngineNode[NodeTag],
                             _path: NodePath,
                             scene: Scene[NodeTag]):
@@ -107,21 +147,44 @@ mod CursorScene {
                                GameLogger.GameLogger} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
-                if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
+                if (data#snagTimer > 0.0) {
+                    let next = Float64.max(0.0, data#snagTimer - delta);
+                    let nextData = {snagTimer = next | data};
+                    (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)),
+                     scene)
+                }
+                else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
                 else
                     match readHeldDirection() {
-                        case None => (node, scene)
+                        case None =>
+                            // キーが離れたら hold 状態をリセット（再度押したときに初速から）
+                            let nextData = {holdDir = None, holdSteps = 0 | data};
+                            (EngineNode.Marker2DWithState(marker,
+                                                           NodeTag.Cursor(nextData)),
+                             scene)
                         case Some(dir) =>
                             let board = BoardQuery.board();
+                            let nextSteps = stepCountAfter(data#holdDir,
+                                                            data#holdSteps, dir);
                             let target = clampToMap(Vec2.addI(data#gridPos, dir),
                                                      board#map);
-                            if (target#x == data#gridPos#x and target#y == data#gridPos#y)
-                                (node, scene)   // 端で動けない
+                            if (target#x == data#gridPos#x and target#y == data#gridPos#y) {
+                                // 端で動けない。hold 状態だけ更新して入力は捨てる。
+                                let nextData = {holdDir = Some(dir),
+                                                  holdSteps = nextSteps | data};
+                                (EngineNode.Marker2DWithState(marker,
+                                                               NodeTag.Cursor(nextData)),
+                                 scene)
+                            }
                             else {
+                                let slide = computeSlideDuration(nextSteps);
                                 let (newMarker, movedData) =
-                                    moveStep(target, marker, data);
-                                let (finalData, updatedScene) =
+                                    moveStep(target, marker, data, slide);
+                                let (hovered, updatedScene) =
                                     handleHoverChange(movedData, board, scene);
+                                let onPiece = Board.isOccupied(target, board);
+                                let finalData = applyHoldUpdate(hovered, dir,
+                                                                 nextSteps, onPiece);
                                 (EngineNode.Marker2DWithState(newMarker,
                                                                 NodeTag.Cursor(finalData)),
                                  updatedScene)
@@ -130,15 +193,38 @@ mod CursorScene {
             case _ => (node, scene)
         }
 
+    /// 直前の `holdDir` と新しい方向から、ステップ数を更新する。
+    /// 同方向継続なら +1、別方向 or 初回なら 0 にリセット。
+    def stepCountAfter(prev: Option[Vec2.Vec2i], steps: Int32,
+                        dir: Vec2.Vec2i): Int32 =
+        match prev {
+            case Some(p) =>
+                if (p#x == dir#x and p#y == dir#y) steps + 1 else 0
+            case None => 0
+        }
+
+    /// 移動成立後の Data に hold/snag 関連を反映する。
+    /// 駒の上に乗ったら snag 発動 + holdSteps を 0 に戻す（停止 → 再加速）。
+    /// 駒が居なければ holdSteps をそのまま nextSteps に進める。
+    def applyHoldUpdate(data: Data, dir: Vec2.Vec2i, nextSteps: Int32,
+                         onPiece: Bool): Data =
+        if (onPiece)
+            {holdDir = Some(dir), holdSteps = 0,
+             snagTimer = snagDuration() | data}
+        else
+            {holdDir = Some(dir), holdSteps = nextSteps | data}
+
     /// カーソルを 1 マス移動させる。gridPos は即更新、見た目は Tween に委ねる。
     /// 隣接判定は呼び出し側が済ませている前提（target は data.gridPos + 4 方向単位）。
-    /// `lastHoveredEnemyId` は呼び出し側で再評価するためここでは触らない。
-    def moveStep(target: Vec2.Vec2i, marker: Marker2D, data: Data):
+    /// `slideDuration` 引数で 1 マス分のスライド時間を可変にする（加速制御）。
+    /// `lastHoveredEnemyId` / `holdDir` などは呼び出し側で更新するためここでは触らない。
+    def moveStep(target: Vec2.Vec2i, marker: Marker2D, data: Data,
+                  slideDuration: Float64):
             (Marker2D, Data) \ Tween.Scheduler =
         let startWorld = cellCenter(data#gridPos);
         let targetWorld = cellCenter(target);
-        Tween.tweenPosition(cursorPath(), startWorld, targetWorld, slideDuration());
-        (marker, {gridPos = target, lastHoveredEnemyId = data#lastHoveredEnemyId})
+        Tween.tweenPosition(cursorPath(), startWorld, targetWorld, slideDuration);
+        (marker, {gridPos = target | data})
 
     /// 移動後のセルに敵が居るかを判定し、`lastHoveredEnemyId` の遷移に応じて
     /// EnemyRangeScene を出し入れ + ログを出す。返り値の Data は
@@ -190,9 +276,12 @@ mod CursorScene {
     ///     → 範囲外のセルへ移動しようとしても動かない。フェーズ突入時のスナップ先
     ///       （選択中プレイヤーマス）に戻れるよう、そのマスも通行可とする
     ///   - 敵 hover 検知は不要（このフェーズでは EnemyRangeScene を出さない）
+    ///   - snag は **敵のみ** に発動（選択中味方マスは「戻り場」なので引っかからない）。
+    ///     EnemyScene.findIdAt で直接判定して BoardQuery 依存を避ける
+    /// 加速ロジック（hold steps + computeSlideDuration）は `physicsProcess` と共通。
     ///
     /// Game.flix が NodeTag マッチで dispatch する。
-    pub def physicsProcessAttack(_delta: Float64,
+    pub def physicsProcessAttack(delta: Float64,
                                   node: EngineNode[NodeTag],
                                   _path: NodePath,
                                   scene: Scene[NodeTag]):
@@ -201,22 +290,44 @@ mod CursorScene {
                                      SelectedPlayer.State} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
-                if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
+                if (data#snagTimer > 0.0) {
+                    let next = Float64.max(0.0, data#snagTimer - delta);
+                    let nextData = {snagTimer = next | data};
+                    (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)),
+                     scene)
+                }
+                else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
                 else
                     match readHeldDirection() {
-                        case None      => (node, scene)
+                        case None =>
+                            let nextData = {holdDir = None, holdSteps = 0 | data};
+                            (EngineNode.Marker2DWithState(marker,
+                                                           NodeTag.Cursor(nextData)),
+                             scene)
                         case Some(dir) =>
                             let candidate = Vec2.addI(data#gridPos, dir);
                             let isSelectedCell = isSelectedPlayerCell(candidate, scene);
+                            let nextSteps = stepCountAfter(data#holdDir,
+                                                            data#holdSteps, dir);
                             // 赤マス内 OR 選択中プレイヤー自身のマスのみ移動可。
                             if (not (PlayerAttackRangeScene.isInRange(candidate, scene)
-                                     or isSelectedCell))
-                                (node, scene)
+                                     or isSelectedCell)) {
+                                let nextData = {holdDir = Some(dir),
+                                                  holdSteps = nextSteps | data};
+                                (EngineNode.Marker2DWithState(marker,
+                                                               NodeTag.Cursor(nextData)),
+                                 scene)
+                            }
                             else {
+                                let slide = computeSlideDuration(nextSteps);
                                 let (newMarker, movedData) =
-                                    moveStep(candidate, marker, data);
+                                    moveStep(candidate, marker, data, slide);
+                                let onEnemy =
+                                    not Option.isEmpty(EnemyScene.findIdAt(candidate, scene));
+                                let finalData = applyHoldUpdate(movedData, dir,
+                                                                 nextSteps, onEnemy);
                                 (EngineNode.Marker2DWithState(newMarker,
-                                                                NodeTag.Cursor(movedData)),
+                                                                NodeTag.Cursor(finalData)),
                                  scene)
                             }
                     }
@@ -267,7 +378,11 @@ mod CursorScene {
         Tween.Scheduler.cancel(cursorPath());
         let snapped = Scene.setGlobalPositionAt(cursorPath(), world, scene);
         mapCursor((m, d) ->
-            (m, {gridPos = target, lastHoveredEnemyId = None | d}),
+            (m, {gridPos            = target,
+                 lastHoveredEnemyId = None,
+                 holdDir            = None,
+                 holdSteps          = 0,
+                 snagTimer          = 0.0 | d}),
             snapped)
 
     /// snap 先のセルを決める:

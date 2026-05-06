@@ -75,6 +75,9 @@ mod CameraScene {
                 // 攻撃フェーズはカーソルが赤マスを動く。PlayerCursor と同じく
                 // カーソル追従でターゲットを表示できるようにする。
                 cursorWorldPos(scene)
+            case TurnPhase.Phase.PlayerAutoMove =>
+                // 自動移動中は旗（行き先）を映して、味方が歩いてくるのを見守る。
+                flagWorldPos(scene)
             case TurnPhase.Phase.EnemyTurn =>
                 focusPos
         }
@@ -107,6 +110,15 @@ mod CameraScene {
     /// `update` を呼ぶ運用なので実機では到達しない。
     def cursorWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
         Scene.globalPositionAt(CursorScene.cursorPath(), scene)
+
+    /// 旗の現在ワールド座標。FlagScene 未登録なら原点。
+    /// 立てていない場合 Marker2D の位置はダミーだが、PlayerAutoMove フェーズにしか
+    /// 参照されないので、立てた直後は必ず正しい位置にある。
+    def flagWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
+        match Scene.getEngineNode(FlagScene.flagPath(), scene) {
+            case Some(_) => Scene.globalPositionAt(FlagScene.flagPath(), scene)
+            case None    => Vec2.zero()
+        }
 
     /// カメラ自身の現在ワールド座標。
     def currentPos(scene: Scene[NodeTag]): Vec2.Vec2 =

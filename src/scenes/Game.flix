@@ -7,6 +7,7 @@ pub enum NodeTag {
     case EnemyRange(EnemyRangeScene.Data)
     case PlayerAttackRange(PlayerAttackRangeScene.Data)
     case Cursor(CursorScene.Data)
+    case Flag(FlagScene.Data)
     case Log(LogScene.Data)
     case NoTag
 }
@@ -63,10 +64,11 @@ instance Node[NodeTag] {
 //   EnemyTurn: 入力は無視
 // Tween 中（選択中味方の移動中）は Z/X を受け付けない。
 instance InputEvent.InputHandler[NodeTag] {
-    type Aef = {Tween.Scheduler, GameLogger.GameLogger, EnemyTurn.Queue,
+    type Aef = {BoardQuery, Tween.Scheduler, GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State}
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
-                       Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger,
+                       Scene[NodeTag] \ {BoardQuery, Tween.Scheduler,
+                                          GameLogger.GameLogger,
                                           EnemyTurn.Queue, TurnPhase.State,
                                           SelectedPlayer.State} =
         let isConfirm = key == GameEngine.Key.Z
@@ -90,7 +92,9 @@ instance InputEvent.InputHandler[NodeTag] {
                 if (isConfirm) Game.handleConfirmInAttack(scene)
                 else if (isCancel) Game.handleCancelAttack(scene)
                 else scene
-            case TurnPhase.Phase.EnemyTurn => scene
+            // 自動移動中は入力を無視（停止条件で自動的に PlayerCursor に戻る）。
+            case TurnPhase.Phase.PlayerAutoMove => scene
+            case TurnPhase.Phase.EnemyTurn      => scene
         }
 }
 
@@ -109,12 +113,15 @@ mod Game {
 
     /// `PlayerCursor` 中に Z が押されたときの処理。
     /// カーソル位置にアクティブな（waited = false）味方が居れば、その駒を選択して
-    /// `PlayerMoving` に遷移する。waited 上・敵上・空マスでは何もしない。
+    /// `PlayerMoving` に遷移する。
+    /// アクティブ味方が居らず、空の床マス（壁・敵・waited 味方が居ない）なら
+    /// **旗を立てて `PlayerAutoMove` に遷移**（号令）する。
+    /// waited 上・敵上・壁では何もしない。
     pub def handleConfirmInCursor(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+            Scene[NodeTag] \ {BoardQuery, GameLogger.GameLogger,
+                              TurnPhase.State, SelectedPlayer.State} =
         let cursorPos = CursorScene.getGridPos(scene);
         match PlayerScene.findActiveIdAt(cursorPos, scene) {
-            case None     => scene
             case Some(id) =>
                 SelectedPlayer.State.put(Some(id));
                 // 選択時のグリッド位置を origin として記録（キャンセルで戻す用）
@@ -124,7 +131,24 @@ mod Game {
                     |> EnemyRangeScene.clear
                     |> MoveRangeScene.refresh   // 選択駒の青マスを構築
                     |> CursorScene.setVisible(false)
+            case None =>
+                let board = BoardQuery.board();
+                if (board#map#isFloor(cursorPos)
+                    and not Board.isOccupied(cursorPos, board))
+                    handlePlantFlag(cursorPos, scene)
+                else scene
         }
+
+    /// 空マス上で Z が押されたときの処理。旗を立てて PlayerAutoMove に遷移する。
+    /// 自動移動中は赤レンジは出ないので EnemyRangeScene を消し、カーソルも非表示にする。
+    def handlePlantFlag(target: Vec2.Vec2i, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State} =
+        GameLogger.GameLogger.playerLog("旗を立てた");
+        TurnPhase.State.put(TurnPhase.Phase.PlayerAutoMove);
+        scene
+            |> EnemyRangeScene.clear
+            |> FlagScene.plant(target)
+            |> CursorScene.setVisible(false)
 
     /// `PlayerMoving` 中に Z が押されたときの処理。攻撃フェーズに遷移する。
     /// 選択は維持。青マスを消して赤マスを出し、カーソルを選択中駒の位置にスナップする。
@@ -400,6 +424,7 @@ mod Game {
             |> EnemyScene.add
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
             |> CursorScene.add
+            |> FlagScene.add            // 自動移動先マーカー（初期は非表示）
             |> CameraScene.add
             |> LogScene.add
 
@@ -450,32 +475,43 @@ mod Game {
             Ref.put(scene, sceneRef);
             let dt = GameEngine.Game.getDeltaTime();
             let afterEditor = Editor.handleInput(scene);
-            // 敵ターン中は入力をブロックして 1 step ずつ進める。
+            // 敵ターン / PlayerAutoMove 中は入力をブロックして自動進行。
             // それ以外（PlayerCursor / PlayerMoving / PlayerAttack）は通常の
             // handleInput / physicsProcess。死亡演出（tickDeaths）は Tween 後に挟むので、
             // フェーズに関係なく毎フレーム進む（敵ターン跨ぎでも点滅が継続する）。
-            let inEnemyPhase = TurnPhase.State.get() == TurnPhase.Phase.EnemyTurn;
+            let phase = TurnPhase.State.get();
             let updated = if (Editor.isOn()) afterEditor
-                          else if (inEnemyPhase)
-                              afterEditor
-                                  |> stepEnemyTurn
-                                  |> Tween.tickAll(dt)
-                                  |> EnemyScene.tickDeaths
-                                  |> tickEnemyAttacksAndResolve   // 攻撃モーションの進行 + 死亡判定
-                                  |> CameraScene.update
-                                  |> LogScene.flushFromEffect
-                                  |> LogScene.tickScroll
-                          else
-                              afterEditor
-                                  |> GameEngine.handleInput
-                                  |> GameEngine.physicsProcess(delta = dt, paused = false,
-                                                                gravity = Vec2.zero())
-                                  |> Tween.tickAll(dt)
-                                  |> EnemyScene.tickDeaths
-                                  |> tickPlayerAttacksAndAdvance   // 攻撃モーション + 完了 → 次フェーズ
-                                  |> CameraScene.update
-                                  |> LogScene.flushFromEffect
-                                  |> LogScene.tickScroll;
+                          else match phase {
+                              case TurnPhase.Phase.EnemyTurn =>
+                                  afterEditor
+                                      |> stepEnemyTurn
+                                      |> Tween.tickAll(dt)
+                                      |> EnemyScene.tickDeaths
+                                      |> tickEnemyAttacksAndResolve
+                                      |> CameraScene.update
+                                      |> LogScene.flushFromEffect
+                                      |> LogScene.tickScroll
+                              case TurnPhase.Phase.PlayerAutoMove =>
+                                  // AutoMove.step が 1 フレームに 1 マスずつ味方を進める。
+                                  // 停止条件を満たしたら内部で PlayerCursor に戻す。
+                                  afterEditor
+                                      |> AutoMove.step
+                                      |> Tween.tickAll(dt)
+                                      |> CameraScene.update
+                                      |> LogScene.flushFromEffect
+                                      |> LogScene.tickScroll
+                              case _ =>
+                                  afterEditor
+                                      |> GameEngine.handleInput
+                                      |> GameEngine.physicsProcess(delta = dt, paused = false,
+                                                                    gravity = Vec2.zero())
+                                      |> Tween.tickAll(dt)
+                                      |> EnemyScene.tickDeaths
+                                      |> tickPlayerAttacksAndAdvance
+                                      |> CameraScene.update
+                                      |> LogScene.flushFromEffect
+                                      |> LogScene.tickScroll
+                          };
             // scene.json が変わったらシーンを丸ごと組み直す（プレイ中状態はリセット）
             let next = if (Editor.pollReload()) {
                            // ホットリロード時は敵ターンキュー / 各 State をリセット

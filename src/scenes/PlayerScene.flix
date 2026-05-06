@@ -202,6 +202,18 @@ mod PlayerScene {
     pub def isMoving(id: Int32): Bool \ Tween.Scheduler =
         Tween.Scheduler.isActive(playerPath(id))
 
+    /// 指定 id のプレイヤーを `target` グリッドへ Tween で移動させ、scene の Data も
+    /// 同時に更新する。`moveTo` は (Marker2D, Data) を返す形だが、こちらは
+    /// physicsProcess の外（AutoMove など）から id だけで呼べるように scene を直接編集する。
+    /// `EnemyScene.moveTo` と同じインターフェース。**歩行可否は呼び出し側が確認済み前提**。
+    pub def moveToById(id: Int32, target: Vec2.Vec2i,
+                        map: MapSnapshot,
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
+        let targetWorld = map#gridToWorld(target);
+        Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slideDuration());
+        mapPlayer(id, d -> {gridPos = target | d}, scene)
+
     /// 指定 id のプレイヤーを `target` グリッドに **瞬間移動** で戻す。
     /// 進行中の Tween があればキャンセルし、Marker2D の world 位置と Data#gridPos を
     /// 同時に target に揃える。PlayerMoving 中のキャンセルで「選択時の位置」に戻すのに使う。
