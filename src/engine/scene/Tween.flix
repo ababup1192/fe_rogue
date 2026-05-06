@@ -26,11 +26,13 @@ mod Tween {
     }
 
     /// 1 つのアクティブ tween。
+    /// `elapsed` は開始からの経過時間、`duration` は完了までの目標時間。
+    /// 進度は `Duration.ratio(elapsed, duration)` で 0.0..1.0 に丸められる。
     pub type alias Entry = {
         path     = NodePath,
         kind     = Kind,
-        elapsed  = Float64,
-        duration = Float64
+        elapsed  = Duration.Duration,
+        duration = Duration.Duration
     }
 
     /// `tickAll` が `consumeUpdates` から受け取り、scene に書き戻す中間表現。
@@ -57,30 +59,30 @@ mod Tween {
         def cancel(targetPath: NodePath): Unit
         /// engine 内部用: 全 entry を delta 進め、完了したものを除去して
         /// 「scene に書き戻すべき更新一覧」を返す
-        def consumeUpdates(delta: Float64): List[Update]
+        def consumeUpdates(delta: Duration.Duration): List[Update]
     }
 
     /// Godot の `tween.tween_property(self, "position", to, duration)` 同等の便宜関数。
-    /// `targetPath` のノードを `startPos` から `to` へ `duration` 秒かけて lerp する。
+    /// `targetPath` のノードを `startPos` から `to` へ `duration` かけて lerp する。
     /// 同パスへの再登録は古い tween を置換。
     pub def tweenPosition(targetPath: NodePath, startPos: Vec2.Vec2,
-                          to: Vec2.Vec2, duration: Float64): Unit \ Scheduler =
+                          to: Vec2.Vec2, duration: Duration.Duration): Unit \ Scheduler =
         Scheduler.schedule({
             path     = targetPath,
             kind     = Kind.Position(startPos, to),
-            elapsed  = 0.0,
+            elapsed  = Duration.zero(),
             duration = duration
         })
 
-    /// Sprite2D の alpha を `from` → `to` に `duration` 秒かけて補間する。
+    /// Sprite2D の alpha を `from` → `to` に `duration` かけて補間する。
     /// 対象 path は **Sprite2D ノード**を指すこと（Marker2D 親ではなく子の Sprite）。
     /// 同パスへの再登録は古い tween を置換。
     pub def tweenAlpha(targetPath: NodePath, fromAlpha: Float32,
-                       toAlpha: Float32, duration: Float64): Unit \ Scheduler =
+                       toAlpha: Float32, duration: Duration.Duration): Unit \ Scheduler =
         Scheduler.schedule({
             path     = targetPath,
             kind     = Kind.Alpha(fromAlpha, toAlpha),
-            elapsed  = 0.0,
+            elapsed  = Duration.zero(),
             duration = duration
         })
 
@@ -112,8 +114,8 @@ mod Tween {
                     let entries = Ref.get(tweensRef);
                     let (stillRunning, updates) = List.foldLeft((acc, e) -> {
                         let (running, ups) = acc;
-                        let nextElapsed = e#elapsed + delta;
-                        let t = Float64.min(1.0, nextElapsed / e#duration);
+                        let nextElapsed = Duration.add(e#elapsed, delta);
+                        let t = Duration.ratio(nextElapsed, e#duration);
                         let value = match e#kind {
                             case Kind.Position(start, target) =>
                                 UpdateValue.PosVal(Vec2.lerp(start, target, t))
@@ -147,7 +149,7 @@ mod Tween {
 
     /// gameLoop が 1 行で呼ぶ per-frame advance。
     /// target Node が scene から消えていれば tween を auto-stop する（Godot の Node バインド相当）。
-    pub def tickAll(delta: Float64, scene: Scene[s]): Scene[s] \ Scheduler =
+    pub def tickAll(delta: Duration.Duration, scene: Scene[s]): Scene[s] \ Scheduler =
         let updates = Scheduler.consumeUpdates(delta);
         List.foldLeft((sc, u) ->
             match Scene.getEngineNode(u#path, sc) {

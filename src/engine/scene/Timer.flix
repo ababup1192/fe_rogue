@@ -9,8 +9,8 @@
 ///     +-- Node2D: position, rotation, scale, skew
 pub enum Timer {
     case Timer({
-        waitTime = Float64,
-        timeLeft = Float64,
+        waitTime = Duration.Duration,
+        timeLeft = Duration.Duration,
         running = Bool,
         oneShot = Bool,
         autostart = Bool,
@@ -28,7 +28,7 @@ pub enum Timer {
 mod Timer {
     /// デフォルト値で Timer を生成する
     /// running=false, oneShot=true, autostart=false
-    pub def make(waitTime: Float64): Timer =
+    pub def make(waitTime: Duration.Duration): Timer =
         Timer.Timer({
             waitTime = waitTime,
             timeLeft = waitTime,
@@ -60,7 +60,7 @@ mod Timer {
         start(timer)
 
     /// 残り時間を取得する
-    pub def getTimeLeft(timer: Timer): Float64 =
+    pub def getTimeLeft(timer: Timer): Duration.Duration =
         let Timer.Timer(r) = timer;
         r#timeLeft
 
@@ -86,14 +86,14 @@ mod Timer {
     /// 毎フレームの更新処理
     /// running かつ timeLeft > 0 なら dt 分減算。0 以下で oneShot なら停止、でなければ waitTime にリセット
     /// タイマー満了時に timedOut フラグを立てる
-    pub def process(dt: Float64, timer: Timer): Timer =
+    pub def process(dt: Duration.Duration, timer: Timer): Timer =
         let Timer.Timer(r) = timer;
-        if (not r#running or r#timeLeft <= 0.0) timer
+        if (not r#running or Duration.isExpired(r#timeLeft)) timer
         else {
-            let newTimeLeft = r#timeLeft - dt;
-            if (newTimeLeft <= 0.0) {
+            let newTimeLeft = Duration.sub(r#timeLeft, dt);
+            if (Duration.isExpired(newTimeLeft)) {
                 if (r#oneShot)
-                    Timer.Timer({ timeLeft = 0.0, running = false, timedOut = true | r })
+                    Timer.Timer({ timeLeft = Duration.zero(), running = false, timedOut = true | r })
                 else
                     Timer.Timer({ timeLeft = r#waitTime, timedOut = true | r })
             } else

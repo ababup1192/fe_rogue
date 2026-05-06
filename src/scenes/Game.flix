@@ -20,7 +20,7 @@ pub enum NodeTag {
 instance Node[NodeTag] {
     type Aef = {GameEngine.Game, BoardQuery, Tween.Scheduler,
                  GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State}
-    redef physicsProcess(delta: Float64,
+    redef physicsProcess(delta: Duration.Duration,
                           node: EngineNode[NodeTag],
                           path: NodePath,
                           scene: Scene[NodeTag]):

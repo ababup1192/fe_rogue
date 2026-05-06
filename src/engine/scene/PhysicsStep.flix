@@ -22,12 +22,12 @@ pub mod PhysicsStep {
 
     /// 物理ステップ: physicsProcess → 重力適用 → ダンピング → 速度積分
     /// 全ノードの physicsProcess を呼んだ後、RigidBody2D に物理更新を適用する。
-    pub def step(delta: Float64, paused: Bool, gravity: Vec2.Vec2, scene: Scene[s]): Scene[s] \ Node.Aef[s] with Node[s] =
+    pub def step(delta: Duration.Duration, paused: Bool, gravity: Vec2.Vec2, scene: Scene[s]): Scene[s] \ Node.Aef[s] with Node[s] =
         let afterPhysicsProcess = Scene.physicsProcessAll(delta, paused, scene);
         integrate(delta, gravity, afterPhysicsProcess)
 
     /// RigidBody2D への重力・ダンピング・速度積分のみ行う（physicsProcess なし）
-    pub def integrate(delta: Float64, gravity: Vec2.Vec2, scene: Scene[s]): Scene[s] =
+    pub def integrate(delta: Duration.Duration, gravity: Vec2.Vec2, scene: Scene[s]): Scene[s] =
         let paths = Scene.preorderPaths(scene);
         List.foldLeft((sc, path) ->
             Scene.mapEngineNode(path, engineNode ->
@@ -39,19 +39,20 @@ pub mod PhysicsStep {
             paths)
 
     /// 単体の RigidBody2D に重力・ダンピング・速度積分を適用する
-    def integrateBody(delta: Float64, gravity: Vec2.Vec2, body: RigidBody2D): RigidBody2D =
+    def integrateBody(delta: Duration.Duration, gravity: Vec2.Vec2, body: RigidBody2D): RigidBody2D =
         let RigidBody2D.RigidBody2D(r) = body;
+        let dtSec = Duration.toSeconds(delta);
         // 1. 重力加速
-        let gravAccel = Vec2.mul(gravity, r#gravityScale * delta);
+        let gravAccel = Vec2.mul(gravity, r#gravityScale * dtSec);
         let velAfterGravity = Vec2.add(r#linearVelocity, gravAccel);
         // 2. ダンピング
-        let linearDampFactor = 1.0 + r#linearDamp * delta;
+        let linearDampFactor = 1.0 + r#linearDamp * dtSec;
         let velAfterDamp = Vec2.div(velAfterGravity, linearDampFactor);
-        let angularDampFactor = 1.0 + r#angularDamp * delta;
+        let angularDampFactor = 1.0 + r#angularDamp * dtSec;
         let angVelAfterDamp = r#angularVelocity / angularDampFactor;
         // 3. 速度積分
-        let newPosition = Vec2.add(r#position, Vec2.mul(velAfterDamp, delta));
-        let newRotation = r#rotation + angVelAfterDamp * delta;
+        let newPosition = Vec2.add(r#position, Vec2.mul(velAfterDamp, dtSec));
+        let newRotation = r#rotation + angVelAfterDamp * dtSec;
         RigidBody2D.RigidBody2D({
             linearVelocity = velAfterDamp,
             angularVelocity = angVelAfterDamp,

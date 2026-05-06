@@ -74,8 +74,9 @@ mod PlayerScene {
     /// プレイヤー Sprite の zIndex（Player は前面に立つ）。EnemyScene と同じ 10。
     def spriteZIndex(): Int32 = 10
 
-    /// 1 マス分のスライド時間（秒）
-    def slideDuration(): Float64 = 16.0 / 120.0
+    /// 1 マス分のスライド時間（≈ 0.133 秒）
+    def slideDuration(): Duration.Duration =
+        Duration.frames(count = 16, fps = 120)
 
     /// プレイヤー初期の移動力（マス）
     pub def defaultMoveTiles(): Int32 = 5
@@ -232,7 +233,7 @@ mod PlayerScene {
     /// 毎フレーム engine から呼ばれる。**選択中プレイヤーのみ** 動かす。
     /// Game.flix の Node[NodeTag] redef からは PlayerMoving フェーズで
     /// 「id == SelectedPlayer.State.get()」のノードに対してだけ dispatch される。
-    pub def physicsProcess(_delta: Float64,
+    pub def physicsProcess(_delta: Duration.Duration,
                             node: EngineNode[NodeTag],
                             _path: NodePath,
                             scene: Scene[NodeTag]):
@@ -481,14 +482,16 @@ mod PlayerScene {
     /// 敵 id にダメージ 1 を与える。HP <= 0 で死亡演出を開始（bonus は death animation
     /// 終了時に EnemyScene.tickDeaths が再生する）。
     /// ログは「敵N にダメージ 残りHPM」を重なりタイミングで残す。
+    /// HP の減算と死亡判定は `Combat.damage` に集約してある。
     def applyDamageToEnemy(enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
         match EnemyScene.get(enemyId, scene) {
             case None    => scene
-            case Some(e) =>
-                let newHp = e#hp - 1;
-                GameLogger.playerLog("敵${enemyId}にダメージ 残りHP${newHp}");
-                if (newHp <= 0) EnemyScene.startDeathAnimation(enemyId, scene)
-                else EnemyScene.mapEnemy(enemyId, d -> {hp = newHp | d}, scene)
+            case Some(enemy) =>
+                let result = Combat.damage(hp = enemy#hp, amount = 1);
+                GameLogger.playerLog("敵${enemyId}にダメージ 残りHP${result#newHp}");
+                if (result#isDead) EnemyScene.startDeathAnimation(enemyId, scene)
+                else EnemyScene.mapEnemy(enemyId,
+                    enemyData -> {hp = result#newHp | enemyData}, scene)
         }
 }

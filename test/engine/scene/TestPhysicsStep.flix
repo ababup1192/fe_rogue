@@ -40,7 +40,7 @@ def testPhysicsStepGravityAcceleration(): Unit \ Assert =
     let scene = Scene.empty()
         |> Scene.addNode("ball", EngineNode.RigidBody2DWithState(body, TestPhysicsState.S));
     let gravity = PhysicsStep.defaultGravity();
-    let updated = PhysicsStep.integrate(1.0, gravity, scene);
+    let updated = PhysicsStep.integrate(1.0 |> Duration.seconds, gravity, scene);
     match Scene.getEngineNode("ball" :: Nil, updated) {
         case Some(EngineNode.RigidBody2DWithState(updatedBody, _)) =>
             let vel = RigidBody2D.getLinearVelocity(updatedBody);
@@ -63,7 +63,7 @@ def testPhysicsStepNoGravityWhenScaleZero(): Unit \ Assert =
         |> RigidBody2D.setLinearVelocity({x = 50.0, y = 0.0});
     let scene = Scene.empty()
         |> Scene.addNode("ball", EngineNode.RigidBody2DWithState(body, TestPhysicsState.S));
-    let updated = PhysicsStep.integrate(1.0, PhysicsStep.defaultGravity(), scene);
+    let updated = PhysicsStep.integrate(1.0 |> Duration.seconds, PhysicsStep.defaultGravity(), scene);
     match Scene.getEngineNode("ball" :: Nil, updated) {
         case Some(EngineNode.RigidBody2DWithState(updatedBody, _)) =>
             let vel = RigidBody2D.getLinearVelocity(updatedBody);
@@ -85,7 +85,7 @@ def testPhysicsStepPositionIntegration(): Unit \ Assert =
         |> RigidBody2D.setLinearVelocity({x = 100.0, y = 0.0});
     let scene = Scene.empty()
         |> Scene.addNode("ball", EngineNode.RigidBody2DWithState(body, TestPhysicsState.S));
-    let updated = PhysicsStep.integrate(0.5, Vec2.zero(), scene);
+    let updated = PhysicsStep.integrate(0.5 |> Duration.seconds, Vec2.zero(), scene);
     match Scene.getEngineNode("ball" :: Nil, updated) {
         case Some(EngineNode.RigidBody2DWithState(updatedBody, _)) =>
             let pos = Node2D.getPosition(updatedBody);
@@ -102,7 +102,7 @@ def testPhysicsStepRotationIntegration(): Unit \ Assert =
         |> RigidBody2D.setAngularVelocity(2.0);
     let scene = Scene.empty()
         |> Scene.addNode("ball", EngineNode.RigidBody2DWithState(body, TestPhysicsState.S));
-    let updated = PhysicsStep.integrate(0.5, Vec2.zero(), scene);
+    let updated = PhysicsStep.integrate(0.5 |> Duration.seconds, Vec2.zero(), scene);
     match Scene.getEngineNode("ball" :: Nil, updated) {
         case Some(EngineNode.RigidBody2DWithState(updatedBody, _)) =>
             // 角速度 2.0 rad/s * 0.5 s = 1.0 rad
@@ -130,7 +130,7 @@ def testPhysicsStepLinearDamping(): Unit \ Assert =
         |> RigidBody2D.setLinearDamp(1.0);
     let scene = Scene.empty()
         |> Scene.addNode("ball", EngineNode.RigidBody2DWithState(body, TestPhysicsState.S));
-    let updated = PhysicsStep.integrate(1.0, Vec2.zero(), scene);
+    let updated = PhysicsStep.integrate(1.0 |> Duration.seconds, Vec2.zero(), scene);
     match Scene.getEngineNode("ball" :: Nil, updated) {
         case Some(EngineNode.RigidBody2DWithState(updatedBody, _)) =>
             let vel = RigidBody2D.getLinearVelocity(updatedBody);
@@ -148,7 +148,7 @@ def testPhysicsStepAngularDamping(): Unit \ Assert =
         |> RigidBody2D.setAngularDamp(1.0);
     let scene = Scene.empty()
         |> Scene.addNode("ball", EngineNode.RigidBody2DWithState(body, TestPhysicsState.S));
-    let updated = PhysicsStep.integrate(1.0, Vec2.zero(), scene);
+    let updated = PhysicsStep.integrate(1.0 |> Duration.seconds, Vec2.zero(), scene);
     match Scene.getEngineNode("ball" :: Nil, updated) {
         case Some(EngineNode.RigidBody2DWithState(updatedBody, _)) =>
             // angularVelocity 4.0 / (1 + 1.0 * 1.0) = 2.0
@@ -166,7 +166,7 @@ def testPhysicsStepIgnoresNonRigidBody(): Unit \ Assert =
     let sprite = Sprite2D.make("test", {x = 10.0, y = 20.0}, {x = 1.0, y = 1.0});
     let scene = Scene.empty()
         |> Scene.addNode("sprite", EngineNode.Sprite2DWithState(sprite, TestPhysicsState.S));
-    let updated = PhysicsStep.integrate(1.0, PhysicsStep.defaultGravity(), scene);
+    let updated = PhysicsStep.integrate(1.0 |> Duration.seconds, PhysicsStep.defaultGravity(), scene);
     match Scene.getEngineNode("sprite" :: Nil, updated) {
         case Some(node) =>
             let pos = Node2D.getPosition(node);
@@ -192,7 +192,7 @@ def testPhysicsStepMultipleBodies(): Unit \ Assert =
     let scene = Scene.empty()
         |> Scene.addNode("a", EngineNode.RigidBody2DWithState(bodyA, TestPhysicsState.S))
         |> Scene.addNode("b", EngineNode.RigidBody2DWithState(bodyB, TestPhysicsState.S));
-    let updated = PhysicsStep.integrate(1.0, Vec2.zero(), scene);
+    let updated = PhysicsStep.integrate(1.0 |> Duration.seconds, Vec2.zero(), scene);
     let posA = Scene.getEngineNode("a" :: Nil, updated) |> Option.map(Node2D.getPosition);
     let posB = Scene.getEngineNode("b" :: Nil, updated) |> Option.map(Node2D.getPosition);
     match (posA, posB) {
@@ -214,7 +214,7 @@ def testPhysicsStepStepCallsPhysicsProcess(): Unit \ Assert =
     let scene = Scene.empty()
         |> Scene.addNode("ball", EngineNode.RigidBody2DWithState(body, TestPhysicsState.S));
     // Node[TestPhysicsState] の physicsProcess はデフォルト no-op なので integrate と同じ結果
-    let updated = PhysicsStep.step(1.0, false, Vec2.zero(), scene);
+    let updated = PhysicsStep.step(1.0 |> Duration.seconds, false, Vec2.zero(), scene);
     match Scene.getEngineNode("ball" :: Nil, updated) {
         case Some(EngineNode.RigidBody2DWithState(updatedBody, _)) =>
             let pos = Node2D.getPosition(updatedBody);

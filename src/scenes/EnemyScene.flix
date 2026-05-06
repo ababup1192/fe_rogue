@@ -91,12 +91,13 @@ mod EnemyScene {
     /// 敵初期 HP。スポーン時とリセット時の `Data#hp` 初期値。
     pub def defaultHp(): Int32 = 3
 
-    /// 1 マス分のスライド時間（秒）。Player と同じ感覚で見えるよう揃える。
-    def slideDuration(): Float64 = 16.0 / 120.0
+    /// 1 マス分のスライド時間。Player と同じ感覚で見えるよう揃える。
+    def slideDuration(): Duration.Duration =
+        Duration.frames(count = 16, fps = 120)
 
-    /// 死亡点滅 1 フェーズ（FadingOut または FadingIn）の所要時間。
+    /// 死亡点滅 1 フェーズ（FadingOut または FadingIn）の所要時間（150 ミリ秒）。
     /// 3 サイクル × 2 フェーズ = 約 0.9 秒で完了する想定。
-    def blinkDuration(): Float64 = 0.15
+    def blinkDuration(): Duration.Duration = 150 |> Duration.millis
 
     /// 死亡演出の点滅サイクル数（半透明→不透明を 1 サイクルとして 3 回）。
     def blinkCycles(): Int32 = 3
@@ -444,18 +445,19 @@ mod EnemyScene {
 
     /// プレイヤー targetId に 1 ダメージ。HP=0 なら killedIds に追加して返す
     /// （呼び出し側 Game.flix が handlePlayerDeath を発火する）。
+    /// HP の減算と死亡判定は `Combat.damage` に集約してある。
     def applyDamageToPlayer(enemyId: Int32, targetId: Int32,
                              scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \ GameLogger.GameLogger =
         match PlayerScene.get(targetId, scene) {
             case None    => (scene, Nil)
-            case Some(p) =>
-                let newHp = p#hp - 1;
+            case Some(player) =>
+                let result = Combat.damage(hp = player#hp, amount = 1);
                 GameLogger.enemyLog(
-                    "敵${enemyId}が味方${targetId}を攻撃 残りHP${newHp}");
+                    "敵${enemyId}が味方${targetId}を攻撃 残りHP${result#newHp}");
                 let damaged = PlayerScene.mapPlayer(targetId,
-                    d -> {hp = newHp | d}, scene);
-                if (newHp <= 0) (damaged, targetId :: Nil)
+                    playerData -> {hp = result#newHp | playerData}, scene);
+                if (result#isDead) (damaged, targetId :: Nil)
                 else (damaged, Nil)
         }
 }

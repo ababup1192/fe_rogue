@@ -214,7 +214,7 @@ mod EngineNode {
     /// AnimatedSprite2D のフレーム送りを自動で行う。
     /// GPUParticles2D のパーティクル放出・加齢・除去を自動で行う。
     /// RigidBody2D は PhysicsStep が担当するため no-op。
-    pub def engineProcess(delta: Float64, path: NodePath, scene: Scene[s],
+    pub def engineProcess(delta: Duration.Duration, path: NodePath, scene: Scene[s],
                           node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.AnimSprite2DWithState(sprite, state) =>
             EngineNode.AnimSprite2DWithState(AnimatedSprite2D.advanceFrame(delta, sprite), state)

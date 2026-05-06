@@ -466,7 +466,7 @@ pub mod Scene {
     /// 全ノードの process を preorder（親→子）の順で呼び出す
     /// EngineNode.engineProcess（AnimSprite2D のフレーム送り等）も自動実行される
     /// 未 ready のノードがあれば先に ready を呼ぶ（動的スポーン対応）
-    pub def processAll(delta: Float64, paused: Bool, scene: Scene[s]): Scene[s] \ Node.Aef[s] with Node[s] =
+    pub def processAll(delta: Duration.Duration, paused: Bool, scene: Scene[s]): Scene[s] \ Node.Aef[s] with Node[s] =
         let readiedScene = readyNew(scene);
         foldNodes((engineNode, path, sc) ->
             if (ProcessMode.shouldProcess(paused, Node.getProcessMode(EngineNode.getState(engineNode)))) {
@@ -478,7 +478,7 @@ pub mod Scene {
 
     /// 全ノードの physicsProcess を preorder で呼び出す。
     /// PhysicsStep.step が重力・積分を適用する前に実行される。
-    pub def physicsProcessAll(delta: Float64, paused: Bool, scene: Scene[s]): Scene[s] \ Node.Aef[s] with Node[s] =
+    pub def physicsProcessAll(delta: Duration.Duration, paused: Bool, scene: Scene[s]): Scene[s] \ Node.Aef[s] with Node[s] =
         foldNodes((engineNode, path, sc) ->
             if (ProcessMode.shouldProcess(paused, Node.getProcessMode(EngineNode.getState(engineNode))))
                 Node.physicsProcess(delta, engineNode, path, sc)

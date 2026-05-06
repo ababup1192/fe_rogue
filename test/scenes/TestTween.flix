@@ -41,8 +41,8 @@ mod TestTween {
             let result = run {
                 let scene = sceneWithBody("p", Vec2.zero());
                 Tween.tweenPosition(nodePath("p"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0);
-                let advanced = Tween.tickAll(0.5, scene);
+                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0 |> Duration.seconds);
+                let advanced = Tween.tickAll(0.5 |> Duration.seconds, scene);
                 let pos = posOf(nodePath("p"), advanced);
                 let active = Tween.Scheduler.isActive(nodePath("p"));
                 (active, pos#x, pos#y)
@@ -57,9 +57,9 @@ mod TestTween {
             let result = run {
                 let scene = sceneWithBody("p", Vec2.zero());
                 Tween.tweenPosition(nodePath("p"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 0.5);
+                    Vec2.zero(), {x = 10.0, y = 0.0}, 0.5 |> Duration.seconds);
                 // 0.5 秒経過 → 完了
-                let advanced = Tween.tickAll(0.5, scene);
+                let advanced = Tween.tickAll(0.5 |> Duration.seconds, scene);
                 let pos = posOf(nodePath("p"), advanced);
                 let active = Tween.Scheduler.isActive(nodePath("p"));
                 (active, pos#x, pos#y)
@@ -74,9 +74,9 @@ mod TestTween {
             let result = run {
                 let scene = sceneWithBody("p", Vec2.zero());
                 Tween.tweenPosition(nodePath("p"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 0.5);
+                    Vec2.zero(), {x = 10.0, y = 0.0}, 0.5 |> Duration.seconds);
                 // 10.0 秒（duration の 20 倍）でも target で止まる
-                let advanced = Tween.tickAll(10.0, scene);
+                let advanced = Tween.tickAll(10.0 |> Duration.seconds, scene);
                 let pos = posOf(nodePath("p"), advanced);
                 let active = Tween.Scheduler.isActive(nodePath("p"));
                 (active, pos#x, pos#y)
@@ -104,7 +104,7 @@ mod TestTween {
         region rc {
             let result = run {
                 Tween.tweenPosition(nodePath("p"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0);
+                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0 |> Duration.seconds);
                 Tween.Scheduler.isActive(nodePath("p"))
             } with Tween.withScheduler(rc);
             Assert.assertEq(expected = true, result)
@@ -121,12 +121,12 @@ mod TestTween {
             let result = run {
                 let scene = sceneWithBody("p", Vec2.zero());
                 Tween.tweenPosition(nodePath("p"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0);
+                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0 |> Duration.seconds);
                 // 違う target で再登録
                 Tween.tweenPosition(nodePath("p"),
-                    Vec2.zero(), {x = 0.0, y = 20.0}, 1.0);
+                    Vec2.zero(), {x = 0.0, y = 20.0}, 1.0 |> Duration.seconds);
                 // 1.0 秒で 2 つ目の tween が完了するはず（古い tween は置換されたので走らない）
-                let advanced = Tween.tickAll(1.0, scene);
+                let advanced = Tween.tickAll(1.0 |> Duration.seconds, scene);
                 let pos = posOf(nodePath("p"), advanced);
                 (pos#x, pos#y)
             } with Tween.withScheduler(rc);
@@ -144,9 +144,9 @@ mod TestTween {
             let result = run {
                 let scene = sceneWithBody("p", Vec2.zero());
                 Tween.tweenPosition(nodePath("p"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0);
+                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0 |> Duration.seconds);
                 Tween.Scheduler.cancel(nodePath("p"));
-                let advanced = Tween.tickAll(0.5, scene);
+                let advanced = Tween.tickAll(0.5 |> Duration.seconds, scene);
                 let pos = posOf(nodePath("p"), advanced);
                 let active = Tween.Scheduler.isActive(nodePath("p"));
                 (active, pos#x, pos#y)
@@ -166,8 +166,8 @@ mod TestTween {
                 // scene には node "p" を入れない
                 let scene = Scene.empty();
                 Tween.tweenPosition(nodePath("ghost"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0);
-                let _ = Tween.tickAll(0.5, scene);
+                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0 |> Duration.seconds);
+                let _ = Tween.tickAll(0.5 |> Duration.seconds, scene);
                 // tickAll 後に entry が消えているはず
                 Tween.Scheduler.isActive(nodePath("ghost"))
             } with Tween.withScheduler(rc);
@@ -189,10 +189,10 @@ mod TestTween {
                             CharacterBody2D.make(Vec2.zero(), {moveSpeed = 0.0}),
                             NodeTag.NoTag));
                 Tween.tweenPosition(nodePath("a"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0);
+                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0 |> Duration.seconds);
                 Tween.tweenPosition(nodePath("b"),
-                    Vec2.zero(), {x = 0.0, y = 20.0}, 1.0);
-                let advanced = Tween.tickAll(0.5, scene);
+                    Vec2.zero(), {x = 0.0, y = 20.0}, 1.0 |> Duration.seconds);
+                let advanced = Tween.tickAll(0.5 |> Duration.seconds, scene);
                 let posA = posOf(nodePath("a"), advanced);
                 let posB = posOf(nodePath("b"), advanced);
                 (posA#x, posA#y, posB#x, posB#y)

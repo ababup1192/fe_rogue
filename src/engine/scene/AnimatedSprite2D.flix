@@ -106,7 +106,7 @@ mod AnimatedSprite2D {
     /// 時間経過に応じてフレームを進める。
     /// 進捗計算: progress += delta / (1 / (anim.speed * speedScale) * frame.duration)
     /// loop=false で最終フレームに到達したら playing=false にして停止する。
-    pub def advanceFrame(delta: Float64, sprite: AnimatedSprite2D): AnimatedSprite2D =
+    pub def advanceFrame(delta: Duration.Duration, sprite: AnimatedSprite2D): AnimatedSprite2D =
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
         if (not r#playing) sprite
         else match SpriteFrames.getAnimation(r#animation, r#spriteFrames) {
@@ -123,7 +123,7 @@ mod AnimatedSprite2D {
                         else if (r#frame >= totalFrames) totalFrames - 1
                         else r#frame;
                     let baseDuration = 1.0 / (anim#speed * r#speedScale);
-                    let advanced = stepProgress(delta, clampedFrame, r#frameProgress,
+                    let advanced = stepProgress(Duration.toSeconds(delta), clampedFrame, r#frameProgress,
                                                   frames, totalFrames, anim#loop, baseDuration);
                     AnimatedSprite2D.AnimatedSprite2D({
                         frame = advanced#frame,

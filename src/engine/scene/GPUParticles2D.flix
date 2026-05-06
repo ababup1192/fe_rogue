@@ -11,15 +11,15 @@
 mod GPUParticles2D {
     /// 個々のパーティクル
     pub type alias Particle = {
-        position = Vec2.Vec2,   // 放出時のグローバル座標
-        age = Float64           // 経過時間（秒）
+        position = Vec2.Vec2,         // 放出時のグローバル座標
+        age = Duration.Duration       // 経過時間
     }
 
     /// GPUParticles2D の生成パラメータ
     pub type alias Config = {
         texture = String,
         amount = Int32,
-        lifetime = Float64,
+        lifetime = Duration.Duration,
         speedScale = Float64,
         startAlpha = Float32,
         endAlpha = Float32,
@@ -29,8 +29,9 @@ mod GPUParticles2D {
 
     /// Config からパラメータを名前付きで渡して生成する
     pub def make(config: Config): GPUParticles2D =
-        let effectiveLifetime = config#lifetime / config#speedScale;
-        let interval = config#lifetime / (Int32.toFloat64(config#amount) * config#speedScale);
+        let effectiveLifetime = Duration.divBy(config#lifetime, config#speedScale);
+        let interval = Duration.divBy(config#lifetime,
+            Int32.toFloat64(config#amount) * config#speedScale);
         GPUParticles2D.GPUParticles2D({
             position = Vec2.zero(),
             rotation = 0.0,
@@ -47,24 +48,26 @@ mod GPUParticles2D {
             startScale = config#startScale,
             endScale = config#endScale,
             particles = Nil,
-            emitTimer = 0.0
+            emitTimer = Duration.zero()
         })
 
     /// パーティクルの放出・加齢・除去を一括処理する
-    pub def process(delta: Float64, emitPos: Vec2.Vec2, emitter: GPUParticles2D): GPUParticles2D =
+    pub def process(delta: Duration.Duration, emitPos: Vec2.Vec2,
+                     emitter: GPUParticles2D): GPUParticles2D =
         let GPUParticles2D.GPUParticles2D(r) = emitter;
         // パーティクルの加齢
-        let aged = List.map(p -> {age = p#age + delta | p}, r#particles);
+        let aged = List.map(p -> {age = Duration.add(p#age, delta) | p}, r#particles);
         // 期限切れ除去
-        let alive = List.filter(p -> p#age < r#particleLifetime, aged);
+        let alive = List.filter(p ->
+            Duration.toSeconds(p#age) < Duration.toSeconds(r#particleLifetime), aged);
         // 放出タイマー減算
-        let newTimer = r#emitTimer - delta;
-        if (newTimer <= 0.0) {
+        let newTimer = Duration.sub(r#emitTimer, delta);
+        if (Duration.isExpired(newTimer)) {
             // 新しいパーティクルを放出
-            let newParticle: Particle = {position = emitPos, age = 0.0};
+            let newParticle: Particle = {position = emitPos, age = Duration.zero()};
             GPUParticles2D.GPUParticles2D({
                 particles = newParticle :: alive,
-                emitTimer = r#emitInterval + newTimer
+                emitTimer = Duration.add(r#emitInterval, newTimer)
                 | r})
         } else {
             GPUParticles2D.GPUParticles2D({
@@ -77,7 +80,7 @@ mod GPUParticles2D {
     pub def toDrawables(emitter: GPUParticles2D, _globalPos: Vec2.Vec2): List[GameEngine.Drawable] =
         let GPUParticles2D.GPUParticles2D(r) = emitter;
         List.map(p -> {
-            let t = p#age / r#particleLifetime;
+            let t = Duration.ratio(p#age, r#particleLifetime);
             let alpha = r#startAlpha + Float64.truncateToFloat32(Float32.toFloat64(r#endAlpha - r#startAlpha) * t);
             let sc = r#startScale + (r#endScale - r#startScale) * t;
             {
@@ -105,14 +108,14 @@ pub enum GPUParticles2D {
         zIndex = Int32,
         modulate = Color,
         texture = String,
-        particleLifetime = Float64,
-        emitInterval = Float64,
+        particleLifetime = Duration.Duration,
+        emitInterval = Duration.Duration,
         startAlpha = Float32,
         endAlpha = Float32,
         startScale = Float64,
         endScale = Float64,
         particles = List[GPUParticles2D.Particle],
-        emitTimer = Float64
+        emitTimer = Duration.Duration
     })
 }
 

@@ -285,13 +285,13 @@ mod TestMapIntegration {
             let result = run {
                 // right
                 let scene1 = applyMove(snapshot, {x = 6, y = 5}, emptyPlayerScene());
-                let posR = playerWorldPos(Tween.tickAll(1.0, scene1));
+                let posR = playerWorldPos(Tween.tickAll(1.0 |> Duration.seconds, scene1));
                 // up
                 let scene2 = applyMove(snapshot, {x = 5, y = 4}, emptyPlayerScene());
-                let posU = playerWorldPos(Tween.tickAll(1.0, scene2));
+                let posU = playerWorldPos(Tween.tickAll(1.0 |> Duration.seconds, scene2));
                 // left
                 let scene3 = applyMove(snapshot, {x = 4, y = 5}, emptyPlayerScene());
-                let posL = playerWorldPos(Tween.tickAll(1.0, scene3));
+                let posL = playerWorldPos(Tween.tickAll(1.0 |> Duration.seconds, scene3));
                 (posR#x, posR#y, posU#x, posU#y, posL#x, posL#y)
             } with Tween.withScheduler(rc);
             Assert.assertEq(
@@ -336,7 +336,7 @@ mod TestMapIntegration {
                     case None         => (steps, scene)   // 壁で停止
                     case Some(target) =>
                         let scene1 = applyMove(snapshot, target, scene);
-                        let scene2 = Tween.tickAll(1.0, scene1);
+                        let scene2 = Tween.tickAll(1.0 |> Duration.seconds, scene1);
                         loop(steps + 1, scene2)
                 }
             };
@@ -415,7 +415,7 @@ mod TestMapIntegration {
                     case None    => bug!("(1,5) up should be open")
                 };
                 let scene1 = applyMove(snapshot, target, scene0);
-                let scene2 = Tween.tickAll(1.0, scene1);
+                let scene2 = Tween.tickAll(1.0 |> Duration.seconds, scene1);
                 let grid = PlayerScene.getGridPos(0, scene2);
                 let world = playerWorldPos(scene2);
                 (target#x, target#y, grid#x, grid#y, world#x, world#y)

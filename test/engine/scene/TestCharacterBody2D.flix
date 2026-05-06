@@ -58,7 +58,7 @@ mod TestCharacterBody2D {
     def testCharacterBody2DMoveAndSlideBasic(): Unit \ Assert =
         let body = makeBody({x = 0.0, y = 0.0})
             |> CharacterBody2D.setVelocity({x = 100.0, y = 0.0})
-            |> CharacterBody2D.moveAndSlide(0.5, emptyScene());
+            |> CharacterBody2D.moveAndSlide(0.5 |> Duration.seconds, emptyScene());
         let pos = Node2D.getPosition(body);
         Assert.assertEq(expected = (50.0, 0.0), (pos#x, pos#y))
 
@@ -67,7 +67,7 @@ mod TestCharacterBody2D {
     def testCharacterBody2DMoveAndSlideUpward(): Unit \ Assert =
         let body = makeBody({x = 100.0, y = 300.0})
             |> CharacterBody2D.setVelocity({x = 0.0, y = -200.0})
-            |> CharacterBody2D.moveAndSlide(1.0, emptyScene());
+            |> CharacterBody2D.moveAndSlide(1.0 |> Duration.seconds, emptyScene());
         let pos = Node2D.getPosition(body);
         Assert.assertEq(expected = (100.0, 100.0), (pos#x, pos#y))
 
@@ -75,7 +75,7 @@ mod TestCharacterBody2D {
     @Test
     def testCharacterBody2DMoveAndSlideZeroVelocity(): Unit \ Assert =
         let body = makeBody({x = 42.0, y = 99.0})
-            |> CharacterBody2D.moveAndSlide(1.0, emptyScene());
+            |> CharacterBody2D.moveAndSlide(1.0 |> Duration.seconds, emptyScene());
         let pos = Node2D.getPosition(body);
         Assert.assertEq(expected = (42.0, 99.0), (pos#x, pos#y))
 
@@ -84,7 +84,7 @@ mod TestCharacterBody2D {
     def testCharacterBody2DMoveAndSlideZeroDelta(): Unit \ Assert =
         let body = makeBody({x = 10.0, y = 20.0})
             |> CharacterBody2D.setVelocity({x = 500.0, y = 500.0})
-            |> CharacterBody2D.moveAndSlide(0.0, emptyScene());
+            |> CharacterBody2D.moveAndSlide(0.0 |> Duration.seconds, emptyScene());
         let pos = Node2D.getPosition(body);
         Assert.assertEq(expected = (10.0, 20.0), (pos#x, pos#y))
 
@@ -93,7 +93,7 @@ mod TestCharacterBody2D {
     def testCharacterBody2DMoveAndSlidePreservesVelocityWhenFree(): Unit \ Assert =
         let body = makeBody({x = 0.0, y = 0.0})
             |> CharacterBody2D.setVelocity({x = 30.0, y = 40.0})
-            |> CharacterBody2D.moveAndSlide(1.0, emptyScene());
+            |> CharacterBody2D.moveAndSlide(1.0 |> Duration.seconds, emptyScene());
         let vel = CharacterBody2D.getVelocity(body);
         Assert.assertEq(expected = (30.0, 40.0), (vel#x, vel#y))
 
@@ -105,7 +105,7 @@ mod TestCharacterBody2D {
             |> CharacterBody2D.setVelocity({x = 100.0, y = 0.0});
         // 進路上に壁があっても、shape=None なので衝突判定されず通過する
         let scene: Scene[Unit] = sceneWithRectWall({x = 50.0, y = 0.0}, 20.0, 20.0);
-        let after = CharacterBody2D.moveAndSlide(1.0, scene, body);
+        let after = CharacterBody2D.moveAndSlide(1.0 |> Duration.seconds, scene, body);
         let pos = Node2D.getPosition(after);
         Assert.assertEq(expected = (100.0, 0.0), (pos#x, pos#y))
 
@@ -124,7 +124,7 @@ mod TestCharacterBody2D {
         let scene: Scene[Unit] = sceneWithRectWall({x = 60.0, y = 0.0}, 20.0, 100.0);
         let after = makeBody({x = 30.0, y = 0.0})
             |> CharacterBody2D.setVelocity({x = 100.0, y = 0.0})
-            |> CharacterBody2D.moveAndSlide(0.2, scene);
+            |> CharacterBody2D.moveAndSlide(0.2 |> Duration.seconds, scene);
         let pos = Node2D.getPosition(after);
         let vel = CharacterBody2D.getVelocity(after);
         Assert.assertEq(
@@ -142,7 +142,7 @@ mod TestCharacterBody2D {
         let scene: Scene[Unit] = sceneWithRectWall({x = 0.0, y = 80.0}, 200.0, 20.0);
         let after = makeBody({x = 0.0, y = 30.0})
             |> CharacterBody2D.setVelocity({x = 50.0, y = 100.0})
-            |> CharacterBody2D.moveAndSlide(0.4, scene);
+            |> CharacterBody2D.moveAndSlide(0.4 |> Duration.seconds, scene);
         let vel = CharacterBody2D.getVelocity(after);
         Assert.assertEq(expected = (50.0, 0.0), (vel#x, vel#y))
 

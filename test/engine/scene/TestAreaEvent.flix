@@ -162,13 +162,13 @@ def testHandleOverlapsDispatch(): Unit \ Assert =
         case None => bug!("node missing")
     };
     let red = modulateOf("red" :: Nil,
-        (Scene.processAll(0.016, false, redBlueOverlap) |> AreaEvent.handleOverlaps));
+        (Scene.processAll(0.016 |> Duration.seconds, false, redBlueOverlap) |> AreaEvent.handleOverlaps));
     let blue = modulateOf("blue" :: Nil,
-        (Scene.processAll(0.016, false, redBlueOverlap) |> AreaEvent.handleOverlaps));
+        (Scene.processAll(0.016 |> Duration.seconds, false, redBlueOverlap) |> AreaEvent.handleOverlaps));
     let r1 = modulateOf("r1" :: Nil,
-        (Scene.processAll(0.016, false, redRedOverlap) |> AreaEvent.handleOverlaps));
+        (Scene.processAll(0.016 |> Duration.seconds, false, redRedOverlap) |> AreaEvent.handleOverlaps));
     let separatedRed = modulateOf("red" :: Nil,
-        (Scene.processAll(0.016, false, separated) |> AreaEvent.handleOverlaps));
+        (Scene.processAll(0.016 |> Duration.seconds, false, separated) |> AreaEvent.handleOverlaps));
     let white = (1.0f32, 1.0f32, 1.0f32);
     let red_ = (1.0f32, 0.0f32, 0.0f32);
     Assert.assertEq(
@@ -189,12 +189,12 @@ def testHandleOverlapsFiresExitOnSeparation(): Unit \ Assert =
     let scene: Scene[TestAreaState] = Scene.empty()
         |> Scene.addNode("red", testStateAreaNode(0.0, 0.0, 10.0, 10.0, TestAreaState.RedState))
         |> Scene.addNode("blue", testStateAreaNode(5.0, 0.0, 10.0, 10.0, TestAreaState.BlueState));
-    let sceneAfterEnter = Scene.processAll(0.016, false, scene) |> AreaEvent.handleOverlaps;
+    let sceneAfterEnter = Scene.processAll(0.016 |> Duration.seconds, false, scene) |> AreaEvent.handleOverlaps;
     let separatedScene: Scene[TestAreaState] = Scene.empty()
         |> Scene.addNode("red", testStateAreaNode(0.0, 0.0, 4.0, 4.0, TestAreaState.RedState))
         |> Scene.addNode("blue", testStateAreaNode(100.0, 0.0, 4.0, 4.0, TestAreaState.BlueState))
         |> Scene.setPrevOverlaps(Scene.getPrevOverlaps(sceneAfterEnter));
-    let result = Scene.processAll(0.016, false, separatedScene) |> AreaEvent.handleOverlaps;
+    let result = Scene.processAll(0.016 |> Duration.seconds, false, separatedScene) |> AreaEvent.handleOverlaps;
     let modulate = match Scene.getEngineNode("red" :: Nil, result) {
         case Some(engineNode) =>
             let c = CanvasItem.getModulate(engineNode);

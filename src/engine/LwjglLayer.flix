@@ -884,8 +884,9 @@ mod LwjglLayer {
                 let prev = Array.get(0, timeHolder);
                 Array.put(currentTime, 0, timeHolder);
                 let dtNanos = currentTime - prev;
-                let dtf = Int64.toFloat64(dtNanos) / 1000000000.0;
-                k(Float64.min(dtf, config#maxDeltaTime))
+                let dtSec = Int64.toFloat64(dtNanos) / 1000000000.0;
+                let clamped = Float64.min(dtSec, config#maxDeltaTime);
+                k(clamped |> Duration.seconds)
             }
             def isKeyPressed(key, k) = {
                 let code = keyToGlfw(key);

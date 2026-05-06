@@ -35,14 +35,14 @@ mod CursorScene {
     ///   別方向への切替で `holdSteps` を 0 にリセットする。
     /// `holdSteps`: 同方向に連続で進んだマス数。`computeSlideDuration` で
     ///   1 マス分のスライド時間を初速 → 最高速に補間するのに使う。
-    /// `snagTimer`: 駒（味方/敵）に乗ったときの「引っかかり」残時間（秒）。
-    ///   > 0 の間は方向入力を捨てる。Tween 完了 + snag 経過で次の移動が始まる。
+    /// `snagTimer`: 駒（味方/敵）に乗ったときの「引っかかり」残時間。
+    ///   isPositive の間は方向入力を捨てる。Tween 完了 + snag 経過で次の移動が始まる。
     pub type alias Data = {
         gridPos            = Vec2.Vec2i,
         lastHoveredEnemyId = Option[Int32],
         holdDir            = Option[Vec2.Vec2i],
         holdSteps          = Int32,
-        snagTimer          = Float64
+        snagTimer          = Duration.Duration
     }
 
     // ────────────────────────────────────────────────────────
@@ -65,28 +65,32 @@ mod CursorScene {
 
     /// 動き出し（押した直後の 1 マス目）のスライド時間。最高速より遅くして、
     /// 「ぽんと押したら一瞬の溜めの後に動く」 FE 風のフィーリングを出す。
-    def initialSlideDuration(): Float64 = 16.0 / 100.0   // ≈ 0.160 秒
+    def initialSlideDuration(): Duration.Duration =
+        Duration.frames(count = 16, fps = 100)   // ≈ 0.160 秒
 
     /// 押しっぱなしのときに収束する最高速。プレイヤー (16/120 ≒ 0.133) より高速で、
     /// 連続移動時のキビキビ感を担保する。
-    def minSlideDuration(): Float64 = 16.0 / 240.0       // ≈ 0.067 秒
+    def minSlideDuration(): Duration.Duration =
+        Duration.frames(count = 16, fps = 240)   // ≈ 0.067 秒
 
     /// 最高速に達するまでの連続ステップ数。0 → initial、>= stepsToMaxSpeed → min。
     /// 間は線形補間（computeSlideDuration）。
     def stepsToMaxSpeed(): Int32 = 3
 
-    /// 駒（味方/敵）のマスに乗った後、入力を捨てる秒数。
-    /// 最高速 1 マス（0.067s）の 2 倍強で、押しっぱなしのリズムから明確にズレて
+    /// 駒（味方/敵）のマスに乗った後、入力を捨てる長さ（150 ミリ秒）。
+    /// 最高速 1 マス（0.067 秒）の 2 倍強で、押しっぱなしのリズムから明確にズレて
     /// 「引っかかった」感触になる長さ。
-    def snagDuration(): Float64 = 0.15
+    def snagDuration(): Duration.Duration = 150 |> Duration.millis
 
     /// `holdSteps` から 1 マス分のスライド時間を線形補間する。
     /// 0 ステップなら初速、stepsToMaxSpeed 以上で最高速に張り付く。
-    def computeSlideDuration(steps: Int32): Float64 =
+    def computeSlideDuration(steps: Int32): Duration.Duration =
         if (steps >= stepsToMaxSpeed()) minSlideDuration()
         else
             let t = Int32.toFloat64(steps) / Int32.toFloat64(stepsToMaxSpeed());
-            initialSlideDuration() + (minSlideDuration() - initialSlideDuration()) * t
+            let initSec = Duration.toSeconds(initialSlideDuration());
+            let minSec  = Duration.toSeconds(minSlideDuration());
+            (initSec + (minSec - initSec) * t) |> Duration.seconds
 
     // ────────────────────────────────────────────────────────
     // (C) 構築
@@ -105,7 +109,7 @@ mod CursorScene {
             lastHoveredEnemyId = None,
             holdDir            = None,
             holdSteps          = 0,
-            snagTimer          = 0.0
+            snagTimer          = Duration.zero()
         };
         scene
             |> Scene.addNode(name(),
@@ -138,7 +142,7 @@ mod CursorScene {
     ///   3. それ以外 → 方向キーを読み、加速度を計算して 1 マス進める
     /// 移動後のセルに駒（味方/敵）が居れば snagTimer をセット + holdSteps をリセット
     /// （次は再加速）。敵に乗ったら EnemyRangeScene を再構築 + ログを出す（既存）。
-    pub def physicsProcess(delta: Float64,
+    pub def physicsProcess(delta: Duration.Duration,
                             node: EngineNode[NodeTag],
                             _path: NodePath,
                             scene: Scene[NodeTag]):
@@ -147,8 +151,8 @@ mod CursorScene {
                                GameLogger.GameLogger} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
-                if (data#snagTimer > 0.0) {
-                    let next = Float64.max(0.0, data#snagTimer - delta);
+                if (Duration.isPositive(data#snagTimer)) {
+                    let next = Duration.subClampedToZero(data#snagTimer, delta);
                     let nextData = {snagTimer = next | data};
                     (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)),
                      scene)
@@ -219,7 +223,7 @@ mod CursorScene {
     /// `slideDuration` 引数で 1 マス分のスライド時間を可変にする（加速制御）。
     /// `lastHoveredEnemyId` / `holdDir` などは呼び出し側で更新するためここでは触らない。
     def moveStep(target: Vec2.Vec2i, marker: Marker2D, data: Data,
-                  slideDuration: Float64):
+                  slideDuration: Duration.Duration):
             (Marker2D, Data) \ Tween.Scheduler =
         let startWorld = cellCenter(data#gridPos);
         let targetWorld = cellCenter(target);
@@ -281,7 +285,7 @@ mod CursorScene {
     /// 加速ロジック（hold steps + computeSlideDuration）は `physicsProcess` と共通。
     ///
     /// Game.flix が NodeTag マッチで dispatch する。
-    pub def physicsProcessAttack(delta: Float64,
+    pub def physicsProcessAttack(delta: Duration.Duration,
                                   node: EngineNode[NodeTag],
                                   _path: NodePath,
                                   scene: Scene[NodeTag]):
@@ -290,8 +294,8 @@ mod CursorScene {
                                      SelectedPlayer.State} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
-                if (data#snagTimer > 0.0) {
-                    let next = Float64.max(0.0, data#snagTimer - delta);
+                if (Duration.isPositive(data#snagTimer)) {
+                    let next = Duration.subClampedToZero(data#snagTimer, delta);
                     let nextData = {snagTimer = next | data};
                     (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)),
                      scene)
@@ -382,7 +386,7 @@ mod CursorScene {
                  lastHoveredEnemyId = None,
                  holdDir            = None,
                  holdSteps          = 0,
-                 snagTimer          = 0.0 | d}),
+                 snagTimer          = Duration.zero() | d}),
             snapped)
 
     /// snap 先のセルを決める:

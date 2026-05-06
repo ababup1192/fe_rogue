@@ -24,14 +24,14 @@ pub trait Node[s] {
             checked_ecast((node, scene))
 
     /// 毎フレーム呼ばれる更新コールバック
-    /// delta: 前フレームからの経過秒数（Float64）
-    pub def process(_delta: Float64, node: EngineNode[s], _path: NodePath, scene: Scene[s]): (EngineNode[s], Scene[s]) \ Node.Aef[s] =
+    /// delta: 前フレームからの経過時間
+    pub def process(_delta: Duration.Duration, node: EngineNode[s], _path: NodePath, scene: Scene[s]): (EngineNode[s], Scene[s]) \ Node.Aef[s] =
             checked_ecast((node, scene))
 
     /// 物理ステップ中に呼ばれる更新コールバック（Godot _physics_process 準拠）
     /// PhysicsStep.step の重力・積分の **前** に呼ばれる。
     /// 力の適用・速度の変更など、物理演算に影響する処理をここに書く。
-    pub def physicsProcess(_delta: Float64, node: EngineNode[s], _path: NodePath, scene: Scene[s]): (EngineNode[s], Scene[s]) \ Node.Aef[s] =
+    pub def physicsProcess(_delta: Duration.Duration, node: EngineNode[s], _path: NodePath, scene: Scene[s]): (EngineNode[s], Scene[s]) \ Node.Aef[s] =
             checked_ecast((node, scene))
 
     // ── タイムアウト検出 ──

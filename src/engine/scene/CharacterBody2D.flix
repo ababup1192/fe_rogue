@@ -156,17 +156,18 @@ mod CharacterBody2D {
     ///   - 戻り値は更新後の CharacterBody2D（Godot は bool を返す）
     ///   - is_on_floor() / is_on_wall() / is_on_ceiling() フラグは未対応
     ///     （upDirection / floorMaxAngle はフィールドとして存在するが本実装では未使用）
-    pub def moveAndSlide(delta: Float64, scene: Scene[s],
+    pub def moveAndSlide(delta: Duration.Duration, scene: Scene[s],
                           body: CharacterBody2D): CharacterBody2D =
         let CharacterBody2D.CharacterBody2D(r) = body;
+        let dtSec = Duration.toSeconds(delta);
         match r#collisionShape {
             case None =>
                 // 衝突形状なしなら衝突判定不可。velocity * delta で素直に移動
-                let motion = Vec2.mul(r#velocity, delta);
+                let motion = Vec2.mul(r#velocity, dtSec);
                 CharacterBody2D.CharacterBody2D({position = Vec2.add(r#position, motion) | r})
             case Some(shape) =>
                 let statics = PhysicsStep.collectStaticColliders(scene);
-                let initialMotion = Vec2.mul(r#velocity, delta);
+                let initialMotion = Vec2.mul(r#velocity, dtSec);
                 let outcome = slideLoop(shape, statics, r#maxSlides, r#position,
                                           initialMotion, r#velocity);
                 CharacterBody2D.CharacterBody2D({

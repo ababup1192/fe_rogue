@@ -111,7 +111,7 @@ mod TestPlayerScene {
                 let scene1 = applyMove(0, testSnapshot(), target, emptyPlayerScene());
                 let posBefore = playerWorldPos(0, scene1);
                 let activeBefore = PlayerScene.isMoving(0);
-                let scene2 = Tween.tickAll(1.0, scene1);
+                let scene2 = Tween.tickAll(1.0 |> Duration.seconds, scene1);
                 let posAfter = playerWorldPos(0, scene2);
                 let activeAfter = PlayerScene.isMoving(0);
                 (posBefore#x, posBefore#y, activeBefore,

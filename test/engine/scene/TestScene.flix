@@ -348,7 +348,7 @@ def testSceneProcessAll(): Unit \ Assert =
     let scene = Scene.empty()
             |> Scene.addNode("root", tmarker(0.0, 0.0))
             |> Scene.addChild("root", "a", tmarker(1.0, 0.0))
-            |> Scene.processAll(0.016f64, false);
+            |> Scene.processAll(0.016 |> Duration.seconds, false);
     let gp = Scene.globalPositionAt("root" :: "a" :: Nil, scene);
     Assert.assertEq(expected = (1.0, 0.0), (gp#x, gp#y))
 

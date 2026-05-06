@@ -157,8 +157,8 @@ mod GameEngine {
         /// タイルインスタンスデータを GPU VBO にアップロードし (vaoId, count) を返す
         def initTileBuffer(instances: List[TileInstance]): (Int32, Int32)
         def shouldClose(): Bool
-        /// 前フレームからの経過時間（秒）。EngineConfig#maxDeltaTime で上限クランプ済み
-        def getDeltaTime(): Float64
+        /// 前フレームからの経過時間。EngineConfig#maxDeltaTime で上限クランプ済み
+        def getDeltaTime(): Duration.Duration
         def isKeyPressed(key: Key): Bool
         def getMousePosition(): Vec2.Vec2
         def isMouseButtonPressed(button: MouseButton): Bool
@@ -195,13 +195,13 @@ mod GameEngine {
     //   GameEngine.render(updateScene(scene));
 
     /// 全ノードの毎フレーム処理を実行する
-    pub def process(delta: {delta = Float64}, paused: {paused = Bool},
+    pub def process(delta: {delta = Duration.Duration}, paused: {paused = Bool},
                     scene: Scene[s]): Scene[s] \ Node.Aef[s]
             with Node[s] =
         Scene.processAll(delta#delta, paused#paused, scene)
 
     /// 物理演算（重力・ダンピング・速度積分）を適用する
-    pub def physicsProcess(delta: {delta = Float64}, paused: {paused = Bool},
+    pub def physicsProcess(delta: {delta = Duration.Duration}, paused: {paused = Bool},
                     gravity: {gravity = Vec2.Vec2},
                     scene: Scene[s]): Scene[s] \ Node.Aef[s]
             with Node[s] =

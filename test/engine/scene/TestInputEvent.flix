@@ -75,7 +75,7 @@ def runWithInput(keys: Set[GameEngine.Key],
         def renderCommands(_, _, k) = k(())
         def initTileBuffer(_, k) = k((0i32, 0i32))
         def shouldClose(k) = k(false)
-        def getDeltaTime(k) = k(0.016)
+        def getDeltaTime(k) = k(16 |> Duration.millis)
         def isKeyPressed(key, k) = k(Set.memberOf(key, keys))
         def getMousePosition(k) = k(mousePos)
         def isMouseButtonPressed(btn, k) = k(Set.memberOf(btn, buttons))

@@ -149,7 +149,7 @@ mod TestDragInput {
             def renderCommands(_, _, k) = k(())
             def initTileBuffer(_, k) = k((0i32, 0i32))
             def shouldClose(k) = k(false)
-            def getDeltaTime(k) = k(0.016)
+            def getDeltaTime(k) = k(16 |> Duration.millis)
             def isKeyPressed(_, k) = k(false)
             def getMousePosition(k) = k({x = 0.0, y = 0.0})
             def isMouseButtonPressed(_, k) = k(false)
