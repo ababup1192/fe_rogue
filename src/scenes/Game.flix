@@ -123,7 +123,8 @@ mod Game {
                               |> GameEngine.physicsProcess(delta = dt, paused = false,
                                                             gravity = Vec2.zero())
                               |> Tween.tickAll(dt)   // engine プラミング 1 行
-                              |> LogScene.flushFromEffect;
+                              |> LogScene.flushFromEffect
+                              |> LogScene.tickScroll;
             // scene.json が変わったらシーンを丸ごと組み直す（プレイ中状態はリセット）
             let next = if (Editor.pollReload())
                            Scene.empty() |> MapScene.add |> PlayerScene.add

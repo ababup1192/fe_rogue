@@ -161,6 +161,10 @@ mod GameEngine {
         def isKeyPressed(key: Key): Bool
         def getMousePosition(): Vec2.Vec2
         def isMouseButtonPressed(button: MouseButton): Bool
+        /// 前回呼び出し以降に蓄積されたマウスホイールの y 方向 delta を返し、
+        /// 内部アキュムレータを 0 にリセットする。1 ティックぶんの値が +1.0 / -1.0 程度
+        /// （プラットフォーム依存）。スクロールアップで正、ダウンで負。
+        def consumeScrollDelta(): Float64
         def getFontAtlas(name: String): FontAtlas
         def getViewportRect(): Rect2.Rect2
         /// 指定したテクスチャ名の元画像サイズ等を取得する。

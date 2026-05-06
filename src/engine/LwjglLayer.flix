@@ -4,6 +4,7 @@ mod LwjglLayer {
     import org.lwjgl.glfw.GLFW
     import org.lwjgl.glfw.Callbacks
     import org.lwjgl.glfw.GLFWFramebufferSizeCallbackI
+    import org.lwjgl.glfw.GLFWScrollCallbackI
     import org.lwjgl.opengl.GL
     import org.lwjgl.opengl.GL11
     import org.lwjgl.opengl.GL13
@@ -813,6 +814,16 @@ mod LwjglLayer {
             case GameEngine.Cursor.AllResize => allResizeCursor
         };
 
+        // マウスホイールの y 方向 delta を 1 フレームぶん蓄積する。
+        // consumeScrollDelta ハンドラが値を読み出して 0 に戻す。
+        let scrollDeltaHolder = Array#{0.0} @ Static;
+        discard GLFW.glfwSetScrollCallback(window, new GLFWScrollCallbackI {
+            def invoke(_this: GLFWScrollCallbackI, _w: Int64, _xoffset: Float64, yoffset: Float64): Unit \ IO = {
+                let prev = Array.get(0, scrollDeltaHolder);
+                Array.put(prev + yoffset, 0, scrollDeltaHolder)
+            }
+        });
+
         // macOS ではリサイズ中に glfwPollEvents がブロックされるため、
         // フレームバッファサイズ変更コールバックで再描画を行う
         discard GLFW.glfwSetFramebufferSizeCallback(window, new GLFWFramebufferSizeCallbackI {
@@ -902,6 +913,11 @@ mod LwjglLayer {
             def isMouseButtonPressed(button, k) = {
                 let code = mouseButtonToGlfw(button);
                 k(GLFW.glfwGetMouseButton(window, code) == 1)
+            }
+            def consumeScrollDelta(k) = {
+                let v = Array.get(0, scrollDeltaHolder);
+                Array.put(0.0, 0, scrollDeltaHolder);
+                k(v)
             }
             def getFontAtlas(name, k) = {
                 match Map.get(name, fontAtlases) {

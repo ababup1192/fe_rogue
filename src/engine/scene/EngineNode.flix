@@ -16,6 +16,8 @@ pub enum EngineNode[state] {
     case AnimSprite2DWithState(AnimatedSprite2D, state)
     /// テキストラベル（HUD 表示）
     case Label2DWithState(Label2D, state)
+    /// リッチテキストラベル（BBCode カラー + スクロール対応）
+    case RichTextLabelWithState(RichTextLabel, state)
     /// 位置マーカー（スポーン地点・参照点）
     case Marker2DWithState(Marker2D, state)
     /// 2D パスノード（スポーンパス等）
@@ -54,6 +56,7 @@ mod EngineNode {
         case EngineNode.RigidBody2DWithState(_, state) => state
         case EngineNode.AnimSprite2DWithState(_, state) => state
         case EngineNode.Label2DWithState(_, state) => state
+        case EngineNode.RichTextLabelWithState(_, state) => state
         case EngineNode.Marker2DWithState(_, state) => state
         case EngineNode.Path2DWithState(_, state) => state
         case EngineNode.ScreenNotifier2DWithState(_, state) => state
@@ -77,6 +80,7 @@ mod EngineNode {
         case EngineNode.RigidBody2DWithState(inner, _) => EngineNode.RigidBody2DWithState(inner, newState)
         case EngineNode.AnimSprite2DWithState(inner, _) => EngineNode.AnimSprite2DWithState(inner, newState)
         case EngineNode.Label2DWithState(inner, _) => EngineNode.Label2DWithState(inner, newState)
+        case EngineNode.RichTextLabelWithState(inner, _) => EngineNode.RichTextLabelWithState(inner, newState)
         case EngineNode.Marker2DWithState(inner, _) => EngineNode.Marker2DWithState(inner, newState)
         case EngineNode.Path2DWithState(inner, _) => EngineNode.Path2DWithState(inner, newState)
         case EngineNode.ScreenNotifier2DWithState(inner, _) => EngineNode.ScreenNotifier2DWithState(inner, newState)
@@ -100,6 +104,7 @@ mod EngineNode {
         case EngineNode.RigidBody2DWithState(inner, state) => EngineNode.RigidBody2DWithState(inner, f(state))
         case EngineNode.AnimSprite2DWithState(inner, state) => EngineNode.AnimSprite2DWithState(inner, f(state))
         case EngineNode.Label2DWithState(inner, state) => EngineNode.Label2DWithState(inner, f(state))
+        case EngineNode.RichTextLabelWithState(inner, state) => EngineNode.RichTextLabelWithState(inner, f(state))
         case EngineNode.Marker2DWithState(inner, state) => EngineNode.Marker2DWithState(inner, f(state))
         case EngineNode.Path2DWithState(inner, state) => EngineNode.Path2DWithState(inner, f(state))
         case EngineNode.ScreenNotifier2DWithState(inner, state) => EngineNode.ScreenNotifier2DWithState(inner, f(state))
@@ -154,6 +159,12 @@ mod EngineNode {
     /// Label2D の inner node に関数を適用する
     pub def mapLabel2D(f: Label2D -> Label2D, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Label2DWithState(inner, st) => EngineNode.Label2DWithState(f(inner), st)
+        case _ => node
+    }
+
+    /// RichTextLabel の inner node に関数を適用する
+    pub def mapRichTextLabel(f: RichTextLabel -> RichTextLabel, node: EngineNode[s]): EngineNode[s] = match node {
+        case EngineNode.RichTextLabelWithState(inner, st) => EngineNode.RichTextLabelWithState(f(inner), st)
         case _ => node
     }
 
@@ -299,6 +310,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.RigidBody2DWithState(body, _) => CanvasItem.isVisible(body)
         case EngineNode.AnimSprite2DWithState(sprite, _) => CanvasItem.isVisible(sprite)
         case EngineNode.Label2DWithState(label, _) => CanvasItem.isVisible(label)
+        case EngineNode.RichTextLabelWithState(label, _) => CanvasItem.isVisible(label)
         case EngineNode.Marker2DWithState(marker, _) => CanvasItem.isVisible(marker)
         case EngineNode.Path2DWithState(path, _) => CanvasItem.isVisible(path)
         case EngineNode.ScreenNotifier2DWithState(_, _) => true
@@ -320,6 +332,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.RigidBody2DWithState(body, st) => EngineNode.RigidBody2DWithState(CanvasItem.setVisible(visible, body), st)
         case EngineNode.AnimSprite2DWithState(sprite, st) => EngineNode.AnimSprite2DWithState(CanvasItem.setVisible(visible, sprite), st)
         case EngineNode.Label2DWithState(label, st) => EngineNode.Label2DWithState(CanvasItem.setVisible(visible, label), st)
+        case EngineNode.RichTextLabelWithState(label, st) => EngineNode.RichTextLabelWithState(CanvasItem.setVisible(visible, label), st)
         case EngineNode.Marker2DWithState(marker, st) => EngineNode.Marker2DWithState(CanvasItem.setVisible(visible, marker), st)
         case EngineNode.Path2DWithState(path, st) => EngineNode.Path2DWithState(CanvasItem.setVisible(visible, path), st)
         case EngineNode.ScreenNotifier2DWithState(_, _) => node
@@ -341,6 +354,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.RigidBody2DWithState(body, _) => CanvasItem.getModulate(body)
         case EngineNode.AnimSprite2DWithState(sprite, _) => CanvasItem.getModulate(sprite)
         case EngineNode.Label2DWithState(label, _) => CanvasItem.getModulate(label)
+        case EngineNode.RichTextLabelWithState(label, _) => CanvasItem.getModulate(label)
         case EngineNode.Marker2DWithState(marker, _) => CanvasItem.getModulate(marker)
         case EngineNode.Path2DWithState(path, _) => CanvasItem.getModulate(path)
         case EngineNode.ScreenNotifier2DWithState(_, _) => {r = 1.0f32, g = 1.0f32, b = 1.0f32}
@@ -362,6 +376,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.RigidBody2DWithState(body, st) => EngineNode.RigidBody2DWithState(CanvasItem.setModulate(color, body), st)
         case EngineNode.AnimSprite2DWithState(sprite, st) => EngineNode.AnimSprite2DWithState(CanvasItem.setModulate(color, sprite), st)
         case EngineNode.Label2DWithState(label, st) => EngineNode.Label2DWithState(CanvasItem.setModulate(color, label), st)
+        case EngineNode.RichTextLabelWithState(label, st) => EngineNode.RichTextLabelWithState(CanvasItem.setModulate(color, label), st)
         case EngineNode.Marker2DWithState(marker, st) => EngineNode.Marker2DWithState(CanvasItem.setModulate(color, marker), st)
         case EngineNode.Path2DWithState(path, st) => EngineNode.Path2DWithState(CanvasItem.setModulate(color, path), st)
         case EngineNode.ScreenNotifier2DWithState(_, _) => node
@@ -383,6 +398,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.RigidBody2DWithState(body, _) => CanvasItem.getZIndex(body)
         case EngineNode.AnimSprite2DWithState(sprite, _) => CanvasItem.getZIndex(sprite)
         case EngineNode.Label2DWithState(label, _) => CanvasItem.getZIndex(label)
+        case EngineNode.RichTextLabelWithState(label, _) => CanvasItem.getZIndex(label)
         case EngineNode.Marker2DWithState(marker, _) => CanvasItem.getZIndex(marker)
         case EngineNode.Path2DWithState(path, _) => CanvasItem.getZIndex(path)
         case EngineNode.ScreenNotifier2DWithState(_, _) => 0
@@ -404,6 +420,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.RigidBody2DWithState(body, st) => EngineNode.RigidBody2DWithState(CanvasItem.setZIndex(zIndex, body), st)
         case EngineNode.AnimSprite2DWithState(sprite, st) => EngineNode.AnimSprite2DWithState(CanvasItem.setZIndex(zIndex, sprite), st)
         case EngineNode.Label2DWithState(label, st) => EngineNode.Label2DWithState(CanvasItem.setZIndex(zIndex, label), st)
+        case EngineNode.RichTextLabelWithState(label, st) => EngineNode.RichTextLabelWithState(CanvasItem.setZIndex(zIndex, label), st)
         case EngineNode.Marker2DWithState(marker, st) => EngineNode.Marker2DWithState(CanvasItem.setZIndex(zIndex, marker), st)
         case EngineNode.Path2DWithState(path, st) => EngineNode.Path2DWithState(CanvasItem.setZIndex(zIndex, path), st)
         case EngineNode.ScreenNotifier2DWithState(_, _) => node
@@ -430,6 +447,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.RigidBody2DWithState(body, _) => Node2D.getPosition(body)
         case EngineNode.AnimSprite2DWithState(sprite, _) => Node2D.getPosition(sprite)
         case EngineNode.Label2DWithState(label, _) => Node2D.getPosition(label)
+        case EngineNode.RichTextLabelWithState(label, _) => Node2D.getPosition(label)
         case EngineNode.Marker2DWithState(marker, _) => Node2D.getPosition(marker)
         case EngineNode.Path2DWithState(path, _) => Node2D.getPosition(path)
         case EngineNode.ScreenNotifier2DWithState(_, _) => Vec2.zero()
@@ -451,6 +469,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.RigidBody2DWithState(body, st) => EngineNode.RigidBody2DWithState(Node2D.setPosition(position, body), st)
         case EngineNode.AnimSprite2DWithState(sprite, st) => EngineNode.AnimSprite2DWithState(Node2D.setPosition(position, sprite), st)
         case EngineNode.Label2DWithState(label, st) => EngineNode.Label2DWithState(Node2D.setPosition(position, label), st)
+        case EngineNode.RichTextLabelWithState(label, st) => EngineNode.RichTextLabelWithState(Node2D.setPosition(position, label), st)
         case EngineNode.Marker2DWithState(marker, st) => EngineNode.Marker2DWithState(Node2D.setPosition(position, marker), st)
         case EngineNode.Path2DWithState(path, st) => EngineNode.Path2DWithState(Node2D.setPosition(position, path), st)
         case EngineNode.ScreenNotifier2DWithState(_, _) => node
@@ -472,6 +491,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.RigidBody2DWithState(body, _) => Node2D.getRotation(body)
         case EngineNode.AnimSprite2DWithState(sprite, _) => Node2D.getRotation(sprite)
         case EngineNode.Label2DWithState(label, _) => Node2D.getRotation(label)
+        case EngineNode.RichTextLabelWithState(label, _) => Node2D.getRotation(label)
         case EngineNode.Marker2DWithState(marker, _) => Node2D.getRotation(marker)
         case EngineNode.Path2DWithState(path, _) => Node2D.getRotation(path)
         case EngineNode.ScreenNotifier2DWithState(_, _) => 0.0
@@ -493,6 +513,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.RigidBody2DWithState(body, st) => EngineNode.RigidBody2DWithState(Node2D.setRotation(rotation, body), st)
         case EngineNode.AnimSprite2DWithState(sprite, st) => EngineNode.AnimSprite2DWithState(Node2D.setRotation(rotation, sprite), st)
         case EngineNode.Label2DWithState(label, st) => EngineNode.Label2DWithState(Node2D.setRotation(rotation, label), st)
+        case EngineNode.RichTextLabelWithState(label, st) => EngineNode.RichTextLabelWithState(Node2D.setRotation(rotation, label), st)
         case EngineNode.Marker2DWithState(marker, st) => EngineNode.Marker2DWithState(Node2D.setRotation(rotation, marker), st)
         case EngineNode.Path2DWithState(path, st) => EngineNode.Path2DWithState(Node2D.setRotation(rotation, path), st)
         case EngineNode.ScreenNotifier2DWithState(_, _) => node
@@ -514,6 +535,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.RigidBody2DWithState(body, _) => Node2D.getScale(body)
         case EngineNode.AnimSprite2DWithState(sprite, _) => Node2D.getScale(sprite)
         case EngineNode.Label2DWithState(label, _) => Node2D.getScale(label)
+        case EngineNode.RichTextLabelWithState(label, _) => Node2D.getScale(label)
         case EngineNode.Marker2DWithState(marker, _) => Node2D.getScale(marker)
         case EngineNode.Path2DWithState(path, _) => Node2D.getScale(path)
         case EngineNode.ScreenNotifier2DWithState(_, _) => {x = 1.0, y = 1.0}
@@ -535,6 +557,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.RigidBody2DWithState(body, st) => EngineNode.RigidBody2DWithState(Node2D.setScale(scale, body), st)
         case EngineNode.AnimSprite2DWithState(sprite, st) => EngineNode.AnimSprite2DWithState(Node2D.setScale(scale, sprite), st)
         case EngineNode.Label2DWithState(label, st) => EngineNode.Label2DWithState(Node2D.setScale(scale, label), st)
+        case EngineNode.RichTextLabelWithState(label, st) => EngineNode.RichTextLabelWithState(Node2D.setScale(scale, label), st)
         case EngineNode.Marker2DWithState(marker, st) => EngineNode.Marker2DWithState(Node2D.setScale(scale, marker), st)
         case EngineNode.Path2DWithState(path, st) => EngineNode.Path2DWithState(Node2D.setScale(scale, path), st)
         case EngineNode.ScreenNotifier2DWithState(_, _) => node
@@ -556,6 +579,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.RigidBody2DWithState(body, _) => Node2D.getSkew(body)
         case EngineNode.AnimSprite2DWithState(sprite, _) => Node2D.getSkew(sprite)
         case EngineNode.Label2DWithState(label, _) => Node2D.getSkew(label)
+        case EngineNode.RichTextLabelWithState(label, _) => Node2D.getSkew(label)
         case EngineNode.Marker2DWithState(marker, _) => Node2D.getSkew(marker)
         case EngineNode.Path2DWithState(path, _) => Node2D.getSkew(path)
         case EngineNode.ScreenNotifier2DWithState(_, _) => 0.0
@@ -577,6 +601,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.RigidBody2DWithState(body, st) => EngineNode.RigidBody2DWithState(Node2D.setSkew(skew, body), st)
         case EngineNode.AnimSprite2DWithState(sprite, st) => EngineNode.AnimSprite2DWithState(Node2D.setSkew(skew, sprite), st)
         case EngineNode.Label2DWithState(label, st) => EngineNode.Label2DWithState(Node2D.setSkew(skew, label), st)
+        case EngineNode.RichTextLabelWithState(label, st) => EngineNode.RichTextLabelWithState(Node2D.setSkew(skew, label), st)
         case EngineNode.Marker2DWithState(marker, st) => EngineNode.Marker2DWithState(Node2D.setSkew(skew, marker), st)
         case EngineNode.Path2DWithState(path, st) => EngineNode.Path2DWithState(Node2D.setSkew(skew, path), st)
         case EngineNode.ScreenNotifier2DWithState(_, _) => node
@@ -638,6 +663,8 @@ instance GameEngine.Renderable[EngineNode[s]] {
                 EngineNode.animSpriteToDrawable(sprite, globalPos) :: Nil
             case EngineNode.Label2DWithState(label, _) =>
                 Label2D.toDrawables(label, globalPos)
+            case EngineNode.RichTextLabelWithState(label, _) =>
+                RichTextLabel.toDrawables(label, globalPos)
             case EngineNode.ColorRectWithState(rect, _) =>
                 ColorRect.toDrawable(rect, globalPos) :: Nil
             case EngineNode.GPUParticles2DWithState(emitter, _) =>

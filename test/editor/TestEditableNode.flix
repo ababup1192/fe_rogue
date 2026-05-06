@@ -22,6 +22,7 @@ mod TestEditableNode {
             def isKeyPressed(_, k) = k(false)
             def getMousePosition(k) = k({x = 0.0, y = 0.0})
             def isMouseButtonPressed(_, k) = k(false)
+            def consumeScrollDelta(k) = k(0.0)
             def getFontAtlas(_, _) = bug!("font not used")
             def getViewportRect(k) = k({position = {x = 0.0, y = 0.0}, size = {x = 480.0, y = 720.0}})
             def getTextureInfo(_, k) = k(Some({id = 0i32, width = width, height = height}))

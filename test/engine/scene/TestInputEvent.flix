@@ -79,6 +79,7 @@ def runWithInput(keys: Set[GameEngine.Key],
         def isKeyPressed(key, k) = k(Set.memberOf(key, keys))
         def getMousePosition(k) = k(mousePos)
         def isMouseButtonPressed(btn, k) = k(Set.memberOf(btn, buttons))
+        def consumeScrollDelta(k) = k(0.0)
         def getFontAtlas(_, _) = bug!("font not used")
         def getViewportRect(k) = k({position = Vec2.zero(), size = {x = 480.0, y = 720.0}})
         def getTextureInfo(_, k) = k(None)
