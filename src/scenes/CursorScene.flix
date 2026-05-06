@@ -63,9 +63,9 @@ mod CursorScene {
     // ────────────────────────────────────────────────────────
 
     /// MapScene + PlayerScene 登録済みの scene にカーソルを追加する。
-    /// 初期位置はプレイヤーと同じセル（味方ターン開始時にカーソルが味方の上にある状態）。
+    /// 初期位置はパーティ先頭プレイヤー（id=0）と同じセル。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let initial = PlayerScene.getGridPos(scene);
+        let initial = firstPlayerPos(scene);
         let pos = cellCenter(initial);
         let marker = Marker2D.make(pos);
         let sprite = Sprite2D.make(textureName(), Vec2.zero(), Vec2.one())
@@ -76,6 +76,13 @@ mod CursorScene {
                               EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)))
             |> Scene.addChild(name(), spriteName(),
                                EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
+
+    /// パーティ先頭プレイヤー（id=0）の grid 位置。`add` 初期化用。
+    def firstPlayerPos(scene: Scene[NodeTag]): Vec2.Vec2i =
+        match PlayerScene.get(0, scene) {
+            case Some(d) => d#gridPos
+            case None    => {x = 0, y = 0}
+        }
 
     /// グリッド座標 → セル中心ピクセル座標（MapScene の mapToLocal 慣習に揃える）
     def cellCenter(cell: Vec2.Vec2i): Vec2.Vec2 =
@@ -173,6 +180,63 @@ mod CursorScene {
         {x = Int32.max(minX, Int32.min(maxX, coord#x)),
          y = Int32.max(minY, Int32.min(maxY, coord#y))}
 
+    // ────────────────────────────────────────────────────────
+    // (D-2) 攻撃フェーズ用 polling
+    // ────────────────────────────────────────────────────────
+
+    /// `PlayerAttack` フェーズ専用の `physicsProcess`。
+    /// 通常の `physicsProcess` と違い:
+    ///   - clamp は赤マス（PlayerAttackRangeScene）+ **選択中プレイヤー自身のマス**
+    ///     → 範囲外のセルへ移動しようとしても動かない。フェーズ突入時のスナップ先
+    ///       （選択中プレイヤーマス）に戻れるよう、そのマスも通行可とする
+    ///   - 敵 hover 検知は不要（このフェーズでは EnemyRangeScene を出さない）
+    ///
+    /// Game.flix が NodeTag マッチで dispatch する。
+    pub def physicsProcessAttack(_delta: Float64,
+                                  node: EngineNode[NodeTag],
+                                  _path: NodePath,
+                                  scene: Scene[NodeTag]):
+                                 (EngineNode[NodeTag], Scene[NodeTag])
+                                 \ {GameEngine.Game, Tween.Scheduler,
+                                     SelectedPlayer.State} =
+        match node {
+            case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
+                if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
+                else
+                    match readHeldDirection() {
+                        case None      => (node, scene)
+                        case Some(dir) =>
+                            let candidate = Vec2.addI(data#gridPos, dir);
+                            let isSelectedCell = isSelectedPlayerCell(candidate, scene);
+                            // 赤マス内 OR 選択中プレイヤー自身のマスのみ移動可。
+                            if (not (PlayerAttackRangeScene.isInRange(candidate, scene)
+                                     or isSelectedCell))
+                                (node, scene)
+                            else {
+                                let (newMarker, movedData) =
+                                    moveStep(candidate, marker, data);
+                                (EngineNode.Marker2DWithState(newMarker,
+                                                                NodeTag.Cursor(movedData)),
+                                 scene)
+                            }
+                    }
+            case _ => (node, scene)
+        }
+
+    /// `cell` が選択中プレイヤーの位置と一致するか。
+    /// 未選択（None）の場合は false。
+    def isSelectedPlayerCell(cell: Vec2.Vec2i,
+                              scene: Scene[NodeTag]): Bool \ SelectedPlayer.State =
+        match SelectedPlayer.State.get() {
+            case None     => false
+            case Some(id) =>
+                match PlayerScene.get(id, scene) {
+                    case Some(d) =>
+                        d#gridPos#x == cell#x and d#gridPos#y == cell#y
+                    case None    => false
+                }
+        }
+
     /// 指定セルに居る敵の id を返す（居なければ None）
     def enemyIdAt(coord: Vec2.Vec2i, board: Board): Option[Int32] =
         Board.enemyPositions(board)
@@ -191,11 +255,13 @@ mod CursorScene {
         Scene.mapEngineNode(cursorPath(),
             n -> CanvasItem.setVisible(visible, n), scene)
 
-    /// カーソルをプレイヤーの現在位置にスナップさせ、ホバー状態をリセットする。
+    /// カーソルを「選択中プレイヤー」または最初のアクティブプレイヤーの位置にスナップさせ、
+    /// ホバー状態をリセットする。
     /// 敵ターン突入時 / キャンセル復帰時 / プレイヤー移動完了時に呼んで、
     /// 「次にカーソル選択フェーズに戻ったとき味方の上から始まる」状態を作る。
-    pub def snapToPlayer(scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
-        let target = PlayerScene.getGridPos(scene);
+    pub def snapToPlayer(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, SelectedPlayer.State} =
+        let target = snapTargetPos(scene);
         let world = cellCenter(target);
         // 進行中の Tween をキャンセルして即座に位置を確定させる。
         Tween.Scheduler.cancel(cursorPath());
@@ -203,6 +269,33 @@ mod CursorScene {
         mapCursor((m, d) ->
             (m, {gridPos = target, lastHoveredEnemyId = None | d}),
             snapped)
+
+    /// snap 先のセルを決める:
+    ///   1. 選択中プレイヤーがあればそれ
+    ///   2. なければアクティブな最初のプレイヤー
+    ///   3. それも無ければ id=0 (waited 含む)
+    def snapTargetPos(scene: Scene[NodeTag]): Vec2.Vec2i \ SelectedPlayer.State =
+        match SelectedPlayer.State.get() {
+            case Some(id) =>
+                match PlayerScene.get(id, scene) {
+                    case Some(d) => d#gridPos
+                    case None    => fallbackPos(scene)
+                }
+            case None => fallbackPos(scene)
+        }
+
+    /// 選択無し時の fallback: 最初のアクティブ、または id=0。
+    def fallbackPos(scene: Scene[NodeTag]): Vec2.Vec2i =
+        let active = PlayerScene.getAll(scene)
+            |> List.filter(d -> not d#waited);
+        match List.head(active) {
+            case Some(d) => d#gridPos
+            case None    =>
+                match PlayerScene.get(0, scene) {
+                    case Some(d) => d#gridPos
+                    case None    => {x = 0, y = 0}
+                }
+        }
 
     // ────────────────────────────────────────────────────────
     // (F) ボイラプレート — pattern match を関数化

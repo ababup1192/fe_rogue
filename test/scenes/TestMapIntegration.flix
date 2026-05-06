@@ -112,11 +112,11 @@ mod TestMapIntegration {
             moduleOfCell = _ -> None
         }
 
-    /// 指定位置に Player 駒だけがある盤面
+    /// 指定位置に Player(0) 駒だけがある盤面
     def realBoardWithPlayerAt(playerPos: Vec2.Vec2i): Board =
         {
             map    = realMapSnapshot(),
-            pieces = (Piece.Player, playerPos) :: Nil
+            pieces = (Piece.Player(0), playerPos) :: Nil
         }
 
     /// Option[Vec2i] を assertEq 用の tuple に変換
@@ -175,11 +175,12 @@ mod TestMapIntegration {
     ///   right → Some(6, 5)   床
     @Test
     def testTryMoveFromInitialPosition(): Unit \ Assert =
-        let board = realBoardWithPlayerAt({x = 5, y = 5});
-        let up    = BoardLogic.tryMove(board, Vec2.upI())    |> unpackOption;
-        let down  = BoardLogic.tryMove(board, Vec2.downI())  |> unpackOption;
-        let left  = BoardLogic.tryMove(board, Vec2.leftI())  |> unpackOption;
-        let right = BoardLogic.tryMove(board, Vec2.rightI()) |> unpackOption;
+        let source: Vec2.Vec2i = {x = 5, y = 5};
+        let board = realBoardWithPlayerAt(source);
+        let up    = BoardLogic.tryMove(board, source, Vec2.upI())    |> unpackOption;
+        let down  = BoardLogic.tryMove(board, source, Vec2.downI())  |> unpackOption;
+        let left  = BoardLogic.tryMove(board, source, Vec2.leftI())  |> unpackOption;
+        let right = BoardLogic.tryMove(board, source, Vec2.rightI()) |> unpackOption;
         Assert.assertEq(
             expected = ((true,  5, 4),    // up    → 床
                         (false, 0, 0),    // down  → 壁
@@ -195,8 +196,9 @@ mod TestMapIntegration {
     /// (5,5) → down (5,6) は壁 ← これが報告された症状。
     @Test
     def testDownBlockedAtFiveFive(): Unit \ Assert =
-        let board = realBoardWithPlayerAt({x = 5, y = 5});
-        let result = BoardLogic.tryMove(board, Vec2.downI());
+        let source: Vec2.Vec2i = {x = 5, y = 5};
+        let board = realBoardWithPlayerAt(source);
+        let result = BoardLogic.tryMove(board, source, Vec2.downI());
         Assert.assertEq(expected = (false, 0, 0), unpackOption(result))
 
     // ========================================================================
@@ -229,37 +231,41 @@ mod TestMapIntegration {
     // (4) PlayerScene.moveTo end-to-end — 単発入力で正しい方向にtweenが向くか
     // ========================================================================
 
+    /// テスト用初期グリッド（PlayerScene.add の経由を回避）。
+    def initialGrid(): Vec2.Vec2i = {x = 5, y = 5}
+
     /// プレイヤーシーン構築（JSON ロード回避、Marker2D 直接生成）。
-    /// world 位置は initialGrid のタイル中心 = (88, 88)。
+    /// world 位置は initialGrid のタイル中心 = (88, 88)。id=0 単独。
     def emptyPlayerScene(): Scene[NodeTag] =
-        let initial = PlayerScene.initialGrid();
+        let initial = initialGrid();
         let initialWorld = TileMapLayer.mapToLocal(initial, realTileMapLayer());
         let marker = Marker2D.make(initialWorld);
         Scene.empty()
-            |> Scene.addNode("Player",
+            |> Scene.addNode(PlayerScene.playerName(0),
                 EngineNode.Marker2DWithState(marker,
                     NodeTag.Player({
+                        id        = 0,
                         gridPos   = initial,
-                        moveTiles = PlayerScene.defaultMoveTiles()
+                        moveTiles = PlayerScene.defaultMoveTiles(),
+                        hp        = PlayerScene.defaultHp(),
+                        waited    = false
                     })))
 
-    /// プレイヤー world 座標
+    /// プレイヤー id=0 の world 座標
     def playerWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
-        Scene.globalPositionAt(PlayerScene.playerPath(), scene)
+        Scene.globalPositionAt(PlayerScene.playerPath(0), scene)
 
-    /// scene 内 Player の (marker, data) を moveTo に渡し、 戻り値で scene を更新する。
-    /// 直接 PlayerScene.moveTo を呼ぶと (marker, data) の取り出し / scene 書き戻しが
-    /// 各テストに散らばるため、 1 か所に閉じ込める薄いラッパ。
+    /// scene 内 Player(0) の (marker, data) を moveTo に渡し、戻り値で scene を更新する。
     def applyMove(map: MapSnapshot, target: Vec2.Vec2i, scene: Scene[NodeTag]):
             Scene[NodeTag] \ Tween.Scheduler =
-        match Scene.getEngineNode(PlayerScene.playerPath(), scene) {
+        match Scene.getEngineNode(PlayerScene.playerPath(0), scene) {
             case Some(EngineNode.Marker2DWithState(marker, NodeTag.Player(data))) =>
                 let (newMarker, newData) =
-                    PlayerScene.moveTo(map, target, marker, data, scene);
-                Scene.setEngineNode(PlayerScene.playerPath(),
+                    PlayerScene.moveTo(0, map, target, marker, data, scene);
+                Scene.setEngineNode(PlayerScene.playerPath(0),
                     EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
                     scene)
-            case _ => bug!("applyMove: expected Player at playerPath")
+            case _ => bug!("applyMove: expected Player at playerPath(0)")
         }
 
     /// 4 方向それぞれの単発 moveTo を end-to-end で検証する。
@@ -320,12 +326,12 @@ mod TestMapIntegration {
         def loop(steps: Int32, scene: Scene[NodeTag]): (Int32, Scene[NodeTag]) =
             if (steps >= 20) (steps, scene)
             else {
-                let player = PlayerScene.getGridPos(scene);
+                let player = PlayerScene.getGridPos(0, scene);
                 let board: Board = {
                     map    = snapshot,
-                    pieces = (Piece.Player, player) :: Nil
+                    pieces = (Piece.Player(0), player) :: Nil
                 };
-                match BoardLogic.tryMove(board, dir) {
+                match BoardLogic.tryMove(board, player, dir) {
                     case None         => (steps, scene)   // 壁で停止
                     case Some(target) =>
                         let scene1 = applyMove(snapshot, target, scene);
@@ -334,17 +340,17 @@ mod TestMapIntegration {
                 }
             };
         let (count, finalScene) = loop(0, scene0 |> placeAt(start, snapshot));
-        let finalGrid = PlayerScene.getGridPos(finalScene);
+        let finalGrid = PlayerScene.getGridPos(0, finalScene);
         let finalWorld = playerWorldPos(finalScene);
         (count, finalGrid, finalWorld)
 
-    /// 指定グリッドに Player を配置した scene を返す（gridPos と world を整合させる）
+    /// 指定グリッドに Player(0) を配置した scene を返す
     def placeAt(grid: Vec2.Vec2i, snapshot: MapSnapshot): Scene[NodeTag] -> Scene[NodeTag] =
         scene -> {
             let world = snapshot#mapToLocal(grid);
             scene
-                |> Scene.setGlobalPositionAt(PlayerScene.playerPath(), world)
-                |> Scene.mapEngineNode(PlayerScene.playerPath(), engineNode -> match engineNode {
+                |> Scene.setGlobalPositionAt(PlayerScene.playerPath(0), world)
+                |> Scene.mapEngineNode(PlayerScene.playerPath(0), engineNode -> match engineNode {
                     case EngineNode.Marker2DWithState(marker, NodeTag.Player(data)) =>
                         EngineNode.Marker2DWithState(marker,
                             NodeTag.Player({gridPos = grid | data}))
@@ -397,18 +403,19 @@ mod TestMapIntegration {
             let snapshot = realMapSnapshot();
             let result = run {
                 let scene0 = emptyPlayerScene() |> placeAt({x = 1, y = 5}, snapshot);
+                let source: Vec2.Vec2i = {x = 1, y = 5};
                 let board: Board = {
                     map    = snapshot,
-                    pieces = (Piece.Player, ({x = 1, y = 5}: Vec2.Vec2i)) :: Nil
+                    pieces = (Piece.Player(0), source) :: Nil
                 };
                 let dir = Vec2.upI();
-                let target = match BoardLogic.tryMove(board, dir) {
+                let target = match BoardLogic.tryMove(board, source, dir) {
                     case Some(t) => t
                     case None    => bug!("(1,5) up should be open")
                 };
                 let scene1 = applyMove(snapshot, target, scene0);
                 let scene2 = Tween.tickAll(1.0, scene1);
-                let grid = PlayerScene.getGridPos(scene2);
+                let grid = PlayerScene.getGridPos(0, scene2);
                 let world = playerWorldPos(scene2);
                 (target#x, target#y, grid#x, grid#y, world#x, world#y)
             } with Tween.withScheduler(rc);

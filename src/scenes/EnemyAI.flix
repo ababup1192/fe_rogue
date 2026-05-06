@@ -23,9 +23,10 @@ mod EnemyAI {
 
     /// 敵 1 体の 1 ターンぶんの行動。
     /// `Move` の Vec2.Vec2i は 1 マス分の移動先（隣接セル）。
+    /// `Attack` は (enemyId, targetPlayerId) — 隣接する 1 名を狙う（複数人パーティ対応）。
     pub enum EnemyAction {
         case Move(Int32, Vec2.Vec2i)
-        case Attack(Int32)
+        case Attack(Int32, Int32)
         case Wait(Int32)
         case Skip(Int32)
     }
@@ -39,49 +40,55 @@ mod EnemyAI {
     pub def decideAction(board: Board,
                           enemy: EnemyScene.Data): (EnemyAction, EnemyScene.Data) =
         // 1) 検知判定: dormant なら同モジュールチェックで alerted を更新
+        //    どのプレイヤーでもいいので「同モジュールに 1 人でも居るか」で起動する
         let alertedNow = if (enemy#alerted) true
-                         else sameModuleAsPlayer(board, enemy#gridPos);
+                         else sameModuleAsAnyPlayer(board, enemy#gridPos);
         let updated = {alerted = alertedNow | enemy};
         if (not alertedNow) (EnemyAction.Skip(enemy#id), updated)
         else
-            // 2) chase: プレイヤー位置を取り出す（不在ならスキップ扱いで安全側に倒す）
-            match Board.playerPos(board) {
-                case None         => (EnemyAction.Skip(enemy#id), updated)
-                case Some(player) =>
-                    if (isAdjacent(enemy#gridPos, player))
-                        (EnemyAction.Attack(enemy#id), updated)
-                    else
-                        // 最短経路の 1 歩目を返す。複数マス分は呼び出し側が
-                        // EnemyTurn.Queue に step を積んで再度呼ぶことで実現する。
-                        // プレイヤーセル自体は経路から除外したいが、隣接判定で
-                        // 既にこの分岐に来ているので path[0] がプレイヤーセルになることはない。
-                        match bfsPath(board, enemy#gridPos, player) {
-                            case None       => (EnemyAction.Wait(enemy#id), updated)
-                            case Some(path) =>
-                                match List.head(dropLast(path)) {
-                                    case Some(target) =>
-                                        (EnemyAction.Move(enemy#id, target), updated)
-                                    case None         =>
-                                        (EnemyAction.Wait(enemy#id), updated)
-                                }
-                        }
+            // 2) Attack 優先: 隣接プレイヤーが居れば誰でも 1 名殴る（最寄り問わず）
+            match Board.adjacentPlayer(enemy#gridPos, board) {
+                case Some(adj) =>
+                    let (targetId, _) = adj;
+                    (EnemyAction.Attack(enemy#id, targetId), updated)
+                case None =>
+                    // 3) chase: 最寄りのプレイヤーを target にして 1 歩目を返す
+                    match Board.nearestPlayer(enemy#gridPos, board) {
+                        case None              => (EnemyAction.Skip(enemy#id), updated)
+                        case Some(targetEntry) =>
+                            let (_, target) = targetEntry;
+                            match bfsPath(board, enemy#gridPos, target) {
+                                case None       => (EnemyAction.Wait(enemy#id), updated)
+                                case Some(path) =>
+                                    match List.head(dropLast(path)) {
+                                        case Some(step) =>
+                                            (EnemyAction.Move(enemy#id, step), updated)
+                                        case None       =>
+                                            (EnemyAction.Wait(enemy#id), updated)
+                                    }
+                            }
+                    }
             }
 
     // ════════════════════════════════════════════════════════
     // 検知ロジック
     // ════════════════════════════════════════════════════════
 
-    /// 敵セルとプレイヤーセルが同じモジュール idx に属するか。
-    /// どちらか / 両方が None（モジュール外＝void）の場合は同一とみなさない。
-    def sameModuleAsPlayer(board: Board, enemyPos: Vec2.Vec2i): Bool =
-        match Board.playerPos(board) {
-            case None         => false
-            case Some(player) =>
-                match (board#map#moduleOfCell(enemyPos),
-                       board#map#moduleOfCell(player)) {
-                    case (Some(a), Some(b)) => a == b
-                    case _                  => false
-                }
+    /// 敵セルが「いずれかのプレイヤー」と同じモジュール idx に属するか。
+    /// パーティ全員のうち 1 人でも同モジュールに居れば true を返す。
+    /// 両方が None（モジュール外＝void）の場合は同一とみなさない。
+    def sameModuleAsAnyPlayer(board: Board, enemyPos: Vec2.Vec2i): Bool =
+        match board#map#moduleOfCell(enemyPos) {
+            case None    => false
+            case Some(a) =>
+                Board.playerPositions(board)
+                    |> List.exists(p -> {
+                        let (_, pos) = p;
+                        match board#map#moduleOfCell(pos) {
+                            case Some(b) => a == b
+                            case None    => false
+                        }
+                    })
         }
 
     // ════════════════════════════════════════════════════════

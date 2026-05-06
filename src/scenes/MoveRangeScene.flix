@@ -56,36 +56,51 @@ mod MoveRangeScene {
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
-    /// MapScene + PlayerScene が登録済みのシーンに MoveRange ノードと
-    /// 各セルの Sprite2D 子を追加する。プレイヤー現在位置を origin に
-    /// `BoardLogic.reachableCells` で範囲を求める。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
+    /// MapScene + PlayerScene が登録済みのシーンに MoveRange ノードと各セルの Sprite2D
+    /// 子を追加する。**選択中プレイヤー** の位置を origin に `BoardLogic.reachableCells`
+    /// で範囲を求める。未選択（PlayerCursor / EnemyTurn 等）なら何も描画しない。
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
+        match SelectedPlayer.State.get() {
+            case None     => scene   // 未選択 → 表示なし
+            case Some(id) =>
+                match PlayerScene.get(id, scene) {
+                    case None    => scene   // 既に居ない（防御的）
+                    case Some(_) => buildFor(id, scene)
+                }
+        }
+
+    /// 指定 id を起点に MoveRange を組み立てる本体（既存ノードは事前に取り除いてから呼ぶ）。
+    def buildFor(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
         let layer  = MapScene.getMapLayer(scene);
-        let origin = PlayerScene.getGridPos(scene);
-        // 移動力はキャラごとに違う想定なので Player の Data から読む。
-        // MoveRangeScene はマス数の出所を 1 か所（PlayerScene.Data#moveTiles）に集約する。
-        let steps  = PlayerScene.getMoveTiles(scene);
-        // 敵マスは BFS の通行可能セルから除外する（Q5-A: FE 流の視覚的明示）。
-        // BoardLogic.reachableCells は単一の述語しか取らないので、ここで合成する。
+        let origin = PlayerScene.getGridPos(id, scene);
+        let steps  = PlayerScene.getMoveTiles(id, scene);
+        // 通行不可の判定: 壁・敵駒・**自分以外の味方駒** を除外する。
         let enemyCells = EnemyScene.getAll(scene) |> List.map(e -> e#gridPos);
-        let isEnemy = c -> List.exists(p -> p#x == c#x and p#y == c#y, enemyCells);
-        let cells  = BoardLogic.reachableCells(
-            c -> TileMapLayer.isFloor(c, layer) and not isEnemy(c),
+        let allyCells  = PlayerScene.getAll(scene)
+            |> List.filter(d -> d#id != id)
+            |> List.map(d -> d#gridPos);
+        let isBlocked = c ->
+                List.exists(p -> p#x == c#x and p#y == c#y, enemyCells)
+                or List.exists(p -> p#x == c#x and p#y == c#y, allyCells);
+        let cells = BoardLogic.reachableCells(
+            c -> TileMapLayer.isFloor(c, layer) and not isBlocked(c),
             origin,
             steps);
-        // 描画は origin（プレイヤーが立っているマス）を除外する：自分自身のマスに
-        // move_tile を敷くと視覚的に冗長で、プレイヤーの足元が必要以上に染まる。
-        // ただし `reachable` 自体は origin を含めたまま保持しておく（isInRange の
-        // 整合性 / 将来の用途に備える）。
+        // origin（自分のマス）は描画から除外
         let drawCells = List.filter(c -> not (c#x == origin#x and c#y == origin#y), cells);
         scene
             |> addParent(cells)
             |> addTileChildren(drawCells)
 
     /// 既存の MoveRange ノードを丸ごと取り除いて `add` で組み直す。
-    /// 「ターンエンド」相当の操作。プレイヤー位置が更新されている前提で呼ぶ。
-    pub def refresh(scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def refresh(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
         Scene.removeAt(moveRangePath(), scene) |> add
+
+    /// 表示中の MoveRange ノードがあれば取り除く。なければ何もしない。
+    /// PlayerAttack フェーズ移行時など、青マスを一時的に消したいときに使う
+    /// （`EnemyRangeScene.clear` と対称）。
+    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.removeAt(moveRangePath(), scene)
 
     /// 親 Marker2D を origin (0,0) に追加する（位置はマップと同じワールド系）。
     def addParent(cells: List[Vec2.Vec2i], scene: Scene[NodeTag]): Scene[NodeTag] =

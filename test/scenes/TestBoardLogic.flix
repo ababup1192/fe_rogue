@@ -48,12 +48,15 @@ mod TestBoardLogic {
             moduleOfCell = _ -> None
         }
 
-    /// snapshot と Player 位置から Board を組む
+    /// snapshot と Player 位置から Board を組む（id=0 単独パーティ）
     def boardWithPlayer(snapshot: MapSnapshot, player: Vec2.Vec2i): Board =
         {
             map    = snapshot,
-            pieces = (Piece.Player, player) :: Nil
+            pieces = (Piece.Player(0), player) :: Nil
         }
+
+    /// テスト用：Player 位置（=source）として使うのは boardWithPlayer の player と一致する想定
+    def src(c: Int32, d: Int32): Vec2.Vec2i = {x = c, y = d}
 
     /// Option[Vec2i] を assertEq 用の tuple に変換
     /// (None → (false, 0, 0)、Some → (true, x, y))
@@ -70,45 +73,35 @@ mod TestBoardLogic {
     /// 何もない 5×5 盤面で Player(2,2) は右に進める → Some(3, 2)
     @Test
     def testTryMoveAllowedOnEmptyBoard(): Unit \ Assert =
-        let board = boardWithPlayer(emptySnapshot(5, 5), ({x = 2, y = 2}: Vec2.Vec2i));
-        let result = BoardLogic.tryMove(board, Vec2.rightI());
+        let board = boardWithPlayer(emptySnapshot(5, 5), src(2, 2));
+        let result = BoardLogic.tryMove(board, src(2, 2), Vec2.rightI());
         Assert.assertEq(expected = (true, 3, 2), unpackOption(result))
 
     /// 進行先 (3, 2) が壁なら None
     @Test
     def testTryMoveBlockedByWall(): Unit \ Assert =
-        let snapshot = floorSnapshotWithWall(5, 5, ({x = 3, y = 2}: Vec2.Vec2i));
-        let board = boardWithPlayer(snapshot, ({x = 2, y = 2}: Vec2.Vec2i));
-        let result = BoardLogic.tryMove(board, Vec2.rightI());
+        let snapshot = floorSnapshotWithWall(5, 5, src(3, 2));
+        let board = boardWithPlayer(snapshot, src(2, 2));
+        let result = BoardLogic.tryMove(board, src(2, 2), Vec2.rightI());
         Assert.assertEq(expected = (false, 0, 0), unpackOption(result))
 
     /// 盤面の端 (0, 0) から外（左）に出ようとすると None
     @Test
     def testTryMoveBlockedAtEdge(): Unit \ Assert =
-        let board = boardWithPlayer(emptySnapshot(5, 5), ({x = 0, y = 0}: Vec2.Vec2i));
-        let result = BoardLogic.tryMove(board, Vec2.leftI());
+        let board = boardWithPlayer(emptySnapshot(5, 5), src(0, 0));
+        let result = BoardLogic.tryMove(board, src(0, 0), Vec2.leftI());
         Assert.assertEq(expected = (false, 0, 0), unpackOption(result))
 
     /// 右が壁でも下方向は開いている → 別方向には進める
     @Test
     def testTryMovePicksOpenDirection(): Unit \ Assert =
-        let snapshot = floorSnapshotWithWall(5, 5, ({x = 3, y = 2}: Vec2.Vec2i));
-        let board = boardWithPlayer(snapshot, ({x = 2, y = 2}: Vec2.Vec2i));
-        let resultRight = BoardLogic.tryMove(board, Vec2.rightI());
-        let resultDown  = BoardLogic.tryMove(board, Vec2.downI());
+        let snapshot = floorSnapshotWithWall(5, 5, src(3, 2));
+        let board = boardWithPlayer(snapshot, src(2, 2));
+        let resultRight = BoardLogic.tryMove(board, src(2, 2), Vec2.rightI());
+        let resultDown  = BoardLogic.tryMove(board, src(2, 2), Vec2.downI());
         Assert.assertEq(
             expected = ((false, 0, 0), (true, 2, 3)),
             (unpackOption(resultRight), unpackOption(resultDown)))
-
-    /// pieces に Player がいない Board では tryMove が None を返す
-    @Test
-    def testTryMoveWithoutPlayer(): Unit \ Assert =
-        let board: Board = {
-            map    = emptySnapshot(5, 5),
-            pieces = Nil
-        };
-        let result = BoardLogic.tryMove(board, Vec2.rightI());
-        Assert.assertEq(expected = (false, 0, 0), unpackOption(result))
 
     // ========================================================================
     // tryMoveWithRange — `allowed` 述語で目標を弾けるか
@@ -117,15 +110,15 @@ mod TestBoardLogic {
     /// `allowed` が常に true なら `tryMove` と同じく Some(target) を返す。
     @Test
     def testTryMoveWithRangeAllowed(): Unit \ Assert =
-        let board = boardWithPlayer(emptySnapshot(5, 5), ({x = 2, y = 2}: Vec2.Vec2i));
-        let result = BoardLogic.tryMoveWithRange(board, Vec2.rightI(), _ -> true);
+        let board = boardWithPlayer(emptySnapshot(5, 5), src(2, 2));
+        let result = BoardLogic.tryMoveWithRange(board, src(2, 2), Vec2.rightI(), _ -> true);
         Assert.assertEq(expected = (true, 3, 2), unpackOption(result))
 
     /// `allowed` が false を返すセルへは進めない（壁と同じ扱い）。
     @Test
     def testTryMoveWithRangeBlocked(): Unit \ Assert =
-        let board = boardWithPlayer(emptySnapshot(5, 5), ({x = 2, y = 2}: Vec2.Vec2i));
-        let result = BoardLogic.tryMoveWithRange(board, Vec2.rightI(), _ -> false);
+        let board = boardWithPlayer(emptySnapshot(5, 5), src(2, 2));
+        let result = BoardLogic.tryMoveWithRange(board, src(2, 2), Vec2.rightI(), _ -> false);
         Assert.assertEq(expected = (false, 0, 0), unpackOption(result))
 
     /// 他駒（敵）が居るマスへは入れない。pieces に Enemy(0) を進行先 (3,2) に置く。
@@ -133,10 +126,10 @@ mod TestBoardLogic {
     def testTryMoveBlockedByEnemy(): Unit \ Assert =
         let board: Board = {
             map    = emptySnapshot(5, 5),
-            pieces = (Piece.Player, ({x = 2, y = 2}: Vec2.Vec2i))
-                  :: (Piece.Enemy(0), ({x = 3, y = 2}: Vec2.Vec2i)) :: Nil
+            pieces = (Piece.Player(0), src(2, 2))
+                  :: (Piece.Enemy(0), src(3, 2)) :: Nil
         };
-        let result = BoardLogic.tryMoveWithRange(board, Vec2.rightI(), _ -> true);
+        let result = BoardLogic.tryMoveWithRange(board, src(2, 2), Vec2.rightI(), _ -> true);
         Assert.assertEq(expected = (false, 0, 0), unpackOption(result))
 
     // ========================================================================

@@ -19,22 +19,24 @@ mod BoardLogic {
     pub def stepTarget(origin: Vec2.Vec2i, dir: Vec2.Vec2i): Vec2.Vec2i =
         Vec2.addI(origin, dir)
 
-    /// Player を dir 方向に 1 マス進めるか試みる。
-    /// 進めるなら Some(目標座標)、壁・範囲外、または盤上に Player がいなければ None。
-    pub def tryMove(board: Board, dir: Vec2.Vec2i): Option[Vec2.Vec2i] =
-        tryMoveWithRange(board, dir, _ -> true)
+    /// `source` から dir 方向に 1 マス進めるか試みる。
+    /// 進めるなら Some(目標座標)、壁・範囲外なら None。
+    /// **マルチプレイヤー対応**: source は呼び出し側が「いま動かしたい駒」の位置を渡す。
+    pub def tryMove(board: Board, source: Vec2.Vec2i,
+                     dir: Vec2.Vec2i): Option[Vec2.Vec2i] =
+        tryMoveWithRange(board, source, dir, _ -> true)
 
     /// `tryMove` に「移動可能セル」述語による追加制約を加える版。
     /// 範囲表示（move_tile）の外には踏み込めないようにする用途で `MoveRangeScene.isInRange`
     /// 等を渡す。`allowed` が常に true なら `tryMove` と同じ挙動。
-    pub def tryMoveWithRange(board: Board, dir: Vec2.Vec2i,
+    pub def tryMoveWithRange(board: Board, source: Vec2.Vec2i,
+                              dir: Vec2.Vec2i,
                               allowed: Vec2.Vec2i -> Bool): Option[Vec2.Vec2i] =
-        Board.playerPos(board) |> Option.flatMap(player ->
-            let target = stepTarget(player, dir);
-            // 床 + 範囲内 + 他駒に占有されていない（敵駒に重ねない）
-            if (isWalkable(board, target)
-                and allowed(target)
-                and not Board.isOccupied(target, board)) Some(target) else None)
+        let target = stepTarget(source, dir);
+        // 床 + 範囲内 + 他駒に占有されていない（敵駒や他味方に重ねない）
+        if (isWalkable(board, target)
+            and allowed(target)
+            and not Board.isOccupied(target, board)) Some(target) else None
 
     /// 4 方向 BFS で `origin` から最大 `maxSteps` ステップ以内に到達できる床セルの一覧を返す。
     /// `origin` 自身も結果に含む（距離 0）。

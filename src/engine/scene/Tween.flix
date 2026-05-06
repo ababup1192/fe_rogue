@@ -10,34 +10,43 @@
 /// 使い方:
 ///   `Game.start` で `with Tween.withScheduler(rc)` を 1 行注入し、
 ///   `gameLoop` の物理パイプライン末尾で `|> Tween.tickAll(dt)` を呼ぶ。
-///   ゲームロジック側は `Tween.tweenPosition(targetPath, start, to, duration)` で
+///   ゲームロジック側は `Tween.tweenPosition(...)` / `Tween.tweenAlpha(...)` で
 ///   tween をスケジュールするだけ。advance 等の internal は見えない。
 
 mod Tween {
 
-    /// 補間対象プロパティ。将来 Scale / Rotation / Color に拡張
+    /// 補間対象プロパティ。start と target を両方内包する形にして、
+    /// Position / Alpha どちらも同じ Entry シェイプで扱えるようにする。
+    /// 将来 Scale / Rotation / Color に拡張する場合もここにバリアントを追加する。
     pub enum Kind {
-        case Position(Vec2.Vec2)   // 目標 world 座標
+        /// (start world 座標, target world 座標)
+        case Position(Vec2.Vec2, Vec2.Vec2)
+        /// (start alpha, target alpha) — Sprite2D の alpha を補間する
+        case Alpha(Float32, Float32)
     }
 
-    /// 1 つのアクティブ tween。`startPos` は登録時にキャプチャしたロック値
+    /// 1 つのアクティブ tween。
     pub type alias Entry = {
         path     = NodePath,
         kind     = Kind,
-        startPos = Vec2.Vec2,
         elapsed  = Float64,
         duration = Float64
     }
 
-    /// `tickAll` が `consumeUpdates` から受け取り、scene に書き戻す中間表現
+    /// `tickAll` が `consumeUpdates` から受け取り、scene に書き戻す中間表現。
+    /// 値の種類は Kind と 1-to-1。
+    pub enum UpdateValue {
+        case PosVal(Vec2.Vec2)
+        case AlphaVal(Float32)
+    }
+
     pub type alias Update = {
-        path         = NodePath,
-        kind         = Kind,
-        currentValue = Vec2.Vec2
+        path  = NodePath,
+        value = UpdateValue
     }
 
     /// effect op は Flix 上 1 引数なので Entry 1 つで scheduling する。
-    /// user-facing は下の `tweenPosition` 関数（複数引数の便宜 wrapper）。
+    /// user-facing は下の `tweenPosition` / `tweenAlpha` 関数（複数引数の便宜 wrapper）。
     /// `consumeUpdates` は `tickAll` だけが呼ぶ engine 内部用。
     pub eff Scheduler {
         /// 既存同パスを置換しつつ entry を登録
@@ -58,8 +67,19 @@ mod Tween {
                           to: Vec2.Vec2, duration: Float64): Unit \ Scheduler =
         Scheduler.schedule({
             path     = targetPath,
-            kind     = Kind.Position(to),
-            startPos = startPos,
+            kind     = Kind.Position(startPos, to),
+            elapsed  = 0.0,
+            duration = duration
+        })
+
+    /// Sprite2D の alpha を `from` → `to` に `duration` 秒かけて補間する。
+    /// 対象 path は **Sprite2D ノード**を指すこと（Marker2D 親ではなく子の Sprite）。
+    /// 同パスへの再登録は古い tween を置換。
+    pub def tweenAlpha(targetPath: NodePath, fromAlpha: Float32,
+                       toAlpha: Float32, duration: Float64): Unit \ Scheduler =
+        Scheduler.schedule({
+            path     = targetPath,
+            kind     = Kind.Alpha(fromAlpha, toAlpha),
             elapsed  = 0.0,
             duration = duration
         })
@@ -94,13 +114,23 @@ mod Tween {
                         let (running, ups) = acc;
                         let nextElapsed = e#elapsed + delta;
                         let t = Float64.min(1.0, nextElapsed / e#duration);
-                        let cur = match e#kind {
-                            case Kind.Position(target) => Vec2.lerp(e#startPos, target, t)
+                        let value = match e#kind {
+                            case Kind.Position(start, target) =>
+                                UpdateValue.PosVal(Vec2.lerp(start, target, t))
+                            case Kind.Alpha(start, target) =>
+                                let s = Float32.toFloat64(start);
+                                let g = Float32.toFloat64(target);
+                                let v = s + (g - s) * t;
+                                // Float64 → Float32: alpha は 0..1 範囲内なので
+                                // tryToFloat32 は常に Some を返す。Java interop で
+                                // 直接 narrow しても良いが、stdlib API を使うほうが安全。
+                                let v32 = Float64.tryToFloat32(v)
+                                    |> Option.getWithDefault(target);
+                                UpdateValue.AlphaVal(v32)
                         };
                         let update: Update = {
-                            path         = e#path,
-                            kind         = e#kind,
-                            currentValue = cur
+                            path  = e#path,
+                            value = value
                         };
                         if (t >= 1.0)
                             // 完了 → リストから除外、updates には含めて最終位置を反映
@@ -126,9 +156,13 @@ mod Tween {
                     Scheduler.cancel(u#path);
                     sc
                 case Some(_) =>
-                    match u#kind {
-                        case Kind.Position(_) =>
-                            Scene.setGlobalPositionAt(u#path, u#currentValue, sc)
+                    match u#value {
+                        case UpdateValue.PosVal(v) =>
+                            Scene.setGlobalPositionAt(u#path, v, sc)
+                        case UpdateValue.AlphaVal(a) =>
+                            Scene.mapEngineNode(u#path,
+                                n -> EngineNode.mapSprite2D(s -> Sprite2D.setAlpha(a, s), n),
+                                sc)
                     }
             },
             scene, updates)

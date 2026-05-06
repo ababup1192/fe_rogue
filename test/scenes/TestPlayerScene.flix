@@ -1,34 +1,27 @@
-// PlayerScene のテスト
+// PlayerScene のテスト（multi-player 版）
 //
-// PlayerScene は moveTo(target) で gridPos を即更新し、見た目の補間は engine の
+// PlayerScene は moveTo(id, target, ...) で gridPos を即更新し、見た目の補間は engine の
 // `Tween` モジュールに委ねる。壁判定は BoardLogic の責務なので PlayerScene 自身は考えない。
 //
 // 検証する観点:
-//   - moveTo が gridPos を即更新する（world 座標は tween がまだ進めていないので元のまま）
+//   - moveTo が gridPos を即更新する
 //   - moveTo が Tween をスケジュールし、tickAll で target の world 座標に snap する
-//   - tween 進行中は isMoving が true、snap 後は false（Tween.Scheduler.isActive の委譲）
+//   - tween 進行中は isMoving が true、snap 後は false
 //
-// 個々の tween の advance/snap の正しさ自体は engine 層の TestTween で検証済みなので、
-// ここでは「moveTo → tickAll で実際に target に到達する」という end-to-end の繋がりのみ確認する。
-//
-// テスト用 tileSize は 16、初期グリッドは PlayerScene.initialGrid() = (5, 5)。
+// テスト用 tileSize は 16。`PlayerScene.add` を介さず Marker2D を直接構築する。
 
 mod TestPlayerScene {
 
-    // ========================================================================
-    // ヘルパー — テスト共通のシーン構築・取り出し
-    // ========================================================================
-
-    /// テスト用 tileSize（PlayerScene.scene.json と整合）
+    /// テスト用 tileSize
     def testTileSize(): Float64 = 16.0
 
-    /// テスト用ワールド座標換算（マップ globalPos が原点なので local == world）
+    /// テスト用ワールド座標換算
     def testGridToWorld(coords: Vec2.Vec2i): Vec2.Vec2 =
         let s = testTileSize();
         let v = Vec2.fromI(coords);
         {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
 
-    /// テスト用 MapSnapshot — 床のみ・13×13 サイズ・grid↔world は testGridToWorld で固定
+    /// テスト用 MapSnapshot — 床のみ・13×13・grid↔world は testGridToWorld
     def testSnapshot(): MapSnapshot =
         {
             tileSize     = testTileSize(),
@@ -41,7 +34,6 @@ mod TestPlayerScene {
         }
 
     /// Tween.Scheduler のスタブ handler。schedule の登録を捨てて何もしない。
-    /// PlayerScene.moveTo の gridPos 更新だけを検証したいテスト用。
     def withNoopTween(thunk: Unit -> a \ ef): a \ (ef - Tween.Scheduler) =
         run { thunk() } with handler Tween.Scheduler {
             def schedule(_, k) = k()
@@ -50,37 +42,40 @@ mod TestPlayerScene {
             def consumeUpdates(_, k) = k(Nil)
         }
 
-    /// プレイヤー 1 体だけのシーンを作る（JSON ロードを介さず Marker2D を直接構築）。
-    /// 初期 gridPos は PlayerScene.initialGrid()、pos はそれと整合する pixel 座標。
+    /// テスト用初期グリッド（PlayerScene.add の経由を回避）。
+    def initialGrid(): Vec2.Vec2i = {x = 5, y = 5}
+
+    /// id=0 のプレイヤー 1 体だけのシーンを作る（JSON ロードを介さず Marker2D を直接構築）。
     def emptyPlayerScene(): Scene[NodeTag] =
-        let initial = PlayerScene.initialGrid();
+        let initial = initialGrid();
         let pos = testGridToWorld(initial);
         let marker = Marker2D.make(pos);
         Scene.empty()
-            |> Scene.addNode("Player",
+            |> Scene.addNode(PlayerScene.playerName(0),
                 EngineNode.Marker2DWithState(marker,
                     NodeTag.Player({
+                        id        = 0,
                         gridPos   = initial,
-                        moveTiles = PlayerScene.defaultMoveTiles()
+                        moveTiles = PlayerScene.defaultMoveTiles(),
+                        hp        = PlayerScene.defaultHp(),
+                        waited    = false
                     })))
 
-    /// プレイヤーのワールド座標を取り出す
-    def playerWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
-        Scene.globalPositionAt(PlayerScene.playerPath(), scene)
+    /// プレイヤー id のワールド座標を取り出す
+    def playerWorldPos(id: Int32, scene: Scene[NodeTag]): Vec2.Vec2 =
+        Scene.globalPositionAt(PlayerScene.playerPath(id), scene)
 
-    /// scene 内 Player の (marker, data) を moveTo に渡し、 戻り値で scene を更新する。
-    /// 直接 PlayerScene.moveTo を呼ぶと (marker, data) の取り出し / scene 書き戻しが
-    /// 各テストに散らばるため、 1 か所に閉じ込める薄いラッパ。
-    def applyMove(map: MapSnapshot, target: Vec2.Vec2i, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ Tween.Scheduler =
-        match Scene.getEngineNode(PlayerScene.playerPath(), scene) {
+    /// scene 内 Player(id) の (marker, data) を moveTo に渡し、戻り値で scene を更新する。
+    def applyMove(id: Int32, map: MapSnapshot, target: Vec2.Vec2i,
+                   scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        match Scene.getEngineNode(PlayerScene.playerPath(id), scene) {
             case Some(EngineNode.Marker2DWithState(marker, NodeTag.Player(data))) =>
                 let (newMarker, newData) =
-                    PlayerScene.moveTo(map, target, marker, data, scene);
-                Scene.setEngineNode(PlayerScene.playerPath(),
+                    PlayerScene.moveTo(id, map, target, marker, data, scene);
+                Scene.setEngineNode(PlayerScene.playerPath(id),
                     EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
                     scene)
-            case _ => bug!("applyMove: expected Player at playerPath")
+            case _ => bug!("applyMove: expected Player at playerPath(${id})")
         }
 
     // ========================================================================
@@ -92,36 +87,32 @@ mod TestPlayerScene {
     @Test
     def testMoveToUpdatesGridPosImmediately(): Unit \ Assert =
         let target: Vec2.Vec2i = {x = 6, y = 5};
-        let initialPos = testGridToWorld(PlayerScene.initialGrid());
+        let initialPos = testGridToWorld(initialGrid());
         let after = withNoopTween(() ->
-            applyMove(testSnapshot(), target, emptyPlayerScene()));
-        let data = PlayerScene.getPlayerData(after);
-        let pos = playerWorldPos(after);
+            applyMove(0, testSnapshot(), target, emptyPlayerScene()));
+        let pos = playerWorldPos(0, after);
+        let gridX = PlayerScene.getGridPos(0, after)#x;
+        let gridY = PlayerScene.getGridPos(0, after)#y;
         Assert.assertEq(
             expected = (6, 5, initialPos#x, initialPos#y),
-            (data#gridPos#x, data#gridPos#y, pos#x, pos#y))
+            (gridX, gridY, pos#x, pos#y))
 
     /// moveTo 後の流れを実 Tween で end-to-end 検証する。
-    ///
-    ///   moveTo 直後:        world は initial のまま、isMoving = true（tween アクティブ）
-    ///   tickAll(1.0) 後:    world は target に snap、isMoving = false（tween 終了）
-    ///
-    /// 1.0 秒は slideDuration (= 16/120 ≈ 0.133 秒) より十分大きいので必ず snap する。
-    /// Player(5,5) → (6,5) なので initial = (88, 88), target = (104, 88)
-    /// （16 × 5 + 8 = 88、16 × 6 + 8 = 104）。
+    ///   moveTo 直後:        world は initial のまま、isMoving(0) = true
+    ///   tickAll(1.0) 後:    world は target に snap、isMoving(0) = false
     @Test
     def testMoveToSchedulesTweenAndSnaps(): Unit \ Assert =
         region rc {
             let target: Vec2.Vec2i = {x = 6, y = 5};
-            let initialWorld = testGridToWorld(PlayerScene.initialGrid());
+            let initialWorld = testGridToWorld(initialGrid());
             let targetWorld = testGridToWorld(target);
             let result = run {
-                let scene1 = applyMove(testSnapshot(), target, emptyPlayerScene());
-                let posBefore = playerWorldPos(scene1);
-                let activeBefore = PlayerScene.isMoving();
+                let scene1 = applyMove(0, testSnapshot(), target, emptyPlayerScene());
+                let posBefore = playerWorldPos(0, scene1);
+                let activeBefore = PlayerScene.isMoving(0);
                 let scene2 = Tween.tickAll(1.0, scene1);
-                let posAfter = playerWorldPos(scene2);
-                let activeAfter = PlayerScene.isMoving();
+                let posAfter = playerWorldPos(0, scene2);
+                let activeAfter = PlayerScene.isMoving(0);
                 (posBefore#x, posBefore#y, activeBefore,
                  posAfter#x, posAfter#y, activeAfter)
             } with Tween.withScheduler(rc);

@@ -1,9 +1,9 @@
 /// TurnPhase — 味方ターン内の細分化フェーズと敵ターンを 1 つの enum で扱う effect
 ///
 /// ターン制 SRPG の入力契約は単純な「敵ターン中か否か」だけでは表現できない。
-/// 味方ターンには「カーソルでマスを選んでいる」状態と「選択した味方を動かしている」
-/// 状態の 2 段があり、Z / X / WASD のそれぞれが意味を変える。`EnemyTurn.Queue.isEmpty()`
-/// だけでは「味方ターン中のどちらか」を区別できないため、専用のフェーズ effect を持つ。
+/// 味方ターンには「カーソルでマスを選ぶ」「味方を動かす」「攻撃対象を選ぶ」の 3 段が
+/// あり、Z / X / WASD のそれぞれが意味を変える。`EnemyTurn.Queue.isEmpty()` だけでは
+/// 「味方ターン中のどのサブフェーズか」を区別できないため、専用のフェーズ effect を持つ。
 ///
 /// 設計意図:
 ///   - 入力ハンドラ・各 Scene の `physicsProcess` がフェーズで分岐するための単一情報源
@@ -16,8 +16,10 @@
 /// 使い方:
 ///   - `Game.start` で `with TurnPhase.withState(rc)` を 1 行注入する
 ///   - 起動時の初期値は `PlayerCursor`（味方のターン・カーソル選択フェーズ）
-///   - 決定キー：味方マスで Z → `PlayerMoving` / 移動中に Z → 敵ターン投入 + `EnemyTurn`
-///   - キャンセルキー：移動中に X → `PlayerCursor` に戻す
+///   - 決定キー：味方マスで Z → `PlayerMoving` / 移動中に Z → `PlayerAttack` /
+///              攻撃中に Z（赤マス上の敵）→ ダメージ適用 + `EnemyTurn`
+///   - キャンセルキー：移動中に X → `PlayerCursor` に戻す /
+///                    攻撃中に X → 攻撃せず即 `EnemyTurn`（敵フェーズへスキップ）
 ///   - 敵ターン終了（`finishEnemyTurn`）→ `PlayerCursor` に戻す
 mod TurnPhase {
 
@@ -28,6 +30,10 @@ mod TurnPhase {
         case PlayerCursor
         /// 味方ターン・選択した味方を動かしているフェーズ。WASD/方向キーで味方を動かす。
         case PlayerMoving
+        /// 味方ターン・攻撃対象選択フェーズ。
+        /// 味方の周囲（射程内）に赤マスが出て、カーソルは赤マス内のみ移動可。
+        /// 赤マス上の敵に Z でダメージ → 敵ターンへ自動遷移、X で攻撃せず敵ターンへ。
+        case PlayerAttack
         /// 敵ターン。入力は無効、カーソル非表示、カメラはプレイヤーに固定。
         case EnemyTurn
     }

@@ -69,12 +69,12 @@ mod TestEnemyAI {
             moduleOfCell = c -> if (inB(c) and not isW(c)) Some(0) else None
         }
 
-    /// プレイヤー + 敵 1 体の Board を組む。
+    /// プレイヤー（id=0 単独） + 敵 1 体の Board を組む。
     def boardOf(map: MapSnapshot, player: Vec2.Vec2i,
                  enemyId: Int32, enemyPos: Vec2.Vec2i): Board =
         {
             map    = map,
-            pieces = (Piece.Player, player)
+            pieces = (Piece.Player(0), player)
                   :: (Piece.Enemy(enemyId), enemyPos) :: Nil
         }
 
@@ -82,15 +82,16 @@ mod TestEnemyAI {
     def enemyAt(id: Int32, pos: Vec2.Vec2i, alerted: Bool,
                  home: Int32, moveTiles: Int32): EnemyScene.Data =
         { id = id, gridPos = pos, alerted = alerted,
-          homeModuleIdx = home, moveTiles = moveTiles }
+          homeModuleIdx = home, moveTiles = moveTiles,
+          hp = EnemyScene.defaultHp(), dying = None }
 
     /// EnemyAction を tag だけのタプルに圧縮（id 付き）。Eq が無いので比較しやすくする。
     def tagOf(a: EnemyAction): String =
         match a {
-            case EnemyAction.Move(_, _) => "Move"
-            case EnemyAction.Attack(_)  => "Attack"
-            case EnemyAction.Wait(_)    => "Wait"
-            case EnemyAction.Skip(_)    => "Skip"
+            case EnemyAction.Move(_, _)   => "Move"
+            case EnemyAction.Attack(_, _) => "Attack"
+            case EnemyAction.Wait(_)      => "Wait"
+            case EnemyAction.Skip(_)      => "Skip"
         }
 
     def moveTarget(a: EnemyAction): Option[Vec2.Vec2i] =
@@ -264,7 +265,7 @@ mod TestEnemyAI {
         let map = singleRoomSnapshot(5, 3);
         let board: Board = {
             map    = map,
-            pieces = (Piece.Player, ({x = 0, y = 1}: Vec2.Vec2i))
+            pieces = (Piece.Player(0), ({x = 0, y = 1}: Vec2.Vec2i))
                   :: (Piece.Enemy(0), ({x = 4, y = 1}: Vec2.Vec2i))
                   :: (Piece.Enemy(1), ({x = 3, y = 1}: Vec2.Vec2i)) :: Nil
         };

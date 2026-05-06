@@ -28,16 +28,35 @@ mod EnemyScene {
     /// `homeModuleIdx` はスポーンしたときの部屋 idx（検知判定の補助情報）。
     /// `moveTiles` は 1 ターンに進めるマス数（FE の「移動力」相当）。
     /// EnemyAI が BFS パスからこの値ぶんだけ進めて 1 マスずつ Tween する。
+    /// `hp` は残り体力。0 になると `dying` に状態が入って点滅消滅アニメに入る。
+    /// `dying = Some(_)` の敵は `EnemyTurn.Queue` から除外され、行動しない。
     pub type alias Data = {
         id            = Int32,
         gridPos       = Vec2.Vec2i,
         alerted       = Bool,
         homeModuleIdx = Int32,
-        moveTiles     = Int32
+        moveTiles     = Int32,
+        hp            = Int32,
+        dying         = Option[DyingState]
+    }
+
+    /// 死亡演出中の状態。`tickDeaths` がフレームごとに進める。
+    /// `remainingBlinks` は残り点滅サイクル数（1 サイクル = FadingOut + FadingIn）。
+    pub type alias DyingState = {
+        remainingBlinks = Int32,
+        phase           = BlinkPhase
+    }
+
+    /// 点滅 1 サイクル内のサブフェーズ。
+    /// FadingOut: 1.0 → 0.5、FadingIn: 0.5 → 1.0。
+    pub enum BlinkPhase with Eq, ToString {
+        case FadingOut
+        case FadingIn
     }
 
     /// スポーン時の中間表現。`add` 内のループで部屋ごとに積み上げ、最後に Marker2D へ展開する。
-    type alias Spawn = {
+    /// `respawnFromInitial` で「ゲームオーバー時に同じ位置に敵を出し直す」のにも使うため pub。
+    pub type alias Spawn = {
         id        = Int32,
         gridPos   = Vec2.Vec2i,
         moduleIdx = Int32
@@ -68,14 +87,33 @@ mod EnemyScene {
     /// 敵初期の移動力（マス）。`Data#moveTiles` の初期値として使う。
     pub def defaultMoveTiles(): Int32 = 3
 
+    /// 敵初期 HP。スポーン時とリセット時の `Data#hp` 初期値。
+    pub def defaultHp(): Int32 = 3
+
     /// 1 マス分のスライド時間（秒）。Player と同じ感覚で見えるよう揃える。
     def slideDuration(): Float64 = 16.0 / 120.0
+
+    /// 死亡点滅 1 フェーズ（FadingOut または FadingIn）の所要時間。
+    /// 3 サイクル × 2 フェーズ = 約 0.9 秒で完了する想定。
+    def blinkDuration(): Float64 = 0.15
+
+    /// 死亡演出の点滅サイクル数（半透明→不透明を 1 サイクルとして 3 回）。
+    def blinkCycles(): Int32 = 3
+
+    /// 死亡演出時の半透明 alpha 値（点滅の谷）。
+    def dimAlpha(): Float32 = 0.3f32
+
+    /// 通常時 / 点滅の山の alpha 値。
+    def fullAlpha(): Float32 = 1.0f32
 
     /// "Enemy_3" のようなトップレベルノード名。
     pub def enemyName(id: Int32): String = "Enemy_${id}"
 
     /// "Enemy_3" 1 つだけの NodePath（敵はトップレベルに並べる）。
     pub def enemyPath(id: Int32): NodePath = enemyName(id) :: Nil
+
+    /// 敵 id の子 Sprite ノードへのパス。alpha 補間 (Tween.tweenAlpha) のターゲットに使う。
+    pub def spritePath(id: Int32): NodePath = enemyName(id) :: "Sprite" :: Nil
 
     // ────────────────────────────────────────────────────────
     // (C) 構築
@@ -88,14 +126,15 @@ mod EnemyScene {
         let layer       = MapScene.getMapLayer(scene);
         let placements  = MapScene.getPlacements(scene);
         let roomCount   = MapScene.getRoomCount(scene);
-        let playerPos   = PlayerScene.getGridPos(scene);
+        // パーティ全員のセルを taken に入れて避ける（敵が味方の上にスポーンしないように）
+        let playerCells = PlayerScene.getAll(scene) |> List.map(d -> d#gridPos);
         // anchor (idx = 0) を除いた部屋だけを対象にする
         let rooms = List.filter(p ->
             p#idx >= 1 and p#idx < roomCount, placements);
         // 部屋を順に走査し、(nextId, takenCells, spawns) を畳み込む。
         // pickCellsInRoom が `Math.Random` を持つので畳み込み全体も `Math.Random`。
         let initial: (Int32, List[Vec2.Vec2i], List[Spawn]) =
-            (0, playerPos :: Nil, Nil);
+            (0, playerCells, Nil);
         let (_, _, accSpawns) = List.foldLeft(state -> p ->
             spawnInRoom(layer, p, randomCountUpTo(maxPerRoom()), state),
             initial, rooms);
@@ -162,7 +201,9 @@ mod EnemyScene {
             gridPos       = sp#gridPos,
             alerted       = false,
             homeModuleIdx = sp#moduleIdx,
-            moveTiles     = defaultMoveTiles()
+            moveTiles     = defaultMoveTiles(),
+            hp            = defaultHp(),
+            dying         = None
         };
         let sprite = Sprite2D.make(textureName(), Vec2.zero(), Vec2.one())
                         |> Sprite2D.setHframes(hframes())
@@ -216,4 +257,96 @@ mod EnemyScene {
         let targetWorld = map#gridToWorld(target);
         Tween.tweenPosition(enemyPath(id), startWorld, targetWorld, slideDuration());
         mapEnemy(id, d -> {gridPos = target | d}, scene)
+
+    /// 指定セルに居る（生きている）敵の id を返す。`dying = Some(_)` の敵は対象外。
+    /// PlayerAttack フェーズで「カーソルが赤マス上の敵に乗っているか」の判定に使う。
+    pub def findIdAt(coord: Vec2.Vec2i, scene: Scene[NodeTag]): Option[Int32] =
+        getAll(scene)
+            |> List.findMap(d ->
+                if (Option.isEmpty(d#dying)
+                    and d#gridPos#x == coord#x
+                    and d#gridPos#y == coord#y) Some(d#id)
+                else None)
+
+    // ────────────────────────────────────────────────────────
+    // (E) 死亡演出 — alpha 点滅 → 削除
+    // ────────────────────────────────────────────────────────
+
+    /// 敵 id の HP を 0 にして死亡演出を開始する。
+    /// `dying = Some({remainingBlinks = blinkCycles, phase = FadingOut})` を立て、
+    /// 最初の FadingOut tween（alpha 1.0 → 0.3）を登録する。以降の進行は
+    /// `tickDeaths` が毎フレームの Tween 完了をトリガに進める。
+    pub def startDeathAnimation(id: Int32,
+                                 scene: Scene[NodeTag]): Scene[NodeTag]
+            \ Tween.Scheduler =
+        Tween.tweenAlpha(spritePath(id), fullAlpha(), dimAlpha(), blinkDuration());
+        mapEnemy(id, d -> {
+            hp    = 0,
+            dying = Some({remainingBlinks = blinkCycles(), phase = BlinkPhase.FadingOut})
+            | d
+        }, scene)
+
+    /// 死亡演出を 1 フレーム進める。`gameLoop` が `Tween.tickAll` の直後に呼ぶ。
+    /// 各 dying 敵について、現在の alpha tween が完了していれば次フェーズへ進める。
+    /// 1 サイクル = FadingOut + FadingIn。最後のサイクルが終わるとノードを scene から削除する。
+    pub def tickDeaths(scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        let dyingIds = getAll(scene)
+            |> List.filterMap(d -> match d#dying {
+                case Some(s) => Some((d#id, s))
+                case None    => None
+            });
+        List.foldLeft((sc, entry) -> {
+            let (id, s) = entry;
+            // 進行中の tween があれば次フレームで再判定。完了している場合のみ進める。
+            if (Tween.Scheduler.isActive(spritePath(id))) sc
+            else advanceDying(id, s, sc)
+        }, scene, dyingIds)
+
+    /// 1 体ぶんの dying 状態を 1 ステップ進める内部関数。
+    /// FadingOut 完了 → FadingIn を開始 / FadingIn 完了 → 残りサイクルを減らして次の
+    /// FadingOut を開始、または 0 になったらノード削除。
+    def advanceDying(id: Int32, s: DyingState,
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        match s#phase {
+            case BlinkPhase.FadingOut =>
+                // 半透明まで落ちた → 不透明に戻す（FadingIn）
+                Tween.tweenAlpha(spritePath(id), dimAlpha(), fullAlpha(), blinkDuration());
+                mapEnemy(id, d ->
+                    {dying = Some({phase = BlinkPhase.FadingIn | s}) | d}, scene)
+            case BlinkPhase.FadingIn =>
+                // 1 サイクル完了
+                let leftAfter = s#remainingBlinks - 1;
+                if (leftAfter <= 0)
+                    // 最後のサイクル終了 → ノード削除（Tween は target 消失で auto-cancel）
+                    Scene.removeAt(enemyPath(id), scene)
+                else {
+                    // 次のサイクル：再び FadingOut を開始
+                    Tween.tweenAlpha(spritePath(id), fullAlpha(), dimAlpha(), blinkDuration());
+                    mapEnemy(id, d -> {
+                        dying = Some({remainingBlinks = leftAfter,
+                                       phase           = BlinkPhase.FadingOut})
+                        | d
+                    }, scene)
+                }
+        }
+
+    // ────────────────────────────────────────────────────────
+    // (F) 初期 spawn のスナップショットと再配置（ゲームオーバー時のリセット）
+    // ────────────────────────────────────────────────────────
+
+    /// 現在 scene に居る全敵の `Spawn` 情報（id / gridPos / homeModuleIdx）を抽出する。
+    /// `Game.start` で初回 buildPlayingScene 直後に呼んで保存し、ゲームオーバー時に
+    /// `respawnFromInitial` で再配置する。
+    pub def snapshotSpawns(scene: Scene[NodeTag]): List[Spawn] =
+        getAll(scene)
+            |> List.map(d ->
+                ({id = d#id, gridPos = d#gridPos, moduleIdx = d#homeModuleIdx}: Spawn))
+
+    /// 既存の敵を全て scene から取り除き、`spawns` から再構築する。
+    /// 各敵は `addOneEnemy` を使って HP・alerted・dying を初期値で生成する。
+    pub def respawnFromInitial(spawns: List[Spawn],
+                                scene: Scene[NodeTag]): Scene[NodeTag] =
+        let cleared = List.foldLeft((sc, d) -> Scene.removeAt(enemyPath(d#id), sc),
+                                     scene, getAll(scene));
+        List.foldLeft((sc, sp) -> addOneEnemy(sp, sc), cleared, spawns)
 }

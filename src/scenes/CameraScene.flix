@@ -33,10 +33,9 @@ mod CameraScene {
     // ────────────────────────────────────────────────────────
 
     /// MapScene + PlayerScene 登録済みの scene にトップレベル Camera2D を追加する。
-    /// 初期位置はプレイヤーのワールド座標に置き、起動直後の 1 フレームで
-    /// 別の場所に瞬間移動して見えないようにする。
+    /// 初期位置は id=0 のプレイヤー座標（パーティの代表位置）。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let initial = playerWorldPos(scene);
+        let initial = focusedPlayerWorldPos(0, scene);
         let cam = Camera2D.make(initial)
                   |> Camera2D.setZoom(defaultZoom());
         Scene.addNode(name(),
@@ -49,37 +48,60 @@ mod CameraScene {
 
     /// gameLoop が毎フレーム末尾で呼ぶ更新フック。
     /// Tween による Player / Cursor の世界座標が反映された後に実行する。
-    pub def update(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+    pub def update(scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {TurnPhase.State, SelectedPlayer.State} =
         let phase = TurnPhase.State.get();
-        let target = computeTarget(phase, scene);
+        let selected = SelectedPlayer.State.get();
+        let target = computeTarget(phase, selected, scene);
         Scene.mapEngineNode(cameraPath(),
             n -> Node2D.setPosition(target, n), scene)
 
     /// 各フェーズでカメラが向かうべきターゲット位置を計算する。
     /// `PlayerMoving` で「画面内なら維持」する分岐がここにあるため、計算は純粋関数で書く。
+    /// `selected` が None のときはパーティの代表（id=0、または最初のアクティブ）の位置に向く。
     def computeTarget(phase: TurnPhase.Phase,
+                       selected: Option[Int32],
                        scene: Scene[NodeTag]): Vec2.Vec2 =
-        let playerPos = playerWorldPos(scene);
+        let focusId = focusIdOf(selected, scene);
+        let focusPos = focusedPlayerWorldPos(focusId, scene);
         match phase {
             case TurnPhase.Phase.PlayerCursor =>
                 cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerMoving =>
                 let camPos = currentPos(scene);
-                if (isPlayerVisible(camPos, playerPos)) camPos
-                else playerPos
+                if (isPlayerVisible(camPos, focusPos)) camPos
+                else focusPos
+            case TurnPhase.Phase.PlayerAttack =>
+                // 攻撃フェーズはカーソルが赤マスを動く。PlayerCursor と同じく
+                // カーソル追従でターゲットを表示できるようにする。
+                cursorWorldPos(scene)
             case TurnPhase.Phase.EnemyTurn =>
-                playerPos
+                focusPos
+        }
+
+    /// 「いまカメラが向くべき」プレイヤー id を選ぶ。
+    /// 選択中があればそれ、無ければパーティ先頭（id=0、それも無ければ 0 fallback）。
+    def focusIdOf(selected: Option[Int32], scene: Scene[NodeTag]): Int32 =
+        match selected {
+            case Some(id) => id
+            case None     =>
+                match List.head(PlayerScene.getAll(scene)) {
+                    case Some(d) => d#id
+                    case None    => 0
+                }
         }
 
     // ────────────────────────────────────────────────────────
     // 内部: 座標取得
     // ────────────────────────────────────────────────────────
 
-    /// プレイヤーの現在ワールド座標。Tween 中ならその時点の補間位置を返す
-    /// （`Scene.globalPositionAt` は EngineNode の position をそのまま読むため、
-    /// Tween による setGlobalPositionAt の結果が反映されている）。
-    def playerWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
-        Scene.globalPositionAt(PlayerScene.playerPath(), scene)
+    /// 指定 id のプレイヤーの現在ワールド座標。Tween 中ならその時点の補間位置を返す。
+    /// 該当 id が登録されていなければ scene の原点（0,0）を返す。
+    def focusedPlayerWorldPos(id: Int32, scene: Scene[NodeTag]): Vec2.Vec2 =
+        match Scene.getEngineNode(PlayerScene.playerPath(id), scene) {
+            case Some(_) => Scene.globalPositionAt(PlayerScene.playerPath(id), scene)
+            case None    => Vec2.zero()
+        }
 
     /// カーソルの現在ワールド座標。CursorScene 未登録なら原点を返すが、`add` 後に
     /// `update` を呼ぶ運用なので実機では到達しない。
