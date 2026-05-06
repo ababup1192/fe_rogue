@@ -452,6 +452,94 @@ mod Game {
               }
         }
 
+    // ────────────────────────────────────────────────────────
+    // フレーム処理 — gameLoop が毎フレーム呼ぶ固定パイプライン
+    // ────────────────────────────────────────────────────────
+
+    /// 全フェーズに共通する描画準備の尾部（カメラ追従 → ログ反映 → スクロール）。
+    def commonEpilogue(scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {GameEngine.Game, GameLogger.GameLogger,
+                TurnPhase.State, SelectedPlayer.State} =
+        scene
+            |> CameraScene.update
+            |> LogScene.flushFromEffect
+            |> LogScene.tickScroll
+
+    /// 敵ターン中のフレーム: キューを 1 step 進めて Tween / death / attack tick → エピローグ。
+    /// 死亡演出は敵ターン跨ぎでも点滅を継続させる必要があるため tickDeaths を毎フレーム呼ぶ。
+    def tickEnemyTurnFrame(dt: Duration.Duration, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
+                               Tween.Scheduler, GameLogger.GameLogger,
+                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                               InitialEnemies.State, InitialPlayers.State} =
+        scene
+            |> stepEnemyTurn
+            |> Tween.tickAll(dt)
+            |> EnemyScene.tickDeaths
+            |> tickEnemyAttacksAndResolve
+            |> commonEpilogue
+
+    /// PlayerAutoMove 中のフレーム: AutoMove.step + Tween tick → エピローグ。
+    /// 自動移動中に死亡演出 / 攻撃モーションは発生し得ないので tick 系は呼ばない。
+    /// AutoMove.step は停止条件を満たしたら内部で PlayerCursor に戻す。
+    def tickAutoMoveFrame(dt: Duration.Duration, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameEngine.Game, Tween.Scheduler,
+                               GameLogger.GameLogger,
+                               TurnPhase.State, SelectedPlayer.State} =
+        scene
+            |> AutoMove.step
+            |> Tween.tickAll(dt)
+            |> commonEpilogue
+
+    /// 通常入力フェーズ（PlayerCursor / PlayerMoving / PlayerAttack）のフレーム:
+    /// 入力 → 物理 → Tween / death / attack tick → エピローグ。
+    def tickInputFrame(dt: Duration.Duration, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
+                               BoardQuery, Tween.Scheduler,
+                               GameLogger.GameLogger,
+                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+        scene
+            |> GameEngine.handleInput
+            |> GameEngine.physicsProcess(delta = dt, paused = false,
+                                          gravity = Vec2.zero())
+            |> Tween.tickAll(dt)
+            |> EnemyScene.tickDeaths
+            |> tickPlayerAttacksAndAdvance
+            |> commonEpilogue
+
+    /// フレーム 1 回ぶんの処理。エディタ入力を最優先で処理し、エディタ ON 中は
+    /// ゲーム更新を止める。それ以外はフェーズで分岐して該当の tickXxxFrame を呼ぶ。
+    def tickFrame(dt: Duration.Duration, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
+                               Fs.FileRead, Fs.FileWrite,
+                               Editor.EditorState, EditHistory.Rewind,
+                               BoardQuery, Tween.Scheduler, GameLogger.GameLogger,
+                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                               InitialEnemies.State, InitialPlayers.State} =
+        let afterEditor = Editor.handleInput(scene);
+        if (Editor.isOn()) afterEditor
+        else match TurnPhase.State.get() {
+            case TurnPhase.Phase.EnemyTurn      => tickEnemyTurnFrame(dt, afterEditor)
+            case TurnPhase.Phase.PlayerAutoMove => tickAutoMoveFrame(dt, afterEditor)
+            case _                               => tickInputFrame(dt, afterEditor)
+        }
+
+    /// scene.json 変更を検知したときの再構築。敵ターンキュー・選択・フェーズを
+    /// 初期状態に戻し、buildPlayingScene でフルリビルド → 初期 spawn を保存し直す。
+    /// プレイ中状態はリセットされる。
+    def handleHotReload(): Scene[NodeTag]
+            \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                InitialEnemies.State, InitialPlayers.State} =
+        EnemyTurn.Queue.replace(Nil);
+        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
+        SelectedPlayer.State.put(None);
+        SelectedPlayer.State.putOrigin(None);
+        let rebuilt = buildPlayingScene();
+        InitialEnemies.State.put(EnemyScene.snapshotSpawns(rebuilt));
+        InitialPlayers.State.put(PlayerScene.snapshotSpawns(rebuilt));
+        rebuilt
+
     def gameLoop(sceneRef: Ref[Scene[NodeTag], r], scene: Scene[NodeTag]):
                  Unit \ {GameEngine.Game, GameEngine.Audio,
                          Fs.FileRead, Fs.FileWrite,
@@ -469,58 +557,8 @@ mod Game {
             // 「フレーム頭の scene」を読み返せる（タイル定義は不変のため十分）。
             Ref.put(scene, sceneRef);
             let dt = GameEngine.Game.getDeltaTime();
-            let afterEditor = Editor.handleInput(scene);
-            // 敵ターン / PlayerAutoMove 中は入力をブロックして自動進行。
-            // それ以外（PlayerCursor / PlayerMoving / PlayerAttack）は通常の
-            // handleInput / physicsProcess。死亡演出（tickDeaths）は Tween 後に挟むので、
-            // フェーズに関係なく毎フレーム進む（敵ターン跨ぎでも点滅が継続する）。
-            let phase = TurnPhase.State.get();
-            let updated = if (Editor.isOn()) afterEditor
-                          else match phase {
-                              case TurnPhase.Phase.EnemyTurn =>
-                                  afterEditor
-                                      |> stepEnemyTurn
-                                      |> Tween.tickAll(dt)
-                                      |> EnemyScene.tickDeaths
-                                      |> tickEnemyAttacksAndResolve
-                                      |> CameraScene.update
-                                      |> LogScene.flushFromEffect
-                                      |> LogScene.tickScroll
-                              case TurnPhase.Phase.PlayerAutoMove =>
-                                  // AutoMove.step が 1 フレームに 1 マスずつ味方を進める。
-                                  // 停止条件を満たしたら内部で PlayerCursor に戻す。
-                                  afterEditor
-                                      |> AutoMove.step
-                                      |> Tween.tickAll(dt)
-                                      |> CameraScene.update
-                                      |> LogScene.flushFromEffect
-                                      |> LogScene.tickScroll
-                              case _ =>
-                                  afterEditor
-                                      |> GameEngine.handleInput
-                                      |> GameEngine.physicsProcess(delta = dt, paused = false,
-                                                                    gravity = Vec2.zero())
-                                      |> Tween.tickAll(dt)
-                                      |> EnemyScene.tickDeaths
-                                      |> tickPlayerAttacksAndAdvance
-                                      |> CameraScene.update
-                                      |> LogScene.flushFromEffect
-                                      |> LogScene.tickScroll
-                          };
-            // scene.json が変わったらシーンを丸ごと組み直す（プレイ中状態はリセット）
-            let next = if (Editor.pollReload()) {
-                           // ホットリロード時は敵ターンキュー / 各 State をリセット
-                           EnemyTurn.Queue.replace(Nil);
-                           TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
-                           SelectedPlayer.State.put(None);
-                           SelectedPlayer.State.putOrigin(None);
-                           let rebuilt = buildPlayingScene();
-                           // 再構築後の配置を初期 spawn として保存し直す
-                           InitialEnemies.State.put(EnemyScene.snapshotSpawns(rebuilt));
-                           InitialPlayers.State.put(PlayerScene.snapshotSpawns(rebuilt));
-                           rebuilt
-                       }
-                       else updated;
+            let updated = tickFrame(dt, scene);
+            let next = if (Editor.pollReload()) handleHotReload() else updated;
             GameEngine.render(next);
             gameLoop(sceneRef, next)
         }
