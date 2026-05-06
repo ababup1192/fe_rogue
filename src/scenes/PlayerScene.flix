@@ -122,7 +122,8 @@ mod PlayerScene {
     /// 押されていれば次の moveTo を発火する（押しっぱなしで 1 マスずつ滑らかに連続移動する仕掛け）。
     /// `InputEvent.onKeyPressed` は押下エッジ専用で echo events が来ないため、
     /// 連続移動はここでの per-frame polling で実現する。
-    /// Game.flix の Node[NodeTag] redef からディスパッチされる。
+    /// Game.flix の Node[NodeTag] redef からは **PlayerMoving フェーズでのみ** dispatch
+    /// される（PlayerCursor 中はカーソルが動き、味方は止まっている）。
     pub def physicsProcess(_delta: Float64,
                             node: EngineNode[NodeTag],
                             _path: NodePath,
@@ -135,10 +136,6 @@ mod PlayerScene {
                 else
                     let board = BoardQuery.board();
                     // 移動範囲（move_tile が敷かれているセル）でフィルタする。
-                    // MoveRangeScene 未登録時は isInRange が常に false を返すため
-                    // 起動直後のフレームではプレイヤーが動けない可能性があるが、
-                    // start() が MoveRangeScene.add を済ませてから gameLoop に入るので
-                    // 実機では問題にならない。
                     let allowed = c -> MoveRangeScene.isInRange(c, scene);
                     let movement = forM (
                         dir    <- readHeldDirection();

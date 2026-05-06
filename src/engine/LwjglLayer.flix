@@ -202,6 +202,7 @@ mod LwjglLayer {
         case GameEngine.Key.S         => 83
         case GameEngine.Key.D         => 68
         case GameEngine.Key.Z         => 90
+        case GameEngine.Key.X         => 88
         case GameEngine.Key.Up        => 265
         case GameEngine.Key.Down      => 264
         case GameEngine.Key.Left      => 263
