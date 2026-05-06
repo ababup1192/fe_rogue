@@ -37,19 +37,28 @@ mod MapScene {
 
     // (B) 定数
     def name(): String = "DungeonLevel0"
+    def floorName(): String = "DungeonLevel0Floor"
     pub def mapPath(): NodePath = name() :: Nil
 
-    /// 全モジュールが共有するタイルセットのテクスチャ名
+    /// Walls レイヤー（衝突あり）が使うタイルセットのテクスチャ名
     def textureName(): String = "inca_tileset"
+
+    /// Floor 装飾レイヤーのテクスチャ名（LDTK 上の "Floor" レイヤーが参照）
+    def floorTextureName(): String = "tilemap_floor"
 
     /// ランダム生成設定: 部屋数と利用可能な部屋・通路 LDTK プール。
     /// roomCount を増やすほどダンジョンが大きくなる。配置不能なら部屋数を減らして続行。
     def generatorConfig(): DungeonGenerator.Config = {
-        roomPaths      = "title_map/World_Level_0.ldtkl" ::
-                         "title_map/World_Level_1.ldtkl" :: Nil,
-        horizontalPath = "title_map/World_Pathway_1.ldtkl",
-        verticalPath   = "title_map/World_Pathway_2.ldtkl",
-        roomCount      = 5
+        roomPaths       = "title_map/World_Level_0.ldtkl" ::
+                          "title_map/World_Level_1.ldtkl" ::
+                          "title_map/World_Level_2.ldtkl" ::
+                          "title_map/World_Level_3.ldtkl" ::
+                          "title_map/World_Level_4.ldtkl" :: Nil,
+        horizontalPaths = "title_map/World_Pathway_1.ldtkl" ::
+                          "title_map/World_Pathway_4.ldtkl" :: Nil,
+        verticalPaths   = "title_map/World_Pathway_2.ldtkl" ::
+                          "title_map/World_Pathway_3.ldtkl" :: Nil,
+        roomCount       = 8
     }
 
     // (C) 構築
@@ -61,9 +70,17 @@ mod MapScene {
                                                                  plan#sideConnections);
         let mapData: Data = { anchorOffset = result#anchorOffset,
                                spawnGrid    = result#spawnGrid };
-        Scene.addNode(name(),
-                       EngineNode.TileMapLayerWithState(result#layer, NodeTag.Map(mapData)),
-                       scene)
+        // Floor 装飾レイヤーを Walls の下（zIndex < Walls）に重ねる。
+        // tilemap_floor テクスチャを使用、衝突なし、auto-rule 再適用なし。
+        let floorRaw = DungeonComposer.composeDecorationLayer(floorTextureName(),
+                                                                result#moduleSpecs,
+                                                                "Floor");
+        let floorLayer = CanvasItem.setZIndex(-1, floorRaw);
+        scene
+            |> Scene.addNode(floorName(),
+                              EngineNode.TileMapLayerWithState(floorLayer, NodeTag.NoTag))
+            |> Scene.addNode(name(),
+                              EngineNode.TileMapLayerWithState(result#layer, NodeTag.Map(mapData)))
 
     // ────────────────────────────────────────────────────────
     // (D) MapQuery effect の実体

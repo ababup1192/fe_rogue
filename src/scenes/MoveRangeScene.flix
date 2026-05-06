@@ -42,7 +42,11 @@ mod MoveRangeScene {
     def tileSize(): Float64 = 16.0
 
     /// move_tile の不透明度。プレイヤーや床タイルが透けて見える程度の半透明。
-    def tileAlpha(): Float32 = 0.5f32
+    def tileAlpha(): Float32 = 1.0f32
+
+    /// move_tile に乗せる青の modulate 色。Floor 装飾レイヤーの上で
+    /// 移動可能マスとして識別しやすいように青寄りに着色する。
+    def tileColor(): Color = {r = 0.3f32, g = 0.5f32, b = 1.0f32}
 
     /// move_tile スプライトの描画 zIndex。tilemap (= 0) より上、Player の Sprite (= 10)
     /// より下に来るように 1 を採用する。プレイヤーが常に最前面に立つ。
@@ -95,6 +99,7 @@ mod MoveRangeScene {
             let pos: Vec2.Vec2 = cellCenter(cell);
             let sprite = Sprite2D.make(textureName(), pos, Vec2.one())
                             |> Sprite2D.setAlpha(tileAlpha())
+                            |> CanvasItem.setModulate(tileColor())
                             |> CanvasItem.setZIndex(tileZIndex());
             Scene.addChild(name(),
                 "Tile_${idx}",

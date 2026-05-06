@@ -15,6 +15,9 @@ def main(): Unit \ {IO, Chan, NonDet} =
                                      hasAlpha = true }
                                 :: { name = "move_tile",
                                      path = "sprites/move_tile.png",
+                                     hasAlpha = true }
+                                :: { name = "tilemap_floor",
+                                     path = "sprites/tilemap.png",
                                      hasAlpha = true } :: Nil,
             fontManifest = { name = "ui", path = "fonts/BestTen-DOT.otf",
                               fontSize = 16.0 } :: Nil,

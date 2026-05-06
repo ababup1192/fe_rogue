@@ -280,10 +280,13 @@ mod DungeonComposer {
     /// - `spawnGrid` は anchor 内で「壁でない」と保証されたセルのワールド座標。
     ///   anchor 部屋の中心に最も近い床セルを採用する。
     ///   PlayerScene 等のスポーン位置に使うことで、(5,5) が壁の LDTK でも安全。
+    /// - `moduleSpecs` は配置決定後の (path, offsetGrid) リスト。
+    ///   別レイヤー（Floor 等）を同じ配置で重ねて描画する際に使う。
     pub type alias ComposeResult = {
         layer        = TileMapLayer,
         anchorOffset = Vec2.Vec2i,
-        spawnGrid    = Vec2.Vec2i
+        spawnGrid    = Vec2.Vec2i,
+        moduleSpecs  = List[ModuleSpec]
     }
 
     /// 連結グラフから offsetGrid と openDoors を自動導出して compose を呼ぶ。
@@ -339,7 +342,8 @@ mod DungeonComposer {
             let modules = buildModuleSpecs(modulePaths, offsets);
             // 9. 既存 compose に委譲
             let layer = compose(textureName, modules, openDoors);
-            { layer = layer, anchorOffset = anchorOffset, spawnGrid = spawnGrid }
+            { layer = layer, anchorOffset = anchorOffset, spawnGrid = spawnGrid,
+              moduleSpecs = modules }
 
     /// anchor のローカル collisionCells を見て「壁でない」セルのうち
     /// グリッド中心に最も近いものを返す。戻り値はワールド座標（anchorOffset 加算済み）。
@@ -586,4 +590,75 @@ mod DungeonComposer {
                 };
                 Some(List.foldLeft(acc -> d -> pick(acc, d), head, rest))
         }
+
+    // ════════════════════════════════════════════════════════
+    // 装飾レイヤー（Floor 等）の合成
+    // ════════════════════════════════════════════════════════
+
+    /// 装飾レイヤー（Floor など）を Walls と同じ ModuleSpec 配置で 1 枚にマージする。
+    /// auto-rule の再適用や collision 抽出は行わない（autoLayerTiles を offset して連結するだけ）。
+    /// `layerIdentifier` には LDTK 上のレイヤー名（例: "Floor"）を渡す。
+    /// 同一 px に複数モジュールのタイルが重なった場合は「先勝ち」で先頭モジュールを残す。
+    pub def composeDecorationLayer(textureName: String,
+                                    moduleSpecs: List[ModuleSpec],
+                                    layerIdentifier: String): TileMapLayer
+            \ { GameEngine.Game, Fs.FileRead } =
+        match moduleSpecs {
+            case Nil => bug!("DungeonComposer: composeDecorationLayer received empty moduleSpecs")
+            case _   =>
+                let placed = List.map(spec ->
+                    loadAndOffsetLayer(textureName, spec, layerIdentifier),
+                    moduleSpecs);
+                let firstRaw = match List.head(placed) {
+                    case Some(r) => r
+                    case None    => bug!("DungeonComposer: placed is empty")
+                };
+                let tileSet  = firstRaw#tileSet;
+                let tileSize = firstRaw#tileSize;
+                // 「先勝ち」で px が衝突するタイルは捨てる
+                let mergedTiles =
+                    List.foldLeft(acc -> raw -> {
+                        let newTiles = List.filter(
+                            t -> not List.exists(a -> vec2Eq(a#px, t#px), acc),
+                            raw#tiles);
+                        List.append(acc, newTiles)
+                    }, Nil, placed);
+                let mergedGridSize = boundingBoxGridSizeFromLayers(moduleSpecs, placed);
+                let instances = LDTKLoader.buildTileInstances(mergedTiles, tileSet, tileSize);
+                let (tileVaoId, tileCount) = GameEngine.Game.initTileBuffer(instances);
+                TileMapLayer.make({
+                    tileSet        = tileSet,
+                    tiles          = mergedTiles,
+                    collisionCells = Nil,           // 装飾レイヤーは衝突を持たない
+                    gridSize       = mergedGridSize
+                }) |> TileMapLayer.withGpuResources(tileVaoId, tileCount)
+        }
+
+    /// 1 モジュールの装飾レイヤーをロードし、offsetGrid 分だけタイルを平行移動する。
+    def loadAndOffsetLayer(textureName: String, spec: ModuleSpec,
+                            layerIdentifier: String): LDTKLoader.LDTKLayerRaw
+            \ { GameEngine.Game, Fs.FileRead } =
+        let raw = LDTKLoader.loadLayerByIdentifier(LDTKLoader.simpleConfig({
+            path        = spec#ldtkPath,
+            textureName = textureName
+        }), layerIdentifier);
+        let offsetPx = Vec2.mul(Vec2.fromI(spec#offsetGrid), raw#tileSize);
+        let shiftedTiles = List.map(tile -> {
+            { px = Vec2.add(tile#px, offsetPx) | tile }
+        }, raw#tiles);
+        { tiles    = shiftedTiles,
+          tileSet  = raw#tileSet,
+          gridSize = raw#gridSize,
+          tileSize = raw#tileSize }
+
+    /// LDTKLayerRaw 版の bounding box 計算（Walls 用と同じロジック）。
+    def boundingBoxGridSizeFromLayers(modules: List[ModuleSpec],
+                                       placed: List[LDTKLoader.LDTKLayerRaw]): Vec2.Vec2i =
+        List.zip(modules, placed)
+            |> List.foldLeft(acc -> entry -> {
+                let (spec, raw) = entry;
+                let rightBottom: Vec2.Vec2i = Vec2.addI(spec#offsetGrid, raw#gridSize);
+                {x = Int32.max(acc#x, rightBottom#x),
+                 y = Int32.max(acc#y, rightBottom#y)}
+            }, Vec2.zeroI())
 }

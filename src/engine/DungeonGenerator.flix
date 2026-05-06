@@ -20,10 +20,10 @@ mod DungeonGenerator {
 
     /// 利用可能な部屋プール / 通路 / 目標部屋数の設定。
     pub type alias Config = {
-        roomPaths      = List[String],   // 部屋 LDTK プール（複数可）
-        horizontalPath = String,          // 横通路 LDTK
-        verticalPath   = String,          // 縦通路 LDTK
-        roomCount      = Int32            // 目標部屋数（>= 1）
+        roomPaths       = List[String],   // 部屋 LDTK プール（複数可）
+        horizontalPaths = List[String],   // 横通路 LDTK プール（複数可、空不可）
+        verticalPaths   = List[String],   // 縦通路 LDTK プール（複数可、空不可）
+        roomCount       = Int32           // 目標部屋数（>= 1）
     }
 
     /// composeFromSideConnections に渡す入力一式。
@@ -76,7 +76,8 @@ mod DungeonGenerator {
         if (config#roomCount < 1) bug!("DungeonGenerator: roomCount must be >= 1")
         else
             // 1. 全 LDTK ファイルのメタデータを一度だけ読み込む（重複ロード回避）
-            let allPaths = config#horizontalPath :: config#verticalPath :: config#roomPaths;
+            let allPaths = List.append(config#horizontalPaths,
+                            List.append(config#verticalPaths, config#roomPaths));
             let metaMap = loadAllMetadata(textureName, allPaths);
             // 2. 最初の部屋を配置（offset (0,0), index 0）
             let firstPath = pickOrBug(config#roomPaths, "roomPaths must not be empty");
@@ -163,7 +164,7 @@ mod DungeonGenerator {
                 case None           => tryAttempts(remaining - 1, state, config, metaMap, anchorIdxs)
             }
 
-    /// 1 試行: anchor / side / 新部屋を選んで配置を試す。衝突したら None。
+    /// 1 試行: anchor / side / 新部屋・通路を選んで配置を試す。衝突したら None。
     def tryOneAttempt(state: State, config: Config,
                        metaMap: Map[String, Meta],
                        anchorIdxs: List[Int32]): Option[State] \ Math.Random =
@@ -178,26 +179,31 @@ mod DungeonGenerator {
                         match RandomUtil.pick(config#roomPaths) {
                             case None => None
                             case Some(newRoomPath) =>
-                                tryPlacement(anchorIdx, anchorSide, newRoomPath,
-                                              state, config, metaMap)
+                                let pool = if (DungeonComposer.isHorizontalSide(anchorSide))
+                                               config#horizontalPaths
+                                           else
+                                               config#verticalPaths;
+                                match RandomUtil.pick(pool) {
+                                    case None => None
+                                    case Some(pathwayPath) =>
+                                        tryPlacement(anchorIdx, anchorSide, newRoomPath,
+                                                      pathwayPath, state, config, metaMap)
+                                }
                         }
                 }
         }
 
     /// 選択された (anchor, side, 新部屋) の組で実際に offset を計算し配置を確定する。
-    /// 通路選択は side が横辺かどうかで決まる。
+    /// 通路選択は side が横辺かどうかで決まる。プールから一様ランダムに 1 本選ぶ。
     def tryPlacement(anchorIdx: Int32, anchorSide: DoorSide, newRoomPath: String,
-                      state: State, config: Config,
+                      pathwayPath: String,
+                      state: State, _config: Config,
                       metaMap: Map[String, Meta]): Option[State] =
         let anchor = entryOf(anchorIdx, state);
         let anchorDoor = match DungeonComposer.doorBySide(anchorSide, anchor#doors) {
             case Some(d) => d
             case None    => bug!("DungeonGenerator: anchor has no door on ${sideName(anchorSide)}")
         };
-        let pathwayPath = if (DungeonComposer.isHorizontalSide(anchorSide))
-                              config#horizontalPath
-                          else
-                              config#verticalPath;
         let pathwayMeta = metaOf(pathwayPath, metaMap);
         let pathwaySide = DungeonComposer.oppositeSide(anchorSide);
         let pathwayDoorIn = match DungeonComposer.doorBySide(pathwaySide, pathwayMeta#doors) {

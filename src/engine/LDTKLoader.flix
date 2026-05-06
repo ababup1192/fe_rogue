@@ -36,6 +36,16 @@ mod LDTKLoader {
     /// loadLevel が返す結果。GPU リソースは TileMapLayer 内に格納済み。
     pub type alias LDTKLevelData = { tileLayer = TileMapLayer }
 
+    /// 装飾レイヤー（Floor 等）の生データ。collision / door は Wall 専用なので含まない。
+    /// autoLayerTiles の `src` は LDTK 側で margin/spacing 込みで計算済みなので
+    /// シェーダーへはそのまま渡せる（auto-rule 再適用は不要）。
+    pub type alias LDTKLayerRaw = {
+        tiles    = List[TileData],
+        tileSet  = TileSet,
+        gridSize = Vec2.Vec2i,
+        tileSize = Float64
+    }
+
     /// GPU アップロード前の生データ。DungeonComposer が複数モジュールを 1 枚にマージする際に使う。
     /// tileSize は描画 / 座標換算で繰り返し参照するので展開済みで持つ
     /// （tileSet#atlasSource#tileSize と同値）。
@@ -162,6 +172,87 @@ mod LDTKLoader {
             tileSet        = tileSet,
             gridSize       = ({x = cWid, y = cHei}: Vec2.Vec2i),
             tileSize       = tileSize
+        }
+
+    /// 指定 `__identifier` のレイヤーから autoLayerTiles を取り出す（auto-rule 再適用なし）。
+    /// 装飾用レイヤー（Floor 等）を別 TileMapLayer として描画する用途。
+    /// 該当レイヤーが見つからない / autoLayerTiles が空なら bug!。
+    pub def loadLayerByIdentifier(config: LDTKLoaderConfig, layerIdentifier: String): LDTKLayerRaw
+            \ { GameEngine.Game, Fs.FileRead } =
+        let texInfo = match GameEngine.Game.getTextureInfo(config#textureName) {
+            case Some(info) => info
+            case None => bug!("LDTKLoader: texture '${config#textureName}' not registered")
+        };
+        let texWidth  = texInfo#width;
+        let texHeight = texInfo#height;
+
+        let content = run { Fs.ReadFile.read(config#path) } with Fs.ReadFile.runWithFileRead;
+        let text = match content {
+            case Ok(t)  => t
+            case Err(e) => bug!("LDTKLoader: failed to read ${config#path}: ${e}")
+        };
+        let json = match Json.Parse.parse(String.trim(text)) {
+            case Some(j) => j
+            case None    => bug!("LDTKLoader: failed to parse JSON: ${config#path}")
+        };
+        let root = getObj(json);
+        let layerInstances = getArr(getField("layerInstances", root));
+
+        let targetLayer = match List.find(layer -> {
+            let layerObj = getObj(layer);
+            match Map.get("__identifier", layerObj) {
+                case Some(JsonString(s)) => s == layerIdentifier
+                case _                   => false
+            }
+        }, layerInstances) {
+            case Some(l) => getObj(l)
+            case None    => bug!("LDTKLoader: layer '${layerIdentifier}' not found in ${config#path}")
+        };
+
+        let tileSize = getFloat(getField("__gridSize", targetLayer));
+        let cWid     = getInt(getField("__cWid", targetLayer));
+        let cHei     = getInt(getField("__cHei", targetLayer));
+
+        let autoTiles = getArr(getField("autoLayerTiles", targetLayer));
+        let tiles: List[TileData] = List.map(tileEl -> {
+            let tileObj = getObj(tileEl);
+            let (pxX, pxY) = parseIntPair(getField("px", tileObj));
+            let (srcX, srcY) = parseIntPair(getField("src", tileObj));
+            let f = getInt(getField("f", tileObj));
+            let a = match Map.get("a", tileObj) {
+                case Some(el) => getFloat(el)
+                case None     => 1.0
+            };
+            {
+                px    = ({x = Int32.toFloat64(pxX), y = Int32.toFloat64(pxY)}: Vec2.Vec2),
+                srcX  = Int32.toFloat64(srcX),
+                srcY  = Int32.toFloat64(srcY),
+                flipH = f == 1 or f == 3,
+                flipV = f == 2 or f == 3,
+                alpha = Float64.truncateToFloat32(a)
+            }
+        }, autoTiles);
+
+        let atlas = TileSetAtlasSource.make({
+            textureName = config#textureName,
+            marginX     = config#marginX,
+            marginY     = config#marginY,
+            spacingX    = config#spacingX,
+            spacingY    = config#spacingY
+        });
+        let atlasFilled: TileSetAtlasSource = {
+            texWidth  = texWidth,
+            texHeight = texHeight,
+            tileSize  = tileSize
+            | atlas
+        };
+        let tileSet = TileSet.make(atlasFilled);
+
+        {
+            tiles    = tiles,
+            tileSet  = tileSet,
+            gridSize = ({x = cWid, y = cHei}: Vec2.Vec2i),
+            tileSize = tileSize
         }
 
     /// TileData のリストを GPU インスタンス（TileInstance）のリストに変換する。
