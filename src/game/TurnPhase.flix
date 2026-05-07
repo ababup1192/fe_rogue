@@ -34,6 +34,12 @@ mod TurnPhase {
         /// 味方の周囲（射程内）に赤マスが出て、カーソルは赤マス内のみ移動可。
         /// 赤マス上の敵に Z でダメージ → 敵ターンへ自動遷移、X で攻撃せず敵ターンへ。
         case PlayerAttack
+        /// 味方ターン・攻撃で敵を倒した直後の演出ホールド。
+        /// `attack_lunge` が完了し倒した敵が `death_blink` 中の間、カメラを瀕死の敵
+        /// （= カーソル位置）に留めるための過渡状態。入力は受け付けない。
+        /// `Pacing.State.hold` が抜けた瞬間に GameManager が `commitWaitedAndAdvance`
+        /// を呼び、PlayerCursor または EnemyTurn に遷移する。
+        case PlayerAttackHold
         /// 味方ターン・自動移動フェーズ。空マスに旗を立てた直後、全アクティブ味方が
         /// その旗に向かって 1 マスずつ自動で歩く。旗の周囲 2 マス以内に到達するか
         /// 敵に発見されると止まり、PlayerCursor に戻る（旗は自動で消える）。

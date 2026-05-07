@@ -119,6 +119,7 @@ mod GameManager {
             |> Tween.tickAll(dt)
             |> AnimationPlayer.tickAll(dt)
             |> dispatchAnimationEvents
+            |> tickPlayerAttackHold
             |> commonEpilogue(dt)
 
     /// scene.json 変更を検知したときの再構築。敵ターンキュー・選択・フェーズを
@@ -452,7 +453,8 @@ mod GameManager {
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                               GameLogger.GameLogger, Tween.Scheduler,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, InitialSpawns.State} =
+                              SelectedPlayer.State, InitialSpawns.State,
+                              Pacing.State} =
         let bundle = AnimationPlayer.Scheduler.drainEvents();
         // method イベント → finished イベントの順に処理する。
         // method の代表例は attack:hit のダメージ判定で、finished はその後で発火する。
@@ -496,7 +498,7 @@ mod GameManager {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameEngine.Audio, GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State} =
+                              SelectedPlayer.State, Pacing.State} =
         match AnimEvent.parseTag(event#name) {
             case Some(AnimEvent.Tag.DeathBlink) =>
                 match EnemyScene.idFromPath(event#owner) {
@@ -506,9 +508,21 @@ mod GameManager {
             case Some(AnimEvent.Tag.AttackLunge) =>
                 match PlayerScene.idFromPath(event#owner) {
                     case Some(playerId) =>
-                        // 味方攻撃完了 → attackTargetId をクリア → waited 確定 + 次フェーズ
+                        // 味方攻撃完了 → attackTargetId をクリア。
+                        // ここで「狙った敵が瀕死 (death_blink 中)」なら、即フェーズ遷移
+                        // すると camera が次の味方へパンしてしまい kill 演出を見逃す。
+                        // → PlayerAttackHold + Pacing.hold(700ms) で camera を据え置き、
+                        //    `tickPlayerAttackHold` が hold 終了時に commitWaitedAndAdvance
+                        //    を呼ぶ。倒していない攻撃なら従来通り即遷移する。
+                        let killed = killedTargetEnemyId(playerId, scene);
                         let cleared = PlayerScene.clearAttackTarget(playerId, scene);
-                        commitWaitedAndAdvance(cleared)
+                        match killed {
+                            case Some(_) =>
+                                TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
+                                Pacing.State.hold(700 |> Duration.millis);
+                                cleared
+                            case None    => commitWaitedAndAdvance(cleared)
+                        }
                     case None =>
                         match EnemyScene.idFromPath(event#owner) {
                             case Some(enemyId) =>
@@ -517,6 +531,38 @@ mod GameManager {
                         }
                 }
             // Tag.AttackHit は method 専用、Tag.Snag は finished で何もしない
+            case _ => scene
+        }
+
+    /// `playerId` の現 `attackTargetId` を読み、その敵が `isDying` なら id を返す。
+    /// 「いま完了した attack_lunge が敵を倒したか」を attack_lunge finished 時に
+    /// 判定するために使う（attackTargetId は直後の clearAttackTarget で消える）。
+    def killedTargetEnemyId(playerId: Int32, scene: Scene[NodeTag]): Option[Int32] =
+        match PlayerScene.get(playerId, scene) {
+            case None    => None
+            case Some(d) =>
+                match d#attackTargetId {
+                    case None         => None
+                    case Some(enemyId) =>
+                        match EnemyScene.get(enemyId, scene) {
+                            case Some(e) => if (e#isDying) Some(enemyId) else None
+                            case None    => None
+                        }
+                }
+        }
+
+    /// `PlayerAttackHold` 中に毎フレーム呼ぶ。`Pacing.State` の hold が抜けたら
+    /// `commitWaitedAndAdvance` を発火して PlayerCursor or EnemyTurn に遷移する。
+    /// それ以外のフェーズなら何もしない。
+    def tickPlayerAttackHold(scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                GameLogger.GameLogger,
+                EnemyTurn.Queue, TurnPhase.State,
+                SelectedPlayer.State, Pacing.State} =
+        match TurnPhase.State.get() {
+            case TurnPhase.Phase.PlayerAttackHold =>
+                if (Pacing.State.isHolding()) scene
+                else commitWaitedAndAdvance(scene)
             case _ => scene
         }
 
