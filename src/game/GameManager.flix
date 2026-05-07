@@ -33,7 +33,7 @@ mod GameManager {
                                BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                               InitialSpawns.State,
+                               InitialSpawns.State, Pacing.State,
                                Math.Random, IO} =
         let dt = GameEngine.Game.getDeltaTime();
         let updated = tickFrame(dt, scene);
@@ -48,7 +48,7 @@ mod GameManager {
                                BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                               InitialSpawns.State} =
+                               InitialSpawns.State, Pacing.State} =
         let afterEditor = Editor.handleInput(scene);
         if (Editor.isOn()) afterEditor
         else match TurnPhase.State.get() {
@@ -59,9 +59,13 @@ mod GameManager {
 
     /// 全フェーズに共通する描画準備の尾部（カメラ追従 → ログ反映 → スクロール）。
     /// delta はカメラ smoothing の毎フレーム補間に使う。
+    /// `EnemyTurn.Queue` は CameraScene.update が「alerted な敵の動きを映す」ために peek する。
+    /// `Pacing.State.tick` で演出の溜めカウンタを減らす（敵ターンの間隔調整）。
     def commonEpilogue(dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameLogger.GameLogger,
-                TurnPhase.State, SelectedPlayer.State} =
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                Pacing.State} =
+        Pacing.State.tick(dt);
         scene
             |> CameraScene.update(dt)
             |> LogScene.flushFromEffect
@@ -74,7 +78,7 @@ mod GameManager {
                                Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                               InitialSpawns.State} =
+                               InitialSpawns.State, Pacing.State} =
         scene
             |> stepEnemyTurn
             |> Tween.tickAll(dt)
@@ -90,7 +94,8 @@ mod GameManager {
                                Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyTurn.Queue, TurnPhase.State,
-                               SelectedPlayer.State, InitialSpawns.State} =
+                               SelectedPlayer.State, InitialSpawns.State,
+                               Pacing.State} =
         scene
             |> AutoMove.step
             |> Tween.tickAll(dt)
@@ -105,7 +110,8 @@ mod GameManager {
                                BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyTurn.Queue, TurnPhase.State,
-                               SelectedPlayer.State, InitialSpawns.State} =
+                               SelectedPlayer.State, InitialSpawns.State,
+                               Pacing.State} =
         scene
             |> GameEngine.handleInput
             |> GameEngine.physicsProcess(delta = dt, paused = false,
@@ -316,12 +322,19 @@ mod GameManager {
     ///      ログのみ、Skip/Wait は無動作）
     ///   4) キューが空になったらターン終了処理（フェーズを PlayerCursor に戻す）
     def stepEnemyTurn(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            \ {GameEngine.Game,
+                Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State} =
-        // 体当たり攻撃モーション中の敵が居れば、キュー消化を遅延する。
-        // tickAttacks が Returning 完了で attacking をクリアすると次フレームで進行する。
-        if (EnemyScene.anyAttacking(scene)) scene
+                TurnPhase.State, SelectedPlayer.State,
+                Pacing.State} =
+        // 3 段の gating (どれか 1 つでも true なら scene 据え置きで進行を止める):
+        //   1. 演出の溜め (Pacing.hold) 中
+        //   2. **カメラが target に追いついていない** (新しい敵にカメラがパン中)
+        //   3. attack_lunge 中の敵が居る（モーション完了待ち）
+        // 「キャラ行動 → 溜め → カメラ移動 → 到達 → 次のキャラ行動」のリズムを作る
+        if (Pacing.State.isHolding()) scene
+        else if (not CameraScene.isSettled(scene)) scene
+        else if (EnemyScene.anyAttacking(scene)) scene
         else match EnemyTurn.Queue.peekFront() {
             case None       =>
                 // キュー空 + 攻撃モーション無し → 敵ターン終了
@@ -333,7 +346,7 @@ mod GameManager {
                     let _ = EnemyTurn.Queue.popFront();
                     applyOneStep(step, scene)
                     // finishEnemyTurn は次フレームの「キュー空 + 攻撃なし」分岐で呼ぶ
-                    // （Attack の場合は tickAttacks の完了を待つ必要があるため）
+                    // （Attack の場合は attack_lunge の完了を待つ必要があるため）
         }
 
     /// step 1 つぶんの行動を適用する。Move なら Tween で 1 マス進めて remaining-1 を
@@ -342,7 +355,8 @@ mod GameManager {
     /// `dispatchAnimationEvents` 側で行われる。
     /// Skip/Wait は無動作（remaining も捨てる）。
     def applyOneStep(step: EnemyTurn.Step, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue} =
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+                Pacing.State} =
         match EnemyScene.get(step#id, scene) {
             case None       => scene   // 既に除外済み（死亡演出完了など）
             case Some(data) =>
@@ -358,17 +372,24 @@ mod GameManager {
                             EnemyTurn.Queue.pushFront({id = id,
                                                         remaining = step#remaining - 1})
                         else ();
+                        // 移動後の溜め: tween (~133ms) 終了後に 100ms ほど静止して区切る
+                        Pacing.State.hold(250 |> Duration.millis);
                         moved
                     case EnemyAI.EnemyAction.Attack(enemyId, targetId) =>
                         // 体当たりモーションを開始するだけ。HP 適用 / 音 / 死亡判定は
-                        // EnemyScene.tickAttacks の Forward 完了時に行われる。
+                        // attack_lunge の `attack:hit` メソッド発火時に dispatchAnimationEvents が行う。
+                        // 攻撃前後の溜め: lunge (~160ms) より長い hold で「攻撃終了の余韻」を作る
                         match PlayerScene.get(targetId, withAlert) {
                             case None    => withAlert
                             case Some(p) =>
+                                Pacing.State.hold(450 |> Duration.millis);
                                 EnemyScene.startAttack(enemyId, targetId,
                                                         p#gridPos, withAlert)
                         }
-                    case EnemyAI.EnemyAction.Wait(_) => withAlert
+                    case EnemyAI.EnemyAction.Wait(_) =>
+                        // Wait も「動こうとして詰まった」演出の一部なので軽く溜める
+                        Pacing.State.hold(150 |> Duration.millis);
+                        withAlert
                     case EnemyAI.EnemyAction.Skip(_) => withAlert
                 }
         }

@@ -14,7 +14,8 @@
 ///                        engine の Camera2D 側で自動的に効く）
 ///   - PlayerAttack    → カーソルのワールド座標（赤マスを動くカーソルに追従）
 ///   - PlayerAutoMove  → 旗のワールド座標
-///   - EnemyTurn       → プレイヤーのワールド座標（敵ターン中は味方を映す）
+///   - EnemyTurn       → **alerted な敵が行動中ならその敵を映す**（`enemyTurnTarget`）。
+///                        attacking 中の敵 > キュー先頭の敵 > 非 alerted ならプレイヤーへフォールバック
 ///
 /// **追従の滑らかさ**:
 ///   `CameraScene.scene.json` の `positionSmoothingEnabled` / `dragHorizontalEnabled` /
@@ -68,7 +69,8 @@ mod CameraScene {
     ///   3. Camera2D.process(delta, viewport, ...) で smoothPosition を進める
     /// 「画面内なら維持」「滑らかに追従」は engine の drag margin / smoothing が代替する。
     pub def update(delta: Duration.Duration, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State} =
+            Scene[NodeTag] \ {GameEngine.Game, EnemyTurn.Queue,
+                              TurnPhase.State, SelectedPlayer.State} =
         let phase = TurnPhase.State.get();
         let selected = SelectedPlayer.State.get()#id;
         let target = computeTarget(phase, selected, scene);
@@ -80,13 +82,14 @@ mod CameraScene {
                   |> Camera2D.process(delta, viewport), n),
             scene)
 
-    /// 各フェーズでカメラが向かうべきターゲット位置を計算する純粋関数。
+    /// 各フェーズでカメラが向かうべきターゲット位置を計算する。
     /// `selected` が None のときはパーティの代表（id=0、または最初のアクティブ）の位置に向く。
     /// PlayerMoving の「画面内なら維持」は engine の drag margin が引き受けるため、
     /// この関数は単に「選択中味方の位置」を返すだけになる。
+    /// EnemyTurn は `enemyTurnTarget` で「alerted な敵の動きを映す」分岐に入る。
     def computeTarget(phase: TurnPhase.Phase,
                        selected: Option[Int32],
-                       scene: Scene[NodeTag]): Vec2.Vec2 =
+                       scene: Scene[NodeTag]): Vec2.Vec2 \ EnemyTurn.Queue =
         let focusId = focusIdOf(selected, scene);
         let focusPos = focusedPlayerWorldPos(focusId, scene);
         match phase {
@@ -94,7 +97,63 @@ mod CameraScene {
             case TurnPhase.Phase.PlayerMoving   => focusPos
             case TurnPhase.Phase.PlayerAttack   => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerAutoMove => flagWorldPos(scene)
-            case TurnPhase.Phase.EnemyTurn      => focusPos
+            case TurnPhase.Phase.EnemyTurn      => enemyTurnTarget(focusPos, scene)
+        }
+
+    /// 敵ターン中のカメラターゲットを決める。
+    /// 優先順位:
+    ///   1. **attacking 中の敵** (attack_lunge アニメ中の敵) → 攻撃の見せ場を映す
+    ///   2. **キュー先頭の敵** (移動中 / 次に行動する敵)
+    /// その敵が `alerted` なら追従、非 alerted (Skip フェーズ) なら fallback (プレイヤー位置)。
+    /// 「敵に発見されている状態では敵の動きが見える」ようにするためのロジック。
+    def enemyTurnTarget(fallback: Vec2.Vec2, scene: Scene[NodeTag]):
+            Vec2.Vec2 \ EnemyTurn.Queue =
+        let activeId = match attackingEnemyId(scene) {
+            case Some(id) => Some(id)
+            case None     => match EnemyTurn.Queue.peekFront() {
+                case Some(step) => Some(step#id)
+                case None       => None
+            }
+        };
+        match activeId {
+            case None     => fallback
+            case Some(id) =>
+                match EnemyScene.get(id, scene) {
+                    case Some(d) =>
+                        if (d#alerted)
+                            Scene.globalPositionAt(EnemyScene.enemyPath(id), scene)
+                        else fallback
+                    case None => fallback
+                }
+        }
+
+    /// attack_lunge 中の敵 id を 1 つ返す。`stepEnemyTurn` が attacking 中は他の step を
+    /// 進めない設計なので、複数 attacking 状態は通常起きない（防御的に head を取る）。
+    def attackingEnemyId(scene: Scene[NodeTag]): Option[Int32] =
+        EnemyScene.getAll(scene)
+            |> List.filterMap(e ->
+                if (Option.nonEmpty(e#attackTargetId)) Some(e#id) else None)
+            |> List.head
+
+    // ────────────────────────────────────────────────────────
+    // (E) カメラ追従の到達判定
+    // ────────────────────────────────────────────────────────
+
+    /// 現在のカメラ target に smoothPosition が「drag dead zone 内」に収まったか。
+    /// 敵ターン中、カメラが新しい敵に切り替わったあと「カメラが到達するまで敵の行動を待つ」
+    /// gating に使う（`stepEnemyTurn` の冒頭で `not isSettled(scene)` なら処理スキップ）。
+    ///
+    /// 判定式は `Camera2D.isWithinDragDeadZone` に閉じてあり、drag margin の幾何から
+    /// 収束 threshold を逆算する（drag 有効時 = `worldHalf × dragMargin` + 2 px buffer、
+    /// drag 無効時 = 4 px）。viewport size が必要なため `GameEngine.Game` 効果を使う。
+    /// カメラノードが未登録の場合は true を返す（テスト/初期化時の安全側）。
+    pub def isSettled(scene: Scene[NodeTag]): Bool \ GameEngine.Game =
+        match Scene.getEngineNode(cameraPath(), scene) {
+            case Some(EngineNode.Camera2DWithState(cam, _)) =>
+                let vp = GameEngine.Game.getViewportRect();
+                Camera2D.isWithinDragDeadZone(cam,
+                    {viewportWidth = vp#size#x, viewportHeight = vp#size#y})
+            case _ => true
         }
 
     /// 「いまカメラが向くべき」プレイヤー id を選ぶ。

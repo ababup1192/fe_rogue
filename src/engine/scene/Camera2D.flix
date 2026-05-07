@@ -352,6 +352,30 @@ mod Camera2D {
         let Camera2D.Camera2D(r) = camera;
         r#smoothPosition
 
+    /// target (`position`) が「smoothPosition 中心の drag dead zone 矩形」内に居るか。
+    /// drag margin が有効な軸では「収束した = target が dead zone 内」、無効な軸では
+    /// 4 px epsilon を threshold にする（後方互換）。
+    /// 「カメラが target に追いついた」判定に使う（gameplay 側の Camera2D 抽象、Godot に対応 API は無いがフィールドは Godot 4 のみで構成）。
+    /// 純関数（viewport を引数で取り、scene/effect に依存しない）なので engine 単独テスト可能。
+    pub def isWithinDragDeadZone(camera: Camera2D,
+            viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): Bool =
+        let Camera2D.Camera2D(r) = camera;
+        let target = r#position;
+        let smooth = r#smoothPosition;
+        let zx = if (r#zoom#x == 0.0) 1.0 else r#zoom#x;
+        let zy = if (r#zoom#y == 0.0) 1.0 else r#zoom#y;
+        let worldHalfW = viewportSize#viewportWidth / 2.0 / zx;
+        let worldHalfH = viewportSize#viewportHeight / 2.0 / zy;
+        // drag margin の収束 threshold + asymptotic 接近のための 2 px buffer
+        let thresholdX = if (r#dragHorizontalEnabled)
+                worldHalfW * Float64.max(r#dragLeftMargin, r#dragRightMargin) + 2.0
+            else 4.0;
+        let thresholdY = if (r#dragVerticalEnabled)
+                worldHalfH * Float64.max(r#dragTopMargin, r#dragBottomMargin) + 2.0
+            else 4.0;
+        Float64.abs(target#x - smooth#x) <= thresholdX
+            and Float64.abs(target#y - smooth#y) <= thresholdY
+
     /// `smoothPosition` を直接設定する（カメラを瞬間移動させたい場合の保険）。
     /// 通常は `process` 経由で smoothing/drag を介して更新される。
     pub def setSmoothPosition(smoothPosition: Vec2.Vec2, camera: Camera2D): Camera2D =

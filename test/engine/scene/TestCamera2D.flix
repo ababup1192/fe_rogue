@@ -157,4 +157,64 @@ mod TestCamera2D {
         let t = Camera2D.getViewTransform(cam, {x = 0.0, y = 0.0}, vp200x100());
         // screenCenter=(50,25), offset=(50-100, 25-50) = (-50, -25)
         Assert.assertEq(expected = true, approx(t#offset#x, -50.0) and approx(t#offset#y, -25.0))
+
+    // ════════════════════════════════════════════════════════
+    // isWithinDragDeadZone: drag margin の幾何から settle を判定
+    // ════════════════════════════════════════════════════════
+
+    /// drag 無効時は 4 px 以内が settled。target=smooth=(0,0) → 0 px 差で true
+    @Test
+    def testDeadZoneWithoutDragIsTinyEpsilon(): Unit \ Assert =
+        let cam = Camera2D.make({x = 0.0, y = 0.0});
+        // smoothPosition も初期化で position と同値 → 距離 0
+        Assert.assertEq(expected = true,
+            Camera2D.isWithinDragDeadZone(cam, vp200x100()))
+
+    /// drag 無効、target が smooth から 5 px 離れている → 4 px 超えで false
+    @Test
+    def testDeadZoneWithoutDragRejectsBeyondEpsilon(): Unit \ Assert =
+        let cam = Camera2D.make({x = 5.0, y = 0.0})
+            |> Camera2D.setSmoothPosition({x = 0.0, y = 0.0});
+        Assert.assertEq(expected = false,
+            Camera2D.isWithinDragDeadZone(cam, vp200x100()))
+
+    /// drag horizontal 有効。viewport 200, zoom 1, dragRightMargin 0.3 → world dead zone half
+    /// = 200/2 * 0.3 = 30. target が smooth から 28 px 離れていても dead zone 内 → true
+    @Test
+    def testDeadZoneWithDragMarginAcceptsWithinMargin(): Unit \ Assert =
+        let cam = Camera2D.make({x = 28.0, y = 0.0})
+            |> Camera2D.setSmoothPosition({x = 0.0, y = 0.0})
+            |> Camera2D.setDragHorizontalEnabled(true)
+            |> Camera2D.setDragLeftMargin(0.3)
+            |> Camera2D.setDragRightMargin(0.3);
+        Assert.assertEq(expected = true,
+            Camera2D.isWithinDragDeadZone(cam, vp200x100()))
+
+    /// drag margin 30、target が smooth から 50 px 離れている → dead zone (30+2=32) 超え → false
+    @Test
+    def testDeadZoneWithDragMarginRejectsBeyondMargin(): Unit \ Assert =
+        let cam = Camera2D.make({x = 50.0, y = 0.0})
+            |> Camera2D.setSmoothPosition({x = 0.0, y = 0.0})
+            |> Camera2D.setDragHorizontalEnabled(true)
+            |> Camera2D.setDragLeftMargin(0.3)
+            |> Camera2D.setDragRightMargin(0.3);
+        Assert.assertEq(expected = false,
+            Camera2D.isWithinDragDeadZone(cam, vp200x100()))
+
+    /// drag margin で大移動 → process を回せば smooth が dead zone 内に収束する
+    /// （フリーズ修正の核となる挙動の pin）
+    @Test
+    def testDeadZoneReachedAfterProcessConvergence(): Unit \ Assert =
+        let cam = Camera2D.make({x = 100.0, y = 0.0})    // target は遠く
+            |> Camera2D.setSmoothPosition({x = 0.0, y = 0.0})
+            |> Camera2D.setPositionSmoothingEnabled(true)
+            |> Camera2D.setPositionSmoothingSpeed(5.0)
+            |> Camera2D.setDragHorizontalEnabled(true)
+            |> Camera2D.setDragLeftMargin(0.3)
+            |> Camera2D.setDragRightMargin(0.3);
+        // 1.0 秒進めて収束させる
+        let processed = Camera2D.process(1.0 |> Duration.seconds, vp200x100(), cam);
+        // 収束後、target が dead zone 内に居る
+        Assert.assertEq(expected = true,
+            Camera2D.isWithinDragDeadZone(processed, vp200x100()))
 }

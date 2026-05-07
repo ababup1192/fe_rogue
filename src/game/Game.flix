@@ -113,6 +113,7 @@ mod Game {
             } with Editor.withState(rc)
               with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽
               with AnimationPlayer.withScheduler(rc)  // 名前付きアニメ + イベントドレイン
+              with Pacing.withState(rc)           // 演出の溜め (hold)
               with GameLogger.withLogger(rc)      // ログエントリは内部に隠蔽
               with EnemyTurn.withQueue(rc)        // 敵ターンキュー（1 step / 1 frame 駆動）
               with TurnPhase.withState(rc)        // 味方ターン内のサブフェーズ + 敵ターン
@@ -134,6 +135,7 @@ mod Game {
                          GameLogger.GameLogger,
                          EnemyTurn.Queue, TurnPhase.State,
                          SelectedPlayer.State, InitialSpawns.State,
+                         Pacing.State,
                          Math.Random, IO, r} =
         if (GameEngine.Game.shouldClose() or
             GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
