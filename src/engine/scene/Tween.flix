@@ -15,14 +15,18 @@
 
 mod Tween {
 
+    /// 補間範囲（位置）。world 座標で `start` から `target` へ lerp する。
+    pub type alias VecLerp = { start = Vec2.Vec2, target = Vec2.Vec2 }
+
+    /// 補間範囲（アルファ）。Sprite2D の alpha を `start` から `target` へ補間する。
+    pub type alias FloatLerp = { start = Float32, target = Float32 }
+
     /// 補間対象プロパティ。start と target を両方内包する形にして、
     /// Position / Alpha どちらも同じ Entry シェイプで扱えるようにする。
     /// 将来 Scale / Rotation / Color に拡張する場合もここにバリアントを追加する。
     pub enum Kind {
-        /// (start world 座標, target world 座標)
-        case Position(Vec2.Vec2, Vec2.Vec2)
-        /// (start alpha, target alpha) — Sprite2D の alpha を補間する
-        case Alpha(Float32, Float32)
+        case Position(VecLerp)
+        case Alpha(FloatLerp)
     }
 
     /// 1 つのアクティブ tween。
@@ -69,7 +73,7 @@ mod Tween {
                           to: Vec2.Vec2, duration: Duration.Duration): Unit \ Scheduler =
         Scheduler.schedule({
             path     = targetPath,
-            kind     = Kind.Position(startPos, to),
+            kind     = Kind.Position({start = startPos, target = to}),
             elapsed  = Duration.zero(),
             duration = duration
         })
@@ -81,7 +85,7 @@ mod Tween {
                        toAlpha: Float32, duration: Duration.Duration): Unit \ Scheduler =
         Scheduler.schedule({
             path     = targetPath,
-            kind     = Kind.Alpha(fromAlpha, toAlpha),
+            kind     = Kind.Alpha({start = fromAlpha, target = toAlpha}),
             elapsed  = Duration.zero(),
             duration = duration
         })
@@ -117,17 +121,17 @@ mod Tween {
                         let nextElapsed = Duration.add(e#elapsed, delta);
                         let t = Duration.ratio(nextElapsed, e#duration);
                         let value = match e#kind {
-                            case Kind.Position(start, target) =>
-                                UpdateValue.PosVal(Vec2.lerp(start, target, t))
-                            case Kind.Alpha(start, target) =>
-                                let s = Float32.toFloat64(start);
-                                let g = Float32.toFloat64(target);
+                            case Kind.Position(lerp) =>
+                                UpdateValue.PosVal(Vec2.lerp(lerp#start, lerp#target, t))
+                            case Kind.Alpha(lerp) =>
+                                let s = Float32.toFloat64(lerp#start);
+                                let g = Float32.toFloat64(lerp#target);
                                 let v = s + (g - s) * t;
                                 // Float64 → Float32: alpha は 0..1 範囲内なので
                                 // tryToFloat32 は常に Some を返す。Java interop で
                                 // 直接 narrow しても良いが、stdlib API を使うほうが安全。
                                 let v32 = Float64.tryToFloat32(v)
-                                    |> Option.getWithDefault(target);
+                                    |> Option.getWithDefault(lerp#target);
                                 UpdateValue.AlphaVal(v32)
                         };
                         let update: Update = {

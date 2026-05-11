@@ -13,7 +13,7 @@
 // 対応ノード型:
 //   CanvasLayer / Sprite2D / AnimatedSprite2D / Label2D / TextureButton /
 //   StaticBody2D / RigidBody2D / Area2D / CharacterBody2D / Marker2D /
-//   Camera2D / TileMapLayer
+//   Camera2D / TileMapLayer / ColorRect / RichTextLabel
 // 対応 collision shape: RectShape2D / CircleShape2D
 //
 // 注:
@@ -152,18 +152,30 @@ mod SceneLoader {
                     nodeType: String, fontAtlas: Option[FontAtlas],
                     map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] \ {GameEngine.Game, Fs.FileRead} =
         match nodeType {
-            case "CanvasLayer"      => checked_ecast(buildCanvasLayer(tagParser, map))
-            case "Sprite2D"         => checked_ecast(buildSprite2D(tagParser, map))
-            case "TextureButton"    => checked_ecast(buildTextureButton(tagParser, map))
-            case "StaticBody2D"     => checked_ecast(buildStaticBody2D(tagParser, map))
-            case "Label2D"          => checked_ecast(buildLabel2D(tagParser, fontAtlas, map))
-            case "RigidBody2D"      => checked_ecast(buildRigidBody2D(tagParser, map))
-            case "Area2D"           => checked_ecast(buildArea2D(tagParser, map))
-            case "AnimatedSprite2D" => checked_ecast(buildAnimatedSprite2D(tagParser, map))
-            case "CharacterBody2D"  => checked_ecast(buildCharacterBody2D(tagParser, map))
-            case "Marker2D"         => checked_ecast(buildMarker2D(tagParser, map))
-            case "Camera2D"         => checked_ecast(buildCamera2D(tagParser, map))
-            case "TileMapLayer"     => buildTileMapLayer(tagParser, map)
+            case "TileMapLayer" => buildTileMapLayer(tagParser, map)
+            case other          => checked_ecast(buildPureNodeType(tagParser, other, fontAtlas, map))
+        }
+
+    /// `TileMapLayer` を除く、副作用を持たないビルダーへのディスパッチ。
+    /// 関数 1 つあたりの case が増えると Flix の型推論が破綻するため、
+    /// `buildByType` から effectful な `TileMapLayer` を分離して残りをまとめる。
+    def buildPureNodeType(tagParser: Option[String] -> Result[Json.JsonError, t],
+                          nodeType: String, fontAtlas: Option[FontAtlas],
+                          map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
+        match nodeType {
+            case "CanvasLayer"      => buildCanvasLayer(tagParser, map)
+            case "Sprite2D"         => buildSprite2D(tagParser, map)
+            case "TextureButton"    => buildTextureButton(tagParser, map)
+            case "StaticBody2D"     => buildStaticBody2D(tagParser, map)
+            case "Label2D"          => buildLabel2D(tagParser, fontAtlas, map)
+            case "RigidBody2D"      => buildRigidBody2D(tagParser, map)
+            case "Area2D"           => buildArea2D(tagParser, map)
+            case "AnimatedSprite2D" => buildAnimatedSprite2D(tagParser, map)
+            case "CharacterBody2D"  => buildCharacterBody2D(tagParser, map)
+            case "Marker2D"         => buildMarker2D(tagParser, map)
+            case "Camera2D"         => buildCamera2D(tagParser, map)
+            case "ColorRect"        => buildColorRect(tagParser, map)
+            case "RichTextLabel"    => buildRichTextLabel(tagParser, fontAtlas, map)
             case unknown            =>
                 Err(JsonError(Root, Set#{"known node type (got: ${unknown})"}))
         }
@@ -233,9 +245,22 @@ mod SceneLoader {
     def buildCanvasLayer(tagParser: Option[String] -> Result[Json.JsonError, t],
                          map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
         forM (
-            tag       <- parseTagField(tagParser, map);
-            drawLayer <- (Json.FromJson.getAtKey(Root, "layer", map): Result[Json.JsonError, Int32])
-        ) yield EngineNode.CanvasLayerWithState(CanvasLayer.make(drawLayer), tag)
+            tag         <- parseTagField(tagParser, map);
+            drawLayer   <- (Json.FromJson.getAtKey(Root, "layer", map): Result[Json.JsonError, Int32]);
+            posOpt      <- parseVec2Opt("pos", map);
+            rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]])
+        ) yield {
+            let layer = CanvasLayer.make(drawLayer)
+                |> applyOpt(posOpt, setCanvasLayerPosition)
+                |> applyOpt(rotationOpt, setCanvasLayerRotation);
+            EngineNode.CanvasLayerWithState(layer, tag)
+        }
+
+    def setCanvasLayerPosition(pos: Vec2.Vec2, layer: CanvasLayer): CanvasLayer =
+        Node2D.setPosition(pos, layer)
+
+    def setCanvasLayerRotation(rot: Float64, layer: CanvasLayer): CanvasLayer =
+        Node2D.setRotation(rot, layer)
 
     def buildSprite2D(tagParser: Option[String] -> Result[Json.JsonError, t],
                       map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
@@ -614,25 +639,27 @@ mod SceneLoader {
             case None => Err(JsonError(Root, Set#{"FontAtlas (loadSceneWithFont required for Label2D)"}))
             case Some(font) =>
                 forM (
-                    tag        <- parseTagField(tagParser, map);
-                    text       <- (Json.FromJson.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
-                    pos        <- parseVec2("pos", map);
-                    fontSize   <- (Json.FromJson.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
-                    hAlignOpt  <- (Json.FromJson.getAtKeyOpt(Root, "horizontalAlignment", map):
+                    tag         <- parseTagField(tagParser, map);
+                    text        <- (Json.FromJson.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
+                    pos         <- parseVec2("pos", map);
+                    fontSize    <- (Json.FromJson.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
+                    hAlignOpt   <- (Json.FromJson.getAtKeyOpt(Root, "horizontalAlignment", map):
                                      Result[Json.JsonError, Option[String]]);
-                    vAlignOpt  <- (Json.FromJson.getAtKeyOpt(Root, "verticalAlignment", map):
+                    vAlignOpt   <- (Json.FromJson.getAtKeyOpt(Root, "verticalAlignment", map):
                                      Result[Json.JsonError, Option[String]]);
-                    hAlign     <- parseHorizontalAlignment(hAlignOpt);
-                    vAlign     <- parseVerticalAlignment(vAlignOpt);
-                    visibleOpt <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
-                    zIndexOpt  <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
+                    hAlign      <- parseHorizontalAlignment(hAlignOpt);
+                    vAlign      <- parseVerticalAlignment(vAlignOpt);
+                    visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+                    zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+                    rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]])
                 ) yield {
                     let label = Label2D.make(text, font, fontSize)
                         |> Node2D.setPosition(pos)
                         |> Label2D.setHorizontalAlignment(hAlign)
                         |> Label2D.setVerticalAlignment(vAlign)
                         |> applyLabelVisible(visibleOpt)
-                        |> applyLabelZIndex(zIndexOpt);
+                        |> applyLabelZIndex(zIndexOpt)
+                        |> applyOpt(rotationOpt, (r, l) -> Node2D.setRotation(r, l));
                     EngineNode.Label2DWithState(label, tag)
                 }
         }
@@ -660,6 +687,80 @@ mod SceneLoader {
             case Some(other)    =>
                 Err(JsonError(Root, Set#{"top|center|bottom|fill (got: ${other})"}))
         }
+
+    /// `{"r": 1.0, "g": 1.0, "b": 1.0}` 形式の JSON オブジェクトを Color (Float32) に変換する。
+    /// 数値は JSON 上 Float64 として読み、Float32 に縮小する
+    def parseColor(key: String,
+                   map: Map[String, Json.JsonElement]): Result[Json.JsonError, Color] =
+        forM (
+            colorMap <- (Json.FromJson.getAtKey(Root, key, map): Result[Json.JsonError, Map[String, Json.JsonElement]]);
+            r        <- (Json.FromJson.getAtKey(Root, "r", colorMap): Result[Json.JsonError, Float64]);
+            g        <- (Json.FromJson.getAtKey(Root, "g", colorMap): Result[Json.JsonError, Float64]);
+            b        <- (Json.FromJson.getAtKey(Root, "b", colorMap): Result[Json.JsonError, Float64])
+        ) yield ({
+            r = Float64.truncateToFloat32(r),
+            g = Float64.truncateToFloat32(g),
+            b = Float64.truncateToFloat32(b)
+        }: Color)
+
+    def buildColorRect(tagParser: Option[String] -> Result[Json.JsonError, t],
+                       map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
+        forM (
+            tag         <- parseTagField(tagParser, map);
+            pos         <- parseVec2("pos", map);
+            size        <- parseVec2("size", map);
+            color       <- parseColor("color", map);
+            alphaOpt    <- (Json.FromJson.getAtKeyOpt(Root, "alpha", map): Result[Json.JsonError, Option[Float64]]);
+            visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]])
+        ) yield {
+            let rect = ColorRect.make(size, color)
+                |> Node2D.setPosition(pos)
+                |> applyOpt(alphaOpt, setColorRectAlpha)
+                |> applyOpt(visibleOpt, setColorRectVisible)
+                |> applyOpt(zIndexOpt, setColorRectZIndex)
+                |> applyOpt(rotationOpt, (r, c) -> Node2D.setRotation(r, c));
+            EngineNode.ColorRectWithState(rect, tag)
+        }
+
+    def setColorRectAlpha(alpha: Float64, rect: ColorRect): ColorRect =
+        ColorRect.setAlpha(Float64.truncateToFloat32(alpha), rect)
+
+    def setColorRectVisible(v: Bool, rect: ColorRect): ColorRect =
+        CanvasItem.setVisible(v, rect)
+
+    def setColorRectZIndex(z: Int32, rect: ColorRect): ColorRect =
+        CanvasItem.setZIndex(z, rect)
+
+    def buildRichTextLabel(tagParser: Option[String] -> Result[Json.JsonError, t],
+                           fontAtlas: Option[FontAtlas],
+                           map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
+        match fontAtlas {
+            case None => Err(JsonError(Root, Set#{"FontAtlas (loadSceneWithFont required for RichTextLabel)"}))
+            case Some(font) =>
+                forM (
+                    tag        <- parseTagField(tagParser, map);
+                    pos        <- parseVec2("pos", map);
+                    size       <- parseVec2("size", map);
+                    text       <- (Json.FromJson.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
+                    fontSize   <- (Json.FromJson.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
+                    visibleOpt <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+                    zIndexOpt  <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
+                ) yield {
+                    let label = RichTextLabel.make(text, font, fontSize, size)
+                        |> Node2D.setPosition(pos)
+                        |> applyOpt(visibleOpt, setRichTextLabelVisible)
+                        |> applyOpt(zIndexOpt, setRichTextLabelZIndex);
+                    EngineNode.RichTextLabelWithState(label, tag)
+                }
+        }
+
+    def setRichTextLabelVisible(v: Bool, label: RichTextLabel): RichTextLabel =
+        CanvasItem.setVisible(v, label)
+
+    def setRichTextLabelZIndex(z: Int32, label: RichTextLabel): RichTextLabel =
+        CanvasItem.setZIndex(z, label)
 
     // ========================================================================
     // ビルダー用ヘルパー（任意フィールド適用）

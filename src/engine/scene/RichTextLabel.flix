@@ -1,7 +1,9 @@
 /// リッチテキストラベル（Godot RichTextLabel 準拠の最小実装）
 /// see: https://docs.godotengine.org/en/stable/classes/class_richtextlabel.html
 ///
-/// BBCode カラータグ `[color=...]...[/color]` をサポートする。
+/// BBCode カラータグ `[color=...]...[/color]` と太字タグ `[b]...[/b]` をサポート。
+/// 太字は `boldFontAtlas` を別途持たせ、`[b]` 内の文字をそのアトラスのグリフで描画する。
+/// 未設定（None）なら `[b]` は無視されてレギュラーで表示される。
 /// 表示領域 size を持ち、はみ出す行は CPU 側でカリングする（真のクリッピングは未実装）。
 /// scrollY を加算して縦方向にスクロールでき、scrollFollowing が true のときは
 /// setText 時に自動で末尾までスクロールする（チャットログ用途を想定）。
@@ -14,6 +16,7 @@ pub enum RichTextLabel {
     case RichTextLabel({
         text = String,
         fontAtlas = FontAtlas,
+        boldFontAtlas = Option[FontAtlas],
         fontSize = Float64,
         size = Vec2.Vec2,
         scrollY = Float64,
@@ -28,6 +31,14 @@ pub enum RichTextLabel {
     })
 }
 
+/// 1 文字単位の表示属性。`parseStyled` の戻り値要素として使う。
+/// `bold` が true のとき、`toDrawables` は `boldFontAtlas` のグリフを使う。
+pub type alias TextSegment = {
+    char  = Char,
+    color = Color,
+    bold  = Bool
+}
+
 mod RichTextLabel {
     /// テキストとフォントアトラスから RichTextLabel を生成する。
     /// size は表示領域 (w, h)。BBCode 解釈は toDrawables 時に行う。
@@ -35,6 +46,7 @@ mod RichTextLabel {
         RichTextLabel.RichTextLabel({
             text = text,
             fontAtlas = fontAtlas,
+            boldFontAtlas = None,
             fontSize = fontSize,
             size = size,
             scrollY = 0.0,
@@ -47,6 +59,18 @@ mod RichTextLabel {
             zIndex = 0,
             modulate = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
         })
+
+    /// `[b]...[/b]` 用の bold アトラスをセットする。`None` をセットしたい場合は
+    /// `clearBoldFontAtlas` を使う。Regular と同じ ascent/descent/lineGap を持つ
+    /// バリアントを渡す前提（PixelMplus10 等の bold/regular ペア）。
+    pub def setBoldFontAtlas(boldAtlas: FontAtlas, label: RichTextLabel): RichTextLabel =
+        let RichTextLabel.RichTextLabel(r) = label;
+        RichTextLabel.RichTextLabel({ boldFontAtlas = Some(boldAtlas) | r })
+
+    /// bold アトラスを未設定状態に戻す（`[b]` がレギュラーで描画される）。
+    pub def clearBoldFontAtlas(label: RichTextLabel): RichTextLabel =
+        let RichTextLabel.RichTextLabel(r) = label;
+        RichTextLabel.RichTextLabel({ boldFontAtlas = None | r })
 
     /// テキストを設定する。scrollFollowing が true のとき、末尾まで自動スクロールする。
     pub def setText(text: String, label: RichTextLabel): RichTextLabel =
@@ -69,6 +93,12 @@ mod RichTextLabel {
     pub def getSize(label: RichTextLabel): Vec2.Vec2 =
         let RichTextLabel.RichTextLabel(r) = label;
         r#size
+
+    /// 表示フォントサイズ（design px）を取得する。
+    /// 行高さ計算（ヒットテストやスクロール量）の基準値として使う。
+    pub def getFontSize(label: RichTextLabel): Float64 =
+        let RichTextLabel.RichTextLabel(r) = label;
+        r#fontSize
 
     /// スクロール位置（縦）を設定する。範囲は 0 〜 max(0, contentHeight - size.y) にクランプ。
     pub def setScrollY(scrollY: Float64, label: RichTextLabel): RichTextLabel =
@@ -113,83 +143,95 @@ mod RichTextLabel {
         let lh = lineHeight(label);
         lh * Int32.toFloat64(Int32.max(1, List.length(lines)))
 
-    /// BBCode テキストを「文字＋色」のフラットなリストに変換する。
-    /// 対応タグ: [color=#rrggbb], [color=#rrggbbaa], [color=name], [/color]
-    /// 認識できない `[xxx]` 形式はリテラルとして保持する。
+    /// BBCode テキストを「文字＋色」のフラットなリストに変換する（後方互換 API）。
+    /// 太字フラグは捨てるので `[b]` は実質的に無視される。bold 対応の描画には
+    /// `parseStyled` を使うこと。本関数はテストや `contentHeight` のような行数だけ
+    /// 知りたいパスのために残してある。
     pub def parseBBCode(text: String, defaultColor: Color): List[(Char, Color)] =
-        let chars = String.toList(text);
-        let result = parseBBCodeLoop(chars, defaultColor :: Nil, Nil);
-        List.reverse(result)
+        parseStyled(text, defaultColor)
+            |> List.map(seg -> (seg#char, seg#color))
 
-    /// BBCode パーサ本体（再帰）。stack は色のスタック、acc は逆順の結果。
-    def parseBBCodeLoop(chars: List[Char], stack: List[Color], acc: List[(Char, Color)]): List[(Char, Color)] =
-        match chars {
-            case Nil => acc
-            case '[' :: rest =>
-                match takeUntilCloseBracket(rest) {
-                    case Some((tagBody, after)) =>
-                        match interpretTag(tagBody) {
-                            case TagAction.Push(c) =>
-                                parseBBCodeLoop(after, c :: stack, acc)
-                            case TagAction.Pop =>
-                                let newStack = match stack {
-                                    case _ :: tail if not List.isEmpty(tail) => tail
-                                    case s => s
-                                };
-                                parseBBCodeLoop(after, newStack, acc)
-                            case TagAction.Literal =>
-                                // タグとして解釈できない → '[' + tagBody + ']' をリテラル化
-                                let cur = currentColor(stack);
-                                let lit = '[' :: List.append(String.toList(tagBody), ']' :: Nil);
-                                let newAcc = List.foldLeft((a, ch) -> (ch, cur) :: a, acc, lit);
-                                parseBBCodeLoop(after, stack, newAcc)
+    /// BBCode テキストを「文字＋色＋太字フラグ」のフラットなリストに変換する。
+    /// 対応タグ:
+    ///   - `[color=#rrggbb]` / `[color=#rrggbbaa]` / `[color=name]` / `[/color]`
+    ///   - `[b]` / `[/b]` （bold アトラスがセットされていれば太字描画、なければ無視）
+    /// 認識できない `[xxx]` 形式はリテラルとして保持する（情報を捨てない）。
+    pub def parseStyled(text: String, defaultColor: Color): List[TextSegment] =
+        Markup.BBCode.parse(text)
+            |> tokensToStyledSegments(defaultColor)
+
+    /// `Markup.BBCode` のトークン列を `TextSegment` フラットリストへ落とし込む。
+    /// 色スタックと bold ネスト深さを持ち、`[color=...]` / `[b]` で push、
+    /// 対応する `[/...]` で pop する。未対応タグや不正な値はリテラル化する。
+    def tokensToStyledSegments(defaultColor: Color,
+                                 tokens: List[Markup.BBCode.Token]): List[TextSegment] =
+        let result = List.foldLeft((acc, token) -> {
+            let colorStack = acc#colorStack;
+            let boldDepth = acc#boldDepth;
+            let segments = acc#segments;
+            let curColor = currentColor(colorStack, defaultColor);
+            let curBold = boldDepth > 0;
+            match token {
+                case Markup.BBCode.Token.Text(s) =>
+                    { colorStack = colorStack, boldDepth = boldDepth,
+                      segments = appendChars(s, curColor, curBold, segments) }
+                case Markup.BBCode.Token.OpenTag(name, attrs) =>
+                    if (name == "color")
+                        match Map.get("color", attrs) {
+                            case Some(value) =>
+                                match parseColorValue(value) {
+                                    case Some(color) =>
+                                        { colorStack = color :: colorStack,
+                                          boldDepth = boldDepth, segments = segments }
+                                    case None        =>
+                                        { colorStack = colorStack, boldDepth = boldDepth,
+                                          segments = appendChars(
+                                            Markup.BBCode.renderOpenTag(name, attrs),
+                                            curColor, curBold, segments) }
+                                }
+                            case None =>
+                                { colorStack = colorStack, boldDepth = boldDepth,
+                                  segments = appendChars(
+                                    Markup.BBCode.renderOpenTag(name, attrs),
+                                    curColor, curBold, segments) }
                         }
-                    case None =>
-                        // 閉じ括弧なし → '[' をリテラル扱いして次へ
-                        let cur = currentColor(stack);
-                        parseBBCodeLoop(rest, stack, ('[', cur) :: acc)
-                }
-            case ch :: rest =>
-                let cur = currentColor(stack);
-                parseBBCodeLoop(rest, stack, (ch, cur) :: acc)
-        }
-
-    /// '[' の次から ']' までを取り出す。見つからなければ None。
-    /// found = true 以降は、それ以降の char をすべて rest に積む（']' 後に丸ごと残す）。
-    def takeUntilCloseBracket(chars: List[Char]): Option[(String, List[Char])] =
-        let result = List.foldLeft((acc, ch) -> {
-            if (acc#found) {body = acc#body, rest = ch :: acc#rest, found = true}
-            else if (ch == ']') {body = acc#body, rest = acc#rest, found = true}
-            else {body = ch :: acc#body, rest = acc#rest, found = false}
-        }, {body = (Nil: List[Char]), rest = (Nil: List[Char]), found = false}, chars);
-        if (result#found)
-            Some((charsToString(List.reverse(result#body)), List.reverse(result#rest)))
-        else
-            None
-
-    /// List[Char] を String に変換するヘルパー
-    def charsToString(chars: List[Char]): String =
-        List.foldLeft((acc, c) -> acc + Char.toString(c), "", chars)
-
-    /// タグ解釈結果
-    enum TagAction {
-        case Push(Color)
-        case Pop
-        case Literal
-    }
-
-    /// タグ本体（'[' と ']' の間の文字列）を解釈する
-    def interpretTag(tagBody: String): TagAction =
-        let trimmed = String.trim(tagBody);
-        if (trimmed == "/color") TagAction.Pop
-        else if (String.startsWith(prefix = "color=", trimmed)) {
-            let value = String.trim(String.drop(6, trimmed));
-            match parseColorValue(value) {
-                case Some(c) => TagAction.Push(c)
-                case None    => TagAction.Literal
+                    else if (name == "b")
+                        { colorStack = colorStack, boldDepth = boldDepth + 1,
+                          segments = segments }
+                    else
+                        { colorStack = colorStack, boldDepth = boldDepth,
+                          segments = appendChars(
+                            Markup.BBCode.renderOpenTag(name, attrs),
+                            curColor, curBold, segments) }
+                case Markup.BBCode.Token.CloseTag(name) =>
+                    if (name == "color")
+                        let newStack = match colorStack {
+                            case _ :: tail => tail
+                            case Nil       => Nil
+                        };
+                        { colorStack = newStack, boldDepth = boldDepth,
+                          segments = segments }
+                    else if (name == "b")
+                        { colorStack = colorStack,
+                          boldDepth = Int32.max(0, boldDepth - 1),
+                          segments = segments }
+                    else
+                        { colorStack = colorStack, boldDepth = boldDepth,
+                          segments = appendChars(
+                            "[/${name}]", curColor, curBold, segments) }
             }
-        }
-        else TagAction.Literal
+        }, {
+            colorStack = (Nil: List[Color]),
+            boldDepth = 0,
+            segments = (Nil: List[TextSegment])
+        }, tokens);
+        List.reverse(result#segments)
+
+    /// 文字列を 1 文字ずつ取り出して、現在の色 / 太字フラグと共に逆順バッファに積む。
+    def appendChars(text: String, color: Color, bold: Bool,
+                     acc: List[TextSegment]): List[TextSegment] =
+        String.toList(text)
+            |> List.foldLeft((a, ch) -> ({char = ch, color = color, bold = bold}: TextSegment) :: a, acc)
 
     /// "#rrggbb" / "#rrggbbaa" / 名前付き色 を Color に変換する。alpha は無視。
     def parseColorValue(value: String): Option[Color] =
@@ -234,29 +276,54 @@ mod RichTextLabel {
         else if (cp >= 65 and cp <= 70) Some(cp - 55)   // 'A'..'F'
         else None
 
-    /// 名前付きの色を Color に変換する（Godot Color.named のサブセット）
+    /// 名前付きの色を Color に変換する。CSS Level 1 の 16 色に加え、ノベル / 演出で
+    /// よく使う拡張色（gold / pink / silver / brown / 等）を含む。
+    /// 値は CSS の RGB に準拠（Godot の `green=(0,1,0)` は採用せず、CSS と同じく
+    /// `green=(0,0.5,0)` ＋ `lime=(0,1,0)` で分離）。
     def parseNamedColor(name: String): Option[Color] = match name {
-        case "white"   => Some({r = 1.0f32, g = 1.0f32, b = 1.0f32})
-        case "black"   => Some({r = 0.0f32, g = 0.0f32, b = 0.0f32})
-        case "red"     => Some({r = 1.0f32, g = 0.0f32, b = 0.0f32})
-        case "green"   => Some({r = 0.0f32, g = 1.0f32, b = 0.0f32})
-        case "blue"    => Some({r = 0.0f32, g = 0.0f32, b = 1.0f32})
-        case "yellow"  => Some({r = 1.0f32, g = 1.0f32, b = 0.0f32})
-        case "cyan"    => Some({r = 0.0f32, g = 1.0f32, b = 1.0f32})
-        case "magenta" => Some({r = 1.0f32, g = 0.0f32, b = 1.0f32})
-        case "gray"    => Some({r = 0.5f32, g = 0.5f32, b = 0.5f32})
-        case "grey"    => Some({r = 0.5f32, g = 0.5f32, b = 0.5f32})
-        case "orange"  => Some({r = 1.0f32, g = 0.65f32, b = 0.0f32})
-        case _         => None
+        // CSS Level 1 — 基本 16 色
+        case "black"   => Some({r = 0.0f32,  g = 0.0f32,  b = 0.0f32})
+        case "silver"  => Some({r = 0.75f32, g = 0.75f32, b = 0.75f32})
+        case "gray"    => Some({r = 0.5f32,  g = 0.5f32,  b = 0.5f32})
+        case "grey"    => Some({r = 0.5f32,  g = 0.5f32,  b = 0.5f32})
+        case "white"   => Some({r = 1.0f32,  g = 1.0f32,  b = 1.0f32})
+        case "maroon"  => Some({r = 0.5f32,  g = 0.0f32,  b = 0.0f32})
+        case "red"     => Some({r = 1.0f32,  g = 0.0f32,  b = 0.0f32})
+        case "purple"  => Some({r = 0.5f32,  g = 0.0f32,  b = 0.5f32})
+        case "fuchsia" => Some({r = 1.0f32,  g = 0.0f32,  b = 1.0f32})
+        case "magenta" => Some({r = 1.0f32,  g = 0.0f32,  b = 1.0f32})
+        case "green"   => Some({r = 0.0f32,  g = 0.5f32,  b = 0.0f32})
+        case "lime"    => Some({r = 0.0f32,  g = 1.0f32,  b = 0.0f32})
+        case "olive"   => Some({r = 0.5f32,  g = 0.5f32,  b = 0.0f32})
+        case "yellow"  => Some({r = 1.0f32,  g = 1.0f32,  b = 0.0f32})
+        case "navy"    => Some({r = 0.0f32,  g = 0.0f32,  b = 0.5f32})
+        case "blue"    => Some({r = 0.0f32,  g = 0.0f32,  b = 1.0f32})
+        case "teal"    => Some({r = 0.0f32,  g = 0.5f32,  b = 0.5f32})
+        case "aqua"    => Some({r = 0.0f32,  g = 1.0f32,  b = 1.0f32})
+        case "cyan"    => Some({r = 0.0f32,  g = 1.0f32,  b = 1.0f32})
+        // ノベル / 演出用の拡張色
+        case "gold"      => Some({r = 1.0f32,    g = 0.84f32, b = 0.0f32})
+        case "orange"    => Some({r = 1.0f32,    g = 0.65f32, b = 0.0f32})
+        case "pink"      => Some({r = 1.0f32,    g = 0.75f32, b = 0.8f32})
+        case "brown"     => Some({r = 0.65f32,   g = 0.16f32, b = 0.16f32})
+        case "crimson"   => Some({r = 0.86f32,   g = 0.08f32, b = 0.24f32})
+        case "violet"    => Some({r = 0.93f32,   g = 0.51f32, b = 0.93f32})
+        case "indigo"    => Some({r = 0.29f32,   g = 0.0f32,  b = 0.51f32})
+        case "skyblue"   => Some({r = 0.53f32,   g = 0.81f32, b = 0.92f32})
+        case "lightblue" => Some({r = 0.68f32,   g = 0.85f32, b = 0.9f32})
+        case "darkred"   => Some({r = 0.55f32,   g = 0.0f32,  b = 0.0f32})
+        case "darkgreen" => Some({r = 0.0f32,    g = 0.39f32, b = 0.0f32})
+        case "darkblue"  => Some({r = 0.0f32,    g = 0.0f32,  b = 0.55f32})
+        case _           => None
     }
 
-    /// スタックの現在の色（先頭）を返す。空なら白。
-    def currentColor(stack: List[Color]): Color = match stack {
+    /// 色スタックの先頭（直近に push された色）を返す。空なら `defaultColor`。
+    def currentColor(stack: List[Color], defaultColor: Color): Color = match stack {
         case c :: _ => c
-        case Nil    => {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+        case Nil    => defaultColor
     }
 
-    /// 改行文字 ('\n') でセグメント列を行ごとに分割する
+    /// 改行文字 ('\n') でセグメント列を行ごとに分割する（後方互換 API）
     pub def splitSegmentsIntoLines(segments: List[(Char, Color)]): List[List[(Char, Color)]] =
         let result = List.foldLeft((acc, pair) -> {
             let (ch, _) = pair;
@@ -267,16 +334,33 @@ mod RichTextLabel {
         }, {lines = (Nil: List[List[(Char, Color)]]), current = (Nil: List[(Char, Color)])}, segments);
         List.reverse(List.reverse(result#current) :: result#lines)
 
+    /// 改行文字 ('\n') で `TextSegment` 列を行ごとに分割する。
+    pub def splitStyledIntoLines(segments: List[TextSegment]): List[List[TextSegment]] =
+        let result = List.foldLeft((acc, seg) -> {
+            if (Char.toBmpCodePoint(seg#char) == 10)
+                {lines = List.reverse(acc#current) :: acc#lines, current = (Nil: List[TextSegment])}
+            else
+                {lines = acc#lines, current = seg :: acc#current}
+        }, {lines = (Nil: List[List[TextSegment]]), current = (Nil: List[TextSegment])}, segments);
+        List.reverse(List.reverse(result#current) :: result#lines)
+
     /// テキストから Drawable のリストを生成する。
     /// 表示領域 (size) からはみ出す行は CPU 側でスキップする。
     /// scrollY ぶん上方向にずらす（正の scrollY で下方向にスクロール）。
+    /// `[b]` セグメントは `boldFontAtlas` のグリフで描画する（未設定ならレギュラーで代替）。
     pub def toDrawables(label: RichTextLabel, globalPos: Vec2.Vec2): List[GameEngine.Drawable] =
         let RichTextLabel.RichTextLabel(r) = label;
-        let atlas = r#fontAtlas;
-        let scale = r#fontSize / atlas#fontSize;
+        let regularAtlas = r#fontAtlas;
+        let boldAtlas = match r#boldFontAtlas {
+            case Some(boldA) => boldA
+            case None        => regularAtlas
+        };
+        let scale = r#fontSize / regularAtlas#fontSize;
         let lh = lineHeight(label);
-        let segments = parseBBCode(r#text, r#modulate);
-        let lines = splitSegmentsIntoLines(segments);
+        let segments = parseStyled(r#text, r#modulate);
+        let lines = splitStyledIntoLines(segments);
+        let chooseAtlas = (seg: TextSegment) ->
+            if (seg#bold) boldAtlas else regularAtlas;
         let result = List.foldLeft((acc, lineSegs) -> {
             let lineIdx = acc#lineIdx;
             let lineTopY = Int32.toFloat64(lineIdx) * lh - r#scrollY;
@@ -285,25 +369,25 @@ mod RichTextLabel {
             if (lineBottomY < 0.0 or lineTopY > r#size#y)
                 {drawables = acc#drawables, lineIdx = lineIdx + 1}
             else {
-                // 行ごとに各文字の advance を取得
-                let advances = List.map(pair -> {
-                    let (ch, _) = pair;
-                    let cp = TextLayout.charToCodePoint(ch);
+                // 行ごとに各文字の advance を bold/regular それぞれの atlas から取得
+                let advances = List.map(seg -> {
+                    let cp = TextLayout.charToCodePoint(seg#char);
+                    let atlas = chooseAtlas(seg);
                     match Map.get(cp, atlas#glyphs) {
                         case Some(gm) => gm#advance
                         case None => 0.0
                     }
                 }, lineSegs);
                 let positions = TextLayout.layoutPositions(advances, 0.0, scale, lh);
-                let ascentOffset = atlas#ascent * scale;
+                let ascentOffset = regularAtlas#ascent * scale;
                 let lineGlobalPos = {
                     x = globalPos#x,
                     y = globalPos#y + lineTopY + ascentOffset
                 };
                 let lineDrawables = List.filterMap(zipped -> {
-                    let (pair, penPos) = zipped;
-                    let (ch, color) = pair;
-                    let cp = TextLayout.charToCodePoint(ch);
+                    let (seg, penPos) = zipped;
+                    let cp = TextLayout.charToCodePoint(seg#char);
+                    let atlas = chooseAtlas(seg);
                     match Map.get(cp, atlas#glyphs) {
                         case Some(gm) =>
                             let qb = TextLayout.glyphQuadBounds(penPos, gm, scale, lineGlobalPos, 0.0);
@@ -315,7 +399,7 @@ mod RichTextLabel {
                                 position = {x = qb#x0, y = qb#y0},
                                 scale = {x = w / atlas#textureSize, y = h / atlas#textureSize},
                                 rotation = 0.0,
-                                color = color,
+                                color = seg#color,
                                 alpha = 1.0f32,
                                 centered = false,
                                 uvOffset = {x = gm#s0, y = gm#t0},

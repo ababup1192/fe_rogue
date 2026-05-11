@@ -69,6 +69,23 @@ pub mod AreaEvent {
             _otherState: s,
             scene: Scene[s]
         ): Scene[s] \ AreaHandler.Aef[s] = checked_ecast(scene)
+
+        /// 自分のエリアの CollisionShape2D 内をマウスがクリックしたとき呼ばれる
+        /// (Godot Area2D._input_event の点クリック相当)。
+        /// `monitoring = true` のエリアだけが対象。デフォルトでは何もしない。
+        ///
+        /// selfPath: 自分のパス
+        /// selfState: 自分のゲーム状態
+        /// button: 押されたマウスボタン
+        /// position: クリック位置（design 座標）
+        /// scene: 現在のシーン
+        pub def onAreaClicked(
+            _selfPath: NodePath,
+            _selfState: s,
+            _button: GameEngine.MouseButton,
+            _position: Vec2.Vec2,
+            scene: Scene[s]
+        ): Scene[s] \ AreaHandler.Aef[s] = checked_ecast(scene)
     }
 
     // ========================================================================
@@ -152,4 +169,40 @@ pub mod AreaEvent {
             sceneAfterEnter,
             exitedPairs);
         Scene.setPrevOverlaps(currentPairs, sceneAfterExit)
+
+    // ========================================================================
+    // クリック → AreaHandler.onAreaClicked dispatch（Godot Area2D._input_event 相当）
+    // ========================================================================
+
+    /// `position` を含む `monitoring=true` の Area2D 系ノードすべてに対して
+    /// `AreaHandler.onAreaClicked` を発火する。`InputHandler.onMouseButtonPressed`
+    /// から呼ぶ想定。複数エリアが重なっている場合は preorder で見つかった順に
+    /// すべて発火する（onAreaEntered と同じ流儀）。
+    pub def dispatchClicks(button: GameEngine.MouseButton, position: Vec2.Vec2,
+                            scene: Scene[s]): Scene[s] \ AreaHandler.Aef[s]
+            with AreaHandler[s] =
+        let hits = collectHits(position, scene);
+        List.foldLeft((sc, path) ->
+            match Scene.getState(path, sc) {
+                case Some(state) =>
+                    AreaHandler.onAreaClicked(path, state, button, position, sc)
+                case None        => sc
+            },
+            scene, hits)
+
+    /// `monitoring=true` かつ shape 内に `position` を含むノードのパスを集める。
+    /// preorder で走査するので Scene tree 上の表示順と同じ順番になる。
+    def collectHits(position: Vec2.Vec2, scene: Scene[s]): List[NodePath] =
+        let paths = Scene.preorderPaths(scene);
+        List.filterMap(path ->
+            Scene.getEngineNode(path, scene) |> Option.flatMap(engineNode ->
+                if (CollisionObject2D.isMonitoring(engineNode))
+                    CollisionObject2D.getCollisionShape(engineNode) |> Option.flatMap(shape ->
+                        let shapeCenter = Scene.globalPositionAt(path, scene);
+                        if (CollisionShape2D.containsPoint(position, shapeCenter, shape))
+                            Some(path)
+                        else None
+                    )
+                else None
+            ), paths)
 }

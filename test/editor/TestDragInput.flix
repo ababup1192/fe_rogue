@@ -25,6 +25,7 @@ mod TestDragInput {
         dragOrigin = Some(mouseDown),
         nodeOrigin = Some(nodeGlobal),
         resizeOrigin = None,
+        rotateOrigin = None,
         prevF1 = false,
         prevMouseLeft = true,
         prevArrowKeys = KeyboardNudge.initialPrev(),
@@ -39,19 +40,19 @@ mod TestDragInput {
     /// 0.4 は 0 に丸まる
     @Test
     def testSnapVec2RoundsDown(): Unit \ Assert =
-        let snapped = DragInput.snapVec2({x = 10.4, y = 20.4});
+        let snapped = Vec2.round({x = 10.4, y = 20.4});
         Assert.assertEq(expected = (10.0, 20.0), (snapped#x, snapped#y))
 
     /// 0.6 は 1 に丸まる
     @Test
     def testSnapVec2RoundsUp(): Unit \ Assert =
-        let snapped = DragInput.snapVec2({x = 10.6, y = 20.6});
+        let snapped = Vec2.round({x = 10.6, y = 20.6});
         Assert.assertEq(expected = (11.0, 21.0), (snapped#x, snapped#y))
 
     /// 負数も round（half-to-even だが整数値はそのまま）
     @Test
     def testSnapVec2NegativeIntegers(): Unit \ Assert =
-        let snapped = DragInput.snapVec2({x = -5.0, y = -3.0});
+        let snapped = Vec2.round({x = -5.0, y = -3.0});
         Assert.assertEq(expected = (-5.0, -3.0), (snapped#x, snapped#y))
 
     // ====================================================================
@@ -68,13 +69,14 @@ mod TestDragInput {
             dragOrigin = None,
             nodeOrigin = None,
             resizeOrigin = None,
+            rotateOrigin = None,
             prevF1 = false,
             prevMouseLeft = true,
             prevArrowKeys = KeyboardNudge.initialPrev(),
             prevZ = false,
             rootJsonIndex = Map.empty()
         };
-        let next = DragInput.applyDrag({x = 150.0, y = 150.0}, Camera2D.identityTransform(), state, scene);
+        let next = DragInput.applyDrag({x = 150.0, y = 150.0}, state, scene);
         let pos = Scene.globalPositionAt("hero" :: Nil, next);
         Assert.assertEq(expected = (100.0, 100.0), (pos#x, pos#y))
 
@@ -85,7 +87,7 @@ mod TestDragInput {
         let state = draggingState("hero.json", "hero" :: Nil,
                                   {x = 50.0, y = 50.0},  // dragOrigin
                                   {x = 100.0, y = 100.0});  // nodeOrigin
-        let next = DragInput.applyDrag({x = 80.0, y = 70.0}, Camera2D.identityTransform(), state, scene);
+        let next = DragInput.applyDrag({x = 80.0, y = 70.0}, state, scene);
         let pos = Scene.globalPositionAt("hero" :: Nil, next);
         // 100 + (80 - 50) = 130, 100 + (70 - 50) = 120
         Assert.assertEq(expected = (130.0, 120.0), (pos#x, pos#y))
@@ -98,7 +100,7 @@ mod TestDragInput {
                                   {x = 50.0, y = 50.0},
                                   {x = 100.0, y = 100.0});
         // delta = (0.4, 0.6) → スナップで (0, 1)
-        let next = DragInput.applyDrag({x = 50.4, y = 50.6}, Camera2D.identityTransform(), state, scene);
+        let next = DragInput.applyDrag({x = 50.4, y = 50.6}, state, scene);
         let pos = Scene.globalPositionAt("hero" :: Nil, next);
         Assert.assertEq(expected = (100.0, 101.0), (pos#x, pos#y))
 

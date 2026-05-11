@@ -132,6 +132,12 @@ mod EngineNode {
         case _ => node
     }
 
+    /// ColorRect の inner node に関数を適用する（他バリアントは変更なし）
+    pub def mapColorRect(f: ColorRect -> ColorRect, node: EngineNode[s]): EngineNode[s] = match node {
+        case EngineNode.ColorRectWithState(inner, st) => EngineNode.ColorRectWithState(f(inner), st)
+        case _ => node
+    }
+
     /// AnimatedSprite2D の inner node に関数を適用する
     pub def mapAnimSprite2D(f: AnimatedSprite2D -> AnimatedSprite2D, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.AnimSprite2DWithState(inner, st) => EngineNode.AnimSprite2DWithState(f(inner), st)
@@ -224,6 +230,18 @@ mod EngineNode {
             let globalPos = Scene.globalPositionAt(path, scene);
             EngineNode.GPUParticles2DWithState(GPUParticles2D.process(delta, globalPos, emitter), state)
         case _ => node
+    }
+
+    /// 明示的な `size` フィールドを持つノード変種から (w, h) を取り出す。
+    /// 持たないノード（Sprite2D / Label2D / Marker2D / CanvasLayer 等）は `None`。
+    /// Hit-test や bounds 計算（`Scene.getGlobalRect` 経由）の基礎関数。
+    pub def getSize(node: EngineNode[s]): Option[Vec2.Vec2] = match node {
+        case EngineNode.ControlWithState(ctrl, _)        => Some(Control.getSize(ctrl))
+        case EngineNode.ButtonWithState(btn, _)          => Some(Button.getSize(btn))
+        case EngineNode.TextureButtonWithState(btn, _)   => Some(TextureButton.getSize(btn))
+        case EngineNode.RichTextLabelWithState(label, _) => Some(RichTextLabel.getSize(label))
+        case EngineNode.ColorRectWithState(rect, _)      => Some(ColorRect.getSize(rect))
+        case _                                           => None
     }
 
     /// Sprite2D を Drawable に変換する。
