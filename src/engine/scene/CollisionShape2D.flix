@@ -67,6 +67,29 @@ mod CollisionShape2D {
         }
 
     // ========================================================================
+    // 点の包含判定
+    // ========================================================================
+
+    /// 点が形状内部（境界を含む）にあるか判定する。
+    /// マウスクリックなど「点 vs 形状」のヒットテスト用。
+    /// `shapePos` は形状の中心座標。
+    pub def containsPoint(point: Vec2.Vec2, shapePos: Vec2.Vec2,
+                           shape: CollisionShape2D): Bool =
+        match shape {
+            case CollisionShape2D.RectShape2D(r) =>
+                let halfW = r#width / 2.0;
+                let halfH = r#height / 2.0;
+                Float64.abs(point#x - shapePos#x) <= halfW
+                and Float64.abs(point#y - shapePos#y) <= halfH
+            case CollisionShape2D.CircleShape2D(c) =>
+                let distSq = Vec2.distanceSquaredTo(point, shapePos);
+                distSq <= c#radius * c#radius
+            case CollisionShape2D.CapsuleShape2D(c) =>
+                let (segA, segB) = capsuleSegment(shapePos, c#radius, c#height, c#vertical);
+                pointToSegmentDistSq(point, segA, segB) <= c#radius * c#radius
+        }
+
+    // ========================================================================
     // 個別形状ペアの判定
     // ========================================================================
 

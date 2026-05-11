@@ -136,7 +136,7 @@ mod GameEngine {
         MouseButton.Left :: MouseButton.Right :: MouseButton.Middle :: Nil
 
     /// マウスカーソル形状（エディタのリサイズハンドルなどで切り替える）。
-    /// GLFW 3.3.4 が提供する 6 種のうち、エディタで意味があるものだけ列挙する
+    /// LWJGL 3.3.4 同梱の GLFW 3.4 で利用可能な shape をエディタ用に列挙
     pub enum Cursor with Eq, ToString {
         /// 通常の矢印カーソル（エディタ非操作中・ハンドル外）
         case Default
@@ -144,9 +144,12 @@ mod GameEngine {
         case HResize
         /// 縦方向の伸縮カーソル ↕（上下辺ハンドル）
         case VResize
-        /// 全方向の伸縮カーソル（4 隅ハンドル — GLFW 3.3.4 に diagonal がないため
-        /// 十字カーソルで代用する）
+        /// 全方向の伸縮カーソル（回転ハンドルや CanvasLayer 全体の操作）
         case AllResize
+        /// 北西-南東方向の伸縮カーソル ↘↖（TopLeft / BottomRight 隅ハンドル）
+        case NWSEResize
+        /// 北東-南西方向の伸縮カーソル ↗↙（TopRight / BottomLeft 隅ハンドル）
+        case NESWResize
     }
 
     /// ゲームエフェクト: 描画・ウィンドウ制御・時間取得・キー入力・マウス入力・フォント・
@@ -175,12 +178,14 @@ mod GameEngine {
         def setCursor(cursor: Cursor): Unit
     }
 
-    /// オーディオエフェクト: サウンドの再生・停止
+    /// オーディオエフェクト: サウンドの再生・停止・音量
     pub eff Audio {
         /// 指定した名前のサウンドを先頭から再生する
         def playAudio(name: String): Unit
         /// 指定した名前のサウンドを停止する
         def stopAudio(name: String): Unit
+        /// 指定した名前のサウンドの音量（gain）を 0.0〜1.0 で設定する
+        def setVolume(name: String, volume: Float32): Unit
     }
 
     // ========================================================================

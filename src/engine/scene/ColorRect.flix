@@ -41,6 +41,17 @@ mod ColorRect {
         let ColorRect.ColorRect(r) = rect;
         ColorRect.ColorRect({ alpha = alpha | r })
 
+    /// 表示サイズ（描画矩形の幅・高さ）を取得する
+    pub def getSize(rect: ColorRect): Vec2.Vec2 =
+        let ColorRect.ColorRect(r) = rect;
+        r#size
+
+    /// 表示サイズを設定する。リサイズ編集の主たる更新先で、`scale` ではなく
+    /// この `size` フィールドが描画 (`toDrawable`) の幅・高さに使われる
+    pub def setSize(size: Vec2.Vec2, rect: ColorRect): ColorRect =
+        let ColorRect.ColorRect(r) = rect;
+        ColorRect.ColorRect({ size = size | r })
+
     /// Drawable に変換する（texture="" でテクスチャなしを示す）
     pub def toDrawable(rect: ColorRect, globalPos: Vec2.Vec2): GameEngine.Drawable =
         let ColorRect.ColorRect(r) = rect;

@@ -66,6 +66,17 @@ mod Label2D {
         let Label2D.Label2D(r) = label;
         Label2D.Label2D({ text = text | r })
 
+    /// フォントサイズ（display 単位 px）を取得する
+    pub def getFontSize(label: Label2D): Float64 =
+        let Label2D.Label2D(r) = label;
+        r#fontSize
+
+    /// フォントサイズを設定する。Label2D の表示サイズはこの値で決まる
+    /// （`scale` フィールドは無視される）。リサイズ編集の更新先
+    pub def setFontSize(fontSize: Float64, label: Label2D): Label2D =
+        let Label2D.Label2D(r) = label;
+        Label2D.Label2D({ fontSize = fontSize | r })
+
     /// テキストを取得する
     pub def getText(label: Label2D): String =
         let Label2D.Label2D(r) = label;

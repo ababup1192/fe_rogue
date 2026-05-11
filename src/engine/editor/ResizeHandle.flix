@@ -79,6 +79,30 @@ mod ResizeHandle {
             dx <= radius and dy <= radius
         })
 
+    /// 選択枠の中心 (screen 座標) を返す。回転中心の計算に使う
+    pub def boxCenter(box: {topLeft = Vec2.Vec2, size = Vec2.Vec2}): Vec2.Vec2 =
+        {x = box#topLeft#x + box#size#x / 2.0,
+         y = box#topLeft#y + box#size#y / 2.0}
+
+    /// 回転ノブの中心位置（選択枠の上辺中央から rotateKnobOffset px 上）
+    pub def rotateKnobCenter(box: {topLeft = Vec2.Vec2, size = Vec2.Vec2}): Vec2.Vec2 =
+        {x = box#topLeft#x + box#size#x / 2.0,
+         y = box#topLeft#y - rotateKnobOffset()}
+
+    /// 回転ノブ中心と選択枠上辺中央を結ぶリンク線の長さ（描画用）
+    pub def rotateKnobOffset(): Float64 = 16.0
+
+    /// 回転ノブのヒット半径（handleSize と同じ余裕）
+    pub def rotateKnobHitRadius(): Float64 = handleSize() / 2.0 + hitRadius()
+
+    /// マウス位置が回転ノブ領域内かを判定する
+    pub def rotateKnobHit(mousePos: Vec2.Vec2,
+                          box: {topLeft = Vec2.Vec2, size = Vec2.Vec2}): Bool =
+        let center = rotateKnobCenter(box);
+        let dx = Float64.abs(mousePos#x - center#x);
+        let dy = Float64.abs(mousePos#y - center#y);
+        dx <= rotateKnobHitRadius() and dy <= rotateKnobHitRadius()
+
     /// ハンドルがリサイズで動かす方向。
     /// movesLeft=true なら左辺が動く（= 右辺がアンカー）。
     /// movesTop=true なら上辺が動く（= 下辺がアンカー）。

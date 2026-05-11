@@ -53,6 +53,26 @@ pub mod InputEvent {
                               _relative: Vec2.Vec2,
                               scene: Scene[s]): Scene[s] \ InputHandler.Aef[s] =
             checked_ecast(scene)
+
+        /// マウスポインタがノードに入ったとき呼ばれる（前フレームに居なかった hovered path）。
+        /// `path` はホバー対象ノードの NodePath。Godot の `mouse_entered` 相当。
+        /// `EngineNode.getSize` を持つ可視ノードのみが対象（不可視サブツリーは除外）。
+        pub def onMouseEntered(_path: NodePath, scene: Scene[s]): Scene[s] \ InputHandler.Aef[s] =
+            checked_ecast(scene)
+
+        /// マウスポインタがノードから出たとき呼ばれる（前フレームに居て今フレームに居ない path）。
+        /// Godot の `mouse_exited` 相当。
+        pub def onMouseExited(_path: NodePath, scene: Scene[s]): Scene[s] \ InputHandler.Aef[s] =
+            checked_ecast(scene)
+
+        /// マウスがホバー中のフレームで毎フレーム呼ばれる。
+        /// `localPosition` はノードの top-left からの相対座標（design px）。
+        /// マウスが動かなくても、ホバー中ならフレームごとに発火するので、
+        /// 「選択肢上にマウス停止 → 直後に選択肢が現れた」ケースもカーソルを追従できる。
+        pub def onMouseHover(_path: NodePath,
+                              _localPosition: Vec2.Vec2,
+                              scene: Scene[s]): Scene[s] \ InputHandler.Aef[s] =
+            checked_ecast(scene)
     }
 
     /// 現在押されているキーのセットを取得する（GameEngine.allKeys() を全て走査）
@@ -75,7 +95,9 @@ pub mod InputEvent {
     /// 1. 現在のキー/マウスボタン状態とマウス位置を取得
     /// 2. Scene の prev* との差分でキー・マウスボタンの押下/離脱イベントを発火
     /// 3. マウス位置が変化していれば onMouseMotion を発火
-    /// 4. Scene の prev* を現在の状態に更新して返す
+    /// 4. ホバー中ノード集合を `Scene.hoveredPathsAt` で計算し、
+    ///    prev との差分で onMouseEntered/onMouseExited、現フレーム集合で onMouseHover を発火
+    /// 5. Scene の prev* を現在の状態に更新して返す
     pub def handleInput(scene: Scene[s]): Scene[s] \ {GameEngine.Game, InputHandler.Aef[s]} with InputHandler[s] =
         let prevKeys = Scene.getPrevKeyState(scene);
         let currentK = currentKeys();
@@ -111,8 +133,31 @@ pub mod InputEvent {
             case None => s4
         };
 
-        s5
+        // ホバー判定。prev hovered → current hovered の差分で entered/exited、
+        // current hovered の各 path で hover（毎フレーム）を発火する。
+        // hovered set は handleInput 自身の発火結果には影響されない（フレーム頭の scene tree で固定）。
+        let prevHovered = Scene.getPrevHoveredPaths(s5);
+        let currentHovered = Scene.hoveredPathsAt(currentPos, s5);
+        let entered = Set.difference(currentHovered, prevHovered);
+        let exited = Set.difference(prevHovered, currentHovered);
+        let s6 = Set.foldLeft((sc, path) ->
+            InputHandler.onMouseExited(path, sc),
+            s5, exited);
+        let s7 = Set.foldLeft((sc, path) ->
+            InputHandler.onMouseEntered(path, sc),
+            s6, entered);
+        let s8 = Set.foldLeft((sc, path) -> {
+                let originX = Scene.globalPositionAt(path, sc)#x;
+                let originY = Scene.globalPositionAt(path, sc)#y;
+                let local: Vec2.Vec2 =
+                    {x = currentPos#x - originX, y = currentPos#y - originY};
+                InputHandler.onMouseHover(path, local, sc)
+            },
+            s7, currentHovered);
+
+        s8
             |> Scene.setPrevKeyState(currentK)
             |> Scene.setPrevMouseButtonState(currentB)
             |> Scene.setPrevMousePosition(Some(currentPos))
+            |> Scene.setPrevHoveredPaths(currentHovered)
 }

@@ -121,8 +121,8 @@ mod TestEditableNode {
     def testCollectAllAnimatedSpriteRunner(): Unit \ Assert =
         withMockTextureSize(16.0, 16.0, () -> testCollectAllAnimatedSprite())
 
-    /// CanvasLayer / ColorRect など編集対象外ノードは entries に含まれない。
-    /// Sprite2D / TextureButton / Label2D だけが拾われる
+    /// 子のいない CanvasLayer は編集対象 entries に含まれない（bbox 算出不能のため）。
+    /// Sprite2D / TextureButton / ColorRect は拾われる
     def testCollectAllFiltersNonEditable(): Unit \ {Assert, GameEngine.Game} =
         let sprite = Sprite2D.make("dummy.png", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0});
         let layer = CanvasLayer.make(0i32);
@@ -139,7 +139,7 @@ mod TestEditableNode {
         let entries = EditableNode.collectAll({rootJsonIndex = index, scene = scene});
         let paths = List.map(e -> e#nodePath, entries) |> List.sortBy(p -> List.head(p));
         Assert.assertEq(
-            expected = ("button" :: Nil) :: ("sprite" :: Nil) :: Nil,
+            expected = ("button" :: Nil) :: ("rect" :: Nil) :: ("sprite" :: Nil) :: Nil,
             paths)
 
     @Test

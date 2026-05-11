@@ -19,7 +19,8 @@ pub enum Scene[s] {
         readiedPaths = Set[NodePath],
         prevKeyState = Set[GameEngine.Key],
         prevMouseButtonState = Set[GameEngine.MouseButton],
-        prevMousePosition = Option[Vec2.Vec2]
+        prevMousePosition = Option[Vec2.Vec2],
+        prevHoveredPaths = Set[NodePath]
     })
 }
 
@@ -83,6 +84,17 @@ pub mod Scene {
     pub def setPrevMousePosition(pos: Option[Vec2.Vec2], scene: Scene[s]): Scene[s] =
         let Scene.Scene(r) = scene;
         Scene.Scene({ prevMousePosition = pos | r })
+
+    /// 前フレームでマウスホバー中だったノードパスのセットを取り出す。
+    /// `InputEvent.handleInput` が onMouseEntered/Exited の差分計算に使う。
+    pub def getPrevHoveredPaths(scene: Scene[s]): Set[NodePath] =
+        let Scene.Scene(r) = scene;
+        r#prevHoveredPaths
+
+    /// 前フレームのホバー中ノードパスセットを設定する
+    pub def setPrevHoveredPaths(paths: Set[NodePath], scene: Scene[s]): Scene[s] =
+        let Scene.Scene(r) = scene;
+        Scene.Scene({ prevHoveredPaths = paths | r })
 
     /// SceneEntry のエンジンノードを取り出す
     def entryEngineNode(entry: SceneEntry[s]): EngineNode[s] =
@@ -168,7 +180,7 @@ pub mod Scene {
 
     /// 空のシーンを返す
     pub def empty(): Scene[s] =
-        Scene.Scene({ nodes = Map.empty(), prevOverlaps = Set.empty(), prevOnScreen = Set.empty(), readiedPaths = Set.empty(), prevKeyState = Set.empty(), prevMouseButtonState = Set.empty(), prevMousePosition = None })
+        Scene.Scene({ nodes = Map.empty(), prevOverlaps = Set.empty(), prevOnScreen = Set.empty(), readiedPaths = Set.empty(), prevKeyState = Set.empty(), prevMouseButtonState = Set.empty(), prevMousePosition = None, prevHoveredPaths = Set.empty() })
 
     /// ルートノードとして追加する（state は EngineNode[s] 内に含まれる）
     pub def addNode(name: NodeName, engineNode: EngineNode[s], scene: Scene[s]): Scene[s] =
@@ -420,6 +432,53 @@ pub mod Scene {
     /// ルートノードのグローバル座標設定（後方互換）
     pub def setGlobalPosition(name: NodeName, globalPos: Vec2.Vec2, scene: Scene[s]): Scene[s] =
         setGlobalPositionAt(name :: Nil, globalPos, scene)
+
+    // ========================================================================
+    // ホバー判定（hit-test）
+    // ========================================================================
+
+    /// 指定 path のノードが持つ global bounding rect。
+    /// ノードが存在しないか、`size` を持たない変種（Sprite2D / Label2D / CanvasLayer 等）なら None。
+    /// `globalPositionAt` と `EngineNode.getSize` を組み合わせる。
+    pub def getGlobalRect(path: NodePath, scene: Scene[s]): Option[Rect2.Rect2] =
+        match getEngineNode(path, scene) {
+            case None     => None
+            case Some(en) => match EngineNode.getSize(en) {
+                case None       => None
+                case Some(size) =>
+                    Some({position = globalPositionAt(path, scene), size = size})
+            }
+        }
+
+    /// `point` が乗っている全ノードパスのセット。
+    /// `EngineNode.getSize` を持つノードのうち、global rect が `point` を含むものを集める。
+    /// 不可視ノードはサブツリーごとスキップする（親 CanvasLayer が hidden なら子の Body も
+    /// ホバー対象にならない）。
+    /// `InputEvent.handleInput` が onMouseEntered/Exited/Hover の発火対象を決めるのに使う。
+    pub def hoveredPathsAt(point: Vec2.Vec2, scene: Scene[s]): Set[NodePath] =
+        Map.foldLeftWithKey((acc, name, entry) ->
+            hoveredPathsInEntry(point, name :: Nil, entry, scene, acc),
+            Set.empty(), roots(scene))
+
+    /// `hoveredPathsAt` の再帰下降ヘルパ。entry が invisible ならそのサブツリーは丸ごと無視する。
+    def hoveredPathsInEntry(point: Vec2.Vec2, path: NodePath, entry: SceneEntry[s],
+                             scene: Scene[s], acc: Set[NodePath]): Set[NodePath] =
+        let en = entryEngineNode(entry);
+        if (not CanvasItem.isVisible(en)) acc
+        else {
+            let acc1 = match EngineNode.getSize(en) {
+                case None       => acc
+                case Some(size) =>
+                    let rect: Rect2.Rect2 =
+                        {position = globalPositionAt(path, scene), size = size};
+                    if (Rect2.hasPoint(point, rect)) Set.insert(path, acc)
+                    else acc
+            };
+            Map.foldLeftWithKey((a, childName, child) ->
+                hoveredPathsInEntry(point, List.append(path, childName :: Nil),
+                                     child, scene, a),
+                acc1, entryChildren(entry))
+        }
 
     // ========================================================================
     // ライフサイクル

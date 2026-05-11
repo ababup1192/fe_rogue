@@ -4,6 +4,7 @@ mod LwjglLayer {
     import org.lwjgl.glfw.GLFW
     import org.lwjgl.glfw.Callbacks
     import org.lwjgl.glfw.GLFWFramebufferSizeCallbackI
+    import org.lwjgl.glfw.GLFWMouseButtonCallbackI
     import org.lwjgl.glfw.GLFWScrollCallbackI
     import org.lwjgl.opengl.GL
     import org.lwjgl.opengl.GL11
@@ -230,14 +231,16 @@ mod LwjglLayer {
     // Cursor Mapping (GameEngine.Cursor → GLFW standard cursor shape code)
     // ========================================================================
     //
-    // GLFW 3.3 系では NWSE / NESW の対角リサイズカーソルが提供されないため、
-    // 4 隅ハンドル用の AllResize には十字カーソル（CROSSHAIR_CURSOR）で代用する
+    // GLFW 3.4（LWJGL 3.3.4 に同梱）の cursor shape を使用する。
+    // NWSE / NESW の対角リサイズと ResizeAll は 3.4 で追加された
 
     def cursorShapeToGlfw(cursor: GameEngine.Cursor): Int32 = match cursor {
-        case GameEngine.Cursor.Default   => 0x36001  // GLFW_ARROW_CURSOR
-        case GameEngine.Cursor.HResize   => 0x36005  // GLFW_HRESIZE_CURSOR
-        case GameEngine.Cursor.VResize   => 0x36006  // GLFW_VRESIZE_CURSOR
-        case GameEngine.Cursor.AllResize => 0x36003  // GLFW_CROSSHAIR_CURSOR
+        case GameEngine.Cursor.Default    => 0x36001  // GLFW_ARROW_CURSOR
+        case GameEngine.Cursor.HResize    => 0x36005  // GLFW_HRESIZE_CURSOR
+        case GameEngine.Cursor.VResize    => 0x36006  // GLFW_VRESIZE_CURSOR
+        case GameEngine.Cursor.AllResize  => 0x36009  // GLFW_RESIZE_ALL_CURSOR
+        case GameEngine.Cursor.NWSEResize => 0x36007  // GLFW_RESIZE_NWSE_CURSOR
+        case GameEngine.Cursor.NESWResize => 0x36008  // GLFW_RESIZE_NESW_CURSOR
     }
 
     // ========================================================================
@@ -477,21 +480,14 @@ mod LwjglLayer {
     // Font Atlas Baking (STBTruetype)
     // ========================================================================
 
-    /// LogScene 等で使う日本語ロガー文用の漢字。連続範囲ではなく個別指定で
-     /// アトラスにベイクする。将来追加する場合はここに足すだけでよい。
-    def kanjiCodepoints(): List[Int32] =
-        0x6575 ::    // 敵
-        0x653B ::    // 攻
-        0x6483 ::    // 撃
-        0x5473 ::    // 味
-        0x65B9 ::    // 方
-        0x6570 ::    // 数
-        0x6B8B ::    // 残
-        0x7D42 ::    // 終
-        0x4E86 ::    // 了
-        0x958B ::    // 開
-        0x59CB ::    // 始
-        Nil
+    /// アトラスにベイクする漢字 + UI 記号のコードポイント列を `fonts/joyo_kanji.txt`
+    /// から読み込む。常用漢字 2,140 字 + ▼ などの UI 記号を 1 行にまとめたテキストで
+    /// 管理し、Flix コードからは外している（ハードコードを避けて編集しやすくする）。
+    /// `Char.toBmpCodePoint` は U+8000 以上で負値になるので 0xFFFF でマスクする。
+    def kanjiCodepoints(): List[Int32] \ IO =
+        let text = Files.readString(Paths.get("fonts/joyo_kanji.txt"));
+        String.toList(text)
+            |> List.map(ch -> Int32.bitwiseAnd(Char.toBmpCodePoint(ch), 0xFFFF))
 
     /// stbtt_PackFontRanges でベイクされる単一レンジの記述。
     /// `firstCp = 0` のとき `array` の個別 cp が使われる（stbtt の仕様）。
@@ -520,7 +516,10 @@ mod LwjglLayer {
         }
 
     def bakeFontAtlas(entry: GameEngine.FontEntry): (FontAtlas, GameEngine.TextureInfo) \ IO =
-        let bitmapSize  = 1024;
+        // 常用漢字 2,140 字 + ASCII + ひらがな + カタカナ + 全角 ASCII で
+        // 約 2,500 グリフ。1024x1024 だと 16px ベイクでもパディング込みで入らないため
+        // 2048x2048 に拡張。
+        let bitmapSize  = 2048;
         let bitmapSizeF = Int32.toFloat64(bitmapSize);
 
         // フォントファイルを ByteBuffer に読み込む
@@ -554,14 +553,15 @@ mod LwjglLayer {
         discard MemoryStack.stackPop();
         fontInfo.free();
 
-        // ベイク対象レンジ: ASCII (95) + ひらがな (96) + カタカナ (96) + 個別漢字
+        // ベイク対象レンジ: ASCII (95) + 全角 ASCII (94) + CJK 記号 + ひらがな (160) + カタカナ (96) + 個別漢字
         let kanji      = kanjiCodepoints();
         let kanjiCount = List.length(kanji);
         let rangesSpec: List[BakeRange] =
             { firstCp = 0x20,   count = 95,         cps = Nil   } ::    // ASCII 0x20-0x7E
-            { firstCp = 0x3040, count = 96,         cps = Nil   } ::    // ひらがな
+            { firstCp = 0xFF01, count = 94,         cps = Nil   } ::    // 全角 ASCII（Ａ-Ｚ ａ-ｚ ！？等）U+FF01-U+FF5E
+            { firstCp = 0x3000, count = 160,        cps = Nil   } ::    // CJK 記号 (、。「」『』〜 等) + ひらがな U+3000-U+309F
             { firstCp = 0x30A0, count = 96,         cps = Nil   } ::    // カタカナ
-            { firstCp = 0,      count = kanjiCount, cps = kanji } ::    // 漢字（個別）
+            { firstCp = 0,      count = kanjiCount, cps = kanji } ::    // 漢字 + UI 記号（… ▼ 等の個別 cp）
             Nil;
         let numRanges = List.length(rangesSpec);
 
@@ -740,6 +740,12 @@ mod LwjglLayer {
         let window = GLFW.glfwCreateWindow(config#windowWidth, config#windowHeight, config#title, MemoryUtil.NULL, MemoryUtil.NULL);
         GLFW.glfwMakeContextCurrent(window);
         GLFW.glfwSwapInterval(1);
+        // Sticky mouse buttons: 1 フレーム未満の press→release（macOS の
+        // トラックパッド「タップでクリック」など）が polling で取りこぼされる
+        // のを防ぐ。次回 `glfwGetMouseButton` 呼び出し時に PRESS を 1 度返してから
+        // RELEASE に落ちる。これがないと Mac ユーザは "押してるつもりなのに
+        // 反応しない" 体感になる。
+        GLFW.glfwSetInputMode(window, GLFW.GLFW_STICKY_MOUSE_BUTTONS, GL11.GL_TRUE);
         discard GL.createCapabilities();
 
         let fbStack = MemoryStack.stackPush();
@@ -800,19 +806,23 @@ mod LwjglLayer {
         let renderStateHolder = Array#{((Nil: List[GameEngine.Drawable]),
                                          (Nil: List[GameEngine.TileMapRenderCmd]))} @ Static;
 
-        // 4 種のスタンダードカーソルを起動時に作成して再利用する。
+        // 6 種のスタンダードカーソルを起動時に作成して再利用する。
         // setCursor 呼び出しの度に都度作成 / 破棄すると重く、リーク源にもなる
         let arrowCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.Default));
         let hResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.HResize));
         let vResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.VResize));
         let allResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.AllResize));
+        let nwseResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.NWSEResize));
+        let neswResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.NESWResize));
         // 同じ Cursor を毎フレーム渡されたときに glfwSetCursor を抑制するためのキャッシュ
         let lastCursorHolder = Array#{(GameEngine.Cursor.Default: GameEngine.Cursor)} @ Static;
         let cursorOf = cursor -> match cursor {
-            case GameEngine.Cursor.Default   => arrowCursor
-            case GameEngine.Cursor.HResize   => hResizeCursor
-            case GameEngine.Cursor.VResize   => vResizeCursor
-            case GameEngine.Cursor.AllResize => allResizeCursor
+            case GameEngine.Cursor.Default    => arrowCursor
+            case GameEngine.Cursor.HResize    => hResizeCursor
+            case GameEngine.Cursor.VResize    => vResizeCursor
+            case GameEngine.Cursor.AllResize  => allResizeCursor
+            case GameEngine.Cursor.NWSEResize => nwseResizeCursor
+            case GameEngine.Cursor.NESWResize => neswResizeCursor
         };
 
         // マウスホイールの y 方向 delta を 1 フレームぶん蓄積する。
@@ -822,6 +832,23 @@ mod LwjglLayer {
             def invoke(_this: GLFWScrollCallbackI, _w: Int64, _xoffset: Float64, yoffset: Float64): Unit \ IO = {
                 let prev = Array.get(0, scrollDeltaHolder);
                 Array.put(prev + yoffset, 0, scrollDeltaHolder)
+            }
+        });
+
+        // マウスボタンの「PRESS が来た」フラグを 1 フレームぶん保持する。
+        // [0]=Left, [1]=Right, [2]=Middle. `shouldClose` が glfwPollEvents の **直前**
+        // にリセットし、polling 中に来た callback が立てる。`isMouseButtonPressed` は
+        // 物理状態 (`glfwGetMouseButton`) と OR を取って返す。
+        // これが無いと、macOS トラックパッドの「タップでクリック」のように 1 フレーム
+        // 未満で press→release が完結する入力を polling だけでは取りこぼす。
+        let mouseButtonPressedHolder = Array#{false, false, false} @ Static;
+        discard GLFW.glfwSetMouseButtonCallback(window, new GLFWMouseButtonCallbackI {
+            def invoke(_this: GLFWMouseButtonCallbackI, _w: Int64,
+                        button: Int32, action: Int32, _mods: Int32): Unit \ IO = {
+                // GLFW_PRESS = 1。0..2 範囲外 (将来 GLFW が追加するボタン) は無視。
+                if (action == 1 and button >= 0 and button <= 2)
+                    Array.put(true, button, mouseButtonPressedHolder)
+                else ()
             }
         });
 
@@ -854,6 +881,13 @@ mod LwjglLayer {
                 };
                 k(())
             }
+            def setVolume(name, volume, k) = {
+                match Map.get(name, audioRegistry) {
+                    case Some(src) => AL10.alSourcef(src, AL10.AL_GAIN, volume)
+                    case None      => ()
+                };
+                k(())
+            }
         } with handler GameEngine.Game {
             def renderCommands(sprites, tileMaps, k) = {
                 Array.put((sprites, tileMaps), 0, renderStateHolder);
@@ -876,6 +910,13 @@ mod LwjglLayer {
                 k((tileVao, List.length(instances)))
             }
             def shouldClose(k) = {
+                // glfwPollEvents の **直前** に PRESS フラグをリセット。
+                // poll 中に発火した callback が立てたフラグが、その後の
+                // `isMouseButtonPressed` 経路で 1 フレーム間だけ true として読まれ、
+                // 次フレーム冒頭でクリアされる。
+                Array.put(false, 0, mouseButtonPressedHolder);
+                Array.put(false, 1, mouseButtonPressedHolder);
+                Array.put(false, 2, mouseButtonPressedHolder);
                 GLFW.glfwPollEvents();
                 k(GLFW.glfwWindowShouldClose(window))
             }
@@ -914,7 +955,12 @@ mod LwjglLayer {
             }
             def isMouseButtonPressed(button, k) = {
                 let code = mouseButtonToGlfw(button);
-                k(GLFW.glfwGetMouseButton(window, code) == 1)
+                // 物理状態 OR 当フレーム内に callback が観測した PRESS。
+                // 後者は macOS トラックパッドのタップなど、polling 間隔より速い
+                // press→release を取りこぼさないためのフォールバック。
+                let polled = GLFW.glfwGetMouseButton(window, code) == 1;
+                let buffered = Array.get(code, mouseButtonPressedHolder);
+                k(polled or buffered)
             }
             def consumeScrollDelta(k) = {
                 let v = Array.get(0, scrollDeltaHolder);
@@ -948,6 +994,8 @@ mod LwjglLayer {
         GLFW.glfwDestroyCursor(hResizeCursor);
         GLFW.glfwDestroyCursor(vResizeCursor);
         GLFW.glfwDestroyCursor(allResizeCursor);
+        GLFW.glfwDestroyCursor(nwseResizeCursor);
+        GLFW.glfwDestroyCursor(neswResizeCursor);
 
         // OpenAL cleanup
         Map.forEach((_, src) -> AL10.alDeleteSources(src), audioRegistry);
