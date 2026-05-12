@@ -1,10 +1,13 @@
 // Tests for SceneJsonIndex — scene.json 群を走査して「ルート名 → ファイルパス」索引を作る
 //
-// `rootNamesOf` は純粋なので手作りの JsonElement で直接テストできる。
+// `rootNamesOf` は純粋なので手作りの Json.JsonElement で直接テストできる。
 // `load()` は実在の `src/scenes/*.scene.json` を入力に取り、特定 root 名が
 // 期待ファイルパスに紐付くか検証する
 
 mod TestSceneJsonIndex {
+
+    /// editor 単独テスト用の最小 tag enum (NodeTag は consumer 側で定義される型)
+    pub enum Tag { case NoTag }
 
     // ====================================================================
     // rootNamesOf — 手作り JSON で純粋テスト

@@ -9,22 +9,25 @@
 
 /// 中央基準の Sprite2D を指定 zIndex で root に置いたシーンを作る
 
-def sceneWithSprite(name: NodeName, pos: Vec2.Vec2, zIndex: Int32): Scene[NodeTag] =
+/// editor 単独テスト用の最小 tag enum (NodeTag は consumer 側で定義される型)
+pub enum Tag { case NoTag }
+
+def sceneWithSprite(name: NodeName, pos: Vec2.Vec2, zIndex: Int32): Scene[Tag] =
     let sprite = Sprite2D.make("dummy.png", pos, {x = 1.0, y = 1.0})
         |> CanvasItem.setZIndex(zIndex);
-    let s: Scene[NodeTag] = Scene.empty();
-    s |> Scene.addNode(name, EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
+    let s: Scene[Tag] = Scene.empty();
+    s |> Scene.addNode(name, EngineNode.Sprite2DWithState(sprite, Tag.NoTag))
 
 /// 2 つの Sprite2D を root に並べたシーン（重なる位置に配置可）
 def sceneWith2Sprites(nameA: NodeName, posA: Vec2.Vec2, zA: Int32,
-                      nameB: NodeName, posB: Vec2.Vec2, zB: Int32): Scene[NodeTag] =
+                      nameB: NodeName, posB: Vec2.Vec2, zB: Int32): Scene[Tag] =
     let spriteA = Sprite2D.make("dummy.png", posA, {x = 1.0, y = 1.0})
         |> CanvasItem.setZIndex(zA);
     let spriteB = Sprite2D.make("dummy.png", posB, {x = 1.0, y = 1.0})
         |> CanvasItem.setZIndex(zB);
-    let s: Scene[NodeTag] = Scene.empty();
-    s |> Scene.addNode(nameA, EngineNode.Sprite2DWithState(spriteA, NodeTag.NoTag))
-      |> Scene.addNode(nameB, EngineNode.Sprite2DWithState(spriteB, NodeTag.NoTag))
+    let s: Scene[Tag] = Scene.empty();
+    s |> Scene.addNode(nameA, EngineNode.Sprite2DWithState(spriteA, Tag.NoTag))
+      |> Scene.addNode(nameB, EngineNode.Sprite2DWithState(spriteB, Tag.NoTag))
 
 /// 32x32 で中央基準の EditableEntry を 1 件作る（テスト共通ヘルパー）
 def entry32Centered(name: NodeName): EditableNode.EditableEntry = {
@@ -65,7 +68,7 @@ def testPickTopAtMissReturnsNone(): Unit \ Assert =
 /// entries が空なら None
 @Test
 def testPickTopAtEmptyEntriesReturnsNone(): Unit \ Assert =
-    let scene: Scene[NodeTag] = Scene.empty();
+    let scene: Scene[Tag] = Scene.empty();
     let result = Picking.pickTopAt({x = 0.0, y = 0.0}, Nil, Camera2D.identityTransform(), false, scene);
     Assert.assertEq(expected = true, Option.isEmpty(result))
 

@@ -25,8 +25,8 @@ mod DragInput {
     pub def handleMouse(mouse: MouseSnapshot,
                         transform: Camera2D.ViewTransform,
                         stateData: Editor.EditorStateData,
-                        scene: Scene[NodeTag]):
-            (Editor.EditorStateData, Scene[NodeTag]) \
+                        scene: Scene[t]):
+            (Editor.EditorStateData, Scene[t]) \
             {EditHistory.Rewind, GameEngine.Game, Fs.FileRead, Fs.FileWrite} =
         let prevLeft = stateData#prevMouseLeft;
         let pressedNow = mouse#leftDown and not prevLeft;
@@ -53,7 +53,7 @@ mod DragInput {
     /// グローバル位置を整数に丸めたうえで、setGlobalPositionAt が逆算したローカル位置も
     /// 再度整数に丸める（親に小数オフセットがあってもローカル座標が整数で揃う）。
     pub def applyDrag(mousePos: Vec2.Vec2, stateData: Editor.EditorStateData,
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
+                      scene: Scene[t]): Scene[t] =
         match (stateData#selected, stateData#dragOrigin, stateData#nodeOrigin) {
             case (Some((_, nodePath)), Some(dragOrigin), Some(nodeOrigin)) =>
                 let delta = Vec2.sub(mousePos, dragOrigin);
@@ -71,7 +71,7 @@ mod DragInput {
     /// 重要: snapshot に保存した開始時の値を起点にして ratio を掛けるので、
     /// 毎フレーム呼ばれても累乗にならず常に「原始サイズ × 現在フレームの ratio」になる
     pub def applyResize(mousePos: Vec2.Vec2, stateData: Editor.EditorStateData,
-                        scene: Scene[NodeTag]): Scene[NodeTag] =
+                        scene: Scene[t]): Scene[t] =
         match (stateData#selected, stateData#dragOrigin, stateData#resizeOrigin) {
             case (Some((_, nodePath)), Some(dragOrigin), Some(origin)) =>
                 let delta = Vec2.sub(mousePos, dragOrigin);
@@ -114,7 +114,7 @@ mod DragInput {
     /// 回転中: マウス位置から角度を計算し、ノードの rotation を更新する。
     /// CanvasLayer なら engine が子に伝播するので CanvasLayer 1 つ更新するだけ
     pub def applyRotate(mousePos: Vec2.Vec2, stateData: Editor.EditorStateData,
-                        scene: Scene[NodeTag]): Scene[NodeTag] =
+                        scene: Scene[t]): Scene[t] =
         match stateData#rotateOrigin {
             case None => scene
             case Some(origin) =>
@@ -143,8 +143,8 @@ mod DragInput {
     /// 子要素を直接掴める。
     def handleMouseDown(mousePos: Vec2.Vec2, transform: Camera2D.ViewTransform,
                         stateData: Editor.EditorStateData,
-                        scene: Scene[NodeTag]):
-            (Editor.EditorStateData, Scene[NodeTag]) \ GameEngine.Game =
+                        scene: Scene[t]):
+            (Editor.EditorStateData, Scene[t]) \ GameEngine.Game =
         match tryStartRotate(mousePos, transform, stateData, scene) {
             case Some(newState) => (newState, scene)
             case None => match tryStartResize(mousePos, transform, stateData, scene) {
@@ -178,7 +178,7 @@ mod DragInput {
     /// CanvasLayer の場合は子ノードのスナップショットも収集（cascade 用）
     def tryStartResize(mousePos: Vec2.Vec2, transform: Camera2D.ViewTransform,
                        stateData: Editor.EditorStateData,
-                       scene: Scene[NodeTag]):
+                       scene: Scene[t]):
             Option[Editor.EditorStateData] \ GameEngine.Game =
         match stateData#selected {
             case None => None
@@ -223,8 +223,8 @@ mod DragInput {
 
     /// CanvasLayer の場合、直接の子ノードのスナップショットを集める。
     /// 非 CanvasLayer なら Nil
-    def collectChildSnapshots(engineNode: EngineNode[NodeTag], path: NodePath,
-                               scene: Scene[NodeTag]):
+    def collectChildSnapshots(engineNode: EngineNode[t], path: NodePath,
+                               scene: Scene[t]):
             List[EditableNode.NodeResizeSnapshot] =
         match engineNode {
             case EngineNode.CanvasLayerWithState(_, _) =>
@@ -244,7 +244,7 @@ mod DragInput {
     /// hit していれば回転ドラッグを開始する EditorStateData を返す
     def tryStartRotate(mousePos: Vec2.Vec2, transform: Camera2D.ViewTransform,
                        stateData: Editor.EditorStateData,
-                       scene: Scene[NodeTag]):
+                       scene: Scene[t]):
             Option[Editor.EditorStateData] \ GameEngine.Game =
         match stateData#selected {
             case None => None
@@ -285,8 +285,8 @@ mod DragInput {
 
     /// ドロップ: 現在のシーン上のノード位置を JSON に書き戻し、ドラッグ状態を解除する。
     def saveDraggedPos(stateData: Editor.EditorStateData,
-                       scene: Scene[NodeTag]):
-            (Editor.EditorStateData, Scene[NodeTag]) \
+                       scene: Scene[t]):
+            (Editor.EditorStateData, Scene[t]) \
             {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
         match stateData#selected {
             case Some((jsonPath, nodePath)) =>
@@ -323,8 +323,8 @@ mod DragInput {
     /// リサイズドロップ: 自ノード（と CanvasLayer なら子も）の更新を 1 回の書込で永続化。
     /// undo 用に snapshots を ResizeEntry に積む。
     def saveResizedNode(stateData: Editor.EditorStateData,
-                        scene: Scene[NodeTag]):
-            (Editor.EditorStateData, Scene[NodeTag]) \
+                        scene: Scene[t]):
+            (Editor.EditorStateData, Scene[t]) \
             {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
         match (stateData#selected, stateData#resizeOrigin) {
             case (Some((jsonPath, _)), Some(origin)) =>
@@ -352,7 +352,7 @@ mod DragInput {
     /// 1 ノードについて「現在のシーン上の位置 + applyResize 用のサイズ系 field」を
     /// FieldUpdate のリストとして組み立てる
     def buildNodeUpdateAfterResize(snap: EditableNode.NodeResizeSnapshot,
-                                    scene: Scene[NodeTag]):
+                                    scene: Scene[t]):
             Option[SceneSerializer.NodeUpdate] =
         match Scene.getEngineNode(snap#nodePath, scene) {
             case None => None
@@ -371,7 +371,7 @@ mod DragInput {
 
     /// snapshots のいずれかが現在のシーン上で変化していれば true（mtime 無駄打ち回避）
     def anyNodeChanged(snapshots: List[EditableNode.NodeResizeSnapshot],
-                       scene: Scene[NodeTag]): Bool =
+                       scene: Scene[t]): Bool =
         List.exists(snap -> {
             match Scene.getEngineNode(snap#nodePath, scene) {
                 case None => false
@@ -414,8 +414,8 @@ mod DragInput {
 
     /// 回転ドロップ: 現在の rotation を JSON に書き戻し、回転状態を解除する
     def saveRotatedNode(stateData: Editor.EditorStateData,
-                        scene: Scene[NodeTag]):
-            (Editor.EditorStateData, Scene[NodeTag]) \
+                        scene: Scene[t]):
+            (Editor.EditorStateData, Scene[t]) \
             {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
         match stateData#rotateOrigin {
             case None => (stateData, scene)

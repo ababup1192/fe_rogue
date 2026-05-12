@@ -50,8 +50,8 @@ mod KeyboardNudge {
     /// 押下エッジに応じて選択ノードを動かし JSON に書き戻す。
     pub def applyNudge(stateData: Editor.EditorStateData,
                        curArrows: ArrowKeys,
-                       scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {EditHistory.Rewind, GameEngine.Game,
+                       scene: Scene[t]):
+            Scene[t] \ {EditHistory.Rewind, GameEngine.Game,
                               Fs.FileRead, Fs.FileWrite} =
         match stateData#selected {
             case None => scene
@@ -72,8 +72,8 @@ mod KeyboardNudge {
         }
 
     def moveAndSave(jsonPath: String, nodePath: NodePath, delta: Vec2.Vec2,
-                    scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
+                    scene: Scene[t]):
+            Scene[t] \ {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
         let curGlobal = Scene.globalPositionAt(nodePath, scene);
         EditHistory.Rewind.save(EditHistory.Entry.MoveEntry({
             jsonPath = jsonPath, nodePath = nodePath,
@@ -92,8 +92,8 @@ mod KeyboardNudge {
         newScene
 
     def applyScaleAndSave(jsonPath: String, nodePath: NodePath, deltaScale: Vec2.Vec2,
-                          scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
+                          scene: Scene[t]):
+            Scene[t] \ {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
         match Scene.getEngineNode(nodePath, scene) {
             case None => scene
             case Some(engineNode) =>

@@ -20,7 +20,7 @@ mod Picking {
                       entries: List[EditableNode.EditableEntry],
                       transform: Camera2D.ViewTransform,
                       preferDescendant: Bool,
-                      scene: Scene[NodeTag]):
+                      scene: Scene[t]):
             Option[(EditableNode.EditableEntry, Vec2.Vec2)] =
         let hits = entries
             |> List.filterMap(entry -> hitInfo(mousePos, entry, transform, scene));
@@ -47,7 +47,7 @@ mod Picking {
 
     /// マウスが entry の bbox 内なら HitInfo を返す
     def hitInfo(mousePos: Vec2.Vec2, entry: EditableNode.EditableEntry,
-                transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): Option[HitInfo] =
+                transform: Camera2D.ViewTransform, scene: Scene[t]): Option[HitInfo] =
         let screenPos = Scene.screenPositionAt(entry#nodePath, transform, scene);
         if (Rect2.hasPoint(mousePos, makeBBox(screenPos, entry)))
             Some({z = Scene.effectiveZIndexAt(entry#nodePath, scene),

@@ -5,8 +5,6 @@
 // （毎フレーム glob し直さない）
 
 mod SceneJsonIndex {
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonArray, JsonString}
 
     /// src/scenes 配下の *.scene.json をすべて走査し、各ファイルのルートノード名から
     /// JSON ファイルパスを引けるインデックスを作る。
@@ -19,11 +17,11 @@ mod SceneJsonIndex {
 
     /// JSON ルート（オブジェクト or 配列）から各要素の "name" 文字列を取り出す。
     /// 単体テストしやすいよう pub
-    pub def rootNamesOf(json: JsonElement): List[NodeName] =
+    pub def rootNamesOf(json: Json.JsonElement): List[NodeName] =
         match json {
-            case JsonObject(_) =>
+            case Json.JsonElement.JsonObject(_) =>
                 nameOf(json) |> Option.toList
-            case JsonArray(arr) =>
+            case Json.JsonElement.JsonArray(arr) =>
                 Vector.toList(arr) |> List.filterMap(nameOf)
             case _ => Nil
         }
@@ -44,11 +42,11 @@ mod SceneJsonIndex {
         }
 
     /// 単一 JSON オブジェクトの "name" フィールドを取り出す
-    def nameOf(json: JsonElement): Option[NodeName] =
+    def nameOf(json: Json.JsonElement): Option[NodeName] =
         match json {
-            case JsonObject(map) =>
+            case Json.JsonElement.JsonObject(map) =>
                 match Map.get("name", map) {
-                    case Some(JsonString(s)) => Some(s)
+                    case Some(Json.JsonElement.JsonString(s)) => Some(s)
                     case _                   => None
                 }
             case _ => None

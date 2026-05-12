@@ -6,6 +6,9 @@
 
 mod TestOverlay {
 
+    /// editor 単独テスト用の最小 tag enum (NodeTag は consumer 側で定義される型)
+    pub enum Tag { case NoTag }
+
 
     /// テスト用のダミー FontAtlas（空のグリフマップ）
     def testFontAtlas(): FontAtlas = {
@@ -42,8 +45,8 @@ mod TestOverlay {
     /// 空シーンに addEditorIndicator すると、ラベル用 CanvasLayer + その下の Label2D が増える
     @Test
     def testAddEditorIndicatorAddsLayerAndLabel(): Unit \ Assert =
-        let s: Scene[NodeTag] = Scene.empty();
-        let result = Overlay.addEditorIndicator(testFontAtlas(), s);
+        let s: Scene[Tag] = Scene.empty();
+        let result = Overlay.addEditorIndicator(testFontAtlas(), Tag.NoTag, s);
         let layerExists =
             Scene.getEngineNode("_editor_indicator_layer" :: Nil, result)
                 |> Option.exists(node -> match node {
@@ -62,10 +65,10 @@ mod TestOverlay {
     @Test
     def testAddEditorIndicatorPreservesExistingNodes(): Unit \ Assert =
         let sprite = Sprite2D.make("dummy.png", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0});
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("hero",
-            EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag));
-        let result = Overlay.addEditorIndicator(testFontAtlas(), scene);
+            EngineNode.Sprite2DWithState(sprite, Tag.NoTag));
+        let result = Overlay.addEditorIndicator(testFontAtlas(), Tag.NoTag, scene);
         let heroStillThere = Option.nonEmpty(
             Scene.getEngineNode("hero" :: Nil, result));
         Assert.assertEq(expected = true, heroStillThere)
@@ -77,10 +80,10 @@ mod TestOverlay {
     /// selected = None なら scene は変わらない
     @Test
     def testAddSelectionBoxNoneIsNoOp(): Unit \ Assert =
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s;
         let result = withMockTexture32(() ->
-            Overlay.addSelectionBox(Map.empty(), None, Camera2D.identityTransform(), scene));
+            Overlay.addSelectionBox(Map.empty(), None, Camera2D.identityTransform(), Tag.NoTag, scene));
         let boxLayerAbsent = Option.isEmpty(
             Scene.getEngineNode("_editor_box_layer" :: Nil, result));
         Assert.assertEq(expected = true, boxLayerAbsent)
@@ -88,14 +91,15 @@ mod TestOverlay {
     /// 選択中 entry がない（rootJsonIndex に登録外）なら何も追加しない
     def testAddSelectionBoxUnknownRootIsNoOp(): Unit \ {Assert, GameEngine.Game} =
         let sprite = Sprite2D.make("dummy.png", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0});
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("hero",
-            EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag));
+            EngineNode.Sprite2DWithState(sprite, Tag.NoTag));
         // index に "hero" を入れていない → entry が見つからない
         let result = Overlay.addSelectionBox(
             Map.empty(),
             Some(("hero.json", "hero" :: Nil)),
             Camera2D.identityTransform(),
+            Tag.NoTag,
             scene);
         let boxLayerAbsent = Option.isEmpty(
             Scene.getEngineNode("_editor_box_layer" :: Nil, result));
@@ -112,13 +116,14 @@ mod TestOverlay {
     /// マウスがどのノード上にもないなら hover 層は追加されない
     def testAddHoverBoxNoHitIsNoOp(): Unit \ {Assert, GameEngine.Game} =
         let sprite = Sprite2D.make("dummy.png", {x = 100.0, y = 100.0}, {x = 1.0, y = 1.0});
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("hero",
-            EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag));
+            EngineNode.Sprite2DWithState(sprite, Tag.NoTag));
         let index = Map#{"hero" => "hero.json"};
         // マウスはスプライト矩形の遥か外
         let result = Overlay.addHoverBox(index, {x = 500.0, y = 500.0}, None,
                                          Camera2D.identityTransform(),
+                                         Tag.NoTag,
                                          scene);
         let hoverLayerAbsent = Option.isEmpty(
             Scene.getEngineNode("_editor_hover_layer" :: Nil, result));
@@ -132,9 +137,9 @@ mod TestOverlay {
     /// （選択枠と二重描画になるのを避ける）
     def testAddHoverBoxSkipsWhenSameAsSelected(): Unit \ {Assert, GameEngine.Game} =
         let sprite = Sprite2D.make("dummy.png", {x = 100.0, y = 100.0}, {x = 1.0, y = 1.0});
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("hero",
-            EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag));
+            EngineNode.Sprite2DWithState(sprite, Tag.NoTag));
         let index = Map#{"hero" => "hero.json"};
         // hero を選択中、マウスも hero の上
         let result = Overlay.addHoverBox(
@@ -142,6 +147,7 @@ mod TestOverlay {
             {x = 100.0, y = 100.0},
             Some(("hero.json", "hero" :: Nil)),
             Camera2D.identityTransform(),
+            Tag.NoTag,
             scene);
         let hoverLayerAbsent = Option.isEmpty(
             Scene.getEngineNode("_editor_hover_layer" :: Nil, result));
@@ -155,10 +161,10 @@ mod TestOverlay {
     def testAddHoverBoxAddsLayerWhenDifferent(): Unit \ {Assert, GameEngine.Game} =
         let heroSprite = Sprite2D.make("dummy.png", {x = 100.0, y = 100.0}, {x = 1.0, y = 1.0});
         let coinSprite = Sprite2D.make("dummy.png", {x = 200.0, y = 200.0}, {x = 1.0, y = 1.0});
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s
-            |> Scene.addNode("hero", EngineNode.Sprite2DWithState(heroSprite, NodeTag.NoTag))
-            |> Scene.addNode("coin", EngineNode.Sprite2DWithState(coinSprite, NodeTag.NoTag));
+            |> Scene.addNode("hero", EngineNode.Sprite2DWithState(heroSprite, Tag.NoTag))
+            |> Scene.addNode("coin", EngineNode.Sprite2DWithState(coinSprite, Tag.NoTag));
         let index = Map#{"hero" => "hero.json", "coin" => "coin.json"};
         // hero を選択中、マウスは coin 上
         let result = Overlay.addHoverBox(
@@ -166,6 +172,7 @@ mod TestOverlay {
             {x = 200.0, y = 200.0},
             Some(("hero.json", "hero" :: Nil)),
             Camera2D.identityTransform(),
+            Tag.NoTag,
             scene);
         let isCanvasLayer = node -> match node {
             case EngineNode.CanvasLayerWithState(_, _) => true
@@ -183,14 +190,15 @@ mod TestOverlay {
     /// 選択中ノードがあれば 4 辺の ColorRect が追加される（top/bottom/left/right）
     def testAddSelectionBoxAddsFourEdges(): Unit \ {Assert, GameEngine.Game} =
         let sprite = Sprite2D.make("dummy.png", {x = 100.0, y = 100.0}, {x = 1.0, y = 1.0});
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("hero",
-            EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag));
+            EngineNode.Sprite2DWithState(sprite, Tag.NoTag));
         let index = Map#{"hero" => "hero.json"};
         let result = Overlay.addSelectionBox(
             index,
             Some(("hero.json", "hero" :: Nil)),
             Camera2D.identityTransform(),
+            Tag.NoTag,
             scene);
         let isColorRect = node -> match node {
             case EngineNode.ColorRectWithState(_, _) => true
@@ -220,10 +228,10 @@ mod TestOverlay {
     @Test
     def testAddCollisionShapesNoShapesAddsEmptyLayer(): Unit \ Assert =
         let sprite = Sprite2D.make("dummy.png", {x = 100.0, y = 100.0}, {x = 1.0, y = 1.0});
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("hero",
-            EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag));
-        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), scene);
+            EngineNode.Sprite2DWithState(sprite, Tag.NoTag));
+        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), Tag.NoTag, scene);
         let children = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result);
         Assert.assertEq(expected = (true, 0), (Option.nonEmpty(
             Scene.getEngineNode("_editor_collision_layer" :: Nil, result)),
@@ -235,10 +243,10 @@ mod TestOverlay {
     def testAddCollisionShapesRectAddsFillAndOutline(): Unit \ Assert =
         let area = Area2D.make({x = 100.0, y = 100.0},
             CollisionShape2D.RectShape2D({width = 32.0, height = 16.0}));
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("trigger",
-            EngineNode.Area2DWithState(area, NodeTag.NoTag));
-        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), scene);
+            EngineNode.Area2DWithState(area, Tag.NoTag));
+        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), Tag.NoTag, scene);
         let children = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result);
         // 内側 fill 1 + 上下左右の outline 4 = 5
         Assert.assertEq(expected = 5, List.length(children))
@@ -253,10 +261,10 @@ mod TestOverlay {
     def testAddCollisionShapesCircleAddsRingScanLines(): Unit \ Assert =
         let area = Area2D.make({x = 100.0, y = 100.0},
             CollisionShape2D.CircleShape2D({radius = 5.0}));
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("ball",
-            EngineNode.Area2DWithState(area, NodeTag.NoTag));
-        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), scene);
+            EngineNode.Area2DWithState(area, Tag.NoTag));
+        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), Tag.NoTag, scene);
         let count = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result)
             |> List.length;
         Assert.assertEq(expected = 29, count)
@@ -267,10 +275,10 @@ mod TestOverlay {
     def testAddCollisionShapesFillTranslucentOutlineOpaque(): Unit \ Assert =
         let area = Area2D.make({x = 50.0, y = 50.0},
             CollisionShape2D.RectShape2D({width = 10.0, height = 10.0}));
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("box",
-            EngineNode.Area2DWithState(area, NodeTag.NoTag));
-        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), scene);
+            EngineNode.Area2DWithState(area, Tag.NoTag));
+        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), Tag.NoTag, scene);
         let alphas = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result)
             |> List.map(childName ->
                 match Scene.getEngineNode("_editor_collision_layer" :: childName :: Nil, result) {

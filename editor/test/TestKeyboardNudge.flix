@@ -7,6 +7,9 @@
 
 mod TestKeyboardNudge {
 
+    /// editor 単独テスト用の最小 tag enum (NodeTag は consumer 側で定義される型)
+    pub enum Tag { case NoTag }
+
 
     // ====================================================================
     // pressEdges — エッジ検出の純粋関数
@@ -89,10 +92,10 @@ mod TestKeyboardNudge {
     // ====================================================================
 
     /// 中央基準の Sprite2D を 1 個 root に置いたシーン
-    def sceneWithSprite(name: NodeName, pos: Vec2.Vec2): Scene[NodeTag] =
+    def sceneWithSprite(name: NodeName, pos: Vec2.Vec2): Scene[Tag] =
         let sprite = Sprite2D.make("dummy.png", pos, {x = 1.0, y = 1.0});
-        let s: Scene[NodeTag] = Scene.empty();
-        s |> Scene.addNode(name, EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
+        let s: Scene[Tag] = Scene.empty();
+        s |> Scene.addNode(name, EngineNode.Sprite2DWithState(sprite, Tag.NoTag))
 
     /// 選択中だが矢印キー押下なし、prev も全 false の state
     def quietState(jsonPath: String, nodePath: NodePath): Editor.EditorStateData = {

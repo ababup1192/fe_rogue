@@ -14,8 +14,6 @@
 mod SceneSerializer {
     import java.math.BigDecimal
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonArray, JsonNumber}
 
     /// 書き換え値の種類。
     /// - VecValue:   `[x, y]` の JSON 配列
@@ -132,18 +130,18 @@ mod SceneSerializer {
     /// ルート（配列 or オブジェクト）に対して NodePath の先頭名と一致するノードを探し、
     /// その先のパスでフィールド更新を続行する
     def replaceFieldsAtRoot(nodePath: NodePath, updates: List[FieldUpdate],
-                            json: JsonElement): Result[String, JsonElement] =
+                            json: Json.JsonElement): Result[String, Json.JsonElement] =
         match nodePath {
             case Nil => Err("empty NodePath")
             case rootName :: rest =>
                 match json {
-                    case JsonObject(_) =>
+                    case Json.JsonElement.JsonObject(_) =>
                         replaceFieldsInNode(rootName, rest, updates, json)
                             |> Option.toOk("root node not found: ${rootName}")
-                    case JsonArray(arr) =>
+                    case Json.JsonElement.JsonArray(arr) =>
                         replaceInArray(rootName, rest, updates, arr)
                             |> Option.toOk("root node not found in array: ${rootName}")
-                            |> Result.map(JsonArray)
+                            |> Result.map(Json.JsonElement.JsonArray)
                     case _ =>
                         Err("root JSON must be object or array")
                 }
@@ -152,7 +150,7 @@ mod SceneSerializer {
     /// 配列の各要素を走査し、name が一致するものを置換する。
     /// 一致するものが見つかれば置換した配列を返す。見つからなければ None
     def replaceInArray(targetName: String, restPath: NodePath, updates: List[FieldUpdate],
-                       arr: Vector[JsonElement]): Option[Vector[JsonElement]] =
+                       arr: Vector[Json.JsonElement]): Option[Vector[Json.JsonElement]] =
         let list = Vector.toList(arr);
         let (found, replaced) = List.foldLeft((acc, element) -> {
             let (foundFlag, accList) = acc;
@@ -164,13 +162,13 @@ mod SceneSerializer {
         }, (false, Nil), list);
         if (found) Some(List.toVector(replaced)) else None
 
-    /// 単一ノード（JsonObject）の "name" を確認し、一致すれば指定フィールドを置換する。
+    /// 単一ノード（Json.JsonElement.JsonObject）の "name" を確認し、一致すれば指定フィールドを置換する。
     /// 一致しない場合は None
     def replaceFieldsInNode(targetName: String, restPath: NodePath,
                             updates: List[FieldUpdate],
-                            element: JsonElement): Option[JsonElement] =
+                            element: Json.JsonElement): Option[Json.JsonElement] =
         match element {
-            case JsonObject(map) =>
+            case Json.JsonElement.JsonObject(map) =>
                 let nameOpt: Option[String] = match Map.get("name", map) {
                     case Some(Json.JsonElement.JsonString(s)) => Some(s)
                     case _                                    => None
@@ -186,66 +184,65 @@ mod SceneSerializer {
     /// 末端ノード（このノードが目的のノードか、子を辿る必要があるか）に応じて
     /// 指定フィールドを置換 or children を辿る
     def applyPathFromHere(restPath: NodePath, updates: List[FieldUpdate],
-                          nodeMap: Map[String, JsonElement]): JsonElement =
+                          nodeMap: Map[String, Json.JsonElement]): Json.JsonElement =
         match restPath {
             case Nil =>
-                JsonObject(applyUpdates(updates, nodeMap))
+                Json.JsonElement.JsonObject(applyUpdates(updates, nodeMap))
             case nextName :: deeper =>
                 match Map.get("children", nodeMap) {
-                    case Some(JsonArray(childArr)) =>
+                    case Some(Json.JsonElement.JsonArray(childArr)) =>
                         match replaceInArray(nextName, deeper, updates, childArr) {
                             case Some(newArr) =>
-                                JsonObject(Map.insert("children", JsonArray(newArr), nodeMap))
+                                Json.JsonElement.JsonObject(Map.insert("children", Json.JsonElement.JsonArray(newArr), nodeMap))
                             case None =>
-                                JsonObject(nodeMap)
+                                Json.JsonElement.JsonObject(nodeMap)
                         }
-                    case _ => JsonObject(nodeMap)
+                    case _ => Json.JsonElement.JsonObject(nodeMap)
                 }
         }
 
     /// updates をマージしてノードの Map を返す。フィールドが既に存在しても上書きする
     def applyUpdates(updates: List[FieldUpdate],
-                     nodeMap: Map[String, JsonElement]): Map[String, JsonElement] =
+                     nodeMap: Map[String, Json.JsonElement]): Map[String, Json.JsonElement] =
         List.foldLeft((acc, update) ->
             Map.insert(update#key, valueToJson(update#value), acc),
             nodeMap, updates)
 
     /// FieldValue を JSON 値に変換する
-    def valueToJson(v: FieldValue): JsonElement =
+    def valueToJson(v: FieldValue): Json.JsonElement =
         match v {
             case FieldValue.VecValue(v2) =>
-                JsonArray(Vector#{
-                    JsonNumber(floatToBd(v2#x)),
-                    JsonNumber(floatToBd(v2#y))
+                Json.JsonElement.JsonArray(Vector#{
+                    Json.JsonElement.JsonNumber(floatToBd(v2#x)),
+                    Json.JsonElement.JsonNumber(floatToBd(v2#y))
                 })
             case FieldValue.ScalarValue(f) =>
-                JsonNumber(floatToBd(f))
+                Json.JsonElement.JsonNumber(floatToBd(f))
             case FieldValue.ShapeValue(shape) =>
                 shapeToJson(shape)
         }
 
     /// CollisionShape2D を scene.json の `"shape"` フィールドの形式に変換する。
     /// `{"kind": "RectShape2D", "width": ..., "height": ...}` の規約に揃える。
-    def shapeToJson(shape: CollisionShape2D): JsonElement =
-        use Json.JsonElement.{JsonString, JsonBool};
+    def shapeToJson(shape: CollisionShape2D): Json.JsonElement =
         match shape {
             case CollisionShape2D.RectShape2D(r) =>
-                JsonObject(Map#{
-                    "kind"   => JsonString("RectShape2D"),
-                    "width"  => JsonNumber(floatToBd(r#width)),
-                    "height" => JsonNumber(floatToBd(r#height))
+                Json.JsonElement.JsonObject(Map#{
+                    "kind"   => Json.JsonElement.JsonString("RectShape2D"),
+                    "width"  => Json.JsonElement.JsonNumber(floatToBd(r#width)),
+                    "height" => Json.JsonElement.JsonNumber(floatToBd(r#height))
                 })
             case CollisionShape2D.CircleShape2D(c) =>
-                JsonObject(Map#{
-                    "kind"   => JsonString("CircleShape2D"),
-                    "radius" => JsonNumber(floatToBd(c#radius))
+                Json.JsonElement.JsonObject(Map#{
+                    "kind"   => Json.JsonElement.JsonString("CircleShape2D"),
+                    "radius" => Json.JsonElement.JsonNumber(floatToBd(c#radius))
                 })
             case CollisionShape2D.CapsuleShape2D(c) =>
-                JsonObject(Map#{
-                    "kind"     => JsonString("CapsuleShape2D"),
-                    "radius"   => JsonNumber(floatToBd(c#radius)),
-                    "height"   => JsonNumber(floatToBd(c#height)),
-                    "vertical" => JsonBool(c#vertical)
+                Json.JsonElement.JsonObject(Map#{
+                    "kind"     => Json.JsonElement.JsonString("CapsuleShape2D"),
+                    "radius"   => Json.JsonElement.JsonNumber(floatToBd(c#radius)),
+                    "height"   => Json.JsonElement.JsonNumber(floatToBd(c#height)),
+                    "vertical" => Json.JsonElement.JsonBool(c#vertical)
                 })
         }
 

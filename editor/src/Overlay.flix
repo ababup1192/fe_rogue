@@ -8,7 +8,7 @@
 mod Overlay {
 
     /// エディタが ON であることを示す右上の "EDITOR" ラベルを最前面に追加する
-    pub def addEditorIndicator(fontAtlas: FontAtlas, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def addEditorIndicator(fontAtlas: FontAtlas, defaultTag: t, scene: Scene[t]): Scene[t] =
         let layerName = "_editor_indicator_layer";
         let labelName = "_editor_indicator_label";
         let layer = CanvasLayer.make(overlayLayerIndex());
@@ -17,9 +17,9 @@ mod Overlay {
             |> CanvasItem.setModulate({r = 1.0f32, g = 0.85f32, b = 0.2f32});
         scene
             |> Scene.addNode(layerName,
-                EngineNode.CanvasLayerWithState(layer, NodeTag.NoTag))
+                EngineNode.CanvasLayerWithState(layer, defaultTag))
             |> Scene.addChildAt(layerName :: Nil, labelName,
-                EngineNode.Label2DWithState(label, NodeTag.NoTag))
+                EngineNode.Label2DWithState(label, defaultTag))
 
     /// 4 辺の枠の見た目を表すスタイル。
     type alias OutlineStyle = {
@@ -33,7 +33,7 @@ mod Overlay {
     pub def addSelectionBox(rootJsonIndex: Map[NodeName, String],
                             selected: Option[(String, NodePath)],
                             transform: Camera2D.ViewTransform,
-                            scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
+                            defaultTag: t, scene: Scene[t]): Scene[t] \ GameEngine.Game =
         match selected {
             case None => scene
             case Some((_, nodePath)) =>
@@ -46,19 +46,19 @@ mod Overlay {
                         let box = {topLeft = topLeft,
                                    size = {x = entry#width, y = entry#height}};
                         scene
-                            |> addOutline(box, selectionStyle())
-                            |> addResizeHandles(box)
+                            |> addOutline(box, selectionStyle(), defaultTag)
+                            |> addResizeHandles(box, defaultTag)
                 }
         }
 
     /// 選択枠の 8 ハンドル + 上部の回転ノブを最前面に置く
     pub def addResizeHandles(box: {topLeft = Vec2.Vec2, size = Vec2.Vec2},
-                              scene: Scene[NodeTag]): Scene[NodeTag] =
+                              defaultTag: t, scene: Scene[t]): Scene[t] =
         let layerName = handleLayerName();
         let layer = CanvasLayer.make(overlayLayerIndex());
         let color = selectionStyle()#color;
         let withLayer = Scene.addNode(layerName,
-            EngineNode.CanvasLayerWithState(layer, NodeTag.NoTag), scene);
+            EngineNode.CanvasLayerWithState(layer, defaultTag), scene);
         let withResize = ResizeHandle.overlayRects(box)
             |> List.foldLeft((acc, indexed) -> {
                 let (handle, rect) = indexed;
@@ -66,15 +66,15 @@ mod Overlay {
                 let fill = ColorRect.make(rect#size, color)
                     |> Node2D.setPosition(rect#position);
                 Scene.addChildAt(layerName :: Nil, handleTag,
-                    EngineNode.ColorRectWithState(fill, NodeTag.NoTag), acc)
+                    EngineNode.ColorRectWithState(fill, defaultTag), acc)
             }, withLayer);
-        addRotateKnob(layerName, box, color, withResize)
+        addRotateKnob(layerName, box, color, defaultTag, withResize)
 
     /// 上辺中央から rotateKnobOffset 上にノブを配置し、選択枠との間にリンク線を引く
     def addRotateKnob(layerName: String,
                       box: {topLeft = Vec2.Vec2, size = Vec2.Vec2},
                       color: {r = Float32, g = Float32, b = Float32},
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
+                      defaultTag: t, scene: Scene[t]): Scene[t] =
         let knobCenter = ResizeHandle.rotateKnobCenter(box);
         let knobSize = ResizeHandle.handleSize();
         let knob = ColorRect.make({x = knobSize, y = knobSize}, color)
@@ -90,9 +90,9 @@ mod Overlay {
             |> Node2D.setPosition({x = topMidX - lineThickness / 2.0, y = lineTop});
         scene
             |> Scene.addChildAt(layerName :: Nil, "_rotate_link",
-                EngineNode.ColorRectWithState(line, NodeTag.NoTag))
+                EngineNode.ColorRectWithState(line, defaultTag))
             |> Scene.addChildAt(layerName :: Nil, "_rotate_knob",
-                EngineNode.ColorRectWithState(knob, NodeTag.NoTag))
+                EngineNode.ColorRectWithState(knob, defaultTag))
 
     /// ハンドル群を載せる CanvasLayer のノード名
     def handleLayerName(): String = "_editor_handle_layer"
@@ -102,7 +102,7 @@ mod Overlay {
                         mousePos: Vec2.Vec2,
                         selected: Option[(String, NodePath)],
                         transform: Camera2D.ViewTransform,
-                        scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
+                        defaultTag: t, scene: Scene[t]): Scene[t] \ GameEngine.Game =
         let ctx = {rootJsonIndex = rootJsonIndex, scene = scene};
         let entries = EditableNode.collectAll(ctx);
         let preferDescendant = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
@@ -115,7 +115,7 @@ mod Overlay {
                     let topLeft = Vec2.add(refPos, entry#topLeftOffset);
                     let box = {topLeft = topLeft,
                                size = {x = entry#width, y = entry#height}};
-                    addOutline(box, hoverStyle(), scene)
+                    addOutline(box, hoverStyle(), defaultTag, scene)
                 }
         }
 
@@ -128,20 +128,21 @@ mod Overlay {
 
     /// シーンに含まれるすべての CollisionObject2D の衝突形状を可視化する
     pub def addCollisionShapes(transform: Camera2D.ViewTransform,
-                               scene: Scene[NodeTag]): Scene[NodeTag] =
+                               defaultTag: t, scene: Scene[t]): Scene[t] =
         let layerName = collisionLayerName();
         let layer = CanvasLayer.make(collisionLayerIndex());
         let withLayer = Scene.addNode(layerName,
-            EngineNode.CanvasLayerWithState(layer, NodeTag.NoTag), scene);
+            EngineNode.CanvasLayerWithState(layer, defaultTag), scene);
         Scene.preorderPaths(scene)
             |> List.foldLeft((accScene, path) ->
-                addShapeAtPath(layerName, path, transform, scene, accScene), withLayer)
+                addShapeAtPath(layerName, path, transform, scene, defaultTag, accScene), withLayer)
 
     /// 指定パスのノードに衝突形状があれば描画する
     def addShapeAtPath(layerName: String, path: NodePath,
                        transform: Camera2D.ViewTransform,
-                       sourceScene: Scene[NodeTag],
-                       acc: Scene[NodeTag]): Scene[NodeTag] =
+                       sourceScene: Scene[t],
+                       defaultTag: t,
+                       acc: Scene[t]): Scene[t] =
         match Scene.getEngineNode(path, sourceScene) {
             case None => acc
             case Some(node) => match CollisionObject2D.getCollisionShape(node) {
@@ -151,7 +152,7 @@ mod Overlay {
                     let style = collisionStyle();
                     let rects = collisionShapeToFillRects(center, shape, style);
                     let pathTag = pathToTag(path);
-                    appendFillRects(layerName, pathTag, rects, style, acc)
+                    appendFillRects(layerName, pathTag, rects, style, defaultTag, acc)
             }
         }
 
@@ -275,7 +276,7 @@ mod Overlay {
     def appendFillRects(layerName: String, pathTag: String,
                         rects: List[FillRect],
                         style: CollisionStyle,
-                        scene: Scene[NodeTag]): Scene[NodeTag] =
+                        defaultTag: t, scene: Scene[t]): Scene[t] =
         List.foldLeft((acc, indexed) -> {
             let (idx, rect) = indexed;
             let childName = "${pathTag}_${idx}";
@@ -285,7 +286,7 @@ mod Overlay {
                 |> Node2D.setPosition(rect#topLeft)
                 |> ColorRect.setAlpha(alpha);
             Scene.addChildAt(layerName :: Nil, childName,
-                EngineNode.ColorRectWithState(colorRect, NodeTag.NoTag), acc)
+                EngineNode.ColorRectWithState(colorRect, defaultTag), acc)
         }, scene, List.zipWithIndex(rects))
 
     def pathToTag(path: NodePath): String =
@@ -328,7 +329,7 @@ mod Overlay {
 
     def addOutline(box: {topLeft = Vec2.Vec2, size = Vec2.Vec2},
                    style: OutlineStyle,
-                   scene: Scene[NodeTag]): Scene[NodeTag] =
+                   defaultTag: t, scene: Scene[t]): Scene[t] =
         let layerName = style#layerName;
         let layer = CanvasLayer.make(overlayLayerIndex());
         let color = style#color;
@@ -348,15 +349,15 @@ mod Overlay {
                                   size = {x = thickness, y = height}}, color);
         scene
             |> Scene.addNode(layerName,
-                EngineNode.CanvasLayerWithState(layer, NodeTag.NoTag))
+                EngineNode.CanvasLayerWithState(layer, defaultTag))
             |> Scene.addChildAt(layerName :: Nil, "top",
-                EngineNode.ColorRectWithState(topLine, NodeTag.NoTag))
+                EngineNode.ColorRectWithState(topLine, defaultTag))
             |> Scene.addChildAt(layerName :: Nil, "bottom",
-                EngineNode.ColorRectWithState(bottomLine, NodeTag.NoTag))
+                EngineNode.ColorRectWithState(bottomLine, defaultTag))
             |> Scene.addChildAt(layerName :: Nil, "left",
-                EngineNode.ColorRectWithState(leftLine, NodeTag.NoTag))
+                EngineNode.ColorRectWithState(leftLine, defaultTag))
             |> Scene.addChildAt(layerName :: Nil, "right",
-                EngineNode.ColorRectWithState(rightLine, NodeTag.NoTag))
+                EngineNode.ColorRectWithState(rightLine, defaultTag))
 
     def makeLine(line: {pos = Vec2.Vec2, size = Vec2.Vec2},
                  color: {r = Float32, g = Float32, b = Float32}): ColorRect =

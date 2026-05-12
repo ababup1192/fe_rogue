@@ -6,6 +6,9 @@
 
 mod TestEditableNode {
 
+    /// editor 単独テスト用の最小 tag enum (NodeTag は consumer 側で定義される型)
+    pub enum Tag { case NoTag }
+
 
     // ====================================================================
     // モック GameEngine.Game ハンドラ — getTextureInfo のみ意味のある値を返す
@@ -54,9 +57,9 @@ mod TestEditableNode {
     /// width/height は texture サイズ × scale、topLeftOffset は centered=true 由来
     def testCollectAllSingleSprite(): Unit \ {Assert, GameEngine.Game} =
         let sprite = Sprite2D.make("dummy.png", {x = 50.0, y = 60.0}, {x = 1.0, y = 1.0});
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("hero",
-            EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag));
+            EngineNode.Sprite2DWithState(sprite, Tag.NoTag));
         let index = Map#{"hero" => "test/Hero.scene.json"};
         let entries = EditableNode.collectAll({rootJsonIndex = index, scene = scene});
         Assert.assertEq(
@@ -75,9 +78,9 @@ mod TestEditableNode {
     /// scale が 2 倍なら entry の width/height も 2 倍
     def testCollectAllSpriteWithScale(): Unit \ {Assert, GameEngine.Game} =
         let sprite = Sprite2D.make("dummy.png", {x = 0.0, y = 0.0}, {x = 2.0, y = 3.0});
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("a",
-            EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag));
+            EngineNode.Sprite2DWithState(sprite, Tag.NoTag));
         let entries = EditableNode.collectAll(
             {rootJsonIndex = Map#{"a" => "x.json"}, scene = scene});
         Assert.assertEq(
@@ -103,9 +106,9 @@ mod TestEditableNode {
             {animation = "flap"},
             {x = 0.0, y = 0.0},
             {x = 2.0, y = 2.0});
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("bird",
-            EngineNode.AnimSprite2DWithState(anim, NodeTag.NoTag));
+            EngineNode.AnimSprite2DWithState(anim, Tag.NoTag));
         let entries = EditableNode.collectAll(
             {rootJsonIndex = Map#{"bird" => "Bird.scene.json"}, scene = scene});
         // 16x16 texture × scale 2 = 32x32, centered=true → topLeft (-16, -16)
@@ -129,12 +132,12 @@ mod TestEditableNode {
         let layer = CanvasLayer.make(0i32);
         let rect = ColorRect.make({x = 10.0, y = 10.0}, {r = 1.0f32, g = 1.0f32, b = 1.0f32});
         let btn = TextureButton.make("btn.png", {x = 64.0, y = 32.0});
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s
-            |> Scene.addNode("layer", EngineNode.CanvasLayerWithState(layer, NodeTag.NoTag))
-            |> Scene.addNode("sprite", EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
-            |> Scene.addNode("rect", EngineNode.ColorRectWithState(rect, NodeTag.NoTag))
-            |> Scene.addNode("button", EngineNode.TextureButtonWithState(btn, NodeTag.NoTag));
+            |> Scene.addNode("layer", EngineNode.CanvasLayerWithState(layer, Tag.NoTag))
+            |> Scene.addNode("sprite", EngineNode.Sprite2DWithState(sprite, Tag.NoTag))
+            |> Scene.addNode("rect", EngineNode.ColorRectWithState(rect, Tag.NoTag))
+            |> Scene.addNode("button", EngineNode.TextureButtonWithState(btn, Tag.NoTag));
         let index = Map#{"layer" => "x.json", "sprite" => "x.json",
                          "rect" => "x.json", "button" => "x.json"};
         let entries = EditableNode.collectAll({rootJsonIndex = index, scene = scene});
@@ -151,10 +154,10 @@ mod TestEditableNode {
     def testCollectAllFiltersByRootIndex(): Unit \ {Assert, GameEngine.Game} =
         let s1 = Sprite2D.make("dummy.png", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0});
         let s2 = Sprite2D.make("dummy.png", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0});
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s
-            |> Scene.addNode("known", EngineNode.Sprite2DWithState(s1, NodeTag.NoTag))
-            |> Scene.addNode("unknown", EngineNode.Sprite2DWithState(s2, NodeTag.NoTag));
+            |> Scene.addNode("known", EngineNode.Sprite2DWithState(s1, Tag.NoTag))
+            |> Scene.addNode("unknown", EngineNode.Sprite2DWithState(s2, Tag.NoTag));
         // unknown root は index に入れない
         let index = Map#{"known" => "x.json"};
         let entries = EditableNode.collectAll({rootJsonIndex = index, scene = scene});
@@ -173,10 +176,10 @@ mod TestEditableNode {
     def testFindByNodePathHit(): Unit \ {Assert, GameEngine.Game} =
         let sa = Sprite2D.make("dummy.png", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0});
         let sb = Sprite2D.make("dummy.png", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0});
-        let s: Scene[NodeTag] = Scene.empty();
+        let s: Scene[Tag] = Scene.empty();
         let scene = s
-            |> Scene.addNode("a", EngineNode.Sprite2DWithState(sa, NodeTag.NoTag))
-            |> Scene.addNode("b", EngineNode.Sprite2DWithState(sb, NodeTag.NoTag));
+            |> Scene.addNode("a", EngineNode.Sprite2DWithState(sa, Tag.NoTag))
+            |> Scene.addNode("b", EngineNode.Sprite2DWithState(sb, Tag.NoTag));
         let index = Map#{"a" => "x.json", "b" => "x.json"};
         let result = EditableNode.findByNodePath(
             {rootJsonIndex = index, scene = scene}, "b" :: Nil);
@@ -191,8 +194,8 @@ mod TestEditableNode {
     /// 存在しない NodePath は None
     def testFindByNodePathMiss(): Unit \ {Assert, GameEngine.Game} =
         let sa = Sprite2D.make("dummy.png", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0});
-        let s: Scene[NodeTag] = Scene.empty();
-        let scene = s |> Scene.addNode("a", EngineNode.Sprite2DWithState(sa, NodeTag.NoTag));
+        let s: Scene[Tag] = Scene.empty();
+        let scene = s |> Scene.addNode("a", EngineNode.Sprite2DWithState(sa, Tag.NoTag));
         let index = Map#{"a" => "x.json"};
         let result = EditableNode.findByNodePath(
             {rootJsonIndex = index, scene = scene}, "zzz" :: Nil);

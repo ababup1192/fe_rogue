@@ -14,9 +14,9 @@
 mod EditableNode {
 
     /// シーン上のノードを「編集対象として扱える形」で問い合わせるための文脈。
-    pub type alias LookupCtx = {
+    pub type alias LookupCtx[t] = {
         rootJsonIndex = Map[NodeName, String],
-        scene = Scene[NodeTag]
+        scene = Scene[t]
     }
 
     /// 編集対象ノードの 1 件分の情報。
@@ -32,12 +32,12 @@ mod EditableNode {
     }
 
     /// シーン全体を走査して編集対象ノードを抽出する。
-    pub def collectAll(ctx: LookupCtx): List[EditableEntry] \ GameEngine.Game =
+    pub def collectAll(ctx: LookupCtx[t]): List[EditableEntry] \ GameEngine.Game =
         Scene.preorderPaths(ctx#scene)
             |> List.filterMap(path -> buildEntry(ctx, path))
 
     /// 指定 NodePath の entry を 1 件取り出す。
-    pub def findByNodePath(ctx: LookupCtx, nodePath: NodePath):
+    pub def findByNodePath(ctx: LookupCtx[t], nodePath: NodePath):
             Option[EditableEntry] \ GameEngine.Game =
         buildEntry(ctx, nodePath)
 
@@ -80,7 +80,7 @@ mod EditableNode {
         {size = r#size, topLeftOffset = {x = 0.0, y = 0.0}}
 
     /// 1 パス分の EditableEntry を構築する。
-    def buildEntry(ctx: LookupCtx, path: NodePath):
+    def buildEntry(ctx: LookupCtx[t], path: NodePath):
             Option[EditableEntry] \ GameEngine.Game =
         forM (
             rootName   <- List.head(path);
@@ -97,7 +97,7 @@ mod EditableNode {
         }
 
     /// CanvasLayer はコンテナとして扱う（クリック時に子より優先される）。
-    def isContainerNode(engineNode: EngineNode[NodeTag]): Bool =
+    def isContainerNode(engineNode: EngineNode[t]): Bool =
         match engineNode {
             case EngineNode.CanvasLayerWithState(_, _) => true
             case _                                     => false
@@ -108,7 +108,7 @@ mod EditableNode {
     /// 結果は累乗されず常に「原始 × 現フレームの ratio」になる。
     /// snapshot と engineNode の型が一致しない場合は engineNode を変更しない。
     pub def applyResizeFromSnapshot(snapshot: NodeResizeSnapshot, ratio: Vec2.Vec2):
-            EngineNode[NodeTag] -> EngineNode[NodeTag] = engineNode ->
+            EngineNode[t] -> EngineNode[t] = engineNode ->
         match engineNode {
             case EngineNode.ColorRectWithState(rect, st) =>
                 match snapshot#prevSize {
@@ -197,7 +197,7 @@ mod EditableNode {
     /// `oldNode`: ドラッグ開始時のノード状態（差分検出用）
     /// `newNode`: 現在のシーンに居るノード（リサイズ後の状態）
     /// 位置は別 key（"pos"）で別途記録するためここには含まない
-    pub def resizeFieldUpdates(engineNode: EngineNode[NodeTag]):
+    pub def resizeFieldUpdates(engineNode: EngineNode[t]):
             List[SceneSerializer.FieldUpdate] =
         match engineNode {
             case EngineNode.ColorRectWithState(rect, _) =>
@@ -241,7 +241,7 @@ mod EditableNode {
 
     /// ノードの現在状態を NodeResizeSnapshot にスナップショットする
     pub def snapshotForResize(nodePath: NodePath,
-                              engineNode: EngineNode[NodeTag]): NodeResizeSnapshot =
+                              engineNode: EngineNode[t]): NodeResizeSnapshot =
         let prevPos = Node2D.getPosition(engineNode);
         match engineNode {
             case EngineNode.ColorRectWithState(rect, _) => {
@@ -291,8 +291,8 @@ mod EditableNode {
 
     /// スナップショットから EngineNode を元の状態に戻す（undo 用）
     pub def restoreFromSnapshot(snapshot: NodeResizeSnapshot,
-                                 engineNode: EngineNode[NodeTag]):
-            EngineNode[NodeTag] =
+                                 engineNode: EngineNode[t]):
+            EngineNode[t] =
         let withPos = Node2D.setPosition(snapshot#prevPosition, engineNode);
         match engineNode {
             case EngineNode.ColorRectWithState(rect, st) =>
@@ -384,7 +384,7 @@ mod EditableNode {
     /// CanvasLayer は子の bbox の和集合で計算するため scene と path も受け取る。
     /// Area2D は CollisionShape2D の bbox を出して、エディタで位置・サイズを
     /// 直接ドラッグできるようにする (Marker2D + collision の代わり)。
-    def rectInfoOf(engineNode: EngineNode[NodeTag], path: NodePath, scene: Scene[NodeTag]):
+    def rectInfoOf(engineNode: EngineNode[t], path: NodePath, scene: Scene[t]):
             Option[{size = Vec2.Vec2, topLeftOffset = Vec2.Vec2}] \ GameEngine.Game =
         match engineNode {
             case EngineNode.Sprite2DWithState(sprite, _) => spriteRectInfo(sprite)
@@ -439,7 +439,7 @@ mod EditableNode {
     /// 子は CanvasLayer ローカル座標（layer.position 起点）に居るので、
     /// 各子の (localPos + topLeftOffset) ～ (localPos + topLeftOffset + size) を union する。
     /// 子が一つも居なければ None（移動できないコンテナは扱わない）。
-    def canvasLayerRectInfo(path: NodePath, scene: Scene[NodeTag]):
+    def canvasLayerRectInfo(path: NodePath, scene: Scene[t]):
             Option[{size = Vec2.Vec2, topLeftOffset = Vec2.Vec2}] \ GameEngine.Game =
         let childNames = Scene.getChildrenAt(path, scene);
         let childRects = List.filterMap(name -> {
@@ -461,7 +461,7 @@ mod EditableNode {
     /// CanvasLayer の bbox 計算用に、子ノード（CanvasLayer 以外）の bbox を取り出す。
     /// 入れ子の CanvasLayer は再帰しない（深い hierarchies は素直にそのまま）。
     /// Area2D も含めて Layer 全体の選択範囲に寄与させる。
-    def childRectInfoLocal(engineNode: EngineNode[NodeTag]):
+    def childRectInfoLocal(engineNode: EngineNode[t]):
             Option[{size = Vec2.Vec2, topLeftOffset = Vec2.Vec2}] \ GameEngine.Game =
         match engineNode {
             case EngineNode.Sprite2DWithState(sprite, _) => spriteRectInfo(sprite)

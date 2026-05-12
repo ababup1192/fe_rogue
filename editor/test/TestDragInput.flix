@@ -7,16 +7,19 @@
 
 mod TestDragInput {
 
+    /// editor 単独テスト用の最小 tag enum (NodeTag は consumer 側で定義される型)
+    pub enum Tag { case NoTag }
+
 
     // ====================================================================
     // 共通テストヘルパー
     // ====================================================================
 
     /// 中央基準の Sprite2D を 1 個 root に置いたシーンを作る
-    def sceneWithSprite(name: NodeName, pos: Vec2.Vec2): Scene[NodeTag] =
+    def sceneWithSprite(name: NodeName, pos: Vec2.Vec2): Scene[Tag] =
         let sprite = Sprite2D.make("dummy.png", pos, {x = 1.0, y = 1.0});
-        let s: Scene[NodeTag] = Scene.empty();
-        s |> Scene.addNode(name, EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
+        let s: Scene[Tag] = Scene.empty();
+        s |> Scene.addNode(name, EngineNode.Sprite2DWithState(sprite, Tag.NoTag))
 
     /// 「選択中＆ドラッグ開始済み」の EditorStateData を作る
     def draggingState(jsonPath: String, nodePath: NodePath,

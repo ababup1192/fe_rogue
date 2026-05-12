@@ -7,6 +7,7 @@ authors     = ["ababup1192 <ababup1192@gmail.com>"]
 
 [dependencies]
 "github:mlutze/flix-json" = "0.13.2"
+"github:ababup1192/flix_game_engine" = { version = "0.1.0", security = "unrestricted" }
 
 [mvn-dependencies]
 "com.formdev:flatlaf" = "3.7.1"

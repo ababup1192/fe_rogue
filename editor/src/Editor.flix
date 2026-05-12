@@ -117,8 +117,8 @@ mod Editor {
         }
 
     /// 入力処理を行いシーンを更新する。Game.flix の gameLoop から毎フレーム呼ぶ。
-    pub def handleInput(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {EditorState, EditHistory.Rewind, GameEngine.Game,
+    pub def handleInput(scene: Scene[t]):
+            Scene[t] \ {EditorState, EditHistory.Rewind, GameEngine.Game,
                               Fs.FileRead, Fs.FileWrite} =
         let stateData = EditorState.get();
         let f1 = GameEngine.Game.isKeyPressed(GameEngine.Key.F1);
@@ -164,7 +164,7 @@ mod Editor {
     /// 現在のリサイズ状態またはマウス hover に応じてカーソル形状を更新する。
     def updateCursor(mousePos: Vec2.Vec2, transform: Camera2D.ViewTransform,
                      stateData: EditorStateData,
-                     scene: Scene[NodeTag]): Unit \ {GameEngine.Game} =
+                     scene: Scene[t]): Unit \ {GameEngine.Game} =
         let cursor = match stateData#resizeOrigin {
             case Some(origin) => cursorForHandle(origin#handle)
             case None         => match stateData#rotateOrigin {
@@ -178,7 +178,7 @@ mod Editor {
     /// 外していれば Default を返す
     def hoverCursor(mousePos: Vec2.Vec2, transform: Camera2D.ViewTransform,
                     stateData: EditorStateData,
-                    scene: Scene[NodeTag]): GameEngine.Cursor \ GameEngine.Game =
+                    scene: Scene[t]): GameEngine.Cursor \ GameEngine.Game =
         match stateData#selected {
             case None => GameEngine.Cursor.Default
             case Some((_, nodePath)) =>
@@ -213,8 +213,8 @@ mod Editor {
 
     /// Rewind から 1 件取り出してノードを記録された状態（位置 / スケール / サイズ / 回転）に
     /// 戻し、JSON にも書き戻す。履歴に何もなければ scene 不変
-    def applyUndo(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
+    def applyUndo(scene: Scene[t]):
+            Scene[t] \ {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
         match EditHistory.Rewind.rewind() {
             case None => scene
             case Some(EditHistory.Entry.MoveEntry(entry)) =>
@@ -261,7 +261,7 @@ mod Editor {
 
     /// 現在のシーンの有効カメラから ViewTransform を計算する。
     /// カメラがなければ identity（CanvasLayer のみのシーン等）
-    def activeViewTransform(scene: Scene[NodeTag]): Camera2D.ViewTransform \ GameEngine.Game =
+    def activeViewTransform(scene: Scene[t]): Camera2D.ViewTransform \ GameEngine.Game =
         match Scene.findActiveCamera(scene) {
             case Some((cam, globalPos)) =>
                 let vp = GameEngine.Game.getViewportRect();
@@ -275,19 +275,19 @@ mod Editor {
         EditorState.pollReload()
 
     /// 描画用のオーバーレイをシーンに合成する。Game.flix の render 直前に呼ぶ。
-    pub def applyOverlay(fontAtlas: FontAtlas, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {EditorState, GameEngine.Game} =
+    pub def applyOverlay(fontAtlas: FontAtlas, defaultTag: t, scene: Scene[t]):
+            Scene[t] \ {EditorState, GameEngine.Game} =
         let stateData = EditorState.get();
         if (not stateData#on) scene
         else {
             let mousePos = GameEngine.Game.getMousePosition();
             let transform = activeViewTransform(scene);
             scene
-                |> Overlay.addCollisionShapes(transform)
-                |> Overlay.addEditorIndicator(fontAtlas)
+                |> Overlay.addCollisionShapes(transform, defaultTag)
+                |> Overlay.addEditorIndicator(fontAtlas, defaultTag)
                 |> Overlay.addSelectionBox(stateData#rootJsonIndex, stateData#selected,
-                                           transform)
+                                           transform, defaultTag)
                 |> Overlay.addHoverBox(stateData#rootJsonIndex, mousePos, stateData#selected,
-                                       transform)
+                                       transform, defaultTag)
         }
 }
