@@ -175,7 +175,7 @@ mod SceneLoader {
                 buildLayoutChildren(parentPath, tagParser, fontAtlas, children, scene)
             case Layout.HBoxContainer({separation = _, alignment = _, crossAxis = _, children}) =>
                 buildLayoutChildren(parentPath, tagParser, fontAtlas, children, scene)
-            case Layout.Overlay(children) =>
+            case Layout.Panel(children) =>
                 buildLayoutChildren(parentPath, tagParser, fontAtlas, children, scene)
         }
 
@@ -390,7 +390,7 @@ mod SceneLoader {
         forM (
             tag         <- parseTagField(tagParser, map);
             posOpt      <- parseVec2Opt("pos", map);
-            size        <- parseVec2("size", map);
+            sizeOpt     <- parseVec2Opt("size", map);
             texture     <- (Json.FromJson.getAtKey(Root, "texture", map): Result[Json.JsonError, String]);
             rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
             skewOpt     <- (Json.FromJson.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
@@ -401,6 +401,7 @@ mod SceneLoader {
             flipVOpt    <- (Json.FromJson.getAtKeyOpt(Root, "flipV", map): Result[Json.JsonError, Option[Bool]])
         ) yield {
             let pos = Option.getWithDefault(Vec2.zero(), posOpt);
+            let size = Option.getWithDefault(Vec2.zero(), sizeOpt);
             let rect = TextureRect.make(texture, pos, size)
                 |> applyOpt(rotationOpt, setTextureRectRotation)
                 |> applyOpt(skewOpt, setTextureRectSkew)
@@ -433,13 +434,14 @@ mod SceneLoader {
             tag               <- parseTagField(tagParser, map);
             posOpt            <- parseVec2Opt("pos", map);
             scale             <- parseVec2("scale", map);
-            size              <- parseVec2("size", map);
+            sizeOpt           <- parseVec2Opt("size", map);
             textureNormal     <- (Json.FromJson.getAtKey(Root, "textureNormal", map): Result[Json.JsonError, String]);
             texturePressedOpt <- (Json.FromJson.getAtKeyOpt(Root, "texturePressed", map): Result[Json.JsonError, Option[String]]);
             centeredOpt       <- (Json.FromJson.getAtKeyOpt(Root, "centered", map): Result[Json.JsonError, Option[Bool]]);
             visibleOpt        <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]])
         ) yield {
             let pos = Option.getWithDefault(Vec2.zero(), posOpt);
+            let size = Option.getWithDefault(Vec2.zero(), sizeOpt);
             let button = TextureButton.make(textureNormal, size)
                 |> Node2D.setPosition(pos)
                 |> Node2D.setScale(scale)
@@ -836,7 +838,7 @@ mod SceneLoader {
         forM (
             tag         <- parseTagField(tagParser, map);
             posOpt      <- parseVec2Opt("pos", map);
-            size        <- parseVec2("size", map);
+            sizeOpt     <- parseVec2Opt("size", map);
             color       <- parseColor("color", map);
             alphaOpt    <- (Json.FromJson.getAtKeyOpt(Root, "alpha", map): Result[Json.JsonError, Option[Float64]]);
             visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
@@ -844,6 +846,7 @@ mod SceneLoader {
             rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]])
         ) yield {
             let pos = Option.getWithDefault(Vec2.zero(), posOpt);
+            let size = Option.getWithDefault(Vec2.zero(), sizeOpt);
             let rect = ColorRect.make(size, color)
                 |> Node2D.setPosition(pos)
                 |> applyOpt(alphaOpt, setColorRectAlpha)
@@ -871,13 +874,14 @@ mod SceneLoader {
                 forM (
                     tag        <- parseTagField(tagParser, map);
                     posOpt     <- parseVec2Opt("pos", map);
-                    size       <- parseVec2("size", map);
+                    sizeOpt    <- parseVec2Opt("size", map);
                     text       <- (Json.FromJson.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
                     fontSize   <- (Json.FromJson.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
                     visibleOpt <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
                     zIndexOpt  <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
                 ) yield {
                     let pos = Option.getWithDefault(Vec2.zero(), posOpt);
+                    let size = Option.getWithDefault(Vec2.zero(), sizeOpt);
                     let label = RichTextLabel.make(text, font, fontSize, size)
                         |> Node2D.setPosition(pos)
                         |> applyOpt(visibleOpt, setRichTextLabelVisible)

@@ -26,43 +26,38 @@
         "crossAxis": "Begin",
         "children": [
           {
-            "kind": "Overlay",
+            "kind": "Panel",
             "children": [
-              { "type": "ColorRect", "name": "Slot0Bg", "size": [32, 32], "color": {"r": 0.1, "g": 0.1, "b": 0.12}, "alpha": 0.8, "zIndex": 1 },
-              { "kind": "MarginContainer", "margin": 4,
-                "child": { "type": "TextureRect", "name": "Slot0Icon", "size": [24, 24], "texture": "", "visible": false, "zIndex": 2 }}
+              { "type": "ColorRect", "name": "Slot0Bg", "anchor": "FullRect", "size": [32, 32], "color": {"r": 0.1, "g": 0.1, "b": 0.12}, "alpha": 0.8, "zIndex": 1 },
+              { "type": "TextureRect", "name": "Slot0Icon", "anchor": "Center", "size": [24, 24], "texture": "", "visible": false, "zIndex": 2 }
             ]
           },
           {
-            "kind": "Overlay",
+            "kind": "Panel",
             "children": [
-              { "type": "ColorRect", "name": "Slot1Bg", "size": [32, 32], "color": {"r": 0.1, "g": 0.1, "b": 0.12}, "alpha": 0.8, "zIndex": 1 },
-              { "kind": "MarginContainer", "margin": 4,
-                "child": { "type": "TextureRect", "name": "Slot1Icon", "size": [24, 24], "texture": "", "visible": false, "zIndex": 2 }}
+              { "type": "ColorRect", "name": "Slot1Bg", "anchor": "FullRect", "size": [32, 32], "color": {"r": 0.1, "g": 0.1, "b": 0.12}, "alpha": 0.8, "zIndex": 1 },
+              { "type": "TextureRect", "name": "Slot1Icon", "anchor": "Center", "size": [24, 24], "texture": "", "visible": false, "zIndex": 2 }
             ]
           },
           {
-            "kind": "Overlay",
+            "kind": "Panel",
             "children": [
-              { "type": "ColorRect", "name": "Slot2Bg", "size": [32, 32], "color": {"r": 0.1, "g": 0.1, "b": 0.12}, "alpha": 0.8, "zIndex": 1 },
-              { "kind": "MarginContainer", "margin": 4,
-                "child": { "type": "TextureRect", "name": "Slot2Icon", "size": [24, 24], "texture": "", "visible": false, "zIndex": 2 }}
+              { "type": "ColorRect", "name": "Slot2Bg", "anchor": "FullRect", "size": [32, 32], "color": {"r": 0.1, "g": 0.1, "b": 0.12}, "alpha": 0.8, "zIndex": 1 },
+              { "type": "TextureRect", "name": "Slot2Icon", "anchor": "Center", "size": [24, 24], "texture": "", "visible": false, "zIndex": 2 }
             ]
           },
           {
-            "kind": "Overlay",
+            "kind": "Panel",
             "children": [
-              { "type": "ColorRect", "name": "Slot3Bg", "size": [32, 32], "color": {"r": 0.1, "g": 0.1, "b": 0.12}, "alpha": 0.8, "zIndex": 1 },
-              { "kind": "MarginContainer", "margin": 4,
-                "child": { "type": "TextureRect", "name": "Slot3Icon", "size": [24, 24], "texture": "", "visible": false, "zIndex": 2 }}
+              { "type": "ColorRect", "name": "Slot3Bg", "anchor": "FullRect", "size": [32, 32], "color": {"r": 0.1, "g": 0.1, "b": 0.12}, "alpha": 0.8, "zIndex": 1 },
+              { "type": "TextureRect", "name": "Slot3Icon", "anchor": "Center", "size": [24, 24], "texture": "", "visible": false, "zIndex": 2 }
             ]
           },
           {
-            "kind": "Overlay",
+            "kind": "Panel",
             "children": [
-              { "type": "ColorRect", "name": "Slot4Bg", "size": [32, 32], "color": {"r": 0.1, "g": 0.1, "b": 0.12}, "alpha": 0.8, "zIndex": 1 },
-              { "kind": "MarginContainer", "margin": 4,
-                "child": { "type": "TextureRect", "name": "Slot4Icon", "size": [24, 24], "texture": "", "visible": false, "zIndex": 2 }}
+              { "type": "ColorRect", "name": "Slot4Bg", "anchor": "FullRect", "size": [32, 32], "color": {"r": 0.1, "g": 0.1, "b": 0.12}, "alpha": 0.8, "zIndex": 1 },
+              { "type": "TextureRect", "name": "Slot4Icon", "anchor": "Center", "size": [24, 24], "texture": "", "visible": false, "zIndex": 2 }
             ]
           }
         ]

@@ -60,10 +60,12 @@ pub enum Layout {
     case CenterContainer(Layout)
     /// 実 engine node の埋め込み。SceneLoader が definition から build して
     /// scene tree (Container の親 path 配下) に追加する。
-    /// Layout.apply は parentPath ++ [name] の path に対し setGlobalPositionAt を呼ぶ。
+    /// Layout.apply は parentPath ++ [name] の path に対し setGlobalPositionAt + setSize を呼ぶ。
+    /// definition 内の `"anchor"` / `"margin"` は Panel 内での anchor 配置に使われる。
     case Node({ name = String, definition = Json.JsonElement })
-    /// 複数の子レイアウトを同じ origin に重ねて配置する (非 Godot 独自拡張)。
-    case Overlay(List[Layout])
+    /// Panel — 親 rect を共有する子レイアウト群。各 Node 子は個別の `anchor` で配置 (Godot の Plain Control に最も近い)。
+    /// anchor 未指定の子は TopLeft 扱い。anchor=FullRect の Node は size も親 rect に合わせる。
+    case Panel(List[Layout])
 }
 
 mod Layout {
@@ -110,11 +112,11 @@ mod Layout {
                 ) yield Layout.CenterContainer(child)
             case "VBoxContainer" => buildBoxContainer(true, map)
             case "HBoxContainer" => buildBoxContainer(false, map)
-            case "Overlay" =>
+            case "Panel" =>
                 forM (
                     childrenJson <- (Json.FromJson.getAtKey(Root, "children", map): Result[Json.JsonError, List[Json.JsonElement]]);
                     children     <- traverseLayouts(childrenJson)
-                ) yield Layout.Overlay(children)
+                ) yield Layout.Panel(children)
             case unknown =>
                 Err(JsonError(Root, Set#{"known Layout kind (got: ${unknown})"}))
         }
@@ -176,7 +178,9 @@ mod Layout {
                    layout: Layout, scene: Scene[s]): Scene[s] =
         let rects = resolve(parentPath, origin, layout, scene);
         Map.foldLeftWithKey((sc, path, rect) ->
-            Scene.setGlobalPositionAt(path, rect#position, sc), scene, rects)
+            sc |> Scene.setGlobalPositionAt(path, rect#position)
+               |> Scene.mapEngineNode(path, n -> EngineNode.setSize(rect#size, n)),
+            scene, rects)
 
     /// 解決後の各 Node 矩形を返す（デバッグ・テスト用）。
     pub def resolve(parentPath: NodePath, origin: Rect2.Rect2,
@@ -203,8 +207,52 @@ mod Layout {
                 resolveBoxContainer(parentPath, true, origin, separation, alignment, crossAxis, children, scene, acc)
             case Layout.HBoxContainer({separation, alignment, crossAxis, children}) =>
                 resolveBoxContainer(parentPath, false, origin, separation, alignment, crossAxis, children, scene, acc)
-            case Layout.Overlay(children) =>
-                List.foldLeft((a, child) -> resolveRec(parentPath, origin, child, scene, a), acc, children)
+            case Layout.Panel(children) =>
+                List.foldLeft((a, child) -> resolvePanelChild(parentPath, origin, child, scene, a), acc, children)
+        }
+
+    /// Panel 内の子レイアウトを解決する。
+    /// Node 子: definition から anchor / margin を読み、Anchor.applyAnchor で rect を算出
+    /// その他: 通常通り origin を渡して再帰
+    def resolvePanelChild(parentPath: NodePath, origin: Rect2.Rect2, layout: Layout,
+                           scene: Scene[s],
+                           acc: Map[NodePath, Rect2.Rect2]): Map[NodePath, Rect2.Rect2] =
+        match layout {
+            case Layout.Node({name, definition}) =>
+                let path = List.append(parentPath, name :: Nil);
+                let anchor = Option.getWithDefault(Anchor.TopLeft, readAnchor(definition));
+                let margin = readMargin(definition);
+                let childSize = measureNode(path, scene);
+                let rect = Anchor.applyAnchor(anchor, origin, childSize, margin);
+                Map.insert(path, rect, acc)
+            case _ =>
+                resolveRec(parentPath, origin, layout, scene, acc)
+        }
+
+    /// JsonElement から `"anchor": "..."` を Anchor preset として読む
+    def readAnchor(definition: Json.JsonElement): Option[Anchor] =
+        match definition {
+            case JsonObject(map) =>
+                let result: Result[Json.JsonError, Option[String]] =
+                    Json.FromJson.getAtKeyOpt(Root, "anchor", map);
+                match result {
+                    case Ok(Some(s)) => Anchor.fromString(s)
+                    case _           => None
+                }
+            case _ => None
+        }
+
+    /// JsonElement から `"margin": Float64` を読む (デフォルト 0.0)
+    def readMargin(definition: Json.JsonElement): Float64 =
+        match definition {
+            case JsonObject(map) =>
+                let result: Result[Json.JsonError, Option[Float64]] =
+                    Json.FromJson.getAtKeyOpt(Root, "margin", map);
+                match result {
+                    case Ok(Some(m)) => m
+                    case _           => 0.0
+                }
+            case _ => 0.0
         }
 
     /// VBoxContainer / HBoxContainer 共通: vertical=true なら主軸=Y、false なら主軸=X。
@@ -286,7 +334,7 @@ mod Layout {
                 boxContainerSize(parentPath, true, separation, children, scene)
             case Layout.HBoxContainer({separation, alignment = _, crossAxis = _, children}) =>
                 boxContainerSize(parentPath, false, separation, children, scene)
-            case Layout.Overlay(children) =>
+            case Layout.Panel(children) =>
                 let sizes = List.map(c -> measure(parentPath, c, scene), children);
                 let maxW = List.foldLeft((a, s) -> Float64.max(a, s#x), 0.0, sizes);
                 let maxH = List.foldLeft((a, s) -> Float64.max(a, s#y), 0.0, sizes);

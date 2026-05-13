@@ -17,6 +17,16 @@ mod TestLayout {
     def nodeRef(name: String): Layout =
         Layout.Node({name = name, definition = stubJson()})
 
+    /// anchor preset を JSON definition に含む Layout.Node を作る (Panel テスト用)
+    def nodeRefWithAnchor(name: String, anchorStr: String): Layout =
+        let json = parseJson("{\"type\": \"ColorRect\", \"name\": \"${name}\", \"anchor\": \"${anchorStr}\"}");
+        Layout.Node({name = name, definition = json})
+
+    /// anchor + margin の JSON definition を持つ Layout.Node (Panel テスト用)
+    def nodeRefWithAnchorMargin(name: String, anchorStr: String, margin: Float64): Layout =
+        let json = parseJson("{\"type\": \"ColorRect\", \"name\": \"${name}\", \"anchor\": \"${anchorStr}\", \"margin\": ${margin}}");
+        Layout.Node({name = name, definition = json})
+
     /// rect サイズを持つ ColorRect を含む 1 ノードの Scene を作る
     def sceneWithColorRect(name: NodeName, size: Vec2.Vec2): Scene[Unit] =
         let rect = ColorRect.make(size, {r = 1.0f32, g = 1.0f32, b = 1.0f32});
@@ -150,25 +160,119 @@ mod TestLayout {
         }
 
     // ========================================================================
-    // Overlay — 複数の子を同じ origin に重ねる
+    // Panel — 各子を独自 anchor で配置 (Overlay 代替)
     // ========================================================================
 
+    /// FullRect 子は親 rect 全面に sizing される
     @Test
-    def testOverlayPlacesChildrenAtSameOrigin(): Unit \ Assert =
+    def testPanelFullRectFillsParent(): Unit \ Assert =
         let mk = sz -> ColorRect.make(sz, {r = 1.0f32, g = 1.0f32, b = 1.0f32});
         let scene = Scene.empty()
-            |> Scene.addNode("bg", EngineNode.ColorRectWithState(mk({x = 100.0, y = 100.0}), ()))
-            |> Scene.addNode("text", EngineNode.ColorRectWithState(mk({x = 80.0, y = 80.0}), ()));
-        let layout = Layout.Overlay(
-            nodeRef("bg") ::
-            Layout.MarginContainer({margin = 10.0, child = nodeRef("text")}) :: Nil);
+            |> Scene.addNode("bg", EngineNode.ColorRectWithState(mk({x = 10.0, y = 10.0}), ()));
+        let layout = Layout.Panel(nodeRefWithAnchor("bg", "FullRect") :: Nil);
+        let rects = resolveRoot(layout, scene);
+        match Map.get("bg" :: Nil, rects) {
+            case Some(r) => Assert.assertTrue(rectApprox(r, 0.0, 0.0, 100.0, 100.0))
+            case None    => Assert.assertTrue(false)
+        }
+
+    /// FullRect + margin は親 rect から margin 分 inset される
+    @Test
+    def testPanelFullRectWithMargin(): Unit \ Assert =
+        let mk = sz -> ColorRect.make(sz, {r = 1.0f32, g = 1.0f32, b = 1.0f32});
+        let scene = Scene.empty()
+            |> Scene.addNode("text", EngineNode.ColorRectWithState(mk({x = 10.0, y = 10.0}), ()));
+        let layout = Layout.Panel(nodeRefWithAnchorMargin("text", "FullRect", 2.0) :: Nil);
+        let rects = resolveRoot(layout, scene);
+        match Map.get("text" :: Nil, rects) {
+            case Some(r) => Assert.assertTrue(rectApprox(r, 2.0, 2.0, 96.0, 96.0))
+            case None    => Assert.assertTrue(false)
+        }
+
+    /// Center 子は自然 size を保持して親矩形の中央に配置
+    @Test
+    def testPanelCenterPlacesChild(): Unit \ Assert =
+        let mk = sz -> ColorRect.make(sz, {r = 1.0f32, g = 1.0f32, b = 1.0f32});
+        let scene = Scene.empty()
+            |> Scene.addNode("icon", EngineNode.ColorRectWithState(mk({x = 24.0, y = 24.0}), ()));
+        let layout = Layout.Panel(nodeRefWithAnchor("icon", "Center") :: Nil);
+        let rects = resolveRoot(layout, scene);
+        match Map.get("icon" :: Nil, rects) {
+            case Some(r) => Assert.assertTrue(rectApprox(r, 38.0, 38.0, 24.0, 24.0))
+            case None    => Assert.assertTrue(false)
+        }
+
+    /// anchor 未指定の Panel 子は TopLeft 扱い
+    @Test
+    def testPanelDefaultsToTopLeft(): Unit \ Assert =
+        let mk = sz -> ColorRect.make(sz, {r = 1.0f32, g = 1.0f32, b = 1.0f32});
+        let scene = Scene.empty()
+            |> Scene.addNode("a", EngineNode.ColorRectWithState(mk({x = 30.0, y = 20.0}), ()));
+        // nodeRef は anchor field なし → TopLeft
+        let layout = Layout.Panel(nodeRef("a") :: Nil);
+        let rects = resolveRoot(layout, scene);
+        match Map.get("a" :: Nil, rects) {
+            case Some(r) => Assert.assertTrue(rectApprox(r, 0.0, 0.0, 30.0, 20.0))
+            case None    => Assert.assertTrue(false)
+        }
+
+    /// Panel は Bg (FullRect) と Icon (Center) を同じ親矩形上に重ねられる
+    @Test
+    def testPanelBgPlusCenterIcon(): Unit \ Assert =
+        let mk = sz -> ColorRect.make(sz, {r = 1.0f32, g = 1.0f32, b = 1.0f32});
+        let scene = Scene.empty()
+            |> Scene.addNode("bg", EngineNode.ColorRectWithState(mk({x = 10.0, y = 10.0}), ()))
+            |> Scene.addNode("icon", EngineNode.ColorRectWithState(mk({x = 24.0, y = 24.0}), ()));
+        let layout = Layout.Panel(
+            nodeRefWithAnchor("bg", "FullRect") ::
+            nodeRefWithAnchor("icon", "Center") :: Nil);
         let rects = resolveRoot(layout, scene);
         match Map.get("bg" :: Nil, rects) {
             case Some(r) => Assert.assertTrue(rectApprox(r, 0.0, 0.0, 100.0, 100.0))
             case None    => Assert.assertTrue(false)
         };
-        match Map.get("text" :: Nil, rects) {
-            case Some(r) => Assert.assertTrue(rectApprox(r, 10.0, 10.0, 80.0, 80.0))
+        match Map.get("icon" :: Nil, rects) {
+            case Some(r) => Assert.assertTrue(rectApprox(r, 38.0, 38.0, 24.0, 24.0))
+            case None    => Assert.assertTrue(false)
+        }
+
+    // ========================================================================
+    // Anchor preset — 個別位置算出
+    // ========================================================================
+
+    @Test
+    def testAnchorTopRight(): Unit \ Assert =
+        let mk = sz -> ColorRect.make(sz, {r = 1.0f32, g = 1.0f32, b = 1.0f32});
+        let scene = Scene.empty()
+            |> Scene.addNode("a", EngineNode.ColorRectWithState(mk({x = 20.0, y = 10.0}), ()));
+        let layout = Layout.Panel(nodeRefWithAnchor("a", "TopRight") :: Nil);
+        let rects = resolveRoot(layout, scene);
+        match Map.get("a" :: Nil, rects) {
+            case Some(r) => Assert.assertTrue(rectApprox(r, 80.0, 0.0, 20.0, 10.0))
+            case None    => Assert.assertTrue(false)
+        }
+
+    @Test
+    def testAnchorBottomLeft(): Unit \ Assert =
+        let mk = sz -> ColorRect.make(sz, {r = 1.0f32, g = 1.0f32, b = 1.0f32});
+        let scene = Scene.empty()
+            |> Scene.addNode("a", EngineNode.ColorRectWithState(mk({x = 20.0, y = 10.0}), ()));
+        let layout = Layout.Panel(nodeRefWithAnchor("a", "BottomLeft") :: Nil);
+        let rects = resolveRoot(layout, scene);
+        match Map.get("a" :: Nil, rects) {
+            case Some(r) => Assert.assertTrue(rectApprox(r, 0.0, 90.0, 20.0, 10.0))
+            case None    => Assert.assertTrue(false)
+        }
+
+    @Test
+    def testAnchorBottomRight(): Unit \ Assert =
+        let mk = sz -> ColorRect.make(sz, {r = 1.0f32, g = 1.0f32, b = 1.0f32});
+        let scene = Scene.empty()
+            |> Scene.addNode("a", EngineNode.ColorRectWithState(mk({x = 20.0, y = 10.0}), ()));
+        let layout = Layout.Panel(nodeRefWithAnchor("a", "BottomRight") :: Nil);
+        let rects = resolveRoot(layout, scene);
+        match Map.get("a" :: Nil, rects) {
+            case Some(r) => Assert.assertTrue(rectApprox(r, 80.0, 90.0, 20.0, 10.0))
             case None    => Assert.assertTrue(false)
         }
 
@@ -215,16 +319,16 @@ mod TestLayout {
 
     @Test
     def testFromJsonMarginContainer(): Unit \ Assert =
-        let j = parseJson("{\"kind\": \"MarginContainer\", \"margin\": 8.0, \"child\": {\"kind\": \"Overlay\", \"children\": []}}");
+        let j = parseJson("{\"kind\": \"MarginContainer\", \"margin\": 8.0, \"child\": {\"kind\": \"Panel\", \"children\": []}}");
         match Layout.fromJson(j) {
-            case Ok(Layout.MarginContainer({margin, child = Layout.Overlay(Nil)})) =>
+            case Ok(Layout.MarginContainer({margin, child = Layout.Panel(Nil)})) =>
                 Assert.assertTrue(approx(margin, 8.0))
             case _ => Assert.assertTrue(false)
         }
 
     @Test
     def testFromJsonHBoxContainer(): Unit \ Assert =
-        let j = parseJson("{\"kind\": \"HBoxContainer\", \"separation\": 4.0, \"alignment\": \"Begin\", \"crossAxis\": \"Stretch\", \"children\": [{\"kind\": \"Overlay\", \"children\": []}, {\"kind\": \"Overlay\", \"children\": []}]}");
+        let j = parseJson("{\"kind\": \"HBoxContainer\", \"separation\": 4.0, \"alignment\": \"Begin\", \"crossAxis\": \"Stretch\", \"children\": [{\"kind\": \"Panel\", \"children\": []}, {\"kind\": \"Panel\", \"children\": []}]}");
         match Layout.fromJson(j) {
             case Ok(Layout.HBoxContainer({separation, alignment, crossAxis, children})) =>
                 Assert.assertTrue(approx(separation, 4.0));
@@ -236,7 +340,7 @@ mod TestLayout {
 
     @Test
     def testFromJsonVBoxContainer(): Unit \ Assert =
-        let j = parseJson("{\"kind\": \"VBoxContainer\", \"separation\": 8.0, \"alignment\": \"Center\", \"crossAxis\": \"End\", \"children\": [{\"kind\": \"Overlay\", \"children\": []}]}");
+        let j = parseJson("{\"kind\": \"VBoxContainer\", \"separation\": 8.0, \"alignment\": \"Center\", \"crossAxis\": \"End\", \"children\": [{\"kind\": \"Panel\", \"children\": []}]}");
         match Layout.fromJson(j) {
             case Ok(Layout.VBoxContainer({separation, alignment, crossAxis, children})) =>
                 Assert.assertTrue(approx(separation, 8.0));
@@ -248,17 +352,17 @@ mod TestLayout {
 
     @Test
     def testFromJsonCenterContainer(): Unit \ Assert =
-        let j = parseJson("{\"kind\": \"CenterContainer\", \"child\": {\"kind\": \"Overlay\", \"children\": []}}");
+        let j = parseJson("{\"kind\": \"CenterContainer\", \"child\": {\"kind\": \"Panel\", \"children\": []}}");
         match Layout.fromJson(j) {
-            case Ok(Layout.CenterContainer(Layout.Overlay(Nil))) => Assert.assertTrue(true)
+            case Ok(Layout.CenterContainer(Layout.Panel(Nil))) => Assert.assertTrue(true)
             case _ => Assert.assertTrue(false)
         }
 
     @Test
-    def testFromJsonOverlay(): Unit \ Assert =
-        let j = parseJson("{\"kind\": \"Overlay\", \"children\": [{\"type\": \"ColorRect\", \"name\": \"a\", \"size\": [10, 10]}, {\"type\": \"ColorRect\", \"name\": \"b\", \"size\": [10, 10]}]}");
+    def testFromJsonPanel(): Unit \ Assert =
+        let j = parseJson("{\"kind\": \"Panel\", \"children\": [{\"type\": \"ColorRect\", \"name\": \"a\", \"anchor\": \"FullRect\"}, {\"type\": \"ColorRect\", \"name\": \"b\", \"anchor\": \"Center\", \"size\": [10, 10]}]}");
         match Layout.fromJson(j) {
-            case Ok(Layout.Overlay(children)) =>
+            case Ok(Layout.Panel(children)) =>
                 Assert.assertTrue(List.length(children) == 2)
             case _ => Assert.assertTrue(false)
         }

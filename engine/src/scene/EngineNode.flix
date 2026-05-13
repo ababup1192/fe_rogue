@@ -256,6 +256,19 @@ mod EngineNode {
         case _                                           => None
     }
 
+    /// 明示的な `size` フィールドを持つノードに対し size を設定する。
+    /// 持たないノード (Sprite2D / Label2D / Marker2D 等) は変更なし。
+    /// Layout の Anchor.FullRect で親 rect に合わせて子の size を更新する用途。
+    pub def setSize(size: Vec2.Vec2, node: EngineNode[s]): EngineNode[s] = match node {
+        case EngineNode.ControlWithState(ctrl, st)        => EngineNode.ControlWithState(Control.setSize(size, ctrl), st)
+        case EngineNode.ButtonWithState(btn, st)          => EngineNode.ButtonWithState(Button.setSize(size, btn), st)
+        case EngineNode.TextureButtonWithState(btn, st)   => EngineNode.TextureButtonWithState(TextureButton.setSize(size, btn), st)
+        case EngineNode.TextureRectWithState(rect, st)    => EngineNode.TextureRectWithState(TextureRect.setSize(size, rect), st)
+        case EngineNode.RichTextLabelWithState(label, st) => EngineNode.RichTextLabelWithState(RichTextLabel.setSize(size, label), st)
+        case EngineNode.ColorRectWithState(rect, st)      => EngineNode.ColorRectWithState(ColorRect.setSize(size, rect), st)
+        case _                                            => node
+    }
+
     /// Sprite2D を Drawable に変換する。
     /// region / hframes / vframes / frame から GPU シェーダ用 uvOffset/uvScale を計算するため
     /// テクスチャサイズが必要で、Game eff を要求する。

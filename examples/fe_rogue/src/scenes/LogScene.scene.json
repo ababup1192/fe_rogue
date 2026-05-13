@@ -10,27 +10,24 @@
       "type": "Container",
       "rect": {"x": 0, "y": 100, "width": 128, "height": 28},
       "layout": {
-        "kind": "Overlay",
+        "kind": "Panel",
         "children": [
           {
             "type": "ColorRect",
             "name": "Bg",
-            "size": [128, 28],
+            "anchor": "FullRect",
             "color": {"r": 0, "g": 0, "b": 0},
             "alpha": 0.6,
             "zIndex": 0
           },
           {
-            "kind": "MarginContainer",
+            "type": "RichTextLabel",
+            "name": "Text",
+            "anchor": "FullRect",
             "margin": 2,
-            "child": {
-              "type": "RichTextLabel",
-              "name": "Text",
-              "size": [124, 24],
-              "fontSize": 4,
-              "text": "",
-              "zIndex": 1
-            }
+            "fontSize": 4,
+            "text": "",
+            "zIndex": 1
           }
         ]
       }
