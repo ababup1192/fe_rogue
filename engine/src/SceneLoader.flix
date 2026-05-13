@@ -57,6 +57,18 @@ mod SceneLoader {
             case _ => json
         }
 
+    /// JSON Object のトップレベル "name" 文字列を取り出す。
+    /// PackedScene が template root name を解決するのに使う
+    pub def rootNameOf(json: Json.JsonElement): Option[NodeName] =
+        match json {
+            case JsonObject(map) =>
+                match Map.get("name", map) {
+                    case Some(Json.JsonElement.JsonString(s)) => Some(s)
+                    case _ => None
+                }
+            case _ => None
+        }
+
     // ========================================================================
     // 公開 API
     // ========================================================================

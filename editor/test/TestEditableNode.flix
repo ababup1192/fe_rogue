@@ -204,4 +204,80 @@ mod TestEditableNode {
     @Test
     def testFindByNodePathMissRunner(): Unit \ Assert =
         withMockTextureSize(10.0, 10.0, () -> testFindByNodePathMiss())
+
+    // ====================================================================
+    // PackedScene プレハブ由来ノードの編集対象認識
+    // PackedScene.instantiate が SceneEntry に sourceTemplate を埋めるため、
+    // rootJsonIndex に live name が登録されていなくてもプレハブは編集対象になる。
+    // jsonNodePath は live path の先頭 (例 "ground_0") をテンプレートの root name
+    // ("ground") に翻訳した path を返す。
+    // ====================================================================
+
+    /// rootJsonIndex に "ground_0" が無くても sourceTemplate があれば編集対象になる
+    def testPrefabInstanceRecognizedViaSourceTemplate(): Unit \ {Assert, GameEngine.Game} =
+        let sprite = Sprite2D.make("ground.png", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0});
+        let template: SourceTemplate = {
+            jsonPath = "src/scenes/Ground.scene.json",
+            rootName = "ground"
+        };
+        let s: Scene[Tag] = Scene.empty();
+        let scene = s
+            |> Scene.addNode("ground_0", EngineNode.Sprite2DWithState(sprite, Tag.NoTag))
+            |> Scene.tagWithSourceTemplate("ground_0" :: Nil, template);
+        let entries = EditableNode.collectAll(
+            {rootJsonIndex = Map.empty(), scene = scene});
+        Assert.assertEq(
+            expected = (1, Some("src/scenes/Ground.scene.json"), Some("ground" :: Nil)),
+            (List.length(entries),
+             List.head(entries) |> Option.map(e -> e#jsonPath),
+             List.head(entries) |> Option.map(e -> e#jsonNodePath)))
+
+    @Test
+    def testPrefabInstanceRecognizedViaSourceTemplateRunner(): Unit \ Assert =
+        withMockTextureSize(32.0, 32.0,
+            () -> testPrefabInstanceRecognizedViaSourceTemplate())
+
+    /// プレハブの子ノード "ground_0/sprite" は jsonNodePath が "ground/sprite" に翻訳される
+    def testPrefabChildJsonNodePathTranslated(): Unit \ {Assert, GameEngine.Game} =
+        let parent = CanvasLayer.make(0i32);
+        let sprite = Sprite2D.make("g.png", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0});
+        let template: SourceTemplate = {
+            jsonPath = "src/scenes/Ground.scene.json",
+            rootName = "ground"
+        };
+        let s: Scene[Tag] = Scene.empty();
+        let scene = s
+            |> Scene.addNode("ground_0", EngineNode.CanvasLayerWithState(parent, Tag.NoTag))
+            |> Scene.addChild("ground_0", "sprite",
+                EngineNode.Sprite2DWithState(sprite, Tag.NoTag))
+            |> Scene.tagWithSourceTemplate("ground_0" :: Nil, template);
+        let result = EditableNode.findByNodePath(
+            {rootJsonIndex = Map.empty(), scene = scene},
+            "ground_0" :: "sprite" :: Nil);
+        Assert.assertEq(
+            expected = Some(("ground" :: "sprite" :: Nil, "src/scenes/Ground.scene.json")),
+            result |> Option.map(e -> (e#jsonNodePath, e#jsonPath)))
+
+    @Test
+    def testPrefabChildJsonNodePathTranslatedRunner(): Unit \ Assert =
+        withMockTextureSize(32.0, 32.0,
+            () -> testPrefabChildJsonNodePathTranslated())
+
+    /// 静的シーン（sourceTemplate 無し、rootJsonIndex 経由）では jsonNodePath == nodePath
+    def testStaticSceneJsonNodePathEqualsLivePath(): Unit \ {Assert, GameEngine.Game} =
+        let sprite = Sprite2D.make("hero.png", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0});
+        let s: Scene[Tag] = Scene.empty();
+        let scene = s |> Scene.addNode("hero",
+            EngineNode.Sprite2DWithState(sprite, Tag.NoTag));
+        let index = Map#{"hero" => "Hero.scene.json"};
+        let result = EditableNode.findByNodePath(
+            {rootJsonIndex = index, scene = scene}, "hero" :: Nil);
+        Assert.assertEq(
+            expected = Some(("hero" :: Nil, "hero" :: Nil)),
+            result |> Option.map(e -> (e#nodePath, e#jsonNodePath)))
+
+    @Test
+    def testStaticSceneJsonNodePathEqualsLivePathRunner(): Unit \ Assert =
+        withMockTextureSize(32.0, 32.0,
+            () -> testStaticSceneJsonNodePathEqualsLivePath())
 }

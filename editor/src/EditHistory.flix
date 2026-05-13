@@ -6,13 +6,20 @@
 
 mod EditHistory {
 
-    /// 1 編集の巻き戻し情報。位置 / スケール / リサイズ / 回転 で分岐する
+    /// 1 編集の巻き戻し情報。位置 / スケール / リサイズ / 回転 で分岐する。
+    /// nodePath は live scene 内の path（Scene.setGlobalPositionAt 等の操作用）、
+    /// jsonNodePath は JSON 内の path（SceneSerializer.updateXxx に渡す書き戻し用）。
+    /// 静的シーンでは両者は等しい。プレハブ由来ノードでは先頭名が違う。
+    /// ResizeEntry の snapshots 内の path は live path で、書き戻し時に
+    /// EditableNode.toJsonNodePath で都度翻訳する
     pub enum Entry {
         /// 位置のみ変更されたときの巻き戻し情報
         case MoveEntry({jsonPath = String, nodePath = NodePath,
+                        jsonNodePath = NodePath,
                         prevWorldPos = Vec2.Vec2})
         /// 旧 ScaleEntry（Sprite2D 等の `scale` フィールド単独編集用、後方互換）
         case ScaleEntry({jsonPath = String, nodePath = NodePath,
+                         jsonNodePath = NodePath,
                          prevWorldPos = Vec2.Vec2, prevScale = Vec2.Vec2})
         /// リサイズの巻き戻し情報。
         /// ノード型ごとに更新する field が異なるため、複数ノード分の
@@ -23,6 +30,7 @@ mod EditHistory {
                           snapshots = List[EditableNode.NodeResizeSnapshot]})
         /// 回転の巻き戻し情報（radians）
         case RotateEntry({jsonPath = String, nodePath = NodePath,
+                          jsonNodePath = NodePath,
                           prevRotation = Float64})
     }
 

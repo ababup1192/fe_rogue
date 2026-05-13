@@ -1,12 +1,23 @@
 pub type alias NodeName = String
 pub type alias NodePath = List[NodeName]
 
-/// ノードエントリ: エンジンノード（ゲーム状態含む） + 子ノードを再帰的に内包する
+/// インスタンス化元プレハブ JSON を指す参照（PackedScene.instantiate が設定）。
+/// エディタはこの情報を使って「動的生成ノードがどの JSON ファイルから来たか」を
+/// 識別し、live path をテンプレート JSON 内の path に翻訳して書き戻す。
+pub type alias SourceTemplate = {
+    jsonPath = String,         // テンプレート JSON のファイルパス
+    rootName = NodeName        // テンプレート JSON のルートノード名（live name とは別）
+}
+
+/// ノードエントリ: エンジンノード（ゲーム状態含む） + 子ノードを再帰的に内包する。
+/// sourceTemplate はテンプレートから instantiate されたノードの **ルートのみ** に
+/// 設定する。子孫は None で、必要なときに path の先頭ノードから引く。
 pub enum SceneEntry[s] {
     case SceneEntry({
         engineNode = EngineNode[s],
         children = Map[NodeName, SceneEntry[s]],
-        groups = Set[String]
+        groups = Set[String],
+        sourceTemplate = Option[SourceTemplate]
     })
 }
 
@@ -185,7 +196,10 @@ pub mod Scene {
     /// ルートノードとして追加する（state は EngineNode[s] 内に含まれる）
     pub def addNode(name: NodeName, engineNode: EngineNode[s], scene: Scene[s]): Scene[s] =
         let Scene.Scene(r) = scene;
-        let entry = SceneEntry.SceneEntry({ engineNode = engineNode, children = Map.empty(), groups = Set.empty() });
+        let entry = SceneEntry.SceneEntry({
+            engineNode = engineNode, children = Map.empty(),
+            groups = Set.empty(), sourceTemplate = None
+        });
         Scene.Scene({ nodes = Map.insert(name, entry, r#nodes) | r })
 
     /// 親がルートの子追加
@@ -197,12 +211,38 @@ pub mod Scene {
         match getEntryAt(parentPath, scene) {
             case None => scene
             case Some(_) =>
-                let childEntry = SceneEntry.SceneEntry({ engineNode = engineNode, children = Map.empty(), groups = Set.empty() });
+                let childEntry = SceneEntry.SceneEntry({
+                    engineNode = engineNode, children = Map.empty(),
+                    groups = Set.empty(), sourceTemplate = None
+                });
                 modifyAt(parentPath, entry ->
                     let SceneEntry.SceneEntry(r) = entry;
                     SceneEntry.SceneEntry({ children = Map.insert(childName, childEntry, r#children) | r }),
                     scene)
         }
+
+    // ========================================================================
+    // SourceTemplate（PackedScene 経由のインスタンス追跡）
+    // ========================================================================
+
+    /// 指定 path のノードに sourceTemplate を後付けで設定する。
+    /// PackedScene.instantiate が addJsonAt 完了後にルートノードへ呼ぶ想定
+    pub def tagWithSourceTemplate(path: NodePath, template: SourceTemplate, scene: Scene[s]): Scene[s] =
+        modifyAt(path, entry ->
+            let SceneEntry.SceneEntry(r) = entry;
+            SceneEntry.SceneEntry({ sourceTemplate = Some(template) | r }),
+            scene)
+
+    /// 指定 path の sourceTemplate を取得（そのノード自身に設定されているもの）
+    pub def getSourceTemplate(path: NodePath, scene: Scene[s]): Option[SourceTemplate] =
+        getEntryAt(path, scene) |> Option.flatMap(entry ->
+            let SceneEntry.SceneEntry(r) = entry;
+            r#sourceTemplate)
+
+    /// path の **ルートエントリ** の sourceTemplate を返す。
+    /// 子孫から問い合わせる経路で使う（"ground_0/sprite" → "ground_0" の sourceTemplate）
+    pub def getRootSourceTemplate(path: NodePath, scene: Scene[s]): Option[SourceTemplate] =
+        List.head(path) |> Option.flatMap(root -> getSourceTemplate(root :: Nil, scene))
 
     // ========================================================================
     // グループ

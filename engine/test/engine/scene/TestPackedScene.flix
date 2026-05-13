@@ -158,3 +158,75 @@ def testInstantiateChildrenPreserved(): Unit \ Assert =
     });
     let iconPos = Scene.globalPositionAt("root" :: "icon" :: Nil, scene);
     Assert.assertEq(expected = (5.0, 7.0), (iconPos#x, iconPos#y))
+
+// ========================================================================
+// sourceTemplate のタグ付け（エディタからのプレハブ書き戻しに使う）
+// ========================================================================
+
+/// SourceTemplate の (jsonPath, rootName) を Option タプルとして取り出す。
+/// SourceTemplate は record type alias なので直接 assertEq できないが、タプルなら可能
+def sourceTemplateAsTuple(tplOpt: Option[SourceTemplate]): Option[(String, NodeName)] =
+    Option.map(tpl -> (tpl#jsonPath, tpl#rootName), tplOpt)
+
+/// nameOverride 付きで instantiate すると、live ルートに sourceTemplate が
+/// {jsonPath = テンプレートの source, rootName = テンプレートの "name"} で設定される
+@Test
+def testInstantiateSetsSourceTemplate(): Unit \ Assert =
+    let template = singleNodeTemplate();   // source = "test-template", JSON の name = "ground"
+    let scene = runInstantiate({
+        opts = {parentPath = Nil, nameOverride = Some("ground_0"), positionOverride = None},
+        tagParser = unitTagParser(),
+        template = template, fontAtlas = None, scene = Scene.empty()
+    });
+    Assert.assertEq(
+        expected = Some(("test-template", "ground")),
+        sourceTemplateAsTuple(Scene.getSourceTemplate("ground_0" :: Nil, scene)))
+
+/// 同じテンプレートから別名で 2 回 instantiate しても、両者の sourceTemplate は等しい
+@Test
+def testInstantiateMultipleInstancesShareTemplate(): Unit \ Assert =
+    let template = singleNodeTemplate();
+    let s1 = runInstantiate({
+        opts = {parentPath = Nil, nameOverride = Some("ground_0"), positionOverride = None},
+        tagParser = unitTagParser(),
+        template = template, fontAtlas = None, scene = Scene.empty()
+    });
+    let s2 = runInstantiate({
+        opts = {parentPath = Nil, nameOverride = Some("ground_1"), positionOverride = None},
+        tagParser = unitTagParser(),
+        template = template, fontAtlas = None, scene = s1
+    });
+    let expected = Some(("test-template", "ground"));
+    Assert.assertEq(
+        expected = (expected, expected),
+        (sourceTemplateAsTuple(Scene.getSourceTemplate("ground_0" :: Nil, s2)),
+         sourceTemplateAsTuple(Scene.getSourceTemplate("ground_1" :: Nil, s2))))
+
+/// nameOverride を指定しないと live ルート名はテンプレート rootName と同じ "ground" になり、
+/// そこに sourceTemplate が付く
+@Test
+def testInstantiateWithoutOverrideTagsRootByTemplateName(): Unit \ Assert =
+    let template = singleNodeTemplate();
+    let scene = runInstantiate({
+        opts = PackedScene.defaultOpts(),
+        tagParser = unitTagParser(),
+        template = template, fontAtlas = None, scene = Scene.empty()
+    });
+    Assert.assertEq(
+        expected = Some(("test-template", "ground")),
+        sourceTemplateAsTuple(Scene.getSourceTemplate("ground" :: Nil, scene)))
+
+/// 子ノードには sourceTemplate を付けない（ルートだけに付く設計）。
+/// 子から問い合わせる場合は getRootSourceTemplate で root をたどる
+@Test
+def testInstantiateChildHasNoSourceTemplateButRootDoes(): Unit \ Assert =
+    let template = nodeWithChildTemplate();
+    let scene = runInstantiate({
+        opts = {parentPath = Nil, nameOverride = Some("box"), positionOverride = None},
+        tagParser = unitTagParser(),
+        template = template, fontAtlas = None, scene = Scene.empty()
+    });
+    Assert.assertEq(
+        expected = (None, Some(("test-template-child", "root"))),
+        (sourceTemplateAsTuple(Scene.getSourceTemplate("box" :: "icon" :: Nil, scene)),
+         sourceTemplateAsTuple(Scene.getRootSourceTemplate("box" :: "icon" :: Nil, scene))))

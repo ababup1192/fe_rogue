@@ -55,7 +55,8 @@ mod DragInput {
     pub def applyDrag(mousePos: Vec2.Vec2, stateData: Editor.EditorStateData,
                       scene: Scene[t]): Scene[t] =
         match (stateData#selected, stateData#dragOrigin, stateData#nodeOrigin) {
-            case (Some((_, nodePath)), Some(dragOrigin), Some(nodeOrigin)) =>
+            case (Some(sel), Some(dragOrigin), Some(nodeOrigin)) =>
+                let nodePath = sel#nodePath;
                 let delta = Vec2.sub(mousePos, dragOrigin);
                 let newGlobalPos = Vec2.round(Vec2.add(nodeOrigin, delta));
                 scene
@@ -73,7 +74,8 @@ mod DragInput {
     pub def applyResize(mousePos: Vec2.Vec2, stateData: Editor.EditorStateData,
                         scene: Scene[t]): Scene[t] =
         match (stateData#selected, stateData#dragOrigin, stateData#resizeOrigin) {
-            case (Some((_, nodePath)), Some(dragOrigin), Some(origin)) =>
+            case (Some(sel), Some(dragOrigin), Some(origin)) =>
+                let nodePath = sel#nodePath;
                 let delta = Vec2.sub(mousePos, dragOrigin);
                 let originalBox = {topLeft = origin#boxTopLeftScreen,
                                    size = origin#boxSize};
@@ -161,8 +163,13 @@ mod DragInput {
                               resizeOrigin = None, rotateOrigin = None | stateData}, scene)
                         case Some((entry, _)) =>
                             let nodeWorld = Scene.globalPositionAt(entry#nodePath, scene);
+                            let sel: Editor.Selection = {
+                                jsonPath = entry#jsonPath,
+                                nodePath = entry#nodePath,
+                                jsonNodePath = entry#jsonNodePath
+                            };
                             let newState = {
-                                selected = Some((entry#jsonPath, entry#nodePath)),
+                                selected = Some(sel),
                                 dragOrigin = Some(mousePos),
                                 nodeOrigin = Some(nodeWorld),
                                 resizeOrigin = None,
@@ -182,7 +189,8 @@ mod DragInput {
             Option[Editor.EditorStateData] \ GameEngine.Game =
         match stateData#selected {
             case None => None
-            case Some((_, nodePath)) =>
+            case Some(sel) =>
+                let nodePath = sel#nodePath;
                 let ctx = {rootJsonIndex = stateData#rootJsonIndex, scene = scene};
                 match EditableNode.findByNodePath(ctx, nodePath) {
                     case None => None
@@ -207,7 +215,8 @@ mod DragInput {
                                             boxSize = {x = entry#width, y = entry#height},
                                             topLeftOffset = entry#topLeftOffset,
                                             nodeSnapshot = nodeSnap,
-                                            childSnapshots = childSnaps
+                                            childSnapshots = childSnaps,
+                                            jsonNodePath = entry#jsonNodePath
                                         };
                                         Some({
                                             dragOrigin = Some(mousePos),
@@ -248,7 +257,9 @@ mod DragInput {
             Option[Editor.EditorStateData] \ GameEngine.Game =
         match stateData#selected {
             case None => None
-            case Some((jsonPath, nodePath)) =>
+            case Some(sel) =>
+                let jsonPath = sel#jsonPath;
+                let nodePath = sel#nodePath;
                 let ctx = {rootJsonIndex = stateData#rootJsonIndex, scene = scene};
                 match EditableNode.findByNodePath(ctx, nodePath) {
                     case None => None
@@ -271,7 +282,8 @@ mod DragInput {
                                 startMouseAngle = startAngle,
                                 startRotation = curRot,
                                 nodePath = nodePath,
-                                jsonPath = jsonPath
+                                jsonPath = jsonPath,
+                                jsonNodePath = sel#jsonNodePath
                             };
                             Some({
                                 dragOrigin = Some(mousePos),
@@ -289,7 +301,10 @@ mod DragInput {
             (Editor.EditorStateData, Scene[t]) \
             {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
         match stateData#selected {
-            case Some((jsonPath, nodePath)) =>
+            case Some(sel) =>
+                let jsonPath = sel#jsonPath;
+                let nodePath = sel#nodePath;
+                let jsonNodePath = sel#jsonNodePath;
                 let currentGlobal = Scene.globalPositionAt(nodePath, scene);
                 let moved = match stateData#nodeOrigin {
                     case Some(origin) =>
@@ -302,6 +317,7 @@ mod DragInput {
                             EditHistory.Rewind.save(EditHistory.Entry.MoveEntry({
                                 jsonPath = jsonPath,
                                 nodePath = nodePath,
+                                jsonNodePath = jsonNodePath,
                                 prevWorldPos = origin}))
                         case None => ()
                     };
@@ -309,7 +325,7 @@ mod DragInput {
                         case Some(engineNode) => Vec2.round(Node2D.getPosition(engineNode))
                         case None => Vec2.zero()
                     };
-                    SceneSerializer.updatePos(jsonPath, nodePath, localPos)
+                    SceneSerializer.updatePos(jsonPath, jsonNodePath, localPos)
                 } else ();
                 let cleared = {
                     dragOrigin = None,
@@ -327,7 +343,8 @@ mod DragInput {
             (Editor.EditorStateData, Scene[t]) \
             {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
         match (stateData#selected, stateData#resizeOrigin) {
-            case (Some((jsonPath, _)), Some(origin)) =>
+            case (Some(sel), Some(origin)) =>
+                let jsonPath = sel#jsonPath;
                 let allSnapshots = origin#nodeSnapshot :: origin#childSnapshots;
                 let changed = anyNodeChanged(allSnapshots, scene);
                 if (changed) {
@@ -350,7 +367,9 @@ mod DragInput {
         }
 
     /// 1 ノードについて「現在のシーン上の位置 + applyResize 用のサイズ系 field」を
-    /// FieldUpdate のリストとして組み立てる
+    /// FieldUpdate のリストとして組み立てる。
+    /// snapshot は live path を持つので、書き戻し用には toJsonNodePath で
+    /// プレハブ root 名に翻訳した path を NodeUpdate に詰める
     def buildNodeUpdateAfterResize(snap: EditableNode.NodeResizeSnapshot,
                                     scene: Scene[t]):
             Option[SceneSerializer.NodeUpdate] =
@@ -364,7 +383,7 @@ mod DragInput {
                 };
                 let sizeUpds = EditableNode.resizeFieldUpdates(engineNode);
                 Some({
-                    nodePath = snap#nodePath,
+                    nodePath = EditableNode.toJsonNodePath(snap#nodePath, scene),
                     updates = posUpd :: sizeUpds
                 })
         }
@@ -428,9 +447,10 @@ mod DragInput {
                     EditHistory.Rewind.save(EditHistory.Entry.RotateEntry({
                         jsonPath = origin#jsonPath,
                         nodePath = origin#nodePath,
+                        jsonNodePath = origin#jsonNodePath,
                         prevRotation = origin#startRotation
                     }));
-                    SceneSerializer.updateRotation(origin#jsonPath, origin#nodePath, curRot)
+                    SceneSerializer.updateRotation(origin#jsonPath, origin#jsonNodePath, curRot)
                 } else ();
                 let cleared = {
                     dragOrigin = None,

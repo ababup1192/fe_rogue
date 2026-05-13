@@ -33,6 +33,7 @@ def sceneWith2Sprites(nameA: NodeName, posA: Vec2.Vec2, zA: Int32,
 def entry32Centered(name: NodeName): EditableNode.EditableEntry = {
     jsonPath = "test.scene.json",
     nodePath = name :: Nil,
+    jsonNodePath = name :: Nil,
     width = 32.0,
     height = 32.0,
     topLeftOffset = {x = -16.0, y = -16.0},
@@ -156,6 +157,7 @@ def testMakeBBoxTopLeftAnchored(): Unit \ Assert =
     let entry: EditableNode.EditableEntry = {
         jsonPath = "test.scene.json",
         nodePath = "x" :: Nil,
+        jsonNodePath = "x" :: Nil,
         width = 50.0,
         height = 20.0,
         topLeftOffset = {x = 0.0, y = 0.0},

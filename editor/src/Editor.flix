@@ -29,14 +29,16 @@ mod Editor {
     /// リサイズハンドルドラッグ中に保持する、対象ノードのドラッグ開始時スナップショット。
     /// `nodeSnapshot`: 対象ノード（CanvasLayer の場合は CanvasLayer 自身）の開始状態。
     /// `childSnapshots`: CanvasLayer の cascade 用に直接の子の開始状態を全て保存。
-    ///                   非 CanvasLayer のときは Nil。undo ですべて巻き戻すため
+    ///                   非 CanvasLayer のときは Nil。undo ですべて巻き戻すため。
+    /// `jsonNodePath`: SceneSerializer 書き戻し用の JSON 内 path（プレハブ翻訳済み）
     pub type alias ResizeOrigin = {
         handle = ResizeHandle.Handle,
         boxTopLeftScreen = Vec2.Vec2,
         boxSize = Vec2.Vec2,
         topLeftOffset = Vec2.Vec2,
         nodeSnapshot = EditableNode.NodeResizeSnapshot,
-        childSnapshots = List[EditableNode.NodeResizeSnapshot]
+        childSnapshots = List[EditableNode.NodeResizeSnapshot],
+        jsonNodePath = NodePath
     }
 
     /// 回転ハンドルドラッグ中に保持する開始時スナップショット。
@@ -45,13 +47,23 @@ mod Editor {
         startMouseAngle = Float64,
         startRotation = Float64,
         nodePath = NodePath,
-        jsonPath = String
+        jsonPath = String,
+        jsonNodePath = NodePath
+    }
+
+    /// 現在の選択ノード。`nodePath` は live scene 内の path（DragInput 等の操作対象）、
+    /// `jsonNodePath` は JSON ファイル内の path（SceneSerializer に渡す書き戻し先）。
+    /// 静的シーンでは両者は等しい。プレハブ由来ノードでは先頭名が違う
+    pub type alias Selection = {
+        jsonPath = String,
+        nodePath = NodePath,
+        jsonNodePath = NodePath
     }
 
     /// エディタ状態の record 表現
     pub type alias EditorStateData = {
         on = Bool,
-        selected = Option[(String, NodePath)],
+        selected = Option[Selection],
         dragOrigin = Option[Vec2.Vec2],
         nodeOrigin = Option[Vec2.Vec2],
         resizeOrigin = Option[ResizeOrigin],
@@ -181,7 +193,8 @@ mod Editor {
                     scene: Scene[t]): GameEngine.Cursor \ GameEngine.Game =
         match stateData#selected {
             case None => GameEngine.Cursor.Default
-            case Some((_, nodePath)) =>
+            case Some(sel) =>
+                let nodePath = sel#nodePath;
                 let ctx = {rootJsonIndex = stateData#rootJsonIndex, scene = scene};
                 match EditableNode.findByNodePath(ctx, nodePath) {
                     case None => GameEngine.Cursor.Default
@@ -224,7 +237,7 @@ mod Editor {
                     case Some(engineNode) => Node2D.getPosition(engineNode)
                     case None             => Vec2.zero()
                 };
-                SceneSerializer.updatePos(entry#jsonPath, entry#nodePath, localPos);
+                SceneSerializer.updatePos(entry#jsonPath, entry#jsonNodePath, localPos);
                 restored
             case Some(EditHistory.Entry.ScaleEntry(entry)) =>
                 // 後方互換: 旧 scale ベースの編集（現在は実質使われていない）
@@ -236,17 +249,18 @@ mod Editor {
                     case Some(engineNode) => Node2D.getPosition(engineNode)
                     case None             => Vec2.zero()
                 };
-                SceneSerializer.updatePosAndScale(entry#jsonPath, entry#nodePath,
+                SceneSerializer.updatePosAndScale(entry#jsonPath, entry#jsonNodePath,
                                                    localPos, entry#prevScale);
                 restored
             case Some(EditHistory.Entry.ResizeEntry(entry)) =>
-                // 各 snapshot のノードを開始時状態に戻し、まとめて 1 ファイル書込で永続化
+                // 各 snapshot のノードを開始時状態に戻し、まとめて 1 ファイル書込で永続化。
+                // snapshot は live path を持つため、書き戻し時に toJsonNodePath で翻訳する
                 let restoredScene = List.foldLeft((acc, snap) ->
                     Scene.mapEngineNode(snap#nodePath,
                         n -> EditableNode.restoreFromSnapshot(snap, n), acc),
                     scene, entry#snapshots);
                 let nodeUpdates = List.map(snap -> ({
-                    nodePath = snap#nodePath,
+                    nodePath = EditableNode.toJsonNodePath(snap#nodePath, restoredScene),
                     updates = EditableNode.snapshotToFieldUpdates(snap)
                 }: SceneSerializer.NodeUpdate), entry#snapshots);
                 SceneSerializer.updateMany(entry#jsonPath, nodeUpdates);
@@ -254,7 +268,7 @@ mod Editor {
             case Some(EditHistory.Entry.RotateEntry(entry)) =>
                 let restored = Scene.mapEngineNode(entry#nodePath,
                     Node2D.setRotation(entry#prevRotation), scene);
-                SceneSerializer.updateRotation(entry#jsonPath, entry#nodePath,
+                SceneSerializer.updateRotation(entry#jsonPath, entry#jsonNodePath,
                                                 entry#prevRotation);
                 restored
         }

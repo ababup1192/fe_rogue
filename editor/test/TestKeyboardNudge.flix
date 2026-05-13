@@ -100,7 +100,7 @@ mod TestKeyboardNudge {
     /// 選択中だが矢印キー押下なし、prev も全 false の state
     def quietState(jsonPath: String, nodePath: NodePath): Editor.EditorStateData = {
         on = true,
-        selected = Some((jsonPath, nodePath)),
+        selected = Some({jsonPath = jsonPath, nodePath = nodePath, jsonNodePath = nodePath}),
         dragOrigin = None,
         nodeOrigin = None,
         resizeOrigin = None,
@@ -159,7 +159,8 @@ mod TestKeyboardNudge {
         let scene = sceneWithSprite("hero", {x = 100.0, y = 100.0});
         let state: Editor.EditorStateData = {
             on = true,
-            selected = Some(("hero.json", "hero" :: Nil)),
+            selected = Some({jsonPath = "hero.json", nodePath = "hero" :: Nil,
+                             jsonNodePath = "hero" :: Nil}),
             dragOrigin = None,
             nodeOrigin = None,
             resizeOrigin = None,

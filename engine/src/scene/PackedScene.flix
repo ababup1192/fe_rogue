@@ -23,8 +23,9 @@
 ///
 pub enum PackedScene {
     case PackedScene({
-        sourcePath = String,           // デバッグ用ファイルパス（bug! メッセージで使う）
-        rootJson = Json.JsonElement    // パース済み JSON（再パース不要）
+        sourcePath = String,                       // ファイルパス（エディタ書き戻し先と bug! メッセージに使う）
+        rootJson = Json.JsonElement,               // パース済み JSON（再パース不要）
+        templateRootName = Option[NodeName]        // テンプレートのルートノード名（Some なら instantiate 時に sourceTemplate を設定）
     })
 }
 
@@ -59,6 +60,8 @@ mod PackedScene {
 
     /// JSON ファイルを 1 回読み込んでパースし、テンプレートとして保持する。
     /// 失敗時 bug! でクラッシュ。
+    /// JSON ルートに "name" があれば templateRootName に記録し、
+    /// instantiate 時に sourceTemplate を設定できるようにする。
     pub def load(path: String): PackedScene \ Fs.FileRead =
         let content = run { Fs.ReadFile.read(path) } with Fs.ReadFile.runWithFileRead;
         match content {
@@ -67,7 +70,11 @@ mod PackedScene {
                 match Json.Parse.parse(String.trim(text)) {
                     case None       => bug!("PackedScene.load: ${path}: JSON parse failed")
                     case Some(json) =>
-                        PackedScene.PackedScene({sourcePath = path, rootJson = json})
+                        PackedScene.PackedScene({
+                            sourcePath = path,
+                            rootJson = json,
+                            templateRootName = SceneLoader.rootNameOf(json)
+                        })
                 }
         }
 
@@ -77,7 +84,11 @@ mod PackedScene {
         match Json.Parse.parse(String.trim(args#jsonText)) {
             case None       => bug!("PackedScene.fromJsonString: ${args#source}: JSON parse failed")
             case Some(json) =>
-                PackedScene.PackedScene({sourcePath = args#source, rootJson = json})
+                PackedScene.PackedScene({
+                    sourcePath = args#source,
+                    rootJson = json,
+                    templateRootName = SceneLoader.rootNameOf(json)
+                })
         }
 
     /// デフォルト opts (parentPath=Nil, override 無し)
@@ -91,6 +102,8 @@ mod PackedScene {
     /// PackedScene を scene にインスタンス化する。
     /// 同じ PackedScene を異なる nameOverride で N 回呼べば独立した N インスタンスができる。
     /// Label2D を含むテンプレートには args#fontAtlas に Some(...) を渡すこと。
+    /// templateRootName が判明していれば、インスタンスのルートに sourceTemplate を設定し、
+    /// エディタがプレハブ由来として認識できるようにする
     pub def instantiate(args: InstantiateArgs[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
         let PackedScene.PackedScene(r) = args#template;
         let json = r#rootJson
@@ -98,10 +111,21 @@ mod PackedScene {
             |> applyPositionOverride(args#opts#positionOverride);
         match SceneLoader.addJsonAt(args#opts#parentPath, args#tagParser,
                                      args#fontAtlas, json, args#scene) {
-            case Ok(s)  => s
             case Err(e) =>
                 let Json.JsonError.JsonError(p, expected) = e;
                 bug!("PackedScene.instantiate: ${r#sourcePath}: at ${p}: expected ${expected}")
+            case Ok(added) =>
+                match r#templateRootName {
+                    case None => added  // root name 不明なら tag できない
+                    case Some(templateRoot) =>
+                        let liveRoot = Option.getWithDefault(templateRoot, args#opts#nameOverride);
+                        let rootPath = args#opts#parentPath ::: liveRoot :: Nil;
+                        let template: SourceTemplate = {
+                            jsonPath = r#sourcePath,
+                            rootName = templateRoot
+                        };
+                        Scene.tagWithSourceTemplate(rootPath, template, added)
+                }
         }
 
     // ========================================================================

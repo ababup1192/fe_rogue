@@ -55,28 +55,30 @@ mod KeyboardNudge {
                               Fs.FileRead, Fs.FileWrite} =
         match stateData#selected {
             case None => scene
-            case Some((jsonPath, nodePath)) =>
+            case Some(sel) =>
                 let edges = pressEdges(stateData#prevArrowKeys, curArrows);
                 let shift = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
                 let ctrl = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftCtrl);
                 if (ctrl and shift) {
                     let dScale = scaleDelta(edges, scaleStep());
                     if (dScale#x == 0.0 and dScale#y == 0.0) scene
-                    else applyScaleAndSave(jsonPath, nodePath, dScale, scene)
+                    else applyScaleAndSave(sel, dScale, scene)
                 } else {
                     let step = if (shift) 10.0 else 1.0;
                     let delta = nudgeDelta(edges, step);
                     if (delta#x == 0.0 and delta#y == 0.0) scene
-                    else moveAndSave(jsonPath, nodePath, delta, scene)
+                    else moveAndSave(sel, delta, scene)
                 }
         }
 
-    def moveAndSave(jsonPath: String, nodePath: NodePath, delta: Vec2.Vec2,
+    def moveAndSave(sel: Editor.Selection, delta: Vec2.Vec2,
                     scene: Scene[t]):
             Scene[t] \ {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
+        let nodePath = sel#nodePath;
         let curGlobal = Scene.globalPositionAt(nodePath, scene);
         EditHistory.Rewind.save(EditHistory.Entry.MoveEntry({
-            jsonPath = jsonPath, nodePath = nodePath,
+            jsonPath = sel#jsonPath, nodePath = nodePath,
+            jsonNodePath = sel#jsonNodePath,
             prevWorldPos = curGlobal}));
         let newGlobal = Vec2.round(Vec2.add(curGlobal, delta));
         let newScene = scene
@@ -88,12 +90,13 @@ mod KeyboardNudge {
             case Some(engineNode) => Node2D.getPosition(engineNode)
             case None             => Vec2.zero()
         };
-        SceneSerializer.updatePos(jsonPath, nodePath, localPos);
+        SceneSerializer.updatePos(sel#jsonPath, sel#jsonNodePath, localPos);
         newScene
 
-    def applyScaleAndSave(jsonPath: String, nodePath: NodePath, deltaScale: Vec2.Vec2,
+    def applyScaleAndSave(sel: Editor.Selection, deltaScale: Vec2.Vec2,
                           scene: Scene[t]):
             Scene[t] \ {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
+        let nodePath = sel#nodePath;
         match Scene.getEngineNode(nodePath, scene) {
             case None => scene
             case Some(engineNode) =>
@@ -104,11 +107,12 @@ mod KeyboardNudge {
                 if (newScale#x == curScale#x and newScale#y == curScale#y) scene
                 else {
                     EditHistory.Rewind.save(EditHistory.Entry.ScaleEntry({
-                        jsonPath = jsonPath, nodePath = nodePath,
+                        jsonPath = sel#jsonPath, nodePath = nodePath,
+                        jsonNodePath = sel#jsonNodePath,
                         prevWorldPos = curGlobal, prevScale = curScale}));
                     let newScene = Scene.mapEngineNode(nodePath,
                         Node2D.setScale(newScale), scene);
-                    SceneSerializer.updateScale(jsonPath, nodePath, newScale);
+                    SceneSerializer.updateScale(sel#jsonPath, sel#jsonNodePath, newScale);
                     newScene
                 }
         }

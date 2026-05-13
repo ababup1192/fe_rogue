@@ -22,9 +22,15 @@ mod EditableNode {
     /// 編集対象ノードの 1 件分の情報。
     /// isContainer = true なら CanvasLayer のようなコンテナ。Shift 修飾なしの
     /// クリックで優先される（子要素より先に hit）。
+    ///
+    /// nodePath は live scene 内の path（DragInput が `Scene.mapEngineNode` 等で使う）。
+    /// jsonNodePath は **JSON ファイル内の path**（SceneSerializer に渡す書き戻し用）。
+    /// 静的シーンでは両者は同じ。プレハブ由来のノードでは先頭名が違う
+    /// （例: live `["ground_0", "sprite"]` / json `["ground", "sprite"]`）
     pub type alias EditableEntry = {
         jsonPath = String,
         nodePath = NodePath,
+        jsonNodePath = NodePath,
         width = Float64,
         height = Float64,
         topLeftOffset = Vec2.Vec2,
@@ -79,17 +85,43 @@ mod EditableNode {
         let ColorRect.ColorRect(r) = rect;
         {size = r#size, topLeftOffset = {x = 0.0, y = 0.0}}
 
+    /// path の編集先 (jsonPath, jsonNodePath) を解決する。優先順:
+    ///   1. SceneEntry に sourceTemplate があれば、その jsonPath + path 先頭翻訳
+    ///      (例: live "ground_0/sprite" → JSON "ground/sprite")
+    ///   2. rootJsonIndex に live ルート名があれば、その jsonPath + path そのまま
+    ///   3. どちらも該当しなければ編集不可（None）
+    pub def resolveJsonTarget(ctx: LookupCtx[t], path: NodePath):
+            Option[{jsonPath = String, jsonNodePath = NodePath}] =
+        match Scene.getRootSourceTemplate(path, ctx#scene) {
+            case Some(tpl) =>
+                let jsonNodePath = tpl#rootName :: List.drop(1, path);
+                Some({jsonPath = tpl#jsonPath, jsonNodePath = jsonNodePath})
+            case None =>
+                forM (
+                    rootName <- List.head(path);
+                    jsonPath <- Map.get(rootName, ctx#rootJsonIndex)
+                ) yield {jsonPath = jsonPath, jsonNodePath = path}
+        }
+
+    /// live path をテンプレート JSON 内の path に翻訳する（cascade resize 用ヘルパ）。
+    /// sourceTemplate が無ければ入力 path をそのまま返す
+    pub def toJsonNodePath(livePath: NodePath, scene: Scene[t]): NodePath =
+        match Scene.getRootSourceTemplate(livePath, scene) {
+            case Some(tpl) => tpl#rootName :: List.drop(1, livePath)
+            case None      => livePath
+        }
+
     /// 1 パス分の EditableEntry を構築する。
     def buildEntry(ctx: LookupCtx[t], path: NodePath):
             Option[EditableEntry] \ GameEngine.Game =
         forM (
-            rootName   <- List.head(path);
-            jsonPath   <- Map.get(rootName, ctx#rootJsonIndex);
+            resolved   <- resolveJsonTarget(ctx, path);
             engineNode <- Scene.getEngineNode(path, ctx#scene);
             rect       <- rectInfoOf(engineNode, path, ctx#scene)
         ) yield {
-            jsonPath = jsonPath,
+            jsonPath = resolved#jsonPath,
             nodePath = path,
+            jsonNodePath = resolved#jsonNodePath,
             width = rect#size#x,
             height = rect#size#y,
             topLeftOffset = rect#topLeftOffset,

@@ -31,12 +31,13 @@ mod Overlay {
     /// 選択中ノードを取り囲む黄色の矩形（4 辺の細い ColorRect）を最前面に追加する。
     /// さらに 8 個のリサイズハンドル（4 隅 + 4 辺）を選択枠の上に重ねる。
     pub def addSelectionBox(rootJsonIndex: Map[NodeName, String],
-                            selected: Option[(String, NodePath)],
+                            selected: Option[Editor.Selection],
                             transform: Camera2D.ViewTransform,
                             defaultTag: t, scene: Scene[t]): Scene[t] \ GameEngine.Game =
         match selected {
             case None => scene
-            case Some((_, nodePath)) =>
+            case Some(sel) =>
+                let nodePath = sel#nodePath;
                 let ctx = {rootJsonIndex = rootJsonIndex, scene = scene};
                 match EditableNode.findByNodePath(ctx, nodePath) {
                     case None => scene
@@ -100,7 +101,7 @@ mod Overlay {
     /// マウス位置の編集対象ノードに薄い枠を描く
     pub def addHoverBox(rootJsonIndex: Map[NodeName, String],
                         mousePos: Vec2.Vec2,
-                        selected: Option[(String, NodePath)],
+                        selected: Option[Editor.Selection],
                         transform: Camera2D.ViewTransform,
                         defaultTag: t, scene: Scene[t]): Scene[t] \ GameEngine.Game =
         let ctx = {rootJsonIndex = rootJsonIndex, scene = scene};
@@ -120,10 +121,10 @@ mod Overlay {
         }
 
     /// hover 対象が選択中ノードと一致するかを判定
-    def isSelectedPath(path: NodePath, selected: Option[(String, NodePath)]): Bool =
+    def isSelectedPath(path: NodePath, selected: Option[Editor.Selection]): Bool =
         match selected {
-            case Some((_, selPath)) => path == selPath
-            case None               => false
+            case Some(sel) => path == sel#nodePath
+            case None      => false
         }
 
     /// シーンに含まれるすべての CollisionObject2D の衝突形状を可視化する

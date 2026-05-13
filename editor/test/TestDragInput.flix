@@ -25,7 +25,7 @@ mod TestDragInput {
     def draggingState(jsonPath: String, nodePath: NodePath,
                       mouseDown: Vec2.Vec2, nodeGlobal: Vec2.Vec2): Editor.EditorStateData = {
         on = true,
-        selected = Some((jsonPath, nodePath)),
+        selected = Some({jsonPath = jsonPath, nodePath = nodePath, jsonNodePath = nodePath}),
         dragOrigin = Some(mouseDown),
         nodeOrigin = Some(nodeGlobal),
         resizeOrigin = None,

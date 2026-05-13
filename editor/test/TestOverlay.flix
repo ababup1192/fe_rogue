@@ -97,7 +97,7 @@ mod TestOverlay {
         // index に "hero" を入れていない → entry が見つからない
         let result = Overlay.addSelectionBox(
             Map.empty(),
-            Some(("hero.json", "hero" :: Nil)),
+            Some({jsonPath = "hero.json", nodePath = "hero" :: Nil, jsonNodePath = "hero" :: Nil}),
             Camera2D.identityTransform(),
             Tag.NoTag,
             scene);
@@ -145,7 +145,7 @@ mod TestOverlay {
         let result = Overlay.addHoverBox(
             index,
             {x = 100.0, y = 100.0},
-            Some(("hero.json", "hero" :: Nil)),
+            Some({jsonPath = "hero.json", nodePath = "hero" :: Nil, jsonNodePath = "hero" :: Nil}),
             Camera2D.identityTransform(),
             Tag.NoTag,
             scene);
@@ -170,7 +170,7 @@ mod TestOverlay {
         let result = Overlay.addHoverBox(
             index,
             {x = 200.0, y = 200.0},
-            Some(("hero.json", "hero" :: Nil)),
+            Some({jsonPath = "hero.json", nodePath = "hero" :: Nil, jsonNodePath = "hero" :: Nil}),
             Camera2D.identityTransform(),
             Tag.NoTag,
             scene);
@@ -196,7 +196,7 @@ mod TestOverlay {
         let index = Map#{"hero" => "hero.json"};
         let result = Overlay.addSelectionBox(
             index,
-            Some(("hero.json", "hero" :: Nil)),
+            Some({jsonPath = "hero.json", nodePath = "hero" :: Nil, jsonNodePath = "hero" :: Nil}),
             Camera2D.identityTransform(),
             Tag.NoTag,
             scene);
