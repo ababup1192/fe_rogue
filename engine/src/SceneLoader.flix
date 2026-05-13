@@ -165,7 +165,6 @@ mod SceneLoader {
                           scene: Scene[t]):
                           Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
         match layout {
-            case Layout.Empty => Ok(scene)
             case Layout.Node({name = _, definition}) =>
                 addJsonAt(parentPath, tagParser, fontAtlas, definition, scene)
             case Layout.MarginContainer({margin = _, child}) =>

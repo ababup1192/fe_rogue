@@ -64,8 +64,6 @@ pub enum Layout {
     case Node({ name = String, definition = Json.JsonElement })
     /// 複数の子レイアウトを同じ origin に重ねて配置する (非 Godot 独自拡張)。
     case Overlay(List[Layout])
-    /// 何もしないプレースホルダ (非 Godot 独自)
-    case Empty
 }
 
 mod Layout {
@@ -99,7 +97,6 @@ mod Layout {
     def buildByKind(kind: String,
                      map: Map[String, Json.JsonElement]): Result[Json.JsonError, Layout] =
         match kind {
-            case "Empty" => Ok(Layout.Empty)
             case "MarginContainer" =>
                 forM (
                     margin    <- (Json.FromJson.getAtKey(Root, "margin", map): Result[Json.JsonError, Float64]);
@@ -190,7 +187,6 @@ mod Layout {
                     scene: Scene[s],
                     acc: Map[NodePath, Rect2.Rect2]): Map[NodePath, Rect2.Rect2] =
         match layout {
-            case Layout.Empty => acc
             case Layout.Node({name, definition = _}) =>
                 Map.insert(List.append(parentPath, name :: Nil), origin, acc)
             case Layout.MarginContainer({margin, child}) =>
@@ -280,7 +276,6 @@ mod Layout {
     /// Node は scene tree 内の実 node を `measureNode` で測る。
     pub def measure(parentPath: NodePath, layout: Layout, scene: Scene[s]): Vec2.Vec2 =
         match layout {
-            case Layout.Empty => Vec2.zero()
             case Layout.Node({name, definition = _}) =>
                 measureNode(List.append(parentPath, name :: Nil), scene)
             case Layout.MarginContainer({margin, child}) =>

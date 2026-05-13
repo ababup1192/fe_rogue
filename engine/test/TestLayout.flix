@@ -31,16 +31,6 @@ mod TestLayout {
         Layout.resolve((Nil: NodePath), origin100x100(), layout, scene)
 
     // ========================================================================
-    // Empty — 何も配置しない
-    // ========================================================================
-
-    @Test
-    def testEmpty(): Unit \ Assert =
-        let scene: Scene[Unit] = Scene.empty();
-        let rects = resolveRoot(Layout.Empty, scene);
-        Assert.assertTrue(Map.size(rects) == 0)
-
-    // ========================================================================
     // Node — 単一ノードを origin に配置
     // ========================================================================
 
@@ -213,14 +203,6 @@ mod TestLayout {
             case None    => bug!("JSON parse failed for test input: ${text}")
         }
 
-    @Test
-    def testFromJsonEmpty(): Unit \ Assert =
-        let j = parseJson("{\"kind\": \"Empty\"}");
-        match Layout.fromJson(j) {
-            case Ok(Layout.Empty) => Assert.assertTrue(true)
-            case _                 => Assert.assertTrue(false)
-        }
-
     /// "type" を持つ object は Layout.Node として parse される
     @Test
     def testFromJsonNodeDefinition(): Unit \ Assert =
@@ -233,16 +215,16 @@ mod TestLayout {
 
     @Test
     def testFromJsonMarginContainer(): Unit \ Assert =
-        let j = parseJson("{\"kind\": \"MarginContainer\", \"margin\": 8.0, \"child\": {\"kind\": \"Empty\"}}");
+        let j = parseJson("{\"kind\": \"MarginContainer\", \"margin\": 8.0, \"child\": {\"kind\": \"Overlay\", \"children\": []}}");
         match Layout.fromJson(j) {
-            case Ok(Layout.MarginContainer({margin, child = Layout.Empty})) =>
+            case Ok(Layout.MarginContainer({margin, child = Layout.Overlay(Nil)})) =>
                 Assert.assertTrue(approx(margin, 8.0))
             case _ => Assert.assertTrue(false)
         }
 
     @Test
     def testFromJsonHBoxContainer(): Unit \ Assert =
-        let j = parseJson("{\"kind\": \"HBoxContainer\", \"separation\": 4.0, \"alignment\": \"Begin\", \"crossAxis\": \"Stretch\", \"children\": [{\"kind\": \"Empty\"}, {\"kind\": \"Empty\"}]}");
+        let j = parseJson("{\"kind\": \"HBoxContainer\", \"separation\": 4.0, \"alignment\": \"Begin\", \"crossAxis\": \"Stretch\", \"children\": [{\"kind\": \"Overlay\", \"children\": []}, {\"kind\": \"Overlay\", \"children\": []}]}");
         match Layout.fromJson(j) {
             case Ok(Layout.HBoxContainer({separation, alignment, crossAxis, children})) =>
                 Assert.assertTrue(approx(separation, 4.0));
@@ -254,7 +236,7 @@ mod TestLayout {
 
     @Test
     def testFromJsonVBoxContainer(): Unit \ Assert =
-        let j = parseJson("{\"kind\": \"VBoxContainer\", \"separation\": 8.0, \"alignment\": \"Center\", \"crossAxis\": \"End\", \"children\": [{\"kind\": \"Empty\"}]}");
+        let j = parseJson("{\"kind\": \"VBoxContainer\", \"separation\": 8.0, \"alignment\": \"Center\", \"crossAxis\": \"End\", \"children\": [{\"kind\": \"Overlay\", \"children\": []}]}");
         match Layout.fromJson(j) {
             case Ok(Layout.VBoxContainer({separation, alignment, crossAxis, children})) =>
                 Assert.assertTrue(approx(separation, 8.0));
@@ -266,9 +248,9 @@ mod TestLayout {
 
     @Test
     def testFromJsonCenterContainer(): Unit \ Assert =
-        let j = parseJson("{\"kind\": \"CenterContainer\", \"child\": {\"kind\": \"Empty\"}}");
+        let j = parseJson("{\"kind\": \"CenterContainer\", \"child\": {\"kind\": \"Overlay\", \"children\": []}}");
         match Layout.fromJson(j) {
-            case Ok(Layout.CenterContainer(Layout.Empty)) => Assert.assertTrue(true)
+            case Ok(Layout.CenterContainer(Layout.Overlay(Nil))) => Assert.assertTrue(true)
             case _ => Assert.assertTrue(false)
         }
 
