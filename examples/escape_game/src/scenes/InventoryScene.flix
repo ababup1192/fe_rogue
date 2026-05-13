@@ -93,8 +93,8 @@ mod InventoryScene {
 
     /// scene.json をロードしてレイヤを 1 枚積む。Root に `NodeTag.Inventory(emptyData())`
     /// を載せる。`process` で Inventory.Access の snapshot を毎フレーム反映する。
-    /// 5 スロットの Bg/Icon は scene.json の `Container` + `RepeatNodes` で生成され、
-    /// `Container.layout` (HStack + Repeat) で位置が決まる。
+    /// 5 スロットの Bg/Icon の位置は scene.json の `Container` + `HBoxContainer` Layout が決める。
+    /// Layout 管理ノード (Slot{i}Bg/Icon) は scene.json で pos を持たない (Godot 流)。
     pub def addInventoryLayer(scene: Scene[NodeTag]):
                                Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         SceneLoader.loadScene(sceneJsonPath(),

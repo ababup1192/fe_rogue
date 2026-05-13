@@ -306,52 +306,6 @@ mod TestLayout {
         }
 
     // ========================================================================
-    // Repeat — children 内の繰り返し展開 (node も layout も同じ Repeat で展開)
-    // ========================================================================
-
-    /// HBoxContainer の children に Repeat (node template) を入れて 5 個に展開
-    @Test
-    def testFromJsonRepeatExpandsNodes(): Unit \ Assert =
-        let j = parseJson("{\"kind\": \"HBoxContainer\", \"separation\": 4.0, \"alignment\": \"Begin\", \"crossAxis\": \"Begin\", \"children\": [{\"kind\": \"Repeat\", \"count\": 5, \"indexVar\": \"i\", \"template\": {\"type\": \"ColorRect\", \"name\": \"Slot{i}Bg\", \"size\": [32, 32]}}]}");
-        match Layout.fromJson(j) {
-            case Ok(Layout.HBoxContainer({separation = _, alignment = _, crossAxis = _, children})) =>
-                Assert.assertTrue(List.length(children) == 5);
-                match List.nth(0, children) {
-                    case Some(Layout.Node({name, definition = _})) =>
-                        Assert.assertTrue(name == "Slot0Bg")
-                    case _ => Assert.assertTrue(false)
-                };
-                match List.nth(4, children) {
-                    case Some(Layout.Node({name, definition = _})) =>
-                        Assert.assertTrue(name == "Slot4Bg")
-                    case _ => Assert.assertTrue(false)
-                }
-            case _ => Assert.assertTrue(false)
-        }
-
-    /// Repeat の template が複雑 (Overlay > Node + MarginContainer > Node) でも全 Node の {i} が置換される
-    @Test
-    def testFromJsonRepeatNestedTemplate(): Unit \ Assert =
-        let j = parseJson("{\"kind\": \"HBoxContainer\", \"separation\": 4.0, \"alignment\": \"Begin\", \"crossAxis\": \"Begin\", \"children\": [{\"kind\": \"Repeat\", \"count\": 3, \"indexVar\": \"i\", \"template\": {\"kind\": \"Overlay\", \"children\": [{\"type\": \"ColorRect\", \"name\": \"Slot{i}Bg\", \"size\": [32, 32]}, {\"kind\": \"MarginContainer\", \"margin\": 4.0, \"child\": {\"type\": \"TextureRect\", \"name\": \"Slot{i}Icon\", \"size\": [24, 24]}}]}}]}");
-        match Layout.fromJson(j) {
-            case Ok(Layout.HBoxContainer({separation = _, alignment = _, crossAxis = _, children})) =>
-                Assert.assertTrue(List.length(children) == 3);
-                match List.nth(1, children) {
-                    case Some(Layout.Overlay(leaves)) =>
-                        match leaves {
-                            case Layout.Node({name = bgName, definition = _}) ::
-                                 Layout.MarginContainer({margin = _,
-                                     child = Layout.Node({name = iconName, definition = _})}) :: Nil =>
-                                Assert.assertTrue(bgName == "Slot1Bg");
-                                Assert.assertTrue(iconName == "Slot1Icon")
-                            case _ => Assert.assertTrue(false)
-                        }
-                    case _ => Assert.assertTrue(false)
-                }
-            case _ => Assert.assertTrue(false)
-        }
-
-    // ========================================================================
     // ネスト: MarginContainer > VBoxContainer > Node × 2
     // ========================================================================
 

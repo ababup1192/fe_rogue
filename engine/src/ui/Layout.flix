@@ -70,7 +70,7 @@ pub enum Layout {
 
 mod Layout {
 
-    use Json.JsonElement.{JsonObject, JsonArray, JsonString}
+    use Json.JsonElement.{JsonObject}
     use Json.JsonError.JsonError
     use Json.Path.Path.Root
 
@@ -139,85 +139,16 @@ mod Layout {
             Layout.HBoxContainer({separation = separation, alignment = alignment,
                                    crossAxis = crossAxis, children = children})
 
-    /// 各要素を Layout に変換。要素が `"kind": "Repeat"` の場合はその場で count 個に展開する。
-    /// VBoxContainer/HBoxContainer/Overlay の children 配列内で使うことで「同じ template を i=0..N-1 で繰り返し」が書ける。
+    /// children 配列の各要素を Layout に変換する。
+    /// 動的な繰り返しが必要な場合は flix code 側で `List.range` などで生成すること。
     def traverseLayouts(jsons: List[Json.JsonElement]): Result[Json.JsonError, List[Layout]] =
         match jsons {
             case Nil       => Ok(Nil)
             case j :: rest =>
                 forM (
-                    heads <- expandOrSingleLayout(j);
-                    tail  <- traverseLayouts(rest)
-                ) yield List.append(heads, tail)
-        }
-
-    def expandOrSingleLayout(j: Json.JsonElement): Result[Json.JsonError, List[Layout]] =
-        match j {
-            case JsonObject(map) =>
-                let kindResult: Result[Json.JsonError, String] =
-                    Json.FromJson.getAtKey(Root, "kind", map);
-                match kindResult {
-                    case Ok("Repeat") => expandRepeat(map)
-                    case _            =>
-                        forM (l <- fromJson(j)) yield l :: Nil
-                }
-            case _ =>
-                forM (l <- fromJson(j)) yield l :: Nil
-        }
-
-    def expandRepeat(map: Map[String, Json.JsonElement]): Result[Json.JsonError, List[Layout]] =
-        forM (
-            count        <- (Json.FromJson.getAtKey(Root, "count", map): Result[Json.JsonError, Int32]);
-            indexVar     <- (Json.FromJson.getAtKey(Root, "indexVar", map): Result[Json.JsonError, String]);
-            templateJson <- (Json.FromJson.getAtKey(Root, "template", map): Result[Json.JsonError, Json.JsonElement]);
-            baseLayout   <- fromJson(templateJson)
-        ) yield {
-            let placeholder = "{${indexVar}}";
-            List.map(i -> substituteIndex(placeholder, i, baseLayout), List.range(0, count))
-        }
-
-    /// Layout 内の Node の name と definition (JsonElement) の文字列要素にある
-    /// `{indexVar}` プレースホルダを i の文字列で置換する。
-    /// 数値フィールド (margin/separation 等) は変更しない。
-    pub def substituteIndex(placeholder: String, i: Int32, layout: Layout): Layout =
-        let replacement = "${i}";
-        match layout {
-            case Layout.Empty => Layout.Empty
-            case Layout.Node({name, definition}) =>
-                Layout.Node({
-                    name       = String.replace(src = placeholder, dst = replacement, name),
-                    definition = substituteJsonStrings(placeholder, replacement, definition)
-                })
-            case Layout.MarginContainer({margin, child}) =>
-                Layout.MarginContainer({margin = margin, child = substituteIndex(placeholder, i, child)})
-            case Layout.CenterContainer(child) =>
-                Layout.CenterContainer(substituteIndex(placeholder, i, child))
-            case Layout.VBoxContainer({separation, alignment, crossAxis, children}) =>
-                Layout.VBoxContainer({separation = separation, alignment = alignment, crossAxis = crossAxis,
-                                       children = List.map(c ->
-                                           substituteIndex(placeholder, i, c), children)})
-            case Layout.HBoxContainer({separation, alignment, crossAxis, children}) =>
-                Layout.HBoxContainer({separation = separation, alignment = alignment, crossAxis = crossAxis,
-                                       children = List.map(c ->
-                                           substituteIndex(placeholder, i, c), children)})
-            case Layout.Overlay(children) =>
-                Layout.Overlay(List.map(c -> substituteIndex(placeholder, i, c), children))
-        }
-
-    /// JsonElement 内の全 JsonString に対して placeholder を replacement に置換する。
-    /// オブジェクトのキーは置換しない (フィールド名は固定構造)。
-    def substituteJsonStrings(placeholder: String, replacement: String,
-                                json: Json.JsonElement): Json.JsonElement =
-        match json {
-            case JsonObject(map) =>
-                JsonObject(Map.map(v ->
-                    substituteJsonStrings(placeholder, replacement, v), map))
-            case JsonArray(arr) =>
-                JsonArray(Vector.map(v ->
-                    substituteJsonStrings(placeholder, replacement, v), arr))
-            case JsonString(s) =>
-                JsonString(String.replace(src = placeholder, dst = replacement, s))
-            case other => other
+                    head <- fromJson(j);
+                    tail <- traverseLayouts(rest)
+                ) yield head :: tail
         }
 
     def parseMainAxis(s: String): Result[Json.JsonError, MainAxisAlign] =
