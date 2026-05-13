@@ -93,7 +93,8 @@ pub mod AreaEvent {
     // ========================================================================
 
     /// Scene 内の全 CollisionObject2D ペアの重なりを検出する。
-    /// monitoring / monitorable フラグを考慮し、有効なペアのみ返す。
+    /// monitoring / monitorable フラグと collisionLayer / collisionMask を考慮し、
+    /// 有効なペアのみ返す（A→B 発火条件 = monitoringA && monitorableB && (maskA & layerB) != 0）。
     pub def detectOverlaps(scene: Scene[s]): List[AreaOverlap] =
         let paths = Scene.preorderPaths(scene);
         let areas = List.filterMap(path ->
@@ -101,26 +102,30 @@ pub mod AreaEvent {
                 CollisionObject2D.getCollisionShape(engineNode) |> Option.map(shape ->
                     (path, Scene.globalPositionAt(path, scene), shape,
                      CollisionObject2D.isMonitoring(engineNode),
-                     CollisionObject2D.isMonitorable(engineNode))
+                     CollisionObject2D.isMonitorable(engineNode),
+                     CollisionObject2D.getCollisionLayer(engineNode),
+                     CollisionObject2D.getCollisionMask(engineNode))
                 )
             ), paths);
         collectPairs(areas)
 
     /// 内部ヘルパー: 全ペアを総当たりで比較し、重なりイベントを収集する。
-    def collectPairs(areas: List[(NodePath, Vec2.Vec2, CollisionShape2D, Bool, Bool)]): List[AreaOverlap] =
+    def collectPairs(areas: List[(NodePath, Vec2.Vec2, CollisionShape2D, Bool, Bool, Int32, Int32)]): List[AreaOverlap] =
         match areas {
             case Nil => Nil
-            case (pathA, posA, shapeA, monitoringA, monitorableA) :: tail =>
+            case (pathA, posA, shapeA, monitoringA, monitorableA, layerA, maskA) :: tail =>
                 let pairsFromA = List.flatMap(entry ->
-                    let (pathB, posB, shapeB, monitoringB, monitorableB) = entry;
+                    let (pathB, posB, shapeB, monitoringB, monitorableB, layerB, maskB) = entry;
                     if (CollisionShape2D.checkOverlap(posA, shapeA, posB, shapeB))
                         let forward: List[AreaOverlap] =
-                            if (monitoringA and monitorableB)
+                            if (monitoringA and monitorableB
+                                and Int32.bitwiseAnd(maskA, layerB) != 0i32)
                                 {selfPath = pathA, selfPos = posA,
                                  other = {path = pathB, position = posB}} :: Nil
                             else Nil;
                         let reverse: List[AreaOverlap] =
-                            if (monitoringB and monitorableA)
+                            if (monitoringB and monitorableA
+                                and Int32.bitwiseAnd(maskB, layerA) != 0i32)
                                 {selfPath = pathB, selfPos = posB,
                                  other = {path = pathA, position = posA}} :: Nil
                             else Nil;

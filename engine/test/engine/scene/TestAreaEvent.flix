@@ -12,6 +12,17 @@ def rectAreaNodeWith(x: Float64, y: Float64, w: Float64, h: Float64,
             |> Area2D.setMonitoring(monitoring)
             |> Area2D.setMonitorable(monitorable), ())
 
+/// テスト用ヘルパー: 矩形 Area2D の EngineNode[Unit] を layer/mask 付きで作る
+def rectAreaNodeWithLayers(x: Float64, y: Float64, w: Float64, h: Float64,
+                            monitoring: Bool, monitorable: Bool,
+                            layer: Int32, mask: Int32): EngineNode[Unit] =
+    EngineNode.Area2DWithState(
+        Area2D.make({x = x, y = y}, CollisionShape2D.RectShape2D({width = w, height = h}))
+            |> Area2D.setMonitoring(monitoring)
+            |> Area2D.setMonitorable(monitorable)
+            |> Area2D.setCollisionLayer(layer)
+            |> Area2D.setCollisionMask(mask), ())
+
 /// テスト用ヘルパー: 衝突形状なしの Area2D EngineNode[Unit] を作る
 def noShapeAreaNode(x: Float64, y: Float64): EngineNode[Unit] =
     EngineNode.Area2DWithState(
@@ -124,6 +135,69 @@ def testDetectOverlapsThreeNodes(): Unit \ Assert =
     Assert.assertEq(
         expected = Set#{(a, b), (b, a), (a, c), (c, a), (b, c), (c, b)},
         detectedPairs(scene))
+
+// ========================================================================
+// Collision Layer / Mask: ビットマスクによる事前フィルタリング
+// ========================================================================
+
+/// マスクが一致しないペアは重なっていても発火しない
+///   A: layer = 1 (0b01, bit0), mask = 1 (0b01, bit0)  → 自分はビット 0 だけを観測
+///   B: layer = 2 (0b10, bit1), mask = 2 (0b10, bit1)  → 自分はビット 1 だけを観測
+///   forward = A.mask & B.layer = 0b01 & 0b10 = 0  →  A は B を観測できない
+///   reverse = B.mask & A.layer = 0b10 & 0b01 = 0  →  B は A を観測できない
+///   どちらも 0 なので発火ゼロ
+@Test
+def testDetectOverlapsMaskMismatchNoFire(): Unit \ Assert =
+    let scene: Scene[Unit] = Scene.empty()
+        |> Scene.addNode("a", rectAreaNodeWithLayers(0.0, 0.0, 10.0, 10.0, true, true, 1i32, 1i32))
+        |> Scene.addNode("b", rectAreaNodeWithLayers(5.0, 0.0, 10.0, 10.0, true, true, 2i32, 2i32));
+    let empty: Set[(NodePath, NodePath)] = Set.empty();
+    Assert.assertEq(expected = empty, detectedPairs(scene))
+
+/// マスクが一方向だけ一致するなら、その方向のみ発火する
+///   A: layer = 1 (0b01, bit0), mask = 2 (0b10, bit1)  → A はビット 1 を観測する
+///   B: layer = 2 (0b10, bit1), mask = 0 (0b00)        → B は何も観測しない
+///   forward = A.mask & B.layer = 0b10 & 0b10 = 2 ≠ 0  →  a → b 発火
+///   reverse = B.mask & A.layer = 0b00 & 0b01 = 0      →  b → a 発火しない
+@Test
+def testDetectOverlapsMaskMatchOneDirection(): Unit \ Assert =
+    let scene: Scene[Unit] = Scene.empty()
+        |> Scene.addNode("a", rectAreaNodeWithLayers(0.0, 0.0, 10.0, 10.0, true, true, 1i32, 2i32))
+        |> Scene.addNode("b", rectAreaNodeWithLayers(5.0, 0.0, 10.0, 10.0, true, true, 2i32, 0i32));
+    Assert.assertEq(
+        expected = Set#{("a" :: Nil, "b" :: Nil)},
+        detectedPairs(scene))
+
+/// デフォルト値（layer = 1 (0b01, bit0), mask = 1 (0b01, bit0)、Godot 準拠）のままなら
+/// 全ノードが「ビット 0 に属しビット 0 を観測」となるため従来通り双方向発火する。
+/// これは setter を呼ばない既存テスト互換性を担保する
+@Test
+def testDetectOverlapsDefaultLayerMaskPreservesLegacy(): Unit \ Assert =
+    let scene: Scene[Unit] = Scene.empty()
+        |> Scene.addNode("a", rectAreaNode(0.0, 0.0, 10.0, 10.0))
+        |> Scene.addNode("b", rectAreaNode(5.0, 0.0, 10.0, 10.0));
+    Assert.assertEq(
+        expected = Set#{("a" :: Nil, "b" :: Nil), ("b" :: Nil, "a" :: Nil)},
+        detectedPairs(scene))
+
+/// setCollisionLayerValue でビット 2 を on にしたら、そのビットだけが立った状態になる。
+/// 続けて false で呼ぶと 0 に戻る（Godot set_collision_layer_value 相当）。
+///
+///   初期 layer = 1 (0b001, bit0 = make デフォルト)
+///   true で bit2 を on  → layer = 5 (0b101) — bit0 と bit2 が立っている
+///   false で bit2 を off → layer = 1 (0b001) — 元に戻る
+///
+/// このテストでは bit2 だけを Int32.getBit で個別に見る
+///   bit2 立っている : Int32.getBit(pos=2, layer) = 1
+///   bit2 立っていない: Int32.getBit(pos=2, layer) = 0
+@Test
+def testSetCollisionLayerValue(): Unit \ Assert =
+    let area0 = Area2D.make({x = 0.0, y = 0.0}, CollisionShape2D.RectShape2D({width = 10.0, height = 10.0}));
+    let area1 = Area2D.setCollisionLayerValue(2i32, true, area0);
+    let area2 = Area2D.setCollisionLayerValue(2i32, false, area1);
+    let bit2After1 = Int32.getBit(pos = 2i32, CollisionObject2D.getCollisionLayer(area1));
+    let bit2After2 = Int32.getBit(pos = 2i32, CollisionObject2D.getCollisionLayer(area2));
+    Assert.assertEq(expected = (1, 0), (bit2After1, bit2After2))
 
 /// 親子配置でも globalPosition で重なりが判定される
 ///   parent(100, 0) > child(local 0, 0) の child global = (100, 0)

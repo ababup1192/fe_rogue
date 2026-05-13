@@ -72,9 +72,14 @@ mod MobScene {
         let (animName, _, _) = chosenKind;
 
         let shape = CollisionShape2D.CircleShape2D({radius = collisionRadius()});
+        // Mob は自分のレイヤに属するが mask=0 で誰も観測しない。
+        // 結果として Mob ↔ Mob の重なり判定や Mob → Player の発火経路がエンジン側で
+        // 自動的に skip され、Player 側 (mask=Mob) の onAreaEntered だけが呼ばれる。
         let body = RigidBody2D.make(position, shape)
             |> RigidBody2D.setLinearVelocity(vel)
-            |> RigidBody2D.setGravityScale(0.0);
+            |> RigidBody2D.setGravityScale(0.0)
+            |> RigidBody2D.setCollisionLayer(CollisionLayers.mob())
+            |> RigidBody2D.setCollisionMask(0i32);
         let sprite = AnimatedSprite2D.make(
             buildSpriteFrames(chosenKind),
             {animation = animName},

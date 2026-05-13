@@ -23,6 +23,8 @@ pub enum RigidBody2D {
         monitoring = Bool,                           // ��エリアの侵入を検出するか
         monitorable = Bool,                          // 他エリアから検���されるか
         priority = Int32,                            // ��突判定の処理優先度
+        collisionLayer = Int32,                      // 自身が属するレイヤー（ビットマスク、Godot: collision_layer）
+        collisionMask = Int32,                       // 観測対象レイヤー（ビットマスク、Godot: collision_mask）
         linearVelocity = Vec2.Vec2,                  // 線形速度（ピ��セル/秒）
         angularVelocity = Float64,                   // 角速度（ラジアン/秒）
         gravityScale = Float64,                      // 重力倍率（0 で重力無効）
@@ -51,6 +53,8 @@ mod RigidBody2D {
             monitoring = false,
             monitorable = true,
             priority = 0,
+            collisionLayer = 1i32,
+            collisionMask = 1i32,
             linearVelocity = Vec2.zero(),
             angularVelocity = 0.0,
             gravityScale = 1.0,
@@ -166,6 +170,34 @@ mod RigidBody2D {
     pub def setPriority(p: Int32, body: RigidBody2D): RigidBody2D =
         let RigidBody2D.RigidBody2D(r) = body;
         RigidBody2D.RigidBody2D({priority = p | r})
+
+    /// 衝突レイヤー（自分が属するビットマスク）を設定する
+    pub def setCollisionLayer(layer: Int32, body: RigidBody2D): RigidBody2D =
+        let RigidBody2D.RigidBody2D(r) = body;
+        RigidBody2D.RigidBody2D({collisionLayer = layer | r})
+
+    /// 衝突マスク（自分が観測するビットマスク）を設定する
+    pub def setCollisionMask(mask: Int32, body: RigidBody2D): RigidBody2D =
+        let RigidBody2D.RigidBody2D(r) = body;
+        RigidBody2D.RigidBody2D({collisionMask = mask | r})
+
+    /// 衝突レイヤーの指定ビット (0..31) を on/off する（Godot set_collision_layer_value 相当）
+    pub def setCollisionLayerValue(bit: Int32, value: Bool, body: RigidBody2D): RigidBody2D =
+        let RigidBody2D.RigidBody2D(r) = body;
+        let newLayer = if (value)
+            Int32.setBit(pos = bit, r#collisionLayer)
+        else
+            Int32.clearBit(pos = bit, r#collisionLayer);
+        RigidBody2D.RigidBody2D({collisionLayer = newLayer | r})
+
+    /// 衝突マスクの指定ビット (0..31) を on/off する（Godot set_collision_mask_value 相当）
+    pub def setCollisionMaskValue(bit: Int32, value: Bool, body: RigidBody2D): RigidBody2D =
+        let RigidBody2D.RigidBody2D(r) = body;
+        let newMask = if (value)
+            Int32.setBit(pos = bit, r#collisionMask)
+        else
+            Int32.clearBit(pos = bit, r#collisionMask);
+        RigidBody2D.RigidBody2D({collisionMask = newMask | r})
 }
 
 // ── CanvasItem 実装 ──
@@ -235,6 +267,12 @@ instance CollisionObject2D[RigidBody2D] {
     redef getCollisionPriority(body: RigidBody2D): Int32 =
         let RigidBody2D.RigidBody2D(r) = body;
         r#priority
+    redef getCollisionLayer(body: RigidBody2D): Int32 =
+        let RigidBody2D.RigidBody2D(r) = body;
+        r#collisionLayer
+    redef getCollisionMask(body: RigidBody2D): Int32 =
+        let RigidBody2D.RigidBody2D(r) = body;
+        r#collisionMask
 }
 
 // ── PhysicsBody2D 実装 ��─

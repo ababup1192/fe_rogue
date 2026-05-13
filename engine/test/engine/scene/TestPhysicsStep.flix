@@ -261,3 +261,24 @@ def testPhysicsStepResolveAppliesWithoutException(): Unit \ Assert =
     let pos = Scene.globalPosition("ball", updated);
     // 例外なし → MTV が適用されて位置が変化（具体値は MTV の方向選択次第なので不変ではないことだけ確認）
     Assert.assertTrue(pos#x != 0.0 or pos#y != 0.0)
+
+/// mask = 0 (0b00) の RigidBody2D は StaticBody2D を貫通する（Godot collision_mask 準拠）。
+///
+///   rigid.mask  = 0 (0b00)        — 何も観測しない
+///   static.layer = 1 (0b01, bit0) — デフォルト
+///   rigid.mask & static.layer = 0b00 & 0b01 = 0  →  物理応答 skip
+///
+/// 例外なし＋重なりあり＋デフォルトなら押し戻されるが、mask=0 で skip されるので位置不変になる
+@Test
+def testPhysicsStepResolveSkipsByCollisionMask(): Unit \ Assert =
+    let rigidShape = CollisionShape2D.CircleShape2D({radius = 10.0});
+    let staticShape = CollisionShape2D.RectShape2D({width = 20.0, height = 20.0});
+    let rigidBody = RigidBody2D.make({x = 0.0, y = 0.0}, rigidShape)
+        |> RigidBody2D.setCollisionMask(0i32);
+    let staticBody = StaticBody2D.make({x = 0.0, y = 0.0}, staticShape);
+    let scene = Scene.empty()
+        |> Scene.addNode("ball", EngineNode.RigidBody2DWithState(rigidBody, TestPhysicsState.S))
+        |> Scene.addNode("wall", EngineNode.StaticBody2DWithState(staticBody, TestPhysicsState.S));
+    let updated = PhysicsStep.resolveStaticCollisions(scene);
+    let pos = Scene.globalPosition("ball", updated);
+    Assert.assertEq(expected = (0.0, 0.0), (pos#x, pos#y))

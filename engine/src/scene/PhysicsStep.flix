@@ -112,15 +112,22 @@ pub mod PhysicsStep {
 
     /// 1 つの RigidBody2D に対し、全静的ボディとの MTV を順に適用する。
     /// 各分離ごとに位置を更新し、法線方向の速度成分をゼロにする。
-    /// collisionExceptions に登録された静的ボディとの分離は skip する。
+    /// collisionExceptions に登録された静的ボディ、および (bodyMask & staticLayer) == 0
+    /// のペアは skip する（Godot collision_layer/mask 準拠）。
     def resolveOneRigid(path: NodePath, initPos: Vec2.Vec2, shape: CollisionShape2D,
                          initBody: RigidBody2D, statics: List[(NodePath, Vec2.Vec2, CollisionShape2D)],
                          scene: Scene[s]): Scene[s] =
+        let bodyMask = CollisionObject2D.getCollisionMask(initBody);
         let (finalPos, finalBody) = List.foldLeft(
             (acc, sb) -> {
                 let (pos, body) = acc;
                 let (sPath, sPos, sShape) = sb;
+                let staticLayer = Scene.getEngineNode(sPath, scene)
+                    |> Option.map(CollisionObject2D.getCollisionLayer)
+                    |> Option.getWithDefault(1i32);
                 if (RigidBody2D.hasCollisionException(sPath, body))
+                    (pos, body)
+                else if (Int32.bitwiseAnd(bodyMask, staticLayer) == 0i32)
                     (pos, body)
                 else
                     match CollisionShape2D.resolveOverlap(pos, shape, sPos, sShape) {

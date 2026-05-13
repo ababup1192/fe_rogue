@@ -127,12 +127,14 @@ instance AreaEvent.AreaHandler[NodeTag] {
     type Aef = { GameEngine.Audio, GamePhaseState }
 
     pub def onAreaEntered(_selfPath: NodePath, selfState: NodeTag,
-                          _otherPath: NodePath, otherState: NodeTag,
+                          _otherPath: NodePath, _otherState: NodeTag,
                           scene: Scene[NodeTag]):
                           Scene[NodeTag] \ {GameEngine.Audio, GamePhaseState} =
-        match (selfState, otherState) {
-            case (NodeTag.PlayerArea, NodeTag.Mob(_)) => PlayerScene.onHitMob(scene)
-            case (NodeTag.Mob(_), NodeTag.PlayerArea) => PlayerScene.onHitMob(scene)
+        // Mob 側は collisionMask=0 なので (Mob, PlayerArea) 方向の発火は
+        // エンジンレベルで遮断され、ここに来ない。
+        // PlayerArea 側だけが Mob を観測する（mask=Mob）。
+        match selfState {
+            case NodeTag.PlayerArea => PlayerScene.onHitMob(scene)
             case _ => checked_ecast(scene)
         }
 }

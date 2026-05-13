@@ -454,10 +454,17 @@ mod SceneLoader {
     def buildStaticBody2D(tagParser: Option[String] -> Result[Json.JsonError, t],
                           map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
         forM (
-            tag   <- parseTagField(tagParser, map);
-            pos   <- parseVec2("pos", map);
-            shape <- parseShape(map)
-        ) yield EngineNode.StaticBody2DWithState(StaticBody2D.make(pos, shape), tag)
+            tag                <- parseTagField(tagParser, map);
+            pos                <- parseVec2("pos", map);
+            shape              <- parseShape(map);
+            collisionLayerOpt  <- (Json.FromJson.getAtKeyOpt(Root, "collisionLayer", map): Result[Json.JsonError, Option[Int32]]);
+            collisionMaskOpt   <- (Json.FromJson.getAtKeyOpt(Root, "collisionMask", map): Result[Json.JsonError, Option[Int32]])
+        ) yield {
+            let body = StaticBody2D.make(pos, shape)
+                |> applyOpt(collisionLayerOpt, StaticBody2D.setCollisionLayer)
+                |> applyOpt(collisionMaskOpt, StaticBody2D.setCollisionMask);
+            EngineNode.StaticBody2DWithState(body, tag)
+        }
 
     def buildRigidBody2D(tagParser: Option[String] -> Result[Json.JsonError, t],
                          map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
@@ -466,24 +473,32 @@ mod SceneLoader {
             pos               <- parseVec2("pos", map);
             shape             <- parseShape(map);
             gravityScaleOpt   <- (Json.FromJson.getAtKeyOpt(Root, "gravityScale", map): Result[Json.JsonError, Option[Float64]]);
-            linearVelocityOpt <- parseVec2Opt("linearVelocity", map)
+            linearVelocityOpt <- parseVec2Opt("linearVelocity", map);
+            collisionLayerOpt <- (Json.FromJson.getAtKeyOpt(Root, "collisionLayer", map): Result[Json.JsonError, Option[Int32]]);
+            collisionMaskOpt  <- (Json.FromJson.getAtKeyOpt(Root, "collisionMask", map): Result[Json.JsonError, Option[Int32]])
         ) yield {
             let body = RigidBody2D.make(pos, shape)
                 |> applyGravityScale(gravityScaleOpt)
-                |> applyLinearVelocity(linearVelocityOpt);
+                |> applyLinearVelocity(linearVelocityOpt)
+                |> applyOpt(collisionLayerOpt, RigidBody2D.setCollisionLayer)
+                |> applyOpt(collisionMaskOpt, RigidBody2D.setCollisionMask);
             EngineNode.RigidBody2DWithState(body, tag)
         }
 
     def buildArea2D(tagParser: Option[String] -> Result[Json.JsonError, t],
                     map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
         forM (
-            tag           <- parseTagField(tagParser, map);
-            pos           <- parseVec2("pos", map);
-            shape         <- parseShape(map);
-            monitoringOpt <- (Json.FromJson.getAtKeyOpt(Root, "monitoring", map): Result[Json.JsonError, Option[Bool]])
+            tag               <- parseTagField(tagParser, map);
+            pos               <- parseVec2("pos", map);
+            shape             <- parseShape(map);
+            monitoringOpt     <- (Json.FromJson.getAtKeyOpt(Root, "monitoring", map): Result[Json.JsonError, Option[Bool]]);
+            collisionLayerOpt <- (Json.FromJson.getAtKeyOpt(Root, "collisionLayer", map): Result[Json.JsonError, Option[Int32]]);
+            collisionMaskOpt  <- (Json.FromJson.getAtKeyOpt(Root, "collisionMask", map): Result[Json.JsonError, Option[Int32]])
         ) yield {
             let area = Area2D.make(pos, shape)
-                |> applyMonitoring(monitoringOpt);
+                |> applyMonitoring(monitoringOpt)
+                |> applyOpt(collisionLayerOpt, Area2D.setCollisionLayer)
+                |> applyOpt(collisionMaskOpt, Area2D.setCollisionMask);
             EngineNode.Area2DWithState(area, tag)
         }
 
@@ -558,12 +573,14 @@ mod SceneLoader {
             skewOpt         <- (Json.FromJson.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
             visibleOpt      <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
             zIndexOpt       <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
-            monitoringOpt   <- (Json.FromJson.getAtKeyOpt(Root, "monitoring", map): Result[Json.JsonError, Option[Bool]]);
-            monitorableOpt  <- (Json.FromJson.getAtKeyOpt(Root, "monitorable", map): Result[Json.JsonError, Option[Bool]]);
-            priorityOpt     <- (Json.FromJson.getAtKeyOpt(Root, "priority", map): Result[Json.JsonError, Option[Int32]]);
-            upDirectionOpt  <- parseVec2Opt("upDirection", map);
-            floorMaxAngleOpt <- (Json.FromJson.getAtKeyOpt(Root, "floorMaxAngle", map): Result[Json.JsonError, Option[Float64]]);
-            maxSlidesOpt    <- (Json.FromJson.getAtKeyOpt(Root, "maxSlides", map): Result[Json.JsonError, Option[Int32]])
+            monitoringOpt     <- (Json.FromJson.getAtKeyOpt(Root, "monitoring", map): Result[Json.JsonError, Option[Bool]]);
+            monitorableOpt    <- (Json.FromJson.getAtKeyOpt(Root, "monitorable", map): Result[Json.JsonError, Option[Bool]]);
+            priorityOpt       <- (Json.FromJson.getAtKeyOpt(Root, "priority", map): Result[Json.JsonError, Option[Int32]]);
+            collisionLayerOpt <- (Json.FromJson.getAtKeyOpt(Root, "collisionLayer", map): Result[Json.JsonError, Option[Int32]]);
+            collisionMaskOpt  <- (Json.FromJson.getAtKeyOpt(Root, "collisionMask", map): Result[Json.JsonError, Option[Int32]]);
+            upDirectionOpt    <- parseVec2Opt("upDirection", map);
+            floorMaxAngleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "floorMaxAngle", map): Result[Json.JsonError, Option[Float64]]);
+            maxSlidesOpt      <- (Json.FromJson.getAtKeyOpt(Root, "maxSlides", map): Result[Json.JsonError, Option[Int32]])
         ) yield {
             let body = CharacterBody2D.make(pos, {moveSpeed = Option.getWithDefault(0.0, moveSpeedOpt)})
                 |> CharacterBody2D.setCollisionShape(Some(shape))
@@ -576,6 +593,8 @@ mod SceneLoader {
                 |> applyOpt(monitoringOpt, CharacterBody2D.setMonitoring)
                 |> applyOpt(monitorableOpt, CharacterBody2D.setMonitorable)
                 |> applyOpt(priorityOpt, CharacterBody2D.setPriority)
+                |> applyOpt(collisionLayerOpt, CharacterBody2D.setCollisionLayer)
+                |> applyOpt(collisionMaskOpt, CharacterBody2D.setCollisionMask)
                 |> applyOpt(upDirectionOpt, CharacterBody2D.setUpDirection)
                 |> applyOpt(floorMaxAngleOpt, CharacterBody2D.setFloorMaxAngle)
                 |> applyOpt(maxSlidesOpt, CharacterBody2D.setMaxSlides);

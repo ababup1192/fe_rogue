@@ -64,9 +64,13 @@ mod PlayerScene {
             {x = 1.0, y = 1.0}
         ) |> CanvasItem.setVisible(false);
         let circle = CollisionShape2D.CircleShape2D({radius = collisionRadius()});
+        // Player は Mob レイヤだけを観測する。Mob 同士の重なりや Mob → Player 方向の
+        // 観測はエンジンレベルで遮断される（Mob 側は mask=0）。
         let area = Area2D.make({x = 0.0, y = 0.0}, circle)
             |> Area2D.setMonitoring(true)
-            |> Area2D.setMonitorable(true);
+            |> Area2D.setMonitorable(true)
+            |> Area2D.setCollisionLayer(CollisionLayers.player())
+            |> Area2D.setCollisionMask(CollisionLayers.mob());
         let data: Data = {velocity = Vec2.zero(), hit = false};
         scene
             |> Scene.addNode(name(),

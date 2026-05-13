@@ -22,6 +22,8 @@ pub enum StaticBody2D {
         monitoring = Bool,                           // 他エリアの侵入を検出するか
         monitorable = Bool,                          // 他エリアから検出されるか
         priority = Int32,                            // 衝突判定の処理優先度
+        collisionLayer = Int32,                      // 自身が属するレイヤー（ビットマスク、Godot: collision_layer）
+        collisionMask = Int32,                       // 観測対象レイヤー（ビットマスク、Godot: collision_mask）
         physicsCollisionEnabled = Bool               // RigidBody2D を物理的に押し戻すか（true=ground のような固体、false=Area2D 検出のみ）
     })
 }
@@ -44,6 +46,8 @@ mod StaticBody2D {
             monitoring = false,
             monitorable = true,
             priority = 0,
+            collisionLayer = 1i32,
+            collisionMask = 1i32,
             physicsCollisionEnabled = true
         })
 
@@ -78,6 +82,34 @@ mod StaticBody2D {
     pub def setPriority(p: Int32, body: StaticBody2D): StaticBody2D =
         let StaticBody2D.StaticBody2D(r) = body;
         StaticBody2D.StaticBody2D({priority = p | r})
+
+    /// 衝突レイヤー（自分が属するビットマスク）を設定する
+    pub def setCollisionLayer(layer: Int32, body: StaticBody2D): StaticBody2D =
+        let StaticBody2D.StaticBody2D(r) = body;
+        StaticBody2D.StaticBody2D({collisionLayer = layer | r})
+
+    /// 衝突マスク（自分が観測するビットマスク）を設定する
+    pub def setCollisionMask(mask: Int32, body: StaticBody2D): StaticBody2D =
+        let StaticBody2D.StaticBody2D(r) = body;
+        StaticBody2D.StaticBody2D({collisionMask = mask | r})
+
+    /// 衝突レイヤーの指定ビット (0..31) を on/off する（Godot set_collision_layer_value 相当）
+    pub def setCollisionLayerValue(bit: Int32, value: Bool, body: StaticBody2D): StaticBody2D =
+        let StaticBody2D.StaticBody2D(r) = body;
+        let newLayer = if (value)
+            Int32.setBit(pos = bit, r#collisionLayer)
+        else
+            Int32.clearBit(pos = bit, r#collisionLayer);
+        StaticBody2D.StaticBody2D({collisionLayer = newLayer | r})
+
+    /// 衝突マスクの指定ビット (0..31) を on/off する（Godot set_collision_mask_value 相当）
+    pub def setCollisionMaskValue(bit: Int32, value: Bool, body: StaticBody2D): StaticBody2D =
+        let StaticBody2D.StaticBody2D(r) = body;
+        let newMask = if (value)
+            Int32.setBit(pos = bit, r#collisionMask)
+        else
+            Int32.clearBit(pos = bit, r#collisionMask);
+        StaticBody2D.StaticBody2D({collisionMask = newMask | r})
 }
 
 // ── CanvasItem 実装 ──
@@ -147,6 +179,12 @@ instance CollisionObject2D[StaticBody2D] {
     redef getCollisionPriority(body: StaticBody2D): Int32 =
         let StaticBody2D.StaticBody2D(r) = body;
         r#priority
+    redef getCollisionLayer(body: StaticBody2D): Int32 =
+        let StaticBody2D.StaticBody2D(r) = body;
+        r#collisionLayer
+    redef getCollisionMask(body: StaticBody2D): Int32 =
+        let StaticBody2D.StaticBody2D(r) = body;
+        r#collisionMask
 }
 
 // ── Node 実装 ──

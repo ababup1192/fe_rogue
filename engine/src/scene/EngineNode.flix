@@ -706,6 +706,20 @@ instance CollisionObject2D[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, _) => CollisionObject2D.getCollisionPriority(body)
         case _ => 0
     }
+    redef getCollisionLayer(node: EngineNode[s]): Int32 = match node {
+        case EngineNode.Area2DWithState(area, _) => CollisionObject2D.getCollisionLayer(area)
+        case EngineNode.Body2DWithState(body, _) => CollisionObject2D.getCollisionLayer(body)
+        case EngineNode.RigidBody2DWithState(body, _) => CollisionObject2D.getCollisionLayer(body)
+        case EngineNode.StaticBody2DWithState(body, _) => CollisionObject2D.getCollisionLayer(body)
+        case _ => 1i32
+    }
+    redef getCollisionMask(node: EngineNode[s]): Int32 = match node {
+        case EngineNode.Area2DWithState(area, _) => CollisionObject2D.getCollisionMask(area)
+        case EngineNode.Body2DWithState(body, _) => CollisionObject2D.getCollisionMask(body)
+        case EngineNode.RigidBody2DWithState(body, _) => CollisionObject2D.getCollisionMask(body)
+        case EngineNode.StaticBody2DWithState(body, _) => CollisionObject2D.getCollisionMask(body)
+        case _ => 1i32
+    }
 }
 
 // ── Renderable 実装 ──

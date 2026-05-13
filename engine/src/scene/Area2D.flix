@@ -20,6 +20,8 @@ pub enum Area2D {
         monitoring = Bool,
         monitorable = Bool,
         priority = Int32,
+        collisionLayer = Int32,
+        collisionMask = Int32,
         collisionShape = Option[CollisionShape2D]
     })
 }
@@ -39,6 +41,8 @@ mod Area2D {
             monitoring = true,
             monitorable = true,
             priority = 0,
+            collisionLayer = 1i32,
+            collisionMask = 1i32,
             collisionShape = Some(shape)
         })
 
@@ -56,6 +60,34 @@ mod Area2D {
     pub def setPriority(p: Int32, area: Area2D): Area2D =
         let Area2D.Area2D(r) = area;
         Area2D.Area2D({ priority = p | r })
+
+    /// 衝突レイヤー（自分が属するビットマスク）を設定する
+    pub def setCollisionLayer(layer: Int32, area: Area2D): Area2D =
+        let Area2D.Area2D(r) = area;
+        Area2D.Area2D({ collisionLayer = layer | r })
+
+    /// 衝突マスク（自分が観測するビットマスク）を設定する
+    pub def setCollisionMask(mask: Int32, area: Area2D): Area2D =
+        let Area2D.Area2D(r) = area;
+        Area2D.Area2D({ collisionMask = mask | r })
+
+    /// 衝突レイヤーの指定ビット (0..31) を on/off する（Godot set_collision_layer_value 相当）
+    pub def setCollisionLayerValue(bit: Int32, value: Bool, area: Area2D): Area2D =
+        let Area2D.Area2D(r) = area;
+        let newLayer = if (value)
+            Int32.setBit(pos = bit, r#collisionLayer)
+        else
+            Int32.clearBit(pos = bit, r#collisionLayer);
+        Area2D.Area2D({ collisionLayer = newLayer | r })
+
+    /// 衝突マスクの指定ビット (0..31) を on/off する（Godot set_collision_mask_value 相当）
+    pub def setCollisionMaskValue(bit: Int32, value: Bool, area: Area2D): Area2D =
+        let Area2D.Area2D(r) = area;
+        let newMask = if (value)
+            Int32.setBit(pos = bit, r#collisionMask)
+        else
+            Int32.clearBit(pos = bit, r#collisionMask);
+        Area2D.Area2D({ collisionMask = newMask | r })
 
     /// 衝突形状を設定する
     pub def setCollisionShape(shape: Option[CollisionShape2D], area: Area2D): Area2D =
@@ -130,6 +162,12 @@ instance CollisionObject2D[Area2D] {
     redef getCollisionPriority(area: Area2D): Int32 =
         let Area2D.Area2D(r) = area;
         r#priority
+    redef getCollisionLayer(area: Area2D): Int32 =
+        let Area2D.Area2D(r) = area;
+        r#collisionLayer
+    redef getCollisionMask(area: Area2D): Int32 =
+        let Area2D.Area2D(r) = area;
+        r#collisionMask
 }
 
 // -- Node 実装 --

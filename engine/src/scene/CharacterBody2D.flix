@@ -27,6 +27,8 @@ pub enum CharacterBody2D {
         monitoring = Bool,                           // 他エリアの侵入を検出するか
         monitorable = Bool,                          // 他エリアから検出されるか
         priority = Int32,                            // 衝突判定の処理優先度
+        collisionLayer = Int32,                      // 自身が属するレイヤー（ビットマスク、Godot: collision_layer）
+        collisionMask = Int32,                       // 観測対象レイヤー（ビットマスク、Godot: collision_mask）
         upDirection = Vec2.Vec2,                     // 床判定の上方向（デフォルト: (0, -1)）
         floorMaxAngle = Float64,                     // 床と判定する最大角度（ラジアン、デフォルト: π/4）
         maxSlides = Int32                            // moveAndSlide のスライド最大回数（デフォルト: 4）
@@ -51,6 +53,8 @@ mod CharacterBody2D {
             monitoring = false,
             monitorable = false,
             priority = 0,
+            collisionLayer = 1i32,
+            collisionMask = 1i32,
             upDirection = Vec2.up(),
             floorMaxAngle = 0.7853981633974483,
             maxSlides = 4
@@ -91,6 +95,34 @@ mod CharacterBody2D {
         let CharacterBody2D.CharacterBody2D(r) = body;
         CharacterBody2D.CharacterBody2D({priority = p | r})
 
+    /// 衝突レイヤー（自分が属するビットマスク）を設定する
+    pub def setCollisionLayer(layer: Int32, body: CharacterBody2D): CharacterBody2D =
+        let CharacterBody2D.CharacterBody2D(r) = body;
+        CharacterBody2D.CharacterBody2D({collisionLayer = layer | r})
+
+    /// 衝突マスク（自分が観測するビットマスク）を設定する
+    pub def setCollisionMask(mask: Int32, body: CharacterBody2D): CharacterBody2D =
+        let CharacterBody2D.CharacterBody2D(r) = body;
+        CharacterBody2D.CharacterBody2D({collisionMask = mask | r})
+
+    /// 衝突レイヤーの指定ビット (0..31) を on/off する（Godot set_collision_layer_value 相当）
+    pub def setCollisionLayerValue(bit: Int32, value: Bool, body: CharacterBody2D): CharacterBody2D =
+        let CharacterBody2D.CharacterBody2D(r) = body;
+        let newLayer = if (value)
+            Int32.setBit(pos = bit, r#collisionLayer)
+        else
+            Int32.clearBit(pos = bit, r#collisionLayer);
+        CharacterBody2D.CharacterBody2D({collisionLayer = newLayer | r})
+
+    /// 衝突マスクの指定ビット (0..31) を on/off する（Godot set_collision_mask_value 相当）
+    pub def setCollisionMaskValue(bit: Int32, value: Bool, body: CharacterBody2D): CharacterBody2D =
+        let CharacterBody2D.CharacterBody2D(r) = body;
+        let newMask = if (value)
+            Int32.setBit(pos = bit, r#collisionMask)
+        else
+            Int32.clearBit(pos = bit, r#collisionMask);
+        CharacterBody2D.CharacterBody2D({collisionMask = newMask | r})
+
     // ── move_and_slide 関連 ──
 
     /// 床判定の上方向を取得する（デフォルト: (0, -1) = 画面上）
@@ -123,10 +155,25 @@ mod CharacterBody2D {
         let CharacterBody2D.CharacterBody2D(r) = body;
         CharacterBody2D.CharacterBody2D({maxSlides = count | r})
 
+    /// `body.collisionMask` と一致するレイヤーに属する static 衝突体のみ残す。
+    /// Godot collision_mask 準拠（(bodyMask & staticLayer) != 0 のみ判定対象）。
+    def filterStaticsByMask(body: CharacterBody2D,
+                              statics: List[(NodePath, Vec2.Vec2, CollisionShape2D)],
+                              scene: Scene[s]):
+                             List[(NodePath, Vec2.Vec2, CollisionShape2D)] =
+        let bodyMask = CollisionObject2D.getCollisionMask(body);
+        List.filter(match (sPath, _, _) ->
+            let staticLayer = Scene.getEngineNode(sPath, scene)
+                |> Option.map(CollisionObject2D.getCollisionLayer)
+                |> Option.getWithDefault(1i32);
+            Int32.bitwiseAnd(bodyMask, staticLayer) != 0i32,
+            statics)
+
     /// motion ベクトル分だけ移動を試み、移動先で静的衝突体（StaticBody2D + TileMapLayer の壁）
     /// と重なる場合は元の位置に留まる。Godot move_and_collide のグリッド離散版。
     /// 衝突体の集合は `PhysicsStep.collectStaticColliders` から取得するため、
     /// 呼び出し側は TileMapLayer 等の衝突源を直接参照する必要がない。
+    /// `body.collisionMask` と一致するレイヤーのみ対象（Godot collision_mask 準拠）。
     /// 戻り値: (更新後ボディ, 衝突発生フラグ)
     pub def moveAndCollide(motion: Vec2.Vec2, scene: Scene[s],
                             body: CharacterBody2D): (CharacterBody2D, Bool) =
@@ -135,7 +182,8 @@ mod CharacterBody2D {
         let collides = match r#collisionShape {
             case None => false
             case Some(shape) =>
-                let statics = PhysicsStep.collectStaticColliders(scene);
+                let statics = filterStaticsByMask(body,
+                    PhysicsStep.collectStaticColliders(scene), scene);
                 List.exists(match (_, sPos, sShape) ->
                     CollisionShape2D.checkOverlap(targetPos, shape, sPos, sShape),
                     statics)
@@ -166,7 +214,8 @@ mod CharacterBody2D {
                 let motion = Vec2.mul(r#velocity, dtSec);
                 CharacterBody2D.CharacterBody2D({position = Vec2.add(r#position, motion) | r})
             case Some(shape) =>
-                let statics = PhysicsStep.collectStaticColliders(scene);
+                let statics = filterStaticsByMask(body,
+                    PhysicsStep.collectStaticColliders(scene), scene);
                 let initialMotion = Vec2.mul(r#velocity, dtSec);
                 let outcome = slideLoop(shape, statics, r#maxSlides, r#position,
                                           initialMotion, r#velocity);
@@ -284,6 +333,12 @@ instance CollisionObject2D[CharacterBody2D] {
     redef getCollisionPriority(body: CharacterBody2D): Int32 =
         let CharacterBody2D.CharacterBody2D(r) = body;
         r#priority
+    redef getCollisionLayer(body: CharacterBody2D): Int32 =
+        let CharacterBody2D.CharacterBody2D(r) = body;
+        r#collisionLayer
+    redef getCollisionMask(body: CharacterBody2D): Int32 =
+        let CharacterBody2D.CharacterBody2D(r) = body;
+        r#collisionMask
 }
 
 // ── PhysicsBody2D 実装 ──
