@@ -91,7 +91,10 @@ mod SceneSerializer {
 
     /// 同一 JSON ファイル内の複数ノードを 1 回の読み書きで一括更新する。
     /// CanvasLayer のリサイズで子ノード全部を更新するときに使う。
-    /// 失敗時は bug! でクラッシュ
+    /// 失敗時は bug! でクラッシュ。
+    ///
+    /// JSON のキー順と配列スタイル (inline / block) は元ファイルの状態を維持する
+    /// （Json.Write.toPrettyString を使わず JsonOrdered 経由で書き出すため）。
     pub def updateMany(jsonPath: String, nodeUpdates: List[NodeUpdate]):
             Unit \ {Fs.FileRead, Fs.FileWrite} =
         if (List.isEmpty(nodeUpdates)) ()
@@ -101,7 +104,7 @@ mod SceneSerializer {
             let textResult = readResult |> Result.mapErr(error -> "read failed: ${error}");
             let updated = forM (
                 text <- textResult;
-                json <- Json.Parse.parse(String.trim(text)) |> Option.toOk("JSON parse failed")
+                json <- JsonOrdered.parse(String.trim(text))
             ) yield {
                 List.foldLeft((acc, nu) ->
                     match replaceFieldsAtRoot(nu#nodePath, nu#updates, acc) {
@@ -111,7 +114,7 @@ mod SceneSerializer {
             };
             match updated {
                 case Ok(newJson) =>
-                    let pretty = Json.Write.toPrettyString(2, newJson);
+                    let pretty = JsonOrdered.writePretty(2, newJson);
                     let writeResult = run {
                         Fs.WriteFile.write({str = pretty}, jsonPath)
                     } with Fs.WriteFile.runWithFileWrite;
@@ -124,34 +127,36 @@ mod SceneSerializer {
         }
 
     // ========================================================================
-    // JSON 走査と書き換え
+    // JSON 走査と書き換え（OrderedJson ベース、キー順を保持）
     // ========================================================================
 
     /// ルート（配列 or オブジェクト）に対して NodePath の先頭名と一致するノードを探し、
     /// その先のパスでフィールド更新を続行する
     def replaceFieldsAtRoot(nodePath: NodePath, updates: List[FieldUpdate],
-                            json: Json.JsonElement): Result[String, Json.JsonElement] =
+                            json: JsonOrdered.OrderedJson):
+                           Result[String, JsonOrdered.OrderedJson] =
         match nodePath {
             case Nil => Err("empty NodePath")
             case rootName :: rest =>
                 match json {
-                    case Json.JsonElement.JsonObject(_) =>
+                    case JsonOrdered.OrderedJson.OObject(_) =>
                         replaceFieldsInNode(rootName, rest, updates, json)
                             |> Option.toOk("root node not found: ${rootName}")
-                    case Json.JsonElement.JsonArray(arr) =>
-                        replaceInArray(rootName, rest, updates, arr)
+                    case JsonOrdered.OrderedJson.OArray(items, style) =>
+                        replaceInArray(rootName, rest, updates, items)
                             |> Option.toOk("root node not found in array: ${rootName}")
-                            |> Result.map(Json.JsonElement.JsonArray)
+                            |> Result.map(newItems ->
+                                JsonOrdered.OrderedJson.OArray(newItems, style))
                     case _ =>
                         Err("root JSON must be object or array")
                 }
         }
 
     /// 配列の各要素を走査し、name が一致するものを置換する。
-    /// 一致するものが見つかれば置換した配列を返す。見つからなければ None
+    /// 一致するものが見つかれば置換したリストを返す。見つからなければ None
     def replaceInArray(targetName: String, restPath: NodePath, updates: List[FieldUpdate],
-                       arr: Vector[Json.JsonElement]): Option[Vector[Json.JsonElement]] =
-        let list = Vector.toList(arr);
+                       items: List[JsonOrdered.OrderedJson]):
+                      Option[List[JsonOrdered.OrderedJson]] =
         let (found, replaced) = List.foldLeft((acc, element) -> {
             let (foundFlag, accList) = acc;
             if (foundFlag) (true, List.append(accList, element :: Nil))
@@ -159,23 +164,25 @@ mod SceneSerializer {
                 case Some(newElement) => (true, List.append(accList, newElement :: Nil))
                 case None             => (foundFlag, List.append(accList, element :: Nil))
             }
-        }, (false, Nil), list);
-        if (found) Some(List.toVector(replaced)) else None
+        }, (false, Nil), items);
+        if (found) Some(replaced) else None
 
-    /// 単一ノード（Json.JsonElement.JsonObject）の "name" を確認し、一致すれば指定フィールドを置換する。
+    /// 単一ノード（OObject）の "name" を確認し、一致すれば指定フィールドを置換する。
     /// 一致しない場合は None
     def replaceFieldsInNode(targetName: String, restPath: NodePath,
                             updates: List[FieldUpdate],
-                            element: Json.JsonElement): Option[Json.JsonElement] =
+                            element: JsonOrdered.OrderedJson):
+                           Option[JsonOrdered.OrderedJson] =
         match element {
-            case Json.JsonElement.JsonObject(map) =>
-                let nameOpt: Option[String] = match Map.get("name", map) {
-                    case Some(Json.JsonElement.JsonString(s)) => Some(s)
-                    case _                                    => None
-                };
+            case JsonOrdered.OrderedJson.OObject(entries) =>
+                let nameOpt = findEntryValue("name", entries) |> Option.flatMap(v ->
+                    match v {
+                        case JsonOrdered.OrderedJson.OString(s) => Some(s)
+                        case _                                  => None
+                    });
                 match nameOpt {
                     case Some(name) if name == targetName =>
-                        Some(applyPathFromHere(restPath, updates, map))
+                        Some(applyPathFromHere(restPath, updates, entries))
                     case _ => None
                 }
             case _ => None
@@ -184,70 +191,108 @@ mod SceneSerializer {
     /// 末端ノード（このノードが目的のノードか、子を辿る必要があるか）に応じて
     /// 指定フィールドを置換 or children を辿る
     def applyPathFromHere(restPath: NodePath, updates: List[FieldUpdate],
-                          nodeMap: Map[String, Json.JsonElement]): Json.JsonElement =
+                          entries: List[(String, JsonOrdered.OrderedJson)]):
+                         JsonOrdered.OrderedJson =
         match restPath {
             case Nil =>
-                Json.JsonElement.JsonObject(applyUpdates(updates, nodeMap))
+                JsonOrdered.OrderedJson.OObject(applyUpdates(updates, entries))
             case nextName :: deeper =>
-                match Map.get("children", nodeMap) {
-                    case Some(Json.JsonElement.JsonArray(childArr)) =>
-                        match replaceInArray(nextName, deeper, updates, childArr) {
-                            case Some(newArr) =>
-                                Json.JsonElement.JsonObject(Map.insert("children", Json.JsonElement.JsonArray(newArr), nodeMap))
+                match findEntryValue("children", entries) {
+                    case Some(JsonOrdered.OrderedJson.OArray(childItems, style)) =>
+                        match replaceInArray(nextName, deeper, updates, childItems) {
+                            case Some(newItems) =>
+                                let newChildren =
+                                    JsonOrdered.OrderedJson.OArray(newItems, style);
+                                JsonOrdered.OrderedJson.OObject(
+                                    replaceEntryValue("children", newChildren, entries))
                             case None =>
-                                Json.JsonElement.JsonObject(nodeMap)
+                                JsonOrdered.OrderedJson.OObject(entries)
                         }
-                    case _ => Json.JsonElement.JsonObject(nodeMap)
+                    case _ => JsonOrdered.OrderedJson.OObject(entries)
                 }
         }
 
-    /// updates をマージしてノードの Map を返す。フィールドが既に存在しても上書きする
+    /// updates を entries にマージする。
+    /// 既存キーは順序を保ったまま値を置換、新規キーは末尾に追加する
     def applyUpdates(updates: List[FieldUpdate],
-                     nodeMap: Map[String, Json.JsonElement]): Map[String, Json.JsonElement] =
+                     entries: List[(String, JsonOrdered.OrderedJson)]):
+                    List[(String, JsonOrdered.OrderedJson)] =
         List.foldLeft((acc, update) ->
-            Map.insert(update#key, valueToJson(update#value), acc),
-            nodeMap, updates)
+            upsertEntry(update#key, valueToOrderedJson(update#value), acc),
+            entries, updates)
 
-    /// FieldValue を JSON 値に変換する
-    def valueToJson(v: FieldValue): Json.JsonElement =
+    /// (key, value) リストを順序を保ったまま走査し、key 一致なら value を置き換える。
+    /// 一致しなければ末尾に追加する
+    def upsertEntry(key: String, value: JsonOrdered.OrderedJson,
+                     entries: List[(String, JsonOrdered.OrderedJson)]):
+                    List[(String, JsonOrdered.OrderedJson)] =
+        let (found, replaced) = List.foldLeft((acc, entry) -> {
+            let (k, v) = entry;
+            let (foundFlag, accList) = acc;
+            if (k == key) (true, List.append(accList, (k, value) :: Nil))
+            else (foundFlag, List.append(accList, (k, v) :: Nil))
+        }, (false, Nil), entries);
+        if (found) replaced
+        else List.append(entries, (key, value) :: Nil)
+
+    /// 順序付き entries から key の値を取り出す
+    def findEntryValue(key: String,
+                        entries: List[(String, JsonOrdered.OrderedJson)]):
+                       Option[JsonOrdered.OrderedJson] =
+        match entries {
+            case Nil => None
+            case (k, v) :: rest =>
+                if (k == key) Some(v) else findEntryValue(key, rest)
+        }
+
+    /// 順序付き entries の key の値だけを差し替える（順序は変えない）
+    def replaceEntryValue(key: String, value: JsonOrdered.OrderedJson,
+                           entries: List[(String, JsonOrdered.OrderedJson)]):
+                          List[(String, JsonOrdered.OrderedJson)] =
+        List.map(entry -> {
+            let (k, v) = entry;
+            if (k == key) (k, value) else (k, v)
+        }, entries)
+
+    /// FieldValue を OrderedJson に変換する。
+    /// Vec2 は inline 配列 (`[0, 0]`) として出す。
+    /// shape はキー順を kind → width → height（または radius / vertical）に固定する
+    def valueToOrderedJson(v: FieldValue): JsonOrdered.OrderedJson =
         match v {
             case FieldValue.VecValue(v2) =>
-                Json.JsonElement.JsonArray(Vector#{
-                    Json.JsonElement.JsonNumber(floatToBd(v2#x)),
-                    Json.JsonElement.JsonNumber(floatToBd(v2#y))
-                })
+                JsonOrdered.OrderedJson.OArray(
+                    JsonOrdered.OrderedJson.ONumber(formatFloat(v2#x)) ::
+                    JsonOrdered.OrderedJson.ONumber(formatFloat(v2#y)) :: Nil,
+                    JsonOrdered.ArrayStyle.Inline)
             case FieldValue.ScalarValue(f) =>
-                Json.JsonElement.JsonNumber(floatToBd(f))
+                JsonOrdered.OrderedJson.ONumber(formatFloat(f))
             case FieldValue.ShapeValue(shape) =>
-                shapeToJson(shape)
+                shapeToOrderedJson(shape)
         }
 
-    /// CollisionShape2D を scene.json の `"shape"` フィールドの形式に変換する。
-    /// `{"kind": "RectShape2D", "width": ..., "height": ...}` の規約に揃える。
-    def shapeToJson(shape: CollisionShape2D): Json.JsonElement =
+    /// CollisionShape2D を `{"kind": ..., "width": ..., ...}` の OObject に変換する
+    def shapeToOrderedJson(shape: CollisionShape2D): JsonOrdered.OrderedJson =
         match shape {
             case CollisionShape2D.RectShape2D(r) =>
-                Json.JsonElement.JsonObject(Map#{
-                    "kind"   => Json.JsonElement.JsonString("RectShape2D"),
-                    "width"  => Json.JsonElement.JsonNumber(floatToBd(r#width)),
-                    "height" => Json.JsonElement.JsonNumber(floatToBd(r#height))
-                })
+                JsonOrdered.OrderedJson.OObject(
+                    ("kind",   JsonOrdered.OrderedJson.OString("RectShape2D")) ::
+                    ("width",  JsonOrdered.OrderedJson.ONumber(formatFloat(r#width))) ::
+                    ("height", JsonOrdered.OrderedJson.ONumber(formatFloat(r#height))) :: Nil)
             case CollisionShape2D.CircleShape2D(c) =>
-                Json.JsonElement.JsonObject(Map#{
-                    "kind"   => Json.JsonElement.JsonString("CircleShape2D"),
-                    "radius" => Json.JsonElement.JsonNumber(floatToBd(c#radius))
-                })
+                JsonOrdered.OrderedJson.OObject(
+                    ("kind",   JsonOrdered.OrderedJson.OString("CircleShape2D")) ::
+                    ("radius", JsonOrdered.OrderedJson.ONumber(formatFloat(c#radius))) :: Nil)
             case CollisionShape2D.CapsuleShape2D(c) =>
-                Json.JsonElement.JsonObject(Map#{
-                    "kind"     => Json.JsonElement.JsonString("CapsuleShape2D"),
-                    "radius"   => Json.JsonElement.JsonNumber(floatToBd(c#radius)),
-                    "height"   => Json.JsonElement.JsonNumber(floatToBd(c#height)),
-                    "vertical" => Json.JsonElement.JsonBool(c#vertical)
-                })
+                JsonOrdered.OrderedJson.OObject(
+                    ("kind",     JsonOrdered.OrderedJson.OString("CapsuleShape2D")) ::
+                    ("radius",   JsonOrdered.OrderedJson.ONumber(formatFloat(c#radius))) ::
+                    ("height",   JsonOrdered.OrderedJson.ONumber(formatFloat(c#height))) ::
+                    ("vertical", JsonOrdered.OrderedJson.OBool(c#vertical)) :: Nil)
         }
 
-    /// Float64 を BigDecimal に変換する。整数値の場合は trailing zero を取り除き
-    /// "144.0" ではなく "144" として書き出されるようにする。
-    def floatToBd(value: Float64): BigDecimal =
-        unsafe IO { BigDecimal.valueOf(value).stripTrailingZeros() }
+    /// Float64 を JSON 数値文字列に。整数値なら "144"、小数なら "144.5" のようにする
+    def formatFloat(value: Float64): String =
+        unsafe IO {
+            BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
+        }
 }

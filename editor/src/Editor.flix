@@ -285,8 +285,20 @@ mod Editor {
         }
 
     /// HotReload watcher の通知をノンブロッキングで消費する。
+    /// editor ON 中は HotReload を握り潰す。理由:
+    ///   - editor の編集は Scene.mapEngineNode で live scene に即時反映済みなので、
+    ///     JSON 書き戻し後に applyPhaseChange でシーンを再構築する必要が無い
+    ///   - editor ON のとき GameEngine.process / physicsProcess 等もスキップしているのと
+    ///     対称的に、HotReload も止めるのが意図に合う（ゲームを止めて編集に集中する）
+    ///   - editor 経由の save → HotReload → rebuild の連鎖でパイプ等が
+    ///     初期位置から再 spawn されてしまう regression を防ぐ
+    ///
+    /// 受信した通知自体は捨てず、`EditorState.pollReload` を呼んで非ブロッキング受信は実行する
+    /// （チャネルにメッセージが溜まり続けないようにするため）
     pub def pollReload(): Bool \ EditorState =
-        EditorState.pollReload()
+        let consumed = EditorState.pollReload();
+        let s = EditorState.get();
+        if (s#on) false else consumed
 
     /// 描画用のオーバーレイをシーンに合成する。Game.flix の render 直前に呼ぶ。
     pub def applyOverlay(fontAtlas: FontAtlas, defaultTag: t, scene: Scene[t]):
