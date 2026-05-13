@@ -133,7 +133,7 @@ def testPipeRecyclesWhenOffScreen(): Unit \ {Assert, Fs.FileRead} =
         // bird を pipe_0(x=576) より遠く（x=2000）に移動 → camera 追従後 viewportLeftX=1928
         let movedBird = Scene.setGlobalPositionAt("bird" :: Nil,
             {x = 2000.0, y = 200.0}, initial);
-        Scene.processAll(0.016, false, movedBird)
+        Scene.processAll(Duration.seconds(0.016), false, movedBird)
     }));
     let pairCount = List.length(Scene.getNodesInGroup(PipeScene.pipeGroup(), result));
     let pair0Removed = Option.isEmpty(Scene.getEngineNode(pair0 :: Nil, result));
@@ -153,7 +153,7 @@ def testPipeRecyclesAfterCoinPassed(): Unit \ {Assert, Fs.FileRead} =
         // bird を pipe_0 より遠くに移動 → pipe_0 が画面外
         let movedBird = Scene.setGlobalPositionAt("bird" :: Nil,
             {x = 2000.0, y = 200.0}, afterPass);
-        Scene.processAll(0.016, false, movedBird)
+        Scene.processAll(Duration.seconds(0.016), false, movedBird)
     }));
     let pairCount = List.length(Scene.getNodesInGroup(PipeScene.pipeGroup(), result));
     let pair0Removed = Option.isEmpty(Scene.getEngineNode(pair0 :: Nil, result));

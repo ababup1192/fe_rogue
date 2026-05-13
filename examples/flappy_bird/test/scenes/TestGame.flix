@@ -21,12 +21,13 @@ def withMockRecycle(f: Unit -> a \ ef + Recycle): a \ ef + Math.Random =
             k(PipeScene.spawnRecycledPair(ScoreScene.getScore(scene), scene))
     }
 
-/// GameEngine.Audio のモックハンドラ（playAudio/stopAudio は no-op）。
+/// GameEngine.Audio のモックハンドラ（playAudio/stopAudio/setVolume は no-op）。
 /// 他のエフェクト（Fs.FileRead など）は呼び出し元へ伝播する
 def withMockAudio(f: Unit -> a \ ef + GameEngine.Audio): a \ ef =
     run f() with handler GameEngine.Audio {
         def playAudio(_, k) = k(())
         def stopAudio(_, k) = k(())
+        def setVolume(_, _, k) = k(())
     }
 
 /// GameEngine.Audio + BirdStateChanged のモックハンドラ
@@ -38,8 +39,28 @@ def withMockAudioAndState(f: Unit -> a \ ef + GameEngine.Audio + BirdStateChange
     } with handler GameEngine.Audio {
         def playAudio(_, k) = k(())
         def stopAudio(_, k) = k(())
+        def setVolume(_, _, k) = k(())
     } with handler BirdStateChanged {
         def emit(_, scene, k) = k(scene)
+    }
+
+/// GameEngine.Game のモックハンドラ。SceneLoader が要求する Game eff を吸収する。
+/// テクスチャ問い合わせ等は使われない想定なので bug! / ダミー値を返す
+def withMockGame(f: Unit -> a \ ef + GameEngine.Game): a \ ef =
+    run f() with handler GameEngine.Game {
+        def renderCommands(_, _, k) = k(())
+        def initTileBuffer(_, k) = k((0i32, 0i32))
+        def shouldClose(k) = k(false)
+        def getDeltaTime(k) = k(Duration.zero())
+        def isKeyPressed(_, k) = k(false)
+        def getMousePosition(k) = k(Vec2.zero())
+        def isMouseButtonPressed(_, k) = k(false)
+        def consumeScrollDelta(k) = k(0.0)
+        def getFontAtlas(_, _) = bug!("getFontAtlas not used in tests")
+        def getViewportRect(k) = k({position = Vec2.zero(),
+                                     size = {x = 288.0, y = 512.0}})
+        def getTextureInfo(_, k) = k(None)
+        def setCursor(_, k) = k(())
     }
 
 /// テスト用のダミー FontAtlas（空のグリフマップ）
@@ -53,14 +74,15 @@ def testFontAtlas(): FontAtlas = {
     glyphs = Map.empty()
 }
 
-/// buildPlayingScene のシーンを取得（Math.Random をモックで処理）。
+/// buildPlayingScene のシーンを取得（Math.Random / GameEngine.Game をモックで処理）。
 /// GroundScene.scene.json などを読み込むため Fs.FileRead を伴う
 def testScene(): Scene[NodeTag] \ Fs.FileRead =
-    withMockRandom(() -> Game.buildPlayingScene(testFontAtlas(), 0))
+    withMockGame(() -> withMockRandom(() -> Game.buildPlayingScene(testFontAtlas(), 0)))
 
-/// buildMenuScene のシーンを取得（MenuScene.scene.json を読み込むため Fs.FileRead を伴う）
+/// buildMenuScene のシーンを取得（MenuScene.scene.json を読み込むため Fs.FileRead を伴う）。
+/// SceneLoader が GameEngine.Game eff を要求するためモックで吸収する
 def testMenuScene(): Scene[NodeTag] \ Fs.FileRead =
-    Game.buildMenuScene(testFontAtlas(), 0)
+    withMockGame(() -> Game.buildMenuScene(testFontAtlas(), 0))
 
 /// Vec2 をタプルに変換するヘルパー
 def vecToTuple(v: Vec2.Vec2): (Float64, Float64) = (v#x, v#y)
@@ -70,7 +92,7 @@ def vecToTuple(v: Vec2.Vec2): (Float64, Float64) = (v#x, v#y)
 def runBirdPhysicsProcess(scene: Scene[NodeTag]): Scene[NodeTag] =
     match Scene.getEngineNode("bird" :: Nil, scene) {
         case Some(node) =>
-            let (newNode, newScene) = BirdScene.physicsProcess(0.0, node, "bird" :: Nil, scene);
+            let (newNode, newScene) = BirdScene.physicsProcess(Duration.zero(), node, "bird" :: Nil, scene);
             Scene.setEngineNode("bird" :: Nil, newNode, newScene)
         case None => bug!("bird not found")
     }

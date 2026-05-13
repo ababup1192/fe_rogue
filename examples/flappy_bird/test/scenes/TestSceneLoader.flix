@@ -7,17 +7,24 @@
 // 共通ヘルパー
 // ========================================================================
 
-/// MenuScene.scene.json をテスト用に読み込んだ scene を取得する
+/// MenuScene.scene.json をテスト用に読み込んだ scene を取得する。
+/// SceneLoader が要求する GameEngine.Game eff は withMockGame で吸収する
 def loadedMenuScene(): Scene[NodeTag] \ Fs.FileRead =
-    SceneLoader.loadScene("src/scenes/MenuScene.scene.json", Scene.empty())
+    withMockGame(() ->
+        SceneLoader.loadScene("src/scenes/MenuScene.scene.json",
+                              SceneLoader.constTagParser(NodeTag.NoTag), Scene.empty()))
 
 /// GroundScene.scene.json をテスト用に読み込んだ scene を取得する
 def loadedGroundScene(): Scene[NodeTag] \ Fs.FileRead =
-    SceneLoader.loadScene("src/scenes/GroundScene.scene.json", Scene.empty())
+    withMockGame(() ->
+        SceneLoader.loadScene("src/scenes/GroundScene.scene.json",
+                              SceneLoader.constTagParser(NodeTag.NoTag), Scene.empty()))
 
 /// ScoreScene.scene.json をテスト用に読み込んだ scene を取得する（loadSceneWithFont 経由）
 def loadedScoreScene(): Scene[NodeTag] \ Fs.FileRead =
-    SceneLoader.loadSceneWithFont("src/scenes/ScoreScene.scene.json", testFontAtlas(), Scene.empty())
+    withMockGame(() ->
+        SceneLoader.loadSceneWithFont("src/scenes/ScoreScene.scene.json", testFontAtlas(),
+                                       SceneLoader.constTagParser(NodeTag.NoTag), Scene.empty()))
 
 // ========================================================================
 // 構造テスト
@@ -179,15 +186,16 @@ def testScoreSceneJsonStructure(): Unit \ {Assert, Fs.FileRead} =
          not Option.isEmpty(Scene.getEngineNode("hud" :: "score_label" :: Nil, scene)),
          not Option.isEmpty(Scene.getEngineNode("hud" :: "best_score_label" :: Nil, scene))))
 
-/// score_label は Label2D で text="0"、fontSize=60、centered=true、可視
+/// score_label は Label2D で text="0"、fontSize=60、可視
+/// （centered フィールドはエンジン側 Label2D から削除されたためチェックしない）
 @Test
 def testScoreLabelLabel2D(): Unit \ {Assert, Fs.FileRead} =
     match Scene.getEngineNode("hud" :: "score_label" :: Nil, loadedScoreScene()) {
         case Some(EngineNode.Label2DWithState(label, NodeTag.NoTag)) =>
             let Label2D.Label2D(r) = label;
             Assert.assertEq(
-                expected = ("0", 60.0, true, true, (144.0, 50.0)),
-                (r#text, r#fontSize, r#centered, r#visible,
+                expected = ("0", 60.0, true, (144.0, 50.0)),
+                (r#text, r#fontSize, r#visible,
                  (r#position#x, r#position#y)))
         case _ => bug!("score_label should be Label2D with NoTag")
     }

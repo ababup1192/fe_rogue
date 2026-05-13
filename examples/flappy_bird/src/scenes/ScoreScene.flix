@@ -41,8 +41,8 @@ mod ScoreScene {
     /// 構造は ScoreScene.scene.json から読み込み、ScoreLabel/BestScoreLabel タグと
     /// ベストスコアの初期表示値は読み込み後に setState/setText で適用する
     pub def addHud(fontAtlas: FontAtlas, bestScore: BestScore,
-                   scene: Scene[NodeTag]): Scene[NodeTag] \ Fs.FileRead =
-        SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas, scene)
+                   scene: Scene[NodeTag]): Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
+        SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas, SceneLoader.constTagParser(NodeTag.NoTag), scene)
             |> Scene.setState(scoreLabelPath(), NodeTag.ScoreLabel(0))
             |> Scene.setState(bestScoreLabelPath(), NodeTag.BestScoreLabel(bestScore))
             |> Scene.mapEngineNode(bestScoreLabelPath(),

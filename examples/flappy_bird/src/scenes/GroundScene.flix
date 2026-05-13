@@ -65,8 +65,8 @@ mod GroundScene {
     /// 初期地面タイルを配置する（2 枚で画面幅 + スクロールバッファをカバー）。
     /// 構造は GroundScene.scene.json から読み込む。
     /// 画面外になったタイルの再配置は NodeRemovedHandler が担う
-    pub def addGrounds(scene: Scene[NodeTag]): Scene[NodeTag] \ Fs.FileRead =
-        SceneLoader.loadScene(sceneJsonPath(), scene)
+    pub def addGrounds(scene: Scene[NodeTag]): Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
+        SceneLoader.loadScene(sceneJsonPath(), SceneLoader.constTagParser(NodeTag.NoTag), scene)
 
     /// 地面グループ内の最右端 X 座標を返す（リサイクル位置決定に使用）
     def maxGroundX(scene: Scene[NodeTag]): Float64 =

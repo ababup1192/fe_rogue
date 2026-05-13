@@ -37,10 +37,10 @@ def testMedalThresholds(): Unit \ Assert =
 def testGameOverUIMedalPresence(): Unit \ {Assert, Fs.FileRead} =
     let medalPath = "gameover" :: "medal" :: Nil;
     let buildWith = (score, best) ->
-        testScene()
+        withMockGame(() -> testScene()
             |> ScoreScene.setScore(score)
             |> ScoreScene.setBestScore(best)
-            |> GameOverScene.addGameOverUI(testFontAtlas());
+            |> GameOverScene.addGameOverUI(testFontAtlas()));
     let hasMedal = scene -> not Option.isEmpty(Scene.getEngineNode(medalPath, scene));
     Assert.assertEq(
         expected = (false, true, true),
@@ -51,7 +51,7 @@ def testGameOverUIMedalPresence(): Unit \ {Assert, Fs.FileRead} =
 /// addGameOverUI 後に HUD スコアラベルが非表示になる
 @Test
 def testGameOverHidesHudScore(): Unit \ {Assert, Fs.FileRead} =
-    let scene = GameOverScene.addGameOverUI(testFontAtlas(), testScene());
+    let scene = withMockGame(() -> GameOverScene.addGameOverUI(testFontAtlas(), testScene()));
     match Scene.getEngineNode(ScoreScene.scoreLabelPath(), scene) {
         case Some(EngineNode.Label2DWithState(label, _)) =>
             Assert.assertFalse(CanvasItem.isVisible(label))
@@ -67,7 +67,7 @@ def testGameOverHidesHudScore(): Unit \ {Assert, Fs.FileRead} =
 /// updateAnimation を経由しない初期状態（elapsed=0）も未完了。
 @Test
 def testGameOverAnimationFinishedGate(): Unit \ {Assert, Fs.FileRead} =
-    let initial = GameOverScene.addGameOverUI(testFontAtlas(), testScene());
+    let initial = withMockGame(() -> GameOverScene.addGameOverUI(testFontAtlas(), testScene()));
     let half = GameOverScene.updateAnimation(0.5, initial);
     let past = GameOverScene.updateAnimation(0.9, initial);
     Assert.assertEq(
@@ -83,7 +83,7 @@ def testGameOverAnimationFinishedGate(): Unit \ {Assert, Fs.FileRead} =
 @Test
 def testGameOverAnimationShowsPanelAfterThreshold(): Unit \ {Assert, Fs.FileRead} =
     let panelPath = "gameover" :: "score_panel" :: Nil;
-    let initial = GameOverScene.addGameOverUI(testFontAtlas(), testScene());
+    let initial = withMockGame(() -> GameOverScene.addGameOverUI(testFontAtlas(), testScene()));
     let beforeThreshold = GameOverScene.updateAnimation(0.2, initial);
     let afterThreshold = GameOverScene.updateAnimation(0.4, initial);
     let panelVisible = scene -> match Scene.getEngineNode(panelPath, scene) {

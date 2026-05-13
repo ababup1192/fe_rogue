@@ -117,15 +117,15 @@ mod BirdScene {
     /// 鳥のノードをシーンに追加する（プレイ用）。
     /// 構造・gravityScale・linearVelocity は BirdScene.scene.json から読み込み、
     /// Bird(BirdData) タグ（ゲーム状態）は Flix 側で付与する
-    pub def addBird(scene: Scene[NodeTag]): Scene[NodeTag] \ Fs.FileRead =
+    pub def addBird(scene: Scene[NodeTag]): Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
         let birdData: BirdData = {state = BirdState.Flapping, speed = birdSpeed(), hitPipe = None};
-        SceneLoader.loadScene(sceneJsonPath(), scene)
+        SceneLoader.loadScene(sceneJsonPath(), SceneLoader.constTagParser(NodeTag.NoTag), scene)
             |> Scene.setState(birdPath(), NodeTag.Bird(birdData))
 
     /// メニュー画面用の鳥をシーンに追加する。
     /// JSON で読み込んだ後、Flying 状態・重力ゼロ・速度ゼロで上書きする
     /// （毎フレーム update は no-op）
-    pub def addBirdForMenu(scene: Scene[NodeTag]): Scene[NodeTag] \ Fs.FileRead =
+    pub def addBirdForMenu(scene: Scene[NodeTag]): Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
         let menuData: BirdData = {state = BirdState.Flying, speed = 0.0, hitPipe = None};
         addBird(scene)
             |> Scene.setState(birdPath(), NodeTag.Bird(menuData))
@@ -174,7 +174,7 @@ mod BirdScene {
     /// physicsProcess コールバック: bird.gd の `_physics_process(delta) → state.update(delta)` の Flix 移植
     /// 状態ごとに上記の per-state update 関数にディスパッチ
     /// Node[NodeTag] の Aef ({ Math.Random }) に合わせてエフェクトを宣言する
-    pub def physicsProcess(_delta: Float64, node: EngineNode[NodeTag],
+    pub def physicsProcess(_delta: Duration.Duration, node: EngineNode[NodeTag],
                            _path: NodePath, scene: Scene[NodeTag]
                           ): (EngineNode[NodeTag], Scene[NodeTag]) =
         match node {

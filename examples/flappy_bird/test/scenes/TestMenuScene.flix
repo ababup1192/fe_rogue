@@ -25,7 +25,7 @@ def testMenuBirdState(): Unit \ {Assert, Fs.FileRead} =
 def testMenuBirdStatic(): Unit \ {Assert, Fs.FileRead} =
     let scene = testMenuScene();
     let posBefore = Scene.globalPosition("bird", scene);
-    let sceneAfter = withMockRandom(() -> withMockRecycle(() -> scene |> Scene.processAll(0.5, false)));
+    let sceneAfter = withMockRandom(() -> withMockRecycle(() -> scene |> Scene.processAll(Duration.seconds(0.5), false)));
     let posAfter = Scene.globalPosition("bird", sceneAfter);
     Assert.assertTrue(Float64.abs(posAfter#y - posBefore#y) < 0.001)
 

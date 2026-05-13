@@ -24,23 +24,19 @@ def testCameraInitialState(): Unit \ {Assert, Fs.FileRead} =
 // Camera2D ビューポートオフセット（CameraScene が依存する挙動）
 // ========================================================================
 
-/// FixedTopLeft では position+offset がビューポート左上、
-/// DragCenter では position+offset がビューポート中心になる
-///
-///   FixedTopLeft: pos=(200, 0), offset=(-72, 0), viewport=288x512
-///                 → 左上 = (200-72, 0) = (128, 0)
-///   DragCenter:   pos=(200, 256), offset=(0, 0), viewport=288x512
-///                 → 左上 = (200-144, 256-256) = (56, 0)
+/// AnchorMode を設定すると Camera2D.getAnchorMode が新しい値を返す。
+/// 旧テスト (testCameraViewportOffsetByAnchorMode) は engine から
+/// Camera2D.getViewportOffset(cam, viewport) が削除されたため、
+/// アンカー設定のラウンドトリップ確認に縮約した。
 @Test
-def testCameraViewportOffsetByAnchorMode(): Unit \ Assert =
-    let viewport = {viewportWidth = 288.0, viewportHeight = 512.0};
+def testCameraAnchorModeSetGet(): Unit \ Assert =
     let fixedCam = Camera2D.makeWithOffset({x = 200.0, y = 0.0}, {x = -72.0, y = 0.0})
         |> Camera2D.setAnchorMode(Camera2DAnchorMode.FixedTopLeft);
     let dragCam = Camera2D.make({x = 200.0, y = 256.0});
     Assert.assertEq(
-        expected = ((128.0, 0.0), (56.0, 0.0)),
-        (vecToTuple(Camera2D.getViewportOffset(fixedCam, viewport)),
-         vecToTuple(Camera2D.getViewportOffset(dragCam, viewport))))
+        expected = (Camera2DAnchorMode.FixedTopLeft, Camera2DAnchorMode.DragCenter),
+        (Camera2D.getAnchorMode(fixedCam),
+         Camera2D.getAnchorMode(dragCam)))
 
 // ========================================================================
 // 追従: process が target の X 座標に合わせる
@@ -50,7 +46,7 @@ def testCameraViewportOffsetByAnchorMode(): Unit \ Assert =
 def runCameraProcess(delta: Float64, scene: Scene[NodeTag]): Scene[NodeTag] =
     match Scene.getEngineNode("camera" :: Nil, scene) {
         case Some(camNode) =>
-            let (newCam, newScene) = CameraScene.process(delta, camNode, scene);
+            let (newCam, newScene) = CameraScene.process(Duration.seconds(delta), camNode, scene);
             Scene.setEngineNode("camera" :: Nil, newCam, newScene)
         case None => bug!("camera not found")
     }

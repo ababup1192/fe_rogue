@@ -105,12 +105,12 @@ mod CameraScene {
     /// 追従対象の位置に合わせて 1 フレーム分カメラを更新する
     /// シェイク中は基準オフセットに先取り済みオフセットを加え、残り時間と強度を減衰させる
     /// シェイク非アクティブ時は基準オフセットに戻す（次フレームの揺れ残りを防ぐ）
-    pub def process(delta: Float64, node: EngineNode[NodeTag],
+    pub def process(delta: Duration.Duration, node: EngineNode[NodeTag],
                     scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) =
         match node {
             case EngineNode.Camera2DWithState(camera, NodeTag.Camera(data)) =>
                 let targetPos = Scene.globalPosition(data#target, scene);
-                let (offset, nextShake) = stepShake(data#shake, delta);
+                let (offset, nextShake) = stepShake(data#shake, Duration.toSeconds(delta));
                 let newCamera = camera
                     |> Node2D.setPosition({x = targetPos#x, y = 0.0})
                     |> Camera2D.setOffset(offset);

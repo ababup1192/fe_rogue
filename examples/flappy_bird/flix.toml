@@ -19,21 +19,11 @@ authors     = ["ababup1192 <ababup1192@gmail.com>"]
 "org.lwjgl:lwjgl-openal" = "3.3.4"
 
 [jar-dependencies]
-# macOS ARM64 (Apple Silicon)
+# まず macos-arm64 のみで動作確認（fe_rogue と同じ）。
+# 他プラットフォーム jar を追加するとビルドが詰まる現象が出たので、必要に応じて
+# 後から `lwjgl-*-natives-macos.jar` / `lwjgl-*-natives-windows.jar` を追記する。
 "lwjgl-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl/3.3.4/lwjgl-3.3.4-natives-macos-arm64.jar"
 "lwjgl-glfw-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-glfw/3.3.4/lwjgl-glfw-3.3.4-natives-macos-arm64.jar"
 "lwjgl-opengl-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-opengl/3.3.4/lwjgl-opengl-3.3.4-natives-macos-arm64.jar"
 "lwjgl-stb-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-stb/3.3.4/lwjgl-stb-3.3.4-natives-macos-arm64.jar"
 "lwjgl-openal-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-openal/3.3.4/lwjgl-openal-3.3.4-natives-macos-arm64.jar"
-# macOS x86_64 (Intel Mac)
-"lwjgl-3.3.4-natives-macos.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl/3.3.4/lwjgl-3.3.4-natives-macos.jar"
-"lwjgl-glfw-3.3.4-natives-macos.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-glfw/3.3.4/lwjgl-glfw-3.3.4-natives-macos.jar"
-"lwjgl-opengl-3.3.4-natives-macos.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-opengl/3.3.4/lwjgl-opengl-3.3.4-natives-macos.jar"
-"lwjgl-stb-3.3.4-natives-macos.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-stb/3.3.4/lwjgl-stb-3.3.4-natives-macos.jar"
-"lwjgl-openal-3.3.4-natives-macos.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-openal/3.3.4/lwjgl-openal-3.3.4-natives-macos.jar"
-# Windows x86_64
-"lwjgl-3.3.4-natives-windows.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl/3.3.4/lwjgl-3.3.4-natives-windows.jar"
-"lwjgl-glfw-3.3.4-natives-windows.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-glfw/3.3.4/lwjgl-glfw-3.3.4-natives-windows.jar"
-"lwjgl-opengl-3.3.4-natives-windows.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-opengl/3.3.4/lwjgl-opengl-3.3.4-natives-windows.jar"
-"lwjgl-stb-3.3.4-natives-windows.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-stb/3.3.4/lwjgl-stb-3.3.4-natives-windows.jar"
-"lwjgl-openal-3.3.4-natives-windows.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-openal/3.3.4/lwjgl-openal-3.3.4-natives-windows.jar"

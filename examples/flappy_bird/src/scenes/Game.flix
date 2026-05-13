@@ -90,7 +90,7 @@ instance Node[NodeTag] {
 
     // 各シーンへ委譲するだけのディスパッチ
     // Bird は bird.gd に倣い _process を使わない（physicsProcess のみ）
-    redef process(delta: Float64, node: EngineNode[NodeTag],
+    redef process(delta: Duration.Duration, node: EngineNode[NodeTag],
                   path: NodePath, scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ Recycle =
         match node {
             case EngineNode.Camera2DWithState(_, NodeTag.Camera(_)) =>
@@ -105,7 +105,7 @@ instance Node[NodeTag] {
         }
 
     // Bird: 回転 -30° クランプ + 落下時 angVel = 1.5（bird.gd FlappingState.update 準拠）
-    redef physicsProcess(delta: Float64, node: EngineNode[NodeTag],
+    redef physicsProcess(delta: Duration.Duration, node: EngineNode[NodeTag],
                          path: NodePath, scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ Recycle =
         match node {
             case EngineNode.RigidBody2DWithState(_, NodeTag.Bird(_)) =>
@@ -245,7 +245,7 @@ mod Game {
     /// プレイ中のシーンを構築する（GamePhase.Playing 用）
     /// bestScore: セッション中のベストスコア（初回は 0）
     /// GroundScene.addGrounds が JSON ファイル読み込みを行うため Fs.FileRead を伴う
-    pub def buildPlayingScene(fontAtlas: FontAtlas, bestScore: BestScore): Scene[NodeTag] \ {Math.Random, Fs.FileRead} =
+    pub def buildPlayingScene(fontAtlas: FontAtlas, bestScore: BestScore): Scene[NodeTag] \ {Math.Random, Fs.FileRead, GameEngine.Game} =
         Scene.empty()
             |> addBackground
             |> BirdScene.addBird
@@ -257,7 +257,7 @@ mod Game {
     /// メニュー画面のシーンを構築する（GamePhase.Menu 用）
     /// 背景 + 鳥(Flying) + カメラ + HUD(スコア非表示) + 地面 + メニュー UI
     /// MenuScene.addMenuUI が JSON ファイル読み込みを行うため Fs.FileRead を伴う
-    pub def buildMenuScene(fontAtlas: FontAtlas, bestScore: BestScore): Scene[NodeTag] \ Fs.FileRead =
+    pub def buildMenuScene(fontAtlas: FontAtlas, bestScore: BestScore): Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
         Scene.empty()
             |> addBackground
             |> BirdScene.addBirdForMenu
@@ -333,7 +333,7 @@ mod Game {
     ///   - Menu     : フルリビルド
     ///   - GameOver : 既存 scene に GameOver オーバーレイを追加
     def applyPhaseChange(phase: GamePhase, fontAtlas: FontAtlas,
-                         scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Audio, Math.Random, Fs.FileRead} =
+                         scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Audio, GameEngine.Game, Math.Random, Fs.FileRead} =
         match phase {
             case GamePhase.Playing =>
                 GameEngine.Audio.playAudio("sfx_swooshing");
@@ -380,7 +380,7 @@ mod Game {
                                 applyPhaseChange(currentPhase, fontAtlas, updatedScene)
                             else updatedScene;
             // エディタオーバーレイを合成して描画。オーバーレイは次フレームに引き継がない
-            GameEngine.render(Editor.applyOverlay(fontAtlas, nextScene));
+            GameEngine.render(Editor.applyOverlay(fontAtlas, NodeTag.NoTag, nextScene));
             gameLoop(fontAtlas, currentPhase, nextScene)
         }
 }

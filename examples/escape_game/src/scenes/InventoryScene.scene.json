@@ -1,0 +1,115 @@
+{
+  "type": "CanvasLayer",
+  "name": "Inventory",
+  "layer": 8,
+  "pos": [0, 0],
+  "rotation": 0,
+  "scale": [1, 1],
+  "children": [
+    {
+      "type": "ColorRect",
+      "name": "SelectionHighlight",
+      "pos": [150, 2],
+      "size": [36, 36],
+      "color": {"r": 1.0, "g": 0.8, "b": 0.2},
+      "alpha": 1.0,
+      "visible": false,
+      "zIndex": 0
+    },
+    {
+      "type": "ColorRect",
+      "name": "Slot0Bg",
+      "pos": [152, 4],
+      "size": [32, 32],
+      "color": {"r": 0.1, "g": 0.1, "b": 0.12},
+      "alpha": 0.8,
+      "zIndex": 1
+    },
+    {
+      "type": "ColorRect",
+      "name": "Slot1Bg",
+      "pos": [188, 4],
+      "size": [32, 32],
+      "color": {"r": 0.1, "g": 0.1, "b": 0.12},
+      "alpha": 0.8,
+      "zIndex": 1
+    },
+    {
+      "type": "ColorRect",
+      "name": "Slot2Bg",
+      "pos": [224, 4],
+      "size": [32, 32],
+      "color": {"r": 0.1, "g": 0.1, "b": 0.12},
+      "alpha": 0.8,
+      "zIndex": 1
+    },
+    {
+      "type": "ColorRect",
+      "name": "Slot3Bg",
+      "pos": [260, 4],
+      "size": [32, 32],
+      "color": {"r": 0.1, "g": 0.1, "b": 0.12},
+      "alpha": 0.8,
+      "zIndex": 1
+    },
+    {
+      "type": "ColorRect",
+      "name": "Slot4Bg",
+      "pos": [296, 4],
+      "size": [32, 32],
+      "color": {"r": 0.1, "g": 0.1, "b": 0.12},
+      "alpha": 0.8,
+      "zIndex": 1
+    },
+    {
+      "type": "Sprite2D",
+      "name": "Slot0Icon",
+      "pos": [168, 20],
+      "scale": [1, 1],
+      "texture": "",
+      "centered": true,
+      "visible": false,
+      "zIndex": 2
+    },
+    {
+      "type": "Sprite2D",
+      "name": "Slot1Icon",
+      "pos": [204, 20],
+      "scale": [1, 1],
+      "texture": "",
+      "centered": true,
+      "visible": false,
+      "zIndex": 2
+    },
+    {
+      "type": "Sprite2D",
+      "name": "Slot2Icon",
+      "pos": [240, 20],
+      "scale": [1, 1],
+      "texture": "",
+      "centered": true,
+      "visible": false,
+      "zIndex": 2
+    },
+    {
+      "type": "Sprite2D",
+      "name": "Slot3Icon",
+      "pos": [276, 20],
+      "scale": [1, 1],
+      "texture": "",
+      "centered": true,
+      "visible": false,
+      "zIndex": 2
+    },
+    {
+      "type": "Sprite2D",
+      "name": "Slot4Icon",
+      "pos": [312, 20],
+      "scale": [1, 1],
+      "texture": "",
+      "centered": true,
+      "visible": false,
+      "zIndex": 2
+    }
+  ]
+}

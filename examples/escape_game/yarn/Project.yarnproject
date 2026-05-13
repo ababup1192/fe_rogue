@@ -1,0 +1,17 @@
+{
+  "projectFileVersion": 4,
+  "sourceFiles": [
+    "**/*.yarn"
+  ],
+  "excludeFiles": [],
+  "baseLanguage": "en",
+  "projectName": "HelloYarn",
+  "authorName": [
+    "Author"
+  ],
+  "editorOptions": {
+    "yarnScriptEditor": {
+      "presenter": "try"
+    }
+  }
+}

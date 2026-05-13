@@ -23,7 +23,7 @@ def testBirdInitialState(): Unit \ {Assert, Fs.FileRead} =
                  birdData#state,
                  RigidBody2D.getGravityScale(body),
                  RigidBody2D.getLinearVelocity(body)#x,
-                 AnimatedSprite2D.getCurrentAnimation(sprite)))
+                 AnimatedSprite2D.getAnimation(sprite)))
         case _ => bug!("bird or bird/sprite not found")
     }
 
@@ -46,7 +46,7 @@ def testBirdAreaChild(): Unit \ {Assert, Fs.FileRead} =
 @Test
 def testBirdFallsWithGravity(): Unit \ {Assert, Fs.FileRead} =
     let scene = testScene()
-        |> PhysicsStep.integrate(0.5, PhysicsStep.defaultGravity());
+        |> PhysicsStep.integrate(Duration.seconds(0.5), PhysicsStep.defaultGravity());
     let pos = Scene.globalPosition("bird", scene);
     Assert.assertTrue(pos#y > 400.0)
 
@@ -72,7 +72,7 @@ def testFlapSetsVelocity(): Unit \ {Assert, Fs.FileRead} =
 def testFlapThenGravity(): Unit \ {Assert, Fs.FileRead} =
     let scene = testScene()
         |> runFlap
-        |> PhysicsStep.integrate(0.02, PhysicsStep.defaultGravity());
+        |> PhysicsStep.integrate(Duration.seconds(0.02), PhysicsStep.defaultGravity());
     let pos = Scene.globalPosition("bird", scene);
     Assert.assertTrue(pos#y < 256.0)
 
@@ -194,7 +194,7 @@ def testFlappingNoClampWhenBelowCeiling(): Unit \ {Assert, Fs.FileRead} =
 def testFlapIntegrateClamp(): Unit \ {Assert, Fs.FileRead} =
     let scene = testScene()
         |> runFlap
-        |> PhysicsStep.integrate(0.02, PhysicsStep.defaultGravity())
+        |> PhysicsStep.integrate(Duration.seconds(0.02), PhysicsStep.defaultGravity())
         |> runBirdPhysicsProcess;
     match Scene.getEngineNode("bird" :: Nil, scene) {
         case Some(EngineNode.RigidBody2DWithState(body, _)) =>
@@ -215,7 +215,7 @@ def testFlapIntegrateClamp(): Unit \ {Assert, Fs.FileRead} =
 /// fps=10, 0.15s 後にフレーム 1（bird_orange_1）に進む
 @Test
 def testBirdSpriteAnimationAdvances(): Unit \ {Assert, Fs.FileRead} =
-    match withMockRandom(() -> withMockRecycle(() -> testScene() |> Scene.processAll(0.15, false)))
+    match withMockRandom(() -> withMockRecycle(() -> testScene() |> Scene.processAll(Duration.seconds(0.15), false)))
         |> Scene.getEngineNode("bird" :: "sprite" :: Nil) {
         case Some(EngineNode.AnimSprite2DWithState(sprite, _)) =>
             Assert.assertEq(expected = "bird_orange_1", AnimatedSprite2D.currentTexture(sprite))

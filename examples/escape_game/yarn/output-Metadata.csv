@@ -1,0 +1,7 @@
+id,node,lineNumber,tags
+line:5a21fb09,Hotspot_demo_room_safe,91,lastline
+line:99487d6b,SafeSlot1,100,lastline
+line:d932566e,SafeSlot2,114,lastline
+line:c5142266,SafeSlot3,128,lastline
+line:8dc44bb5,UnlockDoor,230,lastline
+line:aba9c3ce,DoorOpen,239,lastline

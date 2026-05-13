@@ -104,7 +104,7 @@ mod GameOverScene {
     /// ゲームオーバー画面への遷移処理
     /// 効果音再生 → スコア確定 → UI 追加をまとめる
     pub def enterGameOver(fontAtlas: FontAtlas,
-                          scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Audio, Fs.FileRead} =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Audio, GameEngine.Game, Fs.FileRead} =
         GameEngine.Audio.playAudio("sfx_swooshing");
         scene
             |> ScoreScene.finalizeScore
@@ -116,12 +116,12 @@ mod GameOverScene {
     /// メダルはベストスコア < 10 のときに削除する（メダルなし表示）。
     /// HUD のスコアラベルも非表示にする
     pub def addGameOverUI(fontAtlas: FontAtlas,
-                          scene: Scene[NodeTag]): Scene[NodeTag] \ Fs.FileRead =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
         let score = ScoreScene.getScore(scene);
         let bestScore = ScoreScene.getBestScore(scene);
         scene
             |> ScoreScene.hideScoreLabel
-            |> SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas)
+            |> SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas, SceneLoader.constTagParser(NodeTag.NoTag))
             // GameOverAnim 状態をルートレイヤーにセット
             |> Scene.setState(layerPath(), NodeTag.GameOverAnim({elapsed = 0.0}))
             // 最終スコア・ベストスコアのテキストを実際の値に差し替え
@@ -157,11 +157,11 @@ mod GameOverScene {
 
     /// CanvasLayer の毎フレーム更新（GameOverAnim 状態を進めて再ラップする）
     /// 該当しないノードはそのまま返す
-    pub def process(delta: Float64, node: EngineNode[NodeTag],
+    pub def process(delta: Duration.Duration, node: EngineNode[NodeTag],
                     scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) =
         match node {
             case EngineNode.CanvasLayerWithState(layer, NodeTag.GameOverAnim(_)) =>
-                let newScene = updateAnimation(delta, scene);
+                let newScene = updateAnimation(Duration.toSeconds(delta), scene);
                 let newState = match Scene.getState(layerPath(), newScene) {
                     case Some(tag) => tag
                     case _         => NodeTag.GameOverAnim({elapsed = 0.0})

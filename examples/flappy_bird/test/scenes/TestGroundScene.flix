@@ -64,7 +64,7 @@ def testGroundRecyclesWhenOffScreen(): Unit \ {Assert, Fs.FileRead} =
         // bird を ground_0(x=168) より遥か遠く（x=2000）に移動 → カメラ追従後に viewportLeftX=1928
         let movedBird = Scene.setGlobalPositionAt("bird" :: Nil,
             {x = 2000.0, y = 200.0}, initial);
-        Scene.processAll(0.016, false, movedBird)
+        Scene.processAll(Duration.seconds(0.016), false, movedBird)
     }));
     let groundCount = List.length(Scene.getNodesInGroup(GroundScene.groundGroup(), result));
     let ground0Removed = Option.isEmpty(Scene.getEngineNode("ground_0" :: Nil, result));

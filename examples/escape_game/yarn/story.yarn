@@ -1,0 +1,254 @@
+title: Declarations
+---
+<<declare $flag_drawer_searched = false>>
+<<declare $flag_painting_seen = false>>
+<<declare $safe_slot_1 = "">>
+<<declare $safe_slot_2 = "">>
+<<declare $safe_slot_3 = "">>
+===
+
+title: Start
+---
+<<bgm play room>>
+<<room enter demo_room>>
+<<wait 0.4>>
+<<shake 0.5>>
+ぼく: う、うう…
+頭が ガンガン する。
+ぼく: ここは… どこだ？
+見たことのない 部屋だ。
+古びた 引き出しと、壁の 額縁、
+そして 重そうな 金庫と ドアが ある。
+ぼく: とにかく、出口を 探さないと。
+===
+
+title: Hotspot_demo_room_drawer
+---
+<<if $flag_drawer_searched>>
+    <<jump DrawerRecall>>
+<<else>>
+    <<jump DrawerFirst>>
+<<endif>>
+===
+
+title: DrawerFirst
+---
+<<se chest>>
+引き出しを そっと 開けた。
+中に 1枚の 紙きれが ある。
+ぼく: なになに…？
+ぼく: 「合わせれば 道は 開かれる。
+鍵は ３つの しるしに 宿る。」
+ぼく: ……金庫の こと だろうか。
+ぼく: ３つの しるし…
+部屋の どこかに ヒントが あるはずだ。
+<<flag set drawer_searched>>
+===
+
+title: DrawerRecall
+---
+ぼく: 引き出しの メモを もう一度 読み返す。
+ぼく: 「合わせれば 道は 開かれる。
+鍵は ３つの しるしに 宿る。」
+===
+
+title: Hotspot_demo_room_painting
+---
+<<if $flag_painting_seen>>
+    <<jump PaintingRecall>>
+<<else>>
+    <<jump PaintingFirst>>
+<<endif>>
+===
+
+title: PaintingFirst
+---
+壁に 古びた 額縁が かけられている。
+中の 紙には 大きく ３つの 記号が…
+ぼく: 「△　×　○」
+ぼく: なんだろう、これは…
+<<if $flag_drawer_searched>>
+    ぼく: もしかして、あの 金庫の 合言葉 かも しれない。
+<<else>>
+    ぼく: 何かの 暗号 だろうか。
+    ぼく: とりあえず 覚えておこう。
+<<endif>>
+<<flag set painting_seen>>
+===
+
+title: PaintingRecall
+---
+ぼく: 額縁の 紙には 「△　×　○」と 書かれている。
+===
+
+title: Hotspot_demo_room_safe
+---
+<<if not is_locked("safe")>>
+    <<jump SafeAlreadyOpen>>
+<<endif>>
+ぼく: 古びた 金庫だ。
+ぼく: ３つの 記号を 合わせる ダイヤルが ついている。
+-> 合わせてみる
+    <<jump SafeSlot1>>
+-> やめておく
+    ぼく: …今は やめておこう。
+===
+
+title: SafeSlot1
+---
+ぼく: １つ目の しるしは…
+-> △
+    <<set $safe_slot_1 = "tri">>
+    <<jump SafeSlot2>>
+-> ○
+    <<set $safe_slot_1 = "cir">>
+    <<jump SafeSlot2>>
+-> ×
+    <<set $safe_slot_1 = "x">>
+    <<jump SafeSlot2>>
+===
+
+title: SafeSlot2
+---
+ぼく: ２つ目の しるしは…
+-> △
+    <<set $safe_slot_2 = "tri">>
+    <<jump SafeSlot3>>
+-> ○
+    <<set $safe_slot_2 = "cir">>
+    <<jump SafeSlot3>>
+-> ×
+    <<set $safe_slot_2 = "x">>
+    <<jump SafeSlot3>>
+===
+
+title: SafeSlot3
+---
+ぼく: ３つ目の しるしは…
+-> △
+    <<set $safe_slot_3 = "tri">>
+    <<jump SafeCheck>>
+-> ○
+    <<set $safe_slot_3 = "cir">>
+    <<jump SafeCheck>>
+-> ×
+    <<set $safe_slot_3 = "x">>
+    <<jump SafeCheck>>
+===
+
+title: SafeCheck
+---
+<<if $safe_slot_1 == "tri" and $safe_slot_2 == "x" and $safe_slot_3 == "cir">>
+    <<jump SafeOpen>>
+<<else>>
+    <<jump SafeWrong>>
+<<endif>>
+===
+
+title: SafeOpen
+---
+<<se chest>>
+<<wait 0.4>>
+カチャリ。
+<<wait 0.3>>
+金庫が ゆっくりと 開く。
+中には 古びた 鍵が 入っていた。
+<<inv add demo_key>>
+<<hotspot unlock safe>>
+ぼく: これだ！
+ぼく: あの ドアを 開けられる かも しれない。
+ぼく: インベントリから 鍵を 選んで、
+ドアに 使ってみよう。
+===
+
+title: SafeWrong
+---
+<<se locked>>
+<<shake 0.2>>
+ガチャッ。
+ぼく: …違う ようだ。
+<<if $flag_painting_seen and $flag_drawer_searched>>
+    ぼく: もう一度 額縁の 記号を 確かめよう。
+<<elseif $flag_drawer_searched>>
+    ぼく: ヒントは どこかに あるはずだ。
+<<else>>
+    ぼく: そもそも 何か 手がかりは ないだろうか。
+<<endif>>
+===
+
+title: SafeAlreadyOpen
+---
+ぼく: 金庫は すでに 開いている。中は 空だ。
+===
+
+title: Hotspot_demo_room_door
+---
+<<if not is_locked("door")>>
+    <<jump DoorOpen>>
+<<elseif inv_selected() == "demo_key">>
+    <<jump UnlockDoor>>
+<<elseif inv_has("demo_key")>>
+    ぼく: 鍵穴が ある。
+    ぼく: 持っている 鍵が 使えそうだ。
+    ぼく: インベントリから 鍵を 選択しよう。
+<<else>>
+    <<jump DoorLocked>>
+<<endif>>
+===
+
+title: DoorLocked
+---
+<<se locked>>
+<<shake 0.3>>
+ドアを 引いてみたが、
+ガチャガチャと 鳴るだけだ。
+ぼく: 鍵が かかっている。
+<<if visited_count("DoorLocked") > 1>>
+    ぼく: 何度 試しても 同じだ。
+    ぼく: あの 金庫を 開ける 方法を 探そう。
+<<elseif $flag_drawer_searched>>
+    ぼく: 引き出しの メモには 金庫の こと…
+    ぼく: 合言葉さえ わかれば 開ける はずだ。
+<<else>>
+    ぼく: 部屋の 中に 何か 手がかりが あるはずだ。
+<<endif>>
+===
+
+title: UnlockDoor
+---
+ぼく: この 鍵で 開けてみよう。
+<<wait 0.6>>
+カチャリ。
+<<wait 0.4>>
+<<se door_open>>
+<<wait 0.3>>
+鍵が 回り、ドアが ゆっくりと 解放された。
+<<inv remove demo_key>>
+<<hotspot unlock door>>
+ぼく: 開いた！
+-> 部屋を 出る
+    <<jump Ending>>
+-> もう少し 残る
+    ぼく: せっかくだ、もう少し 部屋を 見てから 出よう。
+===
+
+title: DoorOpen
+---
+ドアは 既に 開け 放たれている。
+-> 部屋を 出る
+    <<jump Ending>>
+-> まだ 残る
+    ぼく: ……もう少しだけ。
+===
+
+title: Ending
+---
+<<bgm fade 1.0>>
+<<wait 1.2>>
+ぼく: 外の 風が 心地よい…
+<<wait 0.5>>
+ぼく: ようやく、自由だ。
+<<bgm play ending>>
+<<wait 1.0>>
+～ END ～
+===
