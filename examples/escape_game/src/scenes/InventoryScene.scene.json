@@ -31,46 +31,32 @@
           "template": {
             "kind": "Overlay",
             "children": [
-              { "kind": "Leaf", "path": ["Inventory", "Slot{i}Bg"] },
+              {
+                "type": "ColorRect",
+                "name": "Slot{i}Bg",
+                "pos": [0, 0],
+                "size": [32, 32],
+                "color": {"r": 0.1, "g": 0.1, "b": 0.12},
+                "alpha": 0.8,
+                "zIndex": 1
+              },
               {
                 "kind": "MarginContainer",
                 "margin": 4,
-                "child": { "kind": "Leaf", "path": ["Inventory", "Slot{i}Icon"] }
+                "child": {
+                  "type": "TextureRect",
+                  "name": "Slot{i}Icon",
+                  "pos": [0, 0],
+                  "size": [24, 24],
+                  "texture": "",
+                  "visible": false,
+                  "zIndex": 2
+                }
               }
             ]
           }
         }]
-      },
-      "children": [
-        {
-          "kind": "RepeatNodes",
-          "count": 5,
-          "indexVar": "i",
-          "template": {
-            "type": "ColorRect",
-            "name": "Slot{i}Bg",
-            "pos": [0, 0],
-            "size": [32, 32],
-            "color": {"r": 0.1, "g": 0.1, "b": 0.12},
-            "alpha": 0.8,
-            "zIndex": 1
-          }
-        },
-        {
-          "kind": "RepeatNodes",
-          "count": 5,
-          "indexVar": "i",
-          "template": {
-            "type": "TextureRect",
-            "name": "Slot{i}Icon",
-            "pos": [0, 0],
-            "size": [24, 24],
-            "texture": "",
-            "visible": false,
-            "zIndex": 2
-          }
-        }
-      ]
+      }
     }
   ]
 }

@@ -12,34 +12,30 @@
       "layout": {
         "kind": "Overlay",
         "children": [
-          { "kind": "Leaf", "path": ["Log", "Bg"] },
+          {
+            "type": "ColorRect",
+            "name": "Bg",
+            "pos": [0, 0],
+            "size": [128, 28],
+            "color": {"r": 0, "g": 0, "b": 0},
+            "alpha": 0.6,
+            "zIndex": 0
+          },
           {
             "kind": "MarginContainer",
             "margin": 2,
-            "child": { "kind": "Leaf", "path": ["Log", "Text"] }
+            "child": {
+              "type": "RichTextLabel",
+              "name": "Text",
+              "pos": [0, 0],
+              "size": [124, 24],
+              "fontSize": 4,
+              "text": "",
+              "zIndex": 1
+            }
           }
         ]
-      },
-      "children": [
-        {
-          "type": "ColorRect",
-          "name": "Bg",
-          "pos": [0, 0],
-          "size": [128, 28],
-          "color": {"r": 0, "g": 0, "b": 0},
-          "alpha": 0.6,
-          "zIndex": 0
-        },
-        {
-          "type": "RichTextLabel",
-          "name": "Text",
-          "pos": [0, 0],
-          "size": [124, 24],
-          "fontSize": 4,
-          "text": "",
-          "zIndex": 1
-        }
-      ]
+      }
     }
   ]
 }

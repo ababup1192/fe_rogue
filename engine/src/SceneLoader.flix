@@ -127,9 +127,14 @@ mod SceneLoader {
             case _ => Err(JsonError(Root, Set#{"JsonObject"}))
         }
 
-    /// Container ノードの処理: children を parentPath 直下に追加してから
-    /// `rect` + `layout` で `Layout.apply` を 1 回実行する。
-    /// 結果として scene tree には Container 自身のノードは作らず、children が直接 parent 配下にぶら下がる。
+    /// Container ノードの処理 (load-time directive):
+    /// 1. `rect` と `layout` をパース
+    /// 2. Layout を walk して各 `Node` case の definition から実 engine node を作り
+    ///    scene tree (parentPath 直下) に追加
+    /// 3. `Layout.apply(parentPath, rect, layout, scene)` で位置決め
+    ///
+    /// Container 自身は scene tree にノードを残さない (load-time directive)。
+    /// scene.json 側で Container に `children` 配列を持たせる必要はない (Layout の Node case で代替)。
     def handleContainer(parentPath: NodePath,
                          tagParser: Option[String] -> Result[Json.JsonError, t],
                          fontAtlas: Option[FontAtlas],
@@ -144,11 +149,47 @@ mod SceneLoader {
         match parsed {
             case Err(e) => Err(e)
             case Ok((rect, layout)) =>
-                match addChildren(parentPath, tagParser, fontAtlas, map, scene) {
+                match buildLayoutNodes(parentPath, tagParser, fontAtlas, layout, scene) {
                     case Err(e)         => Err(e)
-                    case Ok(withChildren) => Ok(Layout.apply(rect, layout, withChildren))
+                    case Ok(withNodes)  => Ok(Layout.apply(parentPath, rect, layout, withNodes))
                 }
         }
+
+    /// Layout を再帰的に walk し、各 `Node` case の definition から実 engine node を作って
+    /// scene tree (parentPath 直下) に追加する。Layout primitive (HBoxContainer 等) は
+    /// 子に対して再帰する。
+    def buildLayoutNodes(parentPath: NodePath,
+                          tagParser: Option[String] -> Result[Json.JsonError, t],
+                          fontAtlas: Option[FontAtlas],
+                          layout: Layout,
+                          scene: Scene[t]):
+                          Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
+        match layout {
+            case Layout.Empty => Ok(scene)
+            case Layout.Node({name = _, definition}) =>
+                addJsonAt(parentPath, tagParser, fontAtlas, definition, scene)
+            case Layout.MarginContainer({margin = _, child}) =>
+                buildLayoutNodes(parentPath, tagParser, fontAtlas, child, scene)
+            case Layout.CenterContainer(child) =>
+                buildLayoutNodes(parentPath, tagParser, fontAtlas, child, scene)
+            case Layout.VBoxContainer({separation = _, alignment = _, crossAxis = _, children}) =>
+                buildLayoutChildren(parentPath, tagParser, fontAtlas, children, scene)
+            case Layout.HBoxContainer({separation = _, alignment = _, crossAxis = _, children}) =>
+                buildLayoutChildren(parentPath, tagParser, fontAtlas, children, scene)
+            case Layout.Overlay(children) =>
+                buildLayoutChildren(parentPath, tagParser, fontAtlas, children, scene)
+        }
+
+    def buildLayoutChildren(parentPath: NodePath,
+                             tagParser: Option[String] -> Result[Json.JsonError, t],
+                             fontAtlas: Option[FontAtlas],
+                             children: List[Layout],
+                             scene: Scene[t]):
+                             Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
+        List.foldLeft((acc, child) -> match acc {
+            case Err(e) => Err(e)
+            case Ok(s)  => buildLayoutNodes(parentPath, tagParser, fontAtlas, child, s)
+        }, Ok(scene), children)
 
     /// `"rect": {"x": .., "y": .., "width": .., "height": ..}` を Rect2 に変換する。
     /// 配列形式 `[x, y, w, h]` より可読性が高い (各フィールドの意味が名前で明示される)。
@@ -178,76 +219,11 @@ mod SceneLoader {
                 List.foldLeft(
                     (acc, child) -> match acc {
                         case Err(e) => Err(e)
-                        case Ok(s)  => addChildOrExpand(parentPath, tagParser, fontAtlas, child, s)
+                        case Ok(s)  => addJsonAt(parentPath, tagParser, fontAtlas, child, s)
                     },
                     Ok(scene),
                     Vector.toList(arr))
             case Some(_) => Err(JsonError(Root, Set#{"JsonArray"}))
-        }
-
-    /// children 配列内の 1 要素を処理する。
-    /// `"kind": "RepeatNodes"` の場合は count 個に展開して各々 addJsonAt する。
-    /// その他は通常の addJsonAt にディスパッチ。
-    def addChildOrExpand(parentPath: NodePath,
-                          tagParser: Option[String] -> Result[Json.JsonError, t],
-                          fontAtlas: Option[FontAtlas],
-                          child: Json.JsonElement,
-                          scene: Scene[t]):
-                          Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
-        match child {
-            case JsonObject(map) =>
-                let kindResult: Result[Json.JsonError, String] =
-                    Json.FromJson.getAtKey(Root, "kind", map);
-                match kindResult {
-                    case Ok("RepeatNodes") =>
-                        expandRepeatNodes(parentPath, tagParser, fontAtlas, map, scene)
-                    case _ =>
-                        addJsonAt(parentPath, tagParser, fontAtlas, child, scene)
-                }
-            case _ =>
-                addJsonAt(parentPath, tagParser, fontAtlas, child, scene)
-        }
-
-    /// `"kind": "RepeatNodes"` を count 個のテンプレートインスタンスに展開し、各々 addJsonAt する。
-    /// template 内の全 JsonString フィールドに対し `{indexVar}` を i の文字列で置換する。
-    def expandRepeatNodes(parentPath: NodePath,
-                           tagParser: Option[String] -> Result[Json.JsonError, t],
-                           fontAtlas: Option[FontAtlas],
-                           map: Map[String, Json.JsonElement],
-                           scene: Scene[t]):
-                           Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
-        let parsed = forM (
-            count        <- (Json.FromJson.getAtKey(Root, "count", map): Result[Json.JsonError, Int32]);
-            indexVar     <- (Json.FromJson.getAtKey(Root, "indexVar", map): Result[Json.JsonError, String]);
-            templateJson <- (Json.FromJson.getAtKey(Root, "template", map): Result[Json.JsonError, Json.JsonElement])
-        ) yield (count, indexVar, templateJson);
-        match parsed {
-            case Err(e) => Err(e)
-            case Ok((count, indexVar, templateJson)) =>
-                let placeholder = "{${indexVar}}";
-                let indices = List.range(0, count);
-                List.foldLeft((acc, i) -> match acc {
-                    case Err(e) => Err(e)
-                    case Ok(s)  =>
-                        let substituted = substituteJsonStrings(placeholder, "${i}", templateJson);
-                        addJsonAt(parentPath, tagParser, fontAtlas, substituted, s)
-                }, Ok(scene), indices)
-        }
-
-    /// JsonElement 内の全 JsonString に対して `placeholder` を `replacement` に置換する。
-    /// オブジェクトのキーは置換しない (フィールド名は固定の構造)。
-    def substituteJsonStrings(placeholder: String, replacement: String,
-                                json: Json.JsonElement): Json.JsonElement =
-        match json {
-            case JsonObject(map) =>
-                JsonObject(Map.map(v ->
-                    substituteJsonStrings(placeholder, replacement, v), map))
-            case JsonArray(arr) =>
-                JsonArray(Vector.map(v ->
-                    substituteJsonStrings(placeholder, replacement, v), arr))
-            case Json.JsonElement.JsonString(s) =>
-                Json.JsonElement.JsonString(String.replace(src = placeholder, dst = replacement, s))
-            case other => other
         }
 
     def applyGroups(path: NodePath, groups: List[String], scene: Scene[t]): Scene[t] =

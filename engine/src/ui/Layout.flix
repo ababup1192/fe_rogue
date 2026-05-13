@@ -1,15 +1,20 @@
 /// Layout — UI レイアウト記述子と解決アルゴリズム
 ///
-/// Container ノード（NodeTag.Container を持つ Marker2D）に乗せて、
-/// 子ノードの globalPosition を宣言的に決めるための ADT。
+/// scene.json の Container ノードの `layout` フィールドに乗せて、UI ノードの
+/// 配置を宣言的に決めるための ADT。
 ///
 /// 設計方針:
 ///   - Layout は値で composable。enum case が増えても apply の分岐 1 つで対応できる
-///   - apply / resolve は純粋関数。Leaf が指すノードのサイズは EngineNode.getSize と
-///     Label2D.measure から取得する（pure）
+///   - apply / resolve は純粋関数
+///   - Layout の leaf は **実 node 定義の埋め込み** (`Node({name, definition})`)。
+///     SceneLoader が definition から実 engine node を作り scene tree に追加する
 ///   - Container の子は **Control 系 (ColorRect, TextureRect, Label2D, RichTextLabel,
 ///     Button, TextureButton)** に限定。Node2D 系 (Sprite2D など) は size を持たないため
 ///     Container 内では使えない (Godot と同じ制約)。UI 画像は TextureRect を使う
+///
+/// scene.json の規約:
+///   - `"kind": "..."` を持つ object → Layout primitive (HBoxContainer / Overlay 等)
+///   - `"type": "..."` を持つ object → 実 node 定義 (Node case として扱う)
 
 /// HBoxContainer/VBoxContainer の主軸 alignment (Godot BoxContainer.AlignmentMode 準拠)。
 /// 余ったスペースを主軸方向のどこに置くか。
@@ -53,10 +58,11 @@ pub enum Layout {
     case MarginContainer({ margin = Float64, child = Layout })
     /// 子レイアウトを親矩形の中央に配置 (Godot CenterContainer 準拠)
     case CenterContainer(Layout)
-    /// scene tree のノードへの参照。position が origin に書き換わる (非 Godot 独自概念)
-    case Leaf({ path = NodePath })
+    /// 実 engine node の埋め込み。SceneLoader が definition から build して
+    /// scene tree (Container の親 path 配下) に追加する。
+    /// Layout.apply は parentPath ++ [name] の path に対し setGlobalPositionAt を呼ぶ。
+    case Node({ name = String, definition = Json.JsonElement })
     /// 複数の子レイアウトを同じ origin に重ねて配置する (非 Godot 独自拡張)。
-    /// Godot 相当の代替: 同じ position の Control を複数重ねる
     case Overlay(List[Layout])
     /// 何もしないプレースホルダ (非 Godot 独自)
     case Empty
@@ -64,7 +70,7 @@ pub enum Layout {
 
 mod Layout {
 
-    use Json.JsonElement.{JsonObject}
+    use Json.JsonElement.{JsonObject, JsonArray, JsonString}
     use Json.JsonError.JsonError
     use Json.Path.Path.Root
 
@@ -73,15 +79,20 @@ mod Layout {
     // ========================================================================
 
     /// JsonElement から Layout を再帰的に構築する。
-    /// scene.json の Container ノードの `layout` フィールドをパースするために使う。
-    /// 未知の kind や必須フィールドの欠落は Result.Err を返す。
+    /// "type" を持つ object は実 node 定義 → Layout.Node に変換。
+    /// "kind" を持つ object は Layout primitive (HBoxContainer 等)。
     pub def fromJson(json: Json.JsonElement): Result[Json.JsonError, Layout] =
         match json {
             case JsonObject(map) =>
-                forM (
-                    kind <- (Json.FromJson.getAtKey(Root, "kind", map): Result[Json.JsonError, String]);
-                    layout <- buildByKind(kind, map)
-                ) yield layout
+                if (Map.memberOf("type", map))
+                    forM (
+                        name <- (Json.FromJson.getAtKey(Root, "name", map): Result[Json.JsonError, String])
+                    ) yield Layout.Node({name = name, definition = json})
+                else
+                    forM (
+                        kind <- (Json.FromJson.getAtKey(Root, "kind", map): Result[Json.JsonError, String]);
+                        layout <- buildByKind(kind, map)
+                    ) yield layout
             case _ => Err(JsonError(Root, Set#{"JsonObject for Layout"}))
         }
 
@@ -89,27 +100,23 @@ mod Layout {
                      map: Map[String, Json.JsonElement]): Result[Json.JsonError, Layout] =
         match kind {
             case "Empty" => Ok(Layout.Empty)
-            case "Leaf" =>
-                forM (
-                    path <- (Json.FromJson.getAtKey(Root, "path", map): Result[Json.JsonError, List[String]])
-                ) yield Layout.Leaf({path = path})
             case "MarginContainer" =>
                 forM (
-                    margin <- (Json.FromJson.getAtKey(Root, "margin", map): Result[Json.JsonError, Float64]);
+                    margin    <- (Json.FromJson.getAtKey(Root, "margin", map): Result[Json.JsonError, Float64]);
                     childJson <- (Json.FromJson.getAtKey(Root, "child", map): Result[Json.JsonError, Json.JsonElement]);
-                    child <- fromJson(childJson)
+                    child     <- fromJson(childJson)
                 ) yield Layout.MarginContainer({margin = margin, child = child})
             case "CenterContainer" =>
                 forM (
                     childJson <- (Json.FromJson.getAtKey(Root, "child", map): Result[Json.JsonError, Json.JsonElement]);
-                    child <- fromJson(childJson)
+                    child     <- fromJson(childJson)
                 ) yield Layout.CenterContainer(child)
             case "VBoxContainer" => buildBoxContainer(true, map)
             case "HBoxContainer" => buildBoxContainer(false, map)
             case "Overlay" =>
                 forM (
                     childrenJson <- (Json.FromJson.getAtKey(Root, "children", map): Result[Json.JsonError, List[Json.JsonElement]]);
-                    children <- traverseLayouts(childrenJson)
+                    children     <- traverseLayouts(childrenJson)
                 ) yield Layout.Overlay(children)
             case unknown =>
                 Err(JsonError(Root, Set#{"known Layout kind (got: ${unknown})"}))
@@ -169,15 +176,18 @@ mod Layout {
             List.map(i -> substituteIndex(placeholder, i, baseLayout), List.range(0, count))
         }
 
-    /// Layout 内の Leaf.path 文字列要素にある `{indexVar}` プレースホルダを i の文字列で置換する。
-    /// 他フィールド (margin/separation 等の数値) は変更しない。
+    /// Layout 内の Node の name と definition (JsonElement) の文字列要素にある
+    /// `{indexVar}` プレースホルダを i の文字列で置換する。
+    /// 数値フィールド (margin/separation 等) は変更しない。
     pub def substituteIndex(placeholder: String, i: Int32, layout: Layout): Layout =
         let replacement = "${i}";
         match layout {
             case Layout.Empty => Layout.Empty
-            case Layout.Leaf({path}) =>
-                Layout.Leaf({path = List.map(s ->
-                    String.replace(src = placeholder, dst = replacement, s), path)})
+            case Layout.Node({name, definition}) =>
+                Layout.Node({
+                    name       = String.replace(src = placeholder, dst = replacement, name),
+                    definition = substituteJsonStrings(placeholder, replacement, definition)
+                })
             case Layout.MarginContainer({margin, child}) =>
                 Layout.MarginContainer({margin = margin, child = substituteIndex(placeholder, i, child)})
             case Layout.CenterContainer(child) =>
@@ -192,6 +202,22 @@ mod Layout {
                                            substituteIndex(placeholder, i, c), children)})
             case Layout.Overlay(children) =>
                 Layout.Overlay(List.map(c -> substituteIndex(placeholder, i, c), children))
+        }
+
+    /// JsonElement 内の全 JsonString に対して placeholder を replacement に置換する。
+    /// オブジェクトのキーは置換しない (フィールド名は固定構造)。
+    def substituteJsonStrings(placeholder: String, replacement: String,
+                                json: Json.JsonElement): Json.JsonElement =
+        match json {
+            case JsonObject(map) =>
+                JsonObject(Map.map(v ->
+                    substituteJsonStrings(placeholder, replacement, v), map))
+            case JsonArray(arr) =>
+                JsonArray(Vector.map(v ->
+                    substituteJsonStrings(placeholder, replacement, v), arr))
+            case JsonString(s) =>
+                JsonString(String.replace(src = placeholder, dst = replacement, s))
+            case other => other
         }
 
     def parseMainAxis(s: String): Result[Json.JsonError, MainAxisAlign] =
@@ -215,47 +241,52 @@ mod Layout {
     // 解決
     // ========================================================================
 
-    /// origin 矩形を起点に Layout を解決し、Leaf 各個の globalPosition を
-    /// Scene.setGlobalPositionAt で書き換えて返す純粋関数。
-    pub def apply(origin: Rect2.Rect2, layout: Layout, scene: Scene[s]): Scene[s] =
-        let rects = resolve(origin, layout, scene);
+    /// origin 矩形を起点に Layout を解決し、Node 各個の globalPosition を
+    /// Scene.setGlobalPositionAt で書き換える純粋関数。
+    /// parentPath は Container の親 path (Node の name と結合して full path を作る)。
+    pub def apply(parentPath: NodePath, origin: Rect2.Rect2,
+                   layout: Layout, scene: Scene[s]): Scene[s] =
+        let rects = resolve(parentPath, origin, layout, scene);
         Map.foldLeftWithKey((sc, path, rect) ->
             Scene.setGlobalPositionAt(path, rect#position, sc), scene, rects)
 
-    /// 解決後の各 Leaf 矩形を返す（デバッグ・テスト用）。
-    pub def resolve(origin: Rect2.Rect2, layout: Layout, scene: Scene[s]):
-                    Map[NodePath, Rect2.Rect2] =
-        resolveRec(origin, layout, scene, Map.empty())
+    /// 解決後の各 Node 矩形を返す（デバッグ・テスト用）。
+    pub def resolve(parentPath: NodePath, origin: Rect2.Rect2,
+                     layout: Layout, scene: Scene[s]): Map[NodePath, Rect2.Rect2] =
+        resolveRec(parentPath, origin, layout, scene, Map.empty())
 
-    def resolveRec(origin: Rect2.Rect2, layout: Layout, scene: Scene[s],
+    def resolveRec(parentPath: NodePath, origin: Rect2.Rect2, layout: Layout,
+                    scene: Scene[s],
                     acc: Map[NodePath, Rect2.Rect2]): Map[NodePath, Rect2.Rect2] =
         match layout {
-            case Layout.Empty             => acc
-            case Layout.Leaf({path})      => Map.insert(path, origin, acc)
+            case Layout.Empty => acc
+            case Layout.Node({name, definition = _}) =>
+                Map.insert(List.append(parentPath, name :: Nil), origin, acc)
             case Layout.MarginContainer({margin, child}) =>
-                resolveRec(Rect2.grow(-margin, origin), child, scene, acc)
+                resolveRec(parentPath, Rect2.grow(-margin, origin), child, scene, acc)
             case Layout.CenterContainer(child) =>
-                let sz = measure(child, scene);
+                let sz = measure(parentPath, child, scene);
                 let pos: Vec2.Vec2 = {
                     x = origin#position#x + (origin#size#x - sz#x) / 2.0,
                     y = origin#position#y + (origin#size#y - sz#y) / 2.0
                 };
                 let r: Rect2.Rect2 = {position = pos, size = sz};
-                resolveRec(r, child, scene, acc)
+                resolveRec(parentPath, r, child, scene, acc)
             case Layout.VBoxContainer({separation, alignment, crossAxis, children}) =>
-                resolveBoxContainer(true, origin, separation, alignment, crossAxis, children, scene, acc)
+                resolveBoxContainer(parentPath, true, origin, separation, alignment, crossAxis, children, scene, acc)
             case Layout.HBoxContainer({separation, alignment, crossAxis, children}) =>
-                resolveBoxContainer(false, origin, separation, alignment, crossAxis, children, scene, acc)
+                resolveBoxContainer(parentPath, false, origin, separation, alignment, crossAxis, children, scene, acc)
             case Layout.Overlay(children) =>
-                List.foldLeft((a, child) -> resolveRec(origin, child, scene, a), acc, children)
+                List.foldLeft((a, child) -> resolveRec(parentPath, origin, child, scene, a), acc, children)
         }
 
     /// VBoxContainer / HBoxContainer 共通: vertical=true なら主軸=Y、false なら主軸=X。
-    def resolveBoxContainer(vertical: Bool, origin: Rect2.Rect2, separation: Float64,
+    def resolveBoxContainer(parentPath: NodePath, vertical: Bool, origin: Rect2.Rect2,
+                             separation: Float64,
                              alignment: MainAxisAlign, crossAxis: CrossAxisAlign,
                              children: List[Layout], scene: Scene[s],
                              acc: Map[NodePath, Rect2.Rect2]): Map[NodePath, Rect2.Rect2] =
-        let sizes = List.map(c -> measure(c, scene), children);
+        let sizes = List.map(c -> measure(parentPath, c, scene), children);
         let mains = List.map(s -> if (vertical) s#y else s#x, sizes);
         let total = List.foldLeft((a, m) -> a + m, 0.0, mains)
                   + separation * Int32.toFloat64(Int32.max(0, List.length(children) - 1));
@@ -266,7 +297,6 @@ mod Layout {
             case MainAxisAlign.Center => (extra / 2.0, separation)
             case MainAxisAlign.End    => (extra, separation)
         };
-        // 各子の主軸位置を pen で進めながら配置
         let crossExtent = if (vertical) origin#size#x else origin#size#y;
         let result = List.foldLeft((st, pair) -> {
             let (child, mainSize) = pair;
@@ -274,20 +304,20 @@ mod Layout {
             let baseChildPos: Vec2.Vec2 =
                 if (vertical) {x = origin#position#x, y = origin#position#y + mainPos}
                 else {x = origin#position#x + mainPos, y = origin#position#y};
-            let childRectSize = childRectSizeFor(vertical, crossAxis, mainSize, crossExtent, child, scene);
+            let childRectSize = childRectSizeFor(parentPath, vertical, crossAxis, mainSize, crossExtent, child, scene);
             let childPos = adjustCrossAxis(vertical, crossAxis, origin, baseChildPos, childRectSize);
             let childRect: Rect2.Rect2 = {position = childPos, size = childRectSize};
-            let newAcc = resolveRec(childRect, child, scene, st#acc);
+            let newAcc = resolveRec(parentPath, childRect, child, scene, st#acc);
             {pen = mainPos + mainSize + gap, acc = newAcc}
         }, {pen = startOffset, acc = acc},
            List.zip(children, mains));
         result#acc
 
     /// 子矩形の交差軸サイズを決める。Stretch なら親の全幅、それ以外なら子の自然サイズ。
-    def childRectSizeFor(vertical: Bool, crossAxis: CrossAxisAlign,
+    def childRectSizeFor(parentPath: NodePath, vertical: Bool, crossAxis: CrossAxisAlign,
                           mainSize: Float64, crossExtent: Float64,
                           child: Layout, scene: Scene[s]): Vec2.Vec2 =
-        let natural = measure(child, scene);
+        let natural = measure(parentPath, child, scene);
         let cross = match crossAxis {
             case CrossAxisAlign.Stretch => crossExtent
             case _                       => if (vertical) natural#x else natural#y
@@ -315,29 +345,31 @@ mod Layout {
 
     /// レイアウトの自然サイズ（intrinsic size）を返す。
     /// VBoxContainer/HBoxContainer は子の合計（+ separation）と最大交差サイズ。
-    /// MarginContainer は子サイズ + 2 * margin。CenterContainer / Leaf / Sized はそのまま。
-    pub def measure(layout: Layout, scene: Scene[s]): Vec2.Vec2 =
+    /// MarginContainer は子サイズ + 2 * margin。CenterContainer はそのまま。
+    /// Node は scene tree 内の実 node を `measureNode` で測る。
+    pub def measure(parentPath: NodePath, layout: Layout, scene: Scene[s]): Vec2.Vec2 =
         match layout {
-            case Layout.Empty                              => Vec2.zero()
-            case Layout.Leaf({path})                       => measureNode(path, scene)
+            case Layout.Empty => Vec2.zero()
+            case Layout.Node({name, definition = _}) =>
+                measureNode(List.append(parentPath, name :: Nil), scene)
             case Layout.MarginContainer({margin, child}) =>
-                let inner = measure(child, scene);
+                let inner = measure(parentPath, child, scene);
                 {x = inner#x + 2.0 * margin, y = inner#y + 2.0 * margin}
-            case Layout.CenterContainer(child) => measure(child, scene)
+            case Layout.CenterContainer(child) => measure(parentPath, child, scene)
             case Layout.VBoxContainer({separation, alignment = _, crossAxis = _, children}) =>
-                boxContainerSize(true, separation, children, scene)
+                boxContainerSize(parentPath, true, separation, children, scene)
             case Layout.HBoxContainer({separation, alignment = _, crossAxis = _, children}) =>
-                boxContainerSize(false, separation, children, scene)
+                boxContainerSize(parentPath, false, separation, children, scene)
             case Layout.Overlay(children) =>
-                let sizes = List.map(c -> measure(c, scene), children);
+                let sizes = List.map(c -> measure(parentPath, c, scene), children);
                 let maxW = List.foldLeft((a, s) -> Float64.max(a, s#x), 0.0, sizes);
                 let maxH = List.foldLeft((a, s) -> Float64.max(a, s#y), 0.0, sizes);
                 {x = maxW, y = maxH}
         }
 
-    def boxContainerSize(vertical: Bool, separation: Float64,
+    def boxContainerSize(parentPath: NodePath, vertical: Bool, separation: Float64,
                           children: List[Layout], scene: Scene[s]): Vec2.Vec2 =
-        let sizes = List.map(c -> measure(c, scene), children);
+        let sizes = List.map(c -> measure(parentPath, c, scene), children);
         let mains = List.map(s -> if (vertical) s#y else s#x, sizes);
         let crosses = List.map(s -> if (vertical) s#x else s#y, sizes);
         let total = List.foldLeft((a, m) -> a + m, 0.0, mains)
@@ -362,7 +394,7 @@ mod Layout {
                         match EngineNode.getSize(node) {
                             case Some(sz) => sz
                             case None     =>
-                                bug!("Layout.measureNode: node at path ${path} has no intrinsic size; wrap it in Sized()")
+                                bug!("Layout.measureNode: node at path ${path} has no intrinsic size; UI 内では Sprite2D ではなく TextureRect を使うこと")
                         }
                 }
         }
