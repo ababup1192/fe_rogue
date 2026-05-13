@@ -1,0 +1,45 @@
+{
+  "type": "CanvasLayer",
+  "name": "Log",
+  "layer": 1,
+  "pos": [0, 0],
+  "rotation": 0,
+  "scale": [1, 1],
+  "children": [
+    {
+      "type": "Container",
+      "rect": {"x": 0, "y": 100, "width": 128, "height": 28},
+      "layout": {
+        "kind": "Overlay",
+        "children": [
+          { "kind": "Leaf", "path": ["Log", "Bg"] },
+          {
+            "kind": "MarginContainer",
+            "margin": 2,
+            "child": { "kind": "Leaf", "path": ["Log", "Text"] }
+          }
+        ]
+      },
+      "children": [
+        {
+          "type": "ColorRect",
+          "name": "Bg",
+          "pos": [0, 0],
+          "size": [128, 28],
+          "color": {"r": 0, "g": 0, "b": 0},
+          "alpha": 0.6,
+          "zIndex": 0
+        },
+        {
+          "type": "RichTextLabel",
+          "name": "Text",
+          "pos": [0, 0],
+          "size": [124, 24],
+          "fontSize": 4,
+          "text": "",
+          "zIndex": 1
+        }
+      ]
+    }
+  ]
+}

@@ -231,6 +231,16 @@ pub mod Scene {
         let paths = getNodesInGroup(group, scene);
         List.foldLeft((sc, path) -> removeAt(path, sc), scene, paths)
 
+    /// state が predicate を満たす全ノードのパスを preorder で返す。
+    /// UI Container の走査 (`predicate = isContainerTag`) や、特定タグの一括処理に使う。
+    pub def findPaths(predicate: s -> Bool, scene: Scene[s]): List[NodePath] =
+        let paths = preorderPaths(scene);
+        List.filter(path ->
+            match getState(path, scene) {
+                case Some(s) => predicate(s)
+                case None    => false
+            }, paths)
+
     // ========================================================================
     // 取得
     // ========================================================================

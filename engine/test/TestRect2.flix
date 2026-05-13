@@ -79,3 +79,32 @@ def testRect2HasPointWithOffset(): Unit \ Assert =
         (Rect2.hasPoint({x = 30.0, y = 80.0}, rect),
          Rect2.hasPoint({x = 80.0, y = 80.0}, rect),
          Rect2.hasPoint({x = 200.0, y = 80.0}, rect)))
+
+// --- grow ---
+
+/// 正の amount で全方向に拡張される
+@Test
+def testRect2GrowPositive(): Unit \ Assert =
+    let rect: Rect2.Rect2 = {position = {x = 10.0, y = 20.0}, size = {x = 100.0, y = 50.0}};
+    let grown = Rect2.grow(5.0, rect);
+    Assert.assertEq(
+        expected = (5.0, 15.0, 110.0, 60.0),
+        (grown#position#x, grown#position#y, grown#size#x, grown#size#y))
+
+/// 負の amount で全方向に縮小される（パディング）
+@Test
+def testRect2GrowNegative(): Unit \ Assert =
+    let rect: Rect2.Rect2 = {position = {x = 0.0, y = 0.0}, size = {x = 100.0, y = 100.0}};
+    let shrunk = Rect2.grow(-10.0, rect);
+    Assert.assertEq(
+        expected = (10.0, 10.0, 80.0, 80.0),
+        (shrunk#position#x, shrunk#position#y, shrunk#size#x, shrunk#size#y))
+
+/// amount=0 で同じ矩形を返す
+@Test
+def testRect2GrowZero(): Unit \ Assert =
+    let rect: Rect2.Rect2 = {position = {x = 5.0, y = 10.0}, size = {x = 50.0, y = 25.0}};
+    let result = Rect2.grow(0.0, rect);
+    Assert.assertEq(
+        expected = (5.0, 10.0, 50.0, 25.0),
+        (result#position#x, result#position#y, result#size#x, result#size#y))

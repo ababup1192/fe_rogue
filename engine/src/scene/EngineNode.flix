@@ -38,6 +38,8 @@ pub enum EngineNode[state] {
     case ButtonWithState(Button, state)
     /// テクスチャボタンノード（Godot TextureButton 準拠：state 切替で複数テクスチャ）
     case TextureButtonWithState(TextureButton, state)
+    /// UI 用テクスチャ表示ノード（Godot TextureRect 準拠：size を持つ Control 系）
+    case TextureRectWithState(TextureRect, state)
     /// 2D カメラノード（ビューポート追従）
     case Camera2DWithState(Camera2D, state)
     /// 静的物理ボディ（壁・床・パイプ等の固定障害物）
@@ -67,6 +69,7 @@ mod EngineNode {
         case EngineNode.ControlWithState(_, state) => state
         case EngineNode.ButtonWithState(_, state) => state
         case EngineNode.TextureButtonWithState(_, state) => state
+        case EngineNode.TextureRectWithState(_, state) => state
         case EngineNode.Camera2DWithState(_, state) => state
         case EngineNode.StaticBody2DWithState(_, state) => state
         case EngineNode.TileMapLayerWithState(_, state) => state
@@ -91,6 +94,7 @@ mod EngineNode {
         case EngineNode.ControlWithState(inner, _) => EngineNode.ControlWithState(inner, newState)
         case EngineNode.ButtonWithState(inner, _) => EngineNode.ButtonWithState(inner, newState)
         case EngineNode.TextureButtonWithState(inner, _) => EngineNode.TextureButtonWithState(inner, newState)
+        case EngineNode.TextureRectWithState(inner, _) => EngineNode.TextureRectWithState(inner, newState)
         case EngineNode.Camera2DWithState(inner, _) => EngineNode.Camera2DWithState(inner, newState)
         case EngineNode.StaticBody2DWithState(inner, _) => EngineNode.StaticBody2DWithState(inner, newState)
         case EngineNode.TileMapLayerWithState(inner, _) => EngineNode.TileMapLayerWithState(inner, newState)
@@ -115,6 +119,7 @@ mod EngineNode {
         case EngineNode.ControlWithState(inner, state) => EngineNode.ControlWithState(inner, f(state))
         case EngineNode.ButtonWithState(inner, state) => EngineNode.ButtonWithState(inner, f(state))
         case EngineNode.TextureButtonWithState(inner, state) => EngineNode.TextureButtonWithState(inner, f(state))
+        case EngineNode.TextureRectWithState(inner, state) => EngineNode.TextureRectWithState(inner, f(state))
         case EngineNode.Camera2DWithState(inner, state) => EngineNode.Camera2DWithState(inner, f(state))
         case EngineNode.StaticBody2DWithState(inner, state) => EngineNode.StaticBody2DWithState(inner, f(state))
         case EngineNode.TileMapLayerWithState(inner, state) => EngineNode.TileMapLayerWithState(inner, f(state))
@@ -204,6 +209,12 @@ mod EngineNode {
         case _ => node
     }
 
+    /// TextureRect の inner node に関数を適用する
+    pub def mapTextureRect(f: TextureRect -> TextureRect, node: EngineNode[s]): EngineNode[s] = match node {
+        case EngineNode.TextureRectWithState(inner, st) => EngineNode.TextureRectWithState(f(inner), st)
+        case _ => node
+    }
+
     /// Camera2D の inner node に関数を適用する
     pub def mapCamera2D(f: Camera2D -> Camera2D, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Camera2DWithState(inner, st) => EngineNode.Camera2DWithState(f(inner), st)
@@ -239,6 +250,7 @@ mod EngineNode {
         case EngineNode.ControlWithState(ctrl, _)        => Some(Control.getSize(ctrl))
         case EngineNode.ButtonWithState(btn, _)          => Some(Button.getSize(btn))
         case EngineNode.TextureButtonWithState(btn, _)   => Some(TextureButton.getSize(btn))
+        case EngineNode.TextureRectWithState(rect, _)    => Some(TextureRect.getSize(rect))
         case EngineNode.RichTextLabelWithState(label, _) => Some(RichTextLabel.getSize(label))
         case EngineNode.ColorRectWithState(rect, _)      => Some(ColorRect.getSize(rect))
         case _                                           => None
@@ -339,6 +351,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.ControlWithState(ctrl, _) => CanvasItem.isVisible(ctrl)
         case EngineNode.ButtonWithState(btn, _) => CanvasItem.isVisible(btn)
         case EngineNode.TextureButtonWithState(btn, _) => CanvasItem.isVisible(btn)
+        case EngineNode.TextureRectWithState(rect, _) => CanvasItem.isVisible(rect)
         case EngineNode.Camera2DWithState(cam, _) => CanvasItem.isVisible(cam)
         case EngineNode.StaticBody2DWithState(body, _) => CanvasItem.isVisible(body)
         case EngineNode.TileMapLayerWithState(tm, _) => CanvasItem.isVisible(tm)
@@ -361,6 +374,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.ControlWithState(ctrl, st) => EngineNode.ControlWithState(CanvasItem.setVisible(visible, ctrl), st)
         case EngineNode.ButtonWithState(btn, st) => EngineNode.ButtonWithState(CanvasItem.setVisible(visible, btn), st)
         case EngineNode.TextureButtonWithState(btn, st) => EngineNode.TextureButtonWithState(CanvasItem.setVisible(visible, btn), st)
+        case EngineNode.TextureRectWithState(rect, st) => EngineNode.TextureRectWithState(CanvasItem.setVisible(visible, rect), st)
         case EngineNode.Camera2DWithState(cam, st) => EngineNode.Camera2DWithState(CanvasItem.setVisible(visible, cam), st)
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(CanvasItem.setVisible(visible, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(CanvasItem.setVisible(visible, tm), st)
@@ -383,6 +397,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.ControlWithState(ctrl, _) => CanvasItem.getModulate(ctrl)
         case EngineNode.ButtonWithState(btn, _) => CanvasItem.getModulate(btn)
         case EngineNode.TextureButtonWithState(btn, _) => CanvasItem.getModulate(btn)
+        case EngineNode.TextureRectWithState(rect, _) => CanvasItem.getModulate(rect)
         case EngineNode.Camera2DWithState(cam, _) => CanvasItem.getModulate(cam)
         case EngineNode.StaticBody2DWithState(body, _) => CanvasItem.getModulate(body)
         case EngineNode.TileMapLayerWithState(tm, _) => CanvasItem.getModulate(tm)
@@ -405,6 +420,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.ControlWithState(ctrl, st) => EngineNode.ControlWithState(CanvasItem.setModulate(color, ctrl), st)
         case EngineNode.ButtonWithState(btn, st) => EngineNode.ButtonWithState(CanvasItem.setModulate(color, btn), st)
         case EngineNode.TextureButtonWithState(btn, st) => EngineNode.TextureButtonWithState(CanvasItem.setModulate(color, btn), st)
+        case EngineNode.TextureRectWithState(rect, st) => EngineNode.TextureRectWithState(CanvasItem.setModulate(color, rect), st)
         case EngineNode.Camera2DWithState(cam, st) => EngineNode.Camera2DWithState(CanvasItem.setModulate(color, cam), st)
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(CanvasItem.setModulate(color, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(CanvasItem.setModulate(color, tm), st)
@@ -427,6 +443,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.ControlWithState(ctrl, _) => CanvasItem.getZIndex(ctrl)
         case EngineNode.ButtonWithState(btn, _) => CanvasItem.getZIndex(btn)
         case EngineNode.TextureButtonWithState(btn, _) => CanvasItem.getZIndex(btn)
+        case EngineNode.TextureRectWithState(rect, _) => CanvasItem.getZIndex(rect)
         case EngineNode.Camera2DWithState(cam, _) => CanvasItem.getZIndex(cam)
         case EngineNode.StaticBody2DWithState(body, _) => CanvasItem.getZIndex(body)
         case EngineNode.TileMapLayerWithState(tm, _) => CanvasItem.getZIndex(tm)
@@ -449,6 +466,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.ControlWithState(ctrl, st) => EngineNode.ControlWithState(CanvasItem.setZIndex(zIndex, ctrl), st)
         case EngineNode.ButtonWithState(btn, st) => EngineNode.ButtonWithState(CanvasItem.setZIndex(zIndex, btn), st)
         case EngineNode.TextureButtonWithState(btn, st) => EngineNode.TextureButtonWithState(CanvasItem.setZIndex(zIndex, btn), st)
+        case EngineNode.TextureRectWithState(rect, st) => EngineNode.TextureRectWithState(CanvasItem.setZIndex(zIndex, rect), st)
         case EngineNode.Camera2DWithState(cam, st) => EngineNode.Camera2DWithState(CanvasItem.setZIndex(zIndex, cam), st)
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(CanvasItem.setZIndex(zIndex, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(CanvasItem.setZIndex(zIndex, tm), st)
@@ -476,6 +494,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ControlWithState(ctrl, _) => Node2D.getPosition(ctrl)
         case EngineNode.ButtonWithState(btn, _) => Node2D.getPosition(btn)
         case EngineNode.TextureButtonWithState(btn, _) => Node2D.getPosition(btn)
+        case EngineNode.TextureRectWithState(rect, _) => Node2D.getPosition(rect)
         case EngineNode.Camera2DWithState(cam, _) => Node2D.getPosition(cam)
         case EngineNode.StaticBody2DWithState(body, _) => Node2D.getPosition(body)
         case EngineNode.TileMapLayerWithState(tm, _) => Node2D.getPosition(tm)
@@ -498,6 +517,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ControlWithState(ctrl, st) => EngineNode.ControlWithState(Node2D.setPosition(position, ctrl), st)
         case EngineNode.ButtonWithState(btn, st) => EngineNode.ButtonWithState(Node2D.setPosition(position, btn), st)
         case EngineNode.TextureButtonWithState(btn, st) => EngineNode.TextureButtonWithState(Node2D.setPosition(position, btn), st)
+        case EngineNode.TextureRectWithState(rect, st) => EngineNode.TextureRectWithState(Node2D.setPosition(position, rect), st)
         case EngineNode.Camera2DWithState(cam, st) => EngineNode.Camera2DWithState(Node2D.setPosition(position, cam), st)
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(Node2D.setPosition(position, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(Node2D.setPosition(position, tm), st)
@@ -520,6 +540,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ControlWithState(ctrl, _) => Node2D.getRotation(ctrl)
         case EngineNode.ButtonWithState(btn, _) => Node2D.getRotation(btn)
         case EngineNode.TextureButtonWithState(btn, _) => Node2D.getRotation(btn)
+        case EngineNode.TextureRectWithState(rect, _) => Node2D.getRotation(rect)
         case EngineNode.Camera2DWithState(cam, _) => Node2D.getRotation(cam)
         case EngineNode.StaticBody2DWithState(body, _) => Node2D.getRotation(body)
         case EngineNode.TileMapLayerWithState(tm, _) => Node2D.getRotation(tm)
@@ -542,6 +563,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ControlWithState(ctrl, st) => EngineNode.ControlWithState(Node2D.setRotation(rotation, ctrl), st)
         case EngineNode.ButtonWithState(btn, st) => EngineNode.ButtonWithState(Node2D.setRotation(rotation, btn), st)
         case EngineNode.TextureButtonWithState(btn, st) => EngineNode.TextureButtonWithState(Node2D.setRotation(rotation, btn), st)
+        case EngineNode.TextureRectWithState(rect, st) => EngineNode.TextureRectWithState(Node2D.setRotation(rotation, rect), st)
         case EngineNode.Camera2DWithState(cam, st) => EngineNode.Camera2DWithState(Node2D.setRotation(rotation, cam), st)
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(Node2D.setRotation(rotation, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(Node2D.setRotation(rotation, tm), st)
@@ -564,6 +586,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ControlWithState(ctrl, _) => Node2D.getScale(ctrl)
         case EngineNode.ButtonWithState(btn, _) => Node2D.getScale(btn)
         case EngineNode.TextureButtonWithState(btn, _) => Node2D.getScale(btn)
+        case EngineNode.TextureRectWithState(rect, _) => Node2D.getScale(rect)
         case EngineNode.Camera2DWithState(cam, _) => Node2D.getScale(cam)
         case EngineNode.StaticBody2DWithState(body, _) => Node2D.getScale(body)
         case EngineNode.TileMapLayerWithState(tm, _) => Node2D.getScale(tm)
@@ -586,6 +609,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ControlWithState(ctrl, st) => EngineNode.ControlWithState(Node2D.setScale(scale, ctrl), st)
         case EngineNode.ButtonWithState(btn, st) => EngineNode.ButtonWithState(Node2D.setScale(scale, btn), st)
         case EngineNode.TextureButtonWithState(btn, st) => EngineNode.TextureButtonWithState(Node2D.setScale(scale, btn), st)
+        case EngineNode.TextureRectWithState(rect, st) => EngineNode.TextureRectWithState(Node2D.setScale(scale, rect), st)
         case EngineNode.Camera2DWithState(cam, st) => EngineNode.Camera2DWithState(Node2D.setScale(scale, cam), st)
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(Node2D.setScale(scale, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(Node2D.setScale(scale, tm), st)
@@ -608,6 +632,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ControlWithState(ctrl, _) => Node2D.getSkew(ctrl)
         case EngineNode.ButtonWithState(btn, _) => Node2D.getSkew(btn)
         case EngineNode.TextureButtonWithState(btn, _) => Node2D.getSkew(btn)
+        case EngineNode.TextureRectWithState(rect, _) => Node2D.getSkew(rect)
         case EngineNode.Camera2DWithState(cam, _) => Node2D.getSkew(cam)
         case EngineNode.StaticBody2DWithState(body, _) => Node2D.getSkew(body)
         case EngineNode.TileMapLayerWithState(tm, _) => Node2D.getSkew(tm)
@@ -630,6 +655,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ControlWithState(ctrl, st) => EngineNode.ControlWithState(Node2D.setSkew(skew, ctrl), st)
         case EngineNode.ButtonWithState(btn, st) => EngineNode.ButtonWithState(Node2D.setSkew(skew, btn), st)
         case EngineNode.TextureButtonWithState(btn, st) => EngineNode.TextureButtonWithState(Node2D.setSkew(skew, btn), st)
+        case EngineNode.TextureRectWithState(rect, st) => EngineNode.TextureRectWithState(Node2D.setSkew(skew, rect), st)
         case EngineNode.Camera2DWithState(cam, st) => EngineNode.Camera2DWithState(Node2D.setSkew(skew, cam), st)
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(Node2D.setSkew(skew, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(Node2D.setSkew(skew, tm), st)
@@ -696,6 +722,8 @@ instance GameEngine.Renderable[EngineNode[s]] {
                 Button.toDrawables(btn, globalPos)
             case EngineNode.TextureButtonWithState(btn, _) =>
                 TextureButton.toDrawables(btn, globalPos)
+            case EngineNode.TextureRectWithState(rect, _) =>
+                TextureRect.toDrawable(rect, globalPos) :: Nil
             case EngineNode.Camera2DWithState(_, _) => Nil
             case EngineNode.StaticBody2DWithState(_, _) => Nil
             case EngineNode.RigidBody2DWithState(_, _) => Nil

@@ -93,6 +93,8 @@ mod InventoryScene {
 
     /// scene.json をロードしてレイヤを 1 枚積む。Root に `NodeTag.Inventory(emptyData())`
     /// を載せる。`process` で Inventory.Access の snapshot を毎フレーム反映する。
+    /// 5 スロットの Bg/Icon は scene.json の `Container` + `RepeatNodes` で生成され、
+    /// `Container.layout` (HStack + Repeat) で位置が決まる。
     pub def addInventoryLayer(scene: Scene[NodeTag]):
                                Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         SceneLoader.loadScene(sceneJsonPath(),
@@ -129,13 +131,13 @@ mod InventoryScene {
         match List.nth(slot, items) {
             case Some(id) =>
                 Scene.mapEngineNode(slotIconPath(slot), engineNode ->
-                    EngineNode.mapSprite2D(s ->
-                        s |> Sprite2D.setTexture(iconTextureName(id))
+                    EngineNode.mapTextureRect(r ->
+                        r |> TextureRect.setTexture(iconTextureName(id))
                           |> CanvasItem.setVisible(true), engineNode),
                     scene)
             case None =>
                 Scene.mapEngineNode(slotIconPath(slot), engineNode ->
-                    EngineNode.mapSprite2D(s -> CanvasItem.setVisible(false, s),
+                    EngineNode.mapTextureRect(r -> CanvasItem.setVisible(false, r),
                         engineNode),
                     scene)
         }

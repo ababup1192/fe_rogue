@@ -61,6 +61,8 @@ mod GameManager {
     /// delta はカメラ smoothing の毎フレーム補間に使う。
     /// `EnemyTurn.Queue` は CameraScene.update が「alerted な敵の動きを映す」ために peek する。
     /// `Pacing.State.tick` で演出の溜めカウンタを減らす（敵ターンの間隔調整）。
+    /// UI レイアウト (Container) は scene.json のロード時に Layout.apply 済みなので
+    /// 毎フレームの走査は不要。
     def commonEpilogue(dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,

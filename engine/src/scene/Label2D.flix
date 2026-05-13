@@ -102,6 +102,30 @@ mod Label2D {
         let Label2D.Label2D(r) = label;
         r#verticalAlignment
 
+    /// テキストを描画したときに占める表示サイズを返す。
+    /// width  = 行の中で最も幅広い行の advance 合計 (× scale)
+    /// height = 行数 × lineHeight (= (ascent + descent + lineGap) × scale)
+    /// Layout モジュールがノードの自然サイズを問い合わせるために使う。
+    pub def measure(label: Label2D): Vec2.Vec2 =
+        let Label2D.Label2D(r) = label;
+        let atlas = r#fontAtlas;
+        let scale = r#fontSize / atlas#fontSize;
+        let lineHeight = (atlas#ascent + atlas#descent + atlas#lineGap) * scale;
+        let lines = TextLayout.splitLines(r#text);
+        let totalHeight = lineHeight * Int32.toFloat64(Int32.max(1, List.length(lines)));
+        let maxLineWidth = List.foldLeft((acc, lineChars) -> {
+            let advances = List.map(ch -> {
+                let cp = TextLayout.charToCodePoint(ch);
+                match Map.get(cp, atlas#glyphs) {
+                    case Some(gm) => gm#advance
+                    case None     => 0.0
+                }
+            }, lineChars);
+            let width = TextLayout.totalAdvance(advances) * scale;
+            Float64.max(acc, width)
+        }, 0.0, lines);
+        {x = maxLineWidth, y = totalHeight}
+
     /// 行内テキスト幅 (lineWidth) と horizontalAlignment から、グリフ列に適用する
     /// 横方向オフセットを返す。Fill は本実装では Left と同じ扱い（justify は未対応）。
     pub def horizontalOffsetFor(alignment: HorizontalAlignment, lineWidth: Float64): Float64 =

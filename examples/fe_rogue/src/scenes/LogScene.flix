@@ -40,55 +40,25 @@ mod LogScene {
     def maxLinesDefault(): Int32 = 200
     /// fontManifest で登録した name と一致させる
     def fontName(): String = "ui"
-    /// 論理 px のフォントサイズ。fontManifest のベイクサイズ (16) と整数比 0.25 で
-    /// 縮小し、ベイクの細部情報を活かしつつコンパクトに表示する
-    def fontSize(): Float64 = 4.0
-    /// パネル左端からテキストまでの内側余白（論理 px）
-    def padding(): Float64 = 2.0
-    /// パネル高さ（論理 px）。RichTextLabel の表示領域はここから上下パディングを引いた高さ
+    /// パネル高さ（論理 px）。`isMouseOverPanel` のヒット判定で使う。
+    /// scene.json の Container `rect.height` と一致させる
     def panelHeight(): Float64 = 28.0
-    /// 背景色（黒）
-    def bgColor(): Color = {r = 0.0f32, g = 0.0f32, b = 0.0f32}
-    /// 背景の不透明度（半透明黒）
-    def bgAlpha(): Float32 = 0.6f32
-    /// CanvasLayer のレイヤー番号。盤面より前面に出す
-    def drawLayer(): Int32 = 1
+    /// scene.json のパス
+    def sceneJsonPath(): String = "src/scenes/LogScene.scene.json"
 
     // ────────────────────────────────────────────────────────
     // 構築
     // ────────────────────────────────────────────────────────
 
-    /// Scene に Log ノード（CanvasLayer + 背景 ColorRect + RichTextLabel）を追加する。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
-        let vp = GameEngine.Game.getViewportRect();
-        let panelW = vp#size#x;            // 横幅は画面いっぱい
-        let panelH = panelHeight();
-        let panelY = vp#size#y - panelH;   // 下端揃え
-        let layer = CanvasLayer.make(drawLayer())
-                    |> Node2D.setPosition({x = 0.0, y = panelY});
-        let data: Data = { entries = Nil, maxLines = maxLinesDefault() };
-        let withParent = Scene.addNode(name(),
-            EngineNode.CanvasLayerWithState(layer, NodeTag.Log(data)),
-            scene);
-        let bg = ColorRect.make({x = panelW, y = panelH}, bgColor())
-                 |> ColorRect.setAlpha(bgAlpha());
-        let withBg = Scene.addChild(name(), "Bg",
-            EngineNode.ColorRectWithState(bg, NodeTag.NoTag),
-            withParent);
+    /// Scene に Log ノード（CanvasLayer + 背景 ColorRect + RichTextLabel + Container）を追加する。
+    /// 構造とレイアウトは scene.json で宣言、flix は `NodeTag.Log` の初期値を注入するだけ。
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
-        // RichTextLabel の表示領域 = パネル内側
-        let textSize = {x = panelW - 2.0 * padding(), y = panelH - 2.0 * padding()};
-        // zIndex を Bg(=0) より大きくして、必ず背景の前面に描画させる。
-        // 同じ zIndex だと CanvasLayer 配下の描画順が不定で、Bg がグリフを
-        // 部分的に上書きして「文字の続きが消える」現象が出る
-        // scrollFollowing は使わない（末尾追従＝チャット式なのに対し、ログは
-        // 「新が上」固定でスクロールは scrollY=0 に張り付かせるため）。
-        let label = RichTextLabel.make("", atlas, fontSize(), textSize)
-                    |> CanvasItem.setZIndex(1)
-                    |> Node2D.setPosition({x = padding(), y = padding()});
-        Scene.addChild(name(), textChildName(),
-            EngineNode.RichTextLabelWithState(label, NodeTag.NoTag),
-            withBg)
+        let data: Data = { entries = Nil, maxLines = maxLinesDefault() };
+        SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas,
+                                       SceneLoader.constTagParser(NodeTag.NoTag),
+                                       scene)
+            |> Scene.setState(logPath(), NodeTag.Log(data))
 
     /// gameLoop が毎フレーム末尾で呼ぶ flush。GameLogger に蓄積された Entry を
     /// drain して LogScene のデータに反映し、RichTextLabel のテキストを更新する。

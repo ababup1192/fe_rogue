@@ -98,25 +98,69 @@ mod SceneLoader {
                   scene: Scene[t]): Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
         match json {
             case JsonObject(map) =>
-                let header = forM (
-                    nodeType   <- (Json.FromJson.getAtKey(Root, "type", map): Result[Json.JsonError, String]);
-                    name       <- (Json.FromJson.getAtKey(Root, "name", map): Result[Json.JsonError, String]);
-                    groups     <- parseGroups(map)
-                ) yield (nodeType, name, groups);
-                match header {
+                let nodeTypeResult: Result[Json.JsonError, String] =
+                    Json.FromJson.getAtKey(Root, "type", map);
+                match nodeTypeResult {
                     case Err(e) => Err(e)
-                    case Ok((nodeType, name, groups)) =>
-                        match buildByType(tagParser, nodeType, fontAtlas, map) {
+                    // Container は scene tree のノードではなく、load 時の layout directive。
+                    // children を parentPath 直下に追加し、最後に Layout.apply を 1 回呼ぶ。
+                    case Ok("Container") =>
+                        handleContainer(parentPath, tagParser, fontAtlas, map, scene)
+                    case Ok(nodeType) =>
+                        let header = forM (
+                            name   <- (Json.FromJson.getAtKey(Root, "name", map): Result[Json.JsonError, String]);
+                            groups <- parseGroups(map)
+                        ) yield (name, groups);
+                        match header {
                             case Err(e) => Err(e)
-                            case Ok(engineNode) =>
-                                let nodePath = parentPath ::: name :: Nil;
-                                let added = addAt(parentPath, name, engineNode, scene)
-                                    |> applyGroups(nodePath, groups);
-                                addChildren(nodePath, tagParser, fontAtlas, map, added)
+                            case Ok((name, groups)) =>
+                                match buildByType(tagParser, nodeType, fontAtlas, map) {
+                                    case Err(e) => Err(e)
+                                    case Ok(engineNode) =>
+                                        let nodePath = parentPath ::: name :: Nil;
+                                        let added = addAt(parentPath, name, engineNode, scene)
+                                            |> applyGroups(nodePath, groups);
+                                        addChildren(nodePath, tagParser, fontAtlas, map, added)
+                                }
                         }
                 }
             case _ => Err(JsonError(Root, Set#{"JsonObject"}))
         }
+
+    /// Container ノードの処理: children を parentPath 直下に追加してから
+    /// `rect` + `layout` で `Layout.apply` を 1 回実行する。
+    /// 結果として scene tree には Container 自身のノードは作らず、children が直接 parent 配下にぶら下がる。
+    def handleContainer(parentPath: NodePath,
+                         tagParser: Option[String] -> Result[Json.JsonError, t],
+                         fontAtlas: Option[FontAtlas],
+                         map: Map[String, Json.JsonElement],
+                         scene: Scene[t]):
+                         Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
+        let parsed = forM (
+            rect       <- parseRect(map);
+            layoutJson <- (Json.FromJson.getAtKey(Root, "layout", map): Result[Json.JsonError, Json.JsonElement]);
+            layout     <- Layout.fromJson(layoutJson)
+        ) yield (rect, layout);
+        match parsed {
+            case Err(e) => Err(e)
+            case Ok((rect, layout)) =>
+                match addChildren(parentPath, tagParser, fontAtlas, map, scene) {
+                    case Err(e)         => Err(e)
+                    case Ok(withChildren) => Ok(Layout.apply(rect, layout, withChildren))
+                }
+        }
+
+    /// `"rect": {"x": .., "y": .., "width": .., "height": ..}` を Rect2 に変換する。
+    /// 配列形式 `[x, y, w, h]` より可読性が高い (各フィールドの意味が名前で明示される)。
+    def parseRect(map: Map[String, Json.JsonElement]):
+                   Result[Json.JsonError, Rect2.Rect2] =
+        forM (
+            rectMap <- (Json.FromJson.getAtKey(Root, "rect", map): Result[Json.JsonError, Map[String, Json.JsonElement]]);
+            x       <- (Json.FromJson.getAtKey(Root, "x", rectMap): Result[Json.JsonError, Float64]);
+            y       <- (Json.FromJson.getAtKey(Root, "y", rectMap): Result[Json.JsonError, Float64]);
+            w       <- (Json.FromJson.getAtKey(Root, "width", rectMap): Result[Json.JsonError, Float64]);
+            h       <- (Json.FromJson.getAtKey(Root, "height", rectMap): Result[Json.JsonError, Float64])
+        ) yield ({position = {x = x, y = y}, size = {x = w, y = h}}: Rect2.Rect2)
 
     def addAt(parentPath: NodePath, name: String, engineNode: EngineNode[t],
               scene: Scene[t]): Scene[t] =
@@ -134,11 +178,76 @@ mod SceneLoader {
                 List.foldLeft(
                     (acc, child) -> match acc {
                         case Err(e) => Err(e)
-                        case Ok(s)  => addJsonAt(parentPath, tagParser, fontAtlas, child, s)
+                        case Ok(s)  => addChildOrExpand(parentPath, tagParser, fontAtlas, child, s)
                     },
                     Ok(scene),
                     Vector.toList(arr))
             case Some(_) => Err(JsonError(Root, Set#{"JsonArray"}))
+        }
+
+    /// children 配列内の 1 要素を処理する。
+    /// `"kind": "RepeatNodes"` の場合は count 個に展開して各々 addJsonAt する。
+    /// その他は通常の addJsonAt にディスパッチ。
+    def addChildOrExpand(parentPath: NodePath,
+                          tagParser: Option[String] -> Result[Json.JsonError, t],
+                          fontAtlas: Option[FontAtlas],
+                          child: Json.JsonElement,
+                          scene: Scene[t]):
+                          Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
+        match child {
+            case JsonObject(map) =>
+                let kindResult: Result[Json.JsonError, String] =
+                    Json.FromJson.getAtKey(Root, "kind", map);
+                match kindResult {
+                    case Ok("RepeatNodes") =>
+                        expandRepeatNodes(parentPath, tagParser, fontAtlas, map, scene)
+                    case _ =>
+                        addJsonAt(parentPath, tagParser, fontAtlas, child, scene)
+                }
+            case _ =>
+                addJsonAt(parentPath, tagParser, fontAtlas, child, scene)
+        }
+
+    /// `"kind": "RepeatNodes"` を count 個のテンプレートインスタンスに展開し、各々 addJsonAt する。
+    /// template 内の全 JsonString フィールドに対し `{indexVar}` を i の文字列で置換する。
+    def expandRepeatNodes(parentPath: NodePath,
+                           tagParser: Option[String] -> Result[Json.JsonError, t],
+                           fontAtlas: Option[FontAtlas],
+                           map: Map[String, Json.JsonElement],
+                           scene: Scene[t]):
+                           Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
+        let parsed = forM (
+            count        <- (Json.FromJson.getAtKey(Root, "count", map): Result[Json.JsonError, Int32]);
+            indexVar     <- (Json.FromJson.getAtKey(Root, "indexVar", map): Result[Json.JsonError, String]);
+            templateJson <- (Json.FromJson.getAtKey(Root, "template", map): Result[Json.JsonError, Json.JsonElement])
+        ) yield (count, indexVar, templateJson);
+        match parsed {
+            case Err(e) => Err(e)
+            case Ok((count, indexVar, templateJson)) =>
+                let placeholder = "{${indexVar}}";
+                let indices = List.range(0, count);
+                List.foldLeft((acc, i) -> match acc {
+                    case Err(e) => Err(e)
+                    case Ok(s)  =>
+                        let substituted = substituteJsonStrings(placeholder, "${i}", templateJson);
+                        addJsonAt(parentPath, tagParser, fontAtlas, substituted, s)
+                }, Ok(scene), indices)
+        }
+
+    /// JsonElement 内の全 JsonString に対して `placeholder` を `replacement` に置換する。
+    /// オブジェクトのキーは置換しない (フィールド名は固定の構造)。
+    def substituteJsonStrings(placeholder: String, replacement: String,
+                                json: Json.JsonElement): Json.JsonElement =
+        match json {
+            case JsonObject(map) =>
+                JsonObject(Map.map(v ->
+                    substituteJsonStrings(placeholder, replacement, v), map))
+            case JsonArray(arr) =>
+                JsonArray(Vector.map(v ->
+                    substituteJsonStrings(placeholder, replacement, v), arr))
+            case Json.JsonElement.JsonString(s) =>
+                Json.JsonElement.JsonString(String.replace(src = placeholder, dst = replacement, s))
+            case other => other
         }
 
     def applyGroups(path: NodePath, groups: List[String], scene: Scene[t]): Scene[t] =
@@ -166,6 +275,7 @@ mod SceneLoader {
             case "CanvasLayer"      => buildCanvasLayer(tagParser, map)
             case "Sprite2D"         => buildSprite2D(tagParser, map)
             case "TextureButton"    => buildTextureButton(tagParser, map)
+            case "TextureRect"      => buildTextureRect(tagParser, map)
             case "StaticBody2D"     => buildStaticBody2D(tagParser, map)
             case "Label2D"          => buildLabel2D(tagParser, fontAtlas, map)
             case "RigidBody2D"      => buildRigidBody2D(tagParser, map)
@@ -299,6 +409,47 @@ mod SceneLoader {
 
     def setSpriteSkew(skew: Float64, sprite: Sprite2D): Sprite2D =
         Node2D.setSkew(skew, sprite)
+
+    def buildTextureRect(tagParser: Option[String] -> Result[Json.JsonError, t],
+                          map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
+        forM (
+            tag         <- parseTagField(tagParser, map);
+            pos         <- parseVec2("pos", map);
+            size        <- parseVec2("size", map);
+            texture     <- (Json.FromJson.getAtKey(Root, "texture", map): Result[Json.JsonError, String]);
+            rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
+            skewOpt     <- (Json.FromJson.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
+            zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            alphaOpt    <- (Json.FromJson.getAtKeyOpt(Root, "alpha", map): Result[Json.JsonError, Option[Float64]]);
+            flipHOpt    <- (Json.FromJson.getAtKeyOpt(Root, "flipH", map): Result[Json.JsonError, Option[Bool]]);
+            flipVOpt    <- (Json.FromJson.getAtKeyOpt(Root, "flipV", map): Result[Json.JsonError, Option[Bool]])
+        ) yield {
+            let rect = TextureRect.make(texture, pos, size)
+                |> applyOpt(rotationOpt, setTextureRectRotation)
+                |> applyOpt(skewOpt, setTextureRectSkew)
+                |> applyOpt(zIndexOpt, setTextureRectZIndex)
+                |> applyOpt(visibleOpt, setTextureRectVisible)
+                |> applyOpt(alphaOpt, setTextureRectAlpha)
+                |> applyOpt(flipHOpt, TextureRect.setFlipH)
+                |> applyOpt(flipVOpt, TextureRect.setFlipV);
+            EngineNode.TextureRectWithState(rect, tag)
+        }
+
+    def setTextureRectRotation(rot: Float64, rect: TextureRect): TextureRect =
+        Node2D.setRotation(rot, rect)
+
+    def setTextureRectSkew(skew: Float64, rect: TextureRect): TextureRect =
+        Node2D.setSkew(skew, rect)
+
+    def setTextureRectAlpha(alpha: Float64, rect: TextureRect): TextureRect =
+        TextureRect.setAlpha(Float64.truncateToFloat32(alpha), rect)
+
+    def setTextureRectZIndex(z: Int32, rect: TextureRect): TextureRect =
+        CanvasItem.setZIndex(z, rect)
+
+    def setTextureRectVisible(v: Bool, rect: TextureRect): TextureRect =
+        CanvasItem.setVisible(v, rect)
 
     def buildTextureButton(tagParser: Option[String] -> Result[Json.JsonError, t],
                            map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =

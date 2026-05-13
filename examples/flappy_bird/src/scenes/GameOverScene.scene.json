@@ -1,63 +1,96 @@
 {
-  "type": "CanvasLayer",
-  "name": "gameover",
-  "layer": 2,
   "children": [
     {
-      "type": "Sprite2D",
       "name": "gameover_label",
-      "pos": [144, 160],
-      "scale": [2, 2],
+      "pos": [
+        144,
+        160
+      ],
+      "scale": [
+        2,
+        2
+      ],
       "texture": "label_game_over",
+      "type": "Sprite2D",
       "visible": false
     },
     {
-      "type": "Sprite2D",
       "name": "score_panel",
-      "pos": [144, 280],
-      "scale": [2, 2],
+      "pos": [
+        144,
+        2.8E+2
+      ],
+      "scale": [
+        2,
+        2
+      ],
       "texture": "panel_score",
+      "type": "Sprite2D",
       "visible": false
     },
     {
-      "type": "Label2D",
+      "centered": true,
+      "fontSize": 30,
       "name": "final_score",
-      "pos": [218, 253],
+      "pos": [
+        218,
+        253
+      ],
       "text": "0",
-      "fontSize": 30,
-      "centered": true,
-      "visible": false,
-      "zIndex": 1
-    },
-    {
       "type": "Label2D",
-      "name": "best_score",
-      "pos": [218, 295],
-      "text": "0",
-      "fontSize": 30,
+      "visible": false,
+      "zIndex": 1
+    },
+    {
       "centered": true,
+      "fontSize": 30,
+      "name": "best_score",
+      "pos": [
+        218,
+        295
+      ],
+      "text": "0",
+      "type": "Label2D",
       "visible": false,
       "zIndex": 1
     },
     {
-      "type": "Sprite2D",
       "name": "medal",
-      "pos": [81, 287],
-      "scale": [2, 2],
+      "pos": [
+        81,
+        287
+      ],
+      "scale": [
+        2,
+        2
+      ],
       "texture": "medal_bronze",
+      "type": "Sprite2D",
       "visible": false,
       "zIndex": 1
     },
     {
-      "type": "TextureButton",
+      "centered": true,
       "name": "play_button",
-      "pos": [144, 390],
-      "scale": [2, 2],
-      "size": [104, 58],
+      "pos": [
+        144,
+        390
+      ],
+      "scale": [
+        2,
+        2
+      ],
+      "size": [
+        104,
+        58
+      ],
       "textureNormal": "button_play_normal",
       "texturePressed": "button_play_pressed",
-      "centered": true,
+      "type": "TextureButton",
       "visible": false
     }
-  ]
+  ],
+  "layer": 2,
+  "name": "gameover",
+  "type": "CanvasLayer"
 }

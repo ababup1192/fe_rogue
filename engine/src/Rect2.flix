@@ -47,4 +47,17 @@ mod Rect2 {
         let e = end(rect);
         point#x >= rect#position#x and point#x <= e#x and
         point#y >= rect#position#y and point#y <= e#y
+
+    // ========================================================================
+    // サイズ変更
+    // ========================================================================
+
+    /// 全方向に amount 分だけ拡張した矩形を返す。
+    /// 負の値を渡すと縮小（パディング）になる。
+    /// see: https://docs.godotengine.org/ja/4.x/classes/class_rect2.html#class-rect2-method-grow
+    pub def grow(amount: Float64, rect: Rect2): Rect2 =
+        {position = {x = rect#position#x - amount,
+                     y = rect#position#y - amount},
+         size     = {x = rect#size#x + 2.0 * amount,
+                     y = rect#size#y + 2.0 * amount}}
 }
