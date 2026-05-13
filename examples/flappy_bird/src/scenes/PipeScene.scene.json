@@ -10,7 +10,11 @@
       "name": "top",
       "tag": "PipePart",
       "pos": [0, 0],
-      "shape": {"kind": "RectShape2D", "width": 52, "height": 320},
+      "shape": {
+        "kind": "RectShape2D",
+        "width": 52,
+        "height": 320
+      },
       "children": [
         {
           "type": "Sprite2D",
@@ -26,7 +30,11 @@
       "name": "bottom",
       "tag": "PipePart",
       "pos": [0, 0],
-      "shape": {"kind": "RectShape2D", "width": 52, "height": 320},
+      "shape": {
+        "kind": "RectShape2D",
+        "width": 52,
+        "height": 320
+      },
       "children": [
         {
           "type": "Sprite2D",
@@ -42,7 +50,11 @@
       "name": "coin",
       "tag": "Coin",
       "pos": [0, 0],
-      "shape": {"kind": "RectShape2D", "width": 4, "height": 84},
+      "shape": {
+        "kind": "RectShape2D",
+        "width": 4,
+        "height": 84
+      },
       "monitoring": false
     }
   ]
