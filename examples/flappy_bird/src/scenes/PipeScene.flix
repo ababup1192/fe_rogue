@@ -65,10 +65,6 @@ mod PipeScene {
     /// 縦ギャップ = 2 × (250 - 160) = 180px
     def easySpriteOffset(): Float64 = 250.0
 
-    /// パイプの衝突形状（矩形 52×320 = 参考実装 26×160 の 2 倍）
-    def pipeCollisionShape(): CollisionShape2D =
-        CollisionShape2D.RectShape2D({width = 52.0, height = 320.0})
-
     /// パイプペア間の水平距離
     def pipeSpacingX(): Float64 = 182.0
 
@@ -96,67 +92,75 @@ mod PipeScene {
     /// パイプの半幅（画面外判定に使用）
     pub def pipeHalfWidth(): Float64 = 26.0
 
-    /// トップパイプのテクスチャ名
-    def topTexture(): String = "pipe_green_top"
-
-    /// ボトムパイプのテクスチャ名
-    def bottomTexture(): String = "pipe_green_bottom"
-
     /// パイプの衝突形状の半高（320 / 2）
     def pipeHalfHeight(): Float64 = 160.0
 
     // ========================================================================
-    // シーン構築
+    // シーン構築（PackedScene 経由）
     // ========================================================================
 
-    /// パイプペア（top + bottom + coin）を 1 つの Marker2D 親ノード配下に追加する
-    /// godot の pipe.tscn 構造に対応。親ごと自殺で 3 ノード一括削除できる。
+    /// パイプペアのプレハブ JSON のパス
+    def sceneJsonPath(): String = "src/scenes/PipeScene.scene.json"
+
+    /// プレハブをロード（毎 spawn で読み直すことで HotReload が自然に効く）
+    def loadTemplate(): PackedScene \ Fs.FileRead =
+        PackedScene.load(sceneJsonPath())
+
+    /// パイプペア（top + bottom + coin）を 1 つの Marker2D 親ノード配下に追加する。
+    /// 構造（Marker2D > top/bottom/coin）と固定値（テクスチャ・パイプサイズ）はプレハブから、
+    /// 可変パラメータ（gapY, offset で決まる子の Y 座標と coin の縦サイズ）は instantiate 後に
+    /// `Scene.mapEngineNode` でパッチする。
     /// pair: 親ノード名（"pipe_${counter}"）
     /// x: ペアの X 座標（親 Marker2D の position）
     /// gapY: ギャップ中心の Y 座標
     /// offset: ギャップ中心からパイプ中心までの距離（難易度依存）
     def spawnPipePairWithOffset(pair: String, x: Float64, gapY: Float64,
-                                 offset: Float64, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let parent = Marker2D.make({x = x, y = 0.0});
-        let topBody = StaticBody2D.make({x = 0.0, y = gapY - offset}, pipeCollisionShape());
-        let topSprite = Sprite2D.make(topTexture(), Vec2.zero(), {x = 2.0, y = 2.0});
-        let bottomBody = StaticBody2D.make({x = 0.0, y = gapY + offset}, pipeCollisionShape());
-        let bottomSprite = Sprite2D.make(bottomTexture(), Vec2.zero(), {x = 2.0, y = 2.0});
-        let gapHeight = 2.0 * (offset - pipeHalfHeight());
-        let coinShape = CollisionShape2D.RectShape2D({width = 4.0, height = gapHeight});
-        let coin = Area2D.make({x = 0.0, y = gapY}, coinShape)
-            |> Area2D.setMonitoring(false);
-        scene
-            |> Scene.addNode(pair, EngineNode.Marker2DWithState(parent, NodeTag.Pipe))
-            |> Scene.addToGroup(pair :: Nil, pipeGroup())
-            |> Scene.addChild(pair, topName(),
-                EngineNode.StaticBody2DWithState(topBody, NodeTag.PipePart))
-            |> Scene.addChildAt(topPath(pair), spriteName(),
-                EngineNode.Sprite2DWithState(topSprite, NodeTag.NoTag))
-            |> Scene.addChild(pair, bottomName(),
-                EngineNode.StaticBody2DWithState(bottomBody, NodeTag.PipePart))
-            |> Scene.addChildAt(bottomPath(pair), spriteName(),
-                EngineNode.Sprite2DWithState(bottomSprite, NodeTag.NoTag))
-            |> Scene.addChild(pair, coinName(),
-                EngineNode.Area2DWithState(coin, NodeTag.Coin))
+                                 offset: Float64, scene: Scene[NodeTag]):
+                                Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
+        let template = loadTemplate();
+        let opts: InstantiateOpts = {
+            parentPath = Nil,
+            nameOverride = Some(pair),
+            positionOverride = Some({x = x, y = 0.0})
+        };
+        let coinHeight = 2.0 * (offset - pipeHalfHeight());
+        let coinShape = CollisionShape2D.RectShape2D({width = 4.0, height = coinHeight});
+        PackedScene.instantiate({
+            opts = opts,
+            tagParser = Game.parseNodeTag,
+            template = template,
+            fontAtlas = None,
+            scene = scene
+        })
+            |> Scene.mapEngineNode(topPath(pair),
+                EngineNode.mapStaticBody2D(b -> Node2D.setPosition({x = 0.0, y = gapY - offset}, b)))
+            |> Scene.mapEngineNode(bottomPath(pair),
+                EngineNode.mapStaticBody2D(b -> Node2D.setPosition({x = 0.0, y = gapY + offset}, b)))
+            |> Scene.mapEngineNode(coinPath(pair),
+                EngineNode.mapArea2D(a -> a
+                    |> Node2D.setPosition({x = 0.0, y = gapY})
+                    |> Area2D.setCollisionShape(Some(coinShape))))
 
     /// パイプペアを指定位置に決定的に追加する（テスト用公開）
     /// 通常難易度のオフセット（normalSpriteOffset）を使用する
     pub def spawnPipePairAt(counter: Int32, x: Float64, gapY: Float64,
-                            scene: Scene[NodeTag]): Scene[NodeTag] =
+                            scene: Scene[NodeTag]):
+                           Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
         spawnPipePairWithOffset(pairName(counter), x, gapY, normalSpriteOffset(), scene)
 
     /// パイプペアをランダムな gapY で追加する
     /// スコアに応じた縦ギャップで配置する
     def spawnPipePair(counter: Int32, x: Float64, score: Int32,
-                      scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+                      scene: Scene[NodeTag]):
+                     Scene[NodeTag] \ {Math.Random, Fs.FileRead, GameEngine.Game} =
         let gapY = gapYMin() + (gapYMax() - gapYMin()) * Math.Random.randomFloat64();
         spawnPipePairWithOffset(pairName(counter), x, gapY, gapSpriteOffset(score), scene)
 
     /// 初期パイプ（3 ペア）を配置する
     /// score=0 の初心者向けギャップで配置する
     /// 画面外になったペアの再スポーンは NodeRemovedHandler が担う
-    pub def addPipes(scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+    pub def addPipes(scene: Scene[NodeTag]):
+                    Scene[NodeTag] \ {Math.Random, Fs.FileRead, GameEngine.Game} =
         let spacing = pipeSpacingX();
         List.range(0, initialPipeCount())
             |> List.foldLeft((acc, i) ->
@@ -172,7 +176,8 @@ mod PipeScene {
 
     /// リサイクル時に新ペアを spawn する
     /// 新ペアの X は現在の最右端 + pipeSpacingX。ID は X 座標から導出
-    pub def spawnRecycledPair(score: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+    pub def spawnRecycledPair(score: Int32, scene: Scene[NodeTag]):
+                              Scene[NodeTag] \ {Math.Random, Fs.FileRead, GameEngine.Game} =
         let nextX = maxPipeX(scene) + pipeSpacingX();
         let id = Float64.tryToInt32(nextX) |> Option.getWithDefault(0);
         spawnPipePair(id, nextX, score, scene)

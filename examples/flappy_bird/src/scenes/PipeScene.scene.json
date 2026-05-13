@@ -1,0 +1,49 @@
+{
+  "type": "Marker2D",
+  "name": "pipe",
+  "tag": "Pipe",
+  "pos": [0, 0],
+  "groups": ["pipes"],
+  "children": [
+    {
+      "type": "StaticBody2D",
+      "name": "top",
+      "tag": "PipePart",
+      "pos": [0, 0],
+      "shape": {"kind": "RectShape2D", "width": 52, "height": 320},
+      "children": [
+        {
+          "type": "Sprite2D",
+          "name": "sprite",
+          "pos": [0, 0],
+          "scale": [2, 2],
+          "texture": "pipe_green_top"
+        }
+      ]
+    },
+    {
+      "type": "StaticBody2D",
+      "name": "bottom",
+      "tag": "PipePart",
+      "pos": [0, 0],
+      "shape": {"kind": "RectShape2D", "width": 52, "height": 320},
+      "children": [
+        {
+          "type": "Sprite2D",
+          "name": "sprite",
+          "pos": [0, 0],
+          "scale": [2, 2],
+          "texture": "pipe_green_bottom"
+        }
+      ]
+    },
+    {
+      "type": "Area2D",
+      "name": "coin",
+      "tag": "Coin",
+      "pos": [0, 0],
+      "shape": {"kind": "RectShape2D", "width": 4, "height": 84},
+      "monitoring": false
+    }
+  ]
+}

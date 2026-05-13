@@ -14,11 +14,10 @@ def loadedMenuScene(): Scene[NodeTag] \ Fs.FileRead =
         SceneLoader.loadScene("src/scenes/MenuScene.scene.json",
                               Game.parseNodeTag, Scene.empty()))
 
-/// GroundScene.scene.json をテスト用に読み込んだ scene を取得する
+/// GroundScene のプレハブ JSON は PackedScene として扱われるようになったため、
+/// GroundScene.addGrounds() を呼び出した状態を返す（初期 2 枚配置済み）
 def loadedGroundScene(): Scene[NodeTag] \ Fs.FileRead =
-    withMockGame(() ->
-        SceneLoader.loadScene("src/scenes/GroundScene.scene.json",
-                              Game.parseNodeTag, Scene.empty()))
+    withMockGame(() -> GroundScene.addGrounds(Scene.empty()))
 
 /// ScoreScene.scene.json をテスト用に読み込んだ scene を取得する（loadSceneWithFont 経由）
 def loadedScoreScene(): Scene[NodeTag] \ Fs.FileRead =
@@ -113,21 +112,18 @@ def testPlayButtonTextureButton(): Unit \ {Assert, Fs.FileRead} =
     }
 
 // ========================================================================
-// トップレベル配列 + StaticBody2D ビルダー（GroundScene.scene.json）
+// PackedScene 経由のインスタンス化（GroundScene.addGrounds）
 // ========================================================================
 
-/// GroundScene.scene.json はトップレベル配列で 2 つのルートノード ground_0/ground_1 を
-/// 持ち、それぞれに sprite 子ノードが付く（合計 4 ノード）
+/// GroundScene.addGrounds は同じプレハブから 2 タイルを生成し、合計 4 ノードになる
+/// （ground_0, ground_0/sprite, ground_1, ground_1/sprite）
 @Test
 def testGroundSceneJsonArrayRoots(): Unit \ {Assert, Fs.FileRead} =
     let scene = loadedGroundScene();
     Assert.assertEq(
-        expected = (4, true, true, true, true),
-        (Scene.nodeCount(scene),
-         not Option.isEmpty(Scene.getEngineNode("ground_0" :: Nil, scene)),
-         not Option.isEmpty(Scene.getEngineNode("ground_1" :: Nil, scene)),
-         not Option.isEmpty(Scene.getEngineNode("ground_0" :: "sprite" :: Nil, scene)),
-         not Option.isEmpty(Scene.getEngineNode("ground_1" :: "sprite" :: Nil, scene))))
+        expected = Set#{"ground_0" :: Nil, "ground_0" :: "sprite" :: Nil,
+                        "ground_1" :: Nil, "ground_1" :: "sprite" :: Nil},
+        List.toSet(Scene.preorderPaths(scene)))
 
 /// ground_0 は StaticBody2D で tag=Ground、位置 (168,456)、矩形コリジョン形状を持つ
 @Test

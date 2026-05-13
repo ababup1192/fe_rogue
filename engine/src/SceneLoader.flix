@@ -22,9 +22,40 @@
 //   JSON では実質 no-op）。
 
 mod SceneLoader {
+    import java.math.BigDecimal
     use Json.JsonElement.{JsonObject, JsonArray}
     use Json.JsonError.JsonError
     use Json.Path.Path.Root
+
+    // ========================================================================
+    // JSON ユーティリティ（PackedScene からも利用）
+    // ========================================================================
+
+    /// Float64 を BigDecimal に変換する（PackedScene の pos 上書き用）
+    def floatToBd(value: Float64): BigDecimal =
+        unsafe IO { BigDecimal.valueOf(value).stripTrailingZeros() }
+
+    /// JSON Object のトップレベル "name" を別の値に置き換える。
+    /// JSON Object 以外なら入力をそのまま返す（PackedScene.instantiate がここを通る）
+    pub def withRootName(name: NodeName, json: Json.JsonElement): Json.JsonElement =
+        match json {
+            case JsonObject(map) =>
+                JsonObject(Map.insert("name", Json.JsonElement.JsonString(name), map))
+            case _ => json
+        }
+
+    /// JSON Object のトップレベル "pos" を [x, y] に置き換える。
+    /// JSON Object 以外なら入力をそのまま返す
+    pub def withRootPosition(pos: Vec2.Vec2, json: Json.JsonElement): Json.JsonElement =
+        match json {
+            case JsonObject(map) =>
+                let posArr = Json.JsonElement.JsonArray(Vector#{
+                    Json.JsonElement.JsonNumber(floatToBd(pos#x)),
+                    Json.JsonElement.JsonNumber(floatToBd(pos#y))
+                });
+                JsonObject(Map.insert("pos", posArr, map))
+            case _ => json
+        }
 
     // ========================================================================
     // 公開 API
@@ -93,7 +124,9 @@ mod SceneLoader {
             case _ => Err(JsonError(Root, Set#{"JsonObject or JsonArray"}))
         }
 
-    def addJsonAt(parentPath: NodePath, tagParser: Option[String] -> Result[Json.JsonError, t],
+    /// JSON ルートノードを `parentPath` 配下に追加する。
+    /// PackedScene.instantiate がこの関数経由でテンプレートを scene に挿入するため public。
+    pub def addJsonAt(parentPath: NodePath, tagParser: Option[String] -> Result[Json.JsonError, t],
                   fontAtlas: Option[FontAtlas], json: Json.JsonElement,
                   scene: Scene[t]): Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
         match json {

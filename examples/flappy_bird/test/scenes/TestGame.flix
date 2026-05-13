@@ -12,14 +12,34 @@ def withMockRandom(f: Unit -> a \ ef + Math.Random): a \ ef =
         def randomInt64(k) = k(42i64)
     }
 
-/// Recycle のモックハンドラ。実 spawn 関数に委譲する（内部で Math.Random を使う）
-/// 単独では使えないので呼び出し元で必ず withMockRandom と組み合わせること
-def withMockRecycle(f: Unit -> a \ ef + Recycle): a \ ef + Math.Random =
-    run f() with handler Recycle {
-        def ground(scene, k) = k(GroundScene.spawnRecycledGround(scene))
-        def pipe(scene, k) =
-            k(PipeScene.spawnRecycledPair(ScoreScene.getScore(scene), scene))
-    }
+/// Recycle のモックハンドラ。実 spawn 関数に委譲する（内部で Math.Random を使う）。
+/// 単独では使えないので呼び出し元で必ず withMockRandom と組み合わせること。
+/// PackedScene 化で spawnRecycledGround が Fs.FileRead + GameEngine.Game を要求するため、
+/// GameEngine.Game は内部で吸収（withMockGame と同等のスタブ）、
+/// Fs.FileRead は呼び出し元へ伝播させる
+def withMockRecycle(f: Unit -> a \ ef + Recycle):
+                     a \ ef + Math.Random + Fs.FileRead =
+    run f()
+      with handler Recycle {
+          def ground(scene, k) = k(GroundScene.spawnRecycledGround(scene))
+          def pipe(scene, k) =
+              k(PipeScene.spawnRecycledPair(ScoreScene.getScore(scene), scene))
+      }
+      with handler GameEngine.Game {
+          def renderCommands(_, _, k) = k(())
+          def initTileBuffer(_, k) = k((0i32, 0i32))
+          def shouldClose(k) = k(false)
+          def getDeltaTime(k) = k(Duration.zero())
+          def isKeyPressed(_, k) = k(false)
+          def getMousePosition(k) = k(Vec2.zero())
+          def isMouseButtonPressed(_, k) = k(false)
+          def consumeScrollDelta(k) = k(0.0)
+          def getFontAtlas(_, _) = bug!("getFontAtlas not used in tests")
+          def getViewportRect(k) = k({position = Vec2.zero(),
+                                       size = {x = 288.0, y = 512.0}})
+          def getTextureInfo(_, k) = k(None)
+          def setCursor(_, k) = k(())
+      }
 
 /// GameEngine.Audio のモックハンドラ（playAudio/stopAudio/setVolume は no-op）。
 /// 他のエフェクト（Fs.FileRead など）は呼び出し元へ伝播する

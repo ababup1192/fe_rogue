@@ -1,8 +1,8 @@
 // GroundScene — 地面タイルの構築・リサイクル
 //
-// 地面は StaticBody2D + 子 Sprite2D で構成される。
-// 画面幅をカバーするよう複数タイル配置し、カメラの左端を超えたタイルは
-// 右端に再配置する無限スクロール方式。
+// 地面 1 枚分の構造は `GroundScene.scene.json` を PackedScene として読み込み、
+// `PackedScene.instantiate` で N 枚に複製する。初期 2 枚もリサイクルの新タイルも
+// 同じテンプレートを使うため、定義の重複が無い。
 //
 //   StaticBody2DWithState(body, Ground)
 //     └── Sprite2DWithState(sprite, NoTag)
@@ -28,45 +28,44 @@ mod GroundScene {
     /// 地面の上端 Y 座標（鳥の位置クランプに使用）
     pub def groundTopY(): Float64 = 512.0 - groundHeight()
 
-    /// 地面テクスチャ名
-    def groundTexture(): String = "ground"
-
-    /// 地面の衝突形状（タイル全体をカバーする矩形）
-    def groundCollisionShape(): CollisionShape2D =
-        CollisionShape2D.RectShape2D({width = groundWidth(), height = groundHeight()})
-
-    /// 地面の Z-index（パイプや鳥より前面に描画）
-    def groundZIndex(): Int32 = 10
-
     // ========================================================================
-    // シーン構築
+    // シーン構築（PackedScene 経由）
     // ========================================================================
 
-    /// 地面タイル 1 枚をシーンに追加する
-    /// name: ノード名（ユニーク）
-    /// xCenter: タイル中心の X 座標
-    def spawnGround(name: String, xCenter: Float64,
-                    scene: Scene[NodeTag]): Scene[NodeTag] =
-        let body = StaticBody2D.make(
-            {x = xCenter, y = groundCenterY()},
-            groundCollisionShape());
-        let sprite = Sprite2D.make(groundTexture(), Vec2.zero(), {x = 2.0, y = 2.0})
-            |> CanvasItem.setZIndex(groundZIndex());
-        scene
-            |> Scene.addNode(name,
-                EngineNode.StaticBody2DWithState(body, NodeTag.Ground))
-            |> Scene.addToGroup(name :: Nil, groundGroup())
-            |> Scene.addChild(name, "sprite",
-                EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
-
-    /// 地面シーン定義 JSON のパス
+    /// 地面プレハブ JSON のパス
     def sceneJsonPath(): String = "src/scenes/GroundScene.scene.json"
 
-    /// 初期地面タイルを配置する（2 枚で画面幅 + スクロールバッファをカバー）。
-    /// 構造は GroundScene.scene.json から読み込む。
+    /// プレハブをロードする（毎回ファイル I/O が走るが、HotReload で
+    /// 編集 → 次 spawn から反映されるという副作用がある）
+    def loadTemplate(): PackedScene \ Fs.FileRead =
+        PackedScene.load(sceneJsonPath())
+
+    /// 1 枚を name + xCenter で spawn する。template を引数で受け取るので
+    /// 連続 spawn でも load を 1 回にできる（addGrounds がそうしている）
+    def spawnGroundFromTemplate(name: String, xCenter: Float64,
+                                  template: PackedScene,
+                                  scene: Scene[NodeTag]):
+                                 Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
+        let opts: InstantiateOpts = {
+            parentPath = Nil,
+            nameOverride = Some(name),
+            positionOverride = Some({x = xCenter, y = groundCenterY()})
+        };
+        PackedScene.instantiate({
+            opts = opts,
+            tagParser = Game.parseNodeTag,
+            template = template,
+            fontAtlas = None,
+            scene = scene
+        })
+
+    /// 初期地面タイルを配置する（2 枚で画面幅 + スクロールバッファをカバー）
     /// 画面外になったタイルの再配置は NodeRemovedHandler が担う
     pub def addGrounds(scene: Scene[NodeTag]): Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
-        SceneLoader.loadScene(sceneJsonPath(), Game.parseNodeTag, scene)
+        let template = loadTemplate();
+        scene
+            |> spawnGroundFromTemplate("ground_0", 168.0, template)
+            |> spawnGroundFromTemplate("ground_1", 504.0, template)
 
     /// 地面グループ内の最右端 X 座標を返す（リサイクル位置決定に使用）
     def maxGroundX(scene: Scene[NodeTag]): Float64 =
@@ -77,10 +76,12 @@ mod GroundScene {
 
     /// リサイクル時に新タイルを spawn する
     /// 新タイルの X は現在の最右端 + groundWidth。ID は X 座標から導出
-    pub def spawnRecycledGround(scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def spawnRecycledGround(scene: Scene[NodeTag]):
+                                Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
+        let template = loadTemplate();
         let nextX = maxGroundX(scene) + groundWidth();
         let id = Float64.tryToInt32(nextX) |> Option.getWithDefault(0);
-        spawnGround("ground_${id}", nextX, scene)
+        spawnGroundFromTemplate("ground_${id}", nextX, template, scene)
 
     // ========================================================================
     // ロジック（process）

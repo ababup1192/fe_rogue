@@ -58,10 +58,12 @@ def testPipeInitialPositions(): Unit \ {Assert, Fs.FileRead} =
 
 /// spawnPipePairAt で指定位置（gapY=200）にペアが配置される
 ///   normalSpriteOffset=202 → top=(400, -2), bottom=(400, 402)
+/// PackedScene 化により Fs.FileRead + GameEngine.Game を要求するため
+/// withMockGame で Game eff を吸収する
 @Test
-def testSpawnPipePairAt(): Unit \ Assert =
-    let scene = Scene.empty()
-        |> PipeScene.spawnPipePairAt(0, 400.0, 200.0);
+def testSpawnPipePairAt(): Unit \ {Assert, Fs.FileRead} =
+    let scene = withMockGame(() ->
+        Scene.empty() |> PipeScene.spawnPipePairAt(0, 400.0, 200.0));
     let pair0 = PipeScene.pairName(0);
     let topPos = Scene.globalPositionAt(PipeScene.topPath(pair0), scene);
     let bottomPos = Scene.globalPositionAt(PipeScene.bottomPath(pair0), scene);
