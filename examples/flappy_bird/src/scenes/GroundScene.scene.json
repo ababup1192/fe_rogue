@@ -1,0 +1,38 @@
+[
+  {
+    "type": "StaticBody2D",
+    "name": "ground_0",
+    "tag": "Ground",
+    "pos": [168, 456],
+    "shape": {"kind": "RectShape2D", "width": 336, "height": 112},
+    "groups": ["grounds"],
+    "children": [
+      {
+        "type": "Sprite2D",
+        "name": "sprite",
+        "pos": [0, 0],
+        "scale": [2, 2],
+        "texture": "ground",
+        "zIndex": 10
+      }
+    ]
+  },
+  {
+    "type": "StaticBody2D",
+    "name": "ground_1",
+    "tag": "Ground",
+    "pos": [504, 456],
+    "shape": {"kind": "RectShape2D", "width": 336, "height": 112},
+    "groups": ["grounds"],
+    "children": [
+      {
+        "type": "Sprite2D",
+        "name": "sprite",
+        "pos": [0, 0],
+        "scale": [2, 2],
+        "texture": "ground",
+        "zIndex": 10
+      }
+    ]
+  }
+]

@@ -1,0 +1,39 @@
+[package]
+name        = "ex_flappy_bird"
+description = "Flappy Bird clone built on flix_game_engine"
+version     = "0.1.0"
+flix        = "0.72.0"
+authors     = ["ababup1192 <ababup1192@gmail.com>"]
+
+[dependencies]
+"github:mlutze/flix-json" = "0.13.2"
+"github:ababup1192/flix_game_engine" = { version = "0.1.0", security = "unrestricted" }
+"github:ababup1192/flix_engine_editor" = { version = "0.1.0", security = "unrestricted" }
+
+[mvn-dependencies]
+"com.formdev:flatlaf" = "3.7.1"
+"org.lwjgl:lwjgl" = "3.3.4"
+"org.lwjgl:lwjgl-glfw" = "3.3.4"
+"org.lwjgl:lwjgl-opengl" = "3.3.4"
+"org.lwjgl:lwjgl-stb" = "3.3.4"
+"org.lwjgl:lwjgl-openal" = "3.3.4"
+
+[jar-dependencies]
+# macOS ARM64 (Apple Silicon)
+"lwjgl-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl/3.3.4/lwjgl-3.3.4-natives-macos-arm64.jar"
+"lwjgl-glfw-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-glfw/3.3.4/lwjgl-glfw-3.3.4-natives-macos-arm64.jar"
+"lwjgl-opengl-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-opengl/3.3.4/lwjgl-opengl-3.3.4-natives-macos-arm64.jar"
+"lwjgl-stb-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-stb/3.3.4/lwjgl-stb-3.3.4-natives-macos-arm64.jar"
+"lwjgl-openal-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-openal/3.3.4/lwjgl-openal-3.3.4-natives-macos-arm64.jar"
+# macOS x86_64 (Intel Mac)
+"lwjgl-3.3.4-natives-macos.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl/3.3.4/lwjgl-3.3.4-natives-macos.jar"
+"lwjgl-glfw-3.3.4-natives-macos.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-glfw/3.3.4/lwjgl-glfw-3.3.4-natives-macos.jar"
+"lwjgl-opengl-3.3.4-natives-macos.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-opengl/3.3.4/lwjgl-opengl-3.3.4-natives-macos.jar"
+"lwjgl-stb-3.3.4-natives-macos.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-stb/3.3.4/lwjgl-stb-3.3.4-natives-macos.jar"
+"lwjgl-openal-3.3.4-natives-macos.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-openal/3.3.4/lwjgl-openal-3.3.4-natives-macos.jar"
+# Windows x86_64
+"lwjgl-3.3.4-natives-windows.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl/3.3.4/lwjgl-3.3.4-natives-windows.jar"
+"lwjgl-glfw-3.3.4-natives-windows.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-glfw/3.3.4/lwjgl-glfw-3.3.4-natives-windows.jar"
+"lwjgl-opengl-3.3.4-natives-windows.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-opengl/3.3.4/lwjgl-opengl-3.3.4-natives-windows.jar"
+"lwjgl-stb-3.3.4-natives-windows.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-stb/3.3.4/lwjgl-stb-3.3.4-natives-windows.jar"
+"lwjgl-openal-3.3.4-natives-windows.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-openal/3.3.4/lwjgl-openal-3.3.4-natives-windows.jar"

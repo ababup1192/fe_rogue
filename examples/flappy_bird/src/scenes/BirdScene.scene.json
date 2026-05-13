@@ -1,0 +1,28 @@
+{
+  "type": "RigidBody2D",
+  "name": "bird",
+  "pos": [144, 256],
+  "shape": {"kind": "CircleShape2D", "radius": 13},
+  "gravityScale": 1.0,
+  "linearVelocity": [100, 0],
+  "children": [
+    {
+      "type": "AnimatedSprite2D",
+      "name": "sprite",
+      "pos": [0, 0],
+      "scale": [2, 2],
+      "animations": {
+        "flap": ["bird_orange_0", "bird_orange_1", "bird_orange_2"]
+      },
+      "initialAnimation": "flap",
+      "fps": 10
+    },
+    {
+      "type": "Area2D",
+      "name": "area",
+      "tag": "BirdArea",
+      "pos": [0, 0],
+      "shape": {"kind": "CircleShape2D", "radius": 13}
+    }
+  ]
+}

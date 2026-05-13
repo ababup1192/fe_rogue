@@ -1,0 +1,23 @@
+{
+  "type": "CanvasLayer",
+  "name": "hud",
+  "layer": 1,
+  "children": [
+    {
+      "type": "Label2D",
+      "name": "score_label",
+      "pos": [144, 50],
+      "text": "0",
+      "fontSize": 60,
+      "centered": true
+    },
+    {
+      "type": "Label2D",
+      "name": "best_score_label",
+      "pos": [0, 0],
+      "text": "0",
+      "fontSize": 60,
+      "visible": false
+    }
+  ]
+}
