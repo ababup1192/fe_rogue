@@ -42,7 +42,7 @@ mod ScoreScene {
     /// ベストスコアの初期表示値は読み込み後に setState/setText で適用する
     pub def addHud(fontAtlas: FontAtlas, bestScore: BestScore,
                    scene: Scene[NodeTag]): Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
-        SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas, SceneLoader.constTagParser(NodeTag.NoTag), scene)
+        SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas, Game.parseNodeTag, scene)
             |> Scene.setState(scoreLabelPath(), NodeTag.ScoreLabel(0))
             |> Scene.setState(bestScoreLabelPath(), NodeTag.BestScoreLabel(bestScore))
             |> Scene.mapEngineNode(bestScoreLabelPath(),

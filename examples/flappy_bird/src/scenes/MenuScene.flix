@@ -51,5 +51,5 @@ mod MenuScene {
 
     /// メニュー UI をシーンに追加する。構造は MenuScene.scene.json から読み込む
     pub def addMenuUI(scene: Scene[NodeTag]): Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
-        SceneLoader.loadScene(sceneJsonPath(), SceneLoader.constTagParser(NodeTag.NoTag), scene)
+        SceneLoader.loadScene(sceneJsonPath(), Game.parseNodeTag, scene)
 }

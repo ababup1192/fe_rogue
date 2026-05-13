@@ -480,13 +480,12 @@ mod LwjglLayer {
     // Font Atlas Baking (STBTruetype)
     // ========================================================================
 
-    /// アトラスにベイクする漢字 + UI 記号のコードポイント列を `assets/fonts/joyo_kanji.txt`
-    /// から読み込む。常用漢字 2,140 字 + ▼ などの UI 記号を 1 行にまとめたテキストで
-    /// 管理し、Flix コードからは外している（ハードコードを避けて編集しやすくする）。
+    /// アトラスにベイクする漢字 + UI 記号のコードポイント列。
+    /// 常用漢字 2,140 字 + ▼ などの UI 記号は engine 同梱の `JoyoKanji.text()` から取得する
+    /// （consumer 側で `assets/fonts/joyo_kanji.txt` を持たなくて良い）。
     /// `Char.toBmpCodePoint` は U+8000 以上で負値になるので 0xFFFF でマスクする。
-    def kanjiCodepoints(): List[Int32] \ IO =
-        let text = Files.readString(Paths.get("assets/fonts/joyo_kanji.txt"));
-        String.toList(text)
+    def kanjiCodepoints(): List[Int32] =
+        String.toList(JoyoKanji.text())
             |> List.map(ch -> Int32.bitwiseAnd(Char.toBmpCodePoint(ch), 0xFFFF))
 
     /// stbtt_PackFontRanges でベイクされる単一レンジの記述。

@@ -111,8 +111,13 @@ mod CameraScene {
             case EngineNode.Camera2DWithState(camera, NodeTag.Camera(data)) =>
                 let targetPos = Scene.globalPosition(data#target, scene);
                 let (offset, nextShake) = stepShake(data#shake, Duration.toSeconds(delta));
+                let snapPos: Vec2.Vec2 = {x = targetPos#x, y = 0.0};
+                // Smoothing 不要なので position と smoothPosition の両方を即座にターゲットへ
+                // スナップさせる。新エンジンでは描画は smoothPosition を読むため、
+                // setPosition だけでは画面が初期位置に固定されたままになる。
                 let newCamera = camera
-                    |> Node2D.setPosition({x = targetPos#x, y = 0.0})
+                    |> Node2D.setPosition(snapPos)
+                    |> Camera2D.setSmoothPosition(snapPos)
                     |> Camera2D.setOffset(offset);
                 (EngineNode.Camera2DWithState(newCamera,
                     NodeTag.Camera({shake = nextShake | data})), scene)

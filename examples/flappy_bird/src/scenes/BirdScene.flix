@@ -119,7 +119,7 @@ mod BirdScene {
     /// Bird(BirdData) タグ（ゲーム状態）は Flix 側で付与する
     pub def addBird(scene: Scene[NodeTag]): Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
         let birdData: BirdData = {state = BirdState.Flapping, speed = birdSpeed(), hitPipe = None};
-        SceneLoader.loadScene(sceneJsonPath(), SceneLoader.constTagParser(NodeTag.NoTag), scene)
+        SceneLoader.loadScene(sceneJsonPath(), Game.parseNodeTag, scene)
             |> Scene.setState(birdPath(), NodeTag.Bird(birdData))
 
     /// メニュー画面用の鳥をシーンに追加する。

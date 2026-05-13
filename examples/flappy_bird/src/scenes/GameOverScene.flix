@@ -121,7 +121,7 @@ mod GameOverScene {
         let bestScore = ScoreScene.getBestScore(scene);
         scene
             |> ScoreScene.hideScoreLabel
-            |> SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas, SceneLoader.constTagParser(NodeTag.NoTag))
+            |> SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas, Game.parseNodeTag)
             // GameOverAnim 状態をルートレイヤーにセット
             |> Scene.setState(layerPath(), NodeTag.GameOverAnim({elapsed = 0.0}))
             // 最終スコア・ベストスコアのテキストを実際の値に差し替え

@@ -11,11 +11,19 @@
       "name": "sprite",
       "pos": [0, 0],
       "scale": [2, 2],
-      "animations": {
-        "flap": ["bird_orange_0", "bird_orange_1", "bird_orange_2"]
+      "spriteFrames": {
+        "flap": {
+          "loop": true,
+          "speed": 10.0,
+          "frames": [
+            {"texture": "bird_orange_0"},
+            {"texture": "bird_orange_1"},
+            {"texture": "bird_orange_2"}
+          ]
+        }
       },
-      "initialAnimation": "flap",
-      "fps": 10
+      "animation": "flap",
+      "autoplay": "flap"
     },
     {
       "type": "Area2D",

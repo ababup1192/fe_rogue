@@ -12,19 +12,19 @@
 def loadedMenuScene(): Scene[NodeTag] \ Fs.FileRead =
     withMockGame(() ->
         SceneLoader.loadScene("src/scenes/MenuScene.scene.json",
-                              SceneLoader.constTagParser(NodeTag.NoTag), Scene.empty()))
+                              Game.parseNodeTag, Scene.empty()))
 
 /// GroundScene.scene.json をテスト用に読み込んだ scene を取得する
 def loadedGroundScene(): Scene[NodeTag] \ Fs.FileRead =
     withMockGame(() ->
         SceneLoader.loadScene("src/scenes/GroundScene.scene.json",
-                              SceneLoader.constTagParser(NodeTag.NoTag), Scene.empty()))
+                              Game.parseNodeTag, Scene.empty()))
 
 /// ScoreScene.scene.json をテスト用に読み込んだ scene を取得する（loadSceneWithFont 経由）
 def loadedScoreScene(): Scene[NodeTag] \ Fs.FileRead =
     withMockGame(() ->
         SceneLoader.loadSceneWithFont("src/scenes/ScoreScene.scene.json", testFontAtlas(),
-                                       SceneLoader.constTagParser(NodeTag.NoTag), Scene.empty()))
+                                       Game.parseNodeTag, Scene.empty()))
 
 // ========================================================================
 // 構造テスト
