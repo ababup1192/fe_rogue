@@ -11,7 +11,18 @@ mod SceneJsonIndex {
     /// JSON ルートが配列なら配列要素ごとに、オブジェクトならその "name" を採用する。
     /// 同じ root 名が複数の JSON ファイルにあった場合は後勝ち（実害はない想定）
     pub def load(): Map[NodeName, String] \ {Fs.Glob, Fs.FileRead} =
-        Fs.Glob.glob("src/scenes", "*.scene.json")
+        loadFromDir("src/scenes")
+
+    /// プロジェクトルートを渡して、その配下の src/scenes から索引を作る。
+    /// 任意の作業ディレクトリから IDE が呼ぶことを想定している（cwd 固定の `load()` と違って
+    /// プロジェクトを切り替えても正しい scene.json 群を見つけられる）
+    pub def loadAt(projectRoot: String): Map[NodeName, String] \ {Fs.Glob, Fs.FileRead} =
+        loadFromDir(projectRoot + "/src/scenes")
+
+    /// 指定ディレクトリ配下の *.scene.json をすべて走査して索引化する。
+    /// `load` / `loadAt` の共通本体
+    def loadFromDir(dir: String): Map[NodeName, String] \ {Fs.Glob, Fs.FileRead} =
+        Fs.Glob.glob(dir, "*.scene.json")
             |> Result.getWithDefault(Nil)
             |> List.foldLeft((acc, path) -> mergeRootsFromFile(path, acc), Map.empty())
 

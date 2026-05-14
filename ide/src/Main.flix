@@ -12,17 +12,20 @@
 //   - File → Open Project... → examples/flappy_bird を選ぶと Scenes リストに
 //     BirdScene/MenuScene/... が並ぶ。クリックで該当 scene が表示される。
 
-def main(): Unit \ IO =
+def main(): Unit \ {IO, Chan, NonDet} =
     run {
-        run {
-            let state = IdeUI.newState();
-            sessionLoop(state, None)
-        } with Fs.Glob.runWithIO
-    } with Fs.FileRead.runWithIO
+        let state = IdeState.newState();
+        sessionLoop(state, None)
+    } with Fs.Glob.runWithIO
+      with Fs.FileRead.runWithIO
+      with Fs.FileWrite.runWithIO
+      with Fs.ModificationTime.runWithFileTime
+      with Fs.FileTime.runWithIO
 
 /// 1 セッションを走らせる。Open Project でディレクトリが選ばれていれば
 /// 再帰的に新 project で立て直す。
-def sessionLoop(state: IdeUI.IdeState, projectPath: Option[String]): Unit \ {IO, Fs.FileRead, Fs.Glob} =
+def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Fs.Glob, Fs.ModificationTime, Chan, NonDet} =
     let config = match projectPath {
         case Some(path) =>
             println("[Main] Loading project: ${path}");
@@ -30,21 +33,21 @@ def sessionLoop(state: IdeUI.IdeState, projectPath: Option[String]): Unit \ {IO,
                 case Ok(proj) =>
                     let sceneFiles = ProjectLoader.findSceneFiles(path)
                         |> List.map(rel -> (joinPath(path, rel), rel));
-                    IdeUI.setSceneFiles(state, sceneFiles);
+                    IdeState.setSceneFiles(state, sceneFiles);
                     let textureNames = proj#config#textureManifest |> List.map(e -> e#name);
-                    IdeUI.setTextureNames(state, textureNames);
+                    IdeState.setTextureNames(state, textureNames);
                     decorateTitle(proj#config, path)
                 case Err(msg) =>
                     // project.json が無い / パース失敗。クラッシュさせず empty state へ。
                     println("[Main] Open Project failed: ${msg}");
-                    IdeUI.setSceneFiles(state, Nil);
-                    IdeUI.setTextureNames(state, Nil);
+                    IdeState.setSceneFiles(state, Nil);
+                    IdeState.setTextureNames(state, Nil);
                     emptyConfig()
             }
         case None =>
             println("[Main] Starting IDE with no project");
-            IdeUI.setSceneFiles(state, Nil);
-            IdeUI.setTextureNames(state, Nil);
+            IdeState.setSceneFiles(state, Nil);
+            IdeState.setTextureNames(state, Nil);
             emptyConfig()
     };
     let customize = (frame, canvas) -> IdeUI.customize(state, frame, canvas);
@@ -52,10 +55,13 @@ def sessionLoop(state: IdeUI.IdeState, projectPath: Option[String]): Unit \ {IO,
     // SceneLoader.loadSceneWithFont に渡せるよう保持する。フォント未定義のプロジェクトでは
     // loadScene にフォールバックする (Label2D が含まれれば bug! になるが project 側の責務)。
     let fontName = List.head(config#fontManifest) |> Option.map(f -> f#name);
+    // editor の SceneJsonIndex を作るためのプロジェクトルート。プロジェクト未ロードのときは
+    // cwd を指す "." を渡し、scene.json が見つからない索引で editor は無害に空回りする
+    let projectRoot = projectPath |> Option.getWithDefault(".");
     run {
-        ideLoop(state, fontName)
+        ideLoop(state, fontName, projectRoot)
     } with SwingLayer.withSwing(config, customize);
-    match IdeUI.takePendingProject(state) {
+    match IdeState.takePendingProject(state) {
         case Some(newPath) =>
             println("[Main] Reloading with new project: ${newPath}");
             sessionLoop(state, Some(newPath))
@@ -66,32 +72,81 @@ def sessionLoop(state: IdeUI.IdeState, projectPath: Option[String]): Unit \ {IO,
 /// shouldClose まで毎フレーム描画する。`pendingSceneRef` がセットされていれば
 /// その scene をロードして以降の描画対象を差し替える。
 /// `fontName` が Some(name) なら Label2D を含むシーンも loadSceneWithFont で開ける。
-def ideLoop(state: IdeUI.IdeState, fontName: Option[String]): Unit \ {IO, GameEngine.Game, Fs.FileRead} =
-    renderLoop(state, fontName, Scene.empty())
+/// `projectRoot` は editor が現プロジェクトの src/scenes を読むための基準ディレクトリ。
+def ideLoop(state: IdeState.IdeState, fontName: Option[String], projectRoot: String):
+        Unit \ {IO, GameEngine.Game, Fs.FileRead, Fs.FileWrite, Fs.Glob,
+                Fs.ModificationTime, Chan, NonDet} =
+    region rc {
+        run {
+            renderLoop(state, fontName, Scene.empty())
+        } with Editor.withStateAt(rc, projectRoot)
+    }
 
-def renderLoop(state: IdeUI.IdeState, fontName: Option[String], currentScene: Scene[Unit]): Unit \ {IO, GameEngine.Game, Fs.FileRead} =
+def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene: Scene[Unit]):
+        Unit \ {IO, GameEngine.Game, Fs.FileRead, Fs.FileWrite,
+                Editor.EditorState, EditHistory.Rewind} =
     if (GameEngine.Game.shouldClose()) ()
     else {
-        let nextScene = match IdeUI.takePendingScene(state) {
-            case Some(path) =>
-                println("[Main] Loading scene: ${path}");
-                match fontName {
-                    case Some(name) =>
-                        let atlas = GameEngine.Game.getFontAtlas(name);
-                        SceneLoader.loadSceneWithFont(path, atlas, SceneLoader.constTagParser(()), Scene.empty())
-                    case None =>
-                        SceneLoader.loadScene(path, SceneLoader.constTagParser(()), Scene.empty())
-                }
-            case None => currentScene
-        };
-        // editor の Overlay.addCollisionShapes を再利用して、Area2D / Body2D 系の
-        // collision shape を「薄青のアウトライン」で可視化する。プレビュー用の合成は
-        // 都度行い、保存対象の nextScene 本体には混入させない
-        let preview = Overlay.addCollisionShapes(
-            Camera2D.identityTransform(), (), nextScene);
+        let nextScene = loadPendingSceneOrKeep(state, fontName, currentScene);
+        // ユーザーが JTree でノードを選んだ場合は、editor 側の selected にも反映する
+        // (preview に選択枠を出すため)。Editor.handleInput の前に呼ぶ
+        SelectionBridge.applyTreeSelectionToEditor(state);
+        // editor がマウス入力を取り込み、選択 / ドラッグ / リサイズ / Undo まで処理して
+        // 必要に応じて scene を更新する。F1 で OFF にすると素通しで戻る。
+        // 編集を確定したフレームでは Editor.handleInput が JSON 書き戻しまで行う
+        let edited = Editor.handleInput(nextScene);
+        // preview 上でユーザーがクリックして選択が変わったケースを IdeState 側に同期する。
+        // (JTree のハイライト追従は view 層 の責務)
+        SelectionBridge.syncEditorSelectionToTree(state);
+        // editor がドラッグ確定で JSON を書き戻すと HotReload watcher が発火する。
+        // 検知したら現シーンの JTree / Inspector を再構築して最新値を表示する
+        refreshTreeOnReload(state);
+        let preview = composePreview(fontName, edited);
         GameEngine.render(preview);
-        renderLoop(state, fontName, nextScene)
+        renderLoop(state, fontName, edited)
     }
+
+/// pendingSceneRef を消費して新シーンを読むか、変更が無ければ現シーンをそのまま返す。
+/// fontName が指定されているシーンは loadSceneWithFont で Label2D 対応で読み込む
+def loadPendingSceneOrKeep(state: IdeState.IdeState, fontName: Option[String],
+                            currentScene: Scene[Unit]):
+        Scene[Unit] \ {IO, GameEngine.Game, Fs.FileRead} =
+    match IdeState.takePendingScene(state) {
+        case None => currentScene
+        case Some(path) =>
+            println("[Main] Loading scene: ${path}");
+            match fontName {
+                case Some(name) =>
+                    let atlas = GameEngine.Game.getFontAtlas(name);
+                    SceneLoader.loadSceneWithFont(path, atlas, SceneLoader.constTagParser(()), Scene.empty())
+                case None =>
+                    SceneLoader.loadScene(path, SceneLoader.constTagParser(()), Scene.empty())
+            }
+    }
+
+/// プレビュー描画の合成。font 索引があれば editor の選択枠 + ハンドル + コリジョン形状を、
+/// 無い場合 (fontManifest 未定義プロジェクト) はコリジョン形状のみを合成する
+def composePreview(fontName: Option[String], scene: Scene[Unit]):
+        Scene[Unit] \ {GameEngine.Game, Editor.EditorState} =
+    match fontName {
+        case Some(name) =>
+            let atlas = GameEngine.Game.getFontAtlas(name);
+            Editor.applyOverlay(atlas, (), scene)
+        case None =>
+            Overlay.addCollisionShapes(Camera2D.identityTransform(), (), scene)
+    }
+
+/// Editor の HotReload watcher が発火したら、現シーンの JSON を再読込して
+/// JTree と Inspector を最新値で再構築する。ドラッグ確定で editor が JSON を書き戻すと
+/// このパスを通って表示が即更新される
+def refreshTreeOnReload(state: IdeState.IdeState):
+        Unit \ {IO, Editor.EditorState} =
+    if (Editor.pollReload())
+        match IdeState.getCurrentScenePath(state) {
+            case Some(path) => IdeUI.populateSceneTree(state, path)
+            case None       => ()
+        }
+    else ()
 
 def decorateTitle(config: GameEngine.EngineConfig, path: String): GameEngine.EngineConfig =
     { title = "flix_game_engine IDE — ${config#title} (${path})" | config }

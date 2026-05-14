@@ -10,14 +10,19 @@
 //   - 専用 render Thread が canvas.render() を 60Hz で回す
 //   - withWindowAdapter で × クリックを shouldClose フラグに反映
 //
-// 入力 (キー / マウス) は Step C.1 ではすべて stub (常に false / 0.0)。
-// Step C.2 で AWT listener から InputState Ref に流すよう拡張する予定。
+// 入力 (キー / マウス / ホイール) は AwtInput モジュールに装着した AWT listener から
+// Ref に流れ込み、GameEngine.Game effect の handler が読み取る
 
 mod SwingLayer {
     import java.lang.{Thread => JThread}
     import javax.swing.JFrame
+    import javax.swing.{Timer => SwingTimer}
     import java.awt.event.WindowAdapter
     import java.awt.event.WindowEvent
+    import java.awt.event.ActionListener
+    import java.awt.event.ActionEvent
+    import java.awt.event.HierarchyListener
+    import java.awt.event.HierarchyEvent
     import java.awt.Dimension
     import org.lwjgl.opengl.awt.AWTGLCanvas
     import org.lwjgl.opengl.awt.GLData
@@ -42,7 +47,8 @@ mod SwingLayer {
     /// を行う。canvas を frame にどう配置するかは IDE 側のレイアウト責務。
     pub def withSwing(config: GameEngine.EngineConfig,
                       customizeFrame: (JFrame, AWTGLCanvas) -> Unit \ IO,
-                      f: Unit -> a \ ef): a \ ef - GameEngine.Game - GameEngine.Audio + IO =
+                      f: Unit -> a \ ef):
+            a \ ef - GameEngine.Game - GameEngine.Audio + IO + Chan + NonDet =
         // ----- 状態 Ref (initGL の中で書き込み、paintGL / handler で読む) -----
         let spriteShaderArr = Array#{0i32} @ Static;
         let tileShaderArr   = Array#{0i32} @ Static;
@@ -55,9 +61,17 @@ mod SwingLayer {
                     (Nil: List[GameEngine.TileMapRenderCmd]))} @ Static;
         let initDoneArr  = Array#{false} @ Static;
         let shouldCloseArr = Array#{false} @ Static;
+        let inputRefs = AwtInput.newInputRefs();
+
+        // initGL の完了通知用 Channel。Java method override 内では Chan effect を
+        // 直接持ち込めないため、initGL は initDoneArr に true を書くだけで、
+        // 別 spawn の watcher (Flix scope = Chan + NonDet が許される) がフラグを観測して
+        // 1 度だけ channel に signal を流す。main thread は recv でブロックする
+        let (initTx, initRx) = Channel.buffered(1);
 
         let screenW = Int32.toFloat64(config#designWidth);
         let screenH = Int32.toFloat64(config#designHeight);
+        let designSize = {width = screenW, height = screenH};
 
         // ----- OpenAL 初期化 (GL コンテキストと独立なので main thread で OK) -----
         println("[SwingLayer] Initializing audio...");
@@ -142,6 +156,9 @@ mod SwingLayer {
         // その GLData のフィールド (public 非 final) を書き換える。
         patchCanvasGLDataToCore33(canvas);
         println("[SwingLayer] GLData patched");
+        // AWT MouseListener / MouseMotionListener / KeyListener を装着し、
+        // 入力イベントを inputRefs に流す
+        AwtInput.attachListeners(canvas, inputRefs);
 
         // ----- JFrame セットアップ -----
         // SwingLayer は基本的なフレーム生成と WindowListener 装着だけを担当し、
@@ -162,18 +179,61 @@ mod SwingLayer {
         frame.setVisible(true);
         println("[SwingLayer] frame.setVisible returned");
 
-        // ----- 専用 render Thread: AWTGLCanvas.render() を 60Hz 駆動 -----
-        // 起動直後は AWT peer 構築待ちで isValid が false の可能性があるため、
-        // 200ms 待ってから loop に入る
-        println("[SwingLayer] Spawning render thread...");
+        // ----- SwingTimer による render 駆動 (16ms ≈ 60Hz) -----
+        // 以前は spawn でスレッドを切って canvas.render() を回していたが、Flix の spawn は
+        // virtual thread を作るため、macOS の JAWT (canvas の native peer 取得) が
+        // carrier thread を unmount された瞬間に SIGBUS で落ちる事例があった。
+        // SwingTimer のコールバックは EDT (Swing の OS スレッド) で実行されるので、
+        // JAWT が要求する安定したカーネルスレッドの上で確実に動く。
+        //
+        // 起動タイミング:
+        //   AWTGLCanvas は peer が確定する前に render() を呼ぶと「シーンが描かれず白いまま」
+        //   になる race があった。固定 200ms の sleep では不十分な場合があるので、
+        //   HierarchyListener で canvas.isDisplayable() && canvas.isShowing() の遷移を
+        //   検知して、確定後に SwingTimer を 1 度だけ start する。
+        //   タイマーは start 後そのまま自走するので、shouldClose 中は no-op で抜けるだけ
+        let timerStartedArr = Array#{false} @ Static;
+        let tryStartRenderTimer = () -> {
+            if (Array.get(0, timerStartedArr)) ()
+            else if (canvas.isDisplayable() and canvas.isShowing()) {
+                // 重複起動を防ぐため先にフラグを立てる
+                Array.put(true, 0, timerStartedArr);
+                println("[SwingLayer] Canvas peer ready; starting SwingTimer-driven render loop");
+                let renderTimer = new SwingTimer(16i32, new ActionListener {
+                    def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
+                        if (Array.get(0, shouldCloseArr)) ()
+                        else if (canvas.isValid()) canvas.render()
+                        else ()
+                    }
+                });
+                renderTimer.start()
+            } else ()
+        };
+
+        canvas.addHierarchyListener(new HierarchyListener {
+            def hierarchyChanged(_this: HierarchyListener, _e: HierarchyEvent): Unit \ IO =
+                tryStartRenderTimer()
+        });
+
+        // 既に peer 確定済み (setVisible 後に hierarchyChanged が既に飛んだ後) の
+        // ケースに備えて 1 度試す。HierarchyListener とどちらが先でもフラグで重複排除
+        tryStartRenderTimer();
+        println("[SwingLayer] Render timer arming; waiting for initGL...");
+
+        // ----- initGL の完了通知 spawn -----
+        // initDoneArr を観測して true になったら一度だけ Channel.send する。
+        // HotReload.startWatcher と同じパターン。
+        // spawn の中なので Chan + NonDet effect が使える
         spawn {
-            JThread.sleep(200i64);
-            renderLoop(canvas, shouldCloseArr)
+            initSignalWatcher(initDoneArr, initTx)
         } @ Static;
-        println("[SwingLayer] Render thread spawned, waiting for initGL...");
 
         // ----- initGL の完了を待つ (f が描画リソースを前提に書かれているため) -----
-        waitForInit(initDoneArr);
+        // default 節なしの select は recv が signal を受け取るまでブロックする。
+        // HotReload.pollReload が select default で非ブロッキングなのと対称的な使い方
+        select {
+            case _ <- recv(initRx) => ()
+        };
         println("[SwingLayer] initGL completed, starting user code");
 
         let timeHolder = Array#{System.nanoTime()} @ Static;
@@ -228,11 +288,11 @@ mod SwingLayer {
                 let clamped = Float64.min(dtSec, config#maxDeltaTime);
                 k(clamped |> Duration.seconds)
             }
-            // 入力系は Step C.1 ではすべて stub。Step C.2 で AWT listener 経由に。
-            def isKeyPressed(_key, k) = k(false)
-            def getMousePosition(k) = k({x = 0.0, y = 0.0})
-            def isMouseButtonPressed(_button, k) = k(false)
-            def consumeScrollDelta(k) = k(0.0)
+            // 入力系は AwtInput が AWT listener から流し込んだ Ref を読み取る
+            def isKeyPressed(key, k) = k(AwtInput.readKeyPressed(inputRefs, key))
+            def getMousePosition(k) = k(AwtInput.readMousePosition(inputRefs, canvas, designSize))
+            def isMouseButtonPressed(button, k) = k(AwtInput.readMouseButtonPressed(inputRefs, button))
+            def consumeScrollDelta(k) = k(AwtInput.consumeScrollDelta(inputRefs))
             def getFontAtlas(name, k) = {
                 let atlases = Array.get(0, fontAtlasesArr);
                 match Map.get(name, atlases) {
@@ -246,7 +306,10 @@ mod SwingLayer {
             def getTextureInfo(name, k) = {
                 k(Map.get(name, Array.get(0, registryArr)))
             }
-            def setCursor(_cursor, k) = k(())
+            def setCursor(cursor, k) = {
+                AwtInput.applyCursor(inputRefs, canvas, cursor);
+                k(())
+            }
         };
 
         // ----- クリーンアップ -----
@@ -255,21 +318,18 @@ mod SwingLayer {
         discard ALC10.alcCloseDevice(alDevice);
         result
 
-    def renderLoop(canvas: AWTGLCanvas, shouldCloseArr: Array[Bool, Static]): Unit \ IO =
-        if (Array.get(0, shouldCloseArr)) ()
-        else {
-            if (canvas.isValid()) {
-                canvas.render()
-            } else ();
-            JThread.sleep(16i64);
-            renderLoop(canvas, shouldCloseArr)
-        }
-
-    def waitForInit(initDoneArr: Array[Bool, Static]): Unit \ IO =
-        if (Array.get(0, initDoneArr)) ()
+    /// initDoneArr を 20ms 周期で観測し、true になった瞬間に channel に 1 回だけ
+    /// signal を送って終了する。main thread の `Channel.recv` がそれを受け取って
+    /// ブロックを解除する。
+    /// HotReload と同じ「spawn 内で Chan effect を使う」パターンで、initGL (Java method
+    /// override = IO 固定) から effect 境界を越えて signal を渡す手段になる
+    def initSignalWatcher(initDoneArr: Array[Bool, Static],
+                           tx: Sender[Unit]): Unit \ {Chan, IO} =
+        if (Array.get(0, initDoneArr))
+            Channel.send((), tx)
         else {
             JThread.sleep(20i64);
-            waitForInit(initDoneArr)
+            initSignalWatcher(initDoneArr, tx)
         }
 
     // ========================================================================

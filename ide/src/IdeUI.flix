@@ -65,74 +65,8 @@ mod IdeUI {
 
     use Json.JsonElement.{JsonObject, JsonArray, JsonString, JsonNumber, JsonBool}
 
-    /// IDE のグローバル状態。EDT 上の UI イベントが Refs に書き、
-    /// メインループ (Main.flix) と renderLoop が読む。
-    ///   pendingProjectRef:    File → Open Project... で選ばれたディレクトリ。Main の reload で消費。
-    ///   pendingSceneRef:      scene リストで選ばれた scene の絶対パス。renderLoop が毎フレーム消費。
-    ///                         Inspector で値を変更した直後にもセットされ、canvas を即時 reload する。
-    ///   sceneFilesRef:        現プロジェクトの (絶対パス, 表示用相対パス) のペアリスト。
-    ///   sceneTreeModelRef:    左パネル JTree の TreeModel。シーン選択時に root を差し替える。
-    ///   nodePathMapRef:       tree ノードの identityHashCode → ルートからの子インデックス列。
-    ///                         Tree 選択時にこの path で currentSceneJson を歩いて
-    ///                         最新の JsonElement を取り、Inspector に渡す。
-    ///                         commit 時に「JSON のどこを書き換えるか」も同じ path で判断する。
-    ///   inspectorContentRef:  Inspector 本体の JPanel (BoxLayout)。ノード選択ごとに
-    ///                         removeAll → 再構築する。
-    ///   currentScenePathRef:  現在 IDE が表示中の scene.json の絶対パス。Inspector commit で
-    ///                         書き出し先 + reload トリガに使う。
-    ///   currentSceneJsonRef:  現在 scene の root JsonElement。commit のたびに新 root に差し替え、
-    ///                         Tree 再選択時の Inspector 表示にも使われる (常に最新)。
-    ///   selectedNodePathRef:  Tree で選択中ノードの子インデックス列。commit が key と新値を
-    ///                         どこに当てるかを示す。
-    ///   textureNamesRef:      現プロジェクトの project.json で宣言された texture 名のリスト。
-    ///                         Inspector の Sprite2D "texture" フィールドを dropdown 化するのに使う。
-    ///                         プロジェクト未ロード時は空。
-    pub type alias IdeState = {
-        pendingProjectRef    = Array[Option[String], Static],
-        pendingSceneRef      = Array[Option[String], Static],
-        sceneFilesRef        = Array[List[(String, String)], Static],
-        loadingSplashRef     = Array[Option[JFrame], Static],
-        sceneTreeModelRef    = Array[Option[DefaultTreeModel], Static],
-        nodePathMapRef       = Array[Map[Int32, List[Int32]], Static],
-        inspectorContentRef  = Array[Option[JPanel], Static],
-        currentScenePathRef  = Array[Option[String], Static],
-        currentSceneJsonRef  = Array[Option[Json.JsonElement], Static],
-        selectedNodePathRef  = Array[Option[List[Int32]], Static],
-        textureNamesRef      = Array[List[String], Static]
-    }
-
-    pub def newState(): IdeState \ IO =
-        {
-            pendingProjectRef    = Array#{(None: Option[String])} @ Static,
-            pendingSceneRef      = Array#{(None: Option[String])} @ Static,
-            sceneFilesRef        = Array#{(Nil: List[(String, String)])} @ Static,
-            loadingSplashRef     = Array#{(None: Option[JFrame])} @ Static,
-            sceneTreeModelRef    = Array#{(None: Option[DefaultTreeModel])} @ Static,
-            nodePathMapRef       = Array#{(Map.empty(): Map[Int32, List[Int32]])} @ Static,
-            inspectorContentRef  = Array#{(None: Option[JPanel])} @ Static,
-            currentScenePathRef  = Array#{(None: Option[String])} @ Static,
-            currentSceneJsonRef  = Array#{(None: Option[Json.JsonElement])} @ Static,
-            selectedNodePathRef  = Array#{(None: Option[List[Int32]])} @ Static,
-            textureNamesRef      = Array#{(Nil: List[String])} @ Static
-        }
-
-    pub def takePendingProject(state: IdeState): Option[String] \ IO =
-        let p = Array.get(0, state#pendingProjectRef);
-        Array.put(None, 0, state#pendingProjectRef);
-        p
-
-    pub def takePendingScene(state: IdeState): Option[String] \ IO =
-        let p = Array.get(0, state#pendingSceneRef);
-        Array.put(None, 0, state#pendingSceneRef);
-        p
-
-    pub def setSceneFiles(state: IdeState, files: List[(String, String)]): Unit \ IO =
-        Array.put(files, 0, state#sceneFilesRef)
-
-    /// 現プロジェクトで利用可能な texture 名を Inspector の dropdown 用に登録する。
-    /// プロジェクト切替時は新しい名前リストで上書き、未ロード時は Nil で空にする。
-    pub def setTextureNames(state: IdeState, names: List[String]): Unit \ IO =
-        Array.put(names, 0, state#textureNamesRef)
+    /// IdeState 本体は IdeState モジュールで定義される。再露出のための型エイリアス。
+    pub type alias IdeState = IdeState.IdeState
 
     /// SwingLayer.withSwing に渡す customizeFrame コールバック本体。
     pub def customize(state: IdeState, frame: JFrame, canvas: AWTGLCanvas): Unit \ IO =
@@ -279,19 +213,27 @@ mod IdeUI {
         // commit 後に再選択された場合も、currentSceneJson は更新済みなので最新値が出る。
         tree.addTreeSelectionListener(new TreeSelectionListener {
             def valueChanged(_this: TreeSelectionListener, _e: TreeSelectionEvent): Unit \ IO = {
-                let selected = tree.getLastSelectedPathComponent();
-                if (Object.isNull(selected)) ()
+                // preview→tree 同期で setSelectionPath を呼んだ際は何もしない
+                // (editor 選択 → tree ハイライト → listener → editor 再書き込みのループ防止)
+                if (IdeState.isTreeListenerMuted(state)) ()
                 else {
-                    let id = System.identityHashCode(selected);
-                    let pathOpt = Map.get(id, Array.get(0, state#nodePathMapRef));
-                    Array.put(pathOpt, 0, state#selectedNodePathRef);
-                    match (pathOpt, Array.get(0, state#currentSceneJsonRef)) {
-                        case (Some(path), Some(sceneRoot)) =>
-                            match getNodeAt(sceneRoot, path) {
-                                case Some(json) => updateInspector(state, json)
-                                case None       => ()
-                            }
-                        case _ => ()
+                    let selected = tree.getLastSelectedPathComponent();
+                    if (Object.isNull(selected)) ()
+                    else {
+                        let id = System.identityHashCode(selected);
+                        let pathOpt = Map.get(id, Array.get(0, state#nodePathMapRef));
+                        Array.put(pathOpt, 0, state#selectedNodePathRef);
+                        // pending として積むことで、次フレームの renderLoop が
+                        // SelectionBridge.applyTreeSelectionToEditor 経由で editor に流す
+                        IdeState.setPendingTreeSelection(state, pathOpt);
+                        match (pathOpt, Array.get(0, state#currentSceneJsonRef)) {
+                            case (Some(path), Some(sceneRoot)) =>
+                                match JsonOps.getAtNodePath(sceneRoot, path) {
+                                    case Some(json) => updateInspector(state, json)
+                                    case None       => ()
+                                }
+                            case _ => ()
+                        }
                     }
                 }
             }
@@ -304,50 +246,25 @@ mod IdeUI {
         panel
 
     /// JSON 要素を Swing の TreeNode に再帰変換する。
-    /// JsonObject の場合は "type" と "name" を取り出してラベルにし、"children" 配列を再帰展開する。
-    /// JsonArray の場合は合成ルートの下に各要素の subtree を並べる。
-    /// それ以外の形は "<invalid>" ノードに落とす（IDE 全体をクラッシュさせないため）。
+    /// ラベル整形・子インデックスの積み上げといった純粋ロジックは SceneTreeModel に任せ、
+    /// ここでは TreeModelNode を walk して DefaultMutableTreeNode を組み立てる。
     /// 同時に nodePathMap (identityHashCode → ルートからの子インデックス列) を登録し、
     /// Tree 選択 / Inspector commit で参照できるようにする。
-    /// `path` は今ビルド中ノードのルートからの子インデックス列。子は path ++ [idx] で再帰する。
-    def jsonToTreeNode(elem: Json.JsonElement, path: List[Int32], state: IdeState): DefaultMutableTreeNode \ IO =
-        let label = match elem {
-            case JsonObject(map) =>
-                let nodeType = match Map.get("type", map) {
-                    case Some(JsonString(s)) => s
-                    case _                   => "Node"
-                };
-                let nodeName = match Map.get("name", map) {
-                    case Some(JsonString(s)) => s
-                    case _                   => "<unnamed>"
-                };
-                "[${nodeType}] ${nodeName}"
-            case JsonArray(_) => "<root array>"
-            case _            => "<invalid>"
-        };
-        let node = new DefaultMutableTreeNode(label);
-        let id = System.identityHashCode(node);
-        Array.put(Map.insert(id, path, Array.get(0, state#nodePathMapRef)), 0, state#nodePathMapRef);
+    def jsonToTreeNode(elem: Json.JsonElement, state: IdeState): DefaultMutableTreeNode \ IO =
+        treeModelToSwing(SceneTreeModel.fromJson(elem), state)
 
-        match elem {
-            case JsonObject(map) =>
-                match Map.get("children", map) {
-                    case Some(JsonArray(children)) =>
-                        discard Vector.toList(children) |> List.mapWithIndex((idx, child) -> {
-                            let childNode = jsonToTreeNode(child, path ::: idx :: Nil, state);
-                            node.add(childNode);
-                            ()
-                        })
-                    case _ => ()
-                }
-            case JsonArray(items) =>
-                discard Vector.toList(items) |> List.mapWithIndex((idx, child) -> {
-                    let childNode = jsonToTreeNode(child, path ::: idx :: Nil, state);
-                    node.add(childNode);
-                    ()
-                })
-            case _ => ()
-        };
+    /// SceneTreeModel.TreeModelNode を Swing の DefaultMutableTreeNode に変換しつつ、
+    /// 各 Swing ノードの identityHashCode を nodePath にマップ登録する。
+    def treeModelToSwing(model: SceneTreeModel.TreeModelNode, state: IdeState): DefaultMutableTreeNode \ IO =
+        let node = new DefaultMutableTreeNode(SceneTreeModel.labelOf(model));
+        let id = System.identityHashCode(node);
+        Array.put(Map.insert(id, SceneTreeModel.nodePathOf(model), Array.get(0, state#nodePathMapRef)),
+                  0, state#nodePathMapRef);
+        discard SceneTreeModel.childrenOf(model) |> List.map(child -> {
+            let childNode = treeModelToSwing(child, state);
+            node.add(childNode);
+            ()
+        });
         node
 
     /// 絶対パスから scene.json を読み、木を再構築して state#sceneTreeModelRef の root を差し替える。
@@ -356,7 +273,7 @@ mod IdeUI {
     /// EDT の listener から呼ばれるため、Fs.FileRead エフェクトはこの関数内で discharge する
     /// （listener のシグネチャは `Unit \ IO` 固定）。
     /// 読み込み・パース失敗時はクラッシュさせず、エラーラベルのみのツリーを表示する。
-    def populateSceneTree(state: IdeState, absPath: String): Unit \ IO =
+    pub def populateSceneTree(state: IdeState, absPath: String): Unit \ IO =
         Array.put(Map.empty(), 0, state#nodePathMapRef);
         Array.put(None, 0, state#selectedNodePathRef);
         Array.put(Some(absPath), 0, state#currentScenePathRef);
@@ -368,7 +285,7 @@ mod IdeUI {
             case Ok(text) =>
                 match Json.Parse.parse(String.trim(text)) {
                     case None       => (new DefaultMutableTreeNode("(JSON parse failed)"), None)
-                    case Some(json) => (jsonToTreeNode(json, Nil, state), Some(json))
+                    case Some(json) => (jsonToTreeNode(json, state), Some(json))
                 }
         };
         Array.put(parsedJson, 0, state#currentSceneJsonRef);
@@ -392,7 +309,8 @@ mod IdeUI {
                Array.get(0, state#currentScenePathRef),
                Array.get(0, state#selectedNodePathRef)) {
             case (Some(root), Some(path), Some(nodePath)) =>
-                let newRoot = updateJsonAtPath(root, nodePath, subKeys, newValue);
+                let newRoot = JsonOps.setAtNodePath({root = root, nodePath = nodePath,
+                                                     subKeys = subKeys, newValue = newValue});
                 match writeSceneJson(path, newRoot) {
                     case Ok(_) =>
                         Array.put(Some(newRoot), 0, state#currentSceneJsonRef);
@@ -401,7 +319,7 @@ mod IdeUI {
                         // 兄弟フィールドが変化するケース (shape kind 切替で width↔radius が
                         // 入れ替わるなど) に備えて Inspector も最新の JsonElement で再描画する。
                         // 個別 widget commit の単純更新でも再描画は無害（widget の値はそのまま）
-                        match getNodeAt(newRoot, nodePath) {
+                        match JsonOps.getAtNodePath(newRoot, nodePath) {
                             case Some(json) => updateInspector(state, json)
                             case None       => ()
                         }
@@ -409,58 +327,6 @@ mod IdeUI {
                         println("[IdeUI] write failed: ${msg}")
                 }
             case _ => ()
-        }
-
-    /// scene root JSON を walk して、selectedNode (= nodePath で辿った先) の中に
-    /// `subKeys` を順に降りて末端を `newValue` で差し替えた新 root を返す。
-    /// path 途中で children/index/key が無いときは root を変えずに返す（クラッシュ回避）。
-    def updateJsonAtPath(root: Json.JsonElement, nodePath: List[Int32], subKeys: List[String],
-                         newValue: Json.JsonElement): Json.JsonElement =
-        match nodePath {
-            case Nil => setKeysIn(root, subKeys, newValue)
-            case idx :: rest =>
-                match root {
-                    case JsonObject(map) =>
-                        match Map.get("children", map) {
-                            case Some(JsonArray(children)) =>
-                                let childList = Vector.toList(children);
-                                match List.nth(idx, childList) {
-                                    case Some(child) =>
-                                        let updatedChild = updateJsonAtPath(child, rest, subKeys, newValue);
-                                        let updated = replaceAt(idx, updatedChild, childList);
-                                        let newChildren = JsonArray(List.toVector(updated));
-                                        JsonObject(Map.insert("children", newChildren, map))
-                                    case None => root
-                                }
-                            case _ => root
-                        }
-                    case _ => root
-                }
-        }
-
-    /// JsonObject の中をキー列で降りて末端を newValue に置き換える。
-    /// keys が空なら obj を newValue で置き換える。
-    /// 途中で JsonObject でなくなったら（= 想定外のスキーマ）そこで諦めて obj を返す。
-    def setKeysIn(obj: Json.JsonElement, keys: List[String], newValue: Json.JsonElement): Json.JsonElement =
-        match keys {
-            case Nil => newValue
-            case k :: rest =>
-                match obj {
-                    case JsonObject(map) =>
-                        let child = Map.get(k, map) |> Option.getWithDefault(Json.JsonElement.JsonNull);
-                        let updatedChild = setKeysIn(child, rest, newValue);
-                        JsonObject(Map.insert(k, updatedChild, map))
-                    case _ => obj
-                }
-        }
-
-    /// 不変リストの idx 番目を newElem に差し替えた新リストを返す
-    def replaceAt(idx: Int32, newElem: a, list: List[a]): List[a] =
-        match list {
-            case Nil     => Nil
-            case x :: xs =>
-                if (idx == 0i32) newElem :: xs
-                else x :: replaceAt(idx - 1i32, newElem, xs)
         }
 
     /// root JsonElement を pretty-print して `path` に書き出す。
@@ -473,31 +339,6 @@ mod IdeUI {
         match result {
             case Ok(_)      => Ok(())
             case Err(error) => Err("${error}")
-        }
-
-    /// テキストを BigDecimal に。Float64 経由で精度を割り切る (v1)。
-    def parseBd(s: String): Option[BigDecimal] =
-        Float64.fromString(String.trim(s))
-            |> Option.map(f -> unsafe IO { BigDecimal.valueOf(f).stripTrailingZeros() })
-
-    /// `nodePath` (root からの子インデックス列) を辿って該当ノードの JsonElement を返す。
-    /// 途中で children/index が無いときは None。Tree 選択時の Inspector 初期化に使う。
-    def getNodeAt(root: Json.JsonElement, nodePath: List[Int32]): Option[Json.JsonElement] =
-        match nodePath {
-            case Nil => Some(root)
-            case idx :: rest =>
-                match root {
-                    case JsonObject(map) =>
-                        match Map.get("children", map) {
-                            case Some(JsonArray(children)) =>
-                                match List.nth(idx, Vector.toList(children)) {
-                                    case Some(child) => getNodeAt(child, rest)
-                                    case None        => None
-                                }
-                            case _ => None
-                        }
-                    case _ => None
-                }
         }
 
     // ========================================================================
@@ -597,7 +438,7 @@ mod IdeUI {
     ///   - "shape" キーで kind フィールドを持つ場合は専用エディタ (`renderShapeObject`) に委譲
     ///   - その他は通常の編集 widget 行を出す
     /// `prefix` は選択ノード直下からのキー列。commit は `prefix ::: key :: Nil` で
-    /// commitEdit に渡され、updateJsonAtPath で末端まで降りて差し替えられる。
+    /// commitEdit に渡され、JsonOps.setAtNodePath で末端まで降りて差し替えられる。
     /// `indent` はインデントレベル (0 から増える)、行の左余白を増やすのに使う。
     /// 最上位 (prefix = Nil) では children/type/name は header で扱うので個別行は出さない。
     def renderObjectProperties(content: JPanel, state: IdeState, prefix: List[String],
@@ -899,7 +740,7 @@ mod IdeUI {
         styleTextInput(tf);
         tf.addActionListener(new ActionListener {
             def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
-                match parseBd(tf.getText()) {
+                match JsonOps.parseBigDecimal(tf.getText()) {
                     case Some(newBd) => commit(JsonNumber(newBd))
                     case None        => ()
                 }
@@ -934,7 +775,7 @@ mod IdeUI {
         styleTextInput(yField);
 
         let commitVec2 = () -> {
-            match (parseBd(xField.getText()), parseBd(yField.getText())) {
+            match (JsonOps.parseBigDecimal(xField.getText()), JsonOps.parseBigDecimal(yField.getText())) {
                 case (Some(newX), Some(newY)) =>
                     commit(JsonArray(Vector#{JsonNumber(newX), JsonNumber(newY)}))
                 case _ => ()
