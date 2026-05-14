@@ -23,6 +23,8 @@ mod SwingLayer {
     import java.awt.event.ActionEvent
     import java.awt.event.HierarchyListener
     import java.awt.event.HierarchyEvent
+    import java.awt.event.ComponentAdapter
+    import java.awt.event.ComponentEvent
     import java.awt.Dimension
     import org.lwjgl.opengl.awt.AWTGLCanvas
     import org.lwjgl.opengl.awt.GLData
@@ -187,22 +189,30 @@ mod SwingLayer {
         // JAWT が要求する安定したカーネルスレッドの上で確実に動く。
         //
         // 起動タイミング:
-        //   AWTGLCanvas は peer が確定する前に render() を呼ぶと「シーンが描かれず白いまま」
-        //   になる race があった。固定 200ms の sleep では不十分な場合があるので、
-        //   HierarchyListener で canvas.isDisplayable() && canvas.isShowing() の遷移を
-        //   検知して、確定後に SwingTimer を 1 度だけ start する。
-        //   タイマーは start 後そのまま自走するので、shouldClose 中は no-op で抜けるだけ
+        //   AWTGLCanvas は次の 3 条件が揃った後でないと最初の render() が成功しない:
+        //     (1) isDisplayable() — peer 構築済み
+        //     (2) isShowing()     — 親 frame の visible が伝播済み
+        //     (3) getWidth() > 0  — レイアウトが流れて canvas に実寸が割り当て済み
+        //   特に (3) は macOS でしばしば遅れて確定する。サイズ 0 のまま render() を呼ぶと
+        //   lwjgl3-awt の `initCalled` フラグが立った後で GL コンテキストが無効化されたまま
+        //   固着し、その後ずっと paintGL が白いままになる事象が観測されている。
+        //   HierarchyListener (showing/displayability 遷移) と ComponentListener (resize)
+        //   の両方を装着し、いずれかが発火するたびに条件チェックして 1 度だけ start する
         let timerStartedArr = Array#{false} @ Static;
         let tryStartRenderTimer = () -> {
             if (Array.get(0, timerStartedArr)) ()
-            else if (canvas.isDisplayable() and canvas.isShowing()) {
+            else if (canvas.isDisplayable() and canvas.isShowing()
+                     and canvas.getWidth() > 0i32 and canvas.getHeight() > 0i32) {
                 // 重複起動を防ぐため先にフラグを立てる
                 Array.put(true, 0, timerStartedArr);
-                println("[SwingLayer] Canvas peer ready; starting SwingTimer-driven render loop");
+                println("[SwingLayer] Canvas peer + size ready (${canvas.getWidth()}x${canvas.getHeight()}); starting SwingTimer");
                 let renderTimer = new SwingTimer(16i32, new ActionListener {
                     def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
                         if (Array.get(0, shouldCloseArr)) ()
-                        else if (canvas.isValid()) canvas.render()
+                        else if (canvas.isValid()
+                                 and canvas.getWidth() > 0i32
+                                 and canvas.getHeight() > 0i32)
+                            canvas.render()
                         else ()
                     }
                 });
@@ -214,9 +224,16 @@ mod SwingLayer {
             def hierarchyChanged(_this: HierarchyListener, _e: HierarchyEvent): Unit \ IO =
                 tryStartRenderTimer()
         });
+        // resize / shown が後追いで発火するケース (macOS でしばしば発生) を拾う
+        canvas.addComponentListener(new ComponentAdapter {
+            def componentResized(_this: ComponentAdapter, _e: ComponentEvent): Unit \ IO =
+                tryStartRenderTimer()
+            def componentShown(_this: ComponentAdapter, _e: ComponentEvent): Unit \ IO =
+                tryStartRenderTimer()
+        });
 
         // 既に peer 確定済み (setVisible 後に hierarchyChanged が既に飛んだ後) の
-        // ケースに備えて 1 度試す。HierarchyListener とどちらが先でもフラグで重複排除
+        // ケースに備えて 1 度試す。各 listener とどちらが先でもフラグで重複排除
         tryStartRenderTimer();
         println("[SwingLayer] Render timer arming; waiting for initGL...");
 
