@@ -1,83 +1,42 @@
-// ide/src/Main.flix — Step C.0: AWTGLCanvas で緑単色クリア
+// ide/src/Main.flix — Step C.1: SwingShell.withSwing 経由で render_core 初期化
 //
 // 動作確認:
 //   cd ide && ./bin/flix run
-// 期待: JFrame の中に緑単色の OpenGL 描画領域が出る。× で終了。
+// 期待:
+//   - JFrame タイトルが "flix_game_engine IDE — Step C.1"
+//   - clearColor (青系) でクリアされた canvas
+//   - stdout に [SwingShell] initGL / Loading textures / Baking font atlases / render_core ready
+//   - × クリックで終了
 //
 // 検証ポイント:
-//   - lwjgl3-awt 0.2.4 の AWTGLCanvas が macOS arm64 で動く
-//   - `-XstartOnFirstThread` 無しでも AWT + AppKit が動く (ide/bin/flix 経由)
-//   - 専用 render Thread から canvas.render() を呼ぶ駆動モデルが機能
-
-import java.lang.{Thread => JThread}
-import javax.swing.JFrame
-import java.awt.event.WindowAdapter
-import java.awt.event.WindowEvent
-import java.awt.Dimension
-import org.lwjgl.opengl.awt.AWTGLCanvas
-import org.lwjgl.opengl.awt.GLData
-import org.lwjgl.opengl.GL
-import org.lwjgl.opengl.GL11
+//   - SwingShell.withSwing が GameEngine.Game / GameEngine.Audio handler を提供できる
+//   - render_core の shader/texture/font 初期化が initGL コンテキスト下で動く
+//   - paintGL から renderFrameMixed (sprites = [], tileMaps = []) が呼べる
+//   - f() は shouldClose まで何もしないだけのループ
 
 def main(): Unit \ IO =
-    let shouldClose = Array#{false} @ Static;
-
-    let canvas = new AWTGLCanvas {
-        def initGL(_this: AWTGLCanvas): Unit \ IO = {
-            println("[ide] initGL called");
-            discard GL.createCapabilities();
-            GL11.glClearColor(0.0f32, 1.0f32, 0.0f32, 1.0f32);
-            println("[ide] GL.createCapabilities done, glClearColor set")
-        }
-        def paintGL(this: AWTGLCanvas): Unit \ IO = {
-            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-            this.swapBuffers()
-        }
+    let config: GameEngine.EngineConfig = {
+        designWidth     = 480,
+        designHeight    = 720,
+        windowWidth     = 480,
+        windowHeight    = 720,
+        title           = "flix_game_engine IDE — Step C.1",
+        textureManifest = Nil,
+        fontManifest    = Nil,
+        soundManifest   = Nil,
+        clearColor      = {r = 0.219608f32, g = 0.372549f32, b = 0.380392f32},
+        maxDeltaTime    = 0.05
     };
-    canvas.setPreferredSize(new Dimension(480, 720));
+    run {
+        idleLoop()
+    } with SwingShell.withSwing(config)
 
-    let frame = new JFrame("flix_game_engine IDE — Step C.0 (AWTGLCanvas only)");
-    frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-    frame.add(canvas);
-    frame.pack();
-
-    frame.addWindowListener(new WindowAdapter {
-        def windowClosing(_this: WindowAdapter, _e: WindowEvent): Unit \ IO =
-            Array.put(true, 0, shouldClose)
-        def windowClosed(_this: WindowAdapter, _e: WindowEvent): Unit \ IO =
-            Array.put(true, 0, shouldClose)
-    });
-
-    frame.setVisible(true);
-
-    // 専用 render Thread: AWTGLCanvas.render() を継続的に呼ぶ。
-    // EDT / javax.swing.Timer は使わない (lwjgl3-awt 推奨パターン)。
-    spawn {
-        renderLoop(canvas, shouldClose)
-    } @ Static;
-
-    waitForClose(shouldClose)
-
-def renderLoop(canvas: AWTGLCanvas, shouldClose: Array[Bool, Static]): Unit \ IO =
-    // 起動直後は AWT peer 生成中で canvas が valid でない場合がある。
-    // JFrame.setVisible(true) → componentResized → peer create という流れを待つ。
-    JThread.sleep(200i64);
-    println("[ide] render thread starting (canvas.isValid = ${canvas.isValid()})");
-    renderLoopInner(canvas, shouldClose)
-
-def renderLoopInner(canvas: AWTGLCanvas, shouldClose: Array[Bool, Static]): Unit \ IO =
-    if (Array.get(0, shouldClose)) ()
+// shouldClose になるまで何もせずに待つだけのループ。
+// (実際のシーン描画は Step C.2 で追加)
+def idleLoop(): Unit \ GameEngine.Game =
+    if (GameEngine.Game.shouldClose()) ()
     else {
-        if (canvas.isValid()) {
-            canvas.render()
-        } else ();
-        JThread.sleep(16i64);
-        renderLoopInner(canvas, shouldClose)
-    }
-
-def waitForClose(shouldClose: Array[Bool, Static]): Unit \ IO =
-    if (Array.get(0, shouldClose)) ()
-    else {
-        JThread.sleep(100i64);
-        waitForClose(shouldClose)
+        // 何もコマンドを送らないと paintGL は clearColor のみ描画する
+        GameEngine.Game.renderCommands(Nil, Nil);
+        idleLoop()
     }
