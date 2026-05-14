@@ -7,18 +7,14 @@ authors     = ["ababup1192 <ababup1192@gmail.com>"]
 
 [dependencies]
 "github:mlutze/flix-json" = "0.13.2"
+# render_core は推移的に engine_core と LWJGL 系 (lwjgl, lwjgl-opengl, lwjgl-stb, lwjgl-openal)
+# を提供するため、engine は直接 engine_core / lwjgl 系に依存しない。
+# GLFW だけは render_core が依存しないので engine 側で宣言する。
+"github:ababup1192/flix_render_core" = { version = "0.1.0", security = "unrestricted" }
 
 [mvn-dependencies]
 "com.formdev:flatlaf" = "3.7.1"
-"org.lwjgl:lwjgl" = "3.3.4"
-"org.lwjgl:lwjgl-glfw" = "3.3.4"
-"org.lwjgl:lwjgl-opengl" = "3.3.4"
-"org.lwjgl:lwjgl-stb" = "3.3.4"
-"org.lwjgl:lwjgl-openal" = "3.3.4"
+"org.lwjgl:lwjgl-glfw" = "3.4.1"
 
 [jar-dependencies]
-"lwjgl-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl/3.3.4/lwjgl-3.3.4-natives-macos-arm64.jar"
-"lwjgl-glfw-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-glfw/3.3.4/lwjgl-glfw-3.3.4-natives-macos-arm64.jar"
-"lwjgl-opengl-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-opengl/3.3.4/lwjgl-opengl-3.3.4-natives-macos-arm64.jar"
-"lwjgl-stb-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-stb/3.3.4/lwjgl-stb-3.3.4-natives-macos-arm64.jar"
-"lwjgl-openal-3.3.4-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-openal/3.3.4/lwjgl-openal-3.3.4-natives-macos-arm64.jar"
+"lwjgl-glfw-3.4.1-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-glfw/3.4.1/lwjgl-glfw-3.4.1-natives-macos-arm64.jar"

@@ -47,10 +47,13 @@ mod BirdScene {
     // ========================================================================
 
     /// 鳥の状態データ（フレーム間で変化する純粋データ）
-    /// state:   鳥の状態マシン
-    /// speed:   横方向の移動速度（px/秒）
-    /// hitPipe: Hit 状態に遷移する原因となったパイプの NodePath（onBirdHitPipe での同一パイプ判定に使う）
-    pub type alias BirdData = {state = BirdState, speed = Float64, hitPipe = Option[NodePath]}
+    /// state:        鳥の状態マシン
+    /// speed:        横方向の移動速度（px/秒）
+    /// jumpVelocity: フラップ時の上方向初速度（px/秒、負値で上向き）。
+    ///               scene.json の "properties.jumpVelocity" でロード時に上書き可能（Godot @export 相当）
+    /// hitPipe:      Hit 状態に遷移する原因となったパイプの NodePath（onBirdHitPipe での同一パイプ判定に使う）
+    pub type alias BirdData = {state = BirdState, speed = Float64,
+                                jumpVelocity = Float64, hitPipe = Option[NodePath]}
 
     // ========================================================================
     // 定数 — ノード名・パス
@@ -78,14 +81,12 @@ mod BirdScene {
     // 定数 — 物理パラメータ（2x スケール）
     // ========================================================================
     // gravityScale / linearVelocity は Node 本来の物理プロパティのため
-    // BirdScene.scene.json で管理する。BirdState / BirdData.speed はゲーム
-    // ロジックのメタデータのため Flix 側で管理する。
+    // BirdScene.scene.json のトップレベルで管理する。
+    // jumpVelocity は scene.json の "properties" 経由で BirdData に流し込む（Property 機構）。
+    // BirdState / BirdData.speed はゲームロジックのメタデータのため Flix 側で管理する。
 
     /// 横方向の移動速度（px/秒）。BirdData.speed の初期値として使う
     def birdSpeed(): Float64 = 100.0
-
-    /// フラップ時の上方向初速度（px/秒）。参考実装の -150 を 2 倍した値
-    def flapVelocityY(): Float64 = -300.0
 
     /// フラップ時の角速度（rad/秒）。反時計回り（上を向く）
     def flapAngularVelocity(): Float64 = -3.0
@@ -111,24 +112,53 @@ mod BirdScene {
     def sceneJsonPath(): String = "src/scenes/BirdScene.scene.json"
 
     // ========================================================================
+    // エディタ公開プロパティ（Godot @export 相当）
+    // ========================================================================
+    // scene.json の "properties" セクションで上書き可能。default はコード側の真実
+
+    /// フラップ時の上方向初速度（px/秒、負値で上向き）。参考実装の -150 を 2 倍
+    pub def birdJumpVelocity(): Property[Float64] = Export.float("jumpVelocity", -300.0)
+
+    /// このシーンが公開するプロパティ一覧。将来エディタ UI が読む
+    pub def declarations(): List[PropertyDecl] =
+        Export.toDecl(birdJumpVelocity()) :: Nil
+
+    /// scene.json の "properties" を BirdData に反映する。
+    /// SceneLoader.loadSceneWith から load 時 + ホットリロード時に呼ばれる。
+    /// initialState は呼び出し元（addBird = Flapping / addBirdForMenu = Flying）で決める
+    def applyProperties(initialState: BirdState, props: PropertyBag,
+                        scene: Scene[NodeTag]): Scene[NodeTag] =
+        let jumpVel = Export.read(birdJumpVelocity(), props);
+        let speed = match initialState {
+            case BirdState.Flying => 0.0           // メニューはフリーズ
+            case _                => birdSpeed()
+        };
+        let birdData: BirdData = {
+            state = initialState,
+            speed = speed,
+            jumpVelocity = jumpVel,
+            hitPipe = None
+        };
+        Scene.setState(birdPath(), NodeTag.Bird(birdData), scene)
+
+    // ========================================================================
     // シーン構築
     // ========================================================================
 
     /// 鳥のノードをシーンに追加する（プレイ用）。
     /// 構造・gravityScale・linearVelocity は BirdScene.scene.json から読み込み、
-    /// Bird(BirdData) タグ（ゲーム状態）は Flix 側で付与する
+    /// Bird(BirdData) タグ（ゲーム状態）は applyProperties が JSON の "properties"
+    /// と code 側の default を合成して付与する
     pub def addBird(scene: Scene[NodeTag]): Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
-        let birdData: BirdData = {state = BirdState.Flapping, speed = birdSpeed(), hitPipe = None};
-        SceneLoader.loadScene(sceneJsonPath(), Game.parseNodeTag, scene)
-            |> Scene.setState(birdPath(), NodeTag.Bird(birdData))
+        SceneLoader.loadSceneWith(sceneJsonPath(), Game.parseNodeTag,
+                                  applyProperties(BirdState.Flapping), scene)
 
     /// メニュー画面用の鳥をシーンに追加する。
-    /// JSON で読み込んだ後、Flying 状態・重力ゼロ・速度ゼロで上書きする
+    /// JSON で読み込んだ後、Flying 状態に加え重力ゼロ・速度ゼロで上書きする
     /// （毎フレーム update は no-op）
     pub def addBirdForMenu(scene: Scene[NodeTag]): Scene[NodeTag] \ {Fs.FileRead, GameEngine.Game} =
-        let menuData: BirdData = {state = BirdState.Flying, speed = 0.0, hitPipe = None};
-        addBird(scene)
-            |> Scene.setState(birdPath(), NodeTag.Bird(menuData))
+        SceneLoader.loadSceneWith(sceneJsonPath(), Game.parseNodeTag,
+                                  applyProperties(BirdState.Flying), scene)
             |> Scene.mapEngineNode(birdPath(),
                 EngineNode.mapRigidBody2D(body -> body
                     |> RigidBody2D.setGravityScale(0.0)
@@ -163,12 +193,13 @@ mod BirdScene {
             |> RigidBody2D.setLinearVelocity(newVel)
             |> RigidBody2D.setAngularVelocity(angVel2)
 
-    /// bird.gd `flap()` 相当: y velocity を flapVelocityY、angular velocity を flapAngularVelocity に上書き
-    /// x velocity は現在値を保持する（input / ready 両方ともこの挙動でよい）
-    def flap(body: RigidBody2D): RigidBody2D =
+    /// bird.gd `flap()` 相当: y velocity を birdData.jumpVelocity、angular velocity を flapAngularVelocity に上書き
+    /// x velocity は現在値を保持する（input / ready 両方ともこの挙動でよい）。
+    /// jumpVelocity は scene.json の "properties.jumpVelocity" で書き換え可能（ホットリロード対応）
+    def flap(body: RigidBody2D, birdData: BirdData): RigidBody2D =
         let vel = RigidBody2D.getLinearVelocity(body);
         body
-            |> RigidBody2D.setLinearVelocity({x = vel#x, y = flapVelocityY()})
+            |> RigidBody2D.setLinearVelocity({x = vel#x, y = birdData#jumpVelocity})
             |> RigidBody2D.setAngularVelocity(flapAngularVelocity())
 
     /// physicsProcess コールバック: bird.gd の `_physics_process(delta) → state.update(delta)` の Flix 移植
@@ -195,7 +226,7 @@ mod BirdScene {
         match node {
             case EngineNode.RigidBody2DWithState(body, NodeTag.Bird(birdData)) =>
                 if (birdData#state == BirdState.Flapping) {
-                    (EngineNode.RigidBody2DWithState(flap(body), NodeTag.Bird(birdData)), scene)
+                    (EngineNode.RigidBody2DWithState(flap(body, birdData), NodeTag.Bird(birdData)), scene)
                 } else {
                     (node, scene)
                 }
@@ -215,7 +246,7 @@ mod BirdScene {
             case BirdState.Flapping =>
                 if (isFlapAction) {
                     GameEngine.Audio.playAudio("sfx_wing");
-                    scene |> mapBirdBody((body, birdData) -> (flap(body), birdData))
+                    scene |> mapBirdBody((body, birdData) -> (flap(body, birdData), birdData))
                 } else scene
             case _ => scene
         }

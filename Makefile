@@ -22,6 +22,20 @@
 FLIX_JAR := $(CURDIR)/bin/flix.jar
 FLIX     := java -XstartOnFirstThread -jar $(FLIX_JAR)
 
+ENGINE_CORE_DIR       := engine_core
+ENGINE_CORE_FPKG_SRC  := $(ENGINE_CORE_DIR)/artifact/engine_core.fpkg
+ENGINE_CORE_TOML_SRC  := $(ENGINE_CORE_DIR)/flix.toml
+ENGINE_CORE_SUBPATH   := lib/github/ababup1192/flix_engine_core/0.1.0
+ENGINE_CORE_FPKG_NAME := flix_engine_core-0.1.0.fpkg
+ENGINE_CORE_TOML_NAME := flix_engine_core-0.1.0.toml
+
+RENDER_CORE_DIR       := render_core
+RENDER_CORE_FPKG_SRC  := $(RENDER_CORE_DIR)/artifact/render_core.fpkg
+RENDER_CORE_TOML_SRC  := $(RENDER_CORE_DIR)/flix.toml
+RENDER_CORE_SUBPATH   := lib/github/ababup1192/flix_render_core/0.1.0
+RENDER_CORE_FPKG_NAME := flix_render_core-0.1.0.fpkg
+RENDER_CORE_TOML_NAME := flix_render_core-0.1.0.toml
+
 ENGINE_DIR       := engine
 ENGINE_FPKG_SRC  := $(ENGINE_DIR)/artifact/engine.fpkg
 ENGINE_TOML_SRC  := $(ENGINE_DIR)/flix.toml
@@ -41,21 +55,66 @@ EDITOR_TOML_NAME := flix_engine_editor-0.1.0.toml
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine sync-editor
+.PHONY: help sync sync-engine-core sync-render-core sync-engine sync-editor clean-locks
 
 help:
 	@echo "Targets:"
-	@echo "  make sync         engine と editor を build-pkg し、各依存先に配布"
-	@echo "  make sync-engine  engine だけ build-pkg & 配布 (editor と examples の両方へ)"
-	@echo "  make sync-editor  editor だけ build-pkg & 配布 (examples へ)"
+	@echo "  make sync             engine_core / render_core / engine / editor を build-pkg し、各依存先に配布"
+	@echo "  make sync-engine-core engine_core だけ build-pkg & 配布 (render_core / engine / editor / ide / examples へ)"
+	@echo "  make sync-render-core render_core だけ build-pkg & 配布 (engine / editor / ide / examples へ)"
+	@echo "  make sync-engine      engine だけ build-pkg & 配布 (editor と examples の両方へ)"
+	@echo "  make sync-editor      editor だけ build-pkg & 配布 (examples へ)"
+	@echo "  make clean-locks      flix check 中断で残った Maven cache の *.lock を削除"
 
-sync: sync-engine sync-editor
+# flix check を Ctrl-C で中断すると lib/cache/.../*.lock が残り、
+# 次回 Maven リゾルバが「他プロセスが取得中」と誤認して無限待ちになる。
+# 各ワークスペース配下のロックをまとめて削除する。
+clean-locks:
+	@find . -path "*/lib/cache/*" -name "*.lock" -print -delete | awk 'END { print NR " lock(s) removed" }'
+
+sync: clean-locks sync-engine-core sync-render-core sync-engine sync-editor
+
+# engine_core は engine / render_core / editor / ide / examples すべてが（直接または推移的に）依存する。
+# 最も土台のパッケージなので sync チェーンの先頭に置く。
+sync-engine-core:
+	cd $(ENGINE_CORE_DIR) && $(FLIX) build-pkg
+	@for dir in $(RENDER_CORE_DIR)/ $(ENGINE_DIR)/ $(EDITOR_DIR)/ ide/ examples/*/; do \
+		toml="$$dir/flix.toml"; \
+		if [ -f "$$toml" ] && grep -qE "ababup1192/(flix_engine_core|flix_game_engine|flix_render_core)" "$$toml"; then \
+			target="$${dir}$(ENGINE_CORE_SUBPATH)"; \
+			mkdir -p "$$target"; \
+			depth=$$(printf '%s' "$$dir" | tr -cd '/' | wc -c | tr -d ' '); \
+			upcnt=$$((depth + $(SUBPATH_DEPTH))); \
+			rel=$$(printf '../%.0s' $$(seq 1 $$upcnt)); \
+			ln -sfn "$${rel}$(ENGINE_CORE_FPKG_SRC)" "$$target/$(ENGINE_CORE_FPKG_NAME)"; \
+			ln -sfn "$${rel}$(ENGINE_CORE_TOML_SRC)" "$$target/$(ENGINE_CORE_TOML_NAME)"; \
+			echo "[sync-engine-core] $$target"; \
+		fi \
+	done
+
+# render_core は engine_core に依存。engine / editor / ide / examples (engine 経由) が利用する。
+# editor は engine.fpkg を経由して render_core を transitive に必要とするため、配布対象に含める。
+sync-render-core:
+	cd $(RENDER_CORE_DIR) && $(FLIX) build-pkg
+	@for dir in $(ENGINE_DIR)/ $(EDITOR_DIR)/ ide/ examples/*/; do \
+		toml="$$dir/flix.toml"; \
+		if [ -f "$$toml" ] && grep -qE "ababup1192/(flix_render_core|flix_game_engine)" "$$toml"; then \
+			target="$${dir}$(RENDER_CORE_SUBPATH)"; \
+			mkdir -p "$$target"; \
+			depth=$$(printf '%s' "$$dir" | tr -cd '/' | wc -c | tr -d ' '); \
+			upcnt=$$((depth + $(SUBPATH_DEPTH))); \
+			rel=$$(printf '../%.0s' $$(seq 1 $$upcnt)); \
+			ln -sfn "$${rel}$(RENDER_CORE_FPKG_SRC)" "$$target/$(RENDER_CORE_FPKG_NAME)"; \
+			ln -sfn "$${rel}$(RENDER_CORE_TOML_SRC)" "$$target/$(RENDER_CORE_TOML_NAME)"; \
+			echo "[sync-render-core] $$target"; \
+		fi \
+	done
 
 # engine は editor と examples の両方が依存している
 # fpkg / toml は cp ではなく相対 symlink で配布する (engine 再ビルドが即反映される)
 sync-engine:
 	cd $(ENGINE_DIR) && $(FLIX) build-pkg
-	@for dir in $(EDITOR_DIR)/ examples/*/; do \
+	@for dir in $(EDITOR_DIR)/ ide/ examples/*/; do \
 		toml="$$dir/flix.toml"; \
 		if [ -f "$$toml" ] && grep -q "ababup1192/flix_game_engine" "$$toml"; then \
 			target="$${dir}$(ENGINE_SUBPATH)"; \

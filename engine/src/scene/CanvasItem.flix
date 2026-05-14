@@ -1,4 +1,5 @@
-type alias Color = {r = Float32, g = Float32, b = Float32}
+// Color 型は engine_core/src/Color.flix に移動済み。
+// CanvasItem は engine_core の `Color` を構造的に使う。
 
 pub trait CanvasItem[a] {
     // 可視性

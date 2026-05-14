@@ -81,14 +81,26 @@ mod SceneLoader {
     /// 失敗時は bug! でクラッシュする
     pub def loadScene(path: String, tagParser: Option[String] -> Result[Json.JsonError, t],
                       scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
-        loadSceneCore(path, tagParser, None, scene)
+        loadSceneCore(path, tagParser, None, None, scene)
 
     /// FontAtlas 付きで JSON ファイルを読み込む（Label2D を含むシーン用）。
     /// その他は loadScene と同じ振る舞い
     pub def loadSceneWithFont(path: String, fontAtlas: FontAtlas,
                               tagParser: Option[String] -> Result[Json.JsonError, t],
                               scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
-        loadSceneCore(path, tagParser, Some(fontAtlas), scene)
+        loadSceneCore(path, tagParser, Some(fontAtlas), None, scene)
+
+    /// JSON ファイルを読み込み、scene を構築した後で `propsApplier` を呼ぶ。
+    /// scene.json の root が JSON Object のとき、その "properties" キーを PropertyBag として
+    /// applier に渡す（Godot @export 相当）。"properties" が無い、または root が array の
+    /// 場合は空 bag を渡す。applier は通常 `XxxScene.applyProperties` で、`Export.read` を
+    /// 使って Data 型に値を流し込む役割を持つ。ホットリロード時もこの関数経由で applier が
+    /// 再実行されることで、scene.json の編集が即反映される
+    pub def loadSceneWith(path: String,
+                          tagParser: Option[String] -> Result[Json.JsonError, t],
+                          propsApplier: PropertyBag -> Scene[t] -> Scene[t],
+                          scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
+        loadSceneCore(path, tagParser, None, Some(propsApplier), scene)
 
     /// JSON 側のタグ文字列を無視し、常に与えた値を返す tagParser を作る。
     /// scene.json 側にタグ情報を載せない（= ロード後に Scene.setState で個別注入する）
@@ -102,6 +114,7 @@ mod SceneLoader {
 
     def loadSceneCore(path: String, tagParser: Option[String] -> Result[Json.JsonError, t],
                       fontAtlas: Option[FontAtlas],
+                      propsApplier: Option[PropertyBag -> Scene[t] -> Scene[t]],
                       scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
         let content = run { Fs.ReadFile.read(path) } with Fs.ReadFile.runWithFileRead;
         let result = forM (
@@ -110,10 +123,26 @@ mod SceneLoader {
             outScene <- addJsonAtTop(tagParser, fontAtlas, json, scene)
                 |> Result.mapErr(match JsonError(p, expected) ->
                     "at ${p}: expected ${expected}")
-        ) yield outScene;
+        ) yield applyPropsIfPresent(propsApplier, json, outScene);
         match result {
             case Ok(s)    => s
             case Err(msg) => bug!("SceneLoader: ${path}: ${msg}")
+        }
+
+    /// applier が Some なら root JSON Object の "properties" を取り出して呼ぶ
+    def applyPropsIfPresent(propsApplier: Option[PropertyBag -> Scene[t] -> Scene[t]],
+                            json: Json.JsonElement,
+                            scene: Scene[t]): Scene[t] =
+        match propsApplier {
+            case None          => scene
+            case Some(applier) => applier(rootProperties(json), scene)
+        }
+
+    /// JSON root から "properties" を取り出す。Object でない or キーが無い場合は空 bag
+    def rootProperties(json: Json.JsonElement): PropertyBag =
+        match json {
+            case JsonObject(map) => ExportedProperty.fromJsonNode(map)
+            case _               => ExportedProperty.emptyBag()
         }
 
     // ========================================================================

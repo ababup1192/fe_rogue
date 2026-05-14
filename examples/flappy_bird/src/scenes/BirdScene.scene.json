@@ -5,6 +5,9 @@
   "shape": {"kind": "CircleShape2D", "radius": 13},
   "gravityScale": 1.0,
   "linearVelocity": [100, 0],
+  "properties": {
+    "jumpVelocity": -300
+  },
   "children": [
     {
       "type": "AnimatedSprite2D",

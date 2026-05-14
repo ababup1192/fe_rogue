@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# ide 専用 flix ラッパ。
+#
+# 通常の `bin/flix` (project-root) は `-XstartOnFirstThread` を付ける (GLFW + macOS 用)。
+# ide は AWT/Swing で動くため、このフラグを付けると AppKit と衝突して起動失敗する。
+# したがって ide/ 配下では必ずこのラッパ経由で flix を呼ぶこと。
+exec java -jar "$(dirname "$0")/../../bin/flix.jar" "$@"

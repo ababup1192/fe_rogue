@@ -1,0 +1,15 @@
+[package]
+name        = "flix_game_engine_ide"
+description = "Standalone IDE for flix_game_engine projects (Swing-based scene editor)"
+version     = "0.1.0"
+flix        = "0.72.0"
+authors     = ["ababup1192 <ababup1192@gmail.com>"]
+
+[dependencies]
+"github:mlutze/flix-json" = "0.13.2"
+"github:ababup1192/flix_game_engine" = { version = "0.1.0", security = "unrestricted" }
+
+# 切り分け用の最小構成: AWT/OpenGL 系の依存を一旦外し、まず JFrame だけが起動するか確認する。
+# OK なら lwjgl3-awt + lwjgl-jawt + LWJGL 3.3.5 系を段階的に戻す。
+[mvn-dependencies]
+"com.formdev:flatlaf" = "3.7.1"
