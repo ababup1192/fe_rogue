@@ -1,5 +1,5 @@
 {
-  "title": "Flappy Bird (IDE Preview)",
+  "title": "Flappy Bird",
   "designWidth": 288,
   "designHeight": 512,
   "windowWidth": 576,
@@ -7,12 +7,53 @@
   "clearColor": {"r": 0.392, "g": 0.584, "b": 0.929},
   "maxDeltaTime": 0.05,
   "textures": [
-    {"name": "label_flappy_bird", "path": "assets/sprites/label_flappy_bird.png", "hasAlpha": true},
-    {"name": "instructions", "path": "assets/sprites/instructions.png", "hasAlpha": true},
-    {"name": "button_play_normal", "path": "assets/sprites/button_play_normal.png", "hasAlpha": true},
-    {"name": "button_play_pressed", "path": "assets/sprites/button_play_pressed.png", "hasAlpha": true}
+    {"name": "background_day",       "path": "assets/sprites/background_day.png",       "hasAlpha": true},
+    {"name": "bird_orange_0",        "path": "assets/sprites/bird_orange_0.png",        "hasAlpha": true},
+    {"name": "bird_orange_1",        "path": "assets/sprites/bird_orange_1.png",        "hasAlpha": true},
+    {"name": "bird_orange_2",        "path": "assets/sprites/bird_orange_2.png",        "hasAlpha": true},
+    {"name": "pipe_green_top",       "path": "assets/sprites/pipe_green_top.png",       "hasAlpha": true},
+    {"name": "pipe_green_bottom",    "path": "assets/sprites/pipe_green_bottom.png",    "hasAlpha": true},
+    {"name": "ground",               "path": "assets/sprites/ground.png",               "hasAlpha": true},
+    {"name": "number_middle_0",      "path": "assets/sprites/number_middle_0.png",      "hasAlpha": true},
+    {"name": "number_middle_1",      "path": "assets/sprites/number_middle_1.png",      "hasAlpha": true},
+    {"name": "number_middle_2",      "path": "assets/sprites/number_middle_2.png",      "hasAlpha": true},
+    {"name": "number_middle_3",      "path": "assets/sprites/number_middle_3.png",      "hasAlpha": true},
+    {"name": "number_middle_4",      "path": "assets/sprites/number_middle_4.png",      "hasAlpha": true},
+    {"name": "number_middle_5",      "path": "assets/sprites/number_middle_5.png",      "hasAlpha": true},
+    {"name": "number_middle_6",      "path": "assets/sprites/number_middle_6.png",      "hasAlpha": true},
+    {"name": "number_middle_7",      "path": "assets/sprites/number_middle_7.png",      "hasAlpha": true},
+    {"name": "number_middle_8",      "path": "assets/sprites/number_middle_8.png",      "hasAlpha": true},
+    {"name": "number_middle_9",      "path": "assets/sprites/number_middle_9.png",      "hasAlpha": true},
+    {"name": "label_flappy_bird",    "path": "assets/sprites/label_flappy_bird.png",    "hasAlpha": true},
+    {"name": "label_game_over",      "path": "assets/sprites/label_game_over.png",      "hasAlpha": true},
+    {"name": "label_new",            "path": "assets/sprites/label_new.png",            "hasAlpha": true},
+    {"name": "instructions",         "path": "assets/sprites/instructions.png",         "hasAlpha": true},
+    {"name": "panel_score",          "path": "assets/sprites/panel_score.png",          "hasAlpha": true},
+    {"name": "button_play_normal",   "path": "assets/sprites/button_play_normal.png",   "hasAlpha": true},
+    {"name": "button_play_pressed",  "path": "assets/sprites/button_play_pressed.png",  "hasAlpha": true},
+    {"name": "button_pause",         "path": "assets/sprites/button_pause.png",         "hasAlpha": true},
+    {"name": "button_resume",        "path": "assets/sprites/button_resume.png",        "hasAlpha": true},
+    {"name": "button_menu",          "path": "assets/sprites/button_menu.png",          "hasAlpha": true},
+    {"name": "button_score_normal",  "path": "assets/sprites/button_score_normal.png",  "hasAlpha": true},
+    {"name": "button_score_pressed", "path": "assets/sprites/button_score_pressed.png", "hasAlpha": true},
+    {"name": "button_rate_normal",   "path": "assets/sprites/button_rate_normal.png",   "hasAlpha": true},
+    {"name": "button_rate_pressed",  "path": "assets/sprites/button_rate_pressed.png",  "hasAlpha": true},
+    {"name": "medal_bronze",         "path": "assets/sprites/medal_bronze.png",         "hasAlpha": true},
+    {"name": "medal_gold",           "path": "assets/sprites/medal_gold.png",           "hasAlpha": true},
+    {"name": "medal_platinum",       "path": "assets/sprites/medal_platinum.png",       "hasAlpha": true},
+    {"name": "medal_silver",         "path": "assets/sprites/medal_silver.png",         "hasAlpha": true},
+    {"name": "spark_0",              "path": "assets/sprites/spark_0.png",              "hasAlpha": true},
+    {"name": "spark_1",              "path": "assets/sprites/spark_1.png",              "hasAlpha": true},
+    {"name": "spark_2",              "path": "assets/sprites/spark_2.png",              "hasAlpha": true}
   ],
-  "fonts": [],
-  "sounds": [],
-  "mainScene": "src/scenes/MenuScene.scene.json"
+  "fonts": [
+    {"name": "default", "path": "assets/fonts/font_score.ttf", "fontSize": 60.0}
+  ],
+  "sounds": [
+    {"name": "sfx_wing",      "path": "assets/audio/sfx_wing.wav",      "looping": false},
+    {"name": "sfx_point",     "path": "assets/audio/sfx_point.wav",     "looping": false},
+    {"name": "sfx_hit",       "path": "assets/audio/sfx_hit.wav",       "looping": false},
+    {"name": "sfx_die",       "path": "assets/audio/sfx_die.wav",       "looping": false},
+    {"name": "sfx_swooshing", "path": "assets/audio/sfx_swooshing.wav", "looping": false}
+  ]
 }

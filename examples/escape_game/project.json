@@ -1,0 +1,32 @@
+{
+  "title": "escape_game",
+  "designWidth": 480,
+  "designHeight": 300,
+  "windowWidth": 1440,
+  "windowHeight": 900,
+  "clearColor": {"r": 0.1, "g": 0.1, "b": 0.15},
+  "maxDeltaTime": 0.05,
+  "textures": [
+    {"name": "bg_demo_room",   "path": "sprites/bg_demo_room.png",   "hasAlpha": false},
+    {"name": "icon_demo_key",  "path": "sprites/icon_demo_key.png",  "hasAlpha": true},
+    {"name": "sprite_safe_box","path": "sprites/sprite_safe_box.png","hasAlpha": true}
+  ],
+  "fonts": [
+    {"name": "default",      "path": "fonts/PixelMplus10-Regular.ttf", "fontSize": 10.0},
+    {"name": "default-bold", "path": "fonts/PixelMplus10-Bold.ttf",    "fontSize": 10.0}
+  ],
+  "sounds": [
+    {"name": "talk",       "path": "audio/talk.ogg",      "looping": false},
+    {"name": "tap",        "path": "audio/tap.ogg",       "looping": false},
+    {"name": "title",      "path": "audio/title.ogg",     "looping": true},
+    {"name": "dungeon",    "path": "audio/dungeon.ogg",   "looping": true},
+    {"name": "room",       "path": "audio/room.ogg",      "looping": true},
+    {"name": "battle",     "path": "audio/battle.ogg",    "looping": true},
+    {"name": "ending",     "path": "audio/ending.ogg",    "looping": true},
+    {"name": "chest_open", "path": "audio/chest.wav",     "looping": false},
+    {"name": "door_open",  "path": "audio/door_open.ogg", "looping": false},
+    {"name": "locked",     "path": "audio/locked.ogg",    "looping": false},
+    {"name": "hit",        "path": "audio/hit.ogg",       "looping": false},
+    {"name": "die",        "path": "audio/die.ogg",       "looping": false}
+  ]
+}

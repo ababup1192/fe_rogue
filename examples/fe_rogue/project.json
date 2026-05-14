@@ -1,0 +1,25 @@
+{
+  "title": "fe_rogue",
+  "designWidth": 128,
+  "designHeight": 128,
+  "windowWidth": 832,
+  "windowHeight": 624,
+  "clearColor": {"r": 0.2, "g": 0.2, "b": 0.2},
+  "maxDeltaTime": 0.05,
+  "textures": [
+    {"name": "inca_tileset",     "path": "assets/sprites/Inca_front_by_Kronbits-extended.png", "hasAlpha": true},
+    {"name": "character_sheet",  "path": "assets/sprites/character_sheet_grid_16.png", "hasAlpha": true},
+    {"name": "move_tile",        "path": "assets/sprites/move_tile.png", "hasAlpha": true},
+    {"name": "cursor",           "path": "assets/sprites/cursor.png", "hasAlpha": true},
+    {"name": "flag",             "path": "assets/sprites/flag.png", "hasAlpha": true},
+    {"name": "tilemap_floor",    "path": "assets/sprites/tilemap.png", "hasAlpha": true}
+  ],
+  "fonts": [
+    {"name": "ui", "path": "assets/fonts/BestTen-DOT.otf", "fontSize": 16.0}
+  ],
+  "sounds": [
+    {"name": "bgm",    "path": "assets/audio/bgm.ogg",    "looping": true},
+    {"name": "damage", "path": "assets/audio/damage.ogg", "looping": false},
+    {"name": "bonus",  "path": "assets/audio/bonus.ogg",  "looping": false}
+  ]
+}

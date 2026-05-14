@@ -22,27 +22,30 @@
 mod ProjectLoader {
     use Json.JsonElement.{JsonObject, JsonArray, JsonString, JsonNumber, JsonBool}
 
-    /// 読み込み結果。`mainScenePath` は絶対パス (rootDir + manifest の "mainScene")。
+    /// 読み込み結果。シーンは別途 `findSceneFiles` で列挙する。
     pub type alias Project = {
-        rootDir       = String,
-        config        = GameEngine.EngineConfig,
-        mainScenePath = String
+        rootDir = String,
+        config  = GameEngine.EngineConfig
     }
 
-    /// project.json を読んで Project を組み立てる。失敗時は bug! でクラッシュ。
-    /// `rootDir` は project.json があるディレクトリの相対 or 絶対パス。
-    pub def loadProject(rootDir: String): Project \ {Fs.FileRead} =
+    /// project.json を読んで Project を組み立てる。
+    /// 読み込み/JSON パース失敗時は Err(message) を返す (IDE が dialog で表示する)。
+    /// JSON 中の型不一致など内部構造のエラーは依然 bug! でクラッシュする
+    /// (= 不正な project.json は開発者が直すべきもの)。
+    pub def loadProject(rootDir: String): Result[String, Project] \ {Fs.FileRead} =
         let projectJsonPath = joinPath(rootDir, "project.json");
         let readResult = run { Fs.ReadFile.read(projectJsonPath) }
             with Fs.ReadFile.runWithFileRead;
-        let content = match readResult {
-            case Ok(s)  => s
-            case Err(e) => bug!("ProjectLoader: failed to read ${projectJsonPath}: ${e}")
-        };
-        let json = match Json.Parse.parse(String.trim(content)) {
-            case Some(j) => j
-            case None    => bug!("ProjectLoader: JSON parse failed for ${projectJsonPath}")
-        };
+        match readResult {
+            case Err(e) => Err("Failed to read ${projectJsonPath}: ${e}")
+            case Ok(content) =>
+                match Json.Parse.parse(String.trim(content)) {
+                    case None    => Err("JSON parse failed: ${projectJsonPath}")
+                    case Some(j) => Ok(buildProject(rootDir, j))
+                }
+        }
+
+    def buildProject(rootDir: String, json: Json.JsonElement): Project =
         let root = matchObject(json, "root");
         let title       = getString(root, "title");
         let designW     = getInt(root, "designWidth");
@@ -54,7 +57,6 @@ mod ProjectLoader {
         let textures    = readTextures(rootDir, getField(root, "textures"));
         let fonts       = readFonts(rootDir, getField(root, "fonts"));
         let sounds      = readSounds(rootDir, getField(root, "sounds"));
-        let mainScene   = getString(root, "mainScene");
         let config: GameEngine.EngineConfig = {
             designWidth     = designW,
             designHeight    = designH,
@@ -67,11 +69,25 @@ mod ProjectLoader {
             clearColor      = clearColor,
             maxDeltaTime    = maxDelta
         };
-        {
-            rootDir       = rootDir,
-            config        = config,
-            mainScenePath = joinPath(rootDir, mainScene)
-        }
+        { rootDir = rootDir, config = config }
+
+    // ========================================================================
+
+    /// プロジェクトディレクトリを再帰的に走査して *.scene.json を列挙する。
+    /// 返るパスは rootDir からの相対形 ("src/scenes/MenuScene.scene.json" 等)。
+    /// IDE 側はこれを scene リストに表示し、クリックで loadScene に渡す。
+    pub def findSceneFiles(rootDir: String): List[String] \ Fs.Glob =
+        Fs.Glob.glob(rootDir, "**/*.scene.json")
+            |> Result.getWithDefault(Nil)
+            |> List.map(absPath ->
+                // glob は絶対パス or rootDir 相対で返すので、rootDir プレフィックスを剥がす
+                if (String.startsWith({prefix = rootDir + "/"}, absPath))
+                    absPath.substring(String.length(rootDir) + 1)
+                else if (String.startsWith({prefix = rootDir}, absPath))
+                    absPath.substring(String.length(rootDir))
+                else
+                    absPath
+            )
 
     // ========================================================================
     // JSON 抽出ヘルパー

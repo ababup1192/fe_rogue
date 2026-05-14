@@ -32,7 +32,17 @@ mod SwingLayer {
     import java.lang.Integer
     import java.lang.reflect.Field
 
-    pub def withSwing(config: GameEngine.EngineConfig, f: Unit -> a \ ef): a \ ef - GameEngine.Game - GameEngine.Audio + IO =
+    /// customizeFrame は JFrame に対する UI 構築をすべて呼び出し側に委譲するためのフック。
+    /// SwingLayer が呼ぶタイミング: AWTGLCanvas 生成・GLData パッチ・JFrame 生成・
+    /// WindowListener 装着が済んだ後、setVisible(true) する前。
+    /// 呼び出し側はここで:
+    ///   - canvas を frame のレイアウト (BorderLayout.CENTER 等) に add する
+    ///   - frame.setSize / setLayout でウィンドウサイズ・配置を設定する
+    ///   - JMenuBar や sidebar JPanel を frame に取り付ける
+    /// を行う。canvas を frame にどう配置するかは IDE 側のレイアウト責務。
+    pub def withSwing(config: GameEngine.EngineConfig,
+                      customizeFrame: (JFrame, AWTGLCanvas) -> Unit \ IO,
+                      f: Unit -> a \ ef): a \ ef - GameEngine.Game - GameEngine.Audio + IO =
         // ----- 状態 Ref (initGL の中で書き込み、paintGL / handler で読む) -----
         let spriteShaderArr = Array#{0i32} @ Static;
         let tileShaderArr   = Array#{0i32} @ Static;
@@ -123,7 +133,10 @@ mod SwingLayer {
                 } else ()
             }
         };
-        canvas.setPreferredSize(new Dimension(config#windowWidth, config#windowHeight));
+        // canvas の preferred size は設定しない。
+        // BorderLayout.CENTER などのレイアウトに add された際に親コンテナのスペースを
+        // フルに使う。renderFrameMixed が design/window アスペクト比から viewport を
+        // 計算し、letterbox/pillarbox で正しい比率を保つ。
         println("[SwingLayer] AWTGLCanvas created; patching GLData for GL 3.3 Core...");
         // canvas が継承する protected final GLData data フィールドを reflection で取り、
         // その GLData のフィールド (public 非 final) を書き換える。
@@ -131,17 +144,20 @@ mod SwingLayer {
         println("[SwingLayer] GLData patched");
 
         // ----- JFrame セットアップ -----
+        // SwingLayer は基本的なフレーム生成と WindowListener 装着だけを担当し、
+        // 実際の UI 配置 (canvas をどこに add するか、メニュー、サイズ等) は
+        // customizeFrame コールバックに委譲する。
         println("[SwingLayer] Creating JFrame...");
         let frame = new JFrame(config#title);
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        frame.add(canvas);
-        frame.pack();
         frame.addWindowListener(new WindowAdapter {
             def windowClosing(_this: WindowAdapter, _e: WindowEvent): Unit \ IO =
                 Array.put(true, 0, shouldCloseArr)
             def windowClosed(_this: WindowAdapter, _e: WindowEvent): Unit \ IO =
                 Array.put(true, 0, shouldCloseArr)
         });
+        println("[SwingLayer] Calling customizeFrame...");
+        customizeFrame(frame, canvas);
         println("[SwingLayer] Calling frame.setVisible(true)...");
         frame.setVisible(true);
         println("[SwingLayer] frame.setVisible returned");
