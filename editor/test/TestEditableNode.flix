@@ -280,4 +280,175 @@ mod TestEditableNode {
     def testStaticSceneJsonNodePathEqualsLivePathRunner(): Unit \ Assert =
         withMockTextureSize(32.0, 32.0,
             () -> testStaticSceneJsonNodePathEqualsLivePath())
+
+    // ====================================================================
+    // Area2D の編集対象認識・リサイズ・スナップショット
+    // ====================================================================
+
+    /// Area2D は RectShape2D を持っていれば collectAll に拾われる。
+    /// bbox は shape の (width, height) で中央オフセット
+    def testCollectAllPicksRectArea2D(): Unit \ {Assert, GameEngine.Game} =
+        let shape = CollisionShape2D.RectShape2D({width = 40.0, height = 20.0});
+        let area = Area2D.make({x = 50.0, y = 60.0}, shape);
+        let s: Scene[Tag] = Scene.empty();
+        let scene = s
+            |> Scene.addNode("a", EngineNode.Area2DWithState(area, Tag.NoTag));
+        let entries = EditableNode.collectAll(
+            {rootJsonIndex = Map#{"a" => "a.json"}, scene = scene});
+        Assert.assertEq(
+            expected = (1, Some(40.0), Some(20.0), Some(-20.0), Some(-10.0)),
+            (List.length(entries),
+             List.head(entries) |> Option.map(e -> e#width),
+             List.head(entries) |> Option.map(e -> e#height),
+             List.head(entries) |> Option.map(e -> e#topLeftOffset#x),
+             List.head(entries) |> Option.map(e -> e#topLeftOffset#y)))
+
+    @Test
+    def testCollectAllPicksRectArea2DRunner(): Unit \ Assert =
+        withMockTextureSize(32.0, 32.0, () -> testCollectAllPicksRectArea2D())
+
+    /// CircleShape2D の Area2D は radius * 2 の正方形 bbox を返す
+    def testCollectAllPicksCircleArea2D(): Unit \ {Assert, GameEngine.Game} =
+        let shape = CollisionShape2D.CircleShape2D({radius = 13.0});
+        let area = Area2D.make({x = 0.0, y = 0.0}, shape);
+        let s: Scene[Tag] = Scene.empty();
+        let scene = s
+            |> Scene.addNode("a", EngineNode.Area2DWithState(area, Tag.NoTag));
+        let entries = EditableNode.collectAll(
+            {rootJsonIndex = Map#{"a" => "a.json"}, scene = scene});
+        Assert.assertEq(
+            expected = (1, Some(26.0), Some(26.0)),
+            (List.length(entries),
+             List.head(entries) |> Option.map(e -> e#width),
+             List.head(entries) |> Option.map(e -> e#height)))
+
+    @Test
+    def testCollectAllPicksCircleArea2DRunner(): Unit \ Assert =
+        withMockTextureSize(32.0, 32.0, () -> testCollectAllPicksCircleArea2D())
+
+    /// CollisionShape を持たない Area2D は edit 対象から外れる
+    def testCollectAllSkipsArea2DWithoutShape(): Unit \ {Assert, GameEngine.Game} =
+        let shape = CollisionShape2D.RectShape2D({width = 10.0, height = 10.0});
+        let area = Area2D.make({x = 0.0, y = 0.0}, shape)
+            |> Area2D.setCollisionShape(None);
+        let s: Scene[Tag] = Scene.empty();
+        let scene = s
+            |> Scene.addNode("a", EngineNode.Area2DWithState(area, Tag.NoTag));
+        let entries = EditableNode.collectAll(
+            {rootJsonIndex = Map#{"a" => "a.json"}, scene = scene});
+        Assert.assertEq(expected = 0, List.length(entries))
+
+    @Test
+    def testCollectAllSkipsArea2DWithoutShapeRunner(): Unit \ Assert =
+        withMockTextureSize(32.0, 32.0,
+            () -> testCollectAllSkipsArea2DWithoutShape())
+
+    /// Area2D の snapshot は prevShape に元の CollisionShape2D を保持する
+    @Test
+    def testArea2DSnapshotCapturesShape(): Unit \ Assert =
+        let shape = CollisionShape2D.RectShape2D({width = 40.0, height = 20.0});
+        let area = Area2D.make({x = 0.0, y = 0.0}, shape);
+        let node: EngineNode[Unit] = EngineNode.Area2DWithState(area, ());
+        let snap = EditableNode.snapshotForResize("a" :: Nil, node);
+        let shapeDims = match snap#prevShape {
+            case Some(CollisionShape2D.RectShape2D(r)) => Some((r#width, r#height))
+            case _ => None
+        };
+        Assert.assertEq(expected = Some((40.0, 20.0)), shapeDims)
+
+    /// Area2D を ratio (2.0, 1.5) でリサイズすると、shape が (80, 30) に拡大される
+    @Test
+    def testArea2DResizeScalesShape(): Unit \ Assert =
+        let shape = CollisionShape2D.RectShape2D({width = 40.0, height = 20.0});
+        let area = Area2D.make({x = 0.0, y = 0.0}, shape);
+        let node: EngineNode[Unit] = EngineNode.Area2DWithState(area, ());
+        let snap = EditableNode.snapshotForResize("a" :: Nil, node);
+        let resized = EditableNode.applyResizeFromSnapshot(snap, {x = 2.0, y = 1.5})(node);
+        let newDims = match resized {
+            case EngineNode.Area2DWithState(a, _) =>
+                match CollisionObject2D.getCollisionShape(a) {
+                    case Some(CollisionShape2D.RectShape2D(r)) => Some((r#width, r#height))
+                    case _ => None
+                }
+            case _ => None
+        };
+        Assert.assertEq(expected = Some((80.0, 30.0)), newDims)
+
+    /// Area2D の resizeFieldUpdates は "shape" キーで FieldValue.ShapeValue を返す
+    @Test
+    def testArea2DResizeFieldUpdatesIncludesShape(): Unit \ Assert =
+        let shape = CollisionShape2D.RectShape2D({width = 40.0, height = 20.0});
+        let area = Area2D.make({x = 0.0, y = 0.0}, shape);
+        let node: EngineNode[Unit] = EngineNode.Area2DWithState(area, ());
+        let updates = EditableNode.resizeFieldUpdates(node);
+        let keys = List.map(u -> u#key, updates);
+        Assert.assertEq(expected = "shape" :: Nil, keys)
+
+    /// コリジョン可視化は **outline のみ** であること（内側 fill は描画しない）。
+    /// Godot のエディタと同じく、下の sprite が完全に見えるよう fill は除いている
+    @Test
+    def testCollisionOverlayIsOutlineOnly(): Unit \ Assert =
+        let bird = RigidBody2D.make({x = 144.0, y = 256.0},
+            CollisionShape2D.CircleShape2D({radius = 13.0}));
+        let areaShape = CollisionShape2D.CircleShape2D({radius = 13.0});
+        let area = Area2D.make({x = 0.0, y = 0.0}, areaShape);
+        let s: Scene[Tag] = Scene.empty();
+        let scene = s
+            |> Scene.addNode("bird", EngineNode.RigidBody2DWithState(bird, Tag.NoTag))
+            |> Scene.addChild("bird", "area",
+                EngineNode.Area2DWithState(area, Tag.NoTag));
+        let transform = Camera2D.identityTransform();
+        let withOverlay = Overlay.addCollisionShapes(transform, Tag.NoTag, scene);
+        // _editor_collision_layer の中の "bird_0", "bird_1" … と "bird/area_0", "bird/area_1" …
+        // を順に見て、ColorRect の alpha が 0.4 / 1.0 のいずれかであることを確認する
+        let layerChildren = Scene.getChildrenAt("_editor_collision_layer" :: Nil, withOverlay);
+        let alphas = List.filterMap(name -> {
+            let path = "_editor_collision_layer" :: name :: Nil;
+            match Scene.getEngineNode(path, withOverlay) {
+                case Some(EngineNode.ColorRectWithState(ColorRect.ColorRect(rec), _)) =>
+                    Some(rec#alpha)
+                case _ => None
+            }
+        }, layerChildren);
+        // outline only — すべての alpha が 1.0 で、fill alpha 0.4 のものが含まれないこと
+        let allOpaqueOutline = List.forAll(a -> a == 1.0f32, alphas);
+        let count = List.length(alphas);
+        Assert.assertEq(expected = (true, true), (allOpaqueOutline, count > 0))
+
+    /// area の position を動かす → bird/sprite の global position が変わらない、
+    /// かつ toDrawables 経由で sprite drawable が生成されること
+    @Test
+    def testMovingArea2DDoesNotRemoveSibling(): Unit \ Assert =
+        let bird = RigidBody2D.make({x = 144.0, y = 256.0},
+            CollisionShape2D.CircleShape2D({radius = 13.0}));
+        let frames: List[SpriteFrames.Frame] =
+            {texture = "f1", duration = 1.0} :: Nil;
+        let anim: SpriteFrames.Animation = {loop = true, speed = 10.0, frames = frames};
+        let sf = SpriteFrames.empty() |> SpriteFrames.addAnimation("flap", anim);
+        let spriteNode = AnimatedSprite2D.make(sf, {animation = "flap"},
+            {x = 0.0, y = 0.0}, {x = 2.0, y = 2.0});
+        let areaShape = CollisionShape2D.CircleShape2D({radius = 13.0});
+        let area = Area2D.make({x = 0.0, y = 0.0}, areaShape);
+        let s: Scene[Tag] = Scene.empty();
+        let scene = s
+            |> Scene.addNode("bird", EngineNode.RigidBody2DWithState(bird, Tag.NoTag))
+            |> Scene.addChild("bird", "sprite",
+                EngineNode.AnimSprite2DWithState(spriteNode, Tag.NoTag))
+            |> Scene.addChild("bird", "area",
+                EngineNode.Area2DWithState(area, Tag.NoTag));
+        // bird/area を global (164, 256) に動かす（local (20, 0) になる）
+        let moved = Scene.setGlobalPositionAt("bird" :: "area" :: Nil,
+            {x = 164.0, y = 256.0}, scene);
+        // sprite ノードがまだ scene にあること、global pos が変わっていないこと
+        let spritePresent = match Scene.getEngineNode("bird" :: "sprite" :: Nil, moved) {
+            case Some(EngineNode.AnimSprite2DWithState(_, _)) => true
+            case _ => false
+        };
+        let spriteGlobal = Scene.globalPositionAt("bird" :: "sprite" :: Nil, moved);
+        let areaGlobal = Scene.globalPositionAt("bird" :: "area" :: Nil, moved);
+        Assert.assertEq(
+            expected = (true, (144.0, 256.0), (164.0, 256.0)),
+            (spritePresent,
+             (spriteGlobal#x, spriteGlobal#y),
+             (areaGlobal#x, areaGlobal#y)))
 }

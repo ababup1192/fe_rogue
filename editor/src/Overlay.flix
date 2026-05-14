@@ -172,13 +172,14 @@ mod Overlay {
                                       style#outlineThickness)
         }
 
+    /// 矩形コリジョンを **outline のみ** で描画する（fill は使わない）。
+    /// Godot のエディタと同様、コリジョン形状は内部塗りつぶしを行わず
+    /// 細い枠線だけで表示することで、下の sprite が完全に見えるようにする
     def rectFillAndOutlineRects(center: Vec2.Vec2, width: Float64, height: Float64,
                                  outlineThickness: Float64): List[FillRect] =
         let halfW = width / 2.0;
         let halfH = height / 2.0;
         let topLeft = {x = center#x - halfW, y = center#y - halfH};
-        let fill = {topLeft = topLeft, size = {x = width, y = height},
-                    isOutline = false};
         let topEdge = {topLeft = {x = topLeft#x - outlineThickness,
                                   y = topLeft#y - outlineThickness},
                        size = {x = width + 2.0 * outlineThickness, y = outlineThickness},
@@ -193,7 +194,7 @@ mod Overlay {
         let rightEdge = {topLeft = {x = topLeft#x + width, y = topLeft#y},
                          size = {x = outlineThickness, y = height},
                          isOutline = true};
-        fill :: topEdge :: bottomEdge :: leftEdge :: rightEdge :: Nil
+        topEdge :: bottomEdge :: leftEdge :: rightEdge :: Nil
 
     def circleRingScanLines(center: Vec2.Vec2, radius: Float64,
                              outlineThickness: Float64): List[FillRect] =
@@ -257,19 +258,17 @@ mod Overlay {
                          size = {x = 2.0 * outerHalf, y = 1.0},
                          isOutline = true} :: Nil
                     else {
+                        // Outline ring only — 内側 fill は描画しない。
+                        // 下の sprite を完全に見えるようにするため、左右のエッジだけ残す。
                         let leftEdge = {topLeft = {x = center#x - outerHalf,
                                                    y = center#y + y},
                                         size = {x = outerHalf - innerHalf, y = 1.0},
                                         isOutline = true};
-                        let fill = {topLeft = {x = center#x - innerHalf,
-                                               y = center#y + y},
-                                    size = {x = 2.0 * innerHalf, y = 1.0},
-                                    isOutline = false};
                         let rightEdge = {topLeft = {x = center#x + innerHalf,
                                                     y = center#y + y},
                                          size = {x = outerHalf - innerHalf, y = 1.0},
                                          isOutline = true};
-                        leftEdge :: fill :: rightEdge :: Nil
+                        leftEdge :: rightEdge :: Nil
                     }
                 }
             })

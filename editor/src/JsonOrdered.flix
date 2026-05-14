@@ -16,9 +16,9 @@
 
 mod JsonOrdered {
 
-    /// JSON 値のキー順保持版
+    /// JSON 値のキー順保持版。object も array も「inline / block」の表示スタイルを持つ
     pub enum OrderedJson {
-        case OObject(List[(String, OrderedJson)])
+        case OObject(List[(String, OrderedJson)], ObjectStyle)
         case OArray(List[OrderedJson], ArrayStyle)
         case OString(String)
         case ONumber(String)     // raw text を保持
@@ -30,6 +30,13 @@ mod JsonOrdered {
     pub enum ArrayStyle {
         case Inline      // [0, 0] のように 1 行
         case Block       // 改行で展開
+    }
+
+    /// オブジェクトの表示スタイル（`"shape": {"kind": ..., "width": ...}` のような
+    /// 短い inline object と、scene のルートのような block object を区別する）
+    pub enum ObjectStyle {
+        case ObjInline    // {"k": v, "k2": v2} のように 1 行
+        case ObjBlock     // 改行で展開
     }
 
     // ========================================================================
@@ -79,16 +86,20 @@ mod JsonOrdered {
             else pos
         }
 
-    /// object をパース。開始 `{` の **次の位置** を pos で受け取る
+    /// object をパース。開始 `{` の **次の位置** を pos で受け取る。
+    /// openPos は `{` の位置。閉じ `}` までに改行が含まれるかで inline / block を判定
     def parseObject(text: String, n: Int32, pos: Int32):
             Result[String, (OrderedJson, Int32)] =
+        let openPos = pos - 1;  // `{` の位置
         let p0 = skipWs(text, n, pos);
         if (p0 >= n) Err("unexpected end of input inside object")
-        else if (String.charAt(p0, text) == '}')
-            Ok((OrderedJson.OObject(Nil), p0 + 1))
-        else parseObjectEntries(text, n, p0, Nil)
+        else if (String.charAt(p0, text) == '}') {
+            let hasNewline = containsNewline(text, openPos, p0);
+            let style = if (hasNewline) ObjectStyle.ObjBlock else ObjectStyle.ObjInline;
+            Ok((OrderedJson.OObject(Nil, style), p0 + 1))
+        } else parseObjectEntries(text, n, openPos, p0, Nil)
 
-    def parseObjectEntries(text: String, n: Int32, pos: Int32,
+    def parseObjectEntries(text: String, n: Int32, openPos: Int32, pos: Int32,
                             acc: List[(String, OrderedJson)]):
             Result[String, (OrderedJson, Int32)] =
         if (pos >= n) Err("unexpected end of input inside object")
@@ -113,11 +124,16 @@ mod JsonOrdered {
                                 let sep = String.charAt(afterSep, text);
                                 if (sep == ',') {
                                     let next = skipWs(text, n, afterSep + 1);
-                                    parseObjectEntries(text, n, next, newAcc)
+                                    parseObjectEntries(text, n, openPos, next, newAcc)
                                 }
-                                else if (sep == '}')
-                                    Ok((OrderedJson.OObject(List.reverse(newAcc)),
+                                else if (sep == '}') {
+                                    let hasNewline = containsNewline(text, openPos, afterSep);
+                                    let style =
+                                        if (hasNewline) ObjectStyle.ObjBlock
+                                        else ObjectStyle.ObjInline;
+                                    Ok((OrderedJson.OObject(List.reverse(newAcc), style),
                                         afterSep + 1))
+                                }
                                 else Err("expected ',' or '}' at offset ${afterSep}")
                             }
                     }
@@ -249,7 +265,7 @@ mod JsonOrdered {
     /// depth はネスト深さ（0 = ルート）
     def writeValue(indent: Int32, depth: Int32, json: OrderedJson): String =
         match json {
-            case OrderedJson.OObject(entries) => writeObject(indent, depth, entries)
+            case OrderedJson.OObject(entries, style) => writeObject(indent, depth, entries, style)
             case OrderedJson.OArray(items, style) => writeArray(indent, depth, items, style)
             case OrderedJson.OString(s) => "\"${escapeString(s)}\""
             case OrderedJson.ONumber(raw) => raw
@@ -258,18 +274,27 @@ mod JsonOrdered {
         }
 
     def writeObject(indent: Int32, depth: Int32,
-                     entries: List[(String, OrderedJson)]): String =
+                     entries: List[(String, OrderedJson)],
+                     style: ObjectStyle): String =
         match entries {
             case Nil => "{}"
-            case _ =>
-                let inner = depth + 1;
-                let innerPad = padOf(indent, inner);
-                let closePad = padOf(indent, depth);
-                let body = entries
-                    |> List.map(match (k, v) ->
-                        "${innerPad}\"${escapeString(k)}\": ${writeValue(indent, inner, v)}")
-                    |> String.intercalate(",\n");
-                "{\n${body}\n${closePad}}"
+            case _ => match style {
+                case ObjectStyle.ObjInline =>
+                    let body = entries
+                        |> List.map(match (k, v) ->
+                            "\"${escapeString(k)}\": ${writeValue(indent, depth, v)}")
+                        |> String.intercalate(", ");
+                    "{${body}}"
+                case ObjectStyle.ObjBlock =>
+                    let inner = depth + 1;
+                    let innerPad = padOf(indent, inner);
+                    let closePad = padOf(indent, depth);
+                    let body = entries
+                        |> List.map(match (k, v) ->
+                            "${innerPad}\"${escapeString(k)}\": ${writeValue(indent, inner, v)}")
+                        |> String.intercalate(",\n");
+                    "{\n${body}\n${closePad}}"
+            }
         }
 
     def writeArray(indent: Int32, depth: Int32,

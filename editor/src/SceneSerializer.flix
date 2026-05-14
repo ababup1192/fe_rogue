@@ -139,7 +139,7 @@ mod SceneSerializer {
             case Nil => Err("empty NodePath")
             case rootName :: rest =>
                 match json {
-                    case JsonOrdered.OrderedJson.OObject(_) =>
+                    case JsonOrdered.OrderedJson.OObject(_, _) =>
                         replaceFieldsInNode(rootName, rest, updates, json)
                             |> Option.toOk("root node not found: ${rootName}")
                     case JsonOrdered.OrderedJson.OArray(items, style) =>
@@ -174,7 +174,7 @@ mod SceneSerializer {
                             element: JsonOrdered.OrderedJson):
                            Option[JsonOrdered.OrderedJson] =
         match element {
-            case JsonOrdered.OrderedJson.OObject(entries) =>
+            case JsonOrdered.OrderedJson.OObject(entries, objStyle) =>
                 let nameOpt = findEntryValue("name", entries) |> Option.flatMap(v ->
                     match v {
                         case JsonOrdered.OrderedJson.OString(s) => Some(s)
@@ -182,20 +182,21 @@ mod SceneSerializer {
                     });
                 match nameOpt {
                     case Some(name) if name == targetName =>
-                        Some(applyPathFromHere(restPath, updates, entries))
+                        Some(applyPathFromHere(restPath, updates, entries, objStyle))
                     case _ => None
                 }
             case _ => None
         }
 
     /// 末端ノード（このノードが目的のノードか、子を辿る必要があるか）に応じて
-    /// 指定フィールドを置換 or children を辿る
+    /// 指定フィールドを置換 or children を辿る。objStyle は元の object スタイルを引き継ぐ
     def applyPathFromHere(restPath: NodePath, updates: List[FieldUpdate],
-                          entries: List[(String, JsonOrdered.OrderedJson)]):
+                          entries: List[(String, JsonOrdered.OrderedJson)],
+                          objStyle: JsonOrdered.ObjectStyle):
                          JsonOrdered.OrderedJson =
         match restPath {
             case Nil =>
-                JsonOrdered.OrderedJson.OObject(applyUpdates(updates, entries))
+                JsonOrdered.OrderedJson.OObject(applyUpdates(updates, entries), objStyle)
             case nextName :: deeper =>
                 match findEntryValue("children", entries) {
                     case Some(JsonOrdered.OrderedJson.OArray(childItems, style)) =>
@@ -204,11 +205,12 @@ mod SceneSerializer {
                                 let newChildren =
                                     JsonOrdered.OrderedJson.OArray(newItems, style);
                                 JsonOrdered.OrderedJson.OObject(
-                                    replaceEntryValue("children", newChildren, entries))
+                                    replaceEntryValue("children", newChildren, entries),
+                                    objStyle)
                             case None =>
-                                JsonOrdered.OrderedJson.OObject(entries)
+                                JsonOrdered.OrderedJson.OObject(entries, objStyle)
                         }
-                    case _ => JsonOrdered.OrderedJson.OObject(entries)
+                    case _ => JsonOrdered.OrderedJson.OObject(entries, objStyle)
                 }
         }
 
@@ -270,24 +272,28 @@ mod SceneSerializer {
                 shapeToOrderedJson(shape)
         }
 
-    /// CollisionShape2D を `{"kind": ..., "width": ..., ...}` の OObject に変換する
+    /// CollisionShape2D を `{"kind": ..., "width": ..., ...}` の OObject に変換する。
+    /// shape は通常 inline `{"kind": ..., ...}` で書かれているため Inline スタイルで出力する
     def shapeToOrderedJson(shape: CollisionShape2D): JsonOrdered.OrderedJson =
         match shape {
             case CollisionShape2D.RectShape2D(r) =>
                 JsonOrdered.OrderedJson.OObject(
                     ("kind",   JsonOrdered.OrderedJson.OString("RectShape2D")) ::
                     ("width",  JsonOrdered.OrderedJson.ONumber(formatFloat(r#width))) ::
-                    ("height", JsonOrdered.OrderedJson.ONumber(formatFloat(r#height))) :: Nil)
+                    ("height", JsonOrdered.OrderedJson.ONumber(formatFloat(r#height))) :: Nil,
+                    JsonOrdered.ObjectStyle.ObjInline)
             case CollisionShape2D.CircleShape2D(c) =>
                 JsonOrdered.OrderedJson.OObject(
                     ("kind",   JsonOrdered.OrderedJson.OString("CircleShape2D")) ::
-                    ("radius", JsonOrdered.OrderedJson.ONumber(formatFloat(c#radius))) :: Nil)
+                    ("radius", JsonOrdered.OrderedJson.ONumber(formatFloat(c#radius))) :: Nil,
+                    JsonOrdered.ObjectStyle.ObjInline)
             case CollisionShape2D.CapsuleShape2D(c) =>
                 JsonOrdered.OrderedJson.OObject(
                     ("kind",     JsonOrdered.OrderedJson.OString("CapsuleShape2D")) ::
                     ("radius",   JsonOrdered.OrderedJson.ONumber(formatFloat(c#radius))) ::
                     ("height",   JsonOrdered.OrderedJson.ONumber(formatFloat(c#height))) ::
-                    ("vertical", JsonOrdered.OrderedJson.OBool(c#vertical)) :: Nil)
+                    ("vertical", JsonOrdered.OrderedJson.OBool(c#vertical)) :: Nil,
+                    JsonOrdered.ObjectStyle.ObjInline)
         }
 
     /// Float64 を JSON 数値文字列に。整数値なら "144"、小数なら "144.5" のようにする

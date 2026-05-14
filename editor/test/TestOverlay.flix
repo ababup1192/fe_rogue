@@ -238,9 +238,9 @@ mod TestOverlay {
             List.length(children)))
 
     /// RectShape2D の Area2D が 1 つあると、CanvasLayer の下に
-    /// 中身 1 枚 + 4 辺のフチで合計 5 枚の ColorRect が追加される
+    /// 上下左右の outline 4 枚の ColorRect が追加される（fill は描画しない）
     @Test
-    def testAddCollisionShapesRectAddsFillAndOutline(): Unit \ Assert =
+    def testAddCollisionShapesRectAddsOutlineOnly(): Unit \ Assert =
         let area = Area2D.make({x = 100.0, y = 100.0},
             CollisionShape2D.RectShape2D({width = 32.0, height = 16.0}));
         let s: Scene[Tag] = Scene.empty();
@@ -248,17 +248,17 @@ mod TestOverlay {
             EngineNode.Area2DWithState(area, Tag.NoTag));
         let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), Tag.NoTag, scene);
         let children = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result);
-        // 内側 fill 1 + 上下左右の outline 4 = 5
-        Assert.assertEq(expected = 5, List.length(children))
+        // 上下左右の outline 4 枚（fill は描画しない）
+        Assert.assertEq(expected = 4, List.length(children))
 
-    /// CircleShape2D（半径 5、フチ太さ 1）はリング方式で多数の ColorRect を生成する。
-    /// 上下キャップ行（内側がない）2 枚 + 内側がある 9 行 × 3 枚 = 29 枚
+    /// CircleShape2D（半径 5、フチ太さ 1）はリング outline をスキャンラインで描く。
+    /// 上下キャップ行（内側がない）2 枚 + 内側がある 9 行 × 2 枚（左右 edge のみ） = 20 枚
     ///
-    ///   y=-5: outerHalf≈3.32, innerHalf=0    -> 全幅 outline 1 枚
-    ///   y=-4..4 (9 行): innerHalf>0          -> 左 outline + 中央 fill + 右 outline 3 枚
-    ///   y=+5: outerHalf≈3.32, innerHalf=0    -> 全幅 outline 1 枚
+    ///   y=-5: outerHalf>0, innerHalf=0    -> 全幅 outline 1 枚
+    ///   y=-4..4 (9 行): innerHalf>0       -> 左 outline + 右 outline 2 枚（fill 削除）
+    ///   y=+5: outerHalf>0, innerHalf=0    -> 全幅 outline 1 枚
     @Test
-    def testAddCollisionShapesCircleAddsRingScanLines(): Unit \ Assert =
+    def testAddCollisionShapesCircleAddsRingOutlineOnly(): Unit \ Assert =
         let area = Area2D.make({x = 100.0, y = 100.0},
             CollisionShape2D.CircleShape2D({radius = 5.0}));
         let s: Scene[Tag] = Scene.empty();
@@ -267,12 +267,12 @@ mod TestOverlay {
         let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), Tag.NoTag, scene);
         let count = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result)
             |> List.length;
-        Assert.assertEq(expected = 29, count)
+        Assert.assertEq(expected = 20, count)
 
-    /// fill 部分は半透明（alpha < 1.0）、outline 部分は不透明（alpha = 1.0）。
-    /// 5 枚の子のうち、alpha 値の集合が想定の組み合わせになっていることを確認する
+    /// すべての ColorRect が不透明な outline（alpha = 1.0）であること。
+    /// fill が削除されたため、translucent な要素（alpha < 1.0）は存在しない
     @Test
-    def testAddCollisionShapesFillTranslucentOutlineOpaque(): Unit \ Assert =
+    def testAddCollisionShapesAllOutlinesAreOpaque(): Unit \ Assert =
         let area = Area2D.make({x = 50.0, y = 50.0},
             CollisionShape2D.RectShape2D({width = 10.0, height = 10.0}));
         let s: Scene[Tag] = Scene.empty();
@@ -287,6 +287,6 @@ mod TestOverlay {
                 });
         let translucentCount = List.count(a -> a < 1.0f32, alphas);
         let opaqueCount = List.count(a -> a >= 1.0f32, alphas);
-        // 矩形は内側 fill 1 枚（半透明）+ 4 辺の outline（不透明）
-        Assert.assertEq(expected = (1, 4), (translucentCount, opaqueCount))
+        // fill は無いので translucent は 0 枚、outline 4 枚すべて不透明
+        Assert.assertEq(expected = (0, 4), (translucentCount, opaqueCount))
 }

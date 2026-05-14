@@ -13,24 +13,24 @@ mod TestSceneSerializer {
     // JsonOrdered.parse → writePretty の round-trip 性
     // ====================================================================
 
-    /// 単純な object の parse → writePretty で同じ出力（末尾改行付き）
+    /// インライン object の parse → writePretty で 1 行のまま（末尾改行付き）
     @Test
     def testRoundTripSimpleObject(): Unit \ Assert =
         let original = "{\"type\": \"Sprite2D\", \"name\": \"hero\"}";
         let result = JsonOrdered.parse(original) |> Result.map(j ->
             JsonOrdered.writePretty(2, j));
         Assert.assertEq(
-            expected = Ok("{\n  \"type\": \"Sprite2D\",\n  \"name\": \"hero\"\n}\n"),
+            expected = Ok("{\"type\": \"Sprite2D\", \"name\": \"hero\"}\n"),
             result)
 
-    /// inline 配列 ([0, 0]) は parse → write 後も 1 行のまま
+    /// inline 配列 ([0, 0]) を含む inline object は parse → write 後も 1 行のまま
     @Test
     def testRoundTripInlineArray(): Unit \ Assert =
         let original = "{\"pos\": [0, 0]}";
         let result = JsonOrdered.parse(original) |> Result.map(j ->
             JsonOrdered.writePretty(2, j));
         Assert.assertEq(
-            expected = Ok("{\n  \"pos\": [0, 0]\n}\n"),
+            expected = Ok("{\"pos\": [0, 0]}\n"),
             result)
 
     /// block 配列（改行入り）は parse → write 後も block のまま
@@ -53,7 +53,7 @@ mod TestSceneSerializer {
             case Ok(s) => String.endsWith(suffix = "\n", s)
             case Err(_) => false
         };
-        Assert.assertEq(expected = Ok("{\n  \"x\": 1\n}\n"), result);
+        Assert.assertEq(expected = Ok("{\"x\": 1}\n"), result);
         Assert.assertEq(expected = true, endsWithNewline)
 
     // ====================================================================
@@ -61,14 +61,24 @@ mod TestSceneSerializer {
     // ====================================================================
 
     /// type → name → pos の意味順が parse → write でも維持される
-    /// （alphabetical sort されない）
+    /// （alphabetical sort されない）。インライン形式も維持
     @Test
     def testKeyOrderPreserved(): Unit \ Assert =
         let original = "{\"type\": \"Sprite2D\", \"name\": \"x\", \"pos\": [0, 0]}";
         let result = JsonOrdered.parse(original) |> Result.map(j ->
             JsonOrdered.writePretty(2, j));
         Assert.assertEq(
-            expected = Ok("{\n  \"type\": \"Sprite2D\",\n  \"name\": \"x\",\n  \"pos\": [0, 0]\n}\n"),
+            expected = Ok("{\"type\": \"Sprite2D\", \"name\": \"x\", \"pos\": [0, 0]}\n"),
+            result)
+
+    /// ブロック形式（改行入り）の object は parse → write で block のまま
+    @Test
+    def testRoundTripBlockObject(): Unit \ Assert =
+        let original = "{\n  \"type\": \"Sprite2D\",\n  \"name\": \"hero\"\n}";
+        let result = JsonOrdered.parse(original) |> Result.map(j ->
+            JsonOrdered.writePretty(2, j));
+        Assert.assertEq(
+            expected = Ok("{\n  \"type\": \"Sprite2D\",\n  \"name\": \"hero\"\n}\n"),
             result)
 
     /// ネストした children 配列内のキー順も維持
