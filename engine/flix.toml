@@ -13,7 +13,6 @@ authors     = ["ababup1192 <ababup1192@gmail.com>"]
 "github:ababup1192/flix_render_core" = { version = "0.1.0", security = "unrestricted" }
 
 [mvn-dependencies]
-"com.formdev:flatlaf" = "3.7.1"
 "org.lwjgl:lwjgl-glfw" = "3.4.1"
 
 [jar-dependencies]

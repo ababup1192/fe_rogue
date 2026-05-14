@@ -9,21 +9,3 @@ authors     = ["ababup1192 <ababup1192@gmail.com>"]
 "github:mlutze/flix-json" = "0.13.2"
 "github:ababup1192/flix_game_engine" = { version = "0.1.0", security = "unrestricted" }
 "github:ababup1192/flix_engine_editor" = { version = "0.1.0", security = "unrestricted" }
-
-[mvn-dependencies]
-"com.formdev:flatlaf" = "3.7.1"
-"org.lwjgl:lwjgl" = "3.4.1"
-"org.lwjgl:lwjgl-glfw" = "3.4.1"
-"org.lwjgl:lwjgl-opengl" = "3.4.1"
-"org.lwjgl:lwjgl-stb" = "3.4.1"
-"org.lwjgl:lwjgl-openal" = "3.4.1"
-
-[jar-dependencies]
-# まず macos-arm64 のみで動作確認（fe_rogue と同じ）。
-# 他プラットフォーム jar を追加するとビルドが詰まる現象が出たので、必要に応じて
-# 後から `lwjgl-*-natives-macos.jar` / `lwjgl-*-natives-windows.jar` を追記する。
-"lwjgl-3.4.1-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl/3.4.1/lwjgl-3.4.1-natives-macos-arm64.jar"
-"lwjgl-glfw-3.4.1-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-glfw/3.4.1/lwjgl-glfw-3.4.1-natives-macos-arm64.jar"
-"lwjgl-opengl-3.4.1-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-opengl/3.4.1/lwjgl-opengl-3.4.1-natives-macos-arm64.jar"
-"lwjgl-stb-3.4.1-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-stb/3.4.1/lwjgl-stb-3.4.1-natives-macos-arm64.jar"
-"lwjgl-openal-3.4.1-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-openal/3.4.1/lwjgl-openal-3.4.1-natives-macos-arm64.jar"

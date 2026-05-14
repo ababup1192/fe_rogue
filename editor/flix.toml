@@ -9,20 +9,3 @@ repository  = "github:ababup1192/flix_engine_editor"
 [dependencies]
 "github:mlutze/flix-json" = "0.13.2"
 "github:ababup1192/flix_game_engine" = { version = "0.1.0", security = "unrestricted" }
-
-[mvn-dependencies]
-"com.formdev:flatlaf" = "3.7.1"
-"org.lwjgl:lwjgl" = "3.4.1"
-"org.lwjgl:lwjgl-glfw" = "3.4.1"
-"org.lwjgl:lwjgl-jawt" = "3.4.1"
-"org.lwjgl:lwjgl-opengl" = "3.4.1"
-"org.lwjgl:lwjgl-stb" = "3.4.1"
-"org.lwjgl:lwjgl-openal" = "3.4.1"
-"org.lwjglx:lwjgl3-awt" = "0.2.4"
-
-[jar-dependencies]
-"lwjgl-3.4.1-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl/3.4.1/lwjgl-3.4.1-natives-macos-arm64.jar"
-"lwjgl-glfw-3.4.1-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-glfw/3.4.1/lwjgl-glfw-3.4.1-natives-macos-arm64.jar"
-"lwjgl-opengl-3.4.1-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-opengl/3.4.1/lwjgl-opengl-3.4.1-natives-macos-arm64.jar"
-"lwjgl-stb-3.4.1-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-stb/3.4.1/lwjgl-stb-3.4.1-natives-macos-arm64.jar"
-"lwjgl-openal-3.4.1-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-openal/3.4.1/lwjgl-openal-3.4.1-natives-macos-arm64.jar"
