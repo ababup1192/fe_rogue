@@ -24,6 +24,44 @@ mod TestCursorScene {
         let v = Vec2i.toVec2(c);
         {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
 
+    /// テスト用 FontAtlas (loadScene が getFontAtlas を呼ばないので実値は使われないが
+    /// `withMockGame` ハンドラの戻り値として必要)
+    def testFontAtlas(): FontAtlas = {
+        textureName = "font_test",
+        fontSize    = 16.0,
+        textureSize = 256.0,
+        ascent      = 0.0,
+        descent     = 0.0,
+        lineGap     = 0.0,
+        glyphs      = Map.empty()
+    }
+
+    /// CursorScene.add の {GameEngine.Game, Fs.FileRead} effect を discharge して
+    /// pure に見せる test 用ラッパ。`@Test` は `\ Assert` 限定のため unchecked_cast で
+    /// IO effect を消す (Fs.FileRead は flix test の CWD = examples/fe_rogue から
+    /// 実ファイルを読む)。
+    def cursorAddPure(scene: Scene[NodeTag]): Scene[NodeTag] =
+        unchecked_cast(
+            (run {
+                run {
+                    CursorScene.add(scene)
+                } with handler GameEngine.Game {
+                    def renderCommands(_, _, k)     = k(())
+                    def initTileBuffer(_, k)        = k((0i32, 0i32))
+                    def shouldClose(k)              = k(false)
+                    def getDeltaTime(k)             = k(Duration.seconds(0.016))
+                    def isKeyPressed(_, k)          = k(false)
+                    def getMousePosition(k)         = k({x = 0.0, y = 0.0})
+                    def isMouseButtonPressed(_, k)  = k(false)
+                    def consumeScrollDelta(k)       = k(0.0)
+                    def getFontAtlas(_, k)          = k(testFontAtlas())
+                    def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 128.0, y = 128.0}})
+                    def getTextureInfo(_, k)        = k(None)
+                    def setCursor(_, k)             = k(())
+                }
+            } with Fs.FileRead.runWithIO)
+            as _ \ {})
+
     /// Tween.Scheduler のスタブ。schedule / cancel を捨てて何もしない。
     /// snapToPlayer の動作確認時に Tween 実体を立ち上げないために使う。
     def withNoopTween(thunk: Unit -> a \ ef): a \ (ef - Tween.Scheduler) =
@@ -84,7 +122,7 @@ mod TestCursorScene {
     @Test
     def testAddPlacesCursorAtPlayerGrid(): Unit \ Assert =
         let player: {x = Int32, y = Int32} = {x = 5, y = 5};
-        let scene = CursorScene.add(sceneWithPlayer(player));
+        let scene = cursorAddPure(sceneWithPlayer(player));
         Assert.assertEq(expected = (5, 5, (None: Option[Int32])),
             cursorState(scene))
 
@@ -93,7 +131,7 @@ mod TestCursorScene {
     @Test
     def testAddFollowsPlayerSpawnPosition(): Unit \ Assert =
         let player: {x = Int32, y = Int32} = {x = 3, y = 7};
-        let scene = CursorScene.add(sceneWithPlayer(player));
+        let scene = cursorAddPure(sceneWithPlayer(player));
         Assert.assertEq(expected = (3, 7, (None: Option[Int32])),
             cursorState(scene))
 
@@ -108,7 +146,7 @@ mod TestCursorScene {
     def testSnapToPlayerResetsCursorAndHover(): Unit \ Assert =
         let player: {x = Int32, y = Int32} = {x = 4, y = 4};
         let result = withNoSelection(() -> withNoopTween(() -> withNoopAnim(() ->
-            let scene = CursorScene.add(sceneWithPlayer(player));
+            let scene = cursorAddPure(sceneWithPlayer(player));
             // カーソルを (10, 10) に移し、ホバー履歴も Some(99) に偽装
             let drifted = scene |> CursorScene.mapCursor((m, d) ->
                 (m, {gridPos = ({x = 10, y = 10}: {x = Int32, y = Int32}),

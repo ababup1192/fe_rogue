@@ -35,49 +35,24 @@ mod HUDScene {
     pub def messageTimerPath(): NodePath = messageTimerName() :: Nil
     pub def titleTimerPath(): NodePath = titleTimerName() :: Nil
 
-    /// HUD のフォントサイズ
-    def scoreFontSize(): Float64 = 60.0
-    def messageFontSize(): Float64 = 40.0
-    def buttonFontSize(): Float64 = 30.0
-
-    /// スタートボタンの大きさ
-    def startButtonSize(): Vec2.Vec2 = {x = 200.0, y = 60.0}
+    // フォントサイズ・スタートボタンサイズは scene.json 側に移動 (HUDScene.scene.json)。
 
     // ── 構築 ──
 
-    pub def addHUD(fontAtlas: FontAtlas, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let layer = CanvasLayer.make(1);
-        let centerX = Int32.toFloat64(Game.designWi()) / 2.0;
-        let centerY = Int32.toFloat64(Game.designHi()) / 2.0;
-        // score: 画面上部中央。position を中心アンカーにするため Center 揃え
-        let score = Label2D.make("0", fontAtlas, scoreFontSize())
-            |> Label2D.setHorizontalAlignment(HorizontalAlignment.Center)
-            |> Node2D.setPosition({x = centerX, y = 80.0});
-        // message: 画面中央
-        let message = Label2D.make("", fontAtlas, messageFontSize())
-            |> Label2D.setHorizontalAlignment(HorizontalAlignment.Center)
-            |> Label2D.setVerticalAlignment(VerticalAlignment.Center)
-            |> Node2D.setPosition({x = centerX, y = centerY - 40.0})
-            |> CanvasItem.setVisible(false);
-        // start button: 画面中央 (Button は左上 anchor なので半幅ぶん戻す)
-        let btnSize = startButtonSize();
-        let startBtn = Button.make("Start", fontAtlas, buttonFontSize(), btnSize)
-            |> Node2D.setPosition({x = centerX - btnSize#x / 2.0,
-                                    y = centerY + 40.0})
-            |> CanvasItem.setVisible(false);
+    /// シーン定義 JSON のパス。CanvasLayer hud + score / message Label2D を持つ。
+    /// Button (start) と root レベルの Timer 2 つは engine の scene.json schema が
+    /// 未対応のため addHUD 内のコードで追加する (ハイブリッド構成)。
+    def sceneJsonPath(): String = "src/scenes/HUDScene.scene.json"
+
+    pub def addHUD(fontAtlas: FontAtlas, scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+        // Timer は scene.json schema が未対応なのでコードで構築する
         let messageTimer = Timer.make(Duration.seconds(2.0))
             |> Timer.setOneShot(true);
         let titleTimer = Timer.make(Duration.seconds(1.0))
             |> Timer.setOneShot(true);
-        scene
-            |> Scene.addNode(hudName(),
-                EngineNode.CanvasLayerWithState(layer, NodeTag.NoTag))
-            |> Scene.addChild(hudName(), scoreLabelName(),
-                EngineNode.Label2DWithState(score, NodeTag.ScoreLabel(0)))
-            |> Scene.addChild(hudName(), messageLabelName(),
-                EngineNode.Label2DWithState(message, NodeTag.MessageLabel))
-            |> Scene.addChild(hudName(), startButtonName(),
-                EngineNode.ButtonWithState(startBtn, NodeTag.StartButton))
+        SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas, Game.parseNodeTag, scene)
+            // ScoreLabel(0) は Score (Int32) を含むため scene.json には書けない。post-load で注入する。
+            |> Scene.setState(scoreLabelPath(), NodeTag.ScoreLabel(0))
             |> Scene.addNode(messageTimerName(),
                 EngineNode.TimerWithState(messageTimer, NodeTag.MessageTimer))
             |> Scene.addNode(titleTimerName(),

@@ -1,0 +1,34 @@
+{
+  "type": "CanvasLayer",
+  "name": "hud",
+  "layer": 1,
+  "children": [
+    {
+      "type": "Label2D",
+      "name": "score",
+      "pos": [240, 80],
+      "text": "0",
+      "fontSize": 60,
+      "horizontalAlignment": "center"
+    },
+    {
+      "type": "Label2D",
+      "name": "message",
+      "pos": [240, 320],
+      "text": "Dodge the\nCreeps",
+      "fontSize": 40,
+      "horizontalAlignment": "center",
+      "verticalAlignment": "center",
+      "tag": "MessageLabel"
+    },
+    {
+      "type": "Button",
+      "name": "start",
+      "pos": [140, 400],
+      "size": [200, 60],
+      "text": "Start",
+      "fontSize": 30,
+      "tag": "StartButton"
+    }
+  ]
+}

@@ -184,6 +184,29 @@ instance TimerEvent.TimerHandler[NodeTag] {
 
 mod Game {
 
+    // ── scene.json タグパーサ ──
+
+    /// SceneLoader.loadScene に渡す tagParser。scene.json の "tag" フィールド (Option[String])
+    /// を NodeTag に翻訳する。
+    /// パラメータ付きの variant (Player(Data) / Mob(Data) / ScoreLabel(Score) / MobTimer(MobId))
+    /// は scene.json 側からは復元できないため、構築コードが loadScene 直後の Scene.setState
+    /// で別途注入する。ここではパラメータレスの variant のみ扱う。
+    pub def parseNodeTag(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+        match opt {
+            case None => Ok(NodeTag.NoTag)
+            case Some(s) => match s {
+                case "PlayerArea"    => Ok(NodeTag.PlayerArea)
+                case "StartTimer"    => Ok(NodeTag.StartTimer)
+                case "ScoreTimer"    => Ok(NodeTag.ScoreTimer)
+                case "MessageTimer"  => Ok(NodeTag.MessageTimer)
+                case "TitleTimer"    => Ok(NodeTag.TitleTimer)
+                case "MessageLabel"  => Ok(NodeTag.MessageLabel)
+                case "StartButton"   => Ok(NodeTag.StartButton)
+                case "NoTag"         => Ok(NodeTag.NoTag)
+                case _               => Ok(NodeTag.NoTag)
+            }
+        }
+
     // ── 画面定数 ──
 
     pub def designWi(): Int32 = 480
@@ -221,7 +244,8 @@ mod Game {
 
     /// 共通の土台シーン: 背景 + プレイヤー + Mob/Start/Score タイマー + mob_path + HUD
     /// Playing / Menu / GameOver で同じノードツリーを使い、HUD の見た目だけを切り替える。
-    def buildBaseScene(fontAtlas: FontAtlas): Scene[NodeTag] =
+    /// HUDScene が scene.json を読むため Fs.FileRead、loadSceneWithFont が GameEngine.Game を要求
+    def buildBaseScene(fontAtlas: FontAtlas): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let bg = ColorRect.make(
             {x = Int32.toFloat64(designWi()), y = Int32.toFloat64(designHi())},
             {r = 0.219608f32, g = 0.372549f32, b = 0.380392f32}
@@ -255,13 +279,13 @@ mod Game {
             |> HUDScene.addHUD(fontAtlas)
 
     /// メニュー画面のシーン: 共通シーン + タイトル + StartButton
-    pub def buildMenuScene(fontAtlas: FontAtlas): Scene[NodeTag] =
+    pub def buildMenuScene(fontAtlas: FontAtlas): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         buildBaseScene(fontAtlas)
             |> HUDScene.enterMenu
 
     /// プレイ開始時のシーン: 共通シーン + プレイヤー初期化 + StartTimer 起動 + BGM
     /// 注意: 副作用 (BGM 再生) を含むため Aef に GameEngine.Audio を含める
-    pub def buildPlayingScene(fontAtlas: FontAtlas): Scene[NodeTag] \ GameEngine.Audio =
+    pub def buildPlayingScene(fontAtlas: FontAtlas): Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead} =
         AudioStreamPlayer.play(musicKey());
         buildBaseScene(fontAtlas)
             |> PlayerScene.start
@@ -289,7 +313,7 @@ mod Game {
     /// ゲーム起動エントリ。region 内に phaseRef を確保し、GamePhaseState handler で
     /// それを読み書きする。gameLoop は phaseRef の差分を見て applyPhaseChange を呼ぶ。
     pub def start(fontAtlas: FontAtlas):
-                  Unit \ {GameEngine.Game, GameEngine.Audio, Math.Random} =
+                  Unit \ {GameEngine.Game, GameEngine.Audio, Math.Random, Fs.FileRead} =
         region rc {
             let phaseRef: Ref[GamePhase, rc] = Ref.fresh(rc, GamePhase.Menu);
             run {
@@ -306,7 +330,7 @@ mod Game {
     /// - GameOver: 既存シーンに overlay (mob/score 停止 + Game Over 表示)
     def applyPhaseChange(phase: GamePhase, fontAtlas: FontAtlas,
                           scene: Scene[NodeTag]):
-                          Scene[NodeTag] \ GameEngine.Audio =
+                          Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead} =
         match phase {
             case GamePhase.Playing  => buildPlayingScene(fontAtlas)
             case GamePhase.Menu     => buildMenuScene(fontAtlas)
@@ -316,7 +340,7 @@ mod Game {
     /// メインループ: 終了判定 → エンジンパイプライン → フェーズ差分 → 描画 → 末尾再帰
     def gameLoop(fontAtlas: FontAtlas, previousPhase: GamePhase,
                   scene: Scene[NodeTag]):
-                 Unit \ {GameEngine.Game, GameEngine.Audio, GamePhaseState, Math.Random} =
+                 Unit \ {GameEngine.Game, GameEngine.Audio, GamePhaseState, Math.Random, Fs.FileRead} =
         if (GameEngine.Game.shouldClose() or
             GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
         else {

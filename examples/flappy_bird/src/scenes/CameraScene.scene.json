@@ -1,0 +1,6 @@
+{
+  "type": "Camera2D",
+  "name": "camera",
+  "pos": [144, 256],
+  "offset": [-72, 0]
+}

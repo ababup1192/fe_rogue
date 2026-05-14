@@ -323,6 +323,7 @@ mod SceneLoader {
         match nodeType {
             case "CanvasLayer"      => buildCanvasLayer(tagParser, map)
             case "Sprite2D"         => buildSprite2D(tagParser, map)
+            case "Button"           => buildButton(tagParser, fontAtlas, map)
             case "TextureButton"    => buildTextureButton(tagParser, map)
             case "TextureRect"      => buildTextureRect(tagParser, map)
             case "StaticBody2D"     => buildStaticBody2D(tagParser, map)
@@ -501,6 +502,34 @@ mod SceneLoader {
 
     def setTextureRectVisible(v: Bool, rect: TextureRect): TextureRect =
         CanvasItem.setVisible(v, rect)
+
+    /// テキストベース Button (`Button.make(text, fontAtlas, fontSize, size)`) を JSON から構築する。
+    /// FontAtlas が必須なので loadSceneWithFont 経由で呼ばれる前提。
+    /// 必須フィールド: text, fontSize, size。任意: pos / visible.
+    def buildButton(tagParser: Option[String] -> Result[Json.JsonError, t],
+                    fontAtlas: Option[FontAtlas],
+                    map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
+        match fontAtlas {
+            case None => Err(JsonError(Root, Set#{"FontAtlas (loadSceneWithFont required for Button)"}))
+            case Some(font) =>
+                forM (
+                    tag        <- parseTagField(tagParser, map);
+                    text       <- (Json.FromJson.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
+                    fontSize   <- (Json.FromJson.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
+                    size       <- parseVec2("size", map);
+                    posOpt     <- parseVec2Opt("pos", map);
+                    visibleOpt <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]])
+                ) yield {
+                    let pos = Option.getWithDefault(Vec2.zero(), posOpt);
+                    let button = Button.make(text, font, fontSize, size)
+                        |> Node2D.setPosition(pos)
+                        |> (b -> match visibleOpt {
+                            case Some(v) => CanvasItem.setVisible(v, b)
+                            case None    => b
+                        });
+                    EngineNode.ButtonWithState(button, tag)
+                }
+        }
 
     def buildTextureButton(tagParser: Option[String] -> Result[Json.JsonError, t],
                            map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =

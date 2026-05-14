@@ -51,17 +51,22 @@ mod CursorScene {
 
     def name(): String = "Cursor"
     pub def cursorPath(): NodePath = name() :: Nil
-    def spriteName(): String = "Sprite"
+    /// 子 Sprite ノード名 (scene.json で参照されている)。未使用 (構築は scene.json 経由) だが
+    /// 将来 sprite path を組む際に使えるよう残す
+    def _spriteName(): String = "Sprite"
 
     /// `cursor.png` テクスチャ名（Main.flix の textureManifest と整合）
-    def textureName(): String = "cursor"
+    /// `cursor.png` テクスチャ名は scene.json に書かれている (sprite ノードの texture フィールド)。
+    /// この constant は参照されないが、ドキュメント目的で残す。
+    def _textureName(): String = "cursor"
 
     /// LDTK タイルサイズ（ピクセル）。MapScene と揃える
     def tileSize(): Float64 = 16.0
 
     /// カーソルの描画 zIndex。Player Sprite (= 10) より更に上に表示し、
     /// 駒の上に被せても視認できるようにする。
-    def spriteZIndex(): Int32 = 20
+    /// scene.json で sprite.zIndex として記述済み。コード参照用に残す (未使用)
+    def _spriteZIndex(): Int32 = 20
 
     /// 動き出し（押した直後の 1 マス目）のスライド時間。最高速より遅くして、
     /// 「ぽんと押したら一瞬の溜めの後に動く」 FE 風のフィーリングを出す。
@@ -106,25 +111,32 @@ mod CursorScene {
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
+    /// シーン定義 JSON のパス。Marker2D Cursor + 子 Sprite2D (cursor.png, zIndex=20) の
+    /// 構造を持つ。位置はパーティ先頭プレイヤーから計算するため post-load で setPosition する。
+    /// Cursor(Data) は Data を含むため scene.json では復元できず post-load で setState する。
+    def scenePath(): String = "src/scenes/CursorScene.scene.json"
+
     /// MapScene + PlayerScene 登録済みの scene にカーソルを追加する。
     /// 初期位置はパーティ先頭プレイヤー（id=0）と同じセル。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let initial = firstPlayerPos(scene);
         let pos = cellCenter(initial);
-        let marker = Marker2D.make(pos);
-        let sprite = Sprite2D.make(textureName(), Vec2.zero(), Vec2.one())
-                        |> CanvasItem.setZIndex(spriteZIndex());
         let data: Data = {
             gridPos            = initial,
             lastHoveredEnemyId = None,
             holdDir            = None,
             holdSteps          = 0
         };
-        scene
-            |> Scene.addNode(name(),
-                              EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)))
-            |> Scene.addChild(name(), spriteName(),
-                               EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
+        SceneLoader.loadScene(scenePath(),
+                              SceneLoader.constTagParser(NodeTag.NoTag),
+                              scene)
+            |> Scene.setState(cursorPath(), NodeTag.Cursor(data))
+            // Marker2D は EngineNode に mapMarker2D ヘルパーが無いので直接 match で position 更新
+            |> Scene.mapEngineNode(cursorPath(), n -> match n {
+                case EngineNode.Marker2DWithState(marker, st) =>
+                    EngineNode.Marker2DWithState(Node2D.setPosition(pos, marker), st)
+                case other => other
+            })
 
     /// パーティ先頭プレイヤー（id=0）の grid 位置。`add` 初期化用。
     def firstPlayerPos(scene: Scene[NodeTag]): {x = Int32, y = Int32} =

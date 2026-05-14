@@ -34,49 +34,26 @@ mod PlayerScene {
 
     // ── 構築 ──
 
-    /// SpriteFrames を構築する。
-    /// "walk" : 横向き歩行 (2 フレームループ, 5fps)
-    /// "up"   : 上下方向 (2 フレームループ, 5fps)
-    def buildSpriteFrames(): SpriteFrames =
-        let walk: SpriteFrames.Animation = {
-            loop  = true,
-            speed = 5.0,
-            frames = ({texture = "playerGrey_walk1", duration = 1.0}: SpriteFrames.Frame) ::
-                      ({texture = "playerGrey_walk2", duration = 1.0}: SpriteFrames.Frame) :: Nil
-        };
-        let up: SpriteFrames.Animation = {
-            loop  = true,
-            speed = 5.0,
-            frames = ({texture = "playerGrey_up1", duration = 1.0}: SpriteFrames.Frame) ::
-                      ({texture = "playerGrey_up2", duration = 1.0}: SpriteFrames.Frame) :: Nil
-        };
-        SpriteFrames.empty()
-            |> SpriteFrames.addAnimation("walk", walk)
-            |> SpriteFrames.addAnimation("up", up)
+    /// シーン定義 JSON のパス。AnimatedSprite2D player (walk / up アニメ) + Area2D area
+    /// (CircleShape2D radius=30) の構造を持つ。NodeTag.Player(Data) (Data 含む) と
+    /// Area2D の collision layer/mask は scene.json で表せないため post-load で注入する。
+    def sceneJsonPath(): String = "src/scenes/PlayerScene.scene.json"
 
-    pub def addPlayer(scene: Scene[NodeTag]): Scene[NodeTag] =
-        // 初期は非表示。ゲーム開始時に PlayerScene.start が表示する。
-        // Menu フェーズではこのまま隠れたままで、タイトル + ボタンだけ見せる
-        let sprite = AnimatedSprite2D.make(
-            buildSpriteFrames(),
-            {animation = "walk"},
-            startPosition(),
-            {x = 1.0, y = 1.0}
-        ) |> CanvasItem.setVisible(false);
-        let circle = CollisionShape2D.CircleShape2D({radius = collisionRadius()});
-        // Player は Mob レイヤだけを観測する。Mob 同士の重なりや Mob → Player 方向の
-        // 観測はエンジンレベルで遮断される（Mob 側は mask=0）。
-        let area = Area2D.make({x = 0.0, y = 0.0}, circle)
-            |> Area2D.setMonitoring(true)
-            |> Area2D.setMonitorable(true)
-            |> Area2D.setCollisionLayer(CollisionLayers.player())
-            |> Area2D.setCollisionMask(CollisionLayers.mob());
+    pub def addPlayer(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let data: Data = {velocity = Vec2.zero(), hit = false};
-        scene
-            |> Scene.addNode(name(),
-                EngineNode.AnimSprite2DWithState(sprite, NodeTag.Player(data)))
-            |> Scene.addChild(name(), areaName(),
-                EngineNode.Area2DWithState(area, NodeTag.PlayerArea))
+        SceneLoader.loadScene(sceneJsonPath(), Game.parseNodeTag, scene)
+            // Player(Data) はパラメータ付きなので scene.json では復元できない。post-load で注入。
+            |> Scene.setState(playerPath(), NodeTag.Player(data))
+            // 初期は非表示。Menu フェーズではタイトル + ボタンだけ見せる。
+            |> Scene.mapEngineNode(playerPath(),
+                EngineNode.mapAnimSprite2D(sprite -> CanvasItem.setVisible(false, sprite)))
+            // Area2D の monitoring / monitorable / collision layer / mask 設定
+            |> Scene.mapEngineNode(areaPath(),
+                EngineNode.mapArea2D(area -> area
+                    |> Area2D.setMonitoring(true)
+                    |> Area2D.setMonitorable(true)
+                    |> Area2D.setCollisionLayer(CollisionLayers.player())
+                    |> Area2D.setCollisionMask(CollisionLayers.mob())))
 
     // ── ライフサイクル ──
 

@@ -10,6 +10,24 @@ def withMockAudio(f: Unit -> a \ ef + GameEngine.Audio): a \ ef =
         def setVolume(_, _, k)  = k(())
     }
 
+/// GameEngine.Game のモック (no-op、デフォルト値返却)。
+/// HUDScene.addHUD など SceneLoader.loadSceneWithFont を呼ぶ箇所で要求される。
+def withMockGame(f: Unit -> a \ ef + GameEngine.Game): a \ ef =
+    run f() with handler GameEngine.Game {
+        def renderCommands(_, _, k)     = k(())
+        def initTileBuffer(_, k)        = k((0i32, 0i32))
+        def shouldClose(k)              = k(false)
+        def getDeltaTime(k)             = k(Duration.seconds(0.016))
+        def isKeyPressed(_, k)          = k(false)
+        def getMousePosition(k)         = k({x = 0.0, y = 0.0})
+        def isMouseButtonPressed(_, k)  = k(false)
+        def consumeScrollDelta(k)       = k(0.0)
+        def getFontAtlas(_, k)          = k(testFontAtlas())
+        def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 480.0, y = 720.0}})
+        def getTextureInfo(_, k)        = k(None)
+        def setCursor(_, k)             = k(())
+    }
+
 /// テスト用のダミー FontAtlas
 def testFontAtlas(): FontAtlas = {
     textureName = "font_test",
@@ -21,13 +39,23 @@ def testFontAtlas(): FontAtlas = {
     glyphs      = Map.empty()
 }
 
-/// Menu シーン構築
+/// Menu シーン構築。Fs.FileRead (HUDScene が scene.json を読む) と GameEngine.Game
+/// は test helper で discharge する。@Test は \ Assert しか許さないため、
+/// 最終的に unchecked_cast で effect を消す (IO は実行時には実際に走る)。
 def testMenuScene(): Scene[NodeTag] =
-    Game.buildMenuScene(testFontAtlas())
+    unchecked_cast(
+        (run {
+            withMockGame(() -> Game.buildMenuScene(testFontAtlas()))
+        } with Fs.FileRead.runWithIO)
+        as _ \ {})
 
-/// Playing シーン構築 (GameEngine.Audio のモック付き)
+/// Playing シーン構築 (GameEngine.Audio + Game + Fs.FileRead のモック付き)
 def testPlayingScene(): Scene[NodeTag] =
-    withMockAudio(() -> Game.buildPlayingScene(testFontAtlas()))
+    unchecked_cast(
+        (run {
+            withMockAudio(() -> withMockGame(() -> Game.buildPlayingScene(testFontAtlas())))
+        } with Fs.FileRead.runWithIO)
+        as _ \ {})
 
 // ── テスト ──
 

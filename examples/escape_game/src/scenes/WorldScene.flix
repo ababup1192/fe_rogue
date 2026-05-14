@@ -34,61 +34,22 @@ mod WorldScene {
     def characterPath(name: String): NodePath =
         charactersLayerName() :: name :: Nil
 
-    // 対話レイヤ（drawLayer = 10）より下に置く
-    def backgroundDrawLayer(): Int32 = 0
-    def charactersDrawLayer(): Int32 = 5
-
-    /// 背景スプライトの中心位置（design 320×240 の中央）。centered=true なので
-    /// 320×240 の画像がぴったり画面いっぱいに収まる。
-    def backgroundCenter(): Vec2.Vec2 = {x = 160.0, y = 120.0}
-
-    /// キャラの中心 X（design 中央）。Y は身長に応じてキャラごとに調整。
-    def characterCenterX(): Float64 = 160.0
+    /// シーン定義 JSON のパス。Background / Characters CanvasLayer と各 Sprite2D を
+    /// 全部 visible=false で並べた状態をエンジンが復元する。texture / visible の
+    /// 動的書き換えは setBackground / showCharacter / hideCharacter が担当する。
+    def sceneJsonPath(): String = "src/scenes/WorldScene.scene.json"
 
     // ════════════════════════════════════════════════════════════════════════
     // (C) 構築 — addWorldLayers
     // ════════════════════════════════════════════════════════════════════════
 
     /// 既存の Scene に背景レイヤとキャラレイヤを 1 枚ずつ追加する。
-    /// 背景もキャラも初期状態は visible = false。
-    /// 何も `<<bg>>` / `<<sprite show>>` が来ない間は何も描かれない。
-    pub def addWorldLayers(scene: Scene[NodeTag]): Scene[NodeTag] =
-        scene
-            |> addBackgroundLayer
-            |> addCharactersLayer
-
-    /// 背景用 CanvasLayer + 背景 Sprite2D 1 枚を追加する。
-    def addBackgroundLayer(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let layer = CanvasLayer.make(backgroundDrawLayer());
-        let invisibleLayer = CanvasItem.setVisible(true, layer);
-        let sprite =
-            Sprite2D.make("", backgroundCenter(), {x = 1.0, y = 1.0})
-                |> CanvasItem.setVisible(false);
-        scene
-            |> Scene.addNode(backgroundLayerName(),
-                EngineNode.CanvasLayerWithState(invisibleLayer, NodeTag.NoTag))
-            |> Scene.addChild(backgroundLayerName(), backgroundSpriteName(),
-                EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
-
-    /// キャラ用 CanvasLayer に story.yarn で使われる 3 体を invisible で並べる。
-    /// `<<sprite show <name> ...>>` が来たタイミングで visible に切り替える。
-    def addCharactersLayer(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let layer = CanvasLayer.make(charactersDrawLayer());
-        scene
-            |> Scene.addNode(charactersLayerName(),
-                EngineNode.CanvasLayerWithState(layer, NodeTag.NoTag))
-            |> addCharacter("ou", "char_ou", {x = characterCenterX(), y = 80.0})
-            |> addCharacter("chest", "char_chest", {x = characterCenterX(), y = 120.0})
-            |> addCharacter("dragon", "char_dragon", {x = characterCenterX(), y = 80.0})
-
-    /// キャラ 1 体を Sprite2D としてキャラレイヤ直下に追加する（初期 invisible）。
-    def addCharacter(name: String, texture: String, position: Vec2.Vec2,
-                       scene: Scene[NodeTag]): Scene[NodeTag] =
-        let sprite =
-            Sprite2D.make(texture, position, {x = 1.0, y = 1.0})
-                |> CanvasItem.setVisible(false);
-        Scene.addChild(charactersLayerName(), name,
-            EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag), scene)
+    /// 構造は WorldScene.scene.json から読み込み (Background / Characters の
+    /// CanvasLayer + Sprite2D 群、すべて visible=false 初期状態)。
+    /// NodeTag は WorldScene 領域では全部 NoTag なので constTagParser を使う。
+    pub def addWorldLayers(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+        SceneLoader.loadScene(sceneJsonPath(),
+            SceneLoader.constTagParser(NodeTag.NoTag), scene)
 
     // ════════════════════════════════════════════════════════════════════════
     // (D) ロジック — テクスチャ差し替え／可視切替

@@ -1,0 +1,48 @@
+[
+  {
+    "type": "CanvasLayer",
+    "name": "Background",
+    "layer": 0,
+    "children": [
+      {
+        "type": "Sprite2D",
+        "name": "Bg",
+        "pos": [160, 120],
+        "scale": [1, 1],
+        "texture": "bg_demo_room",
+        "visible": false
+      }
+    ]
+  },
+  {
+    "type": "CanvasLayer",
+    "name": "Characters",
+    "layer": 5,
+    "children": [
+      {
+        "type": "Sprite2D",
+        "name": "ou",
+        "pos": [160, 80],
+        "scale": [1, 1],
+        "texture": "char_ou",
+        "visible": false
+      },
+      {
+        "type": "Sprite2D",
+        "name": "chest",
+        "pos": [160, 120],
+        "scale": [1, 1],
+        "texture": "char_chest",
+        "visible": false
+      },
+      {
+        "type": "Sprite2D",
+        "name": "dragon",
+        "pos": [160, 80],
+        "scale": [1, 1],
+        "texture": "char_dragon",
+        "visible": false
+      }
+    ]
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "type": "Marker2D",
+  "name": "Cursor",
+  "pos": [88, 88],
+  "children": [
+    {
+      "type": "Sprite2D",
+      "name": "Sprite",
+      "pos": [0, 0],
+      "scale": [1, 1],
+      "texture": "cursor",
+      "zIndex": 20
+    }
+  ]
+}

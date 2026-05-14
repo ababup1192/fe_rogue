@@ -1,0 +1,28 @@
+{
+  "type": "RigidBody2D",
+  "name": "mob",
+  "pos": [240, 360],
+  "shape": {"kind": "CircleShape2D", "radius": 30},
+  "gravityScale": 0.0,
+  "linearVelocity": [0, 0],
+  "children": [
+    {
+      "type": "AnimatedSprite2D",
+      "name": "sprite",
+      "pos": [0, 0],
+      "scale": [1, 1],
+      "spriteFrames": {
+        "walk": {
+          "loop": true,
+          "speed": 5.0,
+          "frames": [
+            {"texture": "enemyWalking_1"},
+            {"texture": "enemyWalking_2"}
+          ]
+        }
+      },
+      "animation": "walk",
+      "autoplay": "walk"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "type": "AnimatedSprite2D",
+  "name": "player",
+  "pos": [240, 450],
+  "scale": [1, 1],
+  "spriteFrames": {
+    "walk": {
+      "loop": true,
+      "speed": 5.0,
+      "frames": [
+        {"texture": "playerGrey_walk1"},
+        {"texture": "playerGrey_walk2"}
+      ]
+    },
+    "up": {
+      "loop": true,
+      "speed": 5.0,
+      "frames": [
+        {"texture": "playerGrey_up1"},
+        {"texture": "playerGrey_up2"}
+      ]
+    }
+  },
+  "animation": "walk",
+  "autoplay": "walk",
+  "children": [
+    {
+      "type": "Area2D",
+      "name": "area",
+      "tag": "PlayerArea",
+      "pos": [0, 0],
+      "shape": {"kind": "CircleShape2D", "radius": 30}
+    }
+  ]
+}
