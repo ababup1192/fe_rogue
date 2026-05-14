@@ -128,10 +128,10 @@ sync-engine:
 		fi \
 	done
 
-# editor は examples のみが依存しうる (engine は editor に依存しない)
+# editor は ide と examples が依存しうる (engine は editor に依存しない)
 sync-editor:
 	cd $(EDITOR_DIR) && $(FLIX) build-pkg
-	@for dir in examples/*/; do \
+	@for dir in ide/ examples/*/; do \
 		toml="$$dir/flix.toml"; \
 		if [ -f "$$toml" ] && grep -q "ababup1192/flix_engine_editor" "$$toml"; then \
 			target="$${dir}$(EDITOR_SUBPATH)"; \

@@ -84,7 +84,12 @@ def renderLoop(state: IdeUI.IdeState, fontName: Option[String], currentScene: Sc
                 }
             case None => currentScene
         };
-        GameEngine.render(nextScene);
+        // editor の Overlay.addCollisionShapes を再利用して、Area2D / Body2D 系の
+        // collision shape を「薄青のアウトライン」で可視化する。プレビュー用の合成は
+        // 都度行い、保存対象の nextScene 本体には混入させない
+        let preview = Overlay.addCollisionShapes(
+            Camera2D.identityTransform(), (), nextScene);
+        GameEngine.render(preview);
         renderLoop(state, fontName, nextScene)
     }
 

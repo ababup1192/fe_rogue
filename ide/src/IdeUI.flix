@@ -397,7 +397,14 @@ mod IdeUI {
                     case Ok(_) =>
                         Array.put(Some(newRoot), 0, state#currentSceneJsonRef);
                         // canvas に反映: 同じ path を pendingSceneRef にセットして renderLoop に拾わせる
-                        Array.put(Some(path), 0, state#pendingSceneRef)
+                        Array.put(Some(path), 0, state#pendingSceneRef);
+                        // 兄弟フィールドが変化するケース (shape kind 切替で width↔radius が
+                        // 入れ替わるなど) に備えて Inspector も最新の JsonElement で再描画する。
+                        // 個別 widget commit の単純更新でも再描画は無害（widget の値はそのまま）
+                        match getNodeAt(newRoot, nodePath) {
+                            case Some(json) => updateInspector(state, json)
+                            case None       => ()
+                        }
                     case Err(msg) =>
                         println("[IdeUI] write failed: ${msg}")
                 }
@@ -587,6 +594,7 @@ mod IdeUI {
     /// JsonObject を再帰的にレンダリングする。
     /// 各キーについて:
     ///   - 値が JsonObject なら「セクション見出し」行を出し、子をインデントして再帰
+    ///   - "shape" キーで kind フィールドを持つ場合は専用エディタ (`renderShapeObject`) に委譲
     ///   - その他は通常の編集 widget 行を出す
     /// `prefix` は選択ノード直下からのキー列。commit は `prefix ::: key :: Nil` で
     /// commitEdit に渡され、updateJsonAtPath で末端まで降りて差し替えられる。
@@ -600,7 +608,10 @@ mod IdeUI {
                 match value {
                     case JsonObject(nested) => {
                         content.add(createSectionRow(key, indent));
-                        renderObjectProperties(content, state, prefix ::: key :: Nil, nested, indent + 1i32)
+                        if (key == "shape" and Map.memberOf("kind", nested))
+                            renderShapeObject(content, state, prefix ::: key :: Nil, nested, indent + 1i32)
+                        else
+                            renderObjectProperties(content, state, prefix ::: key :: Nil, nested, indent + 1i32)
                     }
                     case _ => {
                         let commit = newVal -> commitEdit(state, prefix ::: key :: Nil, newVal);
@@ -611,6 +622,102 @@ mod IdeUI {
                 }
             }
         }, (), obj)
+
+    /// "shape" JsonObject 用の専用エディタ。
+    ///
+    /// 1. kind フィールドを JComboBox で表示し、変更時は **shape オブジェクト全体** を
+    ///    新 kind のデフォルト値で置換する（width/height ↔ radius など兄弟フィールドが
+    ///    一斉に切り替わる）。
+    /// 2. kind 以外のフィールド（width/height/radius/vertical 等）は通常通り
+    ///    `renderObjectProperties` で widget 化する。
+    ///
+    /// `prefix` は shape オブジェクト自身を指すパス（呼び出し側で末尾に "shape" を含める）
+    def renderShapeObject(content: JPanel, state: IdeState, prefix: List[String],
+                          shapeMap: Map[String, Json.JsonElement], indent: Int32): Unit \ IO =
+        let currentKind = match Map.get("kind", shapeMap) {
+            case Some(JsonString(s)) => s
+            case _                   => "CircleShape2D"
+        };
+        let kindCommit = newKindStr ->
+            commitEdit(state, prefix, JsonObject(defaultShapeFor(newKindStr)));
+        content.add(createShapeKindRow(currentKind, kindCommit, indent));
+        let rest = Map.remove("kind", shapeMap);
+        renderObjectProperties(content, state, prefix, rest, indent)
+
+    /// shape の "kind" 行 — 左にラベル、右に shape 種別を選ぶ JComboBox。
+    def createShapeKindRow(currentKind: String, commit: String -> Unit \ IO,
+                           indent: Int32): JPanel \ IO =
+        let row = new JPanel(new BorderLayout(6, 0));
+        row.setBackground(new Color(40, 40, 40));
+        row.setBorder(BorderFactory.createEmptyBorder(3, 10 + indent * 16i32, 3, 10));
+        row.setMaximumSize(new Dimension(9999, 28));
+        row.setAlignmentX(0.0f32);
+
+        let label = new JLabel("kind");
+        label.setForeground(new Color(180, 180, 180));
+        label.setPreferredSize(new Dimension(96, 22));
+        row.add(label, BorderLayout.WEST);
+
+        row.add(createShapeKindCombo(currentKind, commit), BorderLayout.CENTER);
+        row
+
+    /// shape 種別のドロップダウン本体。RectShape2D / CircleShape2D / CapsuleShape2D を提示。
+    /// `currentKind` が未知の値なら一覧の先頭に挿入して選択状態にする
+    /// （誤入力された scene.json を壊さないため）
+    def createShapeKindCombo(currentKind: String, commit: String -> Unit \ IO):
+                              JComboBox[String] \ IO =
+        let options = "RectShape2D" :: "CircleShape2D" :: "CapsuleShape2D" :: Nil;
+        let unknown = not List.memberOf(currentKind, options);
+        let missingLabel = "<unknown>: ${currentKind}";
+        let items = if (unknown) missingLabel :: options else options;
+        let cb: JComboBox[String] = new JComboBox();
+        List.forEach(n -> { cb.addItem(n); () }, items);
+        cb.setSelectedItem(if (unknown) missingLabel else currentKind);
+        cb.addActionListener(new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
+                let idx = cb.getSelectedIndex();
+                let chosen =
+                    if (unknown) {
+                        if (idx == 0) None
+                        else List.nth(idx - 1, options)
+                    } else List.nth(idx, options);
+                match chosen {
+                    case Some(name) =>
+                        // 同じ kind を再選択しても、scene.json の他フィールドを
+                        // 規定値で上書きする副作用は望ましくないのでスキップ
+                        if (name == currentKind) ()
+                        else commit(name)
+                    case None => ()
+                }
+            }
+        });
+        cb
+
+    /// 指定 kind に対応する shape JsonObject のデフォルト値を返す。
+    /// kind 切替時に「兄弟フィールドが消える / 増える」のを賢く扱うため、
+    /// 既存値は保持せず常に新規セットで上書きする
+    def defaultShapeFor(kind: String): Map[String, Json.JsonElement] =
+        match kind {
+            case "RectShape2D" =>
+                Map#{
+                    "kind" => JsonString("RectShape2D"),
+                    "width" => JsonNumber(unsafe IO { BigDecimal.valueOf(32.0).stripTrailingZeros() }),
+                    "height" => JsonNumber(unsafe IO { BigDecimal.valueOf(32.0).stripTrailingZeros() })
+                }
+            case "CircleShape2D" =>
+                Map#{
+                    "kind" => JsonString("CircleShape2D"),
+                    "radius" => JsonNumber(unsafe IO { BigDecimal.valueOf(16.0).stripTrailingZeros() })
+                }
+            case "CapsuleShape2D" =>
+                Map#{
+                    "kind" => JsonString("CapsuleShape2D"),
+                    "radius" => JsonNumber(unsafe IO { BigDecimal.valueOf(16.0).stripTrailingZeros() }),
+                    "height" => JsonNumber(unsafe IO { BigDecimal.valueOf(32.0).stripTrailingZeros() }),
+                    "vertical" => JsonBool(true)
+                }
+            case _ => Map#{"kind" => JsonString(kind)}
+        }
 
     /// 子プロパティを持つ Object 用のセクション見出し行 (Godot の category header 風)。
     /// 編集 widget は無く、ラベルだけ。下にインデントされた子 row が続く。
