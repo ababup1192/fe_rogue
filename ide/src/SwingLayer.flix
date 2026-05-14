@@ -1,4 +1,4 @@
-// SwingShell — JFrame + AWTGLCanvas で GameEngine.Game / GameEngine.Audio
+// SwingLayer — JFrame + AWTGLCanvas で GameEngine.Game / GameEngine.Audio
 // effect を実装する handler。LwjglLayer.withLwjgl と同じシグネチャ。
 //
 // 構造:
@@ -13,7 +13,7 @@
 // 入力 (キー / マウス) は Step C.1 ではすべて stub (常に false / 0.0)。
 // Step C.2 で AWT listener から InputState Ref に流すよう拡張する予定。
 
-mod SwingShell {
+mod SwingLayer {
     import java.lang.{Thread => JThread}
     import javax.swing.JFrame
     import java.awt.event.WindowAdapter
@@ -50,7 +50,7 @@ mod SwingShell {
         let screenH = Int32.toFloat64(config#designHeight);
 
         // ----- OpenAL 初期化 (GL コンテキストと独立なので main thread で OK) -----
-        println("[SwingShell] Initializing audio...");
+        println("[SwingLayer] Initializing audio...");
         let alDevice = ALC10.nalcOpenDevice(MemoryUtil.NULL);
         if (alDevice == 0i64) {
             println("Failed to open OpenAL device");
@@ -68,16 +68,16 @@ mod SwingShell {
         } else ();
         discard AL.createCapabilities(alcCaps);
         let audioRegistry = RenderAudio.loadAudioRegistry(config#soundManifest);
-        println("[SwingShell] Audio ready");
+        println("[SwingLayer] Audio ready");
 
         // ----- AWTGLCanvas: initGL で render_core を初期化、paintGL で描画 -----
         // AWTGLCanvas のコンストラクタは protected で Flix から直接 GLData 引数版を
         // 呼べないため、no-arg で生成してから内部の data フィールドの public フィールド
         // を reflection で書き換えて OpenGL 3.3 Core Profile を要求する。
-        println("[SwingShell] Creating AWTGLCanvas...");
+        println("[SwingLayer] Creating AWTGLCanvas...");
         let canvas = new AWTGLCanvas {
             def initGL(_this: AWTGLCanvas): Unit \ IO = {
-                println("[SwingShell] initGL: GL.createCapabilities + render_core init");
+                println("[SwingLayer] initGL: GL.createCapabilities + render_core init");
                 discard GL.createCapabilities();
                 GL11.glEnable(GL11.GL_BLEND);
                 GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
@@ -94,9 +94,9 @@ mod SwingShell {
 
                 let (vao, quadVBO) = RenderSprite.initSpriteRenderer();
 
-                println("[SwingShell] Loading textures...");
+                println("[SwingLayer] Loading textures...");
                 let registry0 = RenderTexture.loadTextureRegistry(config#textureManifest);
-                println("[SwingShell] Baking font atlases...");
+                println("[SwingLayer] Baking font atlases...");
                 let (fontAtlases, registry) = RenderFont.bakeFontAtlases(config#fontManifest, registry0);
 
                 Array.put(spriteShader, 0, spriteShaderArr);
@@ -106,7 +106,7 @@ mod SwingShell {
                 Array.put(registry,     0, registryArr);
                 Array.put(fontAtlases,  0, fontAtlasesArr);
                 Array.put(true,         0, initDoneArr);
-                println("[SwingShell] render_core ready")
+                println("[SwingLayer] render_core ready")
             }
             def paintGL(this: AWTGLCanvas): Unit \ IO = {
                 if (Array.get(0, initDoneArr)) {
@@ -124,14 +124,14 @@ mod SwingShell {
             }
         };
         canvas.setPreferredSize(new Dimension(config#windowWidth, config#windowHeight));
-        println("[SwingShell] AWTGLCanvas created; patching GLData for GL 3.3 Core...");
+        println("[SwingLayer] AWTGLCanvas created; patching GLData for GL 3.3 Core...");
         // canvas が継承する protected final GLData data フィールドを reflection で取り、
         // その GLData のフィールド (public 非 final) を書き換える。
         patchCanvasGLDataToCore33(canvas);
-        println("[SwingShell] GLData patched");
+        println("[SwingLayer] GLData patched");
 
         // ----- JFrame セットアップ -----
-        println("[SwingShell] Creating JFrame...");
+        println("[SwingLayer] Creating JFrame...");
         let frame = new JFrame(config#title);
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         frame.add(canvas);
@@ -142,23 +142,23 @@ mod SwingShell {
             def windowClosed(_this: WindowAdapter, _e: WindowEvent): Unit \ IO =
                 Array.put(true, 0, shouldCloseArr)
         });
-        println("[SwingShell] Calling frame.setVisible(true)...");
+        println("[SwingLayer] Calling frame.setVisible(true)...");
         frame.setVisible(true);
-        println("[SwingShell] frame.setVisible returned");
+        println("[SwingLayer] frame.setVisible returned");
 
         // ----- 専用 render Thread: AWTGLCanvas.render() を 60Hz 駆動 -----
         // 起動直後は AWT peer 構築待ちで isValid が false の可能性があるため、
         // 200ms 待ってから loop に入る
-        println("[SwingShell] Spawning render thread...");
+        println("[SwingLayer] Spawning render thread...");
         spawn {
             JThread.sleep(200i64);
             renderLoop(canvas, shouldCloseArr)
         } @ Static;
-        println("[SwingShell] Render thread spawned, waiting for initGL...");
+        println("[SwingLayer] Render thread spawned, waiting for initGL...");
 
         // ----- initGL の完了を待つ (f が描画リソースを前提に書かれているため) -----
         waitForInit(initDoneArr);
-        println("[SwingShell] initGL completed, starting user code");
+        println("[SwingLayer] initGL completed, starting user code");
 
         let timeHolder = Array#{System.nanoTime()} @ Static;
 
