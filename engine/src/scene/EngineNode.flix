@@ -484,6 +484,20 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(CanvasItem.setZIndex(zIndex, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(CanvasItem.setZIndex(zIndex, tm), st)
     }
+    redef isYSortEnabled(node: EngineNode[s]): Bool = match node {
+        case EngineNode.Sprite2DWithState(sprite, _) => CanvasItem.isYSortEnabled(sprite)
+        case EngineNode.AnimSprite2DWithState(sprite, _) => CanvasItem.isYSortEnabled(sprite)
+        case EngineNode.Marker2DWithState(marker, _) => CanvasItem.isYSortEnabled(marker)
+        case EngineNode.TileMapLayerWithState(tm, _) => CanvasItem.isYSortEnabled(tm)
+        case _ => false
+    }
+    redef setYSortEnabled(v: Bool, node: EngineNode[s]): EngineNode[s] = match node {
+        case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(CanvasItem.setYSortEnabled(v, sprite), st)
+        case EngineNode.AnimSprite2DWithState(sprite, st) => EngineNode.AnimSprite2DWithState(CanvasItem.setYSortEnabled(v, sprite), st)
+        case EngineNode.Marker2DWithState(marker, st) => EngineNode.Marker2DWithState(CanvasItem.setYSortEnabled(v, marker), st)
+        case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(CanvasItem.setYSortEnabled(v, tm), st)
+        case _ => node
+    }
 }
 
 // ── Node2D 実装 ──

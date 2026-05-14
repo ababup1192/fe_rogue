@@ -15,7 +15,8 @@ pub enum Marker2D {
         skew = Float64,
         visible = Bool,
         zIndex = Int32,
-        modulate = Color
+        modulate = Color,
+        ySortEnabled = Bool       // CanvasItem: 子を global_y で並べる（Godot 準拠）
     })
 }
 
@@ -31,7 +32,8 @@ mod Marker2D {
             skew = 0.0,
             visible = true,
             zIndex = 0,
-            modulate = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+            modulate = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+            ySortEnabled = false
         })
 }
 
@@ -56,6 +58,12 @@ instance CanvasItem[Marker2D] {
     pub def setZIndex(zIndex: Int32, marker: Marker2D): Marker2D =
         let Marker2D.Marker2D(r) = marker;
         Marker2D.Marker2D({ zIndex = zIndex | r })
+    redef isYSortEnabled(marker: Marker2D): Bool =
+        let Marker2D.Marker2D(r) = marker;
+        r#ySortEnabled
+    redef setYSortEnabled(v: Bool, marker: Marker2D): Marker2D =
+        let Marker2D.Marker2D(r) = marker;
+        Marker2D.Marker2D({ ySortEnabled = v | r })
 }
 
 // -- Node2D 実装 --

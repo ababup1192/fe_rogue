@@ -59,6 +59,15 @@ mod MapScene {
     def floorName(): String = "DungeonLevel0Floor"
     pub def mapPath(): NodePath = name() :: Nil
 
+    /// 全キャラ（Player / Enemy）の共通親となる Marker2D の名前。
+    /// `ySortEnabled = true` を有効にしてここに直接の子を Y 順で並べることで
+    /// 「下にいるキャラが手前」という Godot Y-sort 挙動を実現する
+    pub def worldName(): String = "World"
+
+    /// World Marker2D の NodePath。PlayerScene / EnemyScene が
+    /// 自身のノードをここの子として `addChildAt` する起点
+    pub def worldPath(): NodePath = worldName() :: Nil
+
     /// Walls レイヤー（衝突あり）が使うタイルセットのテクスチャ名
     def textureName(): String = "inca_tileset"
 
@@ -101,11 +110,17 @@ mod MapScene {
                                                                 result#moduleSpecs,
                                                                 "Floor");
         let floorLayer = CanvasItem.setZIndex(-1, floorRaw);
+        // Player / Enemy をまとめる Y-sort root。これより前に登録することで
+        // PlayerScene.add / EnemyScene.add が `worldPath()` を起点にできる。
+        let worldMarker = Marker2D.make(Vec2.zero())
+            |> CanvasItem.setYSortEnabled(true);
         scene
             |> Scene.addNode(floorName(),
                               EngineNode.TileMapLayerWithState(floorLayer, NodeTag.NoTag))
             |> Scene.addNode(name(),
                               EngineNode.TileMapLayerWithState(result#layer, NodeTag.Map(mapData)))
+            |> Scene.addNode(worldName(),
+                              EngineNode.Marker2DWithState(worldMarker, NodeTag.NoTag))
 
     // ────────────────────────────────────────────────────────
     // (D) Scene からの取り出しヘルパ

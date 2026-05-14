@@ -20,7 +20,8 @@ pub enum TileMapLayer {
         collisionCells = List[Vec2.Vec2], // 衝突グリッドセル
         gridSize = {x = Int32, y = Int32},        // マップのグリッド寸法（__cWid, __cHei）
         tileVaoId = Int32,            // GPU VAO ID（0 = 未初期化）
-        tileCount = Int32             // インスタンス数
+        tileCount = Int32,            // インスタンス数
+        ySortEnabled = Bool           // CanvasItem: 子を global_y で並べる（Godot 準拠）
     })
 }
 
@@ -84,7 +85,8 @@ mod TileMapLayer {
             collisionCells = config#collisionCells,
             gridSize       = config#gridSize,
             tileVaoId      = 0,
-            tileCount      = 0
+            tileCount      = 0,
+            ySortEnabled   = false
         })
 
     // ────────────────────────────────────────────────────────
@@ -176,6 +178,11 @@ instance CanvasItem[TileMapLayer] {
     pub def setZIndex(zIndex: Int32, node: TileMapLayer): TileMapLayer =
         let TileMapLayer.TileMapLayer(r) = node;
         TileMapLayer.TileMapLayer({ zIndex = zIndex | r })
+    redef isYSortEnabled(node: TileMapLayer): Bool =
+        let TileMapLayer.TileMapLayer(r) = node; r#ySortEnabled
+    redef setYSortEnabled(v: Bool, node: TileMapLayer): TileMapLayer =
+        let TileMapLayer.TileMapLayer(r) = node;
+        TileMapLayer.TileMapLayer({ ySortEnabled = v | r })
 }
 
 // ── Node2D 実装 ──

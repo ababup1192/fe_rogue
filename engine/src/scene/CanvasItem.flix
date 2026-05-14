@@ -26,6 +26,13 @@ pub trait CanvasItem[a] {
     pub def getSelfModulate(_node: a): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
     pub def setSelfModulate(_color: Color, node: a): a = node
 
+    // Y-sort（Godot CanvasItem.y_sort_enabled 準拠）
+    /// true なら自身の直接の子を global_position.y 昇順で描画する。
+    /// 子の中で y_sort_enabled = true のものは独自の y-sort コンテキストを開く。
+    /// z_index バケットが一次キー、Y は二次キー（Scene.toDrawables の安定ソートで保証）
+    pub def isYSortEnabled(_node: a): Bool = false
+    pub def setYSortEnabled(_v: Bool, node: a): a = node
+
     // デフォルト実装
     pub def show(node: a): a = CanvasItem.setVisible(true, node)
     pub def hide(node: a): a = CanvasItem.setVisible(false, node)

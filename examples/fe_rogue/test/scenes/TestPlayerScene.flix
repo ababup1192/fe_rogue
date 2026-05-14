@@ -46,12 +46,17 @@ mod TestPlayerScene {
     def initialGrid(): {x = Int32, y = Int32} = {x = 5, y = 5}
 
     /// id=0 のプレイヤー 1 体だけのシーンを作る（JSON ロードを介さず Marker2D を直接構築）。
+    /// PlayerScene.playerPath が World 配下を指すので、ここでも World Marker2D を挟む
     def emptyPlayerScene(): Scene[NodeTag] =
         let initial = initialGrid();
         let pos = testGridToWorld(initial);
         let marker = Marker2D.make(pos);
+        let world = Marker2D.make(Vec2.zero())
+            |> CanvasItem.setYSortEnabled(true);
         Scene.empty()
-            |> Scene.addNode(PlayerScene.playerName(0),
+            |> Scene.addNode(MapScene.worldName(),
+                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
                 EngineNode.Marker2DWithState(marker,
                     NodeTag.Player({
                         id             = 0,

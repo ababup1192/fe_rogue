@@ -32,7 +32,8 @@ pub enum Sprite2D {
         regionRect = Option[Rect2.Rect2], // テクスチャ内の切り出し矩形（ピクセル単位）。None ならテクスチャ全体
         hframes = Int32,                 // 格子分割の列数（デフォルト 1）
         vframes = Int32,                 // 格子分割の行数（デフォルト 1）
-        frame = Int32                    // 表示セル index = row * hframes + col（デフォルト 0）
+        frame = Int32,                   // 表示セル index = row * hframes + col（デフォルト 0）
+        ySortEnabled = Bool              // CanvasItem: 子を global_y で並べる（Godot 準拠）
     })
 }
 
@@ -56,7 +57,8 @@ mod Sprite2D {
             regionRect = None,
             hframes = 1,
             vframes = 1,
-            frame = 0
+            frame = 0,
+            ySortEnabled = false
         })
 
     /// 不透明度を設定する（0.0 = 完全透明、1.0 = 不透明）
@@ -147,6 +149,12 @@ instance CanvasItem[Sprite2D] {
     pub def setZIndex(zIndex: Int32, sprite: Sprite2D): Sprite2D =
         let Sprite2D.Sprite2D(r) = sprite;
         Sprite2D.Sprite2D({ zIndex = zIndex | r })
+    redef isYSortEnabled(sprite: Sprite2D): Bool =
+        let Sprite2D.Sprite2D(r) = sprite;
+        r#ySortEnabled
+    redef setYSortEnabled(v: Bool, sprite: Sprite2D): Sprite2D =
+        let Sprite2D.Sprite2D(r) = sprite;
+        Sprite2D.Sprite2D({ ySortEnabled = v | r })
 }
 
 // ── Node2D 実装 ──

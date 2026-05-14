@@ -236,12 +236,17 @@ mod TestMapIntegration {
 
     /// プレイヤーシーン構築（JSON ロード回避、Marker2D 直接生成）。
     /// world 位置は initialGrid のタイル中心 = (88, 88)。id=0 単独。
+    /// PlayerScene.playerPath が World 配下を指すので World Marker2D を挟む
     def emptyPlayerScene(): Scene[NodeTag] =
         let initial = initialGrid();
         let initialWorld = TileMapLayer.mapToLocal(initial, realTileMapLayer());
         let marker = Marker2D.make(initialWorld);
+        let world = Marker2D.make(Vec2.zero())
+            |> CanvasItem.setYSortEnabled(true);
         Scene.empty()
-            |> Scene.addNode(PlayerScene.playerName(0),
+            |> Scene.addNode(MapScene.worldName(),
+                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
                 EngineNode.Marker2DWithState(marker,
                     NodeTag.Player({
                         id             = 0,

@@ -96,14 +96,18 @@ mod PlayerScene {
     /// `waited = false` 時の sprite modulate（白 = 元色）。
     def activeColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
 
-    /// "Player_2" のようなトップレベルノード名。
+    /// "Player_2" のようなノード名（World の直接の子）。
     pub def playerName(id: Int32): String = "Player_${id}"
 
-    /// "Player_2" 1 つだけの NodePath。
-    pub def playerPath(id: Int32): NodePath = playerName(id) :: Nil
+    /// Player_<id> の NodePath。Y-sort root の World 配下にぶら下げるため
+    /// "World/Player_<id>" の 2 段構造。Tween / GlobalPosition 等の API はこの helper
+    /// 経由で呼ぶこと（直書きしない）
+    pub def playerPath(id: Int32): NodePath =
+        List.append(MapScene.worldPath(), playerName(id) :: Nil)
 
     /// Player_<id> の子 Sprite ノードへのパス。modulate 変更や将来の alpha tween に使う。
-    pub def spritePath(id: Int32): NodePath = playerName(id) :: "Sprite" :: Nil
+    pub def spritePath(id: Int32): NodePath =
+        List.append(playerPath(id), "Sprite" :: Nil)
 
     // ────────────────────────────────────────────────────────
     // (C) 構築
@@ -181,10 +185,10 @@ mod PlayerScene {
                         |> Sprite2D.setFrame(spriteFrameFor(sp#id))
                         |> CanvasItem.setZIndex(spriteZIndex());
         scene
-            |> Scene.addNode(playerName(sp#id),
-                              EngineNode.Marker2DWithState(marker, NodeTag.Player(data)))
-            |> Scene.addChild(playerName(sp#id), "Sprite",
-                               EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), playerName(sp#id),
+                                 EngineNode.Marker2DWithState(marker, NodeTag.Player(data)))
+            |> Scene.addChildAt(playerPath(sp#id), "Sprite",
+                                 EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
 
     // ────────────────────────────────────────────────────────
     // (D) ロジック — 移動
@@ -479,11 +483,11 @@ mod PlayerScene {
                                scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPlayer(playerId, d -> {attackTargetId = None | d}, scene)
 
-    /// `Player_<id>` 形式の NodePath から id を取り出す。それ以外なら None。
-    /// AnimationPlayer の event 振り分けに使う。
+    /// World 直下の `Player_<id>` 形式の NodePath から id を取り出す。
+    /// それ以外なら None。AnimationPlayer の event 振り分けに使う
     pub def idFromPath(path: NodePath): Option[Int32] =
         match path {
-            case name :: Nil =>
+            case world :: name :: Nil if world == MapScene.worldName() =>
                 if (String.startsWith({prefix = "Player_"}, name))
                     String.dropLeft(7, name) |> Int32.fromString
                 else None

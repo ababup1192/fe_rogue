@@ -185,6 +185,33 @@ pub mod Scene {
             entryChildren(entry));
         myPath :: childPaths
 
+    /// SceneEntry から **描画順** でパスリストを返す（Godot Y-sort 準拠）
+    ///
+    /// 各ノードについて、`CanvasItem.isYSortEnabled = true` なら直接の子を
+    /// `globalPositionAt(...).y` 昇順で並べ替える。`List.sortBy` が安定でないため
+    /// Y が同値のときは NodeName を二次キーにしてツリー順（Map キー昇順）でタイブレーク。
+    /// 子孫はそれぞれ自身の y_sort_enabled で再帰的に並ぶ。
+    ///
+    /// preorderFromEntry とは別に存在する理由: 論理処理（process / hover / group）は
+    /// 決定論的ツリー順序を要求するため preorderFromEntry を使い、描画のみがこちらを使う
+    def renderOrderFromEntry(prefix: NodePath, entry: SceneEntry[s], scene: Scene[s]): List[NodePath] =
+        let myPath = prefix;
+        let childList = Map.toList(entryChildren(entry));
+        let ordered =
+            if (CanvasItem.isYSortEnabled(entryEngineNode(entry)))
+                List.sortBy(nameEntry ->
+                    let (childName, _) = nameEntry;
+                    let childPath = List.append(prefix, childName :: Nil);
+                    (globalPositionAt(childPath, scene)#y, childName),
+                    childList)
+            else
+                childList;
+        let childPaths = List.flatMap(nameEntry ->
+            let (childName, childEntry) = nameEntry;
+            renderOrderFromEntry(List.append(prefix, childName :: Nil), childEntry, scene),
+            ordered);
+        myPath :: childPaths
+
     // ========================================================================
     // 基本操作
     // ========================================================================
@@ -428,6 +455,15 @@ pub mod Scene {
     pub def preorderPaths(scene: Scene[s]): List[NodePath] =
         Map.foldLeftWithKey((acc, name, entry) ->
             List.append(acc, preorderFromEntry(name :: Nil, entry)),
+            Nil,
+            roots(scene))
+
+    /// 全ノードのパスを **描画順** で返す（Godot Y-sort 準拠）。
+    /// y_sort_enabled 親の直下の子は global_y 昇順、それ以外は preorder と同じ。
+    /// `toDrawables` 専用 — 論理処理は preorderPaths を使う
+    pub def renderOrderPaths(scene: Scene[s]): List[NodePath] =
+        Map.foldLeftWithKey((acc, name, entry) ->
+            List.append(acc, renderOrderFromEntry(name :: Nil, entry, scene)),
             Nil,
             roots(scene))
 
@@ -727,33 +763,46 @@ pub mod Scene {
         let s = d#scale;
         {scale = {x = s#x * scaleVec#x, y = s#y * scaleVec#y} | d}
 
-    /// 可視ノードを Drawable のリストに変換する
-    /// 各ノードが複数 Drawable を返せるよう flatMap ベースで処理する
-    /// 祖先の visible/modulate/zIndex が自動的に子ノードに伝播する（Godot 準拠）
-    /// transform: カメラの ViewTransform。CanvasLayer 配下のノードには適用しない
+    /// 1 パス分の Drawable を組み立てる（toDrawables の per-node 部分を切り出したもの）。
+    /// 祖先の不可視・自身の不可視で空リストを返す。
+    /// CanvasLayer 配下はカメラ ViewTransform を受けず、それ以外は applyToWorldPos + zoom スケール
+    def pathToDrawables(transform: Camera2D.ViewTransform, path: NodePath,
+                         scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
+        let ctx = drawContext(path, scene);
+        if (not ctx#visible) Nil
+        else match getEngineNode(path, scene) {
+            case None => Nil
+            case Some(engineNode) =>
+                if (not CanvasItem.isVisible(engineNode)) Nil
+                else {
+                    let worldPos = globalPositionAt(path, scene);
+                    let screenPos = if (ctx#underCanvasLayer) worldPos
+                                    else Camera2D.applyToWorldPos(transform, worldPos);
+                    let drawables = GameEngine.Renderable.toDrawables(engineNode, screenPos);
+                    let zOff = ctx#zOffset + ctx#layerOffset;
+                    let withCtx = List.map(applyDrawContext(zOff, ctx#modulate, ctx#rotation), drawables);
+                    if (ctx#underCanvasLayer) withCtx
+                    else List.map(applyZoomScale(transform#scale), withCtx)
+                }
+        }
+
+    /// 可視ノードを Drawable のリストに変換する。
+    ///
+    /// パイプライン:
+    ///   1. `renderOrderPaths` でツリーを Y-sort 込みの描画順に並べる（Godot 準拠）
+    ///   2. 各パスを `pathToDrawables` で Drawable 群に変換し、走査 index を貼り付ける
+    ///   3. `(zIndex, drawIndex)` で sortBy する。`List.sortBy` は安定でないため、
+    ///      二次キーとして走査 index を tiebreak に使うことで Y-sort 順を z バケット内で保持する
+    ///
+    /// 祖先の visible/modulate/zIndex は drawContext 経由で自動伝播する。
+    /// transform: カメラ ViewTransform。CanvasLayer 配下のノードには適用しない
     pub def toDrawables(transform: Camera2D.ViewTransform,
                          scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
-        preorderPaths(scene)
-            |> List.flatMap(path ->
-                let ctx = drawContext(path, scene);
-                // 祖先が非表示なら子ノードも描画しない
-                if (not ctx#visible) Nil
-                else
-                    match getEngineNode(path, scene) {
-                        case Some(engineNode) =>
-                            if (CanvasItem.isVisible(engineNode)) {
-                                let worldPos = globalPositionAt(path, scene);
-                                let screenPos = if (ctx#underCanvasLayer) worldPos
-                                                else Camera2D.applyToWorldPos(transform, worldPos);
-                                let drawables = GameEngine.Renderable.toDrawables(engineNode, screenPos);
-                                let zOff = ctx#zOffset + ctx#layerOffset;
-                                let withCtx = List.map(applyDrawContext(zOff, ctx#modulate, ctx#rotation), drawables);
-                                // CanvasLayer 配下以外はサイズも zoom で変換する
-                                if (ctx#underCanvasLayer) withCtx
-                                else List.map(applyZoomScale(transform#scale), withCtx)
-                            } else Nil
-                        case None => Nil
-                    }
-            )
-            |> List.sortBy(d -> d#zIndex)
+        renderOrderPaths(scene)
+            |> List.flatMap(path -> pathToDrawables(transform, path, scene))
+            |> List.zipWithIndex             // (drawIndex, drawable)
+            |> List.sortBy(idxD ->
+                let (idx, d) = idxD;
+                (d#zIndex, idx))
+            |> List.map(idxD -> let (_, d) = idxD; d)
 }

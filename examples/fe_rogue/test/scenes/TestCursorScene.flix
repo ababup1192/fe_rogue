@@ -85,12 +85,17 @@ mod TestCursorScene {
         }
 
     /// プレイヤー id=0 1 体だけを (gridPos) に置いた scene を組む。
-    /// JSON ロードを介さず Marker2D を直接構築する。
+    /// JSON ロードを介さず Marker2D を直接構築する（PlayerScene.playerPath は
+    /// World 配下を指すため、ここでも World Marker2D を挟む）。
     def sceneWithPlayer(gridPos: {x = Int32, y = Int32}): Scene[NodeTag] =
         let pos = cellCenter(gridPos);
         let marker = Marker2D.make(pos);
+        let world = Marker2D.make(Vec2.zero())
+            |> CanvasItem.setYSortEnabled(true);
         Scene.empty()
-            |> Scene.addNode(PlayerScene.playerName(0),
+            |> Scene.addNode(MapScene.worldName(),
+                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
                 EngineNode.Marker2DWithState(marker,
                     NodeTag.Player({
                         id             = 0,

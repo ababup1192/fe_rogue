@@ -34,7 +34,8 @@ pub enum AnimatedSprite2D {
         frameProgress = Float64,
         speedScale = Float64,
         autoplay = String,
-        playing = Bool
+        playing = Bool,
+        ySortEnabled = Bool       // CanvasItem: 子を global_y で並べる（Godot 準拠）
     })
 }
 
@@ -66,7 +67,8 @@ mod AnimatedSprite2D {
             frameProgress = 0.0,
             speedScale = 1.0,
             autoplay = "",
-            playing = true
+            playing = true,
+            ySortEnabled = false
         })
 
     /// autoplay 指定で AnimatedSprite2D を生成する。autoplay と animation が同名で開始する。
@@ -94,7 +96,8 @@ mod AnimatedSprite2D {
             frameProgress = 0.0,
             speedScale = 1.0,
             autoplay = autoplay#autoplay,
-            playing = true
+            playing = true,
+            ySortEnabled = false
         })
 
     /// 現在のフレームのテクスチャ名を返す（アニメや frame index が無効なら "" を返す）
@@ -246,6 +249,12 @@ instance CanvasItem[AnimatedSprite2D] {
     pub def setZIndex(zIndex: Int32, sprite: AnimatedSprite2D): AnimatedSprite2D =
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
         AnimatedSprite2D.AnimatedSprite2D({zIndex = zIndex | r})
+    redef isYSortEnabled(sprite: AnimatedSprite2D): Bool =
+        let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
+        r#ySortEnabled
+    redef setYSortEnabled(v: Bool, sprite: AnimatedSprite2D): AnimatedSprite2D =
+        let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
+        AnimatedSprite2D.AnimatedSprite2D({ySortEnabled = v | r})
 }
 
 // ── Node2D 実装 ──

@@ -437,7 +437,8 @@ mod SceneLoader {
             flipVOpt    <- (Json.FromJson.getAtKeyOpt(Root, "flipV", map): Result[Json.JsonError, Option[Bool]]);
             hframesOpt  <- (Json.FromJson.getAtKeyOpt(Root, "hframes", map): Result[Json.JsonError, Option[Int32]]);
             vframesOpt  <- (Json.FromJson.getAtKeyOpt(Root, "vframes", map): Result[Json.JsonError, Option[Int32]]);
-            frameOpt    <- (Json.FromJson.getAtKeyOpt(Root, "frame", map): Result[Json.JsonError, Option[Int32]])
+            frameOpt    <- (Json.FromJson.getAtKeyOpt(Root, "frame", map): Result[Json.JsonError, Option[Int32]]);
+            ySortEnabledOpt <- (Json.FromJson.getAtKeyOpt(Root, "ySortEnabled", map): Result[Json.JsonError, Option[Bool]])
         ) yield {
             let sprite = Sprite2D.make(texture, pos, scale)
                 |> applyOpt(rotationOpt, setSpriteRotation)
@@ -448,7 +449,8 @@ mod SceneLoader {
                 |> applyOpt(flipVOpt, Sprite2D.setFlipV)
                 |> applyOpt(hframesOpt, Sprite2D.setHframes)
                 |> applyOpt(vframesOpt, Sprite2D.setVframes)
-                |> applyOpt(frameOpt, Sprite2D.setFrame);
+                |> applyOpt(frameOpt, Sprite2D.setFrame)
+                |> applyOpt(ySortEnabledOpt, setSpriteYSortEnabled);
             EngineNode.Sprite2DWithState(sprite, tag)
         }
 
@@ -459,6 +461,9 @@ mod SceneLoader {
 
     def setSpriteSkew(skew: Float64, sprite: Sprite2D): Sprite2D =
         Node2D.setSkew(skew, sprite)
+
+    def setSpriteYSortEnabled(v: Bool, sprite: Sprite2D): Sprite2D =
+        CanvasItem.setYSortEnabled(v, sprite)
 
     def buildTextureRect(tagParser: Option[String] -> Result[Json.JsonError, t],
                           map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
@@ -655,13 +660,18 @@ mod SceneLoader {
             autoplayOpt    <- (Json.FromJson.getAtKeyOpt(Root, "autoplay", map):
                                 Result[Json.JsonError, Option[String]]);
             speedScaleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "speedScale", map):
-                                Result[Json.JsonError, Option[Float64]])
+                                Result[Json.JsonError, Option[Float64]]);
+            ySortEnabledOpt <- (Json.FromJson.getAtKeyOpt(Root, "ySortEnabled", map): Result[Json.JsonError, Option[Bool]])
         ) yield {
             let sprite = AnimatedSprite2D.make(spriteFrames, {animation = animation}, pos, scale)
                 |> AnimatedSprite2D.setAutoplay(Option.getWithDefault("", autoplayOpt))
-                |> AnimatedSprite2D.setSpeedScale(Option.getWithDefault(1.0, speedScaleOpt));
+                |> AnimatedSprite2D.setSpeedScale(Option.getWithDefault(1.0, speedScaleOpt))
+                |> applyOpt(ySortEnabledOpt, setAnimSpriteYSortEnabled);
             EngineNode.AnimSprite2DWithState(sprite, tag)
         }
+
+    def setAnimSpriteYSortEnabled(v: Bool, sprite: AnimatedSprite2D): AnimatedSprite2D =
+        CanvasItem.setYSortEnabled(v, sprite)
 
     def buildCharacterBody2D(tagParser: Option[String] -> Result[Json.JsonError, t],
                               map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
@@ -728,14 +738,16 @@ mod SceneLoader {
             rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
             skewOpt     <- (Json.FromJson.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
             visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
-            zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
+            zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            ySortEnabledOpt <- (Json.FromJson.getAtKeyOpt(Root, "ySortEnabled", map): Result[Json.JsonError, Option[Bool]])
         ) yield {
             let marker = Marker2D.make(pos)
                 |> applyOpt(scaleOpt, setMarker2DScale)
                 |> applyOpt(rotationOpt, setMarker2DRotation)
                 |> applyOpt(skewOpt, setMarker2DSkew)
                 |> applyOpt(visibleOpt, setMarker2DVisible)
-                |> applyOpt(zIndexOpt, setMarker2DZIndex);
+                |> applyOpt(zIndexOpt, setMarker2DZIndex)
+                |> applyOpt(ySortEnabledOpt, setMarker2DYSortEnabled);
             EngineNode.Marker2DWithState(marker, tag)
         }
 
@@ -753,6 +765,9 @@ mod SceneLoader {
 
     def setMarker2DZIndex(z: Int32, marker: Marker2D): Marker2D =
         CanvasItem.setZIndex(z, marker)
+
+    def setMarker2DYSortEnabled(v: Bool, marker: Marker2D): Marker2D =
+        CanvasItem.setYSortEnabled(v, marker)
 
     def buildCamera2D(tagParser: Option[String] -> Result[Json.JsonError, t],
                       map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
@@ -865,7 +880,8 @@ mod SceneLoader {
             marginXOpt  <- (Json.FromJson.getAtKeyOpt(Root, "marginX", map): Result[Json.JsonError, Option[Float64]]);
             marginYOpt  <- (Json.FromJson.getAtKeyOpt(Root, "marginY", map): Result[Json.JsonError, Option[Float64]]);
             spacingXOpt <- (Json.FromJson.getAtKeyOpt(Root, "spacingX", map): Result[Json.JsonError, Option[Float64]]);
-            spacingYOpt <- (Json.FromJson.getAtKeyOpt(Root, "spacingY", map): Result[Json.JsonError, Option[Float64]])
+            spacingYOpt <- (Json.FromJson.getAtKeyOpt(Root, "spacingY", map): Result[Json.JsonError, Option[Float64]]);
+            ySortEnabledOpt <- (Json.FromJson.getAtKeyOpt(Root, "ySortEnabled", map): Result[Json.JsonError, Option[Bool]])
         ) yield {
             tag = tag,
             config = ({
@@ -875,14 +891,19 @@ mod SceneLoader {
                 marginY     = Option.getWithDefault(0.0, marginYOpt),
                 spacingX    = Option.getWithDefault(0.0, spacingXOpt),
                 spacingY    = Option.getWithDefault(0.0, spacingYOpt)
-            }: LDTKLoader.LDTKLoaderConfig)
+            }: LDTKLoader.LDTKLoaderConfig),
+            ySortEnabledOpt = ySortEnabledOpt
         };
         match header {
             case Err(e) => Err(e)
             case Ok(h)  =>
                 let levelData = LDTKLoader.loadLevel(h#config);
-                Ok(EngineNode.TileMapLayerWithState(levelData#tileLayer, h#tag))
+                let layer = levelData#tileLayer |> applyOpt(h#ySortEnabledOpt, setTileMapLayerYSortEnabled);
+                Ok(EngineNode.TileMapLayerWithState(layer, h#tag))
         }
+
+    def setTileMapLayerYSortEnabled(v: Bool, tm: TileMapLayer): TileMapLayer =
+        CanvasItem.setYSortEnabled(v, tm)
 
     def buildLabel2D(tagParser: Option[String] -> Result[Json.JsonError, t],
                      fontAtlas: Option[FontAtlas],

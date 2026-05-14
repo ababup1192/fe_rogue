@@ -116,14 +116,17 @@ mod EnemyScene {
             methods = Nil
         }
 
-    /// "Enemy_3" のようなトップレベルノード名。
+    /// "Enemy_3" のようなノード名（World の直接の子）。
     pub def enemyName(id: Int32): String = "Enemy_${id}"
 
-    /// "Enemy_3" 1 つだけの NodePath（敵はトップレベルに並べる）。
-    pub def enemyPath(id: Int32): NodePath = enemyName(id) :: Nil
+    /// 敵 id の NodePath。Y-sort root の World 配下にぶら下げるため
+    /// "World/Enemy_<id>" の 2 段構造
+    pub def enemyPath(id: Int32): NodePath =
+        List.append(MapScene.worldPath(), enemyName(id) :: Nil)
 
     /// 敵 id の子 Sprite ノードへのパス。alpha 補間 (Tween.tweenAlpha) のターゲットに使う。
-    pub def spritePath(id: Int32): NodePath = enemyName(id) :: "Sprite" :: Nil
+    pub def spritePath(id: Int32): NodePath =
+        List.append(enemyPath(id), "Sprite" :: Nil)
 
     // ────────────────────────────────────────────────────────
     // (C) 構築
@@ -222,10 +225,10 @@ mod EnemyScene {
                         |> Sprite2D.setFrame(spriteFrame())
                         |> CanvasItem.setZIndex(spriteZIndex());
         scene
-            |> Scene.addNode(enemyName(sp#id),
-                              EngineNode.Marker2DWithState(marker, NodeTag.Enemy(data)))
-            |> Scene.addChild(enemyName(sp#id), "Sprite",
-                               EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), enemyName(sp#id),
+                                 EngineNode.Marker2DWithState(marker, NodeTag.Enemy(data)))
+            |> Scene.addChildAt(enemyPath(sp#id), "Sprite",
+                                 EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
 
     // ────────────────────────────────────────────────────────
     // (D) クエリ
@@ -299,11 +302,11 @@ mod EnemyScene {
         AudioStreamPlayer.play("bonus");
         Scene.removeAt(enemyPath(id), scene)
 
-    /// `Enemy_<id>` 形式の NodePath から id を取り出す。それ以外なら None。
-    /// AnimationPlayer の finished イベントを scene 別に振り分けるために使う。
+    /// World 直下の `Enemy_<id>` 形式の NodePath から id を取り出す。
+    /// それ以外なら None。AnimationPlayer の finished イベント振り分けに使う
     pub def idFromPath(path: NodePath): Option[Int32] =
         match path {
-            case name :: Nil =>
+            case world :: name :: Nil if world == MapScene.worldName() =>
                 if (String.startsWith({prefix = "Enemy_"}, name))
                     String.dropLeft(6, name) |> Int32.fromString
                 else None
