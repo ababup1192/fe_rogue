@@ -29,7 +29,6 @@ mod IdeUI {
     import javax.swing.JCheckBox
     import javax.swing.JTextField
     import javax.swing.JComboBox
-    import javax.swing.plaf.basic.BasicComboBoxUI
     import javax.swing.JSlider
     import javax.swing.DefaultListModel
     import javax.swing.ListSelectionModel
@@ -757,24 +756,18 @@ mod IdeUI {
     /// (誤入力された scene.json を壊さないため + ユーザに状態を知らせるため)。
     /// 選択変更で commit(JsonString(name))。"<missing>: ..." を選び直すのは無意味なので
     /// その項目を選んだ場合は commit せず無視する。
-    /// macOS Aqua L&F は JComboBox にネイティブ描画を強制し setBackground/setForeground を
-    /// 無視する (他の widget と色味が揃わず "disabled" 風に見える) ので、BasicComboBoxUI に
-    /// 切替えて Swing 側の描画にし、ダークテーマと馴染ませる。
+    ///
+    /// 色について: macOS Aqua L&F は JComboBox の閉じた状態 (button 部) をネイティブ描画し
+    /// setBackground/setForeground を無視する。BasicComboBoxUI に切替えると selection color が
+    /// macOS 紫を継承して逆に悪化したので、Aqua の見た目のままにしている。
     def createTextureSelector(initial: String, names: List[String],
                               commit: Json.JsonElement -> Unit \ IO): JComboBox[String] \ IO =
         let initialMissing = not List.memberOf(initial, names);
         let missingLabel = "<missing>: ${initial}";
         let items = if (initialMissing) missingLabel :: names else names;
         let cb: JComboBox[String] = new JComboBox();
-        cb.setUI(new BasicComboBoxUI());
         List.forEach(n -> { cb.addItem(n); () }, items);
         cb.setSelectedItem(if (initialMissing) missingLabel else initial);
-        cb.setBackground(new Color(50, 50, 50));
-        cb.setForeground(Color.LIGHT_GRAY);
-        cb.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(70, 70, 70), 1),
-            BorderFactory.createEmptyBorder(2, 4, 2, 4)
-        ));
         // JComboBox は同じ項目を再選択しても actionPerformed を発火しないので
         // 「現値と等しいか」のスキップは不要。素朴に index → 名前で commit する。
         cb.addActionListener(new ActionListener {
