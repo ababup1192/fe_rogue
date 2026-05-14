@@ -28,6 +28,7 @@ mod IdeUI {
     import javax.swing.JSplitPane
     import javax.swing.JCheckBox
     import javax.swing.JTextField
+    import javax.swing.JComboBox
     import javax.swing.JSlider
     import javax.swing.DefaultListModel
     import javax.swing.ListSelectionModel
@@ -83,6 +84,9 @@ mod IdeUI {
     ///                         Tree 再選択時の Inspector 表示にも使われる (常に最新)。
     ///   selectedNodePathRef:  Tree で選択中ノードの子インデックス列。commit が key と新値を
     ///                         どこに当てるかを示す。
+    ///   textureNamesRef:      現プロジェクトの project.json で宣言された texture 名のリスト。
+    ///                         Inspector の Sprite2D "texture" フィールドを dropdown 化するのに使う。
+    ///                         プロジェクト未ロード時は空。
     pub type alias IdeState = {
         pendingProjectRef    = Array[Option[String], Static],
         pendingSceneRef      = Array[Option[String], Static],
@@ -93,7 +97,8 @@ mod IdeUI {
         inspectorContentRef  = Array[Option[JPanel], Static],
         currentScenePathRef  = Array[Option[String], Static],
         currentSceneJsonRef  = Array[Option[Json.JsonElement], Static],
-        selectedNodePathRef  = Array[Option[List[Int32]], Static]
+        selectedNodePathRef  = Array[Option[List[Int32]], Static],
+        textureNamesRef      = Array[List[String], Static]
     }
 
     pub def newState(): IdeState \ IO =
@@ -107,7 +112,8 @@ mod IdeUI {
             inspectorContentRef  = Array#{(None: Option[JPanel])} @ Static,
             currentScenePathRef  = Array#{(None: Option[String])} @ Static,
             currentSceneJsonRef  = Array#{(None: Option[Json.JsonElement])} @ Static,
-            selectedNodePathRef  = Array#{(None: Option[List[Int32]])} @ Static
+            selectedNodePathRef  = Array#{(None: Option[List[Int32]])} @ Static,
+            textureNamesRef      = Array#{(Nil: List[String])} @ Static
         }
 
     pub def takePendingProject(state: IdeState): Option[String] \ IO =
@@ -122,6 +128,11 @@ mod IdeUI {
 
     pub def setSceneFiles(state: IdeState, files: List[(String, String)]): Unit \ IO =
         Array.put(files, 0, state#sceneFilesRef)
+
+    /// 現プロジェクトで利用可能な texture 名を Inspector の dropdown 用に登録する。
+    /// プロジェクト切替時は新しい名前リストで上書き、未ロード時は Nil で空にする。
+    pub def setTextureNames(state: IdeState, names: List[String]): Unit \ IO =
+        Array.put(names, 0, state#textureNamesRef)
 
     /// SwingLayer.withSwing に渡す customizeFrame コールバック本体。
     pub def customize(state: IdeState, frame: JFrame, canvas: AWTGLCanvas): Unit \ IO =
@@ -593,7 +604,7 @@ mod IdeUI {
                     }
                     case _ => {
                         let commit = newVal -> commitEdit(state, prefix ::: key :: Nil, newVal);
-                        let row = createPropertyRow(key, value, commit, indent);
+                        let row = createPropertyRow(state, key, value, commit, indent);
                         content.add(row);
                         ()
                     }
@@ -617,7 +628,7 @@ mod IdeUI {
     /// 1 プロパティ行: 左にキー名ラベル、右にプロパティ型に応じた widget。
     /// `commit` は widget が値変更を確定したときに「新しい JsonElement」を渡す callback。
     /// `indent` はネストの深さ。左余白に反映する。
-    def createPropertyRow(key: String, value: Json.JsonElement,
+    def createPropertyRow(state: IdeState, key: String, value: Json.JsonElement,
                           commit: Json.JsonElement -> Unit \ IO,
                           indent: Int32): JPanel \ IO =
         let row = new JPanel(new BorderLayout(6, 0));
@@ -631,18 +642,20 @@ mod IdeUI {
         label.setPreferredSize(new Dimension(96, 22));
         row.add(label, BorderLayout.WEST);
 
-        row.add(createPropertyWidget(key, value, commit), BorderLayout.CENTER);
+        row.add(createPropertyWidget(state, key, value, commit), BorderLayout.CENTER);
         row
 
     /// プロパティ値の型 + キー名に基づいて適切な widget を返す。
     ///   key=="alpha"/"opacity" + JsonNumber → JSlider(0..100) — release 時に commit
+    ///   key=="texture" + JsonString          → JComboBox (project.json の texture 名一覧)
+    ///                                          名前リストが空のときは JTextField にフォールバック
     ///   JsonBool                              → JCheckBox — toggle で即 commit
     ///   JsonString                            → JTextField — Enter で commit (JsonString)
     ///   JsonNumber                            → JTextField — Enter で parse → commit (JsonNumber)
     ///   JsonArray [num, num]                  → X/Y 2 フィールド — どちらかの Enter で配列ごと commit
     ///   JsonArray (それ以外)                   → 編集不可サマリラベル
     ///   JsonObject                            → 編集不可サマリラベル
-    def createPropertyWidget(key: String, value: Json.JsonElement,
+    def createPropertyWidget(state: IdeState, key: String, value: Json.JsonElement,
                              commit: Json.JsonElement -> Unit \ IO): JPanel \ IO =
         let panel = new JPanel(new BorderLayout());
         panel.setBackground(new Color(40, 40, 40));
@@ -654,7 +667,15 @@ mod IdeUI {
         } else {
             match value {
                 case JsonBool(b)    => panel.add(createBoolCheck(b, commit), BorderLayout.CENTER)
-                case JsonString(s)  => panel.add(createStringInput(s, commit), BorderLayout.CENTER)
+                case JsonString(s)  =>
+                    if (key == "texture") {
+                        let names = Array.get(0, state#textureNamesRef);
+                        match names {
+                            case Nil => panel.add(createStringInput(s, commit), BorderLayout.CENTER)
+                            case _   => panel.add(createTextureSelector(s, names, commit), BorderLayout.CENTER)
+                        }
+                    } else
+                        panel.add(createStringInput(s, commit), BorderLayout.CENTER)
                 case JsonNumber(bd) => panel.add(createNumberInput(bd, commit), BorderLayout.CENTER)
                 case JsonArray(items) =>
                     let elems = Vector.toList(items);
@@ -729,6 +750,39 @@ mod IdeUI {
                 commit(JsonString(tf.getText()))
         });
         tf
+
+    /// texture フィールド用の dropdown。`names` は project.json で宣言された名前一覧。
+    /// 既存値 `initial` が名前一覧に無い場合は先頭に "<missing>: initial" を入れて選択しておく
+    /// (誤入力された scene.json を壊さないため + ユーザに状態を知らせるため)。
+    /// 選択変更で commit(JsonString(name))。"<missing>: ..." を選び直すのは無意味なので
+    /// その項目を選んだ場合は commit せず無視する。
+    def createTextureSelector(initial: String, names: List[String],
+                              commit: Json.JsonElement -> Unit \ IO): JComboBox[String] \ IO =
+        let missingLabel = "<missing>: ${initial}";
+        let items =
+            if (List.memberOf(initial, names)) names
+            else missingLabel :: names;
+        let cb: JComboBox[String] = new JComboBox();
+        List.forEach(n -> { cb.addItem(n); () }, items);
+        cb.setSelectedItem(if (List.memberOf(initial, names)) initial else missingLabel);
+        cb.setBackground(new Color(50, 50, 50));
+        cb.setForeground(Color.LIGHT_GRAY);
+        cb.addActionListener(new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
+                let idx = cb.getSelectedIndex();
+                let chosen =
+                    if (List.memberOf(initial, names)) List.nth(idx, names)
+                    else if (idx == 0) None
+                    else List.nth(idx - 1, names);
+                match chosen {
+                    case Some(name) =>
+                        if (name == initial) ()
+                        else commit(JsonString(name))
+                    case None => ()
+                }
+            }
+        });
+        cb
 
     /// Number プロパティ: Enter で parse → commit (JsonNumber)。parse 失敗時は無視。
     def createNumberInput(bd: BigDecimal, commit: Json.JsonElement -> Unit \ IO): JTextField \ IO =

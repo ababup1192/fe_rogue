@@ -31,16 +31,20 @@ def sessionLoop(state: IdeUI.IdeState, projectPath: Option[String]): Unit \ {IO,
                     let sceneFiles = ProjectLoader.findSceneFiles(path)
                         |> List.map(rel -> (joinPath(path, rel), rel));
                     IdeUI.setSceneFiles(state, sceneFiles);
+                    let textureNames = proj#config#textureManifest |> List.map(e -> e#name);
+                    IdeUI.setTextureNames(state, textureNames);
                     decorateTitle(proj#config, path)
                 case Err(msg) =>
                     // project.json が無い / パース失敗。クラッシュさせず empty state へ。
                     println("[Main] Open Project failed: ${msg}");
                     IdeUI.setSceneFiles(state, Nil);
+                    IdeUI.setTextureNames(state, Nil);
                     emptyConfig()
             }
         case None =>
             println("[Main] Starting IDE with no project");
             IdeUI.setSceneFiles(state, Nil);
+            IdeUI.setTextureNames(state, Nil);
             emptyConfig()
     };
     let customize = (frame, canvas) -> IdeUI.customize(state, frame, canvas);
