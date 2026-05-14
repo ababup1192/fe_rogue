@@ -394,6 +394,12 @@ mod SceneLoader {
                 forM (
                     radius <- (Json.FromJson.getAtKey(Root, "radius", map): Result[Json.JsonError, Float64])
                 ) yield CollisionShape2D.CircleShape2D({radius = radius})
+            case "CapsuleShape2D" =>
+                forM (
+                    radius   <- (Json.FromJson.getAtKey(Root, "radius", map): Result[Json.JsonError, Float64]);
+                    height   <- (Json.FromJson.getAtKey(Root, "height", map): Result[Json.JsonError, Float64]);
+                    vertical <- (Json.FromJson.getAtKey(Root, "vertical", map): Result[Json.JsonError, Bool])
+                ) yield CollisionShape2D.CapsuleShape2D({radius = radius, height = height, vertical = vertical})
             case unknown =>
                 Err(JsonError(Root, Set#{"known shape kind (got: ${unknown})"}))
         }
