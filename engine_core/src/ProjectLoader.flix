@@ -1,7 +1,10 @@
-// ProjectLoader — project.json を読み込んで GameEngine.EngineConfig を組み立てる。
+// ProjectLoader — project.json を読み込んで engine 起動用の設定 + scene ファイル列挙を提供する。
 //
-// project.json は IDE が読む manifest で、ゲーム側 (examples/*/src/Main.flix) は
-// 関知しない。スキーマはゲームの Main.flix のハードコード config と同等:
+// project.json は engine / IDE / examples が共通で読む唯一の真実 (single source of truth)。
+// engine_core 層に置くことで render_core / engine / editor / ide / examples いずれからも
+// import できる。
+//
+// スキーマ (engine の `GameEngine.EngineConfig` と完全一致):
 //
 //   {
 //     "title": String,
@@ -12,24 +15,41 @@
 //     "textures": [{"name": String, "path": String, "hasAlpha": Bool}, ...],
 //     "fonts":    [{"name": String, "path": String, "fontSize": Float}, ...],
 //     "sounds":   [{"name": String, "path": String, "looping": Bool}, ...],
-//     "mainScene": String   // project root からの相対パス
+//     "mainScene": String   // project root からの相対パス (engine では現状未使用)
 //   }
 //
 // 画像・フォント・サウンドのパスは project root からの相対で記述する。
-// IDE は (Java 起動時の) CWD と無関係に動かしたいため、ProjectLoader 内で
-// `rootDir + relative` の絶対パス文字列に書き換えてから EngineConfig に詰める。
+// IDE は (Java 起動時の) CWD と無関係に動かしたいため、rootDir + relative の絶対パス
+// 文字列に書き換えてから返す。examples は CWD = project root で動くので rootDir = "." を
+// 渡す慣習。
 
 mod ProjectLoader {
     use Json.JsonElement.{JsonObject, JsonArray, JsonString, JsonNumber, JsonBool}
 
+    /// project.json から組み立てた、engine 起動に渡すための設定。
+    /// shape は engine の `GameEngine.EngineConfig` と完全一致させてあり、
+    /// Flix の structural record により `LwjglLayer.withLwjgl` 等にそのまま渡せる。
+    pub type alias ProjectConfig = {
+        designWidth     = Int32,
+        designHeight    = Int32,
+        windowWidth     = Int32,
+        windowHeight    = Int32,
+        title           = String,
+        textureManifest = List[{name = String, path = String, hasAlpha = Bool}],
+        fontManifest    = List[{name = String, path = String, fontSize = Float64}],
+        soundManifest   = List[{name = String, path = String, looping = Bool}],
+        clearColor      = Color,
+        maxDeltaTime    = Float64
+    }
+
     /// 読み込み結果。シーンは別途 `findSceneFiles` で列挙する。
     pub type alias Project = {
         rootDir = String,
-        config  = GameEngine.EngineConfig
+        config  = ProjectConfig
     }
 
     /// project.json を読んで Project を組み立てる。
-    /// 読み込み/JSON パース失敗時は Err(message) を返す (IDE が dialog で表示する)。
+    /// 読み込み/JSON パース失敗時は Err(message) を返す (呼び出し側が dialog 表示・終了などを決める)。
     /// JSON 中の型不一致など内部構造のエラーは依然 bug! でクラッシュする
     /// (= 不正な project.json は開発者が直すべきもの)。
     pub def loadProject(rootDir: String): Result[String, Project] \ {Fs.FileRead} =
@@ -57,7 +77,7 @@ mod ProjectLoader {
         let textures    = readTextures(rootDir, getField(root, "textures"));
         let fonts       = readFonts(rootDir, getField(root, "fonts"));
         let sounds      = readSounds(rootDir, getField(root, "sounds"));
-        let config: GameEngine.EngineConfig = {
+        let config: ProjectConfig = {
             designWidth     = designW,
             designHeight    = designH,
             windowWidth     = windowW,
@@ -139,7 +159,8 @@ mod ProjectLoader {
         let m = matchObject(elem, "clearColor");
         { r = getFloat32(m, "r"), g = getFloat32(m, "g"), b = getFloat32(m, "b") }
 
-    def readTextures(rootDir: String, elem: Json.JsonElement): List[GameEngine.TextureEntry] =
+    def readTextures(rootDir: String, elem: Json.JsonElement):
+                       List[{name = String, path = String, hasAlpha = Bool}] =
         match elem {
             case JsonArray(v) =>
                 Vector.toList(v) |> List.map(item ->
@@ -153,7 +174,8 @@ mod ProjectLoader {
             case _ => bug!("ProjectLoader: 'textures' is not an array")
         }
 
-    def readFonts(rootDir: String, elem: Json.JsonElement): List[GameEngine.FontEntry] =
+    def readFonts(rootDir: String, elem: Json.JsonElement):
+                    List[{name = String, path = String, fontSize = Float64}] =
         match elem {
             case JsonArray(v) =>
                 Vector.toList(v) |> List.map(item ->
@@ -167,7 +189,8 @@ mod ProjectLoader {
             case _ => bug!("ProjectLoader: 'fonts' is not an array")
         }
 
-    def readSounds(rootDir: String, elem: Json.JsonElement): List[GameEngine.AudioEntry] =
+    def readSounds(rootDir: String, elem: Json.JsonElement):
+                     List[{name = String, path = String, looping = Bool}] =
         match elem {
             case JsonArray(v) =>
                 Vector.toList(v) |> List.map(item ->

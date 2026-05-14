@@ -68,6 +68,17 @@ mod LwjglLayer {
     // LWJGL Handler for GameEngine.Game / GameEngine.Audio effects
     // ========================================================================
 
+    /// `rootDir` 直下の project.json を読んで `withLwjgl` を起動する便利ラッパ。
+    /// examples の Main.flix からは `with LwjglLayer.withProject(".")` の形で
+    /// 直接 with-chain に並べて使う。loadProject 失敗時は bug! で停止する
+    /// (project.json が壊れているのは開発者が直すべき状態)。
+    pub def withProject(rootDir: String, f: Unit -> a \ ef):
+            a \ ef - GameEngine.Game - GameEngine.Audio + IO + Fs.FileRead =
+        match ProjectLoader.loadProject(rootDir) {
+            case Ok(proj)  => withLwjgl(proj#config, f)
+            case Err(msg) => bug!("Failed to load project.json: ${msg}")
+        }
+
     pub def withLwjgl(config: GameEngine.EngineConfig, f: Unit -> a \ ef): a \ ef - GameEngine.Game - GameEngine.Audio + IO =
         if (not GLFW.glfwInit()) {
             println("GLFW init failed");
