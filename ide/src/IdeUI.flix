@@ -2,11 +2,13 @@
 // `customizeFrame` コールバックを提供する。
 //
 // 役割:
-//   - 大きめのウィンドウサイズ + BorderLayout (左 = scene list / 中央 = scene preview / 右 = inspector)
+//   - 大きめのウィンドウサイズ + BorderLayout
+//     (左 = scene-tree / 中央 = scene preview / 右 = JSplitPane(Inspector 上, Scene Files 下))
 //   - JMenuBar に File → Open Project... を追加
 //   - File チューザでプロジェクトディレクトリを選ばせ、`pendingProjectRef` に保存
 //     + WindowEvent.WINDOW_CLOSING を dispatch して SwingLayer.withSwing を抜けさせる
-//   - 左パネルの scene リストをクリックすると `pendingSceneRef` を更新 (window は閉じない、
+//   - 右下の scene ファイルリストをクリックすると `pendingSceneRef` を更新し、
+//     同時に左の scene-tree も該当 JSON で再構築する (window は閉じない、
 //     現セッション内で scene を切替える)
 //
 // SwingLayer は UI 構造を知らない。IdeUI は IDE 固有の UI を集約する。
@@ -22,6 +24,8 @@ mod IdeUI {
     import javax.swing.JButton
     import javax.swing.JProgressBar
     import javax.swing.JScrollPane
+    import javax.swing.JTree
+    import javax.swing.JSplitPane
     import javax.swing.DefaultListModel
     import javax.swing.ListSelectionModel
     import javax.swing.JFileChooser
@@ -32,6 +36,10 @@ mod IdeUI {
     import javax.swing.Box
     import javax.swing.event.ListSelectionListener
     import javax.swing.event.ListSelectionEvent
+    import javax.swing.tree.DefaultMutableTreeNode
+    import javax.swing.tree.DefaultTreeModel
+    import javax.swing.tree.DefaultTreeCellRenderer
+    import javax.swing.tree.TreeSelectionModel
     import java.awt.BorderLayout
     import java.awt.Color
     import java.awt.Dimension
@@ -45,16 +53,21 @@ mod IdeUI {
     import java.util.prefs.Preferences
     import org.lwjgl.opengl.awt.AWTGLCanvas
 
+    use Json.JsonElement.{JsonObject, JsonArray, JsonString}
+
     /// IDE のグローバル状態。EDT 上の UI イベントが Refs に書き、
     /// メインループ (Main.flix) と renderLoop が読む。
     ///   pendingProjectRef: File → Open Project... で選ばれたディレクトリ。Main の reload で消費。
     ///   pendingSceneRef:   scene リストで選ばれた scene の絶対パス。renderLoop が毎フレーム消費。
     ///   sceneFilesRef:     現プロジェクトの (絶対パス, 表示用相対パス) のペアリスト。
+    ///   sceneTreeModelRef: 左パネル JTree の TreeModel。シーン選択時に root を差し替えて
+    ///                      ノード階層 ([type] name) を表示する。
     pub type alias IdeState = {
         pendingProjectRef = Array[Option[String], Static],
         pendingSceneRef   = Array[Option[String], Static],
         sceneFilesRef     = Array[List[(String, String)], Static],
-        loadingSplashRef  = Array[Option[JFrame], Static]
+        loadingSplashRef  = Array[Option[JFrame], Static],
+        sceneTreeModelRef = Array[Option[DefaultTreeModel], Static]
     }
 
     pub def newState(): IdeState \ IO =
@@ -62,7 +75,8 @@ mod IdeUI {
             pendingProjectRef = Array#{(None: Option[String])} @ Static,
             pendingSceneRef   = Array#{(None: Option[String])} @ Static,
             sceneFilesRef     = Array#{(Nil: List[(String, String)])} @ Static,
-            loadingSplashRef  = Array#{(None: Option[JFrame])} @ Static
+            loadingSplashRef  = Array#{(None: Option[JFrame])} @ Static,
+            sceneTreeModelRef = Array#{(None: Option[DefaultTreeModel])} @ Static
         }
 
     pub def takePendingProject(state: IdeState): Option[String] \ IO =
@@ -94,19 +108,26 @@ mod IdeUI {
         centerPanel.add(canvas, BorderLayout.CENTER);
         frame.add(centerPanel, BorderLayout.CENTER);
 
-        // 左: scene ファイルリスト (project ロード後に setSceneFiles で更新される内容を表示)
-        let westPanel = buildScenesPanel(state);
-        westPanel.setPreferredSize(new Dimension(280, 0));
+        // 左: scene-tree (現在選択中の scene のノード階層を JTree で表示)
+        let westPanel = buildSceneTreePanel(state);
+        westPanel.setPreferredSize(new Dimension(300, 0));
         frame.add(westPanel, BorderLayout.WEST);
 
-        // 右: inspector プレースホルダ
-        let eastPanel = new JPanel(new BorderLayout());
-        eastPanel.setPreferredSize(new Dimension(280, 0));
-        eastPanel.setBackground(new Color(40, 40, 40));
-        let eastLabel = new JLabel("  Inspector");
-        eastLabel.setForeground(Color.LIGHT_GRAY);
-        eastPanel.add(eastLabel, BorderLayout.NORTH);
-        frame.add(eastPanel, BorderLayout.EAST);
+        // 右: 上 = Inspector / 下 = Scene Files の縦分割
+        let inspectorPanel = new JPanel(new BorderLayout());
+        inspectorPanel.setBackground(new Color(40, 40, 40));
+        let inspectorLabel = new JLabel("  Inspector");
+        inspectorLabel.setForeground(Color.LIGHT_GRAY);
+        inspectorPanel.add(inspectorLabel, BorderLayout.NORTH);
+
+        let scenesPanel = buildScenesPanel(state);
+
+        let eastSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, inspectorPanel, scenesPanel);
+        eastSplit.setDividerLocation(400);
+        eastSplit.setResizeWeight(0.5);
+        eastSplit.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+        eastSplit.setPreferredSize(new Dimension(300, 0));
+        frame.add(eastSplit, BorderLayout.EAST);
 
         // 下: ステータスバー
         let southPanel = new JPanel();
@@ -134,12 +155,12 @@ mod IdeUI {
         timer.setRepeats(false);
         timer.start()
 
-    /// 左パネル: 上段はヘッダラベル、下段は scene ファイル JList。
+    /// 右下パネル: 上段はヘッダラベル、下段は scene ファイル JList。
     def buildScenesPanel(state: IdeState): JPanel \ IO =
         let panel = new JPanel(new BorderLayout());
         panel.setBackground(new Color(40, 40, 40));
 
-        let header = new JLabel("  Scenes");
+        let header = new JLabel("  Scene Files");
         header.setForeground(Color.LIGHT_GRAY);
         panel.add(header, BorderLayout.NORTH);
 
@@ -168,7 +189,8 @@ mod IdeUI {
                             case Some(pair) =>
                                 let (abs, _rel) = pair;
                                 println("[IdeUI] Scene selected: ${abs}");
-                                Array.put(Some(abs), 0, state#pendingSceneRef)
+                                Array.put(Some(abs), 0, state#pendingSceneRef);
+                                populateSceneTree(state, abs)
                             case None => ()
                         }
                     } else ()
@@ -180,6 +202,102 @@ mod IdeUI {
         scroll.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         panel.add(scroll, BorderLayout.CENTER);
         panel
+
+    /// 左パネル: 現在選択中のシーンのノード階層を JTree で表示する。
+    /// 初期表示は "(no scene selected)" だけ。シーン選択で populateSceneTree が
+    /// 呼ばれ、JSON の type/name/children を読んで木を組み立てる。
+    /// TreeModel を state#sceneTreeModelRef に保存し、後で listener から差し替えできるようにする。
+    def buildSceneTreePanel(state: IdeState): JPanel \ IO =
+        let panel = new JPanel(new BorderLayout());
+        panel.setBackground(new Color(40, 40, 40));
+
+        let header = new JLabel("  Scene");
+        header.setForeground(Color.LIGHT_GRAY);
+        panel.add(header, BorderLayout.NORTH);
+
+        let root = new DefaultMutableTreeNode("(no scene selected)");
+        let model = new DefaultTreeModel(root);
+        Array.put(Some(model), 0, state#sceneTreeModelRef);
+
+        let tree = new JTree(model);
+        tree.setRootVisible(true);
+        tree.setShowsRootHandles(true);
+        tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
+        tree.setBackground(new Color(35, 35, 35));
+        tree.setForeground(Color.LIGHT_GRAY);
+
+        // ダークテーマ化: デフォルトの DefaultTreeCellRenderer は非選択セルを白で塗るため、
+        // 全行が「選択中」のように見える。各色を tree.setBackground と揃え、選択色だけ
+        // 一般的なダークテーマの青に差し替える。
+        let renderer = new DefaultTreeCellRenderer();
+        renderer.setBackgroundNonSelectionColor(new Color(35, 35, 35));
+        renderer.setBackgroundSelectionColor(new Color(55, 90, 140));
+        renderer.setTextNonSelectionColor(Color.LIGHT_GRAY);
+        renderer.setTextSelectionColor(Color.WHITE);
+        renderer.setBorderSelectionColor(new Color(55, 90, 140));
+        tree.setCellRenderer(renderer);
+
+        let scroll = new JScrollPane(tree);
+        scroll.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+        scroll.getViewport().setBackground(new Color(35, 35, 35));
+        panel.add(scroll, BorderLayout.CENTER);
+        panel
+
+    /// JSON 要素を Swing の TreeNode に再帰変換する。
+    /// JsonObject の場合は "type" と "name" を取り出してラベルにし、"children" 配列を再帰展開する。
+    /// JsonArray の場合は合成ルートの下に各要素の subtree を並べる。
+    /// それ以外の形は "<invalid>" ノードに落とす（IDE 全体をクラッシュさせないため）。
+    def jsonToTreeNode(elem: Json.JsonElement): DefaultMutableTreeNode \ IO =
+        match elem {
+            case JsonObject(map) =>
+                let nodeType = match Map.get("type", map) {
+                    case Some(JsonString(s)) => s
+                    case _                   => "Node"
+                };
+                let nodeName = match Map.get("name", map) {
+                    case Some(JsonString(s)) => s
+                    case _                   => "<unnamed>"
+                };
+                let parent = new DefaultMutableTreeNode("[${nodeType}] ${nodeName}");
+                match Map.get("children", map) {
+                    case Some(JsonArray(children)) =>
+                        Vector.toList(children) |> List.forEach(child -> {
+                            let childNode = jsonToTreeNode(child);
+                            parent.add(childNode)
+                        })
+                    case _ => ()
+                };
+                parent
+            case JsonArray(items) =>
+                let parent = new DefaultMutableTreeNode("<root array>");
+                Vector.toList(items) |> List.forEach(child -> {
+                    let childNode = jsonToTreeNode(child);
+                    parent.add(childNode)
+                });
+                parent
+            case _ => new DefaultMutableTreeNode("<invalid>")
+        }
+
+    /// 絶対パスから scene.json を読み、木を再構築して state#sceneTreeModelRef の root を差し替える。
+    /// EDT の listener から呼ばれるため、Fs.FileRead エフェクトはこの関数内で discharge する
+    /// （listener のシグネチャは `Unit \ IO` 固定）。
+    /// 読み込み・パース失敗時はクラッシュさせず、エラーラベルのみのツリーを表示する。
+    def populateSceneTree(state: IdeState, absPath: String): Unit \ IO =
+        let readResult = run {
+            Fs.ReadFile.read(absPath)
+        } with Fs.ReadFile.runWithFileRead with Fs.FileRead.runWithIO;
+        let newRoot = match readResult {
+            case Err(e)   => new DefaultMutableTreeNode("(read error: ${e})")
+            case Ok(text) =>
+                match Json.Parse.parse(String.trim(text)) {
+                    case None      => new DefaultMutableTreeNode("(JSON parse failed)")
+                    case Some(json) => jsonToTreeNode(json)
+                }
+        };
+        match Array.get(0, state#sceneTreeModelRef) {
+            case Some(model) => model.setRoot(newRoot)
+            case None        => ()
+        }
 
     /// File メニューを構築する。
     /// Open Project... は JFileChooser でディレクトリを選ばせ、選択結果を
