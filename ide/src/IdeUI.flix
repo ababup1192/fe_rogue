@@ -41,6 +41,8 @@ mod IdeUI {
     import javax.swing.event.ListSelectionEvent
     import javax.swing.event.TreeSelectionListener
     import javax.swing.event.TreeSelectionEvent
+    import javax.swing.event.ChangeListener
+    import javax.swing.event.ChangeEvent
     import javax.swing.tree.DefaultMutableTreeNode
     import javax.swing.tree.DefaultTreeModel
     import javax.swing.tree.DefaultTreeCellRenderer
@@ -66,31 +68,48 @@ mod IdeUI {
     /// メインループ (Main.flix) と renderLoop が読む。
     ///   pendingProjectRef:    File → Open Project... で選ばれたディレクトリ。Main の reload で消費。
     ///   pendingSceneRef:      scene リストで選ばれた scene の絶対パス。renderLoop が毎フレーム消費。
+    ///                         Inspector で値を変更した直後にもセットされ、canvas を即時 reload する。
     ///   sceneFilesRef:        現プロジェクトの (絶対パス, 表示用相対パス) のペアリスト。
     ///   sceneTreeModelRef:    左パネル JTree の TreeModel。シーン選択時に root を差し替える。
     ///   nodeJsonMapRef:       tree ノードの identityHashCode → 対応する JsonElement。
-    ///                         Tree 選択時に Inspector が JSON プロパティを引くのに使う。
+    ///                         Tree 選択時に Inspector が JSON プロパティを引くのに使う（初期描画用）。
+    ///   nodePathMapRef:       tree ノードの identityHashCode → ルートからの子インデックス列。
+    ///                         Inspector の commit 時に「JSON のどこを書き換えるか」を判断する。
     ///   inspectorContentRef:  Inspector 本体の JPanel (BoxLayout)。ノード選択ごとに
     ///                         removeAll → 再構築する。
+    ///   currentScenePathRef:  現在 IDE が表示中の scene.json の絶対パス。Inspector commit で
+    ///                         書き出し先 + reload トリガに使う。
+    ///   currentSceneJsonRef:  現在 scene の root JsonElement。commit 時にこれを起点に
+    ///                         updateJsonAtPath して新 root を作る。
+    ///   selectedNodePathRef:  Tree で選択中ノードの子インデックス列。commit が key と新値を
+    ///                         どこに当てるかを示す。
     pub type alias IdeState = {
-        pendingProjectRef   = Array[Option[String], Static],
-        pendingSceneRef     = Array[Option[String], Static],
-        sceneFilesRef       = Array[List[(String, String)], Static],
-        loadingSplashRef    = Array[Option[JFrame], Static],
-        sceneTreeModelRef   = Array[Option[DefaultTreeModel], Static],
-        nodeJsonMapRef      = Array[Map[Int32, Json.JsonElement], Static],
-        inspectorContentRef = Array[Option[JPanel], Static]
+        pendingProjectRef    = Array[Option[String], Static],
+        pendingSceneRef      = Array[Option[String], Static],
+        sceneFilesRef        = Array[List[(String, String)], Static],
+        loadingSplashRef     = Array[Option[JFrame], Static],
+        sceneTreeModelRef    = Array[Option[DefaultTreeModel], Static],
+        nodeJsonMapRef       = Array[Map[Int32, Json.JsonElement], Static],
+        nodePathMapRef       = Array[Map[Int32, List[Int32]], Static],
+        inspectorContentRef  = Array[Option[JPanel], Static],
+        currentScenePathRef  = Array[Option[String], Static],
+        currentSceneJsonRef  = Array[Option[Json.JsonElement], Static],
+        selectedNodePathRef  = Array[Option[List[Int32]], Static]
     }
 
     pub def newState(): IdeState \ IO =
         {
-            pendingProjectRef   = Array#{(None: Option[String])} @ Static,
-            pendingSceneRef     = Array#{(None: Option[String])} @ Static,
-            sceneFilesRef       = Array#{(Nil: List[(String, String)])} @ Static,
-            loadingSplashRef    = Array#{(None: Option[JFrame])} @ Static,
-            sceneTreeModelRef   = Array#{(None: Option[DefaultTreeModel])} @ Static,
-            nodeJsonMapRef      = Array#{(Map.empty(): Map[Int32, Json.JsonElement])} @ Static,
-            inspectorContentRef = Array#{(None: Option[JPanel])} @ Static
+            pendingProjectRef    = Array#{(None: Option[String])} @ Static,
+            pendingSceneRef      = Array#{(None: Option[String])} @ Static,
+            sceneFilesRef        = Array#{(Nil: List[(String, String)])} @ Static,
+            loadingSplashRef     = Array#{(None: Option[JFrame])} @ Static,
+            sceneTreeModelRef    = Array#{(None: Option[DefaultTreeModel])} @ Static,
+            nodeJsonMapRef       = Array#{(Map.empty(): Map[Int32, Json.JsonElement])} @ Static,
+            nodePathMapRef       = Array#{(Map.empty(): Map[Int32, List[Int32]])} @ Static,
+            inspectorContentRef  = Array#{(None: Option[JPanel])} @ Static,
+            currentScenePathRef  = Array#{(None: Option[String])} @ Static,
+            currentSceneJsonRef  = Array#{(None: Option[Json.JsonElement])} @ Static,
+            selectedNodePathRef  = Array#{(None: Option[List[Int32]])} @ Static
         }
 
     pub def takePendingProject(state: IdeState): Option[String] \ IO =
@@ -246,7 +265,8 @@ mod IdeUI {
         renderer.setBorderSelectionColor(new Color(55, 90, 140));
         tree.setCellRenderer(renderer);
 
-        // 選択ノードに対応する JsonElement を nodeJsonMap から引いて Inspector を更新する。
+        // 選択ノードに対応する JsonElement を nodeJsonMap から、子インデックス列を
+        // nodePathMap から引いて Inspector を更新 + selectedNodePathRef を保存する。
         // 取得は identityHashCode(node) ベース。シーン再読込で map がリセットされるため、
         // 古いノードに対する取得は自然と None になる。
         tree.addTreeSelectionListener(new TreeSelectionListener {
@@ -255,6 +275,8 @@ mod IdeUI {
                 if (Object.isNull(selected)) ()
                 else {
                     let id = System.identityHashCode(selected);
+                    let pathOpt = Map.get(id, Array.get(0, state#nodePathMapRef));
+                    Array.put(pathOpt, 0, state#selectedNodePathRef);
                     match Map.get(id, Array.get(0, state#nodeJsonMapRef)) {
                         case Some(json) => updateInspector(state, json)
                         case None       => ()
@@ -273,9 +295,10 @@ mod IdeUI {
     /// JsonObject の場合は "type" と "name" を取り出してラベルにし、"children" 配列を再帰展開する。
     /// JsonArray の場合は合成ルートの下に各要素の subtree を並べる。
     /// それ以外の形は "<invalid>" ノードに落とす（IDE 全体をクラッシュさせないため）。
-    /// 同時に nodeJsonMap に identityHashCode(node) → elem を登録し、Tree 選択時に
-    /// Inspector が JsonElement を引けるようにする。
-    def jsonToTreeNode(elem: Json.JsonElement, state: IdeState): DefaultMutableTreeNode \ IO =
+    /// 同時に nodeJsonMap (identityHashCode → JSON) と nodePathMap (identityHashCode → ルートからの子インデックス列)
+    /// を登録し、Tree 選択 / Inspector commit で参照できるようにする。
+    /// `path` は今ビルド中ノードのルートからの子インデックス列。子は path ++ [idx] で再帰する。
+    def jsonToTreeNode(elem: Json.JsonElement, path: List[Int32], state: IdeState): DefaultMutableTreeNode \ IO =
         let label = match elem {
             case JsonObject(map) =>
                 let nodeType = match Map.get("type", map) {
@@ -293,49 +316,137 @@ mod IdeUI {
         let node = new DefaultMutableTreeNode(label);
         let id = System.identityHashCode(node);
         Array.put(Map.insert(id, elem, Array.get(0, state#nodeJsonMapRef)), 0, state#nodeJsonMapRef);
+        Array.put(Map.insert(id, path, Array.get(0, state#nodePathMapRef)), 0, state#nodePathMapRef);
 
         match elem {
             case JsonObject(map) =>
                 match Map.get("children", map) {
                     case Some(JsonArray(children)) =>
-                        Vector.toList(children) |> List.forEach(child -> {
-                            let childNode = jsonToTreeNode(child, state);
-                            node.add(childNode)
+                        discard Vector.toList(children) |> List.mapWithIndex((idx, child) -> {
+                            let childNode = jsonToTreeNode(child, path ::: idx :: Nil, state);
+                            node.add(childNode);
+                            ()
                         })
                     case _ => ()
                 }
             case JsonArray(items) =>
-                Vector.toList(items) |> List.forEach(child -> {
-                    let childNode = jsonToTreeNode(child, state);
-                    node.add(childNode)
+                discard Vector.toList(items) |> List.mapWithIndex((idx, child) -> {
+                    let childNode = jsonToTreeNode(child, path ::: idx :: Nil, state);
+                    node.add(childNode);
+                    ()
                 })
             case _ => ()
         };
         node
 
     /// 絶対パスから scene.json を読み、木を再構築して state#sceneTreeModelRef の root を差し替える。
-    /// 同時に nodeJsonMap をリセットし、Inspector を placeholder に戻す。
+    /// 同時に nodeJsonMap / nodePathMap / currentSceneJson / currentScenePath / selectedNodePath を更新し、
+    /// Inspector を placeholder に戻す。
     /// EDT の listener から呼ばれるため、Fs.FileRead エフェクトはこの関数内で discharge する
     /// （listener のシグネチャは `Unit \ IO` 固定）。
     /// 読み込み・パース失敗時はクラッシュさせず、エラーラベルのみのツリーを表示する。
     def populateSceneTree(state: IdeState, absPath: String): Unit \ IO =
         Array.put(Map.empty(), 0, state#nodeJsonMapRef);
+        Array.put(Map.empty(), 0, state#nodePathMapRef);
+        Array.put(None, 0, state#selectedNodePathRef);
+        Array.put(Some(absPath), 0, state#currentScenePathRef);
         let readResult = run {
             Fs.ReadFile.read(absPath)
         } with Fs.ReadFile.runWithFileRead with Fs.FileRead.runWithIO;
-        let newRoot = match readResult {
-            case Err(e)   => new DefaultMutableTreeNode("(read error: ${e})")
+        let (newRoot, parsedJson) = match readResult {
+            case Err(e)   => (new DefaultMutableTreeNode("(read error: ${e})"), None)
             case Ok(text) =>
                 match Json.Parse.parse(String.trim(text)) {
-                    case None      => new DefaultMutableTreeNode("(JSON parse failed)")
-                    case Some(json) => jsonToTreeNode(json, state)
+                    case None       => (new DefaultMutableTreeNode("(JSON parse failed)"), None)
+                    case Some(json) => (jsonToTreeNode(json, Nil, state), Some(json))
                 }
         };
+        Array.put(parsedJson, 0, state#currentSceneJsonRef);
         match Array.get(0, state#sceneTreeModelRef) {
             case Some(model) => model.setRoot(newRoot)
             case None        => ()
         };
         resetInspectorPlaceholder(state)
+
+    // ========================================================================
+    // 編集 (commit) — Inspector の widget 変更を JSON に反映し、ファイルに書き戻し、
+    // pendingSceneRef をセットして canvas を即時 reload する。
+    // ========================================================================
+
+    /// 選択中ノードのプロパティ `key` を `newValue` で更新し、ファイルに書き戻して reload を予約する。
+    /// 必要な state (current scene path/json/selected path) のいずれかが None なら何もしない。
+    def commitEdit(state: IdeState, key: String, newValue: Json.JsonElement): Unit \ IO =
+        match (Array.get(0, state#currentSceneJsonRef),
+               Array.get(0, state#currentScenePathRef),
+               Array.get(0, state#selectedNodePathRef)) {
+            case (Some(root), Some(path), Some(nodePath)) =>
+                let newRoot = updateJsonAtPath(root, nodePath, key, newValue);
+                match writeSceneJson(path, newRoot) {
+                    case Ok(_) =>
+                        Array.put(Some(newRoot), 0, state#currentSceneJsonRef);
+                        // canvas に反映: 同じ path を pendingSceneRef にセットして renderLoop に拾わせる
+                        Array.put(Some(path), 0, state#pendingSceneRef)
+                    case Err(msg) =>
+                        println("[IdeUI] write failed: ${msg}")
+                }
+            case _ => ()
+        }
+
+    /// 指定 path (root からの子インデックス列) のノードのプロパティ `key` を `newValue` に置き換え、
+    /// 新しい root JsonElement を返す。path 途中で対応する children/index が無いときは root を返す。
+    def updateJsonAtPath(root: Json.JsonElement, path: List[Int32], key: String,
+                         newValue: Json.JsonElement): Json.JsonElement =
+        match path {
+            case Nil =>
+                match root {
+                    case JsonObject(map) => JsonObject(Map.insert(key, newValue, map))
+                    case other           => other
+                }
+            case idx :: rest =>
+                match root {
+                    case JsonObject(map) =>
+                        match Map.get("children", map) {
+                            case Some(JsonArray(children)) =>
+                                let childList = Vector.toList(children);
+                                match List.nth(idx, childList) {
+                                    case Some(child) =>
+                                        let updatedChild = updateJsonAtPath(child, rest, key, newValue);
+                                        let updated = replaceAt(idx, updatedChild, childList);
+                                        let newChildren = JsonArray(List.toVector(updated));
+                                        JsonObject(Map.insert("children", newChildren, map))
+                                    case None => root
+                                }
+                            case _ => root
+                        }
+                    case _ => root
+                }
+        }
+
+    /// 不変リストの idx 番目を newElem に差し替えた新リストを返す
+    def replaceAt(idx: Int32, newElem: a, list: List[a]): List[a] =
+        match list {
+            case Nil     => Nil
+            case x :: xs =>
+                if (idx == 0i32) newElem :: xs
+                else x :: replaceAt(idx - 1i32, newElem, xs)
+        }
+
+    /// root JsonElement を pretty-print して `path` に書き出す。
+    /// Fs.FileWrite を内部で discharge し、外側 effect は IO のみ。
+    def writeSceneJson(path: String, root: Json.JsonElement): Result[String, Unit] \ IO =
+        let pretty = Json.Write.toPrettyString(2, root);
+        let result = run {
+            Fs.WriteFile.write({str = pretty}, path)
+        } with Fs.WriteFile.runWithFileWrite with Fs.FileWrite.runWithIO;
+        match result {
+            case Ok(_)      => Ok(())
+            case Err(error) => Err("${error}")
+        }
+
+    /// テキストを BigDecimal に。Float64 経由で精度を割り切る (v1)。
+    def parseBd(s: String): Option[BigDecimal] =
+        Float64.fromString(String.trim(s))
+            |> Option.map(f -> unsafe IO { BigDecimal.valueOf(f).stripTrailingZeros() })
 
     // ========================================================================
     // Inspector パネル
@@ -401,7 +512,8 @@ mod IdeUI {
                         Map.foldLeftWithKey((_acc, key, value) -> {
                             if (key == "children" or key == "type" or key == "name") ()
                             else {
-                                let row = createPropertyRow(key, value);
+                                let commit = newVal -> commitEdit(state, key, newVal);
+                                let row = createPropertyRow(key, value, commit);
                                 content.add(row);
                                 ()
                             }
@@ -436,7 +548,9 @@ mod IdeUI {
         header
 
     /// 1 プロパティ行: 左にキー名ラベル、右にプロパティ型に応じた widget。
-    def createPropertyRow(key: String, value: Json.JsonElement): JPanel \ IO =
+    /// `commit` は widget が値変更を確定したときに「新しい JsonElement」を渡す callback。
+    def createPropertyRow(key: String, value: Json.JsonElement,
+                          commit: Json.JsonElement -> Unit \ IO): JPanel \ IO =
         let row = new JPanel(new BorderLayout(6, 0));
         row.setBackground(new Color(40, 40, 40));
         row.setBorder(BorderFactory.createEmptyBorder(3, 10, 3, 10));
@@ -448,36 +562,36 @@ mod IdeUI {
         label.setPreferredSize(new Dimension(96, 22));
         row.add(label, BorderLayout.WEST);
 
-        row.add(createPropertyWidget(key, value), BorderLayout.CENTER);
+        row.add(createPropertyWidget(key, value, commit), BorderLayout.CENTER);
         row
 
     /// プロパティ値の型 + キー名に基づいて適切な widget を返す。
-    /// 編集はまだ wire していないが、見た目だけ Godot 風に揃える。
-    ///   key=="alpha"/"opacity" + JsonNumber → JSlider(0..100)
-    ///   JsonBool                              → JCheckBox
-    ///   JsonString                            → JTextField
-    ///   JsonNumber                            → JTextField (数値整形)
-    ///   JsonArray [num, num]                  → X/Y 2 フィールド (Vec2)
-    ///   JsonArray (それ以外)                   → サマリラベル
-    ///   JsonObject                            → サマリラベル
-    def createPropertyWidget(key: String, value: Json.JsonElement): JPanel \ IO =
+    ///   key=="alpha"/"opacity" + JsonNumber → JSlider(0..100) — release 時に commit
+    ///   JsonBool                              → JCheckBox — toggle で即 commit
+    ///   JsonString                            → JTextField — Enter で commit (JsonString)
+    ///   JsonNumber                            → JTextField — Enter で parse → commit (JsonNumber)
+    ///   JsonArray [num, num]                  → X/Y 2 フィールド — どちらかの Enter で配列ごと commit
+    ///   JsonArray (それ以外)                   → 編集不可サマリラベル
+    ///   JsonObject                            → 編集不可サマリラベル
+    def createPropertyWidget(key: String, value: Json.JsonElement,
+                             commit: Json.JsonElement -> Unit \ IO): JPanel \ IO =
         let panel = new JPanel(new BorderLayout());
         panel.setBackground(new Color(40, 40, 40));
         if (isAlphaKey(key)) {
             match value {
-                case JsonNumber(bd) => panel.add(createAlphaSlider(bd), BorderLayout.CENTER)
+                case JsonNumber(bd) => panel.add(createAlphaSlider(bd, commit), BorderLayout.CENTER)
                 case _              => panel.add(createReadOnlyLabel("(not a number)"), BorderLayout.CENTER)
             }
         } else {
             match value {
-                case JsonBool(b)    => panel.add(createBoolCheck(b), BorderLayout.CENTER)
-                case JsonString(s)  => panel.add(createTextInput(s), BorderLayout.CENTER)
-                case JsonNumber(bd) => panel.add(createTextInput(formatBd(bd)), BorderLayout.CENTER)
+                case JsonBool(b)    => panel.add(createBoolCheck(b, commit), BorderLayout.CENTER)
+                case JsonString(s)  => panel.add(createStringInput(s, commit), BorderLayout.CENTER)
+                case JsonNumber(bd) => panel.add(createNumberInput(bd, commit), BorderLayout.CENTER)
                 case JsonArray(items) =>
                     let elems = Vector.toList(items);
                     match elems {
                         case JsonNumber(bdX) :: JsonNumber(bdY) :: Nil =>
-                            panel.add(createVec2Field(bdX, bdY), BorderLayout.CENTER)
+                            panel.add(createVec2Field(bdX, bdY, commit), BorderLayout.CENTER)
                         case _ =>
                             panel.add(createReadOnlyLabel("[Array: ${List.length(elems)} items]"), BorderLayout.CENTER)
                     }
@@ -493,11 +607,9 @@ mod IdeUI {
     def isAlphaKey(key: String): Bool =
         key == "alpha" or key == "opacity"
 
-    /// 0.0..1.0 の値を 0..100 の JSlider にし、横に現在値ラベルを並べる
-    def createAlphaSlider(bd: BigDecimal): JPanel \ IO =
-        let panel = new JPanel(new BorderLayout(6, 0));
-        panel.setBackground(new Color(40, 40, 40));
-
+    /// 0.0..1.0 の値を 0..100 の JSlider にし、横に現在値ラベルを並べる。
+    /// drag 中は label だけ更新し、release (not isAdjusting) で commit する。
+    def createAlphaSlider(bd: BigDecimal, commit: Json.JsonElement -> Unit \ IO): JPanel \ IO =
         let alpha = bd.doubleValue();
         let raw = Float64.tryToInt32(alpha * 100.0) |> Option.getWithDefault(100i32);
         let clamped = if (raw < 0i32) 0i32 else if (raw > 100i32) 100i32 else raw;
@@ -505,33 +617,73 @@ mod IdeUI {
         let slider = new JSlider(0, 100, clamped);
         slider.setBackground(new Color(40, 40, 40));
         slider.setForeground(Color.LIGHT_GRAY);
-        panel.add(slider, BorderLayout.CENTER);
 
         let valLabel = new JLabel(formatBd(bd));
         valLabel.setForeground(new Color(180, 180, 180));
         valLabel.setPreferredSize(new Dimension(40, 22));
+
+        slider.addChangeListener(new ChangeListener {
+            def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = {
+                let cur = slider.getValue();
+                let newAlpha = Int32.toFloat64(cur) / 100.0;
+                let newBd = unsafe IO { BigDecimal.valueOf(newAlpha).stripTrailingZeros() };
+                valLabel.setText(formatBd(newBd));
+                if (not slider.getValueIsAdjusting()) commit(JsonNumber(newBd))
+                else ()
+            }
+        });
+
+        let panel = new JPanel(new BorderLayout(6, 0));
+        panel.setBackground(new Color(40, 40, 40));
+        panel.add(slider, BorderLayout.CENTER);
         panel.add(valLabel, BorderLayout.EAST);
         panel
 
-    /// Bool プロパティ: ダーク背景のチェックボックス
-    def createBoolCheck(b: Bool): JCheckBox \ IO =
+    /// Bool プロパティ: ダーク背景のチェックボックス。toggle で即 commit。
+    def createBoolCheck(b: Bool, commit: Json.JsonElement -> Unit \ IO): JCheckBox \ IO =
         let cb = new JCheckBox();
         cb.setSelected(b);
         cb.setBackground(new Color(40, 40, 40));
         cb.setForeground(Color.LIGHT_GRAY);
+        cb.addActionListener(new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO =
+                commit(JsonBool(cb.isSelected()))
+        });
         cb
 
-    /// String/Number 共通の文字列入力フィールド
-    def createTextInput(text: String): JTextField \ IO =
-        let tf = new JTextField(text);
+    /// String プロパティ: Enter で commit (JsonString)。
+    def createStringInput(initial: String, commit: Json.JsonElement -> Unit \ IO): JTextField \ IO =
+        let tf = new JTextField(initial);
+        styleTextInput(tf);
+        tf.addActionListener(new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO =
+                commit(JsonString(tf.getText()))
+        });
+        tf
+
+    /// Number プロパティ: Enter で parse → commit (JsonNumber)。parse 失敗時は無視。
+    def createNumberInput(bd: BigDecimal, commit: Json.JsonElement -> Unit \ IO): JTextField \ IO =
+        let tf = new JTextField(formatBd(bd));
+        styleTextInput(tf);
+        tf.addActionListener(new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
+                match parseBd(tf.getText()) {
+                    case Some(newBd) => commit(JsonNumber(newBd))
+                    case None        => ()
+                }
+            }
+        });
+        tf
+
+    /// 共通: ダークテーマ用の JTextField スタイル
+    def styleTextInput(tf: JTextField): Unit \ IO =
         tf.setBackground(new Color(50, 50, 50));
         tf.setForeground(Color.LIGHT_GRAY);
         tf.setCaretColor(Color.WHITE);
         tf.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(new Color(70, 70, 70), 1),
             BorderFactory.createEmptyBorder(2, 4, 2, 4)
-        ));
-        tf
+        ))
 
     /// 編集 widget を出せない / 出す意味がない場合の薄い灰色ラベル
     def createReadOnlyLabel(text: String): JLabel \ IO =
@@ -540,22 +692,44 @@ mod IdeUI {
         lbl
 
     /// Vec2 プロパティ (pos/scale/size 等): Godot 風に X (赤系) と Y (緑系) の 2 列。
-    def createVec2Field(bdX: BigDecimal, bdY: BigDecimal): JPanel \ IO =
+    /// どちらか片方の Enter で「両方のフィールドの現在値」を読んで配列ごと commit する。
+    /// 片方が parse 失敗のときは何もしない。
+    def createVec2Field(bdX: BigDecimal, bdY: BigDecimal,
+                        commit: Json.JsonElement -> Unit \ IO): JPanel \ IO =
+        let xField = new JTextField(formatBd(bdX));
+        styleTextInput(xField);
+        let yField = new JTextField(formatBd(bdY));
+        styleTextInput(yField);
+
+        let commitVec2 = () -> {
+            match (parseBd(xField.getText()), parseBd(yField.getText())) {
+                case (Some(newX), Some(newY)) =>
+                    commit(JsonArray(Vector#{JsonNumber(newX), JsonNumber(newY)}))
+                case _ => ()
+            }
+        };
+        xField.addActionListener(new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = commitVec2()
+        });
+        yField.addActionListener(new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = commitVec2()
+        });
+
         let panel = new JPanel(new GridLayout(1, 2, 6, 0));
         panel.setBackground(new Color(40, 40, 40));
-        panel.add(createAxisField("X", new Color(220, 110, 110), bdX));
-        panel.add(createAxisField("Y", new Color(120, 200, 120), bdY));
+        panel.add(wrapAxis("X", new Color(220, 110, 110), xField));
+        panel.add(wrapAxis("Y", new Color(120, 200, 120), yField));
         panel
 
-    /// 1 軸ぶんの入力フィールド (ラベル + テキスト)
-    def createAxisField(axisName: String, axisColor: Color, bd: BigDecimal): JPanel \ IO =
+    /// 1 軸ぶんの「色付きラベル + テキストフィールド」ラッパ
+    def wrapAxis(axisName: String, axisColor: Color, field: JTextField): JPanel \ IO =
         let panel = new JPanel(new BorderLayout(4, 0));
         panel.setBackground(new Color(40, 40, 40));
         let lbl = new JLabel(axisName);
         lbl.setForeground(axisColor);
         lbl.setPreferredSize(new Dimension(14, 22));
         panel.add(lbl, BorderLayout.WEST);
-        panel.add(createTextInput(formatBd(bd)), BorderLayout.CENTER);
+        panel.add(field, BorderLayout.CENTER);
         panel
 
     /// BigDecimal を見やすい文字列に。"2.8E+2" のような表記を避けるため toPlainString。
