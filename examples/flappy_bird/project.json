@@ -1,0 +1,18 @@
+{
+  "title": "Flappy Bird (IDE Preview)",
+  "designWidth": 288,
+  "designHeight": 512,
+  "windowWidth": 576,
+  "windowHeight": 1024,
+  "clearColor": {"r": 0.392, "g": 0.584, "b": 0.929},
+  "maxDeltaTime": 0.05,
+  "textures": [
+    {"name": "label_flappy_bird", "path": "assets/sprites/label_flappy_bird.png", "hasAlpha": true},
+    {"name": "instructions", "path": "assets/sprites/instructions.png", "hasAlpha": true},
+    {"name": "button_play_normal", "path": "assets/sprites/button_play_normal.png", "hasAlpha": true},
+    {"name": "button_play_pressed", "path": "assets/sprites/button_play_pressed.png", "hasAlpha": true}
+  ],
+  "fonts": [],
+  "sounds": [],
+  "mainScene": "src/scenes/MenuScene.scene.json"
+}
