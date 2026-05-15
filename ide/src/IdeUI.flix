@@ -1093,6 +1093,10 @@ mod IdeUI {
             case "radius"       => Some({min = 0.0, max = 9999.0, step = 1.0})
             case "width"        => Some({min = 0.0, max = 9999.0, step = 1.0})
             case "height"       => Some({min = 0.0, max = 9999.0, step = 1.0})
+            // HBox/VBox の子間隔
+            case "separation"   => Some({min = 0.0, max = 999.0, step = 1.0})
+            // MarginContainer の余白 (Label2D / RichTextLabel の margin にも流用)
+            case "margin"       => Some({min = 0.0, max = 999.0, step = 1.0})
             case _ => None
         }
 
@@ -1113,6 +1117,18 @@ mod IdeUI {
         else if (key == "verticalAlignment")
             // engine の parseVerticalAlignment (SceneLoader.flix:959) に合わせる
             Some("top" :: "center" :: "bottom" :: "fill" :: Nil)
+        // Layout primitive (Panel / HBox / VBox / Margin / Center) は "type" を持たない
+        // JsonObject。shape.kind は createShapeKindRow が先取りするのでここには来ない
+        else if (key == "kind" and not Map.memberOf("type", siblingMap))
+            // engine の Layout.buildByKind (Layout.flix:99-141) が受理する文字列
+            Some("Panel" :: "HBoxContainer" :: "VBoxContainer" ::
+                  "MarginContainer" :: "CenterContainer" :: Nil)
+        // HBox/VBox の主軸方向 alignment。engine の MainAxisAlign に合わせる
+        else if (key == "alignment" and not Map.memberOf("type", siblingMap))
+            Some("Begin" :: "Center" :: "End" :: Nil)
+        // HBox/VBox の交差軸方向 alignment。CrossAxisAlign は Stretch も持つ
+        else if (key == "crossAxis" and not Map.memberOf("type", siblingMap))
+            Some("Begin" :: "Center" :: "End" :: "Stretch" :: Nil)
         else None
 
     /// 連続値スライダー: 0..1000 の Int32 段階を min..max にマップする。
