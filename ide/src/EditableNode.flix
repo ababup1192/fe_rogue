@@ -53,8 +53,9 @@ mod EditableNode {
         else {x = 0.0, y = 0.0}
 
     /// Label2D の表示矩形を計算する。
-    /// 横方向は HorizontalAlignment.Center のときのみ -width/2 オフセット、
-    /// それ以外は 0（Left/Right/Fill は本実装では Left と同じ扱い）。
+    /// horizontalAlignment / verticalAlignment は engine 側の `horizontalOffsetFor` /
+    /// `verticalOffsetFor` (Label2D モジュール) を流用し、描画とエディタ選択枠を一致させる。
+    /// 行高は (ascent + descent + lineGap) * scale × 行数。複数行 (`\n`) も考慮する
     pub def labelRectInfo(label: Label2D): {size = Vec2.Vec2, topLeftOffset = Vec2.Vec2} =
         let Label2D.Label2D(record) = label;
         let atlas = record#fontAtlas;
@@ -73,11 +74,10 @@ mod EditableNode {
         let width = List.foldLeft(Float64.max, 0.0, lineWidths);
         let lineHeight = (atlas#ascent + atlas#descent + atlas#lineGap) * scale;
         let height = lineHeight * Int32.toFloat64(Int32.max(1, List.length(lines)));
-        let topLeftOffset = match record#horizontalAlignment {
-            case HorizontalAlignment.Center => {x = -width / 2.0, y = 0.0}
-            case _                          => {x = 0.0, y = 0.0}
-        };
-        {size = {x = width, y = height}, topLeftOffset = topLeftOffset}
+        let xOff = Label2D.horizontalOffsetFor(record#horizontalAlignment, width);
+        let yOff = Label2D.verticalOffsetFor(record#verticalAlignment, height);
+        {size = ({x = width, y = height}: Vec2.Vec2),
+         topLeftOffset = ({x = xOff, y = yOff}: Vec2.Vec2)}
 
     /// ColorRect の表示矩形を計算する。position 原点 = 左上なので offset はゼロ。
     def colorRectRectInfo(rect: ColorRect):
