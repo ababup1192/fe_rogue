@@ -10,10 +10,6 @@ authors     = ["ababup1192 <ababup1192@gmail.com>"]
 # engine 経由で render_core + engine_core を transitive に取得する。
 # SceneLoader / Scene / GameEngine 型などを使うため engine 自体に依存する必要がある。
 "github:ababup1192/flix_game_engine" = { version = "0.1.0", security = "unrestricted" }
-# Overlay.addCollisionShapes を IDE プレビューでも再利用するため editor に依存する。
-# editor 全体 (selection / hover etc.) を引いてくるが、本 IDE で使うのは衝突形状の
-# 可視化のみ。重複実装より共有が望ましい
-"github:ababup1192/flix_engine_editor" = { version = "0.1.0", security = "unrestricted" }
 
 [mvn-dependencies]
 "com.formdev:flatlaf"   = "3.7.1"

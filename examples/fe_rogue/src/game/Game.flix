@@ -93,9 +93,7 @@ mod Game {
     /// `GameManager.buildPlayingScene` で組み立てて `gameLoop` に入る。
     /// **配線役** に徹するため、ここにゲームロジックは書かない。
     pub def start(): Unit \ {GameEngine.Game, GameEngine.Audio,
-                              Fs.FileRead, Fs.FileWrite,
-                              Chan, NonDet, IO, Fs.Glob, Fs.ModificationTime,
-                              Math.Random} =
+                              Fs.FileRead, IO, Math.Random} =
         region rc {
             // BoardQuery handler が現在のシーンを読むための窓口（毎フレーム gameLoop が更新）
             let sceneRef = Ref.fresh(rc, Scene.empty());
@@ -110,8 +108,7 @@ mod Game {
                 AudioStreamPlayer.play("bgm");
                 GameLogger.playerLog("T1 味方のターン");
                 gameLoop(sceneRef, scene)
-            } with Editor.withState(rc)
-              with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽
+            } with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽
               with AnimationPlayer.withScheduler(rc)  // 名前付きアニメ + イベントドレイン
               with Pacing.withState(rc)           // 演出の溜め (hold)
               with GameLogger.withLogger(rc)      // ログエントリは内部に隠蔽
@@ -129,8 +126,7 @@ mod Game {
     /// フレーム処理の実体は `GameManager.runFrame` に閉じている。
     def gameLoop(sceneRef: Ref[Scene[NodeTag], r], scene: Scene[NodeTag]):
                  Unit \ {GameEngine.Game, GameEngine.Audio,
-                         Fs.FileRead, Fs.FileWrite,
-                         Editor.EditorState, EditHistory.Rewind,
+                         Fs.FileRead,
                          BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
                          EnemyTurn.Queue, TurnPhase.State,

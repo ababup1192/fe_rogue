@@ -24,37 +24,19 @@ mod GameManager {
     // フレームエントリ — gameLoop が毎フレーム呼ぶ
     // ════════════════════════════════════════════════════════
 
-    /// gameLoop から呼ばれるフレーム 1 回ぶんの処理。tickFrame でゲーム更新を行い、
-    /// scene.json が変わっていれば handleHotReload でフルリビルドする。
+    /// gameLoop から呼ばれるフレーム 1 回ぶんの処理。フェーズで分岐して該当の
+    /// tickXxxFrame を呼ぶ。
     pub def runFrame(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
-                               Fs.FileRead, Fs.FileWrite,
-                               Editor.EditorState, EditHistory.Rewind,
-                               BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
-                               GameLogger.GameLogger,
-                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                               InitialSpawns.State, Pacing.State,
-                               Math.Random, IO} =
-        let dt = GameEngine.Game.getDeltaTime();
-        let updated = tickFrame(dt, scene);
-        if (Editor.pollReload()) handleHotReload() else updated
-
-    /// フレーム 1 回ぶんの処理。エディタ入力を最優先で処理し、エディタ ON 中は
-    /// ゲーム更新を止める。それ以外はフェーズで分岐して該当の tickXxxFrame を呼ぶ。
-    def tickFrame(dt: Duration.Duration, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
-                               Fs.FileRead, Fs.FileWrite,
-                               Editor.EditorState, EditHistory.Rewind,
                                BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                                InitialSpawns.State, Pacing.State} =
-        let afterEditor = Editor.handleInput(scene);
-        if (Editor.isOn()) afterEditor
-        else match TurnPhase.State.get() {
-            case TurnPhase.Phase.EnemyTurn      => tickEnemyTurnFrame(dt, afterEditor)
-            case TurnPhase.Phase.PlayerAutoMove => tickAutoMoveFrame(dt, afterEditor)
-            case _                               => tickInputFrame(dt, afterEditor)
+        let dt = GameEngine.Game.getDeltaTime();
+        match TurnPhase.State.get() {
+            case TurnPhase.Phase.EnemyTurn      => tickEnemyTurnFrame(dt, scene)
+            case TurnPhase.Phase.PlayerAutoMove => tickAutoMoveFrame(dt, scene)
+            case _                               => tickInputFrame(dt, scene)
         }
 
     /// 全フェーズに共通する描画準備の尾部（カメラ追従 → ログ反映 → スクロール）。
@@ -123,26 +105,6 @@ mod GameManager {
             |> dispatchAnimationEvents
             |> tickPlayerAttackHold
             |> commonEpilogue(dt)
-
-    /// scene.json 変更を検知したときの再構築。敵ターンキュー・選択・フェーズを
-    /// 初期状態に戻し、buildPlayingScene でフルリビルド → 初期 spawn を保存し直す。
-    /// プレイ中状態はリセットされる。
-    /// 旧シーンの playback は AnimationPlayer.tickAll の auto-stop が
-    /// 「owner ノードが scene から消えたら自動停止」してくれるので、ここでは
-    /// 明示的に cancelAll を呼ばない。
-    def handleHotReload(): Scene[NodeTag]
-            \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                InitialSpawns.State} =
-        EnemyTurn.Queue.replace(Nil);
-        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
-        SelectedPlayer.State.put(SelectedPlayer.cleared());
-        let rebuilt = buildPlayingScene();
-        InitialSpawns.State.put({
-            enemies = EnemyScene.snapshotSpawns(rebuilt),
-            players = PlayerScene.snapshotSpawns(rebuilt)
-        });
-        rebuilt
 
     // ════════════════════════════════════════════════════════
     // 入力ハンドラ — TurnRules.decide に判断を委譲し、結果を Scene に反映する

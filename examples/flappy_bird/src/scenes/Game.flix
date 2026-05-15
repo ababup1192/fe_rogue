@@ -314,16 +314,14 @@ mod Game {
     /// gameLoop が前フレームとの差分を検出して scene を組み立てる。
     /// Recycle ハンドラはノード自殺時のリサイクル要求を Math.Random + spawn 関数で
     /// 実体化する責務を担う（NodeRemovedHandler から Math.Random を切り離すため）。
-    /// エディタの Ref / EditorState ハンドラ / HotReload watcher は Editor.withState に一任する
     pub def start(fontAtlas: FontAtlas):
                   Unit \ {GameEngine.Game, GameEngine.Audio, Math.Random, Fs.FileRead,
-                          Fs.FileWrite, Chan, NonDet, IO, Fs.Glob, Fs.ModificationTime} =
+                          IO} =
         region rc {
             let phaseRef: Ref[GamePhase, rc] = Ref.fresh(rc, GamePhase.Menu);
             run {
                 gameLoop(fontAtlas, GamePhase.Menu, buildMenuScene(fontAtlas, 0))
-            } with Editor.withState(rc)
-              with handler BirdStateChanged {
+            } with handler BirdStateChanged {
                 def emit(newState, scene, k) = {
                     let nextScene = match newState {
                         case BirdState.Hit =>
@@ -363,43 +361,28 @@ mod Game {
                 GameOverScene.enterGameOver(fontAtlas, scene)
         }
 
-    /// メインループ: shouldClose 判定 → engineUpdate → phase 差分 / hot reload 検出 → render
+    /// メインループ: shouldClose 判定 → engineUpdate → phase 差分検出 → render
     /// previousPhase: 前フレーム末の phase（変化検出のため引き連れる）
-    ///
-    /// hot reload は Menu / Playing でのみ発火する。GameOver は overlay 方式で
-    /// 構築されるため、再構築すると重複表示になるためスキップする
     def gameLoop(fontAtlas: FontAtlas, previousPhase: GamePhase,
                  scene: Scene[NodeTag]):
                  Unit \ {GameEngine.Game, GameEngine.Audio, Math.Random, Fs.FileRead,
-                         Fs.FileWrite, BirdStateChanged, GamePhaseState, Recycle,
-                         Editor.EditorState, EditHistory.Rewind} =
+                         BirdStateChanged, GamePhaseState, Recycle} =
         if (GameEngine.Game.shouldClose() or
             GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
         else {
             let dt = GameEngine.Game.getDeltaTime();
-            // Editor.handleInput を先に走らせて F1 トグルを今フレームに反映させる。
-            // ON のときはゲーム更新（process / physics / 入力 / ボタン / 衝突）を全部止める
-            let sceneAfterEditor = Editor.handleInput(scene);
-            let updatedScene = if (Editor.isOn()) sceneAfterEditor
-                               else sceneAfterEditor
-                                   |> GameEngine.process(delta = dt, paused = false)
-                                   |> GameEngine.physicsProcess(delta = dt, paused = false,
-                                                                gravity = PhysicsStep.defaultGravity())
-                                   |> GameEngine.handleInput
-                                   |> GameEngine.handleButtons
-                                   |> GameEngine.handleCollisions;
+            let updatedScene = scene
+                |> GameEngine.process(delta = dt, paused = false)
+                |> GameEngine.physicsProcess(delta = dt, paused = false,
+                                             gravity = PhysicsStep.defaultGravity())
+                |> GameEngine.handleInput
+                |> GameEngine.handleButtons
+                |> GameEngine.handleCollisions;
             let currentPhase = GamePhaseState.get();
-            // hot reload: scene.json が更新されたら applyPhaseChange を再実行してシーンを組み直す。
-            // ただし GameOver は applyPhaseChange が enterGameOver で既存シーンに overlay を
-            // 重ねる方式なので、再実行すると overlay が二重・三重に積まれてしまう
-            // （Menu / Playing はフルリビルドなので何度実行しても破綻しない）。
-            // よって GameOver 中はリロード要求を握り潰す
-            let reloadRequested = Editor.pollReload() and currentPhase != GamePhase.GameOver;
-            let nextScene = if (currentPhase != previousPhase or reloadRequested)
+            let nextScene = if (currentPhase != previousPhase)
                                 applyPhaseChange(currentPhase, fontAtlas, updatedScene)
                             else updatedScene;
-            // エディタオーバーレイを合成して描画。オーバーレイは次フレームに引き継がない
-            GameEngine.render(Editor.applyOverlay(NodeTag.NoTag, nextScene));
+            GameEngine.render(nextScene);
             gameLoop(fontAtlas, currentPhase, nextScene)
         }
 }
