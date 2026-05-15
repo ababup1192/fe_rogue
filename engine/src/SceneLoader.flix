@@ -336,6 +336,8 @@ mod SceneLoader {
             case "Camera2D"         => buildCamera2D(tagParser, map)
             case "ColorRect"        => buildColorRect(tagParser, map)
             case "RichTextLabel"    => buildRichTextLabel(tagParser, fontAtlas, map)
+            case "Panel"            => buildPanel(tagParser, map)
+            case "ItemList"         => buildItemList(tagParser, fontAtlas, map)
             case unknown            =>
                 Err(JsonError(Root, Set#{"known node type (got: ${unknown})"}))
         }
@@ -1013,6 +1015,129 @@ mod SceneLoader {
 
     def setColorRectZIndex(z: Int32, rect: ColorRect): ColorRect =
         CanvasItem.setZIndex(z, rect)
+
+    /// `parseColor` のオプション版。指定キーが無ければ `None`。
+    /// Panel の borderColor のように、未指定なら描画なしを意図するケースで使う。
+    def parseColorOpt(key: String,
+                      map: Map[String, Json.JsonElement]): Result[Json.JsonError, Option[Color]] =
+        forM (
+            colorMapOpt <- (Json.FromJson.getAtKeyOpt(Root, key, map): Result[Json.JsonError, Option[Map[String, Json.JsonElement]]]);
+            colorOpt    <- match colorMapOpt {
+                case None    => (Ok(None): Result[Json.JsonError, Option[Color]])
+                case Some(m) => forM (
+                    r <- (Json.FromJson.getAtKey(Root, "r", m): Result[Json.JsonError, Float64]);
+                    g <- (Json.FromJson.getAtKey(Root, "g", m): Result[Json.JsonError, Float64]);
+                    b <- (Json.FromJson.getAtKey(Root, "b", m): Result[Json.JsonError, Float64])
+                ) yield Some(({
+                    r = Float64.truncateToFloat32(r),
+                    g = Float64.truncateToFloat32(g),
+                    b = Float64.truncateToFloat32(b)
+                }: Color))
+            }
+        ) yield colorOpt
+
+    def buildPanel(tagParser: Option[String] -> Result[Json.JsonError, t],
+                   map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
+        forM (
+            tag                <- parseTagField(tagParser, map);
+            posOpt             <- parseVec2Opt("pos", map);
+            sizeOpt            <- parseVec2Opt("size", map);
+            background         <- parseColor("background", map);
+            backgroundAlphaOpt <- (Json.FromJson.getAtKeyOpt(Root, "backgroundAlpha", map): Result[Json.JsonError, Option[Float64]]);
+            borderColorOpt     <- parseColorOpt("border", map);
+            borderAlphaOpt     <- (Json.FromJson.getAtKeyOpt(Root, "borderAlpha", map): Result[Json.JsonError, Option[Float64]]);
+            borderWidthOpt     <- (Json.FromJson.getAtKeyOpt(Root, "borderWidth", map): Result[Json.JsonError, Option[Int32]]);
+            visibleOpt         <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt          <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
+        ) yield {
+            let pos = Option.getWithDefault(Vec2.zero(), posOpt);
+            let size = Option.getWithDefault(Vec2.zero(), sizeOpt);
+            let panel = Panel.make(size, background)
+                |> Node2D.setPosition(pos)
+                |> applyOpt(backgroundAlphaOpt, setPanelBackgroundAlpha)
+                |> applyOpt(borderColorOpt, Panel.setBorderColor)
+                |> applyOpt(borderAlphaOpt, setPanelBorderAlpha)
+                |> applyOpt(borderWidthOpt, Panel.setBorderWidth)
+                |> applyOpt(visibleOpt, setPanelVisible)
+                |> applyOpt(zIndexOpt, setPanelZIndex);
+            EngineNode.PanelWithState(panel, tag)
+        }
+
+    def setPanelBackgroundAlpha(alpha: Float64, panel: Panel): Panel =
+        Panel.setBackgroundAlpha(Float64.truncateToFloat32(alpha), panel)
+
+    def setPanelBorderAlpha(alpha: Float64, panel: Panel): Panel =
+        Panel.setBorderAlpha(Float64.truncateToFloat32(alpha), panel)
+
+    def setPanelVisible(v: Bool, panel: Panel): Panel =
+        CanvasItem.setVisible(v, panel)
+
+    def setPanelZIndex(z: Int32, panel: Panel): Panel =
+        CanvasItem.setZIndex(z, panel)
+
+    /// scene.json の "items" 配列から ItemEntry のリストを組み立てる。
+    /// 各要素は `{"text": "...", "disabled": false}` の形式。disabled は省略可能。
+    def parseItemEntries(map: Map[String, Json.JsonElement]): Result[Json.JsonError, List[ItemEntry]] =
+        forM (
+            itemsJson <- (Json.FromJson.getAtKeyOpt(Root, "items", map): Result[Json.JsonError, Option[List[Map[String, Json.JsonElement]]]]);
+            entries   <- match itemsJson {
+                case None     => (Ok(Nil): Result[Json.JsonError, List[ItemEntry]])
+                case Some(ms) => Result.traverse(parseItemEntry, ms)
+            }
+        ) yield entries
+
+    def parseItemEntry(m: Map[String, Json.JsonElement]): Result[Json.JsonError, ItemEntry] =
+        forM (
+            text        <- (Json.FromJson.getAtKey(Root, "text", m): Result[Json.JsonError, String]);
+            disabledOpt <- (Json.FromJson.getAtKeyOpt(Root, "disabled", m): Result[Json.JsonError, Option[Bool]])
+        ) yield ({text = text, disabled = Option.getWithDefault(false, disabledOpt)}: ItemEntry)
+
+    def buildItemList(tagParser: Option[String] -> Result[Json.JsonError, t],
+                      fontAtlas: Option[FontAtlas],
+                      map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
+        match fontAtlas {
+            case None => Err(JsonError(Root, Set#{"FontAtlas (loadSceneWithFont required for ItemList)"}))
+            case Some(font) =>
+                forM (
+                    tag             <- parseTagField(tagParser, map);
+                    posOpt          <- parseVec2Opt("pos", map);
+                    sizeOpt         <- parseVec2Opt("size", map);
+                    fontSize        <- (Json.FromJson.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
+                    items           <- parseItemEntries(map);
+                    focusedOpt      <- (Json.FromJson.getAtKeyOpt(Root, "focused", map): Result[Json.JsonError, Option[Bool]]);
+                    cursorGlyphOpt  <- (Json.FromJson.getAtKeyOpt(Root, "cursorGlyph", map): Result[Json.JsonError, Option[String]]);
+                    wrapOpt         <- (Json.FromJson.getAtKeyOpt(Root, "wrap", map): Result[Json.JsonError, Option[Bool]]);
+                    itemHeightOpt   <- (Json.FromJson.getAtKeyOpt(Root, "itemHeight", map): Result[Json.JsonError, Option[Float64]]);
+                    cursorOffsetOpt <- (Json.FromJson.getAtKeyOpt(Root, "cursorOffsetX", map): Result[Json.JsonError, Option[Float64]]);
+                    cursorColorOpt  <- parseColorOpt("cursorColor", map);
+                    textColorOpt    <- parseColorOpt("textColor", map);
+                    disabledColorOpt <- parseColorOpt("disabledColor", map);
+                    visibleOpt      <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+                    zIndexOpt       <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
+                ) yield {
+                    let pos = Option.getWithDefault(Vec2.zero(), posOpt);
+                    let size = Option.getWithDefault(Vec2.zero(), sizeOpt);
+                    let list = ItemList.make(items, font, fontSize, size)
+                        |> Node2D.setPosition(pos)
+                        |> applyOpt(focusedOpt, ItemList.setFocused)
+                        |> applyOpt(cursorGlyphOpt, ItemList.setCursorGlyph)
+                        |> applyOpt(wrapOpt, ItemList.setWrap)
+                        |> applyOpt(itemHeightOpt, ItemList.setItemHeight)
+                        |> applyOpt(cursorOffsetOpt, ItemList.setCursorOffsetX)
+                        |> applyOpt(cursorColorOpt, ItemList.setCursorColor)
+                        |> applyOpt(textColorOpt, ItemList.setTextColor)
+                        |> applyOpt(disabledColorOpt, ItemList.setDisabledColor)
+                        |> applyOpt(visibleOpt, setItemListVisible)
+                        |> applyOpt(zIndexOpt, setItemListZIndex);
+                    EngineNode.ItemListWithState(list, tag)
+                }
+        }
+
+    def setItemListVisible(v: Bool, list: ItemList): ItemList =
+        CanvasItem.setVisible(v, list)
+
+    def setItemListZIndex(z: Int32, list: ItemList): ItemList =
+        CanvasItem.setZIndex(z, list)
 
     def buildRichTextLabel(tagParser: Option[String] -> Result[Json.JsonError, t],
                            fontAtlas: Option[FontAtlas],

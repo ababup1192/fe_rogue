@@ -245,6 +245,13 @@ mod GameEngine {
             with ButtonEvent.ButtonHandler[s] =
         ButtonEvent.handleButtons(scene)
 
+    /// ItemList のキー入力差分を検出し MenuHandler で応答する。
+    /// focused = true な ItemList が ↑↓/Enter/Escape を受けて、確定/キャンセル時に
+    /// ハンドラを発火する。`handleInput` と `handleButtons` の間に挟む想定。
+    pub def handleMenus(scene: Scene[s]): Scene[s] \ {Game, MenuEvent.MenuHandler.Aef[s]}
+            with MenuEvent.MenuHandler[s] =
+        MenuEvent.handleMenus(scene)
+
     /// キー入力の差分を検出し InputHandler で応答する
     /// 前フレームとのキー状態差分から押下/離脱イベントを合成する
     pub def handleInput(scene: Scene[s]): Scene[s] \ {Game, InputEvent.InputHandler.Aef[s]}
