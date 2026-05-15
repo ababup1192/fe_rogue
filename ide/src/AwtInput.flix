@@ -119,13 +119,29 @@ mod AwtInput {
         else ()
 
     /// 現在のマウス位置を design 座標で取得する。
-    /// canvas の現サイズで割って design サイズを掛けるシンプルマッピング
+    /// 描画は RenderFrame.calcViewport で letterbox/pillarbox されているので、
+    /// マウス座標も同じ viewport で逆変換しないと「ハンドルの見た目」と「クリックの当たり位置」
+    /// がズレる。canvas 全体ではなく viewport 内に入っている部分だけが design 領域に対応する。
+    /// canvas の AWT 座標 (Y は下向き) は GL の framebuffer 座標 (Y は上向き) と上下が
+    /// 反転しているので、viewport の Y オフセットは canvas 高さから引いて求める
     pub def readMousePosition(refs: InputRefs, canvas: AWTGLCanvas, design: DesignSize): Vec2.Vec2 \ IO =
         let (px, py) = Array.get(0, refs#mousePxRef);
-        let canvasW = Int32.toFloat64(canvas.getWidth());
-        let canvasH = Int32.toFloat64(canvas.getHeight());
-        {x = AwtKeyMap.canvasToDesign({cursorPx = px, canvasPx = canvasW, designSize = design#width}),
-         y = AwtKeyMap.canvasToDesign({cursorPx = py, canvasPx = canvasH, designSize = design#height})}
+        let canvasW = canvas.getWidth();
+        let canvasH = canvas.getHeight();
+        if (canvasW <= 0i32 or canvasH <= 0i32) Vec2.zero()
+        else {
+            let (vpX, vpY, vpW, vpH) =
+                RenderFrame.calcViewport(canvasW, canvasH, design#width, design#height);
+            // GL viewport の Y 原点は下端。AWT の Y 原点は上端。viewport 上辺の AWT-y は
+            // canvasH - (vpY + vpH)
+            let awtVpTop = Int32.toFloat64(canvasH - (vpY + vpH));
+            let vpMouseX = px - Int32.toFloat64(vpX);
+            let vpMouseY = py - awtVpTop;
+            let vpFW = Int32.toFloat64(vpW);
+            let vpFH = Int32.toFloat64(vpH);
+            {x = if (vpFW == 0.0) 0.0 else vpMouseX / vpFW * design#width,
+             y = if (vpFH == 0.0) 0.0 else vpMouseY / vpFH * design#height}
+        }
 
     /// 指定マウスボタンが現在押されているかを返す
     pub def readMouseButtonPressed(refs: InputRefs, button: GameEngine.MouseButton): Bool \ IO =

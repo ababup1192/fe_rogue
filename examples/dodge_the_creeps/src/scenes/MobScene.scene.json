@@ -22,7 +22,8 @@
         }
       },
       "animation": "walk",
-      "autoplay": "walk"
+      "autoplay": "walk",
+      "rotation": 0
     }
   ]
 }
