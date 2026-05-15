@@ -31,44 +31,38 @@ mod PlayerScene {
     // ────────────────────────────────────────────────────────
 
     /// プレイヤー固有の状態。
-    /// id: 0..partySize-1 の連番。"Player_<id>" ノード名と一致する。
+    /// id: 0..N-1 の連番（N は `pools.party` の長さ）。"Player_<id>" ノード名と一致する。
     /// gridPos: 盤面上の駒の論理位置。moveTo で即座に更新される。
-    /// moveTiles: 1 ターンに移動できるマス数（FE の「移動力」相当）。
-    /// hp: 残り体力。0 になるとゲームオーバー（同マップ初期化）。
+    /// moveTiles: 1 ターンに移動できるマス数（FE の「移動力」相当）。`resource` から初期値を継承。
+    /// hp: 残り体力。0 になるとゲームオーバー。`resource#hp` が初期値。
     /// waited: 行動済みフラグ。true なら灰色表示・選択不可。
     /// attackTargetId: 体当たり攻撃モーション中なら Some(被攻撃者 id)。
     ///   `attack_lunge` アニメーションの method 発火 / finished 時に GameManager が
     ///   この値を読んでダメージ適用 / commit を行う。アニメ完了で None に戻す。
+    /// resource: スポーン時のユニット定義テンプレート（UnitResource）。
+    ///   ゲームオーバー時の復元（`respawnFromInitial`）で同じユニット種別で再生するために保持。
     pub type alias Data = {
         id             = Int32,
         gridPos        = {x = Int32, y = Int32},
         moveTiles      = Int32,
         hp             = Int32,
         waited         = Bool,
-        attackTargetId = Option[Int32]
+        attackTargetId = Option[Int32],
+        resource       = UnitCatalog.UnitResource
     }
 
-    /// スポーン時の中間表現。`add` で配置するセルの id/gridPos を持つ。
+    /// スポーン時の中間表現。`add` で配置するセルの id/gridPos に加え、
+    /// どのユニット定義（UnitResource）でセットアップするかも持つ。
     /// 初期 spawn のスナップショット（ゲームオーバー時の復元用）にも使う。
     pub type alias Spawn = {
-        id      = Int32,
-        gridPos = {x = Int32, y = Int32}
+        id       = Int32,
+        gridPos  = {x = Int32, y = Int32},
+        resource = UnitCatalog.UnitResource
     }
 
     // ────────────────────────────────────────────────────────
     // (B) 定数
     // ────────────────────────────────────────────────────────
-
-    /// プレイヤースプライトのテクスチャ名（Main.flix の textureManifest と整合）
-    def textureName(): String = "character_sheet"
-
-    /// `character_sheet_grid_16.png` のグリッド分割（5 列 × 2 行）。
-    def hframes(): Int32 = 5
-    def vframes(): Int32 = 2
-
-    /// 各プレイヤーの sprite frame。視覚的に区別できるよう id ごとに変える。
-    /// (id 0 = frame 0, id 1 = frame 1, id 2 = frame 2)
-    def spriteFrameFor(id: Int32): Int32 = id
 
     /// LDTK タイルサイズ（ピクセル）。MapScene と揃える。
     def tileSize(): Float64 = 16.0
@@ -79,15 +73,6 @@ mod PlayerScene {
     /// 1 マス分のスライド時間（≈ 0.133 秒）
     def slideDuration(): Duration.Duration =
         Duration.frames(count = 16, fps = 120)
-
-    /// プレイヤー初期の移動力（マス）
-    pub def defaultMoveTiles(): Int32 = 5
-
-    /// プレイヤー初期 HP
-    pub def defaultHp(): Int32 = 10
-
-    /// パーティ人数。spawn と reset で参照する。
-    pub def partySize(): Int32 = 3
 
     /// `waited = true` 時の sprite modulate（薄い灰色）。
     /// CanvasItem.setModulate で sprite の RGB を乗算する。
@@ -113,16 +98,24 @@ mod PlayerScene {
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
-    /// MapScene が登録済みの scene にプレイヤー全員 (`partySize()` 名) を追加する。
+    /// MapScene が登録済みの scene にプレイヤー全員（`party` プールの全員）を追加する。
     /// 0 番目は MapScene が記録した spawnGrid に、残りはその近傍の床セルに配置する。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
+    /// 各プレイヤーには `party` プールのリスト順で `UnitResource` を割り当てる。
+    pub def add(catalog: UnitCatalog.UnitCatalog, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let party     = UnitCatalog.pool("party", catalog);
+        let n         = List.length(party);
         let spawnGrid = MapScene.getSpawnGrid(scene);
         let layer     = MapScene.getMapLayer(scene);
-        let cells     = pickPlayerSpawns(spawnGrid, partySize(), layer);
-        // cells が partySize に満たない場合（極端に狭い anchor）は重複セルを許容して埋める
-        let padded    = padCells(cells, spawnGrid, partySize());
+        let cells     = pickPlayerSpawns(spawnGrid, n, layer);
+        // cells が n に満たない場合（極端に狭い anchor）は重複セルを許容して埋める
+        let padded    = padCells(cells, spawnGrid, n);
         let spawns: List[Spawn] = padded
-            |> List.mapWithIndex(id -> c -> ({id = id, gridPos = c}: Spawn));
+            |> List.mapWithIndex(id -> c ->
+                let res = match List.nth(id, party) {
+                    case Some(r) => r
+                    case None    => bug!("PlayerScene.add: party index ${id} out of range")
+                };
+                ({id = id, gridPos = c, resource = res}: Spawn));
         List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), scene, spawns)
 
     /// spawnGrid を中心に N 個の床セルを近い順で選ぶ。`isFloor` で篩い、
@@ -164,6 +157,7 @@ mod PlayerScene {
             (Nil: List[{x = Int32, y = Int32}]), cells)
 
     /// プレイヤー 1 体ぶんの Marker2D + 子 Sprite2D を scene に追加する。
+    /// ステータス・テクスチャ・フレームは `sp#resource`（UnitResource）から取る。
     def addOnePlayer(sp: Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
         let s = tileSize();
         let pos: Vec2.Vec2 = {
@@ -171,18 +165,20 @@ mod PlayerScene {
             y = Int32.toFloat64(sp#gridPos#y) * s + s / 2.0
         };
         let marker = Marker2D.make(pos);
+        let res    = sp#resource;
         let data: Data = {
             id             = sp#id,
             gridPos        = sp#gridPos,
-            moveTiles      = defaultMoveTiles(),
-            hp             = defaultHp(),
+            moveTiles      = res#moveTiles,
+            hp             = res#hp,
             waited         = false,
-            attackTargetId = None
+            attackTargetId = None,
+            resource       = res
         };
-        let sprite = Sprite2D.make(textureName(), Vec2.zero(), Vec2.one())
-                        |> Sprite2D.setHframes(hframes())
-                        |> Sprite2D.setVframes(vframes())
-                        |> Sprite2D.setFrame(spriteFrameFor(sp#id))
+        let sprite = Sprite2D.make(res#sprite#texture, Vec2.zero(), Vec2.one())
+                        |> Sprite2D.setHframes(res#sprite#hframes)
+                        |> Sprite2D.setVframes(res#sprite#vframes)
+                        |> Sprite2D.setFrame(res#sprite#frame)
                         |> CanvasItem.setZIndex(spriteZIndex());
         scene
             |> Scene.addChildAt(MapScene.worldPath(), playerName(sp#id),
@@ -345,11 +341,12 @@ mod PlayerScene {
     // (F) ゲームオーバー時のリセット
     // ────────────────────────────────────────────────────────
 
-    /// 現在の全プレイヤーの spawn 情報（id / gridPos）を抽出する。
+    /// 現在の全プレイヤーの spawn 情報（id / gridPos / resource）を抽出する。
     /// `Game.start` で初回 build 直後に呼んで保存する。
+    /// `resource` は Data から取り戻す（再 catalog ロード不要で同じユニット定義で復元できる）。
     pub def snapshotSpawns(scene: Scene[NodeTag]): List[Spawn] =
         getAll(scene)
-            |> List.map(d -> ({id = d#id, gridPos = d#gridPos}: Spawn))
+            |> List.map(d -> ({id = d#id, gridPos = d#gridPos, resource = d#resource}: Spawn))
 
     /// 既存のプレイヤーを全て scene から取り除き、`spawns` から再構築する。
     /// HP / waited / gridPos を初期値で生成する。
@@ -472,7 +469,7 @@ mod PlayerScene {
                     case None         => scene
                     case Some(enemyId) =>
                         AudioStreamPlayer.play("damage");
-                        applyDamageToEnemy(enemyId, scene)
+                        applyDamageToEnemy(playerId, d, enemyId, scene)
                 }
         }
 
@@ -494,19 +491,25 @@ mod PlayerScene {
             case _ => None
         }
 
-    /// 敵 id にダメージ 1 を与える。HP <= 0 で死亡演出を開始（bonus は death_blink
-    /// 完了時に GameManager が再生する）。
-    /// ログは「敵N にダメージ 残りHPM」を重なりタイミングで残す。
-    /// HP の減算と死亡判定は `Combat.damage` に集約してある。
-    def applyDamageToEnemy(enemyId: Int32, scene: Scene[NodeTag]):
+    /// 敵 id にダメージを与える。`Combat.attackDamage(攻撃者#attack, 防御者#defense)` で
+    /// 素ダメージを算出し、`Combat.damage` で HP を減算 + 死亡判定。
+    /// HP <= 0 で死亡演出を開始（bonus は death_blink 完了時に GameManager が再生）。
+    /// ログはスペック準拠で「P{N} → 敵{M} に Xダメージ」 / 撃破時「P{N} → 敵{M} を撃破」。
+    /// 命中ロールは v1 では行わず常に命中（hit% は forecast でプレビュー表示するための値）。
+    def applyDamageToEnemy(playerId: Int32, player: Data, enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger} =
         match EnemyScene.get(enemyId, scene) {
             case None    => scene
             case Some(enemy) =>
-                let result = Combat.damage(hp = enemy#hp, amount = 1);
-                GameLogger.playerLog("敵${enemyId}にダメージ 残りHP${result#newHp}");
-                if (result#isDead) EnemyScene.startDeathAnimation(enemyId, scene)
-                else EnemyScene.mapEnemy(enemyId,
-                    enemyData -> {hp = result#newHp | enemyData}, scene)
+                let dmg    = Combat.attackDamage(player#resource#attack, enemy#resource#defense);
+                let result = Combat.damage(hp = enemy#hp, amount = dmg);
+                if (result#isDead) {
+                    GameLogger.playerLog("P${playerId} → 敵${enemyId} を撃破");
+                    EnemyScene.startDeathAnimation(enemyId, scene)
+                } else {
+                    GameLogger.playerLog("P${playerId} → 敵${enemyId} に ${dmg}ダメージ");
+                    EnemyScene.mapEnemy(enemyId,
+                        enemyData -> {hp = result#newHp | enemyData}, scene)
+                }
         }
 }

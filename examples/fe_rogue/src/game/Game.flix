@@ -97,8 +97,21 @@ mod Game {
         region rc {
             // BoardQuery handler が現在のシーンを読むための窓口（毎フレーム gameLoop が更新）
             let sceneRef = Ref.fresh(rc, Scene.empty());
+            // ユニットカタログをロード + schema 整合性検査（Z 戦略の安全網）。
+            // 各段階で失敗内容を panic に出して原因を即可視化する。
+            let catalog = UnitCatalog.load("assets/units/units.json");
+            let schema = match Resource.loadSchemaDiagnostic("assets/units/_schema.json") {
+                case Ok(s)    => s
+                case Err(msg) => bug!("Resource.loadSchema failed :: ${msg}")
+            };
+            // checkConsistency は純粋なので let _ で式を明示的に消化する
+            // （そうしないと "Useless expression: pure and discarded" になる）
+            let _ = match Resource.checkConsistency(UnitCatalog.expectedUnitFields(), schema) {
+                case Ok(_)    => ()
+                case Err(msg) => bug!("UnitResource schema/type mismatch: ${msg}")
+            };
             run {
-                let scene = GameManager.buildPlayingScene();
+                let scene = GameManager.buildPlayingScene(catalog);
                 // 初回 build 時の spawn を保存。ゲームオーバー時に同じ配置で復活させる
                 InitialSpawns.State.put({
                     enemies = EnemyScene.snapshotSpawns(scene),

@@ -26,11 +26,13 @@ mod EnemyScene {
     /// 敵 1 体ぶんの状態。
     /// `alerted` はプレイヤーと同モジュールに入った瞬間 true になり、以降永続。
     /// `homeModuleIdx` はスポーンしたときの部屋 idx（検知判定の補助情報）。
-    /// `moveTiles` は 1 ターンに進めるマス数（FE の「移動力」相当）。
+    /// `moveTiles` は 1 ターンに進めるマス数（FE の「移動力」相当、`resource` から初期値継承）。
     /// EnemyAI が BFS パスからこの値ぶんだけ進めて 1 マスずつ Tween する。
     /// `hp` は残り体力。0 になると `isDying = true` がセットされ、`death_blink`
     /// アニメーションが再生される。アニメ終了で GameManager がノードを scene から削除する。
     /// `isDying = true` の敵は `EnemyTurn.Queue` / `findIdAt` などから除外され、行動しない。
+    /// `resource` はスポーン時のユニット定義テンプレート（UnitResource）。
+    /// ゲームオーバー時の `respawnFromInitial` で同じ敵種別で再生するために保持。
     pub type alias Data = {
         id             = Int32,
         gridPos        = {x = Int32, y = Int32},
@@ -39,29 +41,22 @@ mod EnemyScene {
         moveTiles      = Int32,
         hp             = Int32,
         isDying        = Bool,
-        attackTargetId = Option[Int32]
+        attackTargetId = Option[Int32],
+        resource       = UnitCatalog.UnitResource
     }
 
     /// スポーン時の中間表現。`add` 内のループで部屋ごとに積み上げ、最後に Marker2D へ展開する。
-    /// `respawnFromInitial` で「ゲームオーバー時に同じ位置に敵を出し直す」のにも使うため pub。
+    /// `respawnFromInitial` で「ゲームオーバー時に同じ位置・同じ種別の敵を出し直す」のにも使うため pub。
     pub type alias Spawn = {
         id        = Int32,
         gridPos   = {x = Int32, y = Int32},
-        moduleIdx = Int32
+        moduleIdx = Int32,
+        resource  = UnitCatalog.UnitResource
     }
 
     // ────────────────────────────────────────────────────────
     // (B) 定数
     // ────────────────────────────────────────────────────────
-
-    /// 敵スプライトのテクスチャ（Main.flix の textureManifest と整合）
-    def textureName(): String = "character_sheet"
-
-    /// `character_sheet_grid_16.png` のグリッド分割（5 列 × 2 行）。
-    /// PlayerScene.scene.json と同じ値で、上段一番右 = frame index 4。
-    def hframes(): Int32 = 5
-    def vframes(): Int32 = 2
-    def spriteFrame(): Int32 = 4
 
     /// LDTK タイルサイズ（ピクセル）。MapScene と揃える。
     def tileSize(): Float64 = 16.0
@@ -71,12 +66,6 @@ mod EnemyScene {
 
     /// 1 部屋あたりのスポーン上限（実数は 0..maxPerRoom inclusive のランダム）。
     def maxPerRoom(): Int32 = 2
-
-    /// 敵初期の移動力（マス）。`Data#moveTiles` の初期値として使う。
-    pub def defaultMoveTiles(): Int32 = 3
-
-    /// 敵初期 HP。スポーン時とリセット時の `Data#hp` 初期値。
-    pub def defaultHp(): Int32 = 3
 
     /// 1 マス分のスライド時間。Player と同じ感覚で見えるよう揃える。
     def slideDuration(): Duration.Duration =
@@ -133,9 +122,11 @@ mod EnemyScene {
     // ────────────────────────────────────────────────────────
 
     /// MapScene + PlayerScene が登録済みの scene に敵を追加する。
-    /// 各部屋について 0..maxPerRoom 体のスポーン位置を決め、それぞれを
-    /// Marker2D + 子 Sprite2D として登録する。`Math.Random` を使うのでこの effect が必要。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random} =
+    /// 各部屋について 0..maxPerRoom 体のスポーン位置を決め、それぞれに
+    /// `enemyTier1` プールからランダム抽選した UnitResource を割り当てる。
+    /// `Math.Random` を使うのでこの effect が必要。
+    pub def add(catalog: UnitCatalog.UnitCatalog, scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random} =
+        let pool        = UnitCatalog.pool("enemyTier1", catalog);
         let layer       = MapScene.getMapLayer(scene);
         let placements  = MapScene.getPlacements(scene);
         let roomCount   = MapScene.getRoomCount(scene);
@@ -145,11 +136,11 @@ mod EnemyScene {
         let rooms = List.filter(p ->
             p#idx >= 1 and p#idx < roomCount, placements);
         // 部屋を順に走査し、(nextId, takenCells, spawns) を畳み込む。
-        // pickCellsInRoom が `Math.Random` を持つので畳み込み全体も `Math.Random`。
+        // pickCellsInRoom と pool 抽選が `Math.Random` を持つので畳み込み全体も `Math.Random`。
         let initial: (Int32, List[{x = Int32, y = Int32}], List[Spawn]) =
             (0, playerCells, Nil);
         let (_, _, accSpawns) = List.foldLeft(state -> p ->
-            spawnInRoom(layer, p, randomCountUpTo(maxPerRoom()), state),
+            spawnInRoom(layer, p, randomCountUpTo(maxPerRoom()), pool, state),
             initial, rooms);
         // accSpawns は逆順（cons で積んだ）なので reverse して id 昇順に揃える
         let spawns = List.reverse(accSpawns);
@@ -166,9 +157,11 @@ mod EnemyScene {
     /// 部屋 1 つから `count` 個のスポーンセルを選んで state に積む。
     /// state = (次に振る id, スポーン済みセル累積, spawn list 累積)。
     /// 候補不足のときは取れる分だけ積んで打ち切る。
+    /// 各セルにつき `pool` からランダム 1 種を引いて UnitResource を割り当てる。
     def spawnInRoom(layer: TileMapLayer,
                      p: DungeonComposer.ModulePlacement,
                      count: Int32,
+                     pool: List[UnitCatalog.UnitResource],
                      state: (Int32, List[{x = Int32, y = Int32}], List[Spawn])):
                     (Int32, List[{x = Int32, y = Int32}], List[Spawn]) \ Math.Random =
         if (count <= 0) state
@@ -179,8 +172,12 @@ mod EnemyScene {
             match RandomUtil.pick(candidates) {
                 case None       => state   // 候補ゼロで打ち切り
                 case Some(cell) =>
-                    let entry: Spawn = { id = nextId, gridPos = cell, moduleIdx = p#idx };
-                    spawnInRoom(layer, p, count - 1,
+                    let res = match RandomUtil.pick(pool) {
+                        case Some(r) => r
+                        case None    => bug!("EnemyScene.spawnInRoom: pool 'enemyTier1' is empty")
+                    };
+                    let entry: Spawn = { id = nextId, gridPos = cell, moduleIdx = p#idx, resource = res };
+                    spawnInRoom(layer, p, count - 1, pool,
                                  (nextId + 1, cell :: taken, entry :: list))
             }
 
@@ -202,6 +199,7 @@ mod EnemyScene {
         List.exists(t -> t#x == c#x and t#y == c#y, taken)
 
     /// 1 体ぶんの Marker2D + 子 Sprite2D を scene に追加する。
+    /// ステータス・テクスチャ・フレームは `sp#resource`（UnitResource）から取る。
     def addOneEnemy(sp: Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
         let s = tileSize();
         let pos: Vec2.Vec2 = {
@@ -209,20 +207,22 @@ mod EnemyScene {
             y = Int32.toFloat64(sp#gridPos#y) * s + s / 2.0
         };
         let marker = Marker2D.make(pos);
+        let res    = sp#resource;
         let data: Data = {
             id             = sp#id,
             gridPos        = sp#gridPos,
             alerted        = false,
             homeModuleIdx  = sp#moduleIdx,
-            moveTiles      = defaultMoveTiles(),
-            hp             = defaultHp(),
+            moveTiles      = res#moveTiles,
+            hp             = res#hp,
             isDying        = false,
-            attackTargetId = None
+            attackTargetId = None,
+            resource       = res
         };
-        let sprite = Sprite2D.make(textureName(), Vec2.zero(), Vec2.one())
-                        |> Sprite2D.setHframes(hframes())
-                        |> Sprite2D.setVframes(vframes())
-                        |> Sprite2D.setFrame(spriteFrame())
+        let sprite = Sprite2D.make(res#sprite#texture, Vec2.zero(), Vec2.one())
+                        |> Sprite2D.setHframes(res#sprite#hframes)
+                        |> Sprite2D.setVframes(res#sprite#vframes)
+                        |> Sprite2D.setFrame(res#sprite#frame)
                         |> CanvasItem.setZIndex(spriteZIndex());
         scene
             |> Scene.addChildAt(MapScene.worldPath(), enemyName(sp#id),
@@ -317,13 +317,13 @@ mod EnemyScene {
     // (F) 初期 spawn のスナップショットと再配置（ゲームオーバー時のリセット）
     // ────────────────────────────────────────────────────────
 
-    /// 現在 scene に居る全敵の `Spawn` 情報（id / gridPos / homeModuleIdx）を抽出する。
+    /// 現在 scene に居る全敵の `Spawn` 情報（id / gridPos / homeModuleIdx / resource）を抽出する。
     /// `Game.start` で初回 buildPlayingScene 直後に呼んで保存し、ゲームオーバー時に
-    /// `respawnFromInitial` で再配置する。
+    /// `respawnFromInitial` で同じ位置・同じ敵種別で再配置する。
     pub def snapshotSpawns(scene: Scene[NodeTag]): List[Spawn] =
         getAll(scene)
             |> List.map(d ->
-                ({id = d#id, gridPos = d#gridPos, moduleIdx = d#homeModuleIdx}: Spawn))
+                ({id = d#id, gridPos = d#gridPos, moduleIdx = d#homeModuleIdx, resource = d#resource}: Spawn))
 
     /// 既存の敵を全て scene から取り除き、`spawns` から再構築する。
     /// 各敵は `addOneEnemy` を使って HP・alerted・dying を初期値で生成する。
@@ -372,7 +372,7 @@ mod EnemyScene {
                     case None             => (scene, Nil)
                     case Some(targetPlayerId) =>
                         AudioStreamPlayer.play("damage");
-                        applyDamageToPlayer(enemyId, targetPlayerId, scene)
+                        applyDamageToPlayer(enemyId, d, targetPlayerId, scene)
                 }
         }
 
@@ -381,18 +381,23 @@ mod EnemyScene {
                                scene: Scene[NodeTag]): Scene[NodeTag] =
         mapEnemy(enemyId, d -> {attackTargetId = None | d}, scene)
 
-    /// プレイヤー targetId に 1 ダメージ。HP=0 なら killedIds に追加して返す
-    /// （呼び出し側 GameManager が handlePlayerDeath を発火する）。
-    /// HP の減算と死亡判定は `Combat.damage` に集約してある。
-    def applyDamageToPlayer(enemyId: Int32, targetId: Int32,
+    /// プレイヤー targetId にダメージを与える。`Combat.attackDamage(攻撃者#attack, 防御者#defense)` で
+    /// 素ダメージを算出し、`Combat.damage` で HP 減算 + 死亡判定。
+    /// ログはスペック準拠で「敵{N} → P{M} に Xダメージ」、撃破時「敵{N} → P{M} を撃破」。
+    /// HP=0 なら killedIds に追加して返す（呼び出し側 GameManager が handlePlayerDeath を発火する）。
+    def applyDamageToPlayer(enemyId: Int32, enemy: Data, targetId: Int32,
                              scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \ GameLogger.GameLogger =
         match PlayerScene.get(targetId, scene) {
             case None    => (scene, Nil)
             case Some(player) =>
-                let result = Combat.damage(hp = player#hp, amount = 1);
-                GameLogger.enemyLog(
-                    "敵${enemyId}が味方${targetId}を攻撃 残りHP${result#newHp}");
+                let dmg    = Combat.attackDamage(enemy#resource#attack, player#resource#defense);
+                let result = Combat.damage(hp = player#hp, amount = dmg);
+                if (result#isDead) {
+                    GameLogger.enemyLog("敵${enemyId} → P${targetId} を撃破")
+                } else {
+                    GameLogger.enemyLog("敵${enemyId} → P${targetId} に ${dmg}ダメージ")
+                };
                 let damaged = PlayerScene.mapPlayer(targetId,
                     playerData -> {hp = result#newHp | playerData}, scene);
                 if (result#isDead) (damaged, targetId :: Nil)

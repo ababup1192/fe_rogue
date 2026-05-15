@@ -83,7 +83,8 @@ mod TestEnemyAI {
                  home: Int32, moveTiles: Int32): EnemyScene.Data =
         { id = id, gridPos = pos, alerted = alerted,
           homeModuleIdx = home, moveTiles = moveTiles,
-          hp = EnemyScene.defaultHp(), isDying = false, attackTargetId = None }
+          hp = 3, isDying = false, attackTargetId = None,
+          resource = TestUnitFixtures.testResource(moveTiles, 3) }
 
     /// EnemyAction を tag だけのタプルに圧縮（id 付き）。Eq が無いので比較しやすくする。
     def tagOf(a: EnemyAction): String =

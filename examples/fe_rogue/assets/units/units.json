@@ -1,0 +1,48 @@
+{
+  "units": {
+    "knight": {
+      "moveTiles": 4,
+      "hp": 14,
+      "attack":  6,
+      "defense": 5,
+      "speed":   2,
+      "sprite": { "texture": "character_sheet", "hframes": 5, "vframes": 2, "frame": 0 }
+    },
+    "archer": {
+      "moveTiles": 6,
+      "hp": 8,
+      "attack":  5,
+      "defense": 2,
+      "speed":   6,
+      "sprite": { "texture": "character_sheet", "hframes": 5, "vframes": 2, "frame": 1 }
+    },
+    "mage": {
+      "moveTiles": 5,
+      "hp": 10,
+      "attack":  7,
+      "defense": 2,
+      "speed":   4,
+      "sprite": { "texture": "character_sheet", "hframes": 5, "vframes": 2, "frame": 2 }
+    },
+    "goblin": {
+      "moveTiles": 3,
+      "hp": 3,
+      "attack":  3,
+      "defense": 1,
+      "speed":   4,
+      "sprite": { "texture": "character_sheet", "hframes": 5, "vframes": 2, "frame": 4 }
+    },
+    "orc": {
+      "moveTiles": 2,
+      "hp": 6,
+      "attack":  5,
+      "defense": 3,
+      "speed":   2,
+      "sprite": { "texture": "character_sheet", "hframes": 5, "vframes": 2, "frame": 3 }
+    }
+  },
+  "pools": {
+    "party":      ["knight", "archer", "mage"],
+    "enemyTier1": ["goblin", "orc"]
+  }
+}

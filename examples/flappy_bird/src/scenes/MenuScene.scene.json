@@ -29,7 +29,10 @@
     {
       "centered": true,
       "name": "play_button",
-      "pos": [144, 440],
+      "pos": [
+        144,
+        440
+      ],
       "scale": [
         2,
         2

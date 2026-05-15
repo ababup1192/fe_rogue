@@ -251,10 +251,11 @@ mod TestMapIntegration {
                     NodeTag.Player({
                         id             = 0,
                         gridPos        = initial,
-                        moveTiles      = PlayerScene.defaultMoveTiles(),
-                        hp             = PlayerScene.defaultHp(),
+                        moveTiles      = 5,
+                        hp             = 10,
                         waited         = false,
-                        attackTargetId = None
+                        attackTargetId = None,
+                        resource       = TestUnitFixtures.testResource(5, 10)
                     })))
 
     /// プレイヤー id=0 の world 座標

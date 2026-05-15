@@ -562,13 +562,15 @@ mod GameManager {
     /// 起動時 / ホットリロード時にプレイ用シーンを組み立てる。
     /// 順序が意味を持つ（後段が前段の登録結果を参照する）。
     /// MapScene.add が `IO` を要求するため戻り値の Aef にも `IO` を含める。
-    pub def buildPlayingScene(): Scene[NodeTag]
+    /// `catalog` は `Game.start` でロード済みのユニットカタログ。PlayerScene と
+    /// EnemyScene にプール定義（"party" / "enemyTier1"）を辿らせる。
+    pub def buildPlayingScene(catalog: UnitCatalog.UnitCatalog): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State} =
         Scene.empty()
             |> MapScene.add
-            |> PlayerScene.add
-            |> EnemyScene.add
+            |> PlayerScene.add(catalog)
+            |> EnemyScene.add(catalog)
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
             |> CursorScene.add
             |> FlagScene.add            // 自動移動先マーカー（初期は非表示）

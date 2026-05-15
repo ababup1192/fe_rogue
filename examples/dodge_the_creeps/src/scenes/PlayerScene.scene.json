@@ -1,7 +1,7 @@
 {
   "type": "AnimatedSprite2D",
   "name": "player",
-  "pos": [240, 450],
+  "pos": [241, 451],
   "scale": [1, 1],
   "spriteFrames": {
     "walk": {
@@ -31,5 +31,6 @@
       "pos": [0, 0],
       "shape": {"kind": "CircleShape2D", "radius": 30}
     }
-  ]
+  ],
+  "rotation": 0
 }

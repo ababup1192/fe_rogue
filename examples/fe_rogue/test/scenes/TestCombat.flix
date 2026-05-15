@@ -34,4 +34,55 @@ mod TestCombat {
     def testDamageLeavesHpPositiveWhenNotLethal(): Unit \ Assert =
         let result = Combat.damage(hp = 10, amount = 1);
         Assert.assertEq(expected = (9, false), (result#newHp, result#isDead))
+
+    // ════════════════════════════════════════════════════════
+    // attackDamage: max(0, attack - defense)
+    // ════════════════════════════════════════════════════════
+
+    /// 攻撃 6 vs 防御 1 → 5 ダメージ
+    @Test
+    def testAttackDamageNormal(): Unit \ Assert =
+        Assert.assertEq(expected = 5, Combat.attackDamage(6, 1))
+
+    /// 攻撃 = 防御 → 0 ダメージ（弱攻撃が硬い相手に通らない）
+    @Test
+    def testAttackDamageEqualIsZero(): Unit \ Assert =
+        Assert.assertEq(expected = 0, Combat.attackDamage(3, 3))
+
+    /// 攻撃 < 防御 でも下限 0（負ダメは出ない）
+    @Test
+    def testAttackDamageDefenseHigherIsZero(): Unit \ Assert =
+        Assert.assertEq(expected = 0, Combat.attackDamage(2, 5))
+
+    // ════════════════════════════════════════════════════════
+    // hitRate: clamp(80 + (atkSpd - defSpd) * 5, 5, 100)
+    // ════════════════════════════════════════════════════════
+
+    /// 速さ同等 → 基準値 80%
+    @Test
+    def testHitRateEqualSpeed(): Unit \ Assert =
+        Assert.assertEq(expected = 80, Combat.hitRate(3, 3))
+
+    /// 攻撃側速さ +5 → 上限 100% に張りつく（80 + 25 → clamp）
+    @Test
+    def testHitRateClampUpper(): Unit \ Assert =
+        Assert.assertEq(expected = 100, Combat.hitRate(8, 3))
+
+    /// 防御側速さ +20 → 下限 5% に張りつく（80 - 100 → clamp）
+    @Test
+    def testHitRateClampLower(): Unit \ Assert =
+        Assert.assertEq(expected = 5, Combat.hitRate(0, 20))
+
+    // ════════════════════════════════════════════════════════
+    // forecast: スペックの「与:N 命中:P% 撃破」が一発で出る
+    // ════════════════════════════════════════════════════════
+
+    /// knight (atk6, spd2) → goblin (hp3, def1, spd4):
+    /// 与 = 6-1 = 5, 命中 = 80 + (2-4)*5 = 70, 残 HP 3-5 ≦ 0 → 撃破
+    @Test
+    def testForecastKnightVsGoblin(): Unit \ Assert =
+        let f = Combat.forecast(
+            {attack = 6, speed = 2},
+            {hp = 3, defense = 1, speed = 4});
+        Assert.assertEq(expected = (5, 70, true), (f#damage, f#hit, f#kill))
 }

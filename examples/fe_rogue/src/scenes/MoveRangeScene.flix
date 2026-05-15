@@ -70,15 +70,21 @@ mod MoveRangeScene {
         }
 
     /// 指定 id を起点に MoveRange を組み立てる本体（既存ノードは事前に取り除いてから呼ぶ）。
+    /// **通行不可**: 壁 / 敵駒 / **他の味方駒**（自分以外）。
+    /// 味方同士の重なりを防ぐため、他プレイヤーのセルも障壁として扱う（FE 風の "通り抜け OK
+    /// だが停止 NG" 表現には別途 stoppable セットが必要だが、現状は一律ブロックで十分）。
     def buildFor(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
         let layer  = MapScene.getMapLayer(scene);
         let origin = PlayerScene.getGridPos(id, scene);
         let steps  = PlayerScene.getMoveTiles(id, scene);
-        // 通行不可の判定: 壁・敵駒のみ。**味方駒はすり抜け可能** にする
-        // （プレイヤー同士は障壁にならない仕様）。
         let enemyCells = EnemyScene.getAll(scene) |> List.map(e -> e#gridPos);
+        // 自分以外の味方セル（自分のいるセルは origin として通す必要があるので除外）
+        let otherAllyCells = PlayerScene.getAll(scene)
+            |> List.filter(d -> d#id != id)
+            |> List.map(d -> d#gridPos);
         let isBlocked = c ->
-                List.exists(p -> p#x == c#x and p#y == c#y, enemyCells);
+                List.exists(p -> p#x == c#x and p#y == c#y, enemyCells)
+                or List.exists(p -> p#x == c#x and p#y == c#y, otherAllyCells);
         let cells = Board.reachableCells(
             c -> TileMapLayer.isFloor(c, layer) and not isBlocked(c),
             origin,

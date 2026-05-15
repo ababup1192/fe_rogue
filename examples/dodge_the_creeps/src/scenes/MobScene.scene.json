@@ -1,29 +1,48 @@
 {
-  "type": "RigidBody2D",
-  "name": "mob",
-  "pos": [240, 360],
-  "shape": {"kind": "CircleShape2D", "radius": 30},
-  "gravityScale": 0.0,
-  "linearVelocity": [0, 0],
   "children": [
     {
-      "type": "AnimatedSprite2D",
-      "name": "sprite",
-      "pos": [0, 0],
-      "scale": [1, 1],
-      "spriteFrames": {
-        "walk": {
-          "loop": true,
-          "speed": 5.0,
-          "frames": [
-            {"texture": "enemyWalking_1"},
-            {"texture": "enemyWalking_2"}
-          ]
-        }
-      },
       "animation": "walk",
       "autoplay": "walk",
-      "rotation": 0
+      "name": "sprite",
+      "pos": [
+        0,
+        0
+      ],
+      "rotation": 0,
+      "scale": [
+        1,
+        1
+      ],
+      "spriteFrames": {
+        "walk": {
+          "frames": [
+            {
+              "texture": "enemyWalking_1"
+            },
+            {
+              "texture": "enemyWalking_2"
+            }
+          ],
+          "loop": true,
+          "speed": 5.0
+        }
+      },
+      "type": "AnimatedSprite2D"
     }
-  ]
+  ],
+  "gravityScale": 0.0,
+  "linearVelocity": [
+    0,
+    0
+  ],
+  "name": "mob",
+  "pos": [
+    2.4E+2,
+    3.6E+2
+  ],
+  "shape": {
+    "kind": "CircleShape2D",
+    "radius": 3E+1
+  },
+  "type": "RigidBody2D"
 }

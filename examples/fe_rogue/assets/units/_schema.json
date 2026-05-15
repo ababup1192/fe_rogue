@@ -1,0 +1,71 @@
+{
+  "fields": {
+    "moveTiles": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "slider": { "min": 1, "max": 10, "step": 1 } },
+        "label": "移動力"
+      }
+    },
+    "hp": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "slider": { "min": 1, "max": 100, "step": 5 } },
+        "label": "HP"
+      }
+    },
+    "attack": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "slider": { "min": 0, "max": 30, "step": 1 } },
+        "label": "攻"
+      }
+    },
+    "defense": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "slider": { "min": 0, "max": 30, "step": 1 } },
+        "label": "防"
+      }
+    },
+    "speed": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "slider": { "min": 0, "max": 20, "step": 1 } },
+        "label": "速"
+      }
+    },
+    "sprite": {
+      "nested": {
+        "texture": {
+          "field": {
+            "ftype": "texturePath",
+            "hint":  "plain",
+            "label": "テクスチャ"
+          }
+        },
+        "hframes": {
+          "field": {
+            "ftype": "int",
+            "hint":  { "spinner": { "min": 1, "max": 16 } },
+            "label": "横分割"
+          }
+        },
+        "vframes": {
+          "field": {
+            "ftype": "int",
+            "hint":  { "spinner": { "min": 1, "max": 16 } },
+            "label": "縦分割"
+          }
+        },
+        "frame": {
+          "field": {
+            "ftype": "int",
+            "hint":  { "frameGrid": { "hframesField": "hframes", "vframesField": "vframes" } },
+            "label": "フレーム"
+          }
+        }
+      }
+    }
+  }
+}

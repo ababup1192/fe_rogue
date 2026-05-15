@@ -100,10 +100,11 @@ mod TestCursorScene {
                     NodeTag.Player({
                         id             = 0,
                         gridPos        = gridPos,
-                        moveTiles      = PlayerScene.defaultMoveTiles(),
-                        hp             = PlayerScene.defaultHp(),
+                        moveTiles      = 5,
+                        hp             = 10,
                         waited         = false,
-                        attackTargetId = None
+                        attackTargetId = None,
+                        resource       = TestUnitFixtures.testResource(5, 10)
                     })))
 
     /// SelectedPlayer.State のスタブ handler（未選択を返す）。
