@@ -126,7 +126,7 @@ mod EnemyScene {
     /// `enemyTier1` プールからランダム抽選した UnitResource を割り当てる。
     /// `Math.Random` を使うのでこの effect が必要。
     pub def add(catalog: UnitCatalog.UnitCatalog, scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random} =
-        let pool        = UnitCatalog.pool("enemyTier1", catalog);
+        let pool        = UnitCatalog.pool("enemies", catalog);
         let layer       = MapScene.getMapLayer(scene);
         let placements  = MapScene.getPlacements(scene);
         let roomCount   = MapScene.getRoomCount(scene);
@@ -174,7 +174,7 @@ mod EnemyScene {
                 case Some(cell) =>
                     let res = match RandomUtil.pick(pool) {
                         case Some(r) => r
-                        case None    => bug!("EnemyScene.spawnInRoom: pool 'enemyTier1' is empty")
+                        case None    => bug!("EnemyScene.spawnInRoom: pool 'enemies' is empty")
                     };
                     let entry: Spawn = { id = nextId, gridPos = cell, moduleIdx = p#idx, resource = res };
                     spawnInRoom(layer, p, count - 1, pool,

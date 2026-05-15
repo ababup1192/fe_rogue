@@ -102,7 +102,7 @@ mod PlayerScene {
     /// 0 番目は MapScene が記録した spawnGrid に、残りはその近傍の床セルに配置する。
     /// 各プレイヤーには `party` プールのリスト順で `UnitResource` を割り当てる。
     pub def add(catalog: UnitCatalog.UnitCatalog, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let party     = UnitCatalog.pool("party", catalog);
+        let party     = UnitCatalog.pool("players", catalog);
         let n         = List.length(party);
         let spawnGrid = MapScene.getSpawnGrid(scene);
         let layer     = MapScene.getMapLayer(scene);

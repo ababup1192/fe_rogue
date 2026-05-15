@@ -1,18 +1,27 @@
 {
-  "type": "Marker2D",
-  "name": "Enemy",
-  "pos": [64, 64],
   "children": [
     {
-      "type": "Sprite2D",
-      "name": "Sprite",
-      "pos": [0, 0],
-      "scale": [1, 1],
-      "texture": "character_sheet",
       "frame": 4,
       "hframes": 5,
+      "name": "Sprite",
+      "pos": [
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "texture": "character_sheet",
+      "type": "Sprite2D",
       "vframes": 2,
       "zIndex": 10
     }
-  ]
+  ],
+  "name": "Enemy",
+  "pos": [
+    64,
+    64
+  ],
+  "type": "Marker2D"
 }

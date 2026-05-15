@@ -1,15 +1,24 @@
 {
-  "type": "Marker2D",
-  "name": "Cursor",
-  "pos": [88, 88],
   "children": [
     {
-      "type": "Sprite2D",
       "name": "Sprite",
-      "pos": [0, 0],
-      "scale": [1, 1],
+      "pos": [
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1
+      ],
       "texture": "cursor",
+      "type": "Sprite2D",
       "zIndex": 20
     }
-  ]
+  ],
+  "name": "Cursor",
+  "pos": [
+    64,
+    64
+  ],
+  "type": "Marker2D"
 }

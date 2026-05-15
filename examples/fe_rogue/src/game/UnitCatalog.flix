@@ -2,7 +2,7 @@
 ///
 /// FE 風 SRPG の伝統的な「ユニットステータス表」を 1 つの JSON
 /// (`resources/units.json`) に集約する。各ユニットは id（"knight" 等）で参照され、
-/// プール定義（"party" / "enemyTier1"）から `pool(name, catalog)` で取り出す。
+/// プール定義（"players" / "enemies"）から `pool(name, catalog)` で取り出す。
 ///
 /// JSON 形状（例）:
 ///   {
@@ -10,11 +10,12 @@
 ///       "knight": { "moveTiles": 4, "hp": 14, "sprite": {...} },
 ///       ...
 ///     },
-///     "pools": {
-///       "party":      ["knight", "archer", "mage"],
-///       "enemyTier1": ["goblin", "orc"]
-///     }
+///     "players": ["knight", "archer", "mage"],
+///     "enemies": ["goblin", "orc"]
 ///   }
+///
+/// プールは「`units` 以外の top-level array」として表現する。pool 名は任意で、ゲーム側が
+/// `pool(name, catalog)` で参照する。IDE のメタフィールド UI でも直感的に表示される。
 ///
 /// IDE 連携用に `resources/units.schema.json` をサイドカーとして配置する。
 /// schema は engine の `Resource.ResourceSchema` 規格で書き、`Game.start` 時に
@@ -139,19 +140,21 @@ mod UnitCatalogCodec {
 
     // ── エンコード ──
 
+    /// data top の JsonObject に "units" と、pools の各 entry をフラットに並べる。
+    /// 例: { "units": {...}, "players": [...], "enemies": [...] }
+    /// 旧形式の `"pools": {"party":[...], ...}` という入れ子はやめた (IDE 上で
+    /// メタフィールドが pool 名のままトップに並び、ユーザに直感的)。
     pub def encode(c: UnitCatalog): JsonElement =
         let units = UnitCatalog.unitsOf(c)
             |> Map.foldLeftWithKey((acc, id, u) ->
                 Map.insert(id, encodeUnit(u), acc),
                 Map.empty());
-        let pools = UnitCatalog.poolsOf(c)
+        let topWithUnits = Map#{"units" => JsonObject(units)};
+        let top = UnitCatalog.poolsOf(c)
             |> Map.foldLeftWithKey((acc, name, ids) ->
                 Map.insert(name, JsonArray(List.map(JsonString, ids) |> List.toVector), acc),
-                Map.empty());
-        JsonObject(Map#{
-            "units" => JsonObject(units),
-            "pools" => JsonObject(pools)
-        })
+                topWithUnits);
+        JsonObject(top)
 
     def encodeUnit(u: UnitResource): JsonElement =
         JsonObject(Map#{
@@ -179,16 +182,39 @@ mod UnitCatalogCodec {
 
     // ── デコード ──
 
+    /// data top から "units" を取り出し、残りの全てのキーを pool として扱う。
+    /// 旧形式 `"pools": {...}` の入れ子も互換のため受け入れる (中身を pools として読む)。
     pub def decode(element: JsonElement): Option[UnitCatalog] =
         forM (
             top      <- expectObject(element);
             unitsJ   <- Map.get("units", top);
-            poolsJ   <- Map.get("pools", top);
             unitsM   <- expectObject(unitsJ);
-            poolsM   <- expectObject(poolsJ);
             units    <- traverseUnits(unitsM);
-            pools    <- traversePools(poolsM)
+            pools    <- collectPools(top)
         ) yield UnitCatalog.UnitCatalog({units = units, pools = pools})
+
+    /// top の "units" を除いた残りのキーで、値が JsonArray of JsonString のものを pool として収集。
+    /// 旧形式の "pools" 入れ子があれば、その中身も pool として展開する (互換性)。
+    def collectPools(top: Map[String, JsonElement]): Option[Map[String, List[String]]] =
+        let init: Option[Map[String, List[String]]] = Some(Map.empty());
+        Map.foldLeftWithKey((acc, key, value) ->
+            Option.flatMap(soFar -> {
+                if (key == "units") Some(soFar)
+                else match value {
+                    case JsonObject(inner) =>
+                        if (key == "pools")
+                            // 旧形式: pools の中身を展開
+                            traversePools(inner)
+                                |> Option.map(m -> Map.foldLeftWithKey(
+                                    (acc2, k, v) -> Map.insert(k, v, acc2), soFar, m))
+                        else Some(soFar)
+                    case JsonArray(_) =>
+                        decodeStringList(value)
+                            |> Option.map(ids -> Map.insert(key, ids, soFar))
+                    case _ => Some(soFar)
+                }
+            }, acc),
+            init, top)
 
     def traverseUnits(map: Map[String, JsonElement]):
                        Option[Map[String, UnitResource]] =

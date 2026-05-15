@@ -7,10 +7,12 @@
 // 同じ texture を複数 sub-entry が参照する場合に再ロードを避ける。
 
 mod ResourceState {
+    import javax.swing.JFrame
     import javax.swing.JList
     import javax.swing.JPanel
     import javax.swing.JLabel
     import javax.swing.DefaultListModel
+    import java.awt.Frame
     import java.awt.image.BufferedImage
 
     use ResourceDiscovery.ResourceEntry
@@ -37,6 +39,7 @@ mod ResourceState {
         selectedSubEntryRef    = Array[Option[String], Static],
         editingJsonRef         = Array[Option[Json.JsonElement], Static],
         editingSchemaRef       = Array[Option[Resource.ResourceSchema], Static],
+        editingSchemaJsonRef   = Array[Option[Json.JsonElement], Static],
         dirtyRef               = Array[Bool, Static],
         listRef                = Array[Option[JList[String]], Static],
         listModelRef           = Array[Option[DefaultListModel[String]], Static],
@@ -44,7 +47,8 @@ mod ResourceState {
         subListModelRef        = Array[Option[DefaultListModel[String]], Static],
         propertyPanelRef       = Array[Option[JPanel], Static],
         previewLabelRef        = Array[Option[JLabel], Static],
-        bufferedImageCacheRef  = Array[Map[String, BufferedImage], Static]
+        bufferedImageCacheRef  = Array[Map[String, BufferedImage], Static],
+        mainFrameRef           = Array[Option[JFrame], Static]
     }
 
     /// 空の ResourceState を作る。
@@ -55,6 +59,7 @@ mod ResourceState {
             selectedSubEntryRef    = Array#{(None: Option[String])} @ Static,
             editingJsonRef         = Array#{(None: Option[Json.JsonElement])} @ Static,
             editingSchemaRef       = Array#{(None: Option[Resource.ResourceSchema])} @ Static,
+            editingSchemaJsonRef   = Array#{(None: Option[Json.JsonElement])} @ Static,
             dirtyRef               = Array#{false} @ Static,
             listRef                = Array#{(None: Option[JList[String]])} @ Static,
             listModelRef           = Array#{(None: Option[DefaultListModel[String]])} @ Static,
@@ -62,7 +67,8 @@ mod ResourceState {
             subListModelRef        = Array#{(None: Option[DefaultListModel[String]])} @ Static,
             propertyPanelRef       = Array#{(None: Option[JPanel])} @ Static,
             previewLabelRef        = Array#{(None: Option[JLabel])} @ Static,
-            bufferedImageCacheRef  = Array#{(Map.empty(): Map[String, BufferedImage])} @ Static
+            bufferedImageCacheRef  = Array#{(Map.empty(): Map[String, BufferedImage])} @ Static,
+            mainFrameRef           = Array#{(None: Option[JFrame])} @ Static
         }
 
     pub def setDiscovered(state: ResourceState, entries: List[ResourceEntry]): Unit \ IO =
@@ -94,6 +100,14 @@ mod ResourceState {
 
     pub def getEditingSchema(state: ResourceState): Option[Resource.ResourceSchema] \ IO =
         Array.get(0, state#editingSchemaRef)
+
+    /// schema の生 JsonElement を保持。engine 側 fpkg がまだ MetaHint を含まないため、
+    /// IDE 内で metaHints セクションを直接 JSON から parse する用途。
+    pub def setEditingSchemaJson(state: ResourceState, json: Option[Json.JsonElement]): Unit \ IO =
+        Array.put(json, 0, state#editingSchemaJsonRef)
+
+    pub def getEditingSchemaJson(state: ResourceState): Option[Json.JsonElement] \ IO =
+        Array.get(0, state#editingSchemaJsonRef)
 
     pub def setDirty(state: ResourceState, dirty: Bool): Unit \ IO =
         Array.put(dirty, 0, state#dirtyRef)
@@ -136,4 +150,12 @@ mod ResourceState {
 
     pub def getPreviewLabelRef(state: ResourceState): Option[JLabel] \ IO =
         Array.get(0, state#previewLabelRef)
+
+    /// IDE のメイン JFrame を保持。モーダルダイアログ (JComboBox や JTextField を出すとき)
+    /// の parent として使う。null parent では Flix から呼びにくいため明示的に保持する。
+    pub def setMainFrame(state: ResourceState, frame: JFrame): Unit \ IO =
+        Array.put(Some(frame), 0, state#mainFrameRef)
+
+    pub def getMainFrame(state: ResourceState): Option[JFrame] \ IO =
+        Array.get(0, state#mainFrameRef)
 }

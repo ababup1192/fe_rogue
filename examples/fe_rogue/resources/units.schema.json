@@ -67,5 +67,9 @@
         }
       }
     }
+  },
+  "metaHints": {
+    "players": { "type": "ref", "to": "units" },
+    "enemies": { "type": "ref", "to": "units" }
   }
 }

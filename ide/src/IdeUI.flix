@@ -94,6 +94,9 @@ mod IdeUI {
         frame.setMinimumSize(new Dimension(800, 500));
         frame.setLayout(new BorderLayout());
         frame.getContentPane().setBackground(new Color(28, 28, 28));
+        // ResourceEditorUI から JOptionPane の parent component として使えるよう、
+        // メイン frame を ResourceState に登録しておく。
+        ResourceState.setMainFrame(state#resource, frame);
 
         // Scenes モードの 3 component (frame.WEST/CENTER/SOUTH) と Resources tab を事前構築。
         // 旧 IDE と同じ frame 階層 (frame.CENTER.centerEastSplit.left.centerPanel に canvas) を
@@ -171,6 +174,10 @@ mod IdeUI {
         scenesBtn.addActionListener(new ActionListener {
             def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
                 let cp = frame.getContentPane();
+                // Resources 側の lightweight component を完全に hide してから remove。
+                // setVisible(false) を呼ばないと Mac AWT で widget が canvas の上に
+                // 残ったまま見えることがある。
+                resourcesTab.setVisible(false);
                 cp.remove(resourcesTab);
                 cp.add(westPanel, BorderLayout.WEST);
                 cp.add(centerEastSplit, BorderLayout.CENTER);
@@ -183,15 +190,15 @@ mod IdeUI {
         resourcesBtn.addActionListener(new ActionListener {
             def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
                 // Mac の AWTGLCanvas は setVisible(false) だけでは native window が残り、
-                // Resources の lightweight component を覆い隠す。setBounds(0,0,0,0) で
-                // 物理的にサイズを 0 にして画面に出ないようにする (再度 Scenes に切替えた時に
-                // BorderLayout のレイアウトで再度サイズが戻る)。
+                // Resources の lightweight component を覆い隠す。サイズ 0 + 画面外座標で
+                // 物理的に隠す (再度 Scenes に切替えた時に BorderLayout が再レイアウトで戻す)。
                 canvas.setVisible(false);
-                canvas.setBounds(0, 0, 0, 0);
+                canvas.setBounds(-10000, -10000, 0, 0);
                 let cp = frame.getContentPane();
                 cp.remove(westPanel);
                 cp.remove(centerEastSplit);
                 cp.remove(southPanel);
+                resourcesTab.setVisible(true);
                 cp.add(resourcesTab, BorderLayout.CENTER);
                 frame.revalidate();
                 frame.repaint()

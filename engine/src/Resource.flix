@@ -48,21 +48,48 @@ mod Resource {
         case Nested(Map[String, FieldEntry])
     }
 
-    /// ファイル単位の schema。`Saveable` 実装のため type alias ではなく enum で包む。
-    /// 将来 displayName / version 等を足したくなったら payload を record にして拡張する。
+    /// catalog 外のトップレベル array (例: `players: ["knight", ...]`) の編集 UI を決めるヒント。
+    ///   Ref(target)  : 要素が `target` という catalog コンテナの sub-entry id を指す。
+    ///                  IDE は data の `target` 配下の sub-entries を dropdown 候補に並べる。
+    ///                  例: `Ref("units")` なら units 配下の knight/archer/... が候補。
+    ///   Text         : 要素が任意の文字列 (catalog id ではない)。IDE は JTextField で自由入力。
+    /// schema 表記:
+    ///   {"type": "ref", "to": "units"}  → Ref("units")
+    ///   {"type": "text"}                → Text
+    pub enum MetaHint with Eq, ToString {
+        case Ref(String)
+        case Text
+    }
+
+    /// ファイル単位の schema。fields は catalog 子レコードのフィールド構造、metaHints は data top の
+    /// catalog 外フィールド (= メタ array) の編集 UI ヒント。
+    /// metaHints は省略可能 (デコード時に欠落していれば空 Map になる) → 後方互換。
     pub enum ResourceSchema {
-        case ResourceSchema(Map[String, FieldEntry])
+        case ResourceSchema({
+            fields    = Map[String, FieldEntry],
+            metaHints = Map[String, MetaHint]
+        })
     }
 
     /// `ResourceSchema` の中身（フィールド集合）を取り出す。
     pub def fieldsOf(schema: ResourceSchema): Map[String, FieldEntry] =
-        let ResourceSchema.ResourceSchema(fields) = schema;
-        fields
+        let ResourceSchema.ResourceSchema(payload) = schema;
+        payload#fields
+
+    /// メタフィールドの編集ヒントを取り出す。指定されていなければ空 Map。
+    pub def metaHintsOf(schema: ResourceSchema): Map[String, MetaHint] =
+        let ResourceSchema.ResourceSchema(payload) = schema;
+        payload#metaHints
 
     /// `Map[String, FieldEntry]` から `ResourceSchema` を作るコンストラクタ。
-    /// テストや schema 生成コードからの利便性のため。
+    /// metaHints は空 Map で初期化する。
     pub def mkSchema(fields: Map[String, FieldEntry]): ResourceSchema =
-        ResourceSchema.ResourceSchema(fields)
+        ResourceSchema.ResourceSchema({fields = fields, metaHints = Map.empty()})
+
+    /// fields と metaHints を両方指定するコンストラクタ。
+    pub def mkSchemaWithMeta(fields: Map[String, FieldEntry], metaHints: Map[String, MetaHint]):
+            ResourceSchema =
+        ResourceSchema.ResourceSchema({fields = fields, metaHints = metaHints})
 
     /// `_schema.json` をパースして `ResourceSchema` を返す。形式不一致は `None`。
     /// 失敗ハンドリングは呼び出し側に任せる（panic にしたい場合は `Option.getWithDefault(?bug(...))`）。
@@ -138,14 +165,34 @@ mod ResourceCodec {
 
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool}
-    use Resource.{ResourceSchema, FieldEntry, FieldSchema, FieldType, FieldHint}
+    use Resource.{ResourceSchema, FieldEntry, FieldSchema, FieldType, FieldHint, MetaHint}
 
     // ── エンコード ──
 
     pub def encodeSchema(s: ResourceSchema): JsonElement =
-        JsonObject(Map#{
-            "fields" => encodeEntries(Resource.fieldsOf(s))
-        })
+        let meta = Resource.metaHintsOf(s);
+        let base = Map#{"fields" => encodeEntries(Resource.fieldsOf(s))};
+        if (Map.isEmpty(meta))
+            JsonObject(base)
+        else
+            JsonObject(Map.insert("metaHints", encodeMetaHints(meta), base))
+
+    def encodeMetaHints(meta: Map[String, MetaHint]): JsonElement =
+        let inner = meta
+            |> Map.foldLeftWithKey((acc, name, hint) ->
+                Map.insert(name, encodeMetaHint(hint), acc),
+                Map.empty());
+        JsonObject(inner)
+
+    def encodeMetaHint(h: MetaHint): JsonElement = match h {
+        case MetaHint.Ref(target) =>
+            JsonObject(Map#{
+                "type" => JsonString("ref"),
+                "to"   => JsonString(target)
+            })
+        case MetaHint.Text =>
+            JsonObject(Map#{"type" => JsonString("text")})
+    }
 
     def encodeEntries(entries: Map[String, FieldEntry]): JsonElement =
         let inner = entries
@@ -218,8 +265,40 @@ mod ResourceCodec {
             top         <- expectObject(element);
             fieldsJson  <- Map.get("fields", top);
             fieldsMap   <- expectObject(fieldsJson);
-            fields      <- decodeEntries(fieldsMap)
-        ) yield Resource.mkSchema(fields)
+            fields      <- decodeEntries(fieldsMap);
+            metaHints   <- decodeMetaHintsOpt(top)
+        ) yield Resource.mkSchemaWithMeta(fields, metaHints)
+
+    /// `metaHints` セクションは省略可能。欠落していれば空 Map を返す (後方互換)。
+    def decodeMetaHintsOpt(top: Map[String, JsonElement]): Option[Map[String, MetaHint]] =
+        match Map.get("metaHints", top) {
+            case None         => Some(Map.empty())
+            case Some(metaJ)  =>
+                expectObject(metaJ) |> Option.flatMap(decodeMetaHints)
+        }
+
+    def decodeMetaHints(map: Map[String, JsonElement]): Option[Map[String, MetaHint]] =
+        Map.foldLeftWithKey((acc, name, json) ->
+            Option.flatMap(soFar ->
+                decodeMetaHint(json) |> Option.map(h -> Map.insert(name, h, soFar)),
+                acc),
+            Some(Map.empty()),
+            map)
+
+    def decodeMetaHint(element: JsonElement): Option[MetaHint] =
+        forM (
+            obj    <- expectObject(element);
+            typeJ  <- Map.get("type", obj);
+            tName  <- expectString(typeJ);
+            hint   <- match tName {
+                case "ref"  =>
+                    Map.get("to", obj)
+                        |> Option.flatMap(expectString)
+                        |> Option.map(MetaHint.Ref)
+                case "text" => Some(MetaHint.Text)
+                case _      => None
+            }
+        ) yield hint
 
     def decodeEntries(map: Map[String, JsonElement]): Option[Map[String, FieldEntry]] =
         Map.foldLeftWithKey((acc, name, json) ->

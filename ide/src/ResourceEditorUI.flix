@@ -35,9 +35,13 @@ mod ResourceEditorUI {
     import java.awt.event.ActionListener
     import java.awt.event.ActionEvent
     import javax.swing.JOptionPane
+    import javax.swing.JTextArea
+    import javax.swing.JTextField
+    import javax.swing.JComboBox
     import java.math.{BigDecimal => JBigDecimal}
 
     use ResourceDiscovery.ResourceEntry
+    use ResourceCatalog.MetaHint
 
     pub type alias IdeState = IdeState.IdeState
 
@@ -272,6 +276,10 @@ mod ResourceEditorUI {
                 ResourceState.setEditingSchema(state#resource, None)
         };
 
+        // schema の生 JSON も別途保存。IDE 内で metaHints を直接 parse する用途。
+        let schemaJson = loadJsonElement(entry#schemaPath);
+        ResourceState.setEditingSchemaJson(state#resource, schemaJson);
+
         rebuildSubEntries(state);
         rebuildPropertyPanel(state)
 
@@ -318,11 +326,32 @@ mod ResourceEditorUI {
     def buildPropertyContent(state: IdeState, content: JPanel): Unit \ IO =
         match ResourceState.getEditingSchema(state#resource) {
             case None =>
-                let l = new JLabel("(select a resource or schema invalid)");
-                l.setForeground(new Color(180, 100, 100));
-                l.setAlignmentX(0.0f32);
-                content.add(l);
-                ()
+                // schema が None: 「未選択」または「schema 違反」の 2 通り。
+                // editingJson が Some なら schema 違反 (data はある)、None なら未選択。
+                match ResourceState.getEditingJson(state#resource) {
+                    case None =>
+                        let l = new JLabel("(select a resource)");
+                        l.setForeground(new Color(120, 120, 120));
+                        l.setAlignmentX(0.0f32);
+                        content.add(l);
+                        ()
+                    case Some(json) =>
+                        // schema 違反: 赤い警告ヘッダ + 生 JSON read-only 表示
+                        let errorBanner = createErrorBanner("Schema invalid or missing — read-only");
+                        errorBanner.setAlignmentX(0.0f32);
+                        content.add(errorBanner);
+
+                        let pretty = Json.Write.toPrettyString(2, json);
+                        let textArea = new JTextArea(pretty);
+                        textArea.setEditable(false);
+                        textArea.setBackground(new Color(30, 30, 30));
+                        textArea.setForeground(new Color(200, 200, 200));
+                        let scroll = new JScrollPane(textArea);
+                        scroll.setPreferredSize(new Dimension(0, 400));
+                        scroll.setAlignmentX(0.0f32);
+                        content.add(scroll);
+                        ()
+                }
             case Some(schema) =>
                 let classification = ResourceState.getEditingJson(state#resource)
                     |> Option.map(ResourceCatalog.classify);
@@ -346,10 +375,279 @@ mod ResourceEditorUI {
                                 let panel = SchemaWidgets.buildPanel(state, schema, p);
                                 panel.setAlignmentX(0.0f32);
                                 content.add(panel);
-                                ()
+                                // メタフィールド (catalog 外の data top フィールド) を続けて表示
+                                match c {
+                                    case ResourceCatalog.Classification.CatalogIn(info) =>
+                                        if (not List.isEmpty(info#metaKeys)) {
+                                            let meta = buildMetaPanel(state, info#metaKeys);
+                                            meta.setAlignmentX(0.0f32);
+                                            content.add(meta);
+                                            ()
+                                        } else ()
+                                    case _ => ()
+                                }
                         }
                 }
         }
+
+    // ──────────────────────────────────────────────────────
+    // 異常系のフォールバック (MVP10)
+    // ──────────────────────────────────────────────────────
+
+    /// 赤背景のエラー警告バナー。schema 違反など、編集を許してはいけない状態を強く示す。
+    def createErrorBanner(message: String): JPanel \ IO =
+        let row = new JPanel(new BorderLayout());
+        row.setBackground(new Color(120, 40, 40));
+        row.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 0, 1, 0, new Color(60, 20, 20)),
+            BorderFactory.createEmptyBorder(6, 10, 6, 10)
+        ));
+        row.setMaximumSize(new Dimension(9999, 32));
+        let lbl = new JLabel(message);
+        lbl.setForeground(new Color(255, 220, 220));
+        lbl.setHorizontalAlignment(SwingConstants.CENTER);
+        row.add(lbl, BorderLayout.CENTER);
+        row
+
+    // ──────────────────────────────────────────────────────
+    // メタフィールド UI (MVP9)
+    // ──────────────────────────────────────────────────────
+
+    /// catalog の外側にあるフィールド (例: pools) を表示する panel を組み立てる。
+    /// 各 meta key に対し、値の構造に応じて以下を出す:
+    ///   - JsonObject  : 子キーを section header + JList で表示
+    ///   - JsonArray of JsonString : JList + 追加/削除ボタン
+    ///   - その他       : read-only テキスト
+    def buildMetaPanel(state: IdeState, metaKeys: List[String]): JPanel \ IO =
+        let panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBackground(new Color(45, 45, 45));
+        panel.setAlignmentX(0.0f32);
+
+        match ResourceState.getEditingJson(state#resource) {
+            case None => ()
+            case Some(json) =>
+                List.forEach(metaKey -> {
+                    let header = SchemaWidgets.createSectionHeader(metaKey);
+                    header.setAlignmentX(0.0f32);
+                    panel.add(header);
+                    match JsonOps.getAtKeyPath(json, metaKey :: Nil) {
+                        case Some(Json.JsonElement.JsonObject(m)) =>
+                            Map.forEach((subKey, subVal) -> {
+                                renderMetaField(state, metaKey :: subKey :: Nil, subKey, subVal, panel)
+                            }, m)
+                        case Some(other) =>
+                            renderMetaField(state, metaKey :: Nil, metaKey, other, panel)
+                        case None => ()
+                    }
+                }, metaKeys)
+        };
+        panel
+
+    def renderMetaField(state: IdeState, keyPath: List[String], name: String,
+                         value: Json.JsonElement, parent: JPanel): Unit \ IO =
+        match value {
+            case Json.JsonElement.JsonArray(items) =>
+                renderStringArray(state, keyPath, name, Vector.toList(items), parent)
+            case _ =>
+                // read-only: 値の文字列化
+                let row = new JPanel(new BorderLayout(6, 0));
+                row.setBackground(new Color(45, 45, 45));
+                row.setBorder(BorderFactory.createEmptyBorder(2, 10, 2, 10));
+                row.setMaximumSize(new Dimension(9999, 24));
+                row.setAlignmentX(0.0f32);
+                let label = new JLabel(name);
+                label.setForeground(new Color(190, 190, 195));
+                label.setPreferredSize(new Dimension(90, 24));
+                row.add(label, BorderLayout.WEST);
+                let valueLabel = new JLabel(Json.Write.toCompactString(value));
+                valueLabel.setForeground(new Color(150, 150, 150));
+                row.add(valueLabel, BorderLayout.CENTER);
+                parent.add(row);
+                ()
+        }
+
+    /// JsonArray of JsonString を JList で表示。下に [+ Add] / [- Del] ボタン。
+    /// 追加: catalog の sub-entry 一覧から JComboBox で選択。
+    /// 削除: 選択行を JList から取り除き、JSON を更新。
+    def renderStringArray(state: IdeState, keyPath: List[String], name: String,
+                           items: List[Json.JsonElement], parent: JPanel): Unit \ IO =
+        let _ = name;
+        let container = new JPanel(new BorderLayout());
+        container.setBackground(new Color(40, 40, 40));
+        container.setBorder(BorderFactory.createEmptyBorder(2, 10, 2, 10));
+        container.setMaximumSize(new Dimension(9999, 140));
+        container.setAlignmentX(0.0f32);
+
+        let model: DefaultListModel[String] = new DefaultListModel();
+        List.forEach(v -> {
+            match v {
+                case Json.JsonElement.JsonString(s) => { model.addElement(s); () }
+                case _ => ()
+            }
+        }, items);
+
+        let list: JList[String] = new JList(model);
+        list.setBackground(new Color(30, 30, 30));
+        list.setForeground(Color.LIGHT_GRAY);
+        list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        let scroll = new JScrollPane(list);
+        scroll.setPreferredSize(new Dimension(0, 100));
+        container.add(scroll, BorderLayout.CENTER);
+
+        let buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        buttons.setBackground(new Color(40, 40, 40));
+        let addBtn = new JButton("+");
+        let delBtn = new JButton("-");
+        addBtn.addActionListener(new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO =
+                onMetaArrayAdd(state, keyPath, model)
+        });
+        delBtn.addActionListener(new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO =
+                onMetaArrayDel(state, keyPath, model, list)
+        });
+        buttons.add(addBtn);
+        buttons.add(delBtn);
+        container.add(buttons, BorderLayout.SOUTH);
+        parent.add(container);
+        ()
+
+    /// メタ配列に新しい要素を追加。
+    /// schema の `metaHints` を最初に参照:
+    ///   - `Ref(target)` → 純粋 JComboBox。`target` キーの catalog コンテナの
+    ///                     sub-entries を候補に並べる (例: target="units" なら knight/archer/...)
+    ///   - `Text`        → JTextField (自由文字列入力)
+    /// metaHints に指定がない場合は、`ResourceCatalog.isCatalogRefArray` で既存要素から
+    /// hint をヒューリスティック判定する (catalog 参照ならアクティブ catalog の sub-entries を使う)。
+    def onMetaArrayAdd(state: IdeState, keyPath: List[String], model: DefaultListModel[String]):
+            Unit \ IO =
+        match ResourceState.getEditingJson(state#resource) {
+            case Some(json) =>
+                let topKey = List.head(keyPath) |> Option.getWithDefault("");
+                let hint = resolveMetaHint(state, json, keyPath, topKey);
+                let chosen = promptForArrayElement(state, hint, json);
+                match chosen {
+                    case Some(value) =>
+                        if (value == "") ()
+                        else {
+                            model.addElement(value);
+                            rebuildMetaJsonFromModel(state, keyPath, model)
+                        }
+                    case None => ()
+                }
+            case None => ()
+        }
+
+    /// schema の metaHints から hint を引く。ヒットしなければヒューリスティック判定。
+    /// schema の metaHints は IDE 内で schema 生 JSON から直接 parse する
+    /// (engine 側 fpkg の MetaHint 拡張に依存しない)。
+    def resolveMetaHint(state: IdeState, json: Json.JsonElement,
+                          keyPath: List[String], topKey: String): ResourceCatalog.MetaHint \ IO =
+        let metaHints = match ResourceState.getEditingSchemaJson(state#resource) {
+            case Some(schemaJson) => ResourceCatalog.parseMetaHints(schemaJson)
+            case None             => Map.empty()
+        };
+        match Map.get(topKey, metaHints) {
+            case Some(h) => h
+            case None =>
+                // ヒューリスティック: アクティブ catalog の sub-entries と既存要素を比較
+                match ResourceCatalog.classify(json) {
+                    case ResourceCatalog.Classification.CatalogIn(info) =>
+                        let items = match JsonOps.getAtKeyPath(json, keyPath) {
+                            case Some(Json.JsonElement.JsonArray(v)) => Vector.toList(v)
+                            case _                                   => Nil
+                        };
+                        if (ResourceCatalog.isCatalogRefArray(items, info#subEntries))
+                            ResourceCatalog.MetaHint.Ref(info#containerKey)
+                        else
+                            ResourceCatalog.MetaHint.Text
+                    case _ => ResourceCatalog.MetaHint.Text
+                }
+        }
+
+    /// hint に応じてダイアログを出す。
+    ///   Ref(target) → data の `target` 配下を見て sub-entries を候補に JComboBox
+    ///   Text        → JOptionPane.showInputDialog (自由テキスト)
+    /// 返り値: Some(選択値) または None (キャンセル)
+    def promptForArrayElement(state: IdeState, hint: ResourceCatalog.MetaHint, json: Json.JsonElement):
+            Option[String] \ IO =
+        match hint {
+            case ResourceCatalog.MetaHint.Ref(target) =>
+                let candidates = subEntriesOf(json, target);
+                if (List.isEmpty(candidates)) {
+                    let _ = JOptionPane.showInputDialog(
+                        "No entries to choose from. Add entries to '${target}' first.");
+                    None
+                }
+                else
+                    showComboPicker(state, candidates)
+            case ResourceCatalog.MetaHint.Text =>
+                let result = JOptionPane.showInputDialog("Enter value:");
+                if (Object.isNull(result)) None
+                else Some(result.toString())
+        }
+
+    /// data 配下の `target` キーが JsonObject なら、そのキー集合 (= catalog sub-entries) を返す。
+    /// target が存在しなければ、または JsonObject でなければ空リスト。
+    def subEntriesOf(json: Json.JsonElement, target: String): List[String] =
+        match JsonOps.getAtKeyPath(json, target :: Nil) {
+            case Some(Json.JsonElement.JsonObject(m)) => Map.keysOf(m) |> Set.toList
+            case _                                     => Nil
+        }
+
+    /// JComboBox を入れたモーダルダイアログを出して、選択された文字列を返す。
+    /// parent は ResourceState から取り出したメイン frame を使う (null parent を避ける)。
+    def showComboPicker(state: IdeState, candidates: List[String]): Option[String] \ IO =
+        let combo: JComboBox[String] = new JComboBox();
+        List.forEach(c -> { combo.addItem(c); () }, candidates);
+        combo.setEditable(false);
+
+        let label = new JLabel("Select entry:");
+        let panel = new JPanel(new BorderLayout(0, 6));
+        panel.add(label, BorderLayout.NORTH);
+        panel.add(combo, BorderLayout.CENTER);
+
+        let parent = match ResourceState.getMainFrame(state#resource) {
+            case Some(f) => f
+            case None    => bug!("ResourceEditorUI: mainFrame not set (IdeUI.customize 内で setMainFrame を呼ぶ必要あり)")
+        };
+        let result = JOptionPane.showConfirmDialog(
+            parent, panel, "Add to array", JOptionPane.OK_CANCEL_OPTION);
+        if (result == JOptionPane.OK_OPTION) {
+            let sel = combo.getSelectedItem();
+            if (Object.isNull(sel)) None
+            else Some(sel.toString())
+        } else None
+
+    def onMetaArrayDel(state: IdeState, keyPath: List[String],
+                        model: DefaultListModel[String], list: JList[String]): Unit \ IO =
+        let idx = list.getSelectedIndex();
+        if (idx < 0) ()
+        else {
+            model.removeElementAt(idx);
+            rebuildMetaJsonFromModel(state, keyPath, model)
+        }
+
+    /// JList の現在の content を JSON 配列にして JsonOps.setAtKeyPath で editingJson を更新。
+    def rebuildMetaJsonFromModel(state: IdeState, keyPath: List[String],
+                                   model: DefaultListModel[String]): Unit \ IO =
+        match ResourceState.getEditingJson(state#resource) {
+            case None => ()
+            case Some(json) =>
+                let size = model.getSize();
+                let items = collectListItems(model, 0, size, Nil);
+                let arr = Json.JsonElement.JsonArray(
+                    List.toVector(List.map(s -> Json.JsonElement.JsonString(s), items)));
+                let newJson = JsonOps.setAtKeyPath(json, keyPath, arr);
+                ResourceState.setEditingJson(state#resource, Some(newJson));
+                ResourceState.setDirty(state#resource, true)
+        }
+
+    def collectListItems(model: DefaultListModel[String], i: Int32, n: Int32, acc: List[String]):
+            List[String] \ IO =
+        if (i >= n) List.reverse(acc)
+        else collectListItems(model, i + 1, n, model.getElementAt(i) :: acc)
 
     /// catalog 形式: sub-entry 選択時のみ Some([container, subEntry])、未選択は None
     /// single 形式 : 常に Some([])

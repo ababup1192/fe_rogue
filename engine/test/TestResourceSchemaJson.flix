@@ -73,4 +73,65 @@ mod TestResourceSchemaJson {
         Assert.assertEq(
             expected = (true, true, Set#{"moveTiles", "hp", "sprite"}),
             (parsedOk, decodedOk, topKeys))
+
+    /// metaHints セクションを含む schema JSON。
+    /// players は units を参照する array、tags は自由文字列 array として明示する。
+    def schemaJsonWithMeta(): String = String.unlines(
+        "{" ::
+        "  \"fields\": {" ::
+        "    \"hp\": {" ::
+        "      \"field\": {" ::
+        "        \"ftype\": \"int\"," ::
+        "        \"hint\":  { \"slider\": { \"min\": 1, \"max\": 100, \"step\": 5 } }," ::
+        "        \"label\": \"HP\"" ::
+        "      }" ::
+        "    }" ::
+        "  }," ::
+        "  \"metaHints\": {" ::
+        "    \"players\": { \"type\": \"ref\", \"to\": \"units\" }," ::
+        "    \"tags\":    { \"type\": \"text\" }" ::
+        "  }" ::
+        "}" :: Nil)
+
+    /// metaHints あり: fields に hp、metaHints に players/tags が decode される。
+    @Test
+    def testDecodeSchemaWithMetaHints(): Unit \ Assert =
+        let parsed: Option[Json.JsonElement] = Json.Parse.parse(schemaJsonWithMeta());
+        let decoded: Option[Resource.ResourceSchema] =
+            Option.flatMap(Saveable.fromJson, parsed);
+        let metaKeys = match decoded {
+            case Some(s) => Map.keysOf(Resource.metaHintsOf(s))
+            case None    => Set.empty()
+        };
+        let playersHint = match decoded {
+            case Some(s) => Map.get("players", Resource.metaHintsOf(s))
+            case None    => None
+        };
+        Assert.assertEq(
+            expected = (true, Set#{"players", "tags"}, Some(Resource.MetaHint.Ref("units"))),
+            (Option.nonEmpty(decoded), metaKeys, playersHint))
+
+    /// round-trip: encode → parse → decode で同じ schema に戻る。
+    @Test
+    def testMetaHintsRoundTrip(): Unit \ Assert =
+        let original = Resource.mkSchemaWithMeta(
+            Map#{},
+            Map#{
+                "players" => Resource.MetaHint.Ref("units"),
+                "tags"    => Resource.MetaHint.Text
+            });
+        let json = Saveable.toJson(original);
+        let pretty = Json.Write.toPrettyString(2, json);
+        let reparsed: Option[Resource.ResourceSchema] =
+            Json.Parse.parse(pretty) |> Option.flatMap(Saveable.fromJson);
+        let metaHints = match reparsed {
+            case Some(s) => Resource.metaHintsOf(s)
+            case None    => Map.empty()
+        };
+        Assert.assertEq(
+            expected = Map#{
+                "players" => Resource.MetaHint.Ref("units"),
+                "tags"    => Resource.MetaHint.Text
+            },
+            metaHints)
 }

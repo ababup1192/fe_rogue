@@ -84,4 +84,62 @@ mod ResourceCatalog {
             case Classification.Single        => fieldPath
             case Classification.Unsupported(_) => Nil
         }
+
+    /// メタフィールドの編集 UI ヒント。schema の `metaHints` セクションから読む。
+    /// engine 側にも同じ enum があるが、依存パッケージ (.fpkg) のキャッシュ更新を待たずに
+    /// IDE 単独でビルドできるよう、IDE 内に同等定義を置く (engine リリース後に統合予定)。
+    ///   Ref(target)  : `target` キーの catalog コンテナの sub-entries を dropdown 候補にする
+    ///   Text         : 自由テキスト入力
+    pub enum MetaHint with Eq, ToString {
+        case Ref(String)
+        case Text
+    }
+
+    /// schema JSON の `metaHints` セクションを Map[String, MetaHint] に decode する。
+    /// 該当セクションがなければ空 Map を返す。形式不一致はそのキーをスキップ。
+    pub def parseMetaHints(schemaJson: JsonElement): Map[String, MetaHint] =
+        match schemaJson {
+            case JsonObject(top) =>
+                match Map.get("metaHints", top) {
+                    case Some(JsonObject(m)) =>
+                        Map.foldLeftWithKey((acc, name, hintJson) ->
+                            match parseSingleHint(hintJson) {
+                                case Some(h) => Map.insert(name, h, acc)
+                                case None    => acc
+                            },
+                            Map.empty(), m)
+                    case _ => Map.empty()
+                }
+            case _ => Map.empty()
+        }
+
+    def parseSingleHint(elem: JsonElement): Option[MetaHint] = match elem {
+        case JsonObject(obj) =>
+            match Map.get("type", obj) {
+                case Some(JsonString("ref")) =>
+                    match Map.get("to", obj) {
+                        case Some(JsonString(target)) => Some(MetaHint.Ref(target))
+                        case _                         => None
+                    }
+                case Some(JsonString("text")) => Some(MetaHint.Text)
+                case _                         => None
+            }
+        case _ => None
+    }
+
+    /// メタ配列が catalog 参照型 (要素が catalog sub-entry の id) か推定するヒューリスティック。
+    /// schema の metaHints に明示がない場合のフォールバック判定に使う。
+    ///
+    /// ルール:
+    ///   - 空配列 → true (catalog 参照型と仮定。UX 上 sub-entries から選ぶのが自然)
+    ///   - 全要素が JsonString で、その値が `subEntries` に含まれる → true
+    ///   - それ以外 (一部が非 String、または sub-entries 外の文字列) → false
+    pub def isCatalogRefArray(items: List[JsonElement], subEntries: List[String]): Bool =
+        if (List.isEmpty(items)) true
+        else
+            let subSet = List.toSet(subEntries);
+            List.forAll(elem -> match elem {
+                case JsonString(s) => Set.memberOf(s, subSet)
+                case _             => false
+            }, items)
 }

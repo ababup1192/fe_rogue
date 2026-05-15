@@ -3,7 +3,6 @@
     {
       "frame": 0,
       "hframes": 5,
-      "vframes": 2,
       "name": "Sprite",
       "pos": [
         0,
@@ -15,13 +14,14 @@
       ],
       "texture": "character_sheet",
       "type": "Sprite2D",
+      "vframes": 2,
       "zIndex": 10
     }
   ],
   "name": "Player",
   "pos": [
-    88,
-    88
+    64,
+    64
   ],
   "type": "Marker2D"
 }
