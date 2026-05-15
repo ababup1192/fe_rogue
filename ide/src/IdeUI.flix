@@ -3,13 +3,21 @@
 //
 // 役割:
 //   - 大きめのウィンドウサイズ + BorderLayout
-//     (左 = scene-tree / 中央 = scene preview / 右 = JSplitPane(Inspector 上, Scene Files 下))
+//     - frame.NORTH  = タブバー (Scenes / Resources モード切替)
+//     - frame.WEST   = scene-tree (Scenes モード時のみ)
+//     - frame.CENTER = centerEastSplit (canvas + Inspector/SceneFiles) または resourcesTab
+//     - frame.SOUTH  = ステータスバー (Scenes モード時のみ)
 //   - JMenuBar に File → Open Project... を追加
 //   - File チューザでプロジェクトディレクトリを選ばせ、`pendingProjectRef` に保存
 //     + WindowEvent.WINDOW_CLOSING を dispatch して SwingLayer.withSwing を抜けさせる
 //   - 右下の scene ファイルリストをクリックすると `pendingSceneRef` を更新し、
-//     同時に左の scene-tree も該当 JSON で再構築する (window は閉じない、
-//     現セッション内で scene を切替える)
+//     同時に左の scene-tree も該当 JSON で再構築する
+//
+// タブ切替の実装方針:
+//   AWTGLCanvas (heavyweight) を JTabbedPane や CardLayout に入れると、Mac の AWT で
+//   lightweight 兄弟 component の paint と衝突して canvas 周辺に白い paint 漏れが出る。
+//   そのため frame.NORTH に独自タブバーを置き、タブ切替時に frame レベルで
+//   westPanel/centerEastSplit/southPanel と resourcesTab を物理的に入れ替える方式にしている。
 //
 // SwingLayer は UI 構造を知らない。IdeUI は IDE 固有の UI を集約する。
 
@@ -26,7 +34,8 @@ mod IdeUI {
     import javax.swing.JScrollPane
     import javax.swing.JTree
     import javax.swing.JSplitPane
-    import javax.swing.JTabbedPane
+    import javax.swing.JToggleButton
+    import javax.swing.ButtonGroup
     import javax.swing.JCheckBox
     import javax.swing.JTextField
     import javax.swing.JTextArea
@@ -84,19 +93,26 @@ mod IdeUI {
         frame.setSize(new Dimension(1280, 800));
         frame.setMinimumSize(new Dimension(800, 500));
         frame.setLayout(new BorderLayout());
+        frame.getContentPane().setBackground(new Color(28, 28, 28));
 
-        // Scenes タブの中身: 現状の 3 カラムレイアウト (west tree + center canvas + east inspector/files)
-        // を BorderLayout で 1 つの JPanel にまとめる。タブ切替で west/south ごと消えるようにする。
-        let scenesTab = buildScenesTab(state, canvas);
+        // Scenes モードの 3 component (frame.WEST/CENTER/SOUTH) と Resources tab を事前構築。
+        // 旧 IDE と同じ frame 階層 (frame.CENTER.centerEastSplit.left.centerPanel に canvas) を
+        // 保つことで heavyweight canvas のレイアウトを最も安定させる。
+        let westPanel = buildSceneTreePanel(state);
+        westPanel.setPreferredSize(new Dimension(300, 0));
+        let centerEastSplit = buildCenterEastSplit(state, canvas);
+        let southPanel = buildStatusBar();
 
-        // Resources タブ: ResourceEditorUI で別レイアウト
         let resourcesTab = ResourceEditorUI.buildTab(state);
 
-        // 上部に JTabbedPane を置き、Scenes / Resources を切替える
-        let tabs = new JTabbedPane();
-        tabs.addTab("Scenes", scenesTab);
-        tabs.addTab("Resources", resourcesTab);
-        frame.add(tabs, BorderLayout.CENTER);
+        // タブバー (frame.NORTH に常駐)
+        let tabBar = buildTabBar(state, frame, canvas, westPanel, centerEastSplit, southPanel, resourcesTab);
+
+        // 初期状態は Scenes モード
+        frame.add(tabBar, BorderLayout.NORTH);
+        frame.add(westPanel, BorderLayout.WEST);
+        frame.add(centerEastSplit, BorderLayout.CENTER);
+        frame.add(southPanel, BorderLayout.SOUTH);
 
         // メニューバー (frame レベル、タブと無関係)
         frame.setJMenuBar(buildMenuBar(state, frame));
@@ -118,23 +134,110 @@ mod IdeUI {
         timer.setRepeats(false);
         timer.start()
 
-    /// Scenes タブ全体を組み立てる。旧 customize 実装の west/center/east/south レイアウトを
-    /// 1 つの JPanel に閉じ込め、JTabbedPane.addTab に渡せるようにする。
-    /// タブ切替で west tree や south status bar ごと表示・非表示が切り替わる。
-    def buildScenesTab(state: IdeState, canvas: AWTGLCanvas): JPanel \ IO =
-        let tab = new JPanel(new BorderLayout());
+    /// frame.NORTH に置くタブバー。Scenes / Resources の JToggleButton を持ち、
+    /// 切替時に frame の WEST/CENTER/SOUTH と CENTER (resourcesTab) を入れ替える。
+    /// 選択中のボタンは明るい背景で「前に出ている」ように見せる (タブっぽい UI)。
+    def buildTabBar(state: IdeState, frame: JFrame, canvas: AWTGLCanvas,
+                    westPanel: JPanel, centerEastSplit: JSplitPane, southPanel: JPanel,
+                    resourcesTab: JPanel): JPanel \ IO =
+        let _ = state;
+        let tabBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        tabBar.setBackground(new Color(35, 35, 35));
+        tabBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(60, 60, 60)));
 
+        let scenesBtn = new JToggleButton("Scenes", true);
+        let resourcesBtn = new JToggleButton("Resources");
+        let group = new ButtonGroup();
+        group.add(scenesBtn);
+        group.add(resourcesBtn);
+        styleTabButton(scenesBtn, true);
+        styleTabButton(resourcesBtn, false);
+        tabBar.add(scenesBtn);
+        tabBar.add(resourcesBtn);
+
+        // 選択状態の変化に追随して見た目を更新。ButtonGroup により片方が selected になれば
+        // もう片方は automatically deselect されるので、両方の stateChanged を聞く。
+        let restyleBoth = () -> {
+            styleTabButton(scenesBtn, scenesBtn.isSelected());
+            styleTabButton(resourcesBtn, resourcesBtn.isSelected())
+        };
+        scenesBtn.addChangeListener(new ChangeListener {
+            def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = restyleBoth()
+        });
+        resourcesBtn.addChangeListener(new ChangeListener {
+            def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = restyleBoth()
+        });
+
+        scenesBtn.addActionListener(new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
+                let cp = frame.getContentPane();
+                cp.remove(resourcesTab);
+                cp.add(westPanel, BorderLayout.WEST);
+                cp.add(centerEastSplit, BorderLayout.CENTER);
+                cp.add(southPanel, BorderLayout.SOUTH);
+                canvas.setVisible(true);
+                frame.revalidate();
+                frame.repaint()
+            }
+        });
+        resourcesBtn.addActionListener(new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
+                // Mac の AWTGLCanvas は setVisible(false) だけでは native window が残り、
+                // Resources の lightweight component を覆い隠す。setBounds(0,0,0,0) で
+                // 物理的にサイズを 0 にして画面に出ないようにする (再度 Scenes に切替えた時に
+                // BorderLayout のレイアウトで再度サイズが戻る)。
+                canvas.setVisible(false);
+                canvas.setBounds(0, 0, 0, 0);
+                let cp = frame.getContentPane();
+                cp.remove(westPanel);
+                cp.remove(centerEastSplit);
+                cp.remove(southPanel);
+                cp.add(resourcesTab, BorderLayout.CENTER);
+                frame.revalidate();
+                frame.repaint()
+            }
+        });
+        tabBar
+
+    /// タブ風 JToggleButton のスタイル。選択時は明るい背景で「前に出ている」ように、
+    /// 非選択時はタブバーと一体化した暗い背景にする。Mac の Aqua LAF が setBackground を
+    /// 無視しないよう setContentAreaFilled(true) と setOpaque(true) を設定する。
+    def styleTabButton(btn: JToggleButton, isSelected: Bool): Unit \ IO =
+        btn.setOpaque(true);
+        btn.setContentAreaFilled(true);
+        btn.setFocusPainted(false);
+        btn.setBorderPainted(true);
+        if (isSelected) {
+            btn.setBackground(new Color(60, 60, 80));
+            btn.setForeground(new Color(235, 235, 245));
+            btn.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(2, 1, 0, 1, new Color(110, 130, 200)),
+                BorderFactory.createEmptyBorder(4, 12, 4, 12)))
+        } else {
+            btn.setBackground(new Color(35, 35, 35));
+            btn.setForeground(new Color(150, 150, 150));
+            btn.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 1, 1, 1, new Color(60, 60, 60)),
+                BorderFactory.createEmptyBorder(3, 12, 3, 12)))
+        }
+
+    /// frame.SOUTH に置く 22px のステータスバー (現状は灰色の帯のみ、将来 dirty 表示やメッセージを出す)。
+    def buildStatusBar(): JPanel \ IO =
+        let panel = new JPanel();
+        panel.setPreferredSize(new Dimension(0, 22));
+        panel.setBackground(new Color(50, 50, 50));
+        panel
+
+    /// 中央列 (canvas を含む centerPanel) と東列 (Inspector + Scene Files) を
+    /// 1 つの JSplitPane にまとめて返す。frame.CENTER に直接置かれる。
+    def buildCenterEastSplit(state: IdeState, canvas: AWTGLCanvas): JSplitPane \ IO =
         // 中央: scene preview (canvas)
         let centerPanel = new JPanel(new BorderLayout());
         centerPanel.setBackground(new Color(20, 20, 20));
         centerPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        canvas.setBackground(new Color(20, 20, 20));
         centerPanel.add(canvas, BorderLayout.CENTER);
         centerPanel.setMinimumSize(new Dimension(400, 0));
-
-        // 左: scene-tree
-        let westPanel = buildSceneTreePanel(state);
-        westPanel.setPreferredSize(new Dimension(300, 0));
-        tab.add(westPanel, BorderLayout.WEST);
 
         // 右: 上 = Inspector / 下 = Scene Files の縦分割
         let inspectorPanel = buildInspectorPanel(state);
@@ -146,6 +249,7 @@ mod IdeUI {
         eastSplit.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         eastSplit.setPreferredSize(new Dimension(300, 0));
         eastSplit.setMinimumSize(new Dimension(220, 0));
+        eastSplit.setBackground(new Color(28, 28, 28));
 
         let centerEastSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, centerPanel, eastSplit);
         centerEastSplit.setDividerLocation(1280 - 300 - 300 - 8);
@@ -153,16 +257,8 @@ mod IdeUI {
         centerEastSplit.setContinuousLayout(true);
         centerEastSplit.setDividerSize(8);
         centerEastSplit.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
-
-        tab.add(centerEastSplit, BorderLayout.CENTER);
-
-        // 下: ステータスバー
-        let southPanel = new JPanel();
-        southPanel.setPreferredSize(new Dimension(0, 22));
-        southPanel.setBackground(new Color(50, 50, 50));
-        tab.add(southPanel, BorderLayout.SOUTH);
-
-        tab
+        centerEastSplit.setBackground(new Color(28, 28, 28));
+        centerEastSplit
 
     /// 右下パネル: 上段はヘッダラベル、下段は scene ファイル JList。
     def buildScenesPanel(state: IdeState): JPanel \ IO =

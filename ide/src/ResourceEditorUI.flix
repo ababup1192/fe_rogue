@@ -73,12 +73,30 @@ mod ResourceEditorUI {
         // 下半分: Sub-entry 一覧 (catalog 時のみ中身が出る)
         let subEntriesPanel = buildSubEntriesPanel(state);
 
-        // 縦並び
+        // Save ボタンと status ラベルを左カラム最下部に置く。
+        // 中央カラム (preview) に置くと heavyweight canvas との mixing で透けて見えるため。
+        let saveSection = new JPanel(new FlowLayout(FlowLayout.CENTER, 4, 4));
+        saveSection.setBackground(new Color(40, 40, 40));
+        let saveBtn = new JButton("Save");
+        let status = new JLabel(" ");
+        status.setForeground(new Color(140, 200, 140));
+        saveBtn.addActionListener(new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
+                run {
+                    onSaveClicked(state, status)
+                } with Fs.FileWrite.runWithIO
+            }
+        });
+        saveSection.add(saveBtn);
+        saveSection.add(status);
+
+        // 縦並び (上から: Resources 一覧 / Sub-entries / Save)
         let stacked = new JPanel(new BorderLayout());
         stacked.setBackground(new Color(40, 40, 40));
         resourcesPanel.setPreferredSize(new Dimension(0, 180));
         stacked.add(resourcesPanel, BorderLayout.NORTH);
         stacked.add(subEntriesPanel, BorderLayout.CENTER);
+        stacked.add(saveSection, BorderLayout.SOUTH);
 
         panel.add(stacked, BorderLayout.CENTER);
         panel
@@ -198,29 +216,12 @@ mod ResourceEditorUI {
         panel.setBackground(new Color(35, 35, 35));
         panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        // preview placeholder
+        // preview placeholder (Save は左カラム最下部に移動済み)
         let previewLabel = new JLabel("(no preview)", SwingConstants.CENTER);
         previewLabel.setForeground(new Color(120, 120, 120));
         previewLabel.setPreferredSize(new Dimension(0, 200));
         ResourceState.setPreviewLabelRef(state#resource, Some(previewLabel));
         panel.add(previewLabel, BorderLayout.CENTER);
-
-        // Save ボタン: 編集中 JSON を Resource ファイルに書き戻す
-        let bottom = new JPanel(new FlowLayout(FlowLayout.CENTER));
-        bottom.setBackground(new Color(35, 35, 35));
-        let saveBtn = new JButton("Save");
-        let status = new JLabel(" ");
-        status.setForeground(new Color(140, 200, 140));
-        saveBtn.addActionListener(new ActionListener {
-            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
-                run {
-                    onSaveClicked(state, status)
-                } with Fs.FileWrite.runWithIO
-            }
-        });
-        bottom.add(saveBtn);
-        bottom.add(status);
-        panel.add(bottom, BorderLayout.SOUTH);
         panel
 
     // ──────────────────────────────────────────────────────
@@ -231,11 +232,7 @@ mod ResourceEditorUI {
         let outer = new JPanel(new BorderLayout());
         outer.setPreferredSize(new Dimension(380, 0));
         outer.setBackground(new Color(45, 45, 45));
-        outer.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-
-        let header = new JLabel("  Properties");
-        header.setForeground(Color.LIGHT_GRAY);
-        outer.add(header, BorderLayout.NORTH);
+        // Properties セクションヘッダは SchemaWidgets が出すため、ここでは外枠 padding なし。
 
         let content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));

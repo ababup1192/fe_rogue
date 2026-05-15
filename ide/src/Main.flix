@@ -31,9 +31,17 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
             println("[Main] Loading project: ${path}");
             match ProjectLoader.loadProject(path) {
                 case Ok(proj) =>
+                    // 表示用相対パスでアルファベット順ソート。先頭シーンを起動時に自動オープンする
                     let sceneFiles = ProjectLoader.findSceneFiles(path)
-                        |> List.map(rel -> (joinPath(path, rel), rel));
+                        |> List.map(rel -> (joinPath(path, rel), rel))
+                        |> List.sortBy(p -> snd(p));
                     IdeState.setSceneFiles(state, sceneFiles);
+                    // 起動時に先頭シーンを自動でロードする。pendingSceneRef にセットしておけば
+                    // ideLoop の最初のフレームで loadPendingSceneOrKeep がロードする。
+                    match List.head(sceneFiles) {
+                        case Some((abs, _rel)) => Array.put(Some(abs), 0, state#pendingSceneRef)
+                        case None              => ()
+                    };
                     let textureNames = proj#config#textureManifest |> List.map(e -> e#name);
                     IdeState.setTextureNames(state, textureNames);
                     // texture 名 → 絶対パス。SpritePreview が BufferedImage 読込で使う。

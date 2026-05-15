@@ -1,12 +1,14 @@
 // SchemaWidgets — Resource.ResourceSchema を walk して widget を組み立てる
 //
+// レイアウト方針 (Godot Inspector を参考):
+//   - 各 widget 行は高さ ~24px に詰める
+//   - Slider + Spinner を組合せ、現在値表示と直接数値入力を両立
+//   - Nested は createSectionHeader (Inspector の "Node2D" 区切りと同じ bg(60,60,70) +
+//     上下 matte border) で見出しを出し、その下に子 panel
+//   - top-level (single レコード or catalog の sub-entry) も "Properties" の section header
+//
 // 全ての build* / widget 関数は JPanel を返す (Flix の Java interop で subtype を扱わないため、
 // 各 widget は 1 セルの JPanel に包む)。
-//
-// FieldType × FieldHint の組合せから Swing コンポーネントへディスパッチ。各 widget は
-// change event で:
-//   1. ResourceState.editingJsonRef を JsonOps.setAtKeyPath で更新
-//   2. ResourceState.dirtyRef := true
 
 mod SchemaWidgets {
     import javax.swing.JComponent
@@ -19,7 +21,9 @@ mod SchemaWidgets {
     import javax.swing.JCheckBox
     import javax.swing.JComboBox
     import javax.swing.BoxLayout
+    import javax.swing.Box
     import javax.swing.BorderFactory
+    import javax.swing.SwingConstants
     import javax.swing.event.ChangeListener
     import javax.swing.event.ChangeEvent
     import javax.swing.event.DocumentListener
@@ -38,22 +42,101 @@ mod SchemaWidgets {
 
     pub type alias IdeState = IdeState.IdeState
 
+    /// 1 行の標準高さ。Inspector の Slider+Spinner 行と揃える。
+    def rowHeight(): Int32 = 24
+
+    /// ラベル列の幅。Inspector のフィールド名カラム幅と揃える。
+    def labelWidth(): Int32 = 90
+
+    /// Spinner 列の幅 (Slider の右に表示する数値入力)。
+    def spinnerWidth(): Int32 = 64
+
+    /// 背景色。Inspector の Property panel と揃える。
+    def panelBg(): Color \ IO = new Color(45, 45, 45)
+
     /// schema を walk して 1 つの縦並び panel を作る。
     /// keyPathPrefix: catalog 時は `[containerKey, subEntryKey]`、single 時は空。
     pub def buildPanel(state: IdeState, schema: ResourceSchema, keyPathPrefix: List[String]):
             JPanel \ IO =
         let panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBackground(new Color(45, 45, 45));
+        panel.setBackground(panelBg());
+
+        // top-level の全フィールドを「Properties」セクションとして出す
+        let topHeader = createSectionHeader("Properties");
+        panel.add(topHeader);
 
         let fields = Resource.fieldsOf(schema);
-        Map.forEach((name, entry) -> {
+        List.forEach(pair -> {
+            let (name, entry) = pair;
             let row = buildEntry(state, name, entry, keyPathPrefix);
             row.setAlignmentX(0.0f32);
             panel.add(row);
             ()
-        }, fields);
+        }, sortedFields(fields));
+        // 残りの縦スペースを吸収。これがないと各 widget が BoxLayout に拡大配置されて
+        // 1 行の高さが異常に伸び、後続の widget が画面外に押し出される。
+        panel.add(Box.createVerticalGlue());
         panel
+
+    /// Inspector の「Node2D」区切り行と同じスタイルのセクションヘッダ。
+    /// bg(60,60,70)、上下 matte border、中央寄せ。
+    pub def createSectionHeader(title: String): JPanel \ IO =
+        let row = new JPanel(new BorderLayout());
+        row.setBackground(new Color(60, 60, 70));
+        row.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 0, 1, 0, new Color(35, 35, 40)),
+            BorderFactory.createEmptyBorder(4, 10, 4, 10)
+        ));
+        row.setMaximumSize(new Dimension(9999, 26));
+        row.setAlignmentX(0.0f32);
+        let lbl = new JLabel(title);
+        lbl.setForeground(new Color(220, 220, 230));
+        lbl.setHorizontalAlignment(SwingConstants.CENTER);
+        row.add(lbl, BorderLayout.CENTER);
+        row
+
+    /// Map のキーは alphabetical で iterate されるため UI 順序が「フレーム → 横分割 → テクスチャ
+    /// → 縦分割」のように直感に反する。フィールドの type/hint に基づく優先度で並べ替えて、
+    /// 「素材選択 → 寸法 → 細かな選択 → サブセクション」という汎用的な順序にする。
+    def sortedFields(fields: Map[String, FieldEntry]): List[(String, FieldEntry)] =
+        Map.toList(fields)
+            |> List.sortWith(pair -> other -> compareEntries(pair, other))
+
+    def compareEntries(a: (String, FieldEntry), b: (String, FieldEntry)): Comparison =
+        let (k1, e1) = a;
+        let (k2, e2) = b;
+        let p1 = priorityOf(e1);
+        let p2 = priorityOf(e2);
+        if (p1 < p2) Comparison.LessThan
+        else if (p1 > p2) Comparison.GreaterThan
+        else if (k1 < k2) Comparison.LessThan
+        else if (k1 > k2) Comparison.GreaterThan
+        else Comparison.EqualTo
+
+    /// フィールドの並び順優先度。小さい値が先頭。
+    ///   0: TexturePathT       (素材選択を最初に)
+    ///   2: IntT + Spinner     (次元: hframes, vframes など)
+    ///   3: 通常の数値 (Slider) (戦闘ステータスなど)
+    ///   4: TextT
+    ///   5: BoolT
+    ///   9: FrameGrid          (texture/dimensions を決めた後の細かな選択)
+    ///   10: Nested            (サブセクションは最後)
+    def priorityOf(entry: FieldEntry): Int32 = match entry {
+        case FieldEntry.Field(fs) =>
+            match fs#ftype {
+                case FieldType.TexturePathT => 0
+                case FieldType.TextT        => 4
+                case FieldType.BoolT        => 5
+                case _ =>
+                    match fs#hint {
+                        case FieldHint.FrameGrid(_) => 9
+                        case FieldHint.Spinner(_)   => 2
+                        case _                      => 3
+                    }
+            }
+        case FieldEntry.Nested(_) => 10
+    }
 
     def buildEntry(state: IdeState, name: String, entry: FieldEntry, keyPathPrefix: List[String]):
             JPanel \ IO =
@@ -64,39 +147,42 @@ mod SchemaWidgets {
                 buildNested(state, name, m, keyPathPrefix)
         }
 
+    /// Nested フィールドは「セクションヘッダ + 子 panel」の構造で表示する。
+    /// セクションヘッダは Inspector の Node2D 区切りと同じスタイル。
     def buildNested(state: IdeState, name: String, fields: Map[String, FieldEntry],
                     keyPathPrefix: List[String]): JPanel \ IO =
-        let outer = new JPanel(new BorderLayout());
-        outer.setBackground(new Color(45, 45, 45));
-        outer.setBorder(BorderFactory.createEmptyBorder(8, 4, 4, 4));
+        let outer = new JPanel();
+        outer.setLayout(new BoxLayout(outer, BoxLayout.Y_AXIS));
+        outer.setBackground(panelBg());
+        outer.setAlignmentX(0.0f32);
 
-        let header = new JLabel("── ${name} ──");
-        header.setForeground(new Color(180, 180, 200));
-        outer.add(header, BorderLayout.NORTH);
+        let header = createSectionHeader(name);
+        outer.add(header);
 
-        let inner = new JPanel();
-        inner.setLayout(new BoxLayout(inner, BoxLayout.Y_AXIS));
-        inner.setBackground(new Color(45, 45, 45));
         let newPrefix = keyPathPrefix ::: (name :: Nil);
-        Map.forEach((childName, childEntry) -> {
+        List.forEach(pair -> {
+            let (childName, childEntry) = pair;
             let row = buildEntry(state, childName, childEntry, newPrefix);
             row.setAlignmentX(0.0f32);
-            inner.add(row);
+            outer.add(row);
             ()
-        }, fields);
-        outer.add(inner, BorderLayout.CENTER);
+        }, sortedFields(fields));
         outer
 
+    /// 1 フィールド分の行。`[label (90px) | widget (flex)]` のシンプル横並び。
+    /// 行の最大高さを rowHeight() に固定して縦に詰める。
     def buildField(state: IdeState, name: String, fs: FieldSchema, keyPathPrefix: List[String]):
             JPanel \ IO =
         let keyPath = keyPathPrefix ::: (name :: Nil);
-        let row = new JPanel(new BorderLayout(8, 0));
-        row.setBackground(new Color(45, 45, 45));
-        row.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+        let row = new JPanel(new BorderLayout(6, 0));
+        row.setBackground(panelBg());
+        row.setBorder(BorderFactory.createEmptyBorder(1, 10, 1, 10));
+        row.setMaximumSize(new Dimension(9999, rowHeight()));
+        row.setAlignmentX(0.0f32);
 
         let label = new JLabel(fs#label);
-        label.setForeground(Color.LIGHT_GRAY);
-        label.setPreferredSize(new Dimension(110, 24));
+        label.setForeground(new Color(190, 190, 195));
+        label.setPreferredSize(new Dimension(labelWidth(), rowHeight()));
         row.add(label, BorderLayout.WEST);
 
         let editor = buildWidget(state, fs, keyPath);
@@ -119,39 +205,61 @@ mod SchemaWidgets {
         }
 
     // ──────────────────────────────────────────────────────
-    // 個別 widget (全て JPanel に包んで返す)
+    // 個別 widget
     // ──────────────────────────────────────────────────────
 
     def currentValue(state: IdeState, keyPath: List[String]): Option[JsonElement] \ IO =
         ResourceState.getEditingJson(state#resource)
             |> Option.flatMap(json -> JsonOps.getAtKeyPath(json, keyPath))
 
-    /// 値を [min, max] にクランプ。schema の範囲外な data 値や、+ Add で生成された
-    /// デフォルト 0 が slider の min=1 を下回るケースで JSlider/SpinnerNumberModel が
-    /// IllegalArgumentException を投げるのを防ぐ。
-    def clampInt(v: Int32, lo: Int32, hi: Int32): Int32 =
-        if (v < lo) lo else if (v > hi) hi else v
-
-    def clampFloat(v: Float64, lo: Float64, hi: Float64): Float64 =
-        if (v < lo) lo else if (v > hi) hi else v
-
+    /// IntT + Slider: スライダー + 右に Spinner で値表示 + 直接入力。
+    /// 両者を ChangeListener で双方向同期する。
     def intSlider(state: IdeState, keyPath: List[String],
                   spec: {min = Float64, max = Float64, step = Float64}): JPanel \ IO =
         let minI = Float64.tryToInt32(spec#min) |> Option.getWithDefault(0);
         let maxI = Float64.tryToInt32(spec#max) |> Option.getWithDefault(100);
         let raw = currentValue(state, keyPath) |> Option.flatMap(jsonToInt) |> Option.getWithDefault(minI);
         let current = clampInt(raw, minI, maxI);
+
         let slider = new JSlider(minI, maxI, current);
-        slider.setBackground(new Color(45, 45, 45));
+        slider.setBackground(panelBg());
+        slider.setOpaque(false);
+
+        let model = new SpinnerNumberModel(current, minI, maxI, 1);
+        let spinner = new JSpinner(model);
+        spinner.setPreferredSize(new Dimension(spinnerWidth(), rowHeight()));
+
+        // ChangeListener の再入を防ぐためのフラグ
+        let updating = Array#{false} @ Static;
         slider.addChangeListener(new ChangeListener {
             def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = {
-                let v = slider.getValue();
-                commitInt(state, keyPath, v)
+                if (Array.get(0, updating)) ()
+                else {
+                    Array.put(true, 0, updating);
+                    let v = slider.getValue();
+                    spinner.setValue(v);
+                    commitInt(state, keyPath, v);
+                    Array.put(false, 0, updating)
+                }
             }
         });
-        let p = new JPanel(new BorderLayout());
-        p.setBackground(new Color(45, 45, 45));
+        spinner.addChangeListener(new ChangeListener {
+            def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = {
+                if (Array.get(0, updating)) ()
+                else {
+                    Array.put(true, 0, updating);
+                    let v = model.getNumber().intValue();
+                    slider.setValue(v);
+                    commitInt(state, keyPath, v);
+                    Array.put(false, 0, updating)
+                }
+            }
+        });
+
+        let p = new JPanel(new BorderLayout(4, 0));
+        p.setBackground(panelBg());
         p.add(slider, BorderLayout.CENTER);
+        p.add(spinner, BorderLayout.EAST);
         p
 
     def intSpinner(state: IdeState, keyPath: List[String],
@@ -160,6 +268,7 @@ mod SchemaWidgets {
         let current = clampInt(raw, spec#min, spec#max);
         let model = new SpinnerNumberModel(current, spec#min, spec#max, 1);
         let spinner = new JSpinner(model);
+        spinner.setPreferredSize(new Dimension(spinnerWidth(), rowHeight()));
         spinner.addChangeListener(new ChangeListener {
             def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = {
                 let v = model.getNumber().intValue();
@@ -167,8 +276,8 @@ mod SchemaWidgets {
             }
         });
         let p = new JPanel(new BorderLayout());
-        p.setBackground(new Color(45, 45, 45));
-        p.add(spinner, BorderLayout.CENTER);
+        p.setBackground(panelBg());
+        p.add(spinner, BorderLayout.EAST);
         p
 
     def intSpinnerOpen(state: IdeState, keyPath: List[String]): JPanel \ IO =
@@ -176,6 +285,7 @@ mod SchemaWidgets {
         let current = clampInt(raw, -10000, 10000);
         let model = new SpinnerNumberModel(current, -10000, 10000, 1);
         let spinner = new JSpinner(model);
+        spinner.setPreferredSize(new Dimension(spinnerWidth(), rowHeight()));
         spinner.addChangeListener(new ChangeListener {
             def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = {
                 let v = model.getNumber().intValue();
@@ -183,8 +293,8 @@ mod SchemaWidgets {
             }
         });
         let p = new JPanel(new BorderLayout());
-        p.setBackground(new Color(45, 45, 45));
-        p.add(spinner, BorderLayout.CENTER);
+        p.setBackground(panelBg());
+        p.add(spinner, BorderLayout.EAST);
         p
 
     def floatSlider(state: IdeState, keyPath: List[String],
@@ -203,17 +313,45 @@ mod SchemaWidgets {
             let ratio = Int32.toFloat64(s) / Int32.toFloat64(steps);
             spec#min + span * ratio
         };
+
         let slider = new JSlider(0, steps, toSliderVal(current));
-        slider.setBackground(new Color(45, 45, 45));
+        slider.setBackground(panelBg());
+        slider.setOpaque(false);
+
+        let model = new SpinnerNumberModel(current, spec#min, spec#max, spec#step);
+        let spinner = new JSpinner(model);
+        spinner.setPreferredSize(new Dimension(spinnerWidth(), rowHeight()));
+
+        let updating = Array#{false} @ Static;
         slider.addChangeListener(new ChangeListener {
             def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = {
-                let v = fromSliderVal(slider.getValue());
-                commitFloat(state, keyPath, v)
+                if (Array.get(0, updating)) ()
+                else {
+                    Array.put(true, 0, updating);
+                    let v = fromSliderVal(slider.getValue());
+                    spinner.setValue(v);
+                    commitFloat(state, keyPath, v);
+                    Array.put(false, 0, updating)
+                }
             }
         });
-        let p = new JPanel(new BorderLayout());
-        p.setBackground(new Color(45, 45, 45));
+        spinner.addChangeListener(new ChangeListener {
+            def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = {
+                if (Array.get(0, updating)) ()
+                else {
+                    Array.put(true, 0, updating);
+                    let v = model.getNumber().doubleValue();
+                    slider.setValue(toSliderVal(v));
+                    commitFloat(state, keyPath, v);
+                    Array.put(false, 0, updating)
+                }
+            }
+        });
+
+        let p = new JPanel(new BorderLayout(4, 0));
+        p.setBackground(panelBg());
         p.add(slider, BorderLayout.CENTER);
+        p.add(spinner, BorderLayout.EAST);
         p
 
     def floatSpinner(state: IdeState, keyPath: List[String]): JPanel \ IO =
@@ -223,6 +361,7 @@ mod SchemaWidgets {
         let current = clampFloat(raw, -100000.0, 100000.0);
         let model = new SpinnerNumberModel(current, -100000.0, 100000.0, 0.1);
         let spinner = new JSpinner(model);
+        spinner.setPreferredSize(new Dimension(spinnerWidth(), rowHeight()));
         spinner.addChangeListener(new ChangeListener {
             def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = {
                 let v = model.getNumber().doubleValue();
@@ -230,8 +369,8 @@ mod SchemaWidgets {
             }
         });
         let p = new JPanel(new BorderLayout());
-        p.setBackground(new Color(45, 45, 45));
-        p.add(spinner, BorderLayout.CENTER);
+        p.setBackground(panelBg());
+        p.add(spinner, BorderLayout.EAST);
         p
 
     def textField(state: IdeState, keyPath: List[String]): JPanel \ IO =
@@ -247,21 +386,21 @@ mod SchemaWidgets {
                 commitString(state, keyPath, field.getText())
         });
         let p = new JPanel(new BorderLayout());
-        p.setBackground(new Color(45, 45, 45));
+        p.setBackground(panelBg());
         p.add(field, BorderLayout.CENTER);
         p
 
     def boolCheck(state: IdeState, keyPath: List[String]): JPanel \ IO =
         let current = currentValue(state, keyPath) |> Option.flatMap(jsonToBool) |> Option.getWithDefault(false);
         let check = new JCheckBox("", current);
-        check.setBackground(new Color(45, 45, 45));
+        check.setBackground(panelBg());
         check.addActionListener(new ActionListener {
             def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO =
                 commitBool(state, keyPath, check.isSelected())
         });
         let p = new JPanel(new BorderLayout());
-        p.setBackground(new Color(45, 45, 45));
-        p.add(check, BorderLayout.CENTER);
+        p.setBackground(panelBg());
+        p.add(check, BorderLayout.WEST);
         p
 
     def textureDropdown(state: IdeState, keyPath: List[String]): JPanel \ IO =
@@ -269,6 +408,12 @@ mod SchemaWidgets {
         let names = Map.keysOf(map) |> Set.toList;
         let current = currentValue(state, keyPath) |> Option.flatMap(jsonToString);
         let combo: JComboBox[String] = new JComboBox();
+        // JComboBox は Mac の Aqua LAF で native コントロールが大きいため明示的にサイズ制限。
+        // preferredSize の width=0 は BoxLayout のサイズ計算を壊して後続 widget が消えるので
+        // 妥当な値 (220) を指定する。
+        combo.setPreferredSize(new Dimension(220, rowHeight()));
+        combo.setMaximumSize(new Dimension(9999, rowHeight()));
+        combo.setMinimumSize(new Dimension(50, rowHeight()));
         List.forEach(n -> { combo.addItem(n); () }, names);
         match current {
             case Some(s) => combo.setSelectedItem(s)
@@ -282,7 +427,7 @@ mod SchemaWidgets {
             }
         });
         let p = new JPanel(new BorderLayout());
-        p.setBackground(new Color(45, 45, 45));
+        p.setBackground(panelBg());
         p.add(combo, BorderLayout.CENTER);
         p
 
@@ -309,13 +454,18 @@ mod SchemaWidgets {
                 let updated = JsonOps.setAtKeyPath(json, keyPath, newValue);
                 ResourceState.setEditingJson(state#resource, Some(updated));
                 ResourceState.setDirty(state#resource, true);
-                // sprite-like nested の値が変わった可能性。preview を再描画
                 SpritePreview.refresh(state)
         }
 
     // ──────────────────────────────────────────────────────
-    // JSON 値の取り出し
+    // JSON 値の取り出し / クランプ
     // ──────────────────────────────────────────────────────
+
+    def clampInt(v: Int32, lo: Int32, hi: Int32): Int32 =
+        if (v < lo) lo else if (v > hi) hi else v
+
+    def clampFloat(v: Float64, lo: Float64, hi: Float64): Float64 =
+        if (v < lo) lo else if (v > hi) hi else v
 
     def jsonToInt(elem: JsonElement): Option[Int32] = match elem {
         case JsonNumber(bd) => BigDecimal.tryToFloat64(bd) |> Option.flatMap(Float64.tryToInt32)
