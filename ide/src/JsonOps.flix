@@ -11,7 +11,7 @@ mod JsonOps {
 
     import java.math.BigDecimal
 
-    use Json.JsonElement.{JsonObject, JsonArray, JsonNull}
+    use Json.JsonElement.{JsonObject, JsonArray, JsonString, JsonNull}
 
     /// 不変リストの idx 番目を newElem に差し替えた新リストを返す。
     /// idx が範囲外なら元のリストをそのまま返す（クラッシュさせない）。
@@ -67,21 +67,65 @@ mod JsonOps {
             case idx :: restPath =>
                 match root {
                     case JsonObject(map) =>
-                        match Map.get("children", map) {
-                            case Some(JsonArray(children)) =>
-                                let childList = Vector.toList(children);
-                                match List.nth(idx, childList) {
-                                    case Some(child) =>
-                                        let updatedChild = setAtNodePathRec(child, restPath, subKeys, newValue);
-                                        let updated = replaceListAt(idx, updatedChild, childList);
-                                        let newChildren = JsonArray(List.toVector(updated));
-                                        JsonObject(Map.insert("children", newChildren, map))
-                                    case None => root
+                        match Map.get("type", map) {
+                            case Some(JsonString("Container")) =>
+                                setContainerChildAt(map, idx, restPath, subKeys, newValue, root)
+                            case _ =>
+                                match Map.get("children", map) {
+                                    case Some(JsonArray(children)) =>
+                                        let childList = Vector.toList(children);
+                                        match List.nth(idx, childList) {
+                                            case Some(child) =>
+                                                let updatedChild = setAtNodePathRec(child, restPath, subKeys, newValue);
+                                                let updated = replaceListAt(idx, updatedChild, childList);
+                                                let newChildren = JsonArray(List.toVector(updated));
+                                                JsonObject(Map.insert("children", newChildren, map))
+                                            case None => root
+                                        }
+                                    case _ => root
                                 }
-                            case _ => root
                         }
                     case _ => root
                 }
+        }
+
+    /// Container 内の idx 番目の子（layout 配下の実ノード）を更新して、Container を
+    /// 再構築した JsonObject を返す。Panel/HBox/VBox は layout.children[idx]、
+    /// Margin/Center は layout.child を idx=0 のときだけ書き換える
+    def setContainerChildAt(map: Map[String, Json.JsonElement], idx: Int32,
+                            restPath: List[Int32], subKeys: List[String],
+                            newValue: Json.JsonElement, originalRoot: Json.JsonElement): Json.JsonElement =
+        match Map.get("layout", map) {
+            case Some(JsonObject(layoutMap)) =>
+                match Map.get("kind", layoutMap) {
+                    case Some(JsonString(kind)) =>
+                        if (kind == "MarginContainer" or kind == "CenterContainer") {
+                            if (idx != 0i32) originalRoot
+                            else match Map.get("child", layoutMap) {
+                                case Some(childElem) =>
+                                    let updatedChild = setAtNodePathRec(childElem, restPath, subKeys, newValue);
+                                    let newLayout = JsonObject(Map.insert("child", updatedChild, layoutMap));
+                                    JsonObject(Map.insert("layout", newLayout, map))
+                                case None => originalRoot
+                            }
+                        } else
+                            match Map.get("children", layoutMap) {
+                                case Some(JsonArray(children)) =>
+                                    let childList = Vector.toList(children);
+                                    match List.nth(idx, childList) {
+                                        case Some(child) =>
+                                            let updatedChild = setAtNodePathRec(child, restPath, subKeys, newValue);
+                                            let updated = replaceListAt(idx, updatedChild, childList);
+                                            let newChildren = JsonArray(List.toVector(updated));
+                                            let newLayout = JsonObject(Map.insert("children", newChildren, layoutMap));
+                                            JsonObject(Map.insert("layout", newLayout, map))
+                                        case None => originalRoot
+                                    }
+                                case _ => originalRoot
+                            }
+                    case _ => originalRoot
+                }
+            case _ => originalRoot
         }
 
     /// 子インデックス列 `nodePath` を辿って該当ノードの JsonElement を返す。
@@ -91,17 +135,9 @@ mod JsonOps {
         match nodePath {
             case Nil => Some(root)
             case idx :: restPath =>
-                match root {
-                    case JsonObject(map) =>
-                        match Map.get("children", map) {
-                            case Some(JsonArray(children)) =>
-                                match List.nth(idx, Vector.toList(children)) {
-                                    case Some(child) => getAtNodePath(child, restPath)
-                                    case None        => None
-                                }
-                            case _ => None
-                        }
-                    case _ => None
+                match getChildAt(root, idx) {
+                    case Some(child) => getAtNodePath(child, restPath)
+                    case None        => None
                 }
         }
 
@@ -134,29 +170,84 @@ mod JsonOps {
     def extractNodeNamesRec(root: Json.JsonElement, indices: List[Int32],
                             acc: List[String]): Option[List[String]] =
         match indices {
-            case Nil => Some(List.reverse(acc))
+            case Nil =>
+                // 最終ノードが Container なら engine 側に対応ノードがないので None
+                if (isContainerJson(root)) None
+                else Some(List.reverse(acc))
             case idx :: restIndices =>
                 match getChildAt(root, idx) {
                     case None => None
                     case Some(child) =>
-                        match nameOf(child) {
+                        // Container は engine の scene tree には現れない (load-time directive)
+                        // ので名前を acc に積まず素通り
+                        if (isContainerJson(child))
+                            extractNodeNamesRec(child, restIndices, acc)
+                        else match nameOf(child) {
                             case None       => None
                             case Some(name) => extractNodeNamesRec(child, restIndices, name :: acc)
                         }
                 }
         }
 
-    /// JSON 要素の idx 番目の子を返す。JsonObject なら "children" 配列の idx 番目を、
-    /// JsonArray なら idx 番目の要素を返す。範囲外や子を持たない要素なら None
+    /// JSON 要素の idx 番目の子を返す。
+    /// - type が "Container" の JsonObject は layout 配下の実ノード列の idx 番目を返す
+    ///   (SceneTreeModel.jsonChildrenOf と同じ規約)
+    /// - その他の JsonObject は "children" 配列の idx 番目
+    /// - JsonArray は idx 番目の要素
+    /// - それ以外や範囲外は None
     def getChildAt(elem: Json.JsonElement, idx: Int32): Option[Json.JsonElement] =
         match elem {
             case JsonObject(map) =>
-                match Map.get("children", map) {
-                    case Some(JsonArray(children)) => List.nth(idx, Vector.toList(children))
-                    case _                         => None
+                match Map.get("type", map) {
+                    case Some(JsonString("Container")) =>
+                        List.nth(idx, containerInnerChildren(map))
+                    case _ =>
+                        match Map.get("children", map) {
+                            case Some(JsonArray(children)) =>
+                                List.nth(idx, Vector.toList(children))
+                            case _ => None
+                        }
                 }
             case JsonArray(items) => List.nth(idx, Vector.toList(items))
             case _ => None
+        }
+
+    /// JSON 要素が type=="Container" の JsonObject か判定する
+    pub def isContainerJson(elem: Json.JsonElement): Bool =
+        match elem {
+            case JsonObject(map) =>
+                match Map.get("type", map) {
+                    case Some(JsonString("Container")) => true
+                    case _ => false
+                }
+            case _ => false
+        }
+
+    /// Container ("type": "Container") の "layout" を覗き、Panel/HBox/VBox の
+    /// "children" または Margin/Center の "child" を返す
+    pub def containerInnerChildren(map: Map[String, Json.JsonElement]): List[Json.JsonElement] =
+        match Map.get("layout", map) {
+            case Some(JsonObject(layoutMap)) => layoutChildren(layoutMap)
+            case _ => Nil
+        }
+
+    /// Layout JSON の kind に応じた子ノード列。
+    /// Panel/HBoxContainer/VBoxContainer は "children" 配列、
+    /// MarginContainer/CenterContainer は 1 件の "child"
+    def layoutChildren(layoutMap: Map[String, Json.JsonElement]): List[Json.JsonElement] =
+        match Map.get("kind", layoutMap) {
+            case Some(JsonString(kind)) =>
+                if (kind == "MarginContainer" or kind == "CenterContainer")
+                    match Map.get("child", layoutMap) {
+                        case Some(c) => c :: Nil
+                        case None    => Nil
+                    }
+                else
+                    match Map.get("children", layoutMap) {
+                        case Some(JsonArray(children)) => Vector.toList(children)
+                        case _                         => Nil
+                    }
+            case _ => Nil
         }
 
     /// JSON 要素の "name" フィールド (文字列) を取り出す。

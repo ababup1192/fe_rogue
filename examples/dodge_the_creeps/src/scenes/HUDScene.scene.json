@@ -16,7 +16,10 @@
       "fontSize": 40,
       "horizontalAlignment": "center",
       "name": "message",
-      "pos": [240, 320],
+      "pos": [
+        240,
+        320
+      ],
       "tag": "MessageLabel",
       "text": "Dodge the\nCreeps",
       "type": "Label2D",

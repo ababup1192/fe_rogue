@@ -69,17 +69,52 @@ mod SceneTreeModel {
         }
 
     /// 与えられた JSON 要素の子要素列を返す。
-    /// - JsonObject の "children" が JsonArray ならその要素群
+    /// - type が "Container" の JsonObject は load-time directive。layout に格納された
+    ///   実ノード列 (Panel/HBox/VBox の "children"、Margin/Center の "child") を
+    ///   そのまま自分の子として展開する
+    /// - その他の JsonObject の "children" が JsonArray ならその要素群
     /// - 直接 JsonArray ならその要素群（シーンツリーのルートが配列のケース）
     /// - それ以外は空
     def jsonChildrenOf(elem: Json.JsonElement): List[Json.JsonElement] =
         match elem {
             case JsonObject(map) =>
-                match Map.get("children", map) {
-                    case Some(JsonArray(children)) => Vector.toList(children)
-                    case _                         => Nil
+                match Map.get("type", map) {
+                    case Some(JsonString("Container")) => containerInnerChildren(map)
+                    case _ =>
+                        match Map.get("children", map) {
+                            case Some(JsonArray(children)) => Vector.toList(children)
+                            case _                         => Nil
+                        }
                 }
             case JsonArray(items) => Vector.toList(items)
+            case _ => Nil
+        }
+
+    /// Container の "layout" を覗き、その中の実ノード列を取り出す。
+    /// JsonOps 側 (getChildAt / setAtNodePath / extractNodeNames) も同じ規約で
+    /// Container を扱う
+    def containerInnerChildren(map: Map[String, Json.JsonElement]): List[Json.JsonElement] =
+        match Map.get("layout", map) {
+            case Some(JsonObject(layoutMap)) => layoutChildren(layoutMap)
+            case _ => Nil
+        }
+
+    /// Layout の kind に応じた子ノード列。
+    /// Panel/HBoxContainer/VBoxContainer は "children" 配列、
+    /// MarginContainer/CenterContainer は 1 件の "child"
+    def layoutChildren(layoutMap: Map[String, Json.JsonElement]): List[Json.JsonElement] =
+        match Map.get("kind", layoutMap) {
+            case Some(JsonString(kind)) =>
+                if (kind == "MarginContainer" or kind == "CenterContainer")
+                    match Map.get("child", layoutMap) {
+                        case Some(c) => c :: Nil
+                        case None    => Nil
+                    }
+                else
+                    match Map.get("children", layoutMap) {
+                        case Some(JsonArray(children)) => Vector.toList(children)
+                        case _                         => Nil
+                    }
             case _ => Nil
         }
 }

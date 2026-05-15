@@ -28,6 +28,7 @@ mod IdeUI {
     import javax.swing.JSplitPane
     import javax.swing.JCheckBox
     import javax.swing.JTextField
+    import javax.swing.JTextArea
     import javax.swing.JComboBox
     import javax.swing.JSlider
     import javax.swing.JSpinner
@@ -63,6 +64,8 @@ mod IdeUI {
     import java.awt.event.ActionListener
     import java.awt.event.ActionEvent
     import java.awt.event.WindowEvent
+    import java.awt.event.FocusAdapter
+    import java.awt.event.FocusEvent
     import java.io.File
     import java.lang.System
     import java.math.BigDecimal
@@ -599,12 +602,36 @@ mod IdeUI {
                         content.add(createSectionRow("${key} (${List.length(elems)})", indent));
                         renderArrayProperties(content, state, subPrefix, elems, indent + 1i32)
                 }
+            case JsonString(s) if key == "text" => {
+                // text は多行入力 (JTextArea)。行高 (28px) を上書きして JTextArea を見せる
+                let row = createTallPropertyRow(key,
+                    createMultilineStringInput(s, commit), indent, 80i32);
+                content.add(row);
+                ()
+            }
             case _ => {
                 let row = createPropertyRow(state, key, value, obj, commit, indent);
                 content.add(row);
                 ()
             }
         }
+
+    /// 高さ可変なプロパティ行。ラベル + 高さ最大値を上書きできる widget を並べる。
+    /// JTextArea を含む `text` 行のように、widget 自身が複数行を要求するケース用。
+    /// widget は BorderLayout.CENTER に直接置き、横幅を行いっぱいに伸ばす
+    def createTallPropertyRow(key: String, widget: JScrollPane, indent: Int32,
+                               heightPx: Int32): JPanel \ IO =
+        let row = new JPanel(new BorderLayout(6, 0));
+        row.setBackground(new Color(40, 40, 40));
+        row.setBorder(BorderFactory.createEmptyBorder(3, 10 + indent * 16i32, 3, 10));
+        row.setMaximumSize(new Dimension(9999, heightPx));
+        row.setAlignmentX(0.0f32);
+        let label = new JLabel(key);
+        label.setForeground(new Color(180, 180, 180));
+        label.setPreferredSize(new Dimension(80, 22));
+        row.add(label, BorderLayout.NORTH);
+        row.add(widget, BorderLayout.CENTER);
+        row
 
     /// 最上位 (選択ノード直下) のプロパティを Godot Inspector 風にグループ表示する。
     /// 表示順:
@@ -994,6 +1021,9 @@ mod IdeUI {
                         case Nil => panel.add(createStringInput(s, commit), BorderLayout.CENTER)
                         case _   => panel.add(createTextureSelector(s, names, commit), BorderLayout.CENTER)
                     }
+                } else if (key == "text") {
+                    // text フィールドは Label2D / RichTextLabel が改行を解釈するので多行で編集
+                    panel.add(createMultilineStringInput(s, commit), BorderLayout.CENTER)
                 } else
                     panel.add(createStringInput(s, commit), BorderLayout.CENTER)
             case JsonNumber(bd) => panel.add(createNumberInput(bd, commit), BorderLayout.CENTER)
@@ -1271,6 +1301,27 @@ mod IdeUI {
                 commit(JsonString(tf.getText()))
         });
         tf
+
+    /// 多行 String プロパティ (Label2D / RichTextLabel の `text` 等): JTextArea で
+    /// 改行を編集可能にし、Focus 離脱で commit (JsonString)。
+    /// Enter は通常の改行として扱う。長い行は単語境界で折り返す。
+    /// JScrollPane で囲んでいるので Inspector スクロール内でも壊れない
+    def createMultilineStringInput(initial: String,
+                                    commit: Json.JsonElement -> Unit \ IO): JScrollPane \ IO =
+        let ta = new JTextArea(initial, 3i32, 20i32);
+        ta.setLineWrap(true);
+        ta.setWrapStyleWord(true);
+        ta.setBackground(new Color(50, 50, 50));
+        ta.setForeground(Color.LIGHT_GRAY);
+        ta.setCaretColor(Color.WHITE);
+        ta.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+        ta.addFocusListener(new FocusAdapter {
+            def focusLost(_this: FocusAdapter, _e: FocusEvent): Unit \ IO =
+                commit(JsonString(ta.getText()))
+        });
+        let scroll = new JScrollPane(ta);
+        scroll.setBorder(BorderFactory.createLineBorder(new Color(70, 70, 70), 1));
+        scroll
 
     /// texture フィールド用の dropdown。`names` は project.json で宣言された名前一覧。
     /// 既存値 `initial` が名前一覧に無い場合は先頭に "<missing>: initial" を入れて選択しておく

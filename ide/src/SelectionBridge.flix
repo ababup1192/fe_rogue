@@ -109,38 +109,66 @@ mod SelectionBridge {
             case headName :: restNames =>
                 match findChildIndexByName(root, headName) {
                     case None => None
-                    case Some((idx, child)) =>
-                        namesToIndicesRec(child, restNames, idx :: acc)
+                    case Some((idxPath, child)) =>
+                        // idxPath は tree 上の親→子への複数 index (Container 経由で 2 段以上に
+                        // なる場合あり)。acc は逆順なので reverse して prepend する
+                        namesToIndicesRec(child, restNames, List.reverse(idxPath) ::: acc)
                 }
         }
 
     /// root の子リスト ("children" 配列もしくは root 自身が配列) を走査して、
-    /// 指定された name を持つ最初の子の (index, child) を返す。見つからなければ None
+    /// 指定された name を持つ最初の子の (treeIndexPath, child) を返す。
+    /// Container は scene tree 上のノードだが engine では透過なので、
+    /// その内部 (layout 配下) も同名探索の対象に含める。Container 経由で見つかった
+    /// ときの index path は [container_idx, inner_idx] のように 2 段になる
     def findChildIndexByName(root: Json.JsonElement, targetName: String):
-            Option[(Int32, Json.JsonElement)] =
-        let children = match root {
+            Option[(List[Int32], Json.JsonElement)] =
+        let children = directChildrenOf(root);
+        findIndexedNameMatch(children, targetName, 0i32)
+
+    /// findChildIndexByName 用の「直接の子」列挙。
+    /// - Container 自身は layout 配下の実ノードを直接の子として返す
+    /// - その他は "children" 配列、または root 自身が JsonArray の場合は配列要素
+    def directChildrenOf(root: Json.JsonElement): List[Json.JsonElement] =
+        match root {
             case Json.JsonElement.JsonObject(map) =>
-                match Map.get("children", map) {
-                    case Some(Json.JsonElement.JsonArray(arr)) => Vector.toList(arr)
-                    case _ => Nil
+                match Map.get("type", map) {
+                    case Some(Json.JsonElement.JsonString("Container")) =>
+                        JsonOps.containerInnerChildren(map)
+                    case _ =>
+                        match Map.get("children", map) {
+                            case Some(Json.JsonElement.JsonArray(arr)) => Vector.toList(arr)
+                            case _ => Nil
+                        }
                 }
             case Json.JsonElement.JsonArray(arr) => Vector.toList(arr)
             case _ => Nil
-        };
-        findIndexedNameMatch(children, targetName, 0i32)
+        }
 
     def findIndexedNameMatch(items: List[Json.JsonElement], targetName: String, idx: Int32):
-            Option[(Int32, Json.JsonElement)] =
+            Option[(List[Int32], Json.JsonElement)] =
         match items {
             case Nil => None
             case head :: rest =>
-                match nameOf(head) {
-                    case Some(name) =>
-                        if (name == targetName) Some((idx, head))
-                        else findIndexedNameMatch(rest, targetName, idx + 1i32)
-                    case None =>
-                        findIndexedNameMatch(rest, targetName, idx + 1i32)
-                }
+                // head が Container なら、その中の実ノードに対しても再帰的に同名探索
+                if (JsonOps.isContainerJson(head)) {
+                    let innerItems = match head {
+                        case Json.JsonElement.JsonObject(m) => JsonOps.containerInnerChildren(m)
+                        case _                              => Nil
+                    };
+                    match findIndexedNameMatch(innerItems, targetName, 0i32) {
+                        case Some((innerPath, child)) => Some((idx :: innerPath, child))
+                        case None                     =>
+                            findIndexedNameMatch(rest, targetName, idx + 1i32)
+                    }
+                } else
+                    match nameOf(head) {
+                        case Some(name) =>
+                            if (name == targetName) Some((idx :: Nil, head))
+                            else findIndexedNameMatch(rest, targetName, idx + 1i32)
+                        case None =>
+                            findIndexedNameMatch(rest, targetName, idx + 1i32)
+                    }
         }
 
     def nameOf(elem: Json.JsonElement): Option[String] =
