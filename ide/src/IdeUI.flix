@@ -30,6 +30,10 @@ mod IdeUI {
     import javax.swing.JTextField
     import javax.swing.JComboBox
     import javax.swing.JSlider
+    import javax.swing.JSpinner
+    import javax.swing.SpinnerNumberModel
+    import javax.swing.JColorChooser
+    import javax.swing.SwingConstants
     import javax.swing.DefaultListModel
     import javax.swing.ListSelectionModel
     import javax.swing.JFileChooser
@@ -53,6 +57,7 @@ mod IdeUI {
     import java.awt.Color
     import java.awt.Dimension
     import java.awt.GridLayout
+    import java.awt.FlowLayout
     import java.awt.Toolkit
     import java.awt.FileDialog
     import java.awt.event.ActionListener
@@ -83,7 +88,9 @@ mod IdeUI {
         centerPanel.setBackground(new Color(20, 20, 20));
         centerPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         centerPanel.add(canvas, BorderLayout.CENTER);
-        frame.add(centerPanel, BorderLayout.CENTER);
+        // canvas 側の最小幅。JSplitPane の divider はこれより左に行けない (= Inspector の上限)。
+        // ウィンドウを広げれば余ったぶん east 側も広げられる
+        centerPanel.setMinimumSize(new Dimension(400, 0));
 
         // 左: scene-tree (現在選択中の scene のノード階層を JTree で表示)
         let westPanel = buildSceneTreePanel(state);
@@ -99,7 +106,23 @@ mod IdeUI {
         eastSplit.setResizeWeight(0.5);
         eastSplit.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         eastSplit.setPreferredSize(new Dimension(300, 0));
-        frame.add(eastSplit, BorderLayout.EAST);
+        eastSplit.setMinimumSize(new Dimension(220, 0));
+
+        // 中央 canvas と Inspector を水平 JSplitPane で挟み、ユーザが divider を
+        // ドラッグして Inspector の横幅を広げられるようにする。
+        // - resizeWeight=1.0: ウィンドウ拡大の余白は中央に流れ、Inspector 幅は維持
+        // - 上限は centerPanel.minimumSize=400 と eastSplit.minimumSize=220 で
+        //   JSplitPane に自然に効かせる (動的クランプは使わない)
+        let centerEastSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, centerPanel, eastSplit);
+        // 初期 divider 位置: frame=1280 / west=300 を引いた 980px の split pane で、
+        // east を preferredSize=300、divider=8 に合わせて配置
+        centerEastSplit.setDividerLocation(1280 - 300 - 300 - 8);
+        centerEastSplit.setResizeWeight(1.0);
+        centerEastSplit.setContinuousLayout(true);
+        centerEastSplit.setDividerSize(8);
+        centerEastSplit.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+
+        frame.add(centerEastSplit, BorderLayout.CENTER);
 
         // 下: ステータスバー
         let southPanel = new JPanel();
@@ -372,7 +395,24 @@ mod IdeUI {
             case Some(model) => model.setRoot(newRoot)
             case None        => ()
         };
+        // setRoot は JTree の expansion state をリセットするため、ルート以外の子は
+        // 折り畳まれた状態になる。HotReload (Inspector commit / preview ドラッグ確定)
+        // のたびに「以前展開していた所が閉じる」ので、再構築直後に全ノードを expand
+        // し直して兄弟ノードが消えないようにする。
+        match Array.get(0, state#sceneTreeRef) {
+            case Some(tree) => expandAllRows(tree, 0i32)
+            case None       => ()
+        };
         resetInspectorPlaceholder(state)
+
+    /// JTree の全行を展開する。expandRow は新たな子行を露出させ getRowCount を増やすため、
+    /// 単純に index を進めながら現在の行数を毎回読み直して末尾まで降りる。
+    def expandAllRows(tree: JTree, i: Int32): Unit \ IO =
+        if (i >= tree.getRowCount()) ()
+        else {
+            tree.expandRow(i);
+            expandAllRows(tree, i + 1i32)
+        }
 
     // ========================================================================
     // 編集 (commit) — Inspector の widget 変更を JSON に反映し、ファイルに書き戻し、
@@ -438,6 +478,9 @@ mod IdeUI {
         let content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
         content.setBackground(new Color(40, 40, 40));
+        // 縦スクロール時に末尾の行が viewport 下端ピッタリで詰まって見えないよう、
+        // content 自体の下端に余白を入れる
+        content.setBorder(BorderFactory.createEmptyBorder(0, 0, 16, 0));
         Array.put(Some(content), 0, state#inspectorContentRef);
         resetInspectorPlaceholder(state);
 
@@ -481,7 +524,7 @@ mod IdeUI {
                             case _                   => "<unnamed>"
                         };
                         content.add(createInspectorHeader(nodeType, nodeName));
-                        renderObjectProperties(content, state, Nil, propMap, 0i32);
+                        renderTopLevelGroups(content, state, propMap);
                         discard content.add(Box.createVerticalGlue())
                     case _ =>
                         let lbl = new JLabel("  (not a node object)");
@@ -494,28 +537,24 @@ mod IdeUI {
                 content.repaint()
         }
 
-    /// Inspector の先頭に出す「ノード名 + タイプ」ヘッダ。Godot の Inspector top に倣う。
-    def createInspectorHeader(nodeType: String, nodeName: String): JPanel \ IO =
+    /// Inspector の先頭に出す「ノード名」ヘッダ。タイプ表示は直後のクラス見出し
+    /// (`createClassHeaderRow`) と重複するためここには出さない。
+    /// `nodeType` 引数はシグネチャ互換のため残しているが現状未使用
+    def createInspectorHeader(_nodeType: String, nodeName: String): JPanel \ IO =
         let header = new JPanel(new BorderLayout());
         header.setBackground(new Color(55, 55, 60));
         header.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
-        header.setMaximumSize(new Dimension(9999, 44));
+        header.setMaximumSize(new Dimension(9999, 26));
         header.setAlignmentX(0.0f32);
 
         let nameLabel = new JLabel(nodeName);
         nameLabel.setForeground(Color.WHITE);
-        header.add(nameLabel, BorderLayout.NORTH);
-
-        let typeLabel = new JLabel(nodeType);
-        typeLabel.setForeground(new Color(140, 180, 220));
-        header.add(typeLabel, BorderLayout.SOUTH);
+        header.add(nameLabel, BorderLayout.WEST);
         header
 
-    /// JsonObject を再帰的にレンダリングする。
-    /// 各キーについて:
-    ///   - 値が JsonObject なら「セクション見出し」行を出し、子をインデントして再帰
-    ///   - "shape" キーで kind フィールドを持つ場合は専用エディタ (`renderShapeObject`) に委譲
-    ///   - その他は通常の編集 widget 行を出す
+    /// JsonObject を再帰的にレンダリングする（ネスト object 用）。
+    /// 最上位は `renderTopLevelGroups` で Godot 風グループ表示を使うので、
+    /// ここに来るのは主にネスト object (shape, spriteFrames 等) のレンダリング。
     /// `prefix` は選択ノード直下からのキー列。commit は `prefix ::: key :: Nil` で
     /// commitEdit に渡され、JsonOps.setAtNodePath で末端まで降りて差し替えられる。
     /// `indent` はインデントレベル (0 から増える)、行の左余白を増やすのに使う。
@@ -524,24 +563,241 @@ mod IdeUI {
                                 obj: Map[String, Json.JsonElement], indent: Int32): Unit \ IO =
         Map.foldLeftWithKey((_acc, key, value) -> {
             if (List.isEmpty(prefix) and (key == "children" or key == "type" or key == "name")) ()
-            else {
-                match value {
-                    case JsonObject(nested) => {
-                        content.add(createSectionRow(key, indent));
-                        if (key == "shape" and Map.memberOf("kind", nested))
-                            renderShapeObject(content, state, prefix ::: key :: Nil, nested, indent + 1i32)
-                        else
-                            renderObjectProperties(content, state, prefix ::: key :: Nil, nested, indent + 1i32)
-                    }
-                    case _ => {
-                        let commit = newVal -> commitEdit(state, prefix ::: key :: Nil, newVal);
-                        let row = createPropertyRow(state, key, value, commit, indent);
+            else renderOneProperty(content, state, prefix, obj, key, value, indent)
+        }, (), obj)
+
+    /// 1 キー分のレンダリング。renderObjectProperties (alphabetical) からも
+    /// renderTopLevelGroups (グループ順) からも同じロジックを使う。
+    /// value の種類で widget 1 行 / セクション + 子再帰 / カラーピッカー等を切り替える
+    def renderOneProperty(content: JPanel, state: IdeState, prefix: List[String],
+                          obj: Map[String, Json.JsonElement],
+                          key: String, value: Json.JsonElement, indent: Int32): Unit \ IO =
+        let subPrefix = prefix ::: key :: Nil;
+        let commit = newVal -> commitEdit(state, subPrefix, newVal);
+        match value {
+            case JsonObject(nested) =>
+                if (key == "shape" and Map.memberOf("kind", nested)) {
+                    content.add(createSectionRow(key, indent));
+                    renderShapeObject(content, state, subPrefix, nested, indent + 1i32)
+                } else if (isColorObject(nested)) {
+                    let row = createPropertyRowWidget(key,
+                        createColorPicker(nested, commit), indent);
+                    content.add(row);
+                    ()
+                } else {
+                    content.add(createSectionRow(key, indent));
+                    renderObjectProperties(content, state, subPrefix, nested, indent + 1i32)
+                }
+            case JsonArray(items) =>
+                let elems = Vector.toList(items);
+                match elems {
+                    case JsonNumber(_) :: JsonNumber(_) :: Nil =>
+                        let row = createPropertyRow(state, key, value, obj, commit, indent);
                         content.add(row);
                         ()
-                    }
+                    case _ =>
+                        content.add(createSectionRow("${key} (${List.length(elems)})", indent));
+                        renderArrayProperties(content, state, subPrefix, elems, indent + 1i32)
                 }
+            case _ => {
+                let row = createPropertyRow(state, key, value, obj, commit, indent);
+                content.add(row);
+                ()
             }
-        }, (), obj)
+        }
+
+    /// 最上位 (選択ノード直下) のプロパティを Godot Inspector 風にグループ表示する。
+    /// 表示順:
+    ///   1. グループに属さない「ユーザ定義 / その他」キー (custom properties など) を先頭に直接出す
+    ///   2. クラスグループを派生順 → ベース順に並べる
+    ///   3. 先頭グループの className が nodeType と同じなら、Inspector ヘッダのタイプ表示と
+    ///      重複するのでクラス見出しを省く
+    /// `type`/`name`/`children` は Inspector ヘッダで扱うので個別行は出さない
+    def renderTopLevelGroups(content: JPanel, state: IdeState,
+                              obj: Map[String, Json.JsonElement]): Unit \ IO =
+        let nodeType = match Map.get("type", obj) {
+            case Some(JsonString(s)) => s
+            case _                   => ""
+        };
+        let groups = inspectorGroupsFor(nodeType);
+        let isHeaderKey = key -> key == "type" or key == "name" or key == "children";
+        if (List.isEmpty(groups)) {
+            // type 不明: グループ無しで alphabetical fallback
+            renderObjectProperties(content, state, Nil, obj, 0i32)
+        } else {
+            // 1. グループに属さないキー (ユーザ定義 / 拡張 property) を最初に直接出す
+            //    Godot でも script 公開 property は最上段に来る。
+            //    `properties` キーは「ユーザ定義 property のラッパ」という暗黙の慣行に従い、
+            //    section 化せず中身を最上位に展開する (commit 経路の subKeys には "properties" を積む)
+            let groupedKeys = groups
+                |> List.flatMap(g -> g#keys)
+                |> List.toSet;
+            let extraKeys = Map.keysOf(obj)
+                |> Set.toList
+                |> List.filter(k -> not isHeaderKey(k) and not Set.memberOf(k, groupedKeys));
+            List.forEach(k -> match Map.get(k, obj) {
+                case Some(JsonObject(inner)) =>
+                    if (k == "properties")
+                        renderObjectProperties(content, state, "properties" :: Nil, inner, 0i32)
+                    else
+                        renderOneProperty(content, state, Nil, obj, k, JsonObject(inner), 0i32)
+                case Some(v) => renderOneProperty(content, state, Nil, obj, k, v, 0i32)
+                case None    => ()
+            }, extraKeys);
+            // 2. クラスグループを順番に出す。タイプ重複の心配は無い (Inspector ヘッダは名前のみ)
+            //    ので全てのグループに見出しを付ける
+            List.forEach(group -> {
+                let presentKeys = group#keys
+                    |> List.filter(k -> Map.memberOf(k, obj));
+                if (List.isEmpty(presentKeys)) ()
+                else {
+                    content.add(createClassHeaderRow(group#className));
+                    List.forEach(k -> match Map.get(k, obj) {
+                        case Some(v) => renderOneProperty(content, state, Nil, obj, k, v, 0i32)
+                        case None    => ()
+                    }, presentKeys)
+                }
+            }, groups)
+        }
+
+    /// Godot Inspector 風の「クラス名見出し」行。継承境界を示す。
+    /// `createSectionRow` (ネスト object 用の薄い見出し) より背景が暗く文字を中央寄せにし、
+    /// 「ここから別 class の property セット」だと視認しやすくする
+    def createClassHeaderRow(className: String): JPanel \ IO =
+        let row = new JPanel(new BorderLayout());
+        row.setBackground(new Color(60, 60, 70));
+        row.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 0, 1, 0, new Color(35, 35, 40)),
+            BorderFactory.createEmptyBorder(5, 10, 5, 10)
+        ));
+        row.setMaximumSize(new Dimension(9999, 28));
+        row.setAlignmentX(0.0f32);
+        let lbl = new JLabel(className);
+        lbl.setForeground(new Color(220, 220, 230));
+        lbl.setHorizontalAlignment(SwingConstants.CENTER);
+        row.add(lbl, BorderLayout.CENTER);
+        row
+
+    /// ノード type ごとの Inspector プロパティグループ。Godot の継承ツリー表記に倣い、
+    /// type-specific → 親クラス → 共通祖先 の順に並べる。
+    /// 各グループは {className, keys}: keys は表示順のキー名リスト。
+    /// 該当 type が無い場合は Nil を返し、呼び出し側で alphabetical にフォールバックする
+    def inspectorGroupsFor(nodeType: String): List[{className = String, keys = List[String]}] =
+        let node2d: {className = String, keys = List[String]} =
+            {className = "Node2D",
+             keys = "pos" :: "rotation" :: "scale" :: "skew" :: Nil};
+        let canvasItem: {className = String, keys = List[String]} =
+            {className = "CanvasItem",
+             keys = "visible" :: "modulate" :: "alpha" :: "opacity" ::
+                     "zIndex" :: "ySortEnabled" :: Nil};
+        let collisionObject: {className = String, keys = List[String]} =
+            {className = "CollisionObject2D",
+             keys = "collisionLayer" :: "collisionMask" :: "tag" :: Nil};
+        let baseButton: {className = String, keys = List[String]} =
+            {className = "BaseButton",
+             keys = "size" :: "centered" :: "disabled" :: Nil};
+        match nodeType {
+            case "AnimatedSprite2D" =>
+                ({className = "AnimatedSprite2D",
+                  keys = "spriteFrames" :: "animation" :: "autoplay" ::
+                          "frame" :: "frameProgress" :: "speedScale" ::
+                          "playing" :: Nil}: {className = String, keys = List[String]}) ::
+                ({className = "Sprite2D",
+                  keys = "centered" :: "offset" :: "flipH" :: "flipV" :: Nil}: {className = String, keys = List[String]}) ::
+                node2d :: canvasItem :: Nil
+            case "Sprite2D" =>
+                ({className = "Sprite2D",
+                  keys = "texture" :: "centered" :: "offset" ::
+                          "flipH" :: "flipV" :: "region" ::
+                          "hframes" :: "vframes" :: "frame" :: Nil}: {className = String, keys = List[String]}) ::
+                node2d :: canvasItem :: Nil
+            case "Label2D" =>
+                ({className = "Label2D",
+                  keys = "text" :: "fontSize" :: "fontName" ::
+                          "horizontalAlignment" :: "verticalAlignment" ::
+                          "centered" :: Nil}: {className = String, keys = List[String]}) ::
+                node2d :: canvasItem :: Nil
+            case "RichTextLabel" =>
+                ({className = "RichTextLabel",
+                  keys = "text" :: "size" :: "fontSize" :: Nil}: {className = String, keys = List[String]}) ::
+                node2d :: canvasItem :: Nil
+            case "ColorRect" =>
+                ({className = "ColorRect",
+                  keys = "size" :: "color" :: "alpha" :: Nil}: {className = String, keys = List[String]}) ::
+                node2d :: canvasItem :: Nil
+            case "TextureRect" =>
+                ({className = "TextureRect",
+                  keys = "texture" :: "size" :: Nil}: {className = String, keys = List[String]}) ::
+                node2d :: canvasItem :: Nil
+            case "Button" =>
+                ({className = "Button",
+                  keys = "text" :: "fontSize" :: "fontName" :: "tag" :: Nil}: {className = String, keys = List[String]}) ::
+                baseButton :: node2d :: canvasItem :: Nil
+            case "TextureButton" =>
+                ({className = "TextureButton",
+                  keys = "textureNormal" :: "texturePressed" ::
+                          "textureHover" :: "textureDisabled" :: Nil}: {className = String, keys = List[String]}) ::
+                baseButton :: node2d :: canvasItem :: Nil
+            case "Area2D" =>
+                ({className = "Area2D",
+                  keys = "monitoring" :: "monitorable" :: "priority" :: "shape" :: Nil}: {className = String, keys = List[String]}) ::
+                collisionObject :: node2d :: canvasItem :: Nil
+            case "RigidBody2D" =>
+                ({className = "RigidBody2D",
+                  keys = "mass" :: "gravityScale" :: "linearVelocity" ::
+                          "angularVelocity" :: "friction" :: "restitution" ::
+                          "shape" :: Nil}: {className = String, keys = List[String]}) ::
+                collisionObject :: node2d :: canvasItem :: Nil
+            case "StaticBody2D" =>
+                ({className = "StaticBody2D",
+                  keys = "shape" :: "friction" :: "restitution" :: Nil}: {className = String, keys = List[String]}) ::
+                collisionObject :: node2d :: canvasItem :: Nil
+            case "CharacterBody2D" =>
+                ({className = "CharacterBody2D",
+                  keys = "shape" :: "velocity" :: Nil}: {className = String, keys = List[String]}) ::
+                collisionObject :: node2d :: canvasItem :: Nil
+            case "CanvasLayer" =>
+                ({className = "CanvasLayer",
+                  keys = "layer" :: "pos" :: "scale" :: "rotation" :: "visible" :: Nil}: {className = String, keys = List[String]}) ::
+                Nil
+            case "Camera2D" =>
+                ({className = "Camera2D",
+                  keys = "zoom" :: "offset" :: "enabled" :: "isCurrent" :: Nil}: {className = String, keys = List[String]}) ::
+                node2d :: Nil
+            case "Marker2D" =>
+                node2d :: canvasItem :: Nil
+            case "TileMapLayer" =>
+                ({className = "TileMapLayer",
+                  keys = "tileSet" :: "tileSize" :: Nil}: {className = String, keys = List[String]}) ::
+                node2d :: canvasItem :: Nil
+            case _ => Nil
+        }
+
+    /// JsonArray を 1 要素ずつ「[i]」セクションに展開する。
+    /// 要素が JsonObject なら renderObjectProperties で再帰、それ以外（プリミティブ）なら 1 行 widget。
+    /// path は配列インデックスを文字列化して subKeys に積む（JsonOps.setAtKeyPath が
+    /// JsonArray を受けて整数パースで降りる）
+    def renderArrayProperties(content: JPanel, state: IdeState, prefix: List[String],
+                               items: List[Json.JsonElement], indent: Int32): Unit \ IO =
+        discard List.mapWithIndex((idx, item) -> {
+            let subPrefix = prefix ::: Int32.toString(idx) :: Nil;
+            let commit = newVal -> commitEdit(state, subPrefix, newVal);
+            match item {
+                case JsonObject(nested) =>
+                    content.add(createSectionRow("[${idx}]", indent));
+                    renderObjectProperties(content, state, subPrefix, nested, indent + 1i32)
+                case _ =>
+                    let row = createPropertyRow(state, "[${idx}]", item, Map.empty(), commit, indent);
+                    content.add(row);
+                    ()
+            }
+        }, items);
+        ()
+
+    /// JsonObject が「色」を表すか判定する。r/g/b 3 キーが揃っていれば色とみなす（a は任意）。
+    /// scene.json の慣行は {"r": 1.0, "g": 0.5, "b": 0.0} の 0.0..1.0 浮動小数
+    def isColorObject(m: Map[String, Json.JsonElement]): Bool =
+        Map.memberOf("r", m) and Map.memberOf("g", m) and Map.memberOf("b", m)
 
     /// "shape" JsonObject 用の専用エディタ。
     ///
@@ -575,10 +831,13 @@ mod IdeUI {
 
         let label = new JLabel("kind");
         label.setForeground(new Color(180, 180, 180));
-        label.setPreferredSize(new Dimension(96, 22));
+        label.setPreferredSize(new Dimension(80, 22));
         row.add(label, BorderLayout.WEST);
 
-        row.add(createShapeKindCombo(currentKind, commit), BorderLayout.CENTER);
+        let widgetWrap = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        widgetWrap.setBackground(new Color(40, 40, 40));
+        widgetWrap.add(createShapeKindCombo(currentKind, commit));
+        row.add(widgetWrap, BorderLayout.CENTER);
         row
 
     /// shape 種別のドロップダウン本体。RectShape2D / CircleShape2D / CapsuleShape2D を提示。
@@ -593,6 +852,7 @@ mod IdeUI {
         let cb: JComboBox[String] = new JComboBox();
         List.forEach(n -> { cb.addItem(n); () }, items);
         cb.setSelectedItem(if (unknown) missingLabel else currentKind);
+        cb.setPreferredSize(new Dimension(150, 22));
         cb.addActionListener(new ActionListener {
             def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
                 let idx = cb.getSelectedIndex();
@@ -654,10 +914,22 @@ mod IdeUI {
 
     /// 1 プロパティ行: 左にキー名ラベル、右にプロパティ型に応じた widget。
     /// `commit` は widget が値変更を確定したときに「新しい JsonElement」を渡す callback。
+    /// `siblingMap` は同じ親オブジェクトの全プロパティ。`animation` のように兄弟ノード
+    /// （`spriteFrames`）を参照して選択肢を決める widget で使う。
     /// `indent` はネストの深さ。左余白に反映する。
     def createPropertyRow(state: IdeState, key: String, value: Json.JsonElement,
+                          siblingMap: Map[String, Json.JsonElement],
                           commit: Json.JsonElement -> Unit \ IO,
                           indent: Int32): JPanel \ IO =
+        createPropertyRowWidget(key,
+            createPropertyWidget(state, key, value, siblingMap, commit), indent)
+
+    /// キー名ラベル + 任意 widget の 1 行ラッパ。createPropertyRow と
+    /// 「ラベル + 既製 widget」の両方から使う共通ガワ。
+    /// widget は FlowLayout(LEFT) でくるんで「自身の preferredSize で左寄せ」する。
+    /// BorderLayout.CENTER に直接置くと widget が行の残幅まで引き伸ばされ、Inspector 内で
+    /// 大きく見えてしまうため
+    def createPropertyRowWidget(key: String, widget: JPanel, indent: Int32): JPanel \ IO =
         let row = new JPanel(new BorderLayout(6, 0));
         row.setBackground(new Color(40, 40, 40));
         row.setBorder(BorderFactory.createEmptyBorder(3, 10 + indent * 16i32, 3, 10));
@@ -666,84 +938,179 @@ mod IdeUI {
 
         let label = new JLabel(key);
         label.setForeground(new Color(180, 180, 180));
-        label.setPreferredSize(new Dimension(96, 22));
+        label.setPreferredSize(new Dimension(80, 22));
         row.add(label, BorderLayout.WEST);
 
-        row.add(createPropertyWidget(state, key, value, commit), BorderLayout.CENTER);
+        let widgetWrap = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        widgetWrap.setBackground(new Color(40, 40, 40));
+        widgetWrap.add(widget);
+        row.add(widgetWrap, BorderLayout.CENTER);
         row
 
     /// プロパティ値の型 + キー名に基づいて適切な widget を返す。
-    ///   key=="alpha"/"opacity" + JsonNumber → JSlider(0..100) — release 時に commit
-    ///   key=="texture" + JsonString          → JComboBox (project.json の texture 名一覧)
-    ///                                          名前リストが空のときは JTextField にフォールバック
-    ///   JsonBool                              → JCheckBox — toggle で即 commit
-    ///   JsonString                            → JTextField — Enter で commit (JsonString)
-    ///   JsonNumber                            → JTextField — Enter で parse → commit (JsonNumber)
-    ///   JsonArray [num, num]                  → X/Y 2 フィールド — どちらかの Enter で配列ごと commit
-    ///   JsonArray (それ以外)                   → 編集不可サマリラベル
-    ///   JsonObject                            → 編集不可サマリラベル
+    /// 優先順:
+    ///   1. (key, value) で specialty 一致（bounded slider / enum dropdown / texture / animation など）
+    ///   2. value の型ごと（Bool→Check, Number→Spinner, String→TextField,
+    ///      Vec2→XY 2 フィールド, Color→Picker, それ以外→読取ラベル）
+    /// `siblingMap` は animation/autoplay の選択肢を spriteFrames から拾うのに使う
     def createPropertyWidget(state: IdeState, key: String, value: Json.JsonElement,
+                             siblingMap: Map[String, Json.JsonElement],
                              commit: Json.JsonElement -> Unit \ IO): JPanel \ IO =
         let panel = new JPanel(new BorderLayout());
         panel.setBackground(new Color(40, 40, 40));
-        if (isAlphaKey(key)) {
-            match value {
-                case JsonNumber(bd) => panel.add(createAlphaSlider(bd, commit), BorderLayout.CENTER)
-                case _              => panel.add(createReadOnlyLabel("(not a number)"), BorderLayout.CENTER)
-            }
-        } else {
-            match value {
-                case JsonBool(b)    => panel.add(createBoolCheck(b, commit), BorderLayout.CENTER)
-                case JsonString(s)  =>
-                    if (key == "texture") {
-                        let names = Array.get(0, state#textureNamesRef);
-                        match names {
-                            case Nil => panel.add(createStringInput(s, commit), BorderLayout.CENTER)
-                            case _   => panel.add(createTextureSelector(s, names, commit), BorderLayout.CENTER)
-                        }
-                    } else
-                        panel.add(createStringInput(s, commit), BorderLayout.CENTER)
-                case JsonNumber(bd) => panel.add(createNumberInput(bd, commit), BorderLayout.CENTER)
-                case JsonArray(items) =>
-                    let elems = Vector.toList(items);
-                    match elems {
-                        case JsonNumber(bdX) :: JsonNumber(bdY) :: Nil =>
-                            panel.add(createVec2Field(bdX, bdY, commit), BorderLayout.CENTER)
+        // 1. 数値プロパティの specialty マッピング
+        match (boundedSliderRange(key), value) {
+            case (Some(range), JsonNumber(bd)) =>
+                panel.add(createBoundedSlider(bd, range, commit), BorderLayout.CENTER)
+            case _ => match (integerSpinnerSpec(key), value) {
+                case (Some(spec), JsonNumber(bd)) =>
+                    panel.add(createIntegerSpinner(bd, spec, commit), BorderLayout.CENTER)
+                case _ => match (doubleSpinnerSpec(key), value) {
+                    case (Some(spec), JsonNumber(bd)) =>
+                        panel.add(createDoubleSpinner(bd, spec, commit), BorderLayout.CENTER)
+                    case _ => match (enumOptionsFor(key, siblingMap), value) {
+                        case (Some(opts), JsonString(s)) =>
+                            panel.add(createEnumDropdown(s, opts, commit), BorderLayout.CENTER)
                         case _ =>
-                            panel.add(createReadOnlyLabel("[Array: ${List.length(elems)} items]"), BorderLayout.CENTER)
+                            // 2. 値型による標準ディスパッチ
+                            panel.add(defaultWidgetFor(state, key, value, commit), BorderLayout.CENTER)
                     }
-                case JsonObject(m) =>
-                    panel.add(createReadOnlyLabel("[Object: ${Map.size(m)} keys]"), BorderLayout.CENTER)
-                case _ =>
-                    panel.add(createReadOnlyLabel("(null)"), BorderLayout.CENTER)
+                }
             }
         };
         panel
 
-    /// alpha/opacity 系キーを判定する
-    def isAlphaKey(key: String): Bool =
-        key == "alpha" or key == "opacity"
+    /// specialty マッピングに該当しない値を、単純な型ベースで widget 化する
+    def defaultWidgetFor(state: IdeState, key: String, value: Json.JsonElement,
+                          commit: Json.JsonElement -> Unit \ IO): JPanel \ IO =
+        let panel = new JPanel(new BorderLayout());
+        panel.setBackground(new Color(40, 40, 40));
+        match value {
+            case JsonBool(b)    => panel.add(createBoolCheck(b, commit), BorderLayout.CENTER)
+            case JsonString(s)  =>
+                if (isTextureKey(key)) {
+                    let names = Array.get(0, state#textureNamesRef);
+                    match names {
+                        case Nil => panel.add(createStringInput(s, commit), BorderLayout.CENTER)
+                        case _   => panel.add(createTextureSelector(s, names, commit), BorderLayout.CENTER)
+                    }
+                } else
+                    panel.add(createStringInput(s, commit), BorderLayout.CENTER)
+            case JsonNumber(bd) => panel.add(createNumberInput(bd, commit), BorderLayout.CENTER)
+            case JsonArray(items) =>
+                let elems = Vector.toList(items);
+                match elems {
+                    case JsonNumber(bdX) :: JsonNumber(bdY) :: Nil =>
+                        panel.add(createVec2Field(bdX, bdY, commit), BorderLayout.CENTER)
+                    case _ =>
+                        panel.add(createReadOnlyLabel("[Array: ${List.length(elems)} items]"), BorderLayout.CENTER)
+                }
+            case JsonObject(m) =>
+                if (isColorObject(m))
+                    panel.add(createColorPicker(m, commit), BorderLayout.CENTER)
+                else
+                    panel.add(createReadOnlyLabel("[Object: ${Map.size(m)} keys]"), BorderLayout.CENTER)
+            case _ =>
+                panel.add(createReadOnlyLabel("(null)"), BorderLayout.CENTER)
+        };
+        panel
 
-    /// 0.0..1.0 の値を 0..100 の JSlider にし、横に現在値ラベルを並べる。
-    /// drag 中は label だけ更新し、release (not isAdjusting) で commit する。
-    def createAlphaSlider(bd: BigDecimal, commit: Json.JsonElement -> Unit \ IO): JPanel \ IO =
-        let alpha = bd.doubleValue();
-        let raw = Float64.tryToInt32(alpha * 100.0) |> Option.getWithDefault(100i32);
-        let clamped = if (raw < 0i32) 0i32 else if (raw > 100i32) 100i32 else raw;
+    /// テクスチャ名フィールドかどうか。TextureButton の state-specific キー
+    /// (textureNormal / texturePressed / textureHover / textureDisabled) も
+    /// プロジェクトのテクスチャ dropdown に流す
+    def isTextureKey(key: String): Bool =
+        key == "texture"
+        or key == "textureNormal"
+        or key == "texturePressed"
+        or key == "textureHover"
+        or key == "textureDisabled"
 
-        let slider = new JSlider(0, 100, clamped);
+    /// bounded float（スライダーで操作するのが自然な値）の min/max/単位ラベル。
+    /// alpha/opacity は 0..1 の透明度。speedScale は 0..3 で 1.0 が標準速度。
+    /// frameProgress は AnimatedSprite2D の現フレーム進捗 0..1。
+    /// rotation は GameEngine 内部表現がラジアンなので -π..π
+    def boundedSliderRange(key: String):
+            Option[{min = Float64, max = Float64, label = String}] =
+        match key {
+            case "alpha"         => Some({min = 0.0,  max = 1.0,  label = "%.2f"})
+            case "opacity"       => Some({min = 0.0,  max = 1.0,  label = "%.2f"})
+            case "speedScale"    => Some({min = 0.0,  max = 3.0,  label = "%.2fx"})
+            case "frameProgress" => Some({min = 0.0,  max = 1.0,  label = "%.2f"})
+            case "rotation"      => Some({min = -3.1415927, max = 3.1415927, label = "%.2frad"})
+            case _               => None
+        }
+
+    /// 整数スピナーで扱うキーの (min, max, step) 仕様。範囲は素朴に幅広く取り、
+    /// 「上下キーで 1 ずつ動く」だけが本質
+    def integerSpinnerSpec(key: String):
+            Option[{min = Int32, max = Int32, step = Int32}] =
+        match key {
+            case "zIndex" => Some({min = -1024i32, max = 1024i32, step = 1i32})
+            case "layer"  => Some({min = 0i32,    max = 1024i32, step = 1i32})
+            case "frame"  => Some({min = 0i32,    max = 9999i32, step = 1i32})
+            case "fontSize" => Some({min = 1i32,  max = 256i32,  step = 1i32})
+            case _ => None
+        }
+
+    /// 浮動小数スピナーで扱うキーの (min, max, step)。物理量・時間量など、
+    /// スライダーほどレンジが固定でないがスピナーで微調整したい値
+    def doubleSpinnerSpec(key: String):
+            Option[{min = Float64, max = Float64, step = Float64}] =
+        match key {
+            case "speed"        => Some({min = 0.0, max = 1000.0, step = 0.5})
+            case "duration"     => Some({min = 0.0, max = 1000.0, step = 0.1})
+            case "gravityScale" => Some({min = 0.0, max = 100.0, step = 0.1})
+            case "radius"       => Some({min = 0.0, max = 9999.0, step = 1.0})
+            case "width"        => Some({min = 0.0, max = 9999.0, step = 1.0})
+            case "height"       => Some({min = 0.0, max = 9999.0, step = 1.0})
+            case _ => None
+        }
+
+    /// String enum で扱うキーの選択肢。spriteFrames から動的に拾うものは
+    /// siblingMap を参照する
+    def enumOptionsFor(key: String, siblingMap: Map[String, Json.JsonElement]):
+            Option[List[String]] =
+        if (key == "animation" or key == "autoplay")
+            match Map.get("spriteFrames", siblingMap) {
+                case Some(JsonObject(framesMap)) =>
+                    let names = Map.keysOf(framesMap) |> Set.toList;
+                    if (List.isEmpty(names)) None else Some(names)
+                case _ => None
+            }
+        else if (key == "horizontalAlignment")
+            // engine の parseHorizontalAlignment (SceneLoader.flix:947) が受理する文字列に合わせる
+            Some("left" :: "center" :: "right" :: "fill" :: Nil)
+        else if (key == "verticalAlignment")
+            // engine の parseVerticalAlignment (SceneLoader.flix:959) に合わせる
+            Some("top" :: "center" :: "bottom" :: "fill" :: Nil)
+        else None
+
+    /// 連続値スライダー: 0..1000 の Int32 段階を min..max にマップする。
+    /// drag 中は値ラベルだけ更新し、release (not isAdjusting) で commit する。
+    /// 段階数を 1000 にして alpha (0..1) でも 0.001 刻みになる
+    def createBoundedSlider(bd: BigDecimal,
+                             range: {min = Float64, max = Float64, label = String},
+                             commit: Json.JsonElement -> Unit \ IO): JPanel \ IO =
+        let cur = bd.doubleValue();
+        let span = range#max - range#min;
+        let toTick = v -> Float64.tryToInt32(((v - range#min) / span) * 1000.0)
+                          |> Option.getWithDefault(0i32);
+        let clamp = t -> if (t < 0i32) 0i32 else if (t > 1000i32) 1000i32 else t;
+        let tickToValue = t -> range#min + (Int32.toFloat64(t) / 1000.0) * span;
+
+        let slider = new JSlider(0, 1000, clamp(toTick(cur)));
         slider.setBackground(new Color(40, 40, 40));
         slider.setForeground(Color.LIGHT_GRAY);
+        slider.setPreferredSize(new Dimension(120, 22));
 
         let valLabel = new JLabel(formatBd(bd));
         valLabel.setForeground(new Color(180, 180, 180));
-        valLabel.setPreferredSize(new Dimension(40, 22));
+        valLabel.setPreferredSize(new Dimension(50, 22));
 
         slider.addChangeListener(new ChangeListener {
             def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = {
-                let cur = slider.getValue();
-                let newAlpha = Int32.toFloat64(cur) / 100.0;
-                let newBd = unsafe IO { BigDecimal.valueOf(newAlpha).stripTrailingZeros() };
+                let v = tickToValue(slider.getValue());
+                let newBd = unsafe IO { BigDecimal.valueOf(v).stripTrailingZeros() };
                 valLabel.setText(formatBd(newBd));
                 if (not slider.getValueIsAdjusting()) commit(JsonNumber(newBd))
                 else ()
@@ -754,6 +1121,132 @@ mod IdeUI {
         panel.setBackground(new Color(40, 40, 40));
         panel.add(slider, BorderLayout.CENTER);
         panel.add(valLabel, BorderLayout.EAST);
+        panel
+
+    /// 整数スピナー: ↑↓ ボタン（および ↑↓ キー）で 1 ずつ動く。値変更で即 commit。
+    def createIntegerSpinner(bd: BigDecimal,
+                              spec: {min = Int32, max = Int32, step = Int32},
+                              commit: Json.JsonElement -> Unit \ IO): JPanel \ IO =
+        let cur = Float64.tryToInt32(bd.doubleValue()) |> Option.getWithDefault(0i32);
+        let clamped = if (cur < spec#min) spec#min
+                       else if (cur > spec#max) spec#max else cur;
+        let model = new SpinnerNumberModel(clamped, spec#min, spec#max, spec#step);
+        let spinner = new JSpinner(model);
+        spinner.setPreferredSize(new Dimension(80, 22));
+        spinner.addChangeListener(new ChangeListener {
+            def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = {
+                let v = model.getNumber().intValue();
+                let newBd = unsafe IO { BigDecimal.valueOf(Int32.toFloat64(v)).stripTrailingZeros() };
+                commit(JsonNumber(newBd))
+            }
+        });
+        let panel = new JPanel(new BorderLayout());
+        panel.setBackground(new Color(40, 40, 40));
+        panel.add(spinner, BorderLayout.CENTER);
+        panel
+
+    /// 浮動小数スピナー: ↑↓ で step ずつ動く。
+    /// SpinnerNumberModel の Number は Double に丸める
+    def createDoubleSpinner(bd: BigDecimal,
+                             spec: {min = Float64, max = Float64, step = Float64},
+                             commit: Json.JsonElement -> Unit \ IO): JPanel \ IO =
+        let cur = bd.doubleValue();
+        let clamped = if (cur < spec#min) spec#min
+                       else if (cur > spec#max) spec#max else cur;
+        let model = new SpinnerNumberModel(clamped, spec#min, spec#max, spec#step);
+        let spinner = new JSpinner(model);
+        spinner.setPreferredSize(new Dimension(90, 22));
+        spinner.addChangeListener(new ChangeListener {
+            def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = {
+                let v = model.getNumber().doubleValue();
+                let newBd = unsafe IO { BigDecimal.valueOf(v).stripTrailingZeros() };
+                commit(JsonNumber(newBd))
+            }
+        });
+        let panel = new JPanel(new BorderLayout());
+        panel.setBackground(new Color(40, 40, 40));
+        panel.add(spinner, BorderLayout.CENTER);
+        panel
+
+    /// 汎用 enum dropdown: 既存値が options に無ければ "<unknown>: ..." を先頭に置いて
+    /// 状態を見せ、それが選ばれた場合は commit しない（誤入力された scene.json を壊さないため）。
+    /// texture / shape kind の selector と同じ作法
+    def createEnumDropdown(initial: String, options: List[String],
+                            commit: Json.JsonElement -> Unit \ IO): JComboBox[String] \ IO =
+        let unknown = not List.memberOf(initial, options);
+        let missingLabel = "<unknown>: ${initial}";
+        let items = if (unknown) missingLabel :: options else options;
+        let cb: JComboBox[String] = new JComboBox();
+        List.forEach(n -> { cb.addItem(n); () }, items);
+        cb.setSelectedItem(if (unknown) missingLabel else initial);
+        cb.setPreferredSize(new Dimension(150, 22));
+        cb.addActionListener(new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
+                let idx = cb.getSelectedIndex();
+                let chosen =
+                    if (unknown) {
+                        if (idx == 0) None
+                        else List.nth(idx - 1, options)
+                    } else List.nth(idx, options);
+                match chosen {
+                    case Some(name) =>
+                        if (name == initial) ()
+                        else commit(JsonString(name))
+                    case None => ()
+                }
+            }
+        });
+        cb
+
+    /// カラーピッカー: 現在色のスウォッチを表示し、クリックで JColorChooser を開く。
+    /// scene.json の color object は {"r": 0..1, "g": 0..1, "b": 0..1} 浮動小数なので、
+    /// 0..255 の AWT 値とは内部で変換する。a は任意キーで、無ければ commit でも省く。
+    def createColorPicker(m: Map[String, Json.JsonElement],
+                           commit: Json.JsonElement -> Unit \ IO): JPanel \ IO =
+        let getF = key -> match Map.get(key, m) {
+            case Some(JsonNumber(bd)) => bd.doubleValue()
+            case _ => 0.0
+        };
+        let r0 = getF("r"); let g0 = getF("g"); let b0 = getF("b");
+        let hasAlpha = Map.memberOf("a", m);
+        let toByte = f -> {
+            let scaled = Float64.tryToInt32(f * 255.0) |> Option.getWithDefault(0i32);
+            if (scaled < 0i32) 0i32 else if (scaled > 255i32) 255i32 else scaled
+        };
+        let initial = new Color(toByte(r0), toByte(g0), toByte(b0));
+
+        let swatch = new JButton("");
+        swatch.setBackground(initial);
+        swatch.setOpaque(true);
+        swatch.setBorder(BorderFactory.createLineBorder(new Color(70, 70, 70), 1));
+        swatch.setPreferredSize(new Dimension(80, 22));
+        swatch.addActionListener(new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
+                let picked = JColorChooser.showDialog(swatch, "Pick color", swatch.getBackground());
+                if (Object.isNull(picked)) ()
+                else {
+                    swatch.setBackground(picked);
+                    let r = Int32.toFloat64(picked.getRed())   / 255.0;
+                    let g = Int32.toFloat64(picked.getGreen()) / 255.0;
+                    let b = Int32.toFloat64(picked.getBlue())  / 255.0;
+                    let mkBd = v -> unsafe IO { BigDecimal.valueOf(v).stripTrailingZeros() };
+                    let base: Map[String, Json.JsonElement] = Map#{
+                        "r" => JsonNumber(mkBd(r)),
+                        "g" => JsonNumber(mkBd(g)),
+                        "b" => JsonNumber(mkBd(b))
+                    };
+                    let newMap = if (hasAlpha) {
+                        let a = Int32.toFloat64(picked.getAlpha()) / 255.0;
+                        Map.insert("a", JsonNumber(mkBd(a)), base)
+                    } else base;
+                    commit(JsonObject(newMap))
+                }
+            }
+        });
+
+        let panel = new JPanel(new BorderLayout());
+        panel.setBackground(new Color(40, 40, 40));
+        panel.add(swatch, BorderLayout.CENTER);
         panel
 
     /// Bool プロパティ: ダーク背景のチェックボックス。toggle で即 commit。
@@ -771,6 +1264,7 @@ mod IdeUI {
     /// String プロパティ: Enter で commit (JsonString)。
     def createStringInput(initial: String, commit: Json.JsonElement -> Unit \ IO): JTextField \ IO =
         let tf = new JTextField(initial);
+        tf.setColumns(10);
         styleTextInput(tf);
         tf.addActionListener(new ActionListener {
             def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO =
@@ -795,6 +1289,7 @@ mod IdeUI {
         let cb: JComboBox[String] = new JComboBox();
         List.forEach(n -> { cb.addItem(n); () }, items);
         cb.setSelectedItem(if (initialMissing) missingLabel else initial);
+        cb.setPreferredSize(new Dimension(150, 22));
         // JComboBox は同じ項目を再選択しても actionPerformed を発火しないので
         // 「現値と等しいか」のスキップは不要。素朴に index → 名前で commit する。
         cb.addActionListener(new ActionListener {
@@ -816,6 +1311,7 @@ mod IdeUI {
     /// Number プロパティ: Enter で parse → commit (JsonNumber)。parse 失敗時は無視。
     def createNumberInput(bd: BigDecimal, commit: Json.JsonElement -> Unit \ IO): JTextField \ IO =
         let tf = new JTextField(formatBd(bd));
+        tf.setColumns(8);
         styleTextInput(tf);
         tf.addActionListener(new ActionListener {
             def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
@@ -844,44 +1340,48 @@ mod IdeUI {
         lbl
 
     /// Vec2 プロパティ (pos/scale/size 等): Godot 風に X (赤系) と Y (緑系) の 2 列。
-    /// どちらか片方の Enter で「両方のフィールドの現在値」を読んで配列ごと commit する。
-    /// 片方が parse 失敗のときは何もしない。
+    /// 各軸は JSpinner なので ↑↓ 矢印ボタン or ↑↓ キーで 1 ずつ動き、即 commit する。
+    /// 直接編集も可（focus を抜けると model が更新され ChangeListener が発火）。
+    /// SpinnerNumberModel への参照を直接保持しておくことで、commit で getModel() →
+    /// SpinnerNumberModel への downcast を回避する
     def createVec2Field(bdX: BigDecimal, bdY: BigDecimal,
                         commit: Json.JsonElement -> Unit \ IO): JPanel \ IO =
-        let xField = new JTextField(formatBd(bdX));
-        styleTextInput(xField);
-        let yField = new JTextField(formatBd(bdY));
-        styleTextInput(yField);
+        let xModel = new SpinnerNumberModel(bdX.doubleValue(), -99999.0, 99999.0, 1.0);
+        let yModel = new SpinnerNumberModel(bdY.doubleValue(), -99999.0, 99999.0, 1.0);
+        let xSpinner = new JSpinner(xModel);
+        let ySpinner = new JSpinner(yModel);
+        xSpinner.setPreferredSize(new Dimension(60, 22));
+        ySpinner.setPreferredSize(new Dimension(60, 22));
 
         let commitVec2 = () -> {
-            match (JsonOps.parseBigDecimal(xField.getText()), JsonOps.parseBigDecimal(yField.getText())) {
-                case (Some(newX), Some(newY)) =>
-                    commit(JsonArray(Vector#{JsonNumber(newX), JsonNumber(newY)}))
-                case _ => ()
-            }
+            let xV = xModel.getNumber().doubleValue();
+            let yV = yModel.getNumber().doubleValue();
+            let newX = unsafe IO { BigDecimal.valueOf(xV).stripTrailingZeros() };
+            let newY = unsafe IO { BigDecimal.valueOf(yV).stripTrailingZeros() };
+            commit(JsonArray(Vector#{JsonNumber(newX), JsonNumber(newY)}))
         };
-        xField.addActionListener(new ActionListener {
-            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = commitVec2()
+        xSpinner.addChangeListener(new ChangeListener {
+            def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = commitVec2()
         });
-        yField.addActionListener(new ActionListener {
-            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = commitVec2()
+        ySpinner.addChangeListener(new ChangeListener {
+            def stateChanged(_this: ChangeListener, _e: ChangeEvent): Unit \ IO = commitVec2()
         });
 
         let panel = new JPanel(new GridLayout(1, 2, 6, 0));
         panel.setBackground(new Color(40, 40, 40));
-        panel.add(wrapAxis("X", new Color(220, 110, 110), xField));
-        panel.add(wrapAxis("Y", new Color(120, 200, 120), yField));
+        panel.add(wrapSpinnerAxis("X", new Color(220, 110, 110), xSpinner));
+        panel.add(wrapSpinnerAxis("Y", new Color(120, 200, 120), ySpinner));
         panel
 
-    /// 1 軸ぶんの「色付きラベル + テキストフィールド」ラッパ
-    def wrapAxis(axisName: String, axisColor: Color, field: JTextField): JPanel \ IO =
+    /// 1 軸ぶんの「色付きラベル + JSpinner」ラッパ
+    def wrapSpinnerAxis(axisName: String, axisColor: Color, spinner: JSpinner): JPanel \ IO =
         let panel = new JPanel(new BorderLayout(4, 0));
         panel.setBackground(new Color(40, 40, 40));
         let lbl = new JLabel(axisName);
         lbl.setForeground(axisColor);
         lbl.setPreferredSize(new Dimension(14, 22));
         panel.add(lbl, BorderLayout.WEST);
-        panel.add(field, BorderLayout.CENTER);
+        panel.add(spinner, BorderLayout.CENTER);
         panel
 
     /// BigDecimal を見やすい文字列に。"2.8E+2" のような表記を避けるため toPlainString。

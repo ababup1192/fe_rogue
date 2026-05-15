@@ -54,14 +54,18 @@ mod LwjglLayer {
     }
 
     /// GLFW 3.4 (LWJGL 3.4.1 同梱) の cursor shape 定数。
-    /// NWSE / NESW の対角リサイズと ResizeAll は 3.4 で追加された。
+    /// 4 隅は GLFW では対角単位 (NWSE / NESW) の 2 種しか無いので、
+    /// NW + SE → GLFW_RESIZE_NWSE_CURSOR、NE + SW → GLFW_RESIZE_NESW_CURSOR にエイリアス。
     def cursorShapeToGlfw(cursor: GameEngine.Cursor): Int32 = match cursor {
         case GameEngine.Cursor.Default    => 0x36001  // GLFW_ARROW_CURSOR
         case GameEngine.Cursor.HResize    => 0x36005  // GLFW_HRESIZE_CURSOR
         case GameEngine.Cursor.VResize    => 0x36006  // GLFW_VRESIZE_CURSOR
         case GameEngine.Cursor.AllResize  => 0x36009  // GLFW_RESIZE_ALL_CURSOR
-        case GameEngine.Cursor.NWSEResize => 0x36007  // GLFW_RESIZE_NWSE_CURSOR
-        case GameEngine.Cursor.NESWResize => 0x36008  // GLFW_RESIZE_NESW_CURSOR
+        case GameEngine.Cursor.Rotate     => 0x36004  // GLFW_POINTING_HAND_CURSOR
+        case GameEngine.Cursor.NWResize   => 0x36007  // GLFW_RESIZE_NWSE_CURSOR
+        case GameEngine.Cursor.SEResize   => 0x36007  // GLFW_RESIZE_NWSE_CURSOR
+        case GameEngine.Cursor.NEResize   => 0x36008  // GLFW_RESIZE_NESW_CURSOR
+        case GameEngine.Cursor.SWResize   => 0x36008  // GLFW_RESIZE_NESW_CURSOR
     }
 
     // ========================================================================
@@ -170,8 +174,12 @@ mod LwjglLayer {
         let hResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.HResize));
         let vResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.VResize));
         let allResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.AllResize));
-        let nwseResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.NWSEResize));
-        let neswResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.NESWResize));
+        let rotateCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.Rotate));
+        // 4 隅: GLFW では対角単位 (NWSE/NESW) しか無いので、NW+SE と NE+SW は同じ
+        // ハンドルを共有する。AWT 側は方向別の 4 種を持っており、IDE では AWT 経路の方が
+        // ホバー時に表示されるためここの集約は問題にならない。
+        let nwseResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.NWResize));
+        let neswResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.NEResize));
         // 同じ Cursor を毎フレーム渡されたときに glfwSetCursor を抑制するためのキャッシュ
         let lastCursorHolder = Array#{(GameEngine.Cursor.Default: GameEngine.Cursor)} @ Static;
         let cursorOf = cursor -> match cursor {
@@ -179,8 +187,11 @@ mod LwjglLayer {
             case GameEngine.Cursor.HResize    => hResizeCursor
             case GameEngine.Cursor.VResize    => vResizeCursor
             case GameEngine.Cursor.AllResize  => allResizeCursor
-            case GameEngine.Cursor.NWSEResize => nwseResizeCursor
-            case GameEngine.Cursor.NESWResize => neswResizeCursor
+            case GameEngine.Cursor.Rotate     => rotateCursor
+            case GameEngine.Cursor.NWResize   => nwseResizeCursor
+            case GameEngine.Cursor.SEResize   => nwseResizeCursor
+            case GameEngine.Cursor.NEResize   => neswResizeCursor
+            case GameEngine.Cursor.SWResize   => neswResizeCursor
         };
 
         // マウスホイールの y 方向 delta を 1 フレームぶん蓄積する。

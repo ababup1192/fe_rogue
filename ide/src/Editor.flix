@@ -201,14 +201,14 @@ mod Editor {
         let cursor = match stateData#resizeOrigin {
             case Some(origin) => cursorForHandle(origin#handle)
             case None         => match stateData#rotateOrigin {
-                case Some(_) => GameEngine.Cursor.AllResize
+                case Some(_) => GameEngine.Cursor.Rotate
                 case None    => hoverCursor(mousePos, transform, stateData, scene)
             }
         };
         GameEngine.Game.setCursor(cursor)
 
     /// 選択中ノードのハンドル領域に hover していればそのハンドル用カーソル、
-    /// 外していれば Default を返す
+    /// 外していれば Default を返す。回転ノブが優先、次に 8 リサイズハンドル。
     def hoverCursor(mousePos: Vec2.Vec2, transform: Camera2D.ViewTransform,
                     stateData: EditorStateData,
                     scene: Scene[t]): GameEngine.Cursor \ GameEngine.Game =
@@ -224,7 +224,11 @@ mod Editor {
                         let topLeft = Vec2.add(refPos, entry#topLeftOffset);
                         let box = {topLeft = topLeft,
                                    size = {x = entry#width, y = entry#height}};
-                        match ResizeHandle.hitTest(mousePos, box) {
+                        // 回転ノブを先に判定。ノブはリサイズハンドルより外側に出るので
+                        // 重なることは無いが、優先順を明示しておく
+                        if (ResizeHandle.rotateKnobHit(mousePos, box))
+                            GameEngine.Cursor.Rotate
+                        else match ResizeHandle.hitTest(mousePos, box) {
                             case None         => GameEngine.Cursor.Default
                             case Some(handle) => cursorForHandle(handle)
                         }
@@ -232,17 +236,17 @@ mod Editor {
         }
 
     /// ハンドル方向に対応するカーソル形状を返す。
-    /// 4 隅は GLFW 3.4 の対角リサイズカーソル（↘↖ / ↗↙）を使う
+    /// 4 隅は方向別の corner cursor を使う (AWT のネイティブ ↖↗↙↘ 矢印)
     def cursorForHandle(handle: ResizeHandle.Handle): GameEngine.Cursor =
         match handle {
             case ResizeHandle.Handle.Top         => GameEngine.Cursor.VResize
             case ResizeHandle.Handle.Bottom      => GameEngine.Cursor.VResize
             case ResizeHandle.Handle.Left        => GameEngine.Cursor.HResize
             case ResizeHandle.Handle.Right       => GameEngine.Cursor.HResize
-            case ResizeHandle.Handle.TopLeft     => GameEngine.Cursor.NWSEResize
-            case ResizeHandle.Handle.BottomRight => GameEngine.Cursor.NWSEResize
-            case ResizeHandle.Handle.TopRight    => GameEngine.Cursor.NESWResize
-            case ResizeHandle.Handle.BottomLeft  => GameEngine.Cursor.NESWResize
+            case ResizeHandle.Handle.TopLeft     => GameEngine.Cursor.NWResize
+            case ResizeHandle.Handle.TopRight    => GameEngine.Cursor.NEResize
+            case ResizeHandle.Handle.BottomLeft  => GameEngine.Cursor.SWResize
+            case ResizeHandle.Handle.BottomRight => GameEngine.Cursor.SEResize
         }
 
     /// Rewind から 1 件取り出してノードを記録された状態（位置 / スケール / サイズ / 回転）に

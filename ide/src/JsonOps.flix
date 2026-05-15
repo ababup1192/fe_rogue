@@ -23,9 +23,11 @@ mod JsonOps {
                 else x :: replaceListAt(idx - 1i32, newElem, xs)
         }
 
-    /// JsonObject の中をキー列で降りて末端を newValue に置き換える。
+    /// JsonObject / JsonArray の中をキー列で降りて末端を newValue に置き換える。
     /// keys が空なら obj を newValue で置き換える。
-    /// 途中で JsonObject でなくなったら（= 想定外のスキーマ）そこで諦めて obj を返す。
+    /// 現在位置が JsonObject なら headKey をフィールド名として降りる。
+    /// 現在位置が JsonArray なら headKey を整数インデックス（"0", "1" ...）として降りる。
+    /// 途中で型が合わなければ（= 想定外のスキーマ）そこで諦めて obj を返す。
     pub def setAtKeyPath(obj: Json.JsonElement, keys: List[String], newValue: Json.JsonElement): Json.JsonElement =
         match keys {
             case Nil => newValue
@@ -35,6 +37,18 @@ mod JsonOps {
                         let child = Map.get(headKey, map) |> Option.getWithDefault(JsonNull);
                         let updatedChild = setAtKeyPath(child, restKeys, newValue);
                         JsonObject(Map.insert(headKey, updatedChild, map))
+                    case JsonArray(items) =>
+                        match Int32.fromString(headKey) {
+                            case Some(idx) =>
+                                let itemList = Vector.toList(items);
+                                match List.nth(idx, itemList) {
+                                    case None => obj
+                                    case Some(child) =>
+                                        let updatedChild = setAtKeyPath(child, restKeys, newValue);
+                                        JsonArray(List.toVector(replaceListAt(idx, updatedChild, itemList)))
+                                }
+                            case None => obj
+                        }
                     case _ => obj
                 }
         }

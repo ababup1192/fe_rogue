@@ -46,16 +46,18 @@ mod AwtKeyMap {
     }
 
     /// GameEngine.Cursor を AWT java.awt.Cursor の型定数 (Int32) に変換する。
-    /// 4 隅のリサイズカーソルは AWT の方向別ハンドル (NW/NE/SW/SE) のうち
-    /// 対角方向の片方を選んでいる: NWSE → NW_RESIZE_CURSOR、NESW → NE_RESIZE_CURSOR。
+    /// 4 隅は AWT のネイティブ方向別カーソル (NW/NE/SW/SE) にそれぞれ対応。
     /// 上下・左右の伸縮は E/N で代表させる
     pub def cursorTypeForGameCursor(cursor: GameEngine.Cursor): Int32 = match cursor {
-        case GameEngine.Cursor.Default    => unsafe IO { Cursor.DEFAULT_CURSOR }
-        case GameEngine.Cursor.HResize    => unsafe IO { Cursor.E_RESIZE_CURSOR }
-        case GameEngine.Cursor.VResize    => unsafe IO { Cursor.N_RESIZE_CURSOR }
-        case GameEngine.Cursor.AllResize  => unsafe IO { Cursor.MOVE_CURSOR }
-        case GameEngine.Cursor.NWSEResize => unsafe IO { Cursor.NW_RESIZE_CURSOR }
-        case GameEngine.Cursor.NESWResize => unsafe IO { Cursor.NE_RESIZE_CURSOR }
+        case GameEngine.Cursor.Default   => unsafe IO { Cursor.DEFAULT_CURSOR }
+        case GameEngine.Cursor.HResize   => unsafe IO { Cursor.E_RESIZE_CURSOR }
+        case GameEngine.Cursor.VResize   => unsafe IO { Cursor.N_RESIZE_CURSOR }
+        case GameEngine.Cursor.AllResize => unsafe IO { Cursor.MOVE_CURSOR }
+        case GameEngine.Cursor.Rotate    => unsafe IO { Cursor.HAND_CURSOR }
+        case GameEngine.Cursor.NWResize  => unsafe IO { Cursor.NW_RESIZE_CURSOR }
+        case GameEngine.Cursor.NEResize  => unsafe IO { Cursor.NE_RESIZE_CURSOR }
+        case GameEngine.Cursor.SWResize  => unsafe IO { Cursor.SW_RESIZE_CURSOR }
+        case GameEngine.Cursor.SEResize  => unsafe IO { Cursor.SE_RESIZE_CURSOR }
     }
 
     /// AWT canvas のピクセル座標 (cursorPx) を、design 領域の論理座標に変換する。

@@ -106,14 +106,18 @@ mod TestAwtKeyMap {
             (AwtKeyMap.cursorTypeForGameCursor(GameEngine.Cursor.HResize),
              AwtKeyMap.cursorTypeForGameCursor(GameEngine.Cursor.VResize)))
 
-    /// 対角伸縮は AWT の NW / NE リサイズカーソルに対応 (↘↖ / ↗↙)
+    /// 4 隅のリサイズは AWT のネイティブ corner cursor (↖↗↙↘) にそれぞれ対応
     @Test
-    def testCursorTypeDiagonalResize(): Unit \ Assert =
+    def testCursorTypeCornerResize(): Unit \ Assert =
         Assert.assertEq(
             expected = (unsafe IO { Cursor.NW_RESIZE_CURSOR },
-                        unsafe IO { Cursor.NE_RESIZE_CURSOR }),
-            (AwtKeyMap.cursorTypeForGameCursor(GameEngine.Cursor.NWSEResize),
-             AwtKeyMap.cursorTypeForGameCursor(GameEngine.Cursor.NESWResize)))
+                        unsafe IO { Cursor.NE_RESIZE_CURSOR },
+                        unsafe IO { Cursor.SW_RESIZE_CURSOR },
+                        unsafe IO { Cursor.SE_RESIZE_CURSOR }),
+            (AwtKeyMap.cursorTypeForGameCursor(GameEngine.Cursor.NWResize),
+             AwtKeyMap.cursorTypeForGameCursor(GameEngine.Cursor.NEResize),
+             AwtKeyMap.cursorTypeForGameCursor(GameEngine.Cursor.SWResize),
+             AwtKeyMap.cursorTypeForGameCursor(GameEngine.Cursor.SEResize)))
 
     // ========================================================================
     // canvasToDesign — AWT ピクセル → design 論理座標

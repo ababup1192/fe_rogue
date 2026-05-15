@@ -181,6 +181,14 @@ mod EditableNode {
                             TextureButton.setSize(newSize, btn), st)
                     case None => engineNode
                 }
+            case EngineNode.ButtonWithState(btn, st) =>
+                match snapshot#prevSize {
+                    case Some(prev) =>
+                        let newSize = {x = prev#x * ratio#x, y = prev#y * ratio#y};
+                        EngineNode.ButtonWithState(
+                            Button.setSize(newSize, btn), st)
+                    case None => engineNode
+                }
             case EngineNode.RichTextLabelWithState(label, st) =>
                 match snapshot#prevSize {
                     case Some(prev) =>
@@ -247,6 +255,9 @@ mod EditableNode {
             case EngineNode.TextureButtonWithState(btn, _) =>
                 {key = "size",
                  value = SceneSerializer.FieldValue.VecValue(TextureButton.getSize(btn))} :: Nil
+            case EngineNode.ButtonWithState(btn, _) =>
+                {key = "size",
+                 value = SceneSerializer.FieldValue.VecValue(Button.getSize(btn))} :: Nil
             case EngineNode.RichTextLabelWithState(label, _) =>
                 {key = "size",
                  value = SceneSerializer.FieldValue.VecValue(RichTextLabel.getSize(label))} :: Nil
@@ -304,6 +315,11 @@ mod EditableNode {
                 prevSize = Some(TextureButton.getSize(btn)),
                 prevFontSize = None, prevScale = None, prevShape = None
             }
+            case EngineNode.ButtonWithState(btn, _) => {
+                nodePath = nodePath, prevPosition = prevPos,
+                prevSize = Some(Button.getSize(btn)),
+                prevFontSize = None, prevScale = None, prevShape = None
+            }
             case EngineNode.RichTextLabelWithState(label, _) => {
                 nodePath = nodePath, prevPosition = prevPos,
                 prevSize = Some(RichTextLabel.getSize(label)),
@@ -358,6 +374,14 @@ mod EditableNode {
                     case Some(sz) =>
                         EngineNode.TextureButtonWithState(
                             TextureButton.setSize(sz, btn)
+                                |> Node2D.setPosition(snapshot#prevPosition), st)
+                    case None => withPos
+                }
+            case EngineNode.ButtonWithState(btn, st) =>
+                match snapshot#prevSize {
+                    case Some(sz) =>
+                        EngineNode.ButtonWithState(
+                            Button.setSize(sz, btn)
                                 |> Node2D.setPosition(snapshot#prevPosition), st)
                     case None => withPos
                 }
@@ -422,6 +446,7 @@ mod EditableNode {
             case EngineNode.Sprite2DWithState(sprite, _) => spriteRectInfo(sprite)
             case EngineNode.AnimSprite2DWithState(sprite, _) => animatedSpriteRectInfo(sprite)
             case EngineNode.TextureButtonWithState(btn, _) => Some(buttonRectInfo(btn))
+            case EngineNode.ButtonWithState(btn, _) => Some(plainButtonRectInfo(btn))
             case EngineNode.Label2DWithState(label, _) => Some(labelRectInfo(label))
             case EngineNode.ColorRectWithState(rect, _) => Some(colorRectRectInfo(rect))
             case EngineNode.RichTextLabelWithState(label, _) => Some(richTextLabelRectInfo(label))
@@ -499,6 +524,7 @@ mod EditableNode {
             case EngineNode.Sprite2DWithState(sprite, _) => spriteRectInfo(sprite)
             case EngineNode.AnimSprite2DWithState(sprite, _) => animatedSpriteRectInfo(sprite)
             case EngineNode.TextureButtonWithState(btn, _) => Some(buttonRectInfo(btn))
+            case EngineNode.ButtonWithState(btn, _) => Some(plainButtonRectInfo(btn))
             case EngineNode.Label2DWithState(label, _) => Some(labelRectInfo(label))
             case EngineNode.ColorRectWithState(rect, _) => Some(colorRectRectInfo(rect))
             case EngineNode.RichTextLabelWithState(label, _) => Some(richTextLabelRectInfo(label))
@@ -562,4 +588,12 @@ mod EditableNode {
         let size = TextureButton.getSize(btn);
         {size = size,
          topLeftOffset = boxTopLeftOffset(TextureButton.isCentered(btn), size)}
+
+    /// テキスト Button の矩形情報。Button は parser 上 centered = false 固定
+    /// (左上原点) なので topLeftOffset は常にゼロ。将来 centered 切替が来たら
+    /// BaseButton.isCentered で分岐する
+    def plainButtonRectInfo(btn: Button):
+            {size = Vec2.Vec2, topLeftOffset = Vec2.Vec2} =
+        let size = Button.getSize(btn);
+        {size = size, topLeftOffset = ({x = 0.0, y = 0.0}: Vec2.Vec2)}
 }

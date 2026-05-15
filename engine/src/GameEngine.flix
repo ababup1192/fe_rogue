@@ -136,7 +136,10 @@ mod GameEngine {
         MouseButton.Left :: MouseButton.Right :: MouseButton.Middle :: Nil
 
     /// マウスカーソル形状（エディタのリサイズハンドルなどで切り替える）。
-    /// LWJGL 3.3.4 同梱の GLFW 3.4 で利用可能な shape をエディタ用に列挙
+    /// LWJGL 3.3.4 同梱の GLFW 3.4 で利用可能な shape をエディタ用に列挙。
+    /// 4 隅は OS ネイティブの方向別カーソル (NW/NE/SW/SE) を個別に持ち、AWT 側で
+    /// 単方向矢印が「逆向き」に見える問題を避ける。GLFW には対角単位の双方向矢印
+    /// しか無いので、NW+SE / NE+SW でエイリアスされる。
     pub enum Cursor with Eq, ToString {
         /// 通常の矢印カーソル（エディタ非操作中・ハンドル外）
         case Default
@@ -144,12 +147,19 @@ mod GameEngine {
         case HResize
         /// 縦方向の伸縮カーソル ↕（上下辺ハンドル）
         case VResize
-        /// 全方向の伸縮カーソル（回転ハンドルや CanvasLayer 全体の操作）
+        /// 全方向の伸縮カーソル（CanvasLayer 全体の操作）
         case AllResize
-        /// 北西-南東方向の伸縮カーソル ↘↖（TopLeft / BottomRight 隅ハンドル）
-        case NWSEResize
-        /// 北東-南西方向の伸縮カーソル ↗↙（TopRight / BottomLeft 隅ハンドル）
-        case NESWResize
+        /// 回転操作中・回転ノブにホバー中のカーソル（Hand）。
+        /// 「ここを掴める」という視覚フィードバック
+        case Rotate
+        /// 北西方向のリサイズ (TopLeft 隅 ↖)
+        case NWResize
+        /// 北東方向のリサイズ (TopRight 隅 ↗)
+        case NEResize
+        /// 南西方向のリサイズ (BottomLeft 隅 ↙)
+        case SWResize
+        /// 南東方向のリサイズ (BottomRight 隅 ↘)
+        case SEResize
     }
 
     /// ゲームエフェクト: 描画・ウィンドウ制御・時間取得・キー入力・マウス入力・フォント・
