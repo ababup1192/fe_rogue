@@ -120,9 +120,24 @@ mod ItemList {
     /// focused フラグを設定する（true でこの ItemList がキー入力を受ける）。
     /// 同一フレームで複数の ItemList を focused=true にすると、handleMenus は全部に
     /// 入力を送ってしまうのでゲーム側で 1 つだけに保つこと。
+    ///
+    /// false → true への切替時には、直前フレームのキー状態を「全押下中」と仮定して
+    /// `prev*Down` を `true` で初期化する。これにより、別フェーズで Enter キーを押した
+    /// 余韻でメニューが即確定してしまう問題（フェーズ遷移時の入力連鎖）を防ぐ。
+    /// Godot で言う「grab_focus() 直後にキューに残った入力イベントを 1 回消費する」挙動。
     pub def setFocused(focused: Bool, list: ItemList): ItemList =
         let ItemList.ItemList(r) = list;
-        ItemList.ItemList({focused = focused | r})
+        if (focused and not r#focused)
+            ItemList.ItemList({
+                focused         = true,
+                prevUpDown      = true,
+                prevDownDown    = true,
+                prevConfirmDown = true,
+                prevCancelDown  = true
+                | r
+            })
+        else
+            ItemList.ItemList({focused = focused | r})
 
     pub def getCursorGlyph(list: ItemList): String =
         let ItemList.ItemList(r) = list;

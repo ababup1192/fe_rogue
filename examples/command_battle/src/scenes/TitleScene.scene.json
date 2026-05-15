@@ -1,0 +1,29 @@
+{
+  "type": "CanvasLayer",
+  "name": "title",
+  "tag": "TitleLayer",
+  "layer": 0,
+  "children": [
+    {
+      "type": "ColorRect",
+      "name": "bg",
+      "pos": [0, 0],
+      "size": [640, 480],
+      "color": {"r": 0, "g": 0, "b": 0}
+    },
+    {
+      "type": "Label2D",
+      "name": "title_text",
+      "pos": [180, 200],
+      "text": "コマンドバトル",
+      "fontSize": 40
+    },
+    {
+      "type": "Label2D",
+      "name": "hint",
+      "pos": [200, 320],
+      "text": "[Enter] ですすむ",
+      "fontSize": 24
+    }
+  ]
+}

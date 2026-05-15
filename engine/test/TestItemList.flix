@@ -111,11 +111,13 @@ mod TestItemList {
             |> ItemList.updateInputState(false, true, false, false);
         Assert.assertEq(expected = 0, ItemList.getSelectedIndex(list))
 
-    /// focused=true で Down キー押下瞬間 → idx 0 → 1
+    /// focused=true で Down キー押下瞬間 → idx 0 → 1。
+    /// setFocused(true) 直後は prev*Down が全 true なので、まず 1 フレーム「全離す」を入れる。
     @Test
     def testUpdateInputDownMovesCursor(): Unit \ Assert =
         let list = makeList(threeItems())
             |> ItemList.setFocused(true)
+            |> ItemList.updateInputState(false, false, false, false)
             |> ItemList.updateInputState(false, true, false, false);
         Assert.assertEq(expected = 1, ItemList.getSelectedIndex(list))
 
@@ -124,6 +126,7 @@ mod TestItemList {
     def testUpdateInputHeldKeyDoesNotRepeat(): Unit \ Assert =
         let list = makeList(threeItems())
             |> ItemList.setFocused(true)
+            |> ItemList.updateInputState(false, false, false, false)
             |> ItemList.updateInputState(false, true, false, false)
             |> ItemList.updateInputState(false, true, false, false);
         Assert.assertEq(expected = 1, ItemList.getSelectedIndex(list))
@@ -133,6 +136,7 @@ mod TestItemList {
     def testUpdateInputEnterSetsPendingConfirm(): Unit \ Assert =
         let list = makeList(threeItems())
             |> ItemList.setFocused(true)
+            |> ItemList.updateInputState(false, false, false, false)
             |> ItemList.updateInputState(false, false, true, false);
         Assert.assertEq(expected = true, ItemList.isPendingConfirm(list))
 
@@ -141,6 +145,7 @@ mod TestItemList {
     def testUpdateInputEscapeSetsPendingCancel(): Unit \ Assert =
         let list = makeList(threeItems())
             |> ItemList.setFocused(true)
+            |> ItemList.updateInputState(false, false, false, false)
             |> ItemList.updateInputState(false, false, false, true);
         Assert.assertEq(expected = true, ItemList.isPendingCancel(list))
 
@@ -149,10 +154,20 @@ mod TestItemList {
     def testClearPendingResetsFlags(): Unit \ Assert =
         let list = makeList(threeItems())
             |> ItemList.setFocused(true)
+            |> ItemList.updateInputState(false, false, false, false)
             |> ItemList.updateInputState(false, false, true, true)
             |> ItemList.clearPending;
         Assert.assertEq(expected = false, ItemList.isPendingConfirm(list));
         Assert.assertEq(expected = false, ItemList.isPendingCancel(list))
+
+    /// setFocused(false→true) 直後は前フレームを「全押下中」と仮定するため、
+    /// 連鎖した押下を消費して何も起きない（フェーズ遷移時の入力連鎖を防ぐ）
+    @Test
+    def testSetFocusedConsumesPriorInput(): Unit \ Assert =
+        let list = makeList(threeItems())
+            |> ItemList.setFocused(true)
+            |> ItemList.updateInputState(false, false, true, false);  // Enter まだ押されたまま
+        Assert.assertEq(expected = false, ItemList.isPendingConfirm(list))
 
     // ── 構造 ──
 

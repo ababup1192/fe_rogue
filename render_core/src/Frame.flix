@@ -45,8 +45,15 @@ mod RenderFrame {
             GL11.glClearColor(clearColor#r, clearColor#g, clearColor#b, 1.0f32);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
             GL11.glDisable(GL11.GL_SCISSOR_TEST);
-            // tileMaps: zIndex 昇順で 1 draw call ずつ描画
-            let sortedTiles = List.sortBy(tm -> tm#zIndex, tileMaps);
+            // tileMaps: zIndex 昇順で 1 draw call ずつ描画。
+            // 同一 zIndex 内では入力順を保つため stable sort（zipWithIndex + (zIndex, drawIndex)）。
+            // 単純な `List.sortBy(_#zIndex, _)` は unstable で、Scene.toDrawables 側で確立した
+            // 描画順を壊し、特定の Drawable（例: bg ColorRect と同 z の Label2D の最後の文字）が
+            // 入れ替わって上書き消失する事故が起きる。
+            let sortedTiles = tileMaps
+                |> List.zipWithIndex
+                |> List.sortBy(idxT -> let (idx, tm) = idxT; (tm#zIndex, idx))
+                |> List.map(idxT -> let (_, tm) = idxT; tm);
             List.forEach(tm -> match Map.get(tm#textureName, registry) {
                 case Some(texInfo) =>
                     RenderSprite.drawTileMapInstanced(tileShader, texInfo#id, tm#tileVaoId,
@@ -54,8 +61,11 @@ mod RenderFrame {
                                          tm#color, tm#tileCount)
                 case None => ()
             }, sortedTiles);
-            // sprites: zIndex 昇順で描画
-            let sortedSprites = List.sortBy(d -> d#zIndex, sprites);
+            // sprites: zIndex 昇順で描画（同上、stable sort 化）
+            let sortedSprites = sprites
+                |> List.zipWithIndex
+                |> List.sortBy(idxD -> let (idx, d) = idxD; (d#zIndex, idx))
+                |> List.map(idxD -> let (_, d) = idxD; d);
             List.forEach(drawable -> {
                 if (String.isEmpty(drawable#texture)) {
                     let displaySize: Vec2.Vec2 = drawable#scale;

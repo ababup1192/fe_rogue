@@ -1,0 +1,101 @@
+/// メッセージウィンドウシーン（タイプライター演出つき）。
+/// 全シーン常駐設計。`process` で GamePhase を読み:
+///   - ルート Panel: Title 以外で visible=true
+///   - RichTextLabel: phase に応じてメッセージを差し替え + visibleCharacters を毎フレーム +1
+///
+/// メッセージ切替は「現在の RichTextLabel.text と phase 期待値の比較」で検出する。
+/// 異なれば setText + visibleCharacters=0 でタイプライターを最初からやり直す。
+/// 同じテキストなら typewriter 進行（+1/frame、60fps で 60 文字/秒）。
+mod MessageScene {
+
+    use Json.JsonError.JsonError
+    use Json.Path.Path.Root
+
+    def sceneJsonPath(): String = "src/scenes/MessageScene.scene.json"
+
+    pub def name(): String = "message_panel"
+    pub def textName(): String = "text"
+    pub def textPath(): NodePath = name() :: textName() :: Nil
+
+    def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+        match opt {
+            case None                  => Ok(NodeTag.NoTag)
+            case Some("NoTag")         => Ok(NodeTag.NoTag)
+            case Some("MessagePanel")  => Ok(NodeTag.MessagePanel)
+            case Some("MessageBox")    => Ok(NodeTag.MessageBox)
+            case Some(unknown)         => Err(JsonError(Root, Set#{"MessageScene tag (got: ${unknown})"}))
+        }
+
+    pub def add(fontAtlas: FontAtlas, scene: Scene[NodeTag]):
+                Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+        SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas, tagParser, scene)
+
+    /// GamePhase ごとに表示するメッセージを定義（PR2 の仮データ）。
+    /// 空文字 ("") は「メッセージなし」（Title 中 / コマンド選択中など）。
+    pub def messageFor(phase: GamePhase): String =
+        match phase {
+            case GamePhase.Title         => ""
+            case GamePhase.CommandSelect => ""
+            case GamePhase.Resolving     => "ゆうしゃは スライムに こうげき！\nスライムに 8 の ダメージ！"
+            case GamePhase.BattleEnd     => "スライムを たおした！\nEnter キーで タイトルへ"
+        }
+
+    /// メッセージ表示が完了しているか（テキストが空 or visibleCharacters が totalCharCount に達した）。
+    /// InputHandler から「タイプライター中 Enter は早送り、完了済み Enter は次フェーズへ」 を判定するために公開。
+    pub def isComplete(scene: Scene[NodeTag]): Bool =
+        match Scene.getEngineNode(textPath(), scene) {
+            case Some(EngineNode.RichTextLabelWithState(label, _)) =>
+                let total = RichTextLabel.totalCharCount(label);
+                let vc = RichTextLabel.getVisibleCharacters(label);
+                total == 0 or vc < 0 or vc >= total
+            case _ => true
+        }
+
+    /// タイプライターを完了状態に飛ばす（Enter 早送り用）。
+    pub def skipTypewriter(scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(textPath(), node -> match node {
+            case EngineNode.RichTextLabelWithState(label, tag) =>
+                let total = RichTextLabel.totalCharCount(label);
+                EngineNode.RichTextLabelWithState(
+                    RichTextLabel.setVisibleCharacters(total, label), tag)
+            case other => other
+        }, scene)
+
+    /// ルート Panel に対する process。Title 以外で visible=true。
+    pub def processPanel(_delta: Duration.Duration, node: EngineNode[NodeTag],
+                         _path: NodePath,
+                         scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ GamePhaseState =
+        match node {
+            case EngineNode.PanelWithState(panel, NodeTag.MessagePanel) =>
+                let visible = GamePhaseState.get() != GamePhase.Title;
+                (EngineNode.PanelWithState(CanvasItem.setVisible(visible, panel), NodeTag.MessagePanel), scene)
+            case _ => (node, scene)
+        }
+
+    /// RichTextLabel (MessageBox) に対する process。
+    /// 期待メッセージと現在の text を比較し、差分があれば setText + visibleCharacters=0、
+    /// 一致していれば visibleCharacters を +1（タイプライター進行）。
+    pub def processBox(_delta: Duration.Duration, node: EngineNode[NodeTag],
+                       _path: NodePath,
+                       scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ GamePhaseState =
+        match node {
+            case EngineNode.RichTextLabelWithState(label, NodeTag.MessageBox) =>
+                let expected = messageFor(GamePhaseState.get());
+                let current = RichTextLabel.getText(label);
+                let updated =
+                    if (current != expected)
+                        label
+                            |> RichTextLabel.setText(expected)
+                            |> RichTextLabel.setVisibleCharacters(0)
+                    else {
+                        let total = RichTextLabel.totalCharCount(label);
+                        let vc = RichTextLabel.getVisibleCharacters(label);
+                        let next = if (vc < 0) total
+                                   else if (vc >= total) total
+                                   else vc + 1;
+                        RichTextLabel.setVisibleCharacters(next, label)
+                    };
+                (EngineNode.RichTextLabelWithState(updated, NodeTag.MessageBox), scene)
+            case _ => (node, scene)
+        }
+}

@@ -1,0 +1,31 @@
+{
+  "type": "CanvasLayer",
+  "name": "battle",
+  "tag": "BattleLayer",
+  "layer": 0,
+  "children": [
+    {
+      "type": "ColorRect",
+      "name": "bg",
+      "pos": [0, 0],
+      "size": [640, 480],
+      "color": {"r": 0, "g": 0, "b": 0.05}
+    },
+    {
+      "type": "Label2D",
+      "name": "enemy",
+      "pos": [260, 80],
+      "text": "スライム",
+      "fontSize": 36,
+      "tag": "EnemyLabel"
+    },
+    {
+      "type": "Label2D",
+      "name": "status",
+      "pos": [20, 240],
+      "text": "ゆうしゃ   HP: 15/15   MP:  0/0   LV: 1",
+      "fontSize": 22,
+      "tag": "StatusLabel"
+    }
+  ]
+}
