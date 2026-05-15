@@ -171,16 +171,17 @@ mod JsonOps {
                             acc: List[String]): Option[List[String]] =
         match indices {
             case Nil =>
-                // 最終ノードが Container なら engine 側に対応ノードがないので None
-                if (isContainerJson(root)) None
+                // 最終ノードが透過 (Container / Layout primitive) なら engine 側に対応
+                // ノードがないので None
+                if (isTransparentJson(root)) None
                 else Some(List.reverse(acc))
             case idx :: restIndices =>
                 match getChildAt(root, idx) {
                     case None => None
                     case Some(child) =>
-                        // Container は engine の scene tree には現れない (load-time directive)
-                        // ので名前を acc に積まず素通り
-                        if (isContainerJson(child))
+                        // 透過ノード (Container / Layout primitive) は engine の scene tree
+                        // には現れないので、name を acc に積まず素通り
+                        if (isTransparentJson(child))
                             extractNodeNamesRec(child, restIndices, acc)
                         else match nameOf(child) {
                             case None       => None
@@ -223,12 +224,39 @@ mod JsonOps {
             case _ => false
         }
 
+    /// JSON 要素が engine の scene tree には現れない「透過ノード」か判定する。
+    /// - type=="Container" → load-time directive
+    /// - "kind" のみ持ち "type" を持たない JsonObject → Layout primitive
+    ///   (Panel / HBoxContainer / VBoxContainer / MarginContainer / CenterContainer)
+    /// これらは IDE tree には見えるが、engine NodePath には積まれないので、
+    /// extractNodeNames / namesToIndices で name を skip し、子を素通しで辿る
+    pub def isTransparentJson(elem: Json.JsonElement): Bool =
+        match elem {
+            case JsonObject(map) =>
+                match Map.get("type", map) {
+                    case Some(JsonString("Container")) => true
+                    case Some(_)                       => false
+                    case None                          => Map.memberOf("kind", map)
+                }
+            case _ => false
+        }
+
     /// Container ("type": "Container") の "layout" を覗き、Panel/HBox/VBox の
     /// "children" または Margin/Center の "child" を返す
     pub def containerInnerChildren(map: Map[String, Json.JsonElement]): List[Json.JsonElement] =
         match Map.get("layout", map) {
             case Some(JsonObject(layoutMap)) => layoutChildren(layoutMap)
             case _ => Nil
+        }
+
+    /// 透過 JsonObject の「直接の子」列を返す。
+    /// - Container: layout 配下 (containerInnerChildren と同じ)
+    /// - Panel / HBoxContainer / VBoxContainer: 自身の "children"
+    /// - MarginContainer / CenterContainer: 自身の "child" を 1 要素リストにラップ
+    pub def transparentInnerChildren(map: Map[String, Json.JsonElement]): List[Json.JsonElement] =
+        match Map.get("type", map) {
+            case Some(JsonString("Container")) => containerInnerChildren(map)
+            case _                             => layoutChildren(map)
         }
 
     /// Layout JSON の kind に応じた子ノード列。

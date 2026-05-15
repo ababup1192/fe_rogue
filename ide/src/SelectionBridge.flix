@@ -127,20 +127,19 @@ mod SelectionBridge {
         findIndexedNameMatch(children, targetName, 0i32)
 
     /// findChildIndexByName 用の「直接の子」列挙。
-    /// - Container 自身は layout 配下の実ノードを直接の子として返す
+    /// - 透過 JsonObject (Container / Panel / HBox / VBox / Margin / Center) は
+    ///   transparentInnerChildren で潜った実ノード列を返す
     /// - その他は "children" 配列、または root 自身が JsonArray の場合は配列要素
     def directChildrenOf(root: Json.JsonElement): List[Json.JsonElement] =
         match root {
             case Json.JsonElement.JsonObject(map) =>
-                match Map.get("type", map) {
-                    case Some(Json.JsonElement.JsonString("Container")) =>
-                        JsonOps.containerInnerChildren(map)
-                    case _ =>
-                        match Map.get("children", map) {
-                            case Some(Json.JsonElement.JsonArray(arr)) => Vector.toList(arr)
-                            case _ => Nil
-                        }
-                }
+                if (JsonOps.isTransparentJson(root))
+                    JsonOps.transparentInnerChildren(map)
+                else
+                    match Map.get("children", map) {
+                        case Some(Json.JsonElement.JsonArray(arr)) => Vector.toList(arr)
+                        case _ => Nil
+                    }
             case Json.JsonElement.JsonArray(arr) => Vector.toList(arr)
             case _ => Nil
         }
@@ -150,10 +149,11 @@ mod SelectionBridge {
         match items {
             case Nil => None
             case head :: rest =>
-                // head が Container なら、その中の実ノードに対しても再帰的に同名探索
-                if (JsonOps.isContainerJson(head)) {
+                // head が透過ノード (Container / Layout primitive) なら、その内側に
+                // 対しても再帰的に同名探索。見つかれば idx を path に prepend
+                if (JsonOps.isTransparentJson(head)) {
                     let innerItems = match head {
-                        case Json.JsonElement.JsonObject(m) => JsonOps.containerInnerChildren(m)
+                        case Json.JsonElement.JsonObject(m) => JsonOps.transparentInnerChildren(m)
                         case _                              => Nil
                     };
                     match findIndexedNameMatch(innerItems, targetName, 0i32) {

@@ -209,6 +209,78 @@ mod TestJsonOps {
             expected = asJsonString(child),
             asJsonStringOpt(JsonOps.getAtNodePath(root, 0i32 :: Nil)))
 
+    /// Container + Panel を経由したエンジン名抽出: tree [1, 0, 0] (CanvasLayer →
+    /// Container → Panel → Slot0Bg) から ["Inventory", "Slot0Bg"] が返る。
+    /// Container と Panel は透過なので acc には積まれない
+    @Test
+    def testExtractNodeNamesSkipsContainerAndPanel(): Unit \ Assert =
+        let slot0Bg = Json.JsonElement.JsonObject(Map#{
+            "type" => Json.JsonElement.JsonString("ColorRect"),
+            "name" => Json.JsonElement.JsonString("Slot0Bg")});
+        let panel = Json.JsonElement.JsonObject(Map#{
+            "kind"     => Json.JsonElement.JsonString("Panel"),
+            "children" => Json.JsonElement.JsonArray(Vector#{slot0Bg})});
+        let layout = Json.JsonElement.JsonObject(Map#{
+            "kind"     => Json.JsonElement.JsonString("HBoxContainer"),
+            "children" => Json.JsonElement.JsonArray(Vector#{panel})});
+        let container = Json.JsonElement.JsonObject(Map#{
+            "type"   => Json.JsonElement.JsonString("Container"),
+            "layout" => layout});
+        let selectionHighlight = Json.JsonElement.JsonObject(Map#{
+            "type" => Json.JsonElement.JsonString("ColorRect"),
+            "name" => Json.JsonElement.JsonString("SelectionHighlight")});
+        let root = Json.JsonElement.JsonObject(Map#{
+            "type"     => Json.JsonElement.JsonString("CanvasLayer"),
+            "name"     => Json.JsonElement.JsonString("Inventory"),
+            "children" => Json.JsonElement.JsonArray(Vector#{selectionHighlight, container})});
+        Assert.assertEq(
+            expected = Some("Inventory" :: "Slot0Bg" :: Nil),
+            JsonOps.extractNodeNames(root, 1i32 :: 0i32 :: 0i32 :: Nil))
+
+    /// Container を経由した nodePath descent: tree [1, 0, 0] が
+    /// CanvasLayer.children[1] (Container) → layout.children[0] (Panel) →
+    /// Panel.children[0] (Slot0Bg) と辿れることと、その先で setAtNodePath が
+    /// 正しく書き戻せること
+    @Test
+    def testSetAtNodePathThroughContainerAndPanel(): Unit \ Assert =
+        let slot0Bg = Json.JsonElement.JsonObject(Map#{
+            "type"  => Json.JsonElement.JsonString("ColorRect"),
+            "name"  => Json.JsonElement.JsonString("Slot0Bg"),
+            "alpha" => Json.JsonElement.JsonNumber(0.8ff)});
+        let slot0Icon = Json.JsonElement.JsonObject(Map#{
+            "type" => Json.JsonElement.JsonString("TextureRect"),
+            "name" => Json.JsonElement.JsonString("Slot0Icon")});
+        let panel = Json.JsonElement.JsonObject(Map#{
+            "kind"     => Json.JsonElement.JsonString("Panel"),
+            "children" => Json.JsonElement.JsonArray(Vector#{slot0Bg, slot0Icon})});
+        let layout = Json.JsonElement.JsonObject(Map#{
+            "kind"     => Json.JsonElement.JsonString("HBoxContainer"),
+            "children" => Json.JsonElement.JsonArray(Vector#{panel})});
+        let container = Json.JsonElement.JsonObject(Map#{
+            "type"   => Json.JsonElement.JsonString("Container"),
+            "layout" => layout});
+        let selectionHighlight = Json.JsonElement.JsonObject(Map#{
+            "type" => Json.JsonElement.JsonString("ColorRect"),
+            "name" => Json.JsonElement.JsonString("SelectionHighlight")});
+        let root = Json.JsonElement.JsonObject(Map#{
+            "type"     => Json.JsonElement.JsonString("CanvasLayer"),
+            "name"     => Json.JsonElement.JsonString("Inventory"),
+            "children" => Json.JsonElement.JsonArray(Vector#{selectionHighlight, container})});
+        // getAtNodePath で Slot0Bg に辿れる
+        let got = JsonOps.getAtNodePath(root, 1i32 :: 0i32 :: 0i32 :: Nil);
+        Assert.assertEq(expected = asJsonString(slot0Bg), asJsonStringOpt(got));
+        // setAtNodePath で Slot0Bg の alpha を 0.5 に書き換えて root を再構成できる
+        let updated = JsonOps.setAtNodePath({root = root,
+                                              nodePath = 1i32 :: 0i32 :: 0i32 :: Nil,
+                                              subKeys = "alpha" :: Nil,
+                                              newValue = Json.JsonElement.JsonNumber(0.5ff)});
+        let updatedSlot0Bg = JsonOps.getAtNodePath(updated, 1i32 :: 0i32 :: 0i32 :: Nil);
+        let expectedSlot0Bg = Json.JsonElement.JsonObject(Map#{
+            "type"  => Json.JsonElement.JsonString("ColorRect"),
+            "name"  => Json.JsonElement.JsonString("Slot0Bg"),
+            "alpha" => Json.JsonElement.JsonNumber(0.5ff)});
+        Assert.assertEq(expected = asJsonString(expectedSlot0Bg), asJsonStringOpt(updatedSlot0Bg))
+
     /// idx が範囲外なら None
     @Test
     def testGetAtNodePathIndexOutOfRange(): Unit \ Assert =
