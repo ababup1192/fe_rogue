@@ -20,8 +20,10 @@
 mod HotReload {
     import java.lang.{Thread => JThread}
 
-    /// scene.json を検索するベースディレクトリ
-    def watchedDir(): String = "src/scenes"
+    /// scene.json を検索するデフォルトのベースディレクトリ (cwd 相対)。
+    /// `startWatcher` から使われる。IDE のように cwd と project root が違うケースは
+    /// `startWatcherAt` で明示的にプロジェクトルートを渡す
+    def defaultWatchedDir(): String = "src/scenes"
 
     /// scene.json を検索するための glob パターン
     def watchedGlob(): String = "*.scene.json"
@@ -30,16 +32,25 @@ mod HotReload {
     def pollIntervalMs(): Int64 = 250i64
 
     /// watcher スレッドを起動し、リロード通知を受け取る Receiver を返す。
+    /// 監視対象は cwd 相対の `src/scenes/*.scene.json`。
+    /// cwd と project root が一致するゲーム本体 (examples/*) はこれで OK
+    pub def startWatcher():
+        Receiver[Unit] \ {Chan, IO, Fs.Glob, Fs.ModificationTime} =
+        startWatcherAt(defaultWatchedDir())
+
+    /// 任意のディレクトリ配下の *.scene.json を監視する watcher を起動する。
+    /// IDE のように cwd と project root が異なるケースで `<projectRoot>/src/scenes`
+    /// を渡して使う。
     /// チャネルは容量 1 でバッファリング。複数回の変更が連続しても OK
     /// （同期されていない変更は次回ポーリングで mtime 差分として検出される）。
     /// spawn @ Static の中で許可される effect は Chan + IO + NonDet までなので、
     /// Fs 系の effect は spawn の内側で run ... with ... チェーンで解消する
-    pub def startWatcher():
+    pub def startWatcherAt(dir: String):
         Receiver[Unit] \ {Chan, IO, Fs.Glob, Fs.ModificationTime} =
         let (tx, rx) = Channel.buffered(1);
-        let initialSnapshot = takeSnapshot();
+        let initialSnapshot = takeSnapshot(dir);
         spawn {
-            run { watcherLoop(tx, initialSnapshot) }
+            run { watcherLoop(dir, tx, initialSnapshot) }
                 with Fs.Glob.runWithIO
                 with Fs.ModificationTime.runWithFileTime
                 with Fs.FileTime.runWithIO
@@ -47,14 +58,14 @@ mod HotReload {
         rx
 
     /// 別スレッドで延々と回る本体。sleep → snapshot → 差分があれば send → 繰り返し
-    def watcherLoop(tx: Sender[Unit], prevSnapshot: Map[String, Int64]):
+    def watcherLoop(dir: String, tx: Sender[Unit], prevSnapshot: Map[String, Int64]):
         Unit \ {Chan, IO, Fs.Glob, Fs.ModificationTime} =
         JThread.sleep(pollIntervalMs());
-        let currSnapshot = takeSnapshot();
+        let currSnapshot = takeSnapshot(dir);
         if (currSnapshot != prevSnapshot) {
             Channel.send((), tx)
         } else ();
-        watcherLoop(tx, currSnapshot)
+        watcherLoop(dir, tx, currSnapshot)
 
     /// メインループから毎フレーム呼ぶ非ブロッキング受信。
     /// チャネルにメッセージが来ていれば true、なければ即 false を返す
@@ -65,9 +76,9 @@ mod HotReload {
         }
 
     /// 監視対象ファイルの mtime（ミリ秒）スナップショットを取得する。
-    /// src/scenes 配下の *.scene.json を全て探索し、ファイルが読めない場合は 0 として扱う
-    def takeSnapshot(): Map[String, Int64] \ {Fs.Glob, Fs.ModificationTime} =
-        Fs.Glob.glob(watchedDir(), watchedGlob())
+    /// 指定ディレクトリ配下の *.scene.json を全て探索し、ファイルが読めない場合は 0 として扱う
+    def takeSnapshot(dir: String): Map[String, Int64] \ {Fs.Glob, Fs.ModificationTime} =
+        Fs.Glob.glob(dir, watchedGlob())
             |> Result.getWithDefault(Nil)
             |> List.foldLeft((acc, path) ->
                 let mtime = Fs.ModificationTime.modificationTime(path)

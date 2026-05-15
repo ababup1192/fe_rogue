@@ -103,20 +103,24 @@ mod Editor {
             (Unit -> Unit \ ef) -> Unit \ (ef - EditorState - EditHistory.Rewind) + r +
                                           Fs.Glob + Fs.FileRead + Chan + NonDet + IO +
                                           Fs.ModificationTime =
-        withStateInternal(rc, loadJsonRootIndex)
+        withStateInternal(rc, loadJsonRootIndex, "src/scenes")
 
-    /// withState のプロジェクトルート指定版。`SceneJsonIndex.loadAt(projectRoot)` で索引を作る。
+    /// withState のプロジェクトルート指定版。`SceneJsonIndex.loadAt(projectRoot)` で索引を作り、
+    /// HotReload も `<projectRoot>/src/scenes` を監視する。
     /// cwd 固定で動く `withState` と違って、IDE のように複数プロジェクトを切り替えるホストから
     /// 安全に呼べる
     pub def withStateAt(rc: Region[r], projectRoot: String):
             (Unit -> Unit \ ef) -> Unit \ (ef - EditorState - EditHistory.Rewind) + r +
                                           Fs.Glob + Fs.FileRead + Chan + NonDet + IO +
                                           Fs.ModificationTime =
-        withStateInternal(rc, () -> SceneJsonIndex.loadAt(projectRoot))
+        withStateInternal(rc, () -> SceneJsonIndex.loadAt(projectRoot),
+                          projectRoot + "/src/scenes")
 
-    /// withState / withStateAt の共通本体。索引のロード方法だけ呼び出し側に切り出した版
+    /// withState / withStateAt の共通本体。索引のロード方法と HotReload 監視ディレクトリを
+    /// 呼び出し側に切り出した版
     def withStateInternal(rc: Region[r],
-                           loadIndex: Unit -> Map[NodeName, String] \ {Fs.Glob, Fs.FileRead}):
+                           loadIndex: Unit -> Map[NodeName, String] \ {Fs.Glob, Fs.FileRead},
+                           watchedDir: String):
             (Unit -> Unit \ ef) -> Unit \ (ef - EditorState - EditHistory.Rewind) + r +
                                           Fs.Glob + Fs.FileRead + Chan + NonDet + IO +
                                           Fs.ModificationTime =
@@ -124,7 +128,7 @@ mod Editor {
             let editorIndex = loadIndex();
             let editorRef: Ref[EditorStateData, r] = Ref.fresh(rc, initialState(editorIndex));
             let historyRef: Ref[List[EditHistory.Entry], r] = Ref.fresh(rc, Nil);
-            let reloadRx = HotReload.startWatcher();
+            let reloadRx = HotReload.startWatcherAt(watchedDir);
             run {
                 thunk()
             } with handler EditorState {
