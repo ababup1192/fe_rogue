@@ -49,4 +49,19 @@ mod CommandScene {
                 (EngineNode.ItemListWithState(ItemList.setFocused(focused, list), NodeTag.CommandMenu), scene)
             case _ => (node, scene)
         }
+
+    /// コマンド項目が確定された (Enter) ときの処理。 Game.flix の MenuHandler から呼ばれる。
+    /// PR3 範囲: たたかうのみ実装。 じゅもん/どうぐは PR4 で `GamePhase.SpellSelect` /
+    /// `GamePhase.ItemSelect` 遷移を追加する。
+    pub def onCommandConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
+                                Scene[NodeTag] \ {GamePhaseState, Math.Random} =
+        match entry#text {
+            case "たたかう" =>
+                let afterAttack = BattleScene.applyPlayerAttack(scene);
+                GamePhaseState.put(GamePhase.Resolving);
+                afterAttack
+            case _ =>
+                // じゅもん / どうぐは PR4 で実装。 PR3 では何もしない。
+                scene
+        }
 }

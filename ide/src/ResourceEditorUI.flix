@@ -28,6 +28,7 @@ mod ResourceEditorUI {
     import javax.swing.SwingConstants
     import javax.swing.event.ListSelectionListener
     import javax.swing.event.ListSelectionEvent
+    import javax.swing.Timer
     import java.awt.BorderLayout
     import java.awt.Color
     import java.awt.Dimension
@@ -782,6 +783,7 @@ mod ResourceEditorUI {
     /// 1. editingJson と selected path が両方 Some であることを確認
     /// 2. ResourceWriter.writeJson でファイルに書き戻し
     /// 3. dirty クリア、status ラベル更新
+    /// 4. 数秒後に status ラベルを空に戻す（一度の保存メッセージが残り続けないように）
     def onSaveClicked(state: IdeState, status: JLabel): Unit \ {IO, Fs.FileWrite} =
         match (ResourceState.getSelectedDataPath(state#resource),
                ResourceState.getEditingJson(state#resource)) {
@@ -791,15 +793,31 @@ mod ResourceEditorUI {
                         ResourceState.setDirty(state#resource, false);
                         status.setText("Saved");
                         status.setForeground(new Color(140, 200, 140));
+                        scheduleClearStatus(status, 2500);
                         ()
                     case Err(msg) =>
                         status.setText("Save failed: ${msg}");
                         status.setForeground(new Color(220, 100, 100));
+                        scheduleClearStatus(status, 5000);
                         ()
                 }
             case _ =>
                 status.setText("Nothing to save");
                 status.setForeground(new Color(180, 180, 100));
+                scheduleClearStatus(status, 2500);
                 ()
         }
+
+    /// status ラベルを `delayMs` ミリ秒後に空文字に戻す Swing Timer を発火する。
+    /// Save ボタンの押下ごとに新しい Timer を作って一度だけ発火（setRepeats(false)）。
+    /// Timer は Event Dispatch Thread 上で発火するので、 status.setText を直接呼んでも安全。
+    def scheduleClearStatus(status: JLabel, delayMs: Int32): Unit \ IO =
+        let timer = new Timer(delayMs, new ActionListener {
+            def actionPerformed(_this: ActionListener, _e: ActionEvent): Unit \ IO = {
+                status.setText(" ");
+                ()
+            }
+        });
+        timer.setRepeats(false);
+        timer.start()
 }

@@ -19,9 +19,11 @@
 
 pub enum GamePhase with Eq, ToString {
     case Title           // タイトル画面
-    case CommandSelect   // たたかう / じゅもん / どうぐ のコマンド選択中
-    case Resolving       // メッセージウィンドウでタイプライター表示中
-    case BattleEnd       // 戦闘終了（PR2 では固定で 1 ターン後に到達）
+    case CommandSelect   // プレイヤーのコマンド選択中
+    case Resolving       // プレイヤー行動の解決中（攻撃メッセージ表示）
+    case EnemyActing     // 敵の行動中（反撃メッセージ表示）
+    case Victory         // 勝利（敵を倒した）
+    case Defeat          // 敗北（勇者が倒れた）
 }
 
 /// ゲームフェーズの読み書きエフェクト。
@@ -37,9 +39,16 @@ pub eff GamePhaseState {
 /// 各ノードに付与する識別タグ（Scene[NodeTag] の型パラメータ）。
 /// 全シーンを常駐させ、各シーンが自分の `process` 内で GamePhase を読んで visible や
 /// focused を更新する設計。 そのために各シーンのルートに識別タグを振る。
-pub enum NodeTag with Eq, ToString {
+///
+/// `BattleState` は record 型 (`BattleScene.State`) を持つので、 `with Eq, ToString` の
+/// 自動派生は外す（record の Eq 自動派生は使えないため）。
+pub enum NodeTag {
     case TitleLayer
     case BattleLayer
+    /// バトル状態の隠しノード (Marker2D + Data) — battle/state パスに置く。
+    /// Data は current（毎フレーム更新）+ initial（起動時の Resource から作る不変値）を持ち、
+    /// `resetBattle` で initial → current にコピーして戦闘をリセットする。
+    case BattleState(BattleScene.Data)
     case MessagePanel
     case CommandPanel
     case CommandMenu
@@ -63,7 +72,11 @@ instance Node[NodeTag] {
             case EngineNode.CanvasLayerWithState(_, NodeTag.TitleLayer) =>
                 TitleScene.process(delta, node, path, scene)
             case EngineNode.CanvasLayerWithState(_, NodeTag.BattleLayer) =>
-                BattleScene.process(delta, node, path, scene)
+                BattleScene.processLayer(delta, node, path, scene)
+            case EngineNode.Label2DWithState(_, NodeTag.StatusLabel) =>
+                checked_ecast(BattleScene.processStatusLabel(delta, node, path, scene))
+            case EngineNode.Label2DWithState(_, NodeTag.EnemyLabel) =>
+                checked_ecast(BattleScene.processEnemyLabel(delta, node, path, scene))
             case EngineNode.PanelWithState(_, NodeTag.MessagePanel) =>
                 MessageScene.processPanel(delta, node, path, scene)
             case EngineNode.RichTextLabelWithState(_, NodeTag.MessageBox) =>
@@ -81,22 +94,13 @@ instance Node[NodeTag] {
 // ========================================================================
 
 instance InputEvent.InputHandler[NodeTag] {
-    type Aef = { GamePhaseState }
-
+    type Aef = { GamePhaseState, Math.Random }
+    // dispatch のみ。 実処理は BattleScene.advancePhaseOnEnter に委譲する。
     redef onKeyPressed(key: GameEngine.Key,
-                       scene: Scene[NodeTag]): Scene[NodeTag] \ GamePhaseState =
-        let phase = GamePhaseState.get();
-        match (key, phase) {
-            case (GameEngine.Key.Enter, GamePhase.Title) =>
-                GamePhaseState.put(GamePhase.CommandSelect); scene
-            case (GameEngine.Key.Enter, GamePhase.Resolving) =>
-                if (MessageScene.isComplete(scene))
-                    { GamePhaseState.put(GamePhase.BattleEnd); scene }
-                else
-                    MessageScene.skipTypewriter(scene)
-            case (GameEngine.Key.Enter, GamePhase.BattleEnd) =>
-                GamePhaseState.put(GamePhase.Title); scene
-            case _ => scene
+                       scene: Scene[NodeTag]): Scene[NodeTag] \ {GamePhaseState, Math.Random} =
+        match key {
+            case GameEngine.Key.Enter => BattleScene.advancePhaseOnEnter(scene)
+            case _                    => scene
         }
 }
 
@@ -105,15 +109,14 @@ instance InputEvent.InputHandler[NodeTag] {
 // ========================================================================
 
 instance MenuEvent.MenuHandler[NodeTag] {
-    type Aef = { GamePhaseState }
-
-    redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, _entry: ItemEntry,
+    type Aef = { GamePhaseState, Math.Random }
+    // dispatch のみ。 実処理は CommandScene.onCommandConfirmed に委譲する。
+    redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
                           state: NodeTag,
-                          scene: Scene[NodeTag]): Scene[NodeTag] \ GamePhaseState =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ {GamePhaseState, Math.Random} =
         match state {
-            case NodeTag.CommandMenu =>
-                GamePhaseState.put(GamePhase.Resolving); scene
-            case _ => scene
+            case NodeTag.CommandMenu => CommandScene.onCommandConfirmed(entry, scene)
+            case _                   => scene
         }
 }
 

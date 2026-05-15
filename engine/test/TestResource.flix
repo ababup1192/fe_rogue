@@ -81,5 +81,5 @@ mod TestResource {
         leafField(FieldType.IntT, FieldHint.Plain, label)
 
     def leafField(ftype: FieldType, hint: FieldHint, label: String): FieldEntry =
-        FieldEntry.Field({ftype = ftype, hint = hint, label = label})
+        FieldEntry.Field({ftype = ftype, hint = hint, label = label, order = None})
 }

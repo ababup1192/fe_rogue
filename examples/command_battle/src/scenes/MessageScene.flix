@@ -30,14 +30,28 @@ mod MessageScene {
                 Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas, tagParser, scene)
 
-    /// GamePhase ごとに表示するメッセージを定義（PR2 の仮データ）。
+    /// GamePhase + BattleState から表示するメッセージを生成する。
     /// 空文字 ("") は「メッセージなし」（Title 中 / コマンド選択中など）。
-    pub def messageFor(phase: GamePhase): String =
+    pub def messageFor(phase: GamePhase, state: BattleScene.State): String =
         match phase {
             case GamePhase.Title         => ""
             case GamePhase.CommandSelect => ""
-            case GamePhase.Resolving     => "ゆうしゃは スライムに こうげき！\nスライムに 8 の ダメージ！"
-            case GamePhase.BattleEnd     => "スライムを たおした！\nEnter キーで タイトルへ"
+            case GamePhase.Resolving     =>
+                match state#lastAction {
+                    case Some(a) =>
+                        "${a#actor}は ${a#target}に こうげき！\n${a#target}に ${a#damage} の ダメージ！"
+                    case None => ""
+                }
+            case GamePhase.EnemyActing   =>
+                match state#lastAction {
+                    case Some(a) =>
+                        "${a#actor}の こうげき！\n${a#target}に ${a#damage} の ダメージ！"
+                    case None => ""
+                }
+            case GamePhase.Victory       =>
+                "${state#enemy#name}を たおした！\nEnter キーで タイトルへ"
+            case GamePhase.Defeat        =>
+                "${state#hero#name}は ちからつきた…\nEnter キーで タイトルへ"
         }
 
     /// メッセージ表示が完了しているか（テキストが空 or visibleCharacters が totalCharCount に達した）。
@@ -80,7 +94,7 @@ mod MessageScene {
                        scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ GamePhaseState =
         match node {
             case EngineNode.RichTextLabelWithState(label, NodeTag.MessageBox) =>
-                let expected = messageFor(GamePhaseState.get());
+                let expected = messageFor(GamePhaseState.get(), BattleScene.readState(scene));
                 let current = RichTextLabel.getText(label);
                 let updated =
                     if (current != expected)

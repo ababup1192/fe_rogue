@@ -36,10 +36,15 @@ mod Resource {
     }
 
     /// 1 フィールドぶんの完全記述。
+    /// `order` は IDE での表示順を明示するための補助フィールド（小さい値が先頭）。
+    /// 指定なし（`None`）なら IDE 側のデフォルト並び（priority + alphabetical）が使われる。
+    /// Godot の @export_group / @export_subgroup と同じく、デザイナの意図する自然な並びを
+    /// schema 側で宣言できるようにするための拡張。
     pub type alias FieldSchema = {
         ftype = FieldType,
         hint  = FieldHint,
-        label = String
+        label = String,
+        order = Option[Int32]
     }
 
     /// レコード 1 件のフィールド木。`Field` は葉、`Nested` はサブレコード。
@@ -209,11 +214,16 @@ mod ResourceCodec {
     }
 
     def encodeFieldSchema(fs: FieldSchema): JsonElement =
-        JsonObject(Map#{
+        let base = Map#{
             "ftype" => encodeFieldType(fs#ftype),
             "hint"  => encodeFieldHint(fs#hint),
             "label" => JsonString(fs#label)
-        })
+        };
+        let withOrder = match fs#order {
+            case Some(n) => Map.insert("order", JsonNumber(intToBd(n)), base)
+            case None    => base
+        };
+        JsonObject(withOrder)
 
     def encodeFieldType(t: FieldType): JsonElement = match t {
         case FieldType.TextT         => JsonString("text")
@@ -332,8 +342,16 @@ mod ResourceCodec {
             labelJ   <- Map.get("label", obj);
             ftype    <- decodeFieldType(ftypeJ);
             hint     <- decodeFieldHint(hintJ);
-            label    <- expectString(labelJ)
-        ) yield ({ftype = ftype, hint = hint, label = label}: FieldSchema)
+            label    <- expectString(labelJ);
+            order    <- decodeOrderOpt(obj)
+        ) yield ({ftype = ftype, hint = hint, label = label, order = order}: FieldSchema)
+
+    /// `order` フィールドは省略可能。欠落時は `None`、値あり時は `Some(n)`。
+    def decodeOrderOpt(obj: Map[String, JsonElement]): Option[Option[Int32]] =
+        match Map.get("order", obj) {
+            case None      => Some(None)
+            case Some(orderJ) => expectInt(orderJ) |> Option.map(Some)
+        }
 
     def decodeFieldType(element: JsonElement): Option[FieldType] = match element {
         case JsonString("text")         => Some(FieldType.TextT)

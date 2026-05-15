@@ -48,6 +48,23 @@ mod SchemaWidgets {
     /// ラベル列の幅。Inspector のフィールド名カラム幅と揃える。
     def labelWidth(): Int32 = 90
 
+    /// JLabel に渡すテキストを HTML mode で包む。
+    ///
+    /// Swing JLabel の **plain text レンダリング** は、 macOS の一部 JDK / フォント設定で
+    /// ASCII の特定グリフ（特に "HP" や "P" を含む短い文字列）が空白で描画されることがある
+    /// （フォントフォールバック失敗が原因と思われる Swing の既知挙動）。
+    /// JLabel が "<html>" 始まりの文字列を受け取った場合は内部で HTMLDocument を使い、
+    /// 別のフォント解決パスを通るのでこの問題を回避できる。
+    ///
+    /// `&` / `<` / `>` は HTML 特殊文字なのでエスケープする。 plain text として渡された
+    /// 「HP」「最大HP」「&」 等が全て正しく表示される。
+    def htmlLabel(text: String): String =
+        let escaped = text
+            |> String.replace(src = "&", dst = "&amp;")
+            |> String.replace(src = "<", dst = "&lt;")
+            |> String.replace(src = ">", dst = "&gt;");
+        "<html>" + escaped + "</html>"
+
     /// Spinner 列の幅 (Slider の右に表示する数値入力)。
     def spinnerWidth(): Int32 = 64
 
@@ -90,7 +107,7 @@ mod SchemaWidgets {
         ));
         row.setMaximumSize(new Dimension(9999, 26));
         row.setAlignmentX(0.0f32);
-        let lbl = new JLabel(title);
+        let lbl = new JLabel(htmlLabel(title));
         lbl.setForeground(new Color(220, 220, 230));
         lbl.setHorizontalAlignment(SwingConstants.CENTER);
         row.add(lbl, BorderLayout.CENTER);
@@ -103,16 +120,35 @@ mod SchemaWidgets {
         Map.toList(fields)
             |> List.sortWith(pair -> other -> compareEntries(pair, other))
 
+    /// 並び比較。 schema で `order` が指定されたフィールドを最優先に並べ（小さい値が先頭）、
+    /// 指定なしの集団はその後ろに priority + alphabetical で続ける。
+    /// これで designer が schema 側で「自然な並び」（名前→レベル→HP→...）を宣言できる。
     def compareEntries(a: (String, FieldEntry), b: (String, FieldEntry)): Comparison =
         let (k1, e1) = a;
         let (k2, e2) = b;
-        let p1 = priorityOf(e1);
-        let p2 = priorityOf(e2);
-        if (p1 < p2) Comparison.LessThan
-        else if (p1 > p2) Comparison.GreaterThan
-        else if (k1 < k2) Comparison.LessThan
-        else if (k1 > k2) Comparison.GreaterThan
-        else Comparison.EqualTo
+        match (orderOf(e1), orderOf(e2)) {
+            case (Some(n1), Some(n2)) =>
+                if (n1 < n2) Comparison.LessThan
+                else if (n1 > n2) Comparison.GreaterThan
+                else Comparison.EqualTo
+            case (Some(_), None) => Comparison.LessThan
+            case (None, Some(_)) => Comparison.GreaterThan
+            case (None, None)    =>
+                let p1 = priorityOf(e1);
+                let p2 = priorityOf(e2);
+                if (p1 < p2) Comparison.LessThan
+                else if (p1 > p2) Comparison.GreaterThan
+                else if (k1 < k2) Comparison.LessThan
+                else if (k1 > k2) Comparison.GreaterThan
+                else Comparison.EqualTo
+        }
+
+    /// FieldEntry から order 指定を取り出す。 Nested は順序情報を持たないので常に None。
+    def orderOf(entry: FieldEntry): Option[Int32] =
+        match entry {
+            case FieldEntry.Field(fs) => fs#order
+            case FieldEntry.Nested(_) => None
+        }
 
     /// フィールドの並び順優先度。小さい値が先頭。
     ///   0: TexturePathT       (素材選択を最初に)
@@ -180,7 +216,7 @@ mod SchemaWidgets {
         row.setMaximumSize(new Dimension(9999, rowHeight()));
         row.setAlignmentX(0.0f32);
 
-        let label = new JLabel(fs#label);
+        let label = new JLabel(htmlLabel(fs#label));
         label.setForeground(new Color(190, 190, 195));
         label.setPreferredSize(new Dimension(labelWidth(), rowHeight()));
         row.add(label, BorderLayout.WEST);
