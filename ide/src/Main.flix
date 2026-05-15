@@ -36,18 +36,31 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
                     IdeState.setSceneFiles(state, sceneFiles);
                     let textureNames = proj#config#textureManifest |> List.map(e -> e#name);
                     IdeState.setTextureNames(state, textureNames);
+                    // texture 名 → 絶対パス。SpritePreview が BufferedImage 読込で使う。
+                    let texturePathMap = proj#config#textureManifest
+                        |> List.map(e -> (e#name, e#path))
+                        |> List.toMap;
+                    IdeState.setTexturePathMap(state, texturePathMap);
+                    // resources/ 配下の Resource ファイルを列挙して ResourceState に登録。
+                    let resources = ResourceDiscovery.discover(path);
+                    println("[Main] Discovered ${List.length(resources)} resource(s) in ${path}/resources");
+                    ResourceState.setDiscovered(state#resource, resources);
                     decorateTitle(proj#config, path)
                 case Err(msg) =>
                     // project.json が無い / パース失敗。クラッシュさせず empty state へ。
                     println("[Main] Open Project failed: ${msg}");
                     IdeState.setSceneFiles(state, Nil);
                     IdeState.setTextureNames(state, Nil);
+                    IdeState.setTexturePathMap(state, Map.empty());
+                    ResourceState.setDiscovered(state#resource, Nil);
                     emptyConfig()
             }
         case None =>
             println("[Main] Starting IDE with no project");
             IdeState.setSceneFiles(state, Nil);
             IdeState.setTextureNames(state, Nil);
+            IdeState.setTexturePathMap(state, Map.empty());
+            ResourceState.setDiscovered(state#resource, Nil);
             emptyConfig()
     };
     let customize = (frame, canvas) -> IdeUI.customize(state, frame, canvas);

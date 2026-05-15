@@ -1,7 +1,7 @@
 /// UnitCatalog — 味方・敵ユニットの定義カタログ
 ///
 /// FE 風 SRPG の伝統的な「ユニットステータス表」を 1 つの JSON
-/// (`assets/units/units.json`) に集約する。各ユニットは id（"knight" 等）で参照され、
+/// (`resources/units.json`) に集約する。各ユニットは id（"knight" 等）で参照され、
 /// プール定義（"party" / "enemyTier1"）から `pool(name, catalog)` で取り出す。
 ///
 /// JSON 形状（例）:
@@ -16,7 +16,7 @@
 ///     }
 ///   }
 ///
-/// IDE 連携用に `assets/units/_schema.json` をサイドカーとして配置する。
+/// IDE 連携用に `resources/units.schema.json` をサイドカーとして配置する。
 /// schema は engine の `Resource.ResourceSchema` 規格で書き、`Game.start` 時に
 /// `Resource.checkConsistency(expectedUnitFields(), schema)` で Flix 型との整合を検査する。
 mod UnitCatalog {
@@ -72,7 +72,7 @@ mod UnitCatalog {
     // (B) ロード・参照
     // ────────────────────────────────────────────────────────
 
-    /// `assets/units/units.json` をロード。失敗は panic（即可視化）。
+    /// `resources/units.json` をロード。失敗は panic（即可視化）。
     /// 起動時の Game.start で 1 度だけ呼ぶ想定。
     /// 各段階（read / parse / decode）で個別にエラー文言を出して診断しやすくする。
     pub def load(path: String): UnitCatalog \ Fs.FileRead =

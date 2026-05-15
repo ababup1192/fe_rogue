@@ -128,6 +128,29 @@ mod JsonOps {
             case _ => originalRoot
         }
 
+    /// JsonObject / JsonArray の中をキー列で降りて末端の値を返す。
+    /// `setAtKeyPath` の逆方向で、widget が現在値を読み出すために使う。
+    /// 途中で型が合わなかったり、キーが存在しない場合は None。
+    pub def getAtKeyPath(obj: Json.JsonElement, keys: List[String]): Option[Json.JsonElement] =
+        match keys {
+            case Nil => Some(obj)
+            case headKey :: restKeys =>
+                match obj {
+                    case JsonObject(map) =>
+                        Map.get(headKey, map)
+                            |> Option.flatMap(child -> getAtKeyPath(child, restKeys))
+                    case JsonArray(items) =>
+                        match Int32.fromString(headKey) {
+                            case Some(idx) =>
+                                Vector.toList(items)
+                                    |> List.nth(idx)
+                                    |> Option.flatMap(child -> getAtKeyPath(child, restKeys))
+                            case None => None
+                        }
+                    case _ => None
+                }
+        }
+
     /// 子インデックス列 `nodePath` を辿って該当ノードの JsonElement を返す。
     /// 途中で children/index が無いときは None。
     /// Tree 選択時の Inspector 初期化に使う。

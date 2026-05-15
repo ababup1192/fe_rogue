@@ -4,7 +4,7 @@
 
 mod TestResourceSchemaJson {
 
-    /// fe_rogue/assets/units/_schema.json と同等の JSON 文字列
+    /// fe_rogue/resources/units.schema.json と同等の JSON 文字列
     def schemaJson(): String = String.unlines(
         "{" ::
         "  \"fields\": {" ::

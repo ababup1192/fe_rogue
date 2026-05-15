@@ -26,6 +26,7 @@ mod IdeUI {
     import javax.swing.JScrollPane
     import javax.swing.JTree
     import javax.swing.JSplitPane
+    import javax.swing.JTabbedPane
     import javax.swing.JCheckBox
     import javax.swing.JTextField
     import javax.swing.JTextArea
@@ -84,56 +85,20 @@ mod IdeUI {
         frame.setMinimumSize(new Dimension(800, 500));
         frame.setLayout(new BorderLayout());
 
-        // 中央: scene preview。canvas を BorderLayout.CENTER に直接置いて
-        // 利用可能スペース全部を使わせる。design/window アスペクト比のズレは
-        // renderFrameMixed の calcViewport が letterbox/pillarbox で吸収する。
-        let centerPanel = new JPanel(new BorderLayout());
-        centerPanel.setBackground(new Color(20, 20, 20));
-        centerPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        centerPanel.add(canvas, BorderLayout.CENTER);
-        // canvas 側の最小幅。JSplitPane の divider はこれより左に行けない (= Inspector の上限)。
-        // ウィンドウを広げれば余ったぶん east 側も広げられる
-        centerPanel.setMinimumSize(new Dimension(400, 0));
+        // Scenes タブの中身: 現状の 3 カラムレイアウト (west tree + center canvas + east inspector/files)
+        // を BorderLayout で 1 つの JPanel にまとめる。タブ切替で west/south ごと消えるようにする。
+        let scenesTab = buildScenesTab(state, canvas);
 
-        // 左: scene-tree (現在選択中の scene のノード階層を JTree で表示)
-        let westPanel = buildSceneTreePanel(state);
-        westPanel.setPreferredSize(new Dimension(300, 0));
-        frame.add(westPanel, BorderLayout.WEST);
+        // Resources タブ: ResourceEditorUI で別レイアウト
+        let resourcesTab = ResourceEditorUI.buildTab(state);
 
-        // 右: 上 = Inspector / 下 = Scene Files の縦分割
-        let inspectorPanel = buildInspectorPanel(state);
-        let scenesPanel = buildScenesPanel(state);
+        // 上部に JTabbedPane を置き、Scenes / Resources を切替える
+        let tabs = new JTabbedPane();
+        tabs.addTab("Scenes", scenesTab);
+        tabs.addTab("Resources", resourcesTab);
+        frame.add(tabs, BorderLayout.CENTER);
 
-        let eastSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, inspectorPanel, scenesPanel);
-        eastSplit.setDividerLocation(400);
-        eastSplit.setResizeWeight(0.5);
-        eastSplit.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
-        eastSplit.setPreferredSize(new Dimension(300, 0));
-        eastSplit.setMinimumSize(new Dimension(220, 0));
-
-        // 中央 canvas と Inspector を水平 JSplitPane で挟み、ユーザが divider を
-        // ドラッグして Inspector の横幅を広げられるようにする。
-        // - resizeWeight=1.0: ウィンドウ拡大の余白は中央に流れ、Inspector 幅は維持
-        // - 上限は centerPanel.minimumSize=400 と eastSplit.minimumSize=220 で
-        //   JSplitPane に自然に効かせる (動的クランプは使わない)
-        let centerEastSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, centerPanel, eastSplit);
-        // 初期 divider 位置: frame=1280 / west=300 を引いた 980px の split pane で、
-        // east を preferredSize=300、divider=8 に合わせて配置
-        centerEastSplit.setDividerLocation(1280 - 300 - 300 - 8);
-        centerEastSplit.setResizeWeight(1.0);
-        centerEastSplit.setContinuousLayout(true);
-        centerEastSplit.setDividerSize(8);
-        centerEastSplit.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
-
-        frame.add(centerEastSplit, BorderLayout.CENTER);
-
-        // 下: ステータスバー
-        let southPanel = new JPanel();
-        southPanel.setPreferredSize(new Dimension(0, 22));
-        southPanel.setBackground(new Color(50, 50, 50));
-        frame.add(southPanel, BorderLayout.SOUTH);
-
-        // メニューバー
+        // メニューバー (frame レベル、タブと無関係)
         frame.setJMenuBar(buildMenuBar(state, frame));
 
         // 前セッション残しの loading splash があれば、setVisible 後に EDT で dispose する。
@@ -152,6 +117,52 @@ mod IdeUI {
         });
         timer.setRepeats(false);
         timer.start()
+
+    /// Scenes タブ全体を組み立てる。旧 customize 実装の west/center/east/south レイアウトを
+    /// 1 つの JPanel に閉じ込め、JTabbedPane.addTab に渡せるようにする。
+    /// タブ切替で west tree や south status bar ごと表示・非表示が切り替わる。
+    def buildScenesTab(state: IdeState, canvas: AWTGLCanvas): JPanel \ IO =
+        let tab = new JPanel(new BorderLayout());
+
+        // 中央: scene preview (canvas)
+        let centerPanel = new JPanel(new BorderLayout());
+        centerPanel.setBackground(new Color(20, 20, 20));
+        centerPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        centerPanel.add(canvas, BorderLayout.CENTER);
+        centerPanel.setMinimumSize(new Dimension(400, 0));
+
+        // 左: scene-tree
+        let westPanel = buildSceneTreePanel(state);
+        westPanel.setPreferredSize(new Dimension(300, 0));
+        tab.add(westPanel, BorderLayout.WEST);
+
+        // 右: 上 = Inspector / 下 = Scene Files の縦分割
+        let inspectorPanel = buildInspectorPanel(state);
+        let scenesPanel = buildScenesPanel(state);
+
+        let eastSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, inspectorPanel, scenesPanel);
+        eastSplit.setDividerLocation(400);
+        eastSplit.setResizeWeight(0.5);
+        eastSplit.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+        eastSplit.setPreferredSize(new Dimension(300, 0));
+        eastSplit.setMinimumSize(new Dimension(220, 0));
+
+        let centerEastSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, centerPanel, eastSplit);
+        centerEastSplit.setDividerLocation(1280 - 300 - 300 - 8);
+        centerEastSplit.setResizeWeight(1.0);
+        centerEastSplit.setContinuousLayout(true);
+        centerEastSplit.setDividerSize(8);
+        centerEastSplit.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+
+        tab.add(centerEastSplit, BorderLayout.CENTER);
+
+        // 下: ステータスバー
+        let southPanel = new JPanel();
+        southPanel.setPreferredSize(new Dimension(0, 22));
+        southPanel.setBackground(new Color(50, 50, 50));
+        tab.add(southPanel, BorderLayout.SOUTH);
+
+        tab
 
     /// 右下パネル: 上段はヘッダラベル、下段は scene ファイル JList。
     def buildScenesPanel(state: IdeState): JPanel \ IO =

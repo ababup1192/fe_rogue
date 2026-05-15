@@ -39,6 +39,37 @@ mod TestSceneTreeModel {
         let elem = Json.JsonElement.JsonArray(Vector#{});
         Assert.assertEq(expected = "<root array>", SceneTreeModel.labelFor(elem))
 
+    /// Container は layout.kind を type の隣に併記して、どの容器かが分かるようにする
+    @Test
+    def testLabelForContainerAppendsLayoutKind(): Unit \ Assert =
+        let layout = Json.JsonElement.JsonObject(Map#{
+            "kind" => Json.JsonElement.JsonString("HBoxContainer")});
+        let elem = Json.JsonElement.JsonObject(Map#{
+            "type"   => Json.JsonElement.JsonString("Container"),
+            "layout" => layout});
+        Assert.assertEq(
+            expected = "[Container HBoxContainer] <unnamed>",
+            SceneTreeModel.labelFor(elem))
+
+    /// Container に layout が無い (壊れた JSON 等) ときは "[Container]" のみで返す
+    @Test
+    def testLabelForContainerWithoutLayoutKeepsBareLabel(): Unit \ Assert =
+        let elem = Json.JsonElement.JsonObject(Map#{
+            "type" => Json.JsonElement.JsonString("Container")});
+        Assert.assertEq(
+            expected = "[Container] <unnamed>",
+            SceneTreeModel.labelFor(elem))
+
+    /// Layout primitive (type 無し / kind あり) は kind を type 代わりに表示する
+    @Test
+    def testLabelForLayoutPrimitiveUsesKind(): Unit \ Assert =
+        let elem = Json.JsonElement.JsonObject(Map#{
+            "kind"     => Json.JsonElement.JsonString("Panel"),
+            "children" => Json.JsonElement.JsonArray(Vector#{})});
+        Assert.assertEq(
+            expected = "[Panel] <unnamed>",
+            SceneTreeModel.labelFor(elem))
+
     /// 文字列や数値など想定外の値は "<invalid>" でクラッシュさせない
     @Test
     def testLabelForUnsupportedReturnsInvalidMarker(): Unit \ Assert =

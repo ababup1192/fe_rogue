@@ -99,8 +99,8 @@ mod Game {
             let sceneRef = Ref.fresh(rc, Scene.empty());
             // ユニットカタログをロード + schema 整合性検査（Z 戦略の安全網）。
             // 各段階で失敗内容を panic に出して原因を即可視化する。
-            let catalog = UnitCatalog.load("assets/units/units.json");
-            let schema = match Resource.loadSchemaDiagnostic("assets/units/_schema.json") {
+            let catalog = UnitCatalog.load("resources/units.json");
+            let schema = match Resource.loadSchemaDiagnostic("resources/units.schema.json") {
                 case Ok(s)    => s
                 case Err(msg) => bug!("Resource.loadSchema failed :: ${msg}")
             };

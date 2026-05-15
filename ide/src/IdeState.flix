@@ -60,8 +60,10 @@ mod IdeState {
         currentSceneJsonRef      = Array[Option[Json.JsonElement], Static],
         selectedNodePathRef      = Array[Option[List[Int32]], Static],
         textureNamesRef          = Array[List[String], Static],
+        texturePathMapRef        = Array[Map[String, String], Static],
         pendingTreeSelectionRef  = Array[Option[List[Int32]], Static],
-        treeListenerMuteRef      = Array[Bool, Static]
+        treeListenerMuteRef      = Array[Bool, Static],
+        resource                 = ResourceState.ResourceState
     }
 
     /// 空の IDE 状態を作る。Static 領域の Ref を全フィールド分用意する。
@@ -79,8 +81,10 @@ mod IdeState {
             currentSceneJsonRef      = Array#{(None: Option[Json.JsonElement])} @ Static,
             selectedNodePathRef      = Array#{(None: Option[List[Int32]])} @ Static,
             textureNamesRef          = Array#{(Nil: List[String])} @ Static,
+            texturePathMapRef        = Array#{(Map.empty(): Map[String, String])} @ Static,
             pendingTreeSelectionRef  = Array#{(None: Option[List[Int32]])} @ Static,
-            treeListenerMuteRef      = Array#{false} @ Static
+            treeListenerMuteRef      = Array#{false} @ Static,
+            resource                 = ResourceState.newState()
         }
 
     /// File → Open Project... で予約された次プロジェクトのパスを取り出し、Ref をクリアする
@@ -103,6 +107,15 @@ mod IdeState {
     /// プロジェクト切替時は新しい名前リストで上書き、未ロード時は Nil で空にする
     pub def setTextureNames(state: IdeState, names: List[String]): Unit \ IO =
         Array.put(names, 0, state#textureNamesRef)
+
+    /// texture 名 → 絶対パスのマップを登録する。SpritePreview が BufferedImage を
+    /// 読み込むときに texture 名から絶対パスを引くために使う。
+    pub def setTexturePathMap(state: IdeState, m: Map[String, String]): Unit \ IO =
+        Array.put(m, 0, state#texturePathMapRef)
+
+    /// 登録済みの texture 名 → 絶対パスマップを返す。未ロード時は空 Map。
+    pub def getTexturePathMap(state: IdeState): Map[String, String] \ IO =
+        Array.get(0, state#texturePathMapRef)
 
     /// 現在開いている scene.json の絶対パスを返す。プロジェクト未ロード時や未選択時は None
     pub def getCurrentScenePath(state: IdeState): Option[String] \ IO =

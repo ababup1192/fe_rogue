@@ -49,23 +49,55 @@ mod SceneTreeModel {
         TreeModelNode.TreeModelNode({label = label, nodePath = nodePath, children = children})
 
     /// JSON 要素を 1 行で表すラベル文字列を返す。
-    /// - JsonObject: "[type] name" 形式。type/name が無ければデフォルト文字列を使う
-    /// - JsonArray:  "<root array>" として子だけが意味を持つ箱表示
-    /// - その他:     "<invalid>" でクラッシュさせない
+    /// - type=="Container" : "[Container <layoutKind>] name" 形式
+    ///   (どのレイアウトを持つ容器か tree からひと目で分かるように layout.kind を併記)
+    /// - JsonObject with "type" : "[type] name" 形式
+    /// - JsonObject with "kind" only (Layout primitive) : "[kind] name" 形式
+    ///   (Panel / HBoxContainer / VBoxContainer / MarginContainer / CenterContainer)
+    /// - JsonArray :  "<root array>"
+    /// - その他   :  "<invalid>"
     pub def labelFor(elem: Json.JsonElement): String =
         match elem {
             case JsonObject(map) =>
-                let nodeType = match Map.get("type", map) {
-                    case Some(JsonString(s)) => s
-                    case _                   => "Node"
-                };
-                let nodeName = match Map.get("name", map) {
-                    case Some(JsonString(s)) => s
-                    case _                   => "<unnamed>"
-                };
-                "[${nodeType}] ${nodeName}"
+                match Map.get("type", map) {
+                    case Some(JsonString("Container")) => containerLabel(map)
+                    case Some(JsonString(t))           =>
+                        "[${t}] ${nameOrUnnamed(map)}"
+                    case _ =>
+                        // type 無し: Layout primitive なら kind を type 代わりに表示
+                        match Map.get("kind", map) {
+                            case Some(JsonString(k)) => "[${k}] ${nameOrUnnamed(map)}"
+                            case _                   => "[Node] ${nameOrUnnamed(map)}"
+                        }
+                }
             case JsonArray(_) => "<root array>"
             case _            => "<invalid>"
+        }
+
+    /// Container 自身のラベル。layout.kind があれば "[Container Panel]" のように併記する
+    def containerLabel(map: Map[String, Json.JsonElement]): String =
+        let kindSuffix = match layoutKindOf(map) {
+            case Some(k) => " ${k}"
+            case None    => ""
+        };
+        "[Container${kindSuffix}] ${nameOrUnnamed(map)}"
+
+    /// Container map から layout.kind の文字列を取り出す。layout 不在 or kind 非文字列なら None
+    def layoutKindOf(map: Map[String, Json.JsonElement]): Option[String] =
+        match Map.get("layout", map) {
+            case Some(JsonObject(layoutMap)) =>
+                match Map.get("kind", layoutMap) {
+                    case Some(JsonString(k)) => Some(k)
+                    case _                   => None
+                }
+            case _ => None
+        }
+
+    /// "name" を取り出す。無い / 非文字列なら "<unnamed>"
+    def nameOrUnnamed(map: Map[String, Json.JsonElement]): String =
+        match Map.get("name", map) {
+            case Some(JsonString(s)) => s
+            case _                   => "<unnamed>"
         }
 
     /// 与えられた JSON 要素の子要素列を返す。
