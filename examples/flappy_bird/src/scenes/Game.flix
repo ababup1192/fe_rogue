@@ -399,7 +399,7 @@ mod Game {
                                 applyPhaseChange(currentPhase, fontAtlas, updatedScene)
                             else updatedScene;
             // エディタオーバーレイを合成して描画。オーバーレイは次フレームに引き継がない
-            GameEngine.render(Editor.applyOverlay(fontAtlas, NodeTag.NoTag, nextScene));
+            GameEngine.render(Editor.applyOverlay(NodeTag.NoTag, nextScene));
             gameLoop(fontAtlas, currentPhase, nextScene)
         }
 }

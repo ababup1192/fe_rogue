@@ -275,7 +275,7 @@ mod Game {
                 }
                 else afterShake;
             // (5) エディタオーバーレイ → 描画
-            GameEngine.render(Editor.applyOverlay(fontAtlas, NodeTag.NoTag, next));
+            GameEngine.render(Editor.applyOverlay(NodeTag.NoTag, next));
             gameLoop(fontAtlas, boldFontAtlas, next)
         }
 }

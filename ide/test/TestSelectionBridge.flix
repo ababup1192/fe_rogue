@@ -44,7 +44,9 @@ mod TestSelectionBridge {
 
     /// JTree がクリックされて pendingTreeSelectionRef に [1] (= tree 兄弟の 2 件目) が
     /// 積まれている。現シーンパスも sampleSceneJson も入っているので、
-    /// Editor.EditorState#selected に nodePath = ["tree"] の Selection が乗る。
+    /// Editor.EditorState#selected に nodePath = ["root", "tree"] の Selection が乗る
+    /// (sampleSceneJson は単一オブジェクトルート "root" を持つので、engine NodePath は
+    /// その name から始まる)。
     /// 同時に editor は ON にする (F1 OFF のままだと preview に選択枠が出ないため)
     @Test
     def testApplyTreeSelectionWritesSelectionAndTurnsEditorOn(): Unit \ {Assert, IO} =
@@ -61,8 +63,8 @@ mod TestSelectionBridge {
             case Some(sel) =>
                 Assert.assertEq(
                     expected = (true, "/tmp/MyScene.scene.json",
-                                "tree" :: Nil,
-                                "tree" :: Nil),
+                                "root" :: "tree" :: Nil,
+                                "root" :: "tree" :: Nil),
                     (after#on, sel#jsonPath, sel#nodePath, sel#jsonNodePath))
             case None => bug!("expected EditorState#selected to be Some after tree click")
         }
@@ -122,19 +124,19 @@ mod TestSelectionBridge {
     // syncEditorSelectionToTree — editor selected → IdeState.selectedNodePathRef
     // ========================================================================
 
-    /// editor 側で Selection が立っている (nodePath = ["tree"]) 状態で sync を呼ぶと、
-    /// 現 JSON を walk して [1] というインデックス列に変換され、
-    /// IdeState.selectedNodePathRef にその値が乗る
+    /// editor 側で Selection が立っている (nodePath = ["root", "tree"]) 状態で
+    /// sync を呼ぶと、root を消費して残りを children で辿り [1] というインデックス列に
+    /// 変換され、IdeState.selectedNodePathRef にその値が乗る
     @Test
     def testSyncEditorSelectionWritesNodePathToIdeState(): Unit \ {Assert, IO} =
         let state = IdeState.newState();
         Array.put(Some(sampleSceneJson()), 0, state#currentSceneJsonRef);
 
         let selected = Some({jsonPath     = "/tmp/X.scene.json",
-                             nodePath     = "tree" :: Nil,
-                             jsonNodePath = "tree" :: Nil});
+                             nodePath     = "root" :: "tree" :: Nil,
+                             jsonNodePath = "root" :: "tree" :: Nil});
         let editorRef = Array#{({selected = selected | emptyEditorState()})} @ Static;
-        withMockEditorState(() -> SelectionBridge.syncEditorSelectionToTree(state), editorRef);
+        discard withMockEditorState(() -> SelectionBridge.syncEditorSelectionToTree(state), editorRef);
 
         Assert.assertEq(
             expected = Some(1i32 :: Nil),
@@ -150,14 +152,15 @@ mod TestSelectionBridge {
 
         // editor の selected は None (deselect された)
         let editorRef = Array#{emptyEditorState()} @ Static;
-        withMockEditorState(() -> SelectionBridge.syncEditorSelectionToTree(state), editorRef);
+        discard withMockEditorState(() -> SelectionBridge.syncEditorSelectionToTree(state), editorRef);
 
         Assert.assertEq(
             expected = (None: Option[List[Int32]]),
             IdeState.getSelectedNodePath(state))
 
     /// editor の selected が IdeState 側と等しいときは何も書き戻さない (idempotent)。
-    /// "hero" → [0] が現 JSON で対応し、IdeState 側にも同じ値が乗っている状態を確認する
+    /// ["root", "hero"] → [0] が現 JSON で対応し、IdeState 側にも同じ値が乗っている
+    /// 状態を確認する
     @Test
     def testSyncEditorSelectionNoOpWhenSame(): Unit \ {Assert, IO} =
         let state = IdeState.newState();
@@ -165,10 +168,10 @@ mod TestSelectionBridge {
         Array.put(Some(0i32 :: Nil), 0, state#selectedNodePathRef);
 
         let selected = Some({jsonPath     = "/tmp/X.scene.json",
-                             nodePath     = "hero" :: Nil,
-                             jsonNodePath = "hero" :: Nil});
+                             nodePath     = "root" :: "hero" :: Nil,
+                             jsonNodePath = "root" :: "hero" :: Nil});
         let editorRef = Array#{({selected = selected | emptyEditorState()})} @ Static;
-        withMockEditorState(() -> SelectionBridge.syncEditorSelectionToTree(state), editorRef);
+        discard withMockEditorState(() -> SelectionBridge.syncEditorSelectionToTree(state), editorRef);
 
         Assert.assertEq(
             expected = Some(0i32 :: Nil),

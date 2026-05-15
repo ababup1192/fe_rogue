@@ -47,6 +47,7 @@ mod IdeUI {
     import javax.swing.tree.DefaultMutableTreeNode
     import javax.swing.tree.DefaultTreeModel
     import javax.swing.tree.DefaultTreeCellRenderer
+    import javax.swing.tree.TreePath
     import javax.swing.tree.TreeSelectionModel
     import java.awt.BorderLayout
     import java.awt.Color
@@ -191,6 +192,7 @@ mod IdeUI {
         Array.put(Some(model), 0, state#sceneTreeModelRef);
 
         let tree = new JTree(model);
+        Array.put(Some(tree), 0, state#sceneTreeRef);
         tree.setRootVisible(true);
         tree.setShowsRootHandles(true);
         tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
@@ -266,6 +268,83 @@ mod IdeUI {
             ()
         });
         node
+
+    /// preview クリック等で `selectedNodePathRef` が editor 側から書き換わった直後に呼ぶ。
+    /// JTree のハイライトを最新の選択に合わせ、Inspector を該当ノードで再構築する。
+    /// JTree の TreeSelectionListener が再発火しないよう、setSelectionPath 中は
+    /// `treeListenerMuteRef` を立てる
+    pub def applySelectionToView(state: IdeState): Unit \ IO =
+        match (Array.get(0, state#sceneTreeRef),
+               Array.get(0, state#sceneTreeModelRef)) {
+            case (Some(tree), Some(model)) =>
+                let selected = Array.get(0, state#selectedNodePathRef);
+                applyTreeSelection(state, tree, model, selected);
+                applyInspectorSelection(state, selected)
+            case _ => ()
+        }
+
+    /// JTree の見た目選択を `selected` に合わせる。listener loop を防ぐためミュート下で呼ぶ
+    def applyTreeSelection(state: IdeState, tree: JTree, model: DefaultTreeModel,
+                            selected: Option[List[Int32]]): Unit \ IO =
+        match selected {
+            case None =>
+                IdeState.setTreeListenerMuted(state, true);
+                tree.clearSelection();
+                IdeState.setTreeListenerMuted(state, false)
+            case Some(indices) =>
+                match buildTreePath(model, indices) {
+                    case None => ()
+                    case Some(path) =>
+                        IdeState.setTreeListenerMuted(state, true);
+                        tree.setSelectionPath(path);
+                        tree.scrollPathToVisible(path);
+                        IdeState.setTreeListenerMuted(state, false)
+                }
+        }
+
+    /// Inspector を現選択ノードの JSON 値で再構築する。未選択なら placeholder に戻す
+    def applyInspectorSelection(state: IdeState, selected: Option[List[Int32]]): Unit \ IO =
+        match selected {
+            case None => resetInspectorPlaceholder(state)
+            case Some(indices) =>
+                match Array.get(0, state#currentSceneJsonRef) {
+                    case None => ()
+                    case Some(sceneRoot) =>
+                        match JsonOps.getAtNodePath(sceneRoot, indices) {
+                            case Some(json) => updateInspector(state, json)
+                            case None       => ()
+                        }
+                }
+        }
+
+    /// `indices` (ルートからの子インデックス列) を JTree の TreePath に変換する。
+    /// 途中のインデックスが child 範囲外なら None。
+    /// Object 型を Flix の関数シグネチャに直接書くと stdlib の `Object` モジュールと
+    /// 衝突するため、Ref を経由して型推論に任せる
+    def buildTreePath(model: DefaultTreeModel, indices: List[Int32]):
+            Option[TreePath] \ IO =
+        let root = model.getRoot();
+        if (Object.isNull(root)) None
+        else
+            region rc {
+                let nodeRef = Ref.fresh(rc, root);
+                let pathRef = Ref.fresh(rc, new TreePath(root));
+                let failedRef = Ref.fresh(rc, false);
+                List.forEach(idx -> {
+                    if (Ref.get(failedRef)) ()
+                    else {
+                        let current = Ref.get(nodeRef);
+                        let child = model.getChild(current, idx);
+                        if (Object.isNull(child)) Ref.put(true, failedRef)
+                        else {
+                            Ref.put(child, nodeRef);
+                            Ref.put(Ref.get(pathRef).pathByAddingChild(child), pathRef)
+                        }
+                    }
+                }, indices);
+                if (Ref.get(failedRef)) None
+                else Some(Ref.get(pathRef))
+            }
 
     /// 絶対パスから scene.json を読み、木を再構築して state#sceneTreeModelRef の root を差し替える。
     /// 同時に nodePathMap / currentSceneJson / currentScenePath / selectedNodePath を更新し、

@@ -78,6 +78,11 @@ def ideLoop(state: IdeState.IdeState, fontName: Option[String], projectRoot: Str
                 Fs.ModificationTime, Chan, NonDet} =
     region rc {
         run {
+            // IDE は常に editor ON で動かす。F1 トグル不要で preview クリック・
+            // ドラッグが即座に効く。tree クリックで selected を直接書き換える
+            // フローも初回からそのまま動く
+            let initial = Editor.EditorState.get();
+            Editor.EditorState.put({on = true | initial});
             renderLoop(state, fontName, Scene.empty())
         } with Editor.withStateAt(rc, projectRoot)
     }
@@ -96,12 +101,14 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         // 編集を確定したフレームでは Editor.handleInput が JSON 書き戻しまで行う
         let edited = Editor.handleInput(nextScene);
         // preview 上でユーザーがクリックして選択が変わったケースを IdeState 側に同期する。
-        // (JTree のハイライト追従は view 層 の責務)
-        SelectionBridge.syncEditorSelectionToTree(state);
+        // 変化があった場合は IdeUI.applySelectionToView で JTree と Inspector も更新する
+        if (SelectionBridge.syncEditorSelectionToTree(state))
+            IdeUI.applySelectionToView(state)
+        else ();
         // editor がドラッグ確定で JSON を書き戻すと HotReload watcher が発火する。
         // 検知したら現シーンの JTree / Inspector を再構築して最新値を表示する
         refreshTreeOnReload(state);
-        let preview = composePreview(fontName, edited);
+        let preview = composePreview(edited);
         GameEngine.render(preview);
         renderLoop(state, fontName, edited)
     }
@@ -124,27 +131,30 @@ def loadPendingSceneOrKeep(state: IdeState.IdeState, fontName: Option[String],
             }
     }
 
-/// プレビュー描画の合成。font 索引があれば editor の選択枠 + ハンドル + コリジョン形状を、
-/// 無い場合 (fontManifest 未定義プロジェクト) はコリジョン形状のみを合成する
-def composePreview(fontName: Option[String], scene: Scene[Unit]):
+/// プレビュー描画の合成。editor の選択枠 + ハンドル + コリジョン形状を重ねる
+def composePreview(scene: Scene[Unit]):
         Scene[Unit] \ {GameEngine.Game, Editor.EditorState} =
-    match fontName {
-        case Some(name) =>
-            let atlas = GameEngine.Game.getFontAtlas(name);
-            Editor.applyOverlay(atlas, (), scene)
-        case None =>
-            Overlay.addCollisionShapes(Camera2D.identityTransform(), (), scene)
-    }
+    Editor.applyOverlay((), scene)
 
 /// Editor の HotReload watcher が発火したら、現シーンの JSON を再読込して
-/// JTree と Inspector を最新値で再構築する。ドラッグ確定で editor が JSON を書き戻すと
-/// このパスを通って表示が即更新される
+/// JTree と Inspector を最新値で再構築する。ドラッグ・リサイズ確定で editor が
+/// JSON を書き戻すと、このパスを通って表示が即更新される。
+///
+/// IDE は editor 常時 ON で動かすため pollReload では握り潰されてしまう。
+/// pollRawReload を使い、editor の on/off に関わらず JSON 変更を拾う。
+///
+/// populateSceneTree は選択をクリアして Inspector を placeholder に戻すので、
+/// 直後に editor 側の選択を再同期 → applySelectionToView で同じノードを
+/// 再選択し直し、Inspector に新しい座標・サイズを反映する。
 def refreshTreeOnReload(state: IdeState.IdeState):
         Unit \ {IO, Editor.EditorState} =
-    if (Editor.pollReload())
+    if (Editor.pollRawReload())
         match IdeState.getCurrentScenePath(state) {
-            case Some(path) => IdeUI.populateSceneTree(state, path)
-            case None       => ()
+            case Some(path) =>
+                IdeUI.populateSceneTree(state, path);
+                discard SelectionBridge.syncEditorSelectionToTree(state);
+                IdeUI.applySelectionToView(state)
+            case None => ()
         }
     else ()
 

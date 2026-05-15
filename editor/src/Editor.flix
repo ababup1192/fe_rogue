@@ -317,8 +317,15 @@ mod Editor {
         let s = EditorState.get();
         if (s#on) false else consumed
 
+    /// editor の on/off に関わらず HotReload 通知をそのまま返す。
+    /// IDE のように「editor ON が通常状態」のホストでも、ドラッグ確定で書き戻された
+    /// JSON を再読込して JTree / Inspector を最新値に更新したいときに使う。
+    /// pollReload とは違って消費後に握り潰さない
+    pub def pollRawReload(): Bool \ EditorState =
+        EditorState.pollReload()
+
     /// 描画用のオーバーレイをシーンに合成する。Game.flix の render 直前に呼ぶ。
-    pub def applyOverlay(fontAtlas: FontAtlas, defaultTag: t, scene: Scene[t]):
+    pub def applyOverlay(defaultTag: t, scene: Scene[t]):
             Scene[t] \ {EditorState, GameEngine.Game} =
         let stateData = EditorState.get();
         if (not stateData#on) scene
@@ -327,7 +334,6 @@ mod Editor {
             let transform = activeViewTransform(scene);
             scene
                 |> Overlay.addCollisionShapes(transform, defaultTag)
-                |> Overlay.addEditorIndicator(fontAtlas, defaultTag)
                 |> Overlay.addSelectionBox(stateData#rootJsonIndex, stateData#selected,
                                            transform, defaultTag)
                 |> Overlay.addHoverBox(stateData#rootJsonIndex, mousePos, stateData#selected,

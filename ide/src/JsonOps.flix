@@ -101,9 +101,21 @@ mod JsonOps {
     /// engine の NodePath は「ノード名の列」(List[String]) でできている。
     /// JSON ツリーを indices に沿って降りつつ、各ステップで child の "name" フィールドを
     /// 集めて NodePath 相当を作る。
+    ///
+    /// ルートの扱い:
+    ///   - JsonObject root (例 BirdScene): tree の root は JSON root オブジェクト
+    ///     そのものを表示する。よって engine NodePath はルート name から始める。
+    ///     tree [] = engine ["root"]; tree [0] = engine ["root", "child0"]。
+    ///   - JsonArray root: tree root は合成された "<root array>" なので、
+    ///     indices[0] が配列要素 = engine ルートを指す。tree [0] = engine ["root0"]。
+    ///
     /// 途中で children が無かったり index 範囲外だったり、"name" が文字列でなければ None
     pub def extractNodeNames(root: Json.JsonElement, indices: List[Int32]): Option[List[String]] =
-        extractNodeNamesRec(root, indices, Nil)
+        let initialAcc = match root {
+            case JsonObject(_) => nameOf(root) |> Option.toList
+            case _             => Nil
+        };
+        extractNodeNamesRec(root, indices, initialAcc)
 
     def extractNodeNamesRec(root: Json.JsonElement, indices: List[Int32],
                             acc: List[String]): Option[List[String]] =

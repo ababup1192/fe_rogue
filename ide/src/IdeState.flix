@@ -10,6 +10,7 @@
 mod IdeState {
     import javax.swing.JFrame
     import javax.swing.JPanel
+    import javax.swing.JTree
     import javax.swing.tree.DefaultTreeModel
 
     /// IDE のグローバル状態。EDT 上の UI イベントが Refs に書き、
@@ -18,6 +19,8 @@ mod IdeState {
     ///   pendingSceneRef:      scene リストで選ばれた scene の絶対パス。renderLoop が毎フレーム消費。
     ///                         Inspector で値を変更した直後にもセットされ、canvas を即時 reload する。
     ///   sceneFilesRef:        現プロジェクトの (絶対パス, 表示用相対パス) のペアリスト。
+    ///   sceneTreeRef:         左パネル JTree 本体。preview クリックで選択が変わったとき
+    ///                         setSelectionPath で見た目を同期させるために保持する。
     ///   sceneTreeModelRef:    左パネル JTree の TreeModel。シーン選択時に root を差し替える。
     ///   nodePathMapRef:       tree ノードの identityHashCode → ルートからの子インデックス列。
     ///                         Tree 選択時にこの path で currentSceneJson を歩いて
@@ -49,6 +52,7 @@ mod IdeState {
         pendingSceneRef          = Array[Option[String], Static],
         sceneFilesRef            = Array[List[(String, String)], Static],
         loadingSplashRef         = Array[Option[JFrame], Static],
+        sceneTreeRef             = Array[Option[JTree], Static],
         sceneTreeModelRef        = Array[Option[DefaultTreeModel], Static],
         nodePathMapRef           = Array[Map[Int32, List[Int32]], Static],
         inspectorContentRef      = Array[Option[JPanel], Static],
@@ -67,6 +71,7 @@ mod IdeState {
             pendingSceneRef          = Array#{(None: Option[String])} @ Static,
             sceneFilesRef            = Array#{(Nil: List[(String, String)])} @ Static,
             loadingSplashRef         = Array#{(None: Option[JFrame])} @ Static,
+            sceneTreeRef             = Array#{(None: Option[JTree])} @ Static,
             sceneTreeModelRef        = Array#{(None: Option[DefaultTreeModel])} @ Static,
             nodePathMapRef           = Array#{(Map.empty(): Map[Int32, List[Int32]])} @ Static,
             inspectorContentRef      = Array#{(None: Option[JPanel])} @ Static,

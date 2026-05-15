@@ -1,4 +1,4 @@
-// Tests for Overlay — エディタ ON 表示 + 選択枠の描画
+// Tests for Overlay — 選択枠の描画
 //
 // Scene 変換が中心なので、ノード追加結果（ファサードの子に何があるか）を確認する形で
 // 検証する。`addSelectionBox` は `EditableNode.findByNodePath` 経由で
@@ -9,17 +9,6 @@ mod TestOverlay {
     /// editor 単独テスト用の最小 tag enum (NodeTag は consumer 側で定義される型)
     pub enum Tag { case NoTag }
 
-
-    /// テスト用のダミー FontAtlas（空のグリフマップ）
-    def testFontAtlas(): FontAtlas = {
-        textureName = "font_test",
-        fontSize = 32.0,
-        textureSize = 512.0,
-        ascent = 0.0,
-        descent = 0.0,
-        lineGap = 0.0,
-        glyphs = Map.empty()
-    }
 
     /// すべての texture が 32x32 を返す GameEngine.Game ハンドラ
     def withMockTexture32(f: Unit -> a \ ef + GameEngine.Game): a \ ef =
@@ -37,41 +26,6 @@ mod TestOverlay {
             def getTextureInfo(_, k) = k(Some({id = 0i32, width = 32.0, height = 32.0}))
             def setCursor(_, k) = k(())
         }
-
-    // ====================================================================
-    // addEditorIndicator — EDITOR ラベルを最前面 CanvasLayer に追加
-    // ====================================================================
-
-    /// 空シーンに addEditorIndicator すると、ラベル用 CanvasLayer + その下の Label2D が増える
-    @Test
-    def testAddEditorIndicatorAddsLayerAndLabel(): Unit \ Assert =
-        let s: Scene[Tag] = Scene.empty();
-        let result = Overlay.addEditorIndicator(testFontAtlas(), Tag.NoTag, s);
-        let layerExists =
-            Scene.getEngineNode("_editor_indicator_layer" :: Nil, result)
-                |> Option.exists(node -> match node {
-                    case EngineNode.CanvasLayerWithState(_, _) => true
-                    case _ => false
-                });
-        let labelExists =
-            Scene.getEngineNode("_editor_indicator_layer" :: "_editor_indicator_label" :: Nil, result)
-                |> Option.exists(node -> match node {
-                    case EngineNode.Label2DWithState(_, _) => true
-                    case _ => false
-                });
-        Assert.assertEq(expected = (true, true), (layerExists, labelExists))
-
-    /// addEditorIndicator は元のシーンの他のノードを破壊しない
-    @Test
-    def testAddEditorIndicatorPreservesExistingNodes(): Unit \ Assert =
-        let sprite = Sprite2D.make("dummy.png", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0});
-        let s: Scene[Tag] = Scene.empty();
-        let scene = s |> Scene.addNode("hero",
-            EngineNode.Sprite2DWithState(sprite, Tag.NoTag));
-        let result = Overlay.addEditorIndicator(testFontAtlas(), Tag.NoTag, scene);
-        let heroStillThere = Option.nonEmpty(
-            Scene.getEngineNode("hero" :: Nil, result));
-        Assert.assertEq(expected = true, heroStillThere)
 
     // ====================================================================
     // addSelectionBox — 選択中ノードを 4 辺で囲む

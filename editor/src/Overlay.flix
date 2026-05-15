@@ -1,25 +1,10 @@
 // Overlay — エディタ ON 時にだけ追加で描画するオーバーレイ要素
 //
-// エディタが効いていることを示す右上の "EDITOR" ラベル と、選択中ノードを取り囲む
-// 黄色の矩形を、最前面の CanvasLayer に追加する。
+// 選択中ノードを取り囲む黄色の矩形を最前面の CanvasLayer に追加する。
 // ここで返したシーンは「次フレームに引き継がない」想定。Game.flix の render 直前に
 // 1 回だけ合成して使い、次フレームの handleInput は元のシーンから始める
 
 mod Overlay {
-
-    /// エディタが ON であることを示す右上の "EDITOR" ラベルを最前面に追加する
-    pub def addEditorIndicator(fontAtlas: FontAtlas, defaultTag: t, scene: Scene[t]): Scene[t] =
-        let layerName = "_editor_indicator_layer";
-        let labelName = "_editor_indicator_label";
-        let layer = CanvasLayer.make(overlayLayerIndex());
-        let label = Label2D.make("EDITOR", fontAtlas, 14.0)
-            |> Node2D.setPosition({x = 230.0, y = 16.0})
-            |> CanvasItem.setModulate({r = 1.0f32, g = 0.85f32, b = 0.2f32});
-        scene
-            |> Scene.addNode(layerName,
-                EngineNode.CanvasLayerWithState(layer, defaultTag))
-            |> Scene.addChildAt(layerName :: Nil, labelName,
-                EngineNode.Label2DWithState(label, defaultTag))
 
     /// 4 辺の枠の見た目を表すスタイル。
     type alias OutlineStyle = {

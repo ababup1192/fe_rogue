@@ -57,10 +57,10 @@ mod SelectionBridge {
     /// editor 側は List[String] (名前列) で持つので、現 JSON を walk してインデックス列に
     /// 変換する。変換に失敗した (該当名のノードが現 JSON に無い) ケースは None として扱う。
     /// 値が前回と同じなら何もしない (フレーム毎の不要な書き込みを抑制)。
-    /// 実際の JTree のハイライト更新は view 層 (SceneTreeView) の責任で、本関数は
-    /// Ref 同期だけを担う
+    /// 戻り値: 選択が前フレームと変化したか。true なら呼び出し側 (view 層) が
+    /// JTree のハイライトと Inspector を最新の selectedNodePath で再構築する
     pub def syncEditorSelectionToTree(state: IdeState.IdeState):
-            Unit \ {IO, Editor.EditorState} =
+            Bool \ {IO, Editor.EditorState} =
         let editorData = Editor.EditorState.get();
         let editorIndices = match editorData#selected {
             case None      => None
@@ -71,15 +71,36 @@ mod SelectionBridge {
                 }
         };
         let storedIndices = IdeState.getSelectedNodePath(state);
-        if (editorIndices == storedIndices) ()
-        else
-            Array.put(editorIndices, 0, state#selectedNodePathRef)
+        if (editorIndices == storedIndices) false
+        else {
+            Array.put(editorIndices, 0, state#selectedNodePathRef);
+            true
+        }
 
     /// ノード名のリスト (engine NodePath 相当) を、現 JSON ツリー上の子インデックス列に
     /// 変換する。各ステップで現ノードの children を走査し、name が一致する子を探す。
-    /// 途中で見つからなければ None
+    /// 途中で見つからなければ None。
+    ///
+    /// ルートの扱いは extractNodeNames と対応する:
+    ///   - JsonObject root: NodePath 先頭は root の name に一致しているはず。
+    ///     一致したらそれを消費し、残りを children の中で辿る。
+    ///   - JsonArray root: NodePath 先頭が配列要素の name に一致するように辿る (通常通り)
     def namesToIndices(root: Json.JsonElement, names: List[String]): Option[List[Int32]] =
-        namesToIndicesRec(root, names, Nil)
+        match root {
+            case Json.JsonElement.JsonObject(_) =>
+                match (nameOf(root), names) {
+                    case (Some(rootName), head :: rest) =>
+                        if (head == rootName) namesToIndicesRec(root, rest, Nil)
+                        else None
+                    case (Some(_), Nil) =>
+                        // ルートの name はあるが engine NodePath が空 → 無効
+                        None
+                    case (None, _) =>
+                        // ルートに name が無いオブジェクト → 児童直下から辿る
+                        namesToIndicesRec(root, names, Nil)
+                }
+            case _ => namesToIndicesRec(root, names, Nil)
+        }
 
     def namesToIndicesRec(root: Json.JsonElement, names: List[String],
                           acc: List[Int32]): Option[List[Int32]] =
