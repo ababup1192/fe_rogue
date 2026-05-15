@@ -1,46 +1,78 @@
 {
+  "enemies": [
+    "goblin",
+    "orc"
+  ],
+  "players": [
+    "knight",
+    "archer",
+    "mage"
+  ],
   "units": {
-    "knight": {
-      "moveTiles": 4,
-      "hp": 14,
-      "attack":  6,
-      "defense": 5,
-      "speed":   2,
-      "sprite": { "texture": "character_sheet", "hframes": 5, "vframes": 2, "frame": 0 }
-    },
     "archer": {
-      "moveTiles": 6,
+      "attack": 5,
+      "defense": 2,
       "hp": 8,
-      "attack":  5,
-      "defense": 2,
-      "speed":   6,
-      "sprite": { "texture": "character_sheet", "hframes": 5, "vframes": 2, "frame": 1 }
-    },
-    "mage": {
-      "moveTiles": 5,
-      "hp": 10,
-      "attack":  7,
-      "defense": 2,
-      "speed":   4,
-      "sprite": { "texture": "character_sheet", "hframes": 5, "vframes": 2, "frame": 2 }
+      "moveTiles": 6,
+      "speed": 6,
+      "sprite": {
+        "frame": 1,
+        "hframes": 5,
+        "texture": "character_sheet",
+        "vframes": 2
+      }
     },
     "goblin": {
-      "moveTiles": 3,
-      "hp": 3,
-      "attack":  3,
+      "attack": 3,
       "defense": 1,
-      "speed":   4,
-      "sprite": { "texture": "character_sheet", "hframes": 5, "vframes": 2, "frame": 4 }
+      "hp": 3,
+      "moveTiles": 3,
+      "speed": 4,
+      "sprite": {
+        "frame": 4,
+        "hframes": 5,
+        "texture": "character_sheet",
+        "vframes": 2
+      }
+    },
+    "knight": {
+      "attack": 6,
+      "defense": 5,
+      "hp": 14,
+      "moveTiles": 4,
+      "speed": 2,
+      "sprite": {
+        "frame": 0,
+        "hframes": 5,
+        "texture": "character_sheet",
+        "vframes": 2
+      }
+    },
+    "mage": {
+      "attack": 7,
+      "defense": 2,
+      "hp": 10,
+      "moveTiles": 5,
+      "speed": 4,
+      "sprite": {
+        "frame": 2,
+        "hframes": 5,
+        "texture": "character_sheet",
+        "vframes": 2
+      }
     },
     "orc": {
-      "moveTiles": 2,
-      "hp": 6,
-      "attack":  5,
+      "attack": 5,
       "defense": 3,
-      "speed":   2,
-      "sprite": { "texture": "character_sheet", "hframes": 5, "vframes": 2, "frame": 3 }
+      "hp": 6,
+      "moveTiles": 2,
+      "speed": 2,
+      "sprite": {
+        "frame": 3,
+        "hframes": 5,
+        "texture": "character_sheet",
+        "vframes": 2
+      }
     }
-  },
-  "players": ["knight", "archer", "mage"],
-  "enemies": ["goblin", "orc"]
+  }
 }
