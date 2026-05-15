@@ -8,6 +8,13 @@
 /// scrollY を加算して縦方向にスクロールでき、scrollFollowing が true のときは
 /// setText 時に自動で末尾までスクロールする（チャットログ用途を想定）。
 ///
+/// `visibleCharacters` / `visibleRatio` で typewriter 風の段階表示が可能。
+/// Godot RichTextLabel.visible_characters / visible_ratio 準拠:
+///   - visibleCharacters >= 0 のとき、先頭からその文字数までを表示
+///   - visibleCharacters < 0 かつ visibleRatio in [0.0, 1.0] のとき、比率で制限
+///   - どちらも未設定（visibleCharacters = -1, visibleRatio < 0）なら全表示
+/// BBCode タグは可視文字数に算入されない（タグごと露出しても文字消費 0）。
+///
 ///   RichTextLabel
 ///     +-- CanvasItem: visible, zIndex, modulate
 ///     +-- Node2D: position, rotation, scale, skew
@@ -27,7 +34,9 @@ pub enum RichTextLabel {
         skew = Float64,
         visible = Bool,
         zIndex = Int32,
-        modulate = Color
+        modulate = Color,
+        visibleCharacters = Int32,
+        visibleRatio = Float64
     })
 }
 
@@ -57,7 +66,9 @@ mod RichTextLabel {
             skew = 0.0,
             visible = true,
             zIndex = 0,
-            modulate = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+            modulate = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+            visibleCharacters = -1,
+            visibleRatio = -1.0
         })
 
     /// `[b]...[/b]` 用の bold アトラスをセットする。`None` をセットしたい場合は
@@ -121,6 +132,47 @@ mod RichTextLabel {
     pub def getScrollFollowing(label: RichTextLabel): Bool =
         let RichTextLabel.RichTextLabel(r) = label;
         r#scrollFollowing
+
+    /// 可視文字数を設定する。`-1` で制限なし（全表示）。
+    /// `0` 以上のときは BBCode タグを除いた可視文字数で先頭から truncate される。
+    pub def setVisibleCharacters(n: Int32, label: RichTextLabel): RichTextLabel =
+        let RichTextLabel.RichTextLabel(r) = label;
+        RichTextLabel.RichTextLabel({ visibleCharacters = n | r })
+
+    /// 現在の可視文字数を取得する（`-1` なら制限なし）
+    pub def getVisibleCharacters(label: RichTextLabel): Int32 =
+        let RichTextLabel.RichTextLabel(r) = label;
+        r#visibleCharacters
+
+    /// 可視文字数を比率で設定する。`0.0..1.0` の範囲外（負値含む）は未設定扱い。
+    /// `visibleCharacters >= 0` がセットされていれば、そちらが優先される。
+    pub def setVisibleRatio(ratio: Float64, label: RichTextLabel): RichTextLabel =
+        let RichTextLabel.RichTextLabel(r) = label;
+        RichTextLabel.RichTextLabel({ visibleRatio = ratio | r })
+
+    /// 現在の可視文字比率を取得する（負値なら未設定）
+    pub def getVisibleRatio(label: RichTextLabel): Float64 =
+        let RichTextLabel.RichTextLabel(r) = label;
+        r#visibleRatio
+
+    /// テキスト中の可視文字数（BBCode タグを除いた文字数）を返す。
+    /// `setVisibleCharacters(totalCharCount(label), label)` で全表示と等価。
+    pub def totalCharCount(label: RichTextLabel): Int32 =
+        let RichTextLabel.RichTextLabel(r) = label;
+        Markup.BBCode.visibleLength(r#text)
+
+    /// `visibleCharacters` / `visibleRatio` から「実際に表示する文字数」を決定する。
+    /// `None` を返した場合は制限なし（全文表示）。
+    /// 優先順位: visibleCharacters >= 0 → ratio >= 0 → 全表示。
+    def effectiveVisibleCount(text: String, vc: Int32, vr: Float64): Option[Int32] =
+        if (vc >= 0) Some(vc)
+        else if (vr >= 0.0) {
+            let total = Markup.BBCode.visibleLength(text);
+            let clamped = Float64.max(0.0, Float64.min(1.0, vr));
+            Float64.tryToInt32(clamped * Int32.toFloat64(total))
+                |> Option.map(n -> Int32.max(0, n))
+        }
+        else None
 
     /// 末尾までスクロールする（contentHeight - size.y、負なら 0）
     pub def scrollToBottom(label: RichTextLabel): RichTextLabel =
@@ -357,7 +409,13 @@ mod RichTextLabel {
         };
         let scale = r#fontSize / regularAtlas#fontSize;
         let lh = lineHeight(label);
-        let segments = parseStyled(r#text, r#modulate);
+        // Godot RichTextLabel.visible_characters / visible_ratio による typewriter 制限。
+        // BBCode タグは可視文字数に算入されず、タグ自体は露出してから本文が現れる。
+        let displayText = match effectiveVisibleCount(r#text, r#visibleCharacters, r#visibleRatio) {
+            case Some(n) => Markup.BBCode.sliceVisible(r#text, n)
+            case None    => r#text
+        };
+        let segments = parseStyled(displayText, r#modulate);
         let lines = splitStyledIntoLines(segments);
         let chooseAtlas = (seg: TextSegment) ->
             if (seg#bold) boldAtlas else regularAtlas;

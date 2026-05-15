@@ -46,6 +46,8 @@ pub enum EngineNode[state] {
     case StaticBody2DWithState(StaticBody2D, state)
     /// タイルマップレイヤー（GPU インスタンシングで 1 draw call 描画）
     case TileMapLayerWithState(TileMapLayer, state)
+    /// パネル（背景色 + 枠線つき矩形、Godot Panel + StyleBoxFlat 相当）
+    case PanelWithState(Panel, state)
 }
 
 mod EngineNode {
@@ -73,6 +75,7 @@ mod EngineNode {
         case EngineNode.Camera2DWithState(_, state) => state
         case EngineNode.StaticBody2DWithState(_, state) => state
         case EngineNode.TileMapLayerWithState(_, state) => state
+        case EngineNode.PanelWithState(_, state) => state
     }
 
     /// EngineNode の state を置き換える
@@ -98,6 +101,7 @@ mod EngineNode {
         case EngineNode.Camera2DWithState(inner, _) => EngineNode.Camera2DWithState(inner, newState)
         case EngineNode.StaticBody2DWithState(inner, _) => EngineNode.StaticBody2DWithState(inner, newState)
         case EngineNode.TileMapLayerWithState(inner, _) => EngineNode.TileMapLayerWithState(inner, newState)
+        case EngineNode.PanelWithState(inner, _) => EngineNode.PanelWithState(inner, newState)
     }
 
     /// EngineNode の state に関数を適用する
@@ -123,6 +127,7 @@ mod EngineNode {
         case EngineNode.Camera2DWithState(inner, state) => EngineNode.Camera2DWithState(inner, f(state))
         case EngineNode.StaticBody2DWithState(inner, state) => EngineNode.StaticBody2DWithState(inner, f(state))
         case EngineNode.TileMapLayerWithState(inner, state) => EngineNode.TileMapLayerWithState(inner, f(state))
+        case EngineNode.PanelWithState(inner, state) => EngineNode.PanelWithState(inner, f(state))
     }
 
     /// Timer の inner node に関数を適用する
@@ -227,6 +232,12 @@ mod EngineNode {
         case _ => node
     }
 
+    /// Panel の inner node に関数を適用する
+    pub def mapPanel(f: Panel -> Panel, node: EngineNode[s]): EngineNode[s] = match node {
+        case EngineNode.PanelWithState(inner, st) => EngineNode.PanelWithState(f(inner), st)
+        case _ => node
+    }
+
     /// エンジンレベルの毎フレーム処理
     /// AnimatedSprite2D のフレーム送りを自動で行う。
     /// GPUParticles2D のパーティクル放出・加齢・除去を自動で行う。
@@ -253,6 +264,7 @@ mod EngineNode {
         case EngineNode.TextureRectWithState(rect, _)    => Some(TextureRect.getSize(rect))
         case EngineNode.RichTextLabelWithState(label, _) => Some(RichTextLabel.getSize(label))
         case EngineNode.ColorRectWithState(rect, _)      => Some(ColorRect.getSize(rect))
+        case EngineNode.PanelWithState(panel, _)         => Some(Panel.getSize(panel))
         case _                                           => None
     }
 
@@ -266,6 +278,7 @@ mod EngineNode {
         case EngineNode.TextureRectWithState(rect, st)    => EngineNode.TextureRectWithState(TextureRect.setSize(size, rect), st)
         case EngineNode.RichTextLabelWithState(label, st) => EngineNode.RichTextLabelWithState(RichTextLabel.setSize(size, label), st)
         case EngineNode.ColorRectWithState(rect, st)      => EngineNode.ColorRectWithState(ColorRect.setSize(size, rect), st)
+        case EngineNode.PanelWithState(panel, st)         => EngineNode.PanelWithState(Panel.setSize(size, panel), st)
         case _                                            => node
     }
 
@@ -368,6 +381,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.Camera2DWithState(cam, _) => CanvasItem.isVisible(cam)
         case EngineNode.StaticBody2DWithState(body, _) => CanvasItem.isVisible(body)
         case EngineNode.TileMapLayerWithState(tm, _) => CanvasItem.isVisible(tm)
+        case EngineNode.PanelWithState(panel, _) => CanvasItem.isVisible(panel)
     }
     pub def setVisible(visible: Bool, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(CanvasItem.setVisible(visible, sprite), st)
@@ -391,6 +405,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.Camera2DWithState(cam, st) => EngineNode.Camera2DWithState(CanvasItem.setVisible(visible, cam), st)
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(CanvasItem.setVisible(visible, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(CanvasItem.setVisible(visible, tm), st)
+        case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(CanvasItem.setVisible(visible, panel), st)
     }
     pub def getModulate(node: EngineNode[s]): Color = match node {
         case EngineNode.Sprite2DWithState(sprite, _) => CanvasItem.getModulate(sprite)
@@ -414,6 +429,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.Camera2DWithState(cam, _) => CanvasItem.getModulate(cam)
         case EngineNode.StaticBody2DWithState(body, _) => CanvasItem.getModulate(body)
         case EngineNode.TileMapLayerWithState(tm, _) => CanvasItem.getModulate(tm)
+        case EngineNode.PanelWithState(panel, _) => CanvasItem.getModulate(panel)
     }
     pub def setModulate(color: Color, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(CanvasItem.setModulate(color, sprite), st)
@@ -437,6 +453,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.Camera2DWithState(cam, st) => EngineNode.Camera2DWithState(CanvasItem.setModulate(color, cam), st)
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(CanvasItem.setModulate(color, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(CanvasItem.setModulate(color, tm), st)
+        case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(CanvasItem.setModulate(color, panel), st)
     }
     pub def getZIndex(node: EngineNode[s]): Int32 = match node {
         case EngineNode.Sprite2DWithState(sprite, _) => CanvasItem.getZIndex(sprite)
@@ -460,6 +477,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.Camera2DWithState(cam, _) => CanvasItem.getZIndex(cam)
         case EngineNode.StaticBody2DWithState(body, _) => CanvasItem.getZIndex(body)
         case EngineNode.TileMapLayerWithState(tm, _) => CanvasItem.getZIndex(tm)
+        case EngineNode.PanelWithState(panel, _) => CanvasItem.getZIndex(panel)
     }
     pub def setZIndex(zIndex: Int32, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(CanvasItem.setZIndex(zIndex, sprite), st)
@@ -483,6 +501,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.Camera2DWithState(cam, st) => EngineNode.Camera2DWithState(CanvasItem.setZIndex(zIndex, cam), st)
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(CanvasItem.setZIndex(zIndex, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(CanvasItem.setZIndex(zIndex, tm), st)
+        case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(CanvasItem.setZIndex(zIndex, panel), st)
     }
     redef isYSortEnabled(node: EngineNode[s]): Bool = match node {
         case EngineNode.Sprite2DWithState(sprite, _) => CanvasItem.isYSortEnabled(sprite)
@@ -525,6 +544,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.Camera2DWithState(cam, _) => Node2D.getPosition(cam)
         case EngineNode.StaticBody2DWithState(body, _) => Node2D.getPosition(body)
         case EngineNode.TileMapLayerWithState(tm, _) => Node2D.getPosition(tm)
+        case EngineNode.PanelWithState(panel, _) => Node2D.getPosition(panel)
     }
     pub def setPosition(position: Vec2.Vec2, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(Node2D.setPosition(position, sprite), st)
@@ -548,6 +568,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.Camera2DWithState(cam, st) => EngineNode.Camera2DWithState(Node2D.setPosition(position, cam), st)
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(Node2D.setPosition(position, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(Node2D.setPosition(position, tm), st)
+        case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(Node2D.setPosition(position, panel), st)
     }
     pub def getRotation(node: EngineNode[s]): Float64 = match node {
         case EngineNode.Sprite2DWithState(sprite, _) => Node2D.getRotation(sprite)
@@ -571,6 +592,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.Camera2DWithState(cam, _) => Node2D.getRotation(cam)
         case EngineNode.StaticBody2DWithState(body, _) => Node2D.getRotation(body)
         case EngineNode.TileMapLayerWithState(tm, _) => Node2D.getRotation(tm)
+        case EngineNode.PanelWithState(panel, _) => Node2D.getRotation(panel)
     }
     pub def setRotation(rotation: Float64, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(Node2D.setRotation(rotation, sprite), st)
@@ -594,6 +616,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.Camera2DWithState(cam, st) => EngineNode.Camera2DWithState(Node2D.setRotation(rotation, cam), st)
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(Node2D.setRotation(rotation, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(Node2D.setRotation(rotation, tm), st)
+        case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(Node2D.setRotation(rotation, panel), st)
     }
     pub def getScale(node: EngineNode[s]): Vec2.Vec2 = match node {
         case EngineNode.Sprite2DWithState(sprite, _) => Node2D.getScale(sprite)
@@ -617,6 +640,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.Camera2DWithState(cam, _) => Node2D.getScale(cam)
         case EngineNode.StaticBody2DWithState(body, _) => Node2D.getScale(body)
         case EngineNode.TileMapLayerWithState(tm, _) => Node2D.getScale(tm)
+        case EngineNode.PanelWithState(panel, _) => Node2D.getScale(panel)
     }
     pub def setScale(scale: Vec2.Vec2, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(Node2D.setScale(scale, sprite), st)
@@ -640,6 +664,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.Camera2DWithState(cam, st) => EngineNode.Camera2DWithState(Node2D.setScale(scale, cam), st)
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(Node2D.setScale(scale, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(Node2D.setScale(scale, tm), st)
+        case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(Node2D.setScale(scale, panel), st)
     }
     pub def getSkew(node: EngineNode[s]): Float64 = match node {
         case EngineNode.Sprite2DWithState(sprite, _) => Node2D.getSkew(sprite)
@@ -663,6 +688,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.Camera2DWithState(cam, _) => Node2D.getSkew(cam)
         case EngineNode.StaticBody2DWithState(body, _) => Node2D.getSkew(body)
         case EngineNode.TileMapLayerWithState(tm, _) => Node2D.getSkew(tm)
+        case EngineNode.PanelWithState(panel, _) => Node2D.getSkew(panel)
     }
     pub def setSkew(skew: Float64, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(Node2D.setSkew(skew, sprite), st)
@@ -686,6 +712,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.Camera2DWithState(cam, st) => EngineNode.Camera2DWithState(Node2D.setSkew(skew, cam), st)
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(Node2D.setSkew(skew, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(Node2D.setSkew(skew, tm), st)
+        case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(Node2D.setSkew(skew, panel), st)
     }
 }
 
@@ -772,5 +799,7 @@ instance GameEngine.Renderable[EngineNode[s]] {
             case EngineNode.Body2DWithState(_, _) => Nil
             case EngineNode.Marker2DWithState(_, _) => Nil
             case EngineNode.TileMapLayerWithState(_, _) => Nil
+            case EngineNode.PanelWithState(panel, _) =>
+                Panel.toDrawables(panel, globalPos)
         }
 }

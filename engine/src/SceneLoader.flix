@@ -1021,20 +1021,24 @@ mod SceneLoader {
             case None => Err(JsonError(Root, Set#{"FontAtlas (loadSceneWithFont required for RichTextLabel)"}))
             case Some(font) =>
                 forM (
-                    tag        <- parseTagField(tagParser, map);
-                    posOpt     <- parseVec2Opt("pos", map);
-                    sizeOpt    <- parseVec2Opt("size", map);
-                    text       <- (Json.FromJson.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
-                    fontSize   <- (Json.FromJson.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
-                    visibleOpt <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
-                    zIndexOpt  <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
+                    tag                  <- parseTagField(tagParser, map);
+                    posOpt               <- parseVec2Opt("pos", map);
+                    sizeOpt              <- parseVec2Opt("size", map);
+                    text                 <- (Json.FromJson.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
+                    fontSize             <- (Json.FromJson.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
+                    visibleOpt           <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+                    zIndexOpt            <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+                    visibleCharactersOpt <- (Json.FromJson.getAtKeyOpt(Root, "visibleCharacters", map): Result[Json.JsonError, Option[Int32]]);
+                    visibleRatioOpt      <- (Json.FromJson.getAtKeyOpt(Root, "visibleRatio", map): Result[Json.JsonError, Option[Float64]])
                 ) yield {
                     let pos = Option.getWithDefault(Vec2.zero(), posOpt);
                     let size = Option.getWithDefault(Vec2.zero(), sizeOpt);
                     let label = RichTextLabel.make(text, font, fontSize, size)
                         |> Node2D.setPosition(pos)
                         |> applyOpt(visibleOpt, setRichTextLabelVisible)
-                        |> applyOpt(zIndexOpt, setRichTextLabelZIndex);
+                        |> applyOpt(zIndexOpt, setRichTextLabelZIndex)
+                        |> applyOpt(visibleCharactersOpt, RichTextLabel.setVisibleCharacters)
+                        |> applyOpt(visibleRatioOpt, RichTextLabel.setVisibleRatio);
                     EngineNode.RichTextLabelWithState(label, tag)
                 }
         }
