@@ -16,6 +16,7 @@ mod IdeState {
     // Phase 2 では TreeView と Stage のみ。Inspector 等は後続 Phase で追加
     import javafx.scene.control.TreeView
     import javafx.scene.control.Label
+    import javafx.scene.layout.VBox
     import javafx.stage.Stage
 
     /// IDE のグローバル状態。EDT 上の UI イベントが Refs に書き、
@@ -81,9 +82,21 @@ mod IdeState {
         // 書き込み、AnimationTimer が選択ラベルに反映する。currentSceneJsonRef 経由の
         // selectedNodePathRef 変換に頼らず Editor 側の真の選択状態が即座に見える
         fxEditorSelDisplayRef    = Array[String, Static],
+        // Inspector pane: 選択ノードのプロパティを並べる VBox と、前回反映した selection 文字列。
+        // AnimationTimer が選択変化を検知して再構築する
+        fxInspectorContentRef    = Array[Option[VBox], Static],
+        fxInspectorLastSelRef    = Array[String, Static],
+        // Inspector の位置ラベル参照と、renderLoop が毎フレーム書き込む選択ノードの worldPos。
+        // 選択変化時に Label を作って参照を覚え、毎フレーム AnimationTimer が setText で更新する
+        fxInspectorPosLabelRef   = Array[Option[Label], Static],
+        fxInspectorWorldPosRef   = Array[Option[(Float64, Float64)], Static],
         // Project 切替時に新 config を積む。JavaFXLayer.paintGL が消費して texture/font/
         // projection/audio を再初期化する
         fxPendingConfigRef       = Array[Option[GameEngine.EngineConfig], Static],
+        // HotReload watcher (Open Project ごとに新規 spawn) が channel 経由でセットする
+        // 「現シーンの再読込が必要」フラグ。renderLoop が消費して pendingSceneRef に積み直す。
+        // Editor 本体の watcher は cwd 基準 ("./src/scenes") なので IDE では機能しない
+        fxReloadFlagRef          = Array[Bool, Static],
         // Open Project 後に「config swap が完了したら先頭シーンを auto-load する」希望を立てる。
         // 直接 pendingSceneRef を積むと swap 前にロードされ getFontAtlas で bug! になるため、
         // renderLoop が fxPendingConfigRef の状態 (None = swap 完了) を polling して promote する
@@ -116,7 +129,12 @@ mod IdeState {
             fxStatusSelectionLabelRef = Array#{(None: Option[Label])} @ Static,
             fxStatusFpsLabelRef      = Array#{(None: Option[Label])} @ Static,
             fxEditorSelDisplayRef    = Array#{"-"} @ Static,
+            fxInspectorContentRef    = Array#{(None: Option[VBox])} @ Static,
+            fxInspectorLastSelRef    = Array#{""} @ Static,
+            fxInspectorPosLabelRef   = Array#{(None: Option[Label])} @ Static,
+            fxInspectorWorldPosRef   = Array#{(None: Option[(Float64, Float64)])} @ Static,
             fxPendingConfigRef       = Array#{(None: Option[GameEngine.EngineConfig])} @ Static,
+            fxReloadFlagRef          = Array#{false} @ Static,
             wantsAutoLoadFirstSceneRef = Array#{false} @ Static,
             resource                 = ResourceState.newState()
         }

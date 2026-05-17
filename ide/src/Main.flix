@@ -111,8 +111,8 @@ def ideLoop(state: IdeState.IdeState, fontName: Option[String], projectRoot: Str
     }
 
 def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene: Scene[Unit]):
-        Unit \ {IO, GameEngine.Game, Fs.FileRead, Fs.FileWrite, Fs.Glob,
-                Editor.EditorState, EditHistory.Rewind} =
+        Unit \ {IO, GameEngine.Game, Fs.FileRead, Fs.FileWrite, Fs.Glob, Fs.ModificationTime,
+                Chan, NonDet, Editor.EditorState, EditHistory.Rewind} =
     if (GameEngine.Game.shouldClose()) ()
     else {
         // Phase 2: File → Open Project... で積まれた project を消費して in-place 再ロード。
@@ -161,6 +161,14 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         // editor がドラッグ確定で JSON を書き戻すと HotReload watcher が発火する。
         // 検知したら現シーンの JTree / Inspector を再構築して最新値を表示する
         refreshTreeOnReload(state);
+        // Inspector の world position を毎フレーム最新化 (ドラッグ中も live 更新される)
+        match Editor.EditorState.get()#selected {
+            case None => Array.put(None, 0, state#fxInspectorWorldPosRef)
+            case Some(sel) => {
+                let wp = Scene.globalPositionAt(sel#nodePath, edited);
+                Array.put(Some((wp#x, wp#y)), 0, state#fxInspectorWorldPosRef)
+            }
+        };
         let preview = composePreview(edited);
         GameEngine.render(preview);
         renderLoop(state, newFontName, edited)
@@ -171,7 +179,8 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
 /// 戻り値後に pendingSceneRef に先頭シーンを積んでおき、同フレームの loadPendingSceneOrKeep
 /// で実シーンへ差し替わる
 def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: String):
-        (Option[String], Scene[Unit]) \ {IO, Fs.FileRead, Fs.Glob, Editor.EditorState} =
+        (Option[String], Scene[Unit]) \ {IO, Fs.FileRead, Fs.Glob, Fs.ModificationTime,
+                                          Chan, NonDet, Editor.EditorState} =
     println("[Main] Reloading project: ${path}");
     match ProjectLoader.loadProject(path) {
         case Ok(proj) => {
@@ -193,6 +202,14 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
             let newIndex = SceneJsonIndex.loadAt(path);
             let curEditor = Editor.EditorState.get();
             Editor.EditorState.put({rootJsonIndex = newIndex | curEditor});
+            // 新 project の src/scenes を監視する HotReload watcher を起動する。
+            // Editor 本体の watcher は IDE 起動時 cwd 基準で固定なので機能しない。
+            // 起動した watcher は spawn したリレーループで flag に変換し、renderLoop が
+            // pendingSceneRef に積み直す。古い watcher は recv blocked のまま放置される
+            // (Open Project は稀なので leak は許容)
+            let reloadRx = HotReload.startWatcherAt(path + "/src/scenes");
+            let flagRef = state#fxReloadFlagRef;
+            spawn { reloadRelay(reloadRx, flagRef) } @ Static;
             // GL リソースの再 init を AWT EDT (paintGL) に依頼。clearColor/designSize/
             // texture/font/projection/audio が新 config の値に切り替わる
             Array.put(Some(proj#config), 0, state#fxPendingConfigRef);
@@ -237,27 +254,29 @@ def composePreview(scene: Scene[Unit]):
         Scene[Unit] \ {GameEngine.Game, Editor.EditorState} =
     Editor.applyOverlay((), scene)
 
-/// Editor の HotReload watcher が発火したら、現シーンの JSON を再読込して
-/// JTree と Inspector を最新値で再構築する。ドラッグ・リサイズ確定で editor が
-/// JSON を書き戻すと、このパスを通って表示が即更新される。
-///
-/// IDE は editor 常時 ON で動かすため pollReload では握り潰されてしまう。
-/// pollRawReload を使い、editor の on/off に関わらず JSON 変更を拾う。
-///
-/// populateSceneTree は選択をクリアして Inspector を placeholder に戻すので、
-/// 直後に editor 側の選択を再同期 → applySelectionToView で同じノードを
-/// 再選択し直し、Inspector に新しい座標・サイズを反映する。
+/// HotReload reloadRelay が立てた flag を消費して、現シーンを再読込予約する。
+/// reloadRelay (Open Project ごとに spawn) が channel recv 経由で flag を true にする
 def refreshTreeOnReload(state: IdeState.IdeState):
         Unit \ {IO, Editor.EditorState} =
-    if (Editor.pollRawReload())
+    let _ = Editor.pollRawReload(); // Editor 本体の channel も空読みして leak を防ぐ
+    if (Array.get(0, state#fxReloadFlagRef)) {
+        Array.put(false, 0, state#fxReloadFlagRef);
         match IdeState.getCurrentScenePath(state) {
-            case Some(path) =>
-                IdeUI.populateSceneTree(state, path);
-                discard SelectionBridge.syncEditorSelectionToTree(state);
-                IdeUI.applySelectionToView(state)
-            case None => ()
+            case Some(path) => Array.put(Some(path), 0, state#pendingSceneRef)
+            case None       => ()
         }
-    else ()
+    } else ()
+
+/// HotReload watcher が送ってくる Unit シグナルを `state#fxReloadFlagRef = true` に
+/// 変換するリレーループ。Open Project ごとに spawn する。
+/// `state` から refs だけ取り出して持つので、project 切替後も自分の rx と flag に対して
+/// 動き続ける (前 project の relay は rx が二度と発火しないので idle のまま leak する)
+def reloadRelay(rx: Receiver[Unit], flagRef: Array[Bool, Static]):
+        Unit \ {Chan, NonDet, IO} =
+    select {
+        case _ <- recv(rx) => Array.put(true, 0, flagRef)
+    };
+    reloadRelay(rx, flagRef)
 
 def decorateTitle(config: GameEngine.EngineConfig, path: String): GameEngine.EngineConfig =
     { title = "flix_game_engine IDE — ${config#title} (${path})" | config }

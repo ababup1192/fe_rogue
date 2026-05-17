@@ -25,7 +25,9 @@ mod JavaFXIdeUI {
     import javafx.scene.control.TreeView
     import javafx.scene.control.TreeItem
     import javafx.scene.control.SelectionModel
+    import javafx.scene.Node
     import javafx.scene.layout.StackPane
+    import javafx.scene.layout.VBox
     import javafx.application.Platform
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
@@ -72,6 +74,10 @@ mod JavaFXIdeUI {
         Array.put(Some(statusMouse),     0, state#fxStatusMouseLabelRef);
         Array.put(Some(statusSelection), 0, state#fxStatusSelectionLabelRef);
         Array.put(Some(statusFps),       0, state#fxStatusFpsLabelRef);
+
+        // Inspector pane
+        let inspectorContent: VBox = unchecked_cast(ns.get("inspectorContent") as VBox);
+        Array.put(Some(inspectorContent), 0, state#fxInspectorContentRef);
 
         // ステータスバー更新タイマー (FX thread 60Hz)。state Refs を読んで Label.setText するだけ
         startStatusBarTimer(state, canvasView);
@@ -243,9 +249,30 @@ mod JavaFXIdeUI {
 
                 // Selection: renderLoop が editor 状態を直接書き込んだ表示文字列を使う
                 // (selectedNodePathRef 経由は currentSceneJsonRef のセットが必要)
+                let curSel = Array.get(0, state#fxEditorSelDisplayRef);
                 match Array.get(0, state#fxStatusSelectionLabelRef) {
                     case None      => ()
-                    case Some(lbl) => lbl.setText("sel: ${Array.get(0, state#fxEditorSelDisplayRef)}")
+                    case Some(lbl) => lbl.setText("sel: ${curSel}")
+                };
+
+                // Inspector: 選択文字列が前回と変わったら再構築
+                let prevSel = Array.get(0, state#fxInspectorLastSelRef);
+                if (curSel != prevSel) {
+                    rebuildInspector(state, curSel);
+                    Array.put(curSel, 0, state#fxInspectorLastSelRef)
+                } else ();
+                // Inspector position 値を毎フレーム更新 (ドラッグ中も live に追従)
+                match Array.get(0, state#fxInspectorPosLabelRef) {
+                    case None => ()
+                    case Some(lbl) =>
+                        let txt = match Array.get(0, state#fxInspectorWorldPosRef) {
+                            case Some((wx, wy)) =>
+                                let ix = Float64.tryToInt32(wx) |> Option.getWithDefault(0i32);
+                                let iy = Float64.tryToInt32(wy) |> Option.getWithDefault(0i32);
+                                "(${ix}, ${iy})"
+                            case None => "-"
+                        };
+                        lbl.setText(txt)
                 }
             }
         };
@@ -259,4 +286,43 @@ mod JavaFXIdeUI {
             case Some(i) => String.sliceRight(start = i + 1, absPath)
             case None    => absPath
         }
+
+    /// Inspector pane の中身を再構築する。selection が変わったときだけ呼ばれる。
+    /// position 値は毎フレーム更新するため、生成した Label の参照を state に保存しておき
+    /// AnimationTimer が setText するだけにする (rebuild は selection 変化時のみ)
+    def rebuildInspector(state: IdeState.IdeState, selDisplay: String): Unit \ IO = {
+        match Array.get(0, state#fxInspectorContentRef) {
+            case None => ()
+            case Some(box) => {
+                let children = box.getChildren();
+                children.clear();
+                Array.put((None: Option[Label]), 0, state#fxInspectorPosLabelRef);
+                if (selDisplay == "-") {
+                    let placeholder = new Label("(nothing selected)");
+                    placeholder.getStyleClass().add("inspector-empty");
+                    let placeholderNode: Node = checked_cast(placeholder);
+                    discard children.add(placeholderNode)
+                } else {
+                    let nameKey = new Label("Selected:");
+                    nameKey.getStyleClass().add("inspector-row-key");
+                    let pathLabel = new Label(selDisplay);
+                    pathLabel.setWrapText(true);
+
+                    let posKey = new Label("World position:");
+                    posKey.getStyleClass().add("inspector-row-key");
+                    let posValue = new Label("-");
+                    Array.put(Some(posValue), 0, state#fxInspectorPosLabelRef);
+
+                    let nameKeyNode: Node = checked_cast(nameKey);
+                    let pathNode:    Node = checked_cast(pathLabel);
+                    let posKeyNode:  Node = checked_cast(posKey);
+                    let posValueNode:Node = checked_cast(posValue);
+                    discard children.add(nameKeyNode);
+                    discard children.add(pathNode);
+                    discard children.add(posKeyNode);
+                    discard children.add(posValueNode)
+                }
+            }
+        }
+    }
 }

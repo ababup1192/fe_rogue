@@ -23,3 +23,20 @@
 .status-bar .separator {
     -fx-padding: 0 2 0 2;
 }
+
+.inspector-content {
+    -fx-padding: 6 8 6 8;
+}
+
+.inspector-content .label {
+    -fx-font-size: 11px;
+}
+
+.inspector-content .inspector-row-key {
+    -fx-text-fill: #888888;
+}
+
+.inspector-content .inspector-empty {
+    -fx-text-fill: #888888;
+    -fx-font-style: italic;
+}
