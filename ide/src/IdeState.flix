@@ -15,6 +15,7 @@ mod IdeState {
     // JavaFX 移行用: customize で取得した fx:id ノード参照を持つ。
     // Phase 2 では TreeView と Stage のみ。Inspector 等は後続 Phase で追加
     import javafx.scene.control.TreeView
+    import javafx.scene.control.ListView
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
     import javafx.scene.layout.VBox
@@ -73,6 +74,7 @@ mod IdeState {
         // JavaFX 移行用: FXML から取得した fx:id ノード参照。
         // customize 時に Some を入れ、main thread から Platform.runLater 経由で参照する
         fxSceneTreeRef           = Array[Option[TreeView[String]], Static],
+        fxResourcesListRef       = Array[Option[ListView[String]], Static],
         fxStageRef               = Array[Option[Stage], Static],
         // ステータスバー (現シーン/マウス/選択/FPS)。AnimationTimer から polling 更新される
         fxStatusSceneLabelRef    = Array[Option[Label], Static],
@@ -143,6 +145,7 @@ mod IdeState {
             pendingTreeSelectionRef  = Array#{(None: Option[List[Int32]])} @ Static,
             treeListenerMuteRef      = Array#{false} @ Static,
             fxSceneTreeRef           = Array#{(None: Option[TreeView[String]])} @ Static,
+            fxResourcesListRef       = Array#{(None: Option[ListView[String]])} @ Static,
             fxStageRef               = Array#{(None: Option[Stage])} @ Static,
             fxStatusSceneLabelRef    = Array#{(None: Option[Label])} @ Static,
             fxStatusMouseLabelRef    = Array#{(None: Option[Label])} @ Static,

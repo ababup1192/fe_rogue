@@ -27,6 +27,7 @@ mod JavaFXIdeUI {
     import javafx.scene.control.MenuItem
     import javafx.scene.control.TreeView
     import javafx.scene.control.TreeItem
+    import javafx.scene.control.ListView
     import javafx.scene.control.SelectionModel
     import javafx.scene.Node
     import javafx.scene.layout.HBox
@@ -64,10 +65,13 @@ mod JavaFXIdeUI {
         let canvasView: ImageView = unchecked_cast(ns.get("canvasView") as ImageView);
         canvasView.setImage(initialImage);
 
-        // Scenes TreeView を取得し state に stash (main thread からの populate 用)
+        // Scenes TreeView と Resources ListView を取得し state に stash
+        // (main thread からの populate 用)
         let scenesTree: TreeView[String] = unchecked_cast(ns.get("scenesTree") as TreeView[String]);
-        Array.put(Some(scenesTree), 0, state#fxSceneTreeRef);
-        Array.put(Some(stage),      0, state#fxStageRef);
+        let resourcesList: ListView[String] = unchecked_cast(ns.get("resourcesList") as ListView[String]);
+        Array.put(Some(scenesTree),    0, state#fxSceneTreeRef);
+        Array.put(Some(resourcesList), 0, state#fxResourcesListRef);
+        Array.put(Some(stage),         0, state#fxStageRef);
 
         // ステータスバー Label を取得
         let statusScene:     Label = unchecked_cast(ns.get("statusScene") as Label);
@@ -160,7 +164,8 @@ mod JavaFXIdeUI {
     }
 
     /// 現在 FX thread にいる前提で TreeView を再構築する。
-    /// sceneFilesRef の rel path 一覧を root の子として並べる
+    /// sceneFilesRef の rel path 一覧を root の子として並べる。
+    /// 同時に Resources ListView も再構築する (state.resource.discoveredRef から)
     def populateTree(state: IdeState.IdeState): Unit \ IO = {
         match Array.get(0, state#fxSceneTreeRef) {
             case None => ()
@@ -174,6 +179,16 @@ mod JavaFXIdeUI {
                 }, pairs);
                 tree.setRoot(root);
                 tree.setShowRoot(false)
+            }
+        };
+        // Resources ListView は ResourceState.discoveredRef から build
+        match Array.get(0, state#fxResourcesListRef) {
+            case None => ()
+            case Some(listView) => {
+                let entries = Array.get(0, state#resource#discoveredRef);
+                let items = listView.getItems();
+                items.clear();
+                List.forEach(e -> discard items.add(e#displayName), entries)
             }
         }
     }

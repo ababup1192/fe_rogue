@@ -26,6 +26,9 @@
 <?import javafx.scene.control.MenuItem?>
 <?import javafx.scene.control.SplitPane?>
 <?import javafx.scene.control.TreeView?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.TabPane?>
+<?import javafx.scene.control.Tab?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.Separator?>
 <?import javafx.scene.control.ScrollPane?>
@@ -48,12 +51,20 @@
     <center>
         <SplitPane fx:id="mainSplit" dividerPositions="0.18, 0.78">
             <items>
-                <VBox>
-                    <children>
-                        <Label text="Scenes" styleClass="section-header"/>
-                        <TreeView fx:id="scenesTree" showRoot="false" VBox.vgrow="ALWAYS"/>
-                    </children>
-                </VBox>
+                <TabPane fx:id="leftTabs" tabClosingPolicy="UNAVAILABLE">
+                    <tabs>
+                        <Tab text="Scenes">
+                            <content>
+                                <TreeView fx:id="scenesTree" showRoot="false"/>
+                            </content>
+                        </Tab>
+                        <Tab text="Resources">
+                            <content>
+                                <ListView fx:id="resourcesList"/>
+                            </content>
+                        </Tab>
+                    </tabs>
+                </TabPane>
                 <StackPane fx:id="canvasContainer">
                     <children>
                         <ImageView fx:id="canvasView"
