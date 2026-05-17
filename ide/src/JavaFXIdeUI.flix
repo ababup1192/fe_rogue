@@ -65,13 +65,22 @@ mod JavaFXIdeUI {
         let canvasView: ImageView = unchecked_cast(ns.get("canvasView") as ImageView);
         canvasView.setImage(initialImage);
 
-        // Scenes TreeView と Resources ListView を取得し state に stash
-        // (main thread からの populate 用)
+        // Scenes TreeView と Resources の各 widget を取得し state に stash
         let scenesTree: TreeView[String] = unchecked_cast(ns.get("scenesTree") as TreeView[String]);
         let resourcesList: ListView[String] = unchecked_cast(ns.get("resourcesList") as ListView[String]);
-        Array.put(Some(scenesTree),    0, state#fxSceneTreeRef);
-        Array.put(Some(resourcesList), 0, state#fxResourcesListRef);
-        Array.put(Some(stage),         0, state#fxStageRef);
+        let subEntriesList: ListView[String] = unchecked_cast(ns.get("subEntriesList") as ListView[String]);
+        let propertyPanel: VBox = unchecked_cast(ns.get("propertyPanel") as VBox);
+        Array.put(Some(scenesTree),      0, state#fxSceneTreeRef);
+        Array.put(Some(resourcesList),   0, state#fxResourcesListRef);
+        Array.put(Some(subEntriesList),  0, state#fxSubEntriesListRef);
+        Array.put(Some(propertyPanel),   0, state#fxPropertyPanelRef);
+        Array.put(Some(stage),           0, state#fxStageRef);
+
+        // Resource クリック → data + schema をロードして ResourceState に書き、
+        // Sub-entries list を埋める (Swing 版 onResourceSelected と同等)
+        wireResourceSelection(state, resourcesList, subEntriesList);
+        // Sub-entry クリック → Property Panel を schema から組み立てる (read-only)
+        wireSubEntrySelection(state, subEntriesList);
 
         // ステータスバー Label を取得
         let statusScene:     Label = unchecked_cast(ns.get("statusScene") as Label);
@@ -153,6 +162,203 @@ mod JavaFXIdeUI {
             }
         };
         prop.addListener(listener)
+    }
+
+    /// Resources ListView 選択 → displayName から ResourceEntry を引き、
+    /// data + schema を Fs.FileRead 経由で読み、Sub-entries を埋める。
+    /// Swing 版 ResourceEditorUI.onResourceSelected の JavaFX 版
+    def wireResourceSelection(state: IdeState.IdeState,
+                                listView: ListView[String],
+                                subEntriesList: ListView[String]): Unit \ IO = {
+        let prop = listView.getSelectionModel().selectedItemProperty();
+        let listener = new ChangeListener[String] {
+            def changed(_cThis: ChangeListener[String],
+                         _obs: ObservableValue[JObject],
+                         _old: String, newSel: String): Unit \ IO = {
+                if (Object.isNull(newSel)) ()
+                else {
+                    let target = newSel;
+                    let entries = Array.get(0, state#resource#discoveredRef);
+                    match List.find(e -> { let n = e#displayName; n == target }, entries) {
+                        case None       => ()
+                        case Some(entry) =>
+                            run {
+                                onResourceSelected(state, entry, subEntriesList)
+                            } with Fs.FileRead.runWithIO
+                    }
+                }
+            }
+        };
+        prop.addListener(listener)
+    }
+
+    /// data + schema をロードして ResourceState に書き、Sub-entries list を埋める。
+    /// 失敗 (file 不在 / parse 失敗) はログだけ出して空状態にする
+    def onResourceSelected(state: IdeState.IdeState,
+                            entry: ResourceDiscovery.ResourceEntry,
+                            subEntriesList: ListView[String]):
+            Unit \ {IO, Fs.FileRead} = {
+        ResourceState.setSelectedDataPath(state#resource, Some(entry#dataPath));
+        ResourceState.setSelectedSubEntry(state#resource, None);
+        ResourceState.setDirty(state#resource, false);
+
+        let dataJson = loadJsonElement(entry#dataPath);
+        ResourceState.setEditingJson(state#resource, dataJson);
+
+        match Resource.loadSchemaDiagnostic(entry#schemaPath) {
+            case Ok(s)    => ResourceState.setEditingSchema(state#resource, Some(s))
+            case Err(msg) => {
+                println("[Resources] Schema load failed for ${entry#displayName}: ${msg}");
+                ResourceState.setEditingSchema(state#resource, None)
+            }
+        };
+
+        let schemaJson = loadJsonElement(entry#schemaPath);
+        ResourceState.setEditingSchemaJson(state#resource, schemaJson);
+
+        rebuildSubEntries(state, subEntriesList)
+    }
+
+    /// JSON ファイルを読んで JsonElement にパース。失敗は None
+    def loadJsonElement(path: String): Option[Json.JsonElement] \ Fs.FileRead =
+        let readResult = run {
+            Fs.ReadFile.read(path)
+        } with Fs.ReadFile.runWithFileRead;
+        readResult
+            |> Result.toOption
+            |> Option.flatMap(s -> Json.Parse.parse(String.trim(s)))
+
+    /// CatalogIn 形式なら sub-entries の key 一覧を ListView に並べる。
+    /// Single 形式なら Property Panel をすぐ build する (sub-entry を介さず top の record そのもの)
+    def rebuildSubEntries(state: IdeState.IdeState,
+                           subEntriesList: ListView[String]): Unit \ IO = {
+        let items = subEntriesList.getItems();
+        items.clear();
+        match ResourceState.getEditingJson(state#resource) {
+            case None => rebuildPropertyPanel(state)
+            case Some(json) =>
+                match ResourceCatalog.classify(json) {
+                    case ResourceCatalog.Classification.CatalogIn(info) => {
+                        List.forEach(k -> discard items.add(k), info#subEntries);
+                        rebuildPropertyPanel(state)
+                    }
+                    case _ => rebuildPropertyPanel(state)
+                }
+        }
+    }
+
+    /// Sub-entries ListView 選択 → selectedSubEntry を更新し Property Panel 再構築
+    def wireSubEntrySelection(state: IdeState.IdeState,
+                                subList: ListView[String]): Unit \ IO = {
+        let prop = subList.getSelectionModel().selectedItemProperty();
+        let listener = new ChangeListener[String] {
+            def changed(_cThis: ChangeListener[String],
+                         _obs: ObservableValue[JObject],
+                         _old: String, newSel: String): Unit \ IO = {
+                if (Object.isNull(newSel)) ()
+                else {
+                    ResourceState.setSelectedSubEntry(state#resource, Some(newSel));
+                    rebuildPropertyPanel(state)
+                }
+            }
+        };
+        prop.addListener(listener)
+    }
+
+    /// Property Panel を schema 駆動で再構築する。Phase 10e では各フィールドを
+    /// "label: value" の Label で並べるだけ。Phase 10f 以降で TextField/Spinner/Bool 等の
+    /// 編集 widget に置き換える
+    def rebuildPropertyPanel(state: IdeState.IdeState): Unit \ IO = {
+        match Array.get(0, state#fxPropertyPanelRef) {
+            case None => ()
+            case Some(panel) => {
+                let children = panel.getChildren();
+                children.clear();
+                match (ResourceState.getEditingSchema(state#resource),
+                       ResourceState.getEditingJson(state#resource)) {
+                    case (Some(schema), Some(json)) =>
+                        match currentRecordJson(state, json) {
+                            case None => addPropertyPlaceholder(children, "(select a sub-entry)")
+                            case Some(record) =>
+                                let fields = Resource.fieldsOf(schema);
+                                Map.forEach((key, entry) ->
+                                    addFieldRow(children, key, entry, record), fields)
+                        }
+                    case (None, Some(_)) =>
+                        addPropertyPlaceholder(children, "(no schema)")
+                    case _ =>
+                        addPropertyPlaceholder(children, "(select a resource)")
+                }
+            }
+        }
+    }
+
+    /// 編集対象 record の JsonElement を返す。
+    /// Single → json そのもの、CatalogIn → json[containerKey][selectedSubEntry]
+    def currentRecordJson(state: IdeState.IdeState, json: Json.JsonElement):
+            Option[Json.JsonElement] \ IO =
+        match ResourceCatalog.classify(json) {
+            case ResourceCatalog.Classification.Single => Some(json)
+            case ResourceCatalog.Classification.CatalogIn(info) =>
+                match ResourceState.getSelectedSubEntry(state#resource) {
+                    case None => None
+                    case Some(subKey) =>
+                        match json {
+                            case Json.JsonElement.JsonObject(topMap) =>
+                                match Map.get(info#containerKey, topMap) {
+                                    case Some(Json.JsonElement.JsonObject(subMap)) =>
+                                        Map.get(subKey, subMap)
+                                    case _ => None
+                                }
+                            case _ => None
+                        }
+                }
+            case _ => None
+        }
+
+    /// 1 フィールドぶんを Property Panel に追加 (Phase 10e: read-only Label)
+    def addFieldRow(children: ObservableList[Node], key: String,
+                    entry: Resource.FieldEntry, record: Json.JsonElement): Unit \ IO =
+        match entry {
+            case Resource.FieldEntry.Field(fs) => {
+                let value = jsonFieldOf(record, key);
+                let keyLabel = new Label("${fs#label}:");
+                keyLabel.getStyleClass().add("inspector-row-key");
+                let valueLabel = new Label(jsonValueToString(value));
+                valueLabel.setWrapText(true);
+                let keyNode: Node = checked_cast(keyLabel);
+                let valueNode: Node = checked_cast(valueLabel);
+                discard children.add(keyNode);
+                discard children.add(valueNode)
+            }
+            case Resource.FieldEntry.Nested(_) => {
+                let nestedLabel = new Label("${key}: (nested)");
+                nestedLabel.getStyleClass().add("inspector-row-key");
+                let node: Node = checked_cast(nestedLabel);
+                discard children.add(node)
+            }
+        }
+
+    def jsonFieldOf(record: Json.JsonElement, key: String): Option[Json.JsonElement] =
+        match record {
+            case Json.JsonElement.JsonObject(m) => Map.get(key, m)
+            case _                              => None
+        }
+
+    def jsonValueToString(v: Option[Json.JsonElement]): String = match v {
+        case None => "-"
+        case Some(Json.JsonElement.JsonString(s)) => s
+        case Some(Json.JsonElement.JsonNumber(n)) => "${n}"
+        case Some(Json.JsonElement.JsonBool(b))   => "${b}"
+        case Some(Json.JsonElement.JsonNull)      => "null"
+        case Some(_)                              => "(complex)"
+    }
+
+    def addPropertyPlaceholder(children: ObservableList[Node], text: String): Unit \ IO = {
+        let l = new Label(text);
+        l.getStyleClass().add("inspector-empty");
+        let n: Node = checked_cast(l);
+        discard children.add(n)
     }
 
     /// Main thread の renderLoop からプロジェクト切替後に呼ぶ。

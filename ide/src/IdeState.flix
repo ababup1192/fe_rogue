@@ -18,6 +18,7 @@ mod IdeState {
     import javafx.scene.control.ListView
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
+    import javafx.scene.control.TextArea
     import javafx.scene.layout.VBox
     import javafx.stage.Stage
 
@@ -75,6 +76,9 @@ mod IdeState {
         // customize 時に Some を入れ、main thread から Platform.runLater 経由で参照する
         fxSceneTreeRef           = Array[Option[TreeView[String]], Static],
         fxResourcesListRef       = Array[Option[ListView[String]], Static],
+        fxSubEntriesListRef      = Array[Option[ListView[String]], Static],
+        fxPropertyPanelRef       = Array[Option[VBox], Static],
+        fxResourceContentRef     = Array[Option[TextArea], Static],
         fxStageRef               = Array[Option[Stage], Static],
         // ステータスバー (現シーン/マウス/選択/FPS)。AnimationTimer から polling 更新される
         fxStatusSceneLabelRef    = Array[Option[Label], Static],
@@ -146,6 +150,9 @@ mod IdeState {
             treeListenerMuteRef      = Array#{false} @ Static,
             fxSceneTreeRef           = Array#{(None: Option[TreeView[String]])} @ Static,
             fxResourcesListRef       = Array#{(None: Option[ListView[String]])} @ Static,
+            fxSubEntriesListRef      = Array#{(None: Option[ListView[String]])} @ Static,
+            fxPropertyPanelRef       = Array#{(None: Option[VBox])} @ Static,
+            fxResourceContentRef     = Array#{(None: Option[TextArea])} @ Static,
             fxStageRef               = Array#{(None: Option[Stage])} @ Static,
             fxStatusSceneLabelRef    = Array#{(None: Option[Label])} @ Static,
             fxStatusMouseLabelRef    = Array#{(None: Option[Label])} @ Static,

@@ -40,3 +40,27 @@
     -fx-text-fill: #888888;
     -fx-font-style: italic;
 }
+
+.resource-content {
+    -fx-font-family: "Menlo", monospace;
+    -fx-font-size: 11px;
+}
+
+.resource-preview {
+    -fx-background-color: #1c1c1c;
+    -fx-pref-width: 256px;
+    -fx-pref-height: 256px;
+}
+
+.resource-status {
+    -fx-text-fill: #888888;
+    -fx-font-size: 11px;
+}
+
+.property-panel {
+    -fx-padding: 6 8 6 8;
+}
+
+.property-panel .label {
+    -fx-font-size: 11px;
+}

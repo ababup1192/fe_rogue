@@ -1,20 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   flix_game_engine IDE のメインレイアウト。
-  「見た目は FXML / 振る舞いは Flix」の分離方針。新しい widget を増やすときは原則:
-    1. ここに <Node fx:id="...">を追加し、属性・スタイルクラスもここで指定する
-    2. JavaFXIdeUI.flix で namespace から ref を引き、handler / 動的データだけ Flix で注入
+  Phase 10c から「ワークスペース swap」方式: トップレベルの TabPane で Scenes mode と
+  Resources mode を切り替える (Swing 版と同じ思想)。
+    - Scenes tab: SplitPane(TreeView, canvas, Inspector)
+    - Resources tab: SplitPane(Resource list 縦並び, sprite preview + save, property panel)
+                     Phase 10c では中央/右は placeholder で骨組みのみ、内容は順次移植
 
-  Phase 2 構造:
-    top    : MenuBar (File メニュー)
-    center : SplitPane 横分割
-      left  : VBox + TreeView (Scenes 一覧, showRoot=false)
-      right : StackPane fx:id="canvasContainer"
-              └ ImageView fx:id="canvasView"
-                 — JavaFXLayer が生成した WritableImage を customize で流し込む
-                 — fitWidth/Height は ${canvasContainer.x} で親に追従
-                 — scaleY=-1 で OpenGL bottom-up を JavaFX top-down に補正
-                 — preserveRatio=false で常に親いっぱいに広がる
+  「見た目は FXML / 振る舞いは Flix」の分離方針。
+  新しい widget を増やすときは原則: ここに <Node fx:id="..."> を追加 → 振る舞いは Flix。
 -->
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.StackPane?>
@@ -49,45 +43,87 @@
         </MenuBar>
     </top>
     <center>
-        <SplitPane fx:id="mainSplit" dividerPositions="0.18, 0.78">
-            <items>
-                <TabPane fx:id="leftTabs" tabClosingPolicy="UNAVAILABLE">
-                    <tabs>
-                        <Tab text="Scenes">
-                            <content>
-                                <TreeView fx:id="scenesTree" showRoot="false"/>
-                            </content>
-                        </Tab>
-                        <Tab text="Resources">
-                            <content>
-                                <ListView fx:id="resourcesList"/>
-                            </content>
-                        </Tab>
-                    </tabs>
-                </TabPane>
-                <StackPane fx:id="canvasContainer">
-                    <children>
-                        <ImageView fx:id="canvasView"
-                                   preserveRatio="false"
-                                   pickOnBounds="true"
-                                   scaleY="-1.0"
-                                   fitWidth="${canvasContainer.width}"
-                                   fitHeight="${canvasContainer.height}"/>
-                    </children>
-                </StackPane>
-                <VBox>
-                    <children>
-                        <Label text="Inspector" styleClass="section-header"/>
-                        <ScrollPane fitToWidth="true" VBox.vgrow="ALWAYS">
-                            <content>
-                                <VBox fx:id="inspectorContent" spacing="4"
-                                      styleClass="inspector-content"/>
-                            </content>
-                        </ScrollPane>
-                    </children>
-                </VBox>
-            </items>
-        </SplitPane>
+        <TabPane fx:id="modeTabs" tabClosingPolicy="UNAVAILABLE">
+            <tabs>
+                <!-- ────────── Scenes mode ────────── -->
+                <Tab text="Scenes">
+                    <content>
+                        <SplitPane fx:id="scenesSplit" dividerPositions="0.18, 0.78">
+                            <items>
+                                <VBox>
+                                    <children>
+                                        <Label text="Scenes" styleClass="section-header"/>
+                                        <TreeView fx:id="scenesTree" showRoot="false"
+                                                  VBox.vgrow="ALWAYS"/>
+                                    </children>
+                                </VBox>
+                                <StackPane fx:id="canvasContainer">
+                                    <children>
+                                        <ImageView fx:id="canvasView"
+                                                   preserveRatio="false"
+                                                   pickOnBounds="true"
+                                                   scaleY="-1.0"
+                                                   fitWidth="${canvasContainer.width}"
+                                                   fitHeight="${canvasContainer.height}"/>
+                                    </children>
+                                </StackPane>
+                                <VBox>
+                                    <children>
+                                        <Label text="Inspector" styleClass="section-header"/>
+                                        <ScrollPane fitToWidth="true" VBox.vgrow="ALWAYS">
+                                            <content>
+                                                <VBox fx:id="inspectorContent" spacing="4"
+                                                      styleClass="inspector-content"/>
+                                            </content>
+                                        </ScrollPane>
+                                    </children>
+                                </VBox>
+                            </items>
+                        </SplitPane>
+                    </content>
+                </Tab>
+                <!-- ────────── Resources mode ────────── -->
+                <Tab text="Resources">
+                    <content>
+                        <SplitPane fx:id="resourcesSplit" dividerPositions="0.20, 0.50">
+                            <items>
+                                <!-- 左: Resource list + Sub-entry list + Meta -->
+                                <VBox>
+                                    <children>
+                                        <Label text="Resources" styleClass="section-header"/>
+                                        <ListView fx:id="resourcesList" VBox.vgrow="ALWAYS"/>
+                                        <Label text="Sub-entries" styleClass="section-header"/>
+                                        <ListView fx:id="subEntriesList" VBox.vgrow="ALWAYS"/>
+                                    </children>
+                                </VBox>
+                                <!-- 中央: Sprite preview + Save (Phase 10c では placeholder) -->
+                                <VBox alignment="TOP_CENTER" spacing="8">
+                                    <children>
+                                        <Label text="Preview" styleClass="section-header"/>
+                                        <StackPane fx:id="resourcePreviewPane"
+                                                   styleClass="resource-preview" VBox.vgrow="ALWAYS"/>
+                                        <Label fx:id="resourceStatusLabel"
+                                               styleClass="resource-status" text=""/>
+                                    </children>
+                                </VBox>
+                                <!-- 右: Property panel (schema 駆動、Phase 10d で SchemaWidgets 移植) -->
+                                <VBox>
+                                    <children>
+                                        <Label text="Properties" styleClass="section-header"/>
+                                        <ScrollPane fitToWidth="true" VBox.vgrow="ALWAYS">
+                                            <content>
+                                                <VBox fx:id="propertyPanel" spacing="4"
+                                                      styleClass="property-panel"/>
+                                            </content>
+                                        </ScrollPane>
+                                    </children>
+                                </VBox>
+                            </items>
+                        </SplitPane>
+                    </content>
+                </Tab>
+            </tabs>
+        </TabPane>
     </center>
     <bottom>
         <HBox fx:id="statusBar" styleClass="status-bar" alignment="CENTER_LEFT" spacing="8">
