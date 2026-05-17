@@ -681,11 +681,14 @@ mod SceneLoader {
                                 Result[Json.JsonError, Option[String]]);
             speedScaleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "speedScale", map):
                                 Result[Json.JsonError, Option[Float64]]);
+            rotationOpt    <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map):
+                                Result[Json.JsonError, Option[Float64]]);
             ySortEnabledOpt <- (Json.FromJson.getAtKeyOpt(Root, "ySortEnabled", map): Result[Json.JsonError, Option[Bool]])
         ) yield {
             let sprite = AnimatedSprite2D.make(spriteFrames, {animation = animation}, pos, scale)
                 |> AnimatedSprite2D.setAutoplay(Option.getWithDefault("", autoplayOpt))
                 |> AnimatedSprite2D.setSpeedScale(Option.getWithDefault(1.0, speedScaleOpt))
+                |> applyOpt(rotationOpt, Node2D.setRotation)
                 |> applyOpt(ySortEnabledOpt, setAnimSpriteYSortEnabled);
             EngineNode.AnimSprite2DWithState(sprite, tag)
         }

@@ -4,14 +4,8 @@
       "animation": "flap",
       "autoplay": "flap",
       "name": "sprite",
-      "pos": [
-        0,
-        0
-      ],
-      "scale": [
-        2,
-        2
-      ],
+      "pos": [1, 0],
+      "scale": [2, 2],
       "spriteFrames": {
         "flap": {
           "frames": [
@@ -29,7 +23,8 @@
           "speed": 10.0
         }
       },
-      "type": "AnimatedSprite2D"
+      "type": "AnimatedSprite2D",
+      "rotation": 0
     },
     {
       "name": "area",

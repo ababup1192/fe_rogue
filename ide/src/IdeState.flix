@@ -16,6 +16,7 @@ mod IdeState {
     // Phase 2 では TreeView と Stage のみ。Inspector 等は後続 Phase で追加
     import javafx.scene.control.TreeView
     import javafx.scene.control.Label
+    import javafx.scene.control.TextField
     import javafx.scene.layout.VBox
     import javafx.stage.Stage
 
@@ -86,10 +87,29 @@ mod IdeState {
         // AnimationTimer が選択変化を検知して再構築する
         fxInspectorContentRef    = Array[Option[VBox], Static],
         fxInspectorLastSelRef    = Array[String, Static],
-        // Inspector の位置ラベル参照と、renderLoop が毎フレーム書き込む選択ノードの worldPos。
+        // Inspector の各ラベル参照と、renderLoop が毎フレーム書き込む選択ノードの値。
         // 選択変化時に Label を作って参照を覚え、毎フレーム AnimationTimer が setText で更新する
-        fxInspectorPosLabelRef   = Array[Option[Label], Static],
-        fxInspectorWorldPosRef   = Array[Option[(Float64, Float64)], Static],
+        fxInspectorPosLabelRef      = Array[Option[Label], Static],
+        fxInspectorLocalPosLabelRef = Array[Option[Label], Static],
+        fxInspectorScaleLabelRef    = Array[Option[Label], Static],
+        fxInspectorRotationLabelRef = Array[Option[Label], Static],
+        fxInspectorWorldPosRef      = Array[Option[(Float64, Float64)], Static],
+        fxInspectorLocalPosRef      = Array[Option[(Float64, Float64)], Static],
+        fxInspectorScaleRef         = Array[Option[(Float64, Float64)], Static],
+        fxInspectorRotationRef      = Array[Option[Float64], Static],
+        // Local position / Scale / Rotation はすべて編集可能 TextField で表示する。
+        // AnimationTimer は focus が無いときだけ setText し、Enter で commit
+        fxInspectorLocalXFieldRef   = Array[Option[TextField], Static],
+        fxInspectorLocalYFieldRef   = Array[Option[TextField], Static],
+        fxInspectorScaleXFieldRef   = Array[Option[TextField], Static],
+        fxInspectorScaleYFieldRef   = Array[Option[TextField], Static],
+        fxInspectorRotationFieldRef = Array[Option[TextField], Static],
+        // TextField commit から renderLoop に渡される編集値。
+        // renderLoop が SceneSerializer.update* に流して JSON 書込み → HotReload 経由再 load
+        fxPendingLocalPosEditRef    = Array[Option[(Float64, Float64)], Static],
+        fxPendingScaleEditRef       = Array[Option[(Float64, Float64)], Static],
+        // Rotation 編集値は degree で受けて radian に変換して保存
+        fxPendingRotationEditRef    = Array[Option[Float64], Static],
         // Project 切替時に新 config を積む。JavaFXLayer.paintGL が消費して texture/font/
         // projection/audio を再初期化する
         fxPendingConfigRef       = Array[Option[GameEngine.EngineConfig], Static],
@@ -131,8 +151,22 @@ mod IdeState {
             fxEditorSelDisplayRef    = Array#{"-"} @ Static,
             fxInspectorContentRef    = Array#{(None: Option[VBox])} @ Static,
             fxInspectorLastSelRef    = Array#{""} @ Static,
-            fxInspectorPosLabelRef   = Array#{(None: Option[Label])} @ Static,
-            fxInspectorWorldPosRef   = Array#{(None: Option[(Float64, Float64)])} @ Static,
+            fxInspectorPosLabelRef      = Array#{(None: Option[Label])} @ Static,
+            fxInspectorLocalPosLabelRef = Array#{(None: Option[Label])} @ Static,
+            fxInspectorScaleLabelRef    = Array#{(None: Option[Label])} @ Static,
+            fxInspectorRotationLabelRef = Array#{(None: Option[Label])} @ Static,
+            fxInspectorWorldPosRef      = Array#{(None: Option[(Float64, Float64)])} @ Static,
+            fxInspectorLocalPosRef      = Array#{(None: Option[(Float64, Float64)])} @ Static,
+            fxInspectorScaleRef         = Array#{(None: Option[(Float64, Float64)])} @ Static,
+            fxInspectorRotationRef      = Array#{(None: Option[Float64])} @ Static,
+            fxInspectorLocalXFieldRef   = Array#{(None: Option[TextField])} @ Static,
+            fxInspectorLocalYFieldRef   = Array#{(None: Option[TextField])} @ Static,
+            fxInspectorScaleXFieldRef   = Array#{(None: Option[TextField])} @ Static,
+            fxInspectorScaleYFieldRef   = Array#{(None: Option[TextField])} @ Static,
+            fxInspectorRotationFieldRef = Array#{(None: Option[TextField])} @ Static,
+            fxPendingLocalPosEditRef    = Array#{(None: Option[(Float64, Float64)])} @ Static,
+            fxPendingScaleEditRef       = Array#{(None: Option[(Float64, Float64)])} @ Static,
+            fxPendingRotationEditRef    = Array#{(None: Option[Float64])} @ Static,
             fxPendingConfigRef       = Array#{(None: Option[GameEngine.EngineConfig])} @ Static,
             fxReloadFlagRef          = Array#{false} @ Static,
             wantsAutoLoadFirstSceneRef = Array#{false} @ Static,

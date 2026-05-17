@@ -12,6 +12,7 @@ mod JavaFXIdeUI {
     import java.io.File
     import java.lang.{Object => JObject}
     import java.lang.Runnable
+    import javafx.collections.ObservableList
     import javafx.fxml.FXMLLoader
     import javafx.animation.AnimationTimer
     import javafx.scene.Parent
@@ -19,6 +20,8 @@ mod JavaFXIdeUI {
     import javafx.scene.image.ImageView
     import javafx.scene.image.WritableImage
     import javafx.scene.control.Label
+    import javafx.scene.control.TextField
+    import javafx.event.ActionEvent
     import javafx.scene.input.MouseEvent
     import javafx.scene.control.MenuBar
     import javafx.scene.control.MenuItem
@@ -26,6 +29,7 @@ mod JavaFXIdeUI {
     import javafx.scene.control.TreeItem
     import javafx.scene.control.SelectionModel
     import javafx.scene.Node
+    import javafx.scene.layout.HBox
     import javafx.scene.layout.StackPane
     import javafx.scene.layout.VBox
     import javafx.application.Platform
@@ -261,18 +265,23 @@ mod JavaFXIdeUI {
                     rebuildInspector(state, curSel);
                     Array.put(curSel, 0, state#fxInspectorLastSelRef)
                 } else ();
-                // Inspector position 値を毎フレーム更新 (ドラッグ中も live に追従)
-                match Array.get(0, state#fxInspectorPosLabelRef) {
-                    case None => ()
-                    case Some(lbl) =>
-                        let txt = match Array.get(0, state#fxInspectorWorldPosRef) {
-                            case Some((wx, wy)) =>
-                                let ix = Float64.tryToInt32(wx) |> Option.getWithDefault(0i32);
-                                let iy = Float64.tryToInt32(wy) |> Option.getWithDefault(0i32);
-                                "(${ix}, ${iy})"
-                            case None => "-"
-                        };
-                        lbl.setText(txt)
+                // Inspector の各プロパティを毎フレーム更新 (ドラッグ・リサイズ中も live に追従)。
+                // TextField は focus 中はユーザー入力を上書きしない
+                updateVec2Label(state#fxInspectorPosLabelRef, state#fxInspectorWorldPosRef);
+                updateVec2TextField(state#fxInspectorLocalXFieldRef, state#fxInspectorLocalYFieldRef,
+                                     state#fxInspectorLocalPosRef);
+                updateVec2TextField(state#fxInspectorScaleXFieldRef, state#fxInspectorScaleYFieldRef,
+                                     state#fxInspectorScaleRef);
+                // Rotation: 内部 ラジアン → 表示 度
+                match (Array.get(0, state#fxInspectorRotationFieldRef),
+                       Array.get(0, state#fxInspectorRotationRef)) {
+                    case (Some(f), Some(rad)) =>
+                        if (not f.isFocused()) {
+                            let deg = rad * 180.0 / 3.14159265358979;
+                            let ideg = Float64.tryToInt32(deg) |> Option.getWithDefault(0i32);
+                            f.setText("${ideg}")
+                        } else ()
+                    case _ => ()
                 }
             }
         };
@@ -288,7 +297,7 @@ mod JavaFXIdeUI {
         }
 
     /// Inspector pane の中身を再構築する。selection が変わったときだけ呼ばれる。
-    /// position 値は毎フレーム更新するため、生成した Label の参照を state に保存しておき
+    /// プロパティ値は毎フレーム更新するため、生成した Label の参照を state に保存しておき
     /// AnimationTimer が setText するだけにする (rebuild は selection 変化時のみ)
     def rebuildInspector(state: IdeState.IdeState, selDisplay: String): Unit \ IO = {
         match Array.get(0, state#fxInspectorContentRef) {
@@ -297,6 +306,9 @@ mod JavaFXIdeUI {
                 let children = box.getChildren();
                 children.clear();
                 Array.put((None: Option[Label]), 0, state#fxInspectorPosLabelRef);
+                Array.put((None: Option[Label]), 0, state#fxInspectorLocalPosLabelRef);
+                Array.put((None: Option[Label]), 0, state#fxInspectorScaleLabelRef);
+                Array.put((None: Option[Label]), 0, state#fxInspectorRotationLabelRef);
                 if (selDisplay == "-") {
                     let placeholder = new Label("(nothing selected)");
                     placeholder.getStyleClass().add("inspector-empty");
@@ -307,22 +319,135 @@ mod JavaFXIdeUI {
                     nameKey.getStyleClass().add("inspector-row-key");
                     let pathLabel = new Label(selDisplay);
                     pathLabel.setWrapText(true);
-
-                    let posKey = new Label("World position:");
-                    posKey.getStyleClass().add("inspector-row-key");
-                    let posValue = new Label("-");
-                    Array.put(Some(posValue), 0, state#fxInspectorPosLabelRef);
-
                     let nameKeyNode: Node = checked_cast(nameKey);
-                    let pathNode:    Node = checked_cast(pathLabel);
-                    let posKeyNode:  Node = checked_cast(posKey);
-                    let posValueNode:Node = checked_cast(posValue);
+                    let pathNode: Node = checked_cast(pathLabel);
                     discard children.add(nameKeyNode);
                     discard children.add(pathNode);
-                    discard children.add(posKeyNode);
-                    discard children.add(posValueNode)
+
+                    let worldPosValue = addInspectorRow(children, "World position:");
+                    Array.put(Some(worldPosValue), 0, state#fxInspectorPosLabelRef);
+
+                    // Local position / Scale / Rotation はいずれも編集可能 TextField で表示
+                    addEditableVec2Row(state, children, "Local position:",
+                                        state#fxInspectorLocalXFieldRef,
+                                        state#fxInspectorLocalYFieldRef,
+                                        state#fxPendingLocalPosEditRef);
+                    addEditableVec2Row(state, children, "Scale:",
+                                        state#fxInspectorScaleXFieldRef,
+                                        state#fxInspectorScaleYFieldRef,
+                                        state#fxPendingScaleEditRef);
+                    addEditableRotationRow(state, children)
                 }
             }
         }
+    }
+
+    /// 2 つの TextField (X, Y) を Vec2 ref から更新する。focus 中はユーザー入力を上書きしない
+    def updateVec2TextField(xRef: Array[Option[TextField], Static],
+                             yRef: Array[Option[TextField], Static],
+                             valRef: Array[Option[(Float64, Float64)], Static]): Unit \ IO =
+        match Array.get(0, valRef) {
+            case None => ()
+            case Some((x, y)) => {
+                let ix = Float64.tryToInt32(x) |> Option.getWithDefault(0i32);
+                let iy = Float64.tryToInt32(y) |> Option.getWithDefault(0i32);
+                match Array.get(0, xRef) {
+                    case Some(f) => if (not f.isFocused()) f.setText("${ix}") else ()
+                    case None    => ()
+                };
+                match Array.get(0, yRef) {
+                    case Some(f) => if (not f.isFocused()) f.setText("${iy}") else ()
+                    case None    => ()
+                }
+            }
+        }
+
+    /// Vec2 (Float64×2) 値 Ref → Label.setText の共通処理
+    def updateVec2Label(lblRef: Array[Option[Label], Static],
+                         valRef: Array[Option[(Float64, Float64)], Static]): Unit \ IO =
+        match Array.get(0, lblRef) {
+            case None => ()
+            case Some(lbl) =>
+                let txt = match Array.get(0, valRef) {
+                    case Some((x, y)) =>
+                        let ix = Float64.tryToInt32(x) |> Option.getWithDefault(0i32);
+                        let iy = Float64.tryToInt32(y) |> Option.getWithDefault(0i32);
+                        "(${ix}, ${iy})"
+                    case None => "-"
+                };
+                lbl.setText(txt)
+        }
+
+    /// Inspector 内に "Key: -" 形式の 1 行を追加し、値ラベルを返す
+    def addInspectorRow(children: ObservableList[Node], keyText: String): Label \ IO = {
+        let key = new Label(keyText);
+        key.getStyleClass().add("inspector-row-key");
+        let value = new Label("-");
+        let keyNode: Node = checked_cast(key);
+        let valueNode: Node = checked_cast(value);
+        discard children.add(keyNode);
+        discard children.add(valueNode);
+        value
+    }
+
+    /// Vec2 (Float64×2) 編集用の汎用行追加。X / Y の TextField と pending ref を受け取り、
+    /// Enter で pending ref に新値を積む
+    def addEditableVec2Row(state: IdeState.IdeState, children: ObservableList[Node],
+                            keyText: String,
+                            xFieldRef: Array[Option[TextField], Static],
+                            yFieldRef: Array[Option[TextField], Static],
+                            pendingRef: Array[Option[(Float64, Float64)], Static]):
+            Unit \ IO = {
+        let _ = state;
+        let key = new Label(keyText);
+        key.getStyleClass().add("inspector-row-key");
+        let xField = new TextField("0");
+        let yField = new TextField("0");
+        xField.setPrefWidth(60.0);
+        yField.setPrefWidth(60.0);
+        let commitHandler = new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                let x = Float64.fromString(xField.getText()) |> Option.getWithDefault(0.0);
+                let y = Float64.fromString(yField.getText()) |> Option.getWithDefault(0.0);
+                Array.put(Some((x, y)), 0, pendingRef)
+            }
+        };
+        xField.setOnAction(commitHandler);
+        yField.setOnAction(commitHandler);
+        Array.put(Some(xField), 0, xFieldRef);
+        Array.put(Some(yField), 0, yFieldRef);
+
+        let row = new HBox(4.0);
+        let xNode: Node = checked_cast(xField);
+        let yNode: Node = checked_cast(yField);
+        discard row.getChildren().add(xNode);
+        discard row.getChildren().add(yNode);
+
+        let keyNode: Node = checked_cast(key);
+        let rowNode: Node = checked_cast(row);
+        discard children.add(keyNode);
+        discard children.add(rowNode)
+    }
+
+    /// Rotation 行 (度入力 → ラジアン保存)。単一 TextField
+    def addEditableRotationRow(state: IdeState.IdeState, children: ObservableList[Node]):
+            Unit \ IO = {
+        let key = new Label("Rotation (°):");
+        key.getStyleClass().add("inspector-row-key");
+        let field = new TextField("0");
+        field.setPrefWidth(80.0);
+        let commitHandler = new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                let deg = Float64.fromString(field.getText()) |> Option.getWithDefault(0.0);
+                let rad = deg * 3.14159265358979 / 180.0;
+                Array.put(Some(rad), 0, state#fxPendingRotationEditRef)
+            }
+        };
+        field.setOnAction(commitHandler);
+        Array.put(Some(field), 0, state#fxInspectorRotationFieldRef);
+        let keyNode: Node = checked_cast(key);
+        let fieldNode: Node = checked_cast(field);
+        discard children.add(keyNode);
+        discard children.add(fieldNode)
     }
 }

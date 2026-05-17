@@ -158,15 +158,40 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         if (SelectionBridge.syncEditorSelectionToTree(state))
             IdeUI.applySelectionToView(state)
         else ();
+        // Inspector の TextField から積まれた編集要求を消費し、
+        // SceneSerializer.update* 経由で JSON を書き戻す。HotReload watcher が
+        // ファイル変化を検知して次フレームで scene を再 load する
+        applyInspectorEdits(state);
         // editor がドラッグ確定で JSON を書き戻すと HotReload watcher が発火する。
         // 検知したら現シーンの JTree / Inspector を再構築して最新値を表示する
         refreshTreeOnReload(state);
-        // Inspector の world position を毎フレーム最新化 (ドラッグ中も live 更新される)
+        // Inspector の world position / local pos / scale / rotation を毎フレーム最新化
+        // (ドラッグ・リサイズ・回転中も live 更新)
         match Editor.EditorState.get()#selected {
-            case None => Array.put(None, 0, state#fxInspectorWorldPosRef)
+            case None => {
+                Array.put(None, 0, state#fxInspectorWorldPosRef);
+                Array.put(None, 0, state#fxInspectorLocalPosRef);
+                Array.put(None, 0, state#fxInspectorScaleRef);
+                Array.put(None, 0, state#fxInspectorRotationRef)
+            }
             case Some(sel) => {
                 let wp = Scene.globalPositionAt(sel#nodePath, edited);
-                Array.put(Some((wp#x, wp#y)), 0, state#fxInspectorWorldPosRef)
+                Array.put(Some((wp#x, wp#y)), 0, state#fxInspectorWorldPosRef);
+                match Scene.getEngineNode(sel#nodePath, edited) {
+                    case None => {
+                        Array.put(None, 0, state#fxInspectorLocalPosRef);
+                        Array.put(None, 0, state#fxInspectorScaleRef);
+                        Array.put(None, 0, state#fxInspectorRotationRef)
+                    }
+                    case Some(engineNode) => {
+                        let lp = Node2D.getPosition(engineNode);
+                        let sc = Node2D.getScale(engineNode);
+                        let rot = Node2D.getRotation(engineNode);
+                        Array.put(Some((lp#x, lp#y)), 0, state#fxInspectorLocalPosRef);
+                        Array.put(Some((sc#x, sc#y)), 0, state#fxInspectorScaleRef);
+                        Array.put(Some(rot), 0, state#fxInspectorRotationRef)
+                    }
+                }
             }
         };
         let preview = composePreview(edited);
@@ -253,6 +278,52 @@ def loadPendingSceneOrKeep(state: IdeState.IdeState, fontName: Option[String],
 def composePreview(scene: Scene[Unit]):
         Scene[Unit] \ {GameEngine.Game, Editor.EditorState} =
     Editor.applyOverlay((), scene)
+
+/// Inspector の TextField commit からくる編集要求 (pos/scale/rotation) を消費して
+/// SceneSerializer 経由で JSON 書き戻し。HotReload watcher が拾って再 load されることで
+/// in-memory scene と Inspector 表示が新値に更新される
+def applyInspectorEdits(state: IdeState.IdeState):
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Editor.EditorState} =
+    let sel = Editor.EditorState.get()#selected;
+    match Array.get(0, state#fxPendingLocalPosEditRef) {
+        case None => ()
+        case Some((newX, newY)) => {
+            Array.put(None, 0, state#fxPendingLocalPosEditRef);
+            match sel {
+                case Some(s) => {
+                    println("[Inspector] update pos ${s#jsonNodePath} → (${newX}, ${newY})");
+                    SceneSerializer.updatePos(s#jsonPath, s#jsonNodePath, {x = newX, y = newY})
+                }
+                case None => ()
+            }
+        }
+    };
+    match Array.get(0, state#fxPendingScaleEditRef) {
+        case None => ()
+        case Some((sx, sy)) => {
+            Array.put(None, 0, state#fxPendingScaleEditRef);
+            match sel {
+                case Some(s) => {
+                    println("[Inspector] update scale ${s#jsonNodePath} → (${sx}, ${sy})");
+                    SceneSerializer.updateScale(s#jsonPath, s#jsonNodePath, {x = sx, y = sy})
+                }
+                case None => ()
+            }
+        }
+    };
+    match Array.get(0, state#fxPendingRotationEditRef) {
+        case None => ()
+        case Some(rad) => {
+            Array.put(None, 0, state#fxPendingRotationEditRef);
+            match sel {
+                case Some(s) => {
+                    println("[Inspector] update rotation ${s#jsonNodePath} → ${rad} rad");
+                    SceneSerializer.updateRotation(s#jsonPath, s#jsonNodePath, rad)
+                }
+                case None => ()
+            }
+        }
+    }
 
 /// HotReload reloadRelay が立てた flag を消費して、現シーンを再読込予約する。
 /// reloadRelay (Open Project ごとに spawn) が channel recv 経由で flag を true にする
