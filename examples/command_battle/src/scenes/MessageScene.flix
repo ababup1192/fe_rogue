@@ -15,7 +15,9 @@ mod MessageScene {
 
     pub def name(): String = "message_panel"
     pub def textName(): String = "text"
-    pub def textPath(): NodePath = name() :: textName() :: Nil
+    /// Panel の絶対パス。 battle CanvasLayer 配下の ui_layer の child として配置される。
+    pub def panelPath(): NodePath = BattleScene.uiLayerPath() ::: name() :: Nil
+    pub def textPath(): NodePath = panelPath() ::: textName() :: Nil
 
     def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
         match opt {
@@ -28,30 +30,50 @@ mod MessageScene {
 
     pub def add(fontAtlas: FontAtlas, scene: Scene[NodeTag]):
                 Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
-        SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas, tagParser, scene)
+        SceneLoader.loadSceneWithFontAt(BattleScene.uiLayerPath(), sceneJsonPath(),
+                                        fontAtlas, tagParser, scene)
 
     /// GamePhase + BattleState から表示するメッセージを生成する。
-    /// 空文字 ("") は「メッセージなし」（Title 中 / コマンド選択中など）。
+    /// 空文字 ("") は「メッセージなし」 (Title 中 / コマンド選択中 / じゅもん選択中など)。
+    /// Resolving / EnemyActing では lastAction.kind で文体を分岐する。
     pub def messageFor(phase: GamePhase, state: BattleScene.State): String =
         match phase {
             case GamePhase.Title         => ""
             case GamePhase.CommandSelect => ""
-            case GamePhase.Resolving     =>
-                match state#lastAction {
-                    case Some(a) =>
-                        "${a#actor}は ${a#target}に こうげき！\n${a#target}に ${a#damage} の ダメージ！"
-                    case None => ""
-                }
-            case GamePhase.EnemyActing   =>
-                match state#lastAction {
-                    case Some(a) =>
-                        "${a#actor}の こうげき！\n${a#target}に ${a#damage} の ダメージ！"
-                    case None => ""
-                }
+            case GamePhase.SpellSelect   => ""
+            case GamePhase.ItemSelect    => ""
+            case GamePhase.Resolving     => actionMessage(false, state#lastAction)
+            case GamePhase.EnemyActing   => actionMessage(true, state#lastAction)
             case GamePhase.Victory       =>
                 "${state#enemy#name}を たおした！\nEnter キーで タイトルへ"
             case GamePhase.Defeat        =>
                 "${state#hero#name}は ちからつきた…\nEnter キーで タイトルへ"
+        }
+
+    /// `ActionResult` 1 件からメッセージ文を組み立てる。 kind で文体を分岐:
+    ///   - Attack       : 「X は Y に こうげき！\nY に N の ダメージ！」
+    ///   - SpellDamage  : 「X の メラ！\nY に N の ダメージ！」  (actor が「X の メラ！」 形式)
+    ///   - SpellHeal    : 「X の ホイミ！\nX の HP が N 回復！」
+    ///   - Insufficient : 「X は メラを となえた！\nしかし MP が たりない！」
+    def actionMessage(byEnemy: Bool, lastAction: Option[BattleScene.ActionResult]): String =
+        match lastAction {
+            case None => ""
+            case Some(a) =>
+                match a#kind {
+                    case BattleScene.ActionKind.Attack =>
+                        if (byEnemy)
+                            // 敵ターン: 「スライムの こうげき！」 (DQ 文体)
+                            "${a#actor}の こうげき！\n${a#target}に ${a#damage} の ダメージ！"
+                        else
+                            // プレイヤーターン: 「ゆうしゃは スライムに こうげき！」
+                            "${a#actor}は ${a#target}に こうげき！\n${a#target}に ${a#damage} の ダメージ！"
+                    case BattleScene.ActionKind.SpellDamage =>
+                        "${a#actor}\n${a#target}に ${a#damage} の ダメージ！"
+                    case BattleScene.ActionKind.SpellHeal =>
+                        "${a#actor}\n${a#target}の HP が ${a#damage} 回復！"
+                    case BattleScene.ActionKind.Insufficient =>
+                        "${a#actor}\nしかし MP が たりない！"
+                }
         }
 
     /// メッセージ表示が完了しているか（テキストが空 or visibleCharacters が totalCharCount に達した）。
@@ -75,16 +97,21 @@ mod MessageScene {
             case other => other
         }, scene)
 
-    /// ルート Panel に対する process。Title 以外で visible=true。
-    pub def processPanel(_delta: Duration.Duration, node: EngineNode[NodeTag],
-                         _path: NodePath,
-                         scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ GamePhaseState =
-        match node {
-            case EngineNode.PanelWithState(panel, NodeTag.MessagePanel) =>
-                let visible = GamePhaseState.get() != GamePhase.Title;
-                (EngineNode.PanelWithState(CanvasItem.setVisible(visible, panel), NodeTag.MessagePanel), scene)
-            case _ => (node, scene)
-        }
+    /// フェーズ遷移時に呼ばれる Push モデルの visibility 適用関数。
+    /// メッセージが必要なフェーズ（Resolving / EnemyActing / Victory / Defeat）でだけ visible。
+    pub def applyVisibility(phase: GamePhase, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let visible = match phase {
+            case GamePhase.Resolving   => true
+            case GamePhase.EnemyActing => true
+            case GamePhase.Victory     => true
+            case GamePhase.Defeat      => true
+            case _                     => false
+        };
+        Scene.mapEngineNode(panelPath(), node -> match node {
+            case EngineNode.PanelWithState(panel, tag) =>
+                EngineNode.PanelWithState(CanvasItem.setVisible(visible, panel), tag)
+            case other => other
+        }, scene)
 
     /// RichTextLabel (MessageBox) に対する process。
     /// 期待メッセージと現在の text を比較し、差分があれば setText + visibleCharacters=0、

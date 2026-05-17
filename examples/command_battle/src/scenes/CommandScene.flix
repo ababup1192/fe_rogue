@@ -11,7 +11,8 @@ mod CommandScene {
 
     pub def name(): String = "command_panel"
     pub def menuName(): String = "menu"
-    pub def menuPath(): NodePath = name() :: menuName() :: Nil
+    pub def panelPath(): NodePath = BattleScene.uiLayerPath() ::: name() :: Nil
+    pub def menuPath(): NodePath = panelPath() ::: menuName() :: Nil
 
     def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
         match opt {
@@ -24,35 +25,24 @@ mod CommandScene {
 
     pub def add(fontAtlas: FontAtlas, scene: Scene[NodeTag]):
                 Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
-        SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas, tagParser, scene)
+        SceneLoader.loadSceneWithFontAt(BattleScene.uiLayerPath(), sceneJsonPath(),
+                                        fontAtlas, tagParser, scene)
 
-    /// ルート Panel に対する process。Title 以外で visible=true。
-    pub def processPanel(_delta: Duration.Duration, node: EngineNode[NodeTag],
-                         _path: NodePath,
-                         scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ GamePhaseState =
-        match node {
-            case EngineNode.PanelWithState(panel, NodeTag.CommandPanel) =>
-                let visible = GamePhaseState.get() != GamePhase.Title;
-                (EngineNode.PanelWithState(CanvasItem.setVisible(visible, panel), NodeTag.CommandPanel), scene)
-            case _ => (node, scene)
-        }
-
-    /// ItemList (CommandMenu) に対する process。`GamePhase.CommandSelect` のとき focused=true、
-    /// それ以外で focused=false。ItemList.setFocused は false→true 切替時に prev*Down を全 true
-    /// に初期化するので、 直前フェーズで押されていたキー（Title→Enter 等）は自動的に消費される。
-    pub def processMenu(_delta: Duration.Duration, node: EngineNode[NodeTag],
-                        _path: NodePath,
-                        scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ GamePhaseState =
-        match node {
-            case EngineNode.ItemListWithState(list, NodeTag.CommandMenu) =>
-                let focused = GamePhaseState.get() == GamePhase.CommandSelect;
-                (EngineNode.ItemListWithState(ItemList.setFocused(focused, list), NodeTag.CommandMenu), scene)
-            case _ => (node, scene)
-        }
+    /// フェーズ遷移時に呼ばれる Push モデルの visibility 適用関数。
+    /// CommandPanel 自体の visible は親の battle CanvasLayer の visible 切替に任せる
+    /// （親子伝播で Title 時には自動的に hidden になる）ので、 ここでは ItemList の
+    /// focused だけを切り替える。 ItemList.setFocused は false→true 切替時に prev*Down
+    /// を全 true 初期化するので、 直前フェーズで押されていたキーは自動的に消費される
+    /// （Enter 連鎖防止）。
+    pub def applyVisibility(phase: GamePhase, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let focused = phase == GamePhase.CommandSelect;
+        Scene.mapEngineNode(menuPath(), node -> match node {
+            case EngineNode.ItemListWithState(list, tag) =>
+                EngineNode.ItemListWithState(ItemList.setFocused(focused, list), tag)
+            case other => other
+        }, scene)
 
     /// コマンド項目が確定された (Enter) ときの処理。 Game.flix の MenuHandler から呼ばれる。
-    /// PR3 範囲: たたかうのみ実装。 じゅもん/どうぐは PR4 で `GamePhase.SpellSelect` /
-    /// `GamePhase.ItemSelect` 遷移を追加する。
     pub def onCommandConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                                 Scene[NodeTag] \ {GamePhaseState, Math.Random} =
         match entry#text {
@@ -60,8 +50,10 @@ mod CommandScene {
                 let afterAttack = BattleScene.applyPlayerAttack(scene);
                 GamePhaseState.put(GamePhase.Resolving);
                 afterAttack
-            case _ =>
-                // じゅもん / どうぐは PR4 で実装。 PR3 では何もしない。
-                scene
+            case "じゅもん" =>
+                GamePhaseState.put(GamePhase.SpellSelect); scene
+            case "どうぐ" =>
+                GamePhaseState.put(GamePhase.ItemSelect); scene
+            case _ => scene
         }
 }

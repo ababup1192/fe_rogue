@@ -20,6 +20,8 @@
 pub enum GamePhase with Eq, ToString {
     case Title           // タイトル画面
     case CommandSelect   // プレイヤーのコマンド選択中
+    case SpellSelect     // じゅもんサブメニュー選択中
+    case ItemSelect      // どうぐサブメニュー選択中
     case Resolving       // プレイヤー行動の解決中（攻撃メッセージ表示）
     case EnemyActing     // 敵の行動中（反撃メッセージ表示）
     case Victory         // 勝利（敵を倒した）
@@ -52,6 +54,10 @@ pub enum NodeTag {
     case MessagePanel
     case CommandPanel
     case CommandMenu
+    case SpellPanel
+    case SpellMenu
+    case ItemPanel
+    case ItemMenu
     case MessageBox
     case EnemyLabel
     case StatusLabel
@@ -65,26 +71,24 @@ pub enum NodeTag {
 instance Node[NodeTag] {
     type Aef = { GamePhaseState }
 
+    // 毎フレーム動かす必要があるのは「状態 → 表示」 の連動だけ
+    //   - StatusLabel / EnemyLabel : HP の文字列表示更新
+    //   - MessageBox               : タイプライターの 1 文字進行
+    //   - ItemMenu                 : 所持アイテム数の変化を即反映
+    // フェーズに依存する visibility / focused 制御は Game.applyVisibility が
+    // フェーズ遷移時に 1 度だけ呼ぶ（Push モデル）ので process では扱わない。
     redef process(delta: Duration.Duration, node: EngineNode[NodeTag],
                   path: NodePath,
                   scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ GamePhaseState =
         match node {
-            case EngineNode.CanvasLayerWithState(_, NodeTag.TitleLayer) =>
-                TitleScene.process(delta, node, path, scene)
-            case EngineNode.CanvasLayerWithState(_, NodeTag.BattleLayer) =>
-                BattleScene.processLayer(delta, node, path, scene)
             case EngineNode.Label2DWithState(_, NodeTag.StatusLabel) =>
                 checked_ecast(BattleScene.processStatusLabel(delta, node, path, scene))
             case EngineNode.Label2DWithState(_, NodeTag.EnemyLabel) =>
                 checked_ecast(BattleScene.processEnemyLabel(delta, node, path, scene))
-            case EngineNode.PanelWithState(_, NodeTag.MessagePanel) =>
-                MessageScene.processPanel(delta, node, path, scene)
             case EngineNode.RichTextLabelWithState(_, NodeTag.MessageBox) =>
                 MessageScene.processBox(delta, node, path, scene)
-            case EngineNode.PanelWithState(_, NodeTag.CommandPanel) =>
-                CommandScene.processPanel(delta, node, path, scene)
-            case EngineNode.ItemListWithState(_, NodeTag.CommandMenu) =>
-                CommandScene.processMenu(delta, node, path, scene)
+            case EngineNode.ItemListWithState(_, NodeTag.ItemMenu) =>
+                checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
             case _ => (node, scene)
         }
 }
@@ -110,13 +114,22 @@ instance InputEvent.InputHandler[NodeTag] {
 
 instance MenuEvent.MenuHandler[NodeTag] {
     type Aef = { GamePhaseState, Math.Random }
-    // dispatch のみ。 実処理は CommandScene.onCommandConfirmed に委譲する。
+    // dispatch のみ。 各 menu のロジックは Scene の関数に委譲する。
     redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
                           state: NodeTag,
                           scene: Scene[NodeTag]): Scene[NodeTag] \ {GamePhaseState, Math.Random} =
         match state {
             case NodeTag.CommandMenu => CommandScene.onCommandConfirmed(entry, scene)
+            case NodeTag.SpellMenu   => SpellMenuScene.onSpellConfirmed(entry, scene)
+            case NodeTag.ItemMenu    => checked_ecast(ItemMenuScene.onItemConfirmed(entry, scene))
             case _                   => scene
+        }
+    redef onItemCancelled(_menuPath: NodePath, state: NodeTag,
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ {GamePhaseState, Math.Random} =
+        match state {
+            case NodeTag.SpellMenu => checked_ecast(SpellMenuScene.onSpellCancelled(scene))
+            case NodeTag.ItemMenu  => checked_ecast(ItemMenuScene.onItemCancelled(scene))
+            case _                 => scene
         }
 }
 
@@ -153,12 +166,49 @@ mod Game {
             |> TitleScene.add(fontAtlas)
             |> BattleScene.add(fontAtlas)
 
-    /// 上に重ねる UI パネル 2 枚（メッセージウィンドウ・コマンドメニュー）を追加する。
+    /// 上に重ねる UI パネル 4 枚（メッセージウィンドウ + 3 つのメニュー）を追加する。
+    /// `|>` chain が長くなると inline 展開で MethodTooLargeException が起きるので、 さらに
+    /// 2 段に分割する。
     def addUiPanels(fontAtlas: FontAtlas, scene: Scene[NodeTag]):
                     Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         scene
+            |> addMessageAndCommand(fontAtlas)
+            |> addSubMenus(fontAtlas)
+
+    def addMessageAndCommand(fontAtlas: FontAtlas, scene: Scene[NodeTag]):
+                             Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+        scene
             |> MessageScene.add(fontAtlas)
             |> CommandScene.add(fontAtlas)
+
+    def addSubMenus(fontAtlas: FontAtlas, scene: Scene[NodeTag]):
+                    Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+        scene
+            |> SpellMenuScene.add(fontAtlas)
+            |> ItemMenuScene.add(fontAtlas)
+
+    // ── visibility 適用 (Push モデル) ──
+    //
+    // フェーズが変わった瞬間に 1 度だけ呼ばれる。 各 Scene の applyVisibility を chain して、
+    // 全パネルの visible / focused を一括設定する。 毎フレーム回さないので process から
+    // GamePhase 判定ロジックを排除できる。
+
+    pub def applyVisibility(phase: GamePhase, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> applyBackgroundVisibility(phase)
+            |> applyUiVisibility(phase)
+
+    def applyBackgroundVisibility(phase: GamePhase, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> TitleScene.applyVisibility(phase)
+            |> BattleScene.applyVisibility(phase)
+
+    def applyUiVisibility(phase: GamePhase, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> MessageScene.applyVisibility(phase)
+            |> CommandScene.applyVisibility(phase)
+            |> SpellMenuScene.applyVisibility(phase)
+            |> ItemMenuScene.applyVisibility(phase)
 
     // ── start / gameLoop ──
 
@@ -167,16 +217,18 @@ mod Game {
         region rc {
             let phaseRef: Ref[GamePhase, rc] = Ref.fresh(rc, GamePhase.Title);
             run {
-                gameLoop(buildScene(fontAtlas))
+                // 起動時に初期 visibility (Title フェーズ) を適用してから gameLoop に入る。
+                let initialScene = applyVisibility(GamePhase.Title, buildScene(fontAtlas));
+                gameLoop(GamePhase.Title, initialScene)
             } with handler GamePhaseState {
                 def get(k) = k(Ref.get(phaseRef))
                 def put(target, k) = { Ref.put(target, phaseRef); k() }
             }
         }
 
-    /// gameLoop は engine のパイプラインを順に呼ぶだけ。 ゲーム固有の判定は各シーンの
-    /// process / InputHandler / MenuHandler に委譲する。
-    def gameLoop(scene: Scene[NodeTag]):
+    /// gameLoop は engine のパイプラインを順に呼ぶだけ。
+    /// フェーズが変わったフレームでだけ applyVisibility で UI 状態を一括更新する。
+    def gameLoop(previousPhase: GamePhase, scene: Scene[NodeTag]):
                  Unit \ {GameEngine.Game, GameEngine.Audio, Math.Random, Fs.FileRead,
                          GamePhaseState} =
         if (GameEngine.Game.shouldClose()) ()
@@ -186,7 +238,12 @@ mod Game {
                 |> GameEngine.process(delta = dt, paused = false)
                 |> GameEngine.handleInput
                 |> GameEngine.handleMenus;
-            GameEngine.render(updated);
-            gameLoop(updated)
+            let currentPhase = GamePhaseState.get();
+            let withVisibility =
+                if (currentPhase != previousPhase)
+                    applyVisibility(currentPhase, updated)
+                else updated;
+            GameEngine.render(withVisibility);
+            gameLoop(currentPhase, withVisibility)
         }
 }

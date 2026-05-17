@@ -1,0 +1,28 @@
+{
+  "fields": {
+    "name": {
+      "field": {
+        "ftype": "text",
+        "hint":  "plain",
+        "label": "名前",
+        "order": 0
+      }
+    },
+    "kind": {
+      "field": {
+        "ftype": "text",
+        "hint":  "plain",
+        "label": "種類",
+        "order": 1
+      }
+    },
+    "power": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "slider": { "min": 0, "max": 200, "step": 1 } },
+        "label": "効果値",
+        "order": 2
+      }
+    }
+  }
+}

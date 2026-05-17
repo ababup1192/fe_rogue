@@ -19,15 +19,13 @@ mod TitleScene {
                 Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas, tagParser, scene)
 
-    /// Title 画面のルート CanvasLayer に対する process。`GamePhase.Title` のときだけ
-    /// visible=true、それ以外は visible=false にする。
-    pub def process(_delta: Duration.Duration, node: EngineNode[NodeTag],
-                    _path: NodePath,
-                    scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ GamePhaseState =
-        match node {
-            case EngineNode.CanvasLayerWithState(cl, NodeTag.TitleLayer) =>
-                let visible = GamePhaseState.get() == GamePhase.Title;
-                (EngineNode.CanvasLayerWithState(CanvasItem.setVisible(visible, cl), NodeTag.TitleLayer), scene)
-            case _ => (node, scene)
-        }
+    /// フェーズ遷移時に呼ばれる Push モデルの visibility 適用関数。
+    /// `GamePhase.Title` のときだけ Title CanvasLayer を visible にする。
+    pub def applyVisibility(phase: GamePhase, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let visible = phase == GamePhase.Title;
+        Scene.mapEngineNode("title" :: Nil, node -> match node {
+            case EngineNode.CanvasLayerWithState(cl, tag) =>
+                EngineNode.CanvasLayerWithState(CanvasItem.setVisible(visible, cl), tag)
+            case other => other
+        }, scene)
 }

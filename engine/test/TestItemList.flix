@@ -17,8 +17,8 @@ mod TestItemList {
             ascent = 8.0, descent = 2.0, lineGap = 0.0, glyphs = glyphs
         }: FontAtlas)
 
-    def entry(text: String): ItemEntry = {text = text, disabled = false}
-    def disabledEntry(text: String): ItemEntry = {text = text, disabled = true}
+    def entry(text: String): ItemEntry = {text = text, disabled = false, metadata = None}
+    def disabledEntry(text: String): ItemEntry = {text = text, disabled = true, metadata = None}
 
     def threeItems(): List[ItemEntry] =
         entry("A") :: entry("B") :: entry("C") :: Nil

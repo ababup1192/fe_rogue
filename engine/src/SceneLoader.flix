@@ -81,14 +81,23 @@ mod SceneLoader {
     /// 失敗時は bug! でクラッシュする
     pub def loadScene(path: String, tagParser: Option[String] -> Result[Json.JsonError, t],
                       scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
-        loadSceneCore(path, tagParser, None, None, scene)
+        loadSceneCoreAt(Nil, path, tagParser, None, None, scene)
 
     /// FontAtlas 付きで JSON ファイルを読み込む（Label2D を含むシーン用）。
     /// その他は loadScene と同じ振る舞い
     pub def loadSceneWithFont(path: String, fontAtlas: FontAtlas,
                               tagParser: Option[String] -> Result[Json.JsonError, t],
                               scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
-        loadSceneCore(path, tagParser, Some(fontAtlas), None, scene)
+        loadSceneCoreAt(Nil, path, tagParser, Some(fontAtlas), None, scene)
+
+    /// `loadSceneWithFont` の親パス指定版。 scene.json のルートノードを `parentPath` 配下に
+    /// 追加する（root 直下ではなく既存ノードの子として配置）。
+    /// 親子 hierarchy で UI レイヤーをまとめたいとき（CanvasLayer の子に複数 Panel を入れて
+    /// 親の visible で一括 hide）に使う。
+    pub def loadSceneWithFontAt(parentPath: NodePath, path: String, fontAtlas: FontAtlas,
+                                tagParser: Option[String] -> Result[Json.JsonError, t],
+                                scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
+        loadSceneCoreAt(parentPath, path, tagParser, Some(fontAtlas), None, scene)
 
     /// JSON ファイルを読み込み、scene を構築した後で `propsApplier` を呼ぶ。
     /// scene.json の root が JSON Object のとき、その "properties" キーを PropertyBag として
@@ -100,7 +109,7 @@ mod SceneLoader {
                           tagParser: Option[String] -> Result[Json.JsonError, t],
                           propsApplier: PropertyBag -> Scene[t] -> Scene[t],
                           scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
-        loadSceneCore(path, tagParser, None, Some(propsApplier), scene)
+        loadSceneCoreAt(Nil, path, tagParser, None, Some(propsApplier), scene)
 
     /// JSON 側のタグ文字列を無視し、常に与えた値を返す tagParser を作る。
     /// scene.json 側にタグ情報を載せない（= ロード後に Scene.setState で個別注入する）
@@ -112,15 +121,16 @@ mod SceneLoader {
     // 内部実装
     // ========================================================================
 
-    def loadSceneCore(path: String, tagParser: Option[String] -> Result[Json.JsonError, t],
-                      fontAtlas: Option[FontAtlas],
-                      propsApplier: Option[PropertyBag -> Scene[t] -> Scene[t]],
-                      scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
+    def loadSceneCoreAt(parentPath: NodePath, path: String,
+                        tagParser: Option[String] -> Result[Json.JsonError, t],
+                        fontAtlas: Option[FontAtlas],
+                        propsApplier: Option[PropertyBag -> Scene[t] -> Scene[t]],
+                        scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
         let content = run { Fs.ReadFile.read(path) } with Fs.ReadFile.runWithFileRead;
         let result = forM (
             text     <- content |> Result.mapErr(e -> "failed to read: ${e}");
             json     <- Json.Parse.parse(String.trim(text)) |> Option.toOk("JSON parse failed");
-            outScene <- addJsonAtTop(tagParser, fontAtlas, json, scene)
+            outScene <- addJsonAtTopAt(parentPath, tagParser, fontAtlas, json, scene)
                 |> Result.mapErr(match JsonError(p, expected) ->
                     "at ${p}: expected ${expected}")
         ) yield applyPropsIfPresent(propsApplier, json, outScene);
@@ -149,16 +159,18 @@ mod SceneLoader {
     // JSON → Scene 変換
     // ========================================================================
 
-    def addJsonAtTop(tagParser: Option[String] -> Result[Json.JsonError, t],
-                     fontAtlas: Option[FontAtlas], json: Json.JsonElement,
-                     scene: Scene[t]): Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
+    /// 親パス指定版。 root 直下に追加するなら parentPath = Nil。
+    def addJsonAtTopAt(parentPath: NodePath,
+                       tagParser: Option[String] -> Result[Json.JsonError, t],
+                       fontAtlas: Option[FontAtlas], json: Json.JsonElement,
+                       scene: Scene[t]): Result[Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
         match json {
-            case JsonObject(_)  => addJsonAt(Nil, tagParser, fontAtlas, json, scene)
+            case JsonObject(_)  => addJsonAt(parentPath, tagParser, fontAtlas, json, scene)
             case JsonArray(arr) =>
                 List.foldLeft(
                     (acc, child) -> match acc {
                         case Err(e) => Err(e)
-                        case Ok(s)  => addJsonAt(Nil, tagParser, fontAtlas, child, s)
+                        case Ok(s)  => addJsonAt(parentPath, tagParser, fontAtlas, child, s)
                     },
                     Ok(scene),
                     Vector.toList(arr))
@@ -1089,8 +1101,13 @@ mod SceneLoader {
     def parseItemEntry(m: Map[String, Json.JsonElement]): Result[Json.JsonError, ItemEntry] =
         forM (
             text        <- (Json.FromJson.getAtKey(Root, "text", m): Result[Json.JsonError, String]);
-            disabledOpt <- (Json.FromJson.getAtKeyOpt(Root, "disabled", m): Result[Json.JsonError, Option[Bool]])
-        ) yield ({text = text, disabled = Option.getWithDefault(false, disabledOpt)}: ItemEntry)
+            disabledOpt <- (Json.FromJson.getAtKeyOpt(Root, "disabled", m): Result[Json.JsonError, Option[Bool]]);
+            metadataOpt <- (Json.FromJson.getAtKeyOpt(Root, "metadata", m): Result[Json.JsonError, Option[String]])
+        ) yield ({
+            text = text,
+            disabled = Option.getWithDefault(false, disabledOpt),
+            metadata = metadataOpt
+        }: ItemEntry)
 
     def buildItemList(tagParser: Option[String] -> Result[Json.JsonError, t],
                       fontAtlas: Option[FontAtlas],

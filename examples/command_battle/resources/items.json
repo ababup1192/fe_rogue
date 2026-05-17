@@ -1,0 +1,12 @@
+{
+  "items": {
+    "yakusou": {
+      "name": "やくそう",
+      "kind": "heal",
+      "power": 30
+    }
+  },
+  "inventory": [
+    {"id": "yakusou", "quantity": 3}
+  ]
+}

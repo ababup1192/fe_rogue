@@ -19,9 +19,13 @@
 
 /// 1 項目分のデータ。`text` が表示文字、`disabled = true` の項目は選択不可
 /// （カーソル移動時にスキップされ、disabledColor で淡く描画される）。
+/// `metadata` は表示テキストとは別にゲーム側が項目に紐付ける文字列識別子（Godot の
+/// ItemList.set_item_metadata 準拠）。 例: 「ホイミ」 表示の項目に `Some("hoimi")` を
+/// 持たせ、 確定時に MenuHandler 側で spell_id として取り出す。
 pub type alias ItemEntry = {
     text     = String,
-    disabled = Bool
+    disabled = Bool,
+    metadata = Option[String]
 }
 
 pub enum ItemList {

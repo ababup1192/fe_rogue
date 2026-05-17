@@ -1,0 +1,19 @@
+{
+  "spells": {
+    "hoimi": {
+      "name": "ホイミ",
+      "cost": 3,
+      "kind": "heal",
+      "minPower": 10,
+      "maxPower": 17
+    },
+    "mera": {
+      "name": "メラ",
+      "cost": 4,
+      "kind": "damage",
+      "minPower": 5,
+      "maxPower": 9
+    }
+  },
+  "known": ["hoimi", "mera"]
+}

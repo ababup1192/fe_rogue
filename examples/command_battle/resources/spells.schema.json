@@ -1,0 +1,47 @@
+{
+  "fields": {
+    "name": {
+      "field": {
+        "ftype": "text",
+        "hint":  "plain",
+        "label": "名前",
+        "order": 0
+      }
+    },
+    "kind": {
+      "field": {
+        "ftype": "text",
+        "hint":  "plain",
+        "label": "種類",
+        "order": 1
+      }
+    },
+    "cost": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "spinner": { "min": 0, "max": 50 } },
+        "label": "消費MP",
+        "order": 2
+      }
+    },
+    "minPower": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "slider": { "min": 0, "max": 200, "step": 1 } },
+        "label": "効果(最小)",
+        "order": 3
+      }
+    },
+    "maxPower": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "slider": { "min": 0, "max": 200, "step": 1 } },
+        "label": "効果(最大)",
+        "order": 4
+      }
+    }
+  },
+  "metaHints": {
+    "known": { "type": "ref", "to": "spells" }
+  }
+}
