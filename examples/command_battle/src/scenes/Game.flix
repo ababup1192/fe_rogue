@@ -83,6 +83,8 @@ instance Node[NodeTag] {
                   path: NodePath,
                   scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ GamePhaseState =
         match node {
+            case EngineNode.CanvasLayerWithState(_, NodeTag.BattleLayer) =>
+                checked_ecast(BattleScene.processBattleLayer(delta, node, path, scene))
             case EngineNode.Label2DWithState(_, NodeTag.StatusLabel) =>
                 checked_ecast(BattleScene.processStatusLabel(delta, node, path, scene))
             case EngineNode.Label2DWithState(_, NodeTag.EnemyLabel) =>

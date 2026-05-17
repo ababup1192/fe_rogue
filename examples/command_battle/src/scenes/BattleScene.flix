@@ -44,7 +44,8 @@ mod BattleScene {
         lastAction           = Option[ActionResult],
         enemyBlinkRemaining  = Float64,
         flashRemaining       = Float64,
-        flashColor           = Color
+        flashColor           = Color,
+        shakeRemaining       = Float64
     }
 
     /// NodeTag.BattleState に持たせるデータ。 `initial` は Resource から構築した不変の
@@ -132,7 +133,8 @@ mod BattleScene {
             lastAction = None,
             enemyBlinkRemaining = 0.0,
             flashRemaining = 0.0,
-            flashColor = damageFlashColor()
+            flashColor = damageFlashColor(),
+            shakeRemaining = 0.0
         }: State);
         let data = ({
             current = initial, initial = initial,
@@ -165,6 +167,12 @@ mod BattleScene {
 
     /// 回復呪文 (ホイミ等) のフラッシュ色: 緑系。
     def healFlashColor(): Color = {r = 0.4f32, g = 1.0f32, b = 0.5f32}
+
+    /// 勇者が被ダメージしたときの画面揺れ時間（秒）。
+    def shakeDuration(): Float64 = 0.3
+
+    /// 画面揺れの最大振幅（px）。 残り時間に応じて 0 まで減衰する。
+    def shakeAmplitude(): Float64 = 8.0
 
     /// 勇者の通常攻撃。 ダメージ計算 → 敵 HP 減算 → lastAction 更新 + 敵点滅トリガー。
     pub def applyPlayerAttack(scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
@@ -298,7 +306,7 @@ mod BattleScene {
                 }, scene)
         }
 
-    /// 敵の通常攻撃。 勇者 HP 減算 + lastAction 更新。
+    /// 敵の通常攻撃。 勇者 HP 減算 + lastAction 更新 + 画面揺れトリガー。
     pub def applyEnemyAttack(scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
         let state = readState(scene);
         let rng = Math.Random.randomFloat64();
@@ -306,7 +314,12 @@ mod BattleScene {
         let newHp = Int32.max(0, state#hero#hp - dmg);
         let action = ({ actor = state#enemy#name, target = state#hero#name, damage = dmg, kind = ActionKind.Attack }: ActionResult);
         let newHero = { hp = newHp | state#hero };
-        let newState = { lastAction = Some(action), hero = newHero | state };
+        let newState = {
+            lastAction = Some(action),
+            hero = newHero,
+            shakeRemaining = shakeDuration()
+            | state
+        };
         writeState(newState, scene)
 
     /// バトルを初期状態に戻す（Resource ロードはしない。 initial → current コピー）。
@@ -414,6 +427,35 @@ mod BattleScene {
                     |> CanvasItem.setVisible(visible);
                 let sceneWithBlink = writeState({enemyBlinkRemaining = newBlink | s}, scene);
                 (EngineNode.Label2DWithState(updated, NodeTag.EnemyLabel), sceneWithBlink)
+            case _ => (node, scene)
+        }
+
+    // ── process: battle CanvasLayer の offset を更新 (画面揺れ) ──
+
+    /// 勇者が被ダメージしたとき `shakeRemaining` が正値にセットされる。 process が delta
+    /// 減算しながら CanvasLayer.offset を sin/cos で振動させる。 振幅は残り時間に応じて
+    /// 線形減衰し、 残り 0 で offset = (0,0) に戻す。
+    pub def processBattleLayer(delta: Duration.Duration, node: EngineNode[NodeTag],
+                               _path: NodePath,
+                               scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) =
+        match node {
+            case EngineNode.CanvasLayerWithState(layer, NodeTag.BattleLayer) =>
+                let s = readState(scene);
+                let dtSec = Duration.toSeconds(delta);
+                let shakeLeft = Float64.max(0.0, s#shakeRemaining - dtSec);
+                let offset =
+                    if (shakeLeft <= 0.0) Vec2.zero()
+                    else {
+                        let elapsed = shakeDuration() - shakeLeft;
+                        let damp = shakeLeft / shakeDuration();
+                        let amp = shakeAmplitude() * damp;
+                        // 異なる周波数で揺れることでカオス感を出す
+                        {x = amp * Vec2.sin(elapsed * 60.0),
+                         y = amp * Vec2.cos(elapsed * 70.0)}
+                    };
+                let updatedLayer = CanvasLayer.setOffset(offset, layer);
+                let sceneWithShake = writeState({shakeRemaining = shakeLeft | s}, scene);
+                (EngineNode.CanvasLayerWithState(updatedLayer, NodeTag.BattleLayer), sceneWithShake)
             case _ => (node, scene)
         }
 
