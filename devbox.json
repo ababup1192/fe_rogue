@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
-  "packages": ["jdk@21"],
+  "packages": ["jdk@21", "gnumake@latest"],
   "shell": {
     "init_hook": [
       "export PATH=\"$PWD/bin:$PATH\""

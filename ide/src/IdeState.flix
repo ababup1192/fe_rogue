@@ -12,6 +12,11 @@ mod IdeState {
     import javax.swing.JPanel
     import javax.swing.JTree
     import javax.swing.tree.DefaultTreeModel
+    // JavaFX 移行用: customize で取得した fx:id ノード参照を持つ。
+    // Phase 2 では TreeView と Stage のみ。Inspector 等は後続 Phase で追加
+    import javafx.scene.control.TreeView
+    import javafx.scene.control.Label
+    import javafx.stage.Stage
 
     /// IDE のグローバル状態。EDT 上の UI イベントが Refs に書き、
     /// メインループ (Main.flix) と renderLoop が読む。
@@ -63,6 +68,26 @@ mod IdeState {
         texturePathMapRef        = Array[Map[String, String], Static],
         pendingTreeSelectionRef  = Array[Option[List[Int32]], Static],
         treeListenerMuteRef      = Array[Bool, Static],
+        // JavaFX 移行用: FXML から取得した fx:id ノード参照。
+        // customize 時に Some を入れ、main thread から Platform.runLater 経由で参照する
+        fxSceneTreeRef           = Array[Option[TreeView[String]], Static],
+        fxStageRef               = Array[Option[Stage], Static],
+        // ステータスバー (現シーン/マウス/選択/FPS)。AnimationTimer から polling 更新される
+        fxStatusSceneLabelRef    = Array[Option[Label], Static],
+        fxStatusMouseLabelRef    = Array[Option[Label], Static],
+        fxStatusSelectionLabelRef = Array[Option[Label], Static],
+        fxStatusFpsLabelRef      = Array[Option[Label], Static],
+        // 診断用: renderLoop が Editor.EditorState.get()#selected を毎フレーム文字列化して
+        // 書き込み、AnimationTimer が選択ラベルに反映する。currentSceneJsonRef 経由の
+        // selectedNodePathRef 変換に頼らず Editor 側の真の選択状態が即座に見える
+        fxEditorSelDisplayRef    = Array[String, Static],
+        // Project 切替時に新 config を積む。JavaFXLayer.paintGL が消費して texture/font/
+        // projection/audio を再初期化する
+        fxPendingConfigRef       = Array[Option[GameEngine.EngineConfig], Static],
+        // Open Project 後に「config swap が完了したら先頭シーンを auto-load する」希望を立てる。
+        // 直接 pendingSceneRef を積むと swap 前にロードされ getFontAtlas で bug! になるため、
+        // renderLoop が fxPendingConfigRef の状態 (None = swap 完了) を polling して promote する
+        wantsAutoLoadFirstSceneRef = Array[Bool, Static],
         resource                 = ResourceState.ResourceState
     }
 
@@ -84,6 +109,15 @@ mod IdeState {
             texturePathMapRef        = Array#{(Map.empty(): Map[String, String])} @ Static,
             pendingTreeSelectionRef  = Array#{(None: Option[List[Int32]])} @ Static,
             treeListenerMuteRef      = Array#{false} @ Static,
+            fxSceneTreeRef           = Array#{(None: Option[TreeView[String]])} @ Static,
+            fxStageRef               = Array#{(None: Option[Stage])} @ Static,
+            fxStatusSceneLabelRef    = Array#{(None: Option[Label])} @ Static,
+            fxStatusMouseLabelRef    = Array#{(None: Option[Label])} @ Static,
+            fxStatusSelectionLabelRef = Array#{(None: Option[Label])} @ Static,
+            fxStatusFpsLabelRef      = Array#{(None: Option[Label])} @ Static,
+            fxEditorSelDisplayRef    = Array#{"-"} @ Static,
+            fxPendingConfigRef       = Array#{(None: Option[GameEngine.EngineConfig])} @ Static,
+            wantsAutoLoadFirstSceneRef = Array#{false} @ Static,
             resource                 = ResourceState.newState()
         }
 

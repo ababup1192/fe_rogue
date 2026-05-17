@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.layout.StackPane?>
+
+<StackPane xmlns:fx="http://javafx.com/fxml" prefWidth="400" prefHeight="200">
+    <Label text="Hello, JavaFX FXML from Flix!"/>
+</StackPane>

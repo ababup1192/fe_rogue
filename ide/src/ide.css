@@ -1,0 +1,25 @@
+/*
+  flix_game_engine IDE スタイルシート。
+  ide.fxml の <BorderPane stylesheets="@ide.css"> から読み込まれる。
+  色・余白・フォントの調整は原則 Flix コードを触らずここで完結させる。
+*/
+
+.section-header {
+    -fx-padding: 4 8 4 8;
+    -fx-font-weight: bold;
+}
+
+.status-bar {
+    -fx-padding: 3 8 3 8;
+    -fx-background-color: #2b2b2b;
+    -fx-border-color: transparent transparent transparent transparent;
+}
+
+.status-bar .status-cell {
+    -fx-text-fill: #c8c8c8;
+    -fx-font-size: 11px;
+}
+
+.status-bar .separator {
+    -fx-padding: 0 2 0 2;
+}

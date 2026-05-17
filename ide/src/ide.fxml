@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  flix_game_engine IDE のメインレイアウト。
+  「見た目は FXML / 振る舞いは Flix」の分離方針。新しい widget を増やすときは原則:
+    1. ここに <Node fx:id="...">を追加し、属性・スタイルクラスもここで指定する
+    2. JavaFXIdeUI.flix で namespace から ref を引き、handler / 動的データだけ Flix で注入
+
+  Phase 2 構造:
+    top    : MenuBar (File メニュー)
+    center : SplitPane 横分割
+      left  : VBox + TreeView (Scenes 一覧, showRoot=false)
+      right : StackPane fx:id="canvasContainer"
+              └ ImageView fx:id="canvasView"
+                 — JavaFXLayer が生成した WritableImage を customize で流し込む
+                 — fitWidth/Height は ${canvasContainer.x} で親に追従
+                 — scaleY=-1 で OpenGL bottom-up を JavaFX top-down に補正
+                 — preserveRatio=false で常に親いっぱいに広がる
+-->
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.control.MenuBar?>
+<?import javafx.scene.control.Menu?>
+<?import javafx.scene.control.MenuItem?>
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.TreeView?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.image.ImageView?>
+
+<BorderPane xmlns:fx="http://javafx.com/fxml" prefWidth="1280" prefHeight="800"
+            stylesheets="@ide.css">
+    <top>
+        <MenuBar fx:id="menuBar">
+            <menus>
+                <Menu text="File">
+                    <items>
+                        <MenuItem fx:id="menuOpenProject" text="Open Project..."/>
+                        <MenuItem fx:id="menuQuit" text="Quit"/>
+                    </items>
+                </Menu>
+            </menus>
+        </MenuBar>
+    </top>
+    <center>
+        <SplitPane fx:id="mainSplit" dividerPositions="0.22">
+            <items>
+                <VBox>
+                    <children>
+                        <Label text="Scenes" styleClass="section-header"/>
+                        <TreeView fx:id="scenesTree" showRoot="false" VBox.vgrow="ALWAYS"/>
+                    </children>
+                </VBox>
+                <StackPane fx:id="canvasContainer">
+                    <children>
+                        <ImageView fx:id="canvasView"
+                                   preserveRatio="false"
+                                   pickOnBounds="true"
+                                   scaleY="-1.0"
+                                   fitWidth="${canvasContainer.width}"
+                                   fitHeight="${canvasContainer.height}"/>
+                    </children>
+                </StackPane>
+            </items>
+        </SplitPane>
+    </center>
+    <bottom>
+        <HBox fx:id="statusBar" styleClass="status-bar" alignment="CENTER_LEFT" spacing="8">
+            <children>
+                <Label fx:id="statusScene" text="(no scene)" styleClass="status-cell"/>
+                <Separator orientation="VERTICAL"/>
+                <Label fx:id="statusMouse" text="mouse: -" styleClass="status-cell"/>
+                <Separator orientation="VERTICAL"/>
+                <Label fx:id="statusSelection" text="sel: -" styleClass="status-cell"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Label fx:id="statusFps" text="" styleClass="status-cell"/>
+            </children>
+        </HBox>
+    </bottom>
+</BorderPane>

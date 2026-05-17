@@ -15,5 +15,20 @@ authors     = ["ababup1192 <ababup1192@gmail.com>"]
 "com.formdev:flatlaf"   = "3.7.1"
 # AWTGLCanvas (lwjgl3-awt) と JAWT バインディング。LWJGL の他のモジュール
 # (lwjgl base / opengl / stb / openal / glfw) は engine 経由で transitive に降りてくる。
+# JavaFXLayer も AWTGLCanvas を GL コンテキスト確保用の隠し JFrame に置くため、
+# lwjgl3-awt / jawt は JavaFX 移行後も残る。
 "org.lwjglx:lwjgl3-awt" = "0.2.4"
 "org.lwjgl:lwjgl-jawt"  = "3.4.1"
+# JavaFX 21 LTS。classpath モード (--add-modules 不要) で classifier 付き JAR を直接ロード
+"org.openjfx:javafx-base"     = "21.0.5"
+"org.openjfx:javafx-graphics" = "21.0.5"
+"org.openjfx:javafx-controls" = "21.0.5"
+"org.openjfx:javafx-fxml"     = "21.0.5"
+"org.openjfx:javafx-swing"    = "21.0.5"
+
+[jar-dependencies]
+"javafx-base-21.0.5-mac-aarch64.jar"     = "url:https://repo1.maven.org/maven2/org/openjfx/javafx-base/21.0.5/javafx-base-21.0.5-mac-aarch64.jar"
+"javafx-graphics-21.0.5-mac-aarch64.jar" = "url:https://repo1.maven.org/maven2/org/openjfx/javafx-graphics/21.0.5/javafx-graphics-21.0.5-mac-aarch64.jar"
+"javafx-controls-21.0.5-mac-aarch64.jar" = "url:https://repo1.maven.org/maven2/org/openjfx/javafx-controls/21.0.5/javafx-controls-21.0.5-mac-aarch64.jar"
+"javafx-fxml-21.0.5-mac-aarch64.jar"     = "url:https://repo1.maven.org/maven2/org/openjfx/javafx-fxml/21.0.5/javafx-fxml-21.0.5-mac-aarch64.jar"
+"javafx-swing-21.0.5-mac-aarch64.jar"    = "url:https://repo1.maven.org/maven2/org/openjfx/javafx-swing/21.0.5/javafx-swing-21.0.5-mac-aarch64.jar"

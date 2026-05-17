@@ -71,7 +71,7 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
             ResourceState.setDiscovered(state#resource, Nil);
             emptyConfig()
     };
-    let customize = (frame, canvas) -> IdeUI.customize(state, frame, canvas);
+    let customize = (stage, imageView) -> JavaFXIdeUI.customize(state, stage, imageView);
     // Label2D を含むシーンを開けるよう、project の fontManifest の先頭フォント名を
     // SceneLoader.loadSceneWithFont に渡せるよう保持する。フォント未定義のプロジェクトでは
     // loadScene にフォールバックする (Label2D が含まれれば bug! になるが project 側の責務)。
@@ -81,7 +81,9 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
     let projectRoot = projectPath |> Option.getWithDefault(".");
     run {
         ideLoop(state, fontName, projectRoot)
-    } with SwingLayer.withSwing(config, customize);
+    } with JavaFXLayer.withJavaFX(config, state#fxPendingConfigRef, customize);
+    // Phase 1: JavaFX runtime は Runtime.halt(0) で落としているため
+    // ここに到達することは事実上無い (再 open は Phase 2 以降で対応)
     match IdeState.takePendingProject(state) {
         case Some(newPath) =>
             println("[Main] Reloading with new project: ${newPath}");
@@ -109,11 +111,40 @@ def ideLoop(state: IdeState.IdeState, fontName: Option[String], projectRoot: Str
     }
 
 def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene: Scene[Unit]):
-        Unit \ {IO, GameEngine.Game, Fs.FileRead, Fs.FileWrite,
+        Unit \ {IO, GameEngine.Game, Fs.FileRead, Fs.FileWrite, Fs.Glob,
                 Editor.EditorState, EditHistory.Rewind} =
     if (GameEngine.Game.shouldClose()) ()
     else {
-        let nextScene = loadPendingSceneOrKeep(state, fontName, currentScene);
+        // Phase 2: File → Open Project... で積まれた project を消費して in-place 再ロード。
+        // Phase 3 で GL リソース再 init を AWT EDT に委譲済み
+        let (newFontName, baseScene) = match IdeState.takePendingProject(state) {
+            case None       => (fontName, currentScene)
+            case Some(path) => reloadProject(state, fontName, path)
+        };
+        // Deferred auto-load: AWT EDT が config swap を完了 (fxPendingConfigRef == None)
+        // したフレームで初めて先頭シーンを pendingSceneRef に積む。font/texture が揃った
+        // 後にロードされるので getFontAtlas が安全に解決できる
+        if (Array.get(0, state#wantsAutoLoadFirstSceneRef)
+            and Option.isEmpty(Array.get(0, state#fxPendingConfigRef))) {
+            match List.head(Array.get(0, state#sceneFilesRef)) {
+                case Some((abs, rel)) => {
+                    println("[Main] Auto-loading first scene: ${rel}");
+                    Array.put(Some(abs), 0, state#pendingSceneRef)
+                }
+                case None => ()
+            };
+            Array.put(false, 0, state#wantsAutoLoadFirstSceneRef)
+        } else ();
+        let nextScene = loadPendingSceneOrKeep(state, newFontName, baseScene);
+        // Editor の真の選択状態を status bar に出すため、毎フレーム書き出す。
+        // syncEditorSelectionToTree 経由の selectedNodePathRef は currentSceneJsonRef
+        // が None だと変換できず常に "-" になるため、診断目的で直接 editor を覗く
+        let editorSel = Editor.EditorState.get()#selected;
+        let editorSelText = match editorSel {
+            case None      => "-"
+            case Some(sel) => "${sel#nodePath}"
+        };
+        Array.put(editorSelText, 0, state#fxEditorSelDisplayRef);
         // ユーザーが JTree でノードを選んだ場合は、editor 側の selected にも反映する
         // (preview に選択枠を出すため)。Editor.handleInput の前に呼ぶ
         SelectionBridge.applyTreeSelectionToEditor(state);
@@ -123,6 +154,7 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         let edited = Editor.handleInput(nextScene);
         // preview 上でユーザーがクリックして選択が変わったケースを IdeState 側に同期する。
         // 変化があった場合は IdeUI.applySelectionToView で JTree と Inspector も更新する
+        // (Phase 1-2 では JTree は無いので no-op になる)
         if (SelectionBridge.syncEditorSelectionToTree(state))
             IdeUI.applySelectionToView(state)
         else ();
@@ -131,7 +163,53 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         refreshTreeOnReload(state);
         let preview = composePreview(edited);
         GameEngine.render(preview);
-        renderLoop(state, fontName, edited)
+        renderLoop(state, newFontName, edited)
+    }
+
+/// Open Project... 経由で積まれた project を消費して in-place 再ロードする。
+/// 戻り値: (新しい fontName, 描画リセット用の空 Scene)
+/// 戻り値後に pendingSceneRef に先頭シーンを積んでおき、同フレームの loadPendingSceneOrKeep
+/// で実シーンへ差し替わる
+def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: String):
+        (Option[String], Scene[Unit]) \ {IO, Fs.FileRead, Fs.Glob, Editor.EditorState} =
+    println("[Main] Reloading project: ${path}");
+    match ProjectLoader.loadProject(path) {
+        case Ok(proj) => {
+            let sceneFiles = ProjectLoader.findSceneFiles(path)
+                |> List.map(rel -> (joinPath(path, rel), rel))
+                |> List.sortBy(p -> snd(p));
+            IdeState.setSceneFiles(state, sceneFiles);
+            let textureNames = proj#config#textureManifest |> List.map(e -> e#name);
+            IdeState.setTextureNames(state, textureNames);
+            let texturePathMap = proj#config#textureManifest
+                |> List.map(e -> (e#name, e#path))
+                |> List.toMap;
+            IdeState.setTexturePathMap(state, texturePathMap);
+            let resources = ResourceDiscovery.discover(path);
+            ResourceState.setDiscovered(state#resource, resources);
+            let newFontName = List.head(proj#config#fontManifest) |> Option.map(f -> f#name);
+            // Editor の scene.json 索引を新プロジェクトのものに差し替える。
+            // これをしないと EditableNode.collectAll が空 → clicks が hit しない
+            let newIndex = SceneJsonIndex.loadAt(path);
+            let curEditor = Editor.EditorState.get();
+            Editor.EditorState.put({rootJsonIndex = newIndex | curEditor});
+            // GL リソースの再 init を AWT EDT (paintGL) に依頼。clearColor/designSize/
+            // texture/font/projection/audio が新 config の値に切り替わる
+            Array.put(Some(proj#config), 0, state#fxPendingConfigRef);
+            // 先頭シーンの auto-load は swap 完了後に renderLoop が遅延実行する。
+            // 即座に pendingSceneRef を積むと、まだ古い fontAtlasesArr で getFontAtlas
+            // が呼ばれ bug! になるため、希望だけ立てて実体は次フレーム以降に委譲
+            Array.put(true, 0, state#wantsAutoLoadFirstSceneRef);
+            // FX thread 側で TreeView を再構築 + Title 更新
+            JavaFXIdeUI.schedulePopulateTree(state);
+            JavaFXIdeUI.scheduleSetTitle(state,
+                "flix_game_engine IDE — ${proj#config#title} (${path})");
+            (newFontName, Scene.empty())
+        }
+        case Err(msg) => {
+            println("[Main] Open Project failed: ${msg}");
+            (oldFontName, Scene.empty())
+        }
     }
 
 /// pendingSceneRef を消費して新シーンを読むか、変更が無ければ現シーンをそのまま返す。
@@ -143,6 +221,8 @@ def loadPendingSceneOrKeep(state: IdeState.IdeState, fontName: Option[String],
         case None => currentScene
         case Some(path) =>
             println("[Main] Loading scene: ${path}");
+            // ステータスバー / Inspector の参照用に現シーンパスを記録
+            Array.put(Some(path), 0, state#currentScenePathRef);
             match fontName {
                 case Some(name) =>
                     let atlas = GameEngine.Game.getFontAtlas(name);
