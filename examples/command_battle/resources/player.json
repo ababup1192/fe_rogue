@@ -1,10 +1,10 @@
 {
   "attack": 3,
   "defense": 2,
-  "hp": 5,
+  "hp": 15,
   "level": 1,
-  "maxHp": 5,
-  "maxMp": 0,
-  "mp": 0,
+  "maxHp": 15,
+  "maxMp": 10,
+  "mp": 10,
   "name": "ゆうしゃ"
 }

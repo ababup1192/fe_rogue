@@ -35,11 +35,16 @@ mod BattleScene {
     /// 定義された型を再利用する（resources/player.json と resources/monsters.json から
     /// 読み込まれる）。
     /// `inventory` はアイテム所持リストで、 戦闘中に applyItem で消費される。
+    /// `enemyBlinkRemaining` は敵が攻撃を受けたときに正値が設定され、 process が delta 分
+    /// 減算しながら EnemyLabel を visible toggle してダメージ演出を出す（0 で通常表示）。
     pub type alias State = {
-        hero       = PlayerStats.HeroStats,
-        enemy      = MonsterCatalog.EnemyStats,
-        inventory  = List[ItemCatalog.InventoryEntry],
-        lastAction = Option[ActionResult]
+        hero                 = PlayerStats.HeroStats,
+        enemy                = MonsterCatalog.EnemyStats,
+        inventory            = List[ItemCatalog.InventoryEntry],
+        lastAction           = Option[ActionResult],
+        enemyBlinkRemaining  = Float64,
+        flashRemaining       = Float64,
+        flashColor           = Color
     }
 
     /// NodeTag.BattleState に持たせるデータ。 `initial` は Resource から構築した不変の
@@ -105,6 +110,7 @@ mod BattleScene {
             case Some("BattleLayer")   => Ok(NodeTag.BattleLayer)
             case Some("EnemyLabel")    => Ok(NodeTag.EnemyLabel)
             case Some("StatusLabel")   => Ok(NodeTag.StatusLabel)
+            case Some("FlashOverlay")  => Ok(NodeTag.FlashOverlay)
             case Some(unknown)         => Err(JsonError(Root, Set#{"BattleScene tag (got: ${unknown})"}))
         }
 
@@ -123,7 +129,10 @@ mod BattleScene {
         let initial = ({
             hero = hero, enemy = enemy,
             inventory = items#inventory,
-            lastAction = None
+            lastAction = None,
+            enemyBlinkRemaining = 0.0,
+            flashRemaining = 0.0,
+            flashColor = damageFlashColor()
         }: State);
         let data = ({
             current = initial, initial = initial,
@@ -141,7 +150,23 @@ mod BattleScene {
 
     // ── 攻撃適用 (純粋関数 Battle.computeAttack を呼ぶ) ──
 
-    /// 勇者の通常攻撃。 ダメージ計算 → 敵 HP 減算 → lastAction 更新。
+    /// 敵が攻撃を受けたときの点滅時間（秒）。 process が `delta` ずつ減算しながら
+    /// EnemyLabel を visible toggle して、 DQ 風「ダメージで一瞬チカチカする」 を出す。
+    def enemyBlinkDuration(): Float64 = 0.4
+
+    /// 呪文発動時の画面フラッシュ時間（秒）。
+    def flashDuration(): Float64 = 0.3
+
+    /// フラッシュのピーク alpha (0.0..1.0)。 数値大きいほど派手に光る。
+    def flashPeakAlpha(): Float32 = 0.45f32
+
+    /// 攻撃呪文 (メラ等) のフラッシュ色: 赤。
+    def damageFlashColor(): Color = {r = 1.0f32, g = 0.2f32, b = 0.2f32}
+
+    /// 回復呪文 (ホイミ等) のフラッシュ色: 緑系。
+    def healFlashColor(): Color = {r = 0.4f32, g = 1.0f32, b = 0.5f32}
+
+    /// 勇者の通常攻撃。 ダメージ計算 → 敵 HP 減算 → lastAction 更新 + 敵点滅トリガー。
     pub def applyPlayerAttack(scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
         let state = readState(scene);
         let rng = Math.Random.randomFloat64();
@@ -149,7 +174,12 @@ mod BattleScene {
         let newHp = Int32.max(0, state#enemy#hp - dmg);
         let action = ({ actor = state#hero#name, target = state#enemy#name, damage = dmg, kind = ActionKind.Attack }: ActionResult);
         let newEnemy = { hp = newHp | state#enemy };
-        let newState = { lastAction = Some(action), enemy = newEnemy | state };
+        let newState = {
+            lastAction = Some(action),
+            enemy = newEnemy,
+            enemyBlinkRemaining = enemyBlinkDuration()
+            | state
+        };
         writeState(newState, scene)
 
     /// 勇者の呪文発動。 `SpellCatalog` から spell を取り出し、 kind に応じて heal (勇者 HP
@@ -194,7 +224,13 @@ mod BattleScene {
                     damage = power,
                     kind   = ActionKind.SpellHeal
                 }: ActionResult);
-                writeState({hero = newHero, lastAction = Some(action) | state}, scene)
+                writeState({
+                    hero = newHero,
+                    lastAction = Some(action),
+                    flashRemaining = flashDuration(),
+                    flashColor = healFlashColor()
+                    | state
+                }, scene)
             case SpellCatalog.SpellKind.Damage =>
                 let newHp = Int32.max(0, state#enemy#hp - power);
                 let newEnemy = { hp = newHp | state#enemy };
@@ -204,7 +240,15 @@ mod BattleScene {
                     damage = power,
                     kind   = ActionKind.SpellDamage
                 }: ActionResult);
-                writeState({hero = heroAfterMp, enemy = newEnemy, lastAction = Some(action) | state}, scene)
+                writeState({
+                    hero = heroAfterMp,
+                    enemy = newEnemy,
+                    lastAction = Some(action),
+                    enemyBlinkRemaining = enemyBlinkDuration(),
+                    flashRemaining = flashDuration(),
+                    flashColor = damageFlashColor()
+                    | state
+                }, scene)
         }
 
     /// 勇者がアイテムを使用する。 inventory から quantity を 1 消費し、 kind に応じて
@@ -247,7 +291,10 @@ mod BattleScene {
                 writeState({
                     hero = newHero,
                     inventory = newInventory,
-                    lastAction = Some(action) | state
+                    lastAction = Some(action),
+                    flashRemaining = flashDuration(),
+                    flashColor = healFlashColor()
+                    | state
                 }, scene)
         }
 
@@ -336,18 +383,64 @@ mod BattleScene {
             case _ => (node, scene)
         }
 
-    // ── process: EnemyLabel を BattleState から更新 (敵 HP <= 0 で非表示) ──
+    // ── process: EnemyLabel を BattleState から更新 (敵 HP <= 0 で非表示 + 被弾点滅) ──
 
-    pub def processEnemyLabel(_delta: Duration.Duration, node: EngineNode[NodeTag],
+    /// EnemyLabel を毎フレーム更新:
+    ///   1. text を `state#enemy#name` で更新
+    ///   2. enemyBlinkRemaining > 0 のとき、 残り時間を `delta` 減らして visible を toggle
+    ///      （0.05 秒間隔で on/off）。 完了で visible=true（HP>0 のとき）に戻す
+    ///   3. 敵 HP <= 0 で hidden
+    pub def processEnemyLabel(delta: Duration.Duration, node: EngineNode[NodeTag],
                               _path: NodePath,
                               scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) =
         match node {
             case EngineNode.Label2DWithState(label, NodeTag.EnemyLabel) =>
                 let s = readState(scene);
+                let dtSec = Duration.toSeconds(delta);
+                let blinkLeft = s#enemyBlinkRemaining - dtSec;
+                let (visible, newBlink) =
+                    if (s#enemy#hp <= 0) (false, 0.0)
+                    else if (blinkLeft > 0.0) {
+                        // 0.05 秒周期で on/off。 「総時間 - 残り」 = 経過時間を 0.05 で割った
+                        // floor の偶奇で visible を判定。 開始フレーム phase=0 は invisible に
+                        // して被弾の瞬間に「パッ」 と消えるようにする (DQ 風)。
+                        let elapsed = enemyBlinkDuration() - blinkLeft;
+                        let phase = Float64.tryToInt32(elapsed / 0.05)
+                                        |> Option.getWithDefault(0);
+                        ((Int32.modulo(phase, 2) == 1), blinkLeft)
+                    } else (true, 0.0);
                 let updated = label
                     |> Label2D.setText(s#enemy#name)
-                    |> CanvasItem.setVisible(s#enemy#hp > 0);
-                (EngineNode.Label2DWithState(updated, NodeTag.EnemyLabel), scene)
+                    |> CanvasItem.setVisible(visible);
+                let sceneWithBlink = writeState({enemyBlinkRemaining = newBlink | s}, scene);
+                (EngineNode.Label2DWithState(updated, NodeTag.EnemyLabel), sceneWithBlink)
+            case _ => (node, scene)
+        }
+
+    // ── process: FlashOverlay の alpha を時間に応じて更新 ──
+
+    /// 呪文発動で `flashRemaining` が正値にセットされると、 process が delta 減算しながら
+    /// alpha を 残り時間 / 総時間 の比率で線形補間する（被弾直後がピーク、 残り 0 で透明）。
+    /// 色は `flashColor` を modulate に流し込む（攻撃呪文は赤、 回復呪文は緑）。
+    pub def processFlashOverlay(delta: Duration.Duration, node: EngineNode[NodeTag],
+                                _path: NodePath,
+                                scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) =
+        match node {
+            case EngineNode.ColorRectWithState(rect, NodeTag.FlashOverlay) =>
+                let s = readState(scene);
+                let dtSec = Duration.toSeconds(delta);
+                let flashLeft = Float64.max(0.0, s#flashRemaining - dtSec);
+                let alpha =
+                    if (flashLeft <= 0.0) 0.0f32
+                    else {
+                        let ratio = Float64.truncateToFloat32(flashLeft / flashDuration());
+                        ratio * flashPeakAlpha()
+                    };
+                let updatedRect = rect
+                    |> ColorRect.setAlpha(alpha)
+                    |> CanvasItem.setModulate(s#flashColor);
+                let sceneWithFlash = writeState({flashRemaining = flashLeft | s}, scene);
+                (EngineNode.ColorRectWithState(updatedRect, NodeTag.FlashOverlay), sceneWithFlash)
             case _ => (node, scene)
         }
 }

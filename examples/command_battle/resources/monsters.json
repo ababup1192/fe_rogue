@@ -1,18 +1,18 @@
 {
   "monsters": {
-    "slime": {
-      "name": "スライム",
-      "hp": 5,
-      "maxHp": 5,
-      "attack": 5,
-      "defense": 3
-    },
     "drakee": {
-      "name": "ドラキー",
+      "attack": 7,
+      "defense": 5,
       "hp": 12,
       "maxHp": 12,
-      "attack": 7,
-      "defense": 5
+      "name": "ドラキー"
+    },
+    "slime": {
+      "attack": 5,
+      "defense": 3,
+      "hp": 6,
+      "maxHp": 6,
+      "name": "スライム"
     }
   }
 }

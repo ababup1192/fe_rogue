@@ -58,6 +58,8 @@ pub enum NodeTag {
     case SpellMenu
     case ItemPanel
     case ItemMenu
+    /// 全画面フラッシュ用 ColorRect。 呪文発動時に短時間 alpha を上げて画面を光らせる
+    case FlashOverlay
     case MessageBox
     case EnemyLabel
     case StatusLabel
@@ -85,6 +87,8 @@ instance Node[NodeTag] {
                 checked_ecast(BattleScene.processStatusLabel(delta, node, path, scene))
             case EngineNode.Label2DWithState(_, NodeTag.EnemyLabel) =>
                 checked_ecast(BattleScene.processEnemyLabel(delta, node, path, scene))
+            case EngineNode.ColorRectWithState(_, NodeTag.FlashOverlay) =>
+                checked_ecast(BattleScene.processFlashOverlay(delta, node, path, scene))
             case EngineNode.RichTextLabelWithState(_, NodeTag.MessageBox) =>
                 MessageScene.processBox(delta, node, path, scene)
             case EngineNode.ItemListWithState(_, NodeTag.ItemMenu) =>
