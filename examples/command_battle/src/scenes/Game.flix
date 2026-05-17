@@ -22,6 +22,7 @@ pub enum GamePhase with Eq, ToString {
     case CommandSelect   // プレイヤーのコマンド選択中
     case SpellSelect     // じゅもんサブメニュー選択中
     case ItemSelect      // どうぐサブメニュー選択中
+    case TargetSelect    // 攻撃 / 攻撃呪文のターゲット敵選択中
     case Resolving       // プレイヤー行動の解決中（攻撃メッセージ表示）
     case EnemyActing     // 敵の行動中（反撃メッセージ表示）
     case Victory         // 勝利（敵を倒した）
@@ -61,7 +62,9 @@ pub enum NodeTag {
     /// 全画面フラッシュ用 ColorRect。 呪文発動時に短時間 alpha を上げて画面を光らせる
     case FlashOverlay
     case MessageBox
-    case EnemyLabel
+    case EnemySprite(Int32)
+    /// TargetSelect フェーズで敵の上に表示する選択カーソル ▶
+    case TargetCursor
     case StatusLabel
     case NoTag
 }
@@ -74,7 +77,8 @@ instance Node[NodeTag] {
     type Aef = { GamePhaseState }
 
     // 毎フレーム動かす必要があるのは「状態 → 表示」 の連動だけ
-    //   - StatusLabel / EnemyLabel : HP の文字列表示更新
+    //   - StatusLabel              : HP の文字列表示更新
+    //   - EnemySprite              : 被弾点滅・敗北時の hide
     //   - MessageBox               : タイプライターの 1 文字進行
     //   - ItemMenu                 : 所持アイテム数の変化を即反映
     // フェーズに依存する visibility / focused 制御は Game.applyVisibility が
@@ -87,14 +91,16 @@ instance Node[NodeTag] {
                 checked_ecast(BattleScene.processBattleLayer(delta, node, path, scene))
             case EngineNode.Label2DWithState(_, NodeTag.StatusLabel) =>
                 checked_ecast(BattleScene.processStatusLabel(delta, node, path, scene))
-            case EngineNode.Label2DWithState(_, NodeTag.EnemyLabel) =>
-                checked_ecast(BattleScene.processEnemyLabel(delta, node, path, scene))
+            case EngineNode.Sprite2DWithState(_, NodeTag.EnemySprite(idx)) =>
+                checked_ecast(BattleScene.processEnemySprite(idx, delta, node, path, scene))
             case EngineNode.ColorRectWithState(_, NodeTag.FlashOverlay) =>
                 checked_ecast(BattleScene.processFlashOverlay(delta, node, path, scene))
             case EngineNode.RichTextLabelWithState(_, NodeTag.MessageBox) =>
                 MessageScene.processBox(delta, node, path, scene)
             case EngineNode.ItemListWithState(_, NodeTag.ItemMenu) =>
                 checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
+            case EngineNode.Label2DWithState(_, NodeTag.TargetCursor) =>
+                checked_ecast(BattleScene.processTargetCursor(delta, node, path, scene))
             case _ => (node, scene)
         }
 }
@@ -104,13 +110,23 @@ instance Node[NodeTag] {
 // ========================================================================
 
 instance InputEvent.InputHandler[NodeTag] {
-    type Aef = { GamePhaseState, Math.Random }
-    // dispatch のみ。 実処理は BattleScene.advancePhaseOnEnter に委譲する。
+    type Aef = { GamePhaseState, Math.Random, GameEngine.Audio }
+    // dispatch のみ。 実処理は BattleScene の各関数に委譲する。
+    // TargetSelect フェーズでは ↑↓ ではなく ← → でカーソル移動する設計（Escape でキャンセル）。
     redef onKeyPressed(key: GameEngine.Key,
-                       scene: Scene[NodeTag]): Scene[NodeTag] \ {GamePhaseState, Math.Random} =
-        match key {
-            case GameEngine.Key.Enter => BattleScene.advancePhaseOnEnter(scene)
-            case _                    => scene
+                       scene: Scene[NodeTag]):
+                       Scene[NodeTag] \ {GamePhaseState, Math.Random, GameEngine.Audio} =
+        let phase = GamePhaseState.get();
+        match (key, phase) {
+            case (GameEngine.Key.Enter, _) =>
+                BattleScene.advancePhaseOnEnter(scene)
+            case (GameEngine.Key.Left,  GamePhase.TargetSelect) =>
+                checked_ecast(BattleScene.moveTargetCursor(-1, scene))
+            case (GameEngine.Key.Right, GamePhase.TargetSelect) =>
+                checked_ecast(BattleScene.moveTargetCursor(1, scene))
+            case (GameEngine.Key.Escape, GamePhase.TargetSelect) =>
+                checked_ecast(BattleScene.cancelTargetSelect(scene))
+            case _ => scene
         }
 }
 
@@ -119,11 +135,12 @@ instance InputEvent.InputHandler[NodeTag] {
 // ========================================================================
 
 instance MenuEvent.MenuHandler[NodeTag] {
-    type Aef = { GamePhaseState, Math.Random }
+    type Aef = { GamePhaseState, Math.Random, GameEngine.Audio }
     // dispatch のみ。 各 menu のロジックは Scene の関数に委譲する。
     redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
                           state: NodeTag,
-                          scene: Scene[NodeTag]): Scene[NodeTag] \ {GamePhaseState, Math.Random} =
+                          scene: Scene[NodeTag]):
+                          Scene[NodeTag] \ {GamePhaseState, Math.Random, GameEngine.Audio} =
         match state {
             case NodeTag.CommandMenu => CommandScene.onCommandConfirmed(entry, scene)
             case NodeTag.SpellMenu   => SpellMenuScene.onSpellConfirmed(entry, scene)
@@ -131,7 +148,8 @@ instance MenuEvent.MenuHandler[NodeTag] {
             case _                   => scene
         }
     redef onItemCancelled(_menuPath: NodePath, state: NodeTag,
-                          scene: Scene[NodeTag]): Scene[NodeTag] \ {GamePhaseState, Math.Random} =
+                          scene: Scene[NodeTag]):
+                          Scene[NodeTag] \ {GamePhaseState, Math.Random, GameEngine.Audio} =
         match state {
             case NodeTag.SpellMenu => checked_ecast(SpellMenuScene.onSpellCancelled(scene))
             case NodeTag.ItemMenu  => checked_ecast(ItemMenuScene.onItemCancelled(scene))

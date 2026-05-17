@@ -8,11 +8,23 @@ mod MonsterCatalog {
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonNumber, JsonString}
 
-    /// 敵 1 体のステータス。 BattleScene.State の enemy フィールドにそのまま入る型。
+    /// 敵 1 体のスプライト情報。 IDE Resource 画面でプレビューを出すための nested で、
+    /// 単一画像なら hframes=vframes=1, frame=0 で OK。 シート分割テクスチャの場合は
+    /// frameGrid hint で切り出し位置を指定する。
+    pub type alias SpriteSpec = {
+        texture = String,
+        hframes = Int32,
+        vframes = Int32,
+        frame   = Int32
+    }
+
+    /// 敵 1 体のステータス。 BattleScene.State の enemies フィールドにそのまま入る型。
+    /// `sprite` は scene の Sprite2D にロード時に流し込まれる（IDE で編集すれば再起動で反映）。
     pub type alias EnemyStats = {
         name    = String,
         hp      = Int32, maxHp   = Int32,
-        attack  = Int32, defense = Int32
+        attack  = Int32, defense = Int32,
+        sprite  = SpriteSpec
     }
 
     /// `resources/monsters.json` をロードして id → EnemyStats の Map を返す。
@@ -65,15 +77,33 @@ mod MonsterCatalog {
             maxHpJ   <- Map.get("maxHp", obj);
             attackJ  <- Map.get("attack", obj);
             defenseJ <- Map.get("defense", obj);
+            spriteJ  <- Map.get("sprite", obj);
             name     <- expectString(nameJ);
             hp       <- expectInt(hpJ);
             maxHp    <- expectInt(maxHpJ);
             attack   <- expectInt(attackJ);
-            defense  <- expectInt(defenseJ)
+            defense  <- expectInt(defenseJ);
+            sprite   <- decodeSprite(spriteJ)
         ) yield ({
             name = name, hp = hp, maxHp = maxHp,
-            attack = attack, defense = defense
+            attack = attack, defense = defense, sprite = sprite
         }: EnemyStats)
+
+    def decodeSprite(element: JsonElement): Option[SpriteSpec] =
+        forM (
+            obj       <- expectObject(element);
+            textureJ  <- Map.get("texture", obj);
+            hframesJ  <- Map.get("hframes", obj);
+            vframesJ  <- Map.get("vframes", obj);
+            frameJ    <- Map.get("frame", obj);
+            texture   <- expectString(textureJ);
+            hframes   <- expectInt(hframesJ);
+            vframes   <- expectInt(vframesJ);
+            frame     <- expectInt(frameJ)
+        ) yield ({
+            texture = texture, hframes = hframes,
+            vframes = vframes, frame = frame
+        }: SpriteSpec)
 
     def expectObject(element: JsonElement): Option[Map[String, JsonElement]] =
         match element {

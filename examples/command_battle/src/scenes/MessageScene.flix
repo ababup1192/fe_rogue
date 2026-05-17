@@ -42,13 +42,19 @@ mod MessageScene {
             case GamePhase.CommandSelect => ""
             case GamePhase.SpellSelect   => ""
             case GamePhase.ItemSelect    => ""
+            case GamePhase.TargetSelect  => "どの モンスターを ねらう？"
             case GamePhase.Resolving     => actionMessage(false, state#lastAction)
             case GamePhase.EnemyActing   => actionMessage(true, state#lastAction)
             case GamePhase.Victory       =>
-                "${state#enemy#name}を たおした！\nEnter キーで タイトルへ"
+                "${defeatedNames(state#enemies)}を たおした！\nEnter キーで タイトルへ"
             case GamePhase.Defeat        =>
                 "${state#hero#name}は ちからつきた…\nEnter キーで タイトルへ"
         }
+
+    /// 倒した敵の名前を「と」で連結した文字列を作る。 例: ["スライム", "ドラキー"] → "スライムと ドラキー"
+    /// Victory メッセージで「スライムと ドラキーを たおした！」 と表示するために使う。
+    def defeatedNames(enemies: List[MonsterCatalog.EnemyStats]): String =
+        enemies |> List.map(e -> e#name) |> List.intersperse("と ") |> List.foldLeft(String.concat, "")
 
     /// `ActionResult` 1 件からメッセージ文を組み立てる。 kind で文体を分岐:
     ///   - Attack       : 「X は Y に こうげき！\nY に N の ダメージ！」
@@ -101,11 +107,12 @@ mod MessageScene {
     /// メッセージが必要なフェーズ（Resolving / EnemyActing / Victory / Defeat）でだけ visible。
     pub def applyVisibility(phase: GamePhase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = match phase {
-            case GamePhase.Resolving   => true
-            case GamePhase.EnemyActing => true
-            case GamePhase.Victory     => true
-            case GamePhase.Defeat      => true
-            case _                     => false
+            case GamePhase.Resolving    => true
+            case GamePhase.EnemyActing  => true
+            case GamePhase.Victory      => true
+            case GamePhase.Defeat       => true
+            case GamePhase.TargetSelect => true
+            case _                      => false
         };
         Scene.mapEngineNode(panelPath(), node -> match node {
             case EngineNode.PanelWithState(panel, tag) =>

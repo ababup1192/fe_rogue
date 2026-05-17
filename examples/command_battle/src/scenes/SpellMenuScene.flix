@@ -60,15 +60,12 @@ mod SpellMenuScene {
             })
 
     /// じゅもん項目が確定された (Enter) ときの処理。 Game.flix の MenuHandler から呼ばれる。
-    /// entry の metadata から spell_id を取り出し、 BattleScene.applySpell で発動。
-    /// 発動後 Resolving フェーズに遷移してメッセージ表示に進む。
+    /// entry の metadata から spell_id を取り出し、 BattleScene.beginSpell に委譲（Heal なら
+    /// 即発動、 Damage で敵が複数なら TargetSelect、 1 体なら即発動）。
     pub def onSpellConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
-                              Scene[NodeTag] \ {GamePhaseState, Math.Random} =
+                              Scene[NodeTag] \ {GamePhaseState, Math.Random, GameEngine.Audio} =
         match entry#metadata {
-            case Some(spellId) =>
-                let afterSpell = BattleScene.applySpell(spellId, scene);
-                GamePhaseState.put(GamePhase.Resolving);
-                afterSpell
+            case Some(spellId) => BattleScene.beginSpell(spellId, scene)
             case None => scene
         }
 

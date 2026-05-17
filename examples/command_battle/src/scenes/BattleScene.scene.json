@@ -12,12 +12,20 @@
       "color": {"r": 0, "g": 0, "b": 0.05}
     },
     {
-      "type": "Label2D",
-      "name": "enemy",
-      "pos": [260, 80],
-      "text": "スライム",
-      "fontSize": 36,
-      "tag": "EnemyLabel"
+      "type": "Sprite2D",
+      "name": "enemy0",
+      "pos": [220, 140],
+      "scale": [1.0, 1.0],
+      "texture": "slime",
+      "tag": "EnemySprite0"
+    },
+    {
+      "type": "Sprite2D",
+      "name": "enemy1",
+      "pos": [420, 140],
+      "scale": [1.0, 1.0],
+      "texture": "drakee",
+      "tag": "EnemySprite1"
     },
     {
       "type": "Label2D",
@@ -36,6 +44,16 @@
       "alpha": 0,
       "zIndex": 100,
       "tag": "FlashOverlay"
+    },
+    {
+      "type": "Label2D",
+      "name": "target_cursor",
+      "pos": [0, 0],
+      "text": "▼",
+      "fontSize": 28,
+      "visible": false,
+      "zIndex": 50,
+      "tag": "TargetCursor"
     }
   ]
 }

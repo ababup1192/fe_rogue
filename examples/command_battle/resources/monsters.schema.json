@@ -39,6 +39,42 @@
         "label": "守備力",
         "order": 4
       }
+    },
+    "sprite": {
+      "nested": {
+        "texture": {
+          "field": {
+            "ftype": "texturePath",
+            "hint":  "plain",
+            "label": "テクスチャ",
+            "order": 0
+          }
+        },
+        "hframes": {
+          "field": {
+            "ftype": "int",
+            "hint":  { "spinner": { "min": 1, "max": 16 } },
+            "label": "横分割",
+            "order": 1
+          }
+        },
+        "vframes": {
+          "field": {
+            "ftype": "int",
+            "hint":  { "spinner": { "min": 1, "max": 16 } },
+            "label": "縦分割",
+            "order": 2
+          }
+        },
+        "frame": {
+          "field": {
+            "ftype": "int",
+            "hint":  { "frameGrid": { "hframesField": "hframes", "vframesField": "vframes" } },
+            "label": "フレーム",
+            "order": 3
+          }
+        }
+      }
     }
   }
 }

@@ -43,13 +43,12 @@ mod CommandScene {
         }, scene)
 
     /// コマンド項目が確定された (Enter) ときの処理。 Game.flix の MenuHandler から呼ばれる。
+    /// 「たたかう」 は BattleScene.beginAttack に委譲（敵が複数なら TargetSelect、 1 体なら
+    /// 即攻撃）。 サブメニュー遷移はフェーズ put のみ。
     pub def onCommandConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
-                                Scene[NodeTag] \ {GamePhaseState, Math.Random} =
+                                Scene[NodeTag] \ {GamePhaseState, Math.Random, GameEngine.Audio} =
         match entry#text {
-            case "たたかう" =>
-                let afterAttack = BattleScene.applyPlayerAttack(scene);
-                GamePhaseState.put(GamePhase.Resolving);
-                afterAttack
+            case "たたかう" => BattleScene.beginAttack(scene)
             case "じゅもん" =>
                 GamePhaseState.put(GamePhase.SpellSelect); scene
             case "どうぐ" =>

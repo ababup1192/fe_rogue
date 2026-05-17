@@ -31,21 +31,36 @@ mod BattleScene {
         kind   = ActionKind
     }
 
+    /// TargetSelect 中に「何を発動しようとしているか」 を覚えておくための情報。
+    ///   - AttackAction: たたかう（target 確定後に通常攻撃を実行）
+    ///   - SpellAction(spellId): 攻撃呪文（target 確定後にダメージ呪文を実行）
+    pub enum PendingAction with Eq {
+        case AttackAction
+        case SpellAction(String)
+    }
+
     /// バトル全体のスナップショット。 hero / enemy のステータスは Resource モジュール側で
     /// 定義された型を再利用する（resources/player.json と resources/monsters.json から
     /// 読み込まれる）。
     /// `inventory` はアイテム所持リストで、 戦闘中に applyItem で消費される。
     /// `enemyBlinkRemaining` は敵が攻撃を受けたときに正値が設定され、 process が delta 分
-    /// 減算しながら EnemyLabel を visible toggle してダメージ演出を出す（0 で通常表示）。
+    /// 減算しながら EnemySprite を visible toggle してダメージ演出を出す（0 で通常表示）。
+    /// 戦闘の全状態。 hero と enemies (複数) を保持し、 演出用の残り時間も載せる。
+    /// `enemyTurnIndex` は EnemyActing 中に「次の敵」を探すカーソル（-1 = 敵ターン未開始）。
+    /// `enemyBlinkIndex` は直前に被弾した敵のインデックス（-1 = 点滅対象なし）。
     pub type alias State = {
         hero                 = PlayerStats.HeroStats,
-        enemy                = MonsterCatalog.EnemyStats,
+        enemies              = List[MonsterCatalog.EnemyStats],
         inventory            = List[ItemCatalog.InventoryEntry],
         lastAction           = Option[ActionResult],
+        enemyTurnIndex       = Int32,
+        enemyBlinkIndex      = Int32,
         enemyBlinkRemaining  = Float64,
         flashRemaining       = Float64,
         flashColor           = Color,
-        shakeRemaining       = Float64
+        shakeRemaining       = Float64,
+        pendingAction        = Option[PendingAction],
+        targetCursor         = Int32
     }
 
     /// NodeTag.BattleState に持たせるデータ。 `initial` は Resource から構築した不変の
@@ -67,9 +82,9 @@ mod BattleScene {
     def spellsJsonPath(): String = "resources/spells.json"
     def itemsJsonPath(): String = "resources/items.json"
 
-    /// 起動時にロードされる敵 id。 PR4 で複数敵 / 階層別を扱うときは catalog から
-    /// 別の id を選ぶ or pool 化する。
-    def initialEnemyId(): String = "slime"
+    /// 起動時にロードされる敵 id のリスト（順序がそのまま画面上の左→右配置 = enemy0/enemy1 と
+    /// 一致する）。 enemies フィールドにそのまま格納される。
+    def initialEnemyIds(): List[String] = "slime" :: "drakee" :: Nil
 
     pub def layerName(): String = "battle"
     pub def stateName(): String = "state"
@@ -109,9 +124,11 @@ mod BattleScene {
             case None                  => Ok(NodeTag.NoTag)
             case Some("NoTag")         => Ok(NodeTag.NoTag)
             case Some("BattleLayer")   => Ok(NodeTag.BattleLayer)
-            case Some("EnemyLabel")    => Ok(NodeTag.EnemyLabel)
+            case Some("EnemySprite0")  => Ok(NodeTag.EnemySprite(0))
+            case Some("EnemySprite1")  => Ok(NodeTag.EnemySprite(1))
             case Some("StatusLabel")   => Ok(NodeTag.StatusLabel)
             case Some("FlashOverlay")  => Ok(NodeTag.FlashOverlay)
+            case Some("TargetCursor")  => Ok(NodeTag.TargetCursor)
             case Some(unknown)         => Err(JsonError(Root, Set#{"BattleScene tag (got: ${unknown})"}))
         }
 
@@ -124,17 +141,21 @@ mod BattleScene {
         let loaded = SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas, tagParser, scene);
         let hero = PlayerStats.load(playerJsonPath());
         let monsters = MonsterCatalog.load(monstersJsonPath());
-        let enemy = MonsterCatalog.get(initialEnemyId(), monsters);
+        let enemies = List.map(id -> MonsterCatalog.get(id, monsters), initialEnemyIds());
         let spells = SpellCatalog.load(spellsJsonPath());
         let items = ItemCatalog.load(itemsJsonPath());
         let initial = ({
-            hero = hero, enemy = enemy,
+            hero = hero, enemies = enemies,
             inventory = items#inventory,
             lastAction = None,
+            enemyTurnIndex = -1,
+            enemyBlinkIndex = -1,
             enemyBlinkRemaining = 0.0,
             flashRemaining = 0.0,
             flashColor = damageFlashColor(),
-            shakeRemaining = 0.0
+            shakeRemaining = 0.0,
+            pendingAction = None,
+            targetCursor = 0
         }: State);
         let data = ({
             current = initial, initial = initial,
@@ -149,11 +170,33 @@ mod BattleScene {
         loaded
             |> Scene.addChildAt(layerName() :: Nil, stateName(), stateNode)
             |> Scene.addChildAt(layerName() :: Nil, uiLayerName(), uiLayerNode)
+            |> applyEnemySprites(enemies)
+
+    /// `enemies` リストの各 `sprite` 情報を、 scene.json で配置された enemy0 / enemy1 の
+    /// Sprite2D に流し込む。 texture / hframes / vframes / frame をそれぞれ反映。
+    /// これにより monsters.json で texture を切り替えるとそのまま戦闘画面に反映される。
+    def applyEnemySprites(enemies: List[MonsterCatalog.EnemyStats],
+                          scene: Scene[NodeTag]): Scene[NodeTag] =
+        List.zipWithIndex(enemies)
+            |> List.foldLeft((acc, pair) -> {
+                let (idx, e) = pair;
+                let spec = e#sprite;
+                Scene.mapEngineNode(layerName() :: "enemy${idx}" :: Nil, n -> match n {
+                    case EngineNode.Sprite2DWithState(sp, tag) =>
+                        let updated = sp
+                            |> Sprite2D.setTexture(spec#texture)
+                            |> Sprite2D.setHframes(spec#hframes)
+                            |> Sprite2D.setVframes(spec#vframes)
+                            |> Sprite2D.setFrame(spec#frame);
+                        EngineNode.Sprite2DWithState(updated, tag)
+                    case other => other
+                }, acc)
+            }, scene)
 
     // ── 攻撃適用 (純粋関数 Battle.computeAttack を呼ぶ) ──
 
     /// 敵が攻撃を受けたときの点滅時間（秒）。 process が `delta` ずつ減算しながら
-    /// EnemyLabel を visible toggle して、 DQ 風「ダメージで一瞬チカチカする」 を出す。
+    /// EnemySprite を visible toggle して、 DQ 風「ダメージで一瞬チカチカする」 を出す。
     def enemyBlinkDuration(): Float64 = 0.4
 
     /// 呪文発動時の画面フラッシュ時間（秒）。
@@ -174,35 +217,96 @@ mod BattleScene {
     /// 画面揺れの最大振幅（px）。 残り時間に応じて 0 まで減衰する。
     def shakeAmplitude(): Float64 = 8.0
 
-    /// 勇者の通常攻撃。 ダメージ計算 → 敵 HP 減算 → lastAction 更新 + 敵点滅トリガー。
-    pub def applyPlayerAttack(scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
-        let state = readState(scene);
-        let rng = Math.Random.randomFloat64();
-        let dmg = Battle.computeAttack(state#hero#attack, state#enemy#defense, rng);
-        let newHp = Int32.max(0, state#enemy#hp - dmg);
-        let action = ({ actor = state#hero#name, target = state#enemy#name, damage = dmg, kind = ActionKind.Attack }: ActionResult);
-        let newEnemy = { hp = newHp | state#enemy };
-        let newState = {
-            lastAction = Some(action),
-            enemy = newEnemy,
-            enemyBlinkRemaining = enemyBlinkDuration()
-            | state
-        };
-        writeState(newState, scene)
+    // ── List[EnemyStats] ヘルパー ──
 
-    /// 勇者の呪文発動。 `SpellCatalog` から spell を取り出し、 kind に応じて heal (勇者 HP
-    /// 回復) or damage (敵 HP 減算) を計算 + MP 消費。 MP 不足なら lastAction に「足りない」
-    /// 情報だけ書いて何もしない。
-    /// SpellCatalog は起動時にロード済みで Data に保持してあるので、 effect なしで読める。
-    pub def applySpell(spellId: String, scene: Scene[NodeTag]):
-                       Scene[NodeTag] \ Math.Random =
-        let data = readData(scene);
-        let state = data#current;
-        let spell = SpellCatalog.get(spellId, data#spellCatalog);
-        if (state#hero#mp < spell#cost)
-            applySpellInsufficientMp(spell, state, scene)
-        else
-            applySpellEffect(spell, state, scene)
+    /// 生きている (hp > 0) 最初の敵の (index, EnemyStats) を返す。 全滅なら None。
+    def firstAlive(enemies: List[MonsterCatalog.EnemyStats]):
+                   Option[(Int32, MonsterCatalog.EnemyStats)] =
+        List.zipWithIndex(enemies)
+            |> List.findMap(pair -> {
+                let (idx, e) = pair;
+                if (e#hp > 0) Some((idx, e)) else None
+            })
+
+    /// `after` 以降で次に生きている敵の (index, EnemyStats) を返す。 いなければ None。
+    def nextAliveAfter(after: Int32, enemies: List[MonsterCatalog.EnemyStats]):
+                       Option[(Int32, MonsterCatalog.EnemyStats)] =
+        List.zipWithIndex(enemies)
+            |> List.findMap(pair -> {
+                let (idx, e) = pair;
+                if (idx > after and e#hp > 0) Some((idx, e)) else None
+            })
+
+    /// `idx` 番目の敵を `f` で変換した新しいリストを返す。 範囲外なら原リスト。
+    def updateEnemyAt(idx: Int32,
+                      f: MonsterCatalog.EnemyStats -> MonsterCatalog.EnemyStats,
+                      enemies: List[MonsterCatalog.EnemyStats]):
+                      List[MonsterCatalog.EnemyStats] =
+        List.zipWithIndex(enemies)
+            |> List.map(pair -> {
+                let (i, e) = pair;
+                if (i == idx) f(e) else e
+            })
+
+    /// `idx` 番目の敵を返す。 範囲外なら None。
+    pub def enemyAt(idx: Int32, enemies: List[MonsterCatalog.EnemyStats]):
+                    Option[MonsterCatalog.EnemyStats] =
+        List.nth(idx, enemies)
+
+    /// 全敵が hp <= 0 か。
+    def allDead(enemies: List[MonsterCatalog.EnemyStats]): Bool =
+        List.forAll(e -> e#hp <= 0, enemies)
+
+    /// 生きている敵の数。
+    def aliveCount(enemies: List[MonsterCatalog.EnemyStats]): Int32 =
+        List.count(e -> e#hp > 0, enemies)
+
+    /// 生きている敵の (index) のみのリスト。
+    def aliveIndices(enemies: List[MonsterCatalog.EnemyStats]): List[Int32] =
+        List.zipWithIndex(enemies)
+            |> List.filterMap(pair -> {
+                let (i, e) = pair;
+                if (e#hp > 0) Some(i) else None
+            })
+
+    /// 生きている最初の敵のインデックス。
+    def firstAliveIndex(enemies: List[MonsterCatalog.EnemyStats]): Option[Int32] =
+        match firstAlive(enemies) {
+            case Some(p) => { let (i, _) = p; Some(i) }
+            case None    => None
+        }
+
+    /// 勇者の通常攻撃を指定 index の敵に適用する。 ダメージ計算 → 敵 HP 減算 →
+    /// lastAction 更新 + 敵点滅 + damage SE。 範囲外 / 既に倒れている敵が指定されたら何もしない。
+    pub def applyPlayerAttackAt(targetIdx: Int32,
+                                scene: Scene[NodeTag]):
+                                Scene[NodeTag] \ {Math.Random, GameEngine.Audio} =
+        let state = readState(scene);
+        match enemyAt(targetIdx, state#enemies) {
+            case None    => scene
+            case Some(t) =>
+                if (t#hp <= 0) scene
+                else {
+                    let rng = Math.Random.randomFloat64();
+                    let dmg = Battle.computeAttack(state#hero#attack, t#defense, rng);
+                    let newEnemies = updateEnemyAt(targetIdx,
+                        e -> { hp = Int32.max(0, e#hp - dmg) | e }, state#enemies);
+                    let action = ({
+                        actor  = state#hero#name,
+                        target = t#name,
+                        damage = dmg,
+                        kind   = ActionKind.Attack
+                    }: ActionResult);
+                    AudioStreamPlayer.play("damage");
+                    writeState({
+                        lastAction = Some(action),
+                        enemies = newEnemies,
+                        enemyBlinkIndex = targetIdx,
+                        enemyBlinkRemaining = enemyBlinkDuration()
+                        | state
+                    }, scene)
+                }
+        }
 
     /// MP 不足ケース。 lastAction の damage=0 にして、 メッセージ側で特殊扱い。
     def applySpellInsufficientMp(spell: SpellCatalog.SpellDef, state: State,
@@ -215,49 +319,177 @@ mod BattleScene {
         }: ActionResult);
         writeState({lastAction = Some(action) | state}, scene)
 
-    /// 呪文効果適用 (heal / damage)。 MP は事前にチェック済み。
-    def applySpellEffect(spell: SpellCatalog.SpellDef, state: State,
-                         scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+    /// 回復呪文の効果適用。 MP は事前にチェック済み。 ターゲット選択は不要（勇者自身）。
+    def applySpellHealEffect(spell: SpellCatalog.SpellDef, state: State,
+                             scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
         let rng = Math.Random.randomFloat64();
         let power = Battle.computeSpell(spell#minPower, spell#maxPower, rng);
         let mpAfter = state#hero#mp - spell#cost;
+        let healed = Int32.min(state#hero#maxHp, state#hero#hp + power);
+        let newHero = { hp = healed, mp = mpAfter | state#hero };
+        let action = ({
+            actor  = "${state#hero#name}の ${spell#name}！",
+            target = state#hero#name,
+            damage = power,
+            kind   = ActionKind.SpellHeal
+        }: ActionResult);
+        writeState({
+            hero = newHero,
+            lastAction = Some(action),
+            flashRemaining = flashDuration(),
+            flashColor = healFlashColor()
+            | state
+        }, scene)
+
+    /// 攻撃呪文の効果適用。 MP は事前にチェック済み。 ターゲット index は呼び出し側が決定する
+    /// （TargetSelect 経由 or 1 体のみ自動）。 ダメージ計算 → 敵 HP 減算 + 点滅 + 画面フラッシュ
+    /// + damage SE。
+    def applySpellDamageAt(spell: SpellCatalog.SpellDef, targetIdx: Int32, state: State,
+                           scene: Scene[NodeTag]):
+                           Scene[NodeTag] \ {Math.Random, GameEngine.Audio} =
+        let mpAfter = state#hero#mp - spell#cost;
         let heroAfterMp = { mp = mpAfter | state#hero };
-        match spell#kind {
-            case SpellCatalog.SpellKind.Heal =>
-                let healed = Int32.min(state#hero#maxHp, state#hero#hp + power);
-                let newHero = { hp = healed | heroAfterMp };
-                let action = ({
-                    actor  = "${state#hero#name}の ${spell#name}！",
-                    target = state#hero#name,
-                    damage = power,
-                    kind   = ActionKind.SpellHeal
-                }: ActionResult);
-                writeState({
-                    hero = newHero,
-                    lastAction = Some(action),
-                    flashRemaining = flashDuration(),
-                    flashColor = healFlashColor()
-                    | state
-                }, scene)
-            case SpellCatalog.SpellKind.Damage =>
-                let newHp = Int32.max(0, state#enemy#hp - power);
-                let newEnemy = { hp = newHp | state#enemy };
-                let action = ({
-                    actor  = "${state#hero#name}の ${spell#name}！",
-                    target = state#enemy#name,
-                    damage = power,
-                    kind   = ActionKind.SpellDamage
-                }: ActionResult);
-                writeState({
-                    hero = heroAfterMp,
-                    enemy = newEnemy,
-                    lastAction = Some(action),
-                    enemyBlinkRemaining = enemyBlinkDuration(),
-                    flashRemaining = flashDuration(),
-                    flashColor = damageFlashColor()
-                    | state
-                }, scene)
+        match enemyAt(targetIdx, state#enemies) {
+            case None    => writeState({hero = heroAfterMp | state}, scene)
+            case Some(t) =>
+                if (t#hp <= 0) writeState({hero = heroAfterMp | state}, scene)
+                else {
+                    let rng = Math.Random.randomFloat64();
+                    let power = Battle.computeSpell(spell#minPower, spell#maxPower, rng);
+                    let newEnemies = updateEnemyAt(targetIdx,
+                        e -> { hp = Int32.max(0, e#hp - power) | e }, state#enemies);
+                    let action = ({
+                        actor  = "${state#hero#name}の ${spell#name}！",
+                        target = t#name,
+                        damage = power,
+                        kind   = ActionKind.SpellDamage
+                    }: ActionResult);
+                    AudioStreamPlayer.play("damage");
+                    writeState({
+                        hero = heroAfterMp,
+                        enemies = newEnemies,
+                        lastAction = Some(action),
+                        enemyBlinkIndex = targetIdx,
+                        enemyBlinkRemaining = enemyBlinkDuration(),
+                        flashRemaining = flashDuration(),
+                        flashColor = damageFlashColor()
+                        | state
+                    }, scene)
+                }
         }
+
+    // ── ターゲット選択 開始エントリ ──
+
+    /// 「たたかう」 発動エントリ。 生きている敵が 1 体なら即攻撃 + Resolving、 複数いるなら
+    /// TargetSelect フェーズへ。 全滅状態（来ないはず）なら何もしない。
+    pub def beginAttack(scene: Scene[NodeTag]):
+                        Scene[NodeTag] \ {GamePhaseState, Math.Random, GameEngine.Audio} =
+        let s = readState(scene);
+        if (aliveCount(s#enemies) <= 1) {
+            match firstAliveIndex(s#enemies) {
+                case None      => scene
+                case Some(idx) =>
+                    let after = applyPlayerAttackAt(idx, scene);
+                    GamePhaseState.put(GamePhase.Resolving);
+                    after
+            }
+        } else {
+            let cursorIdx = firstAliveIndex(s#enemies) |> Option.getWithDefault(0);
+            GamePhaseState.put(GamePhase.TargetSelect);
+            writeState({
+                pendingAction = Some(PendingAction.AttackAction),
+                targetCursor  = cursorIdx
+                | s
+            }, scene)
+        }
+
+    /// 「じゅもん」 確定エントリ。 MP 不足 / Heal / Damage で分岐。
+    ///   - MP 不足: Resolving で「足りない！」 メッセージ
+    ///   - Heal: そのまま回復適用 + Resolving
+    ///   - Damage で敵が複数生存: TargetSelect へ
+    ///   - Damage で敵が 1 体: 即発動 + Resolving
+    pub def beginSpell(spellId: String, scene: Scene[NodeTag]):
+                       Scene[NodeTag] \ {GamePhaseState, Math.Random, GameEngine.Audio} =
+        let data = readData(scene);
+        let s = data#current;
+        let spell = SpellCatalog.get(spellId, data#spellCatalog);
+        if (s#hero#mp < spell#cost) {
+            let after = applySpellInsufficientMp(spell, s, scene);
+            GamePhaseState.put(GamePhase.Resolving);
+            after
+        } else
+            match spell#kind {
+                case SpellCatalog.SpellKind.Heal =>
+                    let after = applySpellHealEffect(spell, s, scene);
+                    GamePhaseState.put(GamePhase.Resolving);
+                    after
+                case SpellCatalog.SpellKind.Damage =>
+                    if (aliveCount(s#enemies) <= 1) {
+                        match firstAliveIndex(s#enemies) {
+                            case None      => scene
+                            case Some(idx) =>
+                                let after = applySpellDamageAt(spell, idx, s, scene);
+                                GamePhaseState.put(GamePhase.Resolving);
+                                after
+                        }
+                    } else {
+                        let cursorIdx = firstAliveIndex(s#enemies)
+                                            |> Option.getWithDefault(0);
+                        GamePhaseState.put(GamePhase.TargetSelect);
+                        writeState({
+                            pendingAction = Some(PendingAction.SpellAction(spellId)),
+                            targetCursor  = cursorIdx
+                            | s
+                        }, scene)
+                    }
+            }
+
+    // ── TargetSelect フェーズの入力処理 ──
+
+    /// ← / → でターゲット敵カーソルを移動する。 生きている敵だけを巡回する（dead は skip）。
+    /// `dir = -1` で前、 `+1` で次。 wrap-around。
+    pub def moveTargetCursor(dir: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let s = readState(scene);
+        let alive = aliveIndices(s#enemies);
+        let count = List.length(alive);
+        if (count <= 0) scene
+        else {
+            let currentPos = alive
+                |> List.zipWithIndex
+                |> List.findMap(pair -> {
+                    let (i, idx) = pair;
+                    if (idx == s#targetCursor) Some(i) else None
+                })
+                |> Option.getWithDefault(0);
+            let newPos = Int32.modulo(currentPos + dir + count, count);
+            let newIdx = List.nth(newPos, alive) |> Option.getWithDefault(s#targetCursor);
+            writeState({targetCursor = newIdx | s}, scene)
+        }
+
+    /// Escape で TargetSelect をキャンセル → CommandSelect に戻る。
+    pub def cancelTargetSelect(scene: Scene[NodeTag]): Scene[NodeTag] \ GamePhaseState =
+        let s = readState(scene);
+        GamePhaseState.put(GamePhase.CommandSelect);
+        writeState({pendingAction = None | s}, scene)
+
+    /// Enter で TargetSelect を確定 → 行動適用 → Resolving。
+    /// `pendingAction` が None ならフェーズ整合性が崩れているので何もしない。
+    pub def confirmTargetSelect(scene: Scene[NodeTag]):
+                                Scene[NodeTag] \ {GamePhaseState, Math.Random, GameEngine.Audio} =
+        let s = readState(scene);
+        let targetIdx = s#targetCursor;
+        let scene2 = match s#pendingAction {
+            case Some(PendingAction.AttackAction) =>
+                applyPlayerAttackAt(targetIdx, scene)
+            case Some(PendingAction.SpellAction(spellId)) =>
+                let data = readData(scene);
+                let spell = SpellCatalog.get(spellId, data#spellCatalog);
+                applySpellDamageAt(spell, targetIdx, s, scene)
+            case None => scene
+        };
+        let s2 = readState(scene2);
+        GamePhaseState.put(GamePhase.Resolving);
+        writeState({pendingAction = None | s2}, scene2)
 
     /// 勇者がアイテムを使用する。 inventory から quantity を 1 消費し、 kind に応じて
     /// 効果を適用する（PR4 は Heal のみ）。 残数 0 で呼ばれた場合は何もしない。
@@ -306,21 +538,37 @@ mod BattleScene {
                 }, scene)
         }
 
-    /// 敵の通常攻撃。 勇者 HP 減算 + lastAction 更新 + 画面揺れトリガー。
-    pub def applyEnemyAttack(scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+    /// 指定インデックスの敵が勇者を攻撃する。 勇者 HP 減算 + lastAction 更新 + 画面揺れ + damage SE
+    /// + enemyTurnIndex を更新（EnemyActing 中に「次の敵」 を見つけるカーソル）。
+    /// 範囲外 / 既に倒れている敵が指定された場合は何もしない（防御的）。
+    pub def applyEnemyAttackAt(idx: Int32,
+                               scene: Scene[NodeTag]):
+                               Scene[NodeTag] \ {Math.Random, GameEngine.Audio} =
         let state = readState(scene);
-        let rng = Math.Random.randomFloat64();
-        let dmg = Battle.computeAttack(state#enemy#attack, state#hero#defense, rng);
-        let newHp = Int32.max(0, state#hero#hp - dmg);
-        let action = ({ actor = state#enemy#name, target = state#hero#name, damage = dmg, kind = ActionKind.Attack }: ActionResult);
-        let newHero = { hp = newHp | state#hero };
-        let newState = {
-            lastAction = Some(action),
-            hero = newHero,
-            shakeRemaining = shakeDuration()
-            | state
-        };
-        writeState(newState, scene)
+        match enemyAt(idx, state#enemies) {
+            case None    => scene
+            case Some(e) =>
+                if (e#hp <= 0) scene
+                else {
+                    let rng = Math.Random.randomFloat64();
+                    let dmg = Battle.computeAttack(e#attack, state#hero#defense, rng);
+                    let newHp = Int32.max(0, state#hero#hp - dmg);
+                    let action = ({
+                        actor  = e#name,
+                        target = state#hero#name,
+                        damage = dmg,
+                        kind   = ActionKind.Attack
+                    }: ActionResult);
+                    AudioStreamPlayer.play("damage");
+                    writeState({
+                        lastAction = Some(action),
+                        hero = { hp = newHp | state#hero },
+                        enemyTurnIndex = idx,
+                        shakeRemaining = shakeDuration()
+                        | state
+                    }, scene)
+                }
+        }
 
     /// バトルを初期状態に戻す（Resource ロードはしない。 initial → current コピー）。
     pub def resetBattle(scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -328,23 +576,37 @@ mod BattleScene {
         writeData({current = data#initial | data}, scene)
 
     /// Enter 押下時のフェーズ遷移ロジック。 戦闘サイクルを 1 個のディスパッチに集約する。
-    pub def advancePhaseOnEnter(scene: Scene[NodeTag]): Scene[NodeTag] \ {GamePhaseState, Math.Random} =
+    pub def advancePhaseOnEnter(scene: Scene[NodeTag]):
+                                Scene[NodeTag] \ {GamePhaseState, Math.Random, GameEngine.Audio} =
         let phase = GamePhaseState.get();
         match phase {
             case GamePhase.Title =>
                 GamePhaseState.put(GamePhase.CommandSelect); scene
+
+            case GamePhase.TargetSelect =>
+                confirmTargetSelect(scene)
 
             case GamePhase.Resolving =>
                 if (not MessageScene.isComplete(scene))
                     checked_ecast(MessageScene.skipTypewriter(scene))
                 else {
                     let s = readState(scene);
-                    if (s#enemy#hp <= 0) {
+                    if (allDead(s#enemies)) {
+                        AudioStreamPlayer.play("bonus");
                         GamePhaseState.put(GamePhase.Victory); scene
                     } else {
-                        let afterCounter = applyEnemyAttack(scene);
-                        GamePhaseState.put(GamePhase.EnemyActing);
-                        afterCounter
+                        // 生きている最初の敵から敵ターンを開始する
+                        match firstAlive(s#enemies) {
+                            case None => {
+                                AudioStreamPlayer.play("bonus");
+                                GamePhaseState.put(GamePhase.Victory); scene
+                            }
+                            case Some((idx, _)) => {
+                                let afterAttack = applyEnemyAttackAt(idx, scene);
+                                GamePhaseState.put(GamePhase.EnemyActing);
+                                afterAttack
+                            }
+                        }
                     }
                 }
 
@@ -356,7 +618,14 @@ mod BattleScene {
                     if (s#hero#hp <= 0) {
                         GamePhaseState.put(GamePhase.Defeat); scene
                     } else {
-                        GamePhaseState.put(GamePhase.CommandSelect); scene
+                        // 次に生きている敵があれば連続して行動させる。 いなければ CommandSelect。
+                        match nextAliveAfter(s#enemyTurnIndex, s#enemies) {
+                            case Some((idx, _)) => applyEnemyAttackAt(idx, scene)
+                            case None => {
+                                GamePhaseState.put(GamePhase.CommandSelect);
+                                checked_ecast(writeState({enemyTurnIndex = -1 | s}, scene))
+                            }
+                        }
                     }
                 }
 
@@ -396,37 +665,86 @@ mod BattleScene {
             case _ => (node, scene)
         }
 
-    // ── process: EnemyLabel を BattleState から更新 (敵 HP <= 0 で非表示 + 被弾点滅) ──
+    // ── process: EnemySprite を BattleState から更新 (敵 HP <= 0 で非表示 + 被弾点滅) ──
 
-    /// EnemyLabel を毎フレーム更新:
-    ///   1. text を `state#enemy#name` で更新
-    ///   2. enemyBlinkRemaining > 0 のとき、 残り時間を `delta` 減らして visible を toggle
-    ///      （0.05 秒間隔で on/off）。 完了で visible=true（HP>0 のとき）に戻す
-    ///   3. 敵 HP <= 0 で hidden
-    pub def processEnemyLabel(delta: Duration.Duration, node: EngineNode[NodeTag],
-                              _path: NodePath,
-                              scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) =
+    /// EnemySprite(idx) を毎フレーム更新:
+    ///   1. enemies[idx].hp <= 0 で hidden
+    ///   2. enemyBlinkIndex == idx と enemyBlinkRemaining > 0 のとき、 0.05 秒周期で
+    ///      visible を toggle して被弾演出を出す（被弾対象だけが点滅、 別敵は通常表示のまま）
+    ///   3. それ以外は visible=true
+    /// enemyBlinkRemaining の減算は idx==enemyBlinkIndex の処理時にだけ行う（複数 Sprite で
+    /// 二重減算しないため）。
+    pub def processEnemySprite(idx: Int32, delta: Duration.Duration,
+                               node: EngineNode[NodeTag],
+                               _path: NodePath,
+                               scene: Scene[NodeTag]):
+                               (EngineNode[NodeTag], Scene[NodeTag]) =
         match node {
-            case EngineNode.Label2DWithState(label, NodeTag.EnemyLabel) =>
+            case EngineNode.Sprite2DWithState(sprite, NodeTag.EnemySprite(_)) =>
                 let s = readState(scene);
                 let dtSec = Duration.toSeconds(delta);
-                let blinkLeft = s#enemyBlinkRemaining - dtSec;
-                let (visible, newBlink) =
-                    if (s#enemy#hp <= 0) (false, 0.0)
-                    else if (blinkLeft > 0.0) {
-                        // 0.05 秒周期で on/off。 「総時間 - 残り」 = 経過時間を 0.05 で割った
-                        // floor の偶奇で visible を判定。 開始フレーム phase=0 は invisible に
-                        // して被弾の瞬間に「パッ」 と消えるようにする (DQ 風)。
-                        let elapsed = enemyBlinkDuration() - blinkLeft;
+                let enemyOpt = enemyAt(idx, s#enemies);
+                let hp = enemyOpt |> Option.map(e -> e#hp) |> Option.getWithDefault(0);
+                let isBlinkTarget = s#enemyBlinkIndex == idx and s#enemyBlinkRemaining > 0.0;
+                let visible =
+                    if (hp <= 0) false
+                    else if (isBlinkTarget) {
+                        let elapsed = enemyBlinkDuration() - s#enemyBlinkRemaining;
                         let phase = Float64.tryToInt32(elapsed / 0.05)
                                         |> Option.getWithDefault(0);
-                        ((Int32.modulo(phase, 2) == 1), blinkLeft)
-                    } else (true, 0.0);
-                let updated = label
-                    |> Label2D.setText(s#enemy#name)
-                    |> CanvasItem.setVisible(visible);
-                let sceneWithBlink = writeState({enemyBlinkRemaining = newBlink | s}, scene);
-                (EngineNode.Label2DWithState(updated, NodeTag.EnemyLabel), sceneWithBlink)
+                        Int32.modulo(phase, 2) == 1
+                    } else true;
+                // enemyBlinkRemaining は被弾対象の sprite 処理時にのみ減算する
+                let sceneNext =
+                    if (s#enemyBlinkIndex == idx and s#enemyBlinkRemaining > 0.0) {
+                        let newBlink = Float64.max(0.0, s#enemyBlinkRemaining - dtSec);
+                        let (newBlinkIdx, newRemain) =
+                            if (newBlink <= 0.0) (-1, 0.0)
+                            else (s#enemyBlinkIndex, newBlink);
+                        writeState({
+                            enemyBlinkIndex = newBlinkIdx,
+                            enemyBlinkRemaining = newRemain | s
+                        }, scene)
+                    } else scene;
+                let updated = CanvasItem.setVisible(visible, sprite);
+                (EngineNode.Sprite2DWithState(updated, NodeTag.EnemySprite(idx)), sceneNext)
+            case _ => (node, scene)
+        }
+
+    // ── process: TargetCursor の位置 / 表示更新 ──
+
+    /// 敵スロットの座標。 scene.json の enemy0 / enemy1 の pos と一致させる（重複は許容）。
+    /// scene tree を辿る方式は path lookup の落とし穴があるため、 ハードコードで確実に出す。
+    def enemySlotPosition(idx: Int32): Vec2.Vec2 =
+        if      (idx == 0) {x = 220.0, y = 140.0}
+        else if (idx == 1) {x = 420.0, y = 140.0}
+        else               {x = 0.0,   y = 0.0}
+
+    /// `TargetCursor` Label2D を毎フレーム更新:
+    ///   - `pendingAction == None` ならカーソルは hidden
+    ///   - そうでなければ `targetCursor` index のスプライトの真上に ▼ を表示する
+    ///   Sprite2D は centered=true で描画されるので、 スプライト中心 (= スロット pos) から
+    ///   半分高さ (scale=1.0、 128px → 64px) ぶん上 + さらに余白を取った位置に置く。
+    pub def processTargetCursor(_delta: Duration.Duration, node: EngineNode[NodeTag],
+                                _path: NodePath,
+                                scene: Scene[NodeTag]):
+                                (EngineNode[NodeTag], Scene[NodeTag]) =
+        match node {
+            case EngineNode.Label2DWithState(label, NodeTag.TargetCursor) =>
+                let s = readState(scene);
+                let updated = match s#pendingAction {
+                    case None    => CanvasItem.setVisible(false, label)
+                    case Some(_) =>
+                        let pos = enemySlotPosition(s#targetCursor);
+                        // ▼ 1 文字を sprite の真上に。 cursorX は ▼ の中心が sprite 中心に揃う
+                        // ように左に半文字ぶん寄せる。 cursorY は sprite 上端 (中心 - 64) よりさらに
+                        // 上に 20px ほど離す。
+                        let cursorPos = {x = pos#x - 14.0, y = pos#y - 96.0};
+                        label
+                            |> Node2D.setPosition(cursorPos)
+                            |> CanvasItem.setVisible(true)
+                };
+                (EngineNode.Label2DWithState(updated, NodeTag.TargetCursor), scene)
             case _ => (node, scene)
         }
 
