@@ -4,11 +4,12 @@
 // startStatusBarTimer は AnimationTimer を起動して 60Hz で:
 //   - status bar の各 Label (Scene path / Mouse / Selection / FPS) を更新
 //   - selection 文字列が変わったら rebuildInspector を呼んで Inspector を再構築
-//   - Inspector の World position / Local position / Scale / Rotation を毎フレーム最新化
+//   - Inspector の各 widget を currentValues map から最新化
 // する。
 //
-// Inspector の編集 widget は PropertyWidgets.wireNumericField を使い、commit 時に
-// pendingXxxEditRef に値を積む。Main.applyInspectorEdits がそれを消費して JSON 書き戻し。
+// Inspector は schema 駆動: NodeInspector.fieldsFor が返す FieldDef リストに従って
+// widget を組み立て、value updater を widgetUpdaters Map に登録する。
+// 編集 commit は state#inspector#pendingEdits に積み、Main が consume してファイル書き戻す。
 
 mod ScenePanel {
     import java.lang.{Object => JObject}
@@ -17,6 +18,9 @@ mod ScenePanel {
     import javafx.scene.Node
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
+    import javafx.scene.control.CheckBox
+    import javafx.scene.control.ComboBox
+    import javafx.scene.control.Spinner
     import javafx.scene.control.TreeView
     import javafx.scene.control.TreeItem
     import javafx.scene.image.ImageView
@@ -25,10 +29,10 @@ mod ScenePanel {
     import javafx.event.EventHandler
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
+    import java.lang.Double
+    import java.lang.Integer
 
-    /// TreeView の選択変更を pendingSceneRef に伝える。
-    /// 表示文字列は relative path で持っているため、sceneFilesRef の (abs, rel) リストから
-    /// マッチする absolute path を引き直して pendingSceneRef に積む
+    /// TreeView の選択変更を pendingSceneRef に伝える
     pub def wireTreeSelection(state: IdeState.IdeState, tree: TreeView[String]): Unit \ IO = {
         let selectionModel = tree.getSelectionModel();
         let prop = selectionModel.selectedItemProperty();
@@ -78,8 +82,6 @@ mod ScenePanel {
         let frameCountRef = Array#{0i32} @ Static;
         let mouseXRef = Array#{0.0} @ Static;
         let mouseYRef = Array#{0.0} @ Static;
-        // canvas hover でマウス座標を追跡。JavaFXLayer の input handler とは別経路 (addEventHandler
-        // で複数 listener を共存させる)
         canvasView.addEventHandler(MouseEvent.MOUSE_MOVED,
             new EventHandler[MouseEvent] {
                 def handle(_this: EventHandler[MouseEvent], e: MouseEvent): Unit \ IO = {
@@ -90,7 +92,7 @@ mod ScenePanel {
 
         let timer = new AnimationTimer {
             def handle(_this: AnimationTimer, now: Int64): Unit \ IO = {
-                // FPS 計測: 1 秒に 1 回 Label 更新
+                // FPS 計測
                 let last = Array.get(0, lastTimeRef);
                 if (last == 0i64) {
                     Array.put(now, 0, lastTimeRef)
@@ -116,7 +118,7 @@ mod ScenePanel {
                     lbl.setText(txt)
                 });
 
-                // Mouse: ImageView local 座標 (FBO は ImageView と同サイズなのでこれが design 座標)
+                // Mouse
                 PropertyWidgets.withRef(state#statusBar#mouseLabel, lbl -> {
                     let mx = Float64.tryToInt32(Array.get(0, mouseXRef))
                               |> Option.getWithDefault(0i32);
@@ -125,35 +127,30 @@ mod ScenePanel {
                     lbl.setText("mouse: ${mx}, ${my}")
                 });
 
-                // Selection: renderLoop が editor 状態を直接書き込んだ表示文字列を使う
+                // Selection
                 let curSel = Array.get(0, state#runtime#editorSelDisplay);
                 PropertyWidgets.withRef(state#statusBar#selectionLabel, lbl ->
                     lbl.setText("sel: ${curSel}"));
 
-                // Inspector: 選択文字列が前回と変わったら再構築
+                // Inspector: selection 文字列が変わったら rebuild
                 let prevSel = Array.get(0, state#inspector#lastSel);
                 if (curSel != prevSel) {
                     rebuildInspector(state, curSel);
                     Array.put(curSel, 0, state#inspector#lastSel)
                 } else ();
-                // Inspector の各プロパティを毎フレーム更新 (ドラッグ・リサイズ中も live に追従)。
-                // TextField は focus 中はユーザー入力を上書きしない
-                updateVec2Label(state#inspector#posLabel, state#inspector#worldPos);
-                updateVec2TextField(state#inspector#localXField, state#inspector#localYField,
-                                     state#inspector#localPos);
-                updateVec2TextField(state#inspector#scaleXField, state#inspector#scaleYField,
-                                     state#inspector#scale);
-                // Rotation: 内部 ラジアン → 表示 度
-                match (Array.get(0, state#inspector#rotationField),
-                       Array.get(0, state#inspector#rotation)) {
-                    case (Some(f), Some(rad)) =>
-                        if (not f.isFocused()) {
-                            let deg = rad * 180.0 / 3.14159265358979;
-                            let ideg = Float64.tryToInt32(deg) |> Option.getWithDefault(0i32);
-                            f.setText("${ideg}")
-                        } else ()
-                    case _ => ()
-                }
+
+                // Inspector の各 widget を currentValues から最新化
+                let values = Array.get(0, state#inspector#currentValues);
+                let updaters = Array.get(0, state#inspector#widgetUpdaters);
+                Map.forEach((name, json) -> {
+                    match Map.get(name, updaters) {
+                        case Some(updater) => updater(json)
+                        case None          => ()
+                    }
+                }, values);
+
+                // World position は schema 外の特別行 (read-only)
+                updateWorldPosLabel(state)
             }
         };
         timer.start()
@@ -166,9 +163,22 @@ mod ScenePanel {
             case None    => absPath
         }
 
+    /// World position Label を更新する (read-only な特別行)
+    def updateWorldPosLabel(state: IdeState.IdeState): Unit \ IO =
+        PropertyWidgets.withRef(state#inspector#posLabel, lbl -> {
+            let txt = match Array.get(0, state#inspector#worldPos) {
+                case Some((x, y)) =>
+                    let ix = Float64.tryToInt32(x) |> Option.getWithDefault(0i32);
+                    let iy = Float64.tryToInt32(y) |> Option.getWithDefault(0i32);
+                    "(${ix}, ${iy})"
+                case None => "-"
+            };
+            lbl.setText(txt)
+        })
+
     /// Inspector pane の中身を再構築する。selection が変わったときだけ呼ばれる。
-    /// プロパティ値は毎フレーム更新するため、生成した Label の参照を state に保存しておき
-    /// AnimationTimer が setText するだけにする (rebuild は selection 変化時のみ)
+    /// schema (state#inspector#schema) を辿って widget を生成し、widgetUpdaters に
+    /// 値更新クロージャを登録する。commit listener は state#inspector#pendingEdits に積む
     def rebuildInspector(state: IdeState.IdeState, selDisplay: String): Unit \ IO = {
         match Array.get(0, state#inspector#content) {
             case None => ()
@@ -176,12 +186,15 @@ mod ScenePanel {
                 let children = box.getChildren();
                 children.clear();
                 Array.put((None: Option[Label]), 0, state#inspector#posLabel);
+                Array.put((Map.empty(): Map[String, Json.JsonElement -> Unit \ IO]),
+                          0, state#inspector#widgetUpdaters);
                 if (selDisplay == "-") {
                     let placeholder = new Label("(nothing selected)");
                     placeholder.getStyleClass().add("inspector-empty");
                     let placeholderNode: Node = checked_cast(placeholder);
                     discard children.add(placeholderNode)
                 } else {
+                    // 「選択中ノードのパス」 + 「World position」は schema 外の固定行
                     let pathLabel = new Label(selDisplay);
                     pathLabel.setWrapText(true);
                     let pathNode: Node = checked_cast(pathLabel);
@@ -192,91 +205,153 @@ mod ScenePanel {
                     PropertyWidgets.addPropertyRow(children, "World position:", worldPosNode);
                     Array.put(Some(worldPosValue), 0, state#inspector#posLabel);
 
-                    // Local position / Scale / Rotation はいずれも編集可能 TextField で表示。
-                    // pos / rotation は整数刻み、scale は実数刻み (↑↓ で 1.0 ずつ)
-                    addEditableVec2Row(state, children, "Local position:", true,
-                                        state#inspector#localXField,
-                                        state#inspector#localYField,
-                                        state#inspector#pendingLocalPos);
-                    addEditableVec2Row(state, children, "Scale:", false,
-                                        state#inspector#scaleXField,
-                                        state#inspector#scaleYField,
-                                        state#inspector#pendingScale);
-                    addEditableRotationRow(state, children)
+                    // schema 駆動: 各 FieldDef ごとに widget を組み立てて updater を登録
+                    let schema = Array.get(0, state#inspector#schema);
+                    let values = Array.get(0, state#inspector#currentValues);
+                    let selOpt = Array.get(0, state#inspector#currentSelection);
+                    List.forEach(fd ->
+                        match selOpt {
+                            case None      => ()
+                            case Some(sel) => addSchemaRow(state, children, fd, values, sel)
+                        }, schema)
                 }
             }
         }
     }
 
-    /// 2 つの TextField (X, Y) を Vec2 ref から更新する。focus 中はユーザー入力を上書きしない
-    def updateVec2TextField(xRef: Array[Option[TextField], Static],
-                             yRef: Array[Option[TextField], Static],
-                             valRef: Array[Option[(Float64, Float64)], Static]): Unit \ IO =
-        PropertyWidgets.withRef(valRef, pair -> {
-            let (x, y) = pair;
-            let ix = Float64.tryToInt32(x) |> Option.getWithDefault(0i32);
-            let iy = Float64.tryToInt32(y) |> Option.getWithDefault(0i32);
-            PropertyWidgets.withRef(xRef, f -> if (not f.isFocused()) f.setText("${ix}") else ());
-            PropertyWidgets.withRef(yRef, f -> if (not f.isFocused()) f.setText("${iy}") else ())
-        })
-
-    /// Vec2 (Float64×2) 値 Ref → Label.setText の共通処理
-    def updateVec2Label(lblRef: Array[Option[Label], Static],
-                         valRef: Array[Option[(Float64, Float64)], Static]): Unit \ IO =
-        PropertyWidgets.withRef(lblRef, lbl -> {
-            let txt = match Array.get(0, valRef) {
-                case Some((x, y)) =>
-                    let ix = Float64.tryToInt32(x) |> Option.getWithDefault(0i32);
-                    let iy = Float64.tryToInt32(y) |> Option.getWithDefault(0i32);
-                    "(${ix}, ${iy})"
-                case None => "-"
-            };
-            lbl.setText(txt)
-        })
-
-    /// Vec2 (Float64×2) 編集用の汎用行。X / Y の TextField を HBox に並べ、
-    /// property-row テンプレに valueSlot として乗せる
-    def addEditableVec2Row(state: IdeState.IdeState, children: ObservableList[Node],
-                            keyText: String, isInt: Bool,
-                            xFieldRef: Array[Option[TextField], Static],
-                            yFieldRef: Array[Option[TextField], Static],
-                            pendingRef: Array[Option[(Float64, Float64)], Static]):
-            Unit \ IO = {
-        let _ = state;
-        let xField = new TextField("0");
-        let yField = new TextField("0");
-        xField.setPrefWidth(60.0);
-        yField.setPrefWidth(60.0);
-        let commitBoth = () -> {
-            let x = Float64.fromString(xField.getText()) |> Option.getWithDefault(0.0);
-            let y = Float64.fromString(yField.getText()) |> Option.getWithDefault(0.0);
-            Array.put(Some((x, y)), 0, pendingRef)
+    /// 1 FieldDef を Inspector に追加する
+    def addSchemaRow(state: IdeState.IdeState, children: ObservableList[Node],
+                      fd: NodeInspector.FieldDef,
+                      currentValues: Map[String, Json.JsonElement],
+                      sel: Editor.Selection): Unit \ IO = {
+        let currentJson = Map.get(fd#name, currentValues);
+        let applyFn = fd#apply;
+        let commit: PropertyWidgets.Commit = json -> {
+            let pe: NodeInspector.PendingEdit = { perform = () -> applyFn(sel, json) };
+            let existing = Array.get(0, state#inspector#pendingEdits);
+            Array.put(List.append(existing, pe :: Nil), 0, state#inspector#pendingEdits)
         };
-        PropertyWidgets.wireNumericField(xField, isInt, commitBoth);
-        PropertyWidgets.wireNumericField(yField, isInt, commitBoth);
-        Array.put(Some(xField), 0, xFieldRef);
-        Array.put(Some(yField), 0, yFieldRef);
-        let group = new HBox(4.0);
-        let xNode: Node = checked_cast(xField);
-        let yNode: Node = checked_cast(yField);
-        discard group.getChildren().add(xNode);
-        discard group.getChildren().add(yNode);
-        let groupNode: Node = checked_cast(group);
-        PropertyWidgets.addPropertyRow(children, keyText, groupNode)
+        let (widget, updater) = buildWidgetForKind(fd#kind, currentJson, commit);
+        PropertyWidgets.addPropertyRow(children, "${fd#label}:", widget);
+        let map = Array.get(0, state#inspector#widgetUpdaters);
+        Array.put(Map.insert(fd#name, updater, map), 0, state#inspector#widgetUpdaters)
     }
 
-    /// Rotation 行 (度入力 → ラジアン保存)。単一 TextField、↑↓ で 1度刻み
-    def addEditableRotationRow(state: IdeState.IdeState, children: ObservableList[Node]):
-            Unit \ IO = {
-        let field = new TextField("0");
-        field.setPrefWidth(80.0);
-        PropertyWidgets.wireNumericField(field, true, () -> {
-            let deg = Float64.fromString(field.getText()) |> Option.getWithDefault(0.0);
-            let rad = deg * 3.14159265358979 / 180.0;
-            Array.put(Some(rad), 0, state#inspector#pendingRotation)
-        });
-        Array.put(Some(field), 0, state#inspector#rotationField);
-        let fieldNode: Node = checked_cast(field);
-        PropertyWidgets.addPropertyRow(children, "Rotation (°):", fieldNode)
+    /// FieldKind に応じた widget を生成し、(widget, 値更新 closure) を返す
+    def buildWidgetForKind(kind: NodeInspector.FieldKind,
+                           current: Option[Json.JsonElement],
+                           commit: PropertyWidgets.Commit):
+            (Node, Json.JsonElement -> Unit \ IO) \ IO =
+        match kind {
+            case NodeInspector.FieldKind.Vec2T => {
+                let isInt = true;
+                let widget = PropertyWidgets.buildVec2Widget(current, isInt, commit);
+                let updater = (json: Json.JsonElement) -> updateVec2Widget(widget, json, isInt);
+                (widget, updater)
+            }
+            case NodeInspector.FieldKind.FloatT => {
+                let widget = PropertyWidgets.buildFloatWidget(current, commit);
+                let updater = (json: Json.JsonElement) -> updateFloatSpinner(widget, json);
+                (widget, updater)
+            }
+            case NodeInspector.FieldKind.IntT => {
+                let widget = PropertyWidgets.buildIntWidget(current, commit);
+                let updater = (json: Json.JsonElement) -> updateIntSpinner(widget, json);
+                (widget, updater)
+            }
+            case NodeInspector.FieldKind.TextT => {
+                let widget = PropertyWidgets.buildTextWidget(current, commit);
+                let updater = (json: Json.JsonElement) -> updateTextField(widget, json);
+                (widget, updater)
+            }
+            case NodeInspector.FieldKind.TexturePathT => {
+                let widget = PropertyWidgets.buildTexturePathWidget(current, Nil, commit);
+                let updater = (json: Json.JsonElement) -> updateComboBox(widget, json);
+                (widget, updater)
+            }
+            case NodeInspector.FieldKind.BoolT => {
+                let widget = PropertyWidgets.buildBoolWidget(current, commit);
+                let updater = (json: Json.JsonElement) -> updateCheckBox(widget, json);
+                (widget, updater)
+            }
+        }
+
+    /// Vec2 widget (HBox の 2 つの Spinner) を JSON から復元する
+    def updateVec2Widget(widget: Node, json: Json.JsonElement, isInt: Bool): Unit \ IO = {
+        let box: HBox = unchecked_cast(widget as HBox);
+        let kids = box.getChildren();
+        let xn = kids.get(0i32);
+        let yn = kids.get(1i32);
+        match NodeInspector.jsonToVec2(json) {
+            case None => ()
+            case Some(v) =>
+                if (isInt) {
+                    let xs: Spinner[Integer] = unchecked_cast(xn as Spinner[Integer]);
+                    let ys: Spinner[Integer] = unchecked_cast(yn as Spinner[Integer]);
+                    let ix = Float64.tryToInt32(v#x) |> Option.getWithDefault(0i32);
+                    let iy = Float64.tryToInt32(v#y) |> Option.getWithDefault(0i32);
+                    if (not xs.getEditor().isFocused()) {
+                        xs.getValueFactory().setValue(Integer.valueOf(ix))
+                    } else ();
+                    if (not ys.getEditor().isFocused()) {
+                        ys.getValueFactory().setValue(Integer.valueOf(iy))
+                    } else ()
+                } else {
+                    let xs: Spinner[Double] = unchecked_cast(xn as Spinner[Double]);
+                    let ys: Spinner[Double] = unchecked_cast(yn as Spinner[Double]);
+                    if (not xs.getEditor().isFocused()) {
+                        xs.getValueFactory().setValue(Double.valueOf(v#x))
+                    } else ();
+                    if (not ys.getEditor().isFocused()) {
+                        ys.getValueFactory().setValue(Double.valueOf(v#y))
+                    } else ()
+                }
+        }
+    }
+
+    def updateFloatSpinner(widget: Node, json: Json.JsonElement): Unit \ IO = {
+        let sp: Spinner[Double] = unchecked_cast(widget as Spinner[Double]);
+        match NodeInspector.jsonToFloat(json) {
+            case None => ()
+            case Some(v) =>
+                if (not sp.getEditor().isFocused()) {
+                    sp.getValueFactory().setValue(Double.valueOf(v))
+                } else ()
+        }
+    }
+
+    def updateIntSpinner(widget: Node, json: Json.JsonElement): Unit \ IO = {
+        let sp: Spinner[Integer] = unchecked_cast(widget as Spinner[Integer]);
+        match NodeInspector.jsonToInt(json) {
+            case None => ()
+            case Some(v) =>
+                if (not sp.getEditor().isFocused()) {
+                    sp.getValueFactory().setValue(Integer.valueOf(v))
+                } else ()
+        }
+    }
+
+    def updateTextField(widget: Node, json: Json.JsonElement): Unit \ IO = {
+        let tf: TextField = unchecked_cast(widget as TextField);
+        match NodeInspector.jsonToString(json) {
+            case None    => ()
+            case Some(s) => if (not tf.isFocused()) tf.setText(s) else ()
+        }
+    }
+
+    def updateComboBox(widget: Node, json: Json.JsonElement): Unit \ IO = {
+        let cb: ComboBox[String] = unchecked_cast(widget as ComboBox[String]);
+        match NodeInspector.jsonToString(json) {
+            case None    => ()
+            case Some(s) => cb.setValue(s)
+        }
+    }
+
+    def updateCheckBox(widget: Node, json: Json.JsonElement): Unit \ IO = {
+        let cb: CheckBox = unchecked_cast(widget as CheckBox);
+        match NodeInspector.jsonToBool(json) {
+            case None    => ()
+            case Some(b) => cb.setSelected(b)
+        }
     }
 }

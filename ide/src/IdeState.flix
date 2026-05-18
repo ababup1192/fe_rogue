@@ -46,28 +46,26 @@ mod IdeState {
         fpsLabel       = Array[Option[Label], Static]
     }
 
-    /// Inspector pane の状態。
-    ///   content / lastSel:   pane VBox と前回反映 selection (変化時に rebuild)
-    ///   posLabel / worldPos: read-only world position 表示
-    ///   localPos / scale / rotation: 現値 Ref。renderLoop が毎フレーム書き込む
-    ///   xxxField:            編集 TextField 参照。focus 無し時のみ setText
-    ///   pendingXxx:          TextField commit → renderLoop の applyInspectorEdits に渡す
+    /// Inspector pane の状態 (schema 駆動)。
+    ///   content:          pane VBox 参照
+    ///   lastSel:          前回反映 selection 文字列 (変化時に rebuild trigger)
+    ///   schema:           現選択 node 用 FieldDef リスト (Main が selection 変化時に更新)
+    ///   currentSelection: 現在の Selection (rebuild 時 commit closure が capture する)
+    ///   currentValues:    name → 現値 JSON のスナップ (Main が毎フレーム書く)
+    ///   pendingEdits:     widget commit から積まれる pending 更新 (Main が consume)
+    ///   widgetUpdaters:   field name → widget 値更新 closure (rebuild 時に登録)
+    ///   posLabel:         World position 表示用 Label (read-only)
+    ///   worldPos:         毎フレーム書き込まれる world position 値
     pub type alias InspectorRefs = {
-        content         = Array[Option[VBox], Static],
-        lastSel         = Array[String, Static],
-        posLabel        = Array[Option[Label], Static],
-        worldPos        = Array[Option[(Float64, Float64)], Static],
-        localPos        = Array[Option[(Float64, Float64)], Static],
-        scale           = Array[Option[(Float64, Float64)], Static],
-        rotation        = Array[Option[Float64], Static],
-        localXField     = Array[Option[TextField], Static],
-        localYField     = Array[Option[TextField], Static],
-        scaleXField     = Array[Option[TextField], Static],
-        scaleYField     = Array[Option[TextField], Static],
-        rotationField   = Array[Option[TextField], Static],
-        pendingLocalPos = Array[Option[(Float64, Float64)], Static],
-        pendingScale    = Array[Option[(Float64, Float64)], Static],
-        pendingRotation = Array[Option[Float64], Static]
+        content          = Array[Option[VBox], Static],
+        lastSel          = Array[String, Static],
+        schema           = Array[List[NodeInspector.FieldDef], Static],
+        currentSelection = Array[Option[Editor.Selection], Static],
+        currentValues    = Array[Map[String, Json.JsonElement], Static],
+        pendingEdits     = Array[List[NodeInspector.PendingEdit], Static],
+        widgetUpdaters   = Array[Map[String, Json.JsonElement -> Unit \ IO], Static],
+        posLabel         = Array[Option[Label], Static],
+        worldPos         = Array[Option[(Float64, Float64)], Static]
     }
 
     /// IDE 全体の状態。
@@ -146,21 +144,15 @@ mod IdeState {
 
     def newInspector(): InspectorRefs \ IO =
         {
-            content         = Array#{(None: Option[VBox])} @ Static,
-            lastSel         = Array#{""} @ Static,
-            posLabel        = Array#{(None: Option[Label])} @ Static,
-            worldPos        = Array#{(None: Option[(Float64, Float64)])} @ Static,
-            localPos        = Array#{(None: Option[(Float64, Float64)])} @ Static,
-            scale           = Array#{(None: Option[(Float64, Float64)])} @ Static,
-            rotation        = Array#{(None: Option[Float64])} @ Static,
-            localXField     = Array#{(None: Option[TextField])} @ Static,
-            localYField     = Array#{(None: Option[TextField])} @ Static,
-            scaleXField     = Array#{(None: Option[TextField])} @ Static,
-            scaleYField     = Array#{(None: Option[TextField])} @ Static,
-            rotationField   = Array#{(None: Option[TextField])} @ Static,
-            pendingLocalPos = Array#{(None: Option[(Float64, Float64)])} @ Static,
-            pendingScale    = Array#{(None: Option[(Float64, Float64)])} @ Static,
-            pendingRotation = Array#{(None: Option[Float64])} @ Static
+            content          = Array#{(None: Option[VBox])} @ Static,
+            lastSel          = Array#{""} @ Static,
+            schema           = Array#{(Nil: List[NodeInspector.FieldDef])} @ Static,
+            currentSelection = Array#{(None: Option[Editor.Selection])} @ Static,
+            currentValues    = Array#{(Map.empty(): Map[String, Json.JsonElement])} @ Static,
+            pendingEdits     = Array#{(Nil: List[NodeInspector.PendingEdit])} @ Static,
+            widgetUpdaters   = Array#{(Map.empty(): Map[String, Json.JsonElement -> Unit \ IO])} @ Static,
+            posLabel         = Array#{(None: Option[Label])} @ Static,
+            worldPos         = Array#{(None: Option[(Float64, Float64)])} @ Static
         }
 
     /// File → Open Project... で予約された次プロジェクトのパスを取り出し、Ref をクリアする

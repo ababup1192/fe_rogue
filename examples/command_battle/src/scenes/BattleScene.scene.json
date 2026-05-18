@@ -43,7 +43,9 @@
       "color": {"r": 1, "g": 0.2, "b": 0.2},
       "alpha": 0,
       "zIndex": 100,
-      "tag": "FlashOverlay"
+      "tag": "FlashOverlay",
+      "scale": [1, 1],
+      "rotation": 0
     },
     {
       "type": "Label2D",

@@ -158,46 +158,55 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         // editor がマウス入力を取り込み、選択 / ドラッグ / リサイズ / Undo まで処理して
         // 必要に応じて scene を更新する
         let edited = Editor.handleInput(nextScene);
-        // Inspector の TextField から積まれた編集要求を消費し、
-        // SceneSerializer.update* 経由で JSON を書き戻す。HotReload watcher が
-        // ファイル変化を検知して次フレームで scene を再 load する
-        applyInspectorEdits(state);
-        // editor がドラッグ確定で JSON を書き戻すと HotReload watcher が発火する。
-        // 検知したら現シーンの JTree / Inspector を再構築して最新値を表示する
+        // Inspector の pending edits (schema 駆動 widget が積んだ commit) を消費し、
+        // SceneSerializer 経由で JSON 書き戻し。HotReload watcher が次フレームで scene を再 load
+        consumeInspectorEdits(state);
+        // editor がドラッグ確定で JSON を書き戻すと HotReload watcher が発火する
         refreshTreeOnReload(state);
-        // Inspector の world position / local pos / scale / rotation を毎フレーム最新化
-        // (ドラッグ・リサイズ・回転中も live 更新)
-        match Editor.EditorState.get()#selected {
-            case None => {
-                Array.put(None, 0, state#inspector#worldPos);
-                Array.put(None, 0, state#inspector#localPos);
-                Array.put(None, 0, state#inspector#scale);
-                Array.put(None, 0, state#inspector#rotation)
-            }
-            case Some(sel) => {
-                let wp = Scene.globalPositionAt(sel#nodePath, edited);
-                Array.put(Some((wp#x, wp#y)), 0, state#inspector#worldPos);
-                match Scene.getEngineNode(sel#nodePath, edited) {
-                    case None => {
-                        Array.put(None, 0, state#inspector#localPos);
-                        Array.put(None, 0, state#inspector#scale);
-                        Array.put(None, 0, state#inspector#rotation)
-                    }
-                    case Some(engineNode) => {
-                        let lp = Node2D.getPosition(engineNode);
-                        let sc = Node2D.getScale(engineNode);
-                        let rot = Node2D.getRotation(engineNode);
-                        Array.put(Some((lp#x, lp#y)), 0, state#inspector#localPos);
-                        Array.put(Some((sc#x, sc#y)), 0, state#inspector#scale);
-                        Array.put(Some(rot), 0, state#inspector#rotation)
-                    }
-                }
-            }
-        };
+        // Inspector schema + currentValues snapshot を生成し、ScenePanel AnimationTimer に渡す
+        snapshotInspectorState(state, edited);
         let preview = composePreview(edited);
         GameEngine.render(preview);
         renderLoop(state, newFontName, edited)
     }
+
+    /// 選択 node から schema / snapshot / world position を計算して state#inspector に書く。
+    /// ScenePanel が rebuildInspector でこの schema を読み、AnimationTimer が currentValues
+    /// を読んで widget を更新する
+    def snapshotInspectorState(state: IdeState.IdeState, scene: Scene[Unit]):
+            Unit \ {IO, Editor.EditorState} =
+        match Editor.EditorState.get()#selected {
+            case None => {
+                Array.put((Nil: List[NodeInspector.FieldDef]), 0, state#inspector#schema);
+                Array.put((None: Option[Editor.Selection]), 0, state#inspector#currentSelection);
+                Array.put((Map.empty(): Map[String, Json.JsonElement]), 0,
+                          state#inspector#currentValues);
+                Array.put(None, 0, state#inspector#worldPos)
+            }
+            case Some(sel) => {
+                let wp = Scene.globalPositionAt(sel#nodePath, scene);
+                Array.put(Some((wp#x, wp#y)), 0, state#inspector#worldPos);
+                Array.put(Some(sel), 0, state#inspector#currentSelection);
+                match Scene.getEngineNode(sel#nodePath, scene) {
+                    case None => {
+                        Array.put((Nil: List[NodeInspector.FieldDef]), 0, state#inspector#schema);
+                        Array.put((Map.empty(): Map[String, Json.JsonElement]), 0,
+                                  state#inspector#currentValues)
+                    }
+                    case Some(engineNode) => {
+                        let schema = NodeInspector.fieldsFor(engineNode);
+                        Array.put(schema, 0, state#inspector#schema);
+                        // 各 FieldDef.snapshot を呼んで name → JSON map を作る
+                        let snapshot = List.foldLeft((acc, fd) ->
+                            match fd#snapshot(engineNode) {
+                                case Some(j) => Map.insert(fd#name, j, acc)
+                                case None    => acc
+                            }, (Map.empty(): Map[String, Json.JsonElement]), schema);
+                        Array.put(snapshot, 0, state#inspector#currentValues)
+                    }
+                }
+            }
+        }
 
 /// Open Project... 経由で積まれた project を消費して in-place 再ロードする。
 /// 戻り値: (新しい fontName, 描画リセット用の空 Scene)
@@ -278,41 +287,15 @@ def composePreview(scene: Scene[Unit]):
         Scene[Unit] \ {GameEngine.Game, Editor.EditorState} =
     Editor.applyOverlay((), scene)
 
-/// Inspector の TextField commit からくる編集要求 (pos/scale/rotation) を消費して
-/// SceneSerializer 経由で JSON 書き戻し。HotReload watcher が拾って再 load されることで
-/// in-memory scene と Inspector 表示が新値に更新される
-def applyInspectorEdits(state: IdeState.IdeState):
-        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Editor.EditorState} =
-    match Editor.EditorState.get()#selected {
-        case None => {
-            // 選択無し: pending は捨てるだけ
-            consumePending(state#inspector#pendingLocalPos, _ -> ());
-            consumePending(state#inspector#pendingScale,    _ -> ());
-            consumePending(state#inspector#pendingRotation, _ -> ())
-        }
-        case Some(s) => {
-            consumePending(state#inspector#pendingLocalPos, p ->
-                SceneSerializer.updatePos(s#jsonPath, s#jsonNodePath,
-                                           {x = fst(p), y = snd(p)}));
-            consumePending(state#inspector#pendingScale, p ->
-                SceneSerializer.updateScale(s#jsonPath, s#jsonNodePath,
-                                             {x = fst(p), y = snd(p)}));
-            consumePending(state#inspector#pendingRotation, rad ->
-                SceneSerializer.updateRotation(s#jsonPath, s#jsonNodePath, rad))
-        }
-    }
-
-/// Option Ref を消費する: Some なら値を action に渡し、ref を None にクリア。
-/// action の effect をそのまま伝播する (effect polymorphic)
-def consumePending(ref: Array[Option[t], Static], action: t -> Unit \ ef):
-        Unit \ ef + IO =
-    match Array.get(0, ref) {
-        case None    => ()
-        case Some(v) => {
-            Array.put(None, 0, ref);
-            action(v)
-        }
-    }
+/// Inspector schema widget が積んだ pending edits をすべて消費して書き戻す。
+/// 各 PendingEdit は SceneSerializer 呼出までを closure に閉じ込めているので、
+/// ここでは run() を呼ぶだけ。HotReload watcher が拾って次フレームで scene 再 load。
+def consumeInspectorEdits(state: IdeState.IdeState):
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite} = {
+    let edits = Array.get(0, state#inspector#pendingEdits);
+    Array.put((Nil: List[NodeInspector.PendingEdit]), 0, state#inspector#pendingEdits);
+    List.forEach(e -> e#perform(), edits)
+}
 
 /// HotReload reloadRelay が立てた flag を消費して、現シーンを再読込予約する。
 /// reloadRelay (Open Project ごとに spawn) が channel recv 経由で flag を true にする

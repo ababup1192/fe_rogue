@@ -5,10 +5,13 @@
 // JavaFXIdeUI.schedulePopulateTree から populateResourcesList が呼ばれ、
 // プロジェクト切替時にリストを差し替える。
 //
-// 編集 widget の生成と即時保存は PropertyWidgets module 側に集約してある。
+// 編集 widget の生成は PropertyWidgets に委譲。commit 時のファイル書き戻しは本 module の
+// `commitToResource` で行う (PropertyWidgets は ResourceState を直接知らない)
 
 mod ResourcePanel {
     import java.lang.{Object => JObject}
+    import java.nio.file.Files
+    import java.nio.file.Paths
     import javafx.collections.ObservableList
     import javafx.scene.Node
     import javafx.scene.control.Label
@@ -61,8 +64,7 @@ mod ResourcePanel {
         prop.addListener(listener)
     }
 
-    /// data + schema をロードして ResourceState に書き、Sub-entries list を埋める。
-    /// 失敗 (file 不在 / parse 失敗) はログだけ出して空状態にする
+    /// data + schema をロードして ResourceState に書き、Sub-entries list を埋める
     def onResourceSelected(state: IdeState.IdeState,
                             entry: ResourceDiscovery.ResourceEntry,
                             subEntriesList: ListView[String]):
@@ -98,7 +100,7 @@ mod ResourcePanel {
             |> Option.flatMap(s -> Json.Parse.parse(String.trim(s)))
 
     /// CatalogIn 形式なら sub-entries の key 一覧を ListView に並べる。
-    /// Single 形式なら Property Panel をすぐ build する (sub-entry を介さず top の record そのもの)
+    /// Single 形式なら Property Panel をすぐ build する
     def rebuildSubEntries(state: IdeState.IdeState,
                            subEntriesList: ListView[String]): Unit \ IO = {
         let items = subEntriesList.getItems();
@@ -117,8 +119,8 @@ mod ResourcePanel {
     }
 
     /// Property Panel を schema 駆動で再構築する。各フィールドは PropertyWidgets が
-    /// 型に応じた編集 widget (TextField / CheckBox 等) を生成し、commit で
-    /// editingJson 更新 + ファイル書き戻しまで一気に行う
+    /// 型に応じた編集 widget を生成し、commit (callback) でこちらが editingJson 更新 +
+    /// ファイル書き戻しまで一気に行う
     def rebuildPropertyPanel(state: IdeState.IdeState): Unit \ IO = {
         match Array.get(0, state#widgets#propertyPanel) {
             case None => ()
@@ -131,19 +133,23 @@ mod ResourcePanel {
                         match currentRecordJson(state, json) {
                             case None => {
                                 PropertyWidgets.addPropertyPlaceholder(children, "(select a sub-entry)");
-                                PropertyWidgets.updateSpritePreview(state, None)
+                                clearPreview(state)
                             }
                             case Some(record) => {
                                 let basePath = recordKeyPath(state, json);
                                 let fields = Resource.fieldsOf(schema);
                                 let sorted = Map.toList(fields)
                                     |> List.sortBy(p -> PropertyWidgets.fieldOrderKey(p));
+                                let textureNames = Array.get(0, state#textureNamesRef);
+                                let mkCommit = kp -> { (json2: Json.JsonElement) ->
+                                    commitToResource(state, kp, json2)
+                                };
                                 List.forEach(p -> {
                                     let (k, e) = p;
-                                    PropertyWidgets.addFieldRow(state, children, k, e, record, basePath)
+                                    PropertyWidgets.addFieldRow(children, k, e, record, basePath,
+                                                                  textureNames, mkCommit)
                                 }, sorted);
-                                PropertyWidgets.updateSpritePreview(state,
-                                    PropertyWidgets.findFirstTexture(state, record))
+                                refreshPreview(state, record)
                             }
                         }
                     case (None, Some(_)) =>
@@ -155,9 +161,34 @@ mod ResourcePanel {
         }
     }
 
-    /// 編集対象 record への JSON key path を返す。
-    /// Single → [] (top の JSON 自身が record)
-    /// CatalogIn → [containerKey, subEntry]
+    /// 編集を editingJson に反映 + dirty フラグ + 即ファイル書き戻し +
+    /// プレビュー再描画 (texture 変更時に効く)。
+    /// HotReload watcher が拾って次フレームで scene 再 load される
+    def commitToResource(state: IdeState.IdeState, keyPath: List[String],
+                          newValue: Json.JsonElement): Unit \ IO =
+        match ResourceState.getEditingJson(state#resource) {
+            case None => ()
+            case Some(json) => {
+                let updated = JsonOps.setAtKeyPath(json, keyPath, newValue);
+                ResourceState.setEditingJson(state#resource, Some(updated));
+                ResourceState.setDirty(state#resource, true);
+                match ResourceState.getSelectedDataPath(state#resource) {
+                    case None => ()
+                    case Some(path) => {
+                        let pretty = Json.Write.toPrettyString(2i32, updated);
+                        discard Files.writeString(Paths.get(path), pretty);
+                        println("[Resources] saved field at ${keyPath}")
+                    }
+                };
+                // プレビュー: 編集後の record で texture を再探索
+                match currentRecordJson(state, updated) {
+                    case Some(rec) => refreshPreview(state, rec)
+                    case None      => clearPreview(state)
+                }
+            }
+        }
+
+    /// 編集対象 record への JSON key path を返す
     def recordKeyPath(state: IdeState.IdeState, json: Json.JsonElement): List[String] \ IO =
         match ResourceCatalog.classify(json) {
             case ResourceCatalog.Classification.Single => Nil
@@ -169,8 +200,7 @@ mod ResourcePanel {
             case _ => Nil
         }
 
-    /// 編集対象 record の JsonElement を返す。
-    /// Single → json そのもの、CatalogIn → json[containerKey][selectedSubEntry]
+    /// 編集対象 record の JsonElement を返す
     def currentRecordJson(state: IdeState.IdeState, json: Json.JsonElement):
             Option[Json.JsonElement] \ IO =
         match ResourceCatalog.classify(json) {
@@ -202,6 +232,24 @@ mod ResourcePanel {
                 items.clear();
                 List.forEach(e -> discard items.add(e#displayName), entries)
             }
+        }
+    }
+
+    /// record の中から texture 名らしき値を探して preview pane を更新する
+    def refreshPreview(state: IdeState.IdeState, record: Json.JsonElement): Unit \ IO = {
+        let textureNames = Array.get(0, state#textureNamesRef);
+        let pathMap = Array.get(0, state#texturePathMapRef);
+        let name = PropertyWidgets.findFirstTexture(record, textureNames);
+        match Array.get(0, state#widgets#resourcePreviewPane) {
+            case Some(pane) => PropertyWidgets.updateSpritePreview(pane, pathMap, name)
+            case None       => ()
+        }
+    }
+
+    def clearPreview(state: IdeState.IdeState): Unit \ IO = {
+        match Array.get(0, state#widgets#resourcePreviewPane) {
+            case Some(pane) => PropertyWidgets.updateSpritePreview(pane, Map.empty(), None)
+            case None       => ()
         }
     }
 }
