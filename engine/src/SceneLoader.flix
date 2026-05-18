@@ -428,11 +428,17 @@ mod SceneLoader {
             tag         <- parseTagField(tagParser, map);
             drawLayer   <- (Json.FromJson.getAtKey(Root, "layer", map): Result[Json.JsonError, Int32]);
             posOpt      <- parseVec2Opt("pos", map);
-            rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]])
+            rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
+            visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            modulateOpt <- parseColorOpt("modulate", map)
         ) yield {
             let layer = CanvasLayer.make(drawLayer)
                 |> applyOpt(posOpt, setCanvasLayerPosition)
-                |> applyOpt(rotationOpt, setCanvasLayerRotation);
+                |> applyOpt(rotationOpt, setCanvasLayerRotation)
+                |> applyOpt(visibleOpt, (v, l) -> CanvasItem.setVisible(v, l))
+                |> applyOpt(zIndexOpt, (z, l) -> CanvasItem.setZIndex(z, l))
+                |> applyOpt(modulateOpt, (c, l) -> CanvasItem.setModulate(c, l));
             EngineNode.CanvasLayerWithState(layer, tag)
         }
 
@@ -557,20 +563,21 @@ mod SceneLoader {
             case None => Err(JsonError(Root, Set#{"FontAtlas (loadSceneWithFont required for Button)"}))
             case Some(font) =>
                 forM (
-                    tag        <- parseTagField(tagParser, map);
-                    text       <- (Json.FromJson.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
-                    fontSize   <- (Json.FromJson.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
-                    size       <- parseVec2("size", map);
-                    posOpt     <- parseVec2Opt("pos", map);
-                    visibleOpt <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]])
+                    tag         <- parseTagField(tagParser, map);
+                    text        <- (Json.FromJson.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
+                    fontSize    <- (Json.FromJson.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
+                    size        <- parseVec2("size", map);
+                    posOpt      <- parseVec2Opt("pos", map);
+                    visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+                    zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+                    modulateOpt <- parseColorOpt("modulate", map)
                 ) yield {
                     let pos = Option.getWithDefault(Vec2.zero(), posOpt);
                     let button = Button.make(text, font, fontSize, size)
                         |> Node2D.setPosition(pos)
-                        |> (b -> match visibleOpt {
-                            case Some(v) => CanvasItem.setVisible(v, b)
-                            case None    => b
-                        });
+                        |> applyOpt(visibleOpt, (v, b) -> CanvasItem.setVisible(v, b))
+                        |> applyOpt(zIndexOpt, (z, b) -> CanvasItem.setZIndex(z, b))
+                        |> applyOpt(modulateOpt, (c, b) -> CanvasItem.setModulate(c, b));
                     EngineNode.ButtonWithState(button, tag)
                 }
         }
@@ -585,7 +592,9 @@ mod SceneLoader {
             textureNormal     <- (Json.FromJson.getAtKey(Root, "textureNormal", map): Result[Json.JsonError, String]);
             texturePressedOpt <- (Json.FromJson.getAtKeyOpt(Root, "texturePressed", map): Result[Json.JsonError, Option[String]]);
             centeredOpt       <- (Json.FromJson.getAtKeyOpt(Root, "centered", map): Result[Json.JsonError, Option[Bool]]);
-            visibleOpt        <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]])
+            visibleOpt        <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt         <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            modulateOpt       <- parseColorOpt("modulate", map)
         ) yield {
             let pos = Option.getWithDefault(Vec2.zero(), posOpt);
             let size = Option.getWithDefault(Vec2.zero(), sizeOpt);
@@ -594,7 +603,9 @@ mod SceneLoader {
                 |> Node2D.setScale(scale)
                 |> applyTexturePressed(texturePressedOpt)
                 |> applyCentered(centeredOpt)
-                |> applyButtonVisible(visibleOpt);
+                |> applyButtonVisible(visibleOpt)
+                |> applyOpt(zIndexOpt, (z, b) -> CanvasItem.setZIndex(z, b))
+                |> applyOpt(modulateOpt, (c, b) -> CanvasItem.setModulate(c, b));
             EngineNode.TextureButtonWithState(button, tag)
         }
 
@@ -982,7 +993,10 @@ mod SceneLoader {
             marginYOpt  <- (Json.FromJson.getAtKeyOpt(Root, "marginY", map): Result[Json.JsonError, Option[Float64]]);
             spacingXOpt <- (Json.FromJson.getAtKeyOpt(Root, "spacingX", map): Result[Json.JsonError, Option[Float64]]);
             spacingYOpt <- (Json.FromJson.getAtKeyOpt(Root, "spacingY", map): Result[Json.JsonError, Option[Float64]]);
-            ySortEnabledOpt <- (Json.FromJson.getAtKeyOpt(Root, "ySortEnabled", map): Result[Json.JsonError, Option[Bool]])
+            ySortEnabledOpt <- (Json.FromJson.getAtKeyOpt(Root, "ySortEnabled", map): Result[Json.JsonError, Option[Bool]]);
+            visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            modulateOpt <- parseColorOpt("modulate", map)
         ) yield {
             tag = tag,
             config = ({
@@ -993,13 +1007,20 @@ mod SceneLoader {
                 spacingX    = Option.getWithDefault(0.0, spacingXOpt),
                 spacingY    = Option.getWithDefault(0.0, spacingYOpt)
             }: LDTKLoader.LDTKLoaderConfig),
-            ySortEnabledOpt = ySortEnabledOpt
+            ySortEnabledOpt = ySortEnabledOpt,
+            visibleOpt = visibleOpt,
+            zIndexOpt = zIndexOpt,
+            modulateOpt = modulateOpt
         };
         match header {
             case Err(e) => Err(e)
             case Ok(h)  =>
                 let levelData = LDTKLoader.loadLevel(h#config);
-                let layer = levelData#tileLayer |> applyOpt(h#ySortEnabledOpt, setTileMapLayerYSortEnabled);
+                let layer = levelData#tileLayer
+                    |> applyOpt(h#ySortEnabledOpt, setTileMapLayerYSortEnabled)
+                    |> applyOpt(h#visibleOpt, (v, l) -> CanvasItem.setVisible(v, l))
+                    |> applyOpt(h#zIndexOpt, (z, l) -> CanvasItem.setZIndex(z, l))
+                    |> applyOpt(h#modulateOpt, (c, l) -> CanvasItem.setModulate(c, l));
                 Ok(EngineNode.TileMapLayerWithState(layer, h#tag))
         }
 
@@ -1149,7 +1170,8 @@ mod SceneLoader {
             borderAlphaOpt     <- (Json.FromJson.getAtKeyOpt(Root, "borderAlpha", map): Result[Json.JsonError, Option[Float64]]);
             borderWidthOpt     <- (Json.FromJson.getAtKeyOpt(Root, "borderWidth", map): Result[Json.JsonError, Option[Int32]]);
             visibleOpt         <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
-            zIndexOpt          <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
+            zIndexOpt          <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            modulateOpt        <- parseColorOpt("modulate", map)
         ) yield {
             let pos = Option.getWithDefault(Vec2.zero(), posOpt);
             let size = Option.getWithDefault(Vec2.zero(), sizeOpt);
@@ -1160,7 +1182,8 @@ mod SceneLoader {
                 |> applyOpt(borderAlphaOpt, setPanelBorderAlpha)
                 |> applyOpt(borderWidthOpt, Panel.setBorderWidth)
                 |> applyOpt(visibleOpt, setPanelVisible)
-                |> applyOpt(zIndexOpt, setPanelZIndex);
+                |> applyOpt(zIndexOpt, setPanelZIndex)
+                |> applyOpt(modulateOpt, (c, p) -> CanvasItem.setModulate(c, p));
             EngineNode.PanelWithState(panel, tag)
         }
 
@@ -1219,7 +1242,8 @@ mod SceneLoader {
                     textColorOpt    <- parseColorOpt("textColor", map);
                     disabledColorOpt <- parseColorOpt("disabledColor", map);
                     visibleOpt      <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
-                    zIndexOpt       <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
+                    zIndexOpt       <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+                    modulateOpt     <- parseColorOpt("modulate", map)
                 ) yield {
                     let pos = Option.getWithDefault(Vec2.zero(), posOpt);
                     let size = Option.getWithDefault(Vec2.zero(), sizeOpt);
@@ -1234,7 +1258,8 @@ mod SceneLoader {
                         |> applyOpt(textColorOpt, ItemList.setTextColor)
                         |> applyOpt(disabledColorOpt, ItemList.setDisabledColor)
                         |> applyOpt(visibleOpt, setItemListVisible)
-                        |> applyOpt(zIndexOpt, setItemListZIndex);
+                        |> applyOpt(zIndexOpt, setItemListZIndex)
+                        |> applyOpt(modulateOpt, (c, l) -> CanvasItem.setModulate(c, l));
                     EngineNode.ItemListWithState(list, tag)
                 }
         }
@@ -1260,7 +1285,8 @@ mod SceneLoader {
                     visibleOpt           <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
                     zIndexOpt            <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
                     visibleCharactersOpt <- (Json.FromJson.getAtKeyOpt(Root, "visibleCharacters", map): Result[Json.JsonError, Option[Int32]]);
-                    visibleRatioOpt      <- (Json.FromJson.getAtKeyOpt(Root, "visibleRatio", map): Result[Json.JsonError, Option[Float64]])
+                    visibleRatioOpt      <- (Json.FromJson.getAtKeyOpt(Root, "visibleRatio", map): Result[Json.JsonError, Option[Float64]]);
+                    modulateOpt          <- parseColorOpt("modulate", map)
                 ) yield {
                     let pos = Option.getWithDefault(Vec2.zero(), posOpt);
                     let size = Option.getWithDefault(Vec2.zero(), sizeOpt);
@@ -1269,7 +1295,8 @@ mod SceneLoader {
                         |> applyOpt(visibleOpt, setRichTextLabelVisible)
                         |> applyOpt(zIndexOpt, setRichTextLabelZIndex)
                         |> applyOpt(visibleCharactersOpt, RichTextLabel.setVisibleCharacters)
-                        |> applyOpt(visibleRatioOpt, RichTextLabel.setVisibleRatio);
+                        |> applyOpt(visibleRatioOpt, RichTextLabel.setVisibleRatio)
+                        |> applyOpt(modulateOpt, (c, l) -> CanvasItem.setModulate(c, l));
                     EngineNode.RichTextLabelWithState(label, tag)
                 }
         }

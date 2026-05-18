@@ -6,5 +6,6 @@
   "limitBottom": 999999,
   "limitLeft": -999999,
   "limitRight": 999999,
-  "limitTop": -999999
+  "limitTop": -999999,
+  "modulate": {"r": 1, "g": 1, "b": 1}
 }
