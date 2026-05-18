@@ -29,7 +29,10 @@
       "texture": "sprite_safe_box",
       "type": "Sprite2D",
       "visible": true,
-      "zIndex": 1
+      "zIndex": 1,
+      "flipH": false,
+      "flipV": false,
+      "alpha": 1
     },
     {
       "monitoring": true,

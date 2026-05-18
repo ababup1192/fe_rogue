@@ -207,7 +207,16 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
                                   state#inspector#currentValues)
                     }
                     case Some(engineNode) => {
-                        let sections = NodeInspector.sectionsFor(engineNode);
+                        let baseSections = NodeInspector.sectionsFor(engineNode);
+                        // 選択 node の JSON 子に Container があれば、その layout の編集セクションを追加
+                        let sceneJson = Array.get(0, state#runtime#currentSceneJson);
+                        let layoutSections =
+                            NodeInspector.extraLayoutSectionsFor(sceneJson, sel#nodePath);
+                        let propsSections =
+                            NodeInspector.propertiesSectionFor(sceneJson, sel#nodePath);
+                        // 表示順: Properties (上) → 継承階層 (派生→基底) → Container layout (下)
+                        let sections = List.append(propsSections,
+                                                    List.append(baseSections, layoutSections));
                         Array.put(sections, 0, state#inspector#schema);
                         // 全 section の common + advanced を平坦化して name → JSON map を作る
                         let foldFields = (acc, section) -> {
@@ -291,6 +300,13 @@ def loadPendingSceneOrKeep(state: IdeState.IdeState, fontName: Option[String],
             println("[Main] Loading scene: ${path}");
             // ステータスバー / Inspector の参照用に現シーンパスを記録
             Array.put(Some(path), 0, state#currentScenePathRef);
+            // Inspector の Container/Layout サポート用に scene JSON もパースしてキャッシュ
+            let readResult = run {
+                Fs.ReadFile.read(path)
+            } with Fs.ReadFile.runWithFileRead;
+            let jsonOpt = Result.toOption(readResult)
+                |> Option.flatMap(s -> Json.Parse.parse(String.trim(s)));
+            Array.put(jsonOpt, 0, state#runtime#currentSceneJson);
             match fontName {
                 case Some(name) =>
                     let atlas = GameEngine.Game.getFontAtlas(name);

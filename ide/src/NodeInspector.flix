@@ -115,6 +115,244 @@ mod NodeInspector {
         case SNode(String, List[String], List[SceneTreeNode])
     }
 
+    /// 選択 node の JSON `properties` オブジェクトを編集可能フィールドとして返す。
+    /// "properties": {"jumpVelocity": -300, ...} のような自由形式のキー値ペアを Inspector に
+    /// 表示する。type は JSON 値の種類で自動判定 (Number/String/Bool)。
+    pub def propertiesSectionFor(sceneJson: Option[Json.JsonElement],
+                                  nodePath: List[String]): List[FieldSection] =
+        match (sceneJson, nodePath) {
+            case (Some(json), rootName :: Nil) =>
+                match findRootIfNamed(json, rootName) {
+                    case None       => Nil
+                    case Some(root) => match root {
+                        case Json.JsonElement.JsonObject(m) =>
+                            match Map.get("properties", m) {
+                                case Some(Json.JsonElement.JsonObject(props)) =>
+                                    let basePath = rootName :: "@@properties" :: Nil;
+                                    let fields = buildPropertyFields(props, basePath);
+                                    if (List.isEmpty(fields)) Nil
+                                    else
+                                        ({typeName = "Properties", common = fields,
+                                          advanced = (Nil: List[FieldDef])}: FieldSection) :: Nil
+                                case _ => Nil
+                            }
+                        case _ => Nil
+                    }
+                }
+            case _ => Nil
+        }
+
+    /// properties オブジェクトの各 key-value から FieldDef を生成する
+    def buildPropertyFields(props: Map[String, Json.JsonElement], basePath: List[String]):
+            List[FieldDef] = {
+        Map.toList(props)
+            |> List.foldLeft((acc, p) -> {
+                let (key, value) = p;
+                match propertyFieldDef(key, value, basePath) {
+                    case Some(fd) => List.append(acc, fd :: Nil)
+                    case None     => acc
+                }
+            }, Nil)
+    }
+
+    def propertyFieldDef(key: String, value: Json.JsonElement, basePath: List[String]):
+            Option[FieldDef] = {
+        match value {
+            case Json.JsonElement.JsonNumber(bd) =>
+                let captured = BigDecimal.tryToFloat64(bd) |> Option.getWithDefault(0.0);
+                Some({
+                    name     = "@@prop:${key}",
+                    label    = key,
+                    kind     = FieldKind.FloatT,
+                    snapshot = _n -> Some(floatToJson(captured)),
+                    apply    = (sel, j) -> match jsonToFloat(j) {
+                        case Some(v) => SceneSerializer.updateFields(
+                                           sel#jsonPath, basePath,
+                                           ({key = key,
+                                             value = SceneSerializer.FieldValue.ScalarValue(v)}: SceneSerializer.FieldUpdate) :: Nil)
+                        case None    => ()
+                    }
+                })
+            case Json.JsonElement.JsonString(s) =>
+                Some({
+                    name     = "@@prop:${key}",
+                    label    = key,
+                    kind     = FieldKind.TextT,
+                    snapshot = _n -> Some(stringToJson(s)),
+                    apply    = (sel, j) -> match jsonToString(j) {
+                        case Some(str) => SceneSerializer.updateString(
+                                            sel#jsonPath, basePath, key, str)
+                        case None      => ()
+                    }
+                })
+            case Json.JsonElement.JsonBool(b) =>
+                Some({
+                    name     = "@@prop:${key}",
+                    label    = key,
+                    kind     = FieldKind.BoolT,
+                    snapshot = _n -> Some(boolToJson(b)),
+                    apply    = (sel, j) -> match jsonToBool(j) {
+                        case Some(bv) => SceneSerializer.updateBool(
+                                            sel#jsonPath, basePath, key, bv)
+                        case None     => ()
+                    }
+                })
+            case _ => None
+        }
+    }
+
+    /// 選択 node の JSON 子に Container があれば、その layout primitive の編集セクションを返す。
+    /// sceneJson は現シーンファイルのルート JSON、nodePath は選択 node の live path。
+    /// 現状の MVP では nodePath が長さ 1 (top-level scene root) のときのみ対応。
+    pub def extraLayoutSectionsFor(sceneJson: Option[Json.JsonElement],
+                                    nodePath: List[String]): List[FieldSection] =
+        match (sceneJson, nodePath) {
+            case (Some(json), rootName :: Nil) =>
+                match findRootIfNamed(json, rootName) {
+                    case None        => Nil
+                    case Some(_root) => findContainersAndBuildSections(json, rootName)
+                }
+            case _ => Nil
+        }
+
+    /// JSON root が rootName と一致するなら Some(root) を返す
+    def findRootIfNamed(json: Json.JsonElement, rootName: String): Option[Json.JsonElement] =
+        match json {
+            case Json.JsonElement.JsonObject(m) =>
+                match Map.get("name", m) {
+                    case Some(Json.JsonElement.JsonString(s)) =>
+                        if (s == rootName) Some(json) else None
+                    case _ => None
+                }
+            case _ => None
+        }
+
+    /// root の children を走査し、Container が見つかればその layout に対する FieldSection を生成
+    def findContainersAndBuildSections(rootJson: Json.JsonElement, rootName: String):
+            List[FieldSection] =
+        match rootJson {
+            case Json.JsonElement.JsonObject(m) =>
+                match Map.get("children", m) {
+                    case Some(Json.JsonElement.JsonArray(arr)) =>
+                        let items = Vector.toList(arr);
+                        let indexed = List.zipWithIndex(items);
+                        List.foldLeft((acc, p) -> {
+                            let (idx, item) = p;
+                            if (isContainer(item)) {
+                                let sections = buildSectionsForContainer(item, idx, rootName);
+                                List.append(acc, sections)
+                            } else acc
+                        }, Nil, indexed)
+                    case _ => Nil
+                }
+            case _ => Nil
+        }
+
+    def isContainer(item: Json.JsonElement): Bool = match item {
+        case Json.JsonElement.JsonObject(m) =>
+            match Map.get("type", m) {
+                case Some(Json.JsonElement.JsonString(s)) => s == "Container"
+                case _ => false
+            }
+        case _ => false
+    }
+
+    /// Container の layout を読んで FieldSection リストを生成。
+    /// 現状は top-level layout primitive のみ (HBoxContainer / VBoxContainer / MarginContainer)
+    def buildSectionsForContainer(containerJson: Json.JsonElement, containerIdx: Int32,
+                                   rootName: String): List[FieldSection] =
+        match containerJson {
+            case Json.JsonElement.JsonObject(m) =>
+                match Map.get("layout", m) {
+                    case Some(layoutJson) =>
+                        let basePath = rootName :: "@@${containerIdx}" :: "@@layout" :: Nil;
+                        buildLayoutSection(layoutJson, basePath)
+                    case None => Nil
+                }
+            case _ => Nil
+        }
+
+    def buildLayoutSection(layoutJson: Json.JsonElement, basePath: List[String]):
+            List[FieldSection] =
+        match layoutJson {
+            case Json.JsonElement.JsonObject(m) =>
+                match Map.get("kind", m) {
+                    case Some(Json.JsonElement.JsonString("HBoxContainer")) =>
+                        ({typeName = "HBoxContainer",
+                          common = boxContainerFields(m, basePath),
+                          advanced = (Nil: List[FieldDef])}: FieldSection) :: Nil
+                    case Some(Json.JsonElement.JsonString("VBoxContainer")) =>
+                        ({typeName = "VBoxContainer",
+                          common = boxContainerFields(m, basePath),
+                          advanced = (Nil: List[FieldDef])}: FieldSection) :: Nil
+                    case Some(Json.JsonElement.JsonString("MarginContainer")) =>
+                        ({typeName = "MarginContainer",
+                          common = marginContainerFields(m, basePath),
+                          advanced = (Nil: List[FieldDef])}: FieldSection) :: Nil
+                    case _ => Nil
+                }
+            case _ => Nil
+        }
+
+    /// HBoxContainer / VBoxContainer の編集フィールド: separation / alignment / crossAxis
+    def boxContainerFields(layoutEntries: Map[String, Json.JsonElement],
+                            basePath: List[String]): List[FieldDef] =
+        let alignOpts = "Begin" :: "Center" :: "End" :: Nil;
+        let crossOpts = "Begin" :: "Center" :: "End" :: "Stretch" :: Nil;
+        let separationVal = Map.get("separation", layoutEntries)
+                             |> Option.flatMap(jsonToFloat)
+                             |> Option.getWithDefault(0.0);
+        let alignmentVal = Map.get("alignment", layoutEntries)
+                            |> Option.flatMap(jsonToString)
+                            |> Option.getWithDefault("Begin");
+        let crossAxisVal = Map.get("crossAxis", layoutEntries)
+                            |> Option.flatMap(jsonToString)
+                            |> Option.getWithDefault("Begin");
+        layoutScalarField("separation", "Separation", separationVal, basePath) ::
+        layoutEnumField("alignment", "Alignment", alignOpts, alignmentVal, basePath) ::
+        layoutEnumField("crossAxis", "Cross axis", crossOpts, crossAxisVal, basePath) :: Nil
+
+    def marginContainerFields(layoutEntries: Map[String, Json.JsonElement],
+                               basePath: List[String]): List[FieldDef] =
+        let marginVal = Map.get("margin", layoutEntries)
+                         |> Option.flatMap(jsonToFloat)
+                         |> Option.getWithDefault(0.0);
+        layoutScalarField("margin", "Margin", marginVal, basePath) :: Nil
+
+    /// Layout primitive 用の Float field。snapshot は capture, apply は basePath に書き込む
+    def layoutScalarField(jsonKey: String, label: String, captured: Float64,
+                          basePath: List[String]): FieldDef =
+        {
+            name     = "@@layout:${jsonKey}",
+            label    = label,
+            kind     = FieldKind.FloatT,
+            snapshot = _n -> Some(floatToJson(captured)),
+            apply    = (sel, j) -> match jsonToFloat(j) {
+                case Some(v) => SceneSerializer.updateFields(
+                                   sel#jsonPath, basePath,
+                                   ({key = jsonKey,
+                                     value = SceneSerializer.FieldValue.ScalarValue(v)}: SceneSerializer.FieldUpdate) :: Nil)
+                case None    => ()
+            }
+        }
+
+    /// Layout primitive 用の Enum field (alignment / crossAxis)
+    def layoutEnumField(jsonKey: String, label: String, options: List[String],
+                        captured: String, basePath: List[String]): FieldDef =
+        {
+            name     = "@@layout:${jsonKey}",
+            label    = label,
+            kind     = FieldKind.EnumT(options),
+            snapshot = _n -> Some(stringToJson(captured)),
+            apply    = (sel, j) -> match jsonToString(j) {
+                case Some(s) => SceneSerializer.updateFields(
+                                   sel#jsonPath, basePath,
+                                   ({key = jsonKey,
+                                     value = SceneSerializer.FieldValue.StringValue(s)}: SceneSerializer.FieldUpdate) :: Nil)
+                case None    => ()
+            }
+        }
+
     /// 与えられた scene から SceneTree を構築する。Scene.preorderPaths で root の名前を取り、
     /// 各 root から再帰的に子を辿る
     pub def buildSceneTree(scene: Scene[Unit]): List[SceneTreeNode] = {
@@ -233,6 +471,9 @@ mod NodeInspector {
         case EngineNode.Body2DWithState(_, _) =>
             let (c, a) = characterBody2DFields();
             ({typeName = "CharacterBody2D", common = c, advanced = a}: FieldSection) :: Nil
+        case EngineNode.RigidBody2DWithState(_, _) =>
+            let (c, a) = rigidBody2DFields();
+            ({typeName = "RigidBody2D", common = c, advanced = a}: FieldSection) :: Nil
         case EngineNode.StaticBody2DWithState(_, _) =>
             let (c, a) = staticBody2DFields();
             ({typeName = "StaticBody2D", common = c, advanced = a}: FieldSection) :: Nil
@@ -529,6 +770,26 @@ mod NodeInspector {
             intField("priority",         "Priority",        n -> Option.map(r -> r#priority, pick(n))) ::
             intField("collisionLayer",   "Collision layer", n -> Option.map(r -> r#collisionLayer, pick(n))) ::
             intField("collisionMask",    "Collision mask",  n -> Option.map(r -> r#collisionMask, pick(n))) :: Nil;
+        (common, advanced)
+
+    /// RigidBody2D 固有: 物理パラメータ (velocity / mass / gravity 等)
+    def rigidBody2DFields(): (List[FieldDef], List[FieldDef]) =
+        let pick = n -> match n {
+            case EngineNode.RigidBody2DWithState(b, _) =>
+                let RigidBody2D.RigidBody2D(r) = b; Some(r)
+            case _ => None
+        };
+        let common =
+            vec2Field("linearVelocity",  "Linear velocity", n -> Option.map(r -> r#linearVelocity, pick(n))) ::
+            scalarFloatField("gravityScale", "Gravity scale", n -> Option.map(r -> r#gravityScale, pick(n))) ::
+            scalarFloatField("mass",     "Mass",            n -> Option.map(r -> r#mass, pick(n))) :: Nil;
+        let advanced =
+            scalarFloatField("angularVelocity", "Angular velocity", n -> Option.map(r -> r#angularVelocity, pick(n))) ::
+            boolField("monitoring",       "Monitoring",      n -> Option.map(r -> r#monitoring, pick(n))) ::
+            boolField("monitorable",      "Monitorable",     n -> Option.map(r -> r#monitorable, pick(n))) ::
+            intField("priority",          "Priority",        n -> Option.map(r -> r#priority, pick(n))) ::
+            intField("collisionLayer",    "Collision layer", n -> Option.map(r -> r#collisionLayer, pick(n))) ::
+            intField("collisionMask",     "Collision mask",  n -> Option.map(r -> r#collisionMask, pick(n))) :: Nil;
         (common, advanced)
 
     def textureRectFields(): (List[FieldDef], List[FieldDef]) =

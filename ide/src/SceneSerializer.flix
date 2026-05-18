@@ -293,7 +293,12 @@ mod SceneSerializer {
         }
 
     /// 末端ノード（このノードが目的のノードか、子を辿る必要があるか）に応じて
-    /// 指定フィールドを置換 or children を辿る。objStyle は元の object スタイルを引き継ぐ
+    /// 指定フィールドを置換 or children を辿る。objStyle は元の object スタイルを引き継ぐ。
+    ///
+    /// 合成 path 拡張:
+    ///   - `"@@layout"` : 現 node の `layout` フィールドへ降りる (Container 用)
+    ///   - `"@@child"`  : 現 node の `child` フィールドへ降りる (Center/MarginContainer)
+    ///   - `"@@N"`      : 現 node の `children[N]` へ降りる (layout primitive の Nth child)
     def applyPathFromHere(restPath: NodePath, updates: List[FieldUpdate],
                           entries: List[(String, JsonOrdered.OrderedJson)],
                           objStyle: JsonOrdered.ObjectStyle):
@@ -302,21 +307,96 @@ mod SceneSerializer {
             case Nil =>
                 JsonOrdered.OrderedJson.OObject(applyUpdates(updates, entries), objStyle)
             case nextName :: deeper =>
-                match findEntryValue("children", entries) {
-                    case Some(JsonOrdered.OrderedJson.OArray(childItems, style)) =>
-                        match replaceInArray(nextName, deeper, updates, childItems) {
-                            case Some(newItems) =>
-                                let newChildren =
-                                    JsonOrdered.OrderedJson.OArray(newItems, style);
-                                JsonOrdered.OrderedJson.OObject(
-                                    replaceEntryValue("children", newChildren, entries),
-                                    objStyle)
-                            case None =>
-                                JsonOrdered.OrderedJson.OObject(entries, objStyle)
-                        }
-                    case _ => JsonOrdered.OrderedJson.OObject(entries, objStyle)
-                }
+                if (String.startsWith({prefix = "@@"}, nextName))
+                    handleSyntheticStep(nextName, deeper, updates, entries, objStyle)
+                else
+                    match findEntryValue("children", entries) {
+                        case Some(JsonOrdered.OrderedJson.OArray(childItems, style)) =>
+                            match replaceInArray(nextName, deeper, updates, childItems) {
+                                case Some(newItems) =>
+                                    let newChildren =
+                                        JsonOrdered.OrderedJson.OArray(newItems, style);
+                                    JsonOrdered.OrderedJson.OObject(
+                                        replaceEntryValue("children", newChildren, entries),
+                                        objStyle)
+                                case None =>
+                                    JsonOrdered.OrderedJson.OObject(entries, objStyle)
+                            }
+                        case _ => JsonOrdered.OrderedJson.OObject(entries, objStyle)
+                    }
         }
+
+    /// 合成 path セグメント (`@@N` / `@@layout` / `@@child`) を処理する
+    def handleSyntheticStep(seg: String, deeper: NodePath, updates: List[FieldUpdate],
+                             entries: List[(String, JsonOrdered.OrderedJson)],
+                             objStyle: JsonOrdered.ObjectStyle):
+                            JsonOrdered.OrderedJson =
+        if (seg == "@@layout") {
+            match findEntryValue("layout", entries) {
+                case Some(layoutJson) =>
+                    let updated = applyToObjectField(layoutJson, deeper, updates);
+                    JsonOrdered.OrderedJson.OObject(
+                        replaceEntryValue("layout", updated, entries), objStyle)
+                case None => JsonOrdered.OrderedJson.OObject(entries, objStyle)
+            }
+        } else if (seg == "@@child") {
+            match findEntryValue("child", entries) {
+                case Some(childJson) =>
+                    let updated = applyToObjectField(childJson, deeper, updates);
+                    JsonOrdered.OrderedJson.OObject(
+                        replaceEntryValue("child", updated, entries), objStyle)
+                case None => JsonOrdered.OrderedJson.OObject(entries, objStyle)
+            }
+        } else {
+            // "@@N" (children[N]) または "@@<key>" (named entry) へ降りる
+            let rest = String.dropLeft(2, seg);
+            match Int32.fromString(rest) {
+                case Some(n) =>
+                    // 整数なら children[N]
+                    match findEntryValue("children", entries) {
+                        case Some(JsonOrdered.OrderedJson.OArray(items, style)) =>
+                            let newItems = applyToArrayIndex(items, n, deeper, updates);
+                            JsonOrdered.OrderedJson.OObject(
+                                replaceEntryValue("children",
+                                    JsonOrdered.OrderedJson.OArray(newItems, style), entries),
+                                objStyle)
+                        case _ => JsonOrdered.OrderedJson.OObject(entries, objStyle)
+                    }
+                case None =>
+                    // 整数でなければ named entry として扱う (例: "@@properties")
+                    match findEntryValue(rest, entries) {
+                        case Some(fieldJson) =>
+                            let updated = applyToObjectField(fieldJson, deeper, updates);
+                            JsonOrdered.OrderedJson.OObject(
+                                replaceEntryValue(rest, updated, entries), objStyle)
+                        case None => JsonOrdered.OrderedJson.OObject(entries, objStyle)
+                    }
+            }
+        }
+
+    /// object フィールド (layout / child) に対して deeper path を進めて updates を適用する
+    def applyToObjectField(fieldJson: JsonOrdered.OrderedJson, deeper: NodePath,
+                            updates: List[FieldUpdate]): JsonOrdered.OrderedJson =
+        match fieldJson {
+            case JsonOrdered.OrderedJson.OObject(fieldEntries, fieldStyle) =>
+                match deeper {
+                    case Nil =>
+                        JsonOrdered.OrderedJson.OObject(
+                            applyUpdates(updates, fieldEntries), fieldStyle)
+                    case _ =>
+                        applyPathFromHere(deeper, updates, fieldEntries, fieldStyle)
+                }
+            case _ => fieldJson
+        }
+
+    /// 配列の n 番目要素に対して deeper path を進めて updates を適用する
+    def applyToArrayIndex(items: List[JsonOrdered.OrderedJson], n: Int32, deeper: NodePath,
+                           updates: List[FieldUpdate]): List[JsonOrdered.OrderedJson] =
+        List.mapWithIndex((idx, item) ->
+            if (idx == n)
+                applyToObjectField(item, deeper, updates)
+            else
+                item, items)
 
     /// updates を entries にマージする。
     /// 既存キーは順序を保ったまま値を置換、新規キーは末尾に追加する

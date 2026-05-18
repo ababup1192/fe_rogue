@@ -36,7 +36,8 @@ mod IdeState {
         reloadFlag           = Array[Bool, Static],
         pendingConfig        = Array[Option[GameEngine.EngineConfig], Static],
         sceneTree            = Array[List[NodeInspector.SceneTreeNode], Static],
-        pendingNodeSelection = Array[Option[Editor.Selection], Static]
+        pendingNodeSelection = Array[Option[Editor.Selection], Static],
+        currentSceneJson     = Array[Option[Json.JsonElement], Static]
     }
 
     /// ステータスバーに並ぶ 4 つの Label。FX EDT 上の AnimationTimer (ScenePanel) が
@@ -135,7 +136,8 @@ mod IdeState {
             reloadFlag           = Array#{false} @ Static,
             pendingConfig        = Array#{(None: Option[GameEngine.EngineConfig])} @ Static,
             sceneTree            = Array#{(Nil: List[NodeInspector.SceneTreeNode])} @ Static,
-            pendingNodeSelection = Array#{(None: Option[Editor.Selection])} @ Static
+            pendingNodeSelection = Array#{(None: Option[Editor.Selection])} @ Static,
+            currentSceneJson     = Array#{(None: Option[Json.JsonElement])} @ Static
         }
 
     def newStatusBar(): StatusBarRefs \ IO =

@@ -324,10 +324,15 @@ mod EngineNode {
             if (isFullTexture) r#scale
             else {x = r#scale#x * uv#uvScale#x,
                   y = r#scale#y * uv#uvScale#y};
+        // flipH / flipV は scale を負にすることで model 行列で反転させる
+        let flippedScale: Vec2.Vec2 = {
+            x = if (r#flipH) -1.0 * drawScale#x else drawScale#x,
+            y = if (r#flipV) -1.0 * drawScale#y else drawScale#y
+        };
         {
             texture = r#texture,
             position = globalPos,
-            scale = drawScale,
+            scale = flippedScale,
             rotation = r#rotation,
             color = r#modulate,
             alpha = r#alpha,
@@ -340,10 +345,15 @@ mod EngineNode {
     /// AnimatedSprite2D を Drawable に変換する
     pub def animSpriteToDrawable(sprite: AnimatedSprite2D, globalPos: Vec2.Vec2): GameEngine.Drawable =
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
+        // flipH / flipV は scale を負にすることで model 行列で反転させる
+        let flippedScale: Vec2.Vec2 = {
+            x = if (r#flipH) -1.0 * r#scale#x else r#scale#x,
+            y = if (r#flipV) -1.0 * r#scale#y else r#scale#y
+        };
         {
             texture = AnimatedSprite2D.currentTexture(sprite),
             position = globalPos,
-            scale = r#scale,
+            scale = flippedScale,
             rotation = r#rotation,
             color = r#modulate,
             alpha = 1.0f32,

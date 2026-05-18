@@ -12,7 +12,8 @@
       ],
       "texture": "label_game_over",
       "type": "Sprite2D",
-      "visible": false
+      "visible": false,
+      "flipH": false
     },
     {
       "name": "score_panel",
@@ -92,5 +93,6 @@
   ],
   "layer": 2,
   "name": "gameover",
-  "type": "CanvasLayer"
+  "type": "CanvasLayer",
+  "visible": true
 }
