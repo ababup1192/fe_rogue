@@ -169,27 +169,27 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         // (ドラッグ・リサイズ・回転中も live 更新)
         match Editor.EditorState.get()#selected {
             case None => {
-                Array.put(None, 0, state#fxInspectorWorldPosRef);
-                Array.put(None, 0, state#fxInspectorLocalPosRef);
-                Array.put(None, 0, state#fxInspectorScaleRef);
-                Array.put(None, 0, state#fxInspectorRotationRef)
+                Array.put(None, 0, state#inspector#worldPos);
+                Array.put(None, 0, state#inspector#localPos);
+                Array.put(None, 0, state#inspector#scale);
+                Array.put(None, 0, state#inspector#rotation)
             }
             case Some(sel) => {
                 let wp = Scene.globalPositionAt(sel#nodePath, edited);
-                Array.put(Some((wp#x, wp#y)), 0, state#fxInspectorWorldPosRef);
+                Array.put(Some((wp#x, wp#y)), 0, state#inspector#worldPos);
                 match Scene.getEngineNode(sel#nodePath, edited) {
                     case None => {
-                        Array.put(None, 0, state#fxInspectorLocalPosRef);
-                        Array.put(None, 0, state#fxInspectorScaleRef);
-                        Array.put(None, 0, state#fxInspectorRotationRef)
+                        Array.put(None, 0, state#inspector#localPos);
+                        Array.put(None, 0, state#inspector#scale);
+                        Array.put(None, 0, state#inspector#rotation)
                     }
                     case Some(engineNode) => {
                         let lp = Node2D.getPosition(engineNode);
                         let sc = Node2D.getScale(engineNode);
                         let rot = Node2D.getRotation(engineNode);
-                        Array.put(Some((lp#x, lp#y)), 0, state#fxInspectorLocalPosRef);
-                        Array.put(Some((sc#x, sc#y)), 0, state#fxInspectorScaleRef);
-                        Array.put(Some(rot), 0, state#fxInspectorRotationRef)
+                        Array.put(Some((lp#x, lp#y)), 0, state#inspector#localPos);
+                        Array.put(Some((sc#x, sc#y)), 0, state#inspector#scale);
+                        Array.put(Some(rot), 0, state#inspector#rotation)
                     }
                 }
             }
@@ -286,18 +286,18 @@ def applyInspectorEdits(state: IdeState.IdeState):
     match Editor.EditorState.get()#selected {
         case None => {
             // 選択無し: pending は捨てるだけ
-            consumePending(state#fxPendingLocalPosEditRef, _ -> ());
-            consumePending(state#fxPendingScaleEditRef,    _ -> ());
-            consumePending(state#fxPendingRotationEditRef, _ -> ())
+            consumePending(state#inspector#pendingLocalPos, _ -> ());
+            consumePending(state#inspector#pendingScale,    _ -> ());
+            consumePending(state#inspector#pendingRotation, _ -> ())
         }
         case Some(s) => {
-            consumePending(state#fxPendingLocalPosEditRef, p ->
+            consumePending(state#inspector#pendingLocalPos, p ->
                 SceneSerializer.updatePos(s#jsonPath, s#jsonNodePath,
                                            {x = fst(p), y = snd(p)}));
-            consumePending(state#fxPendingScaleEditRef, p ->
+            consumePending(state#inspector#pendingScale, p ->
                 SceneSerializer.updateScale(s#jsonPath, s#jsonNodePath,
                                              {x = fst(p), y = snd(p)}));
-            consumePending(state#fxPendingRotationEditRef, rad ->
+            consumePending(state#inspector#pendingRotation, rad ->
                 SceneSerializer.updateRotation(s#jsonPath, s#jsonNodePath, rad))
         }
     }

@@ -2,10 +2,12 @@
 //
 // FX EDT 上の UI イベントが Ref に書き、メインループ (Main.flix の renderLoop) が読む構造。
 // 状態の定義と初期化、薄い IO アクセサのみここに置き、UI 構築・JSON 整形のような
-// 複雑な処理は view 層 (JavaFXIdeUI) に置く。
+// 複雑な処理は view 層 (JavaFXIdeUI / ResourcePanel / ScenePanel) に置く。
 //
 // 命名規約: JavaFX widget 参照は fx* プレフィックス。framework 非依存のドメインデータは
-// 無印 (pendingProjectRef, sceneFilesRef, etc)。framework 移植時は fx* だけ書き換える
+// 無印 (pendingProjectRef, sceneFilesRef, etc)。framework 移植時は fx* だけ書き換える。
+// 関連 Ref をまとめた sub record (statusBar / inspector / resource) を持ち、
+// 大量の並列フィールドが top レベルに並ぶのを防ぐ。
 
 mod IdeState {
     import javafx.scene.control.TreeView
@@ -16,7 +18,40 @@ mod IdeState {
     import javafx.scene.layout.StackPane
     import javafx.stage.Stage
 
-    /// IDE 全体の状態。Ref 群を 1 か所にまとめて持つ。
+    /// ステータスバーに並ぶ 4 つの Label。FX EDT 上の AnimationTimer (ScenePanel) が
+    /// 毎フレーム setText する
+    pub type alias StatusBarRefs = {
+        sceneLabel     = Array[Option[Label], Static],
+        mouseLabel     = Array[Option[Label], Static],
+        selectionLabel = Array[Option[Label], Static],
+        fpsLabel       = Array[Option[Label], Static]
+    }
+
+    /// Inspector pane の状態。
+    ///   content / lastSel:   pane VBox と前回反映 selection (変化時に rebuild)
+    ///   posLabel / worldPos: read-only world position 表示
+    ///   localPos / scale / rotation: 現値 Ref。renderLoop が毎フレーム書き込む
+    ///   xxxField:            編集 TextField 参照。focus 無し時のみ setText
+    ///   pendingXxx:          TextField commit → renderLoop の applyInspectorEdits に渡す
+    pub type alias InspectorRefs = {
+        content         = Array[Option[VBox], Static],
+        lastSel         = Array[String, Static],
+        posLabel        = Array[Option[Label], Static],
+        worldPos        = Array[Option[(Float64, Float64)], Static],
+        localPos        = Array[Option[(Float64, Float64)], Static],
+        scale           = Array[Option[(Float64, Float64)], Static],
+        rotation        = Array[Option[Float64], Static],
+        localXField     = Array[Option[TextField], Static],
+        localYField     = Array[Option[TextField], Static],
+        scaleXField     = Array[Option[TextField], Static],
+        scaleYField     = Array[Option[TextField], Static],
+        rotationField   = Array[Option[TextField], Static],
+        pendingLocalPos = Array[Option[(Float64, Float64)], Static],
+        pendingScale    = Array[Option[(Float64, Float64)], Static],
+        pendingRotation = Array[Option[Float64], Static]
+    }
+
+    /// IDE 全体の状態。
     ///
     /// ドメイン状態 (framework 非依存):
     ///   pendingProjectRef:          File → Open Project... で予約された次プロジェクトディレクトリ
@@ -32,21 +67,12 @@ mod IdeState {
     ///
     /// JavaFX widget 参照 (fx:id 経由で取得):
     ///   fxSceneTreeRef, fxResourcesListRef, fxSubEntriesListRef, fxPropertyPanelRef,
-    ///   fxResourcePreviewPaneRef, fxStageRef, ステータスバー Label 4 個
+    ///   fxResourcePreviewPaneRef, fxStageRef
     ///
-    /// Inspector pane:
-    ///   fxInspectorContentRef:   コンテナ VBox
-    ///   fxInspectorLastSelRef:   前回反映 selection。AnimationTimer が選択変化を検知して rebuild
-    ///   fxInspectorPosLabelRef:  World position 表示 Label (read-only)
-    ///   fxInspectorWorldPosRef:  毎フレーム書き込まれる world position 値
-    ///   fxInspectorLocalPosRef / fxInspectorScaleRef / fxInspectorRotationRef:
-    ///                            現値の Ref。AnimationTimer が focus 無しのときだけ TextField に setText
-    ///   fxInspectorLocalXFieldRef ほか TextField 参照
-    ///   fxPendingLocalPosEditRef / fxPendingScaleEditRef / fxPendingRotationEditRef:
-    ///                            TextField commit から renderLoop に渡される編集値
-    ///
-    /// Resources 編集状態:
-    ///   resource: ResourceState (別 module)
+    /// Sub records:
+    ///   statusBar: ステータスバーの 4 Label
+    ///   inspector: Inspector pane の状態 (詳細は InspectorRefs を参照)
+    ///   resource:  Resources 編集状態 (ResourceState module)
     pub type alias IdeState = {
         pendingProjectRef          = Array[Option[String], Static],
         pendingSceneRef            = Array[Option[String], Static],
@@ -64,25 +90,8 @@ mod IdeState {
         fxPropertyPanelRef         = Array[Option[VBox], Static],
         fxResourcePreviewPaneRef   = Array[Option[StackPane], Static],
         fxStageRef                 = Array[Option[Stage], Static],
-        fxStatusSceneLabelRef      = Array[Option[Label], Static],
-        fxStatusMouseLabelRef      = Array[Option[Label], Static],
-        fxStatusSelectionLabelRef  = Array[Option[Label], Static],
-        fxStatusFpsLabelRef        = Array[Option[Label], Static],
-        fxInspectorContentRef      = Array[Option[VBox], Static],
-        fxInspectorLastSelRef      = Array[String, Static],
-        fxInspectorPosLabelRef     = Array[Option[Label], Static],
-        fxInspectorWorldPosRef     = Array[Option[(Float64, Float64)], Static],
-        fxInspectorLocalPosRef     = Array[Option[(Float64, Float64)], Static],
-        fxInspectorScaleRef        = Array[Option[(Float64, Float64)], Static],
-        fxInspectorRotationRef     = Array[Option[Float64], Static],
-        fxInspectorLocalXFieldRef  = Array[Option[TextField], Static],
-        fxInspectorLocalYFieldRef  = Array[Option[TextField], Static],
-        fxInspectorScaleXFieldRef  = Array[Option[TextField], Static],
-        fxInspectorScaleYFieldRef  = Array[Option[TextField], Static],
-        fxInspectorRotationFieldRef= Array[Option[TextField], Static],
-        fxPendingLocalPosEditRef   = Array[Option[(Float64, Float64)], Static],
-        fxPendingScaleEditRef      = Array[Option[(Float64, Float64)], Static],
-        fxPendingRotationEditRef   = Array[Option[Float64], Static],
+        statusBar                  = StatusBarRefs,
+        inspector                  = InspectorRefs,
         resource                   = ResourceState.ResourceState
     }
 
@@ -105,26 +114,36 @@ mod IdeState {
             fxPropertyPanelRef         = Array#{(None: Option[VBox])} @ Static,
             fxResourcePreviewPaneRef   = Array#{(None: Option[StackPane])} @ Static,
             fxStageRef                 = Array#{(None: Option[Stage])} @ Static,
-            fxStatusSceneLabelRef      = Array#{(None: Option[Label])} @ Static,
-            fxStatusMouseLabelRef      = Array#{(None: Option[Label])} @ Static,
-            fxStatusSelectionLabelRef  = Array#{(None: Option[Label])} @ Static,
-            fxStatusFpsLabelRef        = Array#{(None: Option[Label])} @ Static,
-            fxInspectorContentRef      = Array#{(None: Option[VBox])} @ Static,
-            fxInspectorLastSelRef      = Array#{""} @ Static,
-            fxInspectorPosLabelRef     = Array#{(None: Option[Label])} @ Static,
-            fxInspectorWorldPosRef     = Array#{(None: Option[(Float64, Float64)])} @ Static,
-            fxInspectorLocalPosRef     = Array#{(None: Option[(Float64, Float64)])} @ Static,
-            fxInspectorScaleRef        = Array#{(None: Option[(Float64, Float64)])} @ Static,
-            fxInspectorRotationRef     = Array#{(None: Option[Float64])} @ Static,
-            fxInspectorLocalXFieldRef  = Array#{(None: Option[TextField])} @ Static,
-            fxInspectorLocalYFieldRef  = Array#{(None: Option[TextField])} @ Static,
-            fxInspectorScaleXFieldRef  = Array#{(None: Option[TextField])} @ Static,
-            fxInspectorScaleYFieldRef  = Array#{(None: Option[TextField])} @ Static,
-            fxInspectorRotationFieldRef= Array#{(None: Option[TextField])} @ Static,
-            fxPendingLocalPosEditRef   = Array#{(None: Option[(Float64, Float64)])} @ Static,
-            fxPendingScaleEditRef      = Array#{(None: Option[(Float64, Float64)])} @ Static,
-            fxPendingRotationEditRef   = Array#{(None: Option[Float64])} @ Static,
+            statusBar                  = newStatusBar(),
+            inspector                  = newInspector(),
             resource                   = ResourceState.newState()
+        }
+
+    def newStatusBar(): StatusBarRefs \ IO =
+        {
+            sceneLabel     = Array#{(None: Option[Label])} @ Static,
+            mouseLabel     = Array#{(None: Option[Label])} @ Static,
+            selectionLabel = Array#{(None: Option[Label])} @ Static,
+            fpsLabel       = Array#{(None: Option[Label])} @ Static
+        }
+
+    def newInspector(): InspectorRefs \ IO =
+        {
+            content         = Array#{(None: Option[VBox])} @ Static,
+            lastSel         = Array#{""} @ Static,
+            posLabel        = Array#{(None: Option[Label])} @ Static,
+            worldPos        = Array#{(None: Option[(Float64, Float64)])} @ Static,
+            localPos        = Array#{(None: Option[(Float64, Float64)])} @ Static,
+            scale           = Array#{(None: Option[(Float64, Float64)])} @ Static,
+            rotation        = Array#{(None: Option[Float64])} @ Static,
+            localXField     = Array#{(None: Option[TextField])} @ Static,
+            localYField     = Array#{(None: Option[TextField])} @ Static,
+            scaleXField     = Array#{(None: Option[TextField])} @ Static,
+            scaleYField     = Array#{(None: Option[TextField])} @ Static,
+            rotationField   = Array#{(None: Option[TextField])} @ Static,
+            pendingLocalPos = Array#{(None: Option[(Float64, Float64)])} @ Static,
+            pendingScale    = Array#{(None: Option[(Float64, Float64)])} @ Static,
+            pendingRotation = Array#{(None: Option[Float64])} @ Static
         }
 
     /// File → Open Project... で予約された次プロジェクトのパスを取り出し、Ref をクリアする
