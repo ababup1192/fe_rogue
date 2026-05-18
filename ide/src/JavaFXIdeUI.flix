@@ -63,12 +63,12 @@ mod JavaFXIdeUI {
         let subEntriesList: ListView[String] = unchecked_cast(ns.get("subEntriesList") as ListView[String]);
         let propertyPanel: VBox = unchecked_cast(ns.get("propertyPanel") as VBox);
         let resourcePreviewPane: StackPane = unchecked_cast(ns.get("resourcePreviewPane") as StackPane);
-        Array.put(Some(scenesTree),         0, state#fxSceneTreeRef);
-        Array.put(Some(resourcesList),      0, state#fxResourcesListRef);
-        Array.put(Some(subEntriesList),     0, state#fxSubEntriesListRef);
-        Array.put(Some(propertyPanel),      0, state#fxPropertyPanelRef);
-        Array.put(Some(resourcePreviewPane), 0, state#fxResourcePreviewPaneRef);
-        Array.put(Some(stage),              0, state#fxStageRef);
+        Array.put(Some(scenesTree),         0, state#widgets#sceneTree);
+        Array.put(Some(resourcesList),      0, state#widgets#resourcesList);
+        Array.put(Some(subEntriesList),     0, state#widgets#subEntriesList);
+        Array.put(Some(propertyPanel),      0, state#widgets#propertyPanel);
+        Array.put(Some(resourcePreviewPane), 0, state#widgets#resourcePreviewPane);
+        Array.put(Some(stage),              0, state#widgets#stage);
 
         // Resources タブの wiring (ListView 選択 → schema/data ロード → property panel)
         ResourcePanel.wireResourceSelection(state, resourcesList, subEntriesList);
@@ -142,7 +142,7 @@ mod JavaFXIdeUI {
     pub def scheduleSetTitle(state: IdeState.IdeState, title: String): Unit \ IO = {
         Platform.runLater(new Runnable {
             def $run(_this: Runnable): Unit \ IO = {
-                match Array.get(0, state#fxStageRef) {
+                match Array.get(0, state#widgets#stage) {
                     case Some(stage) => stage.setTitle(title)
                     case None => ()
                 }

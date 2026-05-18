@@ -4,10 +4,9 @@
 // 状態の定義と初期化、薄い IO アクセサのみここに置き、UI 構築・JSON 整形のような
 // 複雑な処理は view 層 (JavaFXIdeUI / ResourcePanel / ScenePanel) に置く。
 //
-// 命名規約: JavaFX widget 参照は fx* プレフィックス。framework 非依存のドメインデータは
-// 無印 (pendingProjectRef, sceneFilesRef, etc)。framework 移植時は fx* だけ書き換える。
-// 関連 Ref をまとめた sub record (statusBar / inspector / resource) を持ち、
-// 大量の並列フィールドが top レベルに並ぶのを防ぐ。
+// 設計方針: top-level は framework 非依存のドメイン Ref のみ。JavaFX に依存する Ref は
+// 全て sub record (widgets / runtime / statusBar / inspector / resource) にまとめる。
+// framework 移植時は sub record の中身だけ書き換え、ドメインデータと acceesor 関数は不変。
 
 mod IdeState {
     import javafx.scene.control.TreeView
@@ -17,6 +16,26 @@ mod IdeState {
     import javafx.scene.layout.VBox
     import javafx.scene.layout.StackPane
     import javafx.stage.Stage
+
+    /// FXML の fx:id 経由で取得した主要 widget 参照。customize で全フィールドに値が入る
+    pub type alias WidgetRefs = {
+        sceneTree           = Array[Option[TreeView[String]], Static],
+        resourcesList       = Array[Option[ListView[String]], Static],
+        subEntriesList      = Array[Option[ListView[String]], Static],
+        propertyPanel       = Array[Option[VBox], Static],
+        resourcePreviewPane = Array[Option[StackPane], Static],
+        stage               = Array[Option[Stage], Static]
+    }
+
+    /// 描画ループと FX レイヤーを橋渡しする ref 群。
+    ///   editorSelDisplay: renderLoop が毎フレーム書き込む editor#selected の文字列表現
+    ///   reloadFlag:       HotReload watcher が立てる「現シーン再 load 必要」フラグ
+    ///   pendingConfig:    Project 切替時に新 config を積む (JavaFXLayer.paintGL が消費)
+    pub type alias RuntimeRefs = {
+        editorSelDisplay = Array[String, Static],
+        reloadFlag       = Array[Bool, Static],
+        pendingConfig    = Array[Option[GameEngine.EngineConfig], Static]
+    }
 
     /// ステータスバーに並ぶ 4 つの Label。FX EDT 上の AnimationTimer (ScenePanel) が
     /// 毎フレーム setText する
@@ -60,18 +79,13 @@ mod IdeState {
     ///   currentScenePathRef:        現在 IDE が表示中の scene.json の絶対パス
     ///   textureNamesRef:            現プロジェクトの texture 名一覧 (TexturePathT の ComboBox 候補)
     ///   texturePathMapRef:          texture 名 → 絶対パス。preview の画像読込で使う
-    ///   fxEditorSelDisplayRef:      renderLoop が毎フレーム書き込む editor#selected の文字列表現
     ///   wantsAutoLoadFirstSceneRef: Open Project 後の deferred auto-load 希望フラグ
-    ///   fxReloadFlagRef:            HotReload watcher が立てる「現シーン再 load 必要」フラグ
-    ///   fxPendingConfigRef:         Project 切替時に新 config を積む (JavaFXLayer が消費)
     ///
-    /// JavaFX widget 参照 (fx:id 経由で取得):
-    ///   fxSceneTreeRef, fxResourcesListRef, fxSubEntriesListRef, fxPropertyPanelRef,
-    ///   fxResourcePreviewPaneRef, fxStageRef
-    ///
-    /// Sub records:
+    /// Sub records (framework 寄りデータ):
+    ///   widgets:   FXML 由来の主要 widget 参照 (WidgetRefs)
+    ///   runtime:   描画ループ橋渡し用 ref (RuntimeRefs)
     ///   statusBar: ステータスバーの 4 Label
-    ///   inspector: Inspector pane の状態 (詳細は InspectorRefs を参照)
+    ///   inspector: Inspector pane の状態 (詳細は InspectorRefs)
     ///   resource:  Resources 編集状態 (ResourceState module)
     pub type alias IdeState = {
         pendingProjectRef          = Array[Option[String], Static],
@@ -80,16 +94,9 @@ mod IdeState {
         currentScenePathRef        = Array[Option[String], Static],
         textureNamesRef            = Array[List[String], Static],
         texturePathMapRef          = Array[Map[String, String], Static],
-        fxEditorSelDisplayRef      = Array[String, Static],
         wantsAutoLoadFirstSceneRef = Array[Bool, Static],
-        fxReloadFlagRef            = Array[Bool, Static],
-        fxPendingConfigRef         = Array[Option[GameEngine.EngineConfig], Static],
-        fxSceneTreeRef             = Array[Option[TreeView[String]], Static],
-        fxResourcesListRef         = Array[Option[ListView[String]], Static],
-        fxSubEntriesListRef        = Array[Option[ListView[String]], Static],
-        fxPropertyPanelRef         = Array[Option[VBox], Static],
-        fxResourcePreviewPaneRef   = Array[Option[StackPane], Static],
-        fxStageRef                 = Array[Option[Stage], Static],
+        widgets                    = WidgetRefs,
+        runtime                    = RuntimeRefs,
         statusBar                  = StatusBarRefs,
         inspector                  = InspectorRefs,
         resource                   = ResourceState.ResourceState
@@ -104,19 +111,29 @@ mod IdeState {
             currentScenePathRef        = Array#{(None: Option[String])} @ Static,
             textureNamesRef            = Array#{(Nil: List[String])} @ Static,
             texturePathMapRef          = Array#{(Map.empty(): Map[String, String])} @ Static,
-            fxEditorSelDisplayRef      = Array#{"-"} @ Static,
             wantsAutoLoadFirstSceneRef = Array#{false} @ Static,
-            fxReloadFlagRef            = Array#{false} @ Static,
-            fxPendingConfigRef         = Array#{(None: Option[GameEngine.EngineConfig])} @ Static,
-            fxSceneTreeRef             = Array#{(None: Option[TreeView[String]])} @ Static,
-            fxResourcesListRef         = Array#{(None: Option[ListView[String]])} @ Static,
-            fxSubEntriesListRef        = Array#{(None: Option[ListView[String]])} @ Static,
-            fxPropertyPanelRef         = Array#{(None: Option[VBox])} @ Static,
-            fxResourcePreviewPaneRef   = Array#{(None: Option[StackPane])} @ Static,
-            fxStageRef                 = Array#{(None: Option[Stage])} @ Static,
+            widgets                    = newWidgets(),
+            runtime                    = newRuntime(),
             statusBar                  = newStatusBar(),
             inspector                  = newInspector(),
             resource                   = ResourceState.newState()
+        }
+
+    def newWidgets(): WidgetRefs \ IO =
+        {
+            sceneTree           = Array#{(None: Option[TreeView[String]])} @ Static,
+            resourcesList       = Array#{(None: Option[ListView[String]])} @ Static,
+            subEntriesList      = Array#{(None: Option[ListView[String]])} @ Static,
+            propertyPanel       = Array#{(None: Option[VBox])} @ Static,
+            resourcePreviewPane = Array#{(None: Option[StackPane])} @ Static,
+            stage               = Array#{(None: Option[Stage])} @ Static
+        }
+
+    def newRuntime(): RuntimeRefs \ IO =
+        {
+            editorSelDisplay = Array#{"-"} @ Static,
+            reloadFlag       = Array#{false} @ Static,
+            pendingConfig    = Array#{(None: Option[GameEngine.EngineConfig])} @ Static
         }
 
     def newStatusBar(): StatusBarRefs \ IO =

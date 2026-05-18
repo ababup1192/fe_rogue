@@ -55,7 +55,7 @@ mod ScenePanel {
 
     /// Scenes TreeView を sceneFilesRef から populate する
     pub def populateSceneTree(state: IdeState.IdeState): Unit \ IO = {
-        match Array.get(0, state#fxSceneTreeRef) {
+        match Array.get(0, state#widgets#sceneTree) {
             case None => ()
             case Some(tree) => {
                 let pairs = Array.get(0, state#sceneFilesRef);
@@ -126,7 +126,7 @@ mod ScenePanel {
                 });
 
                 // Selection: renderLoop が editor 状態を直接書き込んだ表示文字列を使う
-                let curSel = Array.get(0, state#fxEditorSelDisplayRef);
+                let curSel = Array.get(0, state#runtime#editorSelDisplay);
                 PropertyWidgets.withRef(state#statusBar#selectionLabel, lbl ->
                     lbl.setText("sel: ${curSel}"));
 

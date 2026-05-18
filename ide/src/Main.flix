@@ -93,7 +93,7 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
     let projectRoot = projectPath |> Option.getWithDefault(".");
     run {
         ideLoop(state, fontName, projectRoot)
-    } with JavaFXLayer.withJavaFX(config, state#fxPendingConfigRef, customize);
+    } with JavaFXLayer.withJavaFX(config, state#runtime#pendingConfig, customize);
     // Phase 1: JavaFX runtime は Runtime.halt(0) で落としているため
     // ここに到達することは事実上無い (再 open は Phase 2 以降で対応)
     match IdeState.takePendingProject(state) {
@@ -133,11 +133,11 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
             case None       => (fontName, currentScene)
             case Some(path) => reloadProject(state, fontName, path)
         };
-        // Deferred auto-load: AWT EDT が config swap を完了 (fxPendingConfigRef == None)
+        // Deferred auto-load: AWT EDT が config swap を完了 (runtime#pendingConfig == None)
         // したフレームで初めて先頭シーンを pendingSceneRef に積む。font/texture が揃った
         // 後にロードされるので getFontAtlas が安全に解決できる
         if (Array.get(0, state#wantsAutoLoadFirstSceneRef)
-            and Option.isEmpty(Array.get(0, state#fxPendingConfigRef))) {
+            and Option.isEmpty(Array.get(0, state#runtime#pendingConfig))) {
             match List.head(Array.get(0, state#sceneFilesRef)) {
                 case Some((abs, rel)) => {
                     println("[Main] Auto-loading first scene: ${rel}");
@@ -154,7 +154,7 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
             case None      => "-"
             case Some(sel) => "${sel#nodePath}"
         };
-        Array.put(editorSelText, 0, state#fxEditorSelDisplayRef);
+        Array.put(editorSelText, 0, state#runtime#editorSelDisplay);
         // editor がマウス入力を取り込み、選択 / ドラッグ / リサイズ / Undo まで処理して
         // 必要に応じて scene を更新する
         let edited = Editor.handleInput(nextScene);
@@ -233,11 +233,11 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
             // pendingSceneRef に積み直す。古い watcher は recv blocked のまま放置される
             // (Open Project は稀なので leak は許容)
             let reloadRx = HotReload.startWatcherAt(path + "/src/scenes");
-            let flagRef = state#fxReloadFlagRef;
+            let flagRef = state#runtime#reloadFlag;
             spawn { reloadRelay(reloadRx, flagRef) } @ Static;
             // GL リソースの再 init を AWT EDT (paintGL) に依頼。clearColor/designSize/
             // texture/font/projection/audio が新 config の値に切り替わる
-            Array.put(Some(proj#config), 0, state#fxPendingConfigRef);
+            Array.put(Some(proj#config), 0, state#runtime#pendingConfig);
             // 先頭シーンの auto-load は swap 完了後に renderLoop が遅延実行する。
             // 即座に pendingSceneRef を積むと、まだ古い fontAtlasesArr で getFontAtlas
             // が呼ばれ bug! になるため、希望だけ立てて実体は次フレーム以降に委譲
@@ -319,15 +319,15 @@ def consumePending(ref: Array[Option[t], Static], action: t -> Unit \ ef):
 def refreshTreeOnReload(state: IdeState.IdeState):
         Unit \ {IO, Editor.EditorState} =
     let _ = Editor.pollRawReload(); // Editor 本体の channel も空読みして leak を防ぐ
-    if (Array.get(0, state#fxReloadFlagRef)) {
-        Array.put(false, 0, state#fxReloadFlagRef);
+    if (Array.get(0, state#runtime#reloadFlag)) {
+        Array.put(false, 0, state#runtime#reloadFlag);
         match IdeState.getCurrentScenePath(state) {
             case Some(path) => Array.put(Some(path), 0, state#pendingSceneRef)
             case None       => ()
         }
     } else ()
 
-/// HotReload watcher が送ってくる Unit シグナルを `state#fxReloadFlagRef = true` に
+/// HotReload watcher が送ってくる Unit シグナルを `state#runtime#reloadFlag = true` に
 /// 変換するリレーループ。Open Project ごとに spawn する。
 /// `state` から refs だけ取り出して持つので、project 切替後も自分の rx と flag に対して
 /// 動き続ける (前 project の relay は rx が二度と発火しないので idle のまま leak する)

@@ -319,7 +319,7 @@ mod PropertyWidgets {
     /// texture name (textureNamesRef のキー) から絶対パスを引いて JavaFX Image をロードし、
     /// resourcePreviewPane に ImageView として乗せる。None なら "(no preview)" 表示
     pub def updateSpritePreview(state: IdeState.IdeState, textureName: Option[String]): Unit \ IO =
-        withRef(state#fxResourcePreviewPaneRef, pane -> {
+        withRef(state#widgets#resourcePreviewPane, pane -> {
             let children = pane.getChildren();
             children.clear();
             match textureName {

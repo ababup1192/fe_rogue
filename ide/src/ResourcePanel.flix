@@ -120,7 +120,7 @@ mod ResourcePanel {
     /// 型に応じた編集 widget (TextField / CheckBox 等) を生成し、commit で
     /// editingJson 更新 + ファイル書き戻しまで一気に行う
     def rebuildPropertyPanel(state: IdeState.IdeState): Unit \ IO = {
-        match Array.get(0, state#fxPropertyPanelRef) {
+        match Array.get(0, state#widgets#propertyPanel) {
             case None => ()
             case Some(panel) => {
                 let children = panel.getChildren();
@@ -194,7 +194,7 @@ mod ResourcePanel {
 
     /// Resources ListView を ResourceState.discoveredRef から populate する
     pub def populateResourcesList(state: IdeState.IdeState): Unit \ IO = {
-        match Array.get(0, state#fxResourcesListRef) {
+        match Array.get(0, state#widgets#resourcesList) {
             case None => ()
             case Some(listView) => {
                 let entries = Array.get(0, state#resource#discoveredRef);
