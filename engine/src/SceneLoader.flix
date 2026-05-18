@@ -510,6 +510,7 @@ mod SceneLoader {
             skewOpt     <- (Json.FromJson.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
             zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
             visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            modulateOpt <- parseColorOpt("modulate", map);
             alphaOpt    <- (Json.FromJson.getAtKeyOpt(Root, "alpha", map): Result[Json.JsonError, Option[Float64]]);
             flipHOpt    <- (Json.FromJson.getAtKeyOpt(Root, "flipH", map): Result[Json.JsonError, Option[Bool]]);
             flipVOpt    <- (Json.FromJson.getAtKeyOpt(Root, "flipV", map): Result[Json.JsonError, Option[Bool]])
@@ -521,11 +522,15 @@ mod SceneLoader {
                 |> applyOpt(skewOpt, setTextureRectSkew)
                 |> applyOpt(zIndexOpt, setTextureRectZIndex)
                 |> applyOpt(visibleOpt, setTextureRectVisible)
+                |> applyOpt(modulateOpt, setTextureRectModulate)
                 |> applyOpt(alphaOpt, setTextureRectAlpha)
                 |> applyOpt(flipHOpt, TextureRect.setFlipH)
                 |> applyOpt(flipVOpt, TextureRect.setFlipV);
             EngineNode.TextureRectWithState(rect, tag)
         }
+
+    def setTextureRectModulate(c: Color, rect: TextureRect): TextureRect =
+        CanvasItem.setModulate(c, rect)
 
     def setTextureRectRotation(rot: Float64, rect: TextureRect): TextureRect =
         Node2D.setRotation(rot, rect)
@@ -600,11 +605,17 @@ mod SceneLoader {
             pos                <- parseVec2("pos", map);
             shape              <- parseShape(map);
             collisionLayerOpt  <- (Json.FromJson.getAtKeyOpt(Root, "collisionLayer", map): Result[Json.JsonError, Option[Int32]]);
-            collisionMaskOpt   <- (Json.FromJson.getAtKeyOpt(Root, "collisionMask", map): Result[Json.JsonError, Option[Int32]])
+            collisionMaskOpt   <- (Json.FromJson.getAtKeyOpt(Root, "collisionMask", map): Result[Json.JsonError, Option[Int32]]);
+            visibleOpt         <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt          <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            modulateOpt        <- parseColorOpt("modulate", map)
         ) yield {
             let body = StaticBody2D.make(pos, shape)
                 |> applyOpt(collisionLayerOpt, StaticBody2D.setCollisionLayer)
-                |> applyOpt(collisionMaskOpt, StaticBody2D.setCollisionMask);
+                |> applyOpt(collisionMaskOpt, StaticBody2D.setCollisionMask)
+                |> applyOpt(visibleOpt, (v, b) -> CanvasItem.setVisible(v, b))
+                |> applyOpt(zIndexOpt, (z, b) -> CanvasItem.setZIndex(z, b))
+                |> applyOpt(modulateOpt, (c, b) -> CanvasItem.setModulate(c, b));
             EngineNode.StaticBody2DWithState(body, tag)
         }
 
@@ -617,13 +628,19 @@ mod SceneLoader {
             gravityScaleOpt   <- (Json.FromJson.getAtKeyOpt(Root, "gravityScale", map): Result[Json.JsonError, Option[Float64]]);
             linearVelocityOpt <- parseVec2Opt("linearVelocity", map);
             collisionLayerOpt <- (Json.FromJson.getAtKeyOpt(Root, "collisionLayer", map): Result[Json.JsonError, Option[Int32]]);
-            collisionMaskOpt  <- (Json.FromJson.getAtKeyOpt(Root, "collisionMask", map): Result[Json.JsonError, Option[Int32]])
+            collisionMaskOpt  <- (Json.FromJson.getAtKeyOpt(Root, "collisionMask", map): Result[Json.JsonError, Option[Int32]]);
+            visibleOpt        <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt         <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            modulateOpt       <- parseColorOpt("modulate", map)
         ) yield {
             let body = RigidBody2D.make(pos, shape)
                 |> applyGravityScale(gravityScaleOpt)
                 |> applyLinearVelocity(linearVelocityOpt)
                 |> applyOpt(collisionLayerOpt, RigidBody2D.setCollisionLayer)
-                |> applyOpt(collisionMaskOpt, RigidBody2D.setCollisionMask);
+                |> applyOpt(collisionMaskOpt, RigidBody2D.setCollisionMask)
+                |> applyOpt(visibleOpt, (v, b) -> CanvasItem.setVisible(v, b))
+                |> applyOpt(zIndexOpt, (z, b) -> CanvasItem.setZIndex(z, b))
+                |> applyOpt(modulateOpt, (c, b) -> CanvasItem.setModulate(c, b));
             EngineNode.RigidBody2DWithState(body, tag)
         }
 
@@ -635,12 +652,18 @@ mod SceneLoader {
             shape             <- parseShape(map);
             monitoringOpt     <- (Json.FromJson.getAtKeyOpt(Root, "monitoring", map): Result[Json.JsonError, Option[Bool]]);
             collisionLayerOpt <- (Json.FromJson.getAtKeyOpt(Root, "collisionLayer", map): Result[Json.JsonError, Option[Int32]]);
-            collisionMaskOpt  <- (Json.FromJson.getAtKeyOpt(Root, "collisionMask", map): Result[Json.JsonError, Option[Int32]])
+            collisionMaskOpt  <- (Json.FromJson.getAtKeyOpt(Root, "collisionMask", map): Result[Json.JsonError, Option[Int32]]);
+            visibleOpt        <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt         <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            modulateOpt       <- parseColorOpt("modulate", map)
         ) yield {
             let area = Area2D.make(pos, shape)
                 |> applyMonitoring(monitoringOpt)
                 |> applyOpt(collisionLayerOpt, Area2D.setCollisionLayer)
-                |> applyOpt(collisionMaskOpt, Area2D.setCollisionMask);
+                |> applyOpt(collisionMaskOpt, Area2D.setCollisionMask)
+                |> applyOpt(visibleOpt, (v, a) -> CanvasItem.setVisible(v, a))
+                |> applyOpt(zIndexOpt, (z, a) -> CanvasItem.setZIndex(z, a))
+                |> applyOpt(modulateOpt, (c, a) -> CanvasItem.setModulate(c, a));
             EngineNode.Area2DWithState(area, tag)
         }
 
@@ -765,7 +788,8 @@ mod SceneLoader {
             collisionMaskOpt  <- (Json.FromJson.getAtKeyOpt(Root, "collisionMask", map): Result[Json.JsonError, Option[Int32]]);
             upDirectionOpt    <- parseVec2Opt("upDirection", map);
             floorMaxAngleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "floorMaxAngle", map): Result[Json.JsonError, Option[Float64]]);
-            maxSlidesOpt      <- (Json.FromJson.getAtKeyOpt(Root, "maxSlides", map): Result[Json.JsonError, Option[Int32]])
+            maxSlidesOpt      <- (Json.FromJson.getAtKeyOpt(Root, "maxSlides", map): Result[Json.JsonError, Option[Int32]]);
+            modulateOpt       <- parseColorOpt("modulate", map)
         ) yield {
             let body = CharacterBody2D.make(pos, {moveSpeed = Option.getWithDefault(0.0, moveSpeedOpt)})
                 |> CharacterBody2D.setCollisionShape(Some(shape))
@@ -782,7 +806,8 @@ mod SceneLoader {
                 |> applyOpt(collisionMaskOpt, CharacterBody2D.setCollisionMask)
                 |> applyOpt(upDirectionOpt, CharacterBody2D.setUpDirection)
                 |> applyOpt(floorMaxAngleOpt, CharacterBody2D.setFloorMaxAngle)
-                |> applyOpt(maxSlidesOpt, CharacterBody2D.setMaxSlides);
+                |> applyOpt(maxSlidesOpt, CharacterBody2D.setMaxSlides)
+                |> applyOpt(modulateOpt, (c, b) -> CanvasItem.setModulate(c, b));
             EngineNode.Body2DWithState(body, tag)
         }
 
@@ -811,6 +836,7 @@ mod SceneLoader {
             skewOpt     <- (Json.FromJson.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
             visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
             zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            modulateOpt <- parseColorOpt("modulate", map);
             ySortEnabledOpt <- (Json.FromJson.getAtKeyOpt(Root, "ySortEnabled", map): Result[Json.JsonError, Option[Bool]])
         ) yield {
             let marker = Marker2D.make(pos)
@@ -819,6 +845,7 @@ mod SceneLoader {
                 |> applyOpt(skewOpt, setMarker2DSkew)
                 |> applyOpt(visibleOpt, setMarker2DVisible)
                 |> applyOpt(zIndexOpt, setMarker2DZIndex)
+                |> applyOpt(modulateOpt, (c, m) -> CanvasItem.setModulate(c, m))
                 |> applyOpt(ySortEnabledOpt, setMarker2DYSortEnabled);
             EngineNode.Marker2DWithState(marker, tag)
         }
@@ -873,7 +900,8 @@ mod SceneLoader {
             dragLeftOpt             <- (Json.FromJson.getAtKeyOpt(Root, "dragLeftMargin", map): Result[Json.JsonError, Option[Float64]]);
             dragRightOpt            <- (Json.FromJson.getAtKeyOpt(Root, "dragRightMargin", map): Result[Json.JsonError, Option[Float64]]);
             dragTopOpt              <- (Json.FromJson.getAtKeyOpt(Root, "dragTopMargin", map): Result[Json.JsonError, Option[Float64]]);
-            dragBottomOpt           <- (Json.FromJson.getAtKeyOpt(Root, "dragBottomMargin", map): Result[Json.JsonError, Option[Float64]])
+            dragBottomOpt           <- (Json.FromJson.getAtKeyOpt(Root, "dragBottomMargin", map): Result[Json.JsonError, Option[Float64]]);
+            modulateOpt             <- parseColorOpt("modulate", map)
         ) yield {
             let camera = Camera2D.make(pos)
                 |> applyOpt(offsetOpt, Camera2D.setOffset)
@@ -901,7 +929,8 @@ mod SceneLoader {
                 |> applyOpt(dragLeftOpt, Camera2D.setDragLeftMargin)
                 |> applyOpt(dragRightOpt, Camera2D.setDragRightMargin)
                 |> applyOpt(dragTopOpt, Camera2D.setDragTopMargin)
-                |> applyOpt(dragBottomOpt, Camera2D.setDragBottomMargin);
+                |> applyOpt(dragBottomOpt, Camera2D.setDragBottomMargin)
+                |> applyOpt(modulateOpt, (c, cam) -> CanvasItem.setModulate(c, cam));
             EngineNode.Camera2DWithState(camera, tag)
         }
 
@@ -996,7 +1025,9 @@ mod SceneLoader {
                     vAlign      <- parseVerticalAlignment(vAlignOpt);
                     visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
                     zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
-                    rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]])
+                    rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
+                    skewOpt     <- (Json.FromJson.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
+                    modulateOpt <- parseColorOpt("modulate", map)
                 ) yield {
                     let label = Label2D.make(text, font, fontSize)
                         |> Node2D.setPosition(pos)
@@ -1004,7 +1035,9 @@ mod SceneLoader {
                         |> Label2D.setVerticalAlignment(vAlign)
                         |> applyLabelVisible(visibleOpt)
                         |> applyLabelZIndex(zIndexOpt)
-                        |> applyOpt(rotationOpt, (r, l) -> Node2D.setRotation(r, l));
+                        |> applyOpt(rotationOpt, (r, l) -> Node2D.setRotation(r, l))
+                        |> applyOpt(skewOpt, (s, l) -> Node2D.setSkew(s, l))
+                        |> applyOpt(modulateOpt, setLabelModulate);
                     EngineNode.Label2DWithState(label, tag)
                 }
         }
@@ -1058,7 +1091,9 @@ mod SceneLoader {
             alphaOpt    <- (Json.FromJson.getAtKeyOpt(Root, "alpha", map): Result[Json.JsonError, Option[Float64]]);
             visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
             zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
-            rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]])
+            rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
+            skewOpt     <- (Json.FromJson.getAtKeyOpt(Root, "skew", map): Result[Json.JsonError, Option[Float64]]);
+            modulateOpt <- parseColorOpt("modulate", map)
         ) yield {
             let pos = Option.getWithDefault(Vec2.zero(), posOpt);
             let size = Option.getWithDefault(Vec2.zero(), sizeOpt);
@@ -1067,7 +1102,9 @@ mod SceneLoader {
                 |> applyOpt(alphaOpt, setColorRectAlpha)
                 |> applyOpt(visibleOpt, setColorRectVisible)
                 |> applyOpt(zIndexOpt, setColorRectZIndex)
-                |> applyOpt(rotationOpt, (r, c) -> Node2D.setRotation(r, c));
+                |> applyOpt(rotationOpt, (r, c) -> Node2D.setRotation(r, c))
+                |> applyOpt(skewOpt, (s, c) -> Node2D.setSkew(s, c))
+                |> applyOpt(modulateOpt, (c, rect) -> CanvasItem.setModulate(c, rect));
             EngineNode.ColorRectWithState(rect, tag)
         }
 
@@ -1297,6 +1334,9 @@ mod SceneLoader {
             case Some(zIndex) => CanvasItem.setZIndex(zIndex, label)
             case None         => label
         }
+
+    def setLabelModulate(c: Color, label: Label2D): Label2D =
+        CanvasItem.setModulate(c, label)
 
     def applyGravityScale(opt: Option[Float64], body: RigidBody2D): RigidBody2D =
         match opt {

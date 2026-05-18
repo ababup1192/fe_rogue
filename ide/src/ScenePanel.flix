@@ -374,7 +374,14 @@ mod ScenePanel {
             }
             case NodeInspector.FieldKind.ColorT => {
                 let widget = PropertyWidgets.buildColorWidget(current, commit);
-                let updater = (json: Json.JsonElement) -> updateColorPicker(widget, json);
+                // ColorPicker は per-frame で setValue しない。snapshot が user pick より
+                // ラグするタイミングで古い色を上書きしてしまうため。
+                // rebuildInspector (選択変更時) で picker が再生成されて値が同期する
+                let updater = (j: Json.JsonElement) -> {
+                    let _ = j;
+                    let _: Array[Int32, Static] = Array#{0i32} @ Static;
+                    ()
+                };
                 (widget, updater)
             }
             case NodeInspector.FieldKind.EnumT(options) => {
@@ -474,15 +481,4 @@ mod ScenePanel {
         }
     }
 
-    def updateColorPicker(widget: Node, json: Json.JsonElement): Unit \ IO = {
-        let cp: ColorPicker = unchecked_cast(widget as ColorPicker);
-        match NodeInspector.jsonToColor(json) {
-            case None    => ()
-            case Some(c) =>
-                let fx = FxColor.color(Float32.toFloat64(c#r),
-                                        Float32.toFloat64(c#g),
-                                        Float32.toFloat64(c#b));
-                cp.setValue(fx)
-        }
-    }
 }

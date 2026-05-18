@@ -232,7 +232,10 @@ mod PropertyWidgets {
         checked_cast(combo)
     }
 
-    /// Color widget: JavaFX ColorPicker。値は JsonObject{"r","g","b"} (Float64 各 0-1)
+    /// Color widget: JavaFX ColorPicker。値は JsonObject{"r","g","b"} (Float64 各 0-1)。
+    /// valueProperty listener で newVal を直接受け取る (setOnAction の getValue() は
+    /// JavaFX のタイミングで古い値を返すことがあるため)。
+    /// 自前の setValue で listener が再発火するのを防ぐため `suppressNextRef` で抑制
     pub def buildColorWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
         let init = NodeInspector.jsonToColor(value |> Option.getWithDefault(Json.JsonElement.JsonNull))
                     |> Option.getWithDefault({r = 1.0f32, g = 1.0f32, b = 1.0f32});
@@ -245,10 +248,13 @@ mod PropertyWidgets {
             def changed(_cThis: ChangeListener[FxColor], _obs: ObservableValue[JObject],
                          _old: FxColor, newVal: FxColor): Unit \ IO = {
                 if (Object.isNull(newVal)) ()
-                else commit(NodeInspector.colorToJson(
-                    {r = Float64.tryToFloat32(newVal.getRed()) |> Option.getWithDefault(1.0f32),
-                     g = Float64.tryToFloat32(newVal.getGreen()) |> Option.getWithDefault(1.0f32),
-                     b = Float64.tryToFloat32(newVal.getBlue()) |> Option.getWithDefault(1.0f32)}))
+                else {
+                    let r = Float64.tryToFloat32(newVal.getRed())   |> Option.getWithDefault(1.0f32);
+                    let g = Float64.tryToFloat32(newVal.getGreen()) |> Option.getWithDefault(1.0f32);
+                    let b = Float64.tryToFloat32(newVal.getBlue())  |> Option.getWithDefault(1.0f32);
+                    println("[ColorPicker] commit r=${r} g=${g} b=${b}");
+                    commit(NodeInspector.colorToJson({r = r, g = g, b = b}))
+                }
             }
         });
         checked_cast(picker)
