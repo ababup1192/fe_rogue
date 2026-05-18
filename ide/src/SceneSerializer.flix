@@ -203,22 +203,91 @@ mod SceneSerializer {
         if (found) Some(replaced) else None
 
     /// 単一ノード（OObject）の "name" を確認し、一致すれば指定フィールドを置換する。
-    /// 一致しない場合は None
+    /// 一致しない場合は None。
+    ///
+    /// 例外:
+    ///   - `"type": "Container"` (load-time directive) は実 node ではなく
+    ///     `layout` フィールドの中に children を持つ。layout 経由で descend して target を探す
+    ///   - `"kind": "..."` のみ持つ Layout primitive (Panel / HBoxContainer / VBoxContainer /
+    ///     CenterContainer / MarginContainer) も `children` / `child` 経由で descend する
     def replaceFieldsInNode(targetName: String, restPath: NodePath,
                             updates: List[FieldUpdate],
                             element: JsonOrdered.OrderedJson):
                            Option[JsonOrdered.OrderedJson] =
         match element {
             case JsonOrdered.OrderedJson.OObject(entries, objStyle) =>
-                let nameOpt = findEntryValue("name", entries) |> Option.flatMap(v ->
+                let typeStrOpt = findEntryValue("type", entries) |> Option.flatMap(v ->
                     match v {
                         case JsonOrdered.OrderedJson.OString(s) => Some(s)
                         case _                                  => None
                     });
-                match nameOpt {
-                    case Some(name) if name == targetName =>
-                        Some(applyPathFromHere(restPath, updates, entries, objStyle))
-                    case _ => None
+                let hasKind = match findEntryValue("kind", entries) {
+                    case Some(_) => true
+                    case None    => false
+                };
+                match typeStrOpt {
+                    case Some("Container") =>
+                        // Container: layout 配下を再帰探索
+                        match findEntryValue("layout", entries) {
+                            case Some(layoutJson) =>
+                                replaceInLayout(targetName, restPath, updates, layoutJson)
+                                    |> Option.map(newLayout ->
+                                        JsonOrdered.OrderedJson.OObject(
+                                            replaceEntryValue("layout", newLayout, entries),
+                                            objStyle))
+                            case None => None
+                        }
+                    case _ =>
+                        if (hasKind and Option.isEmpty(typeStrOpt)) {
+                            // Layout primitive (Panel / VBoxContainer / 等)
+                            replaceInLayout(targetName, restPath, updates, element)
+                        } else {
+                            let nameOpt = findEntryValue("name", entries) |> Option.flatMap(v ->
+                                match v {
+                                    case JsonOrdered.OrderedJson.OString(s) => Some(s)
+                                    case _                                  => None
+                                });
+                            match nameOpt {
+                                case Some(name) if name == targetName =>
+                                    Some(applyPathFromHere(restPath, updates, entries, objStyle))
+                                case _ => None
+                            }
+                        }
+                }
+            case _ => None
+        }
+
+    /// Layout primitive (`{"kind": "Panel", "children": [...]}` 等) の中を再帰的に探索。
+    /// `children` (Panel/Box) または `child` (MarginContainer/CenterContainer) を辿る。
+    /// children の各要素は更に Layout primitive または node 定義
+    def replaceInLayout(targetName: String, restPath: NodePath, updates: List[FieldUpdate],
+                        layoutJson: JsonOrdered.OrderedJson):
+                       Option[JsonOrdered.OrderedJson] =
+        match layoutJson {
+            case JsonOrdered.OrderedJson.OObject(entries, objStyle) =>
+                match findEntryValue("children", entries) {
+                    case Some(JsonOrdered.OrderedJson.OArray(items, arrStyle)) =>
+                        match replaceInArray(targetName, restPath, updates, items) {
+                            case Some(newItems) =>
+                                Some(JsonOrdered.OrderedJson.OObject(
+                                    replaceEntryValue("children",
+                                        JsonOrdered.OrderedJson.OArray(newItems, arrStyle),
+                                        entries),
+                                    objStyle))
+                            case None => None
+                        }
+                    case _ =>
+                        match findEntryValue("child", entries) {
+                            case Some(childJson) =>
+                                match replaceFieldsInNode(targetName, restPath, updates, childJson) {
+                                    case Some(newChild) =>
+                                        Some(JsonOrdered.OrderedJson.OObject(
+                                            replaceEntryValue("child", newChild, entries),
+                                            objStyle))
+                                    case None => None
+                                }
+                            case None => None
+                        }
                 }
             case _ => None
         }

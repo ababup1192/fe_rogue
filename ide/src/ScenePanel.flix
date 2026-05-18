@@ -26,6 +26,7 @@ mod ScenePanel {
     import javafx.scene.control.TitledPane
     import javafx.scene.control.TreeView
     import javafx.scene.control.TreeItem
+    import javafx.scene.control.MultipleSelectionModel
     import javafx.scene.image.ImageView
     import javafx.scene.input.MouseEvent
     import javafx.scene.layout.HBox
@@ -210,11 +211,93 @@ mod ScenePanel {
                 }, values);
 
                 // World position は schema 外の特別行 (read-only)
-                updateWorldPosLabel(state)
+                updateWorldPosLabel(state);
+
+                // canvas クリックなどで editor#selected が変わったら TreeView の
+                // 選択もそれに合わせる (Swing 版の SelectionBridge.syncEditorSelectionToTree 相当)
+                syncTreeSelectionFromEditor(state)
             }
         };
         timer.start()
     }
+
+    /// editor の selected を TreeView に反映する。canvas クリックで sprite を選んだとき
+    /// 左の TreeView でも対応行がハイライトされるようにする。
+    ///
+    /// editor#selected が None のときは何もしない (scene file (top-level) クリック等で
+    /// editor#selected がリセットされる前のフレームに、user の tree 選択を消してしまう
+    /// race condition を避けるため)
+    def syncTreeSelectionFromEditor(state: IdeState.IdeState): Unit \ IO = {
+        match Array.get(0, state#widgets#sceneTree) {
+            case None       => ()
+            case Some(tree) => {
+                let model: MultipleSelectionModel[TreeItem[String]] = tree.getSelectionModel();
+                let selOpt = Array.get(0, state#inspector#currentSelection);
+                match selOpt {
+                    case None => ()
+                    case Some(sel) => {
+                        let sceneFiles = Array.get(0, state#sceneFilesRef);
+                        let target = sel#jsonPath;
+                        let matched = List.find(p -> fst(p) == target, sceneFiles);
+                        match matched {
+                            case None    => ()
+                            case Some(p) => {
+                                let rel = snd(p);
+                                let root: TreeItem[String] = tree.getRoot();
+                                if (Object.isNull(root)) ()
+                                else {
+                                    let targetChain = rel :: sel#nodePath;
+                                    let cur: TreeItem[String] = model.getSelectedItem();
+                                    let curChain = if (Object.isNull(cur)) Nil
+                                                   else collectFromTopLevel(cur);
+                                    if (curChain == targetChain) ()
+                                    else {
+                                        match findTreeItem(root, rel, sel#nodePath) {
+                                            case None         => ()
+                                            case Some(item)   => model.$select(item)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// root の children から scene file 行を見つけ、そこから node path で深く辿る
+    def findTreeItem(root: TreeItem[String], sceneRel: String, nodePath: List[String]):
+            Option[TreeItem[String]] \ IO = {
+        let kids = root.getChildren();
+        match findChildByName(kids, kids.size(), 0i32, sceneRel) {
+            case None    => None
+            case Some(s) => walkNodePath(s, nodePath)
+        }
+    }
+
+    def walkNodePath(item: TreeItem[String], path: List[String]):
+            Option[TreeItem[String]] \ IO =
+        match path {
+            case Nil          => Some(item)
+            case name :: rest => {
+                let kids = item.getChildren();
+                match findChildByName(kids, kids.size(), 0i32, name) {
+                    case None    => None
+                    case Some(c) => walkNodePath(c, rest)
+                }
+            }
+        }
+
+    def findChildByName(kids: ObservableList[TreeItem[String]],
+                         n: Int32, i: Int32, name: String):
+            Option[TreeItem[String]] \ IO =
+        if (i >= n) None
+        else {
+            let c = kids.get(i);
+            if (c.getValue() == name) Some(c)
+            else findChildByName(kids, n, i + 1i32, name)
+        }
 
     /// scene path は project root 込みで長いので、表示用に末尾の rel 部分だけ残す
     def shortenPath(absPath: String): String =
