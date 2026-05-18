@@ -458,6 +458,10 @@ mod SceneLoader {
             hframesOpt  <- (Json.FromJson.getAtKeyOpt(Root, "hframes", map): Result[Json.JsonError, Option[Int32]]);
             vframesOpt  <- (Json.FromJson.getAtKeyOpt(Root, "vframes", map): Result[Json.JsonError, Option[Int32]]);
             frameOpt    <- (Json.FromJson.getAtKeyOpt(Root, "frame", map): Result[Json.JsonError, Option[Int32]]);
+            alphaOpt    <- (Json.FromJson.getAtKeyOpt(Root, "alpha", map): Result[Json.JsonError, Option[Float64]]);
+            centeredOpt <- (Json.FromJson.getAtKeyOpt(Root, "centered", map): Result[Json.JsonError, Option[Bool]]);
+            offsetOpt   <- parseVec2Opt("offset", map);
+            modulateOpt <- parseColorOpt("modulate", map);
             ySortEnabledOpt <- (Json.FromJson.getAtKeyOpt(Root, "ySortEnabled", map): Result[Json.JsonError, Option[Bool]])
         ) yield {
             let sprite = Sprite2D.make(texture, pos, scale)
@@ -470,9 +474,19 @@ mod SceneLoader {
                 |> applyOpt(hframesOpt, Sprite2D.setHframes)
                 |> applyOpt(vframesOpt, Sprite2D.setVframes)
                 |> applyOpt(frameOpt, Sprite2D.setFrame)
+                |> applyOpt(alphaOpt, setSpriteAlpha)
+                |> applyOpt(centeredOpt, Sprite2D.setCentered)
+                |> applyOpt(offsetOpt, Sprite2D.setOffset)
+                |> applyOpt(modulateOpt, setSpriteModulate)
                 |> applyOpt(ySortEnabledOpt, setSpriteYSortEnabled);
             EngineNode.Sprite2DWithState(sprite, tag)
         }
+
+    def setSpriteModulate(c: Color, sprite: Sprite2D): Sprite2D =
+        CanvasItem.setModulate(c, sprite)
+
+    def setSpriteAlpha(a: Float64, sprite: Sprite2D): Sprite2D =
+        Sprite2D.setAlpha(Float64.tryToFloat32(a) |> Option.getWithDefault(1.0f32), sprite)
 
     // ── Node2D / CanvasItem 経由のフィールド適用に使う型固定ラッパー ──
 
@@ -683,15 +697,50 @@ mod SceneLoader {
                                 Result[Json.JsonError, Option[Float64]]);
             rotationOpt    <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map):
                                 Result[Json.JsonError, Option[Float64]]);
+            skewOpt        <- (Json.FromJson.getAtKeyOpt(Root, "skew", map):
+                                Result[Json.JsonError, Option[Float64]]);
+            zIndexOpt      <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map):
+                                Result[Json.JsonError, Option[Int32]]);
+            visibleOpt     <- (Json.FromJson.getAtKeyOpt(Root, "visible", map):
+                                Result[Json.JsonError, Option[Bool]]);
+            playingOpt     <- (Json.FromJson.getAtKeyOpt(Root, "playing", map):
+                                Result[Json.JsonError, Option[Bool]]);
+            frameOpt       <- (Json.FromJson.getAtKeyOpt(Root, "frame", map):
+                                Result[Json.JsonError, Option[Int32]]);
+            centeredOpt    <- (Json.FromJson.getAtKeyOpt(Root, "centered", map):
+                                Result[Json.JsonError, Option[Bool]]);
+            offsetOpt      <- parseVec2Opt("offset", map);
+            flipHOpt       <- (Json.FromJson.getAtKeyOpt(Root, "flipH", map):
+                                Result[Json.JsonError, Option[Bool]]);
+            flipVOpt       <- (Json.FromJson.getAtKeyOpt(Root, "flipV", map):
+                                Result[Json.JsonError, Option[Bool]]);
+            modulateOpt    <- parseColorOpt("modulate", map);
             ySortEnabledOpt <- (Json.FromJson.getAtKeyOpt(Root, "ySortEnabled", map): Result[Json.JsonError, Option[Bool]])
         ) yield {
             let sprite = AnimatedSprite2D.make(spriteFrames, {animation = animation}, pos, scale)
                 |> AnimatedSprite2D.setAutoplay(Option.getWithDefault("", autoplayOpt))
                 |> AnimatedSprite2D.setSpeedScale(Option.getWithDefault(1.0, speedScaleOpt))
                 |> applyOpt(rotationOpt, Node2D.setRotation)
+                |> applyOpt(skewOpt, Node2D.setSkew)
+                |> applyOpt(zIndexOpt, setAnimSpriteZIndex)
+                |> applyOpt(visibleOpt, setAnimSpriteVisible)
+                |> applyOpt(playingOpt, AnimatedSprite2D.setPlaying)
+                |> applyOpt(frameOpt, AnimatedSprite2D.setFrame)
+                |> applyOpt(centeredOpt, AnimatedSprite2D.setCentered)
+                |> applyOpt(offsetOpt, AnimatedSprite2D.setOffset)
+                |> applyOpt(flipHOpt, AnimatedSprite2D.setFlipH)
+                |> applyOpt(flipVOpt, AnimatedSprite2D.setFlipV)
+                |> applyOpt(modulateOpt, setAnimSpriteModulate)
                 |> applyOpt(ySortEnabledOpt, setAnimSpriteYSortEnabled);
             EngineNode.AnimSprite2DWithState(sprite, tag)
         }
+
+    def setAnimSpriteZIndex(z: Int32, s: AnimatedSprite2D): AnimatedSprite2D =
+        CanvasItem.setZIndex(z, s)
+    def setAnimSpriteVisible(v: Bool, s: AnimatedSprite2D): AnimatedSprite2D =
+        CanvasItem.setVisible(v, s)
+    def setAnimSpriteModulate(c: Color, s: AnimatedSprite2D): AnimatedSprite2D =
+        CanvasItem.setModulate(c, s)
 
     def setAnimSpriteYSortEnabled(v: Bool, sprite: AnimatedSprite2D): AnimatedSprite2D =
         CanvasItem.setYSortEnabled(v, sprite)

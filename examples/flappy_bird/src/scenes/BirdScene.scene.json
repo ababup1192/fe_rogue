@@ -24,7 +24,11 @@
         }
       },
       "type": "AnimatedSprite2D",
-      "rotation": 0
+      "rotation": 0,
+      "flipH": true,
+      "flipV": true,
+      "ySortEnabled": false,
+      "playing": false
     },
     {
       "name": "area",
@@ -37,7 +41,8 @@
         "radius": 13
       },
       "tag": "BirdArea",
-      "type": "Area2D"
+      "type": "Area2D",
+      "monitoring": true
     }
   ],
   "gravityScale": 1.0,

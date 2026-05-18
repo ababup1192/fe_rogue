@@ -19,8 +19,11 @@ mod ScenePanel {
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
     import javafx.scene.control.CheckBox
+    import javafx.scene.control.ColorPicker
     import javafx.scene.control.ComboBox
     import javafx.scene.control.Spinner
+    import javafx.scene.paint.{Color => FxColor}
+    import javafx.scene.control.TitledPane
     import javafx.scene.control.TreeView
     import javafx.scene.control.TreeItem
     import javafx.scene.image.ImageView
@@ -263,7 +266,7 @@ mod ScenePanel {
                     Array.put(Some(worldPosValue), 0, state#inspector#posLabel);
 
                     // schema 駆動: 継承階層の各セクション (Node2D / Sprite2D / ...) ごとに
-                    // header label を入れて、その下に fields の各 FieldDef を行として追加する
+                    // header label + common fields + Advanced disclosure (advanced fields) を描画
                     let sections = Array.get(0, state#inspector#schema);
                     let values = Array.get(0, state#inspector#currentValues);
                     let selOpt = Array.get(0, state#inspector#currentSelection);
@@ -271,9 +274,13 @@ mod ScenePanel {
                         addSectionHeader(children, section#typeName);
                         match selOpt {
                             case None      => ()
-                            case Some(sel) =>
+                            case Some(sel) => {
                                 List.forEach(fd -> addSchemaRow(state, children, fd, values, sel),
-                                             section#fields)
+                                             section#common);
+                                if (not List.isEmpty(section#advanced))
+                                    addAdvancedDisclosure(state, children, section#advanced, values, sel)
+                                else ()
+                            }
                         }
                     }, sections)
                 }
@@ -286,6 +293,25 @@ mod ScenePanel {
         let lbl = new Label(typeName);
         lbl.getStyleClass().add("node-class-header");
         let n: Node = checked_cast(lbl);
+        discard children.add(n)
+    }
+
+    /// Advanced disclosure を section の末尾に追加する。
+    /// TitledPane で展開可能にし、初期状態は折りたたみ (普段は隠したいフィールド用)
+    def addAdvancedDisclosure(state: IdeState.IdeState, children: ObservableList[Node],
+                               advancedFields: List[NodeInspector.FieldDef],
+                               currentValues: Map[String, Json.JsonElement],
+                               sel: Editor.Selection): Unit \ IO = {
+        let inner = new VBox(4.0);
+        let innerKids = inner.getChildren();
+        List.forEach(fd -> addSchemaRow(state, innerKids, fd, currentValues, sel), advancedFields);
+        let innerNode: Node = checked_cast(inner);
+        let pane = new TitledPane();
+        pane.setText("Advanced");
+        pane.setExpanded(false);
+        pane.setContent(innerNode);
+        pane.getStyleClass().add("inspector-advanced");
+        let n: Node = checked_cast(pane);
         discard children.add(n)
     }
 
@@ -344,6 +370,16 @@ mod ScenePanel {
             case NodeInspector.FieldKind.BoolT => {
                 let widget = PropertyWidgets.buildBoolWidget(current, commit);
                 let updater = (json: Json.JsonElement) -> updateCheckBox(widget, json);
+                (widget, updater)
+            }
+            case NodeInspector.FieldKind.ColorT => {
+                let widget = PropertyWidgets.buildColorWidget(current, commit);
+                let updater = (json: Json.JsonElement) -> updateColorPicker(widget, json);
+                (widget, updater)
+            }
+            case NodeInspector.FieldKind.EnumT(options) => {
+                let widget = PropertyWidgets.buildEnumWidget(current, options, commit);
+                let updater = (json: Json.JsonElement) -> updateEnumCombo(widget, json);
                 (widget, updater)
             }
         }
@@ -427,6 +463,26 @@ mod ScenePanel {
         match NodeInspector.jsonToBool(json) {
             case None    => ()
             case Some(b) => cb.setSelected(b)
+        }
+    }
+
+    def updateEnumCombo(widget: Node, json: Json.JsonElement): Unit \ IO = {
+        let cb: ComboBox[String] = unchecked_cast(widget as ComboBox[String]);
+        match NodeInspector.jsonToString(json) {
+            case None    => ()
+            case Some(s) => cb.setValue(s)
+        }
+    }
+
+    def updateColorPicker(widget: Node, json: Json.JsonElement): Unit \ IO = {
+        let cp: ColorPicker = unchecked_cast(widget as ColorPicker);
+        match NodeInspector.jsonToColor(json) {
+            case None    => ()
+            case Some(c) =>
+                let fx = FxColor.color(Float32.toFloat64(c#r),
+                                        Float32.toFloat64(c#g),
+                                        Float32.toFloat64(c#b));
+                cp.setValue(fx)
         }
     }
 }

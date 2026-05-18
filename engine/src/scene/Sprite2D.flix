@@ -101,6 +101,16 @@ mod Sprite2D {
         let Sprite2D.Sprite2D(r) = sprite;
         Sprite2D.Sprite2D({frame = frame | r})
 
+    /// centered フラグ (中心を原点にするか) を設定する
+    pub def setCentered(centered: Bool, sprite: Sprite2D): Sprite2D =
+        let Sprite2D.Sprite2D(r) = sprite;
+        Sprite2D.Sprite2D({centered = centered | r})
+
+    /// 描画オフセット (centered 基準点からのずれ) を設定する
+    pub def setOffset(offset: Vec2.Vec2, sprite: Sprite2D): Sprite2D =
+        let Sprite2D.Sprite2D(r) = sprite;
+        Sprite2D.Sprite2D({offset = offset | r})
+
     /// 表示セルを (col, row) 座標で設定する。内部で frame = row * hframes + col に変換される
     pub def setFrameCoords(col: Int32, row: Int32, sprite: Sprite2D): Sprite2D =
         let Sprite2D.Sprite2D(r) = sprite;

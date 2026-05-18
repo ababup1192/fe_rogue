@@ -28,6 +28,7 @@ mod SceneSerializer {
         case IntValue(Int32)
         case StringValue(String)
         case BoolValue(Bool)
+        case ColorValue(Color)
         case ShapeValue(CollisionShape2D)
     }
 
@@ -105,6 +106,12 @@ mod SceneSerializer {
             Unit \ {Fs.FileRead, Fs.FileWrite} =
         updateFields(jsonPath, nodePath,
             {key = key, value = FieldValue.IntValue(value)} :: Nil)
+
+    /// 指定ノードの 任意フィールドを Color で上書きする (modulate 等)
+    pub def updateColor(jsonPath: String, nodePath: NodePath, key: String, value: Color):
+            Unit \ {Fs.FileRead, Fs.FileWrite} =
+        updateFields(jsonPath, nodePath,
+            {key = key, value = FieldValue.ColorValue(value)} :: Nil)
 
     // ========================================================================
     // 公開 API — 複数フィールド・複数ノード一括更新
@@ -302,6 +309,12 @@ mod SceneSerializer {
                 JsonOrdered.OrderedJson.OString(s)
             case FieldValue.BoolValue(b) =>
                 JsonOrdered.OrderedJson.OBool(b)
+            case FieldValue.ColorValue(c) =>
+                JsonOrdered.OrderedJson.OObject(
+                    ("r", JsonOrdered.OrderedJson.ONumber(formatFloat(Float32.toFloat64(c#r)))) ::
+                    ("g", JsonOrdered.OrderedJson.ONumber(formatFloat(Float32.toFloat64(c#g)))) ::
+                    ("b", JsonOrdered.OrderedJson.ONumber(formatFloat(Float32.toFloat64(c#b)))) :: Nil,
+                    JsonOrdered.ObjectStyle.ObjInline)
             case FieldValue.ShapeValue(shape) =>
                 shapeToOrderedJson(shape)
         }

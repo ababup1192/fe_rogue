@@ -96,3 +96,24 @@
     -fx-text-fill: #888888;
     -fx-min-width: 14px;
 }
+
+/* Inspector の "Advanced ▶" 折りたたみ disclosure。
+   普段触らないフィールドを隠す目的なので、見た目は控えめに */
+.inspector-advanced {
+    -fx-padding: 2 0 4 0;
+}
+.inspector-advanced > .title {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 4 6 4 6;
+    -fx-text-fill: #666666;
+    -fx-font-size: 11px;
+}
+.inspector-advanced > .title:hover {
+    -fx-text-fill: #333333;
+}
+.inspector-advanced > .content {
+    -fx-padding: 4 4 4 12;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}

@@ -26,8 +26,10 @@ mod PropertyWidgets {
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
     import javafx.scene.control.CheckBox
+    import javafx.scene.control.ColorPicker
     import javafx.scene.control.ComboBox
     import javafx.scene.control.Spinner
+    import javafx.scene.paint.{Color => FxColor}
     import javafx.scene.layout.HBox
     import javafx.scene.layout.StackPane
     import javafx.scene.layout.VBox
@@ -203,6 +205,53 @@ mod PropertyWidgets {
             }
         });
         checked_cast(spinner)
+    }
+
+    /// Enum widget: 有限の選択肢を持つ ComboBox<String>。値は JSON 文字列。
+    /// SceneLoader 側が "Left" / "Center" 等のラベルから enum 値を parse する想定
+    pub def buildEnumWidget(value: Option[Json.JsonElement], options: List[String],
+                             commit: Commit): Node \ IO = {
+        let current = match value {
+            case Some(Json.JsonElement.JsonString(s)) => s
+            case _ => List.head(options) |> Option.getWithDefault("")
+        };
+        let combo: ComboBox[String] = new ComboBox();
+        let items = combo.getItems();
+        List.forEach(o -> discard items.add(o), options);
+        combo.setEditable(false);
+        combo.setValue(current);
+        combo.setPrefWidth(140.0);
+        combo.setMaxWidth(140.0);
+        combo.valueProperty().addListener(new ChangeListener[String] {
+            def changed(_cThis: ChangeListener[String], _obs: ObservableValue[JObject],
+                         _old: String, newVal: String): Unit \ IO = {
+                if (Object.isNull(newVal)) ()
+                else commit(Json.JsonElement.JsonString(newVal))
+            }
+        });
+        checked_cast(combo)
+    }
+
+    /// Color widget: JavaFX ColorPicker。値は JsonObject{"r","g","b"} (Float64 各 0-1)
+    pub def buildColorWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
+        let init = NodeInspector.jsonToColor(value |> Option.getWithDefault(Json.JsonElement.JsonNull))
+                    |> Option.getWithDefault({r = 1.0f32, g = 1.0f32, b = 1.0f32});
+        let picker: ColorPicker = new ColorPicker(
+            FxColor.color(Float32.toFloat64(init#r),
+                          Float32.toFloat64(init#g),
+                          Float32.toFloat64(init#b)));
+        picker.setPrefWidth(140.0);
+        picker.valueProperty().addListener(new ChangeListener[FxColor] {
+            def changed(_cThis: ChangeListener[FxColor], _obs: ObservableValue[JObject],
+                         _old: FxColor, newVal: FxColor): Unit \ IO = {
+                if (Object.isNull(newVal)) ()
+                else commit(NodeInspector.colorToJson(
+                    {r = Float64.tryToFloat32(newVal.getRed()) |> Option.getWithDefault(1.0f32),
+                     g = Float64.tryToFloat32(newVal.getGreen()) |> Option.getWithDefault(1.0f32),
+                     b = Float64.tryToFloat32(newVal.getBlue()) |> Option.getWithDefault(1.0f32)}))
+            }
+        });
+        checked_cast(picker)
     }
 
     pub def buildBoolWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {

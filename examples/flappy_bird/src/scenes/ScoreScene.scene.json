@@ -9,7 +9,8 @@
       "pos": [144, 50],
       "text": "0",
       "fontSize": 60,
-      "centered": true
+      "centered": true,
+      "modulate": {"r": 1, "g": 1, "b": 1}
     },
     {
       "type": "Label2D",

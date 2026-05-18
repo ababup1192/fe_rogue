@@ -209,13 +209,16 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
                     case Some(engineNode) => {
                         let sections = NodeInspector.sectionsFor(engineNode);
                         Array.put(sections, 0, state#inspector#schema);
-                        // 全 section の field を平坦化して name → JSON map を作る
-                        let snapshot = List.foldLeft((acc, section) ->
+                        // 全 section の common + advanced を平坦化して name → JSON map を作る
+                        let foldFields = (acc, section) -> {
+                            let fields = List.append(section#common, section#advanced);
                             List.foldLeft((acc2, fd) ->
                                 match fd#snapshot(engineNode) {
                                     case Some(j) => Map.insert(fd#name, j, acc2)
                                     case None    => acc2
-                                }, acc, section#fields),
+                                }, acc, fields)
+                        };
+                        let snapshot = List.foldLeft(foldFields,
                             (Map.empty(): Map[String, Json.JsonElement]), sections);
                         Array.put(snapshot, 0, state#inspector#currentValues)
                     }

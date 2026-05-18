@@ -2,5 +2,9 @@
   "type": "Camera2D",
   "name": "camera",
   "pos": [144, 256],
-  "offset": [-72, 0]
+  "offset": [-72, 0],
+  "limitBottom": 999999,
+  "limitLeft": -999999,
+  "limitRight": 999999,
+  "limitTop": -999999
 }

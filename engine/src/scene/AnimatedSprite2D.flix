@@ -222,6 +222,21 @@ mod AnimatedSprite2D {
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
         AnimatedSprite2D.AnimatedSprite2D({frame = frame, frameProgress = 0.0 | r})
 
+    /// 再生フラグを直接設定する（Inspector からのトグル用）
+    pub def setPlaying(playing: Bool, sprite: AnimatedSprite2D): AnimatedSprite2D =
+        let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
+        AnimatedSprite2D.AnimatedSprite2D({playing = playing | r})
+
+    /// centered フラグ（中心を原点にするか）を設定する
+    pub def setCentered(centered: Bool, sprite: AnimatedSprite2D): AnimatedSprite2D =
+        let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
+        AnimatedSprite2D.AnimatedSprite2D({centered = centered | r})
+
+    /// 描画オフセット (centered 基準点からのずれ) を設定する
+    pub def setOffset(offset: Vec2.Vec2, sprite: AnimatedSprite2D): AnimatedSprite2D =
+        let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
+        AnimatedSprite2D.AnimatedSprite2D({offset = offset | r})
+
     /// SpriteFrames リソースを差し替える
     pub def setSpriteFrames(spriteFrames: SpriteFrames, sprite: AnimatedSprite2D): AnimatedSprite2D =
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
