@@ -17,11 +17,17 @@ mod SceneSerializer {
 
     /// 書き換え値の種類。
     /// - VecValue:   `[x, y]` の JSON 配列
-    /// - ScalarValue: 単一数値
+    /// - ScalarValue: 単一数値 (Float)
+    /// - IntValue:   単一数値 (整数)。display 用に小数点無しで書き出す
+    /// - StringValue: 文字列 (texture / text 等)
+    /// - BoolValue:   真偽値 (visible 等)
     /// - ShapeValue:  CollisionShape2D を `{"kind": ..., ...}` の JSON オブジェクトに変換 (Area2D shape 用)
     pub enum FieldValue {
         case VecValue(Vec2.Vec2)
         case ScalarValue(Float64)
+        case IntValue(Int32)
+        case StringValue(String)
+        case BoolValue(Bool)
         case ShapeValue(CollisionShape2D)
     }
 
@@ -77,6 +83,28 @@ mod SceneSerializer {
             Unit \ {Fs.FileRead, Fs.FileWrite} =
         updateFields(jsonPath, nodePath,
             {key = "rotation", value = FieldValue.ScalarValue(newRotation)} :: Nil)
+
+    // ========================================================================
+    // 公開 API — 汎用フィールド更新 (String / Bool / Int)
+    // ========================================================================
+
+    /// 指定ノードの 任意フィールドを文字列で上書きする (texture / text 等)
+    pub def updateString(jsonPath: String, nodePath: NodePath, key: String, value: String):
+            Unit \ {Fs.FileRead, Fs.FileWrite} =
+        updateFields(jsonPath, nodePath,
+            {key = key, value = FieldValue.StringValue(value)} :: Nil)
+
+    /// 指定ノードの 任意フィールドを真偽値で上書きする (visible 等)
+    pub def updateBool(jsonPath: String, nodePath: NodePath, key: String, value: Bool):
+            Unit \ {Fs.FileRead, Fs.FileWrite} =
+        updateFields(jsonPath, nodePath,
+            {key = key, value = FieldValue.BoolValue(value)} :: Nil)
+
+    /// 指定ノードの 任意フィールドを整数で上書きする (zIndex / hframes 等)
+    pub def updateInt(jsonPath: String, nodePath: NodePath, key: String, value: Int32):
+            Unit \ {Fs.FileRead, Fs.FileWrite} =
+        updateFields(jsonPath, nodePath,
+            {key = key, value = FieldValue.IntValue(value)} :: Nil)
 
     // ========================================================================
     // 公開 API — 複数フィールド・複数ノード一括更新
@@ -268,6 +296,12 @@ mod SceneSerializer {
                     JsonOrdered.ArrayStyle.Inline)
             case FieldValue.ScalarValue(f) =>
                 JsonOrdered.OrderedJson.ONumber(formatFloat(f))
+            case FieldValue.IntValue(i) =>
+                JsonOrdered.OrderedJson.ONumber(Int32.toString(i))
+            case FieldValue.StringValue(s) =>
+                JsonOrdered.OrderedJson.OString(s)
+            case FieldValue.BoolValue(b) =>
+                JsonOrdered.OrderedJson.OBool(b)
             case FieldValue.ShapeValue(shape) =>
                 shapeToOrderedJson(shape)
         }

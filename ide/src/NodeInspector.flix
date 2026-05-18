@@ -53,9 +53,31 @@ mod NodeInspector {
     }
 
     /// 選択 node の継承階層に沿ったセクション列を返す。
-    /// 基底クラス → 派生クラスの順で並べる (Swing/Godot Inspector の慣例)
+    /// 派生クラス → 基底クラスの順で並べる (派生フィールドを上、共通フィールドを下に表示)
     pub def sectionsFor(node: EngineNode[Unit]): List[FieldSection] =
-        ({typeName = "Node2D", fields = node2DCommon()}: FieldSection) :: typeSpecific(node)
+        List.append(typeSpecific(node),
+                    ({typeName = "Node2D", fields = node2DCommon()}: FieldSection) :: Nil)
+
+    /// SceneTree の 1 ノード。再帰的に子を持つ
+    pub enum SceneTreeNode {
+        case SNode(String, List[String], List[SceneTreeNode])
+    }
+
+    /// 与えられた scene から SceneTree を構築する。Scene.preorderPaths で root の名前を取り、
+    /// 各 root から再帰的に子を辿る
+    pub def buildSceneTree(scene: Scene[Unit]): List[SceneTreeNode] = {
+        let allPaths = Scene.preorderPaths(scene);
+        let rootPaths = List.filter(p -> List.length(p) == 1, allPaths);
+        List.map(rp -> buildSubtree(rp, scene), rootPaths)
+    }
+
+    def buildSubtree(path: List[String], scene: Scene[Unit]): SceneTreeNode = {
+        let leaf = List.last(path) |> Option.getWithDefault("");
+        let childNames = Scene.getChildrenAt(path, scene);
+        let childPaths = List.map(c -> List.append(path, c :: Nil), childNames);
+        let children = List.map(cp -> buildSubtree(cp, scene), childPaths);
+        SceneTreeNode.SNode(leaf, path, children)
+    }
 
     /// 選択 node の終端クラス名を返す。Selected: 行などで使う
     pub def classNameOf(node: EngineNode[Unit]): String = match node {
@@ -120,12 +142,206 @@ mod NodeInspector {
         }: FieldDef) :: Nil
 
     /// 型固有セクションのリスト。新しい node 型の Inspector を追加するときはここに case を増やす。
-    /// 各セクションは1つの継承段 (例: Sprite2D は Node2D を継承するので Node2D 段は別途
-    /// 自動付与され、ここには「Sprite2D 自身が定義する追加フィールド」を返す)
-    def typeSpecific(_node: EngineNode[Unit]): List[FieldSection] =
-        // 現状 Node2D 共通フィールド以外は未定義。Sprite2D の texture / Label2D の text 等は
-        // 必要になったタイミングで以下に追加する
-        Nil
+    /// 各セクションは 1 つの継承段 (Node2D 段は別途自動付与され、ここには
+    /// 「その型自身が定義する追加フィールド」を返す)
+    def typeSpecific(node: EngineNode[Unit]): List[FieldSection] = match node {
+        case EngineNode.Sprite2DWithState(_, _) =>
+            ({typeName = "Sprite2D", fields = sprite2DFields()}: FieldSection) :: Nil
+        case EngineNode.AnimSprite2DWithState(_, _) =>
+            ({typeName = "AnimatedSprite2D", fields = animSprite2DFields()}: FieldSection) :: Nil
+        case EngineNode.Label2DWithState(_, _) =>
+            ({typeName = "Label2D", fields = label2DFields()}: FieldSection) :: Nil
+        case _ => Nil
+    }
+
+    // ───────────────────────── Sprite2D 固有フィールド ─────────────────────────
+
+    /// Sprite2D 自身が定義するフィールド (Node2D の position/scale/rotation は含めない)
+    def sprite2DFields(): List[FieldDef] =
+        ({
+            name     = "texture",
+            label    = "Texture",
+            kind     = FieldKind.TexturePathT,
+            snapshot = n -> match n {
+                case EngineNode.Sprite2DWithState(s, _) =>
+                    let Sprite2D.Sprite2D(r) = s;
+                    Some(stringToJson(r#texture))
+                case _ => None
+            },
+            apply = (sel, j) -> match jsonToString(j) {
+                case Some(s) => SceneSerializer.updateString(
+                                  sel#jsonPath, sel#jsonNodePath, "texture", s)
+                case None    => ()
+            }
+        }: FieldDef) ::
+        ({
+            name     = "visible",
+            label    = "Visible",
+            kind     = FieldKind.BoolT,
+            snapshot = n -> match n {
+                case EngineNode.Sprite2DWithState(s, _) =>
+                    let Sprite2D.Sprite2D(r) = s;
+                    Some(boolToJson(r#visible))
+                case _ => None
+            },
+            apply = (sel, j) -> match jsonToBool(j) {
+                case Some(b) => SceneSerializer.updateBool(
+                                  sel#jsonPath, sel#jsonNodePath, "visible", b)
+                case None    => ()
+            }
+        }: FieldDef) ::
+        ({
+            name     = "zIndex",
+            label    = "Z index",
+            kind     = FieldKind.IntT,
+            snapshot = n -> match n {
+                case EngineNode.Sprite2DWithState(s, _) =>
+                    let Sprite2D.Sprite2D(r) = s;
+                    Some(intToJson(r#zIndex))
+                case _ => None
+            },
+            apply = (sel, j) -> match jsonToInt(j) {
+                case Some(v) => SceneSerializer.updateInt(
+                                  sel#jsonPath, sel#jsonNodePath, "zIndex", v)
+                case None    => ()
+            }
+        }: FieldDef) :: Nil
+
+    // ──────────────────── AnimatedSprite2D 固有フィールド ────────────────────
+
+    /// AnimatedSprite2D 自身が定義するフィールド (Node2D 共通は別途付与)
+    def animSprite2DFields(): List[FieldDef] =
+        ({
+            name     = "animation",
+            label    = "Animation",
+            kind     = FieldKind.TextT,
+            snapshot = n -> match n {
+                case EngineNode.AnimSprite2DWithState(s, _) =>
+                    let AnimatedSprite2D.AnimatedSprite2D(r) = s;
+                    Some(stringToJson(r#animation))
+                case _ => None
+            },
+            apply = (sel, j) -> match jsonToString(j) {
+                case Some(s) => SceneSerializer.updateString(
+                                  sel#jsonPath, sel#jsonNodePath, "animation", s)
+                case None    => ()
+            }
+        }: FieldDef) ::
+        ({
+            name     = "playing",
+            label    = "Playing",
+            kind     = FieldKind.BoolT,
+            snapshot = n -> match n {
+                case EngineNode.AnimSprite2DWithState(s, _) =>
+                    let AnimatedSprite2D.AnimatedSprite2D(r) = s;
+                    Some(boolToJson(r#playing))
+                case _ => None
+            },
+            apply = (sel, j) -> match jsonToBool(j) {
+                case Some(b) => SceneSerializer.updateBool(
+                                  sel#jsonPath, sel#jsonNodePath, "playing", b)
+                case None    => ()
+            }
+        }: FieldDef) ::
+        ({
+            name     = "speedScale",
+            label    = "Speed scale",
+            kind     = FieldKind.FloatT,
+            snapshot = n -> match n {
+                case EngineNode.AnimSprite2DWithState(s, _) =>
+                    let AnimatedSprite2D.AnimatedSprite2D(r) = s;
+                    Some(floatToJson(r#speedScale))
+                case _ => None
+            },
+            apply = (sel, j) -> match jsonToFloat(j) {
+                case Some(v) => SceneSerializer.updateFields(
+                                  sel#jsonPath, sel#jsonNodePath,
+                                  ({key = "speedScale",
+                                    value = SceneSerializer.FieldValue.ScalarValue(v)}: SceneSerializer.FieldUpdate) :: Nil)
+                case None    => ()
+            }
+        }: FieldDef) ::
+        ({
+            name     = "visible",
+            label    = "Visible",
+            kind     = FieldKind.BoolT,
+            snapshot = n -> match n {
+                case EngineNode.AnimSprite2DWithState(s, _) =>
+                    let AnimatedSprite2D.AnimatedSprite2D(r) = s;
+                    Some(boolToJson(r#visible))
+                case _ => None
+            },
+            apply = (sel, j) -> match jsonToBool(j) {
+                case Some(b) => SceneSerializer.updateBool(
+                                  sel#jsonPath, sel#jsonNodePath, "visible", b)
+                case None    => ()
+            }
+        }: FieldDef) ::
+        ({
+            name     = "zIndex",
+            label    = "Z index",
+            kind     = FieldKind.IntT,
+            snapshot = n -> match n {
+                case EngineNode.AnimSprite2DWithState(s, _) =>
+                    let AnimatedSprite2D.AnimatedSprite2D(r) = s;
+                    Some(intToJson(r#zIndex))
+                case _ => None
+            },
+            apply = (sel, j) -> match jsonToInt(j) {
+                case Some(v) => SceneSerializer.updateInt(
+                                  sel#jsonPath, sel#jsonNodePath, "zIndex", v)
+                case None    => ()
+            }
+        }: FieldDef) :: Nil
+
+    // ───────────────────────── Label2D 固有フィールド ─────────────────────────
+
+    /// Label2D 自身が定義するフィールド
+    def label2DFields(): List[FieldDef] =
+        ({
+            name     = "text",
+            label    = "Text",
+            kind     = FieldKind.TextT,
+            snapshot = n -> match n {
+                case EngineNode.Label2DWithState(l, _) => Some(stringToJson(Label2D.getText(l)))
+                case _ => None
+            },
+            apply = (sel, j) -> match jsonToString(j) {
+                case Some(s) => SceneSerializer.updateString(
+                                  sel#jsonPath, sel#jsonNodePath, "text", s)
+                case None    => ()
+            }
+        }: FieldDef) ::
+        ({
+            name     = "fontSize",
+            label    = "Font size",
+            kind     = FieldKind.FloatT,
+            snapshot = n -> match n {
+                case EngineNode.Label2DWithState(l, _) => Some(floatToJson(Label2D.getFontSize(l)))
+                case _ => None
+            },
+            apply = (sel, j) -> match jsonToFloat(j) {
+                case Some(v) => SceneSerializer.updateFontSize(
+                                  sel#jsonPath, sel#jsonNodePath, v)
+                case None    => ()
+            }
+        }: FieldDef) ::
+        ({
+            name     = "visible",
+            label    = "Visible",
+            kind     = FieldKind.BoolT,
+            snapshot = n -> match n {
+                case EngineNode.Label2DWithState(l, _) =>
+                    let Label2D.Label2D(r) = l;
+                    Some(boolToJson(r#visible))
+                case _ => None
+            },
+            apply = (sel, j) -> match jsonToBool(j) {
+                case Some(b) => SceneSerializer.updateBool(
+                                  sel#jsonPath, sel#jsonNodePath, "visible", b)
+                case None    => ()
+            }
+        }: FieldDef) :: Nil
 
     // ───────────────────────── JSON ↔ 値 変換ヘルパー ─────────────────────────
 

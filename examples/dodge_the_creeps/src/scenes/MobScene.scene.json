@@ -4,10 +4,7 @@
       "animation": "walk",
       "autoplay": "walk",
       "name": "sprite",
-      "pos": [
-        0,
-        0
-      ],
+      "pos": [0, 1],
       "rotation": 0,
       "scale": [
         1,

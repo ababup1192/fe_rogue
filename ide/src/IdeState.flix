@@ -32,9 +32,11 @@ mod IdeState {
     ///   reloadFlag:       HotReload watcher が立てる「現シーン再 load 必要」フラグ
     ///   pendingConfig:    Project 切替時に新 config を積む (JavaFXLayer.paintGL が消費)
     pub type alias RuntimeRefs = {
-        editorSelDisplay = Array[String, Static],
-        reloadFlag       = Array[Bool, Static],
-        pendingConfig    = Array[Option[GameEngine.EngineConfig], Static]
+        editorSelDisplay     = Array[String, Static],
+        reloadFlag           = Array[Bool, Static],
+        pendingConfig        = Array[Option[GameEngine.EngineConfig], Static],
+        sceneTree            = Array[List[NodeInspector.SceneTreeNode], Static],
+        pendingNodeSelection = Array[Option[Editor.Selection], Static]
     }
 
     /// ステータスバーに並ぶ 4 つの Label。FX EDT 上の AnimationTimer (ScenePanel) が
@@ -129,9 +131,11 @@ mod IdeState {
 
     def newRuntime(): RuntimeRefs \ IO =
         {
-            editorSelDisplay = Array#{"-"} @ Static,
-            reloadFlag       = Array#{false} @ Static,
-            pendingConfig    = Array#{(None: Option[GameEngine.EngineConfig])} @ Static
+            editorSelDisplay     = Array#{"-"} @ Static,
+            reloadFlag           = Array#{false} @ Static,
+            pendingConfig        = Array#{(None: Option[GameEngine.EngineConfig])} @ Static,
+            sceneTree            = Array#{(Nil: List[NodeInspector.SceneTreeNode])} @ Static,
+            pendingNodeSelection = Array#{(None: Option[Editor.Selection])} @ Static
         }
 
     def newStatusBar(): StatusBarRefs \ IO =

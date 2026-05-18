@@ -33,7 +33,9 @@ mod ScenePanel {
     import java.lang.Double
     import java.lang.Integer
 
-    /// TreeView の選択変更を pendingSceneRef に伝える
+    /// TreeView の選択変更を処理する。
+    /// シーンファイル (top-level) を選んだ場合は pendingSceneRef に積む。
+    /// シーン内 node を選んだ場合は pendingNodeSelection に積み、Main が Editor#selected に反映
     pub def wireTreeSelection(state: IdeState.IdeState, tree: TreeView[String]): Unit \ IO = {
         let selectionModel = tree.getSelectionModel();
         let prop = selectionModel.selectedItemProperty();
@@ -43,14 +45,28 @@ mod ScenePanel {
                          _old: TreeItem[String], newSel: TreeItem[String]): Unit \ IO = {
                 if (Object.isNull(newSel)) ()
                 else {
-                    let rel = newSel.getValue();
                     let pairs = Array.get(0, state#sceneFilesRef);
-                    let target = rel;
-                    match List.find(p -> { let r = snd(p); r == target }, pairs) {
-                        case Some((abs, _)) =>
-                            println("[IdeUI] Scene selected: ${rel}");
-                            Array.put(Some(abs), 0, state#pendingSceneRef)
-                        case None => ()
+                    let chain = collectFromTopLevel(newSel);
+                    match chain {
+                        case Nil => ()
+                        case sceneRel :: rest =>
+                            match List.find(p -> { let r = snd(p); r == sceneRel }, pairs) {
+                                case None => ()
+                                case Some((abs, _)) =>
+                                    if (List.isEmpty(rest)) {
+                                        // scene file クリック → 読み込み要求
+                                        println("[IdeUI] Scene selected: ${sceneRel}");
+                                        Array.put(Some(abs), 0, state#pendingSceneRef)
+                                    } else {
+                                        // scene 内 node クリック → 選択要求
+                                        let sel: Editor.Selection = {
+                                            jsonPath = abs,
+                                            nodePath = rest,
+                                            jsonNodePath = rest
+                                        };
+                                        Array.put(Some(sel), 0, state#runtime#pendingNodeSelection)
+                                    }
+                            }
                     }
                 }
             }
@@ -58,22 +74,62 @@ mod ScenePanel {
         prop.addListener(listener)
     }
 
-    /// Scenes TreeView を sceneFilesRef から populate する
+    /// 選択 TreeItem から top-level (シーンファイル) までを root→leaf 順で値リスト化する。
+    /// hidden root (getParent() == null の祖先) はスキップ
+    def collectFromTopLevel(item: TreeItem[String]): List[String] \ IO = {
+        let parent = item.getParent();
+        if (Object.isNull(parent)) {
+            // hidden root を踏んだ場合
+            Nil
+        } else if (Object.isNull(parent.getParent())) {
+            // 親が hidden root = 自分が top-level
+            item.getValue() :: Nil
+        } else {
+            List.append(collectFromTopLevel(parent), item.getValue() :: Nil)
+        }
+    }
+
+    /// Scenes TreeView を sceneFilesRef + 現シーンの SceneTree から populate する。
+    /// 各シーンファイルを top-level TreeItem として並べ、現在ロード中のシーンには
+    /// 子として node 階層を展開する (他シーンは leaf 扱い)
     pub def populateSceneTree(state: IdeState.IdeState): Unit \ IO = {
         match Array.get(0, state#widgets#sceneTree) {
             case None => ()
             case Some(tree) => {
                 let pairs = Array.get(0, state#sceneFilesRef);
+                let currentScenePath = Array.get(0, state#currentScenePathRef);
+                let sceneTree = Array.get(0, state#runtime#sceneTree);
                 let root: TreeItem[String] = new TreeItem("Scenes");
                 root.setExpanded(true);
                 List.forEach(p -> {
-                    let item: TreeItem[String] = new TreeItem(snd(p));
-                    discard root.getChildren().add(item)
+                    let (abs, rel) = p;
+                    let fileItem: TreeItem[String] = new TreeItem(rel);
+                    fileItem.setExpanded(true);
+                    // このシーンが現在ロード中なら、その node 階層を子として展開
+                    if (Some(abs) == currentScenePath) {
+                        List.forEach(n -> {
+                            let child = buildTreeItem(n);
+                            discard fileItem.getChildren().add(child)
+                        }, sceneTree)
+                    } else ();
+                    discard root.getChildren().add(fileItem)
                 }, pairs);
                 tree.setRoot(root);
                 tree.setShowRoot(false)
             }
         }
+    }
+
+    /// SceneTreeNode を JavaFX TreeItem 階層に変換する
+    def buildTreeItem(n: NodeInspector.SceneTreeNode): TreeItem[String] \ IO = {
+        let NodeInspector.SceneTreeNode.SNode(displayName, _path, children) = n;
+        let item: TreeItem[String] = new TreeItem(displayName);
+        item.setExpanded(true);
+        List.forEach(c -> {
+            let childItem = buildTreeItem(c);
+            discard item.getChildren().add(childItem)
+        }, children);
+        item
     }
 
     /// ステータスバー更新タイマーを起動する。FX thread で 60Hz で発火し、state の各 Ref を
@@ -245,7 +301,8 @@ mod ScenePanel {
             let existing = Array.get(0, state#inspector#pendingEdits);
             Array.put(List.append(existing, pe :: Nil), 0, state#inspector#pendingEdits)
         };
-        let (widget, updater) = buildWidgetForKind(fd#kind, currentJson, commit);
+        let textureNames = Array.get(0, state#textureNamesRef);
+        let (widget, updater) = buildWidgetForKind(fd#kind, currentJson, textureNames, commit);
         PropertyWidgets.addPropertyRow(children, "${fd#label}:", widget);
         let map = Array.get(0, state#inspector#widgetUpdaters);
         Array.put(Map.insert(fd#name, updater, map), 0, state#inspector#widgetUpdaters)
@@ -254,6 +311,7 @@ mod ScenePanel {
     /// FieldKind に応じた widget を生成し、(widget, 値更新 closure) を返す
     def buildWidgetForKind(kind: NodeInspector.FieldKind,
                            current: Option[Json.JsonElement],
+                           textureNames: List[String],
                            commit: PropertyWidgets.Commit):
             (Node, Json.JsonElement -> Unit \ IO) \ IO =
         match kind {
@@ -279,7 +337,7 @@ mod ScenePanel {
                 (widget, updater)
             }
             case NodeInspector.FieldKind.TexturePathT => {
-                let widget = PropertyWidgets.buildTexturePathWidget(current, Nil, commit);
+                let widget = PropertyWidgets.buildTexturePathWidget(current, textureNames, commit);
                 let updater = (json: Json.JsonElement) -> updateComboBox(widget, json);
                 (widget, updater)
             }

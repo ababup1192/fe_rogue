@@ -28,7 +28,7 @@
       "type": "Area2D",
       "name": "area",
       "tag": "PlayerArea",
-      "pos": [0, 0],
+      "pos": [241, 451],
       "shape": {"kind": "CircleShape2D", "radius": 30}
     }
   ],

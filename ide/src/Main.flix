@@ -147,7 +147,19 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
             };
             Array.put(false, 0, state#wantsAutoLoadFirstSceneRef)
         } else ();
+        let sceneChanged = match Array.get(0, state#pendingSceneRef) {
+            case Some(_) => true
+            case None    => false
+        };
         let nextScene = loadPendingSceneOrKeep(state, newFontName, baseScene);
+        // Scene が切り替わったら SceneTree を rebuild して FX 側 TreeView に反映
+        if (sceneChanged) {
+            let tree = NodeInspector.buildSceneTree(nextScene);
+            Array.put(tree, 0, state#runtime#sceneTree);
+            IdeGui.Gui.populateProjectTree()
+        } else ();
+        // FX 側から積まれた node 選択要求を消費して Editor#selected に反映
+        consumePendingNodeSelection(state);
         // Editor の真の選択状態を status bar に出すため、毎フレーム書き出す
         let editorSel = Editor.EditorState.get()#selected;
         let editorSelText = match editorSel {
@@ -299,6 +311,18 @@ def consumeInspectorEdits(state: IdeState.IdeState):
     Array.put((Nil: List[NodeInspector.PendingEdit]), 0, state#inspector#pendingEdits);
     List.forEach(e -> e#perform(), edits)
 }
+
+/// SceneTree からの node 選択要求 (FX EDT が積む) を消費して Editor#selected に反映
+def consumePendingNodeSelection(state: IdeState.IdeState):
+        Unit \ {IO, Editor.EditorState} =
+    match Array.get(0, state#runtime#pendingNodeSelection) {
+        case None      => ()
+        case Some(sel) => {
+            Array.put((None: Option[Editor.Selection]), 0, state#runtime#pendingNodeSelection);
+            let cur = Editor.EditorState.get();
+            Editor.EditorState.put({selected = Some(sel) | cur})
+        }
+    }
 
 /// HotReload reloadRelay が立てた flag を消費して、現シーンを再読込予約する。
 /// reloadRelay (Open Project ごとに spawn) が channel recv 経由で flag を true にする
