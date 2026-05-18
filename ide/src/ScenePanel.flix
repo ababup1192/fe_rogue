@@ -26,6 +26,7 @@ mod ScenePanel {
     import javafx.scene.image.ImageView
     import javafx.scene.input.MouseEvent
     import javafx.scene.layout.HBox
+    import javafx.scene.layout.VBox
     import javafx.event.EventHandler
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
@@ -205,18 +206,31 @@ mod ScenePanel {
                     PropertyWidgets.addPropertyRow(children, "World position:", worldPosNode);
                     Array.put(Some(worldPosValue), 0, state#inspector#posLabel);
 
-                    // schema 駆動: 各 FieldDef ごとに widget を組み立てて updater を登録
-                    let schema = Array.get(0, state#inspector#schema);
+                    // schema 駆動: 継承階層の各セクション (Node2D / Sprite2D / ...) ごとに
+                    // header label を入れて、その下に fields の各 FieldDef を行として追加する
+                    let sections = Array.get(0, state#inspector#schema);
                     let values = Array.get(0, state#inspector#currentValues);
                     let selOpt = Array.get(0, state#inspector#currentSelection);
-                    List.forEach(fd ->
+                    List.forEach(section -> {
+                        addSectionHeader(children, section#typeName);
                         match selOpt {
                             case None      => ()
-                            case Some(sel) => addSchemaRow(state, children, fd, values, sel)
-                        }, schema)
+                            case Some(sel) =>
+                                List.forEach(fd -> addSchemaRow(state, children, fd, values, sel),
+                                             section#fields)
+                        }
+                    }, sections)
                 }
             }
         }
+    }
+
+    /// 継承階層の 1 段ぶんの header label を追加する (Swing 版の見出し相当)
+    def addSectionHeader(children: ObservableList[Node], typeName: String): Unit \ IO = {
+        let lbl = new Label(typeName);
+        lbl.getStyleClass().add("node-class-header");
+        let n: Node = checked_cast(lbl);
+        discard children.add(n)
     }
 
     /// 1 FieldDef を Inspector に追加する
@@ -276,12 +290,15 @@ mod ScenePanel {
             }
         }
 
-    /// Vec2 widget (HBox の 2 つの Spinner) を JSON から復元する
+    /// Vec2 widget (VBox の 2 行、各行 HBox(Label, Spinner)) を JSON から復元する。
+    /// PropertyWidgets.buildVec2Widget の構造に合わせて X / Y Spinner を引き直す
     def updateVec2Widget(widget: Node, json: Json.JsonElement, isInt: Bool): Unit \ IO = {
-        let box: HBox = unchecked_cast(widget as HBox);
-        let kids = box.getChildren();
-        let xn = kids.get(0i32);
-        let yn = kids.get(1i32);
+        let box: VBox = unchecked_cast(widget as VBox);
+        let rows = box.getChildren();
+        let xRow: HBox = unchecked_cast(rows.get(0i32) as HBox);
+        let yRow: HBox = unchecked_cast(rows.get(1i32) as HBox);
+        let xn = xRow.getChildren().get(1i32);
+        let yn = yRow.getChildren().get(1i32);
         match NodeInspector.jsonToVec2(json) {
             case None => ()
             case Some(v) =>

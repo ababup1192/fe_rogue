@@ -59,7 +59,7 @@ mod IdeState {
     pub type alias InspectorRefs = {
         content          = Array[Option[VBox], Static],
         lastSel          = Array[String, Static],
-        schema           = Array[List[NodeInspector.FieldDef], Static],
+        schema           = Array[List[NodeInspector.FieldSection], Static],
         currentSelection = Array[Option[Editor.Selection], Static],
         currentValues    = Array[Map[String, Json.JsonElement], Static],
         pendingEdits     = Array[List[NodeInspector.PendingEdit], Static],
@@ -146,7 +146,7 @@ mod IdeState {
         {
             content          = Array#{(None: Option[VBox])} @ Static,
             lastSel          = Array#{""} @ Static,
-            schema           = Array#{(Nil: List[NodeInspector.FieldDef])} @ Static,
+            schema           = Array#{(Nil: List[NodeInspector.FieldSection])} @ Static,
             currentSelection = Array#{(None: Option[Editor.Selection])} @ Static,
             currentValues    = Array#{(Map.empty(): Map[String, Json.JsonElement])} @ Static,
             pendingEdits     = Array#{(Nil: List[NodeInspector.PendingEdit])} @ Static,

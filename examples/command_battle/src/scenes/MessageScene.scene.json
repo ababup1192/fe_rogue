@@ -11,7 +11,7 @@
     {
       "type": "RichTextLabel",
       "name": "text",
-      "pos": [16, 16],
+      "pos": [17, 16],
       "size": [360, 112],
       "text": "",
       "fontSize": 22,

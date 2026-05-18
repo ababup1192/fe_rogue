@@ -170,14 +170,14 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         renderLoop(state, newFontName, edited)
     }
 
-    /// 選択 node から schema / snapshot / world position を計算して state#inspector に書く。
-    /// ScenePanel が rebuildInspector でこの schema を読み、AnimationTimer が currentValues
-    /// を読んで widget を更新する
+    /// 選択 node から schema (継承階層 sections) / snapshot / world position を計算して
+    /// state#inspector に書く。ScenePanel が rebuildInspector でこの schema を読み、
+    /// AnimationTimer が currentValues を読んで widget を更新する
     def snapshotInspectorState(state: IdeState.IdeState, scene: Scene[Unit]):
             Unit \ {IO, Editor.EditorState} =
         match Editor.EditorState.get()#selected {
             case None => {
-                Array.put((Nil: List[NodeInspector.FieldDef]), 0, state#inspector#schema);
+                Array.put((Nil: List[NodeInspector.FieldSection]), 0, state#inspector#schema);
                 Array.put((None: Option[Editor.Selection]), 0, state#inspector#currentSelection);
                 Array.put((Map.empty(): Map[String, Json.JsonElement]), 0,
                           state#inspector#currentValues);
@@ -189,19 +189,22 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
                 Array.put(Some(sel), 0, state#inspector#currentSelection);
                 match Scene.getEngineNode(sel#nodePath, scene) {
                     case None => {
-                        Array.put((Nil: List[NodeInspector.FieldDef]), 0, state#inspector#schema);
+                        Array.put((Nil: List[NodeInspector.FieldSection]), 0,
+                                  state#inspector#schema);
                         Array.put((Map.empty(): Map[String, Json.JsonElement]), 0,
                                   state#inspector#currentValues)
                     }
                     case Some(engineNode) => {
-                        let schema = NodeInspector.fieldsFor(engineNode);
-                        Array.put(schema, 0, state#inspector#schema);
-                        // 各 FieldDef.snapshot を呼んで name → JSON map を作る
-                        let snapshot = List.foldLeft((acc, fd) ->
-                            match fd#snapshot(engineNode) {
-                                case Some(j) => Map.insert(fd#name, j, acc)
-                                case None    => acc
-                            }, (Map.empty(): Map[String, Json.JsonElement]), schema);
+                        let sections = NodeInspector.sectionsFor(engineNode);
+                        Array.put(sections, 0, state#inspector#schema);
+                        // 全 section の field を平坦化して name → JSON map を作る
+                        let snapshot = List.foldLeft((acc, section) ->
+                            List.foldLeft((acc2, fd) ->
+                                match fd#snapshot(engineNode) {
+                                    case Some(j) => Map.insert(fd#name, j, acc2)
+                                    case None    => acc2
+                                }, acc, section#fields),
+                            (Map.empty(): Map[String, Json.JsonElement]), sections);
                         Array.put(snapshot, 0, state#inspector#currentValues)
                     }
                 }

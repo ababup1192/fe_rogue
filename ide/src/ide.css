@@ -79,3 +79,20 @@
     -fx-font-weight: bold;
     -fx-text-fill: #333333;
 }
+
+/* Inspector の継承階層セクション見出し (Swing 版の見出し相当)。
+   Node2D / Sprite2D 等のクラス名を太字 + 区切り線で出す */
+.node-class-header {
+    -fx-padding: 8 0 4 0;
+    -fx-font-weight: bold;
+    -fx-font-size: 12px;
+    -fx-text-fill: #444444;
+    -fx-border-color: transparent transparent #cccccc transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+/* Vec2 widget の X: / Y: ラベル。控えめなグレーで表示する */
+.vec2-axis {
+    -fx-text-fill: #888888;
+    -fx-min-width: 14px;
+}

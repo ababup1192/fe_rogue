@@ -38,16 +38,51 @@ mod NodeInspector {
         apply    = (Editor.Selection, Json.JsonElement) -> Unit \ {Fs.FileRead, Fs.FileWrite}
     }
 
-    /// Pending edit (FX EDT の widget commit から Main の renderLoop に渡す要素)。
-    /// 必要な情報を closure に閉じ込めるので、Main は queue を flush するだけで済む
+    /// Pending edit (FX EDT の widget commit から Main の renderLoop に渡す要素)
     pub type alias PendingEdit = {
         perform = Unit -> Unit \ {Fs.FileRead, Fs.FileWrite}
     }
 
-    /// 選択 node に応じてフィールド列を返す。
-    /// Node2D 共通フィールド + 型固有フィールドの順で並べる
-    pub def fieldsFor(node: EngineNode[Unit]): List[FieldDef] =
-        node2DCommon() ::: typeSpecific(node)
+    /// 継承階層の 1 段を表すセクション (Swing 版の見出しと同じ役割)。
+    ///   typeName: クラス名 ("Node2D" / "Sprite2D" 等)
+    ///   fields:   そのクラスで定義されるフィールド列
+    /// Inspector はセクションごとに header label を入れて区切る
+    pub type alias FieldSection = {
+        typeName = String,
+        fields   = List[FieldDef]
+    }
+
+    /// 選択 node の継承階層に沿ったセクション列を返す。
+    /// 基底クラス → 派生クラスの順で並べる (Swing/Godot Inspector の慣例)
+    pub def sectionsFor(node: EngineNode[Unit]): List[FieldSection] =
+        ({typeName = "Node2D", fields = node2DCommon()}: FieldSection) :: typeSpecific(node)
+
+    /// 選択 node の終端クラス名を返す。Selected: 行などで使う
+    pub def classNameOf(node: EngineNode[Unit]): String = match node {
+        case EngineNode.Sprite2DWithState(_, _)         => "Sprite2D"
+        case EngineNode.Area2DWithState(_, _)           => "Area2D"
+        case EngineNode.Body2DWithState(_, _)           => "CharacterBody2D"
+        case EngineNode.RigidBody2DWithState(_, _)      => "RigidBody2D"
+        case EngineNode.AnimSprite2DWithState(_, _)     => "AnimatedSprite2D"
+        case EngineNode.Label2DWithState(_, _)          => "Label2D"
+        case EngineNode.RichTextLabelWithState(_, _)    => "RichTextLabel"
+        case EngineNode.Marker2DWithState(_, _)         => "Marker2D"
+        case EngineNode.Path2DWithState(_, _)           => "Path2D"
+        case EngineNode.ScreenNotifier2DWithState(_, _) => "VisibleOnScreenNotifier2D"
+        case EngineNode.TimerWithState(_, _)            => "Timer"
+        case EngineNode.ColorRectWithState(_, _)        => "ColorRect"
+        case EngineNode.GPUParticles2DWithState(_, _)   => "GPUParticles2D"
+        case EngineNode.CanvasLayerWithState(_, _)      => "CanvasLayer"
+        case EngineNode.ControlWithState(_, _)          => "Control"
+        case EngineNode.ButtonWithState(_, _)           => "Button"
+        case EngineNode.TextureButtonWithState(_, _)    => "TextureButton"
+        case EngineNode.TextureRectWithState(_, _)      => "TextureRect"
+        case EngineNode.Camera2DWithState(_, _)         => "Camera2D"
+        case EngineNode.StaticBody2DWithState(_, _)     => "StaticBody2D"
+        case EngineNode.TileMapLayerWithState(_, _)     => "TileMapLayer"
+        case EngineNode.PanelWithState(_, _)            => "Panel"
+        case _                                          => "Node2D"
+    }
 
     /// Node2D 共通: position / scale / rotation。
     /// 大抵の node はこれだけで間に合う
@@ -84,9 +119,11 @@ mod NodeInspector {
             }
         }: FieldDef) :: Nil
 
-    /// node 型固有のフィールド。新しい型の Inspector を増やすときはここに case 追加
-    def typeSpecific(_node: EngineNode[Unit]): List[FieldDef] =
-        // 現状 Node2D 共通フィールドのみ。Sprite2D の texture / Label2D の text 等は
+    /// 型固有セクションのリスト。新しい node 型の Inspector を追加するときはここに case を増やす。
+    /// 各セクションは1つの継承段 (例: Sprite2D は Node2D を継承するので Node2D 段は別途
+    /// 自動付与され、ここには「Sprite2D 自身が定義する追加フィールド」を返す)
+    def typeSpecific(_node: EngineNode[Unit]): List[FieldSection] =
+        // 現状 Node2D 共通フィールド以外は未定義。Sprite2D の texture / Label2D の text 等は
         // 必要になったタイミングで以下に追加する
         Nil
 

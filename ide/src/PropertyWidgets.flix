@@ -30,6 +30,8 @@ mod PropertyWidgets {
     import javafx.scene.control.Spinner
     import javafx.scene.layout.HBox
     import javafx.scene.layout.StackPane
+    import javafx.scene.layout.VBox
+    import javafx.geometry.Pos
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
     import javafx.beans.value.ChangeListener
@@ -215,8 +217,9 @@ mod PropertyWidgets {
         checked_cast(check)
     }
 
-    /// Vec2 widget: X / Y 2 つの Spinner を HBox に並べる。
-    /// 一方が変わると現在の (X, Y) ペアを JsonObject{"x":x, "y":y} として commit する。
+    /// Vec2 widget: X / Y 2 つの Spinner を VBox に縦に並べ、軸ラベル付きで表示する。
+    /// 1 行に詰めると 3-4 桁数値が欠ける問題を回避する。一方が変わると現在の (X, Y) ペアを
+    /// JsonObject{"x":x, "y":y} として commit する。
     /// `isInt` true で整数 Spinner、false で float Spinner (step 0.1)
     pub def buildVec2Widget(value: Option[Json.JsonElement], isInt: Bool,
                              commit: Commit): Node \ IO = {
@@ -229,7 +232,7 @@ mod PropertyWidgets {
             let xs: Spinner[Integer] = new Spinner(-999999i32, 999999i32, ix);
             let ys: Spinner[Integer] = new Spinner(-999999i32, 999999i32, iy);
             xs.setEditable(true); ys.setEditable(true);
-            xs.setPrefWidth(70.0); ys.setPrefWidth(70.0);
+            xs.setPrefWidth(140.0); ys.setPrefWidth(140.0);
             let commitBoth = () -> {
                 let x: Float64 = Int32.toFloat64(xs.getValue().intValue());
                 let y: Float64 = Int32.toFloat64(ys.getValue().intValue());
@@ -243,17 +246,12 @@ mod PropertyWidgets {
                 def changed(_cThis: ChangeListener[Integer], _obs: ObservableValue[JObject],
                              _old: Integer, _newVal: Integer): Unit \ IO = commitBoth()
             });
-            let box = new HBox(4.0);
-            let xn: Node = checked_cast(xs);
-            let yn: Node = checked_cast(ys);
-            discard box.getChildren().add(xn);
-            discard box.getChildren().add(yn);
-            checked_cast(box)
+            assembleVec2Box(checked_cast(xs), checked_cast(ys))
         } else {
             let xs: Spinner[Double] = new Spinner(-999999.0, 999999.0, initX, 0.1);
             let ys: Spinner[Double] = new Spinner(-999999.0, 999999.0, initY, 0.1);
             xs.setEditable(true); ys.setEditable(true);
-            xs.setPrefWidth(70.0); ys.setPrefWidth(70.0);
+            xs.setPrefWidth(140.0); ys.setPrefWidth(140.0);
             let commitBoth = () -> {
                 let x: Float64 = xs.getValue().doubleValue();
                 let y: Float64 = ys.getValue().doubleValue();
@@ -267,13 +265,33 @@ mod PropertyWidgets {
                 def changed(_cThis: ChangeListener[Double], _obs: ObservableValue[JObject],
                              _old: Double, _newVal: Double): Unit \ IO = commitBoth()
             });
-            let box = new HBox(4.0);
-            let xn: Node = checked_cast(xs);
-            let yn: Node = checked_cast(ys);
-            discard box.getChildren().add(xn);
-            discard box.getChildren().add(yn);
-            checked_cast(box)
+            assembleVec2Box(checked_cast(xs), checked_cast(ys))
         }
+    }
+
+    /// Vec2 widget の枠組み (VBox に「X: spinner」「Y: spinner」を縦に並べた構造)。
+    /// 更新側 (ScenePanel.updateVec2Widget) もこの構造前提で内側 Spinner を引き直す
+    def assembleVec2Box(xSpinner: Node, ySpinner: Node): Node \ IO = {
+        let xLabel = new Label("X:");
+        let yLabel = new Label("Y:");
+        xLabel.getStyleClass().add("vec2-axis");
+        yLabel.getStyleClass().add("vec2-axis");
+        let xRow = new HBox(4.0);
+        let yRow = new HBox(4.0);
+        xRow.setAlignment(Pos.CENTER_LEFT);
+        yRow.setAlignment(Pos.CENTER_LEFT);
+        let xLn: Node = checked_cast(xLabel);
+        let yLn: Node = checked_cast(yLabel);
+        discard xRow.getChildren().add(xLn);
+        discard xRow.getChildren().add(xSpinner);
+        discard yRow.getChildren().add(yLn);
+        discard yRow.getChildren().add(ySpinner);
+        let vbox = new VBox(2.0);
+        let xRn: Node = checked_cast(xRow);
+        let yRn: Node = checked_cast(yRow);
+        discard vbox.getChildren().add(xRn);
+        discard vbox.getChildren().add(yRn);
+        checked_cast(vbox)
     }
 
     def jsonFieldOf(record: Json.JsonElement, key: String): Option[Json.JsonElement] =
