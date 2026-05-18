@@ -1,5 +1,5 @@
 // JavaFXInput — JavaFX 入力イベントを Ref に流し、JavaFXLayer の GameEngine.Game effect
-// handler から読み出すための入力レイヤ。AwtInput の JavaFX 版。
+// handler から読み出すための入力レイヤ。
 //
 // 責務分割:
 //   - InputRefs: FX EDT と main thread のどちらからも触る Ref 群
@@ -7,13 +7,11 @@
 //   - readXxx: GameEngine.Game handler の本体で呼ぶ読み出し関数
 //   - applyCursor: setCursor effect から ImageView に Cursor を反映
 //
-// AwtInput と異なる点:
+// 注意点:
 //   - imageViewRef を保持 (JavaFXLayer.paintGL の resize で setImage するため)
 //   - キーボード listener は Scene 単位 (Node には keyPressed が来ない)
 //   - 座標は ImageView 内 local。Y 軸は setScaleY(-1) で表示反転されているため、
 //     readMousePosition でも anti-flip して design 座標に変換する
-//
-// Phase 1 では keyboard / cursor は最小限。順次 JavaFXKeyMap.flix を拡充する
 
 mod JavaFXInput {
     import javafx.scene.Cursor
@@ -82,9 +80,8 @@ mod JavaFXInput {
         imageView.setOnScroll(new EventHandler[ScrollEvent] {
             def handle(_this: EventHandler[ScrollEvent], e: ScrollEvent): Unit \ IO = {
                 let prev = Array.get(0, refs#scrollDeltaRef);
-                // JavaFX の deltaY は下スクロールで負。AwtInput と仕様を揃えるため
-                // 「上スクロールで正」に正規化する。AWT は preciseWheelRotation 下で正
-                // なので - を付けるのと同じ符号にするためそのまま加算（既に上=正）
+                // JavaFX の deltaY は下スクロールで負。GameEngine 側は「上スクロールで正」
+                // 想定なのでそのまま加算する（getDeltaY 自体が上=正）
                 Array.put(prev + e.getDeltaY() / 40.0, 0, refs#scrollDeltaRef)
             }
         });
@@ -171,7 +168,7 @@ mod JavaFXInput {
         Array.put(0.0, 0, refs#scrollDeltaRef);
         value
 
-    /// JavaFX Cursor を ImageView に反映。AwtInput と同じく前回と同じ形状なら省略。
+    /// JavaFX Cursor を ImageView に反映。前回と同じ形状なら省略。
     /// ImageView は refs#imageViewRef から引く (customize 完了後に Layer が格納)
     pub def applyCursor(refs: InputRefs, cursor: GameEngine.Cursor): Unit \ IO =
         let prev = Array.get(0, refs#lastCursorRef);

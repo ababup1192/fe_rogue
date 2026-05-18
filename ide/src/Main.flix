@@ -15,7 +15,19 @@
 def main(): Unit \ {IO, Chan, NonDet} =
     run {
         let state = IdeState.newState();
-        sessionLoop(state, None)
+        run {
+            sessionLoop(state, None)
+        } with handler IdeGui.Gui {
+            // JavaFX 実装に dispatch。state を closure capture して該当 widget を更新する
+            def populateProjectTree(k) = {
+                JavaFXIdeUI.schedulePopulateTree(state);
+                k(())
+            }
+            def setTitle(title, k) = {
+                JavaFXIdeUI.scheduleSetTitle(state, title);
+                k(())
+            }
+        }
     } with Fs.Glob.runWithIO
       with Fs.FileRead.runWithIO
       with Fs.FileWrite.runWithIO
@@ -25,7 +37,7 @@ def main(): Unit \ {IO, Chan, NonDet} =
 /// 1 セッションを走らせる。Open Project でディレクトリが選ばれていれば
 /// 再帰的に新 project で立て直す。
 def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
-        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Fs.Glob, Fs.ModificationTime, Chan, NonDet} =
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Fs.Glob, Fs.ModificationTime, Chan, NonDet, IdeGui.Gui} =
     let config = match projectPath {
         case Some(path) =>
             println("[Main] Loading project: ${path}");
@@ -44,7 +56,7 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
                     };
                     let textureNames = proj#config#textureManifest |> List.map(e -> e#name);
                     IdeState.setTextureNames(state, textureNames);
-                    // texture 名 → 絶対パス。SpritePreview が BufferedImage 読込で使う。
+                    // texture 名 → 絶対パス。Resource preview の Image 読込で使う。
                     let texturePathMap = proj#config#textureManifest
                         |> List.map(e -> (e#name, e#path))
                         |> List.toMap;
@@ -98,7 +110,7 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
 /// `projectRoot` は editor が現プロジェクトの src/scenes を読むための基準ディレクトリ。
 def ideLoop(state: IdeState.IdeState, fontName: Option[String], projectRoot: String):
         Unit \ {IO, GameEngine.Game, Fs.FileRead, Fs.FileWrite, Fs.Glob,
-                Fs.ModificationTime, Chan, NonDet} =
+                Fs.ModificationTime, Chan, NonDet, IdeGui.Gui} =
     region rc {
         run {
             // IDE は常に editor ON で動かす。F1 トグル不要で preview クリック・
@@ -112,7 +124,7 @@ def ideLoop(state: IdeState.IdeState, fontName: Option[String], projectRoot: Str
 
 def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene: Scene[Unit]):
         Unit \ {IO, GameEngine.Game, Fs.FileRead, Fs.FileWrite, Fs.Glob, Fs.ModificationTime,
-                Chan, NonDet, Editor.EditorState, EditHistory.Rewind} =
+                Chan, NonDet, Editor.EditorState, EditHistory.Rewind, IdeGui.Gui} =
     if (GameEngine.Game.shouldClose()) ()
     else {
         // Phase 2: File → Open Project... で積まれた project を消費して in-place 再ロード。
@@ -136,28 +148,16 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
             Array.put(false, 0, state#wantsAutoLoadFirstSceneRef)
         } else ();
         let nextScene = loadPendingSceneOrKeep(state, newFontName, baseScene);
-        // Editor の真の選択状態を status bar に出すため、毎フレーム書き出す。
-        // syncEditorSelectionToTree 経由の selectedNodePathRef は currentSceneJsonRef
-        // が None だと変換できず常に "-" になるため、診断目的で直接 editor を覗く
+        // Editor の真の選択状態を status bar に出すため、毎フレーム書き出す
         let editorSel = Editor.EditorState.get()#selected;
         let editorSelText = match editorSel {
             case None      => "-"
             case Some(sel) => "${sel#nodePath}"
         };
         Array.put(editorSelText, 0, state#fxEditorSelDisplayRef);
-        // ユーザーが JTree でノードを選んだ場合は、editor 側の selected にも反映する
-        // (preview に選択枠を出すため)。Editor.handleInput の前に呼ぶ
-        SelectionBridge.applyTreeSelectionToEditor(state);
         // editor がマウス入力を取り込み、選択 / ドラッグ / リサイズ / Undo まで処理して
-        // 必要に応じて scene を更新する。F1 で OFF にすると素通しで戻る。
-        // 編集を確定したフレームでは Editor.handleInput が JSON 書き戻しまで行う
+        // 必要に応じて scene を更新する
         let edited = Editor.handleInput(nextScene);
-        // preview 上でユーザーがクリックして選択が変わったケースを IdeState 側に同期する。
-        // 変化があった場合は IdeUI.applySelectionToView で JTree と Inspector も更新する
-        // (Phase 1-2 では JTree は無いので no-op になる)
-        if (SelectionBridge.syncEditorSelectionToTree(state))
-            IdeUI.applySelectionToView(state)
-        else ();
         // Inspector の TextField から積まれた編集要求を消費し、
         // SceneSerializer.update* 経由で JSON を書き戻す。HotReload watcher が
         // ファイル変化を検知して次フレームで scene を再 load する
@@ -205,7 +205,7 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
 /// で実シーンへ差し替わる
 def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: String):
         (Option[String], Scene[Unit]) \ {IO, Fs.FileRead, Fs.Glob, Fs.ModificationTime,
-                                          Chan, NonDet, Editor.EditorState} =
+                                          Chan, NonDet, Editor.EditorState, IdeGui.Gui} =
     println("[Main] Reloading project: ${path}");
     match ProjectLoader.loadProject(path) {
         case Ok(proj) => {
@@ -242,10 +242,9 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
             // 即座に pendingSceneRef を積むと、まだ古い fontAtlasesArr で getFontAtlas
             // が呼ばれ bug! になるため、希望だけ立てて実体は次フレーム以降に委譲
             Array.put(true, 0, state#wantsAutoLoadFirstSceneRef);
-            // FX thread 側で TreeView を再構築 + Title 更新
-            JavaFXIdeUI.schedulePopulateTree(state);
-            JavaFXIdeUI.scheduleSetTitle(state,
-                "flix_game_engine IDE — ${proj#config#title} (${path})");
+            // GUI 側で TreeView を再構築 + Title 更新 (実装は handler 経由で JavaFXIdeUI に dispatch)
+            IdeGui.Gui.populateProjectTree();
+            IdeGui.Gui.setTitle("flix_game_engine IDE — ${proj#config#title} (${path})");
             (newFontName, Scene.empty())
         }
         case Err(msg) => {
@@ -284,44 +283,34 @@ def composePreview(scene: Scene[Unit]):
 /// in-memory scene と Inspector 表示が新値に更新される
 def applyInspectorEdits(state: IdeState.IdeState):
         Unit \ {IO, Fs.FileRead, Fs.FileWrite, Editor.EditorState} =
-    let sel = Editor.EditorState.get()#selected;
-    match Array.get(0, state#fxPendingLocalPosEditRef) {
-        case None => ()
-        case Some((newX, newY)) => {
-            Array.put(None, 0, state#fxPendingLocalPosEditRef);
-            match sel {
-                case Some(s) => {
-                    println("[Inspector] update pos ${s#jsonNodePath} → (${newX}, ${newY})");
-                    SceneSerializer.updatePos(s#jsonPath, s#jsonNodePath, {x = newX, y = newY})
-                }
-                case None => ()
-            }
+    match Editor.EditorState.get()#selected {
+        case None => {
+            // 選択無し: pending は捨てるだけ
+            consumePending(state#fxPendingLocalPosEditRef, _ -> ());
+            consumePending(state#fxPendingScaleEditRef,    _ -> ());
+            consumePending(state#fxPendingRotationEditRef, _ -> ())
         }
-    };
-    match Array.get(0, state#fxPendingScaleEditRef) {
-        case None => ()
-        case Some((sx, sy)) => {
-            Array.put(None, 0, state#fxPendingScaleEditRef);
-            match sel {
-                case Some(s) => {
-                    println("[Inspector] update scale ${s#jsonNodePath} → (${sx}, ${sy})");
-                    SceneSerializer.updateScale(s#jsonPath, s#jsonNodePath, {x = sx, y = sy})
-                }
-                case None => ()
-            }
+        case Some(s) => {
+            consumePending(state#fxPendingLocalPosEditRef, p ->
+                SceneSerializer.updatePos(s#jsonPath, s#jsonNodePath,
+                                           {x = fst(p), y = snd(p)}));
+            consumePending(state#fxPendingScaleEditRef, p ->
+                SceneSerializer.updateScale(s#jsonPath, s#jsonNodePath,
+                                             {x = fst(p), y = snd(p)}));
+            consumePending(state#fxPendingRotationEditRef, rad ->
+                SceneSerializer.updateRotation(s#jsonPath, s#jsonNodePath, rad))
         }
-    };
-    match Array.get(0, state#fxPendingRotationEditRef) {
-        case None => ()
-        case Some(rad) => {
-            Array.put(None, 0, state#fxPendingRotationEditRef);
-            match sel {
-                case Some(s) => {
-                    println("[Inspector] update rotation ${s#jsonNodePath} → ${rad} rad");
-                    SceneSerializer.updateRotation(s#jsonPath, s#jsonNodePath, rad)
-                }
-                case None => ()
-            }
+    }
+
+/// Option Ref を消費する: Some なら値を action に渡し、ref を None にクリア。
+/// action の effect をそのまま伝播する (effect polymorphic)
+def consumePending(ref: Array[Option[t], Static], action: t -> Unit \ ef):
+        Unit \ ef + IO =
+    match Array.get(0, ref) {
+        case None    => ()
+        case Some(v) => {
+            Array.put(None, 0, ref);
+            action(v)
         }
     }
 

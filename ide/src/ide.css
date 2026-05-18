@@ -64,3 +64,18 @@
 .property-panel .label {
     -fx-font-size: 11px;
 }
+
+.property-row {
+    -fx-padding: 2 0 2 0;
+}
+
+.property-row .property-key {
+    -fx-text-fill: #666666;
+    -fx-font-size: 11px;
+}
+
+.nested-header {
+    -fx-padding: 6 0 2 0;
+    -fx-font-weight: bold;
+    -fx-text-fill: #333333;
+}

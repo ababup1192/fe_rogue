@@ -1,5 +1,5 @@
-// JavaFXLayer — SwingLayer.withSwing の JavaFX 版。GameEngine.Game / GameEngine.Audio
-// effect を実装する handler を提供する。
+// JavaFXLayer — GameEngine.Game / GameEngine.Audio effect の実装 handler。
+// `withJavaFX` を main から呼ぶと JavaFX ウィンドウとレンダループが立ち上がる。
 //
 // 構造:
 //   - AWTGLCanvas を **隠し JFrame** に置いて GL コンテキストを確保（画面外 -10000,-10000）
@@ -13,7 +13,7 @@
 // AWTGLCanvas を SwingNode に入れると heavyweight + native NSView の問題で
 // JavaFX scene graph に映らない（macOS で完全黒）。FBO + readback で回避する。
 //
-// 入力は JavaFXInput が ImageView に EventHandler を付け、InputRefs (AwtInput と同型) に書く。
+// 入力は JavaFXInput が ImageView に EventHandler を付け、InputRefs に書く。
 // AWT listener は使わない（canvas が hidden で発火しない）
 
 mod JavaFXLayer {
@@ -113,7 +113,7 @@ mod JavaFXLayer {
         let pendingW = Array#{initialW} @ Static;
         let pendingH = Array#{initialH} @ Static;
 
-        // 入力 (AwtInput.InputRefs と同型を JavaFXInput が埋める)
+        // 入力 (JavaFXInput が listener から書き、GameEngine.Game handler が読む)
         let inputRefs = JavaFXInput.newInputRefs();
 
         // initGL 完了通知用 channel
@@ -417,8 +417,8 @@ mod JavaFXLayer {
                 k(())
             }
             def initTileBuffer(_instances, k) = {
-                // SwingLayer と同じく Step C.1 では未対応 (paintGL が render thread 側で
-                // GL コンテキスト保持。VBO 作成キューは後続で)
+                // Step C.1 では未対応 (paintGL が render thread 側で GL コンテキスト保持。
+                // VBO 作成キューは後続で)
                 k((0, 0))
             }
             def shouldClose(k) = {
@@ -480,9 +480,8 @@ mod JavaFXLayer {
             initSignalWatcher(initDoneArr, tx)
         }
 
-    /// SwingLayer.patchCanvasGLDataToCore33 と同じ。AWTGLCanvas のコンストラクタが
-    /// protected で no-arg 版しか Flix から呼べないので、reflection で内部 GLData を
-    /// OpenGL 3.3 Core Profile に書き換える
+    /// AWTGLCanvas のコンストラクタが protected で no-arg 版しか Flix から呼べないので、
+    /// reflection で内部 GLData を OpenGL 3.3 Core Profile に書き換える
     def patchCanvasGLDataToCore33(canvas: AWTGLCanvas): Unit \ IO =
         let superCls = canvas.getClass().getSuperclass();
         let dataField = superCls.getDeclaredField("data");

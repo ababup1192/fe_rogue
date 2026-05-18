@@ -106,7 +106,7 @@
                                                styleClass="resource-status" text=""/>
                                     </children>
                                 </VBox>
-                                <!-- 右: Property panel (schema 駆動、Phase 10d で SchemaWidgets 移植) -->
+                                <!-- 右: Property panel (schema 駆動、JavaFXIdeUI が動的に組み立てる) -->
                                 <VBox>
                                     <children>
                                         <Label text="Properties" styleClass="section-header"/>

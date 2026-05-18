@@ -5,7 +5,7 @@
 //
 // 保存前の検証:
 //   - JSON 整形 round-trip (toPrettyString → parse) で「再パース可能」を保証
-//   - Resource.checkConsistency は呼び出し側 (ResourceEditorUI) で行う
+//   - Resource.checkConsistency は呼び出し側 (JavaFXIdeUI の Save ハンドラ) で行う
 
 mod ResourceWriter {
 

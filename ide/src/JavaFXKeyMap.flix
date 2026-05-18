@@ -1,6 +1,5 @@
 // JavaFXKeyMap — GameEngine の Key / Cursor / MouseButton と JavaFX 値の対応表
 //
-// AwtKeyMap の JavaFX 版。
 //   - Key: JavaFX KeyCode の enum 定数名 (toString) を文字列で持つ。
 //     JavaFXInput.attachListeners が `e.getCode().toString()` で Set に書き、
 //     ここの keyToName で同じ文字列を返すことで一致判定する
