@@ -22,6 +22,10 @@ pub enum NodeTag {
     case ForecastPanel
     /// ForecastPanelScene の Label2D（HP / 威力 / 命中 を 2 列で表示）
     case ForecastText
+    /// DamagePopupScene の Marker2D 親（World 直下に永続）
+    case DamagePopupsRoot(DamagePopupScene.RootData)
+    /// DamagePopupScene の Label2D 子（寿命を持つ）
+    case DamagePopup(DamagePopupScene.PopupData)
     case NoTag
 }
 

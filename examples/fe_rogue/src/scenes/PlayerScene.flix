@@ -519,6 +519,7 @@ mod PlayerScene {
     /// HP <= 0 なら EnemyScene.startDeathAnimation を発火する（death_blink 開始）。
     pub def applyAttackHit(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
+                              GameEngine.Game,
                               GameLogger.GameLogger} =
         match get(playerId, scene) {
             case None    => scene
@@ -560,7 +561,8 @@ mod PlayerScene {
     /// 命中ロールは v1 では行わず常に命中（hit% は forecast でプレビュー表示するための値）。
     /// インベントリ空 / index 範囲外 / 敵不在ならば防御的に no-op。
     def applyDamageToEnemy(playerId: Int32, player: Data, enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Game,
+                               GameLogger.GameLogger} =
         // selectedWeaponIdx が None なら 0（先頭）をデフォルトとして扱う
         let idx = Option.getWithDefault(0, player#selectedWeaponIdx);
         match (List.nth(idx, player#weapons), EnemyScene.get(enemyId, scene)) {
@@ -570,14 +572,18 @@ mod PlayerScene {
                 let totalAttack = player#resource#attack + weapon#attack;
                 let dmg    = Combat.attackDamage(totalAttack, enemy#resource#defense);
                 let result = Combat.damage(hp = enemy#hp, amount = dmg);
+                // 被弾位置（敵の頭上）にダメージ数字を浮かす。撃破時もこの 1 回は出す。
+                let popupPos = cellCenter(enemy#gridPos);
+                let popupColor = DamagePopupScene.damageToEnemyColor();
+                let withPopup = DamagePopupScene.emit(popupPos, dmg, popupColor, scene);
                 let afterDamage =
                     if (result#isDead) {
                         GameLogger.playerLog("P${playerId} → 敵${enemyId} を撃破");
-                        EnemyScene.startDeathAnimation(enemyId, scene)
+                        EnemyScene.startDeathAnimation(enemyId, withPopup)
                     } else {
                         GameLogger.playerLog("P${playerId} → 敵${enemyId} に ${dmg}ダメージ");
                         EnemyScene.mapEnemy(enemyId,
-                            enemyData -> {hp = result#newHp | enemyData}, scene)
+                            enemyData -> {hp = result#newHp | enemyData}, withPopup)
                     };
                 let consumed = Weapon.consume(weapon);
                 let newWeapons = match consumed {

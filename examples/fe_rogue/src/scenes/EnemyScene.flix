@@ -387,7 +387,7 @@ mod EnemyScene {
     /// killedIds が空でないとき呼び出し側は handlePlayerDeath を発火する。
     pub def applyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {GameEngine.Audio, GameLogger.GameLogger} =
+            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger} =
         match get(enemyId, scene) {
             case None    => (scene, Nil)
             case Some(d) =>
@@ -413,7 +413,7 @@ mod EnemyScene {
     /// 武器なし（None）でここに到達した場合は防御的に何もしない。
     def applyDamageToPlayer(enemyId: Int32, enemy: Data, targetId: Int32,
                              scene: Scene[NodeTag]):
-            (Scene[NodeTag], List[Int32]) \ GameLogger.GameLogger =
+            (Scene[NodeTag], List[Int32]) \ {GameEngine.Game, GameLogger.GameLogger} =
         match (enemy#weapon, PlayerScene.get(targetId, scene)) {
             case (None, _)        => (scene, Nil)
             case (_, None)        => (scene, Nil)
@@ -426,8 +426,13 @@ mod EnemyScene {
                 } else {
                     GameLogger.enemyLog("敵${enemyId} → P${targetId} に ${dmg}ダメージ")
                 };
+                // 被弾位置（プレイヤーの頭上）にダメージ数字を浮かす。撃破時も出す。
+                let s = tileSize();
+                let popupPos: Vec2.Vec2 = {x = Int32.toFloat64(player#gridPos#x) * s + s / 2.0, y = Int32.toFloat64(player#gridPos#y) * s + s / 2.0};
+                let popupColor = DamagePopupScene.damageToPlayerColor();
+                let withPopup = DamagePopupScene.emit(popupPos, dmg, popupColor, scene);
                 let damaged = PlayerScene.mapPlayer(targetId,
-                    playerData -> {hp = result#newHp | playerData}, scene);
+                    playerData -> {hp = result#newHp | playerData}, withPopup);
                 let consumed = Weapon.consume(weapon);
                 if (Option.isEmpty(consumed))
                     GameLogger.enemyLog("敵${enemyId} の ${weapon#name} がこわれた")

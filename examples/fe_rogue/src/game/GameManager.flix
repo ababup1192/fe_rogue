@@ -52,6 +52,7 @@ mod GameManager {
         Pacing.State.tick(dt);
         scene
             |> CameraScene.update(dt)
+            |> DamagePopupScene.tick(dt)
             |> LogScene.flushFromEffect
             |> LogScene.tickScroll
 
@@ -543,6 +544,7 @@ mod GameManager {
     /// ここがゲーム側「アニメ完了 → ゲームロジック」の唯一の窓口。
     def dispatchAnimationEvents(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
+                              GameEngine.Game,
                               GameLogger.GameLogger, Tween.Scheduler,
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, InitialSpawns.State,
@@ -561,6 +563,7 @@ mod GameManager {
     /// 未知の name は `parseTag = None` で no-op。
     def applyMethodEvent(scene: Scene[NodeTag], event: AnimationPlayer.Event):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
+                              GameEngine.Game,
                               GameLogger.GameLogger, Tween.Scheduler,
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, InitialSpawns.State} =
@@ -749,6 +752,7 @@ mod GameManager {
                 SelectedPlayer.State} =
         Scene.empty()
             |> MapScene.add
+            |> DamagePopupScene.add     // World 配下に空の Marker2D 親を 1 つ生やす
             |> PlayerScene.add(catalog)
             |> EnemyScene.add(catalog)
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
