@@ -235,13 +235,14 @@ mod ResourcePanel {
         }
     }
 
-    /// record の中から texture 名らしき値を探して preview pane を更新する
+    /// record の中から texture 名 + 同居する frame/hframes/vframes を探し、
+    /// sprite preview pane に該当セルだけを切り抜いて表示する
     def refreshPreview(state: IdeState.IdeState, record: Json.JsonElement): Unit \ IO = {
         let textureNames = Array.get(0, state#textureNamesRef);
         let pathMap = Array.get(0, state#texturePathMapRef);
-        let name = PropertyWidgets.findFirstTexture(record, textureNames);
+        let spriteRef = PropertyWidgets.findFirstSpriteRef(record, textureNames);
         match Array.get(0, state#widgets#resourcePreviewPane) {
-            case Some(pane) => PropertyWidgets.updateSpritePreview(pane, pathMap, name)
+            case Some(pane) => PropertyWidgets.updateSpritePreview(pane, pathMap, spriteRef)
             case None       => ()
         }
     }

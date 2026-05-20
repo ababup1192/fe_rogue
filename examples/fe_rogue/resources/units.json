@@ -7,15 +7,15 @@
     "trainingSword",
     "trainingSword"
   ],
-  "players": [
-    "knight",
-    "archer",
-    "mage"
-  ],
   "playerWeapons": [
     "trainingSpear",
     "trainingSword",
     "noviceStaff"
+  ],
+  "players": [
+    "knight",
+    "archer",
+    "mage"
   ],
   "units": {
     "archer": {

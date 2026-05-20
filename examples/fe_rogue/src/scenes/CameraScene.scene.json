@@ -10,5 +10,9 @@
   "dragLeftMargin": 0.3,
   "dragRightMargin": 0.3,
   "dragTopMargin": 0.3,
-  "dragBottomMargin": 0.3
+  "dragBottomMargin": 0.3,
+  "limitBottom": 999999,
+  "limitLeft": -999999,
+  "limitRight": 999999,
+  "limitTop": -999999
 }

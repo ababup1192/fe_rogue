@@ -13,7 +13,8 @@
 //   - buildXxxWidget: kind ごとの編集 widget。すべて (value, onCommit) を取る
 //   - buildVec2Widget: Vec2 (X, Y の Spinner ペア) widget。Inspector で使う
 //   - addFieldRow + buildFieldWidget: Resource.FieldEntry に応じて行を組み立てる
-//   - updateSpritePreview / findFirstTexture: TexturePath 値から画像 preview を描く
+//   - updateSpritePreview / findFirstSpriteRef: TexturePath 値から画像 preview を描く
+//     (sprite ブロックの frame/hframes/vframes を見て該当セルだけを切り抜く)
 
 mod PropertyWidgets {
     import java.io.File
@@ -22,7 +23,8 @@ mod PropertyWidgets {
     import javafx.fxml.FXMLLoader
     import javafx.scene.Node
     import javafx.scene.image.Image
-    import javafx.scene.image.ImageView
+    import javafx.scene.canvas.Canvas
+    import javafx.scene.canvas.GraphicsContext
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
     import javafx.scene.control.CheckBox
@@ -44,6 +46,19 @@ mod PropertyWidgets {
     /// 編集確定時の callback。受け取る側 (ResourcePanel / ScenePanel) が
     /// JSON を消費して書き戻し or pending queue に積む
     pub type alias Commit = Json.JsonElement -> Unit \ IO
+
+    /// Sprite preview に渡す表示情報。
+    ///   - texture:  textureNames に登録されている texture 名
+    ///   - frame / hframes / vframes: 同じオブジェクト内に sibling として並ぶ
+    ///     アトラス分割情報。sprite ブロックが無く texture だけの record では
+    ///     全て None になり、preview 側で 1, 1, 0 にフォールバックして
+    ///     画像全体を表示する。
+    pub type alias SpriteRef = {
+        texture  = String,
+        frame    = Option[Int32],
+        hframes  = Option[Int32],
+        vframes  = Option[Int32]
+    }
 
     /// 共通テンプレ property-row.fxml をロードして「key Label + 値 slot」の HBox を返す
     pub def addPropertyRow(children: ObservableList[Node], keyText: String, valueNode: Node):
@@ -355,44 +370,92 @@ mod PropertyWidgets {
             case _                              => None
         }
 
-    /// record JSON を DFS で walk して、textureNames に含まれる文字列値を探す
-    pub def findFirstTexture(record: Json.JsonElement, textureNames: List[String]):
-            Option[String] \ IO = {
+    /// record JSON を DFS で walk して、textureNames に含まれる文字列値を持つ
+    /// 最初のオブジェクトを見つけ、その texture と sibling の frame/hframes/vframes
+    /// (もし存在すれば) をまとめて SpriteRef として返す。
+    /// sprite ブロックを持たない bare texture record では frame 系が全て None に
+    /// なり、updateSpritePreview のフォールバックで全体表示と等価になる。
+    pub def findFirstSpriteRef(record: Json.JsonElement, textureNames: List[String]):
+            Option[SpriteRef] = {
         let names = List.toSet(textureNames);
-        scanForTexture(record, names)
+        scanForSpriteRef(record, names)
     }
 
-    def scanForTexture(elem: Json.JsonElement, textureNames: Set[String]):
-            Option[String] \ IO =
+    def scanForSpriteRef(elem: Json.JsonElement, textureNames: Set[String]):
+            Option[SpriteRef] =
         match elem {
-            case Json.JsonElement.JsonString(s) =>
-                if (Set.memberOf(s, textureNames)) Some(s) else None
             case Json.JsonElement.JsonObject(m) =>
-                Map.foldLeftWithKey((acc, _k, v) -> match acc {
-                    case Some(_) => acc
-                    case None    => scanForTexture(v, textureNames)
-                }, None, m)
+                // この object 自身が texture フィールドを持っていれば
+                // sibling (frame/hframes/vframes) を一緒に拾って即返す
+                match extractSpriteRefHere(m, textureNames) {
+                    case Some(spriteRef) => Some(spriteRef)
+                    case None            =>
+                        Map.foldLeftWithKey((acc, _k, v) -> match acc {
+                            case Some(_) => acc
+                            case None    => scanForSpriteRef(v, textureNames)
+                        }, None, m)
+                }
             case _ => None
         }
 
-    /// texture name (textureNamesRef のキー) から絶対パスを引いて JavaFX Image をロードし、
-    /// 渡された StackPane に ImageView として乗せる。None なら "(no preview)" 表示。
-    /// `pathMap` は texture 名 → 絶対パスの解決マップ
+    /// JsonObject 内で「textureNames に含まれる文字列値を持つフィールド」を 1 つ
+    /// 見つけたら、その object 自身の frame/hframes/vframes (整数) も sibling
+    /// として抜き出して SpriteRef を作る。
+    /// texture を保持しているキーの名前は問わない (sprite ブロック内なら "texture"
+    /// だが key 名に依存しない設計)。frame/hframes/vframes が無い、または整数で
+    /// ない場合はそれぞれ None として返す。
+    pub def extractSpriteRefHere(m: Map[String, Json.JsonElement], textureNames: Set[String]):
+            Option[SpriteRef] =
+        let entries = Map.toList(m);
+        let textureOpt = List.findMap(entry -> {
+            let (_k, v) = entry;
+            match v {
+                case Json.JsonElement.JsonString(s) =>
+                    if (Set.memberOf(s, textureNames)) Some(s) else None
+                case _ => None
+            }
+        }, entries);
+        match textureOpt {
+            case None          => None
+            case Some(texture) =>
+                let frame   = Map.get("frame",   m) |> Option.flatMap(NodeInspector.jsonToInt);
+                let hframes = Map.get("hframes", m) |> Option.flatMap(NodeInspector.jsonToInt);
+                let vframes = Map.get("vframes", m) |> Option.flatMap(NodeInspector.jsonToInt);
+                Some({
+                    texture = texture,
+                    frame   = frame,
+                    hframes = hframes,
+                    vframes = vframes
+                })
+        }
+
+    /// SpriteRef から絶対パスを引いて JavaFX Image をロードし、frame/hframes/vframes
+    /// が指定されていればその 1 セル分だけを Canvas にコピーして表示する。
+    /// None なら "(no preview)" 表示。`pathMap` は texture 名 → 絶対パスの解決マップ。
+    /// 切り抜き式は engine 側の Sprite2D.computeUv と同じ:
+    ///   cellW = imgW / hframes, cellH = imgH / vframes,
+    ///   col = frame % hframes,  row = frame / hframes,
+    ///   srcRect = (col * cellW, row * cellH, cellW, cellH)
+    /// frame 系が None または不正値のときは画像全体を表示する (sprite ブロックなしの
+    /// bare texture record も同じ経路でフォールバック)。
+    /// Canvas を使うのは GraphicsContext.setImageSmoothing(false) で
+    /// nearest-neighbor 描画を明示的に効かせるため (ImageView.setSmooth(false) は
+    /// JavaFX の Prism レンダラ環境で効かないケースがあるため避ける)。
     pub def updateSpritePreview(pane: StackPane, pathMap: Map[String, String],
-                                 textureName: Option[String]): Unit \ IO = {
+                                 spriteRef: Option[SpriteRef]): Unit \ IO = {
         let children = pane.getChildren();
         children.clear();
-        match textureName {
+        match spriteRef {
             case None => {
                 let l = new Label("(no preview)");
                 l.getStyleClass().add("inspector-empty");
                 let n: Node = checked_cast(l);
                 discard children.add(n)
             }
-            case Some(name) => {
-                match Map.get(name, pathMap) {
+            case Some(sr) => {
+                match Map.get(sr#texture, pathMap) {
                     case None => {
-                        let l = new Label("(path unknown: ${name})");
+                        let l = new Label("(path unknown: ${sr#texture})");
                         l.getStyleClass().add("inspector-empty");
                         let n: Node = checked_cast(l);
                         discard children.add(n)
@@ -400,11 +463,45 @@ mod PropertyWidgets {
                     case Some(absPath) => {
                         let url = new File(absPath).toURI().toString();
                         let image = new Image(url);
-                        let view = new ImageView(image);
-                        view.setPreserveRatio(true);
-                        view.setFitWidth(220.0);
-                        view.setFitHeight(220.0);
-                        let n: Node = checked_cast(view);
+
+                        // sprite ブロック欠落時は (frame=0, h=1, v=1) で全体表示
+                        let hframes = sr#hframes |> Option.getWithDefault(1i32);
+                        let vframes = sr#vframes |> Option.getWithDefault(1i32);
+                        let frame   = sr#frame   |> Option.getWithDefault(0i32);
+                        let imgW = image.getWidth();
+                        let imgH = image.getHeight();
+                        let (srcX, srcY, srcW, srcH) =
+                            if (hframes > 0i32 and vframes > 0i32
+                                and imgW > 0.0 and imgH > 0.0) {
+                                let cellW = imgW / Int32.toFloat64(hframes);
+                                let cellH = imgH / Int32.toFloat64(vframes);
+                                let col   = Int32.modulo(frame, hframes);
+                                let row   = frame / hframes;
+                                (Int32.toFloat64(col) * cellW,
+                                 Int32.toFloat64(row) * cellH,
+                                 cellW, cellH)
+                            } else (0.0, 0.0, imgW, imgH);
+
+                        // ピクセルアートを 220 px 枠に nearest-neighbor で拡大する。
+                        // ImageView.setSmooth(false) は Prism レンダラ環境で
+                        // 効かないケースがあるので、Canvas + GraphicsContext で
+                        // 明示的に setImageSmoothing(false) する。
+                        let canvasSize = 220.0;
+                        // アスペクト比保持: cell が縦長/横長でも枠内に収める
+                        let scale = if (srcW <= 0.0 or srcH <= 0.0) 1.0 else {
+                            let sx = canvasSize / srcW;
+                            let sy = canvasSize / srcH;
+                            if (sx < sy) sx else sy
+                        };
+                        let dstW = srcW * scale;
+                        let dstH = srcH * scale;
+                        let dstX = (canvasSize - dstW) / 2.0;
+                        let dstY = (canvasSize - dstH) / 2.0;
+                        let canvas = new Canvas(canvasSize, canvasSize);
+                        let gc: GraphicsContext = canvas.getGraphicsContext2D();
+                        gc.setImageSmoothing(false);
+                        gc.drawImage(image, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH);
+                        let n: Node = checked_cast(canvas);
                         discard children.add(n)
                     }
                 }
