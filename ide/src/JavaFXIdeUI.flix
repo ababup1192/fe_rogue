@@ -23,6 +23,7 @@ mod JavaFXIdeUI {
     import javafx.scene.Scene
     import javafx.scene.image.ImageView
     import javafx.scene.image.WritableImage
+    import javafx.scene.control.Button
     import javafx.scene.control.Label
     import javafx.scene.control.MenuItem
     import javafx.scene.control.TreeView
@@ -63,16 +64,22 @@ mod JavaFXIdeUI {
         let subEntriesList: ListView[String] = unchecked_cast(ns.get("subEntriesList") as ListView[String]);
         let propertyPanel: VBox = unchecked_cast(ns.get("propertyPanel") as VBox);
         let resourcePreviewPane: StackPane = unchecked_cast(ns.get("resourcePreviewPane") as StackPane);
-        Array.put(Some(scenesTree),         0, state#widgets#sceneTree);
-        Array.put(Some(resourcesList),      0, state#widgets#resourcesList);
-        Array.put(Some(subEntriesList),     0, state#widgets#subEntriesList);
-        Array.put(Some(propertyPanel),      0, state#widgets#propertyPanel);
+        let previewZoomLabel: Label = unchecked_cast(ns.get("previewZoomLabel") as Label);
+        let previewZoomOut:   Button = unchecked_cast(ns.get("previewZoomOut") as Button);
+        let previewZoomIn:    Button = unchecked_cast(ns.get("previewZoomIn") as Button);
+        Array.put(Some(scenesTree),          0, state#widgets#sceneTree);
+        Array.put(Some(resourcesList),       0, state#widgets#resourcesList);
+        Array.put(Some(subEntriesList),      0, state#widgets#subEntriesList);
+        Array.put(Some(propertyPanel),       0, state#widgets#propertyPanel);
         Array.put(Some(resourcePreviewPane), 0, state#widgets#resourcePreviewPane);
-        Array.put(Some(stage),              0, state#widgets#stage);
+        Array.put(Some(previewZoomLabel),    0, state#widgets#resourcePreviewZoomLbl);
+        Array.put(Some(stage),               0, state#widgets#stage);
 
         // Resources タブの wiring (ListView 選択 → schema/data ロード → property panel)
         ResourcePanel.wireResourceSelection(state, resourcesList, subEntriesList);
         ResourcePanel.wireSubEntrySelection(state, subEntriesList);
+        ResourcePanel.wireZoomButtons(state, previewZoomOut, previewZoomIn);
+        ResourcePanel.updateZoomLabel(state);
 
         // ステータスバー Label を取得
         let statusScene:     Label = unchecked_cast(ns.get("statusScene") as Label);

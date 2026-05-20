@@ -110,4 +110,58 @@ mod TestSpriteRef {
         Assert.assertEq(
             expected = Some(("character_sheet", Some(1i32), Some(5i32), Some(2i32))),
             asTuple(PropertyWidgets.findFirstSpriteRef(record, "character_sheet" :: Nil)))
+
+    // ========================================================================
+    // zoomIn / zoomOut — Preview のパーセントズーム切替の遷移
+    // ========================================================================
+
+    /// "+" を 100% から押し続けたときのシーケンス。
+    /// 100 → 150 → 200 → 300 → 400 → 600 → 800 → 1600 → 1600 (上限クランプ)
+    @Test
+    def testZoomInSequence(): Unit \ Assert =
+        let s0 = PropertyWidgets.ZoomMode.Percent(100);
+        let s1 = PropertyWidgets.zoomIn(s0);
+        let s2 = PropertyWidgets.zoomIn(s1);
+        let s3 = PropertyWidgets.zoomIn(s2);
+        let s4 = PropertyWidgets.zoomIn(s3);
+        let s5 = PropertyWidgets.zoomIn(s4);
+        let s6 = PropertyWidgets.zoomIn(s5);
+        let s7 = PropertyWidgets.zoomIn(s6);
+        let s8 = PropertyWidgets.zoomIn(s7);
+        Assert.assertEq(
+            expected = (PropertyWidgets.ZoomMode.Percent(150),
+                        PropertyWidgets.ZoomMode.Percent(200),
+                        PropertyWidgets.ZoomMode.Percent(300),
+                        PropertyWidgets.ZoomMode.Percent(400),
+                        PropertyWidgets.ZoomMode.Percent(600),
+                        PropertyWidgets.ZoomMode.Percent(800),
+                        PropertyWidgets.ZoomMode.Percent(1600),
+                        PropertyWidgets.ZoomMode.Percent(1600)),
+            (s1, s2, s3, s4, s5, s6, s7, s8))
+
+    /// "-" を 100% から押し続けたときのシーケンス。
+    /// 100 → 75 → 50 → 25 → 25 (下限クランプ)
+    @Test
+    def testZoomOutSequence(): Unit \ Assert =
+        let s0 = PropertyWidgets.ZoomMode.Percent(100);
+        let s1 = PropertyWidgets.zoomOut(s0);
+        let s2 = PropertyWidgets.zoomOut(s1);
+        let s3 = PropertyWidgets.zoomOut(s2);
+        let s4 = PropertyWidgets.zoomOut(s3);
+        Assert.assertEq(
+            expected = (PropertyWidgets.ZoomMode.Percent(75),
+                        PropertyWidgets.ZoomMode.Percent(50),
+                        PropertyWidgets.ZoomMode.Percent(25),
+                        PropertyWidgets.ZoomMode.Percent(25)),
+            (s1, s2, s3, s4))
+
+    /// ZoomMode の表示文字列はパーセント値そのまま
+    @Test
+    def testZoomModeLabel(): Unit \ Assert =
+        Assert.assertEq(
+            expected = ("25%", "100%", "200%", "1600%"),
+            (PropertyWidgets.zoomModeLabel(PropertyWidgets.ZoomMode.Percent(25)),
+             PropertyWidgets.zoomModeLabel(PropertyWidgets.ZoomMode.Percent(100)),
+             PropertyWidgets.zoomModeLabel(PropertyWidgets.ZoomMode.Percent(200)),
+             PropertyWidgets.zoomModeLabel(PropertyWidgets.ZoomMode.Percent(1600))))
 }

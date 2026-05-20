@@ -57,6 +57,29 @@
     -fx-font-size: 11px;
 }
 
+.resource-zoom-bar {
+    -fx-padding: 0;
+}
+
+.resource-zoom-label {
+    -fx-font-size: 11px;
+    -fx-min-width: 48px;
+    -fx-alignment: CENTER;
+}
+
+.zoom-icon-button {
+    -fx-padding: 2 6 2 6;
+    -fx-min-width: 28px;
+    -fx-min-height: 22px;
+}
+
+.zoom-icon {
+    -fx-fill: transparent;
+    -fx-stroke: #333333;
+    -fx-stroke-width: 1.4;
+    -fx-stroke-line-cap: round;
+}
+
 .property-panel {
     -fx-padding: 6 8 6 8;
 }

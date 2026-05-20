@@ -19,12 +19,13 @@ mod IdeState {
 
     /// FXML の fx:id 経由で取得した主要 widget 参照。customize で全フィールドに値が入る
     pub type alias WidgetRefs = {
-        sceneTree           = Array[Option[TreeView[String]], Static],
-        resourcesList       = Array[Option[ListView[String]], Static],
-        subEntriesList      = Array[Option[ListView[String]], Static],
-        propertyPanel       = Array[Option[VBox], Static],
-        resourcePreviewPane = Array[Option[StackPane], Static],
-        stage               = Array[Option[Stage], Static]
+        sceneTree              = Array[Option[TreeView[String]], Static],
+        resourcesList          = Array[Option[ListView[String]], Static],
+        subEntriesList         = Array[Option[ListView[String]], Static],
+        propertyPanel          = Array[Option[VBox], Static],
+        resourcePreviewPane    = Array[Option[StackPane], Static],
+        resourcePreviewZoomLbl = Array[Option[Label], Static],
+        stage                  = Array[Option[Stage], Static]
     }
 
     /// 描画ループと FX レイヤーを橋渡しする ref 群。
@@ -122,12 +123,13 @@ mod IdeState {
 
     def newWidgets(): WidgetRefs \ IO =
         {
-            sceneTree           = Array#{(None: Option[TreeView[String]])} @ Static,
-            resourcesList       = Array#{(None: Option[ListView[String]])} @ Static,
-            subEntriesList      = Array#{(None: Option[ListView[String]])} @ Static,
-            propertyPanel       = Array#{(None: Option[VBox])} @ Static,
-            resourcePreviewPane = Array#{(None: Option[StackPane])} @ Static,
-            stage               = Array#{(None: Option[Stage])} @ Static
+            sceneTree              = Array#{(None: Option[TreeView[String]])} @ Static,
+            resourcesList          = Array#{(None: Option[ListView[String]])} @ Static,
+            subEntriesList         = Array#{(None: Option[ListView[String]])} @ Static,
+            propertyPanel          = Array#{(None: Option[VBox])} @ Static,
+            resourcePreviewPane    = Array#{(None: Option[StackPane])} @ Static,
+            resourcePreviewZoomLbl = Array#{(None: Option[Label])} @ Static,
+            stage                  = Array#{(None: Option[Stage])} @ Static
         }
 
     def newRuntime(): RuntimeRefs \ IO =

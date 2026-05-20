@@ -60,6 +60,54 @@ mod PropertyWidgets {
         vframes  = Option[Int32]
     }
 
+    /// Resources タブ Preview の拡大モード。
+    /// ネイティブピクセル基準のパーセント表示倍率。
+    ///   100 = 1 image pixel = 1 logical screen pixel (IDE プレビュー上の等倍)、
+    ///   200 = 2 倍拡大、50 = 半分縮小
+    /// 注意: 「ゲームでの実際の見え方」は Sprite2D.scale / Camera2D.zoom /
+    /// Viewport (design → window) の合成で決まるため、Resource (texture/frame/
+    /// hframes/vframes) 単独では再現できない。この preview は texture アトラスの
+    /// ピクセル自体を確認する用途
+    pub enum ZoomMode with Eq, ToString {
+        case Percent(Int32)
+    }
+
+    /// ズーム段階の昇順リスト (パーセント値)。zoomIn/zoomOut が辿る
+    def zoomSteps(): List[Int32] =
+        25i32 :: 50i32 :: 75i32 :: 100i32 :: 150i32 :: 200i32 :: 300i32 :: 400i32 :: 600i32 :: 800i32 :: 1600i32 :: Nil
+
+    /// プロジェクト起動時 / ResourceState 初期化時のデフォルトズーム。
+    /// 100% = ネイティブピクセル等倍 (1 image px = 1 logical px)
+    pub def defaultZoom(): ZoomMode =
+        ZoomMode.Percent(100)
+
+    /// ZoomMode を UI 表示用の短い文字列にする ("100%" / "200%" ...)
+    pub def zoomModeLabel(mode: ZoomMode): String =
+        match mode {
+            case ZoomMode.Percent(p) => "${p}%"
+        }
+
+    /// "-" ボタン: 段階リストの 1 つ下に降りる。最小 (25%) は no-op
+    pub def zoomOut(mode: ZoomMode): ZoomMode =
+        match mode {
+            case ZoomMode.Percent(p) =>
+                let lower = List.filter(s -> s < p, zoomSteps());
+                match List.last(lower) {
+                    case None       => mode
+                    case Some(prev) => ZoomMode.Percent(prev)
+                }
+        }
+
+    /// "+" ボタン: 段階リストの 1 つ上に上がる。最大 (1600%) は no-op
+    pub def zoomIn(mode: ZoomMode): ZoomMode =
+        match mode {
+            case ZoomMode.Percent(p) =>
+                match List.find(s -> s > p, zoomSteps()) {
+                    case None       => mode
+                    case Some(next) => ZoomMode.Percent(next)
+                }
+        }
+
     /// 共通テンプレ property-row.fxml をロードして「key Label + 値 slot」の HBox を返す
     pub def addPropertyRow(children: ObservableList[Node], keyText: String, valueNode: Node):
             Unit \ IO = {
@@ -442,7 +490,8 @@ mod PropertyWidgets {
     /// nearest-neighbor 描画を明示的に効かせるため (ImageView.setSmooth(false) は
     /// JavaFX の Prism レンダラ環境で効かないケースがあるため避ける)。
     pub def updateSpritePreview(pane: StackPane, pathMap: Map[String, String],
-                                 spriteRef: Option[SpriteRef]): Unit \ IO = {
+                                 spriteRef: Option[SpriteRef],
+                                 zoomMode: ZoomMode): Unit \ IO = {
         let children = pane.getChildren();
         children.clear();
         match spriteRef {
@@ -487,12 +536,11 @@ mod PropertyWidgets {
                         // 効かないケースがあるので、Canvas + GraphicsContext で
                         // 明示的に setImageSmoothing(false) する。
                         let canvasSize = 220.0;
-                        // アスペクト比保持: cell が縦長/横長でも枠内に収める
-                        let scale = if (srcW <= 0.0 or srcH <= 0.0) 1.0 else {
-                            let sx = canvasSize / srcW;
-                            let sy = canvasSize / srcH;
-                            if (sx < sy) sx else sy
-                        };
+                        // Percent(p) → 拡大率 p/100 (100% = ネイティブピクセル等倍)
+                        let scale = if (srcW <= 0.0 or srcH <= 0.0) 1.0 else
+                            match zoomMode {
+                                case ZoomMode.Percent(p) => Int32.toFloat64(p) / 100.0
+                            };
                         let dstW = srcW * scale;
                         let dstH = srcH * scale;
                         let dstX = (canvasSize - dstW) / 2.0;

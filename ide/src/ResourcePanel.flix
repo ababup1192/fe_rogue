@@ -14,10 +14,13 @@ mod ResourcePanel {
     import java.nio.file.Paths
     import javafx.collections.ObservableList
     import javafx.scene.Node
+    import javafx.scene.control.Button
     import javafx.scene.control.Label
     import javafx.scene.control.ListView
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
+    import javafx.event.ActionEvent
+    import javafx.event.EventHandler
 
     /// Resources ListView 選択 → displayName から ResourceEntry を引き、
     /// data + schema を Fs.FileRead 経由で読み、Sub-entries を埋める
@@ -241,16 +244,65 @@ mod ResourcePanel {
         let textureNames = Array.get(0, state#textureNamesRef);
         let pathMap = Array.get(0, state#texturePathMapRef);
         let spriteRef = PropertyWidgets.findFirstSpriteRef(record, textureNames);
+        let zoomMode = ResourceState.getPreviewZoom(state#resource);
         match Array.get(0, state#widgets#resourcePreviewPane) {
-            case Some(pane) => PropertyWidgets.updateSpritePreview(pane, pathMap, spriteRef)
+            case Some(pane) => PropertyWidgets.updateSpritePreview(pane, pathMap, spriteRef, zoomMode)
             case None       => ()
         }
     }
 
     def clearPreview(state: IdeState.IdeState): Unit \ IO = {
+        let zoomMode = ResourceState.getPreviewZoom(state#resource);
         match Array.get(0, state#widgets#resourcePreviewPane) {
-            case Some(pane) => PropertyWidgets.updateSpritePreview(pane, Map.empty(), None)
+            case Some(pane) =>
+                PropertyWidgets.updateSpritePreview(pane, Map.empty(), None, zoomMode)
             case None       => ()
         }
+    }
+
+    /// 現在選択中の sub-entry / single record で preview を再描画する。
+    /// ズームボタンが押されたときに呼び、Resource 未選択なら no-op。
+    pub def repaintPreview(state: IdeState.IdeState): Unit \ IO = {
+        match ResourceState.getEditingJson(state#resource) {
+            case None      => clearPreview(state)
+            case Some(json) =>
+                match currentRecordJson(state, json) {
+                    case Some(rec) => refreshPreview(state, rec)
+                    case None      => clearPreview(state)
+                }
+        }
+    }
+
+    /// previewZoomLabel に "Fit" / "1x" / "2x" 等を反映
+    pub def updateZoomLabel(state: IdeState.IdeState): Unit \ IO = {
+        let mode = ResourceState.getPreviewZoom(state#resource);
+        let text = PropertyWidgets.zoomModeLabel(mode);
+        match Array.get(0, state#widgets#resourcePreviewZoomLbl) {
+            case Some(label) => label.setText(text)
+            case None        => ()
+        }
+    }
+
+    /// Preview の - / + ボタンを ZoomMode 操作に配線する。
+    /// 押下のたびに ResourceState の zoomMode を更新し、ラベルと preview を再描画する。
+    pub def wireZoomButtons(state: IdeState.IdeState,
+                             zoomOutBtn: Button,
+                             zoomInBtn:  Button): Unit \ IO = {
+        zoomOutBtn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                let current = ResourceState.getPreviewZoom(state#resource);
+                ResourceState.setPreviewZoom(state#resource, PropertyWidgets.zoomOut(current));
+                updateZoomLabel(state);
+                repaintPreview(state)
+            }
+        });
+        zoomInBtn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                let current = ResourceState.getPreviewZoom(state#resource);
+                ResourceState.setPreviewZoom(state#resource, PropertyWidgets.zoomIn(current));
+                updateZoomLabel(state);
+                repaintPreview(state)
+            }
+        })
     }
 }

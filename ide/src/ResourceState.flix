@@ -16,6 +16,7 @@ mod ResourceState {
     ///   editingSchemaJsonRef: schema の生 JsonElement。metaHints の直接 parse 用
     ///   dirtyRef:             現在の editingJson が未保存変更を持つか。即時書込モードでは
     ///                         Phase 10f 以降ファイル書込時に false にリセット
+    ///   previewZoomRef:       Preview の拡大率 (パーセント)。100% = ネイティブ等倍 (1 image px = 1 logical px)
     pub type alias ResourceState = {
         discoveredRef          = Array[List[ResourceEntry], Static],
         selectedDataPathRef    = Array[Option[String], Static],
@@ -23,7 +24,8 @@ mod ResourceState {
         editingJsonRef         = Array[Option[Json.JsonElement], Static],
         editingSchemaRef       = Array[Option[Resource.ResourceSchema], Static],
         editingSchemaJsonRef   = Array[Option[Json.JsonElement], Static],
-        dirtyRef               = Array[Bool, Static]
+        dirtyRef               = Array[Bool, Static],
+        previewZoomRef         = Array[PropertyWidgets.ZoomMode, Static]
     }
 
     /// 空の ResourceState を作る
@@ -35,7 +37,8 @@ mod ResourceState {
             editingJsonRef         = Array#{(None: Option[Json.JsonElement])} @ Static,
             editingSchemaRef       = Array#{(None: Option[Resource.ResourceSchema])} @ Static,
             editingSchemaJsonRef   = Array#{(None: Option[Json.JsonElement])} @ Static,
-            dirtyRef               = Array#{false} @ Static
+            dirtyRef               = Array#{false} @ Static,
+            previewZoomRef         = Array#{PropertyWidgets.defaultZoom()} @ Static
         }
 
     pub def setDiscovered(state: ResourceState, entries: List[ResourceEntry]): Unit \ IO =
@@ -81,4 +84,10 @@ mod ResourceState {
 
     pub def isDirty(state: ResourceState): Bool \ IO =
         Array.get(0, state#dirtyRef)
+
+    pub def setPreviewZoom(state: ResourceState, mode: PropertyWidgets.ZoomMode): Unit \ IO =
+        Array.put(mode, 0, state#previewZoomRef)
+
+    pub def getPreviewZoom(state: ResourceState): PropertyWidgets.ZoomMode \ IO =
+        Array.get(0, state#previewZoomRef)
 }
