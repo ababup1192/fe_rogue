@@ -157,7 +157,7 @@ mod TestTurnRules {
             expected = TurnRules.Transition.Stay,
             TurnRules.decide(context))
 
-    /// PlayerMoving で !busy + Z → 攻撃フェーズへ
+    /// PlayerMoving で !busy + Z → 攻撃ターゲット選択フェーズへ
     @Test
     def testMovingConfirmWhenNotBusyEntersAttack(): Unit \ Assert =
         let context = {
@@ -197,17 +197,17 @@ mod TestTurnRules {
     // PlayerAttack + 攻撃成立 / 不成立
     // ════════════════════════════════════════════════════════
 
-    /// PlayerAttack で生きてる敵マスを Z（味方 0 が選択中）→ AttackHit(0, 0, 3, 2)
+    /// PlayerAttack で生きてる敵マスを Z（味方 0 が選択中）→ OpenWeaponMenu(0, 0, 3, 2)
     /// 引数: (attackerId, defenderId, defenderX, defenderY)
     @Test
-    def testAttackConfirmOnAliveEnemyHits(): Unit \ Assert =
+    def testAttackConfirmOnAliveEnemyOpensWeaponMenu(): Unit \ Assert =
         let context = {
             phase = TurnPhase.Phase.PlayerAttack,
             selected = Some(0)
             | baseContext(boardWith(cell(2, 2), cell(3, 2)), cell(3, 2))
         };
         Assert.assertEq(
-            expected = TurnRules.Transition.AttackHit(0, 0, 3, 2),
+            expected = TurnRules.Transition.OpenWeaponMenu(0, 0, 3, 2),
             TurnRules.decide(context))
 
     /// 死亡演出中の敵を Z → Stay（既に倒した敵には届かない）

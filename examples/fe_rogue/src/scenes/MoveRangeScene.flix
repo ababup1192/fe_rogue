@@ -70,27 +70,29 @@ mod MoveRangeScene {
         }
 
     /// 指定 id を起点に MoveRange を組み立てる本体（既存ノードは事前に取り除いてから呼ぶ）。
-    /// **通行不可**: 壁 / 敵駒 / **他の味方駒**（自分以外）。
-    /// 味方同士の重なりを防ぐため、他プレイヤーのセルも障壁として扱う（FE 風の "通り抜け OK
-    /// だが停止 NG" 表現には別途 stoppable セットが必要だが、現状は一律ブロックで十分）。
+    /// **通行不可**: 壁 / 敵駒。
+    /// **味方駒は通過可能**（1 マスとしてカウント）。FE 流の「味方は素通り、ただし停止はできない」
+    /// 表現。BFS では味方マスも歩けるとして探索し、表示時点で「停止できないマス（味方の上）」を
+    /// 青マスから除外する。一方 isInRange に乗せる reachable リストには味方マスも含めて、
+    /// 移動カーソルが味方マスへ進めるようにする（その先のマスへ抜けるため）。
     def buildFor(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
         let layer  = MapScene.getMapLayer(scene);
         let origin = PlayerScene.getGridPos(id, scene);
         let steps  = PlayerScene.getMoveTiles(id, scene);
         let enemyCells = EnemyScene.getAll(scene) |> List.map(e -> e#gridPos);
-        // 自分以外の味方セル（自分のいるセルは origin として通す必要があるので除外）
+        // 自分以外の味方セル（青マス描画から外す用途）
         let otherAllyCells = PlayerScene.getAll(scene)
             |> List.filter(d -> d#id != id)
             |> List.map(d -> d#gridPos);
-        let isBlocked = c ->
-                List.exists(p -> p#x == c#x and p#y == c#y, enemyCells)
-                or List.exists(p -> p#x == c#x and p#y == c#y, otherAllyCells);
-        let cells = Board.reachableCells(
-            c -> TileMapLayer.isFloor(c, layer) and not isBlocked(c),
-            origin,
-            steps);
-        // origin（自分のマス）は描画から除外
-        let drawCells = List.filter(c -> not (c#x == origin#x and c#y == origin#y), cells);
+        // BFS の通行可否は「敵 + 壁」だけで判定（味方は通過可能）
+        let isPassable = c ->
+            TileMapLayer.isFloor(c, layer)
+            and not List.exists(p -> p#x == c#x and p#y == c#y, enemyCells);
+        let cells = Board.reachableCells(isPassable, origin, steps);
+        // 表示用は「自分のマス」「味方のマス」を除外（停止できない場所は青マスにしない）
+        let drawCells = cells
+            |> List.filter(c -> not (c#x == origin#x and c#y == origin#y))
+            |> List.filter(c -> not List.exists(p -> p#x == c#x and p#y == c#y, otherAllyCells));
         scene
             |> addParent(cells)
             |> addTileChildren(drawCells)

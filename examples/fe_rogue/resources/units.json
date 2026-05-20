@@ -3,10 +3,19 @@
     "goblin",
     "orc"
   ],
+  "enemyWeapons": [
+    "trainingSword",
+    "trainingSword"
+  ],
   "players": [
     "knight",
     "archer",
     "mage"
+  ],
+  "playerWeapons": [
+    "trainingSpear",
+    "trainingSword",
+    "noviceStaff"
   ],
   "units": {
     "archer": {
@@ -73,6 +82,23 @@
         "texture": "character_sheet",
         "vframes": 2
       }
+    }
+  },
+  "weapons": {
+    "noviceStaff": {
+      "attack": 1,
+      "durability": 30,
+      "name": "みならいのつえ"
+    },
+    "trainingSpear": {
+      "attack": 2,
+      "durability": 41,
+      "name": "くんれんやり"
+    },
+    "trainingSword": {
+      "attack": 3,
+      "durability": 41,
+      "name": "くんれんけん"
     }
   }
 }

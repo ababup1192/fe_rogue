@@ -79,12 +79,25 @@ mod TestEnemyAI {
         }
 
     /// 敵 Data を作る。`moveTiles` は引数で指定（テストで挙動を変えるため）。
+    /// `weapon = Some(...)` 固定（武器ありで動かす標準ケース）。
+    /// 武器なしの挙動を検証したいテストは別フィクスチャ `enemyAtUnarmed` を使う。
     def enemyAt(id: Int32, pos: {x = Int32, y = Int32}, alerted: Bool,
                  home: Int32, moveTiles: Int32): EnemyScene.Data =
         { id = id, gridPos = pos, alerted = alerted,
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
-          resource = TestUnitFixtures.testResource(moveTiles, 3) }
+          resource = TestUnitFixtures.testResource(moveTiles, 3),
+          weapon = Some(TestUnitFixtures.testWeapon()) }
+
+    /// 武器が壊れた状態（`weapon = None`）の敵 Data。武器なしで隣接プレイヤーに
+    /// 攻撃しないことを確認するテストで使う。
+    def enemyAtUnarmed(id: Int32, pos: {x = Int32, y = Int32}, alerted: Bool,
+                       home: Int32, moveTiles: Int32): EnemyScene.Data =
+        { id = id, gridPos = pos, alerted = alerted,
+          homeModuleIdx = home, moveTiles = moveTiles,
+          hp = 3, isDying = false, attackTargetId = None,
+          resource = TestUnitFixtures.testResource(moveTiles, 3),
+          weapon = None }
 
     /// EnemyAction を tag だけのタプルに圧縮（id 付き）。Eq が無いので比較しやすくする。
     def tagOf(a: EnemyAction): String =
@@ -158,6 +171,18 @@ mod TestEnemyAI {
         let enemy   = enemyAt(0, enemyP, true, 0, 3);
         let (a, _)  = EnemyAI.decideAction(board, enemy);
         Assert.assertEq(expected = "Attack", tagOf(a))
+
+    /// 武器が壊れている（weapon = None）敵は隣接プレイヤーがあっても攻撃しない。
+    /// `Attack` を返さず `Wait` に切り替えること。
+    @Test
+    def testDecideAdjacentWithoutWeaponWaits(): Unit \ Assert =
+        let map     = singleRoomSnapshot(10, 10);
+        let player  = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});
+        let board   = boardOf(map, player, 0, enemyP);
+        let enemy   = enemyAtUnarmed(0, enemyP, true, 0, 3);
+        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        Assert.assertEq(expected = "Wait", tagOf(a))
 
     @Test
     def testIsAdjacentManhattanOne(): Unit \ Assert =

@@ -41,23 +41,33 @@ mod PlayerScene {
     ///   この値を読んでダメージ適用 / commit を行う。アニメ完了で None に戻す。
     /// resource: スポーン時のユニット定義テンプレート（UnitResource）。
     ///   ゲームオーバー時の復元（`respawnFromInitial`）で同じユニット種別で再生するために保持。
+    /// weapons: 装備中の武器インベントリ。空になるとそのプレイヤーは攻撃できない。
+    ///   攻撃時は `selectedWeaponIdx` で指定された武器が使われ、耐久度が 1 減り、
+    ///   0 になったら weapons から取り除かれる（武器が壊れた）。
+    /// selectedWeaponIdx: 武器選択ウィンドウで選ばれた武器の index（weapons リスト上）。
+    ///   PlayerMoving + Z で WeaponSelect フェーズに入り、ウィンドウで選ばれた瞬間にセット、
+    ///   PlayerAttack で実際に Z 押下したときに consume されてクリアされる。
     pub type alias Data = {
-        id             = Int32,
-        gridPos        = {x = Int32, y = Int32},
-        moveTiles      = Int32,
-        hp             = Int32,
-        waited         = Bool,
-        attackTargetId = Option[Int32],
-        resource       = UnitCatalog.UnitResource
+        id                 = Int32,
+        gridPos            = {x = Int32, y = Int32},
+        moveTiles          = Int32,
+        hp                 = Int32,
+        waited             = Bool,
+        attackTargetId     = Option[Int32],
+        resource           = UnitCatalog.UnitResource,
+        weapons            = List[UnitCatalog.WeaponResource],
+        selectedWeaponIdx  = Option[Int32]
     }
 
     /// スポーン時の中間表現。`add` で配置するセルの id/gridPos に加え、
     /// どのユニット定義（UnitResource）でセットアップするかも持つ。
     /// 初期 spawn のスナップショット（ゲームオーバー時の復元用）にも使う。
+    /// `weapons` は初期インベントリ（壊れる前の固定リスト）で、respawn 時にこの値で復元する。
     pub type alias Spawn = {
         id       = Int32,
         gridPos  = {x = Int32, y = Int32},
-        resource = UnitCatalog.UnitResource
+        resource = UnitCatalog.UnitResource,
+        weapons  = List[UnitCatalog.WeaponResource]
     }
 
     // ────────────────────────────────────────────────────────
@@ -98,25 +108,36 @@ mod PlayerScene {
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
-    /// MapScene が登録済みの scene にプレイヤー全員（`party` プールの全員）を追加する。
+    /// MapScene が登録済みの scene にプレイヤー全員（`players` プールの全員）を追加する。
     /// 0 番目は MapScene が記録した spawnGrid に、残りはその近傍の床セルに配置する。
-    /// 各プレイヤーには `party` プールのリスト順で `UnitResource` を割り当てる。
+    /// 各プレイヤーには `players` プールのリスト順で `UnitResource` を、
+    /// `playerWeapons` プールの同 index から `WeaponResource` を割り当てる
+    /// （1 プレイヤー = 1 武器）。プールの長さ不一致は起動時の typo として即 panic する。
     pub def add(catalog: UnitCatalog.UnitCatalog, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let party     = UnitCatalog.pool("players", catalog);
-        let n         = List.length(party);
-        let spawnGrid = MapScene.getSpawnGrid(scene);
-        let layer     = MapScene.getMapLayer(scene);
-        let cells     = pickPlayerSpawns(spawnGrid, n, layer);
-        // cells が n に満たない場合（極端に狭い anchor）は重複セルを許容して埋める
-        let padded    = padCells(cells, spawnGrid, n);
-        let spawns: List[Spawn] = padded
-            |> List.mapWithIndex(id -> c ->
-                let res = match List.nth(id, party) {
-                    case Some(r) => r
-                    case None    => bug!("PlayerScene.add: party index ${id} out of range")
-                };
-                ({id = id, gridPos = c, resource = res}: Spawn));
-        List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), scene, spawns)
+        let party        = UnitCatalog.pool("players", catalog);
+        let weapons      = UnitCatalog.weaponPool("playerWeapons", catalog);
+        let n            = List.length(party);
+        if (List.length(weapons) != n)
+            bug!("PlayerScene.add: playerWeapons length (${List.length(weapons)}) != players length (${n})")
+        else {
+            let spawnGrid = MapScene.getSpawnGrid(scene);
+            let layer     = MapScene.getMapLayer(scene);
+            let cells     = pickPlayerSpawns(spawnGrid, n, layer);
+            // cells が n に満たない場合（極端に狭い anchor）は重複セルを許容して埋める
+            let padded    = padCells(cells, spawnGrid, n);
+            let spawns: List[Spawn] = padded
+                |> List.mapWithIndex(id -> c ->
+                    let res = match List.nth(id, party) {
+                        case Some(r) => r
+                        case None    => bug!("PlayerScene.add: party index ${id} out of range")
+                    };
+                    let weapon = match List.nth(id, weapons) {
+                        case Some(w) => w
+                        case None    => bug!("PlayerScene.add: weapons index ${id} out of range")
+                    };
+                    ({id = id, gridPos = c, resource = res, weapons = weapon :: Nil}: Spawn));
+            List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), scene, spawns)
+        }
 
     /// spawnGrid を中心に N 個の床セルを近い順で選ぶ。`isFloor` で篩い、
     /// 候補不足の場合は呼び出し側が `padCells` で埋める。
@@ -167,13 +188,15 @@ mod PlayerScene {
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
         let data: Data = {
-            id             = sp#id,
-            gridPos        = sp#gridPos,
-            moveTiles      = res#moveTiles,
-            hp             = res#hp,
-            waited         = false,
-            attackTargetId = None,
-            resource       = res
+            id                = sp#id,
+            gridPos           = sp#gridPos,
+            moveTiles         = res#moveTiles,
+            hp                = res#hp,
+            waited            = false,
+            attackTargetId    = None,
+            resource          = res,
+            weapons           = sp#weapons,
+            selectedWeaponIdx = None
         };
         let sprite = Sprite2D.make(res#sprite#texture, Vec2.zero(), Vec2.one())
                         |> Sprite2D.setHframes(res#sprite#hframes)
@@ -247,10 +270,13 @@ mod PlayerScene {
                 else
                     let board = BoardQuery.board();
                     let allowed = c -> MoveRangeScene.isInRange(c, scene);
+                    // 自分以外の味方セル一覧（停止できない＝通過扱い）
+                    let allyCells = getAll(scene)
+                        |> List.filter(d -> d#id != data#id)
+                        |> List.map(d -> d#gridPos);
                     let movement = forM (
                         dir    <- readHeldDirection();
-                        target <- Board.tryMoveWithRange(board, data#gridPos,
-                                                                dir, allowed)
+                        target <- stepThroughAllies(board, data#gridPos, dir, allowed, allyCells)
                     ) yield {
                         let (newMarker, newData) =
                             moveTo(data#id, board#map, target, marker, data, scene);
@@ -260,6 +286,29 @@ mod PlayerScene {
                     Option.getWithDefault((node, scene), movement)
             case _ => (node, scene)
         }
+
+    /// 1 ステップ移動の解決。dir 方向に 1 マス進み、その先が味方セルなら自動的に
+    /// 「次の停止可能セル」まで滑らせる。これにより味方の上に視覚的に重ならず、
+    /// かつ味方を「1 マス分の通行コストで通過」できる挙動になる。
+    /// 進めない（壁 / 範囲外 / 敵）場合は None。連続して味方が並んでいるケースでは
+    /// 通り抜けて最初の停止可能セルに着く。
+    def stepThroughAllies(board: Board, source: {x = Int32, y = Int32},
+                            dir: {x = Int32, y = Int32},
+                            allowed: {x = Int32, y = Int32} -> Bool,
+                            allyCells: List[{x = Int32, y = Int32}]):
+                           Option[{x = Int32, y = Int32}] =
+        match Board.tryMoveWithRange(board, source, dir, allowed) {
+            case None         => None
+            case Some(target) =>
+                if (isAllyCell(target, allyCells))
+                    stepThroughAllies(board, target, dir, allowed, allyCells)
+                else Some(target)
+        }
+
+    /// 指定セルが「他の味方」のセルに一致するか。
+    def isAllyCell(cell: {x = Int32, y = Int32},
+                    allyCells: List[{x = Int32, y = Int32}]): Bool =
+        List.exists(p -> p#x == cell#x and p#y == cell#y, allyCells)
 
     /// 押されている方向キーを Option で返す（複数同時押しは上 > 下 > 左 > 右）
     def readHeldDirection(): Option[{x = Int32, y = Int32}] \ GameEngine.Game =
@@ -341,12 +390,13 @@ mod PlayerScene {
     // (F) ゲームオーバー時のリセット
     // ────────────────────────────────────────────────────────
 
-    /// 現在の全プレイヤーの spawn 情報（id / gridPos / resource）を抽出する。
+    /// 現在の全プレイヤーの spawn 情報（id / gridPos / resource / weapons）を抽出する。
     /// `Game.start` で初回 build 直後に呼んで保存する。
-    /// `resource` は Data から取り戻す（再 catalog ロード不要で同じユニット定義で復元できる）。
+    /// 攻撃前に取られる前提でインベントリは無破損の初期値。respawn ではこの値で復元される。
     pub def snapshotSpawns(scene: Scene[NodeTag]): List[Spawn] =
         getAll(scene)
-            |> List.map(d -> ({id = d#id, gridPos = d#gridPos, resource = d#resource}: Spawn))
+            |> List.map(d ->
+                ({id = d#id, gridPos = d#gridPos, resource = d#resource, weapons = d#weapons}: Spawn))
 
     /// 既存のプレイヤーを全て scene から取り除き、`spawns` から再構築する。
     /// HP / waited / gridPos を初期値で生成する。
@@ -383,6 +433,40 @@ mod PlayerScene {
             case Some(d) => d#waited
             case None    => false
         }
+
+    /// 指定 id のプレイヤーの武器インベントリを返す。武器が 1 つも無ければ Nil。
+    pub def getWeapons(id: Int32, scene: Scene[NodeTag]): List[UnitCatalog.WeaponResource] =
+        match get(id, scene) {
+            case Some(d) => d#weapons
+            case None    => Nil
+        }
+
+    /// 指定 id のプレイヤーが攻撃可能か（武器を 1 本以上持っているか）。
+    pub def canAttack(id: Int32, scene: Scene[NodeTag]): Bool =
+        not List.isEmpty(getWeapons(id, scene))
+
+    /// 武器選択ウィンドウで選ばれた武器 index を Data#selectedWeaponIdx にセットする。
+    /// WeaponSelect フェーズの onItemConfirmed から呼ばれる。
+    pub def setSelectedWeaponIdx(playerId: Int32, idx: Int32,
+                                   scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId, d -> {selectedWeaponIdx = Some(idx) | d}, scene)
+
+    /// 選択中武器 index をクリアする（攻撃完了後の後始末）。
+    pub def clearSelectedWeaponIdx(playerId: Int32,
+                                    scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId, d -> {selectedWeaponIdx = None | d}, scene)
+
+    /// 攻撃ターゲットの敵 id を Data#attackTargetId に記録する。
+    /// 武器選択ウィンドウを開く前に GameManager から呼ばれ、ウィンドウ確定後の
+    /// `confirmAttackWithWeapon` がこの値を読んで実際の攻撃モーションを開始する。
+    pub def setAttackTargetId(playerId: Int32, targetEnemyId: Int32,
+                                scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId, d -> {attackTargetId = Some(targetEnemyId) | d}, scene)
+
+    /// `attackTargetId` をクリアする（武器選択をキャンセルしたとき等）。
+    pub def clearAttackTargetId(playerId: Int32,
+                                  scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId, d -> {attackTargetId = None | d}, scene)
 
     // ────────────────────────────────────────────────────────
     // (H) 体当たり攻撃モーション — AnimationPlayer ベース
@@ -433,6 +517,8 @@ mod PlayerScene {
     /// AnimationPlayer に `attack_lunge` を登録し、`attackTargetId = Some(targetEnemyId)` を
     /// 立てるだけ。中点で `attack:hit` メソッド、終端で finished が GameManager に届き、
     /// それぞれダメージ適用と waited 確定が行われる。
+    /// インベントリが空（`weapons = Nil`）のプレイヤーは攻撃に到達してはいけない設計で、
+    /// 防御的に no-op する（呼び出し側 = PlayerAttackRangeScene/TurnRules で禁止される）。
     pub def startAttack(id: Int32, targetEnemyId: Int32,
                          targetGrid: {x = Int32, y = Int32},
                          scene: Scene[NodeTag]): Scene[NodeTag]
@@ -440,9 +526,12 @@ mod PlayerScene {
         match get(id, scene) {
             case None    => scene
             case Some(d) =>
-                AnimationPlayer.play(playerPath(id),
-                    attackLungeAnimation(playerPath(id), d#gridPos, targetGrid));
-                mapPlayer(id, dd -> {attackTargetId = Some(targetEnemyId) | dd}, scene)
+                if (List.isEmpty(d#weapons)) scene
+                else {
+                    AnimationPlayer.play(playerPath(id),
+                        attackLungeAnimation(playerPath(id), d#gridPos, targetGrid));
+                    mapPlayer(id, dd -> {attackTargetId = Some(targetEnemyId) | dd}, scene)
+                }
         }
 
     /// グリッド座標 → セル中心ワールド座標（add 内部の式と同じ）
@@ -491,25 +580,51 @@ mod PlayerScene {
             case _ => None
         }
 
-    /// 敵 id にダメージを与える。`Combat.attackDamage(攻撃者#attack, 防御者#defense)` で
-    /// 素ダメージを算出し、`Combat.damage` で HP を減算 + 死亡判定。
-    /// HP <= 0 で死亡演出を開始（bonus は death_blink 完了時に GameManager が再生）。
+    /// 敵 id にダメージを与える。攻撃力は `力(unit#attack) + 選択中武器の攻撃力` で、
+    /// `Combat.attackDamage(総合攻撃力, 防御者#defense)` から素ダメージを得て
+    /// `Combat.damage` で HP 減算 + 死亡判定。HP <= 0 で死亡演出を開始する。
+    /// 使用武器は `player#selectedWeaponIdx`（WeaponMenuScene が事前にセット）の指す
+    /// `weapons[idx]`。攻撃成立後にその武器の `durability` を 1 減らし、0 になったら
+    /// インベントリから取り除き「P{N} の {武器名} がこわれた」ログを出す。
+    /// `selectedWeaponIdx` は最後にクリアする。
     /// ログはスペック準拠で「P{N} → 敵{M} に Xダメージ」 / 撃破時「P{N} → 敵{M} を撃破」。
     /// 命中ロールは v1 では行わず常に命中（hit% は forecast でプレビュー表示するための値）。
+    /// インベントリ空 / index 範囲外 / 敵不在ならば防御的に no-op。
     def applyDamageToEnemy(playerId: Int32, player: Data, enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger} =
-        match EnemyScene.get(enemyId, scene) {
-            case None    => scene
-            case Some(enemy) =>
-                let dmg    = Combat.attackDamage(player#resource#attack, enemy#resource#defense);
+        // selectedWeaponIdx が None なら 0（先頭）をデフォルトとして扱う
+        let idx = Option.getWithDefault(0, player#selectedWeaponIdx);
+        match (List.nth(idx, player#weapons), EnemyScene.get(enemyId, scene)) {
+            case (None, _)        => scene
+            case (_, None)        => scene
+            case (Some(weapon), Some(enemy)) =>
+                let totalAttack = player#resource#attack + weapon#attack;
+                let dmg    = Combat.attackDamage(totalAttack, enemy#resource#defense);
                 let result = Combat.damage(hp = enemy#hp, amount = dmg);
-                if (result#isDead) {
-                    GameLogger.playerLog("P${playerId} → 敵${enemyId} を撃破");
-                    EnemyScene.startDeathAnimation(enemyId, scene)
-                } else {
-                    GameLogger.playerLog("P${playerId} → 敵${enemyId} に ${dmg}ダメージ");
-                    EnemyScene.mapEnemy(enemyId,
-                        enemyData -> {hp = result#newHp | enemyData}, scene)
-                }
+                let afterDamage =
+                    if (result#isDead) {
+                        GameLogger.playerLog("P${playerId} → 敵${enemyId} を撃破");
+                        EnemyScene.startDeathAnimation(enemyId, scene)
+                    } else {
+                        GameLogger.playerLog("P${playerId} → 敵${enemyId} に ${dmg}ダメージ");
+                        EnemyScene.mapEnemy(enemyId,
+                            enemyData -> {hp = result#newHp | enemyData}, scene)
+                    };
+                let consumed = Weapon.consume(weapon);
+                let newWeapons = match consumed {
+                    case Some(updated) =>
+                        // 同じ index の要素だけ更新後の値に差し替える
+                        List.mapWithIndex(i -> w -> if (i == idx) updated else w, player#weapons)
+                    case None =>
+                        // 壊れた → index 位置の要素を取り除く
+                        List.mapWithIndex(i -> w -> (i, w), player#weapons)
+                            |> List.filter(pair -> let (i, _) = pair; i != idx)
+                            |> List.map(pair -> let (_, w) = pair; w)
+                };
+                if (Option.isEmpty(consumed))
+                    GameLogger.playerLog("P${playerId} の ${weapon#name} がこわれた")
+                else ();
+                mapPlayer(playerId,
+                    d -> {weapons = newWeapons, selectedWeaponIdx = None | d}, afterDamage)
         }
 }

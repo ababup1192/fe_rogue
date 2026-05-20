@@ -4,7 +4,8 @@
 
 mod TestUnitCatalog {
 
-    /// units.json と同じ構造の JSON 文字列リテラル
+    /// units.json と同じ構造の JSON 文字列リテラル。
+    /// weapons セクションと、それを参照する `playerWeapons` / `enemyWeapons` プールも含む。
     def sampleJson(): String = String.unlines(
         "{" ::
         "  \"units\": {" ::
@@ -25,13 +26,19 @@ mod TestUnitCatalog {
         "      \"sprite\": { \"texture\": \"character_sheet\", \"hframes\": 5, \"vframes\": 2, \"frame\": 4 }" ::
         "    }" ::
         "  }," ::
+        "  \"weapons\": {" ::
+        "    \"trainingSpear\": { \"name\": \"trainingSpear\", \"attack\": 2, \"durability\": 41 }," ::
+        "    \"trainingSword\": { \"name\": \"trainingSword\", \"attack\": 3, \"durability\": 41 }" ::
+        "  }," ::
         "  \"pools\": {" ::
         "    \"party\": [\"knight\"]," ::
         "    \"enemyTier1\": [\"goblin\"]" ::
-        "  }" ::
+        "  }," ::
+        "  \"playerWeapons\": [\"trainingSpear\"]," ::
+        "  \"enemyWeapons\":  [\"trainingSword\"]" ::
         "}" :: Nil)
 
-    /// パース→デコード成功 + units / pools の key 集合が期待通り
+    /// パース→デコード成功 + units / weapons / pools の key 集合が期待通り
     @Test
     def testDecodeSampleCatalog(): Unit \ Assert =
         let parsed: Option[Json.JsonElement] = Json.Parse.parse(sampleJson());
@@ -41,13 +48,20 @@ mod TestUnitCatalog {
             case Some(c) => Map.keysOf(UnitCatalog.unitsOf(c))
             case None    => Set.empty()
         };
+        let weaponKeys = match decoded {
+            case Some(c) => Map.keysOf(UnitCatalog.weaponsOf(c))
+            case None    => Set.empty()
+        };
         let poolKeys = match decoded {
             case Some(c) => Map.keysOf(UnitCatalog.poolsOf(c))
             case None    => Set.empty()
         };
         Assert.assertEq(
-            expected = (true, Set#{"knight", "goblin"}, Set#{"party", "enemyTier1"}),
-            (Option.nonEmpty(decoded), unitKeys, poolKeys))
+            expected = (true,
+                         Set#{"knight", "goblin"},
+                         Set#{"trainingSpear", "trainingSword"},
+                         Set#{"party", "enemyTier1", "playerWeapons", "enemyWeapons"}),
+            (Option.nonEmpty(decoded), unitKeys, weaponKeys, poolKeys))
 
     /// pool 取得が期待通りに UnitResource を返す
     @Test
@@ -65,5 +79,23 @@ mod TestUnitCatalog {
                     case None    => -1
                 };
                 Assert.assertEq(expected = (1, 14), (List.length(party), hp))
+        }
+
+    /// weaponPool 取得が期待通りに WeaponResource を返す
+    @Test
+    def testWeaponPoolLookup(): Unit \ Assert =
+        let parsed: Option[Json.JsonElement] = Json.Parse.parse(sampleJson());
+        let decoded: Option[UnitCatalog.UnitCatalog] =
+            Option.flatMap(Saveable.fromJson, parsed);
+        match decoded {
+            case None    => Assert.assertEq(expected = "decoded", "none")
+            case Some(c) =>
+                let weapons = UnitCatalog.weaponPool("playerWeapons", c);
+                let head    = List.head(weapons);
+                let (atk, dur) = match head {
+                    case Some(w) => (w#attack, w#durability)
+                    case None    => (-1, -1)
+                };
+                Assert.assertEq(expected = (1, 2, 41), (List.length(weapons), atk, dur))
         }
 }

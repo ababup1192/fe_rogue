@@ -59,13 +59,15 @@ mod TestPlayerScene {
             |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
                 EngineNode.Marker2DWithState(marker,
                     NodeTag.Player({
-                        id             = 0,
-                        gridPos        = initial,
-                        moveTiles      = 5,
-                        hp             = 10,
-                        waited         = false,
-                        attackTargetId = None,
-                        resource       = TestUnitFixtures.testResource(5, 10)
+                        id                = 0,
+                        gridPos           = initial,
+                        moveTiles         = 5,
+                        hp                = 10,
+                        waited            = false,
+                        attackTargetId    = None,
+                        resource          = TestUnitFixtures.testResource(5, 10),
+                        weapons           = TestUnitFixtures.testWeapon() :: Nil,
+                        selectedWeaponIdx = None
                     })))
 
     /// プレイヤー id のワールド座標を取り出す

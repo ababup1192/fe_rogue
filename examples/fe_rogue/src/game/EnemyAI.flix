@@ -47,11 +47,16 @@ mod EnemyAI {
         let updated = {alerted = alertedNow | enemy};
         if (not alertedNow) (EnemyAction.Skip(enemy#id), updated)
         else
-            // 2) Attack 優先: 隣接プレイヤーが居れば誰でも 1 名殴る（最寄り問わず）
+            // 2) Attack 優先: 隣接プレイヤーが居れば 1 名殴る（最寄り問わず）。
+            //    ただし武器が壊れている（None）敵は攻撃できないので Wait に切り替える。
             match Board.adjacentPlayer(enemy#gridPos, board) {
                 case Some(adj) =>
-                    let (targetId, _) = adj;
-                    (EnemyAction.Attack(enemy#id, targetId), updated)
+                    if (Option.isEmpty(enemy#weapon))
+                        (EnemyAction.Wait(enemy#id), updated)
+                    else {
+                        let (targetId, _) = adj;
+                        (EnemyAction.Attack(enemy#id, targetId), updated)
+                    }
                 case None =>
                     // 3) chase: 最寄りのプレイヤーを target にして 1 歩目を返す
                     match Board.nearestPlayer(enemy#gridPos, board) {

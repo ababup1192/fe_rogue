@@ -18,7 +18,7 @@
       "field": {
         "ftype": "int",
         "hint":  { "slider": { "min": 0, "max": 30, "step": 1 } },
-        "label": "攻"
+        "label": "力"
       }
     },
     "defense": {
@@ -69,7 +69,9 @@
     }
   },
   "metaHints": {
-    "players": { "type": "ref", "to": "units" },
-    "enemies": { "type": "ref", "to": "units" }
+    "players":       { "type": "ref", "to": "units" },
+    "enemies":       { "type": "ref", "to": "units" },
+    "playerWeapons": { "type": "ref", "to": "weapons" },
+    "enemyWeapons":  { "type": "ref", "to": "weapons" }
   }
 }

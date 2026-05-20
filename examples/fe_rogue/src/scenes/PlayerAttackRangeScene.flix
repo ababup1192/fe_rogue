@@ -57,6 +57,9 @@ mod PlayerAttackRangeScene {
     /// 既存の PlayerAttackRange ノードがあれば取り除き、**選択中プレイヤー** の現在位置
     /// origin に対して射程 = `directRange()` で赤マスを敷き直す。
     /// 未選択時は cleared を返す（赤マス表示なし）。
+    /// 選択中プレイヤーの武器が壊れている（`weapon = None`）場合は cells を空にして
+    /// 親ノードだけ追加する。これにより PlayerAttack フェーズに入ってもカーソルが
+    /// 敵に乗らず、Z 押下で AttackHit が発火しない（X でスキップして抜ける）。
     pub def show(scene: Scene[NodeTag]):
             Scene[NodeTag] \ SelectedPlayer.State =
         let cleared = clear(scene);
@@ -66,9 +69,13 @@ mod PlayerAttackRangeScene {
                 match PlayerScene.get(id, cleared) {
                     case None    => cleared
                     case Some(d) =>
-                        let origin = d#gridPos;
-                        let layer  = MapScene.getMapLayer(cleared);
-                        let cells  = computeAttackCells(origin, directRange(), layer);
+                        let cells =
+                            if (List.isEmpty(d#weapons)) Nil  // 武器なし → 射程ゼロ
+                            else {
+                                let origin = d#gridPos;
+                                let layer  = MapScene.getMapLayer(cleared);
+                                computeAttackCells(origin, directRange(), layer)
+                            };
                         cleared
                             |> addParent(cells)
                             |> addTileChildren(cells)

@@ -30,6 +30,16 @@ mod TurnPhase {
         case PlayerCursor
         /// 味方ターン・選択した味方を動かしているフェーズ。WASD/方向キーで味方を動かす。
         case PlayerMoving
+        /// 味方ターン・武器選択フェーズ。
+        /// PlayerAttack で敵に対して Z を押した瞬間に入り、画面に WeaponMenu が出る。
+        /// 上下キーで武器を選び Enter/Z で確定すると `AttackForecast` フェーズに進む。
+        /// X/Escape でウィンドウを閉じて `PlayerAttack`（ターゲット選択）に戻る。
+        case WeaponSelect
+        /// 味方ターン・戦闘予報フェーズ。
+        /// WeaponSelect で武器を選び終えた瞬間に入り、味方と敵の HP / 威力 / 命中 を
+        /// 並べた予報パネルが出る。Z で攻撃を実行（PlayerAttack の攻撃モーション）、
+        /// X/Escape で武器選択に戻る。
+        case AttackForecast
         /// 味方ターン・攻撃対象選択フェーズ。
         /// 味方の周囲（射程内）に赤マスが出て、カーソルは赤マス内のみ移動可。
         /// 赤マス上の敵に Z でダメージ → 敵ターンへ自動遷移、X で攻撃せず敵ターンへ。
@@ -107,13 +117,13 @@ mod TurnRules {
         /// PlayerCursor 中、カーソルが空き床マスで旗を立てる（PlayerAutoMove へ向かう）
         /// 引数: (旗を立てるマスの x, y)
         case CursorPlantFlag(Int32, Int32)
-        /// PlayerMoving 中の Confirm: 攻撃フェーズに移る
+        /// PlayerMoving 中の Confirm: 攻撃ターゲット選択（PlayerAttack）フェーズに移る
         case MovingEnterAttack
         /// PlayerMoving 中の Cancel: 選択駒を origin に戻して PlayerCursor へ
         case MovingCancel
-        /// PlayerAttack 中の Confirm: 生きている敵に攻撃成立
+        /// PlayerAttack 中の Confirm: 敵を明確に選んだ → 武器選択ウィンドウを開く
         /// 引数: (attackerId, defenderId, defender の x, defender の y)
-        case AttackHit(Int32, Int32, Int32, Int32)
+        case OpenWeaponMenu(Int32, Int32, Int32, Int32)
         /// PlayerAttack 中の Cancel: 攻撃せず waited にして次のセレクトへ
         case AttackSkip
     }
@@ -158,14 +168,20 @@ mod TurnRules {
             case (TurnPhase.Phase.PlayerMoving, Input.Confirm) =>
                 if (context#playerBusy) Transition.Stay
                 else Transition.MovingEnterAttack
+            // WeaponSelect / AttackForecast は InputHandler が Z/X を直接処理し、
+            // TurnRules 経由では遷移しない
+            case (TurnPhase.Phase.WeaponSelect, _) =>
+                Transition.Stay
+            case (TurnPhase.Phase.AttackForecast, _) =>
+                Transition.Stay
             case (TurnPhase.Phase.PlayerMoving, Input.Cancel) =>
                 if (context#playerBusy) Transition.Stay
                 else Transition.MovingCancel
             case (TurnPhase.Phase.PlayerAttack, Input.Confirm) =>
-                // 生きている敵が cursor に居て、かつ選択中駒があれば攻撃成立
+                // 生きている敵が cursor に居て、かつ選択中駒があれば武器選択ウィンドウを開く
                 match (aliveEnemyAt(context), context#selected) {
                     case (Some(defenderId), Some(attackerId)) =>
-                        Transition.AttackHit(attackerId, defenderId,
+                        Transition.OpenWeaponMenu(attackerId, defenderId,
                             context#cursor#x, context#cursor#y)
                     case _ => Transition.Stay
                 }

@@ -1,0 +1,39 @@
+{
+  "type": "CanvasLayer",
+  "name": "WeaponMenu",
+  "layer": 2,
+  "pos": [0, 0],
+  "rotation": 0,
+  "scale": [1, 1],
+  "children": [
+    {
+      "type": "Panel",
+      "name": "panel",
+      "tag": "WeaponPanel",
+      "pos": [2, 2],
+      "size": [54, 38],
+      "background": {"r": 0, "g": 0, "b": 0},
+      "backgroundAlpha": 0.8,
+      "border": {"r": 1, "g": 1, "b": 1},
+      "borderWidth": 1,
+      "zIndex": 0,
+      "visible": false,
+      "children": [
+        {
+          "type": "ItemList",
+          "name": "menu",
+          "pos": [2, 2],
+          "size": [50, 34],
+          "fontSize": 4,
+          "tag": "WeaponMenu",
+          "items": [],
+          "wrap": true,
+          "focused": false,
+          "visible": false,
+          "cursorGlyph": ">",
+          "itemHeight": 6
+        }
+      ]
+    }
+  ]
+}

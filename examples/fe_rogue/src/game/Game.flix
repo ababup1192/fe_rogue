@@ -9,6 +9,14 @@ pub enum NodeTag {
     case Cursor(CursorScene.Data)
     case Flag(FlagScene.Data)
     case Log(LogScene.Data)
+    /// WeaponMenuScene の Panel ルート（外枠）
+    case WeaponPanel
+    /// WeaponMenuScene の ItemList（武器一覧表示）
+    case WeaponMenu
+    /// ForecastPanelScene の Panel ルート（戦闘予報の外枠）
+    case ForecastPanel
+    /// ForecastPanelScene の Label2D（HP / 威力 / 命中 を 2 列で表示）
+    case ForecastText
     case NoTag
 }
 
@@ -46,6 +54,20 @@ instance Node[NodeTag] {
                 CursorScene.physicsProcessAttack(delta, node, path, scene)
             case _ => (node, scene)
         }
+    // 各 UI ノード固有の毎フレーム更新を dispatch する。
+    // ForecastPanel の Label2D テキストはフェーズ入り時のワンショット更新なので process では触らない。
+    redef process(delta: Duration.Duration, node: EngineNode[NodeTag],
+                   path: NodePath, scene: Scene[NodeTag]):
+                  (EngineNode[NodeTag], Scene[NodeTag])
+                  \ {GameEngine.Game, BoardQuery,
+                      Tween.Scheduler, AnimationPlayer.Scheduler,
+                      GameLogger.GameLogger, TurnPhase.State,
+                      SelectedPlayer.State} =
+        match node {
+            case EngineNode.ItemListWithState(_, NodeTag.WeaponMenu) =>
+                checked_ecast(WeaponMenuScene.refreshItems(delta, node, path, scene))
+            case _ => (node, scene)
+        }
 }
 
 // 決定キー（Z / Space / Enter）/ キャンセルキー（X）の意味はフェーズで変わる。
@@ -60,6 +82,12 @@ instance InputEvent.InputHandler[NodeTag] {
     type Aef = {BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State}
+    // WeaponSelect フェーズでは engine の MenuEvent が Enter/Escape を処理する一方、
+    // FERogue のキー慣習として Z（決定）/ X（ウィンドウを閉じる）も使えるよう、
+    // フェーズに応じて分岐する:
+    //   - Z / Space: メニューの現在選択中の武器を確定 → 攻撃モーション開始
+    //   - X        : 武器選択ウィンドウを閉じて PlayerAttack に戻る（ターゲット選び直し可）
+    // それ以外のフェーズではこれまで通り TurnRules 経由で振る舞いを決める。
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                        Scene[NodeTag] \ {BoardQuery, Tween.Scheduler,
                                           AnimationPlayer.Scheduler,
@@ -70,9 +98,44 @@ instance InputEvent.InputHandler[NodeTag] {
                         or key == GameEngine.Key.Space
                         or key == GameEngine.Key.Enter;
         let isCancel  = key == GameEngine.Key.X;
-        if (isConfirm) GameManager.handleInput(TurnRules.Input.Confirm, scene)
-        else if (isCancel) GameManager.handleInput(TurnRules.Input.Cancel, scene)
-        else scene
+        let phase = TurnPhase.State.get();
+        match (phase, isConfirm, isCancel) {
+            case (TurnPhase.Phase.WeaponSelect,   true,  _)
+                                                  => WeaponMenuScene.confirmCurrentSelection(scene)
+            case (TurnPhase.Phase.WeaponSelect,   _,    true)
+                                                  => checked_ecast(GameManager.closeWeaponMenu(scene))
+            case (TurnPhase.Phase.AttackForecast, true, _)
+                                                  => GameManager.confirmAttackFromForecast(scene)
+            case (TurnPhase.Phase.AttackForecast, _,    true)
+                                                  => checked_ecast(GameManager.cancelForecast(scene))
+            case (_,                              true, _)
+                                                  => GameManager.handleInput(TurnRules.Input.Confirm, scene)
+            case (_,                              _,    true)
+                                                  => GameManager.handleInput(TurnRules.Input.Cancel, scene)
+            case _                                => scene
+        }
+}
+
+/// MenuHandler instance — ItemList の Enter/Escape を WeaponMenuScene へ流す。
+/// 入力キー固定: Up/Down=カーソル移動 / Enter=確定 / Escape=キャンセル（engine 規約）。
+/// Enter は「武器確定 → 戦闘予報フェーズへ」、Escape は「ウィンドウを閉じて target 選択に戻る」。
+instance MenuEvent.MenuHandler[NodeTag] {
+    type Aef = {TurnPhase.State, SelectedPlayer.State}
+    redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
+                           state: NodeTag,
+                           scene: Scene[NodeTag]):
+                          Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+        match state {
+            case NodeTag.WeaponMenu => WeaponMenuScene.onWeaponConfirmed(entry, scene)
+            case _                  => scene
+        }
+    redef onItemCancelled(_menuPath: NodePath, state: NodeTag,
+                           scene: Scene[NodeTag]):
+                          Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+        match state {
+            case NodeTag.WeaponMenu => WeaponMenuScene.onWeaponCancelled(scene)
+            case _                  => scene
+        }
 }
 
 mod Game {
@@ -110,6 +173,17 @@ mod Game {
                 case Ok(_)    => ()
                 case Err(msg) => bug!("UnitResource schema/type mismatch: ${msg}")
             };
+            // 武器も同じ規格で schema を持ち、起動時に整合性検査だけ通す。
+            // (IDE の resource エディタは weapons map 自体のフォーム編集に対応していないため、
+            //  この schema は型と data の対応を保証するための「契約」として使う)
+            let weaponsSchema = match Resource.loadSchemaDiagnostic("resources/weapons.schema.json") {
+                case Ok(s)    => s
+                case Err(msg) => bug!("Resource.loadSchema (weapons) failed :: ${msg}")
+            };
+            let _ = match Resource.checkConsistency(UnitCatalog.expectedWeaponFields(), weaponsSchema) {
+                case Ok(_)    => ()
+                case Err(msg) => bug!("WeaponResource schema/type mismatch: ${msg}")
+            };
             run {
                 let scene = GameManager.buildPlayingScene(catalog);
                 // 初回 build 時の spawn を保存。ゲームオーバー時に同じ配置で復活させる
@@ -146,8 +220,16 @@ mod Game {
                          SelectedPlayer.State, InitialSpawns.State,
                          Pacing.State,
                          Math.Random, IO, r} =
-        if (GameEngine.Game.shouldClose() or
-            GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
+        // Escape は通常はゲーム終了に使うが、武器選択メニュー / 戦闘予報パネル表示中は
+        // engine の MenuEvent / InputHandler がそれぞれ「キャンセル」として消費するので、
+        // ここでは終了させない。
+        let phase = TurnPhase.State.get();
+        let inSubMenu = phase == TurnPhase.Phase.WeaponSelect
+                         or phase == TurnPhase.Phase.AttackForecast;
+        let escapeQuit =
+            GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)
+            and not inSubMenu;
+        if (GameEngine.Game.shouldClose() or escapeQuit) ()
         else {
             // BoardQuery handler が読む窓口を毎フレーム最新の scene に更新する。
             // 各 handler はその後で常に「フレーム頭の scene」を読み返せる

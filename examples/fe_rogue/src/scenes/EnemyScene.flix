@@ -33,6 +33,8 @@ mod EnemyScene {
     /// `isDying = true` の敵は `EnemyTurn.Queue` / `findIdAt` などから除外され、行動しない。
     /// `resource` はスポーン時のユニット定義テンプレート（UnitResource）。
     /// ゲームオーバー時の `respawnFromInitial` で同じ敵種別で再生するために保持。
+    /// `weapon` は装備中の武器。攻撃するたびに耐久度が 1 減り、0 で `None` になる
+    /// （以降、その敵は EnemyAI 側で Attack を返さなくなる）。攻撃力は `resource#attack + weapon#attack`。
     pub type alias Data = {
         id             = Int32,
         gridPos        = {x = Int32, y = Int32},
@@ -42,16 +44,19 @@ mod EnemyScene {
         hp             = Int32,
         isDying        = Bool,
         attackTargetId = Option[Int32],
-        resource       = UnitCatalog.UnitResource
+        resource       = UnitCatalog.UnitResource,
+        weapon         = Option[UnitCatalog.WeaponResource]
     }
 
     /// スポーン時の中間表現。`add` 内のループで部屋ごとに積み上げ、最後に Marker2D へ展開する。
     /// `respawnFromInitial` で「ゲームオーバー時に同じ位置・同じ種別の敵を出し直す」のにも使うため pub。
+    /// `weapon` は初期装備の固定値で、復元時にこの値が再び敵に持たされる。
     pub type alias Spawn = {
         id        = Int32,
         gridPos   = {x = Int32, y = Int32},
         moduleIdx = Int32,
-        resource  = UnitCatalog.UnitResource
+        resource  = UnitCatalog.UnitResource,
+        weapon    = UnitCatalog.WeaponResource
     }
 
     // ────────────────────────────────────────────────────────
@@ -123,10 +128,12 @@ mod EnemyScene {
 
     /// MapScene + PlayerScene が登録済みの scene に敵を追加する。
     /// 各部屋について 0..maxPerRoom 体のスポーン位置を決め、それぞれに
-    /// `enemyTier1` プールからランダム抽選した UnitResource を割り当てる。
+    /// `enemies` プールからランダム抽選した UnitResource を、さらに `enemyWeapons`
+    /// プールからランダム抽選した WeaponResource を割り当てる。
     /// `Math.Random` を使うのでこの effect が必要。
     pub def add(catalog: UnitCatalog.UnitCatalog, scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random} =
         let pool        = UnitCatalog.pool("enemies", catalog);
+        let weaponPool  = UnitCatalog.weaponPool("enemyWeapons", catalog);
         let layer       = MapScene.getMapLayer(scene);
         let placements  = MapScene.getPlacements(scene);
         let roomCount   = MapScene.getRoomCount(scene);
@@ -140,7 +147,7 @@ mod EnemyScene {
         let initial: (Int32, List[{x = Int32, y = Int32}], List[Spawn]) =
             (0, playerCells, Nil);
         let (_, _, accSpawns) = List.foldLeft(state -> p ->
-            spawnInRoom(layer, p, randomCountUpTo(maxPerRoom()), pool, state),
+            spawnInRoom(layer, p, randomCountUpTo(maxPerRoom()), pool, weaponPool, state),
             initial, rooms);
         // accSpawns は逆順（cons で積んだ）なので reverse して id 昇順に揃える
         let spawns = List.reverse(accSpawns);
@@ -157,11 +164,13 @@ mod EnemyScene {
     /// 部屋 1 つから `count` 個のスポーンセルを選んで state に積む。
     /// state = (次に振る id, スポーン済みセル累積, spawn list 累積)。
     /// 候補不足のときは取れる分だけ積んで打ち切る。
-    /// 各セルにつき `pool` からランダム 1 種を引いて UnitResource を割り当てる。
+    /// 各セルにつき `pool` からランダム 1 種を引いて UnitResource を、
+    /// `weaponPool` からランダム 1 種を引いて WeaponResource を割り当てる。
     def spawnInRoom(layer: TileMapLayer,
                      p: DungeonComposer.ModulePlacement,
                      count: Int32,
                      pool: List[UnitCatalog.UnitResource],
+                     weaponPool: List[UnitCatalog.WeaponResource],
                      state: (Int32, List[{x = Int32, y = Int32}], List[Spawn])):
                     (Int32, List[{x = Int32, y = Int32}], List[Spawn]) \ Math.Random =
         if (count <= 0) state
@@ -176,8 +185,15 @@ mod EnemyScene {
                         case Some(r) => r
                         case None    => bug!("EnemyScene.spawnInRoom: pool 'enemies' is empty")
                     };
-                    let entry: Spawn = { id = nextId, gridPos = cell, moduleIdx = p#idx, resource = res };
-                    spawnInRoom(layer, p, count - 1, pool,
+                    let weapon = match RandomUtil.pick(weaponPool) {
+                        case Some(w) => w
+                        case None    => bug!("EnemyScene.spawnInRoom: pool 'enemyWeapons' is empty")
+                    };
+                    let entry: Spawn = {
+                        id = nextId, gridPos = cell, moduleIdx = p#idx,
+                        resource = res, weapon = weapon
+                    };
+                    spawnInRoom(layer, p, count - 1, pool, weaponPool,
                                  (nextId + 1, cell :: taken, entry :: list))
             }
 
@@ -217,7 +233,8 @@ mod EnemyScene {
             hp             = res#hp,
             isDying        = false,
             attackTargetId = None,
-            resource       = res
+            resource       = res,
+            weapon         = Some(sp#weapon)
         };
         let sprite = Sprite2D.make(res#sprite#texture, Vec2.zero(), Vec2.one())
                         |> Sprite2D.setHframes(res#sprite#hframes)
@@ -317,13 +334,18 @@ mod EnemyScene {
     // (F) 初期 spawn のスナップショットと再配置（ゲームオーバー時のリセット）
     // ────────────────────────────────────────────────────────
 
-    /// 現在 scene に居る全敵の `Spawn` 情報（id / gridPos / homeModuleIdx / resource）を抽出する。
-    /// `Game.start` で初回 buildPlayingScene 直後に呼んで保存し、ゲームオーバー時に
-    /// `respawnFromInitial` で同じ位置・同じ敵種別で再配置する。
+    /// 現在 scene に居る全敵の `Spawn` 情報（id / gridPos / homeModuleIdx / resource / weapon）を
+    /// 抽出する。`Game.start` で初回 buildPlayingScene 直後に呼んで保存し、ゲームオーバー時に
+    /// `respawnFromInitial` で同じ位置・同じ敵種別・同じ武器で再配置する。
+    /// スナップショットは攻撃前に取られる前提で `weapon` は常に Some。
     pub def snapshotSpawns(scene: Scene[NodeTag]): List[Spawn] =
         getAll(scene)
             |> List.map(d ->
-                ({id = d#id, gridPos = d#gridPos, moduleIdx = d#homeModuleIdx, resource = d#resource}: Spawn))
+                let weapon = match d#weapon {
+                    case Some(w) => w
+                    case None    => bug!("EnemyScene.snapshotSpawns: weapon is None for 敵${d#id} (snapshot taken after weapon broke?)")
+                };
+                ({id = d#id, gridPos = d#gridPos, moduleIdx = d#homeModuleIdx, resource = d#resource, weapon = weapon}: Spawn))
 
     /// 既存の敵を全て scene から取り除き、`spawns` から再構築する。
     /// 各敵は `addOneEnemy` を使って HP・alerted・dying を初期値で生成する。
@@ -341,6 +363,8 @@ mod EnemyScene {
     /// `attack_lunge` アニメーションを再生し `attackTargetId = Some(targetPlayerId)` を立てる。
     /// 中点で `attack:hit` メソッド、終端で finished が GameManager に届き、
     /// それぞれダメージ適用・後始末（味方死亡なら handlePlayerDeath）が走る。
+    /// 武器が壊れている（`weapon = None`）敵はそもそも EnemyAI が Attack を返さない設計で、
+    /// ここに到達したら防御的に no-op する。
     pub def startAttack(id: Int32, targetPlayerId: Int32,
                          targetGrid: {x = Int32, y = Int32},
                          scene: Scene[NodeTag]): Scene[NodeTag]
@@ -348,10 +372,13 @@ mod EnemyScene {
         match get(id, scene) {
             case None    => scene
             case Some(d) =>
-                AnimationPlayer.play(enemyPath(id),
-                    PlayerScene.attackLungeAnimation(enemyPath(id),
-                                                       d#gridPos, targetGrid));
-                mapEnemy(id, dd -> {attackTargetId = Some(targetPlayerId) | dd}, scene)
+                if (Option.isEmpty(d#weapon)) scene
+                else {
+                    AnimationPlayer.play(enemyPath(id),
+                        PlayerScene.attackLungeAnimation(enemyPath(id),
+                                                           d#gridPos, targetGrid));
+                    mapEnemy(id, dd -> {attackTargetId = Some(targetPlayerId) | dd}, scene)
+                }
         }
 
     /// scene 内に攻撃モーション中の敵が居れば true。stepEnemyTurn が次ステップに進んで
@@ -381,17 +408,22 @@ mod EnemyScene {
                                scene: Scene[NodeTag]): Scene[NodeTag] =
         mapEnemy(enemyId, d -> {attackTargetId = None | d}, scene)
 
-    /// プレイヤー targetId にダメージを与える。`Combat.attackDamage(攻撃者#attack, 防御者#defense)` で
-    /// 素ダメージを算出し、`Combat.damage` で HP 減算 + 死亡判定。
+    /// プレイヤー targetId にダメージを与える。攻撃力は `力(enemy#attack) + 武器の攻撃力` で、
+    /// `Combat.attackDamage(総合攻撃力, 防御者#defense)` から素ダメージを得て
+    /// `Combat.damage` で HP 減算 + 死亡判定。攻撃成立後は武器の `durability` を 1 減らし、
+    /// 0 になったら `weapon = None` に切り替え、ログに「敵N の {武器名} がこわれた」を出す。
     /// ログはスペック準拠で「敵{N} → P{M} に Xダメージ」、撃破時「敵{N} → P{M} を撃破」。
     /// HP=0 なら killedIds に追加して返す（呼び出し側 GameManager が handlePlayerDeath を発火する）。
+    /// 武器なし（None）でここに到達した場合は防御的に何もしない。
     def applyDamageToPlayer(enemyId: Int32, enemy: Data, targetId: Int32,
                              scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \ GameLogger.GameLogger =
-        match PlayerScene.get(targetId, scene) {
-            case None    => (scene, Nil)
-            case Some(player) =>
-                let dmg    = Combat.attackDamage(enemy#resource#attack, player#resource#defense);
+        match (enemy#weapon, PlayerScene.get(targetId, scene)) {
+            case (None, _)        => (scene, Nil)
+            case (_, None)        => (scene, Nil)
+            case (Some(weapon), Some(player)) =>
+                let totalAttack = enemy#resource#attack + weapon#attack;
+                let dmg    = Combat.attackDamage(totalAttack, player#resource#defense);
                 let result = Combat.damage(hp = player#hp, amount = dmg);
                 if (result#isDead) {
                     GameLogger.enemyLog("敵${enemyId} → P${targetId} を撃破")
@@ -400,7 +432,21 @@ mod EnemyScene {
                 };
                 let damaged = PlayerScene.mapPlayer(targetId,
                     playerData -> {hp = result#newHp | playerData}, scene);
-                if (result#isDead) (damaged, targetId :: Nil)
-                else (damaged, Nil)
+                let consumed = Weapon.consume(weapon);
+                if (Option.isEmpty(consumed))
+                    GameLogger.enemyLog("敵${enemyId} の ${weapon#name} がこわれた")
+                else ();
+                let withWeaponUpdate = mapEnemy(enemyId,
+                    d -> {weapon = consumed | d}, damaged);
+                if (result#isDead) (withWeaponUpdate, targetId :: Nil)
+                else (withWeaponUpdate, Nil)
+        }
+
+    /// 指定 id の敵が現在装備している武器を返す。未装備（壊れた後）なら None。
+    /// EnemyAI 等が「攻撃できるか」を判定するために使う。
+    pub def getWeapon(id: Int32, scene: Scene[NodeTag]): Option[UnitCatalog.WeaponResource] =
+        match get(id, scene) {
+            case Some(d) => d#weapon
+            case None    => None
         }
 }

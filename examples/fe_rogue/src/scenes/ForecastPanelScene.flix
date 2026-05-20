@@ -1,0 +1,150 @@
+/// ForecastPanelScene — 攻撃前の戦闘予報パネル
+///
+/// `AttackForecast` フェーズで右上に表示される。武器を選んだ瞬間に
+/// 「攻撃側（味方）」と「防御側（敵）」の HP / 威力 / 命中 を Combat.forecast から
+/// 算出して並べて見せる。Z で攻撃を実行、X/Escape で武器選択に戻る。
+///
+/// ノード構造（visible のとき）:
+///   ForecastPanel (CanvasLayer, layer=3)
+///     └─ panel (Panel, NodeTag.ForecastPanel)
+///           └─ text (Label2D, NodeTag.ForecastText)
+mod ForecastPanelScene {
+
+    use Json.JsonError.JsonError
+    use Json.Path.Path.Root
+
+    def sceneJsonPath(): String = "src/scenes/ForecastPanelScene.scene.json"
+
+    /// fontManifest で登録した name と一致させる（LogScene / WeaponMenuScene と同じ "ui"）
+    def fontName(): String = "ui"
+
+    def rootName(): String = "ForecastPanel"
+    pub def panelName(): String = "panel"
+    pub def textName(): String  = "text"
+
+    pub def rootPath(): NodePath  = rootName() :: Nil
+    pub def panelPath(): NodePath = rootName() :: panelName() :: Nil
+    pub def textPath(): NodePath  = rootName() :: panelName() :: textName() :: Nil
+
+    /// scene.json 内の "tag" 文字列 → NodeTag への変換
+    def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+        match opt {
+            case None                  => Ok(NodeTag.NoTag)
+            case Some("NoTag")         => Ok(NodeTag.NoTag)
+            case Some("ForecastPanel") => Ok(NodeTag.ForecastPanel)
+            case Some("ForecastText")  => Ok(NodeTag.ForecastText)
+            case Some(unknown)         =>
+                Err(JsonError(Root, Set#{"ForecastPanelScene tag (got: ${unknown})"}))
+        }
+
+    /// scene にパネルを追加する
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+        let atlas = GameEngine.Game.getFontAtlas(fontName());
+        SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas, tagParser, scene)
+
+    /// 現フェーズに応じて Panel と Label2D の visible を切り替える（Push モデル）。
+    /// Label2D の visible も Panel と一緒に切り替えるのは、Label2D 自体は描画パス上
+    /// 親の可視性を見ない実装で、`visible=true` のまま放置すると非表示中もテキストが
+    /// 描画されてしまうため。
+    pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let visible = phase == TurnPhase.Phase.AttackForecast;
+        scene
+            |> Scene.mapEngineNode(panelPath(), node -> match node {
+                case EngineNode.PanelWithState(panel, tag) =>
+                    EngineNode.PanelWithState(CanvasItem.setVisible(visible, panel), tag)
+                case other => other
+            })
+            |> Scene.mapEngineNode(textPath(), node -> match node {
+                case EngineNode.Label2DWithState(label, tag) =>
+                    EngineNode.Label2DWithState(CanvasItem.setVisible(visible, label), tag)
+                case other => other
+            })
+
+    /// `AttackForecast` フェーズに入った瞬間にだけ呼ばれて、予報テキストを Label に流し込む。
+    /// `GameManager.confirmAttackWithWeapon`（武器確定でフェーズ遷移する関数）から
+    /// ワンショットで呼ぶ。毎フレーム実行しないので、選択中の盤面で軽量に動く。
+    pub def setForecastText(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
+        let text = buildForecastText(scene);
+        Scene.mapEngineNode(textPath(), node -> match node {
+            case EngineNode.Label2DWithState(label, NodeTag.ForecastText) =>
+                EngineNode.Label2DWithState(Label2D.setText(text, label), NodeTag.ForecastText)
+            case other => other
+        }, scene)
+
+    /// 選択中プレイヤー / 攻撃対象敵 / 選択中武器の組から予報テキストを組み立てる。
+    /// 反撃が成立する（敵が生存・隣接・武器装備中）なら敵側の予報も出す。
+    /// 該当条件が揃わなければ空文字を返す（visible でないフェーズで描画されない想定）。
+    def buildForecastText(scene: Scene[NodeTag]): String \ SelectedPlayer.State =
+        match SelectedPlayer.State.get()#id {
+            case None     => ""
+            case Some(pid) =>
+                match PlayerScene.get(pid, scene) {
+                    case None         => ""
+                    case Some(player) =>
+                        match player#attackTargetId {
+                            case None         => ""
+                            case Some(eid) =>
+                                match EnemyScene.get(eid, scene) {
+                                    case None        => ""
+                                    case Some(enemy) =>
+                                        let weaponIdx = Option.getWithDefault(0, player#selectedWeaponIdx);
+                                        match List.nth(weaponIdx, player#weapons) {
+                                            case None        => ""
+                                            case Some(weapon) =>
+                                                formatForecast(player, weapon, enemy)
+                                        }
+                                }
+                        }
+                }
+        }
+
+    /// 予報文字列の整形。1 行目はヘッダ、以降は HP / 威力 / 命中 を 2 列で並べる。
+    /// 反撃可能（敵が武器を持っている）なら敵側の威力/命中も出す。範囲外なら "--" を出す。
+    def formatForecast(player: PlayerScene.Data, weapon: UnitCatalog.WeaponResource,
+                        enemy: EnemyScene.Data): String =
+        let playerAtk = player#resource#attack + weapon#attack;
+        let playerForecast = Combat.forecast(
+            {attack = playerAtk, speed = player#resource#speed},
+            {hp = enemy#hp, defense = enemy#resource#defense, speed = enemy#resource#speed});
+        let enemyCols = formatEnemyColumns(player, enemy);
+        let header   = padRight("味方", 10) ++ enemyCols#header;
+        let hpLine   = padRight("HP   ${player#hp}", 10) ++ enemyCols#hp;
+        let atkLine  = padRight("威力 ${playerForecast#damage}", 10) ++ enemyCols#atk;
+        let hitLine  = padRight("命中 ${playerForecast#hit}%", 10) ++ enemyCols#hit;
+        String.unlines(header :: hpLine :: atkLine :: hitLine :: Nil)
+
+    /// 敵側の列。武器を装備していれば反撃可として通常表示、
+    /// 武器無しなら反撃不可として威力/命中を "--" 表示する。
+    /// 直接攻撃しか存在しない v1 では「攻撃を受ける位置に居る = 反撃の射程内」なので
+    /// 射程計算は省略している。
+    def formatEnemyColumns(player: PlayerScene.Data,
+                            enemy: EnemyScene.Data): {header = String, hp = String, atk = String, hit = String} =
+        let header = "敵";
+        let hpStr  = "HP   ${enemy#hp}";
+        match enemy#weapon {
+            case None          => {header = header, hp = hpStr, atk = "威力 --", hit = "命中 --"}
+            case Some(eWeapon) =>
+                let enemyAtk = enemy#resource#attack + eWeapon#attack;
+                let enemyForecast = Combat.forecast(
+                    {attack = enemyAtk, speed = enemy#resource#speed},
+                    {hp = player#hp, defense = player#resource#defense, speed = player#resource#speed});
+                {header = header, hp = hpStr,
+                 atk = "威力 ${enemyForecast#damage}",
+                 hit = "命中 ${enemyForecast#hit}%"}
+        }
+
+    /// 右側に半角スペースで埋めて指定幅にする（全角は 1 文字 2 幅で扱う簡易版）。
+    /// 列をきれいに揃えるためのヘルパ。
+    def padRight(text: String, width: Int32): String =
+        let len = visualWidth(text);
+        if (len >= width) text
+        else text ++ String.repeat(width - len, " ")
+
+    /// 表示幅の概算: ASCII は 1、それ以外は 2 として数える。完全ではないが
+    /// CJK と半角の混在で列を概ね揃えるための簡易計算。
+    def visualWidth(s: String): Int32 =
+        String.toList(s)
+            |> List.foldLeft(acc -> ch ->
+                if (Char.toBmpCodePoint(ch) < 0x80) acc + 1 else acc + 2,
+                0)
+}

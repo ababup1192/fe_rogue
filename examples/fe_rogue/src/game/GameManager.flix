@@ -87,8 +87,10 @@ mod GameManager {
             |> dispatchAnimationEvents
             |> commonEpilogue(dt)
 
-    /// 通常入力フェーズ（PlayerCursor / PlayerMoving / PlayerAttack）のフレーム:
-    /// 入力 → 物理 → Tween / Animation / 完了イベント発火 → エピローグ。
+    /// 通常入力フェーズ（PlayerCursor / PlayerMoving / WeaponSelect / PlayerAttack）の
+    /// フレーム: 入力 → メニューイベント → process（WeaponMenu の inventory 反映）→
+    /// 物理 → Tween / Animation / 完了イベント発火 → 武器メニュー visibility 反映
+    /// → エピローグ。
     def tickInputFrame(dt: Duration.Duration, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
                                BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
@@ -98,13 +100,26 @@ mod GameManager {
                                Pacing.State} =
         scene
             |> GameEngine.handleInput
+            |> GameEngine.handleMenus
+            |> GameEngine.process(delta = dt, paused = false)
             |> GameEngine.physicsProcess(delta = dt, paused = false,
                                           gravity = Vec2.zero())
             |> Tween.tickAll(dt)
             |> AnimationPlayer.tickAll(dt)
             |> dispatchAnimationEvents
             |> tickPlayerAttackHold
+            |> applyWeaponMenuVisibility
             |> commonEpilogue(dt)
+
+    /// 現フェーズに応じた WeaponMenu / ForecastPanel の visible/focused を毎フレーム適用する。
+    /// Push モデルではなく毎フレーム適用にしているのは、フェーズ遷移を行う関数が
+    /// 複数箇所に散らばっていて漏れやすいため。コストは各 UI ノードの map で軽量。
+    def applyWeaponMenuVisibility(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        let phase = TurnPhase.State.get();
+        scene
+            |> WeaponMenuScene.applyVisibility(phase)
+            |> ForecastPanelScene.applyVisibility(phase)
 
     // ════════════════════════════════════════════════════════
     // 入力ハンドラ — TurnRules.decide に判断を委譲し、結果を Scene に反映する
@@ -163,8 +178,8 @@ mod GameManager {
                 applyEnterAttackPhase(scene)
             case TurnRules.Transition.MovingCancel               =>
                 applyCancelMove(scene)
-            case TurnRules.Transition.AttackHit(attackerId, defenderId, defX, defY) =>
-                applyAttackHit(attackerId, defenderId, {x = defX, y = defY}, scene)
+            case TurnRules.Transition.OpenWeaponMenu(attackerId, defenderId, defX, defY) =>
+                applyOpenWeaponMenu(attackerId, defenderId, {x = defX, y = defY}, scene)
             case TurnRules.Transition.AttackSkip                 =>
                 commitWaitedAndAdvance(scene)
         }
@@ -198,8 +213,8 @@ mod GameManager {
             |> FlagScene.plant(target)
             |> CursorScene.setVisible(false)
 
-    /// PlayerMoving + Z: 攻撃フェーズへ。選択は維持し、青マスを消して赤マスを出す。
-    /// カーソルを選択中駒の位置にスナップする。
+    /// PlayerMoving + Z: 攻撃ターゲット選択フェーズへ。選択は維持し、青マスを消して
+    /// 赤マスを出す。カーソルを選択中駒の位置にスナップする。
     def applyEnterAttackPhase(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State} =
@@ -209,6 +224,78 @@ mod GameManager {
             |> PlayerAttackRangeScene.show
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToPlayer
+
+    /// PlayerAttack + Z（敵に乗ったカーソル）: 武器選択ウィンドウを開く。
+    /// 攻撃対象 id を Data#attackTargetId に記録し、WeaponSelect フェーズに遷移する。
+    /// 赤マス / カーソルは消さない（メニューを閉じたとき即座に target 選択に戻せるよう）。
+    def applyOpenWeaponMenu(attackerId: Int32, defenderId: Int32,
+                              _defenderPos: {x = Int32, y = Int32},
+                              scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.WeaponSelect);
+        PlayerScene.setAttackTargetId(attackerId, defenderId, scene)
+
+    /// WeaponMenuScene.onWeaponConfirmed から呼ばれる: 選んだ武器 idx を Data に書き込み、
+    /// `AttackForecast` フェーズに進む（戦闘予報パネルを表示）。
+    /// 同時に予報テキストを Label2D に流し込んでおく（フェーズ中に再計算しない）。
+    /// 実際の攻撃モーション開始は `confirmAttackFromForecast` で行う。
+    pub def confirmAttackWithWeapon(weaponIdx: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+        TurnPhase.State.put(TurnPhase.Phase.AttackForecast);
+        match SelectedPlayer.State.get()#id {
+            case None             => scene
+            case Some(attackerId) =>
+                scene
+                    |> PlayerScene.setSelectedWeaponIdx(attackerId, weaponIdx)
+                    |> ForecastPanelScene.setForecastText
+        }
+
+    /// AttackForecast + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
+    /// 攻撃モーションの完了で `applyAttackHit` 経由でダメージが適用され、
+    /// その後 `commitWaitedAndAdvance` （or 反撃）に流れる既存パイプラインに乗る。
+    pub def confirmAttackFromForecast(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger,
+                              TurnPhase.State, SelectedPlayer.State} =
+        match SelectedPlayer.State.get()#id {
+            case None         => scene
+            case Some(attackerId) =>
+                match PlayerScene.get(attackerId, scene) {
+                    case None         => scene
+                    case Some(player) =>
+                        match player#attackTargetId {
+                            case None             => scene
+                            case Some(defenderId) =>
+                                match EnemyScene.get(defenderId, scene) {
+                                    case None        => scene
+                                    case Some(enemy) =>
+                                        TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
+                                        applyAttackHit(attackerId, defenderId, enemy#gridPos, scene)
+                                }
+                        }
+                }
+        }
+
+    /// AttackForecast + X: 戦闘予報をキャンセルして WeaponSelect に戻る（武器選び直し）。
+    /// 選択中武器 index はクリアして再選択を促す（同じ武器をすぐ選び直しても OK）。
+    pub def cancelForecast(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+        TurnPhase.State.put(TurnPhase.Phase.WeaponSelect);
+        match SelectedPlayer.State.get()#id {
+            case None             => scene
+            case Some(attackerId) => PlayerScene.clearSelectedWeaponIdx(attackerId, scene)
+        }
+
+    /// WeaponMenuScene.onWeaponCancelled / InputHandler の X 押下から呼ばれる:
+    /// 武器選択をキャンセルして PlayerAttack フェーズに戻る（赤マス・カーソルはそのまま）。
+    /// `attackTargetId` をクリアして、別の敵を選び直せるようにする。
+    pub def closeWeaponMenu(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+        TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
+        match SelectedPlayer.State.get()#id {
+            case None             => scene
+            case Some(attackerId) => PlayerScene.clearAttackTargetId(attackerId, scene)
+        }
 
     /// PlayerMoving + X: 選択駒を **選択時の位置に瞬間移動で戻し**、選択解除して PlayerCursor。
     /// キャンセル → 再選択の繰り返しで「実質ターン制限なしの自由移動」を防ぐ。
@@ -237,12 +324,13 @@ mod GameManager {
         GameLogger.playerLog("味方${attackerId}の攻撃");
         PlayerScene.startAttack(attackerId, defenderId, defenderPos, scene)
 
-    /// PlayerAttack を抜けるときの共通処理:
+    /// PlayerAttack / WeaponSelect を抜けるときの共通処理:
     ///   1) 選択中駒を waited に（灰色 modulate）
     ///   2) 選択クリア
     ///   3) 残ったアクティブが居れば PlayerCursor に戻り、次セレクト準備
     ///      居なければ goToEnemyTurn で敵ターン開始
-    def commitWaitedAndAdvance(scene: Scene[NodeTag]):
+    /// WeaponMenuScene からも呼ばれるため `pub`。
+    pub def commitWaitedAndAdvance(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
@@ -472,30 +560,74 @@ mod GameManager {
             case Some(AnimEvent.Tag.AttackLunge) =>
                 match PlayerScene.idFromPath(event#owner) {
                     case Some(playerId) =>
-                        // 味方攻撃完了 → attackTargetId をクリア。
-                        // ここで「狙った敵が瀕死 (death_blink 中)」なら、即フェーズ遷移
-                        // すると camera が次の味方へパンしてしまい kill 演出を見逃す。
-                        // → PlayerAttackHold + Pacing.hold(700ms) で camera を据え置き、
-                        //    `tickPlayerAttackHold` が hold 終了時に commitWaitedAndAdvance
-                        //    を呼ぶ。倒していない攻撃なら従来通り即遷移する。
+                        // 味方攻撃完了 → 結果に応じて分岐:
+                        //   1) 狙った敵が瀕死 (death_blink 中) なら kill 演出を見せる
+                        //      → PlayerAttackHold + Pacing.hold(700ms)、後で commit
+                        //   2) 敵が生存 + 隣接 + 武器あり → 反撃モーション開始
+                        //   3) それ以外（敵生存だが反撃不能）→ そのまま commit
                         let killed = killedTargetEnemyId(playerId, scene);
-                        let cleared = PlayerScene.clearAttackTarget(playerId, scene);
                         match killed {
                             case Some(_) =>
+                                let cleared = PlayerScene.clearAttackTarget(playerId, scene);
                                 TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
                                 Pacing.State.hold(700 |> Duration.millis);
                                 cleared
-                            case None    => commitWaitedAndAdvance(cleared)
+                            case None    =>
+                                match counterAttackerForPlayer(playerId, scene) {
+                                    case Some(enemyId) =>
+                                        // 反撃: 味方の attackTargetId をクリアし、
+                                        // 敵の AttackLunge を発火する。
+                                        // 完了は applyFinishedEvent の EnemyScene 分岐で受ける。
+                                        let cleared = PlayerScene.clearAttackTarget(playerId, scene);
+                                        match PlayerScene.get(playerId, cleared) {
+                                            case None         => commitWaitedAndAdvance(cleared)
+                                            case Some(player) =>
+                                                GameLogger.enemyLog("敵${enemyId} の反撃");
+                                                EnemyScene.startAttack(enemyId, playerId,
+                                                                          player#gridPos, cleared)
+                                        }
+                                    case None =>
+                                        let cleared = PlayerScene.clearAttackTarget(playerId, scene);
+                                        commitWaitedAndAdvance(cleared)
+                                }
                         }
                     case None =>
                         match EnemyScene.idFromPath(event#owner) {
                             case Some(enemyId) =>
-                                EnemyScene.clearAttackTarget(enemyId, scene)
+                                let cleared = EnemyScene.clearAttackTarget(enemyId, scene);
+                                // 敵の AttackLunge 完了。フェーズが PlayerAttack のままなら
+                                // これは「味方攻撃に対する反撃」の完了 → commit。
+                                // EnemyTurn なら通常の敵ターン中の攻撃なので既存通り何もしない。
+                                if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttack)
+                                    commitWaitedAndAdvance(cleared)
+                                else cleared
                             case None => scene
                         }
                 }
             // Tag.AttackHit は method 専用、Tag.Snag は finished で何もしない
             case _ => scene
+        }
+
+    /// 味方の攻撃完了時に「敵が反撃するか」を判定する純粋関数寄りのヘルパ。
+    /// 条件: 攻撃対象の敵が生存（isDying でない・現存する）かつ武器装備中。
+    /// 直接攻撃しか存在しない v1 では、攻撃された時点で互いに射程内に居る前提なので
+    /// 射程計算は不要 = 同じ「直接攻撃の武器」を持っていれば反撃できる。
+    /// 条件を満たすなら反撃する敵 id を返し、満たさないなら None。
+    def counterAttackerForPlayer(playerId: Int32, scene: Scene[NodeTag]): Option[Int32] =
+        match PlayerScene.get(playerId, scene) {
+            case None         => None
+            case Some(player) =>
+                match player#attackTargetId {
+                    case None      => None
+                    case Some(eid) =>
+                        match EnemyScene.get(eid, scene) {
+                            case None        => None
+                            case Some(enemy) =>
+                                if (enemy#isDying) None
+                                else if (Option.isEmpty(enemy#weapon)) None
+                                else Some(eid)
+                        }
+                }
         }
 
     /// `playerId` の現 `attackTargetId` を読み、その敵が `isDying` なら id を返す。
@@ -576,4 +708,6 @@ mod GameManager {
             |> FlagScene.add            // 自動移動先マーカー（初期は非表示）
             |> CameraScene.add
             |> LogScene.add
+            |> WeaponMenuScene.add      // 武器選択ウィンドウ（初期は非表示）
+            |> ForecastPanelScene.add   // 戦闘予報パネル（初期は非表示）
 }

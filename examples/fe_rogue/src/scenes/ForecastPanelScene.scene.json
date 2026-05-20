@@ -1,0 +1,34 @@
+{
+  "type": "CanvasLayer",
+  "name": "ForecastPanel",
+  "layer": 3,
+  "pos": [0, 0],
+  "rotation": 0,
+  "scale": [1, 1],
+  "children": [
+    {
+      "type": "Panel",
+      "name": "panel",
+      "tag": "ForecastPanel",
+      "pos": [58, 2],
+      "size": [68, 38],
+      "background": {"r": 0, "g": 0, "b": 0},
+      "backgroundAlpha": 0.85,
+      "border": {"r": 1, "g": 1, "b": 1},
+      "borderWidth": 1,
+      "zIndex": 0,
+      "visible": false,
+      "children": [
+        {
+          "type": "Label2D",
+          "name": "text",
+          "tag": "ForecastText",
+          "pos": [3, 2],
+          "fontSize": 4,
+          "visible": false,
+          "text": "-"
+        }
+      ]
+    }
+  ]
+}
