@@ -3,17 +3,26 @@
     "noviceStaff": {
       "attack": 0,
       "durability": 30,
-      "name": "みならいのつえ"
+      "name": "みならいのつえ",
+      "range": { "min": 1, "max": 1 }
+    },
+    "trainingBow": {
+      "attack": 0,
+      "durability": 25,
+      "name": "くんれんゆみ",
+      "range": { "min": 2, "max": 2 }
     },
     "trainingSpear": {
       "attack": 0,
       "durability": 41,
-      "name": "くんれんやり"
+      "name": "くんれんやり",
+      "range": { "min": 1, "max": 1 }
     },
     "trainingSword": {
       "attack": 0,
       "durability": 41,
-      "name": "くんれんけん"
+      "name": "くんれんけん",
+      "range": { "min": 1, "max": 1 }
     }
   }
 }

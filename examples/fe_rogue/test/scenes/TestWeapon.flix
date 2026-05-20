@@ -54,4 +54,56 @@ mod TestWeapon {
         let totalAttack = unit#attack + weapon#attack;
         let dmg = Combat.attackDamage(totalAttack, 5);
         Assert.assertEq(expected = 0, dmg)
+
+    // ════════════════════════════════════════════════════════
+    // Weapon.manhattan / Weapon.canReach — 反撃の射程判定
+    // ════════════════════════════════════════════════════════
+
+    /// 隣接 (距離 1) の剣 {min:1, max:1} は届く
+    @Test
+    def testCanReachAdjacentSword(): Unit \ Assert =
+        let sword: UnitCatalog.WeaponResource =
+            {name = "sword", attack = 1, durability = 10,
+             range = {min = 1, max = 1}};
+        Assert.assertEq(expected = true, Weapon.canReach(1, sword))
+
+    /// 隣接 (距離 1) を弓 {min:2, max:2} は届かない → 反撃不可ケース
+    @Test
+    def testCanReachBowCannotCounterAdjacent(): Unit \ Assert =
+        let bow: UnitCatalog.WeaponResource =
+            {name = "bow", attack = 1, durability = 10,
+             range = {min = 2, max = 2}};
+        Assert.assertEq(expected = false, Weapon.canReach(1, bow))
+
+    /// 距離 1 の剣 {min:1, max:1} は 2 マス先には届かない (= 弓に反撃できない)
+    @Test
+    def testCanReachSwordCannotCounterBow(): Unit \ Assert =
+        let sword: UnitCatalog.WeaponResource =
+            {name = "sword", attack = 1, durability = 10,
+             range = {min = 1, max = 1}};
+        Assert.assertEq(expected = false, Weapon.canReach(2, sword))
+
+    /// 手槍 {min:1, max:2} は隣接にも 2 マス先にも届く
+    @Test
+    def testCanReachJavelinBoth(): Unit \ Assert =
+        let javelin: UnitCatalog.WeaponResource =
+            {name = "javelin", attack = 1, durability = 10,
+             range = {min = 1, max = 2}};
+        Assert.assertEq(expected = (true, true, false),
+                        (Weapon.canReach(1, javelin),
+                         Weapon.canReach(2, javelin),
+                         Weapon.canReach(3, javelin)))
+
+    /// 斜め (1,1) のマンハッタン距離は 2
+    @Test
+    def testManhattanDiagonal(): Unit \ Assert =
+        let a = {x = 0, y = 0};
+        let b = {x = 1, y = 1};
+        Assert.assertEq(expected = 2, Weapon.manhattan(a, b))
+
+    /// 同セルは距離 0
+    @Test
+    def testManhattanSameCell(): Unit \ Assert =
+        let a = {x = 3, y = 5};
+        Assert.assertEq(expected = 0, Weapon.manhattan(a, a))
 }

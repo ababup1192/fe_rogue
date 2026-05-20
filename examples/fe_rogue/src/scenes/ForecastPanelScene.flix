@@ -113,24 +113,29 @@ mod ForecastPanelScene {
         let hitLine  = padRight("命中 ${playerForecast#hit}%", 10) ++ enemyCols#hit;
         String.unlines(header :: hpLine :: atkLine :: hitLine :: Nil)
 
-    /// 敵側の列。武器を装備していれば反撃可として通常表示、
-    /// 武器無しなら反撃不可として威力/命中を "--" 表示する。
-    /// 直接攻撃しか存在しない v1 では「攻撃を受ける位置に居る = 反撃の射程内」なので
-    /// 射程計算は省略している。
+    /// 敵側の列。武器を装備していて かつ 敵の武器射程が「敵 → 味方」距離に届くときだけ
+    /// 反撃可として威力/命中を出す。武器なし or 射程外なら "--" 表示。
+    /// 例: 味方が射程 2 の弓で 2 マス先の敵 (剣 range=1-1) を攻撃 → 敵は反撃不能。
     def formatEnemyColumns(player: PlayerScene.Data,
                             enemy: EnemyScene.Data): {header = String, hp = String, atk = String, hit = String} =
         let header = "敵";
         let hpStr  = "HP   ${enemy#hp}";
+        let unable = {header = header, hp = hpStr,
+                       atk = "威力 --", hit = "命中 --"};
         match enemy#weapon {
-            case None          => {header = header, hp = hpStr, atk = "威力 --", hit = "命中 --"}
+            case None          => unable
             case Some(eWeapon) =>
-                let enemyAtk = enemy#resource#attack + eWeapon#attack;
-                let enemyForecast = Combat.forecast(
-                    {attack = enemyAtk, speed = enemy#resource#speed},
-                    {hp = player#hp, defense = player#resource#defense, speed = player#resource#speed});
-                {header = header, hp = hpStr,
-                 atk = "威力 ${enemyForecast#damage}",
-                 hit = "命中 ${enemyForecast#hit}%"}
+                let d = Weapon.manhattan(enemy#gridPos, player#gridPos);
+                if (not Weapon.canReach(d, eWeapon)) unable
+                else {
+                    let enemyAtk = enemy#resource#attack + eWeapon#attack;
+                    let enemyForecast = Combat.forecast(
+                        {attack = enemyAtk, speed = enemy#resource#speed},
+                        {hp = player#hp, defense = player#resource#defense, speed = player#resource#speed});
+                    {header = header, hp = hpStr,
+                     atk = "威力 ${enemyForecast#damage}",
+                     hit = "命中 ${enemyForecast#hit}%"}
+                }
         }
 
     /// 右側に半角スペースで埋めて指定幅にする（全角は 1 文字 2 幅で扱う簡易版）。

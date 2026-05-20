@@ -192,11 +192,11 @@ mod Game {
                     players = PlayerScene.snapshotSpawns(scene)
                 });
                 // BGM は控えめに、SE は半分で鳴らす
-                AudioStreamPlayer.setVolume("bgm",    0.1f32);
+                // AudioStreamPlayer.setVolume("bgm",    0.1f32);
                 AudioStreamPlayer.setVolume("damage", 0.5f32);
                 AudioStreamPlayer.setVolume("bonus",  0.5f32);
                 // BGM はゲーム開始時に再生（looping = true で曲が終わってもループする）
-                AudioStreamPlayer.play("bgm");
+                // AudioStreamPlayer.play("bgm");
                 GameLogger.playerLog("T1 味方のターン");
                 gameLoop(sceneRef, scene)
             } with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽

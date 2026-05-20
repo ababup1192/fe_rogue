@@ -1,8 +1,8 @@
 /// PlayerAttackRangeScene — 攻撃フェーズ中に味方の射程を赤色で可視化する
 ///
 /// `EnemyRangeScene` のミラー実装で、起点が「ホバー中の敵」ではなく「味方」になる。
-/// 直接攻撃 (range = 1) では味方の上下左右 4 マスを赤く表示する。
-/// `computeAttackCells` を差し替えれば間接攻撃（range > 1 の十字）にも拡張できる。
+/// 射程は装備中武器の `WeaponResource#range` から取る。range = 1 なら隣接 4 マス、
+/// range = 2 なら十字に 2 マスずつ伸びる（くんれんゆみ等の間接攻撃）。
 ///
 /// ノード構造（出ているとき）:
 ///   PlayerAttackRange (Marker2D, NodeTag.PlayerAttackRange({cells}))
@@ -46,18 +46,14 @@ mod PlayerAttackRangeScene {
     /// MoveRange / EnemyRange と同じ階層。Player Sprite (= 10) より下。
     def tileZIndex(): Int32 = 1
 
-    /// 直接攻撃の射程（マス）。FE 流の隣接 1 マス。
-    /// 武器ごとに射程を変えたくなったら `show` 引数化するか、ここを read する側を増やす。
-    pub def directRange(): Int32 = 1
-
     // ────────────────────────────────────────────────────────
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
     /// 既存の PlayerAttackRange ノードがあれば取り除き、**選択中プレイヤー** の現在位置
-    /// origin に対して射程 = `directRange()` で赤マスを敷き直す。
+    /// origin に対して装備中武器の `range` で赤マスを敷き直す。
     /// 未選択時は cleared を返す（赤マス表示なし）。
-    /// 選択中プレイヤーの武器が壊れている（`weapon = None`）場合は cells を空にして
+    /// 選択中プレイヤーの武器が壊れている（`weapons = Nil`）場合は cells を空にして
     /// 親ノードだけ追加する。これにより PlayerAttack フェーズに入ってもカーソルが
     /// 敵に乗らず、Z 押下で AttackHit が発火しない（X でスキップして抜ける）。
     pub def show(scene: Scene[NodeTag]):
@@ -69,13 +65,13 @@ mod PlayerAttackRangeScene {
                 match PlayerScene.get(id, cleared) {
                     case None    => cleared
                     case Some(d) =>
-                        let cells =
-                            if (List.isEmpty(d#weapons)) Nil  // 武器なし → 射程ゼロ
-                            else {
+                        let cells = match List.head(d#weapons) {
+                            case None    => Nil  // 武器なし → 射程ゼロ
+                            case Some(w) =>
                                 let origin = d#gridPos;
                                 let layer  = MapScene.getMapLayer(cleared);
-                                computeAttackCells(origin, directRange(), layer)
-                            };
+                                computeAttackCells(origin, w#range, layer)
+                        };
                         cleared
                             |> addParent(cells)
                             |> addTileChildren(cells)
@@ -86,22 +82,34 @@ mod PlayerAttackRangeScene {
     pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.removeAt(attackRangePath(), scene)
 
-    /// 範囲計算の純粋関数。**間接攻撃に拡張するときはここを差し替える**。
-    /// 現状は origin から上下左右 4 方向に距離 1..range（inclusive）の十字パターンを出す。
-    /// floor タイル以外（壁・voids）は除外して見た目を整える。
-    pub def computeAttackCells(origin: {x = Int32, y = Int32}, range: Int32,
-                                layer: TileMapLayer): List[{x = Int32, y = Int32}] =
-        if (range <= 0) Nil
+    /// 範囲計算の純粋関数。
+    /// origin から **マンハッタン距離** `range#min..range#max` (inclusive) にある全セルを
+    /// 列挙する (= 菱形パターン)。斜め (1,1) もマンハッタン距離 2 として含まれる。
+    /// 例:
+    ///   `{min=1, max=1}` → 隣接 4 セル (剣・槍)
+    ///   `{min=2, max=2}` → 距離 2 の 8 セル (弓: 上下左右 2 マス先 + 斜め 1 マス)
+    ///   `{min=1, max=2}` → 距離 1〜2 の 12 セル (手槍・手斧)
+    /// 地形フィルタはかけない: 壁・味方・床いずれの上にも赤マスを描いて「武器の届く範囲」
+    /// を一貫表示する (実際に攻撃できるのは敵セルだけで、その判定は TurnRules 側)。
+    /// `layer` 引数は将来の terrain-aware フィルタ用に残してある (現状 unused)。
+    pub def computeAttackCells(origin: {x = Int32, y = Int32},
+                                range: UnitCatalog.WeaponRange,
+                                _layer: TileMapLayer): List[{x = Int32, y = Int32}] =
+        let lo = Int32.max(1, range#min);
+        let hi = range#max;
+        if (hi < lo) Nil
         else
-            let dists = List.range(1, range + 1);
-            let candidates = List.flatMap(n ->
-                ({x = origin#x,     y = origin#y - n}: {x = Int32, y = Int32})
-                    :: ({x = origin#x,     y = origin#y + n}: {x = Int32, y = Int32})
-                    :: ({x = origin#x - n, y = origin#y}: {x = Int32, y = Int32})
-                    :: ({x = origin#x + n, y = origin#y}: {x = Int32, y = Int32})
-                    :: Nil,
-                dists);
-            List.filter(c -> TileMapLayer.isFloor(c, layer), candidates)
+            let coords = List.range(-hi, hi + 1);
+            List.flatMap(dx ->
+                List.foldRight(dy -> acc -> {
+                    let d = Int32.abs(dx) + Int32.abs(dy);
+                    if (d >= lo and d <= hi) {
+                        let cell: {x = Int32, y = Int32} =
+                            {x = origin#x + dx, y = origin#y + dy};
+                        cell :: acc
+                    } else acc
+                }, Nil, coords),
+                coords)
 
     // ────────────────────────────────────────────────────────
     // 内部: ノード追加
@@ -158,4 +166,18 @@ mod PlayerAttackRangeScene {
             case Some(NodeTag.PlayerAttackRange(data)) => data#cells
             case _ => Nil
         }
+
+    /// 赤マス内に居る「生きている敵」の Data リストを reading order (y 昇順 → x 昇順)
+    /// で返す。`PlayerAttack` フェーズでカーソルを敵間でサイクルさせる用。
+    /// 死亡演出中 (`isDying`) と HP 0 以下の敵は除外する。
+    pub def targetsInRange(scene: Scene[NodeTag]): List[EnemyScene.Data] =
+        let inRangeCells = cells(scene);
+        EnemyScene.getAll(scene)
+            |> List.filter(d ->
+                not d#isDying
+                and d#hp > 0
+                and List.exists(c ->
+                    c#x == d#gridPos#x and c#y == d#gridPos#y,
+                    inRangeCells))
+            |> List.sortBy(d -> (d#gridPos#y, d#gridPos#x))
 }

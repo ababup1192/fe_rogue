@@ -70,10 +70,20 @@ mod UnitCatalog {
     /// `name` は表示用の和名（例: "くんれんやり"）。`attack` は武器の攻撃力ボーナス、
     /// `durability` は耐久度。攻撃するたびに 1 減り、0 になると武器が壊れて
     /// 装備者の `weapon` は `None` になる（= 攻撃できなくなる）。
+    /// `range` は攻撃可能な距離の範囲 (`min..max` inclusive)。`min == max == 1` で
+    /// 直接攻撃 (剣・槍・杖)、`min == 2 && max == 2` で 2 マス先のみ (弓)、
+    /// `min == 1 && max == 2` で隣接 + 2 マス先 (手槍・手斧) などを表現する。
     pub type alias WeaponResource = {
         name       = String,
         attack     = Int32,
-        durability = Int32
+        durability = Int32,
+        range      = WeaponRange
+    }
+
+    /// 攻撃可能な距離の範囲。`min..max` inclusive のマンハッタン距離で判定する。
+    pub type alias WeaponRange = {
+        min = Int32,
+        max = Int32
     }
 
     /// 見た目情報。後でテクスチャ単独 Resource に切り出す余地を残し nested に。
@@ -185,7 +195,7 @@ mod UnitCatalog {
 
     /// `WeaponResource` のフィールド名集合。`weapons.schema.json` との整合性検査に使う。
     pub def expectedWeaponFields(): Set[String] =
-        Set#{"name", "attack", "durability"}
+        Set#{"name", "attack", "durability", "range"}
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -333,10 +343,21 @@ mod UnitCatalogCodec {
             nameJ  <- Map.get("name", obj);
             atkJ   <- Map.get("attack", obj);
             durJ   <- Map.get("durability", obj);
+            rngJ   <- Map.get("range", obj);
             name   <- expectString(nameJ);
             atk    <- expectInt(atkJ);
-            dur    <- expectInt(durJ)
-        ) yield ({name = name, attack = atk, durability = dur}: WeaponResource)
+            dur    <- expectInt(durJ);
+            rng    <- decodeRange(rngJ)
+        ) yield ({name = name, attack = atk, durability = dur, range = rng}: WeaponResource)
+
+    def decodeRange(element: JsonElement): Option[UnitCatalog.WeaponRange] =
+        forM (
+            obj    <- expectObject(element);
+            minJ   <- Map.get("min", obj);
+            maxJ   <- Map.get("max", obj);
+            mn     <- expectInt(minJ);
+            mx     <- expectInt(maxJ)
+        ) yield ({min = mn, max = mx}: UnitCatalog.WeaponRange)
 
     def decodeSprite(element: JsonElement): Option[SpriteResource] =
         forM (

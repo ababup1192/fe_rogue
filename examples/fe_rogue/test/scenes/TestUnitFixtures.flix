@@ -43,18 +43,20 @@ mod TestUnitFixtures {
         }
     }
 
-    /// テスト用 WeaponResource。中庸な攻撃力 2 / 耐久度 10。
+    /// テスト用 WeaponResource。中庸な攻撃力 2 / 耐久度 10 / 直接攻撃 (range 1-1)。
     /// 攻撃力や耐久度を変えたい時は `testWeaponFull` を使う。
     pub def testWeapon(): UnitCatalog.WeaponResource = {
         name       = "test-weapon",
         attack     = 2,
-        durability = 10
+        durability = 10,
+        range      = { min = 1, max = 1 }
     }
 
-    /// 攻撃力 / 耐久度を明示したい時用のテスト用 WeaponResource。
+    /// 攻撃力 / 耐久度を明示したい時用のテスト用 WeaponResource。射程は 1-1 固定。
     pub def testWeaponFull(attack: Int32, durability: Int32): UnitCatalog.WeaponResource = {
         name       = "test-weapon",
         attack     = attack,
-        durability = durability
+        durability = durability,
+        range      = { min = 1, max = 1 }
     }
 }

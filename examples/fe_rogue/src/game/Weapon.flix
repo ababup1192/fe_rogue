@@ -17,4 +17,14 @@ mod Weapon {
         let newDur = weapon#durability - 1;
         if (newDur <= 0) None
         else Some({durability = newDur | weapon})
+
+    /// 2 セル間のマンハッタン距離（FE 流の十字 + 斜め判定）。
+    /// 反撃や射程内判定に共通で使う。
+    pub def manhattan(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Int32 =
+        Int32.abs(a#x - b#x) + Int32.abs(a#y - b#y)
+
+    /// `weapon` が `distance` (マンハッタン距離) の相手に届くか。
+    /// `min..max` inclusive で判定する。
+    pub def canReach(distance: Int32, weapon: WeaponResource): Bool =
+        distance >= weapon#range#min and distance <= weapon#range#max
 }

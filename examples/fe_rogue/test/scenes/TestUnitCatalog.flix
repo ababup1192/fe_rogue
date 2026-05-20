@@ -41,8 +41,8 @@ mod TestUnitCatalog {
     def sampleWeaponsJson(): String = String.unlines(
         "{" ::
         "  \"weapons\": {" ::
-        "    \"trainingSpear\": { \"name\": \"trainingSpear\", \"attack\": 2, \"durability\": 41 }," ::
-        "    \"trainingSword\": { \"name\": \"trainingSword\", \"attack\": 3, \"durability\": 41 }" ::
+        "    \"trainingSpear\": { \"name\": \"trainingSpear\", \"attack\": 2, \"durability\": 41, \"range\": { \"min\": 1, \"max\": 1 } }," ::
+        "    \"trainingSword\": { \"name\": \"trainingSword\", \"attack\": 3, \"durability\": 41, \"range\": { \"min\": 1, \"max\": 2 } }" ::
         "  }" ::
         "}" :: Nil)
 
@@ -113,6 +113,19 @@ mod TestUnitCatalog {
                     case None    => bug!("knight not in sample catalog")
                 };
                 let weapon = UnitCatalog.lookupWeapon(knight#initialWeapon, c);
-                Assert.assertEq(expected = (2, 41), (weapon#attack, weapon#durability))
+                Assert.assertEq(expected = (2, 41, 1, 1),
+                                (weapon#attack, weapon#durability,
+                                 weapon#range#min, weapon#range#max))
+        }
+
+    /// `min..max` の射程 (例: trainingSword の 1-2) が JSON から正しくデコードされる。
+    @Test
+    def testWeaponRangeDecodesMinMax(): Unit \ Assert =
+        match buildSampleCatalog() {
+            case None    => Assert.assertEq(expected = "decoded", "none")
+            case Some(c) =>
+                let sword = UnitCatalog.lookupWeapon("trainingSword", c);
+                Assert.assertEq(expected = (1, 2),
+                                (sword#range#min, sword#range#max))
         }
 }

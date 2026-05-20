@@ -214,7 +214,9 @@ mod GameManager {
             |> CursorScene.setVisible(false)
 
     /// PlayerMoving + Z: 攻撃ターゲット選択フェーズへ。選択は維持し、青マスを消して
-    /// 赤マスを出す。カーソルを選択中駒の位置にスナップする。
+    /// 赤マスを出す。赤マス内に生きている敵が居れば最初の敵にカーソルをスナップし、
+    /// 居なければ選択中プレイヤーにスナップする（間接武器で自セルが射程外でも、
+    /// X キャンセルだけはできるよう自分の位置に居座る）。
     def applyEnterAttackPhase(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State} =
@@ -223,7 +225,7 @@ mod GameManager {
             |> MoveRangeScene.clear
             |> PlayerAttackRangeScene.show
             |> CursorScene.setVisible(true)
-            |> CursorScene.snapToPlayer
+            |> CursorScene.snapToFirstTargetOrPlayer
 
     /// PlayerAttack + Z（敵に乗ったカーソル）: 武器選択ウィンドウを開く。
     /// 攻撃対象 id を Data#attackTargetId に記録し、WeaponSelect フェーズに遷移する。
@@ -609,9 +611,11 @@ mod GameManager {
         }
 
     /// 味方の攻撃完了時に「敵が反撃するか」を判定する純粋関数寄りのヘルパ。
-    /// 条件: 攻撃対象の敵が生存（isDying でない・現存する）かつ武器装備中。
-    /// 直接攻撃しか存在しない v1 では、攻撃された時点で互いに射程内に居る前提なので
-    /// 射程計算は不要 = 同じ「直接攻撃の武器」を持っていれば反撃できる。
+    /// 条件:
+    ///   1. 攻撃対象の敵が現存し、`isDying` でない（生存している）
+    ///   2. 敵が武器を装備している
+    ///   3. 敵の装備武器の `range` が「敵 → 味方」のマンハッタン距離に届く
+    ///      (e.g. 弓 {min:2,max:2} は隣接攻撃を受けても届かないので反撃不可)
     /// 条件を満たすなら反撃する敵 id を返し、満たさないなら None。
     def counterAttackerForPlayer(playerId: Int32, scene: Scene[NodeTag]): Option[Int32] =
         match PlayerScene.get(playerId, scene) {
@@ -624,8 +628,14 @@ mod GameManager {
                             case None        => None
                             case Some(enemy) =>
                                 if (enemy#isDying) None
-                                else if (Option.isEmpty(enemy#weapon)) None
-                                else Some(eid)
+                                else match enemy#weapon {
+                                    case None    => None
+                                    case Some(w) =>
+                                        let d = Weapon.manhattan(enemy#gridPos,
+                                                                  player#gridPos);
+                                        if (Weapon.canReach(d, w)) Some(eid)
+                                        else None
+                                }
                         }
                 }
         }
