@@ -257,7 +257,8 @@ mod TestMapIntegration {
                         attackTargetId    = None,
                         resource          = TestUnitFixtures.testResource(5, 10),
                         weapons           = TestUnitFixtures.testWeapon() :: Nil,
-                        selectedWeaponIdx = None
+                        selectedWeaponIdx = None,
+                        moveStepsTaken    = 0
                     })))
 
     /// プレイヤー id=0 の world 座標

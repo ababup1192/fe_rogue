@@ -20,6 +20,13 @@
 /// max HP に応じてセル数（= バー幅）が変わる。1 HP = 1 cell = 1 px + 1 px gap = 2 px。
 mod UnitHPBarScene {
 
+    /// HP バーをキャラのどちら側に出すか。
+    /// プレイヤーは Above、敵は Below を渡すことで隣接時の重なりを避ける。
+    pub enum BarPosition with Eq {
+        case Above
+        case Below
+    }
+
     // ─── 状態（親 Marker2D に紐づく） ─────────────────────────
 
     /// 親 Marker2D の NodeTag に格納する状態。timer の残りと現在 HP を保持する。
@@ -45,12 +52,26 @@ mod UnitHPBarScene {
     /// 失った HP のセル色: 同系の暗緑
     def fillColorDamaged(): Color = {r = 0.15f32, g = 0.25f32, b = 0.08f32}
 
-    /// 背景・border・cell 間 gap の色。完全な黒。
+    /// cell 間 gap の色。完全な黒。
     def bgColor(): Color = {r = 0.0f32, g = 0.0f32, b = 0.0f32}
+
+    /// 味方（プレイヤー）用の縁色: 青。
+    def borderColorPlayer(): Color = {r = 0.25f32, g = 0.5f32, b = 0.95f32}
+
+    /// 敵用の縁色: 赤。
+    def borderColorEnemy(): Color = {r = 0.9f32, g = 0.25f32, b = 0.25f32}
+
+    /// BarPosition から縁色を引く。
+    /// Above = 味方 = 青、Below = 敵 = 赤、というゲーム規約。
+    def borderColorFor(position: BarPosition): Color = match position {
+        case BarPosition.Above => borderColorPlayer()
+        case BarPosition.Below => borderColorEnemy()
+    }
 
     // ─── レイアウト ───────────────────────────────────────────
 
     def barTopY(): Float64 = -10.0
+    def barBottomY(): Float64 = 12.0
     def barZIndex(): Int32 = 50
 
     pub def childName(): String = "HPBar"
@@ -98,13 +119,17 @@ mod UnitHPBarScene {
 
     /// unit Marker2D の子として HP バー（親 Marker2D + Bg + maxHp 個の Cell ColorRect）を生やす。
     /// 平時は親を visible=false にしておく（戦闘や低 HP のときだけ可視化）。
-    pub def attach(unitPath: NodePath, maxHp: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def attach(unitPath: NodePath, maxHp: Int32, position: BarPosition, scene: Scene[NodeTag]): Scene[NodeTag] =
         if (maxHp <= 0) scene
         else {
             let outerSize = computeOuterSize(maxHp);
+            let yOffset = match position {
+                case BarPosition.Above => barTopY()
+                case BarPosition.Below => barBottomY()
+            };
             let barOffset: Vec2.Vec2 = {
                 x = 0.0 - outerSize#x / 2.0,
-                y = barTopY()
+                y = yOffset
             };
             let data: HPBarData = {
                 remaining = Duration.zero(),
@@ -118,21 +143,32 @@ mod UnitHPBarScene {
             let withParent =
                 Scene.addChildAt(unitPath, childName(),
                     EngineNode.Marker2DWithState(parent, NodeTag.HPBar(data)), scene);
-            // 背景 ColorRect
-            let bg = ColorRect.make(outerSize, bgColor())
+            // 背景 ColorRect（外枠 = 味方青 / 敵赤）
+            let bg = ColorRect.make(outerSize, borderColorFor(position))
                 |> CanvasItem.setZIndex(barZIndex());
             let withBg =
                 Scene.addChildAt(barPath, "Bg",
                     EngineNode.ColorRectWithState(bg, NodeTag.NoTag), withParent);
+            // 内側 ColorRect（黒）— cell 間 1px gap の見え方を担う
+            let innerSize: Vec2.Vec2 = {
+                x = outerSize#x - 2.0 * borderPx(),
+                y = outerSize#y - 2.0 * borderPx()
+            };
+            let innerBg = ColorRect.make(innerSize, bgColor())
+                |> Node2D.setPosition({x = borderPx(), y = borderPx()})
+                |> CanvasItem.setZIndex(barZIndex() + 1);
+            let withInnerBg =
+                Scene.addChildAt(barPath, "InnerBg",
+                    EngineNode.ColorRectWithState(innerBg, NodeTag.NoTag), withBg);
             // セル群（初期は全て明緑）
             List.foldLeft(acc -> i -> {
                 let cell = ColorRect.make({x = cellWidthPx(), y = cellHeightPx()},
                                            fillColorHealthy())
                     |> Node2D.setPosition(cellLocalPos(i))
-                    |> CanvasItem.setZIndex(barZIndex() + 1);
+                    |> CanvasItem.setZIndex(barZIndex() + 2);
                 Scene.addChildAt(barPath, cellName(i),
                     EngineNode.ColorRectWithState(cell, NodeTag.NoTag), acc)
-            }, withBg, List.range(0, maxHp))
+            }, withInnerBg, List.range(0, maxHp))
         }
 
     /// HP 変化を反映する。各セル ColorRect の modulate 色を切り替えると同時に、

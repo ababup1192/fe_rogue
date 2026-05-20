@@ -57,6 +57,7 @@ mod GameManager {
             |> CameraScene.update(dt)
             |> DamagePopupScene.tick(dt)
             |> UnitHPBarScene.tickAll(dt)
+            |> ItemScene.tickAll(dt)
             |> UnitInfoPopupScene.update
             |> LogScene.flushFromEffect
             |> LogScene.tickScroll
@@ -78,19 +79,23 @@ mod GameManager {
             |> dispatchAnimationEvents(catalog)
             |> commonEpilogue(dt)
 
-    /// PlayerAutoMove 中のフレーム: AutoMove.step + Tween tick + AnimationPlayer tick → エピローグ。
+    /// PlayerAutoMove 中のフレーム: 入力（X/Esc キャンセル用）→ AutoMove.step →
+    /// Tween tick → AnimationPlayer tick → エピローグ。
     /// 自動移動中に攻撃モーションは発生し得ないが、敵の death_blink がここで完了する可能性があるので
     /// AnimationPlayer.tickAll は毎フレーム呼んでおく。
+    /// `handleInput` を入れているのは `Game.InputHandler` の PlayerAutoMove 分岐
+    /// （X / Esc で `cancelAutoMove`）を発火させるため。
     def tickAutoMoveFrame(catalog: UnitCatalog.UnitCatalog,
                           dt: Duration.Duration, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
                                Fs.FileRead, Math.Random, IO,
-                               Tween.Scheduler, AnimationPlayer.Scheduler,
+                               BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyTurn.Queue, TurnPhase.State,
                                SelectedPlayer.State, InitialSpawns.State,
                                Pacing.State} =
         scene
+            |> GameEngine.handleInput
             |> AutoMove.step
             |> Tween.tickAll(dt)
             |> AnimationPlayer.tickAll(dt)
@@ -226,6 +231,21 @@ mod GameManager {
             |> EnemyRangeScene.clear
             |> FlagScene.plant(target)
             |> CursorScene.setVisible(false)
+
+    /// AutoMove 中 X/Esc キャンセル: 旗を消し、moveStepsTaken を全員 0 に戻し、
+    /// PlayerCursor に復帰してカーソルを再表示する。`waited` 状態はそのまま残す
+    /// （AutoMove 途中まで動いたキャラは既に waited になっている可能性がある）。
+    pub def cancelAutoMove(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger,
+                              TurnPhase.State, SelectedPlayer.State} =
+        GameLogger.playerLog("自動移動を中止");
+        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
+        scene
+            |> FlagScene.clear
+            |> PlayerScene.resetAllMoveStepsTaken
+            |> CursorScene.setVisible(true)
+            |> CursorScene.snapToPlayer
 
     /// PlayerMoving + Z: 行動選択ウィンドウを開く (ActionSelect)。
     /// 移動範囲表示はそのまま維持し、ItemList を visibility 適用で表示する。
@@ -424,7 +444,7 @@ mod GameManager {
         else goToEnemyTurn(withWaited)
 
     /// 敵ターン開始の共通処理。死亡演出 / 攻撃モーション中の敵はキューに含めない。
-    def goToEnemyTurn(scene: Scene[NodeTag]):
+    pub def goToEnemyTurn(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State} =
         let steps = EnemyScene.getAll(scene)
@@ -584,21 +604,30 @@ mod GameManager {
     // ════════════════════════════════════════════════════════
 
     /// 敵ターンの後始末: ターン番号繰り上げ + 全プレイヤーを `waited = false` にリセット +
-    /// カーソル復活 + 味方ターン宣言。
+    /// カーソル復活 + 味方ターン宣言。旗が残っていれば AutoMove に再突入する
+    /// （プレイヤーが旗を立てたまま敵ターンが終わった → 続けて行進）。
     def finishEnemyTurn(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, TurnPhase.State,
                 SelectedPlayer.State} =
         GameLogger.endTurn();
-        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
-        let next = scene
+        let reset = scene
             |> PlayerScene.clearAllWaited        // 全員アクティブに戻す
+            |> PlayerScene.resetAllMoveStepsTaken
             |> MoveRangeScene.clear              // 未選択につき青マスは無し
-            |> MoveAttackRangeScene.clear
-            |> CursorScene.setVisible(true)
-            |> CursorScene.snapToPlayer;
+            |> MoveAttackRangeScene.clear;
         GameLogger.playerLog("味方のターン");
-        next
+        if (FlagScene.isPlanted(reset)) {
+            // 旗が立ったまま → AutoMove 継続（カーソルは消したまま）
+            TurnPhase.State.put(TurnPhase.Phase.PlayerAutoMove);
+            reset |> CursorScene.setVisible(false)
+        }
+        else {
+            TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
+            reset
+                |> CursorScene.setVisible(true)
+                |> CursorScene.snapToPlayer
+        }
 
     // ════════════════════════════════════════════════════════
     // AnimationPlayer の完了 / メソッドイベントを scene に反映する

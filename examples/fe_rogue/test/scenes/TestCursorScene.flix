@@ -106,7 +106,8 @@ mod TestCursorScene {
                         attackTargetId    = None,
                         resource          = TestUnitFixtures.testResource(5, 10),
                         weapons           = TestUnitFixtures.testWeapon() :: Nil,
-                        selectedWeaponIdx = None
+                        selectedWeaponIdx = None,
+                        moveStepsTaken    = 0
                     })))
 
     /// SelectedPlayer.State のスタブ handler（未選択を返す）。

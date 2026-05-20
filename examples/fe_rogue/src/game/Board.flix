@@ -228,6 +228,32 @@ mod Board {
         else if (samePosition(c, source) or samePosition(c, goal)) true
         else not isOccupied(c, board)
 
+    /// AutoMove 用の BFS。味方マスは通過可能、敵マスは NG、壁・範囲外も NG。
+    /// `allyCells` には source 以外の全味方位置を渡す（source が含まれていてもよい）。
+    /// 経路の先頭が味方占有マスになり得るので、呼び出し側で「1 歩目が占有か」を別途
+    /// 判定して、占有なら no-op（その味方が動いて空くのを次フレームで待つ）にする。
+    pub def bfsPathSkipAllies(board: Board,
+                               allyCells: List[{x = Int32, y = Int32}],
+                               source: {x = Int32, y = Int32},
+                               goal: {x = Int32, y = Int32}):
+            Option[List[{x = Int32, y = Int32}]] =
+        let allySet = allyCells;
+        let isOpen = c -> bfsPathIsOpenSkipAllies(board, c, source, goal, allySet);
+        let initVisited = source :: Nil;
+        let initQueue: List[({x = Int32, y = Int32}, List[{x = Int32, y = Int32}])] = (source, Nil) :: Nil;
+        bfsPathLoop(isOpen, goal, initVisited, initQueue)
+
+    /// `bfsPathIsOpen` の派生: 味方マスは「通過可能」として true を返す。
+    /// 敵駒は引き続き NG（`isOccupied` で他駒検出後、味方リストに含まれるかでフィルタ）。
+    def bfsPathIsOpenSkipAllies(board: Board, c: {x = Int32, y = Int32},
+                                 source: {x = Int32, y = Int32},
+                                 goal: {x = Int32, y = Int32},
+                                 allyCells: List[{x = Int32, y = Int32}]): Bool =
+        if (not isWalkable(board, c)) false
+        else if (samePosition(c, source) or samePosition(c, goal)) true
+        else if (isInList(c, allyCells)) true   // 味方は通過 OK
+        else not isOccupied(c, board)            // 残り = 敵駒 / その他なら NG
+
     // ════════════════════════════════════════════════════════
     // 内部ヘルパー
     // ════════════════════════════════════════════════════════

@@ -242,7 +242,7 @@ mod EnemyScene {
                                  EngineNode.Marker2DWithState(marker, NodeTag.Enemy(data)))
             |> Scene.addChildAt(enemyPath(sp#id), "Sprite",
                                  EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
-            |> UnitHPBarScene.attach(enemyPath(sp#id), res#hp)
+            |> UnitHPBarScene.attach(enemyPath(sp#id), res#hp, UnitHPBarScene.BarPosition.Below)
 
     // ────────────────────────────────────────────────────────
     // (D) クエリ

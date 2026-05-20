@@ -117,7 +117,7 @@ instance InputEvent.InputHandler[NodeTag] {
         let isConfirm = key == GameEngine.Key.Z
                         or key == GameEngine.Key.Space
                         or key == GameEngine.Key.Enter;
-        let isCancel  = key == GameEngine.Key.X;
+        let isCancel  = key == GameEngine.Key.X or key == GameEngine.Key.Escape;
         let phase = TurnPhase.State.get();
         let popupShown = UnitInfoPopupScene.isShown(scene)
                           and (phase == TurnPhase.Phase.PlayerCursor
@@ -126,6 +126,9 @@ instance InputEvent.InputHandler[NodeTag] {
             // popup 表示中の X は popup view 切替に上書き（通常のキャンセルは走らない）
             case (_,                              _,    true) if popupShown
                                                   => UnitInfoPopupScene.toggleView(scene)
+            // PlayerAutoMove 中の X / Esc は AutoMove キャンセル
+            case (TurnPhase.Phase.PlayerAutoMove, _,    true)
+                                                  => checked_ecast(GameManager.cancelAutoMove(scene))
             case (TurnPhase.Phase.ActionSelect,   true,  _)
                                                   => ActionMenuScene.confirmCurrentSelection(scene)
             case (TurnPhase.Phase.ActionSelect,   _,    true)

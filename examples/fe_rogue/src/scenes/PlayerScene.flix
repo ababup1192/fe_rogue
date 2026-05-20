@@ -56,7 +56,11 @@ mod PlayerScene {
         attackTargetId     = Option[Int32],
         resource           = UnitCatalog.UnitResource,
         weapons            = List[UnitCatalog.WeaponResource],
-        selectedWeaponIdx  = Option[Int32]
+        selectedWeaponIdx  = Option[Int32],
+        // AutoMove 中にこの味方が当ターン何マス進んだか。
+        // moveTiles に達したら `waited = true` にして次の味方に交代する。
+        // プレイヤーターン開始時に 0 リセット。
+        moveStepsTaken     = Int32
     }
 
     /// スポーン時の中間表現。`add` で配置するセルの id/gridPos に加え、
@@ -188,7 +192,8 @@ mod PlayerScene {
             attackTargetId    = None,
             resource          = res,
             weapons           = sp#weapons,
-            selectedWeaponIdx = None
+            selectedWeaponIdx = None,
+            moveStepsTaken    = 0
         };
         let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset, Vec2.one())
                         |> Sprite2D.setHframes(res#sprite#hframes)
@@ -200,7 +205,7 @@ mod PlayerScene {
                                  EngineNode.Marker2DWithState(marker, NodeTag.Player(data)))
             |> Scene.addChildAt(playerPath(sp#id), "Sprite",
                                  EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
-            |> UnitHPBarScene.attach(playerPath(sp#id), res#hp)
+            |> UnitHPBarScene.attach(playerPath(sp#id), res#hp, UnitHPBarScene.BarPosition.Above)
 
     // ────────────────────────────────────────────────────────
     // (D) ロジック — 移動
@@ -348,6 +353,17 @@ mod PlayerScene {
                 |> mapPlayer(id, d -> {waited = false | d})
                 |> setSpriteModulate(id, activeColor()),
             scene, ids)
+
+    /// AutoMove で消費した移動歩数を記録するための setter。
+    pub def setMoveStepsTaken(id: Int32, steps: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(id, d -> {moveStepsTaken = steps | d}, scene)
+
+    /// 全プレイヤーの moveStepsTaken を 0 にリセットする。
+    /// プレイヤーターン開始時 / AutoMove キャンセル時に呼ぶ。
+    pub def resetAllMoveStepsTaken(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let ids = getAll(scene) |> List.map(d -> d#id);
+        List.foldLeft((sc, id) -> mapPlayer(id, d -> {moveStepsTaken = 0 | d}, sc),
+                       scene, ids)
 
     /// 指定 id の子 Sprite の modulate を変える内部ヘルパー。
     def setSpriteModulate(id: Int32, color: Color,

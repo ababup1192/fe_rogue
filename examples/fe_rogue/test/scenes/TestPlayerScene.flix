@@ -67,7 +67,8 @@ mod TestPlayerScene {
                         attackTargetId    = None,
                         resource          = TestUnitFixtures.testResource(5, 10),
                         weapons           = TestUnitFixtures.testWeapon() :: Nil,
-                        selectedWeaponIdx = None
+                        selectedWeaponIdx = None,
+                        moveStepsTaken    = 0
                     })))
 
     /// プレイヤー id のワールド座標を取り出す

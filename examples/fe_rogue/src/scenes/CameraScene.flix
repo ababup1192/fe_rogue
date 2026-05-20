@@ -100,7 +100,7 @@ mod CameraScene {
             case TurnPhase.Phase.AttackForecast   => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerAttack     => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerAttackHold => cursorWorldPos(scene)
-            case TurnPhase.Phase.PlayerAutoMove   => flagWorldPos(scene)
+            case TurnPhase.Phase.PlayerAutoMove   => autoMoveTarget(scene)
             case TurnPhase.Phase.EnemyTurn        => enemyTurnTarget(focusPos, scene)
         }
 
@@ -196,5 +196,23 @@ mod CameraScene {
         match Scene.getEngineNode(FlagScene.flagPath(), scene) {
             case Some(_) => Scene.globalPositionAt(FlagScene.flagPath(), scene)
             case None    => Vec2.zero()
+        }
+
+    /// AutoMove 中のカメラ target を「いま動いている味方」に合わせる。
+    /// AutoMove.pickAndStep と同じ規則で「アクティブかつ旗に最も近い味方」を選び、
+    /// その味方のワールド座標を返す。アクティブが居なければ旗にフォールバック。
+    def autoMoveTarget(scene: Scene[NodeTag]): Vec2.Vec2 =
+        match FlagScene.getTargetPos(scene) {
+            case None       => flagWorldPos(scene)
+            case Some(flag) =>
+                let active = PlayerScene.getAll(scene)
+                              |> List.filter(d -> not d#waited);
+                let manhattan = d ->
+                    Int32.abs(d#gridPos#x - flag#x) + Int32.abs(d#gridPos#y - flag#y);
+                match List.minimumBy((a, b) -> Order.compare(manhattan(a), manhattan(b)),
+                                      active) {
+                    case None    => flagWorldPos(scene)
+                    case Some(d) => focusedPlayerWorldPos(d#id, scene)
+                }
         }
 }
