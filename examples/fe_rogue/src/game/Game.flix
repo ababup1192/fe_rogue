@@ -30,6 +30,8 @@ pub enum NodeTag {
     case HPBar(UnitHPBarScene.HPBarData)
     /// UnitInfoPopupScene の CanvasLayer 親（表示中ユニット識別子を持つ）
     case UnitInfoPanel(UnitInfoPopupScene.PanelState)
+    /// ItemScene の床に落ちている武器（拾える）
+    case GroundItem(ItemScene.Data)
     case NoTag
 }
 
@@ -94,7 +96,7 @@ instance Node[NodeTag] {
 //   PlayerAttack + Z/X : 敵マスで Z → 攻撃モーション開始、X / 空マスで Z → 行動終了
 //   EnemyTurn / PlayerAutoMove : 入力無視（自動進行）
 instance InputEvent.InputHandler[NodeTag] {
-    type Aef = {BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
+    type Aef = {GameEngine.Game, BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State}
     // WeaponSelect フェーズでは engine の MenuEvent が Enter/Escape を処理する一方、
@@ -102,9 +104,12 @@ instance InputEvent.InputHandler[NodeTag] {
     // フェーズに応じて分岐する:
     //   - Z / Space: メニューの現在選択中の武器を確定 → 攻撃モーション開始
     //   - X        : 武器選択ウィンドウを閉じて PlayerAttack に戻る（ターゲット選び直し可）
+    // PlayerCursor / PlayerAttack 中で UnitInfoPopup が表示中なら、**X は popup の
+    // Status ↔ Items 切替**に取られる（通常のキャンセルは popup 非表示時のみ）。
+    // Z はそのまま選択/旗設置で従来通り。
     // それ以外のフェーズではこれまで通り TurnRules 経由で振る舞いを決める。
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
-                       Scene[NodeTag] \ {BoardQuery, Tween.Scheduler,
+                       Scene[NodeTag] \ {GameEngine.Game, BoardQuery, Tween.Scheduler,
                                           AnimationPlayer.Scheduler,
                                           GameLogger.GameLogger,
                                           EnemyTurn.Queue, TurnPhase.State,
@@ -114,7 +119,13 @@ instance InputEvent.InputHandler[NodeTag] {
                         or key == GameEngine.Key.Enter;
         let isCancel  = key == GameEngine.Key.X;
         let phase = TurnPhase.State.get();
+        let popupShown = UnitInfoPopupScene.isShown(scene)
+                          and (phase == TurnPhase.Phase.PlayerCursor
+                                or phase == TurnPhase.Phase.PlayerAttack);
         match (phase, isConfirm, isCancel) {
+            // popup 表示中の X は popup view 切替に上書き（通常のキャンセルは走らない）
+            case (_,                              _,    true) if popupShown
+                                                  => UnitInfoPopupScene.toggleView(scene)
             case (TurnPhase.Phase.ActionSelect,   true,  _)
                                                   => ActionMenuScene.confirmCurrentSelection(scene)
             case (TurnPhase.Phase.ActionSelect,   _,    true)

@@ -238,6 +238,33 @@ mod GameManager {
                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
         commitWaitedAndAdvance(scene)
 
+    /// ActionMenu の「ひろう」確定から呼ばれる:
+    /// プレイヤーの現セルにある ground item を取得 → 武器をインベントリに追加 →
+    /// ログを出して waited 確定（拾うで 1 ターン使う）。
+    /// 何らかの理由で item が無い場合は no-op（即 wait に倒す）。
+    pub def actionMenuConfirmPickup(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger,
+                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+        match SelectedPlayer.State.get()#id {
+            case None     => commitWaitedAndAdvance(scene)
+            case Some(id) =>
+                match PlayerScene.get(id, scene) {
+                    case None         => commitWaitedAndAdvance(scene)
+                    case Some(player) =>
+                        let (afterTake, taken) = ItemScene.takeAt(player#gridPos, scene);
+                        match taken {
+                            case None    => commitWaitedAndAdvance(afterTake)
+                            case Some(w) =>
+                                GameLogger.playerLog("P${id} が ${w#name} を拾った");
+                                let withWeapon = PlayerScene.mapPlayer(id,
+                                    d -> {weapons = List.append(d#weapons, w :: Nil) | d},
+                                    afterTake);
+                                commitWaitedAndAdvance(withWeapon)
+                        }
+                }
+        }
+
     /// ActionMenu の X/Esc から呼ばれる: メニューを閉じて PlayerMoving に戻る。
     /// 青マス・カーソルは触らず、ユーザがもう一度動かし直せる状態に復帰する。
     pub def closeActionMenu(scene: Scene[NodeTag]):
@@ -488,7 +515,34 @@ mod GameManager {
                 }
         }
 
-    /// いずれかのプレイヤー HP が 0 になったときの処理。ログに濃赤の「ゲームオーバー」を残し、
+    /// 敵攻撃で HP=0 になったプレイヤーを scene から取り除く。`killed` は
+    /// `EnemyScene.applyAttackHit` が返した死亡 id のリスト（通常 1 要素）。
+    /// 選択中プレイヤーが含まれていれば（反撃で死亡したケース）選択も解除する。
+    /// 全員が脱落したら `handlePlayerDeath` を呼んで同マップで初期配置にリセットする。
+    def handlePlayerKills(killed: List[Int32], scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger,
+                              EnemyTurn.Queue, TurnPhase.State,
+                              InitialSpawns.State,
+                              SelectedPlayer.State} =
+        if (List.isEmpty(killed)) scene
+        else {
+            let removed = List.foldLeft(
+                (sc, id) -> Scene.removeAt(PlayerScene.playerPath(id), sc),
+                scene, killed);
+            let selectedKilled = match SelectedPlayer.State.get()#id {
+                case Some(id) => List.exists(k -> k == id, killed)
+                case None     => false
+            };
+            if (selectedKilled)
+                SelectedPlayer.State.put(SelectedPlayer.cleared())
+            else ();
+            if (List.isEmpty(PlayerScene.getAll(removed)))
+                handlePlayerDeath(removed)
+            else removed
+        }
+
+    /// 味方全員 HP=0 になったときの処理。ログに濃赤の「ゲームオーバー」を残し、
     /// 同マップで初期状態（プレイヤー全員 HP=10・waited=false・初期位置、敵も初期 spawn）に戻す。
     /// 敵ターンキュー・選択もクリアして、次フレームから `PlayerCursor` で操作再開できるように。
     /// マップやログは保持される（GameLogger / Map のノードは scene を再構築しない）。
@@ -561,7 +615,8 @@ mod GameManager {
     /// 1 つの method イベントを適用する。owner と AnimEvent.Tag で分岐する。
     /// `Tag.AttackHit` 中点発火: owner が Player_<id> ならその味方からターゲット敵へ、
     /// Enemy_<id> ならその敵からターゲット味方へ 1 ダメージ + SE + ログ。
-    /// 敵攻撃で味方 HP=0 のときはこの場で `handlePlayerDeath` を発火する（即時リセット）。
+    /// 敵攻撃で味方 HP=0 のときは `handlePlayerKills` で該当ノードを取り除き、
+    /// 全員脱落していたら `handlePlayerDeath`（ゲームオーバーリセット）に流す。
     /// 未知の name は `parseTag = None` で no-op。
     def applyMethodEvent(scene: Scene[NodeTag], event: AnimationPlayer.Event):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
@@ -579,8 +634,7 @@ mod GameManager {
                             case Some(enemyId) =>
                                 let (next, killed) =
                                     EnemyScene.applyAttackHit(enemyId, scene);
-                                if (List.nonEmpty(killed)) handlePlayerDeath(next)
-                                else next
+                                handlePlayerKills(killed, next)
                             case None => scene
                         }
                 }
@@ -757,6 +811,7 @@ mod GameManager {
             |> DamagePopupScene.add     // World 配下に空の Marker2D 親を 1 つ生やす
             |> PlayerScene.add(catalog)
             |> EnemyScene.add(catalog)
+            |> ItemScene.add(catalog)   // 部屋の床に武器をランダムドロップ
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
             |> CursorScene.add
             |> FlagScene.add            // 自動移動先マーカー（初期は非表示）

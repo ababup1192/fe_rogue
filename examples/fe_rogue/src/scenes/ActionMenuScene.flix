@@ -45,6 +45,7 @@ mod ActionMenuScene {
     /// metadata の値。`onItemConfirmed` で再現するためのアクション識別子。
     def attackMeta(): String = "attack"
     def waitMeta(): String   = "wait"
+    def pickupMeta(): String = "pickup"
 
     /// scene に ActionMenu ノードツリーを追加する。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
@@ -94,8 +95,8 @@ mod ActionMenuScene {
             case _ => (node, scene)
         }
 
-    /// 選択中プレイヤーの状況から「こうげき / たいき」のうち成立するものだけ返す。
-    /// 順序は固定: こうげき → たいき (FE 流に攻撃が上)。
+    /// 選択中プレイヤーの状況から「こうげき / ひろう / たいき」のうち成立するものだけ返す。
+    /// 順序は固定: こうげき → ひろう → たいき (FE 流に攻撃が上、待機が末尾)。
     def buildItems(scene: Scene[NodeTag]): List[ItemEntry] \ SelectedPlayer.State =
         match SelectedPlayer.State.get()#id {
             case None     => Nil
@@ -109,13 +110,19 @@ mod ActionMenuScene {
                                   disabled = false,
                                   metadata = Some(attackMeta())}: ItemEntry) :: Nil
                             else Nil;
+                        let pickupItem =
+                            if (Option.nonEmpty(ItemScene.findAt(player#gridPos, scene)))
+                                ({text     = "ひろう",
+                                  disabled = false,
+                                  metadata = Some(pickupMeta())}: ItemEntry) :: Nil
+                            else Nil;
                         let waitItem =
                             if (canWaitOn(player, scene))
                                 ({text     = "たいき",
                                   disabled = false,
                                   metadata = Some(waitMeta())}: ItemEntry) :: Nil
                             else Nil;
-                        List.append(attackItem, waitItem)
+                        List.append(attackItem, List.append(pickupItem, waitItem))
                 }
         }
 
@@ -152,6 +159,7 @@ mod ActionMenuScene {
             case Some(m) =>
                 if (m == attackMeta())      GameManager.actionMenuConfirmAttack(scene)
                 else if (m == waitMeta())   GameManager.actionMenuConfirmWait(scene)
+                else if (m == pickupMeta()) GameManager.actionMenuConfirmPickup(scene)
                 else                         scene
             case None    => scene
         }
