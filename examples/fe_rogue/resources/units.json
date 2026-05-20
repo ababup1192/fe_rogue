@@ -3,15 +3,6 @@
     "goblin",
     "orc"
   ],
-  "enemyWeapons": [
-    "trainingSword",
-    "trainingSword"
-  ],
-  "playerWeapons": [
-    "trainingSpear",
-    "trainingSword",
-    "noviceStaff"
-  ],
   "players": [
     "knight",
     "archer",
@@ -22,6 +13,7 @@
       "attack": 5,
       "defense": 2,
       "hp": 8,
+      "initialWeapon": "trainingSword",
       "moveTiles": 6,
       "speed": 6,
       "sprite": {
@@ -35,6 +27,7 @@
       "attack": 3,
       "defense": 1,
       "hp": 3,
+      "initialWeapon": "trainingSword",
       "moveTiles": 3,
       "speed": 4,
       "sprite": {
@@ -48,6 +41,7 @@
       "attack": 6,
       "defense": 5,
       "hp": 14,
+      "initialWeapon": "trainingSpear",
       "moveTiles": 4,
       "speed": 2,
       "sprite": {
@@ -61,6 +55,7 @@
       "attack": 7,
       "defense": 2,
       "hp": 10,
+      "initialWeapon": "noviceStaff",
       "moveTiles": 5,
       "speed": 4,
       "sprite": {
@@ -74,6 +69,7 @@
       "attack": 5,
       "defense": 3,
       "hp": 6,
+      "initialWeapon": "trainingSword",
       "moveTiles": 2,
       "speed": 2,
       "sprite": {
@@ -82,23 +78,6 @@
         "texture": "character_sheet",
         "vframes": 2
       }
-    }
-  },
-  "weapons": {
-    "noviceStaff": {
-      "attack": 1,
-      "durability": 30,
-      "name": "みならいのつえ"
-    },
-    "trainingSpear": {
-      "attack": 2,
-      "durability": 41,
-      "name": "くんれんやり"
-    },
-    "trainingSword": {
-      "attack": 3,
-      "durability": 41,
-      "name": "くんれんけん"
     }
   }
 }

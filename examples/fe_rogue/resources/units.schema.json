@@ -35,6 +35,13 @@
         "label": "速"
       }
     },
+    "initialWeapon": {
+      "field": {
+        "ftype": { "type": "ref", "to": "weapons" },
+        "hint":  "plain",
+        "label": "初期装備"
+      }
+    },
     "sprite": {
       "nested": {
         "texture": {
@@ -69,9 +76,7 @@
     }
   },
   "metaHints": {
-    "players":       { "type": "ref", "to": "units" },
-    "enemies":       { "type": "ref", "to": "units" },
-    "playerWeapons": { "type": "ref", "to": "weapons" },
-    "enemyWeapons":  { "type": "ref", "to": "weapons" }
+    "players": { "type": "ref", "to": "units" },
+    "enemies": { "type": "ref", "to": "units" }
   }
 }

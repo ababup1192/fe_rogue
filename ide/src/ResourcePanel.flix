@@ -102,6 +102,25 @@ mod ResourcePanel {
             |> Result.toOption
             |> Option.flatMap(s -> Json.Parse.parse(String.trim(s)))
 
+    /// 全 discovered resources をその場で読み直し、`{catalog containerKey → sub-entry id 一覧}`
+    /// の Map を作る。`Resource.FieldType.RefT(target)` の widget が ComboBox 候補を
+    /// 引くために使う。読み込み失敗 / 非 CatalogIn のリソースは単にスキップする。
+    /// `IO` は Static Array 読み取り (state#resource#discoveredRef) に必要。
+    def collectRefOptions(state: IdeState.IdeState):
+            Map[String, List[String]] \ {Fs.FileRead, IO} =
+        let entries = Array.get(0, state#resource#discoveredRef);
+        List.foldLeft((acc, e) ->
+            match loadJsonElement(e#dataPath) {
+                case Some(json) =>
+                    match ResourceCatalog.classify(json) {
+                        case ResourceCatalog.Classification.CatalogIn(info) =>
+                            Map.insert(info#containerKey, info#subEntries, acc)
+                        case _ => acc
+                    }
+                case None => acc
+            },
+            Map.empty(), entries)
+
     /// CatalogIn 形式なら sub-entries の key 一覧を ListView に並べる。
     /// Single 形式なら Property Panel をすぐ build する
     def rebuildSubEntries(state: IdeState.IdeState,
@@ -144,13 +163,16 @@ mod ResourcePanel {
                                 let sorted = Map.toList(fields)
                                     |> List.sortBy(p -> PropertyWidgets.fieldOrderKey(p));
                                 let textureNames = Array.get(0, state#textureNamesRef);
+                                let refOptions = run {
+                                    collectRefOptions(state)
+                                } with Fs.FileRead.runWithIO;
                                 let mkCommit = kp -> { (json2: Json.JsonElement) ->
                                     commitToResource(state, kp, json2)
                                 };
                                 List.forEach(p -> {
                                     let (k, e) = p;
                                     PropertyWidgets.addFieldRow(children, k, e, record, basePath,
-                                                                  textureNames, mkCommit)
+                                                                  textureNames, refOptions, mkCommit)
                                 }, sorted);
                                 refreshPreview(state, record)
                             }

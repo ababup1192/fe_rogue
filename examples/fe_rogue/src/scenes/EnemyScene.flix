@@ -128,12 +128,11 @@ mod EnemyScene {
 
     /// MapScene + PlayerScene が登録済みの scene に敵を追加する。
     /// 各部屋について 0..maxPerRoom 体のスポーン位置を決め、それぞれに
-    /// `enemies` プールからランダム抽選した UnitResource を、さらに `enemyWeapons`
-    /// プールからランダム抽選した WeaponResource を割り当てる。
-    /// `Math.Random` を使うのでこの effect が必要。
+    /// `enemies` プールからランダム抽選した UnitResource を割り当て、
+    /// 各 UnitResource の `initialWeapon` id から武器カタログを引いて装備させる
+    /// (敵タイプごとに決まった武器を持つ)。`Math.Random` を使うのでこの effect が必要。
     pub def add(catalog: UnitCatalog.UnitCatalog, scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random} =
         let pool        = UnitCatalog.pool("enemies", catalog);
-        let weaponPool  = UnitCatalog.weaponPool("enemyWeapons", catalog);
         let layer       = MapScene.getMapLayer(scene);
         let placements  = MapScene.getPlacements(scene);
         let roomCount   = MapScene.getRoomCount(scene);
@@ -147,7 +146,7 @@ mod EnemyScene {
         let initial: (Int32, List[{x = Int32, y = Int32}], List[Spawn]) =
             (0, playerCells, Nil);
         let (_, _, accSpawns) = List.foldLeft(state -> p ->
-            spawnInRoom(layer, p, randomCountUpTo(maxPerRoom()), pool, weaponPool, state),
+            spawnInRoom(layer, p, randomCountUpTo(maxPerRoom()), pool, catalog, state),
             initial, rooms);
         // accSpawns は逆順（cons で積んだ）なので reverse して id 昇順に揃える
         let spawns = List.reverse(accSpawns);
@@ -164,13 +163,13 @@ mod EnemyScene {
     /// 部屋 1 つから `count` 個のスポーンセルを選んで state に積む。
     /// state = (次に振る id, スポーン済みセル累積, spawn list 累積)。
     /// 候補不足のときは取れる分だけ積んで打ち切る。
-    /// 各セルにつき `pool` からランダム 1 種を引いて UnitResource を、
-    /// `weaponPool` からランダム 1 種を引いて WeaponResource を割り当てる。
+    /// 各セルにつき `pool` からランダム 1 種を引いて UnitResource を割り当て、
+    /// その `initialWeapon` id から `catalog` の武器カタログを引いて装備させる。
     def spawnInRoom(layer: TileMapLayer,
                      p: DungeonComposer.ModulePlacement,
                      count: Int32,
                      pool: List[UnitCatalog.UnitResource],
-                     weaponPool: List[UnitCatalog.WeaponResource],
+                     catalog: UnitCatalog.UnitCatalog,
                      state: (Int32, List[{x = Int32, y = Int32}], List[Spawn])):
                     (Int32, List[{x = Int32, y = Int32}], List[Spawn]) \ Math.Random =
         if (count <= 0) state
@@ -185,15 +184,12 @@ mod EnemyScene {
                         case Some(r) => r
                         case None    => bug!("EnemyScene.spawnInRoom: pool 'enemies' is empty")
                     };
-                    let weapon = match RandomUtil.pick(weaponPool) {
-                        case Some(w) => w
-                        case None    => bug!("EnemyScene.spawnInRoom: pool 'enemyWeapons' is empty")
-                    };
+                    let weapon = UnitCatalog.lookupWeapon(res#initialWeapon, catalog);
                     let entry: Spawn = {
                         id = nextId, gridPos = cell, moduleIdx = p#idx,
                         resource = res, weapon = weapon
                     };
-                    spawnInRoom(layer, p, count - 1, pool, weaponPool,
+                    spawnInRoom(layer, p, count - 1, pool, catalog,
                                  (nextId + 1, cell :: taken, entry :: list))
             }
 

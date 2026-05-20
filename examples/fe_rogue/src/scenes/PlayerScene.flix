@@ -110,34 +110,26 @@ mod PlayerScene {
 
     /// MapScene が登録済みの scene にプレイヤー全員（`players` プールの全員）を追加する。
     /// 0 番目は MapScene が記録した spawnGrid に、残りはその近傍の床セルに配置する。
-    /// 各プレイヤーには `players` プールのリスト順で `UnitResource` を、
-    /// `playerWeapons` プールの同 index から `WeaponResource` を割り当てる
-    /// （1 プレイヤー = 1 武器）。プールの長さ不一致は起動時の typo として即 panic する。
+    /// 各プレイヤーには `players` プールのリスト順で `UnitResource` を割り当て、
+    /// その `initialWeapon` id から weapons カタログを引いて `WeaponResource` を装備させる
+    /// （1 プレイヤー = 1 武器）。未定義 id は起動時 typo として即 panic する。
     pub def add(catalog: UnitCatalog.UnitCatalog, scene: Scene[NodeTag]): Scene[NodeTag] =
         let party        = UnitCatalog.pool("players", catalog);
-        let weapons      = UnitCatalog.weaponPool("playerWeapons", catalog);
         let n            = List.length(party);
-        if (List.length(weapons) != n)
-            bug!("PlayerScene.add: playerWeapons length (${List.length(weapons)}) != players length (${n})")
-        else {
-            let spawnGrid = MapScene.getSpawnGrid(scene);
-            let layer     = MapScene.getMapLayer(scene);
-            let cells     = pickPlayerSpawns(spawnGrid, n, layer);
-            // cells が n に満たない場合（極端に狭い anchor）は重複セルを許容して埋める
-            let padded    = padCells(cells, spawnGrid, n);
-            let spawns: List[Spawn] = padded
-                |> List.mapWithIndex(id -> c ->
-                    let res = match List.nth(id, party) {
-                        case Some(r) => r
-                        case None    => bug!("PlayerScene.add: party index ${id} out of range")
-                    };
-                    let weapon = match List.nth(id, weapons) {
-                        case Some(w) => w
-                        case None    => bug!("PlayerScene.add: weapons index ${id} out of range")
-                    };
-                    ({id = id, gridPos = c, resource = res, weapons = weapon :: Nil}: Spawn));
-            List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), scene, spawns)
-        }
+        let spawnGrid    = MapScene.getSpawnGrid(scene);
+        let layer        = MapScene.getMapLayer(scene);
+        let cells        = pickPlayerSpawns(spawnGrid, n, layer);
+        // cells が n に満たない場合（極端に狭い anchor）は重複セルを許容して埋める
+        let padded       = padCells(cells, spawnGrid, n);
+        let spawns: List[Spawn] = padded
+            |> List.mapWithIndex(id -> c ->
+                let res = match List.nth(id, party) {
+                    case Some(r) => r
+                    case None    => bug!("PlayerScene.add: party index ${id} out of range")
+                };
+                let weapon = UnitCatalog.lookupWeapon(res#initialWeapon, catalog);
+                ({id = id, gridPos = c, resource = res, weapons = weapon :: Nil}: Spawn));
+        List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), scene, spawns)
 
     /// spawnGrid を中心に N 個の床セルを近い順で選ぶ。`isFloor` で篩い、
     /// 候補不足の場合は呼び出し側が `padCells` で埋める。

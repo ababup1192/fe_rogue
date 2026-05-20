@@ -154,16 +154,20 @@ mod PropertyWidgets {
     /// commit (Enter / CheckBox toggle) で `mkCommit(keyPath)` の callback を呼び出す。
     /// Nested は section header (太字 Label) を入れて内側を order 順で再帰展開する。
     /// `textureNames` は TexturePathT widget の ComboBox 候補 (state を参照しないため呼び出し側で渡す)
+    /// `refOptions` は RefT widget の ComboBox 候補。key は schema の `{"type":"ref","to":target}` の
+    /// `target` (= 参照先 catalog の containerKey)、value はその catalog の sub-entry id 一覧。
     pub def addFieldRow(children: ObservableList[Node],
                         key: String, entry: Resource.FieldEntry,
                         record: Json.JsonElement, basePath: List[String],
                         textureNames: List[String],
+                        refOptions: Map[String, List[String]],
                         mkCommit: List[String] -> Commit): Unit \ IO =
         match entry {
             case Resource.FieldEntry.Field(fs) => {
                 let value = jsonFieldOf(record, key);
                 let keyPath = List.append(basePath, key :: Nil);
-                let widget = buildFieldWidget(fs, value, textureNames, mkCommit(keyPath));
+                let widget = buildFieldWidget(fs, value, textureNames, refOptions,
+                                                mkCommit(keyPath));
                 addPropertyRow(children, "${fs#label}:", widget)
             }
             case Resource.FieldEntry.Nested(innerMap) => {
@@ -179,20 +183,26 @@ mod PropertyWidgets {
                                    |> List.sortBy(p -> fieldOrderKey(p));
                 List.forEach(p -> {
                     let (k, e) = p;
-                    addFieldRow(children, k, e, innerRecord, innerBasePath, textureNames, mkCommit)
+                    addFieldRow(children, k, e, innerRecord, innerBasePath,
+                                  textureNames, refOptions, mkCommit)
                 }, sortedInner)
             }
         }
 
     /// FieldType に応じた編集 widget を返す
     def buildFieldWidget(fs: Resource.FieldSchema, value: Option[Json.JsonElement],
-                         textureNames: List[String], commit: Commit): Node \ IO =
+                         textureNames: List[String],
+                         refOptions: Map[String, List[String]],
+                         commit: Commit): Node \ IO =
         match fs#ftype {
             case Resource.FieldType.TextT         => buildTextWidget(value, commit)
             case Resource.FieldType.IntT          => buildIntWidget(value, commit)
             case Resource.FieldType.FloatT        => buildFloatWidget(value, commit)
             case Resource.FieldType.BoolT         => buildBoolWidget(value, commit)
             case Resource.FieldType.TexturePathT  => buildTexturePathWidget(value, textureNames, commit)
+            case Resource.FieldType.RefT(target)  =>
+                let options = Map.get(target, refOptions) |> Option.getWithDefault(Nil);
+                buildEnumWidget(value, options, commit)
         }
 
     /// TexturePathT: project 登録 texture から選択する ComboBox<String>

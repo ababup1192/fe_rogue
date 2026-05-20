@@ -1,0 +1,19 @@
+{
+  "weapons": {
+    "noviceStaff": {
+      "attack": 0,
+      "durability": 30,
+      "name": "みならいのつえ"
+    },
+    "trainingSpear": {
+      "attack": 0,
+      "durability": 41,
+      "name": "くんれんやり"
+    },
+    "trainingSword": {
+      "attack": 0,
+      "durability": 41,
+      "name": "くんれんけん"
+    }
+  }
+}

@@ -17,12 +17,16 @@ mod Resource {
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool, JsonArray, JsonNull}
 
     /// フィールドの値型。IDE はこれと `FieldHint` の組から widget を選ぶ。
+    ///   RefT(target) : 値が別 catalog の sub-entry id を指す（例: 武器 id）。IDE は
+    ///                  `target` 配下の sub-entries を ComboBox 候補に並べる。
+    ///                  schema JSON では `{"type": "ref", "to": target}` で表す。
     pub enum FieldType {
         case TextT
         case IntT
         case FloatT
         case BoolT
         case TexturePathT      // プロジェクト登録済みテクスチャから選択
+        case RefT(String)      // 別 catalog (containerKey = target) の sub-entry id
     }
 
     /// 編集 UI のヒント。`Plain` は型相応の素直な入力欄（数値スピナー / テキスト等）。
@@ -231,6 +235,11 @@ mod ResourceCodec {
         case FieldType.FloatT        => JsonString("float")
         case FieldType.BoolT         => JsonString("bool")
         case FieldType.TexturePathT  => JsonString("texturePath")
+        case FieldType.RefT(target)  =>
+            JsonObject(Map#{
+                "type" => JsonString("ref"),
+                "to"   => JsonString(target)
+            })
     }
 
     def encodeFieldHint(h: FieldHint): JsonElement = match h {
@@ -359,6 +368,18 @@ mod ResourceCodec {
         case JsonString("float")        => Some(FieldType.FloatT)
         case JsonString("bool")         => Some(FieldType.BoolT)
         case JsonString("texturePath")  => Some(FieldType.TexturePathT)
+        case JsonObject(obj)            =>
+            forM (
+                typeJ <- Map.get("type", obj);
+                tName <- expectString(typeJ);
+                ftype <- match tName {
+                    case "ref" =>
+                        Map.get("to", obj)
+                            |> Option.flatMap(expectString)
+                            |> Option.map(FieldType.RefT)
+                    case _     => None
+                }
+            ) yield ftype
         case _                          => None
     }
 

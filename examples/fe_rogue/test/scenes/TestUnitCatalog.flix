@@ -1,12 +1,17 @@
-// UnitCatalog の Saveable[UnitCatalog] が実 units.json と同じ JSON 文字列を
-// パース→デコードできるか検証するテスト。ファイル I/O は介さず、文字列リテラル
-// を直接 Json.Parse.parse → Saveable.fromJson するだけ。
+// UnitCatalog の Saveable[UnitCatalog] と weapons.json デコーダが、実 JSON と同じ
+// 構造の文字列を round-trip でデコードできるかを検証する。ファイル I/O は介さず、
+// 文字列リテラルを直接 Json.Parse.parse → decode して確認する。
+//
+// units.json と weapons.json は別ファイルなので、テスト内では:
+//   1. sampleUnitsJson() を Saveable.fromJson で UnitCatalog (weapons は空) にする
+//   2. sampleWeaponsJson() を UnitCatalogCodec.decodeWeaponsFile で武器マップに decode
+//   3. 1. の weapons フィールドを 2. の結果で差し替えて、本番 load と同じ形にする
 
 mod TestUnitCatalog {
 
     /// units.json と同じ構造の JSON 文字列リテラル。
-    /// weapons セクションと、それを参照する `playerWeapons` / `enemyWeapons` プールも含む。
-    def sampleJson(): String = String.unlines(
+    /// 各ユニットは `initialWeapon` で武器 id を直接持つ。
+    def sampleUnitsJson(): String = String.unlines(
         "{" ::
         "  \"units\": {" ::
         "    \"knight\": {" ::
@@ -15,6 +20,7 @@ mod TestUnitCatalog {
         "      \"attack\":  6," ::
         "      \"defense\": 5," ::
         "      \"speed\":   2," ::
+        "      \"initialWeapon\": \"trainingSpear\"," ::
         "      \"sprite\": { \"texture\": \"character_sheet\", \"hframes\": 5, \"vframes\": 2, \"frame\": 0 }" ::
         "    }," ::
         "    \"goblin\": {" ::
@@ -23,27 +29,44 @@ mod TestUnitCatalog {
         "      \"attack\":  3," ::
         "      \"defense\": 1," ::
         "      \"speed\":   4," ::
+        "      \"initialWeapon\": \"trainingSword\"," ::
         "      \"sprite\": { \"texture\": \"character_sheet\", \"hframes\": 5, \"vframes\": 2, \"frame\": 4 }" ::
         "    }" ::
         "  }," ::
+        "  \"players\": [\"knight\"]," ::
+        "  \"enemies\": [\"goblin\"]" ::
+        "}" :: Nil)
+
+    /// weapons.json と同じ構造の JSON 文字列リテラル。
+    def sampleWeaponsJson(): String = String.unlines(
+        "{" ::
         "  \"weapons\": {" ::
         "    \"trainingSpear\": { \"name\": \"trainingSpear\", \"attack\": 2, \"durability\": 41 }," ::
         "    \"trainingSword\": { \"name\": \"trainingSword\", \"attack\": 3, \"durability\": 41 }" ::
-        "  }," ::
-        "  \"pools\": {" ::
-        "    \"party\": [\"knight\"]," ::
-        "    \"enemyTier1\": [\"goblin\"]" ::
-        "  }," ::
-        "  \"playerWeapons\": [\"trainingSpear\"]," ::
-        "  \"enemyWeapons\":  [\"trainingSword\"]" ::
+        "  }" ::
         "}" :: Nil)
 
-    /// パース→デコード成功 + units / weapons / pools の key 集合が期待通り
+    /// 2 つの JSON 文字列をパースしてマージし、本番 `UnitCatalog.load` 相当の
+    /// in-memory カタログを返す。テスト用ヘルパー。
+    def buildSampleCatalog(): Option[UnitCatalog.UnitCatalog] =
+        let unitsParsed   = Json.Parse.parse(sampleUnitsJson());
+        let weaponsParsed = Json.Parse.parse(sampleWeaponsJson());
+        let unitCatalogOpt: Option[UnitCatalog.UnitCatalog] =
+            Option.flatMap(Saveable.fromJson, unitsParsed);
+        let weaponsOpt = Option.flatMap(UnitCatalogCodec.decodeWeaponsFile, weaponsParsed);
+        forM (
+            c <- unitCatalogOpt;
+            w <- weaponsOpt
+        ) yield {
+            let UnitCatalog.UnitCatalog(payload) = c;
+            UnitCatalog.UnitCatalog({weapons = w | payload})
+        }
+
+    /// units / weapons / pools の key 集合が期待通りで、各ユニットの initialWeapon が
+    /// 正しい id を保持していること。
     @Test
     def testDecodeSampleCatalog(): Unit \ Assert =
-        let parsed: Option[Json.JsonElement] = Json.Parse.parse(sampleJson());
-        let decoded: Option[UnitCatalog.UnitCatalog] =
-            Option.flatMap(Saveable.fromJson, parsed);
+        let decoded = buildSampleCatalog();
         let unitKeys = match decoded {
             case Some(c) => Map.keysOf(UnitCatalog.unitsOf(c))
             case None    => Set.empty()
@@ -60,42 +83,36 @@ mod TestUnitCatalog {
             expected = (true,
                          Set#{"knight", "goblin"},
                          Set#{"trainingSpear", "trainingSword"},
-                         Set#{"party", "enemyTier1", "playerWeapons", "enemyWeapons"}),
+                         Set#{"players", "enemies"}),
             (Option.nonEmpty(decoded), unitKeys, weaponKeys, poolKeys))
 
     /// pool 取得が期待通りに UnitResource を返す
     @Test
     def testPoolLookup(): Unit \ Assert =
-        let parsed: Option[Json.JsonElement] = Json.Parse.parse(sampleJson());
-        let decoded: Option[UnitCatalog.UnitCatalog] =
-            Option.flatMap(Saveable.fromJson, parsed);
-        match decoded {
+        match buildSampleCatalog() {
             case None    => Assert.assertEq(expected = "decoded", "none")
             case Some(c) =>
-                let party = UnitCatalog.pool("party", c);
+                let party = UnitCatalog.pool("players", c);
                 let knight = List.head(party);
-                let hp = match knight {
-                    case Some(u) => u#hp
-                    case None    => -1
+                let (hp, weaponId) = match knight {
+                    case Some(u) => (u#hp, u#initialWeapon)
+                    case None    => (-1, "")
                 };
-                Assert.assertEq(expected = (1, 14), (List.length(party), hp))
+                Assert.assertEq(expected = (1, 14, "trainingSpear"),
+                                (List.length(party), hp, weaponId))
         }
 
-    /// weaponPool 取得が期待通りに WeaponResource を返す
+    /// initialWeapon → lookupWeapon の経路で `WeaponResource` が引けること。
     @Test
-    def testWeaponPoolLookup(): Unit \ Assert =
-        let parsed: Option[Json.JsonElement] = Json.Parse.parse(sampleJson());
-        let decoded: Option[UnitCatalog.UnitCatalog] =
-            Option.flatMap(Saveable.fromJson, parsed);
-        match decoded {
+    def testLookupWeapon(): Unit \ Assert =
+        match buildSampleCatalog() {
             case None    => Assert.assertEq(expected = "decoded", "none")
             case Some(c) =>
-                let weapons = UnitCatalog.weaponPool("playerWeapons", c);
-                let head    = List.head(weapons);
-                let (atk, dur) = match head {
-                    case Some(w) => (w#attack, w#durability)
-                    case None    => (-1, -1)
+                let knight = match Map.get("knight", UnitCatalog.unitsOf(c)) {
+                    case Some(u) => u
+                    case None    => bug!("knight not in sample catalog")
                 };
-                Assert.assertEq(expected = (1, 2, 41), (List.length(weapons), atk, dur))
+                let weapon = UnitCatalog.lookupWeapon(knight#initialWeapon, c);
+                Assert.assertEq(expected = (2, 41), (weapon#attack, weapon#durability))
         }
 }
