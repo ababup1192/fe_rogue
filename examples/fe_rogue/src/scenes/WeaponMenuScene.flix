@@ -83,8 +83,14 @@ mod WeaponMenuScene {
                 case other => other
             })
 
+    /// 武器アイコンの表示サイズ（px）。fontSize 4 / itemHeight 6 の中に収まるよう 5px に。
+    def iconSize(): Float64 = 5.0
+
+    /// アイコンとテキスト名の間の余白（px）
+    def iconTextGap(): Float64 = 1.0
+
     /// 毎フレーム呼ばれる process。**WeaponSelect フェーズのときだけ** 選択中プレイヤーの
-    /// weapons を ItemList.items に同期する。それ以外のフェーズでは前回の items を温存して
+    /// weapons を ItemList.items + itemIcons に同期する。それ以外のフェーズでは前回の状態を温存して
     /// 何もしない（毎フレーム同じ List を再構築するコストを避ける）。
     pub def refreshItems(_delta: Duration.Duration, node: EngineNode[NodeTag],
                          _path: NodePath,
@@ -95,11 +101,17 @@ mod WeaponMenuScene {
             case EngineNode.ItemListWithState(list, NodeTag.WeaponMenu) =>
                 if (TurnPhase.State.get() != TurnPhase.Phase.WeaponSelect) (node, scene)
                 else {
-                    let items = match SelectedPlayer.State.get()#id {
+                    let weapons = match SelectedPlayer.State.get()#id {
                         case None     => Nil
-                        case Some(id) => buildItems(PlayerScene.getWeapons(id, scene))
+                        case Some(id) => PlayerScene.getWeapons(id, scene)
                     };
-                    let updated = ItemList.setItems(items, list);
+                    let items = buildItems(weapons);
+                    let icons = buildIcons(weapons);
+                    let updated = list
+                        |> ItemList.setItems(items)
+                        |> ItemList.setItemIcons(icons)
+                        |> ItemList.setIconSize(iconSize())
+                        |> ItemList.setIconTextGap(iconTextGap());
                     (EngineNode.ItemListWithState(updated, NodeTag.WeaponMenu), scene)
                 }
             case _ => (node, scene)
@@ -115,6 +127,20 @@ mod WeaponMenuScene {
                     disabled = false,
                     metadata = Some(Int32.toString(idx))
                 }: ItemEntry))
+
+    /// 各武器の sprite から ItemList の itemIcons Map を組み立てる（行 index → ItemIcon）。
+    def buildIcons(weapons: List[UnitCatalog.WeaponResource]):
+            Map[Int32, ItemIcon] =
+        List.foldLeft((acc, pair) -> {
+            let (idx, w) = pair;
+            let icon: ItemIcon = {
+                texture = w#sprite#texture,
+                hframes = w#sprite#hframes,
+                vframes = w#sprite#vframes,
+                frame   = w#sprite#frame
+            };
+            Map.insert(idx, icon, acc)
+        }, Map.empty(), List.zipWithIndex(weapons))
 
     /// ItemList 項目が確定された（Enter）瞬間に呼ばれる。
     /// metadata から weapon index を取り出し、`AttackForecast` フェーズへ進める

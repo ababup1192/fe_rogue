@@ -393,6 +393,7 @@ mod NodeInspector {
         case EngineNode.StaticBody2DWithState(_, _)     => "StaticBody2D"
         case EngineNode.TileMapLayerWithState(_, _)     => "TileMapLayer"
         case EngineNode.PanelWithState(_, _)            => "Panel"
+        case EngineNode.ProgressBarWithState(_, _)      => "ProgressBar"
         case _                                          => "Node2D"
     }
 

@@ -41,8 +41,8 @@ mod TestUnitCatalog {
     def sampleWeaponsJson(): String = String.unlines(
         "{" ::
         "  \"weapons\": {" ::
-        "    \"trainingSpear\": { \"name\": \"trainingSpear\", \"attack\": 2, \"durability\": 41, \"range\": { \"min\": 1, \"max\": 1 } }," ::
-        "    \"trainingSword\": { \"name\": \"trainingSword\", \"attack\": 3, \"durability\": 41, \"range\": { \"min\": 1, \"max\": 2 } }" ::
+        "    \"trainingSpear\": { \"name\": \"trainingSpear\", \"attack\": 2, \"durability\": 41, \"range\": { \"min\": 1, \"max\": 1 }, \"sprite\": { \"texture\": \"roguelike_weapons\", \"hframes\": 54, \"vframes\": 12, \"frame\": 50 } }," ::
+        "    \"trainingSword\": { \"name\": \"trainingSword\", \"attack\": 3, \"durability\": 41, \"range\": { \"min\": 1, \"max\": 2 }, \"sprite\": { \"texture\": \"roguelike_weapons\", \"hframes\": 54, \"vframes\": 12, \"frame\": 49 } }" ::
         "  }" ::
         "}" :: Nil)
 

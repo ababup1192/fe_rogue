@@ -28,9 +28,26 @@ pub type alias ItemEntry = {
     metadata = Option[String]
 }
 
+/// 行ごとのアイコン情報。`text` の左に sprite sheet の指定 frame を描画するときに使う。
+/// Godot ItemList の `set_item_icon(idx, texture)` + sub-rect 相当。
+/// 任意の行に部分的にアイコンを置きたいので、`itemIcons` は index→ItemIcon の Map で持つ。
+pub type alias ItemIcon = {
+    texture = String,
+    hframes = Int32,
+    vframes = Int32,
+    frame   = Int32
+}
+
 pub enum ItemList {
     case ItemList({
         items           = List[ItemEntry],
+        // 行 index → アイコン。指定行のみアイコン表示する。
+        // iconSize > 0 のときに限り toDrawables が描画する。
+        itemIcons       = Map[Int32, ItemIcon],
+        // アイコン表示サイズ（px、正方形）。0 ならアイコン領域を確保しない（既存挙動）。
+        iconSize        = Float64,
+        // アイコンとテキストの間隔（px）。iconSize > 0 のときのみ有効。
+        iconTextGap     = Float64,
         selectedIndex   = Int32,
         focused         = Bool,
         cursorGlyph     = String,
@@ -68,6 +85,9 @@ mod ItemList {
                  size: Vec2.Vec2): ItemList =
         ItemList.ItemList({
             items           = items,
+            itemIcons       = (Map.empty(): Map[Int32, ItemIcon]),
+            iconSize        = 0.0,
+            iconTextGap     = 2.0,
             selectedIndex   = 0,
             focused         = false,
             cursorGlyph     = "▶",
@@ -98,6 +118,42 @@ mod ItemList {
     pub def getItems(list: ItemList): List[ItemEntry] =
         let ItemList.ItemList(r) = list;
         r#items
+
+    // ── アイコン ──
+
+    pub def getItemIcons(list: ItemList): Map[Int32, ItemIcon] =
+        let ItemList.ItemList(r) = list;
+        r#itemIcons
+
+    /// 全行ぶんのアイコンマップを差し替える。`setItems` と同じくらいの頻度で呼ぶ想定。
+    pub def setItemIcons(icons: Map[Int32, ItemIcon], list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({itemIcons = icons | r})
+
+    /// 単一行のアイコンを設定/上書きする。
+    pub def setIconAt(idx: Int32, icon: ItemIcon, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({itemIcons = Map.insert(idx, icon, r#itemIcons) | r})
+
+    pub def getIconSize(list: ItemList): Float64 =
+        let ItemList.ItemList(r) = list;
+        r#iconSize
+
+    /// アイコン表示サイズを設定する。0 で「アイコン領域なし」（既存挙動）。
+    /// 0 より大なら各行 `iconSize × iconSize` のアイコンを描画用に左に確保し、テキストが右にずれる。
+    pub def setIconSize(size: Float64, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({iconSize = Float64.max(0.0, size) | r})
+
+    pub def getIconTextGap(list: ItemList): Float64 =
+        let ItemList.ItemList(r) = list;
+        r#iconTextGap
+
+    pub def setIconTextGap(gap: Float64, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({iconTextGap = gap | r})
+
+    // ── items ──
 
     pub def setItems(items: List[ItemEntry], list: ItemList): ItemList =
         let ItemList.ItemList(r) = list;
@@ -280,26 +336,64 @@ mod ItemList {
             })
         }
 
+    /// アイコン 1 つ分の Drawable を組み立てる（sprite sheet の指定 frame を iconSize に
+    /// スケールして描画）。`spriteToDrawable` の texture info 取得が `GameEngine.Game` を要求する。
+    def renderIcon(icon: ItemIcon, pos: Vec2.Vec2, iconSize: Float64, zIndex: Int32):
+            GameEngine.Drawable \ GameEngine.Game =
+        let texInfo = match GameEngine.Game.getTextureInfo(icon#texture) {
+            case Some(info) => info
+            case None       => bug!("ItemList icon: texture '${icon#texture}' not registered")
+        };
+        let cellW = texInfo#width  / Int32.toFloat64(icon#hframes);
+        let cellH = texInfo#height / Int32.toFloat64(icon#vframes);
+        let scaleX = if (cellW <= 0.0) 0.0 else iconSize / cellW;
+        let scaleY = if (cellH <= 0.0) 0.0 else iconSize / cellH;
+        let sprite = Sprite2D.make(icon#texture, Vec2.zero(), {x = scaleX, y = scaleY})
+            |> Sprite2D.setHframes(icon#hframes)
+            |> Sprite2D.setVframes(icon#vframes)
+            |> Sprite2D.setFrame(icon#frame)
+            |> Sprite2D.setCentered(false)
+            |> CanvasItem.setZIndex(zIndex);
+        EngineNode.spriteToDrawable(sprite, pos)
+
     /// 描画用 Drawable リストを返す。各項目を `Label2D.toDrawables` でグリフ化し、
     /// 選択中（かつ focused）の行の左に cursorGlyph を重ねる。
-    pub def toDrawables(list: ItemList, globalPos: Vec2.Vec2): List[GameEngine.Drawable] =
+    /// `iconSize > 0` のときは各行のテキストの左にアイコン領域を確保する
+    /// （`itemIcons` Map に登録のある行のみアイコンが描かれる）。
+    pub def toDrawables(list: ItemList, globalPos: Vec2.Vec2):
+            List[GameEngine.Drawable] \ GameEngine.Game =
         let ItemList.ItemList(r) = list;
-        let textOriginX = globalPos#x + r#cursorOffsetX;
+        let hasIconArea = r#iconSize > 0.0;
+        let iconStartX = globalPos#x + r#cursorOffsetX;
+        let textOriginX =
+            if (hasIconArea) iconStartX + r#iconSize + r#iconTextGap
+            else globalPos#x + r#cursorOffsetX;
         let result = List.foldLeft((acc, entry) -> {
             let idx = acc#idx;
             let lineY = globalPos#y + Int32.toFloat64(idx) * r#itemHeight;
             let color = if (entry#disabled) r#disabledColor else r#textColor;
+            // テキスト
             let textLabel = Label2D.make(entry#text, r#font, r#fontSize)
                 |> CanvasItem.setModulate(color)
                 |> CanvasItem.setZIndex(r#zIndex);
             let textDrawables = Label2D.toDrawables(textLabel, {x = textOriginX, y = lineY});
+            // アイコン（その行に登録があり、iconSize > 0 のとき）
+            let iconDrawables: List[GameEngine.Drawable] =
+                if (hasIconArea) match Map.get(idx, r#itemIcons) {
+                    case Some(icon) =>
+                        renderIcon(icon, {x = iconStartX, y = lineY}, r#iconSize, r#zIndex) :: Nil
+                    case None       => Nil
+                }
+                else Nil;
+            // カーソル glyph（選択中かつ focused のとき）
             let lineDrawables = if (idx == r#selectedIndex and r#focused) {
                 let cursorLabel = Label2D.make(r#cursorGlyph, r#font, r#fontSize)
                     |> CanvasItem.setModulate(r#cursorColor)
                     |> CanvasItem.setZIndex(r#zIndex);
                 let cursorDrawables = Label2D.toDrawables(cursorLabel, {x = globalPos#x, y = lineY});
-                List.append(cursorDrawables, textDrawables)
-            } else textDrawables;
+                List.append(cursorDrawables, List.append(iconDrawables, textDrawables))
+            } else
+                List.append(iconDrawables, textDrawables);
             {drawables = List.append(acc#drawables, lineDrawables), idx = idx + 1}
         }, {drawables = (Nil: List[GameEngine.Drawable]), idx = 0}, r#items);
         result#drawables

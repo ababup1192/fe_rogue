@@ -186,4 +186,58 @@ mod TestItemList {
             case Some(entry) => Assert.assertEq(expected = "B", entry#text)
             case None        => Assert.assertTrue(false)
         }
+
+    // ── アイコン ──
+
+    /// 初期状態は iconSize=0、itemIcons は空
+    @Test
+    def testDefaultsHaveNoIcons(): Unit \ Assert =
+        let list = makeList(threeItems());
+        Assert.assertEq(expected = 0.0, ItemList.getIconSize(list));
+        Assert.assertEq(expected = 0, Map.size(ItemList.getItemIcons(list)))
+
+    /// setIconSize の roundtrip。負値は 0 にクランプ。
+    @Test
+    def testSetIconSizeRoundtrip(): Unit \ Assert =
+        let list = makeList(threeItems())
+            |> ItemList.setIconSize(8.0);
+        Assert.assertEq(expected = 8.0, ItemList.getIconSize(list))
+
+    @Test
+    def testSetIconSizeClampsNegative(): Unit \ Assert =
+        let list = makeList(threeItems())
+            |> ItemList.setIconSize(-5.0);
+        Assert.assertEq(expected = 0.0, ItemList.getIconSize(list))
+
+    /// setIconAt で 1 行ごとにアイコンを登録できる
+    @Test
+    def testSetIconAtRegistersEntry(): Unit \ Assert =
+        let icon: ItemIcon = {texture = "weapons", hframes = 4, vframes = 4, frame = 7};
+        let list = makeList(threeItems())
+            |> ItemList.setIconAt(1, icon);
+        let icons = ItemList.getItemIcons(list);
+        Assert.assertEq(expected = 1, Map.size(icons));
+        match Map.get(1, icons) {
+            case Some(got) => Assert.assertEq(expected = 7, got#frame)
+            case None      => Assert.assertTrue(false)
+        }
+
+    /// setItemIcons でマップ全体差し替え
+    @Test
+    def testSetItemIconsReplacesMap(): Unit \ Assert =
+        let icon0: ItemIcon = {texture = "w", hframes = 1, vframes = 1, frame = 0};
+        let icon2: ItemIcon = {texture = "w", hframes = 1, vframes = 1, frame = 2};
+        let icons = Map.empty()
+            |> Map.insert(0, icon0)
+            |> Map.insert(2, icon2);
+        let list = makeList(threeItems())
+            |> ItemList.setItemIcons(icons);
+        Assert.assertEq(expected = 2, Map.size(ItemList.getItemIcons(list)))
+
+    /// iconTextGap roundtrip
+    @Test
+    def testSetIconTextGapRoundtrip(): Unit \ Assert =
+        let list = makeList(threeItems())
+            |> ItemList.setIconTextGap(3.5);
+        Assert.assertEq(expected = 3.5, ItemList.getIconTextGap(list))
 }

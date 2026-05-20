@@ -48,6 +48,8 @@ pub enum EngineNode[state] {
     case TileMapLayerWithState(TileMapLayer, state)
     /// パネル（背景色 + 枠線つき矩形、Godot Panel + StyleBoxFlat 相当）
     case PanelWithState(Panel, state)
+    /// プログレスバー（Godot ProgressBar + Range 相当、HP バー等の値ゲージ）
+    case ProgressBarWithState(ProgressBar, state)
     /// 項目リスト（キー駆動カーソル、Godot ItemList 相当）
     case ItemListWithState(ItemList, state)
 }
@@ -78,6 +80,7 @@ mod EngineNode {
         case EngineNode.StaticBody2DWithState(_, state) => state
         case EngineNode.TileMapLayerWithState(_, state) => state
         case EngineNode.PanelWithState(_, state) => state
+        case EngineNode.ProgressBarWithState(_, state) => state
         case EngineNode.ItemListWithState(_, state) => state
     }
 
@@ -105,6 +108,7 @@ mod EngineNode {
         case EngineNode.StaticBody2DWithState(inner, _) => EngineNode.StaticBody2DWithState(inner, newState)
         case EngineNode.TileMapLayerWithState(inner, _) => EngineNode.TileMapLayerWithState(inner, newState)
         case EngineNode.PanelWithState(inner, _) => EngineNode.PanelWithState(inner, newState)
+        case EngineNode.ProgressBarWithState(inner, _) => EngineNode.ProgressBarWithState(inner, newState)
         case EngineNode.ItemListWithState(inner, _) => EngineNode.ItemListWithState(inner, newState)
     }
 
@@ -132,6 +136,7 @@ mod EngineNode {
         case EngineNode.StaticBody2DWithState(inner, state) => EngineNode.StaticBody2DWithState(inner, f(state))
         case EngineNode.TileMapLayerWithState(inner, state) => EngineNode.TileMapLayerWithState(inner, f(state))
         case EngineNode.PanelWithState(inner, state) => EngineNode.PanelWithState(inner, f(state))
+        case EngineNode.ProgressBarWithState(inner, state) => EngineNode.ProgressBarWithState(inner, f(state))
         case EngineNode.ItemListWithState(inner, state) => EngineNode.ItemListWithState(inner, f(state))
     }
 
@@ -243,6 +248,12 @@ mod EngineNode {
         case _ => node
     }
 
+    /// ProgressBar の inner node に関数を適用する
+    pub def mapProgressBar(f: ProgressBar -> ProgressBar, node: EngineNode[s]): EngineNode[s] = match node {
+        case EngineNode.ProgressBarWithState(inner, st) => EngineNode.ProgressBarWithState(f(inner), st)
+        case _ => node
+    }
+
     /// ItemList の inner node に関数を適用する
     pub def mapItemList(f: ItemList -> ItemList, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.ItemListWithState(inner, st) => EngineNode.ItemListWithState(f(inner), st)
@@ -276,6 +287,7 @@ mod EngineNode {
         case EngineNode.RichTextLabelWithState(label, _) => Some(RichTextLabel.getSize(label))
         case EngineNode.ColorRectWithState(rect, _)      => Some(ColorRect.getSize(rect))
         case EngineNode.PanelWithState(panel, _)         => Some(Panel.getSize(panel))
+        case EngineNode.ProgressBarWithState(bar, _)     => Some(ProgressBar.getSize(bar))
         case EngineNode.ItemListWithState(list, _)       => Some(ItemList.getSize(list))
         case _                                           => None
     }
@@ -291,6 +303,7 @@ mod EngineNode {
         case EngineNode.RichTextLabelWithState(label, st) => EngineNode.RichTextLabelWithState(RichTextLabel.setSize(size, label), st)
         case EngineNode.ColorRectWithState(rect, st)      => EngineNode.ColorRectWithState(ColorRect.setSize(size, rect), st)
         case EngineNode.PanelWithState(panel, st)         => EngineNode.PanelWithState(Panel.setSize(size, panel), st)
+        case EngineNode.ProgressBarWithState(bar, st)     => EngineNode.ProgressBarWithState(ProgressBar.setSize(size, bar), st)
         case EngineNode.ItemListWithState(list, st)       => EngineNode.ItemListWithState(ItemList.setSize(size, list), st)
         case _                                            => node
     }
@@ -405,6 +418,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, _) => CanvasItem.isVisible(body)
         case EngineNode.TileMapLayerWithState(tm, _) => CanvasItem.isVisible(tm)
         case EngineNode.PanelWithState(panel, _) => CanvasItem.isVisible(panel)
+        case EngineNode.ProgressBarWithState(bar, _) => CanvasItem.isVisible(bar)
         case EngineNode.ItemListWithState(list, _) => CanvasItem.isVisible(list)
     }
     pub def setVisible(visible: Bool, node: EngineNode[s]): EngineNode[s] = match node {
@@ -430,6 +444,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(CanvasItem.setVisible(visible, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(CanvasItem.setVisible(visible, tm), st)
         case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(CanvasItem.setVisible(visible, panel), st)
+        case EngineNode.ProgressBarWithState(bar, st) => EngineNode.ProgressBarWithState(CanvasItem.setVisible(visible, bar), st)
         case EngineNode.ItemListWithState(list, st) => EngineNode.ItemListWithState(CanvasItem.setVisible(visible, list), st)
     }
     pub def getModulate(node: EngineNode[s]): Color = match node {
@@ -455,6 +470,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, _) => CanvasItem.getModulate(body)
         case EngineNode.TileMapLayerWithState(tm, _) => CanvasItem.getModulate(tm)
         case EngineNode.PanelWithState(panel, _) => CanvasItem.getModulate(panel)
+        case EngineNode.ProgressBarWithState(bar, _) => CanvasItem.getModulate(bar)
         case EngineNode.ItemListWithState(list, _) => CanvasItem.getModulate(list)
     }
     pub def setModulate(color: Color, node: EngineNode[s]): EngineNode[s] = match node {
@@ -480,6 +496,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(CanvasItem.setModulate(color, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(CanvasItem.setModulate(color, tm), st)
         case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(CanvasItem.setModulate(color, panel), st)
+        case EngineNode.ProgressBarWithState(bar, st) => EngineNode.ProgressBarWithState(CanvasItem.setModulate(color, bar), st)
         case EngineNode.ItemListWithState(list, st) => EngineNode.ItemListWithState(CanvasItem.setModulate(color, list), st)
     }
     pub def getZIndex(node: EngineNode[s]): Int32 = match node {
@@ -505,6 +522,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, _) => CanvasItem.getZIndex(body)
         case EngineNode.TileMapLayerWithState(tm, _) => CanvasItem.getZIndex(tm)
         case EngineNode.PanelWithState(panel, _) => CanvasItem.getZIndex(panel)
+        case EngineNode.ProgressBarWithState(bar, _) => CanvasItem.getZIndex(bar)
         case EngineNode.ItemListWithState(list, _) => CanvasItem.getZIndex(list)
     }
     pub def setZIndex(zIndex: Int32, node: EngineNode[s]): EngineNode[s] = match node {
@@ -530,6 +548,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(CanvasItem.setZIndex(zIndex, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(CanvasItem.setZIndex(zIndex, tm), st)
         case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(CanvasItem.setZIndex(zIndex, panel), st)
+        case EngineNode.ProgressBarWithState(bar, st) => EngineNode.ProgressBarWithState(CanvasItem.setZIndex(zIndex, bar), st)
         case EngineNode.ItemListWithState(list, st) => EngineNode.ItemListWithState(CanvasItem.setZIndex(zIndex, list), st)
     }
     redef isYSortEnabled(node: EngineNode[s]): Bool = match node {
@@ -574,6 +593,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, _) => Node2D.getPosition(body)
         case EngineNode.TileMapLayerWithState(tm, _) => Node2D.getPosition(tm)
         case EngineNode.PanelWithState(panel, _) => Node2D.getPosition(panel)
+        case EngineNode.ProgressBarWithState(bar, _) => Node2D.getPosition(bar)
         case EngineNode.ItemListWithState(list, _) => Node2D.getPosition(list)
     }
     pub def setPosition(position: Vec2.Vec2, node: EngineNode[s]): EngineNode[s] = match node {
@@ -599,6 +619,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(Node2D.setPosition(position, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(Node2D.setPosition(position, tm), st)
         case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(Node2D.setPosition(position, panel), st)
+        case EngineNode.ProgressBarWithState(bar, st) => EngineNode.ProgressBarWithState(Node2D.setPosition(position, bar), st)
         case EngineNode.ItemListWithState(list, st) => EngineNode.ItemListWithState(Node2D.setPosition(position, list), st)
     }
     pub def getRotation(node: EngineNode[s]): Float64 = match node {
@@ -624,6 +645,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, _) => Node2D.getRotation(body)
         case EngineNode.TileMapLayerWithState(tm, _) => Node2D.getRotation(tm)
         case EngineNode.PanelWithState(panel, _) => Node2D.getRotation(panel)
+        case EngineNode.ProgressBarWithState(bar, _) => Node2D.getRotation(bar)
         case EngineNode.ItemListWithState(list, _) => Node2D.getRotation(list)
     }
     pub def setRotation(rotation: Float64, node: EngineNode[s]): EngineNode[s] = match node {
@@ -649,6 +671,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(Node2D.setRotation(rotation, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(Node2D.setRotation(rotation, tm), st)
         case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(Node2D.setRotation(rotation, panel), st)
+        case EngineNode.ProgressBarWithState(bar, st) => EngineNode.ProgressBarWithState(Node2D.setRotation(rotation, bar), st)
         case EngineNode.ItemListWithState(list, st) => EngineNode.ItemListWithState(Node2D.setRotation(rotation, list), st)
     }
     pub def getScale(node: EngineNode[s]): Vec2.Vec2 = match node {
@@ -674,6 +697,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, _) => Node2D.getScale(body)
         case EngineNode.TileMapLayerWithState(tm, _) => Node2D.getScale(tm)
         case EngineNode.PanelWithState(panel, _) => Node2D.getScale(panel)
+        case EngineNode.ProgressBarWithState(bar, _) => Node2D.getScale(bar)
         case EngineNode.ItemListWithState(list, _) => Node2D.getScale(list)
     }
     pub def setScale(scale: Vec2.Vec2, node: EngineNode[s]): EngineNode[s] = match node {
@@ -699,6 +723,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(Node2D.setScale(scale, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(Node2D.setScale(scale, tm), st)
         case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(Node2D.setScale(scale, panel), st)
+        case EngineNode.ProgressBarWithState(bar, st) => EngineNode.ProgressBarWithState(Node2D.setScale(scale, bar), st)
         case EngineNode.ItemListWithState(list, st) => EngineNode.ItemListWithState(Node2D.setScale(scale, list), st)
     }
     pub def getSkew(node: EngineNode[s]): Float64 = match node {
@@ -724,6 +749,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, _) => Node2D.getSkew(body)
         case EngineNode.TileMapLayerWithState(tm, _) => Node2D.getSkew(tm)
         case EngineNode.PanelWithState(panel, _) => Node2D.getSkew(panel)
+        case EngineNode.ProgressBarWithState(bar, _) => Node2D.getSkew(bar)
         case EngineNode.ItemListWithState(list, _) => Node2D.getSkew(list)
     }
     pub def setSkew(skew: Float64, node: EngineNode[s]): EngineNode[s] = match node {
@@ -749,6 +775,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.StaticBody2DWithState(body, st) => EngineNode.StaticBody2DWithState(Node2D.setSkew(skew, body), st)
         case EngineNode.TileMapLayerWithState(tm, st) => EngineNode.TileMapLayerWithState(Node2D.setSkew(skew, tm), st)
         case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(Node2D.setSkew(skew, panel), st)
+        case EngineNode.ProgressBarWithState(bar, st) => EngineNode.ProgressBarWithState(Node2D.setSkew(skew, bar), st)
         case EngineNode.ItemListWithState(list, st) => EngineNode.ItemListWithState(Node2D.setSkew(skew, list), st)
     }
 }
@@ -838,6 +865,8 @@ instance GameEngine.Renderable[EngineNode[s]] {
             case EngineNode.TileMapLayerWithState(_, _) => Nil
             case EngineNode.PanelWithState(panel, _) =>
                 Panel.toDrawables(panel, globalPos)
+            case EngineNode.ProgressBarWithState(bar, _) =>
+                ProgressBar.toDrawables(bar, globalPos)
             case EngineNode.ItemListWithState(list, _) =>
                 ItemList.toDrawables(list, globalPos)
         }

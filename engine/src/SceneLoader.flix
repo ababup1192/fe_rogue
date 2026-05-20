@@ -349,6 +349,7 @@ mod SceneLoader {
             case "ColorRect"        => buildColorRect(tagParser, map)
             case "RichTextLabel"    => buildRichTextLabel(tagParser, fontAtlas, map)
             case "Panel"            => buildPanel(tagParser, map)
+            case "ProgressBar"      => buildProgressBar(tagParser, map)
             case "ItemList"         => buildItemList(tagParser, fontAtlas, map)
             case unknown            =>
                 Err(JsonError(Root, Set#{"known node type (got: ${unknown})"}))
@@ -1198,6 +1199,95 @@ mod SceneLoader {
 
     def setPanelZIndex(z: Int32, panel: Panel): Panel =
         CanvasItem.setZIndex(z, panel)
+
+    /// scene.json から ProgressBar を構築する。Panel の構造に Range 由来の値
+    /// (minValue/maxValue/value)、塗り (fillColor/fillAlpha/fillMode) を足した形。
+    /// `fillMode` の文字列 → enum 変換は `parseFillMode` で行う。
+    def buildProgressBar(tagParser: Option[String] -> Result[Json.JsonError, t],
+                         map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
+        forM (
+            tag                <- parseTagField(tagParser, map);
+            posOpt             <- parseVec2Opt("pos", map);
+            sizeOpt            <- parseVec2Opt("size", map);
+            maxValueOpt        <- (Json.FromJson.getAtKeyOpt(Root, "maxValue", map): Result[Json.JsonError, Option[Float64]]);
+            minValueOpt        <- (Json.FromJson.getAtKeyOpt(Root, "minValue", map): Result[Json.JsonError, Option[Float64]]);
+            valueOpt           <- (Json.FromJson.getAtKeyOpt(Root, "value", map): Result[Json.JsonError, Option[Float64]]);
+            fillColor          <- parseColor("fillColor", map);
+            fillAlphaOpt       <- (Json.FromJson.getAtKeyOpt(Root, "fillAlpha", map): Result[Json.JsonError, Option[Float64]]);
+            fillModeOpt        <- parseFillModeOpt("fillMode", map);
+            backgroundOpt      <- parseColorOpt("backgroundColor", map);
+            backgroundAlphaOpt <- (Json.FromJson.getAtKeyOpt(Root, "backgroundAlpha", map): Result[Json.JsonError, Option[Float64]]);
+            tickIntervalOpt    <- (Json.FromJson.getAtKeyOpt(Root, "tickInterval", map): Result[Json.JsonError, Option[Float64]]);
+            tickColorOpt       <- parseColorOpt("tickColor", map);
+            tickAlphaOpt       <- (Json.FromJson.getAtKeyOpt(Root, "tickAlpha", map): Result[Json.JsonError, Option[Float64]]);
+            tickWidthOpt       <- (Json.FromJson.getAtKeyOpt(Root, "tickWidth", map): Result[Json.JsonError, Option[Int32]]);
+            borderColorOpt     <- parseColorOpt("borderColor", map);
+            borderAlphaOpt     <- (Json.FromJson.getAtKeyOpt(Root, "borderAlpha", map): Result[Json.JsonError, Option[Float64]]);
+            borderWidthOpt     <- (Json.FromJson.getAtKeyOpt(Root, "borderWidth", map): Result[Json.JsonError, Option[Int32]]);
+            visibleOpt         <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt          <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            modulateOpt        <- parseColorOpt("modulate", map)
+        ) yield {
+            let pos = Option.getWithDefault(Vec2.zero(), posOpt);
+            let size = Option.getWithDefault(Vec2.zero(), sizeOpt);
+            let maxValue = Option.getWithDefault(100.0, maxValueOpt);
+            let bar = ProgressBar.make(size, maxValue, fillColor)
+                |> Node2D.setPosition(pos)
+                |> applyOpt(minValueOpt, ProgressBar.setMinValue)
+                |> applyOpt(valueOpt, ProgressBar.setValue)
+                |> applyOpt(fillAlphaOpt, setProgressBarFillAlpha)
+                |> applyOpt(fillModeOpt, ProgressBar.setFillMode)
+                |> applyOpt(backgroundOpt, ProgressBar.setBackgroundColor)
+                |> applyOpt(backgroundAlphaOpt, setProgressBarBackgroundAlpha)
+                |> applyOpt(tickIntervalOpt, ProgressBar.setTickInterval)
+                |> applyOpt(tickColorOpt, ProgressBar.setTickColor)
+                |> applyOpt(tickAlphaOpt, setProgressBarTickAlpha)
+                |> applyOpt(tickWidthOpt, ProgressBar.setTickWidth)
+                |> applyOpt(borderColorOpt, ProgressBar.setBorderColor)
+                |> applyOpt(borderAlphaOpt, setProgressBarBorderAlpha)
+                |> applyOpt(borderWidthOpt, ProgressBar.setBorderWidth)
+                |> applyOpt(visibleOpt, setProgressBarVisible)
+                |> applyOpt(zIndexOpt, setProgressBarZIndex)
+                |> applyOpt(modulateOpt, (c, b) -> CanvasItem.setModulate(c, b));
+            EngineNode.ProgressBarWithState(bar, tag)
+        }
+
+    def setProgressBarFillAlpha(alpha: Float64, bar: ProgressBar): ProgressBar =
+        ProgressBar.setFillAlpha(Float64.truncateToFloat32(alpha), bar)
+
+    def setProgressBarBackgroundAlpha(alpha: Float64, bar: ProgressBar): ProgressBar =
+        ProgressBar.setBackgroundAlpha(Float64.truncateToFloat32(alpha), bar)
+
+    def setProgressBarTickAlpha(alpha: Float64, bar: ProgressBar): ProgressBar =
+        ProgressBar.setTickAlpha(Float64.truncateToFloat32(alpha), bar)
+
+    def setProgressBarBorderAlpha(alpha: Float64, bar: ProgressBar): ProgressBar =
+        ProgressBar.setBorderAlpha(Float64.truncateToFloat32(alpha), bar)
+
+    def setProgressBarVisible(v: Bool, bar: ProgressBar): ProgressBar =
+        CanvasItem.setVisible(v, bar)
+
+    def setProgressBarZIndex(z: Int32, bar: ProgressBar): ProgressBar =
+        CanvasItem.setZIndex(z, bar)
+
+    /// `"LeftToRight"` / `"RightToLeft"` / `"TopToBottom"` / `"BottomToTop"` の
+    /// 文字列を `FillMode` enum に変換する。未指定なら None、未知値は JsonError。
+    def parseFillModeOpt(key: String,
+                         map: Map[String, Json.JsonElement]): Result[Json.JsonError, Option[FillMode]] =
+        forM (
+            strOpt <- (Json.FromJson.getAtKeyOpt(Root, key, map): Result[Json.JsonError, Option[String]]);
+            modeOpt <- match strOpt {
+                case None      => (Ok(None): Result[Json.JsonError, Option[FillMode]])
+                case Some(str) => match str {
+                    case "LeftToRight" => (Ok(Some(FillMode.LeftToRight)): Result[Json.JsonError, Option[FillMode]])
+                    case "RightToLeft" => (Ok(Some(FillMode.RightToLeft)): Result[Json.JsonError, Option[FillMode]])
+                    case "TopToBottom" => (Ok(Some(FillMode.TopToBottom)): Result[Json.JsonError, Option[FillMode]])
+                    case "BottomToTop" => (Ok(Some(FillMode.BottomToTop)): Result[Json.JsonError, Option[FillMode]])
+                    case unknown       =>
+                        (Err(JsonError(Root, Set#{"fillMode (got: ${unknown})"})): Result[Json.JsonError, Option[FillMode]])
+                }
+            }
+        ) yield modeOpt
 
     /// scene.json の "items" 配列から ItemEntry のリストを組み立てる。
     /// 各要素は `{"text": "...", "disabled": false}` の形式。disabled は省略可能。

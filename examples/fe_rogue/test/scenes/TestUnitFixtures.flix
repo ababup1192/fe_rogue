@@ -49,7 +49,8 @@ mod TestUnitFixtures {
         name       = "test-weapon",
         attack     = 2,
         durability = 10,
-        range      = { min = 1, max = 1 }
+        range      = { min = 1, max = 1 },
+        sprite     = testSprite()
     }
 
     /// 攻撃力 / 耐久度を明示したい時用のテスト用 WeaponResource。射程は 1-1 固定。
@@ -57,6 +58,15 @@ mod TestUnitFixtures {
         name       = "test-weapon",
         attack     = attack,
         durability = durability,
-        range      = { min = 1, max = 1 }
+        range      = { min = 1, max = 1 },
+        sprite     = testSprite()
+    }
+
+    /// テスト用の sprite。テクスチャ名やフレームは戦闘ロジックに影響しないのでダミー値。
+    def testSprite(): UnitCatalog.SpriteResource = {
+        texture = "test-texture",
+        hframes = 1,
+        vframes = 1,
+        frame   = 0
     }
 }

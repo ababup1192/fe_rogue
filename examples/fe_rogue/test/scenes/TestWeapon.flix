@@ -64,7 +64,8 @@ mod TestWeapon {
     def testCanReachAdjacentSword(): Unit \ Assert =
         let sword: UnitCatalog.WeaponResource =
             {name = "sword", attack = 1, durability = 10,
-             range = {min = 1, max = 1}};
+             range = {min = 1, max = 1},
+             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0}};
         Assert.assertEq(expected = true, Weapon.canReach(1, sword))
 
     /// 隣接 (距離 1) を弓 {min:2, max:2} は届かない → 反撃不可ケース
@@ -72,7 +73,8 @@ mod TestWeapon {
     def testCanReachBowCannotCounterAdjacent(): Unit \ Assert =
         let bow: UnitCatalog.WeaponResource =
             {name = "bow", attack = 1, durability = 10,
-             range = {min = 2, max = 2}};
+             range = {min = 2, max = 2},
+             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0}};
         Assert.assertEq(expected = false, Weapon.canReach(1, bow))
 
     /// 距離 1 の剣 {min:1, max:1} は 2 マス先には届かない (= 弓に反撃できない)
@@ -80,7 +82,8 @@ mod TestWeapon {
     def testCanReachSwordCannotCounterBow(): Unit \ Assert =
         let sword: UnitCatalog.WeaponResource =
             {name = "sword", attack = 1, durability = 10,
-             range = {min = 1, max = 1}};
+             range = {min = 1, max = 1},
+             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0}};
         Assert.assertEq(expected = false, Weapon.canReach(2, sword))
 
     /// 手槍 {min:1, max:2} は隣接にも 2 マス先にも届く
@@ -88,7 +91,8 @@ mod TestWeapon {
     def testCanReachJavelinBoth(): Unit \ Assert =
         let javelin: UnitCatalog.WeaponResource =
             {name = "javelin", attack = 1, durability = 10,
-             range = {min = 1, max = 2}};
+             range = {min = 1, max = 2},
+             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0}};
         Assert.assertEq(expected = (true, true, false),
                         (Weapon.canReach(1, javelin),
                          Weapon.canReach(2, javelin),

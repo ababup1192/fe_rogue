@@ -77,7 +77,8 @@ mod UnitCatalog {
         name       = String,
         attack     = Int32,
         durability = Int32,
-        range      = WeaponRange
+        range      = WeaponRange,
+        sprite     = SpriteResource
     }
 
     /// 攻撃可能な距離の範囲。`min..max` inclusive のマンハッタン距離で判定する。
@@ -195,7 +196,7 @@ mod UnitCatalog {
 
     /// `WeaponResource` のフィールド名集合。`weapons.schema.json` との整合性検査に使う。
     pub def expectedWeaponFields(): Set[String] =
-        Set#{"name", "attack", "durability", "range"}
+        Set#{"name", "attack", "durability", "range", "sprite"}
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -344,11 +345,14 @@ mod UnitCatalogCodec {
             atkJ   <- Map.get("attack", obj);
             durJ   <- Map.get("durability", obj);
             rngJ   <- Map.get("range", obj);
+            spJ    <- Map.get("sprite", obj);
             name   <- expectString(nameJ);
             atk    <- expectInt(atkJ);
             dur    <- expectInt(durJ);
-            rng    <- decodeRange(rngJ)
-        ) yield ({name = name, attack = atk, durability = dur, range = rng}: WeaponResource)
+            rng    <- decodeRange(rngJ);
+            sp     <- decodeSprite(spJ)
+        ) yield ({name = name, attack = atk, durability = dur, range = rng,
+                  sprite = sp}: WeaponResource)
 
     def decodeRange(element: JsonElement): Option[UnitCatalog.WeaponRange] =
         forM (

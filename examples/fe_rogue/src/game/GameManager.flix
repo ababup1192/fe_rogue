@@ -761,7 +761,6 @@ mod GameManager {
             |> CursorScene.add
             |> FlagScene.add            // 自動移動先マーカー（初期は非表示）
             |> CameraScene.add
-            |> LogScene.add
             |> WeaponMenuScene.add      // 武器選択ウィンドウ（初期は非表示）
             |> ActionMenuScene.add      // 行動選択ウィンドウ（初期は非表示）
             |> ForecastPanelScene.add   // 戦闘予報パネル（初期は非表示）
