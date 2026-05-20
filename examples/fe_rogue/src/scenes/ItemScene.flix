@@ -100,9 +100,10 @@ mod ItemScene {
                     weaponKey: String, weapon: UnitCatalog.WeaponResource,
                     scene: Scene[NodeTag]): Scene[NodeTag] =
         let s = tileSize();
+        // セル中心 + sprite#offset で sheet padding を補正した位置に置く
         let pos: Vec2.Vec2 = {
-            x = Int32.toFloat64(cell#x) * s + s / 2.0,
-            y = Int32.toFloat64(cell#y) * s + s / 2.0
+            x = Int32.toFloat64(cell#x) * s + s / 2.0 + weapon#sprite#offset#x,
+            y = Int32.toFloat64(cell#y) * s + s / 2.0 + weapon#sprite#offset#y
         };
         let sprite = Sprite2D.make(weapon#sprite#texture, pos, Vec2.one())
             |> Sprite2D.setHframes(weapon#sprite#hframes)

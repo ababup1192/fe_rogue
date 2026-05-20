@@ -21,7 +21,8 @@ mod TestUnitFixtures {
             texture = "character_sheet",
             hframes = 5,
             vframes = 2,
-            frame   = 0
+            frame   = 0,
+            offset  = {x = 0.0, y = 0.0}
         }
     }
 
@@ -39,7 +40,8 @@ mod TestUnitFixtures {
             texture = "character_sheet",
             hframes = 5,
             vframes = 2,
-            frame   = 0
+            frame   = 0,
+            offset  = {x = 0.0, y = 0.0}
         }
     }
 
@@ -67,6 +69,7 @@ mod TestUnitFixtures {
         texture = "test-texture",
         hframes = 1,
         vframes = 1,
-        frame   = 0
+        frame   = 0,
+        offset  = {x = 0.0, y = 0.0}
     }
 }

@@ -11,6 +11,9 @@
       "sprite": {
         "frame": 42,
         "hframes": 54,
+        "offset": {
+          "x": 7.0
+        },
         "texture": "roguelike_weapons",
         "vframes": 12
       }
@@ -26,6 +29,9 @@
       "sprite": {
         "frame": 52,
         "hframes": 54,
+        "offset": {
+          "x": 5.5
+        },
         "texture": "roguelike_weapons",
         "vframes": 12
       }
@@ -41,6 +47,9 @@
       "sprite": {
         "frame": 49,
         "hframes": 54,
+        "offset": {
+          "x": 7.0
+        },
         "texture": "roguelike_weapons",
         "vframes": 12
       }
@@ -56,6 +65,9 @@
       "sprite": {
         "frame": 420,
         "hframes": 54,
+        "offset": {
+          "x": 6.0
+        },
         "texture": "roguelike_weapons",
         "vframes": 12
       }

@@ -236,7 +236,7 @@ mod Game {
                 // BGM はゲーム開始時に再生（looping = true で曲が終わってもループする）
                 AudioStreamPlayer.play("bgm");
                 GameLogger.playerLog("T1 味方のターン");
-                gameLoop(sceneRef, scene)
+                gameLoop(sceneRef, catalog, scene)
             } with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽
               with AnimationPlayer.withScheduler(rc)  // 名前付きアニメ + イベントドレイン
               with Pacing.withState(rc)           // 演出の溜め (hold)
@@ -253,7 +253,10 @@ mod Game {
     /// メインループ。終了判定 → BoardQuery 窓口の更新 → 1 フレームぶんの処理 → 描画
     /// → 末尾再帰、という固定パイプラインだけを担う **配線役**。
     /// フレーム処理の実体は `GameManager.runFrame` に閉じている。
-    def gameLoop(sceneRef: Ref[Scene[NodeTag], r], scene: Scene[NodeTag]):
+    /// `catalog` はゲームオーバー時のフルリビルドに使うため透過させる。
+    def gameLoop(sceneRef: Ref[Scene[NodeTag], r],
+                  catalog: UnitCatalog.UnitCatalog,
+                  scene: Scene[NodeTag]):
                  Unit \ {GameEngine.Game, GameEngine.Audio,
                          Fs.FileRead,
                          BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
@@ -278,8 +281,8 @@ mod Game {
             // 各 handler はその後で常に「フレーム頭の scene」を読み返せる
             // （タイル定義は不変のため十分）。
             Ref.put(scene, sceneRef);
-            let next = GameManager.runFrame(scene);
+            let next = GameManager.runFrame(catalog, scene);
             GameEngine.render(next);
-            gameLoop(sceneRef, next)
+            gameLoop(sceneRef, catalog, next)
         }
 }

@@ -88,11 +88,15 @@ mod UnitCatalog {
     }
 
     /// 見た目情報。後でテクスチャ単独 Resource に切り出す余地を残し nested に。
+    /// `offset` は描画時の x/y シフト（px）。スプライトシートに padding がある場合
+    /// （例: Kenney 系で 16 px 絵 + 1 px gutter で cellW=17 となるケース）の
+    /// 視覚的中央寄せ補正に使う。デフォルトは {0, 0}。
     pub type alias SpriteResource = {
         texture = String,
         hframes = Int32,
         vframes = Int32,
-        frame   = Int32
+        frame   = Int32,
+        offset  = Vec2.Vec2
     }
 
     /// units 部を取り出す。
@@ -254,8 +258,20 @@ mod UnitCatalogCodec {
             "texture" => JsonString(s#texture),
             "hframes" => JsonNumber(intToBd(s#hframes)),
             "vframes" => JsonNumber(intToBd(s#vframes)),
-            "frame"   => JsonNumber(intToBd(s#frame))
+            "frame"   => JsonNumber(intToBd(s#frame)),
+            "offset"  => encodeOffset(s#offset)
         })
+
+    def encodeOffset(v: Vec2.Vec2): JsonElement =
+        JsonObject(Map#{
+            "x" => JsonNumber(floatToBd(v#x)),
+            "y" => JsonNumber(floatToBd(v#y))
+        })
+
+    def floatToBd(value: Float64): BigDecimal =
+        unsafe IO {
+            JBigDecimal.valueOf(value).stripTrailingZeros()
+        }
 
     def intToBd(value: Int32): BigDecimal =
         unsafe IO {
@@ -374,7 +390,32 @@ mod UnitCatalogCodec {
             hf     <- expectInt(hfJ);
             vf     <- expectInt(vfJ);
             fr     <- expectInt(frJ)
-        ) yield ({texture = tex, hframes = hf, vframes = vf, frame = fr}: SpriteResource)
+        ) yield {
+            // offset は省略可能。無ければ {x = 0, y = 0}。
+            let off = match Map.get("offset", obj) {
+                case None     => ({x = 0.0, y = 0.0}: Vec2.Vec2)
+                case Some(oj) => match decodeOffset(oj) {
+                    case Some(v) => v
+                    case None    => ({x = 0.0, y = 0.0}: Vec2.Vec2)
+                }
+            };
+            ({texture = tex, hframes = hf, vframes = vf, frame = fr,
+              offset = off}: SpriteResource)
+        }
+
+    /// `{"x": ..., "y": ...}` の片方だけでも読めるように、x/y を独立に optional に扱う。
+    /// IDE のスライダーは値 0 のときフィールドを書き出さないことがあるので、片方欠落への
+    /// 寛容な decoder にする。両方欠落でも `{x = 0, y = 0}` を返す。
+    def decodeOffset(element: JsonElement): Option[Vec2.Vec2] =
+        match element {
+            case JsonObject(obj) =>
+                let x = Map.get("x", obj) |> Option.flatMap(expectFloat)
+                          |> Option.getWithDefault(0.0);
+                let y = Map.get("y", obj) |> Option.flatMap(expectFloat)
+                          |> Option.getWithDefault(0.0);
+                Some({x = x, y = y})
+            case _ => None
+        }
 
     def decodeStringList(element: JsonElement): Option[List[String]] = match element {
         case JsonArray(items) =>
@@ -402,6 +443,11 @@ mod UnitCatalogCodec {
 
     def expectInt(element: JsonElement): Option[Int32] = match element {
         case JsonNumber(bd) => BigDecimal.tryToFloat64(bd) |> Option.flatMap(Float64.tryToInt32)
+        case _              => None
+    }
+
+    def expectFloat(element: JsonElement): Option[Float64] = match element {
+        case JsonNumber(bd) => BigDecimal.tryToFloat64(bd)
         case _              => None
     }
 }

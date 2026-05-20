@@ -259,7 +259,14 @@ mod UnitInfoPopupScene {
                           currentHp: Int32,
                           scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
-        let sprite = Sprite2D.make(res#sprite#texture, spriteCenterLocal(), spriteScale())
+        // offset を sprite center 位置に加算（scale 倍する必要があるので注意: ここは
+        // popup の表示用なので半分縮小スケールに合わせて offset も半分にする）
+        let off = res#sprite#offset;
+        let spritePos: Vec2.Vec2 = {
+            x = spriteCenterLocal()#x + off#x * spriteScale()#x,
+            y = spriteCenterLocal()#y + off#y * spriteScale()#y
+        };
+        let sprite = Sprite2D.make(res#sprite#texture, spritePos, spriteScale())
             |> Sprite2D.setHframes(res#sprite#hframes)
             |> Sprite2D.setVframes(res#sprite#vframes)
             |> Sprite2D.setFrame(res#sprite#frame);
@@ -316,10 +323,14 @@ mod UnitInfoPopupScene {
     def addItemRow(i: Int32, w: UnitCatalog.WeaponResource, atlas: FontAtlas,
                     scene: Scene[NodeTag]): Scene[NodeTag] =
         let rowY = itemsListStartY() + Int32.toFloat64(i) * itemsRowHeight();
+        // offset を表示スケールに合わせて加算
+        let off = w#sprite#offset;
+        let iconPos: Vec2.Vec2 = {
+            x = itemSpriteX() + off#x * itemSpriteScale()#x,
+            y = rowY + off#y * itemSpriteScale()#y
+        };
         // sprite icon
-        let iconSprite = Sprite2D.make(w#sprite#texture,
-                                          {x = itemSpriteX(), y = rowY},
-                                          itemSpriteScale())
+        let iconSprite = Sprite2D.make(w#sprite#texture, iconPos, itemSpriteScale())
             |> Sprite2D.setHframes(w#sprite#hframes)
             |> Sprite2D.setVframes(w#sprite#vframes)
             |> Sprite2D.setFrame(w#sprite#frame)

@@ -232,7 +232,7 @@ mod EnemyScene {
             resource       = res,
             weapon         = Some(sp#weapon)
         };
-        let sprite = Sprite2D.make(res#sprite#texture, Vec2.zero(), Vec2.one())
+        let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset, Vec2.one())
                         |> Sprite2D.setHframes(res#sprite#hframes)
                         |> Sprite2D.setVframes(res#sprite#vframes)
                         |> Sprite2D.setFrame(res#sprite#frame)
