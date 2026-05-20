@@ -119,6 +119,7 @@ mod GameManager {
         let phase = TurnPhase.State.get();
         scene
             |> WeaponMenuScene.applyVisibility(phase)
+            |> ActionMenuScene.applyVisibility(phase)
             |> ForecastPanelScene.applyVisibility(phase)
 
     // ════════════════════════════════════════════════════════
@@ -174,8 +175,8 @@ mod GameManager {
                 applySelectPlayer(playerId, scene)
             case TurnRules.Transition.CursorPlantFlag(targetX, targetY) =>
                 applyPlantFlag({x = targetX, y = targetY}, scene)
-            case TurnRules.Transition.MovingEnterAttack          =>
-                applyEnterAttackPhase(scene)
+            case TurnRules.Transition.MovingOpenActionMenu       =>
+                applyOpenActionMenu(scene)
             case TurnRules.Transition.MovingCancel               =>
                 applyCancelMove(scene)
             case TurnRules.Transition.OpenWeaponMenu(attackerId, defenderId, defX, defY) =>
@@ -199,7 +200,8 @@ mod GameManager {
         TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
         scene
             |> EnemyRangeScene.clear
-            |> MoveRangeScene.refresh   // 選択駒の青マスを構築
+            |> MoveRangeScene.refresh        // 選択駒の青マスを構築
+            |> MoveAttackRangeScene.refresh  // 移動先からの脅威範囲 (赤マス、青マス外)
             |> CursorScene.setVisible(false)
 
     /// 空マスで Z: 旗を立てて PlayerAutoMove へ（号令）。
@@ -213,16 +215,44 @@ mod GameManager {
             |> FlagScene.plant(target)
             |> CursorScene.setVisible(false)
 
-    /// PlayerMoving + Z: 攻撃ターゲット選択フェーズへ。選択は維持し、青マスを消して
-    /// 赤マスを出す。赤マス内に生きている敵が居れば最初の敵にカーソルをスナップし、
-    /// 居なければ選択中プレイヤーにスナップする（間接武器で自セルが射程外でも、
-    /// X キャンセルだけはできるよう自分の位置に居座る）。
+    /// PlayerMoving + Z: 行動選択ウィンドウを開く (ActionSelect)。
+    /// 移動範囲表示はそのまま維持し、ItemList を visibility 適用で表示する。
+    /// 「こうげき / たいき」の項目は `ActionMenuScene.refreshItems` が毎フレーム再構築。
+    def applyOpenActionMenu(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
+        scene
+
+    /// ActionMenu の「こうげき」確定から呼ばれる: PlayerAttack フェーズに進み赤マス + ターゲット選択を開始。
+    pub def actionMenuConfirmAttack(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              TurnPhase.State, SelectedPlayer.State} =
+        applyEnterAttackPhase(scene)
+
+    /// ActionMenu の「たいき」確定から呼ばれる: その場で waited 確定。
+    pub def actionMenuConfirmWait(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger,
+                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+        commitWaitedAndAdvance(scene)
+
+    /// ActionMenu の X/Esc から呼ばれる: メニューを閉じて PlayerMoving に戻る。
+    /// 青マス・カーソルは触らず、ユーザがもう一度動かし直せる状態に復帰する。
+    pub def closeActionMenu(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
+        scene
+
+    /// PlayerMoving + Z で開いた ActionMenu の「こうげき」確定で呼ばれる:
+    /// 攻撃ターゲット選択フェーズへ。青マスを消して赤マスを出す。赤マス内に
+    /// 生きている敵が居れば最初の敵にカーソルをスナップし、居なければ選択中
+    /// プレイヤーにスナップする（X キャンセルだけはできるよう自セルに居座る）。
     def applyEnterAttackPhase(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
         scene
             |> MoveRangeScene.clear
+            |> MoveAttackRangeScene.clear
             |> PlayerAttackRangeScene.show
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToFirstTargetOrPlayer
@@ -313,6 +343,7 @@ mod GameManager {
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         restored
             |> MoveRangeScene.clear
+            |> MoveAttackRangeScene.clear
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToPlayer
 
@@ -345,6 +376,8 @@ mod GameManager {
         if (PlayerScene.anyActive(withWaited)) {
             TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
             withWaited
+                |> MoveRangeScene.clear
+                |> MoveAttackRangeScene.clear
                 |> PlayerAttackRangeScene.clear
                 |> CursorScene.setVisible(true)
                 |> CursorScene.snapToPlayer
@@ -363,7 +396,10 @@ mod GameManager {
         EnemyTurn.Queue.replace(steps);
         TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
         GameLogger.enemyLog("敵のターン");
-        scene |> PlayerAttackRangeScene.clear
+        scene
+            |> MoveRangeScene.clear
+            |> MoveAttackRangeScene.clear
+            |> PlayerAttackRangeScene.clear
 
     // ════════════════════════════════════════════════════════
     // 敵ターン進行 — tickEnemyTurnFrame が毎フレーム 1 step ずつ呼ぶ
@@ -470,6 +506,7 @@ mod GameManager {
             |> PlayerScene.respawnFromInitial(initial#players)
             |> EnemyScene.respawnFromInitial(initial#enemies)
             |> MoveRangeScene.clear
+            |> MoveAttackRangeScene.clear
             |> PlayerAttackRangeScene.clear
             |> EnemyRangeScene.clear
             |> CursorScene.setVisible(true)
@@ -491,6 +528,7 @@ mod GameManager {
         let next = scene
             |> PlayerScene.clearAllWaited        // 全員アクティブに戻す
             |> MoveRangeScene.clear              // 未選択につき青マスは無し
+            |> MoveAttackRangeScene.clear
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToPlayer;
         GameLogger.playerLog("味方のターン");
@@ -719,5 +757,6 @@ mod GameManager {
             |> CameraScene.add
             |> LogScene.add
             |> WeaponMenuScene.add      // 武器選択ウィンドウ（初期は非表示）
+            |> ActionMenuScene.add      // 行動選択ウィンドウ（初期は非表示）
             |> ForecastPanelScene.add   // 戦闘予報パネル（初期は非表示）
 }

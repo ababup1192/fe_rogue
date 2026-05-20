@@ -61,6 +61,21 @@ mod Board {
             samePosition(pos, coord)
         }, board#pieces)
 
+    /// `playerId` が居るセルに、自分以外の味方が居るか（= 味方と重なっているか）。
+    /// 移動で味方マスをすり抜ける挙動を許す代わりに「重なっている間は何も決定できない」
+    /// (= PlayerMoving + Z で ActionMenu を開かない) ガードに使う純粋関数。
+    pub def isOverlappingAlly(playerId: Int32, board: Board): Bool =
+        let positions = playerPositions(board);
+        match List.find(p -> { let (id, _) = p; id == playerId }, positions) {
+            case None         => false
+            case Some(myPair) =>
+                let (_, myPos) = myPair;
+                List.exists(p -> {
+                    let (id, pos) = p;
+                    id != playerId and samePosition(pos, myPos)
+                }, positions)
+        }
+
     /// 敵駒だけが `coord` を占有しているか（味方駒や空マスは false）。
     /// プレイヤーの移動判定で「味方をすり抜ける」を実現するために使う。
     pub def isEnemyAt(coord: {x = Int32, y = Int32}, board: Board): Bool =

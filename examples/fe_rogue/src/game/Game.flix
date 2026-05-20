@@ -6,6 +6,7 @@ pub enum NodeTag {
     case MoveRange(MoveRangeScene.Data)
     case EnemyRange(EnemyRangeScene.Data)
     case PlayerAttackRange(PlayerAttackRangeScene.Data)
+    case MoveAttackRange(MoveAttackRangeScene.Data)
     case Cursor(CursorScene.Data)
     case Flag(FlagScene.Data)
     case Log(LogScene.Data)
@@ -13,6 +14,10 @@ pub enum NodeTag {
     case WeaponPanel
     /// WeaponMenuScene の ItemList（武器一覧表示）
     case WeaponMenu
+    /// ActionMenuScene の Panel ルート（外枠）
+    case ActionPanel
+    /// ActionMenuScene の ItemList（こうげき / たいき）
+    case ActionMenu
     /// ForecastPanelScene の Panel ルート（戦闘予報の外枠）
     case ForecastPanel
     /// ForecastPanelScene の Label2D（HP / 威力 / 命中 を 2 列で表示）
@@ -66,6 +71,8 @@ instance Node[NodeTag] {
         match node {
             case EngineNode.ItemListWithState(_, NodeTag.WeaponMenu) =>
                 checked_ecast(WeaponMenuScene.refreshItems(delta, node, path, scene))
+            case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
+                checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
             case _ => (node, scene)
         }
 }
@@ -100,6 +107,10 @@ instance InputEvent.InputHandler[NodeTag] {
         let isCancel  = key == GameEngine.Key.X;
         let phase = TurnPhase.State.get();
         match (phase, isConfirm, isCancel) {
+            case (TurnPhase.Phase.ActionSelect,   true,  _)
+                                                  => ActionMenuScene.confirmCurrentSelection(scene)
+            case (TurnPhase.Phase.ActionSelect,   _,    true)
+                                                  => checked_ecast(GameManager.closeActionMenu(scene))
             case (TurnPhase.Phase.WeaponSelect,   true,  _)
                                                   => WeaponMenuScene.confirmCurrentSelection(scene)
             case (TurnPhase.Phase.WeaponSelect,   _,    true)
@@ -120,20 +131,28 @@ instance InputEvent.InputHandler[NodeTag] {
 /// 入力キー固定: Up/Down=カーソル移動 / Enter=確定 / Escape=キャンセル（engine 規約）。
 /// Enter は「武器確定 → 戦闘予報フェーズへ」、Escape は「ウィンドウを閉じて target 選択に戻る」。
 instance MenuEvent.MenuHandler[NodeTag] {
-    type Aef = {TurnPhase.State, SelectedPlayer.State}
+    type Aef = {Tween.Scheduler, AnimationPlayer.Scheduler,
+                 GameLogger.GameLogger, EnemyTurn.Queue,
+                 TurnPhase.State, SelectedPlayer.State}
     redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
                            state: NodeTag,
                            scene: Scene[NodeTag]):
-                          Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+                          Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                                             GameLogger.GameLogger, EnemyTurn.Queue,
+                                             TurnPhase.State, SelectedPlayer.State} =
         match state {
-            case NodeTag.WeaponMenu => WeaponMenuScene.onWeaponConfirmed(entry, scene)
+            case NodeTag.WeaponMenu => checked_ecast(WeaponMenuScene.onWeaponConfirmed(entry, scene))
+            case NodeTag.ActionMenu => ActionMenuScene.onActionConfirmed(entry, scene)
             case _                  => scene
         }
     redef onItemCancelled(_menuPath: NodePath, state: NodeTag,
                            scene: Scene[NodeTag]):
-                          Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+                          Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                                             GameLogger.GameLogger, EnemyTurn.Queue,
+                                             TurnPhase.State, SelectedPlayer.State} =
         match state {
-            case NodeTag.WeaponMenu => WeaponMenuScene.onWeaponCancelled(scene)
+            case NodeTag.WeaponMenu => checked_ecast(WeaponMenuScene.onWeaponCancelled(scene))
+            case NodeTag.ActionMenu => checked_ecast(ActionMenuScene.onActionCancelled(scene))
             case _                  => scene
         }
 }
@@ -228,7 +247,8 @@ mod Game {
         // engine の MenuEvent / InputHandler がそれぞれ「キャンセル」として消費するので、
         // ここでは終了させない。
         let phase = TurnPhase.State.get();
-        let inSubMenu = phase == TurnPhase.Phase.WeaponSelect
+        let inSubMenu = phase == TurnPhase.Phase.ActionSelect
+                         or phase == TurnPhase.Phase.WeaponSelect
                          or phase == TurnPhase.Phase.AttackForecast;
         let escapeQuit =
             GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)

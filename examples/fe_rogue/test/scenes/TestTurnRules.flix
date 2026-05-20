@@ -157,15 +157,34 @@ mod TestTurnRules {
             expected = TurnRules.Transition.Stay,
             TurnRules.decide(context))
 
-    /// PlayerMoving で !busy + Z → 攻撃ターゲット選択フェーズへ
+    /// PlayerMoving で !busy + Z → 行動選択ウィンドウ (ActionMenu) を開く
     @Test
-    def testMovingConfirmWhenNotBusyEntersAttack(): Unit \ Assert =
+    def testMovingConfirmWhenNotBusyOpensActionMenu(): Unit \ Assert =
         let context = {
-            phase = TurnPhase.Phase.PlayerMoving
+            phase    = TurnPhase.Phase.PlayerMoving,
+            selected = Some(0)
             | baseContext(boardWithPlayerOnly(cell(2, 2)), cell(2, 2))
         };
         Assert.assertEq(
-            expected = TurnRules.Transition.MovingEnterAttack,
+            expected = TurnRules.Transition.MovingOpenActionMenu,
+            TurnRules.decide(context))
+
+    /// PlayerMoving で味方と重なっているとき Z → Stay (ActionMenu すら開かない)
+    @Test
+    def testMovingConfirmWhileOverlappingAllyIsBlocked(): Unit \ Assert =
+        let board: Board = {
+            map    = emptySnapshot(),
+            pieces = (Piece.Player(0), cell(2, 2))
+                  :: (Piece.Player(1), cell(2, 2))
+                  :: Nil
+        };
+        let context = {
+            phase    = TurnPhase.Phase.PlayerMoving,
+            selected = Some(0)
+            | baseContext(board, cell(2, 2))
+        };
+        Assert.assertEq(
+            expected = TurnRules.Transition.Stay,
             TurnRules.decide(context))
 
     /// PlayerMoving で !busy + X → キャンセル（origin に戻して PlayerCursor へ）

@@ -262,13 +262,13 @@ mod PlayerScene {
                 else
                     let board = BoardQuery.board();
                     let allowed = c -> MoveRangeScene.isInRange(c, scene);
-                    // 自分以外の味方セル一覧（停止できない＝通過扱い）
-                    let allyCells = getAll(scene)
-                        |> List.filter(d -> d#id != data#id)
-                        |> List.map(d -> d#gridPos);
+                    // 方向キー押下で 1 セルだけ進む。味方セルへ進入可能 (重なる)、
+                    // ただし重なっている間は Z で行動決定できない (`Board.isOverlappingAlly`
+                    // で `TurnRules` がブロック)。「味方を超えて自動スライド」する旧
+                    // `stepThroughAllies` 挙動は廃止。
                     let movement = forM (
                         dir    <- readHeldDirection();
-                        target <- stepThroughAllies(board, data#gridPos, dir, allowed, allyCells)
+                        target <- Board.tryMoveWithRange(board, data#gridPos, dir, allowed)
                     ) yield {
                         let (newMarker, newData) =
                             moveTo(data#id, board#map, target, marker, data, scene);
@@ -278,29 +278,6 @@ mod PlayerScene {
                     Option.getWithDefault((node, scene), movement)
             case _ => (node, scene)
         }
-
-    /// 1 ステップ移動の解決。dir 方向に 1 マス進み、その先が味方セルなら自動的に
-    /// 「次の停止可能セル」まで滑らせる。これにより味方の上に視覚的に重ならず、
-    /// かつ味方を「1 マス分の通行コストで通過」できる挙動になる。
-    /// 進めない（壁 / 範囲外 / 敵）場合は None。連続して味方が並んでいるケースでは
-    /// 通り抜けて最初の停止可能セルに着く。
-    def stepThroughAllies(board: Board, source: {x = Int32, y = Int32},
-                            dir: {x = Int32, y = Int32},
-                            allowed: {x = Int32, y = Int32} -> Bool,
-                            allyCells: List[{x = Int32, y = Int32}]):
-                           Option[{x = Int32, y = Int32}] =
-        match Board.tryMoveWithRange(board, source, dir, allowed) {
-            case None         => None
-            case Some(target) =>
-                if (isAllyCell(target, allyCells))
-                    stepThroughAllies(board, target, dir, allowed, allyCells)
-                else Some(target)
-        }
-
-    /// 指定セルが「他の味方」のセルに一致するか。
-    def isAllyCell(cell: {x = Int32, y = Int32},
-                    allyCells: List[{x = Int32, y = Int32}]): Bool =
-        List.exists(p -> p#x == cell#x and p#y == cell#y, allyCells)
 
     /// 押されている方向キーを Option で返す（複数同時押しは上 > 下 > 左 > 右）
     def readHeldDirection(): Option[{x = Int32, y = Int32}] \ GameEngine.Game =

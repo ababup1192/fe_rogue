@@ -95,6 +95,7 @@ mod CameraScene {
         match phase {
             case TurnPhase.Phase.PlayerCursor     => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerMoving     => focusPos
+            case TurnPhase.Phase.ActionSelect     => focusPos
             case TurnPhase.Phase.WeaponSelect     => focusPos
             case TurnPhase.Phase.AttackForecast   => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerAttack     => cursorWorldPos(scene)

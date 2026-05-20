@@ -30,6 +30,12 @@ mod TurnPhase {
         case PlayerCursor
         /// 味方ターン・選択した味方を動かしているフェーズ。WASD/方向キーで味方を動かす。
         case PlayerMoving
+        /// 味方ターン・行動選択フェーズ。
+        /// PlayerMoving で Z を押した瞬間に入り、画面に「こうげき / たいき」の ActionMenu が出る。
+        /// 「こうげき」は射程内に敵が居るときだけ表示、「たいき」は同セルに別味方が居ないときだけ表示。
+        /// 上下キーで項目を選び Enter/Z で確定。X/Escape でウィンドウを閉じて `PlayerMoving`
+        /// に戻る (別の場所に動かし直せる)。
+        case ActionSelect
         /// 味方ターン・武器選択フェーズ。
         /// PlayerAttack で敵に対して Z を押した瞬間に入り、画面に WeaponMenu が出る。
         /// 上下キーで武器を選び Enter/Z で確定すると `AttackForecast` フェーズに進む。
@@ -117,8 +123,9 @@ mod TurnRules {
         /// PlayerCursor 中、カーソルが空き床マスで旗を立てる（PlayerAutoMove へ向かう）
         /// 引数: (旗を立てるマスの x, y)
         case CursorPlantFlag(Int32, Int32)
-        /// PlayerMoving 中の Confirm: 攻撃ターゲット選択（PlayerAttack）フェーズに移る
-        case MovingEnterAttack
+        /// PlayerMoving 中の Confirm: 行動選択ウィンドウ (ActionSelect) を開く。
+        /// 「こうげき / たいき」を文脈に応じて並べ、ItemList の Enter/X で次フェーズを決める。
+        case MovingOpenActionMenu
         /// PlayerMoving 中の Cancel: 選択駒を origin に戻して PlayerCursor へ
         case MovingCancel
         /// PlayerAttack 中の Confirm: 敵を明確に選んだ → 武器選択ウィンドウを開く
@@ -166,10 +173,20 @@ mod TurnRules {
                         else Transition.Stay
                 }
             case (TurnPhase.Phase.PlayerMoving, Input.Confirm) =>
+                // Tween 中はガード。さらに「自分以外の味方と同セルで重なっている」
+                // 場合も Z を完全に無視する (ActionMenu すら開かない)。
+                // 移動中は味方マスを通過できるが、停止しての行動決定は許さない FE 流。
                 if (context#playerBusy) Transition.Stay
-                else Transition.MovingEnterAttack
-            // WeaponSelect / AttackForecast は InputHandler が Z/X を直接処理し、
-            // TurnRules 経由では遷移しない
+                else match context#selected {
+                    case Some(pid) =>
+                        if (Board.isOverlappingAlly(pid, context#board)) Transition.Stay
+                        else Transition.MovingOpenActionMenu
+                    case None => Transition.Stay
+                }
+            // ActionSelect / WeaponSelect / AttackForecast は InputHandler が Z/X を
+            // 直接処理し、TurnRules 経由では遷移しない
+            case (TurnPhase.Phase.ActionSelect, _) =>
+                Transition.Stay
             case (TurnPhase.Phase.WeaponSelect, _) =>
                 Transition.Stay
             case (TurnPhase.Phase.AttackForecast, _) =>
