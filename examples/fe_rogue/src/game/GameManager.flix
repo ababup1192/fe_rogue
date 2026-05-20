@@ -53,6 +53,8 @@ mod GameManager {
         scene
             |> CameraScene.update(dt)
             |> DamagePopupScene.tick(dt)
+            |> UnitHPBarScene.tickAll(dt)
+            |> UnitInfoPopupScene.update
             |> LogScene.flushFromEffect
             |> LogScene.tickScroll
 
@@ -763,4 +765,5 @@ mod GameManager {
             |> WeaponMenuScene.add      // 武器選択ウィンドウ（初期は非表示）
             |> ActionMenuScene.add      // 行動選択ウィンドウ（初期は非表示）
             |> ForecastPanelScene.add   // 戦闘予報パネル（初期は非表示）
+            |> UnitInfoPopupScene.add   // カーソル上のユニット情報パネル（初期は非表示）
 }

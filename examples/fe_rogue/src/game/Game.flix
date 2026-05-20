@@ -26,6 +26,10 @@ pub enum NodeTag {
     case DamagePopupsRoot(DamagePopupScene.RootData)
     /// DamagePopupScene の Label2D 子（寿命を持つ）
     case DamagePopup(DamagePopupScene.PopupData)
+    /// UnitHPBarScene の Marker2D 親（戦闘表示 timer + currentHp/maxHp を持つ）
+    case HPBar(UnitHPBarScene.HPBarData)
+    /// UnitInfoPopupScene の CanvasLayer 親（表示中ユニット識別子を持つ）
+    case UnitInfoPanel(UnitInfoPopupScene.PanelState)
     case NoTag
 }
 

@@ -200,6 +200,7 @@ mod PlayerScene {
                                  EngineNode.Marker2DWithState(marker, NodeTag.Player(data)))
             |> Scene.addChildAt(playerPath(sp#id), "Sprite",
                                  EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
+            |> UnitHPBarScene.attach(playerPath(sp#id), res#hp)
 
     // ────────────────────────────────────────────────────────
     // (D) ロジック — 移動
@@ -579,11 +580,15 @@ mod PlayerScene {
                 let afterDamage =
                     if (result#isDead) {
                         GameLogger.playerLog("P${playerId} → 敵${enemyId} を撃破");
-                        EnemyScene.startDeathAnimation(enemyId, withPopup)
+                        withPopup
+                            |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), result#newHp)
+                            |> EnemyScene.startDeathAnimation(enemyId)
                     } else {
                         GameLogger.playerLog("P${playerId} → 敵${enemyId} に ${dmg}ダメージ");
-                        EnemyScene.mapEnemy(enemyId,
-                            enemyData -> {hp = result#newHp | enemyData}, withPopup)
+                        withPopup
+                            |> EnemyScene.mapEnemy(enemyId,
+                                enemyData -> {hp = result#newHp | enemyData})
+                            |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), result#newHp)
                     };
                 let consumed = Weapon.consume(weapon);
                 let newWeapons = match consumed {

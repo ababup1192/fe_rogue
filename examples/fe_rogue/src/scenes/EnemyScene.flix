@@ -242,6 +242,7 @@ mod EnemyScene {
                                  EngineNode.Marker2DWithState(marker, NodeTag.Enemy(data)))
             |> Scene.addChildAt(enemyPath(sp#id), "Sprite",
                                  EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
+            |> UnitHPBarScene.attach(enemyPath(sp#id), res#hp)
 
     // ────────────────────────────────────────────────────────
     // (D) クエリ
@@ -431,8 +432,10 @@ mod EnemyScene {
                 let popupPos: Vec2.Vec2 = {x = Int32.toFloat64(player#gridPos#x) * s + s / 2.0, y = Int32.toFloat64(player#gridPos#y) * s + s / 2.0};
                 let popupColor = DamagePopupScene.damageToPlayerColor();
                 let withPopup = DamagePopupScene.emit(popupPos, dmg, popupColor, scene);
-                let damaged = PlayerScene.mapPlayer(targetId,
-                    playerData -> {hp = result#newHp | playerData}, withPopup);
+                let damaged = withPopup
+                    |> PlayerScene.mapPlayer(targetId,
+                        playerData -> {hp = result#newHp | playerData})
+                    |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), result#newHp);
                 let consumed = Weapon.consume(weapon);
                 if (Option.isEmpty(consumed))
                     GameLogger.enemyLog("敵${enemyId} の ${weapon#name} がこわれた")
