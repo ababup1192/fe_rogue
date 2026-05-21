@@ -89,32 +89,42 @@ mod WeaponMenuScene {
     /// アイコンとテキスト名の間の余白（px）
     def iconTextGap(): Float64 = 1.0
 
-    /// 毎フレーム呼ばれる process。**WeaponSelect フェーズのときだけ** 選択中プレイヤーの
-    /// weapons を ItemList.items + itemIcons に同期する。それ以外のフェーズでは前回の状態を温存して
-    /// 何もしない（毎フレーム同じ List を再構築するコストを避ける）。
+    /// Game.flix の `Node[NodeTag] instance` の `process` redef から WeaponMenu の ItemList
+    /// ノードに対して dispatch される (per-node、ItemList は 1 個のみなので 1 フレーム 1 回)。
+    /// 2 つの責務を 1 か所で処理:
+    ///   1. **Panel + ItemList の visible/focused** を毎フレーム phase で再評価
+    ///   2. **WeaponSelect フェーズのときだけ** 選択中プレイヤーの weapons を items + icons に同期
+    ///      (それ以外のフェーズでは前回の items を温存)
+    /// scene 全体を mapEngineNode で更新するため、戻り値 node は scene から取り直す。
     pub def refreshItems(_delta: Duration.Duration, node: EngineNode[NodeTag],
                          _path: NodePath,
                          scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
                         \ {SelectedPlayer.State, TurnPhase.State} =
-        match node {
-            case EngineNode.ItemListWithState(list, NodeTag.WeaponMenu) =>
-                if (TurnPhase.State.get() != TurnPhase.Phase.WeaponSelect) (node, scene)
-                else {
-                    let weapons = match SelectedPlayer.State.get()#id {
-                        case None     => Nil
-                        case Some(id) => PlayerScene.getWeapons(id, scene)
-                    };
-                    let items = buildItems(weapons);
-                    let icons = buildIcons(weapons);
-                    let updated = list
-                        |> ItemList.setItems(items)
-                        |> ItemList.setItemIcons(icons)
-                        |> ItemList.setIconSize(iconSize())
-                        |> ItemList.setIconTextGap(iconTextGap());
-                    (EngineNode.ItemListWithState(updated, NodeTag.WeaponMenu), scene)
-                }
-            case _ => (node, scene)
+        let phase = TurnPhase.State.get();
+        let withVisibility = applyVisibility(phase, scene);
+        let withItems = if (phase != TurnPhase.Phase.WeaponSelect) withVisibility
+            else {
+                let weapons = match SelectedPlayer.State.get()#id {
+                    case None     => Nil
+                    case Some(id) => PlayerScene.getWeapons(id, withVisibility)
+                };
+                let items = buildItems(weapons);
+                let icons = buildIcons(weapons);
+                Scene.mapEngineNode(menuPath(), n -> match n {
+                    case EngineNode.ItemListWithState(list, tag) =>
+                        let updated = list
+                            |> ItemList.setItems(items)
+                            |> ItemList.setItemIcons(icons)
+                            |> ItemList.setIconSize(iconSize())
+                            |> ItemList.setIconTextGap(iconTextGap());
+                        EngineNode.ItemListWithState(updated, tag)
+                    case other => other
+                }, withVisibility)
+            };
+        match Scene.getEngineNode(menuPath(), withItems) {
+            case Some(latest) => (latest, withItems)
+            case None         => (node, withItems)
         }
 
     /// プレイヤーの weapons リストから ItemList.ItemEntry 列を作る。

@@ -77,22 +77,30 @@ mod ActionMenuScene {
                 case other => other
             })
 
-    /// 毎フレーム呼ばれる process。ActionSelect 中に items を文脈に応じて再計算する。
-    /// 文脈の判定は `buildItems` に閉じ込めて pure に近く保つ。
+    /// Game.flix の `Node[NodeTag] instance` の `process` redef から ActionMenu の ItemList
+    /// ノードに対して dispatch される (per-node、ItemList は 1 個のみなので 1 フレーム 1 回)。
+    /// 2 つの責務を 1 か所で処理:
+    ///   1. **Panel + ItemList の visible/focused** を毎フレーム phase で再評価
+    ///   2. **ActionSelect 中**に items を文脈に応じて再計算 (`buildItems`)
     pub def refreshItems(_delta: Duration.Duration, node: EngineNode[NodeTag],
                          _path: NodePath,
                          scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
                         \ {SelectedPlayer.State, TurnPhase.State} =
-        match node {
-            case EngineNode.ItemListWithState(list, NodeTag.ActionMenu) =>
-                if (TurnPhase.State.get() != TurnPhase.Phase.ActionSelect) (node, scene)
-                else {
-                    let items = buildItems(scene);
-                    let updated = ItemList.setItems(items, list);
-                    (EngineNode.ItemListWithState(updated, NodeTag.ActionMenu), scene)
-                }
-            case _ => (node, scene)
+        let phase = TurnPhase.State.get();
+        let withVisibility = applyVisibility(phase, scene);
+        let withItems = if (phase != TurnPhase.Phase.ActionSelect) withVisibility
+            else {
+                let items = buildItems(withVisibility);
+                Scene.mapEngineNode(menuPath(), n -> match n {
+                    case EngineNode.ItemListWithState(list, tag) =>
+                        EngineNode.ItemListWithState(ItemList.setItems(items, list), tag)
+                    case other => other
+                }, withVisibility)
+            };
+        match Scene.getEngineNode(menuPath(), withItems) {
+            case Some(latest) => (latest, withItems)
+            case None         => (node, withItems)
         }
 
     /// 選択中プレイヤーの状況から「こうげき / ひろう / たいき」のうち成立するものだけ返す。

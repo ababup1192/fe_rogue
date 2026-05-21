@@ -60,6 +60,21 @@ mod ForecastPanelScene {
                 case other => other
             })
 
+    /// Game.flix の `Node[NodeTag] instance` の `process` redef から ForecastPanel の Panel
+    /// ノードに対して dispatch される (panel は 1 個のみなので 1 フレーム 1 回)。
+    /// phase に応じて Panel + Label2D の visible を再評価する。
+    pub def process(_delta: Duration.Duration,
+                     node: EngineNode[NodeTag],
+                     _path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag])
+                    \ TurnPhase.State =
+        let phase = TurnPhase.State.get();
+        let withVisibility = applyVisibility(phase, scene);
+        match Scene.getEngineNode(panelPath(), withVisibility) {
+            case Some(latest) => (latest, withVisibility)
+            case None         => (node, withVisibility)
+        }
+
     /// `AttackForecast` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
     /// 攻撃モーションの完了 (`attack_lunge` finished) で `PlayerScene.onAttackLungeDone`
     /// が反撃 / kill 演出 / commit に流す。

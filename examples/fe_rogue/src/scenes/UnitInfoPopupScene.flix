@@ -127,12 +127,18 @@ mod UnitInfoPopupScene {
 
     // ─── 毎フレーム更新 ───────────────────────────────────────
 
+    /// Game.flix の `Node[NodeTag] instance` の `process` redef から、`UnitInfoPanel` ノードに
+    /// 対して dispatch される (panel は 1 個のみなので 1 フレーム 1 回)。
     /// カーソル位置のユニットに変化があれば再描画。空マス / cursor フェーズ外なら隠す。
-    pub def update(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, TurnPhase.State} =
+    pub def process(_delta: Duration.Duration,
+                     node: EngineNode[NodeTag],
+                     _path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag])
+                    \ {GameEngine.Game, TurnPhase.State} =
         let phase = TurnPhase.State.get();
         let cursorActive = phase == TurnPhase.Phase.PlayerCursor
                         or phase == TurnPhase.Phase.PlayerAttack;
-        if (not cursorActive) {
+        let next = if (not cursorActive) {
             if (Option.isEmpty(getShownUnit(scene))) scene
             else hide(scene)
         } else {
@@ -148,7 +154,8 @@ mod UnitInfoPopupScene {
                     renderForKind(kind, id, withReset)
                 case None             => hide(scene)
             }
-        }
+        };
+        (node, next)
 
     // ─── 内部: state アクセス ─────────────────────────────────
 

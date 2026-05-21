@@ -60,40 +60,42 @@ mod LogScene {
                                        scene)
             |> Scene.setState(logPath(), NodeTag.Log(data))
 
-    /// gameLoop が毎フレーム末尾で呼ぶ flush。GameLogger に蓄積された Entry を
-    /// drain して LogScene のデータに反映し、RichTextLabel のテキストを更新する。
-    /// drain が空の場合は何もしない。
-    pub def flushFromEffect(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+    /// Game.flix の `Node[NodeTag] instance` の `process` redef から、`NodeTag.Log` ノードに
+    /// 対して dispatch される (log は 1 個のみなので 1 フレーム 1 回)。
+    /// 2 つの責務を順に処理:
+    ///   1. **flush**: `GameLogger.drainEntries` で effect 経由のメッセージを drain し
+    ///      `append` で RichTextLabel に反映 (drained が空なら no-op)
+    ///   2. **scroll**: `GameEngine.Game.consumeScrollDelta` でマウスホイール delta を消費し、
+    ///      マウスがパネル上なら RichTextLabel.scrollY を加減 (パネル外でも delta は必ず消費)
+    /// GLFW yoffset は wheel up が正・wheel down が負。ログは「新が上」なので
+    /// wheel down で過去ログ (下方向) を見たい → scrollY を増やす方向に符号反転する。
+    pub def process(_delta: Duration.Duration,
+                     node: EngineNode[NodeTag],
+                     _path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag])
+                    \ {GameEngine.Game, GameLogger.GameLogger} =
         let drained = GameLogger.drainEntries();
-        match drained {
+        let afterFlush = match drained {
             case Nil => scene
             case _   => append(drained, scene)
-        }
+        };
+        let delta = GameEngine.Game.consumeScrollDelta();
+        let next =
+            if (delta == 0.0) afterFlush
+            else if (not isMouseOverPanel()) afterFlush
+            else {
+                let dy = -1.0 * delta * scrollPxPerTick();
+                Scene.mapEngineNode(textPath(),
+                    n -> EngineNode.mapRichTextLabel(
+                        l -> RichTextLabel.setScrollY(
+                            RichTextLabel.getScrollY(l) + dy, l), n),
+                    afterFlush)
+            };
+        (node, next)
 
     /// 1 ホイール tick あたりのスクロール量（論理 px）。マウスホイールの 1 段で
     /// だいたい 1 行ぶん（lineHeight に近い値）動かす
     def scrollPxPerTick(): Float64 = 5.0
-
-    /// gameLoop が毎フレーム呼ぶフック。マウスホイールの delta を消費し、
-    /// マウスがログパネル上にあれば RichTextLabel.scrollY を加減する。
-    /// パネル外でも delta は必ず消費する（次フレームで一気に動かないように）。
-    pub def tickScroll(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameEngine.Game =
-        let delta = GameEngine.Game.consumeScrollDelta();
-        if (delta == 0.0) scene
-        else if (not isMouseOverPanel()) scene
-        else {
-            // GLFW yoffset は wheel up が正、wheel down が負。
-            // ログは「新が上」なので、wheel down（負）で過去ログ（下方向）を見たい
-            // → scrollY を増やす方向。よって符号を反転する。
-            let dy = -1.0 * delta * scrollPxPerTick();
-            Scene.mapEngineNode(textPath(),
-                n -> EngineNode.mapRichTextLabel(
-                    l -> RichTextLabel.setScrollY(
-                        RichTextLabel.getScrollY(l) + dy, l), n),
-                scene)
-        }
 
     /// マウスカーソルがログパネルの矩形内にあるか
     def isMouseOverPanel(): Bool \ GameEngine.Game =

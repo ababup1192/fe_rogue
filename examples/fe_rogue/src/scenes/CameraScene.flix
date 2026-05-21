@@ -61,26 +61,31 @@ mod CameraScene {
     // (D) ロジック
     // ────────────────────────────────────────────────────────
 
-    /// gameLoop が毎フレーム末尾で呼ぶ更新フック。
+    /// Game.flix の `Node[NodeTag] instance` の `process` redef から、Camera ノードに
+    /// 対して dispatch される (Camera は 1 個のみなので 1 フレーム 1 回)。
     /// Tween / AnimationPlayer による Player / Cursor の世界座標が反映された後に実行する。
     /// 動作:
     ///   1. フェーズに応じてターゲット NodePath の world 位置を取る
     ///   2. Camera2D.position に target をセット（engine の追従計算の入力）
     ///   3. Camera2D.process(delta, viewport, ...) で smoothPosition を進める
     /// 「画面内なら維持」「滑らかに追従」は engine の drag margin / smoothing が代替する。
-    pub def update(delta: Duration.Duration, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State} =
+    pub def process(delta: Duration.Duration,
+                     node: EngineNode[NodeTag],
+                     _path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag])
+                    \ {GameEngine.Game, EnemyTurn.Queue,
+                        TurnPhase.State, SelectedPlayer.State} =
         let phase = TurnPhase.State.get();
         let selected = SelectedPlayer.State.get()#id;
         let target = computeTarget(phase, selected, scene);
         let vp = GameEngine.Game.getViewportRect();
         let viewport = {viewportWidth = vp#size#x, viewportHeight = vp#size#y};
-        Scene.mapEngineNode(cameraPath(),
+        let next = Scene.mapEngineNode(cameraPath(),
             n -> EngineNode.mapCamera2D(c ->
                 c |> Node2D.setPosition(target)
                   |> Camera2D.process(delta, viewport), n),
-            scene)
+            scene);
+        (node, next)
 
     /// 各フェーズでカメラが向かうべきターゲット位置を計算する。
     /// `selected` が None のときはパーティの代表（id=0、または最初のアクティブ）の位置に向く。

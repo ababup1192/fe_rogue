@@ -79,10 +79,10 @@ instance Node[NodeTag] {
                 CursorScene.physicsProcessAttack(delta, node, path, scene)
             case _ => (node, scene)
         }
-    // 各 UI ノード固有の毎フレーム更新を dispatch する。
+    // 各 ノード固有の毎フレーム更新を dispatch する。各 Scene が「自分のノード」に対する
+    // process redef を持ち、ここでは「どの NodeTag をどの Scene 関数に流すか」の対応表に徹する。
+    // Player / Enemy は AnimationPlayer signal を自分で drain (Godot 流 per-AnimationPlayer)。
     // ForecastPanel の Label2D テキストはフェーズ入り時のワンショット更新なので process では触らない。
-    // AnimationPlayer の signal dispatch は `AnimationDispatcherScene.dispatchAll` が
-    // 全 owner で drainSignals を呼んで各 Scene の handler に振り分ける (`tickXxxFrame` で呼ぶ)。
     redef process(delta: Duration.Duration, node: EngineNode[NodeTag],
                    path: NodePath, scene: Scene[NodeTag]):
                   (EngineNode[NodeTag], Scene[NodeTag])
@@ -96,10 +96,24 @@ instance Node[NodeTag] {
                 checked_ecast(PlayerScene.process(delta, node, path, scene))
             case EngineNode.Marker2DWithState(_, NodeTag.Enemy(_)) =>
                 checked_ecast(EnemyScene.process(delta, node, path, scene))
+            case EngineNode.Marker2DWithState(_, NodeTag.DamagePopupsRoot(_)) =>
+                checked_ecast(DamagePopupScene.process(delta, node, path, scene))
+            case EngineNode.Marker2DWithState(_, NodeTag.HPBar(_)) =>
+                checked_ecast(UnitHPBarScene.process(delta, node, path, scene))
+            case EngineNode.Marker2DWithState(_, NodeTag.GroundItem(_)) =>
+                checked_ecast(ItemScene.process(delta, node, path, scene))
+            case EngineNode.CanvasLayerWithState(_, NodeTag.UnitInfoPanel(_)) =>
+                checked_ecast(UnitInfoPopupScene.process(delta, node, path, scene))
+            case EngineNode.Camera2DWithState(_, _) =>
+                checked_ecast(CameraScene.process(delta, node, path, scene))
+            case EngineNode.RichTextLabelWithState(_, NodeTag.Log(_)) =>
+                checked_ecast(LogScene.process(delta, node, path, scene))
             case EngineNode.ItemListWithState(_, NodeTag.WeaponMenu) =>
                 checked_ecast(WeaponMenuScene.refreshItems(delta, node, path, scene))
             case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
                 checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
+            case EngineNode.PanelWithState(_, NodeTag.ForecastPanel) =>
+                checked_ecast(ForecastPanelScene.process(delta, node, path, scene))
             case _ => (node, scene)
         }
 }
@@ -383,35 +397,17 @@ mod Game {
                                           gravity = Vec2.zero())
             |> Tween.tickAll(dt)
             |> AnimationPlayer.tickAll(dt)
-            |> GameEngine.process(delta = dt, paused = false)  // per-Scene drainSignals + UI refresh
+            |> GameEngine.process(delta = dt, paused = false)  // per-Scene drainSignals + UI refresh + Menu visibility
             |> EnemyTurnDriverScene.tickPlayerAttackHold
-            |> applyMenuVisibility
             |> commonEpilogue(dt)
 
-    /// 全フェーズに共通する描画準備の尾部 (Pacing → カメラ追従 → 各 popup tick →
-    /// ログ反映 → スクロール)。`CameraScene.update` が `EnemyTurn.Queue` を peek して
-    /// 「alerted な敵の動きを映す」のに使う。
+    /// 全フェーズに共通する描画準備の尾部。Camera/DamagePopup/HPBar/Item/UnitInfoPanel/Log の
+    /// 毎フレーム更新は各 Scene の `process` redef に分散済み (Game.flix 上の
+    /// `Node[NodeTag] instance` の `process` match から dispatch される)。
+    /// ここに残るのは Pacing の薄いカウンタ tick のみ (Scene に紐づかないため)。
     def commonEpilogue(dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {GameEngine.Game, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                Pacing.State} =
+            \ Pacing.State =
         Pacing.State.tick(dt);
         scene
-            |> CameraScene.update(dt)
-            |> DamagePopupScene.tick(dt)
-            |> UnitHPBarScene.tickAll(dt)
-            |> ItemScene.tickAll(dt)
-            |> UnitInfoPopupScene.update
-            |> LogScene.flushFromEffect
-            |> LogScene.tickScroll
 
-    /// 現フェーズに応じた WeaponMenu / ActionMenu / ForecastPanel の visible/focused を
-    /// 毎フレーム適用する。Push モデルではなく毎フレーム適用にしているのは、フェーズ遷移を
-    /// 行う関数が複数 Scene に散らばっていて漏れやすいため。
-    def applyMenuVisibility(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
-        let phase = TurnPhase.State.get();
-        scene
-            |> WeaponMenuScene.applyVisibility(phase)
-            |> ActionMenuScene.applyVisibility(phase)
-            |> ForecastPanelScene.applyVisibility(phase)
 }

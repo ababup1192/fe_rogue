@@ -203,18 +203,14 @@ mod UnitHPBarScene {
             case other => other
         }, withCells)
 
-    /// 毎フレーム呼ぶ。すべての HPBar の timer を dt 分減らし、可視/不可視を再評価する。
-    /// 可視条件: `remaining > 0` OR HP 比率 ≤ 30%（警告）。
-    pub def tickAll(dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let paths = Scene.findPaths(tag -> match tag {
-            case NodeTag.HPBar(_) => true
-            case _                => false
-        }, scene);
-        List.foldLeft(acc -> path -> tickOne(dt, path, acc), scene, paths)
-
-    /// 1 つの HPBar に対して timer を進めて可視性を更新する。
-    def tickOne(dt: Duration.Duration, path: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(path, n -> match n {
+    /// Game.flix の `Node[NodeTag] instance` の `process` redef から、各 HPBar ノードに
+    /// 対して per-node dispatch される。timer を dt 分減らして可視性を再評価する。
+    /// 可視条件: `remaining > 0` OR HP 比率 ≤ 30% (警告)。
+    pub def process(dt: Duration.Duration,
+                     node: EngineNode[NodeTag],
+                     path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag]) =
+        let next = Scene.mapEngineNode(path, n -> match n {
             case EngineNode.Marker2DWithState(m, NodeTag.HPBar(d)) =>
                 let newRemaining = Duration.subClampedToZero(d#remaining, dt);
                 let ratio = hpRatio(d#currentHp, d#maxHp);
@@ -223,5 +219,6 @@ mod UnitHPBarScene {
                 let newData: HPBarData = {remaining = newRemaining | d};
                 EngineNode.Marker2DWithState(newMarker, NodeTag.HPBar(newData))
             case other => other
-        }, scene)
+        }, scene);
+        (node, next)
 }

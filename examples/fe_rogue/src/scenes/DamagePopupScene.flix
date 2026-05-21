@@ -115,12 +115,16 @@ mod DamagePopupScene {
     // (D) 毎フレーム更新
     // ────────────────────────────────────────────────────────
 
-    /// 毎フレーム呼ぶ。各 Popup_<seq> の remaining を dt 分減らし、上方向に補間移動し、
-    /// 寿命満了の子は `Scene.removeAt` で取り除く。`commonEpilogue` から呼ぶ。
-    /// 親未登録なら no-op。
-    pub def tick(dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag] =
+    /// Game.flix の `Node[NodeTag] instance` の `process` redef から、`DamagePopupsRoot` ノードに
+    /// 対して dispatch される (root は 1 個のみなので 1 フレーム 1 回)。
+    /// 各 Popup_<seq> 子の remaining を dt 分減らし、上方向に補間移動し、寿命満了の子は
+    /// `Scene.removeAt` で取り除く。親未登録なら no-op (子なしで foldLeft が空回り)。
+    pub def process(dt: Duration.Duration,
+                     node: EngineNode[NodeTag],
+                     _path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag]) =
         let childNames = Scene.getChildrenAt(rootPath(), scene);
-        List.foldLeft(acc -> childName -> {
+        let next = List.foldLeft(acc -> childName -> {
             let childPath = MapScene.worldName() :: rootName() :: childName :: Nil;
             match Scene.getEngineNode(childPath, acc) {
                 case Some(EngineNode.Label2DWithState(label, NodeTag.DamagePopup(data))) =>
@@ -143,5 +147,6 @@ mod DamagePopupScene {
                     }
                 case _ => acc
             }
-        }, scene, childNames)
+        }, scene, childNames);
+        (node, next)
 }

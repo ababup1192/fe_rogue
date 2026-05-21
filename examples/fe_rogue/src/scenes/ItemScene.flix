@@ -258,26 +258,23 @@ mod ItemScene {
 
     // ─── tick（点滅アニメーション） ───────────────────────────
 
-    /// 全 GroundItem の `elapsed` を進めて、4 兄弟の縁取り Sprite のアルファを更新する。
-    /// `GameManager.commonEpilogue` から毎フレーム呼ばれる。
-    pub def tickAll(dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let paths = Scene.findPaths(tag -> match tag {
-            case NodeTag.GroundItem(_) => true
-            case _                     => false
-        }, scene);
-        List.foldLeft(acc -> path -> tickOne(dt, path, acc), scene, paths)
-
-    /// 1 つの GroundItem について、elapsed を進めてから縁取りに alpha を反映する。
-    def tickOne(dt: Duration.Duration, itemPath: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
-        match Scene.getState(itemPath, scene) {
+    /// Game.flix の `Node[NodeTag] instance` の `process` redef から、各 GroundItem に
+    /// 対して per-node dispatch される。`elapsed` を進めて 4 兄弟の縁取り Sprite に alpha
+    /// (`pulseAlpha`) を反映する。
+    pub def process(dt: Duration.Duration,
+                     node: EngineNode[NodeTag],
+                     path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag]) =
+        let next = match Scene.getState(path, scene) {
             case Some(NodeTag.GroundItem(d)) =>
                 let newElapsed = advance(Duration.add(d#elapsed, dt));
                 let alpha = pulseAlpha(newElapsed);
                 scene
-                    |> writeElapsed(itemPath, newElapsed)
-                    |> applyAlphaToOutlines(itemPath, alpha)
+                    |> writeElapsed(path, newElapsed)
+                    |> applyAlphaToOutlines(path, alpha)
             case _ => scene
-        }
+        };
+        (node, next)
 
     /// `elapsed` をサイクル長で巻き戻す（mod の代わり）。dt が cycle 未満であることを前提に 1 回引き算するだけ。
     def advance(e: Duration.Duration): Duration.Duration =
