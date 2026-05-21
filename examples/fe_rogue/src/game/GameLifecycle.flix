@@ -28,6 +28,8 @@ mod GameLifecycle {
             |> CursorScene.add
             |> FlagScene.add            // 自動移動先マーカー (初期は非表示)
             |> CameraScene.add
+            |> EnemyTurnDriverScene.add // 敵ターン進行の常駐タグノード (process で phase 判定)
+            |> AutoMoveDriverScene.add  // AutoMove 駆動の常駐タグノード (process で phase 判定)
             |> WeaponMenuScene.add      // 武器選択ウィンドウ (初期は非表示)
             |> ActionMenuScene.add      // 行動選択ウィンドウ (初期は非表示)
             |> ForecastPanelScene.add   // 戦闘予報パネル (初期は非表示)

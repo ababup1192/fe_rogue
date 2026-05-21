@@ -130,9 +130,11 @@ mod UnitInfoPopupScene {
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から、`UnitInfoPanel` ノードに
     /// 対して dispatch される (panel は 1 個のみなので 1 フレーム 1 回)。
     /// カーソル位置のユニットに変化があれば再描画。空マス / cursor フェーズ外なら隠す。
+    /// scene 経由で self (rootPath) と子ノードの両方を更新するため、最後に scene から
+    /// self の最新ノードを取り直して返す (古い node で打ち消されないように)。
     pub def process(_delta: Duration.Duration,
                      node: EngineNode[NodeTag],
-                     _path: NodePath, scene: Scene[NodeTag]):
+                     path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, TurnPhase.State} =
         let phase = TurnPhase.State.get();
@@ -155,7 +157,10 @@ mod UnitInfoPopupScene {
                 case None             => hide(scene)
             }
         };
-        (node, next)
+        match Scene.getEngineNode(path, next) {
+            case Some(latest) => (latest, next)
+            case None         => (node, next)
+        }
 
     // ─── 内部: state アクセス ─────────────────────────────────
 

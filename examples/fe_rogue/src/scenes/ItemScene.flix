@@ -261,6 +261,8 @@ mod ItemScene {
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から、各 GroundItem に
     /// 対して per-node dispatch される。`elapsed` を進めて 4 兄弟の縁取り Sprite に alpha
     /// (`pulseAlpha`) を反映する。
+    /// `writeElapsed` は self を更新し `applyAlphaToOutlines` は子ノードを更新するため
+    /// scene 経由で両方処理してから、scene から self の最新ノードを取り直して返す。
     pub def process(dt: Duration.Duration,
                      node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
@@ -274,7 +276,10 @@ mod ItemScene {
                     |> applyAlphaToOutlines(path, alpha)
             case _ => scene
         };
-        (node, next)
+        match Scene.getEngineNode(path, next) {
+            case Some(latest) => (latest, next)
+            case None         => (node, next)
+        }
 
     /// `elapsed` をサイクル長で巻き戻す（mod の代わり）。dt が cycle 未満であることを前提に 1 回引き算するだけ。
     def advance(e: Duration.Duration): Duration.Duration =

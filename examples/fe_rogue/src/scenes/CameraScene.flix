@@ -69,6 +69,9 @@ mod CameraScene {
     ///   2. Camera2D.position に target をセット（engine の追従計算の入力）
     ///   3. Camera2D.process(delta, viewport, ...) で smoothPosition を進める
     /// 「画面内なら維持」「滑らかに追従」は engine の drag margin / smoothing が代替する。
+    /// 注: 戻り値の node は engine の `processAll` が path に書き戻すので、scene 経由で
+    /// `mapEngineNode(cameraPath, ...)` する代わりに **node 自体** を更新して返すこと
+    /// (そうしないと古い node で上書きされてカメラが動かない)。
     pub def process(delta: Duration.Duration,
                      node: EngineNode[NodeTag],
                      _path: NodePath, scene: Scene[NodeTag]):
@@ -80,12 +83,11 @@ mod CameraScene {
         let target = computeTarget(phase, selected, scene);
         let vp = GameEngine.Game.getViewportRect();
         let viewport = {viewportWidth = vp#size#x, viewportHeight = vp#size#y};
-        let next = Scene.mapEngineNode(cameraPath(),
-            n -> EngineNode.mapCamera2D(c ->
-                c |> Node2D.setPosition(target)
-                  |> Camera2D.process(delta, viewport), n),
-            scene);
-        (node, next)
+        let newNode = EngineNode.mapCamera2D(
+            c -> c |> Node2D.setPosition(target)
+                   |> Camera2D.process(delta, viewport),
+            node);
+        (newNode, scene)
 
     /// 各フェーズでカメラが向かうべきターゲット位置を計算する。
     /// `selected` が None のときはパーティの代表（id=0、または最初のアクティブ）の位置に向く。

@@ -206,11 +206,13 @@ mod UnitHPBarScene {
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から、各 HPBar ノードに
     /// 対して per-node dispatch される。timer を dt 分減らして可視性を再評価する。
     /// 可視条件: `remaining > 0` OR HP 比率 ≤ 30% (警告)。
+    /// 注: 戻り値の node は engine が path に書き戻すので、scene 経由ではなく **node 自体**
+    /// を更新して返すこと (そうしないと更新が古い node で打ち消される)。
     pub def process(dt: Duration.Duration,
                      node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
+                     _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag]) =
-        let next = Scene.mapEngineNode(path, n -> match n {
+        let newNode = match node {
             case EngineNode.Marker2DWithState(m, NodeTag.HPBar(d)) =>
                 let newRemaining = Duration.subClampedToZero(d#remaining, dt);
                 let ratio = hpRatio(d#currentHp, d#maxHp);
@@ -219,6 +221,6 @@ mod UnitHPBarScene {
                 let newData: HPBarData = {remaining = newRemaining | d};
                 EngineNode.Marker2DWithState(newMarker, NodeTag.HPBar(newData))
             case other => other
-        }, scene);
-        (node, next)
+        };
+        (newNode, scene)
 }

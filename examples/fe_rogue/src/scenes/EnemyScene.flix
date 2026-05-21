@@ -454,7 +454,12 @@ mod EnemyScene {
                         case _                                => sc
                     },
                     afterMethods, bundle#finished);
-                (node, afterFinished)
+                // signal handler が scene 経由で self (Enemy ノード) を更新する可能性が
+                // あるため、最新ノードを取り直して返す (古い node で打ち消されないように)
+                match Scene.getEngineNode(path, afterFinished) {
+                    case Some(latest) => (latest, afterFinished)
+                    case None         => (node, afterFinished)
+                }
         }
 
     /// AnimationPlayer の `attack_lunge` finished イベント受信時の処理 (敵側 = 反撃完了)。

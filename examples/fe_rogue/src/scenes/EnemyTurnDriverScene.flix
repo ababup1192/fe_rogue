@@ -1,15 +1,19 @@
 /// EnemyTurnDriverScene — 敵ターン進行のオーケストレーション
 ///
-/// 「敵ターンキューを 1 step ずつ消化して画面に反映する」役割を 1 か所に集約する。
-/// Stage 4 では `GameManager.tickEnemyTurnFrame` から `stepOnce` を直接呼び出す形を取り、
-/// Stage 7 で scene tree に専用ノードを追加して `process` redef 経由に切り替える。
+/// 「敵ターンキューを 1 step ずつ消化して画面に反映する」役割を scene tree 上の
+/// 専用タグノード (`NodeTag.EnemyTurnDriver`) に常駐させ、`process` redef が phase を
+/// 見て自分が動くべきタイミングを判断する。Godot 流の Node 自完結モデル。
+///
+/// `process` redef の phase 別動作:
+///   - `EnemyTurn`        → `stepOnce` (敵キュー 1 step 進行)
+///   - `PlayerAttackHold` → `Pacing` の hold が抜けたら `commitWaitedAndAdvance`
+///   - その他              → no-op
 ///
 /// 公開 API:
+///   - `add(scene)`       — `GameLifecycle.buildPlayingScene` で scene tree に常駐ノードを追加
+///   - `process(...)`     — `Node[NodeTag]` instance から per-frame で呼ばれる。phase 判定。
 ///   - `beginTurn(scene)` — 敵ターン開始 (敵キュー構築 + フェーズ遷移 + 周辺片付け)
-///     `commitWaitedAndAdvance` から「全員 waited」のときに呼ばれる
-///   - `stepOnce(scene)`  — 毎フレーム呼ばれて敵キュー先頭を 1 step 進める
-///   - `tickPlayerAttackHold(scene)` — `PlayerAttackHold` フェーズで毎フレーム呼ばれ、
-///     `Pacing.isHolding` が抜けたら `commitWaitedAndAdvance` を発火する
+///     `PlayerScene.commitWaitedAndAdvance` から「全員 waited」のときに呼ばれる
 ///
 /// 3 段 gating (stepOnce の冒頭):
 ///   1. 演出の溜め (`Pacing.isHolding`) 中 → scene 据え置き
@@ -17,6 +21,39 @@
 ///   3. `attack_lunge` 中の敵が居る (モーション完了待ち) → 据え置き
 /// これにより「キャラ行動 → 溜め → カメラ移動 → 到達 → 次のキャラ行動」のリズムを作る。
 mod EnemyTurnDriverScene {
+
+    /// 常駐タグ専用ノードの NodePath。Marker2D を World 配下に置く。
+    def driverName(): String = "EnemyTurnDriver"
+    pub def driverPath(): NodePath =
+        MapScene.worldName() :: driverName() :: Nil
+
+    /// scene tree に常駐ノードを追加する。`GameLifecycle.buildPlayingScene` で 1 回だけ呼ぶ。
+    /// engine の `Scene.processAll` が preorder で各ノードを巡回するとき、この driver の
+    /// `process` redef が phase 判定 + stepOnce / tickPlayerAttackHold を起動する。
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let marker = Marker2D.make(Vec2.zero());
+        Scene.addChild(MapScene.worldName(), driverName(),
+            EngineNode.Marker2DWithState(marker, NodeTag.EnemyTurnDriver), scene)
+
+    /// per-frame entry。Game.flix の Node[NodeTag] instance の process redef から呼ばれる。
+    /// phase 別に動作を分岐 (EnemyTurn → stepOnce / PlayerAttackHold → hold 終了判定 / 他 → no-op)。
+    pub def process(_delta: Duration.Duration,
+                     node: EngineNode[NodeTag],
+                     _path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag])
+                    \ {GameEngine.Game,
+                        Tween.Scheduler, AnimationPlayer.Scheduler,
+                        GameLogger.GameLogger, EnemyTurn.Queue,
+                        TurnPhase.State, SelectedPlayer.State,
+                        Pacing.State} =
+        let next = match TurnPhase.State.get() {
+            case TurnPhase.Phase.EnemyTurn        => stepOnce(scene)
+            case TurnPhase.Phase.PlayerAttackHold =>
+                if (Pacing.State.isHolding()) scene
+                else PlayerScene.commitWaitedAndAdvance(scene)
+            case _                                 => scene
+        };
+        (node, next)
 
     /// 敵ターン開始の共通処理。死亡演出 / 攻撃モーション中の敵はキューに含めない。
     /// `commitWaitedAndAdvance` (全味方 waited) や `endTurn` (旗で AutoMove 継続) の
@@ -37,14 +74,14 @@ mod EnemyTurnDriverScene {
             |> MoveAttackRangeScene.clear
             |> PlayerAttackRangeScene.clear
 
-    /// 敵ターンキューの先頭 step を 1 つ進める。Tween がアクティブなら何もしない。
+    /// 敵ターンキューの先頭 step を 1 つ進める。`process` redef から phase=EnemyTurn のとき呼ぶ。
     /// 動作:
     ///   1) キュー先頭が居る敵の Tween がアクティブ (前の step が再生中) なら待つ
     ///   2) 先頭 step を pop して `EnemyAI.decideAction` で 1 マス分の行動を決める
     ///   3) 行動を適用 (Move なら Tween 開始 + remaining-1 で pushFront、Attack なら
     ///      ログのみ、Skip/Wait は無動作)
     ///   4) キューが空になったらターン終了処理 (フェーズを PlayerCursor に戻す)
-    pub def stepOnce(scene: Scene[NodeTag]): Scene[NodeTag]
+    def stepOnce(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game,
                 Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, EnemyTurn.Queue,
@@ -138,18 +175,4 @@ mod EnemyTurnDriverScene {
                 |> CursorScene.snapToPlayer
         }
 
-    /// `PlayerAttackHold` 中に毎フレーム呼ぶ。`Pacing.State` の hold が抜けたら
-    /// `PlayerScene.commitWaitedAndAdvance` を発火して PlayerCursor or EnemyTurn に
-    /// 遷移する。それ以外のフェーズなら何もしない。
-    pub def tickPlayerAttackHold(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State,
-                SelectedPlayer.State, Pacing.State} =
-        match TurnPhase.State.get() {
-            case TurnPhase.Phase.PlayerAttackHold =>
-                if (Pacing.State.isHolding()) scene
-                else PlayerScene.commitWaitedAndAdvance(scene)
-            case _ => scene
-        }
 }

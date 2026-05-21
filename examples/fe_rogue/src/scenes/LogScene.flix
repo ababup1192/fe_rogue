@@ -69,9 +69,11 @@ mod LogScene {
     ///      マウスがパネル上なら RichTextLabel.scrollY を加減 (パネル外でも delta は必ず消費)
     /// GLFW yoffset は wheel up が正・wheel down が負。ログは「新が上」なので
     /// wheel down で過去ログ (下方向) を見たい → scrollY を増やす方向に符号反転する。
+    /// scene 経由で self (logPath / textPath) を更新するため、最後に scene から self の
+    /// 最新ノードを取り直して返す (古い node で打ち消されないように)。
     pub def process(_delta: Duration.Duration,
                      node: EngineNode[NodeTag],
-                     _path: NodePath, scene: Scene[NodeTag]):
+                     path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, GameLogger.GameLogger} =
         let drained = GameLogger.drainEntries();
@@ -91,7 +93,10 @@ mod LogScene {
                             RichTextLabel.getScrollY(l) + dy, l), n),
                     afterFlush)
             };
-        (node, next)
+        match Scene.getEngineNode(path, next) {
+            case Some(latest) => (latest, next)
+            case None         => (node, next)
+        }
 
     /// 1 ホイール tick あたりのスクロール量（論理 px）。マウスホイールの 1 段で
     /// だいたい 1 行ぶん（lineHeight に近い値）動かす
