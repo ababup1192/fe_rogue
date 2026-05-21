@@ -13,6 +13,7 @@ mod IdeState {
     import javafx.scene.control.ListView
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
+    import javafx.scene.control.CheckBox
     import javafx.scene.layout.VBox
     import javafx.scene.layout.StackPane
     import javafx.stage.Stage
@@ -25,6 +26,7 @@ mod IdeState {
         propertyPanel          = Array[Option[VBox], Static],
         resourcePreviewPane    = Array[Option[StackPane], Static],
         resourcePreviewZoomLbl = Array[Option[Label], Static],
+        resourcePreviewGridChk = Array[Option[CheckBox], Static],
         stage                  = Array[Option[Stage], Static]
     }
 
@@ -129,6 +131,7 @@ mod IdeState {
             propertyPanel          = Array#{(None: Option[VBox])} @ Static,
             resourcePreviewPane    = Array#{(None: Option[StackPane])} @ Static,
             resourcePreviewZoomLbl = Array#{(None: Option[Label])} @ Static,
+            resourcePreviewGridChk = Array#{(None: Option[CheckBox])} @ Static,
             stage                  = Array#{(None: Option[Stage])} @ Static
         }
 

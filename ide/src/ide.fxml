@@ -24,6 +24,7 @@
 <?import javafx.scene.control.TabPane?>
 <?import javafx.scene.control.Tab?>
 <?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.Separator?>
 <?import javafx.scene.control.ScrollPane?>
@@ -127,6 +128,7 @@
                                                                  content="M6,3 A3,3 0 1,1 6,9 A3,3 0 1,1 6,3 Z M8.7,8.7 L13,13 M4,6 L8,6 M6,4 L6,8"/>
                                                     </graphic>
                                                 </Button>
+                                                <CheckBox fx:id="previewGridCheck" text="グリッド"/>
                                             </children>
                                         </HBox>
                                         <StackPane fx:id="resourcePreviewPane"

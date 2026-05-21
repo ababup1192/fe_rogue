@@ -34,7 +34,15 @@ mod JsonOps {
             case headKey :: restKeys =>
                 match obj {
                     case JsonObject(map) =>
-                        let child = Map.get(headKey, map) |> Option.getWithDefault(JsonNull);
+                        let raw = Map.get(headKey, map) |> Option.getWithDefault(JsonNull);
+                        // 中間レベルで JsonNull / 非オブジェクトの場合は空 object を作って降りる
+                        // （schema にあるが JSON にまだ無い nested フィールドを編集できるようにする）
+                        let child = match raw {
+                            case JsonObject(_) => raw
+                            case _             =>
+                                if (List.isEmpty(restKeys)) raw
+                                else JsonObject(Map.empty())
+                        };
                         let updatedChild = setAtKeyPath(child, restKeys, newValue);
                         JsonObject(Map.insert(headKey, updatedChild, map))
                     case JsonArray(items) =>

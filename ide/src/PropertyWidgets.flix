@@ -53,11 +53,16 @@ mod PropertyWidgets {
     ///     アトラス分割情報。sprite ブロックが無く texture だけの record では
     ///     全て None になり、preview 側で 1, 1, 0 にフォールバックして
     ///     画像全体を表示する。
+    ///   - offsetX / offsetY: 同じ object 内に `"offset": {"x": ..., "y": ...}`
+    ///     としてあれば取り出す。preview ではセルクロップ後の描画位置にオフセットを
+    ///     image-pixel 単位で加算する（zoom と同じスケールで拡大される）。
     pub type alias SpriteRef = {
         texture  = String,
         frame    = Option[Int32],
         hframes  = Option[Int32],
-        vframes  = Option[Int32]
+        vframes  = Option[Int32],
+        offsetX  = Float64,
+        offsetY  = Float64
     }
 
     /// Resources タブ Preview の拡大モード。
@@ -479,12 +484,28 @@ mod PropertyWidgets {
                 let frame   = Map.get("frame",   m) |> Option.flatMap(NodeInspector.jsonToInt);
                 let hframes = Map.get("hframes", m) |> Option.flatMap(NodeInspector.jsonToInt);
                 let vframes = Map.get("vframes", m) |> Option.flatMap(NodeInspector.jsonToInt);
+                let (ox, oy) = extractOffset(m);
                 Some({
                     texture = texture,
                     frame   = frame,
                     hframes = hframes,
-                    vframes = vframes
+                    vframes = vframes,
+                    offsetX = ox,
+                    offsetY = oy
                 })
+        }
+
+    /// `"offset": {"x": Float, "y": Float}` の sibling から (offsetX, offsetY) を抜き出す。
+    /// 無ければ (0, 0)。
+    def extractOffset(m: Map[String, Json.JsonElement]): (Float64, Float64) =
+        match Map.get("offset", m) {
+            case Some(Json.JsonElement.JsonObject(om)) =>
+                let x = Map.get("x", om) |> Option.flatMap(NodeInspector.jsonToFloat)
+                          |> Option.getWithDefault(0.0);
+                let y = Map.get("y", om) |> Option.flatMap(NodeInspector.jsonToFloat)
+                          |> Option.getWithDefault(0.0);
+                (x, y)
+            case _ => (0.0, 0.0)
         }
 
     /// SpriteRef から絶対パスを引いて JavaFX Image をロードし、frame/hframes/vframes
@@ -501,7 +522,8 @@ mod PropertyWidgets {
     /// JavaFX の Prism レンダラ環境で効かないケースがあるため避ける)。
     pub def updateSpritePreview(pane: StackPane, pathMap: Map[String, String],
                                  spriteRef: Option[SpriteRef],
-                                 zoomMode: ZoomMode): Unit \ IO = {
+                                 zoomMode: ZoomMode,
+                                 showGrid: Bool): Unit \ IO = {
         let children = pane.getChildren();
         children.clear();
         match spriteRef {
@@ -523,7 +545,6 @@ mod PropertyWidgets {
                         let url = new File(absPath).toURI().toString();
                         let image = new Image(url);
 
-                        // sprite ブロック欠落時は (frame=0, h=1, v=1) で全体表示
                         let hframes = sr#hframes |> Option.getWithDefault(1i32);
                         let vframes = sr#vframes |> Option.getWithDefault(1i32);
                         let frame   = sr#frame   |> Option.getWithDefault(0i32);
@@ -541,29 +562,49 @@ mod PropertyWidgets {
                                  cellW, cellH)
                             } else (0.0, 0.0, imgW, imgH);
 
-                        // ピクセルアートを 220 px 枠に nearest-neighbor で拡大する。
-                        // ImageView.setSmooth(false) は Prism レンダラ環境で
-                        // 効かないケースがあるので、Canvas + GraphicsContext で
-                        // 明示的に setImageSmoothing(false) する。
                         let canvasSize = 220.0;
-                        // Percent(p) → 拡大率 p/100 (100% = ネイティブピクセル等倍)
                         let scale = if (srcW <= 0.0 or srcH <= 0.0) 1.0 else
                             match zoomMode {
                                 case ZoomMode.Percent(p) => Int32.toFloat64(p) / 100.0
                             };
                         let dstW = srcW * scale;
                         let dstH = srcH * scale;
-                        let dstX = (canvasSize - dstW) / 2.0;
-                        let dstY = (canvasSize - dstH) / 2.0;
+                        // 中央寄せに sprite#offset (image pixel 単位) を加算
+                        let dstX = (canvasSize - dstW) / 2.0 + sr#offsetX * scale;
+                        let dstY = (canvasSize - dstH) / 2.0 + sr#offsetY * scale;
                         let canvas = new Canvas(canvasSize, canvasSize);
                         let gc: GraphicsContext = canvas.getGraphicsContext2D();
                         gc.setImageSmoothing(false);
                         gc.drawImage(image, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH);
+                        // グリッド: ON のとき canvas 中央十字 + cell 矩形（offset 無視位置）を描く
+                        if (showGrid) drawPreviewGrid(gc, canvasSize, dstW, dstH)
+                        else ();
                         let n: Node = checked_cast(canvas);
                         discard children.add(n)
                     }
                 }
             }
         }
+    }
+
+    /// プレビュー用の補助グリッド。canvas の中央十字（赤）と「offset=0 のときの
+    /// セル矩形」（白）を上に重ねて描く。中央合わせの目視確認に使う。
+    def drawPreviewGrid(gc: GraphicsContext, canvasSize: Float64,
+                         cellW: Float64, cellH: Float64): Unit \ IO = {
+        let red   = FxColor.color(1.0, 0.0, 0.0);
+        let white = FxColor.color(1.0, 1.0, 1.0);
+        let cx = canvasSize / 2.0;
+        let cy = canvasSize / 2.0;
+        // 1. cell 矩形（offset=0 で中央寄せした場合の位置）= 白
+        gc.setStroke(white);
+        gc.setLineWidth(1.0);
+        let cellX = cx - cellW / 2.0;
+        let cellY = cy - cellH / 2.0;
+        gc.strokeRect(cellX, cellY, cellW, cellH);
+        // 2. 中央十字 = 赤
+        gc.setStroke(red);
+        gc.setLineWidth(1.0);
+        gc.strokeLine(0.0, cy, canvasSize, cy);
+        gc.strokeLine(cx, 0.0, cx, canvasSize)
     }
 }

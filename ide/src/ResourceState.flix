@@ -25,7 +25,8 @@ mod ResourceState {
         editingSchemaRef       = Array[Option[Resource.ResourceSchema], Static],
         editingSchemaJsonRef   = Array[Option[Json.JsonElement], Static],
         dirtyRef               = Array[Bool, Static],
-        previewZoomRef         = Array[PropertyWidgets.ZoomMode, Static]
+        previewZoomRef         = Array[PropertyWidgets.ZoomMode, Static],
+        previewGridRef         = Array[Bool, Static]
     }
 
     /// 空の ResourceState を作る
@@ -38,7 +39,8 @@ mod ResourceState {
             editingSchemaRef       = Array#{(None: Option[Resource.ResourceSchema])} @ Static,
             editingSchemaJsonRef   = Array#{(None: Option[Json.JsonElement])} @ Static,
             dirtyRef               = Array#{false} @ Static,
-            previewZoomRef         = Array#{PropertyWidgets.defaultZoom()} @ Static
+            previewZoomRef         = Array#{PropertyWidgets.defaultZoom()} @ Static,
+            previewGridRef         = Array#{false} @ Static
         }
 
     pub def setDiscovered(state: ResourceState, entries: List[ResourceEntry]): Unit \ IO =
@@ -90,4 +92,10 @@ mod ResourceState {
 
     pub def getPreviewZoom(state: ResourceState): PropertyWidgets.ZoomMode \ IO =
         Array.get(0, state#previewZoomRef)
+
+    pub def setPreviewGrid(state: ResourceState, show: Bool): Unit \ IO =
+        Array.put(show, 0, state#previewGridRef)
+
+    pub def getPreviewGrid(state: ResourceState): Bool \ IO =
+        Array.get(0, state#previewGridRef)
 }

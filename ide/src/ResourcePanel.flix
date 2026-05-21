@@ -15,6 +15,7 @@ mod ResourcePanel {
     import javafx.collections.ObservableList
     import javafx.scene.Node
     import javafx.scene.control.Button
+    import javafx.scene.control.CheckBox
     import javafx.scene.control.Label
     import javafx.scene.control.ListView
     import javafx.beans.value.ChangeListener
@@ -267,17 +268,20 @@ mod ResourcePanel {
         let pathMap = Array.get(0, state#texturePathMapRef);
         let spriteRef = PropertyWidgets.findFirstSpriteRef(record, textureNames);
         let zoomMode = ResourceState.getPreviewZoom(state#resource);
+        let showGrid = ResourceState.getPreviewGrid(state#resource);
         match Array.get(0, state#widgets#resourcePreviewPane) {
-            case Some(pane) => PropertyWidgets.updateSpritePreview(pane, pathMap, spriteRef, zoomMode)
+            case Some(pane) =>
+                PropertyWidgets.updateSpritePreview(pane, pathMap, spriteRef, zoomMode, showGrid)
             case None       => ()
         }
     }
 
     def clearPreview(state: IdeState.IdeState): Unit \ IO = {
         let zoomMode = ResourceState.getPreviewZoom(state#resource);
+        let showGrid = ResourceState.getPreviewGrid(state#resource);
         match Array.get(0, state#widgets#resourcePreviewPane) {
             case Some(pane) =>
-                PropertyWidgets.updateSpritePreview(pane, Map.empty(), None, zoomMode)
+                PropertyWidgets.updateSpritePreview(pane, Map.empty(), None, zoomMode, showGrid)
             case None       => ()
         }
     }
@@ -323,6 +327,19 @@ mod ResourcePanel {
                 let current = ResourceState.getPreviewZoom(state#resource);
                 ResourceState.setPreviewZoom(state#resource, PropertyWidgets.zoomIn(current));
                 updateZoomLabel(state);
+                repaintPreview(state)
+            }
+        })
+    }
+
+    /// グリッド表示チェックボックスを配線する。トグルで preview を再描画する。
+    pub def wireGridCheckbox(state: IdeState.IdeState,
+                              gridChk: CheckBox): Unit \ IO = {
+        // 起動時に既定値（false）を反映
+        gridChk.setSelected(ResourceState.getPreviewGrid(state#resource));
+        gridChk.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                ResourceState.setPreviewGrid(state#resource, gridChk.isSelected());
                 repaintPreview(state)
             }
         })
