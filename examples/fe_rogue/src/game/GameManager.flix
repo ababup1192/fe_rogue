@@ -155,29 +155,11 @@ mod GameManager {
         applyTransition(TurnRules.decide(context), scene)
 
     /// 現在のシーンと各 effect handler から `TurnRules.Context` を組み立てる。
-    /// 「判断に必要な値だけ」を抜き出し、判断ロジック自身は純粋に保つための入口。
+    /// 実装は `TurnContextBuilder.build` に委譲。
     def buildTurnContext(input: TurnRules.Input, scene: Scene[NodeTag]):
             TurnRules.Context \ {BoardQuery, Tween.Scheduler,
                                   TurnPhase.State, SelectedPlayer.State} =
-        let selected = SelectedPlayer.State.get()#id;
-        let busy = match selected {
-            case Some(id) => Tween.Scheduler.isActive(PlayerScene.playerPath(id))
-            case None     => false
-        };
-        let waitedIds = PlayerScene.getAll(scene)
-            |> List.filterMap(d -> if (d#waited) Some(d#id) else None);
-        let dyingIds = EnemyScene.getAll(scene)
-            |> List.filterMap(e -> if (e#isDying) Some(e#id) else None);
-        {
-            phase           = TurnPhase.State.get(),
-            input           = input,
-            board           = BoardQuery.board(),
-            cursor          = CursorScene.getGridPos(scene),
-            selected        = selected,
-            waitedPlayerIds = waitedIds,
-            dyingEnemyIds   = dyingIds,
-            playerBusy      = busy
-        }
+        TurnContextBuilder.build(input, scene)
 
     /// `decide` が返した `Transition` をシーンに適用する。
     /// このマッチが「ゲームの中心ルールが画面にどう反映されるか」を一覧できる窓口。
@@ -750,51 +732,28 @@ mod GameManager {
             case _ => scene
         }
 
-    /// 味方の攻撃完了時に「敵が反撃するか」を判定する純粋関数寄りのヘルパ。
-    /// 条件:
-    ///   1. 攻撃対象の敵が現存し、`isDying` でない（生存している）
-    ///   2. 敵が武器を装備している
-    ///   3. 敵の装備武器の `range` が「敵 → 味方」のマンハッタン距離に届く
-    ///      (e.g. 弓 {min:2,max:2} は隣接攻撃を受けても届かないので反撃不可)
-    /// 条件を満たすなら反撃する敵 id を返し、満たさないなら None。
+    /// 味方の攻撃完了時に「敵が反撃するか」を判定。
+    /// scene からの取り出しはここで済ませ、判断は `CounterAttackRules.attackerForPlayer`
+    /// (純粋関数) に委譲する。
     def counterAttackerForPlayer(playerId: Int32, scene: Scene[NodeTag]): Option[Int32] =
         match PlayerScene.get(playerId, scene) {
             case None         => None
             case Some(player) =>
-                match player#attackTargetId {
-                    case None      => None
-                    case Some(eid) =>
-                        match EnemyScene.get(eid, scene) {
-                            case None        => None
-                            case Some(enemy) =>
-                                if (enemy#isDying) None
-                                else match enemy#weapon {
-                                    case None    => None
-                                    case Some(w) =>
-                                        let d = Weapon.manhattan(enemy#gridPos,
-                                                                  player#gridPos);
-                                        if (Weapon.canReach(d, w)) Some(eid)
-                                        else None
-                                }
-                        }
-                }
+                let target = player#attackTargetId
+                    |> Option.flatMap(eid -> EnemyScene.get(eid, scene));
+                CounterAttackRules.attackerForPlayer(player, target)
         }
 
     /// `playerId` の現 `attackTargetId` を読み、その敵が `isDying` なら id を返す。
-    /// 「いま完了した attack_lunge が敵を倒したか」を attack_lunge finished 時に
-    /// 判定するために使う（attackTargetId は直後の clearAttackTarget で消える）。
+    /// scene からの取り出しはここで済ませ、判断は `CounterAttackRules.killedTargetEnemyId`
+    /// (純粋関数) に委譲する。
     def killedTargetEnemyId(playerId: Int32, scene: Scene[NodeTag]): Option[Int32] =
         match PlayerScene.get(playerId, scene) {
             case None    => None
             case Some(d) =>
-                match d#attackTargetId {
-                    case None         => None
-                    case Some(enemyId) =>
-                        match EnemyScene.get(enemyId, scene) {
-                            case Some(e) => if (e#isDying) Some(enemyId) else None
-                            case None    => None
-                        }
-                }
+                let target = d#attackTargetId
+                    |> Option.flatMap(eid -> EnemyScene.get(eid, scene));
+                CounterAttackRules.killedTargetEnemyId(target)
         }
 
     /// `PlayerAttackHold` 中に毎フレーム呼ぶ。`Pacing.State` の hold が抜けたら
@@ -818,28 +777,9 @@ mod GameManager {
 
     /// 現在の scene から Board (MapSnapshot + 駒一覧) を組み立てる。
     /// BoardQuery handler と「敵ターン処理」「AutoMove」の双方が呼ぶ。
-    /// 後者は 1 体動かすたびに最新の scene から組み直して、駒の更新を反映させる。
+    /// 実装は `BoardSnapshot.fromScene` に委譲。
     pub def buildBoard(scene: Scene[NodeTag]): Board =
-        let layer       = MapScene.getMapLayer(scene);
-        let mapGlobal   = Scene.globalPositionAt(MapScene.mapPath(), scene);
-        let placements  = MapScene.getPlacements(scene);
-        let map: MapSnapshot = {
-            tileSize     = TileMapLayer.tileSize(layer),
-            usedRect     = TileMapLayer.getUsedRect(layer),
-            isWall       = c -> TileMapLayer.isWall(c, layer),
-            isFloor      = c -> TileMapLayer.isFloor(c, layer),
-            mapToLocal   = c -> TileMapLayer.mapToLocal(c, layer),
-            gridToWorld  = c -> Vec2.add(mapGlobal, TileMapLayer.mapToLocal(c, layer)),
-            moduleOfCell = c -> MapScene.moduleOfCellIn(c, placements)
-        };
-        let players = PlayerScene.getAll(scene)
-            |> List.map(d -> (Piece.Player(d#id), d#gridPos));
-        let enemies = EnemyScene.getAll(scene)
-            |> List.map(e -> (Piece.Enemy(e#id), e#gridPos));
-        {
-            map    = map,
-            pieces = List.append(players, enemies)
-        }
+        BoardSnapshot.fromScene(scene)
 
     /// 起動時 / ホットリロード時にプレイ用シーンを組み立てる。
     /// 順序が意味を持つ（後段が前段の登録結果を参照する）。
