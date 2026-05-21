@@ -16,18 +16,6 @@ mod TestCursorScene {
     // ヘルパー
     // ════════════════════════════════════════════════════════
 
-    /// テスト用 FontAtlas (loadScene が getFontAtlas を呼ばないので実値は使われないが
-    /// `withMockGame` ハンドラの戻り値として必要)
-    def testFontAtlas(): FontAtlas = {
-        textureName = "font_test",
-        fontSize    = 16.0,
-        textureSize = 256.0,
-        ascent      = 0.0,
-        descent     = 0.0,
-        lineGap     = 0.0,
-        glyphs      = Map.empty()
-    }
-
     /// CursorScene.add の {GameEngine.Game, Fs.FileRead} effect を discharge して
     /// pure に見せる test 用ラッパ。`@Test` は `\ Assert` 限定のため unchecked_cast で
     /// IO effect を消す (Fs.FileRead は flix test の CWD = examples/fe_rogue から
@@ -35,46 +23,9 @@ mod TestCursorScene {
     def cursorAddPure(scene: Scene[NodeTag]): Scene[NodeTag] =
         unchecked_cast(
             (run {
-                run {
-                    CursorScene.add(scene)
-                } with handler GameEngine.Game {
-                    def renderCommands(_, _, k)     = k(())
-                    def initTileBuffer(_, k)        = k((0i32, 0i32))
-                    def shouldClose(k)              = k(false)
-                    def getDeltaTime(k)             = k(Duration.seconds(0.016))
-                    def isKeyPressed(_, k)          = k(false)
-                    def getMousePosition(k)         = k({x = 0.0, y = 0.0})
-                    def isMouseButtonPressed(_, k)  = k(false)
-                    def consumeScrollDelta(k)       = k(0.0)
-                    def getFontAtlas(_, k)          = k(testFontAtlas())
-                    def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 128.0, y = 128.0}})
-                    def getTextureInfo(_, k)        = k(None)
-                    def setCursor(_, k)             = k(())
-                }
+                TestUnitFixtures.withMockGame(() -> CursorScene.add(scene))
             } with Fs.FileRead.runWithIO)
             as _ \ {})
-
-    /// Tween.Scheduler のスタブ。schedule / cancel を捨てて何もしない。
-    /// snapToPlayer の動作確認時に Tween 実体を立ち上げないために使う。
-    def withNoopTween(thunk: Unit -> a \ ef): a \ (ef - Tween.Scheduler) =
-        run { thunk() } with handler Tween.Scheduler {
-            def schedule(_, k) = k()
-            def isActive(_, k) = k(false)
-            def cancel(_, k) = k()
-            def consumeUpdates(_, k) = k(Nil)
-        }
-
-    /// AnimationPlayer.Scheduler のスタブ。snag / 攻撃アニメは流さず、すべて停止扱い。
-    def withNoopAnim(thunk: Unit -> a \ ef): a \ (ef - AnimationPlayer.Scheduler) =
-        run { thunk() } with handler AnimationPlayer.Scheduler {
-            def schedule(_, k) = k()
-            def isPlaying(_, k) = k(false)
-            def stop(_, k) = k()
-            def cancelAll(k) = k()
-            def activeOwners(k) = k(Nil)
-            def consumeTick(_, k) = k(({propertyUpdates = Nil}: AnimationPlayer.Tick))
-            def drainSignals(_, k) = k(({methods = Nil, finished = Nil}: AnimationPlayer.EventBundle))
-        }
 
     /// プレイヤー id=0 1 体だけを (gridPos) に置いた scene を組む。
     /// JSON ロードを介さず Marker2D を直接構築する（PlayerScene.playerPath は
@@ -107,18 +58,6 @@ mod TestCursorScene {
         run { thunk() } with handler SelectedPlayer.State {
             def get(k) = k(SelectedPlayer.cleared())
             def put(_, k) = k()
-        }
-
-    /// PlayerScene.PartyQuery のスタブ handler。
-    /// テスト scene に置いた player を直接 PlayerScene.* で読みに行く。
-    /// (実装は Game.start の handler と同じが、`sceneRef` の代わりにクロージャに閉じ込めた scene を読む)
-    def withPartyQuery(scene: Scene[NodeTag], thunk: Unit -> a \ ef):
-            a \ (ef - PlayerScene.PartyQuery) =
-        run { thunk() } with handler PlayerScene.PartyQuery {
-            def get(id, k)          = k(PlayerScene.get(id, scene))
-            def getAll(k)           = k(PlayerScene.getAll(scene))
-            def getGridPos(id, k)   = k(PlayerScene.getGridPos(id, scene))
-            def getMoveTiles(id, k) = k(PlayerScene.getMoveTiles(id, scene))
         }
 
     /// `add` 後の (gridPos, lastHoveredEnemyId) を 1 タプルにまとめて取り出す
@@ -190,8 +129,8 @@ mod TestCursorScene {
     def testSnapToPlayerResetsCursorAndHover(): Unit \ Assert =
         let player: {x = Int32, y = Int32} = {x = 4, y = 4};
         let initial = sceneWithPlayer(player);
-        let result = withNoSelection(() -> withNoopTween(() -> withNoopAnim(() ->
-            withPartyQuery(initial, () ->
+        let result = withNoSelection(() -> TestUnitFixtures.withNoopTween(() -> TestUnitFixtures.withNoopAnim(() ->
+            TestUnitFixtures.withMockPartyQuery(initial, () ->
                 let scene = cursorAddPure(initial);
                 // カーソルを (10, 10) に移し、ホバー履歴も Some(99) に偽装
                 let drifted = scene |> CursorScene.mapCursor((m, d) ->
@@ -211,8 +150,8 @@ mod TestCursorScene {
         let waitedPos: {x = Int32, y = Int32}  = {x = 2, y = 2};
         let activePos: {x = Int32, y = Int32}  = {x = 5, y = 5};
         let initial = sceneWithTwoPlayers((waitedPos, true), (activePos, false));
-        let result = withNoSelection(() -> withNoopTween(() -> withNoopAnim(() ->
-            withPartyQuery(initial, () ->
+        let result = withNoSelection(() -> TestUnitFixtures.withNoopTween(() -> TestUnitFixtures.withNoopAnim(() ->
+            TestUnitFixtures.withMockPartyQuery(initial, () ->
                 let scene = cursorAddPure(initial);
                 let snapped = CursorScene.snapToPlayer(scene);
                 cursorState(snapped)))));
@@ -267,7 +206,7 @@ mod TestCursorScene {
             let staleSnapshot = sceneWithTwoPlayers((p0Pos, false), (p1Pos, false));
             // 新 scene: Player(0) が setWaited されたばかり (commitWaitedAndAdvance 内のローカル変数)
             let freshScene = sceneWithTwoPlayers((p0Pos, true), (p1Pos, false));
-            let result = withPartyQuery(staleSnapshot, () -> run {
+            let result = TestUnitFixtures.withMockPartyQuery(staleSnapshot, () -> run {
                 let scene = cursorAddPure(freshScene);
                 // 呼び出し側が新 scene から計算した「次のアクティブ味方の gridPos」
                 let snapped = PhaseTransitions.enterPlayerCursorAt(p1Pos, scene);

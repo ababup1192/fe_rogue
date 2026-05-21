@@ -33,15 +33,6 @@ mod TestPlayerScene {
             moduleOfCell = _ -> None
         }
 
-    /// Tween.Scheduler のスタブ handler。schedule の登録を捨てて何もしない。
-    def withNoopTween(thunk: Unit -> a \ ef): a \ (ef - Tween.Scheduler) =
-        run { thunk() } with handler Tween.Scheduler {
-            def schedule(_, k) = k()
-            def isActive(_, k) = k(false)
-            def cancel(_, k) = k()
-            def consumeUpdates(_, k) = k(Nil)
-        }
-
     /// テスト用初期グリッド（PlayerScene.add の経由を回避）。
     def initialGrid(): {x = Int32, y = Int32} = {x = 5, y = 5}
 
@@ -98,7 +89,7 @@ mod TestPlayerScene {
     def testMoveToUpdatesGridPosImmediately(): Unit \ Assert =
         let target: {x = Int32, y = Int32} = {x = 6, y = 5};
         let initialPos = testGridToWorld(initialGrid());
-        let after = withNoopTween(() ->
+        let after = TestUnitFixtures.withNoopTween(() ->
             applyMove(0, testSnapshot(), target, emptyPlayerScene()));
         let pos = playerWorldPos(0, after);
         let gridX = PlayerScene.getGridPos(0, after)#x;

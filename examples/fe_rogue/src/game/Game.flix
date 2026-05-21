@@ -293,12 +293,8 @@ mod Game {
                 case Err(msg) => bug!("WeaponResource schema/type mismatch: ${msg}")
             };
             run {
-                let scene = GameLifecycle.buildPlayingScene(catalog);
-                // 初回 build 時の spawn を保存。ゲームオーバー時に同じ配置で復活させる
-                InitialSpawns.State.put({
-                    enemies = EnemyScene.snapshotSpawns(scene),
-                    players = PlayerScene.snapshotSpawns(scene)
-                });
+                // 初回 build と spawn snapshot 保存をまとめて行う (GameOver リビルドと同じ経路)
+                let scene = GameLifecycle.buildAndRecord(catalog);
                 // BGM は控えめに、SE は半分で鳴らす
                 AudioStreamPlayer.setVolume("bgm",    0.05f32);
                 AudioStreamPlayer.setVolume("damage", 0.5f32);
@@ -313,20 +309,9 @@ mod Game {
             // 使うため、これらより **内側** (= 構文上で先) に書く必要がある。
             // 同様に `BoardQuery` も `Ref` 経由で sceneRef を読むだけだが内側に置く。
             } with handler CustomEffects.GameOverRequest {
-                  // 全味方脱落でフルリビルド: マップ・敵・味方・アイテムを再ランダ生成。
-                  // 起動時の `buildPlayingScene` と同じ手順 + InitialSpawns 更新。
-                  def request(_scene, k) = {
-                      GameLogger.gameOverLog("ゲームオーバー");
-                      EnemyTurn.Queue.replace(Nil);
-                      TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
-                      SelectedPlayer.State.put(SelectedPlayer.cleared());
-                      let rebuilt = GameLifecycle.buildPlayingScene(catalog);
-                      InitialSpawns.State.put({
-                          enemies = EnemyScene.snapshotSpawns(rebuilt),
-                          players = PlayerScene.snapshotSpawns(rebuilt)
-                      });
-                      k(rebuilt)
-                  }
+                  // 全味方脱落でフルリビルド: turn 系 state をリセットしてから scene を作り直し、
+                  // 新しい spawn 一覧を InitialSpawns に書き戻す。本体は GameLifecycle 側。
+                  def request(_scene, k) = k(GameLifecycle.resetForGameOver(catalog))
               }
               with handler BoardQuery {
                   def board(k) = k(BoardSnapshot.fromScene(Ref.get(sceneRef)))
