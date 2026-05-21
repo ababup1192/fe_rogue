@@ -197,7 +197,9 @@ mod MoveAttackRangeScene {
                             case None    => cleared
                             case Some(w) =>
                                 let reachable = MoveRangeScene.reachable(cleared);
-                                let cells = computeThreatCells(reachable, w#range);
+                                let lo = Int32.max(1, w#range#min);
+                                let hi = w#range#max;
+                                let cells = Board.computeThreatCells(reachable, lo, hi);
                                 if (List.isEmpty(cells)) cleared
                                 else
                                     cleared
@@ -210,42 +212,6 @@ mod MoveAttackRangeScene {
     /// 表示中の MoveAttackRange ノードがあれば取り除く。
     pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.removeAt(rangePath(), scene)
-
-    /// `reachable` の各セルから武器射程 (`min..max` マンハッタン) で届くセル集合を作り、
-    /// reachable 自身は除外して返す。同一セルは 1 つにまとめる。
-    pub def computeThreatCells(reachable: List[{x = Int32, y = Int32}],
-                                range: UnitCatalog.WeaponRange):
-                               List[{x = Int32, y = Int32}] =
-        let lo = Int32.max(1, range#min);
-        let hi = range#max;
-        if (hi < lo or List.isEmpty(reachable)) Nil
-        else
-            let offsets = manhattanOffsets(lo, hi);
-            let raw = List.flatMap(c ->
-                List.map(o ->
-                    ({x = c#x + o#x, y = c#y + o#y}: {x = Int32, y = Int32}),
-                    offsets),
-                reachable);
-            // reachable 自身を除外しつつ、最初に出現したものだけ残す (順序保持の dedup)
-            let init: {seen = List[{x = Int32, y = Int32}], out = List[{x = Int32, y = Int32}]} =
-                {seen = reachable, out = Nil};
-            let folded = List.foldLeft(acc -> cell -> {
-                if (List.exists(s -> s#x == cell#x and s#y == cell#y, acc#seen)) acc
-                else {seen = cell :: acc#seen, out = cell :: acc#out}
-            }, init, raw);
-            List.reverse(folded#out)
-
-    /// `lo..hi` のマンハッタン距離内にあるオフセット (dx, dy) を全列挙する。
-    def manhattanOffsets(lo: Int32, hi: Int32): List[{x = Int32, y = Int32}] =
-        let coords = List.range(-hi, hi + 1);
-        List.flatMap(dx ->
-            List.foldRight(dy -> acc -> {
-                let d = Int32.abs(dx) + Int32.abs(dy);
-                if (d >= lo and d <= hi)
-                    ({x = dx, y = dy}: {x = Int32, y = Int32}) :: acc
-                else acc
-            }, Nil, coords),
-            coords)
 
     /// テスト・デバッグ用: 現在の脅威セル一覧。未登録なら空リスト。
     pub def cells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
@@ -402,19 +368,9 @@ mod PlayerAttackRangeScene {
                                 _layer: TileMapLayer): List[{x = Int32, y = Int32}] =
         let lo = Int32.max(1, range#min);
         let hi = range#max;
-        if (hi < lo) Nil
-        else
-            let coords = List.range(-hi, hi + 1);
-            List.flatMap(dx ->
-                List.foldRight(dy -> acc -> {
-                    let d = Int32.abs(dx) + Int32.abs(dy);
-                    if (d >= lo and d <= hi) {
-                        let cell: {x = Int32, y = Int32} =
-                            {x = origin#x + dx, y = origin#y + dy};
-                        cell :: acc
-                    } else acc
-                }, Nil, coords),
-                coords)
+        Board.manhattanOffsets(lo, hi)
+            |> List.map(o ->
+                ({x = origin#x + o#x, y = origin#y + o#y}: {x = Int32, y = Int32}))
 
     /// 指定セルが現在の射程内 (赤マス上) にあるか。
     /// 範囲が表示されていない (= フェーズが PlayerAttack ではない) 場合は false。

@@ -89,7 +89,7 @@ mod AutoMoveScene {
             let remaining = p#resource#moveTiles - p#moveStepsTaken;
             if (remaining <= 0) false
             else
-                let allyCells = allPlayerCells(board);
+                let allyCells = Board.allPlayerCells(board);
                 match Board.bfsPathSkipAllies(board, allyCells, p#gridPos, flag) {
                     case None       => false
                     case Some(path) =>
@@ -104,7 +104,7 @@ mod AutoMoveScene {
                      board: Board,
                      scene: Scene[NodeTag]):
             Scene[NodeTag] \ Tween.Scheduler =
-        let sorted = List.sortBy(p -> manhattan(p#gridPos, flag), active);
+        let sorted = List.sortBy(p -> Weapon.manhattan(p#gridPos, flag), active);
         match List.head(sorted) {
             case None    => scene
             case Some(p) => stepOnePlayer(p, flag, board, scene)
@@ -129,7 +129,7 @@ mod AutoMoveScene {
             let remaining = p#resource#moveTiles - p#moveStepsTaken;
             if (not isOverlap and remaining <= 0) finishPlayer(p#id, scene)
             else
-                let allyCells = allPlayerCells(board);
+                let allyCells = Board.allPlayerCells(board);
                 // オーバーラップ中は予算 0 でも最低 1 マスは進める
                 let budget = if (isOverlap) Int32.max(remaining, 1) else remaining;
                 match Board.bfsPathSkipAllies(board, allyCells, p#gridPos, flag) {
@@ -168,15 +168,7 @@ mod AutoMoveScene {
     /// 「止まれる場所がある」ことを確認するガード。
     def hasFreeStop(allyCells: List[{x = Int32, y = Int32}],
                      cells: List[{x = Int32, y = Int32}]): Bool =
-        List.exists(c -> not isAlly(c, allyCells), cells)
-
-    def isAlly(cell: {x = Int32, y = Int32},
-                allyCells: List[{x = Int32, y = Int32}]): Bool =
-        List.exists(a -> a#x == cell#x and a#y == cell#y, allyCells)
-
-    def allPlayerCells(board: Board): List[{x = Int32, y = Int32}] =
-        Board.playerPositions(board)
-            |> List.map(pair -> { let (_, pos) = pair; pos })
+        List.exists(c -> not Board.containsCell(c, allyCells), cells)
 
     /// 実際に 1 マス Tween で進める。`moveStepsTaken += 1`。
     /// 上限到達したときも **次マスが非味方の場合だけ** waited にする。
@@ -191,8 +183,8 @@ mod AutoMoveScene {
         // 移動前の allyCells (= 自分の旧位置 + 他味方の位置) で next を判定。
         // p#gridPos != next（実移動なので）なので、next が allyCells に含まれる
         // = 他味方が next に居る、と判定できる。
-        let allyCells = allPlayerCells(board);
-        let nextIsAlly = isAlly(next, allyCells);
+        let allyCells = Board.allPlayerCells(board);
+        let nextIsAlly = Board.containsCell(next, allyCells);
         if (newSteps >= p#resource#moveTiles and not nextIsAlly)
             PlayerScene.setWaited(p#id, recorded)
         else recorded
@@ -225,10 +217,7 @@ mod AutoMoveScene {
 
     /// 旗との Manhattan 距離が ≤ stopRadius なら「もう近い」扱い。
     def alreadyClose(src: {x = Int32, y = Int32}, flag: {x = Int32, y = Int32}): Bool =
-        manhattan(src, flag) <= stopRadius()
-
-    def manhattan(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Int32 =
-        Int32.abs(a#x - b#x) + Int32.abs(a#y - b#y)
+        Weapon.manhattan(src, flag) <= stopRadius()
 
     def anyTweenActive(active: List[PlayerScene.Data]): Bool \ Tween.Scheduler =
         List.exists(p -> Tween.Scheduler.isActive(PlayerScene.playerPath(p#id)), active)

@@ -192,6 +192,18 @@ mod UnitCatalog {
             case None    => bug!("UnitCatalog.lookupWeapon: weapon '${id}' not in catalog")
         }
 
+    /// sprite#frame → ユニット表示名。units.json のスプライトシート上の並び順に
+    /// 1:1 で対応する（0=Knight / 1=Archer / 2=Mage / 3=Orc / 4=Goblin）。
+    /// HUD パネル（UnitInfoPopupScene）の名前表示に使う。シートの並びを変えたらここも更新する。
+    pub def displayName(frame: Int32): String = match frame {
+        case 0 => "Knight"
+        case 1 => "Archer"
+        case 2 => "Mage"
+        case 3 => "Orc"
+        case 4 => "Goblin"
+        case _ => "Unknown"
+    }
+
     /// Z 戦略の整合性検査用に Flix 型のフィールド名集合を公開する。
     /// `UnitResource` のフィールド構造を変更したらここも更新すること。
     /// engine 側 `Resource.checkConsistency` がこの集合と `_schema.json` を照合する。

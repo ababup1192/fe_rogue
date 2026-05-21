@@ -72,16 +72,6 @@ mod UnitInfoPopupScene {
     def textColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
     def hpBarFillColor(): Color = {r = 0.5f32, g = 0.9f32, b = 0.2f32}
 
-    /// sprite#frame からユニットの表示名（units.json の各キーに対応）
-    def unitName(frame: Int32): String = match frame {
-        case 0 => "Knight"
-        case 1 => "Archer"
-        case 2 => "Mage"
-        case 3 => "Orc"
-        case 4 => "Goblin"
-        case _ => "Unknown"
-    }
-
     // ─── 構築（初回） ─────────────────────────────────────────
 
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -284,7 +274,7 @@ mod UnitInfoPopupScene {
             |> Sprite2D.setFrame(res#sprite#frame);
         let withSprite = Scene.addChildAt(panelPath(), "Sprite",
             EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag), scene);
-        let nameLabel = Label2D.make(unitName(res#sprite#frame), atlas, fontSizeBig())
+        let nameLabel = Label2D.make(UnitCatalog.displayName(res#sprite#frame), atlas, fontSizeBig())
             |> Node2D.setPosition(nameLocalPos())
             |> CanvasItem.setModulate(textColor());
         let withName = Scene.addChildAt(panelPath(), "Name",

@@ -6,11 +6,13 @@
 ///
 /// 章立て:
 ///   (A) 型 + effect: Piece / Board / BoardQuery
-///   (B) 駒クエリ: playerPositions / enemyPositions / isOccupied / isEnemyAt /
-///                 nearestPlayer / adjacentPlayer
+///   (B) 駒クエリ: playerPositions / enemyPositions / allPlayerCells /
+///                 isOccupied / isEnemyAt / nearestPlayer / adjacentPlayer /
+///                 containsCell
 ///   (C) 動きルール: isWalkable / stepTarget / tryMove / tryMoveWithRange
 ///   (D) 経路探索: reachableCells / bfsPath / bfsPathSkipAllies
 ///   (E) 駒視点ヘルパー: reachableForUnit / stoppableForUnit
+///   (F) 射程計算: manhattanOffsets / computeThreatCells
 ///
 /// EnemyAI / AutoMove / MoveRangeScene / EnemyRangeScene / PlayerScene などはこの
 /// Board を 1 つ受け取れば「次の手」を計算できる。Scene[NodeTag] には依存しない。
@@ -53,6 +55,18 @@ mod Board {
             case (Piece.Enemy(id), pos) => Some((id, pos))
             case _                      => None
         }, board#pieces)
+
+    /// 全プレイヤー駒の位置だけを並べたリスト（id は捨てる）。
+    /// AutoMove / MoveRange など「味方マスのリスト」だけ要る用途で使う。
+    pub def allPlayerCells(board: Board): List[{x = Int32, y = Int32}] =
+        playerPositions(board)
+            |> List.map(pair -> { let (_, pos) = pair; pos })
+
+    /// `cell` が `cells` に含まれるか（Vec2i フィールド比較版の `List.memberOf`）。
+    /// 「味方マスに含まれるか」「reachable に含まれるか」等の判定で多用する。
+    pub def containsCell(cell: {x = Int32, y = Int32},
+                          cells: List[{x = Int32, y = Int32}]): Bool =
+        isInList(cell, cells)
 
     /// 任意の駒（Player / Enemy）が `coord` を占有しているか。
     /// Vec2i は record alias なのでフィールド比較する。
@@ -280,6 +294,48 @@ mod Board {
             |> List.map(pair -> { let (_, pos) = pair; pos });
         reachableForUnit(board, origin, maxSteps)
             |> List.filter(c -> not isInList(c, playerCells))
+
+    // ════════════════════════════════════════════════════════
+    // (F) 射程計算 — 武器の `min..max` マンハッタン距離に基づくセル列挙
+    //     RangeScenes の Player/MoveAttack/EnemyRange 表示はここを再利用する。
+    //     Scene 非依存・engine API 非依存の純粋関数。
+    // ════════════════════════════════════════════════════════
+
+    /// `lo..hi` のマンハッタン距離内にあるオフセット (dx, dy) を全列挙する。
+    /// `lo > hi` のときは空リスト。`lo == 0` を許可するか否かは呼び出し側が判断する
+    /// （AttackRange 系は `Int32.max(1, range#min)` で 0 を除外している）。
+    pub def manhattanOffsets(lo: Int32, hi: Int32): List[{x = Int32, y = Int32}] =
+        let coords = List.range(-hi, hi + 1);
+        List.flatMap(dx ->
+            List.foldRight(dy -> acc -> {
+                let d = Int32.abs(dx) + Int32.abs(dy);
+                if (d >= lo and d <= hi)
+                    ({x = dx, y = dy}: {x = Int32, y = Int32}) :: acc
+                else acc
+            }, Nil, coords),
+            coords)
+
+    /// `reachable` の各セルから武器射程 (`min..max` マンハッタン) で届くセル集合を作り、
+    /// reachable 自身は除外して返す。同一セルは 1 つにまとめる（先に出たものを残す）。
+    /// MoveAttackRange の赤マス計算に使う。`hi < lo` または `reachable` が空なら Nil。
+    pub def computeThreatCells(reachable: List[{x = Int32, y = Int32}],
+                                lo: Int32, hi: Int32):
+                               List[{x = Int32, y = Int32}] =
+        if (hi < lo or List.isEmpty(reachable)) Nil
+        else
+            let offsets = manhattanOffsets(lo, hi);
+            let raw = List.flatMap(c ->
+                List.map(o ->
+                    ({x = c#x + o#x, y = c#y + o#y}: {x = Int32, y = Int32}),
+                    offsets),
+                reachable);
+            let init: {seen = List[{x = Int32, y = Int32}], out = List[{x = Int32, y = Int32}]} =
+                {seen = reachable, out = Nil};
+            let folded = List.foldLeft(acc -> cell -> {
+                if (containsCell(cell, acc#seen)) acc
+                else {seen = cell :: acc#seen, out = cell :: acc#out}
+            }, init, raw);
+            List.reverse(folded#out)
 
     // ════════════════════════════════════════════════════════
     // 内部ヘルパー

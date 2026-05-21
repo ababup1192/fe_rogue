@@ -214,9 +214,8 @@ mod CameraScene {
             case Some(flag) =>
                 let active = PlayerScene.getAll(scene)
                               |> List.filter(d -> not d#waited);
-                let manhattan = d ->
-                    Int32.abs(d#gridPos#x - flag#x) + Int32.abs(d#gridPos#y - flag#y);
-                match List.minimumBy((a, b) -> Order.compare(manhattan(a), manhattan(b)),
+                let distTo = d -> Weapon.manhattan(d#gridPos, flag);
+                match List.minimumBy((a, b) -> Order.compare(distTo(a), distTo(b)),
                                       active) {
                     case None    => flagWorldPos(scene)
                     case Some(d) => focusedPlayerWorldPos(d#id, scene)
