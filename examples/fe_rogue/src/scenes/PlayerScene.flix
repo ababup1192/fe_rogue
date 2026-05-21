@@ -311,7 +311,7 @@ mod PlayerScene {
                         GameEngine.Audio, GameEngine.Game,
                         GameLogger.GameLogger,
                         EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State, Pacing.State, PartyQuery} =
+                        SelectedPlayer.State, Pacing.State} =
         match idFromPath(path) {
             case None           => (node, scene)
             case Some(playerId) =>
@@ -419,6 +419,15 @@ mod PlayerScene {
     /// 「全員行動済みなら敵ターンへ」の判定に使う。
     pub def anyActive(scene: Scene[NodeTag]): Bool =
         List.exists(d -> not d#waited, getAll(scene))
+
+    /// アクティブ（waited でない）味方のうち、id 最小のものを返す。誰も居なければ None。
+    /// `commitWaitedAndAdvance` の直後にカーソルを次に動ける駒へ飛ばす用途で使う
+    /// (`PartyQuery` 経由だとフレーム冒頭 snapshot を読むため stale)。
+    pub def firstActive(scene: Scene[NodeTag]): Option[Data] =
+        getAll(scene)
+            |> List.filter(d -> not d#waited)
+            |> List.sortBy(d -> d#id)
+            |> List.head
 
     /// 敵攻撃で HP=0 になったプレイヤーを scene から取り除く。`killed` は
     /// `EnemyScene.applyAttackHit` が返した死亡 id のリスト (通常 1 要素)。
@@ -672,14 +681,21 @@ mod PlayerScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, PartyQuery} =
+                              SelectedPlayer.State} =
         let withWaited = match SelectedPlayer.State.get()#id {
             case Some(id) => setWaited(id, scene)
             case None     => scene   // 防御的 (選択なしで Attack に入ることは想定外)
         };
         SelectedPlayer.State.put(SelectedPlayer.cleared());
-        if (anyActive(withWaited)) PhaseTransitions.enterPlayerCursor(withWaited)
-        else EnemyTurnDriverScene.beginTurn(withWaited)
+        // 次の active 味方の gridPos をローカル `withWaited` から直接拾って渡す。
+        // `enterPlayerCursor` 側の PartyQuery フォールバックは sceneRef (frame 冒頭の snapshot)
+        // を読むので、たった今 setWaited した駒をまだ active として返してしまう。
+        match firstActive(withWaited) {
+            case Some(next) =>
+                PhaseTransitions.enterPlayerCursorAt(next#gridPos, withWaited)
+            case None       =>
+                EnemyTurnDriverScene.beginTurn(withWaited)
+        }
 
     /// AnimationPlayer の `attack:hit` method イベント受信時の処理 (味方側)。
     /// 攻撃ダメージ適用本体は既存 `applyAttackHit` を呼ぶ。
@@ -699,7 +715,7 @@ mod PlayerScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, PartyQuery} =
+                              SelectedPlayer.State, Pacing.State} =
         match get(playerId, scene) {
             case None         => scene
             case Some(player) =>

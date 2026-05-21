@@ -19,10 +19,15 @@
 mod PhaseTransitions {
 
     /// PlayerCursor フェーズに入る。
-    /// `commitWaitedAndAdvance` で「アクティブ味方が残っているので次の選択へ戻す」分岐、
     /// `cancelSelection` で「移動キャンセルで戻す」分岐、`AutoMoveScene.exitToCursor` の
     /// AutoMove 終了などから呼ぶ。
-    /// 動作: 全 player overlay を clear → カーソルを表示してプレイヤーにスナップ。
+    /// 動作: 全 player overlay を clear → カーソルを表示してプレイヤー
+    /// (`CursorScene.snapToPlayer` のフォールバック規則) にスナップ。
+    ///
+    /// `commitWaitedAndAdvance` のように **フレーム内で `setWaited` を行った直後** に呼ぶ
+    /// 経路では `enterPlayerCursorAt` の方を使う。snapToPlayer 内のフォールバックは
+    /// `PartyQuery` (= `sceneRef` = フレーム冒頭の snapshot) を読むので、mid-frame 更新が
+    /// 反映されず「いま waited にした駒」をアクティブ扱いしてしまうため。
     pub def enterPlayerCursor(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
@@ -34,6 +39,22 @@ mod PhaseTransitions {
             |> PlayerAttackRangeScene.clear
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToPlayer
+
+    /// PlayerCursor フェーズに入り、カーソルを **明示的に指定された座標** にスナップする。
+    /// 呼び出し側がフレーム内で計算した「次にアクティブな味方の gridPos」を渡す想定。
+    /// `enterPlayerCursor` のフォールバック (PartyQuery 経由) では sceneRef の更新タイミング
+    /// 都合で stale な味方を返してしまうケース (`commitWaitedAndAdvance` 直後) に使う。
+    pub def enterPlayerCursorAt(target: {x = Int32, y = Int32},
+                                  scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              TurnPhase.State} =
+        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
+        scene
+            |> MoveRangeScene.clear
+            |> MoveAttackRangeScene.clear
+            |> PlayerAttackRangeScene.clear
+            |> CursorScene.setVisible(true)
+            |> CursorScene.snapToCell(target)
 
     /// PlayerMoving フェーズに入る (味方マスで Z 押下時)。
     /// 動作: EnemyRange を消す → 選択中味方の移動範囲 (青) と攻撃範囲 (赤) を組み立て →

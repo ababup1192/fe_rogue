@@ -441,7 +441,7 @@ mod EnemyScene {
                         CustomEffects.GameOverRequest,
                         Tween.Scheduler,
                         EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State, PlayerScene.PartyQuery} =
+                        SelectedPlayer.State} =
         match idFromPath(path) {
             case None          => (node, scene)
             case Some(enemyId) =>
@@ -476,7 +476,7 @@ mod EnemyScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, PlayerScene.PartyQuery} =
+                              SelectedPlayer.State} =
         let cleared = clearAttackTarget(enemyId, scene);
         if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttackHold)
             PlayerScene.commitWaitedAndAdvance(cleared)

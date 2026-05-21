@@ -408,6 +408,12 @@ mod CursorScene {
     /// ホバー状態をリセットする。
     /// 敵ターン突入時 / キャンセル復帰時 / プレイヤー移動完了時に呼んで、
     /// 「次にカーソル選択フェーズに戻ったとき味方の上から始まる」状態を作る。
+    ///
+    /// 注意: `PartyQuery` は `Game.start` の `sceneRef` (フレーム冒頭の snapshot) を読むため、
+    /// フレーム内で `setWaited` した直後に呼ぶケースではここのフォールバックが「いま
+    /// waited にした駒」を active として拾ってしまう。そうしたパス
+    /// (= `commitWaitedAndAdvance`) からは `PhaseTransitions.enterPlayerCursorAt` 経由で
+    /// 明示的に snap 先座標を渡し、この関数を経由しないようにする。
     pub def snapToPlayer(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               SelectedPlayer.State, PlayerScene.PartyQuery} =
