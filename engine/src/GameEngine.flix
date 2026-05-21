@@ -210,8 +210,9 @@ mod GameEngine {
     //   GameEngine.render(updateScene(scene));
 
     /// 全ノードの毎フレーム処理を実行する
+    /// Aef は `ready` 用 `Aef[s]` と `process` 用 `ProcessAef[s]` の和。
     pub def process(delta: {delta = Duration.Duration}, paused: {paused = Bool},
-                    scene: Scene[s]): Scene[s] \ Node.Aef[s]
+                    scene: Scene[s]): Scene[s] \ Node.Aef[s] + Node.ProcessAef[s]
             with Node[s] =
         Scene.processAll(delta#delta, paused#paused, scene)
 

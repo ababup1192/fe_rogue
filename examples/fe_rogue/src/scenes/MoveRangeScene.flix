@@ -76,7 +76,7 @@ mod MoveRangeScene {
     /// （自分 + 他味方）を除いたものを青マスとして描画する。AutoMove も同じプリミティブで
     /// 動くため、ここで仕様が一致していれば自動で挙動が揃う。
     def buildFor(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let board  = GameManager.buildBoard(scene);
+        let board  = BoardSnapshot.fromScene(scene);
         let origin = PlayerScene.getGridPos(id, scene);
         let steps  = PlayerScene.getMoveTiles(id, scene);
         let cells     = Board.reachableForUnit(board, origin, steps);

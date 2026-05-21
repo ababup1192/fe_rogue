@@ -42,6 +42,7 @@ enum TestAreaState with Eq {
 
 instance Node[TestAreaState] {
     type Aef = {}
+    type ProcessAef = {}
 }
 
 /// テスト用ヘルパー: TestAreaState 用の矩形 Area2D EngineNode を作る
@@ -72,6 +73,7 @@ instance AreaEvent.AreaHandler[TestAreaState] {
 
 instance Node[Unit] {
     type Aef = {}
+    type ProcessAef = {}
 }
 
 // ========================================================================

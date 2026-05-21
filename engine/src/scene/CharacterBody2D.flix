@@ -354,4 +354,5 @@ instance PhysicsBody2D[CharacterBody2D] {
 
 instance Node[CharacterBody2D] {
     type Aef = {}
+    type ProcessAef = {}
 }

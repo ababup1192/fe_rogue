@@ -153,7 +153,7 @@ mod ActionMenuScene {
     ///   - attack: 攻撃ターゲット選択フェーズへ (`PlayerScene.enterAttackPhase` に委譲)
     ///   - wait:   その場で waited 確定
     ///   - pickup: 床アイテムを拾って waited 確定 (拾うで 1 ターン使う)
-    /// 「次セレクトか敵ターンか」の判定は Scene 跨ぎなので `GameManager.commitWaitedAndAdvance`
+    /// 「次セレクトか敵ターンか」の判定は Scene 跨ぎなので `PlayerScene.commitWaitedAndAdvance`
     /// を呼ぶ (Scene → GameManager 方向は許容)。
     pub def onActionConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                               Scene[NodeTag]
@@ -164,7 +164,7 @@ mod ActionMenuScene {
             case None    => scene
             case Some(m) =>
                 if (m == attackMeta())      PlayerScene.enterAttackPhase(scene)
-                else if (m == waitMeta())   GameManager.commitWaitedAndAdvance(scene)
+                else if (m == waitMeta())   PlayerScene.commitWaitedAndAdvance(scene)
                 else if (m == pickupMeta()) applyPickup(scene)
                 else                         scene
         }
@@ -177,20 +177,20 @@ mod ActionMenuScene {
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
         match SelectedPlayer.State.get()#id {
-            case None     => GameManager.commitWaitedAndAdvance(scene)
+            case None     => PlayerScene.commitWaitedAndAdvance(scene)
             case Some(id) =>
                 match PlayerScene.get(id, scene) {
-                    case None         => GameManager.commitWaitedAndAdvance(scene)
+                    case None         => PlayerScene.commitWaitedAndAdvance(scene)
                     case Some(player) =>
                         let (afterTake, taken) = ItemScene.takeAt(player#gridPos, scene);
                         match taken {
-                            case None    => GameManager.commitWaitedAndAdvance(afterTake)
+                            case None    => PlayerScene.commitWaitedAndAdvance(afterTake)
                             case Some(w) =>
                                 GameLogger.playerLog("P${id} が ${w#name} を拾った");
                                 let withWeapon = PlayerScene.mapPlayer(id,
                                     d -> {weapons = List.append(d#weapons, w :: Nil) | d},
                                     afterTake);
-                                GameManager.commitWaitedAndAdvance(withWeapon)
+                                PlayerScene.commitWaitedAndAdvance(withWeapon)
                         }
                 }
         }

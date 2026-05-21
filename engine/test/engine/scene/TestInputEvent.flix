@@ -17,6 +17,7 @@ enum TestInputState with Eq {
 
 instance Node[TestInputState] {
     type Aef = {}
+    type ProcessAef = {}
 }
 
 instance InputEvent.InputHandler[TestInputState] {

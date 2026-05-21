@@ -145,7 +145,7 @@ mod TestAnimationPlayer {
                 AnimationPlayer.play(nodePath("p"), anim);
                 // 0.6 秒進める → 中点 0.5 を超えたので "hit" が発火するはず
                 discard AnimationPlayer.tickAll(0.6 |> Duration.seconds, scene);
-                let bundle = AnimationPlayer.Scheduler.drainEvents();
+                let bundle = AnimationPlayer.Scheduler.drainSignals(nodePath("p"));
                 List.length(bundle#methods)
             } with AnimationPlayer.withScheduler(rc);
             Assert.assertEq(expected = 1, result)
@@ -162,7 +162,7 @@ mod TestAnimationPlayer {
                 AnimationPlayer.play(nodePath("p"), anim);
                 // 0.4 秒（中点 0.5 未満）
                 discard AnimationPlayer.tickAll(0.4 |> Duration.seconds, scene);
-                let bundle = AnimationPlayer.Scheduler.drainEvents();
+                let bundle = AnimationPlayer.Scheduler.drainSignals(nodePath("p"));
                 List.length(bundle#methods)
             } with AnimationPlayer.withScheduler(rc);
             Assert.assertEq(expected = 0, result)
@@ -181,7 +181,7 @@ mod TestAnimationPlayer {
                                          {x = 1.0, y = 0.0}, 1.0 |> Duration.seconds);
                 AnimationPlayer.play(nodePath("p"), anim);
                 discard AnimationPlayer.tickAll(1.0 |> Duration.seconds, scene);
-                let bundle = AnimationPlayer.Scheduler.drainEvents();
+                let bundle = AnimationPlayer.Scheduler.drainSignals(nodePath("p"));
                 let names = bundle#finished |> List.map(e -> e#name);
                 names
             } with AnimationPlayer.withScheduler(rc);
@@ -198,9 +198,9 @@ mod TestAnimationPlayer {
                                          {x = 1.0, y = 0.0}, 1.0 |> Duration.seconds);
                 AnimationPlayer.play(nodePath("p"), anim);
                 discard AnimationPlayer.tickAll(1.0 |> Duration.seconds, scene);
-                discard AnimationPlayer.Scheduler.drainEvents();
+                discard AnimationPlayer.Scheduler.drainSignals(nodePath("p"));
                 // 2 回目の drain は空のはず
-                let second = AnimationPlayer.Scheduler.drainEvents();
+                let second = AnimationPlayer.Scheduler.drainSignals(nodePath("p"));
                 (List.length(second#methods), List.length(second#finished))
             } with AnimationPlayer.withScheduler(rc);
             Assert.assertEq(expected = (0, 0), result)
@@ -264,7 +264,7 @@ mod TestAnimationPlayer {
                 // 1.0 秒進めると anim2 が完了。anim1 は置換されてるので走らない
                 let advanced = AnimationPlayer.tickAll(1.0 |> Duration.seconds, scene);
                 let pos = Scene.globalPositionAt(nodePath("p"), advanced);
-                let bundle = AnimationPlayer.Scheduler.drainEvents();
+                let bundle = AnimationPlayer.Scheduler.drainSignals(nodePath("p"));
                 let finishedNames = bundle#finished |> List.map(e -> e#name);
                 (pos#x, pos#y, finishedNames)
             } with AnimationPlayer.withScheduler(rc);
@@ -287,7 +287,7 @@ mod TestAnimationPlayer {
                 discard AnimationPlayer.tickAll(1.0 |> Duration.seconds, scene);
                 AnimationPlayer.Scheduler.cancelAll();
                 let stillPlaying = AnimationPlayer.Scheduler.isPlaying(nodePath("p"));
-                let bundle = AnimationPlayer.Scheduler.drainEvents();
+                let bundle = AnimationPlayer.Scheduler.drainSignals(nodePath("p"));
                 (stillPlaying, List.length(bundle#methods),
                                   List.length(bundle#finished))
             } with AnimationPlayer.withScheduler(rc);

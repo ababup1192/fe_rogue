@@ -174,4 +174,5 @@ instance CollisionObject2D[Area2D] {
 
 instance Node[Area2D] {
     type Aef = {}
+    type ProcessAef = {}
 }

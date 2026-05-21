@@ -611,7 +611,8 @@ pub mod Scene {
     /// 全ノードの process を preorder（親→子）の順で呼び出す
     /// EngineNode.engineProcess（AnimSprite2D のフレーム送り等）も自動実行される
     /// 未 ready のノードがあれば先に ready を呼ぶ（動的スポーン対応）
-    pub def processAll(delta: Duration.Duration, paused: Bool, scene: Scene[s]): Scene[s] \ Node.Aef[s] with Node[s] =
+    /// Aef は `ready` 用の `Aef[s]` と `process` 用の `ProcessAef[s]` の和。
+    pub def processAll(delta: Duration.Duration, paused: Bool, scene: Scene[s]): Scene[s] \ Node.Aef[s] + Node.ProcessAef[s] with Node[s] =
         let readiedScene = readyNew(scene);
         foldNodes((engineNode, path, sc) ->
             if (ProcessMode.shouldProcess(paused, Node.getProcessMode(EngineNode.getState(engineNode)))) {

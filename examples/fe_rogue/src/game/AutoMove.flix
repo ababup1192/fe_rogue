@@ -38,13 +38,13 @@ mod AutoMove {
                 GameLogger.GameLogger,
                 EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State} =
-        // 入力ハンドラ（cancelAutoMove 等）でこのフレーム中に既に他フェーズに
-        // 抜けた場合は no-op で抜ける。
+        // 入力ハンドラ (`AutoMoveDriverScene.cancel` 等) でこのフレーム中に
+        // 既に他フェーズに抜けた場合は no-op で抜ける。
         if (TurnPhase.State.get() != TurnPhase.Phase.PlayerAutoMove) scene
         else match FlagScene.getTargetPos(scene) {
             case None       => exitToCursor(scene)
             case Some(flag) =>
-                let board = GameManager.buildBoard(scene);
+                let board = BoardSnapshot.fromScene(scene);
                 if (anyEnemyDetected(scene, board)) {
                     GameLogger.playerLog("敵に発見された");
                     exitToCursor(scene)

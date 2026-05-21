@@ -405,6 +405,71 @@ mod EnemyScene {
                                scene: Scene[NodeTag]): Scene[NodeTag] =
         mapEnemy(enemyId, d -> {attackTargetId = None | d}, scene)
 
+    /// AnimationPlayer の `attack:hit` method イベント受信時の処理 (敵側)。
+    /// 既存 `applyAttackHit` の killed リストを `PlayerScene.removeDeadAndCheckGameOver`
+    /// に流し、全滅時は `CustomEffects.GameOverRequest` でフルリビルドさせる。
+    pub def onAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameEngine.Audio, GameEngine.Game,
+                              GameLogger.GameLogger,
+                              CustomEffects.GameOverRequest,
+                              SelectedPlayer.State} =
+        let (next, killed) = applyAttackHit(enemyId, scene);
+        PlayerScene.removeDeadAndCheckGameOver(killed, next)
+
+    /// AnimationPlayer の `death_blink` finished イベント受信時の処理。
+    /// 死亡演出が終わったので scene から該当敵ノードを削除する (SE 込み)。
+    pub def onDeathBlinkDone(enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameEngine.Audio =
+        completeDeath(enemyId, scene)
+
+    /// 各 Enemy ノードの毎フレーム process。AnimationPlayer から自分宛 (`enemyPath(id)`)
+    /// の signal だけ pull し、attack:hit (中点) / death_blink (完了) / attack_lunge (反撃完了)
+    /// に反応する。Game.flix の `Node[NodeTag] instance` の process redef から全 Enemy に
+    /// dispatch される (per-node)。owner 完全一致なので他 Enemy の signal は取りこぼさない。
+    /// 「Sceneのライフサイクルで処理が完結」する Godot 流の per-node signal モデル。
+    pub def process(_delta: Duration.Duration,
+                     node: EngineNode[NodeTag],
+                     path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag])
+                    \ {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game,
+                        GameLogger.GameLogger,
+                        CustomEffects.GameOverRequest,
+                        Tween.Scheduler,
+                        EnemyTurn.Queue, TurnPhase.State,
+                        SelectedPlayer.State} =
+        match idFromPath(path) {
+            case None          => (node, scene)
+            case Some(enemyId) =>
+                let bundle = AnimationPlayer.Scheduler.drainSignals(enemyPath(enemyId));
+                let afterMethods = List.foldLeft(
+                    (sc, ev) -> match AnimEvent.parseTag(ev#name) {
+                        case Some(AnimEvent.Tag.AttackHit) => onAttackHit(enemyId, sc)
+                        case _                              => sc
+                    },
+                    scene, bundle#methods);
+                let afterFinished = List.foldLeft(
+                    (sc, ev) -> match AnimEvent.parseTag(ev#name) {
+                        case Some(AnimEvent.Tag.DeathBlink)  => onDeathBlinkDone(enemyId, sc)
+                        case Some(AnimEvent.Tag.AttackLunge) => onCounterLungeDone(enemyId, sc)
+                        case _                                => sc
+                    },
+                    afterMethods, bundle#finished);
+                (node, afterFinished)
+        }
+
+    /// AnimationPlayer の `attack_lunge` finished イベント受信時の処理 (敵側 = 反撃完了)。
+    /// `attackTargetId` をクリアした後、現フェーズが `PlayerAttack` (= 味方攻撃に対する
+    /// 反撃の完了) なら commit、`EnemyTurn` (= 通常の敵ターン中の攻撃) なら何もしない。
+    pub def onCounterLungeDone(enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger,
+                              EnemyTurn.Queue, TurnPhase.State,
+                              SelectedPlayer.State} =
+        let cleared = clearAttackTarget(enemyId, scene);
+        if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttack)
+            PlayerScene.commitWaitedAndAdvance(cleared)
+        else cleared
+
     /// プレイヤー targetId にダメージを与える。攻撃力は `力(enemy#attack) + 武器の攻撃力` で、
     /// `Combat.attackDamage(総合攻撃力, 防御者#defense)` から素ダメージを得て
     /// `Combat.damage` で HP 減算 + 死亡判定。攻撃成立後は武器の `durability` を 1 減らし、

@@ -14,8 +14,17 @@
 /// 例: `type Aef = { Math.Random }` や `type Aef = {}` （純粋）
 pub trait Node[s] {
 
-    /// ライフサイクルコールバックで発生するエフェクト
+    /// `ready` / `physicsProcess` で発生するエフェクト集合。
+    /// 物理ステップは衝突・移動の小さな世界に閉じることが多いので、`Aef` は狭く保ち、
+    /// `process` で広い世界 (AnimationPlayer signal の受信など) に触れる場合は
+    /// 別途 `ProcessAef` で広い集合を宣言する。Godot の `_physics_process` と `_process`
+    /// が独立して何でも起こせる自由度を持つのに対応する分離。
     type Aef: Eff
+
+    /// `process` で発生するエフェクト集合。`ProcessAef = Aef` (Aef と同集合) が
+    /// デフォルト想定だが、associated type のデフォルト値で他 type を参照する記法が
+    /// サポートされないため、各 instance で明示的に書く必要がある。
+    type ProcessAef: Eff
 
     // ── ライフサイクル ──
 
@@ -25,7 +34,7 @@ pub trait Node[s] {
 
     /// 毎フレーム呼ばれる更新コールバック
     /// delta: 前フレームからの経過時間
-    pub def process(_delta: Duration.Duration, node: EngineNode[s], _path: NodePath, scene: Scene[s]): (EngineNode[s], Scene[s]) \ Node.Aef[s] =
+    pub def process(_delta: Duration.Duration, node: EngineNode[s], _path: NodePath, scene: Scene[s]): (EngineNode[s], Scene[s]) \ Node.ProcessAef[s] =
             checked_ecast((node, scene))
 
     /// 物理ステップ中に呼ばれる更新コールバック（Godot _physics_process 準拠）

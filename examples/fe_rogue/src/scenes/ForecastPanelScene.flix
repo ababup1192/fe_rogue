@@ -61,9 +61,8 @@ mod ForecastPanelScene {
             })
 
     /// `AttackForecast` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
-    /// 攻撃モーションの完了で HP 適用 (applyMethodEvent) → commit (applyFinishedEvent)
-    /// に流れる既存パイプラインに乗る。
-    /// 攻撃モーション開始の本体は `GameManager.applyAttackHit` (Scene 跨ぎなので中央に残す)。
+    /// 攻撃モーションの完了 (`attack_lunge` finished) で `PlayerScene.onAttackLungeDone`
+    /// が反撃 / kill 演出 / commit に流す。
     pub def confirm(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
@@ -81,8 +80,9 @@ mod ForecastPanelScene {
                                     case None        => scene
                                     case Some(enemy) =>
                                         TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
-                                        GameManager.applyAttackHit(attackerId, defenderId,
-                                                                    enemy#gridPos, scene)
+                                        GameLogger.playerLog("味方${attackerId}の攻撃");
+                                        PlayerScene.startAttack(attackerId, defenderId,
+                                                                  enemy#gridPos, scene)
                                 }
                         }
                 }

@@ -288,4 +288,5 @@ instance PhysicsBody2D[RigidBody2D] {
 
 instance Node[RigidBody2D] {
     type Aef = {}
+    type ProcessAef = {}
 }

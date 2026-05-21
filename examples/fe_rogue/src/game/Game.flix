@@ -41,9 +41,19 @@ pub enum NodeTag {
 // それ以外のフェーズ（`EnemyTurn`）では gameLoop 側が physicsProcess パイプライン
 // 自体を呼ばないので no-op で良い。
 instance Node[NodeTag] {
+    // `ready` / `physicsProcess` 用の Aef (Player.physicsProcess / Cursor.physicsProcess
+    // が要求する集合 + 共通)
     type Aef = {GameEngine.Game, BoardQuery,
                  Tween.Scheduler, AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State}
+    // `process` 用の広い Aef (Player/Enemy の `process` が drainSignals 経由で
+    // attack:hit / death_blink / attack_lunge を捌くため、Audio / EnemyTurn /
+    // GameOverRequest / Pacing が追加される)
+    type ProcessAef = {GameEngine.Game, GameEngine.Audio, BoardQuery,
+                        Tween.Scheduler, AnimationPlayer.Scheduler,
+                        GameLogger.GameLogger,
+                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                        CustomEffects.GameOverRequest, Pacing.State}
     redef physicsProcess(delta: Duration.Duration,
                           node: EngineNode[NodeTag],
                           path: NodePath,
@@ -71,14 +81,21 @@ instance Node[NodeTag] {
         }
     // 各 UI ノード固有の毎フレーム更新を dispatch する。
     // ForecastPanel の Label2D テキストはフェーズ入り時のワンショット更新なので process では触らない。
+    // AnimationPlayer の signal dispatch は `AnimationDispatcherScene.dispatchAll` が
+    // 全 owner で drainSignals を呼んで各 Scene の handler に振り分ける (`tickXxxFrame` で呼ぶ)。
     redef process(delta: Duration.Duration, node: EngineNode[NodeTag],
                    path: NodePath, scene: Scene[NodeTag]):
                   (EngineNode[NodeTag], Scene[NodeTag])
-                  \ {GameEngine.Game, BoardQuery,
+                  \ {GameEngine.Game, GameEngine.Audio, BoardQuery,
                       Tween.Scheduler, AnimationPlayer.Scheduler,
-                      GameLogger.GameLogger, TurnPhase.State,
-                      SelectedPlayer.State} =
+                      GameLogger.GameLogger,
+                      EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                      CustomEffects.GameOverRequest, Pacing.State} =
         match node {
+            case EngineNode.Marker2DWithState(_, NodeTag.Player(_)) =>
+                checked_ecast(PlayerScene.process(delta, node, path, scene))
+            case EngineNode.Marker2DWithState(_, NodeTag.Enemy(_)) =>
+                checked_ecast(EnemyScene.process(delta, node, path, scene))
             case EngineNode.ItemListWithState(_, NodeTag.WeaponMenu) =>
                 checked_ecast(WeaponMenuScene.refreshItems(delta, node, path, scene))
             case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
@@ -128,7 +145,7 @@ instance InputEvent.InputHandler[NodeTag] {
                                                   => UnitInfoPopupScene.toggleView(scene)
             // PlayerAutoMove 中の X / Esc は AutoMove キャンセル
             case (TurnPhase.Phase.PlayerAutoMove, _,    true)
-                                                  => checked_ecast(GameManager.cancelAutoMove(scene))
+                                                  => checked_ecast(AutoMoveDriverScene.cancel(scene))
             case (TurnPhase.Phase.ActionSelect,   true,  _)
                                                   => ActionMenuScene.confirmCurrentSelection(scene)
             case (TurnPhase.Phase.ActionSelect,   _,    true)
@@ -142,9 +159,9 @@ instance InputEvent.InputHandler[NodeTag] {
             case (TurnPhase.Phase.AttackForecast, _,    true)
                                                   => checked_ecast(ForecastPanelScene.cancel(scene))
             case (_,                              true, _)
-                                                  => GameManager.handleInput(TurnRules.Input.Confirm, scene)
+                                                  => TurnInputBridge.handle(TurnRules.Input.Confirm, scene)
             case (_,                              _,    true)
-                                                  => GameManager.handleInput(TurnRules.Input.Cancel, scene)
+                                                  => TurnInputBridge.handle(TurnRules.Input.Cancel, scene)
             case _                                => scene
         }
 }
@@ -194,7 +211,7 @@ mod Game {
     pub def windowHi(): Int32 = 624
 
     /// ゲーム起動エントリ。Region と各 effect handler を立ち上げ、初回シーンを
-    /// `GameManager.buildPlayingScene` で組み立てて `gameLoop` に入る。
+    /// `GameLifecycle.buildPlayingScene` で組み立てて `gameLoop` に入る。
     /// **配線役** に徹するため、ここにゲームロジックは書かない。
     pub def start(): Unit \ {GameEngine.Game, GameEngine.Audio,
                               Fs.FileRead, IO, Math.Random} =
@@ -226,7 +243,7 @@ mod Game {
                 case Err(msg) => bug!("WeaponResource schema/type mismatch: ${msg}")
             };
             run {
-                let scene = GameManager.buildPlayingScene(catalog);
+                let scene = GameLifecycle.buildPlayingScene(catalog);
                 // 初回 build 時の spawn を保存。ゲームオーバー時に同じ配置で復活させる
                 InitialSpawns.State.put({
                     enemies = EnemyScene.snapshotSpawns(scene),
@@ -253,7 +270,7 @@ mod Game {
                       EnemyTurn.Queue.replace(Nil);
                       TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
                       SelectedPlayer.State.put(SelectedPlayer.cleared());
-                      let rebuilt = GameManager.buildPlayingScene(catalog);
+                      let rebuilt = GameLifecycle.buildPlayingScene(catalog);
                       InitialSpawns.State.put({
                           enemies = EnemyScene.snapshotSpawns(rebuilt),
                           players = PlayerScene.snapshotSpawns(rebuilt)
@@ -262,7 +279,7 @@ mod Game {
                   }
               }
               with handler BoardQuery {
-                  def board(k) = k(GameManager.buildBoard(Ref.get(sceneRef)))
+                  def board(k) = k(BoardSnapshot.fromScene(Ref.get(sceneRef)))
               }
               with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽
               with AnimationPlayer.withScheduler(rc)  // 名前付きアニメ + イベントドレイン
@@ -275,8 +292,9 @@ mod Game {
         }
 
     /// メインループ。終了判定 → BoardQuery 窓口の更新 → 1 フレームぶんの処理 → 描画
-    /// → 末尾再帰、という固定パイプラインだけを担う **配線役**。
-    /// フレーム処理の実体は `GameManager.runFrame` に閉じている。
+    /// → 末尾再帰。フェーズに応じてフレームパイプラインを選び、その中で
+    /// 「入力 → process → physicsProcess → Tween/Animation tick → signal dispatch →
+    /// 共通エピローグ」を実行する。
     /// ゲームオーバー時のフルリビルドは `CustomEffects.GameOverRequest` handler が
     /// catalog をクロージャに閉じ込めて実行するため、ここで catalog を引き回す必要はない。
     def gameLoop(sceneRef: Ref[Scene[NodeTag], r],
@@ -301,11 +319,99 @@ mod Game {
         if (GameEngine.Game.shouldClose() or escapeQuit) ()
         else {
             // BoardQuery handler が読む窓口を毎フレーム最新の scene に更新する。
-            // 各 handler はその後で常に「フレーム頭の scene」を読み返せる
-            // （タイル定義は不変のため十分）。
             Ref.put(scene, sceneRef);
-            let next = GameManager.runFrame(scene);
+            let dt = GameEngine.Game.getDeltaTime();
+            let next = match phase {
+                case TurnPhase.Phase.EnemyTurn      => tickEnemyTurnFrame(dt, scene)
+                case TurnPhase.Phase.PlayerAutoMove => tickAutoMoveFrame(dt, scene)
+                case _                               => tickInputFrame(dt, scene)
+            };
             GameEngine.render(next);
             gameLoop(sceneRef, next)
         }
+
+    /// 敵ターン中のフレーム: キューを 1 step 進めて Tween/Animation tick → engine の
+    /// per-node `process` redef が各 Player/Enemy ノードで自分宛 signal を drain → エピローグ。
+    def tickEnemyTurnFrame(dt: Duration.Duration, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
+                               BoardQuery,
+                               Tween.Scheduler, AnimationPlayer.Scheduler,
+                               GameLogger.GameLogger,
+                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                               CustomEffects.GameOverRequest, Pacing.State} =
+        scene
+            |> EnemyTurnDriverScene.stepOnce
+            |> Tween.tickAll(dt)
+            |> AnimationPlayer.tickAll(dt)
+            |> GameEngine.process(delta = dt, paused = false)  // per-Scene drainSignals
+            |> commonEpilogue(dt)
+
+    /// PlayerAutoMove 中のフレーム: 入力 (X/Esc キャンセル用) → AutoMove.step →
+    /// Tween/Animation tick → engine の per-node process が signal drain → エピローグ。
+    def tickAutoMoveFrame(dt: Duration.Duration, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
+                               BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
+                               GameLogger.GameLogger,
+                               EnemyTurn.Queue, TurnPhase.State,
+                               SelectedPlayer.State,
+                               CustomEffects.GameOverRequest,
+                               Pacing.State} =
+        scene
+            |> GameEngine.handleInput
+            |> AutoMove.step
+            |> Tween.tickAll(dt)
+            |> AnimationPlayer.tickAll(dt)
+            |> GameEngine.process(delta = dt, paused = false)  // per-Scene drainSignals
+            |> commonEpilogue(dt)
+
+    /// 通常入力フェーズ (PlayerCursor / PlayerMoving / WeaponSelect / PlayerAttack) の
+    /// フレーム: 入力 → メニューイベント → 物理 → Tween/Animation → engine の per-node
+    /// process が signal drain + UI refresh → PlayerAttackHold tick → メニュー visibility →
+    /// エピローグ。
+    def tickInputFrame(dt: Duration.Duration, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
+                               BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
+                               GameLogger.GameLogger,
+                               EnemyTurn.Queue, TurnPhase.State,
+                               SelectedPlayer.State,
+                               CustomEffects.GameOverRequest,
+                               Pacing.State} =
+        scene
+            |> GameEngine.handleInput
+            |> GameEngine.handleMenus
+            |> GameEngine.physicsProcess(delta = dt, paused = false,
+                                          gravity = Vec2.zero())
+            |> Tween.tickAll(dt)
+            |> AnimationPlayer.tickAll(dt)
+            |> GameEngine.process(delta = dt, paused = false)  // per-Scene drainSignals + UI refresh
+            |> EnemyTurnDriverScene.tickPlayerAttackHold
+            |> applyMenuVisibility
+            |> commonEpilogue(dt)
+
+    /// 全フェーズに共通する描画準備の尾部 (Pacing → カメラ追従 → 各 popup tick →
+    /// ログ反映 → スクロール)。`CameraScene.update` が `EnemyTurn.Queue` を peek して
+    /// 「alerted な敵の動きを映す」のに使う。
+    def commonEpilogue(dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {GameEngine.Game, GameLogger.GameLogger,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                Pacing.State} =
+        Pacing.State.tick(dt);
+        scene
+            |> CameraScene.update(dt)
+            |> DamagePopupScene.tick(dt)
+            |> UnitHPBarScene.tickAll(dt)
+            |> ItemScene.tickAll(dt)
+            |> UnitInfoPopupScene.update
+            |> LogScene.flushFromEffect
+            |> LogScene.tickScroll
+
+    /// 現フェーズに応じた WeaponMenu / ActionMenu / ForecastPanel の visible/focused を
+    /// 毎フレーム適用する。Push モデルではなく毎フレーム適用にしているのは、フェーズ遷移を
+    /// 行う関数が複数 Scene に散らばっていて漏れやすいため。
+    def applyMenuVisibility(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+        let phase = TurnPhase.State.get();
+        scene
+            |> WeaponMenuScene.applyVisibility(phase)
+            |> ActionMenuScene.applyVisibility(phase)
+            |> ForecastPanelScene.applyVisibility(phase)
 }

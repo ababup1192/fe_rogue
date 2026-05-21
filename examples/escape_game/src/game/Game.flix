@@ -33,6 +33,8 @@ pub enum NodeTag {
 instance Node[NodeTag] {
     type Aef = { Dialogue.SceneView.Inbox, Dialogue.Session, GameEngine.Audio,
                  Game.Inventory.Access }
+    type ProcessAef = { Dialogue.SceneView.Inbox, Dialogue.Session, GameEngine.Audio,
+                         Game.Inventory.Access }
 
     redef process(delta: Duration.Duration, node: EngineNode[NodeTag],
                    _path: NodePath, scene: Scene[NodeTag]):

@@ -10,6 +10,7 @@ enum TState with Eq, Order, ToString {
 
 instance Node[TState] {
     type Aef = {}
+    type ProcessAef = {}
 }
 
 /// テスト用ヘルパー: 指定位置に Marker2D ノードを持つ EngineNode[TState] を作る

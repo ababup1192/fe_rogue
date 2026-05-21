@@ -5,6 +5,7 @@ enum TestPhysicsState with Eq { case S }
 
 instance Node[TestPhysicsState] {
     type Aef = {}
+    type ProcessAef = {}
 }
 instance AreaEvent.AreaHandler[TestPhysicsState] {
     type Aef = {}

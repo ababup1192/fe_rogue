@@ -191,4 +191,5 @@ instance CollisionObject2D[StaticBody2D] {
 
 instance Node[StaticBody2D] {
     type Aef = {}
+    type ProcessAef = {}
 }

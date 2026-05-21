@@ -79,6 +79,7 @@ pub enum NodeTag {
 
 instance Node[NodeTag] {
     type Aef = { Recycle }
+    type ProcessAef = { Recycle }
     // Bird: bird.gd `FlappingState._init → flap()` 相当の初期 flap を発火
     redef ready(node: EngineNode[NodeTag], path: NodePath,
                 scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ Recycle =

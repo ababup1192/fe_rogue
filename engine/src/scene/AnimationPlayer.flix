@@ -117,8 +117,12 @@ mod AnimationPlayer {
         /// engine 内部用: `tickAll` が呼ぶ。delta 進めて property 更新を返し、
         /// 完了 / メソッドイベントは内部 buffer に溜める。
         def consumeTick(delta: Duration.Duration): Tick
-        /// 内部 buffer にたまった method / finished イベントを取り出してクリアする
-        def drainEvents(): EventBundle
+        /// 指定 owner (Godot の AnimationPlayer node に相当) 宛 signal を pull で取り出す。
+        /// Godot では `animation_finished` / `method_called` を per-AnimationPlayer node の
+        /// signal connect で受信するが、Flix では pull モデルなのでこの関数で同じ粒度を
+        /// 実現する。各 Scene の per-node process が「自分の owner 宛だけ drain」して、
+        /// 他 owner 宛は内部 buffer に残るため、複数 Scene が並列に drain しても取りこぼしない。
+        def drainSignals(owner: NodePath): EventBundle
     }
 
     /// `play(targetPath, anim)` — Godot の `AnimationPlayer.play("name")` 同等の便宜関数。
@@ -268,10 +272,15 @@ mod AnimationPlayer {
                     }: EventBundle), pendingRef);
                     k(({propertyUpdates = propertyUpdates}: Tick))
                 }
-                def drainEvents(k) = {
+                def drainSignals(owner, k) = {
                     let pending = Ref.get(pendingRef);
-                    Ref.put(({methods = Nil, finished = Nil}: EventBundle), pendingRef);
-                    k(pending)
+                    // owner 完全一致の signal を取り出し、残り (他 owner) は buffer に戻す
+                    let myMethods    = pending#methods  |> List.filter(ev -> ev#owner == owner);
+                    let restMethods  = pending#methods  |> List.filter(ev -> ev#owner != owner);
+                    let myFinished   = pending#finished |> List.filter(ev -> ev#owner == owner);
+                    let restFinished = pending#finished |> List.filter(ev -> ev#owner != owner);
+                    Ref.put(({methods = restMethods, finished = restFinished}: EventBundle), pendingRef);
+                    k(({methods = myMethods, finished = myFinished}: EventBundle))
                 }
             }
         }

@@ -139,7 +139,7 @@ mod EnemyTurnDriverScene {
         }
 
     /// `PlayerAttackHold` 中に毎フレーム呼ぶ。`Pacing.State` の hold が抜けたら
-    /// `GameManager.commitWaitedAndAdvance` を発火して PlayerCursor or EnemyTurn に
+    /// `PlayerScene.commitWaitedAndAdvance` を発火して PlayerCursor or EnemyTurn に
     /// 遷移する。それ以外のフェーズなら何もしない。
     pub def tickPlayerAttackHold(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
@@ -149,7 +149,7 @@ mod EnemyTurnDriverScene {
         match TurnPhase.State.get() {
             case TurnPhase.Phase.PlayerAttackHold =>
                 if (Pacing.State.isHolding()) scene
-                else GameManager.commitWaitedAndAdvance(scene)
+                else PlayerScene.commitWaitedAndAdvance(scene)
             case _ => scene
         }
 }

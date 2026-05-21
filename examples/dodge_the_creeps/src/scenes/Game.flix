@@ -77,6 +77,7 @@ pub enum NodeTag {
 
 instance Node[NodeTag] {
     type Aef = { GameEngine.Game }
+    type ProcessAef = { GameEngine.Game }
 
     redef ready(node: EngineNode[NodeTag], path: NodePath,
                 scene: Scene[NodeTag]):

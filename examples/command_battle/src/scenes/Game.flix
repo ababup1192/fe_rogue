@@ -75,6 +75,7 @@ pub enum NodeTag {
 
 instance Node[NodeTag] {
     type Aef = { GamePhaseState }
+    type ProcessAef = { GamePhaseState }
 
     // 毎フレーム動かす必要があるのは「状態 → 表示」 の連動だけ
     //   - StatusLabel              : HP の文字列表示更新

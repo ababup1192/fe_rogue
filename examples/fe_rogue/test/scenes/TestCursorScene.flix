@@ -81,7 +81,7 @@ mod TestCursorScene {
             def cancelAll(k) = k()
             def activeOwners(k) = k(Nil)
             def consumeTick(_, k) = k(({propertyUpdates = Nil}: AnimationPlayer.Tick))
-            def drainEvents(k) = k(({methods = Nil, finished = Nil}: AnimationPlayer.EventBundle))
+            def drainSignals(_, k) = k(({methods = Nil, finished = Nil}: AnimationPlayer.EventBundle))
         }
 
     /// プレイヤー id=0 1 体だけを (gridPos) に置いた scene を組む。

@@ -301,6 +301,39 @@ mod PlayerScene {
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToFirstTargetOrPlayer
 
+    /// 各 Player ノードの毎フレーム process。AnimationPlayer から自分宛 (`playerPath(id)`)
+    /// の signal だけ pull し、attack:hit (中点) / attack_lunge (完了) に反応する。
+    /// Game.flix の `Node[NodeTag] instance` の process redef から全 Player に dispatch
+    /// される (per-node)。owner 完全一致なので他 Player の signal は取りこぼさない。
+    /// 「Sceneのライフサイクルで処理が完結」する Godot 流の per-node signal モデル。
+    pub def process(_delta: Duration.Duration,
+                     node: EngineNode[NodeTag],
+                     path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag])
+                    \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                        GameEngine.Audio, GameEngine.Game,
+                        GameLogger.GameLogger,
+                        EnemyTurn.Queue, TurnPhase.State,
+                        SelectedPlayer.State, Pacing.State} =
+        match idFromPath(path) {
+            case None           => (node, scene)
+            case Some(playerId) =>
+                let bundle = AnimationPlayer.Scheduler.drainSignals(playerPath(playerId));
+                let afterMethods = List.foldLeft(
+                    (sc, ev) -> match AnimEvent.parseTag(ev#name) {
+                        case Some(AnimEvent.Tag.AttackHit) => onAttackHit(playerId, sc)
+                        case _                              => sc
+                    },
+                    scene, bundle#methods);
+                let afterFinished = List.foldLeft(
+                    (sc, ev) -> match AnimEvent.parseTag(ev#name) {
+                        case Some(AnimEvent.Tag.AttackLunge) => onAttackLungeDone(playerId, sc)
+                        case _                                => sc
+                    },
+                    afterMethods, bundle#finished);
+                (node, afterFinished)
+        }
+
     /// 毎フレーム engine から呼ばれる。**選択中プレイヤーのみ** 動かす。
     /// Game.flix の Node[NodeTag] redef からは PlayerMoving フェーズで
     /// 「id == SelectedPlayer.State.get()」のノードに対してだけ dispatch される。
@@ -629,6 +662,79 @@ mod PlayerScene {
     pub def clearAttackTarget(playerId: Int32,
                                scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPlayer(playerId, d -> {attackTargetId = None | d}, scene)
+
+    /// PlayerAttack / WeaponSelect / ActionMenu「たいき」を抜けるときの共通処理:
+    ///   1) 選択中駒を waited に (灰色 modulate)
+    ///   2) 選択クリア
+    ///   3) 残ったアクティブが居れば PlayerCursor に戻り、次セレクト準備
+    ///      居なければ `EnemyTurnDriverScene.beginTurn` で敵ターン開始
+    /// 複数 Scene 跨ぎなので「次フェーズ判定」をまとめてここに置く。
+    /// ActionMenu / EnemyScene / ForecastPanel / EnemyTurnDriverScene / TurnInputBridge から
+    /// 呼ばれる。
+    pub def commitWaitedAndAdvance(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger,
+                              EnemyTurn.Queue, TurnPhase.State,
+                              SelectedPlayer.State} =
+        let withWaited = match SelectedPlayer.State.get()#id {
+            case Some(id) => setWaited(id, scene)
+            case None     => scene   // 防御的 (選択なしで Attack に入ることは想定外)
+        };
+        SelectedPlayer.State.put(SelectedPlayer.cleared());
+        if (anyActive(withWaited)) {
+            TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
+            withWaited
+                |> MoveRangeScene.clear
+                |> MoveAttackRangeScene.clear
+                |> PlayerAttackRangeScene.clear
+                |> CursorScene.setVisible(true)
+                |> CursorScene.snapToPlayer
+        }
+        else EnemyTurnDriverScene.beginTurn(withWaited)
+
+    /// AnimationPlayer の `attack:hit` method イベント受信時の処理 (味方側)。
+    /// 攻撃ダメージ適用本体は既存 `applyAttackHit` を呼ぶ。
+    /// 名前は「event 受信」の semantics を明示するための薄ラッパ。
+    pub def onAttackHit(playerId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
+                              GameEngine.Game, GameLogger.GameLogger} =
+        applyAttackHit(playerId, scene)
+
+    /// AnimationPlayer の `attack_lunge` finished イベント受信時の処理 (味方側)。
+    /// 攻撃完了 → `CounterAttackRules.decide` が分類した結果に応じて分岐:
+    ///   - Kill: 狙った敵が瀕死 (death_blink 中) なら kill 演出
+    ///     → PlayerAttackHold + Pacing.hold(700ms)、後で commit
+    ///   - Counter(enemyId): 敵が生存 + 隣接 + 武器あり → 反撃モーション開始
+    ///   - Commit: それ以外 (敵生存だが反撃不能 / 対象消失) → そのまま commit
+    pub def onAttackLungeDone(playerId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger,
+                              EnemyTurn.Queue, TurnPhase.State,
+                              SelectedPlayer.State, Pacing.State} =
+        match get(playerId, scene) {
+            case None         => scene
+            case Some(player) =>
+                let target = player#attackTargetId
+                    |> Option.flatMap(eid -> EnemyScene.get(eid, scene));
+                match CounterAttackRules.decide(player, target) {
+                    case CounterAttackRules.Outcome.Kill =>
+                        let cleared = clearAttackTarget(playerId, scene);
+                        TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
+                        Pacing.State.hold(700 |> Duration.millis);
+                        cleared
+                    case CounterAttackRules.Outcome.Counter(enemyId) =>
+                        let cleared = clearAttackTarget(playerId, scene);
+                        match get(playerId, cleared) {
+                            case None    => commitWaitedAndAdvance(cleared)
+                            case Some(p) =>
+                                GameLogger.enemyLog("敵${enemyId} の反撃");
+                                EnemyScene.startAttack(enemyId, playerId, p#gridPos, cleared)
+                        }
+                    case CounterAttackRules.Outcome.Commit =>
+                        let cleared = clearAttackTarget(playerId, scene);
+                        commitWaitedAndAdvance(cleared)
+                }
+        }
 
     /// World 直下の `Player_<id>` 形式の NodePath から id を取り出す。
     /// それ以外なら None。AnimationPlayer の event 振り分けに使う
