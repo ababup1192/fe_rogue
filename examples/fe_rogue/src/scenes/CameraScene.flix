@@ -206,7 +206,7 @@ mod CameraScene {
         }
 
     /// AutoMove 中のカメラ target を「いま動いている味方」に合わせる。
-    /// AutoMove.pickAndStep と同じ規則で「アクティブかつ旗に最も近い味方」を選び、
+    /// AutoMoveScene の pickAndStep と同じ規則で「アクティブかつ旗に最も近い味方」を選び、
     /// その味方のワールド座標を返す。アクティブが居なければ旗にフォールバック。
     def autoMoveTarget(scene: Scene[NodeTag]): Vec2.Vec2 =
         match FlagScene.getTargetPos(scene) {

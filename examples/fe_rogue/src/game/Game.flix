@@ -35,8 +35,8 @@ pub enum NodeTag {
     /// `EnemyTurnDriverScene` の常駐タグ専用ノード (Marker2D)。process redef で phase を
     /// 見て EnemyTurn 中なら stepOnce、PlayerAttackHold 中なら hold 終了判定を行う。
     case EnemyTurnDriver
-    /// `AutoMoveDriverScene` の常駐タグ専用ノード (Marker2D)。process redef で phase を
-    /// 見て PlayerAutoMove 中なら `AutoMove.step` を呼ぶ。
+    /// `AutoMoveScene` の常駐タグ専用ノード (Marker2D)。
+    /// `AutoMoveScene.process` redef で phase を見て PlayerAutoMove 中なら `step` を呼ぶ。
     case AutoMoveDriver
     case NoTag
 }
@@ -128,7 +128,7 @@ def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
         case EngineNode.Marker2DWithState(_, NodeTag.EnemyTurnDriver) =>
             checked_ecast(EnemyTurnDriverScene.process(delta, node, path, scene))
         case EngineNode.Marker2DWithState(_, NodeTag.AutoMoveDriver) =>
-            checked_ecast(AutoMoveDriverScene.process(delta, node, path, scene))
+            checked_ecast(AutoMoveScene.process(delta, node, path, scene))
         case _ => (node, scene)
     }
 
@@ -187,7 +187,7 @@ instance InputEvent.InputHandler[NodeTag] {
                                                   => UnitInfoPopupScene.toggleView(scene)
             // PlayerAutoMove 中の X / Esc は AutoMove キャンセル
             case (TurnPhase.Phase.PlayerAutoMove, _,    true)
-                                                  => checked_ecast(AutoMoveDriverScene.cancel(scene))
+                                                  => checked_ecast(AutoMoveScene.cancel(scene))
             case (TurnPhase.Phase.ActionSelect,   true,  _)
                                                   => ActionMenuScene.confirmCurrentSelection(scene)
             case (TurnPhase.Phase.ActionSelect,   _,    true)
@@ -337,7 +337,7 @@ mod Game {
     ///   handleInput → handleMenus → physicsProcess → Tween → Animation → process → epilogue
     /// 各 process / input redef 内で「自分が今動くべきか」を phase で判断する (Godot 流)。
     /// 例: `EnemyTurnDriverScene.process` は phase=EnemyTurn / PlayerAttackHold で動作、
-    ///     `AutoMoveDriverScene.process` は phase=PlayerAutoMove で動作。
+    ///     `AutoMoveScene.process` は phase=PlayerAutoMove で動作。
     /// ゲームオーバー時のフルリビルドは `CustomEffects.GameOverRequest` handler が
     /// catalog をクロージャに閉じ込めて実行するため、ここで catalog を引き回す必要はない。
     def gameLoop(sceneRef: Ref[Scene[NodeTag], r],

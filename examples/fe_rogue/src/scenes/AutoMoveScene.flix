@@ -1,7 +1,16 @@
-/// AutoMove — PlayerAutoMove フェーズで毎フレーム呼ばれる「自動移動の 1 step」ロジック
+/// AutoMoveScene — PlayerAutoMove フェーズの「自動移動」機能一式
 ///
-/// 旗 (`FlagScene`) を立てた瞬間に PlayerCursor → PlayerAutoMove に遷移し、以降は
-/// このフェーズの間、`Game.gameLoop` が毎フレーム `AutoMove.step` を呼ぶ。
+/// `NodeTag.AutoMoveDriver` を持つ scene tree 常駐ノードと、それを駆動する step ロジックを
+/// 同居させた scene mod。旗 (`FlagScene`) を立てた瞬間に PlayerCursor → PlayerAutoMove に
+/// 遷移し、以降はこのフェーズの間、driver ノードの `process` redef が毎フレーム
+/// `step` を呼ぶ。
+///
+/// 公開 API:
+///   - `step`     : 1 フレーム分の自動移動を進める純粋寄りの主ロジック
+///   - `cancel`   : X/Esc 押下で AutoMove を中止 (PlayerCursor に戻す + ログ)
+///   - `add`      : scene tree に driver ノードを追加 (起動時に 1 度だけ)
+///   - `process`  : Node[NodeTag] instance から dispatch される per-frame entry
+///   - `driverPath`: driver ノードの NodePath (テストデバッグ用)
 ///
 /// 動作モデル（FE 風 "号令"）:
 ///   - **1 フレームで動かすのは 1 体だけ**（並列でバラバラに進まない）
@@ -22,7 +31,7 @@
 ///   - 敵検知 → 全員停止 + ログ + PlayerCursor（旗は消す）
 ///   - 全アクティブ味方が旗近くに集合 or 進めない → PlayerCursor（旗は消す = 集合完了 / 詰み）
 ///   - 全アクティブ味方が `waited` になった → `EnemyTurn` に遷移（旗は残す → 次ターンで再開）
-mod AutoMove {
+mod AutoMoveScene {
 
     /// 旗から見て「停止距離」と判定するマス数（Manhattan 距離）。
     /// FE で言うなら「周囲 2 マス以内に入ったらそこで止まる」感覚。
@@ -38,7 +47,7 @@ mod AutoMove {
                 GameLogger.GameLogger,
                 EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State} =
-        // 入力ハンドラ (`AutoMoveDriverScene.cancel` 等) でこのフレーム中に
+        // 入力ハンドラ (`AutoMoveScene.cancel` 等) でこのフレーム中に
         // 既に他フェーズに抜けた場合は no-op で抜ける。
         if (TurnPhase.State.get() != TurnPhase.Phase.PlayerAutoMove) scene
         else match FlagScene.getTargetPos(scene) {
@@ -228,8 +237,9 @@ mod AutoMove {
     // (D) 終了処理
     // ────────────────────────────────────────────────────────
 
-    /// PlayerAutoMove → PlayerCursor に戻す（旗 & AutoMove を中止する系統）。
-    /// 旗無し / 敵検知 / キャンセル / 集合完了 時に使う。
+    /// PlayerAutoMove → PlayerCursor に戻す共通処理。
+    /// `step` 内のフォールバック (旗無し / 敵検知 / 集合完了 / 詰み) からは log なしで
+    /// 呼び、`cancel` (X/Esc 押下) はこれをラップしてログを足す。
     def exitToCursor(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State} =
@@ -239,6 +249,16 @@ mod AutoMove {
             |> PlayerScene.resetAllMoveStepsTaken
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToPlayer
+
+    /// X/Esc 押下時の AutoMove キャンセル: ログ + 共通の exit 処理。
+    /// `exitToCursor` との差分はログ 1 行だけなので、本体を共有する。
+    /// `waited` 状態は残す (AutoMove 途中まで動いた味方は既に waited の可能性あり)。
+    pub def cancel(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger,
+                              TurnPhase.State, SelectedPlayer.State} =
+        GameLogger.playerLog("自動移動を中止");
+        exitToCursor(scene)
 
     /// PlayerAutoMove → EnemyTurn（旗を残して通常のターン終了）。
     /// 全アクティブ味方が waited になった時に使う。旗は次ターン開始時に
@@ -256,4 +276,36 @@ mod AutoMove {
     /// アクティブ（waited = false）な味方一覧。
     def activePlayers(scene: Scene[NodeTag]): List[PlayerScene.Data] =
         PlayerScene.getAll(scene) |> List.filter(d -> not d#waited)
+
+    // ────────────────────────────────────────────────────────
+    // (F) scene tree 統合
+    // ────────────────────────────────────────────────────────
+
+    /// 常駐タグ専用ノードの名前。Marker2D を World 配下に置く。
+    def driverName(): String = "AutoMoveDriver"
+    pub def driverPath(): NodePath = MapScene.worldName() :: driverName() :: Nil
+
+    /// scene tree に常駐ノードを追加する。`GameLifecycle.buildPlayingScene` で 1 回だけ呼ぶ。
+    /// engine の `Scene.processAll` が preorder で各ノードを巡回するとき、この driver の
+    /// `process` redef が phase 判定 + `step` を起動する。
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let marker = Marker2D.make(Vec2.zero());
+        Scene.addChild(MapScene.worldName(), driverName(),
+            EngineNode.Marker2DWithState(marker, NodeTag.AutoMoveDriver), scene)
+
+    /// per-frame entry。Game.flix の `Node[NodeTag] instance` の `process` redef から
+    /// `NodeTag.AutoMoveDriver` ノードに対して dispatch される。
+    /// phase=PlayerAutoMove のときだけ `step` を呼ぶ。それ以外は no-op。
+    pub def process(_delta: Duration.Duration,
+                     node: EngineNode[NodeTag],
+                     _path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag])
+                    \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                        GameLogger.GameLogger,
+                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+        let next = match TurnPhase.State.get() {
+            case TurnPhase.Phase.PlayerAutoMove => step(scene)
+            case _                               => scene
+        };
+        (node, next)
 }

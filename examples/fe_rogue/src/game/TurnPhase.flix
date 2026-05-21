@@ -1,3 +1,13 @@
+/// TurnPhase / TurnRules / TurnInputBridge — ターン進行に関わるロジックを集約したファイル
+///
+/// 同居理由: 3 つは「ターンを進める」というデータフローを共有しており、別ファイルに分けると
+/// 往復読みが必要になる:
+///   - `TurnPhase`        : Phase enum + 現フェーズの State effect
+///   - `TurnRules`        : 純粋判断 (フェーズ × 入力 × 盤面 → Transition)
+///   - `TurnInputBridge`  : 入力 → Context build → decide → apply の 3 段 pipeline
+///
+/// ────────────────────────────────────────────────────────
+///
 /// TurnPhase — 味方ターン内の細分化フェーズと敵ターンを 1 つの enum で扱う effect
 ///
 /// ターン制 SRPG の入力契約は単純な「敵ターン中か否か」だけでは表現できない。
@@ -237,4 +247,83 @@ mod TurnRules {
 
     def isInList(target: Int32, list: List[Int32]): Bool =
         List.exists(value -> value == target, list)
+}
+
+/// TurnInputBridge — 入力 → 純粋判断 (TurnRules.decide) → Scene 適用 の 3 段 pipeline
+///
+/// `Game.flix` の `InputHandler` instance から「PlayerCursor / PlayerMoving / PlayerAttack
+/// の Z/X 入力」が来たときに呼ばれるブリッジ。流れ:
+///   1. `buildContext` で現フレームの状態から純粋な `TurnRules.Context` を構築
+///   2. `TurnRules.decide` (純粋関数) で次の `Transition` を決める
+///   3. `apply` の中央 match で対応する 1 つの Scene 関数を呼ぶ
+///
+/// この match が「ゲームの中心ルールが画面にどう反映されるか」を一覧できる窓口で、
+/// 各 case は 1 行 (対応する Scene 関数の呼び出しのみ) に痩せている。
+/// 「次セレクトか敵ターンか」を決める `AttackSkip` だけは複数 effect を跨ぐので
+/// `PlayerScene.commitWaitedAndAdvance` を経由する。
+mod TurnInputBridge {
+
+    /// 1 回のキー入力 (Confirm / Cancel) を処理する。
+    pub def handle(input: TurnRules.Input, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger,
+                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+        let context = buildContext(input, scene);
+        apply(TurnRules.decide(context), scene)
+
+    /// 現フレームの scene と各 effect から `TurnRules.Context` を組み立てる。
+    /// `TurnRules.decide` は純粋関数だが、その入力 (Context) を作るには:
+    ///   - `TurnPhase.State.get()` (現フェーズ)
+    ///   - `SelectedPlayer.State.get()` (選択中味方 id)
+    ///   - `BoardQuery.board()` (盤面スナップショット)
+    ///   - `CursorScene.getGridPos(scene)` (カーソル位置)
+    ///   - `PlayerScene.getAll` / `EnemyScene.getAll` (waited / dying の id 集合)
+    ///   - `Tween.Scheduler.isActive(...)` (選択中味方が Tween 中か)
+    /// と複数の窓口を引く必要がある。これを 1 関数に集約して、`handle` が
+    /// `decide` を呼ぶ前段だけ受け持つ。`handle` 専用の internal builder なので private。
+    def buildContext(input: TurnRules.Input, scene: Scene[NodeTag]):
+            TurnRules.Context \ {BoardQuery, Tween.Scheduler,
+                                  TurnPhase.State, SelectedPlayer.State} =
+        let selected = SelectedPlayer.State.get()#id;
+        let busy = match selected {
+            case Some(id) => Tween.Scheduler.isActive(PlayerScene.playerPath(id))
+            case None     => false
+        };
+        let waitedIds = PlayerScene.getAll(scene)
+            |> List.filterMap(d -> if (d#waited) Some(d#id) else None);
+        let dyingIds = EnemyScene.getAll(scene)
+            |> List.filterMap(e -> if (e#isDying) Some(e#id) else None);
+        {
+            phase           = TurnPhase.State.get(),
+            input           = input,
+            board           = BoardQuery.board(),
+            cursor          = CursorScene.getGridPos(scene),
+            selected        = selected,
+            waitedPlayerIds = waitedIds,
+            dyingEnemyIds   = dyingIds,
+            playerBusy      = busy
+        }
+
+    /// `decide` が返した `Transition` をシーンに適用する。
+    /// 各 case の本体は対応する 1 つの Scene 関数を呼ぶだけに痩せている。
+    def apply(transition: TurnRules.Transition,
+               scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger,
+                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+        match transition {
+            case TurnRules.Transition.Stay                              => scene
+            case TurnRules.Transition.CursorSelectPlayer(playerId)      =>
+                PlayerScene.beginSelection(playerId, scene)
+            case TurnRules.Transition.CursorPlantFlag(targetX, targetY) =>
+                FlagScene.plant({x = targetX, y = targetY}, scene)
+            case TurnRules.Transition.MovingOpenActionMenu              =>
+                ActionMenuScene.openFromMoving(scene)
+            case TurnRules.Transition.MovingCancel                      =>
+                PlayerScene.cancelSelection(scene)
+            case TurnRules.Transition.OpenWeaponMenu(attackerId, defenderId, _defX, _defY) =>
+                WeaponMenuScene.openFor(attackerId, defenderId, scene)
+            case TurnRules.Transition.AttackSkip                        =>
+                PlayerScene.commitWaitedAndAdvance(scene)
+        }
 }
