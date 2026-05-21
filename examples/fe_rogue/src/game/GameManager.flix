@@ -1,23 +1,29 @@
-/// GameManager — フレーム毎のゲーム進行オーケストレーション
+/// GameManager — フレーム毎のゲーム進行オーケストレーション (Stage 7-8 で消滅予定)
 ///
 /// `Game.flix` の trait instance / start / gameLoop から呼ばれる「中央マネージャ」。
 /// 単一ノードの per-node 処理 (XxxScene の process) には収まらない、
 /// フレーム単位で 1 回ずつ走る orchestration をここに集約している:
-///   - キュー消化（敵ターン進行 / 自動移動）
-///   - クロスシーン遷移（攻撃完了 → waited / 死亡 → ゲームオーバー）
+///   - フェーズ別パイプラインの選択 (runFrame / tickXxxFrame)
 ///   - 入力 → 純粋判断 (TurnRules.decide) → Scene 適用の 3 段配線
-///   - フェーズ別パイプラインの選択
-///   - ホットリロード時のフルリビルド
+///   - アニメーション完了イベントの dispatch (applyMethodEvent / applyFinishedEvent)
+///   - ホットリロード時のフルリビルド (buildPlayingScene)
+///
+/// 既に Scene 側に移行済み:
+///   - 敵ターン進行 → `EnemyTurnDriverScene` (stepOnce / beginTurn / endTurn)
+///   - メニュー confirm/cancel → 各 Menu Scene 内
+///   - Transition 適用 → 各 Scene の関数 (beginSelection / enterAttackPhase 等)
+///   - 純粋ロジック → BoardSnapshot / CounterAttackRules / TurnContextBuilder
+///   - ゲームオーバー時のフルリビルド → `CustomEffects.GameOverRequest` handler
 ///
 /// 公開エントリ:
-///   - `runFrame`           — gameLoop が毎フレーム呼ぶフレームエントリ
-///   - `handleInput`        — InputHandler trait instance から呼ばれる入力エントリ
-///   - `buildPlayingScene`  — start で初期シーンを構築するときに使う
-///   - `buildBoard`         — start の BoardQuery handler closure と AutoMove が使う
-///
-/// 設計指針: Game.flix の `start` / `gameLoop` は **配線役** に徹し、ロジックは
-/// すべてこのマネージャに置く。フレーム単位の固定パイプラインの「順番が意味を持つ」
-/// ことを 1 か所で読み取れるようにするのが分割の意図。
+///   - `runFrame`              — gameLoop が毎フレーム呼ぶフレームエントリ
+///   - `handleInput`           — InputHandler trait instance から呼ばれる入力エントリ
+///   - `buildPlayingScene`     — start / GameOverRequest handler で使うフルリビルド
+///   - `buildBoard`            — BoardQuery handler / AutoMove / MoveRangeScene 用
+///   - `applyAttackHit`        — ForecastPanelScene.confirm から呼ばれる体当たり開始
+///   - `applyEnterAttackPhase` — (Stage 3 完了で削除済み; 残存参照なし)
+///   - `commitWaitedAndAdvance` — 各 Scene から呼ばれる「選択駒 waited → 次へ」
+///   - `cancelAutoMove`        — AutoMove キャンセル (Stage 5 で AutoMoveDriverScene へ)
 mod GameManager {
 
     // ════════════════════════════════════════════════════════
@@ -25,21 +31,20 @@ mod GameManager {
     // ════════════════════════════════════════════════════════
 
     /// gameLoop から呼ばれるフレーム 1 回ぶんの処理。フェーズで分岐して該当の
-    /// tickXxxFrame を呼ぶ。`catalog` はゲームオーバー時の `handlePlayerDeath` が
-    /// マップ・配置のフルリビルドに使うため透過させる。
-    pub def runFrame(catalog: UnitCatalog.UnitCatalog,
-                     scene: Scene[NodeTag]):
+    /// tickXxxFrame を呼ぶ。ゲームオーバー時のフルリビルドは
+    /// `CustomEffects.GameOverRequest` handler が catalog を保持して実行するため、
+    /// この関数は catalog を引き回さない。
+    pub def runFrame(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
-                               Fs.FileRead, Math.Random, IO,
                                BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                               InitialSpawns.State, Pacing.State} =
+                               CustomEffects.GameOverRequest, Pacing.State} =
         let dt = GameEngine.Game.getDeltaTime();
         match TurnPhase.State.get() {
-            case TurnPhase.Phase.EnemyTurn      => tickEnemyTurnFrame(catalog, dt, scene)
-            case TurnPhase.Phase.PlayerAutoMove => tickAutoMoveFrame(catalog, dt, scene)
-            case _                               => tickInputFrame(catalog, dt, scene)
+            case TurnPhase.Phase.EnemyTurn      => tickEnemyTurnFrame(dt, scene)
+            case TurnPhase.Phase.PlayerAutoMove => tickAutoMoveFrame(dt, scene)
+            case _                               => tickInputFrame(dt, scene)
         }
 
     /// 全フェーズに共通する描画準備の尾部（カメラ追従 → ログ反映 → スクロール）。
@@ -64,19 +69,17 @@ mod GameManager {
 
     /// 敵ターン中のフレーム: キューを 1 step 進めて Tween / Animation tick → 完了イベント発火 → エピローグ。
     /// 死亡演出 (death_blink) は敵ターン跨ぎでも継続させるため、AnimationPlayer.tickAll を毎フレーム呼ぶ。
-    def tickEnemyTurnFrame(catalog: UnitCatalog.UnitCatalog,
-                           dt: Duration.Duration, scene: Scene[NodeTag]):
+    def tickEnemyTurnFrame(dt: Duration.Duration, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
-                               Fs.FileRead, Math.Random, IO,
                                Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                               InitialSpawns.State, Pacing.State} =
+                               CustomEffects.GameOverRequest, Pacing.State} =
         scene
-            |> stepEnemyTurn
+            |> EnemyTurnDriverScene.stepOnce
             |> Tween.tickAll(dt)
             |> AnimationPlayer.tickAll(dt)
-            |> dispatchAnimationEvents(catalog)
+            |> dispatchAnimationEvents
             |> commonEpilogue(dt)
 
     /// PlayerAutoMove 中のフレーム: 入力（X/Esc キャンセル用）→ AutoMove.step →
@@ -85,35 +88,33 @@ mod GameManager {
     /// AnimationPlayer.tickAll は毎フレーム呼んでおく。
     /// `handleInput` を入れているのは `Game.InputHandler` の PlayerAutoMove 分岐
     /// （X / Esc で `cancelAutoMove`）を発火させるため。
-    def tickAutoMoveFrame(catalog: UnitCatalog.UnitCatalog,
-                          dt: Duration.Duration, scene: Scene[NodeTag]):
+    def tickAutoMoveFrame(dt: Duration.Duration, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
-                               Fs.FileRead, Math.Random, IO,
                                BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyTurn.Queue, TurnPhase.State,
-                               SelectedPlayer.State, InitialSpawns.State,
+                               SelectedPlayer.State,
+                               CustomEffects.GameOverRequest,
                                Pacing.State} =
         scene
             |> GameEngine.handleInput
             |> AutoMove.step
             |> Tween.tickAll(dt)
             |> AnimationPlayer.tickAll(dt)
-            |> dispatchAnimationEvents(catalog)
+            |> dispatchAnimationEvents
             |> commonEpilogue(dt)
 
     /// 通常入力フェーズ（PlayerCursor / PlayerMoving / WeaponSelect / PlayerAttack）の
     /// フレーム: 入力 → メニューイベント → process（WeaponMenu の inventory 反映）→
     /// 物理 → Tween / Animation / 完了イベント発火 → 武器メニュー visibility 反映
     /// → エピローグ。
-    def tickInputFrame(catalog: UnitCatalog.UnitCatalog,
-                       dt: Duration.Duration, scene: Scene[NodeTag]):
+    def tickInputFrame(dt: Duration.Duration, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
-                               Fs.FileRead, Math.Random, IO,
                                BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyTurn.Queue, TurnPhase.State,
-                               SelectedPlayer.State, InitialSpawns.State,
+                               SelectedPlayer.State,
+                               CustomEffects.GameOverRequest,
                                Pacing.State} =
         scene
             |> GameEngine.handleInput
@@ -123,8 +124,8 @@ mod GameManager {
                                           gravity = Vec2.zero())
             |> Tween.tickAll(dt)
             |> AnimationPlayer.tickAll(dt)
-            |> dispatchAnimationEvents(catalog)
-            |> tickPlayerAttackHold
+            |> dispatchAnimationEvents
+            |> EnemyTurnDriverScene.tickPlayerAttackHold
             |> applyWeaponMenuVisibility
             |> commonEpilogue(dt)
 
@@ -163,56 +164,27 @@ mod GameManager {
 
     /// `decide` が返した `Transition` をシーンに適用する。
     /// このマッチが「ゲームの中心ルールが画面にどう反映されるか」を一覧できる窓口。
+    /// 各 case の本体は対応する 1 つの Scene 関数に痩せている。
     def applyTransition(transition: TurnRules.Transition,
                          scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
         match transition {
-            case TurnRules.Transition.Stay                       => scene
-            case TurnRules.Transition.CursorSelectPlayer(playerId) =>
-                applySelectPlayer(playerId, scene)
+            case TurnRules.Transition.Stay                              => scene
+            case TurnRules.Transition.CursorSelectPlayer(playerId)      =>
+                PlayerScene.beginSelection(playerId, scene)
             case TurnRules.Transition.CursorPlantFlag(targetX, targetY) =>
-                applyPlantFlag({x = targetX, y = targetY}, scene)
-            case TurnRules.Transition.MovingOpenActionMenu       =>
-                applyOpenActionMenu(scene)
-            case TurnRules.Transition.MovingCancel               =>
-                applyCancelMove(scene)
-            case TurnRules.Transition.OpenWeaponMenu(attackerId, defenderId, defX, defY) =>
-                applyOpenWeaponMenu(attackerId, defenderId, {x = defX, y = defY}, scene)
-            case TurnRules.Transition.AttackSkip                 =>
+                FlagScene.plant({x = targetX, y = targetY}, scene)
+            case TurnRules.Transition.MovingOpenActionMenu              =>
+                ActionMenuScene.openFromMoving(scene)
+            case TurnRules.Transition.MovingCancel                      =>
+                PlayerScene.cancelSelection(scene)
+            case TurnRules.Transition.OpenWeaponMenu(attackerId, defenderId, _defX, _defY) =>
+                WeaponMenuScene.openFor(attackerId, defenderId, scene)
+            case TurnRules.Transition.AttackSkip                        =>
                 commitWaitedAndAdvance(scene)
         }
-
-    // ────────────────────────────────────────────────────────
-    // Transition 各バリアントの適用
-    // ────────────────────────────────────────────────────────
-
-    /// アクティブな味方マスで Z: 選択して PlayerMoving へ。
-    /// 選択時のグリッド位置を origin として記録（X キャンセルで戻すため）。
-    def applySelectPlayer(playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
-        SelectedPlayer.State.put({
-            id     = Some(playerId),
-            origin = Some(PlayerScene.getGridPos(playerId, scene))
-        });
-        TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
-        scene
-            |> EnemyRangeScene.clear
-            |> MoveRangeScene.refresh        // 選択駒の青マスを構築
-            |> MoveAttackRangeScene.refresh  // 移動先からの脅威範囲 (赤マス、青マス外)
-            |> CursorScene.setVisible(false)
-
-    /// 空マスで Z: 旗を立てて PlayerAutoMove へ（号令）。
-    /// 自動移動中は赤レンジを出さないので EnemyRangeScene を消し、カーソルも隠す。
-    def applyPlantFlag(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State} =
-        GameLogger.playerLog("旗を立てた");
-        TurnPhase.State.put(TurnPhase.Phase.PlayerAutoMove);
-        scene
-            |> EnemyRangeScene.clear
-            |> FlagScene.plant(target)
-            |> CursorScene.setVisible(false)
 
     /// AutoMove 中 X/Esc キャンセル: 旗を消し、moveStepsTaken を全員 0 に戻し、
     /// PlayerCursor に復帰してカーソルを再表示する。`waited` 状態はそのまま残す
@@ -226,57 +198,6 @@ mod GameManager {
         scene
             |> FlagScene.clear
             |> PlayerScene.resetAllMoveStepsTaken
-            |> CursorScene.setVisible(true)
-            |> CursorScene.snapToPlayer
-
-    /// PlayerMoving + Z: 行動選択ウィンドウを開く (ActionSelect)。
-    /// 移動範囲表示はそのまま維持し、ItemList を visibility 適用で表示する。
-    /// 「こうげき / たいき」の項目は `ActionMenuScene.refreshItems` が毎フレーム再構築。
-    def applyOpenActionMenu(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
-        TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
-        scene
-
-    /// PlayerMoving + Z で開いた ActionMenu の「こうげき」確定で呼ばれる:
-    /// 攻撃ターゲット選択フェーズへ。青マスを消して赤マスを出す。赤マス内に
-    /// 生きている敵が居れば最初の敵にカーソルをスナップし、居なければ選択中
-    /// プレイヤーにスナップする（X キャンセルだけはできるよう自セルに居座る）。
-    /// ActionMenuScene が「こうげき」確定時に呼ぶため pub。
-    pub def applyEnterAttackPhase(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State} =
-        TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
-        scene
-            |> MoveRangeScene.clear
-            |> MoveAttackRangeScene.clear
-            |> PlayerAttackRangeScene.show
-            |> CursorScene.setVisible(true)
-            |> CursorScene.snapToFirstTargetOrPlayer
-
-    /// PlayerAttack + Z（敵に乗ったカーソル）: 武器選択ウィンドウを開く。
-    /// 攻撃対象 id を Data#attackTargetId に記録し、WeaponSelect フェーズに遷移する。
-    /// 赤マス / カーソルは消さない（メニューを閉じたとき即座に target 選択に戻せるよう）。
-    def applyOpenWeaponMenu(attackerId: Int32, defenderId: Int32,
-                              _defenderPos: {x = Int32, y = Int32},
-                              scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TurnPhase.State =
-        TurnPhase.State.put(TurnPhase.Phase.WeaponSelect);
-        PlayerScene.setAttackTargetId(attackerId, defenderId, scene)
-
-    /// PlayerMoving + X: 選択駒を **選択時の位置に瞬間移動で戻し**、選択解除して PlayerCursor。
-    /// キャンセル → 再選択の繰り返しで「実質ターン制限なしの自由移動」を防ぐ。
-    def applyCancelMove(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State} =
-        let selection = SelectedPlayer.State.get();
-        let restored = match (selection#id, selection#origin) {
-            case (Some(id), Some(origin)) => PlayerScene.snapTo(id, origin, scene)
-            case _                         => scene
-        };
-        SelectedPlayer.State.put(SelectedPlayer.cleared());
-        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
-        restored
-            |> MoveRangeScene.clear
-            |> MoveAttackRangeScene.clear
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToPlayer
 
@@ -316,193 +237,7 @@ mod GameManager {
                 |> CursorScene.setVisible(true)
                 |> CursorScene.snapToPlayer
         }
-        else goToEnemyTurn(withWaited)
-
-    /// 敵ターン開始の共通処理。死亡演出 / 攻撃モーション中の敵はキューに含めない。
-    pub def goToEnemyTurn(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State} =
-        let steps = EnemyScene.getAll(scene)
-            |> List.filter(e -> not e#isDying
-                                 and Option.isEmpty(e#attackTargetId))
-            |> List.sortBy(e -> e#id)
-            |> List.map(e -> ({id = e#id, remaining = e#moveTiles}: EnemyTurn.Step));
-        EnemyTurn.Queue.replace(steps);
-        TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
-        GameLogger.enemyLog("敵のターン");
-        scene
-            |> MoveRangeScene.clear
-            |> MoveAttackRangeScene.clear
-            |> PlayerAttackRangeScene.clear
-
-    // ════════════════════════════════════════════════════════
-    // 敵ターン進行 — tickEnemyTurnFrame が毎フレーム 1 step ずつ呼ぶ
-    // ════════════════════════════════════════════════════════
-
-    /// 敵ターンキューの先頭 step を 1 つ進める。Tween がアクティブなら何もしない。
-    /// 動作:
-    ///   1) キュー先頭が居る敵の Tween がアクティブ（前の step が再生中）なら待つ
-    ///   2) 先頭 step を pop して `EnemyAI.decideAction` で 1 マス分の行動を決める
-    ///   3) 行動を適用（Move なら Tween 開始 + remaining-1 で pushFront、Attack なら
-    ///      ログのみ、Skip/Wait は無動作）
-    ///   4) キューが空になったらターン終了処理（フェーズを PlayerCursor に戻す）
-    def stepEnemyTurn(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {GameEngine.Game,
-                Tween.Scheduler, AnimationPlayer.Scheduler,
-                GameLogger.GameLogger, EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State,
-                Pacing.State} =
-        // 3 段の gating (どれか 1 つでも true なら scene 据え置きで進行を止める):
-        //   1. 演出の溜め (Pacing.hold) 中
-        //   2. **カメラが target に追いついていない** (新しい敵にカメラがパン中)
-        //   3. attack_lunge 中の敵が居る（モーション完了待ち）
-        // 「キャラ行動 → 溜め → カメラ移動 → 到達 → 次のキャラ行動」のリズムを作る
-        if (Pacing.State.isHolding()) scene
-        else if (not CameraScene.isSettled(scene)) scene
-        else if (EnemyScene.anyAttacking(scene)) scene
-        else match EnemyTurn.Queue.peekFront() {
-            case None       =>
-                // キュー空 + 攻撃モーション無し → 敵ターン終了
-                finishEnemyTurn(scene)
-            case Some(step) =>
-                if (Tween.Scheduler.isActive(EnemyScene.enemyPath(step#id))) scene
-                else
-                    // 先頭 step を消費して 1 マス進める
-                    let _ = EnemyTurn.Queue.popFront();
-                    applyOneStep(step, scene)
-                    // finishEnemyTurn は次フレームの「キュー空 + 攻撃なし」分岐で呼ぶ
-                    // （Attack の場合は attack_lunge の完了を待つ必要があるため）
-        }
-
-    /// step 1 つぶんの行動を適用する。Move なら Tween で 1 マス進めて remaining-1 を
-    /// pushFront、Attack なら **体当たり攻撃モーションを開始** するだけ。HP 適用 / 音 /
-    /// 死亡判定は AnimationPlayer の `attack:hit` メソッドが発火されたとき
-    /// `dispatchAnimationEvents` 側で行われる。
-    /// Skip/Wait は無動作（remaining も捨てる）。
-    def applyOneStep(step: EnemyTurn.Step, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                Pacing.State} =
-        match EnemyScene.get(step#id, scene) {
-            case None       => scene   // 既に除外済み（死亡演出完了など）
-            case Some(data) =>
-                let board = buildBoard(scene);
-                let (action, updated) = EnemyAI.decideAction(board, data);
-                let withAlert = EnemyScene.mapEnemy(step#id,
-                    d -> {alerted = updated#alerted | d}, scene);
-                match action {
-                    case EnemyAI.EnemyAction.Move(id, target) =>
-                        let moved = EnemyScene.moveTo(id, target, board#map, withAlert);
-                        // 残り step があれば次の 1 マス分を継続して pushFront
-                        if (step#remaining > 1)
-                            EnemyTurn.Queue.pushFront({id = id,
-                                                        remaining = step#remaining - 1})
-                        else ();
-                        // 移動後の溜め: tween (~133ms) 終了後に 100ms ほど静止して区切る
-                        Pacing.State.hold(250 |> Duration.millis);
-                        moved
-                    case EnemyAI.EnemyAction.Attack(enemyId, targetId) =>
-                        // 体当たりモーションを開始するだけ。HP 適用 / 音 / 死亡判定は
-                        // attack_lunge の `attack:hit` メソッド発火時に dispatchAnimationEvents が行う。
-                        // 攻撃前後の溜め: lunge (~160ms) より長い hold で「攻撃終了の余韻」を作る
-                        match PlayerScene.get(targetId, withAlert) {
-                            case None    => withAlert
-                            case Some(p) =>
-                                Pacing.State.hold(450 |> Duration.millis);
-                                EnemyScene.startAttack(enemyId, targetId,
-                                                        p#gridPos, withAlert)
-                        }
-                    case EnemyAI.EnemyAction.Wait(_) =>
-                        // Wait も「動こうとして詰まった」演出の一部なので軽く溜める
-                        Pacing.State.hold(150 |> Duration.millis);
-                        withAlert
-                    case EnemyAI.EnemyAction.Skip(_) => withAlert
-                }
-        }
-
-    /// 敵攻撃で HP=0 になったプレイヤーを scene から取り除く。`killed` は
-    /// `EnemyScene.applyAttackHit` が返した死亡 id のリスト（通常 1 要素）。
-    /// 選択中プレイヤーが含まれていれば（反撃で死亡したケース）選択も解除する。
-    /// 全員が脱落したら `handlePlayerDeath` を呼んで起動時と同様にマップ・配置を
-    /// ランダム再生成する。
-    def handlePlayerKills(catalog: UnitCatalog.UnitCatalog,
-                          killed: List[Int32], scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
-                              GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State,
-                              InitialSpawns.State,
-                              SelectedPlayer.State} =
-        if (List.isEmpty(killed)) scene
-        else {
-            let removed = List.foldLeft(
-                (sc, id) -> Scene.removeAt(PlayerScene.playerPath(id), sc),
-                scene, killed);
-            let selectedKilled = match SelectedPlayer.State.get()#id {
-                case Some(id) => List.exists(k -> k == id, killed)
-                case None     => false
-            };
-            if (selectedKilled)
-                SelectedPlayer.State.put(SelectedPlayer.cleared())
-            else ();
-            if (List.isEmpty(PlayerScene.getAll(removed)))
-                handlePlayerDeath(catalog, removed)
-            else removed
-        }
-
-    /// 味方全員 HP=0 になったときの処理。ログに濃赤の「ゲームオーバー」を残し、
-    /// `buildPlayingScene` で **起動時と同じフルリビルド** を行う（マップ・敵・味方・
-    /// アイテムが新たにランダム生成される）。新しい配置のスナップショットを `InitialSpawns`
-    /// にも記録し直して整合性を保つ。
-    /// 敵ターンキュー・選択もクリアして、次フレームから `PlayerCursor` で操作再開できるように。
-    /// 進行中の Tween / AnimationPlayer は next frame の auto-stop が掃除する。
-    /// GameLogger のログは effect 経由なので scene 再構築の影響を受けない。
-    def handlePlayerDeath(catalog: UnitCatalog.UnitCatalog,
-                          _scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
-                              GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State,
-                              InitialSpawns.State,
-                              SelectedPlayer.State} =
-        GameLogger.gameOverLog("ゲームオーバー");
-        EnemyTurn.Queue.replace(Nil);
-        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
-        SelectedPlayer.State.put(SelectedPlayer.cleared());
-        let rebuilt = buildPlayingScene(catalog);
-        InitialSpawns.State.put({
-            enemies = EnemyScene.snapshotSpawns(rebuilt),
-            players = PlayerScene.snapshotSpawns(rebuilt)
-        });
-        rebuilt
-
-    // ════════════════════════════════════════════════════════
-    // 攻撃モーション完了時の後始末は dispatchAnimationEvents に集約してある。
-    // tick系の per-frame 進行は AnimationPlayer.tickAll が担当。
-    // ════════════════════════════════════════════════════════
-
-    /// 敵ターンの後始末: ターン番号繰り上げ + 全プレイヤーを `waited = false` にリセット +
-    /// カーソル復活 + 味方ターン宣言。旗が残っていれば AutoMove に再突入する
-    /// （プレイヤーが旗を立てたまま敵ターンが終わった → 続けて行進）。
-    def finishEnemyTurn(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                GameLogger.GameLogger, TurnPhase.State,
-                SelectedPlayer.State} =
-        GameLogger.endTurn();
-        let reset = scene
-            |> PlayerScene.clearAllWaited        // 全員アクティブに戻す
-            |> PlayerScene.resetAllMoveStepsTaken
-            |> MoveRangeScene.clear              // 未選択につき青マスは無し
-            |> MoveAttackRangeScene.clear;
-        GameLogger.playerLog("味方のターン");
-        if (FlagScene.isPlanted(reset)) {
-            // 旗が立ったまま → AutoMove 継続（カーソルは消したまま）
-            TurnPhase.State.put(TurnPhase.Phase.PlayerAutoMove);
-            reset |> CursorScene.setVisible(false)
-        }
-        else {
-            TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
-            reset
-                |> CursorScene.setVisible(true)
-                |> CursorScene.snapToPlayer
-        }
+        else EnemyTurnDriverScene.beginTurn(withWaited)
 
     // ════════════════════════════════════════════════════════
     // AnimationPlayer の完了 / メソッドイベントを scene に反映する
@@ -511,37 +246,36 @@ mod GameManager {
     /// `AnimationPlayer.tickAll` の直後に呼ぶ。drainEvents で蓄積されたメソッド発火 /
     /// finished 通知を取り出し、owner NodePath と name で振り分けて適切な処理を実行する。
     /// ここがゲーム側「アニメ完了 → ゲームロジック」の唯一の窓口。
-    /// `catalog` は全員死亡時の `handlePlayerDeath` がフルリビルドに使うため受け取る。
-    def dispatchAnimationEvents(catalog: UnitCatalog.UnitCatalog,
-                                scene: Scene[NodeTag]):
+    /// 全員死亡時のフルリビルドは `CustomEffects.GameOverRequest` 経由で行うため
+    /// この関数は catalog を引き回さない。
+    def dispatchAnimationEvents(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                              GameEngine.Game, Fs.FileRead, Math.Random, IO,
+                              GameEngine.Game,
                               GameLogger.GameLogger, Tween.Scheduler,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, InitialSpawns.State,
+                              SelectedPlayer.State,
+                              CustomEffects.GameOverRequest,
                               Pacing.State} =
         let bundle = AnimationPlayer.Scheduler.drainEvents();
         // method イベント → finished イベントの順に処理する。
         // method の代表例は attack:hit のダメージ判定で、finished はその後で発火する。
-        let afterMethods  = List.foldLeft(
-            (sc, ev) -> applyMethodEvent(catalog, sc, ev),
-            scene, bundle#methods);
+        let afterMethods  = List.foldLeft(applyMethodEvent, scene, bundle#methods);
         let afterFinished = List.foldLeft(applyFinishedEvent, afterMethods, bundle#finished);
         afterFinished
 
     /// 1 つの method イベントを適用する。owner と AnimEvent.Tag で分岐する。
     /// `Tag.AttackHit` 中点発火: owner が Player_<id> ならその味方からターゲット敵へ、
     /// Enemy_<id> ならその敵からターゲット味方へ 1 ダメージ + SE + ログ。
-    /// 敵攻撃で味方 HP=0 のときは `handlePlayerKills` で該当ノードを取り除き、
-    /// 全員脱落していたら `handlePlayerDeath`（マップ再ランダマイズ）に流す。
+    /// 敵攻撃で味方 HP=0 のときは `PlayerScene.removeDeadAndCheckGameOver` が
+    /// 該当ノードを取り除き、全員脱落していれば `CustomEffects.GameOverRequest` を
+    /// emit する (handler 側でフルリビルド)。
     /// 未知の name は `parseTag = None` で no-op。
-    def applyMethodEvent(catalog: UnitCatalog.UnitCatalog,
-                         scene: Scene[NodeTag], event: AnimationPlayer.Event):
+    def applyMethodEvent(scene: Scene[NodeTag], event: AnimationPlayer.Event):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                              GameEngine.Game, Fs.FileRead, Math.Random, IO,
+                              GameEngine.Game,
                               GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, InitialSpawns.State} =
+                              CustomEffects.GameOverRequest,
+                              SelectedPlayer.State} =
         match AnimEvent.parseTag(event#name) {
             case Some(AnimEvent.Tag.AttackHit) =>
                 match PlayerScene.idFromPath(event#owner) {
@@ -552,7 +286,7 @@ mod GameManager {
                             case Some(enemyId) =>
                                 let (next, killed) =
                                     EnemyScene.applyAttackHit(enemyId, scene);
-                                handlePlayerKills(catalog, killed, next)
+                                PlayerScene.removeDeadAndCheckGameOver(killed, next)
                             case None => scene
                         }
                 }
@@ -647,21 +381,6 @@ mod GameManager {
                 let target = d#attackTargetId
                     |> Option.flatMap(eid -> EnemyScene.get(eid, scene));
                 CounterAttackRules.killedTargetEnemyId(target)
-        }
-
-    /// `PlayerAttackHold` 中に毎フレーム呼ぶ。`Pacing.State` の hold が抜けたら
-    /// `commitWaitedAndAdvance` を発火して PlayerCursor or EnemyTurn に遷移する。
-    /// それ以外のフェーズなら何もしない。
-    def tickPlayerAttackHold(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State,
-                SelectedPlayer.State, Pacing.State} =
-        match TurnPhase.State.get() {
-            case TurnPhase.Phase.PlayerAttackHold =>
-                if (Pacing.State.isHolding()) scene
-                else commitWaitedAndAdvance(scene)
-            case _ => scene
         }
 
     // ════════════════════════════════════════════════════════

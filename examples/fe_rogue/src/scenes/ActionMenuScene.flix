@@ -150,11 +150,11 @@ mod ActionMenuScene {
 
     /// ItemList 項目が確定された (Enter) 瞬間に呼ばれる。metadata から
     /// 「attack」/「wait」/「pickup」を分岐して、それぞれの帰結を直接適用する。
-    ///   - attack: 攻撃ターゲット選択フェーズへ (`GameManager.applyEnterAttackPhase` に委譲)
+    ///   - attack: 攻撃ターゲット選択フェーズへ (`PlayerScene.enterAttackPhase` に委譲)
     ///   - wait:   その場で waited 確定
     ///   - pickup: 床アイテムを拾って waited 確定 (拾うで 1 ターン使う)
-    /// 「次フェーズへの遷移」は Scene 跨ぎなので `GameManager.commitWaitedAndAdvance` /
-    /// `applyEnterAttackPhase` に委譲する (Scene → GameManager 方向は許容)。
+    /// 「次セレクトか敵ターンか」の判定は Scene 跨ぎなので `GameManager.commitWaitedAndAdvance`
+    /// を呼ぶ (Scene → GameManager 方向は許容)。
     pub def onActionConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                               Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
@@ -163,7 +163,7 @@ mod ActionMenuScene {
         match entry#metadata {
             case None    => scene
             case Some(m) =>
-                if (m == attackMeta())      GameManager.applyEnterAttackPhase(scene)
+                if (m == attackMeta())      PlayerScene.enterAttackPhase(scene)
                 else if (m == waitMeta())   GameManager.commitWaitedAndAdvance(scene)
                 else if (m == pickupMeta()) applyPickup(scene)
                 else                         scene
@@ -194,6 +194,13 @@ mod ActionMenuScene {
                         }
                 }
         }
+
+    /// PlayerMoving + Z 押下時の遷移: 行動選択ウィンドウを開く (フェーズ = ActionSelect)。
+    /// 青マス表示はそのまま維持し、ItemList を visibility 適用で表示する。
+    /// 「こうげき / たいき / ひろう」の項目は `refreshItems` が毎フレーム再構築。
+    pub def openFromMoving(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
+        scene
 
     /// X / Escape 押下で呼ばれる。メニューを閉じて PlayerMoving に戻る。
     /// 青マス・カーソルは触らず、ユーザがもう一度動かし直せる状態に復帰する。

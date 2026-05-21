@@ -239,8 +239,32 @@ mod Game {
                 // BGM はゲーム開始時に再生（looping = true で曲が終わってもループする）
                 AudioStreamPlayer.play("bgm");
                 GameLogger.playerLog("T1 味方のターン");
-                gameLoop(sceneRef, catalog, scene)
-            } with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽
+                gameLoop(sceneRef, scene)
+            // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
+            // `GameOverRequest` の handler 本体は `GameLogger` / `EnemyTurn.Queue` /
+            // `TurnPhase.State` / `SelectedPlayer.State` / `InitialSpawns.State` 等を
+            // 使うため、これらより **内側** (= 構文上で先) に書く必要がある。
+            // 同様に `BoardQuery` も `Ref` 経由で sceneRef を読むだけだが内側に置く。
+            } with handler CustomEffects.GameOverRequest {
+                  // 全味方脱落でフルリビルド: マップ・敵・味方・アイテムを再ランダ生成。
+                  // 起動時の `buildPlayingScene` と同じ手順 + InitialSpawns 更新。
+                  def request(_scene, k) = {
+                      GameLogger.gameOverLog("ゲームオーバー");
+                      EnemyTurn.Queue.replace(Nil);
+                      TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
+                      SelectedPlayer.State.put(SelectedPlayer.cleared());
+                      let rebuilt = GameManager.buildPlayingScene(catalog);
+                      InitialSpawns.State.put({
+                          enemies = EnemyScene.snapshotSpawns(rebuilt),
+                          players = PlayerScene.snapshotSpawns(rebuilt)
+                      });
+                      k(rebuilt)
+                  }
+              }
+              with handler BoardQuery {
+                  def board(k) = k(GameManager.buildBoard(Ref.get(sceneRef)))
+              }
+              with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽
               with AnimationPlayer.withScheduler(rc)  // 名前付きアニメ + イベントドレイン
               with Pacing.withState(rc)           // 演出の溜め (hold)
               with GameLogger.withLogger(rc)      // ログエントリは内部に隠蔽
@@ -248,26 +272,22 @@ mod Game {
               with TurnPhase.withState(rc)        // 味方ターン内のサブフェーズ + 敵ターン
               with SelectedPlayer.withState(rc)   // 操作中プレイヤー id の保持
               with InitialSpawns.withState(rc)    // ゲームオーバー時に同じ敵 / 味方配置を復元
-              with handler BoardQuery {
-                  def board(k) = k(GameManager.buildBoard(Ref.get(sceneRef)))
-              }
         }
 
     /// メインループ。終了判定 → BoardQuery 窓口の更新 → 1 フレームぶんの処理 → 描画
     /// → 末尾再帰、という固定パイプラインだけを担う **配線役**。
     /// フレーム処理の実体は `GameManager.runFrame` に閉じている。
-    /// `catalog` はゲームオーバー時のフルリビルドに使うため透過させる。
+    /// ゲームオーバー時のフルリビルドは `CustomEffects.GameOverRequest` handler が
+    /// catalog をクロージャに閉じ込めて実行するため、ここで catalog を引き回す必要はない。
     def gameLoop(sceneRef: Ref[Scene[NodeTag], r],
-                  catalog: UnitCatalog.UnitCatalog,
                   scene: Scene[NodeTag]):
                  Unit \ {GameEngine.Game, GameEngine.Audio,
-                         Fs.FileRead,
                          BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
                          EnemyTurn.Queue, TurnPhase.State,
-                         SelectedPlayer.State, InitialSpawns.State,
-                         Pacing.State,
-                         Math.Random, IO, r} =
+                         SelectedPlayer.State,
+                         CustomEffects.GameOverRequest,
+                         Pacing.State, r} =
         // Escape は通常はゲーム終了に使うが、武器選択メニュー / 戦闘予報パネル表示中は
         // engine の MenuEvent / InputHandler がそれぞれ「キャンセル」として消費するので、
         // ここでは終了させない。
@@ -284,8 +304,8 @@ mod Game {
             // 各 handler はその後で常に「フレーム頭の scene」を読み返せる
             // （タイル定義は不変のため十分）。
             Ref.put(scene, sceneRef);
-            let next = GameManager.runFrame(catalog, scene);
+            let next = GameManager.runFrame(scene);
             GameEngine.render(next);
-            gameLoop(sceneRef, catalog, next)
+            gameLoop(sceneRef, next)
         }
 }

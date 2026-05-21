@@ -142,6 +142,15 @@ mod WeaponMenuScene {
             Map.insert(idx, icon, acc)
         }, Map.empty(), List.zipWithIndex(weapons))
 
+    /// PlayerAttack + Z (敵に乗ったカーソル): 武器選択ウィンドウを開く。
+    /// 攻撃対象 id を Data#attackTargetId に記録し、WeaponSelect フェーズに遷移する。
+    /// 赤マス / カーソルは消さない (メニューを閉じたとき即座に target 選択に戻せるよう)。
+    pub def openFor(attackerId: Int32, defenderId: Int32,
+                     scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.WeaponSelect);
+        PlayerScene.setAttackTargetId(attackerId, defenderId, scene)
+
     /// ItemList 項目が確定された (Enter) 瞬間に呼ばれる。
     /// metadata から weapon index を取り出し、選択中武器 idx を Data に書き込み、
     /// `AttackForecast` フェーズに進む (戦闘予報パネルを表示)。

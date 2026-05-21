@@ -253,6 +253,54 @@ mod PlayerScene {
             |> Scene.setGlobalPositionAt(playerPath(id), world)
             |> mapPlayer(id, d -> {gridPos = target | d})
 
+    /// PlayerCursor + Z で味方マスを選択した瞬間の遷移: 選択中味方を SelectedPlayer に
+    /// 記録し、PlayerMoving に進む。MoveRange / MoveAttackRange を refresh し、敵レンジを
+    /// 消してカーソルを非表示にする。origin (選択時の位置) は X キャンセルで戻すために記録。
+    pub def beginSelection(playerId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+        SelectedPlayer.State.put({
+            id     = Some(playerId),
+            origin = Some(getGridPos(playerId, scene))
+        });
+        TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
+        scene
+            |> EnemyRangeScene.clear
+            |> MoveRangeScene.refresh
+            |> MoveAttackRangeScene.refresh
+            |> CursorScene.setVisible(false)
+
+    /// PlayerMoving + X: 選択駒を origin に瞬間移動で戻し、選択解除して PlayerCursor に戻す。
+    /// 「キャンセル → 再選択の繰り返しで実質ターン制限なしの自由移動」を防ぐ FE 流。
+    pub def cancelSelection(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              TurnPhase.State, SelectedPlayer.State} =
+        let selection = SelectedPlayer.State.get();
+        let restored = match (selection#id, selection#origin) {
+            case (Some(id), Some(origin)) => snapTo(id, origin, scene)
+            case _                         => scene
+        };
+        SelectedPlayer.State.put(SelectedPlayer.cleared());
+        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
+        restored
+            |> MoveRangeScene.clear
+            |> MoveAttackRangeScene.clear
+            |> CursorScene.setVisible(true)
+            |> CursorScene.snapToPlayer
+
+    /// ActionMenu「こうげき」確定で呼ばれる: 攻撃ターゲット選択フェーズへ。
+    /// 青マスを消して赤マスを出す。赤マス内に生きている敵が居れば最初の敵にカーソル、
+    /// 居なければ選択中プレイヤーにスナップする (X キャンセルだけはできるよう自セルに居座る)。
+    pub def enterAttackPhase(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              TurnPhase.State, SelectedPlayer.State} =
+        TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
+        scene
+            |> MoveRangeScene.clear
+            |> MoveAttackRangeScene.clear
+            |> PlayerAttackRangeScene.show
+            |> CursorScene.setVisible(true)
+            |> CursorScene.snapToFirstTargetOrPlayer
+
     /// 毎フレーム engine から呼ばれる。**選択中プレイヤーのみ** 動かす。
     /// Game.flix の Node[NodeTag] redef からは PlayerMoving フェーズで
     /// 「id == SelectedPlayer.State.get()」のノードに対してだけ dispatch される。
@@ -336,6 +384,31 @@ mod PlayerScene {
     /// 「全員行動済みなら敵ターンへ」の判定に使う。
     pub def anyActive(scene: Scene[NodeTag]): Bool =
         List.exists(d -> not d#waited, getAll(scene))
+
+    /// 敵攻撃で HP=0 になったプレイヤーを scene から取り除く。`killed` は
+    /// `EnemyScene.applyAttackHit` が返した死亡 id のリスト (通常 1 要素)。
+    /// 選択中プレイヤーが含まれていれば (反撃で死亡したケース) 選択も解除する。
+    /// 全員脱落していれば `CustomEffects.GameOverRequest.request` を emit して、
+    /// handler 側でマップ・配置をフルリビルドする。
+    pub def removeDeadAndCheckGameOver(killed: List[Int32],
+                                         scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {CustomEffects.GameOverRequest, SelectedPlayer.State} =
+        if (List.isEmpty(killed)) scene
+        else {
+            let removed = List.foldLeft(
+                (sc, id) -> Scene.removeAt(playerPath(id), sc),
+                scene, killed);
+            let selectedKilled = match SelectedPlayer.State.get()#id {
+                case Some(id) => List.exists(k -> k == id, killed)
+                case None     => false
+            };
+            if (selectedKilled)
+                SelectedPlayer.State.put(SelectedPlayer.cleared())
+            else ();
+            if (List.isEmpty(getAll(removed)))
+                CustomEffects.GameOverRequest.request(removed)
+            else removed
+        }
 
     /// プレイヤーを「行動済み」にして sprite を灰色 modulate にする。
     /// PlayerAttack 確定 / スキップ時に呼ばれる。

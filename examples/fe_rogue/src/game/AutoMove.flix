@@ -247,7 +247,7 @@ mod AutoMove {
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State, SelectedPlayer.State} =
         SelectedPlayer.State.put(SelectedPlayer.cleared());
-        GameManager.goToEnemyTurn(scene)
+        EnemyTurnDriverScene.beginTurn(scene)
 
     // ────────────────────────────────────────────────────────
     // (E) ヘルパー

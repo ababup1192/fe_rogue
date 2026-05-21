@@ -60,9 +60,21 @@ mod FlagScene {
     // (D) ロジック
     // ────────────────────────────────────────────────────────
 
-    /// `target` セルに旗を立てる。位置を更新して可視化する。
-    /// 既に立っていた場合は新しい位置に「立て直す」。
-    pub def plant(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
+    /// 空マスで Z 押下時の遷移: ログ + 旗を立てる + フェーズを `PlayerAutoMove` に
+    /// 進める + 周辺 (敵レンジ・カーソル) を片付ける。
+    /// AutoMove 中は赤レンジを出さないので EnemyRangeScene を消し、カーソルも隠す。
+    pub def plant(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State} =
+        GameLogger.playerLog("旗を立てた");
+        TurnPhase.State.put(TurnPhase.Phase.PlayerAutoMove);
+        scene
+            |> EnemyRangeScene.clear
+            |> markAt(target)
+            |> CursorScene.setVisible(false)
+
+    /// `target` セルに旗を立てる純粋なマーク操作 (位置更新 + 可視化)。
+    /// フェーズ遷移は含めない。`plant` の内部実装として使う。
+    def markAt(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
         let world = cellCenter(target);
         scene
             |> Scene.setGlobalPositionAt(flagPath(), world)
