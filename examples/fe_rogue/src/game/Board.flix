@@ -9,7 +9,8 @@
 ///   (B) 駒クエリ: playerPositions / enemyPositions / isOccupied / isEnemyAt /
 ///                 nearestPlayer / adjacentPlayer
 ///   (C) 動きルール: isWalkable / stepTarget / tryMove / tryMoveWithRange
-///   (D) 経路探索: reachableCells / bfsPath
+///   (D) 経路探索: reachableCells / bfsPath / bfsPathSkipAllies
+///   (E) 駒視点ヘルパー: reachableForUnit / stoppableForUnit / nextStepToward
 ///
 /// EnemyAI / AutoMove / MoveRangeScene / EnemyRangeScene / PlayerScene などはこの
 /// Board を 1 つ受け取れば「次の手」を計算できる。Scene[NodeTag] には依存しない。
@@ -228,10 +229,11 @@ mod Board {
         else if (samePosition(c, source) or samePosition(c, goal)) true
         else not isOccupied(c, board)
 
-    /// AutoMove 用の BFS。味方マスは通過可能、敵マスは NG、壁・範囲外も NG。
+    /// 味方マスは通過可能、敵マスは NG、壁・範囲外も NG な BFS。
     /// `allyCells` には source 以外の全味方位置を渡す（source が含まれていてもよい）。
-    /// 経路の先頭が味方占有マスになり得るので、呼び出し側で「1 歩目が占有か」を別途
-    /// 判定して、占有なら no-op（その味方が動いて空くのを次フレームで待つ）にする。
+    /// `nextStepToward` の内部実装と、テスト等から経路全体を確認したい場合に使う。
+    /// 経路の途中マスは味方占有でも可（通過可能）。停止可否は呼び出し側が
+    /// `stoppableForUnit` 等で別途担保する。
     pub def bfsPathSkipAllies(board: Board,
                                allyCells: List[{x = Int32, y = Int32}],
                                source: {x = Int32, y = Int32},
@@ -253,6 +255,47 @@ mod Board {
         else if (samePosition(c, source) or samePosition(c, goal)) true
         else if (isInList(c, allyCells)) true   // 味方は通過 OK
         else not isOccupied(c, board)            // 残り = 敵駒 / その他なら NG
+
+    // ════════════════════════════════════════════════════════
+    // (E) 駒視点ヘルパー — 「壁・敵だけ通行不可、味方マスは通過可。停止は味方マス NG」
+    //     という FE 流の動きモデルを 3 関数で公開する。通常移動 (MoveRangeScene) と
+    //     AutoMove はこのレイヤを介して動くことで「待機 / active」の区別を意識せずに済む。
+    // ════════════════════════════════════════════════════════
+
+    /// 味方マスを通過可、敵 / 壁は不可で `origin` から `maxSteps` 以内に到達できるセル一覧。
+    /// `origin` 自身も含む（距離 0）。MoveRangeScene の到達範囲・AutoMove の候補集合のベース。
+    pub def reachableForUnit(board: Board, origin: {x = Int32, y = Int32},
+                              maxSteps: Int32): List[{x = Int32, y = Int32}] =
+        let enemyCells = enemyPositions(board)
+            |> List.map(pair -> { let (_, pos) = pair; pos });
+        let isPassable = c ->
+            isWalkable(board, c) and not isInList(c, enemyCells);
+        reachableCells(isPassable, origin, maxSteps)
+
+    /// `reachableForUnit` から「味方マス（自分 + 他味方）」を除いた、
+    /// 「移動を完了して停止できる」マスの一覧。MoveRangeScene の青マスと、
+    /// AutoMove が destination として選ぶ候補に使う。
+    pub def stoppableForUnit(board: Board, origin: {x = Int32, y = Int32},
+                              maxSteps: Int32): List[{x = Int32, y = Int32}] =
+        let playerCells = playerPositions(board)
+            |> List.map(pair -> { let (_, pos) = pair; pos });
+        reachableForUnit(board, origin, maxSteps)
+            |> List.filter(c -> not isInList(c, playerCells))
+
+    /// `source` から `dest` への BFS 最短経路の **1 歩目**。味方マスは通過可。
+    /// 経路無し / source == dest なら None。AutoMove が「今フレームどのマスへ動かすか」
+    /// を取り出すのに使う。`dest` が味方マスのケースは想定外（呼び出し側が
+    /// `stoppableForUnit` から選ぶ前提なので、dest は空きマス）。
+    pub def nextStepToward(board: Board, source: {x = Int32, y = Int32},
+                            dest: {x = Int32, y = Int32}): Option[{x = Int32, y = Int32}] =
+        if (samePosition(source, dest)) None
+        else
+            let allyCells = playerPositions(board)
+                |> List.map(pair -> { let (_, pos) = pair; pos });
+            match bfsPathSkipAllies(board, allyCells, source, dest) {
+                case None       => None
+                case Some(path) => List.head(path)
+            }
 
     // ════════════════════════════════════════════════════════
     // 内部ヘルパー
