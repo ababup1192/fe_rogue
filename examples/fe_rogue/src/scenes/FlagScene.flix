@@ -35,10 +35,6 @@ mod FlagScene {
     /// scene.json への相対パス（cwd = プロジェクトルート想定）
     def scenePath(): String = "src/scenes/FlagScene.scene.json"
 
-    /// LDTK タイルサイズ（ピクセル）。MapScene と揃える。
-    /// `plant` でグリッド → ワールド座標変換に使う（add 後に位置更新するため残す）。
-    def tileSize(): Float64 = 16.0
-
     // ────────────────────────────────────────────────────────
     // (C) 構築
     // ────────────────────────────────────────────────────────
@@ -60,22 +56,20 @@ mod FlagScene {
     // (D) ロジック
     // ────────────────────────────────────────────────────────
 
-    /// 空マスで Z 押下時の遷移: ログ + 旗を立てる + フェーズを `PlayerAutoMove` に
-    /// 進める + 周辺 (敵レンジ・カーソル) を片付ける。
-    /// AutoMove 中は赤レンジを出さないので EnemyRangeScene を消し、カーソルも隠す。
+    /// 空マスで Z 押下時の遷移: ログ + 旗を立てる + フェーズを `PlayerAutoMove` に進める。
+    /// 周辺 overlay / cursor の整理は `PhaseTransitions.enterPlayerAutoMove` が担当する
+    /// (この関数は旗の表示と log にだけ責任を持つ)。
     pub def plant(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State} =
         GameLogger.playerLog("旗を立てた");
-        TurnPhase.State.put(TurnPhase.Phase.PlayerAutoMove);
         scene
-            |> EnemyRangeScene.clear
             |> markAt(target)
-            |> CursorScene.setVisible(false)
+            |> PhaseTransitions.enterPlayerAutoMove
 
     /// `target` セルに旗を立てる純粋なマーク操作 (位置更新 + 可視化)。
     /// フェーズ遷移は含めない。`plant` の内部実装として使う。
     def markAt(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let world = cellCenter(target);
+        let world = MapScene.cellCenter(target);
         scene
             |> Scene.setGlobalPositionAt(flagPath(), world)
             |> mapFlag((m, _) ->
@@ -118,9 +112,4 @@ mod FlagScene {
             case other => other
         }, scene)
 
-    /// グリッド座標 → セル中心ピクセル座標。MapScene の `mapToLocal` 慣習に揃える。
-    def cellCenter(cell: {x = Int32, y = Int32}): Vec2.Vec2 =
-        let s = tileSize();
-        let v = Vec2i.toVec2(cell);
-        {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
 }

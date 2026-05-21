@@ -44,9 +44,6 @@ mod ItemScene {
     /// `Item_<n>_outline_<dir>` 形式の縁取り兄弟ノード名
     def outlineName(idx: Int32, suffix: String): String = "Item_${idx}_outline_${suffix}"
 
-    /// 1 タイル幅（PlayerScene 等と共通）
-    def tileSize(): Float64 = 16.0
-
     /// Sprite の zIndex（床より上、Sprite (=10) より下に置く）
     def spriteZIndex(): Int32 = 5
 
@@ -133,11 +130,11 @@ mod ItemScene {
     def addOneItem(idx: Int32, cell: {x = Int32, y = Int32},
                     weaponKey: String, weapon: UnitCatalog.WeaponResource,
                     scene: Scene[NodeTag]): Scene[NodeTag] =
-        let s = tileSize();
         // セル中心 + sprite#offset で sheet padding を補正した位置に置く
+        let center = MapScene.cellCenter(cell);
         let pos: Vec2.Vec2 = {
-            x = Int32.toFloat64(cell#x) * s + s / 2.0 + weapon#sprite#offset#x,
-            y = Int32.toFloat64(cell#y) * s + s / 2.0 + weapon#sprite#offset#y
+            x = center#x + weapon#sprite#offset#x,
+            y = center#y + weapon#sprite#offset#y
         };
         // フレーム指定済みのスプライト構築ヘルパ。エンジンは Sprite2D#offset を描画時に無視するため、
         // 縁取りのずらしは position 自体に乗せる（Node2D の position フィールドが globalPos に伝播する）。

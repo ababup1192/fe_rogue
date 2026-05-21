@@ -60,9 +60,6 @@ mod CursorScene {
     /// この constant は参照されないが、ドキュメント目的で残す。
     def _textureName(): String = "cursor"
 
-    /// LDTK タイルサイズ（ピクセル）。MapScene と揃える
-    def tileSize(): Float64 = 16.0
-
     /// カーソルの描画 zIndex。Player Sprite (= 10) より更に上に表示し、
     /// 駒の上に被せても視認できるようにする。
     /// scene.json で sprite.zIndex として記述済み。コード参照用に残す (未使用)
@@ -120,7 +117,7 @@ mod CursorScene {
     /// 初期位置はパーティ先頭プレイヤー（id=0）と同じセル。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let initial = firstPlayerPos(scene);
-        let pos = cellCenter(initial);
+        let pos = MapScene.cellCenter(initial);
         let data: Data = {
             gridPos            = initial,
             lastHoveredEnemyId = None,
@@ -144,12 +141,6 @@ mod CursorScene {
             case Some(d) => d#gridPos
             case None    => {x = 0, y = 0}
         }
-
-    /// グリッド座標 → セル中心ピクセル座標（MapScene の mapToLocal 慣習に揃える）
-    def cellCenter(cell: {x = Int32, y = Int32}): Vec2.Vec2 =
-        let s = tileSize();
-        let v = Vec2i.toVec2(cell);
-        {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
 
     // ────────────────────────────────────────────────────────
     // (D) ロジック
@@ -243,8 +234,8 @@ mod CursorScene {
     def moveStep(target: {x = Int32, y = Int32}, marker: Marker2D, data: Data,
                   slideDuration: Duration.Duration):
             (Marker2D, Data) \ Tween.Scheduler =
-        let startWorld = cellCenter(data#gridPos);
-        let targetWorld = cellCenter(target);
+        let startWorld = MapScene.cellCenter(data#gridPos);
+        let targetWorld = MapScene.cellCenter(target);
         Tween.tweenPosition(cursorPath(), startWorld, targetWorld, slideDuration);
         (marker, {gridPos = target | data})
 
@@ -421,7 +412,7 @@ mod CursorScene {
     /// hoveredEnemyId と hold 状態を初期化する。`snapToPlayer` の汎用版。
     pub def snapToCell(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler} =
-        let world = cellCenter(target);
+        let world = MapScene.cellCenter(target);
         Tween.Scheduler.cancel(cursorPath());
         AnimationPlayer.Scheduler.stop(cursorPath());
         let snapped = Scene.setGlobalPositionAt(cursorPath(), world, scene);

@@ -229,15 +229,15 @@ mod AutoMoveScene {
     /// PlayerAutoMove → PlayerCursor に戻す共通処理。
     /// `step` 内のフォールバック (旗無し / 敵検知 / 集合完了 / 詰み) からは log なしで
     /// 呼び、`cancel` (X/Esc 押下) はこれをラップしてログを足す。
+    /// 旗の片付け (AutoMove の責務) と move step リセット (味方データの責務) を自分で行い、
+    /// overlay / cursor の整理は `PhaseTransitions.enterPlayerCursor` に委ねる。
     def exitToCursor(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State} =
-        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         scene
             |> FlagScene.clear
             |> PlayerScene.resetAllMoveStepsTaken
-            |> CursorScene.setVisible(true)
-            |> CursorScene.snapToPlayer
+            |> PhaseTransitions.enterPlayerCursor
 
     /// X/Esc 押下時の AutoMove キャンセル: ログ + 共通の exit 処理。
     /// `exitToCursor` との差分はログ 1 行だけなので、本体を共有する。

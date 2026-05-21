@@ -63,9 +63,6 @@ mod EnemyScene {
     // (B) 定数
     // ────────────────────────────────────────────────────────
 
-    /// LDTK タイルサイズ（ピクセル）。MapScene と揃える。
-    def tileSize(): Float64 = 16.0
-
     /// プレイヤーと同じ高さで前面に立つ。MoveRange (1) より上。
     def spriteZIndex(): Int32 = 10
 
@@ -213,11 +210,7 @@ mod EnemyScene {
     /// 1 体ぶんの Marker2D + 子 Sprite2D を scene に追加する。
     /// ステータス・テクスチャ・フレームは `sp#resource`（UnitResource）から取る。
     def addOneEnemy(sp: Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let s = tileSize();
-        let pos: Vec2.Vec2 = {
-            x = Int32.toFloat64(sp#gridPos#x) * s + s / 2.0,
-            y = Int32.toFloat64(sp#gridPos#y) * s + s / 2.0
-        };
+        let pos = MapScene.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
         let data: Data = {
@@ -498,8 +491,7 @@ mod EnemyScene {
                     GameLogger.enemyLog("敵${enemyId} → P${targetId} に ${dmg}ダメージ")
                 };
                 // 被弾位置（プレイヤーの頭上）にダメージ数字を浮かす。撃破時も出す。
-                let s = tileSize();
-                let popupPos: Vec2.Vec2 = {x = Int32.toFloat64(player#gridPos#x) * s + s / 2.0, y = Int32.toFloat64(player#gridPos#y) * s + s / 2.0};
+                let popupPos = MapScene.cellCenter(player#gridPos);
                 let popupColor = DamagePopupScene.damageToPlayerColor();
                 let withPopup = DamagePopupScene.emit(popupPos, dmg, popupColor, scene);
                 let damaged = withPopup

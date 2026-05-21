@@ -152,6 +152,18 @@ mod MapScene {
     pub def getRoomCount(scene: Scene[NodeTag]): Int32 =
         getMapData(scene)#roomCount
 
+    /// LDTK 由来のタイルサイズ（ピクセル）。MapScene の TileMapLayer と同じ 16px 正方形を前提。
+    /// グリッド ⇄ ピクセル変換が必要な全 Scene が参照する唯一の情報源。
+    pub def tileSize(): Float64 = 16.0
+
+    /// グリッド座標 → セル中心ピクセル座標。`tileSize` で求めた正方形セルの中央点を返す。
+    /// MapScene の `mapToLocal` 慣習に揃えてあり、Marker2D / Sprite2D を「マスのど真ん中」に
+    /// 置きたい全 Scene（Player/Enemy/Cursor/Flag/Range 系）が共通で使う。
+    pub def cellCenter(cell: {x = Int32, y = Int32}): Vec2.Vec2 =
+        let s = tileSize();
+        let v = Vec2i.toVec2(cell);
+        {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
+
     /// `placements` を「先勝ち（idx 昇順）」で走査し、`coord` を含む最初のモジュール idx を返す。
     /// modulePaths は「部屋を先・通路を後ろ」で並ぶため、部屋優先で逆引きできる。
     /// MapSnapshot.moduleOfCell の実装。

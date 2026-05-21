@@ -78,9 +78,6 @@ mod PlayerScene {
     // (B) 定数
     // ────────────────────────────────────────────────────────
 
-    /// LDTK タイルサイズ（ピクセル）。MapScene と揃える。
-    def tileSize(): Float64 = 16.0
-
     /// プレイヤー Sprite の zIndex（Player は前面に立つ）。EnemyScene と同じ 10。
     def spriteZIndex(): Int32 = 10
 
@@ -176,11 +173,7 @@ mod PlayerScene {
     /// プレイヤー 1 体ぶんの Marker2D + 子 Sprite2D を scene に追加する。
     /// ステータス・テクスチャ・フレームは `sp#resource`（UnitResource）から取る。
     def addOnePlayer(sp: Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let s = tileSize();
-        let pos: Vec2.Vec2 = {
-            x = Int32.toFloat64(sp#gridPos#x) * s + s / 2.0,
-            y = Int32.toFloat64(sp#gridPos#y) * s + s / 2.0
-        };
+        let pos = MapScene.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
         let data: Data = {
@@ -243,34 +236,27 @@ mod PlayerScene {
     /// 同時に target に揃える。PlayerMoving 中のキャンセルで「選択時の位置」に戻すのに使う。
     pub def snapTo(id: Int32, target: {x = Int32, y = Int32},
                     scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
-        let s = tileSize();
-        let world: Vec2.Vec2 = {
-            x = Int32.toFloat64(target#x) * s + s / 2.0,
-            y = Int32.toFloat64(target#y) * s + s / 2.0
-        };
+        let world = MapScene.cellCenter(target);
         Tween.Scheduler.cancel(playerPath(id));
         scene
             |> Scene.setGlobalPositionAt(playerPath(id), world)
             |> mapPlayer(id, d -> {gridPos = target | d})
 
     /// PlayerCursor + Z で味方マスを選択した瞬間の遷移: 選択中味方を SelectedPlayer に
-    /// 記録し、PlayerMoving に進む。MoveRange / MoveAttackRange を refresh し、敵レンジを
-    /// 消してカーソルを非表示にする。origin (選択時の位置) は X キャンセルで戻すために記録。
+    /// 記録し、PlayerMoving に進む。
+    /// overlay (MoveRange / MoveAttackRange / EnemyRange) と Cursor の整理は
+    /// `PhaseTransitions.enterPlayerMoving` が担当する (この関数は SelectedPlayer 更新だけ)。
     pub def beginSelection(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
         SelectedPlayer.State.put({
             id     = Some(playerId),
             origin = Some(getGridPos(playerId, scene))
         });
-        TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
-        scene
-            |> EnemyRangeScene.clear
-            |> MoveRangeScene.refresh
-            |> MoveAttackRangeScene.refresh
-            |> CursorScene.setVisible(false)
+        PhaseTransitions.enterPlayerMoving(scene)
 
     /// PlayerMoving + X: 選択駒を origin に瞬間移動で戻し、選択解除して PlayerCursor に戻す。
     /// 「キャンセル → 再選択の繰り返しで実質ターン制限なしの自由移動」を防ぐ FE 流。
+    /// overlay / cursor の片付けは `PhaseTransitions.enterPlayerCursor` が担当。
     pub def cancelSelection(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State} =
@@ -280,26 +266,14 @@ mod PlayerScene {
             case _                         => scene
         };
         SelectedPlayer.State.put(SelectedPlayer.cleared());
-        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
-        restored
-            |> MoveRangeScene.clear
-            |> MoveAttackRangeScene.clear
-            |> CursorScene.setVisible(true)
-            |> CursorScene.snapToPlayer
+        PhaseTransitions.enterPlayerCursor(restored)
 
     /// ActionMenu「こうげき」確定で呼ばれる: 攻撃ターゲット選択フェーズへ。
-    /// 青マスを消して赤マスを出す。赤マス内に生きている敵が居れば最初の敵にカーソル、
-    /// 居なければ選択中プレイヤーにスナップする (X キャンセルだけはできるよう自セルに居座る)。
+    /// overlay / cursor 整理は `PhaseTransitions.enterPlayerAttack` が担当。
     pub def enterAttackPhase(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State} =
-        TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
-        scene
-            |> MoveRangeScene.clear
-            |> MoveAttackRangeScene.clear
-            |> PlayerAttackRangeScene.show
-            |> CursorScene.setVisible(true)
-            |> CursorScene.snapToFirstTargetOrPlayer
+        PhaseTransitions.enterPlayerAttack(scene)
 
     /// 各 Player ノードの毎フレーム process。AnimationPlayer から自分宛 (`playerPath(id)`)
     /// の signal だけ pull し、attack:hit (中点) / attack_lunge (完了) に反応する。
@@ -589,8 +563,8 @@ mod PlayerScene {
                                  AnimationPlayer.Animation =
         let phase    = attackPhaseDuration();
         let total    = Duration.add(phase, phase);
-        let originW  = cellCenter(originGrid);
-        let targetW  = cellCenter(targetGrid);
+        let originW  = MapScene.cellCenter(originGrid);
+        let targetW  = MapScene.cellCenter(targetGrid);
         let posKeys: List[AnimationPlayer.PosKey] =
             ({time = 0.0, pos = originW}: AnimationPlayer.PosKey) ::
             ({time = 0.5, pos = targetW}: AnimationPlayer.PosKey) ::
@@ -632,11 +606,6 @@ mod PlayerScene {
                 }
         }
 
-    /// グリッド座標 → セル中心ワールド座標（add 内部の式と同じ）
-    def cellCenter(c: {x = Int32, y = Int32}): Vec2.Vec2 =
-        let s = tileSize();
-        {x = Int32.toFloat64(c#x) * s + s / 2.0,
-         y = Int32.toFloat64(c#y) * s + s / 2.0}
 
     /// scene 内に攻撃モーション中のプレイヤーが居れば true。
     /// stepEnemyTurn 等の「敵の行動を進めて良いか」のガードに使う将来用の保険。
@@ -686,15 +655,7 @@ mod PlayerScene {
             case None     => scene   // 防御的 (選択なしで Attack に入ることは想定外)
         };
         SelectedPlayer.State.put(SelectedPlayer.cleared());
-        if (anyActive(withWaited)) {
-            TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
-            withWaited
-                |> MoveRangeScene.clear
-                |> MoveAttackRangeScene.clear
-                |> PlayerAttackRangeScene.clear
-                |> CursorScene.setVisible(true)
-                |> CursorScene.snapToPlayer
-        }
+        if (anyActive(withWaited)) PhaseTransitions.enterPlayerCursor(withWaited)
         else EnemyTurnDriverScene.beginTurn(withWaited)
 
     /// AnimationPlayer の `attack:hit` method イベント受信時の処理 (味方側)。
@@ -775,7 +736,7 @@ mod PlayerScene {
                 let dmg    = Combat.attackDamage(totalAttack, enemy#resource#defense);
                 let result = Combat.damage(hp = enemy#hp, amount = dmg);
                 // 被弾位置（敵の頭上）にダメージ数字を浮かす。撃破時もこの 1 回は出す。
-                let popupPos = cellCenter(enemy#gridPos);
+                let popupPos = MapScene.cellCenter(enemy#gridPos);
                 let popupColor = DamagePopupScene.damageToEnemyColor();
                 let withPopup = DamagePopupScene.emit(popupPos, dmg, popupColor, scene);
                 let afterDamage =

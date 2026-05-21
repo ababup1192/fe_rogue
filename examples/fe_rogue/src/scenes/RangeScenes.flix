@@ -19,21 +19,12 @@
 /// この mod は「親 Marker2D + Tile_<idx> Sprite2D 列を描く」ことだけを担う。
 mod RangeOverlay {
 
-    /// LDTK 由来のタイルサイズ (ピクセル)。MapScene と同じ 16px 正方形を前提。
-    pub def tileSize(): Float64 = 16.0
-
     /// `move_tile` テクスチャを共通に使う (`Main.flix` の textureManifest と整合)。
     /// 色は呼び出し側が `modulate` で着色するので、テクスチャ自体は無色。
     def textureName(): String = "move_tile"
 
     /// 全 range scene 共通の zIndex。tilemap (= 0) より上、Player Sprite (= 10) より下。
     def tileZIndex(): Int32 = 1
-
-    /// グリッド座標 → セル中心ピクセル座標。MapScene の `mapToLocal` 慣習に揃える。
-    pub def cellCenter(cell: {x = Int32, y = Int32}): Vec2.Vec2 =
-        let s = tileSize();
-        let v = Vec2i.toVec2(cell);
-        {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
 
     /// 親 Marker2D を origin (0,0) にぶら下げる。`tag` は呼び出し側が
     /// `NodeTag.MoveRange(data)` 等の variant を構築して渡す。
@@ -52,7 +43,7 @@ mod RangeOverlay {
         let indexed = List.zipWithIndex(cells);
         List.foldLeft(acc -> entry -> {
             let (idx, cell) = entry;
-            let sprite = Sprite2D.make(textureName(), cellCenter(cell), Vec2.one())
+            let sprite = Sprite2D.make(textureName(), MapScene.cellCenter(cell), Vec2.one())
                             |> Sprite2D.setAlpha(alpha)
                             |> CanvasItem.setModulate(color)
                             |> CanvasItem.setZIndex(tileZIndex());

@@ -16,14 +16,6 @@ mod TestCursorScene {
     // ヘルパー
     // ════════════════════════════════════════════════════════
 
-    def testTileSize(): Float64 = 16.0
-
-    /// セル中心ピクセル座標（CursorScene / PlayerScene と同じ慣習）
-    def cellCenter(c: {x = Int32, y = Int32}): Vec2.Vec2 =
-        let s = testTileSize();
-        let v = Vec2i.toVec2(c);
-        {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
-
     /// テスト用 FontAtlas (loadScene が getFontAtlas を呼ばないので実値は使われないが
     /// `withMockGame` ハンドラの戻り値として必要)
     def testFontAtlas(): FontAtlas = {
@@ -88,7 +80,7 @@ mod TestCursorScene {
     /// JSON ロードを介さず Marker2D を直接構築する（PlayerScene.playerPath は
     /// World 配下を指すため、ここでも World Marker2D を挟む）。
     def sceneWithPlayer(gridPos: {x = Int32, y = Int32}): Scene[NodeTag] =
-        let pos = cellCenter(gridPos);
+        let pos = MapScene.cellCenter(gridPos);
         let marker = Marker2D.make(pos);
         let world = Marker2D.make(Vec2.zero())
             |> CanvasItem.setYSortEnabled(true);

@@ -67,12 +67,8 @@ mod EnemyTurnDriverScene {
             |> List.sortBy(e -> e#id)
             |> List.map(e -> ({id = e#id, remaining = e#moveTiles}: EnemyTurn.Step));
         EnemyTurn.Queue.replace(steps);
-        TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
         GameLogger.enemyLog("敵のターン");
-        scene
-            |> MoveRangeScene.clear
-            |> MoveAttackRangeScene.clear
-            |> PlayerAttackRangeScene.clear
+        PhaseTransitions.enterEnemyTurn(scene)
 
     /// 敵ターンキューの先頭 step を 1 つ進める。`process` redef から phase=EnemyTurn のとき呼ぶ。
     /// 動作:
@@ -159,20 +155,12 @@ mod EnemyTurnDriverScene {
         GameLogger.endTurn();
         let reset = scene
             |> PlayerScene.clearAllWaited        // 全員アクティブに戻す
-            |> PlayerScene.resetAllMoveStepsTaken
-            |> MoveRangeScene.clear              // 未選択につき青マスは無し
-            |> MoveAttackRangeScene.clear;
+            |> PlayerScene.resetAllMoveStepsTaken;
         GameLogger.playerLog("味方のターン");
-        if (FlagScene.isPlanted(reset)) {
+        if (FlagScene.isPlanted(reset))
             // 旗が立ったまま → AutoMove 継続 (カーソルは消したまま)
-            TurnPhase.State.put(TurnPhase.Phase.PlayerAutoMove);
-            reset |> CursorScene.setVisible(false)
-        }
-        else {
-            TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
-            reset
-                |> CursorScene.setVisible(true)
-                |> CursorScene.snapToPlayer
-        }
+            PhaseTransitions.enterPlayerAutoMove(reset)
+        else
+            PhaseTransitions.enterPlayerCursor(reset)
 
 }
