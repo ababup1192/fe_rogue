@@ -62,18 +62,35 @@ mod ForecastPanelScene {
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から ForecastPanel の Panel
     /// ノードに対して dispatch される (panel は 1 個のみなので 1 フレーム 1 回)。
-    /// phase に応じて Panel + Label2D の visible を再評価する。
+    /// phase に応じて Panel + Label2D の visible を再評価し、AttackForecast フェーズ中は
+    /// 選択中プレイヤー / 武器 / 攻撃対象から予報テキストを毎フレーム再構築する。
+    /// 自走モデルなので外部 (WeaponMenu 等) からテキスト更新を push する必要はない。
     pub def process(_delta: Duration.Duration,
                      node: EngineNode[NodeTag],
                      _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ TurnPhase.State =
+                    \ {TurnPhase.State, SelectedPlayer.State} =
         let phase = TurnPhase.State.get();
-        let withVisibility = applyVisibility(phase, scene);
-        match Scene.getEngineNode(panelPath(), withVisibility) {
-            case Some(latest) => (latest, withVisibility)
-            case None         => (node, withVisibility)
+        let next = scene
+            |> applyVisibility(phase)
+            |> applyText(phase);
+        match Scene.getEngineNode(panelPath(), next) {
+            case Some(latest) => (latest, next)
+            case None         => (node, next)
         }
+
+    /// AttackForecast フェーズのときだけ Label2D に予報テキストを書き込む。
+    /// 同フェーズ中は毎フレーム呼ばれるが Label2D.setText は冪等。
+    def applyText(phase: TurnPhase.Phase, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ SelectedPlayer.State =
+        if (phase != TurnPhase.Phase.AttackForecast) scene
+        else
+            let text = buildForecastText(scene);
+            Scene.mapEngineNode(textPath(), node -> match node {
+                case EngineNode.Label2DWithState(label, NodeTag.ForecastText) =>
+                    EngineNode.Label2DWithState(Label2D.setText(text, label), NodeTag.ForecastText)
+                case other => other
+            }, scene)
 
     /// `AttackForecast` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
     /// 攻撃モーションの完了 (`attack_lunge` finished) で `PlayerScene.onAttackLungeDone`
@@ -112,17 +129,6 @@ mod ForecastPanelScene {
             case None             => scene
             case Some(attackerId) => PlayerScene.clearSelectedWeaponIdx(attackerId, scene)
         }
-
-    /// `AttackForecast` フェーズに入った瞬間にだけ呼ばれて、予報テキストを Label に流し込む。
-    /// `WeaponMenuScene.onWeaponConfirmed`（武器確定でフェーズ遷移する関数）から
-    /// ワンショットで呼ぶ。毎フレーム実行しないので、選択中の盤面で軽量に動く。
-    pub def setForecastText(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
-        let text = buildForecastText(scene);
-        Scene.mapEngineNode(textPath(), node -> match node {
-            case EngineNode.Label2DWithState(label, NodeTag.ForecastText) =>
-                EngineNode.Label2DWithState(Label2D.setText(text, label), NodeTag.ForecastText)
-            case other => other
-        }, scene)
 
     /// 選択中プレイヤー / 攻撃対象敵 / 選択中武器の組から予報テキストを組み立てる。
     /// 反撃が成立する（敵が生存・隣接・武器装備中）なら敵側の予報も出す。

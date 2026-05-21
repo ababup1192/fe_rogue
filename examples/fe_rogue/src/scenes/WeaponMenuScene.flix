@@ -164,7 +164,8 @@ mod WeaponMenuScene {
     /// ItemList 項目が確定された (Enter) 瞬間に呼ばれる。
     /// metadata から weapon index を取り出し、選択中武器 idx を Data に書き込み、
     /// `AttackForecast` フェーズに進む (戦闘予報パネルを表示)。
-    /// 予報テキストはこの瞬間にワンショットで Label2D に流し込む (フェーズ中に再計算しない)。
+    /// 予報テキストは `ForecastPanelScene.process` が AttackForecast 中に毎フレーム
+    /// scene から再構築するため、ここで push する必要はない。
     /// 実際の攻撃モーション開始は `ForecastPanelScene.confirm` で行う。
     pub def onWeaponConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                               Scene[NodeTag]
@@ -176,9 +177,7 @@ mod WeaponMenuScene {
                 match SelectedPlayer.State.get()#id {
                     case None             => scene
                     case Some(attackerId) =>
-                        scene
-                            |> PlayerScene.setSelectedWeaponIdx(attackerId, idx)
-                            |> ForecastPanelScene.setForecastText
+                        PlayerScene.setSelectedWeaponIdx(attackerId, idx, scene)
                 }
         }
 

@@ -1,0 +1,448 @@
+/// RangeScenes — マップ上のタイル群を半透明で可視化する Scene 群
+///
+/// 共通の Marker2D + Tile_<idx> Sprite2D 構造の描画責務は `RangeOverlay` mod に
+/// 切り出してある。各 range mod は「セル計算」と「色・α 定数」と
+/// 「NodeTag variant の構築」だけが固有で、残りは RangeOverlay にぶら下げる。
+///
+/// ノード構造 (どの mod も同型):
+///   <name> (Marker2D, NodeTag.XxxRange(...))
+///     ├─ Tile_0 (Sprite2D, alpha=A, modulate=Color)
+///     ├─ Tile_1 ...
+///     └─ ...
+///
+/// 親 Marker2D は world (0,0) に置く。MapScene の TileMapLayer も (0,0) なので、
+/// 子 Sprite2D は `セル中心 = grid * tileSize + tileSize/2` を直接 position に
+/// すればマップと同じ座標系でぴったり重なる。
+
+/// 範囲表示 Scene が共有する描画プリミティブ。
+/// NodeTag variant の構築 / セル計算は呼び出し側 (各 range mod) の責任で、
+/// この mod は「親 Marker2D + Tile_<idx> Sprite2D 列を描く」ことだけを担う。
+mod RangeOverlay {
+
+    /// LDTK 由来のタイルサイズ (ピクセル)。MapScene と同じ 16px 正方形を前提。
+    pub def tileSize(): Float64 = 16.0
+
+    /// `move_tile` テクスチャを共通に使う (`Main.flix` の textureManifest と整合)。
+    /// 色は呼び出し側が `modulate` で着色するので、テクスチャ自体は無色。
+    def textureName(): String = "move_tile"
+
+    /// 全 range scene 共通の zIndex。tilemap (= 0) より上、Player Sprite (= 10) より下。
+    def tileZIndex(): Int32 = 1
+
+    /// グリッド座標 → セル中心ピクセル座標。MapScene の `mapToLocal` 慣習に揃える。
+    pub def cellCenter(cell: {x = Int32, y = Int32}): Vec2.Vec2 =
+        let s = tileSize();
+        let v = Vec2i.toVec2(cell);
+        {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
+
+    /// 親 Marker2D を origin (0,0) にぶら下げる。`tag` は呼び出し側が
+    /// `NodeTag.MoveRange(data)` 等の variant を構築して渡す。
+    pub def attachParent(name: String, tag: NodeTag, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let parent = Marker2D.make(Vec2.zero());
+        Scene.addNode(name,
+            EngineNode.Marker2DWithState(parent, tag),
+            scene)
+
+    /// `cells` を順に列挙して半透明 Sprite2D を `Tile_<idx>` として子追加する。
+    /// `Vec2.one()` スケールで、テクスチャ自身を 16×16 として描く前提。
+    pub def renderTiles(parentName: String,
+                         cells: List[{x = Int32, y = Int32}],
+                         color: Color, alpha: Float32,
+                         scene: Scene[NodeTag]): Scene[NodeTag] =
+        let indexed = List.zipWithIndex(cells);
+        List.foldLeft(acc -> entry -> {
+            let (idx, cell) = entry;
+            let sprite = Sprite2D.make(textureName(), cellCenter(cell), Vec2.one())
+                            |> Sprite2D.setAlpha(alpha)
+                            |> CanvasItem.setModulate(color)
+                            |> CanvasItem.setZIndex(tileZIndex());
+            Scene.addChild(parentName,
+                "Tile_${idx}",
+                EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag),
+                acc)
+        }, scene, indexed)
+}
+
+/// MoveRangeScene — プレイヤーの「今ターン移動可能なマス」を青で可視化する
+///
+/// FE 風のターン制移動を提供する。選択中プレイヤーの位置から `Board.reachableForUnit`
+/// で範囲を求め、`Board.stoppableForUnit` で味方マスを除いた青マスを描画する。
+///
+/// **ターン遷移**:
+///   - `add` を初回・リロード時に 1 回呼んで現在位置から範囲を構築する。
+///   - `Game.flix` の InputHandler が決定キー (Z / Space / Enter) のエッジを拾い、
+///     `refresh` を呼ぶと 範囲を消して新しい原点で再構築する。
+///   - 範囲は `MoveRangeScene.isInRange` 経由で `PlayerScene.physicsProcess` から
+///     参照され、移動先の許可判定に使われる (範囲外のマスへは踏み込めない)。
+mod MoveRangeScene {
+
+    /// 親 Marker2D に紐づくデータ。
+    /// `reachable` は BFS で到達可能と判定されたセル一覧 (origin を含む)。
+    pub type alias Data = {
+        reachable = List[{x = Int32, y = Int32}]
+    }
+
+    def name(): String = "MoveRange"
+    pub def moveRangePath(): NodePath = name() :: Nil
+
+    /// 移動範囲を識別する青系 modulate。Floor 装飾レイヤーの上で
+    /// 移動可能マスとして識別しやすいように青寄りに着色する。
+    def color(): Color = {r = 0.3f32, g = 0.5f32, b = 1.0f32}
+
+    /// プレイヤーや床タイルが透けて見える程度の不透明度 (= ほぼ不透明)。
+    def alpha(): Float32 = 1.0f32
+
+    /// MapScene + PlayerScene が登録済みのシーンに MoveRange ノードと各セルの Sprite2D
+    /// 子を追加する。**選択中プレイヤー** の位置を origin に `Board.reachableForUnit`
+    /// で範囲を求める。未選択 (PlayerCursor / EnemyTurn 等) なら何も描画しない。
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
+        match SelectedPlayer.State.get()#id {
+            case None     => scene
+            case Some(id) =>
+                match PlayerScene.get(id, scene) {
+                    case None    => scene
+                    case Some(_) => buildFor(id, scene)
+                }
+        }
+
+    /// 指定 id を起点に MoveRange を組み立てる本体 (既存ノードは事前に取り除いてから呼ぶ)。
+    /// **通行不可**: 壁 / 敵駒。
+    /// **味方駒は通過可能** (1 マスとしてカウント)。FE 流の「味方は素通り、ただし停止はできない」
+    /// 表現。`Board.reachableForUnit` で到達範囲を出し、`stoppableForUnit` で味方マス
+    /// (自分 + 他味方) を除いたものを青マスとして描画する。AutoMove も同じプリミティブで
+    /// 動くため、ここで仕様が一致していれば自動で挙動が揃う。
+    def buildFor(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let board     = BoardSnapshot.fromScene(scene);
+        let origin    = PlayerScene.getGridPos(id, scene);
+        let steps     = PlayerScene.getMoveTiles(id, scene);
+        let cells     = Board.reachableForUnit(board, origin, steps);
+        let drawCells = Board.stoppableForUnit(board, origin, steps);
+        scene
+            |> RangeOverlay.attachParent(name(), NodeTag.MoveRange({reachable = cells}))
+            |> RangeOverlay.renderTiles(name(), drawCells, color(), alpha())
+
+    /// 既存の MoveRange ノードを丸ごと取り除いて `add` で組み直す。
+    pub def refresh(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
+        Scene.removeAt(moveRangePath(), scene) |> add
+
+    /// 表示中の MoveRange ノードがあれば取り除く。なければ何もしない。
+    /// PlayerAttack フェーズ移行時など、青マスを一時的に消したいときに使う
+    /// (`EnemyRangeScene.clear` と対称)。
+    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.removeAt(moveRangePath(), scene)
+
+    /// 指定セルが「現在のターンで踏める」範囲内にあるか。
+    /// `MoveRange` ノードが未登録なら false を返す (ゲーム初期化前のフォールバック)。
+    pub def isInRange(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Bool =
+        match Scene.getState(moveRangePath(), scene) {
+            case Some(NodeTag.MoveRange(data)) =>
+                List.exists(c -> c#x == cell#x and c#y == cell#y, data#reachable)
+            case _ => false
+        }
+
+    /// 現在範囲のセル一覧 (テスト・デバッグ用 + MoveAttackRangeScene が読む)。
+    /// 未登録なら空リスト。
+    pub def reachable(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
+        match Scene.getState(moveRangePath(), scene) {
+            case Some(NodeTag.MoveRange(data)) => data#reachable
+            case _ => Nil
+        }
+}
+
+/// MoveAttackRangeScene — 「移動先のいずれかから攻撃が届くセル」を赤マスで可視化する
+///
+/// 目的: 移動先を決める前に「ここに動けばあそこの敵を攻撃できる」「ここに動くと
+/// この敵の射程に入る」が一目で分かるようにする。Fire Emblem 風の脅威範囲表示。
+///
+/// 描画ルール:
+///   - 表示中: `PlayerMoving` / `ActionSelect` フェーズ
+///   - セル集合 = ⋃ {reachable のセル c から武器射程 (`min..max` マンハッタン) で
+///                 届くセル} − reachable 自身
+///     (= 「移動マスとは別のところ」だけ赤で出す。重なるなら青を優先)
+///   - 武器なし / 射程ゼロなら何も描かない
+///   - 地形フィルタはかけない (壁・床問わず射程を一貫表示)
+///
+/// **ライフサイクル**:
+///   - `MoveRangeScene.refresh` の直後に `MoveAttackRangeScene.refresh` を呼ぶ
+///     (reachable に依存するので、青マスを組み立てた後でないとデータが取れない)
+///   - `MoveRangeScene.clear` の直後に `MoveAttackRangeScene.clear` を呼ぶ
+mod MoveAttackRangeScene {
+
+    /// 親 Marker2D に紐づくデータ。reachable と重複しない「赤マスだけ」のセル一覧。
+    pub type alias Data = {
+        cells = List[{x = Int32, y = Int32}]
+    }
+
+    def name(): String = "MoveAttackRange"
+    pub def rangePath(): NodePath = name() :: Nil
+
+    /// PlayerAttackRangeScene / EnemyRangeScene と同じ赤系 modulate。
+    def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
+
+    /// alpha は青マス (0.5–1.0) より少し透けさせて区別する。
+    def alpha(): Float32 = 0.5f32
+
+    /// 既存ノードを取り除いて再構築する。`MoveRangeScene` の青マスが既に build 済みの
+    /// 前提で、その reachable を読み取って差集合を作る。
+    pub def refresh(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ SelectedPlayer.State =
+        let cleared = clear(scene);
+        match SelectedPlayer.State.get()#id {
+            case None     => cleared
+            case Some(id) =>
+                match PlayerScene.get(id, cleared) {
+                    case None         => cleared
+                    case Some(player) =>
+                        match List.head(player#weapons) {
+                            case None    => cleared
+                            case Some(w) =>
+                                let reachable = MoveRangeScene.reachable(cleared);
+                                let cells = computeThreatCells(reachable, w#range);
+                                if (List.isEmpty(cells)) cleared
+                                else
+                                    cleared
+                                        |> RangeOverlay.attachParent(name(), NodeTag.MoveAttackRange({cells = cells}))
+                                        |> RangeOverlay.renderTiles(name(), cells, color(), alpha())
+                        }
+                }
+        }
+
+    /// 表示中の MoveAttackRange ノードがあれば取り除く。
+    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.removeAt(rangePath(), scene)
+
+    /// `reachable` の各セルから武器射程 (`min..max` マンハッタン) で届くセル集合を作り、
+    /// reachable 自身は除外して返す。同一セルは 1 つにまとめる。
+    pub def computeThreatCells(reachable: List[{x = Int32, y = Int32}],
+                                range: UnitCatalog.WeaponRange):
+                               List[{x = Int32, y = Int32}] =
+        let lo = Int32.max(1, range#min);
+        let hi = range#max;
+        if (hi < lo or List.isEmpty(reachable)) Nil
+        else
+            let offsets = manhattanOffsets(lo, hi);
+            let raw = List.flatMap(c ->
+                List.map(o ->
+                    ({x = c#x + o#x, y = c#y + o#y}: {x = Int32, y = Int32}),
+                    offsets),
+                reachable);
+            // reachable 自身を除外しつつ、最初に出現したものだけ残す (順序保持の dedup)
+            let init: {seen = List[{x = Int32, y = Int32}], out = List[{x = Int32, y = Int32}]} =
+                {seen = reachable, out = Nil};
+            let folded = List.foldLeft(acc -> cell -> {
+                if (List.exists(s -> s#x == cell#x and s#y == cell#y, acc#seen)) acc
+                else {seen = cell :: acc#seen, out = cell :: acc#out}
+            }, init, raw);
+            List.reverse(folded#out)
+
+    /// `lo..hi` のマンハッタン距離内にあるオフセット (dx, dy) を全列挙する。
+    def manhattanOffsets(lo: Int32, hi: Int32): List[{x = Int32, y = Int32}] =
+        let coords = List.range(-hi, hi + 1);
+        List.flatMap(dx ->
+            List.foldRight(dy -> acc -> {
+                let d = Int32.abs(dx) + Int32.abs(dy);
+                if (d >= lo and d <= hi)
+                    ({x = dx, y = dy}: {x = Int32, y = Int32}) :: acc
+                else acc
+            }, Nil, coords),
+            coords)
+
+    /// テスト・デバッグ用: 現在の脅威セル一覧。未登録なら空リスト。
+    pub def cells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
+        match Scene.getState(rangePath(), scene) {
+            case Some(NodeTag.MoveAttackRange(data)) => data#cells
+            case _ => Nil
+        }
+}
+
+/// EnemyRangeScene — カーソルが敵に乗っているとき、その敵の移動範囲を赤色で可視化する
+///
+/// `MoveRangeScene` のミラー実装で、起点が「Player」ではなく「ホバー中の敵」になり、
+/// 色が「青」ではなく「赤」になる。FE 風の「敵情報を見ながらターン計画を立てる」フローを
+/// 提供するための情報表示専用シーン。
+///
+/// **ライフサイクル**:
+///   - Cursor がフレーム間で乗っている敵 id が変わったとき、`refreshFor(id, scene)` で
+///     既存ノードを破棄して新規構築する
+///   - Cursor が敵以外に移ったとき、`clear(scene)` でノードを丸ごと取り除く
+///   - 敵ターン開始時 / フェーズ切替で見せたくない場面でも `clear` を呼んで消す
+///
+/// `MoveRangeScene` のような「常設」運用は取らず、必要なときだけ scene に存在する。
+mod EnemyRangeScene {
+
+    /// 親 Marker2D に紐づくデータ。
+    /// `enemyId` は今表示している対象敵。`reachable` は BFS で到達可能と判定された
+    /// セル一覧 (origin = 敵セルを含む)。
+    pub type alias Data = {
+        enemyId   = Int32,
+        reachable = List[{x = Int32, y = Int32}]
+    }
+
+    def name(): String = "EnemyRange"
+    pub def enemyRangePath(): NodePath = name() :: Nil
+
+    /// 赤系 modulate。MoveRange の青と対比する。
+    def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
+
+    /// 情報表示なので少し透かして駒や床を見やすくする。
+    def alpha(): Float32 = 0.7f32
+
+    /// 既存の EnemyRange ノードがあれば取り除き、`enemyId` の敵に対応する範囲で
+    /// 構築し直す。敵が居なければ何もしない (`clear` 相当の保険)。
+    /// FE 流: 壁のみ通れない。味方マスや他敵マスも「想定移動範囲」として表示する
+    /// (プレイヤーは「もし誰も居なければここまで来られる」を読む)。
+    pub def refreshFor(enemyId: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        match EnemyScene.get(enemyId, scene) {
+            case None       => clear(scene)
+            case Some(data) =>
+                let cleared = clear(scene);
+                let layer   = MapScene.getMapLayer(cleared);
+                let cells = Board.reachableCells(
+                    c -> TileMapLayer.isFloor(c, layer),
+                    data#gridPos,
+                    data#moveTiles);
+                cleared
+                    |> RangeOverlay.attachParent(name(),
+                        NodeTag.EnemyRange({enemyId = enemyId, reachable = cells}))
+                    |> RangeOverlay.renderTiles(name(), cells, color(), alpha())
+        }
+
+    /// 表示中の EnemyRange ノードがあれば取り除く。なければ何もしない。
+    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.removeAt(enemyRangePath(), scene)
+
+    /// 現在表示している敵 id (出ていなければ None)。
+    pub def currentEnemyId(scene: Scene[NodeTag]): Option[Int32] =
+        match Scene.getState(enemyRangePath(), scene) {
+            case Some(NodeTag.EnemyRange(data)) => Some(data#enemyId)
+            case _                              => None
+        }
+
+    /// 現在の reachable セル一覧 (テスト・デバッグ用)。未登録なら空リスト。
+    pub def reachable(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
+        match Scene.getState(enemyRangePath(), scene) {
+            case Some(NodeTag.EnemyRange(data)) => data#reachable
+            case _                              => Nil
+        }
+}
+
+/// PlayerAttackRangeScene — 攻撃フェーズ中に味方の射程を赤色で可視化する
+///
+/// `EnemyRangeScene` のミラー実装で、起点が「ホバー中の敵」ではなく「味方」になる。
+/// 射程は装備中武器の `WeaponResource#range` から取る。range = 1 なら隣接 4 マス、
+/// range = 2 なら十字に 2 マスずつ伸びる (くんれんゆみ等の間接攻撃)。
+///
+/// **ライフサイクル**:
+///   - `PlayerMoving + Z` で `PlayerAttack` フェーズに入るとき `show(scene)` を呼んで
+///     味方の現在位置を origin に赤マスを描く
+///   - `PlayerAttack` を抜ける (敵ターンへ移行) ときは `clear(scene)` で取り除く
+mod PlayerAttackRangeScene {
+
+    /// 親 Marker2D に紐づくデータ。
+    /// `cells` は赤く描画されている射程内セル一覧 (origin = 味方セルは含まない)。
+    /// `isInRange` の判定に使う (カーソル clamp の述語)。
+    pub type alias Data = {
+        cells = List[{x = Int32, y = Int32}]
+    }
+
+    def name(): String = "PlayerAttackRange"
+    pub def attackRangePath(): NodePath = name() :: Nil
+
+    /// 赤系 modulate。EnemyRangeScene / MoveAttackRangeScene と同色。
+    def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
+
+    /// EnemyRangeScene と同じく少し透かして駒や床を見やすくする。
+    def alpha(): Float32 = 0.7f32
+
+    /// 既存の PlayerAttackRange ノードがあれば取り除き、**選択中プレイヤー** の現在位置
+    /// origin に対して装備中武器の `range` で赤マスを敷き直す。
+    /// 未選択時は cleared を返す (赤マス表示なし)。
+    /// 選択中プレイヤーの武器が壊れている (`weapons = Nil`) 場合は cells を空にして
+    /// 親ノードだけ追加する。これにより PlayerAttack フェーズに入ってもカーソルが
+    /// 敵に乗らず、Z 押下で AttackHit が発火しない (X でスキップして抜ける)。
+    pub def show(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ SelectedPlayer.State =
+        let cleared = clear(scene);
+        match SelectedPlayer.State.get()#id {
+            case None     => cleared
+            case Some(id) =>
+                match PlayerScene.get(id, cleared) {
+                    case None    => cleared
+                    case Some(d) =>
+                        let cells = match List.head(d#weapons) {
+                            case None    => Nil
+                            case Some(w) =>
+                                let origin = d#gridPos;
+                                let layer  = MapScene.getMapLayer(cleared);
+                                computeAttackCells(origin, w#range, layer)
+                        };
+                        cleared
+                            |> RangeOverlay.attachParent(name(),
+                                NodeTag.PlayerAttackRange({cells = cells}))
+                            |> RangeOverlay.renderTiles(name(), cells, color(), alpha())
+                }
+        }
+
+    /// 表示中の PlayerAttackRange ノードがあれば取り除く。なければ何もしない。
+    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.removeAt(attackRangePath(), scene)
+
+    /// 範囲計算の純粋関数。
+    /// origin から **マンハッタン距離** `range#min..range#max` (inclusive) にある全セルを
+    /// 列挙する (= 菱形パターン)。斜め (1,1) もマンハッタン距離 2 として含まれる。
+    /// 例:
+    ///   `{min=1, max=1}` → 隣接 4 セル (剣・槍)
+    ///   `{min=2, max=2}` → 距離 2 の 8 セル (弓: 上下左右 2 マス先 + 斜め 1 マス)
+    ///   `{min=1, max=2}` → 距離 1〜2 の 12 セル (手槍・手斧)
+    /// 地形フィルタはかけない: 壁・味方・床いずれの上にも赤マスを描いて「武器の届く範囲」
+    /// を一貫表示する (実際に攻撃できるのは敵セルだけで、その判定は TurnRules 側)。
+    /// `layer` 引数は将来の terrain-aware フィルタ用に残してある (現状 unused)。
+    pub def computeAttackCells(origin: {x = Int32, y = Int32},
+                                range: UnitCatalog.WeaponRange,
+                                _layer: TileMapLayer): List[{x = Int32, y = Int32}] =
+        let lo = Int32.max(1, range#min);
+        let hi = range#max;
+        if (hi < lo) Nil
+        else
+            let coords = List.range(-hi, hi + 1);
+            List.flatMap(dx ->
+                List.foldRight(dy -> acc -> {
+                    let d = Int32.abs(dx) + Int32.abs(dy);
+                    if (d >= lo and d <= hi) {
+                        let cell: {x = Int32, y = Int32} =
+                            {x = origin#x + dx, y = origin#y + dy};
+                        cell :: acc
+                    } else acc
+                }, Nil, coords),
+                coords)
+
+    /// 指定セルが現在の射程内 (赤マス上) にあるか。
+    /// 範囲が表示されていない (= フェーズが PlayerAttack ではない) 場合は false。
+    pub def isInRange(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Bool =
+        match Scene.getState(attackRangePath(), scene) {
+            case Some(NodeTag.PlayerAttackRange(data)) =>
+                List.exists(c -> c#x == cell#x and c#y == cell#y, data#cells)
+            case _ => false
+        }
+
+    /// 現在の射程内セル一覧 (テスト・デバッグ用)。未登録なら空リスト。
+    pub def cells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
+        match Scene.getState(attackRangePath(), scene) {
+            case Some(NodeTag.PlayerAttackRange(data)) => data#cells
+            case _ => Nil
+        }
+
+    /// 赤マス内に居る「生きている敵」の Data リストを reading order (y 昇順 → x 昇順)
+    /// で返す。`PlayerAttack` フェーズでカーソルを敵間でサイクルさせる用。
+    /// 死亡演出中 (`isDying`) と HP 0 以下の敵は除外する。
+    pub def targetsInRange(scene: Scene[NodeTag]): List[EnemyScene.Data] =
+        let inRangeCells = cells(scene);
+        EnemyScene.getAll(scene)
+            |> List.filter(d ->
+                not d#isDying
+                and d#hp > 0
+                and List.exists(c ->
+                    c#x == d#gridPos#x and c#y == d#gridPos#y,
+                    inRangeCells))
+            |> List.sortBy(d -> (d#gridPos#y, d#gridPos#x))
+}
