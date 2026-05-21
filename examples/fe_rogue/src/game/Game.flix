@@ -364,6 +364,10 @@ mod Game {
             // BoardQuery handler が読む窓口を毎フレーム最新の scene に更新する。
             Ref.put(scene, sceneRef);
             let dt = GameEngine.Game.getDeltaTime();
+            // Pacing カウンタを 1 フレーム進める (各 Scene の process が gating で参照する)。
+            // フレーム頭で進めるので「前フレーム末で hold した値を今フレームの判定で使う」
+            // 形になり、Scene に紐づかないため gameLoop 内で 1 行のままにする。
+            Pacing.State.tick(dt);
             let next = scene
                 |> GameEngine.handleInput
                 |> GameEngine.handleMenus
@@ -371,19 +375,8 @@ mod Game {
                                               gravity = Vec2.zero())
                 |> Tween.tickAll(dt)
                 |> AnimationPlayer.tickAll(dt)
-                |> GameEngine.process(delta = dt, paused = false)
-                |> commonEpilogue(dt);
+                |> GameEngine.process(delta = dt, paused = false);
             GameEngine.render(next);
             gameLoop(sceneRef, next)
         }
-
-    /// 全フェーズに共通する描画準備の尾部。Camera/DamagePopup/HPBar/Item/UnitInfoPanel/Log の
-    /// 毎フレーム更新は各 Scene の `process` redef に分散済み (Game.flix 上の
-    /// `Node[NodeTag] instance` の `process` match から dispatch される)。
-    /// ここに残るのは Pacing の薄いカウンタ tick のみ (Scene に紐づかないため)。
-    def commonEpilogue(dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ Pacing.State =
-        Pacing.State.tick(dt);
-        scene
-
 }
