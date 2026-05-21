@@ -97,6 +97,13 @@ mod ForecastPanelScene {
     /// `AttackForecast` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
     /// 攻撃モーションの完了 (`attack_lunge` finished) で `PlayerScene.onAttackLungeDone`
     /// が反撃 / kill 演出 / commit に流す。
+    ///
+    /// 遷移先は `PlayerAttack` ではなく **`PlayerAttackHold`**。`PlayerAttack` は
+    /// 「赤マスでターゲット選択中」のフェーズで Z で WeaponMenu を再オープンできてしまうため、
+    /// 攻撃モーション中もここに居ると Z 連打で `PlayerAttack → WeaponSelect → AttackForecast
+    /// → PlayerAttack ...` のループが回って `startAttack` が再起動される（連打バグ）。
+    /// `PlayerAttackHold` は `TurnRules.decide` の catch-all で全入力を `Stay` 扱いに
+    /// するため、`attack_lunge` 完了 (`onAttackLungeDone`) までキー入力をブロックできる。
     pub def confirm(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
@@ -114,7 +121,7 @@ mod ForecastPanelScene {
                                 match EnemyScene.RosterQuery.get(defenderId) {
                                     case None        => scene
                                     case Some(enemy) =>
-                                        TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
+                                        TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
                                         GameLogger.playerLog("味方${attackerId}の攻撃");
                                         PlayerScene.startAttack(attackerId, defenderId,
                                                                   enemy#gridPos, scene)
