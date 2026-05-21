@@ -157,7 +157,8 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
 instance InputEvent.InputHandler[NodeTag] {
     type Aef = {GameEngine.Game, BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, EnemyTurn.Queue,
-                 TurnPhase.State, SelectedPlayer.State}
+                 TurnPhase.State, SelectedPlayer.State,
+                 PlayerScene.PartyQuery, EnemyScene.RosterQuery}
     // WeaponSelect フェーズでは engine の MenuEvent が Enter/Escape を処理する一方、
     // FERogue のキー慣習として Z（決定）/ X（ウィンドウを閉じる）も使えるよう、
     // フェーズに応じて分岐する:
@@ -172,7 +173,9 @@ instance InputEvent.InputHandler[NodeTag] {
                                           AnimationPlayer.Scheduler,
                                           GameLogger.GameLogger,
                                           EnemyTurn.Queue, TurnPhase.State,
-                                          SelectedPlayer.State} =
+                                          SelectedPlayer.State,
+                                          PlayerScene.PartyQuery,
+                                          EnemyScene.RosterQuery} =
         let isConfirm = key == GameEngine.Key.Z
                         or key == GameEngine.Key.Space
                         or key == GameEngine.Key.Enter;
@@ -214,13 +217,16 @@ instance InputEvent.InputHandler[NodeTag] {
 instance MenuEvent.MenuHandler[NodeTag] {
     type Aef = {Tween.Scheduler, AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, EnemyTurn.Queue,
-                 TurnPhase.State, SelectedPlayer.State}
+                 TurnPhase.State, SelectedPlayer.State,
+                 PlayerScene.PartyQuery, EnemyScene.RosterQuery}
     redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
                            state: NodeTag,
                            scene: Scene[NodeTag]):
                           Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                                              GameLogger.GameLogger, EnemyTurn.Queue,
-                                             TurnPhase.State, SelectedPlayer.State} =
+                                             TurnPhase.State, SelectedPlayer.State,
+                                             PlayerScene.PartyQuery,
+                                             EnemyScene.RosterQuery} =
         match state {
             case NodeTag.WeaponMenu => checked_ecast(WeaponMenuScene.onWeaponConfirmed(entry, scene))
             case NodeTag.ActionMenu => ActionMenuScene.onActionConfirmed(entry, scene)
@@ -230,7 +236,9 @@ instance MenuEvent.MenuHandler[NodeTag] {
                            scene: Scene[NodeTag]):
                           Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                                              GameLogger.GameLogger, EnemyTurn.Queue,
-                                             TurnPhase.State, SelectedPlayer.State} =
+                                             TurnPhase.State, SelectedPlayer.State,
+                                             PlayerScene.PartyQuery,
+                                             EnemyScene.RosterQuery} =
         match state {
             case NodeTag.WeaponMenu => checked_ecast(WeaponMenuScene.onWeaponCancelled(scene))
             case NodeTag.ActionMenu => checked_ecast(ActionMenuScene.onActionCancelled(scene))
@@ -323,6 +331,18 @@ mod Game {
               with handler BoardQuery {
                   def board(k) = k(BoardSnapshot.fromScene(Ref.get(sceneRef)))
               }
+              with handler PlayerScene.PartyQuery {
+                  def get(id, k)           = k(PlayerScene.get(id, Ref.get(sceneRef)))
+                  def getAll(k)            = k(PlayerScene.getAll(Ref.get(sceneRef)))
+                  def getGridPos(id, k)    = k(PlayerScene.getGridPos(id, Ref.get(sceneRef)))
+                  def getMoveTiles(id, k)  = k(PlayerScene.getMoveTiles(id, Ref.get(sceneRef)))
+              }
+              with handler EnemyScene.RosterQuery {
+                  def get(id, k)           = k(EnemyScene.get(id, Ref.get(sceneRef)))
+                  def getAll(k)            = k(EnemyScene.getAll(Ref.get(sceneRef)))
+                  def findIdAt(coord, k)   = k(EnemyScene.findIdAt(coord, Ref.get(sceneRef)))
+                  def anyAttacking(k)      = k(EnemyScene.anyAttacking(Ref.get(sceneRef)))
+              }
               with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽
               with AnimationPlayer.withScheduler(rc)  // 名前付きアニメ + イベントドレイン
               with Pacing.withState(rc)           // 演出の溜め (hold)
@@ -343,7 +363,9 @@ mod Game {
     def gameLoop(sceneRef: Ref[Scene[NodeTag], r],
                   scene: Scene[NodeTag]):
                  Unit \ {GameEngine.Game, GameEngine.Audio,
-                         BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
+                         BoardQuery,
+                         PlayerScene.PartyQuery, EnemyScene.RosterQuery,
+                         Tween.Scheduler, AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
                          EnemyTurn.Queue, TurnPhase.State,
                          SelectedPlayer.State,

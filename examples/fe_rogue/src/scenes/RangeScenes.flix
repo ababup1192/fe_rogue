@@ -86,6 +86,9 @@ mod MoveRangeScene {
     /// MapScene + PlayerScene が登録済みのシーンに MoveRange ノードと各セルの Sprite2D
     /// 子を追加する。**選択中プレイヤー** の位置を origin に `Board.reachableForUnit`
     /// で範囲を求める。未選択 (PlayerCursor / EnemyTurn 等) なら何も描画しない。
+    /// `add` は `buildPlayingScene` の初回構築でも呼ばれる (`sceneRef` 更新前) ため、
+    /// PartyQuery effect は使わず scene 引数を直接読む。`refresh` 経由のランタイム呼び出しでも
+    /// 渡される scene は常に最新なので問題ない。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
         match SelectedPlayer.State.get()#id {
             case None     => scene
@@ -113,7 +116,8 @@ mod MoveRangeScene {
             |> RangeOverlay.renderTiles(name(), drawCells, color(), alpha())
 
     /// 既存の MoveRange ノードを丸ごと取り除いて `add` で組み直す。
-    pub def refresh(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
+    pub def refresh(scene: Scene[NodeTag]): Scene[NodeTag]
+            \ SelectedPlayer.State =
         Scene.removeAt(moveRangePath(), scene) |> add
 
     /// 表示中の MoveRange ノードがあれば取り除く。なければ何もしない。
@@ -248,8 +252,9 @@ mod EnemyRangeScene {
     /// 構築し直す。敵が居なければ何もしない (`clear` 相当の保険)。
     /// FE 流: 壁のみ通れない。味方マスや他敵マスも「想定移動範囲」として表示する
     /// (プレイヤーは「もし誰も居なければここまで来られる」を読む)。
-    pub def refreshFor(enemyId: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        match EnemyScene.get(enemyId, scene) {
+    pub def refreshFor(enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ EnemyScene.RosterQuery =
+        match EnemyScene.RosterQuery.get(enemyId) {
             case None       => clear(scene)
             case Some(data) =>
                 let cleared = clear(scene);
@@ -382,9 +387,10 @@ mod PlayerAttackRangeScene {
     /// 赤マス内に居る「生きている敵」の Data リストを reading order (y 昇順 → x 昇順)
     /// で返す。`PlayerAttack` フェーズでカーソルを敵間でサイクルさせる用。
     /// 死亡演出中 (`isDying`) と HP 0 以下の敵は除外する。
-    pub def targetsInRange(scene: Scene[NodeTag]): List[EnemyScene.Data] =
+    pub def targetsInRange(scene: Scene[NodeTag]):
+            List[EnemyScene.Data] \ EnemyScene.RosterQuery =
         let inRangeCells = cells(scene);
-        EnemyScene.getAll(scene)
+        EnemyScene.RosterQuery.getAll()
             |> List.filter(d ->
                 not d#isDying
                 and d#hp > 0

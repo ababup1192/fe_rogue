@@ -86,7 +86,8 @@ mod ActionMenuScene {
                          _path: NodePath,
                          scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
-                        \ {SelectedPlayer.State, TurnPhase.State} =
+                        \ {SelectedPlayer.State, TurnPhase.State,
+                           PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
         let withItems = if (phase != TurnPhase.Phase.ActionSelect) withVisibility
@@ -105,15 +106,16 @@ mod ActionMenuScene {
 
     /// 選択中プレイヤーの状況から「こうげき / ひろう / たいき」のうち成立するものだけ返す。
     /// 順序は固定: こうげき → ひろう → たいき (FE 流に攻撃が上、待機が末尾)。
-    def buildItems(scene: Scene[NodeTag]): List[ItemEntry] \ SelectedPlayer.State =
+    def buildItems(scene: Scene[NodeTag]): List[ItemEntry]
+            \ {SelectedPlayer.State, PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         match SelectedPlayer.State.get()#id {
             case None     => Nil
             case Some(id) =>
-                match PlayerScene.get(id, scene) {
+                match PlayerScene.PartyQuery.get(id) {
                     case None         => Nil
                     case Some(player) =>
                         let attackItem =
-                            if (canAttackFrom(player, scene))
+                            if (canAttackFrom(player))
                                 ({text     = "こうげき",
                                   disabled = false,
                                   metadata = Some(attackMeta())}: ItemEntry) :: Nil
@@ -125,7 +127,7 @@ mod ActionMenuScene {
                                   metadata = Some(pickupMeta())}: ItemEntry) :: Nil
                             else Nil;
                         let waitItem =
-                            if (canWaitOn(player, scene))
+                            if (canWaitOn(player))
                                 ({text     = "たいき",
                                   disabled = false,
                                   metadata = Some(waitMeta())}: ItemEntry) :: Nil
@@ -136,7 +138,7 @@ mod ActionMenuScene {
 
     /// 装備武器の射程内に生きている敵が居るか。
     /// 武器なし / 全員 isDying なら false。
-    def canAttackFrom(player: PlayerScene.Data, scene: Scene[NodeTag]): Bool =
+    def canAttackFrom(player: PlayerScene.Data): Bool \ EnemyScene.RosterQuery =
         match List.head(player#weapons) {
             case None    => false
             case Some(w) =>
@@ -144,17 +146,17 @@ mod ActionMenuScene {
                     not e#isDying
                     and e#hp > 0
                     and Weapon.canReach(Weapon.manhattan(player#gridPos, e#gridPos), w),
-                    EnemyScene.getAll(scene))
+                    EnemyScene.RosterQuery.getAll())
         }
 
     /// 自分の現在セルに「自分以外の味方」が居なければたいき可。
     /// 同じセルに別味方が居る (重なり) ときは false。
-    def canWaitOn(player: PlayerScene.Data, scene: Scene[NodeTag]): Bool =
+    def canWaitOn(player: PlayerScene.Data): Bool \ PlayerScene.PartyQuery =
         not List.exists(d ->
             d#id != player#id
             and d#gridPos#x == player#gridPos#x
             and d#gridPos#y == player#gridPos#y,
-            PlayerScene.getAll(scene))
+            PlayerScene.PartyQuery.getAll())
 
     /// ItemList 項目が確定された (Enter) 瞬間に呼ばれる。metadata から
     /// 「attack」/「wait」/「pickup」を分岐して、それぞれの帰結を直接適用する。
@@ -167,7 +169,8 @@ mod ActionMenuScene {
                               Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         match entry#metadata {
             case None    => scene
             case Some(m) =>
@@ -183,11 +186,12 @@ mod ActionMenuScene {
     def applyPickup(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                              PlayerScene.PartyQuery} =
         match SelectedPlayer.State.get()#id {
             case None     => PlayerScene.commitWaitedAndAdvance(scene)
             case Some(id) =>
-                match PlayerScene.get(id, scene) {
+                match PlayerScene.PartyQuery.get(id) {
                     case None         => PlayerScene.commitWaitedAndAdvance(scene)
                     case Some(player) =>
                         let (afterTake, taken) = ItemScene.takeAt(player#gridPos, scene);
@@ -222,7 +226,8 @@ mod ActionMenuScene {
                                     Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         match Scene.getEngineNode(menuPath(), scene) {
             case Some(EngineNode.ItemListWithState(list, _)) =>
                 match ItemList.getSelected(list) {

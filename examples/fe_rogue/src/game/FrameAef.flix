@@ -13,6 +13,7 @@ mod FrameAef {
     /// `ready` / `physicsProcess` 用の Aef 集合。Player.physicsProcess / Cursor.physicsProcess
     /// などが要求する集合 (BoardQuery で盤面参照、Tween でアニメ進行、TurnPhase で gating 等)。
     pub type alias T = {GameEngine.Game, BoardQuery,
+                         EnemyScene.RosterQuery,
                          Tween.Scheduler, AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
                          TurnPhase.State, SelectedPlayer.State}
@@ -22,6 +23,7 @@ mod FrameAef {
     /// `stepOnce` や `commitWaitedAndAdvance` を起動するため、Audio / EnemyTurn / GameOverRequest /
     /// Pacing が追加される。`BoardSnapshot.fromScene` は純粋関数なので `BoardQuery` 不要。
     pub type alias ProcessT = {GameEngine.Game, GameEngine.Audio,
+                                PlayerScene.PartyQuery, EnemyScene.RosterQuery,
                                 Tween.Scheduler, AnimationPlayer.Scheduler,
                                 GameLogger.GameLogger,
                                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,

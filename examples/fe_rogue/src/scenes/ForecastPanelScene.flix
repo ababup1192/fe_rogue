@@ -69,7 +69,8 @@ mod ForecastPanelScene {
                      node: EngineNode[NodeTag],
                      _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {TurnPhase.State, SelectedPlayer.State} =
+                    \ {TurnPhase.State, SelectedPlayer.State,
+                       PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         let phase = TurnPhase.State.get();
         let next = scene
             |> applyVisibility(phase)
@@ -82,10 +83,11 @@ mod ForecastPanelScene {
     /// AttackForecast フェーズのときだけ Label2D に予報テキストを書き込む。
     /// 同フェーズ中は毎フレーム呼ばれるが Label2D.setText は冪等。
     def applyText(phase: TurnPhase.Phase, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ SelectedPlayer.State =
+            Scene[NodeTag] \ {SelectedPlayer.State,
+                              PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         if (phase != TurnPhase.Phase.AttackForecast) scene
         else
-            let text = buildForecastText(scene);
+            let text = buildForecastText();
             Scene.mapEngineNode(textPath(), node -> match node {
                 case EngineNode.Label2DWithState(label, NodeTag.ForecastText) =>
                     EngineNode.Label2DWithState(Label2D.setText(text, label), NodeTag.ForecastText)
@@ -98,17 +100,18 @@ mod ForecastPanelScene {
     pub def confirm(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
-                              TurnPhase.State, SelectedPlayer.State} =
+                              TurnPhase.State, SelectedPlayer.State,
+                              PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         match SelectedPlayer.State.get()#id {
             case None             => scene
             case Some(attackerId) =>
-                match PlayerScene.get(attackerId, scene) {
+                match PlayerScene.PartyQuery.get(attackerId) {
                     case None         => scene
                     case Some(player) =>
                         match player#attackTargetId {
                             case None             => scene
                             case Some(defenderId) =>
-                                match EnemyScene.get(defenderId, scene) {
+                                match EnemyScene.RosterQuery.get(defenderId) {
                                     case None        => scene
                                     case Some(enemy) =>
                                         TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
@@ -133,17 +136,18 @@ mod ForecastPanelScene {
     /// 選択中プレイヤー / 攻撃対象敵 / 選択中武器の組から予報テキストを組み立てる。
     /// 反撃が成立する（敵が生存・隣接・武器装備中）なら敵側の予報も出す。
     /// 該当条件が揃わなければ空文字を返す（visible でないフェーズで描画されない想定）。
-    def buildForecastText(scene: Scene[NodeTag]): String \ SelectedPlayer.State =
+    def buildForecastText(): String
+            \ {SelectedPlayer.State, PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         match SelectedPlayer.State.get()#id {
             case None     => ""
             case Some(pid) =>
-                match PlayerScene.get(pid, scene) {
+                match PlayerScene.PartyQuery.get(pid) {
                     case None         => ""
                     case Some(player) =>
                         match player#attackTargetId {
                             case None         => ""
                             case Some(eid) =>
-                                match EnemyScene.get(eid, scene) {
+                                match EnemyScene.RosterQuery.get(eid) {
                                     case None        => ""
                                     case Some(enemy) =>
                                         let weaponIdx = Option.getWithDefault(0, player#selectedWeaponIdx);

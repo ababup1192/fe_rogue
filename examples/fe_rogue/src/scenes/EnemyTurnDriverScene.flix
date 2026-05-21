@@ -45,7 +45,7 @@ mod EnemyTurnDriverScene {
                         Tween.Scheduler, AnimationPlayer.Scheduler,
                         GameLogger.GameLogger, EnemyTurn.Queue,
                         TurnPhase.State, SelectedPlayer.State,
-                        Pacing.State} =
+                        Pacing.State, PlayerScene.PartyQuery} =
         let next = match TurnPhase.State.get() {
             case TurnPhase.Phase.EnemyTurn        => stepOnce(scene)
             case TurnPhase.Phase.PlayerAttackHold =>
@@ -82,7 +82,7 @@ mod EnemyTurnDriverScene {
                 Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State,
-                Pacing.State} =
+                Pacing.State, PlayerScene.PartyQuery} =
         if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
         else if (EnemyScene.anyAttacking(scene)) scene
@@ -151,7 +151,7 @@ mod EnemyTurnDriverScene {
     def endTurn(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, TurnPhase.State,
-                SelectedPlayer.State} =
+                SelectedPlayer.State, PlayerScene.PartyQuery} =
         GameLogger.endTurn();
         let reset = scene
             |> PlayerScene.clearAllWaited        // 全員アクティブに戻す

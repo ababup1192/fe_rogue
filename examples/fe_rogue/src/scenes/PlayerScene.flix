@@ -63,6 +63,27 @@ mod PlayerScene {
         moveStepsTaken     = Int32
     }
 
+    /// 味方パーティの「現フレーム状態」を Scene を介さずに読み取る effect。
+    ///
+    /// 非 driver / 非 data Scene (HUD / Camera / Menu / Overlay) は `PlayerScene` モジュールを
+    /// 直接タイプせず、この effect 経由で味方データを得る。これにより一方向の依存グラフを
+    /// 保ち、テストで handler を差し替えてスタブできる。
+    ///
+    /// 設計は `BoardQuery` (Board.flix:34) と同じ:
+    ///   - 読み取り専用、Ref を持たない
+    ///   - handler は Game.start で `Ref.get(sceneRef)` から最新 scene を読んで `PlayerScene.*`
+    ///     をそのまま呼び返す inline handler
+    ///   - 毎フレーム gameLoop が sceneRef を更新するため、各 op は最新値を返す
+    ///
+    /// driver Scene (AutoMoveScene / EnemyTurnDriverScene) と data Scene 同士の相互参照は
+    /// orchestrator として現状の直接呼び出しを許容する (本 effect は経由しない)。
+    pub eff PartyQuery {
+        def get(id: Int32): Option[Data]
+        def getAll(): List[Data]
+        def getGridPos(id: Int32): {x = Int32, y = Int32}
+        def getMoveTiles(id: Int32): Int32
+    }
+
     /// スポーン時の中間表現。`add` で配置するセルの id/gridPos に加え、
     /// どのユニット定義（UnitResource）でセットアップするかも持つ。
     /// 初期 spawn のスナップショット（ゲームオーバー時の復元用）にも使う。
@@ -259,7 +280,8 @@ mod PlayerScene {
     /// overlay / cursor の片付けは `PhaseTransitions.enterPlayerCursor` が担当。
     pub def cancelSelection(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State} =
+                              TurnPhase.State, SelectedPlayer.State,
+                              PartyQuery} =
         let selection = SelectedPlayer.State.get();
         let restored = match (selection#id, selection#origin) {
             case (Some(id), Some(origin)) => snapTo(id, origin, scene)
@@ -272,7 +294,8 @@ mod PlayerScene {
     /// overlay / cursor 整理は `PhaseTransitions.enterPlayerAttack` が担当。
     pub def enterAttackPhase(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State} =
+                              TurnPhase.State, SelectedPlayer.State,
+                              PartyQuery, EnemyScene.RosterQuery} =
         PhaseTransitions.enterPlayerAttack(scene)
 
     /// 各 Player ノードの毎フレーム process。AnimationPlayer から自分宛 (`playerPath(id)`)
@@ -288,7 +311,7 @@ mod PlayerScene {
                         GameEngine.Audio, GameEngine.Game,
                         GameLogger.GameLogger,
                         EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State, Pacing.State} =
+                        SelectedPlayer.State, Pacing.State, PartyQuery} =
         match idFromPath(path) {
             case None           => (node, scene)
             case Some(playerId) =>
@@ -649,7 +672,7 @@ mod PlayerScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State} =
+                              SelectedPlayer.State, PartyQuery} =
         let withWaited = match SelectedPlayer.State.get()#id {
             case Some(id) => setWaited(id, scene)
             case None     => scene   // 防御的 (選択なしで Attack に入ることは想定外)
@@ -676,7 +699,7 @@ mod PlayerScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State} =
+                              SelectedPlayer.State, Pacing.State, PartyQuery} =
         match get(playerId, scene) {
             case None         => scene
             case Some(player) =>

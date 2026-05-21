@@ -25,7 +25,8 @@ mod PhaseTransitions {
     /// 動作: 全 player overlay を clear → カーソルを表示してプレイヤーにスナップ。
     pub def enterPlayerCursor(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State} =
+                              TurnPhase.State, SelectedPlayer.State,
+                              PlayerScene.PartyQuery} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         scene
             |> MoveRangeScene.clear
@@ -53,7 +54,8 @@ mod PhaseTransitions {
     ///       赤マス内の最初の敵にスナップ (敵が居なければ自分位置)。
     pub def enterPlayerAttack(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State} =
+                              TurnPhase.State, SelectedPlayer.State,
+                              PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
         scene
             |> MoveRangeScene.clear

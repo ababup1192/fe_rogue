@@ -77,7 +77,8 @@ mod CameraScene {
                      _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, EnemyTurn.Queue,
-                        TurnPhase.State, SelectedPlayer.State} =
+                        TurnPhase.State, SelectedPlayer.State,
+                        PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         let phase = TurnPhase.State.get();
         let selected = SelectedPlayer.State.get()#id;
         let target = computeTarget(phase, selected, scene);
@@ -96,8 +97,9 @@ mod CameraScene {
     /// EnemyTurn は `enemyTurnTarget` で「alerted な敵の動きを映す」分岐に入る。
     def computeTarget(phase: TurnPhase.Phase,
                        selected: Option[Int32],
-                       scene: Scene[NodeTag]): Vec2.Vec2 \ EnemyTurn.Queue =
-        let focusId = focusIdOf(selected, scene);
+                       scene: Scene[NodeTag]): Vec2.Vec2
+            \ {EnemyTurn.Queue, PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+        let focusId = focusIdOf(selected);
         let focusPos = focusedPlayerWorldPos(focusId, scene);
         match phase {
             case TurnPhase.Phase.PlayerCursor     => cursorWorldPos(scene)
@@ -118,8 +120,8 @@ mod CameraScene {
     /// その敵が `alerted` なら追従、非 alerted (Skip フェーズ) なら fallback (プレイヤー位置)。
     /// 「敵に発見されている状態では敵の動きが見える」ようにするためのロジック。
     def enemyTurnTarget(fallback: Vec2.Vec2, scene: Scene[NodeTag]):
-            Vec2.Vec2 \ EnemyTurn.Queue =
-        let activeId = match attackingEnemyId(scene) {
+            Vec2.Vec2 \ {EnemyTurn.Queue, EnemyScene.RosterQuery} =
+        let activeId = match attackingEnemyId() {
             case Some(id) => Some(id)
             case None     => match EnemyTurn.Queue.peekFront() {
                 case Some(step) => Some(step#id)
@@ -129,7 +131,7 @@ mod CameraScene {
         match activeId {
             case None     => fallback
             case Some(id) =>
-                match EnemyScene.get(id, scene) {
+                match EnemyScene.RosterQuery.get(id) {
                     case Some(d) =>
                         if (d#alerted)
                             Scene.globalPositionAt(EnemyScene.enemyPath(id), scene)
@@ -140,8 +142,8 @@ mod CameraScene {
 
     /// attack_lunge 中の敵 id を 1 つ返す。`stepEnemyTurn` が attacking 中は他の step を
     /// 進めない設計なので、複数 attacking 状態は通常起きない（防御的に head を取る）。
-    def attackingEnemyId(scene: Scene[NodeTag]): Option[Int32] =
-        EnemyScene.getAll(scene)
+    def attackingEnemyId(): Option[Int32] \ EnemyScene.RosterQuery =
+        EnemyScene.RosterQuery.getAll()
             |> List.filterMap(e ->
                 if (Option.nonEmpty(e#attackTargetId)) Some(e#id) else None)
             |> List.head
@@ -169,11 +171,11 @@ mod CameraScene {
 
     /// 「いまカメラが向くべき」プレイヤー id を選ぶ。
     /// 選択中があればそれ、無ければパーティ先頭（id=0、それも無ければ 0 fallback）。
-    def focusIdOf(selected: Option[Int32], scene: Scene[NodeTag]): Int32 =
+    def focusIdOf(selected: Option[Int32]): Int32 \ PlayerScene.PartyQuery =
         match selected {
             case Some(id) => id
             case None     =>
-                match List.head(PlayerScene.getAll(scene)) {
+                match List.head(PlayerScene.PartyQuery.getAll()) {
                     case Some(d) => d#id
                     case None    => 0
                 }
@@ -208,11 +210,11 @@ mod CameraScene {
     /// AutoMove 中のカメラ target を「いま動いている味方」に合わせる。
     /// AutoMoveScene の pickAndStep と同じ規則で「アクティブかつ旗に最も近い味方」を選び、
     /// その味方のワールド座標を返す。アクティブが居なければ旗にフォールバック。
-    def autoMoveTarget(scene: Scene[NodeTag]): Vec2.Vec2 =
+    def autoMoveTarget(scene: Scene[NodeTag]): Vec2.Vec2 \ PlayerScene.PartyQuery =
         match FlagScene.getTargetPos(scene) {
             case None       => flagWorldPos(scene)
             case Some(flag) =>
-                let active = PlayerScene.getAll(scene)
+                let active = PlayerScene.PartyQuery.getAll()
                               |> List.filter(d -> not d#waited);
                 let distTo = d -> Weapon.manhattan(d#gridPos, flag);
                 match List.minimumBy((a, b) -> Order.compare(distTo(a), distTo(b)),

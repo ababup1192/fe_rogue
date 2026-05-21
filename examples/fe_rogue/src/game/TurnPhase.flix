@@ -267,7 +267,8 @@ mod TurnInputBridge {
     pub def handle(input: TurnRules.Input, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                              PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         let context = buildContext(input, scene);
         apply(TurnRules.decide(context), scene)
 
@@ -283,15 +284,16 @@ mod TurnInputBridge {
     /// `decide` を呼ぶ前段だけ受け持つ。`handle` 専用の internal builder なので private。
     def buildContext(input: TurnRules.Input, scene: Scene[NodeTag]):
             TurnRules.Context \ {BoardQuery, Tween.Scheduler,
-                                  TurnPhase.State, SelectedPlayer.State} =
+                                  TurnPhase.State, SelectedPlayer.State,
+                                  PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         let selected = SelectedPlayer.State.get()#id;
         let busy = match selected {
             case Some(id) => Tween.Scheduler.isActive(PlayerScene.playerPath(id))
             case None     => false
         };
-        let waitedIds = PlayerScene.getAll(scene)
+        let waitedIds = PlayerScene.PartyQuery.getAll()
             |> List.filterMap(d -> if (d#waited) Some(d#id) else None);
-        let dyingIds = EnemyScene.getAll(scene)
+        let dyingIds = EnemyScene.RosterQuery.getAll()
             |> List.filterMap(e -> if (e#isDying) Some(e#id) else None);
         {
             phase           = TurnPhase.State.get(),
@@ -310,7 +312,8 @@ mod TurnInputBridge {
                scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                              PlayerScene.PartyQuery} =
         match transition {
             case TurnRules.Transition.Stay                              => scene
             case TurnRules.Transition.CursorSelectPlayer(playerId)      =>

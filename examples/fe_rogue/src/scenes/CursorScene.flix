@@ -115,7 +115,8 @@ mod CursorScene {
 
     /// MapScene + PlayerScene 登録済みの scene にカーソルを追加する。
     /// 初期位置はパーティ先頭プレイヤー（id=0）と同じセル。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+    pub def add(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let initial = firstPlayerPos(scene);
         let pos = MapScene.cellCenter(initial);
         let data: Data = {
@@ -136,6 +137,8 @@ mod CursorScene {
             })
 
     /// パーティ先頭プレイヤー（id=0）の grid 位置。`add` 初期化用。
+    /// `buildPlayingScene` で `sceneRef` 更新前に呼ばれるため、PartyQuery effect 経由ではなく
+    /// pipe で渡される scene を直接読む (PartyQuery handler は空の sceneRef を返す)。
     def firstPlayerPos(scene: Scene[NodeTag]): {x = Int32, y = Int32} =
         match PlayerScene.get(0, scene) {
             case Some(d) => d#gridPos
@@ -161,7 +164,8 @@ mod CursorScene {
                            (EngineNode[NodeTag], Scene[NodeTag])
                            \ {GameEngine.Game, BoardQuery,
                                Tween.Scheduler, AnimationPlayer.Scheduler,
-                               GameLogger.GameLogger} =
+                               GameLogger.GameLogger,
+                               EnemyScene.RosterQuery} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
                 if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
@@ -246,7 +250,7 @@ mod CursorScene {
     /// `mapCursor` で scene 経由に書いても上書きされてしまう）。
     def handleHoverChange(data: Data, board: Board,
                            scene: Scene[NodeTag]):
-            (Data, Scene[NodeTag]) \ GameLogger.GameLogger =
+            (Data, Scene[NodeTag]) \ {GameLogger.GameLogger, EnemyScene.RosterQuery} =
         let enemyId = enemyIdAt(data#gridPos, board);
         if (enemyId == data#lastHoveredEnemyId) (data, scene)
         else
@@ -299,7 +303,8 @@ mod CursorScene {
                                   scene: Scene[NodeTag]):
                                  (EngineNode[NodeTag], Scene[NodeTag])
                                  \ {GameEngine.Game,
-                                     Tween.Scheduler, AnimationPlayer.Scheduler} =
+                                     Tween.Scheduler, AnimationPlayer.Scheduler,
+                                     EnemyScene.RosterQuery} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
                 if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
@@ -333,7 +338,8 @@ mod CursorScene {
                        marker: Marker2D, data: Data,
                        scene: Scene[NodeTag]):
                       (EngineNode[NodeTag], Scene[NodeTag])
-                      \ {Tween.Scheduler, AnimationPlayer.Scheduler} =
+                      \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                         EnemyScene.RosterQuery} =
         let targets = PlayerAttackRangeScene.targetsInRange(scene);
         match targets {
             case Nil =>
@@ -404,8 +410,8 @@ mod CursorScene {
     /// 「次にカーソル選択フェーズに戻ったとき味方の上から始まる」状態を作る。
     pub def snapToPlayer(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              SelectedPlayer.State} =
-        let target = snapTargetPos(scene);
+                              SelectedPlayer.State, PlayerScene.PartyQuery} =
+        let target = snapTargetPos();
         snapToCell(target, scene)
 
     /// 任意のグリッドセルへ瞬時にカーソルを移動させる。Tween / snag アニメを止めて
@@ -429,7 +435,8 @@ mod CursorScene {
     /// `snapToPlayer` 単独では「カーソルが届かない場所に居る」状態になるのを防ぐ。
     pub def snapToFirstTargetOrPlayer(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              SelectedPlayer.State} =
+                              SelectedPlayer.State, PlayerScene.PartyQuery,
+                              EnemyScene.RosterQuery} =
         match List.head(PlayerAttackRangeScene.targetsInRange(scene)) {
             case Some(target) => snapToCell(target#gridPos, scene)
             case None         => snapToPlayer(scene)
@@ -439,24 +446,25 @@ mod CursorScene {
     ///   1. 選択中プレイヤーがあればそれ
     ///   2. なければアクティブな最初のプレイヤー
     ///   3. それも無ければ id=0 (waited 含む)
-    def snapTargetPos(scene: Scene[NodeTag]): {x = Int32, y = Int32} \ SelectedPlayer.State =
+    def snapTargetPos(): {x = Int32, y = Int32}
+            \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
         match SelectedPlayer.State.get()#id {
             case Some(id) =>
-                match PlayerScene.get(id, scene) {
+                match PlayerScene.PartyQuery.get(id) {
                     case Some(d) => d#gridPos
-                    case None    => fallbackPos(scene)
+                    case None    => fallbackPos()
                 }
-            case None => fallbackPos(scene)
+            case None => fallbackPos()
         }
 
     /// 選択無し時の fallback: 最初のアクティブ、または id=0。
-    def fallbackPos(scene: Scene[NodeTag]): {x = Int32, y = Int32} =
-        let active = PlayerScene.getAll(scene)
+    def fallbackPos(): {x = Int32, y = Int32} \ PlayerScene.PartyQuery =
+        let active = PlayerScene.PartyQuery.getAll()
             |> List.filter(d -> not d#waited);
         match List.head(active) {
             case Some(d) => d#gridPos
             case None    =>
-                match PlayerScene.get(0, scene) {
+                match PlayerScene.PartyQuery.get(0) {
                     case Some(d) => d#gridPos
                     case None    => {x = 0, y = 0}
                 }

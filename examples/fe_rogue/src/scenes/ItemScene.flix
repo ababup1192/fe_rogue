@@ -91,7 +91,9 @@ mod ItemScene {
             let layer       = MapScene.getMapLayer(scene);
             let placements  = MapScene.getPlacements(scene);
             let roomCount   = MapScene.getRoomCount(scene);
-            // 既存のユニットセルを taken に入れて避ける
+            // 既存のユニットセルを taken に入れて避ける。
+            // 構築時 (buildPlayingScene) は sceneRef が更新前なので PartyQuery/RosterQuery では
+            // なく scene 引数を直接読む。
             let occupied =
                 List.append(
                     PlayerScene.getAll(scene) |> List.map(d -> d#gridPos),

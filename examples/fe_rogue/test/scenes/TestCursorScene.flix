@@ -109,6 +109,18 @@ mod TestCursorScene {
             def put(_, k) = k()
         }
 
+    /// PlayerScene.PartyQuery のスタブ handler。
+    /// テスト scene に置いた player を直接 PlayerScene.* で読みに行く。
+    /// (実装は Game.start の handler と同じが、`sceneRef` の代わりにクロージャに閉じ込めた scene を読む)
+    def withPartyQuery(scene: Scene[NodeTag], thunk: Unit -> a \ ef):
+            a \ (ef - PlayerScene.PartyQuery) =
+        run { thunk() } with handler PlayerScene.PartyQuery {
+            def get(id, k)          = k(PlayerScene.get(id, scene))
+            def getAll(k)           = k(PlayerScene.getAll(scene))
+            def getGridPos(id, k)   = k(PlayerScene.getGridPos(id, scene))
+            def getMoveTiles(id, k) = k(PlayerScene.getMoveTiles(id, scene))
+        }
+
     /// `add` 後の (gridPos, lastHoveredEnemyId) を 1 タプルにまとめて取り出す
     def cursorState(scene: Scene[NodeTag]): (Int32, Int32, Option[Int32]) =
         let d = CursorScene.getCursorData(scene);
@@ -146,13 +158,15 @@ mod TestCursorScene {
     @Test
     def testSnapToPlayerResetsCursorAndHover(): Unit \ Assert =
         let player: {x = Int32, y = Int32} = {x = 4, y = 4};
+        let initial = sceneWithPlayer(player);
         let result = withNoSelection(() -> withNoopTween(() -> withNoopAnim(() ->
-            let scene = cursorAddPure(sceneWithPlayer(player));
-            // カーソルを (10, 10) に移し、ホバー履歴も Some(99) に偽装
-            let drifted = scene |> CursorScene.mapCursor((m, d) ->
-                (m, {gridPos = ({x = 10, y = 10}: {x = Int32, y = Int32}),
-                     lastHoveredEnemyId = Some(99) | d}));
-            let snapped = CursorScene.snapToPlayer(drifted);
-            cursorState(snapped))));
+            withPartyQuery(initial, () ->
+                let scene = cursorAddPure(initial);
+                // カーソルを (10, 10) に移し、ホバー履歴も Some(99) に偽装
+                let drifted = scene |> CursorScene.mapCursor((m, d) ->
+                    (m, {gridPos = ({x = 10, y = 10}: {x = Int32, y = Int32}),
+                         lastHoveredEnemyId = Some(99) | d}));
+                let snapped = CursorScene.snapToPlayer(drifted);
+                cursorState(snapped)))));
         Assert.assertEq(expected = (4, 4, (None: Option[Int32])), result)
 }

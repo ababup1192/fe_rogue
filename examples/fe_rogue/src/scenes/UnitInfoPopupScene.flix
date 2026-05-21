@@ -98,7 +98,9 @@ mod UnitInfoPopupScene {
 
     /// Z 押下時に呼ぶ。表示中なら viewMode を Status ↔ Items で flip して再描画する。
     /// 非表示なら何もしない。
-    pub def toggleView(scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
+    pub def toggleView(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameEngine.Game,
+                              EnemyScene.RosterQuery, PlayerScene.PartyQuery} =
         match getState(scene) {
             case None    => scene
             case Some(s) =>
@@ -126,7 +128,8 @@ mod UnitInfoPopupScene {
                      node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {GameEngine.Game, TurnPhase.State} =
+                    \ {GameEngine.Game, TurnPhase.State,
+                       EnemyScene.RosterQuery, PlayerScene.PartyQuery} =
         let phase = TurnPhase.State.get();
         let cursorActive = phase == TurnPhase.Phase.PlayerCursor
                         or phase == TurnPhase.Phase.PlayerAttack;
@@ -135,7 +138,7 @@ mod UnitInfoPopupScene {
             else hide(scene)
         } else {
             let cursorPos = CursorScene.getGridPos(scene);
-            let unitIdent = lookupUnitAt(cursorPos, scene);
+            let unitIdent = lookupUnitAt(cursorPos);
             let prevIdent = getShownUnit(scene);
             if (unitIdent == prevIdent) scene
             else match unitIdent {
@@ -182,12 +185,13 @@ mod UnitInfoPopupScene {
     // ─── ユニット参照 ─────────────────────────────────────────
 
     /// カーソル位置のユニット種別と id（敵優先）。空マスなら None。
-    def lookupUnitAt(coord: {x = Int32, y = Int32},
-                      scene: Scene[NodeTag]): Option[(String, Int32)] =
-        match EnemyScene.findIdAt(coord, scene) {
+    def lookupUnitAt(coord: {x = Int32, y = Int32}):
+            Option[(String, Int32)]
+            \ {EnemyScene.RosterQuery, PlayerScene.PartyQuery} =
+        match EnemyScene.RosterQuery.findIdAt(coord) {
             case Some(id) => Some(("enemy", id))
             case None     =>
-                PlayerScene.getAll(scene)
+                PlayerScene.PartyQuery.getAll()
                     |> List.findMap(d ->
                         if (d#gridPos#x == coord#x and d#gridPos#y == coord#y)
                             Some(("player", d#id))
@@ -217,13 +221,15 @@ mod UnitInfoPopupScene {
 
     /// kind / id からそのユニットを引いて現在の viewMode に従って描画する。
     def renderForKind(kind: String, id: Int32,
-                       scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
+                       scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameEngine.Game,
+                              EnemyScene.RosterQuery, PlayerScene.PartyQuery} =
         if (kind == "enemy") renderEnemy(id, scene)
         else renderPlayer(id, scene)
 
     def renderEnemy(id: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameEngine.Game =
-        match EnemyScene.get(id, scene) {
+            Scene[NodeTag] \ {GameEngine.Game, EnemyScene.RosterQuery} =
+        match EnemyScene.RosterQuery.get(id) {
             case None    => hide(scene)
             case Some(d) =>
                 let weapons = Option.toList(d#weapon);
@@ -231,8 +237,8 @@ mod UnitInfoPopupScene {
         }
 
     def renderPlayer(id: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameEngine.Game =
-        match PlayerScene.get(id, scene) {
+            Scene[NodeTag] \ {GameEngine.Game, PlayerScene.PartyQuery} =
+        match PlayerScene.PartyQuery.get(id) {
             case None    => hide(scene)
             case Some(d) =>
                 renderPanel(d#resource, d#hp, d#weapons, scene)

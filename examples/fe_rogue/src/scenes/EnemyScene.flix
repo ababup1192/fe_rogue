@@ -59,6 +59,18 @@ mod EnemyScene {
         weapon    = UnitCatalog.WeaponResource
     }
 
+    /// 敵駒の「現フレーム状態」を Scene を介さずに読み取る effect。
+    ///
+    /// 非 driver / 非 data Scene (HUD / Camera / Menu / Overlay) は `EnemyScene` モジュールを
+    /// 直接タイプせず、この effect 経由で敵データを得る。`PlayerScene.Query` の敵版で、設計思想は同じ
+    /// (BoardQuery / PlayerScene.Query 参照)。
+    pub eff RosterQuery {
+        def get(id: Int32): Option[Data]
+        def getAll(): List[Data]
+        def findIdAt(coord: {x = Int32, y = Int32}): Option[Int32]
+        def anyAttacking(): Bool
+    }
+
     // ────────────────────────────────────────────────────────
     // (B) 定数
     // ────────────────────────────────────────────────────────
@@ -429,7 +441,7 @@ mod EnemyScene {
                         CustomEffects.GameOverRequest,
                         Tween.Scheduler,
                         EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State} =
+                        SelectedPlayer.State, PlayerScene.PartyQuery} =
         match idFromPath(path) {
             case None          => (node, scene)
             case Some(enemyId) =>
@@ -462,7 +474,7 @@ mod EnemyScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State} =
+                              SelectedPlayer.State, PlayerScene.PartyQuery} =
         let cleared = clearAttackTarget(enemyId, scene);
         if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttack)
             PlayerScene.commitWaitedAndAdvance(cleared)

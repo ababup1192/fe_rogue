@@ -46,7 +46,8 @@ mod AutoMoveScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State} =
+                TurnPhase.State, SelectedPlayer.State,
+                PlayerScene.PartyQuery} =
         // 入力ハンドラ (`AutoMoveScene.cancel` 等) でこのフレーム中に
         // 既に他フェーズに抜けた場合は no-op で抜ける。
         if (TurnPhase.State.get() != TurnPhase.Phase.PlayerAutoMove) scene
@@ -233,7 +234,8 @@ mod AutoMoveScene {
     /// overlay / cursor の整理は `PhaseTransitions.enterPlayerCursor` に委ねる。
     def exitToCursor(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State} =
+                              TurnPhase.State, SelectedPlayer.State,
+                              PlayerScene.PartyQuery} =
         scene
             |> FlagScene.clear
             |> PlayerScene.resetAllMoveStepsTaken
@@ -245,7 +247,8 @@ mod AutoMoveScene {
     pub def cancel(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
-                              TurnPhase.State, SelectedPlayer.State} =
+                              TurnPhase.State, SelectedPlayer.State,
+                              PlayerScene.PartyQuery} =
         GameLogger.playerLog("自動移動を中止");
         exitToCursor(scene)
 
@@ -291,7 +294,8 @@ mod AutoMoveScene {
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                         GameLogger.GameLogger,
-                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                        PlayerScene.PartyQuery} =
         let next = match TurnPhase.State.get() {
             case TurnPhase.Phase.PlayerAutoMove => step(scene)
             case _                               => scene
