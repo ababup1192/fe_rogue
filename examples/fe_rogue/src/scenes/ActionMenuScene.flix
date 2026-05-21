@@ -149,25 +149,58 @@ mod ActionMenuScene {
             PlayerScene.getAll(scene))
 
     /// ItemList 項目が確定された (Enter) 瞬間に呼ばれる。metadata から
-    /// 「attack」/「wait」を分岐して GameManager に委譲する。
+    /// 「attack」/「wait」/「pickup」を分岐して、それぞれの帰結を直接適用する。
+    ///   - attack: 攻撃ターゲット選択フェーズへ (`GameManager.applyEnterAttackPhase` に委譲)
+    ///   - wait:   その場で waited 確定
+    ///   - pickup: 床アイテムを拾って waited 確定 (拾うで 1 ターン使う)
+    /// 「次フェーズへの遷移」は Scene 跨ぎなので `GameManager.commitWaitedAndAdvance` /
+    /// `applyEnterAttackPhase` に委譲する (Scene → GameManager 方向は許容)。
     pub def onActionConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                               Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
         match entry#metadata {
-            case Some(m) =>
-                if (m == attackMeta())      GameManager.actionMenuConfirmAttack(scene)
-                else if (m == waitMeta())   GameManager.actionMenuConfirmWait(scene)
-                else if (m == pickupMeta()) GameManager.actionMenuConfirmPickup(scene)
-                else                         scene
             case None    => scene
+            case Some(m) =>
+                if (m == attackMeta())      GameManager.applyEnterAttackPhase(scene)
+                else if (m == waitMeta())   GameManager.commitWaitedAndAdvance(scene)
+                else if (m == pickupMeta()) applyPickup(scene)
+                else                         scene
         }
 
-    /// Escape / X 押下で呼ばれる。メニューを閉じて PlayerMoving に戻る。
+    /// 「ひろう」確定の本体。床アイテムを取得してインベントリに加え、
+    /// ログを出してから waited 確定 (拾うで 1 ターン使う)。
+    /// 何らかの理由で item が無い場合は no-op して即 wait に倒す (防御的)。
+    def applyPickup(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger,
+                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+        match SelectedPlayer.State.get()#id {
+            case None     => GameManager.commitWaitedAndAdvance(scene)
+            case Some(id) =>
+                match PlayerScene.get(id, scene) {
+                    case None         => GameManager.commitWaitedAndAdvance(scene)
+                    case Some(player) =>
+                        let (afterTake, taken) = ItemScene.takeAt(player#gridPos, scene);
+                        match taken {
+                            case None    => GameManager.commitWaitedAndAdvance(afterTake)
+                            case Some(w) =>
+                                GameLogger.playerLog("P${id} が ${w#name} を拾った");
+                                let withWeapon = PlayerScene.mapPlayer(id,
+                                    d -> {weapons = List.append(d#weapons, w :: Nil) | d},
+                                    afterTake);
+                                GameManager.commitWaitedAndAdvance(withWeapon)
+                        }
+                }
+        }
+
+    /// X / Escape 押下で呼ばれる。メニューを閉じて PlayerMoving に戻る。
+    /// 青マス・カーソルは触らず、ユーザがもう一度動かし直せる状態に復帰する。
     pub def onActionCancelled(scene: Scene[NodeTag]):
                               Scene[NodeTag] \ TurnPhase.State =
-        GameManager.closeActionMenu(scene)
+        TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
+        scene
 
     /// InputHandler の Z 押下から呼ばれる。現在カーソルがある項目を確定する。
     pub def confirmCurrentSelection(scene: Scene[NodeTag]):

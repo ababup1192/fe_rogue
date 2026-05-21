@@ -236,58 +236,12 @@ mod GameManager {
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         scene
 
-    /// ActionMenu の「こうげき」確定から呼ばれる: PlayerAttack フェーズに進み赤マス + ターゲット選択を開始。
-    pub def actionMenuConfirmAttack(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State} =
-        applyEnterAttackPhase(scene)
-
-    /// ActionMenu の「たいき」確定から呼ばれる: その場で waited 確定。
-    pub def actionMenuConfirmWait(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
-        commitWaitedAndAdvance(scene)
-
-    /// ActionMenu の「ひろう」確定から呼ばれる:
-    /// プレイヤーの現セルにある ground item を取得 → 武器をインベントリに追加 →
-    /// ログを出して waited 確定（拾うで 1 ターン使う）。
-    /// 何らかの理由で item が無い場合は no-op（即 wait に倒す）。
-    pub def actionMenuConfirmPickup(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
-        match SelectedPlayer.State.get()#id {
-            case None     => commitWaitedAndAdvance(scene)
-            case Some(id) =>
-                match PlayerScene.get(id, scene) {
-                    case None         => commitWaitedAndAdvance(scene)
-                    case Some(player) =>
-                        let (afterTake, taken) = ItemScene.takeAt(player#gridPos, scene);
-                        match taken {
-                            case None    => commitWaitedAndAdvance(afterTake)
-                            case Some(w) =>
-                                GameLogger.playerLog("P${id} が ${w#name} を拾った");
-                                let withWeapon = PlayerScene.mapPlayer(id,
-                                    d -> {weapons = List.append(d#weapons, w :: Nil) | d},
-                                    afterTake);
-                                commitWaitedAndAdvance(withWeapon)
-                        }
-                }
-        }
-
-    /// ActionMenu の X/Esc から呼ばれる: メニューを閉じて PlayerMoving に戻る。
-    /// 青マス・カーソルは触らず、ユーザがもう一度動かし直せる状態に復帰する。
-    pub def closeActionMenu(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TurnPhase.State =
-        TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
-        scene
-
     /// PlayerMoving + Z で開いた ActionMenu の「こうげき」確定で呼ばれる:
     /// 攻撃ターゲット選択フェーズへ。青マスを消して赤マスを出す。赤マス内に
     /// 生きている敵が居れば最初の敵にカーソルをスナップし、居なければ選択中
     /// プレイヤーにスナップする（X キャンセルだけはできるよう自セルに居座る）。
-    def applyEnterAttackPhase(scene: Scene[NodeTag]):
+    /// ActionMenuScene が「こうげき」確定時に呼ぶため pub。
+    pub def applyEnterAttackPhase(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
@@ -307,68 +261,6 @@ mod GameManager {
             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.WeaponSelect);
         PlayerScene.setAttackTargetId(attackerId, defenderId, scene)
-
-    /// WeaponMenuScene.onWeaponConfirmed から呼ばれる: 選んだ武器 idx を Data に書き込み、
-    /// `AttackForecast` フェーズに進む（戦闘予報パネルを表示）。
-    /// 同時に予報テキストを Label2D に流し込んでおく（フェーズ中に再計算しない）。
-    /// 実際の攻撃モーション開始は `confirmAttackFromForecast` で行う。
-    pub def confirmAttackWithWeapon(weaponIdx: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
-        TurnPhase.State.put(TurnPhase.Phase.AttackForecast);
-        match SelectedPlayer.State.get()#id {
-            case None             => scene
-            case Some(attackerId) =>
-                scene
-                    |> PlayerScene.setSelectedWeaponIdx(attackerId, weaponIdx)
-                    |> ForecastPanelScene.setForecastText
-        }
-
-    /// AttackForecast + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
-    /// 攻撃モーションの完了で `applyAttackHit` 経由でダメージが適用され、
-    /// その後 `commitWaitedAndAdvance` （or 反撃）に流れる既存パイプラインに乗る。
-    pub def confirmAttackFromForecast(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger,
-                              TurnPhase.State, SelectedPlayer.State} =
-        match SelectedPlayer.State.get()#id {
-            case None         => scene
-            case Some(attackerId) =>
-                match PlayerScene.get(attackerId, scene) {
-                    case None         => scene
-                    case Some(player) =>
-                        match player#attackTargetId {
-                            case None             => scene
-                            case Some(defenderId) =>
-                                match EnemyScene.get(defenderId, scene) {
-                                    case None        => scene
-                                    case Some(enemy) =>
-                                        TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
-                                        applyAttackHit(attackerId, defenderId, enemy#gridPos, scene)
-                                }
-                        }
-                }
-        }
-
-    /// AttackForecast + X: 戦闘予報をキャンセルして WeaponSelect に戻る（武器選び直し）。
-    /// 選択中武器 index はクリアして再選択を促す（同じ武器をすぐ選び直しても OK）。
-    pub def cancelForecast(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
-        TurnPhase.State.put(TurnPhase.Phase.WeaponSelect);
-        match SelectedPlayer.State.get()#id {
-            case None             => scene
-            case Some(attackerId) => PlayerScene.clearSelectedWeaponIdx(attackerId, scene)
-        }
-
-    /// WeaponMenuScene.onWeaponCancelled / InputHandler の X 押下から呼ばれる:
-    /// 武器選択をキャンセルして PlayerAttack フェーズに戻る（赤マス・カーソルはそのまま）。
-    /// `attackTargetId` をクリアして、別の敵を選び直せるようにする。
-    pub def closeWeaponMenu(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
-        TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
-        match SelectedPlayer.State.get()#id {
-            case None             => scene
-            case Some(attackerId) => PlayerScene.clearAttackTargetId(attackerId, scene)
-        }
 
     /// PlayerMoving + X: 選択駒を **選択時の位置に瞬間移動で戻し**、選択解除して PlayerCursor。
     /// キャンセル → 再選択の繰り返しで「実質ターン制限なしの自由移動」を防ぐ。
@@ -392,8 +284,9 @@ mod GameManager {
     /// 中点での HP 適用 / 終端の waited セットは `dispatchAnimationEvents` の
     /// applyMethodEvent / applyFinishedEvent が `attack_lunge` のイベント発火を
     /// 受けて行う。ここでは開始のみ。
-    def applyAttackHit(attackerId: Int32, defenderId: Int32,
-                        defenderPos: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
+    /// ForecastPanelScene が攻撃確定時に呼ぶため pub。
+    pub def applyAttackHit(attackerId: Int32, defenderId: Int32,
+                            defenderPos: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger} =
         GameLogger.playerLog("味方${attackerId}の攻撃");
         PlayerScene.startAttack(attackerId, defenderId, defenderPos, scene)

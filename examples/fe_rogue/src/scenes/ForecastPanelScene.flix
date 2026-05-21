@@ -60,8 +60,46 @@ mod ForecastPanelScene {
                 case other => other
             })
 
+    /// `AttackForecast` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
+    /// 攻撃モーションの完了で HP 適用 (applyMethodEvent) → commit (applyFinishedEvent)
+    /// に流れる既存パイプラインに乗る。
+    /// 攻撃モーション開始の本体は `GameManager.applyAttackHit` (Scene 跨ぎなので中央に残す)。
+    pub def confirm(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger,
+                              TurnPhase.State, SelectedPlayer.State} =
+        match SelectedPlayer.State.get()#id {
+            case None             => scene
+            case Some(attackerId) =>
+                match PlayerScene.get(attackerId, scene) {
+                    case None         => scene
+                    case Some(player) =>
+                        match player#attackTargetId {
+                            case None             => scene
+                            case Some(defenderId) =>
+                                match EnemyScene.get(defenderId, scene) {
+                                    case None        => scene
+                                    case Some(enemy) =>
+                                        TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
+                                        GameManager.applyAttackHit(attackerId, defenderId,
+                                                                    enemy#gridPos, scene)
+                                }
+                        }
+                }
+        }
+
+    /// `AttackForecast` + X: 予報をキャンセルして WeaponSelect に戻る (武器選び直し)。
+    /// 選択中武器 index はクリアして再選択を促す (同じ武器をすぐ選び直しても OK)。
+    pub def cancel(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+        TurnPhase.State.put(TurnPhase.Phase.WeaponSelect);
+        match SelectedPlayer.State.get()#id {
+            case None             => scene
+            case Some(attackerId) => PlayerScene.clearSelectedWeaponIdx(attackerId, scene)
+        }
+
     /// `AttackForecast` フェーズに入った瞬間にだけ呼ばれて、予報テキストを Label に流し込む。
-    /// `GameManager.confirmAttackWithWeapon`（武器確定でフェーズ遷移する関数）から
+    /// `WeaponMenuScene.onWeaponConfirmed`（武器確定でフェーズ遷移する関数）から
     /// ワンショットで呼ぶ。毎フレーム実行しないので、選択中の盤面で軽量に動く。
     pub def setForecastText(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
         let text = buildForecastText(scene);

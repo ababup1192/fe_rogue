@@ -142,23 +142,37 @@ mod WeaponMenuScene {
             Map.insert(idx, icon, acc)
         }, Map.empty(), List.zipWithIndex(weapons))
 
-    /// ItemList 項目が確定された（Enter）瞬間に呼ばれる。
-    /// metadata から weapon index を取り出し、`AttackForecast` フェーズへ進める
-    /// （実際の攻撃モーション開始は予報パネル確認後）。
+    /// ItemList 項目が確定された (Enter) 瞬間に呼ばれる。
+    /// metadata から weapon index を取り出し、選択中武器 idx を Data に書き込み、
+    /// `AttackForecast` フェーズに進む (戦闘予報パネルを表示)。
+    /// 予報テキストはこの瞬間にワンショットで Label2D に流し込む (フェーズ中に再計算しない)。
+    /// 実際の攻撃モーション開始は `ForecastPanelScene.confirm` で行う。
     pub def onWeaponConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                               Scene[NodeTag]
             \ {TurnPhase.State, SelectedPlayer.State} =
         match entry#metadata |> Option.flatMap(Int32.fromString) {
+            case None      => scene
             case Some(idx) =>
-                GameManager.confirmAttackWithWeapon(idx, scene)
-            case None => scene
+                TurnPhase.State.put(TurnPhase.Phase.AttackForecast);
+                match SelectedPlayer.State.get()#id {
+                    case None             => scene
+                    case Some(attackerId) =>
+                        scene
+                            |> PlayerScene.setSelectedWeaponIdx(attackerId, idx)
+                            |> ForecastPanelScene.setForecastText
+                }
         }
 
-    /// Escape 押下で呼ばれる。武器選択ウィンドウを閉じて PlayerAttack の
-    /// ターゲット選択に戻る（別の敵を狙い直すか、X で待機できる）。
+    /// X / Escape 押下で呼ばれる。武器選択ウィンドウを閉じて PlayerAttack の
+    /// ターゲット選択に戻る (別の敵を狙い直すか、X で待機できる)。
+    /// `attackTargetId` をクリアして別の敵を選び直せるようにする。
     pub def onWeaponCancelled(scene: Scene[NodeTag]):
                               Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
-        GameManager.closeWeaponMenu(scene)
+        TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
+        match SelectedPlayer.State.get()#id {
+            case None             => scene
+            case Some(attackerId) => PlayerScene.clearAttackTargetId(attackerId, scene)
+        }
 
     /// InputHandler の Z 押下から呼ばれる。Engine の MenuEvent は Enter で確定するが、
     /// FERogue のキー慣習（Z = 決定）に合わせて手動で「今カーソルがある武器を確定」する。

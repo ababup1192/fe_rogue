@@ -444,7 +444,8 @@ mod PlayerScene {
 
     /// 攻撃ターゲットの敵 id を Data#attackTargetId に記録する。
     /// 武器選択ウィンドウを開く前に GameManager から呼ばれ、ウィンドウ確定後の
-    /// `confirmAttackWithWeapon` がこの値を読んで実際の攻撃モーションを開始する。
+    /// `WeaponMenuScene.onWeaponConfirmed` 経由でフェーズが AttackForecast に進み、
+    /// `ForecastPanelScene.confirm` がこの値を読んで実際の攻撃モーションを開始する。
     pub def setAttackTargetId(playerId: Int32, targetEnemyId: Int32,
                                 scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPlayer(playerId, d -> {attackTargetId = Some(targetEnemyId) | d}, scene)
