@@ -1,8 +1,10 @@
 /// ActionMenuScene — 行動選択ウィンドウ
 ///
-/// PlayerMoving で Z を押した瞬間に `ActionSelect` フェーズに入り、画面に出る ItemList。
-/// 文脈に応じて「こうげき」「たいき」を表示し、↑↓ で選択、Enter/Z で確定、X/Escape で
-/// `PlayerMoving` に戻る (= もう一度動かし直せる)。
+/// PlayerMoving / PlayerCursor で Z を押した瞬間に `ActionSelect` フェーズに入り、
+/// 画面に出る ItemList。文脈 (= SelectedPlayer の有無) で項目が切り替わる:
+///   - PlayerMoving 由来 (SelectedPlayer あり) → こうげき / ひろう / たいき
+///   - PlayerCursor 由来・空マス (SelectedPlayer なし) → しゅうごう (確定で旗を立てる)
+/// ↑↓ で選択、Enter/Z で確定、X/Escape で元のフェーズ (PlayerMoving / PlayerCursor) に戻る。
 ///
 /// ノード構造（visible のとき）:
 ///   ActionMenu (CanvasLayer, layer=2)
@@ -11,8 +13,10 @@
 ///
 /// 項目の出現条件 (`refreshItems` で毎フレーム再計算):
 ///   - 「こうげき」: 選択中プレイヤーの装備武器の射程内に生きている敵が居る
+///   - 「ひろう」  : 選択中プレイヤーのセルに床アイテムが落ちている
 ///   - 「たいき」  : 選択中プレイヤーのセルに別の味方が居ない
-/// 両方とも条件不成立なら ItemList は空になり、Z 押下は no-op (X で戻るのみ)。
+///   - 「しゅうごう」: SelectedPlayer が None (PlayerCursor + 空マス) のとき常時表示
+/// 全条件不成立なら ItemList は空になり、Z 押下は no-op (X で戻るのみ)。
 mod ActionMenuScene {
 
     use Json.JsonError.JsonError
@@ -46,6 +50,7 @@ mod ActionMenuScene {
     def attackMeta(): String = "attack"
     def waitMeta(): String   = "wait"
     def pickupMeta(): String = "pickup"
+    def gatherMeta(): String = "gather"
 
     /// scene に ActionMenu ノードツリーを追加する。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
@@ -93,10 +98,15 @@ mod ActionMenuScene {
 
     /// 選択中プレイヤーの状況から「こうげき / ひろう / たいき」のうち成立するものだけ返す。
     /// 順序は固定: こうげき → ひろう → たいき (FE 流に攻撃が上、待機が末尾)。
+    /// SelectedPlayer が None のときは PlayerCursor から空マスで開かれた「集合メニュー」
+    /// として「しゅうごう」だけを返す (確定で旗を立てる)。
     def buildItems(scene: Scene[NodeTag]): List[ItemEntry]
             \ {SelectedPlayer.State, PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         match SelectedPlayer.State.get()#id {
-            case None     => Nil
+            case None     =>
+                ({text     = "しゅうごう",
+                  disabled = false,
+                  metadata = Some(gatherMeta())}: ItemEntry) :: Nil
             case Some(id) =>
                 match PlayerScene.PartyQuery.get(id) {
                     case None         => Nil
@@ -146,10 +156,11 @@ mod ActionMenuScene {
             PlayerScene.PartyQuery.getAll())
 
     /// ItemList 項目が確定された (Enter) 瞬間に呼ばれる。metadata から
-    /// 「attack」/「wait」/「pickup」を分岐して、それぞれの帰結を直接適用する。
+    /// 「attack」/「wait」/「pickup」/「gather」を分岐して、それぞれの帰結を直接適用する。
     ///   - attack: 攻撃ターゲット選択フェーズへ (`PlayerScene.enterAttackPhase` に委譲)
     ///   - wait:   その場で waited 確定
     ///   - pickup: 床アイテムを拾って waited 確定 (拾うで 1 ターン使う)
+    ///   - gather: カーソル位置に旗を立てて PlayerAutoMove へ (`FlagScene.plant`)
     /// 「次セレクトか敵ターンか」の判定は Scene 跨ぎなので `PlayerScene.commitWaitedAndAdvance`
     /// を呼ぶ (Scene → GameManager 方向は許容)。
     pub def onActionConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
@@ -164,8 +175,15 @@ mod ActionMenuScene {
                 if (m == attackMeta())      PlayerScene.enterAttackPhase(scene)
                 else if (m == waitMeta())   PlayerScene.commitWaitedAndAdvance(scene)
                 else if (m == pickupMeta()) applyPickup(scene)
+                else if (m == gatherMeta()) applyGather(scene)
                 else                         scene
         }
+
+    /// 「しゅうごう」確定: その瞬間のカーソル位置に旗を立てて PlayerAutoMove に進む。
+    /// ActionSelect 中はカーソルが動かないので、開いた瞬間のセルがそのままターゲットになる。
+    def applyGather(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State} =
+        FlagScene.plant(CursorScene.getGridPos(scene), scene)
 
     /// 「ひろう」確定の本体。床アイテムを取得してインベントリに加え、
     /// ログを出してから waited 確定 (拾うで 1 ターン使う)。
@@ -201,11 +219,24 @@ mod ActionMenuScene {
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         scene
 
-    /// X / Escape 押下で呼ばれる。メニューを閉じて PlayerMoving に戻る。
-    /// 青マス・カーソルは触らず、ユーザがもう一度動かし直せる状態に復帰する。
+    /// PlayerCursor + Z 押下時 (空マス) の遷移: 集合メニュー (しゅうごう) を開く。
+    /// SelectedPlayer は None のままなので `buildItems` がしゅうごうのみを返す。
+    /// カーソルは PlayerCursor で visible のまま据え置き、確定時に同じセルに旗が立つ。
+    pub def openFromCursor(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
+        scene
+
+    /// X / Escape 押下で呼ばれる。メニューを閉じて元のフェーズに戻る:
+    ///   - SelectedPlayer あり (PlayerMoving からの ActionMenu) → PlayerMoving
+    ///   - SelectedPlayer なし (PlayerCursor からの集合メニュー) → PlayerCursor
+    /// 青マス・カーソルは触らず、ユーザがもう一度操作し直せる状態に復帰する。
     pub def onActionCancelled(scene: Scene[NodeTag]):
-                              Scene[NodeTag] \ TurnPhase.State =
-        TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
+                              Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+        let target = match SelectedPlayer.State.get()#id {
+            case Some(_) => TurnPhase.Phase.PlayerMoving
+            case None    => TurnPhase.Phase.PlayerCursor
+        };
+        TurnPhase.State.put(target);
         scene
 
     /// InputHandler の Z 押下から呼ばれる。現在カーソルがある項目を確定する。

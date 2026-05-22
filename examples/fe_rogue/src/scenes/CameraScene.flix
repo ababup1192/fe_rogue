@@ -104,7 +104,13 @@ mod CameraScene {
         match phase {
             case TurnPhase.Phase.PlayerCursor     => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerMoving     => focusPos
-            case TurnPhase.Phase.ActionSelect     => focusPos
+            case TurnPhase.Phase.ActionSelect     =>
+                // PlayerCursor 由来 (集合メニュー) のときは SelectedPlayer = None。
+                // カーソル位置にカメラを保ったままメニューを開く。
+                match selected {
+                    case Some(_) => focusPos
+                    case None    => cursorWorldPos(scene)
+                }
             case TurnPhase.Phase.WeaponSelect     => focusPos
             case TurnPhase.Phase.AttackForecast   => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerAttack     => cursorWorldPos(scene)

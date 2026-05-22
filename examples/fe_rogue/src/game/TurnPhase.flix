@@ -130,9 +130,10 @@ mod TurnRules {
         case Stay
         /// PlayerCursor 中、カーソル位置にアクティブ味方が居て選択した
         case CursorSelectPlayer(Int32)
-        /// PlayerCursor 中、カーソルが空き床マスで旗を立てる（PlayerAutoMove へ向かう）
-        /// 引数: (旗を立てるマスの x, y)
-        case CursorPlantFlag(Int32, Int32)
+        /// PlayerCursor 中、カーソルが空き床マスで ActionMenu を開く（「しゅうごう」のみ）。
+        /// 「しゅうごう」確定で旗が立ち PlayerAutoMove へ向かう。確定時の旗位置は
+        /// その瞬間のカーソル位置から取る（メニュー表示中カーソルは動かない）。
+        case CursorOpenGatherMenu
         /// PlayerMoving 中の Confirm: 行動選択ウィンドウ (ActionSelect) を開く。
         /// 「こうげき / たいき」を文脈に応じて並べ、ItemList の Enter/X で次フェーズを決める。
         case MovingOpenActionMenu
@@ -175,11 +176,12 @@ mod TurnRules {
                 match activePlayerAt(context) {
                     case Some(playerId) => Transition.CursorSelectPlayer(playerId)
                     case None           =>
-                        // アクティブ味方が居ない: 床マスで誰も占有していなければ旗を立てる。
+                        // アクティブ味方が居ない: 床マスで誰も占有していなければ ActionMenu を開く
+                        // (「しゅうごう」のみ表示、確定で旗が立つ)。
                         // それ以外（壁・敵上・waited 味方上）は何もしない。
                         if (context#board#map#isFloor(context#cursor)
                             and not Board.isOccupied(context#cursor, context#board))
-                            Transition.CursorPlantFlag(context#cursor#x, context#cursor#y)
+                            Transition.CursorOpenGatherMenu
                         else Transition.Stay
                 }
             case (TurnPhase.Phase.PlayerMoving, Input.Confirm) =>
@@ -318,8 +320,8 @@ mod TurnInputBridge {
             case TurnRules.Transition.Stay                              => scene
             case TurnRules.Transition.CursorSelectPlayer(playerId)      =>
                 PlayerScene.beginSelection(playerId, scene)
-            case TurnRules.Transition.CursorPlantFlag(targetX, targetY) =>
-                FlagScene.plant({x = targetX, y = targetY}, scene)
+            case TurnRules.Transition.CursorOpenGatherMenu              =>
+                ActionMenuScene.openFromCursor(scene)
             case TurnRules.Transition.MovingOpenActionMenu              =>
                 ActionMenuScene.openFromMoving(scene)
             case TurnRules.Transition.MovingCancel                      =>

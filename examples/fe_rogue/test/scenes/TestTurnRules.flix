@@ -5,7 +5,7 @@
 ///
 /// ここでは「どんな状況で何が起きるか」だけを保証する:
 ///   - PlayerCursor で味方マスを Z → SelectPlayer
-///   - PlayerCursor で空マスを Z → PlantFlag
+///   - PlayerCursor で空マスを Z → CursorOpenGatherMenu (ActionMenu「しゅうごう」)
 ///   - PlayerCursor で waited 味方上を Z → Stay（findActiveIdAt が None で、Occupied なので flag も立たない）
 ///   - PlayerMoving で busy 中の Z / X は Stay（Tween 完了待ちガード）
 ///   - PlayerAttack で生きてる敵上を Z → AttackHit
@@ -83,7 +83,7 @@ mod TestTurnRules {
     def cell(x: Int32, y: Int32): {x = Int32, y = Int32} = {x = x, y = y}
 
     // ════════════════════════════════════════════════════════
-    // PlayerCursor + Confirm: 味方を選択 / 旗を立てる / 何もしない
+    // PlayerCursor + Confirm: 味方を選択 / 集合メニューを開く / 何もしない
     // ════════════════════════════════════════════════════════
 
     /// 味方が居るマスで Z → その味方を選択（PlayerMoving に向かう）
@@ -94,12 +94,13 @@ mod TestTurnRules {
             expected = TurnRules.Transition.CursorSelectPlayer(0),
             TurnRules.decide(context))
 
-    /// 駒が居ない床マスで Z → そのマスに旗を立てる（自動移動の号令）
+    /// 駒が居ない床マスで Z → 集合メニュー (ActionMenu「しゅうごう」) を開く。
+    /// 確定で旗が立ち自動移動 (PlayerAutoMove) に向かう。
     @Test
-    def testCursorConfirmOnEmptyFloorPlantsFlag(): Unit \ Assert =
+    def testCursorConfirmOnEmptyFloorOpensGatherMenu(): Unit \ Assert =
         let context = baseContext(boardWithPlayerOnly(cell(0, 0)), cell(2, 2));
         Assert.assertEq(
-            expected = TurnRules.Transition.CursorPlantFlag(2, 2),
+            expected = TurnRules.Transition.CursorOpenGatherMenu,
             TurnRules.decide(context))
 
     /// 待機済み（waited）の味方上で Z → Stay（findActive=None だが、駒で占有されているので
