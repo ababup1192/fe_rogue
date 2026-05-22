@@ -49,8 +49,8 @@ mod ForecastPanelScene {
     pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = phase == TurnPhase.Phase.AttackForecast;
         scene
-            |> Panel.mapAt(panelPath(), Panel.setVisible(visible))
-            |> Label2D.mapAt(textPath(), Label2D.setVisible(visible))
+            |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(textPath(), CanvasItem.setVisible(visible))
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から ForecastPanel の Panel
     /// ノードに対して dispatch される (panel は 1 個のみなので 1 フレーム 1 回)。

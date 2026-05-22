@@ -136,6 +136,24 @@ mod Sprite2D {
             uvOffset = {x = cellX / textureSize#x, y = cellY / textureSize#y},
             uvScale  = {x = cellW / textureSize#x, y = cellH / textureSize#y}
         }
+
+    /// path 位置に Sprite2D が居れば取り出す（Godot の `GetNode<Sprite2D>(path)` 相当）。
+    /// 別ノードや欠落なら `None`。
+    pub def getAt(path: NodePath, scene: Scene[s]): Option[Sprite2D] =
+        match Scene.getEngineNode(path, scene) {
+            case Some(EngineNode.Sprite2DWithState(sp, _)) => Some(sp)
+            case _                                          => None
+        }
+
+    /// path 位置の Sprite2D に f を適用。state タグは保持される。
+    /// path に Sprite2D が居なければ no-op。
+    pub def mapAt(path: NodePath, f: Sprite2D -> Sprite2D,
+                   scene: Scene[s]): Scene[s] =
+        Scene.mapEngineNode(path, node -> match node {
+            case EngineNode.Sprite2DWithState(sp, tag) =>
+                EngineNode.Sprite2DWithState(f(sp), tag)
+            case other => other
+        }, scene)
 }
 
 // ── CanvasItem 実装 ──
@@ -194,22 +212,4 @@ instance Node2D[Sprite2D] {
     pub def setSkew(skew: Float64, sprite: Sprite2D): Sprite2D =
         let Sprite2D.Sprite2D(r) = sprite;
         Sprite2D.Sprite2D({ skew = skew | r })
-
-    /// path 位置に Sprite2D が居れば取り出す（Godot の `GetNode<Sprite2D>(path)` 相当）。
-    /// 別ノードや欠落なら `None`。
-    pub def getAt(path: NodePath, scene: Scene[s]): Option[Sprite2D] =
-        match Scene.getEngineNode(path, scene) {
-            case Some(EngineNode.Sprite2DWithState(sp, _)) => Some(sp)
-            case _                                          => None
-        }
-
-    /// path 位置の Sprite2D に f を適用。state タグは保持される。
-    /// path に Sprite2D が居なければ no-op。callback の effect は透過する。
-    pub def mapAt(path: NodePath, f: Sprite2D -> Sprite2D \ ef,
-                   scene: Scene[s]): Scene[s] \ ef =
-        Scene.mapEngineNode(path, node -> match node {
-            case EngineNode.Sprite2DWithState(sp, tag) =>
-                EngineNode.Sprite2DWithState(f(sp), tag)
-            case other => other
-        }, scene)
 }

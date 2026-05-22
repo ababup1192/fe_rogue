@@ -55,7 +55,7 @@ mod ActionMenuScene {
     /// 「行動メニューが現在 visible か」のヘルパー。gameLoop の Escape→quit 判定で使う。
     pub def isVisible(scene: Scene[NodeTag]): Bool =
         Panel.getAt(panelPath(), scene)
-            |> Option.map(Panel.isVisible)
+            |> Option.map(CanvasItem.isVisible)
             |> Option.getWithDefault(false)
 
     /// フェーズ遷移時の visibility 適用。
@@ -64,9 +64,9 @@ mod ActionMenuScene {
     pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = phase == TurnPhase.Phase.ActionSelect;
         scene
-            |> Panel.mapAt(panelPath(), Panel.setVisible(visible))
+            |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
             |> ItemList.mapAt(menuPath(), list ->
-                list |> ItemList.setVisible(visible) |> ItemList.setFocused(visible))
+                list |> CanvasItem.setVisible(visible) |> ItemList.setFocused(visible))
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から ActionMenu の ItemList
     /// ノードに対して dispatch される (per-node、ItemList は 1 個のみなので 1 フレーム 1 回)。

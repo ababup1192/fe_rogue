@@ -203,6 +203,24 @@ mod Label2D {
             {drawables = List.append(acc#drawables, lineDrawables), lineIdx = lineIdx + 1}
         }, {drawables = (Nil: List[GameEngine.Drawable]), lineIdx = 0}, lines);
         result#drawables
+
+    /// path 位置に Label2D が居れば取り出す（Godot の `GetNode<Label2D>(path)` 相当）。
+    /// 別ノードや欠落なら `None`。
+    pub def getAt(path: NodePath, scene: Scene[s]): Option[Label2D] =
+        match Scene.getEngineNode(path, scene) {
+            case Some(EngineNode.Label2DWithState(label, _)) => Some(label)
+            case _                                            => None
+        }
+
+    /// path 位置の Label2D に f を適用。state タグは保持される。
+    /// path に Label2D が居なければ no-op。
+    pub def mapAt(path: NodePath, f: Label2D -> Label2D,
+                   scene: Scene[s]): Scene[s] =
+        Scene.mapEngineNode(path, node -> match node {
+            case EngineNode.Label2DWithState(label, tag) =>
+                EngineNode.Label2DWithState(f(label), tag)
+            case other => other
+        }, scene)
 }
 
 // -- CanvasItem 実装 --
@@ -255,22 +273,4 @@ instance Node2D[Label2D] {
     pub def setSkew(skew: Float64, label: Label2D): Label2D =
         let Label2D.Label2D(r) = label;
         Label2D.Label2D({ skew = skew | r })
-
-    /// path 位置に Label2D が居れば取り出す（Godot の `GetNode<Label2D>(path)` 相当）。
-    /// 別ノードや欠落なら `None`。
-    pub def getAt(path: NodePath, scene: Scene[s]): Option[Label2D] =
-        match Scene.getEngineNode(path, scene) {
-            case Some(EngineNode.Label2DWithState(label, _)) => Some(label)
-            case _                                            => None
-        }
-
-    /// path 位置の Label2D に f を適用。state タグは保持される。
-    /// path に Label2D が居なければ no-op。callback の effect は透過する。
-    pub def mapAt(path: NodePath, f: Label2D -> Label2D \ ef,
-                   scene: Scene[s]): Scene[s] \ ef =
-        Scene.mapEngineNode(path, node -> match node {
-            case EngineNode.Label2DWithState(label, tag) =>
-                EngineNode.Label2DWithState(f(label), tag)
-            case other => other
-        }, scene)
 }

@@ -58,7 +58,7 @@ mod WeaponMenuScene {
     /// gameLoop の Escape→quit 判定で「メニュー表示中は Escape を quit に流さない」用途。
     pub def isVisible(scene: Scene[NodeTag]): Bool =
         Panel.getAt(panelPath(), scene)
-            |> Option.map(Panel.isVisible)
+            |> Option.map(CanvasItem.isVisible)
             |> Option.getWithDefault(false)
 
     /// フェーズ遷移時の visibility 適用（Push モデル）。
@@ -70,9 +70,9 @@ mod WeaponMenuScene {
     pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = phase == TurnPhase.Phase.WeaponSelect;
         scene
-            |> Panel.mapAt(panelPath(), Panel.setVisible(visible))
+            |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
             |> ItemList.mapAt(menuPath(), list ->
-                list |> ItemList.setVisible(visible) |> ItemList.setFocused(visible))
+                list |> CanvasItem.setVisible(visible) |> ItemList.setFocused(visible))
 
     /// 武器アイコンの表示サイズ（px）。fontSize 4 / itemHeight 6 の中に収まるよう 5px に。
     def iconSize(): Float64 = 5.0

@@ -212,7 +212,7 @@ mod UnitInfoPopupScene {
     def hide(scene: Scene[NodeTag]): Scene[NodeTag] =
         scene
             |> clearContents
-            |> Panel.mapAt(panelPath(), Panel.setVisible(false))
+            |> Panel.mapAt(panelPath(), CanvasItem.setVisible(false))
             |> setState({shownUnit = None, viewMode = ViewMode.Status})
 
     /// kind / id からそのユニットを引いて現在の viewMode に従って描画する。
@@ -251,7 +251,7 @@ mod UnitInfoPopupScene {
             case ViewMode.Items  => renderItemsView(res, weapons, cleared)
         };
         // パネルを可視化
-        Panel.mapAt(panelPath(), Panel.setVisible(true), withContents)
+        Panel.mapAt(panelPath(), CanvasItem.setVisible(true), withContents)
 
     // ─── Status view 描画 ────────────────────────────────────
 
