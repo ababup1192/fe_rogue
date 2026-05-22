@@ -312,10 +312,6 @@ mod ItemScene {
                               scene: Scene[NodeTag]): Scene[NodeTag] =
         List.foldLeft((acc, suffix) -> {
             let path = outlinePathOf(itemPath, suffix);
-            Scene.mapEngineNode(path, n -> match n {
-                case EngineNode.Sprite2DWithState(sp, tag) =>
-                    EngineNode.Sprite2DWithState(Sprite2D.setAlpha(alpha, sp), tag)
-                case other => other
-            }, acc)
+            Sprite2D.mapAt(path, Sprite2D.setAlpha(alpha), acc)
         }, scene, outlineSuffixes())
 }

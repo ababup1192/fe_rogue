@@ -54,10 +54,9 @@ mod ActionMenuScene {
 
     /// 「行動メニューが現在 visible か」のヘルパー。gameLoop の Escape→quit 判定で使う。
     pub def isVisible(scene: Scene[NodeTag]): Bool =
-        match Scene.getEngineNode(panelPath(), scene) {
-            case Some(EngineNode.PanelWithState(panel, _)) => CanvasItem.isVisible(panel)
-            case _                                          => false
-        }
+        Panel.getAt(panelPath(), scene)
+            |> Option.map(Panel.isVisible)
+            |> Option.getWithDefault(false)
 
     /// フェーズ遷移時の visibility 適用。
     ///   - Panel : ActionSelect フェーズだけ visible
@@ -65,17 +64,9 @@ mod ActionMenuScene {
     pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = phase == TurnPhase.Phase.ActionSelect;
         scene
-            |> Scene.mapEngineNode(panelPath(), node -> match node {
-                case EngineNode.PanelWithState(panel, tag) =>
-                    EngineNode.PanelWithState(CanvasItem.setVisible(visible, panel), tag)
-                case other => other
-            })
-            |> Scene.mapEngineNode(menuPath(), node -> match node {
-                case EngineNode.ItemListWithState(list, tag) =>
-                    let withVisible = CanvasItem.setVisible(visible, list);
-                    EngineNode.ItemListWithState(ItemList.setFocused(visible, withVisible), tag)
-                case other => other
-            })
+            |> Panel.mapAt(panelPath(), Panel.setVisible(visible))
+            |> ItemList.mapAt(menuPath(), list ->
+                list |> ItemList.setVisible(visible) |> ItemList.setFocused(visible))
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から ActionMenu の ItemList
     /// ノードに対して dispatch される (per-node、ItemList は 1 個のみなので 1 フレーム 1 回)。
@@ -93,11 +84,7 @@ mod ActionMenuScene {
         let withItems = if (phase != TurnPhase.Phase.ActionSelect) withVisibility
             else {
                 let items = buildItems(withVisibility);
-                Scene.mapEngineNode(menuPath(), n -> match n {
-                    case EngineNode.ItemListWithState(list, tag) =>
-                        EngineNode.ItemListWithState(ItemList.setItems(items, list), tag)
-                    case other => other
-                }, withVisibility)
+                withVisibility |> ItemList.mapAt(menuPath(), ItemList.setItems(items))
             };
         match Scene.getEngineNode(menuPath(), withItems) {
             case Some(latest) => (latest, withItems)
@@ -228,12 +215,8 @@ mod ActionMenuScene {
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
-        match Scene.getEngineNode(menuPath(), scene) {
-            case Some(EngineNode.ItemListWithState(list, _)) =>
-                match ItemList.getSelected(list) {
-                    case Some(entry) => onActionConfirmed(entry, scene)
-                    case None        => scene
-                }
-            case _ => scene
+        match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
+            case Some(entry) => onActionConfirmed(entry, scene)
+            case None        => scene
         }
 }

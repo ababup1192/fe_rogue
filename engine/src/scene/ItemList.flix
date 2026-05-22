@@ -449,4 +449,22 @@ instance Node2D[ItemList] {
     pub def setSkew(skew: Float64, list: ItemList): ItemList =
         let ItemList.ItemList(r) = list;
         ItemList.ItemList({skew = skew | r})
+
+    /// path 位置に ItemList が居れば取り出す（Godot の `GetNode<ItemList>(path)` 相当）。
+    /// 別ノードや欠落なら `None`。
+    pub def getAt(path: NodePath, scene: Scene[s]): Option[ItemList] =
+        match Scene.getEngineNode(path, scene) {
+            case Some(EngineNode.ItemListWithState(list, _)) => Some(list)
+            case _                                            => None
+        }
+
+    /// path 位置の ItemList に f を適用。state タグは保持される。
+    /// path に ItemList が居なければ no-op。callback の effect は透過する。
+    pub def mapAt(path: NodePath, f: ItemList -> ItemList \ ef,
+                   scene: Scene[s]): Scene[s] \ ef =
+        Scene.mapEngineNode(path, node -> match node {
+            case EngineNode.ItemListWithState(list, tag) =>
+                EngineNode.ItemListWithState(f(list), tag)
+            case other => other
+        }, scene)
 }

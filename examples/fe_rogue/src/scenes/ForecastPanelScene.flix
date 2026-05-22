@@ -49,16 +49,8 @@ mod ForecastPanelScene {
     pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = phase == TurnPhase.Phase.AttackForecast;
         scene
-            |> Scene.mapEngineNode(panelPath(), node -> match node {
-                case EngineNode.PanelWithState(panel, tag) =>
-                    EngineNode.PanelWithState(CanvasItem.setVisible(visible, panel), tag)
-                case other => other
-            })
-            |> Scene.mapEngineNode(textPath(), node -> match node {
-                case EngineNode.Label2DWithState(label, tag) =>
-                    EngineNode.Label2DWithState(CanvasItem.setVisible(visible, label), tag)
-                case other => other
-            })
+            |> Panel.mapAt(panelPath(), Panel.setVisible(visible))
+            |> Label2D.mapAt(textPath(), Label2D.setVisible(visible))
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から ForecastPanel の Panel
     /// ノードに対して dispatch される (panel は 1 個のみなので 1 フレーム 1 回)。
@@ -88,11 +80,7 @@ mod ForecastPanelScene {
         if (phase != TurnPhase.Phase.AttackForecast) scene
         else
             let text = buildForecastText();
-            Scene.mapEngineNode(textPath(), node -> match node {
-                case EngineNode.Label2DWithState(label, NodeTag.ForecastText) =>
-                    EngineNode.Label2DWithState(Label2D.setText(text, label), NodeTag.ForecastText)
-                case other => other
-            }, scene)
+            Label2D.mapAt(textPath(), Label2D.setText(text), scene)
 
     /// `AttackForecast` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
     /// 攻撃モーションの完了 (`attack_lunge` finished) で `PlayerScene.onAttackLungeDone`

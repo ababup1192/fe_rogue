@@ -57,10 +57,9 @@ mod WeaponMenuScene {
     /// 「武器メニューが現在 visible か」のヘルパー。
     /// gameLoop の Escape→quit 判定で「メニュー表示中は Escape を quit に流さない」用途。
     pub def isVisible(scene: Scene[NodeTag]): Bool =
-        match Scene.getEngineNode(panelPath(), scene) {
-            case Some(EngineNode.PanelWithState(panel, _)) => CanvasItem.isVisible(panel)
-            case _                                          => false
-        }
+        Panel.getAt(panelPath(), scene)
+            |> Option.map(Panel.isVisible)
+            |> Option.getWithDefault(false)
 
     /// フェーズ遷移時の visibility 適用（Push モデル）。
     ///   - Panel  : WeaponSelect フェーズだけ visible
@@ -71,17 +70,9 @@ mod WeaponMenuScene {
     pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = phase == TurnPhase.Phase.WeaponSelect;
         scene
-            |> Scene.mapEngineNode(panelPath(), node -> match node {
-                case EngineNode.PanelWithState(panel, tag) =>
-                    EngineNode.PanelWithState(CanvasItem.setVisible(visible, panel), tag)
-                case other => other
-            })
-            |> Scene.mapEngineNode(menuPath(), node -> match node {
-                case EngineNode.ItemListWithState(list, tag) =>
-                    let withVisible = CanvasItem.setVisible(visible, list);
-                    EngineNode.ItemListWithState(ItemList.setFocused(visible, withVisible), tag)
-                case other => other
-            })
+            |> Panel.mapAt(panelPath(), Panel.setVisible(visible))
+            |> ItemList.mapAt(menuPath(), list ->
+                list |> ItemList.setVisible(visible) |> ItemList.setFocused(visible))
 
     /// 武器アイコンの表示サイズ（px）。fontSize 4 / itemHeight 6 の中に収まるよう 5px に。
     def iconSize(): Float64 = 5.0
@@ -111,16 +102,12 @@ mod WeaponMenuScene {
                 };
                 let items = buildItems(weapons);
                 let icons = buildIcons(weapons);
-                Scene.mapEngineNode(menuPath(), n -> match n {
-                    case EngineNode.ItemListWithState(list, tag) =>
-                        let updated = list
-                            |> ItemList.setItems(items)
-                            |> ItemList.setItemIcons(icons)
-                            |> ItemList.setIconSize(iconSize())
-                            |> ItemList.setIconTextGap(iconTextGap());
-                        EngineNode.ItemListWithState(updated, tag)
-                    case other => other
-                }, withVisibility)
+                withVisibility |> ItemList.mapAt(menuPath(), list ->
+                    list
+                        |> ItemList.setItems(items)
+                        |> ItemList.setItemIcons(icons)
+                        |> ItemList.setIconSize(iconSize())
+                        |> ItemList.setIconTextGap(iconTextGap()))
             };
         match Scene.getEngineNode(menuPath(), withItems) {
             case Some(latest) => (latest, withItems)
@@ -198,12 +185,8 @@ mod WeaponMenuScene {
     pub def confirmCurrentSelection(scene: Scene[NodeTag]):
                                     Scene[NodeTag]
             \ {TurnPhase.State, SelectedPlayer.State} =
-        match Scene.getEngineNode(menuPath(), scene) {
-            case Some(EngineNode.ItemListWithState(list, _)) =>
-                match ItemList.getSelected(list) {
-                    case Some(entry) => onWeaponConfirmed(entry, scene)
-                    case None        => scene
-                }
-            case _ => scene
+        match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
+            case Some(entry) => onWeaponConfirmed(entry, scene)
+            case None        => scene
         }
 }
