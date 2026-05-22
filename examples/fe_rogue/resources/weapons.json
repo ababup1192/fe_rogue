@@ -1,5 +1,19 @@
 {
   "weapons": {
+    "fire_magic": {
+      "attack": 8,
+      "durability": 21,
+      "range": {
+        "max": 2,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 0,
+        "hframes": 20,
+        "texture": "item_skills",
+        "vframes": 30
+      }
+    },
     "noviceStaff": {
       "attack": 0,
       "durability": 30,

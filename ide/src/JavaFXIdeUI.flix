@@ -64,6 +64,8 @@ mod JavaFXIdeUI {
         let scenesTree: TreeView[String] = unchecked_cast(ns.get("scenesTree") as TreeView[String]);
         let resourcesList: ListView[String] = unchecked_cast(ns.get("resourcesList") as ListView[String]);
         let subEntriesList: ListView[String] = unchecked_cast(ns.get("subEntriesList") as ListView[String]);
+        let subEntryAddBtn: Button = unchecked_cast(ns.get("subEntryAddBtn") as Button);
+        let subEntryRemoveBtn: Button = unchecked_cast(ns.get("subEntryRemoveBtn") as Button);
         let propertyPanel: VBox = unchecked_cast(ns.get("propertyPanel") as VBox);
         let resourcePreviewPane: StackPane = unchecked_cast(ns.get("resourcePreviewPane") as StackPane);
         let previewZoomLabel: Label = unchecked_cast(ns.get("previewZoomLabel") as Label);
@@ -73,6 +75,8 @@ mod JavaFXIdeUI {
         Array.put(Some(scenesTree),          0, state#widgets#sceneTree);
         Array.put(Some(resourcesList),       0, state#widgets#resourcesList);
         Array.put(Some(subEntriesList),      0, state#widgets#subEntriesList);
+        Array.put(Some(subEntryAddBtn),      0, state#widgets#subEntryAddBtn);
+        Array.put(Some(subEntryRemoveBtn),   0, state#widgets#subEntryRemoveBtn);
         Array.put(Some(propertyPanel),       0, state#widgets#propertyPanel);
         Array.put(Some(resourcePreviewPane), 0, state#widgets#resourcePreviewPane);
         Array.put(Some(previewZoomLabel),    0, state#widgets#resourcePreviewZoomLbl);
@@ -90,6 +94,7 @@ mod JavaFXIdeUI {
         // Resources タブの wiring (ListView 選択 → schema/data ロード → property panel)
         ResourcePanel.wireResourceSelection(state, resourcesList, subEntriesList);
         ResourcePanel.wireSubEntrySelection(state, subEntriesList);
+        ResourcePanel.wireSubEntryButtons(state, subEntriesList, subEntryAddBtn, subEntryRemoveBtn);
         ResourcePanel.wireZoomButtons(state, previewZoomOut, previewZoomIn);
         ResourcePanel.wireGridCheckbox(state, previewGridCheck);
         ResourcePanel.updateZoomLabel(state);

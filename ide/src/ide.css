@@ -141,6 +141,17 @@
     -fx-border-color: transparent;
 }
 
+/* Resources タブ Sub-entries の +/- toolbar */
+.catalog-toolbar {
+    -fx-padding: 2 4 2 4;
+}
+.catalog-btn {
+    -fx-padding: 0 6 0 6;
+    -fx-min-width: 24px;
+    -fx-min-height: 20px;
+    -fx-font-size: 12px;
+}
+
 /* Project ロード進捗 overlay。canvas 中央に半透明背景で被せる */
 .loading-overlay {
     -fx-background-color: rgba(40, 40, 40, 0.92);

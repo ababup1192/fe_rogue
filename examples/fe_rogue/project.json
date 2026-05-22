@@ -13,7 +13,10 @@
     {"name": "cursor",           "path": "assets/sprites/cursor.png", "hasAlpha": true},
     {"name": "flag",             "path": "assets/sprites/flag.png", "hasAlpha": true},
     {"name": "tilemap_floor",    "path": "assets/sprites/tilemap.png", "hasAlpha": true},
-    {"name": "roguelike_weapons","path": "assets/sprites/roguelikeChar_transparent.png", "hasAlpha": true}
+    {"name": "roguelike_weapons","path": "assets/sprites/roguelikeChar_transparent.png", "hasAlpha": true},
+    {"name": "item_potions",     "path": "assets/sprites/Item_Sheet_Potions.png", "hasAlpha": true},
+    {"name": "item_skills",      "path": "assets/sprites/Item_Sheet_Skills.png", "hasAlpha": true},
+    {"name": "item_weapons",     "path": "assets/sprites/Item_Sheet_Weapons.png", "hasAlpha": true}
   ],
   "fonts": [
     {"name": "ui", "path": "assets/fonts/BestTen-DOT.otf", "fontSize": 16.0}

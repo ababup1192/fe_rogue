@@ -14,6 +14,7 @@ mod IdeState {
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
     import javafx.scene.control.CheckBox
+    import javafx.scene.control.Button
     import javafx.scene.control.ProgressBar
     import javafx.scene.layout.VBox
     import javafx.scene.layout.StackPane
@@ -24,6 +25,8 @@ mod IdeState {
         sceneTree              = Array[Option[TreeView[String]], Static],
         resourcesList          = Array[Option[ListView[String]], Static],
         subEntriesList         = Array[Option[ListView[String]], Static],
+        subEntryAddBtn         = Array[Option[Button], Static],
+        subEntryRemoveBtn      = Array[Option[Button], Static],
         propertyPanel          = Array[Option[VBox], Static],
         resourcePreviewPane    = Array[Option[StackPane], Static],
         resourcePreviewZoomLbl = Array[Option[Label], Static],
@@ -134,6 +137,8 @@ mod IdeState {
             sceneTree              = Array#{(None: Option[TreeView[String]])} @ Static,
             resourcesList          = Array#{(None: Option[ListView[String]])} @ Static,
             subEntriesList         = Array#{(None: Option[ListView[String]])} @ Static,
+            subEntryAddBtn         = Array#{(None: Option[Button])} @ Static,
+            subEntryRemoveBtn      = Array#{(None: Option[Button])} @ Static,
             propertyPanel          = Array#{(None: Option[VBox])} @ Static,
             resourcePreviewPane    = Array#{(None: Option[StackPane])} @ Static,
             resourcePreviewZoomLbl = Array#{(None: Option[Label])} @ Static,

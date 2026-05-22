@@ -12,12 +12,14 @@ mod ResourcePanel {
     import java.lang.{Object => JObject}
     import java.nio.file.Files
     import java.nio.file.Paths
+    import java.util.Optional
     import javafx.collections.ObservableList
     import javafx.scene.Node
     import javafx.scene.control.Button
     import javafx.scene.control.CheckBox
     import javafx.scene.control.Label
     import javafx.scene.control.ListView
+    import javafx.scene.control.TextInputDialog
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
     import javafx.event.ActionEvent
@@ -344,4 +346,116 @@ mod ResourcePanel {
             }
         })
     }
+
+    /// Sub-entries 横の + / - ボタンを配線する。
+    /// + : TextInputDialog で新しい id を聞き、空オブジェクトの sub-entry を catalog に追加
+    /// - : 現在選択中の sub-entry を catalog から削除
+    /// CatalogIn 形式でない resource では何もしない (silent no-op)
+    pub def wireSubEntryButtons(state: IdeState.IdeState,
+                                 subEntriesList: ListView[String],
+                                 addBtn: Button,
+                                 removeBtn: Button): Unit \ IO = {
+        addBtn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                addSubEntryAction(state, subEntriesList)
+        });
+        removeBtn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                removeSubEntryAction(state, subEntriesList)
+        })
+    }
+
+    /// + ボタン押下: 新 sub-entry id を TextInputDialog で受け取り、空 object として
+    /// catalog コンテナに挿入する。重複 id は無視 (println で警告)。
+    def addSubEntryAction(state: IdeState.IdeState,
+                           subEntriesList: ListView[String]): Unit \ IO = {
+        match ResourceState.getEditingJson(state#resource) {
+            case None => ()  // Resource 未選択
+            case Some(json) =>
+                match ResourceCatalog.classify(json) {
+                    case ResourceCatalog.Classification.CatalogIn(info) => {
+                        let dialog = new TextInputDialog("new_entry");
+                        dialog.setTitle("Add sub-entry");
+                        dialog.setHeaderText("New sub-entry id");
+                        dialog.setContentText("ID:");
+                        let result = dialog.showAndWait();
+                        if (not result.isPresent()) ()
+                        else {
+                            let rawName = result.get();
+                            let name = String.trim(rawName);
+                            if (name == "")
+                                println("[Resources] add sub-entry skipped: empty id")
+                            else if (List.exists(s -> s == name, info#subEntries))
+                                println("[Resources] add sub-entry skipped: duplicate id '${name}'")
+                            else {
+                                let emptyObj = Json.JsonElement.JsonObject(Map.empty());
+                                let keyPath = info#containerKey :: name :: Nil;
+                                let updated = JsonOps.setAtKeyPath(json, keyPath, emptyObj);
+                                ResourceState.setEditingJson(state#resource, Some(updated));
+                                saveEditingJsonToDisk(state);
+                                rebuildSubEntries(state, subEntriesList);
+                                println("[Resources] added sub-entry '${name}'. クリックで編集できます。")
+                            }
+                        }
+                    }
+                    case _ => ()  // Single / Unsupported では何もしない
+                }
+        }
+    }
+
+    /// - ボタン押下: 現在選択中の sub-entry を catalog コンテナから削除する。
+    /// 未選択時 / 非 CatalogIn 時は何もしない。
+    def removeSubEntryAction(state: IdeState.IdeState,
+                              subEntriesList: ListView[String]): Unit \ IO = {
+        match (ResourceState.getEditingJson(state#resource),
+               ResourceState.getSelectedSubEntry(state#resource)) {
+            case (Some(json), Some(subKey)) =>
+                match ResourceCatalog.classify(json) {
+                    case ResourceCatalog.Classification.CatalogIn(info) =>
+                        match removeKeyFromContainer(json, info#containerKey, subKey) {
+                            case None => ()  // path mismatch — 何もしない
+                            case Some(updated) => {
+                                ResourceState.setEditingJson(state#resource, Some(updated));
+                                ResourceState.setSelectedSubEntry(state#resource, None);
+                                saveEditingJsonToDisk(state);
+                                rebuildSubEntries(state, subEntriesList);
+                                println("[Resources] removed sub-entry '${subKey}'")
+                            }
+                        }
+                    case _ => ()
+                }
+            case _ => ()  // 未選択 / 未ロード
+        }
+    }
+
+    /// 既存 json (top-level JsonObject) の `[containerKey]` 配下から `subKey` を削除し、
+    /// 更新後の JsonElement を返す。型が想定外なら None。
+    def removeKeyFromContainer(json: Json.JsonElement, containerKey: String, subKey: String):
+            Option[Json.JsonElement] =
+        match json {
+            case Json.JsonElement.JsonObject(topMap) =>
+                match Map.get(containerKey, topMap) {
+                    case Some(Json.JsonElement.JsonObject(subMap)) => {
+                        let newSubMap = Map.remove(subKey, subMap);
+                        let newContainer = Json.JsonElement.JsonObject(newSubMap);
+                        Some(Json.JsonElement.JsonObject(Map.insert(containerKey, newContainer, topMap)))
+                    }
+                    case _ => None
+                }
+            case _ => None
+        }
+
+    /// editingJson を selectedDataPath に書き戻す。`commitToResource` から save 部分のみ
+    /// 切り出した形。+ / - ボタンの直後に呼ぶ
+    def saveEditingJsonToDisk(state: IdeState.IdeState): Unit \ IO =
+        match (ResourceState.getEditingJson(state#resource),
+               ResourceState.getSelectedDataPath(state#resource)) {
+            case (Some(json), Some(path)) => {
+                let pretty = Json.Write.toPrettyString(2i32, json);
+                discard Files.writeString(Paths.get(path), pretty);
+                ResourceState.setDirty(state#resource, false);
+                println("[Resources] saved ${path}")
+            }
+            case _ => ()
+        }
 }

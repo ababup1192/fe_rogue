@@ -97,7 +97,17 @@
                                     <children>
                                         <Label text="Resources" styleClass="section-header"/>
                                         <ListView fx:id="resourcesList" VBox.vgrow="ALWAYS"/>
-                                        <Label text="Sub-entries" styleClass="section-header"/>
+                                        <HBox alignment="CENTER_LEFT" spacing="4"
+                                              styleClass="catalog-toolbar">
+                                            <children>
+                                                <Label text="Sub-entries" styleClass="section-header"
+                                                       HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                                                <Button fx:id="subEntryAddBtn" text="+"
+                                                        styleClass="catalog-btn"/>
+                                                <Button fx:id="subEntryRemoveBtn" text="−"
+                                                        styleClass="catalog-btn"/>
+                                            </children>
+                                        </HBox>
                                         <ListView fx:id="subEntriesList" VBox.vgrow="ALWAYS"/>
                                     </children>
                                 </VBox>
