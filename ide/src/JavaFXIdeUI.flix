@@ -74,6 +74,8 @@ mod JavaFXIdeUI {
         let previewGridCheck: CheckBox = unchecked_cast(ns.get("previewGridCheck") as CheckBox);
         let previewFrameAdjustCheck: CheckBox =
             unchecked_cast(ns.get("previewFrameAdjustCheck") as CheckBox);
+        let resourceStatusLabel: Label =
+            unchecked_cast(ns.get("resourceStatusLabel") as Label);
         Array.put(Some(scenesTree),          0, state#widgets#sceneTree);
         Array.put(Some(resourcesList),       0, state#widgets#resourcesList);
         Array.put(Some(subEntriesList),      0, state#widgets#subEntriesList);
@@ -84,6 +86,7 @@ mod JavaFXIdeUI {
         Array.put(Some(previewZoomLabel),    0, state#widgets#resourcePreviewZoomLbl);
         Array.put(Some(previewGridCheck),    0, state#widgets#resourcePreviewGridChk);
         Array.put(Some(previewFrameAdjustCheck), 0, state#widgets#resourcePreviewFrameAdjustChk);
+        Array.put(Some(resourceStatusLabel), 0, state#widgets#resourceStatusLabel);
         Array.put(Some(stage),               0, state#widgets#stage);
 
         // Project ロード進捗 overlay。reloadProject の各フェーズで Platform.runLater 経由で更新する

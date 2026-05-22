@@ -540,7 +540,8 @@ mod PropertyWidgets {
                                  frameAdjust: Bool,
                                  panOffset: (Float64, Float64),
                                  getCurrentPan: Unit -> (Float64, Float64) \ IO,
-                                 onPanCommit: ((Float64, Float64)) -> Unit \ IO): Unit \ IO = {
+                                 onPanCommit: ((Float64, Float64)) -> Unit \ IO,
+                                 onStatus: String -> Unit \ IO): Unit \ IO = {
         let children = pane.getChildren();
         children.clear();
         match spriteRef {
@@ -548,7 +549,8 @@ mod PropertyWidgets {
                 let l = new Label("(no preview)");
                 l.getStyleClass().add("inspector-empty");
                 let n: Node = checked_cast(l);
-                discard children.add(n)
+                discard children.add(n);
+                onStatus("")
             }
             case Some(sr) => {
                 match Map.get(sr#texture, pathMap) {
@@ -556,7 +558,8 @@ mod PropertyWidgets {
                         let l = new Label("(path unknown: ${sr#texture})");
                         l.getStyleClass().add("inspector-empty");
                         let n: Node = checked_cast(l);
-                        discard children.add(n)
+                        discard children.add(n);
+                        onStatus("")
                     }
                     case Some(absPath) => {
                         let url = new File(absPath).toURI().toString();
@@ -566,6 +569,8 @@ mod PropertyWidgets {
                         let frame   = sr#frame   |> Option.getWithDefault(0i32);
                         let imgW = image.getWidth();
                         let imgH = image.getHeight();
+                        // status label: セル native px / 現在 zoom
+                        onStatus(formatSpriteStatus(imgW, imgH, hframes, vframes, zoomMode));
                         // canvas サイズは pane の実サイズに追従させて、window resize で
                         // 「見える範囲」が増減するようにする。レイアウト未確定 (= 0) の
                         // フレームでは保守的な 220 にフォールバック
@@ -601,6 +606,20 @@ mod PropertyWidgets {
                 }
             }
         }
+    }
+
+    /// Preview 下の status label に出す「セル native px / Zoom」文字列。
+    /// resource に scale を持たせない方針なので、純粋にアトラスのピクセル情報のみ表示
+    def formatSpriteStatus(imgW: Float64, imgH: Float64, hframes: Int32, vframes: Int32,
+                            zoomMode: ZoomMode): String = {
+        let hfSafe = if (hframes > 0i32) hframes else 1i32;
+        let vfSafe = if (vframes > 0i32) vframes else 1i32;
+        let cellW = imgW / Int32.toFloat64(hfSafe);
+        let cellH = imgH / Int32.toFloat64(vfSafe);
+        let cellWi = Float64.tryToInt32(cellW) |> Option.getWithDefault(0i32);
+        let cellHi = Float64.tryToInt32(cellH) |> Option.getWithDefault(0i32);
+        let zoomStr = zoomModeLabel(zoomMode);
+        "セル: ${cellWi}×${cellHi} px ／ Zoom: ${zoomStr}"
     }
 
     /// フレーム調整モードの canvas にマウスドラッグ pan を貼る。

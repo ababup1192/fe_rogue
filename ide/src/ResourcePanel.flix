@@ -282,10 +282,12 @@ mod ResourcePanel {
         let pan = ResourceState.getPreviewPan(state#resource);
         let getPan = () -> ResourceState.getPreviewPan(state#resource);
         let onPan = newPan -> ResourceState.setPreviewPan(state#resource, newPan);
+        let onStatus = txt -> setStatusLabel(state, txt);
         match Array.get(0, state#widgets#resourcePreviewPane) {
             case Some(pane) =>
                 PropertyWidgets.updateSpritePreview(pane, pathMap, spriteRef, zoomMode,
-                                                     showGrid, frameAdjust, pan, getPan, onPan)
+                                                     showGrid, frameAdjust, pan, getPan, onPan,
+                                                     onStatus)
             case None       => ()
         }
     }
@@ -297,13 +299,23 @@ mod ResourcePanel {
         let pan = ResourceState.getPreviewPan(state#resource);
         let getPan = () -> ResourceState.getPreviewPan(state#resource);
         let onPan = newPan -> ResourceState.setPreviewPan(state#resource, newPan);
+        let onStatus = txt -> setStatusLabel(state, txt);
         match Array.get(0, state#widgets#resourcePreviewPane) {
             case Some(pane) =>
                 PropertyWidgets.updateSpritePreview(pane, Map.empty(), None, zoomMode,
-                                                     showGrid, frameAdjust, pan, getPan, onPan)
+                                                     showGrid, frameAdjust, pan, getPan, onPan,
+                                                     onStatus)
             case None       => ()
         }
     }
+
+    /// Preview 下の resourceStatusLabel に文字列を書き込む。
+    /// label が未配線なら no-op
+    def setStatusLabel(state: IdeState.IdeState, text: String): Unit \ IO =
+        match Array.get(0, state#widgets#resourceStatusLabel) {
+            case Some(lbl) => lbl.setText(text)
+            case None      => ()
+        }
 
     /// 現在選択中の sub-entry / single record で preview を再描画する。
     /// ズームボタンが押されたときに呼び、Resource 未選択なら no-op。
