@@ -26,6 +26,7 @@
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.CheckBox?>
 <?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressBar?>
 <?import javafx.scene.control.Separator?>
 <?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.image.ImageView?>
@@ -46,6 +47,7 @@
         </MenuBar>
     </top>
     <center>
+        <StackPane fx:id="centerStack">
         <TabPane fx:id="modeTabs" tabClosingPolicy="UNAVAILABLE">
             <tabs>
                 <!-- ────────── Scenes mode ────────── -->
@@ -155,6 +157,17 @@
                 </Tab>
             </tabs>
         </TabPane>
+        <VBox fx:id="loadingOverlay" alignment="CENTER" spacing="10"
+              styleClass="loading-overlay"
+              maxWidth="360" maxHeight="80"
+              visible="false" managed="false"
+              StackPane.alignment="CENTER">
+            <children>
+                <Label fx:id="loadingLabel" text="Loading..." styleClass="loading-label"/>
+                <ProgressBar fx:id="loadingBar" progress="0.0" prefWidth="320"/>
+            </children>
+        </VBox>
+        </StackPane>
     </center>
     <bottom>
         <HBox fx:id="statusBar" styleClass="status-bar" alignment="CENTER_LEFT" spacing="8">

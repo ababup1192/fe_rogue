@@ -17,5 +17,9 @@ mod IdeGui {
         def populateProjectTree(): Unit
         /// メインウィンドウのタイトルバー文字列を更新する
         def setTitle(title: String): Unit
+        /// ロード進捗 overlay を表示・更新する。`frac` は 0.0–1.0 想定 (範囲外は実装側でクランプ)
+        def setLoadingProgress(label: String, frac: Float64): Unit
+        /// ロード進捗 overlay を非表示にする
+        def hideLoading(): Unit
     }
 }

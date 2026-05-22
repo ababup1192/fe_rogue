@@ -27,6 +27,7 @@ mod JavaFXIdeUI {
     import javafx.scene.control.CheckBox
     import javafx.scene.control.Label
     import javafx.scene.control.MenuItem
+    import javafx.scene.control.ProgressBar
     import javafx.scene.control.TreeView
     import javafx.scene.control.ListView
     import javafx.scene.layout.StackPane
@@ -77,6 +78,14 @@ mod JavaFXIdeUI {
         Array.put(Some(previewZoomLabel),    0, state#widgets#resourcePreviewZoomLbl);
         Array.put(Some(previewGridCheck),    0, state#widgets#resourcePreviewGridChk);
         Array.put(Some(stage),               0, state#widgets#stage);
+
+        // Project ロード進捗 overlay。reloadProject の各フェーズで Platform.runLater 経由で更新する
+        let loadingOverlay: VBox = unchecked_cast(ns.get("loadingOverlay") as VBox);
+        let loadingLabel:   Label = unchecked_cast(ns.get("loadingLabel") as Label);
+        let loadingBar:     ProgressBar = unchecked_cast(ns.get("loadingBar") as ProgressBar);
+        Array.put(Some(loadingOverlay), 0, state#widgets#loadingOverlay);
+        Array.put(Some(loadingLabel),   0, state#widgets#loadingLabel);
+        Array.put(Some(loadingBar),     0, state#widgets#loadingBar);
 
         // Resources タブの wiring (ListView 選択 → schema/data ロード → property panel)
         ResourcePanel.wireResourceSelection(state, resourcesList, subEntriesList);
@@ -134,9 +143,38 @@ mod JavaFXIdeUI {
         else {
             let path = chosen.getAbsolutePath();
             println("[IdeUI] Open Project selected: ${path}");
+            // 次フレームの reloadProject が走るまでの体感ラグを埋めるため、
+            // overlay を 0% で先に出しておく
+            Array.put(true, 0, state#loadingActiveRef);
+            showLoadingOverlay(state, "プロジェクトを読み込み中...", 0.05f64);
             Array.put(Some(path), 0, state#pendingProjectRef)
         }
     }
+
+    /// FX EDT に飛ばさず直接 widget を更新するヘルパー。
+    /// showOpenProjectChooser は FX EDT 上で呼ばれるためそのまま update してよい
+    def showLoadingOverlay(state: IdeState.IdeState, label: String, frac: Float64): Unit \ IO = {
+        match Array.get(0, state#widgets#loadingOverlay) {
+            case Some(box) => {
+                box.setVisible(true);
+                box.setManaged(true)
+            }
+            case None => ()
+        };
+        match Array.get(0, state#widgets#loadingLabel) {
+            case Some(lbl) => lbl.setText(label)
+            case None      => ()
+        };
+        match Array.get(0, state#widgets#loadingBar) {
+            case Some(bar) => bar.setProgress(clampFrac(frac))
+            case None      => ()
+        }
+    }
+
+    def clampFrac(f: Float64): Float64 =
+        if (f < 0.0f64) 0.0f64
+        else if (f > 1.0f64) 1.0f64
+        else f
 
     /// Main thread の renderLoop からプロジェクト切替後に呼ぶ。
     /// FX thread で TreeView の root を差し替える。sceneFilesRef は既に新値が入っている前提
@@ -145,6 +183,29 @@ mod JavaFXIdeUI {
             def $run(_this: Runnable): Unit \ IO = {
                 ScenePanel.populateSceneTree(state);
                 ResourcePanel.populateResourcesList(state)
+            }
+        })
+    }
+
+    /// Project ロード進捗 overlay を表示・更新する。Main の reloadProject が各フェーズで呼ぶ
+    pub def scheduleSetLoadingProgress(state: IdeState.IdeState, label: String, frac: Float64):
+            Unit \ IO = {
+        Platform.runLater(new Runnable {
+            def $run(_this: Runnable): Unit \ IO = showLoadingOverlay(state, label, frac)
+        })
+    }
+
+    /// Project ロード進捗 overlay を非表示にする。先頭シーン描画完了時に Main が呼ぶ
+    pub def scheduleHideLoading(state: IdeState.IdeState): Unit \ IO = {
+        Platform.runLater(new Runnable {
+            def $run(_this: Runnable): Unit \ IO = {
+                match Array.get(0, state#widgets#loadingOverlay) {
+                    case Some(box) => {
+                        box.setVisible(false);
+                        box.setManaged(false)
+                    }
+                    case None => ()
+                }
             }
         })
     }

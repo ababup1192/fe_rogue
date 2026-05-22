@@ -14,6 +14,7 @@ mod IdeState {
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
     import javafx.scene.control.CheckBox
+    import javafx.scene.control.ProgressBar
     import javafx.scene.layout.VBox
     import javafx.scene.layout.StackPane
     import javafx.stage.Stage
@@ -27,7 +28,10 @@ mod IdeState {
         resourcePreviewPane    = Array[Option[StackPane], Static],
         resourcePreviewZoomLbl = Array[Option[Label], Static],
         resourcePreviewGridChk = Array[Option[CheckBox], Static],
-        stage                  = Array[Option[Stage], Static]
+        stage                  = Array[Option[Stage], Static],
+        loadingOverlay         = Array[Option[VBox], Static],
+        loadingLabel           = Array[Option[Label], Static],
+        loadingBar             = Array[Option[ProgressBar], Static]
     }
 
     /// 描画ループと FX レイヤーを橋渡しする ref 群。
@@ -99,6 +103,7 @@ mod IdeState {
         textureNamesRef            = Array[List[String], Static],
         texturePathMapRef          = Array[Map[String, String], Static],
         wantsAutoLoadFirstSceneRef = Array[Bool, Static],
+        loadingActiveRef           = Array[Bool, Static],
         widgets                    = WidgetRefs,
         runtime                    = RuntimeRefs,
         statusBar                  = StatusBarRefs,
@@ -116,6 +121,7 @@ mod IdeState {
             textureNamesRef            = Array#{(Nil: List[String])} @ Static,
             texturePathMapRef          = Array#{(Map.empty(): Map[String, String])} @ Static,
             wantsAutoLoadFirstSceneRef = Array#{false} @ Static,
+            loadingActiveRef           = Array#{false} @ Static,
             widgets                    = newWidgets(),
             runtime                    = newRuntime(),
             statusBar                  = newStatusBar(),
@@ -132,7 +138,10 @@ mod IdeState {
             resourcePreviewPane    = Array#{(None: Option[StackPane])} @ Static,
             resourcePreviewZoomLbl = Array#{(None: Option[Label])} @ Static,
             resourcePreviewGridChk = Array#{(None: Option[CheckBox])} @ Static,
-            stage                  = Array#{(None: Option[Stage])} @ Static
+            stage                  = Array#{(None: Option[Stage])} @ Static,
+            loadingOverlay         = Array#{(None: Option[VBox])} @ Static,
+            loadingLabel           = Array#{(None: Option[Label])} @ Static,
+            loadingBar             = Array#{(None: Option[ProgressBar])} @ Static
         }
 
     def newRuntime(): RuntimeRefs \ IO =

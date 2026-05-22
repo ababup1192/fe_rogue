@@ -27,6 +27,14 @@ def main(): Unit \ {IO, Chan, NonDet} =
                 JavaFXIdeUI.scheduleSetTitle(state, title);
                 k(())
             }
+            def setLoadingProgress(label, frac, k) = {
+                JavaFXIdeUI.scheduleSetLoadingProgress(state, label, frac);
+                k(())
+            }
+            def hideLoading(k) = {
+                JavaFXIdeUI.scheduleHideLoading(state);
+                k(())
+            }
         }
     } with Fs.Glob.runWithIO
       with Fs.FileRead.runWithIO
@@ -141,6 +149,7 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
             match List.head(Array.get(0, state#sceneFilesRef)) {
                 case Some((abs, rel)) => {
                     println("[Main] Auto-loading first scene: ${rel}");
+                    IdeGui.Gui.setLoadingProgress("シーンを読み込み中...", 0.95f64);
                     Array.put(Some(abs), 0, state#pendingSceneRef)
                 }
                 case None => ()
@@ -152,6 +161,12 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
             case None    => false
         };
         let nextScene = loadPendingSceneOrKeep(state, newFontName, baseScene);
+        // ロード中フラグが立っており、今フレームで scene が切り替わったなら、
+        // 先頭 scene が描画される直前まで来た → overlay を消す
+        if (sceneChanged and Array.get(0, state#loadingActiveRef)) {
+            Array.put(false, 0, state#loadingActiveRef);
+            IdeGui.Gui.hideLoading()
+        } else ();
         // Scene が切り替わったら SceneTree を rebuild して FX 側 TreeView に反映
         if (sceneChanged) {
             let tree = NodeInspector.buildSceneTree(nextScene);
@@ -243,12 +258,16 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
         (Option[String], Scene[Unit]) \ {IO, Fs.FileRead, Fs.Glob, Fs.ModificationTime,
                                           Chan, NonDet, Editor.EditorState, IdeGui.Gui} =
     println("[Main] Reloading project: ${path}");
+    // ロード中フラグを立てる。renderLoop が先頭シーン描画完了時に hideLoading を呼ぶ
+    Array.put(true, 0, state#loadingActiveRef);
+    IdeGui.Gui.setLoadingProgress("プロジェクトを読み込み中...", 0.05f64);
     match ProjectLoader.loadProject(path) {
         case Ok(proj) => {
             let sceneFiles = ProjectLoader.findSceneFiles(path)
                 |> List.map(rel -> (joinPath(path, rel), rel))
                 |> List.sortBy(p -> snd(p));
             IdeState.setSceneFiles(state, sceneFiles);
+            IdeGui.Gui.setLoadingProgress("シーンを検索中...", 0.25f64);
             let textureNames = proj#config#textureManifest |> List.map(e -> e#name);
             IdeState.setTextureNames(state, textureNames);
             let texturePathMap = proj#config#textureManifest
@@ -257,6 +276,7 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
             IdeState.setTexturePathMap(state, texturePathMap);
             let resources = ResourceDiscovery.discover(path);
             ResourceState.setDiscovered(state#resource, resources);
+            IdeGui.Gui.setLoadingProgress("リソースを検索中...", 0.50f64);
             let newFontName = List.head(proj#config#fontManifest) |> Option.map(f -> f#name);
             // Editor の scene.json 索引を新プロジェクトのものに差し替える。
             // これをしないと EditableNode.collectAll が空 → clicks が hit しない
@@ -274,6 +294,7 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
             // GL リソースの再 init を AWT EDT (paintGL) に依頼。clearColor/designSize/
             // texture/font/projection/audio が新 config の値に切り替わる
             Array.put(Some(proj#config), 0, state#runtime#pendingConfig);
+            IdeGui.Gui.setLoadingProgress("GL リソースを初期化中...", 0.75f64);
             // 先頭シーンの auto-load は swap 完了後に renderLoop が遅延実行する。
             // 即座に pendingSceneRef を積むと、まだ古い fontAtlasesArr で getFontAtlas
             // が呼ばれ bug! になるため、希望だけ立てて実体は次フレーム以降に委譲
@@ -285,6 +306,8 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
         }
         case Err(msg) => {
             println("[Main] Open Project failed: ${msg}");
+            Array.put(false, 0, state#loadingActiveRef);
+            IdeGui.Gui.hideLoading();
             (oldFontName, Scene.empty())
         }
     }
