@@ -18,10 +18,10 @@ pub enum NodeTag {
     case ActionPanel
     /// ActionMenuScene の ItemList（こうげき / たいき）
     case ActionMenu
-    /// ForecastPanelScene の Panel ルート（戦闘予報の外枠）
-    case ForecastPanel
-    /// ForecastPanelScene の Label2D（HP / 威力 / 命中 を 2 列で表示）
-    case ForecastText
+    /// BattlePanelScene の Panel ルート（戦闘予報の外枠）
+    case BattlePanel
+    /// BattlePanelScene の Label2D（HP / 威力 / 命中 を 2 列で表示）
+    case BattleText
     /// DamagePopupScene の Marker2D 親（World 直下に永続）
     case DamagePopupsRoot(DamagePopupScene.RootData)
     /// DamagePopupScene の Label2D 子（寿命を持つ）
@@ -69,7 +69,7 @@ instance Node[NodeTag] {
     // 各 ノード固有の毎フレーム更新を dispatch する。各 Scene が「自分のノード」に対する
     // process redef を持ち、ここでは「どの NodeTag をどの Scene 関数に流すか」の対応表に徹する。
     // Player / Enemy は AnimationPlayer signal を自分で drain (Godot 流 per-AnimationPlayer)。
-    // ForecastPanel の Label2D テキストはフェーズ入り時のワンショット更新なので process では触らない。
+    // BattlePanel の Label2D テキストはフェーズ入り時のワンショット更新なので process では触らない。
     redef process(delta: Duration.Duration, node: EngineNode[NodeTag],
                    path: NodePath, scene: Scene[NodeTag]):
                   (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
@@ -128,7 +128,7 @@ def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
         case _ => (node, scene)
     }
 
-/// メニュー系ノード (WeaponMenu / ActionMenu の ItemList、ForecastPanel の Panel)
+/// メニュー系ノード (WeaponMenu / ActionMenu の ItemList、BattlePanel の Panel)
 def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
                    path: NodePath, scene: Scene[NodeTag]):
                   (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
@@ -137,8 +137,8 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(WeaponMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
             checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
-        case EngineNode.PanelWithState(_, NodeTag.ForecastPanel) =>
-            checked_ecast(ForecastPanelScene.process(delta, node, path, scene))
+        case EngineNode.PanelWithState(_, NodeTag.BattlePanel) =>
+            checked_ecast(BattlePanelScene.process(delta, node, path, scene))
         case _ => (node, scene)
     }
 
@@ -196,9 +196,9 @@ instance InputEvent.InputHandler[NodeTag] {
             case (TurnPhase.Phase.WeaponSelect,   _,    true)
                                                   => checked_ecast(WeaponMenuScene.onWeaponCancelled(scene))
             case (TurnPhase.Phase.AttackForecast, true, _)
-                                                  => ForecastPanelScene.confirm(scene)
+                                                  => BattlePanelScene.confirm(scene)
             case (TurnPhase.Phase.AttackForecast, _,    true)
-                                                  => checked_ecast(ForecastPanelScene.cancel(scene))
+                                                  => checked_ecast(BattlePanelScene.cancel(scene))
             case (_,                              true, _)
                                                   => TurnInputBridge.handle(TurnRules.Input.Confirm, scene)
             case (_,                              _,    true)

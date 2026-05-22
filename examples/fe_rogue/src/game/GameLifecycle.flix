@@ -15,7 +15,7 @@
 ///   - PlayerScene / EnemyScene は MapScene の placements に従ってスポーン
 ///   - MoveRangeScene は SelectedPlayer 状態を読むが起動時は未選択なので no-op
 ///   - Camera は最後に追加して全プレイヤー出揃った後に追従開始
-///   - UI 系 (WeaponMenu / ActionMenu / ForecastPanel / UnitInfoPopup) は最後 (描画前面)
+///   - UI 系 (WeaponMenu / ActionMenu / BattlePanel / UnitInfoPopup) は最後 (描画前面)
 ///
 /// `catalog` は `Game.start` でロード済みのユニット定義。PlayerScene と EnemyScene に
 /// プール定義 (`party` / `enemyTier1`) を辿らせる。
@@ -43,7 +43,7 @@ mod GameLifecycle {
             |> AutoMoveScene.add        // AutoMove 駆動の常駐タグノード (process で phase 判定)
             |> WeaponMenuScene.add      // 武器選択ウィンドウ (初期は非表示)
             |> ActionMenuScene.add      // 行動選択ウィンドウ (初期は非表示)
-            |> ForecastPanelScene.add   // 戦闘予報パネル (初期は非表示)
+            |> BattlePanelScene.add   // 戦闘予報パネル (初期は非表示)
             |> UnitInfoPopupScene.add   // カーソル上のユニット情報パネル (初期は非表示)
 
     /// プレイ用シーンを組み立て + 初期 spawn 一覧 (敵 / 味方) を `InitialSpawns` に保存する。

@@ -1,18 +1,25 @@
 {
-  "name": "Camera",
-  "type": "Camera2D",
-  "pos": [0, 0],
-  "zoom": [0.5, 0.5],
-  "positionSmoothingEnabled": true,
-  "positionSmoothingSpeed": 5.0,
+  "description": "アクションメニュー\nこうげき, ひろう, たいき, しゅうごう",
+  "dragBottomMargin": 0.3,
   "dragHorizontalEnabled": true,
-  "dragVerticalEnabled": true,
   "dragLeftMargin": 0.3,
   "dragRightMargin": 0.3,
   "dragTopMargin": 0.3,
-  "dragBottomMargin": 0.3,
+  "dragVerticalEnabled": true,
   "limitBottom": 999999,
   "limitLeft": -999999,
   "limitRight": 999999,
-  "limitTop": -999999
+  "limitTop": -999999,
+  "name": "Camera",
+  "pos": [
+    0,
+    0
+  ],
+  "positionSmoothingEnabled": true,
+  "positionSmoothingSpeed": 5.0,
+  "type": "Camera2D",
+  "zoom": [
+    0.5,
+    0.5
+  ]
 }

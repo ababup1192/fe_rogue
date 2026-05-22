@@ -48,7 +48,7 @@ mod DamagePopupScene {
     /// 親 Marker2D の NodePath。`World/DamagePopups` 固定。
     pub def rootPath(): NodePath = MapScene.worldName() :: rootName() :: Nil
 
-    /// fontManifest で登録した name と一致させる（LogScene / ForecastPanelScene と同じ "ui"）
+    /// fontManifest で登録した name と一致させる（LogScene / BattlePanelScene と同じ "ui"）
     def fontName(): String = "ui"
 
     /// 1 つのポップアップの寿命（出現 → 消滅まで）

@@ -35,10 +35,12 @@ mod Resource {
     }
 
     /// 編集 UI のヒント。`Plain` は型相応の素直な入力欄（数値スピナー / テキスト等）。
+    /// `Multiline` は TextT に対して使うと複数行 TextArea で編集できる。
     /// 各 payload は anonymous record なので Eq / ToString 自動 derive はせず、
     /// 必要なら手動 instance を定義する方針。
     pub enum FieldHint {
         case Plain
+        case Multiline
         case Slider({min = Float64, max = Float64, step = Float64})
         case Spinner({min = Int32, max = Int32})
         case FrameGrid({hframesField = String, vframesField = String})
@@ -254,6 +256,7 @@ mod ResourceCodec {
 
     def encodeFieldHint(h: FieldHint): JsonElement = match h {
         case FieldHint.Plain         => JsonString("plain")
+        case FieldHint.Multiline     => JsonString("multiline")
         case FieldHint.Slider(s)     =>
             JsonObject(Map#{"slider" => JsonObject(Map#{
                 "min"  => JsonNumber(floatToBd(s#min)),
@@ -398,12 +401,13 @@ mod ResourceCodec {
     }
 
     def decodeFieldHint(element: JsonElement): Option[FieldHint] = match element {
-        case JsonString("plain") => Some(FieldHint.Plain)
-        case JsonObject(_)       =>
+        case JsonString("plain")     => Some(FieldHint.Plain)
+        case JsonString("multiline") => Some(FieldHint.Multiline)
+        case JsonObject(_)           =>
             expectObject(element)
                 |> Option.flatMap(singleEntry)
                 |> Option.flatMap(matchHintKind)
-        case _                   => None
+        case _                       => None
     }
 
     def matchHintKind(pair: (String, JsonElement)): Option[FieldHint] =

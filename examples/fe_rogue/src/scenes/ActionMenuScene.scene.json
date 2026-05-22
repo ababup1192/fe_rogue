@@ -1,39 +1,62 @@
 {
-  "type": "CanvasLayer",
-  "name": "ActionMenu",
-  "layer": 2,
-  "pos": [0, 0],
-  "rotation": 0,
-  "scale": [1, 1],
   "children": [
     {
-      "type": "Panel",
-      "name": "panel",
-      "tag": "ActionPanel",
-      "pos": [2, 2],
-      "size": [40, 22],
-      "background": {"r": 0, "g": 0, "b": 0},
+      "background": {"r": 0.10196078568696976, "g": 0.20000000298023224, "b": 0.6000000238418579},
       "backgroundAlpha": 0.8,
-      "border": {"r": 1, "g": 1, "b": 1},
+      "border": {
+        "b": 1,
+        "g": 1,
+        "r": 1
+      },
       "borderWidth": 1,
-      "zIndex": 0,
-      "visible": false,
       "children": [
         {
-          "type": "ItemList",
-          "name": "menu",
-          "pos": [2, 2],
-          "size": [36, 18],
-          "fontSize": 4,
-          "tag": "ActionMenu",
-          "items": [],
-          "wrap": true,
-          "focused": false,
-          "visible": false,
           "cursorGlyph": ">",
-          "itemHeight": 6
+          "focused": false,
+          "fontSize": 4,
+          "itemHeight": 6,
+          "items": [],
+          "name": "menu",
+          "pos": [
+            2,
+            2
+          ],
+          "size": [
+            36,
+            18
+          ],
+          "tag": "ActionMenu",
+          "type": "ItemList",
+          "visible": false,
+          "wrap": true
         }
-      ]
+      ],
+      "name": "panel",
+      "pos": [
+        2,
+        2
+      ],
+      "size": [
+        40,
+        22
+      ],
+      "tag": "ActionPanel",
+      "type": "Panel",
+      "visible": false,
+      "zIndex": 0
     }
-  ]
+  ],
+  "description": "",
+  "layer": 2,
+  "name": "ActionMenu",
+  "pos": [
+    0,
+    0
+  ],
+  "rotation": 0,
+  "scale": [
+    1,
+    1
+  ],
+  "type": "CanvasLayer"
 }

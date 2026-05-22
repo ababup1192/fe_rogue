@@ -171,7 +171,9 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         if (sceneChanged) {
             let tree = NodeInspector.buildSceneTree(nextScene);
             Array.put(tree, 0, state#runtime#sceneTree);
-            IdeGui.Gui.populateProjectTree()
+            IdeGui.Gui.populateProjectTree();
+            // シーンメモ TextArea を新しい scene.json の description で更新
+            ScenePanel.refreshSceneDescription(state)
         } else ();
         // FX 側から積まれた node 選択要求を消費して Editor#selected に反映
         consumePendingNodeSelection(state);

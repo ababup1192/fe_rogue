@@ -1,24 +1,24 @@
-/// ForecastPanelScene — 攻撃前の戦闘予報パネル
+/// BattlePanelScene — 攻撃前の戦闘予報パネル
 ///
 /// `AttackForecast` フェーズで右上に表示される。武器を選んだ瞬間に
 /// 「攻撃側（味方）」と「防御側（敵）」の HP / 威力 / 命中 を Combat.forecast から
 /// 算出して並べて見せる。Z で攻撃を実行、X/Escape で武器選択に戻る。
 ///
 /// ノード構造（visible のとき）:
-///   ForecastPanel (CanvasLayer, layer=3)
-///     └─ panel (Panel, NodeTag.ForecastPanel)
-///           └─ text (Label2D, NodeTag.ForecastText)
-mod ForecastPanelScene {
+///   BattlePanel (CanvasLayer, layer=3)
+///     └─ panel (Panel, NodeTag.BattlePanel)
+///           └─ text (Label2D, NodeTag.BattleText)
+mod BattlePanelScene {
 
     use Json.JsonError.JsonError
     use Json.Path.Path.Root
 
-    def sceneJsonPath(): String = "src/scenes/ForecastPanelScene.scene.json"
+    def sceneJsonPath(): String = "src/scenes/BattlePanelScene.scene.json"
 
     /// fontManifest で登録した name と一致させる（LogScene / WeaponMenuScene と同じ "ui"）
     def fontName(): String = "ui"
 
-    def rootName(): String = "ForecastPanel"
+    def rootName(): String = "BattlePanel"
     pub def panelName(): String = "panel"
     pub def textName(): String  = "text"
 
@@ -31,10 +31,10 @@ mod ForecastPanelScene {
         match opt {
             case None                  => Ok(NodeTag.NoTag)
             case Some("NoTag")         => Ok(NodeTag.NoTag)
-            case Some("ForecastPanel") => Ok(NodeTag.ForecastPanel)
-            case Some("ForecastText")  => Ok(NodeTag.ForecastText)
+            case Some("BattlePanel") => Ok(NodeTag.BattlePanel)
+            case Some("BattleText")  => Ok(NodeTag.BattleText)
             case Some(unknown)         =>
-                Err(JsonError(Root, Set#{"ForecastPanelScene tag (got: ${unknown})"}))
+                Err(JsonError(Root, Set#{"BattlePanelScene tag (got: ${unknown})"}))
         }
 
     /// scene にパネルを追加する
@@ -52,7 +52,7 @@ mod ForecastPanelScene {
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(textPath(), CanvasItem.setVisible(visible))
 
-    /// Game.flix の `Node[NodeTag] instance` の `process` redef から ForecastPanel の Panel
+    /// Game.flix の `Node[NodeTag] instance` の `process` redef から BattlePanel の Panel
     /// ノードに対して dispatch される (panel は 1 個のみなので 1 フレーム 1 回)。
     /// phase に応じて Panel + Label2D の visible を再評価し、AttackForecast フェーズ中は
     /// 選択中プレイヤー / 武器 / 攻撃対象から予報テキストを毎フレーム再構築する。
@@ -79,7 +79,7 @@ mod ForecastPanelScene {
                               PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         if (phase != TurnPhase.Phase.AttackForecast) scene
         else
-            let text = buildForecastText();
+            let text = buildBattleText();
             Label2D.mapAt(textPath(), Label2D.setText(text), scene)
 
     /// `AttackForecast` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
@@ -131,7 +131,7 @@ mod ForecastPanelScene {
     /// 選択中プレイヤー / 攻撃対象敵 / 選択中武器の組から予報テキストを組み立てる。
     /// 反撃が成立する（敵が生存・隣接・武器装備中）なら敵側の予報も出す。
     /// 該当条件が揃わなければ空文字を返す（visible でないフェーズで描画されない想定）。
-    def buildForecastText(): String
+    def buildBattleText(): String
             \ {SelectedPlayer.State, PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         match SelectedPlayer.State.get()#id {
             case None     => ""

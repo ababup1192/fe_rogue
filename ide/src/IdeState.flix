@@ -13,6 +13,7 @@ mod IdeState {
     import javafx.scene.control.ListView
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
+    import javafx.scene.control.TextArea
     import javafx.scene.control.CheckBox
     import javafx.scene.control.Button
     import javafx.scene.control.ProgressBar
@@ -33,6 +34,7 @@ mod IdeState {
         resourcePreviewGridChk        = Array[Option[CheckBox], Static],
         resourcePreviewFrameAdjustChk = Array[Option[CheckBox], Static],
         resourceStatusLabel           = Array[Option[Label], Static],
+        sceneDescriptionArea          = Array[Option[TextArea], Static],
         stage                         = Array[Option[Stage], Static],
         loadingOverlay                = Array[Option[VBox], Static],
         loadingLabel                  = Array[Option[Label], Static],
@@ -147,6 +149,7 @@ mod IdeState {
             resourcePreviewGridChk        = Array#{(None: Option[CheckBox])} @ Static,
             resourcePreviewFrameAdjustChk = Array#{(None: Option[CheckBox])} @ Static,
             resourceStatusLabel           = Array#{(None: Option[Label])} @ Static,
+            sceneDescriptionArea          = Array#{(None: Option[TextArea])} @ Static,
             stage                         = Array#{(None: Option[Stage])} @ Static,
             loadingOverlay                = Array#{(None: Option[VBox])} @ Static,
             loadingLabel                  = Array#{(None: Option[Label])} @ Static,

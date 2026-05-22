@@ -26,6 +26,7 @@ mod JavaFXIdeUI {
     import javafx.scene.control.Button
     import javafx.scene.control.CheckBox
     import javafx.scene.control.Label
+    import javafx.scene.control.TextArea
     import javafx.scene.control.MenuItem
     import javafx.scene.control.ProgressBar
     import javafx.scene.control.TreeView
@@ -76,6 +77,8 @@ mod JavaFXIdeUI {
             unchecked_cast(ns.get("previewFrameAdjustCheck") as CheckBox);
         let resourceStatusLabel: Label =
             unchecked_cast(ns.get("resourceStatusLabel") as Label);
+        let sceneDescriptionArea: TextArea =
+            unchecked_cast(ns.get("sceneDescriptionArea") as TextArea);
         Array.put(Some(scenesTree),          0, state#widgets#sceneTree);
         Array.put(Some(resourcesList),       0, state#widgets#resourcesList);
         Array.put(Some(subEntriesList),      0, state#widgets#subEntriesList);
@@ -87,6 +90,9 @@ mod JavaFXIdeUI {
         Array.put(Some(previewGridCheck),    0, state#widgets#resourcePreviewGridChk);
         Array.put(Some(previewFrameAdjustCheck), 0, state#widgets#resourcePreviewFrameAdjustChk);
         Array.put(Some(resourceStatusLabel), 0, state#widgets#resourceStatusLabel);
+        Array.put(Some(sceneDescriptionArea), 0, state#widgets#sceneDescriptionArea);
+        // フォーカス外しで scene.json の description を書き戻す
+        ScenePanel.wireSceneDescriptionArea(state, sceneDescriptionArea);
         Array.put(Some(stage),               0, state#widgets#stage);
 
         // Project ロード進捗 overlay。reloadProject の各フェーズで Platform.runLater 経由で更新する

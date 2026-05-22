@@ -562,7 +562,7 @@ mod PlayerScene {
     /// 攻撃ターゲットの敵 id を Data#attackTargetId に記録する。
     /// 武器選択ウィンドウを開く前に GameManager から呼ばれ、ウィンドウ確定後の
     /// `WeaponMenuScene.onWeaponConfirmed` 経由でフェーズが AttackForecast に進み、
-    /// `ForecastPanelScene.confirm` がこの値を読んで実際の攻撃モーションを開始する。
+    /// `BattlePanelScene.confirm` がこの値を読んで実際の攻撃モーションを開始する。
     pub def setAttackTargetId(playerId: Int32, targetEnemyId: Int32,
                                 scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPlayer(playerId, d -> {attackTargetId = Some(targetEnemyId) | d}, scene)
@@ -675,7 +675,7 @@ mod PlayerScene {
     ///   3) 残ったアクティブが居れば PlayerCursor に戻り、次セレクト準備
     ///      居なければ `EnemyTurnDriverScene.beginTurn` で敵ターン開始
     /// 複数 Scene 跨ぎなので「次フェーズ判定」をまとめてここに置く。
-    /// ActionMenu / EnemyScene / ForecastPanel / EnemyTurnDriverScene / TurnInputBridge から
+    /// ActionMenu / EnemyScene / BattlePanel / EnemyTurnDriverScene / TurnInputBridge から
     /// 呼ばれる。
     pub def commitWaitedAndAdvance(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,

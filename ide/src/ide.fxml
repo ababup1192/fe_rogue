@@ -29,6 +29,7 @@
 <?import javafx.scene.control.ProgressBar?>
 <?import javafx.scene.control.Separator?>
 <?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.TextArea?>
 <?import javafx.scene.image.ImageView?>
 <?import javafx.scene.shape.SVGPath?>
 
@@ -60,6 +61,12 @@
                                         <Label text="Scenes" styleClass="section-header"/>
                                         <TreeView fx:id="scenesTree" showRoot="false"
                                                   VBox.vgrow="ALWAYS"/>
+                                        <Label text="シーンメモ" styleClass="section-header"/>
+                                        <TextArea fx:id="sceneDescriptionArea"
+                                                  prefRowCount="3"
+                                                  wrapText="true"
+                                                  promptText="このシーンの説明 (2〜3行)"
+                                                  styleClass="scene-description"/>
                                     </children>
                                 </VBox>
                                 <StackPane fx:id="canvasContainer">

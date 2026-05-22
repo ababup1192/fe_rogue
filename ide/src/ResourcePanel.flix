@@ -169,6 +169,19 @@ mod ResourcePanel {
                             }
                             case Some(record) => {
                                 let basePath = recordKeyPath(state, json);
+                                // ─── implicit description (sub-entry のメモ。schema 宣言不要、
+                                //     全 catalog で常に sub-entry 先頭に表示) ───
+                                let descValue = match record {
+                                    case Json.JsonElement.JsonObject(m) => Map.get("description", m)
+                                    case _                              => None
+                                };
+                                let descKeyPath = List.append(basePath, "description" :: Nil);
+                                let descCommit =
+                                    (json2: Json.JsonElement) -> commitToResource(state, descKeyPath, json2);
+                                let descWidget =
+                                    PropertyWidgets.buildMultilineTextWidget(descValue, descCommit);
+                                PropertyWidgets.addPropertyRow(children, "メモ:", descWidget);
+                                // ─── schema-driven フィールド ───
                                 let fields = Resource.fieldsOf(schema);
                                 let sorted = Map.toList(fields)
                                     |> List.sortBy(p -> PropertyWidgets.fieldOrderKey(p));

@@ -1,0 +1,22 @@
+{
+  "type": "CanvasLayer",
+  "name": "UnitInfoPopup",
+  "layer": 4,
+  "pos": [0, 0],
+  "rotation": 0,
+  "scale": [1, 1],
+  "children": [
+    {
+      "type": "Panel",
+      "name": "panel",
+      "pos": [2, 2],
+      "size": [64, 44],
+      "background": {"r": 0.10196078568696976, "g": 0.20000000298023224, "b": 0.6000000238418579},
+      "backgroundAlpha": 0.45,
+      "border": {"r": 1, "g": 1, "b": 1},
+      "borderWidth": 1,
+      "zIndex": 0,
+      "visible": false
+    }
+  ]
+}

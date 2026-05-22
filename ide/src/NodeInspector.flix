@@ -481,6 +481,9 @@ mod NodeInspector {
         case EngineNode.TextureRectWithState(_, _) =>
             let (c, a) = textureRectFields();
             ({typeName = "TextureRect", common = c, advanced = a}: FieldSection) :: Nil
+        case EngineNode.PanelWithState(_, _) =>
+            let (c, a) = panelFields();
+            ({typeName = "Panel", common = c, advanced = a}: FieldSection) :: Nil
         case _ => Nil
     }
 
@@ -825,6 +828,59 @@ mod NodeInspector {
             scalarFloat32Field("alpha", "Alpha",  n -> Option.map(r -> r#alpha, pick(n))) ::
             boolField("flipH",          "Flip H", n -> Option.map(r -> r#flipH, pick(n))) ::
             boolField("flipV",          "Flip V", n -> Option.map(r -> r#flipV, pick(n))) :: Nil;
+        (common, advanced)
+
+    /// Panel 固有: size + 背景色 (背景色 + α) + 枠線色 (枠色 + α + 幅)。
+    /// scene.json での JSON キー名は "size" / "background" / "backgroundAlpha" /
+    /// "border" / "borderAlpha" / "borderWidth" (engine SceneLoader 規約)
+    def panelFields(): (List[FieldDef], List[FieldDef]) =
+        let pick = n -> match n {
+            case EngineNode.PanelWithState(p, _) => let Panel.Panel(r) = p; Some(r)
+            case _ => None
+        };
+        let sizeField: FieldDef = {
+            name     = "size",
+            label    = "Size",
+            kind     = FieldKind.Vec2T,
+            snapshot = n -> Option.map(r -> vec2ToJson(r#size), pick(n)),
+            apply    = (sel, j) -> match jsonToVec2(j) {
+                case Some(v) => SceneSerializer.updateSize(sel#jsonPath, sel#jsonNodePath, v)
+                case None    => ()
+            }
+        };
+        let bgField: FieldDef = {
+            name     = "background",
+            label    = "Background",
+            kind     = FieldKind.ColorT,
+            snapshot = n -> Option.map(r -> colorToJson(r#backgroundColor), pick(n)),
+            apply    = (sel, j) -> match jsonToColor(j) {
+                case Some(c) => SceneSerializer.updateColor(
+                                  sel#jsonPath, sel#jsonNodePath, "background", c)
+                case None    => ()
+            }
+        };
+        let borderField: FieldDef = {
+            name     = "border",
+            label    = "Border",
+            kind     = FieldKind.ColorT,
+            snapshot = n -> Option.map(r -> colorToJson(r#borderColor), pick(n)),
+            apply    = (sel, j) -> match jsonToColor(j) {
+                case Some(c) => SceneSerializer.updateColor(
+                                  sel#jsonPath, sel#jsonNodePath, "border", c)
+                case None    => ()
+            }
+        };
+        let common =
+            sizeField ::
+            bgField ::
+            scalarFloat32Field("backgroundAlpha", "Background α",
+                               n -> Option.map(r -> r#backgroundAlpha, pick(n))) ::
+            borderField ::
+            intField("borderWidth", "Border width",
+                     n -> Option.map(r -> r#borderWidth, pick(n))) :: Nil;
+        let advanced =
+            scalarFloat32Field("borderAlpha", "Border α",
+                               n -> Option.map(r -> r#borderAlpha, pick(n))) :: Nil;
         (common, advanced)
 
     // ───────────────────────── JSON ↔ 値 変換ヘルパー ─────────────────────────

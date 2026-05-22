@@ -49,7 +49,7 @@ mod EnemyTurnDriverScene {
         let next = match TurnPhase.State.get() {
             case TurnPhase.Phase.EnemyTurn        => stepOnce(scene)
             case TurnPhase.Phase.PlayerAttackHold =>
-                // PlayerAttackHold は (a) ForecastPanelScene.confirm が攻撃モーション
+                // PlayerAttackHold は (a) BattlePanelScene.confirm が攻撃モーション
                 // 開始時にセット (b) onAttackLungeDone の Kill 演出 (Pacing.hold で 700ms)
                 // (c) Counter 反撃中、の 3 段階で居続けるため、commit 可否を 3 つの待ち条件で
                 // gating する: 演出ホールド中 / 味方 attack_lunge 中 / 敵反撃 attack_lunge 中。

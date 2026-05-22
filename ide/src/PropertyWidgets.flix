@@ -28,6 +28,7 @@ mod PropertyWidgets {
     import javafx.scene.control.Button
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
+    import javafx.scene.control.TextArea
     import javafx.scene.control.CheckBox
     import javafx.scene.control.ColorPicker
     import javafx.scene.control.ComboBox
@@ -203,7 +204,11 @@ mod PropertyWidgets {
                          refOptions: Map[String, List[String]],
                          commit: Commit): Node \ IO =
         match fs#ftype {
-            case Resource.FieldType.TextT         => buildTextWidget(value, commit)
+            case Resource.FieldType.TextT         =>
+                match fs#hint {
+                    case Resource.FieldHint.Multiline => buildMultilineTextWidget(value, commit)
+                    case _                            => buildTextWidget(value, commit)
+                }
             case Resource.FieldType.IntT          => buildIntWidget(value, commit)
             case Resource.FieldType.FloatT        => buildFloatWidget(value, commit)
             case Resource.FieldType.BoolT         => buildBoolWidget(value, commit)
@@ -264,6 +269,32 @@ mod PropertyWidgets {
                 else ()
         });
         checked_cast(field)
+    }
+
+    /// Multiline テキスト: 複数行入力可能な TextArea。
+    /// 用途: resource sub-entry の `description` 等、自由メモのフィールド。
+    /// 単行 TextField と同じく Enter キーでも commit するが、改行を入れるには Shift+Enter
+    /// を使う必要がある (TextArea のデフォルト挙動)。フォーカス外しでも commit
+    pub def buildMultilineTextWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
+        let current = match value {
+            case Some(Json.JsonElement.JsonString(s)) => s
+            case _                                    => ""
+        };
+        let area = new TextArea(current);
+        area.setPrefRowCount(3);
+        area.setWrapText(true);
+        area.setPrefWidth(220.0);
+        area.setMaxWidth(220.0);
+        // フォーカスを外した瞬間にコミット
+        area.focusedProperty().addListener(new ChangeListener[Boolean] {
+            def changed(_this: ChangeListener[Boolean],
+                         _obs: ObservableValue[JObject],
+                         _old: Boolean, _new: Boolean): Unit \ IO =
+                if (not area.isFocused())
+                    commit(Json.JsonElement.JsonString(area.getText()))
+                else ()
+        });
+        checked_cast(area)
     }
 
     /// Int フィールド: Spinner<Integer>

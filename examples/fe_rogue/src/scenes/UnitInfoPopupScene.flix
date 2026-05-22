@@ -34,17 +34,14 @@ mod UnitInfoPopupScene {
     def rootName(): String = "UnitInfoPopup"
     pub def rootPath(): NodePath = rootName() :: Nil
 
-    def panelChildName(): String = "Panel"
+    /// scene.json の Panel.name と一致させる (lowercase で他 window と統一)
+    def panelChildName(): String = "panel"
     def panelPath(): NodePath = rootName() :: panelChildName() :: Nil
 
     def fontName(): String = "ui"
 
-    /// CanvasLayer 階層。ForecastPanel=3 より上に置く。
-    def canvasLayerIdx(): Int32 = 4
-
-    // パネル配置（128×128 デザイン解像度、左上固定）
-    def panelPos(): Vec2.Vec2 = {x = 2.0, y = 2.0}
-    def panelSize(): Vec2.Vec2 = {x = 64.0, y = 44.0}
+    /// scene.json のパス
+    def sceneJsonPath(): String = "src/scenes/UnitInfoPopupScene.scene.json"
 
     // Status view 用レイアウト
     def spriteScale(): Vec2.Vec2 = {x = 0.5, y = 0.5}
@@ -74,20 +71,16 @@ mod UnitInfoPopupScene {
 
     // ─── 構築（初回） ─────────────────────────────────────────
 
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
+    /// scene.json で外枠 (CanvasLayer + Panel + initial 非表示) を宣言し、
+    /// 動的 children は renderForKind が `panelPath()` 配下に追加・削除する。
+    /// CanvasLayer に PanelState を後から差し込む (NodeTag.NoTag → UnitInfoPanel(state))
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+        let atlas = GameEngine.Game.getFontAtlas(fontName());
         let initialState: PanelState = { shownUnit = None, viewMode = ViewMode.Status };
-        let layer = CanvasLayer.make(canvasLayerIdx());
-        let withLayer = Scene.addNode(rootName(),
-            EngineNode.CanvasLayerWithState(layer, NodeTag.UnitInfoPanel(initialState)),
-            scene);
-        let panel = Panel.make(panelSize(), bgColor())
-            |> Node2D.setPosition(panelPos())
-            |> Panel.setBackgroundAlpha(0.45f32)
-            |> Panel.setBorderColor(borderColor())
-            |> Panel.setBorderWidth(1)
-            |> CanvasItem.setVisible(false);
-        Scene.addChildAt(rootPath(), panelChildName(),
-            EngineNode.PanelWithState(panel, NodeTag.NoTag), withLayer)
+        SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas,
+                                       SceneLoader.constTagParser(NodeTag.NoTag),
+                                       scene)
+            |> Scene.setState(rootPath(), NodeTag.UnitInfoPanel(initialState))
 
     // ─── 公開 API ─────────────────────────────────────────────
 

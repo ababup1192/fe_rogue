@@ -1,6 +1,6 @@
 {
   "type": "CanvasLayer",
-  "name": "ForecastPanel",
+  "name": "BattlePanel",
   "layer": 3,
   "pos": [0, 0],
   "rotation": 0,
@@ -9,10 +9,10 @@
     {
       "type": "Panel",
       "name": "panel",
-      "tag": "ForecastPanel",
+      "tag": "BattlePanel",
       "pos": [58, 2],
       "size": [68, 38],
-      "background": {"r": 0, "g": 0, "b": 0},
+      "background": {"r": 0.10196078568696976, "g": 0.20000000298023224, "b": 0.6000000238418579},
       "backgroundAlpha": 0.85,
       "border": {"r": 1, "g": 1, "b": 1},
       "borderWidth": 1,
@@ -22,7 +22,7 @@
         {
           "type": "Label2D",
           "name": "text",
-          "tag": "ForecastText",
+          "tag": "BattleText",
           "pos": [3, 2],
           "fontSize": 4,
           "visible": false,

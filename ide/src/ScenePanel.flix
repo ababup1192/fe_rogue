@@ -13,11 +13,17 @@
 
 mod ScenePanel {
     import java.lang.{Object => JObject}
+    import java.lang.Boolean
+    import java.lang.Runnable
+    import java.nio.file.Files
+    import java.nio.file.Paths
+    import javafx.application.Platform
     import javafx.animation.AnimationTimer
     import javafx.collections.ObservableList
     import javafx.scene.Node
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
+    import javafx.scene.control.TextArea
     import javafx.scene.control.CheckBox
     import javafx.scene.control.ColorPicker
     import javafx.scene.control.ComboBox
@@ -563,5 +569,89 @@ mod ScenePanel {
             case Some(s) => cb.setValue(s)
         }
     }
+
+    // ─── シーン description (画面下部のメモ欄) ─────────────────────
+
+    /// シーンメモ TextArea にフォーカス外しリスナーを貼る。
+    /// blur で内容を現在のシーン .scene.json の `"description"` フィールドに書き戻す。
+    /// HotReload watcher が次フレームで scene を再 load するが、TextArea は他のフィールドと
+    /// 違って表示と保存が独立しているので問題ない
+    pub def wireSceneDescriptionArea(state: IdeState.IdeState, area: TextArea): Unit \ IO =
+        area.focusedProperty().addListener(new ChangeListener[Boolean] {
+            def changed(_this: ChangeListener[Boolean], _obs: ObservableValue[JObject],
+                         _old: Boolean, _new: Boolean): Unit \ IO =
+                if (not area.isFocused())
+                    saveSceneDescription(state, area.getText())
+                else ()
+        })
+
+    /// 現在のシーンの scene.json を読んで `"description"` を上書き保存する。
+    /// JSON parse 失敗・scene 未選択なら no-op。
+    /// FileRead 効果は内側で IO に discharge する (listener context は IO のみ持つため)
+    def saveSceneDescription(state: IdeState.IdeState, text: String): Unit \ IO =
+        match IdeState.getCurrentScenePath(state) {
+            case None       => ()
+            case Some(path) =>
+                run {
+                    let readResult = run {
+                        Fs.ReadFile.read(path)
+                    } with Fs.ReadFile.runWithFileRead;
+                    match readResult {
+                        case Err(_) => ()
+                        case Ok(content) =>
+                            match Json.Parse.parse(String.trim(content)) {
+                                case None       => ()
+                                case Some(json) => {
+                                    let updated = JsonOps.setAtKeyPath(json,
+                                        "description" :: Nil,
+                                        Json.JsonElement.JsonString(text));
+                                    let pretty = Json.Write.toPrettyString(2i32, updated);
+                                    discard Files.writeString(Paths.get(path), pretty);
+                                    println("[Scenes] saved description: ${path}")
+                                }
+                            }
+                    }
+                } with Fs.FileRead.runWithIO
+        }
+
+    /// 現在シーンの scene.json から `description` を読み、TextArea にセットする。
+    /// scene 切替時に Main の renderLoop から呼ぶ。TextArea がフォーカス中なら
+    /// ユーザーの入力を消さないよう更新を skip する
+    pub def refreshSceneDescription(state: IdeState.IdeState): Unit \ {IO, Fs.FileRead} =
+        match IdeState.getCurrentScenePath(state) {
+            case None       => ()
+            case Some(path) => {
+                let readResult = run {
+                    Fs.ReadFile.read(path)
+                } with Fs.ReadFile.runWithFileRead;
+                match readResult {
+                    case Err(_)      => scheduleSetSceneDescription(state, "")
+                    case Ok(content) =>
+                        let desc = extractDescription(content);
+                        scheduleSetSceneDescription(state, desc)
+                }
+            }
+        }
+
+    def extractDescription(content: String): String =
+        match Json.Parse.parse(String.trim(content)) {
+            case Some(Json.JsonElement.JsonObject(m)) =>
+                match Map.get("description", m) {
+                    case Some(Json.JsonElement.JsonString(s)) => s
+                    case _                                    => ""
+                }
+            case _ => ""
+        }
+
+    def scheduleSetSceneDescription(state: IdeState.IdeState, text: String): Unit \ IO =
+        Platform.runLater(new Runnable {
+            def $run(_this: Runnable): Unit \ IO =
+                match Array.get(0, state#widgets#sceneDescriptionArea) {
+                    case None       => ()
+                    case Some(area) =>
+                        if (not area.isFocused()) area.setText(text)
+                        else ()
+                }
+        })
 
 }

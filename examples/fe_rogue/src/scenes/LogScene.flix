@@ -33,8 +33,10 @@ mod LogScene {
 
     def name(): String = "Log"
     pub def logPath(): NodePath = name() :: Nil
+    def panelChildName(): String = "panel"
     def textChildName(): String = "Text"
-    pub def textPath(): NodePath = name() :: textChildName() :: Nil
+    /// Text は Panel の子なので `[Log, panel, Text]` の 3 段
+    pub def textPath(): NodePath = name() :: panelChildName() :: textChildName() :: Nil
 
     /// 履歴上限（行数）。表示領域より多く保持して、将来的にスクロール操作で遡れるようにする
     def maxLinesDefault(): Int32 = 200

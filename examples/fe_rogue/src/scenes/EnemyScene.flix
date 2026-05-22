@@ -471,7 +471,7 @@ mod EnemyScene {
     /// AnimationPlayer の `attack_lunge` finished イベント受信時の処理 (敵側 = 反撃完了)。
     /// `attackTargetId` をクリアした後、現フェーズが `PlayerAttackHold` (= 味方攻撃に対する
     /// 反撃の完了) なら commit、`EnemyTurn` (= 通常の敵ターン中の攻撃) なら何もしない。
-    /// フェーズが `PlayerAttackHold` なのは `ForecastPanelScene.confirm` が攻撃モーション
+    /// フェーズが `PlayerAttackHold` なのは `BattlePanelScene.confirm` が攻撃モーション
     /// 開始時にここへ遷移させているため (味方 attack_lunge → 反撃 attack_lunge の間ずっと Hold)。
     pub def onCounterLungeDone(enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,

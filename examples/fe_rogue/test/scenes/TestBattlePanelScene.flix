@@ -1,4 +1,4 @@
-/// ForecastPanelScene.confirm のテスト
+/// BattlePanelScene.confirm のテスト
 ///
 /// 連打バグ回帰防止: Z 連打で `AttackForecast → PlayerAttack → WeaponSelect → AttackForecast`
 /// のループが回って攻撃モーションが再起動されないよう、`confirm` 直後のフェーズが
@@ -8,7 +8,7 @@
 ///   - 状況が揃った状態で `confirm` を呼ぶと TurnPhase.State が `PlayerAttackHold` になる
 ///   - `TurnRules.decide` は `PlayerAttackHold + Confirm` で必ず `Stay` を返す
 ///     (上の遷移先と組み合わせて「攻撃モーション中の Z は無効」が機能することを担保)
-mod TestForecastPanelScene {
+mod TestBattlePanelScene {
 
     // ════════════════════════════════════════════════════════
     // フィクスチャ
@@ -60,7 +60,7 @@ mod TestForecastPanelScene {
     // confirm の遷移先 = PlayerAttackHold（入力ロック相当）
     // ════════════════════════════════════════════════════════
 
-    /// `ForecastPanelScene.confirm` を呼んだ直後の TurnPhase が `PlayerAttackHold` であること。
+    /// `BattlePanelScene.confirm` を呼んだ直後の TurnPhase が `PlayerAttackHold` であること。
     ///
     /// バグ修正前は `PlayerAttack` に遷移していたため、次フレームの Z が
     /// `TurnRules.decide` の PlayerAttack 分岐で `OpenWeaponMenu` を返してしまい
@@ -79,7 +79,7 @@ mod TestForecastPanelScene {
                     id     = Some(0),
                     origin = Some(({x = 2, y = 2}: {x = Int32, y = Int32}))
                 });
-                let _ = ForecastPanelScene.confirm(Scene.empty());
+                let _ = BattlePanelScene.confirm(Scene.empty());
                 TurnPhase.State.get()
             } with handler PlayerScene.PartyQuery {
                 def get(id, k) =
