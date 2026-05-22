@@ -152,6 +152,16 @@
     -fx-font-size: 12px;
 }
 
+/* RefPercentList widget (floor の monsters/items 等の {ref, percent} 配列) */
+.ref-percent-list {
+    -fx-padding: 4 0 4 0;
+}
+.ref-percent-sum {
+    -fx-font-size: 11px;
+    -fx-text-fill: #555555;
+    -fx-padding: 2 0 0 0;
+}
+
 /* Project ロード進捗 overlay。canvas 中央に半透明背景で被せる */
 .loading-overlay {
     -fx-background-color: rgba(40, 40, 40, 0.92);

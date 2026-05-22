@@ -1,0 +1,39 @@
+{
+  "floors": {
+    "f01": {
+      "items": [
+        {
+          "id": "trainingBow",
+          "percent": 35
+        },
+        {
+          "id": "trainingSpear",
+          "percent": 35
+        },
+        {
+          "id": "fire_magic",
+          "percent": 30
+        }
+      ],
+      "itemsPerRoom": {
+        "max": 1,
+        "min": 0
+      },
+      "label": "1F",
+      "monsters": [
+        {
+          "id": "goblin",
+          "percent": 70
+        },
+        {
+          "id": "orc",
+          "percent": 30
+        }
+      ],
+      "monstersPerRoom": {
+        "max": 3,
+        "min": 0
+      }
+    }
+  }
+}

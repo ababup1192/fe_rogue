@@ -20,6 +20,10 @@ mod Resource {
     ///   RefT(target) : 値が別 catalog の sub-entry id を指す（例: 武器 id）。IDE は
     ///                  `target` 配下の sub-entries を ComboBox 候補に並べる。
     ///                  schema JSON では `{"type": "ref", "to": target}` で表す。
+    ///   RefPercentListT(target) : 値が `[{id, percent}]` の object 配列。各要素は
+    ///                  `target` catalog の sub-entry id への ref と 0-100 整数のペア。
+    ///                  fe_rogue の floor spawn テーブル等に使う。
+    ///                  schema JSON では `{"type": "refPercentList", "to": target}` で表す。
     pub enum FieldType {
         case TextT
         case IntT
@@ -27,6 +31,7 @@ mod Resource {
         case BoolT
         case TexturePathT      // プロジェクト登録済みテクスチャから選択
         case RefT(String)      // 別 catalog (containerKey = target) の sub-entry id
+        case RefPercentListT(String)  // [{id: ref, percent: 0-100}] の動的長配列
     }
 
     /// 編集 UI のヒント。`Plain` は型相応の素直な入力欄（数値スピナー / テキスト等）。
@@ -240,6 +245,11 @@ mod ResourceCodec {
                 "type" => JsonString("ref"),
                 "to"   => JsonString(target)
             })
+        case FieldType.RefPercentListT(target) =>
+            JsonObject(Map#{
+                "type" => JsonString("refPercentList"),
+                "to"   => JsonString(target)
+            })
     }
 
     def encodeFieldHint(h: FieldHint): JsonElement = match h {
@@ -377,6 +387,10 @@ mod ResourceCodec {
                         Map.get("to", obj)
                             |> Option.flatMap(expectString)
                             |> Option.map(FieldType.RefT)
+                    case "refPercentList" =>
+                        Map.get("to", obj)
+                            |> Option.flatMap(expectString)
+                            |> Option.map(FieldType.RefPercentListT)
                     case _     => None
                 }
             ) yield ftype

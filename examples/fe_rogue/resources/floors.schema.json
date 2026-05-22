@@ -1,0 +1,68 @@
+{
+  "fields": {
+    "label": {
+      "field": {
+        "ftype": "text",
+        "hint":  "plain",
+        "label": "表示名",
+        "order": 1
+      }
+    },
+    "monsters": {
+      "field": {
+        "ftype": { "type": "refPercentList", "to": "units" },
+        "hint":  "plain",
+        "label": "出現モンスター",
+        "order": 2
+      }
+    },
+    "items": {
+      "field": {
+        "ftype": { "type": "refPercentList", "to": "weapons" },
+        "hint":  "plain",
+        "label": "出現アイテム",
+        "order": 3
+      }
+    },
+    "monstersPerRoom": {
+      "nested": {
+        "min": {
+          "field": {
+            "ftype": "int",
+            "hint":  { "spinner": { "min": 0, "max": 10 } },
+            "label": "最小",
+            "order": 1
+          }
+        },
+        "max": {
+          "field": {
+            "ftype": "int",
+            "hint":  { "spinner": { "min": 0, "max": 10 } },
+            "label": "最大",
+            "order": 2
+          }
+        }
+      }
+    },
+    "itemsPerRoom": {
+      "nested": {
+        "min": {
+          "field": {
+            "ftype": "int",
+            "hint":  { "spinner": { "min": 0, "max": 10 } },
+            "label": "最小",
+            "order": 1
+          }
+        },
+        "max": {
+          "field": {
+            "ftype": "int",
+            "hint":  { "spinner": { "min": 0, "max": 10 } },
+            "label": "最大",
+            "order": 2
+          }
+        }
+      }
+    }
+  }
+}

@@ -280,6 +280,19 @@ mod Game {
             // 武器も同じ規格で schema を持ち、起動時に整合性検査だけ通す。
             // (IDE の resource エディタは weapons map 自体のフォーム編集に対応していないため、
             //  この schema は型と data の対応を保証するための「契約」として使う)
+            // フロア定義をロード。現状は floor "f01" 固定（フロア進行は未実装）。
+            // 新しいフロアを足したくなったら resources/floors.json に sub-entry を追加し、
+            // ここの "f01" を選択ロジックに差し替える
+            let floors = FloorCatalog.load("resources/floors.json");
+            let floor  = FloorCatalog.get("f01", floors);
+            let floorsSchema = match Resource.loadSchemaDiagnostic("resources/floors.schema.json") {
+                case Ok(s)    => s
+                case Err(msg) => bug!("Resource.loadSchema (floors) failed :: ${msg}")
+            };
+            let _ = match Resource.checkConsistency(FloorCatalog.expectedFloorFields(), floorsSchema) {
+                case Ok(_)    => ()
+                case Err(msg) => bug!("FloorResource schema/type mismatch: ${msg}")
+            };
             let weaponsSchema = match Resource.loadSchemaDiagnostic("resources/weapons.schema.json") {
                 case Ok(s)    => s
                 case Err(msg) => bug!("Resource.loadSchema (weapons) failed :: ${msg}")
@@ -290,7 +303,7 @@ mod Game {
             };
             run {
                 // 初回 build と spawn snapshot 保存をまとめて行う (GameOver リビルドと同じ経路)
-                let scene = GameLifecycle.buildAndRecord(catalog);
+                let scene = GameLifecycle.buildAndRecord(catalog, floor);
                 // BGM は控えめに、SE は半分で鳴らす
                 AudioStreamPlayer.setVolume("bgm",    0.05f32);
                 AudioStreamPlayer.setVolume("damage", 0.5f32);
@@ -307,7 +320,7 @@ mod Game {
             } with handler CustomEffects.GameOverRequest {
                   // 全味方脱落でフルリビルド: turn 系 state をリセットしてから scene を作り直し、
                   // 新しい spawn 一覧を InitialSpawns に書き戻す。本体は GameLifecycle 側。
-                  def request(_scene, k) = k(GameLifecycle.resetForGameOver(catalog))
+                  def request(_scene, k) = k(GameLifecycle.resetForGameOver(catalog, floor))
               }
               with handler BoardQuery {
                   def board(k) = k(BoardSnapshot.fromScene(Ref.get(sceneRef)))

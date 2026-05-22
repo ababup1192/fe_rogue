@@ -25,15 +25,16 @@ mod GameLifecycle {
     /// 戻り値の Aef にも `IO` を含める。
     /// **直接呼ぶのは `buildAndRecord` だけ** にする (起動 / リビルド時の snapshot 記録漏れ
     /// を防ぐため、外向き API は `buildAndRecord` を使う)。
-    pub def buildPlayingScene(catalog: UnitCatalog.UnitCatalog): Scene[NodeTag]
+    pub def buildPlayingScene(catalog: UnitCatalog.UnitCatalog,
+                                floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State} =
         Scene.empty()
             |> MapScene.add
             |> DamagePopupScene.add     // World 配下に空の Marker2D 親を 1 つ生やす
             |> PlayerScene.add(catalog)
-            |> EnemyScene.add(catalog)
-            |> ItemScene.add(catalog)   // 部屋の床に武器をランダムドロップ
+            |> EnemyScene.add(catalog, floor)
+            |> ItemScene.add(catalog, floor)   // 部屋の床に武器をランダムドロップ
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
             |> CursorScene.add
             |> FlagScene.add            // 自動移動先マーカー (初期は非表示)
@@ -48,10 +49,11 @@ mod GameLifecycle {
     /// プレイ用シーンを組み立て + 初期 spawn 一覧 (敵 / 味方) を `InitialSpawns` に保存する。
     /// 起動時と GameOver リビルド時の両方が必ず通る経路。これで「scene 構築」と
     /// 「ゲームオーバー復帰用のスポーン記録」が必ず同じタイミングで揃う。
-    pub def buildAndRecord(catalog: UnitCatalog.UnitCatalog): Scene[NodeTag]
+    pub def buildAndRecord(catalog: UnitCatalog.UnitCatalog,
+                            floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State, InitialSpawns.State} =
-        let scene = buildPlayingScene(catalog);
+        let scene = buildPlayingScene(catalog, floor);
         InitialSpawns.State.put({
             enemies = EnemyScene.snapshotSpawns(scene),
             players = PlayerScene.snapshotSpawns(scene)
@@ -74,11 +76,12 @@ mod GameLifecycle {
     /// `CustomEffects.GameOverRequest` handler の本体。
     /// ターン進行系を初期化してから scene をリビルド + spawn snapshot 更新して返す。
     /// handler 側は `k(GameLifecycle.resetForGameOver(catalog))` の 1 行で済む。
-    pub def resetForGameOver(catalog: UnitCatalog.UnitCatalog): Scene[NodeTag]
+    pub def resetForGameOver(catalog: UnitCatalog.UnitCatalog,
+                              floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State,
                 InitialSpawns.State} =
         resetTurnState();
-        buildAndRecord(catalog)
+        buildAndRecord(catalog, floor)
 }

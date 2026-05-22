@@ -24,7 +24,7 @@
       }
     },
     "goblin": {
-      "attack": 4,
+      "attack": 5,
       "defense": 2,
       "hp": 10,
       "initialWeapon": "trainingSword",
@@ -41,7 +41,7 @@
       }
     },
     "knight": {
-      "attack": 5,
+      "attack": 7,
       "defense": 4,
       "hp": 17,
       "initialWeapon": "trainingSpear",
@@ -55,8 +55,8 @@
       }
     },
     "mage": {
-      "attack": 4,
-      "defense": 3,
+      "attack": 8,
+      "defense": 2,
       "hp": 11,
       "initialWeapon": "noviceStaff",
       "moveTiles": 5,
@@ -69,9 +69,9 @@
       }
     },
     "orc": {
-      "attack": 5,
+      "attack": 6,
       "defense": 3,
-      "hp": 10,
+      "hp": 13,
       "initialWeapon": "trainingSword",
       "moveTiles": 3,
       "speed": 2,

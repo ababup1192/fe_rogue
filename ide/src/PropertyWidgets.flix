@@ -25,6 +25,7 @@ mod PropertyWidgets {
     import javafx.scene.image.Image
     import javafx.scene.canvas.Canvas
     import javafx.scene.canvas.GraphicsContext
+    import javafx.scene.control.Button
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
     import javafx.scene.control.CheckBox
@@ -210,6 +211,9 @@ mod PropertyWidgets {
             case Resource.FieldType.RefT(target)  =>
                 let options = Map.get(target, refOptions) |> Option.getWithDefault(Nil);
                 buildEnumWidget(value, options, commit)
+            case Resource.FieldType.RefPercentListT(target) =>
+                let options = Map.get(target, refOptions) |> Option.getWithDefault(Nil);
+                buildRefPercentListWidget(value, options, commit)
         }
 
     /// TexturePathT: project 登録 texture から選択する ComboBox<String>
@@ -321,6 +325,228 @@ mod PropertyWidgets {
             }
         });
         checked_cast(combo)
+    }
+
+    /// RefPercentListT widget: 動的長の `[{id: <ref>, percent: 0-100}]` 配列を編集する。
+    /// 行ごとに ComboBox (ref dropdown) + Spinner (percent) + 削除ボタン、最下段に追加ボタン
+    /// と合計表示。Add / Remove は VBox を再描画、value 変更は in-place で commit + 合計
+    /// ラベル更新のみ (Spinner / ComboBox が壊れないように)
+    pub def buildRefPercentListWidget(value: Option[Json.JsonElement],
+                                        options: List[String],
+                                        commit: Commit): Node \ IO = {
+        let initial = parseRefPercentRows(value);
+        let rowsRef: Array[List[(String, Int32)], Static] = Array#{initial} @ Static;
+        let sumLabelRef: Array[Option[Label], Static] = Array#{(None: Option[Label])} @ Static;
+        let outer = new VBox(4.0);
+        outer.getStyleClass().add("ref-percent-list");
+        renderRefPercentList(outer, rowsRef, sumLabelRef, options, commit);
+        checked_cast(outer)
+    }
+
+    /// outer の子をクリアして再描画。Add/Remove のたびに呼ぶ
+    def renderRefPercentList(outer: VBox,
+                              rowsRef: Array[List[(String, Int32)], Static],
+                              sumLabelRef: Array[Option[Label], Static],
+                              options: List[String],
+                              commit: Commit): Unit \ IO = {
+        let children = outer.getChildren();
+        children.clear();
+        let rows = Array.get(0, rowsRef);
+        renderRefPercentListRows(0i32, rows, outer, rowsRef, sumLabelRef, options, commit);
+        // 追加ボタン
+        let addBtn = new Button("＋ 追加");
+        addBtn.getStyleClass().add("catalog-btn");
+        addBtn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                let cur = Array.get(0, rowsRef);
+                let firstOpt = List.head(options) |> Option.getWithDefault("");
+                let newRows = List.append(cur, (firstOpt, 0i32) :: Nil);
+                Array.put(newRows, 0, rowsRef);
+                renderRefPercentList(outer, rowsRef, sumLabelRef, options, commit);
+                commitRefPercentRows(rowsRef, commit)
+            }
+        });
+        let addNode: Node = checked_cast(addBtn);
+        discard children.add(addNode);
+        // 合計ラベル
+        let sum = sumPercents(rows);
+        let lbl = new Label(formatSumLabel(sum));
+        lbl.getStyleClass().add("ref-percent-sum");
+        Array.put(Some(lbl), 0, sumLabelRef);
+        let lblNode: Node = checked_cast(lbl);
+        discard children.add(lblNode)
+    }
+
+    /// 各行 (HBox) を VBox に append する。idx は再描画のたびに 0 から数え直し
+    def renderRefPercentListRows(idx: Int32, remaining: List[(String, Int32)],
+                                  outer: VBox,
+                                  rowsRef: Array[List[(String, Int32)], Static],
+                                  sumLabelRef: Array[Option[Label], Static],
+                                  options: List[String],
+                                  commit: Commit): Unit \ IO =
+        match remaining {
+            case Nil => ()
+            case (id, pct) :: rest => {
+                let row = buildRefPercentRow(idx, id, pct, outer, rowsRef, sumLabelRef,
+                                              options, commit);
+                let rowNode: Node = checked_cast(row);
+                discard outer.getChildren().add(rowNode);
+                renderRefPercentListRows(idx + 1i32, rest, outer, rowsRef, sumLabelRef,
+                                          options, commit)
+            }
+        }
+
+    /// 1 行ぶん: [ComboBox] [Spinner] % [✕]
+    def buildRefPercentRow(idx: Int32, id: String, pct: Int32, outer: VBox,
+                            rowsRef: Array[List[(String, Int32)], Static],
+                            sumLabelRef: Array[Option[Label], Static],
+                            options: List[String],
+                            commit: Commit): HBox \ IO = {
+        let row = new HBox(4.0);
+        row.setAlignment(Pos.CENTER_LEFT);
+        // ComboBox
+        let combo: ComboBox[String] = new ComboBox();
+        let items = combo.getItems();
+        List.forEach(o -> discard items.add(o), options);
+        combo.setEditable(false);
+        combo.setValue(id);
+        combo.setPrefWidth(140.0);
+        combo.valueProperty().addListener(new ChangeListener[String] {
+            def changed(_this: ChangeListener[String], _obs: ObservableValue[JObject],
+                         _old: String, newVal: String): Unit \ IO = {
+                if (Object.isNull(newVal)) ()
+                else {
+                    let cur = Array.get(0, rowsRef);
+                    let curPct = nthPercent(idx, cur);
+                    Array.put(replaceRowAt(idx, (newVal, curPct), cur), 0, rowsRef);
+                    commitRefPercentRows(rowsRef, commit);
+                    updateSumLabel(rowsRef, sumLabelRef)
+                }
+            }
+        });
+        // Spinner (percent)
+        let spinner: Spinner[Integer] = new Spinner(0i32, 100i32, pct);
+        spinner.setEditable(true);
+        spinner.setPrefWidth(80.0);
+        spinner.valueProperty().addListener(new ChangeListener[Integer] {
+            def changed(_this: ChangeListener[Integer], _obs: ObservableValue[JObject],
+                         _old: Integer, newVal: Integer): Unit \ IO = {
+                let v: Int32 = newVal.intValue();
+                let cur = Array.get(0, rowsRef);
+                let curId = nthId(idx, cur);
+                Array.put(replaceRowAt(idx, (curId, v), cur), 0, rowsRef);
+                commitRefPercentRows(rowsRef, commit);
+                updateSumLabel(rowsRef, sumLabelRef)
+            }
+        });
+        let pctLbl = new Label("%");
+        // Remove ボタン
+        let removeBtn = new Button("✕");
+        removeBtn.getStyleClass().add("catalog-btn");
+        removeBtn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                let cur = Array.get(0, rowsRef);
+                Array.put(removeRowAt(idx, cur), 0, rowsRef);
+                renderRefPercentList(outer, rowsRef, sumLabelRef, options, commit);
+                commitRefPercentRows(rowsRef, commit)
+            }
+        });
+        let children = row.getChildren();
+        let comboNode:  Node = checked_cast(combo);
+        let spinNode:   Node = checked_cast(spinner);
+        let pctLblNode: Node = checked_cast(pctLbl);
+        let rmNode:     Node = checked_cast(removeBtn);
+        discard children.add(comboNode);
+        discard children.add(spinNode);
+        discard children.add(pctLblNode);
+        discard children.add(rmNode);
+        row
+    }
+
+    /// JSON 値 (Option[JsonArray of JsonObject{id, percent}]) を [(id, percent)] にパース。
+    /// 不正な要素はスキップ。値無しは空リスト
+    def parseRefPercentRows(value: Option[Json.JsonElement]): List[(String, Int32)] =
+        match value {
+            case Some(Json.JsonElement.JsonArray(items)) =>
+                Vector.toList(items)
+                    |> List.filterMap(decodeRefPercentRow)
+            case _ => Nil
+        }
+
+    def decodeRefPercentRow(elem: Json.JsonElement): Option[(String, Int32)] =
+        match elem {
+            case Json.JsonElement.JsonObject(m) =>
+                let idOpt = Map.get("id", m) |> Option.flatMap(j -> match j {
+                    case Json.JsonElement.JsonString(s) => Some(s)
+                    case _ => None
+                });
+                let pctOpt = Map.get("percent", m) |> Option.flatMap(NodeInspector.jsonToInt);
+                match (idOpt, pctOpt) {
+                    case (Some(i), Some(p)) => Some((i, p))
+                    case _                  => None
+                }
+            case _ => None
+        }
+
+    /// 内部 state を JSON に書き戻して commit
+    def commitRefPercentRows(rowsRef: Array[List[(String, Int32)], Static],
+                              commit: Commit): Unit \ IO = {
+        let rows = Array.get(0, rowsRef);
+        let items = rows |> List.map(p -> {
+            let (id, pct) = p;
+            Json.JsonElement.JsonObject(Map#{
+                "id"      => Json.JsonElement.JsonString(id),
+                "percent" => NodeInspector.intToJson(pct)
+            })
+        });
+        commit(Json.JsonElement.JsonArray(List.toVector(items)))
+    }
+
+    /// idx 番目の (id, pct) を newPair で置き換えた新リストを返す
+    def replaceRowAt(idx: Int32, newPair: (String, Int32),
+                      rows: List[(String, Int32)]): List[(String, Int32)] =
+        match rows {
+            case Nil     => Nil
+            case x :: xs =>
+                if (idx == 0i32) newPair :: xs
+                else x :: replaceRowAt(idx - 1i32, newPair, xs)
+        }
+
+    /// idx 番目を取り除いた新リストを返す
+    def removeRowAt(idx: Int32, rows: List[(String, Int32)]): List[(String, Int32)] =
+        match rows {
+            case Nil     => Nil
+            case x :: xs =>
+                if (idx == 0i32) xs
+                else x :: removeRowAt(idx - 1i32, xs)
+        }
+
+    def nthPercent(idx: Int32, rows: List[(String, Int32)]): Int32 =
+        match List.nth(idx, rows) {
+            case Some((_, p)) => p
+            case None         => 0i32
+        }
+
+    def nthId(idx: Int32, rows: List[(String, Int32)]): String =
+        match List.nth(idx, rows) {
+            case Some((i, _)) => i
+            case None         => ""
+        }
+
+    def sumPercents(rows: List[(String, Int32)]): Int32 =
+        List.foldLeft((acc, p) -> { let (_, v) = p; acc + v }, 0i32, rows)
+
+    def formatSumLabel(sum: Int32): String =
+        if (sum == 100i32) "合計: ${sum}% ✓"
+        else "合計: ${sum}% ⚠"
+
+    def updateSumLabel(rowsRef: Array[List[(String, Int32)], Static],
+                        sumLabelRef: Array[Option[Label], Static]): Unit \ IO = {
+        let sum = sumPercents(Array.get(0, rowsRef));
+        match Array.get(0, sumLabelRef) {
+            case Some(lbl) => lbl.setText(formatSumLabel(sum))
+            case None      => ()
+        }
     }
 
     /// Color widget: JavaFX ColorPicker。値は JsonObject{"r","g","b"} (Float64 各 0-1)。

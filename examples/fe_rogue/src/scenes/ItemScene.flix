@@ -75,18 +75,19 @@ mod ItemScene {
 
     def outlineSuffixes(): List[String] = "n" :: "s" :: "e" :: "w" :: Nil
 
-    /// 1 部屋あたり最大何個落とすか
-    def dropsPerRoom(): Int32 = 1
+    // per-room cap は引数で受け取る floor の `itemsPerRoom` を使う (resource 駆動)。
+    // 旧 `dropsPerRoom()` 定数は floor 駆動化で廃止
 
     // ─── 構築 ─────────────────────────────────────────────────
 
-    /// 部屋の床セルにランダムで武器を配置する。
+    /// 部屋の床セルに floor の `items` (percent 配列) から重み付き抽選した武器を配置する。
     /// player / enemy が居るセルは避ける。
-    pub def add(catalog: UnitCatalog.UnitCatalog, scene: Scene[NodeTag]):
+    pub def add(catalog: UnitCatalog.UnitCatalog,
+                 floor: FloorCatalog.FloorResource,
+                 scene: Scene[NodeTag]):
             Scene[NodeTag] \ Math.Random =
-        let weaponsMap = UnitCatalog.weaponsOf(catalog);
-        let weaponEntries = Map.toList(weaponsMap);  // List[(String, WeaponResource)]
-        if (List.isEmpty(weaponEntries)) scene
+        let items = floor#items;
+        if (List.isEmpty(items)) scene
         else {
             let layer       = MapScene.getMapLayer(scene);
             let placements  = MapScene.getPlacements(scene);
@@ -105,8 +106,10 @@ mod ItemScene {
             let initial: (Int32, List[{x = Int32, y = Int32}],
                            List[(Int32, {x = Int32, y = Int32}, String, UnitCatalog.WeaponResource)]) =
                 (0, occupied, Nil);
+            let range = floor#itemsPerRoom;
             let (_, _, accDrops) = List.foldLeft(state -> p ->
-                dropsInRoom(layer, p, dropsPerRoom(), weaponEntries, state),
+                dropsInRoom(layer, p, FloorCatalog.randomCountInRange(range),
+                             items, catalog, state),
                 initial, rooms);
             let drops = List.reverse(accDrops);
             // 親 Marker2D + 各 Item Sprite2D を追加
@@ -167,10 +170,13 @@ mod ItemScene {
             EngineNode.Sprite2DWithState(sprite, NodeTag.GroundItem(data)), withOutlines)
 
     /// 部屋 1 つから count 個のドロップセルを選び state に積む。
+    /// 各セルにつき floor の `items` (percent 配列) から重み付き抽選した weapon id を
+    /// `catalog#weapons` で WeaponResource に解決して配置する。
     def dropsInRoom(layer: TileMapLayer,
                      p: DungeonComposer.ModulePlacement,
                      count: Int32,
-                     weaponEntries: List[(String, UnitCatalog.WeaponResource)],
+                     items: List[FloorCatalog.SpawnEntry],
+                     catalog: UnitCatalog.UnitCatalog,
                      state: (Int32, List[{x = Int32, y = Int32}],
                               List[(Int32, {x = Int32, y = Int32}, String, UnitCatalog.WeaponResource)])):
                     (Int32, List[{x = Int32, y = Int32}],
@@ -184,11 +190,12 @@ mod ItemScene {
             match RandomUtil.pick(candidates) {
                 case None       => state
                 case Some(cell) =>
-                    match RandomUtil.pick(weaponEntries) {
-                        case None              => state
-                        case Some((key, weapon)) =>
-                            let entry = (nextId, cell, key, weapon);
-                            dropsInRoom(layer, p, count - 1, weaponEntries,
+                    match FloorCatalog.pickWeighted(items) {
+                        case None     => state
+                        case Some(id) =>
+                            let weapon = UnitCatalog.lookupWeapon(id, catalog);
+                            let entry = (nextId, cell, id, weapon);
+                            dropsInRoom(layer, p, count - 1, items, catalog,
                                          (nextId + 1, cell :: taken, entry :: list))
                     }
             }

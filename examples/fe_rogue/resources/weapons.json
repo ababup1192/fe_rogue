@@ -1,7 +1,7 @@
 {
   "weapons": {
     "fire_magic": {
-      "attack": 8,
+      "attack": 0,
       "durability": 21,
       "name": "ファイアー",
       "range": {
