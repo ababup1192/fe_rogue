@@ -165,4 +165,44 @@ mod TestUnitFixtures {
             def findIdAt(coord, k) = k(EnemyScene.findIdAt(coord, scene))
             def anyAttacking(k)    = k(EnemyScene.anyAttacking(scene))
         }
+
+    /// `withMockGame` のキー押下を指定述語に切り替えるバリエーション。
+    /// 例: `withMockGameKeys(k -> k == GameEngine.Key.Up, () -> ...)` で「Up キーだけ押下中」を再現。
+    /// 他の Game メソッドは `withMockGame` と同じデフォルト挙動。
+    pub def withMockGameKeys(pressed: GameEngine.Key -> Bool,
+                              thunk: Unit -> a \ ef): a \ (ef - GameEngine.Game) =
+        run { thunk() } with handler GameEngine.Game {
+            def renderCommands(_, _, k)     = k(())
+            def initTileBuffer(_, k)        = k((0i32, 0i32))
+            def shouldClose(k)              = k(false)
+            def getDeltaTime(k)             = k(Duration.seconds(0.016))
+            def isKeyPressed(key, k)        = k(pressed(key))
+            def getMousePosition(k)         = k({x = 0.0, y = 0.0})
+            def isMouseButtonPressed(_, k)  = k(false)
+            def consumeScrollDelta(k)       = k(0.0)
+            def getFontAtlas(_, k)          = k(testFontAtlas())
+            def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 128.0, y = 128.0}})
+            def getTextureInfo(_, k)        = k(None)
+            def setCursor(_, k)             = k(())
+        }
+
+    /// AnimationPlayer.Scheduler のスタブで **`isPlaying` を true 固定**。
+    /// `physicsProcess` などの「アニメ再生中は入力捨てる」分岐を観測するためのテストヘルパー。
+    pub def withPlayingAnim(thunk: Unit -> a \ ef): a \ (ef - AnimationPlayer.Scheduler) =
+        run { thunk() } with handler AnimationPlayer.Scheduler {
+            def schedule(_, k) = k()
+            def isPlaying(_, k) = k(true)
+            def stop(_, k) = k()
+            def cancelAll(k) = k()
+            def activeOwners(k) = k(Nil)
+            def consumeTick(_, k) = k(({propertyUpdates = Nil}: AnimationPlayer.Tick))
+            def drainSignals(_, k) = k(({methods = Nil, finished = Nil}: AnimationPlayer.EventBundle))
+        }
+
+    /// BoardQuery のスタブ。指定 `board` を毎回返す。
+    /// テストで盤面を 1 つ用意して、その盤面の上での挙動を検証する用途。
+    pub def withMockBoard(board: Board, thunk: Unit -> a \ ef): a \ (ef - BoardQuery) =
+        run { thunk() } with handler BoardQuery {
+            def board(k) = k(board)
+        }
 }

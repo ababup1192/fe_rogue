@@ -42,10 +42,10 @@ pub enum NodeTag {
 }
 
 // physicsProcess はフェーズに応じて Player / Cursor のいずれか 1 体だけを
-// dispatch する。`PlayerCursor` / `PlayerAttack` 中はカーソルだけ。
-// `PlayerMoving` 中は **選択中の味方 1 体だけ** が方向キーを polling する。
-// それ以外のフェーズ（`EnemyTurn`）では gameLoop 側が physicsProcess パイプライン
-// 自体を呼ばないので no-op で良い。
+// dispatch する。`PlayerMoving` 中は **選択中の味方 1 体だけ** が方向キーを polling する。
+// Cursor は `PlayerCursor` / `PlayerAttack` の両方で動くため、ここでは
+// NodeTag だけで dispatch して **phase 判定は `CursorScene.physicsProcess` の内部** に任せる。
+// それ以外のフェーズ（`EnemyTurn` 等）では各関数が `(node, scene)` を返して no-op になる。
 instance Node[NodeTag] {
     type Aef = FrameAef.T
     type ProcessAef = FrameAef.ProcessT
@@ -54,20 +54,16 @@ instance Node[NodeTag] {
                           path: NodePath,
                           scene: Scene[NodeTag]):
                          (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.T =
-        let phase = TurnPhase.State.get();
-        match (node, phase) {
-            case (EngineNode.Marker2DWithState(_, NodeTag.Player(data)),
-                  TurnPhase.Phase.PlayerMoving) =>
-                // 選択中プレイヤーだけが移動を受け付ける
-                if (SelectedPlayer.State.get()#id == Some(data#id))
+        match node {
+            case EngineNode.Marker2DWithState(_, NodeTag.Player(data)) =>
+                // 選択中プレイヤー & PlayerMoving フェーズだけが移動を受け付ける
+                if (TurnPhase.State.get() == TurnPhase.Phase.PlayerMoving
+                    and SelectedPlayer.State.get()#id == Some(data#id))
                     PlayerScene.physicsProcess(delta, node, path, scene)
                 else (node, scene)
-            case (EngineNode.Marker2DWithState(_, NodeTag.Cursor(_)),
-                  TurnPhase.Phase.PlayerCursor) =>
+            case EngineNode.Marker2DWithState(_, NodeTag.Cursor(_)) =>
+                // PlayerCursor / PlayerAttack の場合分けは CursorScene 内部に閉じている
                 CursorScene.physicsProcess(delta, node, path, scene)
-            case (EngineNode.Marker2DWithState(_, NodeTag.Cursor(_)),
-                  TurnPhase.Phase.PlayerAttack) =>
-                CursorScene.physicsProcessAttack(delta, node, path, scene)
             case _ => (node, scene)
         }
     // 各 ノード固有の毎フレーム更新を dispatch する。各 Scene が「自分のノード」に対する

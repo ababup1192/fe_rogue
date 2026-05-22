@@ -216,4 +216,155 @@ mod TestCursorScene {
               with TurnPhase.withState(rc));
             Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
         }
+
+    // ════════════════════════════════════════════════════════
+    // physicsProcess — PlayerCursor フェーズの方向入力 / hold / 入力捨て
+    // ════════════════════════════════════════════════════════
+
+    /// 手で Cursor ノードを scene に挿入する。`cursorAddPure` (= scene.json + GameEngine.Game) を
+    /// 経由しないので任意の `gridPos` / `holdDir` / `holdSteps` で初期化できる。
+    def cursorSceneAt(gridPos: {x = Int32, y = Int32},
+                       holdDir: Option[{x = Int32, y = Int32}],
+                       holdSteps: Int32): Scene[NodeTag] =
+        let marker = Marker2D.make(MapScene.cellCenter(gridPos));
+        let data: CursorScene.Data = {
+            gridPos            = gridPos,
+            lastHoveredEnemyId = None,
+            holdDir            = holdDir,
+            holdSteps          = holdSteps
+        };
+        Scene.empty()
+            |> Scene.addNode("Cursor",
+                EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)))
+
+    /// 13×13 床のみ・駒なしのテスト用 Board。`clampToMap` で端マスを判定できる範囲。
+    def testBoard(): Board =
+        let map: MapSnapshot = {
+            tileSize    = 16.0,
+            usedRect    = {position = Vec2i.zero(), size = ({x = 13, y = 13}: {x = Int32, y = Int32})},
+            isWall      = _ -> false,
+            isFloor     = _ -> true,
+            mapToLocal  = c -> MapScene.cellCenter(c),
+            gridToWorld = c -> MapScene.cellCenter(c),
+            moduleOfCell = _ -> None
+        };
+        {map = map, pieces = Nil}
+
+    /// 指定フェーズで `physicsProcess` を 1 フレーム回し、Cursor の Data を取り出す。
+    /// R3 で physicsProcess が phase 分岐するようになったため、テスト側でも phase を
+    /// 立ててから呼ぶ。`PlayerAttack` 用テストも同じ runner を使う (旧 runPhysicsAttack 廃止)。
+    def runPhysics(phase: TurnPhase.Phase, scene: Scene[NodeTag]): CursorScene.Data
+            \ {GameEngine.Game, BoardQuery,
+                Tween.Scheduler, AnimationPlayer.Scheduler,
+                GameLogger.GameLogger,
+                EnemyScene.RosterQuery, TurnPhase.State} =
+        TurnPhase.State.put(phase);
+        let path = CursorScene.cursorPath();
+        match Scene.getEngineNode(path, scene) {
+            case Some(node) =>
+                let (newNode, newScene) =
+                    CursorScene.physicsProcess(Duration.seconds(0.016), node, path, scene);
+                let updated = Scene.setEngineNode(path, newNode, newScene);
+                CursorScene.getCursorData(updated)
+            case _ => bug!("Cursor not found at cursorPath()")
+        }
+
+    /// Up キーを押下した 1 フレーム後、cursor が y 方向に 1 マス分減ったセルに進む
+    /// (Vec2i.up() = {x=0, y=-1} を gridPos に足す)。端でなければ (5,5) → (5,4)。
+    @Test
+    def testPhysicsProcessMovesCursorUpOnUpKey(): Unit \ Assert =
+        region rc {
+            let scene = cursorSceneAt({x = 5, y = 5}, None, 0);
+            let data = run {
+                TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
+                    TestUnitFixtures.withMockBoard(testBoard(), () ->
+                        TestUnitFixtures.withNoopTween(() ->
+                            TestUnitFixtures.withNoopAnim(() ->
+                                TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                                    runPhysics(TurnPhase.Phase.PlayerCursor, scene))))))
+            } with GameLogger.withLogger(rc)
+              with TurnPhase.withState(rc);
+            Assert.assertEq(expected = (5, 4), (data#gridPos#x, data#gridPos#y))
+        }
+
+    /// snag アニメ再生中 (isPlaying = true) は方向キーを完全無視する。
+    /// Up を押しても gridPos は (5,5) のまま動かない。
+    @Test
+    def testPhysicsProcessNoopsWhilePlayingAnimation(): Unit \ Assert =
+        region rc {
+            let scene = cursorSceneAt({x = 5, y = 5}, None, 0);
+            let data = run {
+                TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
+                    TestUnitFixtures.withMockBoard(testBoard(), () ->
+                        TestUnitFixtures.withNoopTween(() ->
+                            TestUnitFixtures.withPlayingAnim(() ->
+                                TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                                    runPhysics(TurnPhase.Phase.PlayerCursor, scene))))))
+            } with GameLogger.withLogger(rc)
+              with TurnPhase.withState(rc);
+            Assert.assertEq(expected = (5, 5), (data#gridPos#x, data#gridPos#y))
+        }
+
+    /// 方向キーが離れたフレームでは hold 状態 (holdDir / holdSteps) がリセットされる。
+    /// (再度押したときに「初速」から再加速できるように)。gridPos は変わらない。
+    /// holdDir record は Eq 未定義なので Option.isEmpty で Bool 化して比較する。
+    @Test
+    def testPhysicsProcessClearsHoldWhenNoKeyPressed(): Unit \ Assert =
+        region rc {
+            let scene = cursorSceneAt({x = 5, y = 5}, Some(Vec2i.up()), 3);
+            let data = run {
+                TestUnitFixtures.withMockGameKeys(_ -> false, () ->
+                    TestUnitFixtures.withMockBoard(testBoard(), () ->
+                        TestUnitFixtures.withNoopTween(() ->
+                            TestUnitFixtures.withNoopAnim(() ->
+                                TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                                    runPhysics(TurnPhase.Phase.PlayerCursor, scene))))))
+            } with GameLogger.withLogger(rc)
+              with TurnPhase.withState(rc);
+            Assert.assertEq(
+                expected = (5, 5, true, 0),
+                (data#gridPos#x, data#gridPos#y,
+                 Option.isEmpty(data#holdDir), data#holdSteps))
+        }
+
+    // ════════════════════════════════════════════════════════
+    // physicsProcess (PlayerAttack フェーズ) — ターゲットサイクル
+    // ════════════════════════════════════════════════════════
+
+    /// 攻撃フェーズで PlayerAttackRange ノードが scene に居ない (= 射程内に敵候補が居ない)
+    /// 状態で Down を「押下開始」したフレーム → 内部の cycleToTarget は targets = Nil を受けて
+    /// gridPos を動かさない (X キャンセル待ち)。
+    @Test
+    def testPhysicsProcessAttackNoopsWhenNoTargetsInRange(): Unit \ Assert =
+        region rc {
+            let scene = cursorSceneAt({x = 3, y = 3}, None, 0);
+            let data = run {
+                TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Down, () ->
+                    TestUnitFixtures.withMockBoard(testBoard(), () ->
+                        TestUnitFixtures.withNoopTween(() ->
+                            TestUnitFixtures.withNoopAnim(() ->
+                                TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                                    runPhysics(TurnPhase.Phase.PlayerAttack, scene))))))
+            } with GameLogger.withLogger(rc)
+              with TurnPhase.withState(rc);
+            Assert.assertEq(expected = (3, 3), (data#gridPos#x, data#gridPos#y))
+        }
+
+    /// 攻撃フェーズで snag アニメ再生中はターゲット切替も走らない。
+    /// Down を押しても gridPos は (3,3) のまま。
+    @Test
+    def testPhysicsProcessAttackNoopsWhilePlayingAnimation(): Unit \ Assert =
+        region rc {
+            let scene = cursorSceneAt({x = 3, y = 3}, None, 0);
+            let data = run {
+                TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Down, () ->
+                    TestUnitFixtures.withMockBoard(testBoard(), () ->
+                        TestUnitFixtures.withNoopTween(() ->
+                            TestUnitFixtures.withPlayingAnim(() ->
+                                TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                                    runPhysics(TurnPhase.Phase.PlayerAttack, scene))))))
+            } with GameLogger.withLogger(rc)
+              with TurnPhase.withState(rc);
+            Assert.assertEq(expected = (3, 3), (data#gridPos#x, data#gridPos#y))
+        }
 }

@@ -146,26 +146,51 @@ mod CursorScene {
         }
 
     // ────────────────────────────────────────────────────────
-    // (D) ロジック
+    // (D) ロジック — phase 分岐エントリ
     // ────────────────────────────────────────────────────────
 
     /// 毎フレーム engine から呼ばれる `physicsProcess`。
-    /// `PlayerCursor` フェーズのみ動かす（Game.flix が NodeTag マッチで dispatch する）。
+    /// 現フェーズで挙動が変わるため、`TurnPhase.State.get()` で 2 種類の polling に
+    /// 振り分ける:
+    ///   - `PlayerCursor` → `stepFreeMovement` (4 方向に 1 マスずつスライド)
+    ///   - `PlayerAttack` → `stepTargetCycle`  (射程内の敵リスト上をジャンプ)
+    /// それ以外のフェーズ (`PlayerMoving` / `EnemyTurn` 等) では `(node, scene)` を返して
+    /// no-op。Game.flix の Node[NodeTag] instance はこの 1 関数だけを呼べばよい。
+    pub def physicsProcess(delta: Duration.Duration,
+                            node: EngineNode[NodeTag],
+                            path: NodePath,
+                            scene: Scene[NodeTag]):
+                           (EngineNode[NodeTag], Scene[NodeTag])
+                           \ {GameEngine.Game, BoardQuery,
+                               Tween.Scheduler, AnimationPlayer.Scheduler,
+                               GameLogger.GameLogger,
+                               EnemyScene.RosterQuery, TurnPhase.State} =
+        match TurnPhase.State.get() {
+            case TurnPhase.Phase.PlayerCursor => stepFreeMovement(delta, node, path, scene)
+            case TurnPhase.Phase.PlayerAttack => stepTargetCycle(delta, node, path, scene)
+            case _                            => (node, scene)
+        }
+
+    // ────────────────────────────────────────────────────────
+    // (D-1) PlayerCursor フェーズの 1 マス進行
+    // ────────────────────────────────────────────────────────
+
+    /// `PlayerCursor` フェーズの physicsProcess 本体。
     /// 入力ゲートは 3 段:
     ///   1. `snag` アニメ再生中 → 駒上での「引っかかり」中。入力捨てる
     ///   2. Tween 中 → 補間中。入力捨てる
     ///   3. それ以外 → 方向キーを読み、加速度を計算して 1 マス進める
     /// 移動後のセルに駒（味方/敵）が居れば `snag` を再生 + holdSteps をリセット
     /// （次は再加速）。敵に乗ったら EnemyRangeScene を再構築 + ログを出す（既存）。
-    pub def physicsProcess(_delta: Duration.Duration,
-                            node: EngineNode[NodeTag],
-                            _path: NodePath,
-                            scene: Scene[NodeTag]):
-                           (EngineNode[NodeTag], Scene[NodeTag])
-                           \ {GameEngine.Game, BoardQuery,
-                               Tween.Scheduler, AnimationPlayer.Scheduler,
-                               GameLogger.GameLogger,
-                               EnemyScene.RosterQuery} =
+    def stepFreeMovement(_delta: Duration.Duration,
+                          node: EngineNode[NodeTag],
+                          _path: NodePath,
+                          scene: Scene[NodeTag]):
+                         (EngineNode[NodeTag], Scene[NodeTag])
+                         \ {GameEngine.Game, BoardQuery,
+                             Tween.Scheduler, AnimationPlayer.Scheduler,
+                             GameLogger.GameLogger,
+                             EnemyScene.RosterQuery} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
                 if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
@@ -284,10 +309,10 @@ mod CursorScene {
          y = Int32.max(minY, Int32.min(maxY, coord#y))}
 
     // ────────────────────────────────────────────────────────
-    // (D-2) 攻撃フェーズ用 polling
+    // (D-2) PlayerAttack フェーズのターゲットサイクル
     // ────────────────────────────────────────────────────────
 
-    /// `PlayerAttack` フェーズ専用の `physicsProcess`。
+    /// `PlayerAttack` フェーズの physicsProcess 本体。
     /// 通常の 1 マス進行ではなく **「方向キー押下で射程内の敵にカーソルをジャンプさせる」**
     /// ターゲットサイクル方式。間接武器でも自然に敵を選べる。
     ///   - 押下開始フレーム (`holdDir == None && readHeldDirection == Some(dir)`) でのみ
@@ -295,16 +320,14 @@ mod CursorScene {
     ///   - 上 / 左 = 前の敵、下 / 右 = 次の敵 (reading order でソート)
     ///   - 射程内に敵が居なければ何もしない (X キャンセル待ち)
     ///   - スナップは Tween 経由で滑らかに移動。snag アニメも従来通り再生
-    ///
-    /// Game.flix が NodeTag マッチで dispatch する。
-    pub def physicsProcessAttack(_delta: Duration.Duration,
-                                  node: EngineNode[NodeTag],
-                                  _path: NodePath,
-                                  scene: Scene[NodeTag]):
-                                 (EngineNode[NodeTag], Scene[NodeTag])
-                                 \ {GameEngine.Game,
-                                     Tween.Scheduler, AnimationPlayer.Scheduler,
-                                     EnemyScene.RosterQuery} =
+    def stepTargetCycle(_delta: Duration.Duration,
+                         node: EngineNode[NodeTag],
+                         _path: NodePath,
+                         scene: Scene[NodeTag]):
+                        (EngineNode[NodeTag], Scene[NodeTag])
+                        \ {GameEngine.Game,
+                            Tween.Scheduler, AnimationPlayer.Scheduler,
+                            EnemyScene.RosterQuery} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
                 if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
