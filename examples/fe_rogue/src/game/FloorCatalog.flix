@@ -41,9 +41,16 @@ mod FloorCatalog {
         max = Int32
     }
 
-    /// 1 フロア分の出現テーブル + 部屋あたりスポーン数レンジ
+    /// ダンジョン生成のパラメータ。LDTK プールは将来 tileset resource に分離するため、
+    /// 今は roomCount だけ持たせる
+    pub type alias GenerationConfig = {
+        roomCount = Int32
+    }
+
+    /// 1 フロア分の出現テーブル + 部屋あたりスポーン数レンジ + ダンジョン生成設定
     pub type alias FloorResource = {
         label           = String,
+        generation      = GenerationConfig,
         monsters        = List[SpawnEntry],
         items           = List[SpawnEntry],
         monstersPerRoom = SpawnRange,
@@ -116,7 +123,7 @@ mod FloorCatalog {
 
     /// schema 整合性チェックに使う期待フィールド名集合
     pub def expectedFloorFields(): Set[String] =
-        Set#{"label", "monsters", "items", "monstersPerRoom", "itemsPerRoom"}
+        Set#{"label", "generation", "monsters", "items", "monstersPerRoom", "itemsPerRoom"}
 
     // ─────────────────────────────────────────────────────────
     // Decoder
@@ -144,22 +151,35 @@ mod FloorCatalog {
         case JsonObject(obj) =>
             forM (
                 labelJ           <- Map.get("label", obj);
+                generationJ      <- Map.get("generation", obj);
                 monstersJ        <- Map.get("monsters", obj);
                 itemsJ           <- Map.get("items", obj);
                 monstersPerRoomJ <- Map.get("monstersPerRoom", obj);
                 itemsPerRoomJ    <- Map.get("itemsPerRoom", obj);
                 label            <- expectString(labelJ);
+                generation       <- decodeGeneration(generationJ);
                 monsters         <- decodeSpawnArray(monstersJ);
                 items            <- decodeSpawnArray(itemsJ);
                 mpr              <- decodeSpawnRange(monstersPerRoomJ);
                 ipr              <- decodeSpawnRange(itemsPerRoomJ)
             ) yield ({
                 label = label,
+                generation = generation,
                 monsters = monsters,
                 items = items,
                 monstersPerRoom = mpr,
                 itemsPerRoom = ipr
             }: FloorResource)
+        case _ => None
+    }
+
+    /// `{"roomCount": Int32}` を GenerationConfig に decode
+    def decodeGeneration(element: JsonElement): Option[GenerationConfig] = match element {
+        case JsonObject(obj) =>
+            forM (
+                roomCountJ <- Map.get("roomCount", obj);
+                rc         <- expectInt(roomCountJ)
+            ) yield ({roomCount = rc}: GenerationConfig)
         case _ => None
     }
 

@@ -74,9 +74,10 @@ mod MapScene {
     /// Floor 装飾レイヤーのテクスチャ名（LDTK 上の "Floor" レイヤーが参照）
     def floorTextureName(): String = "tilemap_floor"
 
-    /// ランダム生成設定: 部屋数と利用可能な部屋・通路 LDTK プール。
-    /// roomCount を増やすほどダンジョンが大きくなる。配置不能なら部屋数を減らして続行。
-    def generatorConfig(): DungeonGenerator.Config = {
+    /// ランダム生成設定: 部屋数 (引数) と利用可能な部屋・通路 LDTK プール。
+    /// 部屋数は floor#generation#roomCount 由来。配置不能なら部屋数を減らして続行。
+    /// LDTK パスプールは現状ハードコード (テーマ切替が必要になったら tileset resource に分離)
+    def generatorConfig(roomCount: Int32): DungeonGenerator.Config = {
         roomPaths       = "assets/ldtk/World_Level_0.ldtkl" ::
                           "assets/ldtk/World_Level_1.ldtkl" ::
                           "assets/ldtk/World_Level_2.ldtkl" ::
@@ -86,13 +87,14 @@ mod MapScene {
                           "assets/ldtk/World_Pathway_4.ldtkl" :: Nil,
         verticalPaths   = "assets/ldtk/World_Pathway_2.ldtkl" ::
                           "assets/ldtk/World_Pathway_3.ldtkl" :: Nil,
-        roomCount       = 8
+        roomCount       = roomCount
     }
 
     // (C) 構築
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def add(floor: FloorCatalog.FloorResource, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO} =
-        let plan = DungeonGenerator.generate(textureName(), generatorConfig());
+        let plan = DungeonGenerator.generate(textureName(),
+                                              generatorConfig(floor#generation#roomCount));
         // LDTK の auto-tile rules を consumer 側で読み込んで渡す
         // （engine の DungeonComposer は path を持たない純粋関数）
         let ruleSet = LDTKRules.loadRules("assets/ldtk/FE.ldtk");

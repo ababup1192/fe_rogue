@@ -30,7 +30,7 @@ mod GameLifecycle {
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State} =
         Scene.empty()
-            |> MapScene.add
+            |> MapScene.add(floor)
             |> DamagePopupScene.add     // World 配下に空の Marker2D 親を 1 つ生やす
             |> PlayerScene.add(catalog)
             |> EnemyScene.add(catalog, floor)

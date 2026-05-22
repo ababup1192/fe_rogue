@@ -58,7 +58,7 @@
       "attack": 8,
       "defense": 2,
       "hp": 11,
-      "initialWeapon": "noviceStaff",
+      "initialWeapon": "fire_magic",
       "moveTiles": 5,
       "speed": 4,
       "sprite": {

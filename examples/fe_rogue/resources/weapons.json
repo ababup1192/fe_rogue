@@ -15,24 +15,6 @@
         "vframes": 30
       }
     },
-    "noviceStaff": {
-      "attack": 0,
-      "durability": 30,
-      "name": "みならいのつえ",
-      "range": {
-        "max": 1,
-        "min": 1
-      },
-      "sprite": {
-        "frame": 42,
-        "hframes": 54,
-        "offset": {
-          "x": 7.0
-        },
-        "texture": "roguelike_weapons",
-        "vframes": 12
-      }
-    },
     "trainingBow": {
       "attack": 0,
       "durability": 25,
@@ -42,13 +24,13 @@
         "min": 2
       },
       "sprite": {
-        "frame": 52,
-        "hframes": 54,
+        "frame": 254,
+        "hframes": 20,
         "offset": {
-          "x": 5.5
+          "x": 0.0
         },
-        "texture": "roguelike_weapons",
-        "vframes": 12
+        "texture": "item_weapons",
+        "vframes": 25
       }
     },
     "trainingSpear": {
@@ -60,13 +42,13 @@
         "min": 1
       },
       "sprite": {
-        "frame": 49,
-        "hframes": 54,
+        "frame": 263,
+        "hframes": 20,
         "offset": {
-          "x": 7.0
+          "x": 0.0
         },
-        "texture": "roguelike_weapons",
-        "vframes": 12
+        "texture": "item_weapons",
+        "vframes": 25
       }
     },
     "trainingSword": {
@@ -78,13 +60,13 @@
         "min": 1
       },
       "sprite": {
-        "frame": 420,
-        "hframes": 54,
+        "frame": 0,
+        "hframes": 20,
         "offset": {
-          "x": 6.0
+          "x": 0.0
         },
-        "texture": "roguelike_weapons",
-        "vframes": 12
+        "texture": "item_weapons",
+        "vframes": 25
       }
     }
   }

@@ -1,6 +1,9 @@
 {
   "floors": {
     "f01": {
+      "generation": {
+        "roomCount": 8
+      },
       "items": [
         {
           "id": "trainingBow",
