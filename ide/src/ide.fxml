@@ -141,6 +141,8 @@
                                                     </graphic>
                                                 </Button>
                                                 <CheckBox fx:id="previewGridCheck" text="グリッド"/>
+                                                <CheckBox fx:id="previewFrameAdjustCheck"
+                                                          text="フレーム調整"/>
                                             </children>
                                         </HBox>
                                         <StackPane fx:id="resourcePreviewPane"

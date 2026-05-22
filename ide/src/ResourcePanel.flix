@@ -271,9 +271,11 @@ mod ResourcePanel {
         let spriteRef = PropertyWidgets.findFirstSpriteRef(record, textureNames);
         let zoomMode = ResourceState.getPreviewZoom(state#resource);
         let showGrid = ResourceState.getPreviewGrid(state#resource);
+        let frameAdjust = ResourceState.getPreviewFrameAdjust(state#resource);
         match Array.get(0, state#widgets#resourcePreviewPane) {
             case Some(pane) =>
-                PropertyWidgets.updateSpritePreview(pane, pathMap, spriteRef, zoomMode, showGrid)
+                PropertyWidgets.updateSpritePreview(pane, pathMap, spriteRef, zoomMode,
+                                                     showGrid, frameAdjust)
             case None       => ()
         }
     }
@@ -281,9 +283,11 @@ mod ResourcePanel {
     def clearPreview(state: IdeState.IdeState): Unit \ IO = {
         let zoomMode = ResourceState.getPreviewZoom(state#resource);
         let showGrid = ResourceState.getPreviewGrid(state#resource);
+        let frameAdjust = ResourceState.getPreviewFrameAdjust(state#resource);
         match Array.get(0, state#widgets#resourcePreviewPane) {
             case Some(pane) =>
-                PropertyWidgets.updateSpritePreview(pane, Map.empty(), None, zoomMode, showGrid)
+                PropertyWidgets.updateSpritePreview(pane, Map.empty(), None, zoomMode,
+                                                     showGrid, frameAdjust)
             case None       => ()
         }
     }
@@ -342,6 +346,20 @@ mod ResourcePanel {
         gridChk.setOnAction(new EventHandler[ActionEvent] {
             def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
                 ResourceState.setPreviewGrid(state#resource, gridChk.isSelected());
+                repaintPreview(state)
+            }
+        })
+    }
+
+    /// フレーム調整モードのチェックボックスを配線する。ON で texture 全体表示 +
+    /// 選択フレーム以外ディマー、OFF で 1 セル切り抜き表示 (現状動作)。
+    /// グリッドとは独立に併用可能
+    pub def wireFrameAdjustCheckbox(state: IdeState.IdeState,
+                                     frameAdjustChk: CheckBox): Unit \ IO = {
+        frameAdjustChk.setSelected(ResourceState.getPreviewFrameAdjust(state#resource));
+        frameAdjustChk.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                ResourceState.setPreviewFrameAdjust(state#resource, frameAdjustChk.isSelected());
                 repaintPreview(state)
             }
         })

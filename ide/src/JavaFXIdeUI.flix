@@ -72,6 +72,8 @@ mod JavaFXIdeUI {
         let previewZoomOut:   Button = unchecked_cast(ns.get("previewZoomOut") as Button);
         let previewZoomIn:    Button = unchecked_cast(ns.get("previewZoomIn") as Button);
         let previewGridCheck: CheckBox = unchecked_cast(ns.get("previewGridCheck") as CheckBox);
+        let previewFrameAdjustCheck: CheckBox =
+            unchecked_cast(ns.get("previewFrameAdjustCheck") as CheckBox);
         Array.put(Some(scenesTree),          0, state#widgets#sceneTree);
         Array.put(Some(resourcesList),       0, state#widgets#resourcesList);
         Array.put(Some(subEntriesList),      0, state#widgets#subEntriesList);
@@ -81,6 +83,7 @@ mod JavaFXIdeUI {
         Array.put(Some(resourcePreviewPane), 0, state#widgets#resourcePreviewPane);
         Array.put(Some(previewZoomLabel),    0, state#widgets#resourcePreviewZoomLbl);
         Array.put(Some(previewGridCheck),    0, state#widgets#resourcePreviewGridChk);
+        Array.put(Some(previewFrameAdjustCheck), 0, state#widgets#resourcePreviewFrameAdjustChk);
         Array.put(Some(stage),               0, state#widgets#stage);
 
         // Project ロード進捗 overlay。reloadProject の各フェーズで Platform.runLater 経由で更新する
@@ -97,6 +100,7 @@ mod JavaFXIdeUI {
         ResourcePanel.wireSubEntryButtons(state, subEntriesList, subEntryAddBtn, subEntryRemoveBtn);
         ResourcePanel.wireZoomButtons(state, previewZoomOut, previewZoomIn);
         ResourcePanel.wireGridCheckbox(state, previewGridCheck);
+        ResourcePanel.wireFrameAdjustCheckbox(state, previewFrameAdjustCheck);
         ResourcePanel.updateZoomLabel(state);
 
         // ステータスバー Label を取得

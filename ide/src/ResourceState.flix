@@ -26,7 +26,8 @@ mod ResourceState {
         editingSchemaJsonRef   = Array[Option[Json.JsonElement], Static],
         dirtyRef               = Array[Bool, Static],
         previewZoomRef         = Array[PropertyWidgets.ZoomMode, Static],
-        previewGridRef         = Array[Bool, Static]
+        previewGridRef         = Array[Bool, Static],
+        previewFrameAdjustRef  = Array[Bool, Static]
     }
 
     /// 空の ResourceState を作る
@@ -40,7 +41,8 @@ mod ResourceState {
             editingSchemaJsonRef   = Array#{(None: Option[Json.JsonElement])} @ Static,
             dirtyRef               = Array#{false} @ Static,
             previewZoomRef         = Array#{PropertyWidgets.defaultZoom()} @ Static,
-            previewGridRef         = Array#{false} @ Static
+            previewGridRef         = Array#{false} @ Static,
+            previewFrameAdjustRef  = Array#{false} @ Static
         }
 
     pub def setDiscovered(state: ResourceState, entries: List[ResourceEntry]): Unit \ IO =
@@ -98,4 +100,12 @@ mod ResourceState {
 
     pub def getPreviewGrid(state: ResourceState): Bool \ IO =
         Array.get(0, state#previewGridRef)
+
+    /// フレーム調整モード ON のとき texture 全体を表示し、選択フレーム以外をディマー表示する。
+    /// hframes/vframes の検証用 UI として使う。グリッドとは独立に併用可能
+    pub def setPreviewFrameAdjust(state: ResourceState, on: Bool): Unit \ IO =
+        Array.put(on, 0, state#previewFrameAdjustRef)
+
+    pub def getPreviewFrameAdjust(state: ResourceState): Bool \ IO =
+        Array.get(0, state#previewFrameAdjustRef)
 }

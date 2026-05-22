@@ -523,7 +523,8 @@ mod PropertyWidgets {
     pub def updateSpritePreview(pane: StackPane, pathMap: Map[String, String],
                                  spriteRef: Option[SpriteRef],
                                  zoomMode: ZoomMode,
-                                 showGrid: Bool): Unit \ IO = {
+                                 showGrid: Bool,
+                                 frameAdjust: Bool): Unit \ IO = {
         let children = pane.getChildren();
         children.clear();
         match spriteRef {
@@ -544,47 +545,138 @@ mod PropertyWidgets {
                     case Some(absPath) => {
                         let url = new File(absPath).toURI().toString();
                         let image = new Image(url);
-
                         let hframes = sr#hframes |> Option.getWithDefault(1i32);
                         let vframes = sr#vframes |> Option.getWithDefault(1i32);
                         let frame   = sr#frame   |> Option.getWithDefault(0i32);
                         let imgW = image.getWidth();
                         let imgH = image.getHeight();
-                        let (srcX, srcY, srcW, srcH) =
-                            if (hframes > 0i32 and vframes > 0i32
-                                and imgW > 0.0 and imgH > 0.0) {
-                                let cellW = imgW / Int32.toFloat64(hframes);
-                                let cellH = imgH / Int32.toFloat64(vframes);
-                                let col   = Int32.modulo(frame, hframes);
-                                let row   = frame / hframes;
-                                (Int32.toFloat64(col) * cellW,
-                                 Int32.toFloat64(row) * cellH,
-                                 cellW, cellH)
-                            } else (0.0, 0.0, imgW, imgH);
-
                         let canvasSize = 220.0;
-                        let scale = if (srcW <= 0.0 or srcH <= 0.0) 1.0 else
-                            match zoomMode {
-                                case ZoomMode.Percent(p) => Int32.toFloat64(p) / 100.0
-                            };
-                        let dstW = srcW * scale;
-                        let dstH = srcH * scale;
-                        // 中央寄せに sprite#offset (image pixel 単位) を加算
-                        let dstX = (canvasSize - dstW) / 2.0 + sr#offsetX * scale;
-                        let dstY = (canvasSize - dstH) / 2.0 + sr#offsetY * scale;
                         let canvas = new Canvas(canvasSize, canvasSize);
                         let gc: GraphicsContext = canvas.getGraphicsContext2D();
                         gc.setImageSmoothing(false);
-                        gc.drawImage(image, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH);
-                        // グリッド: ON のとき canvas 中央十字 + cell 矩形（offset 無視位置）を描く
-                        if (showGrid) drawPreviewGrid(gc, canvasSize, dstW, dstH)
-                        else ();
+                        if (frameAdjust and hframes > 0i32 and vframes > 0i32
+                            and imgW > 0.0 and imgH > 0.0) {
+                            drawFullSheetWithSelection(gc, image, hframes, vframes, frame,
+                                                        imgW, imgH, canvasSize, zoomMode, showGrid)
+                        } else {
+                            drawSingleCell(gc, image, sr, hframes, vframes, frame,
+                                            imgW, imgH, canvasSize, zoomMode, showGrid)
+                        };
                         let n: Node = checked_cast(canvas);
                         discard children.add(n)
                     }
                 }
             }
         }
+    }
+
+    /// 既存挙動: 選択フレーム 1 セルだけを切り抜いて中央描画。offset と zoom を反映。
+    /// hframes/vframes が無効値のときは画像全体を表示するフォールバックを兼ねる
+    def drawSingleCell(gc: GraphicsContext, image: Image, sr: SpriteRef,
+                        hframes: Int32, vframes: Int32, frame: Int32,
+                        imgW: Float64, imgH: Float64, canvasSize: Float64,
+                        zoomMode: ZoomMode, showGrid: Bool): Unit \ IO = {
+        let (srcX, srcY, srcW, srcH) =
+            if (hframes > 0i32 and vframes > 0i32 and imgW > 0.0 and imgH > 0.0) {
+                let cellW = imgW / Int32.toFloat64(hframes);
+                let cellH = imgH / Int32.toFloat64(vframes);
+                let col   = Int32.modulo(frame, hframes);
+                let row   = frame / hframes;
+                (Int32.toFloat64(col) * cellW,
+                 Int32.toFloat64(row) * cellH,
+                 cellW, cellH)
+            } else (0.0, 0.0, imgW, imgH);
+        let scale = if (srcW <= 0.0 or srcH <= 0.0) 1.0 else
+            match zoomMode {
+                case ZoomMode.Percent(p) => Int32.toFloat64(p) / 100.0
+            };
+        let dstW = srcW * scale;
+        let dstH = srcH * scale;
+        let dstX = (canvasSize - dstW) / 2.0 + sr#offsetX * scale;
+        let dstY = (canvasSize - dstH) / 2.0 + sr#offsetY * scale;
+        gc.drawImage(image, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH);
+        if (showGrid) drawPreviewGrid(gc, canvasSize, dstW, dstH)
+        else ()
+    }
+
+    /// フレーム調整モード: texture 全体を fit-scale * zoom% で描画し、選択フレーム以外を
+    /// 半透明黒でディマー、選択フレームを再描画して 100% 不透明に戻し、黄色枠でハイライト。
+    /// offset は適用しない (アトラス上の物理セル位置を見せる用途のため)
+    def drawFullSheetWithSelection(gc: GraphicsContext, image: Image,
+                                    hframes: Int32, vframes: Int32, frame: Int32,
+                                    imgW: Float64, imgH: Float64, canvasSize: Float64,
+                                    zoomMode: ZoomMode, showGrid: Bool): Unit \ IO = {
+        let fitScale = Float64.min(canvasSize / imgW, canvasSize / imgH);
+        let zoomMul = match zoomMode {
+            case ZoomMode.Percent(p) => Int32.toFloat64(p) / 100.0
+        };
+        let effScale = fitScale * zoomMul;
+        let sheetW = imgW * effScale;
+        let sheetH = imgH * effScale;
+
+        let cellW = imgW / Int32.toFloat64(hframes);
+        let cellH = imgH / Int32.toFloat64(vframes);
+        let safeFrame = if (frame < 0i32) 0i32 else frame;
+        let col = Int32.modulo(safeFrame, hframes);
+        let row = safeFrame / hframes;
+        let srcX = Int32.toFloat64(col) * cellW;
+        let srcY = Int32.toFloat64(row) * cellH;
+        let cellDstW = cellW * effScale;
+        let cellDstH = cellH * effScale;
+        // 選択セルの中心が canvas 中心に来るように sheet 全体を平行移動する。
+        // これで zoom in/out しても選択セルが画面中央に留まり、周辺セルが
+        // 同心円的に広がる挙動になる
+        let cellCx = (Int32.toFloat64(col) + 0.5) * cellW * effScale;
+        let cellCy = (Int32.toFloat64(row) + 0.5) * cellH * effScale;
+        let dstX0 = canvasSize / 2.0 - cellCx;
+        let dstY0 = canvasSize / 2.0 - cellCy;
+        let cellDstX = dstX0 + srcX * effScale;
+        let cellDstY = dstY0 + srcY * effScale;
+
+        // 1. full sheet
+        gc.drawImage(image, 0.0, 0.0, imgW, imgH, dstX0, dstY0, sheetW, sheetH);
+        // 2. dim overlay (~65% black)
+        let dim = FxColor.color(0.0, 0.0, 0.0, 0.65);
+        gc.setFill(dim);
+        gc.fillRect(dstX0, dstY0, sheetW, sheetH);
+        // 3. selected cell at full opacity (frame が grid 内に収まるときだけ)
+        let frameInGrid = row < vframes;
+        if (frameInGrid) {
+            gc.drawImage(image, srcX, srcY, cellW, cellH, cellDstX, cellDstY, cellDstW, cellDstH)
+        } else ();
+        // 4. atlas grid lines (if showGrid)
+        if (showGrid) drawAtlasGrid(gc, dstX0, dstY0, sheetW, sheetH, hframes, vframes)
+        else ();
+        // 5. selection outline (grid 内のときだけ)
+        if (frameInGrid) {
+            let yellow = FxColor.color(1.0, 0.85, 0.0);
+            gc.setStroke(yellow);
+            gc.setLineWidth(2.0);
+            gc.strokeRect(cellDstX, cellDstY, cellDstW, cellDstH)
+        } else ()
+    }
+
+    /// アトラス全体の hframes × vframes セル境界線を半透明白で描く。
+    /// drawPreviewGrid (中央十字 + cell 単独) と用途が異なる: フレーム調整モードで
+    /// 「全セルの分割位置」を可視化するためのもの
+    def drawAtlasGrid(gc: GraphicsContext, dstX0: Float64, dstY0: Float64,
+                       sheetW: Float64, sheetH: Float64,
+                       hframes: Int32, vframes: Int32): Unit \ IO = {
+        let line = FxColor.color(1.0, 1.0, 1.0, 0.4);
+        gc.setStroke(line);
+        gc.setLineWidth(1.0);
+        let cellW = sheetW / Int32.toFloat64(hframes);
+        let cellH = sheetH / Int32.toFloat64(vframes);
+        // 縦線 (hframes - 1 本)
+        List.range(1i32, hframes) |> List.forEach(i -> {
+            let x = dstX0 + Int32.toFloat64(i) * cellW;
+            gc.strokeLine(x, dstY0, x, dstY0 + sheetH)
+        });
+        // 横線 (vframes - 1 本)
+        List.range(1i32, vframes) |> List.forEach(j -> {
+            let y = dstY0 + Int32.toFloat64(j) * cellH;
+            gc.strokeLine(dstX0, y, dstX0 + sheetW, y)
+        })
     }
 
     /// プレビュー用の補助グリッド。canvas の中央十字（赤）と「offset=0 のときの

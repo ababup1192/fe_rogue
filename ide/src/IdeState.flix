@@ -22,19 +22,20 @@ mod IdeState {
 
     /// FXML の fx:id 経由で取得した主要 widget 参照。customize で全フィールドに値が入る
     pub type alias WidgetRefs = {
-        sceneTree              = Array[Option[TreeView[String]], Static],
-        resourcesList          = Array[Option[ListView[String]], Static],
-        subEntriesList         = Array[Option[ListView[String]], Static],
-        subEntryAddBtn         = Array[Option[Button], Static],
-        subEntryRemoveBtn      = Array[Option[Button], Static],
-        propertyPanel          = Array[Option[VBox], Static],
-        resourcePreviewPane    = Array[Option[StackPane], Static],
-        resourcePreviewZoomLbl = Array[Option[Label], Static],
-        resourcePreviewGridChk = Array[Option[CheckBox], Static],
-        stage                  = Array[Option[Stage], Static],
-        loadingOverlay         = Array[Option[VBox], Static],
-        loadingLabel           = Array[Option[Label], Static],
-        loadingBar             = Array[Option[ProgressBar], Static]
+        sceneTree                     = Array[Option[TreeView[String]], Static],
+        resourcesList                 = Array[Option[ListView[String]], Static],
+        subEntriesList                = Array[Option[ListView[String]], Static],
+        subEntryAddBtn                = Array[Option[Button], Static],
+        subEntryRemoveBtn             = Array[Option[Button], Static],
+        propertyPanel                 = Array[Option[VBox], Static],
+        resourcePreviewPane           = Array[Option[StackPane], Static],
+        resourcePreviewZoomLbl        = Array[Option[Label], Static],
+        resourcePreviewGridChk        = Array[Option[CheckBox], Static],
+        resourcePreviewFrameAdjustChk = Array[Option[CheckBox], Static],
+        stage                         = Array[Option[Stage], Static],
+        loadingOverlay                = Array[Option[VBox], Static],
+        loadingLabel                  = Array[Option[Label], Static],
+        loadingBar                    = Array[Option[ProgressBar], Static]
     }
 
     /// 描画ループと FX レイヤーを橋渡しする ref 群。
@@ -134,19 +135,20 @@ mod IdeState {
 
     def newWidgets(): WidgetRefs \ IO =
         {
-            sceneTree              = Array#{(None: Option[TreeView[String]])} @ Static,
-            resourcesList          = Array#{(None: Option[ListView[String]])} @ Static,
-            subEntriesList         = Array#{(None: Option[ListView[String]])} @ Static,
-            subEntryAddBtn         = Array#{(None: Option[Button])} @ Static,
-            subEntryRemoveBtn      = Array#{(None: Option[Button])} @ Static,
-            propertyPanel          = Array#{(None: Option[VBox])} @ Static,
-            resourcePreviewPane    = Array#{(None: Option[StackPane])} @ Static,
-            resourcePreviewZoomLbl = Array#{(None: Option[Label])} @ Static,
-            resourcePreviewGridChk = Array#{(None: Option[CheckBox])} @ Static,
-            stage                  = Array#{(None: Option[Stage])} @ Static,
-            loadingOverlay         = Array#{(None: Option[VBox])} @ Static,
-            loadingLabel           = Array#{(None: Option[Label])} @ Static,
-            loadingBar             = Array#{(None: Option[ProgressBar])} @ Static
+            sceneTree                     = Array#{(None: Option[TreeView[String]])} @ Static,
+            resourcesList                 = Array#{(None: Option[ListView[String]])} @ Static,
+            subEntriesList                = Array#{(None: Option[ListView[String]])} @ Static,
+            subEntryAddBtn                = Array#{(None: Option[Button])} @ Static,
+            subEntryRemoveBtn             = Array#{(None: Option[Button])} @ Static,
+            propertyPanel                 = Array#{(None: Option[VBox])} @ Static,
+            resourcePreviewPane           = Array#{(None: Option[StackPane])} @ Static,
+            resourcePreviewZoomLbl        = Array#{(None: Option[Label])} @ Static,
+            resourcePreviewGridChk        = Array#{(None: Option[CheckBox])} @ Static,
+            resourcePreviewFrameAdjustChk = Array#{(None: Option[CheckBox])} @ Static,
+            stage                         = Array#{(None: Option[Stage])} @ Static,
+            loadingOverlay                = Array#{(None: Option[VBox])} @ Static,
+            loadingLabel                  = Array#{(None: Option[Label])} @ Static,
+            loadingBar                    = Array#{(None: Option[ProgressBar])} @ Static
         }
 
     def newRuntime(): RuntimeRefs \ IO =
