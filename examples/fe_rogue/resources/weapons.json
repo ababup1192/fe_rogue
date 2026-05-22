@@ -3,6 +3,7 @@
     "fire_magic": {
       "attack": 8,
       "durability": 21,
+      "name": "ファイアー",
       "range": {
         "max": 2,
         "min": 1

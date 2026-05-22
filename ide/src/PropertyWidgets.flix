@@ -38,10 +38,12 @@ mod PropertyWidgets {
     import javafx.geometry.Pos
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
+    import javafx.scene.input.MouseEvent
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
     import java.lang.Double
     import java.lang.Integer
+    import java.lang.Boolean
 
     /// 編集確定時の callback。受け取る側 (ResourcePanel / ScenePanel) が
     /// JSON を消費して書き戻し or pending queue に積む
@@ -242,9 +244,20 @@ mod PropertyWidgets {
         let field = new TextField(current);
         field.setPrefWidth(160.0);
         field.setMaxWidth(160.0);
+        // Enter キー押下でコミット
         field.setOnAction(new EventHandler[ActionEvent] {
             def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
                 commit(Json.JsonElement.JsonString(field.getText()))
+        });
+        // フォーカスを外した瞬間にもコミット (Enter を押し忘れたまま別 widget を
+        // 触ったときに入力が消えるのを防ぐ)。値が変わってない場合も無害に再 commit
+        field.focusedProperty().addListener(new ChangeListener[Boolean] {
+            def changed(_this: ChangeListener[Boolean],
+                         _obs: ObservableValue[JObject],
+                         _old: Boolean, _new: Boolean): Unit \ IO =
+                if (not field.isFocused())
+                    commit(Json.JsonElement.JsonString(field.getText()))
+                else ()
         });
         checked_cast(field)
     }
@@ -524,7 +537,10 @@ mod PropertyWidgets {
                                  spriteRef: Option[SpriteRef],
                                  zoomMode: ZoomMode,
                                  showGrid: Bool,
-                                 frameAdjust: Bool): Unit \ IO = {
+                                 frameAdjust: Bool,
+                                 panOffset: (Float64, Float64),
+                                 getCurrentPan: Unit -> (Float64, Float64) \ IO,
+                                 onPanCommit: ((Float64, Float64)) -> Unit \ IO): Unit \ IO = {
         let children = pane.getChildren();
         children.clear();
         match spriteRef {
@@ -550,18 +566,35 @@ mod PropertyWidgets {
                         let frame   = sr#frame   |> Option.getWithDefault(0i32);
                         let imgW = image.getWidth();
                         let imgH = image.getHeight();
-                        let canvasSize = 220.0;
-                        let canvas = new Canvas(canvasSize, canvasSize);
+                        // canvas サイズは pane の実サイズに追従させて、window resize で
+                        // 「見える範囲」が増減するようにする。レイアウト未確定 (= 0) の
+                        // フレームでは保守的な 220 にフォールバック
+                        let paneW = pane.getWidth();
+                        let paneH = pane.getHeight();
+                        let canvasW = if (paneW > 16.0) paneW else 220.0;
+                        let canvasH = if (paneH > 16.0) paneH else 220.0;
+                        let canvas = new Canvas(canvasW, canvasH);
                         let gc: GraphicsContext = canvas.getGraphicsContext2D();
                         gc.setImageSmoothing(false);
-                        if (frameAdjust and hframes > 0i32 and vframes > 0i32
-                            and imgW > 0.0 and imgH > 0.0) {
+                        let (panX, panY) = panOffset;
+                        let fullSheetMode = frameAdjust and hframes > 0i32 and vframes > 0i32
+                                              and imgW > 0.0 and imgH > 0.0;
+                        if (fullSheetMode) {
                             drawFullSheetWithSelection(gc, image, hframes, vframes, frame,
-                                                        imgW, imgH, canvasSize, zoomMode, showGrid)
+                                                        imgW, imgH, canvasW, canvasH, zoomMode,
+                                                        showGrid, panX, panY)
                         } else {
                             drawSingleCell(gc, image, sr, hframes, vframes, frame,
-                                            imgW, imgH, canvasSize, zoomMode, showGrid)
+                                            imgW, imgH, canvasW, canvasH, zoomMode, showGrid)
                         };
+                        // フレーム調整モードでのみドラッグ pan を有効化。
+                        // 同じ canvas 上に直接 redraw して JavaFX のドラッグ追跡を保つ
+                        // (canvas を pane から外すと press 後の dragged イベントが届かない)
+                        if (fullSheetMode) {
+                            wirePanDrag(canvas, gc, image, hframes, vframes, frame,
+                                         imgW, imgH, canvasW, canvasH, zoomMode, showGrid,
+                                         getCurrentPan, onPanCommit)
+                        } else ();
                         let n: Node = checked_cast(canvas);
                         discard children.add(n)
                     }
@@ -570,12 +603,58 @@ mod PropertyWidgets {
         }
     }
 
+    /// フレーム調整モードの canvas にマウスドラッグ pan を貼る。
+    /// 押下時の (mouse, pan) を closure-capture した Static Array に記録し、
+    /// drag のたびに新 pan を計算して同じ canvas に直接 redraw する。
+    /// onPanCommit は ResourceState を更新し、後続の updateSpritePreview 呼び出しが
+    /// 新しい pan を反映できるようにする
+    def wirePanDrag(canvas: Canvas, gc: GraphicsContext, image: Image,
+                     hframes: Int32, vframes: Int32, frame: Int32,
+                     imgW: Float64, imgH: Float64,
+                     canvasW: Float64, canvasH: Float64,
+                     zoomMode: ZoomMode, showGrid: Bool,
+                     getCurrentPan: Unit -> (Float64, Float64) \ IO,
+                     onPanCommit: ((Float64, Float64)) -> Unit \ IO): Unit \ IO = {
+        // ドラッグ起点: 押下時のマウス座標と pan 値を保持する。
+        // 初期 0.0 はダミー — 実際の値は MOUSE_PRESSED で setReplace される
+        let startMouseX = Array#{0.0} @ Static;
+        let startMouseY = Array#{0.0} @ Static;
+        let startPanX = Array#{0.0} @ Static;
+        let startPanY = Array#{0.0} @ Static;
+        canvas.setOnMousePressed(new EventHandler[MouseEvent] {
+            def handle(_this: EventHandler[MouseEvent], e: MouseEvent): Unit \ IO = {
+                Array.put(e.getX(), 0, startMouseX);
+                Array.put(e.getY(), 0, startMouseY);
+                // 押下のたびに ResourceState から最新 pan を取り直す。
+                // これで 2 回目以降のドラッグストロークでも累積した pan を起点にできる
+                let (curX, curY) = getCurrentPan();
+                Array.put(curX, 0, startPanX);
+                Array.put(curY, 0, startPanY)
+            }
+        });
+        canvas.setOnMouseDragged(new EventHandler[MouseEvent] {
+            def handle(_this: EventHandler[MouseEvent], e: MouseEvent): Unit \ IO = {
+                let dx = e.getX() - Array.get(0, startMouseX);
+                let dy = e.getY() - Array.get(0, startMouseY);
+                let newPanX = Array.get(0, startPanX) + dx;
+                let newPanY = Array.get(0, startPanY) + dy;
+                onPanCommit((newPanX, newPanY));
+                // 同じ canvas 上に直接 redraw (children.clear はしない)
+                drawFullSheetWithSelection(gc, image, hframes, vframes, frame,
+                                            imgW, imgH, canvasW, canvasH, zoomMode, showGrid,
+                                            newPanX, newPanY)
+            }
+        })
+    }
+
     /// 既存挙動: 選択フレーム 1 セルだけを切り抜いて中央描画。offset と zoom を反映。
     /// hframes/vframes が無効値のときは画像全体を表示するフォールバックを兼ねる
     def drawSingleCell(gc: GraphicsContext, image: Image, sr: SpriteRef,
                         hframes: Int32, vframes: Int32, frame: Int32,
-                        imgW: Float64, imgH: Float64, canvasSize: Float64,
+                        imgW: Float64, imgH: Float64,
+                        canvasW: Float64, canvasH: Float64,
                         zoomMode: ZoomMode, showGrid: Bool): Unit \ IO = {
+        gc.clearRect(0.0, 0.0, canvasW, canvasH);
         let (srcX, srcY, srcW, srcH) =
             if (hframes > 0i32 and vframes > 0i32 and imgW > 0.0 and imgH > 0.0) {
                 let cellW = imgW / Int32.toFloat64(hframes);
@@ -592,10 +671,10 @@ mod PropertyWidgets {
             };
         let dstW = srcW * scale;
         let dstH = srcH * scale;
-        let dstX = (canvasSize - dstW) / 2.0 + sr#offsetX * scale;
-        let dstY = (canvasSize - dstH) / 2.0 + sr#offsetY * scale;
+        let dstX = (canvasW - dstW) / 2.0 + sr#offsetX * scale;
+        let dstY = (canvasH - dstH) / 2.0 + sr#offsetY * scale;
         gc.drawImage(image, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH);
-        if (showGrid) drawPreviewGrid(gc, canvasSize, dstW, dstH)
+        if (showGrid) drawPreviewGrid(gc, canvasW, canvasH, dstW, dstH)
         else ()
     }
 
@@ -604,9 +683,12 @@ mod PropertyWidgets {
     /// offset は適用しない (アトラス上の物理セル位置を見せる用途のため)
     def drawFullSheetWithSelection(gc: GraphicsContext, image: Image,
                                     hframes: Int32, vframes: Int32, frame: Int32,
-                                    imgW: Float64, imgH: Float64, canvasSize: Float64,
-                                    zoomMode: ZoomMode, showGrid: Bool): Unit \ IO = {
-        let fitScale = Float64.min(canvasSize / imgW, canvasSize / imgH);
+                                    imgW: Float64, imgH: Float64,
+                                    canvasW: Float64, canvasH: Float64,
+                                    zoomMode: ZoomMode, showGrid: Bool,
+                                    panX: Float64, panY: Float64): Unit \ IO = {
+        gc.clearRect(0.0, 0.0, canvasW, canvasH);
+        let fitScale = Float64.min(canvasW / imgW, canvasH / imgH);
         let zoomMul = match zoomMode {
             case ZoomMode.Percent(p) => Int32.toFloat64(p) / 100.0
         };
@@ -623,13 +705,12 @@ mod PropertyWidgets {
         let srcY = Int32.toFloat64(row) * cellH;
         let cellDstW = cellW * effScale;
         let cellDstH = cellH * effScale;
-        // 選択セルの中心が canvas 中心に来るように sheet 全体を平行移動する。
-        // これで zoom in/out しても選択セルが画面中央に留まり、周辺セルが
-        // 同心円的に広がる挙動になる
+        // 選択セル中心 + ユーザーの drag pan を canvas 中心に配置する。
+        // pan は canvas pixel 単位、zoom に応じて拡縮しない (ドラッグ感覚を保つため)
         let cellCx = (Int32.toFloat64(col) + 0.5) * cellW * effScale;
         let cellCy = (Int32.toFloat64(row) + 0.5) * cellH * effScale;
-        let dstX0 = canvasSize / 2.0 - cellCx;
-        let dstY0 = canvasSize / 2.0 - cellCy;
+        let dstX0 = canvasW / 2.0 - cellCx + panX;
+        let dstY0 = canvasH / 2.0 - cellCy + panY;
         let cellDstX = dstX0 + srcX * effScale;
         let cellDstY = dstY0 + srcY * effScale;
 
@@ -681,12 +762,12 @@ mod PropertyWidgets {
 
     /// プレビュー用の補助グリッド。canvas の中央十字（赤）と「offset=0 のときの
     /// セル矩形」（白）を上に重ねて描く。中央合わせの目視確認に使う。
-    def drawPreviewGrid(gc: GraphicsContext, canvasSize: Float64,
+    def drawPreviewGrid(gc: GraphicsContext, canvasW: Float64, canvasH: Float64,
                          cellW: Float64, cellH: Float64): Unit \ IO = {
         let red   = FxColor.color(1.0, 0.0, 0.0);
         let white = FxColor.color(1.0, 1.0, 1.0);
-        let cx = canvasSize / 2.0;
-        let cy = canvasSize / 2.0;
+        let cx = canvasW / 2.0;
+        let cy = canvasH / 2.0;
         // 1. cell 矩形（offset=0 で中央寄せした場合の位置）= 白
         gc.setStroke(white);
         gc.setLineWidth(1.0);
@@ -696,7 +777,7 @@ mod PropertyWidgets {
         // 2. 中央十字 = 赤
         gc.setStroke(red);
         gc.setLineWidth(1.0);
-        gc.strokeLine(0.0, cy, canvasSize, cy);
-        gc.strokeLine(cx, 0.0, cx, canvasSize)
+        gc.strokeLine(0.0, cy, canvasW, cy);
+        gc.strokeLine(cx, 0.0, cx, canvasH)
     }
 }

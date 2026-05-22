@@ -33,6 +33,9 @@
       "sprite": {
         "frame": 4,
         "hframes": 5,
+        "offset": {
+          "x": 0.0
+        },
         "texture": "character_sheet",
         "vframes": 2
       }

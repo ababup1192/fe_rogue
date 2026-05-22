@@ -27,7 +27,8 @@ mod ResourceState {
         dirtyRef               = Array[Bool, Static],
         previewZoomRef         = Array[PropertyWidgets.ZoomMode, Static],
         previewGridRef         = Array[Bool, Static],
-        previewFrameAdjustRef  = Array[Bool, Static]
+        previewFrameAdjustRef  = Array[Bool, Static],
+        previewPanRef          = Array[(Float64, Float64), Static]
     }
 
     /// 空の ResourceState を作る
@@ -42,7 +43,8 @@ mod ResourceState {
             dirtyRef               = Array#{false} @ Static,
             previewZoomRef         = Array#{PropertyWidgets.defaultZoom()} @ Static,
             previewGridRef         = Array#{false} @ Static,
-            previewFrameAdjustRef  = Array#{false} @ Static
+            previewFrameAdjustRef  = Array#{false} @ Static,
+            previewPanRef          = Array#{(0.0, 0.0)} @ Static
         }
 
     pub def setDiscovered(state: ResourceState, entries: List[ResourceEntry]): Unit \ IO =
@@ -108,4 +110,15 @@ mod ResourceState {
 
     pub def getPreviewFrameAdjust(state: ResourceState): Bool \ IO =
         Array.get(0, state#previewFrameAdjustRef)
+
+    /// フレーム調整モード中のドラッグで蓄積する pan offset (canvas pixel 単位、transient)。
+    /// resource / sub-entry 切替時や frame-adjust toggle 時に (0,0) にリセットする
+    pub def setPreviewPan(state: ResourceState, pan: (Float64, Float64)): Unit \ IO =
+        Array.put(pan, 0, state#previewPanRef)
+
+    pub def getPreviewPan(state: ResourceState): (Float64, Float64) \ IO =
+        Array.get(0, state#previewPanRef)
+
+    pub def resetPreviewPan(state: ResourceState): Unit \ IO =
+        Array.put((0.0, 0.0), 0, state#previewPanRef)
 }

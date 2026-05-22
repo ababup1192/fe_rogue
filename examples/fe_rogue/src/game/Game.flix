@@ -296,7 +296,7 @@ mod Game {
                 AudioStreamPlayer.setVolume("damage", 0.5f32);
                 AudioStreamPlayer.setVolume("bonus",  0.5f32);
                 // BGM はゲーム開始時に再生（looping = true で曲が終わってもループする）
-                AudioStreamPlayer.play("bgm");
+                // AudioStreamPlayer.play("bgm");  // 一旦オフ
                 GameLogger.playerLog("T1 味方のターン");
                 gameLoop(sceneRef, scene)
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。

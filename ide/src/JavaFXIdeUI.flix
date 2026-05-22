@@ -101,6 +101,8 @@ mod JavaFXIdeUI {
         ResourcePanel.wireZoomButtons(state, previewZoomOut, previewZoomIn);
         ResourcePanel.wireGridCheckbox(state, previewGridCheck);
         ResourcePanel.wireFrameAdjustCheckbox(state, previewFrameAdjustCheck);
+        // pane の幅高変化 (window resize / divider 移動) で preview canvas を作り直す
+        ResourcePanel.wirePreviewResize(state, resourcePreviewPane);
         ResourcePanel.updateZoomLabel(state);
 
         // ステータスバー Label を取得

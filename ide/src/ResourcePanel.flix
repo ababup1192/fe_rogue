@@ -10,6 +10,7 @@
 
 mod ResourcePanel {
     import java.lang.{Object => JObject}
+    import java.lang.Number
     import java.nio.file.Files
     import java.nio.file.Paths
     import java.util.Optional
@@ -20,6 +21,7 @@ mod ResourcePanel {
     import javafx.scene.control.Label
     import javafx.scene.control.ListView
     import javafx.scene.control.TextInputDialog
+    import javafx.scene.layout.StackPane
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
     import javafx.event.ActionEvent
@@ -63,6 +65,9 @@ mod ResourcePanel {
                 if (Object.isNull(newSel)) ()
                 else {
                     ResourceState.setSelectedSubEntry(state#resource, Some(newSel));
+                    // sub-entry が変わったら frame-adjust pan を初期位置に戻す
+                    // (前 entry のドラッグ位置を引きずらない)
+                    ResourceState.resetPreviewPan(state#resource);
                     rebuildPropertyPanel(state)
                 }
             }
@@ -78,6 +83,8 @@ mod ResourcePanel {
         ResourceState.setSelectedDataPath(state#resource, Some(entry#dataPath));
         ResourceState.setSelectedSubEntry(state#resource, None);
         ResourceState.setDirty(state#resource, false);
+        // 新しいリソースに切り替えるとき、フレーム調整 pan はリセット
+        ResourceState.resetPreviewPan(state#resource);
 
         let dataJson = loadJsonElement(entry#dataPath);
         ResourceState.setEditingJson(state#resource, dataJson);
@@ -272,10 +279,13 @@ mod ResourcePanel {
         let zoomMode = ResourceState.getPreviewZoom(state#resource);
         let showGrid = ResourceState.getPreviewGrid(state#resource);
         let frameAdjust = ResourceState.getPreviewFrameAdjust(state#resource);
+        let pan = ResourceState.getPreviewPan(state#resource);
+        let getPan = () -> ResourceState.getPreviewPan(state#resource);
+        let onPan = newPan -> ResourceState.setPreviewPan(state#resource, newPan);
         match Array.get(0, state#widgets#resourcePreviewPane) {
             case Some(pane) =>
                 PropertyWidgets.updateSpritePreview(pane, pathMap, spriteRef, zoomMode,
-                                                     showGrid, frameAdjust)
+                                                     showGrid, frameAdjust, pan, getPan, onPan)
             case None       => ()
         }
     }
@@ -284,10 +294,13 @@ mod ResourcePanel {
         let zoomMode = ResourceState.getPreviewZoom(state#resource);
         let showGrid = ResourceState.getPreviewGrid(state#resource);
         let frameAdjust = ResourceState.getPreviewFrameAdjust(state#resource);
+        let pan = ResourceState.getPreviewPan(state#resource);
+        let getPan = () -> ResourceState.getPreviewPan(state#resource);
+        let onPan = newPan -> ResourceState.setPreviewPan(state#resource, newPan);
         match Array.get(0, state#widgets#resourcePreviewPane) {
             case Some(pane) =>
                 PropertyWidgets.updateSpritePreview(pane, Map.empty(), None, zoomMode,
-                                                     showGrid, frameAdjust)
+                                                     showGrid, frameAdjust, pan, getPan, onPan)
             case None       => ()
         }
     }
@@ -354,12 +367,29 @@ mod ResourcePanel {
     /// フレーム調整モードのチェックボックスを配線する。ON で texture 全体表示 +
     /// 選択フレーム以外ディマー、OFF で 1 セル切り抜き表示 (現状動作)。
     /// グリッドとは独立に併用可能
+    /// Preview ペインのサイズ変化に追従して canvas を作り直す。
+    /// SplitPane divider の移動や window resize で pane の幅高が変わるたびに
+    /// repaintPreview を呼び、`updateSpritePreview` の中で pane.getWidth/Height を
+    /// 読み直して新しい canvas を生成する仕組み
+    pub def wirePreviewResize(state: IdeState.IdeState, pane: StackPane): Unit \ IO = {
+        let listener = new ChangeListener[Number] {
+            def changed(_this: ChangeListener[Number],
+                         _obs: ObservableValue[JObject],
+                         _old: Number, _new: Number): Unit \ IO =
+                repaintPreview(state)
+        };
+        pane.widthProperty().addListener(listener);
+        pane.heightProperty().addListener(listener)
+    }
+
     pub def wireFrameAdjustCheckbox(state: IdeState.IdeState,
                                      frameAdjustChk: CheckBox): Unit \ IO = {
         frameAdjustChk.setSelected(ResourceState.getPreviewFrameAdjust(state#resource));
         frameAdjustChk.setOnAction(new EventHandler[ActionEvent] {
             def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
                 ResourceState.setPreviewFrameAdjust(state#resource, frameAdjustChk.isSelected());
+                // モード切替で view 状態をリセット (前モードでの drag pan を持ち越さない)
+                ResourceState.resetPreviewPan(state#resource);
                 repaintPreview(state)
             }
         })
