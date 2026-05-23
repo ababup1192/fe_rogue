@@ -252,4 +252,28 @@ mod TestUnitFixtures {
         run { thunk() } with handler BoardQuery {
             def board(k) = k(board)
         }
+
+    /// GameLogger.GameLogger の no-op スタブ。
+    /// ログの中身を検証しないテストで、ログ出力の effect だけ剥がす用途に使う。
+    pub def withMockGameLogger(thunk: Unit -> a \ ef):
+            a \ (ef - GameLogger.GameLogger) =
+        run { thunk() } with handler GameLogger.GameLogger {
+            def playerLog(_, k)    = k()
+            def enemyLog(_, k)     = k()
+            def gameOverLog(_, k)  = k()
+            def endTurn(k)         = k()
+            def drainEntries(k)    = k(Nil)
+        }
+
+    /// EnemyTurn.Queue の no-op スタブ。`isEmpty` は true、その他の操作は捨てる。
+    /// 「敵ターンの駆動」までは見ないテスト（味方ターンの挙動だけ確認する系）で使う。
+    pub def withMockEnemyTurnQueue(thunk: Unit -> a \ ef):
+            a \ (ef - EnemyTurn.Queue) =
+        run { thunk() } with handler EnemyTurn.Queue {
+            def popFront(k)     = k(None)
+            def pushFront(_, k) = k()
+            def replace(_, k)   = k()
+            def peekFront(k)    = k(None)
+            def isEmpty(k)      = k(true)
+        }
 }
