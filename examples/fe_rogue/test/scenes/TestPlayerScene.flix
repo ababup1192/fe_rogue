@@ -123,4 +123,80 @@ mod TestPlayerScene {
                              targetWorld#x, targetWorld#y, false),
                 result)
         }
+
+    // ========================================================================
+    // adjacentAllies — 上下左右 1 マスの他味方だけを返す
+    // ========================================================================
+
+    /// id と gridPos だけを変えた最小限のテスト用 PlayerScene.Data。
+    /// 他のフィールドは中庸な値で固定し、隣接判定の挙動に影響しないようにする。
+    def buildPartyMember(id: Int32, gridPos: {x = Int32, y = Int32}):
+            PlayerScene.Data = {
+        id              = id,
+        gridPos         = gridPos,
+        moveTiles       = 5,
+        hp              = 10,
+        waited          = false,
+        attackTargetId  = None,
+        resource        = TestUnitFixtures.testResource(5, 10),
+        weapons         = TestUnitFixtures.testWeapon() :: Nil,
+        staves          = Nil,
+        selectedItem    = None,
+        moveStepsTaken  = 0
+    }
+
+    /// 与えた party から「World ノード + 各味方 Marker2D」の scene を組む。
+    /// PartyQuery 経由で getAll を呼ぶと、scene 内の Player ノードが id 昇順で返る。
+    def sceneWithParty(party: List[PlayerScene.Data]): Scene[NodeTag] =
+        let world = Marker2D.make(Vec2.zero());
+        let withWorld = Scene.empty()
+            |> Scene.addNode(MapScene.worldName(),
+                EngineNode.Marker2DWithState(world, NodeTag.NoTag));
+        List.foldLeft((acc, data) -> {
+            let marker = Marker2D.make(Vec2.zero());
+            Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(data#id),
+                EngineNode.Marker2DWithState(marker, NodeTag.Player(data)), acc)
+        }, withWorld, party)
+
+    /// 配置 (self = id 0 at (5,5)):
+    ///
+    ///         (5,4) id=1
+    ///   (4,5)        (6,5)
+    ///    id=2 (5,5)   id=3
+    ///                (self)
+    ///         (5,6) id=4
+    ///
+    ///   (4,4) id=5            (6,6) id=6   ← 斜めなので非隣接
+    ///
+    /// 期待: 上下左右の id (1,2,3,4) だけが返り、斜め (5,6) と self (0) は除外される。
+    /// getAll は id 昇順なので結果も id 昇順で並ぶ前提でリスト比較する。
+    @Test
+    def testAdjacentAlliesReturnsOnlyOrthogonalNeighbors(): Unit \ Assert =
+        let self     = buildPartyMember(0, {x = 5, y = 5});
+        let northern = buildPartyMember(1, {x = 5, y = 4});
+        let western  = buildPartyMember(2, {x = 4, y = 5});
+        let eastern  = buildPartyMember(3, {x = 6, y = 5});
+        let southern = buildPartyMember(4, {x = 5, y = 6});
+        let diagNW   = buildPartyMember(5, {x = 4, y = 4});
+        let diagSE   = buildPartyMember(6, {x = 6, y = 6});
+        let scene = sceneWithParty(self :: northern :: western :: eastern ::
+                                    southern :: diagNW :: diagSE :: Nil);
+        let neighbors = TestUnitFixtures.withMockPartyQuery(scene, () ->
+            PlayerScene.adjacentAllies(self));
+        let neighborIds = List.map(d -> d#id, neighbors);
+        Assert.assertEq(
+            expected = 1 :: 2 :: 3 :: 4 :: Nil,
+            neighborIds)
+
+    /// 隣接味方が居ない場合は空リストを返す。
+    /// 斜めに居る駒は隣接ではない (上のテストと同じ判定だが、空の経路を独立 pin)。
+    @Test
+    def testAdjacentAlliesReturnsEmptyWhenNoOrthogonalNeighbor(): Unit \ Assert =
+        let self   = buildPartyMember(0, {x = 5, y = 5});
+        let diagNW = buildPartyMember(1, {x = 4, y = 4});
+        let diagSE = buildPartyMember(2, {x = 6, y = 6});
+        let scene = sceneWithParty(self :: diagNW :: diagSE :: Nil);
+        let neighbors = TestUnitFixtures.withMockPartyQuery(scene, () ->
+            PlayerScene.adjacentAllies(self));
+        Assert.assertEq(expected = Nil, List.map(d -> d#id, neighbors))
 }

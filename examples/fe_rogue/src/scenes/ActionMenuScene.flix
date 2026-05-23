@@ -55,6 +55,7 @@ mod ActionMenuScene {
 
     /// metadata の値。`onItemConfirmed` で再現するためのアクション識別子。
     def attackMeta(): String    = "attack"
+    def exchangeMeta(): String  = "exchange"
     def itemMeta(): String      = "item"
     def waitMeta(): String      = "wait"
     def pickupMeta(): String    = "pickup"
@@ -105,8 +106,9 @@ mod ActionMenuScene {
             case None         => (node, withItems)
         }
 
-    /// 選択中プレイヤーの状況から「こうげき / ひろう / たいき」のうち成立するものだけ返す。
-    /// 順序は固定: こうげき → ひろう → たいき (FE 流に攻撃が上、待機が末尾)。
+    /// 選択中プレイヤーの状況から「こうげき / こうかん / アイテム / ひろう / たいき」の
+    /// うち成立するものだけ返す。
+    /// 順序は固定: こうげき → こうかん → アイテム → ひろう → たいき (FE 流の並び)。
     /// SelectedPlayer が None のときは PlayerCursor から空マスで開かれた「集合メニュー」
     /// として「しゅうごう」だけを返す (確定で旗を立てる)。
     def buildItems(scene: Scene[NodeTag]): List[ItemEntry]
@@ -129,6 +131,12 @@ mod ActionMenuScene {
                                   disabled = false,
                                   metadata = Some(attackMeta())}: ItemEntry) :: Nil
                             else Nil;
+                        let exchangeItem =
+                            if (not List.isEmpty(PlayerScene.adjacentAllies(player)))
+                                ({text     = "こうかん",
+                                  disabled = false,
+                                  metadata = Some(exchangeMeta())}: ItemEntry) :: Nil
+                            else Nil;
                         let itemItem =
                             if (not (List.isEmpty(player#weapons)
                                        and List.isEmpty(player#staves)))
@@ -148,9 +156,8 @@ mod ActionMenuScene {
                                   disabled = false,
                                   metadata = Some(waitMeta())}: ItemEntry) :: Nil
                             else Nil;
-                        List.append(attackItem,
-                            List.append(itemItem,
-                                List.append(pickupItem, waitItem)))
+                        List.flatten(attackItem :: exchangeItem :: itemItem ::
+                                       pickupItem :: waitItem :: Nil)
                 }
         }
 
@@ -194,6 +201,7 @@ mod ActionMenuScene {
             case None    => scene
             case Some(m) =>
                 if (m == attackMeta())        PlayerScene.enterAttackPhase(scene)
+                else if (m == exchangeMeta()) scene
                 else if (m == itemMeta())     openItemMenu(scene)
                 else if (m == waitMeta())     PlayerScene.commitWaitedAndAdvance(scene)
                 else if (m == pickupMeta())   applyPickup(scene)

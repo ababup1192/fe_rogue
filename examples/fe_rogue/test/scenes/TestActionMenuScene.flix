@@ -150,6 +150,73 @@ mod TestActionMenuScene {
             ItemScene.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon()),
             loadTwoPlayerActionMenuScene())
 
+    /// 「こうかん」項目の出現確認用フィクスチャ。id=0 を (1,1)、id=1 を (2,1) に置き、
+    /// 上下左右で隣接する 2 人パーティ + ActionMenu を組む (manhattan=1)。
+    def loadAdjacentPartyActionMenuScene(): Scene[NodeTag] =
+        let world = Marker2D.make(Vec2.zero());
+        let marker0 = Marker2D.make(Vec2.zero());
+        let marker1 = Marker2D.make(Vec2.zero());
+        let data0 = makePlayerData(0, {x = 1, y = 1});
+        let data1 = makePlayerData(1, {x = 2, y = 1});
+        let withWorld = Scene.empty()
+            |> Scene.addNode(MapScene.worldName(),
+                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
+                EngineNode.Marker2DWithState(marker0, NodeTag.Player(data0)))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(1),
+                EngineNode.Marker2DWithState(marker1, NodeTag.Player(data1)));
+        actionMenuAddPure(withWorld)
+
+    /// runRefreshItems に渡す入力一式。
+    /// 引数が多いので record にまとめて named-parameter sugar で呼び出せるようにする。
+    ///
+    /// フィールドの意味:
+    ///   - `phase`          : refreshItems 中に観測させるフェーズ
+    ///   - `selectedId`     : 選択中味方の id (refreshItems 内 buildItems から参照される)
+    ///   - `selectedOrigin` : 選択中味方の origin (使われないが Selection を埋めるため)
+    ///   - `scene`          : テスト対象 scene
+    type alias RefreshArgs = {
+        phase          = TurnPhase.Phase,
+        selectedId     = Int32,
+        selectedOrigin = {x = Int32, y = Int32},
+        scene          = Scene[NodeTag]
+    }
+
+    /// `refreshItems` を 4 effect (SelectedPlayer / TurnPhase / PartyQuery / RosterQuery)
+    /// 込みで実行し、更新後の scene を返す。
+    /// `TurnPhase.State.put` は refreshItems からは呼ばれない前提で fixed 値固定。
+    def runRefreshItems(args: RefreshArgs): Scene[NodeTag] =
+        let menuNode = match Scene.getEngineNode(ActionMenuScene.menuPath(), args#scene) {
+            case Some(node) => node
+            case None       => bug!("ActionMenu ItemList not found")
+        };
+        let (_, after) = TestUnitFixtures.withMockPartyQuery(args#scene, () ->
+            TestUnitFixtures.withMockRosterQuery(args#scene, () ->
+                run {
+                    ActionMenuScene.refreshItems(
+                        Duration.seconds(0.0),
+                        menuNode,
+                        ActionMenuScene.menuPath(),
+                        args#scene)
+                } with handler SelectedPlayer.State {
+                    def get(k)    = k({id = Some(args#selectedId),
+                                        origin = Some(args#selectedOrigin)})
+                    def put(_, k) = k()
+                } with handler TurnPhase.State {
+                    def get(k)    = k(args#phase)
+                    def put(_, k) = k()
+                }));
+        after
+
+    /// scene 内 ActionMenu の ItemList から各エントリの metadata を順に取り出す。
+    /// 「項目に X が含まれるか」を 1 タプルで pin するために使う。
+    def itemsMetadata(scene: Scene[NodeTag]): List[Option[String]] =
+        match Scene.getEngineNode(ActionMenuScene.menuPath(), scene) {
+            case Some(EngineNode.ItemListWithState(list, _)) =>
+                List.map(entry -> entry#metadata, ItemList.getItems(list))
+            case _ => bug!("ActionMenu ItemList not found")
+        }
+
     /// runOnActionConfirm に渡す入力一式。
     /// 引数が多いので record にまとめて named-parameter sugar で呼び出せるようにする。
     ///
@@ -264,6 +331,43 @@ mod TestActionMenuScene {
     // 実装変更前は赤になることを確認 (フェーズが ActionSelect から外れる /
     // waited が立つため)。Step 1-C 適用後に緑に転じる。
     // ════════════════════════════════════════════════════════
+
+    // ════════════════════════════════════════════════════════
+    // Phase 2: 「こうかん」項目の表示制御
+    //
+    // 隣接味方が居る × ActionSelect 中 → ActionMenu に「こうかん」が出る。
+    // 隣接味方が居なければ「こうかん」は出ない。
+    // ════════════════════════════════════════════════════════
+
+    /// id=0 が (1,1)、id=1 が (2,1) の隣接配置のとき、ActionSelect 中の refreshItems で
+    /// 「こうかん」エントリ (metadata = "exchange") がメニューに含まれる。
+    @Test
+    def testExchangeItemAppearsWhenAdjacentAllyExists(): Unit \ Assert =
+        let scene = loadAdjacentPartyActionMenuScene();
+        let after = runRefreshItems({
+            phase          = TurnPhase.Phase.ActionSelect,
+            selectedId     = 0,
+            selectedOrigin = {x = 1, y = 1},
+            scene          = scene
+        });
+        Assert.assertEq(
+            expected = true,
+            List.memberOf(Some("exchange"), itemsMetadata(after)))
+
+    /// id=0 が (1,1)、id=1 が (3,3) の非隣接配置 (manhattan=4) なら「こうかん」は出ない。
+    /// loadTwoPlayerActionMenuScene の標準フィクスチャを使う。
+    @Test
+    def testExchangeItemHiddenWhenNoAdjacentAlly(): Unit \ Assert =
+        let scene = loadTwoPlayerActionMenuScene();
+        let after = runRefreshItems({
+            phase          = TurnPhase.Phase.ActionSelect,
+            selectedId     = 0,
+            selectedOrigin = {x = 1, y = 1},
+            scene          = scene
+        });
+        Assert.assertEq(
+            expected = false,
+            List.memberOf(Some("exchange"), itemsMetadata(after)))
 
     /// ひろう (`pickupMeta`) を確定すると:
     ///   - フェーズが `ActionSelect` のまま (行動継続: ActionMenu に戻る)

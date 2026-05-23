@@ -425,6 +425,16 @@ mod PlayerScene {
             case other => other
         }, scene)
 
+    /// 指定プレイヤーの上下左右 1 マスに居る他味方を返す（自分は含まない）。
+    /// 「こうかん」コマンドや将来の隣接判定 (例: 助太刀) の出現条件として使う。
+    /// 斜め (例: (4,4) と (5,5)) は含まない。waited フィルタはここではせず、
+    /// 全味方を対象にする (waited 駒との交換可否は呼び出し側で判定)。
+    pub def adjacentAllies(player: Data): List[Data] \ PartyQuery =
+        PartyQuery.getAll()
+            |> List.filter(other ->
+                other#id != player#id
+                and Weapon.manhattan(player#gridPos, other#gridPos) == 1)
+
     /// 指定セル上の全プレイヤー（waited 含む）の id を返す。
     /// 敵が攻撃する隣接プレイヤーの判定など、waited 含めて見たいときに使う。
     pub def findIdAt(coord: {x = Int32, y = Int32},
