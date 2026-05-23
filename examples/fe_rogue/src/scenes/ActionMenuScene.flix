@@ -47,11 +47,12 @@ mod ActionMenuScene {
         }
 
     /// metadata の値。`onItemConfirmed` で再現するためのアクション識別子。
-    def attackMeta(): String = "attack"
-    def itemMeta(): String   = "item"
-    def waitMeta(): String   = "wait"
-    def pickupMeta(): String = "pickup"
-    def gatherMeta(): String = "gather"
+    def attackMeta(): String    = "attack"
+    def itemMeta(): String      = "item"
+    def waitMeta(): String      = "wait"
+    def pickupMeta(): String    = "pickup"
+    def gatherMeta(): String    = "gather"
+    def turnEndMeta(): String   = "turnEnd"
 
     /// scene に ActionMenu ノードツリーを追加する。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
@@ -107,7 +108,10 @@ mod ActionMenuScene {
             case None     =>
                 ({text     = "しゅうごう",
                   disabled = false,
-                  metadata = Some(gatherMeta())}: ItemEntry) :: Nil
+                  metadata = Some(gatherMeta())}: ItemEntry) ::
+                ({text     = "ターンエンド",
+                  disabled = false,
+                  metadata = Some(turnEndMeta())}: ItemEntry) :: Nil
             case Some(id) =>
                 match PlayerScene.PartyQuery.get(id) {
                     case None         => Nil
@@ -182,12 +186,13 @@ mod ActionMenuScene {
         match entry#metadata {
             case None    => scene
             case Some(m) =>
-                if (m == attackMeta())      PlayerScene.enterAttackPhase(scene)
-                else if (m == itemMeta())   openItemMenu(scene)
-                else if (m == waitMeta())   PlayerScene.commitWaitedAndAdvance(scene)
-                else if (m == pickupMeta()) applyPickup(scene)
-                else if (m == gatherMeta()) applyGather(scene)
-                else                         scene
+                if (m == attackMeta())        PlayerScene.enterAttackPhase(scene)
+                else if (m == itemMeta())     openItemMenu(scene)
+                else if (m == waitMeta())     PlayerScene.commitWaitedAndAdvance(scene)
+                else if (m == pickupMeta())   applyPickup(scene)
+                else if (m == gatherMeta())   applyGather(scene)
+                else if (m == turnEndMeta())  applyTurnEnd(scene)
+                else                          scene
         }
 
     /// 「アイテム」確定で ItemMenuScene を開く。選択中味方の id が必要。
@@ -203,6 +208,19 @@ mod ActionMenuScene {
     def applyGather(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State} =
         FlagScene.plant(CursorScene.getGridPos(scene), scene)
+
+    /// 「ターンエンド」確定: 全アクティブ味方を行動済みにして即敵ターンへ進む。
+    /// SelectedPlayer が None（空マスメニュー）のときだけ選択肢に出るので、
+    /// 選択中プレイヤーのクリアも行う。
+    def applyTurnEnd(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
+                              TurnPhase.State, SelectedPlayer.State} =
+        let ids = PlayerScene.getAll(scene)
+                    |> List.filter(d -> not d#waited)
+                    |> List.map(d -> d#id);
+        let afterWait = List.foldLeft((sc, id) -> PlayerScene.setWaited(id, sc), scene, ids);
+        SelectedPlayer.State.put(SelectedPlayer.cleared());
+        EnemyTurnDriverScene.beginTurn(afterWait)
 
     /// 「ひろう」確定の本体。床アイテムを取得してインベントリに加え、
     /// ログを出してから waited 確定 (拾うで 1 ターン使う)。
