@@ -15,10 +15,11 @@
 ///   - `beginTurn(scene)` — 敵ターン開始 (敵キュー構築 + フェーズ遷移 + 周辺片付け)
 ///     `PlayerScene.commitWaitedAndAdvance` から「全員 waited」のときに呼ばれる
 ///
-/// 3 段 gating (stepOnce の冒頭):
+/// 4 段 gating (stepOnce の冒頭):
 ///   1. 演出の溜め (`Pacing.isHolding`) 中 → scene 据え置き
 ///   2. カメラが target に追いついていない (新しい敵にカメラがパン中) → 据え置き
 ///   3. `attack_lunge` 中の敵が居る (モーション完了待ち) → 据え置き
+///   4. `attack_lunge` 中の味方が居る (= 味方反撃モーション中) → 据え置き
 /// これにより「キャラ行動 → 溜め → カメラ移動 → 到達 → 次のキャラ行動」のリズムを作る。
 mod EnemyTurnDriverScene {
 
@@ -93,6 +94,7 @@ mod EnemyTurnDriverScene {
         if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
         else if (EnemyScene.anyAttacking(scene)) scene
+        else if (PlayerScene.anyAttacking(scene)) scene
         else match EnemyTurn.Queue.peekFront() {
             case None       =>
                 // キュー空 + 攻撃モーション無し → 敵ターン終了

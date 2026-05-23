@@ -51,6 +51,29 @@ mod CounterAttackRules {
             case _                    => None
         }
 
+    /// `decide` の鏡像。敵の攻撃完了後に「味方が反撃するか」を決める。
+    /// PlayerScene.Data は isDying を持たない (HP <= 0 で即 scene から除去される) ため、
+    /// hp <= 0 を kill 判定として扱う。武器は先頭 (weapons.head) を反撃武器として使う想定。
+    ///   target = None        → Commit
+    ///   target#hp <= 0       → Kill (実際は次フレームで scene から消える)
+    ///   weapons 空           → Commit
+    ///   先頭武器が射程内      → Counter(target#id)
+    ///   それ以外              → Commit
+    pub def decidePlayerCounter(enemy: EnemyScene.Data,
+                                 target: Option[PlayerScene.Data]): Outcome =
+        match target {
+            case None    => Outcome.Commit
+            case Some(p) =>
+                if (p#hp <= 0) Outcome.Kill
+                else match List.head(p#weapons) {
+                    case None    => Outcome.Commit
+                    case Some(w) =>
+                        let d = Weapon.manhattan(p#gridPos, enemy#gridPos);
+                        if (Weapon.canReach(d, w)) Outcome.Counter(p#id)
+                        else Outcome.Commit
+                }
+        }
+
     /// 攻撃で倒した敵 id を返す。target が isDying なら Some(id)、それ以外は None。
     /// 「いま完了した attack_lunge が敵を倒したか」判定に使う。
     pub def killedTargetEnemyId(target: Option[EnemyScene.Data]): Option[Int32] =

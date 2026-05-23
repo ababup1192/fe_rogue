@@ -706,17 +706,20 @@ mod PlayerScene {
         applyAttackHit(playerId, scene)
 
     /// AnimationPlayer の `attack_lunge` finished イベント受信時の処理 (味方側)。
-    /// 攻撃完了 → `CounterAttackRules.decide` が分類した結果に応じて分岐:
-    ///   - Kill: 狙った敵が瀕死 (death_blink 中) なら kill 演出
-    ///     → PlayerAttackHold + Pacing.hold(700ms)、後で commit
-    ///   - Counter(enemyId): 敵が生存 + 隣接 + 武器あり → 反撃モーション開始
-    ///   - Commit: それ以外 (敵生存だが反撃不能 / 対象消失) → そのまま commit
+    /// 2 通りある:
+    ///   - `PlayerAttackHold` (= 味方主攻撃の完了) → CounterAttackRules.decide で分岐:
+    ///       Kill (敵瀕死) / Counter (敵反撃) / Commit (waited 確定)。
+    ///   - `EnemyTurn` (= 敵攻撃に対する味方反撃の完了) → 単純に attackTargetId クリア。
+    ///       次フレーム以降で EnemyTurnDriver が PlayerScene.anyAttacking が false に
+    ///       なったのを見て次の step に進む。FE 風で「反撃の反撃」は実装しない。
     pub def onAttackLungeDone(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, Pacing.State} =
-        match get(playerId, scene) {
+        if (TurnPhase.State.get() == TurnPhase.Phase.EnemyTurn)
+            clearAttackTarget(playerId, scene)
+        else match get(playerId, scene) {
             case None         => scene
             case Some(player) =>
                 let target = player#attackTargetId

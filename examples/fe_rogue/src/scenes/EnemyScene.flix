@@ -468,9 +468,13 @@ mod EnemyScene {
                 }
         }
 
-    /// AnimationPlayer の `attack_lunge` finished イベント受信時の処理 (敵側 = 反撃完了)。
-    /// `attackTargetId` をクリアした後、現フェーズが `PlayerAttackHold` (= 味方攻撃に対する
-    /// 反撃の完了) なら commit、`EnemyTurn` (= 通常の敵ターン中の攻撃) なら何もしない。
+    /// AnimationPlayer の `attack_lunge` finished イベント受信時の処理 (敵側)。
+    /// 2 通りある:
+    ///   - `PlayerAttackHold` (= 味方攻撃に対する敵反撃の完了) → commit
+    ///   - `EnemyTurn` (= 敵ターン中の主攻撃完了) → 味方反撃判定。
+    ///       PlayerScene 側の counterpart として CounterAttackRules.decidePlayerCounter を
+    ///       回し、Counter(playerId) なら PlayerScene.startAttack で反撃モーション開始。
+    ///       それ以外は単純に attackTargetId クリアして EnemyTurnDriver に制御を戻す。
     /// フェーズが `PlayerAttackHold` なのは `BattlePanelScene.confirm` が攻撃モーション
     /// 開始時にここへ遷移させているため (味方 attack_lunge → 反撃 attack_lunge の間ずっと Hold)。
     pub def onCounterLungeDone(enemyId: Int32, scene: Scene[NodeTag]):
@@ -478,10 +482,27 @@ mod EnemyScene {
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State} =
-        let cleared = clearAttackTarget(enemyId, scene);
-        if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttackHold)
+        if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttackHold) {
+            let cleared = clearAttackTarget(enemyId, scene);
             PlayerScene.commitWaitedAndAdvance(cleared)
-        else cleared
+        } else {
+            // EnemyTurn 中の敵主攻撃完了。clear する前に attackTargetId を読み、
+            // 味方反撃の対象を決める
+            match get(enemyId, scene) {
+                case None    => clearAttackTarget(enemyId, scene)
+                case Some(e) =>
+                    let target = e#attackTargetId
+                        |> Option.flatMap(pid -> PlayerScene.get(pid, scene));
+                    match CounterAttackRules.decidePlayerCounter(e, target) {
+                        case CounterAttackRules.Outcome.Counter(playerId) =>
+                            let cleared = clearAttackTarget(enemyId, scene);
+                            GameLogger.playerLog("P${playerId} の反撃");
+                            PlayerScene.startAttack(playerId, enemyId,
+                                                      e#gridPos, cleared)
+                        case _ => clearAttackTarget(enemyId, scene)
+                    }
+            }
+        }
 
     /// プレイヤー targetId にダメージを与える。攻撃力は `力(enemy#attack) + 武器の攻撃力` で、
     /// `Combat.attackDamage(総合攻撃力, 防御者#defense)` から素ダメージを得て
