@@ -62,6 +62,13 @@ mod TurnPhase {
         /// 方向確定で杖が直線に飛び、効果が発動 → ターンを進める。
         /// X/Escape で杖をキャンセル（耐久を消費せず ItemActionSelect に戻る）。
         case StaffAim
+        /// 味方ターン・物交換の相手選択フェーズ。
+        /// ActionMenu の「こうかん」確定で入り、選択中味方の上下左右 1 マスの
+        /// 他味方マスが緑マスで描かれる (`TradeRangeScene`)。カーソルは緑マス上
+        /// のみ移動可。Z で交換相手を確定 → (Phase 4 で実装する) TradeInventory
+        /// フェーズへ。X/Escape で交換をキャンセルし `ActionSelect` に戻る
+        /// (行動継続: ActionMenu に戻る)。
+        case TradeTargetSelect
         /// 味方ターン・戦闘予報フェーズ。
         /// PlayerAttack で敵に対して Z を押した瞬間に入り、装備中武器（weapons の先頭）で
         /// 戦闘予報パネルが出る。味方と敵の HP / 威力 / 命中 を並べる。
@@ -155,6 +162,14 @@ mod TurnRules {
         case OpenAttackForecast(Int32, Int32, Int32, Int32)
         /// PlayerAttack 中の Cancel: 攻撃せず waited にして次のセレクトへ
         case AttackSkip
+        /// TradeTargetSelect 中の Confirm: カーソル位置に居る隣接味方を交換相手として確定。
+        /// 引数: partnerId (= 交換相手の player id)。
+        /// Phase 4 で TradeInventory フェーズに遷移する予定。Phase 3 では仮実装で
+        /// `enterActionSelectFromTrade` に流して ActionSelect に戻る (= 何もしない)。
+        case OpenTradeInventory(Int32)
+        /// TradeTargetSelect 中の Cancel: 緑マス overlay を片付けて ActionSelect に戻す
+        /// (= ActionMenu を再表示する。ターン消費しない)。
+        case TradeCancel
     }
 
     /// `decide` に渡すコンテキスト一式。Scene[NodeTag] / Tween / 各 effect から
@@ -231,6 +246,16 @@ mod TurnRules {
                 }
             case (TurnPhase.Phase.PlayerAttack, Input.Cancel) =>
                 Transition.AttackSkip
+            case (TurnPhase.Phase.TradeTargetSelect, Input.Confirm) =>
+                // カーソル位置に隣接味方が居れば OpenTradeInventory を発火。
+                // カーソル制限は CursorScene 側で緑マスに絞っているので、ここに
+                // 来る時点で味方マスに乗っている想定だが、防御的に確認する。
+                match adjacentAllyAtCursor(context) {
+                    case Some(partnerId) => Transition.OpenTradeInventory(partnerId)
+                    case None            => Transition.Stay
+                }
+            case (TurnPhase.Phase.TradeTargetSelect, Input.Cancel) =>
+                Transition.TradeCancel
             // EnemyTurn / PlayerAutoMove は入力無視（自動進行で抜ける）
             case _ => Transition.Stay
         }
@@ -243,6 +268,19 @@ mod TurnRules {
                 let (playerId, position) = entry;
                 if (samePosition(position, context#cursor)
                     and not isInList(playerId, context#waitedPlayerIds))
+                    Some(playerId)
+                else None
+            })
+
+    /// cursor 位置に居る「選択中味方以外の味方」の id を返す (= 交換相手候補)。
+    /// 居なければ None。waited フィルタは ActionMenu の項目可視性側でかかっており、
+    /// ここでは行わない (交換相手として選んだ味方が waited でも構わない仕様)。
+    def adjacentAllyAtCursor(context: Context): Option[Int32] =
+        Board.playerPositions(context#board)
+            |> List.findMap(entry -> {
+                let (playerId, position) = entry;
+                if (samePosition(position, context#cursor)
+                    and context#selected != Some(playerId))
                     Some(playerId)
                 else None
             })
@@ -348,5 +386,12 @@ mod TurnInputBridge {
                     |> PhaseTransitions.enterAttackForecast
             case TurnRules.Transition.AttackSkip                        =>
                 PlayerScene.commitWaitedAndAdvance(scene)
+            case TurnRules.Transition.OpenTradeInventory(_partnerId)    =>
+                // Phase 4 で TradeInventory フェーズを実装するまでの placeholder。
+                // 現状は ActionSelect に戻すだけ (= TradeCancel と同じ挙動)。
+                // partnerId は将来 TradeMenuScene.PanelData にセットする予定。
+                PhaseTransitions.enterActionSelectFromTrade(scene)
+            case TurnRules.Transition.TradeCancel                       =>
+                PhaseTransitions.enterActionSelectFromTrade(scene)
         }
 }

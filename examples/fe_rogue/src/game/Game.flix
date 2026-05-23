@@ -7,6 +7,8 @@ pub enum NodeTag {
     case EnemyRange(EnemyRangeScene.Data)
     case PlayerAttackRange(PlayerAttackRangeScene.Data)
     case MoveAttackRange(MoveAttackRangeScene.Data)
+    /// TradeRangeScene の緑マス overlay（「こうかん」確定後の隣接味方マス）
+    case TradeRange(TradeRangeScene.Data)
     case Cursor(CursorScene.Data)
     /// ArrowCursorScene の Marker2D（杖発射方向を視覚化する矢印カーソル）
     case ArrowCursor(ArrowCursorScene.Data)

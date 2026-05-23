@@ -201,7 +201,7 @@ mod ActionMenuScene {
             case None    => scene
             case Some(m) =>
                 if (m == attackMeta())        PlayerScene.enterAttackPhase(scene)
-                else if (m == exchangeMeta()) scene
+                else if (m == exchangeMeta()) PhaseTransitions.enterTradeTargetSelect(scene)
                 else if (m == itemMeta())     openItemMenu(scene)
                 else if (m == waitMeta())     PlayerScene.commitWaitedAndAdvance(scene)
                 else if (m == pickupMeta())   applyPickup(scene)
