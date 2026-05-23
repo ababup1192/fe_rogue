@@ -305,7 +305,7 @@ mod ItemMenuScene {
     def dispatchAction(meta: String, playerId: Int32, kind: PlayerScene.ItemKind,
                         scene: Scene[NodeTag]):
                        Scene[NodeTag]
-            \ {GameLogger.GameLogger, TurnPhase.State} =
+            \ {GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State} =
         if (meta == equipMeta())
             applyEquip(playerId, kind, scene)
         else if (meta == dropMeta())
@@ -356,14 +356,26 @@ mod ItemMenuScene {
         cleared
 
     /// 「つかう」: 杖の場合のみ実行（武器の場合は「装備」項目が出るのでここには来ない）。
-    /// 杖の発動方向選択フェーズ `StaffAim` に進む。selectedItem は保持しておき、
-    /// `StaffAim` 中の方向入力で `PlayerScene.applyStaffCast` が読む。
-    def applyUse(_playerId: Int32, kind: PlayerScene.ItemKind,
+    /// 杖の発動方向選択フェーズ `StaffAim` に進み、ログに方向キーの操作プロンプトを出す。
+    /// selectedItem は保持しておき、`StaffAim` 中の方向入力で
+    /// `PlayerScene.applyStaffCast` が読む。
+    def applyUse(playerId: Int32, kind: PlayerScene.ItemKind,
                    scene: Scene[NodeTag]):
-                  Scene[NodeTag] \ TurnPhase.State =
+                  Scene[NodeTag]
+            \ {TurnPhase.State, SelectedPlayer.State, GameLogger.GameLogger} =
         match kind {
-            case PlayerScene.ItemKind.Staff(_)  => PhaseTransitions.enterStaffAim(scene)
+            case PlayerScene.ItemKind.Staff(idx) =>
+                let name = staffNameOf(playerId, idx, scene);
+                GameLogger.playerLog("P${playerId} は ${name} の方向を選び Z で発射 (X で中止)");
+                PhaseTransitions.enterStaffAim(scene)
             case PlayerScene.ItemKind.Weapon(_) => scene
+        }
+
+    /// 指定プレイヤーの staves[idx] の名前を返す。範囲外なら "つえ" フォールバック。
+    def staffNameOf(playerId: Int32, idx: Int32, scene: Scene[NodeTag]): String =
+        match List.nth(idx, PlayerScene.getStaves(playerId, scene)) {
+            case Some(staff) => staff#name
+            case None        => "つえ"
         }
 
     /// ItemActionSelect で X / Escape 押下: ItemSelect に戻る（アイテム一覧画面）。

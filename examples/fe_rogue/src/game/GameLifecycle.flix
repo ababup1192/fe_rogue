@@ -35,9 +35,10 @@ mod GameLifecycle {
             |> DamagePopupScene.add     // World 配下に空の Marker2D 親を 1 つ生やす
             |> PlayerScene.add(catalog, staffCatalog)
             |> EnemyScene.add(catalog, floor)
-            |> ItemScene.add(catalog, floor)   // 部屋の床に武器をランダムドロップ
+            |> ItemScene.add(catalog, staffCatalog, floor)   // 部屋の床に武器/杖をランダムドロップ
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
             |> CursorScene.add
+            |> ArrowCursorScene.add     // 杖発射方向の矢印カーソル (初期は非表示)
             |> FlagScene.add            // 自動移動先マーカー (初期は非表示)
             |> CameraScene.add
             |> EnemyTurnDriverScene.add // 敵ターン進行の常駐タグノード (process で phase 判定)

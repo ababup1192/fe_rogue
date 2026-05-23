@@ -24,9 +24,12 @@ mod UnitInfoPopupScene {
 
     /// 表示中ユニットの識別子（kind は "enemy" か "player"）と現在の表示モード。
     /// `shownUnit = None` で非表示。
+    /// `lastHp` は前フレーム描画時の HP。同じユニットでも HP が変われば再描画する
+    /// （杖の回復・1ダメ等で HUD が古いまま残るのを防ぐ）。
     pub type alias PanelState = {
         shownUnit = Option[(String, Int32)],
-        viewMode  = ViewMode
+        viewMode  = ViewMode,
+        lastHp    = Option[Int32]
     }
 
     // ─── 定数 ─────────────────────────────────────────────────
@@ -76,7 +79,9 @@ mod UnitInfoPopupScene {
     /// CanvasLayer に PanelState を後から差し込む (NodeTag.NoTag → UnitInfoPanel(state))
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
-        let initialState: PanelState = { shownUnit = None, viewMode = ViewMode.Status };
+        let initialState: PanelState = {
+            shownUnit = None, viewMode = ViewMode.Status, lastHp = None
+        };
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas,
                                        SceneLoader.constTagParser(NodeTag.NoTag),
                                        scene)
@@ -92,8 +97,7 @@ mod UnitInfoPopupScene {
     /// Z 押下時に呼ぶ。表示中なら viewMode を Status ↔ Items で flip して再描画する。
     /// 非表示なら何もしない。
     pub def toggleView(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game,
-                              EnemyScene.RosterQuery, PlayerScene.PartyQuery} =
+            Scene[NodeTag] \ GameEngine.Game =
         match getState(scene) {
             case None    => scene
             case Some(s) =>
@@ -105,7 +109,8 @@ mod UnitInfoPopupScene {
                             case ViewMode.Items  => ViewMode.Status
                         };
                         let withMode = setState({shownUnit = s#shownUnit,
-                                                  viewMode = nextMode}, scene);
+                                                  viewMode = nextMode,
+                                                  lastHp = s#lastHp}, scene);
                         renderForKind(kind, id, withMode)
                 }
         }
@@ -121,8 +126,7 @@ mod UnitInfoPopupScene {
                      node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {GameEngine.Game, TurnPhase.State,
-                       EnemyScene.RosterQuery, PlayerScene.PartyQuery} =
+                    \ {GameEngine.Game, TurnPhase.State} =
         let phase = TurnPhase.State.get();
         let cursorActive = phase == TurnPhase.Phase.PlayerCursor
                         or phase == TurnPhase.Phase.PlayerAttack;
@@ -131,21 +135,49 @@ mod UnitInfoPopupScene {
             else hide(scene)
         } else {
             let cursorPos = CursorScene.getGridPos(scene);
-            let unitIdent = lookupUnitAt(cursorPos);
+            let unitIdent = lookupUnitAtScene(cursorPos, scene);
             let prevIdent = getShownUnit(scene);
-            if (unitIdent == prevIdent) scene
+            let curHp = match unitIdent {
+                case None              => None
+                case Some((kind, id))  => currentHp(kind, id, scene)
+            };
+            let prevHp = getLastHp(scene);
+            // ユニットが変わったか、HP が変わったかで再描画する。同一ユニットでも杖の
+            // 回復や 1 ダメで HP が変動した場合に古い表示が残らないようにする。
+            let needsRedraw = unitIdent != prevIdent or curHp != prevHp;
+            if (not needsRedraw) scene
             else match unitIdent {
                 case Some((kind, id)) =>
-                    // 新規 / 別ユニットに移った → viewMode を Status にリセットして再描画
-                    let withReset = setState({shownUnit = Some((kind, id)),
-                                               viewMode = ViewMode.Status}, scene);
-                    renderForKind(kind, id, withReset)
+                    // 別ユニットに移ったら viewMode を Status にリセット、同一ユニットの
+                    // HP 変動なら viewMode は維持。
+                    let mode = if (unitIdent != prevIdent) ViewMode.Status
+                                else getViewMode(scene);
+                    let withState = setState({shownUnit = Some((kind, id)),
+                                               viewMode = mode,
+                                               lastHp = curHp}, scene);
+                    renderForKind(kind, id, withState)
                 case None             => hide(scene)
             }
         };
         match Scene.getEngineNode(path, next) {
             case Some(latest) => (latest, next)
             case None         => (node, next)
+        }
+
+    /// 指定ユニット種別 / id の現在 HP を、引数 scene から直接読み取る
+    /// （PartyQuery / RosterQuery は前フレーム頭の sceneRef を返すため、
+    ///  フレーム末の杖発動結果が反映されない）。
+    def currentHp(kind: String, id: Int32, scene: Scene[NodeTag]): Option[Int32] =
+        if (kind == "enemy")
+            EnemyScene.get(id, scene) |> Option.map(d -> d#hp)
+        else
+            PlayerScene.get(id, scene) |> Option.map(d -> d#hp)
+
+    /// 直前フレームの描画時に記憶した HP を返す（無ければ None）。
+    def getLastHp(scene: Scene[NodeTag]): Option[Int32] =
+        match getState(scene) {
+            case Some(s) => s#lastHp
+            case None    => None
         }
 
     // ─── 内部: state アクセス ─────────────────────────────────
@@ -178,13 +210,14 @@ mod UnitInfoPopupScene {
     // ─── ユニット参照 ─────────────────────────────────────────
 
     /// カーソル位置のユニット種別と id（敵優先）。空マスなら None。
-    def lookupUnitAt(coord: {x = Int32, y = Int32}):
-            Option[(String, Int32)]
-            \ {EnemyScene.RosterQuery, PlayerScene.PartyQuery} =
-        match EnemyScene.RosterQuery.findIdAt(coord) {
+    /// 引数 `scene` から直接読み取る（フレーム末の最新状態を反映するため、
+    /// effect 経由の RosterQuery/PartyQuery は使わない）。
+    def lookupUnitAtScene(coord: {x = Int32, y = Int32},
+                            scene: Scene[NodeTag]): Option[(String, Int32)] =
+        match EnemyScene.findIdAt(coord, scene) {
             case Some(id) => Some(("enemy", id))
             case None     =>
-                PlayerScene.PartyQuery.getAll()
+                PlayerScene.getAll(scene)
                     |> List.findMap(d ->
                         if (d#gridPos#x == coord#x and d#gridPos#y == coord#y)
                             Some(("player", d#id))
@@ -206,19 +239,19 @@ mod UnitInfoPopupScene {
         scene
             |> clearContents
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(false))
-            |> setState({shownUnit = None, viewMode = ViewMode.Status})
+            |> setState({shownUnit = None, viewMode = ViewMode.Status, lastHp = None})
 
     /// kind / id からそのユニットを引いて現在の viewMode に従って描画する。
+    /// scene 直読みで現フレーム末の最新 HP を取り出す。
     def renderForKind(kind: String, id: Int32,
                        scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game,
-                              EnemyScene.RosterQuery, PlayerScene.PartyQuery} =
+            Scene[NodeTag] \ GameEngine.Game =
         if (kind == "enemy") renderEnemy(id, scene)
         else renderPlayer(id, scene)
 
     def renderEnemy(id: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, EnemyScene.RosterQuery} =
-        match EnemyScene.RosterQuery.get(id) {
+            Scene[NodeTag] \ GameEngine.Game =
+        match EnemyScene.get(id, scene) {
             case None    => hide(scene)
             case Some(d) =>
                 let weapons = Option.toList(d#weapon);
@@ -226,8 +259,8 @@ mod UnitInfoPopupScene {
         }
 
     def renderPlayer(id: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, PlayerScene.PartyQuery} =
-        match PlayerScene.PartyQuery.get(id) {
+            Scene[NodeTag] \ GameEngine.Game =
+        match PlayerScene.get(id, scene) {
             case None    => hide(scene)
             case Some(d) =>
                 renderPanel(d#resource, d#hp, d#weapons, scene)

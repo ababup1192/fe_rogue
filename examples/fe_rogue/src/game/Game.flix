@@ -8,6 +8,8 @@ pub enum NodeTag {
     case PlayerAttackRange(PlayerAttackRangeScene.Data)
     case MoveAttackRange(MoveAttackRangeScene.Data)
     case Cursor(CursorScene.Data)
+    /// ArrowCursorScene の Marker2D（杖発射方向を視覚化する矢印カーソル）
+    case ArrowCursor(ArrowCursorScene.Data)
     case Flag(FlagScene.Data)
     case Log(LogScene.Data)
     /// ItemMenuScene の Panel ルート（外枠）
@@ -116,7 +118,7 @@ def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
         case _ => (node, scene)
     }
 
-/// フェーズ駆動の driver ノード (EnemyTurnDriver / AutoMoveDriver)
+/// フェーズ駆動の driver ノード (EnemyTurnDriver / AutoMoveDriver / ArrowCursor)
 def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
@@ -125,6 +127,8 @@ def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(EnemyTurnDriverScene.process(delta, node, path, scene))
         case EngineNode.Marker2DWithState(_, NodeTag.AutoMoveDriver) =>
             checked_ecast(AutoMoveScene.process(delta, node, path, scene))
+        case EngineNode.Marker2DWithState(_, NodeTag.ArrowCursor(_)) =>
+            checked_ecast(ArrowCursorScene.process(delta, node, path, scene))
         case _ => (node, scene)
     }
 
@@ -199,6 +203,8 @@ instance InputEvent.InputHandler[NodeTag] {
                                                   => checked_ecast(ItemMenuScene.onActionCancelled(scene))
             case (TurnPhase.Phase.StaffAim,       _,    true)
                                                   => checked_ecast(staffAimCancel(scene))
+            case (TurnPhase.Phase.StaffAim,       true, _)
+                                                  => checked_ecast(staffAimConfirm(scene))
             case (TurnPhase.Phase.StaffAim,       _,    _)
                                                   => checked_ecast(staffAimDirection(key, scene))
             case (TurnPhase.Phase.AttackForecast, true, _)
@@ -284,25 +290,31 @@ def keyToStaffDirection(key: GameEngine.Key): Option[Staff.Direction] = match ke
     case _                     => None
 }
 
-/// StaffAim フェーズで方向キーが押されたら applyStaffCast を呼ぶ。方向以外のキーは無視。
+/// StaffAim フェーズで方向キーが押されたら `ArrowCursorScene.aim` で矢印の向きだけ更新する。
+/// 発射は別キー (Z) で確定する。方向以外のキーは無視。
 def staffAimDirection(key: GameEngine.Key, scene: Scene[NodeTag]):
+        Scene[NodeTag] =
+    match keyToStaffDirection(key) {
+        case None      => scene
+        case Some(dir) => ArrowCursorScene.aim(dir, scene)
+    }
+
+/// StaffAim フェーズで Z が押されたら、矢印が指している方向で applyStaffCast を呼ぶ。
+def staffAimConfirm(scene: Scene[NodeTag]):
         Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                            BoardQuery, GameLogger.GameLogger,
                            EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
-    match keyToStaffDirection(key) {
-        case None      => scene
-        case Some(dir) =>
-            match SelectedPlayer.State.get()#id {
-                case None           => scene
-                case Some(playerId) =>
-                    match PlayerScene.get(playerId, scene) {
-                        case None         => scene
-                        case Some(player) =>
-                            match player#selectedItem {
-                                case Some(PlayerScene.ItemKind.Staff(idx)) =>
-                                    PlayerScene.applyStaffCast(playerId, idx, dir, scene)
-                                case _ => scene
-                            }
+    let dir = ArrowCursorScene.getDirection(scene);
+    match SelectedPlayer.State.get()#id {
+        case None           => scene
+        case Some(playerId) =>
+            match PlayerScene.get(playerId, scene) {
+                case None         => scene
+                case Some(player) =>
+                    match player#selectedItem {
+                        case Some(PlayerScene.ItemKind.Staff(idx)) =>
+                            PlayerScene.applyStaffCast(playerId, idx, dir, scene)
+                        case _ => scene
                     }
             }
     }

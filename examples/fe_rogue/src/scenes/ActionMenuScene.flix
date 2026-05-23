@@ -206,6 +206,7 @@ mod ActionMenuScene {
 
     /// 「ひろう」確定の本体。床アイテムを取得してインベントリに加え、
     /// ログを出してから waited 確定 (拾うで 1 ターン使う)。
+    /// 武器なら weapons の末尾に、杖なら staves の末尾に追加する。
     /// 何らかの理由で item が無い場合は no-op して即 wait に倒す (防御的)。
     def applyPickup(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
@@ -220,15 +221,30 @@ mod ActionMenuScene {
                     case Some(player) =>
                         let (afterTake, taken) = ItemScene.takeAt(player#gridPos, scene);
                         match taken {
-                            case None    => PlayerScene.commitWaitedAndAdvance(afterTake)
-                            case Some(w) =>
-                                GameLogger.playerLog("P${id} が ${w#name} を拾った");
-                                let withWeapon = PlayerScene.mapPlayer(id,
-                                    d -> {weapons = List.append(d#weapons, w :: Nil) | d},
-                                    afterTake);
-                                PlayerScene.commitWaitedAndAdvance(withWeapon)
+                            case None       => PlayerScene.commitWaitedAndAdvance(afterTake)
+                            case Some(kind) =>
+                                let withItem = addPickedItem(id, kind, afterTake);
+                                PlayerScene.commitWaitedAndAdvance(withItem)
                         }
                 }
+        }
+
+    /// 拾ったアイテムをプレイヤーのインベントリに追加し、ログも出す。
+    /// 武器は weapons の末尾（= 装備中の後ろ）、杖は staves の末尾に積む。
+    def addPickedItem(playerId: Int32, kind: ItemScene.GroundItemKind,
+                        scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        match kind {
+            case ItemScene.GroundItemKind.WeaponItem(weapon) =>
+                GameLogger.playerLog("P${playerId} が ${weapon#name} を拾った");
+                PlayerScene.mapPlayer(playerId,
+                    d -> {weapons = List.append(d#weapons, weapon :: Nil) | d},
+                    scene)
+            case ItemScene.GroundItemKind.StaffItem(staff) =>
+                GameLogger.playerLog("P${playerId} が ${staff#name} を拾った");
+                PlayerScene.mapPlayer(playerId,
+                    d -> {staves = List.append(d#staves, staff :: Nil) | d},
+                    scene)
         }
 
     /// PlayerMoving + Z 押下時の遷移: 行動選択ウィンドウを開く (フェーズ = ActionSelect)。

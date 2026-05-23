@@ -903,7 +903,9 @@ mod PlayerScene {
                     case Some(staff) =>
                         let board = BoardQuery.board();
                         let dir   = Staff.toVec2i(direction);
-                        let hit   = Board.rayCast(player#gridPos, dir, staff#range, board);
+                        // 杖は射程を持たない: 盤面外は壁扱いなので、十分大きい上限を渡せば
+                        // 必ず壁または駒で止まる（無限射程と等価）。
+                        let hit   = Board.rayCast(player#gridPos, dir, staffMaxRange(), board);
                         let afterEffect = applyStaffEffect(playerId, player, staff,
                                                             dir, hit, scene);
                         let afterConsume = consumeStaff(playerId, staffIdx, staff, afterEffect);
@@ -911,6 +913,9 @@ mod PlayerScene {
                         commitWaitedAndAdvance(cleared)
                 }
         }
+
+    /// 杖の射程上限。盤面の最大寸法より大きければ実質「無限」として機能する。
+    def staffMaxRange(): Int32 = 1000
 
     /// `staff#effect × hit` の組み合わせで効果を適用する。
     /// 9 通り（うち実意味のあるのは 6 通り）の分岐は table comment を参照。
@@ -934,15 +939,15 @@ mod PlayerScene {
                 applySwapWithPlayer(playerId, player#gridPos, otherId, otherCell, scene)
             case (Staff.StaffEffect.Swap, RayHit.HitEnemy(enemyId, enemyCell)) =>
                 applySwapWithEnemy(playerId, player#gridPos, enemyId, enemyCell, scene)
-            // 空振り系: 効果なし、ログだけ
+            // 空振り系: 効果なし、ログだけ（実際の杖名を表示する）
             case (Staff.StaffEffect.Heal, _) =>
-                GameLogger.playerLog("P${playerId} のライブのつえは届かなかった");
+                GameLogger.playerLog("P${playerId} の ${staff#name} は届かなかった");
                 scene
             case (Staff.StaffEffect.Blowback, _) =>
-                GameLogger.playerLog("P${playerId} のふきとばしのつえは届かなかった");
+                GameLogger.playerLog("P${playerId} の ${staff#name} は届かなかった");
                 scene
             case (Staff.StaffEffect.Swap, _) =>
-                GameLogger.playerLog("P${playerId} のいれかえのつえは消えた");
+                GameLogger.playerLog("P${playerId} の ${staff#name} は消えた");
                 scene
         }
 

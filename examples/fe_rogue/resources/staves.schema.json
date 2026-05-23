@@ -24,14 +24,6 @@
         "order": 3
       }
     },
-    "range": {
-      "field": {
-        "ftype": "int",
-        "hint":  { "slider": { "min": 1, "max": 16, "step": 1 } },
-        "label": "射程",
-        "order": 4
-      }
-    },
     "sprite": {
       "nested": {
         "texture": {

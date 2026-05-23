@@ -38,7 +38,6 @@ mod TestItemMenuScene {
         name       = "テスト杖",
         effect     = Staff.StaffEffect.Heal,
         durability = 3,
-        range      = 4,
         sprite     = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                         offset = {x = 0.0, y = 0.0}}: UnitCatalog.SpriteResource)
     }

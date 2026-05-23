@@ -86,6 +86,7 @@ mod TestStaff {
     // ════════════════════════════════════════════════════════
 
     /// staves.json と同じ構造の JSON 文字列リテラル。3 種類の杖をすべて含む。
+    /// 杖は射程を持たない（壁/駒に当たるまで飛ぶ）ので `range` フィールドは持たない。
     def sampleStavesJson(): String = String.unlines(
         "{" ::
         "  \"staves\": {" ::
@@ -93,21 +94,18 @@ mod TestStaff {
         "      \"name\": \"ライブのつえ\"," ::
         "      \"effect\": \"Heal\"," ::
         "      \"durability\": 8," ::
-        "      \"range\": 6," ::
         "      \"sprite\": { \"texture\": \"item_skills\", \"hframes\": 20, \"vframes\": 30, \"frame\": 40 }" ::
         "    }," ::
         "    \"blowback_staff\": {" ::
         "      \"name\": \"ふきとばしのつえ\"," ::
         "      \"effect\": \"Blowback\"," ::
         "      \"durability\": 5," ::
-        "      \"range\": 8," ::
         "      \"sprite\": { \"texture\": \"item_skills\", \"hframes\": 20, \"vframes\": 30, \"frame\": 41 }" ::
         "    }," ::
         "    \"swap_staff\": {" ::
         "      \"name\": \"いれかえのつえ\"," ::
         "      \"effect\": \"Swap\"," ::
         "      \"durability\": 5," ::
-        "      \"range\": 8," ::
         "      \"sprite\": { \"texture\": \"item_skills\", \"hframes\": 20, \"vframes\": 30, \"frame\": 42 }" ::
         "    }" ::
         "  }" ::
@@ -140,9 +138,9 @@ mod TestStaff {
                      fst3(effectsTriple), snd3(effectsTriple), trd3(effectsTriple)))
         }
 
-    /// `range` / `durability` / `sprite#frame` の値が期待通りに読み取られる
+    /// `durability` / `sprite#frame` の値が期待通りに読み取られる
     @Test
-    def testDecodeRangeDurabilityAndSprite(): Unit \ Assert =
+    def testDecodeDurabilityAndSprite(): Unit \ Assert =
         let parsed = Json.Parse.parse(sampleStavesJson());
         let decoded: Option[Staff.StaffCatalog] =
             Option.flatMap(Saveable.fromJson, parsed);
@@ -153,8 +151,8 @@ mod TestStaff {
                     case None        => bug!("live_staff missing in sample catalog")
                     case Some(staff) =>
                         Assert.assertEq(
-                            expected = (8, 6, 40),
-                            (staff#durability, staff#range, staff#sprite#frame))
+                            expected = (8, 40),
+                            (staff#durability, staff#sprite#frame))
                 }
         }
 
@@ -167,7 +165,6 @@ mod TestStaff {
         {name = "テスト",
          effect = effect,
          durability = durability,
-         range = 4,
          sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                      offset = {x = 0.0, y = 0.0}}: UnitCatalog.SpriteResource)}
 

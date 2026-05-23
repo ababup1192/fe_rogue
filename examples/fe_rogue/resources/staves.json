@@ -5,7 +5,6 @@
       "durability": 5,
       "effect": "Blowback",
       "name": "ふきとばしのつえ",
-      "range": 8,
       "sprite": {
         "frame": 267,
         "hframes": 16,
@@ -18,7 +17,6 @@
       "durability": 8,
       "effect": "Heal",
       "name": "かいふくのつえ",
-      "range": 6,
       "sprite": {
         "frame": 242,
         "hframes": 16,
@@ -31,7 +29,6 @@
       "durability": 5,
       "effect": "Swap",
       "name": "いれかえのつえ",
-      "range": 8,
       "sprite": {
         "frame": 267,
         "hframes": 16,

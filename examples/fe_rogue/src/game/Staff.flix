@@ -52,13 +52,14 @@ mod Staff {
     /// `name` は表示用の和名（例: "ライブのつえ"）。
     /// `effect` は効果の種類。
     /// `durability` は耐久度（攻撃するたびに 1 減り、0 で壊れる）。
-    /// `range` は最大射程（マス数）。射線探索の上限に使う。
     /// `sprite` は ItemMenu のアイコンに使う見た目情報。
+    ///
+    /// 射程の概念は持たない。杖は指定方向に「壁か別のキャラに当たるまで」直線に飛ぶ。
+    /// 盤面外は壁扱いなので、`Board.rayCast` には実質無限の上限を渡して呼ぶ。
     pub type alias StaffResource = {
         name       = String,
         effect     = StaffEffect,
         durability = Int32,
-        range      = Int32,
         sprite     = SpriteResource
     }
 
@@ -154,7 +155,7 @@ mod Staff {
     /// `StaffResource` のフィールド名集合。`staves.schema.json` との整合性検査に使う。
     /// engine 側 `Resource.checkConsistency` がこの集合と schema を照合する。
     pub def expectedFields(): Set[String] =
-        Set#{"name", "effect", "durability", "range", "sprite"}
+        Set#{"name", "effect", "durability", "sprite"}
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -192,7 +193,6 @@ mod StaffCatalogCodec {
             "name"       => JsonString(staff#name),
             "effect"     => JsonString(Staff.effectToString(staff#effect)),
             "durability" => JsonNumber(intToBd(staff#durability)),
-            "range"      => JsonNumber(intToBd(staff#range)),
             "sprite"     => encodeSprite(staff#sprite)
         })
 
@@ -248,15 +248,13 @@ mod StaffCatalogCodec {
             nameJ    <- Map.get("name", obj);
             effJ     <- Map.get("effect", obj);
             durJ     <- Map.get("durability", obj);
-            rngJ     <- Map.get("range", obj);
             spriteJ  <- Map.get("sprite", obj);
             name     <- expectString(nameJ);
             effStr   <- expectString(effJ);
             effect   <- Result.toOption(Staff.parseEffect(effStr));
             dur      <- expectInt(durJ);
-            range    <- expectInt(rngJ);
             sprite   <- decodeSprite(spriteJ)
-        ) yield ({name = name, effect = effect, durability = dur, range = range,
+        ) yield ({name = name, effect = effect, durability = dur,
                    sprite = sprite}: StaffResource)
 
     def decodeSprite(element: JsonElement): Option[SpriteResource] =

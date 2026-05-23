@@ -7,15 +7,27 @@
       "items": [
         {
           "id": "trainingBow",
-          "percent": 35
+          "percent": 25
         },
         {
           "id": "trainingSpear",
-          "percent": 35
+          "percent": 25
         },
         {
           "id": "fire_magic",
-          "percent": 30
+          "percent": 20
+        },
+        {
+          "id": "live_staff",
+          "percent": 15
+        },
+        {
+          "id": "blowback_staff",
+          "percent": 10
+        },
+        {
+          "id": "swap_staff",
+          "percent": 5
         }
       ],
       "itemsPerRoom": {

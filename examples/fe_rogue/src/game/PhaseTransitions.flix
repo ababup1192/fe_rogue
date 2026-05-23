@@ -150,12 +150,22 @@ mod PhaseTransitions {
             |> CursorScene.setVisible(false)
 
     /// StaffAim フェーズに入る (杖「使う」確定時)。
-    /// 動作: メニュー / overlay は触らず、カーソルだけ隠す（方向キー入力で発射する想定）。
-    /// 射線プレビューを将来出すならここで overlay を追加する。
+    /// 動作: メニュー / overlay は触らず、通常カーソルを隠し、選択中プレイヤーの
+    /// 隣接マス (デフォルト方向 Up) に矢印カーソルを表示する。方向キーで矢印を
+    /// 回し、Z で発射する。
     pub def enterStaffAim(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TurnPhase.State =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
         TurnPhase.State.put(TurnPhase.Phase.StaffAim);
-        scene |> CursorScene.setVisible(false)
+        let withCursorHidden = CursorScene.setVisible(false, scene);
+        match SelectedPlayer.State.get()#id {
+            case None           => withCursorHidden
+            case Some(playerId) =>
+                match PlayerScene.get(playerId, withCursorHidden) {
+                    case None         => withCursorHidden
+                    case Some(player) =>
+                        ArrowCursorScene.showFor(player#gridPos, withCursorHidden)
+                }
+        }
 
     /// AttackForecast フェーズに入る (PlayerAttack で敵に Z 押下時)。
     /// 動作: overlay/cursor は PlayerAttack 中の状態を温存し、フェーズだけ進める。

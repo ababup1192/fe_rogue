@@ -7,7 +7,7 @@
 ///
 /// ノード構造:
 ///   World/Items (Marker2D, 永続的な親)
-///     ├─ Item_0 (Sprite2D, NodeTag.GroundItem({gridPos, weaponKey, weapon}))
+///     ├─ Item_0 (Sprite2D, NodeTag.GroundItem({gridPos, itemKey, item}))
 ///     ├─ Item_1 (...)
 ///     └─ ...
 ///
@@ -22,15 +22,28 @@ mod ItemScene {
 
     // ─── 状態 ─────────────────────────────────────────────────
 
+    /// ground item の中身。武器 (`WeaponItem`) と杖 (`StaffItem`) を区別する ADT。
+    /// 拾うとプレイヤーの weapons / staves リストに追加される。
+    pub enum GroundItemKind {
+        case WeaponItem(UnitCatalog.WeaponResource)
+        case StaffItem(Staff.StaffResource)
+    }
+
     /// 個別 ground item に紐づくデータ。
-    /// `weaponKey` はカタログ id で再ロード時にも復元できる。
-    /// `weapon` は WeaponResource 実体（拾う時にプレイヤーに渡す用）。
+    /// `itemKey` はカタログ id (weapons / staves のどちらかに登録された id)。
+    /// `item` は実体（拾う時にプレイヤーに渡す用）。
     /// `elapsed` は点滅サイクル内の経過時間（`tickAll` で進める）。
     pub type alias Data = {
-        gridPos   = {x = Int32, y = Int32},
-        weaponKey = String,
-        weapon    = UnitCatalog.WeaponResource,
-        elapsed   = Duration.Duration
+        gridPos = {x = Int32, y = Int32},
+        itemKey = String,
+        item    = GroundItemKind,
+        elapsed = Duration.Duration
+    }
+
+    /// アイテム種別から sprite を取り出すヘルパー（表示・縁取り構築で共通利用）。
+    pub def spriteOf(kind: GroundItemKind): UnitCatalog.SpriteResource = match kind {
+        case GroundItemKind.WeaponItem(weapon) => weapon#sprite
+        case GroundItemKind.StaffItem(staff)   => staff#sprite
     }
 
     // ─── 定数 ─────────────────────────────────────────────────
@@ -80,9 +93,11 @@ mod ItemScene {
 
     // ─── 構築 ─────────────────────────────────────────────────
 
-    /// 部屋の床セルに floor の `items` (percent 配列) から重み付き抽選した武器を配置する。
+    /// 部屋の床セルに floor の `items` (percent 配列) から重み付き抽選したアイテムを配置する。
+    /// `items` の id は **weapons catalog → staves catalog の順** で解決される。
     /// player / enemy が居るセルは避ける。
     pub def add(catalog: UnitCatalog.UnitCatalog,
+                 staffCatalog: Staff.StaffCatalog,
                  floor: FloorCatalog.FloorResource,
                  scene: Scene[NodeTag]):
             Scene[NodeTag] \ Math.Random =
@@ -104,20 +119,35 @@ mod ItemScene {
                 p#idx >= 1 and p#idx < roomCount, placements);
             // (nextId, takenCells, dropList) を畳み込み
             let initial: (Int32, List[{x = Int32, y = Int32}],
-                           List[(Int32, {x = Int32, y = Int32}, String, UnitCatalog.WeaponResource)]) =
+                           List[(Int32, {x = Int32, y = Int32}, String, GroundItemKind)]) =
                 (0, occupied, Nil);
             let range = floor#itemsPerRoom;
             let (_, _, accDrops) = List.foldLeft(state -> p ->
                 dropsInRoom(layer, p, FloorCatalog.randomCountInRange(range),
-                             items, catalog, state),
+                             items, catalog, staffCatalog, state),
                 initial, rooms);
             let drops = List.reverse(accDrops);
             // 親 Marker2D + 各 Item Sprite2D を追加
             let withParent = ensureParent(scene);
             List.foldLeft((acc, drop) -> {
-                let (id, cell, key, weapon) = drop;
-                addOneItem(id, cell, key, weapon, acc)
+                let (id, cell, key, kind) = drop;
+                addOneItem(id, cell, key, kind, acc)
             }, withParent, drops)
+        }
+
+    /// id を weapons catalog → staves catalog の順で引いて、見つかった方を ADT で返す。
+    /// どちらにも無ければ起動時 typo として panic。
+    def lookupItem(id: String,
+                    catalog: UnitCatalog.UnitCatalog,
+                    staffCatalog: Staff.StaffCatalog): GroundItemKind =
+        match Map.get(id, UnitCatalog.weaponsOf(catalog)) {
+            case Some(weapon) => GroundItemKind.WeaponItem(weapon)
+            case None         =>
+                match Map.get(id, Staff.stavesOf(staffCatalog)) {
+                    case Some(staff) => GroundItemKind.StaffItem(staff)
+                    case None        =>
+                        bug!("ItemScene.lookupItem: id '${id}' not in weapons / staves catalog")
+                }
         }
 
     /// 親 Marker2D を Items として World 配下に生やす（既にあれば何もしない）。
@@ -133,21 +163,22 @@ mod ItemScene {
     /// アイテム 1 個ぶんの Sprite2D を World/Items 配下に追加する。
     /// 視認性のため 4 方向 1px シフトの縁取り Sprite を先に重ね、本体を上に置く。
     def addOneItem(idx: Int32, cell: {x = Int32, y = Int32},
-                    weaponKey: String, weapon: UnitCatalog.WeaponResource,
+                    itemKey: String, item: GroundItemKind,
                     scene: Scene[NodeTag]): Scene[NodeTag] =
+        let sprite0 = spriteOf(item);
         // セル中心 + sprite#offset で sheet padding を補正した位置に置く
         let center = MapScene.cellCenter(cell);
         let pos: Vec2.Vec2 = {
-            x = center#x + weapon#sprite#offset#x,
-            y = center#y + weapon#sprite#offset#y
+            x = center#x + sprite0#offset#x,
+            y = center#y + sprite0#offset#y
         };
         // フレーム指定済みのスプライト構築ヘルパ。エンジンは Sprite2D#offset を描画時に無視するため、
         // 縁取りのずらしは position 自体に乗せる（Node2D の position フィールドが globalPos に伝播する）。
         let makeFramed = (p: Vec2.Vec2) ->
-            Sprite2D.make(weapon#sprite#texture, p, Vec2.one())
-                |> Sprite2D.setHframes(weapon#sprite#hframes)
-                |> Sprite2D.setVframes(weapon#sprite#vframes)
-                |> Sprite2D.setFrame(weapon#sprite#frame);
+            Sprite2D.make(sprite0#texture, p, Vec2.one())
+                |> Sprite2D.setHframes(sprite0#hframes)
+                |> Sprite2D.setVframes(sprite0#vframes)
+                |> Sprite2D.setFrame(sprite0#frame);
         // 4 方向の縁取りを先に追加（NodeTag.NoTag、本体より低い zIndex、薄い青）
         let withOutlines = List.foldLeft((acc, entry) -> {
             let (suffix, delta) = entry;
@@ -163,24 +194,25 @@ mod ItemScene {
         // idx でスタガーして同時点滅を避ける
         let initElapsed = Duration.seconds(0.4 * Int32.toFloat64(idx));
         let data: Data = {
-            gridPos = cell, weaponKey = weaponKey, weapon = weapon,
+            gridPos = cell, itemKey = itemKey, item = item,
             elapsed = initElapsed
         };
         Scene.addChildAt(parentPath(), itemName(idx),
             EngineNode.Sprite2DWithState(sprite, NodeTag.GroundItem(data)), withOutlines)
 
     /// 部屋 1 つから count 個のドロップセルを選び state に積む。
-    /// 各セルにつき floor の `items` (percent 配列) から重み付き抽選した weapon id を
-    /// `catalog#weapons` で WeaponResource に解決して配置する。
+    /// 各セルにつき floor の `items` (percent 配列) から重み付き抽選した id を
+    /// weapons → staves の順で解決して配置する。
     def dropsInRoom(layer: TileMapLayer,
                      p: DungeonComposer.ModulePlacement,
                      count: Int32,
                      items: List[FloorCatalog.SpawnEntry],
                      catalog: UnitCatalog.UnitCatalog,
+                     staffCatalog: Staff.StaffCatalog,
                      state: (Int32, List[{x = Int32, y = Int32}],
-                              List[(Int32, {x = Int32, y = Int32}, String, UnitCatalog.WeaponResource)])):
+                              List[(Int32, {x = Int32, y = Int32}, String, GroundItemKind)])):
                     (Int32, List[{x = Int32, y = Int32}],
-                     List[(Int32, {x = Int32, y = Int32}, String, UnitCatalog.WeaponResource)])
+                     List[(Int32, {x = Int32, y = Int32}, String, GroundItemKind)])
                     \ Math.Random =
         if (count <= 0) state
         else {
@@ -193,9 +225,10 @@ mod ItemScene {
                     match FloorCatalog.pickWeighted(items) {
                         case None     => state
                         case Some(id) =>
-                            let weapon = UnitCatalog.lookupWeapon(id, catalog);
-                            let entry = (nextId, cell, id, weapon);
+                            let kind = lookupItem(id, catalog, staffCatalog);
+                            let entry = (nextId, cell, id, kind);
                             dropsInRoom(layer, p, count - 1, items, catalog,
+                                         staffCatalog,
                                          (nextId + 1, cell :: taken, entry :: list))
                     }
             }
@@ -220,33 +253,33 @@ mod ItemScene {
 
     // ─── クエリ ───────────────────────────────────────────────
 
-    /// 指定セルに落ちているアイテムの (path, weapon) を返す。無ければ None。
+    /// 指定セルに落ちているアイテムの (path, item) を返す。無ければ None。
     pub def findAt(coord: {x = Int32, y = Int32},
-                    scene: Scene[NodeTag]): Option[(NodePath, UnitCatalog.WeaponResource)] =
+                    scene: Scene[NodeTag]): Option[(NodePath, GroundItemKind)] =
         let childNames = Scene.getChildrenAt(parentPath(), scene);
         List.findMap(name -> {
             let path = List.append(parentPath(), name :: Nil);
             match Scene.getState(path, scene) {
                 case Some(NodeTag.GroundItem(d)) =>
                     if (d#gridPos#x == coord#x and d#gridPos#y == coord#y)
-                        Some((path, d#weapon))
+                        Some((path, d#item))
                     else None
                 case _ => None
             }
         }, childNames)
 
-    /// 指定セルのアイテムを scene から取り除いて武器を返す。
+    /// 指定セルのアイテムを scene から取り除いてアイテム実体を返す。
     /// 本体ノードと一緒に 4 つの縁取り兄弟ノードも消す。
     pub def takeAt(coord: {x = Int32, y = Int32},
                     scene: Scene[NodeTag]):
-            (Scene[NodeTag], Option[UnitCatalog.WeaponResource]) =
+            (Scene[NodeTag], Option[GroundItemKind]) =
         match findAt(coord, scene) {
             case None              => (scene, None)
-            case Some((path, w))   =>
+            case Some((path, kind)) =>
                 let cleaned = scene
                     |> removeOutlinesFor(path)
                     |> Scene.removeAt(path);
-                (cleaned, Some(w))
+                (cleaned, Some(kind))
         }
 
     /// `Item_<n>` のパスから 4 つの兄弟 `Item_<n>_outline_<dir>` を削除する。

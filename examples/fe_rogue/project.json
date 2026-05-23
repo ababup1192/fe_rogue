@@ -11,6 +11,7 @@
     {"name": "character_sheet",  "path": "assets/sprites/character_sheet_grid_16.png", "hasAlpha": true},
     {"name": "move_tile",        "path": "assets/sprites/move_tile.png", "hasAlpha": true},
     {"name": "cursor",           "path": "assets/sprites/cursor.png", "hasAlpha": true},
+    {"name": "arrow",            "path": "assets/sprites/arrow.png", "hasAlpha": true},
     {"name": "flag",             "path": "assets/sprites/flag.png", "hasAlpha": true},
     {"name": "tilemap_floor",    "path": "assets/sprites/tilemap.png", "hasAlpha": true},
     {"name": "roguelike_weapons","path": "assets/sprites/roguelikeChar_transparent.png", "hasAlpha": true},
