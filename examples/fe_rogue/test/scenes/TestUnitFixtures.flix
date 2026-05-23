@@ -28,6 +28,7 @@ mod TestUnitFixtures {
         magicDefense  = 0,
         speed         = 3,
         initialWeapon = "test-weapon",
+        initialStaves = Nil,
         sprite        = {
             texture = "character_sheet",
             hframes = 5,
@@ -51,6 +52,7 @@ mod TestUnitFixtures {
         magicDefense  = 0,
         speed         = speed,
         initialWeapon = "test-weapon",
+        initialStaves = Nil,
         sprite        = {
             texture = "character_sheet",
             hframes = 5,
@@ -73,6 +75,7 @@ mod TestUnitFixtures {
         magicDefense  = magicDefense,
         speed         = speed,
         initialWeapon = "test-weapon",
+        initialStaves = Nil,
         sprite        = {
             texture = "character_sheet",
             hframes = 5,

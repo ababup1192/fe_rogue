@@ -58,7 +58,8 @@ mod TestPlayerScene {
                         attackTargetId    = None,
                         resource          = TestUnitFixtures.testResource(5, 10),
                         weapons           = TestUnitFixtures.testWeapon() :: Nil,
-                        selectedWeaponIdx = None,
+                        staves            = Nil,
+                        selectedItem      = None,
                         moveStepsTaken    = 0
                     })))
 

@@ -59,6 +59,16 @@ mod Combat {
     pub def willKill(defenderHp: Int32, dmg: Int32): Bool =
         defenderHp - dmg <= 0
 
+    /// 回復計算。`currentHp` に `amount` を加算した結果を返す。
+    /// `maxHp` を超える分はクランプ（過剰回復は無効）。
+    /// `amount` が負なら回復量 0 に丸める（ダメージ用途と分離するため負の amount は無視）。
+    /// 戻り値の `newHp` は 0..maxHp の範囲に必ず収まる。
+    /// 杖の「ライブのつえ」の HP 適用に使う。
+    pub def heal(currentHp: Int32, maxHp: Int32, amount: Int32): {newHp = Int32} =
+        let effective = Int32.max(0, amount);
+        let raw = currentHp + effective;
+        {newHp = Int32.min(maxHp, raw)}
+
     /// 1 撃ぶんの予報。スペックの「与:N 命中:P% 撃破」表示に直接対応する。
     /// damage = max(0, attack - defense)、hit = hitRate(...)、kill = willKill(...)。
     /// 攻撃 UI で命中前にプレビューするのに使う想定（現状はログ出力にのみ流す）。

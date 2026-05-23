@@ -11,8 +11,8 @@ mod TestUnitCatalog {
 
     /// units.json と同じ構造の JSON 文字列リテラル。
     /// 各ユニットは `initialWeapon` で武器 id を直接持つ。
-    /// `magicAttack` / `magicDefense` は省略可能だが、knight 側は明示・goblin 側は省略して
-    /// 「省略時 0 デフォルト」のデコードも同時に検証する。
+    /// `magicAttack` / `magicDefense` / `initialStaves` は省略可能。
+    /// knight 側は明示・goblin 側は省略して、省略時のデフォルトデコードも同時に検証する。
     def sampleUnitsJson(): String = String.unlines(
         "{" ::
         "  \"units\": {" ::
@@ -25,6 +25,7 @@ mod TestUnitCatalog {
         "      \"magicDefense\": 2," ::
         "      \"speed\":   2," ::
         "      \"initialWeapon\": \"trainingSpear\"," ::
+        "      \"initialStaves\": [\"live_staff\"]," ::
         "      \"sprite\": { \"texture\": \"character_sheet\", \"hframes\": 5, \"vframes\": 2, \"frame\": 0 }" ::
         "    }," ::
         "    \"goblin\": {" ::
@@ -186,5 +187,38 @@ mod TestUnitCatalog {
                 let spear = UnitCatalog.lookupWeapon("trainingSpear", c);
                 Assert.assertEq(expected = UnitCatalog.WeaponType.Physical,
                                 spear#weaponType)
+        }
+
+    // ════════════════════════════════════════════════════════
+    // initialStaves: 杖 id 配列のデコード（knight は明示・goblin は省略でデフォルト Nil）
+    // ════════════════════════════════════════════════════════
+
+    /// knight の `initialStaves` が ["live_staff"] として読まれる
+    @Test
+    def testUnitDecodesInitialStaves(): Unit \ Assert =
+        match buildSampleCatalog() {
+            case None    => Assert.assertEq(expected = "decoded", "none")
+            case Some(c) =>
+                let knight = match Map.get("knight", UnitCatalog.unitsOf(c)) {
+                    case Some(u) => u
+                    case None    => bug!("knight not in sample catalog")
+                };
+                Assert.assertEq(expected = "live_staff" :: Nil,
+                                knight#initialStaves)
+        }
+
+    /// `initialStaves` を省略したユニットは空配列（Nil）でデコードされる
+    /// （旧 units.json への後方互換）
+    @Test
+    def testUnitDecodesInitialStavesDefaultsToNil(): Unit \ Assert =
+        match buildSampleCatalog() {
+            case None    => Assert.assertEq(expected = "decoded", "none")
+            case Some(c) =>
+                let goblin = match Map.get("goblin", UnitCatalog.unitsOf(c)) {
+                    case Some(u) => u
+                    case None    => bug!("goblin not in sample catalog")
+                };
+                Assert.assertEq(expected = (Nil: List[String]),
+                                goblin#initialStaves)
         }
 }

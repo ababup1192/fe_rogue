@@ -30,6 +30,13 @@ mod PlayerScene {
     // (A) 型定義
     // ────────────────────────────────────────────────────────
 
+    /// ItemMenu で選択中のアイテムの種別と inventory 内 index。
+    /// 武器と杖は別リストに格納されているため、どちらに属するかを ADT で区別する。
+    pub enum ItemKind with Eq, ToString {
+        case Weapon(Int32)   // weapons リスト上の index
+        case Staff(Int32)    // staves リスト上の index
+    }
+
     /// プレイヤー固有の状態。
     /// id: 0..N-1 の連番（N は `pools.party` の長さ）。"Player_<id>" ノード名と一致する。
     /// gridPos: 盤面上の駒の論理位置。moveTo で即座に更新される。
@@ -41,12 +48,13 @@ mod PlayerScene {
     ///   この値を読んでダメージ適用 / commit を行う。アニメ完了で None に戻す。
     /// resource: スポーン時のユニット定義テンプレート（UnitResource）。
     ///   ゲームオーバー時の復元（`respawnFromInitial`）で同じユニット種別で再生するために保持。
-    /// weapons: 装備中の武器インベントリ。空になるとそのプレイヤーは攻撃できない。
-    ///   攻撃時は `selectedWeaponIdx` で指定された武器が使われ、耐久度が 1 減り、
-    ///   0 になったら weapons から取り除かれる（武器が壊れた）。
-    /// selectedWeaponIdx: 武器選択ウィンドウで選ばれた武器の index（weapons リスト上）。
-    ///   PlayerMoving + Z で WeaponSelect フェーズに入り、ウィンドウで選ばれた瞬間にセット、
-    ///   PlayerAttack で実際に Z 押下したときに consume されてクリアされる。
+    /// weapons: 装備中の武器インベントリ。先頭が「装備中」武器で、攻撃時に自動使用される。
+    ///   `equipWeapon` で他の武器を先頭に持ってくると装備が切り替わる。
+    ///   攻撃で耐久度が 1 減り、0 になったら weapons から取り除かれる（武器が壊れた）。
+    /// staves: 杖のインベントリ。攻撃には使わず、ItemMenu の「使う」で発動する。
+    ///   発動で耐久度が 1 減り、0 になったら staves から取り除かれる。
+    /// selectedItem: ItemMenu で選択中のアイテム（武器 or 杖）。
+    ///   一覧画面で選んだ瞬間にセット、サブメニュー（使う/装備/捨てる）で確定後にクリアされる。
     pub type alias Data = {
         id                 = Int32,
         gridPos            = {x = Int32, y = Int32},
@@ -56,7 +64,8 @@ mod PlayerScene {
         attackTargetId     = Option[Int32],
         resource           = UnitCatalog.UnitResource,
         weapons            = List[UnitCatalog.WeaponResource],
-        selectedWeaponIdx  = Option[Int32],
+        staves             = List[Staff.StaffResource],
+        selectedItem       = Option[ItemKind],
         // AutoMove 中にこの味方が当ターン何マス進んだか。
         // moveTiles に達したら `waited = true` にして次の味方に交代する。
         // プレイヤーターン開始時に 0 リセット。
@@ -87,12 +96,14 @@ mod PlayerScene {
     /// スポーン時の中間表現。`add` で配置するセルの id/gridPos に加え、
     /// どのユニット定義（UnitResource）でセットアップするかも持つ。
     /// 初期 spawn のスナップショット（ゲームオーバー時の復元用）にも使う。
-    /// `weapons` は初期インベントリ（壊れる前の固定リスト）で、respawn 時にこの値で復元する。
+    /// `weapons` / `staves` は初期インベントリ（壊れる前の固定リスト）で、
+    /// respawn 時にこの値で復元する。
     pub type alias Spawn = {
         id       = Int32,
         gridPos  = {x = Int32, y = Int32},
         resource = UnitCatalog.UnitResource,
-        weapons  = List[UnitCatalog.WeaponResource]
+        weapons  = List[UnitCatalog.WeaponResource],
+        staves   = List[Staff.StaffResource]
     }
 
     // ────────────────────────────────────────────────────────
@@ -134,8 +145,12 @@ mod PlayerScene {
     /// 0 番目は MapScene が記録した spawnGrid に、残りはその近傍の床セルに配置する。
     /// 各プレイヤーには `players` プールのリスト順で `UnitResource` を割り当て、
     /// その `initialWeapon` id から weapons カタログを引いて `WeaponResource` を装備させる
-    /// （1 プレイヤー = 1 武器）。未定義 id は起動時 typo として即 panic する。
-    pub def add(catalog: UnitCatalog.UnitCatalog, scene: Scene[NodeTag]): Scene[NodeTag] =
+    /// （1 プレイヤー = 1 武器）。`initialStaves` の各 id は `staffCatalog` から
+    /// `StaffResource` を引いて初期インベントリに加える。未定義 id は起動時 typo として
+    /// 即 panic する。
+    pub def add(catalog: UnitCatalog.UnitCatalog,
+                  staffCatalog: Staff.StaffCatalog,
+                  scene: Scene[NodeTag]): Scene[NodeTag] =
         let party        = UnitCatalog.pool("players", catalog);
         let n            = List.length(party);
         let spawnGrid    = MapScene.getSpawnGrid(scene);
@@ -150,7 +165,10 @@ mod PlayerScene {
                     case None    => bug!("PlayerScene.add: party index ${id} out of range")
                 };
                 let weapon = UnitCatalog.lookupWeapon(res#initialWeapon, catalog);
-                ({id = id, gridPos = c, resource = res, weapons = weapon :: Nil}: Spawn));
+                let staves = List.map(staffId -> Staff.lookup(staffId, staffCatalog),
+                                       res#initialStaves);
+                ({id = id, gridPos = c, resource = res,
+                   weapons = weapon :: Nil, staves = staves}: Spawn));
         List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), scene, spawns)
 
     /// spawnGrid を中心に N 個の床セルを近い順で選ぶ。`isFloor` で篩い、
@@ -206,7 +224,8 @@ mod PlayerScene {
             attackTargetId    = None,
             resource          = res,
             weapons           = sp#weapons,
-            selectedWeaponIdx = None,
+            staves            = sp#staves,
+            selectedItem      = None,
             moveStepsTaken    = 0
         };
         let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset, Vec2.one())
@@ -493,13 +512,14 @@ mod PlayerScene {
     // (F) ゲームオーバー時のリセット
     // ────────────────────────────────────────────────────────
 
-    /// 現在の全プレイヤーの spawn 情報（id / gridPos / resource / weapons）を抽出する。
+    /// 現在の全プレイヤーの spawn 情報（id / gridPos / resource / weapons / staves）を抽出する。
     /// `Game.start` で初回 build 直後に呼んで保存する。
     /// 攻撃前に取られる前提でインベントリは無破損の初期値。respawn ではこの値で復元される。
     pub def snapshotSpawns(scene: Scene[NodeTag]): List[Spawn] =
         getAll(scene)
             |> List.map(d ->
-                ({id = d#id, gridPos = d#gridPos, resource = d#resource, weapons = d#weapons}: Spawn))
+                ({id = d#id, gridPos = d#gridPos, resource = d#resource,
+                   weapons = d#weapons, staves = d#staves}: Spawn))
 
     /// 既存のプレイヤーを全て scene から取り除き、`spawns` から再構築する。
     /// HP / waited / gridPos を初期値で生成する。
@@ -548,16 +568,54 @@ mod PlayerScene {
     pub def canAttack(id: Int32, scene: Scene[NodeTag]): Bool =
         not List.isEmpty(getWeapons(id, scene))
 
-    /// 武器選択ウィンドウで選ばれた武器 index を Data#selectedWeaponIdx にセットする。
-    /// WeaponSelect フェーズの onItemConfirmed から呼ばれる。
-    pub def setSelectedWeaponIdx(playerId: Int32, idx: Int32,
-                                   scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId, d -> {selectedWeaponIdx = Some(idx) | d}, scene)
+    /// 指定 id のプレイヤーの杖インベントリを返す（無ければ空）。
+    pub def getStaves(id: Int32, scene: Scene[NodeTag]): List[Staff.StaffResource] =
+        match get(id, scene) {
+            case Some(d) => d#staves
+            case None    => Nil
+        }
 
-    /// 選択中武器 index をクリアする（攻撃完了後の後始末）。
-    pub def clearSelectedWeaponIdx(playerId: Int32,
-                                    scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId, d -> {selectedWeaponIdx = None | d}, scene)
+    /// ItemMenu で選ばれたアイテム（武器 or 杖）の種別と index を Data#selectedItem にセットする。
+    /// `ItemActionSelect` フェーズに進むときに ItemMenuScene から呼ばれる。
+    pub def setSelectedItem(playerId: Int32, item: ItemKind,
+                              scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId, d -> {selectedItem = Some(item) | d}, scene)
+
+    /// 選択中アイテムをクリアする（サブメニュー確定後の後始末）。
+    pub def clearSelectedItem(playerId: Int32,
+                                scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId, d -> {selectedItem = None | d}, scene)
+
+    /// 指定 idx の武器を装備（= weapons リストの先頭に移動）。
+    /// 既に先頭なら何もしない。範囲外なら no-op。
+    /// 「こうげき」は常に `weapons.head` を使うため、これで装備切り替えが反映される。
+    pub def equipWeapon(playerId: Int32, idx: Int32,
+                          scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId, d -> {weapons = moveToHead(idx, d#weapons) | d}, scene)
+
+    /// 指定 idx の武器をインベントリから削除（捨てる）。範囲外なら no-op。
+    pub def dropWeapon(playerId: Int32, idx: Int32,
+                         scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId, d -> {weapons = removeAt(idx, d#weapons) | d}, scene)
+
+    /// 指定 idx の杖をインベントリから削除（捨てる）。範囲外なら no-op。
+    pub def dropStaff(playerId: Int32, idx: Int32,
+                        scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId, d -> {staves = removeAt(idx, d#staves) | d}, scene)
+
+    /// List の `idx` 番目の要素を先頭に移動する。範囲外なら元のリストをそのまま返す。
+    /// `[a, b, c, d]` の idx=2 を頭に → `[c, a, b, d]`。
+    def moveToHead(idx: Int32, list: List[a]): List[a] =
+        match List.nth(idx, list) {
+            case None    => list
+            case Some(x) => x :: removeAt(idx, list)
+        }
+
+    /// List から `idx` 番目の要素を取り除く。範囲外なら元のリストをそのまま返す。
+    def removeAt(idx: Int32, list: List[a]): List[a] =
+        List.zipWithIndex(list)
+            |> List.filter(pair -> let (i, _) = pair; i != idx)
+            |> List.map(pair -> let (_, x) = pair; x)
 
     /// 攻撃ターゲットの敵 id を Data#attackTargetId に記録する。
     /// 武器選択ウィンドウを開く前に GameManager から呼ばれ、ウィンドウ確定後の
@@ -755,21 +813,20 @@ mod PlayerScene {
             case _ => None
         }
 
-    /// 敵 id にダメージを与える。攻撃力は `力(unit#attack) + 選択中武器の攻撃力` で、
+    /// 敵 id にダメージを与える。攻撃力は `力(unit#attack) + 装備中武器の攻撃力` で、
     /// `Combat.attackDamage(総合攻撃力, 防御者#defense)` から素ダメージを得て
     /// `Combat.damage` で HP 減算 + 死亡判定。HP <= 0 で死亡演出を開始する。
-    /// 使用武器は `player#selectedWeaponIdx`（WeaponMenuScene が事前にセット）の指す
-    /// `weapons[idx]`。攻撃成立後にその武器の `durability` を 1 減らし、0 になったら
+    /// 装備中武器は `weapons.head`（= リストの先頭）。「装備」操作で先頭を入れ替えると
+    /// 攻撃に使われる武器が切り替わる。攻撃成立後に耐久度を 1 減らし、0 になったら
     /// インベントリから取り除き「P{N} の {武器名} がこわれた」ログを出す。
-    /// `selectedWeaponIdx` は最後にクリアする。
     /// ログはスペック準拠で「P{N} → 敵{M} に Xダメージ」 / 撃破時「P{N} → 敵{M} を撃破」。
     /// 命中ロールは v1 では行わず常に命中（hit% は forecast でプレビュー表示するための値）。
-    /// インベントリ空 / index 範囲外 / 敵不在ならば防御的に no-op。
+    /// インベントリ空 / 敵不在ならば防御的に no-op。
     def applyDamageToEnemy(playerId: Int32, player: Data, enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Game,
                                GameLogger.GameLogger} =
-        // selectedWeaponIdx が None なら 0（先頭）をデフォルトとして扱う
-        let idx = Option.getWithDefault(0, player#selectedWeaponIdx);
+        // 常に先頭武器（= 装備中）を使う。空なら no-op。
+        let idx = 0;
         match (List.nth(idx, player#weapons), EnemyScene.get(enemyId, scene)) {
             case (None, _)        => scene
             case (_, None)        => scene
@@ -815,6 +872,219 @@ mod PlayerScene {
                     GameLogger.playerLog("P${playerId} の ${weapon#name} がこわれた")
                 else ();
                 mapPlayer(playerId,
-                    d -> {weapons = newWeapons, selectedWeaponIdx = None | d}, afterDamage)
+                    d -> {weapons = newWeapons | d}, afterDamage)
         }
+
+    // ────────────────────────────────────────────────────────
+    // (I) 杖の発動 — direction → 直線レイキャスト → 効果適用 → ターン進行
+    // ────────────────────────────────────────────────────────
+
+    /// 杖を発動する。`StaffAim` フェーズで方向キーが押された瞬間に呼ばれる。
+    ///   1. プレイヤーの `staves[staffIdx]` と `gridPos` / `magicAttack` を取り出す
+    ///   2. `Board.rayCast` で射線上の最初の当たり対象を `RayHit` で得る
+    ///   3. `staff#effect × hit` で効果を分岐適用（Heal / Blowback / Swap）
+    ///   4. `Staff.consume` で耐久 -1、0 なら staves から除去 + 破損ログ
+    ///   5. 選択中アイテムをクリア → `commitWaitedAndAdvance` で waited 確定し次ターンへ
+    ///
+    /// 杖は CounterAttackRules を経由しない（反撃なし）。
+    /// 該当プレイヤー / 杖が見つからない場合は防御的に no-op。
+    pub def applyStaffCast(playerId: Int32, staffIdx: Int32,
+                             direction: Staff.Direction,
+                             scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                BoardQuery, GameLogger.GameLogger,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+        match get(playerId, scene) {
+            case None         => scene
+            case Some(player) =>
+                match List.nth(staffIdx, player#staves) {
+                    case None        => scene
+                    case Some(staff) =>
+                        let board = BoardQuery.board();
+                        let dir   = Staff.toVec2i(direction);
+                        let hit   = Board.rayCast(player#gridPos, dir, staff#range, board);
+                        let afterEffect = applyStaffEffect(playerId, player, staff,
+                                                            dir, hit, scene);
+                        let afterConsume = consumeStaff(playerId, staffIdx, staff, afterEffect);
+                        let cleared = clearSelectedItem(playerId, afterConsume);
+                        commitWaitedAndAdvance(cleared)
+                }
+        }
+
+    /// `staff#effect × hit` の組み合わせで効果を適用する。
+    /// 9 通り（うち実意味のあるのは 6 通り）の分岐は table comment を参照。
+    def applyStaffEffect(playerId: Int32, player: Data,
+                          staff: Staff.StaffResource,
+                          dir: {x = Int32, y = Int32},
+                          hit: RayHit,
+                          scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger} =
+        match (staff#effect, hit) {
+            case (Staff.StaffEffect.Heal, RayHit.HitPlayer(targetId, _)) =>
+                applyHealToPlayer(playerId, player, targetId, scene)
+            case (Staff.StaffEffect.Heal, RayHit.HitEnemy(targetId, _)) =>
+                applyHealToEnemy(playerId, player, targetId, scene)
+            case (Staff.StaffEffect.Blowback, RayHit.HitPlayer(targetId, hitCell)) =>
+                applyBlowbackToPlayer(playerId, targetId, hitCell, dir, scene)
+            case (Staff.StaffEffect.Blowback, RayHit.HitEnemy(targetId, hitCell)) =>
+                applyBlowbackToEnemy(playerId, targetId, hitCell, dir, scene)
+            case (Staff.StaffEffect.Swap, RayHit.HitPlayer(otherId, otherCell)) =>
+                applySwapWithPlayer(playerId, player#gridPos, otherId, otherCell, scene)
+            case (Staff.StaffEffect.Swap, RayHit.HitEnemy(enemyId, enemyCell)) =>
+                applySwapWithEnemy(playerId, player#gridPos, enemyId, enemyCell, scene)
+            // 空振り系: 効果なし、ログだけ
+            case (Staff.StaffEffect.Heal, _) =>
+                GameLogger.playerLog("P${playerId} のライブのつえは届かなかった");
+                scene
+            case (Staff.StaffEffect.Blowback, _) =>
+                GameLogger.playerLog("P${playerId} のふきとばしのつえは届かなかった");
+                scene
+            case (Staff.StaffEffect.Swap, _) =>
+                GameLogger.playerLog("P${playerId} のいれかえのつえは消えた");
+                scene
+        }
+
+    /// ライブ × 味方: 対象味方の HP を「魔力 × 2」回復、HPBar 更新、ログ。
+    def applyHealToPlayer(srcId: Int32, player: Data, targetId: Int32,
+                           scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        let amount = player#resource#magicAttack * 2;
+        match get(targetId, scene) {
+            case None         => scene
+            case Some(target) =>
+                let result = Combat.heal(target#hp, target#resource#hp, amount);
+                let healed = result#newHp - target#hp;
+                GameLogger.playerLog("P${srcId} → P${targetId} を ${healed}回復");
+                scene
+                    |> mapPlayer(targetId, d -> {hp = result#newHp | d})
+                    |> UnitHPBarScene.update(playerPath(targetId), result#newHp)
+        }
+
+    /// ライブ × 敵: 敵の HP を「魔力 × 2」回復（敵にも効く仕様）。
+    def applyHealToEnemy(srcId: Int32, player: Data, enemyId: Int32,
+                          scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        let amount = player#resource#magicAttack * 2;
+        match EnemyScene.get(enemyId, scene) {
+            case None        => scene
+            case Some(enemy) =>
+                let result = Combat.heal(enemy#hp, enemy#resource#hp, amount);
+                let healed = result#newHp - enemy#hp;
+                GameLogger.playerLog("P${srcId} → 敵${enemyId} を ${healed}回復");
+                scene
+                    |> EnemyScene.mapEnemy(enemyId, d -> {hp = result#newHp | d})
+                    |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), result#newHp)
+        }
+
+    /// ふきとばし × 味方: 1 ダメ → 死亡なら止まる、生存なら最終位置までスナップで移動。
+    /// 仕様確認: MVP では「最終位置に瞬間移動 + ダメージ popup」で済ませる
+    /// （1 マスずつ tween は engine の sequence 機能が要るため、後続タスクで強化）。
+    def applyBlowbackToPlayer(srcId: Int32, targetId: Int32,
+                                hitCell: {x = Int32, y = Int32},
+                                dir: {x = Int32, y = Int32},
+                                scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+        match get(targetId, scene) {
+            case None         => scene
+            case Some(target) =>
+                let dmgResult = Combat.damage(hp = target#hp, amount = 1);
+                let withDamage = scene
+                    |> mapPlayer(targetId, d -> {hp = dmgResult#newHp | d})
+                    |> UnitHPBarScene.update(playerPath(targetId), dmgResult#newHp);
+                GameLogger.playerLog(
+                    "P${srcId} → P${targetId} を ふきとばし (1ダメージ)");
+                if (dmgResult#isDead) withDamage
+                else applyBlowbackMove(targetId, hitCell, dir, withDamage,
+                                        cell -> snapTo(targetId, cell, withDamage))
+        }
+
+    /// ふきとばし × 敵: 1 ダメ → 死亡なら startDeathAnimation、生存なら最終位置に snapTo。
+    def applyBlowbackToEnemy(srcId: Int32, enemyId: Int32,
+                               hitCell: {x = Int32, y = Int32},
+                               dir: {x = Int32, y = Int32},
+                               scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                                GameLogger.GameLogger} =
+        match EnemyScene.get(enemyId, scene) {
+            case None        => scene
+            case Some(enemy) =>
+                let dmgResult = Combat.damage(hp = enemy#hp, amount = 1);
+                if (dmgResult#isDead) {
+                    GameLogger.playerLog("P${srcId} → 敵${enemyId} を ふきとばし撃破");
+                    scene
+                        |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), 0)
+                        |> EnemyScene.startDeathAnimation(enemyId)
+                } else {
+                    let withDamage = scene
+                        |> EnemyScene.mapEnemy(enemyId, d -> {hp = dmgResult#newHp | d})
+                        |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), dmgResult#newHp);
+                    GameLogger.playerLog(
+                        "P${srcId} → 敵${enemyId} を ふきとばし (1ダメージ)");
+                    applyBlowbackMove(enemyId, hitCell, dir, withDamage,
+                                       cell -> EnemyScene.snapTo(enemyId, cell, withDamage))
+                }
+        }
+
+    /// 押される対象の最終位置を `Board.knockbackPath` で計算し、`moveFn` で動かす。
+    /// 経路が空（押される先がない）なら何もしない。
+    def applyBlowbackMove(_targetId: Int32,
+                           hitCell: {x = Int32, y = Int32},
+                           dir: {x = Int32, y = Int32},
+                           scene: Scene[NodeTag],
+                           moveFn: {x = Int32, y = Int32} -> Scene[NodeTag] \ Tween.Scheduler):
+            Scene[NodeTag] \ Tween.Scheduler =
+        let board: Board = BoardSnapshot.fromScene(scene);
+        let path = Board.knockbackPath(hitCell, dir, board);
+        match List.last(path) {
+            case None       => scene
+            case Some(last) => moveFn(last)
+        }
+
+    /// いれかえ × 味方: 自分と相手の gridPos を瞬間 swap する。
+    def applySwapWithPlayer(srcId: Int32, srcCell: {x = Int32, y = Int32},
+                              otherId: Int32, otherCell: {x = Int32, y = Int32},
+                              scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+        GameLogger.playerLog("P${srcId} と P${otherId} がいれかわった");
+        scene
+            |> snapTo(srcId, otherCell)
+            |> snapTo(otherId, srcCell)
+
+    /// いれかえ × 敵: 自分（Player）と敵を交換する。
+    def applySwapWithEnemy(srcId: Int32, srcCell: {x = Int32, y = Int32},
+                             enemyId: Int32, enemyCell: {x = Int32, y = Int32},
+                             scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+        GameLogger.playerLog("P${srcId} と 敵${enemyId} がいれかわった");
+        scene
+            |> snapTo(srcId, enemyCell)
+            |> EnemyScene.snapTo(enemyId, srcCell)
+
+    /// 杖の耐久を 1 減らし、0 なら staves から除去 + 破損ログ。
+    def consumeStaff(playerId: Int32, staffIdx: Int32, staff: Staff.StaffResource,
+                       scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        let consumed = Staff.consume(staff);
+        let newStaves = match consumed {
+            case Some(updated) =>
+                // 同じ index の要素だけ更新後の値に差し替える
+                let originalStaves = getStaves(playerId, scene);
+                List.mapWithIndex(i -> s -> if (i == staffIdx) updated else s,
+                                   originalStaves)
+            case None =>
+                // 壊れた → index 位置の要素を取り除く
+                getStaves(playerId, scene) |> dropAt(staffIdx)
+        };
+        if (Option.isEmpty(consumed))
+            GameLogger.playerLog("P${playerId} の ${staff#name} がこわれた")
+        else ();
+        mapPlayer(playerId, d -> {staves = newStaves | d}, scene)
+
+    /// List から `idx` 番目を取り除く（範囲外なら元のリスト）。
+    def dropAt(idx: Int32, list: List[a]): List[a] =
+        List.zipWithIndex(list)
+            |> List.filter(pair -> let (i, _) = pair; i != idx)
+            |> List.map(pair -> let (_, x) = pair; x)
 }

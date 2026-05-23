@@ -35,6 +35,21 @@ pub eff BoardQuery {
     def board(): Board
 }
 
+/// 杖の直線射出の結果。`rayCast` が返す。
+///   - `HitPlayer(id, cell)`: 味方に当たって停止。`cell` は当たった味方のセル
+///   - `HitEnemy(id, cell)` : 敵に当たって停止。`cell` は当たった敵のセル
+///   - `HitWall(cell)`      : 壁に当たって停止。`cell` は壁の **直前** （= 進めた最後のセル）
+///   - `OutOfRange(cell)`   : 何にも当たらず射程切れ。`cell` は到達した最遠セル
+///
+/// `Eq` / `ToString` は付けない。`cell` の `{x, y}` record に Eq/ToString が無く
+/// derive できないため。比較が必要なテストはタプル `(tag, id, x, y)` に変換して扱う。
+pub enum RayHit {
+    case HitPlayer(Int32, {x = Int32, y = Int32})
+    case HitEnemy(Int32, {x = Int32, y = Int32})
+    case HitWall({x = Int32, y = Int32})
+    case OutOfRange({x = Int32, y = Int32})
+}
+
 mod Board {
 
     // ════════════════════════════════════════════════════════
@@ -336,6 +351,78 @@ mod Board {
                 else {seen = cell :: acc#seen, out = cell :: acc#out}
             }, init, raw);
             List.reverse(folded#out)
+
+    // ════════════════════════════════════════════════════════
+    // (G) 直線射出 — 杖の発射用
+    //     origin から dir 方向に 1 マスずつ進めて、最初に当たった
+    //     壁 / プレイヤー / 敵 / 射程切れ を `RayHit` で返す。
+    //     origin にいる駒（杖の使い手）は origin から踏み出すので
+    //     当たり判定から自然に外れる（self を別途渡す必要なし）。
+    // ════════════════════════════════════════════════════════
+
+    /// `origin` から `dir` 方向に最大 `range` マスまで進み、最初に当たった対象を `RayHit` で返す。
+    /// `range == 0` のときは `OutOfRange(origin)` を即返す。
+    /// `dir` は {±1, 0} か {0, ±1} の単位ベクトルを想定（縦横 4 方向）。
+    /// 斜め方向は呼び出し側が分解して 2 回 cast する想定だが、cast 自体は dir に依存しない。
+    pub def rayCast(origin: {x = Int32, y = Int32},
+                     dir: {x = Int32, y = Int32},
+                     range: Int32,
+                     board: Board): RayHit =
+        rayCastLoop(origin, dir, range, board, origin)
+
+    /// `current` から 1 マス進めて、`stepsLeft` を 1 減らしながら再帰する。
+    /// `lastValid` は前ステップまでに「実際に進めた」最後のセル。
+    /// 壁・射程切れのとき `lastValid` を結果に積む（壁の直前 / 到達最遠）。
+    def rayCastLoop(current: {x = Int32, y = Int32},
+                     dir: {x = Int32, y = Int32},
+                     stepsLeft: Int32,
+                     board: Board,
+                     lastValid: {x = Int32, y = Int32}): RayHit =
+        if (stepsLeft <= 0) RayHit.OutOfRange(lastValid)
+        else {
+            let next = stepTarget(current, dir);
+            if (not isWalkable(board, next)) RayHit.HitWall(lastValid)
+            else match findUnitAt(next, board) {
+                case Some(Piece.Player(id)) => RayHit.HitPlayer(id, next)
+                case Some(Piece.Enemy(id))  => RayHit.HitEnemy(id, next)
+                case None                    =>
+                    rayCastLoop(next, dir, stepsLeft - 1, board, next)
+            }
+        }
+
+    /// `coord` を占有している駒を 1 つ返す（無ければ None）。
+    /// 同セル 2 駒は想定外なので最初のヒットを返す。
+    pub def findUnitAt(coord: {x = Int32, y = Int32}, board: Board): Option[Piece] =
+        List.findMap(entry -> {
+            let (piece, pos) = entry;
+            if (samePosition(pos, coord)) Some(piece) else None
+        }, board#pieces)
+
+    /// ふきとばし用: `hitCell` に居る駒が `dir` 方向に押される経路を返す。
+    /// 戻り値は順序付きセル列（先頭 = 1 マス目、末尾 = 最終着地）。
+    /// 動けないなら Nil。
+    /// 押される駒は `hitCell` から動き始めるため、`hitCell` のエントリは
+    /// 障害物判定から除外する。
+    /// 停止条件: 次のセルが壁 / 範囲外、または他駒（hitCell の駒以外）が居る。
+    pub def knockbackPath(hitCell: {x = Int32, y = Int32},
+                           dir: {x = Int32, y = Int32},
+                           board: Board): List[{x = Int32, y = Int32}] =
+        let prunedPieces = List.filter(entry -> {
+            let (_, pos) = entry;
+            not samePosition(pos, hitCell)
+        }, board#pieces);
+        let prunedBoard: Board = {pieces = prunedPieces | board};
+        knockbackLoop(hitCell, dir, prunedBoard, Nil)
+
+    def knockbackLoop(current: {x = Int32, y = Int32},
+                       dir: {x = Int32, y = Int32},
+                       board: Board,
+                       acc: List[{x = Int32, y = Int32}]):
+                      List[{x = Int32, y = Int32}] =
+        let next = stepTarget(current, dir);
+        if (not isWalkable(board, next)) List.reverse(acc)
+        else if (isOccupied(next, board)) List.reverse(acc)
+        else knockbackLoop(next, dir, board, next :: acc)
 
     // ════════════════════════════════════════════════════════
     // 内部ヘルパー

@@ -118,14 +118,15 @@ mod BattlePanelScene {
                 }
         }
 
-    /// `AttackForecast` + X: 予報をキャンセルして WeaponSelect に戻る (武器選び直し)。
-    /// 選択中武器 index はクリアして再選択を促す (同じ武器をすぐ選び直しても OK)。
+    /// `AttackForecast` + X: 予報をキャンセルして PlayerAttack に戻る (ターゲット選び直し)。
+    /// 装備中武器を自動使用する新フローでは武器選択窓を経由しないため、`attackTargetId` を
+    /// クリアして「敵を選び直せる」状態に戻す。
     pub def cancel(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
-        TurnPhase.State.put(TurnPhase.Phase.WeaponSelect);
+        TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
         match SelectedPlayer.State.get()#id {
             case None             => scene
-            case Some(attackerId) => PlayerScene.clearSelectedWeaponIdx(attackerId, scene)
+            case Some(attackerId) => PlayerScene.clearAttackTargetId(attackerId, scene)
         }
 
     /// 選択中プレイヤー / 攻撃対象敵 / 選択中武器の組から予報テキストを組み立てる。
@@ -145,8 +146,8 @@ mod BattlePanelScene {
                                 match EnemyScene.RosterQuery.get(eid) {
                                     case None        => ""
                                     case Some(enemy) =>
-                                        let weaponIdx = Option.getWithDefault(0, player#selectedWeaponIdx);
-                                        match List.nth(weaponIdx, player#weapons) {
+                                        // 装備中武器 = weapons の先頭。空なら予報は空文字。
+                                        match List.head(player#weapons) {
                                             case None        => ""
                                             case Some(weapon) =>
                                                 formatForecast(player, weapon, enemy)

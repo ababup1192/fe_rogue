@@ -46,15 +46,26 @@ mod TurnPhase {
         /// 上下キーで項目を選び Enter/Z で確定。X/Escape でウィンドウを閉じて `PlayerMoving`
         /// に戻る (別の場所に動かし直せる)。
         case ActionSelect
-        /// 味方ターン・武器選択フェーズ。
-        /// PlayerAttack で敵に対して Z を押した瞬間に入り、画面に WeaponMenu が出る。
-        /// 上下キーで武器を選び Enter/Z で確定すると `AttackForecast` フェーズに進む。
-        /// X/Escape でウィンドウを閉じて `PlayerAttack`（ターゲット選択）に戻る。
-        case WeaponSelect
+        /// 味方ターン・アイテム選択フェーズ。
+        /// ActionMenu の「アイテム」確定で入り、画面に ItemMenu が出る。
+        /// 武器 + 杖を 1 つの ItemList に並べ、上下キーで選び Enter/Z で確定すると
+        /// `ItemActionSelect` フェーズに進む。X/Escape で ActionMenu に戻る。
+        case ItemSelect
+        /// 味方ターン・アイテム個別アクションフェーズ。
+        /// ItemSelect でアイテムを選んだ瞬間に入り、サブメニュー（武器なら「装備/捨てる」、
+        /// 杖なら「使う/捨てる」）が ItemList に並ぶ。Enter/Z で確定、X/Escape で ItemSelect に戻る。
+        /// 「装備」「捨てる」はターン消費せず ItemSelect に戻る。
+        /// 杖の「使う」は `StaffAim` フェーズに進む。
+        case ItemActionSelect
+        /// 味方ターン・杖の方向選択フェーズ。
+        /// 杖の「使う」確定で入り、WASD/方向キーで縦横 4 方向の発射方向を選ぶ。
+        /// 方向確定で杖が直線に飛び、効果が発動 → ターンを進める。
+        /// X/Escape で杖をキャンセル（耐久を消費せず ItemActionSelect に戻る）。
+        case StaffAim
         /// 味方ターン・戦闘予報フェーズ。
-        /// WeaponSelect で武器を選び終えた瞬間に入り、味方と敵の HP / 威力 / 命中 を
-        /// 並べた予報パネルが出る。Z で攻撃を実行（PlayerAttack の攻撃モーション）、
-        /// X/Escape で武器選択に戻る。
+        /// PlayerAttack で敵に対して Z を押した瞬間に入り、装備中武器（weapons の先頭）で
+        /// 戦闘予報パネルが出る。味方と敵の HP / 威力 / 命中 を並べる。
+        /// Z で攻撃を実行、X/Escape で `PlayerAttack` に戻る。
         case AttackForecast
         /// 味方ターン・攻撃対象選択フェーズ。
         /// 味方の周囲（射程内）に赤マスが出て、カーソルは赤マス内のみ移動可。
@@ -139,9 +150,9 @@ mod TurnRules {
         case MovingOpenActionMenu
         /// PlayerMoving 中の Cancel: 選択駒を origin に戻して PlayerCursor へ
         case MovingCancel
-        /// PlayerAttack 中の Confirm: 敵を明確に選んだ → 武器選択ウィンドウを開く
+        /// PlayerAttack 中の Confirm: 敵を明確に選んだ → 装備中武器で AttackForecast に直行
         /// 引数: (attackerId, defenderId, defender の x, defender の y)
-        case OpenWeaponMenu(Int32, Int32, Int32, Int32)
+        case OpenAttackForecast(Int32, Int32, Int32, Int32)
         /// PlayerAttack 中の Cancel: 攻撃せず waited にして次のセレクトへ
         case AttackSkip
     }
@@ -195,11 +206,15 @@ mod TurnRules {
                         else Transition.MovingOpenActionMenu
                     case None => Transition.Stay
                 }
-            // ActionSelect / WeaponSelect / AttackForecast は InputHandler が Z/X を
-            // 直接処理し、TurnRules 経由では遷移しない
+            // ActionSelect / ItemSelect / ItemActionSelect / StaffAim / AttackForecast は
+            // InputHandler が Z/X を直接処理し、TurnRules 経由では遷移しない
             case (TurnPhase.Phase.ActionSelect, _) =>
                 Transition.Stay
-            case (TurnPhase.Phase.WeaponSelect, _) =>
+            case (TurnPhase.Phase.ItemSelect, _) =>
+                Transition.Stay
+            case (TurnPhase.Phase.ItemActionSelect, _) =>
+                Transition.Stay
+            case (TurnPhase.Phase.StaffAim, _) =>
                 Transition.Stay
             case (TurnPhase.Phase.AttackForecast, _) =>
                 Transition.Stay
@@ -207,10 +222,10 @@ mod TurnRules {
                 if (context#playerBusy) Transition.Stay
                 else Transition.MovingCancel
             case (TurnPhase.Phase.PlayerAttack, Input.Confirm) =>
-                // 生きている敵が cursor に居て、かつ選択中駒があれば武器選択ウィンドウを開く
+                // 生きている敵が cursor に居て、かつ選択中駒があれば装備中武器で AttackForecast へ
                 match (aliveEnemyAt(context), context#selected) {
                     case (Some(defenderId), Some(attackerId)) =>
-                        Transition.OpenWeaponMenu(attackerId, defenderId,
+                        Transition.OpenAttackForecast(attackerId, defenderId,
                             context#cursor#x, context#cursor#y)
                     case _ => Transition.Stay
                 }
@@ -326,8 +341,11 @@ mod TurnInputBridge {
                 ActionMenuScene.openFromMoving(scene)
             case TurnRules.Transition.MovingCancel                      =>
                 PlayerScene.cancelSelection(scene)
-            case TurnRules.Transition.OpenWeaponMenu(attackerId, defenderId, _defX, _defY) =>
-                WeaponMenuScene.openFor(attackerId, defenderId, scene)
+            case TurnRules.Transition.OpenAttackForecast(attackerId, defenderId, _defX, _defY) =>
+                // 装備中武器 (weapons.head) を自動使用するので武器選択は介さず AttackForecast 直行。
+                // attackTargetId を立てて BattlePanelScene が予報を組み立てる。
+                PlayerScene.setAttackTargetId(attackerId, defenderId, scene)
+                    |> PhaseTransitions.enterAttackForecast
             case TurnRules.Transition.AttackSkip                        =>
                 PlayerScene.commitWaitedAndAdvance(scene)
         }

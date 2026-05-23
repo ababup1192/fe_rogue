@@ -1,7 +1,7 @@
 {
-  "description": "武器選択ウィンドウ (PlayerMoving + Z で WeaponSelect)\n選択中プレイヤーの weapons を列挙、確定で AttackForecast へ",
+  "description": "アイテム選択ウィンドウ (ActionMenu「アイテム」確定で ItemSelect)\n武器 + 杖を列挙し、選んだ後にサブメニュー (使う/装備/捨てる) を出す",
   "type": "CanvasLayer",
-  "name": "WeaponMenu",
+  "name": "ItemMenu",
   "layer": 2,
   "pos": [0, 0],
   "rotation": 0,
@@ -10,7 +10,7 @@
     {
       "type": "Panel",
       "name": "panel",
-      "tag": "WeaponPanel",
+      "tag": "ItemPanel",
       "pos": [2, 2],
       "size": [54, 38],
       "background": {"r": 0.10196078568696976, "g": 0.20000000298023224, "b": 0.6000000238418579},
@@ -26,7 +26,7 @@
           "pos": [2, 2],
           "size": [50, 34],
           "fontSize": 4,
-          "tag": "WeaponMenu",
+          "tag": "ItemMenu",
           "items": [],
           "wrap": true,
           "focused": false,

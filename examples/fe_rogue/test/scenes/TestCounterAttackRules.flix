@@ -26,7 +26,8 @@ mod TestCounterAttackRules {
         attackTargetId     = None,
         resource           = TestUnitFixtures.testResource(4, 10),
         weapons            = Nil,
-        selectedWeaponIdx  = None,
+        staves             = Nil,
+        selectedItem       = None,
         moveStepsTaken     = 0
     }
 

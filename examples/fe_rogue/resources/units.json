@@ -65,6 +65,11 @@
       "attack": 2,
       "defense": 2,
       "hp": 11,
+      "initialStaves": [
+        "live_staff",
+        "blowback_staff",
+        "swap_staff"
+      ],
       "initialWeapon": "fire_magic",
       "magicAttack": 8,
       "magicDefense": 3,

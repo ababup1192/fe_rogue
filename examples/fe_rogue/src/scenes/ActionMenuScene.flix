@@ -48,6 +48,7 @@ mod ActionMenuScene {
 
     /// metadata の値。`onItemConfirmed` で再現するためのアクション識別子。
     def attackMeta(): String = "attack"
+    def itemMeta(): String   = "item"
     def waitMeta(): String   = "wait"
     def pickupMeta(): String = "pickup"
     def gatherMeta(): String = "gather"
@@ -117,6 +118,13 @@ mod ActionMenuScene {
                                   disabled = false,
                                   metadata = Some(attackMeta())}: ItemEntry) :: Nil
                             else Nil;
+                        let itemItem =
+                            if (not (List.isEmpty(player#weapons)
+                                       and List.isEmpty(player#staves)))
+                                ({text     = "アイテム",
+                                  disabled = false,
+                                  metadata = Some(itemMeta())}: ItemEntry) :: Nil
+                            else Nil;
                         let pickupItem =
                             if (Option.nonEmpty(ItemScene.findAt(player#gridPos, scene)))
                                 ({text     = "ひろう",
@@ -129,7 +137,9 @@ mod ActionMenuScene {
                                   disabled = false,
                                   metadata = Some(waitMeta())}: ItemEntry) :: Nil
                             else Nil;
-                        List.append(attackItem, List.append(pickupItem, waitItem))
+                        List.append(attackItem,
+                            List.append(itemItem,
+                                List.append(pickupItem, waitItem)))
                 }
         }
 
@@ -173,10 +183,19 @@ mod ActionMenuScene {
             case None    => scene
             case Some(m) =>
                 if (m == attackMeta())      PlayerScene.enterAttackPhase(scene)
+                else if (m == itemMeta())   openItemMenu(scene)
                 else if (m == waitMeta())   PlayerScene.commitWaitedAndAdvance(scene)
                 else if (m == pickupMeta()) applyPickup(scene)
                 else if (m == gatherMeta()) applyGather(scene)
                 else                         scene
+        }
+
+    /// 「アイテム」確定で ItemMenuScene を開く。選択中味方の id が必要。
+    def openItemMenu(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+        match SelectedPlayer.State.get()#id {
+            case None           => scene
+            case Some(playerId) => ItemMenuScene.openFor(playerId, scene)
         }
 
     /// 「しゅうごう」確定: その瞬間のカーソル位置に旗を立てて PlayerAutoMove に進む。

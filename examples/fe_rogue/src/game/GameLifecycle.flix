@@ -26,13 +26,14 @@ mod GameLifecycle {
     /// **直接呼ぶのは `buildAndRecord` だけ** にする (起動 / リビルド時の snapshot 記録漏れ
     /// を防ぐため、外向き API は `buildAndRecord` を使う)。
     pub def buildPlayingScene(catalog: UnitCatalog.UnitCatalog,
+                                staffCatalog: Staff.StaffCatalog,
                                 floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State} =
         Scene.empty()
             |> MapScene.add(floor)
             |> DamagePopupScene.add     // World 配下に空の Marker2D 親を 1 つ生やす
-            |> PlayerScene.add(catalog)
+            |> PlayerScene.add(catalog, staffCatalog)
             |> EnemyScene.add(catalog, floor)
             |> ItemScene.add(catalog, floor)   // 部屋の床に武器をランダムドロップ
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
@@ -41,7 +42,7 @@ mod GameLifecycle {
             |> CameraScene.add
             |> EnemyTurnDriverScene.add // 敵ターン進行の常駐タグノード (process で phase 判定)
             |> AutoMoveScene.add        // AutoMove 駆動の常駐タグノード (process で phase 判定)
-            |> WeaponMenuScene.add      // 武器選択ウィンドウ (初期は非表示)
+            |> ItemMenuScene.add        // アイテム選択ウィンドウ (初期は非表示)
             |> ActionMenuScene.add      // 行動選択ウィンドウ (初期は非表示)
             |> BattlePanelScene.add   // 戦闘予報パネル (初期は非表示)
             |> UnitInfoPopupScene.add   // カーソル上のユニット情報パネル (初期は非表示)
@@ -50,10 +51,11 @@ mod GameLifecycle {
     /// 起動時と GameOver リビルド時の両方が必ず通る経路。これで「scene 構築」と
     /// 「ゲームオーバー復帰用のスポーン記録」が必ず同じタイミングで揃う。
     pub def buildAndRecord(catalog: UnitCatalog.UnitCatalog,
+                            staffCatalog: Staff.StaffCatalog,
                             floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State, InitialSpawns.State} =
-        let scene = buildPlayingScene(catalog, floor);
+        let scene = buildPlayingScene(catalog, staffCatalog, floor);
         InitialSpawns.State.put({
             enemies = EnemyScene.snapshotSpawns(scene),
             players = PlayerScene.snapshotSpawns(scene)
@@ -75,13 +77,14 @@ mod GameLifecycle {
 
     /// `CustomEffects.GameOverRequest` handler の本体。
     /// ターン進行系を初期化してから scene をリビルド + spawn snapshot 更新して返す。
-    /// handler 側は `k(GameLifecycle.resetForGameOver(catalog))` の 1 行で済む。
+    /// handler 側は `k(GameLifecycle.resetForGameOver(catalog, staffCatalog, floor))` の 1 行で済む。
     pub def resetForGameOver(catalog: UnitCatalog.UnitCatalog,
+                              staffCatalog: Staff.StaffCatalog,
                               floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State,
                 InitialSpawns.State} =
         resetTurnState();
-        buildAndRecord(catalog, floor)
+        buildAndRecord(catalog, staffCatalog, floor)
 }

@@ -1,77 +1,77 @@
 {
   "weapons": {
     "fire_magic": {
-      "name": "ファイアー",
-      "weaponType": "Magic",
       "attack": 0,
       "durability": 21,
+      "name": "ファイアー",
       "range": {
-        "min": 1,
-        "max": 2
+        "max": 2,
+        "min": 1
       },
       "sprite": {
-        "texture": "item_skills",
         "frame": 0,
         "hframes": 20,
+        "texture": "item_skills",
         "vframes": 30
-      }
+      },
+      "weaponType": "Magic"
     },
     "trainingBow": {
-      "name": "くんれんゆみ",
-      "weaponType": "Physical",
       "attack": 0,
       "durability": 25,
+      "name": "くんれんゆみ",
       "range": {
-        "min": 2,
-        "max": 2
+        "max": 2,
+        "min": 2
       },
       "sprite": {
-        "texture": "item_weapons",
         "frame": 254,
         "hframes": 20,
-        "vframes": 25,
         "offset": {
           "x": 0.0
-        }
-      }
+        },
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Physical"
     },
     "trainingSpear": {
-      "name": "くんれんやり",
-      "weaponType": "Physical",
       "attack": 0,
       "durability": 41,
+      "name": "くんれんやり",
       "range": {
-        "min": 1,
-        "max": 1
+        "max": 1,
+        "min": 1
       },
       "sprite": {
-        "texture": "item_weapons",
         "frame": 263,
         "hframes": 20,
-        "vframes": 25,
         "offset": {
           "x": 0.0
-        }
-      }
+        },
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Physical"
     },
     "trainingSword": {
-      "name": "くんれんけん",
-      "weaponType": "Physical",
       "attack": 0,
       "durability": 41,
+      "name": "くんれんけん",
       "range": {
-        "min": 1,
-        "max": 1
+        "max": 1,
+        "min": 1
       },
       "sprite": {
-        "texture": "item_weapons",
         "frame": 0,
         "hframes": 20,
-        "vframes": 25,
         "offset": {
           "x": 0.0
-        }
-      }
+        },
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Physical"
     }
   }
 }

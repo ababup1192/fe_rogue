@@ -10,10 +10,10 @@ pub enum NodeTag {
     case Cursor(CursorScene.Data)
     case Flag(FlagScene.Data)
     case Log(LogScene.Data)
-    /// WeaponMenuScene の Panel ルート（外枠）
-    case WeaponPanel
-    /// WeaponMenuScene の ItemList（武器一覧表示）
-    case WeaponMenu
+    /// ItemMenuScene の Panel ルート（外枠）
+    case ItemPanel
+    /// ItemMenuScene の ItemList（武器+杖の一覧 + サブメニュー兼用）
+    case ItemMenu
     /// ActionMenuScene の Panel ルート（外枠）
     case ActionPanel
     /// ActionMenuScene の ItemList（こうげき / たいき）
@@ -128,13 +128,13 @@ def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
         case _ => (node, scene)
     }
 
-/// メニュー系ノード (WeaponMenu / ActionMenu の ItemList、BattlePanel の Panel)
+/// メニュー系ノード (ItemMenu / ActionMenu の ItemList、BattlePanel の Panel)
 def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
                    path: NodePath, scene: Scene[NodeTag]):
                   (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
     match node {
-        case EngineNode.ItemListWithState(_, NodeTag.WeaponMenu) =>
-            checked_ecast(WeaponMenuScene.refreshItems(delta, node, path, scene))
+        case EngineNode.ItemListWithState(_, NodeTag.ItemMenu) =>
+            checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
             checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.PanelWithState(_, NodeTag.BattlePanel) =>
@@ -155,14 +155,12 @@ instance InputEvent.InputHandler[NodeTag] {
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State,
                  PlayerScene.PartyQuery, EnemyScene.RosterQuery}
-    // WeaponSelect フェーズでは engine の MenuEvent が Enter/Escape を処理する一方、
-    // FERogue のキー慣習として Z（決定）/ X（ウィンドウを閉じる）も使えるよう、
-    // フェーズに応じて分岐する:
-    //   - Z / Space: メニューの現在選択中の武器を確定 → 攻撃モーション開始
-    //   - X        : 武器選択ウィンドウを閉じて PlayerAttack に戻る（ターゲット選び直し可）
+    // ActionMenu / ItemMenu / ItemActionMenu / AttackForecast フェーズでは
+    // FERogue のキー慣習として Z（決定）/ X（ウィンドウを閉じる）でメニュー操作する。
+    // ItemMenu と ItemActionMenu は同じ ItemMenuScene が扱い、`confirmCurrentSelection`
+    // 内部で現在のフェーズに応じて分岐する。
     // PlayerCursor / PlayerAttack 中で UnitInfoPopup が表示中なら、**X は popup の
     // Status ↔ Items 切替**に取られる（通常のキャンセルは popup 非表示時のみ）。
-    // Z はそのまま選択/旗設置で従来通り。
     // それ以外のフェーズではこれまで通り TurnRules 経由で振る舞いを決める。
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                        Scene[NodeTag] \ {GameEngine.Game, BoardQuery, Tween.Scheduler,
@@ -191,10 +189,18 @@ instance InputEvent.InputHandler[NodeTag] {
                                                   => ActionMenuScene.confirmCurrentSelection(scene)
             case (TurnPhase.Phase.ActionSelect,   _,    true)
                                                   => checked_ecast(ActionMenuScene.onActionCancelled(scene))
-            case (TurnPhase.Phase.WeaponSelect,   true,  _)
-                                                  => WeaponMenuScene.confirmCurrentSelection(scene)
-            case (TurnPhase.Phase.WeaponSelect,   _,    true)
-                                                  => checked_ecast(WeaponMenuScene.onWeaponCancelled(scene))
+            case (TurnPhase.Phase.ItemSelect,        true,  _)
+                                                  => checked_ecast(ItemMenuScene.confirmCurrentSelection(scene))
+            case (TurnPhase.Phase.ItemSelect,        _,    true)
+                                                  => checked_ecast(ItemMenuScene.onItemCancelled(scene))
+            case (TurnPhase.Phase.ItemActionSelect,  true,  _)
+                                                  => checked_ecast(ItemMenuScene.confirmCurrentSelection(scene))
+            case (TurnPhase.Phase.ItemActionSelect,  _,    true)
+                                                  => checked_ecast(ItemMenuScene.onActionCancelled(scene))
+            case (TurnPhase.Phase.StaffAim,       _,    true)
+                                                  => checked_ecast(staffAimCancel(scene))
+            case (TurnPhase.Phase.StaffAim,       _,    _)
+                                                  => checked_ecast(staffAimDirection(key, scene))
             case (TurnPhase.Phase.AttackForecast, true, _)
                                                   => BattlePanelScene.confirm(scene)
             case (TurnPhase.Phase.AttackForecast, _,    true)
@@ -207,9 +213,10 @@ instance InputEvent.InputHandler[NodeTag] {
         }
 }
 
-/// MenuHandler instance — ItemList の Enter/Escape を WeaponMenuScene へ流す。
+/// MenuHandler instance — ItemList の Enter/Escape を各 MenuScene へ流す。
 /// 入力キー固定: Up/Down=カーソル移動 / Enter=確定 / Escape=キャンセル（engine 規約）。
-/// Enter は「武器確定 → 戦闘予報フェーズへ」、Escape は「ウィンドウを閉じて target 選択に戻る」。
+/// ItemMenu の Enter は「現在フェーズ（ItemSelect / ItemActionSelect）に応じた確定」、
+/// Escape は「ItemSelect→ActionMenu / ItemActionSelect→ItemSelect」のように親へ戻る。
 instance MenuEvent.MenuHandler[NodeTag] {
     type Aef = {Tween.Scheduler, AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, EnemyTurn.Queue,
@@ -224,7 +231,17 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              PlayerScene.PartyQuery,
                                              EnemyScene.RosterQuery} =
         match state {
-            case NodeTag.WeaponMenu => checked_ecast(WeaponMenuScene.onWeaponConfirmed(entry, scene))
+            case NodeTag.ItemMenu   =>
+                // ItemSelect / ItemActionSelect いずれも同じ ItemList なので、
+                // フェーズに応じて ItemMenuScene 内部で分岐させる。
+                let phase = TurnPhase.State.get();
+                match phase {
+                    case TurnPhase.Phase.ItemSelect       =>
+                        checked_ecast(ItemMenuScene.onItemConfirmed(entry, scene))
+                    case TurnPhase.Phase.ItemActionSelect =>
+                        checked_ecast(ItemMenuScene.onActionConfirmed(entry, scene))
+                    case _                                 => scene
+                }
             case NodeTag.ActionMenu => ActionMenuScene.onActionConfirmed(entry, scene)
             case _                  => scene
         }
@@ -236,11 +253,64 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              PlayerScene.PartyQuery,
                                              EnemyScene.RosterQuery} =
         match state {
-            case NodeTag.WeaponMenu => checked_ecast(WeaponMenuScene.onWeaponCancelled(scene))
+            case NodeTag.ItemMenu   =>
+                let phase = TurnPhase.State.get();
+                match phase {
+                    case TurnPhase.Phase.ItemSelect       =>
+                        checked_ecast(ItemMenuScene.onItemCancelled(scene))
+                    case TurnPhase.Phase.ItemActionSelect =>
+                        checked_ecast(ItemMenuScene.onActionCancelled(scene))
+                    case _                                 => scene
+                }
             case NodeTag.ActionMenu => checked_ecast(ActionMenuScene.onActionCancelled(scene))
             case _                  => scene
         }
 }
+
+// ────────────────────────────────────────────────────────
+// StaffAim フェーズ用ヘルパー（方向キー → applyStaffCast、X/Esc → メニューに戻る）
+// ────────────────────────────────────────────────────────
+
+/// 方向キーを `Staff.Direction` に変換する。方向以外のキーは None。
+def keyToStaffDirection(key: GameEngine.Key): Option[Staff.Direction] = match key {
+    case GameEngine.Key.W     => Some(Staff.Direction.Up)
+    case GameEngine.Key.Up    => Some(Staff.Direction.Up)
+    case GameEngine.Key.S     => Some(Staff.Direction.Down)
+    case GameEngine.Key.Down  => Some(Staff.Direction.Down)
+    case GameEngine.Key.A     => Some(Staff.Direction.Left)
+    case GameEngine.Key.Left  => Some(Staff.Direction.Left)
+    case GameEngine.Key.D     => Some(Staff.Direction.Right)
+    case GameEngine.Key.Right => Some(Staff.Direction.Right)
+    case _                     => None
+}
+
+/// StaffAim フェーズで方向キーが押されたら applyStaffCast を呼ぶ。方向以外のキーは無視。
+def staffAimDirection(key: GameEngine.Key, scene: Scene[NodeTag]):
+        Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                           BoardQuery, GameLogger.GameLogger,
+                           EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+    match keyToStaffDirection(key) {
+        case None      => scene
+        case Some(dir) =>
+            match SelectedPlayer.State.get()#id {
+                case None           => scene
+                case Some(playerId) =>
+                    match PlayerScene.get(playerId, scene) {
+                        case None         => scene
+                        case Some(player) =>
+                            match player#selectedItem {
+                                case Some(PlayerScene.ItemKind.Staff(idx)) =>
+                                    PlayerScene.applyStaffCast(playerId, idx, dir, scene)
+                                case _ => scene
+                            }
+                    }
+            }
+    }
+
+/// StaffAim フェーズで X/Esc が押されたら ItemActionSelect に戻る（杖は消費しない）。
+def staffAimCancel(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+    TurnPhase.State.put(TurnPhase.Phase.ItemActionSelect);
+    scene
 
 mod Game {
 
@@ -301,9 +371,19 @@ mod Game {
                 case Ok(_)    => ()
                 case Err(msg) => bug!("WeaponResource schema/type mismatch: ${msg}")
             };
+            // 杖カタログを別ファイルでロードし、schema 整合性も同じ規格で検査する。
+            let staffCatalog = Staff.load("resources/staves.json");
+            let stavesSchema = match Resource.loadSchemaDiagnostic("resources/staves.schema.json") {
+                case Ok(s)    => s
+                case Err(msg) => bug!("Resource.loadSchema (staves) failed :: ${msg}")
+            };
+            let _ = match Resource.checkConsistency(Staff.expectedFields(), stavesSchema) {
+                case Ok(_)    => ()
+                case Err(msg) => bug!("StaffResource schema/type mismatch: ${msg}")
+            };
             run {
                 // 初回 build と spawn snapshot 保存をまとめて行う (GameOver リビルドと同じ経路)
-                let scene = GameLifecycle.buildAndRecord(catalog, floor);
+                let scene = GameLifecycle.buildAndRecord(catalog, staffCatalog, floor);
                 // BGM は控えめに、SE は半分で鳴らす
                 AudioStreamPlayer.setVolume("bgm",    0.05f32);
                 AudioStreamPlayer.setVolume("damage", 0.5f32);
@@ -320,7 +400,7 @@ mod Game {
             } with handler CustomEffects.GameOverRequest {
                   // 全味方脱落でフルリビルド: turn 系 state をリセットしてから scene を作り直し、
                   // 新しい spawn 一覧を InitialSpawns に書き戻す。本体は GameLifecycle 側。
-                  def request(_scene, k) = k(GameLifecycle.resetForGameOver(catalog, floor))
+                  def request(_scene, k) = k(GameLifecycle.resetForGameOver(catalog, staffCatalog, floor))
               }
               with handler BoardQuery {
                   def board(k) = k(BoardSnapshot.fromScene(Ref.get(sceneRef)))
@@ -365,12 +445,14 @@ mod Game {
                          SelectedPlayer.State,
                          CustomEffects.GameOverRequest,
                          Pacing.State, r} =
-        // Escape は通常はゲーム終了に使うが、武器選択メニュー / 戦闘予報パネル表示中は
+        // Escape は通常はゲーム終了に使うが、各種メニュー / 戦闘予報パネル表示中は
         // engine の MenuEvent / InputHandler がそれぞれ「キャンセル」として消費するので、
         // ここでは終了させない。
         let phase = TurnPhase.State.get();
         let inSubMenu = phase == TurnPhase.Phase.ActionSelect
-                         or phase == TurnPhase.Phase.WeaponSelect
+                         or phase == TurnPhase.Phase.ItemSelect
+                         or phase == TurnPhase.Phase.ItemActionSelect
+                         or phase == TurnPhase.Phase.StaffAim
                          or phase == TurnPhase.Phase.AttackForecast;
         let escapeQuit =
             GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)

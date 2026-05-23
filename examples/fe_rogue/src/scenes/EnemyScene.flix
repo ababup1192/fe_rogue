@@ -292,6 +292,17 @@ mod EnemyScene {
         Tween.tweenPosition(enemyPath(id), startWorld, targetWorld, slideDuration());
         mapEnemy(id, d -> {gridPos = target | d}, scene)
 
+    /// 敵 id を `target` に **瞬間移動** で戻す（杖の「いれかえ」用）。
+    /// 進行中の Tween があればキャンセルし、ノードの world 位置と Data#gridPos を
+    /// 同時に target に揃える。`PlayerScene.snapTo` と同じ流儀。
+    pub def snapTo(id: Int32, target: {x = Int32, y = Int32},
+                    scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        let world = MapScene.cellCenter(target);
+        Tween.Scheduler.cancel(enemyPath(id));
+        scene
+            |> Scene.setGlobalPositionAt(enemyPath(id), world)
+            |> mapEnemy(id, d -> {gridPos = target | d})
+
     /// 指定セルに居る（生きている）敵の id を返す。死亡演出中の敵は対象外。
     /// PlayerAttack フェーズで「カーソルが赤マス上の敵に乗っているか」の判定に使う。
     pub def findIdAt(coord: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Option[Int32] =

@@ -113,4 +113,26 @@ mod TestCombat {
     @Test
     def testDefenseStatForMagic(): Unit \ Assert =
         Assert.assertEq(expected = 5, Combat.defenseStatFor(4, 5, false))
+
+    // ════════════════════════════════════════════════════════
+    // heal: 過剰回復は max でクランプ、負の amount は無視（0 として扱う）
+    // ════════════════════════════════════════════════════════
+
+    /// 現 HP 5、max 10、回復 10 → 過剰分は捨てて HP = 10（上限クランプ）
+    @Test
+    def testHealClampsToMaxHp(): Unit \ Assert =
+        let result = Combat.heal(5, 10, 10);
+        Assert.assertEq(expected = 10, result#newHp)
+
+    /// 現 HP 5、max 10、回復 0 → HP は変わらない（5）
+    @Test
+    def testHealZeroAmountKeepsHp(): Unit \ Assert =
+        let result = Combat.heal(5, 10, 0);
+        Assert.assertEq(expected = 5, result#newHp)
+
+    /// 現 HP 5、max 10、回復 -3（負）→ ダメージ用途と分けるため負は無視。HP は変わらない（5）
+    @Test
+    def testHealNegativeAmountIgnored(): Unit \ Assert =
+        let result = Combat.heal(5, 10, -3);
+        Assert.assertEq(expected = 5, result#newHp)
 }

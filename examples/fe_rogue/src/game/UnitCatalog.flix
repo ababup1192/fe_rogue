@@ -58,6 +58,7 @@ mod UnitCatalog {
     /// `magicAttack` は魔力。魔法武器装備時の与ダメは `magicAttack + 武器の attack - 魔防`。
     /// `magicDefense` は魔防。魔法攻撃を受けた際の防御に使う。
     /// `initialWeapon` は武器カタログ (weapons.json) 内の武器 id への参照。
+    /// `initialStaves` は杖カタログ (staves.json) 内の杖 id の配列。省略可、空配列でも可。
     pub type alias UnitResource = {
         moveTiles     = Int32,
         hp            = Int32,
@@ -67,7 +68,8 @@ mod UnitCatalog {
         magicDefense  = Int32,
         speed         = Int32,
         sprite        = SpriteResource,
-        initialWeapon = String
+        initialWeapon = String,
+        initialStaves = List[String]
     }
 
     /// 武器の属性（物理 / 魔法）。
@@ -230,7 +232,7 @@ mod UnitCatalog {
     /// engine 側 `Resource.checkConsistency` がこの集合と `_schema.json` を照合する。
     pub def expectedUnitFields(): Set[String] =
         Set#{"moveTiles", "hp", "attack", "defense", "magicAttack", "magicDefense",
-              "speed", "sprite", "initialWeapon"}
+              "speed", "sprite", "initialWeapon", "initialStaves"}
 
     /// `WeaponResource` のフィールド名集合。`weapons.schema.json` との整合性検査に使う。
     pub def expectedWeaponFields(): Set[String] =
@@ -286,7 +288,9 @@ mod UnitCatalogCodec {
             "magicDefense"  => JsonNumber(intToBd(u#magicDefense)),
             "speed"         => JsonNumber(intToBd(u#speed)),
             "sprite"        => encodeSprite(u#sprite),
-            "initialWeapon" => JsonString(u#initialWeapon)
+            "initialWeapon" => JsonString(u#initialWeapon),
+            "initialStaves" => JsonArray(
+                List.map(JsonString, u#initialStaves) |> List.toVector)
         })
 
     def encodeSprite(s: SpriteResource): JsonElement =
@@ -397,9 +401,14 @@ mod UnitCatalogCodec {
             let mDef = Map.get("magicDefense", obj)
                          |> Option.flatMap(expectInt)
                          |> Option.getWithDefault(0);
+            // initialStaves は省略可。欠落 / 空配列 / 配列以外はすべて Nil として扱う。
+            let staves = Map.get("initialStaves", obj)
+                            |> Option.flatMap(decodeStringList)
+                            |> Option.getWithDefault(Nil);
             ({moveTiles = mt, hp = hp, attack = atk, defense = df,
               magicAttack = mAtk, magicDefense = mDef,
-              speed = spd, sprite = sp, initialWeapon = iw}: UnitResource)
+              speed = spd, sprite = sp, initialWeapon = iw,
+              initialStaves = staves}: UnitResource)
         }
 
     def decodeWeapon(element: JsonElement): Option[WeaponResource] =

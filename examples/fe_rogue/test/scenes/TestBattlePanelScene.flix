@@ -14,8 +14,8 @@ mod TestBattlePanelScene {
     // フィクスチャ
     // ════════════════════════════════════════════════════════
 
-    /// 武器を装備し攻撃対象を抱えた選択中味方。`selectedWeaponIdx = Some(0)` で
-    /// 武器選択も済んでいる前提（= AttackForecast に入っている状態）。
+    /// 武器を装備し攻撃対象を抱えた選択中味方（= AttackForecast に入っている状態）。
+    /// 装備中武器は `weapons.head` を自動使用するため、selectedItem は None でよい。
     def fixturePlayer(): PlayerScene.Data = {
         id                = 0,
         gridPos           = {x = 2, y = 2},
@@ -25,7 +25,8 @@ mod TestBattlePanelScene {
         attackTargetId    = Some(1),
         resource          = TestUnitFixtures.testResource(4, 10),
         weapons           = TestUnitFixtures.testWeapon() :: Nil,
-        selectedWeaponIdx = Some(0),
+        staves            = Nil,
+        selectedItem      = None,
         moveStepsTaken    = 0
     }
 

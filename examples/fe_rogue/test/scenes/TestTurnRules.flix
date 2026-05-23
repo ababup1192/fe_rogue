@@ -217,17 +217,18 @@ mod TestTurnRules {
     // PlayerAttack + 攻撃成立 / 不成立
     // ════════════════════════════════════════════════════════
 
-    /// PlayerAttack で生きてる敵マスを Z（味方 0 が選択中）→ OpenWeaponMenu(0, 0, 3, 2)
+    /// PlayerAttack で生きてる敵マスを Z（味方 0 が選択中）→ OpenAttackForecast(0, 0, 3, 2)
+    /// 装備中武器を自動使用するので武器選択窓は経由せず AttackForecast に直行する。
     /// 引数: (attackerId, defenderId, defenderX, defenderY)
     @Test
-    def testAttackConfirmOnAliveEnemyOpensWeaponMenu(): Unit \ Assert =
+    def testAttackConfirmOnAliveEnemyOpensForecast(): Unit \ Assert =
         let context = {
             phase = TurnPhase.Phase.PlayerAttack,
             selected = Some(0)
             | baseContext(boardWith(cell(2, 2), cell(3, 2)), cell(3, 2))
         };
         Assert.assertEq(
-            expected = TurnRules.Transition.OpenWeaponMenu(0, 0, 3, 2),
+            expected = TurnRules.Transition.OpenAttackForecast(0, 0, 3, 2),
             TurnRules.decide(context))
 
     /// 死亡演出中の敵を Z → Stay（既に倒した敵には届かない）

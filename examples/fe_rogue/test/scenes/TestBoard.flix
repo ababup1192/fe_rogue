@@ -172,4 +172,111 @@ mod TestBoard {
         let cells = Board.reachableCells(isFloor, ({x = 0, y = 0}: {x = Int32, y = Int32}), 2);
         let hasFarRight = List.exists(c -> c#x == 2 and c#y == 0, cells);
         Assert.assertEq(expected = false, hasFarRight)
+
+    // ========================================================================
+    // rayCast — 杖の直線射出
+    //   origin から dir 方向に最大 range マス進み、最初に当たった対象を返す。
+    // ========================================================================
+
+    /// 任意の pieces で Board を組むヘルパー（rayCast / knockbackPath 用）
+    def boardWith(snapshot: MapSnapshot,
+                   pieces: List[(Piece, {x = Int32, y = Int32})]): Board =
+        {map = snapshot, pieces = pieces}
+
+    /// RayHit を assertEq 用のタプルに変換する。
+    /// 形式: (タグ名, idOrZero, cellX, cellY)。タグは "player"/"enemy"/"wall"/"oor"。
+    def unpackHit(hit: RayHit): (String, Int32, Int32, Int32) = match hit {
+        case RayHit.HitPlayer(id, c) => ("player", id, c#x, c#y)
+        case RayHit.HitEnemy(id, c)  => ("enemy", id, c#x, c#y)
+        case RayHit.HitWall(c)       => ("wall", 0, c#x, c#y)
+        case RayHit.OutOfRange(c)    => ("oor", 0, c#x, c#y)
+    }
+
+    /// 何もない 5×5 盤面で (1,2) から右に range=5 で射出する。
+    /// 盤面の右端 (4,2) まで進んで、その先 (5,2) は範囲外（= 壁扱い）なので
+    /// HitWall(4, 2) を返す。
+    @Test
+    def testRayCastHitsWall(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(5, 5), Nil);
+        let hit = Board.rayCast(src(1, 2), Vec2i.right(), 5, board);
+        Assert.assertEq(expected = ("wall", 0, 4, 2), unpackHit(hit))
+
+    /// (1,2) の右隣 (2,2) にプレイヤー id=7 がいる → HitPlayer(7, (2,2))。
+    /// origin にいる駒は origin から踏み出さない（origin そのものは判定対象外）。
+    @Test
+    def testRayCastHitsPlayer(): Unit \ Assert =
+        let pieces = (Piece.Player(7), src(2, 2)) :: Nil;
+        let board = boardWith(emptySnapshot(5, 5), pieces);
+        let hit = Board.rayCast(src(1, 2), Vec2i.right(), 3, board);
+        Assert.assertEq(expected = ("player", 7, 2, 2), unpackHit(hit))
+
+    /// (1,2) の 2 マス先 (3,2) に敵 id=4 がいる → HitEnemy(4, (3,2))。
+    /// 途中の (2,2) は空マスなので通り抜けて (3,2) で止まる。
+    @Test
+    def testRayCastHitsEnemy(): Unit \ Assert =
+        let pieces = (Piece.Enemy(4), src(3, 2)) :: Nil;
+        let board = boardWith(emptySnapshot(5, 5), pieces);
+        let hit = Board.rayCast(src(1, 2), Vec2i.right(), 5, board);
+        Assert.assertEq(expected = ("enemy", 4, 3, 2), unpackHit(hit))
+
+    /// 何もない 5×5 で (0,2) から右に range=3 → 3 マス先 (3,2) で射程切れ。
+    /// 何にも当たっていないので OutOfRange((3,2))。
+    @Test
+    def testRayCastReachesRangeLimit(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(5, 5), Nil);
+        let hit = Board.rayCast(src(0, 2), Vec2i.right(), 3, board);
+        Assert.assertEq(expected = ("oor", 0, 3, 2), unpackHit(hit))
+
+    /// origin (1,2) に自分（Player(0)）がいて、隣 (2,2) に敵 id=4 がいる。
+    /// origin の駒（自分）は origin から踏み出すので当たらず、隣の敵にヒットする。
+    @Test
+    def testRayCastIgnoresSelfAtOrigin(): Unit \ Assert =
+        let pieces = (Piece.Player(0), src(1, 2))
+                   :: (Piece.Enemy(4),  src(2, 2)) :: Nil;
+        let board = boardWith(emptySnapshot(5, 5), pieces);
+        let hit = Board.rayCast(src(1, 2), Vec2i.right(), 3, board);
+        Assert.assertEq(expected = ("enemy", 4, 2, 2), unpackHit(hit))
+
+    // ========================================================================
+    // knockbackPath — ふきとばしで対象が押される経路
+    //   hitCell から dir 方向に進めるだけ進む。hitCell に居る駒は移動中とみなして
+    //   障害物判定から除外する。
+    // ========================================================================
+
+    /// `{x, y}` の List を `(x, y)` Int32 ペアの List にする。
+    /// `{x, y}` に Eq/ToString が無いため、assertEq の前にこれで変換する。
+    def pathToTuples(path: List[{x = Int32, y = Int32}]): List[(Int32, Int32)] =
+        List.map(c -> (c#x, c#y), path)
+
+    /// 5×5 で hitCell (1,2) から右に押す。3 マス先 (4,2) まで進めて、
+    /// その先は壁（範囲外）。経路は [(2,2), (3,2), (4,2)]。
+    @Test
+    def testKnockbackPathUntilWall(): Unit \ Assert =
+        let pieces = (Piece.Enemy(0), src(1, 2)) :: Nil;
+        let board = boardWith(emptySnapshot(5, 5), pieces);
+        let path = Board.knockbackPath(src(1, 2), Vec2i.right(), board);
+        Assert.assertEq(
+            expected = (2, 2) :: (3, 2) :: (4, 2) :: Nil,
+            pathToTuples(path))
+
+    /// hitCell (1,2)、すぐ右隣 (2,2) に別駒がいる → 押される先がないので Nil。
+    @Test
+    def testKnockbackPathBlockedImmediately(): Unit \ Assert =
+        let pieces = (Piece.Enemy(0), src(1, 2))
+                   :: (Piece.Enemy(1), src(2, 2)) :: Nil;
+        let board = boardWith(emptySnapshot(5, 5), pieces);
+        let path = Board.knockbackPath(src(1, 2), Vec2i.right(), board);
+        Assert.assertEq(expected = (Nil: List[(Int32, Int32)]), pathToTuples(path))
+
+    /// hitCell (1,2)、2 マス先 (3,2) に別駒がいる → 1 マスだけ動いて停止。
+    /// 経路は [(2,2)]（最終着地が (2,2)、(3,2) の手前で止まる）。
+    @Test
+    def testKnockbackPathStopsBeforeOtherPiece(): Unit \ Assert =
+        let pieces = (Piece.Enemy(0), src(1, 2))
+                   :: (Piece.Player(0), src(3, 2)) :: Nil;
+        let board = boardWith(emptySnapshot(5, 5), pieces);
+        let path = Board.knockbackPath(src(1, 2), Vec2i.right(), board);
+        Assert.assertEq(
+            expected = (2, 2) :: Nil,
+            pathToTuples(path))
 }

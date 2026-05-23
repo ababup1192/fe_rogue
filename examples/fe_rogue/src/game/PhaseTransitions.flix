@@ -139,4 +139,29 @@ mod PhaseTransitions {
             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
         clearAllPlayerRanges(scene)
+
+    /// ItemSelect フェーズに入る (ActionMenu「アイテム」確定時)。
+    /// 動作: 味方系の青/赤マスを片付けて、カーソルを隠す（メニュー操作専用画面のため）。
+    /// EnemyRange は触らない。`ItemMenuScene.applyVisibility` が表示を毎フレーム反映する。
+    pub def enterItemSelect(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
+        clearAllPlayerRanges(scene)
+            |> CursorScene.setVisible(false)
+
+    /// StaffAim フェーズに入る (杖「使う」確定時)。
+    /// 動作: メニュー / overlay は触らず、カーソルだけ隠す（方向キー入力で発射する想定）。
+    /// 射線プレビューを将来出すならここで overlay を追加する。
+    pub def enterStaffAim(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.StaffAim);
+        scene |> CursorScene.setVisible(false)
+
+    /// AttackForecast フェーズに入る (PlayerAttack で敵に Z 押下時)。
+    /// 動作: overlay/cursor は PlayerAttack 中の状態を温存し、フェーズだけ進める。
+    /// `BattlePanelScene` の毎フレーム process が visible 切替と内容更新を担う。
+    pub def enterAttackForecast(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.AttackForecast);
+        scene
 }
