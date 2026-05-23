@@ -12,8 +12,11 @@
     "archer": {
       "attack": 5,
       "defense": 4,
+      "description": "アーチャー",
       "hp": 13,
       "initialWeapon": "trainingBow",
+      "magicAttack": 0,
+      "magicDefense": 2,
       "moveTiles": 5,
       "speed": 4,
       "sprite": {
@@ -28,6 +31,8 @@
       "defense": 2,
       "hp": 10,
       "initialWeapon": "trainingSword",
+      "magicAttack": 0,
+      "magicDefense": 0,
       "moveTiles": 4,
       "speed": 4,
       "sprite": {
@@ -45,6 +50,8 @@
       "defense": 4,
       "hp": 17,
       "initialWeapon": "trainingSpear",
+      "magicAttack": 0,
+      "magicDefense": 1,
       "moveTiles": 4,
       "speed": 4,
       "sprite": {
@@ -55,10 +62,12 @@
       }
     },
     "mage": {
-      "attack": 8,
+      "attack": 2,
       "defense": 2,
       "hp": 11,
       "initialWeapon": "fire_magic",
+      "magicAttack": 8,
+      "magicDefense": 3,
       "moveTiles": 5,
       "speed": 4,
       "sprite": {
@@ -73,6 +82,8 @@
       "defense": 3,
       "hp": 13,
       "initialWeapon": "trainingSword",
+      "magicAttack": 0,
+      "magicDefense": 0,
       "moveTiles": 3,
       "speed": 2,
       "sprite": {

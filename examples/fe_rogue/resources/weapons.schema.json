@@ -4,21 +4,32 @@
       "field": {
         "ftype": "text",
         "hint":  "plain",
-        "label": "名前"
+        "label": "名前",
+        "order": 1
+      }
+    },
+    "weaponType": {
+      "field": {
+        "ftype": { "type": "enum", "values": ["Physical", "Magic"] },
+        "hint":  "plain",
+        "label": "属性",
+        "order": 2
       }
     },
     "attack": {
       "field": {
         "ftype": "int",
         "hint":  { "slider": { "min": 0, "max": 30, "step": 1 } },
-        "label": "攻撃"
+        "label": "攻撃",
+        "order": 3
       }
     },
     "durability": {
       "field": {
         "ftype": "int",
         "hint":  { "slider": { "min": 1, "max": 99, "step": 1 } },
-        "label": "耐久"
+        "label": "耐久",
+        "order": 4
       }
     },
     "range": {
@@ -27,14 +38,16 @@
           "field": {
             "ftype": "int",
             "hint":  { "spinner": { "min": 1, "max": 10 } },
-            "label": "最小射程"
+            "label": "最小射程",
+            "order": 1
           }
         },
         "max": {
           "field": {
             "ftype": "int",
             "hint":  { "spinner": { "min": 1, "max": 10 } },
-            "label": "最大射程"
+            "label": "最大射程",
+            "order": 2
           }
         }
       }

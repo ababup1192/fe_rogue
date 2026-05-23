@@ -1,34 +1,58 @@
 {
-  "type": "CanvasLayer",
-  "name": "BattlePanel",
-  "layer": 3,
-  "pos": [0, 0],
-  "rotation": 0,
-  "scale": [1, 1],
   "children": [
     {
-      "type": "Panel",
-      "name": "panel",
-      "tag": "BattlePanel",
-      "pos": [58, 2],
-      "size": [68, 38],
-      "background": {"r": 0.10196078568696976, "g": 0.20000000298023224, "b": 0.6000000238418579},
+      "background": {
+        "b": 0.6000000238418579,
+        "g": 0.20000000298023224,
+        "r": 0.10196078568696976
+      },
       "backgroundAlpha": 0.85,
-      "border": {"r": 1, "g": 1, "b": 1},
+      "border": {
+        "b": 1,
+        "g": 1,
+        "r": 1
+      },
       "borderWidth": 1,
-      "zIndex": 0,
-      "visible": false,
       "children": [
         {
-          "type": "Label2D",
-          "name": "text",
-          "tag": "BattleText",
-          "pos": [3, 2],
           "fontSize": 4,
-          "visible": false,
-          "text": "-"
+          "name": "text",
+          "pos": [
+            3,
+            2
+          ],
+          "tag": "BattleText",
+          "text": "-",
+          "type": "Label2D",
+          "visible": false
         }
-      ]
+      ],
+      "name": "panel",
+      "pos": [
+        58,
+        2
+      ],
+      "size": [
+        68,
+        38
+      ],
+      "tag": "BattlePanel",
+      "type": "Panel",
+      "visible": false,
+      "zIndex": 0
     }
-  ]
+  ],
+  "description": "攻撃前の戦闘予報パネル (AttackForecast 中)\n攻撃/防御側の HP/威力/命中 を Combat.forecast から並べる",
+  "layer": 3,
+  "name": "BattlePanel",
+  "pos": [
+    0,
+    0
+  ],
+  "rotation": 0,
+  "scale": [
+    1,
+    1
+  ],
+  "type": "CanvasLayer"
 }

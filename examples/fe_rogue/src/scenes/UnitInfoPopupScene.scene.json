@@ -1,4 +1,5 @@
 {
+  "description": "カーソル上ユニット情報を左上に出す HUD\nZ で Status (HP/能力) ↔ Items (武器一覧) を切替、空マスで非表示",
   "type": "CanvasLayer",
   "name": "UnitInfoPopup",
   "layer": 4,

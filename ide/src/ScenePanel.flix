@@ -585,11 +585,15 @@ mod ScenePanel {
                 else ()
         })
 
-    /// 現在のシーンの scene.json を読んで `"description"` を上書き保存する。
+    /// 現在 TextArea に表示中の description が由来するシーンの scene.json を読んで
+    /// `"description"` を上書き保存する。
+    /// シーン切替直後は currentScenePathRef が先に新シーンへ進むため、ここで
+    /// currentScenePathRef を参照すると「新シーンに前シーンの内容を書き込む」事故が起きる。
+    /// 代わりに `widgets#sceneDescriptionEditingPath` を使う (setText 完了時に更新される)。
     /// JSON parse 失敗・scene 未選択なら no-op。
     /// FileRead 効果は内側で IO に discharge する (listener context は IO のみ持つため)
     def saveSceneDescription(state: IdeState.IdeState, text: String): Unit \ IO =
-        match IdeState.getCurrentScenePath(state) {
+        match Array.get(0, state#widgets#sceneDescriptionEditingPath) {
             case None       => ()
             case Some(path) =>
                 run {
@@ -624,12 +628,11 @@ mod ScenePanel {
                 let readResult = run {
                     Fs.ReadFile.read(path)
                 } with Fs.ReadFile.runWithFileRead;
-                match readResult {
-                    case Err(_)      => scheduleSetSceneDescription(state, "")
-                    case Ok(content) =>
-                        let desc = extractDescription(content);
-                        scheduleSetSceneDescription(state, desc)
-                }
+                let desc = match readResult {
+                    case Err(_)      => ""
+                    case Ok(content) => extractDescription(content)
+                };
+                scheduleSetSceneDescription(state, path, desc)
             }
         }
 
@@ -643,14 +646,21 @@ mod ScenePanel {
             case _ => ""
         }
 
-    def scheduleSetSceneDescription(state: IdeState.IdeState, text: String): Unit \ IO =
+    /// `path` は TextArea にセットしようとしている description が由来するシーンの絶対パス。
+    /// setText 成功時に `editingPath` も同期して更新するので、blur listener はその後
+    /// このパスへ書き戻すことになる (シーン切替直後のレース防止)。
+    /// area が focused 中ならユーザー入力を消さないよう setText も editingPath 更新も skip
+    def scheduleSetSceneDescription(state: IdeState.IdeState, path: String, text: String):
+            Unit \ IO =
         Platform.runLater(new Runnable {
             def $run(_this: Runnable): Unit \ IO =
                 match Array.get(0, state#widgets#sceneDescriptionArea) {
                     case None       => ()
                     case Some(area) =>
-                        if (not area.isFocused()) area.setText(text)
-                        else ()
+                        if (not area.isFocused()) {
+                            area.setText(text);
+                            Array.put(Some(path), 0, state#widgets#sceneDescriptionEditingPath)
+                        } else ()
                 }
         })
 

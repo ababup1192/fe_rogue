@@ -64,7 +64,7 @@ mod TestWeapon {
     def testCanReachAdjacentSword(): Unit \ Assert =
         let sword: UnitCatalog.WeaponResource =
             {name = "sword", attack = 1, durability = 10,
-             range = {min = 1, max = 1},
+             range = {min = 1, max = 1}, weaponType = UnitCatalog.WeaponType.Physical,
              sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}}};
         Assert.assertEq(expected = true, Weapon.canReach(1, sword))
 
@@ -73,7 +73,7 @@ mod TestWeapon {
     def testCanReachBowCannotCounterAdjacent(): Unit \ Assert =
         let bow: UnitCatalog.WeaponResource =
             {name = "bow", attack = 1, durability = 10,
-             range = {min = 2, max = 2},
+             range = {min = 2, max = 2}, weaponType = UnitCatalog.WeaponType.Physical,
              sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}}};
         Assert.assertEq(expected = false, Weapon.canReach(1, bow))
 
@@ -82,7 +82,7 @@ mod TestWeapon {
     def testCanReachSwordCannotCounterBow(): Unit \ Assert =
         let sword: UnitCatalog.WeaponResource =
             {name = "sword", attack = 1, durability = 10,
-             range = {min = 1, max = 1},
+             range = {min = 1, max = 1}, weaponType = UnitCatalog.WeaponType.Physical,
              sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}}};
         Assert.assertEq(expected = false, Weapon.canReach(2, sword))
 
@@ -91,7 +91,7 @@ mod TestWeapon {
     def testCanReachJavelinBoth(): Unit \ Assert =
         let javelin: UnitCatalog.WeaponResource =
             {name = "javelin", attack = 1, durability = 10,
-             range = {min = 1, max = 2},
+             range = {min = 1, max = 2}, weaponType = UnitCatalog.WeaponType.Physical,
              sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}}};
         Assert.assertEq(expected = (true, true, false),
                         (Weapon.canReach(1, javelin),
@@ -110,4 +110,36 @@ mod TestWeapon {
     def testManhattanSameCell(): Unit \ Assert =
         let a = {x = 3, y = 5};
         Assert.assertEq(expected = 0, Weapon.manhattan(a, a))
+
+    // ════════════════════════════════════════════════════════
+    // 魔法武器の総合攻撃力（attackStatFor / defenseStatFor 経由）
+    // ════════════════════════════════════════════════════════
+
+    /// 魔力 8 + 武器 2 - 魔防 3 = 7 ダメージ（魔法武器ルート）
+    /// PlayerScene / EnemyScene の attackStatFor + defenseStatFor + attackDamage の流れを再現
+    @Test
+    def testMagicWeaponDamageUsesMagicStats(): Unit \ Assert =
+        let unit   = TestUnitFixtures.testResourceMagic(4, 14, 2, 1, 8, 4, 3);
+        let target = TestUnitFixtures.testResourceMagic(4, 14, 6, 5, 1, 3, 2);
+        let weapon = TestUnitFixtures.testWeaponWithType(2, UnitCatalog.WeaponType.Magic);
+        let phys   = UnitCatalog.isPhysical(weapon#weaponType);
+        let totalAttack = Combat.attackStatFor(unit#attack, unit#magicAttack,
+                                                weapon#attack, phys);
+        let targetDef   = Combat.defenseStatFor(target#defense, target#magicDefense, phys);
+        let dmg = Combat.attackDamage(totalAttack, targetDef);
+        Assert.assertEq(expected = 7, dmg)
+
+    /// 物理武器なら魔力・魔防は完全に無視される
+    /// (atk=2, mAtk=8) × 物理武器 weapon=3 → 2+3=5 vs (def=4, mDef=0) → 5-4=1
+    @Test
+    def testPhysicalWeaponIgnoresMagicStats(): Unit \ Assert =
+        let unit   = TestUnitFixtures.testResourceMagic(4, 14, 2, 1, 8, 4, 3);
+        let target = TestUnitFixtures.testResourceMagic(4, 14, 6, 4, 1, 0, 2);
+        let weapon = TestUnitFixtures.testWeaponWithType(3, UnitCatalog.WeaponType.Physical);
+        let phys   = UnitCatalog.isPhysical(weapon#weaponType);
+        let totalAttack = Combat.attackStatFor(unit#attack, unit#magicAttack,
+                                                weapon#attack, phys);
+        let targetDef   = Combat.defenseStatFor(target#defense, target#magicDefense, phys);
+        let dmg = Combat.attackDamage(totalAttack, targetDef);
+        Assert.assertEq(expected = 1, dmg)
 }

@@ -1,4 +1,5 @@
 {
+  "description": "AutoMove の目印旗 (Marker2D + Sprite2D)\n空マスでしゅうごう → plant、AutoMove 完了 → clear",
   "name": "Flag",
   "type": "Marker2D",
   "pos": [0, 0],

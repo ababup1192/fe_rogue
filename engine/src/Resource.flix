@@ -32,6 +32,9 @@ mod Resource {
         case TexturePathT      // プロジェクト登録済みテクスチャから選択
         case RefT(String)      // 別 catalog (containerKey = target) の sub-entry id
         case RefPercentListT(String)  // [{id: ref, percent: 0-100}] の動的長配列
+        case EnumT(List[String])      // 有限の文字列選択肢（Godot @export_enum 相当）。
+                                       // IDE は 2 値なら ToggleGroup、3 値以上なら ComboBox を出す。
+                                       // schema JSON では `{"type": "enum", "values": ["A", "B"]}` で表す。
     }
 
     /// 編集 UI のヒント。`Plain` は型相応の素直な入力欄（数値スピナー / テキスト等）。
@@ -180,7 +183,7 @@ mod ResourceCodec {
     import java.math.{BigDecimal => JBigDecimal}
 
     use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool}
+    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool, JsonArray}
     use Resource.{ResourceSchema, FieldEntry, FieldSchema, FieldType, FieldHint, MetaHint}
 
     // ── エンコード ──
@@ -251,6 +254,11 @@ mod ResourceCodec {
             JsonObject(Map#{
                 "type" => JsonString("refPercentList"),
                 "to"   => JsonString(target)
+            })
+        case FieldType.EnumT(values) =>
+            JsonObject(Map#{
+                "type"   => JsonString("enum"),
+                "values" => JsonArray(List.map(JsonString, values) |> List.toVector)
             })
     }
 
@@ -394,10 +402,26 @@ mod ResourceCodec {
                         Map.get("to", obj)
                             |> Option.flatMap(expectString)
                             |> Option.map(FieldType.RefPercentListT)
+                    case "enum" =>
+                        Map.get("values", obj)
+                            |> Option.flatMap(decodeStringList)
+                            |> Option.map(FieldType.EnumT)
                     case _     => None
                 }
             ) yield ftype
         case _                          => None
+    }
+
+    /// `["A", "B", ...]` の JsonArray を List[String] に。
+    /// EnumT.values の decoding に使う。
+    def decodeStringList(element: JsonElement): Option[List[String]] = match element {
+        case JsonArray(items) =>
+            List.foldRight(item -> acc ->
+                Option.flatMap(soFar ->
+                    expectString(item) |> Option.map(s -> s :: soFar),
+                    acc),
+                Some(Nil), Vector.toList(items))
+        case _ => None
     }
 
     def decodeFieldHint(element: JsonElement): Option[FieldHint] = match element {

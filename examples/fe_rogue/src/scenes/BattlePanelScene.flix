@@ -160,10 +160,16 @@ mod BattlePanelScene {
     /// 反撃可能（敵が武器を持っている）なら敵側の威力/命中も出す。範囲外なら "--" を出す。
     def formatForecast(player: PlayerScene.Data, weapon: UnitCatalog.WeaponResource,
                         enemy: EnemyScene.Data): String =
-        let playerAtk = player#resource#attack + weapon#attack;
+        let phys = UnitCatalog.isPhysical(weapon#weaponType);
+        let playerAtk = Combat.attackStatFor(player#resource#attack,
+                                              player#resource#magicAttack,
+                                              weapon#attack, phys);
+        let enemyDef  = Combat.defenseStatFor(enemy#resource#defense,
+                                               enemy#resource#magicDefense,
+                                               phys);
         let playerForecast = Combat.forecast(
             {attack = playerAtk, speed = player#resource#speed},
-            {hp = enemy#hp, defense = enemy#resource#defense, speed = enemy#resource#speed});
+            {hp = enemy#hp, defense = enemyDef, speed = enemy#resource#speed});
         let enemyCols = formatEnemyColumns(player, enemy);
         let header   = padRight("味方", 10) ++ enemyCols#header;
         let hpLine   = padRight("HP   ${player#hp}", 10) ++ enemyCols#hp;
@@ -186,10 +192,16 @@ mod BattlePanelScene {
                 let d = Weapon.manhattan(enemy#gridPos, player#gridPos);
                 if (not Weapon.canReach(d, eWeapon)) unable
                 else {
-                    let enemyAtk = enemy#resource#attack + eWeapon#attack;
+                    let ePhys = UnitCatalog.isPhysical(eWeapon#weaponType);
+                    let enemyAtk = Combat.attackStatFor(enemy#resource#attack,
+                                                         enemy#resource#magicAttack,
+                                                         eWeapon#attack, ePhys);
+                    let playerDef = Combat.defenseStatFor(player#resource#defense,
+                                                           player#resource#magicDefense,
+                                                           ePhys);
                     let enemyForecast = Combat.forecast(
                         {attack = enemyAtk, speed = enemy#resource#speed},
-                        {hp = player#hp, defense = player#resource#defense, speed = player#resource#speed});
+                        {hp = player#hp, defense = playerDef, speed = player#resource#speed});
                     {header = header, hp = hpStr,
                      atk = "威力 ${enemyForecast#damage}",
                      hit = "命中 ${enemyForecast#hit}%"}

@@ -1,4 +1,5 @@
 {
+  "description": "画面下部のゲームログ HUD (半透明 Panel + RichTextLabel)\nGameLogger を毎フレーム flush、scrollFollowing + BBCode カラー対応",
   "type": "CanvasLayer",
   "name": "Log",
   "layer": 1,

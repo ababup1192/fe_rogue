@@ -16,6 +16,7 @@ mod TestUnitFixtures {
 
     /// 任意の moveTiles / hp を持つテスト用 UnitResource。
     /// 戦闘 4 値はバランス調整に直結しないテスト用の中庸値（atk=3, def=1, spd=3）。
+    /// 魔力・魔防はデフォルト 0（物理武器主体のテスト用デフォルト）。
     /// sprite は character_sheet 既存テクスチャを使い frame=0（実描画は確認しない想定）。
     /// `initialWeapon` はテスト用カタログに普段は登録しない仮 id（ID 解決を踏まないテストでの埋め値）。
     pub def testResource(moveTiles: Int32, hp: Int32): UnitCatalog.UnitResource = {
@@ -23,6 +24,8 @@ mod TestUnitFixtures {
         hp            = hp,
         attack        = 3,
         defense       = 1,
+        magicAttack   = 0,
+        magicDefense  = 0,
         speed         = 3,
         initialWeapon = "test-weapon",
         sprite        = {
@@ -35,6 +38,8 @@ mod TestUnitFixtures {
     }
 
     /// 戦闘パラメータも明示的に指定したいケース用。
+    /// 魔力・魔防はデフォルト 0（物理戦闘のテスト用）。魔法戦闘を組みたい場合は
+    /// `testResourceMagic` を使う。
     pub def testResourceFull(moveTiles: Int32, hp: Int32,
                               attack: Int32, defense: Int32, speed: Int32):
                               UnitCatalog.UnitResource = {
@@ -42,6 +47,30 @@ mod TestUnitFixtures {
         hp            = hp,
         attack        = attack,
         defense       = defense,
+        magicAttack   = 0,
+        magicDefense  = 0,
+        speed         = speed,
+        initialWeapon = "test-weapon",
+        sprite        = {
+            texture = "character_sheet",
+            hframes = 5,
+            vframes = 2,
+            frame   = 0,
+            offset  = {x = 0.0, y = 0.0}
+        }
+    }
+
+    /// 魔力・魔防まで明示したいケース用。物理ステ・魔法ステを両方検証したいときに使う。
+    pub def testResourceMagic(moveTiles: Int32, hp: Int32,
+                               attack: Int32, defense: Int32,
+                               magicAttack: Int32, magicDefense: Int32,
+                               speed: Int32): UnitCatalog.UnitResource = {
+        moveTiles     = moveTiles,
+        hp            = hp,
+        attack        = attack,
+        defense       = defense,
+        magicAttack   = magicAttack,
+        magicDefense  = magicDefense,
         speed         = speed,
         initialWeapon = "test-weapon",
         sprite        = {
@@ -54,21 +83,36 @@ mod TestUnitFixtures {
     }
 
     /// テスト用 WeaponResource。中庸な攻撃力 2 / 耐久度 10 / 直接攻撃 (range 1-1)。
-    /// 攻撃力や耐久度を変えたい時は `testWeaponFull` を使う。
+    /// デフォルトは物理武器。
+    /// 攻撃力や耐久度を変えたい時は `testWeaponFull` を、武器タイプを切り替えたい時は
+    /// `testWeaponWithType` を使う。
     pub def testWeapon(): UnitCatalog.WeaponResource = {
         name       = "test-weapon",
         attack     = 2,
         durability = 10,
         range      = { min = 1, max = 1 },
+        weaponType = UnitCatalog.WeaponType.Physical,
         sprite     = testSprite()
     }
 
-    /// 攻撃力 / 耐久度を明示したい時用のテスト用 WeaponResource。射程は 1-1 固定。
+    /// 攻撃力 / 耐久度を明示したい時用のテスト用 WeaponResource。射程は 1-1 固定、物理武器扱い。
     pub def testWeaponFull(attack: Int32, durability: Int32): UnitCatalog.WeaponResource = {
         name       = "test-weapon",
         attack     = attack,
         durability = durability,
         range      = { min = 1, max = 1 },
+        weaponType = UnitCatalog.WeaponType.Physical,
+        sprite     = testSprite()
+    }
+
+    /// 物理/魔法トグルを切り替えたい時用のテスト用 WeaponResource。射程は 1-1 固定、耐久 10。
+    pub def testWeaponWithType(attack: Int32, weaponType: UnitCatalog.WeaponType):
+            UnitCatalog.WeaponResource = {
+        name       = "test-weapon",
+        attack     = attack,
+        durability = 10,
+        range      = { min = 1, max = 1 },
+        weaponType = weaponType,
         sprite     = testSprite()
     }
 

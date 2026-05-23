@@ -85,4 +85,32 @@ mod TestCombat {
             {attack = 6, speed = 2},
             {hp = 3, defense = 1, speed = 4});
         Assert.assertEq(expected = (5, 70, true), (f#damage, f#hit, f#kill))
+
+    // ════════════════════════════════════════════════════════
+    // attackStatFor / defenseStatFor: 物理/魔法のステ参照切替
+    // ════════════════════════════════════════════════════════
+
+    /// 物理武器 (isPhysical=true) → 攻撃側は `attack` を参照、`magicAttack` は無視
+    /// (atk=7, mAtk=3, weapon=2) → 7+2 = 9
+    @Test
+    def testAttackStatForPhysical(): Unit \ Assert =
+        Assert.assertEq(expected = 9, Combat.attackStatFor(7, 3, 2, true))
+
+    /// 魔法武器 (isPhysical=false) → 攻撃側は `magicAttack` を参照、`attack` は無視
+    /// (atk=7, mAtk=3, weapon=2) → 3+2 = 5
+    @Test
+    def testAttackStatForMagic(): Unit \ Assert =
+        Assert.assertEq(expected = 5, Combat.attackStatFor(7, 3, 2, false))
+
+    /// 物理武器 → 防御側は `defense` を参照
+    /// (def=4, mDef=5) + 物理武器 → 4
+    @Test
+    def testDefenseStatForPhysical(): Unit \ Assert =
+        Assert.assertEq(expected = 4, Combat.defenseStatFor(4, 5, true))
+
+    /// 魔法武器 → 防御側は `magicDefense` を参照
+    /// (def=4, mDef=5) + 魔法武器 → 5
+    @Test
+    def testDefenseStatForMagic(): Unit \ Assert =
+        Assert.assertEq(expected = 5, Combat.defenseStatFor(4, 5, false))
 }

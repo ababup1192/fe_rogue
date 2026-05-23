@@ -63,9 +63,9 @@
                                                   VBox.vgrow="ALWAYS"/>
                                         <Label text="シーンメモ" styleClass="section-header"/>
                                         <TextArea fx:id="sceneDescriptionArea"
-                                                  prefRowCount="3"
+                                                  prefRowCount="6"
                                                   wrapText="true"
-                                                  promptText="このシーンの説明 (2〜3行)"
+                                                  promptText="このシーンの説明 (3〜5行)"
                                                   styleClass="scene-description"/>
                                     </children>
                                 </VBox>

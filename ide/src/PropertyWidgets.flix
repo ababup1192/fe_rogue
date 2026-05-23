@@ -33,6 +33,9 @@ mod PropertyWidgets {
     import javafx.scene.control.ColorPicker
     import javafx.scene.control.ComboBox
     import javafx.scene.control.Spinner
+    import javafx.scene.control.ToggleButton
+    import javafx.scene.control.ToggleGroup
+    import javafx.scene.control.Toggle
     import javafx.scene.paint.{Color => FxColor}
     import javafx.scene.layout.HBox
     import javafx.scene.layout.StackPane
@@ -219,6 +222,10 @@ mod PropertyWidgets {
             case Resource.FieldType.RefPercentListT(target) =>
                 let options = Map.get(target, refOptions) |> Option.getWithDefault(Nil);
                 buildRefPercentListWidget(value, options, commit)
+            case Resource.FieldType.EnumT(values) =>
+                // 2 値なら segmented toggle で両ラベル可視、3 値以上は ComboBox にフォールバック
+                if (List.length(values) == 2) buildEnumToggleWidget(value, values, commit)
+                else buildEnumWidget(value, values, commit)
         }
 
     /// TexturePathT: project 登録 texture から選択する ComboBox<String>
@@ -331,6 +338,52 @@ mod PropertyWidgets {
             }
         });
         checked_cast(spinner)
+    }
+
+    /// 2 値 enum 用の segmented toggle widget。両ラベルを同時表示し、
+    /// クリックでアクティブ側だけ select 状態にする。`ToggleGroup` で
+    /// 片方しか押せないことを保証。値は JSON 文字列 (選択中ボタンのラベル) として commit する。
+    /// CheckBox の「チェック有無」と違って、未選択側のラベルも常に見えるので
+    /// 「ON 時は何で OFF 時は何か」をユーザーが推測する必要がない。
+    pub def buildEnumToggleWidget(value: Option[Json.JsonElement], options: List[String],
+                                    commit: Commit): Node \ IO = {
+        let current = match value {
+            case Some(Json.JsonElement.JsonString(s)) => s
+            case _ => List.head(options) |> Option.getWithDefault("")
+        };
+        let group = new ToggleGroup();
+        let box = new HBox();
+        box.setSpacing(0.0);
+        let children = box.getChildren();
+        List.forEach(label -> {
+            let btn = new ToggleButton(label);
+            btn.setToggleGroup(group);
+            btn.setPrefWidth(70.0);
+            if (label == current) btn.setSelected(true) else ();
+            // クリックで commit。`setOnAction` は選択状態変更時に必ず呼ばれる。
+            // ただし同じボタンを再クリックして deselect されると null になるため、
+            // ToggleGroup.selectedToggleProperty で「現在の選択 toggle」を監視する。
+            let btnNode: Node = checked_cast(btn);
+            discard children.add(btnNode)
+        }, options);
+        // ToggleGroup の selectedToggle 変化を subscribe して commit。
+        // 同じボタンを再クリックすると newVal が null になり「全 deselect」状態になるが、
+        // 2 値選択 UI としては片方が常に選択されているほうが自然なので、その場合は
+        // 旧 toggle を再選択して状態を戻す。
+        group.selectedToggleProperty().addListener(new ChangeListener[Toggle] {
+            def changed(_cThis: ChangeListener[Toggle], _obs: ObservableValue[JObject],
+                         oldVal: Toggle, newVal: Toggle): Unit \ IO =
+                if (Object.isNull(newVal)) {
+                    if (not Object.isNull(oldVal)) {
+                        let oldBtn: ToggleButton = unchecked_cast(oldVal as ToggleButton);
+                        oldBtn.setSelected(true)
+                    } else ()
+                } else {
+                    let btn: ToggleButton = unchecked_cast(newVal as ToggleButton);
+                    commit(Json.JsonElement.JsonString(btn.getText()))
+                }
+        });
+        checked_cast(box)
     }
 
     /// Enum widget: 有限の選択肢を持つ ComboBox<String>。値は JSON 文字列。

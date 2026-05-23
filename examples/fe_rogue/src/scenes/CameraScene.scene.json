@@ -1,5 +1,5 @@
 {
-  "description": "アクションメニュー\nこうげき, ひろう, たいき, しゅうごう",
+  "description": "フェーズ別に追従先を切り替えるトップレベル Camera2D\nCursor/選択中の味方/動作中の敵 を smoothing 付きで追う",
   "dragBottomMargin": 0.3,
   "dragHorizontalEnabled": true,
   "dragLeftMargin": 0.3,

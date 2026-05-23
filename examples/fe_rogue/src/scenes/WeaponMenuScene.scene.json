@@ -1,4 +1,5 @@
 {
+  "description": "武器選択ウィンドウ (PlayerMoving + Z で WeaponSelect)\n選択中プレイヤーの weapons を列挙、確定で AttackForecast へ",
   "type": "CanvasLayer",
   "name": "WeaponMenu",
   "layer": 2,

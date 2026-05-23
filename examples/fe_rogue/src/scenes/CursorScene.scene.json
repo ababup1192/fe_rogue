@@ -15,6 +15,7 @@
       "zIndex": 20
     }
   ],
+  "description": "味方ターン中の選択カーソル (Marker2D + Sprite2D)\nZ で味方マス選択 → PlayerMoving、敵マス上は赤い移動範囲を表示",
   "name": "Cursor",
   "pos": [
     64,

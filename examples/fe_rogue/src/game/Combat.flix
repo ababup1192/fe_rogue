@@ -28,6 +28,21 @@ mod Combat {
     pub def attackDamage(attack: Int32, defense: Int32): Int32 =
         Int32.max(0, attack - defense)
 
+    /// 装備武器の `isPhysical` に応じて、攻撃側の素ステ + 武器ボーナスの「総合攻撃力」を返す。
+    /// 物理: `attack + weaponAttack`、魔法: `magicAttack + weaponAttack`。
+    /// 呼び出し側 (PlayerScene / EnemyScene / BattlePanelScene) で同じ分岐を書かないように
+    /// 1 箇所に集約する。`forecast` / `attackDamage` の入力として使う。
+    /// Flix のレコード型は exact なので row polymorphism を避けてスカラー引数で受ける。
+    pub def attackStatFor(attack: Int32, magicAttack: Int32,
+                           weaponAttack: Int32, isPhysical: Bool): Int32 =
+        if (isPhysical) attack + weaponAttack
+        else magicAttack + weaponAttack
+
+    /// 装備武器の `isPhysical` に応じて、防御側が参照すべきステを返す。
+    /// 物理武器に対しては `defense`、魔法武器に対しては `magicDefense`。
+    pub def defenseStatFor(defense: Int32, magicDefense: Int32, isPhysical: Bool): Int32 =
+        if (isPhysical) defense else magicDefense
+
     /// 攻撃の命中率（百分率: 0..100）。
     /// 基準 80% に「攻撃側速 - 防御側速」× 5 を加算してクランプ:
     ///   - 速さ同等        → 80%

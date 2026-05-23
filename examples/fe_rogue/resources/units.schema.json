@@ -1,45 +1,67 @@
 {
   "fields": {
-    "moveTiles": {
-      "field": {
-        "ftype": "int",
-        "hint":  { "slider": { "min": 1, "max": 10, "step": 1 } },
-        "label": "移動力"
-      }
-    },
     "hp": {
       "field": {
         "ftype": "int",
         "hint":  { "slider": { "min": 1, "max": 100, "step": 5 } },
-        "label": "HP"
+        "label": "HP",
+        "order": 1
       }
     },
     "attack": {
       "field": {
         "ftype": "int",
         "hint":  { "slider": { "min": 0, "max": 30, "step": 1 } },
-        "label": "力"
+        "label": "力",
+        "order": 2
+      }
+    },
+    "magicAttack": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "slider": { "min": 0, "max": 30, "step": 1 } },
+        "label": "魔力",
+        "order": 3
       }
     },
     "defense": {
       "field": {
         "ftype": "int",
         "hint":  { "slider": { "min": 0, "max": 30, "step": 1 } },
-        "label": "防"
+        "label": "防",
+        "order": 4
+      }
+    },
+    "magicDefense": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "slider": { "min": 0, "max": 30, "step": 1 } },
+        "label": "魔防",
+        "order": 5
       }
     },
     "speed": {
       "field": {
         "ftype": "int",
         "hint":  { "slider": { "min": 0, "max": 20, "step": 1 } },
-        "label": "速"
+        "label": "速",
+        "order": 6
+      }
+    },
+    "moveTiles": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "slider": { "min": 1, "max": 10, "step": 1 } },
+        "label": "移動力",
+        "order": 7
       }
     },
     "initialWeapon": {
       "field": {
         "ftype": { "type": "ref", "to": "weapons" },
         "hint":  "plain",
-        "label": "初期装備"
+        "label": "初期装備",
+        "order": 8
       }
     },
     "sprite": {

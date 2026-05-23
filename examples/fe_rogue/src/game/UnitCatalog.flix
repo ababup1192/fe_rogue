@@ -54,16 +54,35 @@ mod UnitCatalog {
     }
 
     /// ユニット 1 種別ぶんのデータ。
-    /// `attack` は素の「力」(might)。実際の与ダメは `attack + 武器の attack - 防御`。
+    /// `attack` は素の「力」(might)。物理武器装備時の与ダメは `attack + 武器の attack - 防御`。
+    /// `magicAttack` は魔力。魔法武器装備時の与ダメは `magicAttack + 武器の attack - 魔防`。
+    /// `magicDefense` は魔防。魔法攻撃を受けた際の防御に使う。
     /// `initialWeapon` は武器カタログ (weapons.json) 内の武器 id への参照。
     pub type alias UnitResource = {
         moveTiles     = Int32,
         hp            = Int32,
         attack        = Int32,
         defense       = Int32,
+        magicAttack   = Int32,
+        magicDefense  = Int32,
         speed         = Int32,
         sprite        = SpriteResource,
         initialWeapon = String
+    }
+
+    /// 武器の属性（物理 / 魔法）。
+    /// 物理は `力 vs 防御`、魔法は `魔力 vs 魔防` で計算される。
+    /// JSON では `"Physical"` / `"Magic"` の文字列でシリアライズされ、
+    /// IDE は `EnumT(["Physical","Magic"])` のトグル UI で編集する。
+    pub enum WeaponType with Eq, ToString {
+        case Physical
+        case Magic
+    }
+
+    /// `WeaponType` が物理武器か。Combat 系の分岐で使う薄いヘルパー。
+    pub def isPhysical(wt: WeaponType): Bool = match wt {
+        case WeaponType.Physical => true
+        case WeaponType.Magic    => false
     }
 
     /// 武器 1 種別ぶんのデータ。
@@ -73,11 +92,13 @@ mod UnitCatalog {
     /// `range` は攻撃可能な距離の範囲 (`min..max` inclusive)。`min == max == 1` で
     /// 直接攻撃 (剣・槍・杖)、`min == 2 && max == 2` で 2 マス先のみ (弓)、
     /// `min == 1 && max == 2` で隣接 + 2 マス先 (手槍・手斧) などを表現する。
+    /// `weaponType` は物理 / 魔法のカテゴリ。`attack` 値はどちらの場合も装備者のステに加算される。
     pub type alias WeaponResource = {
         name       = String,
         attack     = Int32,
         durability = Int32,
         range      = WeaponRange,
+        weaponType = WeaponType,
         sprite     = SpriteResource
     }
 
@@ -208,11 +229,12 @@ mod UnitCatalog {
     /// `UnitResource` のフィールド構造を変更したらここも更新すること。
     /// engine 側 `Resource.checkConsistency` がこの集合と `_schema.json` を照合する。
     pub def expectedUnitFields(): Set[String] =
-        Set#{"moveTiles", "hp", "attack", "defense", "speed", "sprite", "initialWeapon"}
+        Set#{"moveTiles", "hp", "attack", "defense", "magicAttack", "magicDefense",
+              "speed", "sprite", "initialWeapon"}
 
     /// `WeaponResource` のフィールド名集合。`weapons.schema.json` との整合性検査に使う。
     pub def expectedWeaponFields(): Set[String] =
-        Set#{"name", "attack", "durability", "range", "sprite"}
+        Set#{"name", "attack", "durability", "range", "weaponType", "sprite"}
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -260,6 +282,8 @@ mod UnitCatalogCodec {
             "hp"            => JsonNumber(intToBd(u#hp)),
             "attack"        => JsonNumber(intToBd(u#attack)),
             "defense"       => JsonNumber(intToBd(u#defense)),
+            "magicAttack"   => JsonNumber(intToBd(u#magicAttack)),
+            "magicDefense"  => JsonNumber(intToBd(u#magicDefense)),
             "speed"         => JsonNumber(intToBd(u#speed)),
             "sprite"        => encodeSprite(u#sprite),
             "initialWeapon" => JsonString(u#initialWeapon)
@@ -363,8 +387,20 @@ mod UnitCatalogCodec {
             spd    <- expectInt(spdJ);
             sp     <- decodeSprite(spJ);
             iw     <- expectString(iwJ)
-        ) yield ({moveTiles = mt, hp = hp, attack = atk, defense = df,
-                  speed = spd, sprite = sp, initialWeapon = iw}: UnitResource)
+        ) yield {
+            // magicAttack / magicDefense は省略可能。欠落時は 0。
+            // IDE のスライダーが 0 のときフィールドを省略するケース、および
+            // 旧 units.json への後方互換のため。
+            let mAtk = Map.get("magicAttack", obj)
+                         |> Option.flatMap(expectInt)
+                         |> Option.getWithDefault(0);
+            let mDef = Map.get("magicDefense", obj)
+                         |> Option.flatMap(expectInt)
+                         |> Option.getWithDefault(0);
+            ({moveTiles = mt, hp = hp, attack = atk, defense = df,
+              magicAttack = mAtk, magicDefense = mDef,
+              speed = spd, sprite = sp, initialWeapon = iw}: UnitResource)
+        }
 
     def decodeWeapon(element: JsonElement): Option[WeaponResource] =
         forM (
@@ -379,8 +415,24 @@ mod UnitCatalogCodec {
             dur    <- expectInt(durJ);
             rng    <- decodeRange(rngJ);
             sp     <- decodeSprite(spJ)
-        ) yield ({name = name, attack = atk, durability = dur, range = rng,
-                  sprite = sp}: WeaponResource)
+        ) yield {
+            // weaponType は省略可能。欠落時は Physical（物理武器がデフォルト）。
+            // 旧 weapons.json への後方互換。未知文字列は Physical にフォールバック。
+            let wt = Map.get("weaponType", obj)
+                        |> Option.flatMap(expectString)
+                        |> Option.map(parseWeaponType)
+                        |> Option.getWithDefault(UnitCatalog.WeaponType.Physical);
+            ({name = name, attack = atk, durability = dur, range = rng,
+              weaponType = wt, sprite = sp}: WeaponResource)
+        }
+
+    /// `"Physical"` / `"Magic"` 文字列から `WeaponType` に。
+    /// 未知文字列は Physical にフォールバックする（schema が文字列を強制するため
+    /// 通常は到達しないが、JSON 直編集の typo を panic させずに済ませる）。
+    def parseWeaponType(s: String): UnitCatalog.WeaponType = match s {
+        case "Magic"    => UnitCatalog.WeaponType.Magic
+        case _          => UnitCatalog.WeaponType.Physical
+    }
 
     def decodeRange(element: JsonElement): Option[UnitCatalog.WeaponRange] =
         forM (

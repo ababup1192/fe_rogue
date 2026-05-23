@@ -35,6 +35,9 @@ mod IdeState {
         resourcePreviewFrameAdjustChk = Array[Option[CheckBox], Static],
         resourceStatusLabel           = Array[Option[Label], Static],
         sceneDescriptionArea          = Array[Option[TextArea], Static],
+        // TextArea に表示中の description がどの scene.json 由来かを追う。
+        // シーン切替直後の blur で「新シーンに前シーンの内容が書き込まれる」事故を防ぐ
+        sceneDescriptionEditingPath   = Array[Option[String], Static],
         stage                         = Array[Option[Stage], Static],
         loadingOverlay                = Array[Option[VBox], Static],
         loadingLabel                  = Array[Option[Label], Static],
@@ -150,6 +153,7 @@ mod IdeState {
             resourcePreviewFrameAdjustChk = Array#{(None: Option[CheckBox])} @ Static,
             resourceStatusLabel           = Array#{(None: Option[Label])} @ Static,
             sceneDescriptionArea          = Array#{(None: Option[TextArea])} @ Static,
+            sceneDescriptionEditingPath   = Array#{(None: Option[String])} @ Static,
             stage                         = Array#{(None: Option[Stage])} @ Static,
             loadingOverlay                = Array#{(None: Option[VBox])} @ Static,
             loadingLabel                  = Array#{(None: Option[Label])} @ Static,

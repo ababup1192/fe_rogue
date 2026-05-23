@@ -497,8 +497,14 @@ mod EnemyScene {
             case (None, _)        => (scene, Nil)
             case (_, None)        => (scene, Nil)
             case (Some(weapon), Some(player)) =>
-                let totalAttack = enemy#resource#attack + weapon#attack;
-                let dmg    = Combat.attackDamage(totalAttack, player#resource#defense);
+                let phys = UnitCatalog.isPhysical(weapon#weaponType);
+                let totalAttack = Combat.attackStatFor(enemy#resource#attack,
+                                                       enemy#resource#magicAttack,
+                                                       weapon#attack, phys);
+                let targetDef   = Combat.defenseStatFor(player#resource#defense,
+                                                        player#resource#magicDefense,
+                                                        phys);
+                let dmg    = Combat.attackDamage(totalAttack, targetDef);
                 let result = Combat.damage(hp = player#hp, amount = dmg);
                 if (result#isDead) {
                     GameLogger.enemyLog("敵${enemyId} → P${targetId} を撃破")

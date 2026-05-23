@@ -11,6 +11,8 @@ mod TestUnitCatalog {
 
     /// units.json と同じ構造の JSON 文字列リテラル。
     /// 各ユニットは `initialWeapon` で武器 id を直接持つ。
+    /// `magicAttack` / `magicDefense` は省略可能だが、knight 側は明示・goblin 側は省略して
+    /// 「省略時 0 デフォルト」のデコードも同時に検証する。
     def sampleUnitsJson(): String = String.unlines(
         "{" ::
         "  \"units\": {" ::
@@ -19,6 +21,8 @@ mod TestUnitCatalog {
         "      \"hp\": 14," ::
         "      \"attack\":  6," ::
         "      \"defense\": 5," ::
+        "      \"magicAttack\":  1," ::
+        "      \"magicDefense\": 2," ::
         "      \"speed\":   2," ::
         "      \"initialWeapon\": \"trainingSpear\"," ::
         "      \"sprite\": { \"texture\": \"character_sheet\", \"hframes\": 5, \"vframes\": 2, \"frame\": 0 }" ::
@@ -38,11 +42,13 @@ mod TestUnitCatalog {
         "}" :: Nil)
 
     /// weapons.json と同じ構造の JSON 文字列リテラル。
+    /// trainingSpear は `weaponType` 省略（Physical デフォルトを検証）、
+    /// trainingSword は明示 "Magic"（魔法トグル切替の効果を検証）。
     def sampleWeaponsJson(): String = String.unlines(
         "{" ::
         "  \"weapons\": {" ::
         "    \"trainingSpear\": { \"name\": \"trainingSpear\", \"attack\": 2, \"durability\": 41, \"range\": { \"min\": 1, \"max\": 1 }, \"sprite\": { \"texture\": \"roguelike_weapons\", \"hframes\": 54, \"vframes\": 12, \"frame\": 50 } }," ::
-        "    \"trainingSword\": { \"name\": \"trainingSword\", \"attack\": 3, \"durability\": 41, \"range\": { \"min\": 1, \"max\": 2 }, \"sprite\": { \"texture\": \"roguelike_weapons\", \"hframes\": 54, \"vframes\": 12, \"frame\": 49 } }" ::
+        "    \"trainingSword\": { \"name\": \"trainingSword\", \"attack\": 3, \"durability\": 41, \"range\": { \"min\": 1, \"max\": 2 }, \"weaponType\": \"Magic\", \"sprite\": { \"texture\": \"roguelike_weapons\", \"hframes\": 54, \"vframes\": 12, \"frame\": 49 } }" ::
         "  }" ::
         "}" :: Nil)
 
@@ -127,5 +133,58 @@ mod TestUnitCatalog {
                 let sword = UnitCatalog.lookupWeapon("trainingSword", c);
                 Assert.assertEq(expected = (1, 2),
                                 (sword#range#min, sword#range#max))
+        }
+
+    /// 明示された magicAttack / magicDefense が JSON から読み取られる
+    /// （knight: magicAttack=1, magicDefense=2）
+    @Test
+    def testUnitDecodesMagicStats(): Unit \ Assert =
+        match buildSampleCatalog() {
+            case None    => Assert.assertEq(expected = "decoded", "none")
+            case Some(c) =>
+                let knight = match Map.get("knight", UnitCatalog.unitsOf(c)) {
+                    case Some(u) => u
+                    case None    => bug!("knight not in sample catalog")
+                };
+                Assert.assertEq(expected = (1, 2),
+                                (knight#magicAttack, knight#magicDefense))
+        }
+
+    /// magicAttack / magicDefense を省略したユニットはデフォルト 0 でデコードされる
+    /// （旧 units.json への後方互換）
+    @Test
+    def testUnitDecodesMagicStatsDefaultsToZero(): Unit \ Assert =
+        match buildSampleCatalog() {
+            case None    => Assert.assertEq(expected = "decoded", "none")
+            case Some(c) =>
+                let goblin = match Map.get("goblin", UnitCatalog.unitsOf(c)) {
+                    case Some(u) => u
+                    case None    => bug!("goblin not in sample catalog")
+                };
+                Assert.assertEq(expected = (0, 0),
+                                (goblin#magicAttack, goblin#magicDefense))
+        }
+
+    /// `weaponType` 明示の武器が魔法武器としてデコードされる（trainingSword: "Magic"）
+    @Test
+    def testWeaponDecodesMagicType(): Unit \ Assert =
+        match buildSampleCatalog() {
+            case None    => Assert.assertEq(expected = "decoded", "none")
+            case Some(c) =>
+                let sword = UnitCatalog.lookupWeapon("trainingSword", c);
+                Assert.assertEq(expected = UnitCatalog.WeaponType.Magic,
+                                sword#weaponType)
+        }
+
+    /// `weaponType` 省略の武器は物理武器（Physical）としてデコードされる
+    /// （旧 weapons.json への後方互換）
+    @Test
+    def testWeaponDecodesTypeDefaultsToPhysical(): Unit \ Assert =
+        match buildSampleCatalog() {
+            case None    => Assert.assertEq(expected = "decoded", "none")
+            case Some(c) =>
+                let spear = UnitCatalog.lookupWeapon("trainingSpear", c);
+                Assert.assertEq(expected = UnitCatalog.WeaponType.Physical,
+                                spear#weaponType)
         }
 }

@@ -1,7 +1,11 @@
 {
   "children": [
     {
-      "background": {"r": 0.10196078568696976, "g": 0.20000000298023224, "b": 0.6000000238418579},
+      "background": {
+        "b": 0.6000000238418579,
+        "g": 0.20000000298023224,
+        "r": 0.10196078568696976
+      },
       "backgroundAlpha": 0.8,
       "border": {
         "b": 1,
@@ -46,7 +50,7 @@
       "zIndex": 0
     }
   ],
-  "description": "",
+  "description": "行動選択ウィンドウ (PlayerMoving/Cursor で Z)\n文脈別: 味方=こうげき/ひろう/たいき、空マス=しゅうごう",
   "layer": 2,
   "name": "ActionMenu",
   "pos": [

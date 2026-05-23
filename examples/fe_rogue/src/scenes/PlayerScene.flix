@@ -771,8 +771,14 @@ mod PlayerScene {
             case (None, _)        => scene
             case (_, None)        => scene
             case (Some(weapon), Some(enemy)) =>
-                let totalAttack = player#resource#attack + weapon#attack;
-                let dmg    = Combat.attackDamage(totalAttack, enemy#resource#defense);
+                let phys = UnitCatalog.isPhysical(weapon#weaponType);
+                let totalAttack = Combat.attackStatFor(player#resource#attack,
+                                                       player#resource#magicAttack,
+                                                       weapon#attack, phys);
+                let targetDef   = Combat.defenseStatFor(enemy#resource#defense,
+                                                        enemy#resource#magicDefense,
+                                                        phys);
+                let dmg    = Combat.attackDamage(totalAttack, targetDef);
                 let result = Combat.damage(hp = enemy#hp, amount = dmg);
                 // 被弾位置（敵の頭上）にダメージ数字を浮かす。撃破時もこの 1 回は出す。
                 let popupPos = MapScene.cellCenter(enemy#gridPos);
