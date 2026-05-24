@@ -178,12 +178,31 @@ mod PhaseTransitions {
         scene
 
     /// TradeTargetSelect / TradeInventory から ActionSelect に戻す共通動作。
-    /// 緑マス overlay を片付けてからフェーズだけ戻す (ActionMenu は visibility
-    /// で自動再表示される)。X キャンセル + 交換完了後の両方で呼ぶ。
+    /// 緑マス overlay を片付けて TradeMenu の PanelData を初期値にリセットし、
+    /// フェーズを戻す (ActionMenu は visibility で自動再表示される)。
+    /// X キャンセル + 交換完了後の両方で呼ぶ。
     pub def enterActionSelectFromTrade(scene: Scene[NodeTag]):
             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
-        TradeRangeScene.clear(scene)
+        scene
+            |> TradeRangeScene.clear
+            |> TradeMenuScene.mapPanelData(_ -> TradeMenuScene.defaultPanelData())
+
+    /// TradeInventory フェーズに入る (TradeTargetSelect で Z 押下時)。
+    /// 緑マス overlay を片付け (もう不要)、`partnerId` を PanelData にセットして
+    /// `focus = Self / selfPick = None` に初期化する。
+    /// カーソルは TradeInventory 中は使われないので隠す (ActionSelect から
+    /// 戻ったときに再表示される)。
+    pub def enterTradeInventory(partnerId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.TradeInventory);
+        scene
+            |> TradeRangeScene.clear
+            |> CursorScene.setVisible(false)
+            |> TradeMenuScene.mapPanelData(_ ->
+                ({partnerId = partnerId,
+                  selfPick  = None,
+                  focus     = TradeMenuScene.Pane.Self}: TradeMenuScene.PanelData))
 
     /// TradeTargetSelect フェーズに入る (ActionMenu「こうかん」確定時)。
     /// 動作 (上の表): 味方系の青/赤マスを片付け、緑マス (TradeRange) を敷き直し、

@@ -45,6 +45,7 @@ mod GameLifecycle {
             |> AutoMoveScene.add        // AutoMove 駆動の常駐タグノード (process で phase 判定)
             |> ItemMenuScene.add        // アイテム選択ウィンドウ (初期は非表示)
             |> ActionMenuScene.add      // 行動選択ウィンドウ (初期は非表示)
+            |> TradeMenuScene.add       // 物交換ウィンドウ (2 ペイン、初期は非表示)
             |> BattlePanelScene.add   // 戦闘予報パネル (初期は非表示)
             |> UnitInfoPopupScene.add   // カーソル上のユニット情報パネル (初期は非表示)
 

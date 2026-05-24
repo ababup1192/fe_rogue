@@ -613,6 +613,80 @@ mod PlayerScene {
                         scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPlayer(playerId, d -> {staves = removeAt(idx, d#staves) | d}, scene)
 
+    /// 2 プレイヤー間でインベントリのアイテム 1 個ずつを交換する純粋関数。
+    ///   - 双方が実体アイテム持ちなら相互スワップ（ともに元の場所から消え、相手の末尾に追加）
+    ///   - 相手が `None` (= 空スロット) のときは一方向 transfer
+    ///     (自分のアイテムが消えて相手の対応リスト末尾に積まれる)
+    /// 種別 (武器/杖) は元のままなので、武器 ↔ 杖の交換も自動的に両者の対応リストへ振り分けられる。
+    /// `selfKind` が範囲外 / `selfId` が存在しない場合は防御的に no-op。
+    /// 「こうかん」確定 (Phase 4) で TradeMenuScene から呼ばれる。
+    pub def swapItem(selfId: Int32, selfKind: ItemKind,
+                      partnerId: Int32, partnerKind: Option[ItemKind],
+                      scene: Scene[NodeTag]): Scene[NodeTag] =
+        // 1. 両者のアイテム実体を「現在の scene」から抜き出す (まだ削除はしない)
+        let selfItemOpt = getInventoryItem(selfId, selfKind, scene);
+        let partnerItemOpt = partnerKind
+            |> Option.flatMap(pk -> getInventoryItem(partnerId, pk, scene));
+        // 2. self 側に実体が無ければ no-op (selfKind = 空スロットは仕様外)
+        selfItemOpt
+            |> Option.map(selfItem -> scene
+                |> removeInventoryItem(selfId, selfKind)
+                |> removeOptInventoryItem(partnerId, partnerKind)
+                |> addOptInventoryItem(selfId, partnerItemOpt)
+                |> addInventoryItem(partnerId, selfItem))
+            |> Option.getWithDefault(scene)
+
+    /// 指定 player の (kind = Weapon(idx) | Staff(idx)) のアイテム実体を返す。
+    /// player が居ない / index が範囲外なら None
+    /// (getWeapons / getStaves が居ない player に対し Nil を返すので、その経由で None)。
+    /// 戻り値は `ItemScene.GroundItemKind` を流用 (= 「インベントリ可能なアイテム値」)。
+    def getInventoryItem(playerId: Int32, kind: ItemKind, scene: Scene[NodeTag]):
+            Option[ItemScene.GroundItemKind] =
+        match kind {
+            case ItemKind.Weapon(idx) =>
+                List.nth(idx, getWeapons(playerId, scene))
+                    |> Option.map(w -> ItemScene.GroundItemKind.WeaponItem(w))
+            case ItemKind.Staff(idx) =>
+                List.nth(idx, getStaves(playerId, scene))
+                    |> Option.map(s -> ItemScene.GroundItemKind.StaffItem(s))
+        }
+
+    /// 指定 player の `kind` のアイテムをインベントリから取り除く。
+    /// `dropWeapon` / `dropStaff` のディスパッチ統合版。
+    def removeInventoryItem(playerId: Int32, kind: ItemKind,
+                              scene: Scene[NodeTag]): Scene[NodeTag] =
+        match kind {
+            case ItemKind.Weapon(idx) => dropWeapon(playerId, idx, scene)
+            case ItemKind.Staff(idx)  => dropStaff(playerId, idx, scene)
+        }
+
+    /// `partnerKind = None` (= 空スロット相手) の場合は no-op、Some なら removeInventoryItem。
+    def removeOptInventoryItem(playerId: Int32, kindOpt: Option[ItemKind],
+                                 scene: Scene[NodeTag]): Scene[NodeTag] =
+        kindOpt
+            |> Option.map(k -> removeInventoryItem(playerId, k, scene))
+            |> Option.getWithDefault(scene)
+
+    /// 指定 player のインベントリに `item` を追加 (武器なら weapons 末尾、杖なら staves 末尾)。
+    /// `ActionMenuScene.addPickedItem` と同じ追加ルール (ログを出さない版)。
+    def addInventoryItem(playerId: Int32, item: ItemScene.GroundItemKind,
+                          scene: Scene[NodeTag]): Scene[NodeTag] =
+        match item {
+            case ItemScene.GroundItemKind.WeaponItem(weapon) =>
+                mapPlayer(playerId,
+                    d -> {weapons = List.append(d#weapons, weapon :: Nil) | d}, scene)
+            case ItemScene.GroundItemKind.StaffItem(staff)   =>
+                mapPlayer(playerId,
+                    d -> {staves = List.append(d#staves, staff :: Nil) | d}, scene)
+        }
+
+    /// `optItem = None` のときは no-op、Some なら addInventoryItem。
+    def addOptInventoryItem(playerId: Int32, optItem: Option[ItemScene.GroundItemKind],
+                              scene: Scene[NodeTag]): Scene[NodeTag] =
+        optItem
+            |> Option.map(item -> addInventoryItem(playerId, item, scene))
+            |> Option.getWithDefault(scene)
+
     /// List の `idx` 番目の要素を先頭に移動する。範囲外なら元のリストをそのまま返す。
     /// `[a, b, c, d]` の idx=2 を頭に → `[c, a, b, d]`。
     def moveToHead(idx: Int32, list: List[a]): List[a] =

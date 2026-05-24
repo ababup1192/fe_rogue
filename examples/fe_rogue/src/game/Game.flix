@@ -18,6 +18,12 @@ pub enum NodeTag {
     case ItemPanel
     /// ItemMenuScene の ItemList（武器+杖の一覧 + サブメニュー兼用）
     case ItemMenu
+    /// TradeMenuScene の Panel ルート（partnerId / selfPick / focus を抱えるセッション状態）
+    case TradePanel(TradeMenuScene.PanelData)
+    /// TradeMenuScene の左 ItemList (じぶん)
+    case TradeSelfMenu
+    /// TradeMenuScene の右 ItemList (あいて)
+    case TradePartnerMenu
     /// ActionMenuScene の Panel ルート（外枠）
     case ActionPanel
     /// ActionMenuScene の ItemList（こうげき / たいき）
@@ -143,6 +149,10 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
             checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
+        case EngineNode.ItemListWithState(_, NodeTag.TradeSelfMenu) =>
+            checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
+        case EngineNode.ItemListWithState(_, NodeTag.TradePartnerMenu) =>
+            checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.PanelWithState(_, NodeTag.BattlePanel) =>
             checked_ecast(BattlePanelScene.process(delta, node, path, scene))
         case _ => (node, scene)
@@ -250,8 +260,10 @@ instance MenuEvent.MenuHandler[NodeTag] {
                         checked_ecast(ItemMenuScene.onActionConfirmed(entry, scene))
                     case _                                 => scene
                 }
-            case NodeTag.ActionMenu => ActionMenuScene.onActionConfirmed(entry, scene)
-            case _                  => scene
+            case NodeTag.ActionMenu        => ActionMenuScene.onActionConfirmed(entry, scene)
+            case NodeTag.TradeSelfMenu     => checked_ecast(TradeMenuScene.onConfirmSelf(entry, scene))
+            case NodeTag.TradePartnerMenu  => checked_ecast(TradeMenuScene.onConfirmPartner(entry, scene))
+            case _                         => scene
         }
     redef onItemCancelled(_menuPath: NodePath, state: NodeTag,
                            scene: Scene[NodeTag]):
@@ -270,8 +282,10 @@ instance MenuEvent.MenuHandler[NodeTag] {
                         checked_ecast(ItemMenuScene.onActionCancelled(scene))
                     case _                                 => scene
                 }
-            case NodeTag.ActionMenu => checked_ecast(ActionMenuScene.onActionCancelled(scene))
-            case _                  => scene
+            case NodeTag.ActionMenu        => checked_ecast(ActionMenuScene.onActionCancelled(scene))
+            case NodeTag.TradeSelfMenu     => checked_ecast(TradeMenuScene.onCancelSelf(scene))
+            case NodeTag.TradePartnerMenu  => checked_ecast(TradeMenuScene.onCancelPartner(scene))
+            case _                         => scene
         }
 }
 

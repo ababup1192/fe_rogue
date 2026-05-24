@@ -1,0 +1,54 @@
+{
+  "description": "物交換ウィンドウ (TradeInventory フェーズ)\nじぶん (左) / あいて (右) の 2 ペインで武器+杖を並べる",
+  "type": "CanvasLayer",
+  "name": "TradeMenu",
+  "layer": 2,
+  "pos": [0, 0],
+  "rotation": 0,
+  "scale": [1, 1],
+  "children": [
+    {
+      "type": "Panel",
+      "name": "panel",
+      "tag": "TradePanel",
+      "pos": [4, 30],
+      "size": [120, 60],
+      "background": {"r": 0.10196078568696976, "g": 0.20000000298023224, "b": 0.6000000238418579},
+      "backgroundAlpha": 0.8,
+      "border": {"r": 1, "g": 1, "b": 1},
+      "borderWidth": 1,
+      "zIndex": 0,
+      "visible": false,
+      "children": [
+        {
+          "type": "ItemList",
+          "name": "selfMenu",
+          "pos": [2, 2],
+          "size": [56, 56],
+          "fontSize": 4,
+          "tag": "TradeSelfMenu",
+          "items": [],
+          "wrap": true,
+          "focused": false,
+          "visible": false,
+          "cursorGlyph": ">",
+          "itemHeight": 6
+        },
+        {
+          "type": "ItemList",
+          "name": "partnerMenu",
+          "pos": [62, 2],
+          "size": [56, 56],
+          "fontSize": 4,
+          "tag": "TradePartnerMenu",
+          "items": [],
+          "wrap": true,
+          "focused": false,
+          "visible": false,
+          "cursorGlyph": ">",
+          "itemHeight": 6
+        }
+      ]
+    }
+  ]
+}

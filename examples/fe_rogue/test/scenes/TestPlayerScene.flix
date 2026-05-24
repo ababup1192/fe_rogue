@@ -199,4 +199,121 @@ mod TestPlayerScene {
         let neighbors = TestUnitFixtures.withMockPartyQuery(scene, () ->
             PlayerScene.adjacentAllies(self));
         Assert.assertEq(expected = Nil, List.map(d -> d#id, neighbors))
+
+    // ========================================================================
+    // swapItem — 2 プレイヤー間でアイテムを交換する
+    // ========================================================================
+
+    /// テスト用名前付き武器。`name` で交換結果が区別できるよう作る。
+    def namedWeapon(weaponName: String): UnitCatalog.WeaponResource = {
+        name       = weaponName,
+        attack     = 2,
+        durability = 10,
+        range      = { min = 1, max = 1 },
+        weaponType = UnitCatalog.WeaponType.Physical,
+        sprite     = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
+                       offset = {x = 0.0, y = 0.0}}: UnitCatalog.SpriteResource)
+    }
+
+    /// テスト用名前付き杖 (耐久 3, Heal 効果)。
+    def namedStaff(staffName: String): Staff.StaffResource = {
+        name       = staffName,
+        effect     = Staff.StaffEffect.Heal,
+        durability = 3,
+        sprite     = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
+                       offset = {x = 0.0, y = 0.0}}: UnitCatalog.SpriteResource)
+    }
+
+    /// id / weapons / staves だけ意味を持つ PlayerScene.Data を組む。
+    /// gridPos などは固定値 (swap は位置を見ない)。
+    def memberWithItems(id: Int32,
+                         weapons: List[UnitCatalog.WeaponResource],
+                         staves: List[Staff.StaffResource]): PlayerScene.Data = {
+        id              = id,
+        gridPos         = {x = 0, y = 0},
+        moveTiles       = 5,
+        hp              = 10,
+        waited          = false,
+        attackTargetId  = None,
+        resource        = TestUnitFixtures.testResource(5, 10),
+        weapons         = weapons,
+        staves          = staves,
+        selectedItem    = None,
+        moveStepsTaken  = 0
+    }
+
+    /// インベントリ確認用に各プレイヤーの武器名 / 杖名のリストを取り出す。
+    /// 順序保存で比較するので、テストは「期待する順序」も含めて pin できる。
+    def inventoryNamesOf(id: Int32, scene: Scene[NodeTag]):
+            (List[String], List[String]) =
+        let weaponNames = PlayerScene.getWeapons(id, scene)
+                            |> List.map(w -> w#name);
+        let staffNames  = PlayerScene.getStaves(id, scene)
+                            |> List.map(s -> s#name);
+        (weaponNames, staffNames)
+
+    /// 配置: P0 weapons=[A, B] / P1 weapons=[C]
+    /// P0 の Weapon(0)=A と P1 の Weapon(0)=C を交換。
+    /// 期待:
+    ///   P0: weapons=[B, C] (A 抜けて末尾に C 追加 → リスト順は [B, C])
+    ///   P1: weapons=[A]    (C 抜けて末尾に A 追加)
+    @Test
+    def testSwapItemWeaponToWeaponExchangesBothInventories(): Unit \ Assert =
+        let p0 = memberWithItems(0, namedWeapon("A") :: namedWeapon("B") :: Nil, Nil);
+        let p1 = memberWithItems(1, namedWeapon("C") :: Nil, Nil);
+        let scene = sceneWithParty(p0 :: p1 :: Nil);
+        let after = PlayerScene.swapItem(0, PlayerScene.ItemKind.Weapon(0),
+                                          1, Some(PlayerScene.ItemKind.Weapon(0)),
+                                          scene);
+        Assert.assertEq(
+            expected = (("B" :: "C" :: Nil, Nil), ("A" :: Nil, Nil)),
+            (inventoryNamesOf(0, after), inventoryNamesOf(1, after)))
+
+    /// 配置: P0 staves=[X] / P1 staves=[Y]
+    /// P0 の Staff(0)=X と P1 の Staff(0)=Y を交換 (杖同士)。
+    /// 期待: P0 staves=[Y] / P1 staves=[X]
+    @Test
+    def testSwapItemStaffToStaffExchangesBothInventories(): Unit \ Assert =
+        let p0 = memberWithItems(0, Nil, namedStaff("X") :: Nil);
+        let p1 = memberWithItems(1, Nil, namedStaff("Y") :: Nil);
+        let scene = sceneWithParty(p0 :: p1 :: Nil);
+        let after = PlayerScene.swapItem(0, PlayerScene.ItemKind.Staff(0),
+                                          1, Some(PlayerScene.ItemKind.Staff(0)),
+                                          scene);
+        Assert.assertEq(
+            expected = ((Nil, "Y" :: Nil), (Nil, "X" :: Nil)),
+            (inventoryNamesOf(0, after), inventoryNamesOf(1, after)))
+
+    /// 配置: P0 weapons=[A], staves=[] / P1 weapons=[], staves=[X]
+    /// P0 の Weapon(0)=A と P1 の Staff(0)=X を交換 (種別跨ぎ)。
+    /// 期待:
+    ///   P0: weapons=[], staves=[X]   (受け取った杖は staves 側に入る)
+    ///   P1: weapons=[A], staves=[]   (受け取った武器は weapons 側に入る)
+    @Test
+    def testSwapItemWeaponToStaffCrossesInventoryLists(): Unit \ Assert =
+        let p0 = memberWithItems(0, namedWeapon("A") :: Nil, Nil);
+        let p1 = memberWithItems(1, Nil, namedStaff("X") :: Nil);
+        let scene = sceneWithParty(p0 :: p1 :: Nil);
+        let after = PlayerScene.swapItem(0, PlayerScene.ItemKind.Weapon(0),
+                                          1, Some(PlayerScene.ItemKind.Staff(0)),
+                                          scene);
+        Assert.assertEq(
+            expected = ((Nil, "X" :: Nil), ("A" :: Nil, Nil)),
+            (inventoryNamesOf(0, after), inventoryNamesOf(1, after)))
+
+    /// 配置: P0 weapons=[A] / P1 weapons=[]
+    /// P0 の Weapon(0)=A を P1 の空スロット (partnerKind = None) に渡す。
+    /// 期待:
+    ///   P0: weapons=[]     (A が消える、自分のスロットは空になる)
+    ///   P1: weapons=[A]    (A を受け取る)
+    @Test
+    def testSwapItemTransfersToEmptySlot(): Unit \ Assert =
+        let p0 = memberWithItems(0, namedWeapon("A") :: Nil, Nil);
+        let p1 = memberWithItems(1, Nil, Nil);
+        let scene = sceneWithParty(p0 :: p1 :: Nil);
+        let after = PlayerScene.swapItem(0, PlayerScene.ItemKind.Weapon(0),
+                                          1, None, scene);
+        Assert.assertEq(
+            expected = ((Nil, Nil), ("A" :: Nil, Nil)),
+            (inventoryNamesOf(0, after), inventoryNamesOf(1, after)))
 }

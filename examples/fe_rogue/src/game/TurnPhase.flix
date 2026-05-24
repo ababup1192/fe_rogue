@@ -65,10 +65,18 @@ mod TurnPhase {
         /// 味方ターン・物交換の相手選択フェーズ。
         /// ActionMenu の「こうかん」確定で入り、選択中味方の上下左右 1 マスの
         /// 他味方マスが緑マスで描かれる (`TradeRangeScene`)。カーソルは緑マス上
-        /// のみ移動可。Z で交換相手を確定 → (Phase 4 で実装する) TradeInventory
-        /// フェーズへ。X/Escape で交換をキャンセルし `ActionSelect` に戻る
+        /// のみ移動可。Z で交換相手を確定 → `TradeInventory` フェーズへ。
+        /// X/Escape で交換をキャンセルし `ActionSelect` に戻る
         /// (行動継続: ActionMenu に戻る)。
         case TradeTargetSelect
+        /// 味方ターン・物交換のインベントリ画面フェーズ。
+        /// `TradeTargetSelect` で交換相手を Z で確定すると入り、画面に
+        /// 「じぶん (左) / あいて (右)」の 2 ペインの ItemList が出る
+        /// (`TradeMenuScene`)。↑↓ でアイテム移動、Enter/Z で確定。
+        /// 自分側で 1 個選ぶ → focus があいて側に切替 → あいて側で 1 個選んで
+        /// スワップ実行 → focus がじぶん側に戻る (連続交換可能)。
+        /// 未選択で X/Escape → `ActionSelect` に戻る (行動継続)。
+        case TradeInventory
         /// 味方ターン・戦闘予報フェーズ。
         /// PlayerAttack で敵に対して Z を押した瞬間に入り、装備中武器（weapons の先頭）で
         /// 戦闘予報パネルが出る。味方と敵の HP / 威力 / 命中 を並べる。
@@ -233,6 +241,10 @@ mod TurnRules {
                 Transition.Stay
             case (TurnPhase.Phase.AttackForecast, _) =>
                 Transition.Stay
+            // TradeInventory は MenuHandler が ItemList の Enter/Escape を直接処理する
+            // ため、TurnRules 経由では遷移しない (キー押下は handleMenus パスに乗る)。
+            case (TurnPhase.Phase.TradeInventory, _) =>
+                Transition.Stay
             case (TurnPhase.Phase.PlayerMoving, Input.Cancel) =>
                 if (context#playerBusy) Transition.Stay
                 else Transition.MovingCancel
@@ -386,11 +398,8 @@ mod TurnInputBridge {
                     |> PhaseTransitions.enterAttackForecast
             case TurnRules.Transition.AttackSkip                        =>
                 PlayerScene.commitWaitedAndAdvance(scene)
-            case TurnRules.Transition.OpenTradeInventory(_partnerId)    =>
-                // Phase 4 で TradeInventory フェーズを実装するまでの placeholder。
-                // 現状は ActionSelect に戻すだけ (= TradeCancel と同じ挙動)。
-                // partnerId は将来 TradeMenuScene.PanelData にセットする予定。
-                PhaseTransitions.enterActionSelectFromTrade(scene)
+            case TurnRules.Transition.OpenTradeInventory(partnerId)     =>
+                PhaseTransitions.enterTradeInventory(partnerId, scene)
             case TurnRules.Transition.TradeCancel                       =>
                 PhaseTransitions.enterActionSelectFromTrade(scene)
         }
