@@ -18,7 +18,7 @@ pub enum NodeTag {
     case ItemPanel
     /// ItemMenuScene の ItemList（武器+杖の一覧 + サブメニュー兼用）
     case ItemMenu
-    /// TradeMenuScene の Panel ルート（partnerId / selfPick / focus を抱えるセッション状態）
+    /// TradeMenuScene の Panel ルート（partnerId / pick / focus を抱えるセッション状態）
     case TradePanel(TradeMenuScene.PanelData)
     /// TradeMenuScene の左 ItemList (じぶん)
     case TradeSelfMenu
@@ -369,6 +369,10 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
         // StaffAim 中の方向キーは applyStaffCast へ
         case (TurnPhase.Phase.StaffAim,       None)
                                               => checked_ecast(staffAimDirection(key, scene))
+        // TradeInventory 中の ←/→ は左右ペイン切替へ (↑↓ は handleMenus 側で
+        // ItemList のカーソル移動に使われるので素通り)
+        case (TurnPhase.Phase.TradeInventory, None)
+                                              => checked_ecast(tradeInventoryDirection(key, scene))
         case (TurnPhase.Phase.AttackForecast, Some(TurnRules.Input.Confirm))
                                               => BattlePanelScene.confirm(scene)
         case (TurnPhase.Phase.AttackForecast, Some(TurnRules.Input.Cancel))
@@ -378,6 +382,18 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                                               => TurnInputBridge.handle(inp, scene)
         // 方向キーなどはここまで来る (各 Scene が physicsProcess で polling する)
         case (_,                              None) => scene
+    }
+
+/// TradeInventory 中の方向キーを左右ペイン切替に変換する。
+/// Left / A → Self ペイン、Right / D → Partner ペイン。
+/// Up / Down は handleMenus が ItemList カーソル移動に使うので、ここでは素通し。
+def tradeInventoryDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[NodeTag] =
+    match key {
+        case GameEngine.Key.Left  => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Self,    scene)
+        case GameEngine.Key.A     => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Self,    scene)
+        case GameEngine.Key.Right => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Partner, scene)
+        case GameEngine.Key.D     => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Partner, scene)
+        case _                    => scene
     }
 
 def staffAimCancel(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =

@@ -2,16 +2,19 @@
 ///
 /// `TradeTargetSelect` で交換相手を確定すると `TradeInventory` フェーズに入り、
 /// 画面に出る 2 つの ItemList。左 (selfMenu) に選択中味方、右 (partnerMenu) に
-/// 交換相手の weapons + staves を並べる。↑↓ で選択、Enter/Z で確定。
+/// 交換相手の weapons + staves を並べる (両側とも末尾に空スロット "--------")。
+/// ↑↓ で選択、Enter/Z で確定。
 ///
-/// 入力フロー (Phase 4-D で本実装、4-B 時点では visibility + items 同期のみ):
-///   1. 初期状態: focus = Self (左ペイン)
-///   2. 自分側でアイテムを Z 選択 → focus が Partner (右ペイン) に切り替わり、
-///      `selfPick` に選んだアイテムの kind が保存される
-///   3. 相手側でアイテムを Z 選択 → `PlayerScene.swapItem` で交換実行 →
-///      focus が Self に戻り `selfPick` クリア
-///   4. 自分側選択中に X → 選択解除して focus は Self のまま
-///   5. 未選択で X → ActionSelect に戻る (緑マス overlay を片付けて行動継続)
+/// 入力フロー (対称版: じぶん側起動 / あいて側起動どちらも同じ流れ):
+///   1. 初期状態: focus = Self (左ペイン), pick = None
+///   2. どちらかの側でアイテムを Z 選択 → `pick = Some({side, kind})` がセットされ、
+///      focus が反対側に切り替わる (次フレームの applyVisibility で受け側が focused)
+///   3. 受け側でアイテムを Z 選択 → `PlayerScene.swapItem` で交換実行 →
+///      pick クリア、focus は picker のいた側に戻る (連続交換可能)
+///   3'. 受け側で空スロット "--------" を Z → 一方向 transfer (picker のアイテムが
+///       受け側に移り、picker 側のスロットは空になる)
+///   4. picker 側にいる状態で X → pick 解除して focus は picker 側に戻る
+///   5. pick=None で X → TradeInventory を抜けて ActionSelect に戻る
 ///
 /// ノード構造（visible のとき）:
 ///   TradeMenu (CanvasLayer, layer=2)
@@ -29,10 +32,25 @@ mod TradeMenuScene {
 
     /// どちらのペインに入力フォーカスがあるか。
     /// `Self` = 左 (じぶん) / `Partner` = 右 (あいて)。
-    /// Z 押下でフォーカスがトグルされる (Self → Partner → swap → Self)。
+    /// Z 押下でフォーカスが反対側にトグルされる。先に Z を押した側が `Pick`
+    /// となり、相手側でもう 1 回 Z で確定 swap。Self 起動 / Partner 起動どちらも対称。
     pub enum Pane with Eq, ToString {
         case Self
         case Partner
+    }
+
+    /// どちらかのペインで「選択中」のスロット。`side` は picker のペイン。
+    /// `kind` は picker が選んだスロットの中身: `Some(k)` なら実体アイテム、
+    /// `None` なら空スロット (= 「受け取り希望」のマーカー)。
+    ///
+    /// 反対側でもう 1 回 Z すると `applyTradeSwap` でスワップ実行:
+    ///   - 両方 Some  → 双方向 swap (お互いのアイテムを入れ替え)
+    ///   - picker Some / 受け側 None → picker → 受け側へ片方向 transfer
+    ///   - picker None / 受け側 Some → 受け側 → picker へ片方向 transfer (= 受取)
+    ///   - 両方 None  → 両方空なので no-op
+    pub type alias Pick = {
+        side = Pane,
+        kind = Option[PlayerScene.ItemKind]
     }
 
     /// Panel ノード (`NodeTag.TradePanel(PanelData)`) に紐づくセッション状態。
@@ -40,11 +58,13 @@ mod TradeMenuScene {
     /// フィールドの意味:
     ///   - `partnerId` : 交換相手の player id (TradeTargetSelect で Z 押下時に決まる)。
     ///                    `defaultPanelData` では `-1` (= 未設定) を入れておく。
-    ///   - `selfPick`  : 自分側で選択中のアイテム (Z 押下で Some、X / 交換完了で None)。
-    ///   - `focus`     : 現在の入力フォーカスのペイン。
+    ///   - `pick`      : Self / Partner どちらかが先に選んだアイテム (Some)、未選択なら None。
+    ///                    Self / Partner どちらの側からも起動できるので side フィールドで区別する。
+    ///   - `focus`     : 現在の入力フォーカスのペイン。pick が Some のときは
+    ///                    必ず `opposite(pick.side)` (= 受け側) になっている。
     pub type alias PanelData = {
         partnerId = Int32,
-        selfPick  = Option[PlayerScene.ItemKind],
+        pick      = Option[Pick],
         focus     = Pane
     }
 
@@ -52,8 +72,15 @@ mod TradeMenuScene {
     /// partnerId = -1 は「未設定」を表す番兵値で、`openFor(partnerId)` でセットされる。
     pub def defaultPanelData(): PanelData = {
         partnerId = -1,
-        selfPick  = None,
+        pick      = None,
         focus     = Pane.Self
+    }
+
+    /// Pane の反対側を返す。`Self` ↔ `Partner` のトグル。
+    /// Pick したあとフォーカスを反対側に飛ばすときと、cancel で picker 側に戻すときに使う。
+    pub def opposite(side: Pane): Pane = match side {
+        case Pane.Self    => Pane.Partner
+        case Pane.Partner => Pane.Self
     }
 
     /// 空スロットを表す ItemEntry。あいて側に空きがあるときに表示し、Z で
@@ -111,7 +138,7 @@ mod TradeMenuScene {
             case _                               => defaultPanelData()
         }
 
-    /// Panel 状態を `f` で更新する (selfPick の Some/None 切替や focus の入替に使う)。
+    /// Panel 状態を `f` で更新する (pick の Some/None 切替や focus の入替に使う)。
     pub def mapPanelData(f: PanelData -> PanelData, scene: Scene[NodeTag]):
             Scene[NodeTag] =
         match Scene.getState(panelPath(), scene) {
@@ -168,6 +195,8 @@ mod TradeMenuScene {
 
     /// 自分側 (selectedId) と相手側 (panelData#partnerId) のインベントリを
     /// それぞれの ItemList に反映する (毎フレーム呼ばれる)。
+    /// 両側とも末尾に空スロット行を表示する: Self / Partner どちらからも起動でき、
+    /// どちらにも「あいてのアイテムを空きへ受け取る」一方向 transfer ができるため。
     def refreshBothPanes(scene: Scene[NodeTag]):
             Scene[NodeTag] \ SelectedPlayer.State =
         match SelectedPlayer.State.get()#id {
@@ -176,7 +205,7 @@ mod TradeMenuScene {
                 let panelData = getPanelData(scene);
                 scene
                     |> ItemList.mapAt(selfMenuPath(), list ->
-                        list |> ItemList.setItems(inventoryEntries(selfId, scene)))
+                        list |> ItemList.setItems(inventoryEntriesWithEmpty(selfId, scene)))
                     |> ItemList.mapAt(partnerMenuPath(), list ->
                         list |> ItemList.setItems(
                             inventoryEntriesWithEmpty(panelData#partnerId, scene)))
@@ -213,8 +242,9 @@ mod TradeMenuScene {
         let staffEntries  = List.mapWithIndex(idx -> s -> staffEntry(idx, s),  staves);
         List.append(weaponEntries, staffEntries)
 
-    /// 相手側用: weapons + staves を並べた後、末尾に空スロット行を 1 つ追加する。
-    /// 「自分のアイテムを空きに渡すだけ」のスワップが選べるようにする。
+    /// 武器 + 杖を並べた後、末尾に空スロット行を 1 つ追加する。
+    /// 「相手のアイテムを空きに受け取る (片方向 transfer)」のスワップが選べるようにする。
+    /// Self 側 / Partner 側ともこの形で表示する。
     def inventoryEntriesWithEmpty(playerId: Int32, scene: Scene[NodeTag]):
             List[ItemEntry] =
         List.append(inventoryEntries(playerId, scene), emptySlotEntry() :: Nil)
@@ -223,39 +253,10 @@ mod TradeMenuScene {
     // (E) 入力ハンドラ
     // ────────────────────────────────────────────────────────
 
-    /// 自分側 (`TradeSelfMenu`) で Enter/Z を押したとき:
-    ///   - 選んだアイテムを PanelData#selfPick に保存
-    ///   - focus を Partner に切り替え (次フレームの applyVisibility で右ペインが focused)
-    /// metadata が空スロット ("empty") の場合は何もしない (空からは渡せない)。
-    pub def onConfirmSelf(entry: ItemEntry, scene: Scene[NodeTag]): Scene[NodeTag] =
-        entry#metadata
-            |> Option.flatMap(ItemMenuScene.parseItemKind)
-            |> Option.map(kind -> mapPanelData(d ->
-                {selfPick = Some(kind), focus = Pane.Partner | d}, scene))
-            |> Option.getWithDefault(scene)
-
-    /// 相手側 (`TradePartnerMenu`) で Enter/Z を押したとき:
-    ///   - selfPick が None なら何もしない (Self 側で先に選ばないと start できない)
-    ///   - selfPick が Some なら `PlayerScene.swapItem` でスワップ実行 →
-    ///     ログ + PanelData#selfPick=None + focus=Self に戻す (連続交換可能)
-    /// 相手側エントリの metadata は:
-    ///   - "w:<idx>" / "s:<idx>" → 相手の対応アイテムと交換
-    ///   - "empty" → 相手の空スロットへ一方向 transfer (partnerKind = None)
-    pub def onConfirmPartner(entry: ItemEntry, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
-        let panelData = getPanelData(scene);
-        let partnerKindArg = parsePartnerKind(entry);
-        // 自分側未選択 or selectedId が取れないなら no-op
-        match (panelData#selfPick, SelectedPlayer.State.get()#id) {
-            case (Some(selfPick), Some(selfId)) =>
-                applySwap(selfId, selfPick, panelData#partnerId,
-                           partnerKindArg, scene)
-            case _ => scene
-        }
-
-    /// 相手側エントリの metadata から「対象アイテム種別 / 空スロット」を判定。
-    /// "empty" → None (空スロット = 一方向 transfer)、それ以外は ItemKind に parse。
-    def parsePartnerKind(entry: ItemEntry): Option[PlayerScene.ItemKind] =
+    /// エントリの metadata から「対象アイテム種別 / 空スロット」を判定。
+    /// "empty" → None (空スロット = 受け側専用)、"w:<idx>" / "s:<idx>" は ItemKind に parse。
+    /// Self / Partner 両側の Z 判定で使う (空スロットからは pick できない、ただし受け先にはなれる)。
+    def parseEntryKind(entry: ItemEntry): Option[PlayerScene.ItemKind] =
         match entry#metadata {
             case None       => None
             case Some(meta) =>
@@ -263,35 +264,111 @@ mod TradeMenuScene {
                 else ItemMenuScene.parseItemKind(meta)
         }
 
-    /// 実際のスワップ + ログ出力 + PanelData リセット。
-    /// 「対象が空スロット (partnerKind=None)」と「対象が実体アイテム」の両ケース統合。
-    def applySwap(selfId: Int32, selfKind: PlayerScene.ItemKind,
-                   partnerId: Int32, partnerKind: Option[PlayerScene.ItemKind],
-                   scene: Scene[NodeTag]):
-                   Scene[NodeTag] \ GameLogger.GameLogger =
-        GameLogger.playerLog("P${selfId} と P${partnerId} がアイテム交換");
-        PlayerScene.swapItem(selfId, selfKind, partnerId, partnerKind, scene)
-            |> mapPanelData(d -> {selfPick = None, focus = Pane.Self | d})
+    /// picker 側 (`pick`) と受け側 (`receiverKindOpt`) のスロットを 1 回の swap として実行する。
+    /// `PlayerScene.swapItem` は `selfKind: ItemKind` (必須) と `partnerKind: Option[ItemKind]`
+    /// の非対称 API なので、ここで picker / 受け側のどちらが giver (= 必須側) かを切り替える:
+    ///
+    ///   - pick.kind = Some → picker が必須 giver、受け側は Option (空 OK)
+    ///   - pick.kind = None & 受け側 = Some → 受け側が必須 giver、picker 側は None (空) 受け
+    ///   - 両方 None → 何も動かない (no-op、ログも出さない)
+    ///
+    /// プレイヤー ID は `pick#side` で picker / 反対側に割り当てる。
+    def applyTradeSwap(selfPlayerId: Int32, partnerPlayerId: Int32,
+                        pick: Pick, receiverKindOpt: Option[PlayerScene.ItemKind],
+                        scene: Scene[NodeTag]):
+                       Scene[NodeTag] \ GameLogger.GameLogger =
+        let (pickerId, receiverId) = match pick#side {
+            case Pane.Self    => (selfPlayerId,    partnerPlayerId)
+            case Pane.Partner => (partnerPlayerId, selfPlayerId)
+        };
+        match (pick#kind, receiverKindOpt) {
+            case (None, None) =>
+                // 両方空スロット同士: 何も交換しない
+                scene
+            case (Some(pickerKind), receiverOpt) =>
+                // picker 実体: picker → 受け側へ swap (受け側が None なら片方向 transfer)
+                GameLogger.playerLog("P${selfPlayerId} と P${partnerPlayerId} がアイテム交換");
+                PlayerScene.swapItem(pickerId, pickerKind, receiverId, receiverOpt, scene)
+            case (None, Some(receiverKind)) =>
+                // picker 空 (= 受取希望) & 受け側実体: 受け側 → picker へ片方向 transfer
+                GameLogger.playerLog("P${selfPlayerId} と P${partnerPlayerId} がアイテム交換");
+                PlayerScene.swapItem(receiverId, receiverKind, pickerId, None, scene)
+        }
 
-    /// 自分側 (`TradeSelfMenu`) で X/Escape を押したとき:
-    ///   - selfPick が Some なら選択解除して focus は Self のまま
-    ///     (= 「もう一回じぶん側で別アイテムを選び直せる」状態に戻る)
-    ///   - selfPick が None なら TradeInventory を抜けて ActionSelect に戻る
-    ///     (緑マス overlay も片付ける = `enterActionSelectFromTrade`)
-    pub def onCancelSelf(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+    /// Z 押下の中核処理。`currentSide` で押されたペインを示し、現在の `pick` 状態と
+    /// エントリ種別 (実体 or 空スロット) から次の状態を決める。
+    ///
+    /// 状態遷移 (Pick.kind = Option[ItemKind] モデル):
+    ///   - pick=None, 任意のエントリ
+    ///       → このスロット (実体 or 空) を pick にセット、focus は反対側へ。
+    ///         空スロット pick は「受け取り希望」のマーカーになる。
+    ///   - pick=Some(同じ側), 任意のエントリ
+    ///       → pick を新エントリで上書き (押し直し / 実体 ↔ 空 の切替も可)。
+    ///   - pick=Some(反対側), 任意のエントリ
+    ///       → `applyTradeSwap` で swap 実行 (両空のときだけ no-op) →
+    ///         pick=None, focus = picker のいた側。
+    def doConfirm(currentSide: Pane, entry: ItemEntry, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} = {
         let panelData = getPanelData(scene);
-        match panelData#selfPick {
-            case Some(_) =>
-                mapPanelData(d -> {selfPick = None, focus = Pane.Self | d}, scene)
+        let entryKindOpt = parseEntryKind(entry);
+        match panelData#pick {
+            case None =>
+                // 何も pick されていない → このスロットを pick にする
+                checked_ecast(mapPanelData(d ->
+                    {pick = Some({side = currentSide, kind = entryKindOpt}),
+                     focus = opposite(currentSide) | d}, scene))
+            case Some(p) if p#side == currentSide =>
+                // 同側で押し直し → pick を新エントリで上書き (空 ↔ 実体の切替もここで吸収)
+                checked_ecast(mapPanelData(d ->
+                    {pick = Some({side = currentSide, kind = entryKindOpt}) | d}, scene))
+            case Some(p) =>
+                // 反対側 → swap 実行 (picker = p、受け側 = currentSide)
+                match SelectedPlayer.State.get()#id {
+                    case None         => scene
+                    case Some(selfId) =>
+                        applyTradeSwap(selfId, panelData#partnerId, p, entryKindOpt, scene)
+                            |> mapPanelData(d ->
+                                {pick = None, focus = p#side | d})
+                }
+        }
+    }
+
+    /// X 押下の中核処理。pick=Some なら解除して picker のペインへフォーカスを戻し、
+    /// pick=None ならメニューを閉じて ActionSelect (= ActionMenu 再表示) に戻る。
+    /// Self / Partner どちらのペインで押しても同じ挙動。
+    def doCancel(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+        let panelData = getPanelData(scene);
+        match panelData#pick {
+            case Some(p) =>
+                mapPanelData(d -> {pick = None, focus = p#side | d}, scene)
             case None    =>
                 PhaseTransitions.enterActionSelectFromTrade(scene)
         }
 
-    /// 相手側 (`TradePartnerMenu`) で X/Escape を押したとき:
-    ///   - selfPick を None に戻して focus = Self に巻き戻す (= 自分側選択状態を解除)
-    ///   - selfPick が None だった場合 (防御的) も同じ操作で OK
-    pub def onCancelPartner(scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPanelData(d -> {selfPick = None, focus = Pane.Self | d}, scene)
+    /// 自分側 (`TradeSelfMenu`) で Enter/Z を押したとき。`doConfirm(Self, ...)` に委譲。
+    pub def onConfirmSelf(entry: ItemEntry, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
+        doConfirm(Pane.Self, entry, scene)
+
+    /// 相手側 (`TradePartnerMenu`) で Enter/Z を押したとき。`doConfirm(Partner, ...)` に委譲。
+    pub def onConfirmPartner(entry: ItemEntry, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
+        doConfirm(Pane.Partner, entry, scene)
+
+    /// 自分側 (`TradeSelfMenu`) で X/Escape を押したとき。`doCancel` に委譲。
+    pub def onCancelSelf(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+        doCancel(scene)
+
+    /// 相手側 (`TradePartnerMenu`) で X/Escape を押したとき。`doCancel` に委譲。
+    pub def onCancelPartner(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+        doCancel(scene)
+
+    /// ←/→ 押下から呼ばれる。指定ペインにフォーカスを動かす。
+    /// pick=Some のときも切替可 (picker 側に戻って空スロット押下で pick 解除する等の操作を可能に)。
+    /// 次フレームの `applyVisibility` (refreshItems 経由) で対応 ItemList が
+    /// focused=true になり、↑↓ がそちらで効くようになる。
+    pub def setPaneFocus(target: Pane, scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPanelData(d -> {focus = target | d}, scene)
 
     /// InputHandler の Z 押下から呼ばれる。PanelData#focus を見て、現在
     /// focus のあるペインの ItemList から selected entry を取り、

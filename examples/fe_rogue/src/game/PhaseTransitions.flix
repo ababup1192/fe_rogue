@@ -190,7 +190,7 @@ mod PhaseTransitions {
 
     /// TradeInventory フェーズに入る (TradeTargetSelect で Z 押下時)。
     /// 緑マス overlay を片付け (もう不要)、`partnerId` を PanelData にセットして
-    /// `focus = Self / selfPick = None` に初期化する。
+    /// `focus = Self / pick = None` に初期化する。
     /// カーソルは TradeInventory 中は使われないので隠す (ActionSelect から
     /// 戻ったときに再表示される)。
     pub def enterTradeInventory(partnerId: Int32, scene: Scene[NodeTag]):
@@ -201,7 +201,7 @@ mod PhaseTransitions {
             |> CursorScene.setVisible(false)
             |> TradeMenuScene.mapPanelData(_ ->
                 ({partnerId = partnerId,
-                  selfPick  = None,
+                  pick      = None,
                   focus     = TradeMenuScene.Pane.Self}: TradeMenuScene.PanelData))
 
     /// TradeTargetSelect フェーズに入る (ActionMenu「こうかん」確定時)。
