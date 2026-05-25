@@ -292,4 +292,30 @@ mod TradeMenuScene {
     ///   - selfPick が None だった場合 (防御的) も同じ操作で OK
     pub def onCancelPartner(scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPanelData(d -> {selfPick = None, focus = Pane.Self | d}, scene)
+
+    /// InputHandler の Z 押下から呼ばれる。PanelData#focus を見て、現在
+    /// focus のあるペインの ItemList から selected entry を取り、
+    /// onConfirmSelf / onConfirmPartner に流す。ActionMenuScene.confirmCurrentSelection
+    /// と同じ「focused ペインだけ確定する」パターン。
+    pub def confirmCurrentSelection(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
+        let path = match getPanelData(scene)#focus {
+            case Pane.Self    => selfMenuPath()
+            case Pane.Partner => partnerMenuPath()
+        };
+        match ItemList.getAt(path, scene) |> Option.flatMap(ItemList.getSelected) {
+            case None        => scene
+            case Some(entry) => match getPanelData(scene)#focus {
+                case Pane.Self    => checked_ecast(onConfirmSelf(entry, scene))
+                case Pane.Partner => onConfirmPartner(entry, scene)
+            }
+        }
+
+    /// InputHandler の X 押下から呼ばれる。PanelData#focus を見て、
+    /// onCancelSelf / onCancelPartner に流す (selected entry は不要)。
+    pub def cancelCurrent(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+        match getPanelData(scene)#focus {
+            case Pane.Self    => onCancelSelf(scene)
+            case Pane.Partner => checked_ecast(onCancelPartner(scene))
+        }
 }
