@@ -399,3 +399,74 @@ mod PlayerAttackRangeScene {
                     inRangeCells))
             |> List.sortBy(d -> (d#gridPos#y, d#gridPos#x))
 }
+
+/// TradeRangeScene — 物交換の相手候補 (隣接味方マス) を緑色で可視化する
+///
+/// 「こうかん」確定で `TradeTargetSelect` フェーズに入ると、選択中プレイヤーの
+/// 上下左右 1 マス内に居る他味方のマスを緑色で敷く。プレイヤーは赤マスと同じく
+/// 緑マス上のみ移動できるカーソルで交換相手を選ぶ。
+///
+/// `cells` API は他の Range scene と同じく「現在敷かれているセル一覧」を返す。
+/// CursorScene の移動制限述語と TurnRules の Confirm 判定で使う。
+///
+/// **ライフサイクル**:
+///   - `PhaseTransitions.enterTradeTargetSelect` で `show(scene)` を呼んで描く
+///   - 別フェーズに抜けるとき (PhaseTransitions の他の enter* / 完了時) は `clear` を呼ぶ
+mod TradeRangeScene {
+
+    /// 親 Marker2D に紐づくデータ。
+    /// `cells` は緑く描画されている隣接味方マス一覧 (= 選択中味方の上下左右の他味方)。
+    pub type alias Data = {
+        cells = List[{x = Int32, y = Int32}]
+    }
+
+    def name(): String = "TradeRange"
+    pub def rangePath(): NodePath = name() :: Nil
+
+    /// 緑系 modulate。MoveRange (青) / PlayerAttackRange (赤) と区別する。
+    def color(): Color = {r = 0.3f32, g = 1.0f32, b = 0.3f32}
+
+    /// EnemyRange / PlayerAttackRange と同じ透過度に揃える (情報表示用)。
+    def alpha(): Float32 = 0.7f32
+
+    /// 既存の TradeRange ノードがあれば取り除き、`SelectedPlayer.State` から
+    /// 選択中味方の隣接味方マスを計算して緑マスを描き直す。
+    /// 選択中味方なし / 居ない / 隣接味方ゼロのいずれでも安全に何も描かない。
+    pub def show(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
+        let cleared = clear(scene);
+        adjacentAllyCells()
+            |> Option.filter(allyCells -> not List.isEmpty(allyCells))
+            |> Option.map(allyCells -> paintCells(allyCells, cleared))
+            |> Option.getWithDefault(cleared)
+
+    /// 選択中味方の隣接味方マスを返す。SelectedPlayer 未選択 / PartyQuery で
+    /// 居ないいずれでも None。隣接味方ゼロのときは `Some(Nil)`。
+    def adjacentAllyCells():
+            Option[List[{x = Int32, y = Int32}]]
+            \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
+        forM (
+            playerId <- SelectedPlayer.State.get()#id;
+            player   <- PlayerScene.PartyQuery.get(playerId)
+        ) yield PlayerScene.adjacentAllies(player) |> List.map(d -> d#gridPos)
+
+    /// 指定セル群に親 Marker2D + 緑色 Sprite2D を貼り付ける純粋部分。
+    def paintCells(allyCells: List[{x = Int32, y = Int32}],
+                    scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> RangeOverlay.attachParent(name(),
+                NodeTag.TradeRange({cells = allyCells}))
+            |> RangeOverlay.renderTiles(name(), allyCells, color(), alpha())
+
+    /// 表示中の TradeRange ノードがあれば取り除く。なければ何もしない。
+    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.removeAt(rangePath(), scene)
+
+    /// 現在敷かれている緑マス一覧。カーソル移動制限と Confirm 時の対象判定に使う。
+    /// 未登録なら空リスト。
+    pub def cells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
+        match Scene.getState(rangePath(), scene) {
+            case Some(NodeTag.TradeRange(data)) => data#cells
+            case _                              => Nil
+        }
+}

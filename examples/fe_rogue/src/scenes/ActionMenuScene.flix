@@ -2,7 +2,7 @@
 ///
 /// PlayerMoving / PlayerCursor で Z を押した瞬間に `ActionSelect` フェーズに入り、
 /// 画面に出る ItemList。文脈 (= SelectedPlayer の有無) で項目が切り替わる:
-///   - PlayerMoving 由来 (SelectedPlayer あり) → こうげき / ひろう / たいき
+///   - PlayerMoving 由来 (SelectedPlayer あり) → こうげき / アイテム / ひろう / たいき
 ///   - PlayerCursor 由来・空マス (SelectedPlayer なし) → しゅうごう (確定で旗を立てる)
 /// ↑↓ で選択、Enter/Z で確定、X/Escape で元のフェーズ (PlayerMoving / PlayerCursor) に戻る。
 ///
@@ -17,6 +17,13 @@
 ///   - 「たいき」  : 選択中プレイヤーのセルに別の味方が居ない
 ///   - 「しゅうごう」: SelectedPlayer が None (PlayerCursor + 空マス) のとき常時表示
 /// 全条件不成立なら ItemList は空になり、Z 押下は no-op (X で戻るのみ)。
+///
+/// 「行動継続」と「行動終了」:
+///   - 行動終了 (確定で waited 化 → 次セレクト or 敵ターン)
+///       こうげき (PlayerAttack を経由してから commit) / たいき / ターンエンド
+///   - 行動継続 (確定後 ActionSelect に戻り、ActionMenu の項目が再構築される)
+///       ひろう (拾うとセルから消えるので次フレームの `refreshItems` で項目から外れる)
+///       しゅうごう (旗を立てて PlayerAutoMove に移るが、これは別フローの遷移)
 mod ActionMenuScene {
 
     use Json.JsonError.JsonError
@@ -48,6 +55,7 @@ mod ActionMenuScene {
 
     /// metadata の値。`onItemConfirmed` で再現するためのアクション識別子。
     def attackMeta(): String    = "attack"
+    def exchangeMeta(): String  = "exchange"
     def itemMeta(): String      = "item"
     def waitMeta(): String      = "wait"
     def pickupMeta(): String    = "pickup"
@@ -98,8 +106,9 @@ mod ActionMenuScene {
             case None         => (node, withItems)
         }
 
-    /// 選択中プレイヤーの状況から「こうげき / ひろう / たいき」のうち成立するものだけ返す。
-    /// 順序は固定: こうげき → ひろう → たいき (FE 流に攻撃が上、待機が末尾)。
+    /// 選択中プレイヤーの状況から「こうげき / こうかん / アイテム / ひろう / たいき」の
+    /// うち成立するものだけ返す。
+    /// 順序は固定: こうげき → こうかん → アイテム → ひろう → たいき (FE 流の並び)。
     /// SelectedPlayer が None のときは PlayerCursor から空マスで開かれた「集合メニュー」
     /// として「しゅうごう」だけを返す (確定で旗を立てる)。
     def buildItems(scene: Scene[NodeTag]): List[ItemEntry]
@@ -122,6 +131,12 @@ mod ActionMenuScene {
                                   disabled = false,
                                   metadata = Some(attackMeta())}: ItemEntry) :: Nil
                             else Nil;
+                        let exchangeItem =
+                            if (not List.isEmpty(PlayerScene.adjacentAllies(player)))
+                                ({text     = "こうかん",
+                                  disabled = false,
+                                  metadata = Some(exchangeMeta())}: ItemEntry) :: Nil
+                            else Nil;
                         let itemItem =
                             if (not (List.isEmpty(player#weapons)
                                        and List.isEmpty(player#staves)))
@@ -141,9 +156,8 @@ mod ActionMenuScene {
                                   disabled = false,
                                   metadata = Some(waitMeta())}: ItemEntry) :: Nil
                             else Nil;
-                        List.append(attackItem,
-                            List.append(itemItem,
-                                List.append(pickupItem, waitItem)))
+                        List.flatten(attackItem :: exchangeItem :: itemItem ::
+                                       pickupItem :: waitItem :: Nil)
                 }
         }
 
@@ -187,6 +201,7 @@ mod ActionMenuScene {
             case None    => scene
             case Some(m) =>
                 if (m == attackMeta())        PlayerScene.enterAttackPhase(scene)
+                else if (m == exchangeMeta()) PhaseTransitions.enterTradeTargetSelect(scene)
                 else if (m == itemMeta())     openItemMenu(scene)
                 else if (m == waitMeta())     PlayerScene.commitWaitedAndAdvance(scene)
                 else if (m == pickupMeta())   applyPickup(scene)
@@ -223,29 +238,37 @@ mod ActionMenuScene {
         EnemyTurnDriverScene.beginTurn(afterWait)
 
     /// 「ひろう」確定の本体。床アイテムを取得してインベントリに加え、
-    /// ログを出してから waited 確定 (拾うで 1 ターン使う)。
+    /// ログを出して **ActionSelect フェーズに留まる**（行動継続。ターン消費しない）。
+    /// 次フレームの `refreshItems` が「床に何もなくなった」状態を見て自動的に
+    /// 「ひろう」をメニューから外す。
     /// 武器なら weapons の末尾に、杖なら staves の末尾に追加する。
-    /// 何らかの理由で item が無い場合は no-op して即 wait に倒す (防御的)。
+    /// 何らかの理由で item が無い場合は no-op（防御的）。
     def applyPickup(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                              PlayerScene.PartyQuery} =
-        match SelectedPlayer.State.get()#id {
-            case None     => PlayerScene.commitWaitedAndAdvance(scene)
-            case Some(id) =>
-                match PlayerScene.PartyQuery.get(id) {
-                    case None         => PlayerScene.commitWaitedAndAdvance(scene)
-                    case Some(player) =>
-                        let (afterTake, taken) = ItemScene.takeAt(player#gridPos, scene);
-                        match taken {
-                            case None       => PlayerScene.commitWaitedAndAdvance(afterTake)
-                            case Some(kind) =>
-                                let withItem = addPickedItem(id, kind, afterTake);
-                                PlayerScene.commitWaitedAndAdvance(withItem)
-                        }
-                }
-        }
+            Scene[NodeTag] \ {GameLogger.GameLogger,
+                              SelectedPlayer.State, PlayerScene.PartyQuery} =
+        selectedPlayerInfo()
+            |> Option.map(info -> pickupAt(info, scene))
+            |> Option.getWithDefault(scene)
+
+    /// 選択中の味方の id と現在位置をまとめて返す。
+    /// SelectedPlayer 未選択 / PartyQuery で見つからないいずれでも None。
+    def selectedPlayerInfo():
+            Option[{playerId = Int32, gridPos = {x = Int32, y = Int32}}]
+            \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
+        forM (
+            playerId <- SelectedPlayer.State.get()#id;
+            player   <- PlayerScene.PartyQuery.get(playerId)
+        ) yield {playerId = playerId, gridPos = player#gridPos}
+
+    /// 指定セルで床アイテムを 1 個取って selectedPlayer のインベントリに追加する。
+    /// アイテムがなければ takeAt 後の scene をそのまま返す（防御的）。
+    def pickupAt(info: {playerId = Int32, gridPos = {x = Int32, y = Int32}},
+                  scene: Scene[NodeTag]):
+                  Scene[NodeTag] \ GameLogger.GameLogger =
+        let (afterTake, taken) = ItemScene.takeAt(info#gridPos, scene);
+        taken
+            |> Option.map(kind -> addPickedItem(info#playerId, kind, afterTake))
+            |> Option.getWithDefault(afterTake)
 
     /// 拾ったアイテムをプレイヤーのインベントリに追加し、ログも出す。
     /// 武器は weapons の末尾（= 装備中の後ろ）、杖は staves の末尾に積む。

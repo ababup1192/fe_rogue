@@ -7,6 +7,8 @@ pub enum NodeTag {
     case EnemyRange(EnemyRangeScene.Data)
     case PlayerAttackRange(PlayerAttackRangeScene.Data)
     case MoveAttackRange(MoveAttackRangeScene.Data)
+    /// TradeRangeScene の緑マス overlay（「こうかん」確定後の隣接味方マス）
+    case TradeRange(TradeRangeScene.Data)
     case Cursor(CursorScene.Data)
     /// ArrowCursorScene の Marker2D（杖発射方向を視覚化する矢印カーソル）
     case ArrowCursor(ArrowCursorScene.Data)
@@ -16,6 +18,12 @@ pub enum NodeTag {
     case ItemPanel
     /// ItemMenuScene の ItemList（武器+杖の一覧 + サブメニュー兼用）
     case ItemMenu
+    /// TradeMenuScene の Panel ルート（partnerId / pick / focus を抱えるセッション状態）
+    case TradePanel(TradeMenuScene.PanelData)
+    /// TradeMenuScene の左 ItemList (じぶん)
+    case TradeSelfMenu
+    /// TradeMenuScene の右 ItemList (あいて)
+    case TradePartnerMenu
     /// ActionMenuScene の Panel ルート（外枠）
     case ActionPanel
     /// ActionMenuScene の ItemList（こうげき / たいき）
@@ -141,6 +149,10 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
             checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
+        case EngineNode.ItemListWithState(_, NodeTag.TradeSelfMenu) =>
+            checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
+        case EngineNode.ItemListWithState(_, NodeTag.TradePartnerMenu) =>
+            checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.PanelWithState(_, NodeTag.BattlePanel) =>
             checked_ecast(BattlePanelScene.process(delta, node, path, scene))
         case _ => (node, scene)
@@ -174,48 +186,27 @@ instance InputEvent.InputHandler[NodeTag] {
                                           SelectedPlayer.State,
                                           PlayerScene.PartyQuery,
                                           EnemyScene.RosterQuery} =
-        let isConfirm = key == GameEngine.Key.Z
-                        or key == GameEngine.Key.Space
-                        or key == GameEngine.Key.Enter;
-        let isCancel  = key == GameEngine.Key.X or key == GameEngine.Key.Escape;
+        // 物理キーを「決定 / キャンセル / それ以外 (None)」の意味論的入力に正規化する。
+        // phase と独立した直交概念として扱いたいので、bool 2 個ではなく Option[Input] に畳む。
+        let input: Option[TurnRules.Input] =
+            if (key == GameEngine.Key.Z or key == GameEngine.Key.Space
+                                        or key == GameEngine.Key.Enter)
+                Some(TurnRules.Input.Confirm)
+            else if (key == GameEngine.Key.X or key == GameEngine.Key.Escape)
+                Some(TurnRules.Input.Cancel)
+            else None;
         let phase = TurnPhase.State.get();
         let popupShown = UnitInfoPopupScene.isShown(scene)
                           and (phase == TurnPhase.Phase.PlayerCursor
                                 or phase == TurnPhase.Phase.PlayerAttack);
-        match (phase, isConfirm, isCancel) {
-            // popup 表示中の X は popup view 切替に上書き（通常のキャンセルは走らない）
-            case (_,                              _,    true) if popupShown
-                                                  => UnitInfoPopupScene.toggleView(scene)
-            // PlayerAutoMove 中の X / Esc は AutoMove キャンセル
-            case (TurnPhase.Phase.PlayerAutoMove, _,    true)
-                                                  => checked_ecast(AutoMoveScene.cancel(scene))
-            case (TurnPhase.Phase.ActionSelect,   true,  _)
-                                                  => ActionMenuScene.confirmCurrentSelection(scene)
-            case (TurnPhase.Phase.ActionSelect,   _,    true)
-                                                  => checked_ecast(ActionMenuScene.onActionCancelled(scene))
-            case (TurnPhase.Phase.ItemSelect,        true,  _)
-                                                  => checked_ecast(ItemMenuScene.confirmCurrentSelection(scene))
-            case (TurnPhase.Phase.ItemSelect,        _,    true)
-                                                  => checked_ecast(ItemMenuScene.onItemCancelled(scene))
-            case (TurnPhase.Phase.ItemActionSelect,  true,  _)
-                                                  => checked_ecast(ItemMenuScene.confirmCurrentSelection(scene))
-            case (TurnPhase.Phase.ItemActionSelect,  _,    true)
-                                                  => checked_ecast(ItemMenuScene.onActionCancelled(scene))
-            case (TurnPhase.Phase.StaffAim,       _,    true)
-                                                  => checked_ecast(staffAimCancel(scene))
-            case (TurnPhase.Phase.StaffAim,       true, _)
-                                                  => checked_ecast(staffAimConfirm(scene))
-            case (TurnPhase.Phase.StaffAim,       _,    _)
-                                                  => checked_ecast(staffAimDirection(key, scene))
-            case (TurnPhase.Phase.AttackForecast, true, _)
-                                                  => BattlePanelScene.confirm(scene)
-            case (TurnPhase.Phase.AttackForecast, _,    true)
-                                                  => checked_ecast(BattlePanelScene.cancel(scene))
-            case (_,                              true, _)
-                                                  => TurnInputBridge.handle(TurnRules.Input.Confirm, scene)
-            case (_,                              _,    true)
-                                                  => TurnInputBridge.handle(TurnRules.Input.Cancel, scene)
-            case _                                => scene
+        // メニュー系フェーズ (ActionMenu / ItemMenu / TradeMenu) の Z/X は別関数で処理。
+        // Some が返ってくれば dispatcher が処理済みなのでその scene をそのまま返す。
+        match input {
+            case Some(inp) => match checked_ecast(dispatchMenuKey(phase, inp, scene)) {
+                case Some(after) => after
+                case None        => dispatchNonMenuKey(phase, input, key, popupShown, scene)
+            }
+            case None => dispatchNonMenuKey(phase, input, key, popupShown, scene)
         }
 }
 
@@ -248,8 +239,10 @@ instance MenuEvent.MenuHandler[NodeTag] {
                         checked_ecast(ItemMenuScene.onActionConfirmed(entry, scene))
                     case _                                 => scene
                 }
-            case NodeTag.ActionMenu => ActionMenuScene.onActionConfirmed(entry, scene)
-            case _                  => scene
+            case NodeTag.ActionMenu        => ActionMenuScene.onActionConfirmed(entry, scene)
+            case NodeTag.TradeSelfMenu     => checked_ecast(TradeMenuScene.onConfirmSelf(entry, scene))
+            case NodeTag.TradePartnerMenu  => checked_ecast(TradeMenuScene.onConfirmPartner(entry, scene))
+            case _                         => scene
         }
     redef onItemCancelled(_menuPath: NodePath, state: NodeTag,
                            scene: Scene[NodeTag]):
@@ -268,8 +261,10 @@ instance MenuEvent.MenuHandler[NodeTag] {
                         checked_ecast(ItemMenuScene.onActionCancelled(scene))
                     case _                                 => scene
                 }
-            case NodeTag.ActionMenu => checked_ecast(ActionMenuScene.onActionCancelled(scene))
-            case _                  => scene
+            case NodeTag.ActionMenu        => checked_ecast(ActionMenuScene.onActionCancelled(scene))
+            case NodeTag.TradeSelfMenu     => checked_ecast(TradeMenuScene.onCancelSelf(scene))
+            case NodeTag.TradePartnerMenu  => checked_ecast(TradeMenuScene.onCancelPartner(scene))
+            case _                         => scene
         }
 }
 
@@ -320,6 +315,87 @@ def staffAimConfirm(scene: Scene[NodeTag]):
     }
 
 /// StaffAim フェーズで X/Esc が押されたら ItemActionSelect に戻る（杖は消費しない）。
+/// メニュー系フェーズ (ActionSelect / ItemSelect / ItemActionSelect / TradeInventory)
+/// の Z/X dispatch をまとめる。`onKeyPressed` の match は phase 数 × bool パターンで
+/// 型推論の複雑度が膨らみがちなので、メニュー dispatch を関数に切り出して肩代わりする。
+/// 戻り値は「dispatcher が処理したら Some、対象外なら None」。
+def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene[NodeTag]):
+        Option[Scene[NodeTag]] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                                    GameLogger.GameLogger, EnemyTurn.Queue,
+                                    TurnPhase.State, SelectedPlayer.State,
+                                    PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+    match (phase, input) {
+        case (TurnPhase.Phase.ActionSelect,      TurnRules.Input.Confirm)
+                                              => Some(ActionMenuScene.confirmCurrentSelection(scene))
+        case (TurnPhase.Phase.ActionSelect,      TurnRules.Input.Cancel)
+                                              => Some(checked_ecast(ActionMenuScene.onActionCancelled(scene)))
+        case (TurnPhase.Phase.ItemSelect,        TurnRules.Input.Confirm)
+                                              => Some(checked_ecast(ItemMenuScene.confirmCurrentSelection(scene)))
+        case (TurnPhase.Phase.ItemSelect,        TurnRules.Input.Cancel)
+                                              => Some(checked_ecast(ItemMenuScene.onItemCancelled(scene)))
+        case (TurnPhase.Phase.ItemActionSelect,  TurnRules.Input.Confirm)
+                                              => Some(checked_ecast(ItemMenuScene.confirmCurrentSelection(scene)))
+        case (TurnPhase.Phase.ItemActionSelect,  TurnRules.Input.Cancel)
+                                              => Some(checked_ecast(ItemMenuScene.onActionCancelled(scene)))
+        case (TurnPhase.Phase.TradeInventory,    TurnRules.Input.Confirm)
+                                              => Some(checked_ecast(TradeMenuScene.confirmCurrentSelection(scene)))
+        case (TurnPhase.Phase.TradeInventory,    TurnRules.Input.Cancel)
+                                              => Some(checked_ecast(TradeMenuScene.cancelCurrent(scene)))
+        case _                                => None
+    }
+
+/// メニュー以外のフェーズ (PlayerAutoMove / StaffAim / AttackForecast 等) の Z/X dispatch。
+/// `onKeyPressed` から `dispatchMenuKey` で処理されなかったときに呼ばれる。
+/// 方向キーなど input = None もここに来る (StaffAim 中の direction、ほかは no-op)。
+def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
+                        key: GameEngine.Key, popupShown: Bool, scene: Scene[NodeTag]):
+        Scene[NodeTag] \ {GameEngine.Game, BoardQuery, Tween.Scheduler,
+                            AnimationPlayer.Scheduler,
+                            GameLogger.GameLogger,
+                            EnemyTurn.Queue, TurnPhase.State,
+                            SelectedPlayer.State,
+                            PlayerScene.PartyQuery,
+                            EnemyScene.RosterQuery} =
+    match (phase, input) {
+        // popup 表示中の X は popup view 切替に上書き（通常のキャンセルは走らない）
+        case (_,                              Some(TurnRules.Input.Cancel)) if popupShown
+                                              => UnitInfoPopupScene.toggleView(scene)
+        case (TurnPhase.Phase.PlayerAutoMove, Some(TurnRules.Input.Cancel))
+                                              => checked_ecast(AutoMoveScene.cancel(scene))
+        case (TurnPhase.Phase.StaffAim,       Some(TurnRules.Input.Cancel))
+                                              => checked_ecast(staffAimCancel(scene))
+        case (TurnPhase.Phase.StaffAim,       Some(TurnRules.Input.Confirm))
+                                              => checked_ecast(staffAimConfirm(scene))
+        // StaffAim 中の方向キーは applyStaffCast へ
+        case (TurnPhase.Phase.StaffAim,       None)
+                                              => checked_ecast(staffAimDirection(key, scene))
+        // TradeInventory 中の ←/→ は左右ペイン切替へ (↑↓ は handleMenus 側で
+        // ItemList のカーソル移動に使われるので素通り)
+        case (TurnPhase.Phase.TradeInventory, None)
+                                              => checked_ecast(tradeInventoryDirection(key, scene))
+        case (TurnPhase.Phase.AttackForecast, Some(TurnRules.Input.Confirm))
+                                              => BattlePanelScene.confirm(scene)
+        case (TurnPhase.Phase.AttackForecast, Some(TurnRules.Input.Cancel))
+                                              => checked_ecast(BattlePanelScene.cancel(scene))
+        // 明示 case が無いフェーズの Z/X は TurnRules.decide にそのまま渡す
+        case (_,                              Some(inp))
+                                              => TurnInputBridge.handle(inp, scene)
+        // 方向キーなどはここまで来る (各 Scene が physicsProcess で polling する)
+        case (_,                              None) => scene
+    }
+
+/// TradeInventory 中の方向キーを左右ペイン切替に変換する。
+/// Left / A → Self ペイン、Right / D → Partner ペイン。
+/// Up / Down は handleMenus が ItemList カーソル移動に使うので、ここでは素通し。
+def tradeInventoryDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[NodeTag] =
+    match key {
+        case GameEngine.Key.Left  => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Self,    scene)
+        case GameEngine.Key.A     => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Self,    scene)
+        case GameEngine.Key.Right => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Partner, scene)
+        case GameEngine.Key.D     => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Partner, scene)
+        case _                    => scene
+    }
+
 def staffAimCancel(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
     TurnPhase.State.put(TurnPhase.Phase.ItemActionSelect);
     scene

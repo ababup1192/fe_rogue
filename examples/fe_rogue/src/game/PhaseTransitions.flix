@@ -11,14 +11,15 @@
 ///
 /// ## フェーズ別 overlay / cursor 仕様 (この表が単一の真理点)
 ///
-/// | Phase            | MoveRange | MoveAttackRange | PlayerAttackRange | EnemyRange | Cursor             |
-/// |------------------|-----------|-----------------|-------------------|------------|--------------------|
-/// | PlayerCursor     | Clear     | Clear           | Clear             | Keep       | Show + SnapPlayer  |
-/// | PlayerCursorAt   | Clear     | Clear           | Clear             | Keep       | Show + SnapCell    |
-/// | PlayerMoving     | Refresh   | Refresh         | Keep              | Clear      | Hide               |
-/// | PlayerAttack     | Clear     | Clear           | Show              | Keep       | Show + SnapTarget  |
-/// | PlayerAutoMove   | Keep      | Keep            | Keep              | Clear      | Hide               |
-/// | EnemyTurn        | Clear     | Clear           | Clear             | Keep       | Keep               |
+/// | Phase             | MoveRange | MoveAttackRange | PlayerAttackRange | TradeRange | EnemyRange | Cursor             |
+/// |-------------------|-----------|-----------------|-------------------|------------|------------|--------------------|
+/// | PlayerCursor      | Clear     | Clear           | Clear             | Clear      | Keep       | Show + SnapPlayer  |
+/// | PlayerCursorAt    | Clear     | Clear           | Clear             | Clear      | Keep       | Show + SnapCell    |
+/// | PlayerMoving      | Refresh   | Refresh         | Keep              | Clear      | Clear      | Hide               |
+/// | PlayerAttack      | Clear     | Clear           | Show              | Clear      | Keep       | Show + SnapTarget  |
+/// | TradeTargetSelect | Clear     | Clear           | Clear             | Show       | Clear      | Show + SnapPlayer  |
+/// | PlayerAutoMove    | Keep      | Keep            | Keep              | Keep       | Clear      | Hide               |
+/// | EnemyTurn         | Clear     | Clear           | Clear             | Clear      | Keep       | Keep               |
 ///
 /// **意味**:
 ///   - Clear   — 既存のノードを scene から取り除く (なければ no-op)
@@ -43,13 +44,14 @@ mod PhaseTransitions {
     // 共通 overlay clear パターン
     // ────────────────────────────────────────────────────────
 
-    /// 味方系 3 range (Move / MoveAttack / PlayerAttack) を全消し。
+    /// 味方系 4 range (Move / MoveAttack / PlayerAttack / TradeRange) を全消し。
     /// PlayerCursor / PlayerCursorAt / EnemyTurn が共通で使う「味方の範囲表示を全部閉じる」操作。
     def clearAllPlayerRanges(scene: Scene[NodeTag]): Scene[NodeTag] =
         scene
             |> MoveRangeScene.clear
             |> MoveAttackRangeScene.clear
             |> PlayerAttackRangeScene.clear
+            |> TradeRangeScene.clear
 
     /// 移動系 2 range (Move / MoveAttack) を消す。PlayerAttackRange は呼び出し側 (`show`) が
     /// 引き継いで再構築するので、ここでは触らない。PlayerAttack 進入で使う。
@@ -174,4 +176,50 @@ mod PhaseTransitions {
             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.AttackForecast);
         scene
+
+    /// TradeTargetSelect / TradeInventory から ActionSelect に戻す共通動作。
+    /// 緑マス overlay を片付けて TradeMenu の PanelData を初期値にリセットし、
+    /// フェーズを戻す (ActionMenu は visibility で自動再表示される)。
+    /// X キャンセル + 交換完了後の両方で呼ぶ。
+    pub def enterActionSelectFromTrade(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
+        scene
+            |> TradeRangeScene.clear
+            |> TradeMenuScene.mapPanelData(_ -> TradeMenuScene.defaultPanelData())
+
+    /// TradeInventory フェーズに入る (TradeTargetSelect で Z 押下時)。
+    /// 緑マス overlay を片付け (もう不要)、`partnerId` を PanelData にセットして
+    /// `focus = Self / pick = None` に初期化する。
+    /// カーソルは TradeInventory 中は使われないので隠す (ActionSelect から
+    /// 戻ったときに再表示される)。
+    pub def enterTradeInventory(partnerId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.TradeInventory);
+        scene
+            |> TradeRangeScene.clear
+            |> CursorScene.setVisible(false)
+            |> TradeMenuScene.mapPanelData(_ ->
+                ({partnerId = partnerId,
+                  pick      = None,
+                  focus     = TradeMenuScene.Pane.Self}: TradeMenuScene.PanelData))
+
+    /// TradeTargetSelect フェーズに入る (ActionMenu「こうかん」確定時)。
+    /// 動作 (上の表): 味方系の青/赤マスを片付け、緑マス (TradeRange) を敷き直し、
+    ///                カーソルを表示し **最初の隣接味方マス** (reading order:
+    ///                y 昇順 → x 昇順) にスナップする。
+    /// 隣接味方が複数居るときは北 → 西 → 東 → 南の順で最も若いマスを選ぶ。
+    /// 緑マスゼロ (= 隣接味方なし) のときは ActionMenu の「こうかん」項目自体が
+    /// 出ないので、ここに来ることはない (防御的に選択中味方位置にスナップ)。
+    pub def enterTradeTargetSelect(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              TurnPhase.State, SelectedPlayer.State,
+                              PlayerScene.PartyQuery} =
+        TurnPhase.State.put(TurnPhase.Phase.TradeTargetSelect);
+        clearMoveOnlyRanges(scene)
+            |> PlayerAttackRangeScene.clear
+            |> EnemyRangeScene.clear
+            |> TradeRangeScene.show
+            |> CursorScene.setVisible(true)
+            |> CursorScene.snapToFirstTradeCellOrPlayer
 }

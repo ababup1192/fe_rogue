@@ -294,4 +294,63 @@ mod TestTurnRules {
         Assert.assertEq(
             expected = TurnRules.Transition.Stay,
             TurnRules.decide(context))
+
+    // ════════════════════════════════════════════════════════
+    // TradeTargetSelect: 隣接味方確定 / キャンセル
+    // ════════════════════════════════════════════════════════
+
+    /// 味方 2 人 (id=0, id=1) の盤面で、id=0 が selected、カーソルが id=1 の上に
+    /// 居て Z → OpenTradeInventory(1)。隣接判定 (manhattan=1) は ActionMenu の
+    /// 表示制御と CursorScene の緑マス制限でかかっているので、ここでは
+    /// 「カーソル位置に居る他味方を partner として返す」だけを検証する。
+    @Test
+    def testTradeConfirmOnPartnerCellOpensInventory(): Unit \ Assert =
+        let board: Board = {
+            map    = emptySnapshot(),
+            pieces = (Piece.Player(0), cell(2, 2)) ::
+                     (Piece.Player(1), cell(3, 2)) :: Nil
+        };
+        let context = {
+            phase    = TurnPhase.Phase.TradeTargetSelect,
+            input    = TurnRules.Input.Confirm,
+            selected = Some(0)
+            | baseContext(board, cell(3, 2))
+        };
+        Assert.assertEq(
+            expected = TurnRules.Transition.OpenTradeInventory(1),
+            TurnRules.decide(context))
+
+    /// カーソルが味方の居ない空マス上で Z → Stay。
+    /// (カーソル制限がうまく外れた防御ケース。緑マス制限が正しく動いていれば
+    ///  通常は起きないが、ガードとして保持する)
+    @Test
+    def testTradeConfirmOnEmptyCellStays(): Unit \ Assert =
+        let board: Board = {
+            map    = emptySnapshot(),
+            pieces = (Piece.Player(0), cell(2, 2)) ::
+                     (Piece.Player(1), cell(3, 2)) :: Nil
+        };
+        let context = {
+            phase    = TurnPhase.Phase.TradeTargetSelect,
+            input    = TurnRules.Input.Confirm,
+            selected = Some(0)
+            | baseContext(board, cell(4, 4))
+        };
+        Assert.assertEq(
+            expected = TurnRules.Transition.Stay,
+            TurnRules.decide(context))
+
+    /// X キャンセル → TradeCancel (ActionSelect に戻す)
+    @Test
+    def testTradeCancelReturnsTradeCancelTransition(): Unit \ Assert =
+        let board = boardWithPlayerOnly(cell(2, 2));
+        let context = {
+            phase    = TurnPhase.Phase.TradeTargetSelect,
+            input    = TurnRules.Input.Cancel,
+            selected = Some(0)
+            | baseContext(board, cell(2, 2))
+        };
+        Assert.assertEq(
+            expected = TurnRules.Transition.TradeCancel,
+            TurnRules.decide(context))
 }
