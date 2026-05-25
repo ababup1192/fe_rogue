@@ -1,5 +1,13 @@
 {
   "fields": {
+    "description": {
+      "field": {
+        "ftype": "text",
+        "hint":  "plain",
+        "label": "兵種",
+        "order": 0
+      }
+    },
     "hp": {
       "field": {
         "ftype": "int",

@@ -53,10 +53,7 @@
   "description": "行動選択ウィンドウ (PlayerMoving/Cursor で Z)\n文脈別: 味方=こうげき/ひろう/たいき、空マス=しゅうごう",
   "layer": 2,
   "name": "ActionMenu",
-  "pos": [
-    0,
-    0
-  ],
+  "pos": [0, 0],
   "rotation": 0,
   "scale": [
     1,

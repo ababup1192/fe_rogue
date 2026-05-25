@@ -166,9 +166,10 @@ mod CursorScene {
                                GameLogger.GameLogger,
                                EnemyScene.RosterQuery, TurnPhase.State} =
         match TurnPhase.State.get() {
-            case TurnPhase.Phase.PlayerCursor => stepFreeMovement(delta, node, path, scene)
-            case TurnPhase.Phase.PlayerAttack => stepTargetCycle(delta, node, path, scene)
-            case _                            => (node, scene)
+            case TurnPhase.Phase.PlayerCursor       => stepFreeMovement(delta, node, path, scene)
+            case TurnPhase.Phase.PlayerAttack       => stepTargetCycle(delta, node, path, scene)
+            case TurnPhase.Phase.TradeTargetSelect  => stepTradeCellCycle(delta, node, path, scene)
+            case _                                  => (node, scene)
         }
 
     // ────────────────────────────────────────────────────────
@@ -408,6 +409,112 @@ mod CursorScene {
             case None         => -1
         }
 
+    // ────────────────────────────────────────────────────────
+    // (D-3) TradeTargetSelect フェーズの 1 マス進行 (緑マス間サイクル)
+    // ────────────────────────────────────────────────────────
+
+    /// `TradeTargetSelect` フェーズでの physicsProcess 本体。
+    /// 緑マス (TradeRangeScene の隣接味方マス) を reading order でソートして、
+    /// 方向キー押下の瞬間に prev / next の緑マスへサイクルでスナップする。
+    /// 入力ゲートは PlayerAttack と同じ (snag / Tween 中は捨てる)。
+    /// 緑マスが 0 個 (= 隣接味方なし) のときは何もしない (X キャンセル待ち)。
+    def stepTradeCellCycle(_delta: Duration.Duration,
+                             node: EngineNode[NodeTag],
+                             _path: NodePath,
+                             scene: Scene[NodeTag]):
+                            (EngineNode[NodeTag], Scene[NodeTag])
+                            \ {GameEngine.Game,
+                               Tween.Scheduler, AnimationPlayer.Scheduler} =
+        match node {
+            case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
+                if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
+                else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
+                else
+                    let held = readHeldDirection();
+                    match (data#holdDir, held) {
+                        case (_, None) =>
+                            let nextData = {holdDir = None, holdSteps = 0 | data};
+                            (EngineNode.Marker2DWithState(marker,
+                                                           NodeTag.Cursor(nextData)),
+                             scene)
+                        case (Some(_), Some(dir)) =>
+                            let nextData = {holdDir = Some(dir), holdSteps = 1 | data};
+                            (EngineNode.Marker2DWithState(marker,
+                                                           NodeTag.Cursor(nextData)),
+                             scene)
+                        case (None, Some(dir)) =>
+                            cycleToTradeCell(dir, marker, data, scene)
+                    }
+            case _ => (node, scene)
+        }
+
+    /// 緑マスの中から方向に応じて next / prev のセルへカーソルを飛ばす。
+    /// `TradeRangeScene.cells` を reading order (y → x) にソートしてサイクルする。
+    /// 緑マスが空ならホールド状態だけ更新して何もしない。
+    def cycleToTradeCell(dir: {x = Int32, y = Int32},
+                          marker: Marker2D, data: Data,
+                          scene: Scene[NodeTag]):
+                         (EngineNode[NodeTag], Scene[NodeTag])
+                         \ {Tween.Scheduler, AnimationPlayer.Scheduler} =
+        let sortedCells = TradeRangeScene.cells(scene)
+                            |> List.sortBy(c -> (c#y, c#x));
+        pickNextCellInCycle(dir, data#gridPos, sortedCells)
+            |> Option.map(target -> snapCursorAndUpdateHold(target, dir, marker, data, scene))
+            |> Option.getWithDefault(updateHoldOnly(dir, marker, data, scene))
+
+    /// `sortedCells` を方向 (dir) でサイクルし、prev / next のセルを返す。
+    /// 上 / 左 = 前、下 / 右 = 次。現在位置がセル外なら、方向に応じて先頭 / 末尾を返す。
+    /// セルが空なら None。
+    def pickNextCellInCycle(dir: {x = Int32, y = Int32},
+                              curPos: {x = Int32, y = Int32},
+                              sortedCells: List[{x = Int32, y = Int32}]):
+                             Option[{x = Int32, y = Int32}] =
+        if (List.isEmpty(sortedCells)) None
+        else {
+            let n = List.length(sortedCells);
+            let curIdx = findCursorCellIndex(curPos, sortedCells);
+            let step = if (dir#x < 0 or dir#y < 0) -1 else 1;
+            let nextIdx =
+                if (curIdx < 0)
+                    if (step > 0) 0 else n - 1
+                else
+                    Int32.modulo(curIdx + step + n, n);
+            List.nth(nextIdx, sortedCells)
+        }
+
+    /// 目標セルへ Tween でスライドし、snag アニメ再生 + holdDir 更新まで一気に行う。
+    def snapCursorAndUpdateHold(target: {x = Int32, y = Int32},
+                                  dir: {x = Int32, y = Int32},
+                                  marker: Marker2D, data: Data,
+                                  scene: Scene[NodeTag]):
+                                 (EngineNode[NodeTag], Scene[NodeTag])
+                                 \ {Tween.Scheduler, AnimationPlayer.Scheduler} =
+        let slide = computeSlideDuration(1);
+        let (newMarker, movedData) = moveStep(target, marker, data, slide);
+        AnimationPlayer.play(cursorPath(), snagAnimation());
+        let finalData = {holdDir = Some(dir), holdSteps = 1 | movedData};
+        (EngineNode.Marker2DWithState(newMarker, NodeTag.Cursor(finalData)), scene)
+
+    /// セル移動できなかったとき (空 / 範囲外) の戻り値: holdDir だけ更新して scene 据え置き。
+    def updateHoldOnly(dir: {x = Int32, y = Int32}, marker: Marker2D, data: Data,
+                        scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) =
+        let nextData = {holdDir = Some(dir), holdSteps = 1 | data};
+        (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)), scene)
+
+    /// セルリストの中で `cell` と一致するセルの index を返す。一致しなければ -1。
+    /// `findCursorTargetIndex` の generic 版 (gridPos を持つ任意のレコード対象でなく、
+    /// 直接 {x, y} のリストを取る)。
+    def findCursorCellIndex(cell: {x = Int32, y = Int32},
+                              cells: List[{x = Int32, y = Int32}]): Int32 =
+        let indexed = List.zipWithIndex(cells);
+        match List.find(p -> {
+            let (_, c) = p;
+            c#x == cell#x and c#y == cell#y
+        }, indexed) {
+            case Some((i, _)) => i
+            case None         => -1
+        }
+
 
     /// 指定セルに居る敵の id を返す（居なければ None）
     def enemyIdAt(coord: {x = Int32, y = Int32}, board: Board): Option[Int32] =
@@ -469,6 +576,22 @@ mod CursorScene {
         match List.head(PlayerAttackRangeScene.targetsInRange(scene)) {
             case Some(target) => snapToCell(target#gridPos, scene)
             case None         => snapToPlayer(scene)
+        }
+
+    /// `TradeTargetSelect` フェーズ突入時に、緑マスの **最初の隣接味方マス**
+    /// (reading order: y 昇順 → x 昇順) にカーソルをスナップする。
+    /// 隣接味方が複数居る場合 (例: 上と右の 2 人) は北 (y 小) を優先する。
+    /// 緑マスが空 (= 隣接味方なし) のときは選択中プレイヤー位置にフォールバックする
+    /// (この経路は ActionMenu の「こうかん」項目が出ない時しか起きない防御ケース)。
+    pub def snapToFirstTradeCellOrPlayer(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              SelectedPlayer.State, PlayerScene.PartyQuery} =
+        let firstCell = TradeRangeScene.cells(scene)
+                          |> List.sortBy(c -> (c#y, c#x))
+                          |> List.head;
+        match firstCell {
+            case Some(cell) => snapToCell(cell, scene)
+            case None       => snapToPlayer(scene)
         }
 
     /// snap 先のセルを決める:

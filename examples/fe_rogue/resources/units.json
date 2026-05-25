@@ -29,6 +29,7 @@
     "goblin": {
       "attack": 5,
       "defense": 2,
+      "description": "ゴブリン",
       "hp": 10,
       "initialWeapon": "trainingSword",
       "magicAttack": 0,
@@ -48,6 +49,7 @@
     "knight": {
       "attack": 7,
       "defense": 4,
+      "description": "ナイト",
       "hp": 17,
       "initialWeapon": "trainingSpear",
       "magicAttack": 0,
@@ -64,6 +66,7 @@
     "mage": {
       "attack": 2,
       "defense": 2,
+      "description": "メイジ",
       "hp": 11,
       "initialStaves": [
         "live_staff",
@@ -85,6 +88,7 @@
     "orc": {
       "attack": 6,
       "defense": 3,
+      "description": "オーク",
       "hp": 13,
       "initialWeapon": "trainingSword",
       "magicAttack": 0,

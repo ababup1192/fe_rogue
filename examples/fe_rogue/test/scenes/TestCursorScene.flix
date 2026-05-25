@@ -369,4 +369,107 @@ mod TestCursorScene {
               with TurnPhase.withState(rc);
             Assert.assertEq(expected = (3, 3), (data#gridPos#x, data#gridPos#y))
         }
+
+    // ════════════════════════════════════════════════════════
+    // snapToFirstTradeCellOrPlayer — 「こうかん」確定時の初期スナップ
+    //
+    // 検証する観点:
+    //   - 隣接味方が複数いるとき、reading order (y → x) の先頭にスナップする
+    //     (= 北 > 西 > 東 > 南 の優先順位、最も若い y、同 y では最も若い x)
+    //   - 隣接味方が 1 人だけならその人の位置にスナップする
+    // ════════════════════════════════════════════════════════
+
+    /// テスト用に id と gridPos だけ意味を持つ最小限の PlayerScene.Data。
+    def makePartyMember(id: Int32, gridPos: {x = Int32, y = Int32}):
+            PlayerScene.Data = {
+        id              = id,
+        gridPos         = gridPos,
+        moveTiles       = 5,
+        hp              = 10,
+        waited          = false,
+        attackTargetId  = None,
+        resource        = TestUnitFixtures.testResource(5, 10),
+        weapons         = TestUnitFixtures.testWeapon() :: Nil,
+        staves          = Nil,
+        selectedItem    = None,
+        moveStepsTaken  = 0
+    }
+
+    /// World + 与えた party の Marker2D を直接組み立てた scene。
+    /// cursorAddPure を後付けで挟むと Cursor も入る (CursorScene.add は id=0 の
+    /// 位置を初期セルとして読む)。
+    def sceneWithParty(party: List[PlayerScene.Data]): Scene[NodeTag] =
+        let world = Marker2D.make(Vec2.zero())
+            |> CanvasItem.setYSortEnabled(true);
+        let withWorld = Scene.empty()
+            |> Scene.addNode(MapScene.worldName(),
+                EngineNode.Marker2DWithState(world, NodeTag.NoTag));
+        List.foldLeft((acc, data) -> {
+            let marker = Marker2D.make(MapScene.cellCenter(data#gridPos));
+            Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(data#id),
+                EngineNode.Marker2DWithState(marker, NodeTag.Player(data)), acc)
+        }, withWorld, party)
+
+    /// SelectedPlayer.State の get を指定 id 固定にする stub。
+    def withSelectedFor(playerId: Int32, gridPos: {x = Int32, y = Int32},
+                         thunk: Unit -> a \ ef): a \ (ef - SelectedPlayer.State) =
+        run { thunk() } with handler SelectedPlayer.State {
+            def get(k)    = k({id = Some(playerId), origin = Some(gridPos)})
+            def put(_, k) = k()
+        }
+
+    /// 4 effect (SelectedPlayer / PartyQuery / Tween / Anim) を一度に剥がすラッパ。
+    /// TradeRangeScene.show + snapToFirstTradeCellOrPlayer を続けて実行する用途。
+    def runWithTradeSnapMocks(scene: Scene[NodeTag], selectedId: Int32,
+                                selectedPos: {x = Int32, y = Int32},
+                                thunk: Unit -> a \ ef):
+            a \ (ef - SelectedPlayer.State - PlayerScene.PartyQuery
+                  - Tween.Scheduler - AnimationPlayer.Scheduler) =
+        withSelectedFor(selectedId, selectedPos, () ->
+            TestUnitFixtures.withMockPartyQuery(scene, () ->
+                TestUnitFixtures.withNoopTween(() ->
+                    TestUnitFixtures.withNoopAnim(thunk))))
+
+    /// cursor の現在 gridPos を (x, y) タプルで取り出す。
+    def cursorPosOf(scene: Scene[NodeTag]): (Int32, Int32) =
+        let d = CursorScene.getCursorData(scene);
+        (d#gridPos#x, d#gridPos#y)
+
+    /// 配置 (id=0 self at (5,5)):
+    ///       (5,4) id=1 north
+    /// (4,5) (5,5) (6,5)
+    ///  id=2  self  id=3
+    ///  west       east
+    ///       (5,6) id=4 south
+    ///
+    /// reading order (y → x) では (5,4) (= 北) が先頭。
+    /// 「こうかん」確定時に北の味方にカーソルがスナップする。
+    @Test
+    def testSnapToFirstTradeCellPicksNorthAmongFourNeighbors(): Unit \ Assert =
+        let self     = makePartyMember(0, {x = 5, y = 5});
+        let northern = makePartyMember(1, {x = 5, y = 4});
+        let western  = makePartyMember(2, {x = 4, y = 5});
+        let eastern  = makePartyMember(3, {x = 6, y = 5});
+        let southern = makePartyMember(4, {x = 5, y = 6});
+        let baseScene = cursorAddPure(
+            sceneWithParty(self :: northern :: western :: eastern :: southern :: Nil));
+        let after = runWithTradeSnapMocks(baseScene, 0, {x = 5, y = 5}, () -> {
+            let withRange = TradeRangeScene.show(baseScene);
+            CursorScene.snapToFirstTradeCellOrPlayer(withRange)
+        });
+        Assert.assertEq(expected = (5, 4), cursorPosOf(after))
+
+    /// 隣接味方が 1 人だけ (東に id=1) のとき、その人の位置に直接スナップする。
+    /// 複数考慮の特殊ケースとして単一ケースも pin。
+    @Test
+    def testSnapToFirstTradeCellPicksTheOnlyAdjacentAlly(): Unit \ Assert =
+        let self    = makePartyMember(0, {x = 5, y = 5});
+        let eastern = makePartyMember(1, {x = 6, y = 5});
+        let baseScene = cursorAddPure(
+            sceneWithParty(self :: eastern :: Nil));
+        let after = runWithTradeSnapMocks(baseScene, 0, {x = 5, y = 5}, () -> {
+            let withRange = TradeRangeScene.show(baseScene);
+            CursorScene.snapToFirstTradeCellOrPlayer(withRange)
+        });
+        Assert.assertEq(expected = (6, 5), cursorPosOf(after))
 }

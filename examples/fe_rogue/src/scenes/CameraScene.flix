@@ -117,6 +117,8 @@ mod CameraScene {
             case TurnPhase.Phase.AttackForecast   => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerAttack     => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerAttackHold => cursorWorldPos(scene)
+            case TurnPhase.Phase.TradeTargetSelect => cursorWorldPos(scene)
+            case TurnPhase.Phase.TradeInventory    => focusPos
             case TurnPhase.Phase.PlayerAutoMove   => autoMoveTarget(scene)
             case TurnPhase.Phase.EnemyTurn        => enemyTurnTarget(focusPos, scene)
         }
