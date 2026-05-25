@@ -4,12 +4,9 @@
       "animation": "walk",
       "autoplay": "walk",
       "name": "sprite",
-      "pos": [0, 1],
+      "pos": [0, 0],
       "rotation": 0,
-      "scale": [
-        1,
-        1
-      ],
+      "scale": [0.833, 0.771],
       "spriteFrames": {
         "walk": {
           "frames": [

@@ -19,6 +19,9 @@
 mod PropertyWidgets {
     import java.io.File
     import java.lang.{Object => JObject}
+    import java.math.{BigDecimal => JBigDecimal}
+    import java.math.RoundingMode
+    import javafx.util.StringConverter
     import javafx.collections.ObservableList
     import javafx.fxml.FXMLLoader
     import javafx.scene.Node
@@ -322,18 +325,53 @@ mod PropertyWidgets {
         checked_cast(spinner)
     }
 
-    /// Float フィールド: Spinner<Double> (step 0.1)
+    /// Float Spinner の表示・入力丸めポリシー。
+    /// ドラッグ操作などで `0.6845279517513342` のような過剰精度が混入することを防ぎ、
+    /// scene.json にも 3 桁までしか書かれないようにする。
+    /// 切り上げではなく HALF_UP (四捨五入) を採用。
+    def roundTo3(v: Float64): Float64 =
+        JBigDecimal.valueOf(v).setScale(3i32, RoundingMode.HALF_UP).doubleValue()
+
+    /// `roundTo3` を通したあと末尾 0 を落として表示文字列にする。
+    /// `1.0` → `"1"`、`0.5` → `"0.5"`、`0.6845...` → `"0.685"`。
+    def formatRoundedFloat(v: Float64): String =
+        unsafe IO {
+            JBigDecimal.valueOf(roundTo3(v)).stripTrailingZeros().toPlainString()
+        }
+
+    /// Spinner[Double] 用 StringConverter。表示は formatRoundedFloat、
+    /// 入力は parseDouble → roundTo3。parse 失敗時は 0.0 にフォールバック
+    /// (JavaFX 既定の挙動と違うが、Inspector では Enter 押下時に必ず数値が確定する方が望ましい)。
+    def roundedDoubleConverter(): StringConverter[Double] \ IO =
+        new StringConverter[Double] {
+            def toString(_this: StringConverter[Double], value: Double): String =
+                if (Object.isNull(value)) ""
+                else formatRoundedFloat(value.doubleValue())
+            def fromString(_this: StringConverter[Double], s: String): Double = {
+                let trimmed = String.trim(s);
+                if (String.length(trimmed) == 0) Double.valueOf(0.0)
+                else match Float64.fromString(trimmed) {
+                    case Some(v) => Double.valueOf(roundTo3(v))
+                    case None    => Double.valueOf(0.0)
+                }
+            }
+        }
+
+    /// Float フィールド: Spinner<Double> (step 0.1)。
+    /// 表示・入力・commit すべて 3 桁丸めポリシーで統一する (roundedDoubleConverter 参照)。
     pub def buildFloatWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
-        let current: Float64 = NodeInspector.jsonToFloat(value |> Option.getWithDefault(Json.JsonElement.JsonNull))
-                                |> Option.getWithDefault(0.0);
+        let raw: Float64 = NodeInspector.jsonToFloat(value |> Option.getWithDefault(Json.JsonElement.JsonNull))
+                            |> Option.getWithDefault(0.0);
+        let current = roundTo3(raw);
         let spinner: Spinner[Double] = new Spinner(-999999.0, 999999.0, current, 0.1);
         spinner.setEditable(true);
         spinner.setPrefWidth(110.0);
         spinner.setMaxWidth(110.0);
+        spinner.getValueFactory().setConverter(roundedDoubleConverter());
         spinner.valueProperty().addListener(new ChangeListener[Double] {
             def changed(_cThis: ChangeListener[Double], _obs: ObservableValue[JObject],
                          _old: Double, newVal: Double): Unit \ IO = {
-                let v: Float64 = newVal.doubleValue();
+                let v: Float64 = roundTo3(newVal.doubleValue());
                 commit(NodeInspector.floatToJson(v))
             }
         });
@@ -704,13 +742,17 @@ mod PropertyWidgets {
             });
             assembleVec2Box(checked_cast(xs), checked_cast(ys))
         } else {
-            let xs: Spinner[Double] = new Spinner(-999999.0, 999999.0, initX, 0.1);
-            let ys: Spinner[Double] = new Spinner(-999999.0, 999999.0, initY, 0.1);
+            let initXR = roundTo3(initX);
+            let initYR = roundTo3(initY);
+            let xs: Spinner[Double] = new Spinner(-999999.0, 999999.0, initXR, 0.1);
+            let ys: Spinner[Double] = new Spinner(-999999.0, 999999.0, initYR, 0.1);
             xs.setEditable(true); ys.setEditable(true);
             xs.setPrefWidth(140.0); ys.setPrefWidth(140.0);
+            xs.getValueFactory().setConverter(roundedDoubleConverter());
+            ys.getValueFactory().setConverter(roundedDoubleConverter());
             let commitBoth = () -> {
-                let x: Float64 = xs.getValue().doubleValue();
-                let y: Float64 = ys.getValue().doubleValue();
+                let x: Float64 = roundTo3(xs.getValue().doubleValue());
+                let y: Float64 = roundTo3(ys.getValue().doubleValue());
                 commit(NodeInspector.vec2ToJson({x = x, y = y}))
             };
             xs.valueProperty().addListener(new ChangeListener[Double] {

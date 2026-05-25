@@ -15,9 +15,12 @@ mod NodeInspector {
     import java.math.{BigDecimal => JBigDecimal}
 
     /// 1 フィールドの表現種別。ScenePanel がこの kind に応じて widget を選ぶ。
-    /// EnumT は ComboBox の選択肢 (有限の文字列リスト) を payload に持つ
+    /// EnumT は ComboBox の選択肢 (有限の文字列リスト) を payload に持つ。
+    /// Vec2T は float Spinner、Vec2IntT はピクセル感を出したい整数 Spinner。
+    /// engine 側の `Vec2` 自体は `{x: Float64, y: Float64}` なので、float が default。
     pub enum FieldKind with Eq, ToString {
         case Vec2T
+        case Vec2IntT
         case FloatT
         case IntT
         case TextT
@@ -403,7 +406,7 @@ mod NodeInspector {
         ({
             name     = "position",
             label    = "Local position",
-            kind     = FieldKind.Vec2T,
+            kind     = FieldKind.Vec2IntT,
             snapshot = n -> Some(vec2ToJson(Node2D.getPosition(n))),
             apply    = (sel, j) -> match jsonToVec2(j) {
                 case Some(v) => SceneSerializer.updatePos(sel#jsonPath, sel#jsonNodePath, v)
@@ -699,7 +702,7 @@ mod NodeInspector {
         let sizeField: FieldDef = {
             name     = "size",
             label    = "Size",
-            kind     = FieldKind.Vec2T,
+            kind     = FieldKind.Vec2IntT,
             snapshot = n -> Option.map(r -> vec2ToJson(r#size), pick(n)),
             apply    = (sel, j) -> match jsonToVec2(j) {
                 case Some(v) => SceneSerializer.updateSize(sel#jsonPath, sel#jsonNodePath, v)
@@ -816,7 +819,7 @@ mod NodeInspector {
         let sizeField: FieldDef = {
             name     = "size",
             label    = "Size",
-            kind     = FieldKind.Vec2T,
+            kind     = FieldKind.Vec2IntT,
             snapshot = n -> Option.map(r -> vec2ToJson(r#size), pick(n)),
             apply    = (sel, j) -> match jsonToVec2(j) {
                 case Some(v) => SceneSerializer.updateSize(sel#jsonPath, sel#jsonNodePath, v)
@@ -841,7 +844,7 @@ mod NodeInspector {
         let sizeField: FieldDef = {
             name     = "size",
             label    = "Size",
-            kind     = FieldKind.Vec2T,
+            kind     = FieldKind.Vec2IntT,
             snapshot = n -> Option.map(r -> vec2ToJson(r#size), pick(n)),
             apply    = (sel, j) -> match jsonToVec2(j) {
                 case Some(v) => SceneSerializer.updateSize(sel#jsonPath, sel#jsonNodePath, v)
