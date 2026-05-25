@@ -211,7 +211,9 @@ mod PlayerScene {
 
     /// プレイヤー 1 体ぶんの Marker2D + 子 Sprite2D を scene に追加する。
     /// ステータス・テクスチャ・フレームは `sp#resource`（UnitResource）から取る。
-    def addOnePlayer(sp: Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
+    /// pub: `PlayerScene.add` の party 追加ループから呼ばれる本体内部ロジック。
+    /// テストでも catalog からの Spawn 構築 → addOnePlayer の本体経路を流用する。
+    pub def addOnePlayer(sp: Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
         let pos = MapScene.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
@@ -620,9 +622,20 @@ mod PlayerScene {
     /// 種別 (武器/杖) は元のままなので、武器 ↔ 杖の交換も自動的に両者の対応リストへ振り分けられる。
     /// `selfKind` が範囲外 / `selfId` が存在しない場合は防御的に no-op。
     /// 「こうかん」確定 (Phase 4) で TradeMenuScene から呼ばれる。
-    pub def swapItem(selfId: Int32, selfKind: ItemKind,
-                      partnerId: Int32, partnerKind: Option[ItemKind],
+    ///
+    /// 引数 (record-style):
+    ///   - `selfId`      : 必ず実体アイテムを渡す側のプレイヤー id
+    ///   - `selfKind`    : self 側で渡すアイテム種別 (Weapon idx / Staff idx)
+    ///   - `partnerId`   : もう一方のプレイヤー id
+    ///   - `partnerKind` : Some なら双方向 swap、None なら self 側からの片方向 transfer
+    pub def swapItem(args: {selfId = Int32, selfKind = ItemKind,
+                              partnerId = Int32,
+                              partnerKind = Option[ItemKind]},
                       scene: Scene[NodeTag]): Scene[NodeTag] =
+        let selfId      = args#selfId;
+        let selfKind    = args#selfKind;
+        let partnerId   = args#partnerId;
+        let partnerKind = args#partnerKind;
         // 1. 両者のアイテム実体を「現在の scene」から抜き出す (まだ削除はしない)
         let selfItemOpt = getInventoryItem(selfId, selfKind, scene);
         let partnerItemOpt = partnerKind

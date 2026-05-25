@@ -213,21 +213,24 @@ mod TradeMenuScene {
 
     /// 武器 1 本ぶんの ItemEntry。metadata は ItemMenuScene と同じ `"w:<idx>"` 規約。
     /// (Phase 5 で ItemMenuScene と統合予定だが、Phase 4 では局所コピーで進める)
-    def weaponEntry(idx: Int32, weapon: UnitCatalog.WeaponResource): ItemEntry = {
+    /// pub: テストから「本体が実際に ItemList に並べている entry」と同じ値を組むのに使う。
+    pub def weaponEntry(idx: Int32, weapon: UnitCatalog.WeaponResource): ItemEntry = {
         text     = "${weapon#name} ${weapon#durability}",
         disabled = false,
         metadata = Some("w:${idx}")
     }
 
     /// 杖 1 本ぶんの ItemEntry。metadata は `"s:<idx>"` 規約。
-    def staffEntry(idx: Int32, staff: Staff.StaffResource): ItemEntry = {
+    /// pub: テストから「本体が実際に ItemList に並べている entry」と同じ値を組むのに使う。
+    pub def staffEntry(idx: Int32, staff: Staff.StaffResource): ItemEntry = {
         text     = "${staff#name} ${staff#durability}",
         disabled = false,
         metadata = Some("s:${idx}")
     }
 
     /// 空スロット (相手側で「ここに自分のアイテムを置ける」位置) を表す ItemEntry。
-    def emptySlotEntry(): ItemEntry = {
+    /// pub: テストから「本体が実際に ItemList に並べている entry」と同じ値を組むのに使う。
+    pub def emptySlotEntry(): ItemEntry = {
         text     = emptySlotEntryText(),
         disabled = false,
         metadata = Some(emptySlotMeta())
@@ -288,11 +291,17 @@ mod TradeMenuScene {
             case (Some(pickerKind), receiverOpt) =>
                 // picker 実体: picker → 受け側へ swap (受け側が None なら片方向 transfer)
                 GameLogger.playerLog("P${selfPlayerId} と P${partnerPlayerId} がアイテム交換");
-                PlayerScene.swapItem(pickerId, pickerKind, receiverId, receiverOpt, scene)
+                PlayerScene.swapItem({selfId      = pickerId,
+                                       selfKind    = pickerKind,
+                                       partnerId   = receiverId,
+                                       partnerKind = receiverOpt}, scene)
             case (None, Some(receiverKind)) =>
                 // picker 空 (= 受取希望) & 受け側実体: 受け側 → picker へ片方向 transfer
                 GameLogger.playerLog("P${selfPlayerId} と P${partnerPlayerId} がアイテム交換");
-                PlayerScene.swapItem(receiverId, receiverKind, pickerId, None, scene)
+                PlayerScene.swapItem({selfId      = receiverId,
+                                       selfKind    = receiverKind,
+                                       partnerId   = pickerId,
+                                       partnerKind = None}, scene)
         }
 
     /// Z 押下の中核処理。`currentSide` で押されたペインを示し、現在の `pick` 状態と

@@ -144,50 +144,49 @@ mod UnitCatalog {
     /// `resources/units.json` + `resources/weapons.json` をロードしてマージする。
     /// 失敗は panic（即可視化）。起動時の Game.start で 1 度だけ呼ぶ想定。
     pub def load(unitsPath: String, weaponsPath: String): UnitCatalog \ Fs.FileRead =
-        let catalog = loadUnitsFile(unitsPath);
-        let weapons = loadWeaponsFile(weaponsPath);
+        let unitsJson   = readFile(unitsPath);
+        let weaponsJson = readFile(weaponsPath);
+        loadFromString(unitsJson, weaponsJson)
+
+    /// I/O から分離したデコード経路: JSON 文字列から `UnitCatalog` を組む。
+    /// テスト・runtime 生成カタログ・resource pack 等、file 以外のソースから読みたい
+    /// ケースで使う (`load` は file 版 wrapper)。
+    pub def loadFromString(unitsJson: String, weaponsJson: String): UnitCatalog =
+        let catalog = decodeUnitsJson(unitsJson);
+        let weapons = decodeWeaponsJson(weaponsJson);
         let UnitCatalog.UnitCatalog(payload) = catalog;
         UnitCatalog.UnitCatalog({weapons = weapons | payload})
 
-    /// units.json を読み Saveable[UnitCatalog] でデコード。weapons は空 Map で返る
-    /// (units.json 側は weapons セクションを持たないため)。
-    def loadUnitsFile(path: String): UnitCatalog \ Fs.FileRead =
+    /// 指定 path をテキストとして読み、エラーなら即 panic する。
+    def readFile(path: String): String \ Fs.FileRead =
         let readResult = run {
             Fs.ReadFile.read(path)
         } with Fs.ReadFile.runWithFileRead;
         match readResult {
-            case Err(e) =>
-                bug!("UnitCatalog.load units file read failed: ${path} :: ${e}")
-            case Ok(content) =>
-                match Json.Parse.parse(content) {
-                    case None =>
-                        bug!("UnitCatalog.load units JSON parse failed: ${path}")
-                    case Some(json) =>
-                        let decoded: Option[UnitCatalog] = Saveable.fromJson(json);
-                        match decoded {
-                            case None    => bug!("UnitCatalog.load units decode failed (schema mismatch?): ${path}")
-                            case Some(c) => c
-                        }
+            case Err(e)      => bug!("UnitCatalog file read failed: ${path} :: ${e}")
+            case Ok(content) => content
+        }
+
+    /// units.json 形式の JSON 文字列を `UnitCatalog` にデコード (weapons は空 Map)。
+    def decodeUnitsJson(content: String): UnitCatalog =
+        match Json.Parse.parse(content) {
+            case None       => bug!("UnitCatalog units JSON parse failed")
+            case Some(json) =>
+                let decoded: Option[UnitCatalog] = Saveable.fromJson(json);
+                match decoded {
+                    case None    => bug!("UnitCatalog units decode failed (schema mismatch?)")
+                    case Some(c) => c
                 }
         }
 
-    /// weapons.json を読み `{"weapons": {...}}` の中身を Map にデコード。
-    def loadWeaponsFile(path: String): Map[String, WeaponResource] \ Fs.FileRead =
-        let readResult = run {
-            Fs.ReadFile.read(path)
-        } with Fs.ReadFile.runWithFileRead;
-        match readResult {
-            case Err(e) =>
-                bug!("UnitCatalog.load weapons file read failed: ${path} :: ${e}")
-            case Ok(content) =>
-                match Json.Parse.parse(content) {
-                    case None =>
-                        bug!("UnitCatalog.load weapons JSON parse failed: ${path}")
-                    case Some(json) =>
-                        match UnitCatalogCodec.decodeWeaponsFile(json) {
-                            case None    => bug!("UnitCatalog.load weapons decode failed: ${path}")
-                            case Some(w) => w
-                        }
+    /// weapons.json 形式の JSON 文字列を `{"weapons": {...}}` の Map にデコード。
+    def decodeWeaponsJson(content: String): Map[String, WeaponResource] =
+        match Json.Parse.parse(content) {
+            case None       => bug!("UnitCatalog weapons JSON parse failed")
+            case Some(json) =>
+                match UnitCatalogCodec.decodeWeaponsFile(json) {
+                    case None    => bug!("UnitCatalog weapons decode failed")
+                    case Some(w) => w
                 }
         }
 

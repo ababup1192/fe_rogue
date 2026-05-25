@@ -127,19 +127,20 @@ mod Staff {
             Fs.ReadFile.read(path)
         } with Fs.ReadFile.runWithFileRead;
         match readResult {
-            case Err(e) =>
-                bug!("Staff.load file read failed: ${path} :: ${e}")
-            case Ok(content) =>
-                match Json.Parse.parse(content) {
-                    case None =>
-                        bug!("Staff.load JSON parse failed: ${path}")
-                    case Some(json) =>
-                        let decoded: Option[StaffCatalog] = Saveable.fromJson(json);
-                        match decoded {
-                            case None    =>
-                                bug!("Staff.load decode failed (schema mismatch?): ${path}")
-                            case Some(c) => c
-                        }
+            case Err(e)      => bug!("Staff.load file read failed: ${path} :: ${e}")
+            case Ok(content) => loadFromString(content)
+        }
+
+    /// I/O から分離したデコード経路: JSON 文字列から `StaffCatalog` を組む。
+    /// テスト・runtime 生成・resource pack 等、file 以外のソースから読みたいケースで使う。
+    pub def loadFromString(content: String): StaffCatalog =
+        match Json.Parse.parse(content) {
+            case None       => bug!("Staff JSON parse failed")
+            case Some(json) =>
+                let decoded: Option[StaffCatalog] = Saveable.fromJson(json);
+                match decoded {
+                    case None    => bug!("Staff decode failed (schema mismatch?)")
+                    case Some(c) => c
                 }
         }
 

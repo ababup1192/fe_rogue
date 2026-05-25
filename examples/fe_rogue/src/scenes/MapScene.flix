@@ -114,15 +114,20 @@ mod MapScene {
         let floorLayer = CanvasItem.setZIndex(-1, floorRaw);
         // Player / Enemy をまとめる Y-sort root。これより前に登録することで
         // PlayerScene.add / EnemyScene.add が `worldPath()` を起点にできる。
-        let worldMarker = Marker2D.make(Vec2.zero())
-            |> CanvasItem.setYSortEnabled(true);
         scene
             |> Scene.addNode(floorName(),
                               EngineNode.TileMapLayerWithState(floorLayer, NodeTag.NoTag))
             |> Scene.addNode(name(),
                               EngineNode.TileMapLayerWithState(result#layer, NodeTag.Map(mapData)))
-            |> Scene.addNode(worldName(),
-                              EngineNode.Marker2DWithState(worldMarker, NodeTag.NoTag))
+            |> addWorldNode
+
+    /// World ノード (Player / Enemy 等の Y-sort root) を scene に追加する。
+    /// `MapScene.add` から呼ばれる本体内部経路。テストでも最小 scene を組むために流用する。
+    pub def addWorldNode(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let worldMarker = Marker2D.make(Vec2.zero())
+            |> CanvasItem.setYSortEnabled(true);
+        Scene.addNode(worldName(),
+                       EngineNode.Marker2DWithState(worldMarker, NodeTag.NoTag), scene)
 
     // ────────────────────────────────────────────────────────
     // (D) Scene からの取り出しヘルパ
