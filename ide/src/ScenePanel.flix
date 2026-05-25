@@ -431,6 +431,12 @@ mod ScenePanel {
             (Node, Json.JsonElement -> Unit \ IO) \ IO =
         match kind {
             case NodeInspector.FieldKind.Vec2T => {
+                let isInt = false;
+                let widget = PropertyWidgets.buildVec2Widget(current, isInt, commit);
+                let updater = (json: Json.JsonElement) -> updateVec2Widget(widget, json, isInt);
+                (widget, updater)
+            }
+            case NodeInspector.FieldKind.Vec2IntT => {
                 let isInt = true;
                 let widget = PropertyWidgets.buildVec2Widget(current, isInt, commit);
                 let updater = (json: Json.JsonElement) -> updateVec2Widget(widget, json, isInt);

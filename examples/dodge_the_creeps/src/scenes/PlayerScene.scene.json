@@ -1,8 +1,8 @@
 {
   "type": "AnimatedSprite2D",
   "name": "player",
-  "pos": [241, 451],
-  "scale": [1, 1],
+  "pos": [224, 430],
+  "scale": [0.6845279517513342, 0.6958738989337041],
   "spriteFrames": {
     "walk": {
       "loop": true,
@@ -28,8 +28,8 @@
       "type": "Area2D",
       "name": "area",
       "tag": "PlayerArea",
-      "pos": [241, 451],
-      "shape": {"kind": "CircleShape2D", "radius": 30}
+      "pos": [2, -13],
+      "shape": {"kind": "CircleShape2D", "radius": 35.00695410292073}
     }
   ],
   "rotation": 0
