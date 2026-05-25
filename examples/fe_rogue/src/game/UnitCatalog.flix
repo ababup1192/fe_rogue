@@ -69,7 +69,10 @@ mod UnitCatalog {
         speed         = Int32,
         sprite        = SpriteResource,
         initialWeapon = String,
-        initialStaves = List[String]
+        initialStaves = List[String],
+        // 兵種名 (例: "アーチャー" / "ナイト" / "メイジ")。UI 上で表示する用途。
+        // 旧 JSON に値が無い場合は decoder が "" を埋める (後方互換)。
+        description   = String
     }
 
     /// 武器の属性（物理 / 魔法）。
@@ -289,7 +292,8 @@ mod UnitCatalogCodec {
             "sprite"        => encodeSprite(u#sprite),
             "initialWeapon" => JsonString(u#initialWeapon),
             "initialStaves" => JsonArray(
-                List.map(JsonString, u#initialStaves) |> List.toVector)
+                List.map(JsonString, u#initialStaves) |> List.toVector),
+            "description"   => JsonString(u#description)
         })
 
     def encodeSprite(s: SpriteResource): JsonElement =
@@ -404,10 +408,14 @@ mod UnitCatalogCodec {
             let staves = Map.get("initialStaves", obj)
                             |> Option.flatMap(decodeStringList)
                             |> Option.getWithDefault(Nil);
+            // description (兵種名表示用) は省略可。後方互換のため欠落時は "" を埋める。
+            let desc = Map.get("description", obj)
+                            |> Option.flatMap(expectString)
+                            |> Option.getWithDefault("");
             ({moveTiles = mt, hp = hp, attack = atk, defense = df,
               magicAttack = mAtk, magicDefense = mDef,
               speed = spd, sprite = sp, initialWeapon = iw,
-              initialStaves = staves}: UnitResource)
+              initialStaves = staves, description = desc}: UnitResource)
         }
 
     def decodeWeapon(element: JsonElement): Option[WeaponResource] =

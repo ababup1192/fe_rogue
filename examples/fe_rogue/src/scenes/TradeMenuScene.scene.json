@@ -21,10 +21,26 @@
       "visible": false,
       "children": [
         {
+          "type": "Label2D",
+          "name": "selfClass",
+          "pos": [2, 2],
+          "fontSize": 4,
+          "text": "",
+          "visible": false
+        },
+        {
+          "type": "Label2D",
+          "name": "partnerClass",
+          "pos": [62, 2],
+          "fontSize": 4,
+          "text": "",
+          "visible": false
+        },
+        {
           "type": "ItemList",
           "name": "selfMenu",
-          "pos": [2, 2],
-          "size": [56, 56],
+          "pos": [2, 8],
+          "size": [56, 50],
           "fontSize": 4,
           "tag": "TradeSelfMenu",
           "items": [],
@@ -37,8 +53,8 @@
         {
           "type": "ItemList",
           "name": "partnerMenu",
-          "pos": [62, 2],
-          "size": [56, 56],
+          "pos": [62, 8],
+          "size": [56, 50],
           "fontSize": 4,
           "tag": "TradePartnerMenu",
           "items": [],

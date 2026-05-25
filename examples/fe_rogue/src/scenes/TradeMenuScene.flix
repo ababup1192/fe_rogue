@@ -99,14 +99,18 @@ mod TradeMenuScene {
 
     def rootName(): String = "TradeMenu"
 
-    pub def panelName(): String        = "panel"
-    pub def selfMenuName(): String     = "selfMenu"
-    pub def partnerMenuName(): String  = "partnerMenu"
+    pub def panelName(): String         = "panel"
+    pub def selfMenuName(): String      = "selfMenu"
+    pub def partnerMenuName(): String   = "partnerMenu"
+    pub def selfClassName(): String     = "selfClass"
+    pub def partnerClassName(): String  = "partnerClass"
 
-    pub def rootPath():        NodePath = rootName() :: Nil
-    pub def panelPath():       NodePath = rootName() :: panelName() :: Nil
-    pub def selfMenuPath():    NodePath = rootName() :: panelName() :: selfMenuName() :: Nil
-    pub def partnerMenuPath(): NodePath = rootName() :: panelName() :: partnerMenuName() :: Nil
+    pub def rootPath():         NodePath = rootName() :: Nil
+    pub def panelPath():        NodePath = rootName() :: panelName() :: Nil
+    pub def selfMenuPath():     NodePath = rootName() :: panelName() :: selfMenuName() :: Nil
+    pub def partnerMenuPath():  NodePath = rootName() :: panelName() :: partnerMenuName() :: Nil
+    pub def selfClassPath():    NodePath = rootName() :: panelName() :: selfClassName() :: Nil
+    pub def partnerClassPath(): NodePath = rootName() :: panelName() :: partnerClassName() :: Nil
 
     /// scene.json 内の "tag" 文字列 → NodeTag への変換。
     def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
@@ -159,7 +163,7 @@ mod TradeMenuScene {
     // ────────────────────────────────────────────────────────
 
     /// フェーズ遷移時の visibility 適用 (Push モデル)。
-    /// `TradeInventory` のときだけ Panel + 両 ItemList を visible にし、
+    /// `TradeInventory` のときだけ Panel + 両 ItemList + 兵種 Label を visible にし、
     /// PanelData#focus 側のペインを focused = true にする (片方ずつ排他的)。
     pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = phase == TurnPhase.Phase.TradeInventory;
@@ -172,6 +176,8 @@ mod TradeMenuScene {
                 list |> CanvasItem.setVisible(visible) |> ItemList.setFocused(selfFocused))
             |> ItemList.mapAt(partnerMenuPath(), list ->
                 list |> CanvasItem.setVisible(visible) |> ItemList.setFocused(partnerFocused))
+            |> Label2D.mapAt(selfClassPath(),    CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(partnerClassPath(), CanvasItem.setVisible(visible))
 
     /// Game.flix の `Node[NodeTag] instance` の process redef から TradeMenu の各
     /// ItemList ノードに対して dispatch される。
@@ -197,18 +203,32 @@ mod TradeMenuScene {
     /// それぞれの ItemList に反映する (毎フレーム呼ばれる)。
     /// 両側とも末尾に空スロット行を表示する: Self / Partner どちらからも起動でき、
     /// どちらにも「あいてのアイテムを空きへ受け取る」一方向 transfer ができるため。
+    /// 兵種ラベル (Label2D) も `UnitResource#description` を引いて毎フレーム更新する。
     def refreshBothPanes(scene: Scene[NodeTag]):
             Scene[NodeTag] \ SelectedPlayer.State =
         match SelectedPlayer.State.get()#id {
             case None           => scene
             case Some(selfId)   =>
                 let panelData = getPanelData(scene);
+                let partnerId = panelData#partnerId;
                 scene
                     |> ItemList.mapAt(selfMenuPath(), list ->
                         list |> ItemList.setItems(inventoryEntriesWithEmpty(selfId, scene)))
                     |> ItemList.mapAt(partnerMenuPath(), list ->
                         list |> ItemList.setItems(
-                            inventoryEntriesWithEmpty(panelData#partnerId, scene)))
+                            inventoryEntriesWithEmpty(partnerId, scene)))
+                    |> Label2D.mapAt(selfClassPath(),
+                        Label2D.setText(classNameOf(selfId, scene)))
+                    |> Label2D.mapAt(partnerClassPath(),
+                        Label2D.setText(classNameOf(partnerId, scene)))
+        }
+
+    /// 指定 player id の兵種名 (`UnitResource#description`) を引く。
+    /// player が居ない場合は空文字 (`Label2D.setText("")` で何も描かれない)。
+    def classNameOf(id: Int32, scene: Scene[NodeTag]): String =
+        match PlayerScene.get(id, scene) {
+            case Some(d) => d#resource#description
+            case None    => ""
         }
 
     /// 武器 1 本ぶんの ItemEntry。metadata は ItemMenuScene と同じ `"w:<idx>"` 規約。

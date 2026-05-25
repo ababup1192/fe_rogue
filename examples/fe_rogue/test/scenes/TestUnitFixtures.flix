@@ -29,6 +29,7 @@ mod TestUnitFixtures {
         speed         = 3,
         initialWeapon = "test-weapon",
         initialStaves = Nil,
+        description   = "",
         sprite        = {
             texture = "character_sheet",
             hframes = 5,
@@ -53,6 +54,7 @@ mod TestUnitFixtures {
         speed         = speed,
         initialWeapon = "test-weapon",
         initialStaves = Nil,
+        description   = "",
         sprite        = {
             texture = "character_sheet",
             hframes = 5,
@@ -76,6 +78,7 @@ mod TestUnitFixtures {
         speed         = speed,
         initialWeapon = "test-weapon",
         initialStaves = Nil,
+        description   = "",
         sprite        = {
             texture = "character_sheet",
             hframes = 5,
