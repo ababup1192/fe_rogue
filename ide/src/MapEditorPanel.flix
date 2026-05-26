@@ -8,12 +8,35 @@
 
 mod MapEditorPanel {
     import java.lang.{Object => JObject}
+    import java.io.File
     import javafx.scene.control.ListView
     import javafx.scene.control.Button
+    import javafx.scene.image.Image
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
+
+    /// Maps タブで描画に使う wall / floor の tileset 論理名。
+    /// 将来 Material 概念に置き換えるまでハードコード。
+    pub def wallsTextureName(): String = "inca_tileset"
+    pub def floorTextureName(): String = "tilemap_floor"
+
+    /// プロジェクトの texturePathMap から wall / floor tileset PNG を Image としてロードし、
+    /// state にキャッシュする。Open Project / reloadProject 時に 1 度呼ぶ。
+    pub def loadTilesetImages(state: IdeState.IdeState): Unit \ IO = {
+        let pathMap = IdeState.getTexturePathMap(state);
+        Array.put(loadImageFor(wallsTextureName(), pathMap), 0, state#widgets#mapWallsImage);
+        Array.put(loadImageFor(floorTextureName(), pathMap), 0, state#widgets#mapFloorImage)
+    }
+
+    def loadImageFor(textureName: String, pathMap: Map[String, String]): Option[Image] \ IO =
+        match Map.get(textureName, pathMap) {
+            case None    => None
+            case Some(p) =>
+                let url = new File(p).toURI().toString();
+                Some(new Image(url))
+        }
 
     /// プロジェクトの assets/maps/*.map.json を絶対パスのリストで返す。
     /// 該当ディレクトリが無い場合は空リスト (エラー扱いはしない)。
@@ -87,7 +110,9 @@ mod MapEditorPanel {
                 match Array.get(0, state#widgets#mapGridCanvas) {
                     case None    => ()
                     case Some(c) =>
-                        MapGridCanvas.drawLevel(c, level, MapGridCanvas.defaultCellPx())
+                        let wImg = Array.get(0, state#widgets#mapWallsImage);
+                        let fImg = Array.get(0, state#widgets#mapFloorImage);
+                        MapGridCanvas.drawLevel(c, level, MapGridCanvas.defaultCellPx(), wImg, fImg)
                 };
                 // 新規 Level に切替えたら dirty をリセットしてラベル反映
                 MapEditorState.setDirty(state#mapEditor, false);

@@ -80,6 +80,8 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
                     let mapFiles = MapEditorPanel.findMapFiles(path);
                     println("[Main] Discovered ${List.length(mapFiles)} map(s) in ${path}/assets/maps");
                     MapEditorState.setLevelFiles(state#mapEditor, mapFiles);
+                    // tileset PNG を Image としてキャッシュ (S13 で Canvas に切り抜き描画)
+                    MapEditorPanel.loadTilesetImages(state);
                     decorateTitle(proj#config, path)
                 case Err(msg) =>
                     // project.json が無い / パース失敗。クラッシュさせず empty state へ。
@@ -296,6 +298,8 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
             // S8: assets/maps/*.map.json を列挙して Maps タブ用に登録
             let mapFiles = MapEditorPanel.findMapFiles(path);
             MapEditorState.setLevelFiles(state#mapEditor, mapFiles);
+            // S13: tileset PNG を Image としてキャッシュ
+            MapEditorPanel.loadTilesetImages(state);
             IdeGui.Gui.setLoadingProgress("リソースを検索中...", 0.50f64);
             let newFontName = List.head(proj#config#fontManifest) |> Option.map(f -> f#name);
             // Editor の scene.json 索引を新プロジェクトのものに差し替える。

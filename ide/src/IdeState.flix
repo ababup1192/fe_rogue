@@ -20,6 +20,7 @@ mod IdeState {
     import javafx.scene.layout.VBox
     import javafx.scene.layout.StackPane
     import javafx.scene.canvas.Canvas
+    import javafx.scene.image.Image
     import javafx.stage.Stage
 
     /// FXML の fx:id 経由で取得した主要 widget 参照。customize で全フィールドに値が入る
@@ -49,7 +50,12 @@ mod IdeState {
         mapGridCanvas                 = Array[Option[Canvas], Static],
         // Maps タブの保存ボタンと未保存マーカー (S12)
         mapSaveBtn                    = Array[Option[Button], Static],
-        mapDirtyLabel                 = Array[Option[Label], Static]
+        mapDirtyLabel                 = Array[Option[Label], Static],
+        // Maps タブ用 tileset PNG キャッシュ (S13 で manualTiles / decorTiles 描画に使う)。
+        // 現状は texture 名を inca_tileset / tilemap_floor でハードコード参照する。
+        // Material 概念を導入したら Level → Material → texture name の引き直しに置換予定。
+        mapWallsImage                 = Array[Option[Image], Static],
+        mapFloorImage                 = Array[Option[Image], Static]
     }
 
     /// 描画ループと FX レイヤーを橋渡しする ref 群。
@@ -189,7 +195,9 @@ mod IdeState {
             mapsList                      = Array#{(None: Option[ListView[String]])} @ Static,
             mapGridCanvas                 = Array#{(None: Option[Canvas])} @ Static,
             mapSaveBtn                    = Array#{(None: Option[Button])} @ Static,
-            mapDirtyLabel                 = Array#{(None: Option[Label])} @ Static
+            mapDirtyLabel                 = Array#{(None: Option[Label])} @ Static,
+            mapWallsImage                 = Array#{(None: Option[Image])} @ Static,
+            mapFloorImage                 = Array#{(None: Option[Image])} @ Static
         }
 
     def newRuntime(): RuntimeRefs \ IO =

@@ -1,17 +1,22 @@
-// MapGridCanvas — Maps タブ中央の JavaFX Canvas に Level の grid を描く。
+// MapGridCanvas — Maps タブ中央の JavaFX Canvas に Level の中身を描く。
 //
 // 描画レイヤー (下から上):
 //   1. 背景 (ダークグレー)
-//   2. WallMask=1 のセル (solid color)
-//   3. grid 線 (薄い色)
+//   2. decorTiles (Floor 層) — tilemap_floor PNG から実タイル描画
+//   3. manualTiles (Walls 層) — inca_tileset PNG から実タイル描画
+//   4. WallMask=1 のセル (半透明オレンジオーバーレイ)
+//   5. grid 線 (薄い色)
 //
 // S9: grid のみ
-// S10: WallMask 可視化を追加 ← 今
-// S11 以降: マウスクリックで WallMask トグル / 保存 / autotile プレビュー
+// S10: WallMask 可視化
+// S11: クリックトグル + 再描画
+// S12: 保存ボタン連動
+// S13: 実 tileset PNG で manualTiles / decorTiles 描画 ← 今
 
 mod MapGridCanvas {
     import javafx.scene.canvas.Canvas
     import javafx.scene.canvas.GraphicsContext
+    import javafx.scene.image.Image
     import javafx.scene.paint.Color
     import javafx.scene.input.MouseEvent
     import javafx.event.EventHandler
@@ -19,12 +24,23 @@ mod MapGridCanvas {
     /// 1 セルの表示ピクセル数。tileSize (=16 等) と独立に「IDE 上で見やすい大きさ」で持つ。
     pub def defaultCellPx(): Int32 = 24
 
-    /// Level の中身 (背景 + WallMask + grid 線) を Canvas に描く。
+    /// Level の中身を Canvas に描く。tileset Image が無い場合は壁色フォールバック。
     /// Canvas は Level サイズに合わせて resize される。
-    pub def drawLevel(canvas: Canvas, level: MapResource.Level, cellPx: Int32): Unit \ IO = {
+    pub def drawLevel(canvas: Canvas, level: MapResource.Level, cellPx: Int32,
+                       wallsImg: Option[Image], floorImg: Option[Image]): Unit \ IO = {
         let d = MapResource.levelData(level);
         resizeAndFill(canvas, d#width, d#height, cellPx);
-        drawWallMask(canvas, d#wallMask, d#width, d#height, cellPx);
+        match floorImg {
+            case Some(img) => drawTiles(canvas, d#decorTiles, img, d#tileSize, cellPx)
+            case None      => ()
+        };
+        match wallsImg {
+            case Some(img) => drawTiles(canvas, d#manualTiles, img, d#tileSize, cellPx)
+            case None      =>
+                // tileset 未ロード時は壁色 (オレンジ) で WallMask を塗るフォールバック
+                drawWallMaskSolid(canvas, d#wallMask, d#width, d#height, cellPx)
+        };
+        drawWallMaskOverlay(canvas, d#wallMask, d#width, d#height, cellPx);
         drawGridLines(canvas, d#width, d#height, cellPx)
     }
 
@@ -39,13 +55,63 @@ mod MapGridCanvas {
         gc.fillRect(0.0, 0.0, pixelW, pixelH)
     }
 
-    /// WallMask の非ゼロセルを壁色 (オレンジ系) で塗る。床セルは何も描かず透明。
-    /// マスは行優先: `mask[y * width + x]`。
-    def drawWallMask(canvas: Canvas, mask: Vector[Int32],
-                      width: Int32, height: Int32, cellPx: Int32): Unit \ IO = {
+    /// ManualTile のリストを実 tileset Image を切り出して Canvas に描く。
+    /// srcX/srcY (ピクセル) はそのまま使い、flipH/flipV は GraphicsContext の
+    /// translate + scale で実現する。
+    def drawTiles(canvas: Canvas, tiles: List[MapResource.ManualTile],
+                   image: Image, tileSize: Int32, cellPx: Int32): Unit \ IO = {
         let gc = canvas.getGraphicsContext2D();
-        // 壁色: LDtk の inca_tileset 風オレンジを少し沈めた色
+        gc.setImageSmoothing(false);
+        let ts = Int32.toFloat64(tileSize);
+        let cs = Int32.toFloat64(cellPx);
+        List.forEach(t -> {
+            let sx = Int32.toFloat64(t#srcX);
+            let sy = Int32.toFloat64(t#srcY);
+            let dx = Int32.toFloat64(t#x) * cs;
+            let dy = Int32.toFloat64(t#y) * cs;
+            drawTileFlipped(gc, image, sx, sy, ts, dx, dy, cs, t#flipH, t#flipV)
+        }, tiles)
+    }
+
+    /// 1 タイルを必要に応じて flip して描画する。flip しないなら drawImage 直呼び。
+    def drawTileFlipped(gc: GraphicsContext, image: Image,
+                         srcX: Float64, srcY: Float64, srcSize: Float64,
+                         dstX: Float64, dstY: Float64, dstSize: Float64,
+                         flipH: Bool, flipV: Bool): Unit \ IO =
+        if (not flipH and not flipV)
+            gc.drawImage(image, srcX, srcY, srcSize, srcSize, dstX, dstY, dstSize, dstSize)
+        else {
+            gc.save();
+            let tx = if (flipH) dstX + dstSize else dstX;
+            let ty = if (flipV) dstY + dstSize else dstY;
+            let sxScale = if (flipH) -1.0f64 else 1.0f64;
+            let syScale = if (flipV) -1.0f64 else 1.0f64;
+            gc.translate(tx, ty);
+            gc.scale(sxScale, syScale);
+            gc.drawImage(image, srcX, srcY, srcSize, srcSize, 0.0, 0.0, dstSize, dstSize);
+            gc.restore()
+        }
+
+    /// 半透明オレンジで WallMask=1 セルを強調表示 (タイル絵の上に乗せる)。
+    /// 編集中の collision を視認するためのオーバーレイ。
+    def drawWallMaskOverlay(canvas: Canvas, mask: Vector[Int32],
+                             width: Int32, height: Int32, cellPx: Int32): Unit \ IO = {
+        let gc = canvas.getGraphicsContext2D();
+        gc.setFill(Color.rgb(255, 100, 50, 0.30));
+        forEachWallCell(mask, width, height, cellPx, (x, y, cs) -> gc.fillRect(x, y, cs, cs))
+    }
+
+    /// tileset 未ロード時のフォールバック (S10 と同じ orange 単色塗り)。
+    def drawWallMaskSolid(canvas: Canvas, mask: Vector[Int32],
+                           width: Int32, height: Int32, cellPx: Int32): Unit \ IO = {
+        let gc = canvas.getGraphicsContext2D();
         gc.setFill(Color.rgb(180, 100, 60));
+        forEachWallCell(mask, width, height, cellPx, (x, y, cs) -> gc.fillRect(x, y, cs, cs))
+    }
+
+    /// wallMask の各 wall セルに対して f(x, y, cellSize) を呼ぶ。
+    def forEachWallCell(mask: Vector[Int32], width: Int32, height: Int32, cellPx: Int32,
+                         f: (Float64, Float64, Float64) -> Unit \ IO): Unit \ IO = {
         let cs = Int32.toFloat64(cellPx);
         let cells = List.range(0, width * height);
         List.forEach(i -> {
@@ -56,19 +122,17 @@ mod MapGridCanvas {
             if (v != 0i32) {
                 let col = Int32.remainder(i, width);
                 let row = i / width;
-                let x = Int32.toFloat64(col) * cs;
-                let y = Int32.toFloat64(row) * cs;
-                gc.fillRect(x, y, cs, cs)
+                f(Int32.toFloat64(col) * cs, Int32.toFloat64(row) * cs, cs)
             } else ()
         }, cells)
     }
 
-    /// grid 線を Canvas 全面に引く。WallMask 描画の上に乗せる。
+    /// grid 線を Canvas 全面に引く。
     def drawGridLines(canvas: Canvas, width: Int32, height: Int32, cellPx: Int32): Unit \ IO = {
         let pixelW = Int32.toFloat64(width * cellPx);
         let pixelH = Int32.toFloat64(height * cellPx);
         let gc = canvas.getGraphicsContext2D();
-        gc.setStroke(Color.rgb(80, 80, 90));
+        gc.setStroke(Color.rgb(80, 80, 90, 0.6));
         gc.setLineWidth(1.0);
         let cs = Int32.toFloat64(cellPx);
         List.forEach(c -> {
@@ -89,7 +153,6 @@ mod MapGridCanvas {
 
     /// Canvas に MouseClick handler を 1 度だけ登録する。
     /// クリック位置の (col, row) を計算して WallMask を toggle し、再描画する。
-    /// ファイル保存はしない (S12 で追加予定)。
     pub def wireClickToggle(state: IdeState.IdeState, canvas: Canvas): Unit \ IO = {
         canvas.setOnMouseClicked(new EventHandler[MouseEvent] {
             def handle(_this: EventHandler[MouseEvent], event: MouseEvent): Unit \ IO =
@@ -97,8 +160,6 @@ mod MapGridCanvas {
         })
     }
 
-    /// クリック座標から (col, row) を求め、WallMask を toggle して再描画。
-    /// Level 未選択 or 範囲外クリックは何もしない。
     def handleClick(state: IdeState.IdeState, event: MouseEvent): Unit \ IO =
         match MapEditorState.getEditingLevel(state#mapEditor) {
             case None        => ()
@@ -125,8 +186,12 @@ mod MapGridCanvas {
                     MapEditorState.setDirty(state#mapEditor, true);
                     MapEditorPanel.updateDirtyLabel(state);
                     match Array.get(0, state#widgets#mapGridCanvas) {
-                        case Some(c) => drawLevel(c, newLevel, cellPx)
-                        case None    => ()
+                        case Some(c) => {
+                            let wImg = Array.get(0, state#widgets#mapWallsImage);
+                            let fImg = Array.get(0, state#widgets#mapFloorImage);
+                            drawLevel(c, newLevel, cellPx, wImg, fImg)
+                        }
+                        case None => ()
                     }
                 }
         }
