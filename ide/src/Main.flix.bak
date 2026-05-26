@@ -1,3 +1,9 @@
+mod PerfTime {
+    import java.lang.System
+    /// 経過ナノ秒を読む。println / Debug.dprintln 用の単純なタイマー。
+    pub def nowNs(): Int64 \ IO = System.nanoTime()
+}
+
 // ide/src/Main.flix — Step C.3: IDE シェル + Open Project + scene 切替
 //
 // 起動時はプロジェクト未ロード状態 (グレー canvas + 空の Scenes リスト)。
@@ -122,7 +128,7 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
 /// `fontName` が Some(name) なら Label2D を含むシーンも loadSceneWithFont で開ける。
 /// `projectRoot` は editor が現プロジェクトの src/scenes を読むための基準ディレクトリ。
 def ideLoop(state: IdeState.IdeState, fontName: Option[String], projectRoot: String):
-        Unit \ {IO, GameEngine.Game, GameEngine.Audio, Fs.FileRead, Fs.FileWrite, Fs.Glob,
+        Unit \ {IO, GameEngine.Game, Fs.FileRead, Fs.FileWrite, Fs.Glob,
                 Fs.ModificationTime, Chan, NonDet, IdeGui.Gui} =
     region rc {
         run {
@@ -136,7 +142,7 @@ def ideLoop(state: IdeState.IdeState, fontName: Option[String], projectRoot: Str
     }
 
 def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene: Scene[Unit]):
-        Unit \ {IO, GameEngine.Game, GameEngine.Audio, Fs.FileRead, Fs.FileWrite, Fs.Glob, Fs.ModificationTime,
+        Unit \ {IO, GameEngine.Game, Fs.FileRead, Fs.FileWrite, Fs.Glob, Fs.ModificationTime,
                 Chan, NonDet, Editor.EditorState, EditHistory.Rewind, IdeGui.Gui} =
     if (GameEngine.Game.shouldClose()) ()
     else {
@@ -195,8 +201,6 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         // Inspector の pending edits (schema 駆動 widget が積んだ commit) を消費し、
         // SceneSerializer 経由で JSON 書き戻し。HotReload watcher が次フレームで scene を再 load
         consumeInspectorEdits(state);
-        // Inspector の Play/Stop ボタンが積んだ音声コマンドを GameEngine.Audio で消化する
-        consumePendingAudioCommand(state);
         // editor がドラッグ確定で JSON を書き戻すと HotReload watcher が発火する
         refreshTreeOnReload(state);
         // Inspector schema + currentValues snapshot を生成し、ScenePanel AnimationTimer に渡す
@@ -270,12 +274,18 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
     // ロード中フラグを立てる。renderLoop が先頭シーン描画完了時に hideLoading を呼ぶ
     Array.put(true, 0, state#loadingActiveRef);
     IdeGui.Gui.setLoadingProgress("プロジェクトを読み込み中...", 0.05f64);
+    let tStart = java.lang.System.nanoTime();
+    let _ = Debug.dprintln("[perf] reload start");
     match ProjectLoader.loadProject(path) {
         case Ok(proj) => {
+            let t1 = java.lang.System.nanoTime();
+            let _ = Debug.dprintln("[perf] ProjectLoader.loadProject: ${(t1 - tStart) / 1000000i64} ms");
             let sceneFiles = ProjectLoader.findSceneFiles(path)
                 |> List.map(rel -> (joinPath(path, rel), rel))
                 |> List.sortBy(p -> snd(p));
             IdeState.setSceneFiles(state, sceneFiles);
+            let t2 = java.lang.System.nanoTime();
+            let _ = Debug.dprintln("[perf] findSceneFiles+sort+setSceneFiles: ${(t2 - t1) / 1000000i64} ms");
             IdeGui.Gui.setLoadingProgress("シーンを検索中...", 0.25f64);
             let textureNames = proj#config#textureManifest |> List.map(e -> e#name);
             IdeState.setTextureNames(state, textureNames);
@@ -285,8 +295,12 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
             IdeState.setTexturePathMap(state, texturePathMap);
             let soundNames = proj#config#soundManifest |> List.map(e -> e#name);
             IdeState.setSoundNames(state, soundNames);
+            let t3 = java.lang.System.nanoTime();
+            let _ = Debug.dprintln("[perf] texture/sound name setup: ${(t3 - t2) / 1000000i64} ms");
             let resources = ResourceDiscovery.discover(path);
             ResourceState.setDiscovered(state#resource, resources);
+            let t4 = java.lang.System.nanoTime();
+            let _ = Debug.dprintln("[perf] ResourceDiscovery+setDiscovered: ${(t4 - t3) / 1000000i64} ms");
             IdeGui.Gui.setLoadingProgress("リソースを検索中...", 0.50f64);
             let newFontName = List.head(proj#config#fontManifest) |> Option.map(f -> f#name);
             // Editor の scene.json 索引を新プロジェクトのものに差し替える。
@@ -294,6 +308,8 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
             let newIndex = SceneJsonIndex.loadAt(path);
             let curEditor = Editor.EditorState.get();
             Editor.EditorState.put({rootJsonIndex = newIndex | curEditor});
+            let t5 = java.lang.System.nanoTime();
+            let _ = Debug.dprintln("[perf] SceneJsonIndex.loadAt+EditorState.put: ${(t5 - t4) / 1000000i64} ms");
             // 新 project の src/scenes を監視する HotReload watcher を起動する。
             // Editor 本体の watcher は IDE 起動時 cwd 基準で固定なので機能しない。
             // 起動した watcher は spawn したリレーループで flag に変換し、renderLoop が
@@ -302,6 +318,8 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
             let reloadRx = HotReload.startWatcherAt(path + "/src/scenes");
             let flagRef = state#runtime#reloadFlag;
             spawn { reloadRelay(reloadRx, flagRef) } @ Static;
+            let t6 = java.lang.System.nanoTime();
+            let _ = Debug.dprintln("[perf] HotReload.startWatcherAt+spawn: ${(t6 - t5) / 1000000i64} ms");
             // GL リソースの再 init を AWT EDT (paintGL) に依頼。clearColor/designSize/
             // texture/font/projection/audio が新 config の値に切り替わる
             Array.put(Some(proj#config), 0, state#runtime#pendingConfig);
@@ -313,6 +331,9 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
             // GUI 側で TreeView を再構築 + Title 更新 (実装は handler 経由で JavaFXIdeUI に dispatch)
             IdeGui.Gui.populateProjectTree();
             IdeGui.Gui.setTitle("flix_game_engine IDE — ${proj#config#title} (${path})");
+            let t7 = java.lang.System.nanoTime();
+            let _ = Debug.dprintln("[perf] pendingConfig+populateTree+setTitle: ${(t7 - t6) / 1000000i64} ms");
+            let _ = Debug.dprintln("[perf] reload total (main thread): ${(t7 - tStart) / 1000000i64} ms");
             (newFontName, Scene.empty())
         }
         case Err(msg) => {
@@ -369,21 +390,6 @@ def consumeInspectorEdits(state: IdeState.IdeState):
     Array.put((Nil: List[NodeInspector.PendingEdit]), 0, state#inspector#pendingEdits);
     List.forEach(e -> e#perform(), edits)
 }
-
-/// Inspector の Play/Stop ボタン click handler が積んだ音声コマンドを 1 件取り出して
-/// GameEngine.Audio handler に流す。JavaFX EDT は effect スコープ外なので、
-/// ボタンは Ref に書くだけ → ここで effect 経由で OpenAL に届ける、という橋渡し。
-/// Play 時は Inspector で編集された volume / loop も合わせて反映する。
-def consumePendingAudioCommand(state: IdeState.IdeState):
-        Unit \ {IO, GameEngine.Audio} =
-    match IdeState.takeAudioCommand(state) {
-        case None => ()
-        case Some(IdeState.AudioCommand.Play(name, vol, loop)) =>
-            AudioStreamPlayer.setVolume(name, vol);
-            AudioStreamPlayer.setLooping(name, loop);
-            AudioStreamPlayer.play(name)
-        case Some(IdeState.AudioCommand.Stop(name)) => AudioStreamPlayer.stop(name)
-    }
 
 /// SceneTree からの node 選択要求 (FX EDT が積む) を消費して Editor#selected に反映
 def consumePendingNodeSelection(state: IdeState.IdeState):

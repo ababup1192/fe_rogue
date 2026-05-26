@@ -52,6 +52,9 @@ pub enum EngineNode[state] {
     case ProgressBarWithState(ProgressBar, state)
     /// 項目リスト（キー駆動カーソル、Godot ItemList 相当）
     case ItemListWithState(ItemList, state)
+    /// オーディオ再生ノード (Godot AudioStreamPlayer 準拠)。シーン attach 時に
+    /// autoplay があれば play、detach 時に stop されるサウンド node
+    case AudioStreamPlayerWithState(AudioStreamPlayer, state)
 }
 
 mod EngineNode {
@@ -82,6 +85,7 @@ mod EngineNode {
         case EngineNode.PanelWithState(_, state) => state
         case EngineNode.ProgressBarWithState(_, state) => state
         case EngineNode.ItemListWithState(_, state) => state
+        case EngineNode.AudioStreamPlayerWithState(_, state) => state
     }
 
     /// EngineNode の state を置き換える
@@ -110,6 +114,7 @@ mod EngineNode {
         case EngineNode.PanelWithState(inner, _) => EngineNode.PanelWithState(inner, newState)
         case EngineNode.ProgressBarWithState(inner, _) => EngineNode.ProgressBarWithState(inner, newState)
         case EngineNode.ItemListWithState(inner, _) => EngineNode.ItemListWithState(inner, newState)
+        case EngineNode.AudioStreamPlayerWithState(inner, _) => EngineNode.AudioStreamPlayerWithState(inner, newState)
     }
 
     /// EngineNode の state に関数を適用する
@@ -138,6 +143,7 @@ mod EngineNode {
         case EngineNode.PanelWithState(inner, state) => EngineNode.PanelWithState(inner, f(state))
         case EngineNode.ProgressBarWithState(inner, state) => EngineNode.ProgressBarWithState(inner, f(state))
         case EngineNode.ItemListWithState(inner, state) => EngineNode.ItemListWithState(inner, f(state))
+        case EngineNode.AudioStreamPlayerWithState(inner, state) => EngineNode.AudioStreamPlayerWithState(inner, f(state))
     }
 
     /// Timer の inner node に関数を適用する
@@ -257,6 +263,12 @@ mod EngineNode {
     /// ItemList の inner node に関数を適用する
     pub def mapItemList(f: ItemList -> ItemList, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.ItemListWithState(inner, st) => EngineNode.ItemListWithState(f(inner), st)
+        case _ => node
+    }
+
+    /// AudioStreamPlayer の inner node に関数を適用する
+    pub def mapAudioStreamPlayer(f: AudioStreamPlayer -> AudioStreamPlayer, node: EngineNode[s]): EngineNode[s] = match node {
+        case EngineNode.AudioStreamPlayerWithState(inner, st) => EngineNode.AudioStreamPlayerWithState(f(inner), st)
         case _ => node
     }
 
@@ -420,6 +432,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.PanelWithState(panel, _) => CanvasItem.isVisible(panel)
         case EngineNode.ProgressBarWithState(bar, _) => CanvasItem.isVisible(bar)
         case EngineNode.ItemListWithState(list, _) => CanvasItem.isVisible(list)
+        case EngineNode.AudioStreamPlayerWithState(_, _) => true
     }
     pub def setVisible(visible: Bool, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(CanvasItem.setVisible(visible, sprite), st)
@@ -446,6 +459,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(CanvasItem.setVisible(visible, panel), st)
         case EngineNode.ProgressBarWithState(bar, st) => EngineNode.ProgressBarWithState(CanvasItem.setVisible(visible, bar), st)
         case EngineNode.ItemListWithState(list, st) => EngineNode.ItemListWithState(CanvasItem.setVisible(visible, list), st)
+        case EngineNode.AudioStreamPlayerWithState(_, _) => node
     }
     pub def getModulate(node: EngineNode[s]): Color = match node {
         case EngineNode.Sprite2DWithState(sprite, _) => CanvasItem.getModulate(sprite)
@@ -472,6 +486,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.PanelWithState(panel, _) => CanvasItem.getModulate(panel)
         case EngineNode.ProgressBarWithState(bar, _) => CanvasItem.getModulate(bar)
         case EngineNode.ItemListWithState(list, _) => CanvasItem.getModulate(list)
+        case EngineNode.AudioStreamPlayerWithState(_, _) => {r = 1.0f32, g = 1.0f32, b = 1.0f32}
     }
     pub def setModulate(color: Color, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(CanvasItem.setModulate(color, sprite), st)
@@ -498,6 +513,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(CanvasItem.setModulate(color, panel), st)
         case EngineNode.ProgressBarWithState(bar, st) => EngineNode.ProgressBarWithState(CanvasItem.setModulate(color, bar), st)
         case EngineNode.ItemListWithState(list, st) => EngineNode.ItemListWithState(CanvasItem.setModulate(color, list), st)
+        case EngineNode.AudioStreamPlayerWithState(_, _) => node
     }
     pub def getZIndex(node: EngineNode[s]): Int32 = match node {
         case EngineNode.Sprite2DWithState(sprite, _) => CanvasItem.getZIndex(sprite)
@@ -524,6 +540,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.PanelWithState(panel, _) => CanvasItem.getZIndex(panel)
         case EngineNode.ProgressBarWithState(bar, _) => CanvasItem.getZIndex(bar)
         case EngineNode.ItemListWithState(list, _) => CanvasItem.getZIndex(list)
+        case EngineNode.AudioStreamPlayerWithState(_, _) => 0
     }
     pub def setZIndex(zIndex: Int32, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(CanvasItem.setZIndex(zIndex, sprite), st)
@@ -550,6 +567,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(CanvasItem.setZIndex(zIndex, panel), st)
         case EngineNode.ProgressBarWithState(bar, st) => EngineNode.ProgressBarWithState(CanvasItem.setZIndex(zIndex, bar), st)
         case EngineNode.ItemListWithState(list, st) => EngineNode.ItemListWithState(CanvasItem.setZIndex(zIndex, list), st)
+        case EngineNode.AudioStreamPlayerWithState(_, _) => node
     }
     redef isYSortEnabled(node: EngineNode[s]): Bool = match node {
         case EngineNode.Sprite2DWithState(sprite, _) => CanvasItem.isYSortEnabled(sprite)
@@ -595,6 +613,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.PanelWithState(panel, _) => Node2D.getPosition(panel)
         case EngineNode.ProgressBarWithState(bar, _) => Node2D.getPosition(bar)
         case EngineNode.ItemListWithState(list, _) => Node2D.getPosition(list)
+        case EngineNode.AudioStreamPlayerWithState(_, _) => Vec2.zero()
     }
     pub def setPosition(position: Vec2.Vec2, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(Node2D.setPosition(position, sprite), st)
@@ -621,6 +640,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(Node2D.setPosition(position, panel), st)
         case EngineNode.ProgressBarWithState(bar, st) => EngineNode.ProgressBarWithState(Node2D.setPosition(position, bar), st)
         case EngineNode.ItemListWithState(list, st) => EngineNode.ItemListWithState(Node2D.setPosition(position, list), st)
+        case EngineNode.AudioStreamPlayerWithState(_, _) => node
     }
     pub def getRotation(node: EngineNode[s]): Float64 = match node {
         case EngineNode.Sprite2DWithState(sprite, _) => Node2D.getRotation(sprite)
@@ -647,6 +667,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.PanelWithState(panel, _) => Node2D.getRotation(panel)
         case EngineNode.ProgressBarWithState(bar, _) => Node2D.getRotation(bar)
         case EngineNode.ItemListWithState(list, _) => Node2D.getRotation(list)
+        case EngineNode.AudioStreamPlayerWithState(_, _) => 0.0
     }
     pub def setRotation(rotation: Float64, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(Node2D.setRotation(rotation, sprite), st)
@@ -673,6 +694,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(Node2D.setRotation(rotation, panel), st)
         case EngineNode.ProgressBarWithState(bar, st) => EngineNode.ProgressBarWithState(Node2D.setRotation(rotation, bar), st)
         case EngineNode.ItemListWithState(list, st) => EngineNode.ItemListWithState(Node2D.setRotation(rotation, list), st)
+        case EngineNode.AudioStreamPlayerWithState(_, _) => node
     }
     pub def getScale(node: EngineNode[s]): Vec2.Vec2 = match node {
         case EngineNode.Sprite2DWithState(sprite, _) => Node2D.getScale(sprite)
@@ -699,6 +721,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.PanelWithState(panel, _) => Node2D.getScale(panel)
         case EngineNode.ProgressBarWithState(bar, _) => Node2D.getScale(bar)
         case EngineNode.ItemListWithState(list, _) => Node2D.getScale(list)
+        case EngineNode.AudioStreamPlayerWithState(_, _) => {x = 1.0, y = 1.0}
     }
     pub def setScale(scale: Vec2.Vec2, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(Node2D.setScale(scale, sprite), st)
@@ -725,6 +748,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(Node2D.setScale(scale, panel), st)
         case EngineNode.ProgressBarWithState(bar, st) => EngineNode.ProgressBarWithState(Node2D.setScale(scale, bar), st)
         case EngineNode.ItemListWithState(list, st) => EngineNode.ItemListWithState(Node2D.setScale(scale, list), st)
+        case EngineNode.AudioStreamPlayerWithState(_, _) => node
     }
     pub def getSkew(node: EngineNode[s]): Float64 = match node {
         case EngineNode.Sprite2DWithState(sprite, _) => Node2D.getSkew(sprite)
@@ -751,6 +775,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.PanelWithState(panel, _) => Node2D.getSkew(panel)
         case EngineNode.ProgressBarWithState(bar, _) => Node2D.getSkew(bar)
         case EngineNode.ItemListWithState(list, _) => Node2D.getSkew(list)
+        case EngineNode.AudioStreamPlayerWithState(_, _) => 0.0
     }
     pub def setSkew(skew: Float64, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.Sprite2DWithState(sprite, st) => EngineNode.Sprite2DWithState(Node2D.setSkew(skew, sprite), st)
@@ -777,6 +802,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.PanelWithState(panel, st) => EngineNode.PanelWithState(Node2D.setSkew(skew, panel), st)
         case EngineNode.ProgressBarWithState(bar, st) => EngineNode.ProgressBarWithState(Node2D.setSkew(skew, bar), st)
         case EngineNode.ItemListWithState(list, st) => EngineNode.ItemListWithState(Node2D.setSkew(skew, list), st)
+        case EngineNode.AudioStreamPlayerWithState(_, _) => node
     }
 }
 
@@ -869,5 +895,6 @@ instance GameEngine.Renderable[EngineNode[s]] {
                 ProgressBar.toDrawables(bar, globalPos)
             case EngineNode.ItemListWithState(list, _) =>
                 ItemList.toDrawables(list, globalPos)
+            case EngineNode.AudioStreamPlayerWithState(_, _) => Nil
         }
 }

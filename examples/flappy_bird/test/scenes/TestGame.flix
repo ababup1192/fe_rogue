@@ -41,13 +41,14 @@ def withMockRecycle(f: Unit -> a \ ef + Recycle):
           def setCursor(_, k) = k(())
       }
 
-/// GameEngine.Audio のモックハンドラ（playAudio/stopAudio/setVolume は no-op）。
+/// GameEngine.Audio のモックハンドラ（playAudio/stopAudio/setVolume/setLooping は no-op）。
 /// 他のエフェクト（Fs.FileRead など）は呼び出し元へ伝播する
 def withMockAudio(f: Unit -> a \ ef + GameEngine.Audio): a \ ef =
     run f() with handler GameEngine.Audio {
         def playAudio(_, k) = k(())
         def stopAudio(_, k) = k(())
         def setVolume(_, _, k) = k(())
+        def setLooping(_, _, k) = k(())
     }
 
 /// GameEngine.Audio + BirdStateChanged のモックハンドラ
@@ -60,6 +61,7 @@ def withMockAudioAndState(f: Unit -> a \ ef + GameEngine.Audio + BirdStateChange
         def playAudio(_, k) = k(())
         def stopAudio(_, k) = k(())
         def setVolume(_, _, k) = k(())
+        def setLooping(_, _, k) = k(())
     } with handler BirdStateChanged {
         def emit(_, scene, k) = k(scene)
     }

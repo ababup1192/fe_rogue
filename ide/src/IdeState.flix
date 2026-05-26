@@ -97,6 +97,11 @@ mod IdeState {
     ///   currentScenePathRef:        現在 IDE が表示中の scene.json の絶対パス
     ///   textureNamesRef:            現プロジェクトの texture 名一覧 (TexturePathT の ComboBox 候補)
     ///   texturePathMapRef:          texture 名 → 絶対パス。preview の画像読込で使う
+    ///   soundNamesRef:              現プロジェクトの sound 論理名一覧 (AudioStreamPlayer.stream の ComboBox 候補)
+    ///   pendingAudioCommandRef:     Inspector の Play/Stop ボタンが積む音声コマンド。
+    ///                               renderLoop が GameEngine.Audio handler で消化する。
+    ///                               JavaFX EDT 上の click handler は effect スコープ外なので、
+    ///                               Ref に書いて render loop に橋渡しする
     ///   wantsAutoLoadFirstSceneRef: Open Project 後の deferred auto-load 希望フラグ
     ///
     /// Sub records (framework 寄りデータ):
@@ -105,6 +110,15 @@ mod IdeState {
     ///   statusBar: ステータスバーの 4 Label
     ///   inspector: Inspector pane の状態 (詳細は InspectorRefs)
     ///   resource:  Resources 編集状態 (ResourceState module)
+    /// Inspector の Play/Stop ボタンが renderLoop に依頼する音声コマンド。
+    /// Play は `(stream, volume, loop)` を伴い、再生前に OpenAL に
+    /// setVolume / setLooping を反映してから play する。Inspector で volume / loop を
+    /// 編集してから Play を押せばそれが効く挙動になる。
+    pub enum AudioCommand with Eq {
+        case Play(String, Float32, Bool)
+        case Stop(String)
+    }
+
     pub type alias IdeState = {
         pendingProjectRef          = Array[Option[String], Static],
         pendingSceneRef            = Array[Option[String], Static],
@@ -112,6 +126,8 @@ mod IdeState {
         currentScenePathRef        = Array[Option[String], Static],
         textureNamesRef            = Array[List[String], Static],
         texturePathMapRef          = Array[Map[String, String], Static],
+        soundNamesRef              = Array[List[String], Static],
+        pendingAudioCommandRef     = Array[Option[AudioCommand], Static],
         wantsAutoLoadFirstSceneRef = Array[Bool, Static],
         loadingActiveRef           = Array[Bool, Static],
         widgets                    = WidgetRefs,
@@ -130,6 +146,8 @@ mod IdeState {
             currentScenePathRef        = Array#{(None: Option[String])} @ Static,
             textureNamesRef            = Array#{(Nil: List[String])} @ Static,
             texturePathMapRef          = Array#{(Map.empty(): Map[String, String])} @ Static,
+            soundNamesRef              = Array#{(Nil: List[String])} @ Static,
+            pendingAudioCommandRef     = Array#{(None: Option[AudioCommand])} @ Static,
             wantsAutoLoadFirstSceneRef = Array#{false} @ Static,
             loadingActiveRef           = Array#{false} @ Static,
             widgets                    = newWidgets(),
@@ -211,6 +229,21 @@ mod IdeState {
     /// プロジェクト切替時は新しい名前リストで上書き、未ロード時は Nil で空にする
     pub def setTextureNames(state: IdeState, names: List[String]): Unit \ IO =
         Array.put(names, 0, state#textureNamesRef)
+
+    /// 現プロジェクトで利用可能な sound 論理名を Inspector の dropdown 用に登録する。
+    /// AudioStreamPlayer の stream プロパティの選択肢として使われる
+    pub def setSoundNames(state: IdeState, names: List[String]): Unit \ IO =
+        Array.put(names, 0, state#soundNamesRef)
+
+    /// JavaFX click handler から音声コマンドを積む。renderLoop が次フレームで消化する
+    pub def enqueueAudioCommand(state: IdeState, cmd: AudioCommand): Unit \ IO =
+        Array.put(Some(cmd), 0, state#pendingAudioCommandRef)
+
+    /// renderLoop が積まれた音声コマンドを 1 件取り出して Ref をクリアする
+    pub def takeAudioCommand(state: IdeState): Option[AudioCommand] \ IO =
+        let cur = Array.get(0, state#pendingAudioCommandRef);
+        Array.put(None, 0, state#pendingAudioCommandRef);
+        cur
 
     /// texture 名 → 絶対パスのマップを登録する。preview の画像読込で使う
     pub def setTexturePathMap(state: IdeState, m: Map[String, String]): Unit \ IO =

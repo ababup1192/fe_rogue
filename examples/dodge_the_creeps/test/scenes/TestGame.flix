@@ -8,6 +8,7 @@ def withMockAudio(f: Unit -> a \ ef + GameEngine.Audio): a \ ef =
         def playAudio(_, k)     = k(())
         def stopAudio(_, k)     = k(())
         def setVolume(_, _, k)  = k(())
+        def setLooping(_, _, k) = k(())
     }
 
 /// GameEngine.Game のモック (no-op、デフォルト値返却)。
