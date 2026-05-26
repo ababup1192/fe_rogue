@@ -19,6 +19,7 @@ mod IdeState {
     import javafx.scene.control.ProgressBar
     import javafx.scene.layout.VBox
     import javafx.scene.layout.StackPane
+    import javafx.scene.canvas.Canvas
     import javafx.stage.Stage
 
     /// FXML の fx:id 経由で取得した主要 widget 参照。customize で全フィールドに値が入る
@@ -41,7 +42,11 @@ mod IdeState {
         stage                         = Array[Option[Stage], Static],
         loadingOverlay                = Array[Option[VBox], Static],
         loadingLabel                  = Array[Option[Label], Static],
-        loadingBar                    = Array[Option[ProgressBar], Static]
+        loadingBar                    = Array[Option[ProgressBar], Static],
+        // Maps タブの Level リスト (S8)
+        mapsList                      = Array[Option[ListView[String]], Static],
+        // Maps タブの中央 Canvas (S9: grid 線、S10 以降で WallMask / autotile も)
+        mapGridCanvas                 = Array[Option[Canvas], Static]
     }
 
     /// 描画ループと FX レイヤーを橋渡しする ref 群。
@@ -134,7 +139,8 @@ mod IdeState {
         runtime                    = RuntimeRefs,
         statusBar                  = StatusBarRefs,
         inspector                  = InspectorRefs,
-        resource                   = ResourceState.ResourceState
+        resource                   = ResourceState.ResourceState,
+        mapEditor                  = MapEditorState.MapEditorState
     }
 
     /// 空の IDE 状態を作る。Static 領域の Ref を全フィールド分用意する。
@@ -154,7 +160,8 @@ mod IdeState {
             runtime                    = newRuntime(),
             statusBar                  = newStatusBar(),
             inspector                  = newInspector(),
-            resource                   = ResourceState.newState()
+            resource                   = ResourceState.newState(),
+            mapEditor                  = MapEditorState.newState()
         }
 
     def newWidgets(): WidgetRefs \ IO =
@@ -175,7 +182,9 @@ mod IdeState {
             stage                         = Array#{(None: Option[Stage])} @ Static,
             loadingOverlay                = Array#{(None: Option[VBox])} @ Static,
             loadingLabel                  = Array#{(None: Option[Label])} @ Static,
-            loadingBar                    = Array#{(None: Option[ProgressBar])} @ Static
+            loadingBar                    = Array#{(None: Option[ProgressBar])} @ Static,
+            mapsList                      = Array#{(None: Option[ListView[String]])} @ Static,
+            mapGridCanvas                 = Array#{(None: Option[Canvas])} @ Static
         }
 
     def newRuntime(): RuntimeRefs \ IO =

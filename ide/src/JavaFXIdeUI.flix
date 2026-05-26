@@ -23,6 +23,7 @@ mod JavaFXIdeUI {
     import javafx.scene.Scene
     import javafx.scene.image.ImageView
     import javafx.scene.image.WritableImage
+    import javafx.scene.canvas.Canvas
     import javafx.scene.control.Button
     import javafx.scene.control.CheckBox
     import javafx.scene.control.Label
@@ -114,6 +115,16 @@ mod JavaFXIdeUI {
         ResourcePanel.wirePreviewResize(state, resourcePreviewPane);
         ResourcePanel.updateZoomLabel(state);
 
+        // Maps タブの wiring (S8: ListView 選択 → MapEditorState.selectedLevelPathRef を更新)
+        let mapsList: ListView[String] = unchecked_cast(ns.get("mapsList") as ListView[String]);
+        Array.put(Some(mapsList), 0, state#widgets#mapsList);
+        // Maps タブの中央 Canvas (S9: grid 描画)
+        let mapGridCanvas: Canvas = unchecked_cast(ns.get("mapGridCanvas") as Canvas);
+        Array.put(Some(mapGridCanvas), 0, state#widgets#mapGridCanvas);
+        // S11: クリックで WallMask toggle (handler は once 登録、handler 内で editingLevel を都度取る)
+        MapGridCanvas.wireClickToggle(state, mapGridCanvas);
+        MapEditorPanel.wireMapSelection(state, mapsList);
+
         // ステータスバー Label を取得
         let statusScene:     Label = unchecked_cast(ns.get("statusScene") as Label);
         let statusMouse:     Label = unchecked_cast(ns.get("statusMouse") as Label);
@@ -202,7 +213,8 @@ mod JavaFXIdeUI {
         Platform.runLater(new Runnable {
             def $run(_this: Runnable): Unit \ IO = {
                 ScenePanel.populateSceneTree(state);
-                ResourcePanel.populateResourcesList(state)
+                ResourcePanel.populateResourcesList(state);
+                MapEditorPanel.populateMapList(state)
             }
         })
     }

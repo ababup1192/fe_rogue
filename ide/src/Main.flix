@@ -76,6 +76,10 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
                     let resources = ResourceDiscovery.discover(path);
                     println("[Main] Discovered ${List.length(resources)} resource(s) in ${path}/resources");
                     ResourceState.setDiscovered(state#resource, resources);
+                    // assets/maps/*.map.json を列挙して MapEditorState に登録 (S8)。
+                    let mapFiles = MapEditorPanel.findMapFiles(path);
+                    println("[Main] Discovered ${List.length(mapFiles)} map(s) in ${path}/assets/maps");
+                    MapEditorState.setLevelFiles(state#mapEditor, mapFiles);
                     decorateTitle(proj#config, path)
                 case Err(msg) =>
                     // project.json が無い / パース失敗。クラッシュさせず empty state へ。
@@ -85,6 +89,7 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
                     IdeState.setTexturePathMap(state, Map.empty());
                     IdeState.setSoundNames(state, Nil);
                     ResourceState.setDiscovered(state#resource, Nil);
+                    MapEditorState.setLevelFiles(state#mapEditor, Nil);
                     emptyConfig()
             }
         case None =>
@@ -94,6 +99,7 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
             IdeState.setTexturePathMap(state, Map.empty());
             IdeState.setSoundNames(state, Nil);
             ResourceState.setDiscovered(state#resource, Nil);
+            MapEditorState.setLevelFiles(state#mapEditor, Nil);
             emptyConfig()
     };
     let customize = (stage, imageView) -> JavaFXIdeUI.customize(state, stage, imageView);
@@ -287,6 +293,9 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
             IdeState.setSoundNames(state, soundNames);
             let resources = ResourceDiscovery.discover(path);
             ResourceState.setDiscovered(state#resource, resources);
+            // S8: assets/maps/*.map.json を列挙して Maps タブ用に登録
+            let mapFiles = MapEditorPanel.findMapFiles(path);
+            MapEditorState.setLevelFiles(state#mapEditor, mapFiles);
             IdeGui.Gui.setLoadingProgress("リソースを検索中...", 0.50f64);
             let newFontName = List.head(proj#config#fontManifest) |> Option.map(f -> f#name);
             // Editor の scene.json 索引を新プロジェクトのものに差し替える。

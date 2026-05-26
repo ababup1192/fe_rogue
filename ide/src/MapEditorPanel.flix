@@ -1,0 +1,93 @@
+// MapEditorPanel — Maps タブ専用の wiring と Level リスト管理。
+//
+// JavaFXIdeUI.customize から wireMapSelection が呼ばれ、ListView 選択時に
+// `editingLevelRef` を更新する (今は最小構成、S9 以降で Canvas 描画と連携)。
+// Main.flix の Open Project ロード時に findMapFiles → setLevelFiles → populateMapList を回す。
+//
+// 雛形: ResourcePanel.wireResourceSelection / populateResourcesList と同じパターン。
+
+mod MapEditorPanel {
+    import java.lang.{Object => JObject}
+    import javafx.scene.control.ListView
+    import javafx.beans.value.ChangeListener
+    import javafx.beans.value.ObservableValue
+
+    /// プロジェクトの assets/maps/*.map.json を絶対パスのリストで返す。
+    /// 該当ディレクトリが無い場合は空リスト (エラー扱いはしない)。
+    pub def findMapFiles(rootDir: String): List[String] \ Fs.Glob =
+        Fs.Glob.glob(rootDir, "assets/maps/*.map.json")
+            |> Result.getWithDefault(Nil)
+
+    /// 絶対パスから表示用 basename を取り出す ("/path/level_0.map.json" → "level_0.map.json")。
+    pub def displayName(absPath: String): String =
+        basenameRec(absPath, String.length(absPath) - 1)
+
+    def basenameRec(path: String, idx: Int32): String =
+        if (idx < 0) path
+        else if (String.charAt(idx, path) == '/') path.substring(idx + 1, String.length(path))
+        else basenameRec(path, idx - 1)
+
+    /// Maps ListView を MapEditorState.levelFilesRef から populate する。
+    /// FX EDT で呼ぶ (FXMLLoader.load 直後 or schedulePopulateTree から)。
+    pub def populateMapList(state: IdeState.IdeState): Unit \ IO = {
+        match Array.get(0, state#widgets#mapsList) {
+            case None => ()
+            case Some(listView) => {
+                let paths = MapEditorState.getLevelFiles(state#mapEditor);
+                let items = listView.getItems();
+                items.clear();
+                List.forEach(p -> discard items.add(displayName(p)), paths)
+            }
+        }
+    }
+
+    /// Maps ListView の選択イベントを listen し、選択された Level の `.map.json` を
+    /// `Persistence.load` で読んで editingLevelRef に積み、Canvas に grid を描く (S9)。
+    pub def wireMapSelection(state: IdeState.IdeState, listView: ListView[String]): Unit \ IO = {
+        let prop = listView.getSelectionModel().selectedItemProperty();
+        let listener = new ChangeListener[String] {
+            def changed(_cThis: ChangeListener[String],
+                         _obs: ObservableValue[JObject],
+                         _old: String, newSel: String): Unit \ IO = {
+                if (Object.isNull(newSel)) ()
+                else {
+                    let paths = MapEditorState.getLevelFiles(state#mapEditor);
+                    let target = newSel;
+                    match List.find(p -> displayName(p) == target, paths) {
+                        case None      => ()
+                        case Some(abs) =>
+                            MapEditorState.setSelectedLevelPath(state#mapEditor, Some(abs));
+                            run {
+                                onLevelSelected(state, abs)
+                            } with Fs.FileRead.runWithIO
+                    }
+                }
+            }
+        };
+        prop.addListener(listener)
+    }
+
+    /// Level を絶対パスからロードして editingLevelRef に積み、Canvas に grid を描く。
+    def onLevelSelected(state: IdeState.IdeState, absPath: String):
+            Unit \ {IO, Fs.FileRead} = {
+        let levelOpt: Option[MapResource.Level] = Persistence.load(absPath);
+        MapEditorState.setEditingLevel(state#mapEditor, levelOpt);
+        match levelOpt {
+            case None        =>
+                println("[MapEditor] failed to load ${absPath}");
+                match Array.get(0, state#widgets#mapGridCanvas) {
+                    case Some(c) => MapGridCanvas.clear(c)
+                    case None    => ()
+                }
+            case Some(level) => {
+                let d = MapResource.levelData(level);
+                match Array.get(0, state#widgets#mapGridCanvas) {
+                    case None    => ()
+                    case Some(c) =>
+                        MapGridCanvas.drawLevel(c, level, MapGridCanvas.defaultCellPx())
+                };
+                println("[MapEditor] loaded: ${displayName(absPath)} (${d#width}x${d#height})")
+            }
+        }
+    }
+}

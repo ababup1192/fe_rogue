@@ -31,6 +31,7 @@
 <?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.control.TextArea?>
 <?import javafx.scene.image.ImageView?>
+<?import javafx.scene.canvas.Canvas?>
 <?import javafx.scene.shape.SVGPath?>
 
 <BorderPane xmlns:fx="http://javafx.com/fxml" prefWidth="1280" prefHeight="800"
@@ -170,6 +171,28 @@
                                         </ScrollPane>
                                     </children>
                                 </VBox>
+                            </items>
+                        </SplitPane>
+                    </content>
+                </Tab>
+                <!-- ────────── Maps mode (S8: Level リスト + 右側 placeholder) ────────── -->
+                <Tab text="Maps">
+                    <content>
+                        <SplitPane fx:id="mapsSplit" dividerPositions="0.20">
+                            <items>
+                                <!-- 左: Level リスト (assets/maps/*.map.json) -->
+                                <VBox>
+                                    <children>
+                                        <Label text="Maps" styleClass="section-header"/>
+                                        <ListView fx:id="mapsList" VBox.vgrow="ALWAYS"/>
+                                    </children>
+                                </VBox>
+                                <!-- 中央/右: grid 描画 Canvas (S9). Level 未選択時は薄いプレースホルダ -->
+                                <StackPane fx:id="mapEditorPane" styleClass="map-editor-placeholder">
+                                    <children>
+                                        <Canvas fx:id="mapGridCanvas" width="400" height="400"/>
+                                    </children>
+                                </StackPane>
                             </items>
                         </SplitPane>
                     </content>
