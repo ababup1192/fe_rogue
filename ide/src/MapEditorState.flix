@@ -25,6 +25,28 @@ mod MapEditorState {
         entities = Bool
     }
 
+    /// 1 レイヤー分の Palette 設定 (SpriteSheet + セル px)。
+    ///   textureName: ComboBox 選択中の texture 論理名 (None なら何も表示しない)
+    ///   cellW/cellH: Palette グリッドの 1 マスの px (Spinner 値)
+    pub type alias LayerPalette = {
+        textureName = Option[String],
+        cellW       = Int32,
+        cellH       = Int32
+    }
+
+    /// Floor / Walls 各レイヤーの Palette 設定。Entities は palette を使わない。
+    pub type alias PaletteSettings = {
+        floor = LayerPalette,
+        walls = LayerPalette
+    }
+
+    /// デフォルト Palette 設定 (Material 概念導入までのハードコード fallback)。
+    pub def defaultPaletteSettings(): PaletteSettings =
+        {
+            floor = {textureName = Some("tilemap_floor"), cellW = 16, cellH = 16},
+            walls = {textureName = Some("inca_tileset"), cellW = 16, cellH = 16}
+        }
+
     /// Maps モード全体の状態。
     ///   levelFilesRef:        assets/maps/*.map.json の絶対パスリスト (Open Project 時に更新)
     ///   selectedLevelPathRef: 現在選択中の Level の絶対パス。未選択は None
@@ -33,6 +55,8 @@ mod MapEditorState {
     ///   layerModeRef:         現在の編集レイヤー (Floor / Walls / Entities)
     ///   selectedSrcRef:       Manual モードで配置するタイルの (srcX, srcY) ピクセル
     ///   layerVisibilityRef:   レイヤーの表示 ON/OFF (目玉トグル状態、初期は全 true)
+    ///   paletteSettingsRef:   Floor / Walls 各々の Palette 設定 (SpriteSheet + セル px)
+    ///   paletteZoomRef:       Palette canvas の表示倍率 (ピンチ操作で更新、1.0=等倍)
     pub type alias MapEditorState = {
         levelFilesRef        = Array[List[String], Static],
         selectedLevelPathRef = Array[Option[String], Static],
@@ -40,7 +64,9 @@ mod MapEditorState {
         dirtyRef             = Array[Bool, Static],
         layerModeRef         = Array[LayerMode, Static],
         selectedSrcRef       = Array[Option[(Int32, Int32)], Static],
-        layerVisibilityRef   = Array[LayerVisibility, Static]
+        layerVisibilityRef   = Array[LayerVisibility, Static],
+        paletteSettingsRef   = Array[PaletteSettings, Static],
+        paletteZoomRef       = Array[Float64, Static]
     }
 
     /// 空の MapEditorState を作る。
@@ -52,7 +78,9 @@ mod MapEditorState {
             dirtyRef             = Array#{false} @ Static,
             layerModeRef         = Array#{LayerMode.Walls} @ Static,
             selectedSrcRef       = Array#{(None: Option[(Int32, Int32)])} @ Static,
-            layerVisibilityRef   = Array#{allVisible()} @ Static
+            layerVisibilityRef   = Array#{allVisible()} @ Static,
+            paletteSettingsRef   = Array#{defaultPaletteSettings()} @ Static,
+            paletteZoomRef       = Array#{1.0f64} @ Static
         }
 
     /// 全レイヤー visible の初期値。
@@ -107,5 +135,44 @@ mod MapEditorState {
             case LayerMode.Entities => {entities = visible | cur}
         };
         Array.put(next, 0, state#layerVisibilityRef)
+    }
+
+    pub def getPaletteSettings(state: MapEditorState): PaletteSettings \ IO =
+        Array.get(0, state#paletteSettingsRef)
+
+    /// 指定 LayerMode の Palette 設定を返す。Entities は palette を使わないので
+    /// `None` を返す呼び元側で参照しないこと前提だが、安全のため Walls の値を返す。
+    pub def getPaletteForLayer(state: MapEditorState, mode: LayerMode):
+            Option[LayerPalette] \ IO = {
+        let cur = Array.get(0, state#paletteSettingsRef);
+        match mode {
+            case LayerMode.Floor    => Some(cur#floor)
+            case LayerMode.Walls    => Some(cur#walls)
+            case LayerMode.Entities => None
+        }
+    }
+
+    /// 指定 LayerMode の Palette 設定を更新する。Entities への書き込みは無視。
+    pub def setPaletteForLayer(state: MapEditorState, mode: LayerMode, p: LayerPalette):
+            Unit \ IO = {
+        let cur = Array.get(0, state#paletteSettingsRef);
+        let next = match mode {
+            case LayerMode.Floor    => {floor = p | cur}
+            case LayerMode.Walls    => {walls = p | cur}
+            case LayerMode.Entities => cur
+        };
+        Array.put(next, 0, state#paletteSettingsRef)
+    }
+
+    pub def getPaletteZoom(state: MapEditorState): Float64 \ IO =
+        Array.get(0, state#paletteZoomRef)
+
+    /// Palette zoom を [0.25, 8.0] にクランプして保存する。
+    pub def setPaletteZoom(state: MapEditorState, zoom: Float64): Unit \ IO = {
+        let clamped =
+            if (zoom < 0.25f64) 0.25f64
+            else if (zoom > 8.0f64) 8.0f64
+            else zoom;
+        Array.put(clamped, 0, state#paletteZoomRef)
     }
 }

@@ -8,10 +8,15 @@
 
 mod MapEditorPanel {
     import java.lang.{Object => JObject}
+    import java.lang.Integer
     import java.io.File
     import javafx.scene.control.ListView
     import javafx.scene.control.Button
     import javafx.scene.control.ToggleButton
+    import javafx.scene.control.ComboBox
+    import javafx.scene.control.Spinner
+    import javafx.scene.control.SpinnerValueFactory
+    import javafx.scene.control.SpinnerValueFactory$IntegerSpinnerValueFactory
     import javafx.scene.control.TextField
     import javafx.scene.control.TextInputDialog
     import javafx.scene.control.Label
@@ -19,24 +24,41 @@ mod MapEditorPanel {
     import javafx.scene.canvas.GraphicsContext
     import javafx.scene.image.Image
     import javafx.scene.input.MouseEvent
+    import javafx.scene.input.ZoomEvent
     import javafx.scene.paint.Color
     import javafx.scene.layout.HBox
+    import javafx.scene.layout.VBox
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
 
-    /// Maps タブで描画に使う wall / floor の tileset 論理名。
-    /// 将来 Material 概念に置き換えるまでハードコード。
-    pub def wallsTextureName(): String = "inca_tileset"
-    pub def floorTextureName(): String = "tilemap_floor"
-
-    /// プロジェクトの texturePathMap から wall / floor tileset PNG を Image としてロードし、
-    /// state にキャッシュする。Open Project / reloadProject 時に 1 度呼ぶ。
+    /// Floor / Walls 各 layer の現在の textureName で Image を引いて cache に積む。
+    /// Open Project / reloadProject 時、および ComboBox で texture が切り替えられた時に呼ぶ。
     pub def loadTilesetImages(state: IdeState.IdeState): Unit \ IO = {
+        loadImageForLayer(state, MapEditorState.LayerMode.Floor);
+        loadImageForLayer(state, MapEditorState.LayerMode.Walls)
+    }
+
+    /// 指定 layer の Palette 設定から textureName を読み、Image cache を更新する。
+    /// Entities は palette を使わないので no-op。textureName が None や未登録なら None をキャッシュ。
+    pub def loadImageForLayer(state: IdeState.IdeState, mode: MapEditorState.LayerMode):
+            Unit \ IO = {
         let pathMap = IdeState.getTexturePathMap(state);
-        Array.put(loadImageFor(wallsTextureName(), pathMap), 0, state#widgets#mapWallsImage);
-        Array.put(loadImageFor(floorTextureName(), pathMap), 0, state#widgets#mapFloorImage)
+        let img = match MapEditorState.getPaletteForLayer(state#mapEditor, mode) {
+            case None    => None
+            case Some(p) => match p#textureName {
+                case None       => None
+                case Some(name) => loadImageFor(name, pathMap)
+            }
+        };
+        match mode {
+            case MapEditorState.LayerMode.Floor    =>
+                Array.put(img, 0, state#widgets#mapFloorImage)
+            case MapEditorState.LayerMode.Walls    =>
+                Array.put(img, 0, state#widgets#mapWallsImage)
+            case MapEditorState.LayerMode.Entities => ()
+        }
     }
 
     def loadImageFor(textureName: String, pathMap: Map[String, String]): Option[Image] \ IO =
@@ -219,6 +241,7 @@ mod MapEditorPanel {
         }
 
     /// レイヤー切替の共通処理: state 更新 → selectedSrc リセット → 行 highlight 切替
+    /// → Palette widget 同期 (ComboBox/Spinner) → 右パネルのセクション切替
     /// → パレット再描画 → ラベル更新。
     def onLayerChanged(state: IdeState.IdeState, mode: MapEditorState.LayerMode): Unit \ IO = {
         MapEditorState.setLayerMode(state#mapEditor, mode);
@@ -229,6 +252,8 @@ mod MapEditorPanel {
         };
         updateRowHighlight(state, mode);
         updatePaletteLabel(state, mode);
+        syncPaletteWidgetsForLayer(state, mode);
+        updateSideSection(state, mode);
         drawPalette(state)
     }
 
@@ -273,14 +298,19 @@ mod MapEditorPanel {
             }
         }
 
-    /// 1 パレット タイルの表示倍率 (パレット Canvas 上で 1 タイル = 何 px か)。
-    /// inca_tileset (20×14 grid, 16px) を 2 倍で表示 → Canvas 640×448 程度。
-    pub def paletteCellPx(): Int32 = 16
+    /// 現 layer の Palette 設定 (cellW, cellH) を返す。Entities / 未設定時のフォールバックは (16, 16)。
+    def currentPaletteCellSize(state: IdeState.IdeState): (Int32, Int32) \ IO = {
+        let mode = MapEditorState.getLayerMode(state#mapEditor);
+        match MapEditorState.getPaletteForLayer(state#mapEditor, mode) {
+            case Some(p) => (p#cellW, p#cellH)
+            case None    => (16i32, 16i32)
+        }
+    }
 
     /// 現在の LayerMode に応じてパレット canvas に tileset PNG を描画する。
-    /// Floor → tilemap_floor、Walls → inca_tileset、Entities → canvas クリア。
-    /// 元 PNG 等倍 (1px = 1px) で表示し、Canvas サイズも画像に合わせる。
-    /// Open Project 時 (drawPalette を直接呼ぶ) はデフォルト Walls 想定。
+    /// Image は per-layer の cache (`mapWallsImage` / `mapFloorImage`) を読み、
+    /// 選択枠は per-layer の cellW × cellH で描く。Entities は canvas をクリア。
+    /// `paletteZoom` を掛けて canvas サイズ・描画サイズ・選択枠を拡縮する (ピンチ操作)。
     pub def drawPalette(state: IdeState.IdeState): Unit \ IO = {
         let mode = MapEditorState.getLayerMode(state#mapEditor);
         let imgOpt = match mode {
@@ -288,23 +318,29 @@ mod MapEditorPanel {
             case MapEditorState.LayerMode.Walls    => Array.get(0, state#widgets#mapWallsImage)
             case MapEditorState.LayerMode.Entities => None
         };
+        let zoom = MapEditorState.getPaletteZoom(state#mapEditor);
         match (Array.get(0, state#widgets#mapPaletteCanvas), imgOpt) {
             case (Some(canvas), Some(image)) => {
-                let w = image.getWidth();
-                let h = image.getHeight();
-                canvas.setWidth(w);
-                canvas.setHeight(h);
+                let iw = image.getWidth();
+                let ih = image.getHeight();
+                let dw = iw * zoom;
+                let dh = ih * zoom;
+                canvas.setWidth(dw);
+                canvas.setHeight(dh);
                 let gc = canvas.getGraphicsContext2D();
                 gc.setImageSmoothing(false);
-                gc.clearRect(0.0f64, 0.0f64, w, h);
-                gc.drawImage(image, 0.0f64, 0.0f64);
+                gc.clearRect(0.0f64, 0.0f64, dw, dh);
+                gc.drawImage(image, 0.0f64, 0.0f64, iw, ih, 0.0f64, 0.0f64, dw, dh);
                 match MapEditorState.getSelectedSrc(state#mapEditor) {
                     case None             => ()
                     case Some((srcX, srcY)) => {
-                        let ts = Int32.toFloat64(paletteCellPx());
+                        let (cw, ch) = currentPaletteCellSize(state);
                         gc.setStroke(Color.rgb(255, 230, 60));
                         gc.setLineWidth(2.0);
-                        gc.strokeRect(Int32.toFloat64(srcX), Int32.toFloat64(srcY), ts, ts)
+                        gc.strokeRect(Int32.toFloat64(srcX) * zoom,
+                                       Int32.toFloat64(srcY) * zoom,
+                                       Int32.toFloat64(cw) * zoom,
+                                       Int32.toFloat64(ch) * zoom)
                     }
                 }
             }
@@ -318,18 +354,25 @@ mod MapEditorPanel {
     }
 
     /// Palette canvas のクリックで src を選択する handler を 1 度だけ登録する。
-    /// inca_tileset は spacing=0 / margin=0 なので col*16, row*16 で srcX/srcY が決まる。
+    /// per-layer の cellW × cellH を使って col * cellW, row * cellH を srcX/srcY に換算。
+    /// ピンチズーム中は canvas が拡縮されているため、event の x/y を zoom で割って画像座標に戻す。
     pub def wirePaletteClick(state: IdeState.IdeState, canvas: Canvas): Unit \ IO = {
         canvas.setOnMouseClicked(new EventHandler[MouseEvent] {
             def handle(_this: EventHandler[MouseEvent], event: MouseEvent): Unit \ IO = {
-                let ts = Int32.toFloat64(paletteCellPx());
-                let col = Float64.truncateToInt32(event.getX() / ts);
-                let row = Float64.truncateToInt32(event.getY() / ts);
-                let srcX = col * paletteCellPx();
-                let srcY = row * paletteCellPx();
-                MapEditorState.setSelectedSrc(state#mapEditor, Some((srcX, srcY)));
-                updatePaletteStatus(state, srcX, srcY);
-                drawPalette(state)
+                let (cw, ch) = currentPaletteCellSize(state);
+                if (cw <= 0i32 or ch <= 0i32) ()
+                else {
+                    let zoom = MapEditorState.getPaletteZoom(state#mapEditor);
+                    let imgX = event.getX() / zoom;
+                    let imgY = event.getY() / zoom;
+                    let col = Float64.truncateToInt32(imgX / Int32.toFloat64(cw));
+                    let row = Float64.truncateToInt32(imgY / Int32.toFloat64(ch));
+                    let srcX = col * cw;
+                    let srcY = row * ch;
+                    MapEditorState.setSelectedSrc(state#mapEditor, Some((srcX, srcY)));
+                    updatePaletteStatus(state, srcX, srcY);
+                    drawPalette(state)
+                }
             }
         })
     }
@@ -337,11 +380,205 @@ mod MapEditorPanel {
     def updatePaletteStatus(state: IdeState.IdeState, srcX: Int32, srcY: Int32): Unit \ IO =
         match Array.get(0, state#widgets#mapPaletteStatus) {
             case Some(label) => {
-                let col = srcX / paletteCellPx();
-                let row = srcY / paletteCellPx();
+                let (cw, ch) = currentPaletteCellSize(state);
+                let col = if (cw > 0i32) srcX / cw else 0i32;
+                let row = if (ch > 0i32) srcY / ch else 0i32;
                 label.setText("選択中: (${col}, ${row})  src=(${srcX}, ${srcY})")
             }
             case None => ()
+        }
+
+    // ────────────────────────────────────────────────────────
+    // Palette 設定 widget (Sheet ComboBox + Cell Spinner ×2)
+    // ────────────────────────────────────────────────────────
+
+    /// FXML から取得した Spinner に IntegerSpinnerValueFactory をセットし、
+    /// ComboBox / Spinner のリスナーを配線する。JavaFXIdeUI.customize 末尾で 1 度だけ呼ぶ。
+    pub def initPaletteWidgets(state: IdeState.IdeState): Unit \ IO = {
+        // Spinner の value factory を後付け (FXML では宣言しづらいため)
+        match Array.get(0, state#widgets#mapPaletteCellWSpinner) {
+            case Some(sp) => sp.setValueFactory(makeCellSizeFactory(16i32))
+            case None     => ()
+        };
+        match Array.get(0, state#widgets#mapPaletteCellHSpinner) {
+            case Some(sp) => sp.setValueFactory(makeCellSizeFactory(16i32))
+            case None     => ()
+        };
+        // ComboBox / Spinner の値変化リスナーを配線
+        match Array.get(0, state#widgets#mapPaletteTextureCombo) {
+            case Some(cb) => wirePaletteTextureCombo(state, cb)
+            case None     => ()
+        };
+        match Array.get(0, state#widgets#mapPaletteCellWSpinner) {
+            case Some(sp) => wireCellSpinner(state, sp, true)
+            case None     => ()
+        };
+        match Array.get(0, state#widgets#mapPaletteCellHSpinner) {
+            case Some(sp) => wireCellSpinner(state, sp, false)
+            case None     => ()
+        };
+        // Palette canvas のピンチズーム配線
+        match Array.get(0, state#widgets#mapPaletteCanvas) {
+            case Some(canvas) => wirePaletteZoom(state, canvas)
+            case None         => ()
+        };
+        // 起動直後の widget 値を現 layer の設定と同期 (Entities なら disable)
+        let mode = MapEditorState.getLayerMode(state#mapEditor);
+        syncPaletteWidgetsForLayer(state, mode);
+        // Palette / Entity セクションの表示も現 layer に合わせる
+        updateSideSection(state, mode)
+    }
+
+    /// Palette canvas にピンチイベント (ZoomEvent) ハンドラを登録する。
+    /// macOS trackpad の pinch in/out で `event.getZoomFactor()` (incremental) が来るので、
+    /// 現 zoom に乗算してクランプ → drawPalette で反映。
+    def wirePaletteZoom(state: IdeState.IdeState, canvas: Canvas): Unit \ IO = {
+        canvas.setOnZoom(new EventHandler[ZoomEvent] {
+            def handle(_this: EventHandler[ZoomEvent], event: ZoomEvent): Unit \ IO = {
+                let factor = event.getZoomFactor();
+                let cur = MapEditorState.getPaletteZoom(state#mapEditor);
+                MapEditorState.setPaletteZoom(state#mapEditor, cur * factor);
+                drawPalette(state);
+                event.consume()
+            }
+        })
+    }
+
+    /// 現 LayerMode に応じて右パネルの Palette / Entity セクションの可視性を切り替える。
+    /// Entities → Entity 入力セクション / Floor or Walls → Palette セクション。
+    pub def updateSideSection(state: IdeState.IdeState,
+                                mode: MapEditorState.LayerMode): Unit \ IO = {
+        let isEntities = mode == MapEditorState.LayerMode.Entities;
+        setSectionVisible(state#widgets#mapPaletteSection, not isEntities);
+        setSectionVisible(state#widgets#mapEntitySection, isEntities)
+    }
+
+    def setSectionVisible(ref: Array[Option[VBox], Static], visible: Bool): Unit \ IO =
+        match Array.get(0, ref) {
+            case None      => ()
+            case Some(box) => {
+                box.setVisible(visible);
+                box.setManaged(visible)
+            }
+        }
+
+    /// IntegerSpinnerValueFactory(min=1, max=256, init=initVal)。
+    /// Cell px の妥当な範囲。super-large な tile は使わない想定。
+    def makeCellSizeFactory(initVal: Int32): SpinnerValueFactory[Integer] \ IO = {
+        let f = new SpinnerValueFactory$IntegerSpinnerValueFactory(1i32, 256i32, initVal);
+        unchecked_cast(f as SpinnerValueFactory[Integer])
+    }
+
+    /// ComboBox 値変化: 現 layer の Palette 設定を更新し、image cache 再ロード →
+    /// パレットと map canvas を再描画。
+    def wirePaletteTextureCombo(state: IdeState.IdeState, combo: ComboBox[String]): Unit \ IO = {
+        combo.valueProperty().addListener(new ChangeListener[String] {
+            def changed(_cThis: ChangeListener[String], _obs: ObservableValue[JObject],
+                         _old: String, newVal: String): Unit \ IO = {
+                if (Object.isNull(newVal)) ()
+                else {
+                    let mode = MapEditorState.getLayerMode(state#mapEditor);
+                    match MapEditorState.getPaletteForLayer(state#mapEditor, mode) {
+                        case None    => ()
+                        case Some(p) => {
+                            let next: MapEditorState.LayerPalette =
+                                {textureName = Some(newVal) | p};
+                            MapEditorState.setPaletteForLayer(state#mapEditor, mode, next);
+                            // Sheet が変わったら以前の選択は意味を失うのでクリア
+                            MapEditorState.setSelectedSrc(state#mapEditor, None);
+                            match Array.get(0, state#widgets#mapPaletteStatus) {
+                                case Some(label) => label.setText("未選択")
+                                case None        => ()
+                            };
+                            loadImageForLayer(state, mode);
+                            drawPalette(state);
+                            redrawCanvas(state)
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    /// Spinner 値変化: 現 layer の cellW / cellH を更新し、パレットを再描画。
+    /// `isWidth=true` なら cellW、false なら cellH を更新する。
+    def wireCellSpinner(state: IdeState.IdeState, spinner: Spinner[Integer],
+                          isWidth: Bool): Unit \ IO = {
+        spinner.valueProperty().addListener(new ChangeListener[Integer] {
+            def changed(_cThis: ChangeListener[Integer], _obs: ObservableValue[JObject],
+                         _old: Integer, newVal: Integer): Unit \ IO = {
+                if (Object.isNull(newVal)) ()
+                else {
+                    let v: Int32 = newVal.intValue();
+                    let mode = MapEditorState.getLayerMode(state#mapEditor);
+                    match MapEditorState.getPaletteForLayer(state#mapEditor, mode) {
+                        case None    => ()
+                        case Some(p) => {
+                            let next: MapEditorState.LayerPalette =
+                                if (isWidth) {cellW = v | p} else {cellH = v | p};
+                            MapEditorState.setPaletteForLayer(state#mapEditor, mode, next);
+                            drawPalette(state)
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    /// プロジェクト読込後に ComboBox の選択肢を texturePathMap の keys で埋める。
+    /// その上で現 layer の textureName が候補に含まれていれば選択状態にする。
+    /// `Main.loadTilesetImages` 呼び出しの隣で呼ぶ想定。
+    pub def populatePaletteTextureCombo(state: IdeState.IdeState): Unit \ IO =
+        match Array.get(0, state#widgets#mapPaletteTextureCombo) {
+            case None       => ()
+            case Some(combo) => {
+                let items = combo.getItems();
+                items.clear();
+                let names = IdeState.getTexturePathMap(state) |> Map.keysOf |> Set.toList;
+                List.forEach(n -> discard items.add(n), names);
+                let mode = MapEditorState.getLayerMode(state#mapEditor);
+                syncPaletteWidgetsForLayer(state, mode)
+            }
+        }
+
+    /// 指定 layer の Palette 設定で ComboBox / Spinner の表示値を同期する。
+    /// JavaFX ChangeListener は value 変化時のみ発火するので、同じ値なら no-op になる。
+    /// Entities レイヤー時は ComboBox / Spinner を setDisable(true) でグレーアウト。
+    pub def syncPaletteWidgetsForLayer(state: IdeState.IdeState,
+                                          mode: MapEditorState.LayerMode): Unit \ IO = {
+        let disabled = mode == MapEditorState.LayerMode.Entities;
+        match Array.get(0, state#widgets#mapPaletteTextureCombo) {
+            case Some(cb) => {
+                cb.setDisable(disabled);
+                match MapEditorState.getPaletteForLayer(state#mapEditor, mode) {
+                    case Some(p) => match p#textureName {
+                        case Some(n) => cb.setValue(n)
+                        case None    => ()
+                    }
+                    case None    => ()
+                }
+            }
+            case None     => ()
+        };
+        syncCellSpinner(state, state#widgets#mapPaletteCellWSpinner, mode, true, disabled);
+        syncCellSpinner(state, state#widgets#mapPaletteCellHSpinner, mode, false, disabled)
+    }
+
+    def syncCellSpinner(state: IdeState.IdeState,
+                          spRef: Array[Option[Spinner[Integer]], Static],
+                          mode: MapEditorState.LayerMode, isWidth: Bool,
+                          disabled: Bool): Unit \ IO =
+        match Array.get(0, spRef) {
+            case None     => ()
+            case Some(sp) => {
+                sp.setDisable(disabled);
+                match MapEditorState.getPaletteForLayer(state#mapEditor, mode) {
+                    case None    => ()
+                    case Some(p) =>
+                        let v = if (isWidth) p#cellW else p#cellH;
+                        sp.getValueFactory().setValue(Integer.valueOf(v))
+                }
+            }
         }
 
     // ────────────────────────────────────────────────────────

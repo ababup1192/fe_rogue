@@ -14,9 +14,12 @@ mod IdeState {
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
     import javafx.scene.control.TextArea
+    import java.lang.Integer
     import javafx.scene.control.CheckBox
     import javafx.scene.control.Button
     import javafx.scene.control.ToggleButton
+    import javafx.scene.control.ComboBox
+    import javafx.scene.control.Spinner
     import javafx.scene.control.ProgressBar
     import javafx.scene.layout.VBox
     import javafx.scene.layout.HBox
@@ -71,6 +74,13 @@ mod IdeState {
         mapPaletteStatus              = Array[Option[Label], Static],
         // Maps タブのパレット見出し (Layer 切替で "Palette (Floor/Walls)" 等に書き換える)
         mapPaletteLabel               = Array[Option[Label], Static],
+        // Palette の SpriteSheet 選択 ComboBox と セル px 入力 Spinner
+        mapPaletteTextureCombo        = Array[Option[ComboBox[String]], Static],
+        mapPaletteCellWSpinner        = Array[Option[Spinner[Integer]], Static],
+        mapPaletteCellHSpinner        = Array[Option[Spinner[Integer]], Static],
+        // Floor/Walls 用 Palette セクション と Entities 用 Entity Id セクション (visible 切替)
+        mapPaletteSection             = Array[Option[VBox], Static],
+        mapEntitySection              = Array[Option[VBox], Static],
         // Maps タブの Entity identifier 入力 (S16)
         mapEntityIdField              = Array[Option[TextField], Static],
         // Maps タブの「+ New」ボタン (S17: 新規 Level 作成)
@@ -229,6 +239,11 @@ mod IdeState {
             mapPaletteCanvas              = Array#{(None: Option[Canvas])} @ Static,
             mapPaletteStatus              = Array#{(None: Option[Label])} @ Static,
             mapPaletteLabel               = Array#{(None: Option[Label])} @ Static,
+            mapPaletteTextureCombo        = Array#{(None: Option[ComboBox[String]])} @ Static,
+            mapPaletteCellWSpinner        = Array#{(None: Option[Spinner[Integer]])} @ Static,
+            mapPaletteCellHSpinner        = Array#{(None: Option[Spinner[Integer]])} @ Static,
+            mapPaletteSection             = Array#{(None: Option[VBox])} @ Static,
+            mapEntitySection              = Array#{(None: Option[VBox])} @ Static,
             mapEntityIdField              = Array#{(None: Option[TextField])} @ Static,
             mapNewBtn                     = Array#{(None: Option[Button])} @ Static
         }

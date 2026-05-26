@@ -18,6 +18,8 @@
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.ToggleButton?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Spinner?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.control.Separator?>
 <?import javafx.scene.control.ScrollPane?>
@@ -46,10 +48,6 @@
                         <Button fx:id="mapSaveBtn" text="保存"/>
                         <Label fx:id="mapDirtyLabel" text=""
                                styleClass="map-dirty-label"/>
-                        <Region HBox.hgrow="ALWAYS"/>
-                        <Label text="Entity id:"/>
-                        <TextField fx:id="mapEntityIdField" text="Door"
-                                   prefColumnCount="10"/>
                     </children>
                 </HBox>
                 <Canvas fx:id="mapGridCanvas" width="400" height="400"/>
@@ -65,7 +63,7 @@
                               alignment="CENTER_LEFT" spacing="6">
                             <children>
                                 <ToggleButton fx:id="mapLayerVisibleEntities"
-                                              text="&#x1F441;" selected="true"
+                                              text="&#x1F440;" selected="true"
                                               styleClass="layer-eye-btn"
                                               focusTraversable="false"/>
                                 <Label fx:id="mapLayerNameEntities" text="Entities"
@@ -78,7 +76,7 @@
                               alignment="CENTER_LEFT" spacing="6">
                             <children>
                                 <ToggleButton fx:id="mapLayerVisibleWalls"
-                                              text="&#x1F441;" selected="true"
+                                              text="&#x1F440;" selected="true"
                                               styleClass="layer-eye-btn"
                                               focusTraversable="false"/>
                                 <Label fx:id="mapLayerNameWalls" text="Walls"
@@ -90,7 +88,7 @@
                               alignment="CENTER_LEFT" spacing="6">
                             <children>
                                 <ToggleButton fx:id="mapLayerVisibleFloor"
-                                              text="&#x1F441;" selected="true"
+                                              text="&#x1F440;" selected="true"
                                               styleClass="layer-eye-btn"
                                               focusTraversable="false"/>
                                 <Label fx:id="mapLayerNameFloor" text="Floor"
@@ -101,14 +99,56 @@
                     </children>
                 </VBox>
                 <Separator/>
-                <Label fx:id="mapPaletteLabel" text="Palette" styleClass="section-header"/>
-                <Label fx:id="mapPaletteStatus" text="未選択"
-                       styleClass="map-palette-status"/>
-                <ScrollPane fitToWidth="true" VBox.vgrow="ALWAYS">
-                    <content>
-                        <Canvas fx:id="mapPaletteCanvas" width="320" height="224"/>
-                    </content>
-                </ScrollPane>
+                <!-- Floor / Walls 選択中に表示する Palette セクション -->
+                <VBox fx:id="mapPaletteSection" alignment="TOP_CENTER" spacing="4"
+                      VBox.vgrow="ALWAYS">
+                    <children>
+                        <Label fx:id="mapPaletteLabel" text="Palette" styleClass="section-header"/>
+                        <HBox spacing="4" alignment="CENTER_LEFT" styleClass="palette-config-row">
+                            <children>
+                                <Label text="Sheet:"/>
+                                <ComboBox fx:id="mapPaletteTextureCombo"
+                                          maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                            </children>
+                        </HBox>
+                        <HBox spacing="4" alignment="CENTER_LEFT" styleClass="palette-config-row">
+                            <children>
+                                <Label text="Cell:"/>
+                                <Spinner fx:id="mapPaletteCellWSpinner"
+                                         prefWidth="68" editable="true"/>
+                                <Label text="×"/>
+                                <Spinner fx:id="mapPaletteCellHSpinner"
+                                         prefWidth="68" editable="true"/>
+                                <Label text="px"/>
+                            </children>
+                        </HBox>
+                        <Label fx:id="mapPaletteStatus" text="未選択"
+                               styleClass="map-palette-status"/>
+                        <ScrollPane fx:id="mapPaletteScroll" fitToWidth="false"
+                                    VBox.vgrow="ALWAYS">
+                            <content>
+                                <Canvas fx:id="mapPaletteCanvas" width="320" height="224"/>
+                            </content>
+                        </ScrollPane>
+                    </children>
+                </VBox>
+                <!-- Entities 選択中に表示する Entity Id 入力セクション (初期は非表示) -->
+                <VBox fx:id="mapEntitySection" alignment="TOP_CENTER" spacing="4"
+                      visible="false" managed="false" VBox.vgrow="ALWAYS">
+                    <children>
+                        <Label text="Entity" styleClass="section-header"/>
+                        <HBox spacing="4" alignment="CENTER_LEFT"
+                              styleClass="palette-config-row">
+                            <children>
+                                <Label text="id:"/>
+                                <TextField fx:id="mapEntityIdField" text="Door"
+                                           maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                            </children>
+                        </HBox>
+                        <Label text="グリッドをクリックで配置 / 右クリックで削除"
+                               styleClass="map-palette-status"/>
+                    </children>
+                </VBox>
             </children>
         </VBox>
     </items>

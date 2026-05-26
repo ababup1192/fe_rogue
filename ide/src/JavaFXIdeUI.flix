@@ -26,9 +26,12 @@ mod JavaFXIdeUI {
     import javafx.scene.canvas.Canvas
     import javafx.scene.control.Tab
     import javafx.scene.Node
+    import java.lang.Integer
     import javafx.scene.control.Button
     import javafx.scene.control.ToggleButton
     import javafx.scene.control.CheckBox
+    import javafx.scene.control.ComboBox
+    import javafx.scene.control.Spinner
     import javafx.scene.control.Label
     import javafx.scene.control.TextArea
     import javafx.scene.control.TextField
@@ -152,9 +155,17 @@ mod JavaFXIdeUI {
         let mapPaletteCanvas: Canvas = unchecked_cast(mapNs.get("mapPaletteCanvas") as Canvas);
         let mapPaletteStatus: Label = unchecked_cast(mapNs.get("mapPaletteStatus") as Label);
         let mapPaletteLabel: Label = unchecked_cast(mapNs.get("mapPaletteLabel") as Label);
+        let mapPaletteTextureCombo: ComboBox[String] =
+            unchecked_cast(mapNs.get("mapPaletteTextureCombo") as ComboBox[String]);
+        let mapPaletteCellWSpinner: Spinner[Integer] =
+            unchecked_cast(mapNs.get("mapPaletteCellWSpinner") as Spinner[Integer]);
+        let mapPaletteCellHSpinner: Spinner[Integer] =
+            unchecked_cast(mapNs.get("mapPaletteCellHSpinner") as Spinner[Integer]);
         let mapEntityIdField: TextField =
             unchecked_cast(mapNs.get("mapEntityIdField") as TextField);
         let mapNewBtn: Button = unchecked_cast(mapNs.get("mapNewBtn") as Button);
+        let mapPaletteSection: VBox = unchecked_cast(mapNs.get("mapPaletteSection") as VBox);
+        let mapEntitySection: VBox = unchecked_cast(mapNs.get("mapEntitySection") as VBox);
         Array.put(Some(mapLayerRowFloor), 0, state#widgets#mapLayerRowFloor);
         Array.put(Some(mapLayerRowWalls), 0, state#widgets#mapLayerRowWalls);
         Array.put(Some(mapLayerRowEntities), 0, state#widgets#mapLayerRowEntities);
@@ -164,12 +175,18 @@ mod JavaFXIdeUI {
         Array.put(Some(mapPaletteCanvas), 0, state#widgets#mapPaletteCanvas);
         Array.put(Some(mapPaletteStatus), 0, state#widgets#mapPaletteStatus);
         Array.put(Some(mapPaletteLabel), 0, state#widgets#mapPaletteLabel);
+        Array.put(Some(mapPaletteTextureCombo), 0, state#widgets#mapPaletteTextureCombo);
+        Array.put(Some(mapPaletteCellWSpinner), 0, state#widgets#mapPaletteCellWSpinner);
+        Array.put(Some(mapPaletteCellHSpinner), 0, state#widgets#mapPaletteCellHSpinner);
         Array.put(Some(mapEntityIdField), 0, state#widgets#mapEntityIdField);
         Array.put(Some(mapNewBtn), 0, state#widgets#mapNewBtn);
+        Array.put(Some(mapPaletteSection), 0, state#widgets#mapPaletteSection);
+        Array.put(Some(mapEntitySection), 0, state#widgets#mapEntitySection);
         // S8/S11/S12 + Layer wiring
         MapGridCanvas.wireClickToggle(state, mapGridCanvas);
         MapEditorPanel.wireSaveButton(state, mapSaveBtn);
         MapEditorPanel.wireLayerList(state);
+        MapEditorPanel.initPaletteWidgets(state);
         MapEditorPanel.wirePaletteClick(state, mapPaletteCanvas);
         MapEditorPanel.wireNewLevelButton(state, mapNewBtn);
         MapEditorPanel.wireMapSelection(state, mapsList);
@@ -264,6 +281,7 @@ mod JavaFXIdeUI {
                 ScenePanel.populateSceneTree(state);
                 ResourcePanel.populateResourcesList(state);
                 MapEditorPanel.populateMapList(state);
+                MapEditorPanel.populatePaletteTextureCombo(state);
                 MapEditorPanel.drawPalette(state)
             }
         })
