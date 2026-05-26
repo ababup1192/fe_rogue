@@ -41,7 +41,30 @@ mod MapGridCanvas {
                 drawWallMaskSolid(canvas, d#wallMask, d#width, d#height, cellPx)
         };
         drawWallMaskOverlay(canvas, d#wallMask, d#width, d#height, cellPx);
-        drawGridLines(canvas, d#width, d#height, cellPx)
+        drawGridLines(canvas, d#width, d#height, cellPx);
+        // S16: Entity を円 + identifier ラベルで描画
+        drawEntities(canvas, d#entities, cellPx)
+    }
+
+    /// Entity を「シアン円 + identifier テキスト」で描画する。
+    /// セルの中心に円、その下に小さくラベル。
+    def drawEntities(canvas: Canvas, entities: List[MapResource.Entity], cellPx: Int32): Unit \ IO = {
+        let gc = canvas.getGraphicsContext2D();
+        let cs = Int32.toFloat64(cellPx);
+        let radius = cs * 0.30;
+        List.forEach(e -> {
+            let cx = (Int32.toFloat64(e#x) + 0.5) * cs;
+            let cy = (Int32.toFloat64(e#y) + 0.5) * cs;
+            // 円 (中: シアン半透明, 縁: 濃シアン)
+            gc.setFill(Color.rgb(60, 200, 230, 0.7));
+            gc.fillOval(cx - radius, cy - radius, radius * 2.0, radius * 2.0);
+            gc.setStroke(Color.rgb(0, 120, 160));
+            gc.setLineWidth(1.5);
+            gc.strokeOval(cx - radius, cy - radius, radius * 2.0, radius * 2.0);
+            // identifier テキスト (小さく)
+            gc.setFill(Color.rgb(255, 255, 255));
+            gc.fillText(e#identifier, cx - radius, cy + radius + 10.0)
+        }, entities)
     }
 
     /// Canvas を Level サイズにリサイズし、背景塗りつぶし。
@@ -181,6 +204,11 @@ mod MapGridCanvas {
                                 Some(removeManualAt(level, d, col, row))
                             else
                                 placeManualAt(state, level, d, col, row)
+                        case MapEditorState.LayerMode.Entities =>
+                            if (isRight)
+                                Some(removeEntityAt(level, d, col, row))
+                            else
+                                placeEntityAt(state, level, d, col, row)
                     };
                     match newLevelOpt {
                         case None           => ()
@@ -237,6 +265,39 @@ mod MapGridCanvas {
         let _ = level;
         let filtered = List.filter(t -> not (t#x == col and t#y == row), d#manualTiles);
         let newData: MapResource.LevelData = {manualTiles = filtered | d};
+        MapResource.Level.Level(newData)
+
+    /// Entities モードでの配置: identifier フィールドのテキストで新 Entity を追加。
+    /// 既存セルに Entity があれば置換 (同セル 1 Entity ルール)。
+    /// identifier が空文字なら何もしない。
+    def placeEntityAt(state: IdeState.IdeState, level: MapResource.Level,
+                       d: MapResource.LevelData, col: Int32, row: Int32):
+            Option[MapResource.Level] \ IO =
+        let _ = level;
+        match Array.get(0, state#widgets#mapEntityIdField) {
+            case None         => None
+            case Some(field)  =>
+                let id = field.getText();
+                if (Object.isNull(id) or id == "") None
+                else {
+                    let newEntity = ({
+                        identifier = id,
+                        x = col, y = row,
+                        fields = (Map.empty(): Map[String, MapResource.FieldValue])
+                    }: MapResource.Entity);
+                    let filtered = List.filter(e -> not (e#x == col and e#y == row), d#entities);
+                    let newEntities = List.append(filtered, newEntity :: Nil);
+                    let newData: MapResource.LevelData = {entities = newEntities | d};
+                    Some(MapResource.Level.Level(newData))
+                }
+        }
+
+    /// Entities モードでの右クリック: 指定セルの Entity を全て除去。
+    def removeEntityAt(level: MapResource.Level, d: MapResource.LevelData,
+                        col: Int32, row: Int32): MapResource.Level =
+        let _ = level;
+        let filtered = List.filter(e -> not (e#x == col and e#y == row), d#entities);
+        let newData: MapResource.LevelData = {entities = filtered | d};
         MapResource.Level.Level(newData)
 
     /// 編集中 Level を canvas に再描画する。

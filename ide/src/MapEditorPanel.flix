@@ -12,6 +12,8 @@ mod MapEditorPanel {
     import javafx.scene.control.ListView
     import javafx.scene.control.Button
     import javafx.scene.control.RadioButton
+    import javafx.scene.control.TextField
+    import javafx.scene.control.TextInputDialog
     import javafx.scene.control.Label
     import javafx.scene.canvas.Canvas
     import javafx.scene.canvas.GraphicsContext
@@ -154,11 +156,14 @@ mod MapEditorPanel {
     // S15: Layer mode radio + tile パレット
     // ────────────────────────────────────────────────────────
 
-    /// Layer mode radio (Walls / Manual) の click で MapEditorState.layerModeRef を更新する。
+    /// Layer mode radio (Walls / Manual / Entities) の click で
+    /// MapEditorState.layerModeRef を更新する。
     /// ChangeListener[Bool] は Flix の primitive Bool ↔ Java Boxed Boolean ミスマッチで
     /// VerifyError になるため、ActionEvent + isSelected() で判定する。
     pub def wireLayerRadios(state: IdeState.IdeState,
-                              wallsRadio: RadioButton, manualRadio: RadioButton): Unit \ IO = {
+                              wallsRadio: RadioButton,
+                              manualRadio: RadioButton,
+                              entitiesRadio: RadioButton): Unit \ IO = {
         wallsRadio.setOnAction(new EventHandler[ActionEvent] {
             def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
                 if (wallsRadio.isSelected())
@@ -169,6 +174,12 @@ mod MapEditorPanel {
             def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
                 if (manualRadio.isSelected())
                     MapEditorState.setLayerMode(state#mapEditor, MapEditorState.LayerMode.Manual)
+                else ()
+        });
+        entitiesRadio.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                if (entitiesRadio.isSelected())
+                    MapEditorState.setLayerMode(state#mapEditor, MapEditorState.LayerMode.Entities)
                 else ()
         })
     }
@@ -230,6 +241,119 @@ mod MapEditorPanel {
             }
             case None => ()
         }
+
+    // ────────────────────────────────────────────────────────
+    // S17: 新規 Level 作成
+    // ────────────────────────────────────────────────────────
+
+    /// 「+ New」ボタンに ActionEvent handler を登録する。
+    /// TextInputDialog で名前を聞き、assets/maps/{name}.map.json を空 Level で生成する。
+    pub def wireNewLevelButton(state: IdeState.IdeState, btn: Button): Unit \ IO = {
+        btn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                promptAndCreateNew(state)
+        })
+    }
+
+    /// 新規 Level 作成 UI フロー。
+    /// 1. TextInputDialog で名前を取得 (ESC キャンセル → 何もしない)
+    /// 2. projectRoot 配下に `assets/maps/{name}.map.json` を作成
+    /// 3. 既存ファイルがあれば Alert で警告して中止
+    /// 4. 成功したら levelFilesRef を再 glob して ListView 更新 + 新ファイルを選択
+    def promptAndCreateNew(state: IdeState.IdeState): Unit \ IO = {
+        match IdeState.getCurrentProjectRoot(state) {
+            case None        => showAlert("プロジェクトが開かれていません")
+            case Some(root)  => {
+                let dialog = new TextInputDialog("new_room");
+                dialog.setTitle("New Level");
+                dialog.setHeaderText("新 Level の名前を入力");
+                dialog.setContentText("名前 (.map.json は自動付与):");
+                let result = dialog.showAndWait();
+                if (result.isPresent()) {
+                    let name = result.get();
+                    if (name == "") showAlert("名前を入力してください")
+                    else createNewAt(state, root, name)
+                } else ()
+            }
+        }
+    }
+
+    def createNewAt(state: IdeState.IdeState, root: String, name: String): Unit \ IO = {
+        let path = root + "/assets/maps/" + name + ".map.json";
+        if (fileExists(path))
+            showAlert("ファイルが既に存在します: ${name}.map.json")
+        else
+            saveAndRefresh(state, root, path)
+    }
+
+    /// パスにファイルが存在するか確認する (Fs.FileRead 経由)。
+    def fileExists(path: String): Bool \ IO =
+        run {
+            existsViaReadFile(path)
+        } with Fs.FileRead.runWithIO
+
+    def existsViaReadFile(path: String): Bool \ Fs.FileRead =
+        run {
+            match Fs.ReadFile.read(path) {
+                case Ok(_)  => true
+                case Err(_) => false
+            }
+        } with Fs.ReadFile.runWithFileRead
+
+    /// 空 Level を path に保存して ListView を refresh する。
+    def saveAndRefresh(state: IdeState.IdeState, root: String, path: String): Unit \ IO = {
+        let level = buildBlankLevel(13i32, 13i32);
+        let saveResult = run {
+            Persistence.save(path, level)
+        } with Fs.FileWrite.runWithIO;
+        match saveResult {
+            case Err(msg) => showAlert("保存失敗: ${msg}")
+            case Ok(_)    => {
+                println("[MapEditor] created: ${path}");
+                refreshLevelListAndSelect(state, root, path)
+            }
+        }
+    }
+
+    /// 13×13 デフォルト Level: 外周のみ wall、内部床、entity 無し。
+    /// materialId は "inca_stone" 固定 (Material 概念導入まで)。
+    def buildBlankLevel(width: Int32, height: Int32): MapResource.Level = {
+        let mask = List.range(0, width * height)
+            |> List.map(i -> {
+                let col = Int32.remainder(i, width);
+                let row = i / width;
+                if (col == 0 or col == width - 1 or row == 0 or row == height - 1) 1i32
+                else 0i32
+            })
+            |> List.toVector;
+        let data: MapResource.LevelData = {
+            tileSize    = 16,
+            width       = width,
+            height      = height,
+            materialId  = "inca_stone",
+            wallMask    = mask,
+            manualTiles = (Nil: List[MapResource.ManualTile]),
+            decorTiles  = (Nil: List[MapResource.ManualTile]),
+            entities    = (Nil: List[MapResource.Entity])
+        };
+        MapResource.Level.Level(data)
+    }
+
+    /// 新ファイル作成後に levelFilesRef を再 glob し、ListView を更新する。
+    /// (ListView の自動選択は overload 解決が難しいため省略 — ユーザーが新ファイルをクリックして開く)
+    def refreshLevelListAndSelect(state: IdeState.IdeState, root: String, newPath: String): Unit \ IO = {
+        let mapFiles = run {
+            findMapFiles(root)
+        } with Fs.Glob.runWithIO;
+        MapEditorState.setLevelFiles(state#mapEditor, mapFiles);
+        populateMapList(state);
+        println("[MapEditor] new level added to list: ${displayName(newPath)}")
+    }
+
+    /// 簡易エラー表示。現状は println のみ (JavaFX Alert は AlertType ネストクラス
+    /// import が動かないため未使用)。将来 dirty Label を流用する余地あり。
+    def showAlert(message: String): Unit \ IO =
+        println("[MapEditor] ${message}")
 
     /// 現在の editingLevel を selectedLevelPath に書き戻す。
     /// editingLevel が無い or selectedPath が無いときは何もしない。

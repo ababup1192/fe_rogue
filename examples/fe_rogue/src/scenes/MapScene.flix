@@ -75,19 +75,19 @@ mod MapScene {
     /// Floor 装飾レイヤーのテクスチャ名（LDTK 上の "Floor" レイヤーが参照）
     def floorTextureName(): String = "tilemap_floor"
 
-    /// ランダム生成設定: 部屋数 (引数) と利用可能な部屋・通路 LDTK プール。
-    /// 部屋数は floor#generation#roomCount 由来。配置不能なら部屋数を減らして続行。
-    /// LDTK パスプールは現状ハードコード (テーマ切替が必要になったら tileset resource に分離)
+    /// ランダム生成設定: 部屋数 (引数) と利用可能な部屋・通路プール。
+    /// パスは新形式 `.map.json` (IDE Maps タブで編集可能)。DungeonComposer は
+    /// 拡張子で MapLoader / LDTKLoader を dispatch する (旧 `.ldtkl` も読める)。
     def generatorConfig(roomCount: Int32): DungeonGenerator.Config = {
-        roomPaths       = "assets/ldtk/World_Level_0.ldtkl" ::
-                          "assets/ldtk/World_Level_1.ldtkl" ::
-                          "assets/ldtk/World_Level_2.ldtkl" ::
-                          "assets/ldtk/World_Level_3.ldtkl" ::
-                          "assets/ldtk/World_Level_4.ldtkl" :: Nil,
-        horizontalPaths = "assets/ldtk/World_Pathway_1.ldtkl" ::
-                          "assets/ldtk/World_Pathway_4.ldtkl" :: Nil,
-        verticalPaths   = "assets/ldtk/World_Pathway_2.ldtkl" ::
-                          "assets/ldtk/World_Pathway_3.ldtkl" :: Nil,
+        roomPaths       = "assets/maps/level_0.map.json" ::
+                          "assets/maps/level_1.map.json" ::
+                          "assets/maps/level_2.map.json" ::
+                          "assets/maps/level_3.map.json" ::
+                          "assets/maps/level_4.map.json" :: Nil,
+        horizontalPaths = "assets/maps/pathway_1.map.json" ::
+                          "assets/maps/pathway_4.map.json" :: Nil,
+        verticalPaths   = "assets/maps/pathway_2.map.json" ::
+                          "assets/maps/pathway_3.map.json" :: Nil,
         roomCount       = roomCount
     }
 

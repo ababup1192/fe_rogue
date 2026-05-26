@@ -136,6 +136,53 @@ mod MapLoader {
             gridSize       = ({x = d#width, y = d#height}: {x = Int32, y = Int32})
         }) |> TileMapLayer.withGpuResources(vao, count)
 
+    /// 装飾レイヤー (decorTiles) の生データを返す。LDTKLoader.loadLayerByIdentifier 互換。
+    /// DungeonComposer.composeDecorationLayer の dispatch ターゲットとして使う。
+    pub def loadDecorLayerRaw(mapPath: String, textureName: String): LDTKLoader.LDTKLayerRaw
+            \ { GameEngine.Game, Fs.FileRead } =
+        let level = match Persistence.load(mapPath) {
+            case Some(l) => l
+            case None    => bug!("MapLoader.loadDecorLayerRaw: failed to load ${mapPath}")
+        };
+        let d = MapResource.levelData(level);
+        let tileSizeI = d#tileSize;
+        let tileSize  = Int32.toFloat64(tileSizeI);
+        let tiles: List[TileData] = List.map(t -> {
+            ({
+                px    = ({x = Int32.toFloat64(t#x * tileSizeI),
+                           y = Int32.toFloat64(t#y * tileSizeI)}: Vec2.Vec2),
+                srcX  = Int32.toFloat64(t#srcX),
+                srcY  = Int32.toFloat64(t#srcY),
+                flipH = t#flipH,
+                flipV = t#flipV,
+                alpha = 1.0f32
+            }: TileData)
+        }, d#decorTiles);
+        let texInfo = match GameEngine.Game.getTextureInfo(textureName) {
+            case Some(info) => info
+            case None       => bug!("MapLoader.loadDecorLayerRaw: texture '${textureName}' not registered")
+        };
+        let atlas = TileSetAtlasSource.make({
+            textureName = textureName,
+            marginX     = 0.0,
+            marginY     = 0.0,
+            spacingX    = 0.0,
+            spacingY    = 0.0
+        });
+        let atlasFilled: TileSetAtlasSource = {
+            texWidth  = texInfo#width,
+            texHeight = texInfo#height,
+            tileSize  = tileSize
+            | atlas
+        };
+        let tileSet = TileSet.make(atlasFilled);
+        ({
+            tiles    = tiles,
+            tileSet  = tileSet,
+            gridSize = ({x = d#width, y = d#height}: {x = Int32, y = Int32}),
+            tileSize = tileSize
+        }: LDTKLoader.LDTKLayerRaw)
+
     /// wallMask (Vector[Int32], 行優先) から非ゼロセルを `Vec2.Vec2` のリストに展開する。
     /// `i % width = col`, `i / width = row`。
     def extractCollisionCells(mask: Vector[Int32], width: Int32): List[Vec2.Vec2] =

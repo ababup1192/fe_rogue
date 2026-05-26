@@ -82,6 +82,7 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
                     MapEditorState.setLevelFiles(state#mapEditor, mapFiles);
                     // tileset PNG を Image としてキャッシュ (S13 で Canvas に切り抜き描画)
                     MapEditorPanel.loadTilesetImages(state);
+                    IdeState.setCurrentProjectRoot(state, Some(path));
                     decorateTitle(proj#config, path)
                 case Err(msg) =>
                     // project.json が無い / パース失敗。クラッシュさせず empty state へ。
@@ -92,6 +93,7 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
                     IdeState.setSoundNames(state, Nil);
                     ResourceState.setDiscovered(state#resource, Nil);
                     MapEditorState.setLevelFiles(state#mapEditor, Nil);
+                    IdeState.setCurrentProjectRoot(state, None);
                     emptyConfig()
             }
         case None =>
@@ -102,6 +104,7 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
             IdeState.setSoundNames(state, Nil);
             ResourceState.setDiscovered(state#resource, Nil);
             MapEditorState.setLevelFiles(state#mapEditor, Nil);
+            IdeState.setCurrentProjectRoot(state, None);
             emptyConfig()
     };
     let customize = (stage, imageView) -> JavaFXIdeUI.customize(state, stage, imageView);
@@ -300,6 +303,7 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
             MapEditorState.setLevelFiles(state#mapEditor, mapFiles);
             // S13: tileset PNG を Image としてキャッシュ
             MapEditorPanel.loadTilesetImages(state);
+            IdeState.setCurrentProjectRoot(state, Some(path));
             IdeGui.Gui.setLoadingProgress("リソースを検索中...", 0.50f64);
             let newFontName = List.head(proj#config#fontManifest) |> Option.map(f -> f#name);
             // Editor の scene.json 索引を新プロジェクトのものに差し替える。

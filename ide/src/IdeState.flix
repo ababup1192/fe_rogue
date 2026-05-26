@@ -57,12 +57,17 @@ mod IdeState {
         // Material 概念を導入したら Level → Material → texture name の引き直しに置換予定。
         mapWallsImage                 = Array[Option[Image], Static],
         mapFloorImage                 = Array[Option[Image], Static],
-        // Maps タブの Layer モード radio (S15)
+        // Maps タブの Layer モード radio (S15-S16)
         mapLayerWallsRadio            = Array[Option[RadioButton], Static],
         mapLayerManualRadio           = Array[Option[RadioButton], Static],
+        mapLayerEntitiesRadio         = Array[Option[RadioButton], Static],
         // Maps タブの tile パレット (S15)
         mapPaletteCanvas              = Array[Option[Canvas], Static],
-        mapPaletteStatus              = Array[Option[Label], Static]
+        mapPaletteStatus              = Array[Option[Label], Static],
+        // Maps タブの Entity identifier 入力 (S16)
+        mapEntityIdField              = Array[Option[TextField], Static],
+        // Maps タブの「+ New」ボタン (S17: 新規 Level 作成)
+        mapNewBtn                     = Array[Option[Button], Static]
     }
 
     /// 描画ループと FX レイヤーを橋渡しする ref 群。
@@ -145,6 +150,8 @@ mod IdeState {
         pendingSceneRef            = Array[Option[String], Static],
         sceneFilesRef              = Array[List[(String, String)], Static],
         currentScenePathRef        = Array[Option[String], Static],
+        // 現在ロード中のプロジェクトルート絶対パス (新規ファイル作成等で必要)
+        currentProjectRootRef      = Array[Option[String], Static],
         textureNamesRef            = Array[List[String], Static],
         texturePathMapRef          = Array[Map[String, String], Static],
         soundNamesRef              = Array[List[String], Static],
@@ -166,6 +173,7 @@ mod IdeState {
             pendingSceneRef            = Array#{(None: Option[String])} @ Static,
             sceneFilesRef              = Array#{(Nil: List[(String, String)])} @ Static,
             currentScenePathRef        = Array#{(None: Option[String])} @ Static,
+            currentProjectRootRef      = Array#{(None: Option[String])} @ Static,
             textureNamesRef            = Array#{(Nil: List[String])} @ Static,
             texturePathMapRef          = Array#{(Map.empty(): Map[String, String])} @ Static,
             soundNamesRef              = Array#{(Nil: List[String])} @ Static,
@@ -207,8 +215,11 @@ mod IdeState {
             mapFloorImage                 = Array#{(None: Option[Image])} @ Static,
             mapLayerWallsRadio            = Array#{(None: Option[RadioButton])} @ Static,
             mapLayerManualRadio           = Array#{(None: Option[RadioButton])} @ Static,
+            mapLayerEntitiesRadio         = Array#{(None: Option[RadioButton])} @ Static,
             mapPaletteCanvas              = Array#{(None: Option[Canvas])} @ Static,
-            mapPaletteStatus              = Array#{(None: Option[Label])} @ Static
+            mapPaletteStatus              = Array#{(None: Option[Label])} @ Static,
+            mapEntityIdField              = Array#{(None: Option[TextField])} @ Static,
+            mapNewBtn                     = Array#{(None: Option[Button])} @ Static
         }
 
     def newRuntime(): RuntimeRefs \ IO =
@@ -289,4 +300,12 @@ mod IdeState {
     /// 現在開いている scene.json の絶対パスを返す。プロジェクト未ロード時や未選択時は None
     pub def getCurrentScenePath(state: IdeState): Option[String] \ IO =
         Array.get(0, state#currentScenePathRef)
+
+    /// 現在ロード中のプロジェクトルート絶対パスを保存する。
+    pub def setCurrentProjectRoot(state: IdeState, path: Option[String]): Unit \ IO =
+        Array.put(path, 0, state#currentProjectRootRef)
+
+    /// 現在ロード中のプロジェクトルート絶対パスを返す。未ロード時は None
+    pub def getCurrentProjectRoot(state: IdeState): Option[String] \ IO =
+        Array.get(0, state#currentProjectRootRef)
 }

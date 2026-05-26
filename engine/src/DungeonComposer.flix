@@ -36,12 +36,37 @@
 ///   5. GPU インスタンスを構築し、initTileBuffer を 1 回だけ呼んで TileMapLayer を返す。
 mod DungeonComposer {
 
-    /// 1 モジュール（LDTK ファイル）の配置仕様。
+    /// 1 モジュール（LDTK or 新形式 .map.json ファイル）の配置仕様。
     /// offsetGrid はグリッド単位の左上配置位置（例: {x = 8, y = 0} なら 8 セル右にずらす）。
+    /// `ldtkPath` フィールド名は歴史的経緯。`.ldtkl` でも `.map.json` でも受ける。
     pub type alias ModuleSpec = {
         ldtkPath   = String,
         offsetGrid = {x = Int32, y = Int32}
     }
+
+    /// ファイル拡張子で `.map.json` (MapLoader) と `.ldtkl` (LDTKLoader) を分岐するローダー。
+    /// 戻り値は LDTKLevelRaw 形式に揃え、下流の合成ロジックを共通化する。
+    pub def loadLevelRawDispatch(path: String, textureName: String): LDTKLoader.LDTKLevelRaw
+            \ { GameEngine.Game, Fs.FileRead } =
+        if (String.endsWith({suffix = ".map.json"}, path))
+            MapLoader.loadLevelRaw(path, textureName)
+        else
+            LDTKLoader.loadLevelRaw(LDTKLoader.simpleConfig({
+                path        = path,
+                textureName = textureName
+            }))
+
+    /// 装飾レイヤー版 dispatcher。`.map.json` なら decorTiles、`.ldtkl` なら指定 layer を読む。
+    pub def loadLayerRawDispatch(path: String, textureName: String,
+                                   layerIdentifier: String): LDTKLoader.LDTKLayerRaw
+            \ { GameEngine.Game, Fs.FileRead } =
+        if (String.endsWith({suffix = ".map.json"}, path))
+            MapLoader.loadDecorLayerRaw(path, textureName)
+        else
+            LDTKLoader.loadLayerByIdentifier(LDTKLoader.simpleConfig({
+                path        = path,
+                textureName = textureName
+            }), layerIdentifier)
 
     /// 配置済みモジュール群を 1 枚の TileMapLayer にマージする。
     /// openDoors にはワールド座標（オフセット適用後）のセルを渡す。
@@ -209,10 +234,7 @@ mod DungeonComposer {
     /// 戻り値は offset 適用済みの LDTKLevelRaw。
     def loadAndOffset(textureName: String, spec: ModuleSpec): LDTKLoader.LDTKLevelRaw
             \ { GameEngine.Game, Fs.FileRead } =
-        let raw = LDTKLoader.loadLevelRaw(LDTKLoader.simpleConfig({
-            path = spec#ldtkPath,
-            textureName = textureName
-        }));
+        let raw = loadLevelRawDispatch(spec#ldtkPath, textureName);
         let tileSize  = raw#tileSize;
         let offsetPx  = Vec2.mul(Vec2i.toVec2(spec#offsetGrid), tileSize);
         let offsetCell: Vec2.Vec2 = Vec2i.toVec2(spec#offsetGrid);
@@ -320,12 +342,7 @@ mod DungeonComposer {
         else
             // 1. ロードして doors / gridSize を検査用に取得（compose 内でも再ロードする）。
             //    起動時 1 回の読み込みなのでコスト的には無視できる。
-            let raws = List.map(path ->
-                LDTKLoader.loadLevelRaw(LDTKLoader.simpleConfig({
-                    path = path,
-                    textureName = textureName
-                })),
-                modulePaths);
+            let raws = List.map(path -> loadLevelRawDispatch(path, textureName), modulePaths);
             // 2. 連結整合性の事前検査（早期 bug! で打ち間違いを検出）
             let _ = validateConnections(connections, raws, n);
             // 3. BFS で各モジュールの offsetGrid を算出（anchor (0,0) 基準）
@@ -561,12 +578,7 @@ mod DungeonComposer {
         let n = List.length(modulePaths);
         if (n == 0) bug!("DungeonComposer: modulePaths must not be empty")
         else
-            let raws = List.map(path ->
-                LDTKLoader.loadLevelRaw(LDTKLoader.simpleConfig({
-                    path = path,
-                    textureName = textureName
-                })),
-                modulePaths);
+            let raws = List.map(path -> loadLevelRawDispatch(path, textureName), modulePaths);
             let connections = List.map(sc ->
                 ({
                     a = resolveSideRef(sc#a, raws, n),
@@ -668,10 +680,7 @@ mod DungeonComposer {
     def loadAndOffsetLayer(textureName: String, spec: ModuleSpec,
                             layerIdentifier: String): LDTKLoader.LDTKLayerRaw
             \ { GameEngine.Game, Fs.FileRead } =
-        let raw = LDTKLoader.loadLayerByIdentifier(LDTKLoader.simpleConfig({
-            path        = spec#ldtkPath,
-            textureName = textureName
-        }), layerIdentifier);
+        let raw = loadLayerRawDispatch(spec#ldtkPath, textureName, layerIdentifier);
         let offsetPx = Vec2.mul(Vec2i.toVec2(spec#offsetGrid), raw#tileSize);
         let shiftedTiles = List.map(tile -> {
             { px = Vec2.add(tile#px, offsetPx) | tile }

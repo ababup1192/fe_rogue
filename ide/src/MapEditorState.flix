@@ -7,11 +7,14 @@
 
 mod MapEditorState {
 
-    /// 編集レイヤーモード (S15)。Walls = WallMask toggle、Manual = ManualTile 配置/消去。
-    /// 将来 Entities を追加予定。
+    /// 編集レイヤーモード。
+    ///   Walls    = WallMask toggle
+    ///   Manual   = ManualTile 配置/消去 (パレットで src 選択)
+    ///   Entities = Entity 配置/削除 (identifier テキスト入力)
     pub enum LayerMode with Eq, ToString {
         case Walls
         case Manual
+        case Entities
     }
 
     /// Maps モード全体の状態。

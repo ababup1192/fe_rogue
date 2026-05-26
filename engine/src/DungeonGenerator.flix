@@ -111,14 +111,13 @@ mod DungeonGenerator {
     // ════════════════════════════════════════════════════════
 
     /// 重複を除いてからファイルを読み、path → Meta の Map を作る。
+    /// パスは `.ldtkl` と `.map.json` 混在可能。DungeonComposer 側 dispatch と同じく
+    /// 拡張子で MapLoader / LDTKLoader を分ける。
     def loadAllMetadata(textureName: String, paths: List[String]): Map[String, Meta]
             \ {GameEngine.Game, Fs.FileRead} =
         let unique = dedupStrings(paths);
         List.foldLeft(acc -> path -> {
-            let raw = LDTKLoader.loadLevelRaw(LDTKLoader.simpleConfig({
-                path = path,
-                textureName = textureName
-            }));
+            let raw = DungeonComposer.loadLevelRawDispatch(path, textureName);
             let meta: Meta = { gridSize = raw#gridSize, doors = raw#doors };
             Map.insert(path, meta, acc)
         }, Map.empty(), unique)

@@ -31,6 +31,7 @@ mod JavaFXIdeUI {
     import javafx.scene.control.CheckBox
     import javafx.scene.control.Label
     import javafx.scene.control.TextArea
+    import javafx.scene.control.TextField
     import javafx.scene.control.MenuItem
     import javafx.scene.control.ProgressBar
     import javafx.scene.control.TreeView
@@ -137,22 +138,33 @@ mod JavaFXIdeUI {
         Array.put(Some(mapGridCanvas), 0, state#widgets#mapGridCanvas);
         Array.put(Some(mapSaveBtn), 0, state#widgets#mapSaveBtn);
         Array.put(Some(mapDirtyLabel), 0, state#widgets#mapDirtyLabel);
-        // S15: Layer radio + tile パレット
+        // S15: Layer radio + tile パレット / S16: Entities radio + identifier 入力 / S17: + New
         let mapLayerWallsRadio: RadioButton =
             unchecked_cast(mapNs.get("mapLayerWallsRadio") as RadioButton);
         let mapLayerManualRadio: RadioButton =
             unchecked_cast(mapNs.get("mapLayerManualRadio") as RadioButton);
+        let mapLayerEntitiesRadio: RadioButton =
+            unchecked_cast(mapNs.get("mapLayerEntitiesRadio") as RadioButton);
         let mapPaletteCanvas: Canvas = unchecked_cast(mapNs.get("mapPaletteCanvas") as Canvas);
         let mapPaletteStatus: Label = unchecked_cast(mapNs.get("mapPaletteStatus") as Label);
+        let mapEntityIdField: TextField =
+            unchecked_cast(mapNs.get("mapEntityIdField") as TextField);
+        let mapNewBtn: Button = unchecked_cast(mapNs.get("mapNewBtn") as Button);
         Array.put(Some(mapLayerWallsRadio), 0, state#widgets#mapLayerWallsRadio);
         Array.put(Some(mapLayerManualRadio), 0, state#widgets#mapLayerManualRadio);
+        Array.put(Some(mapLayerEntitiesRadio), 0, state#widgets#mapLayerEntitiesRadio);
         Array.put(Some(mapPaletteCanvas), 0, state#widgets#mapPaletteCanvas);
         Array.put(Some(mapPaletteStatus), 0, state#widgets#mapPaletteStatus);
-        // S8: ListView 選択 / S11: クリックで WallMask toggle / S12: 保存ボタン / S15: layer + palette
+        Array.put(Some(mapEntityIdField), 0, state#widgets#mapEntityIdField);
+        Array.put(Some(mapNewBtn), 0, state#widgets#mapNewBtn);
+        // S8/S11/S12/S15/S16/S17 wiring
         MapGridCanvas.wireClickToggle(state, mapGridCanvas);
         MapEditorPanel.wireSaveButton(state, mapSaveBtn);
-        MapEditorPanel.wireLayerRadios(state, mapLayerWallsRadio, mapLayerManualRadio);
+        MapEditorPanel.wireLayerRadios(state, mapLayerWallsRadio,
+                                              mapLayerManualRadio,
+                                              mapLayerEntitiesRadio);
         MapEditorPanel.wirePaletteClick(state, mapPaletteCanvas);
+        MapEditorPanel.wireNewLevelButton(state, mapNewBtn);
         MapEditorPanel.wireMapSelection(state, mapsList);
 
         // ステータスバー Label を取得
