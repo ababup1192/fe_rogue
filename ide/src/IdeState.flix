@@ -16,6 +16,7 @@ mod IdeState {
     import javafx.scene.control.TextArea
     import javafx.scene.control.CheckBox
     import javafx.scene.control.Button
+    import javafx.scene.control.RadioButton
     import javafx.scene.control.ProgressBar
     import javafx.scene.layout.VBox
     import javafx.scene.layout.StackPane
@@ -55,7 +56,13 @@ mod IdeState {
         // 現状は texture 名を inca_tileset / tilemap_floor でハードコード参照する。
         // Material 概念を導入したら Level → Material → texture name の引き直しに置換予定。
         mapWallsImage                 = Array[Option[Image], Static],
-        mapFloorImage                 = Array[Option[Image], Static]
+        mapFloorImage                 = Array[Option[Image], Static],
+        // Maps タブの Layer モード radio (S15)
+        mapLayerWallsRadio            = Array[Option[RadioButton], Static],
+        mapLayerManualRadio           = Array[Option[RadioButton], Static],
+        // Maps タブの tile パレット (S15)
+        mapPaletteCanvas              = Array[Option[Canvas], Static],
+        mapPaletteStatus              = Array[Option[Label], Static]
     }
 
     /// 描画ループと FX レイヤーを橋渡しする ref 群。
@@ -197,7 +204,11 @@ mod IdeState {
             mapSaveBtn                    = Array#{(None: Option[Button])} @ Static,
             mapDirtyLabel                 = Array#{(None: Option[Label])} @ Static,
             mapWallsImage                 = Array#{(None: Option[Image])} @ Static,
-            mapFloorImage                 = Array#{(None: Option[Image])} @ Static
+            mapFloorImage                 = Array#{(None: Option[Image])} @ Static,
+            mapLayerWallsRadio            = Array#{(None: Option[RadioButton])} @ Static,
+            mapLayerManualRadio           = Array#{(None: Option[RadioButton])} @ Static,
+            mapPaletteCanvas              = Array#{(None: Option[Canvas])} @ Static,
+            mapPaletteStatus              = Array#{(None: Option[Label])} @ Static
         }
 
     def newRuntime(): RuntimeRefs \ IO =

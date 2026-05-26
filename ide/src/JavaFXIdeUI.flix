@@ -27,6 +27,7 @@ mod JavaFXIdeUI {
     import javafx.scene.control.Tab
     import javafx.scene.Node
     import javafx.scene.control.Button
+    import javafx.scene.control.RadioButton
     import javafx.scene.control.CheckBox
     import javafx.scene.control.Label
     import javafx.scene.control.TextArea
@@ -136,9 +137,22 @@ mod JavaFXIdeUI {
         Array.put(Some(mapGridCanvas), 0, state#widgets#mapGridCanvas);
         Array.put(Some(mapSaveBtn), 0, state#widgets#mapSaveBtn);
         Array.put(Some(mapDirtyLabel), 0, state#widgets#mapDirtyLabel);
-        // S8: ListView 選択 / S11: クリックで WallMask toggle / S12: 保存ボタン
+        // S15: Layer radio + tile パレット
+        let mapLayerWallsRadio: RadioButton =
+            unchecked_cast(mapNs.get("mapLayerWallsRadio") as RadioButton);
+        let mapLayerManualRadio: RadioButton =
+            unchecked_cast(mapNs.get("mapLayerManualRadio") as RadioButton);
+        let mapPaletteCanvas: Canvas = unchecked_cast(mapNs.get("mapPaletteCanvas") as Canvas);
+        let mapPaletteStatus: Label = unchecked_cast(mapNs.get("mapPaletteStatus") as Label);
+        Array.put(Some(mapLayerWallsRadio), 0, state#widgets#mapLayerWallsRadio);
+        Array.put(Some(mapLayerManualRadio), 0, state#widgets#mapLayerManualRadio);
+        Array.put(Some(mapPaletteCanvas), 0, state#widgets#mapPaletteCanvas);
+        Array.put(Some(mapPaletteStatus), 0, state#widgets#mapPaletteStatus);
+        // S8: ListView 選択 / S11: クリックで WallMask toggle / S12: 保存ボタン / S15: layer + palette
         MapGridCanvas.wireClickToggle(state, mapGridCanvas);
         MapEditorPanel.wireSaveButton(state, mapSaveBtn);
+        MapEditorPanel.wireLayerRadios(state, mapLayerWallsRadio, mapLayerManualRadio);
+        MapEditorPanel.wirePaletteClick(state, mapPaletteCanvas);
         MapEditorPanel.wireMapSelection(state, mapsList);
 
         // ステータスバー Label を取得
@@ -230,7 +244,8 @@ mod JavaFXIdeUI {
             def $run(_this: Runnable): Unit \ IO = {
                 ScenePanel.populateSceneTree(state);
                 ResourcePanel.populateResourcesList(state);
-                MapEditorPanel.populateMapList(state)
+                MapEditorPanel.populateMapList(state);
+                MapEditorPanel.drawPalette(state)
             }
         })
     }

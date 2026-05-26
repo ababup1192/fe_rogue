@@ -11,7 +11,13 @@ mod MapEditorPanel {
     import java.io.File
     import javafx.scene.control.ListView
     import javafx.scene.control.Button
+    import javafx.scene.control.RadioButton
+    import javafx.scene.control.Label
+    import javafx.scene.canvas.Canvas
+    import javafx.scene.canvas.GraphicsContext
     import javafx.scene.image.Image
+    import javafx.scene.input.MouseEvent
+    import javafx.scene.paint.Color
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
     import javafx.event.ActionEvent
@@ -143,6 +149,87 @@ mod MapEditorPanel {
                 } with Fs.FileWrite.runWithIO
         })
     }
+
+    // ────────────────────────────────────────────────────────
+    // S15: Layer mode radio + tile パレット
+    // ────────────────────────────────────────────────────────
+
+    /// Layer mode radio (Walls / Manual) の click で MapEditorState.layerModeRef を更新する。
+    /// ChangeListener[Bool] は Flix の primitive Bool ↔ Java Boxed Boolean ミスマッチで
+    /// VerifyError になるため、ActionEvent + isSelected() で判定する。
+    pub def wireLayerRadios(state: IdeState.IdeState,
+                              wallsRadio: RadioButton, manualRadio: RadioButton): Unit \ IO = {
+        wallsRadio.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                if (wallsRadio.isSelected())
+                    MapEditorState.setLayerMode(state#mapEditor, MapEditorState.LayerMode.Walls)
+                else ()
+        });
+        manualRadio.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                if (manualRadio.isSelected())
+                    MapEditorState.setLayerMode(state#mapEditor, MapEditorState.LayerMode.Manual)
+                else ()
+        })
+    }
+
+    /// 1 パレット タイルの表示倍率 (パレット Canvas 上で 1 タイル = 何 px か)。
+    /// inca_tileset (20×14 grid, 16px) を 2 倍で表示 → Canvas 640×448 程度。
+    pub def paletteCellPx(): Int32 = 16
+
+    /// 起動時とテクスチャ更新時に palette canvas へ inca_tileset PNG 全体を描画する。
+    /// パレットは元 PNG 等倍 (1px = 1px) で表示し、Canvas サイズも画像に合わせる。
+    pub def drawPalette(state: IdeState.IdeState): Unit \ IO =
+        match (Array.get(0, state#widgets#mapPaletteCanvas),
+               Array.get(0, state#widgets#mapWallsImage)) {
+            case (Some(canvas), Some(image)) => {
+                let w = image.getWidth();
+                let h = image.getHeight();
+                canvas.setWidth(w);
+                canvas.setHeight(h);
+                let gc = canvas.getGraphicsContext2D();
+                gc.setImageSmoothing(false);
+                gc.drawImage(image, 0.0f64, 0.0f64);
+                // 選択中タイルのハイライト
+                match MapEditorState.getSelectedSrc(state#mapEditor) {
+                    case None             => ()
+                    case Some((srcX, srcY)) => {
+                        let ts = Int32.toFloat64(paletteCellPx());
+                        gc.setStroke(Color.rgb(255, 230, 60));
+                        gc.setLineWidth(2.0);
+                        gc.strokeRect(Int32.toFloat64(srcX), Int32.toFloat64(srcY), ts, ts)
+                    }
+                }
+            }
+            case _ => ()
+        }
+
+    /// Palette canvas のクリックで src を選択する handler を 1 度だけ登録する。
+    /// inca_tileset は spacing=0 / margin=0 なので col*16, row*16 で srcX/srcY が決まる。
+    pub def wirePaletteClick(state: IdeState.IdeState, canvas: Canvas): Unit \ IO = {
+        canvas.setOnMouseClicked(new EventHandler[MouseEvent] {
+            def handle(_this: EventHandler[MouseEvent], event: MouseEvent): Unit \ IO = {
+                let ts = Int32.toFloat64(paletteCellPx());
+                let col = Float64.truncateToInt32(event.getX() / ts);
+                let row = Float64.truncateToInt32(event.getY() / ts);
+                let srcX = col * paletteCellPx();
+                let srcY = row * paletteCellPx();
+                MapEditorState.setSelectedSrc(state#mapEditor, Some((srcX, srcY)));
+                updatePaletteStatus(state, srcX, srcY);
+                drawPalette(state)
+            }
+        })
+    }
+
+    def updatePaletteStatus(state: IdeState.IdeState, srcX: Int32, srcY: Int32): Unit \ IO =
+        match Array.get(0, state#widgets#mapPaletteStatus) {
+            case Some(label) => {
+                let col = srcX / paletteCellPx();
+                let row = srcY / paletteCellPx();
+                label.setText("選択中: (${col}, ${row})  src=(${srcX}, ${srcY})")
+            }
+            case None => ()
+        }
 
     /// 現在の editingLevel を selectedLevelPath に書き戻す。
     /// editingLevel が無い or selectedPath が無いときは何もしない。

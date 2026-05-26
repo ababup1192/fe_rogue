@@ -171,28 +171,82 @@ mod MapGridCanvas {
                 let row = Float64.truncateToInt32(event.getY() / cs);
                 if (col < 0 or col >= d#width or row < 0 or row >= d#height) ()
                 else {
-                    let idx = row * d#width + col;
-                    let oldVal = match Vector.nth(idx, d#wallMask) {
-                        case Some(v) => v
-                        case None    => 0i32
+                    let mode = MapEditorState.getLayerMode(state#mapEditor);
+                    // MouseButton enum 比較は Eq instance が無いので toString() でやる
+                    let isRight = event.getButton().toString() == "SECONDARY";
+                    let newLevelOpt = match mode {
+                        case MapEditorState.LayerMode.Walls  => Some(toggleWall(level, d, col, row))
+                        case MapEditorState.LayerMode.Manual =>
+                            if (isRight)
+                                Some(removeManualAt(level, d, col, row))
+                            else
+                                placeManualAt(state, level, d, col, row)
                     };
-                    let newVal = if (oldVal == 0i32) 1i32 else 0i32;
-                    let newMask = Vector.toList(d#wallMask)
-                        |> List.mapWithIndex((i, v) -> if (i == idx) newVal else v)
-                        |> List.toVector;
-                    let newData: MapResource.LevelData = {wallMask = newMask | d};
-                    let newLevel = MapResource.Level.Level(newData);
-                    MapEditorState.setEditingLevel(state#mapEditor, Some(newLevel));
-                    MapEditorState.setDirty(state#mapEditor, true);
-                    MapEditorPanel.updateDirtyLabel(state);
-                    match Array.get(0, state#widgets#mapGridCanvas) {
-                        case Some(c) => {
-                            let wImg = Array.get(0, state#widgets#mapWallsImage);
-                            let fImg = Array.get(0, state#widgets#mapFloorImage);
-                            drawLevel(c, newLevel, cellPx, wImg, fImg)
-                        }
-                        case None => ()
+                    match newLevelOpt {
+                        case None           => ()
+                        case Some(newLevel) =>
+                            MapEditorState.setEditingLevel(state#mapEditor, Some(newLevel));
+                            MapEditorState.setDirty(state#mapEditor, true);
+                            MapEditorPanel.updateDirtyLabel(state);
+                            redrawCurrent(state, newLevel, cellPx)
                     }
                 }
+        }
+
+    /// Walls モードでのトグル: 指定セルの wallMask を 0↔1 反転。
+    def toggleWall(level: MapResource.Level, d: MapResource.LevelData,
+                    col: Int32, row: Int32): MapResource.Level =
+        let _ = level;
+        let idx = row * d#width + col;
+        let oldVal = match Vector.nth(idx, d#wallMask) {
+            case Some(v) => v
+            case None    => 0i32
+        };
+        let newVal = if (oldVal == 0i32) 1i32 else 0i32;
+        let newMask = Vector.toList(d#wallMask)
+            |> List.mapWithIndex((i, v) -> if (i == idx) newVal else v)
+            |> List.toVector;
+        let newData: MapResource.LevelData = {wallMask = newMask | d};
+        MapResource.Level.Level(newData)
+
+    /// Manual モードでの配置: 選択中タイルを ManualTile として追加 (同セル既存があれば置換)。
+    /// パレットで未選択なら何もしない (None を返す)。
+    def placeManualAt(state: IdeState.IdeState, level: MapResource.Level,
+                       d: MapResource.LevelData, col: Int32, row: Int32):
+            Option[MapResource.Level] \ IO =
+        let _ = level;
+        match MapEditorState.getSelectedSrc(state#mapEditor) {
+            case None             => None
+            case Some((srcX, srcY)) => {
+                let newTile = ({
+                    x = col, y = row,
+                    srcX = srcX, srcY = srcY,
+                    flipH = false, flipV = false
+                }: MapResource.ManualTile);
+                // 既存の同セルタイルを除去してから追加
+                let filtered = List.filter(t -> not (t#x == col and t#y == row), d#manualTiles);
+                let newTiles = List.append(filtered, newTile :: Nil);
+                let newData: MapResource.LevelData = {manualTiles = newTiles | d};
+                Some(MapResource.Level.Level(newData))
+            }
+        }
+
+    /// Manual モードでの右クリック: 指定セルの ManualTile を全て除去。
+    def removeManualAt(level: MapResource.Level, d: MapResource.LevelData,
+                        col: Int32, row: Int32): MapResource.Level =
+        let _ = level;
+        let filtered = List.filter(t -> not (t#x == col and t#y == row), d#manualTiles);
+        let newData: MapResource.LevelData = {manualTiles = filtered | d};
+        MapResource.Level.Level(newData)
+
+    /// 編集中 Level を canvas に再描画する。
+    def redrawCurrent(state: IdeState.IdeState, level: MapResource.Level, cellPx: Int32): Unit \ IO =
+        match Array.get(0, state#widgets#mapGridCanvas) {
+            case Some(c) => {
+                let wImg = Array.get(0, state#widgets#mapWallsImage);
+                let fImg = Array.get(0, state#widgets#mapFloorImage);
+                drawLevel(c, level, cellPx, wImg, fImg)
+            }
+            case None => ()
         }
 }
