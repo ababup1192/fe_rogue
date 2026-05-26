@@ -27,7 +27,7 @@ mod JavaFXIdeUI {
     import javafx.scene.control.Tab
     import javafx.scene.Node
     import javafx.scene.control.Button
-    import javafx.scene.control.RadioButton
+    import javafx.scene.control.ToggleButton
     import javafx.scene.control.CheckBox
     import javafx.scene.control.Label
     import javafx.scene.control.TextArea
@@ -38,6 +38,7 @@ mod JavaFXIdeUI {
     import javafx.scene.control.ListView
     import javafx.scene.layout.StackPane
     import javafx.scene.layout.VBox
+    import javafx.scene.layout.HBox
     import javafx.application.Platform
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
@@ -138,31 +139,37 @@ mod JavaFXIdeUI {
         Array.put(Some(mapGridCanvas), 0, state#widgets#mapGridCanvas);
         Array.put(Some(mapSaveBtn), 0, state#widgets#mapSaveBtn);
         Array.put(Some(mapDirtyLabel), 0, state#widgets#mapDirtyLabel);
-        // S15: Layer radio + tile パレット / S16: Entities radio + identifier 入力 / S17: + New
-        let mapLayerWallsRadio: RadioButton =
-            unchecked_cast(mapNs.get("mapLayerWallsRadio") as RadioButton);
-        let mapLayerManualRadio: RadioButton =
-            unchecked_cast(mapNs.get("mapLayerManualRadio") as RadioButton);
-        let mapLayerEntitiesRadio: RadioButton =
-            unchecked_cast(mapNs.get("mapLayerEntitiesRadio") as RadioButton);
+        // Layer リスト (Floor/Walls/Entities) + tile パレット + identifier 入力 + 新規ボタン
+        let mapLayerRowFloor: HBox = unchecked_cast(mapNs.get("mapLayerRowFloor") as HBox);
+        let mapLayerRowWalls: HBox = unchecked_cast(mapNs.get("mapLayerRowWalls") as HBox);
+        let mapLayerRowEntities: HBox = unchecked_cast(mapNs.get("mapLayerRowEntities") as HBox);
+        let mapLayerVisibleFloor: ToggleButton =
+            unchecked_cast(mapNs.get("mapLayerVisibleFloor") as ToggleButton);
+        let mapLayerVisibleWalls: ToggleButton =
+            unchecked_cast(mapNs.get("mapLayerVisibleWalls") as ToggleButton);
+        let mapLayerVisibleEntities: ToggleButton =
+            unchecked_cast(mapNs.get("mapLayerVisibleEntities") as ToggleButton);
         let mapPaletteCanvas: Canvas = unchecked_cast(mapNs.get("mapPaletteCanvas") as Canvas);
         let mapPaletteStatus: Label = unchecked_cast(mapNs.get("mapPaletteStatus") as Label);
+        let mapPaletteLabel: Label = unchecked_cast(mapNs.get("mapPaletteLabel") as Label);
         let mapEntityIdField: TextField =
             unchecked_cast(mapNs.get("mapEntityIdField") as TextField);
         let mapNewBtn: Button = unchecked_cast(mapNs.get("mapNewBtn") as Button);
-        Array.put(Some(mapLayerWallsRadio), 0, state#widgets#mapLayerWallsRadio);
-        Array.put(Some(mapLayerManualRadio), 0, state#widgets#mapLayerManualRadio);
-        Array.put(Some(mapLayerEntitiesRadio), 0, state#widgets#mapLayerEntitiesRadio);
+        Array.put(Some(mapLayerRowFloor), 0, state#widgets#mapLayerRowFloor);
+        Array.put(Some(mapLayerRowWalls), 0, state#widgets#mapLayerRowWalls);
+        Array.put(Some(mapLayerRowEntities), 0, state#widgets#mapLayerRowEntities);
+        Array.put(Some(mapLayerVisibleFloor), 0, state#widgets#mapLayerVisibleFloor);
+        Array.put(Some(mapLayerVisibleWalls), 0, state#widgets#mapLayerVisibleWalls);
+        Array.put(Some(mapLayerVisibleEntities), 0, state#widgets#mapLayerVisibleEntities);
         Array.put(Some(mapPaletteCanvas), 0, state#widgets#mapPaletteCanvas);
         Array.put(Some(mapPaletteStatus), 0, state#widgets#mapPaletteStatus);
+        Array.put(Some(mapPaletteLabel), 0, state#widgets#mapPaletteLabel);
         Array.put(Some(mapEntityIdField), 0, state#widgets#mapEntityIdField);
         Array.put(Some(mapNewBtn), 0, state#widgets#mapNewBtn);
-        // S8/S11/S12/S15/S16/S17 wiring
+        // S8/S11/S12 + Layer wiring
         MapGridCanvas.wireClickToggle(state, mapGridCanvas);
         MapEditorPanel.wireSaveButton(state, mapSaveBtn);
-        MapEditorPanel.wireLayerRadios(state, mapLayerWallsRadio,
-                                              mapLayerManualRadio,
-                                              mapLayerEntitiesRadio);
+        MapEditorPanel.wireLayerList(state);
         MapEditorPanel.wirePaletteClick(state, mapPaletteCanvas);
         MapEditorPanel.wireNewLevelButton(state, mapNewBtn);
         MapEditorPanel.wireMapSelection(state, mapsList);

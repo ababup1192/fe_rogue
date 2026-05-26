@@ -162,6 +162,63 @@
     -fx-padding: 2 0 0 0;
 }
 
+/* Maps タブの Layer リスト (Photoshop/Tiled 風)。
+   行クリックで選択、目玉トグル (ToggleButton) で可視性 ON/OFF。 */
+.layer-list {
+    -fx-padding: 2 4 2 4;
+    -fx-spacing: 1;
+}
+
+.layer-row {
+    -fx-padding: 3 6 3 4;
+    -fx-background-color: transparent;
+    -fx-cursor: hand;
+}
+.layer-row:hover {
+    -fx-background-color: rgba(0, 120, 215, 0.10);
+}
+.layer-row-selected {
+    -fx-background-color: rgba(0, 120, 215, 0.25);
+    -fx-border-color: rgba(0, 120, 215, 0.55);
+    -fx-border-width: 1;
+}
+
+.layer-name {
+    -fx-font-size: 12px;
+    -fx-text-fill: #222;
+}
+/* 目玉が OFF (selected=false) のときはレイヤー名も淡く表示 */
+.layer-row .layer-eye-btn:not(:selected) ~ .layer-name {
+    -fx-text-fill: #aaa;
+}
+
+/* 目玉トグル: 枠/背景なしのアイコン風ボタン。selected=visible で濃く、
+   unselected=hidden で淡く表示する。 */
+.layer-eye-btn {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 0 4 0 4;
+    -fx-font-size: 14px;
+    -fx-min-width: 22px;
+    -fx-min-height: 18px;
+    -fx-text-fill: #333;
+    -fx-opacity: 1.0;
+}
+.layer-eye-btn:hover {
+    -fx-background-color: rgba(0, 0, 0, 0.05);
+}
+.layer-eye-btn:selected {
+    -fx-text-fill: #1a1a1a;
+    -fx-opacity: 1.0;
+}
+/* selected でない (= hidden) ときは目玉を薄く */
+.layer-eye-btn {
+    -fx-opacity: 0.25;
+}
+.layer-eye-btn:selected {
+    -fx-opacity: 1.0;
+}
+
 /* Project ロード進捗 overlay。canvas 中央に半透明背景で被せる */
 .loading-overlay {
     -fx-background-color: rgba(40, 40, 40, 0.92);

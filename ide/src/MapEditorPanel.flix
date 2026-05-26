@@ -11,7 +11,7 @@ mod MapEditorPanel {
     import java.io.File
     import javafx.scene.control.ListView
     import javafx.scene.control.Button
-    import javafx.scene.control.RadioButton
+    import javafx.scene.control.ToggleButton
     import javafx.scene.control.TextField
     import javafx.scene.control.TextInputDialog
     import javafx.scene.control.Label
@@ -20,6 +20,7 @@ mod MapEditorPanel {
     import javafx.scene.image.Image
     import javafx.scene.input.MouseEvent
     import javafx.scene.paint.Color
+    import javafx.scene.layout.HBox
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
     import javafx.event.ActionEvent
@@ -115,13 +116,7 @@ mod MapEditorPanel {
                 }
             case Some(level) => {
                 let d = MapResource.levelData(level);
-                match Array.get(0, state#widgets#mapGridCanvas) {
-                    case None    => ()
-                    case Some(c) =>
-                        let wImg = Array.get(0, state#widgets#mapWallsImage);
-                        let fImg = Array.get(0, state#widgets#mapFloorImage);
-                        MapGridCanvas.drawLevel(c, level, MapGridCanvas.defaultCellPx(), wImg, fImg)
-                };
+                redrawCanvas(state);
                 // 新規 Level に切替えたら dirty をリセットしてラベル反映
                 MapEditorState.setDirty(state#mapEditor, false);
                 updateDirtyLabel(state);
@@ -156,43 +151,144 @@ mod MapEditorPanel {
     // S15: Layer mode radio + tile パレット
     // ────────────────────────────────────────────────────────
 
-    /// Layer mode radio (Walls / Manual / Entities) の click で
-    /// MapEditorState.layerModeRef を更新する。
-    /// ChangeListener[Bool] は Flix の primitive Bool ↔ Java Boxed Boolean ミスマッチで
-    /// VerifyError になるため、ActionEvent + isSelected() で判定する。
-    pub def wireLayerRadios(state: IdeState.IdeState,
-                              wallsRadio: RadioButton,
-                              manualRadio: RadioButton,
-                              entitiesRadio: RadioButton): Unit \ IO = {
-        wallsRadio.setOnAction(new EventHandler[ActionEvent] {
-            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
-                if (wallsRadio.isSelected())
-                    MapEditorState.setLayerMode(state#mapEditor, MapEditorState.LayerMode.Walls)
-                else ()
-        });
-        manualRadio.setOnAction(new EventHandler[ActionEvent] {
-            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
-                if (manualRadio.isSelected())
-                    MapEditorState.setLayerMode(state#mapEditor, MapEditorState.LayerMode.Manual)
-                else ()
-        });
-        entitiesRadio.setOnAction(new EventHandler[ActionEvent] {
-            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
-                if (entitiesRadio.isSelected())
-                    MapEditorState.setLayerMode(state#mapEditor, MapEditorState.LayerMode.Entities)
-                else ()
-        })
+    /// Layer リスト UI (Photoshop/Tiled 風) を配線する。
+    /// - 行クリックで選択 (現編集レイヤーを更新、styleClass で highlight 切替)
+    /// - 目玉トグル (ToggleButton) で当該 Layer の visibility を ON/OFF し canvas を再描画
+    /// FXML から取得済みの widget は state#widgets から引く。
+    pub def wireLayerList(state: IdeState.IdeState): Unit \ IO = {
+        wireRowClick(state, state#widgets#mapLayerRowFloor, MapEditorState.LayerMode.Floor);
+        wireRowClick(state, state#widgets#mapLayerRowWalls, MapEditorState.LayerMode.Walls);
+        wireRowClick(state, state#widgets#mapLayerRowEntities, MapEditorState.LayerMode.Entities);
+        wireEyeToggle(state, state#widgets#mapLayerVisibleFloor, MapEditorState.LayerMode.Floor);
+        wireEyeToggle(state, state#widgets#mapLayerVisibleWalls, MapEditorState.LayerMode.Walls);
+        wireEyeToggle(state, state#widgets#mapLayerVisibleEntities, MapEditorState.LayerMode.Entities);
+        // 初期 highlight を現 LayerMode と同期 (FXML の静的 styleClass と Flix state の食い違い防止)
+        let mode = MapEditorState.getLayerMode(state#mapEditor);
+        updateRowHighlight(state, mode)
     }
+
+    /// 行 (HBox) のマウスクリックで対応する Layer に選択を切り替える。
+    /// 目玉トグルの上で発生したクリックも HBox にバブルするので、
+    /// target が ToggleButton かをチェックして二重切替を避ける。
+    def wireRowClick(state: IdeState.IdeState,
+                       rowRef: Array[Option[HBox], Static],
+                       mode: MapEditorState.LayerMode): Unit \ IO =
+        match Array.get(0, rowRef) {
+            case None      => ()
+            case Some(row) =>
+                row.setOnMouseClicked(new EventHandler[MouseEvent] {
+                    def handle(_this: EventHandler[MouseEvent], event: MouseEvent): Unit \ IO = {
+                        let target = event.getTarget();
+                        let isToggle =
+                            if (Object.isNull(target)) false
+                            else String.startsWith(prefix = "ToggleButton",
+                                                     target.getClass().getSimpleName());
+                        if (isToggle) ()
+                        else onLayerChanged(state, mode)
+                    }
+                })
+        }
+
+    /// 目玉トグル ON/OFF で visibility を更新し、canvas を再描画する。
+    def wireEyeToggle(state: IdeState.IdeState,
+                       btnRef: Array[Option[ToggleButton], Static],
+                       mode: MapEditorState.LayerMode): Unit \ IO =
+        match Array.get(0, btnRef) {
+            case None      => ()
+            case Some(btn) =>
+                btn.setOnAction(new EventHandler[ActionEvent] {
+                    def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                        MapEditorState.setLayerVisible(state#mapEditor, mode, btn.isSelected());
+                        redrawCanvas(state)
+                    }
+                })
+        }
+
+    /// 編集中 Level を canvas に再描画する。Level 未選択なら何もしない。
+    pub def redrawCanvas(state: IdeState.IdeState): Unit \ IO =
+        match (MapEditorState.getEditingLevel(state#mapEditor),
+               Array.get(0, state#widgets#mapGridCanvas)) {
+            case (Some(level), Some(canvas)) => {
+                let wImg = Array.get(0, state#widgets#mapWallsImage);
+                let fImg = Array.get(0, state#widgets#mapFloorImage);
+                let vis = MapEditorState.getLayerVisibility(state#mapEditor);
+                MapGridCanvas.drawLevel(canvas, level, MapGridCanvas.defaultCellPx(),
+                                          wImg, fImg, vis)
+            }
+            case _ => ()
+        }
+
+    /// レイヤー切替の共通処理: state 更新 → selectedSrc リセット → 行 highlight 切替
+    /// → パレット再描画 → ラベル更新。
+    def onLayerChanged(state: IdeState.IdeState, mode: MapEditorState.LayerMode): Unit \ IO = {
+        MapEditorState.setLayerMode(state#mapEditor, mode);
+        MapEditorState.setSelectedSrc(state#mapEditor, None);
+        match Array.get(0, state#widgets#mapPaletteStatus) {
+            case Some(label) => label.setText("未選択")
+            case None        => ()
+        };
+        updateRowHighlight(state, mode);
+        updatePaletteLabel(state, mode);
+        drawPalette(state)
+    }
+
+    /// Layer 行の選択 highlight 用 styleClass を 1 行だけにつける。
+    /// "layer-row-selected" の add/remove を 3 行に対して同期させる。
+    def updateRowHighlight(state: IdeState.IdeState, mode: MapEditorState.LayerMode):
+            Unit \ IO = {
+        setRowSelected(state#widgets#mapLayerRowFloor,
+                       mode == MapEditorState.LayerMode.Floor);
+        setRowSelected(state#widgets#mapLayerRowWalls,
+                       mode == MapEditorState.LayerMode.Walls);
+        setRowSelected(state#widgets#mapLayerRowEntities,
+                       mode == MapEditorState.LayerMode.Entities)
+    }
+
+    def setRowSelected(rowRef: Array[Option[HBox], Static], selected: Bool): Unit \ IO =
+        match Array.get(0, rowRef) {
+            case None      => ()
+            case Some(row) => {
+                let classes = row.getStyleClass();
+                let cls = "layer-row-selected";
+                if (selected) {
+                    if (not classes.contains(cls)) discard classes.add(cls) else ()
+                } else {
+                    discard classes.remove(cls)
+                }
+            }
+        }
+
+    /// パレット見出し ("Palette (Floor)" 等) を現レイヤーに合わせる。
+    /// Entities レイヤーはパレット不使用なので明示する。
+    def updatePaletteLabel(state: IdeState.IdeState, mode: MapEditorState.LayerMode): Unit \ IO =
+        match Array.get(0, state#widgets#mapPaletteLabel) {
+            case None        => ()
+            case Some(label) => {
+                let text = match mode {
+                    case MapEditorState.LayerMode.Floor    => "Palette (Floor)"
+                    case MapEditorState.LayerMode.Walls    => "Palette (Walls)"
+                    case MapEditorState.LayerMode.Entities => "Palette (なし)"
+                };
+                label.setText(text)
+            }
+        }
 
     /// 1 パレット タイルの表示倍率 (パレット Canvas 上で 1 タイル = 何 px か)。
     /// inca_tileset (20×14 grid, 16px) を 2 倍で表示 → Canvas 640×448 程度。
     pub def paletteCellPx(): Int32 = 16
 
-    /// 起動時とテクスチャ更新時に palette canvas へ inca_tileset PNG 全体を描画する。
-    /// パレットは元 PNG 等倍 (1px = 1px) で表示し、Canvas サイズも画像に合わせる。
-    pub def drawPalette(state: IdeState.IdeState): Unit \ IO =
-        match (Array.get(0, state#widgets#mapPaletteCanvas),
-               Array.get(0, state#widgets#mapWallsImage)) {
+    /// 現在の LayerMode に応じてパレット canvas に tileset PNG を描画する。
+    /// Floor → tilemap_floor、Walls → inca_tileset、Entities → canvas クリア。
+    /// 元 PNG 等倍 (1px = 1px) で表示し、Canvas サイズも画像に合わせる。
+    /// Open Project 時 (drawPalette を直接呼ぶ) はデフォルト Walls 想定。
+    pub def drawPalette(state: IdeState.IdeState): Unit \ IO = {
+        let mode = MapEditorState.getLayerMode(state#mapEditor);
+        let imgOpt = match mode {
+            case MapEditorState.LayerMode.Floor    => Array.get(0, state#widgets#mapFloorImage)
+            case MapEditorState.LayerMode.Walls    => Array.get(0, state#widgets#mapWallsImage)
+            case MapEditorState.LayerMode.Entities => None
+        };
+        match (Array.get(0, state#widgets#mapPaletteCanvas), imgOpt) {
             case (Some(canvas), Some(image)) => {
                 let w = image.getWidth();
                 let h = image.getHeight();
@@ -200,8 +296,8 @@ mod MapEditorPanel {
                 canvas.setHeight(h);
                 let gc = canvas.getGraphicsContext2D();
                 gc.setImageSmoothing(false);
+                gc.clearRect(0.0f64, 0.0f64, w, h);
                 gc.drawImage(image, 0.0f64, 0.0f64);
-                // 選択中タイルのハイライト
                 match MapEditorState.getSelectedSrc(state#mapEditor) {
                     case None             => ()
                     case Some((srcX, srcY)) => {
@@ -212,8 +308,14 @@ mod MapEditorPanel {
                     }
                 }
             }
+            case (Some(canvas), None) => {
+                // Entities レイヤー or 画像未ロード: canvas をクリアして空表示にする
+                let gc = canvas.getGraphicsContext2D();
+                gc.clearRect(0.0f64, 0.0f64, canvas.getWidth(), canvas.getHeight())
+            }
             case _ => ()
         }
+    }
 
     /// Palette canvas のクリックで src を選択する handler を 1 度だけ登録する。
     /// inca_tileset は spacing=0 / margin=0 なので col*16, row*16 で srcX/srcY が決まる。
@@ -315,24 +417,37 @@ mod MapEditorPanel {
         }
     }
 
-    /// 13×13 デフォルト Level: 外周のみ wall、内部床、entity 無し。
+    /// 13×13 デフォルト Level: 外周 wall (wallMask=1 + manualTiles に inca_tileset 壁絵)、
+    /// 内部は空 (Floor は未配置)、entity 無し。
     /// materialId は "inca_stone" 固定 (Material 概念導入まで)。
+    /// 壁絵は単一の (176, 16) を使用。コーナーの flip 等はユーザーが Walls レイヤーで上書き配置する。
     def buildBlankLevel(width: Int32, height: Int32): MapResource.Level = {
+        let outerCells = List.range(0, width * height)
+            |> List.filter(i -> {
+                let col = Int32.remainder(i, width);
+                let row = i / width;
+                col == 0 or col == width - 1 or row == 0 or row == height - 1
+            });
         let mask = List.range(0, width * height)
+            |> List.map(i -> if (List.memberOf(i, outerCells)) 1i32 else 0i32)
+            |> List.toVector;
+        let wallTiles = outerCells
             |> List.map(i -> {
                 let col = Int32.remainder(i, width);
                 let row = i / width;
-                if (col == 0 or col == width - 1 or row == 0 or row == height - 1) 1i32
-                else 0i32
-            })
-            |> List.toVector;
+                ({
+                    x = col, y = row,
+                    srcX = 176i32, srcY = 16i32,
+                    flipH = false, flipV = false
+                }: MapResource.ManualTile)
+            });
         let data: MapResource.LevelData = {
             tileSize    = 16,
             width       = width,
             height      = height,
             materialId  = "inca_stone",
             wallMask    = mask,
-            manualTiles = (Nil: List[MapResource.ManualTile]),
+            manualTiles = wallTiles,
             decorTiles  = (Nil: List[MapResource.ManualTile]),
             entities    = (Nil: List[MapResource.Entity])
         };

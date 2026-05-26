@@ -16,9 +16,10 @@ mod IdeState {
     import javafx.scene.control.TextArea
     import javafx.scene.control.CheckBox
     import javafx.scene.control.Button
-    import javafx.scene.control.RadioButton
+    import javafx.scene.control.ToggleButton
     import javafx.scene.control.ProgressBar
     import javafx.scene.layout.VBox
+    import javafx.scene.layout.HBox
     import javafx.scene.layout.StackPane
     import javafx.scene.canvas.Canvas
     import javafx.scene.image.Image
@@ -57,13 +58,19 @@ mod IdeState {
         // Material 概念を導入したら Level → Material → texture name の引き直しに置換予定。
         mapWallsImage                 = Array[Option[Image], Static],
         mapFloorImage                 = Array[Option[Image], Static],
-        // Maps タブの Layer モード radio (S15-S16)
-        mapLayerWallsRadio            = Array[Option[RadioButton], Static],
-        mapLayerManualRadio           = Array[Option[RadioButton], Static],
-        mapLayerEntitiesRadio         = Array[Option[RadioButton], Static],
+        // Maps タブの Layer リスト行 (HBox) — クリックで選択、styleClass の付け外しで選択 highlight
+        mapLayerRowFloor              = Array[Option[HBox], Static],
+        mapLayerRowWalls              = Array[Option[HBox], Static],
+        mapLayerRowEntities           = Array[Option[HBox], Static],
+        // 各 Layer の visibility 目玉トグル (ToggleButton)
+        mapLayerVisibleFloor          = Array[Option[ToggleButton], Static],
+        mapLayerVisibleWalls          = Array[Option[ToggleButton], Static],
+        mapLayerVisibleEntities       = Array[Option[ToggleButton], Static],
         // Maps タブの tile パレット (S15)
         mapPaletteCanvas              = Array[Option[Canvas], Static],
         mapPaletteStatus              = Array[Option[Label], Static],
+        // Maps タブのパレット見出し (Layer 切替で "Palette (Floor/Walls)" 等に書き換える)
+        mapPaletteLabel               = Array[Option[Label], Static],
         // Maps タブの Entity identifier 入力 (S16)
         mapEntityIdField              = Array[Option[TextField], Static],
         // Maps タブの「+ New」ボタン (S17: 新規 Level 作成)
@@ -213,11 +220,15 @@ mod IdeState {
             mapDirtyLabel                 = Array#{(None: Option[Label])} @ Static,
             mapWallsImage                 = Array#{(None: Option[Image])} @ Static,
             mapFloorImage                 = Array#{(None: Option[Image])} @ Static,
-            mapLayerWallsRadio            = Array#{(None: Option[RadioButton])} @ Static,
-            mapLayerManualRadio           = Array#{(None: Option[RadioButton])} @ Static,
-            mapLayerEntitiesRadio         = Array#{(None: Option[RadioButton])} @ Static,
+            mapLayerRowFloor              = Array#{(None: Option[HBox])} @ Static,
+            mapLayerRowWalls              = Array#{(None: Option[HBox])} @ Static,
+            mapLayerRowEntities           = Array#{(None: Option[HBox])} @ Static,
+            mapLayerVisibleFloor          = Array#{(None: Option[ToggleButton])} @ Static,
+            mapLayerVisibleWalls          = Array#{(None: Option[ToggleButton])} @ Static,
+            mapLayerVisibleEntities       = Array#{(None: Option[ToggleButton])} @ Static,
             mapPaletteCanvas              = Array#{(None: Option[Canvas])} @ Static,
             mapPaletteStatus              = Array#{(None: Option[Label])} @ Static,
+            mapPaletteLabel               = Array#{(None: Option[Label])} @ Static,
             mapEntityIdField              = Array#{(None: Option[TextField])} @ Static,
             mapNewBtn                     = Array#{(None: Option[Button])} @ Static
         }

@@ -1,20 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Maps タブの中身 (Level リスト + 中央 Canvas + tile パレット)。
+  Maps タブの中身 (Level リスト + 中央 Canvas + 右に Layer リスト + パレット)。
   ide.fxml が <fx:include source="map-editor.fxml"/> ではなく別 FXMLLoader で
   ロードして mapsTab.setContent でマウントする。inner fx:id は専用 namespace
   経由でアクセスする (JavaFXIdeUI.flix)。
+
+  Layer UI は Photoshop/Tiled 風の縦積みリスト。各行に
+    [目玉トグル (👁)] [レイヤー名]
+  を並べ、行クリックで選択 (現編集レイヤー)、目玉クリックで可視性 ON/OFF。
+  描画順 (上→下) は Z 順そのまま: Entities が一番上、Floor が一番下。
 -->
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.layout.HBox?>
-<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.Region?>
 <?import javafx.scene.control.SplitPane?>
 <?import javafx.scene.control.ListView?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.Button?>
-<?import javafx.scene.control.ToggleGroup?>
-<?import javafx.scene.control.RadioButton?>
+<?import javafx.scene.control.ToggleButton?>
 <?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.Separator?>
 <?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.canvas.Canvas?>
 
@@ -33,7 +38,7 @@
                 </HBox>
             </children>
         </VBox>
-        <!-- 中央: ツールバー + Layer radio + Canvas -->
+        <!-- 中央: ツールバー + Canvas -->
         <VBox fx:id="mapEditorPane" alignment="TOP_CENTER" spacing="8">
             <children>
                 <HBox alignment="CENTER_LEFT" spacing="8" styleClass="map-toolbar">
@@ -41,17 +46,8 @@
                         <Button fx:id="mapSaveBtn" text="保存"/>
                         <Label fx:id="mapDirtyLabel" text=""
                                styleClass="map-dirty-label"/>
-                        <Label text="  Layer:"/>
-                        <fx:define>
-                            <ToggleGroup fx:id="mapLayerGroup"/>
-                        </fx:define>
-                        <RadioButton fx:id="mapLayerWallsRadio" text="Walls"
-                                     toggleGroup="$mapLayerGroup" selected="true"/>
-                        <RadioButton fx:id="mapLayerManualRadio" text="Manual"
-                                     toggleGroup="$mapLayerGroup"/>
-                        <RadioButton fx:id="mapLayerEntitiesRadio" text="Entities"
-                                     toggleGroup="$mapLayerGroup"/>
-                        <Label text="  Entity id:"/>
+                        <Region HBox.hgrow="ALWAYS"/>
+                        <Label text="Entity id:"/>
                         <TextField fx:id="mapEntityIdField" text="Door"
                                    prefColumnCount="10"/>
                     </children>
@@ -59,10 +55,53 @@
                 <Canvas fx:id="mapGridCanvas" width="400" height="400"/>
             </children>
         </VBox>
-        <!-- 右: tile パレット (inca_tileset PNG, クリックで src 選択) -->
-        <VBox alignment="TOP_CENTER" spacing="4" styleClass="map-palette-pane">
+        <!-- 右: Layer リスト (上) + tile パレット (下) -->
+        <VBox alignment="TOP_CENTER" spacing="4" styleClass="map-side-pane">
             <children>
-                <Label text="Palette (Walls)" styleClass="section-header"/>
+                <Label text="Layers" styleClass="section-header"/>
+                <VBox fx:id="mapLayerList" styleClass="layer-list">
+                    <children>
+                        <HBox fx:id="mapLayerRowEntities" styleClass="layer-row"
+                              alignment="CENTER_LEFT" spacing="6">
+                            <children>
+                                <ToggleButton fx:id="mapLayerVisibleEntities"
+                                              text="&#x1F441;" selected="true"
+                                              styleClass="layer-eye-btn"
+                                              focusTraversable="false"/>
+                                <Label fx:id="mapLayerNameEntities" text="Entities"
+                                       styleClass="layer-name"
+                                       HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                            </children>
+                        </HBox>
+                        <HBox fx:id="mapLayerRowWalls"
+                              styleClass="layer-row,layer-row-selected"
+                              alignment="CENTER_LEFT" spacing="6">
+                            <children>
+                                <ToggleButton fx:id="mapLayerVisibleWalls"
+                                              text="&#x1F441;" selected="true"
+                                              styleClass="layer-eye-btn"
+                                              focusTraversable="false"/>
+                                <Label fx:id="mapLayerNameWalls" text="Walls"
+                                       styleClass="layer-name"
+                                       HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                            </children>
+                        </HBox>
+                        <HBox fx:id="mapLayerRowFloor" styleClass="layer-row"
+                              alignment="CENTER_LEFT" spacing="6">
+                            <children>
+                                <ToggleButton fx:id="mapLayerVisibleFloor"
+                                              text="&#x1F441;" selected="true"
+                                              styleClass="layer-eye-btn"
+                                              focusTraversable="false"/>
+                                <Label fx:id="mapLayerNameFloor" text="Floor"
+                                       styleClass="layer-name"
+                                       HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                            </children>
+                        </HBox>
+                    </children>
+                </VBox>
+                <Separator/>
+                <Label fx:id="mapPaletteLabel" text="Palette" styleClass="section-header"/>
                 <Label fx:id="mapPaletteStatus" text="未選択"
                        styleClass="map-palette-status"/>
                 <ScrollPane fitToWidth="true" VBox.vgrow="ALWAYS">
