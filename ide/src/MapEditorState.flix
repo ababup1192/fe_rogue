@@ -8,11 +8,13 @@
 mod MapEditorState {
 
     /// 編集レイヤーモード。
-    ///   Floor    = decorTiles 配置/消去 (パレット = tilemap_floor)
-    ///   Walls    = manualTiles 配置/消去 + wallMask 自動同期 (パレット = inca_tileset)
-    ///   Entities = Entity 配置/削除 (identifier テキスト入力)
+    ///   Floor          = decorTiles 配置/消去 (パレット = tilemap_floor)
+    ///   AutoLayerWalls = wallMask の 0/1 トグル。タイル絵は Material.wallMap から自動補完
+    ///   Walls          = manualTiles 配置/消去 のみ (wallMask には触らない、AutoLayerWalls の上書き)
+    ///   Entities       = Entity 配置/削除 (identifier テキスト入力)
     pub enum LayerMode with Eq, ToString {
         case Floor
+        case AutoLayerWalls
         case Walls
         case Entities
     }
@@ -20,9 +22,10 @@ mod MapEditorState {
     /// 各レイヤーの canvas 上での表示 ON/OFF。
     /// 目玉トグルで切り替え、描画時 (MapGridCanvas.drawLevel) が参照する。
     pub type alias LayerVisibility = {
-        floor    = Bool,
-        walls    = Bool,
-        entities = Bool
+        floor          = Bool,
+        autoLayerWalls = Bool,
+        walls          = Bool,
+        entities       = Bool
     }
 
     /// 1 レイヤー分の Palette 設定 (SpriteSheet + セル px)。
@@ -58,37 +61,46 @@ mod MapEditorState {
     ///   paletteZoomRef:       Palette canvas の表示倍率 (ピンチ操作で更新、1.0=等倍)
     ///   mapZoomRef:           Map canvas の表示倍率 (ピンチ操作で更新、1.0=等倍)
     ///   undoStackRef:         編集前の Level スナップショット (head=直近)。Ctrl+Z で pop する
+    ///   editingMaterialRef:   現 Level の materialId に紐づく Material (wallMap など)
+    ///   editingMaterialPathRef: editingMaterial の絶対パス (Materials タブの保存先)
+    ///   selectedTrblRef:      Materials タブで選択中の TRBL キー ("0000" 〜 "1111")
     pub type alias MapEditorState = {
-        levelFilesRef        = Array[List[String], Static],
-        selectedLevelPathRef = Array[Option[String], Static],
-        editingLevelRef      = Array[Option[MapResource.Level], Static],
-        layerModeRef         = Array[LayerMode, Static],
-        selectedSrcRef       = Array[Option[(Int32, Int32)], Static],
-        layerVisibilityRef   = Array[LayerVisibility, Static],
-        paletteSettingsRef   = Array[PaletteSettings, Static],
-        paletteZoomRef       = Array[Float64, Static],
-        mapZoomRef           = Array[Float64, Static],
-        undoStackRef         = Array[List[MapResource.Level], Static]
+        levelFilesRef          = Array[List[String], Static],
+        selectedLevelPathRef   = Array[Option[String], Static],
+        editingLevelRef        = Array[Option[MapResource.Level], Static],
+        layerModeRef           = Array[LayerMode, Static],
+        selectedSrcRef         = Array[Option[(Int32, Int32)], Static],
+        layerVisibilityRef     = Array[LayerVisibility, Static],
+        paletteSettingsRef     = Array[PaletteSettings, Static],
+        paletteZoomRef         = Array[Float64, Static],
+        mapZoomRef             = Array[Float64, Static],
+        undoStackRef           = Array[List[MapResource.Level], Static],
+        editingMaterialRef     = Array[Option[MapResource.Material], Static],
+        editingMaterialPathRef = Array[Option[String], Static],
+        selectedTrblRef        = Array[Option[String], Static]
     }
 
     /// 空の MapEditorState を作る。
     pub def newState(): MapEditorState \ IO =
         {
-            levelFilesRef        = Array#{(Nil: List[String])} @ Static,
-            selectedLevelPathRef = Array#{(None: Option[String])} @ Static,
-            editingLevelRef      = Array#{(None: Option[MapResource.Level])} @ Static,
-            layerModeRef         = Array#{LayerMode.Walls} @ Static,
-            selectedSrcRef       = Array#{(None: Option[(Int32, Int32)])} @ Static,
-            layerVisibilityRef   = Array#{allVisible()} @ Static,
-            paletteSettingsRef   = Array#{defaultPaletteSettings()} @ Static,
-            paletteZoomRef       = Array#{1.0f64} @ Static,
-            mapZoomRef           = Array#{1.0f64} @ Static,
-            undoStackRef         = Array#{(Nil: List[MapResource.Level])} @ Static
+            levelFilesRef          = Array#{(Nil: List[String])} @ Static,
+            selectedLevelPathRef   = Array#{(None: Option[String])} @ Static,
+            editingLevelRef        = Array#{(None: Option[MapResource.Level])} @ Static,
+            layerModeRef           = Array#{LayerMode.Walls} @ Static,
+            selectedSrcRef         = Array#{(None: Option[(Int32, Int32)])} @ Static,
+            layerVisibilityRef     = Array#{allVisible()} @ Static,
+            paletteSettingsRef     = Array#{defaultPaletteSettings()} @ Static,
+            paletteZoomRef         = Array#{1.0f64} @ Static,
+            mapZoomRef             = Array#{1.0f64} @ Static,
+            undoStackRef           = Array#{(Nil: List[MapResource.Level])} @ Static,
+            editingMaterialRef     = Array#{(None: Option[MapResource.Material])} @ Static,
+            editingMaterialPathRef = Array#{(None: Option[String])} @ Static,
+            selectedTrblRef        = Array#{(None: Option[String])} @ Static
         }
 
     /// 全レイヤー visible の初期値。
     pub def allVisible(): LayerVisibility =
-        {floor = true, walls = true, entities = true}
+        {floor = true, autoLayerWalls = true, walls = true, entities = true}
 
     pub def setLevelFiles(state: MapEditorState, files: List[String]): Unit \ IO =
         Array.put(files, 0, state#levelFilesRef)
@@ -127,9 +139,10 @@ mod MapEditorState {
     pub def setLayerVisible(state: MapEditorState, mode: LayerMode, visible: Bool): Unit \ IO = {
         let cur = Array.get(0, state#layerVisibilityRef);
         let next = match mode {
-            case LayerMode.Floor    => {floor = visible | cur}
-            case LayerMode.Walls    => {walls = visible | cur}
-            case LayerMode.Entities => {entities = visible | cur}
+            case LayerMode.Floor          => {floor          = visible | cur}
+            case LayerMode.AutoLayerWalls => {autoLayerWalls = visible | cur}
+            case LayerMode.Walls          => {walls          = visible | cur}
+            case LayerMode.Entities       => {entities       = visible | cur}
         };
         Array.put(next, 0, state#layerVisibilityRef)
     }
@@ -137,26 +150,28 @@ mod MapEditorState {
     pub def getPaletteSettings(state: MapEditorState): PaletteSettings \ IO =
         Array.get(0, state#paletteSettingsRef)
 
-    /// 指定 LayerMode の Palette 設定を返す。Entities は palette を使わないので
-    /// `None` を返す呼び元側で参照しないこと前提だが、安全のため Walls の値を返す。
+    /// 指定 LayerMode の Palette 設定を返す。AutoLayerWalls / Entities は palette を使わないので
+    /// `None` を返す。Walls は manualTiles 上書き用のタイル選択 palette を返す。
     pub def getPaletteForLayer(state: MapEditorState, mode: LayerMode):
             Option[LayerPalette] \ IO = {
         let cur = Array.get(0, state#paletteSettingsRef);
         match mode {
-            case LayerMode.Floor    => Some(cur#floor)
-            case LayerMode.Walls    => Some(cur#walls)
-            case LayerMode.Entities => None
+            case LayerMode.Floor          => Some(cur#floor)
+            case LayerMode.AutoLayerWalls => None
+            case LayerMode.Walls          => Some(cur#walls)
+            case LayerMode.Entities       => None
         }
     }
 
-    /// 指定 LayerMode の Palette 設定を更新する。Entities への書き込みは無視。
+    /// 指定 LayerMode の Palette 設定を更新する。AutoLayerWalls / Entities への書き込みは無視。
     pub def setPaletteForLayer(state: MapEditorState, mode: LayerMode, p: LayerPalette):
             Unit \ IO = {
         let cur = Array.get(0, state#paletteSettingsRef);
         let next = match mode {
-            case LayerMode.Floor    => {floor = p | cur}
-            case LayerMode.Walls    => {walls = p | cur}
-            case LayerMode.Entities => cur
+            case LayerMode.Floor          => {floor = p | cur}
+            case LayerMode.AutoLayerWalls => cur
+            case LayerMode.Walls          => {walls = p | cur}
+            case LayerMode.Entities       => cur
         };
         Array.put(next, 0, state#paletteSettingsRef)
     }
@@ -211,4 +226,25 @@ mod MapEditorState {
     /// Undo スタックをクリアする (別 Level に切替えるときに呼ぶ)。
     pub def clearUndoStack(state: MapEditorState): Unit \ IO =
         Array.put((Nil: List[MapResource.Level]), 0, state#undoStackRef)
+
+    // ─── Material (AutoLayerWalls の wallMap) ───
+
+    pub def setEditingMaterial(state: MapEditorState,
+                                 mat: Option[MapResource.Material]): Unit \ IO =
+        Array.put(mat, 0, state#editingMaterialRef)
+
+    pub def getEditingMaterial(state: MapEditorState): Option[MapResource.Material] \ IO =
+        Array.get(0, state#editingMaterialRef)
+
+    pub def setEditingMaterialPath(state: MapEditorState, path: Option[String]): Unit \ IO =
+        Array.put(path, 0, state#editingMaterialPathRef)
+
+    pub def getEditingMaterialPath(state: MapEditorState): Option[String] \ IO =
+        Array.get(0, state#editingMaterialPathRef)
+
+    pub def setSelectedTrbl(state: MapEditorState, key: Option[String]): Unit \ IO =
+        Array.put(key, 0, state#selectedTrblRef)
+
+    pub def getSelectedTrbl(state: MapEditorState): Option[String] \ IO =
+        Array.get(0, state#selectedTrblRef)
 }

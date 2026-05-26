@@ -42,6 +42,8 @@ mod JavaFXIdeUI {
     import javafx.scene.layout.StackPane
     import javafx.scene.layout.VBox
     import javafx.scene.layout.HBox
+    import javafx.scene.layout.GridPane
+    import javafx.scene.control.TabPane
     import javafx.application.Platform
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
@@ -138,12 +140,16 @@ mod JavaFXIdeUI {
         let mapGridCanvas: Canvas = unchecked_cast(mapNs.get("mapGridCanvas") as Canvas);
         Array.put(Some(mapsList), 0, state#widgets#mapsList);
         Array.put(Some(mapGridCanvas), 0, state#widgets#mapGridCanvas);
-        // Layer リスト (Floor/Walls/Entities) + tile パレット + identifier 入力 + 新規ボタン
+        // Layer リスト (Floor/AutoLayerWalls/Walls/Entities) + tile パレット + identifier 入力 + 新規ボタン
         let mapLayerRowFloor: HBox = unchecked_cast(mapNs.get("mapLayerRowFloor") as HBox);
+        let mapLayerRowAutoLayerWalls: HBox =
+            unchecked_cast(mapNs.get("mapLayerRowAutoLayerWalls") as HBox);
         let mapLayerRowWalls: HBox = unchecked_cast(mapNs.get("mapLayerRowWalls") as HBox);
         let mapLayerRowEntities: HBox = unchecked_cast(mapNs.get("mapLayerRowEntities") as HBox);
         let mapLayerVisibleFloor: ToggleButton =
             unchecked_cast(mapNs.get("mapLayerVisibleFloor") as ToggleButton);
+        let mapLayerVisibleAutoLayerWalls: ToggleButton =
+            unchecked_cast(mapNs.get("mapLayerVisibleAutoLayerWalls") as ToggleButton);
         let mapLayerVisibleWalls: ToggleButton =
             unchecked_cast(mapNs.get("mapLayerVisibleWalls") as ToggleButton);
         let mapLayerVisibleEntities: ToggleButton =
@@ -162,10 +168,25 @@ mod JavaFXIdeUI {
         let mapNewBtn: Button = unchecked_cast(mapNs.get("mapNewBtn") as Button);
         let mapPaletteSection: VBox = unchecked_cast(mapNs.get("mapPaletteSection") as VBox);
         let mapEntitySection: VBox = unchecked_cast(mapNs.get("mapEntitySection") as VBox);
+        let mapAutoLayerWallsSection: VBox =
+            unchecked_cast(mapNs.get("mapAutoLayerWallsSection") as VBox);
+        let mapRightTabs: TabPane = unchecked_cast(mapNs.get("mapRightTabs") as TabPane);
+        let mapMaterialsLabel: Label =
+            unchecked_cast(mapNs.get("mapMaterialsLabel") as Label);
+        let mapMaterialsWallMapGrid: GridPane =
+            unchecked_cast(mapNs.get("mapMaterialsWallMapGrid") as GridPane);
+        let mapMaterialsStatus: Label =
+            unchecked_cast(mapNs.get("mapMaterialsStatus") as Label);
+        let mapMaterialsTilesetCanvas: Canvas =
+            unchecked_cast(mapNs.get("mapMaterialsTilesetCanvas") as Canvas);
         Array.put(Some(mapLayerRowFloor), 0, state#widgets#mapLayerRowFloor);
+        Array.put(Some(mapLayerRowAutoLayerWalls), 0,
+                  state#widgets#mapLayerRowAutoLayerWalls);
         Array.put(Some(mapLayerRowWalls), 0, state#widgets#mapLayerRowWalls);
         Array.put(Some(mapLayerRowEntities), 0, state#widgets#mapLayerRowEntities);
         Array.put(Some(mapLayerVisibleFloor), 0, state#widgets#mapLayerVisibleFloor);
+        Array.put(Some(mapLayerVisibleAutoLayerWalls), 0,
+                  state#widgets#mapLayerVisibleAutoLayerWalls);
         Array.put(Some(mapLayerVisibleWalls), 0, state#widgets#mapLayerVisibleWalls);
         Array.put(Some(mapLayerVisibleEntities), 0, state#widgets#mapLayerVisibleEntities);
         Array.put(Some(mapPaletteCanvas), 0, state#widgets#mapPaletteCanvas);
@@ -178,6 +199,12 @@ mod JavaFXIdeUI {
         Array.put(Some(mapNewBtn), 0, state#widgets#mapNewBtn);
         Array.put(Some(mapPaletteSection), 0, state#widgets#mapPaletteSection);
         Array.put(Some(mapEntitySection), 0, state#widgets#mapEntitySection);
+        Array.put(Some(mapAutoLayerWallsSection), 0, state#widgets#mapAutoLayerWallsSection);
+        Array.put(Some(mapRightTabs), 0, state#widgets#mapRightTabs);
+        Array.put(Some(mapMaterialsLabel), 0, state#widgets#mapMaterialsLabel);
+        Array.put(Some(mapMaterialsWallMapGrid), 0, state#widgets#mapMaterialsWallMapGrid);
+        Array.put(Some(mapMaterialsStatus), 0, state#widgets#mapMaterialsStatus);
+        Array.put(Some(mapMaterialsTilesetCanvas), 0, state#widgets#mapMaterialsTilesetCanvas);
         // Map canvas: クリック・ピンチズーム・Ctrl/Cmd+Z undo を 1 か所で配線
         MapGridCanvas.wireMapCanvas(state, mapGridCanvas);
         MapEditorPanel.wireLayerList(state);
@@ -185,6 +212,7 @@ mod JavaFXIdeUI {
         MapEditorPanel.wirePaletteClick(state, mapPaletteCanvas);
         MapEditorPanel.wireNewLevelButton(state, mapNewBtn);
         MapEditorPanel.wireMapSelection(state, mapsList);
+        MapEditorPanel.initMaterialsTab(state);
 
         // ステータスバー Label を取得
         let statusScene:     Label = unchecked_cast(ns.get("statusScene") as Label);

@@ -1,9 +1,14 @@
 /// `.map.json` (MapResource.Level) を読み TileMapLayer を構築する loader。
 ///
 /// 役割:
-///   - `manualTiles` をそのまま描画タイル列に変換 (autotile 無しの素描画)
+///   - `wallMask` から TRBL を計算し `Material.wallMap` で AutoLayerWalls タイルに展開
+///   - `manualTiles` は AutoLayerWalls の上書き層として最後に重ねる (同セル優先)
 ///   - `wallMask` の非ゼロセルを collisionCells に展開 (PhysicsStep が壁として扱う)
 ///   - `entities` のうち `identifier == "Door"` を doors として抽出
+///
+/// Material ファイルは `<projectRoot>/assets/materials/<materialId>.material.json`。
+/// 見つからない場合は AutoLayerWalls タイルを生成せず、manualTiles のみで描画する
+/// (既存マップとの後方互換)。
 ///
 /// LDTKLoader と同じ `LDTKLevelRaw` を返すので、DungeonComposer 等の下流処理を
 /// そのまま流用できる (将来 DungeonComposer に loader 注入で接続する計画)。
@@ -34,8 +39,23 @@ mod MapLoader {
         let tileSizeI = d#tileSize;
         let tileSize  = Int32.toFloat64(tileSizeI);
 
+        // Material をロード (見つからなければ None で AutoLayerWalls をスキップ)
+        let materialOpt: Option[MapResource.Material] =
+            Persistence.load(materialPathFor(mapPath, d#materialId));
+
+        // AutoLayerWalls タイル: wallMask=1 のセルを TRBL 計算 → wallMap で展開
+        // manualTiles と重なる座標は除外 (manualTiles を上書きとして優先)
+        let manualCoords: Set[(Int32, Int32)] =
+            d#manualTiles |> List.map(t -> (t#x, t#y)) |> List.toSet;
+        let autoTiles: List[TileData] = match materialOpt {
+            case None      => Nil
+            case Some(mat) =>
+                let md = MapResource.materialData(mat);
+                buildAutoLayerTiles(d, md, manualCoords, tileSizeI)
+        };
+
         // manualTiles → TileData
-        let tiles: List[TileData] = List.map(t -> {
+        let manualTiles: List[TileData] = List.map(t -> {
             ({
                 px    = ({x = Int32.toFloat64(t#x * tileSizeI),
                            y = Int32.toFloat64(t#y * tileSizeI)}: Vec2.Vec2),
@@ -46,6 +66,9 @@ mod MapLoader {
                 alpha = 1.0f32
             }: TileData)
         }, d#manualTiles);
+
+        // AutoLayerWalls を下、manualTiles を上で重ねる
+        let tiles: List[TileData] = List.append(autoTiles, manualTiles);
 
         // wallMask の非ゼロセル → collisionCells (Float64 grid 座標)
         let cells = extractCollisionCells(d#wallMask, d#width);
@@ -199,4 +222,83 @@ mod MapLoader {
                     Some(({x = Int32.toFloat64(col), y = Int32.toFloat64(row)}: Vec2.Vec2))
                 } else None
             })
+
+    /// `<mapPath>/../../materials/<materialId>.material.json` を組み立てる。
+    /// mapPath = ".../assets/maps/level_0.map.json"
+    /// → ".../assets/materials/inca_stone.material.json"
+    def materialPathFor(mapPath: String, materialId: String): String = {
+        let parent = stripAfterLast(mapPath, '/');           // ".../assets/maps"
+        let grand  = stripAfterLast(parent, '/');             // ".../assets"
+        grand + "/materials/" + materialId + ".material.json"
+    }
+
+    /// 最後の `c` の位置以降を取り除いた prefix を返す。`c` が無ければ全体を返す。
+    def stripAfterLast(s: String, c: Char): String = {
+        let len = String.length(s);
+        let idx = lastIndexOf(s, c, len - 1);
+        if (idx < 0) s
+        else s.substring(0, idx)
+    }
+
+    def lastIndexOf(s: String, c: Char, start: Int32): Int32 =
+        if (start < 0) -1
+        else if (String.charAt(start, s) == c) start
+        else lastIndexOf(s, c, start - 1)
+
+    /// wallMask + Material.wallMap から AutoLayerWalls タイル列を構築する。
+    /// `manualCoords` に含まれる (col, row) は manualTiles に上書きされるのでスキップする。
+    def buildAutoLayerTiles(d: MapResource.LevelData, md: MapResource.MaterialData,
+                              manualCoords: Set[(Int32, Int32)],
+                              tileSizeI: Int32): List[TileData] = {
+        let mask = d#wallMask;
+        let w = d#width;
+        let h = d#height;
+        List.range(0, w * h)
+            |> List.filterMap(idx -> {
+                let col = Int32.remainder(idx, w);
+                let row = idx / w;
+                let isWall = match Vector.nth(idx, mask) {
+                    case Some(v) => v != 0i32
+                    case None    => false
+                };
+                if (not isWall) None
+                else if (Set.memberOf((col, row), manualCoords)) None
+                else {
+                    let key = trblKeyAt(mask, w, h, col, row);
+                    match Map.get(key, md#wallMap) {
+                        case None              => None
+                        case Some((srcX, srcY)) => Some(({
+                            px    = ({x = Int32.toFloat64(col * tileSizeI),
+                                       y = Int32.toFloat64(row * tileSizeI)}: Vec2.Vec2),
+                            srcX  = Int32.toFloat64(srcX),
+                            srcY  = Int32.toFloat64(srcY),
+                            flipH = false,
+                            flipV = false,
+                            alpha = 1.0f32
+                        }: TileData))
+                    }
+                }
+            })
+    }
+
+    /// (col, row) の TRBL 4-bit キー文字列。マップ外は壁扱い。
+    def trblKeyAt(mask: Vector[Int32], width: Int32, height: Int32,
+                   col: Int32, row: Int32): String = {
+        let t = if (neighborIsWall(mask, width, height, col,     row - 1)) "1" else "0";
+        let r = if (neighborIsWall(mask, width, height, col + 1, row    )) "1" else "0";
+        let b = if (neighborIsWall(mask, width, height, col,     row + 1)) "1" else "0";
+        let l = if (neighborIsWall(mask, width, height, col - 1, row    )) "1" else "0";
+        t + r + b + l
+    }
+
+    def neighborIsWall(mask: Vector[Int32], width: Int32, height: Int32,
+                        col: Int32, row: Int32): Bool =
+        if (col < 0 or col >= width or row < 0 or row >= height) true
+        else {
+            let idx = row * width + col;
+            match Vector.nth(idx, mask) {
+                case Some(v) => v != 0i32
+                case None    => false
+            }
+        }
 }

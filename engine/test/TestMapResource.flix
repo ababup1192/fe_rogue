@@ -66,7 +66,7 @@ mod TestMapResource {
             case None    => Set.empty()
         };
         Assert.assertEq(
-            expected = Set.fromList(MapResource.wallMapKeys()),
+            expected = List.toSet(MapResource.wallMapKeys()),
             keys)
 
     /// 任意の wallMap キーの (col, row) ペアが復元される

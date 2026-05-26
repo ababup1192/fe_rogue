@@ -3,15 +3,17 @@
 // 描画レイヤー (下から上):
 //   1. 背景 (ダークグレー)
 //   2. decorTiles (Floor 層) — tilemap_floor PNG から実タイル描画
-//   3. manualTiles (Walls 層) — inca_tileset PNG から実タイル描画
-//   4. grid 線 (薄い色)
-//   5. Entities (シアン円 + identifier ラベル)
+//   3. AutoLayerWalls — wallMask + Material.wallMap から自動補完したタイル
+//   4. manualTiles (Walls 層) — AutoLayerWalls の上書きとして実タイル描画
+//   5. grid 線 (薄い色)
+//   6. Entities (シアン円 + identifier ラベル)
 //
-// Walls の collision は manualTiles と 1:1 同期する wallMask に格納される。
+// 衝突判定は wallMask のみから生成される (Walls の manualTiles は装飾)。
 // Layer モード切替時の左/右クリック挙動:
-//   Floor  : decorTiles  に追加 / 削除
-//   Walls  : manualTiles に追加 + wallMask[idx]=1 / 削除 + wallMask[idx]=0
-//   Entities: identifier テキストで Entity 追加 / 削除
+//   Floor          : decorTiles に追加 / 削除
+//   AutoLayerWalls : wallMask[idx] を 1 / 0 にトグル (タイル絵は自動)
+//   Walls          : manualTiles に追加 / 削除 (wallMask には触らない)
+//   Entities       : identifier テキストで Entity 追加 / 削除
 
 mod MapGridCanvas {
     import javafx.scene.canvas.Canvas
@@ -31,9 +33,12 @@ mod MapGridCanvas {
     /// tileset Image が無い場合は単に絵が描かれない (オレンジ overlay 等は使わない)。
     /// `vis` は目玉トグルの状態。false のレイヤーは draw をスキップする。
     /// `zoom=1.0` で等倍。`MapEditorState.mapZoomRef` がピンチで更新される。
+    /// `material` が `Some` のとき、AutoLayerWalls 層を wallMask + Material.wallMap から
+    /// 自動補完して描画する。`None` のときは AutoLayerWalls 描画はスキップ。
     pub def drawLevel(canvas: Canvas, level: MapResource.Level, cellPx: Int32,
                        wallsImg: Option[Image], floorImg: Option[Image],
-                       vis: MapEditorState.LayerVisibility, zoom: Float64): Unit \ IO = {
+                       vis: MapEditorState.LayerVisibility, zoom: Float64,
+                       material: Option[MapResource.Material]): Unit \ IO = {
         let d = MapResource.levelData(level);
         resizeAndFill(canvas, d#width, d#height, cellPx, zoom);
         let gc = canvas.getGraphicsContext2D();
@@ -45,6 +50,13 @@ mod MapGridCanvas {
                 case None      => ()
             }
         } else ();
+        if (vis#autoLayerWalls) {
+            match (wallsImg, material) {
+                case (Some(img), Some(mat)) =>
+                    drawAutoLayerWalls(canvas, d, MapResource.materialData(mat), img, cellPx)
+                case _ => ()
+            }
+        } else ();
         if (vis#walls) {
             match wallsImg {
                 case Some(img) => drawTiles(canvas, d#manualTiles, img, d#tileSize, cellPx)
@@ -54,6 +66,62 @@ mod MapGridCanvas {
         drawGridLines(canvas, d#width, d#height, cellPx);
         if (vis#entities) drawEntities(canvas, d#entities, cellPx) else ();
         gc.restore()
+    }
+
+    /// AutoLayerWalls 層: wallMask[idx]=1 のセルを 4 近傍のマスクから TRBL を計算し、
+    /// Material.wallMap[trbl] のタイル座標で tileset を切り出して描画する。
+    /// マップ外は壁扱い (LDTKRules と同じ慣習)。
+    def drawAutoLayerWalls(canvas: Canvas, d: MapResource.LevelData,
+                            mat: MapResource.MaterialData, image: Image,
+                            cellPx: Int32): Unit \ IO = {
+        let gc = canvas.getGraphicsContext2D();
+        gc.setImageSmoothing(false);
+        let ts = Int32.toFloat64(d#tileSize);
+        let cs = Int32.toFloat64(cellPx);
+        List.forEach(idx -> {
+            let col = Int32.remainder(idx, d#width);
+            let row = idx / d#width;
+            if (cellIsWall(d#wallMask, d#width, d#height, col, row)) {
+                let key = trblKeyAt(d#wallMask, d#width, d#height, col, row);
+                match Map.get(key, mat#wallMap) {
+                    case None              => ()
+                    case Some((srcX, srcY)) => {
+                        let sx = Int32.toFloat64(srcX);
+                        let sy = Int32.toFloat64(srcY);
+                        let dx = Int32.toFloat64(col) * cs;
+                        let dy = Int32.toFloat64(row) * cs;
+                        gc.drawImage(image, sx, sy, ts, ts, dx, dy, cs, cs)
+                    }
+                }
+            } else ()
+        }, List.range(0, d#width * d#height))
+    }
+
+    /// (col, row) の TRBL 4-bit キー文字列 ("TRBL" 順)。
+    /// マップ外は壁扱い (1)。隣接セルの wallMask=1 を 1、=0 を 0 とする。
+    pub def trblKeyAt(mask: Vector[Int32], width: Int32, height: Int32,
+                        col: Int32, row: Int32): String = {
+        let t = if (neighborIsWall(mask, width, height, col,     row - 1)) "1" else "0";
+        let r = if (neighborIsWall(mask, width, height, col + 1, row    )) "1" else "0";
+        let b = if (neighborIsWall(mask, width, height, col,     row + 1)) "1" else "0";
+        let l = if (neighborIsWall(mask, width, height, col - 1, row    )) "1" else "0";
+        t + r + b + l
+    }
+
+    /// 隣接セル判定。マップ外は壁扱い (true)。
+    def neighborIsWall(mask: Vector[Int32], width: Int32, height: Int32,
+                        col: Int32, row: Int32): Bool =
+        if (col < 0 or col >= width or row < 0 or row >= height) true
+        else cellIsWall(mask, width, height, col, row)
+
+    /// (col, row) のセルが壁か (wallMask=1) を返す。範囲外は false (壁ではない素のセル)。
+    def cellIsWall(mask: Vector[Int32], width: Int32, _height: Int32,
+                    col: Int32, row: Int32): Bool = {
+        let idx = row * width + col;
+        match Vector.nth(idx, mask) {
+            case Some(v) => v != 0i32
+            case None    => false
+        }
     }
 
     /// Entity を「シアン円 + identifier テキスト」で描画する。
@@ -215,6 +283,9 @@ mod MapGridCanvas {
                         case MapEditorState.LayerMode.Floor =>
                             if (isRight) Some(removeFloorTileAt(level, d, col, row))
                             else placeFloorWithSelectedSrc(state, level, d, col, row)
+                        case MapEditorState.LayerMode.AutoLayerWalls =>
+                            if (isRight) Some(removeAutoLayerWallAt(level, d, col, row))
+                            else Some(placeAutoLayerWallAt(level, d, col, row))
                         case MapEditorState.LayerMode.Walls =>
                             if (isRight) Some(removeWallTileAt(level, d, col, row))
                             else placeWallWithSelectedSrc(state, level, d, col, row)
@@ -238,7 +309,8 @@ mod MapGridCanvas {
     // Pure place/remove ヘルパー (副作用なし、テスト容易)
     // ────────────────────────────────────────────────────────
 
-    /// Walls レイヤーへの配置: manualTiles に追加 + wallMask[idx]=1。
+    /// Walls レイヤーへの配置: manualTiles に追加のみ (wallMask には触らない)。
+    /// 衝突は AutoLayerWalls 層の wallMask で決まり、Walls は AutoLayerWalls の上書き装飾。
     /// 同セルに既存タイルがあれば置換する。
     pub def placeWallTileAt(level: MapResource.Level, d: MapResource.LevelData,
                               col: Int32, row: Int32, srcX: Int32, srcY: Int32):
@@ -251,19 +323,32 @@ mod MapGridCanvas {
         }: MapResource.ManualTile);
         let filtered = List.filter(t -> not (t#x == col and t#y == row), d#manualTiles);
         let newTiles = List.append(filtered, newTile :: Nil);
-        let newMask = setMaskAt(d#wallMask, d#width, col, row, 1i32);
-        let newData: MapResource.LevelData =
-            {manualTiles = newTiles, wallMask = newMask | d};
+        let newData: MapResource.LevelData = {manualTiles = newTiles | d};
         MapResource.Level.Level(newData)
 
-    /// Walls レイヤーからの除去: manualTiles の同セル全消去 + wallMask[idx]=0。
+    /// Walls レイヤーからの除去: manualTiles の同セル全消去 (wallMask には触らない)。
     pub def removeWallTileAt(level: MapResource.Level, d: MapResource.LevelData,
                                col: Int32, row: Int32): MapResource.Level =
         let _ = level;
         let filtered = List.filter(t -> not (t#x == col and t#y == row), d#manualTiles);
+        let newData: MapResource.LevelData = {manualTiles = filtered | d};
+        MapResource.Level.Level(newData)
+
+    /// AutoLayerWalls レイヤーへの配置: wallMask[idx]=1。manualTiles は触らない。
+    /// タイル絵は Material.wallMap から実行時に解決されるので Level には書き込まない。
+    pub def placeAutoLayerWallAt(level: MapResource.Level, d: MapResource.LevelData,
+                                   col: Int32, row: Int32): MapResource.Level =
+        let _ = level;
+        let newMask = setMaskAt(d#wallMask, d#width, col, row, 1i32);
+        let newData: MapResource.LevelData = {wallMask = newMask | d};
+        MapResource.Level.Level(newData)
+
+    /// AutoLayerWalls レイヤーからの除去: wallMask[idx]=0。manualTiles は触らない。
+    pub def removeAutoLayerWallAt(level: MapResource.Level, d: MapResource.LevelData,
+                                    col: Int32, row: Int32): MapResource.Level =
+        let _ = level;
         let newMask = setMaskAt(d#wallMask, d#width, col, row, 0i32);
-        let newData: MapResource.LevelData =
-            {manualTiles = filtered, wallMask = newMask | d};
+        let newData: MapResource.LevelData = {wallMask = newMask | d};
         MapResource.Level.Level(newData)
 
     /// Floor レイヤーへの配置: decorTiles に追加 (wallMask は変えない)。
@@ -359,7 +444,8 @@ mod MapGridCanvas {
                 let fImg = Array.get(0, state#widgets#mapFloorImage);
                 let vis = MapEditorState.getLayerVisibility(state#mapEditor);
                 let zoom = MapEditorState.getMapZoom(state#mapEditor);
-                drawLevel(c, level, cellPx, wImg, fImg, vis, zoom)
+                let mat = MapEditorState.getEditingMaterial(state#mapEditor);
+                drawLevel(c, level, cellPx, wImg, fImg, vis, zoom, mat)
             }
             case None => ()
         }
