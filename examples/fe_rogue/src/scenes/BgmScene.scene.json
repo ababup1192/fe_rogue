@@ -1,0 +1,8 @@
+{
+  "name": "BGM",
+  "type": "AudioStreamPlayer",
+  "stream": "bgm",
+  "autoplay": true,
+  "loop": true,
+  "volume": 0.02
+}

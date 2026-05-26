@@ -48,6 +48,7 @@ mod GameLifecycle {
             |> TradeMenuScene.add       // 物交換ウィンドウ (2 ペイン、初期は非表示)
             |> BattlePanelScene.add   // 戦闘予報パネル (初期は非表示)
             |> UnitInfoPopupScene.add   // カーソル上のユニット情報パネル (初期は非表示)
+            |> BgmScene.add             // BGM (AudioStreamPlayer, autoplay=true で起動時から再生)
 
     /// プレイ用シーンを組み立て + 初期 spawn 一覧 (敵 / 味方) を `InitialSpawns` に保存する。
     /// 起動時と GameOver リビルド時の両方が必ず通る経路。これで「scene 構築」と
@@ -55,13 +56,16 @@ mod GameLifecycle {
     pub def buildAndRecord(catalog: UnitCatalog.UnitCatalog,
                             staffCatalog: Staff.StaffCatalog,
                             floor: FloorCatalog.FloorResource): Scene[NodeTag]
-            \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
+            \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State, InitialSpawns.State} =
         let scene = buildPlayingScene(catalog, staffCatalog, floor);
         InitialSpawns.State.put({
             enemies = EnemyScene.snapshotSpawns(scene),
             players = PlayerScene.snapshotSpawns(scene)
         });
+        // AudioStreamPlayer ノード (BGM 等) の volume / loop / autoplay を OpenAL に反映する。
+        // 初回起動時と GameOver 後のリビルド時の両方でこの経路を通る
+        SceneLoader.applyAudioAttach(scene);
         scene
 
     /// ゲームオーバー時のターン進行系 state を初期化する。
@@ -83,7 +87,7 @@ mod GameLifecycle {
     pub def resetForGameOver(catalog: UnitCatalog.UnitCatalog,
                               staffCatalog: Staff.StaffCatalog,
                               floor: FloorCatalog.FloorResource): Scene[NodeTag]
-            \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
+            \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State,
                 InitialSpawns.State} =

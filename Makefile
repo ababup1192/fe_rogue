@@ -48,21 +48,37 @@ ENGINE_TOML_NAME := flix_game_engine-0.1.0.toml
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine-core sync-render-core sync-engine clean-locks
+.PHONY: help sync sync-engine-core sync-render-core sync-engine clean-locks clean-example-builds
 
 help:
 	@echo "Targets:"
-	@echo "  make sync             engine_core / render_core / engine を build-pkg し、各依存先に配布"
-	@echo "  make sync-engine-core engine_core だけ build-pkg & 配布 (render_core / engine / ide / examples へ)"
-	@echo "  make sync-render-core render_core だけ build-pkg & 配布 (engine / ide / examples へ)"
-	@echo "  make sync-engine      engine だけ build-pkg & 配布 (ide / examples へ)"
-	@echo "  make clean-locks      flix check 中断で残った Maven cache の *.lock を削除"
+	@echo "  make sync                 engine_core / render_core / engine を build-pkg し、各依存先に配布"
+	@echo "  make sync-engine-core     engine_core だけ build-pkg & 配布 (render_core / engine / ide / examples へ)"
+	@echo "  make sync-render-core     render_core だけ build-pkg & 配布 (engine / ide / examples へ)"
+	@echo "  make sync-engine          engine だけ build-pkg & 配布 (ide / examples へ)"
+	@echo "  make clean-locks          flix check 中断で残った Maven cache の *.lock を削除"
+	@echo "  make clean-example-builds examples/*/build/ を全削除 (IDE の scene.json glob 高速化用)"
 
 # flix check を Ctrl-C で中断すると lib/cache/.../*.lock が残り、
 # 次回 Maven リゾルバが「他プロセスが取得中」と誤認して無限待ちになる。
 # 各ワークスペース配下のロックをまとめて削除する。
 clean-locks:
 	@find . -path "*/lib/cache/*" -name "*.lock" -print -delete | awk 'END { print NR " lock(s) removed" }'
+
+# IDE で examples 配下のプロジェクトを開くと ProjectLoader.findSceneFiles の Fs.Glob が
+# build/class 配下の数十万コンパイル成果物を stat してしまい、プロジェクト読み込みに
+# 数十秒〜数分かかる。IDE 起動前に各 example の build/ を消して回避する。
+# 個別の example を flix run すれば build/ は再生成される (incremental compile は失われる)。
+clean-example-builds:
+	@removed=0; \
+	for d in examples/*/build; do \
+		if [ -d "$$d" ]; then \
+			rm -rf "$$d"; \
+			echo "[clean-example-builds] removed $$d"; \
+			removed=$$((removed + 1)); \
+		fi \
+	done; \
+	echo "[clean-example-builds] $$removed build dir(s) removed"
 
 sync: clean-locks sync-engine-core sync-render-core sync-engine
 

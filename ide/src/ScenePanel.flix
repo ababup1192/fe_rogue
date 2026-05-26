@@ -21,6 +21,7 @@ mod ScenePanel {
     import javafx.animation.AnimationTimer
     import javafx.collections.ObservableList
     import javafx.scene.Node
+    import javafx.scene.control.Button
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
     import javafx.scene.control.TextArea
@@ -38,6 +39,7 @@ mod ScenePanel {
     import javafx.scene.layout.HBox
     import javafx.scene.layout.VBox
     import javafx.event.EventHandler
+    import javafx.event.ActionEvent
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
     import java.lang.Double
@@ -370,7 +372,12 @@ mod ScenePanel {
                                     addAdvancedDisclosure(state, children, section#advanced, values, sel)
                                 else ()
                             }
-                        }
+                        };
+                        // AudioStreamPlayer セクションには preview 用 Play/Stop ボタンを足す。
+                        // (autoplay は runtime のみで反応するため、preview で聴くにはこのボタンが必要)
+                        if (section#typeName == "AudioStreamPlayer")
+                            addAudioPreviewButtons(state, children, values)
+                        else ()
                     }, sections)
                 }
             }
@@ -404,6 +411,50 @@ mod ScenePanel {
         discard children.add(n)
     }
 
+    /// AudioStreamPlayer セクションの末尾に "▶ Play" / "⏹ Stop" ボタン行を追加する。
+    /// クリック時に最新の state#inspector#currentValues から stream / volume / loop を読んで
+    /// IdeState.enqueueAudioCommand する (button 作成時 capture だと編集直後の値を見落とす)。
+    /// renderLoop が `consumePendingAudioCommand` で GameEngine.Audio に流す。
+    def addAudioPreviewButtons(state: IdeState.IdeState, children: ObservableList[Node],
+                                 _currentValues: Map[String, Json.JsonElement]): Unit \ IO = {
+        let row = new HBox(6.0);
+        let playBtn = new Button("▶ Play");
+        let stopBtn = new Button("⏹ Stop");
+        playBtn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                let cur = Array.get(0, state#inspector#currentValues);
+                let streamOpt = Map.get("stream", cur) |> Option.flatMap(NodeInspector.jsonToString);
+                let volume = Map.get("volume", cur) |> Option.flatMap(NodeInspector.jsonToFloat)
+                              |> Option.flatMap(Float64.tryToFloat32)
+                              |> Option.getWithDefault(1.0f32);
+                let loop = Map.get("loop", cur) |> Option.flatMap(NodeInspector.jsonToBool)
+                            |> Option.getWithDefault(false);
+                match streamOpt {
+                    case Some(s) => IdeState.enqueueAudioCommand(state,
+                                      IdeState.AudioCommand.Play(s, volume, loop))
+                    case None    => ()
+                }
+            }
+        });
+        stopBtn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                let cur = Array.get(0, state#inspector#currentValues);
+                let streamOpt = Map.get("stream", cur) |> Option.flatMap(NodeInspector.jsonToString);
+                match streamOpt {
+                    case Some(s) => IdeState.enqueueAudioCommand(state, IdeState.AudioCommand.Stop(s))
+                    case None    => ()
+                }
+            }
+        });
+        let rowKids = row.getChildren();
+        let playNode: Node = checked_cast(playBtn);
+        let stopNode: Node = checked_cast(stopBtn);
+        discard rowKids.add(playNode);
+        discard rowKids.add(stopNode);
+        let rowNode: Node = checked_cast(row);
+        PropertyWidgets.addPropertyRow(children, "Preview:", rowNode)
+    }
+
     /// 1 FieldDef を Inspector に追加する
     def addSchemaRow(state: IdeState.IdeState, children: ObservableList[Node],
                       fd: NodeInspector.FieldDef,
@@ -417,7 +468,8 @@ mod ScenePanel {
             Array.put(List.append(existing, pe :: Nil), 0, state#inspector#pendingEdits)
         };
         let textureNames = Array.get(0, state#textureNamesRef);
-        let (widget, updater) = buildWidgetForKind(fd#kind, currentJson, textureNames, commit);
+        let soundNames = Array.get(0, state#soundNamesRef);
+        let (widget, updater) = buildWidgetForKind(fd#kind, currentJson, textureNames, soundNames, commit);
         PropertyWidgets.addPropertyRow(children, "${fd#label}:", widget);
         let map = Array.get(0, state#inspector#widgetUpdaters);
         Array.put(Map.insert(fd#name, updater, map), 0, state#inspector#widgetUpdaters)
@@ -427,6 +479,7 @@ mod ScenePanel {
     def buildWidgetForKind(kind: NodeInspector.FieldKind,
                            current: Option[Json.JsonElement],
                            textureNames: List[String],
+                           soundNames: List[String],
                            commit: PropertyWidgets.Commit):
             (Node, Json.JsonElement -> Unit \ IO) \ IO =
         match kind {
@@ -482,6 +535,12 @@ mod ScenePanel {
             case NodeInspector.FieldKind.EnumT(options) => {
                 let widget = PropertyWidgets.buildEnumWidget(current, options, commit);
                 let updater = (json: Json.JsonElement) -> updateEnumCombo(widget, json);
+                (widget, updater)
+            }
+            case NodeInspector.FieldKind.SoundNameT => {
+                // texture と同じ ComboBox 系。候補リストだけ soundNames から渡す
+                let widget = PropertyWidgets.buildTexturePathWidget(current, soundNames, commit);
+                let updater = (json: Json.JsonElement) -> updateComboBox(widget, json);
                 (widget, updater)
             }
         }

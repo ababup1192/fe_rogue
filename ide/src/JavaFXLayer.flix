@@ -411,6 +411,15 @@ mod JavaFXLayer {
                 };
                 k(())
             }
+            def setLooping(name, loop, k) = {
+                match Map.get(name, Array.get(0, audioRegistryRef)) {
+                    case Some(src) =>
+                        let v = if (loop) AL10.AL_TRUE else AL10.AL_FALSE;
+                        AL10.alSourcei(src, AL10.AL_LOOPING, v)
+                    case None      => ()
+                };
+                k(())
+            }
         } with handler GameEngine.Game {
             def renderCommands(sprites, tileMaps, k) = {
                 Array.put((sprites, tileMaps), 0, renderStateArr);

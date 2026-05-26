@@ -470,14 +470,13 @@ mod Game {
                 case Err(msg) => bug!("StaffResource schema/type mismatch: ${msg}")
             };
             run {
-                // 初回 build と spawn snapshot 保存をまとめて行う (GameOver リビルドと同じ経路)
+                // 初回 build と spawn snapshot 保存をまとめて行う (GameOver リビルドと同じ経路)。
+                // BGM は BgmScene の AudioStreamPlayer ノード (autoplay=true, loop=true,
+                // volume=0.05) で applyAudioAttach 経由で再生される (= ここでは触らない)
                 let scene = GameLifecycle.buildAndRecord(catalog, staffCatalog, floor);
-                // BGM は控えめに、SE は半分で鳴らす
-                AudioStreamPlayer.setVolume("bgm",    0.05f32);
+                // SE は半分で鳴らす (Inspector 対応の Scene Node にしていない通常の SE 系)
                 AudioStreamPlayer.setVolume("damage", 0.5f32);
                 AudioStreamPlayer.setVolume("bonus",  0.5f32);
-                // BGM はゲーム開始時に再生（looping = true で曲が終わってもループする）
-                AudioStreamPlayer.play("bgm");
                 GameLogger.playerLog("T1 味方のターン");
                 gameLoop(sceneRef, scene)
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。

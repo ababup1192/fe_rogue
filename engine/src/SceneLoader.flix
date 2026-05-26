@@ -117,6 +117,19 @@ mod SceneLoader {
     pub def constTagParser(tag: t): Option[String] -> Result[Json.JsonError, t] =
         _ -> Ok(tag)
 
+    /// scene tree を walk し、各 `EngineNode.AudioStreamPlayerWithState` ノードに対して
+    /// `AudioStreamPlayer.applyAttach` を呼び出す。`volume` / `loop` を OpenAL に反映し、
+    /// `autoplay = true` のものは play する。
+    ///
+    /// `loadScene` 系は副作用を持たない純粋な parse 層に留めたいため、ホットリロード /
+    /// 初回ロード後にこの関数を別途呼ぶ運用とする。
+    pub def applyAudioAttach(scene: Scene[s]): Unit \ GameEngine.Audio =
+        List.forEach(p -> match Scene.getEngineNode(p, scene) {
+            case Some(EngineNode.AudioStreamPlayerWithState(player, _)) =>
+                AudioStreamPlayer.applyAttach(player)
+            case _ => ()
+        }, Scene.preorderPaths(scene))
+
     // ========================================================================
     // 内部実装
     // ========================================================================
@@ -351,6 +364,7 @@ mod SceneLoader {
             case "Panel"            => buildPanel(tagParser, map)
             case "ProgressBar"      => buildProgressBar(tagParser, map)
             case "ItemList"         => buildItemList(tagParser, fontAtlas, map)
+            case "AudioStreamPlayer" => buildAudioStreamPlayer(tagParser, map)
             case unknown            =>
                 Err(JsonError(Root, Set#{"known node type (got: ${unknown})"}))
         }
@@ -879,6 +893,29 @@ mod SceneLoader {
 
     def setMarker2DYSortEnabled(v: Bool, marker: Marker2D): Marker2D =
         CanvasItem.setYSortEnabled(v, marker)
+
+    /// AudioStreamPlayer ノードを scene.json から組み立てる。
+    /// 必須: `stream` (サウンドマニフェスト上の論理名)
+    /// オプション: `autoplay` (default false), `loop` (default false), `volume` (default 1.0)
+    /// 注: scene attach 時の play 自体は `applyAudioAttach` が後段で行うため、ここでは
+    /// 純粋にノード生成だけ行う。
+    def buildAudioStreamPlayer(tagParser: Option[String] -> Result[Json.JsonError, t],
+                                 map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
+        forM (
+            tag         <- parseTagField(tagParser, map);
+            stream      <- (Json.FromJson.getAtKey(Root, "stream", map): Result[Json.JsonError, String]);
+            autoplayOpt <- (Json.FromJson.getAtKeyOpt(Root, "autoplay", map): Result[Json.JsonError, Option[Bool]]);
+            loopOpt     <- (Json.FromJson.getAtKeyOpt(Root, "loop", map): Result[Json.JsonError, Option[Bool]]);
+            volumeOpt   <- (Json.FromJson.getAtKeyOpt(Root, "volume", map): Result[Json.JsonError, Option[Float64]])
+        ) yield {
+            let player = AudioStreamPlayer.make(stream)
+                |> applyOpt(autoplayOpt, AudioStreamPlayer.setAutoplay)
+                |> applyOpt(loopOpt, AudioStreamPlayer.setLoop)
+                |> applyOpt(volumeOpt, (v, p) ->
+                    AudioStreamPlayer.setVolumeField(
+                        Float64.tryToFloat32(v) |> Option.getWithDefault(1.0f32), p));
+            EngineNode.AudioStreamPlayerWithState(player, tag)
+        }
 
     def buildCamera2D(tagParser: Option[String] -> Result[Json.JsonError, t],
                       map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =

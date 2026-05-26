@@ -28,6 +28,9 @@ mod NodeInspector {
         case BoolT
         case ColorT
         case EnumT(List[String])
+        /// project.json の sound manifest にある論理名から選ぶ ComboBox。
+        /// 候補リストは widget 生成時に IdeState#soundNamesRef から注入される
+        case SoundNameT
     }
 
     /// Inspector に表示する 1 フィールドの定義。
@@ -60,20 +63,30 @@ mod NodeInspector {
     }
 
     /// 選択 node の継承階層に沿ったセクション列を返す。
-    /// 派生クラス → 基底クラス → 共通基底 (CanvasItem) の順で並べる
+    /// 派生クラス → 基底クラス → 共通基底 (CanvasItem) の順で並べる。
+    /// AudioStreamPlayer のような非描画ノードは Node2D / CanvasItem セクションを持たない
     pub def sectionsFor(node: EngineNode[Unit]): List[FieldSection] =
         let typeSec = typeSpecific(node);
-        let node2DSec: FieldSection = {
-            typeName = "Node2D",
-            common   = node2DCommon(),
-            advanced = node2DAdvanced()
-        };
-        let canvasItemSec: FieldSection = {
-            typeName = "CanvasItem",
-            common   = canvasItemCommon(),
-            advanced = canvasItemAdvanced()
-        };
-        List.append(typeSec, node2DSec :: canvasItemSec :: Nil)
+        if (isAudioOnly(node)) typeSec
+        else {
+            let node2DSec: FieldSection = {
+                typeName = "Node2D",
+                common   = node2DCommon(),
+                advanced = node2DAdvanced()
+            };
+            let canvasItemSec: FieldSection = {
+                typeName = "CanvasItem",
+                common   = canvasItemCommon(),
+                advanced = canvasItemAdvanced()
+            };
+            List.append(typeSec, node2DSec :: canvasItemSec :: Nil)
+        }
+
+    /// 描画/座標を持たないノード (Node2D / CanvasItem セクション抑止対象)
+    def isAudioOnly(node: EngineNode[Unit]): Bool = match node {
+        case EngineNode.AudioStreamPlayerWithState(_, _) => true
+        case _ => false
+    }
 
     /// CanvasItem 共通: 普段見るのは visible のみ。zIndex / modulate は advanced
     def canvasItemCommon(): List[FieldDef] =
@@ -397,6 +410,7 @@ mod NodeInspector {
         case EngineNode.TileMapLayerWithState(_, _)     => "TileMapLayer"
         case EngineNode.PanelWithState(_, _)            => "Panel"
         case EngineNode.ProgressBarWithState(_, _)      => "ProgressBar"
+        case EngineNode.AudioStreamPlayerWithState(_, _) => "AudioStreamPlayer"
         case _                                          => "Node2D"
     }
 
@@ -487,6 +501,9 @@ mod NodeInspector {
         case EngineNode.PanelWithState(_, _) =>
             let (c, a) = panelFields();
             ({typeName = "Panel", common = c, advanced = a}: FieldSection) :: Nil
+        case EngineNode.AudioStreamPlayerWithState(_, _) =>
+            let (c, a) = audioStreamPlayerFields();
+            ({typeName = "AudioStreamPlayer", common = c, advanced = a}: FieldSection) :: Nil
         case _ => Nil
     }
 
@@ -885,6 +902,36 @@ mod NodeInspector {
             scalarFloat32Field("borderAlpha", "Border α",
                                n -> Option.map(r -> r#borderAlpha, pick(n))) :: Nil;
         (common, advanced)
+
+    // ───────────────────────── AudioStreamPlayer 固有フィールド ─────────────────────────
+
+    /// AudioStreamPlayer: stream / autoplay / loop / volume を common に出す
+    def audioStreamPlayerFields(): (List[FieldDef], List[FieldDef]) =
+        let pick = n -> match n {
+            case EngineNode.AudioStreamPlayerWithState(p, _) =>
+                let AudioStreamPlayer.AudioStreamPlayer(r) = p; Some(r)
+            case _ => None
+        };
+        let streamField: FieldDef = {
+            name     = "stream",
+            label    = "Stream",
+            kind     = FieldKind.SoundNameT,
+            snapshot = n -> Option.map(r -> stringToJson(r#stream), pick(n)),
+            apply    = (sel, j) -> match jsonToString(j) {
+                case Some(s) => SceneSerializer.updateString(
+                                  sel#jsonPath, sel#jsonNodePath, "stream", s)
+                case None    => ()
+            }
+        };
+        let common =
+            streamField ::
+            boolField("autoplay", "Autoplay",
+                       n -> Option.map(r -> r#autoplay, pick(n))) ::
+            boolField("loop", "Loop",
+                       n -> Option.map(r -> r#loop, pick(n))) ::
+            scalarFloat32Field("volume", "Volume",
+                               n -> Option.map(r -> r#volume, pick(n))) :: Nil;
+        (common, Nil)
 
     // ───────────────────────── JSON ↔ 値 変換ヘルパー ─────────────────────────
 
