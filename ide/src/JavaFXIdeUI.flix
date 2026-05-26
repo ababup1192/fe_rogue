@@ -136,12 +136,8 @@ mod JavaFXIdeUI {
         let mapNs = mapLoader.getNamespace();
         let mapsList: ListView[String] = unchecked_cast(mapNs.get("mapsList") as ListView[String]);
         let mapGridCanvas: Canvas = unchecked_cast(mapNs.get("mapGridCanvas") as Canvas);
-        let mapSaveBtn: Button = unchecked_cast(mapNs.get("mapSaveBtn") as Button);
-        let mapDirtyLabel: Label = unchecked_cast(mapNs.get("mapDirtyLabel") as Label);
         Array.put(Some(mapsList), 0, state#widgets#mapsList);
         Array.put(Some(mapGridCanvas), 0, state#widgets#mapGridCanvas);
-        Array.put(Some(mapSaveBtn), 0, state#widgets#mapSaveBtn);
-        Array.put(Some(mapDirtyLabel), 0, state#widgets#mapDirtyLabel);
         // Layer リスト (Floor/Walls/Entities) + tile パレット + identifier 入力 + 新規ボタン
         let mapLayerRowFloor: HBox = unchecked_cast(mapNs.get("mapLayerRowFloor") as HBox);
         let mapLayerRowWalls: HBox = unchecked_cast(mapNs.get("mapLayerRowWalls") as HBox);
@@ -182,9 +178,8 @@ mod JavaFXIdeUI {
         Array.put(Some(mapNewBtn), 0, state#widgets#mapNewBtn);
         Array.put(Some(mapPaletteSection), 0, state#widgets#mapPaletteSection);
         Array.put(Some(mapEntitySection), 0, state#widgets#mapEntitySection);
-        // S8/S11/S12 + Layer wiring
-        MapGridCanvas.wireClickToggle(state, mapGridCanvas);
-        MapEditorPanel.wireSaveButton(state, mapSaveBtn);
+        // Map canvas: クリック・ピンチズーム・Ctrl/Cmd+Z undo を 1 か所で配線
+        MapGridCanvas.wireMapCanvas(state, mapGridCanvas);
         MapEditorPanel.wireLayerList(state);
         MapEditorPanel.initPaletteWidgets(state);
         MapEditorPanel.wirePaletteClick(state, mapPaletteCanvas);

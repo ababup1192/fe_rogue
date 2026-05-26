@@ -19,20 +19,26 @@ mod MapGridCanvas {
     import javafx.scene.image.Image
     import javafx.scene.paint.Color
     import javafx.scene.input.MouseEvent
+    import javafx.scene.input.ZoomEvent
+    import javafx.scene.input.KeyEvent
     import javafx.event.EventHandler
 
     /// 1 セルの表示ピクセル数。tileSize (=16 等) と独立に「IDE 上で見やすい大きさ」で持つ。
     pub def defaultCellPx(): Int32 = 24
 
     /// Level の中身を Canvas に描く。
-    /// Canvas は Level サイズに合わせて resize される。
+    /// Canvas は Level サイズ × zoom にリサイズされ、gc.scale で内部 draw を拡縮する。
     /// tileset Image が無い場合は単に絵が描かれない (オレンジ overlay 等は使わない)。
     /// `vis` は目玉トグルの状態。false のレイヤーは draw をスキップする。
+    /// `zoom=1.0` で等倍。`MapEditorState.mapZoomRef` がピンチで更新される。
     pub def drawLevel(canvas: Canvas, level: MapResource.Level, cellPx: Int32,
                        wallsImg: Option[Image], floorImg: Option[Image],
-                       vis: MapEditorState.LayerVisibility): Unit \ IO = {
+                       vis: MapEditorState.LayerVisibility, zoom: Float64): Unit \ IO = {
         let d = MapResource.levelData(level);
-        resizeAndFill(canvas, d#width, d#height, cellPx);
+        resizeAndFill(canvas, d#width, d#height, cellPx, zoom);
+        let gc = canvas.getGraphicsContext2D();
+        gc.save();
+        gc.scale(zoom, zoom);
         if (vis#floor) {
             match floorImg {
                 case Some(img) => drawTiles(canvas, d#decorTiles, img, d#tileSize, cellPx)
@@ -46,7 +52,8 @@ mod MapGridCanvas {
             }
         } else ();
         drawGridLines(canvas, d#width, d#height, cellPx);
-        if (vis#entities) drawEntities(canvas, d#entities, cellPx) else ()
+        if (vis#entities) drawEntities(canvas, d#entities, cellPx) else ();
+        gc.restore()
     }
 
     /// Entity を「シアン円 + identifier テキスト」で描画する。
@@ -70,10 +77,13 @@ mod MapGridCanvas {
         }, entities)
     }
 
-    /// Canvas を Level サイズにリサイズし、背景塗りつぶし。
-    def resizeAndFill(canvas: Canvas, width: Int32, height: Int32, cellPx: Int32): Unit \ IO = {
-        let pixelW = Int32.toFloat64(width * cellPx);
-        let pixelH = Int32.toFloat64(height * cellPx);
+    /// Canvas を Level サイズ × zoom にリサイズし、背景塗りつぶし。
+    /// gc.scale は呼び元 (drawLevel) で別途かけるので、ここでは塗りに base 座標は使わず
+    /// 物理 pixel で fillRect する。
+    def resizeAndFill(canvas: Canvas, width: Int32, height: Int32, cellPx: Int32,
+                       zoom: Float64): Unit \ IO = {
+        let pixelW = Int32.toFloat64(width * cellPx) * zoom;
+        let pixelH = Int32.toFloat64(height * cellPx) * zoom;
         canvas.setWidth(pixelW);
         canvas.setHeight(pixelH);
         let gc = canvas.getGraphicsContext2D();
@@ -142,14 +152,49 @@ mod MapGridCanvas {
         canvas.setHeight(0.0)
     }
 
-    /// Canvas に MouseClick handler を 1 度だけ登録する。
-    /// クリック位置の (col, row) を計算して WallMask を toggle し、再描画する。
-    pub def wireClickToggle(state: IdeState.IdeState, canvas: Canvas): Unit \ IO = {
+    /// Map canvas に Mouse / Zoom / Key handler をまとめて配線する。
+    ///   - クリック : place/remove (左) or 削除 (右) を実行し undo に押して自動保存
+    ///   - ピンチ   : mapZoom を倍率更新して再描画
+    ///   - Ctrl/Cmd+Z : undo (canvas にフォーカスが必要なのでクリックで requestFocus する)
+    pub def wireMapCanvas(state: IdeState.IdeState, canvas: Canvas): Unit \ IO = {
+        canvas.setFocusTraversable(true);
         canvas.setOnMouseClicked(new EventHandler[MouseEvent] {
-            def handle(_this: EventHandler[MouseEvent], event: MouseEvent): Unit \ IO =
+            def handle(_this: EventHandler[MouseEvent], event: MouseEvent): Unit \ IO = {
+                canvas.requestFocus();
                 handleClick(state, event)
+            }
+        });
+        canvas.setOnZoom(new EventHandler[ZoomEvent] {
+            def handle(_this: EventHandler[ZoomEvent], event: ZoomEvent): Unit \ IO = {
+                let factor = event.getZoomFactor();
+                let cur = MapEditorState.getMapZoom(state#mapEditor);
+                MapEditorState.setMapZoom(state#mapEditor, cur * factor);
+                MapEditorPanel.redrawCanvas(state);
+                event.consume()
+            }
+        });
+        canvas.setOnKeyPressed(new EventHandler[KeyEvent] {
+            def handle(_this: EventHandler[KeyEvent], event: KeyEvent): Unit \ IO = {
+                // isShortcutDown() = Cmd (macOS) または Ctrl (Win/Linux)
+                if (event.isShortcutDown() and event.getCode().toString() == "Z") {
+                    doUndo(state);
+                    event.consume()
+                } else ()
+            }
         })
     }
+
+    /// Undo: スタック head の Level を editingLevel に戻し、再描画 + 自動保存。
+    /// スタックが空なら no-op。
+    def doUndo(state: IdeState.IdeState): Unit \ IO =
+        match MapEditorState.popUndo(state#mapEditor) {
+            case None       => ()
+            case Some(prev) => {
+                MapEditorState.setEditingLevel(state#mapEditor, Some(prev));
+                MapEditorPanel.redrawCanvas(state);
+                MapEditorPanel.autoSave(state)
+            }
+        }
 
     def handleClick(state: IdeState.IdeState, event: MouseEvent): Unit \ IO =
         match MapEditorState.getEditingLevel(state#mapEditor) {
@@ -157,7 +202,8 @@ mod MapGridCanvas {
             case Some(level) =>
                 let d = MapResource.levelData(level);
                 let cellPx = defaultCellPx();
-                let cs = Int32.toFloat64(cellPx);
+                let zoom = MapEditorState.getMapZoom(state#mapEditor);
+                let cs = Int32.toFloat64(cellPx) * zoom;
                 let col = Float64.truncateToInt32(event.getX() / cs);
                 let row = Float64.truncateToInt32(event.getY() / cs);
                 if (col < 0 or col >= d#width or row < 0 or row >= d#height) ()
@@ -179,10 +225,11 @@ mod MapGridCanvas {
                     match newLevelOpt {
                         case None           => ()
                         case Some(newLevel) =>
+                            // 編集前の Level を undo スタックに退避してから差し替え、自動保存
+                            MapEditorState.pushUndo(state#mapEditor, level);
                             MapEditorState.setEditingLevel(state#mapEditor, Some(newLevel));
-                            MapEditorState.setDirty(state#mapEditor, true);
-                            MapEditorPanel.updateDirtyLabel(state);
-                            redrawCurrent(state, newLevel, cellPx)
+                            redrawCurrent(state, newLevel, cellPx);
+                            MapEditorPanel.autoSave(state)
                     }
                 }
         }
@@ -304,14 +351,15 @@ mod MapGridCanvas {
         let newData: MapResource.LevelData = {entities = filtered | d};
         MapResource.Level.Level(newData)
 
-    /// 編集中 Level を canvas に再描画する (Layer visibility を参照)。
+    /// 編集中 Level を canvas に再描画する (Layer visibility と mapZoom を参照)。
     def redrawCurrent(state: IdeState.IdeState, level: MapResource.Level, cellPx: Int32): Unit \ IO =
         match Array.get(0, state#widgets#mapGridCanvas) {
             case Some(c) => {
                 let wImg = Array.get(0, state#widgets#mapWallsImage);
                 let fImg = Array.get(0, state#widgets#mapFloorImage);
                 let vis = MapEditorState.getLayerVisibility(state#mapEditor);
-                drawLevel(c, level, cellPx, wImg, fImg, vis)
+                let zoom = MapEditorState.getMapZoom(state#mapEditor);
+                drawLevel(c, level, cellPx, wImg, fImg, vis, zoom)
             }
             case None => ()
         }

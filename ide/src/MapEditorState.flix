@@ -50,23 +50,25 @@ mod MapEditorState {
     /// Maps モード全体の状態。
     ///   levelFilesRef:        assets/maps/*.map.json の絶対パスリスト (Open Project 時に更新)
     ///   selectedLevelPathRef: 現在選択中の Level の絶対パス。未選択は None
-    ///   editingLevelRef:      選択中 Level の読み込み済みデータ。S9 以降で grid 表示に使う
-    ///   dirtyRef:             editingLevel が未保存変更を持つか (S11/S12 で使う)
+    ///   editingLevelRef:      選択中 Level の読み込み済みデータ
     ///   layerModeRef:         現在の編集レイヤー (Floor / Walls / Entities)
     ///   selectedSrcRef:       Manual モードで配置するタイルの (srcX, srcY) ピクセル
     ///   layerVisibilityRef:   レイヤーの表示 ON/OFF (目玉トグル状態、初期は全 true)
     ///   paletteSettingsRef:   Floor / Walls 各々の Palette 設定 (SpriteSheet + セル px)
     ///   paletteZoomRef:       Palette canvas の表示倍率 (ピンチ操作で更新、1.0=等倍)
+    ///   mapZoomRef:           Map canvas の表示倍率 (ピンチ操作で更新、1.0=等倍)
+    ///   undoStackRef:         編集前の Level スナップショット (head=直近)。Ctrl+Z で pop する
     pub type alias MapEditorState = {
         levelFilesRef        = Array[List[String], Static],
         selectedLevelPathRef = Array[Option[String], Static],
         editingLevelRef      = Array[Option[MapResource.Level], Static],
-        dirtyRef             = Array[Bool, Static],
         layerModeRef         = Array[LayerMode, Static],
         selectedSrcRef       = Array[Option[(Int32, Int32)], Static],
         layerVisibilityRef   = Array[LayerVisibility, Static],
         paletteSettingsRef   = Array[PaletteSettings, Static],
-        paletteZoomRef       = Array[Float64, Static]
+        paletteZoomRef       = Array[Float64, Static],
+        mapZoomRef           = Array[Float64, Static],
+        undoStackRef         = Array[List[MapResource.Level], Static]
     }
 
     /// 空の MapEditorState を作る。
@@ -75,12 +77,13 @@ mod MapEditorState {
             levelFilesRef        = Array#{(Nil: List[String])} @ Static,
             selectedLevelPathRef = Array#{(None: Option[String])} @ Static,
             editingLevelRef      = Array#{(None: Option[MapResource.Level])} @ Static,
-            dirtyRef             = Array#{false} @ Static,
             layerModeRef         = Array#{LayerMode.Walls} @ Static,
             selectedSrcRef       = Array#{(None: Option[(Int32, Int32)])} @ Static,
             layerVisibilityRef   = Array#{allVisible()} @ Static,
             paletteSettingsRef   = Array#{defaultPaletteSettings()} @ Static,
-            paletteZoomRef       = Array#{1.0f64} @ Static
+            paletteZoomRef       = Array#{1.0f64} @ Static,
+            mapZoomRef           = Array#{1.0f64} @ Static,
+            undoStackRef         = Array#{(Nil: List[MapResource.Level])} @ Static
         }
 
     /// 全レイヤー visible の初期値。
@@ -104,12 +107,6 @@ mod MapEditorState {
 
     pub def getEditingLevel(state: MapEditorState): Option[MapResource.Level] \ IO =
         Array.get(0, state#editingLevelRef)
-
-    pub def setDirty(state: MapEditorState, dirty: Bool): Unit \ IO =
-        Array.put(dirty, 0, state#dirtyRef)
-
-    pub def isDirty(state: MapEditorState): Bool \ IO =
-        Array.get(0, state#dirtyRef)
 
     pub def setLayerMode(state: MapEditorState, mode: LayerMode): Unit \ IO =
         Array.put(mode, 0, state#layerModeRef)
@@ -175,4 +172,43 @@ mod MapEditorState {
             else zoom;
         Array.put(clamped, 0, state#paletteZoomRef)
     }
+
+    pub def getMapZoom(state: MapEditorState): Float64 \ IO =
+        Array.get(0, state#mapZoomRef)
+
+    /// Map zoom を [0.25, 8.0] にクランプして保存する。
+    pub def setMapZoom(state: MapEditorState, zoom: Float64): Unit \ IO = {
+        let clamped =
+            if (zoom < 0.25f64) 0.25f64
+            else if (zoom > 8.0f64) 8.0f64
+            else zoom;
+        Array.put(clamped, 0, state#mapZoomRef)
+    }
+
+    /// Undo スタックの最大保持数 (古いものから捨てる)。
+    def undoStackLimit(): Int32 = 50
+
+    /// 編集前の Level を Undo スタックに push する (head=直近)。
+    /// スタックが limit を超えたら末尾を切り捨て、最新 limit 件だけ保持する。
+    pub def pushUndo(state: MapEditorState, level: MapResource.Level): Unit \ IO = {
+        let cur = Array.get(0, state#undoStackRef);
+        let next = level :: List.take(undoStackLimit() - 1, cur);
+        Array.put(next, 0, state#undoStackRef)
+    }
+
+    /// Undo スタックの head を取り出す。空なら None。
+    pub def popUndo(state: MapEditorState): Option[MapResource.Level] \ IO = {
+        let cur = Array.get(0, state#undoStackRef);
+        match cur {
+            case Nil       => None
+            case x :: rest => {
+                Array.put(rest, 0, state#undoStackRef);
+                Some(x)
+            }
+        }
+    }
+
+    /// Undo スタックをクリアする (別 Level に切替えるときに呼ぶ)。
+    pub def clearUndoStack(state: MapEditorState): Unit \ IO =
+        Array.put((Nil: List[MapResource.Level]), 0, state#undoStackRef)
 }

@@ -49,13 +49,10 @@ mod IdeState {
         loadingOverlay                = Array[Option[VBox], Static],
         loadingLabel                  = Array[Option[Label], Static],
         loadingBar                    = Array[Option[ProgressBar], Static],
-        // Maps タブの Level リスト (S8)
+        // Maps タブの Level リスト
         mapsList                      = Array[Option[ListView[String]], Static],
-        // Maps タブの中央 Canvas (S9: grid 線、S10 以降で WallMask / autotile も)
+        // Maps タブの中央 Canvas (ピンチズーム + 自動保存対応)
         mapGridCanvas                 = Array[Option[Canvas], Static],
-        // Maps タブの保存ボタンと未保存マーカー (S12)
-        mapSaveBtn                    = Array[Option[Button], Static],
-        mapDirtyLabel                 = Array[Option[Label], Static],
         // Maps タブ用 tileset PNG キャッシュ (S13 で manualTiles / decorTiles 描画に使う)。
         // 現状は texture 名を inca_tileset / tilemap_floor でハードコード参照する。
         // Material 概念を導入したら Level → Material → texture name の引き直しに置換予定。
@@ -226,8 +223,6 @@ mod IdeState {
             loadingBar                    = Array#{(None: Option[ProgressBar])} @ Static,
             mapsList                      = Array#{(None: Option[ListView[String]])} @ Static,
             mapGridCanvas                 = Array#{(None: Option[Canvas])} @ Static,
-            mapSaveBtn                    = Array#{(None: Option[Button])} @ Static,
-            mapDirtyLabel                 = Array#{(None: Option[Label])} @ Static,
             mapWallsImage                 = Array#{(None: Option[Image])} @ Static,
             mapFloorImage                 = Array#{(None: Option[Image])} @ Static,
             mapLayerRowFloor              = Array#{(None: Option[HBox])} @ Static,

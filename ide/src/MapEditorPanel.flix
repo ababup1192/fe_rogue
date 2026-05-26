@@ -138,36 +138,20 @@ mod MapEditorPanel {
                 }
             case Some(level) => {
                 let d = MapResource.levelData(level);
+                // 別 Level に切替えたら Undo スタックは古いデータが残っているので捨てる
+                MapEditorState.clearUndoStack(state#mapEditor);
                 redrawCanvas(state);
-                // 新規 Level に切替えたら dirty をリセットしてラベル反映
-                MapEditorState.setDirty(state#mapEditor, false);
-                updateDirtyLabel(state);
                 println("[MapEditor] loaded: ${displayName(absPath)} (${d#width}x${d#height})")
             }
         }
     }
 
-    /// dirty 状態を Label に反映する。dirty なら "* 未保存"、clean なら空。
-    /// MapGridCanvas.handleClick (toggle 後) や saveCurrent (保存後) から呼ぶ。
-    pub def updateDirtyLabel(state: IdeState.IdeState): Unit \ IO =
-        match Array.get(0, state#widgets#mapDirtyLabel) {
-            case None        => ()
-            case Some(label) => {
-                let dirty = MapEditorState.isDirty(state#mapEditor);
-                label.setText(if (dirty) "* 未保存" else "")
-            }
-        }
-
-    /// 保存ボタンに ActionEvent handler を登録する。
-    /// クリック時に Persistence.save で `.map.json` を書き戻し、dirty をリセット。
-    pub def wireSaveButton(state: IdeState.IdeState, btn: Button): Unit \ IO = {
-        btn.setOnAction(new EventHandler[ActionEvent] {
-            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
-                run {
-                    saveCurrent(state)
-                } with Fs.FileWrite.runWithIO
-        })
-    }
+    /// 編集後に呼ぶ自動保存。editingLevel を selectedLevelPath に書き戻す。
+    /// 失敗時は println のみ (Dialog は出さない、ユーザー操作を妨げない)。
+    pub def autoSave(state: IdeState.IdeState): Unit \ IO =
+        run {
+            saveCurrent(state)
+        } with Fs.FileWrite.runWithIO
 
     // ────────────────────────────────────────────────────────
     // S15: Layer mode radio + tile パレット
@@ -227,6 +211,7 @@ mod MapEditorPanel {
         }
 
     /// 編集中 Level を canvas に再描画する。Level 未選択なら何もしない。
+    /// mapZoom を反映するため drawLevel に zoom を渡す。
     pub def redrawCanvas(state: IdeState.IdeState): Unit \ IO =
         match (MapEditorState.getEditingLevel(state#mapEditor),
                Array.get(0, state#widgets#mapGridCanvas)) {
@@ -234,8 +219,9 @@ mod MapEditorPanel {
                 let wImg = Array.get(0, state#widgets#mapWallsImage);
                 let fImg = Array.get(0, state#widgets#mapFloorImage);
                 let vis = MapEditorState.getLayerVisibility(state#mapEditor);
+                let zoom = MapEditorState.getMapZoom(state#mapEditor);
                 MapGridCanvas.drawLevel(canvas, level, MapGridCanvas.defaultCellPx(),
-                                          wImg, fImg, vis)
+                                          wImg, fImg, vis, zoom)
             }
             case _ => ()
         }
@@ -714,11 +700,7 @@ mod MapEditorPanel {
                MapEditorState.getEditingLevel(state#mapEditor)) {
             case (Some(path), Some(level)) =>
                 match Persistence.save(path, level) {
-                    case Ok(_)    => {
-                        MapEditorState.setDirty(state#mapEditor, false);
-                        updateDirtyLabel(state);
-                        println("[MapEditor] saved: ${displayName(path)}")
-                    }
+                    case Ok(_)    => println("[MapEditor] auto-saved: ${displayName(path)}")
                     case Err(msg) => println("[MapEditor] save failed (${displayName(path)}): ${msg}")
                 }
             case _ => ()

@@ -12,7 +12,6 @@
 -->
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.layout.HBox?>
-<?import javafx.scene.layout.Region?>
 <?import javafx.scene.control.SplitPane?>
 <?import javafx.scene.control.ListView?>
 <?import javafx.scene.control.Label?>
@@ -40,17 +39,15 @@
                 </HBox>
             </children>
         </VBox>
-        <!-- 中央: ツールバー + Canvas -->
+        <!-- 中央: Canvas のみ (自動保存なので保存ボタンは無し)。
+             ピンチで拡大縮小、Ctrl+Z (macOS は Cmd+Z) で 1 操作 undo。 -->
         <VBox fx:id="mapEditorPane" alignment="TOP_CENTER" spacing="8">
             <children>
-                <HBox alignment="CENTER_LEFT" spacing="8" styleClass="map-toolbar">
-                    <children>
-                        <Button fx:id="mapSaveBtn" text="保存"/>
-                        <Label fx:id="mapDirtyLabel" text=""
-                               styleClass="map-dirty-label"/>
-                    </children>
-                </HBox>
-                <Canvas fx:id="mapGridCanvas" width="400" height="400"/>
+                <ScrollPane fx:id="mapGridScroll" VBox.vgrow="ALWAYS">
+                    <content>
+                        <Canvas fx:id="mapGridCanvas" width="400" height="400"/>
+                    </content>
+                </ScrollPane>
             </children>
         </VBox>
         <!-- 右: Layer リスト (上) + tile パレット (下) -->
