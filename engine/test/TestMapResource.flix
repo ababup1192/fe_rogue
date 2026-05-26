@@ -98,22 +98,12 @@ mod TestMapResource {
                     and d#width  == origData#width
                     and d#height == origData#height
                     and d#materialId == origData#materialId
-                    and Vector.length(d#wallMask) == Vector.length(origData#wallMask)
                     and List.length(d#manualTiles) == List.length(origData#manualTiles)
+                    and List.length(d#decorTiles)  == List.length(origData#decorTiles)
                     and List.length(d#entities)    == List.length(origData#entities)
                 case None    => false
             });
         Assert.assertEq(expected = true, restoredOk)
-
-    @Test
-    def testLevelWallMaskValuePreserved(): Unit \ Assert =
-        let original = sampleLevel();
-        let restored = roundTripLevel(original);
-        let firstFive = match restored {
-            case Some(l) => Vector.toList(MapResource.levelData(l)#wallMask) |> List.take(5)
-            case None    => Nil
-        };
-        Assert.assertEq(expected = 1 :: 1 :: 1 :: 1 :: 1 :: Nil, firstFive)
 
     @Test
     def testLevelEntityFieldsPreserved(): Unit \ Assert =
@@ -199,12 +189,11 @@ mod TestMapResource {
             decorPalette = (5, 5) :: Nil
         }: MaterialData))
 
-    /// 4x3 の小さな部屋 (外周 wall) + manualTile 1 個 + entity 1 個 (enemyId="goblin")
+    /// 4x3 の小さな部屋 + decorTile + manualTile + entity (enemyId="goblin")
     def sampleLevel(): Level =
-        let mask = 1 :: 1 :: 1 :: 1 ::
-                   1 :: 0 :: 0 :: 1 ::
-                   1 :: 1 :: 1 :: 1 :: Nil;
         let manual = ({x = 3, y = 4, srcX = 16, srcY = 0, flipH = false, flipV = false}: ManualTile) :: Nil;
+        let decor  = ({x = 1, y = 1, srcX = 0,  srcY = 0, flipH = false, flipV = false}: ManualTile)
+                   :: ({x = 2, y = 1, srcX = 0,  srcY = 0, flipH = false, flipV = false}: ManualTile) :: Nil;
         let goblinFields = Map#{
             "enemyId" => FieldValue.StringV("goblin"),
             "isElite" => FieldValue.BoolV(false),
@@ -216,13 +205,13 @@ mod TestMapResource {
             fields     = goblinFields
         }: Entity);
         Level.Level(({
-            tileSize    = 16,
-            width       = 4,
-            height      = 3,
-            materialId  = "inca_stone",
-            wallMask    = List.toVector(mask),
-            manualTiles = manual,
-            decorTiles  = (Nil: List[ManualTile]),
-            entities    = entity :: Nil
+            tileSize      = 16,
+            width         = 4,
+            height        = 3,
+            materialId    = "inca_stone",
+            manualTiles   = manual,
+            decorTiles    = decor,
+            entities      = entity :: Nil,
+            editorPalette = (None: Option[MapResource.EditorPalette])
         }: LevelData))
 }

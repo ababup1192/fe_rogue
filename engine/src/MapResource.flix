@@ -6,13 +6,16 @@
 ///
 /// JSON 形状の概略:
 ///   Level     : {"tileSize":16, "width":10, "height":10, "materialId":"inca_stone",
-///                "wallMask":[1,1,1,...], "manualTiles":[{"x":..,"y":..,"col":..,"row":..}],
+///                "decorTiles":[{"x":..,"y":..,"srcX":..,"srcY":..}, ...],
+///                "manualTiles":[{"x":..,"y":..,"srcX":..,"srcY":..}, ...],
 ///                "entities":[{"identifier":"Door","x":5,"y":3,"fields":{...}}]}
 ///   Material  : {"tileset":"inca_walls", "tileSize":16,
 ///                "wallMap":{"0000":[3,5], "0001":[4,5], ...16件},
 ///                "floorPalette":[[0,0],[1,0]], "decorPalette":[[5,5]]}
 ///   FieldValue: {"string":"goblin"} / {"int":3} / {"bool":true}
 ///
+/// 自動壁 (AutoLayerWalls) は **decorTiles のセル (=床)** を元に動的計算される:
+///   床のないセルで 8 近傍に床があるセル = 壁 (描画 + 衝突)
 /// `wallMap` のキーは "TRBL" 形式 ("0000" 〜 "1111", 16 通り)。
 /// マップ縁は wall として扱う慣習 (LDTKRules と同じ)。
 ///
@@ -22,18 +25,36 @@
 mod MapResource {
 
     /// Level の中身。フィールドの集合はここに集約し、enum 経由で持ち回す。
-    /// - `manualTiles` は Walls 層由来 (wall tileset = inca_tileset 等)
-    /// - `decorTiles`  は Floor/decoration 層由来 (別 tileset = tilemap_floor 等)
+    /// - `manualTiles` は Walls 層由来 (自動壁の上書き、衝突は持たない)
+    /// - `decorTiles`  は Floor 層由来 (床、=通行可、=自動壁の判定源)
+    /// - `editorPalette` は IDE エディタ専用の Palette 設定 (Sheet 名 / cellSize / margin)。
+    ///   ゲームランタイム (MapLoader 等) は無視する。Map ごとに別の設定を持たせるため。
     /// LDtk は Walls と Floor が別 tileset を使う構成のため、層を分けて保持する。
     pub type alias LevelData = {
-        tileSize    = Int32,
-        width       = Int32,
-        height      = Int32,
-        materialId  = String,
-        wallMask    = Vector[Int32],
-        manualTiles = List[ManualTile],
-        decorTiles  = List[ManualTile],
-        entities    = List[Entity]
+        tileSize      = Int32,
+        width         = Int32,
+        height        = Int32,
+        materialId    = String,
+        manualTiles   = List[ManualTile],
+        decorTiles    = List[ManualTile],
+        entities      = List[Entity],
+        editorPalette = Option[EditorPalette]
+    }
+
+    /// IDE Maps タブの Palette 設定 (Floor / Walls 各層)。
+    /// `.map.json` 内に書かれることで Map 切替時に復元される。
+    pub type alias EditorPalette = {
+        floor = EditorLayerPalette,
+        walls = EditorLayerPalette
+    }
+
+    /// 1 レイヤー分の Palette 設定。
+    pub type alias EditorLayerPalette = {
+        textureName = Option[String],
+        cellW       = Int32,
+        cellH       = Int32,
+        marginX     = Int32,
+        marginY     = Int32
     }
 
     /// `Saveable[Level]` を実装可能にするための単一 case ラッパ。
@@ -74,6 +95,8 @@ mod MapResource {
     }
 
     /// Material の中身。
+    ///   tileSize : tileset PNG 上の 1 タイルの px (正方形前提)
+    /// タイルの切り抜きサイズ / マージン / Palette ズームは IDE 側 Walls Palette と共有する。
     pub type alias MaterialData = {
         tileset      = String,
         tileSize     = Int32,
@@ -135,7 +158,7 @@ mod MapResourceCodec {
 
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool, JsonArray}
-    use MapResource.{Level, LevelData, ManualTile, Entity, FieldValue, Material, MaterialData}
+    use MapResource.{Level, LevelData, ManualTile, Entity, FieldValue, Material, MaterialData, EditorPalette, EditorLayerPalette}
 
     // ── Level ──
 
@@ -146,7 +169,6 @@ mod MapResourceCodec {
             "width"       => JsonNumber(intToBd(d#width)),
             "height"      => JsonNumber(intToBd(d#height)),
             "materialId"  => JsonString(d#materialId),
-            "wallMask"    => encodeIntVector(d#wallMask),
             "manualTiles" => JsonArray(d#manualTiles |> List.map(encodeManualTile) |> List.toVector),
             "entities"    => JsonArray(d#entities    |> List.map(encodeEntity)     |> List.toVector)
         };
@@ -155,7 +177,12 @@ mod MapResourceCodec {
                         else Map.insert("decorTiles",
                             JsonArray(d#decorTiles |> List.map(encodeManualTile) |> List.toVector),
                             base);
-        JsonObject(withDecor)
+        // editorPalette は None なら省略
+        let withEditor = match d#editorPalette {
+            case None    => withDecor
+            case Some(p) => Map.insert("editorPalette", encodeEditorPalette(p), withDecor)
+        };
+        JsonObject(withEditor)
 
     pub def decodeLevel(element: JsonElement): Option[Level] =
         forM (
@@ -164,14 +191,12 @@ mod MapResourceCodec {
             widthJ        <- Map.get("width",       obj);
             heightJ       <- Map.get("height",      obj);
             materialIdJ   <- Map.get("materialId",  obj);
-            wallMaskJ     <- Map.get("wallMask",    obj);
             manualTilesJ  <- Map.get("manualTiles", obj);
             entitiesJ     <- Map.get("entities",    obj);
             tileSize      <- expectInt(tileSizeJ);
             width         <- expectInt(widthJ);
             height        <- expectInt(heightJ);
             materialId    <- expectString(materialIdJ);
-            wallMask      <- decodeIntVector(wallMaskJ);
             manualTiles   <- decodeList(decodeManualTile, manualTilesJ);
             entities      <- decodeList(decodeEntity,     entitiesJ);
             // decorTiles は省略可能 (デフォルト Nil)
@@ -179,16 +204,79 @@ mod MapResourceCodec {
                 case None     => Some((Nil: List[ManualTile]))
                 case Some(dj) => decodeList(decodeManualTile, dj)
             }
-        ) yield Level.Level(({
-            tileSize    = tileSize,
-            width       = width,
-            height      = height,
-            materialId  = materialId,
-            wallMask    = wallMask,
-            manualTiles = manualTiles,
-            decorTiles  = decorTiles,
-            entities    = entities
-        }: LevelData))
+            // 旧 wallMask キーがあっても無視 (前方互換)
+        ) yield {
+            // editorPalette は省略可能 (デフォルト None)
+            let editorPalette = match Map.get("editorPalette", obj) {
+                case None    => None
+                case Some(e) => decodeEditorPalette(e)
+            };
+            Level.Level(({
+                tileSize      = tileSize,
+                width         = width,
+                height        = height,
+                materialId    = materialId,
+                manualTiles   = manualTiles,
+                decorTiles    = decorTiles,
+                entities      = entities,
+                editorPalette = editorPalette
+            }: LevelData))
+        }
+
+    // ── EditorPalette ──
+
+    def encodeEditorPalette(p: EditorPalette): JsonElement =
+        JsonObject(Map#{
+            "floor" => encodeEditorLayerPalette(p#floor),
+            "walls" => encodeEditorLayerPalette(p#walls)
+        })
+
+    def decodeEditorPalette(element: JsonElement): Option[EditorPalette] =
+        forM (
+            obj   <- expectObject(element);
+            floorJ <- Map.get("floor", obj);
+            wallsJ <- Map.get("walls", obj);
+            floor  <- decodeEditorLayerPalette(floorJ);
+            walls  <- decodeEditorLayerPalette(wallsJ)
+        ) yield ({floor = floor, walls = walls}: EditorPalette)
+
+    def encodeEditorLayerPalette(lp: EditorLayerPalette): JsonElement = {
+        let base = Map#{
+            "cellW"   => JsonNumber(intToBd(lp#cellW)),
+            "cellH"   => JsonNumber(intToBd(lp#cellH)),
+            "marginX" => JsonNumber(intToBd(lp#marginX)),
+            "marginY" => JsonNumber(intToBd(lp#marginY))
+        };
+        let withTex = match lp#textureName {
+            case None    => base
+            case Some(n) => Map.insert("textureName", JsonString(n), base)
+        };
+        JsonObject(withTex)
+    }
+
+    def decodeEditorLayerPalette(element: JsonElement): Option[EditorLayerPalette] =
+        forM (
+            obj   <- expectObject(element);
+            cellWJ <- Map.get("cellW", obj);
+            cellHJ <- Map.get("cellH", obj);
+            cellW  <- expectInt(cellWJ);
+            cellH  <- expectInt(cellHJ)
+        ) yield {
+            let marginX = match Map.get("marginX", obj) {
+                case Some(j) => match expectInt(j) { case Some(v) => v case None => 0 }
+                case None    => 0
+            };
+            let marginY = match Map.get("marginY", obj) {
+                case Some(j) => match expectInt(j) { case Some(v) => v case None => 0 }
+                case None    => 0
+            };
+            let textureName = match Map.get("textureName", obj) {
+                case Some(JsonString(s)) => Some(s)
+                case _                   => None
+            };
+            ({textureName = textureName, cellW = cellW, cellH = cellH,
+              marginX = marginX, marginY = marginY}: EditorLayerPalette)
+        }
 
     // ── ManualTile ──
 
@@ -362,20 +450,6 @@ mod MapResourceCodec {
         decodeList(decodeCoord, element)
 
     // ── ヘルパー ──
-
-    def encodeIntVector(v: Vector[Int32]): JsonElement =
-        JsonArray(v |> Vector.map(n -> JsonNumber(intToBd(n))))
-
-    def decodeIntVector(element: JsonElement): Option[Vector[Int32]] = match element {
-        case JsonArray(items) =>
-            List.foldRight(item -> acc ->
-                Option.flatMap(soFar ->
-                    expectInt(item) |> Option.map(n -> n :: soFar),
-                    acc),
-                Some(Nil), Vector.toList(items))
-            |> Option.map(List.toVector)
-        case _ => None
-    }
 
     /// JsonArray を `decode` で 1 要素ずつデコードし List にまとめる。
     /// 失敗要素があれば全体 None。

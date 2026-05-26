@@ -43,7 +43,14 @@ mod MapLoader {
         let materialOpt: Option[MapResource.Material] =
             Persistence.load(materialPathFor(mapPath, d#materialId));
 
-        // AutoLayerWalls タイル: wallMask=1 のセルを TRBL 計算 → wallMap で展開
+        // 床マスク: decorTiles のあるセル = 床 (通行可)
+        let floorMask: Set[(Int32, Int32)] =
+            d#decorTiles |> List.map(t -> (t#x, t#y)) |> List.toSet;
+        // 自動壁セル: 床なし + 8 近傍に床がある (ldtk Auto-Layer 流)
+        let wallCells: Set[(Int32, Int32)] =
+            computeWallCells(floorMask, d#width, d#height);
+
+        // AutoLayerWalls タイル: wallCells を TRBL 計算 → Material.wallMap で展開
         // manualTiles と重なる座標は除外 (manualTiles を上書きとして優先)
         let manualCoords: Set[(Int32, Int32)] =
             d#manualTiles |> List.map(t -> (t#x, t#y)) |> List.toSet;
@@ -51,7 +58,7 @@ mod MapLoader {
             case None      => Nil
             case Some(mat) =>
                 let md = MapResource.materialData(mat);
-                buildAutoLayerTiles(d, md, manualCoords, tileSizeI)
+                buildAutoLayerTiles(wallCells, md, manualCoords, tileSizeI)
         };
 
         // manualTiles → TileData
@@ -70,8 +77,13 @@ mod MapLoader {
         // AutoLayerWalls を下、manualTiles を上で重ねる
         let tiles: List[TileData] = List.append(autoTiles, manualTiles);
 
-        // wallMask の非ゼロセル → collisionCells (Float64 grid 座標)
-        let cells = extractCollisionCells(d#wallMask, d#width);
+        // 自動壁セル → collisionCells (Float64 grid 座標)
+        let cells = wallCells
+            |> Set.toList
+            |> List.map(coord -> {
+                let (col, row) = coord;
+                ({x = Int32.toFloat64(col), y = Int32.toFloat64(row)}: Vec2.Vec2)
+            });
 
         // doors: entities の identifier="Door" を grid 座標で
         let doors = d#entities
@@ -206,23 +218,6 @@ mod MapLoader {
             tileSize = tileSize
         }: LDTKLoader.LDTKLayerRaw)
 
-    /// wallMask (Vector[Int32], 行優先) から非ゼロセルを `Vec2.Vec2` のリストに展開する。
-    /// `i % width = col`, `i / width = row`。
-    def extractCollisionCells(mask: Vector[Int32], width: Int32): List[Vec2.Vec2] =
-        let n = Vector.length(mask);
-        List.range(0, n)
-            |> List.filterMap(i -> {
-                let v = match Vector.nth(i, mask) {
-                    case Some(n0) => n0
-                    case None     => 0i32
-                };
-                if (v != 0i32) {
-                    let col = Int32.remainder(i, width);
-                    let row = i / width;
-                    Some(({x = Int32.toFloat64(col), y = Int32.toFloat64(row)}: Vec2.Vec2))
-                } else None
-            })
-
     /// `<mapPath>/../../materials/<materialId>.material.json` を組み立てる。
     /// mapPath = ".../assets/maps/level_0.map.json"
     /// → ".../assets/materials/inca_stone.material.json"
@@ -245,26 +240,46 @@ mod MapLoader {
         else if (String.charAt(start, s) == c) start
         else lastIndexOf(s, c, start - 1)
 
-    /// wallMask + Material.wallMap から AutoLayerWalls タイル列を構築する。
+    /// 自動壁セルを計算する。
+    ///   - 床なし (= floorMask に含まれない)
+    ///   - かつ 8 近傍に少なくとも 1 つ床がある
+    /// マップ範囲は (0..width, 0..height)。
+    def computeWallCells(floorMask: Set[(Int32, Int32)],
+                          width: Int32, height: Int32): Set[(Int32, Int32)] =
+        List.range(0, width * height)
+            |> List.filterMap(idx -> {
+                let col = Int32.remainder(idx, width);
+                let row = idx / width;
+                if (Set.memberOf((col, row), floorMask)) None
+                else if (any8NeighborIsFloor(floorMask, col, row)) Some((col, row))
+                else None
+            })
+            |> List.toSet
+
+    /// 8 近傍 (上下左右 + 斜め) に床が 1 つでもあるか。
+    def any8NeighborIsFloor(floorMask: Set[(Int32, Int32)], col: Int32, row: Int32): Bool =
+        Set.memberOf((col - 1, row - 1), floorMask) or
+        Set.memberOf((col,     row - 1), floorMask) or
+        Set.memberOf((col + 1, row - 1), floorMask) or
+        Set.memberOf((col - 1, row    ), floorMask) or
+        Set.memberOf((col + 1, row    ), floorMask) or
+        Set.memberOf((col - 1, row + 1), floorMask) or
+        Set.memberOf((col,     row + 1), floorMask) or
+        Set.memberOf((col + 1, row + 1), floorMask)
+
+    /// wallCells + Material.wallMap から AutoLayerWalls タイル列を構築する。
     /// `manualCoords` に含まれる (col, row) は manualTiles に上書きされるのでスキップする。
-    def buildAutoLayerTiles(d: MapResource.LevelData, md: MapResource.MaterialData,
+    def buildAutoLayerTiles(wallCells: Set[(Int32, Int32)],
+                              md: MapResource.MaterialData,
                               manualCoords: Set[(Int32, Int32)],
                               tileSizeI: Int32): List[TileData] = {
-        let mask = d#wallMask;
-        let w = d#width;
-        let h = d#height;
-        List.range(0, w * h)
-            |> List.filterMap(idx -> {
-                let col = Int32.remainder(idx, w);
-                let row = idx / w;
-                let isWall = match Vector.nth(idx, mask) {
-                    case Some(v) => v != 0i32
-                    case None    => false
-                };
-                if (not isWall) None
-                else if (Set.memberOf((col, row), manualCoords)) None
+        wallCells
+            |> Set.toList
+            |> List.filterMap(coord -> {
+                let (col, row) = coord;
+                if (Set.memberOf((col, row), manualCoords)) None
                 else {
-                    let key = trblKeyAt(mask, w, h, col, row);
+                    let key = trblKeyAt(wallCells, col, row);
                     match Map.get(key, md#wallMap) {
                         case None              => None
                         case Some((srcX, srcY)) => Some(({
@@ -281,24 +296,13 @@ mod MapLoader {
             })
     }
 
-    /// (col, row) の TRBL 4-bit キー文字列。マップ外は壁扱い。
-    def trblKeyAt(mask: Vector[Int32], width: Int32, height: Int32,
-                   col: Int32, row: Int32): String = {
-        let t = if (neighborIsWall(mask, width, height, col,     row - 1)) "1" else "0";
-        let r = if (neighborIsWall(mask, width, height, col + 1, row    )) "1" else "0";
-        let b = if (neighborIsWall(mask, width, height, col,     row + 1)) "1" else "0";
-        let l = if (neighborIsWall(mask, width, height, col - 1, row    )) "1" else "0";
+    /// (col, row) の TRBL 4-bit キー。隣セルが壁 (wallCells に含まれる) なら 1。
+    /// 壁の連続を辿るので、wallCells の各セルから見た「四方向に壁仲間がいるか」が出る。
+    pub def trblKeyAt(wallCells: Set[(Int32, Int32)], col: Int32, row: Int32): String = {
+        let t = if (Set.memberOf((col,     row - 1), wallCells)) "1" else "0";
+        let r = if (Set.memberOf((col + 1, row    ), wallCells)) "1" else "0";
+        let b = if (Set.memberOf((col,     row + 1), wallCells)) "1" else "0";
+        let l = if (Set.memberOf((col - 1, row    ), wallCells)) "1" else "0";
         t + r + b + l
     }
-
-    def neighborIsWall(mask: Vector[Int32], width: Int32, height: Int32,
-                        col: Int32, row: Int32): Bool =
-        if (col < 0 or col >= width or row < 0 or row >= height) true
-        else {
-            let idx = row * width + col;
-            match Vector.nth(idx, mask) {
-                case Some(v) => v != 0i32
-                case None    => false
-            }
-        }
 }

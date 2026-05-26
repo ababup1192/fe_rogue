@@ -140,16 +140,12 @@ mod JavaFXIdeUI {
         let mapGridCanvas: Canvas = unchecked_cast(mapNs.get("mapGridCanvas") as Canvas);
         Array.put(Some(mapsList), 0, state#widgets#mapsList);
         Array.put(Some(mapGridCanvas), 0, state#widgets#mapGridCanvas);
-        // Layer リスト (Floor/AutoLayerWalls/Walls/Entities) + tile パレット + identifier 入力 + 新規ボタン
+        // Layer リスト (Floor/Walls/Entities) + tile パレット + identifier 入力 + 新規ボタン
         let mapLayerRowFloor: HBox = unchecked_cast(mapNs.get("mapLayerRowFloor") as HBox);
-        let mapLayerRowAutoLayerWalls: HBox =
-            unchecked_cast(mapNs.get("mapLayerRowAutoLayerWalls") as HBox);
         let mapLayerRowWalls: HBox = unchecked_cast(mapNs.get("mapLayerRowWalls") as HBox);
         let mapLayerRowEntities: HBox = unchecked_cast(mapNs.get("mapLayerRowEntities") as HBox);
         let mapLayerVisibleFloor: ToggleButton =
             unchecked_cast(mapNs.get("mapLayerVisibleFloor") as ToggleButton);
-        let mapLayerVisibleAutoLayerWalls: ToggleButton =
-            unchecked_cast(mapNs.get("mapLayerVisibleAutoLayerWalls") as ToggleButton);
         let mapLayerVisibleWalls: ToggleButton =
             unchecked_cast(mapNs.get("mapLayerVisibleWalls") as ToggleButton);
         let mapLayerVisibleEntities: ToggleButton =
@@ -163,13 +159,15 @@ mod JavaFXIdeUI {
             unchecked_cast(mapNs.get("mapPaletteCellWSpinner") as Spinner[Integer]);
         let mapPaletteCellHSpinner: Spinner[Integer] =
             unchecked_cast(mapNs.get("mapPaletteCellHSpinner") as Spinner[Integer]);
+        let mapPaletteMarginXSpinner: Spinner[Integer] =
+            unchecked_cast(mapNs.get("mapPaletteMarginXSpinner") as Spinner[Integer]);
+        let mapPaletteMarginYSpinner: Spinner[Integer] =
+            unchecked_cast(mapNs.get("mapPaletteMarginYSpinner") as Spinner[Integer]);
         let mapEntityIdField: TextField =
             unchecked_cast(mapNs.get("mapEntityIdField") as TextField);
         let mapNewBtn: Button = unchecked_cast(mapNs.get("mapNewBtn") as Button);
         let mapPaletteSection: VBox = unchecked_cast(mapNs.get("mapPaletteSection") as VBox);
         let mapEntitySection: VBox = unchecked_cast(mapNs.get("mapEntitySection") as VBox);
-        let mapAutoLayerWallsSection: VBox =
-            unchecked_cast(mapNs.get("mapAutoLayerWallsSection") as VBox);
         let mapRightTabs: TabPane = unchecked_cast(mapNs.get("mapRightTabs") as TabPane);
         let mapMaterialsLabel: Label =
             unchecked_cast(mapNs.get("mapMaterialsLabel") as Label);
@@ -180,13 +178,9 @@ mod JavaFXIdeUI {
         let mapMaterialsTilesetCanvas: Canvas =
             unchecked_cast(mapNs.get("mapMaterialsTilesetCanvas") as Canvas);
         Array.put(Some(mapLayerRowFloor), 0, state#widgets#mapLayerRowFloor);
-        Array.put(Some(mapLayerRowAutoLayerWalls), 0,
-                  state#widgets#mapLayerRowAutoLayerWalls);
         Array.put(Some(mapLayerRowWalls), 0, state#widgets#mapLayerRowWalls);
         Array.put(Some(mapLayerRowEntities), 0, state#widgets#mapLayerRowEntities);
         Array.put(Some(mapLayerVisibleFloor), 0, state#widgets#mapLayerVisibleFloor);
-        Array.put(Some(mapLayerVisibleAutoLayerWalls), 0,
-                  state#widgets#mapLayerVisibleAutoLayerWalls);
         Array.put(Some(mapLayerVisibleWalls), 0, state#widgets#mapLayerVisibleWalls);
         Array.put(Some(mapLayerVisibleEntities), 0, state#widgets#mapLayerVisibleEntities);
         Array.put(Some(mapPaletteCanvas), 0, state#widgets#mapPaletteCanvas);
@@ -195,11 +189,12 @@ mod JavaFXIdeUI {
         Array.put(Some(mapPaletteTextureCombo), 0, state#widgets#mapPaletteTextureCombo);
         Array.put(Some(mapPaletteCellWSpinner), 0, state#widgets#mapPaletteCellWSpinner);
         Array.put(Some(mapPaletteCellHSpinner), 0, state#widgets#mapPaletteCellHSpinner);
+        Array.put(Some(mapPaletteMarginXSpinner), 0, state#widgets#mapPaletteMarginXSpinner);
+        Array.put(Some(mapPaletteMarginYSpinner), 0, state#widgets#mapPaletteMarginYSpinner);
         Array.put(Some(mapEntityIdField), 0, state#widgets#mapEntityIdField);
         Array.put(Some(mapNewBtn), 0, state#widgets#mapNewBtn);
         Array.put(Some(mapPaletteSection), 0, state#widgets#mapPaletteSection);
         Array.put(Some(mapEntitySection), 0, state#widgets#mapEntitySection);
-        Array.put(Some(mapAutoLayerWallsSection), 0, state#widgets#mapAutoLayerWallsSection);
         Array.put(Some(mapRightTabs), 0, state#widgets#mapRightTabs);
         Array.put(Some(mapMaterialsLabel), 0, state#widgets#mapMaterialsLabel);
         Array.put(Some(mapMaterialsWallMapGrid), 0, state#widgets#mapMaterialsWallMapGrid);

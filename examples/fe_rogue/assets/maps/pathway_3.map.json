@@ -145,6 +145,22 @@
       "y": 5
     }
   ],
+  "editorPalette": {
+    "floor": {
+      "cellH": 16,
+      "cellW": 16,
+      "marginX": 1,
+      "marginY": 1,
+      "textureName": "tilemap_floor"
+    },
+    "walls": {
+      "cellH": 16,
+      "cellW": 16,
+      "marginX": 0,
+      "marginY": 0,
+      "textureName": "inca_tileset"
+    }
+  },
   "entities": [
     {
       "fields": {},
@@ -290,31 +306,5 @@
   ],
   "materialId": "inca_stone",
   "tileSize": 16,
-  "wallMask": [
-    1,
-    1,
-    1,
-    1,
-    1,
-    0,
-    0,
-    1,
-    1,
-    0,
-    0,
-    1,
-    1,
-    0,
-    0,
-    1,
-    1,
-    0,
-    0,
-    1,
-    1,
-    1,
-    1,
-    1
-  ],
   "width": 4
 }

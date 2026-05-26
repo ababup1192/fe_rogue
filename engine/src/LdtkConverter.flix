@@ -46,24 +46,6 @@ mod LdtkConverter {
         let manualTiles = collectLayerTiles("Walls", layerInstances, tileSize);
         let decorTiles  = collectLayerTiles("Floor", layerInstances, tileSize);
 
-        // wallMask: "Walls" 層の intGridCsv を採用
-        let wallMask = match List.find(layer -> {
-            let lo = getObj(layer);
-            match Map.get("__identifier", lo) {
-                case Some(JsonString(s)) => s == "Walls"
-                case _                   => false
-            }
-        }, layerInstances) {
-            case Some(l) =>
-                let lo = getObj(l);
-                match Map.get("intGridCsv", lo) {
-                    case Some(JsonArray(arr)) =>
-                        arr |> Vector.map(getInt)
-                    case _ => emptyVec()
-                }
-            case None => emptyVec()
-        };
-
         // entities: 全 layer の entityInstances を集める
         let entities = List.flatMap(layer -> {
             let layerObj = getObj(layer);
@@ -75,14 +57,14 @@ mod LdtkConverter {
         }, layerInstances);
 
         MapResource.Level.Level(({
-            tileSize    = tileSize,
-            width       = cWid,
-            height      = cHei,
-            materialId  = materialId,
-            wallMask    = wallMask,
-            manualTiles = manualTiles,
-            decorTiles  = decorTiles,
-            entities    = entities
+            tileSize      = tileSize,
+            width         = cWid,
+            height        = cHei,
+            materialId    = materialId,
+            manualTiles   = manualTiles,
+            decorTiles    = decorTiles,
+            entities      = entities,
+            editorPalette = (None: Option[MapResource.EditorPalette])
         }: MapResource.LevelData))
 
     /// 指定した `__identifier` を持つ層の autoLayerTiles を ManualTile のリストにする。
@@ -138,11 +120,6 @@ mod LdtkConverter {
             y          = gy,
             fields     = Map.empty()
         }: MapResource.Entity)
-
-    /// 空の `Vector[Int32]` を作るための helper。Vector.empty が無いので
-    /// 0 件の List 経由で構築する。
-    def emptyVec(): Vector[Int32] =
-        (Nil: List[Int32]) |> List.toVector
 
     // ────────────────────────────────────────────────────────
     // JSON 抽出ヘルパー (LDTKLoader と同じパターン)

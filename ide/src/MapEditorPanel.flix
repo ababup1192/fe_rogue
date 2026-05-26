@@ -18,7 +18,9 @@ mod MapEditorPanel {
     import javafx.scene.control.SpinnerValueFactory
     import javafx.scene.control.SpinnerValueFactory$IntegerSpinnerValueFactory
     import javafx.scene.control.TextField
-    import javafx.scene.control.TextInputDialog
+    import javafx.scene.control.Dialog
+    import javafx.scene.control.DialogPane
+    import javafx.scene.control.ButtonType
     import javafx.scene.control.Label
     import javafx.scene.canvas.Canvas
     import javafx.scene.canvas.GraphicsContext
@@ -58,15 +60,14 @@ mod MapEditorPanel {
             }
         };
         match mode {
-            case MapEditorState.LayerMode.Floor          =>
+            case MapEditorState.LayerMode.Floor    =>
                 Array.put(img, 0, state#widgets#mapFloorImage)
-            case MapEditorState.LayerMode.AutoLayerWalls => ()
-            case MapEditorState.LayerMode.Walls          => {
+            case MapEditorState.LayerMode.Walls    => {
                 Array.put(img, 0, state#widgets#mapWallsImage);
                 // Materials タブの tileset プレビューも Walls 画像を使うので更新
                 drawMaterialsTileset(state)
             }
-            case MapEditorState.LayerMode.Entities       => ()
+            case MapEditorState.LayerMode.Entities => ()
         }
     }
 
@@ -152,7 +153,14 @@ mod MapEditorPanel {
                 let d = MapResource.levelData(level);
                 // 別 Level に切替えたら Undo スタックは古いデータが残っているので捨てる
                 MapEditorState.clearUndoStack(state#mapEditor);
+                // Map 固有の Palette 設定を読み込んで PaletteSettings に積む
+                applyEditorPaletteFromLevel(state, d#editorPalette);
                 loadMaterialForLevel(state, d#materialId);
+                // ComboBox / Spinner と画像キャッシュを Palette 設定に同期
+                loadTilesetImages(state);
+                let mode = MapEditorState.getLayerMode(state#mapEditor);
+                syncPaletteWidgetsForLayer(state, mode);
+                drawPalette(state);
                 redrawCanvas(state);
                 refreshMaterialsTab(state);
                 println("[MapEditor] loaded: ${displayName(absPath)} (${d#width}x${d#height})")
@@ -163,6 +171,7 @@ mod MapEditorPanel {
     /// Level の materialId に対応する Material JSON をロードして state に積む。
     /// パスは <projectRoot>/assets/materials/<id>.material.json。
     /// ファイルが無ければ None を積む (AutoLayerWalls 描画はスキップされる)。
+    /// Palette 設定は Level.editorPalette が優先されるので、ここでは画像のみ反映。
     def loadMaterialForLevel(state: IdeState.IdeState, materialId: String):
             Unit \ {IO, Fs.FileRead} =
         match IdeState.getCurrentProjectRoot(state) {
@@ -183,6 +192,48 @@ mod MapEditorPanel {
             }
         }
 
+    /// Level.editorPalette を MapEditorState.PaletteSettings に反映する。
+    /// `None` ならデフォルト値 (defaultPaletteSettings) を採用 (新規 Level や旧 Level 用)。
+    def applyEditorPaletteFromLevel(state: IdeState.IdeState,
+                                       ep: Option[MapResource.EditorPalette]): Unit \ IO = {
+        let settings: MapEditorState.PaletteSettings = match ep {
+            case None    => MapEditorState.defaultPaletteSettings()
+            case Some(p) => ({
+                floor = toLayerPalette(p#floor),
+                walls = toLayerPalette(p#walls)
+            }: MapEditorState.PaletteSettings)
+        };
+        Array.put(settings, 0, state#mapEditor#paletteSettingsRef)
+    }
+
+    def toLayerPalette(lp: MapResource.EditorLayerPalette): MapEditorState.LayerPalette =
+        ({
+            textureName = lp#textureName,
+            cellW       = lp#cellW,
+            cellH       = lp#cellH,
+            marginX     = lp#marginX,
+            marginY     = lp#marginY
+        }: MapEditorState.LayerPalette)
+
+    /// MapEditorState.PaletteSettings から Level.editorPalette を構築する (save 時に使う)。
+    def buildEditorPaletteForLevel(state: IdeState.IdeState):
+            MapResource.EditorPalette \ IO = {
+        let s = MapEditorState.getPaletteSettings(state#mapEditor);
+        ({
+            floor = fromLayerPalette(s#floor),
+            walls = fromLayerPalette(s#walls)
+        }: MapResource.EditorPalette)
+    }
+
+    def fromLayerPalette(lp: MapEditorState.LayerPalette): MapResource.EditorLayerPalette =
+        ({
+            textureName = lp#textureName,
+            cellW       = lp#cellW,
+            cellH       = lp#cellH,
+            marginX     = lp#marginX,
+            marginY     = lp#marginY
+        }: MapResource.EditorLayerPalette)
+
     /// 編集後に呼ぶ自動保存。editingLevel を selectedLevelPath に書き戻す。
     /// 失敗時は println のみ (Dialog は出さない、ユーザー操作を妨げない)。
     pub def autoSave(state: IdeState.IdeState): Unit \ IO =
@@ -200,13 +251,9 @@ mod MapEditorPanel {
     /// FXML から取得済みの widget は state#widgets から引く。
     pub def wireLayerList(state: IdeState.IdeState): Unit \ IO = {
         wireRowClick(state, state#widgets#mapLayerRowFloor, MapEditorState.LayerMode.Floor);
-        wireRowClick(state, state#widgets#mapLayerRowAutoLayerWalls,
-                       MapEditorState.LayerMode.AutoLayerWalls);
         wireRowClick(state, state#widgets#mapLayerRowWalls, MapEditorState.LayerMode.Walls);
         wireRowClick(state, state#widgets#mapLayerRowEntities, MapEditorState.LayerMode.Entities);
         wireEyeToggle(state, state#widgets#mapLayerVisibleFloor, MapEditorState.LayerMode.Floor);
-        wireEyeToggle(state, state#widgets#mapLayerVisibleAutoLayerWalls,
-                        MapEditorState.LayerMode.AutoLayerWalls);
         wireEyeToggle(state, state#widgets#mapLayerVisibleWalls, MapEditorState.LayerMode.Walls);
         wireEyeToggle(state, state#widgets#mapLayerVisibleEntities, MapEditorState.LayerMode.Entities);
         // 初期 highlight を現 LayerMode と同期 (FXML の静的 styleClass と Flix state の食い違い防止)
@@ -291,8 +338,6 @@ mod MapEditorPanel {
             Unit \ IO = {
         setRowSelected(state#widgets#mapLayerRowFloor,
                        mode == MapEditorState.LayerMode.Floor);
-        setRowSelected(state#widgets#mapLayerRowAutoLayerWalls,
-                       mode == MapEditorState.LayerMode.AutoLayerWalls);
         setRowSelected(state#widgets#mapLayerRowWalls,
                        mode == MapEditorState.LayerMode.Walls);
         setRowSelected(state#widgets#mapLayerRowEntities,
@@ -314,16 +359,15 @@ mod MapEditorPanel {
         }
 
     /// パレット見出し ("Palette (Floor)" 等) を現レイヤーに合わせる。
-    /// AutoLayerWalls / Entities レイヤーはパレット不使用なので明示する。
+    /// Entities レイヤーはパレット不使用なので明示する。
     def updatePaletteLabel(state: IdeState.IdeState, mode: MapEditorState.LayerMode): Unit \ IO =
         match Array.get(0, state#widgets#mapPaletteLabel) {
             case None        => ()
             case Some(label) => {
                 let text = match mode {
-                    case MapEditorState.LayerMode.Floor          => "Palette (Floor)"
-                    case MapEditorState.LayerMode.AutoLayerWalls => "Palette (なし)"
-                    case MapEditorState.LayerMode.Walls          => "Palette (Walls)"
-                    case MapEditorState.LayerMode.Entities       => "Palette (なし)"
+                    case MapEditorState.LayerMode.Floor    => "Palette (Floor)"
+                    case MapEditorState.LayerMode.Walls    => "Palette (Walls)"
+                    case MapEditorState.LayerMode.Entities => "Palette (なし)"
                 };
                 label.setText(text)
             }
@@ -338,17 +382,26 @@ mod MapEditorPanel {
         }
     }
 
+    /// 現 layer の (cellW, cellH, marginX, marginY) を返す。フォールバックは (16,16,0,0)。
+    def currentPaletteCellAndMargin(state: IdeState.IdeState):
+            (Int32, Int32, Int32, Int32) \ IO = {
+        let mode = MapEditorState.getLayerMode(state#mapEditor);
+        match MapEditorState.getPaletteForLayer(state#mapEditor, mode) {
+            case Some(p) => (p#cellW, p#cellH, p#marginX, p#marginY)
+            case None    => (16i32, 16i32, 0i32, 0i32)
+        }
+    }
+
     /// 現在の LayerMode に応じてパレット canvas に tileset PNG を描画する。
     /// Image は per-layer の cache (`mapWallsImage` / `mapFloorImage`) を読み、
-    /// 選択枠は per-layer の cellW × cellH で描く。AutoLayerWalls / Entities は canvas をクリア。
+    /// 選択枠は per-layer の cellW × cellH で描く。Entities は canvas をクリア。
     /// `paletteZoom` を掛けて canvas サイズ・描画サイズ・選択枠を拡縮する (ピンチ操作)。
     pub def drawPalette(state: IdeState.IdeState): Unit \ IO = {
         let mode = MapEditorState.getLayerMode(state#mapEditor);
         let imgOpt = match mode {
-            case MapEditorState.LayerMode.Floor          => Array.get(0, state#widgets#mapFloorImage)
-            case MapEditorState.LayerMode.AutoLayerWalls => None
-            case MapEditorState.LayerMode.Walls          => Array.get(0, state#widgets#mapWallsImage)
-            case MapEditorState.LayerMode.Entities       => None
+            case MapEditorState.LayerMode.Floor    => Array.get(0, state#widgets#mapFloorImage)
+            case MapEditorState.LayerMode.Walls    => Array.get(0, state#widgets#mapWallsImage)
+            case MapEditorState.LayerMode.Entities => None
         };
         let zoom = MapEditorState.getPaletteZoom(state#mapEditor);
         match (Array.get(0, state#widgets#mapPaletteCanvas), imgOpt) {
@@ -386,21 +439,23 @@ mod MapEditorPanel {
     }
 
     /// Palette canvas のクリックで src を選択する handler を 1 度だけ登録する。
-    /// per-layer の cellW × cellH を使って col * cellW, row * cellH を srcX/srcY に換算。
+    /// per-layer の cellW × cellH + marginX × marginY を使ってタイル位置を決める。
     /// ピンチズーム中は canvas が拡縮されているため、event の x/y を zoom で割って画像座標に戻す。
     pub def wirePaletteClick(state: IdeState.IdeState, canvas: Canvas): Unit \ IO = {
         canvas.setOnMouseClicked(new EventHandler[MouseEvent] {
             def handle(_this: EventHandler[MouseEvent], event: MouseEvent): Unit \ IO = {
-                let (cw, ch) = currentPaletteCellSize(state);
+                let (cw, ch, mx, my) = currentPaletteCellAndMargin(state);
                 if (cw <= 0i32 or ch <= 0i32) ()
                 else {
                     let zoom = MapEditorState.getPaletteZoom(state#mapEditor);
                     let imgX = event.getX() / zoom;
                     let imgY = event.getY() / zoom;
-                    let col = Float64.truncateToInt32(imgX / Int32.toFloat64(cw));
-                    let row = Float64.truncateToInt32(imgY / Int32.toFloat64(ch));
-                    let srcX = col * cw;
-                    let srcY = row * ch;
+                    let strideX = cw + mx;
+                    let strideY = ch + my;
+                    let col = Float64.truncateToInt32(imgX / Int32.toFloat64(strideX));
+                    let row = Float64.truncateToInt32(imgY / Int32.toFloat64(strideY));
+                    let srcX = col * strideX;
+                    let srcY = row * strideY;
                     MapEditorState.setSelectedSrc(state#mapEditor, Some((srcX, srcY)));
                     updatePaletteStatus(state, srcX, srcY);
                     drawPalette(state)
@@ -412,9 +467,11 @@ mod MapEditorPanel {
     def updatePaletteStatus(state: IdeState.IdeState, srcX: Int32, srcY: Int32): Unit \ IO =
         match Array.get(0, state#widgets#mapPaletteStatus) {
             case Some(label) => {
-                let (cw, ch) = currentPaletteCellSize(state);
-                let col = if (cw > 0i32) srcX / cw else 0i32;
-                let row = if (ch > 0i32) srcY / ch else 0i32;
+                let (cw, ch, mx, my) = currentPaletteCellAndMargin(state);
+                let strideX = cw + mx;
+                let strideY = ch + my;
+                let col = if (strideX > 0i32) srcX / strideX else 0i32;
+                let row = if (strideY > 0i32) srcY / strideY else 0i32;
                 label.setText("選択中: (${col}, ${row})  src=(${srcX}, ${srcY})")
             }
             case None => ()
@@ -436,6 +493,14 @@ mod MapEditorPanel {
             case Some(sp) => sp.setValueFactory(makeCellSizeFactory(16i32))
             case None     => ()
         };
+        match Array.get(0, state#widgets#mapPaletteMarginXSpinner) {
+            case Some(sp) => sp.setValueFactory(makeMarginFactory(0i32))
+            case None     => ()
+        };
+        match Array.get(0, state#widgets#mapPaletteMarginYSpinner) {
+            case Some(sp) => sp.setValueFactory(makeMarginFactory(0i32))
+            case None     => ()
+        };
         // ComboBox / Spinner の値変化リスナーを配線
         match Array.get(0, state#widgets#mapPaletteTextureCombo) {
             case Some(cb) => wirePaletteTextureCombo(state, cb)
@@ -447,6 +512,14 @@ mod MapEditorPanel {
         };
         match Array.get(0, state#widgets#mapPaletteCellHSpinner) {
             case Some(sp) => wireCellSpinner(state, sp, false)
+            case None     => ()
+        };
+        match Array.get(0, state#widgets#mapPaletteMarginXSpinner) {
+            case Some(sp) => wireMarginSpinner(state, sp, true)
+            case None     => ()
+        };
+        match Array.get(0, state#widgets#mapPaletteMarginYSpinner) {
+            case Some(sp) => wireMarginSpinner(state, sp, false)
             case None     => ()
         };
         // Palette canvas のピンチズーム配線
@@ -476,19 +549,14 @@ mod MapEditorPanel {
         })
     }
 
-    /// 現 LayerMode に応じて右パネルの Palette / Entity / AutoLayerWalls セクションの
-    /// 可視性を切り替える。
-    ///   Entities       → Entity 入力セクション
-    ///   AutoLayerWalls → AutoLayerWalls 注意書きセクション
-    ///   Floor / Walls  → Palette セクション
+    /// 現 LayerMode に応じて右パネルの Palette / Entity セクションの可視性を切り替える。
+    ///   Entities      → Entity 入力セクション
+    ///   Floor / Walls → Palette セクション
     pub def updateSideSection(state: IdeState.IdeState,
                                 mode: MapEditorState.LayerMode): Unit \ IO = {
         let isEntities = mode == MapEditorState.LayerMode.Entities;
-        let isAutoLayerWalls = mode == MapEditorState.LayerMode.AutoLayerWalls;
-        let isPalette = not isEntities and not isAutoLayerWalls;
-        setSectionVisible(state#widgets#mapPaletteSection, isPalette);
-        setSectionVisible(state#widgets#mapEntitySection, isEntities);
-        setSectionVisible(state#widgets#mapAutoLayerWallsSection, isAutoLayerWalls)
+        setSectionVisible(state#widgets#mapPaletteSection, not isEntities);
+        setSectionVisible(state#widgets#mapEntitySection, isEntities)
     }
 
     def setSectionVisible(ref: Array[Option[VBox], Static], visible: Bool): Unit \ IO =
@@ -504,6 +572,13 @@ mod MapEditorPanel {
     /// Cell px の妥当な範囲。super-large な tile は使わない想定。
     def makeCellSizeFactory(initVal: Int32): SpinnerValueFactory[Integer] \ IO = {
         let f = new SpinnerValueFactory$IntegerSpinnerValueFactory(1i32, 256i32, initVal);
+        unchecked_cast(f as SpinnerValueFactory[Integer])
+    }
+
+    /// Margin 用 IntegerSpinnerValueFactory(min=0, max=64, init=initVal)。
+    /// タイル間スペースは 0 が普通、大きくても 8 程度を想定 (上限 64 で余裕)。
+    def makeMarginFactory(initVal: Int32): SpinnerValueFactory[Integer] \ IO = {
+        let f = new SpinnerValueFactory$IntegerSpinnerValueFactory(0i32, 64i32, initVal);
         unchecked_cast(f as SpinnerValueFactory[Integer])
     }
 
@@ -530,7 +605,8 @@ mod MapEditorPanel {
                             };
                             loadImageForLayer(state, mode);
                             drawPalette(state);
-                            redrawCanvas(state)
+                            redrawCanvas(state);
+                            autoSave(state)
                         }
                     }
                 }
@@ -555,7 +631,33 @@ mod MapEditorPanel {
                             let next: MapEditorState.LayerPalette =
                                 if (isWidth) {cellW = v | p} else {cellH = v | p};
                             MapEditorState.setPaletteForLayer(state#mapEditor, mode, next);
-                            drawPalette(state)
+                            drawPalette(state);
+                            autoSave(state)
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    /// Margin Spinner 値変化: 現 layer の marginX / marginY を更新、パレット再描画。
+    def wireMarginSpinner(state: IdeState.IdeState, spinner: Spinner[Integer],
+                            isX: Bool): Unit \ IO = {
+        spinner.valueProperty().addListener(new ChangeListener[Integer] {
+            def changed(_cThis: ChangeListener[Integer], _obs: ObservableValue[JObject],
+                         _old: Integer, newVal: Integer): Unit \ IO = {
+                if (Object.isNull(newVal)) ()
+                else {
+                    let v: Int32 = newVal.intValue();
+                    let mode = MapEditorState.getLayerMode(state#mapEditor);
+                    match MapEditorState.getPaletteForLayer(state#mapEditor, mode) {
+                        case None    => ()
+                        case Some(p) => {
+                            let next: MapEditorState.LayerPalette =
+                                if (isX) {marginX = v | p} else {marginY = v | p};
+                            MapEditorState.setPaletteForLayer(state#mapEditor, mode, next);
+                            drawPalette(state);
+                            autoSave(state)
                         }
                     }
                 }
@@ -581,11 +683,10 @@ mod MapEditorPanel {
 
     /// 指定 layer の Palette 設定で ComboBox / Spinner の表示値を同期する。
     /// JavaFX ChangeListener は value 変化時のみ発火するので、同じ値なら no-op になる。
-    /// AutoLayerWalls / Entities レイヤー時は ComboBox / Spinner を setDisable(true) でグレーアウト。
+    /// Entities レイヤー時は ComboBox / Spinner を setDisable(true) でグレーアウト。
     pub def syncPaletteWidgetsForLayer(state: IdeState.IdeState,
                                           mode: MapEditorState.LayerMode): Unit \ IO = {
-        let disabled = mode == MapEditorState.LayerMode.Entities
-                     or mode == MapEditorState.LayerMode.AutoLayerWalls;
+        let disabled = mode == MapEditorState.LayerMode.Entities;
         match Array.get(0, state#widgets#mapPaletteTextureCombo) {
             case Some(cb) => {
                 cb.setDisable(disabled);
@@ -600,8 +701,27 @@ mod MapEditorPanel {
             case None     => ()
         };
         syncCellSpinner(state, state#widgets#mapPaletteCellWSpinner, mode, true, disabled);
-        syncCellSpinner(state, state#widgets#mapPaletteCellHSpinner, mode, false, disabled)
+        syncCellSpinner(state, state#widgets#mapPaletteCellHSpinner, mode, false, disabled);
+        syncMarginSpinner(state, state#widgets#mapPaletteMarginXSpinner, mode, true, disabled);
+        syncMarginSpinner(state, state#widgets#mapPaletteMarginYSpinner, mode, false, disabled)
     }
+
+    def syncMarginSpinner(state: IdeState.IdeState,
+                            spRef: Array[Option[Spinner[Integer]], Static],
+                            mode: MapEditorState.LayerMode, isX: Bool,
+                            disabled: Bool): Unit \ IO =
+        match Array.get(0, spRef) {
+            case None     => ()
+            case Some(sp) => {
+                sp.setDisable(disabled);
+                match MapEditorState.getPaletteForLayer(state#mapEditor, mode) {
+                    case None    => ()
+                    case Some(p) =>
+                        let v = if (isX) p#marginX else p#marginY;
+                        sp.getValueFactory().setValue(Integer.valueOf(v))
+                }
+            }
+        }
 
     def syncCellSpinner(state: IdeState.IdeState,
                           spRef: Array[Option[Spinner[Integer]], Static],
@@ -633,35 +753,78 @@ mod MapEditorPanel {
         })
     }
 
-    /// 新規 Level 作成 UI フロー。
-    /// 1. TextInputDialog で名前を取得 (ESC キャンセル → 何もしない)
+    /// 新規 Level 作成 UI フロー。Custom Dialog で名前 + 幅 + 高さ + タイルサイズを取得。
+    /// 1. Dialog 表示 (ESC / Cancel → 何もしない)
     /// 2. projectRoot 配下に `assets/maps/{name}.map.json` を作成
     /// 3. 既存ファイルがあれば Alert で警告して中止
-    /// 4. 成功したら levelFilesRef を再 glob して ListView 更新 + 新ファイルを選択
+    /// 4. 成功したら levelFilesRef を再 glob して ListView 更新
     def promptAndCreateNew(state: IdeState.IdeState): Unit \ IO = {
         match IdeState.getCurrentProjectRoot(state) {
-            case None        => showAlert("プロジェクトが開かれていません")
-            case Some(root)  => {
-                let dialog = new TextInputDialog("new_room");
+            case None       => showAlert("プロジェクトが開かれていません")
+            case Some(root) => {
+                let dialog: Dialog[ButtonType] = new Dialog();
                 dialog.setTitle("New Level");
-                dialog.setHeaderText("新 Level の名前を入力");
-                dialog.setContentText("名前 (.map.json は自動付与):");
+                dialog.setHeaderText("新 Level のサイズを入力");
+                let pane = dialog.getDialogPane();
+                let buttonTypes = pane.getButtonTypes();
+                discard buttonTypes.add(ButtonType.OK);
+                discard buttonTypes.add(ButtonType.CANCEL);
+
+                let nameField = new TextField("new_room");
+                let widthSpinner: Spinner[Integer] = new Spinner();
+                widthSpinner.setValueFactory(makeGridSizeFactory(13i32));
+                widthSpinner.setEditable(true);
+                let heightSpinner: Spinner[Integer] = new Spinner();
+                heightSpinner.setValueFactory(makeGridSizeFactory(13i32));
+                heightSpinner.setEditable(true);
+                let tileSizeSpinner: Spinner[Integer] = new Spinner();
+                tileSizeSpinner.setValueFactory(makeCellSizeFactory(16i32));
+                tileSizeSpinner.setEditable(true);
+
+                let grid = new GridPane();
+                grid.setHgap(8.0);
+                grid.setVgap(8.0);
+                grid.add(unchecked_cast(new Label("名前:") as Node),         0i32, 0i32);
+                grid.add(unchecked_cast(nameField as Node),                  1i32, 0i32);
+                grid.add(unchecked_cast(new Label("幅 (タイル数):") as Node),  0i32, 1i32);
+                grid.add(unchecked_cast(widthSpinner as Node),               1i32, 1i32);
+                grid.add(unchecked_cast(new Label("高さ (タイル数):") as Node), 0i32, 2i32);
+                grid.add(unchecked_cast(heightSpinner as Node),              1i32, 2i32);
+                grid.add(unchecked_cast(new Label("タイルサイズ (px):") as Node), 0i32, 3i32);
+                grid.add(unchecked_cast(tileSizeSpinner as Node),            1i32, 3i32);
+                pane.setContent(unchecked_cast(grid as Node));
+
                 let result = dialog.showAndWait();
                 if (result.isPresent()) {
-                    let name = result.get();
-                    if (name == "") showAlert("名前を入力してください")
-                    else createNewAt(state, root, name)
+                    let bt = result.get();
+                    let okBt = ButtonType.OK;
+                    if (okBt.equals(bt)) {
+                        let name = nameField.getText();
+                        let widthV    = widthSpinner.getValue().intValue();
+                        let heightV   = heightSpinner.getValue().intValue();
+                        let tileSize  = tileSizeSpinner.getValue().intValue();
+                        if (Object.isNull(name) or name == "")
+                            showAlert("名前を入力してください")
+                        else createNewAt(state, root, name, widthV, heightV, tileSize)
+                    } else ()
                 } else ()
             }
         }
     }
 
-    def createNewAt(state: IdeState.IdeState, root: String, name: String): Unit \ IO = {
+    /// グリッドサイズ用 IntegerSpinnerValueFactory(min=1, max=256, init=initVal)。
+    def makeGridSizeFactory(initVal: Int32): SpinnerValueFactory[Integer] \ IO = {
+        let f = new SpinnerValueFactory$IntegerSpinnerValueFactory(1i32, 256i32, initVal);
+        unchecked_cast(f as SpinnerValueFactory[Integer])
+    }
+
+    def createNewAt(state: IdeState.IdeState, root: String, name: String,
+                      width: Int32, height: Int32, tileSize: Int32): Unit \ IO = {
         let path = root + "/assets/maps/" + name + ".map.json";
         if (fileExists(path))
             showAlert("ファイルが既に存在します: ${name}.map.json")
         else
-            saveAndRefresh(state, root, path)
+            saveAndRefresh(state, root, path, width, height, tileSize)
     }
 
     /// パスにファイルが存在するか確認する (Fs.FileRead 経由)。
@@ -679,53 +842,46 @@ mod MapEditorPanel {
         } with Fs.ReadFile.runWithFileRead
 
     /// 空 Level を path に保存して ListView を refresh する。
-    def saveAndRefresh(state: IdeState.IdeState, root: String, path: String): Unit \ IO = {
-        let level = buildBlankLevel(13i32, 13i32);
+    def saveAndRefresh(state: IdeState.IdeState, root: String, path: String,
+                         width: Int32, height: Int32, tileSize: Int32): Unit \ IO = {
+        let level = buildBlankLevel(width, height, tileSize);
         let saveResult = run {
             Persistence.save(path, level)
         } with Fs.FileWrite.runWithIO;
         match saveResult {
             case Err(msg) => showAlert("保存失敗: ${msg}")
             case Ok(_)    => {
-                println("[MapEditor] created: ${path}");
+                println("[MapEditor] created: ${path} (${width}x${height}, tileSize=${tileSize})");
                 refreshLevelListAndSelect(state, root, path)
             }
         }
     }
 
-    /// 13×13 デフォルト Level: 外周 wall (wallMask=1 + manualTiles に inca_tileset 壁絵)、
-    /// 内部は空 (Floor は未配置)、entity 無し。
-    /// materialId は "inca_stone" 固定 (Material 概念導入まで)。
-    /// 壁絵は単一の (176, 16) を使用。コーナーの flip 等はユーザーが Walls レイヤーで上書き配置する。
-    def buildBlankLevel(width: Int32, height: Int32): MapResource.Level = {
-        let outerCells = List.range(0, width * height)
-            |> List.filter(i -> {
-                let col = Int32.remainder(i, width);
-                let row = i / width;
-                col == 0 or col == width - 1 or row == 0 or row == height - 1
-            });
-        let mask = List.range(0, width * height)
-            |> List.map(i -> if (List.memberOf(i, outerCells)) 1i32 else 0i32)
-            |> List.toVector;
-        let wallTiles = outerCells
+    /// 指定サイズの空 Level: 全セルに床 (decorTiles)、壁・装飾なし、entity なし。
+    /// 新仕様では「Floor で床を削ると周囲が自動的に壁になる」運用なので、
+    /// 起点として全部床にしておきユーザが内側を削っていく形にする。
+    /// materialId は "inca_stone" 固定、Floor タイルの srcX/srcY は Material.floorPalette の
+    /// 先頭である (0, 0) を採用。
+    def buildBlankLevel(width: Int32, height: Int32, tileSize: Int32): MapResource.Level = {
+        let floorTiles = List.range(0, width * height)
             |> List.map(i -> {
                 let col = Int32.remainder(i, width);
                 let row = i / width;
                 ({
                     x = col, y = row,
-                    srcX = 176i32, srcY = 16i32,
+                    srcX = 0i32, srcY = 0i32,
                     flipH = false, flipV = false
                 }: MapResource.ManualTile)
             });
         let data: MapResource.LevelData = {
-            tileSize    = 16,
-            width       = width,
-            height      = height,
-            materialId  = "inca_stone",
-            wallMask    = mask,
-            manualTiles = wallTiles,
-            decorTiles  = (Nil: List[MapResource.ManualTile]),
-            entities    = (Nil: List[MapResource.Entity])
+            tileSize      = tileSize,
+            width         = width,
+            height        = height,
+            materialId    = "inca_stone",
+            manualTiles   = (Nil: List[MapResource.ManualTile]),
+            decorTiles    = floorTiles,
+            entities      = (Nil: List[MapResource.Entity]),
+            editorPalette = (None: Option[MapResource.EditorPalette])
         };
         MapResource.Level.Level(data)
     }
@@ -748,14 +904,21 @@ mod MapEditorPanel {
 
     /// 現在の editingLevel を selectedLevelPath に書き戻す。
     /// editingLevel が無い or selectedPath が無いときは何もしない。
+    /// 保存時に現在の PaletteSettings を Level.editorPalette として書き込む (Map ごとに分離)。
     def saveCurrent(state: IdeState.IdeState): Unit \ {IO, Fs.FileWrite} =
         match (MapEditorState.getSelectedLevelPath(state#mapEditor),
                MapEditorState.getEditingLevel(state#mapEditor)) {
-            case (Some(path), Some(level)) =>
-                match Persistence.save(path, level) {
+            case (Some(path), Some(level)) => {
+                let d = MapResource.levelData(level);
+                let ep = buildEditorPaletteForLevel(state);
+                let newData: MapResource.LevelData = {editorPalette = Some(ep) | d};
+                let newLevel = MapResource.Level.Level(newData);
+                MapEditorState.setEditingLevel(state#mapEditor, Some(newLevel));
+                match Persistence.save(path, newLevel) {
                     case Ok(_)    => println("[MapEditor] auto-saved: ${displayName(path)}")
                     case Err(msg) => println("[MapEditor] save failed (${displayName(path)}): ${msg}")
                 }
+            }
             case _ => ()
         }
 
@@ -764,7 +927,8 @@ mod MapEditorPanel {
     // ────────────────────────────────────────────────────────
 
     /// Materials サブタブの初期化。GridPane に 4x4 セルを生成し、Tileset Canvas に
-    /// クリック handler を貼る。JavaFXIdeUI.customize から 1 度だけ呼ぶ。
+    /// クリック handler を貼る。タイルサイズ/マージン/ズームは Walls Palette と共有するため
+    /// Materials タブ専用の設定 UI は持たない。JavaFXIdeUI.customize から 1 度だけ呼ぶ。
     pub def initMaterialsTab(state: IdeState.IdeState): Unit \ IO = {
         match Array.get(0, state#widgets#mapMaterialsWallMapGrid) {
             case None       => ()
@@ -878,8 +1042,8 @@ mod MapEditorPanel {
         gc.fillRect(x, y, cs, cs)
     }
 
-    /// Tileset Canvas クリック: 選択中 TRBL に対応する座標を Material.wallMap に書き、
-    /// Material JSON を保存して Map Canvas を再描画する。
+    /// Tileset Canvas クリック: Walls Palette の cellW/cellH/marginX/Y と paletteZoom を使い、
+    /// 選択中タイルの (srcX, srcY) を計算して、選択中 TRBL に割当てて Material を保存。
     def wireMaterialsTilesetClick(state: IdeState.IdeState, canvas: Canvas): Unit \ IO = {
         canvas.setOnMouseClicked(new EventHandler[MouseEvent] {
             def handle(_this: EventHandler[MouseEvent], event: MouseEvent): Unit \ IO = {
@@ -887,25 +1051,43 @@ mod MapEditorPanel {
                 let matOpt = MapEditorState.getEditingMaterial(state#mapEditor);
                 match (trblOpt, matOpt) {
                     case (Some(key), Some(mat)) => {
-                        let md = MapResource.materialData(mat);
-                        let tileSize = md#tileSize;
-                        let col = Float64.truncateToInt32(event.getX() / Int32.toFloat64(tileSize));
-                        let row = Float64.truncateToInt32(event.getY() / Int32.toFloat64(tileSize));
-                        let srcX = col * tileSize;
-                        let srcY = row * tileSize;
-                        let newWallMap = Map.insert(key, (srcX, srcY), md#wallMap);
-                        let newMd: MapResource.MaterialData = {wallMap = newWallMap | md};
-                        let newMat = MapResource.Material.Material(newMd);
-                        MapEditorState.setEditingMaterial(state#mapEditor, Some(newMat));
-                        saveMaterial(state);
-                        refreshMaterialsTab(state);
-                        redrawCanvas(state)
+                        let (cw, ch, mx, my) = wallsPaletteCellAndMargin(state);
+                        let strideX = cw + mx;
+                        let strideY = ch + my;
+                        if (strideX <= 0i32 or strideY <= 0i32) ()
+                        else {
+                            let zoom = MapEditorState.getPaletteZoom(state#mapEditor);
+                            let imgX = event.getX() / zoom;
+                            let imgY = event.getY() / zoom;
+                            let col = Float64.truncateToInt32(imgX / Int32.toFloat64(strideX));
+                            let row = Float64.truncateToInt32(imgY / Int32.toFloat64(strideY));
+                            let srcX = col * strideX;
+                            let srcY = row * strideY;
+                            let md = MapResource.materialData(mat);
+                            let newWallMap = Map.insert(key, (srcX, srcY), md#wallMap);
+                            let newMd: MapResource.MaterialData = {wallMap = newWallMap | md};
+                            let newMat = MapResource.Material.Material(newMd);
+                            MapEditorState.setEditingMaterial(state#mapEditor, Some(newMat));
+                            saveMaterial(state);
+                            refreshMaterialsTab(state);
+                            redrawCanvas(state)
+                        }
                     }
                     case _ => ()
                 }
             }
         })
     }
+
+    /// Walls Palette の (cellW, cellH, marginX, marginY)。未設定時は (16,16,0,0)。
+    /// Materials タブからも参照するため pub にしてある。
+    pub def wallsPaletteCellAndMargin(state: IdeState.IdeState):
+            (Int32, Int32, Int32, Int32) \ IO =
+        match MapEditorState.getPaletteForLayer(state#mapEditor,
+                                                  MapEditorState.LayerMode.Walls) {
+            case Some(p) => (p#cellW, p#cellH, p#marginX, p#marginY)
+            case None    => (16i32, 16i32, 0i32, 0i32)
+        }
 
     /// 編集中 Material を editingMaterialPath に保存する。
     def saveMaterial(state: IdeState.IdeState): Unit \ IO =
@@ -979,29 +1161,45 @@ mod MapEditorPanel {
             }
         }
 
+    /// 選択中 TRBL の意味を Materials タブの Status Label に表示する。
+    /// 未選択時は空欄。
     def updateMaterialsStatus(state: IdeState.IdeState): Unit \ IO =
         match Array.get(0, state#widgets#mapMaterialsStatus) {
             case None        => ()
             case Some(label) => {
-                let text = match (MapEditorState.getSelectedTrbl(state#mapEditor),
-                                  MapEditorState.getEditingMaterial(state#mapEditor)) {
-                    case (Some(key), Some(mat)) => {
-                        let md = MapResource.materialData(mat);
-                        match Map.get(key, md#wallMap) {
-                            case Some((sx, sy)) =>
-                                "TRBL=${key}  src=(${sx}, ${sy})  クリックで割り当てるタイルを選択"
-                            case None           => "TRBL=${key}  未割当"
-                        }
-                    }
-                    case (Some(key), None) => "TRBL=${key}  Material が読み込まれていません"
-                    case (None, _)         => "セル未選択"
+                let text = match MapEditorState.getSelectedTrbl(state#mapEditor) {
+                    case None      => ""
+                    case Some(key) => "${key}: ${trblDescription(key)}"
                 };
                 label.setText(text)
             }
         }
 
-    /// Materials タブの tileset プレビュー Canvas に Walls 用 tileset を描画する。
-    /// 選択中 TRBL に割当てられた座標があれば黄色枠でハイライトする。
+    /// TRBL キーごとのタイル種別の説明文。Materials タブで TRBL セルを選んだ時に表示する。
+    /// 慣習: 1 = その方向が壁、0 = その方向が床 or マップ外 でない空。
+    /// 順序は T (上), R (右), B (下), L (左)。
+    def trblDescription(key: String): String = match key {
+        case "0000" => "孤立した壁 (周囲に壁なし)"
+        case "0001" => "左端 (左にだけ壁が続く)"
+        case "0010" => "上端 (下にだけ壁が続く)"
+        case "0011" => "右上の入隅 (下と左に壁)"
+        case "0100" => "右端 (右にだけ壁が続く)"
+        case "0101" => "横一直線 (左右に壁)"
+        case "0110" => "左上の入隅 (右と下に壁)"
+        case "0111" => "上端 T 字 (上以外に壁)"
+        case "1000" => "下端 (上にだけ壁が続く)"
+        case "1001" => "右下の入隅 (上と左に壁)"
+        case "1010" => "縦一直線 (上下に壁)"
+        case "1011" => "右端 T 字 (右以外に壁)"
+        case "1100" => "左下の入隅 (上と右に壁)"
+        case "1101" => "下端 T 字 (下以外に壁)"
+        case "1110" => "左端 T 字 (左以外に壁)"
+        case "1111" => "壁の中央 (上下左右すべて壁)"
+        case _      => "不明"
+    }
+
+    /// Materials タブの tileset プレビュー Canvas を Walls Palette 設定で描画する。
+    /// paletteZoom 倍率で拡縮、選択中 TRBL の割当タイルを (cellW × cellH) の黄色枠で表示。
     def drawMaterialsTileset(state: IdeState.IdeState): Unit \ IO = {
         let canvasOpt = Array.get(0, state#widgets#mapMaterialsTilesetCanvas);
         let imgOpt = Array.get(0, state#widgets#mapWallsImage);
@@ -1010,6 +1208,7 @@ mod MapEditorPanel {
             case Some(canvas) => {
                 let gc = canvas.getGraphicsContext2D();
                 gc.setImageSmoothing(false);
+                let zoom = MapEditorState.getPaletteZoom(state#mapEditor);
                 match imgOpt {
                     case None      => {
                         gc.clearRect(0.0, 0.0, canvas.getWidth(), canvas.getHeight())
@@ -1017,22 +1216,27 @@ mod MapEditorPanel {
                     case Some(img) => {
                         let iw = img.getWidth();
                         let ih = img.getHeight();
-                        canvas.setWidth(iw);
-                        canvas.setHeight(ih);
-                        gc.clearRect(0.0, 0.0, iw, ih);
-                        gc.drawImage(img, 0.0, 0.0);
-                        // 選択中 TRBL の割当タイルを枠で表示
+                        let dw = iw * zoom;
+                        let dh = ih * zoom;
+                        canvas.setWidth(dw);
+                        canvas.setHeight(dh);
+                        gc.clearRect(0.0, 0.0, dw, dh);
+                        gc.drawImage(img, 0.0, 0.0, iw, ih, 0.0, 0.0, dw, dh);
+                        // 選択中 TRBL の割当タイルを枠で表示 (Walls Palette の cellW × cellH)
                         match (MapEditorState.getSelectedTrbl(state#mapEditor),
                                MapEditorState.getEditingMaterial(state#mapEditor)) {
                             case (Some(key), Some(mat)) => {
                                 let md = MapResource.materialData(mat);
                                 match Map.get(key, md#wallMap) {
                                     case Some((sx, sy)) => {
-                                        let ts = Int32.toFloat64(md#tileSize);
+                                        let (cw, ch, _, _) = wallsPaletteCellAndMargin(state);
+                                        let cwF = Int32.toFloat64(cw);
+                                        let chF = Int32.toFloat64(ch);
                                         gc.setStroke(Color.rgb(255, 230, 60));
                                         gc.setLineWidth(2.0);
-                                        gc.strokeRect(Int32.toFloat64(sx),
-                                                       Int32.toFloat64(sy), ts, ts)
+                                        gc.strokeRect(Int32.toFloat64(sx) * zoom,
+                                                       Int32.toFloat64(sy) * zoom,
+                                                       cwF * zoom, chF * zoom)
                                     }
                                     case None => ()
                                 }

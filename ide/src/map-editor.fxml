@@ -75,8 +75,7 @@
                                        HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
                             </children>
                         </HBox>
-                        <HBox fx:id="mapLayerRowWalls"
-                              styleClass="layer-row,layer-row-selected"
+                        <HBox fx:id="mapLayerRowWalls" styleClass="layer-row"
                               alignment="CENTER_LEFT" spacing="6">
                             <children>
                                 <ToggleButton fx:id="mapLayerVisibleWalls"
@@ -88,20 +87,8 @@
                                        HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
                             </children>
                         </HBox>
-                        <HBox fx:id="mapLayerRowAutoLayerWalls" styleClass="layer-row"
-                              alignment="CENTER_LEFT" spacing="6">
-                            <children>
-                                <ToggleButton fx:id="mapLayerVisibleAutoLayerWalls"
-                                              text="&#x1F440;" selected="true"
-                                              styleClass="layer-eye-btn"
-                                              focusTraversable="false"/>
-                                <Label fx:id="mapLayerNameAutoLayerWalls"
-                                       text="AutoLayerWalls"
-                                       styleClass="layer-name"
-                                       HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
-                            </children>
-                        </HBox>
-                        <HBox fx:id="mapLayerRowFloor" styleClass="layer-row"
+                        <HBox fx:id="mapLayerRowFloor"
+                              styleClass="layer-row,layer-row-selected"
                               alignment="CENTER_LEFT" spacing="6">
                             <children>
                                 <ToggleButton fx:id="mapLayerVisibleFloor"
@@ -157,6 +144,21 @@
                                                         <Label text="px"/>
                                                     </children>
                                                 </HBox>
+                                                <HBox spacing="4"
+                                                      alignment="CENTER_LEFT"
+                                                      styleClass="palette-config-row">
+                                                    <children>
+                                                        <Label text="Margin:"/>
+                                                        <Spinner fx:id="mapPaletteMarginXSpinner"
+                                                                 prefWidth="68"
+                                                                 editable="true"/>
+                                                        <Label text="×"/>
+                                                        <Spinner fx:id="mapPaletteMarginYSpinner"
+                                                                 prefWidth="68"
+                                                                 editable="true"/>
+                                                        <Label text="px"/>
+                                                    </children>
+                                                </HBox>
                                                 <Label fx:id="mapPaletteStatus"
                                                        text="未選択"
                                                        styleClass="map-palette-status"/>
@@ -193,22 +195,6 @@
                                                        styleClass="map-palette-status"/>
                                             </children>
                                         </VBox>
-                                        <!-- AutoLayerWalls 選択中の注意書きセクション (palette 不使用) -->
-                                        <VBox fx:id="mapAutoLayerWallsSection"
-                                              alignment="TOP_CENTER" spacing="4"
-                                              visible="false" managed="false"
-                                              VBox.vgrow="ALWAYS">
-                                            <children>
-                                                <Label text="AutoLayerWalls"
-                                                       styleClass="section-header"/>
-                                                <Label text="左クリックで wallMask=1 (壁), 右クリックで 0 (空)"
-                                                       styleClass="map-palette-status"
-                                                       wrapText="true"/>
-                                                <Label text="タイル絵は Materials タブの wallMap で決まります"
-                                                       styleClass="map-palette-status"
-                                                       wrapText="true"/>
-                                            </children>
-                                        </VBox>
                                     </children>
                                 </VBox>
                             </content>
@@ -221,12 +207,6 @@
                                         <Label fx:id="mapMaterialsLabel"
                                                text="Material: (未選択)"
                                                styleClass="section-header"/>
-                                        <Label text="アイコン: 黄=このセル / 明灰=隣が壁 / 暗=隣が空"
-                                               styleClass="map-palette-status"
-                                               wrapText="true"/>
-                                        <Label text="例: 全部壁(1111)=中央 / 0000=孤立 / 0110=左上コーナー"
-                                               styleClass="map-palette-status"
-                                               wrapText="true"/>
                                         <GridPane fx:id="mapMaterialsWallMapGrid"
                                                   hgap="2" vgap="2"
                                                   alignment="CENTER"/>

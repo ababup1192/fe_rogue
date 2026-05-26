@@ -62,12 +62,10 @@ mod IdeState {
         mapFloorImage                 = Array[Option[Image], Static],
         // Maps タブの Layer リスト行 (HBox) — クリックで選択、styleClass の付け外しで選択 highlight
         mapLayerRowFloor              = Array[Option[HBox], Static],
-        mapLayerRowAutoLayerWalls     = Array[Option[HBox], Static],
         mapLayerRowWalls              = Array[Option[HBox], Static],
         mapLayerRowEntities           = Array[Option[HBox], Static],
         // 各 Layer の visibility 目玉トグル (ToggleButton)
         mapLayerVisibleFloor          = Array[Option[ToggleButton], Static],
-        mapLayerVisibleAutoLayerWalls = Array[Option[ToggleButton], Static],
         mapLayerVisibleWalls          = Array[Option[ToggleButton], Static],
         mapLayerVisibleEntities       = Array[Option[ToggleButton], Static],
         // Maps タブの tile パレット (S15)
@@ -79,11 +77,12 @@ mod IdeState {
         mapPaletteTextureCombo        = Array[Option[ComboBox[String]], Static],
         mapPaletteCellWSpinner        = Array[Option[Spinner[Integer]], Static],
         mapPaletteCellHSpinner        = Array[Option[Spinner[Integer]], Static],
+        // タイル間マージン (タイルセットによってはタイル間に隙間 px がある)
+        mapPaletteMarginXSpinner      = Array[Option[Spinner[Integer]], Static],
+        mapPaletteMarginYSpinner      = Array[Option[Spinner[Integer]], Static],
         // Floor/Walls 用 Palette セクション と Entities 用 Entity Id セクション (visible 切替)
         mapPaletteSection             = Array[Option[VBox], Static],
         mapEntitySection              = Array[Option[VBox], Static],
-        // AutoLayerWalls 選択中の注意書きセクション (palette 不使用)
-        mapAutoLayerWallsSection      = Array[Option[VBox], Static],
         // Maps タブの Entity identifier 入力 (S16)
         mapEntityIdField              = Array[Option[TextField], Static],
         // Maps タブの「+ New」ボタン (S17: 新規 Level 作成)
@@ -238,11 +237,9 @@ mod IdeState {
             mapWallsImage                 = Array#{(None: Option[Image])} @ Static,
             mapFloorImage                 = Array#{(None: Option[Image])} @ Static,
             mapLayerRowFloor              = Array#{(None: Option[HBox])} @ Static,
-            mapLayerRowAutoLayerWalls     = Array#{(None: Option[HBox])} @ Static,
             mapLayerRowWalls              = Array#{(None: Option[HBox])} @ Static,
             mapLayerRowEntities           = Array#{(None: Option[HBox])} @ Static,
             mapLayerVisibleFloor          = Array#{(None: Option[ToggleButton])} @ Static,
-            mapLayerVisibleAutoLayerWalls = Array#{(None: Option[ToggleButton])} @ Static,
             mapLayerVisibleWalls          = Array#{(None: Option[ToggleButton])} @ Static,
             mapLayerVisibleEntities       = Array#{(None: Option[ToggleButton])} @ Static,
             mapPaletteCanvas              = Array#{(None: Option[Canvas])} @ Static,
@@ -251,9 +248,10 @@ mod IdeState {
             mapPaletteTextureCombo        = Array#{(None: Option[ComboBox[String]])} @ Static,
             mapPaletteCellWSpinner        = Array#{(None: Option[Spinner[Integer]])} @ Static,
             mapPaletteCellHSpinner        = Array#{(None: Option[Spinner[Integer]])} @ Static,
+            mapPaletteMarginXSpinner      = Array#{(None: Option[Spinner[Integer]])} @ Static,
+            mapPaletteMarginYSpinner      = Array#{(None: Option[Spinner[Integer]])} @ Static,
             mapPaletteSection             = Array#{(None: Option[VBox])} @ Static,
             mapEntitySection              = Array#{(None: Option[VBox])} @ Static,
-            mapAutoLayerWallsSection      = Array#{(None: Option[VBox])} @ Static,
             mapEntityIdField              = Array#{(None: Option[TextField])} @ Static,
             mapNewBtn                     = Array#{(None: Option[Button])} @ Static,
             mapRightTabs                  = Array#{(None: Option[TabPane])} @ Static,

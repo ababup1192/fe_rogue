@@ -8,33 +8,34 @@
 mod MapEditorState {
 
     /// 編集レイヤーモード。
-    ///   Floor          = decorTiles 配置/消去 (パレット = tilemap_floor)
-    ///   AutoLayerWalls = wallMask の 0/1 トグル。タイル絵は Material.wallMap から自動補完
-    ///   Walls          = manualTiles 配置/消去 のみ (wallMask には触らない、AutoLayerWalls の上書き)
-    ///   Entities       = Entity 配置/削除 (identifier テキスト入力)
+    ///   Floor    = decorTiles 配置/消去 (床)。自動的に床のないセルに壁が立つ
+    ///   Walls    = manualTiles 配置/消去 (自動壁の上書き、衝突は持たない)
+    ///   Entities = Entity 配置/削除 (identifier テキスト入力)
     pub enum LayerMode with Eq, ToString {
         case Floor
-        case AutoLayerWalls
         case Walls
         case Entities
     }
 
     /// 各レイヤーの canvas 上での表示 ON/OFF。
     /// 目玉トグルで切り替え、描画時 (MapGridCanvas.drawLevel) が参照する。
+    /// Walls visibility は「自動壁 + manualTiles 上書き」両方をまとめて制御。
     pub type alias LayerVisibility = {
-        floor          = Bool,
-        autoLayerWalls = Bool,
-        walls          = Bool,
-        entities       = Bool
+        floor    = Bool,
+        walls    = Bool,
+        entities = Bool
     }
 
-    /// 1 レイヤー分の Palette 設定 (SpriteSheet + セル px)。
+    /// 1 レイヤー分の Palette 設定 (SpriteSheet + セル px + 周囲マージン)。
     ///   textureName: ComboBox 選択中の texture 論理名 (None なら何も表示しない)
     ///   cellW/cellH: Palette グリッドの 1 マスの px (Spinner 値)
+    ///   marginX/Y  : タイル間の隙間 px。`col*(cellW+marginX)` のように位置計算に使う
     pub type alias LayerPalette = {
         textureName = Option[String],
         cellW       = Int32,
-        cellH       = Int32
+        cellH       = Int32,
+        marginX     = Int32,
+        marginY     = Int32
     }
 
     /// Floor / Walls 各レイヤーの Palette 設定。Entities は palette を使わない。
@@ -46,8 +47,10 @@ mod MapEditorState {
     /// デフォルト Palette 設定 (Material 概念導入までのハードコード fallback)。
     pub def defaultPaletteSettings(): PaletteSettings =
         {
-            floor = {textureName = Some("tilemap_floor"), cellW = 16, cellH = 16},
-            walls = {textureName = Some("inca_tileset"), cellW = 16, cellH = 16}
+            floor = {textureName = Some("tilemap_floor"), cellW = 16, cellH = 16,
+                      marginX = 0, marginY = 0},
+            walls = {textureName = Some("inca_tileset"), cellW = 16, cellH = 16,
+                      marginX = 0, marginY = 0}
         }
 
     /// Maps モード全体の状態。
@@ -86,7 +89,7 @@ mod MapEditorState {
             levelFilesRef          = Array#{(Nil: List[String])} @ Static,
             selectedLevelPathRef   = Array#{(None: Option[String])} @ Static,
             editingLevelRef        = Array#{(None: Option[MapResource.Level])} @ Static,
-            layerModeRef           = Array#{LayerMode.Walls} @ Static,
+            layerModeRef           = Array#{LayerMode.Floor} @ Static,
             selectedSrcRef         = Array#{(None: Option[(Int32, Int32)])} @ Static,
             layerVisibilityRef     = Array#{allVisible()} @ Static,
             paletteSettingsRef     = Array#{defaultPaletteSettings()} @ Static,
@@ -100,7 +103,7 @@ mod MapEditorState {
 
     /// 全レイヤー visible の初期値。
     pub def allVisible(): LayerVisibility =
-        {floor = true, autoLayerWalls = true, walls = true, entities = true}
+        {floor = true, walls = true, entities = true}
 
     pub def setLevelFiles(state: MapEditorState, files: List[String]): Unit \ IO =
         Array.put(files, 0, state#levelFilesRef)
@@ -139,10 +142,9 @@ mod MapEditorState {
     pub def setLayerVisible(state: MapEditorState, mode: LayerMode, visible: Bool): Unit \ IO = {
         let cur = Array.get(0, state#layerVisibilityRef);
         let next = match mode {
-            case LayerMode.Floor          => {floor          = visible | cur}
-            case LayerMode.AutoLayerWalls => {autoLayerWalls = visible | cur}
-            case LayerMode.Walls          => {walls          = visible | cur}
-            case LayerMode.Entities       => {entities       = visible | cur}
+            case LayerMode.Floor    => {floor    = visible | cur}
+            case LayerMode.Walls    => {walls    = visible | cur}
+            case LayerMode.Entities => {entities = visible | cur}
         };
         Array.put(next, 0, state#layerVisibilityRef)
     }
@@ -150,28 +152,25 @@ mod MapEditorState {
     pub def getPaletteSettings(state: MapEditorState): PaletteSettings \ IO =
         Array.get(0, state#paletteSettingsRef)
 
-    /// 指定 LayerMode の Palette 設定を返す。AutoLayerWalls / Entities は palette を使わないので
-    /// `None` を返す。Walls は manualTiles 上書き用のタイル選択 palette を返す。
+    /// 指定 LayerMode の Palette 設定を返す。Entities は palette を使わないので `None`。
     pub def getPaletteForLayer(state: MapEditorState, mode: LayerMode):
             Option[LayerPalette] \ IO = {
         let cur = Array.get(0, state#paletteSettingsRef);
         match mode {
-            case LayerMode.Floor          => Some(cur#floor)
-            case LayerMode.AutoLayerWalls => None
-            case LayerMode.Walls          => Some(cur#walls)
-            case LayerMode.Entities       => None
+            case LayerMode.Floor    => Some(cur#floor)
+            case LayerMode.Walls    => Some(cur#walls)
+            case LayerMode.Entities => None
         }
     }
 
-    /// 指定 LayerMode の Palette 設定を更新する。AutoLayerWalls / Entities への書き込みは無視。
+    /// 指定 LayerMode の Palette 設定を更新する。Entities への書き込みは無視。
     pub def setPaletteForLayer(state: MapEditorState, mode: LayerMode, p: LayerPalette):
             Unit \ IO = {
         let cur = Array.get(0, state#paletteSettingsRef);
         let next = match mode {
-            case LayerMode.Floor          => {floor = p | cur}
-            case LayerMode.AutoLayerWalls => cur
-            case LayerMode.Walls          => {walls = p | cur}
-            case LayerMode.Entities       => cur
+            case LayerMode.Floor    => {floor = p | cur}
+            case LayerMode.Walls    => {walls = p | cur}
+            case LayerMode.Entities => cur
         };
         Array.put(next, 0, state#paletteSettingsRef)
     }
