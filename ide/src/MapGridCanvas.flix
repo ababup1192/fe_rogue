@@ -123,6 +123,7 @@ mod MapGridCanvas {
                     let newLevel = MapResource.Level.Level(newData);
                     MapEditorState.setEditingLevel(state#mapEditor, Some(newLevel));
                     MapEditorState.setDirty(state#mapEditor, true);
+                    MapEditorPanel.updateDirtyLabel(state);
                     match Array.get(0, state#widgets#mapGridCanvas) {
                         case Some(c) => drawLevel(c, newLevel, cellPx)
                         case None    => ()

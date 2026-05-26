@@ -46,7 +46,10 @@ mod IdeState {
         // Maps タブの Level リスト (S8)
         mapsList                      = Array[Option[ListView[String]], Static],
         // Maps タブの中央 Canvas (S9: grid 線、S10 以降で WallMask / autotile も)
-        mapGridCanvas                 = Array[Option[Canvas], Static]
+        mapGridCanvas                 = Array[Option[Canvas], Static],
+        // Maps タブの保存ボタンと未保存マーカー (S12)
+        mapSaveBtn                    = Array[Option[Button], Static],
+        mapDirtyLabel                 = Array[Option[Label], Static]
     }
 
     /// 描画ループと FX レイヤーを橋渡しする ref 群。
@@ -184,7 +187,9 @@ mod IdeState {
             loadingLabel                  = Array#{(None: Option[Label])} @ Static,
             loadingBar                    = Array#{(None: Option[ProgressBar])} @ Static,
             mapsList                      = Array#{(None: Option[ListView[String]])} @ Static,
-            mapGridCanvas                 = Array#{(None: Option[Canvas])} @ Static
+            mapGridCanvas                 = Array#{(None: Option[Canvas])} @ Static,
+            mapSaveBtn                    = Array#{(None: Option[Button])} @ Static,
+            mapDirtyLabel                 = Array#{(None: Option[Label])} @ Static
         }
 
     def newRuntime(): RuntimeRefs \ IO =

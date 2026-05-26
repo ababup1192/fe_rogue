@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maps タブの中身 (Level リスト + 中央 Canvas + 保存ツールバー)。
+  ide.fxml から <fx:include source="map-editor.fxml"/> でインクルードする。
+  ここで fx:id を付けたノードは親 (ide.fxml) の FXMLLoader.getNamespace() からも
+  解決できる (JavaFX の include 仕様)。
+
+  追加するときは原則: ここに <Node fx:id="..."> を追加 → 振る舞いは Flix (MapEditorPanel)。
+-->
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.canvas.Canvas?>
+
+<SplitPane xmlns:fx="http://javafx.com/fxml" fx:id="mapsSplit" dividerPositions="0.20">
+    <items>
+        <!-- 左: Level リスト (assets/maps/*.map.json) -->
+        <VBox>
+            <children>
+                <Label text="Maps" styleClass="section-header"/>
+                <ListView fx:id="mapsList" VBox.vgrow="ALWAYS"/>
+            </children>
+        </VBox>
+        <!-- 中央/右: ツールバー (保存) + grid 描画 Canvas -->
+        <VBox fx:id="mapEditorPane" alignment="TOP_CENTER" spacing="8">
+            <children>
+                <HBox alignment="CENTER_LEFT" spacing="8" styleClass="map-toolbar">
+                    <children>
+                        <Button fx:id="mapSaveBtn" text="保存"/>
+                        <Label fx:id="mapDirtyLabel" text=""
+                               styleClass="map-dirty-label"/>
+                    </children>
+                </HBox>
+                <Canvas fx:id="mapGridCanvas" width="400" height="400"/>
+            </children>
+        </VBox>
+    </items>
+</SplitPane>

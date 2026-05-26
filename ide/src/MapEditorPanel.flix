@@ -9,8 +9,11 @@
 mod MapEditorPanel {
     import java.lang.{Object => JObject}
     import javafx.scene.control.ListView
+    import javafx.scene.control.Button
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
+    import javafx.event.ActionEvent
+    import javafx.event.EventHandler
 
     /// プロジェクトの assets/maps/*.map.json を絶対パスのリストで返す。
     /// 該当ディレクトリが無い場合は空リスト (エラー扱いはしない)。
@@ -86,8 +89,50 @@ mod MapEditorPanel {
                     case Some(c) =>
                         MapGridCanvas.drawLevel(c, level, MapGridCanvas.defaultCellPx())
                 };
+                // 新規 Level に切替えたら dirty をリセットしてラベル反映
+                MapEditorState.setDirty(state#mapEditor, false);
+                updateDirtyLabel(state);
                 println("[MapEditor] loaded: ${displayName(absPath)} (${d#width}x${d#height})")
             }
         }
     }
+
+    /// dirty 状態を Label に反映する。dirty なら "* 未保存"、clean なら空。
+    /// MapGridCanvas.handleClick (toggle 後) や saveCurrent (保存後) から呼ぶ。
+    pub def updateDirtyLabel(state: IdeState.IdeState): Unit \ IO =
+        match Array.get(0, state#widgets#mapDirtyLabel) {
+            case None        => ()
+            case Some(label) => {
+                let dirty = MapEditorState.isDirty(state#mapEditor);
+                label.setText(if (dirty) "* 未保存" else "")
+            }
+        }
+
+    /// 保存ボタンに ActionEvent handler を登録する。
+    /// クリック時に Persistence.save で `.map.json` を書き戻し、dirty をリセット。
+    pub def wireSaveButton(state: IdeState.IdeState, btn: Button): Unit \ IO = {
+        btn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                run {
+                    saveCurrent(state)
+                } with Fs.FileWrite.runWithIO
+        })
+    }
+
+    /// 現在の editingLevel を selectedLevelPath に書き戻す。
+    /// editingLevel が無い or selectedPath が無いときは何もしない。
+    def saveCurrent(state: IdeState.IdeState): Unit \ {IO, Fs.FileWrite} =
+        match (MapEditorState.getSelectedLevelPath(state#mapEditor),
+               MapEditorState.getEditingLevel(state#mapEditor)) {
+            case (Some(path), Some(level)) =>
+                match Persistence.save(path, level) {
+                    case Ok(_)    => {
+                        MapEditorState.setDirty(state#mapEditor, false);
+                        updateDirtyLabel(state);
+                        println("[MapEditor] saved: ${displayName(path)}")
+                    }
+                    case Err(msg) => println("[MapEditor] save failed (${displayName(path)}): ${msg}")
+                }
+            case _ => ()
+        }
 }

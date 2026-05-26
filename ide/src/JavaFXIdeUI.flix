@@ -24,6 +24,8 @@ mod JavaFXIdeUI {
     import javafx.scene.image.ImageView
     import javafx.scene.image.WritableImage
     import javafx.scene.canvas.Canvas
+    import javafx.scene.control.Tab
+    import javafx.scene.Node
     import javafx.scene.control.Button
     import javafx.scene.control.CheckBox
     import javafx.scene.control.Label
@@ -115,14 +117,28 @@ mod JavaFXIdeUI {
         ResourcePanel.wirePreviewResize(state, resourcePreviewPane);
         ResourcePanel.updateZoomLabel(state);
 
-        // Maps タブの wiring (S8: ListView 選択 → MapEditorState.selectedLevelPathRef を更新)
-        let mapsList: ListView[String] = unchecked_cast(ns.get("mapsList") as ListView[String]);
+        // Maps タブの中身は map-editor.fxml に分離。
+        // fx:include だと inner fx:id が親 namespace から見えないため、別 FXMLLoader で
+        // ロードして Tab.setContent + 専用 namespace から widget を引く。
+        let mapsTab: Tab = unchecked_cast(ns.get("mapsTab") as Tab);
+        let mapFxmlUrl = new File("src/map-editor.fxml").toURI().toURL();
+        let mapLoader = new FXMLLoader(mapFxmlUrl);
+        mapLoader.setClassLoader(probe.getClass().getClassLoader());
+        let mapRootObj: JObject = mapLoader.load();
+        let mapRoot: Node = unchecked_cast(mapRootObj as Node);
+        mapsTab.setContent(mapRoot);
+        let mapNs = mapLoader.getNamespace();
+        let mapsList: ListView[String] = unchecked_cast(mapNs.get("mapsList") as ListView[String]);
+        let mapGridCanvas: Canvas = unchecked_cast(mapNs.get("mapGridCanvas") as Canvas);
+        let mapSaveBtn: Button = unchecked_cast(mapNs.get("mapSaveBtn") as Button);
+        let mapDirtyLabel: Label = unchecked_cast(mapNs.get("mapDirtyLabel") as Label);
         Array.put(Some(mapsList), 0, state#widgets#mapsList);
-        // Maps タブの中央 Canvas (S9: grid 描画)
-        let mapGridCanvas: Canvas = unchecked_cast(ns.get("mapGridCanvas") as Canvas);
         Array.put(Some(mapGridCanvas), 0, state#widgets#mapGridCanvas);
-        // S11: クリックで WallMask toggle (handler は once 登録、handler 内で editingLevel を都度取る)
+        Array.put(Some(mapSaveBtn), 0, state#widgets#mapSaveBtn);
+        Array.put(Some(mapDirtyLabel), 0, state#widgets#mapDirtyLabel);
+        // S8: ListView 選択 / S11: クリックで WallMask toggle / S12: 保存ボタン
         MapGridCanvas.wireClickToggle(state, mapGridCanvas);
+        MapEditorPanel.wireSaveButton(state, mapSaveBtn);
         MapEditorPanel.wireMapSelection(state, mapsList);
 
         // ステータスバー Label を取得
