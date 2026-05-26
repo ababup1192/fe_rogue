@@ -32,6 +32,7 @@ pub type alias MapSnapshot = {
 }
 
 mod MapScene {
+    import java.lang.{System => JSystem}
 
     /// MapScene の TileMapLayer ノードに紐づくデータ。
     /// - `anchorOffset` は modulePaths[0] の正規化後 offsetGrid（負 offset 回避のための shift 量）。
@@ -93,6 +94,16 @@ mod MapScene {
     // (C) 構築
     pub def add(floor: FloorCatalog.FloorResource, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO} =
+        // FE_ROGUE_MODE=map-test のとき、ランダム生成と DungeonComposer をバイパスして
+        // 単一 .map.json (level_0) を MapLoader 経由で描画する。視覚一致確認用。
+        let modeStr = unsafe IO { JSystem.getenv("FE_ROGUE_MODE") };
+        let isMapTest = not Object.isNull(modeStr) and modeStr == "map-test";
+        if (isMapTest) addFromMapJson("assets/maps/level_0.map.json", scene)
+        else           addFromLdtk(floor, scene)
+
+    /// 既存ルート: DungeonGenerator + DungeonComposer で複数モジュールを連結する。
+    def addFromLdtk(floor: FloorCatalog.FloorResource, scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {GameEngine.Game, Fs.FileRead, Math.Random, IO} =
         let plan = DungeonGenerator.generate(textureName(),
                                               generatorConfig(floor#generation#roomCount));
         // LDTK の auto-tile rules を consumer 側で読み込んで渡す
@@ -120,6 +131,63 @@ mod MapScene {
             |> Scene.addNode(name(),
                               EngineNode.TileMapLayerWithState(result#layer, NodeTag.Map(mapData)))
             |> addWorldNode
+
+    /// 新ルート (視覚一致確認用): 単一 .map.json を MapLoader 経由で描画する。
+    /// DungeonComposer は通さない (auto-rule 再評価なし)。
+    /// manualTiles は Walls 層 (inca_tileset)、decorTiles は Floor 層 (tilemap_floor) を別 layer で描画。
+    /// Player/Enemy 配置は最小ダミー (spawnGrid を level 内の安全セルに固定)。
+    pub def addFromMapJson(levelPath: String, scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {GameEngine.Game, Fs.FileRead} =
+        // Walls 層 (manualTiles + collisionCells): loadLevelRaw で raw を取って手動で GPU upload
+        let raw = MapLoader.loadLevelRaw(levelPath, textureName());
+        let instances = LDTKLoader.buildTileInstances(raw#tiles, raw#tileSet, raw#tileSize);
+        let (tileVaoId, tileCount) = GameEngine.Game.initTileBuffer(instances);
+        let wallsLayer = TileMapLayer.make({
+            tileSet        = raw#tileSet,
+            tiles          = raw#tiles,
+            collisionCells = raw#collisionCells,
+            gridSize       = raw#gridSize
+        }) |> TileMapLayer.withGpuResources(tileVaoId, tileCount);
+        // Floor 装飾層 (decorTiles, 別 texture): Walls の下 (zIndex=-1) に重ねる
+        let floorLayer = MapLoader.loadDecorLayer(levelPath, floorTextureName())
+            |> CanvasItem.setZIndex(-1);
+        let gs = raw#gridSize;
+        // 簡易 spawn: (3, 3) が床であることが多い。床でなければ最初の床セルを使う。
+        let safe = findFirstFloor(raw#collisionCells, gs, ({x = 3, y = 3}: {x = Int32, y = Int32}));
+        let mapData: Data = {
+            anchorOffset = ({x = 0, y = 0}: {x = Int32, y = Int32}),
+            spawnGrid    = safe,
+            placements   = ({
+                idx      = 0,
+                offset   = ({x = 0, y = 0}: {x = Int32, y = Int32}),
+                gridSize = gs
+            }: {idx = Int32, offset = {x = Int32, y = Int32}, gridSize = {x = Int32, y = Int32}}) :: Nil,
+            roomCount    = 1
+        };
+        scene
+            |> Scene.addNode(floorName(),
+                              EngineNode.TileMapLayerWithState(floorLayer, NodeTag.NoTag))
+            |> Scene.addNode(name(),
+                              EngineNode.TileMapLayerWithState(wallsLayer, NodeTag.Map(mapData)))
+            |> addWorldNode
+
+    /// `preferred` セルが床ならそれを返し、壁ならグリッド内の最初の床セルを線形探索する。
+    /// 全セル壁の場合は (0,0) を返す (実用上ありえない)。
+    def findFirstFloor(walls: List[Vec2.Vec2],
+                        gridSize: {x = Int32, y = Int32},
+                        preferred: {x = Int32, y = Int32}): {x = Int32, y = Int32} =
+        let isWall = c -> List.exists(w ->
+            Float64.tryToInt32(w#x) == Some(c#x) and
+            Float64.tryToInt32(w#y) == Some(c#y), walls);
+        if (not isWall(preferred)) preferred
+        else {
+            let allCells = List.range(0, gridSize#y) |> List.flatMap(y ->
+                List.range(0, gridSize#x) |> List.map(x -> ({x = x, y = y}: {x = Int32, y = Int32})));
+            match List.find(c -> not isWall(c), allCells) {
+                case Some(c) => c
+                case None    => ({x = 0, y = 0}: {x = Int32, y = Int32})
+            }
+        }
 
     /// World ノード (Player / Enemy 等の Y-sort root) を scene に追加する。
     /// `MapScene.add` から呼ばれる本体内部経路。テストでも最小 scene を組むために流用する。
