@@ -368,7 +368,9 @@ mod MapGridCanvas {
             Option[MapResource.Level] \ IO =
         match MapEditorState.getSelectedSrc(state#mapEditor) {
             case None               => None
-            case Some((srcX, srcY)) => Some(placeWallTileAt(level, d, col, row, srcX, srcY))
+            case Some((srcX, srcY)) =>
+                let placed = placeWallTileAt(level, d, col, row, srcX, srcY);
+                Some(maybeFinalizeTileSize(state, placed, d, MapEditorState.LayerMode.Walls))
         }
 
     def placeFloorWithSelectedSrc(state: IdeState.IdeState, level: MapResource.Level,
@@ -376,8 +378,33 @@ mod MapGridCanvas {
             Option[MapResource.Level] \ IO =
         match MapEditorState.getSelectedSrc(state#mapEditor) {
             case None               => None
-            case Some((srcX, srcY)) => Some(placeFloorTileAt(level, d, col, row, srcX, srcY))
+            case Some((srcX, srcY)) =>
+                let placed = placeFloorTileAt(level, d, col, row, srcX, srcY);
+                Some(maybeFinalizeTileSize(state, placed, d, MapEditorState.LayerMode.Floor))
         }
+
+    /// Floor/Walls いずれかで「これまで何も配置されていなかった Level」に初めて
+    /// タイルを置いたとき、その Palette の cellW を Level.tileSize にコピーして確定する。
+    /// 既にタイルが 1 つでもあった場合は元の tileSize を維持する。
+    /// `prevD` は配置前の LevelData (= 初回判定のソース)、`placed` は配置後の Level。
+    def maybeFinalizeTileSize(state: IdeState.IdeState, placed: MapResource.Level,
+                                prevD: MapResource.LevelData,
+                                mode: MapEditorState.LayerMode): MapResource.Level \ IO = {
+        let wasEmpty = List.isEmpty(prevD#decorTiles) and List.isEmpty(prevD#manualTiles);
+        if (not wasEmpty) {
+            println("[MapEditor] tileSize finalize skip (already has tiles): tileSize=${prevD#tileSize}");
+            placed
+        } else {
+            let cw = match MapEditorState.getPaletteForLayer(state#mapEditor, mode) {
+                case Some(p) => p#cellW
+                case None    => prevD#tileSize
+            };
+            let placedD = MapResource.levelData(placed);
+            println("[MapEditor] tileSize finalized: ${prevD#tileSize} -> ${cw} (mode=${mode}, layer cellW)");
+            let newD: MapResource.LevelData = {tileSize = cw | placedD};
+            MapResource.Level.Level(newD)
+        }
+    }
 
     /// Entities モードでの配置: identifier フィールドのテキストで新 Entity を追加。
     /// 既存セルに Entity があれば置換 (同セル 1 Entity ルール)。

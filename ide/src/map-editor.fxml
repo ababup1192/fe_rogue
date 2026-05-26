@@ -204,9 +204,6 @@
                             <content>
                                 <VBox alignment="TOP_CENTER" spacing="6">
                                     <children>
-                                        <Label fx:id="mapMaterialsLabel"
-                                               text="Material: (未選択)"
-                                               styleClass="section-header"/>
                                         <GridPane fx:id="mapMaterialsWallMapGrid"
                                                   hgap="2" vgap="2"
                                                   alignment="CENTER"/>

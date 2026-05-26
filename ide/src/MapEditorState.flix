@@ -44,12 +44,14 @@ mod MapEditorState {
         walls = LayerPalette
     }
 
-    /// デフォルト Palette 設定 (Material 概念導入までのハードコード fallback)。
+    /// デフォルト Palette 設定。
+    /// 新規 Level・editorPalette 無し Level の起点として、Sheet は未選択で始める
+    /// (ユーザが意識的に Sheet を選んでから配置に進む UX)。
     pub def defaultPaletteSettings(): PaletteSettings =
         {
-            floor = {textureName = Some("tilemap_floor"), cellW = 16, cellH = 16,
+            floor = {textureName = None, cellW = 16, cellH = 16,
                       marginX = 0, marginY = 0},
-            walls = {textureName = Some("inca_tileset"), cellW = 16, cellH = 16,
+            walls = {textureName = None, cellW = 16, cellH = 16,
                       marginX = 0, marginY = 0}
         }
 

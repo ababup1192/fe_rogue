@@ -169,8 +169,6 @@ mod JavaFXIdeUI {
         let mapPaletteSection: VBox = unchecked_cast(mapNs.get("mapPaletteSection") as VBox);
         let mapEntitySection: VBox = unchecked_cast(mapNs.get("mapEntitySection") as VBox);
         let mapRightTabs: TabPane = unchecked_cast(mapNs.get("mapRightTabs") as TabPane);
-        let mapMaterialsLabel: Label =
-            unchecked_cast(mapNs.get("mapMaterialsLabel") as Label);
         let mapMaterialsWallMapGrid: GridPane =
             unchecked_cast(mapNs.get("mapMaterialsWallMapGrid") as GridPane);
         let mapMaterialsStatus: Label =
@@ -196,7 +194,6 @@ mod JavaFXIdeUI {
         Array.put(Some(mapPaletteSection), 0, state#widgets#mapPaletteSection);
         Array.put(Some(mapEntitySection), 0, state#widgets#mapEntitySection);
         Array.put(Some(mapRightTabs), 0, state#widgets#mapRightTabs);
-        Array.put(Some(mapMaterialsLabel), 0, state#widgets#mapMaterialsLabel);
         Array.put(Some(mapMaterialsWallMapGrid), 0, state#widgets#mapMaterialsWallMapGrid);
         Array.put(Some(mapMaterialsStatus), 0, state#widgets#mapMaterialsStatus);
         Array.put(Some(mapMaterialsTilesetCanvas), 0, state#widgets#mapMaterialsTilesetCanvas);

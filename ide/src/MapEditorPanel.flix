@@ -27,6 +27,7 @@ mod MapEditorPanel {
     import javafx.scene.image.Image
     import javafx.scene.input.MouseEvent
     import javafx.scene.input.ZoomEvent
+    import javafx.scene.input.KeyEvent
     import javafx.scene.paint.Color
     import javafx.scene.layout.HBox
     import javafx.scene.layout.VBox
@@ -522,9 +523,9 @@ mod MapEditorPanel {
             case Some(sp) => wireMarginSpinner(state, sp, false)
             case None     => ()
         };
-        // Palette canvas のピンチズーム配線
+        // Palette canvas のピンチズーム配線 (paletteZoom を更新 + Palette/Materials 両方再描画)
         match Array.get(0, state#widgets#mapPaletteCanvas) {
-            case Some(canvas) => wirePaletteZoom(state, canvas)
+            case Some(canvas) => wireTilesetZoom(state, canvas)
             case None         => ()
         };
         // 起動直後の widget 値を現 layer の設定と同期 (Entities なら disable)
@@ -534,19 +535,27 @@ mod MapEditorPanel {
         updateSideSection(state, mode)
     }
 
-    /// Palette canvas にピンチイベント (ZoomEvent) ハンドラを登録する。
+    /// Palette / Materials の tileset Canvas どちらに貼っても良い共通ピンチハンドラ。
     /// macOS trackpad の pinch in/out で `event.getZoomFactor()` (incremental) が来るので、
-    /// 現 zoom に乗算してクランプ → drawPalette で反映。
-    def wirePaletteZoom(state: IdeState.IdeState, canvas: Canvas): Unit \ IO = {
+    /// 現 paletteZoom に乗算してクランプ → Palette と Materials 両方の tileset 表示を再描画。
+    /// 同じ paletteZoom を共有するため、どちらの canvas でピンチしても両方が連動する。
+    def wireTilesetZoom(state: IdeState.IdeState, canvas: Canvas): Unit \ IO = {
         canvas.setOnZoom(new EventHandler[ZoomEvent] {
             def handle(_this: EventHandler[ZoomEvent], event: ZoomEvent): Unit \ IO = {
                 let factor = event.getZoomFactor();
                 let cur = MapEditorState.getPaletteZoom(state#mapEditor);
                 MapEditorState.setPaletteZoom(state#mapEditor, cur * factor);
-                drawPalette(state);
+                redrawAllTilesetViews(state);
                 event.consume()
             }
         })
+    }
+
+    /// Palette / Materials 両方の tileset プレビューを再描画する。
+    /// paletteZoom や Walls Palette の cellW/cellH/marginX/marginY を変更したあとに呼ぶ。
+    pub def redrawAllTilesetViews(state: IdeState.IdeState): Unit \ IO = {
+        drawPalette(state);
+        drawMaterialsTileset(state)
     }
 
     /// 現 LayerMode に応じて右パネルの Palette / Entity セクションの可視性を切り替える。
@@ -584,29 +593,39 @@ mod MapEditorPanel {
 
     /// ComboBox 値変化: 現 layer の Palette 設定を更新し、image cache 再ロード →
     /// パレットと map canvas を再描画。
+    /// setOnAction を使う (ChangeListener だと初回 null → 値の遷移で発火しないケースがある)。
     def wirePaletteTextureCombo(state: IdeState.IdeState, combo: ComboBox[String]): Unit \ IO = {
-        combo.valueProperty().addListener(new ChangeListener[String] {
-            def changed(_cThis: ChangeListener[String], _obs: ObservableValue[JObject],
-                         _old: String, newVal: String): Unit \ IO = {
+        combo.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                let newVal = combo.getValue();
                 if (Object.isNull(newVal)) ()
                 else {
                     let mode = MapEditorState.getLayerMode(state#mapEditor);
                     match MapEditorState.getPaletteForLayer(state#mapEditor, mode) {
                         case None    => ()
                         case Some(p) => {
-                            let next: MapEditorState.LayerPalette =
-                                {textureName = Some(newVal) | p};
-                            MapEditorState.setPaletteForLayer(state#mapEditor, mode, next);
-                            // Sheet が変わったら以前の選択は意味を失うのでクリア
-                            MapEditorState.setSelectedSrc(state#mapEditor, None);
-                            match Array.get(0, state#widgets#mapPaletteStatus) {
-                                case Some(label) => label.setText("未選択")
-                                case None        => ()
+                            // 既に同じ Sheet が選ばれていたら no-op
+                            // (Map 切替 / clearSelection → setValue の連鎖で onAction が空打ちされるのを防ぐ)
+                            let alreadySame = match p#textureName {
+                                case Some(cur) => cur == newVal
+                                case None      => false
                             };
-                            loadImageForLayer(state, mode);
-                            drawPalette(state);
-                            redrawCanvas(state);
-                            autoSave(state)
+                            if (alreadySame) ()
+                            else {
+                                let next: MapEditorState.LayerPalette =
+                                    {textureName = Some(newVal) | p};
+                                MapEditorState.setPaletteForLayer(state#mapEditor, mode, next);
+                                MapEditorState.setSelectedSrc(state#mapEditor, None);
+                                match Array.get(0, state#widgets#mapPaletteStatus) {
+                                    case Some(label) => label.setText("未選択")
+                                    case None        => ()
+                                };
+                                loadImageForLayer(state, mode);
+                                redrawAllTilesetViews(state);
+                                redrawCanvas(state);
+                                autoSave(state);
+                                println("[MapEditor] palette sheet (${mode}) = ${newVal}")
+                            }
                         }
                     }
                 }
@@ -631,7 +650,7 @@ mod MapEditorPanel {
                             let next: MapEditorState.LayerPalette =
                                 if (isWidth) {cellW = v | p} else {cellH = v | p};
                             MapEditorState.setPaletteForLayer(state#mapEditor, mode, next);
-                            drawPalette(state);
+                            redrawAllTilesetViews(state);
                             autoSave(state)
                         }
                     }
@@ -656,7 +675,7 @@ mod MapEditorPanel {
                             let next: MapEditorState.LayerPalette =
                                 if (isX) {marginX = v | p} else {marginY = v | p};
                             MapEditorState.setPaletteForLayer(state#mapEditor, mode, next);
-                            drawPalette(state);
+                            redrawAllTilesetViews(state);
                             autoSave(state)
                         }
                     }
@@ -693,9 +712,9 @@ mod MapEditorPanel {
                 match MapEditorState.getPaletteForLayer(state#mapEditor, mode) {
                     case Some(p) => match p#textureName {
                         case Some(n) => cb.setValue(n)
-                        case None    => ()
+                        case None    => cb.getSelectionModel().clearSelection()
                     }
-                    case None    => ()
+                    case None    => cb.getSelectionModel().clearSelection()
                 }
             }
             case None     => ()
@@ -753,7 +772,8 @@ mod MapEditorPanel {
         })
     }
 
-    /// 新規 Level 作成 UI フロー。Custom Dialog で名前 + 幅 + 高さ + タイルサイズを取得。
+    /// 新規 Level 作成 UI フロー。Custom Dialog で名前 + 幅 + 高さを取得。
+    /// tileSize は空マップから始まり、最初のタイル配置時にその Palette cellW で自動確定する。
     /// 1. Dialog 表示 (ESC / Cancel → 何もしない)
     /// 2. projectRoot 配下に `assets/maps/{name}.map.json` を作成
     /// 3. 既存ファイルがあれば Alert で警告して中止
@@ -777,9 +797,6 @@ mod MapEditorPanel {
                 let heightSpinner: Spinner[Integer] = new Spinner();
                 heightSpinner.setValueFactory(makeGridSizeFactory(13i32));
                 heightSpinner.setEditable(true);
-                let tileSizeSpinner: Spinner[Integer] = new Spinner();
-                tileSizeSpinner.setValueFactory(makeCellSizeFactory(16i32));
-                tileSizeSpinner.setEditable(true);
 
                 let grid = new GridPane();
                 grid.setHgap(8.0);
@@ -790,8 +807,6 @@ mod MapEditorPanel {
                 grid.add(unchecked_cast(widthSpinner as Node),               1i32, 1i32);
                 grid.add(unchecked_cast(new Label("高さ (タイル数):") as Node), 0i32, 2i32);
                 grid.add(unchecked_cast(heightSpinner as Node),              1i32, 2i32);
-                grid.add(unchecked_cast(new Label("タイルサイズ (px):") as Node), 0i32, 3i32);
-                grid.add(unchecked_cast(tileSizeSpinner as Node),            1i32, 3i32);
                 pane.setContent(unchecked_cast(grid as Node));
 
                 let result = dialog.showAndWait();
@@ -802,10 +817,9 @@ mod MapEditorPanel {
                         let name = nameField.getText();
                         let widthV    = widthSpinner.getValue().intValue();
                         let heightV   = heightSpinner.getValue().intValue();
-                        let tileSize  = tileSizeSpinner.getValue().intValue();
                         if (Object.isNull(name) or name == "")
                             showAlert("名前を入力してください")
-                        else createNewAt(state, root, name, widthV, heightV, tileSize)
+                        else createNewAt(state, root, name, widthV, heightV)
                     } else ()
                 } else ()
             }
@@ -819,12 +833,13 @@ mod MapEditorPanel {
     }
 
     def createNewAt(state: IdeState.IdeState, root: String, name: String,
-                      width: Int32, height: Int32, tileSize: Int32): Unit \ IO = {
-        let path = root + "/assets/maps/" + name + ".map.json";
-        if (fileExists(path))
+                      width: Int32, height: Int32): Unit \ IO = {
+        let mapPath = root + "/assets/maps/" + name + ".map.json";
+        let matPath = root + "/assets/materials/" + name + ".material.json";
+        if (fileExists(mapPath))
             showAlert("ファイルが既に存在します: ${name}.map.json")
         else
-            saveAndRefresh(state, root, path, width, height, tileSize)
+            saveAndRefresh(state, root, mapPath, matPath, name, width, height)
     }
 
     /// パスにファイルが存在するか確認する (Fs.FileRead 経由)。
@@ -841,49 +856,60 @@ mod MapEditorPanel {
             }
         } with Fs.ReadFile.runWithFileRead
 
-    /// 空 Level を path に保存して ListView を refresh する。
-    def saveAndRefresh(state: IdeState.IdeState, root: String, path: String,
-                         width: Int32, height: Int32, tileSize: Int32): Unit \ IO = {
-        let level = buildBlankLevel(width, height, tileSize);
+    /// 空 Level + 空 Material をそれぞれ path に保存して ListView を refresh する。
+    /// Map と同名の Material を生成 (materialId = name) して完全分離する。
+    def saveAndRefresh(state: IdeState.IdeState, root: String,
+                         mapPath: String, matPath: String, name: String,
+                         width: Int32, height: Int32): Unit \ IO = {
+        let level = buildBlankLevel(name, width, height);
+        let material = buildBlankMaterial();
         let saveResult = run {
-            Persistence.save(path, level)
+            match Persistence.save(matPath, material) {
+                case Err(msg) => Err(msg)
+                case Ok(_)    => Persistence.save(mapPath, level)
+            }
         } with Fs.FileWrite.runWithIO;
         match saveResult {
             case Err(msg) => showAlert("保存失敗: ${msg}")
             case Ok(_)    => {
-                println("[MapEditor] created: ${path} (${width}x${height}, tileSize=${tileSize})");
-                refreshLevelListAndSelect(state, root, path)
+                println("[MapEditor] created: ${mapPath} (${width}x${height})");
+                println("[MapEditor] created: ${matPath}");
+                refreshLevelListAndSelect(state, root, mapPath)
             }
         }
     }
 
-    /// 指定サイズの空 Level: 全セルに床 (decorTiles)、壁・装飾なし、entity なし。
-    /// 新仕様では「Floor で床を削ると周囲が自動的に壁になる」運用なので、
-    /// 起点として全部床にしておきユーザが内側を削っていく形にする。
-    /// materialId は "inca_stone" 固定、Floor タイルの srcX/srcY は Material.floorPalette の
-    /// 先頭である (0, 0) を採用。
-    def buildBlankLevel(width: Int32, height: Int32, tileSize: Int32): MapResource.Level = {
-        let floorTiles = List.range(0, width * height)
-            |> List.map(i -> {
-                let col = Int32.remainder(i, width);
-                let row = i / width;
-                ({
-                    x = col, y = row,
-                    srcX = 0i32, srcY = 0i32,
-                    flipH = false, flipV = false
-                }: MapResource.ManualTile)
-            });
+    /// 指定サイズの空 Level: タイル無し / 壁無し / entity 無し。
+    /// materialId は `name` (Map 名と同じ) を採用 → assets/materials/{name}.material.json を参照。
+    /// 最初に Floor / Walls どちらかでタイルを置いた瞬間に Palette の cellW が
+    /// `Level.tileSize` に反映される (MapGridCanvas の placeWithSelectedSrc を参照)。
+    /// それまでは仮の tileSize=16 を入れておく。
+    def buildBlankLevel(name: String, width: Int32, height: Int32): MapResource.Level = {
         let data: MapResource.LevelData = {
-            tileSize      = tileSize,
+            tileSize      = 16,
             width         = width,
             height        = height,
-            materialId    = "inca_stone",
+            materialId    = name,
             manualTiles   = (Nil: List[MapResource.ManualTile]),
-            decorTiles    = floorTiles,
+            decorTiles    = (Nil: List[MapResource.ManualTile]),
             entities      = (Nil: List[MapResource.Entity]),
             editorPalette = (None: Option[MapResource.EditorPalette])
         };
         MapResource.Level.Level(data)
+    }
+
+    /// 新規 Map 用の空 Material: wallMap は完全に空 (Map.empty) で、ユーザが Materials タブで
+    /// 1 つずつ確定していく。tileset は仮の "inca_tileset" (Materials タブで Sheet を選び直すと
+    /// その時点で walls Palette の textureName が wallMap への保存に使われる)。
+    def buildBlankMaterial(): MapResource.Material = {
+        let data: MapResource.MaterialData = {
+            tileset      = "inca_tileset",
+            tileSize     = 16,
+            wallMap      = (Map.empty(): Map[String, (Int32, Int32)]),
+            floorPalette = (Nil: List[(Int32, Int32)]),
+            decorPalette = (Nil: List[(Int32, Int32)])
+        };
+        MapResource.Material.Material(data)
     }
 
     /// 新ファイル作成後に levelFilesRef を再 glob し、ListView を更新する。
@@ -936,7 +962,11 @@ mod MapEditorPanel {
         };
         match Array.get(0, state#widgets#mapMaterialsTilesetCanvas) {
             case None         => ()
-            case Some(canvas) => wireMaterialsTilesetClick(state, canvas)
+            case Some(canvas) => {
+                wireMaterialsTilesetClick(state, canvas);
+                // ピンチでも Palette と同じ paletteZoom を更新する (連動)
+                wireTilesetZoom(state, canvas)
+            }
         };
         refreshMaterialsTab(state)
     }
@@ -953,31 +983,66 @@ mod MapEditorPanel {
                 case Some(k) => k
                 case None    => "0000"
             };
-            let cell = makeWallMapCell(state, key);
+            let cell = makeWallMapCell(state, key, grid);
             grid.add(unchecked_cast(cell as Node), c, r)
         }, List.range(0, 16))
     }
 
     /// 1 個の TRBL セル (StackPane + Canvas アイコン + Label) を作る。
     /// Canvas は 3x3 ミニグリッドで TRBL を視覚化 (中央=選択中の壁、隣接 4 方向の壁有無)。
-    /// クリックで selectedTrbl 更新。
-    def makeWallMapCell(state: IdeState.IdeState, key: String): StackPane \ IO = {
+    /// クリックで selectedTrbl 更新 + pane.requestFocus() (BackSpace で解除できるように)。
+    /// `grid` 引数は将来用に残してあるが現在は未使用。
+    def makeWallMapCell(state: IdeState.IdeState, key: String, _grid: GridPane):
+            StackPane \ IO = {
         let pane = new StackPane();
         let iconCanvas = new Canvas(36.0, 36.0);
         drawTrblIcon(iconCanvas, key);
         let label = new Label(key);
         label.setStyle("-fx-text-fill: #ffe; -fx-font-size: 9px;");
+        // 網掛け用 overlay (最前面、確定時に updateWallMapGridHighlight から描画/クリア)
+        let overlay = new Canvas(56.0, 56.0);
+        overlay.setMouseTransparent(true);
         StackPane.setAlignment(unchecked_cast(label as Node), Pos.BOTTOM_CENTER);
         StackPane.setAlignment(unchecked_cast(iconCanvas as Node), Pos.TOP_CENTER);
-        pane.getChildren().add(unchecked_cast(iconCanvas as Node));
-        pane.getChildren().add(unchecked_cast(label as Node));
+        pane.getChildren().add(unchecked_cast(iconCanvas as Node));   // index 0
+        pane.getChildren().add(unchecked_cast(label as Node));        // index 1
+        pane.getChildren().add(unchecked_cast(overlay as Node));      // index 2 (top)
         pane.setPrefSize(56.0, 56.0);
         pane.setMinSize(56.0, 56.0);
         pane.setStyle(cellStyleNormal());
+        // セル自身を focusable にして、クリック後の BackSpace を確実に受け取る
+        pane.setFocusTraversable(true);
         pane.setOnMouseClicked(new EventHandler[MouseEvent] {
             def handle(_this: EventHandler[MouseEvent], _e: MouseEvent): Unit \ IO = {
                 MapEditorState.setSelectedTrbl(state#mapEditor, Some(key));
+                pane.requestFocus();
                 refreshMaterialsTab(state)
+            }
+        });
+        pane.setOnKeyPressed(new EventHandler[KeyEvent] {
+            def handle(_this: EventHandler[KeyEvent], event: KeyEvent): Unit \ IO = {
+                if (event.getCode().toString() == "BACK_SPACE") {
+                    // 1. wallMap からこの key の割り当てを削除 (確定取消)
+                    match MapEditorState.getEditingMaterial(state#mapEditor) {
+                        case None      => ()
+                        case Some(mat) => {
+                            let md = MapResource.materialData(mat);
+                            if (Map.memberOf(key, md#wallMap)) {
+                                let newWallMap = Map.remove(key, md#wallMap);
+                                let newMd: MapResource.MaterialData =
+                                    {wallMap = newWallMap | md};
+                                let newMat = MapResource.Material.Material(newMd);
+                                MapEditorState.setEditingMaterial(state#mapEditor, Some(newMat));
+                                saveMaterial(state);
+                                redrawCanvas(state)
+                            } else ()
+                        }
+                    };
+                    // 2. UI 選択も解除
+                    MapEditorState.setSelectedTrbl(state#mapEditor, None);
+                    refreshMaterialsTab(state);
+                    event.consume()
+                } else ()
             }
         });
         pane
@@ -986,8 +1051,32 @@ mod MapEditorPanel {
     def cellStyleNormal(): String =
         "-fx-background-color: #2b2b30; -fx-border-color: #555; -fx-border-width: 1;"
 
+    /// 未選択 + wallMap に確定タイルあり: 暗背景 + 緑枠 2px
+    /// (網掛けパターンは overlay Canvas で別途最前面に描画する)
+    def cellStyleConfirmed(): String =
+        "-fx-background-color: #2b2b30; -fx-border-color: #50dc64; -fx-border-width: 2; -fx-border-radius: 2;"
+
+    /// 確定済みセル用の網掛けパターンを overlay Canvas 全体に描画する。
+    /// 45° の緑半透明斜線を一定間隔で繰り返す (アイコンや Label より前面に出る)。
+    def drawHatchPattern(canvas: Canvas): Unit \ IO = {
+        let gc = canvas.getGraphicsContext2D();
+        let w = canvas.getWidth();
+        let h = canvas.getHeight();
+        gc.setStroke(Color.rgb(80, 220, 100, 0.45));
+        gc.setLineWidth(1.5);
+        let spacing = 5.0f64;
+        let limit = Float64.tryToInt32((w + h) / spacing)
+                  |> Option.getWithDefault(24i32);
+        List.forEach(i -> {
+            let offset = Int32.toFloat64(i) * spacing;
+            // 左下から右上に向かう斜線群 (range が大きくても Canvas が clip するので OK)
+            gc.strokeLine(offset, 0.0f64, 0.0f64, offset);
+            gc.strokeLine(w, offset, offset, h)
+        }, List.range(0, limit + 4i32))
+    }
+
     def cellStyleSelected(): String =
-        "-fx-background-color: #4d6a8f; -fx-border-color: #ffe63c; -fx-border-width: 2;"
+        "-fx-background-color: #5d8fc7; -fx-border-color: #ffe63c; -fx-border-width: 3; -fx-border-radius: 2; -fx-background-radius: 2;"
 
     /// TRBL アイコンを 3x3 ミニグリッドで描画する。
     ///   中央セル = 選択中の壁 (薄い色)
@@ -1109,36 +1198,21 @@ mod MapEditorPanel {
     /// Materials タブ全体の表示を更新する。Material 名 / セル選択ハイライト / tileset プレビュー。
     /// Level 選択時 / TRBL セル選択時 / wallMap 更新時に呼ぶ。
     pub def refreshMaterialsTab(state: IdeState.IdeState): Unit \ IO = {
-        updateMaterialsLabel(state);
         updateWallMapGridHighlight(state);
         updateMaterialsStatus(state);
         drawMaterialsTileset(state)
     }
 
-    def updateMaterialsLabel(state: IdeState.IdeState): Unit \ IO =
-        match Array.get(0, state#widgets#mapMaterialsLabel) {
-            case None        => ()
-            case Some(label) => {
-                let text = match MapEditorState.getEditingLevel(state#mapEditor) {
-                    case None        => "Material: (未選択)"
-                    case Some(level) =>
-                        let id = MapResource.levelData(level)#materialId;
-                        let suffix = match MapEditorState.getEditingMaterial(state#mapEditor) {
-                            case None    => " (見つかりません)"
-                            case Some(_) => ""
-                        };
-                        "Material: ${id}${suffix}"
-                };
-                label.setText(text)
-            }
-        }
-
-    /// GridPane の各 StackPane を巡って、selectedTrbl のセルだけハイライト色にする。
+    /// GridPane の各 StackPane を巡って 3 状態でスタイル切替:
+    ///   selected   : 黄太枠 + 青背景 (最優先)
+    ///   confirmed  : 緑枠 (wallMap にタイルが割当てられている)
+    ///   normal     : 灰枠 (未割当)
     def updateWallMapGridHighlight(state: IdeState.IdeState): Unit \ IO =
         match Array.get(0, state#widgets#mapMaterialsWallMapGrid) {
             case None       => ()
             case Some(grid) => {
                 let sel = MapEditorState.getSelectedTrbl(state#mapEditor);
+                let matOpt = MapEditorState.getEditingMaterial(state#mapEditor);
                 let keys = MapResource.wallMapKeys() |> List.toVector;
                 let children = grid.getChildren();
                 let n = children.size();
@@ -1154,8 +1228,26 @@ mod MapEditorPanel {
                             case Some(s) => s == key
                             case None    => false
                         };
-                        if (isSelected) pane.setStyle(cellStyleSelected())
-                        else pane.setStyle(cellStyleNormal())
+                        let isConfirmed = match matOpt {
+                            case None      => false
+                            case Some(mat) =>
+                                Map.memberOf(key, MapResource.materialData(mat)#wallMap)
+                        };
+                        if (isSelected)         pane.setStyle(cellStyleSelected())
+                        else if (isConfirmed)   pane.setStyle(cellStyleConfirmed())
+                        else                    pane.setStyle(cellStyleNormal());
+                        // 最前面 overlay (index 2) に網掛け描画 (確定時のみ)
+                        let paneChildren = pane.getChildren();
+                        if (paneChildren.size() >= 3i32) {
+                            let overlayNode = paneChildren.get(2i32);
+                            let overlay: Canvas = unchecked_cast(overlayNode as Canvas);
+                            let gc = overlay.getGraphicsContext2D();
+                            gc.clearRect(0.0f64, 0.0f64,
+                                          overlay.getWidth(), overlay.getHeight());
+                            if (isConfirmed and not isSelected)
+                                drawHatchPattern(overlay)
+                            else ()
+                        } else ()
                     } else ()
                 }, List.range(0, 16))
             }
@@ -1232,7 +1324,9 @@ mod MapEditorPanel {
                                         let (cw, ch, _, _) = wallsPaletteCellAndMargin(state);
                                         let cwF = Int32.toFloat64(cw);
                                         let chF = Int32.toFloat64(ch);
-                                        gc.setStroke(Color.rgb(255, 230, 60));
+                                        // 確定 (wallMap に保存済み) のタイル枠は緑 (細め)
+                                        // — TRBL grid の「選択中 (黄)」との区別のため
+                                        gc.setStroke(Color.rgb(80, 220, 100));
                                         gc.setLineWidth(2.0);
                                         gc.strokeRect(Int32.toFloat64(sx) * zoom,
                                                        Int32.toFloat64(sy) * zoom,

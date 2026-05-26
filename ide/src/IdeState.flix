@@ -89,7 +89,6 @@ mod IdeState {
         mapNewBtn                     = Array[Option[Button], Static],
         // Materials サブタブ (wallMap 編集)
         mapRightTabs                  = Array[Option[TabPane], Static],
-        mapMaterialsLabel             = Array[Option[Label], Static],
         mapMaterialsWallMapGrid       = Array[Option[GridPane], Static],
         mapMaterialsStatus            = Array[Option[Label], Static],
         mapMaterialsTilesetCanvas     = Array[Option[Canvas], Static]
@@ -255,7 +254,6 @@ mod IdeState {
             mapEntityIdField              = Array#{(None: Option[TextField])} @ Static,
             mapNewBtn                     = Array#{(None: Option[Button])} @ Static,
             mapRightTabs                  = Array#{(None: Option[TabPane])} @ Static,
-            mapMaterialsLabel             = Array#{(None: Option[Label])} @ Static,
             mapMaterialsWallMapGrid       = Array#{(None: Option[GridPane])} @ Static,
             mapMaterialsStatus            = Array#{(None: Option[Label])} @ Static,
             mapMaterialsTilesetCanvas     = Array#{(None: Option[Canvas])} @ Static
