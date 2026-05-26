@@ -32,6 +32,7 @@ mod MapEditorPanel {
     import javafx.scene.layout.StackPane
     import javafx.scene.layout.Region
     import javafx.scene.Node
+    import javafx.geometry.Pos
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
     import javafx.event.ActionEvent
@@ -793,13 +794,21 @@ mod MapEditorPanel {
         }, List.range(0, 16))
     }
 
-    /// 1 個の TRBL セル (StackPane + Label) を作る。クリックで selectedTrbl 更新。
+    /// 1 個の TRBL セル (StackPane + Canvas アイコン + Label) を作る。
+    /// Canvas は 3x3 ミニグリッドで TRBL を視覚化 (中央=選択中の壁、隣接 4 方向の壁有無)。
+    /// クリックで selectedTrbl 更新。
     def makeWallMapCell(state: IdeState.IdeState, key: String): StackPane \ IO = {
         let pane = new StackPane();
+        let iconCanvas = new Canvas(36.0, 36.0);
+        drawTrblIcon(iconCanvas, key);
         let label = new Label(key);
-        discard pane.getChildren().add(unchecked_cast(label as Node));
-        pane.setPrefSize(56.0, 32.0);
-        pane.setMinSize(56.0, 32.0);
+        label.setStyle("-fx-text-fill: #ffe; -fx-font-size: 9px;");
+        StackPane.setAlignment(unchecked_cast(label as Node), Pos.BOTTOM_CENTER);
+        StackPane.setAlignment(unchecked_cast(iconCanvas as Node), Pos.TOP_CENTER);
+        pane.getChildren().add(unchecked_cast(iconCanvas as Node));
+        pane.getChildren().add(unchecked_cast(label as Node));
+        pane.setPrefSize(56.0, 56.0);
+        pane.setMinSize(56.0, 56.0);
         pane.setStyle(cellStyleNormal());
         pane.setOnMouseClicked(new EventHandler[MouseEvent] {
             def handle(_this: EventHandler[MouseEvent], _e: MouseEvent): Unit \ IO = {
@@ -815,6 +824,59 @@ mod MapEditorPanel {
 
     def cellStyleSelected(): String =
         "-fx-background-color: #4d6a8f; -fx-border-color: #ffe63c; -fx-border-width: 2;"
+
+    /// TRBL アイコンを 3x3 ミニグリッドで描画する。
+    ///   中央セル = 選択中の壁 (薄い色)
+    ///   T/R/B/L  = key の対応ビットが 1 なら壁色、0 なら空セル色
+    ///   4 隅     = neutral 灰色 (TRBL に出てこない斜め方向)
+    /// 例:
+    ///   "1111" = 中央 + 上下左右の 5 マスが壁 → 壁ブロックの中央
+    ///   "0000" = 中央のみ壁 → 孤立した柱
+    ///   "0110" = 中央 + 右と下が壁     → 左上コーナー
+    def drawTrblIcon(canvas: Canvas, key: String): Unit \ IO = {
+        let gc = canvas.getGraphicsContext2D();
+        let w = canvas.getWidth();
+        let h = canvas.getHeight();
+        let cs = w / 3.0;
+        gc.clearRect(0.0, 0.0, w, h);
+        let t = String.charAt(0, key) == '1';
+        let r = String.charAt(1, key) == '1';
+        let b = String.charAt(2, key) == '1';
+        let l = String.charAt(3, key) == '1';
+        // 4 隅 (灰、neutral)
+        drawIconCell(gc, 0.0, 0.0, cs, IconCell.Corner);
+        drawIconCell(gc, 2.0, 0.0, cs, IconCell.Corner);
+        drawIconCell(gc, 0.0, 2.0, cs, IconCell.Corner);
+        drawIconCell(gc, 2.0, 2.0, cs, IconCell.Corner);
+        // 中央 (常に壁=この TRBL を選択中のセル)
+        drawIconCell(gc, 1.0, 1.0, cs, IconCell.Center);
+        // 上下左右
+        drawIconCell(gc, 1.0, 0.0, cs, if (t) IconCell.Wall else IconCell.Empty);
+        drawIconCell(gc, 2.0, 1.0, cs, if (r) IconCell.Wall else IconCell.Empty);
+        drawIconCell(gc, 1.0, 2.0, cs, if (b) IconCell.Wall else IconCell.Empty);
+        drawIconCell(gc, 0.0, 1.0, cs, if (l) IconCell.Wall else IconCell.Empty)
+    }
+
+    enum IconCell with Eq {
+        case Center    // 中央: 選択中の壁
+        case Wall      // 隣接: 壁あり (キーの bit=1)
+        case Empty     // 隣接: 壁なし (キーの bit=0)
+        case Corner    // 4 隅: neutral
+    }
+
+    def drawIconCell(gc: GraphicsContext, col: Float64, row: Float64, cs: Float64,
+                       kind: IconCell): Unit \ IO = {
+        let x = col * cs;
+        let y = row * cs;
+        let fill = match kind {
+            case IconCell.Center => Color.rgb(255, 230, 60)  // 黄: 選択中
+            case IconCell.Wall   => Color.rgb(180, 180, 200) // 明灰: 壁
+            case IconCell.Empty  => Color.rgb(60, 60, 70)    // 暗: 空セル
+            case IconCell.Corner => Color.rgb(40, 40, 50)    // ほぼ黒: neutral
+        };
+        gc.setFill(fill);
+        gc.fillRect(x, y, cs, cs)
+    }
 
     /// Tileset Canvas クリック: 選択中 TRBL に対応する座標を Material.wallMap に書き、
     /// Material JSON を保存して Map Canvas を再描画する。

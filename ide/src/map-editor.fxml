@@ -221,7 +221,10 @@
                                         <Label fx:id="mapMaterialsLabel"
                                                text="Material: (未選択)"
                                                styleClass="section-header"/>
-                                        <Label text="TRBL パターン (上/右/下/左 の壁有無)"
+                                        <Label text="アイコン: 黄=このセル / 明灰=隣が壁 / 暗=隣が空"
+                                               styleClass="map-palette-status"
+                                               wrapText="true"/>
+                                        <Label text="例: 全部壁(1111)=中央 / 0000=孤立 / 0110=左上コーナー"
                                                styleClass="map-palette-status"
                                                wrapText="true"/>
                                         <GridPane fx:id="mapMaterialsWallMapGrid"
