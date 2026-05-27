@@ -340,6 +340,14 @@ mod MapEditorPanel {
 
     /// 編集中 Level を canvas に再描画する。Level 未選択なら何もしない。
     /// mapZoom を反映するため drawLevel に zoom を渡す。
+    /// 右ペイン TabPane の現アクティブ tab index が `idx` と一致するか。
+    /// widget 未取得や Tab が無い時は false。
+    pub def isRightTabActive(state: IdeState.IdeState, idx: Int32): Bool \ IO =
+        match Array.get(0, state#widgets#mapRightTabs) {
+            case None     => false
+            case Some(tp) => tp.getSelectionModel().getSelectedIndex() == idx
+        }
+
     pub def redrawCanvas(state: IdeState.IdeState): Unit \ IO =
         match (MapEditorState.getEditingLevel(state#mapEditor),
                Array.get(0, state#widgets#mapGridCanvas)) {
@@ -351,7 +359,10 @@ mod MapEditorPanel {
                 let mat = MapEditorState.getEditingMaterial(state#mapEditor);
                 let selTrbl = MapEditorState.getSelectedTrbl(state#mapEditor);
                 let selRange = MapEditorState.getSelectedRange(state#mapEditor);
-                let selRule = MapEditorState.getEditingRuleIndex(state#mapEditor);
+                // Rule の紫プレビューは Rules タブ (index 2) アクティブ時だけ表示
+                let selRule = if (isRightTabActive(state, 2i32))
+                                  MapEditorState.getEditingRuleIndex(state#mapEditor)
+                              else None;
                 MapGridCanvas.drawLevel(canvas, level, MapGridCanvas.defaultCellPx(),
                                           wImg, fImg, vis, zoom, mat, selTrbl, selRange,
                                           selRule)
@@ -1138,7 +1149,26 @@ mod MapEditorPanel {
             }
         };
         initRulesEditor(state);
+        // タブ切替時に Map Canvas を再描画 (Rule 紫プレビュー等を消すため)
+        wireRightTabChange(state);
         refreshMaterialsTab(state)
+    }
+
+    /// 右ペイン TabPane の切替を listen し、Map Canvas を再描画する。
+    /// Rule の紫プレビューは Rules タブ時だけ出すので、タブが変わったら描き直し。
+    def wireRightTabChange(state: IdeState.IdeState): Unit \ IO = {
+        match Array.get(0, state#widgets#mapRightTabs) {
+            case None     => ()
+            case Some(tp) => {
+                let prop = tp.getSelectionModel().selectedIndexProperty();
+                prop.addListener(new ChangeListener[Number] {
+                    def changed(_cThis: ChangeListener[Number],
+                                  _obs: ObservableValue[JObject],
+                                  _old: Number, _newVal: Number): Unit \ IO =
+                        redrawCanvas(state)
+                })
+            }
+        }
     }
 
     /// AutoRule エディタの初期化: ListView 選択、Add/Remove ボタン、Pattern grid、

@@ -939,7 +939,9 @@ mod MapGridCanvas {
                 let mat = MapEditorState.getEditingMaterial(state#mapEditor);
                 let selTrbl = MapEditorState.getSelectedTrbl(state#mapEditor);
                 let selRange = MapEditorState.getSelectedRange(state#mapEditor);
-                let selRule = MapEditorState.getEditingRuleIndex(state#mapEditor);
+                let selRule = if (MapEditorPanel.isRightTabActive(state, 2i32))
+                                  MapEditorState.getEditingRuleIndex(state#mapEditor)
+                              else None;
                 drawLevel(c, level, cellPx, wImg, fImg, vis, zoom, mat, selTrbl, selRange,
                             selRule)
             }
