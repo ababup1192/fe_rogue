@@ -11,6 +11,8 @@ mod MapEditorPanel {
     import java.lang.Integer
     import java.lang.Number
     import java.io.File
+    import java.nio.file.Files
+    import java.nio.file.Paths
     import javafx.scene.control.ListView
     import javafx.scene.control.Button
     import javafx.scene.control.ToggleButton
@@ -18,6 +20,7 @@ mod MapEditorPanel {
     import javafx.scene.control.Spinner
     import javafx.scene.control.SpinnerValueFactory
     import javafx.scene.control.SpinnerValueFactory$IntegerSpinnerValueFactory
+    import javafx.scene.control.MultipleSelectionModel
     import javafx.scene.control.TextField
     import javafx.scene.control.Dialog
     import javafx.scene.control.DialogPane
@@ -153,7 +156,8 @@ mod MapEditorPanel {
                 match Array.get(0, state#widgets#mapGridCanvas) {
                     case Some(c) => MapGridCanvas.clear(c)
                     case None    => ()
-                }
+                };
+                populateSettingsTab(state)
             case Some(level) => {
                 let d = MapResource.levelData(level);
                 // 別 Level に切替えたら Undo スタックは古いデータが残っているので捨てる
@@ -168,6 +172,7 @@ mod MapEditorPanel {
                 drawPalette(state);
                 redrawCanvas(state);
                 refreshMaterialsTab(state);
+                populateSettingsTab(state);
                 println("[MapEditor] loaded: ${displayName(absPath)} (${d#width}x${d#height})")
             }
         }
@@ -932,7 +937,8 @@ mod MapEditorPanel {
         } with Fs.Glob.runWithIO;
         MapEditorState.setLevelFiles(state#mapEditor, mapFiles);
         populateMapList(state);
-        refreshMaterialsTab(state)
+        refreshMaterialsTab(state);
+        populateSettingsTab(state)
     }
 
     /// ファイルを削除する。失敗しても例外を投げず、結果を Bool で返す。
@@ -2250,5 +2256,431 @@ mod MapEditorPanel {
                 }
             }
         }
+    }
+
+    // ────────────────────────────────────────────────────────
+    // Settings サブタブ (マップ名 + サイズ編集)
+    //
+    // - 名前変更時は assets/maps/{name}.map.json と assets/materials/{name}.material.json を
+    //   `Files.move` で追従リネームし、Level.materialId も新名に書き換える。
+    // - サイズ変更時は manualTiles / decorTiles / entities を新範囲でクリップし、
+    //   intGrid を空に戻して MapLoader が次回ロード時に再構築するようにする。
+    // - Apply 1 ボタンで両方を順に適用 (差分のあるものだけ実行)。
+    // - マップ未選択時は全コントロール disable。
+    // ────────────────────────────────────────────────────────
+
+    pub def initSettingsTab(state: IdeState.IdeState): Unit \ IO = {
+        // Width / Height Spinner: 1〜256 の整数 (新規作成 Dialog の makeGridSizeFactory と同じ)
+        match Array.get(0, state#widgets#mapSettingsWidthSpinner) {
+            case None     => ()
+            case Some(sp) => sp.setValueFactory(makeGridSizeFactory(16i32))
+        };
+        match Array.get(0, state#widgets#mapSettingsHeightSpinner) {
+            case None     => ()
+            case Some(sp) => sp.setValueFactory(makeGridSizeFactory(16i32))
+        };
+        // Apply ボタン
+        match Array.get(0, state#widgets#mapSettingsApplyBtn) {
+            case None      => ()
+            case Some(btn) => btn.setOnAction(new EventHandler[ActionEvent] {
+                def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                    onApplySettings(state)
+            })
+        };
+        // Width / Height 変化で resize プレビューを更新
+        wireSettingsSpinner(state, state#widgets#mapSettingsWidthSpinner);
+        wireSettingsSpinner(state, state#widgets#mapSettingsHeightSpinner);
+        // 初期は disable (マップ未選択)
+        setSettingsEnabled(state, false)
+    }
+
+    def wireSettingsSpinner(state: IdeState.IdeState,
+                              spRef: Array[Option[Spinner[Integer]], Static]): Unit \ IO =
+        match Array.get(0, spRef) {
+            case None     => ()
+            case Some(sp) => sp.valueProperty().addListener(new ChangeListener[Integer] {
+                def changed(_cThis: ChangeListener[Integer],
+                             _obs: ObservableValue[JObject],
+                             _old: Integer, newVal: Integer): Unit \ IO =
+                    if (Object.isNull(newVal)) ()
+                    else updateResizePreview(state)
+            })
+        }
+
+    def setSettingsEnabled(state: IdeState.IdeState, enabled: Bool): Unit \ IO = {
+        let disabled = not enabled;
+        match Array.get(0, state#widgets#mapSettingsNameField) {
+            case Some(tf) => tf.setDisable(disabled)
+            case None     => ()
+        };
+        match Array.get(0, state#widgets#mapSettingsWidthSpinner) {
+            case Some(sp) => sp.setDisable(disabled)
+            case None     => ()
+        };
+        match Array.get(0, state#widgets#mapSettingsHeightSpinner) {
+            case Some(sp) => sp.setDisable(disabled)
+            case None     => ()
+        };
+        match Array.get(0, state#widgets#mapSettingsApplyBtn) {
+            case Some(btn) => btn.setDisable(disabled)
+            case None      => ()
+        }
+    }
+
+    /// 現在の selectedLevel と editingLevel から Settings タブのフィールドを再 populate する。
+    /// 未選択 or load 失敗時はフィールドをクリア + disable に戻す。
+    /// `onLevelSelected` (成功/失敗), `deleteMapAndMaterial`, Apply 完了後に呼ぶ。
+    pub def populateSettingsTab(state: IdeState.IdeState): Unit \ IO = {
+        let pathOpt = MapEditorState.getSelectedLevelPath(state#mapEditor);
+        let levelOpt = MapEditorState.getEditingLevel(state#mapEditor);
+        match (pathOpt, levelOpt) {
+            case (Some(path), Some(level)) => {
+                let d = MapResource.levelData(level);
+                let name = stripMapJsonExt(displayName(path));
+                match Array.get(0, state#widgets#mapSettingsNameField) {
+                    case Some(tf) => tf.setText(name)
+                    case None     => ()
+                };
+                match Array.get(0, state#widgets#mapSettingsWidthSpinner) {
+                    case Some(sp) => sp.getValueFactory().setValue(Integer.valueOf(d#width))
+                    case None     => ()
+                };
+                match Array.get(0, state#widgets#mapSettingsHeightSpinner) {
+                    case Some(sp) => sp.getValueFactory().setValue(Integer.valueOf(d#height))
+                    case None     => ()
+                };
+                setSettingsStatus(state, "");
+                setSettingsResizeInfo(state, "");
+                setSettingsEnabled(state, true)
+            }
+            case _ => {
+                match Array.get(0, state#widgets#mapSettingsNameField) {
+                    case Some(tf) => tf.setText("")
+                    case None     => ()
+                };
+                setSettingsStatus(state, "");
+                setSettingsResizeInfo(state, "");
+                setSettingsEnabled(state, false)
+            }
+        }
+    }
+
+    def setSettingsStatus(state: IdeState.IdeState, msg: String): Unit \ IO =
+        match Array.get(0, state#widgets#mapSettingsStatus) {
+            case Some(lbl) => lbl.setText(msg)
+            case None      => ()
+        }
+
+    def setSettingsResizeInfo(state: IdeState.IdeState, msg: String): Unit \ IO =
+        match Array.get(0, state#widgets#mapSettingsResizeInfo) {
+            case Some(lbl) => lbl.setText(msg)
+            case None      => ()
+        }
+
+    /// Spinner 値変化時に「N 個のタイルが削除されます」プレビューを更新する。
+    /// 現 Level と同じサイズなら空文字。
+    def updateResizePreview(state: IdeState.IdeState): Unit \ IO = {
+        match MapEditorState.getEditingLevel(state#mapEditor) {
+            case None        => setSettingsResizeInfo(state, "")
+            case Some(level) => {
+                let d = MapResource.levelData(level);
+                let newW = readSpinnerValue(state#widgets#mapSettingsWidthSpinner, d#width);
+                let newH = readSpinnerValue(state#widgets#mapSettingsHeightSpinner, d#height);
+                if (newW == d#width and newH == d#height)
+                    setSettingsResizeInfo(state, "")
+                else {
+                    let dropped = countTilesToClip(d, newW, newH);
+                    if (dropped == 0i32)
+                        setSettingsResizeInfo(state,
+                            "${d#width}×${d#height} → ${newW}×${newH} (削除なし)")
+                    else
+                        setSettingsResizeInfo(state,
+                            "${d#width}×${d#height} → ${newW}×${newH} で ${dropped} 個のタイル/エンティティが削除されます")
+                }
+            }
+        }
+    }
+
+    def readSpinnerValue(spRef: Array[Option[Spinner[Integer]], Static],
+                            fallback: Int32): Int32 \ IO =
+        match Array.get(0, spRef) {
+            case None     => fallback
+            case Some(sp) => {
+                let v = sp.getValue();
+                if (Object.isNull(v)) fallback else v.intValue()
+            }
+        }
+
+    def countTilesToClip(d: MapResource.LevelData, newW: Int32, newH: Int32): Int32 =
+        countOOBManualTiles(d#manualTiles, newW, newH)
+            + countOOBManualTiles(d#decorTiles, newW, newH)
+            + countOOBEntities(d#entities, newW, newH)
+
+    def countOOBManualTiles(tiles: List[MapResource.ManualTile],
+                              newW: Int32, newH: Int32): Int32 =
+        List.count(t -> t#x >= newW or t#y >= newH, tiles)
+
+    def countOOBEntities(es: List[MapResource.Entity],
+                           newW: Int32, newH: Int32): Int32 =
+        List.count(e -> e#x >= newW or e#y >= newH, es)
+
+    /// 新 LevelData を組み立てる。範囲外の tile/entity は filter で除外し、
+    /// intGrid は空に戻して MapLoader が再構築するようにする。
+    /// tileSize, materialId, editorPalette は引継ぎ。
+    def buildResizedLevelData(d: MapResource.LevelData,
+                                 newW: Int32, newH: Int32): MapResource.LevelData = {
+        let manual2 = List.filter(t -> t#x < newW and t#y < newH, d#manualTiles);
+        let decor2  = List.filter(t -> t#x < newW and t#y < newH, d#decorTiles);
+        let ents2   = List.filter(e -> e#x < newW and e#y < newH, d#entities);
+        {
+            width       = newW,
+            height      = newH,
+            manualTiles = manual2,
+            decorTiles  = decor2,
+            entities    = ents2,
+            intGrid     = (Vector#{}: Vector[Int32])
+            | d
+        }
+    }
+
+    /// 名前のフォーマット検証。空文字、パス区切り文字、ドット、空白を弾く。
+    def validateNewName(name: String): Result[String, Unit] = {
+        let trimmed = String.trim(name);
+        if (trimmed == "")
+            Err("名前を入力してください")
+        else if (String.contains({substr = "/"}, trimmed))
+            Err("名前に '/' は使えません")
+        else if (String.contains({substr = "\\"}, trimmed))
+            Err("名前に '\\' は使えません")
+        else if (String.contains({substr = "."}, trimmed))
+            Err("名前に '.' は使えません")
+        else if (String.contains({substr = " "}, trimmed))
+            Err("名前に空白は使えません")
+        else
+            Ok(())
+    }
+
+    /// Apply ボタンの本体。validate → (必要なら) resize → (必要なら) rename → 再ロード。
+    def onApplySettings(state: IdeState.IdeState): Unit \ IO = {
+        match (IdeState.getCurrentProjectRoot(state),
+               MapEditorState.getSelectedLevelPath(state#mapEditor),
+               MapEditorState.getEditingLevel(state#mapEditor)) {
+            case (Some(root), Some(oldPath), Some(level)) => {
+                let d = MapResource.levelData(level);
+                let oldName = stripMapJsonExt(displayName(oldPath));
+                let rawName = match Array.get(0, state#widgets#mapSettingsNameField) {
+                    case Some(tf) => tf.getText()
+                    case None     => ""
+                };
+                let safeName = if (Object.isNull(rawName)) "" else rawName;
+                let newName = String.trim(safeName);
+                let newW = readSpinnerValue(state#widgets#mapSettingsWidthSpinner, d#width);
+                let newH = readSpinnerValue(state#widgets#mapSettingsHeightSpinner, d#height);
+                applyResizeAndRename(state, root, oldPath, oldName, d, newName, newW, newH)
+            }
+            case _ => setSettingsStatus(state, "マップが選択されていません")
+        }
+    }
+
+    def applyResizeAndRename(state: IdeState.IdeState, root: String,
+                               oldPath: String, oldName: String,
+                               d: MapResource.LevelData,
+                               newName: String, newW: Int32, newH: Int32): Unit \ IO = {
+        let nameChanged = newName != oldName;
+        let sizeChanged = newW != d#width or newH != d#height;
+        if (not nameChanged and not sizeChanged)
+            setSettingsStatus(state, "変更なし")
+        else
+            applyResizeAndRenameDo(state, root, oldPath, oldName, d,
+                                    newName, newW, newH, nameChanged, sizeChanged)
+    }
+
+    def applyResizeAndRenameDo(state: IdeState.IdeState, root: String,
+                                 oldPath: String, oldName: String,
+                                 d: MapResource.LevelData,
+                                 newName: String, newW: Int32, newH: Int32,
+                                 nameChanged: Bool, sizeChanged: Bool): Unit \ IO = {
+        // ── name validation
+        let nameCheck = if (nameChanged) validateNewName(newName) else Ok(());
+        match nameCheck {
+            case Err(msg) => setSettingsStatus(state, msg)
+            case Ok(_) => {
+                // ── shrink confirm
+                let dropped = if (sizeChanged) countTilesToClip(d, newW, newH) else 0i32;
+                let confirmed = if (dropped > 0i32) confirmShrink(dropped) else true;
+                if (not confirmed)
+                    setSettingsStatus(state, "キャンセルしました")
+                else
+                    applyResizeAndRenameCommit(state, root, oldPath, oldName, d,
+                                                newName, newW, newH,
+                                                nameChanged, sizeChanged, dropped)
+            }
+        }
+    }
+
+    def confirmShrink(dropped: Int32): Bool \ IO = {
+        let dialog: Dialog[ButtonType] = new Dialog();
+        dialog.setTitle("Resize Map");
+        dialog.setHeaderText("${dropped} 個のタイル/エンティティが範囲外で削除されます");
+        let pane = dialog.getDialogPane();
+        let buttonTypes = pane.getButtonTypes();
+        discard buttonTypes.add(ButtonType.OK);
+        discard buttonTypes.add(ButtonType.CANCEL);
+        pane.setContentText("続行しますか？ この操作は元に戻せません。");
+        let result = dialog.showAndWait();
+        if (result.isPresent()) {
+            let bt = result.get();
+            let okBt = ButtonType.OK;
+            okBt.equals(bt)
+        } else false
+    }
+
+    def applyResizeAndRenameCommit(state: IdeState.IdeState, root: String,
+                                     oldPath: String, oldName: String,
+                                     d: MapResource.LevelData,
+                                     newName: String, newW: Int32, newH: Int32,
+                                     nameChanged: Bool, sizeChanged: Bool,
+                                     dropped: Int32): Unit \ IO = {
+        // 1) resize → 旧 path に保存
+        if (sizeChanged) applyResize(state, d, newW, newH) else ();
+        // 2) rename
+        if (nameChanged) applyRename(state, root, oldName, newName, newW, newH, sizeChanged, dropped)
+        else applyResizeOnly(state, oldPath, newW, newH, sizeChanged, dropped)
+    }
+
+    def applyResize(state: IdeState.IdeState, d: MapResource.LevelData,
+                       newW: Int32, newH: Int32): Unit \ IO = {
+        let resized = buildResizedLevelData(d, newW, newH);
+        MapEditorState.setEditingLevel(state#mapEditor,
+            Some(MapResource.Level.Level(resized)));
+        MapEditorState.clearUndoStack(state#mapEditor);
+        saveCurrentIO(state)
+    }
+
+    def applyRename(state: IdeState.IdeState, root: String,
+                      oldName: String, newName: String,
+                      newW: Int32, newH: Int32,
+                      sizeChanged: Bool, dropped: Int32): Unit \ IO = {
+        // materialId を newName に更新 → 旧 path に保存 (materialId が新値で書き込まれる)
+        updateMaterialIdAndSave(state, newName);
+        // ファイル移動
+        match renameMapAndMaterialFiles(root, oldName, newName) {
+            case Err(msg) => {
+                // rollback: materialId を旧値に戻して旧 path に保存
+                updateMaterialIdAndSave(state, oldName);
+                setSettingsStatus(state, "リネーム失敗: ${msg}")
+            }
+            case Ok(_) => {
+                let newMapPath = root + "/assets/maps/" + newName + ".map.json";
+                let newMatPath = root + "/assets/materials/" + newName + ".material.json";
+                MapEditorState.setSelectedLevelPath(state#mapEditor, Some(newMapPath));
+                if (fileExists(newMatPath))
+                    MapEditorState.setEditingMaterialPath(state#mapEditor, Some(newMatPath))
+                else ();
+                finalizeRenameAndReload(state, root, newMapPath, newName, newW, newH,
+                                          sizeChanged, dropped)
+            }
+        }
+    }
+
+    def applyResizeOnly(state: IdeState.IdeState, oldPath: String,
+                          newW: Int32, newH: Int32,
+                          sizeChanged: Bool, dropped: Int32): Unit \ IO = {
+        reloadLevelIO(state, oldPath);
+        if (sizeChanged)
+            setSettingsStatus(state,
+                "Resized to ${newW}×${newH} (clipped ${dropped})")
+        else
+            setSettingsStatus(state, "変更なし")
+    }
+
+    /// 現 editingLevel の materialId を引数の値に書き換え、現 selectedPath に保存する。
+    /// rename フローの中で「ファイル移動前に materialId を新名で書き込む」「rollback で旧名に戻す」
+    /// 両方で使う。
+    def updateMaterialIdAndSave(state: IdeState.IdeState, newMaterialId: String): Unit \ IO = {
+        match MapEditorState.getEditingLevel(state#mapEditor) {
+            case None        => ()
+            case Some(level) => {
+                let d = MapResource.levelData(level);
+                let newData: MapResource.LevelData = {materialId = newMaterialId | d};
+                MapEditorState.setEditingLevel(state#mapEditor,
+                    Some(MapResource.Level.Level(newData)));
+                saveCurrentIO(state)
+            }
+        }
+    }
+
+    // ── 1 関数 1 run の原則に従い、effect handler を持つ薄いラッパを切り出す
+    def saveCurrentIO(state: IdeState.IdeState): Unit \ IO =
+        run {
+            saveCurrent(state)
+        } with Fs.FileWrite.runWithIO
+
+    def reloadLevelIO(state: IdeState.IdeState, path: String): Unit \ IO =
+        run {
+            onLevelSelected(state, path)
+        } with Fs.FileRead.runWithIO
+
+    def findMapFilesIO(root: String): List[String] \ IO =
+        run {
+            findMapFiles(root)
+        } with Fs.Glob.runWithIO
+
+    /// assets/maps/{old}.map.json → {new}.map.json と assets/materials/{old}.material.json
+    /// → {new}.material.json をリネームする。事前に target が無いことを確認する。
+    /// material ファイルが元から無い場合は map だけリネームして Ok。
+    /// material 移動失敗時は map を元に戻して Err を返す (best-effort rollback)。
+    def renameMapAndMaterialFiles(root: String, oldName: String,
+                                     newName: String): Result[String, Unit] \ IO = {
+        let oldMapPath = root + "/assets/maps/" + oldName + ".map.json";
+        let oldMatPath = root + "/assets/materials/" + oldName + ".material.json";
+        let newMapPath = root + "/assets/maps/" + newName + ".map.json";
+        let newMatPath = root + "/assets/materials/" + newName + ".material.json";
+        if (fileExists(newMapPath))
+            Err("既に存在します: ${newName}.map.json")
+        else if (fileExists(newMatPath))
+            Err("既に存在します: ${newName}.material.json")
+        else if (not fileExists(oldMapPath))
+            Err("元ファイルが見つかりません: ${oldName}.map.json")
+        else {
+            // map ファイル移動
+            discard Files.move(Paths.get(oldMapPath), Paths.get(newMapPath));
+            // material ファイル (存在すれば) 移動
+            if (fileExists(oldMatPath)) {
+                discard Files.move(Paths.get(oldMatPath), Paths.get(newMatPath));
+                println("[MapEditor] renamed: ${oldName} → ${newName} (map + material)");
+                Ok(())
+            } else {
+                println("[MapEditor] renamed: ${oldName} → ${newName} (map only)");
+                Ok(())
+            }
+        }
+    }
+
+    /// ListView を再 glob → 新名で再ロード → 完了ステータスを表示する。
+    def finalizeRenameAndReload(state: IdeState.IdeState, root: String,
+                                  newMapPath: String, newName: String,
+                                  newW: Int32, newH: Int32,
+                                  sizeChanged: Bool, dropped: Int32): Unit \ IO = {
+        let mapFiles = findMapFilesIO(root);
+        MapEditorState.setLevelFiles(state#mapEditor, mapFiles);
+        populateMapList(state);
+        // ListView の選択を新ファイルに合わせる
+        match Array.get(0, state#widgets#mapsList) {
+            case None     => ()
+            case Some(lv) => {
+                let model: MultipleSelectionModel[String] = lv.getSelectionModel();
+                let items = lv.getItems();
+                let idx = items.indexOf(displayName(newMapPath));
+                if (idx >= 0i32) model.clearAndSelect(idx) else model.clearSelection()
+            }
+        };
+        // intGrid 再構築のために再ロード (新 path から)
+        reloadLevelIO(state, newMapPath);
+        let msg = if (sizeChanged)
+            "Renamed to ${newName} + resized to ${newW}×${newH} (clipped ${dropped})"
+        else
+            "Renamed to ${newName}";
+        setSettingsStatus(state, msg)
     }
 }

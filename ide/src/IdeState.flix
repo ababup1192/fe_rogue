@@ -27,6 +27,7 @@ mod IdeState {
     import javafx.scene.canvas.Canvas
     import javafx.scene.image.Image
     import javafx.scene.control.TabPane
+    import javafx.scene.control.Tab
     import javafx.scene.layout.GridPane
     import javafx.stage.Stage
 
@@ -108,7 +109,16 @@ mod IdeState {
         // Rules タブ専用 tileset Canvas (Rule.srcXY 選択用)
         mapRuleTilesetCanvas          = Array[Option[Canvas], Static],
         // Rule の Pattern サイズ切替 (3×3 / 5×5)
-        mapRuleSizeCombo              = Array[Option[ComboBox[String]], Static]
+        mapRuleSizeCombo              = Array[Option[ComboBox[String]], Static],
+        // Settings サブタブ (map 名 + サイズ編集)
+        mapSettingsTab                = Array[Option[Tab], Static],
+        mapSettingsNameField          = Array[Option[TextField], Static],
+        mapSettingsWidthSpinner       = Array[Option[Spinner[Integer]], Static],
+        mapSettingsHeightSpinner      = Array[Option[Spinner[Integer]], Static],
+        mapSettingsResizeInfo         = Array[Option[Label], Static],
+        mapSettingsRenameWarning      = Array[Option[Label], Static],
+        mapSettingsApplyBtn           = Array[Option[Button], Static],
+        mapSettingsStatus             = Array[Option[Label], Static]
     }
 
     /// 描画ループと FX レイヤーを橋渡しする ref 群。
@@ -285,7 +295,15 @@ mod IdeState {
             mapRulePatternGrid            = Array#{(None: Option[GridPane])} @ Static,
             mapRuleTileLabel              = Array#{(None: Option[Label])} @ Static,
             mapRuleTilesetCanvas          = Array#{(None: Option[Canvas])} @ Static,
-            mapRuleSizeCombo              = Array#{(None: Option[ComboBox[String]])} @ Static
+            mapRuleSizeCombo              = Array#{(None: Option[ComboBox[String]])} @ Static,
+            mapSettingsTab                = Array#{(None: Option[Tab])} @ Static,
+            mapSettingsNameField          = Array#{(None: Option[TextField])} @ Static,
+            mapSettingsWidthSpinner       = Array#{(None: Option[Spinner[Integer]])} @ Static,
+            mapSettingsHeightSpinner      = Array#{(None: Option[Spinner[Integer]])} @ Static,
+            mapSettingsResizeInfo         = Array#{(None: Option[Label])} @ Static,
+            mapSettingsRenameWarning      = Array#{(None: Option[Label])} @ Static,
+            mapSettingsApplyBtn           = Array#{(None: Option[Button])} @ Static,
+            mapSettingsStatus             = Array#{(None: Option[Label])} @ Static
         }
 
     def newRuntime(): RuntimeRefs \ IO =

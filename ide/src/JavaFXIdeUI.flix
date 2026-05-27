@@ -198,6 +198,22 @@ mod JavaFXIdeUI {
             unchecked_cast(mapNs.get("mapRuleTilesetCanvas") as Canvas);
         let mapRuleSizeCombo: ComboBox[String] =
             unchecked_cast(mapNs.get("mapRuleSizeCombo") as ComboBox[String]);
+        let mapSettingsTab: Tab =
+            unchecked_cast(mapNs.get("mapSettingsTab") as Tab);
+        let mapSettingsNameField: TextField =
+            unchecked_cast(mapNs.get("mapSettingsNameField") as TextField);
+        let mapSettingsWidthSpinner: Spinner[Integer] =
+            unchecked_cast(mapNs.get("mapSettingsWidthSpinner") as Spinner[Integer]);
+        let mapSettingsHeightSpinner: Spinner[Integer] =
+            unchecked_cast(mapNs.get("mapSettingsHeightSpinner") as Spinner[Integer]);
+        let mapSettingsResizeInfo: Label =
+            unchecked_cast(mapNs.get("mapSettingsResizeInfo") as Label);
+        let mapSettingsRenameWarning: Label =
+            unchecked_cast(mapNs.get("mapSettingsRenameWarning") as Label);
+        let mapSettingsApplyBtn: Button =
+            unchecked_cast(mapNs.get("mapSettingsApplyBtn") as Button);
+        let mapSettingsStatus: Label =
+            unchecked_cast(mapNs.get("mapSettingsStatus") as Label);
         Array.put(Some(mapLayerRowFloor), 0, state#widgets#mapLayerRowFloor);
         Array.put(Some(mapLayerRowWalls), 0, state#widgets#mapLayerRowWalls);
         Array.put(Some(mapLayerRowEntities), 0, state#widgets#mapLayerRowEntities);
@@ -232,6 +248,14 @@ mod JavaFXIdeUI {
         Array.put(Some(mapRuleTileLabel), 0, state#widgets#mapRuleTileLabel);
         Array.put(Some(mapRuleTilesetCanvas), 0, state#widgets#mapRuleTilesetCanvas);
         Array.put(Some(mapRuleSizeCombo), 0, state#widgets#mapRuleSizeCombo);
+        Array.put(Some(mapSettingsTab), 0, state#widgets#mapSettingsTab);
+        Array.put(Some(mapSettingsNameField), 0, state#widgets#mapSettingsNameField);
+        Array.put(Some(mapSettingsWidthSpinner), 0, state#widgets#mapSettingsWidthSpinner);
+        Array.put(Some(mapSettingsHeightSpinner), 0, state#widgets#mapSettingsHeightSpinner);
+        Array.put(Some(mapSettingsResizeInfo), 0, state#widgets#mapSettingsResizeInfo);
+        Array.put(Some(mapSettingsRenameWarning), 0, state#widgets#mapSettingsRenameWarning);
+        Array.put(Some(mapSettingsApplyBtn), 0, state#widgets#mapSettingsApplyBtn);
+        Array.put(Some(mapSettingsStatus), 0, state#widgets#mapSettingsStatus);
         // Map canvas: クリック・ピンチズーム・Ctrl/Cmd+Z undo を 1 か所で配線
         MapGridCanvas.wireMapCanvas(state, mapGridCanvas);
         MapEditorPanel.wireToolButtons(state, mapToolPencilBtn, mapToolRangeBtn);
@@ -242,6 +266,7 @@ mod JavaFXIdeUI {
         MapEditorPanel.wireDeleteLevelButton(state, mapDeleteBtn);
         MapEditorPanel.wireMapSelection(state, mapsList);
         MapEditorPanel.initMaterialsTab(state);
+        MapEditorPanel.initSettingsTab(state);
 
         // ステータスバー Label を取得
         let statusScene:     Label = unchecked_cast(ns.get("statusScene") as Label);

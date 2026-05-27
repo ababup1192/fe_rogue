@@ -320,6 +320,53 @@
                                 </VBox>
                             </content>
                         </Tab>
+                        <!-- Settings タブ: マップ名 (関連ファイル名追従) と サイズ (width × height) を編集 -->
+                        <Tab fx:id="mapSettingsTab" text="Settings">
+                            <content>
+                                <VBox alignment="TOP_CENTER" spacing="6"
+                                      styleClass="auto-layer-tab-content">
+                                    <padding>
+                                        <Insets top="8" right="8" bottom="8" left="8"/>
+                                    </padding>
+                                    <children>
+                                        <HBox spacing="4" alignment="CENTER_LEFT">
+                                            <children>
+                                                <Label text="Name:"/>
+                                                <TextField fx:id="mapSettingsNameField"
+                                                           maxWidth="Infinity"
+                                                           HBox.hgrow="ALWAYS"/>
+                                            </children>
+                                        </HBox>
+                                        <HBox spacing="4" alignment="CENTER_LEFT">
+                                            <children>
+                                                <Label text="Size (tiles):"/>
+                                                <Spinner fx:id="mapSettingsWidthSpinner"
+                                                         prefWidth="80" editable="true"/>
+                                                <Label text="×"/>
+                                                <Spinner fx:id="mapSettingsHeightSpinner"
+                                                         prefWidth="80" editable="true"/>
+                                            </children>
+                                        </HBox>
+                                        <Label fx:id="mapSettingsResizeInfo" text=""
+                                               styleClass="map-palette-status"
+                                               wrapText="true"/>
+                                        <Label fx:id="mapSettingsRenameWarning"
+                                               text="注意: ゲームコード (例: scenes/MapScene.flix) は map 名をハードコードしている場合があります。リネーム後は参照先を手動で更新してください。"
+                                               styleClass="map-palette-status"
+                                               wrapText="true"/>
+                                        <HBox spacing="4" alignment="CENTER_RIGHT">
+                                            <children>
+                                                <Button fx:id="mapSettingsApplyBtn"
+                                                        text="Apply" prefWidth="100"/>
+                                            </children>
+                                        </HBox>
+                                        <Label fx:id="mapSettingsStatus" text=""
+                                               styleClass="map-palette-status"
+                                               wrapText="true"/>
+                                    </children>
+                                </VBox>
+                            </content>
+                        </Tab>
                     </tabs>
                 </TabPane>
             </children>
