@@ -39,6 +39,7 @@
                 <HBox alignment="CENTER_LEFT" spacing="4" styleClass="map-list-toolbar">
                     <children>
                         <Button fx:id="mapNewBtn" text="+ New" prefWidth="80"/>
+                        <Button fx:id="mapDuplicateBtn" text="Duplicate" prefWidth="80"/>
                         <Button fx:id="mapDeleteBtn" text="- Delete" prefWidth="80"/>
                     </children>
                 </HBox>

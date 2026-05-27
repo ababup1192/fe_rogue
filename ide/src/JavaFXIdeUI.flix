@@ -167,6 +167,7 @@ mod JavaFXIdeUI {
             unchecked_cast(mapNs.get("mapEntityIdField") as TextField);
         let mapNewBtn: Button = unchecked_cast(mapNs.get("mapNewBtn") as Button);
         let mapDeleteBtn: Button = unchecked_cast(mapNs.get("mapDeleteBtn") as Button);
+        let mapDuplicateBtn: Button = unchecked_cast(mapNs.get("mapDuplicateBtn") as Button);
         let mapToolPencilBtn: ToggleButton =
             unchecked_cast(mapNs.get("mapToolPencilBtn") as ToggleButton);
         let mapToolRangeBtn: ToggleButton =
@@ -233,6 +234,7 @@ mod JavaFXIdeUI {
         Array.put(Some(mapEntityIdField), 0, state#widgets#mapEntityIdField);
         Array.put(Some(mapNewBtn), 0, state#widgets#mapNewBtn);
         Array.put(Some(mapDeleteBtn), 0, state#widgets#mapDeleteBtn);
+        Array.put(Some(mapDuplicateBtn), 0, state#widgets#mapDuplicateBtn);
         Array.put(Some(mapToolPencilBtn), 0, state#widgets#mapToolPencilBtn);
         Array.put(Some(mapToolRangeBtn), 0, state#widgets#mapToolRangeBtn);
         Array.put(Some(mapPreviewToggleBtn), 0, state#widgets#mapPreviewToggleBtn);
@@ -268,6 +270,7 @@ mod JavaFXIdeUI {
         MapEditorPanel.wirePaletteClick(state, mapPaletteCanvas);
         MapEditorPanel.wireNewLevelButton(state, mapNewBtn);
         MapEditorPanel.wireDeleteLevelButton(state, mapDeleteBtn);
+        MapEditorPanel.wireDuplicateLevelButton(state, mapDuplicateBtn);
         MapEditorPanel.wireMapSelection(state, mapsList);
         MapEditorPanel.initMaterialsTab(state);
         MapEditorPanel.initSettingsTab(state);

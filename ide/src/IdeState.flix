@@ -90,6 +90,8 @@ mod IdeState {
         mapNewBtn                     = Array[Option[Button], Static],
         // Maps タブの「- Delete」ボタン (map.json + 関連 material.json を削除)
         mapDeleteBtn                  = Array[Option[Button], Static],
+        // Maps タブの「Duplicate」ボタン (map.json + 関連 material.json を複製)
+        mapDuplicateBtn               = Array[Option[Button], Static],
         // Map Canvas 上のツール切替トグル (Pencil / RangeSelect)
         mapToolPencilBtn              = Array[Option[ToggleButton], Static],
         mapToolRangeBtn               = Array[Option[ToggleButton], Static],
@@ -283,6 +285,7 @@ mod IdeState {
             mapEntityIdField              = Array#{(None: Option[TextField])} @ Static,
             mapNewBtn                     = Array#{(None: Option[Button])} @ Static,
             mapDeleteBtn                  = Array#{(None: Option[Button])} @ Static,
+            mapDuplicateBtn               = Array#{(None: Option[Button])} @ Static,
             mapToolPencilBtn              = Array#{(None: Option[ToggleButton])} @ Static,
             mapToolRangeBtn               = Array#{(None: Option[ToggleButton])} @ Static,
             mapPreviewToggleBtn           = Array#{(None: Option[ToggleButton])} @ Static,

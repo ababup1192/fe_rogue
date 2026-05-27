@@ -867,6 +867,145 @@ mod MapEditorPanel {
         })
     }
 
+    /// 「Duplicate」ボタン: 選択中の Map と関連 Material をコピーする。
+    /// 新名は dialog で受け取り、{newName}.map.json / {newName}.material.json を生成、
+    /// コピー後の Level.materialId を newName に書き換えてリストを refresh + 選択。
+    pub def wireDuplicateLevelButton(state: IdeState.IdeState, btn: Button): Unit \ IO = {
+        btn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                promptAndDuplicateCurrent(state)
+        })
+    }
+
+    def promptAndDuplicateCurrent(state: IdeState.IdeState): Unit \ IO = {
+        match (IdeState.getCurrentProjectRoot(state),
+               MapEditorState.getSelectedLevelPath(state#mapEditor)) {
+            case (Some(root), Some(srcPath)) => {
+                let srcName = stripMapJsonExt(displayName(srcPath));
+                let dialog: Dialog[ButtonType] = new Dialog();
+                dialog.setTitle("Duplicate Map");
+                dialog.setHeaderText("「${srcName}」のコピーを作成");
+                let pane = dialog.getDialogPane();
+                let buttonTypes = pane.getButtonTypes();
+                discard buttonTypes.add(ButtonType.OK);
+                discard buttonTypes.add(ButtonType.CANCEL);
+
+                let nameField = new TextField(srcName + "_copy");
+                let grid = new GridPane();
+                grid.setHgap(8.0);
+                grid.setVgap(8.0);
+                grid.add(unchecked_cast(new Label("コピー元:") as Node),    0i32, 0i32);
+                grid.add(unchecked_cast(new Label(srcName) as Node),       1i32, 0i32);
+                grid.add(unchecked_cast(new Label("新しい名前:") as Node),   0i32, 1i32);
+                grid.add(unchecked_cast(nameField as Node),                 1i32, 1i32);
+                pane.setContent(unchecked_cast(grid as Node));
+
+                let result = dialog.showAndWait();
+                if (result.isPresent()) {
+                    let bt = result.get();
+                    let okBt = ButtonType.OK;
+                    if (okBt.equals(bt)) {
+                        let raw = nameField.getText();
+                        let safe = if (Object.isNull(raw)) "" else raw;
+                        let newName = String.trim(safe);
+                        handleDuplicateInput(state, root, srcPath, srcName, newName)
+                    } else ()
+                } else ()
+            }
+            case _ => showAlert("Duplicate する Map が選択されていません")
+        }
+    }
+
+    def handleDuplicateInput(state: IdeState.IdeState, root: String, srcPath: String,
+                                srcName: String, newName: String): Unit \ IO =
+        match validateNewName(newName) {
+            case Err(msg) => showAlert(msg)
+            case Ok(_) =>
+                if (newName == srcName)
+                    showAlert("コピー先名は元と異なる必要があります")
+                else
+                    duplicateMapAndMaterial(state, root, srcPath, srcName, newName)
+        }
+
+    /// map.json + material.json を Files.copy で複製し、新 map.json 内の materialId を
+    /// newName に差し替えて保存。ListView を refresh して新ファイルを auto-select。
+    def duplicateMapAndMaterial(state: IdeState.IdeState, root: String,
+                                  srcMapPath: String, srcName: String,
+                                  newName: String): Unit \ IO = {
+        let _ = srcMapPath;
+        let srcMatPath = root + "/assets/materials/" + srcName + ".material.json";
+        let dstMapPath = root + "/assets/maps/"      + newName + ".map.json";
+        let dstMatPath = root + "/assets/materials/" + newName + ".material.json";
+        if (fileExists(dstMapPath))
+            showAlert("既に存在します: ${newName}.map.json")
+        else if (fileExists(dstMatPath))
+            showAlert("既に存在します: ${newName}.material.json")
+        else
+            doDuplicate(state, root, srcName, srcMatPath,
+                          dstMapPath, dstMatPath, newName)
+    }
+
+    def doDuplicate(state: IdeState.IdeState, root: String, srcName: String,
+                      srcMatPath: String, dstMapPath: String, dstMatPath: String,
+                      newName: String): Unit \ IO = {
+        let srcMapPath = root + "/assets/maps/" + srcName + ".map.json";
+        // 1) map ファイル複製
+        discard Files.copy(Paths.get(srcMapPath), Paths.get(dstMapPath));
+        // 2) material ファイル (存在すれば) 複製
+        if (fileExists(srcMatPath))
+            discard Files.copy(Paths.get(srcMatPath), Paths.get(dstMatPath))
+        else ();
+        // 3) 新 map.json の materialId を newName に書き換える
+        rewriteMaterialIdOnPath(dstMapPath, newName);
+        println("[MapEditor] duplicated: ${srcName} → ${newName}");
+        // 4) ListView 更新 + 新ファイルを選択 (onLevelSelected が選択リスナーで発火)
+        let mapFiles = findMapFilesIO(root);
+        MapEditorState.setLevelFiles(state#mapEditor, mapFiles);
+        populateMapList(state);
+        selectMapByPath(state, dstMapPath)
+    }
+
+    /// 指定 map.json をロード → materialId を書き換え → 同 path に保存。
+    /// duplicate 後の新ファイルに対して、元 Material とは別の Material を参照させるために使う。
+    def rewriteMaterialIdOnPath(path: String, newMaterialId: String): Unit \ IO = {
+        match loadLevelFromPath(path) {
+            case None        => println("[MapEditor] duplicate: failed to load ${path}")
+            case Some(level) => {
+                let d = MapResource.levelData(level);
+                let newData: MapResource.LevelData = {materialId = newMaterialId | d};
+                saveLevelToPath(path, MapResource.Level.Level(newData))
+            }
+        }
+    }
+
+    def loadLevelFromPath(path: String): Option[MapResource.Level] \ IO =
+        run {
+            Persistence.load(path)
+        } with Fs.FileRead.runWithIO
+
+    def saveLevelToPath(path: String, level: MapResource.Level): Unit \ IO =
+        run {
+            match Persistence.save(path, level) {
+                case Ok(_)    => ()
+                case Err(msg) => println("[MapEditor] duplicate save failed (${path}): ${msg}")
+            }
+        } with Fs.FileWrite.runWithIO
+
+    /// mapsList で指定 path の項目を選択する (見つからなければ何もしない)。
+    /// 選択により wireMapSelection の listener が発火して onLevelSelected が走る。
+    def selectMapByPath(state: IdeState.IdeState, mapPath: String): Unit \ IO =
+        match Array.get(0, state#widgets#mapsList) {
+            case None     => ()
+            case Some(lv) => {
+                let items = lv.getItems();
+                let idx = items.indexOf(displayName(mapPath));
+                if (idx >= 0i32) {
+                    let model: MultipleSelectionModel[String] = lv.getSelectionModel();
+                    model.clearAndSelect(idx)
+                } else ()
+            }
+        }
+
     /// Map Canvas 上の Pencil / RangeSelect トグルボタン配線。
     /// 一方を押すともう一方は非選択になる (排他)。MapEditorState の editTool を更新する。
     pub def wireToolButtons(state: IdeState.IdeState,
