@@ -30,6 +30,7 @@
 <?import javafx.scene.control.TabPane?>
 <?import javafx.scene.control.Tab?>
 <?import javafx.scene.canvas.Canvas?>
+<?import javafx.geometry.Insets?>
 
 <SplitPane xmlns:fx="http://javafx.com/fxml" fx:id="mapsSplit"
            dividerPositions="0.18, 0.72">
@@ -200,13 +201,16 @@
                             </content>
                         </Tab>
                         <!-- Materials タブ: 現 Level の materialId に紐づく wallMap を編集 -->
-                        <Tab fx:id="mapMaterialsTab" text="Materials">
+                        <Tab fx:id="mapMaterialsTab" text="auto-layer">
                             <content>
-                                <VBox alignment="TOP_CENTER" spacing="6">
+                                <VBox alignment="TOP_CENTER" spacing="6"
+                                      styleClass="auto-layer-tab-content">
+                                    <padding>
+                                        <Insets top="8" right="8" bottom="8" left="8"/>
+                                    </padding>
                                     <children>
-                                        <GridPane fx:id="mapMaterialsWallMapGrid"
-                                                  hgap="2" vgap="2"
-                                                  alignment="CENTER"/>
+                                        <VBox fx:id="mapMaterialsWallMapBox"
+                                              spacing="3" alignment="TOP_LEFT"/>
                                         <Label fx:id="mapMaterialsStatus"
                                                text="セル未選択"
                                                styleClass="map-palette-status"/>

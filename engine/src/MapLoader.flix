@@ -58,7 +58,7 @@ mod MapLoader {
             case None      => Nil
             case Some(mat) =>
                 let md = MapResource.materialData(mat);
-                buildAutoLayerTiles(wallCells, md, manualCoords, tileSizeI)
+                buildAutoLayerTiles(wallCells, floorMask, md, manualCoords, tileSizeI)
         };
 
         // manualTiles → TileData
@@ -269,7 +269,9 @@ mod MapLoader {
 
     /// wallCells + Material.wallMap から AutoLayerWalls タイル列を構築する。
     /// `manualCoords` に含まれる (col, row) は manualTiles に上書きされるのでスキップする。
+    /// lookup 順序: 4-trit キー (例 "EWFW") → 旧 4-bit キー (例 "0101") の順 (フォールバック)。
     def buildAutoLayerTiles(wallCells: Set[(Int32, Int32)],
+                              floorMask: Set[(Int32, Int32)],
                               md: MapResource.MaterialData,
                               manualCoords: Set[(Int32, Int32)],
                               tileSizeI: Int32): List[TileData] = {
@@ -279,8 +281,8 @@ mod MapLoader {
                 let (col, row) = coord;
                 if (Set.memberOf((col, row), manualCoords)) None
                 else {
-                    let key = trblKeyAt(wallCells, col, row);
-                    match Map.get(key, md#wallMap) {
+                    let coordOpt = lookupWallTile(wallCells, floorMask, md#wallMap, col, row);
+                    match coordOpt {
                         case None              => None
                         case Some((srcX, srcY)) => Some(({
                             px    = ({x = Int32.toFloat64(col * tileSizeI),
@@ -296,8 +298,19 @@ mod MapLoader {
             })
     }
 
+    /// 4-trit キー (壁/床/空) で wallMap を引き、無ければ旧 4-bit キーにフォールバック。
+    pub def lookupWallTile(wallCells: Set[(Int32, Int32)],
+                             floorMask: Set[(Int32, Int32)],
+                             wallMap: Map[String, (Int32, Int32)],
+                             col: Int32, row: Int32): Option[(Int32, Int32)] = {
+        let trit = trblTritKeyAt(wallCells, floorMask, col, row);
+        match Map.get(trit, wallMap) {
+            case Some(v) => Some(v)
+            case None    => Map.get(trblKeyAt(wallCells, col, row), wallMap)
+        }
+    }
+
     /// (col, row) の TRBL 4-bit キー。隣セルが壁 (wallCells に含まれる) なら 1。
-    /// 壁の連続を辿るので、wallCells の各セルから見た「四方向に壁仲間がいるか」が出る。
     pub def trblKeyAt(wallCells: Set[(Int32, Int32)], col: Int32, row: Int32): String = {
         let t = if (Set.memberOf((col,     row - 1), wallCells)) "1" else "0";
         let r = if (Set.memberOf((col + 1, row    ), wallCells)) "1" else "0";
@@ -305,4 +318,21 @@ mod MapLoader {
         let l = if (Set.memberOf((col - 1, row    ), wallCells)) "1" else "0";
         t + r + b + l
     }
+
+    /// (col, row) の 4-trit キー。各方向: W=壁, F=床, E=空 (マップ外含む)。
+    /// 例: "EWFW" = 上が空、右が壁、下が床、左が壁 (= 部屋の上辺の壁)。
+    pub def trblTritKeyAt(wallCells: Set[(Int32, Int32)],
+                            floorMask: Set[(Int32, Int32)],
+                            col: Int32, row: Int32): String =
+        tritAt(wallCells, floorMask, col,     row - 1)
+        + tritAt(wallCells, floorMask, col + 1, row    )
+        + tritAt(wallCells, floorMask, col,     row + 1)
+        + tritAt(wallCells, floorMask, col - 1, row    )
+
+    def tritAt(wallCells: Set[(Int32, Int32)],
+                floorMask: Set[(Int32, Int32)],
+                col: Int32, row: Int32): String =
+        if      (Set.memberOf((col, row), wallCells)) "W"
+        else if (Set.memberOf((col, row), floorMask)) "F"
+        else                                          "E"
 }

@@ -37,7 +37,8 @@ mod MapGridCanvas {
     pub def drawLevel(canvas: Canvas, level: MapResource.Level, cellPx: Int32,
                        wallsImg: Option[Image], floorImg: Option[Image],
                        vis: MapEditorState.LayerVisibility, zoom: Float64,
-                       material: Option[MapResource.Material]): Unit \ IO = {
+                       material: Option[MapResource.Material],
+                       selectedTrbl: Option[String]): Unit \ IO = {
         let d = MapResource.levelData(level);
         resizeAndFill(canvas, d#width, d#height, cellPx, zoom);
         let gc = canvas.getGraphicsContext2D();
@@ -55,19 +56,56 @@ mod MapGridCanvas {
             let wallCells = computeWallCells(floorMask, d#width, d#height);
             match (wallsImg, material) {
                 case (Some(img), Some(mat)) =>
-                    drawAutoLayerWalls(canvas, wallCells, MapResource.materialData(mat),
+                    drawAutoLayerWalls(canvas, wallCells, floorMask,
+                                         MapResource.materialData(mat),
                                          img, d#tileSize, cellPx)
                 case _ => ()
             };
             match wallsImg {
                 case Some(img) => drawTiles(canvas, d#manualTiles, img, d#tileSize, cellPx)
                 case None      => ()
+            };
+            // auto-layer タブで選択中のキー (4-trit or 4-bit) に該当する壁セルを紫網掛け
+            match selectedTrbl {
+                case None      => ()
+                case Some(key) => drawTrblPreview(canvas, wallCells, floorMask, key, cellPx)
             }
         } else ();
         drawGridLines(canvas, d#width, d#height, cellPx);
         if (vis#entities) drawEntities(canvas, d#entities, cellPx) else ();
         gc.restore()
     }
+
+    /// 選択中キー (4-trit "EWFW" or 旧 4-bit "0101") に一致する壁セルを紫半透明で塗る。
+    /// 4-trit 判定はそのまま、4-bit は trblKeyAt で照合 (旧形式マップとの互換)。
+    def drawTrblPreview(canvas: Canvas, wallCells: Set[(Int32, Int32)],
+                          floorMask: Set[(Int32, Int32)],
+                          key: String, cellPx: Int32): Unit \ IO = {
+        let gc = canvas.getGraphicsContext2D();
+        let cs = Int32.toFloat64(cellPx);
+        gc.setFill(Color.rgb(160, 64, 200, 0.5));
+        // key が 4-trit (W/F/E のみ) か旧 4-bit (0/1) かで一致判定方法を切り替える
+        let isTrit = String.length(key) == 4 and isTritKey(key);
+        Set.forEach(coord -> {
+            let (col, row) = coord;
+            let matched =
+                if (isTrit) trblTritKeyAt(wallCells, floorMask, col, row) == key
+                else        trblKeyAt(wallCells, col, row) == key;
+            if (matched)
+                gc.fillRect(Int32.toFloat64(col) * cs,
+                             Int32.toFloat64(row) * cs, cs, cs)
+            else ()
+        }, wallCells)
+    }
+
+    /// "EWFW" のような 4-trit キーかどうかを判定 (先頭文字で W/F/E を判定)。
+    /// 旧 4-bit キーは "0" or "1" で始まるので区別可能。
+    def isTritKey(key: String): Bool =
+        if (String.length(key) == 0) false
+        else {
+            let c = String.charAt(0, key);
+            c == 'W' or c == 'F' or c == 'E'
+        }
 
     /// decorTiles のセルから床マスクを作る。
     pub def floorMaskOf(d: MapResource.LevelData): Set[(Int32, Int32)] =
@@ -96,8 +134,9 @@ mod MapGridCanvas {
         Set.memberOf((col,     row + 1), floorMask) or
         Set.memberOf((col + 1, row + 1), floorMask)
 
-    /// 自動壁: wallCells をループして TRBL 計算 → Material.wallMap で対応タイルを描画する。
+    /// 自動壁: wallCells をループして 4-trit → 4-bit の順で wallMap を引いて描画する。
     def drawAutoLayerWalls(canvas: Canvas, wallCells: Set[(Int32, Int32)],
+                            floorMask: Set[(Int32, Int32)],
                             mat: MapResource.MaterialData, image: Image,
                             tileSize: Int32, cellPx: Int32): Unit \ IO = {
         let gc = canvas.getGraphicsContext2D();
@@ -106,8 +145,7 @@ mod MapGridCanvas {
         let cs = Int32.toFloat64(cellPx);
         Set.forEach(coord -> {
             let (col, row) = coord;
-            let key = trblKeyAt(wallCells, col, row);
-            match Map.get(key, mat#wallMap) {
+            match lookupWallTile(wallCells, floorMask, mat#wallMap, col, row) {
                 case None              => ()
                 case Some((srcX, srcY)) => {
                     let sx = Int32.toFloat64(srcX);
@@ -120,7 +158,19 @@ mod MapGridCanvas {
         }, wallCells)
     }
 
-    /// (col, row) の TRBL キー。隣セルが wallCells に含まれるなら 1。
+    /// 4-trit (壁/床/空) → 4-bit のフォールバック lookup。
+    pub def lookupWallTile(wallCells: Set[(Int32, Int32)],
+                             floorMask: Set[(Int32, Int32)],
+                             wallMap: Map[String, (Int32, Int32)],
+                             col: Int32, row: Int32): Option[(Int32, Int32)] = {
+        let trit = trblTritKeyAt(wallCells, floorMask, col, row);
+        match Map.get(trit, wallMap) {
+            case Some(v) => Some(v)
+            case None    => Map.get(trblKeyAt(wallCells, col, row), wallMap)
+        }
+    }
+
+    /// (col, row) の TRBL 4-bit キー。隣セルが wallCells に含まれるなら 1。
     pub def trblKeyAt(wallCells: Set[(Int32, Int32)], col: Int32, row: Int32): String = {
         let t = if (Set.memberOf((col,     row - 1), wallCells)) "1" else "0";
         let r = if (Set.memberOf((col + 1, row    ), wallCells)) "1" else "0";
@@ -128,6 +178,22 @@ mod MapGridCanvas {
         let l = if (Set.memberOf((col - 1, row    ), wallCells)) "1" else "0";
         t + r + b + l
     }
+
+    /// (col, row) の TRBL 4-trit キー。各方向 W=壁, F=床, E=空 (マップ外含む)。
+    pub def trblTritKeyAt(wallCells: Set[(Int32, Int32)],
+                            floorMask: Set[(Int32, Int32)],
+                            col: Int32, row: Int32): String =
+        tritAt(wallCells, floorMask, col,     row - 1)
+        + tritAt(wallCells, floorMask, col + 1, row    )
+        + tritAt(wallCells, floorMask, col,     row + 1)
+        + tritAt(wallCells, floorMask, col - 1, row    )
+
+    def tritAt(wallCells: Set[(Int32, Int32)],
+                floorMask: Set[(Int32, Int32)],
+                col: Int32, row: Int32): String =
+        if      (Set.memberOf((col, row), wallCells)) "W"
+        else if (Set.memberOf((col, row), floorMask)) "F"
+        else                                          "E"
 
     /// Entity を「シアン円 + identifier テキスト」で描画する。
     /// セルの中心に円、その下に小さくラベル。
@@ -448,7 +514,8 @@ mod MapGridCanvas {
                 let vis = MapEditorState.getLayerVisibility(state#mapEditor);
                 let zoom = MapEditorState.getMapZoom(state#mapEditor);
                 let mat = MapEditorState.getEditingMaterial(state#mapEditor);
-                drawLevel(c, level, cellPx, wImg, fImg, vis, zoom, mat)
+                let selTrbl = MapEditorState.getSelectedTrbl(state#mapEditor);
+                drawLevel(c, level, cellPx, wImg, fImg, vis, zoom, mat, selTrbl)
             }
             case None => ()
         }

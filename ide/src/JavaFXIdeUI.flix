@@ -42,7 +42,6 @@ mod JavaFXIdeUI {
     import javafx.scene.layout.StackPane
     import javafx.scene.layout.VBox
     import javafx.scene.layout.HBox
-    import javafx.scene.layout.GridPane
     import javafx.scene.control.TabPane
     import javafx.application.Platform
     import javafx.event.ActionEvent
@@ -169,8 +168,8 @@ mod JavaFXIdeUI {
         let mapPaletteSection: VBox = unchecked_cast(mapNs.get("mapPaletteSection") as VBox);
         let mapEntitySection: VBox = unchecked_cast(mapNs.get("mapEntitySection") as VBox);
         let mapRightTabs: TabPane = unchecked_cast(mapNs.get("mapRightTabs") as TabPane);
-        let mapMaterialsWallMapGrid: GridPane =
-            unchecked_cast(mapNs.get("mapMaterialsWallMapGrid") as GridPane);
+        let mapMaterialsWallMapBox: VBox =
+            unchecked_cast(mapNs.get("mapMaterialsWallMapBox") as VBox);
         let mapMaterialsStatus: Label =
             unchecked_cast(mapNs.get("mapMaterialsStatus") as Label);
         let mapMaterialsTilesetCanvas: Canvas =
@@ -194,7 +193,7 @@ mod JavaFXIdeUI {
         Array.put(Some(mapPaletteSection), 0, state#widgets#mapPaletteSection);
         Array.put(Some(mapEntitySection), 0, state#widgets#mapEntitySection);
         Array.put(Some(mapRightTabs), 0, state#widgets#mapRightTabs);
-        Array.put(Some(mapMaterialsWallMapGrid), 0, state#widgets#mapMaterialsWallMapGrid);
+        Array.put(Some(mapMaterialsWallMapBox), 0, state#widgets#mapMaterialsWallMapBox);
         Array.put(Some(mapMaterialsStatus), 0, state#widgets#mapMaterialsStatus);
         Array.put(Some(mapMaterialsTilesetCanvas), 0, state#widgets#mapMaterialsTilesetCanvas);
         // Map canvas: クリック・ピンチズーム・Ctrl/Cmd+Z undo を 1 か所で配線

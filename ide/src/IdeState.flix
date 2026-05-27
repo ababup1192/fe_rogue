@@ -26,7 +26,6 @@ mod IdeState {
     import javafx.scene.layout.StackPane
     import javafx.scene.canvas.Canvas
     import javafx.scene.image.Image
-    import javafx.scene.layout.GridPane
     import javafx.scene.control.TabPane
     import javafx.stage.Stage
 
@@ -89,7 +88,7 @@ mod IdeState {
         mapNewBtn                     = Array[Option[Button], Static],
         // Materials サブタブ (wallMap 編集)
         mapRightTabs                  = Array[Option[TabPane], Static],
-        mapMaterialsWallMapGrid       = Array[Option[GridPane], Static],
+        mapMaterialsWallMapBox        = Array[Option[VBox], Static],
         mapMaterialsStatus            = Array[Option[Label], Static],
         mapMaterialsTilesetCanvas     = Array[Option[Canvas], Static]
     }
@@ -254,7 +253,7 @@ mod IdeState {
             mapEntityIdField              = Array#{(None: Option[TextField])} @ Static,
             mapNewBtn                     = Array#{(None: Option[Button])} @ Static,
             mapRightTabs                  = Array#{(None: Option[TabPane])} @ Static,
-            mapMaterialsWallMapGrid       = Array#{(None: Option[GridPane])} @ Static,
+            mapMaterialsWallMapBox        = Array#{(None: Option[VBox])} @ Static,
             mapMaterialsStatus            = Array#{(None: Option[Label])} @ Static,
             mapMaterialsTilesetCanvas     = Array#{(None: Option[Canvas])} @ Static
         }

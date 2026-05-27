@@ -310,8 +310,9 @@ mod MapEditorPanel {
                 let vis = MapEditorState.getLayerVisibility(state#mapEditor);
                 let zoom = MapEditorState.getMapZoom(state#mapEditor);
                 let mat = MapEditorState.getEditingMaterial(state#mapEditor);
+                let selTrbl = MapEditorState.getSelectedTrbl(state#mapEditor);
                 MapGridCanvas.drawLevel(canvas, level, MapGridCanvas.defaultCellPx(),
-                                          wImg, fImg, vis, zoom, mat)
+                                          wImg, fImg, vis, zoom, mat, selTrbl)
             }
             case _ => ()
         }
@@ -956,9 +957,9 @@ mod MapEditorPanel {
     /// クリック handler を貼る。タイルサイズ/マージン/ズームは Walls Palette と共有するため
     /// Materials タブ専用の設定 UI は持たない。JavaFXIdeUI.customize から 1 度だけ呼ぶ。
     pub def initMaterialsTab(state: IdeState.IdeState): Unit \ IO = {
-        match Array.get(0, state#widgets#mapMaterialsWallMapGrid) {
-            case None       => ()
-            case Some(grid) => buildWallMapGrid(state, grid)
+        match Array.get(0, state#widgets#mapMaterialsWallMapBox) {
+            case None      => ()
+            case Some(box) => buildWallMapGrid(state, box)
         };
         match Array.get(0, state#widgets#mapMaterialsTilesetCanvas) {
             case None         => ()
@@ -971,30 +972,118 @@ mod MapEditorPanel {
         refreshMaterialsTab(state)
     }
 
-    /// 4x4 = 16 セルを GridPane に追加する。各セルは StackPane に Label "TRBL" を載せ、
-    /// クリックで selectedTrblRef を更新し、grid を再描画する。
-    def buildWallMapGrid(state: IdeState.IdeState, grid: GridPane): Unit \ IO = {
-        grid.getChildren().clear();
-        let keys = MapResource.wallMapKeys() |> List.toVector;
+    /// 4-trit (壁/床/空) パターンを「使用頻度別セクション」で VBox 内に構築する。
+    /// 最初のセクションはトグル無しで常に展開、それ以外はトグルで折りたたみ可。
+    /// 余白クリック (Box 直接) は選択解除。
+    def buildWallMapGrid(state: IdeState.IdeState, box: VBox): Unit \ IO = {
+        box.getChildren().clear();
+        let sections = MapResource.wallMapSections();
+        let n = List.length(sections);
         List.forEach(idx -> {
-            let r = idx / 4;
-            let c = Int32.remainder(idx, 4);
-            let key = match Vector.nth(idx, keys) {
-                case Some(k) => k
-                case None    => "0000"
-            };
-            let cell = makeWallMapCell(state, key, grid);
-            grid.add(unchecked_cast(cell as Node), c, r)
-        }, List.range(0, 16))
+            match List.nth(idx, sections) {
+                case None            => ()
+                case Some((_, keys)) =>
+                    if (idx == 0) addAlwaysOpenSection(state, box, keys)
+                    else          addSection(state, box, keys, false)
+            }
+        }, List.range(0, n));
+        // 余白クリック (Box 自体) で選択解除
+        box.setOnMouseClicked(new EventHandler[MouseEvent] {
+            def handle(_this: EventHandler[MouseEvent], _e: MouseEvent): Unit \ IO = {
+                MapEditorState.setSelectedTrbl(state#mapEditor, None);
+                refreshMaterialsTab(state)
+            }
+        })
+    }
+
+    /// Section 1 用: トグル無しで常に展開された GridPane を直接 VBox に追加。
+    def addAlwaysOpenSection(state: IdeState.IdeState, parentBox: VBox,
+                                keys: List[String]): Unit \ IO = {
+        let grid = buildSectionGrid(state, keys);
+        discard parentBox.getChildren().add(unchecked_cast(grid as Node))
+    }
+
+    /// Section 2 以降用: disclosure 三角 (▾/▸) + GridPane を内 VBox で 1 セクションにラップ。
+    /// エクスプローラ風: 背景透明・左寄せ。
+    def addSection(state: IdeState.IdeState, parentBox: VBox,
+                     keys: List[String], defaultOpen: Bool): Unit \ IO = {
+        let sectionBox = new VBox();
+        sectionBox.setSpacing(2.0);
+
+        // テキストだとフォント高さに応じてベースラインの余白が出るので、Canvas で三角形を直接描画。
+        // 20×20 px の領域内に三角形を fillPolygon で配置 → 余白完全コントロール。
+        let toggleCanvas = new Canvas(20.0, 20.0);
+        drawToggleTriangle(toggleCanvas, defaultOpen);
+        toggleCanvas.setStyle("-fx-cursor: hand;");
+
+        let grid = buildSectionGrid(state, keys);
+        grid.setVisible(defaultOpen);
+        grid.setManaged(defaultOpen);
+
+        // 開閉状態を保持する Ref (mutable 不要、Array で代用)
+        let openRef: Array[Bool, Static] = Array#{defaultOpen} @ Static;
+        toggleCanvas.setOnMouseClicked(new EventHandler[MouseEvent] {
+            def handle(_this: EventHandler[MouseEvent], _e: MouseEvent): Unit \ IO = {
+                let nowOpen = Array.get(0, openRef);
+                let next = not nowOpen;
+                Array.put(next, 0, openRef);
+                grid.setVisible(next);
+                grid.setManaged(next);
+                drawToggleTriangle(toggleCanvas, next)
+            }
+        });
+
+        discard sectionBox.getChildren().add(unchecked_cast(toggleCanvas as Node));
+        discard sectionBox.getChildren().add(unchecked_cast(grid as Node));
+        discard parentBox.getChildren().add(unchecked_cast(sectionBox as Node))
+    }
+
+    /// 20×20 Canvas に「▾ (開いた) / ▸ (閉じた)」三角形を描画する。
+    def drawToggleTriangle(canvas: Canvas, open: Bool): Unit \ IO = {
+        let gc = canvas.getGraphicsContext2D();
+        let w = canvas.getWidth();
+        let h = canvas.getHeight();
+        gc.clearRect(0.0, 0.0, w, h);
+        gc.setFill(Color.rgb(204, 204, 204));
+        let margin = 4.0;
+        if (open) {
+            // ▾ 下向き: 上辺の左右端と下辺の中央が頂点
+            let xs = Vector#{margin, w - margin, w / 2.0};
+            let ys = Vector#{margin, margin, h - margin};
+            gc.fillPolygon(xs, ys, 3)
+        } else {
+            // ▸ 右向き: 左辺の上下端と右辺の中央が頂点
+            let xs = Vector#{margin, margin, w - margin};
+            let ys = Vector#{margin, h - margin, h / 2.0};
+            gc.fillPolygon(xs, ys, 3)
+        }
+    }
+
+    /// 4 列の GridPane に各セルを配置して返す (セクション内の共通レイアウト)。
+    def buildSectionGrid(state: IdeState.IdeState, keys: List[String]): GridPane \ IO = {
+        let grid = new GridPane();
+        grid.setHgap(2.0);
+        grid.setVgap(2.0);
+        let nKeys = List.length(keys);
+        List.forEach(idx -> {
+            match List.nth(idx, keys) {
+                case None     => ()
+                case Some(k)  => {
+                    let r = idx / 4;
+                    let c = Int32.remainder(idx, 4);
+                    let cell = makeWallMapCell(state, k);
+                    grid.add(unchecked_cast(cell as Node), c, r)
+                }
+            }
+        }, List.range(0, nKeys));
+        grid
     }
 
     /// 1 個の TRBL セル (StackPane + Canvas アイコン + Label) を作る。
-    /// Canvas は 3x3 ミニグリッドで TRBL を視覚化 (中央=選択中の壁、隣接 4 方向の壁有無)。
-    /// クリックで selectedTrbl 更新 + pane.requestFocus() (BackSpace で解除できるように)。
-    /// `grid` 引数は将来用に残してあるが現在は未使用。
-    def makeWallMapCell(state: IdeState.IdeState, key: String, _grid: GridPane):
-            StackPane \ IO = {
+    /// userData に key を保存し、refresh 時の照合に使う。
+    def makeWallMapCell(state: IdeState.IdeState, key: String): StackPane \ IO = {
         let pane = new StackPane();
+        pane.setUserData(unchecked_cast(key as JObject));
         let iconCanvas = new Canvas(36.0, 36.0);
         drawTrblIcon(iconCanvas, key);
         let label = new Label(key);
@@ -1013,15 +1102,23 @@ mod MapEditorPanel {
         // セル自身を focusable にして、クリック後の BackSpace を確実に受け取る
         pane.setFocusTraversable(true);
         pane.setOnMouseClicked(new EventHandler[MouseEvent] {
-            def handle(_this: EventHandler[MouseEvent], _e: MouseEvent): Unit \ IO = {
+            def handle(_this: EventHandler[MouseEvent], e: MouseEvent): Unit \ IO = {
                 MapEditorState.setSelectedTrbl(state#mapEditor, Some(key));
                 pane.requestFocus();
-                refreshMaterialsTab(state)
+                refreshMaterialsTab(state);
+                // 親 GridPane の余白クリックハンドラに伝播させない
+                e.consume()
             }
         });
         pane.setOnKeyPressed(new EventHandler[KeyEvent] {
             def handle(_this: EventHandler[KeyEvent], event: KeyEvent): Unit \ IO = {
-                if (event.getCode().toString() == "BACK_SPACE") {
+                let code = event.getCode().toString();
+                if (code == "ESCAPE") {
+                    // 選択解除のみ (wallMap は触らない)
+                    MapEditorState.setSelectedTrbl(state#mapEditor, None);
+                    refreshMaterialsTab(state);
+                    event.consume()
+                } else if (code == "BACK_SPACE") {
                     // 1. wallMap からこの key の割り当てを削除 (確定取消)
                     match MapEditorState.getEditingMaterial(state#mapEditor) {
                         case None      => ()
@@ -1078,42 +1175,42 @@ mod MapEditorPanel {
     def cellStyleSelected(): String =
         "-fx-background-color: #5d8fc7; -fx-border-color: #ffe63c; -fx-border-width: 3; -fx-border-radius: 2; -fx-background-radius: 2;"
 
-    /// TRBL アイコンを 3x3 ミニグリッドで描画する。
-    ///   中央セル = 選択中の壁 (薄い色)
-    ///   T/R/B/L  = key の対応ビットが 1 なら壁色、0 なら空セル色
-    ///   4 隅     = neutral 灰色 (TRBL に出てこない斜め方向)
-    /// 例:
-    ///   "1111" = 中央 + 上下左右の 5 マスが壁 → 壁ブロックの中央
-    ///   "0000" = 中央のみ壁 → 孤立した柱
-    ///   "0110" = 中央 + 右と下が壁     → 左上コーナー
+    /// TRBL アイコンを 3x3 ミニグリッドで描画する (4-trit + 旧 4-bit 両対応)。
+    ///   中央 = 選択中の壁 (黄)
+    ///   T/R/B/L = W or '1' なら壁色 / F なら床色 / E or '0' なら空色
+    ///   4 隅 = neutral 灰色
     def drawTrblIcon(canvas: Canvas, key: String): Unit \ IO = {
         let gc = canvas.getGraphicsContext2D();
         let w = canvas.getWidth();
         let h = canvas.getHeight();
         let cs = w / 3.0;
         gc.clearRect(0.0, 0.0, w, h);
-        let t = String.charAt(0, key) == '1';
-        let r = String.charAt(1, key) == '1';
-        let b = String.charAt(2, key) == '1';
-        let l = String.charAt(3, key) == '1';
-        // 4 隅 (灰、neutral)
+        let len = String.length(key);
+        let t = if (len > 0) String.charAt(0, key) else 'E';
+        let r = if (len > 1) String.charAt(1, key) else 'E';
+        let b = if (len > 2) String.charAt(2, key) else 'E';
+        let l = if (len > 3) String.charAt(3, key) else 'E';
         drawIconCell(gc, 0.0, 0.0, cs, IconCell.Corner);
         drawIconCell(gc, 2.0, 0.0, cs, IconCell.Corner);
         drawIconCell(gc, 0.0, 2.0, cs, IconCell.Corner);
         drawIconCell(gc, 2.0, 2.0, cs, IconCell.Corner);
-        // 中央 (常に壁=この TRBL を選択中のセル)
         drawIconCell(gc, 1.0, 1.0, cs, IconCell.Center);
-        // 上下左右
-        drawIconCell(gc, 1.0, 0.0, cs, if (t) IconCell.Wall else IconCell.Empty);
-        drawIconCell(gc, 2.0, 1.0, cs, if (r) IconCell.Wall else IconCell.Empty);
-        drawIconCell(gc, 1.0, 2.0, cs, if (b) IconCell.Wall else IconCell.Empty);
-        drawIconCell(gc, 0.0, 1.0, cs, if (l) IconCell.Wall else IconCell.Empty)
+        drawIconCell(gc, 1.0, 0.0, cs, dirKindOf(t));
+        drawIconCell(gc, 2.0, 1.0, cs, dirKindOf(r));
+        drawIconCell(gc, 1.0, 2.0, cs, dirKindOf(b));
+        drawIconCell(gc, 0.0, 1.0, cs, dirKindOf(l))
     }
 
+    def dirKindOf(c: Char): IconCell =
+        if      (c == 'W' or c == '1') IconCell.Wall
+        else if (c == 'F')             IconCell.Floor
+        else                           IconCell.Empty
+
     enum IconCell with Eq {
-        case Center    // 中央: 選択中の壁
-        case Wall      // 隣接: 壁あり (キーの bit=1)
-        case Empty     // 隣接: 壁なし (キーの bit=0)
+        case Center    // 中央: 選択中の壁 (黄)
+        case Wall      // 隣接: 壁 (明灰)
+        case Floor     // 隣接: 床 (茶)
+        case Empty     // 隣接: 空 (暗)
         case Corner    // 4 隅: neutral
     }
 
@@ -1124,7 +1221,8 @@ mod MapEditorPanel {
         let fill = match kind {
             case IconCell.Center => Color.rgb(255, 230, 60)  // 黄: 選択中
             case IconCell.Wall   => Color.rgb(180, 180, 200) // 明灰: 壁
-            case IconCell.Empty  => Color.rgb(60, 60, 70)    // 暗: 空セル
+            case IconCell.Floor  => Color.rgb(140, 100, 60)  // 茶: 床
+            case IconCell.Empty  => Color.rgb(60, 60, 70)    // 暗: 空
             case IconCell.Corner => Color.rgb(40, 40, 50)    // ほぼ黒: neutral
         };
         gc.setFill(fill);
@@ -1200,58 +1298,94 @@ mod MapEditorPanel {
     pub def refreshMaterialsTab(state: IdeState.IdeState): Unit \ IO = {
         updateWallMapGridHighlight(state);
         updateMaterialsStatus(state);
-        drawMaterialsTileset(state)
+        drawMaterialsTileset(state);
+        // 選択中 TRBL の紫プレビューを Map Canvas に反映
+        redrawCanvas(state)
     }
 
     /// GridPane の各 StackPane を巡って 3 状態でスタイル切替:
     ///   selected   : 黄太枠 + 青背景 (最優先)
     ///   confirmed  : 緑枠 (wallMap にタイルが割当てられている)
     ///   normal     : 灰枠 (未割当)
-    def updateWallMapGridHighlight(state: IdeState.IdeState): Unit \ IO =
-        match Array.get(0, state#widgets#mapMaterialsWallMapGrid) {
-            case None       => ()
-            case Some(grid) => {
-                let sel = MapEditorState.getSelectedTrbl(state#mapEditor);
-                let matOpt = MapEditorState.getEditingMaterial(state#mapEditor);
-                let keys = MapResource.wallMapKeys() |> List.toVector;
-                let children = grid.getChildren();
-                let n = children.size();
-                List.forEach(idx -> {
-                    if (idx < n) {
-                        let nodeObj = children.get(idx);
-                        let pane: StackPane = unchecked_cast(nodeObj as StackPane);
-                        let key = match Vector.nth(idx, keys) {
-                            case Some(k) => k
-                            case None    => ""
-                        };
-                        let isSelected = match sel {
-                            case Some(s) => s == key
-                            case None    => false
-                        };
-                        let isConfirmed = match matOpt {
-                            case None      => false
-                            case Some(mat) =>
-                                Map.memberOf(key, MapResource.materialData(mat)#wallMap)
-                        };
-                        if (isSelected)         pane.setStyle(cellStyleSelected())
-                        else if (isConfirmed)   pane.setStyle(cellStyleConfirmed())
-                        else                    pane.setStyle(cellStyleNormal());
-                        // 最前面 overlay (index 2) に網掛け描画 (確定時のみ)
-                        let paneChildren = pane.getChildren();
-                        if (paneChildren.size() >= 3i32) {
-                            let overlayNode = paneChildren.get(2i32);
-                            let overlay: Canvas = unchecked_cast(overlayNode as Canvas);
-                            let gc = overlay.getGraphicsContext2D();
-                            gc.clearRect(0.0f64, 0.0f64,
-                                          overlay.getWidth(), overlay.getHeight());
-                            if (isConfirmed and not isSelected)
-                                drawHatchPattern(overlay)
+    def updateWallMapGridHighlight(state: IdeState.IdeState): Unit \ IO = {
+        let sel = MapEditorState.getSelectedTrbl(state#mapEditor);
+        let matOpt = MapEditorState.getEditingMaterial(state#mapEditor);
+        forEachCell(state, (key, pane) -> {
+            let isSelected = match sel {
+                case Some(s) => s == key
+                case None    => false
+            };
+            let isConfirmed = match matOpt {
+                case None      => false
+                case Some(mat) =>
+                    Map.memberOf(key, MapResource.materialData(mat)#wallMap)
+            };
+            if (isSelected)         pane.setStyle(cellStyleSelected())
+            else if (isConfirmed)   pane.setStyle(cellStyleConfirmed())
+            else                    pane.setStyle(cellStyleNormal());
+            // 最前面 overlay (index 2) に網掛け描画 (確定 & 未選択時のみ)
+            let paneChildren = pane.getChildren();
+            if (paneChildren.size() >= 3i32) {
+                let overlayNode = paneChildren.get(2i32);
+                let overlay: Canvas = unchecked_cast(overlayNode as Canvas);
+                let gc = overlay.getGraphicsContext2D();
+                gc.clearRect(0.0f64, 0.0f64,
+                              overlay.getWidth(), overlay.getHeight());
+                if (isConfirmed and not isSelected)
+                    drawHatchPattern(overlay)
+                else ()
+            } else ()
+        })
+    }
+
+    /// VBox 内の全 TRBL セル (各セクション GridPane の子 StackPane) を巡回して f を呼ぶ。
+    /// box の直接の子に GridPane (Section 1) と VBox (Section 2-4) が混在するので両対応。
+    def forEachCell(state: IdeState.IdeState,
+                      f: (String, StackPane) -> Unit \ IO): Unit \ IO =
+        match Array.get(0, state#widgets#mapMaterialsWallMapBox) {
+            case None      => ()
+            case Some(box) => {
+                let topChildren = box.getChildren();
+                let n = topChildren.size();
+                List.forEach(i -> {
+                    let child = topChildren.get(i);
+                    let cls = child.getClass().getSimpleName();
+                    if (cls == "GridPane") {
+                        // Section 1: 直接 GridPane
+                        scanGridCells(unchecked_cast(child as GridPane), f)
+                    } else if (cls == "VBox") {
+                        // Section 2-4: sectionBox 内に GridPane が入っている
+                        let sectionBox: VBox = unchecked_cast(child as VBox);
+                        let subChildren = sectionBox.getChildren();
+                        let nSub = subChildren.size();
+                        List.forEach(j -> {
+                            let sub = subChildren.get(j);
+                            if (sub.getClass().getSimpleName() == "GridPane")
+                                scanGridCells(unchecked_cast(sub as GridPane), f)
                             else ()
-                        } else ()
+                        }, List.range(0, nSub))
                     } else ()
-                }, List.range(0, 16))
+                }, List.range(0, n))
             }
         }
+
+    def scanGridCells(grid: GridPane,
+                        f: (String, StackPane) -> Unit \ IO): Unit \ IO = {
+        let cells = grid.getChildren();
+        let nc = cells.size();
+        List.forEach(j -> {
+            let cellNode = cells.get(j);
+            if (cellNode.getClass().getSimpleName() == "StackPane") {
+                let pane: StackPane = unchecked_cast(cellNode as StackPane);
+                let ud = pane.getUserData();
+                if (Object.isNull(ud)) ()
+                else {
+                    let key: String = unchecked_cast(ud as String);
+                    f(key, pane)
+                }
+            } else ()
+        }, List.range(0, nc))
+    }
 
     /// 選択中 TRBL の意味を Materials タブの Status Label に表示する。
     /// 未選択時は空欄。
@@ -1267,27 +1401,44 @@ mod MapEditorPanel {
             }
         }
 
-    /// TRBL キーごとのタイル種別の説明文。Materials タブで TRBL セルを選んだ時に表示する。
-    /// 慣習: 1 = その方向が壁、0 = その方向が床 or マップ外 でない空。
-    /// 順序は T (上), R (右), B (下), L (左)。
+    /// TRBL キーごとのタイル種別の説明文 (4-trit + 旧 4-bit 両対応)。
+    /// 4-trit: W=壁, F=床, E=空。順序は T (上) R (右) B (下) L (左)。
     def trblDescription(key: String): String = match key {
-        case "0000" => "孤立した壁 (周囲に壁なし)"
-        case "0001" => "左端 (左にだけ壁が続く)"
-        case "0010" => "上端 (下にだけ壁が続く)"
-        case "0011" => "右上の入隅 (下と左に壁)"
-        case "0100" => "右端 (右にだけ壁が続く)"
-        case "0101" => "横一直線 (左右に壁)"
-        case "0110" => "左上の入隅 (右と下に壁)"
-        case "0111" => "上端 T 字 (上以外に壁)"
-        case "1000" => "下端 (上にだけ壁が続く)"
-        case "1001" => "右下の入隅 (上と左に壁)"
-        case "1010" => "縦一直線 (上下に壁)"
-        case "1011" => "右端 T 字 (右以外に壁)"
-        case "1100" => "左下の入隅 (上と右に壁)"
-        case "1101" => "下端 T 字 (下以外に壁)"
-        case "1110" => "左端 T 字 (左以外に壁)"
-        case "1111" => "壁の中央 (上下左右すべて壁)"
-        case _      => "不明"
+        // 4-trit (新仕様)
+        case "EWFW" => "上辺 (床が真下、左右が壁)"
+        case "FWEW" => "下辺 (床が真上、左右が壁)"
+        case "WFWE" => "左辺 (床が真右、上下が壁)"
+        case "WEWF" => "右辺 (床が真左、上下が壁)"
+        case "EWWE" => "左上 外コーナー (右と下が壁)"
+        case "EEWW" => "右上 外コーナー (下と左が壁)"
+        case "WWEE" => "左下 外コーナー (上と右が壁)"
+        case "WEEW" => "右下 外コーナー (上と左が壁)"
+        case "WWWW" => "壁の中央 (上下左右すべて壁)"
+        case "EWWW" => "壁の上端 (上が空、他壁)"
+        case "WEWW" => "壁の右端 (右が空、他壁)"
+        case "WWEW" => "壁の下端 (下が空、他壁)"
+        case "WWWE" => "壁の左端 (左が空、他壁)"
+        case "FWWW" => "上から床に降りる T 字 (床が上、他壁)"
+        case "WFWW" => "右から床に降りる T 字"
+        case "WWFW" => "下から床に降りる T 字"
+        case "WWWF" => "左から床に降りる T 字"
+        case "WEEE" => "上にだけ壁が続く (行き止まり)"
+        case "EWEE" => "右にだけ壁が続く"
+        case "EEWE" => "下にだけ壁が続く"
+        case "EEEW" => "左にだけ壁が続く"
+        case "EEEE" => "孤立した壁"
+        case "FEEE" => "床が上、他空"
+        case "EFEE" => "床が右、他空"
+        // 4-bit (旧仕様、フォールバック)
+        case "0000" => "孤立 (旧)"
+        case "0101" => "横一直線 (旧)"
+        case "1010" => "縦一直線 (旧)"
+        case "0110" => "左上入隅 (旧)"
+        case "0011" => "右上入隅 (旧)"
+        case "1100" => "左下入隅 (旧)"
+        case "1001" => "右下入隅 (旧)"
+        case "1111" => "中央壁 (旧)"
+        case _      => "(${key})"
     }
 
     /// Materials タブの tileset プレビュー Canvas を Walls Palette 設定で描画する。
