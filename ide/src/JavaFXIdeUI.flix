@@ -43,6 +43,7 @@ mod JavaFXIdeUI {
     import javafx.scene.layout.VBox
     import javafx.scene.layout.HBox
     import javafx.scene.control.TabPane
+    import javafx.scene.layout.GridPane
     import javafx.application.Platform
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
@@ -165,6 +166,11 @@ mod JavaFXIdeUI {
         let mapEntityIdField: TextField =
             unchecked_cast(mapNs.get("mapEntityIdField") as TextField);
         let mapNewBtn: Button = unchecked_cast(mapNs.get("mapNewBtn") as Button);
+        let mapDeleteBtn: Button = unchecked_cast(mapNs.get("mapDeleteBtn") as Button);
+        let mapToolPencilBtn: ToggleButton =
+            unchecked_cast(mapNs.get("mapToolPencilBtn") as ToggleButton);
+        let mapToolRangeBtn: ToggleButton =
+            unchecked_cast(mapNs.get("mapToolRangeBtn") as ToggleButton);
         let mapPaletteSection: VBox = unchecked_cast(mapNs.get("mapPaletteSection") as VBox);
         let mapEntitySection: VBox = unchecked_cast(mapNs.get("mapEntitySection") as VBox);
         let mapRightTabs: TabPane = unchecked_cast(mapNs.get("mapRightTabs") as TabPane);
@@ -174,6 +180,22 @@ mod JavaFXIdeUI {
             unchecked_cast(mapNs.get("mapMaterialsStatus") as Label);
         let mapMaterialsTilesetCanvas: Canvas =
             unchecked_cast(mapNs.get("mapMaterialsTilesetCanvas") as Canvas);
+        let mapRuleAddBtn: Button =
+            unchecked_cast(mapNs.get("mapRuleAddBtn") as Button);
+        let mapRuleRemoveBtn: Button =
+            unchecked_cast(mapNs.get("mapRuleRemoveBtn") as Button);
+        let mapRuleList: ListView[String] =
+            unchecked_cast(mapNs.get("mapRuleList") as ListView[String]);
+        let mapRuleEditor: VBox =
+            unchecked_cast(mapNs.get("mapRuleEditor") as VBox);
+        let mapRuleNameField: TextField =
+            unchecked_cast(mapNs.get("mapRuleNameField") as TextField);
+        let mapRulePatternGrid: GridPane =
+            unchecked_cast(mapNs.get("mapRulePatternGrid") as GridPane);
+        let mapRuleTileLabel: Label =
+            unchecked_cast(mapNs.get("mapRuleTileLabel") as Label);
+        let mapRuleChanceSpinner: Spinner[Integer] =
+            unchecked_cast(mapNs.get("mapRuleChanceSpinner") as Spinner[Integer]);
         Array.put(Some(mapLayerRowFloor), 0, state#widgets#mapLayerRowFloor);
         Array.put(Some(mapLayerRowWalls), 0, state#widgets#mapLayerRowWalls);
         Array.put(Some(mapLayerRowEntities), 0, state#widgets#mapLayerRowEntities);
@@ -190,18 +212,31 @@ mod JavaFXIdeUI {
         Array.put(Some(mapPaletteMarginYSpinner), 0, state#widgets#mapPaletteMarginYSpinner);
         Array.put(Some(mapEntityIdField), 0, state#widgets#mapEntityIdField);
         Array.put(Some(mapNewBtn), 0, state#widgets#mapNewBtn);
+        Array.put(Some(mapDeleteBtn), 0, state#widgets#mapDeleteBtn);
+        Array.put(Some(mapToolPencilBtn), 0, state#widgets#mapToolPencilBtn);
+        Array.put(Some(mapToolRangeBtn), 0, state#widgets#mapToolRangeBtn);
         Array.put(Some(mapPaletteSection), 0, state#widgets#mapPaletteSection);
         Array.put(Some(mapEntitySection), 0, state#widgets#mapEntitySection);
         Array.put(Some(mapRightTabs), 0, state#widgets#mapRightTabs);
         Array.put(Some(mapMaterialsWallMapBox), 0, state#widgets#mapMaterialsWallMapBox);
         Array.put(Some(mapMaterialsStatus), 0, state#widgets#mapMaterialsStatus);
         Array.put(Some(mapMaterialsTilesetCanvas), 0, state#widgets#mapMaterialsTilesetCanvas);
+        Array.put(Some(mapRuleAddBtn), 0, state#widgets#mapRuleAddBtn);
+        Array.put(Some(mapRuleRemoveBtn), 0, state#widgets#mapRuleRemoveBtn);
+        Array.put(Some(mapRuleList), 0, state#widgets#mapRuleList);
+        Array.put(Some(mapRuleEditor), 0, state#widgets#mapRuleEditor);
+        Array.put(Some(mapRuleNameField), 0, state#widgets#mapRuleNameField);
+        Array.put(Some(mapRulePatternGrid), 0, state#widgets#mapRulePatternGrid);
+        Array.put(Some(mapRuleTileLabel), 0, state#widgets#mapRuleTileLabel);
+        Array.put(Some(mapRuleChanceSpinner), 0, state#widgets#mapRuleChanceSpinner);
         // Map canvas: クリック・ピンチズーム・Ctrl/Cmd+Z undo を 1 か所で配線
         MapGridCanvas.wireMapCanvas(state, mapGridCanvas);
+        MapEditorPanel.wireToolButtons(state, mapToolPencilBtn, mapToolRangeBtn);
         MapEditorPanel.wireLayerList(state);
         MapEditorPanel.initPaletteWidgets(state);
         MapEditorPanel.wirePaletteClick(state, mapPaletteCanvas);
         MapEditorPanel.wireNewLevelButton(state, mapNewBtn);
+        MapEditorPanel.wireDeleteLevelButton(state, mapDeleteBtn);
         MapEditorPanel.wireMapSelection(state, mapsList);
         MapEditorPanel.initMaterialsTab(state);
 

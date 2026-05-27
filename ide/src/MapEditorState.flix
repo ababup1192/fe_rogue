@@ -17,6 +17,14 @@ mod MapEditorState {
         case Entities
     }
 
+    /// Map Canvas の操作モード。
+    ///   Pencil      = 鉛筆 (クリック/ドラッグでタイルを置く・消す)
+    ///   RangeSelect = 範囲選択 (ドラッグで矩形範囲を選び、BackSpace で削除)
+    pub enum EditTool with Eq, ToString {
+        case Pencil
+        case RangeSelect
+    }
+
     /// 各レイヤーの canvas 上での表示 ON/OFF。
     /// 目玉トグルで切り替え、描画時 (MapGridCanvas.drawLevel) が参照する。
     /// Walls visibility は「自動壁 + manualTiles 上書き」両方をまとめて制御。
@@ -82,7 +90,14 @@ mod MapEditorState {
         undoStackRef           = Array[List[MapResource.Level], Static],
         editingMaterialRef     = Array[Option[MapResource.Material], Static],
         editingMaterialPathRef = Array[Option[String], Static],
-        selectedTrblRef        = Array[Option[String], Static]
+        selectedTrblRef        = Array[Option[String], Static],
+        editingRuleIndexRef    = Array[Option[Int32], Static],
+        // Map Canvas のドラッグ範囲選択
+        selectedRangeRef       = Array[Option[(Int32, Int32, Int32, Int32)], Static],
+        dragStartRef           = Array[Option[(Int32, Int32)], Static],
+        isDraggingRef          = Array[Bool, Static],
+        // Map Canvas の操作ツール (Pencil / RangeSelect)
+        editToolRef            = Array[EditTool, Static]
     }
 
     /// 空の MapEditorState を作る。
@@ -100,7 +115,12 @@ mod MapEditorState {
             undoStackRef           = Array#{(Nil: List[MapResource.Level])} @ Static,
             editingMaterialRef     = Array#{(None: Option[MapResource.Material])} @ Static,
             editingMaterialPathRef = Array#{(None: Option[String])} @ Static,
-            selectedTrblRef        = Array#{(None: Option[String])} @ Static
+            selectedTrblRef        = Array#{(None: Option[String])} @ Static,
+            editingRuleIndexRef    = Array#{(None: Option[Int32])} @ Static,
+            selectedRangeRef       = Array#{(None: Option[(Int32, Int32, Int32, Int32)])} @ Static,
+            dragStartRef           = Array#{(None: Option[(Int32, Int32)])} @ Static,
+            isDraggingRef          = Array#{false} @ Static,
+            editToolRef            = Array#{EditTool.Pencil} @ Static
         }
 
     /// 全レイヤー visible の初期値。
@@ -248,4 +268,39 @@ mod MapEditorState {
 
     pub def getSelectedTrbl(state: MapEditorState): Option[String] \ IO =
         Array.get(0, state#selectedTrblRef)
+
+    pub def setEditingRuleIndex(state: MapEditorState, idx: Option[Int32]): Unit \ IO =
+        Array.put(idx, 0, state#editingRuleIndexRef)
+
+    pub def getEditingRuleIndex(state: MapEditorState): Option[Int32] \ IO =
+        Array.get(0, state#editingRuleIndexRef)
+
+    // ─── Map Canvas のドラッグ範囲選択 ───
+
+    pub def getSelectedRange(state: MapEditorState):
+            Option[(Int32, Int32, Int32, Int32)] \ IO =
+        Array.get(0, state#selectedRangeRef)
+
+    pub def setSelectedRange(state: MapEditorState,
+                                range: Option[(Int32, Int32, Int32, Int32)]):
+            Unit \ IO =
+        Array.put(range, 0, state#selectedRangeRef)
+
+    pub def getDragStart(state: MapEditorState): Option[(Int32, Int32)] \ IO =
+        Array.get(0, state#dragStartRef)
+
+    pub def setDragStart(state: MapEditorState, p: Option[(Int32, Int32)]): Unit \ IO =
+        Array.put(p, 0, state#dragStartRef)
+
+    pub def getIsDragging(state: MapEditorState): Bool \ IO =
+        Array.get(0, state#isDraggingRef)
+
+    pub def setIsDragging(state: MapEditorState, dragging: Bool): Unit \ IO =
+        Array.put(dragging, 0, state#isDraggingRef)
+
+    pub def getEditTool(state: MapEditorState): EditTool \ IO =
+        Array.get(0, state#editToolRef)
+
+    pub def setEditTool(state: MapEditorState, tool: EditTool): Unit \ IO =
+        Array.put(tool, 0, state#editToolRef)
 }

@@ -43,14 +43,35 @@
                 <HBox alignment="CENTER_LEFT" spacing="4" styleClass="map-list-toolbar">
                     <children>
                         <Button fx:id="mapNewBtn" text="+ New" prefWidth="80"/>
+                        <Button fx:id="mapDeleteBtn" text="- Delete" prefWidth="80"/>
                     </children>
                 </HBox>
             </children>
         </VBox>
-        <!-- 中央: Canvas のみ (自動保存なので保存ボタンは無し)。
-             ピンチで拡大縮小、Ctrl+Z (macOS は Cmd+Z) で 1 操作 undo。 -->
-        <VBox fx:id="mapEditorPane" alignment="TOP_CENTER" spacing="8">
+        <!-- 中央: ツールバー + Canvas (自動保存なので保存ボタンは無し)。
+             ピンチで拡大縮小、Ctrl+Z (macOS は Cmd+Z) で 1 操作 undo。
+             Pencil / RangeSelect で操作モードを切り替える。 -->
+        <VBox fx:id="mapEditorPane" alignment="TOP_CENTER" spacing="4">
             <children>
+                <HBox alignment="CENTER_LEFT" spacing="4"
+                      styleClass="map-tool-bar">
+                    <children>
+                        <ToggleButton fx:id="mapToolPencilBtn"
+                                       text="✎" selected="true"
+                                       prefWidth="26" prefHeight="26"
+                                       minWidth="26" minHeight="26"
+                                       maxWidth="26" maxHeight="26"
+                                       focusTraversable="false"
+                                       styleClass="map-tool-btn"/>
+                        <ToggleButton fx:id="mapToolRangeBtn"
+                                       text="▭"
+                                       prefWidth="26" prefHeight="26"
+                                       minWidth="26" minHeight="26"
+                                       maxWidth="26" maxHeight="26"
+                                       focusTraversable="false"
+                                       styleClass="map-tool-btn"/>
+                    </children>
+                </HBox>
                 <ScrollPane fx:id="mapGridScroll" VBox.vgrow="ALWAYS">
                     <content>
                         <Canvas fx:id="mapGridCanvas" width="400" height="400"/>
@@ -211,6 +232,50 @@
                                     <children>
                                         <VBox fx:id="mapMaterialsWallMapBox"
                                               spacing="3" alignment="TOP_LEFT"/>
+                                        <Separator/>
+                                        <Label text="Rules" styleClass="section-header"/>
+                                        <HBox spacing="4" alignment="CENTER_LEFT">
+                                            <children>
+                                                <Button fx:id="mapRuleAddBtn"
+                                                        text="+ Add"/>
+                                                <Button fx:id="mapRuleRemoveBtn"
+                                                        text="- Remove"/>
+                                            </children>
+                                        </HBox>
+                                        <ListView fx:id="mapRuleList" prefHeight="100"/>
+                                        <VBox fx:id="mapRuleEditor"
+                                              visible="false" managed="false"
+                                              spacing="4">
+                                            <children>
+                                                <HBox spacing="4"
+                                                      alignment="CENTER_LEFT">
+                                                    <children>
+                                                        <Label text="Name:"/>
+                                                        <TextField fx:id="mapRuleNameField"
+                                                                   maxWidth="Infinity"
+                                                                   HBox.hgrow="ALWAYS"/>
+                                                    </children>
+                                                </HBox>
+                                                <Label text="Pattern (3×3): クリックで 任意→空→床→壁"
+                                                       styleClass="map-palette-status"/>
+                                                <GridPane fx:id="mapRulePatternGrid"
+                                                          hgap="2" vgap="2"
+                                                          alignment="CENTER_LEFT"/>
+                                                <Label fx:id="mapRuleTileLabel"
+                                                       text="Tile: 未設定 (tileset をクリックで指定)"
+                                                       styleClass="map-palette-status"/>
+                                                <HBox spacing="4"
+                                                      alignment="CENTER_LEFT">
+                                                    <children>
+                                                        <Label text="Chance:"/>
+                                                        <Spinner fx:id="mapRuleChanceSpinner"
+                                                                 prefWidth="80"
+                                                                 editable="true"/>
+                                                        <Label text="\%"/>
+                                                    </children>
+                                                </HBox>
+                                            </children>
+                                        </VBox>
                                         <Label fx:id="mapMaterialsStatus"
                                                text="セル未選択"
                                                styleClass="map-palette-status"/>

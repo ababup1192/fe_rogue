@@ -27,6 +27,7 @@ mod IdeState {
     import javafx.scene.canvas.Canvas
     import javafx.scene.image.Image
     import javafx.scene.control.TabPane
+    import javafx.scene.layout.GridPane
     import javafx.stage.Stage
 
     /// FXML の fx:id 経由で取得した主要 widget 参照。customize で全フィールドに値が入る
@@ -86,11 +87,25 @@ mod IdeState {
         mapEntityIdField              = Array[Option[TextField], Static],
         // Maps タブの「+ New」ボタン (S17: 新規 Level 作成)
         mapNewBtn                     = Array[Option[Button], Static],
+        // Maps タブの「- Delete」ボタン (map.json + 関連 material.json を削除)
+        mapDeleteBtn                  = Array[Option[Button], Static],
+        // Map Canvas 上のツール切替トグル (Pencil / RangeSelect)
+        mapToolPencilBtn              = Array[Option[ToggleButton], Static],
+        mapToolRangeBtn               = Array[Option[ToggleButton], Static],
         // Materials サブタブ (wallMap 編集)
         mapRightTabs                  = Array[Option[TabPane], Static],
         mapMaterialsWallMapBox        = Array[Option[VBox], Static],
         mapMaterialsStatus            = Array[Option[Label], Static],
-        mapMaterialsTilesetCanvas     = Array[Option[Canvas], Static]
+        mapMaterialsTilesetCanvas     = Array[Option[Canvas], Static],
+        // AutoRule (装飾) エディタ
+        mapRuleAddBtn                 = Array[Option[Button], Static],
+        mapRuleRemoveBtn              = Array[Option[Button], Static],
+        mapRuleList                   = Array[Option[ListView[String]], Static],
+        mapRuleEditor                 = Array[Option[VBox], Static],
+        mapRuleNameField              = Array[Option[TextField], Static],
+        mapRulePatternGrid            = Array[Option[GridPane], Static],
+        mapRuleTileLabel              = Array[Option[Label], Static],
+        mapRuleChanceSpinner          = Array[Option[Spinner[Integer]], Static]
     }
 
     /// 描画ループと FX レイヤーを橋渡しする ref 群。
@@ -252,10 +267,21 @@ mod IdeState {
             mapEntitySection              = Array#{(None: Option[VBox])} @ Static,
             mapEntityIdField              = Array#{(None: Option[TextField])} @ Static,
             mapNewBtn                     = Array#{(None: Option[Button])} @ Static,
+            mapDeleteBtn                  = Array#{(None: Option[Button])} @ Static,
+            mapToolPencilBtn              = Array#{(None: Option[ToggleButton])} @ Static,
+            mapToolRangeBtn               = Array#{(None: Option[ToggleButton])} @ Static,
             mapRightTabs                  = Array#{(None: Option[TabPane])} @ Static,
             mapMaterialsWallMapBox        = Array#{(None: Option[VBox])} @ Static,
             mapMaterialsStatus            = Array#{(None: Option[Label])} @ Static,
-            mapMaterialsTilesetCanvas     = Array#{(None: Option[Canvas])} @ Static
+            mapMaterialsTilesetCanvas     = Array#{(None: Option[Canvas])} @ Static,
+            mapRuleAddBtn                 = Array#{(None: Option[Button])} @ Static,
+            mapRuleRemoveBtn              = Array#{(None: Option[Button])} @ Static,
+            mapRuleList                   = Array#{(None: Option[ListView[String]])} @ Static,
+            mapRuleEditor                 = Array#{(None: Option[VBox])} @ Static,
+            mapRuleNameField              = Array#{(None: Option[TextField])} @ Static,
+            mapRulePatternGrid            = Array#{(None: Option[GridPane])} @ Static,
+            mapRuleTileLabel              = Array#{(None: Option[Label])} @ Static,
+            mapRuleChanceSpinner          = Array#{(None: Option[Spinner[Integer]])} @ Static
         }
 
     def newRuntime(): RuntimeRefs \ IO =

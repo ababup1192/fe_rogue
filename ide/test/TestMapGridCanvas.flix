@@ -20,7 +20,8 @@ mod TestMapGridCanvas {
             manualTiles   = (Nil: List[MapResource.ManualTile]),
             decorTiles    = (Nil: List[MapResource.ManualTile]),
             entities      = (Nil: List[MapResource.Entity]),
-            editorPalette = (None: Option[MapResource.EditorPalette])
+            editorPalette = (None: Option[MapResource.EditorPalette]),
+            intGrid       = (Vector#{}: Vector[Int32])
         };
         MapResource.Level.Level(data)
     }

@@ -22,6 +22,11 @@ mod MapGridCanvas {
     import javafx.scene.input.MouseEvent
     import javafx.scene.input.ZoomEvent
     import javafx.scene.input.KeyEvent
+    import javafx.scene.Scene
+    import javafx.scene.Node
+    import javafx.beans.value.ChangeListener
+    import javafx.beans.value.ObservableValue
+    import java.lang.{Object => JObject}
     import javafx.event.EventHandler
 
     /// 1 セルの表示ピクセル数。tileSize (=16 等) と独立に「IDE 上で見やすい大きさ」で持つ。
@@ -38,7 +43,8 @@ mod MapGridCanvas {
                        wallsImg: Option[Image], floorImg: Option[Image],
                        vis: MapEditorState.LayerVisibility, zoom: Float64,
                        material: Option[MapResource.Material],
-                       selectedTrbl: Option[String]): Unit \ IO = {
+                       selectedTrbl: Option[String],
+                       selectedRange: Option[(Int32, Int32, Int32, Int32)]): Unit \ IO = {
         let d = MapResource.levelData(level);
         resizeAndFill(canvas, d#width, d#height, cellPx, zoom);
         let gc = canvas.getGraphicsContext2D();
@@ -65,6 +71,16 @@ mod MapGridCanvas {
                 case Some(img) => drawTiles(canvas, d#manualTiles, img, d#tileSize, cellPx)
                 case None      => ()
             };
+            // AutoRule (装飾) を最前面に描画
+            match (wallsImg, material) {
+                case (Some(img), Some(mat)) => {
+                    let intGrid = buildIntGrid(floorMask, wallCells, d#width, d#height);
+                    let md = MapResource.materialData(mat);
+                    drawAutoRuleTiles(canvas, intGrid, d#width, d#height,
+                                        md#autoRules, img, d#tileSize, cellPx)
+                }
+                case _ => ()
+            };
             // auto-layer タブで選択中のキー (4-trit or 4-bit) に該当する壁セルを紫網掛け
             match selectedTrbl {
                 case None      => ()
@@ -73,7 +89,33 @@ mod MapGridCanvas {
         } else ();
         drawGridLines(canvas, d#width, d#height, cellPx);
         if (vis#entities) drawEntities(canvas, d#entities, cellPx) else ();
+        // 範囲選択ハイライト (最前面)
+        match selectedRange {
+            case None        => ()
+            case Some(range) => drawSelectedRange(canvas, range, cellPx)
+        };
         gc.restore()
+    }
+
+    /// 選択範囲を半透明の青塗り + 青枠で表示する。
+    def drawSelectedRange(canvas: Canvas, range: (Int32, Int32, Int32, Int32),
+                            cellPx: Int32): Unit \ IO = {
+        let (c1, r1, c2, r2) = range;
+        let minC = Int32.min(c1, c2);
+        let maxC = Int32.max(c1, c2);
+        let minR = Int32.min(r1, r2);
+        let maxR = Int32.max(r1, r2);
+        let cs = Int32.toFloat64(cellPx);
+        let x = Int32.toFloat64(minC) * cs;
+        let y = Int32.toFloat64(minR) * cs;
+        let w = Int32.toFloat64(maxC - minC + 1) * cs;
+        let h = Int32.toFloat64(maxR - minR + 1) * cs;
+        let gc = canvas.getGraphicsContext2D();
+        gc.setFill(Color.rgb(80, 160, 240, 0.25));
+        gc.fillRect(x, y, w, h);
+        gc.setStroke(Color.rgb(80, 160, 240));
+        gc.setLineWidth(2.0);
+        gc.strokeRect(x, y, w, h)
     }
 
     /// 選択中キー (4-trit "EWFW" or 旧 4-bit "0101") に一致する壁セルを紫半透明で塗る。
@@ -195,6 +237,94 @@ mod MapGridCanvas {
         else if (Set.memberOf((col, row), floorMask)) "F"
         else                                          "E"
 
+    /// IntGrid を再構築: 0=空, 1=床, 2=自動壁。
+    pub def buildIntGrid(floorMask: Set[(Int32, Int32)],
+                           wallCells: Set[(Int32, Int32)],
+                           width: Int32, height: Int32): Vector[Int32] =
+        List.range(0, width * height)
+            |> List.map(i -> {
+                let col = Int32.remainder(i, width);
+                let row = i / width;
+                if      (Set.memberOf((col, row), floorMask)) 1i32
+                else if (Set.memberOf((col, row), wallCells)) 2i32
+                else                                          0i32
+            })
+            |> List.toVector
+
+    /// AutoRule リストを各セルに適用して描画する (engine 側の buildAutoRuleTiles と同じロジック)。
+    def drawAutoRuleTiles(canvas: Canvas, intGrid: Vector[Int32],
+                            width: Int32, height: Int32,
+                            rules: List[MapResource.AutoRule], image: Image,
+                            tileSize: Int32, cellPx: Int32): Unit \ IO = {
+        let gc = canvas.getGraphicsContext2D();
+        gc.setImageSmoothing(false);
+        let ts = Int32.toFloat64(tileSize);
+        let cs = Int32.toFloat64(cellPx);
+        List.forEach(i -> {
+            let col = Int32.remainder(i, width);
+            let row = i / width;
+            match applyFirstMatchingRule(intGrid, width, height, col, row, rules) {
+                case None              => ()
+                case Some((srcX, srcY)) => {
+                    let sx = Int32.toFloat64(srcX);
+                    let sy = Int32.toFloat64(srcY);
+                    let dx = Int32.toFloat64(col) * cs;
+                    let dy = Int32.toFloat64(row) * cs;
+                    gc.drawImage(image, sx, sy, ts, ts, dx, dy, cs, cs)
+                }
+            }
+        }, List.range(0, width * height))
+    }
+
+    def applyFirstMatchingRule(intGrid: Vector[Int32], width: Int32, height: Int32,
+                                 col: Int32, row: Int32,
+                                 rules: List[MapResource.AutoRule]):
+            Option[(Int32, Int32)] = match rules {
+        case Nil       => None
+        case r :: rest =>
+            if (ruleMatches(intGrid, width, height, col, row, r))
+                Some((r#srcX, r#srcY))
+            else
+                applyFirstMatchingRule(intGrid, width, height, col, row, rest)
+    }
+
+    pub def ruleMatches(intGrid: Vector[Int32], width: Int32, height: Int32,
+                          col: Int32, row: Int32, rule: MapResource.AutoRule): Bool = {
+        let size = rule#size;
+        let half = size / 2;
+        let n = size * size;
+        let matched = List.range(0, n)
+            |> List.forAll(idx -> {
+                let pc = Int32.remainder(idx, size);
+                let pr = idx / size;
+                let cc = col + pc - half;
+                let cr = row + pr - half;
+                let cellVal = intGridAt(intGrid, width, height, cc, cr);
+                let want = match Vector.nth(idx, rule#pattern) {
+                    case Some(v) => v
+                    case None    => -1i32
+                };
+                want == -1i32 or want == cellVal
+            });
+        if (not matched) false
+        else if (rule#chance >= 1.0f64) true
+        else {
+            let seed = (col * 31i32 + row * 17i32 + String.length(rule#name) * 7i32)
+                     |> Int32.modulo(100i32);
+            let threshold = Float64.tryToInt32(rule#chance * 100.0f64)
+                          |> Option.getWithDefault(0i32);
+            seed < threshold
+        }
+    }
+
+    def intGridAt(intGrid: Vector[Int32], width: Int32, height: Int32,
+                    col: Int32, row: Int32): Int32 =
+        if (col < 0 or col >= width or row < 0 or row >= height) 0i32
+        else match Vector.nth(row * width + col, intGrid) {
+            case Some(v) => v
+            case None    => 0i32
+        }
+
     /// Entity を「シアン円 + identifier テキスト」で描画する。
     /// セルの中心に円、その下に小さくラベル。
     def drawEntities(canvas: Canvas, entities: List[MapResource.Entity], cellPx: Int32): Unit \ IO = {
@@ -297,10 +427,84 @@ mod MapGridCanvas {
     ///   - Ctrl/Cmd+Z : undo (canvas にフォーカスが必要なのでクリックで requestFocus する)
     pub def wireMapCanvas(state: IdeState.IdeState, canvas: Canvas): Unit \ IO = {
         canvas.setFocusTraversable(true);
-        canvas.setOnMouseClicked(new EventHandler[MouseEvent] {
+        // MousePressed: EditTool に応じて分岐
+        //   Pencil      → 配置/削除 (handleClick) + dragStart に「最後にペイントしたセル」記録
+        //   RangeSelect → 範囲ドラッグ開始
+        canvas.setOnMousePressed(new EventHandler[MouseEvent] {
             def handle(_this: EventHandler[MouseEvent], event: MouseEvent): Unit \ IO = {
                 canvas.requestFocus();
-                handleClick(state, event)
+                let (col, row) = eventToCell(state, event);
+                match MapEditorState.getEditTool(state#mapEditor) {
+                    case MapEditorState.EditTool.Pencil      => {
+                        MapEditorState.setSelectedRange(state#mapEditor, None);
+                        handleClick(state, event);
+                        MapEditorState.setDragStart(state#mapEditor, Some((col, row)))
+                    }
+                    case MapEditorState.EditTool.RangeSelect => {
+                        MapEditorState.setDragStart(state#mapEditor, Some((col, row)));
+                        MapEditorState.setIsDragging(state#mapEditor, false);
+                        MapEditorState.setSelectedRange(state#mapEditor, None);
+                        MapEditorPanel.redrawCanvas(state)
+                    }
+                }
+            }
+        });
+        // MouseDragged: Pencil は連続ペイント、RangeSelect は範囲更新
+        canvas.setOnMouseDragged(new EventHandler[MouseEvent] {
+            def handle(_this: EventHandler[MouseEvent], event: MouseEvent): Unit \ IO = {
+                let (col, row) = eventToCell(state, event);
+                match MapEditorState.getEditTool(state#mapEditor) {
+                    case MapEditorState.EditTool.Pencil      => {
+                        // 直前と違うセルに移動したときだけ追加配置 (連続ペイント)
+                        match MapEditorState.getDragStart(state#mapEditor) {
+                            case Some((lc, lr)) =>
+                                if (lc == col and lr == row) ()
+                                else {
+                                    handleClick(state, event);
+                                    MapEditorState.setDragStart(
+                                        state#mapEditor, Some((col, row)))
+                                }
+                            case None => ()
+                        }
+                    }
+                    case MapEditorState.EditTool.RangeSelect => {
+                        match MapEditorState.getDragStart(state#mapEditor) {
+                            case None         => ()
+                            case Some((sc, sr)) => {
+                                MapEditorState.setIsDragging(state#mapEditor, true);
+                                MapEditorState.setSelectedRange(state#mapEditor,
+                                    Some((sc, sr, col, row)));
+                                MapEditorPanel.redrawCanvas(state)
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        // MouseReleased: ドラッグ終了処理。Pencil は記録クリアだけ、RangeSelect は範囲確定。
+        canvas.setOnMouseReleased(new EventHandler[MouseEvent] {
+            def handle(_this: EventHandler[MouseEvent], _event: MouseEvent): Unit \ IO = {
+                match MapEditorState.getEditTool(state#mapEditor) {
+                    case MapEditorState.EditTool.Pencil      => {
+                        MapEditorState.setDragStart(state#mapEditor, None)
+                    }
+                    case MapEditorState.EditTool.RangeSelect => {
+                        let dragging = MapEditorState.getIsDragging(state#mapEditor);
+                        if (dragging) {
+                            // 範囲選択確定 (selectedRange は維持)
+                            ()
+                        } else {
+                            // 単純クリックでは範囲を作らない
+                            MapEditorState.setSelectedRange(state#mapEditor, None)
+                        };
+                        MapEditorState.setDragStart(state#mapEditor, None);
+                        MapEditorState.setIsDragging(state#mapEditor, false);
+                        MapEditorPanel.redrawCanvas(state)
+                    }
+                };
+                // ドラッグ/クリック後も BackSpace 等のキー入力を受け取れるよう
+                // Canvas にフォーカスを保持しておく
+                canvas.requestFocus()
             }
         });
         canvas.setOnZoom(new EventHandler[ZoomEvent] {
@@ -314,13 +518,191 @@ mod MapGridCanvas {
         });
         canvas.setOnKeyPressed(new EventHandler[KeyEvent] {
             def handle(_this: EventHandler[KeyEvent], event: KeyEvent): Unit \ IO = {
+                let code = event.getCode().toString();
                 // isShortcutDown() = Cmd (macOS) または Ctrl (Win/Linux)
-                if (event.isShortcutDown() and event.getCode().toString() == "Z") {
+                if (event.isShortcutDown() and code == "Z") {
                     doUndo(state);
+                    event.consume()
+                } else if (code == "BACK_SPACE") {
+                    deleteSelectedRange(state);
+                    event.consume()
+                } else if (code == "ENTER") {
+                    fillSelectedRange(state);
+                    event.consume()
+                } else if (code == "ESCAPE") {
+                    MapEditorState.setSelectedRange(state#mapEditor, None);
+                    MapEditorPanel.redrawCanvas(state);
                     event.consume()
                 } else ()
             }
+        });
+        // ScrollPane が間に挟まる構造のため、フォーカスが Canvas でなく ScrollPane に
+        // 行くことがある。Scene 上のキーイベントを捕捉し、Map Canvas 領域 (Canvas または
+        // その祖先である ScrollPane / VBox) が focus を持つときのみ反応させる。
+        canvas.sceneProperty().addListener(new ChangeListener[Scene] {
+            def changed(_cThis: ChangeListener[Scene],
+                          _obs: ObservableValue[JObject],
+                          _old: Scene, newScene: Scene): Unit \ IO = {
+                if (Object.isNull(newScene)) ()
+                else {
+                    newScene.addEventFilter(KeyEvent.KEY_PRESSED,
+                        new EventHandler[KeyEvent] {
+                            def handle(_this: EventHandler[KeyEvent],
+                                         event: KeyEvent): Unit \ IO = {
+                                if (isMapCanvasFocused(canvas)) {
+                                    let code = event.getCode().toString();
+                                    if (event.isShortcutDown() and code == "Z") {
+                                        doUndo(state);
+                                        event.consume()
+                                    } else if (code == "BACK_SPACE") {
+                                        deleteSelectedRange(state);
+                                        event.consume()
+                                    } else if (code == "ENTER") {
+                                        fillSelectedRange(state);
+                                        event.consume()
+                                    } else if (code == "ESCAPE") {
+                                        MapEditorState.setSelectedRange(
+                                            state#mapEditor, None);
+                                        MapEditorPanel.redrawCanvas(state);
+                                        event.consume()
+                                    } else ()
+                                } else ()
+                            }
+                        })
+                }
+            }
         })
+    }
+
+    /// 現在の Scene focus owner が canvas、または canvas の祖先 (ScrollPane / VBox) で
+    /// あれば true。これにより「Map Canvas 領域に focus が入っている状態」を判定する。
+    def isMapCanvasFocused(canvas: Canvas): Bool \ IO = {
+        let scene = canvas.getScene();
+        if (Object.isNull(scene)) false
+        else {
+            let focused: Node = scene.getFocusOwner();
+            if (Object.isNull(focused)) false
+            else {
+                // canvas もしくは canvas の祖先のいずれかに focus owner が一致するか
+                let canvasNode: Node = checked_cast(canvas);
+                isAncestorOrSelf(focused, canvasNode)
+            }
+        }
+    }
+
+    /// `target` が `node` か、`node` の祖先のいずれかに等しいかを判定する。
+    /// (つまり node→parent→...→root の中に target があるか)
+    def isAncestorOrSelf(target: Node, node: Node): Bool \ IO = {
+        if (Object.isNull(node)) false
+        else if (target.equals(node)) true
+        else {
+            // Parent は Node のサブクラスなので checked_cast で上方向にキャスト
+            let parent = node.getParent();
+            let parentNode: Node = checked_cast(parent);
+            isAncestorOrSelf(target, parentNode)
+        }
+    }
+
+    /// MouseEvent の x/y から grid 座標 (col, row) を取り出す。
+    /// mapZoom と cellPx を考慮する。
+    def eventToCell(state: IdeState.IdeState, event: MouseEvent): (Int32, Int32) \ IO = {
+        let cellPx = defaultCellPx();
+        let zoom = MapEditorState.getMapZoom(state#mapEditor);
+        let cs = Int32.toFloat64(cellPx) * zoom;
+        let col = Float64.truncateToInt32(event.getX() / cs);
+        let row = Float64.truncateToInt32(event.getY() / cs);
+        (col, row)
+    }
+
+    /// 選択範囲を「現在 Palette で選択中のタイル」で塗りつぶす。
+    /// Floor / Walls のみ対応 (Entities は palette を持たないので no-op)。
+    /// 範囲未選択、または Palette 未選択のときは no-op。
+    def fillSelectedRange(state: IdeState.IdeState): Unit \ IO = {
+        match (MapEditorState.getSelectedRange(state#mapEditor),
+               MapEditorState.getEditingLevel(state#mapEditor),
+               MapEditorState.getSelectedSrc(state#mapEditor)) {
+            case (Some(range), Some(level), Some((srcX, srcY))) => {
+                let (c1, r1, c2, r2) = range;
+                let minC = Int32.max(0, Int32.min(c1, c2));
+                let maxC = Int32.min(MapResource.levelData(level)#width - 1,
+                                       Int32.max(c1, c2));
+                let minR = Int32.max(0, Int32.min(r1, r2));
+                let maxR = Int32.min(MapResource.levelData(level)#height - 1,
+                                       Int32.max(r1, r2));
+                let mode = MapEditorState.getLayerMode(state#mapEditor);
+                // 範囲内の (col, row) 列を生成
+                let cols = List.range(minC, maxC + 1);
+                let rows = List.range(minR, maxR + 1);
+                let allCells: List[(Int32, Int32)] =
+                    List.flatMap(c -> List.map(r -> (c, r), rows), cols);
+                // 各セルに place* を fold で重ね適用 (maybeFinalizeTileSize は最後に一度だけ)
+                let prevD = MapResource.levelData(level);
+                let placed = List.foldLeft((acc, cr) -> {
+                    let (c, r) = cr;
+                    let ad = MapResource.levelData(acc);
+                    match mode {
+                        case MapEditorState.LayerMode.Floor    =>
+                            placeFloorTileAt(acc, ad, c, r, srcX, srcY)
+                        case MapEditorState.LayerMode.Walls    =>
+                            placeWallTileAt(acc, ad, c, r, srcX, srcY)
+                        case MapEditorState.LayerMode.Entities => acc
+                    }
+                }, level, allCells);
+                match mode {
+                    case MapEditorState.LayerMode.Entities => ()  // 何も配置していないので skip
+                    case _ => {
+                        let finalLevel = maybeFinalizeTileSize(state, placed, prevD, mode);
+                        MapEditorState.pushUndo(state#mapEditor, level);
+                        MapEditorState.setEditingLevel(state#mapEditor, Some(finalLevel));
+                        MapEditorState.setSelectedRange(state#mapEditor, None);
+                        MapEditorPanel.redrawCanvas(state);
+                        MapEditorPanel.autoSave(state)
+                    }
+                }
+            }
+            case _ => ()
+        }
+    }
+
+    /// 選択範囲内のタイルを現 LayerMode に応じて削除する。
+    def deleteSelectedRange(state: IdeState.IdeState): Unit \ IO = {
+        match (MapEditorState.getSelectedRange(state#mapEditor),
+               MapEditorState.getEditingLevel(state#mapEditor)) {
+            case (Some(range), Some(level)) => {
+                let (c1, r1, c2, r2) = range;
+                let minC = Int32.min(c1, c2);
+                let maxC = Int32.max(c1, c2);
+                let minR = Int32.min(r1, r2);
+                let maxR = Int32.max(r1, r2);
+                let d = MapResource.levelData(level);
+                let mode = MapEditorState.getLayerMode(state#mapEditor);
+                let inRange = (x, y) ->
+                    x >= minC and x <= maxC and y >= minR and y <= maxR;
+                let newLevel = match mode {
+                    case MapEditorState.LayerMode.Floor    => {
+                        let newDecor = List.filter(t -> not inRange(t#x, t#y), d#decorTiles);
+                        let newD: MapResource.LevelData = {decorTiles = newDecor | d};
+                        MapResource.Level.Level(newD)
+                    }
+                    case MapEditorState.LayerMode.Walls    => {
+                        let newManual = List.filter(t -> not inRange(t#x, t#y), d#manualTiles);
+                        let newD: MapResource.LevelData = {manualTiles = newManual | d};
+                        MapResource.Level.Level(newD)
+                    }
+                    case MapEditorState.LayerMode.Entities => {
+                        let newEnt = List.filter(e -> not inRange(e#x, e#y), d#entities);
+                        let newD: MapResource.LevelData = {entities = newEnt | d};
+                        MapResource.Level.Level(newD)
+                    }
+                };
+                MapEditorState.pushUndo(state#mapEditor, level);
+                MapEditorState.setEditingLevel(state#mapEditor, Some(newLevel));
+                MapEditorState.setSelectedRange(state#mapEditor, None);
+                MapEditorPanel.redrawCanvas(state);
+                MapEditorPanel.autoSave(state)
+            }
+            case _ => ()
+        }
     }
 
     /// Undo: スタック head の Level を editingLevel に戻し、再描画 + 自動保存。
@@ -515,7 +897,8 @@ mod MapGridCanvas {
                 let zoom = MapEditorState.getMapZoom(state#mapEditor);
                 let mat = MapEditorState.getEditingMaterial(state#mapEditor);
                 let selTrbl = MapEditorState.getSelectedTrbl(state#mapEditor);
-                drawLevel(c, level, cellPx, wImg, fImg, vis, zoom, mat, selTrbl)
+                let selRange = MapEditorState.getSelectedRange(state#mapEditor);
+                drawLevel(c, level, cellPx, wImg, fImg, vis, zoom, mat, selTrbl, selRange)
             }
             case None => ()
         }

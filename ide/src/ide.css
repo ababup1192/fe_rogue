@@ -219,6 +219,32 @@
     -fx-opacity: 1.0;
 }
 
+/* Map Canvas 上のツールバー: Pencil / RangeSelect の四角いトグルボタン。
+   selected で押された見た目 (暗背景 + 白文字) になる。 */
+.map-tool-bar {
+    -fx-padding: 2 2 2 2;
+}
+.map-tool-btn {
+    -fx-background-color: #e8e8e8;
+    -fx-border-color: #888;
+    -fx-border-width: 1;
+    -fx-background-radius: 0;
+    -fx-border-radius: 0;
+    -fx-font-size: 22px;
+    -fx-text-fill: #222;
+    -fx-padding: 0;
+    -fx-cursor: hand;
+}
+.map-tool-btn:hover {
+    -fx-background-color: #d4d4d4;
+}
+.map-tool-btn:selected {
+    -fx-background-color: #4a6fa5;
+    -fx-text-fill: white;
+    -fx-border-color: #2c4870;
+    -fx-effect: innershadow(gaussian, rgba(0,0,0,0.35), 4, 0.2, 0, 1);
+}
+
 /* Project ロード進捗 overlay。canvas 中央に半透明背景で被せる */
 .loading-overlay {
     -fx-background-color: rgba(40, 40, 40, 0.92);

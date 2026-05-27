@@ -9,6 +9,7 @@
 mod MapEditorPanel {
     import java.lang.{Object => JObject}
     import java.lang.Integer
+    import java.lang.Number
     import java.io.File
     import javafx.scene.control.ListView
     import javafx.scene.control.Button
@@ -182,15 +183,50 @@ mod MapEditorPanel {
             }
             case Some(root) => {
                 let path = root + "/assets/materials/" + materialId + ".material.json";
-                let matOpt: Option[MapResource.Material] = Persistence.load(path);
+                let rawMatOpt: Option[MapResource.Material] = Persistence.load(path);
+                // 旧 4-bit キー ("0101" 等) は UI に出ないので、ロード時にクリーンアップ
+                let matOpt = Option.map(stripLegacyWallMapKeys, rawMatOpt);
                 MapEditorState.setEditingMaterial(state#mapEditor, matOpt);
                 MapEditorState.setEditingMaterialPath(state#mapEditor,
                     if (Option.isEmpty(matOpt)) None else Some(path));
                 match matOpt {
                     case None    => println("[MapEditor] material not found: ${path}")
-                    case Some(_) => println("[MapEditor] material loaded: ${materialId}")
+                    case Some(_) => {
+                        // 旧キーが除去されたなら JSON にも反映 (wallMap サイズが減ったかで判定)
+                        let beforeSize = match rawMatOpt {
+                            case Some(m) => Map.size(MapResource.materialData(m)#wallMap)
+                            case None    => 0
+                        };
+                        let afterSize = match matOpt {
+                            case Some(m) => Map.size(MapResource.materialData(m)#wallMap)
+                            case None    => 0
+                        };
+                        if (beforeSize > afterSize) {
+                            saveMaterial(state);
+                            println("[MapEditor] cleaned ${beforeSize - afterSize} legacy 4-bit wallMap key(s): ${materialId}")
+                        } else ();
+                        println("[MapEditor] material loaded: ${materialId}")
+                    }
                 }
             }
+        }
+
+    /// Material.wallMap から旧 4-bit キー (例: "0101", "1111") を除去する。
+    /// 4-bit キーは Phase 1 の 4-trit システムへ移行する前のフォールバック仕様。
+    /// 新しい UI には現れないため、ロード時にクリーンアップして見えない残骸を防ぐ。
+    def stripLegacyWallMapKeys(mat: MapResource.Material): MapResource.Material = {
+        let md = MapResource.materialData(mat);
+        let cleaned = Map.filterWithKey((k, _) -> not isLegacy4BitKey(k), md#wallMap);
+        let newMd: MapResource.MaterialData = {wallMap = cleaned | md};
+        MapResource.Material.Material(newMd)
+    }
+
+    /// 4-bit キー判定: 1 文字目が '0' or '1' なら旧仕様 (4-trit は W/F/E で始まる)。
+    def isLegacy4BitKey(key: String): Bool =
+        if (String.length(key) == 0) false
+        else {
+            let c = String.charAt(0, key);
+            c == '0' or c == '1'
         }
 
     /// Level.editorPalette を MapEditorState.PaletteSettings に反映する。
@@ -311,8 +347,9 @@ mod MapEditorPanel {
                 let zoom = MapEditorState.getMapZoom(state#mapEditor);
                 let mat = MapEditorState.getEditingMaterial(state#mapEditor);
                 let selTrbl = MapEditorState.getSelectedTrbl(state#mapEditor);
+                let selRange = MapEditorState.getSelectedRange(state#mapEditor);
                 MapGridCanvas.drawLevel(canvas, level, MapGridCanvas.defaultCellPx(),
-                                          wImg, fImg, vis, zoom, mat, selTrbl)
+                                          wImg, fImg, vis, zoom, mat, selTrbl, selRange)
             }
             case _ => ()
         }
@@ -773,6 +810,122 @@ mod MapEditorPanel {
         })
     }
 
+    /// 「- Delete」ボタン: 選択中の Map と関連 Material を削除する。
+    pub def wireDeleteLevelButton(state: IdeState.IdeState, btn: Button): Unit \ IO = {
+        btn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                promptAndDeleteCurrent(state)
+        })
+    }
+
+    /// Map Canvas 上の Pencil / RangeSelect トグルボタン配線。
+    /// 一方を押すともう一方は非選択になる (排他)。MapEditorState の editTool を更新する。
+    pub def wireToolButtons(state: IdeState.IdeState,
+                              pencilBtn: ToggleButton,
+                              rangeBtn: ToggleButton): Unit \ IO = {
+        // 初期表示: 現在の editTool に合わせる (default = Pencil)
+        let tool = MapEditorState.getEditTool(state#mapEditor);
+        pencilBtn.setSelected(MapEditorState.EditTool.Pencil == tool);
+        rangeBtn.setSelected(MapEditorState.EditTool.RangeSelect == tool);
+        pencilBtn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                // 排他: もう一方を解除し、Pencil を選択状態に固定
+                MapEditorState.setEditTool(state#mapEditor,
+                    MapEditorState.EditTool.Pencil);
+                pencilBtn.setSelected(true);
+                rangeBtn.setSelected(false);
+                // モード切替で範囲選択は解除
+                MapEditorState.setSelectedRange(state#mapEditor, None);
+                redrawCanvas(state)
+            }
+        });
+        rangeBtn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                MapEditorState.setEditTool(state#mapEditor,
+                    MapEditorState.EditTool.RangeSelect);
+                pencilBtn.setSelected(false);
+                rangeBtn.setSelected(true);
+                redrawCanvas(state)
+            }
+        })
+    }
+
+    /// 削除フロー: 選択中 Map → 確認ダイアログ → ファイル削除 (map + material) → ListView refresh。
+    def promptAndDeleteCurrent(state: IdeState.IdeState): Unit \ IO = {
+        match (IdeState.getCurrentProjectRoot(state),
+               MapEditorState.getSelectedLevelPath(state#mapEditor)) {
+            case (Some(root), Some(mapPath)) => {
+                let mapName = stripMapJsonExt(displayName(mapPath));
+                let dialog: Dialog[ButtonType] = new Dialog();
+                dialog.setTitle("Delete Map");
+                dialog.setHeaderText("「${mapName}」を削除しますか？");
+                let pane = dialog.getDialogPane();
+                let buttonTypes = pane.getButtonTypes();
+                discard buttonTypes.add(ButtonType.OK);
+                discard buttonTypes.add(ButtonType.CANCEL);
+                pane.setContentText(
+                    "以下のファイルを削除します:\n"
+                    + "  - assets/maps/${mapName}.map.json\n"
+                    + "  - assets/materials/${mapName}.material.json (もしあれば)\n\n"
+                    + "この操作は取り消せません。"
+                );
+                let result = dialog.showAndWait();
+                if (result.isPresent()) {
+                    let bt = result.get();
+                    let okBt = ButtonType.OK;
+                    if (okBt.equals(bt))
+                        deleteMapAndMaterial(state, root, mapPath, mapName)
+                    else ()
+                } else ()
+            }
+            case _ => showAlert("削除する Map が選択されていません")
+        }
+    }
+
+    /// `.map.json` 拡張子を除いた名前を返す ("new_room.map.json" → "new_room")。
+    def stripMapJsonExt(filename: String): String = {
+        let suffix = ".map.json";
+        let len = String.length(filename);
+        let sufLen = String.length(suffix);
+        if (len > sufLen and String.endsWith(suffix = suffix, filename))
+            filename.substring(0, len - sufLen)
+        else filename
+    }
+
+    /// map.json と関連する material.json を削除し、ListView を refresh する。
+    def deleteMapAndMaterial(state: IdeState.IdeState, root: String,
+                                mapPath: String, mapName: String): Unit \ IO = {
+        let matPath = root + "/assets/materials/" + mapName + ".material.json";
+        let mapDeleted = deleteFileQuietly(mapPath);
+        let matDeleted = deleteFileQuietly(matPath);
+        if (mapDeleted) println("[MapEditor] deleted: ${mapPath}") else ();
+        if (matDeleted) println("[MapEditor] deleted: ${matPath}") else ();
+        // 選択解除 + editingLevel/Material をクリア
+        MapEditorState.setSelectedLevelPath(state#mapEditor, None);
+        MapEditorState.setEditingLevel(state#mapEditor, None);
+        MapEditorState.setEditingMaterial(state#mapEditor, None);
+        MapEditorState.setEditingMaterialPath(state#mapEditor, None);
+        MapEditorState.clearUndoStack(state#mapEditor);
+        // Map Canvas をクリア + ListView 再 glob
+        match Array.get(0, state#widgets#mapGridCanvas) {
+            case Some(c) => MapGridCanvas.clear(c)
+            case None    => ()
+        };
+        let mapFiles = run {
+            findMapFiles(root)
+        } with Fs.Glob.runWithIO;
+        MapEditorState.setLevelFiles(state#mapEditor, mapFiles);
+        populateMapList(state);
+        refreshMaterialsTab(state)
+    }
+
+    /// ファイルを削除する。失敗しても例外を投げず、結果を Bool で返す。
+    def deleteFileQuietly(path: String): Bool \ IO = {
+        let f = new File(path);
+        if (f.exists()) f.delete()
+        else false
+    }
+
     /// 新規 Level 作成 UI フロー。Custom Dialog で名前 + 幅 + 高さを取得。
     /// tileSize は空マップから始まり、最初のタイル配置時にその Palette cellW で自動確定する。
     /// 1. Dialog 表示 (ESC / Cancel → 何もしない)
@@ -894,7 +1047,8 @@ mod MapEditorPanel {
             manualTiles   = (Nil: List[MapResource.ManualTile]),
             decorTiles    = (Nil: List[MapResource.ManualTile]),
             entities      = (Nil: List[MapResource.Entity]),
-            editorPalette = (None: Option[MapResource.EditorPalette])
+            editorPalette = (None: Option[MapResource.EditorPalette]),
+            intGrid       = (Vector#{}: Vector[Int32])
         };
         MapResource.Level.Level(data)
     }
@@ -908,7 +1062,8 @@ mod MapEditorPanel {
             tileSize     = 16,
             wallMap      = (Map.empty(): Map[String, (Int32, Int32)]),
             floorPalette = (Nil: List[(Int32, Int32)]),
-            decorPalette = (Nil: List[(Int32, Int32)])
+            decorPalette = (Nil: List[(Int32, Int32)]),
+            autoRules    = (Nil: List[MapResource.AutoRule])
         };
         MapResource.Material.Material(data)
     }
@@ -969,7 +1124,371 @@ mod MapEditorPanel {
                 wireTilesetZoom(state, canvas)
             }
         };
+        initRulesEditor(state);
         refreshMaterialsTab(state)
+    }
+
+    /// AutoRule エディタの初期化: ListView 選択、Add/Remove ボタン、Pattern grid、
+    /// Name field、Chance Spinner のリスナーを配線する。
+    def initRulesEditor(state: IdeState.IdeState): Unit \ IO = {
+        // Pattern 3×3 grid を構築
+        match Array.get(0, state#widgets#mapRulePatternGrid) {
+            case None       => ()
+            case Some(grid) => buildPatternGrid(state, grid)
+        };
+        // Chance Spinner の factory
+        match Array.get(0, state#widgets#mapRuleChanceSpinner) {
+            case None     => ()
+            case Some(sp) => {
+                let f = new SpinnerValueFactory$IntegerSpinnerValueFactory(0i32, 100i32, 100i32);
+                sp.setValueFactory(unchecked_cast(f as SpinnerValueFactory[Integer]));
+                sp.valueProperty().addListener(new ChangeListener[Integer] {
+                    def changed(_cThis: ChangeListener[Integer],
+                                  _obs: ObservableValue[JObject],
+                                  _old: Integer, newVal: Integer): Unit \ IO = {
+                        if (Object.isNull(newVal)) ()
+                        else updateRuleField(state, "chance", newVal.intValue())
+                    }
+                })
+            }
+        };
+        // Name field のリスナー
+        match Array.get(0, state#widgets#mapRuleNameField) {
+            case None     => ()
+            case Some(tf) => {
+                tf.textProperty().addListener(new ChangeListener[String] {
+                    def changed(_cThis: ChangeListener[String],
+                                  _obs: ObservableValue[JObject],
+                                  _old: String, newVal: String): Unit \ IO = {
+                        if (Object.isNull(newVal)) ()
+                        else updateRuleName(state, newVal)
+                    }
+                })
+            }
+        };
+        // Add / Remove ボタン
+        match Array.get(0, state#widgets#mapRuleAddBtn) {
+            case None     => ()
+            case Some(btn) => btn.setOnAction(new EventHandler[ActionEvent] {
+                def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                    addRule(state)
+            })
+        };
+        match Array.get(0, state#widgets#mapRuleRemoveBtn) {
+            case None     => ()
+            case Some(btn) => btn.setOnAction(new EventHandler[ActionEvent] {
+                def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                    removeSelectedRule(state)
+            })
+        };
+        // ListView 選択リスナー
+        match Array.get(0, state#widgets#mapRuleList) {
+            case None     => ()
+            case Some(lv) => {
+                let prop = lv.getSelectionModel().selectedIndexProperty();
+                prop.addListener(new ChangeListener[Number] {
+                    def changed(_cThis: ChangeListener[Number],
+                                  _obs: ObservableValue[JObject],
+                                  _old: Number, newVal: Number): Unit \ IO = {
+                        if (Object.isNull(newVal)) ()
+                        else {
+                            let i = newVal.intValue();
+                            if (i < 0i32) MapEditorState.setEditingRuleIndex(state#mapEditor, None)
+                            else MapEditorState.setEditingRuleIndex(state#mapEditor, Some(i));
+                            refreshRulesUI(state)
+                        }
+                    }
+                })
+            }
+        }
+    }
+
+    /// Pattern 3×3 grid のセル (9 個) を構築し、クリックで値サイクルさせる。
+    def buildPatternGrid(state: IdeState.IdeState, grid: GridPane): Unit \ IO = {
+        grid.getChildren().clear();
+        List.forEach(idx -> {
+            let r = idx / 3;
+            let c = Int32.remainder(idx, 3);
+            let pane = makePatternCell(state, idx);
+            grid.add(unchecked_cast(pane as Node), c, r)
+        }, List.range(0, 9))
+    }
+
+    /// 1 セル: 32x32 の Canvas、クリックで値サイクル (-1=任意 → 0=空 → 1=床 → 2=壁 → -1...)。
+    /// 中央セル (idx=4) は常に「自セル」表示で編集不可。
+    def makePatternCell(state: IdeState.IdeState, idx: Int32): StackPane \ IO = {
+        let pane = new StackPane();
+        let canvas = new Canvas(32.0, 32.0);
+        drawPatternCellValue(canvas, -1i32, idx == 4i32);
+        pane.getChildren().add(unchecked_cast(canvas as Node));
+        pane.setPrefSize(32.0, 32.0);
+        pane.setMinSize(32.0, 32.0);
+        pane.setUserData(unchecked_cast(canvas as JObject));
+        if (idx == 4i32) ()  // 中央は編集不可
+        else {
+            pane.setStyle("-fx-cursor: hand;");
+            pane.setOnMouseClicked(new EventHandler[MouseEvent] {
+                def handle(_this: EventHandler[MouseEvent], _e: MouseEvent): Unit \ IO =
+                    cyclePatternCell(state, idx)
+            })
+        };
+        pane
+    }
+
+    /// パターンセルの色: -1=灰 (任意), 0=暗 (空), 1=茶 (床), 2=明灰 (壁), 中央=黄 (自セル)。
+    def drawPatternCellValue(canvas: Canvas, value: Int32, isCenter: Bool): Unit \ IO = {
+        let gc = canvas.getGraphicsContext2D();
+        let w = canvas.getWidth();
+        let h = canvas.getHeight();
+        gc.clearRect(0.0, 0.0, w, h);
+        let fill = if (isCenter)        Color.rgb(255, 230, 60)   // 黄
+                   else if (value == 0i32) Color.rgb(60, 60, 70)  // 空
+                   else if (value == 1i32) Color.rgb(140, 100, 60) // 床
+                   else if (value == 2i32) Color.rgb(180, 180, 200) // 壁
+                   else                    Color.rgb(100, 100, 110); // 任意 (-1)
+        gc.setFill(fill);
+        gc.fillRect(1.0, 1.0, w - 2.0, h - 2.0);
+        gc.setStroke(Color.rgb(80, 80, 90));
+        gc.setLineWidth(1.0);
+        gc.strokeRect(0.5, 0.5, w - 1.0, h - 1.0)
+    }
+
+    /// パターンセルの値を -1 → 0 → 1 → 2 → -1 ... と循環させ、Rule を更新する。
+    def cyclePatternCell(state: IdeState.IdeState, idx: Int32): Unit \ IO = {
+        match MapEditorState.getEditingRuleIndex(state#mapEditor) {
+            case None        => ()
+            case Some(ruleI) => {
+                match MapEditorState.getEditingMaterial(state#mapEditor) {
+                    case None      => ()
+                    case Some(mat) => {
+                        let md = MapResource.materialData(mat);
+                        match List.nth(ruleI, md#autoRules) {
+                            case None       => ()
+                            case Some(rule) => {
+                                let curVal = match Vector.nth(idx, rule#pattern) {
+                                    case Some(v) => v
+                                    case None    => -1i32
+                                };
+                                let nextVal = if (curVal == -1i32) 0i32
+                                              else if (curVal == 0i32) 1i32
+                                              else if (curVal == 1i32) 2i32
+                                              else -1i32;
+                                let newPattern = Vector.toList(rule#pattern)
+                                    |> List.mapWithIndex((i, v) ->
+                                          if (i == idx) nextVal else v)
+                                    |> List.toVector;
+                                let newRule = {pattern = newPattern | rule};
+                                replaceRule(state, ruleI, newRule);
+                                refreshRulesUI(state);
+                                MapEditorPanel.redrawCanvas(state)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    def updateRuleField(state: IdeState.IdeState, fieldName: String, value: Int32): Unit \ IO = {
+        match MapEditorState.getEditingRuleIndex(state#mapEditor) {
+            case None        => ()
+            case Some(ruleI) => {
+                match MapEditorState.getEditingMaterial(state#mapEditor) {
+                    case None      => ()
+                    case Some(mat) => {
+                        let md = MapResource.materialData(mat);
+                        match List.nth(ruleI, md#autoRules) {
+                            case None       => ()
+                            case Some(rule) =>
+                                let newRule = if (fieldName == "chance")
+                                                 {chance = Int32.toFloat64(value) / 100.0f64 | rule}
+                                              else rule;
+                                replaceRule(state, ruleI, newRule);
+                                MapEditorPanel.redrawCanvas(state)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    def updateRuleName(state: IdeState.IdeState, name: String): Unit \ IO = {
+        match MapEditorState.getEditingRuleIndex(state#mapEditor) {
+            case None        => ()
+            case Some(ruleI) => {
+                match MapEditorState.getEditingMaterial(state#mapEditor) {
+                    case None      => ()
+                    case Some(mat) => {
+                        let md = MapResource.materialData(mat);
+                        match List.nth(ruleI, md#autoRules) {
+                            case None       => ()
+                            case Some(rule) => {
+                                let newRule = {name = name | rule};
+                                replaceRule(state, ruleI, newRule);
+                                refreshRuleListItems(state)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    def addRule(state: IdeState.IdeState): Unit \ IO = {
+        match MapEditorState.getEditingMaterial(state#mapEditor) {
+            case None      => ()
+            case Some(mat) => {
+                let md = MapResource.materialData(mat);
+                let newRule: MapResource.AutoRule = {
+                    name    = "Rule ${List.length(md#autoRules) + 1}",
+                    size    = 3i32,
+                    pattern = Vector#{-1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32},
+                    srcX    = 0i32,
+                    srcY    = 0i32,
+                    chance  = 1.0f64
+                };
+                let newRules = List.append(md#autoRules, newRule :: Nil);
+                let newMd = {autoRules = newRules | md};
+                let newMat = MapResource.Material.Material(newMd);
+                MapEditorState.setEditingMaterial(state#mapEditor, Some(newMat));
+                let newIdx = List.length(newRules) - 1;
+                MapEditorState.setEditingRuleIndex(state#mapEditor, Some(newIdx));
+                saveMaterial(state);
+                refreshRulesUI(state);
+                MapEditorPanel.redrawCanvas(state)
+            }
+        }
+    }
+
+    def removeSelectedRule(state: IdeState.IdeState): Unit \ IO = {
+        match MapEditorState.getEditingRuleIndex(state#mapEditor) {
+            case None        => ()
+            case Some(ruleI) => {
+                match MapEditorState.getEditingMaterial(state#mapEditor) {
+                    case None      => ()
+                    case Some(mat) => {
+                        let md = MapResource.materialData(mat);
+                        let newRules = md#autoRules
+                            |> List.mapWithIndex((i, r) -> (i, r))
+                            |> List.filterMap(pair -> {
+                                let (i, r) = pair;
+                                if (i == ruleI) None else Some(r)
+                            });
+                        let newMd = {autoRules = newRules | md};
+                        let newMat = MapResource.Material.Material(newMd);
+                        MapEditorState.setEditingMaterial(state#mapEditor, Some(newMat));
+                        MapEditorState.setEditingRuleIndex(state#mapEditor, None);
+                        saveMaterial(state);
+                        refreshRulesUI(state);
+                        MapEditorPanel.redrawCanvas(state)
+                    }
+                }
+            }
+        }
+    }
+
+    /// 指定 index の rule を新しいものに置換し、Material を保存する。
+    def replaceRule(state: IdeState.IdeState, idx: Int32,
+                      newRule: MapResource.AutoRule): Unit \ IO = {
+        match MapEditorState.getEditingMaterial(state#mapEditor) {
+            case None      => ()
+            case Some(mat) => {
+                let md = MapResource.materialData(mat);
+                let newRules = List.mapWithIndex((i, r) ->
+                    if (i == idx) newRule else r, md#autoRules);
+                let newMd = {autoRules = newRules | md};
+                let newMat = MapResource.Material.Material(newMd);
+                MapEditorState.setEditingMaterial(state#mapEditor, Some(newMat));
+                saveMaterial(state)
+            }
+        }
+    }
+
+    /// Rules UI 全体を再描画する: ListView, Editor の visibility, 値, Pattern grid。
+    pub def refreshRulesUI(state: IdeState.IdeState): Unit \ IO = {
+        refreshRuleListItems(state);
+        let idxOpt = MapEditorState.getEditingRuleIndex(state#mapEditor);
+        // Editor の visible 切替
+        match Array.get(0, state#widgets#mapRuleEditor) {
+            case None     => ()
+            case Some(ed) => {
+                let visible = Option.nonEmpty(idxOpt);
+                ed.setVisible(visible);
+                ed.setManaged(visible)
+            }
+        };
+        // Editor 内の値を更新
+        match idxOpt {
+            case None   => ()
+            case Some(i) => {
+                match MapEditorState.getEditingMaterial(state#mapEditor) {
+                    case None      => ()
+                    case Some(mat) => {
+                        let md = MapResource.materialData(mat);
+                        match List.nth(i, md#autoRules) {
+                            case None       => ()
+                            case Some(rule) => updateRuleEditorWidgets(state, rule)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    def refreshRuleListItems(state: IdeState.IdeState): Unit \ IO =
+        match (Array.get(0, state#widgets#mapRuleList),
+               MapEditorState.getEditingMaterial(state#mapEditor)) {
+            case (Some(lv), Some(mat)) => {
+                let items = lv.getItems();
+                items.clear();
+                let md = MapResource.materialData(mat);
+                List.forEach(r -> discard items.add(r#name), md#autoRules)
+            }
+            case _ => ()
+        }
+
+    def updateRuleEditorWidgets(state: IdeState.IdeState,
+                                  rule: MapResource.AutoRule): Unit \ IO = {
+        match Array.get(0, state#widgets#mapRuleNameField) {
+            case Some(tf) => if (tf.getText() != rule#name) tf.setText(rule#name) else ()
+            case None     => ()
+        };
+        match Array.get(0, state#widgets#mapRuleTileLabel) {
+            case Some(lb) => lb.setText("Tile: (${rule#srcX}, ${rule#srcY}) | tileset クリックで変更")
+            case None     => ()
+        };
+        match Array.get(0, state#widgets#mapRuleChanceSpinner) {
+            case Some(sp) =>
+                let pct = Float64.tryToInt32(rule#chance * 100.0f64) |> Option.getWithDefault(100i32);
+                let factory = sp.getValueFactory();
+                if (Object.isNull(factory)) ()
+                else factory.setValue(Integer.valueOf(pct))
+            case None     => ()
+        };
+        // Pattern grid のセル色を更新
+        match Array.get(0, state#widgets#mapRulePatternGrid) {
+            case None       => ()
+            case Some(grid) => {
+                let cells = grid.getChildren();
+                let n = cells.size();
+                List.forEach(idx -> {
+                    if (idx < n) {
+                        let nodeObj = cells.get(idx);
+                        let pane: StackPane = unchecked_cast(nodeObj as StackPane);
+                        let userData = pane.getUserData();
+                        if (Object.isNull(userData)) ()
+                        else {
+                            let canvas: Canvas = unchecked_cast(userData as Canvas);
+                            let v = match Vector.nth(idx, rule#pattern) {
+                                case Some(x) => x
+                                case None    => -1i32
+                            };
+                            drawPatternCellValue(canvas, v, idx == 4i32)
+                        }
+                    } else ()
+                }, List.range(0, 9))
+            }
+        }
     }
 
     /// 4-trit (壁/床/空) パターンを「使用頻度別セクション」で VBox 内に構築する。
@@ -1230,14 +1749,15 @@ mod MapEditorPanel {
     }
 
     /// Tileset Canvas クリック: Walls Palette の cellW/cellH/marginX/Y と paletteZoom を使い、
-    /// 選択中タイルの (srcX, srcY) を計算して、選択中 TRBL に割当てて Material を保存。
+    /// 選択中タイルの (srcX, srcY) を計算する。
+    /// AutoRule 選択中なら Rule.srcX/srcY を更新、そうでなく TRBL 選択中なら wallMap 更新。
     def wireMaterialsTilesetClick(state: IdeState.IdeState, canvas: Canvas): Unit \ IO = {
         canvas.setOnMouseClicked(new EventHandler[MouseEvent] {
             def handle(_this: EventHandler[MouseEvent], event: MouseEvent): Unit \ IO = {
-                let trblOpt = MapEditorState.getSelectedTrbl(state#mapEditor);
                 let matOpt = MapEditorState.getEditingMaterial(state#mapEditor);
-                match (trblOpt, matOpt) {
-                    case (Some(key), Some(mat)) => {
+                match matOpt {
+                    case None      => ()
+                    case Some(mat) => {
                         let (cw, ch, mx, my) = wallsPaletteCellAndMargin(state);
                         let strideX = cw + mx;
                         let strideY = ch + my;
@@ -1250,17 +1770,38 @@ mod MapEditorPanel {
                             let row = Float64.truncateToInt32(imgY / Int32.toFloat64(strideY));
                             let srcX = col * strideX;
                             let srcY = row * strideY;
-                            let md = MapResource.materialData(mat);
-                            let newWallMap = Map.insert(key, (srcX, srcY), md#wallMap);
-                            let newMd: MapResource.MaterialData = {wallMap = newWallMap | md};
-                            let newMat = MapResource.Material.Material(newMd);
-                            MapEditorState.setEditingMaterial(state#mapEditor, Some(newMat));
-                            saveMaterial(state);
-                            refreshMaterialsTab(state);
-                            redrawCanvas(state)
+                            // Rule 選択中 ? それとも TRBL 選択中 ?
+                            let ruleIdxOpt = MapEditorState.getEditingRuleIndex(state#mapEditor);
+                            let trblOpt = MapEditorState.getSelectedTrbl(state#mapEditor);
+                            match ruleIdxOpt {
+                                case Some(ri) => {
+                                    let md = MapResource.materialData(mat);
+                                    match List.nth(ri, md#autoRules) {
+                                        case None       => ()
+                                        case Some(rule) => {
+                                            let newRule = {srcX = srcX, srcY = srcY | rule};
+                                            replaceRule(state, ri, newRule);
+                                            refreshMaterialsTab(state);
+                                            redrawCanvas(state)
+                                        }
+                                    }
+                                }
+                                case None => match trblOpt {
+                                    case None      => ()
+                                    case Some(key) => {
+                                        let md = MapResource.materialData(mat);
+                                        let newWallMap = Map.insert(key, (srcX, srcY), md#wallMap);
+                                        let newMd: MapResource.MaterialData = {wallMap = newWallMap | md};
+                                        let newMat = MapResource.Material.Material(newMd);
+                                        MapEditorState.setEditingMaterial(state#mapEditor, Some(newMat));
+                                        saveMaterial(state);
+                                        refreshMaterialsTab(state);
+                                        redrawCanvas(state)
+                                    }
+                                }
+                            }
                         }
                     }
-                    case _ => ()
                 }
             }
         })
@@ -1299,6 +1840,7 @@ mod MapEditorPanel {
         updateWallMapGridHighlight(state);
         updateMaterialsStatus(state);
         drawMaterialsTileset(state);
+        refreshRulesUI(state);
         // 選択中 TRBL の紫プレビューを Map Canvas に反映
         redrawCanvas(state)
     }
