@@ -89,7 +89,18 @@
                                         <Insets top="6" right="6" bottom="6" left="6"/>
                                     </padding>
                                     <children>
-                                        <Label text="Layers" styleClass="section-header"/>
+                                        <HBox alignment="CENTER_LEFT" spacing="6">
+                                            <children>
+                                                <Label text="Layers"
+                                                       styleClass="section-header"
+                                                       HBox.hgrow="ALWAYS"
+                                                       maxWidth="Infinity"/>
+                                                <ToggleButton fx:id="mapPreviewToggleBtn"
+                                                              text="Preview"
+                                                              styleClass="layer-preview-btn"
+                                                              focusTraversable="false"/>
+                                            </children>
+                                        </HBox>
                                         <VBox fx:id="mapLayerList" styleClass="layer-list">
                                             <children>
                                                 <HBox fx:id="mapLayerRowEntities"

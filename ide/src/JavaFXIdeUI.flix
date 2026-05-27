@@ -171,6 +171,8 @@ mod JavaFXIdeUI {
             unchecked_cast(mapNs.get("mapToolPencilBtn") as ToggleButton);
         let mapToolRangeBtn: ToggleButton =
             unchecked_cast(mapNs.get("mapToolRangeBtn") as ToggleButton);
+        let mapPreviewToggleBtn: ToggleButton =
+            unchecked_cast(mapNs.get("mapPreviewToggleBtn") as ToggleButton);
         let mapPaletteSection: VBox = unchecked_cast(mapNs.get("mapPaletteSection") as VBox);
         let mapEntitySection: VBox = unchecked_cast(mapNs.get("mapEntitySection") as VBox);
         let mapRightTabs: TabPane = unchecked_cast(mapNs.get("mapRightTabs") as TabPane);
@@ -233,6 +235,7 @@ mod JavaFXIdeUI {
         Array.put(Some(mapDeleteBtn), 0, state#widgets#mapDeleteBtn);
         Array.put(Some(mapToolPencilBtn), 0, state#widgets#mapToolPencilBtn);
         Array.put(Some(mapToolRangeBtn), 0, state#widgets#mapToolRangeBtn);
+        Array.put(Some(mapPreviewToggleBtn), 0, state#widgets#mapPreviewToggleBtn);
         Array.put(Some(mapPaletteSection), 0, state#widgets#mapPaletteSection);
         Array.put(Some(mapEntitySection), 0, state#widgets#mapEntitySection);
         Array.put(Some(mapRightTabs), 0, state#widgets#mapRightTabs);
@@ -259,6 +262,7 @@ mod JavaFXIdeUI {
         // Map canvas: クリック・ピンチズーム・Ctrl/Cmd+Z undo を 1 か所で配線
         MapGridCanvas.wireMapCanvas(state, mapGridCanvas);
         MapEditorPanel.wireToolButtons(state, mapToolPencilBtn, mapToolRangeBtn);
+        MapEditorPanel.wirePreviewToggle(state);
         MapEditorPanel.wireLayerList(state);
         MapEditorPanel.initPaletteWidgets(state);
         MapEditorPanel.wirePaletteClick(state, mapPaletteCanvas);

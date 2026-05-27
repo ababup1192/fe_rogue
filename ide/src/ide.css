@@ -245,6 +245,28 @@
     -fx-effect: innershadow(gaussian, rgba(0,0,0,0.35), 4, 0.2, 0, 1);
 }
 
+/* Layers ヘッダー横の Preview トグル。ON でゲーム見え (dim/grid/overlay 無効) */
+.layer-preview-btn {
+    -fx-background-color: #e8e8e8;
+    -fx-border-color: #888;
+    -fx-border-width: 1;
+    -fx-background-radius: 0;
+    -fx-border-radius: 0;
+    -fx-font-size: 10px;
+    -fx-text-fill: #222;
+    -fx-padding: 2 8 2 8;
+    -fx-cursor: hand;
+}
+.layer-preview-btn:hover {
+    -fx-background-color: #d4d4d4;
+}
+.layer-preview-btn:selected {
+    -fx-background-color: #d97a3a;
+    -fx-text-fill: white;
+    -fx-border-color: #a85420;
+    -fx-effect: innershadow(gaussian, rgba(0,0,0,0.35), 4, 0.2, 0, 1);
+}
+
 /* Project ロード進捗 overlay。canvas 中央に半透明背景で被せる */
 .loading-overlay {
     -fx-background-color: rgba(40, 40, 40, 0.92);

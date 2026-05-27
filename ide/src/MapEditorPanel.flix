@@ -362,15 +362,27 @@ mod MapEditorPanel {
                 let vis = MapEditorState.getLayerVisibility(state#mapEditor);
                 let zoom = MapEditorState.getMapZoom(state#mapEditor);
                 let mat = MapEditorState.getEditingMaterial(state#mapEditor);
-                let selTrbl = MapEditorState.getSelectedTrbl(state#mapEditor);
-                let selRange = MapEditorState.getSelectedRange(state#mapEditor);
+                let preview = MapEditorState.getPreviewMode(state#mapEditor);
+                // preview ON: dim / overlay / grid を全て無効化してゲーム見えを再現
+                let selTrbl = if (preview) None
+                              else MapEditorState.getSelectedTrbl(state#mapEditor);
+                let selRange = if (preview) None
+                               else MapEditorState.getSelectedRange(state#mapEditor);
                 // Rule の紫プレビューは Rules タブ (index 2) アクティブ時だけ表示
-                let selRule = if (isRightTabActive(state, 2i32))
+                let selRule = if (preview) None
+                              else if (isRightTabActive(state, 2i32))
                                   MapEditorState.getEditingRuleIndex(state#mapEditor)
                               else None;
+                // Layer タブ (index 0) アクティブ時のみ非アクティブレイヤーを dim する
+                // (auto-layer / Rules / Settings タブではマップ全体を見たいので dim しない)
+                let dimNonActive = if (preview) None
+                                   else if (isRightTabActive(state, 0i32))
+                                       Some(MapEditorState.getLayerMode(state#mapEditor))
+                                   else None;
+                let showGrid = not preview;
                 MapGridCanvas.drawLevel(canvas, level, MapGridCanvas.defaultCellPx(),
                                           wImg, fImg, vis, zoom, mat, selTrbl, selRange,
-                                          selRule)
+                                          selRule, dimNonActive, showGrid)
             }
             case _ => ()
         }
@@ -389,7 +401,9 @@ mod MapEditorPanel {
         updatePaletteLabel(state, mode);
         syncPaletteWidgetsForLayer(state, mode);
         updateSideSection(state, mode);
-        drawPalette(state)
+        drawPalette(state);
+        // 非アクティブレイヤーの dim を反映するため canvas も再描画
+        redrawCanvas(state)
     }
 
     /// Layer 行の選択 highlight 用 styleClass を 1 行だけにつける。
@@ -821,6 +835,20 @@ mod MapEditorPanel {
     // ────────────────────────────────────────────────────────
     // S17: 新規 Level 作成
     // ────────────────────────────────────────────────────────
+
+    /// Layers ヘッダー横の Preview トグル。ON のとき canvas をゲーム見え (dim/grid/overlay なし)
+    /// に切り替える。永続化しない (transient state)。
+    pub def wirePreviewToggle(state: IdeState.IdeState): Unit \ IO =
+        match Array.get(0, state#widgets#mapPreviewToggleBtn) {
+            case None      => ()
+            case Some(btn) =>
+                btn.setOnAction(new EventHandler[ActionEvent] {
+                    def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                        MapEditorState.setPreviewMode(state#mapEditor, btn.isSelected());
+                        redrawCanvas(state)
+                    }
+                })
+        }
 
     /// 「+ New」ボタンに ActionEvent handler を登録する。
     /// TextInputDialog で名前を聞き、assets/maps/{name}.map.json を空 Level で生成する。

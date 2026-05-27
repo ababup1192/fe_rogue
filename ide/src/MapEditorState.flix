@@ -100,7 +100,9 @@ mod MapEditorState {
         editToolRef            = Array[EditTool, Static],
         // Rules ListView をプログラム的に書き換え中フラグ。
         // selectedIndexProperty リスナー再入を防ぐ。
-        isRefreshingRulesRef   = Array[Bool, Static]
+        isRefreshingRulesRef   = Array[Bool, Static],
+        // Preview モード: ON のとき canvas をゲーム見え (dim/grid/overlay なし) で描く
+        previewModeRef         = Array[Bool, Static]
     }
 
     /// 空の MapEditorState を作る。
@@ -124,7 +126,8 @@ mod MapEditorState {
             dragStartRef           = Array#{(None: Option[(Int32, Int32)])} @ Static,
             isDraggingRef          = Array#{false} @ Static,
             editToolRef            = Array#{EditTool.Pencil} @ Static,
-            isRefreshingRulesRef   = Array#{false} @ Static
+            isRefreshingRulesRef   = Array#{false} @ Static,
+            previewModeRef         = Array#{false} @ Static
         }
 
     /// 全レイヤー visible の初期値。
@@ -313,4 +316,10 @@ mod MapEditorState {
 
     pub def setIsRefreshingRules(state: MapEditorState, b: Bool): Unit \ IO =
         Array.put(b, 0, state#isRefreshingRulesRef)
+
+    pub def getPreviewMode(state: MapEditorState): Bool \ IO =
+        Array.get(0, state#previewModeRef)
+
+    pub def setPreviewMode(state: MapEditorState, enabled: Bool): Unit \ IO =
+        Array.put(enabled, 0, state#previewModeRef)
 }

@@ -93,6 +93,8 @@ mod IdeState {
         // Map Canvas 上のツール切替トグル (Pencil / RangeSelect)
         mapToolPencilBtn              = Array[Option[ToggleButton], Static],
         mapToolRangeBtn               = Array[Option[ToggleButton], Static],
+        // Preview モード切替トグル (Layers ヘッダー横、ON でゲーム見え)
+        mapPreviewToggleBtn           = Array[Option[ToggleButton], Static],
         // Materials サブタブ (wallMap 編集)
         mapRightTabs                  = Array[Option[TabPane], Static],
         mapMaterialsWallMapBox        = Array[Option[VBox], Static],
@@ -283,6 +285,7 @@ mod IdeState {
             mapDeleteBtn                  = Array#{(None: Option[Button])} @ Static,
             mapToolPencilBtn              = Array#{(None: Option[ToggleButton])} @ Static,
             mapToolRangeBtn               = Array#{(None: Option[ToggleButton])} @ Static,
+            mapPreviewToggleBtn           = Array#{(None: Option[ToggleButton])} @ Static,
             mapRightTabs                  = Array#{(None: Option[TabPane])} @ Static,
             mapMaterialsWallMapBox        = Array#{(None: Option[VBox])} @ Static,
             mapMaterialsStatus            = Array#{(None: Option[Label])} @ Static,

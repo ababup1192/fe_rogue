@@ -39,29 +39,40 @@ mod MapGridCanvas {
     /// `zoom=1.0` で等倍。`MapEditorState.mapZoomRef` がピンチで更新される。
     /// Walls visibility が ON のとき自動壁 + manualTiles 上書きを両方描画する。
     /// `material` が `None` のときは自動壁の描画スキップ (manualTiles のみ)。
+    /// `dimNonActive` が `Some(active)` なら active と異なるレイヤーを半透明 (alpha=0.4)
+    /// で描画して、編集中レイヤーだけ視認性を上げる (Layer タブ編集中のフォーカス補助)。
+    /// `None` のときは全レイヤーを完全不透明で描画する (auto-layer / Rules / Settings タブ用)。
     pub def drawLevel(canvas: Canvas, level: MapResource.Level, cellPx: Int32,
                        wallsImg: Option[Image], floorImg: Option[Image],
                        vis: MapEditorState.LayerVisibility, zoom: Float64,
                        material: Option[MapResource.Material],
                        selectedTrbl: Option[String],
                        selectedRange: Option[(Int32, Int32, Int32, Int32)],
-                       selectedRule: Option[Int32]): Unit \ IO = {
+                       selectedRule: Option[Int32],
+                       dimNonActive: Option[MapEditorState.LayerMode],
+                       showGrid: Bool): Unit \ IO = {
         let d = MapResource.levelData(level);
         resizeAndFill(canvas, d#width, d#height, cellPx, zoom);
         let gc = canvas.getGraphicsContext2D();
         gc.save();
         gc.scale(zoom, zoom);
+        let floorAlpha    = layerAlpha(MapEditorState.LayerMode.Floor,    dimNonActive);
+        let wallsAlpha    = layerAlpha(MapEditorState.LayerMode.Walls,    dimNonActive);
+        let entitiesAlpha = layerAlpha(MapEditorState.LayerMode.Entities, dimNonActive);
         if (vis#floor) {
+            gc.setGlobalAlpha(floorAlpha);
             match floorImg {
                 case Some(img) => drawTiles(canvas, d#decorTiles, img, d#tileSize, cellPx)
                 case None      => ()
-            }
+            };
+            gc.setGlobalAlpha(1.0)
         } else ();
         // 自動壁 / AutoRule / TRBL プレビューはいずれも floorMask + wallCells を使うので、
         // walls 不可視のときも Rule プレビュー用に計算しておく。
         let floorMask = floorMaskOf(d);
         let wallCells = computeWallCells(floorMask, d#width, d#height);
         if (vis#walls) {
+            gc.setGlobalAlpha(wallsAlpha);
             // 自動壁を先に (下)、その上に manualTiles (上書き)
             match (wallsImg, material) {
                 case (Some(img), Some(mat)) =>
@@ -84,7 +95,9 @@ mod MapGridCanvas {
                 }
                 case _ => ()
             };
+            gc.setGlobalAlpha(1.0);
             // auto-layer タブで選択中のキー (4-trit or 4-bit) に該当する壁セルを紫網掛け
+            // (プレビューは dim 対象外、常に最大不透明)
             match selectedTrbl {
                 case None      => ()
                 case Some(key) => drawTrblPreview(canvas, wallCells, floorMask, key, cellPx)
@@ -97,15 +110,28 @@ mod MapGridCanvas {
                                   ri, floorMask, wallCells, d#width, d#height, cellPx)
             case _ => ()
         };
-        drawGridLines(canvas, d#width, d#height, cellPx);
-        if (vis#entities) drawEntities(canvas, d#entities, cellPx) else ();
-        // 範囲選択ハイライト (最前面)
+        if (showGrid) drawGridLines(canvas, d#width, d#height, cellPx) else ();
+        if (vis#entities) {
+            gc.setGlobalAlpha(entitiesAlpha);
+            drawEntities(canvas, d#entities, cellPx);
+            gc.setGlobalAlpha(1.0)
+        } else ();
+        // 範囲選択ハイライト (最前面、dim 対象外)
         match selectedRange {
             case None        => ()
             case Some(range) => drawSelectedRange(canvas, range, cellPx)
         };
         gc.restore()
     }
+
+    /// 編集対象レイヤー以外を半透明 (alpha=0.4) にするための alpha を返す。
+    /// `dimNonActive` が `None` ならどのレイヤーも 1.0 (全不透明)。
+    def layerAlpha(layer: MapEditorState.LayerMode,
+                     dimNonActive: Option[MapEditorState.LayerMode]): Float64 =
+        match dimNonActive {
+            case None         => 1.0
+            case Some(active) => if (active == layer) 1.0 else 0.4
+        }
 
     /// 選択範囲を半透明の青塗り + 青枠で表示する。
     def drawSelectedRange(canvas: Canvas, range: (Int32, Int32, Int32, Int32),
@@ -939,11 +965,20 @@ mod MapGridCanvas {
                 let mat = MapEditorState.getEditingMaterial(state#mapEditor);
                 let selTrbl = MapEditorState.getSelectedTrbl(state#mapEditor);
                 let selRange = MapEditorState.getSelectedRange(state#mapEditor);
-                let selRule = if (MapEditorPanel.isRightTabActive(state, 2i32))
+                let preview = MapEditorState.getPreviewMode(state#mapEditor);
+                let selTrbl2 = if (preview) None else selTrbl;
+                let selRange2 = if (preview) None else selRange;
+                let selRule = if (preview) None
+                              else if (MapEditorPanel.isRightTabActive(state, 2i32))
                                   MapEditorState.getEditingRuleIndex(state#mapEditor)
                               else None;
-                drawLevel(c, level, cellPx, wImg, fImg, vis, zoom, mat, selTrbl, selRange,
-                            selRule)
+                let dimNonActive = if (preview) None
+                                   else if (MapEditorPanel.isRightTabActive(state, 0i32))
+                                       Some(MapEditorState.getLayerMode(state#mapEditor))
+                                   else None;
+                let showGrid = not preview;
+                drawLevel(c, level, cellPx, wImg, fImg, vis, zoom, mat, selTrbl2, selRange2,
+                            selRule, dimNonActive, showGrid)
             }
             case None => ()
         }
