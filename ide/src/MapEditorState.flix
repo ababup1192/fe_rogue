@@ -95,7 +95,7 @@ mod MapEditorState {
             selectedSrcRef         = Array#{(None: Option[(Int32, Int32)])} @ Static,
             layerVisibilityRef     = Array#{allVisible()} @ Static,
             paletteSettingsRef     = Array#{defaultPaletteSettings()} @ Static,
-            paletteZoomRef         = Array#{1.0f64} @ Static,
+            paletteZoomRef         = Array#{1.7f64} @ Static,
             mapZoomRef             = Array#{1.0f64} @ Static,
             undoStackRef           = Array#{(Nil: List[MapResource.Level])} @ Static,
             editingMaterialRef     = Array#{(None: Option[MapResource.Material])} @ Static,

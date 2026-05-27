@@ -33,7 +33,7 @@
 <?import javafx.geometry.Insets?>
 
 <SplitPane xmlns:fx="http://javafx.com/fxml" fx:id="mapsSplit"
-           dividerPositions="0.18, 0.72">
+           dividerPositions="0.18, 0.55">
     <items>
         <!-- 左: Level リスト (assets/maps/*.map.json) + 新規作成ボタン -->
         <VBox>
@@ -168,7 +168,7 @@
                                                             VBox.vgrow="ALWAYS">
                                                     <content>
                                                         <Canvas fx:id="mapPaletteCanvas"
-                                                                width="320" height="224"/>
+                                                                width="480" height="336"/>
                                                     </content>
                                                 </ScrollPane>
                                             </children>
@@ -219,7 +219,7 @@
                                                     VBox.vgrow="ALWAYS">
                                             <content>
                                                 <Canvas fx:id="mapMaterialsTilesetCanvas"
-                                                        width="320" height="224"/>
+                                                        width="480" height="336"/>
                                             </content>
                                         </ScrollPane>
                                     </children>
