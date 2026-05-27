@@ -100,12 +100,15 @@ mod IdeState {
         // AutoRule (装飾) エディタ
         mapRuleAddBtn                 = Array[Option[Button], Static],
         mapRuleRemoveBtn              = Array[Option[Button], Static],
-        mapRuleList                   = Array[Option[ListView[String]], Static],
+        mapRuleList                   = Array[Option[ComboBox[String]], Static],
         mapRuleEditor                 = Array[Option[VBox], Static],
         mapRuleNameField              = Array[Option[TextField], Static],
         mapRulePatternGrid            = Array[Option[GridPane], Static],
         mapRuleTileLabel              = Array[Option[Label], Static],
-        mapRuleChanceSpinner          = Array[Option[Spinner[Integer]], Static]
+        // Rules タブ専用 tileset Canvas (Rule.srcXY 選択用)
+        mapRuleTilesetCanvas          = Array[Option[Canvas], Static],
+        // Rule の Pattern サイズ切替 (3×3 / 5×5)
+        mapRuleSizeCombo              = Array[Option[ComboBox[String]], Static]
     }
 
     /// 描画ループと FX レイヤーを橋渡しする ref 群。
@@ -276,12 +279,13 @@ mod IdeState {
             mapMaterialsTilesetCanvas     = Array#{(None: Option[Canvas])} @ Static,
             mapRuleAddBtn                 = Array#{(None: Option[Button])} @ Static,
             mapRuleRemoveBtn              = Array#{(None: Option[Button])} @ Static,
-            mapRuleList                   = Array#{(None: Option[ListView[String]])} @ Static,
+            mapRuleList                   = Array#{(None: Option[ComboBox[String]])} @ Static,
             mapRuleEditor                 = Array#{(None: Option[VBox])} @ Static,
             mapRuleNameField              = Array#{(None: Option[TextField])} @ Static,
             mapRulePatternGrid            = Array#{(None: Option[GridPane])} @ Static,
             mapRuleTileLabel              = Array#{(None: Option[Label])} @ Static,
-            mapRuleChanceSpinner          = Array#{(None: Option[Spinner[Integer]])} @ Static
+            mapRuleTilesetCanvas          = Array#{(None: Option[Canvas])} @ Static,
+            mapRuleSizeCombo              = Array#{(None: Option[ComboBox[String]])} @ Static
         }
 
     def newRuntime(): RuntimeRefs \ IO =

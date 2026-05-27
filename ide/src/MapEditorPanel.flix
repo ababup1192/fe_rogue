@@ -1124,30 +1124,42 @@ mod MapEditorPanel {
                 wireTilesetZoom(state, canvas)
             }
         };
+        // Rules タブ専用 tileset Canvas (Rule.srcXY 選択用)
+        match Array.get(0, state#widgets#mapRuleTilesetCanvas) {
+            case None         => ()
+            case Some(canvas) => {
+                wireRuleTilesetClick(state, canvas);
+                wireTilesetZoom(state, canvas)
+            }
+        };
         initRulesEditor(state);
         refreshMaterialsTab(state)
     }
 
     /// AutoRule エディタの初期化: ListView 選択、Add/Remove ボタン、Pattern grid、
-    /// Name field、Chance Spinner のリスナーを配線する。
+    /// Name field のリスナーを配線する。
     def initRulesEditor(state: IdeState.IdeState): Unit \ IO = {
-        // Pattern 3×3 grid を構築
+        // Pattern grid は最初は 3×3 で構築 (Rule 選択時に rule#size に応じて再構築)
         match Array.get(0, state#widgets#mapRulePatternGrid) {
             case None       => ()
-            case Some(grid) => buildPatternGrid(state, grid)
+            case Some(grid) => buildPatternGrid(state, grid, 3i32)
         };
-        // Chance Spinner の factory
-        match Array.get(0, state#widgets#mapRuleChanceSpinner) {
-            case None     => ()
-            case Some(sp) => {
-                let f = new SpinnerValueFactory$IntegerSpinnerValueFactory(0i32, 100i32, 100i32);
-                sp.setValueFactory(unchecked_cast(f as SpinnerValueFactory[Integer]));
-                sp.valueProperty().addListener(new ChangeListener[Integer] {
-                    def changed(_cThis: ChangeListener[Integer],
-                                  _obs: ObservableValue[JObject],
-                                  _old: Integer, newVal: Integer): Unit \ IO = {
+        // Size ComboBox: 3×3 / 5×5 切替
+        match Array.get(0, state#widgets#mapRuleSizeCombo) {
+            case None       => ()
+            case Some(combo) => {
+                let items = combo.getItems();
+                items.clear();
+                discard items.add("3×3");
+                discard items.add("5×5");
+                combo.setOnAction(new EventHandler[ActionEvent] {
+                    def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                        let newVal = combo.getValue();
                         if (Object.isNull(newVal)) ()
-                        else updateRuleField(state, "chance", newVal.intValue())
+                        else {
+                            let newSize = if (newVal == "5×5") 5i32 else 3i32;
+                            switchRuleSize(state, newSize)
+                        }
                     }
                 })
             }
@@ -1190,12 +1202,21 @@ mod MapEditorPanel {
                     def changed(_cThis: ChangeListener[Number],
                                   _obs: ObservableValue[JObject],
                                   _old: Number, newVal: Number): Unit \ IO = {
-                        if (Object.isNull(newVal)) ()
+                        // refreshRuleListItems が clear() / select() で一時的に
+                        // 選択を吹き飛ばす間、リスナーを抑止する (editingRuleIndex が
+                        // None になってエディタが閉じるのを防ぐ)
+                        if (MapEditorState.getIsRefreshingRules(state#mapEditor)) ()
+                        else if (Object.isNull(newVal)) ()
                         else {
                             let i = newVal.intValue();
-                            if (i < 0i32) MapEditorState.setEditingRuleIndex(state#mapEditor, None)
-                            else MapEditorState.setEditingRuleIndex(state#mapEditor, Some(i));
-                            refreshRulesUI(state)
+                            // i < 0 (空セル化) はリフレッシュ中以外でも無視:
+                            // 明示的な解除は呼び出し側 (removeSelectedRule 等) で行う
+                            if (i < 0i32) ()
+                            else {
+                                MapEditorState.setEditingRuleIndex(state#mapEditor, Some(i));
+                                refreshRulesUI(state);
+                                refreshMaterialsTab(state)
+                            }
                         }
                     }
                 })
@@ -1203,28 +1224,33 @@ mod MapEditorPanel {
         }
     }
 
-    /// Pattern 3×3 grid のセル (9 個) を構築し、クリックで値サイクルさせる。
-    def buildPatternGrid(state: IdeState.IdeState, grid: GridPane): Unit \ IO = {
+    /// Pattern grid (size×size セル) を構築し、クリックで値サイクルさせる。
+    /// size は 3 or 5。中央セル (idx = size*size/2) は装飾固定。
+    def buildPatternGrid(state: IdeState.IdeState, grid: GridPane, size: Int32): Unit \ IO = {
         grid.getChildren().clear();
+        let n = size * size;
+        let centerIdx = n / 2;
         List.forEach(idx -> {
-            let r = idx / 3;
-            let c = Int32.remainder(idx, 3);
-            let pane = makePatternCell(state, idx);
+            let r = idx / size;
+            let c = Int32.remainder(idx, size);
+            let pane = makePatternCell(state, idx, idx == centerIdx);
             grid.add(unchecked_cast(pane as Node), c, r)
-        }, List.range(0, 9))
+        }, List.range(0, n))
     }
 
-    /// 1 セル: 32x32 の Canvas、クリックで値サイクル (-1=任意 → 0=空 → 1=床 → 2=壁 → -1...)。
-    /// 中央セル (idx=4) は常に「自セル」表示で編集不可。
-    def makePatternCell(state: IdeState.IdeState, idx: Int32): StackPane \ IO = {
+    /// 1 セル: 32x32 の Canvas。中央 (isCenter=true) は装飾固定で編集不可、
+    /// 周辺はクリックで 任意 (0) → 床 (1) → 壁 (2) → 任意 とサイクル。
+    def makePatternCell(state: IdeState.IdeState, idx: Int32, isCenter: Bool):
+            StackPane \ IO = {
         let pane = new StackPane();
         let canvas = new Canvas(32.0, 32.0);
-        drawPatternCellValue(canvas, -1i32, idx == 4i32);
+        let initVal = if (isCenter) -1i32 else 0i32;
+        drawPatternCellValue(canvas, initVal, isCenter);
         pane.getChildren().add(unchecked_cast(canvas as Node));
         pane.setPrefSize(32.0, 32.0);
         pane.setMinSize(32.0, 32.0);
         pane.setUserData(unchecked_cast(canvas as JObject));
-        if (idx == 4i32) ()  // 中央は編集不可
+        if (isCenter) ()  // 中央は編集不可
         else {
             pane.setStyle("-fx-cursor: hand;");
             pane.setOnMouseClicked(new EventHandler[MouseEvent] {
@@ -1235,25 +1261,36 @@ mod MapEditorPanel {
         pane
     }
 
-    /// パターンセルの色: -1=灰 (任意), 0=暗 (空), 1=茶 (床), 2=明灰 (壁), 中央=黄 (自セル)。
+    /// パターンセルの色:
+    ///   -1=装飾 (中央): 緑 + 白点
+    ///    0=任意: 白に近い灰色 (条件なし、デフォルト)
+    ///    1=床: 黄色
+    ///    2=壁: 暗灰色
     def drawPatternCellValue(canvas: Canvas, value: Int32, isCenter: Bool): Unit \ IO = {
         let gc = canvas.getGraphicsContext2D();
         let w = canvas.getWidth();
         let h = canvas.getHeight();
         gc.clearRect(0.0, 0.0, w, h);
-        let fill = if (isCenter)        Color.rgb(255, 230, 60)   // 黄
-                   else if (value == 0i32) Color.rgb(60, 60, 70)  // 空
-                   else if (value == 1i32) Color.rgb(140, 100, 60) // 床
-                   else if (value == 2i32) Color.rgb(180, 180, 200) // 壁
-                   else                    Color.rgb(100, 100, 110); // 任意 (-1)
+        let fill = if (isCenter or value == -1i32)
+                       Color.rgb(120, 200, 100)   // 装飾 (出力位置)
+                   else if (value == 0i32) Color.rgb(225, 225, 225)  // 任意 (薄灰)
+                   else if (value == 1i32) Color.rgb(230, 210, 130)  // 床
+                   else if (value == 2i32) Color.rgb(70, 70, 80)     // 壁
+                   else                    Color.rgb(160, 80, 160);  // 不明
         gc.setFill(fill);
         gc.fillRect(1.0, 1.0, w - 2.0, h - 2.0);
-        gc.setStroke(Color.rgb(80, 80, 90));
+        gc.setStroke(Color.rgb(40, 40, 50));
         gc.setLineWidth(1.0);
-        gc.strokeRect(0.5, 0.5, w - 1.0, h - 1.0)
+        gc.strokeRect(0.5, 0.5, w - 1.0, h - 1.0);
+        // 中央セル: 識別用に白点
+        if (isCenter) {
+            gc.setFill(Color.rgb(255, 255, 255));
+            gc.fillOval(w / 2.0 - 3.0, h / 2.0 - 3.0, 6.0, 6.0)
+        } else ()
     }
 
-    /// パターンセルの値を -1 → 0 → 1 → 2 → -1 ... と循環させ、Rule を更新する。
+    /// 周辺セル (中央以外) の値を 1 (床) ⇄ 2 (壁) でトグルする。
+    /// 中央セル (idx == size*size/2) は装飾固定なので何もしない。
     def cyclePatternCell(state: IdeState.IdeState, idx: Int32): Unit \ IO = {
         match MapEditorState.getEditingRuleIndex(state#mapEditor) {
             case None        => ()
@@ -1265,46 +1302,27 @@ mod MapEditorPanel {
                         match List.nth(ruleI, md#autoRules) {
                             case None       => ()
                             case Some(rule) => {
-                                let curVal = match Vector.nth(idx, rule#pattern) {
-                                    case Some(v) => v
-                                    case None    => -1i32
-                                };
-                                let nextVal = if (curVal == -1i32) 0i32
-                                              else if (curVal == 0i32) 1i32
-                                              else if (curVal == 1i32) 2i32
-                                              else -1i32;
-                                let newPattern = Vector.toList(rule#pattern)
-                                    |> List.mapWithIndex((i, v) ->
-                                          if (i == idx) nextVal else v)
-                                    |> List.toVector;
-                                let newRule = {pattern = newPattern | rule};
-                                replaceRule(state, ruleI, newRule);
-                                refreshRulesUI(state);
-                                MapEditorPanel.redrawCanvas(state)
+                                let centerIdx = (rule#size * rule#size) / 2i32;
+                                if (idx == centerIdx) ()
+                                else {
+                                    let curVal = match Vector.nth(idx, rule#pattern) {
+                                        case Some(v) => v
+                                        case None    => 0i32
+                                    };
+                                    // サイクル: 任意 (0) → 床 (1) → 壁 (2) → 任意
+                                    let nextVal = if (curVal == 0i32) 1i32
+                                                  else if (curVal == 1i32) 2i32
+                                                  else 0i32;
+                                    let newPattern = Vector.toList(rule#pattern)
+                                        |> List.mapWithIndex((i, v) ->
+                                              if (i == idx) nextVal else v)
+                                        |> List.toVector;
+                                    let newRule = {pattern = newPattern | rule};
+                                    replaceRule(state, ruleI, newRule);
+                                    refreshRulesUI(state);
+                                    MapEditorPanel.redrawCanvas(state)
+                                }
                             }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    def updateRuleField(state: IdeState.IdeState, fieldName: String, value: Int32): Unit \ IO = {
-        match MapEditorState.getEditingRuleIndex(state#mapEditor) {
-            case None        => ()
-            case Some(ruleI) => {
-                match MapEditorState.getEditingMaterial(state#mapEditor) {
-                    case None      => ()
-                    case Some(mat) => {
-                        let md = MapResource.materialData(mat);
-                        match List.nth(ruleI, md#autoRules) {
-                            case None       => ()
-                            case Some(rule) =>
-                                let newRule = if (fieldName == "chance")
-                                                 {chance = Int32.toFloat64(value) / 100.0f64 | rule}
-                                              else rule;
-                                replaceRule(state, ruleI, newRule);
-                                MapEditorPanel.redrawCanvas(state)
                         }
                     }
                 }
@@ -1339,13 +1357,16 @@ mod MapEditorPanel {
             case None      => ()
             case Some(mat) => {
                 let md = MapResource.materialData(mat);
+                // 中央 (idx=4) は装飾 (-1) 固定、周辺 8 セルは任意 (0) で初期化。
+                // pattern[i] の意味: -1=装飾(中央のみ), 0=任意, 1=床, 2=壁
                 let newRule: MapResource.AutoRule = {
                     name    = "Rule ${List.length(md#autoRules) + 1}",
                     size    = 3i32,
-                    pattern = Vector#{-1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32},
+                    pattern = Vector#{0i32, 0i32, 0i32,
+                                       0i32, -1i32, 0i32,
+                                       0i32, 0i32, 0i32},
                     srcX    = 0i32,
-                    srcY    = 0i32,
-                    chance  = 1.0f64
+                    srcY    = 0i32
                 };
                 let newRules = List.append(md#autoRules, newRule :: Nil);
                 let newMd = {autoRules = newRules | md};
@@ -1439,10 +1460,21 @@ mod MapEditorPanel {
         match (Array.get(0, state#widgets#mapRuleList),
                MapEditorState.getEditingMaterial(state#mapEditor)) {
             case (Some(lv), Some(mat)) => {
+                // clear() / add() / select() がそれぞれリスナーを発火するので、
+                // 抑止フラグを立ててから一括書き換え→最後に editingRuleIndex に合わせて
+                // 視覚的な選択も復元する。
+                MapEditorState.setIsRefreshingRules(state#mapEditor, true);
                 let items = lv.getItems();
                 items.clear();
                 let md = MapResource.materialData(mat);
-                List.forEach(r -> discard items.add(r#name), md#autoRules)
+                List.forEach(r -> discard items.add(r#name), md#autoRules);
+                let n = List.length(md#autoRules);
+                let sm = lv.getSelectionModel();
+                match MapEditorState.getEditingRuleIndex(state#mapEditor) {
+                    case Some(i) => if (i < n) sm.clearAndSelect(i) else ()
+                    case None    => sm.clearSelection()
+                };
+                MapEditorState.setIsRefreshingRules(state#mapEditor, false)
             }
             case _ => ()
         }
@@ -1453,27 +1485,41 @@ mod MapEditorPanel {
             case Some(tf) => if (tf.getText() != rule#name) tf.setText(rule#name) else ()
             case None     => ()
         };
+        // Size ComboBox を rule.size に同期 (同値ならスキップしてリスナー再発火を防ぐ)
+        match Array.get(0, state#widgets#mapRuleSizeCombo) {
+            case None        => ()
+            case Some(combo) => {
+                let want = if (rule#size == 5i32) "5×5" else "3×3";
+                let cur = combo.getValue();
+                let same = if (Object.isNull(cur)) false else cur == want;
+                if (same) () else combo.setValue(want)
+            }
+        };
         match Array.get(0, state#widgets#mapRuleTileLabel) {
-            case Some(lb) => lb.setText("Tile: (${rule#srcX}, ${rule#srcY}) | tileset クリックで変更")
+            case Some(lb) =>
+                // (srcX, srcY) = (0, 0) は新規 Rule の初期値 = 未設定扱い
+                let text = if (rule#srcX == 0i32 and rule#srcY == 0i32)
+                              "Tile: 未設定 (下の tileset をクリックで指定)"
+                          else
+                              "Tile: (${rule#srcX}, ${rule#srcY})";
+                lb.setText(text)
             case None     => ()
         };
-        match Array.get(0, state#widgets#mapRuleChanceSpinner) {
-            case Some(sp) =>
-                let pct = Float64.tryToInt32(rule#chance * 100.0f64) |> Option.getWithDefault(100i32);
-                let factory = sp.getValueFactory();
-                if (Object.isNull(factory)) ()
-                else factory.setValue(Integer.valueOf(pct))
-            case None     => ()
-        };
-        // Pattern grid のセル色を更新
+        // Pattern grid のセル色を更新。size が変わっていたら grid を作り直す。
         match Array.get(0, state#widgets#mapRulePatternGrid) {
             case None       => ()
             case Some(grid) => {
+                let expected = rule#size * rule#size;
                 let cells = grid.getChildren();
                 let n = cells.size();
+                if (n != expected) buildPatternGrid(state, grid, rule#size) else ();
+                // 再構築後の children を取り直す (build 後は新規 instance)
+                let cells2 = grid.getChildren();
+                let n2 = cells2.size();
+                let centerIdx = expected / 2i32;
                 List.forEach(idx -> {
-                    if (idx < n) {
-                        let nodeObj = cells.get(idx);
+                    if (idx < n2) {
+                        let nodeObj = cells2.get(idx);
                         let pane: StackPane = unchecked_cast(nodeObj as StackPane);
                         let userData = pane.getUserData();
                         if (Object.isNull(userData)) ()
@@ -1483,12 +1529,66 @@ mod MapEditorPanel {
                                 case Some(x) => x
                                 case None    => -1i32
                             };
-                            drawPatternCellValue(canvas, v, idx == 4i32)
+                            drawPatternCellValue(canvas, v, idx == centerIdx)
                         }
                     } else ()
-                }, List.range(0, 9))
+                }, List.range(0, expected))
             }
         }
+    }
+
+    /// Pattern サイズを切替: 3 → 5 は外側を 1 (床) でパディング、5 → 3 は中央 3×3 を抽出。
+    /// 中央セルは常に -1 (装飾) に再正規化する。
+    def switchRuleSize(state: IdeState.IdeState, newSize: Int32): Unit \ IO = {
+        match MapEditorState.getEditingRuleIndex(state#mapEditor) {
+            case None        => ()
+            case Some(ruleI) => match MapEditorState.getEditingMaterial(state#mapEditor) {
+                case None      => ()
+                case Some(mat) => {
+                    let md = MapResource.materialData(mat);
+                    match List.nth(ruleI, md#autoRules) {
+                        case None       => ()
+                        case Some(rule) =>
+                            if (rule#size == newSize) ()
+                            else {
+                                let newPattern = resizePattern(rule#pattern, rule#size, newSize);
+                                let newRule = {size = newSize, pattern = newPattern | rule};
+                                replaceRule(state, ruleI, newRule);
+                                refreshRulesUI(state);
+                                MapEditorPanel.redrawCanvas(state)
+                            }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Pattern Vector を oldSize → newSize にリサイズ。
+    /// 3 → 5: 外周は 0 (任意) でパディングし、内側 3×3 に元の値をコピー
+    /// 5 → 3: 内側 3×3 を抽出
+    /// 中央セルは常に -1 (装飾) に揃える。
+    def resizePattern(oldPattern: Vector[Int32], oldSize: Int32, newSize: Int32):
+            Vector[Int32] = {
+        let n = newSize * newSize;
+        let center = n / 2i32;
+        let offset = (newSize - oldSize) / 2i32;
+        List.range(0, n)
+            |> List.map(idx -> {
+                if (idx == center) -1i32
+                else {
+                    let r = idx / newSize;
+                    let c = Int32.remainder(idx, newSize);
+                    let oldR = r - offset;
+                    let oldC = c - offset;
+                    if (oldR < 0i32 or oldR >= oldSize or oldC < 0i32 or oldC >= oldSize)
+                        0i32  // 範囲外: 任意でパディング
+                    else match Vector.nth(oldR * oldSize + oldC, oldPattern) {
+                        case Some(v) => if (v == -1i32) 0i32 else v  // 旧中央 -1 は任意に置換
+                        case None    => 0i32
+                    }
+                }
+            })
+            |> List.toVector
     }
 
     /// 4-trit (壁/床/空) パターンを「使用頻度別セクション」で VBox 内に構築する。
@@ -1748,53 +1848,52 @@ mod MapEditorPanel {
         gc.fillRect(x, y, cs, cs)
     }
 
-    /// Tileset Canvas クリック: Walls Palette の cellW/cellH/marginX/Y と paletteZoom を使い、
-    /// 選択中タイルの (srcX, srcY) を計算する。
-    /// AutoRule 選択中なら Rule.srcX/srcY を更新、そうでなく TRBL 選択中なら wallMap 更新。
+    /// auto-layer タブの Tileset Canvas クリック: TRBL 選択中なら wallMap を更新する。
+    /// Rule.srcXY の設定は Rules タブ専用 Canvas (wireRuleTilesetClick) で行う。
     def wireMaterialsTilesetClick(state: IdeState.IdeState, canvas: Canvas): Unit \ IO = {
         canvas.setOnMouseClicked(new EventHandler[MouseEvent] {
             def handle(_this: EventHandler[MouseEvent], event: MouseEvent): Unit \ IO = {
-                let matOpt = MapEditorState.getEditingMaterial(state#mapEditor);
-                match matOpt {
-                    case None      => ()
-                    case Some(mat) => {
-                        let (cw, ch, mx, my) = wallsPaletteCellAndMargin(state);
-                        let strideX = cw + mx;
-                        let strideY = ch + my;
-                        if (strideX <= 0i32 or strideY <= 0i32) ()
-                        else {
-                            let zoom = MapEditorState.getPaletteZoom(state#mapEditor);
-                            let imgX = event.getX() / zoom;
-                            let imgY = event.getY() / zoom;
-                            let col = Float64.truncateToInt32(imgX / Int32.toFloat64(strideX));
-                            let row = Float64.truncateToInt32(imgY / Int32.toFloat64(strideY));
-                            let srcX = col * strideX;
-                            let srcY = row * strideY;
-                            // Rule 選択中 ? それとも TRBL 選択中 ?
-                            let ruleIdxOpt = MapEditorState.getEditingRuleIndex(state#mapEditor);
-                            let trblOpt = MapEditorState.getSelectedTrbl(state#mapEditor);
-                            match ruleIdxOpt {
-                                case Some(ri) => {
-                                    let md = MapResource.materialData(mat);
-                                    match List.nth(ri, md#autoRules) {
-                                        case None       => ()
-                                        case Some(rule) => {
-                                            let newRule = {srcX = srcX, srcY = srcY | rule};
-                                            replaceRule(state, ri, newRule);
-                                            refreshMaterialsTab(state);
-                                            redrawCanvas(state)
-                                        }
-                                    }
-                                }
-                                case None => match trblOpt {
-                                    case None      => ()
-                                    case Some(key) => {
-                                        let md = MapResource.materialData(mat);
-                                        let newWallMap = Map.insert(key, (srcX, srcY), md#wallMap);
-                                        let newMd: MapResource.MaterialData = {wallMap = newWallMap | md};
-                                        let newMat = MapResource.Material.Material(newMd);
-                                        MapEditorState.setEditingMaterial(state#mapEditor, Some(newMat));
-                                        saveMaterial(state);
+                match (MapEditorState.getEditingMaterial(state#mapEditor),
+                       MapEditorState.getSelectedTrbl(state#mapEditor)) {
+                    case (Some(mat), Some(key)) => {
+                        match tilesetClickToSrc(state, event) {
+                            case None             => ()
+                            case Some((srcX, srcY)) => {
+                                let md = MapResource.materialData(mat);
+                                let newWallMap = Map.insert(key, (srcX, srcY), md#wallMap);
+                                let newMd: MapResource.MaterialData =
+                                    {wallMap = newWallMap | md};
+                                let newMat = MapResource.Material.Material(newMd);
+                                MapEditorState.setEditingMaterial(state#mapEditor,
+                                    Some(newMat));
+                                saveMaterial(state);
+                                refreshMaterialsTab(state);
+                                redrawCanvas(state)
+                            }
+                        }
+                    }
+                    case _ => ()
+                }
+            }
+        })
+    }
+
+    /// Rules タブの Tileset Canvas クリック: 選択中 Rule の (srcX, srcY) を更新する。
+    def wireRuleTilesetClick(state: IdeState.IdeState, canvas: Canvas): Unit \ IO = {
+        canvas.setOnMouseClicked(new EventHandler[MouseEvent] {
+            def handle(_this: EventHandler[MouseEvent], event: MouseEvent): Unit \ IO = {
+                match (MapEditorState.getEditingMaterial(state#mapEditor),
+                       MapEditorState.getEditingRuleIndex(state#mapEditor)) {
+                    case (Some(mat), Some(ri)) => {
+                        match tilesetClickToSrc(state, event) {
+                            case None             => ()
+                            case Some((srcX, srcY)) => {
+                                let md = MapResource.materialData(mat);
+                                match List.nth(ri, md#autoRules) {
+                                    case None       => ()
+                                    case Some(rule) => {
+                                        let newRule = {srcX = srcX, srcY = srcY | rule};
+                                        replaceRule(state, ri, newRule);
                                         refreshMaterialsTab(state);
                                         redrawCanvas(state)
                                     }
@@ -1802,9 +1901,28 @@ mod MapEditorPanel {
                             }
                         }
                     }
+                    case _ => ()
                 }
             }
         })
+    }
+
+    /// MouseEvent から (srcX, srcY) を Walls Palette 設定 + paletteZoom で計算する。
+    /// stride が 0 以下 (= cell+margin が不正) のときは None。
+    def tilesetClickToSrc(state: IdeState.IdeState, event: MouseEvent):
+            Option[(Int32, Int32)] \ IO = {
+        let (cw, ch, mx, my) = wallsPaletteCellAndMargin(state);
+        let strideX = cw + mx;
+        let strideY = ch + my;
+        if (strideX <= 0i32 or strideY <= 0i32) None
+        else {
+            let zoom = MapEditorState.getPaletteZoom(state#mapEditor);
+            let imgX = event.getX() / zoom;
+            let imgY = event.getY() / zoom;
+            let col = Float64.truncateToInt32(imgX / Int32.toFloat64(strideX));
+            let row = Float64.truncateToInt32(imgY / Int32.toFloat64(strideY));
+            Some((col * strideX, row * strideY))
+        }
     }
 
     /// Walls Palette の (cellW, cellH, marginX, marginY)。未設定時は (16,16,0,0)。
@@ -1840,6 +1958,7 @@ mod MapEditorPanel {
         updateWallMapGridHighlight(state);
         updateMaterialsStatus(state);
         drawMaterialsTileset(state);
+        drawRuleTileset(state);
         refreshRulesUI(state);
         // 選択中 TRBL の紫プレビューを Map Canvas に反映
         redrawCanvas(state)
@@ -2026,6 +2145,59 @@ mod MapEditorPanel {
                                                        cwF * zoom, chF * zoom)
                                     }
                                     case None => ()
+                                }
+                            }
+                            case _ => ()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Rules タブ専用 tileset Canvas を Walls Palette 設定で描画する。
+    /// 選択中 Rule の (srcX, srcY) を緑枠で強調する。
+    def drawRuleTileset(state: IdeState.IdeState): Unit \ IO = {
+        let canvasOpt = Array.get(0, state#widgets#mapRuleTilesetCanvas);
+        let imgOpt = Array.get(0, state#widgets#mapWallsImage);
+        match canvasOpt {
+            case None         => ()
+            case Some(canvas) => {
+                let gc = canvas.getGraphicsContext2D();
+                gc.setImageSmoothing(false);
+                let zoom = MapEditorState.getPaletteZoom(state#mapEditor);
+                match imgOpt {
+                    case None      =>
+                        gc.clearRect(0.0, 0.0, canvas.getWidth(), canvas.getHeight())
+                    case Some(img) => {
+                        let iw = img.getWidth();
+                        let ih = img.getHeight();
+                        let dw = iw * zoom;
+                        let dh = ih * zoom;
+                        canvas.setWidth(dw);
+                        canvas.setHeight(dh);
+                        gc.clearRect(0.0, 0.0, dw, dh);
+                        gc.drawImage(img, 0.0, 0.0, iw, ih, 0.0, 0.0, dw, dh);
+                        // 選択中 Rule の (srcX, srcY) を緑枠で強調
+                        match (MapEditorState.getEditingRuleIndex(state#mapEditor),
+                               MapEditorState.getEditingMaterial(state#mapEditor)) {
+                            case (Some(ri), Some(mat)) => {
+                                let md = MapResource.materialData(mat);
+                                match List.nth(ri, md#autoRules) {
+                                    case None       => ()
+                                    case Some(rule) =>
+                                        // srcX=srcY=0 は未設定扱いで枠を出さない
+                                        if (rule#srcX == 0i32 and rule#srcY == 0i32) ()
+                                        else {
+                                            let (cw, ch, _, _) = wallsPaletteCellAndMargin(state);
+                                            let cwF = Int32.toFloat64(cw);
+                                            let chF = Int32.toFloat64(ch);
+                                            gc.setStroke(Color.rgb(80, 220, 100));
+                                            gc.setLineWidth(2.0);
+                                            gc.strokeRect(Int32.toFloat64(rule#srcX) * zoom,
+                                                           Int32.toFloat64(rule#srcY) * zoom,
+                                                           cwF * zoom, chF * zoom)
+                                        }
                                 }
                             }
                             case _ => ()

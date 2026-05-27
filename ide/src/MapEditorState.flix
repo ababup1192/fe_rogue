@@ -97,7 +97,10 @@ mod MapEditorState {
         dragStartRef           = Array[Option[(Int32, Int32)], Static],
         isDraggingRef          = Array[Bool, Static],
         // Map Canvas の操作ツール (Pencil / RangeSelect)
-        editToolRef            = Array[EditTool, Static]
+        editToolRef            = Array[EditTool, Static],
+        // Rules ListView をプログラム的に書き換え中フラグ。
+        // selectedIndexProperty リスナー再入を防ぐ。
+        isRefreshingRulesRef   = Array[Bool, Static]
     }
 
     /// 空の MapEditorState を作る。
@@ -120,7 +123,8 @@ mod MapEditorState {
             selectedRangeRef       = Array#{(None: Option[(Int32, Int32, Int32, Int32)])} @ Static,
             dragStartRef           = Array#{(None: Option[(Int32, Int32)])} @ Static,
             isDraggingRef          = Array#{false} @ Static,
-            editToolRef            = Array#{EditTool.Pencil} @ Static
+            editToolRef            = Array#{EditTool.Pencil} @ Static,
+            isRefreshingRulesRef   = Array#{false} @ Static
         }
 
     /// 全レイヤー visible の初期値。
@@ -303,4 +307,10 @@ mod MapEditorState {
 
     pub def setEditTool(state: MapEditorState, tool: EditTool): Unit \ IO =
         Array.put(tool, 0, state#editToolRef)
+
+    pub def getIsRefreshingRules(state: MapEditorState): Bool \ IO =
+        Array.get(0, state#isRefreshingRulesRef)
+
+    pub def setIsRefreshingRules(state: MapEditorState, b: Bool): Unit \ IO =
+        Array.put(b, 0, state#isRefreshingRulesRef)
 }

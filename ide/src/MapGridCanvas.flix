@@ -288,12 +288,17 @@ mod MapGridCanvas {
                 applyFirstMatchingRule(intGrid, width, height, col, row, rest)
     }
 
+    /// Pattern セル値:
+    ///   -1 = 装飾 (中央のみ、マッチ条件なし)
+    ///    0 = 任意 (どんな値でも OK、マッチ条件なし)
+    ///    1 = 床 (intGrid 値 1 を要求)
+    ///    2 = 壁 (intGrid 値 != 1 = 空・自動壁・map 外をまとめて壁扱い)
     pub def ruleMatches(intGrid: Vector[Int32], width: Int32, height: Int32,
                           col: Int32, row: Int32, rule: MapResource.AutoRule): Bool = {
         let size = rule#size;
         let half = size / 2;
         let n = size * size;
-        let matched = List.range(0, n)
+        List.range(0, n)
             |> List.forAll(idx -> {
                 let pc = Int32.remainder(idx, size);
                 let pr = idx / size;
@@ -302,19 +307,14 @@ mod MapGridCanvas {
                 let cellVal = intGridAt(intGrid, width, height, cc, cr);
                 let want = match Vector.nth(idx, rule#pattern) {
                     case Some(v) => v
-                    case None    => -1i32
+                    case None    => 0i32
                 };
-                want == -1i32 or want == cellVal
-            });
-        if (not matched) false
-        else if (rule#chance >= 1.0f64) true
-        else {
-            let seed = (col * 31i32 + row * 17i32 + String.length(rule#name) * 7i32)
-                     |> Int32.modulo(100i32);
-            let threshold = Float64.tryToInt32(rule#chance * 100.0f64)
-                          |> Option.getWithDefault(0i32);
-            seed < threshold
-        }
+                if (want == -1i32) true
+                else if (want == 0i32) true
+                else if (want == 1i32) cellVal == 1i32
+                else if (want == 2i32) cellVal != 1i32
+                else false
+            })
     }
 
     def intGridAt(intGrid: Vector[Int32], width: Int32, height: Int32,

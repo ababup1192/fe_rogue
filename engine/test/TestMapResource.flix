@@ -186,7 +186,8 @@ mod TestMapResource {
             tileSize     = 16,
             wallMap      = wallMap,
             floorPalette = (0, 5) :: (1, 5) :: Nil,
-            decorPalette = (5, 5) :: Nil
+            decorPalette = (5, 5) :: Nil,
+            autoRules    = (Nil: List[MapResource.AutoRule])
         }: MaterialData))
 
     /// 4x3 の小さな部屋 + decorTile + manualTile + entity (enemyId="goblin")
@@ -212,6 +213,7 @@ mod TestMapResource {
             manualTiles   = manual,
             decorTiles    = decor,
             entities      = entity :: Nil,
-            editorPalette = (None: Option[MapResource.EditorPalette])
+            editorPalette = (None: Option[MapResource.EditorPalette]),
+            intGrid       = (Vector#{}: Vector[Int32])
         }: LevelData))
 }

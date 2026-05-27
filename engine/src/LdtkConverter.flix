@@ -64,7 +64,8 @@ mod LdtkConverter {
             manualTiles   = manualTiles,
             decorTiles    = decorTiles,
             entities      = entities,
-            editorPalette = (None: Option[MapResource.EditorPalette])
+            editorPalette = (None: Option[MapResource.EditorPalette]),
+            intGrid       = (Vector#{}: Vector[Int32])
         }: MapResource.LevelData))
 
     /// 指定した `__identifier` を持つ層の autoLayerTiles を ManualTile のリストにする。

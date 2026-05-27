@@ -74,8 +74,19 @@ mod MapLoader {
             }: TileData)
         }, d#manualTiles);
 
-        // AutoLayerWalls を下、manualTiles を上で重ねる
-        let tiles: List[TileData] = List.append(autoTiles, manualTiles);
+        // IntGrid 再構築 (load 時に毎回): floorMask=1, wallCells=2, それ以外=0
+        let intGrid = buildIntGrid(floorMask, wallCells, d#width, d#height);
+        // AutoRule タイル: パターンマッチで装飾を重ねる
+        let ruleTiles: List[TileData] = match materialOpt {
+            case None      => Nil
+            case Some(mat) =>
+                let md = MapResource.materialData(mat);
+                buildAutoRuleTiles(intGrid, d#width, d#height, md#autoRules, tileSizeI)
+        };
+
+        // 描画順: 自動壁 → manualTiles → ruleTiles (最前面)
+        let tiles: List[TileData] =
+            List.append(List.append(autoTiles, manualTiles), ruleTiles);
 
         // 自動壁セル → collisionCells (Float64 grid 座標)
         let cells = wallCells
@@ -335,4 +346,87 @@ mod MapLoader {
         if      (Set.memberOf((col, row), wallCells)) "W"
         else if (Set.memberOf((col, row), floorMask)) "F"
         else                                          "E"
+
+    /// IntGrid を再構築する。0=空, 1=床, 2=自動壁。マップ範囲全セル分。
+    pub def buildIntGrid(floorMask: Set[(Int32, Int32)],
+                           wallCells: Set[(Int32, Int32)],
+                           width: Int32, height: Int32): Vector[Int32] =
+        List.range(0, width * height)
+            |> List.map(i -> {
+                let col = Int32.remainder(i, width);
+                let row = i / width;
+                if      (Set.memberOf((col, row), floorMask)) 1i32
+                else if (Set.memberOf((col, row), wallCells)) 2i32
+                else                                          0i32
+            })
+            |> List.toVector
+
+    /// AutoRule リストを各セルに適用してタイル列を生成する。
+    /// 各セルでルールを順番にチェック、最初にマッチしたら出力タイルを採用。
+    pub def buildAutoRuleTiles(intGrid: Vector[Int32],
+                                 width: Int32, height: Int32,
+                                 rules: List[MapResource.AutoRule],
+                                 tileSizeI: Int32): List[TileData] =
+        List.range(0, width * height)
+            |> List.filterMap(i -> {
+                let col = Int32.remainder(i, width);
+                let row = i / width;
+                applyFirstMatchingRule(intGrid, width, height, col, row, rules, tileSizeI)
+            })
+
+    /// このセルでマッチする最初のルールを見つけて TileData を返す。なければ None。
+    def applyFirstMatchingRule(intGrid: Vector[Int32],
+                                 width: Int32, height: Int32,
+                                 col: Int32, row: Int32,
+                                 rules: List[MapResource.AutoRule],
+                                 tileSizeI: Int32): Option[TileData] = match rules {
+        case Nil          => None
+        case r :: rest    =>
+            if (ruleMatches(intGrid, width, height, col, row, r))
+                Some(({
+                    px    = ({x = Int32.toFloat64(col * tileSizeI),
+                               y = Int32.toFloat64(row * tileSizeI)}: Vec2.Vec2),
+                    srcX  = Int32.toFloat64(r#srcX),
+                    srcY  = Int32.toFloat64(r#srcY),
+                    flipH = false, flipV = false, alpha = 1.0f32
+                }: TileData))
+            else applyFirstMatchingRule(intGrid, width, height, col, row, rest, tileSizeI)
+    }
+
+    /// パターンとセル周辺の intGrid 値を照合する。Pattern セル値:
+    ///   -1 = 装飾 (中央のみ、マッチ条件なし。出力位置)
+    ///    0 = 任意 (どんな intGrid 値でも OK、マッチ条件なし)
+    ///    1 = 床 (intGrid 値 1 を要求)
+    ///    2 = 壁 (intGrid 値 != 1 を要求 = 空・自動壁・map 外をまとめて壁扱い)
+    pub def ruleMatches(intGrid: Vector[Int32], width: Int32, height: Int32,
+                          col: Int32, row: Int32, rule: MapResource.AutoRule): Bool = {
+        let size = rule#size;
+        let half = size / 2;
+        let n = size * size;
+        List.range(0, n)
+            |> List.forAll(idx -> {
+                let pc = Int32.remainder(idx, size);
+                let pr = idx / size;
+                let cc = col + pc - half;
+                let cr = row + pr - half;
+                let cellVal = intGridAt(intGrid, width, height, cc, cr);
+                let want = match Vector.nth(idx, rule#pattern) {
+                    case Some(v) => v
+                    case None    => 0i32  // 短い場合は任意扱い
+                };
+                if (want == -1i32) true                   // 装飾セル: 任意
+                else if (want == 0i32) true               // 任意: マッチ条件なし
+                else if (want == 1i32) cellVal == 1i32   // 床: 1 と完全一致
+                else if (want == 2i32) cellVal != 1i32   // 壁: 1 以外
+                else false                                 // 不明値: 不一致
+            })
+    }
+
+    def intGridAt(intGrid: Vector[Int32], width: Int32, height: Int32,
+                    col: Int32, row: Int32): Int32 =
+        if (col < 0 or col >= width or row < 0 or row >= height) 0i32  // マップ外 = 空
+        else match Vector.nth(row * width + col, intGrid) {
+            case Some(v) => v
+            case None    => 0i32
+        }
 }

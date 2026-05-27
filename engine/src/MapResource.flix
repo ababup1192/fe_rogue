@@ -29,6 +29,9 @@ mod MapResource {
     /// - `decorTiles`  は Floor 層由来 (床、=通行可、=自動壁の判定源)
     /// - `editorPalette` は IDE エディタ専用の Palette 設定 (Sheet 名 / cellSize / margin)。
     ///   ゲームランタイム (MapLoader 等) は無視する。Map ごとに別の設定を持たせるため。
+    /// - `intGrid` は AutoRule マッチング用の整数グリッド (width × height, 行優先)。
+    ///   0=空, 1=床, 2=自動壁。decorTiles + 自動壁判定から load 時に再生成される派生データ。
+    ///   保存時に省略可 (load 時に再構築されるため)。将来 3=水, 4=溶岩 等を予約。
     /// LDtk は Walls と Floor が別 tileset を使う構成のため、層を分けて保持する。
     pub type alias LevelData = {
         tileSize      = Int32,
@@ -38,7 +41,8 @@ mod MapResource {
         manualTiles   = List[ManualTile],
         decorTiles    = List[ManualTile],
         entities      = List[Entity],
-        editorPalette = Option[EditorPalette]
+        editorPalette = Option[EditorPalette],
+        intGrid       = Vector[Int32]
     }
 
     /// IDE Maps タブの Palette 設定 (Floor / Walls 各層)。
@@ -96,13 +100,31 @@ mod MapResource {
 
     /// Material の中身。
     ///   tileSize : tileset PNG 上の 1 タイルの px (正方形前提)
+    ///   autoRules: ldtk 風の AutoRule リスト。各セルの周辺パターンマッチで出力タイルを決める
     /// タイルの切り抜きサイズ / マージン / Palette ズームは IDE 側 Walls Palette と共有する。
     pub type alias MaterialData = {
         tileset      = String,
         tileSize     = Int32,
         wallMap      = Map[String, (Int32, Int32)],
         floorPalette = List[(Int32, Int32)],
-        decorPalette = List[(Int32, Int32)]
+        decorPalette = List[(Int32, Int32)],
+        autoRules    = List[AutoRule]
+    }
+
+    /// AutoRule: パターンマッチで wallMap の上に重ねる装飾タイルを決める。
+    ///   size    : 3 or 5
+    ///   pattern : size * size 要素 (行優先)。各値の意味:
+    ///             -1 = 装飾 (中央セル、出力位置。マッチ条件無し)
+    ///              0 = 任意 (intGrid 値を問わない、マッチ条件なし)
+    ///              1 = 床 (intGrid 値 1 を要求)
+    ///              2 = 壁 (intGrid 値 != 1 を要求、空/自動壁/map 外をまとめて壁扱い)
+    ///   srcX/Y  : 出力タイルの tileset 上の座標 (装飾セル位置に配置)
+    pub type alias AutoRule = {
+        name    = String,
+        size    = Int32,
+        pattern = Vector[Int32],
+        srcX    = Int32,
+        srcY    = Int32
     }
 
     /// `Saveable[Material]` を実装可能にするための単一 case ラッパ。
@@ -199,7 +221,7 @@ mod MapResourceCodec {
 
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool, JsonArray}
-    use MapResource.{Level, LevelData, ManualTile, Entity, FieldValue, Material, MaterialData, EditorPalette, EditorLayerPalette}
+    use MapResource.{Level, LevelData, ManualTile, Entity, FieldValue, Material, MaterialData, EditorPalette, EditorLayerPalette, AutoRule}
 
     // ── Level ──
 
@@ -223,6 +245,7 @@ mod MapResourceCodec {
             case None    => withDecor
             case Some(p) => Map.insert("editorPalette", encodeEditorPalette(p), withDecor)
         };
+        // intGrid は load 時に再構築されるため、保存は省略 (毎回 decorTiles から再生成)
         JsonObject(withEditor)
 
     pub def decodeLevel(element: JsonElement): Option[Level] =
@@ -260,7 +283,8 @@ mod MapResourceCodec {
                 manualTiles   = manualTiles,
                 decorTiles    = decorTiles,
                 entities      = entities,
-                editorPalette = editorPalette
+                editorPalette = editorPalette,
+                intGrid       = (Vector#{}: Vector[Int32])
             }: LevelData))
         }
 
@@ -420,13 +444,18 @@ mod MapResourceCodec {
 
     pub def encodeMaterial(m: Material): JsonElement =
         let d = MapResource.materialData(m);
-        JsonObject(Map#{
+        let base = Map#{
             "tileset"      => JsonString(d#tileset),
             "tileSize"     => JsonNumber(intToBd(d#tileSize)),
             "wallMap"      => encodeWallMap(d#wallMap),
             "floorPalette" => encodeCoordList(d#floorPalette),
             "decorPalette" => encodeCoordList(d#decorPalette)
-        })
+        };
+        let withRules = if (List.isEmpty(d#autoRules)) base
+                        else Map.insert("autoRules",
+                            JsonArray(d#autoRules |> List.map(encodeAutoRule) |> List.toVector),
+                            base);
+        JsonObject(withRules)
 
     pub def decodeMaterial(element: JsonElement): Option[Material] =
         forM (
@@ -440,14 +469,61 @@ mod MapResourceCodec {
             tileSize       <- expectInt(tileSizeJ);
             wallMap        <- decodeWallMap(wallMapJ);
             floorPalette   <- decodeCoordList(floorJ);
-            decorPalette   <- decodeCoordList(decorJ)
+            decorPalette   <- decodeCoordList(decorJ);
+            // autoRules は省略可 (デフォルト Nil)
+            autoRules      <- match Map.get("autoRules", obj) {
+                case None     => Some((Nil: List[AutoRule]))
+                case Some(rj) => decodeList(decodeAutoRule, rj)
+            }
         ) yield Material.Material(({
             tileset      = tileset,
             tileSize     = tileSize,
             wallMap      = wallMap,
             floorPalette = floorPalette,
-            decorPalette = decorPalette
+            decorPalette = decorPalette,
+            autoRules    = autoRules
         }: MaterialData))
+
+    // ── AutoRule ──
+
+    def encodeAutoRule(r: AutoRule): JsonElement =
+        JsonObject(Map#{
+            "name"    => JsonString(r#name),
+            "size"    => JsonNumber(intToBd(r#size)),
+            "pattern" => JsonArray(r#pattern |> Vector.map(n -> JsonNumber(intToBd(n)))),
+            "srcX"    => JsonNumber(intToBd(r#srcX)),
+            "srcY"    => JsonNumber(intToBd(r#srcY))
+        })
+
+    // 旧フォーマットに含まれていた "chance" キーは無視する (存在しても decode は成功)。
+    def decodeAutoRule(element: JsonElement): Option[AutoRule] =
+        forM (
+            obj      <- expectObject(element);
+            nameJ    <- Map.get("name", obj);
+            sizeJ    <- Map.get("size", obj);
+            patternJ <- Map.get("pattern", obj);
+            srcXJ    <- Map.get("srcX", obj);
+            srcYJ    <- Map.get("srcY", obj);
+            name     <- expectString(nameJ);
+            size     <- expectInt(sizeJ);
+            srcX     <- expectInt(srcXJ);
+            srcY     <- expectInt(srcYJ);
+            pattern  <- decodePatternVector(patternJ)
+        ) yield ({
+            name = name, size = size, pattern = pattern,
+            srcX = srcX, srcY = srcY
+        }: AutoRule)
+
+    def decodePatternVector(element: JsonElement): Option[Vector[Int32]] = match element {
+        case JsonArray(items) =>
+            List.foldRight(item -> acc ->
+                Option.flatMap(soFar ->
+                    expectInt(item) |> Option.map(n -> n :: soFar),
+                    acc),
+                Some(Nil), Vector.toList(items))
+            |> Option.map(List.toVector)
+        case _ => None
+    }
 
     def encodeWallMap(m: Map[String, (Int32, Int32)]): JsonElement =
         let inner = m

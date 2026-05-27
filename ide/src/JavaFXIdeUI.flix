@@ -184,8 +184,8 @@ mod JavaFXIdeUI {
             unchecked_cast(mapNs.get("mapRuleAddBtn") as Button);
         let mapRuleRemoveBtn: Button =
             unchecked_cast(mapNs.get("mapRuleRemoveBtn") as Button);
-        let mapRuleList: ListView[String] =
-            unchecked_cast(mapNs.get("mapRuleList") as ListView[String]);
+        let mapRuleList: ComboBox[String] =
+            unchecked_cast(mapNs.get("mapRuleList") as ComboBox[String]);
         let mapRuleEditor: VBox =
             unchecked_cast(mapNs.get("mapRuleEditor") as VBox);
         let mapRuleNameField: TextField =
@@ -194,8 +194,10 @@ mod JavaFXIdeUI {
             unchecked_cast(mapNs.get("mapRulePatternGrid") as GridPane);
         let mapRuleTileLabel: Label =
             unchecked_cast(mapNs.get("mapRuleTileLabel") as Label);
-        let mapRuleChanceSpinner: Spinner[Integer] =
-            unchecked_cast(mapNs.get("mapRuleChanceSpinner") as Spinner[Integer]);
+        let mapRuleTilesetCanvas: Canvas =
+            unchecked_cast(mapNs.get("mapRuleTilesetCanvas") as Canvas);
+        let mapRuleSizeCombo: ComboBox[String] =
+            unchecked_cast(mapNs.get("mapRuleSizeCombo") as ComboBox[String]);
         Array.put(Some(mapLayerRowFloor), 0, state#widgets#mapLayerRowFloor);
         Array.put(Some(mapLayerRowWalls), 0, state#widgets#mapLayerRowWalls);
         Array.put(Some(mapLayerRowEntities), 0, state#widgets#mapLayerRowEntities);
@@ -228,7 +230,8 @@ mod JavaFXIdeUI {
         Array.put(Some(mapRuleNameField), 0, state#widgets#mapRuleNameField);
         Array.put(Some(mapRulePatternGrid), 0, state#widgets#mapRulePatternGrid);
         Array.put(Some(mapRuleTileLabel), 0, state#widgets#mapRuleTileLabel);
-        Array.put(Some(mapRuleChanceSpinner), 0, state#widgets#mapRuleChanceSpinner);
+        Array.put(Some(mapRuleTilesetCanvas), 0, state#widgets#mapRuleTilesetCanvas);
+        Array.put(Some(mapRuleSizeCombo), 0, state#widgets#mapRuleSizeCombo);
         // Map canvas: クリック・ピンチズーム・Ctrl/Cmd+Z undo を 1 か所で配線
         MapGridCanvas.wireMapCanvas(state, mapGridCanvas);
         MapEditorPanel.wireToolButtons(state, mapToolPencilBtn, mapToolRangeBtn);
