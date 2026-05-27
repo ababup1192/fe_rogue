@@ -44,7 +44,8 @@ mod MapGridCanvas {
                        vis: MapEditorState.LayerVisibility, zoom: Float64,
                        material: Option[MapResource.Material],
                        selectedTrbl: Option[String],
-                       selectedRange: Option[(Int32, Int32, Int32, Int32)]): Unit \ IO = {
+                       selectedRange: Option[(Int32, Int32, Int32, Int32)],
+                       selectedRule: Option[Int32]): Unit \ IO = {
         let d = MapResource.levelData(level);
         resizeAndFill(canvas, d#width, d#height, cellPx, zoom);
         let gc = canvas.getGraphicsContext2D();
@@ -56,10 +57,12 @@ mod MapGridCanvas {
                 case None      => ()
             }
         } else ();
+        // 自動壁 / AutoRule / TRBL プレビューはいずれも floorMask + wallCells を使うので、
+        // walls 不可視のときも Rule プレビュー用に計算しておく。
+        let floorMask = floorMaskOf(d);
+        let wallCells = computeWallCells(floorMask, d#width, d#height);
         if (vis#walls) {
             // 自動壁を先に (下)、その上に manualTiles (上書き)
-            let floorMask = floorMaskOf(d);
-            let wallCells = computeWallCells(floorMask, d#width, d#height);
             match (wallsImg, material) {
                 case (Some(img), Some(mat)) =>
                     drawAutoLayerWalls(canvas, wallCells, floorMask,
@@ -87,6 +90,13 @@ mod MapGridCanvas {
                 case Some(key) => drawTrblPreview(canvas, wallCells, floorMask, key, cellPx)
             }
         } else ();
+        // Rules タブで選択中の Rule に該当する出力セルを紫網掛け (auto-layer プレビューと同色)
+        match (selectedRule, material) {
+            case (Some(ri), Some(mat)) =>
+                drawRulePreview(canvas, MapResource.materialData(mat),
+                                  ri, floorMask, wallCells, d#width, d#height, cellPx)
+            case _ => ()
+        };
         drawGridLines(canvas, d#width, d#height, cellPx);
         if (vis#entities) drawEntities(canvas, d#entities, cellPx) else ();
         // 範囲選択ハイライト (最前面)
@@ -138,6 +148,34 @@ mod MapGridCanvas {
                              Int32.toFloat64(row) * cs, cs, cs)
             else ()
         }, wallCells)
+    }
+
+    /// 選択中 Rule (autoRules[ri]) のパターンに該当する出力セル (中央位置) を
+    /// 紫半透明で塗る。auto-layer タブの TRBL プレビューと同色 (160,64,200,0.5)。
+    /// マップ全セル走査して ruleMatches で判定する。
+    /// 注: Tile 未設定 (srcX<0 等) でもプレビューは出す (= 配置予定セルが分かる)。
+    def drawRulePreview(canvas: Canvas, md: MapResource.MaterialData,
+                          ri: Int32,
+                          floorMask: Set[(Int32, Int32)],
+                          wallCells: Set[(Int32, Int32)],
+                          width: Int32, height: Int32, cellPx: Int32): Unit \ IO = {
+        match List.nth(ri, md#autoRules) {
+            case None       => ()
+            case Some(rule) => {
+                let intGrid = buildIntGrid(floorMask, wallCells, width, height);
+                let gc = canvas.getGraphicsContext2D();
+                let cs = Int32.toFloat64(cellPx);
+                gc.setFill(Color.rgb(160, 64, 200, 0.5));
+                List.forEach(i -> {
+                    let col = Int32.remainder(i, width);
+                    let row = i / width;
+                    if (ruleMatches(intGrid, width, height, col, row, rule))
+                        gc.fillRect(Int32.toFloat64(col) * cs,
+                                     Int32.toFloat64(row) * cs, cs, cs)
+                    else ()
+                }, List.range(0, width * height))
+            }
+        }
     }
 
     /// "EWFW" のような 4-trit キーかどうかを判定 (先頭文字で W/F/E を判定)。
@@ -282,7 +320,10 @@ mod MapGridCanvas {
             Option[(Int32, Int32)] = match rules {
         case Nil       => None
         case r :: rest =>
-            if (ruleMatches(intGrid, width, height, col, row, r))
+            // srcX < 0 / srcY < 0 は Tile 未設定 → 描画スキップ
+            if (r#srcX < 0i32 or r#srcY < 0i32)
+                applyFirstMatchingRule(intGrid, width, height, col, row, rest)
+            else if (ruleMatches(intGrid, width, height, col, row, r))
                 Some((r#srcX, r#srcY))
             else
                 applyFirstMatchingRule(intGrid, width, height, col, row, rest)
@@ -898,7 +939,9 @@ mod MapGridCanvas {
                 let mat = MapEditorState.getEditingMaterial(state#mapEditor);
                 let selTrbl = MapEditorState.getSelectedTrbl(state#mapEditor);
                 let selRange = MapEditorState.getSelectedRange(state#mapEditor);
-                drawLevel(c, level, cellPx, wImg, fImg, vis, zoom, mat, selTrbl, selRange)
+                let selRule = MapEditorState.getEditingRuleIndex(state#mapEditor);
+                drawLevel(c, level, cellPx, wImg, fImg, vis, zoom, mat, selTrbl, selRange,
+                            selRule)
             }
             case None => ()
         }

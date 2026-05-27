@@ -382,7 +382,10 @@ mod MapLoader {
                                  tileSizeI: Int32): Option[TileData] = match rules {
         case Nil          => None
         case r :: rest    =>
-            if (ruleMatches(intGrid, width, height, col, row, r))
+            // srcX < 0 / srcY < 0 は Tile 未設定の Rule。マッチしても描画しない。
+            if (r#srcX < 0i32 or r#srcY < 0i32)
+                applyFirstMatchingRule(intGrid, width, height, col, row, rest, tileSizeI)
+            else if (ruleMatches(intGrid, width, height, col, row, r))
                 Some(({
                     px    = ({x = Int32.toFloat64(col * tileSizeI),
                                y = Int32.toFloat64(row * tileSizeI)}: Vec2.Vec2),

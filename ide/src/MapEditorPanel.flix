@@ -37,6 +37,9 @@ mod MapEditorPanel {
     import javafx.scene.layout.Region
     import javafx.scene.Node
     import javafx.geometry.Pos
+    import javafx.geometry.VPos
+    import javafx.scene.text.Font
+    import javafx.scene.text.TextAlignment
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
     import javafx.event.ActionEvent
@@ -348,8 +351,10 @@ mod MapEditorPanel {
                 let mat = MapEditorState.getEditingMaterial(state#mapEditor);
                 let selTrbl = MapEditorState.getSelectedTrbl(state#mapEditor);
                 let selRange = MapEditorState.getSelectedRange(state#mapEditor);
+                let selRule = MapEditorState.getEditingRuleIndex(state#mapEditor);
                 MapGridCanvas.drawLevel(canvas, level, MapGridCanvas.defaultCellPx(),
-                                          wImg, fImg, vis, zoom, mat, selTrbl, selRange)
+                                          wImg, fImg, vis, zoom, mat, selTrbl, selRange,
+                                          selRule)
             }
             case _ => ()
         }
@@ -1261,11 +1266,11 @@ mod MapEditorPanel {
         pane
     }
 
-    /// パターンセルの色:
+    /// パターンセルの色 + ラベル:
     ///   -1=装飾 (中央): 緑 + 白点
-    ///    0=任意: 白に近い灰色 (条件なし、デフォルト)
-    ///    1=床: 黄色
-    ///    2=壁: 暗灰色
+    ///    0=任意: 薄灰 (ラベルなし)
+    ///    1=床: 黄色 + 白の "F"
+    ///    2=壁: 暗灰色 + 白の "W"
     def drawPatternCellValue(canvas: Canvas, value: Int32, isCenter: Bool): Unit \ IO = {
         let gc = canvas.getGraphicsContext2D();
         let w = canvas.getWidth();
@@ -1282,10 +1287,18 @@ mod MapEditorPanel {
         gc.setStroke(Color.rgb(40, 40, 50));
         gc.setLineWidth(1.0);
         gc.strokeRect(0.5, 0.5, w - 1.0, h - 1.0);
-        // 中央セル: 識別用に白点
         if (isCenter) {
+            // 中央セル: 識別用に白点
             gc.setFill(Color.rgb(255, 255, 255));
             gc.fillOval(w / 2.0 - 3.0, h / 2.0 - 3.0, 6.0, 6.0)
+        } else if (value == 1i32 or value == 2i32) {
+            // 床 / 壁: 白文字でラベル
+            let label = if (value == 1i32) "F" else "W";
+            gc.setFill(Color.rgb(255, 255, 255));
+            gc.setFont(Font.font(14.0));
+            gc.setTextAlign(TextAlignment.CENTER);
+            gc.setTextBaseline(VPos.CENTER);
+            gc.fillText(label, w / 2.0, h / 2.0 + 1.0)
         } else ()
     }
 
@@ -1359,14 +1372,15 @@ mod MapEditorPanel {
                 let md = MapResource.materialData(mat);
                 // 中央 (idx=4) は装飾 (-1) 固定、周辺 8 セルは任意 (0) で初期化。
                 // pattern[i] の意味: -1=装飾(中央のみ), 0=任意, 1=床, 2=壁
+                // srcX/Y = -1 は Tile 未設定の sentinel (描画スキップされる)
                 let newRule: MapResource.AutoRule = {
                     name    = "Rule ${List.length(md#autoRules) + 1}",
                     size    = 3i32,
                     pattern = Vector#{0i32, 0i32, 0i32,
                                        0i32, -1i32, 0i32,
                                        0i32, 0i32, 0i32},
-                    srcX    = 0i32,
-                    srcY    = 0i32
+                    srcX    = -1i32,
+                    srcY    = -1i32
                 };
                 let newRules = List.append(md#autoRules, newRule :: Nil);
                 let newMd = {autoRules = newRules | md};
@@ -1497,8 +1511,8 @@ mod MapEditorPanel {
         };
         match Array.get(0, state#widgets#mapRuleTileLabel) {
             case Some(lb) =>
-                // (srcX, srcY) = (0, 0) は新規 Rule の初期値 = 未設定扱い
-                let text = if (rule#srcX == 0i32 and rule#srcY == 0i32)
+                // srcX/Y < 0 が「Tile 未設定」の sentinel
+                let text = if (rule#srcX < 0i32 or rule#srcY < 0i32)
                               "Tile: 未設定 (下の tileset をクリックで指定)"
                           else
                               "Tile: (${rule#srcX}, ${rule#srcY})";
@@ -2186,8 +2200,8 @@ mod MapEditorPanel {
                                 match List.nth(ri, md#autoRules) {
                                     case None       => ()
                                     case Some(rule) =>
-                                        // srcX=srcY=0 は未設定扱いで枠を出さない
-                                        if (rule#srcX == 0i32 and rule#srcY == 0i32) ()
+                                        // srcX<0 / srcY<0 は未設定扱いで枠を出さない
+                                        if (rule#srcX < 0i32 or rule#srcY < 0i32) ()
                                         else {
                                             let (cw, ch, _, _) = wallsPaletteCellAndMargin(state);
                                             let cwF = Int32.toFloat64(cw);
