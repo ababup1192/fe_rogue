@@ -166,6 +166,15 @@ mod MapEditorPanel {
                 // Map 固有の Palette 設定を読み込んで PaletteSettings に積む
                 applyEditorPaletteFromLevel(state, d#editorPalette);
                 loadMaterialForLevel(state, d#materialId);
+                // 新 Material では旧 Material の選択 index/key は意味を失うのでクリア。
+                // 残しておくと redrawCanvas で selRule/selTrbl が古い参照を持ち、
+                // 紫網掛けが出ない or 別ルールを指したままになる。
+                MapEditorState.setEditingRuleIndex(state#mapEditor, None);
+                MapEditorState.setSelectedTrbl(state#mapEditor, None);
+                // Rules タブが既にアクティブな場合は先頭ルールを自動選択する。
+                // wireRightTabChange のリスナーは「タブが切り替わった瞬間」しか発火
+                // しないので、Map 切替時にはここで明示的に呼ぶ必要がある。
+                autoSelectFirstRule(state);
                 // ComboBox / Spinner と画像キャッシュを Palette 設定に同期
                 loadTilesetImages(state);
                 let mode = MapEditorState.getLayerMode(state#mapEditor);
