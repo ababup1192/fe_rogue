@@ -92,6 +92,10 @@ mod MapEditorState {
         editingMaterialPathRef = Array[Option[String], Static],
         selectedTrblRef        = Array[Option[String], Static],
         editingRuleIndexRef    = Array[Option[Int32], Static],
+        // Rules ComboBox でドロップダウン open 中にホバーしている項目の idx。
+        // 紫プレビューを「選択中」より優先して表示するための一時 state。
+        // ホバー外 / ドロップダウン closed では None。
+        hoveredRuleIndexRef    = Array[Option[Int32], Static],
         // Rules タブの pattern grid でフォーカス中のセル idx (Krita のカラーパレットの
         // current color に相当する状態。grid セルをクリックするとここに idx が入る)
         focusedPatternIdxRef   = Array[Option[Int32], Static],
@@ -125,6 +129,7 @@ mod MapEditorState {
             editingMaterialPathRef = Array#{(None: Option[String])} @ Static,
             selectedTrblRef        = Array#{(None: Option[String])} @ Static,
             editingRuleIndexRef    = Array#{(None: Option[Int32])} @ Static,
+            hoveredRuleIndexRef    = Array#{(None: Option[Int32])} @ Static,
             focusedPatternIdxRef   = Array#{(None: Option[Int32])} @ Static,
             selectedRangeRef       = Array#{(None: Option[(Int32, Int32, Int32, Int32)])} @ Static,
             dragStartRef           = Array#{(None: Option[(Int32, Int32)])} @ Static,
@@ -285,6 +290,12 @@ mod MapEditorState {
 
     pub def getEditingRuleIndex(state: MapEditorState): Option[Int32] \ IO =
         Array.get(0, state#editingRuleIndexRef)
+
+    pub def setHoveredRuleIndex(state: MapEditorState, idx: Option[Int32]): Unit \ IO =
+        Array.put(idx, 0, state#hoveredRuleIndexRef)
+
+    pub def getHoveredRuleIndex(state: MapEditorState): Option[Int32] \ IO =
+        Array.get(0, state#hoveredRuleIndexRef)
 
     pub def setFocusedPatternIdx(state: MapEditorState, idx: Option[Int32]): Unit \ IO =
         Array.put(idx, 0, state#focusedPatternIdxRef)

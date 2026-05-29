@@ -14,6 +14,7 @@ mod MapEditorPanel {
     import java.nio.file.Files
     import java.nio.file.Paths
     import javafx.scene.control.ListView
+    import javafx.scene.control.ListCell
     import javafx.scene.control.Button
     import javafx.scene.control.ToggleButton
     import javafx.scene.control.ComboBox
@@ -48,6 +49,7 @@ mod MapEditorPanel {
     import javafx.beans.value.ObservableValue
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
+    import javafx.util.Callback
 
     /// Floor / Walls 各 layer の現在の textureName で Image を引いて cache に積む。
     /// Open Project / reloadProject 時、および ComboBox で texture が切り替えられた時に呼ぶ。
@@ -397,10 +399,17 @@ mod MapEditorPanel {
                               else None;
                 let selRange = if (preview) None
                                else MapEditorState.getSelectedRange(state#mapEditor);
-                // Rule の紫プレビューは Rules タブアクティブ時だけ表示
+                // Rule の紫プレビューは Rules タブアクティブ時だけ表示。
+                // ComboBox のドロップダウンで項目にホバー中はそちらを優先 (即時試し見)、
+                // ホバー外なら通常の選択中ルールを表示。
                 let selRule = if (preview) None
-                              else if (isRightTabActive(state, RightTab.Rules))
-                                  MapEditorState.getEditingRuleIndex(state#mapEditor)
+                              else if (isRightTabActive(state, RightTab.Rules)) {
+                                  let hovered = MapEditorState.getHoveredRuleIndex(state#mapEditor);
+                                  match hovered {
+                                      case Some(_) => hovered
+                                      case None    => MapEditorState.getEditingRuleIndex(state#mapEditor)
+                                  }
+                              }
                               else None;
                 // Layer タブアクティブ時のみ非アクティブレイヤーを dim する
                 // (auto-layer / Rules / Settings タブではマップ全体を見たいので dim しない)
@@ -1454,10 +1463,18 @@ mod MapEditorPanel {
                     removeSelectedRule(state)
             })
         };
-        // ListView 選択リスナー
+        // ListView 選択リスナー + ドロップダウン内ホバープレビュー
         match Array.get(0, state#widgets#mapRuleList) {
             case None     => ()
             case Some(lv) => {
+                // ドロップダウン内の各セルにマウスホバーハンドラを仕込む。
+                // ホバー中は editingRuleIndex を上書きせず hoveredRuleIndex に
+                // 入れ、redrawCanvas で hover 優先で紫プレビューを切り替える。
+                lv.setCellFactory(new Callback[ListView[String], ListCell[String]] {
+                    def call(_cThis: Callback[ListView[String], ListCell[String]],
+                              _lv: ListView[String]): ListCell[String] \ IO =
+                        makeRuleHoverCell(state)
+                });
                 let prop = lv.getSelectionModel().selectedIndexProperty();
                 prop.addListener(new ChangeListener[Number] {
                     def changed(_cThis: ChangeListener[Number],
@@ -1474,6 +1491,9 @@ mod MapEditorPanel {
                             // 明示的な解除は呼び出し側 (removeSelectedRule 等) で行う
                             if (i < 0i32) ()
                             else {
+                                // 確定選択時はホバー状態をクリア (ドロップダウン
+                                // close 後に古い hover 値が残らないように)
+                                MapEditorState.setHoveredRuleIndex(state#mapEditor, None);
                                 MapEditorState.setEditingRuleIndex(state#mapEditor, Some(i));
                                 refreshRulesUI(state);
                                 refreshMaterialsTab(state)
@@ -1483,6 +1503,42 @@ mod MapEditorPanel {
                 })
             }
         }
+    }
+
+    /// Rules ComboBox ドロップダウン用の ListCell を作る。
+    /// `itemProperty` を listen して text を同期 (Flix では updateItem を直接
+    /// override できないため)。さらに setOnMouseEntered/Exited で
+    /// hoveredRuleIndex を更新して紫プレビューを切り替える。
+    def makeRuleHoverCell(state: IdeState.IdeState): ListCell[String] \ IO = {
+        let cell: ListCell[String] = new ListCell();
+        cell.itemProperty().addListener(new ChangeListener[String] {
+            def changed(_cThis: ChangeListener[String],
+                          _obs: ObservableValue[JObject],
+                          _old: String, newVal: String): Unit \ IO = {
+                if (Object.isNull(newVal)) cell.setText("")
+                else cell.setText(newVal)
+            }
+        });
+        cell.setOnMouseEntered(new EventHandler[MouseEvent] {
+            def handle(_this: EventHandler[MouseEvent], _e: MouseEvent): Unit \ IO = {
+                if (MapEditorState.getIsRefreshingRules(state#mapEditor)) ()
+                else {
+                    let idx = cell.getIndex();
+                    if (idx < 0i32) ()
+                    else {
+                        MapEditorState.setHoveredRuleIndex(state#mapEditor, Some(idx));
+                        redrawCanvas(state)
+                    }
+                }
+            }
+        });
+        cell.setOnMouseExited(new EventHandler[MouseEvent] {
+            def handle(_this: EventHandler[MouseEvent], _e: MouseEvent): Unit \ IO = {
+                MapEditorState.setHoveredRuleIndex(state#mapEditor, None);
+                redrawCanvas(state)
+            }
+        });
+        cell
     }
 
     /// Pattern grid (size×size セル) を構築し、クリックで値サイクルさせる。
