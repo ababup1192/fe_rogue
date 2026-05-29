@@ -661,11 +661,13 @@ mod MapEditorPanel {
         })
     }
 
-    /// Palette / Materials 両方の tileset プレビューを再描画する。
+    /// Palette / Materials / Rules の tileset プレビューを全て再描画する。
     /// paletteZoom や Walls Palette の cellW/cellH/marginX/marginY を変更したあとに呼ぶ。
+    /// 3 つは同じ paletteZoom を共有しているので、どれか 1 つでピンチしたら全部更新する。
     pub def redrawAllTilesetViews(state: IdeState.IdeState): Unit \ IO = {
         drawPalette(state);
-        drawMaterialsTileset(state)
+        drawMaterialsTileset(state);
+        drawRuleTileset(state)
     }
 
     /// 現 LayerMode に応じて右パネルの Palette / Entity セクションの可視性を切り替える。

@@ -791,7 +791,7 @@ mod MapGridCanvas {
                             // 編集前の Level を undo スタックに退避してから差し替え、自動保存
                             MapEditorState.pushUndo(state#mapEditor, level);
                             MapEditorState.setEditingLevel(state#mapEditor, Some(newLevel));
-                            redrawCurrent(state, newLevel, cellPx);
+                            MapEditorPanel.redrawCanvas(state);
                             MapEditorPanel.autoSave(state)
                     }
                 }
@@ -929,32 +929,4 @@ mod MapGridCanvas {
         let newData: MapResource.LevelData = {entities = filtered | d};
         MapResource.Level.Level(newData)
 
-    /// 編集中 Level を canvas に再描画する (Layer visibility と mapZoom を参照)。
-    def redrawCurrent(state: IdeState.IdeState, level: MapResource.Level, cellPx: Int32): Unit \ IO =
-        match Array.get(0, state#widgets#mapGridCanvas) {
-            case Some(c) => {
-                let wImg = Array.get(0, state#widgets#mapWallsImage);
-                let fImg = Array.get(0, state#widgets#mapFloorImage);
-                let vis = MapEditorState.getLayerVisibility(state#mapEditor);
-                let zoom = MapEditorState.getMapZoom(state#mapEditor);
-                let mat = MapEditorState.getEditingMaterial(state#mapEditor);
-                let selTrbl = MapEditorState.getSelectedTrbl(state#mapEditor);
-                let selRange = MapEditorState.getSelectedRange(state#mapEditor);
-                let preview = MapEditorState.getPreviewMode(state#mapEditor);
-                let selTrbl2 = if (preview) None else selTrbl;
-                let selRange2 = if (preview) None else selRange;
-                let selRule = if (preview) None
-                              else if (MapEditorPanel.isRightTabActive(state, MapEditorPanel.RightTab.Rules))
-                                  MapEditorState.getEditingRuleIndex(state#mapEditor)
-                              else None;
-                let dimNonActive = if (preview) None
-                                   else if (MapEditorPanel.isRightTabActive(state, MapEditorPanel.RightTab.Layer))
-                                       Some(MapEditorState.getLayerMode(state#mapEditor))
-                                   else None;
-                let showGrid = not preview;
-                drawLevel(c, level, cellPx, wImg, fImg, vis, zoom, mat, selTrbl2, selRange2,
-                            selRule, dimNonActive, showGrid)
-            }
-            case None => ()
-        }
 }
