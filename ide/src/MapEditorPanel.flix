@@ -30,6 +30,7 @@ mod MapEditorPanel {
     import javafx.scene.canvas.GraphicsContext
     import javafx.scene.image.Image
     import javafx.scene.input.MouseEvent
+    import javafx.scene.input.MouseButton
     import javafx.scene.input.ZoomEvent
     import javafx.scene.input.KeyEvent
     import javafx.scene.paint.Color
@@ -1345,31 +1346,25 @@ mod MapEditorPanel {
     }
 
     /// AutoRule エディタの初期化: ListView 選択、Add/Remove ボタン、Pattern grid、
-    /// Name field のリスナーを配線する。
+    /// Name field のリスナーを配線する。pattern サイズは 5×5 で固定。
     def initRulesEditor(state: IdeState.IdeState): Unit \ IO = {
-        // Pattern grid は最初は 3×3 で構築 (Rule 選択時に rule#size に応じて再構築)
+        // Pattern grid は常に 5×5
         match Array.get(0, state#widgets#mapRulePatternGrid) {
             case None       => ()
-            case Some(grid) => buildPatternGrid(state, grid, 3i32)
+            case Some(grid) => buildPatternGrid(state, grid, 5i32)
         };
-        // Size ComboBox: 3×3 / 5×5 切替
+        // Size ComboBox は廃止: HBox を非表示にする (FXML 側の Label "Size:" も親 HBox に含まれている前提)
         match Array.get(0, state#widgets#mapRuleSizeCombo) {
-            case None       => ()
+            case None        => ()
             case Some(combo) => {
-                let items = combo.getItems();
-                items.clear();
-                discard items.add("3×3");
-                discard items.add("5×5");
-                combo.setOnAction(new EventHandler[ActionEvent] {
-                    def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
-                        let newVal = combo.getValue();
-                        if (Object.isNull(newVal)) ()
-                        else {
-                            let newSize = if (newVal == "5×5") 5i32 else 3i32;
-                            switchRuleSize(state, newSize)
-                        }
-                    }
-                })
+                combo.setVisible(false);
+                combo.setManaged(false);
+                let parentNode = combo.getParent();
+                if (Object.isNull(parentNode)) ()
+                else {
+                    parentNode.setVisible(false);
+                    parentNode.setManaged(false)
+                }
             }
         };
         // Name field のリスナー
@@ -1447,13 +1442,13 @@ mod MapEditorPanel {
     }
 
     /// 1 セル: 32x32 の Canvas。中央 (isCenter=true) は装飾固定で編集不可、
-    /// 周辺はクリックで 任意 (0) → 床 (1) → 壁 (2) → 任意 とサイクル。
+    /// 周辺は左クリックで Unspecified → Value(1) → Value(2) → Anything → Nothing → Unspecified、
+    /// 右クリックで Value(n) ↔ NotValue(n) / Anything ↔ Nothing を反転。
     def makePatternCell(state: IdeState.IdeState, idx: Int32, isCenter: Bool):
             StackPane \ IO = {
         let pane = new StackPane();
         let canvas = new Canvas(32.0, 32.0);
-        let initVal = if (isCenter) -1i32 else 0i32;
-        drawPatternCellValue(canvas, initVal, isCenter);
+        drawPatternCellValue(canvas, MapResource.PatternCell.Unspecified, isCenter);
         pane.getChildren().add(unchecked_cast(canvas as Node));
         pane.setPrefSize(32.0, 32.0);
         pane.setMinSize(32.0, 32.0);
@@ -1462,73 +1457,128 @@ mod MapEditorPanel {
         else {
             pane.setStyle("-fx-cursor: hand;");
             pane.setOnMouseClicked(new EventHandler[MouseEvent] {
-                def handle(_this: EventHandler[MouseEvent], _e: MouseEvent): Unit \ IO =
-                    cyclePatternCell(state, idx)
+                def handle(_this: EventHandler[MouseEvent], e: MouseEvent): Unit \ IO = {
+                    // MouseButton は Java enum なので Flix の == は使えない。
+                    // toString() で "SECONDARY" 等の名前を取って String 比較する。
+                    let buttonName = e.getButton().toString();
+                    if (buttonName == "SECONDARY")
+                        togglePatternCellNegation(state, idx)
+                    else
+                        cyclePatternCell(state, idx)
+                }
             })
         };
         pane
     }
 
-    /// パターンセルの色 + ラベル:
-    ///   -1=装飾 (中央): 緑 + 白点
-    ///    0=任意: 薄灰 (ラベルなし)
-    ///    1=床: 黄色 + 白の "F"
-    ///    2=壁: 暗灰色 + 白の "W"
-    def drawPatternCellValue(canvas: Canvas, value: Int32, isCenter: Bool): Unit \ IO = {
+    /// パターンセル 1 個の描画:
+    ///   中央 (出力位置)            : 緑 + 白点
+    ///   Unspecified                : 薄灰 (ラベルなし)
+    ///   Anything                   : 中灰 + "?"
+    ///   Nothing                    : 白 + "∅"
+    ///   Value(1) / Value(2)        : 黄 + "F" / 暗灰 + "W"
+    ///   Value(n) (その他)          : マゼンタ + n
+    ///   NotValue(n)                : Value(n) と同色 + 赤い × オーバーレイ
+    def drawPatternCellValue(canvas: Canvas, cell: MapResource.PatternCell,
+                              isCenter: Bool): Unit \ IO = {
         let gc = canvas.getGraphicsContext2D();
         let w = canvas.getWidth();
         let h = canvas.getHeight();
         gc.clearRect(0.0, 0.0, w, h);
-        let fill = if (isCenter or value == -1i32)
-                       Color.rgb(120, 200, 100)   // 装飾 (出力位置)
-                   else if (value == 0i32) Color.rgb(225, 225, 225)  // 任意 (薄灰)
-                   else if (value == 1i32) Color.rgb(230, 210, 130)  // 床
-                   else if (value == 2i32) Color.rgb(70, 70, 80)     // 壁
-                   else                    Color.rgb(160, 80, 160);  // 不明
-        gc.setFill(fill);
+        let baseColor = patternCellBaseColor(cell, isCenter);
+        gc.setFill(baseColor);
         gc.fillRect(1.0, 1.0, w - 2.0, h - 2.0);
         gc.setStroke(Color.rgb(40, 40, 50));
         gc.setLineWidth(1.0);
         gc.strokeRect(0.5, 0.5, w - 1.0, h - 1.0);
         if (isCenter) {
-            // 中央セル: 識別用に白点
             gc.setFill(Color.rgb(255, 255, 255));
             gc.fillOval(w / 2.0 - 3.0, h / 2.0 - 3.0, 6.0, 6.0)
-        } else if (value == 1i32 or value == 2i32) {
-            // 床 / 壁: 白文字でラベル
-            let label = if (value == 1i32) "F" else "W";
-            gc.setFill(Color.rgb(255, 255, 255));
-            gc.setFont(Font.font(14.0));
-            gc.setTextAlign(TextAlignment.CENTER);
-            gc.setTextBaseline(VPos.CENTER);
-            gc.fillText(label, w / 2.0, h / 2.0 + 1.0)
-        } else ()
+        } else {
+            match patternCellLabel(cell) {
+                case None       => ()
+                case Some(text) => {
+                    gc.setFill(Color.rgb(255, 255, 255));
+                    gc.setFont(Font.font(14.0));
+                    gc.setTextAlign(TextAlignment.CENTER);
+                    gc.setTextBaseline(VPos.CENTER);
+                    gc.fillText(text, w / 2.0, h / 2.0 + 1.0)
+                }
+            };
+            // NotValue は赤い × を上書き
+            if (isNotValue(cell)) {
+                gc.setStroke(Color.rgb(220, 70, 70));
+                gc.setLineWidth(2.5);
+                gc.strokeLine(4.0, 4.0, w - 4.0, h - 4.0);
+                gc.strokeLine(w - 4.0, 4.0, 4.0, h - 4.0)
+            } else ()
+        }
     }
 
-    /// 周辺セル (中央以外) の値を 1 (床) ⇄ 2 (壁) でトグルする。
+    def patternCellBaseColor(cell: MapResource.PatternCell, isCenter: Bool): Color \ IO =
+        if (isCenter) Color.rgb(120, 200, 100)
+        else match cell {
+            case MapResource.PatternCell.Unspecified  => Color.rgb(225, 225, 225)
+            case MapResource.PatternCell.Anything     => Color.rgb(150, 150, 160)
+            case MapResource.PatternCell.Nothing      => Color.rgb(245, 245, 245)
+            case MapResource.PatternCell.Value(1)     => Color.rgb(230, 210, 130)
+            case MapResource.PatternCell.Value(2)     => Color.rgb(70, 70, 80)
+            case MapResource.PatternCell.Value(_)     => Color.rgb(160, 80, 160)
+            case MapResource.PatternCell.NotValue(1)  => Color.rgb(230, 210, 130)
+            case MapResource.PatternCell.NotValue(2)  => Color.rgb(70, 70, 80)
+            case MapResource.PatternCell.NotValue(_)  => Color.rgb(160, 80, 160)
+        }
+
+    def patternCellLabel(cell: MapResource.PatternCell): Option[String] = match cell {
+        case MapResource.PatternCell.Unspecified  => None
+        case MapResource.PatternCell.Anything     => Some("?")
+        case MapResource.PatternCell.Nothing      => Some("∅")
+        case MapResource.PatternCell.Value(1)     => Some("F")
+        case MapResource.PatternCell.Value(2)     => Some("W")
+        case MapResource.PatternCell.Value(n)     => Some("${n}")
+        case MapResource.PatternCell.NotValue(1)  => Some("F")
+        case MapResource.PatternCell.NotValue(2)  => Some("W")
+        case MapResource.PatternCell.NotValue(n)  => Some("${n}")
+    }
+
+    def isNotValue(cell: MapResource.PatternCell): Bool = match cell {
+        case MapResource.PatternCell.NotValue(_) => true
+        case _                                   => false
+    }
+
+    /// 周辺セルの左クリックサイクル:
+    ///   Unspecified → Value(1) → Value(2) → Anything → Nothing → Unspecified
     /// 中央セル (idx == size*size/2) は装飾固定なので何もしない。
-    def cyclePatternCell(state: IdeState.IdeState, idx: Int32): Unit \ IO = {
+    def cyclePatternCell(state: IdeState.IdeState, idx: Int32): Unit \ IO =
+        updatePatternCellAt(state, idx, c -> nextPatternCell(c))
+
+    /// 周辺セルの右クリック反転:
+    ///   Value(n) ↔ NotValue(n)、Anything ↔ Nothing。Unspecified は変化なし。
+    def togglePatternCellNegation(state: IdeState.IdeState, idx: Int32): Unit \ IO =
+        updatePatternCellAt(state, idx, c -> togglePatternCell(c))
+
+    /// 共通: pattern[idx] を `f` で変換し、ルールを置換して UI を再描画する。
+    /// 中央セル / OOB は no-op。
+    def updatePatternCellAt(state: IdeState.IdeState, idx: Int32,
+                              f: MapResource.PatternCell -> MapResource.PatternCell): Unit \ IO = {
         match MapEditorState.getEditingRuleIndex(state#mapEditor) {
             case None        => ()
-            case Some(ruleI) => {
+            case Some(ruleI) =>
                 match MapEditorState.getEditingMaterial(state#mapEditor) {
                     case None      => ()
-                    case Some(mat) => {
+                    case Some(mat) =>
                         let md = MapResource.materialData(mat);
                         match List.nth(ruleI, md#autoRules) {
                             case None       => ()
-                            case Some(rule) => {
+                            case Some(rule) =>
                                 let centerIdx = (rule#size * rule#size) / 2i32;
                                 if (idx == centerIdx) ()
                                 else {
                                     let curVal = match Vector.nth(idx, rule#pattern) {
                                         case Some(v) => v
-                                        case None    => 0i32
+                                        case None    => MapResource.PatternCell.Unspecified
                                     };
-                                    // サイクル: 任意 (0) → 床 (1) → 壁 (2) → 任意
-                                    let nextVal = if (curVal == 0i32) 1i32
-                                                  else if (curVal == 1i32) 2i32
-                                                  else 0i32;
+                                    let nextVal = f(curVal);
                                     let newPattern = Vector.toList(rule#pattern)
                                         |> List.mapWithIndex((i, v) ->
                                               if (i == idx) nextVal else v)
@@ -1538,12 +1588,27 @@ mod MapEditorPanel {
                                     refreshRulesUI(state);
                                     MapEditorPanel.redrawCanvas(state)
                                 }
-                            }
                         }
-                    }
                 }
-            }
         }
+    }
+
+    def nextPatternCell(c: MapResource.PatternCell): MapResource.PatternCell = match c {
+        case MapResource.PatternCell.Unspecified  => MapResource.PatternCell.Value(1i32)
+        case MapResource.PatternCell.Value(1)     => MapResource.PatternCell.Value(2i32)
+        case MapResource.PatternCell.Value(2)     => MapResource.PatternCell.Anything
+        case MapResource.PatternCell.Anything     => MapResource.PatternCell.Nothing
+        case MapResource.PatternCell.Nothing      => MapResource.PatternCell.Unspecified
+        // それ以外 (NotValue や Value(>=3)) からはサイクル先頭に戻す
+        case _                                    => MapResource.PatternCell.Unspecified
+    }
+
+    def togglePatternCell(c: MapResource.PatternCell): MapResource.PatternCell = match c {
+        case MapResource.PatternCell.Value(n)     => MapResource.PatternCell.NotValue(n)
+        case MapResource.PatternCell.NotValue(n)  => MapResource.PatternCell.Value(n)
+        case MapResource.PatternCell.Anything     => MapResource.PatternCell.Nothing
+        case MapResource.PatternCell.Nothing      => MapResource.PatternCell.Anything
+        case MapResource.PatternCell.Unspecified  => MapResource.PatternCell.Unspecified
     }
 
     def updateRuleName(state: IdeState.IdeState, name: String): Unit \ IO = {
@@ -1573,15 +1638,17 @@ mod MapEditorPanel {
             case None      => ()
             case Some(mat) => {
                 let md = MapResource.materialData(mat);
-                // 中央 (idx=4) は装飾 (-1) 固定、周辺 8 セルは任意 (0) で初期化。
-                // pattern[i] の意味: -1=装飾(中央のみ), 0=任意, 1=床, 2=壁
-                // srcX/Y = -1 は Tile 未設定の sentinel (描画スキップされる)
+                // pattern は 5×5 固定、全セル Unspecified で初期化 (中央 = 出力位置)。
+                // srcX/Y = -1 は Tile 未設定の sentinel (描画スキップされる)。
+                let u = MapResource.PatternCell.Unspecified;
                 let newRule: MapResource.AutoRule = {
                     name    = "Rule ${List.length(md#autoRules) + 1}",
-                    size    = 3i32,
-                    pattern = Vector#{0i32, 0i32, 0i32,
-                                       0i32, -1i32, 0i32,
-                                       0i32, 0i32, 0i32},
+                    size    = 5i32,
+                    pattern = Vector#{u, u, u, u, u,
+                                       u, u, u, u, u,
+                                       u, u, u, u, u,
+                                       u, u, u, u, u,
+                                       u, u, u, u, u},
                     srcX    = -1i32,
                     srcY    = -1i32
                 };
@@ -1702,16 +1769,6 @@ mod MapEditorPanel {
             case Some(tf) => if (tf.getText() != rule#name) tf.setText(rule#name) else ()
             case None     => ()
         };
-        // Size ComboBox を rule.size に同期 (同値ならスキップしてリスナー再発火を防ぐ)
-        match Array.get(0, state#widgets#mapRuleSizeCombo) {
-            case None        => ()
-            case Some(combo) => {
-                let want = if (rule#size == 5i32) "5×5" else "3×3";
-                let cur = combo.getValue();
-                let same = if (Object.isNull(cur)) false else cur == want;
-                if (same) () else combo.setValue(want)
-            }
-        };
         match Array.get(0, state#widgets#mapRuleTileLabel) {
             case Some(lb) =>
                 // srcX/Y < 0 が「Tile 未設定」の sentinel
@@ -1744,7 +1801,7 @@ mod MapEditorPanel {
                             let canvas: Canvas = unchecked_cast(userData as Canvas);
                             let v = match Vector.nth(idx, rule#pattern) {
                                 case Some(x) => x
-                                case None    => -1i32
+                                case None    => MapResource.PatternCell.Unspecified
                             };
                             drawPatternCellValue(canvas, v, idx == centerIdx)
                         }
@@ -1752,60 +1809,6 @@ mod MapEditorPanel {
                 }, List.range(0, expected))
             }
         }
-    }
-
-    /// Pattern サイズを切替: 3 → 5 は外側を 1 (床) でパディング、5 → 3 は中央 3×3 を抽出。
-    /// 中央セルは常に -1 (装飾) に再正規化する。
-    def switchRuleSize(state: IdeState.IdeState, newSize: Int32): Unit \ IO = {
-        match MapEditorState.getEditingRuleIndex(state#mapEditor) {
-            case None        => ()
-            case Some(ruleI) => match MapEditorState.getEditingMaterial(state#mapEditor) {
-                case None      => ()
-                case Some(mat) => {
-                    let md = MapResource.materialData(mat);
-                    match List.nth(ruleI, md#autoRules) {
-                        case None       => ()
-                        case Some(rule) =>
-                            if (rule#size == newSize) ()
-                            else {
-                                let newPattern = resizePattern(rule#pattern, rule#size, newSize);
-                                let newRule = {size = newSize, pattern = newPattern | rule};
-                                replaceRule(state, ruleI, newRule);
-                                refreshRulesUI(state);
-                                MapEditorPanel.redrawCanvas(state)
-                            }
-                    }
-                }
-            }
-        }
-    }
-
-    /// Pattern Vector を oldSize → newSize にリサイズ。
-    /// 3 → 5: 外周は 0 (任意) でパディングし、内側 3×3 に元の値をコピー
-    /// 5 → 3: 内側 3×3 を抽出
-    /// 中央セルは常に -1 (装飾) に揃える。
-    def resizePattern(oldPattern: Vector[Int32], oldSize: Int32, newSize: Int32):
-            Vector[Int32] = {
-        let n = newSize * newSize;
-        let center = n / 2i32;
-        let offset = (newSize - oldSize) / 2i32;
-        List.range(0, n)
-            |> List.map(idx -> {
-                if (idx == center) -1i32
-                else {
-                    let r = idx / newSize;
-                    let c = Int32.remainder(idx, newSize);
-                    let oldR = r - offset;
-                    let oldC = c - offset;
-                    if (oldR < 0i32 or oldR >= oldSize or oldC < 0i32 or oldC >= oldSize)
-                        0i32  // 範囲外: 任意でパディング
-                    else match Vector.nth(oldR * oldSize + oldC, oldPattern) {
-                        case Some(v) => if (v == -1i32) 0i32 else v  // 旧中央 -1 は任意に置換
-                        case None    => 0i32
-                    }
-                }
-            })
-            |> List.toVector
     }
 
     /// 4-trit (壁/床/空) パターンを「使用頻度別セクション」で VBox 内に構築する。

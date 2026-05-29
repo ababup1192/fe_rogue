@@ -195,7 +195,7 @@ mod MapGridCanvas {
                 List.forEach(i -> {
                     let col = Int32.remainder(i, width);
                     let row = i / width;
-                    if (ruleMatches(intGrid, width, height, col, row, rule))
+                    if (MapResource.ruleMatches(intGrid, width, height, col, row, rule))
                         gc.fillRect(Int32.toFloat64(col) * cs,
                                      Int32.toFloat64(row) * cs, cs, cs)
                     else ()
@@ -349,48 +349,11 @@ mod MapGridCanvas {
             // srcX < 0 / srcY < 0 は Tile 未設定 → 描画スキップ
             if (r#srcX < 0i32 or r#srcY < 0i32)
                 applyFirstMatchingRule(intGrid, width, height, col, row, rest)
-            else if (ruleMatches(intGrid, width, height, col, row, r))
+            else if (MapResource.ruleMatches(intGrid, width, height, col, row, r))
                 Some((r#srcX, r#srcY))
             else
                 applyFirstMatchingRule(intGrid, width, height, col, row, rest)
     }
-
-    /// Pattern セル値:
-    ///   -1 = 装飾 (中央のみ、マッチ条件なし)
-    ///    0 = 任意 (どんな値でも OK、マッチ条件なし)
-    ///    1 = 床 (intGrid 値 1 を要求)
-    ///    2 = 壁 (intGrid 値 != 1 = 空・自動壁・map 外をまとめて壁扱い)
-    pub def ruleMatches(intGrid: Vector[Int32], width: Int32, height: Int32,
-                          col: Int32, row: Int32, rule: MapResource.AutoRule): Bool = {
-        let size = rule#size;
-        let half = size / 2;
-        let n = size * size;
-        List.range(0, n)
-            |> List.forAll(idx -> {
-                let pc = Int32.remainder(idx, size);
-                let pr = idx / size;
-                let cc = col + pc - half;
-                let cr = row + pr - half;
-                let cellVal = intGridAt(intGrid, width, height, cc, cr);
-                let want = match Vector.nth(idx, rule#pattern) {
-                    case Some(v) => v
-                    case None    => 0i32
-                };
-                if (want == -1i32) true
-                else if (want == 0i32) true
-                else if (want == 1i32) cellVal == 1i32
-                else if (want == 2i32) cellVal != 1i32
-                else false
-            })
-    }
-
-    def intGridAt(intGrid: Vector[Int32], width: Int32, height: Int32,
-                    col: Int32, row: Int32): Int32 =
-        if (col < 0 or col >= width or row < 0 or row >= height) 0i32
-        else match Vector.nth(row * width + col, intGrid) {
-            case Some(v) => v
-            case None    => 0i32
-        }
 
     /// Entity を「シアン円 + identifier テキスト」で描画する。
     /// セルの中心に円、その下に小さくラベル。

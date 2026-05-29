@@ -385,7 +385,7 @@ mod MapLoader {
             // srcX < 0 / srcY < 0 は Tile 未設定の Rule。マッチしても描画しない。
             if (r#srcX < 0i32 or r#srcY < 0i32)
                 applyFirstMatchingRule(intGrid, width, height, col, row, rest, tileSizeI)
-            else if (ruleMatches(intGrid, width, height, col, row, r))
+            else if (MapResource.ruleMatches(intGrid, width, height, col, row, r))
                 Some(({
                     px    = ({x = Int32.toFloat64(col * tileSizeI),
                                y = Int32.toFloat64(row * tileSizeI)}: Vec2.Vec2),
@@ -396,40 +396,4 @@ mod MapLoader {
             else applyFirstMatchingRule(intGrid, width, height, col, row, rest, tileSizeI)
     }
 
-    /// パターンとセル周辺の intGrid 値を照合する。Pattern セル値:
-    ///   -1 = 装飾 (中央のみ、マッチ条件なし。出力位置)
-    ///    0 = 任意 (どんな intGrid 値でも OK、マッチ条件なし)
-    ///    1 = 床 (intGrid 値 1 を要求)
-    ///    2 = 壁 (intGrid 値 != 1 を要求 = 空・自動壁・map 外をまとめて壁扱い)
-    pub def ruleMatches(intGrid: Vector[Int32], width: Int32, height: Int32,
-                          col: Int32, row: Int32, rule: MapResource.AutoRule): Bool = {
-        let size = rule#size;
-        let half = size / 2;
-        let n = size * size;
-        List.range(0, n)
-            |> List.forAll(idx -> {
-                let pc = Int32.remainder(idx, size);
-                let pr = idx / size;
-                let cc = col + pc - half;
-                let cr = row + pr - half;
-                let cellVal = intGridAt(intGrid, width, height, cc, cr);
-                let want = match Vector.nth(idx, rule#pattern) {
-                    case Some(v) => v
-                    case None    => 0i32  // 短い場合は任意扱い
-                };
-                if (want == -1i32) true                   // 装飾セル: 任意
-                else if (want == 0i32) true               // 任意: マッチ条件なし
-                else if (want == 1i32) cellVal == 1i32   // 床: 1 と完全一致
-                else if (want == 2i32) cellVal != 1i32   // 壁: 1 以外
-                else false                                 // 不明値: 不一致
-            })
-    }
-
-    def intGridAt(intGrid: Vector[Int32], width: Int32, height: Int32,
-                    col: Int32, row: Int32): Int32 =
-        if (col < 0 or col >= width or row < 0 or row >= height) 0i32  // マップ外 = 空
-        else match Vector.nth(row * width + col, intGrid) {
-            case Some(v) => v
-            case None    => 0i32
-        }
 }

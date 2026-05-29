@@ -8,7 +8,7 @@
 
 mod TestMapResource {
 
-    use MapResource.{Level, LevelData, ManualTile, Entity, FieldValue, Material, MaterialData}
+    use MapResource.{Level, LevelData, ManualTile, Entity, FieldValue, Material, MaterialData, AutoRule, PatternCell}
 
     // ========================================================================
     // FieldValue round-trip
@@ -188,6 +188,261 @@ mod TestMapResource {
             floorPalette = (0, 5) :: (1, 5) :: Nil,
             decorPalette = (5, 5) :: Nil,
             autoRules    = (Nil: List[MapResource.AutoRule])
+        }: MaterialData))
+
+    // ========================================================================
+    // PatternCell matching (engine/src/MapResource.flix)
+    // ========================================================================
+
+    @Test
+    def testPatternCellUnspecifiedMatchesEverything(): Unit \ Assert =
+        let matches0 = MapResource.patternCellMatches(PatternCell.Unspecified, 0i32);
+        let matches1 = MapResource.patternCellMatches(PatternCell.Unspecified, 1i32);
+        let matches2 = MapResource.patternCellMatches(PatternCell.Unspecified, 2i32);
+        Assert.assertEq(expected = true, matches0 and matches1 and matches2)
+
+    @Test
+    def testPatternCellAnythingRejectsZero(): Unit \ Assert =
+        let m = MapResource.patternCellMatches(PatternCell.Anything, 0i32);
+        Assert.assertEq(expected = false, m)
+
+    @Test
+    def testPatternCellAnythingAcceptsNonZero(): Unit \ Assert =
+        let m1 = MapResource.patternCellMatches(PatternCell.Anything, 1i32);
+        let m2 = MapResource.patternCellMatches(PatternCell.Anything, 2i32);
+        Assert.assertEq(expected = true, m1 and m2)
+
+    @Test
+    def testPatternCellNothingAcceptsOnlyZero(): Unit \ Assert =
+        let m0 = MapResource.patternCellMatches(PatternCell.Nothing, 0i32);
+        let m1 = MapResource.patternCellMatches(PatternCell.Nothing, 1i32);
+        Assert.assertEq(expected = true, m0 and not m1)
+
+    @Test
+    def testPatternCellValueExactMatch(): Unit \ Assert =
+        let mYes = MapResource.patternCellMatches(PatternCell.Value(2i32), 2i32);
+        let mNo  = MapResource.patternCellMatches(PatternCell.Value(2i32), 1i32);
+        Assert.assertEq(expected = true, mYes and not mNo)
+
+    @Test
+    def testPatternCellNotValueRejectsOnlyN(): Unit \ Assert =
+        let mZero = MapResource.patternCellMatches(PatternCell.NotValue(1i32), 0i32);
+        let mTwo  = MapResource.patternCellMatches(PatternCell.NotValue(1i32), 2i32);
+        let mOne  = MapResource.patternCellMatches(PatternCell.NotValue(1i32), 1i32);
+        Assert.assertEq(expected = true, mZero and mTwo and not mOne)
+
+    // ========================================================================
+    // ruleMatches: 3×3 pattern を 3×3 intGrid に対して評価
+    // ========================================================================
+
+    /// 全 Unspecified の 3×3 pattern は任意の intGrid にマッチする。
+    @Test
+    def testRuleMatchesAllUnspecified(): Unit \ Assert =
+        let u = PatternCell.Unspecified;
+        let pattern = Vector#{u, u, u, u, u, u, u, u, u};
+        let rule = mkRule(pattern, 3);
+        let intGrid = Vector#{1i32, 0i32, 2i32, 0i32, 1i32, 0i32, 2i32, 0i32, 1i32};
+        let m = MapResource.ruleMatches(intGrid, 3, 3, 1, 1, rule);
+        Assert.assertEq(expected = true, m)
+
+    /// 中央 Value(1) は intGrid 中央が 1 のときマッチ。
+    @Test
+    def testRuleMatchesValueAtCenter(): Unit \ Assert =
+        let u = PatternCell.Unspecified;
+        let pattern = Vector#{u, u, u,
+                               u, PatternCell.Value(1i32), u,
+                               u, u, u};
+        let rule = mkRule(pattern, 3);
+        let intGrid = Vector#{0i32, 0i32, 0i32, 0i32, 1i32, 0i32, 0i32, 0i32, 0i32};
+        let m = MapResource.ruleMatches(intGrid, 3, 3, 1, 1, rule);
+        Assert.assertEq(expected = true, m)
+
+    /// Nothing (= IntGrid == 0) は intGrid に空セルがあるときだけマッチする。
+    @Test
+    def testRuleMatchesNothingRequiresEmpty(): Unit \ Assert =
+        let u = PatternCell.Unspecified;
+        let pattern = Vector#{u, PatternCell.Nothing, u,
+                               u, u, u,
+                               u, u, u};
+        let rule = mkRule(pattern, 3);
+        // pattern[1] (= 上中央) は Nothing を要求。intGrid[(1, 0)] = 1 なので拒否
+        let intGridReject = Vector#{0i32, 1i32, 0i32, 0i32, 1i32, 0i32, 0i32, 0i32, 0i32};
+        let mReject = MapResource.ruleMatches(intGridReject, 3, 3, 1, 1, rule);
+        // intGrid[(1, 0)] = 0 ならマッチ
+        let intGridAccept = Vector#{0i32, 0i32, 0i32, 0i32, 1i32, 0i32, 0i32, 0i32, 0i32};
+        let mAccept = MapResource.ruleMatches(intGridAccept, 3, 3, 1, 1, rule);
+        Assert.assertEq(expected = true, mAccept and not mReject)
+
+    /// NotValue(1) は床ではないセル (空・壁・自動壁) でマッチする。
+    @Test
+    def testRuleMatchesNotValueOnePassesNonFloor(): Unit \ Assert =
+        let u = PatternCell.Unspecified;
+        let pattern = Vector#{u, PatternCell.NotValue(1i32), u,
+                               u, u, u,
+                               u, u, u};
+        let rule = mkRule(pattern, 3);
+        // pattern[1] = NotValue(1)。intGrid[(1, 0)] = 2 (自動壁) なのでマッチ
+        let intGrid = Vector#{0i32, 2i32, 0i32, 0i32, 1i32, 0i32, 0i32, 0i32, 0i32};
+        let m = MapResource.ruleMatches(intGrid, 3, 3, 1, 1, rule);
+        Assert.assertEq(expected = true, m)
+
+    /// 境界外は 0 (空) 扱い → Nothing でマッチ、Value(1) では拒否される。
+    @Test
+    def testRuleMatchesOutOfBoundsBehavesAsZero(): Unit \ Assert =
+        let u = PatternCell.Unspecified;
+        let nothing = PatternCell.Nothing;
+        // pattern[0] は左上 (col=-1, row=-1) → 範囲外 → Nothing でマッチ
+        let pattern = Vector#{nothing, u, u, u, u, u, u, u, u};
+        let rule = mkRule(pattern, 3);
+        let intGrid = Vector#{1i32, 1i32, 1i32, 1i32, 1i32, 1i32, 1i32, 1i32, 1i32};
+        let m = MapResource.ruleMatches(intGrid, 3, 3, 0, 0, rule);
+        Assert.assertEq(expected = true, m)
+
+    @Test
+    def testRuleMatchesOutOfBoundsAnythingFails(): Unit \ Assert =
+        let u = PatternCell.Unspecified;
+        // pattern[0] (左上 = 範囲外 = 0) を Anything (= !=0) で要求 → 不一致
+        let pattern = Vector#{PatternCell.Anything, u, u, u, u, u, u, u, u};
+        let rule = mkRule(pattern, 3);
+        let intGrid = Vector#{1i32, 1i32, 1i32, 1i32, 1i32, 1i32, 1i32, 1i32, 1i32};
+        let m = MapResource.ruleMatches(intGrid, 3, 3, 0, 0, rule);
+        Assert.assertEq(expected = false, m)
+
+    // ========================================================================
+    // AutoRule: legacy migration / round-trip
+    // ========================================================================
+
+    /// legacy size=3 のルールは size=5 に padding migration される。
+    @Test
+    def testAutoRuleLegacySizeThreeMigratedToFive(): Unit \ Assert =
+        let legacyJson =
+            "{\"name\":\"L\",\"size\":3,\"srcX\":0,\"srcY\":0,\"pattern\":[0,0,0,0,-1,0,0,0,0]}";
+        let parsed = Json.Parse.parse(legacyJson);
+        let mat = legacyMaterialFromAutoRule(parsed);
+        let info = match mat {
+            case Some(m) => match List.head(MapResource.materialData(m)#autoRules) {
+                case Some(r) => Some((r#size, Vector.length(r#pattern)))
+                case None    => None
+            }
+            case None    => None
+        };
+        Assert.assertEq(expected = Some((5i32, 25)), info)
+
+    /// "v" フィールド無しの legacy JSON: 旧 2 (size=3 の idx=1) は migration 後の
+    /// 5×5 の idx=7 (= row 1, col 2) に NotValue(1) として現れる。
+    @Test
+    def testAutoRuleLegacyTwoBecomesNotValueOne(): Unit \ Assert =
+        let legacyJson =
+            "{\"name\":\"L\",\"size\":3,\"srcX\":0,\"srcY\":0,\"pattern\":[0,2,0,0,-1,0,0,1,0]}";
+        let parsed = Json.Parse.parse(legacyJson);
+        let mat = legacyMaterialFromAutoRule(parsed);
+        let firstPattern = match mat {
+            case Some(m) => match List.head(MapResource.materialData(m)#autoRules) {
+                case Some(r) => r#pattern
+                case None    => Vector#{}
+            }
+            case None    => Vector#{}
+        };
+        let cell = Vector.nth(7, firstPattern);
+        Assert.assertEq(expected = Some(PatternCell.NotValue(1i32)), cell)
+
+    /// Legacy -1 (中央装飾, size=3 idx=4) は migration 後の 5×5 中央 idx=12 で Unspecified。
+    @Test
+    def testAutoRuleLegacyCenterBecomesUnspecified(): Unit \ Assert =
+        let legacyJson =
+            "{\"name\":\"L\",\"size\":3,\"srcX\":0,\"srcY\":0,\"pattern\":[0,0,0,0,-1,0,0,0,0]}";
+        let parsed = Json.Parse.parse(legacyJson);
+        let mat = legacyMaterialFromAutoRule(parsed);
+        let centerCell = match mat {
+            case Some(m) => match List.head(MapResource.materialData(m)#autoRules) {
+                case Some(r) => Vector.nth(12, r#pattern)
+                case None    => None
+            }
+            case None    => None
+        };
+        Assert.assertEq(expected = Some(PatternCell.Unspecified), centerCell)
+
+    /// Legacy 1 = 床 (size=3 idx=0) → migration 後の 5×5 idx=6 (= row 1, col 1) で Value(1)。
+    @Test
+    def testAutoRuleLegacyOneBecomesValueOne(): Unit \ Assert =
+        let legacyJson =
+            "{\"name\":\"L\",\"size\":3,\"srcX\":0,\"srcY\":0,\"pattern\":[1,0,0,0,-1,0,0,0,0]}";
+        let parsed = Json.Parse.parse(legacyJson);
+        let mat = legacyMaterialFromAutoRule(parsed);
+        let cell = match mat {
+            case Some(m) => match List.head(MapResource.materialData(m)#autoRules) {
+                case Some(r) => Vector.nth(6, r#pattern)
+                case None    => None
+            }
+            case None    => None
+        };
+        Assert.assertEq(expected = Some(PatternCell.Value(1i32)), cell)
+
+    /// 新仕様 (v=2) で書かれた JSON を round-trip。NotValue / Nothing / Anything が保存される。
+    @Test
+    def testAutoRuleRoundTripPreservesPatternCells(): Unit \ Assert =
+        let original = sampleMaterialWithMixedPattern();
+        let restored = roundTripMaterial(original);
+        let restoredPattern = match restored {
+            case Some(m) => match List.head(MapResource.materialData(m)#autoRules) {
+                case Some(r) => r#pattern
+                case None    => Vector#{}
+            }
+            case None    => Vector#{}
+        };
+        let origPattern = match List.head(MapResource.materialData(original)#autoRules) {
+            case Some(r) => r#pattern
+            case None    => Vector#{}
+        };
+        Assert.assertEq(expected = origPattern, restoredPattern)
+
+    /// encodeAutoRule は "v" フィールドを JSON に書き出す。
+    @Test
+    def testAutoRuleEncodesVersionField(): Unit \ Assert =
+        let original = sampleMaterialWithMixedPattern();
+        let json = Saveable.toJson(original);
+        let text = Json.Write.toPrettyString(2, json);
+        let hasV = String.contains({substr = "\"v\""}, text);
+        Assert.assertEq(expected = true, hasV)
+
+    // ========================================================================
+    // ヘルパー (AutoRule / PatternCell)
+    // ========================================================================
+
+    def mkRule(pattern: Vector[PatternCell], size: Int32): AutoRule =
+        ({name = "test", size = size, pattern = pattern, srcX = 0, srcY = 0}: AutoRule)
+
+    /// テスト用に "1 個の AutoRule だけ持つ Material" を legacy JSON 文字列から復元する。
+    /// material 全体の JSON を組み立て直す手間を避けるため、autoRules 部分だけ受け取る。
+    def legacyMaterialFromAutoRule(parsed: Option[Json.JsonElement]): Option[Material] = {
+        let ruleJson = match parsed {
+            case Some(j) => Json.Write.toPrettyString(0, j)
+            case None    => "{}"
+        };
+        let materialJson = "{\"tileset\":\"x\",\"tileSize\":16,"
+            + "\"wallMap\":{},\"floorPalette\":[],\"decorPalette\":[],"
+            + "\"autoRules\":[" + ruleJson + "]}";
+        Json.Parse.parse(materialJson) |> Option.flatMap(Saveable.fromJson)
+    }
+
+    /// NotValue(1), Anything, Nothing, Value(2) を混ぜた pattern を持つ Material。
+    /// 新仕様の size=5 に統一。中央 (idx=12) は Unspecified。
+    def sampleMaterialWithMixedPattern(): Material =
+        let u = PatternCell.Unspecified;
+        let pattern = Vector#{u, u, u, u, u,
+                               u, u, PatternCell.NotValue(1i32), u, u,
+                               u, PatternCell.Anything, u, PatternCell.Nothing, u,
+                               u, u, PatternCell.Value(2i32), u, u,
+                               u, u, u, u, u};
+        let rule = ({name = "mix", size = 5, pattern = pattern,
+                      srcX = 16, srcY = 0}: AutoRule);
+        Material.Material(({
+            tileset      = "test",
+            tileSize     = 16,
+            wallMap      = Map.empty(),
+            floorPalette = (Nil: List[(Int32, Int32)]),
+            decorPalette = (Nil: List[(Int32, Int32)]),
+            autoRules    = rule :: Nil
         }: MaterialData))
 
     /// 4x3 の小さな部屋 + decorTile + manualTile + entity (enemyId="goblin")

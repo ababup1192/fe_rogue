@@ -111,18 +111,28 @@ mod MapResource {
         autoRules    = List[AutoRule]
     }
 
+    /// AutoRule の pattern セル 1 個の値。LDtk の 5 値セマンティクスに揃える。
+    ///   Unspecified : マッチ条件なし (中央 = 出力位置もこれ)
+    ///   Anything    : IntGrid 値 != 0 を要求 (何か存在する)
+    ///   Nothing     : IntGrid 値 == 0 を要求 (空セル限定)
+    ///   Value(n)    : IntGrid 値 == n を要求
+    ///   NotValue(n) : IntGrid 値 != n を要求
+    pub enum PatternCell with Eq, ToString {
+        case Unspecified
+        case Anything
+        case Nothing
+        case Value(Int32)
+        case NotValue(Int32)
+    }
+
     /// AutoRule: パターンマッチで wallMap の上に重ねる装飾タイルを決める。
     ///   size    : 3 or 5
-    ///   pattern : size * size 要素 (行優先)。各値の意味:
-    ///             -1 = 装飾 (中央セル、出力位置。マッチ条件無し)
-    ///              0 = 任意 (intGrid 値を問わない、マッチ条件なし)
-    ///              1 = 床 (intGrid 値 1 を要求)
-    ///              2 = 壁 (intGrid 値 != 1 を要求、空/自動壁/map 外をまとめて壁扱い)
-    ///   srcX/Y  : 出力タイルの tileset 上の座標 (装飾セル位置に配置)
+    ///   pattern : size * size 要素 (行優先)、各セルは PatternCell
+    ///   srcX/Y  : 出力タイルの tileset 上の座標 (中央セル位置に配置)
     pub type alias AutoRule = {
         name    = String,
         size    = Int32,
-        pattern = Vector[Int32],
+        pattern = Vector[PatternCell],
         srcX    = Int32,
         srcY    = Int32
     }
@@ -184,6 +194,47 @@ mod MapResource {
             "EFEE" ::  // 床が右、他空
             Nil) ::
         Nil
+
+    /// PatternCell と intGrid 値 1 個の整合性を判定する。
+    pub def patternCellMatches(cell: PatternCell, intGridValue: Int32): Bool =
+        match cell {
+            case PatternCell.Unspecified => true
+            case PatternCell.Anything    => intGridValue != 0i32
+            case PatternCell.Nothing     => intGridValue == 0i32
+            case PatternCell.Value(n)    => intGridValue == n
+            case PatternCell.NotValue(n) => intGridValue != n
+        }
+
+    /// rule#pattern をセル `(col, row)` を中央として intGrid と照合する。
+    /// 長さが size*size より短い場合は不足分を Unspecified として扱う。
+    /// 境界外は intGridAt が 0 を返すため Nothing マッチに一致する。
+    pub def ruleMatches(intGrid: Vector[Int32], width: Int32, height: Int32,
+                          col: Int32, row: Int32, rule: AutoRule): Bool =
+        let size = rule#size;
+        let half = size / 2;
+        let n = size * size;
+        List.range(0, n)
+            |> List.forAll(idx -> {
+                let pc = Int32.remainder(idx, size);
+                let pr = idx / size;
+                let cc = col + pc - half;
+                let cr = row + pr - half;
+                let cellVal = intGridAt(intGrid, width, height, cc, cr);
+                let want = match Vector.nth(idx, rule#pattern) {
+                    case Some(v) => v
+                    case None    => PatternCell.Unspecified
+                };
+                patternCellMatches(want, cellVal)
+            })
+
+    /// intGrid の `(col, row)` 値を返す。境界外は 0 (空セル扱い)。
+    pub def intGridAt(intGrid: Vector[Int32], width: Int32, height: Int32,
+                        col: Int32, row: Int32): Int32 =
+        if (col < 0 or col >= width or row < 0 or row >= height) 0i32
+        else match Vector.nth(row * width + col, intGrid) {
+            case Some(v) => v
+            case None    => 0i32
+        }
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -221,7 +272,7 @@ mod MapResourceCodec {
 
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool, JsonArray}
-    use MapResource.{Level, LevelData, ManualTile, Entity, FieldValue, Material, MaterialData, EditorPalette, EditorLayerPalette, AutoRule}
+    use MapResource.{Level, LevelData, ManualTile, Entity, FieldValue, Material, MaterialData, EditorPalette, EditorLayerPalette, AutoRule, PatternCell}
 
     // ── Level ──
 
@@ -486,14 +537,59 @@ mod MapResourceCodec {
 
     // ── AutoRule ──
 
+    /// pattern セル値の JSON 表現 (LDtk と数値は揃えるが互換目的ではない):
+    ///   Unspecified → 0
+    ///   Anything    → 1000001
+    ///   Nothing     → -1000001
+    ///   Value(n)    → n  (n >= 1)
+    ///   NotValue(n) → -n (n >= 1)
+    def anythingMagic(): Int32 = 1000001i32
+    def nothingMagic(): Int32 = -1000001i32
+
+    /// AutoRule JSON のバージョン。
+    /// 旧: 値域 {-1, 0, 1, 2} で -1=装飾中央 / 0=任意 / 1=床 / 2=壁(=!=1)
+    /// 新 (v=2): 上記マッピング + 5 値 ADT (Unspecified/Anything/Nothing/Value/NotValue)
+    /// 既存 JSON は v フィールドが無いので legacy として扱い、`2` を NotValue(1) に変換する。
+    def currentAutoRuleVersion(): Int32 = 2i32
+
+    def encodePatternCell(c: PatternCell): Int32 = match c {
+        case PatternCell.Unspecified => 0i32
+        case PatternCell.Anything    => anythingMagic()
+        case PatternCell.Nothing     => nothingMagic()
+        case PatternCell.Value(n)    => n
+        case PatternCell.NotValue(n) => -n
+    }
+
+    /// `v` = ファイル中の AutoRule バージョン (None なら legacy)。
+    /// legacy mode (None / 1) では旧 `2` を NotValue(1) に変換し、`-1` も Unspecified にする。
+    /// new mode (>=2) では magic number ベースの素直なマッピング。
+    def decodePatternCell(version: Option[Int32], n: Int32): PatternCell =
+        let isLegacy = match version {
+            case None    => true
+            case Some(v) => v < 2i32
+        };
+        if (n == 0i32) PatternCell.Unspecified
+        else if (n == anythingMagic()) PatternCell.Anything
+        else if (n == nothingMagic()) PatternCell.Nothing
+        else if (isLegacy and n == -1i32) PatternCell.Unspecified  // 旧: 装飾中央
+        else if (isLegacy and n == 2i32)  PatternCell.NotValue(1i32) // 旧: 壁 = !=1
+        else if (n >= 1i32) PatternCell.Value(n)
+        else PatternCell.NotValue(-n)
+
     def encodeAutoRule(r: AutoRule): JsonElement =
         JsonObject(Map#{
             "name"    => JsonString(r#name),
             "size"    => JsonNumber(intToBd(r#size)),
-            "pattern" => JsonArray(r#pattern |> Vector.map(n -> JsonNumber(intToBd(n)))),
+            "v"       => JsonNumber(intToBd(currentAutoRuleVersion())),
+            "pattern" => JsonArray(r#pattern
+                |> Vector.map(c -> JsonNumber(intToBd(encodePatternCell(c))))),
             "srcX"    => JsonNumber(intToBd(r#srcX)),
             "srcY"    => JsonNumber(intToBd(r#srcY))
         })
+
+    /// AutoRule の正規 size。すべてのルールはこれに揃える。
+    /// legacy データで size=3 のものは decode 時に 5×5 に padding migration する。
+    def canonicalAutoRuleSize(): Int32 = 5i32
 
     // 旧フォーマットに含まれていた "chance" キーは無視する (存在しても decode は成功)。
     def decodeAutoRule(element: JsonElement): Option[AutoRule] =
@@ -508,21 +604,71 @@ mod MapResourceCodec {
             size     <- expectInt(sizeJ);
             srcX     <- expectInt(srcXJ);
             srcY     <- expectInt(srcYJ);
-            pattern  <- decodePatternVector(patternJ)
-        ) yield ({
-            name = name, size = size, pattern = pattern,
-            srcX = srcX, srcY = srcY
-        }: AutoRule)
+            version  <- Some(match Map.get("v", obj) {
+                case Some(vJ) => expectInt(vJ)
+                case None     => (None: Option[Int32])
+            });
+            rawPattern <- decodePatternVector(version, size, patternJ)
+        ) yield {
+            let target = canonicalAutoRuleSize();
+            let normalized = if (size == target) rawPattern
+                             else padPatternToSize(rawPattern, size, target);
+            ({
+                name = name, size = target, pattern = normalized,
+                srcX = srcX, srcY = srcY
+            }: AutoRule)
+        }
 
-    def decodePatternVector(element: JsonElement): Option[Vector[Int32]] = match element {
+    /// oldSize×oldSize の pattern を newSize×newSize に拡張する (newSize >= oldSize)。
+    /// 中央寄せ、外周は Unspecified でパディング。中央セルは Unspecified を維持。
+    def padPatternToSize(oldPattern: Vector[PatternCell], oldSize: Int32,
+                          newSize: Int32): Vector[PatternCell] = {
+        let n = newSize * newSize;
+        let center = n / 2i32;
+        let offset = (newSize - oldSize) / 2i32;
+        let u = PatternCell.Unspecified;
+        List.range(0, n)
+            |> List.map(idx -> {
+                if (idx == center) u
+                else {
+                    let r = idx / newSize;
+                    let c = Int32.remainder(idx, newSize);
+                    let oldR = r - offset;
+                    let oldC = c - offset;
+                    if (oldR < 0i32 or oldR >= oldSize or oldC < 0i32 or oldC >= oldSize)
+                        u
+                    else match Vector.nth(oldR * oldSize + oldC, oldPattern) {
+                        case Some(v) => v
+                        case None    => u
+                    }
+                }
+            })
+            |> List.toVector
+    }
+
+    /// pattern 配列を decode する。中央セル (idx = size*size/2) は強制的に
+    /// Unspecified に正規化する (中央は出力位置で、マッチ条件を持たない)。
+    def decodePatternVector(version: Option[Int32], size: Int32,
+                              element: JsonElement): Option[Vector[PatternCell]] = match element {
         case JsonArray(items) =>
-            List.foldRight(item -> acc ->
-                Option.flatMap(soFar ->
-                    expectInt(item) |> Option.map(n -> n :: soFar),
-                    acc),
-                Some(Nil), Vector.toList(items))
-            |> Option.map(List.toVector)
+            let centerIdx = (size * size) / 2i32;
+            decodePatternCellsFrom(version, centerIdx, 0i32, Vector.toList(items), Nil)
+                |> Option.map(List.toVector)
         case _ => None
+    }
+
+    def decodePatternCellsFrom(version: Option[Int32], centerIdx: Int32, i: Int32,
+                                 items: List[JsonElement],
+                                 acc: List[PatternCell]): Option[List[PatternCell]] = match items {
+        case Nil       => Some(List.reverse(acc))
+        case x :: rest =>
+            match expectInt(x) {
+                case None    => None
+                case Some(n) =>
+                    let cell = decodePatternCell(version, n);
+                    let normalized = if (i == centerIdx) PatternCell.Unspecified else cell;
+                    decodePatternCellsFrom(version, centerIdx, i + 1i32, rest, normalized :: acc)
+            }
     }
 
     def encodeWallMap(m: Map[String, (Int32, Int32)]): JsonElement =

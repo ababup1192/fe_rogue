@@ -308,7 +308,7 @@
                                                                   prefWidth="80"/>
                                                     </children>
                                                 </HBox>
-                                                <Label text="Pattern: 周辺マスをクリックで 任意→床→壁→任意、中央=装飾固定"
+                                                <Label text="Pattern: 左ク=Unspecified→床(F)→壁(W)→Anything(?)→Nothing(∅) 循環。右ク=Value↔NotValue / Anything↔Nothing 反転。中央=出力位置"
                                                        styleClass="map-palette-status"
                                                        wrapText="true"/>
                                                 <GridPane fx:id="mapRulePatternGrid"
