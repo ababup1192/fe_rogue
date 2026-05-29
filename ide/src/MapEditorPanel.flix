@@ -345,13 +345,29 @@ mod MapEditorPanel {
         }
 
     /// 編集中 Level を canvas に再描画する。Level 未選択なら何もしない。
+    /// 右ペイン TabPane のタブ識別。map-editor.fxml の `<Tab fx:id=...>` の
+    /// 並び順とインデックスを 1 か所で対応付けるための enum。
+    pub enum RightTab with Eq, ToString {
+        case Layer       // index 0
+        case AutoLayer   // index 1
+        case Rules       // index 2
+        case Settings    // index 3
+    }
+
+    pub def rightTabIndex(tab: RightTab): Int32 = match tab {
+        case RightTab.Layer     => 0i32
+        case RightTab.AutoLayer => 1i32
+        case RightTab.Rules     => 2i32
+        case RightTab.Settings  => 3i32
+    }
+
     /// mapZoom を反映するため drawLevel に zoom を渡す。
-    /// 右ペイン TabPane の現アクティブ tab index が `idx` と一致するか。
+    /// 右ペイン TabPane の現アクティブ tab が `tab` と一致するか。
     /// widget 未取得や Tab が無い時は false。
-    pub def isRightTabActive(state: IdeState.IdeState, idx: Int32): Bool \ IO =
+    pub def isRightTabActive(state: IdeState.IdeState, tab: RightTab): Bool \ IO =
         match Array.get(0, state#widgets#mapRightTabs) {
             case None     => false
-            case Some(tp) => tp.getSelectionModel().getSelectedIndex() == idx
+            case Some(tp) => tp.getSelectionModel().getSelectedIndex() == rightTabIndex(tab)
         }
 
     pub def redrawCanvas(state: IdeState.IdeState): Unit \ IO =
@@ -365,19 +381,22 @@ mod MapEditorPanel {
                 let mat = MapEditorState.getEditingMaterial(state#mapEditor);
                 let preview = MapEditorState.getPreviewMode(state#mapEditor);
                 // preview ON: dim / overlay / grid を全て無効化してゲーム見えを再現
+                // TRBL の紫プレビューは auto-layer タブアクティブ時だけ表示
                 let selTrbl = if (preview) None
-                              else MapEditorState.getSelectedTrbl(state#mapEditor);
+                              else if (isRightTabActive(state, RightTab.AutoLayer))
+                                  MapEditorState.getSelectedTrbl(state#mapEditor)
+                              else None;
                 let selRange = if (preview) None
                                else MapEditorState.getSelectedRange(state#mapEditor);
-                // Rule の紫プレビューは Rules タブ (index 2) アクティブ時だけ表示
+                // Rule の紫プレビューは Rules タブアクティブ時だけ表示
                 let selRule = if (preview) None
-                              else if (isRightTabActive(state, 2i32))
+                              else if (isRightTabActive(state, RightTab.Rules))
                                   MapEditorState.getEditingRuleIndex(state#mapEditor)
                               else None;
-                // Layer タブ (index 0) アクティブ時のみ非アクティブレイヤーを dim する
+                // Layer タブアクティブ時のみ非アクティブレイヤーを dim する
                 // (auto-layer / Rules / Settings タブではマップ全体を見たいので dim しない)
                 let dimNonActive = if (preview) None
-                                   else if (isRightTabActive(state, 0i32))
+                                   else if (isRightTabActive(state, RightTab.Layer))
                                        Some(MapEditorState.getLayerMode(state#mapEditor))
                                    else None;
                 let showGrid = not preview;
@@ -1330,6 +1349,7 @@ mod MapEditorPanel {
 
     /// 右ペイン TabPane の切替を listen し、Map Canvas を再描画する。
     /// Rule の紫プレビューは Rules タブ時だけ出すので、タブが変わったら描き直し。
+    /// Rules タブ (index 2) に切り替えた時、未選択かつルールがあれば先頭を自動選択する。
     def wireRightTabChange(state: IdeState.IdeState): Unit \ IO = {
         match Array.get(0, state#widgets#mapRightTabs) {
             case None     => ()
@@ -1338,10 +1358,34 @@ mod MapEditorPanel {
                 prop.addListener(new ChangeListener[Number] {
                     def changed(_cThis: ChangeListener[Number],
                                   _obs: ObservableValue[JObject],
-                                  _old: Number, _newVal: Number): Unit \ IO =
+                                  _old: Number, newVal: Number): Unit \ IO = {
+                        if (Object.isNull(newVal)) ()
+                        else if (newVal.intValue() == rightTabIndex(RightTab.Rules))
+                            autoSelectFirstRule(state)
+                        else ();
                         redrawCanvas(state)
+                    }
                 })
             }
+        }
+    }
+
+    /// Rules タブを開いたとき、editingRuleIndex が未設定 かつ autoRules が
+    /// 非空 なら先頭ルール (index 0) を選択する。
+    def autoSelectFirstRule(state: IdeState.IdeState): Unit \ IO = {
+        match MapEditorState.getEditingRuleIndex(state#mapEditor) {
+            case Some(_) => ()  // 既に選択済み
+            case None    =>
+                match MapEditorState.getEditingMaterial(state#mapEditor) {
+                    case None      => ()
+                    case Some(mat) =>
+                        let md = MapResource.materialData(mat);
+                        if (List.isEmpty(md#autoRules)) ()
+                        else {
+                            MapEditorState.setEditingRuleIndex(state#mapEditor, Some(0i32));
+                            refreshRulesUI(state)
+                        }
+                }
         }
     }
 
@@ -1441,9 +1485,10 @@ mod MapEditorPanel {
         }, List.range(0, n))
     }
 
-    /// 1 セル: 32x32 の Canvas。中央 (isCenter=true) は装飾固定で編集不可、
-    /// 周辺は左クリックで Unspecified → Value(1) → Value(2) → Anything → Nothing → Unspecified、
-    /// 右クリックで Value(n) ↔ NotValue(n) / Anything ↔ Nothing を反転。
+    /// 1 セル: 32x32 の Canvas。全セル (中央含む) が:
+    ///   左クリック: Unspecified → Value(1) → Value(2) → Anything → Nothing → Unspecified サイクル
+    ///   右クリック: Value(n) ↔ NotValue(n) / Anything ↔ Nothing を反転
+    /// 中央セル (isCenter=true) は出力位置でもあるため、値の上に白い円のマーカーを重ねる。
     def makePatternCell(state: IdeState.IdeState, idx: Int32, isCenter: Bool):
             StackPane \ IO = {
         let pane = new StackPane();
@@ -1453,71 +1498,114 @@ mod MapEditorPanel {
         pane.setPrefSize(32.0, 32.0);
         pane.setMinSize(32.0, 32.0);
         pane.setUserData(unchecked_cast(canvas as JObject));
-        if (isCenter) ()  // 中央は編集不可
-        else {
-            pane.setStyle("-fx-cursor: hand;");
-            pane.setOnMouseClicked(new EventHandler[MouseEvent] {
-                def handle(_this: EventHandler[MouseEvent], e: MouseEvent): Unit \ IO = {
-                    // MouseButton は Java enum なので Flix の == は使えない。
-                    // toString() で "SECONDARY" 等の名前を取って String 比較する。
-                    let buttonName = e.getButton().toString();
-                    if (buttonName == "SECONDARY")
-                        togglePatternCellNegation(state, idx)
-                    else
-                        cyclePatternCell(state, idx)
-                }
-            })
-        };
+        pane.setStyle("-fx-cursor: hand;");
+        pane.setOnMouseClicked(new EventHandler[MouseEvent] {
+            def handle(_this: EventHandler[MouseEvent], e: MouseEvent): Unit \ IO = {
+                // MouseButton は Java enum なので Flix の == は使えない。
+                // toString() で "SECONDARY" 等の名前を取って String 比較する。
+                let buttonName = e.getButton().toString();
+                if (buttonName == "SECONDARY")
+                    togglePatternCellNegation(state, idx)
+                else
+                    cyclePatternCell(state, idx)
+            }
+        });
         pane
     }
 
     /// パターンセル 1 個の描画:
-    ///   中央 (出力位置)            : 緑 + 白点
-    ///   Unspecified                : 薄灰 (ラベルなし)
-    ///   Anything                   : 中灰 + "?"
-    ///   Nothing                    : 白 + "∅"
-    ///   Value(1) / Value(2)        : 黄 + "F" / 暗灰 + "W"
-    ///   Value(n) (その他)          : マゼンタ + n
-    ///   NotValue(n)                : Value(n) と同色 + 赤い × オーバーレイ
+    ///   Unspecified         : 薄灰、図示なし
+    ///   Anything            : 中灰 + "?" テキスト
+    ///   Nothing             : 白 + "∅" テキスト
+    ///   Value(1) (床)       : 黄 + 床タイル風スケッチ (2x2 ドット)
+    ///   Value(2) (壁)       : 暗灰 + レンガ風スケッチ
+    ///   Value(n) (n>=3)     : マゼンタ + 数字
+    ///   NotValue(n)         : Value(n) と同色・同スケッチ + 赤い × オーバーレイ
+    /// `isCenter` は (今は描画には使わない予定だが) signature を維持。
     def drawPatternCellValue(canvas: Canvas, cell: MapResource.PatternCell,
-                              isCenter: Bool): Unit \ IO = {
+                              _isCenter: Bool): Unit \ IO = {
         let gc = canvas.getGraphicsContext2D();
         let w = canvas.getWidth();
         let h = canvas.getHeight();
         gc.clearRect(0.0, 0.0, w, h);
-        let baseColor = patternCellBaseColor(cell, isCenter);
+        let baseColor = patternCellBaseColor(cell);
         gc.setFill(baseColor);
         gc.fillRect(1.0, 1.0, w - 2.0, h - 2.0);
         gc.setStroke(Color.rgb(40, 40, 50));
         gc.setLineWidth(1.0);
         gc.strokeRect(0.5, 0.5, w - 1.0, h - 1.0);
-        if (isCenter) {
-            gc.setFill(Color.rgb(255, 255, 255));
-            gc.fillOval(w / 2.0 - 3.0, h / 2.0 - 3.0, 6.0, 6.0)
-        } else {
-            match patternCellLabel(cell) {
-                case None       => ()
-                case Some(text) => {
-                    gc.setFill(Color.rgb(255, 255, 255));
-                    gc.setFont(Font.font(14.0));
-                    gc.setTextAlign(TextAlignment.CENTER);
-                    gc.setTextBaseline(VPos.CENTER);
-                    gc.fillText(text, w / 2.0, h / 2.0 + 1.0)
-                }
-            };
-            // NotValue は赤い × を上書き
-            if (isNotValue(cell)) {
-                gc.setStroke(Color.rgb(220, 70, 70));
-                gc.setLineWidth(2.5);
-                gc.strokeLine(4.0, 4.0, w - 4.0, h - 4.0);
-                gc.strokeLine(w - 4.0, 4.0, 4.0, h - 4.0)
-            } else ()
-        }
+        drawPatternCellArt(gc, cell, w, h);
+        if (isNotValue(cell)) {
+            gc.setStroke(Color.rgb(220, 70, 70));
+            gc.setLineWidth(2.5);
+            gc.strokeLine(4.0, 4.0, w - 4.0, h - 4.0);
+            gc.strokeLine(w - 4.0, 4.0, 4.0, h - 4.0)
+        } else ()
     }
 
-    def patternCellBaseColor(cell: MapResource.PatternCell, isCenter: Bool): Color \ IO =
-        if (isCenter) Color.rgb(120, 200, 100)
-        else match cell {
+    /// セル中身のアート (テキスト or スケッチ) を描画する。
+    def drawPatternCellArt(gc: GraphicsContext, cell: MapResource.PatternCell,
+                            w: Float64, h: Float64): Unit \ IO = match cell {
+        case MapResource.PatternCell.Unspecified  => ()
+        case MapResource.PatternCell.Anything     => drawCellText(gc, "?", w, h)
+        case MapResource.PatternCell.Nothing      => drawCellText(gc, "∅", w, h)
+        case MapResource.PatternCell.Value(1)     => drawFloorSketch(gc, w, h)
+        case MapResource.PatternCell.Value(2)     => drawWallSketch(gc, w, h)
+        case MapResource.PatternCell.Value(n)     => drawCellText(gc, "${n}", w, h)
+        case MapResource.PatternCell.NotValue(1)  => drawFloorSketch(gc, w, h)
+        case MapResource.PatternCell.NotValue(2)  => drawWallSketch(gc, w, h)
+        case MapResource.PatternCell.NotValue(n)  => drawCellText(gc, "${n}", w, h)
+    }
+
+    def drawCellText(gc: GraphicsContext, text: String, w: Float64, h: Float64): Unit \ IO = {
+        gc.setFill(Color.rgb(255, 255, 255));
+        gc.setFont(Font.font(14.0));
+        gc.setTextAlign(TextAlignment.CENTER);
+        gc.setTextBaseline(VPos.CENTER);
+        gc.fillText(text, w / 2.0, h / 2.0 + 1.0)
+    }
+
+    /// 床: 縦板張り (壁レンガを 90° 回した構造)。
+    /// 縦の板境界 2 本 + 左右板の中央切れ目 + 中板の互い違い切れ目 2 本。
+    /// base color が黄系なので、目地は濃い茶でコントラストを付ける。
+    def drawFloorSketch(gc: GraphicsContext, w: Float64, h: Float64): Unit \ IO = {
+        gc.setStroke(Color.rgb(120, 90, 40));
+        gc.setLineWidth(1.5);
+        let x1 = w / 2.0 - 5.0;
+        let x2 = w / 2.0 + 5.0;
+        // 縦板境界 2 本
+        gc.strokeLine(x1, 3.0, x1, h - 3.0);
+        gc.strokeLine(x2, 3.0, x2, h - 3.0);
+        // 左板の中央に横切れ目
+        gc.strokeLine(3.0, h / 2.0, x1, h / 2.0);
+        // 中板の互い違い横切れ目 2 本
+        gc.strokeLine(x1, h / 2.0 - 6.0, x2, h / 2.0 - 6.0);
+        gc.strokeLine(x1, h / 2.0 + 6.0, x2, h / 2.0 + 6.0);
+        // 右板の中央に横切れ目
+        gc.strokeLine(x2, h / 2.0, w - 3.0, h / 2.0)
+    }
+
+    /// 壁: レンガ風 (横 2 段の目地 + 上下中段で互い違いの縦目地)。
+    /// base color は暗灰なので、目地は明るめのグレーで描く。
+    def drawWallSketch(gc: GraphicsContext, w: Float64, h: Float64): Unit \ IO = {
+        gc.setStroke(Color.rgb(180, 180, 190));
+        gc.setLineWidth(1.5);
+        let y1 = h / 2.0 - 5.0;
+        let y2 = h / 2.0 + 5.0;
+        // 横目地 2 本
+        gc.strokeLine(3.0, y1, w - 3.0, y1);
+        gc.strokeLine(3.0, y2, w - 3.0, y2);
+        // 上段中央の縦目地
+        gc.strokeLine(w / 2.0, 3.0, w / 2.0, y1);
+        // 中段は互い違いに 2 本
+        gc.strokeLine(w / 2.0 - 6.0, y1, w / 2.0 - 6.0, y2);
+        gc.strokeLine(w / 2.0 + 6.0, y1, w / 2.0 + 6.0, y2);
+        // 下段中央の縦目地
+        gc.strokeLine(w / 2.0, y2, w / 2.0, h - 3.0)
+    }
+
+    def patternCellBaseColor(cell: MapResource.PatternCell): Color \ IO =
+        match cell {
             case MapResource.PatternCell.Unspecified  => Color.rgb(225, 225, 225)
             case MapResource.PatternCell.Anything     => Color.rgb(150, 150, 160)
             case MapResource.PatternCell.Nothing      => Color.rgb(245, 245, 245)
@@ -1528,18 +1616,6 @@ mod MapEditorPanel {
             case MapResource.PatternCell.NotValue(2)  => Color.rgb(70, 70, 80)
             case MapResource.PatternCell.NotValue(_)  => Color.rgb(160, 80, 160)
         }
-
-    def patternCellLabel(cell: MapResource.PatternCell): Option[String] = match cell {
-        case MapResource.PatternCell.Unspecified  => None
-        case MapResource.PatternCell.Anything     => Some("?")
-        case MapResource.PatternCell.Nothing      => Some("∅")
-        case MapResource.PatternCell.Value(1)     => Some("F")
-        case MapResource.PatternCell.Value(2)     => Some("W")
-        case MapResource.PatternCell.Value(n)     => Some("${n}")
-        case MapResource.PatternCell.NotValue(1)  => Some("F")
-        case MapResource.PatternCell.NotValue(2)  => Some("W")
-        case MapResource.PatternCell.NotValue(n)  => Some("${n}")
-    }
 
     def isNotValue(cell: MapResource.PatternCell): Bool = match cell {
         case MapResource.PatternCell.NotValue(_) => true
@@ -1558,7 +1634,7 @@ mod MapEditorPanel {
         updatePatternCellAt(state, idx, c -> togglePatternCell(c))
 
     /// 共通: pattern[idx] を `f` で変換し、ルールを置換して UI を再描画する。
-    /// 中央セル / OOB は no-op。
+    /// 中央セルも編集対象 (出力位置でありかつマッチ条件)。
     def updatePatternCellAt(state: IdeState.IdeState, idx: Int32,
                               f: MapResource.PatternCell -> MapResource.PatternCell): Unit \ IO = {
         match MapEditorState.getEditingRuleIndex(state#mapEditor) {
@@ -1570,24 +1646,21 @@ mod MapEditorPanel {
                         let md = MapResource.materialData(mat);
                         match List.nth(ruleI, md#autoRules) {
                             case None       => ()
-                            case Some(rule) =>
-                                let centerIdx = (rule#size * rule#size) / 2i32;
-                                if (idx == centerIdx) ()
-                                else {
-                                    let curVal = match Vector.nth(idx, rule#pattern) {
-                                        case Some(v) => v
-                                        case None    => MapResource.PatternCell.Unspecified
-                                    };
-                                    let nextVal = f(curVal);
-                                    let newPattern = Vector.toList(rule#pattern)
-                                        |> List.mapWithIndex((i, v) ->
-                                              if (i == idx) nextVal else v)
-                                        |> List.toVector;
-                                    let newRule = {pattern = newPattern | rule};
-                                    replaceRule(state, ruleI, newRule);
-                                    refreshRulesUI(state);
-                                    MapEditorPanel.redrawCanvas(state)
-                                }
+                            case Some(rule) => {
+                                let curVal = match Vector.nth(idx, rule#pattern) {
+                                    case Some(v) => v
+                                    case None    => MapResource.PatternCell.Unspecified
+                                };
+                                let nextVal = f(curVal);
+                                let newPattern = Vector.toList(rule#pattern)
+                                    |> List.mapWithIndex((i, v) ->
+                                          if (i == idx) nextVal else v)
+                                    |> List.toVector;
+                                let newRule = {pattern = newPattern | rule};
+                                replaceRule(state, ruleI, newRule);
+                                refreshRulesUI(state);
+                                MapEditorPanel.redrawCanvas(state)
+                            }
                         }
                 }
         }

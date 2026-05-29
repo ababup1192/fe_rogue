@@ -71,6 +71,9 @@ mod MapGridCanvas {
         // walls 不可視のときも Rule プレビュー用に計算しておく。
         let floorMask = floorMaskOf(d);
         let wallCells = computeWallCells(floorMask, d#width, d#height);
+        // 手動 Walls タイルの座標集合 (= AutoRule・Rule preview から除外する対象)
+        let manualCoords: Set[(Int32, Int32)] =
+            d#manualTiles |> List.map(t -> (t#x, t#y)) |> List.toSet;
         if (vis#walls) {
             gc.setGlobalAlpha(wallsAlpha);
             // 自動壁を先に (下)、その上に manualTiles (上書き)
@@ -91,7 +94,8 @@ mod MapGridCanvas {
                     let intGrid = buildIntGrid(floorMask, wallCells, d#width, d#height);
                     let md = MapResource.materialData(mat);
                     drawAutoRuleTiles(canvas, intGrid, d#width, d#height,
-                                        md#autoRules, img, d#tileSize, cellPx)
+                                        md#autoRules, manualCoords,
+                                        img, d#tileSize, cellPx)
                 }
                 case _ => ()
             };
@@ -107,7 +111,8 @@ mod MapGridCanvas {
         match (selectedRule, material) {
             case (Some(ri), Some(mat)) =>
                 drawRulePreview(canvas, MapResource.materialData(mat),
-                                  ri, floorMask, wallCells, d#width, d#height, cellPx)
+                                  ri, floorMask, wallCells, manualCoords,
+                                  d#width, d#height, cellPx)
             case _ => ()
         };
         if (showGrid) drawGridLines(canvas, d#width, d#height, cellPx) else ();
@@ -180,10 +185,12 @@ mod MapGridCanvas {
     /// 紫半透明で塗る。auto-layer タブの TRBL プレビューと同色 (160,64,200,0.5)。
     /// マップ全セル走査して ruleMatches で判定する。
     /// 注: Tile 未設定 (srcX<0 等) でもプレビューは出す (= 配置予定セルが分かる)。
+    /// 手動 Walls タイルのセル (manualCoords) は AutoRule の対象外なので紫も出さない。
     def drawRulePreview(canvas: Canvas, md: MapResource.MaterialData,
                           ri: Int32,
                           floorMask: Set[(Int32, Int32)],
                           wallCells: Set[(Int32, Int32)],
+                          manualCoords: Set[(Int32, Int32)],
                           width: Int32, height: Int32, cellPx: Int32): Unit \ IO = {
         match List.nth(ri, md#autoRules) {
             case None       => ()
@@ -195,7 +202,8 @@ mod MapGridCanvas {
                 List.forEach(i -> {
                     let col = Int32.remainder(i, width);
                     let row = i / width;
-                    if (MapResource.ruleMatches(intGrid, width, height, col, row, rule))
+                    if (Set.memberOf((col, row), manualCoords)) ()
+                    else if (MapResource.ruleMatches(intGrid, width, height, col, row, rule))
                         gc.fillRect(Int32.toFloat64(col) * cs,
                                      Int32.toFloat64(row) * cs, cs, cs)
                     else ()
@@ -316,9 +324,12 @@ mod MapGridCanvas {
             |> List.toVector
 
     /// AutoRule リストを各セルに適用して描画する (engine 側の buildAutoRuleTiles と同じロジック)。
+    /// `manualCoords` のセルは手動 Walls 優先のためスキップする。
     def drawAutoRuleTiles(canvas: Canvas, intGrid: Vector[Int32],
                             width: Int32, height: Int32,
-                            rules: List[MapResource.AutoRule], image: Image,
+                            rules: List[MapResource.AutoRule],
+                            manualCoords: Set[(Int32, Int32)],
+                            image: Image,
                             tileSize: Int32, cellPx: Int32): Unit \ IO = {
         let gc = canvas.getGraphicsContext2D();
         gc.setImageSmoothing(false);
@@ -327,7 +338,8 @@ mod MapGridCanvas {
         List.forEach(i -> {
             let col = Int32.remainder(i, width);
             let row = i / width;
-            match applyFirstMatchingRule(intGrid, width, height, col, row, rules) {
+            if (Set.memberOf((col, row), manualCoords)) ()
+            else match applyFirstMatchingRule(intGrid, width, height, col, row, rules) {
                 case None              => ()
                 case Some((srcX, srcY)) => {
                     let sx = Int32.toFloat64(srcX);
@@ -932,11 +944,11 @@ mod MapGridCanvas {
                 let selTrbl2 = if (preview) None else selTrbl;
                 let selRange2 = if (preview) None else selRange;
                 let selRule = if (preview) None
-                              else if (MapEditorPanel.isRightTabActive(state, 2i32))
+                              else if (MapEditorPanel.isRightTabActive(state, MapEditorPanel.RightTab.Rules))
                                   MapEditorState.getEditingRuleIndex(state#mapEditor)
                               else None;
                 let dimNonActive = if (preview) None
-                                   else if (MapEditorPanel.isRightTabActive(state, 0i32))
+                                   else if (MapEditorPanel.isRightTabActive(state, MapEditorPanel.RightTab.Layer))
                                        Some(MapEditorState.getLayerMode(state#mapEditor))
                                    else None;
                 let showGrid = not preview;

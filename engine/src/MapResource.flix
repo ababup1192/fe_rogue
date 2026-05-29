@@ -620,44 +620,41 @@ mod MapResourceCodec {
         }
 
     /// oldSize×oldSize の pattern を newSize×newSize に拡張する (newSize >= oldSize)。
-    /// 中央寄せ、外周は Unspecified でパディング。中央セルは Unspecified を維持。
+    /// 中央寄せ、外周は Unspecified でパディング。中央セルの値は
+    /// 座標マッピングで自然に運ばれる (oldSize の中央が newSize の中央へ)。
     def padPatternToSize(oldPattern: Vector[PatternCell], oldSize: Int32,
                           newSize: Int32): Vector[PatternCell] = {
         let n = newSize * newSize;
-        let center = n / 2i32;
         let offset = (newSize - oldSize) / 2i32;
         let u = PatternCell.Unspecified;
         List.range(0, n)
             |> List.map(idx -> {
-                if (idx == center) u
-                else {
-                    let r = idx / newSize;
-                    let c = Int32.remainder(idx, newSize);
-                    let oldR = r - offset;
-                    let oldC = c - offset;
-                    if (oldR < 0i32 or oldR >= oldSize or oldC < 0i32 or oldC >= oldSize)
-                        u
-                    else match Vector.nth(oldR * oldSize + oldC, oldPattern) {
-                        case Some(v) => v
-                        case None    => u
-                    }
+                let r = idx / newSize;
+                let c = Int32.remainder(idx, newSize);
+                let oldR = r - offset;
+                let oldC = c - offset;
+                if (oldR < 0i32 or oldR >= oldSize or oldC < 0i32 or oldC >= oldSize)
+                    u
+                else match Vector.nth(oldR * oldSize + oldC, oldPattern) {
+                    case Some(v) => v
+                    case None    => u
                 }
             })
             |> List.toVector
     }
 
-    /// pattern 配列を decode する。中央セル (idx = size*size/2) は強制的に
-    /// Unspecified に正規化する (中央は出力位置で、マッチ条件を持たない)。
-    def decodePatternVector(version: Option[Int32], size: Int32,
+    /// pattern 配列を decode する。中央セルも周辺セルと同じく値を保持する
+    /// (LDtk と同じく中央もマッチ条件を持てる)。legacy `-1` (旧 装飾) は
+    /// decodePatternCell 側で Unspecified に変換されるので互換は維持される。
+    def decodePatternVector(version: Option[Int32], _size: Int32,
                               element: JsonElement): Option[Vector[PatternCell]] = match element {
         case JsonArray(items) =>
-            let centerIdx = (size * size) / 2i32;
-            decodePatternCellsFrom(version, centerIdx, 0i32, Vector.toList(items), Nil)
+            decodePatternCellsFrom(version, Vector.toList(items), Nil)
                 |> Option.map(List.toVector)
         case _ => None
     }
 
-    def decodePatternCellsFrom(version: Option[Int32], centerIdx: Int32, i: Int32,
+    def decodePatternCellsFrom(version: Option[Int32],
                                  items: List[JsonElement],
                                  acc: List[PatternCell]): Option[List[PatternCell]] = match items {
         case Nil       => Some(List.reverse(acc))
@@ -666,8 +663,7 @@ mod MapResourceCodec {
                 case None    => None
                 case Some(n) =>
                     let cell = decodePatternCell(version, n);
-                    let normalized = if (i == centerIdx) PatternCell.Unspecified else cell;
-                    decodePatternCellsFrom(version, centerIdx, i + 1i32, rest, normalized :: acc)
+                    decodePatternCellsFrom(version, rest, cell :: acc)
             }
     }
 

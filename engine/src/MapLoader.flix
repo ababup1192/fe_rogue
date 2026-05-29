@@ -81,7 +81,7 @@ mod MapLoader {
             case None      => Nil
             case Some(mat) =>
                 let md = MapResource.materialData(mat);
-                buildAutoRuleTiles(intGrid, d#width, d#height, md#autoRules, tileSizeI)
+                buildAutoRuleTiles(intGrid, d#width, d#height, md#autoRules, manualCoords, tileSizeI)
         };
 
         // 描画順: 自動壁 → manualTiles → ruleTiles (最前面)
@@ -363,15 +363,19 @@ mod MapLoader {
 
     /// AutoRule リストを各セルに適用してタイル列を生成する。
     /// 各セルでルールを順番にチェック、最初にマッチしたら出力タイルを採用。
+    /// `manualCoords` のセルは手動 Walls の上書きを優先するためスキップする
+    /// (Floor decorTiles は AutoRule の主用途なのでスキップ対象に含めない)。
     pub def buildAutoRuleTiles(intGrid: Vector[Int32],
                                  width: Int32, height: Int32,
                                  rules: List[MapResource.AutoRule],
+                                 manualCoords: Set[(Int32, Int32)],
                                  tileSizeI: Int32): List[TileData] =
         List.range(0, width * height)
             |> List.filterMap(i -> {
                 let col = Int32.remainder(i, width);
                 let row = i / width;
-                applyFirstMatchingRule(intGrid, width, height, col, row, rules, tileSizeI)
+                if (Set.memberOf((col, row), manualCoords)) None
+                else applyFirstMatchingRule(intGrid, width, height, col, row, rules, tileSizeI)
             })
 
     /// このセルでマッチする最初のルールを見つけて TileData を返す。なければ None。

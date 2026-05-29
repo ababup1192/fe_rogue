@@ -257,6 +257,45 @@ mod TestMapResource {
         let m = MapResource.ruleMatches(intGrid, 3, 3, 1, 1, rule);
         Assert.assertEq(expected = true, m)
 
+    /// 手動 Walls タイル (manualCoords) のセルは buildAutoRuleTiles で除外される。
+    @Test
+    def testBuildAutoRuleTilesSkipsManualCoords(): Unit \ Assert =
+        let u = PatternCell.Unspecified;
+        // 中央 Value(1) のルール: 床上にだけタイルを置く
+        let pattern = Vector#{u, u, u,
+                               u, PatternCell.Value(1i32), u,
+                               u, u, u};
+        let rule = ({name = "decor", size = 3, pattern = pattern,
+                      srcX = 16, srcY = 0}: AutoRule);
+        // 3x3 intGrid 全マス床
+        let intGrid = Vector#{1i32, 1i32, 1i32, 1i32, 1i32, 1i32, 1i32, 1i32, 1i32};
+        // manualCoords が空: 全マス (9 セル) に AutoRule タイルが出る
+        let withoutManual = MapLoader.buildAutoRuleTiles(intGrid, 3, 3, rule :: Nil,
+                                                          Set.empty(), 16);
+        // manualCoords に (1, 1) (中央) を入れる: そのセルだけスキップ → 8 セル
+        let oneManual: Set[(Int32, Int32)] = Set#{(1, 1)};
+        let withManual = MapLoader.buildAutoRuleTiles(intGrid, 3, 3, rule :: Nil,
+                                                        oneManual, 16);
+        Assert.assertEq(expected = (9, 8),
+                        (List.length(withoutManual), List.length(withManual)))
+
+    /// 中央 Value(1) を要求するルールは、intGrid 中央が床 (1) のときだけマッチし、
+    /// 自動壁 (2) や空 (0) では拒否される (= 床上だけに装飾を置く LDtk 風ルール)。
+    @Test
+    def testRuleMatchesCenterMustBeFloor(): Unit \ Assert =
+        let u = PatternCell.Unspecified;
+        let pattern = Vector#{u, u, u,
+                               u, PatternCell.Value(1i32), u,
+                               u, u, u};
+        let rule = mkRule(pattern, 3);
+        let gridFloor = Vector#{0i32, 0i32, 0i32, 0i32, 1i32, 0i32, 0i32, 0i32, 0i32};
+        let gridWall  = Vector#{0i32, 0i32, 0i32, 0i32, 2i32, 0i32, 0i32, 0i32, 0i32};
+        let gridEmpty = Vector#{0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32};
+        let mFloor = MapResource.ruleMatches(gridFloor, 3, 3, 1, 1, rule);
+        let mWall  = MapResource.ruleMatches(gridWall,  3, 3, 1, 1, rule);
+        let mEmpty = MapResource.ruleMatches(gridEmpty, 3, 3, 1, 1, rule);
+        Assert.assertEq(expected = true, mFloor and not mWall and not mEmpty)
+
     /// Nothing (= IntGrid == 0) は intGrid に空セルがあるときだけマッチする。
     @Test
     def testRuleMatchesNothingRequiresEmpty(): Unit \ Assert =
@@ -377,6 +416,36 @@ mod TestMapResource {
             case None    => None
         };
         Assert.assertEq(expected = Some(PatternCell.Value(1i32)), cell)
+
+    /// v=2 の round-trip で中央セルの値が保存される (Unspecified に潰されない)。
+    @Test
+    def testAutoRuleCenterValuePreservedOnRoundTrip(): Unit \ Assert =
+        let u = PatternCell.Unspecified;
+        // 5×5 の中央 (idx=12) に Value(1) を置く
+        let pattern = Vector#{u, u, u, u, u,
+                               u, u, u, u, u,
+                               u, u, PatternCell.Value(1i32), u, u,
+                               u, u, u, u, u,
+                               u, u, u, u, u};
+        let rule = ({name = "centerFloor", size = 5, pattern = pattern,
+                      srcX = 0, srcY = 0}: AutoRule);
+        let mat = Material.Material(({
+            tileset      = "x",
+            tileSize     = 16,
+            wallMap      = Map.empty(),
+            floorPalette = (Nil: List[(Int32, Int32)]),
+            decorPalette = (Nil: List[(Int32, Int32)]),
+            autoRules    = rule :: Nil
+        }: MaterialData));
+        let restored = roundTripMaterial(mat);
+        let centerCell = match restored {
+            case Some(m) => match List.head(MapResource.materialData(m)#autoRules) {
+                case Some(r) => Vector.nth(12, r#pattern)
+                case None    => None
+            }
+            case None    => None
+        };
+        Assert.assertEq(expected = Some(PatternCell.Value(1i32)), centerCell)
 
     /// 新仕様 (v=2) で書かれた JSON を round-trip。NotValue / Nothing / Anything が保存される。
     @Test

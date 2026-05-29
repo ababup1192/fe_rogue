@@ -308,7 +308,7 @@
                                                                   prefWidth="80"/>
                                                     </children>
                                                 </HBox>
-                                                <Label text="Pattern: 左ク=Unspecified→床(F)→壁(W)→Anything(?)→Nothing(∅) 循環。右ク=Value↔NotValue / Anything↔Nothing 反転。中央=出力位置"
+                                                <Label text="Pattern: 左ク=Unspecified→床→壁→Anything(?)→Nothing(∅) 循環。右ク=Value↔NotValue / Anything↔Nothing 反転。中央=出力位置 + マッチ条件 (例: 中央 床 → 床の上にだけ描画)"
                                                        styleClass="map-palette-status"
                                                        wrapText="true"/>
                                                 <GridPane fx:id="mapRulePatternGrid"
