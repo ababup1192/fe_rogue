@@ -232,21 +232,21 @@ mod MapLoader {
     /// `<mapPath>/../../materials/<materialId>.material.json` を組み立てる。
     /// mapPath = ".../assets/maps/level_0.map.json"
     /// → ".../assets/materials/inca_stone.material.json"
-    def materialPathFor(mapPath: String, materialId: String): String = {
+    pub def materialPathFor(mapPath: String, materialId: String): String = {
         let parent = stripAfterLast(mapPath, '/');           // ".../assets/maps"
         let grand  = stripAfterLast(parent, '/');             // ".../assets"
         grand + "/materials/" + materialId + ".material.json"
     }
 
     /// 最後の `c` の位置以降を取り除いた prefix を返す。`c` が無ければ全体を返す。
-    def stripAfterLast(s: String, c: Char): String = {
+    pub def stripAfterLast(s: String, c: Char): String = {
         let len = String.length(s);
         let idx = lastIndexOf(s, c, len - 1);
         if (idx < 0) s
         else s.substring(0, idx)
     }
 
-    def lastIndexOf(s: String, c: Char, start: Int32): Int32 =
+    pub def lastIndexOf(s: String, c: Char, start: Int32): Int32 =
         if (start < 0) -1
         else if (String.charAt(start, s) == c) start
         else lastIndexOf(s, c, start - 1)
@@ -255,7 +255,7 @@ mod MapLoader {
     ///   - 床なし (= floorMask に含まれない)
     ///   - かつ 8 近傍に少なくとも 1 つ床がある
     /// マップ範囲は (0..width, 0..height)。
-    def computeWallCells(floorMask: Set[(Int32, Int32)],
+    pub def computeWallCells(floorMask: Set[(Int32, Int32)],
                           width: Int32, height: Int32): Set[(Int32, Int32)] =
         List.range(0, width * height)
             |> List.filterMap(idx -> {
@@ -268,7 +268,7 @@ mod MapLoader {
             |> List.toSet
 
     /// 8 近傍 (上下左右 + 斜め) に床が 1 つでもあるか。
-    def any8NeighborIsFloor(floorMask: Set[(Int32, Int32)], col: Int32, row: Int32): Bool =
+    pub def any8NeighborIsFloor(floorMask: Set[(Int32, Int32)], col: Int32, row: Int32): Bool =
         Set.memberOf((col - 1, row - 1), floorMask) or
         Set.memberOf((col,     row - 1), floorMask) or
         Set.memberOf((col + 1, row - 1), floorMask) or

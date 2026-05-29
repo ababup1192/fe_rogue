@@ -5,12 +5,15 @@
 mod TestMapScene {
 
     /// 簡単な ModulePlacement 生成ヘルパー。
+    /// テストでは「gridSize 全体が床」を仮定して floorBounds を (0,0)..(w,h) で埋める。
     def placement(idx: Int32, ox: Int32, oy: Int32, w: Int32, h: Int32):
                   DungeonComposer.ModulePlacement =
         {
-            idx      = idx,
-            offset   = ({x = ox, y = oy}: {x = Int32, y = Int32}),
-            gridSize = ({x = w,  y = h }: {x = Int32, y = Int32})
+            idx              = idx,
+            offset           = ({x = ox, y = oy}: {x = Int32, y = Int32}),
+            gridSize         = ({x = w,  y = h }: {x = Int32, y = Int32}),
+            floorBoundsMin   = ({x = 0,  y = 0 }: {x = Int32, y = Int32}),
+            floorBoundsMaxEx = ({x = w,  y = h }: {x = Int32, y = Int32})
         }
 
     /// 単一モジュールの内部セル → そのモジュールの idx

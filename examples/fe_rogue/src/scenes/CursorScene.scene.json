@@ -7,8 +7,8 @@
         0
       ],
       "scale": [
-        1,
-        1
+        1.625,
+        1.625
       ],
       "texture": "cursor",
       "type": "Sprite2D",

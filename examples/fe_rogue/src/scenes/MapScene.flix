@@ -45,11 +45,14 @@ mod MapScene {
         // 「セル → モジュール idx」逆引きや、敵スポーン候補セルの列挙に使う。
         // anchor を除く部屋判定 / 通路除外もこのリストから判定する（idx < roomCount）。
         // 構造は engine の DungeonComposer.ModulePlacement と一致：
-        //   {idx = Int32, offset = {x,y = Int32}, gridSize = {x,y = Int32}}
+        //   {idx, offset, gridSize, floorBoundsMin, floorBoundsMaxEx}
+        // n-format では gridSize ≫ 床範囲なので bbox 判定は floorBounds を使う。
         // Flix 0.72.0 の test stage で cross-package type alias が解決されないため展開済み。
         placements   = List[{idx = Int32,
                               offset = {x = Int32, y = Int32},
-                              gridSize = {x = Int32, y = Int32}}],
+                              gridSize = {x = Int32, y = Int32},
+                              floorBoundsMin = {x = Int32, y = Int32},
+                              floorBoundsMaxEx = {x = Int32, y = Int32}}],
         // 部屋数。modulePaths が「部屋を先・通路を後ろ」で並ぶ前提なので
         // idx < roomCount なら「部屋」、それ以外は「通路」と判定できる。
         roomCount    = Int32
@@ -69,25 +72,15 @@ mod MapScene {
     /// 自身のノードをここの子として `addChildAt` する起点
     pub def worldPath(): NodePath = worldName() :: Nil
 
-    /// Walls レイヤー（衝突あり）が使うタイルセットのテクスチャ名
-    def textureName(): String = "inca_tileset"
+    /// Walls / Floor 共通テクスチャ名（n-format は両層で同一タイルセットを使う）。
+    def textureName(): String = "tileset_dungeon_green"
 
-    /// Floor 装飾レイヤーのテクスチャ名（LDTK 上の "Floor" レイヤーが参照）
-    def floorTextureName(): String = "tilemap_floor"
-
-    /// ランダム生成設定: 部屋数 (引数) と利用可能な部屋・通路プール。
-    /// パスは新形式 `.map.json` (IDE Maps タブで編集可能)。DungeonComposer は
-    /// 拡張子で MapLoader / LDTKLoader を dispatch する (旧 `.ldtkl` も読める)。
+    /// ランダム生成設定: 部屋数 (引数) と利用可能な部屋・通路プール (n-format)。
+    /// 部屋は 1 種類 (level_0n)、通路は横 (pathway_1n) / 縦 (pathway_2n) 各 1 種類。
     def generatorConfig(roomCount: Int32): DungeonGenerator.Config = {
-        roomPaths       = "assets/maps/level_0.map.json" ::
-                          "assets/maps/level_1.map.json" ::
-                          "assets/maps/level_2.map.json" ::
-                          "assets/maps/level_3.map.json" ::
-                          "assets/maps/level_4.map.json" :: Nil,
-        horizontalPaths = "assets/maps/pathway_1.map.json" ::
-                          "assets/maps/pathway_4.map.json" :: Nil,
-        verticalPaths   = "assets/maps/pathway_2.map.json" ::
-                          "assets/maps/pathway_3.map.json" :: Nil,
+        roomPaths       = "assets/maps/level_0n.map.json" :: Nil,
+        horizontalPaths = "assets/maps/pathway_1n.map.json" :: Nil,
+        verticalPaths   = "assets/maps/pathway_2n.map.json" :: Nil,
         roomCount       = roomCount
     }
 
@@ -98,31 +91,24 @@ mod MapScene {
         // 単一 .map.json (level_0) を MapLoader 経由で描画する。視覚一致確認用。
         let modeStr = unsafe IO { JSystem.getenv("FE_ROGUE_MODE") };
         let isMapTest = not Object.isNull(modeStr) and modeStr == "map-test";
-        if (isMapTest) addFromMapJson("assets/maps/level_0.map.json", scene)
+        if (isMapTest) addFromMapJson("assets/maps/level_0n.map.json", scene)
         else           addFromLdtk(floor, scene)
 
     /// 既存ルート: DungeonGenerator + DungeonComposer で複数モジュールを連結する。
+    /// n-format: composer が Walls 層と Floor 層を同時に構築して返す。
     def addFromLdtk(floor: FloorCatalog.FloorResource, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO} =
         let plan = DungeonGenerator.generate(textureName(),
                                               generatorConfig(floor#generation#roomCount));
-        // LDTK の auto-tile rules を consumer 側で読み込んで渡す
-        // （engine の DungeonComposer は path を持たない純粋関数）
-        let ruleSet = LDTKRules.loadRules("assets/ldtk/FE.ldtk");
         let result = DungeonComposer.composeFromSideConnections(textureName(),
-                                                                 ruleSet,
                                                                  plan#modulePaths,
                                                                  plan#sideConnections);
         let mapData: Data = { anchorOffset = result#anchorOffset,
                                spawnGrid    = result#spawnGrid,
                                placements   = result#placements,
                                roomCount    = plan#roomCount };
-        // Floor 装飾レイヤーを Walls の下（zIndex < Walls）に重ねる。
-        // tilemap_floor テクスチャを使用、衝突なし、auto-rule 再適用なし。
-        let floorRaw = DungeonComposer.composeDecorationLayer(floorTextureName(),
-                                                                result#moduleSpecs,
-                                                                "Floor");
-        let floorLayer = CanvasItem.setZIndex(-1, floorRaw);
+        // Floor 層は Walls の下（zIndex = -1）に重ねる。
+        let floorLayer = CanvasItem.setZIndex(-1, result#floorLayer);
         // Player / Enemy をまとめる Y-sort root。これより前に登録することで
         // PlayerScene.add / EnemyScene.add が `worldPath()` を起点にできる。
         scene
@@ -134,7 +120,7 @@ mod MapScene {
 
     /// 新ルート (視覚一致確認用): 単一 .map.json を MapLoader 経由で描画する。
     /// DungeonComposer は通さない (auto-rule 再評価なし)。
-    /// manualTiles は Walls 層 (inca_tileset)、decorTiles は Floor 層 (tilemap_floor) を別 layer で描画。
+    /// Walls / Floor 層は同一テクスチャ (tileset_dungeon_green) を共有する。
     /// Player/Enemy 配置は最小ダミー (spawnGrid を level 内の安全セルに固定)。
     pub def addFromMapJson(levelPath: String, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead} =
@@ -148,8 +134,8 @@ mod MapScene {
             collisionCells = raw#collisionCells,
             gridSize       = raw#gridSize
         }) |> TileMapLayer.withGpuResources(tileVaoId, tileCount);
-        // Floor 装飾層 (decorTiles, 別 texture): Walls の下 (zIndex=-1) に重ねる
-        let floorLayer = MapLoader.loadDecorLayer(levelPath, floorTextureName())
+        // Floor 装飾層 (decorTiles): Walls と同テクスチャ、Walls の下 (zIndex=-1) に重ねる
+        let floorLayer = MapLoader.loadDecorLayer(levelPath, textureName())
             |> CanvasItem.setZIndex(-1);
         let gs = raw#gridSize;
         // 簡易 spawn: (3, 3) が床であることが多い。床でなければ最初の床セルを使う。
@@ -158,10 +144,14 @@ mod MapScene {
             anchorOffset = ({x = 0, y = 0}: {x = Int32, y = Int32}),
             spawnGrid    = safe,
             placements   = ({
-                idx      = 0,
-                offset   = ({x = 0, y = 0}: {x = Int32, y = Int32}),
-                gridSize = gs
-            }: {idx = Int32, offset = {x = Int32, y = Int32}, gridSize = {x = Int32, y = Int32}}) :: Nil,
+                idx              = 0,
+                offset           = ({x = 0, y = 0}: {x = Int32, y = Int32}),
+                gridSize         = gs,
+                // map-test では合成しないので floorBounds = gridSize 全体を採用
+                floorBoundsMin   = ({x = 0, y = 0}: {x = Int32, y = Int32}),
+                floorBoundsMaxEx = gs
+            }: {idx = Int32, offset = {x = Int32, y = Int32}, gridSize = {x = Int32, y = Int32},
+                 floorBoundsMin = {x = Int32, y = Int32}, floorBoundsMaxEx = {x = Int32, y = Int32}}) :: Nil,
             roomCount    = 1
         };
         scene
@@ -227,9 +217,11 @@ mod MapScene {
     pub def getRoomCount(scene: Scene[NodeTag]): Int32 =
         getMapData(scene)#roomCount
 
-    /// LDTK 由来のタイルサイズ（ピクセル）。MapScene の TileMapLayer と同じ 16px 正方形を前提。
+    /// マップのセル幅（ピクセル）。n-format ダンジョン (`tileset_dungeon_green`, 26px) に合わせる。
     /// グリッド ⇄ ピクセル変換が必要な全 Scene が参照する唯一の情報源。
-    pub def tileSize(): Float64 = 16.0
+    /// キャラクタースプライト (16x16) はセル中央に置かれて 5px の余白ができる
+    /// （UI スプライト: cursor / range / flag / arrow は 1.625 倍にスケールしてセル枠に揃える）。
+    pub def tileSize(): Float64 = 26.0
 
     /// グリッド座標 → セル中心ピクセル座標。`tileSize` で求めた正方形セルの中央点を返す。
     /// MapScene の `mapToLocal` 慣習に揃えてあり、Marker2D / Sprite2D を「マスのど真ん中」に
@@ -241,14 +233,15 @@ mod MapScene {
 
     /// `placements` を「先勝ち（idx 昇順）」で走査し、`coord` を含む最初のモジュール idx を返す。
     /// modulePaths は「部屋を先・通路を後ろ」で並ぶため、部屋優先で逆引きできる。
+    /// bbox は `floorBoundsMin/MaxEx` ベース（n-format で gridSize より厳しい実効床範囲）。
     /// MapSnapshot.moduleOfCell の実装。
     pub def moduleOfCellIn(coord: {x = Int32, y = Int32},
                             placements: List[DungeonComposer.ModulePlacement]): Option[Int32] =
         List.findMap(p -> {
-            let minX = p#offset#x;
-            let minY = p#offset#y;
-            let maxX = p#offset#x + p#gridSize#x;
-            let maxY = p#offset#y + p#gridSize#y;
+            let minX = p#offset#x + p#floorBoundsMin#x;
+            let minY = p#offset#y + p#floorBoundsMin#y;
+            let maxX = p#offset#x + p#floorBoundsMaxEx#x;
+            let maxY = p#offset#y + p#floorBoundsMaxEx#y;
             if (coord#x >= minX and coord#x < maxX
                 and coord#y >= minY and coord#y < maxY) Some(p#idx)
             else None

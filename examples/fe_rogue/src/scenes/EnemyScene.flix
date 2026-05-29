@@ -203,13 +203,15 @@ mod EnemyScene {
                     }
             }
 
-    /// 部屋の bbox（offset + gridSize）に含まれる床セルを列挙する。
+    /// 部屋の bbox（offset + floorBounds）に含まれる床セルを列挙する。
+    /// n-format では gridSize が床範囲より広いため、floorBounds で絞らないと
+    /// 隣接する通路の床まで候補に入って通路に敵がスポーンしてしまう。
     def floorCellsInRoom(layer: TileMapLayer,
                           p: DungeonComposer.ModulePlacement): List[{x = Int32, y = Int32}] =
-        let minX = p#offset#x;
-        let minY = p#offset#y;
-        let maxX = p#offset#x + p#gridSize#x;
-        let maxY = p#offset#y + p#gridSize#y;
+        let minX = p#offset#x + p#floorBoundsMin#x;
+        let minY = p#offset#y + p#floorBoundsMin#y;
+        let maxX = p#offset#x + p#floorBoundsMaxEx#x;
+        let maxY = p#offset#y + p#floorBoundsMaxEx#y;
         let xs = List.range(minX, maxX);
         let ys = List.range(minY, maxY);
         List.flatMap(y ->

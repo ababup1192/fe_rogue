@@ -1,51 +1,35 @@
-/// 複数の LDTK モジュール（部屋・通路）を 1 枚の TileMapLayer にマージする。
+/// 複数の `.map.json` モジュール（部屋・通路）を 1 つの dungeon にマージする。
 ///
-/// 設計方針: 「配置決定」と「合成」を分離する。
-///   - 配置（どの ldtkPath を どの offsetGrid に置くか）は呼び出し側が決める。
-///   - どの Door セルを開ける（壁→床）かも呼び出し側がワールド座標で指定する。
-///   - 本モジュールは与えられた仕様を素直にマージするだけで、ランダム性や
-///     方向判定のような決定ロジックは持たない。これにより将来 DungeonPlanner が
-///     上に乗っかってランダムダンジョンを作る際にも、API は変えずに済む。
+/// **n-format 設計**
+///   - room の Door は空セルで配置される → 合成時に Door 位置へ床 decorTile を追加し、
+///     1 マスの出っ張りを作る。anchor 部屋の `material.json` の `autoRules`
+///     （右出っ張り右壁キャップ等）がその周辺に装飾タイルを描く。
+///   - pathway の Door も空セル。floor は Door の 1 マス先から始まる。
+///   - door A と door B を「同じ合成座標で重ねる」ことで、room の出っ張り floor と
+///     pathway の空 door セルが同一セルになり、シームレスに繋がる。
 ///
-/// **3 段の API**
-///   - 低レベル: `compose(textureName, modules, openDoors)` — 各モジュールの
-///     offsetGrid と openDoors を呼び出し側が手で計算して渡す。
-///   - 中レベル: `composeFromConnections(textureName, modulePaths, connections)` —
-///     「Door A と Door B を重ねる」という連結グラフ（Door は grid 座標で指定）から
-///     offsetGrid / openDoors を自動導出して内部で `compose` を呼ぶ。
+/// 出力は Walls 層と Floor 層を別々の TileMapLayer として返す。
+/// テクスチャは全モジュール共通（呼び出し側が 1 つの textureName を指定）。
+///
+/// **API**
 ///   - 高レベル: `composeFromSideConnections(textureName, modulePaths, sideConnections)` —
-///     Door を `DoorSide` 列挙（Left/Right/Top/Bottom）で指定する。Composer が各モジュールの
-///     `doors` 一覧から min-x/max-x/min-y/max-y で該当 Door の grid 座標を解決して
-///     `composeFromConnections` に橋渡しする。MapScene などはこちらを使うのが最も簡潔。
-///     ⚠️ 1 辺に複数 Door があるケース（幅 2 マスの通路など）は曖昧になるので、
-///     その場合は中レベルの `composeFromConnections` を使うか拡張する。
-///
-/// **重要: モジュール順序が重なり優先度を決める**
-///   modules の前に来たモジュールが同じ px / セルでの勝者になる。
-///   後続モジュールは「既に塞がれていない」位置にだけタイル / 衝突を追加する。
-///   部屋を先に渡し、通路を後ろに置くと、Overlap 領域で部屋の壁スプライトが
-///   優先され、通路の corridor wall は重ならない位置にだけ追加される。
-///
-/// マージ手順:
-///   1. 各モジュールを LDTKLoader.loadLevelRaw で読み込む（GPU アップロードなし）。
-///   2. tiles の px と collisionCells を offsetGrid * tileSize / offsetGrid だけずらす。
-///   3. modules の順に走査し、既に登録済みの px / セル位置に対する後続タイル / 衝突を捨てる。
-///      モジュール内部の重複（同一 px に flip 違いを 2 枚重ねる演出など）は保持する。
-///   4. openDoors（ワールド座標）に該当する collisionCells と TileData を取り除く。
-///      これで Door 位置の壁が床になる。openDoors に含まれない Door は壁のまま残る。
-///   5. GPU インスタンスを構築し、initTileBuffer を 1 回だけ呼んで TileMapLayer を返す。
+///     Door を `DoorSide` 列挙で指定。Composer が min/max で grid 座標に解決。
+///   - 中レベル: `composeFromConnections(textureName, modulePaths, connections)` —
+///     Door を `DoorRef` (moduleIndex + grid) で指定。
+///   - メタ取得: `loadLevelRawDispatch(path, textureName)` —
+///     DungeonGenerator が gridSize と doors のみを得るためのローダー（new pipeline では未使用）。
 mod DungeonComposer {
 
-    /// 1 モジュール（LDTK or 新形式 .map.json ファイル）の配置仕様。
-    /// offsetGrid はグリッド単位の左上配置位置（例: {x = 8, y = 0} なら 8 セル右にずらす）。
-    /// `ldtkPath` フィールド名は歴史的経緯。`.ldtkl` でも `.map.json` でも受ける。
+    /// 1 モジュールの配置仕様。
+    /// `ldtkPath` フィールド名は歴史的経緯。`.map.json` を渡す。
     pub type alias ModuleSpec = {
         ldtkPath   = String,
         offsetGrid = {x = Int32, y = Int32}
     }
 
     /// ファイル拡張子で `.map.json` (MapLoader) と `.ldtkl` (LDTKLoader) を分岐するローダー。
-    /// 戻り値は LDTKLevelRaw 形式に揃え、下流の合成ロジックを共通化する。
+    /// 新 pipeline は `Persistence.load` を直接使うが、DungeonGenerator は引き続き
+    /// この dispatcher 経由で gridSize / doors を取得する。
     pub def loadLevelRawDispatch(path: String, textureName: String): LDTKLoader.LDTKLevelRaw
             \ { GameEngine.Game, Fs.FileRead } =
         if (String.endsWith({suffix = ".map.json"}, path))
@@ -56,369 +40,379 @@ mod DungeonComposer {
                 textureName = textureName
             }))
 
-    /// 装飾レイヤー版 dispatcher。`.map.json` なら decorTiles、`.ldtkl` なら指定 layer を読む。
-    pub def loadLayerRawDispatch(path: String, textureName: String,
-                                   layerIdentifier: String): LDTKLoader.LDTKLayerRaw
-            \ { GameEngine.Game, Fs.FileRead } =
-        if (String.endsWith({suffix = ".map.json"}, path))
-            MapLoader.loadDecorLayerRaw(path, textureName)
-        else
-            LDTKLoader.loadLayerByIdentifier(LDTKLoader.simpleConfig({
-                path        = path,
-                textureName = textureName
-            }), layerIdentifier)
-
-    /// 配置済みモジュール群を 1 枚の TileMapLayer にマージする。
-    /// openDoors にはワールド座標（オフセット適用後）のセルを渡す。
-    /// 該当セルは壁から床に書き換えられる。
-    /// 全モジュールは同一 textureName のタイルセットを使う前提（混ぜたい場合は別途設計が必要）。
-    pub def compose(textureName: String,
-                     ruleSet: LDTKRules.AutoRuleSet,
-                     modules: List[ModuleSpec],
-                     openDoors: List[{x = Int32, y = Int32}]): TileMapLayer
-            \ { GameEngine.Game, Fs.FileRead } =
-        match modules {
-            case Nil => bug!("DungeonComposer: modules must not be empty")
-            case _   => composeNonEmpty(textureName, ruleSet, modules, openDoors)
-        }
-
-    /// modules が非空であることを前提にした本体。tileSet を最初のモジュールから採用する。
-    def composeNonEmpty(textureName: String,
-                         ruleSet: LDTKRules.AutoRuleSet,
-                         modules: List[ModuleSpec],
-                         openDoors: List[{x = Int32, y = Int32}]): TileMapLayer
-            \ { GameEngine.Game, Fs.FileRead } =
-        // 1. すべてのモジュールをロードして offsetGrid 分平行移動する
-        let placed = List.map(spec -> loadAndOffset(textureName, spec), modules);
-
-        // tileSet と tileSize は全モジュール共通の前提（最初のモジュールから採用）。
-        // modules 非空は呼び出し側 compose で保証済み。
-        let firstRaw = match List.head(placed) {
-            case Some(r) => r
-            case None    => bug!("DungeonComposer: composeNonEmpty received empty placed list")
-        };
-        let tileSet  = firstRaw#tileSet;
-        let tileSize = firstRaw#tileSize;
-
-        // 2. modules の順に collisionCells を「先勝ち」でマージする
-        //    （同じセルに既に collision があれば後続を捨てる）。
-        //    タイルは auto-tile で完全再生成するためここではマージ不要。
-        let mergedCollisions =
-            List.foldLeft(acc -> raw -> {
-                let newCells = List.filter(
-                    cell -> not List.exists(c -> vec2Eq(c, cell), acc),
-                    raw#collisionCells);
-                List.append(acc, newCells)
-            }, Nil, placed);
-
-        // 3. openDoors（ワールド座標）に該当する壁を取り除く
-        let doorCellsF: List[Vec2.Vec2] = List.map(c -> Vec2i.toVec2(c), openDoors);
-        let openedCollisions =
-            List.filter(cell -> not (doorCellsF |> List.exists(d -> vec2Eq(d, cell))),
-                        mergedCollisions);
-
-        // 4. 全体の grid サイズ（モジュール bounding box）
-        let mergedGridSize = boundingBoxGridSize(modules, placed);
-
-        // 5. void-fill: どのモジュールの content にもカバーされていない in-bounds セルを
-        //    強制的に collision に追加する（描画タイルは無し ＝ 真っ黒）。
-        //    pathway の bbox 内空セルや、隣接するモジュール間の隙間を player から不可侵にする。
-        let coveredRects = contentRectsOf(placed);
-        let voidWalls = collectVoidCells(mergedGridSize, coveredRects);
-        let withVoid = List.append(openedCollisions, voidWalls);
-
-        // 6. auto-tile: マージ後の merged intGrid に LDTK の auto-rule を再適用して
-        //    タイルを再生成する。各モジュールが独立に焼いた壁スプライトを破棄し、
-        //    境界の neighborhood に応じた一貫したタイル並びにする。
-        //    intGrid 上は void セルも壁(=1)扱い（OOB 値と同じ）として周縁の判定を正しく
-        //    保つが、出力タイルは「いずれかのモジュールが content として持つ cell」だけに
-        //    限定する（void 領域に巨大な wall-fill ブロックが出来るのを防ぐ）。
-        let intGrid = buildIntGridFn(withVoid);
-        let tex = textureSize(tileSet);
-        let allAutoTiles = LDTKRules.applyRules(ruleSet, intGrid, mergedGridSize, tex);
-        // content rect を 1 cell 外側に拡張した範囲を「描画対象」とする。
-        // これでモジュール周縁の void wall（外周フレーム）が描画される一方、
-        // 2 cell 以上離れた deep void は黒のまま残る。
-        let paddedRects = List.map(expandRect, coveredRects);
-        let autoTiles = List.filter(tile -> {
-            let cellX = Float64.tryToInt32(tile#px#x / tileSize) |> Option.getWithDefault(0i32);
-            let cellY = Float64.tryToInt32(tile#px#y / tileSize) |> Option.getWithDefault(0i32);
-            anyContains(paddedRects, ({x = cellX, y = cellY}: {x = Int32, y = Int32}))
-        }, allAutoTiles);
-
-        // 7. GPU インスタンスを 1 回だけアップロード
-        let instances = LDTKLoader.buildTileInstances(autoTiles, tileSet, tileSize);
-        let (tileVaoId, tileCount) = GameEngine.Game.initTileBuffer(instances);
-
-        TileMapLayer.make({
-            tileSet        = tileSet,
-            tiles          = autoTiles,
-            collisionCells = withVoid,
-            gridSize       = mergedGridSize
-        }) |> TileMapLayer.withGpuResources(tileVaoId, tileCount)
-
-    /// merged collisionCells から `(x, y) -> 1 if wall else 0` の関数を作る。
-    /// この関数は範囲外を呼び出されないことを前提（範囲外処理は LDTKRules が行う）。
-    def buildIntGridFn(collisions: List[Vec2.Vec2]): (Int32, Int32) -> Int32 =
-        (x, y) -> {
-            let cx = Int32.toFloat64(x);
-            let cy = Int32.toFloat64(y);
-            if (List.exists(c -> c#x == cx and c#y == cy, collisions)) 1i32
-            else 0i32
-        }
-
-    /// TileSet から atlas のピクセル寸法を取り出す。
-    def textureSize(tileSet: TileSet): { width = Float64, height = Float64 } =
-        { width  = tileSet#atlasSource#texWidth,
-          height = tileSet#atlasSource#texHeight }
-
-    /// 各モジュールの「content bbox」（= 衝突セルのワールド座標 bbox）一覧を返す。
-    /// 衝突セルが空なモジュールは bbox が空なので除外（影響しない）。
-    /// 戻り値の rect は (minInclusive, maxExclusive) のペア。
-    def contentRectsOf(placed: List[LDTKLoader.LDTKLevelRaw]): List[({x = Int32, y = Int32}, {x = Int32, y = Int32})] =
-        List.filterMap(raw -> {
-            match raw#collisionCells {
-                case Nil => None
-                case head :: rest =>
-                    let initMin: {x = Int32, y = Int32} = vec2ToI(head);
-                    let initMax: {x = Int32, y = Int32} = ({x = initMin#x + 1, y = initMin#y + 1}: {x = Int32, y = Int32});
-                    let (mn, mx) = List.foldLeft(acc -> cell -> {
-                        let (curMin, curMax) = acc;
-                        let ci = vec2ToI(cell);
-                        let newMin: {x = Int32, y = Int32} =
-                            {x = Int32.min(curMin#x, ci#x),
-                             y = Int32.min(curMin#y, ci#y)};
-                        let newMax: {x = Int32, y = Int32} =
-                            {x = Int32.max(curMax#x, ci#x + 1),
-                             y = Int32.max(curMax#y, ci#y + 1)};
-                        (newMin, newMax)
-                    }, (initMin, initMax), rest);
-                    Some((mn, mx))
-            }
-        }, placed)
-
-    /// gridSize 内の全セルを走査し、どの coveredRect にも入っていないものを返す。
-    def collectVoidCells(gridSize: {x = Int32, y = Int32},
-                          coveredRects: List[({x = Int32, y = Int32}, {x = Int32, y = Int32})]): List[Vec2.Vec2] =
-        let xs = List.range(0, gridSize#x);
-        let ys = List.range(0, gridSize#y);
-        List.flatMap(y ->
-            List.filterMap(x -> {
-                let ci: {x = Int32, y = Int32} = {x = x, y = y};
-                if (anyContains(coveredRects, ci)) None
-                else Some(({x = Int32.toFloat64(x), y = Int32.toFloat64(y)}: Vec2.Vec2))
-            }, xs),
-            ys)
-
-    /// 指定セルがいずれかの rect (minInclusive..maxExclusive) に含まれるか。
-    def anyContains(rects: List[({x = Int32, y = Int32}, {x = Int32, y = Int32})], cell: {x = Int32, y = Int32}): Bool =
-        List.exists(r -> {
-            let (mn, mx) = r;
-            cell#x >= mn#x and cell#x < mx#x and
-            cell#y >= mn#y and cell#y < mx#y
-        }, rects)
-
-    /// rect を上下左右に 1 cell 拡張する。
-    /// auto-tile 描画対象の判定で「content の外周 1 cell 分」を含めるために使う。
-    def expandRect(r: ({x = Int32, y = Int32}, {x = Int32, y = Int32})): ({x = Int32, y = Int32}, {x = Int32, y = Int32}) =
-        let (mn, mx) = r;
-        (({x = mn#x - 1, y = mn#y - 1}: {x = Int32, y = Int32}),
-         ({x = mx#x + 1, y = mx#y + 1}: {x = Int32, y = Int32}))
-
-    /// Vec2 (Float64) → Vec2i (Int32) 変換（座標は整数 cell として保存されている前提）。
-    def vec2ToI(v: Vec2.Vec2): {x = Int32, y = Int32} =
-        {x = Float64.tryToInt32(v#x) |> Option.getWithDefault(0i32),
-         y = Float64.tryToInt32(v#y) |> Option.getWithDefault(0i32)}
-
-    /// 1 モジュールをロードして offsetGrid 分だけタイル / 衝突セルを平行移動する。
-    /// 戻り値は offset 適用済みの LDTKLevelRaw。
-    def loadAndOffset(textureName: String, spec: ModuleSpec): LDTKLoader.LDTKLevelRaw
-            \ { GameEngine.Game, Fs.FileRead } =
-        let raw = loadLevelRawDispatch(spec#ldtkPath, textureName);
-        let tileSize  = raw#tileSize;
-        let offsetPx  = Vec2.mul(Vec2i.toVec2(spec#offsetGrid), tileSize);
-        let offsetCell: Vec2.Vec2 = Vec2i.toVec2(spec#offsetGrid);
-
-        let shiftedTiles = List.map(tile -> {
-            { px = Vec2.add(tile#px, offsetPx) | tile }
-        }, raw#tiles);
-        let shiftedCollisions = List.map(cell -> Vec2.add(cell, offsetCell),
-                                          raw#collisionCells);
-
-        {
-            tiles          = shiftedTiles,
-            collisionCells = shiftedCollisions,
-            doors          = raw#doors,        // 平行移動は openDoors 解決の責務外
-            tileSet        = raw#tileSet,
-            gridSize       = raw#gridSize,
-            tileSize       = tileSize
-        }
-
-    /// マージ後の grid 寸法（モジュール群の bounding box の右下端）。
-    /// モジュール i の右下端 = offsetGrid_i + gridSize_i。これらの max を取る。
-    def boundingBoxGridSize(modules: List[ModuleSpec],
-                              placed: List[LDTKLoader.LDTKLevelRaw]): {x = Int32, y = Int32} =
-        List.zip(modules, placed)
-            |> List.foldLeft(acc -> entry -> {
-                let (spec, raw) = entry;
-                let rightBottom: {x = Int32, y = Int32} = Vec2i.add(spec#offsetGrid, raw#gridSize);
-                {x = Int32.max(acc#x, rightBottom#x),
-                 y = Int32.max(acc#y, rightBottom#y)}
-            }, Vec2i.zero())
-
-    // ────────────────────────────────────────────────────────
-    // 等値比較ヘルパー
-    // ────────────────────────────────────────────────────────
-
-    /// Vec2 同士の値同値（Float64 == 比較）。
-    /// オフセットは整数 * tileSize なので浮動小数点誤差は出ない前提。
-    def vec2Eq(a: Vec2.Vec2, b: Vec2.Vec2): Bool =
-        a#x == b#x and a#y == b#y
-
-    /// Vec2i 同士の値同値（Int32 == 比較）。
-    def vec2EqI(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Bool =
-        a#x == b#x and a#y == b#y
-
-    // ════════════════════════════════════════════════════════
-    // 高レベル API: Connection グラフから offsetGrid / openDoors を自動導出
-    // ════════════════════════════════════════════════════════
-
     /// あるモジュール内の特定の Door を指す参照。
-    /// moduleIndex は composeFromConnections の modulePaths リスト上の 0-base index。
-    /// grid はそのモジュールのローカル grid 座標（LDTK の __grid と同じ値）。
+    /// moduleIndex は composeFromConnections の modulePaths 上の 0-base index。
+    /// grid はそのモジュールのローカル grid 座標。
     pub type alias DoorRef = {
         moduleIndex = Int32,
         grid        = {x = Int32, y = Int32}
     }
 
     /// 2 つの Door を「同じワールド座標に重ねる」連結指示。
-    /// `a` と `b` のどちらが先に配置済みでもよい（BFS で順序非依存）。
     pub type alias Connection = {
         a = DoorRef,
         b = DoorRef
     }
 
     /// 配置済み 1 モジュールのワールド bbox。
-    /// `idx` は `modulePaths` 上の 0-base index（先勝ち優先度と一致）。
-    /// `offset` は正規化後の offsetGrid。`gridSize` は LDTK の元寸法。
-    /// 「セル → モジュール index」逆引きや、敵スポーン候補セルの列挙に使う。
+    /// - `gridSize` はモジュールの literal 寸法（`.map.json` の width × height）。
+    /// - `floorBoundsMin/MaxEx` はモジュール内の **decorTiles ∪ doors** の bbox（モジュール局所座標、
+    ///   半開区間）。n-format では `gridSize` が床まわりの余白を含むため、セル所有判定
+    ///   （moduleOfCell / 敵・アイテムのスポーン候補）には floorBounds を使う。
     pub type alias ModulePlacement = {
-        idx      = Int32,
-        offset   = {x = Int32, y = Int32},
-        gridSize = {x = Int32, y = Int32}
+        idx              = Int32,
+        offset           = {x = Int32, y = Int32},
+        gridSize         = {x = Int32, y = Int32},
+        floorBoundsMin   = {x = Int32, y = Int32},
+        floorBoundsMaxEx = {x = Int32, y = Int32}
     }
 
-    /// 高レベル API の戻り値。
-    /// - `anchorOffset` は modulePaths[0] の正規化後 offsetGrid。
-    /// - `spawnGrid` は anchor 内で「壁でない」と保証されたセルのワールド座標。
-    ///   anchor 部屋の中心に最も近い床セルを採用する。
-    ///   PlayerScene 等のスポーン位置に使うことで、(5,5) が壁の LDTK でも安全。
-    /// - `moduleSpecs` は配置決定後の (path, offsetGrid) リスト。
-    ///   別レイヤー（Floor 等）を同じ配置で重ねて描画する際に使う。
-    /// - `placements` は配置済み全モジュールのワールド bbox（offset + gridSize）。
-    ///   moduleSpecs と同じ idx 順で並ぶ。
+    /// 合成結果。
+    /// - `layer` は Walls 層（自動壁 + autoRules、collisionCells あり）
+    /// - `floorLayer` は Floor 層（decorTiles + door 出っ張り床、collisionCells なし）
+    ///   呼び出し側が `zIndex = -1` を設定して Walls 層の下に重ねる。
     pub type alias ComposeResult = {
         layer        = TileMapLayer,
+        floorLayer   = TileMapLayer,
         anchorOffset = {x = Int32, y = Int32},
         spawnGrid    = {x = Int32, y = Int32},
         moduleSpecs  = List[ModuleSpec],
         placements   = List[ModulePlacement]
     }
 
-    /// 連結グラフから offsetGrid と openDoors を自動導出して compose を呼ぶ。
-    /// modulePaths[0] をアンカー（offset (0,0)）として固定し、connections を
-    /// BFS で辿って各モジュールの offsetGrid を決定する。
-    /// その後、すべての offset の最小値が (0,0) になるよう正規化する
-    /// （Top / Left 方向の連結で発生する負 offset を非負領域に収める）。
-    /// modulePaths の順序はそのまま compose に伝わる ＝ 「先勝ち dedup」の優先度。
-    /// 部屋を先・通路を後ろに置くと、Overlap 領域で部屋スプライトが残る。
+    /// モジュール 1 個をロードした内部表現。
+    /// - `levelData` は decorTiles / entities / materialId を含む `MapResource.LevelData`
+    /// - `doors`     は entities から `identifier == "Door"` を filter したもの
+    /// - `floorSrc`  は decorTiles 先頭からサンプルした (srcX, srcY)。Door 出っ張り床に使う。
+    type alias LoadedModule = {
+        path      = String,
+        levelData = MapResource.LevelData,
+        doors     = List[{x = Int32, y = Int32}],
+        floorSrc  = (Int32, Int32)
+    }
+
+    // ════════════════════════════════════════════════════════
+    // 高レベル / 中レベル API
+    // ════════════════════════════════════════════════════════
+
+    /// Side ベースで連結を指定する高レベル API。
+    /// 各 SideRef を `(moduleIndex, grid)` の DoorRef に解決してから内部で合成する。
+    pub def composeFromSideConnections(textureName: String,
+                                        modulePaths: List[String],
+                                        sideConnections: List[SideConnection]): ComposeResult
+            \ { GameEngine.Game, Fs.FileRead } =
+        let n = List.length(modulePaths);
+        if (n == 0) bug!("DungeonComposer: modulePaths must not be empty")
+        else
+            let loaded = List.map(loadModule, modulePaths);
+            let connections = List.map(sc -> ({
+                a = resolveSideRef(sc#a, loaded, n),
+                b = resolveSideRef(sc#b, loaded, n)
+            }: Connection), sideConnections);
+            composeFromLoaded(textureName, modulePaths, loaded, connections)
+
+    /// Door の grid 座標を直接指定する中レベル API。
     pub def composeFromConnections(textureName: String,
-                                    ruleSet: LDTKRules.AutoRuleSet,
                                     modulePaths: List[String],
                                     connections: List[Connection]): ComposeResult
             \ { GameEngine.Game, Fs.FileRead } =
         let n = List.length(modulePaths);
         if (n == 0) bug!("DungeonComposer: modulePaths must not be empty")
         else
-            // 1. ロードして doors / gridSize を検査用に取得（compose 内でも再ロードする）。
-            //    起動時 1 回の読み込みなのでコスト的には無視できる。
-            let raws = List.map(path -> loadLevelRawDispatch(path, textureName), modulePaths);
-            // 2. 連結整合性の事前検査（早期 bug! で打ち間違いを検出）
-            let _ = validateConnections(connections, raws, n);
-            // 3. BFS で各モジュールの offsetGrid を算出（anchor (0,0) 基準）
-            let rawOffsets = bfsOffsets(connections);
-            // 4. 孤立モジュール検査（アンカーから到達不能なら bug!）
-            let _ = List.forEach(i ->
-                match Map.get(i, rawOffsets) {
-                    case Some(_) => ()
-                    case None    => bug!("DungeonComposer: module ${i} is not connected to anchor (modulePaths[0])")
-                },
-                List.range(0, n));
-            // 5. 正規化: 全 offsets の min を (0,0) に揃えるよう一律シフト
-            let minOff   = computeMinOffset(rawOffsets);
-            let shift    = Vec2i.sub(Vec2i.zero(), minOff);
-            let offsets  = shiftOffsets(rawOffsets, shift);
-            let anchorOffset = lookupOffset(0, offsets);
-            // 6. anchor 内の床セル（壁でないセル）でセンターに最近のものを spawnGrid とする
-            let anchorRaw = match List.head(raws) {
-                case Some(r) => r
-                case None    => bug!("DungeonComposer: raws is empty")
-            };
-            let spawnGrid = findSpawnInAnchor(anchorRaw, anchorOffset);
-            // 7. openDoors を構築（正規化後 offsets で）
-            let openDoors = List.map(c -> {
-                let off = lookupOffset(c#a#moduleIndex, offsets);
-                Vec2i.add(off, c#a#grid)
-            }, connections);
-            // 8. ModuleSpec リストを modulePaths 順に組み立てる
-            let modules = buildModuleSpecs(modulePaths, offsets);
-            // 8'. ModulePlacement リスト（offset + gridSize）を idx 順に組み立てる
-            let placements = buildPlacements(raws, offsets);
-            // 9. 既存 compose に委譲
-            let layer = compose(textureName, ruleSet, modules, openDoors);
-            { layer = layer, anchorOffset = anchorOffset, spawnGrid = spawnGrid,
-              moduleSpecs = modules, placements = placements }
+            let loaded = List.map(loadModule, modulePaths);
+            composeFromLoaded(textureName, modulePaths, loaded, connections)
 
-    /// anchor のローカル collisionCells を見て「壁でない」セルのうち
-    /// グリッド中心に最も近いものを返す。戻り値はワールド座標（anchorOffset 加算済み）。
-    /// 床セルが 1 つも無ければ bug!（部屋なら通常あり得ない）。
-    def findSpawnInAnchor(anchorRaw: LDTKLoader.LDTKLevelRaw,
-                           anchorOffset: {x = Int32, y = Int32}): {x = Int32, y = Int32} =
-        let gridSize = anchorRaw#gridSize;
-        let cx = gridSize#x / 2;
-        let cy = gridSize#y / 2;
-        let center: {x = Int32, y = Int32} = {x = cx, y = cy};
-        let walls = anchorRaw#collisionCells;
-        // 「local cell が壁か」: collisionCells は Float64 だが整数値を保持しているので == で比較
-        let isLocalWall = c -> List.exists(w ->
-            Float64.tryToInt32(w#x) == Some(c#x) and
-            Float64.tryToInt32(w#y) == Some(c#y), walls);
-        // 全セルを列挙（行優先）
-        let allCells: List[{x = Int32, y = Int32}] =
-            List.range(0, gridSize#y) |> List.flatMap(y ->
-                List.range(0, gridSize#x) |> List.map(x -> ({x = x, y = y}: {x = Int32, y = Int32})));
-        // 壁でないセルだけ残し、中心に最近のものを選ぶ
-        let nonWalls = List.filter(c -> not isLocalWall(c), allCells);
-        match nonWalls {
-            case Nil => bug!("DungeonComposer: anchor has no floor cell")
-            case head :: rest =>
-                let distSq = c -> {
-                    let d = Vec2i.sub(c, center);
-                    d#x * d#x + d#y * d#y
-                };
-                let best = List.foldLeft(acc -> c ->
-                    if (distSq(c) < distSq(acc)) c else acc, head, rest);
-                Vec2i.add(anchorOffset, best)
+    /// 内部本体: loaded モジュール + connections から ComposeResult を構築する。
+    def composeFromLoaded(textureName: String,
+                           modulePaths: List[String],
+                           loaded: List[LoadedModule],
+                           connections: List[Connection]): ComposeResult
+            \ { GameEngine.Game, Fs.FileRead } =
+        let n = List.length(modulePaths);
+        // 1. 連結整合性検査
+        let _ = validateConnections(connections, loaded, n);
+        // 2. BFS で offsetGrid 解決
+        let rawOffsets = bfsOffsets(connections);
+        // 3. 孤立モジュール検査
+        let _ = List.forEach(i ->
+            match Map.get(i, rawOffsets) {
+                case Some(_) => ()
+                case None    => bug!("DungeonComposer: module ${i} is not connected to anchor (modulePaths[0])")
+            }, List.range(0, n));
+        // 4. 正規化: 全 offsets の min を (0,0) に揃える
+        let minOff   = computeMinOffset(rawOffsets);
+        let shift    = Vec2i.sub(Vec2i.zero(), minOff);
+        let offsets  = shiftOffsets(rawOffsets, shift);
+        let anchorOffset = lookupOffset(0, offsets);
+        // 5. anchor の Material を読み込む（全体に適用）
+        let anchorLoaded = match List.head(loaded) {
+            case Some(l) => l
+            case None    => bug!("DungeonComposer: loaded is empty")
+        };
+        let anchorMaterial = loadAnchorMaterial(anchorLoaded);
+        let doorFloorSrc = anchorLoaded#floorSrc;
+        let tileSizeI = anchorLoaded#levelData#tileSize;
+        let tileSize  = Int32.toFloat64(tileSizeI);
+        // 6. spawnGrid（anchor 内の床セルでセンターに最近）
+        let spawnGrid = findSpawnInAnchor(anchorLoaded, anchorOffset);
+        // 7. ModuleSpec / ModulePlacement
+        let modules = buildModuleSpecs(modulePaths, offsets);
+        let placements = buildPlacements(loaded, offsets);
+        // 8. mergedFloor（world 座標 + door 出っ張り床追加）
+        let mergedFloor = buildMergedFloor(loaded, offsets, connections, doorFloorSrc);
+        // 9. 合成 grid 寸法
+        let mergedGridSize = boundingBoxGridSize(loaded, offsets);
+        // 10. TileSet（テクスチャ共通）
+        let tileSet = buildTileSet(textureName, tileSize);
+        // 11. Floor / Walls 層構築
+        let floorLayer = buildFloorLayer(mergedFloor, mergedGridSize, tileSet, tileSize);
+        let wallsLayer = buildWallsLayer(mergedFloor, mergedGridSize, anchorMaterial,
+                                          tileSet, tileSize, tileSizeI);
+        ({
+            layer        = wallsLayer,
+            floorLayer   = floorLayer,
+            anchorOffset = anchorOffset,
+            spawnGrid    = spawnGrid,
+            moduleSpecs  = modules,
+            placements   = placements
+        }: ComposeResult)
+
+    // ────────────────────────────────────────────────────────
+    // モジュールロード
+    // ────────────────────────────────────────────────────────
+
+    /// `.map.json` を `MapResource.Level` として読み込み、内部 LoadedModule に変換する。
+    def loadModule(path: String): LoadedModule \ Fs.FileRead =
+        let levelOpt: Option[MapResource.Level] = Persistence.load(path);
+        let level = match levelOpt {
+            case Some(l) => l
+            case None    => bug!("DungeonComposer: failed to load level ${path}")
+        };
+        let d = MapResource.levelData(level);
+        let doors = d#entities
+            |> List.filter(e -> e#identifier == "Door")
+            |> List.map(e -> ({x = e#x, y = e#y}: {x = Int32, y = Int32}));
+        let floorSrc = sampleFloorSrc(d);
+        ({path = path, levelData = d, doors = doors, floorSrc = floorSrc}: LoadedModule)
+
+    /// decorTiles 先頭から (srcX, srcY) を取り出す。空なら (0, 0)
+    /// （pathway 等の床なしモジュール用。Door 出っ張り床のサンプルは anchor からのみ取るため未使用）。
+    def sampleFloorSrc(d: MapResource.LevelData): (Int32, Int32) =
+        match List.head(d#decorTiles) {
+            case Some(t) => (t#srcX, t#srcY)
+            case None    => (0i32, 0i32)
         }
 
-    /// offsets の値の min(x, y) を求める。各次元の最小は別々のモジュールから来ても良い。
+    /// anchor の materialId から `.material.json` のパスを組み立てて読み込む。
+    def loadAnchorMaterial(anchor: LoadedModule): MapResource.Material \ Fs.FileRead =
+        let materialPath = MapLoader.materialPathFor(anchor#path, anchor#levelData#materialId);
+        let matOpt: Option[MapResource.Material] = Persistence.load(materialPath);
+        match matOpt {
+            case Some(m) => m
+            case None    => bug!("DungeonComposer: failed to load material ${materialPath}")
+        }
+
+    // ────────────────────────────────────────────────────────
+    // 床マージ + door 出っ張り床追加
+    // ────────────────────────────────────────────────────────
+
+    /// 各モジュールの decorTiles を world 座標へ変換し、先勝ち dedup でマージ。
+    /// その後、各 connection の合成座標 (= offset[a.idx] + a.grid) に door 出っ張り床を追加。
+    /// door 床の srcX/srcY は anchor の floorSrc を使う。
+    def buildMergedFloor(loaded: List[LoadedModule],
+                          offsets: Map[Int32, {x = Int32, y = Int32}],
+                          connections: List[Connection],
+                          doorFloorSrc: (Int32, Int32)): List[MapResource.ManualTile] =
+        let (_, baseTiles) = List.foldLeft(acc -> lm -> {
+            let (i, list) = acc;
+            let off = lookupOffset(i, offsets);
+            let shifted: List[MapResource.ManualTile] = List.map(t -> ({
+                x     = t#x + off#x,
+                y     = t#y + off#y,
+                srcX  = t#srcX,
+                srcY  = t#srcY,
+                flipH = t#flipH,
+                flipV = t#flipV
+            }: MapResource.ManualTile), lm#levelData#decorTiles);
+            let newTiles = List.filter(t -> not List.exists(a ->
+                a#x == t#x and a#y == t#y, list), shifted);
+            (i + 1, List.append(list, newTiles))
+        }, (0, Nil), loaded);
+        let (sx, sy) = doorFloorSrc;
+        List.foldLeft(acc -> c -> {
+            let off = lookupOffset(c#a#moduleIndex, offsets);
+            let worldX = off#x + c#a#grid#x;
+            let worldY = off#y + c#a#grid#y;
+            if (List.exists(t -> t#x == worldX and t#y == worldY, acc))
+                acc
+            else {
+                let tile: MapResource.ManualTile = {
+                    x     = worldX,
+                    y     = worldY,
+                    srcX  = sx,
+                    srcY  = sy,
+                    flipH = false,
+                    flipV = false
+                };
+                List.append(acc, tile :: Nil)
+            }
+        }, baseTiles, connections)
+
+    /// 配置済みモジュール群のワールド bbox 右下端を求める。
+    /// 各モジュールの (offset + gridSize) の max を取る。
+    def boundingBoxGridSize(loaded: List[LoadedModule],
+                             offsets: Map[Int32, {x = Int32, y = Int32}]): {x = Int32, y = Int32} =
+        let (_, result) = List.foldLeft(acc -> lm -> {
+            let (i, agg) = acc;
+            let off = lookupOffset(i, offsets);
+            let rbx = off#x + lm#levelData#width;
+            let rby = off#y + lm#levelData#height;
+            let next: {x = Int32, y = Int32} = ({
+                x = Int32.max(agg#x, rbx),
+                y = Int32.max(agg#y, rby)
+            }: {x = Int32, y = Int32});
+            (i + 1, next)
+        }, (0, Vec2i.zero()), loaded);
+        result
+
+    // ────────────────────────────────────────────────────────
+    // Layer 構築
+    // ────────────────────────────────────────────────────────
+
+    /// 共通 TileSet を構築する（全モジュール同一テクスチャ前提）。
+    def buildTileSet(textureName: String, tileSize: Float64): TileSet \ GameEngine.Game =
+        let texInfo = match GameEngine.Game.getTextureInfo(textureName) {
+            case Some(info) => info
+            case None       => bug!("DungeonComposer: texture '${textureName}' not registered")
+        };
+        let atlas = TileSetAtlasSource.make({
+            textureName = textureName,
+            marginX     = 0.0,
+            marginY     = 0.0,
+            spacingX    = 0.0,
+            spacingY    = 0.0
+        });
+        let atlasFilled: TileSetAtlasSource = {
+            texWidth  = texInfo#width,
+            texHeight = texInfo#height,
+            tileSize  = tileSize
+            | atlas
+        };
+        TileSet.make(atlasFilled)
+
+    /// Floor 層を構築する。decorTiles + door 出っ張り床を描画、衝突なし。
+    def buildFloorLayer(mergedFloor: List[MapResource.ManualTile],
+                         gridSize: {x = Int32, y = Int32},
+                         tileSet: TileSet,
+                         tileSize: Float64): TileMapLayer \ GameEngine.Game =
+        let tiles: List[TileData] = List.map(t -> ({
+            px    = ({x = Int32.toFloat64(t#x) * tileSize,
+                      y = Int32.toFloat64(t#y) * tileSize}: Vec2.Vec2),
+            srcX  = Int32.toFloat64(t#srcX),
+            srcY  = Int32.toFloat64(t#srcY),
+            flipH = t#flipH,
+            flipV = t#flipV,
+            alpha = 1.0f32
+        }: TileData), mergedFloor);
+        let instances = LDTKLoader.buildTileInstances(tiles, tileSet, tileSize);
+        let (vao, count) = GameEngine.Game.initTileBuffer(instances);
+        TileMapLayer.make({
+            tileSet        = tileSet,
+            tiles          = tiles,
+            collisionCells = (Nil: List[Vec2.Vec2]),
+            gridSize       = gridSize
+        }) |> TileMapLayer.withGpuResources(vao, count)
+
+    /// Walls 層を構築する。
+    /// 1. mergedFloor から floorMask を計算
+    /// 2. computeWallCells で自動壁セルを抽出
+    /// 3. material#wallMap で各 wall セルのタイルを決定
+    /// 4. material#autoRules で装飾タイルを overlay
+    /// 5. 衝突セル = wallCells（door 出っ張り床のおかげで door 位置は floor になり通れる）
+    def buildWallsLayer(mergedFloor: List[MapResource.ManualTile],
+                         gridSize: {x = Int32, y = Int32},
+                         material: MapResource.Material,
+                         tileSet: TileSet,
+                         tileSize: Float64,
+                         tileSizeI: Int32): TileMapLayer \ GameEngine.Game =
+        let md = MapResource.materialData(material);
+        let floorMask: Set[(Int32, Int32)] =
+            mergedFloor |> List.map(t -> (t#x, t#y)) |> List.toSet;
+        let wallCells = MapLoader.computeWallCells(floorMask, gridSize#x, gridSize#y);
+        let intGrid = MapLoader.buildIntGrid(floorMask, wallCells, gridSize#x, gridSize#y);
+        let wallTiles: List[TileData] = wallCells
+            |> Set.toList
+            |> List.filterMap(coord -> {
+                let (col, row) = coord;
+                let coordOpt = MapLoader.lookupWallTile(wallCells, floorMask, md#wallMap, col, row);
+                match coordOpt {
+                    case None              => None
+                    case Some((sx, sy)) => Some(({
+                        px    = ({x = Int32.toFloat64(col * tileSizeI),
+                                  y = Int32.toFloat64(row * tileSizeI)}: Vec2.Vec2),
+                        srcX  = Int32.toFloat64(sx),
+                        srcY  = Int32.toFloat64(sy),
+                        flipH = false,
+                        flipV = false,
+                        alpha = 1.0f32
+                    }: TileData))
+                }
+            });
+        let manualCoordsEmpty: Set[(Int32, Int32)] = Set.empty();
+        let ruleTiles = MapLoader.buildAutoRuleTiles(intGrid, gridSize#x, gridSize#y,
+                                                       md#autoRules, manualCoordsEmpty, tileSizeI);
+        let tiles = List.append(wallTiles, ruleTiles);
+        let collisionCells: List[Vec2.Vec2] = wallCells
+            |> Set.toList
+            |> List.map(c -> {
+                let (col, row) = c;
+                ({x = Int32.toFloat64(col), y = Int32.toFloat64(row)}: Vec2.Vec2)
+            });
+        let instances = LDTKLoader.buildTileInstances(tiles, tileSet, tileSize);
+        let (vao, count) = GameEngine.Game.initTileBuffer(instances);
+        TileMapLayer.make({
+            tileSet        = tileSet,
+            tiles          = tiles,
+            collisionCells = collisionCells,
+            gridSize       = gridSize
+        }) |> TileMapLayer.withGpuResources(vao, count)
+
+    // ────────────────────────────────────────────────────────
+    // Spawn / Placements / Offsets
+    // ────────────────────────────────────────────────────────
+
+    /// anchor の decorTiles で「中央に最も近い床セル」を選び、worldOffset 加算して返す。
+    /// PlayerScene のスポーン地点に使う。decorTile が空なら bug!。
+    def findSpawnInAnchor(anchor: LoadedModule,
+                           anchorOffset: {x = Int32, y = Int32}): {x = Int32, y = Int32} =
+        let gridW = anchor#levelData#width;
+        let gridH = anchor#levelData#height;
+        let cx = gridW / 2;
+        let cy = gridH / 2;
+        let tiles = anchor#levelData#decorTiles;
+        match tiles {
+            case Nil => bug!("DungeonComposer: anchor has no decorTile (no floor cell)")
+            case head :: rest =>
+                let distSq = t -> {
+                    let dx = t#x - cx;
+                    let dy = t#y - cy;
+                    dx * dx + dy * dy
+                };
+                let best = List.foldLeft(acc -> t ->
+                    if (distSq(t) < distSq(acc)) t else acc, head, rest);
+                ({x = anchorOffset#x + best#x,
+                  y = anchorOffset#y + best#y}: {x = Int32, y = Int32})
+        }
+
+    /// offsets の最小 (x, y) を求める（次元ごと別モジュール由来でも良い）。
     def computeMinOffset(offsets: Map[Int32, {x = Int32, y = Int32}]): {x = Int32, y = Int32} =
         Map.foldLeft(acc -> off -> {
-            {x = Int32.min(acc#x, off#x), y = Int32.min(acc#y, off#y)}
+            ({x = Int32.min(acc#x, off#x), y = Int32.min(acc#y, off#y)}: {x = Int32, y = Int32})
         }, ({x = 0i32, y = 0i32}: {x = Int32, y = Int32}), offsets)
 
-    /// 全 offsets に shift を加える（要素を Vec2i.add(shift, off) に置換）。
-    def shiftOffsets(offsets: Map[Int32, {x = Int32, y = Int32}], shift: {x = Int32, y = Int32}): Map[Int32, {x = Int32, y = Int32}] =
+    /// 全 offsets に shift を加える。
+    def shiftOffsets(offsets: Map[Int32, {x = Int32, y = Int32}], shift: {x = Int32, y = Int32}):
+                     Map[Int32, {x = Int32, y = Int32}] =
         Map.map(off -> Vec2i.add(shift, off), offsets)
 
     /// offsets から特定モジュールの offset を取り出す。未配置なら bug!。
@@ -428,60 +422,101 @@ mod DungeonComposer {
             case None    => bug!("DungeonComposer: no offset computed for module ${i}")
         }
 
-    /// raws と offsets を組み合わせて ModulePlacement リストにする（idx 順）。
-    /// raws は modulePaths と同じ並びで loadLevelRaw 済み前提。
-    def buildPlacements(raws: List[LDTKLoader.LDTKLevelRaw],
+    /// loaded と offsets を組み合わせて ModulePlacement リストを idx 順に作る。
+    /// floorBounds は decorTiles ∪ doors の bbox（モジュール局所、半開区間）。
+    def buildPlacements(loaded: List[LoadedModule],
                          offsets: Map[Int32, {x = Int32, y = Int32}]): List[ModulePlacement] =
-        let (_, reversed) = List.foldLeft(acc -> raw -> {
+        let (_, reversed) = List.foldLeft(acc -> lm -> {
             let (i, list) = acc;
             let off = lookupOffset(i, offsets);
-            let p: ModulePlacement = { idx = i, offset = off, gridSize = raw#gridSize };
+            let (fbMin, fbMaxEx) = computeFloorBounds(lm);
+            let p: ModulePlacement = ({
+                idx              = i,
+                offset           = off,
+                gridSize         = ({x = lm#levelData#width,
+                                     y = lm#levelData#height}: {x = Int32, y = Int32}),
+                floorBoundsMin   = fbMin,
+                floorBoundsMaxEx = fbMaxEx
+            }: ModulePlacement);
             (i + 1, p :: list)
-        }, (0, Nil), raws);
+        }, (0, Nil), loaded);
         List.reverse(reversed)
 
-    /// modulePaths を offsets と組み合わせて ModuleSpec リストにする（modulePaths 順を維持）。
+    /// LoadedModule の decorTiles ∪ doors のセル集合に対する bbox を返す
+    /// （モジュール局所座標、半開区間）。両方とも空のときは gridSize 全体にフォールバック。
+    def computeFloorBounds(lm: LoadedModule):
+                           ({x = Int32, y = Int32}, {x = Int32, y = Int32}) =
+        let decorCells: List[{x = Int32, y = Int32}] =
+            lm#levelData#decorTiles |> List.map(t -> ({x = t#x, y = t#y}: {x = Int32, y = Int32}));
+        let allCells = List.append(decorCells, lm#doors);
+        match allCells {
+            case Nil =>
+                let w = lm#levelData#width;
+                let h = lm#levelData#height;
+                (Vec2i.zero(), ({x = w, y = h}: {x = Int32, y = Int32}))
+            case head :: rest =>
+                let initMin: {x = Int32, y = Int32} = head;
+                let initMax: {x = Int32, y = Int32} = ({x = head#x + 1, y = head#y + 1}: {x = Int32, y = Int32});
+                List.foldLeft(acc -> c -> {
+                    let (mn, mx) = acc;
+                    let newMin: {x = Int32, y = Int32} = ({
+                        x = Int32.min(mn#x, c#x),
+                        y = Int32.min(mn#y, c#y)
+                    }: {x = Int32, y = Int32});
+                    let newMax: {x = Int32, y = Int32} = ({
+                        x = Int32.max(mx#x, c#x + 1),
+                        y = Int32.max(mx#y, c#y + 1)
+                    }: {x = Int32, y = Int32});
+                    (newMin, newMax)
+                }, (initMin, initMax), rest)
+        }
+
+    /// modulePaths を offsets と組み合わせて ModuleSpec リスト（modulePaths 順を維持）。
     def buildModuleSpecs(modulePaths: List[String],
                           offsets: Map[Int32, {x = Int32, y = Int32}]): List[ModuleSpec] =
         let (_, reversed) = List.foldLeft(acc -> path -> {
             let (i, list) = acc;
             let off = lookupOffset(i, offsets);
-            let spec: ModuleSpec = { ldtkPath = path, offsetGrid = off };
+            let spec: ModuleSpec = ({ ldtkPath = path, offsetGrid = off }: ModuleSpec);
             (i + 1, spec :: list)
         }, (0, Nil), modulePaths);
         List.reverse(reversed)
 
-    /// 全 connection の DoorRef を検査する。bug! しなければ Unit。
+    // ────────────────────────────────────────────────────────
+    // 連結検証
+    // ────────────────────────────────────────────────────────
+
     def validateConnections(connections: List[Connection],
-                             raws: List[LDTKLoader.LDTKLevelRaw],
+                             loaded: List[LoadedModule],
                              n: Int32): Unit =
         List.forEach(c -> {
-            let _ = validateDoorRef(c#a, raws, n);
-            validateDoorRef(c#b, raws, n)
+            let _ = validateDoorRef(c#a, loaded, n);
+            validateDoorRef(c#b, loaded, n)
         }, connections)
 
-    /// DoorRef が有効かを検査する: index が範囲内、grid が LDTK の doors リストに存在。
     def validateDoorRef(ref: DoorRef,
-                         raws: List[LDTKLoader.LDTKLevelRaw],
+                         loaded: List[LoadedModule],
                          n: Int32): Unit =
         if (ref#moduleIndex < 0 or ref#moduleIndex >= n)
             bug!("DungeonComposer: moduleIndex ${ref#moduleIndex} out of range [0, ${n})")
         else
-            let raw = match List.nth(ref#moduleIndex, raws) {
-                case Some(r) => r
-                case None    => bug!("DungeonComposer: raws lookup failed for index ${ref#moduleIndex}")
+            let lm = match List.nth(ref#moduleIndex, loaded) {
+                case Some(m) => m
+                case None    => bug!("DungeonComposer: loaded lookup failed for index ${ref#moduleIndex}")
             };
-            let exists = List.exists(d -> vec2EqI(d, ref#grid), raw#doors);
+            let exists = List.exists(d -> vec2EqI(d, ref#grid), lm#doors);
             if (not exists)
                 bug!("DungeonComposer: door (${ref#grid#x},${ref#grid#y}) not found in module ${ref#moduleIndex}")
             else
                 ()
 
-    /// connections を BFS で辿り、modulePaths[0] をアンカー (0,0) として
-    /// 各モジュールの offsetGrid を Map[Int32, {x = Int32, y = Int32}] にまとめる。
-    /// 既配置モジュールに到達した際に offset が食い違ったら bug!。
+    // ────────────────────────────────────────────────────────
+    // BFS による offset 解決
+    // ────────────────────────────────────────────────────────
+
+    /// connections を BFS で辿り、modulePaths[0] をアンカー (0,0) として各モジュールの
+    /// offsetGrid を算出する。既配置モジュールに到達した際に offset が食い違ったら bug!。
     def bfsOffsets(connections: List[Connection]): Map[Int32, {x = Int32, y = Int32}] =
-        // 各 connection を双方向に展開: (src, gSrc, dst, gDst)
         let edges: List[(Int32, {x = Int32, y = Int32}, Int32, {x = Int32, y = Int32})] =
             List.flatMap(c -> {
                 (c#a#moduleIndex, c#a#grid, c#b#moduleIndex, c#b#grid) ::
@@ -493,7 +528,8 @@ mod DungeonComposer {
 
     def bfsLoop(offsets: Map[Int32, {x = Int32, y = Int32}],
                  queue: List[Int32],
-                 edges: List[(Int32, {x = Int32, y = Int32}, Int32, {x = Int32, y = Int32})]): Map[Int32, {x = Int32, y = Int32}] =
+                 edges: List[(Int32, {x = Int32, y = Int32}, Int32, {x = Int32, y = Int32})]):
+                 Map[Int32, {x = Int32, y = Int32}] =
         match queue {
             case Nil => offsets
             case i :: rest =>
@@ -519,8 +555,15 @@ mod DungeonComposer {
                 bfsLoop(newOffsets, List.append(rest, addedQueue), edges)
         }
 
+    // ────────────────────────────────────────────────────────
+    // Vec2i 等値ヘルパー
+    // ────────────────────────────────────────────────────────
+
+    def vec2EqI(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Bool =
+        a#x == b#x and a#y == b#y
+
     // ════════════════════════════════════════════════════════
-    // 高レベル API: Door を Side 列挙で指定する
+    // DoorSide 列挙 + Side ベース解決
     // ════════════════════════════════════════════════════════
 
     /// モジュールの 4 辺を表す列挙。
@@ -552,8 +595,7 @@ mod DungeonComposer {
     pub def allSides(): List[DoorSide] =
         DoorSide.Left :: DoorSide.Right :: DoorSide.Top :: DoorSide.Bottom :: Nil
 
-    /// Side 指定で Door を参照する。grid 座標は `composeFromSideConnections` が
-    /// 内部で解決する。
+    /// Side 指定で Door を参照する。grid 座標は `composeFromSideConnections` が内部で解決する。
     pub type alias SideRef = {
         moduleIndex = Int32,
         side        = DoorSide
@@ -565,45 +607,22 @@ mod DungeonComposer {
         b = SideRef
     }
 
-    /// Side ベースで連結を指定する高レベル API。
-    /// 各 SideRef を `(moduleIndex, grid)` の DoorRef に解決してから
-    /// `composeFromConnections` に委譲する。
-    /// 1 辺に Door が複数ある場合は最初に見つかったものを採用する仕様
-    /// （現在の LDTK 構成では 1 辺 1 Door なので一意になる）。
-    pub def composeFromSideConnections(textureName: String,
-                                        ruleSet: LDTKRules.AutoRuleSet,
-                                        modulePaths: List[String],
-                                        sideConnections: List[SideConnection]): ComposeResult
-            \ { GameEngine.Game, Fs.FileRead } =
-        let n = List.length(modulePaths);
-        if (n == 0) bug!("DungeonComposer: modulePaths must not be empty")
-        else
-            let raws = List.map(path -> loadLevelRawDispatch(path, textureName), modulePaths);
-            let connections = List.map(sc ->
-                ({
-                    a = resolveSideRef(sc#a, raws, n),
-                    b = resolveSideRef(sc#b, raws, n)
-                }: Connection),
-                sideConnections);
-            composeFromConnections(textureName, ruleSet, modulePaths, connections)
-
     /// SideRef を DoorRef に解決する。範囲外 / Doors 空ならば bug!。
     def resolveSideRef(ref: SideRef,
-                        raws: List[LDTKLoader.LDTKLevelRaw],
+                        loaded: List[LoadedModule],
                         n: Int32): DoorRef =
         if (ref#moduleIndex < 0 or ref#moduleIndex >= n)
             bug!("DungeonComposer: moduleIndex ${ref#moduleIndex} out of range [0, ${n})")
         else
-            let raw = match List.nth(ref#moduleIndex, raws) {
-                case Some(r) => r
-                case None    => bug!("DungeonComposer: raws lookup failed for index ${ref#moduleIndex}")
+            let lm = match List.nth(ref#moduleIndex, loaded) {
+                case Some(m) => m
+                case None    => bug!("DungeonComposer: loaded lookup failed for index ${ref#moduleIndex}")
             };
-            let grid = pickDoorBySide(ref#side, raw#doors, ref#moduleIndex);
-            { moduleIndex = ref#moduleIndex, grid = grid }
+            let grid = pickDoorBySide(ref#side, lm#doors, ref#moduleIndex);
+            ({moduleIndex = ref#moduleIndex, grid = grid}: DoorRef)
 
     /// Side に応じて min/max 比較で 1 つの Door grid 座標を選ぶ。
     /// Left / Right は x 軸、Top / Bottom は y 軸で min / max を取る。
-    /// 同点（タイ）は出現順で先頭が勝つ（List.foldLeft の比較が strict less / greater のため）。
     def pickDoorBySide(side: DoorSide,
                         doors: List[{x = Int32, y = Int32}],
                         moduleIndex: Int32): {x = Int32, y = Int32} =
@@ -620,7 +639,8 @@ mod DungeonComposer {
         }
 
     /// Generator 等の外部利用向けに公開した版。Doors 空なら None。
-    pub def doorBySide(side: DoorSide, doors: List[{x = Int32, y = Int32}]): Option[{x = Int32, y = Int32}] =
+    pub def doorBySide(side: DoorSide, doors: List[{x = Int32, y = Int32}]):
+                       Option[{x = Int32, y = Int32}] =
         match doors {
             case Nil => None
             case head :: rest =>
@@ -632,72 +652,4 @@ mod DungeonComposer {
                 };
                 Some(List.foldLeft(acc -> d -> pick(acc, d), head, rest))
         }
-
-    // ════════════════════════════════════════════════════════
-    // 装飾レイヤー（Floor 等）の合成
-    // ════════════════════════════════════════════════════════
-
-    /// 装飾レイヤー（Floor など）を Walls と同じ ModuleSpec 配置で 1 枚にマージする。
-    /// auto-rule の再適用や collision 抽出は行わない（autoLayerTiles を offset して連結するだけ）。
-    /// `layerIdentifier` には LDTK 上のレイヤー名（例: "Floor"）を渡す。
-    /// 同一 px に複数モジュールのタイルが重なった場合は「先勝ち」で先頭モジュールを残す。
-    pub def composeDecorationLayer(textureName: String,
-                                    moduleSpecs: List[ModuleSpec],
-                                    layerIdentifier: String): TileMapLayer
-            \ { GameEngine.Game, Fs.FileRead } =
-        match moduleSpecs {
-            case Nil => bug!("DungeonComposer: composeDecorationLayer received empty moduleSpecs")
-            case _   =>
-                let placed = List.map(spec ->
-                    loadAndOffsetLayer(textureName, spec, layerIdentifier),
-                    moduleSpecs);
-                let firstRaw = match List.head(placed) {
-                    case Some(r) => r
-                    case None    => bug!("DungeonComposer: placed is empty")
-                };
-                let tileSet  = firstRaw#tileSet;
-                let tileSize = firstRaw#tileSize;
-                // 「先勝ち」で px が衝突するタイルは捨てる
-                let mergedTiles =
-                    List.foldLeft(acc -> raw -> {
-                        let newTiles = List.filter(
-                            t -> not List.exists(a -> vec2Eq(a#px, t#px), acc),
-                            raw#tiles);
-                        List.append(acc, newTiles)
-                    }, Nil, placed);
-                let mergedGridSize = boundingBoxGridSizeFromLayers(moduleSpecs, placed);
-                let instances = LDTKLoader.buildTileInstances(mergedTiles, tileSet, tileSize);
-                let (tileVaoId, tileCount) = GameEngine.Game.initTileBuffer(instances);
-                TileMapLayer.make({
-                    tileSet        = tileSet,
-                    tiles          = mergedTiles,
-                    collisionCells = Nil,           // 装飾レイヤーは衝突を持たない
-                    gridSize       = mergedGridSize
-                }) |> TileMapLayer.withGpuResources(tileVaoId, tileCount)
-        }
-
-    /// 1 モジュールの装飾レイヤーをロードし、offsetGrid 分だけタイルを平行移動する。
-    def loadAndOffsetLayer(textureName: String, spec: ModuleSpec,
-                            layerIdentifier: String): LDTKLoader.LDTKLayerRaw
-            \ { GameEngine.Game, Fs.FileRead } =
-        let raw = loadLayerRawDispatch(spec#ldtkPath, textureName, layerIdentifier);
-        let offsetPx = Vec2.mul(Vec2i.toVec2(spec#offsetGrid), raw#tileSize);
-        let shiftedTiles = List.map(tile -> {
-            { px = Vec2.add(tile#px, offsetPx) | tile }
-        }, raw#tiles);
-        { tiles    = shiftedTiles,
-          tileSet  = raw#tileSet,
-          gridSize = raw#gridSize,
-          tileSize = raw#tileSize }
-
-    /// LDTKLayerRaw 版の bounding box 計算（Walls 用と同じロジック）。
-    def boundingBoxGridSizeFromLayers(modules: List[ModuleSpec],
-                                       placed: List[LDTKLoader.LDTKLayerRaw]): {x = Int32, y = Int32} =
-        List.zip(modules, placed)
-            |> List.foldLeft(acc -> entry -> {
-                let (spec, raw) = entry;
-                let rightBottom: {x = Int32, y = Int32} = Vec2i.add(spec#offsetGrid, raw#gridSize);
-                {x = Int32.max(acc#x, rightBottom#x),
-                 y = Int32.max(acc#y, rightBottom#y)}
-            }, Vec2i.zero())
 }

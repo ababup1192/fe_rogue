@@ -7,8 +7,8 @@
         0
       ],
       "scale": [
-        1,
-        1
+        1.625,
+        1.625
       ],
       "texture": "arrow",
       "type": "Sprite2D",

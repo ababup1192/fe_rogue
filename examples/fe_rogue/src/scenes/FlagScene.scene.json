@@ -10,7 +10,7 @@
       "type": "Sprite2D",
       "texture": "flag",
       "pos": [0, 0],
-      "scale": [1, 1],
+      "scale": [1.625, 1.625],
       "zIndex": 5
     }
   ]

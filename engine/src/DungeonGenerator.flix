@@ -35,20 +35,27 @@ mod DungeonGenerator {
         roomCount       = Int32
     }
 
-    /// LDTK ファイルから取り出した寸法と Door 一覧（生成中に何度も参照する）。
+    /// マップファイルから取り出した寸法と Door 一覧（生成中に何度も参照する）。
+    /// `floorBoundsMin/MaxEx` は collisionCells の bbox（壁ぐるり = door も含む実効占有領域）。
+    /// 部屋同士の衝突判定はこの bbox で行う。n-format では `gridSize` が余白を含むため、
+    /// `gridSize` で判定すると短い通路で部屋同士が衝突扱いされてしまう。
     type alias Meta = {
-        gridSize = {x = Int32, y = Int32},
-        doors    = List[{x = Int32, y = Int32}]
+        gridSize         = {x = Int32, y = Int32},
+        doors            = List[{x = Int32, y = Int32}],
+        floorBoundsMin   = {x = Int32, y = Int32},
+        floorBoundsMaxEx = {x = Int32, y = Int32}
     }
 
     /// 配置済み 1 モジュール。usedSides はそのモジュールで既に連結に使った辺。
     type alias Entry = {
-        ldtkPath  = String,
-        offset    = {x = Int32, y = Int32},
-        gridSize  = {x = Int32, y = Int32},
-        doors     = List[{x = Int32, y = Int32}],
-        isRoom    = Bool,
-        usedSides = List[DoorSide]
+        ldtkPath         = String,
+        offset           = {x = Int32, y = Int32},
+        gridSize         = {x = Int32, y = Int32},
+        floorBoundsMin   = {x = Int32, y = Int32},
+        floorBoundsMaxEx = {x = Int32, y = Int32},
+        doors            = List[{x = Int32, y = Int32}],
+        isRoom           = Bool,
+        usedSides        = List[DoorSide]
     }
 
     /// 連結指示を「最終 modulePaths への index 解決前の生成中表現」で保持する。
@@ -86,12 +93,14 @@ mod DungeonGenerator {
             let firstPath = pickOrBug(config#roomPaths, "roomPaths must not be empty");
             let firstMeta = metaOf(firstPath, metaMap);
             let firstEntry: Entry = {
-                ldtkPath  = firstPath,
-                offset    = Vec2i.zero(),
-                gridSize  = firstMeta#gridSize,
-                doors     = firstMeta#doors,
-                isRoom    = true,
-                usedSides = Nil
+                ldtkPath         = firstPath,
+                offset           = Vec2i.zero(),
+                gridSize         = firstMeta#gridSize,
+                floorBoundsMin   = firstMeta#floorBoundsMin,
+                floorBoundsMaxEx = firstMeta#floorBoundsMaxEx,
+                doors            = firstMeta#doors,
+                isRoom           = true,
+                usedSides        = Nil
             };
             let initial: State = {
                 entries = Map.empty() |> Map.insert(0, firstEntry),
@@ -113,14 +122,52 @@ mod DungeonGenerator {
     /// 重複を除いてからファイルを読み、path → Meta の Map を作る。
     /// パスは `.ldtkl` と `.map.json` 混在可能。DungeonComposer 側 dispatch と同じく
     /// 拡張子で MapLoader / LDTKLoader を分ける。
+    /// `floorBoundsMin/MaxEx` は raw#collisionCells から bbox を計算して入れる。
+    /// 床ゼロモジュールでは fallback で gridSize 全体を使う。
     def loadAllMetadata(textureName: String, paths: List[String]): Map[String, Meta]
             \ {GameEngine.Game, Fs.FileRead} =
         let unique = dedupStrings(paths);
         List.foldLeft(acc -> path -> {
             let raw = DungeonComposer.loadLevelRawDispatch(path, textureName);
-            let meta: Meta = { gridSize = raw#gridSize, doors = raw#doors };
+            let (fbMin, fbMaxEx) = collisionBounds(raw#collisionCells, raw#gridSize);
+            let meta: Meta = ({
+                gridSize         = raw#gridSize,
+                doors            = raw#doors,
+                floorBoundsMin   = fbMin,
+                floorBoundsMaxEx = fbMaxEx
+            }: Meta);
             Map.insert(path, meta, acc)
         }, Map.empty(), unique)
+
+    /// collisionCells (List[Vec2.Vec2]) から bbox (minInclusive, maxExclusive) を求める。
+    /// 空なら gridSize 全体を返す（fallback、床ゼロモジュールでは旧来 gridSize 判定と同等）。
+    def collisionBounds(cells: List[Vec2.Vec2],
+                          gridSize: {x = Int32, y = Int32}):
+                         ({x = Int32, y = Int32}, {x = Int32, y = Int32}) =
+        match cells {
+            case Nil => (Vec2i.zero(), gridSize)
+            case head :: rest =>
+                let toI = (v: Vec2.Vec2) -> ({
+                    x = Float64.tryToInt32(v#x) |> Option.getWithDefault(0i32),
+                    y = Float64.tryToInt32(v#y) |> Option.getWithDefault(0i32)
+                }: {x = Int32, y = Int32});
+                let h = toI(head);
+                let initMin: {x = Int32, y = Int32} = h;
+                let initMax: {x = Int32, y = Int32} = ({x = h#x + 1, y = h#y + 1}: {x = Int32, y = Int32});
+                List.foldLeft(acc -> c -> {
+                    let (mn, mx) = acc;
+                    let ci = toI(c);
+                    let newMin: {x = Int32, y = Int32} = ({
+                        x = Int32.min(mn#x, ci#x),
+                        y = Int32.min(mn#y, ci#y)
+                    }: {x = Int32, y = Int32});
+                    let newMax: {x = Int32, y = Int32} = ({
+                        x = Int32.max(mx#x, ci#x + 1),
+                        y = Int32.max(mx#y, ci#y + 1)
+                    }: {x = Int32, y = Int32});
+                    (newMin, newMax)
+                }, (initMin, initMax), rest)
+        }
 
     def dedupStrings(list: List[String]): List[String] =
         List.foldLeft(acc -> s -> {
@@ -229,26 +276,31 @@ mod DungeonGenerator {
             case None    => bug!("DungeonGenerator: new room ${newRoomPath} has no door on ${sideName(newRoomSide)}")
         };
         let newRoomOffset = Vec2i.sub(outConnectWorld, newRoomDoor);
-        // 衝突検査: 新部屋 bbox が既配置の部屋と重ならないか
-        if (collidesWithRooms(newRoomOffset, newRoomMeta#gridSize, state))
+        // 衝突検査: 新部屋の floorBounds bbox が既配置の部屋と重ならないか
+        // （n-format では gridSize ≫ 床範囲なので bbox を狭くしないと短い通路で必ず衝突する）
+        if (collidesWithRooms(newRoomOffset, newRoomMeta#floorBoundsMin, newRoomMeta#floorBoundsMaxEx, state))
             None
         else {
             // commit: pathway と new room を追加し、anchor の usedSides を更新
             let pathwayEntry: Entry = {
-                ldtkPath  = pathwayPath,
-                offset    = pathwayOffset,
-                gridSize  = pathwayMeta#gridSize,
-                doors     = pathwayMeta#doors,
-                isRoom    = false,
-                usedSides = pathwaySide :: anchorSide :: Nil   // 通路は両端を使い切る
+                ldtkPath         = pathwayPath,
+                offset           = pathwayOffset,
+                gridSize         = pathwayMeta#gridSize,
+                floorBoundsMin   = pathwayMeta#floorBoundsMin,
+                floorBoundsMaxEx = pathwayMeta#floorBoundsMaxEx,
+                doors            = pathwayMeta#doors,
+                isRoom           = false,
+                usedSides        = pathwaySide :: anchorSide :: Nil   // 通路は両端を使い切る
             };
             let newRoomEntry: Entry = {
-                ldtkPath  = newRoomPath,
-                offset    = newRoomOffset,
-                gridSize  = newRoomMeta#gridSize,
-                doors     = newRoomMeta#doors,
-                isRoom    = true,
-                usedSides = newRoomSide :: Nil
+                ldtkPath         = newRoomPath,
+                offset           = newRoomOffset,
+                gridSize         = newRoomMeta#gridSize,
+                floorBoundsMin   = newRoomMeta#floorBoundsMin,
+                floorBoundsMaxEx = newRoomMeta#floorBoundsMaxEx,
+                doors            = newRoomMeta#doors,
+                isRoom           = true,
+                usedSides        = newRoomSide :: Nil
             };
             let pathwayIdx = state#next;
             let newRoomIdx = state#next + 1;
@@ -293,22 +345,26 @@ mod DungeonGenerator {
             case None    => bug!("DungeonGenerator: no entry at index ${idx}")
         }
 
-    /// 新規 bbox が既配置の「部屋」と重なるかチェック。通路同士・通路と部屋の重複は許す
+    /// 新規部屋の bbox（floorBoundsMin/MaxEx を offset 加算したワールド範囲）が
+    /// 既配置の「部屋」と重なるかチェック。通路同士・通路と部屋の重複は許す
     /// （pathway パディングは空セルなので部屋優先 dedup で問題なし）。
-    def collidesWithRooms(offset: {x = Int32, y = Int32}, gridSize: {x = Int32, y = Int32}, state: State): Bool =
-        let aMinX = offset#x;
-        let aMinY = offset#y;
-        let aMaxX = offset#x + gridSize#x;
-        let aMaxY = offset#y + gridSize#y;
+    def collidesWithRooms(offset: {x = Int32, y = Int32},
+                           fbMin: {x = Int32, y = Int32},
+                           fbMaxEx: {x = Int32, y = Int32},
+                           state: State): Bool =
+        let aMinX = offset#x + fbMin#x;
+        let aMinY = offset#y + fbMin#y;
+        let aMaxX = offset#x + fbMaxEx#x;
+        let aMaxY = offset#y + fbMaxEx#y;
         Map.toList(state#entries)
         |> List.exists(kv -> {
             let (_, e) = kv;
             if (not e#isRoom) false
             else
-                let bMinX = e#offset#x;
-                let bMinY = e#offset#y;
-                let bMaxX = e#offset#x + e#gridSize#x;
-                let bMaxY = e#offset#y + e#gridSize#y;
+                let bMinX = e#offset#x + e#floorBoundsMin#x;
+                let bMinY = e#offset#y + e#floorBoundsMin#y;
+                let bMaxX = e#offset#x + e#floorBoundsMaxEx#x;
+                let bMaxY = e#offset#y + e#floorBoundsMaxEx#y;
                 // strict overlap: 接するだけは衝突しない
                 aMinX < bMaxX and bMinX < aMaxX and aMinY < bMaxY and bMinY < aMaxY
         })
