@@ -317,12 +317,6 @@
       "srcY": 156,
       "x": 10,
       "y": 8
-    },
-    {
-      "srcX": 104,
-      "srcY": 156,
-      "x": 11,
-      "y": 8
     }
   ],
   "editorPalette": {
@@ -344,7 +338,7 @@
   "entities": [],
   "height": 14,
   "manualTiles": [],
-  "materialId": "new_room",
+  "materialId": "base_room",
   "tileSize": 26,
   "width": 14
 }
