@@ -1397,6 +1397,11 @@ mod MapEditorPanel {
             case None       => ()
             case Some(grid) => buildPatternGrid(state, grid, 5i32)
         };
+        // Pattern palette (絵描きツール風の値選択)
+        match Array.get(0, state#widgets#mapRulePaletteBox) {
+            case None      => ()
+            case Some(box) => buildPalette(state, box)
+        };
         // Size ComboBox は廃止: HBox を非表示にする (FXML 側の Label "Size:" も親 HBox に含まれている前提)
         match Array.get(0, state#widgets#mapRuleSizeCombo) {
             case None        => ()
@@ -1485,6 +1490,125 @@ mod MapEditorPanel {
         }, List.range(0, n))
     }
 
+    /// パレットに並べる 7 個の PatternCell とその grid 上の位置 (col, row)。
+    /// 上段 = 制約なし / 値要求 / 値否定なし (Unspecified, 床, 壁, Anything)。
+    /// 下段 = X 付きの「強い制約」形 (Nothing, NotValue(1), NotValue(2))。
+    /// 列ペアの意味:
+    ///   col 0: 灰色 → 上 = Unspecified (条件なし)、下 = Nothing (空セル限定)
+    ///   col 1: 黄  → 上 = 床、下 = 床ではない
+    ///   col 2: 暗灰 → 上 = 壁、下 = 壁ではない
+    ///   col 3: 中灰 → 上 = Anything、下 = なし
+    /// 並び順は buildPalette / refreshPalette の iteration で共有する。
+    def paletteCells(): List[(MapResource.PatternCell, (Int32, Int32))] =
+        (MapResource.PatternCell.Unspecified,   (0i32, 0i32))
+            :: (MapResource.PatternCell.Value(1i32),    (1i32, 0i32))
+            :: (MapResource.PatternCell.Value(2i32),    (2i32, 0i32))
+            :: (MapResource.PatternCell.Anything,       (3i32, 0i32))
+            :: (MapResource.PatternCell.Nothing,        (0i32, 1i32))
+            :: (MapResource.PatternCell.NotValue(1i32), (1i32, 1i32))
+            :: (MapResource.PatternCell.NotValue(2i32), (2i32, 1i32))
+            :: Nil
+
+    /// パレットの中身を構築する。`mapRulePaletteBox` (VBox) の中に GridPane を 1 つ置き、
+    /// `paletteCells()` の各エントリを (col, row) 位置に配置する。
+    def buildPalette(state: IdeState.IdeState, box: VBox): Unit \ IO = {
+        box.getChildren().clear();
+        let grid = new GridPane();
+        grid.setHgap(4.0);
+        grid.setVgap(4.0);
+        List.forEach(entry -> {
+            let (cell, pos) = entry;
+            let (col, row) = pos;
+            let pane = makePaletteCell(state, cell);
+            grid.add(unchecked_cast(pane as Node), col, row)
+        }, paletteCells());
+        discard box.getChildren().add(unchecked_cast(grid as Node))
+    }
+
+    /// パレット 1 項目。クリックで「focus 中の grid セル」の値をこの項目の
+    /// PatternCell に上書きする。
+    def makePaletteCell(state: IdeState.IdeState, cell: MapResource.PatternCell):
+            StackPane \ IO = {
+        let pane = new StackPane();
+        let canvas = new Canvas(32.0, 32.0);
+        drawPatternCellValue(canvas, cell, false, false);
+        pane.getChildren().add(unchecked_cast(canvas as Node));
+        pane.setPrefSize(32.0, 32.0);
+        pane.setMinSize(32.0, 32.0);
+        pane.setUserData(unchecked_cast(canvas as JObject));
+        pane.setStyle("-fx-cursor: hand;");
+        pane.setOnMouseClicked(new EventHandler[MouseEvent] {
+            def handle(_this: EventHandler[MouseEvent], _e: MouseEvent): Unit \ IO =
+                setFocusedCellTo(state, cell)
+        });
+        pane
+    }
+
+    /// focus 中の grid セルが在ればその値を `cell` に置き換える。
+    /// focus 無しなら no-op。
+    def setFocusedCellTo(state: IdeState.IdeState, cell: MapResource.PatternCell):
+            Unit \ IO =
+        match MapEditorState.getFocusedPatternIdx(state#mapEditor) {
+            case None      => ()
+            case Some(idx) => updatePatternCellAt(state, idx, _ -> cell)
+        }
+
+    /// パレットの全項目を再描画する。focus 中 grid セルの値と一致する項目だけ
+    /// 青枠 (isFocused) を付ける。
+    /// buildPalette と同じ `paletteCells()` の順序で GridPane.children を辿る。
+    def refreshPalette(state: IdeState.IdeState): Unit \ IO = {
+        match Array.get(0, state#widgets#mapRulePaletteBox) {
+            case None      => ()
+            case Some(box) => {
+                let containers = box.getChildren();
+                if (containers.size() == 0) ()
+                else {
+                    let gridNode = containers.get(0);
+                    let grid: GridPane = unchecked_cast(gridNode as GridPane);
+                    let focused = focusedPatternCell(state);
+                    let cells = grid.getChildren();
+                    let cellCount = cells.size();
+                    List.forEach(pair -> {
+                        let (i, entry) = pair;
+                        let (cellVal, _pos) = entry;
+                        if (i < cellCount) {
+                            let pNode = cells.get(i);
+                            let stack: StackPane = unchecked_cast(pNode as StackPane);
+                            let ud = stack.getUserData();
+                            if (Object.isNull(ud)) ()
+                            else {
+                                let canvas: Canvas = unchecked_cast(ud as Canvas);
+                                let isFocused = focused == Some(cellVal);
+                                drawPatternCellValue(canvas, cellVal, false, isFocused)
+                            }
+                        } else ()
+                    }, List.mapWithIndex((i, v) -> (i, v), paletteCells()))
+                }
+            }
+        }
+    }
+
+    /// 現在 focus 中の grid セルの PatternCell を取得 (focus 無し / rule 無しは None)。
+    def focusedPatternCell(state: IdeState.IdeState):
+            Option[MapResource.PatternCell] \ IO =
+        match MapEditorState.getFocusedPatternIdx(state#mapEditor) {
+            case None      => None
+            case Some(idx) =>
+                match MapEditorState.getEditingRuleIndex(state#mapEditor) {
+                    case None        => None
+                    case Some(ruleI) =>
+                        match MapEditorState.getEditingMaterial(state#mapEditor) {
+                            case None      => None
+                            case Some(mat) =>
+                                let md = MapResource.materialData(mat);
+                                match List.nth(ruleI, md#autoRules) {
+                                    case None       => None
+                                    case Some(rule) => Vector.nth(idx, rule#pattern)
+                                }
+                        }
+                }
+        }
+
     /// 1 セル: 32x32 の Canvas。全セル (中央含む) が:
     ///   左クリック: Unspecified → Value(1) → Value(2) → Anything → Nothing → Unspecified サイクル
     ///   右クリック: Value(n) ↔ NotValue(n) / Anything ↔ Nothing を反転
@@ -1493,7 +1617,7 @@ mod MapEditorPanel {
             StackPane \ IO = {
         let pane = new StackPane();
         let canvas = new Canvas(32.0, 32.0);
-        drawPatternCellValue(canvas, MapResource.PatternCell.Unspecified, isCenter);
+        drawPatternCellValue(canvas, MapResource.PatternCell.Unspecified, isCenter, false);
         pane.getChildren().add(unchecked_cast(canvas as Node));
         pane.setPrefSize(32.0, 32.0);
         pane.setMinSize(32.0, 32.0);
@@ -1504,6 +1628,8 @@ mod MapEditorPanel {
                 // MouseButton は Java enum なので Flix の == は使えない。
                 // toString() で "SECONDARY" 等の名前を取って String 比較する。
                 let buttonName = e.getButton().toString();
+                // クリックしたセルを focus に (絵描きツールの current color に相当)
+                MapEditorState.setFocusedPatternIdx(state#mapEditor, Some(idx));
                 if (buttonName == "SECONDARY")
                     togglePatternCellNegation(state, idx)
                 else
@@ -1517,13 +1643,14 @@ mod MapEditorPanel {
     ///   Unspecified         : 薄灰、図示なし
     ///   Anything            : 中灰 + "?" テキスト
     ///   Nothing             : 白 + "∅" テキスト
-    ///   Value(1) (床)       : 黄 + 床タイル風スケッチ (2x2 ドット)
+    ///   Value(1) (床)       : 黄 + 床タイル風スケッチ
     ///   Value(2) (壁)       : 暗灰 + レンガ風スケッチ
     ///   Value(n) (n>=3)     : マゼンタ + 数字
     ///   NotValue(n)         : Value(n) と同色・同スケッチ + 赤い × オーバーレイ
-    /// `isCenter` は (今は描画には使わない予定だが) signature を維持。
+    /// `isFocused=true` のとき青枠 (rgb(64,128,240), 2px) を最前面に上書き。
+    /// `_isCenter` は今のところ描画では未使用だが、API を残しておく。
     def drawPatternCellValue(canvas: Canvas, cell: MapResource.PatternCell,
-                              _isCenter: Bool): Unit \ IO = {
+                              _isCenter: Bool, isFocused: Bool): Unit \ IO = {
         let gc = canvas.getGraphicsContext2D();
         let w = canvas.getWidth();
         let h = canvas.getHeight();
@@ -1540,6 +1667,11 @@ mod MapEditorPanel {
             gc.setLineWidth(2.5);
             gc.strokeLine(4.0, 4.0, w - 4.0, h - 4.0);
             gc.strokeLine(w - 4.0, 4.0, 4.0, h - 4.0)
+        } else ();
+        if (isFocused) {
+            gc.setStroke(Color.rgb(64, 128, 240));
+            gc.setLineWidth(2.0);
+            gc.strokeRect(1.0, 1.0, w - 2.0, h - 2.0)
         } else ()
     }
 
@@ -1608,7 +1740,8 @@ mod MapEditorPanel {
         match cell {
             case MapResource.PatternCell.Unspecified  => Color.rgb(225, 225, 225)
             case MapResource.PatternCell.Anything     => Color.rgb(150, 150, 160)
-            case MapResource.PatternCell.Nothing      => Color.rgb(245, 245, 245)
+            // Nothing は Unspecified と同じ灰色をベースに、上書きの赤×で「強い制約 = 空セル限定」を示す
+            case MapResource.PatternCell.Nothing      => Color.rgb(225, 225, 225)
             case MapResource.PatternCell.Value(1)     => Color.rgb(230, 210, 130)
             case MapResource.PatternCell.Value(2)     => Color.rgb(70, 70, 80)
             case MapResource.PatternCell.Value(_)     => Color.rgb(160, 80, 160)
@@ -1617,8 +1750,12 @@ mod MapEditorPanel {
             case MapResource.PatternCell.NotValue(_)  => Color.rgb(160, 80, 160)
         }
 
+    /// 赤い × オーバーレイを描く対象。
+    /// NotValue は「値 N ではない」、Nothing は「空 (IntGrid==0) 限定」を表す制約形。
+    /// どちらも上段の "肯定形" に対して右クリックで遷移する形なので同じ X 記号を使う。
     def isNotValue(cell: MapResource.PatternCell): Bool = match cell {
         case MapResource.PatternCell.NotValue(_) => true
+        case MapResource.PatternCell.Nothing     => true
         case _                                   => false
     }
 
@@ -1666,22 +1803,30 @@ mod MapEditorPanel {
         }
     }
 
+    /// 左クリックサイクル順:
+    ///   Unspecified → Value(1) → Value(2) → Anything → Unspecified (ループ)
+    /// Nothing は X 付きの「強い制約」形なのでサイクルから外し、パレットの下段か
+    /// 右クリック (Anything ↔ Nothing) でのみ到達する。
     def nextPatternCell(c: MapResource.PatternCell): MapResource.PatternCell = match c {
         case MapResource.PatternCell.Unspecified  => MapResource.PatternCell.Value(1i32)
         case MapResource.PatternCell.Value(1)     => MapResource.PatternCell.Value(2i32)
         case MapResource.PatternCell.Value(2)     => MapResource.PatternCell.Anything
-        case MapResource.PatternCell.Anything     => MapResource.PatternCell.Nothing
-        case MapResource.PatternCell.Nothing      => MapResource.PatternCell.Unspecified
-        // それ以外 (NotValue や Value(>=3)) からはサイクル先頭に戻す
+        case MapResource.PatternCell.Anything     => MapResource.PatternCell.Unspecified
+        // サイクル外 (Nothing, NotValue, Value(>=3)) からはサイクル先頭に戻す
         case _                                    => MapResource.PatternCell.Unspecified
     }
 
+    /// 右クリックトグル: パレットの上下列対応に合わせる。
+    ///   col 0 (灰):   Unspecified ↔ Nothing
+    ///   col 1 (黄):   Value(1) ↔ NotValue(1)
+    ///   col 2 (暗灰): Value(2) ↔ NotValue(2)
+    ///   col 3 (中灰): Anything は下段に対応セル無し → 変化なし
     def togglePatternCell(c: MapResource.PatternCell): MapResource.PatternCell = match c {
         case MapResource.PatternCell.Value(n)     => MapResource.PatternCell.NotValue(n)
         case MapResource.PatternCell.NotValue(n)  => MapResource.PatternCell.Value(n)
-        case MapResource.PatternCell.Anything     => MapResource.PatternCell.Nothing
-        case MapResource.PatternCell.Nothing      => MapResource.PatternCell.Anything
-        case MapResource.PatternCell.Unspecified  => MapResource.PatternCell.Unspecified
+        case MapResource.PatternCell.Unspecified  => MapResource.PatternCell.Nothing
+        case MapResource.PatternCell.Nothing      => MapResource.PatternCell.Unspecified
+        case MapResource.PatternCell.Anything     => MapResource.PatternCell.Anything
     }
 
     def updateRuleName(state: IdeState.IdeState, name: String): Unit \ IO = {
@@ -1731,6 +1876,8 @@ mod MapEditorPanel {
                 MapEditorState.setEditingMaterial(state#mapEditor, Some(newMat));
                 let newIdx = List.length(newRules) - 1;
                 MapEditorState.setEditingRuleIndex(state#mapEditor, Some(newIdx));
+                // 新規ルール作成時は中央セル (idx=12) を default focus に
+                MapEditorState.setFocusedPatternIdx(state#mapEditor, Some(12i32));
                 saveMaterial(state);
                 refreshRulesUI(state);
                 MapEditorPanel.redrawCanvas(state)
@@ -1782,7 +1929,7 @@ mod MapEditorPanel {
         }
     }
 
-    /// Rules UI 全体を再描画する: ListView, Editor の visibility, 値, Pattern grid。
+    /// Rules UI 全体を再描画する: ListView, Editor の visibility, 値, Pattern grid, Palette。
     pub def refreshRulesUI(state: IdeState.IdeState): Unit \ IO = {
         refreshRuleListItems(state);
         let idxOpt = MapEditorState.getEditingRuleIndex(state#mapEditor);
@@ -1794,6 +1941,16 @@ mod MapEditorPanel {
                 ed.setVisible(visible);
                 ed.setManaged(visible)
             }
+        };
+        // Rule 選択時に focus が未設定なら中央 (idx=12) を default focus に
+        match idxOpt {
+            case Some(_) =>
+                match MapEditorState.getFocusedPatternIdx(state#mapEditor) {
+                    case Some(_) => ()
+                    case None    =>
+                        MapEditorState.setFocusedPatternIdx(state#mapEditor, Some(12i32))
+                }
+            case None    => ()
         };
         // Editor 内の値を更新
         match idxOpt {
@@ -1810,7 +1967,9 @@ mod MapEditorPanel {
                     }
                 }
             }
-        }
+        };
+        // パレットのハイライト同期
+        refreshPalette(state)
     }
 
     def refreshRuleListItems(state: IdeState.IdeState): Unit \ IO =
@@ -1864,6 +2023,7 @@ mod MapEditorPanel {
                 let cells2 = grid.getChildren();
                 let n2 = cells2.size();
                 let centerIdx = expected / 2i32;
+                let focusedIdx = MapEditorState.getFocusedPatternIdx(state#mapEditor);
                 List.forEach(idx -> {
                     if (idx < n2) {
                         let nodeObj = cells2.get(idx);
@@ -1876,7 +2036,8 @@ mod MapEditorPanel {
                                 case Some(x) => x
                                 case None    => MapResource.PatternCell.Unspecified
                             };
-                            drawPatternCellValue(canvas, v, idx == centerIdx)
+                            let isFocused = focusedIdx == Some(idx);
+                            drawPatternCellValue(canvas, v, idx == centerIdx, isFocused)
                         }
                     } else ()
                 }, List.range(0, expected))

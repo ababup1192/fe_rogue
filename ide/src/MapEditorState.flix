@@ -92,6 +92,9 @@ mod MapEditorState {
         editingMaterialPathRef = Array[Option[String], Static],
         selectedTrblRef        = Array[Option[String], Static],
         editingRuleIndexRef    = Array[Option[Int32], Static],
+        // Rules タブの pattern grid でフォーカス中のセル idx (Krita のカラーパレットの
+        // current color に相当する状態。grid セルをクリックするとここに idx が入る)
+        focusedPatternIdxRef   = Array[Option[Int32], Static],
         // Map Canvas のドラッグ範囲選択
         selectedRangeRef       = Array[Option[(Int32, Int32, Int32, Int32)], Static],
         dragStartRef           = Array[Option[(Int32, Int32)], Static],
@@ -122,6 +125,7 @@ mod MapEditorState {
             editingMaterialPathRef = Array#{(None: Option[String])} @ Static,
             selectedTrblRef        = Array#{(None: Option[String])} @ Static,
             editingRuleIndexRef    = Array#{(None: Option[Int32])} @ Static,
+            focusedPatternIdxRef   = Array#{(None: Option[Int32])} @ Static,
             selectedRangeRef       = Array#{(None: Option[(Int32, Int32, Int32, Int32)])} @ Static,
             dragStartRef           = Array#{(None: Option[(Int32, Int32)])} @ Static,
             isDraggingRef          = Array#{false} @ Static,
@@ -281,6 +285,12 @@ mod MapEditorState {
 
     pub def getEditingRuleIndex(state: MapEditorState): Option[Int32] \ IO =
         Array.get(0, state#editingRuleIndexRef)
+
+    pub def setFocusedPatternIdx(state: MapEditorState, idx: Option[Int32]): Unit \ IO =
+        Array.put(idx, 0, state#focusedPatternIdxRef)
+
+    pub def getFocusedPatternIdx(state: MapEditorState): Option[Int32] \ IO =
+        Array.get(0, state#focusedPatternIdxRef)
 
     // ─── Map Canvas のドラッグ範囲選択 ───
 

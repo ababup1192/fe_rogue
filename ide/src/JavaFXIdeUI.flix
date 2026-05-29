@@ -195,6 +195,8 @@ mod JavaFXIdeUI {
             unchecked_cast(mapNs.get("mapRuleNameField") as TextField);
         let mapRulePatternGrid: GridPane =
             unchecked_cast(mapNs.get("mapRulePatternGrid") as GridPane);
+        let mapRulePaletteBox: VBox =
+            unchecked_cast(mapNs.get("mapRulePaletteBox") as VBox);
         let mapRuleTileLabel: Label =
             unchecked_cast(mapNs.get("mapRuleTileLabel") as Label);
         let mapRuleTilesetCanvas: Canvas =
@@ -250,6 +252,7 @@ mod JavaFXIdeUI {
         Array.put(Some(mapRuleEditor), 0, state#widgets#mapRuleEditor);
         Array.put(Some(mapRuleNameField), 0, state#widgets#mapRuleNameField);
         Array.put(Some(mapRulePatternGrid), 0, state#widgets#mapRulePatternGrid);
+        Array.put(Some(mapRulePaletteBox), 0, state#widgets#mapRulePaletteBox);
         Array.put(Some(mapRuleTileLabel), 0, state#widgets#mapRuleTileLabel);
         Array.put(Some(mapRuleTilesetCanvas), 0, state#widgets#mapRuleTilesetCanvas);
         Array.put(Some(mapRuleSizeCombo), 0, state#widgets#mapRuleSizeCombo);

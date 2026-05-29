@@ -109,6 +109,7 @@ mod IdeState {
         mapRuleEditor                 = Array[Option[VBox], Static],
         mapRuleNameField              = Array[Option[TextField], Static],
         mapRulePatternGrid            = Array[Option[GridPane], Static],
+        mapRulePaletteBox             = Array[Option[VBox], Static],
         mapRuleTileLabel              = Array[Option[Label], Static],
         // Rules タブ専用 tileset Canvas (Rule.srcXY 選択用)
         mapRuleTilesetCanvas          = Array[Option[Canvas], Static],
@@ -299,6 +300,7 @@ mod IdeState {
             mapRuleEditor                 = Array#{(None: Option[VBox])} @ Static,
             mapRuleNameField              = Array#{(None: Option[TextField])} @ Static,
             mapRulePatternGrid            = Array#{(None: Option[GridPane])} @ Static,
+            mapRulePaletteBox             = Array#{(None: Option[VBox])} @ Static,
             mapRuleTileLabel              = Array#{(None: Option[Label])} @ Static,
             mapRuleTilesetCanvas          = Array#{(None: Option[Canvas])} @ Static,
             mapRuleSizeCombo              = Array#{(None: Option[ComboBox[String]])} @ Static,

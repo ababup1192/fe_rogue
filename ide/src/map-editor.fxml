@@ -308,12 +308,16 @@
                                                                   prefWidth="80"/>
                                                     </children>
                                                 </HBox>
-                                                <Label text="Pattern: 左ク=Unspecified→床→壁→Anything(?)→Nothing(∅) 循環。右ク=Value↔NotValue / Anything↔Nothing 反転。中央=出力位置 + マッチ条件 (例: 中央 床 → 床の上にだけ描画)"
-                                                       styleClass="map-palette-status"
-                                                       wrapText="true"/>
-                                                <GridPane fx:id="mapRulePatternGrid"
-                                                          hgap="2" vgap="2"
-                                                          alignment="CENTER_LEFT"/>
+                                                <HBox spacing="8" alignment="TOP_LEFT">
+                                                    <children>
+                                                        <GridPane fx:id="mapRulePatternGrid"
+                                                                  hgap="2" vgap="2"
+                                                                  alignment="CENTER_LEFT"/>
+                                                        <VBox fx:id="mapRulePaletteBox"
+                                                              spacing="4"
+                                                              alignment="TOP_LEFT"/>
+                                                    </children>
+                                                </HBox>
                                                 <Label fx:id="mapRuleTileLabel"
                                                        text="Tile: 未設定 (下の tileset をクリックで指定)"
                                                        styleClass="map-palette-status"
