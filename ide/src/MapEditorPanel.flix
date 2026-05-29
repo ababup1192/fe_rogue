@@ -391,10 +391,10 @@ mod MapEditorPanel {
                 let zoom = MapEditorState.getMapZoom(state#mapEditor);
                 let mat = MapEditorState.getEditingMaterial(state#mapEditor);
                 let preview = MapEditorState.getPreviewMode(state#mapEditor);
-                // preview ON: dim / overlay / grid を全て無効化してゲーム見えを再現
-                // TRBL の紫プレビューは auto-layer タブアクティブ時だけ表示
-                let selTrbl = if (preview) None
-                              else if (isRightTabActive(state, RightTab.AutoLayer))
+                // preview ON: dim / grid を無効化してゲーム見えを再現。
+                // ただし紫プレビュー (selTrbl / selRule) は preview でも表示し続ける
+                // (タブで選択中の TRBL / Rule の効果範囲を、ゲーム見え上で確認するため)。
+                let selTrbl = if (isRightTabActive(state, RightTab.AutoLayer))
                                   MapEditorState.getSelectedTrbl(state#mapEditor)
                               else None;
                 let selRange = if (preview) None
@@ -402,8 +402,7 @@ mod MapEditorPanel {
                 // Rule の紫プレビューは Rules タブアクティブ時だけ表示。
                 // ComboBox のドロップダウンで項目にホバー中はそちらを優先 (即時試し見)、
                 // ホバー外なら通常の選択中ルールを表示。
-                let selRule = if (preview) None
-                              else if (isRightTabActive(state, RightTab.Rules)) {
+                let selRule = if (isRightTabActive(state, RightTab.Rules)) {
                                   let hovered = MapEditorState.getHoveredRuleIndex(state#mapEditor);
                                   match hovered {
                                       case Some(_) => hovered
