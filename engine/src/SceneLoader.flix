@@ -704,15 +704,33 @@ mod SceneLoader {
             frames     <- Result.traverse(parseFrame, frameMaps)
         ) yield ({loop = loops, speed = speed, frames = frames}: SpriteFrames.Animation)
 
-    /// JSON の 1 フレーム定義を SpriteFrames.Frame に変換する。duration は任意（デフォルト 1.0）
+    /// JSON の 1 フレーム定義を SpriteFrames.Frame に変換する。
+    /// duration は任意（デフォルト 1.0）、region も任意（None ならテクスチャ全体）。
+    /// region JSON 形式: `{"pos": [x, y], "size": [w, h]}` (Godot Rect2 と同じ位置/サイズ)。
     def parseFrame(frameMap: Map[String, Json.JsonElement]):
                     Result[Json.JsonError, SpriteFrames.Frame] =
         forM (
-            texture     <- (Json.FromJson.getAtKey(Root, "texture", frameMap): Result[Json.JsonError, String]);
-            durationOpt <- (Json.FromJson.getAtKeyOpt(Root, "duration", frameMap):
-                             Result[Json.JsonError, Option[Float64]])
+            texture      <- (Json.FromJson.getAtKey(Root, "texture", frameMap): Result[Json.JsonError, String]);
+            durationOpt  <- (Json.FromJson.getAtKeyOpt(Root, "duration", frameMap):
+                              Result[Json.JsonError, Option[Float64]]);
+            regionMapOpt <- (Json.FromJson.getAtKeyOpt(Root, "region", frameMap):
+                              Result[Json.JsonError, Option[Map[String, Json.JsonElement]]]);
+            regionOpt    <- parseRegionOpt(regionMapOpt)
         ) yield ({texture = texture,
+                  regionRect = regionOpt,
                   duration = Option.getWithDefault(1.0, durationOpt)}: SpriteFrames.Frame)
+
+    /// region が JSON 上に存在すれば `{"pos": [...], "size": [...]}` を Rect2 に
+    /// デコード、無ければ None を返す。
+    def parseRegionOpt(regionMapOpt: Option[Map[String, Json.JsonElement]]):
+                        Result[Json.JsonError, Option[Rect2.Rect2]] =
+        match regionMapOpt {
+            case None    => Ok(None)
+            case Some(m) => forM (
+                              pos  <- parseVec2("pos", m);
+                              size <- parseVec2("size", m)
+                            ) yield Some({position = pos, size = size})
+        }
 
     /// JSON の spriteFrames オブジェクトを SpriteFrames リソースに変換する
     def parseSpriteFrames(sfMap: Map[String, Json.JsonElement]):

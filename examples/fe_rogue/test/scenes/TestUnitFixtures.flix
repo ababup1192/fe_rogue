@@ -35,8 +35,10 @@ mod TestUnitFixtures {
             hframes = 5,
             vframes = 2,
             frame   = 0,
-            offset  = {x = 0.0, y = 0.0}
-        }
+            offset  = {x = 0.0, y = 0.0},
+            scale   = {x = 1.0, y = 1.0}
+        },
+        spriteFrames  = None
     }
 
     /// 戦闘パラメータも明示的に指定したいケース用。
@@ -60,8 +62,10 @@ mod TestUnitFixtures {
             hframes = 5,
             vframes = 2,
             frame   = 0,
-            offset  = {x = 0.0, y = 0.0}
-        }
+            offset  = {x = 0.0, y = 0.0},
+            scale   = {x = 1.0, y = 1.0}
+        },
+        spriteFrames  = None
     }
 
     /// 魔力・魔防まで明示したいケース用。物理ステ・魔法ステを両方検証したいときに使う。
@@ -84,8 +88,10 @@ mod TestUnitFixtures {
             hframes = 5,
             vframes = 2,
             frame   = 0,
-            offset  = {x = 0.0, y = 0.0}
-        }
+            offset  = {x = 0.0, y = 0.0},
+            scale   = {x = 1.0, y = 1.0}
+        },
+        spriteFrames  = None
     }
 
     /// テスト用 WeaponResource。中庸な攻撃力 2 / 耐久度 10 / 直接攻撃 (range 1-1)。
@@ -128,7 +134,8 @@ mod TestUnitFixtures {
         hframes = 1,
         vframes = 1,
         frame   = 0,
-        offset  = {x = 0.0, y = 0.0}
+        offset  = {x = 0.0, y = 0.0},
+        scale   = {x = 1.0, y = 1.0}
     }
 
     /// テスト用 FontAtlas。`loadScene` が実際に getFontAtlas を呼び出すのは Label2D 系の

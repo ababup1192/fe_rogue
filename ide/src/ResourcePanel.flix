@@ -186,6 +186,7 @@ mod ResourcePanel {
                                 let sorted = Map.toList(fields)
                                     |> List.sortBy(p -> PropertyWidgets.fieldOrderKey(p));
                                 let textureNames = Array.get(0, state#textureNamesRef);
+                                let texturePathMap = Array.get(0, state#texturePathMapRef);
                                 let refOptions = run {
                                     collectRefOptions(state)
                                 } with Fs.FileRead.runWithIO;
@@ -195,7 +196,8 @@ mod ResourcePanel {
                                 List.forEach(p -> {
                                     let (k, e) = p;
                                     PropertyWidgets.addFieldRow(children, k, e, record, basePath,
-                                                                  textureNames, refOptions, mkCommit)
+                                                                  textureNames, texturePathMap,
+                                                                  refOptions, mkCommit)
                                 }, sorted);
                                 refreshPreview(state, record)
                             }

@@ -60,7 +60,8 @@ mod TestPlayerScene {
                         weapons           = TestUnitFixtures.testWeapon() :: Nil,
                         staves            = Nil,
                         selectedItem      = None,
-                        moveStepsTaken    = 0
+                        moveStepsTaken    = 0,
+                        facing            = Staff.Direction.Down
                     })))
 
     /// プレイヤー id のワールド座標を取り出す

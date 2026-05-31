@@ -367,24 +367,58 @@ mod EngineNode {
             zIndex = r#zIndex
         }
 
-    /// AnimatedSprite2D を Drawable に変換する
-    pub def animSpriteToDrawable(sprite: AnimatedSprite2D, globalPos: Vec2.Vec2): GameEngine.Drawable =
+    /// AnimatedSprite2D を Drawable に変換する。
+    /// 現フレームに regionRect (atlas 切り出し) があれば、テクスチャサイズと組み合わせて
+    /// GPU UV を計算し、描画矩形も region サイズ分にスケールする (Sprite2D と同じ流儀)。
+    /// regionRect 未指定なら従来通りテクスチャ全体を描画する。
+    pub def animSpriteToDrawable(sprite: AnimatedSprite2D, globalPos: Vec2.Vec2):
+                                  GameEngine.Drawable \ GameEngine.Game =
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
+        let texName = AnimatedSprite2D.currentTexture(sprite);
+        // regionRect が無い / テクスチャ未登録なら従来通り全体描画
+        let uvSpec: {uvOffset = Vec2.Vec2, uvScale = Vec2.Vec2, hasRect = Bool} =
+            match AnimatedSprite2D.currentRegion(sprite) {
+                case None       =>
+                    ({uvOffset = {x = 0.0, y = 0.0},
+                      uvScale  = {x = 1.0, y = 1.0},
+                      hasRect  = false}: {uvOffset = Vec2.Vec2, uvScale = Vec2.Vec2, hasRect = Bool})
+                case Some(rect) => match GameEngine.Game.getTextureInfo(texName) {
+                    case None       =>
+                        ({uvOffset = {x = 0.0, y = 0.0},
+                          uvScale  = {x = 1.0, y = 1.0},
+                          hasRect  = false}: {uvOffset = Vec2.Vec2, uvScale = Vec2.Vec2, hasRect = Bool})
+                    case Some(info) =>
+                        let texW = info#width;
+                        let texH = info#height;
+                        ({uvOffset = {x = rect#position#x / texW,
+                                       y = rect#position#y / texH},
+                          uvScale  = {x = rect#size#x / texW,
+                                       y = rect#size#y / texH},
+                          hasRect  = true}: {uvOffset = Vec2.Vec2, uvScale = Vec2.Vec2, hasRect = Bool})
+                }
+            };
+        // regionRect 指定時はテクスチャ全体ではなく rect サイズで描画したいので
+        // scale に (rect / texSize) を掛ける (= レンダラの displayW 計算で
+        // texW * scale * (rect/texW) = rect * scale になる)
+        let drawScale: Vec2.Vec2 =
+            if (uvSpec#hasRect) {x = r#scale#x * uvSpec#uvScale#x,
+                                  y = r#scale#y * uvSpec#uvScale#y}
+            else r#scale;
         // flipH / flipV は scale を負にすることで model 行列で反転させる
         let flippedScale: Vec2.Vec2 = {
-            x = if (r#flipH) -1.0 * r#scale#x else r#scale#x,
-            y = if (r#flipV) -1.0 * r#scale#y else r#scale#y
+            x = if (r#flipH) -1.0 * drawScale#x else drawScale#x,
+            y = if (r#flipV) -1.0 * drawScale#y else drawScale#y
         };
         {
-            texture = AnimatedSprite2D.currentTexture(sprite),
+            texture = texName,
             position = globalPos,
             scale = flippedScale,
             rotation = r#rotation,
             color = r#modulate,
             alpha = 1.0f32,
             centered = r#centered,
-            uvOffset = {x = 0.0, y = 0.0},
-            uvScale = {x = 1.0, y = 1.0},
+            uvOffset = uvSpec#uvOffset,
+            uvScale = uvSpec#uvScale,
             zIndex = r#zIndex
         }
 

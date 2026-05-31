@@ -37,6 +37,7 @@ mod PlayerScene {
         case Staff(Int32)    // staves リスト上の index
     }
 
+
     /// プレイヤー固有の状態。
     /// id: 0..N-1 の連番（N は `pools.party` の長さ）。"Player_<id>" ノード名と一致する。
     /// gridPos: 盤面上の駒の論理位置。moveTo で即座に更新される。
@@ -69,7 +70,12 @@ mod PlayerScene {
         // AutoMove 中にこの味方が当ターン何マス進んだか。
         // moveTiles に達したら `waited = true` にして次の味方に交代する。
         // プレイヤーターン開始時に 0 リセット。
-        moveStepsTaken     = Int32
+        moveStepsTaken     = Int32,
+        // 今向いている方向 (= 直近に動いた方向、初期値 Down)。
+        // 子 Sprite が AnimatedSprite2D の場合、移動時に `walk_<dir>` アニメを再生する
+        // ためにここから方向を読む。子が Sprite2D の場合は表示には影響しないが、
+        // 戦闘・スキル系で利用しやすいよう値は保持する。
+        facing             = Staff.Direction
     }
 
     /// 味方パーティの「現フレーム状態」を Scene を介さずに読み取る effect。
@@ -123,6 +129,19 @@ mod PlayerScene {
 
     /// `waited = false` 時の sprite modulate（白 = 元色）。
     def activeColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+
+    /// AnimatedSprite2D の「待機」アニメ名。spriteFrames には必ずこれが定義されている前提。
+    def idleAnimName(): String = "idle"
+
+    /// `walk_<direction>` アニメ名。spriteFrames に方向別 4 アニメを設定する前提。
+    /// 未定義のアニメ名を渡すと AnimatedSprite2D は表示が止まる (anim 切り替え失敗) ので、
+    /// 命名は spriteFrames 側 (units.json) と必ず揃える。
+    def walkAnimName(dir: Staff.Direction): String = match dir {
+        case Staff.Direction.Up    => "walk_up"
+        case Staff.Direction.Down  => "walk_down"
+        case Staff.Direction.Left  => "walk_left"
+        case Staff.Direction.Right => "walk_right"
+    }
 
     /// "Player_2" のようなノード名（World の直接の子）。
     pub def playerName(id: Int32): String = "Player_${id}"
@@ -228,18 +247,33 @@ mod PlayerScene {
             weapons           = sp#weapons,
             staves            = sp#staves,
             selectedItem      = None,
-            moveStepsTaken    = 0
+            moveStepsTaken    = 0,
+            facing            = Staff.Direction.Down
         };
-        let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset, Vec2.one())
-                        |> Sprite2D.setHframes(res#sprite#hframes)
-                        |> Sprite2D.setVframes(res#sprite#vframes)
-                        |> Sprite2D.setFrame(res#sprite#frame)
-                        |> CanvasItem.setZIndex(spriteZIndex());
+        // unit に spriteFrames があれば AnimatedSprite2D で配置、無ければ Sprite2D
+        // (静止単一フレーム) で配置する。AnimatedSprite2D は engine の per-node
+        // process が advanceFrame を毎フレーム呼ぶので、こちらでチクチク回す必要は無い。
+        let spriteNode = match res#spriteFrames {
+            case Some(sf) =>
+                let anim = AnimatedSprite2D.make(sf,
+                    {animation = idleAnimName()}, Vec2.zero(), res#sprite#scale)
+                    |> AnimatedSprite2D.setOffset(res#sprite#offset)
+                    |> AnimatedSprite2D.setAutoplay(idleAnimName())
+                    |> CanvasItem.setZIndex(spriteZIndex());
+                EngineNode.AnimSprite2DWithState(anim, NodeTag.NoTag)
+            case None =>
+                let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset,
+                                            res#sprite#scale)
+                                |> Sprite2D.setHframes(res#sprite#hframes)
+                                |> Sprite2D.setVframes(res#sprite#vframes)
+                                |> Sprite2D.setFrame(res#sprite#frame)
+                                |> CanvasItem.setZIndex(spriteZIndex());
+                EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag)
+        };
         scene
             |> Scene.addChildAt(MapScene.worldPath(), playerName(sp#id),
                                  EngineNode.Marker2DWithState(marker, NodeTag.Player(data)))
-            |> Scene.addChildAt(playerPath(sp#id), "Sprite",
-                                 EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
+            |> Scene.addChildAt(playerPath(sp#id), "Sprite", spriteNode)
             |> UnitHPBarScene.attach(playerPath(sp#id), res#hp, UnitHPBarScene.BarPosition.Above)
 
     // ────────────────────────────────────────────────────────
@@ -255,7 +289,11 @@ mod PlayerScene {
         let targetWorld = map#gridToWorld(target);
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
         Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slideDuration());
-        (marker, {gridPos = target | data})
+        // 進行方向を facing に反映し、AnimatedSprite2D なら walk_<dir> 再生 (副作用)。
+        // sprite ノード書き換えは moveToById 側でやる (moveTo は state を返すだけ)。
+        let nextFacing = directionOfStep(data#gridPos, target)
+                            |> Option.getWithDefault(data#facing);
+        (marker, {gridPos = target, facing = nextFacing | data})
 
     /// 指定 id のプレイヤーが現在 tween 中（次の入力を受け付けない状態）か。
     pub def isMoving(id: Int32): Bool \ Tween.Scheduler =
@@ -271,7 +309,20 @@ mod PlayerScene {
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
         let targetWorld = map#gridToWorld(target);
         Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slideDuration());
-        mapPlayer(id, d -> {gridPos = target | d}, scene)
+        // 直前のグリッド座標から target への 1 マス差で方向を決める。
+        // 0 ベクトル (= 同じセル) の場合は既存の facing を保つ。
+        let prev      = getGridPos(id, scene);
+        let dirOpt    = directionOfStep(prev, target);
+        let withState = mapPlayer(id, d -> {
+            gridPos = target,
+            facing  = Option.getWithDefault(d#facing, dirOpt) | d
+        }, scene);
+        // AnimatedSprite2D を持つ unit なら walk_<dir> アニメに切り替える。
+        // 方向が決まらなければ (= 同セル移動) 切り替えなし。
+        match dirOpt {
+            case None    => withState
+            case Some(d) => playAnim(id, walkAnimName(d), withState)
+        }
 
     /// 指定 id のプレイヤーを `target` グリッドに **瞬間移動** で戻す。
     /// 進行中の Tween があればキャンセルし、Marker2D の world 位置と Data#gridPos を
@@ -304,8 +355,11 @@ mod PlayerScene {
                               TurnPhase.State, SelectedPlayer.State,
                               PartyQuery} =
         let selection = SelectedPlayer.State.get();
+        // origin にスナップして戻したあと、AnimatedSprite2D 持ち unit は idle に戻す。
+        // (移動中の walk_<dir> 表示のままだと「キャンセル後に動いてないのに横向き」になる)
         let restored = match (selection#id, selection#origin) {
-            case (Some(id), Some(origin)) => snapTo(id, origin, scene)
+            case (Some(id), Some(origin)) =>
+                snapTo(id, origin, scene) |> playAnim(id, idleAnimName())
             case _                         => scene
         };
         SelectedPlayer.State.put(SelectedPlayer.cleared());
@@ -349,6 +403,9 @@ mod PlayerScene {
                         case _                                => sc
                     },
                     afterMethods, bundle#finished);
+                // 待機モーションへの復帰は Tween 完了をトリガーにせず、
+                // setWaited / clearAllWaited (= 待機確定 / 次ターン開始) に集約している。
+                // 移動 Tween 完了後は最後に向いた walk_<dir> アニメをそのまま維持する。
                 // signal handler が scene 経由で self (Player ノード) を更新する可能性が
                 // あるため、最新ノードを取り直して返す (古い node で打ち消されないように)
                 match Scene.getEngineNode(path, afterFinished) {
@@ -382,8 +439,15 @@ mod PlayerScene {
                     ) yield {
                         let (newMarker, newData) =
                             moveTo(data#id, board#map, target, marker, data, scene);
+                        // 子 Sprite が AnimatedSprite2D なら、進行方向の walk_<dir> アニメに
+                        // 切り替える (Sprite2D の unit は playAnim が no-op)。
+                        // direction が決まらない (= 同セル移動) ケースは scene 据え置き。
+                        let nextScene = match directionOfStep(data#gridPos, target) {
+                            case Some(d) => playAnim(data#id, walkAnimName(d), scene)
+                            case None    => scene
+                        };
                         (EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
-                         scene)
+                         nextScene)
                     };
                     Option.getWithDefault((node, scene), movement)
             case _ => (node, scene)
@@ -486,20 +550,25 @@ mod PlayerScene {
         }
 
     /// プレイヤーを「行動済み」にして sprite を灰色 modulate にする。
+    /// AnimatedSprite2D 持ち unit はここで idle アニメに戻す (= 待機モーション表示)。
     /// PlayerAttack 確定 / スキップ時に呼ばれる。
     pub def setWaited(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
         scene
             |> mapPlayer(id, d -> {waited = true | d})
             |> setSpriteModulate(id, waitedColor())
+            |> playAnim(id, idleAnimName())
 
     /// 全プレイヤーの waited をクリアし、sprite を白に戻す。
+    /// ターン開始時に呼ばれ、AnimatedSprite2D 持ち unit は idle アニメに戻す
+    /// (= 新ターン開始時の待機モーション)。
     /// 敵ターン終了後に呼ぶ（次の味方ターン開始）。
     pub def clearAllWaited(scene: Scene[NodeTag]): Scene[NodeTag] =
         let ids = getAll(scene) |> List.map(d -> d#id);
         List.foldLeft((sc, id) ->
             sc
                 |> mapPlayer(id, d -> {waited = false | d})
-                |> setSpriteModulate(id, activeColor()),
+                |> setSpriteModulate(id, activeColor())
+                |> playAnim(id, idleAnimName()),
             scene, ids)
 
     /// AutoMove で消費した移動歩数を記録するための setter。
@@ -514,11 +583,39 @@ mod PlayerScene {
                        scene, ids)
 
     /// 指定 id の子 Sprite の modulate を変える内部ヘルパー。
+    /// Sprite2D / AnimatedSprite2D どちらの実装でも動くように両方の inner mapper を試す。
     def setSpriteModulate(id: Int32, color: Color,
                            scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(spritePath(id),
-            n -> EngineNode.mapSprite2D(s -> CanvasItem.setModulate(color, s), n),
+            n -> n
+                |> EngineNode.mapSprite2D(s -> CanvasItem.setModulate(color, s))
+                |> EngineNode.mapAnimSprite2D(s -> CanvasItem.setModulate(color, s)),
             scene)
+
+    /// 子 Sprite が AnimatedSprite2D なら `play(animName)` を適用する内部ヘルパー。
+    /// Sprite2D だった場合 (= spriteFrames を持たない unit) は no-op。
+    /// unknown id や Sprite ノードが無いケースも no-op で安全。
+    def playAnim(id: Int32, animName: String, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(spritePath(id), node -> match node {
+            case EngineNode.AnimSprite2DWithState(sp, tag) =>
+                EngineNode.AnimSprite2DWithState(AnimatedSprite2D.play(animName, sp), tag)
+            case other => other
+        }, scene)
+
+    /// 1 マス分の差分 (prev → target) から進行方向を求める。
+    /// 同セル / 0 ベクトルは None。斜めは便宜上 |x| >= |y| を横優先で扱う
+    /// (FE では基本的に直交 1 マスのみ移動するので通常通らない)。
+    def directionOfStep(prev: {x = Int32, y = Int32},
+                         target: {x = Int32, y = Int32}): Option[Staff.Direction] =
+        let dx = target#x - prev#x;
+        let dy = target#y - prev#y;
+        if (dx == 0 and dy == 0) None
+        else if (Int32.abs(dx) >= Int32.abs(dy))
+            if (dx > 0) Some(Staff.Direction.Right)
+            else Some(Staff.Direction.Left)
+        else
+            if (dy > 0) Some(Staff.Direction.Down)
+            else Some(Staff.Direction.Up)
 
     // ────────────────────────────────────────────────────────
     // (F) ゲームオーバー時のリセット

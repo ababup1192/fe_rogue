@@ -72,7 +72,13 @@ mod UnitCatalog {
         initialStaves = List[String],
         // 兵種名 (例: "アーチャー" / "ナイト" / "メイジ")。UI 上で表示する用途。
         // 旧 JSON に値が無い場合は decoder が "" を埋める (後方互換)。
-        description   = String
+        description   = String,
+        // 方向別アニメ用 SpriteFrames リソース (Godot AnimatedSprite2D 準拠)。
+        // 設定されていれば PlayerScene / EnemyScene が AnimatedSprite2D で表示し、
+        // `idle` / `walk_up` / `walk_down` / `walk_left` / `walk_right` アニメ名を
+        // 移動方向に応じて再生する。設定されていなければ従来通り Sprite2D で
+        // `sprite` フィールドの単一フレームを表示する。
+        spriteFrames  = Option[SpriteFrames]
     }
 
     /// 武器の属性（物理 / 魔法）。
@@ -113,16 +119,21 @@ mod UnitCatalog {
         max = Int32
     }
 
-    /// 見た目情報。後でテクスチャ単独 Resource に切り出す余地を残し nested に。
+    /// 静止スプライト情報 (Sprite2D 用)。HUD / popup / 単一フレーム表示で使う。
     /// `offset` は描画時の x/y シフト（px）。スプライトシートに padding がある場合
     /// （例: Kenney 系で 16 px 絵 + 1 px gutter で cellW=17 となるケース）の
     /// 視覚的中央寄せ補正に使う。デフォルトは {0, 0}。
+    /// `scale` は board 表示時の拡大倍率。既定 {1, 1} = 画像ピクセル等倍。
+    /// units.json で省略可。大きく出したいキャラだけ `"scale": {"x": 1.5, "y": 1.5}`
+    /// のように個別指定する (例: fe_archer は 1.5 倍指定)。
+    /// 方向別アニメは `UnitResource.spriteFrames` (engine の SpriteFrames) で別途持つ。
     pub type alias SpriteResource = {
         texture = String,
         hframes = Int32,
         vframes = Int32,
         frame   = Int32,
-        offset  = Vec2.Vec2
+        offset  = Vec2.Vec2,
+        scale   = Vec2.Vec2
     }
 
     /// units 部を取り出す。
@@ -217,24 +228,13 @@ mod UnitCatalog {
             case None    => bug!("UnitCatalog.lookupWeapon: weapon '${id}' not in catalog")
         }
 
-    /// sprite#frame → ユニット表示名。units.json のスプライトシート上の並び順に
-    /// 1:1 で対応する（0=Knight / 1=Archer / 2=Mage / 3=Orc / 4=Goblin）。
-    /// HUD パネル（UnitInfoPopupScene）の名前表示に使う。シートの並びを変えたらここも更新する。
-    pub def displayName(frame: Int32): String = match frame {
-        case 0 => "Knight"
-        case 1 => "Archer"
-        case 2 => "Mage"
-        case 3 => "Orc"
-        case 4 => "Goblin"
-        case _ => "Unknown"
-    }
-
     /// Z 戦略の整合性検査用に Flix 型のフィールド名集合を公開する。
     /// `UnitResource` のフィールド構造を変更したらここも更新すること。
     /// engine 側 `Resource.checkConsistency` がこの集合と `_schema.json` を照合する。
     pub def expectedUnitFields(): Set[String] =
         Set#{"moveTiles", "hp", "attack", "defense", "magicAttack", "magicDefense",
-              "speed", "sprite", "initialWeapon", "initialStaves"}
+              "speed", "sprite", "initialWeapon", "initialStaves",
+              "description", "spriteFrames"}
 
     /// `WeaponResource` のフィールド名集合。`weapons.schema.json` との整合性検査に使う。
     pub def expectedWeaponFields(): Set[String] =
@@ -281,7 +281,7 @@ mod UnitCatalogCodec {
         JsonObject(top)
 
     def encodeUnit(u: UnitResource): JsonElement =
-        JsonObject(Map#{
+        let base = Map#{
             "moveTiles"     => JsonNumber(intToBd(u#moveTiles)),
             "hp"            => JsonNumber(intToBd(u#hp)),
             "attack"        => JsonNumber(intToBd(u#attack)),
@@ -294,7 +294,14 @@ mod UnitCatalogCodec {
             "initialStaves" => JsonArray(
                 List.map(JsonString, u#initialStaves) |> List.toVector),
             "description"   => JsonString(u#description)
-        })
+        };
+        // spriteFrames は設定がある unit (= AnimatedSprite2D で描く unit) だけ書き出す。
+        // 旧 JSON との round-trip 維持のため None 時はフィールドを省略する。
+        let withSf = match u#spriteFrames {
+            case None     => base
+            case Some(sf) => Map.insert("spriteFrames", encodeSpriteFrames(sf), base)
+        };
+        JsonObject(withSf)
 
     def encodeSprite(s: SpriteResource): JsonElement =
         JsonObject(Map#{
@@ -302,7 +309,46 @@ mod UnitCatalogCodec {
             "hframes" => JsonNumber(intToBd(s#hframes)),
             "vframes" => JsonNumber(intToBd(s#vframes)),
             "frame"   => JsonNumber(intToBd(s#frame)),
-            "offset"  => encodeOffset(s#offset)
+            "offset"  => encodeOffset(s#offset),
+            "scale"   => encodeOffset(s#scale)
+        })
+
+    /// SpriteFrames リソースを `{anim_name: {loop, speed, frames}}` 形式で書き出す。
+    /// SceneLoader.parseSpriteFrames と round-trip するレイアウト。
+    def encodeSpriteFrames(sf: SpriteFrames): JsonElement =
+        let names = SpriteFrames.animationNames(sf);
+        let obj = List.foldLeft((acc, name) ->
+            match SpriteFrames.getAnimation(name, sf) {
+                case None    => acc
+                case Some(a) => Map.insert(name, encodeSpriteAnimation(a), acc)
+            }, (Map.empty(): Map[String, JsonElement]), names);
+        JsonObject(obj)
+
+    def encodeSpriteAnimation(a: SpriteFrames.Animation): JsonElement =
+        JsonObject(Map#{
+            "loop"   => Json.JsonElement.JsonBool(a#loop),
+            "speed"  => JsonNumber(floatToBd(a#speed)),
+            "frames" => JsonArray(
+                List.map(encodeSpriteFrame, a#frames) |> List.toVector)
+        })
+
+    def encodeSpriteFrame(f: SpriteFrames.Frame): JsonElement =
+        let base = Map#{
+            "texture"  => JsonString(f#texture),
+            "duration" => JsonNumber(floatToBd(f#duration))
+        };
+        let withRect = match f#regionRect {
+            case None       => base
+            case Some(rect) => Map.insert("region", encodeRect(rect), base)
+        };
+        JsonObject(withRect)
+
+    def encodeRect(rect: Rect2.Rect2): JsonElement =
+        JsonObject(Map#{
+            "pos"  => JsonArray(Vector#{JsonNumber(floatToBd(rect#position#x)),
+                                          JsonNumber(floatToBd(rect#position#y))}),
+            "size" => JsonArray(Vector#{JsonNumber(floatToBd(rect#size#x)),
+                                          JsonNumber(floatToBd(rect#size#y))})
         })
 
     def encodeOffset(v: Vec2.Vec2): JsonElement =
@@ -412,10 +458,14 @@ mod UnitCatalogCodec {
             let desc = Map.get("description", obj)
                             |> Option.flatMap(expectString)
                             |> Option.getWithDefault("");
+            // spriteFrames は省略可。設定が無ければ Sprite2D で `sprite` を表示する。
+            let sf = Map.get("spriteFrames", obj)
+                            |> Option.flatMap(decodeSpriteFrames);
             ({moveTiles = mt, hp = hp, attack = atk, defense = df,
               magicAttack = mAtk, magicDefense = mDef,
               speed = spd, sprite = sp, initialWeapon = iw,
-              initialStaves = staves, description = desc}: UnitResource)
+              initialStaves = staves, description = desc,
+              spriteFrames = sf}: UnitResource)
         }
 
     def decodeWeapon(element: JsonElement): Option[WeaponResource] =
@@ -479,8 +529,96 @@ mod UnitCatalogCodec {
                     case None    => ({x = 0.0, y = 0.0}: Vec2.Vec2)
                 }
             };
+            // scale は省略可能。既定は等倍 {1, 1} (画像ピクセル原寸)。
+            // 大きく見せたいユニットだけ units.json で scale を上書きする。
+            let sc = match Map.get("scale", obj) {
+                case None     => ({x = 1.0, y = 1.0}: Vec2.Vec2)
+                case Some(sj) => match decodeOffset(sj) {
+                    case Some(v) => v
+                    case None    => ({x = 1.0, y = 1.0}: Vec2.Vec2)
+                }
+            };
             ({texture = tex, hframes = hf, vframes = vf, frame = fr,
-              offset = off}: SpriteResource)
+              offset = off, scale = sc}: SpriteResource)
+        }
+
+    /// SpriteFrames リソースのデコード。レイアウト:
+    ///   `{ "idle": {loop, speed, frames: [...]}, "walk_down": {...}, ... }`
+    /// SceneLoader.parseSpriteFrames と同じ JSON 形式 (engine の SpriteFrames に揃える)。
+    /// 各 frame は `{texture, duration?, region?: {pos:[x,y], size:[w,h]}}`。
+    pub def decodeSpriteFrames(element: JsonElement): Option[SpriteFrames] =
+        match expectObject(element) {
+            case None     => None
+            case Some(obj) =>
+                Map.foldLeftWithKey((acc, name, animJson) ->
+                    Option.flatMap(soFar ->
+                        decodeSpriteAnimation(animJson) |> Option.map(anim ->
+                            SpriteFrames.addAnimation(name, anim, soFar)),
+                        acc),
+                    Some(SpriteFrames.empty()), obj)
+        }
+
+    def decodeSpriteAnimation(element: JsonElement): Option[SpriteFrames.Animation] =
+        forM (
+            obj      <- expectObject(element);
+            loopJ    <- Map.get("loop", obj);
+            speedJ   <- Map.get("speed", obj);
+            framesJ  <- Map.get("frames", obj);
+            lp       <- expectBool(loopJ);
+            spd      <- expectFloat(speedJ);
+            frames   <- decodeFrameList(framesJ)
+        ) yield ({loop = lp, speed = spd, frames = frames}: SpriteFrames.Animation)
+
+    def decodeFrameList(element: JsonElement): Option[List[SpriteFrames.Frame]] =
+        match element {
+            case JsonArray(items) =>
+                List.foldRight(item -> acc ->
+                    Option.flatMap(soFar ->
+                        decodeFrame(item) |> Option.map(f -> f :: soFar),
+                        acc),
+                    Some(Nil), Vector.toList(items))
+            case _ => None
+        }
+
+    def decodeFrame(element: JsonElement): Option[SpriteFrames.Frame] =
+        forM (
+            obj   <- expectObject(element);
+            texJ  <- Map.get("texture", obj);
+            tex   <- expectString(texJ)
+        ) yield {
+            let dur = Map.get("duration", obj)
+                            |> Option.flatMap(expectFloat)
+                            |> Option.getWithDefault(1.0);
+            let rect = Map.get("region", obj) |> Option.flatMap(decodeRect);
+            ({texture = tex, regionRect = rect, duration = dur}: SpriteFrames.Frame)
+        }
+
+    /// `{"pos": [x, y], "size": [w, h]}` を Rect2 にデコード。
+    def decodeRect(element: JsonElement): Option[Rect2.Rect2] =
+        forM (
+            obj    <- expectObject(element);
+            posJ   <- Map.get("pos", obj);
+            sizeJ  <- Map.get("size", obj);
+            pos    <- decodeXyTuple(posJ);
+            size   <- decodeXyTuple(sizeJ)
+        ) yield ({position = pos, size = size}: Rect2.Rect2)
+
+    def decodeXyTuple(element: JsonElement): Option[Vec2.Vec2] =
+        match element {
+            case JsonArray(items) =>
+                if (Vector.length(items) >= 2)
+                    forM (
+                        x <- expectFloat(Vector.get(0, items));
+                        y <- expectFloat(Vector.get(1, items))
+                    ) yield ({x = x, y = y}: Vec2.Vec2)
+                else None
+            case _ => None
+        }
+
+    def expectBool(element: JsonElement): Option[Bool] =
+        match element {
+            case Json.JsonElement.JsonBool(b) => Some(b)
+            case _                             => None
         }
 
     /// `{"x": ..., "y": ...}` の片方だけでも読めるように、x/y を独立に optional に扱う。

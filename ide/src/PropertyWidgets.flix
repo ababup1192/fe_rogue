@@ -175,14 +175,15 @@ mod PropertyWidgets {
                         key: String, entry: Resource.FieldEntry,
                         record: Json.JsonElement, basePath: List[String],
                         textureNames: List[String],
+                        texturePathMap: Map[String, String],
                         refOptions: Map[String, List[String]],
                         mkCommit: List[String] -> Commit): Unit \ IO =
         match entry {
             case Resource.FieldEntry.Field(fs) => {
                 let value = jsonFieldOf(record, key);
                 let keyPath = List.append(basePath, key :: Nil);
-                let widget = buildFieldWidget(fs, value, textureNames, refOptions,
-                                                mkCommit(keyPath));
+                let widget = buildFieldWidget(fs, value, textureNames, texturePathMap,
+                                                refOptions, mkCommit(keyPath));
                 addPropertyRow(children, "${fs#label}:", widget)
             }
             case Resource.FieldEntry.Nested(innerMap) => {
@@ -199,7 +200,7 @@ mod PropertyWidgets {
                 List.forEach(p -> {
                     let (k, e) = p;
                     addFieldRow(children, k, e, innerRecord, innerBasePath,
-                                  textureNames, refOptions, mkCommit)
+                                  textureNames, texturePathMap, refOptions, mkCommit)
                 }, sortedInner)
             }
         }
@@ -207,6 +208,7 @@ mod PropertyWidgets {
     /// FieldType に応じた編集 widget を返す
     def buildFieldWidget(fs: Resource.FieldSchema, value: Option[Json.JsonElement],
                          textureNames: List[String],
+                         texturePathMap: Map[String, String],
                          refOptions: Map[String, List[String]],
                          commit: Commit): Node \ IO =
         match fs#ftype {
@@ -219,6 +221,7 @@ mod PropertyWidgets {
             case Resource.FieldType.FloatT        => buildFloatWidget(value, commit)
             case Resource.FieldType.BoolT         => buildBoolWidget(value, commit)
             case Resource.FieldType.TexturePathT  => buildTexturePathWidget(value, textureNames, commit)
+            case Resource.FieldType.SpriteFramesT => buildSpriteFramesEditorWidget(value, texturePathMap, commit)
             case Resource.FieldType.RefT(target)  =>
                 let options = Map.get(target, refOptions) |> Option.getWithDefault(Nil);
                 buildEnumWidget(value, options, commit)
@@ -1150,5 +1153,363 @@ mod PropertyWidgets {
         gc.setLineWidth(1.0);
         gc.strokeLine(0.0, cy, canvasW, cy);
         gc.strokeLine(cx, 0.0, cx, canvasH)
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // SpriteFramesT widget — Godot SpriteFrames リソース (Map[anim, Animation]) を
+    // アニメ選択 dropdown + region (pos/size) spinner + アトラスプレビューで編集する。
+    // ════════════════════════════════════════════════════════════════════════
+
+    /// 編集対象は spriteFrames JSON object: `{anim_name: {loop, speed, frames: [...]}}`。
+    /// 各 anim の `frames[0].region.{pos|size}` だけを GUI で編集できる (multi-frame
+    /// アニメや loop/speed の編集は対応せず、入っていればそのまま保持する)。
+    /// 各 anim の frames[0].texture は共通アトラスとしてプレビューに使う。
+    pub def buildSpriteFramesEditorWidget(value: Option[Json.JsonElement],
+                                            texturePathMap: Map[String, String],
+                                            commit: Commit): Node \ IO = {
+        // 初期 anims Map と最初に選択する anim 名
+        let initialAnims = parseAnimsMap(value);
+        let initialNames = Map.keysOf(initialAnims) |> Set.toList;
+        let initialSelected = match List.head(initialNames) {
+            case Some(n) => n
+            case None    => ""
+        };
+        // 可変 state (Array[X, Static] 単一セル)
+        let animsRef: Array[Map[String, Json.JsonElement], Static] =
+            Array.empty(Static, 1);
+        Array.put(initialAnims, 0, animsRef);
+        let selectedRef: Array[String, Static] = Array.empty(Static, 1);
+        Array.put(initialSelected, 0, selectedRef);
+
+        // UI 構築
+        let outer = new VBox(4.0);
+        outer.setMaxWidth(280.0);
+        // (1) アニメ選択 ComboBox
+        let animCombo: ComboBox[String] = new ComboBox();
+        let comboItems = animCombo.getItems();
+        List.forEach(n -> discard comboItems.add(n), initialNames);
+        animCombo.setEditable(false);
+        animCombo.setPrefWidth(180.0);
+        if (String.length(initialSelected) > 0) animCombo.setValue(initialSelected) else ();
+        let animComboNode: Node = checked_cast(animCombo);
+        let comboRow = labeledRow("アニメ:", animComboNode);
+        let comboRowNode: Node = checked_cast(comboRow);
+        discard outer.getChildren().add(comboRowNode);
+
+        // (2) 4 spinner (pos.x, pos.y, size.w, size.h)
+        let init = currentRegion(initialAnims, initialSelected);
+        let posXSpinner: Spinner[Integer] = new Spinner(-9999i32, 9999i32, init#posX);
+        let posYSpinner: Spinner[Integer] = new Spinner(-9999i32, 9999i32, init#posY);
+        let sizeWSpinner: Spinner[Integer] = new Spinner(0i32, 9999i32, init#sizeW);
+        let sizeHSpinner: Spinner[Integer] = new Spinner(0i32, 9999i32, init#sizeH);
+        configSpinner(posXSpinner);
+        configSpinner(posYSpinner);
+        configSpinner(sizeWSpinner);
+        configSpinner(sizeHSpinner);
+
+        let posRow = new HBox(4.0);
+        posRow.setAlignment(Pos.CENTER_LEFT);
+        let posChildren = posRow.getChildren();
+        let posLabelNode: Node = checked_cast(new Label("pos"));
+        let posXNode: Node = checked_cast(posXSpinner);
+        let posYNode: Node = checked_cast(posYSpinner);
+        discard posChildren.add(posLabelNode);
+        discard posChildren.add(posXNode);
+        discard posChildren.add(posYNode);
+        let posRowNode: Node = checked_cast(posRow);
+        discard outer.getChildren().add(posRowNode);
+
+        let sizeRow = new HBox(4.0);
+        sizeRow.setAlignment(Pos.CENTER_LEFT);
+        let sizeChildren = sizeRow.getChildren();
+        let sizeLabelNode: Node = checked_cast(new Label("size"));
+        let sizeWNode: Node = checked_cast(sizeWSpinner);
+        let sizeHNode: Node = checked_cast(sizeHSpinner);
+        discard sizeChildren.add(sizeLabelNode);
+        discard sizeChildren.add(sizeWNode);
+        discard sizeChildren.add(sizeHNode);
+        let sizeRowNode: Node = checked_cast(sizeRow);
+        discard outer.getChildren().add(sizeRowNode);
+
+        // (3) mini preview canvas
+        let canvas = new Canvas(260.0, 80.0);
+        let canvasNode: Node = checked_cast(canvas);
+        discard outer.getChildren().add(canvasNode);
+
+        // 描画ヘルパー
+        let redraw = () -> {
+            let anims = Array.get(0, animsRef);
+            let sel   = Array.get(0, selectedRef);
+            let reg   = currentRegion(anims, sel);
+            let texName = currentTextureName(anims, sel);
+            drawSpriteFramesPreview(canvas, texturePathMap, texName, reg)
+        };
+        // anim 選択変更時: spinner 値を新 anim の region に合わせ、canvas 再描画
+        animCombo.valueProperty().addListener(new ChangeListener[String] {
+            def changed(_t: ChangeListener[String], _o: ObservableValue[JObject],
+                         _old: String, newVal: String): Unit \ IO = {
+                if (Object.isNull(newVal)) ()
+                else {
+                    Array.put(newVal, 0, selectedRef);
+                    let anims = Array.get(0, animsRef);
+                    let reg   = currentRegion(anims, newVal);
+                    posXSpinner.getValueFactory().setValue(Integer.valueOf(reg#posX));
+                    posYSpinner.getValueFactory().setValue(Integer.valueOf(reg#posY));
+                    sizeWSpinner.getValueFactory().setValue(Integer.valueOf(reg#sizeW));
+                    sizeHSpinner.getValueFactory().setValue(Integer.valueOf(reg#sizeH));
+                    redraw()
+                }
+            }
+        });
+        // spinner 変更時: 選択中 anim の region を書き換え、commit + redraw
+        let onSpinnerChange = () -> {
+            let sel = Array.get(0, selectedRef);
+            if (String.length(sel) == 0) ()
+            else {
+                let anims = Array.get(0, animsRef);
+                let pxv: Int32 = posXSpinner.getValue().intValue();
+                let pyv: Int32 = posYSpinner.getValue().intValue();
+                let swv: Int32 = sizeWSpinner.getValue().intValue();
+                let shv: Int32 = sizeHSpinner.getValue().intValue();
+                let updated = updateRegionInAnims(anims, sel, pxv, pyv, swv, shv);
+                Array.put(updated, 0, animsRef);
+                commit(Json.JsonElement.JsonObject(updated));
+                redraw()
+            }
+        };
+        attachIntSpinner(posXSpinner, onSpinnerChange);
+        attachIntSpinner(posYSpinner, onSpinnerChange);
+        attachIntSpinner(sizeWSpinner, onSpinnerChange);
+        attachIntSpinner(sizeHSpinner, onSpinnerChange);
+
+        // 初回描画
+        redraw();
+        checked_cast(outer)
+    }
+
+    /// HBox に [Label][widget] を並べる小ヘルパー
+    def labeledRow(label: String, widget: Node): HBox \ IO = {
+        let row = new HBox(6.0);
+        row.setAlignment(Pos.CENTER_LEFT);
+        let children = row.getChildren();
+        let labelNode: Node = checked_cast(new Label(label));
+        discard children.add(labelNode);
+        discard children.add(widget);
+        row
+    }
+
+    /// Spinner 共通設定 (編集可・幅)
+    def configSpinner(s: Spinner[Integer]): Unit \ IO = {
+        s.setEditable(true);
+        s.setPrefWidth(80.0);
+        s.setMaxWidth(80.0)
+    }
+
+    /// Spinner 値変更を callback に繋ぐ
+    def attachIntSpinner(s: Spinner[Integer], onChange: Unit -> Unit \ IO): Unit \ IO =
+        s.valueProperty().addListener(new ChangeListener[Integer] {
+            def changed(_t: ChangeListener[Integer], _o: ObservableValue[JObject],
+                         _old: Integer, _new: Integer): Unit \ IO = onChange()
+        })
+
+    /// spriteFrames JSON object を anim 名 → JSON の Map に解す。
+    /// JsonObject 以外は空 Map (= 編集不能だが widget は表示される)。
+    def parseAnimsMap(v: Option[Json.JsonElement]): Map[String, Json.JsonElement] =
+        match v {
+            case Some(Json.JsonElement.JsonObject(m)) => m
+            case _                                     => Map.empty()
+        }
+
+    /// 選択 anim の frames[0].region から pos/size を取り出す。
+    /// 取得失敗時は 0 を埋める (= "空の region" として spinner に表示される)。
+    def currentRegion(anims: Map[String, Json.JsonElement], sel: String):
+            {posX = Int32, posY = Int32, sizeW = Int32, sizeH = Int32} =
+        match Map.get(sel, anims) {
+            case None           => {posX = 0i32, posY = 0i32, sizeW = 0i32, sizeH = 0i32}
+            case Some(animJson) =>
+                match firstFrameRegion(animJson) {
+                    case None      => {posX = 0i32, posY = 0i32, sizeW = 0i32, sizeH = 0i32}
+                    case Some(reg) => reg
+                }
+        }
+
+    /// 選択 anim の frames[0].texture を取り出す (プレビューのアトラス特定用)。
+    /// 見つからなければ空文字列 (= "未指定" として preview に表示)
+    def currentTextureName(anims: Map[String, Json.JsonElement], sel: String): String =
+        match Map.get(sel, anims) {
+            case None           => ""
+            case Some(animJson) =>
+                firstFrameTexture(animJson) |> Option.getWithDefault("")
+        }
+
+    /// animJson から frames[0].region.{pos,size} を取り出す。
+    def firstFrameRegion(animJson: Json.JsonElement):
+            Option[{posX = Int32, posY = Int32, sizeW = Int32, sizeH = Int32}] =
+        match firstFrame(animJson) {
+            case None       => None
+            case Some(fObj) => decodeRegionFromFrame(fObj)
+        }
+
+    def firstFrameTexture(animJson: Json.JsonElement): Option[String] =
+        match firstFrame(animJson) {
+            case None       => None
+            case Some(fObj) =>
+                match Map.get("texture", fObj) {
+                    case Some(Json.JsonElement.JsonString(s)) => Some(s)
+                    case _ => None
+                }
+        }
+
+    /// animJson から frames[0] を JsonObject の Map として取り出す
+    def firstFrame(animJson: Json.JsonElement): Option[Map[String, Json.JsonElement]] =
+        match animJson {
+            case Json.JsonElement.JsonObject(animMap) =>
+                match Map.get("frames", animMap) {
+                    case Some(Json.JsonElement.JsonArray(arr)) =>
+                        if (Vector.length(arr) == 0) None
+                        else match Vector.get(0, arr) {
+                            case Json.JsonElement.JsonObject(fm) => Some(fm)
+                            case _ => None
+                        }
+                    case _ => None
+                }
+            case _ => None
+        }
+
+    /// `{"pos": [x, y], "size": [w, h]}` を Int32 4 つに分解。Float64 → Int32 切り捨て
+    def decodeRegionFromFrame(frameObj: Map[String, Json.JsonElement]):
+            Option[{posX = Int32, posY = Int32, sizeW = Int32, sizeH = Int32}] =
+        match Map.get("region", frameObj) {
+            case Some(Json.JsonElement.JsonObject(regObj)) =>
+                let posArr  = Map.get("pos", regObj);
+                let sizeArr = Map.get("size", regObj);
+                match (posArr, sizeArr) {
+                    case (Some(Json.JsonElement.JsonArray(pa)),
+                          Some(Json.JsonElement.JsonArray(sa))) =>
+                        if (Vector.length(pa) >= 2 and Vector.length(sa) >= 2)
+                            Some({
+                                posX  = jsonFloatToInt(Vector.get(0, pa)),
+                                posY  = jsonFloatToInt(Vector.get(1, pa)),
+                                sizeW = jsonFloatToInt(Vector.get(0, sa)),
+                                sizeH = jsonFloatToInt(Vector.get(1, sa))
+                            })
+                        else None
+                    case _ => None
+                }
+            case _ => None
+        }
+
+    def jsonFloatToInt(e: Json.JsonElement): Int32 = match e {
+        case Json.JsonElement.JsonNumber(bd) =>
+            BigDecimal.tryToFloat64(bd)
+                |> Option.flatMap(Float64.tryToInt32)
+                |> Option.getWithDefault(0i32)
+        case _ => 0i32
+    }
+
+    /// anims map の中の選択 anim の frames[0].region を新値で置換する。
+    /// 他の anim、frames[1..] や loop/speed はそのまま保持する。
+    def updateRegionInAnims(anims: Map[String, Json.JsonElement], sel: String,
+                              posX: Int32, posY: Int32,
+                              sizeW: Int32, sizeH: Int32): Map[String, Json.JsonElement] =
+        match Map.get(sel, anims) {
+            case None           => anims
+            case Some(animJson) =>
+                let updated = replaceFirstFrameRegion(animJson, posX, posY, sizeW, sizeH);
+                Map.insert(sel, updated, anims)
+        }
+
+    def replaceFirstFrameRegion(animJson: Json.JsonElement,
+                                  posX: Int32, posY: Int32,
+                                  sizeW: Int32, sizeH: Int32): Json.JsonElement =
+        match animJson {
+            case Json.JsonElement.JsonObject(animMap) =>
+                match Map.get("frames", animMap) {
+                    case Some(Json.JsonElement.JsonArray(arr)) =>
+                        if (Vector.length(arr) == 0) animJson
+                        else {
+                            let frame0 = Vector.get(0, arr);
+                            let newFrame0 = replaceFrameRegion(frame0, posX, posY, sizeW, sizeH);
+                            let newArr = Vector.update(0, newFrame0, arr);
+                            Json.JsonElement.JsonObject(
+                                Map.insert("frames", Json.JsonElement.JsonArray(newArr), animMap))
+                        }
+                    case _ => animJson
+                }
+            case _ => animJson
+        }
+
+    def replaceFrameRegion(frameJson: Json.JsonElement,
+                            posX: Int32, posY: Int32,
+                            sizeW: Int32, sizeH: Int32): Json.JsonElement =
+        match frameJson {
+            case Json.JsonElement.JsonObject(frameMap) =>
+                let newRegion = buildRegionJson(posX, posY, sizeW, sizeH);
+                Json.JsonElement.JsonObject(Map.insert("region", newRegion, frameMap))
+            case other => other
+        }
+
+    def buildRegionJson(posX: Int32, posY: Int32, sizeW: Int32, sizeH: Int32):
+            Json.JsonElement =
+        Json.JsonElement.JsonObject(Map#{
+            "pos"  => Json.JsonElement.JsonArray(Vector#{
+                          Json.JsonElement.JsonNumber(intToBd(posX)),
+                          Json.JsonElement.JsonNumber(intToBd(posY))}),
+            "size" => Json.JsonElement.JsonArray(Vector#{
+                          Json.JsonElement.JsonNumber(intToBd(sizeW)),
+                          Json.JsonElement.JsonNumber(intToBd(sizeH))})
+        })
+
+    def intToBd(v: Int32): BigDecimal =
+        unsafe IO {
+            let stripped = JBigDecimal.valueOf(Int32.toFloat64(v)).stripTrailingZeros();
+            if (stripped.scale() < 0) stripped.setScale(0) else stripped
+        }
+
+    /// アトラス全体を canvas に fit-scale で描画し、region 矩形を黄色枠で重ねる。
+    /// texture が登録されていない / region size が 0 のときはプレースホルダ。
+    def drawSpriteFramesPreview(canvas: Canvas, pathMap: Map[String, String],
+                                  textureName: String,
+                                  reg: {posX = Int32, posY = Int32, sizeW = Int32, sizeH = Int32}):
+                                 Unit \ IO = {
+        let gc: GraphicsContext = canvas.getGraphicsContext2D();
+        let cw = canvas.getWidth();
+        let ch = canvas.getHeight();
+        gc.setImageSmoothing(false);
+        gc.setFill(FxColor.color(0.12, 0.12, 0.12));
+        gc.fillRect(0.0, 0.0, cw, ch);
+        match Map.get(textureName, pathMap) {
+            case None => ()
+            case Some(absPath) => {
+                let url = new File(absPath).toURI().toString();
+                let image = new Image(url);
+                let imgW = image.getWidth();
+                let imgH = image.getHeight();
+                if (imgW <= 0.0 or imgH <= 0.0) ()
+                else {
+                    // fit scale (canvas 内に余白なしで収める)
+                    let sx = cw / imgW;
+                    let sy = ch / imgH;
+                    let s = if (sx < sy) sx else sy;
+                    let dstW = imgW * s;
+                    let dstH = imgH * s;
+                    let dstX0 = (cw - dstW) / 2.0;
+                    let dstY0 = (ch - dstH) / 2.0;
+                    // 1. アトラス全体描画
+                    gc.drawImage(image, 0.0, 0.0, imgW, imgH,
+                                 dstX0, dstY0, dstW, dstH);
+                    // 2. region 矩形 (黄色枠)
+                    if (reg#sizeW > 0i32 and reg#sizeH > 0i32) {
+                        let rx = dstX0 + Int32.toFloat64(reg#posX) * s;
+                        let ry = dstY0 + Int32.toFloat64(reg#posY) * s;
+                        let rw = Int32.toFloat64(reg#sizeW) * s;
+                        let rh = Int32.toFloat64(reg#sizeH) * s;
+                        gc.setStroke(FxColor.color(1.0, 0.9, 0.0));
+                        gc.setLineWidth(2.0);
+                        gc.strokeRect(rx, ry, rw, rh)
+                    } else ()
+                }
+            }
+        }
     }
 }

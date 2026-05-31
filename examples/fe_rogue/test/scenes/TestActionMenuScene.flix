@@ -82,7 +82,8 @@ mod TestActionMenuScene {
         weapons         = TestUnitFixtures.testWeapon() :: Nil,
         staves          = Nil,
         selectedItem    = None,
-        moveStepsTaken  = 0
+        moveStepsTaken  = 0,
+        facing          = Staff.Direction.Down
     }
 
     /// World + 2 人の Player + ActionMenu を組んだテスト scene。

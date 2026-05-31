@@ -298,7 +298,7 @@ mod UnitInfoPopupScene {
             |> Sprite2D.setFrame(res#sprite#frame);
         let withSprite = Scene.addChildAt(panelPath(), "Sprite",
             EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag), scene);
-        let nameLabel = Label2D.make(UnitCatalog.displayName(res#sprite#frame), atlas, fontSizeBig())
+        let nameLabel = Label2D.make(res#description, atlas, fontSizeBig())
             |> Node2D.setPosition(nameLocalPos())
             |> CanvasItem.setModulate(textColor());
         let withName = Scene.addChildAt(panelPath(), "Name",

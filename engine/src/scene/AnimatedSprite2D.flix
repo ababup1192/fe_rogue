@@ -106,6 +106,13 @@ mod AnimatedSprite2D {
         SpriteFrames.frameTexture(r#animation, r#frame, r#spriteFrames)
             |> Option.getWithDefault("")
 
+    /// 現在のフレームの regionRect（テクスチャ内切り出し矩形）を返す。
+    /// 未指定（None）または無効な frame index なら None。レンダラはこれを
+    /// テクスチャサイズと組み合わせて GPU UV を計算する。
+    pub def currentRegion(sprite: AnimatedSprite2D): Option[Rect2.Rect2] =
+        let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
+        SpriteFrames.frameRegion(r#animation, r#frame, r#spriteFrames)
+
     /// 時間経過に応じてフレームを進める。
     /// 進捗計算: progress += delta / (1 / (anim.speed * speedScale) * frame.duration)
     /// loop=false で最終フレームに到達したら playing=false にして停止する。
@@ -145,7 +152,7 @@ mod AnimatedSprite2D {
                      {frame = Int32, progress = Float64, playing = Bool} =
         let currentFrame = match List.nth(frame, frames) {
             case Some(f) => f
-            case None    => {texture = "", duration = 1.0}  // ガード（クランプ後なので通常起きない）
+            case None    => {texture = "", regionRect = None, duration = 1.0}  // ガード（クランプ後なので通常起きない）
         };
         let frameDuration = baseDuration * currentFrame#duration;
         if (frameDuration <= 0.0)

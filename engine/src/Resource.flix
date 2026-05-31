@@ -35,6 +35,10 @@ mod Resource {
         case EnumT(List[String])      // 有限の文字列選択肢（Godot @export_enum 相当）。
                                        // IDE は 2 値なら ToggleGroup、3 値以上なら ComboBox を出す。
                                        // schema JSON では `{"type": "enum", "values": ["A", "B"]}` で表す。
+        case SpriteFramesT     // Godot SpriteFrames リソース (Map[anim_name, Animation])。
+                                // IDE は アニメ選択 + region (pos/size) spinner + アトラスプレビューの
+                                // 専用 widget を出して spriteFrames の region 編集を視覚化する。
+                                // schema JSON では `"spriteFrames"` 文字列で表す。
     }
 
     /// 編集 UI のヒント。`Plain` は型相応の素直な入力欄（数値スピナー / テキスト等）。
@@ -245,6 +249,7 @@ mod ResourceCodec {
         case FieldType.FloatT        => JsonString("float")
         case FieldType.BoolT         => JsonString("bool")
         case FieldType.TexturePathT  => JsonString("texturePath")
+        case FieldType.SpriteFramesT => JsonString("spriteFrames")
         case FieldType.RefT(target)  =>
             JsonObject(Map#{
                 "type" => JsonString("ref"),
@@ -384,11 +389,12 @@ mod ResourceCodec {
         }
 
     def decodeFieldType(element: JsonElement): Option[FieldType] = match element {
-        case JsonString("text")         => Some(FieldType.TextT)
-        case JsonString("int")          => Some(FieldType.IntT)
-        case JsonString("float")        => Some(FieldType.FloatT)
-        case JsonString("bool")         => Some(FieldType.BoolT)
-        case JsonString("texturePath")  => Some(FieldType.TexturePathT)
+        case JsonString("text")          => Some(FieldType.TextT)
+        case JsonString("int")           => Some(FieldType.IntT)
+        case JsonString("float")         => Some(FieldType.FloatT)
+        case JsonString("bool")          => Some(FieldType.BoolT)
+        case JsonString("texturePath")   => Some(FieldType.TexturePathT)
+        case JsonString("spriteFrames")  => Some(FieldType.SpriteFramesT)
         case JsonObject(obj)            =>
             forM (
                 typeJ <- Map.get("type", obj);

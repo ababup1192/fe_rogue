@@ -20,10 +20,111 @@
       "moveTiles": 5,
       "speed": 4,
       "sprite": {
-        "frame": 1,
+        "frame": 0,
         "hframes": 5,
-        "texture": "character_sheet",
-        "vframes": 2
+        "scale": {
+          "x": 1.5,
+          "y": 1.5
+        },
+        "texture": "fe_archer",
+        "vframes": 1
+      },
+      "spriteFrames": {
+        "idle": {
+          "frames": [
+            {
+              "region": {
+                "pos": [
+                  0,
+                  0
+                ],
+                "size": [
+                  20,
+                  17
+                ]
+              },
+              "texture": "fe_archer"
+            }
+          ],
+          "loop": true,
+          "speed": 1.0
+        },
+        "walk_down": {
+          "frames": [
+            {
+              "region": {
+                "pos": [
+                  60,
+                  0
+                ],
+                "size": [
+                  20,
+                  17
+                ]
+              },
+              "texture": "fe_archer"
+            }
+          ],
+          "loop": true,
+          "speed": 1.0
+        },
+        "walk_left": {
+          "frames": [
+            {
+              "region": {
+                "pos": [
+                  20,
+                  0
+                ],
+                "size": [
+                  20,
+                  17
+                ]
+              },
+              "texture": "fe_archer"
+            }
+          ],
+          "loop": true,
+          "speed": 1.0
+        },
+        "walk_right": {
+          "frames": [
+            {
+              "region": {
+                "pos": [
+                  40,
+                  0
+                ],
+                "size": [
+                  20,
+                  17
+                ]
+              },
+              "texture": "fe_archer"
+            }
+          ],
+          "loop": true,
+          "speed": 1.0
+        },
+        "walk_up": {
+          "frames": [
+            {
+              "region": {
+                "pos": [
+                  80,
+                  0
+                ],
+                "size": [
+                  20,
+                  17
+                ]
+              },
+              "texture": "fe_archer"
+            }
+          ],
+          "loop": true,
+          "speed": 1.0
+        }
       }
     },
     "goblin": {

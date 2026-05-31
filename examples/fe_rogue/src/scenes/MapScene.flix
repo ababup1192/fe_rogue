@@ -219,7 +219,8 @@ mod MapScene {
 
     /// マップのセル幅（ピクセル）。n-format ダンジョン (`tileset_dungeon_green`, 26px) に合わせる。
     /// グリッド ⇄ ピクセル変換が必要な全 Scene が参照する唯一の情報源。
-    /// キャラクタースプライト (16x16) はセル中央に置かれて 5px の余白ができる
+    /// キャラクタースプライト (16x16 / 20x17) は units.json の `sprite.scale` で
+    /// 各ユニットごとに拡大率を指定する（既定 1.5 で 16px→24px に拡大）。
     /// （UI スプライト: cursor / range / flag / arrow は 1.625 倍にスケールしてセル枠に揃える）。
     pub def tileSize(): Float64 = 26.0
 

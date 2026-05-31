@@ -39,7 +39,8 @@ mod TestItemMenuScene {
         effect     = Staff.StaffEffect.Heal,
         durability = 3,
         sprite     = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
-                        offset = {x = 0.0, y = 0.0}}: UnitCatalog.SpriteResource)
+                        offset = {x = 0.0, y = 0.0},
+                        scale = {x = 1.0, y = 1.0}}: UnitCatalog.SpriteResource)
     }
 
     /// 武器 1 本 + 杖 1 本を持つプレイヤー 1 体を立てた scene を組む。
@@ -58,7 +59,8 @@ mod TestItemMenuScene {
             weapons           = TestUnitFixtures.testWeapon() :: Nil,
             staves            = testStaff() :: Nil,
             selectedItem      = None,
-            moveStepsTaken    = 0
+            moveStepsTaken    = 0,
+            facing            = Staff.Direction.Down
         };
         let withWorld = Scene.empty()
             |> Scene.addNode(MapScene.worldName(),

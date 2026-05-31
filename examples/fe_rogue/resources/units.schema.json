@@ -123,7 +123,41 @@
               }
             }
           }
+        },
+        "scale": {
+          "nested": {
+            "x": {
+              "field": {
+                "ftype": "float",
+                "hint":  { "slider": { "min": 0.5, "max": 4.0, "step": 0.1 } },
+                "label": "スケール X"
+              }
+            },
+            "y": {
+              "field": {
+                "ftype": "float",
+                "hint":  { "slider": { "min": 0.5, "max": 4.0, "step": 0.1 } },
+                "label": "スケール Y"
+              }
+            }
+          }
         }
+      }
+    },
+    "initialStaves": {
+      "field": {
+        "ftype": "text",
+        "hint":  "plain",
+        "label": "初期杖 id (CSV)",
+        "order": 9
+      }
+    },
+    "spriteFrames": {
+      "field": {
+        "ftype": "spriteFrames",
+        "hint":  "plain",
+        "label": "AnimatedSprite2D",
+        "order": 10
       }
     }
   },

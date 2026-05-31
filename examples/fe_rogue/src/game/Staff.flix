@@ -277,8 +277,16 @@ mod StaffCatalogCodec {
                     case None    => ({x = 0.0, y = 0.0}: Vec2.Vec2)
                 }
             };
+            // scale は省略可能。staves UI アイコンは board に並べないので既定 {1, 1}。
+            let sc = match Map.get("scale", obj) {
+                case None     => ({x = 1.0, y = 1.0}: Vec2.Vec2)
+                case Some(sj) => match decodeOffset(sj) {
+                    case Some(v) => v
+                    case None    => ({x = 1.0, y = 1.0}: Vec2.Vec2)
+                }
+            };
             ({texture = tex, hframes = hf, vframes = vf, frame = fr,
-              offset = off}: SpriteResource)
+              offset = off, scale = sc}: SpriteResource)
         }
 
     /// `{"x": ..., "y": ...}` のどちらか欠落でも 0.0 で補完する（IDE の省略仕様）。
