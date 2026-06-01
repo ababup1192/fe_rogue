@@ -63,6 +63,17 @@ mod MapEditorState {
                       marginX = 0, marginY = 0}
         }
 
+    /// Map Canvas のドラッグ範囲選択の状態。
+    /// ドラッグ開始セル (startCol, startRow) と現在セル (endCol, endRow) を保持する。
+    /// start/end の大小関係は任意 (どの向きにドラッグしてもよい) で、
+    /// 実際の塗り/削除/描画時に min/max を取って正規化する。
+    pub type alias RectRange = {
+        startCol = Int32,
+        startRow = Int32,
+        endCol   = Int32,
+        endRow   = Int32
+    }
+
     /// Maps モード全体の状態。
     ///   levelFilesRef:        assets/maps/*.map.json の絶対パスリスト (Open Project 時に更新)
     ///   selectedLevelPathRef: 現在選択中の Level の絶対パス。未選択は None
@@ -100,7 +111,7 @@ mod MapEditorState {
         // current color に相当する状態。grid セルをクリックするとここに idx が入る)
         focusedPatternIdxRef   = Array[Option[Int32], Static],
         // Map Canvas のドラッグ範囲選択
-        selectedRangeRef       = Array[Option[(Int32, Int32, Int32, Int32)], Static],
+        selectedRangeRef       = Array[Option[RectRange], Static],
         dragStartRef           = Array[Option[(Int32, Int32)], Static],
         isDraggingRef          = Array[Bool, Static],
         // Map Canvas の操作ツール (Pencil / RangeSelect)
@@ -131,7 +142,7 @@ mod MapEditorState {
             editingRuleIndexRef    = Array#{(None: Option[Int32])} @ Static,
             hoveredRuleIndexRef    = Array#{(None: Option[Int32])} @ Static,
             focusedPatternIdxRef   = Array#{(None: Option[Int32])} @ Static,
-            selectedRangeRef       = Array#{(None: Option[(Int32, Int32, Int32, Int32)])} @ Static,
+            selectedRangeRef       = Array#{(None: Option[RectRange])} @ Static,
             dragStartRef           = Array#{(None: Option[(Int32, Int32)])} @ Static,
             isDraggingRef          = Array#{false} @ Static,
             editToolRef            = Array#{EditTool.Pencil} @ Static,
@@ -306,11 +317,11 @@ mod MapEditorState {
     // ─── Map Canvas のドラッグ範囲選択 ───
 
     pub def getSelectedRange(state: MapEditorState):
-            Option[(Int32, Int32, Int32, Int32)] \ IO =
+            Option[RectRange] \ IO =
         Array.get(0, state#selectedRangeRef)
 
     pub def setSelectedRange(state: MapEditorState,
-                                range: Option[(Int32, Int32, Int32, Int32)]):
+                                range: Option[RectRange]):
             Unit \ IO =
         Array.put(range, 0, state#selectedRangeRef)
 

@@ -47,7 +47,7 @@ mod MapGridCanvas {
                        vis: MapEditorState.LayerVisibility, zoom: Float64,
                        material: Option[MapResource.Material],
                        selectedTrbl: Option[String],
-                       selectedRange: Option[(Int32, Int32, Int32, Int32)],
+                       selectedRange: Option[MapEditorState.RectRange],
                        selectedRule: Option[Int32],
                        dimNonActive: Option[MapEditorState.LayerMode],
                        showGrid: Bool): Unit \ IO = {
@@ -139,13 +139,12 @@ mod MapGridCanvas {
         }
 
     /// 選択範囲を半透明の青塗り + 青枠で表示する。
-    def drawSelectedRange(canvas: Canvas, range: (Int32, Int32, Int32, Int32),
+    def drawSelectedRange(canvas: Canvas, range: MapEditorState.RectRange,
                             cellPx: Int32): Unit \ IO = {
-        let (c1, r1, c2, r2) = range;
-        let minC = Int32.min(c1, c2);
-        let maxC = Int32.max(c1, c2);
-        let minR = Int32.min(r1, r2);
-        let maxR = Int32.max(r1, r2);
+        let minC = Int32.min(range#startCol, range#endCol);
+        let maxC = Int32.max(range#startCol, range#endCol);
+        let minR = Int32.min(range#startRow, range#endRow);
+        let maxR = Int32.max(range#startRow, range#endRow);
         let cs = Int32.toFloat64(cellPx);
         let x = Int32.toFloat64(minC) * cs;
         let y = Int32.toFloat64(minR) * cs;
@@ -255,18 +254,15 @@ mod MapGridCanvas {
                             tileSize: Int32, cellPx: Int32): Unit \ IO = {
         let gc = canvas.getGraphicsContext2D();
         gc.setImageSmoothing(false);
-        let ts = Int32.toFloat64(tileSize);
-        let cs = Int32.toFloat64(cellPx);
         Set.forEach(coord -> {
             let (col, row) = coord;
             match lookupWallTile(wallCells, floorMask, mat#wallMap, col, row) {
                 case None              => ()
                 case Some((srcX, srcY)) => {
-                    let sx = Int32.toFloat64(srcX);
-                    let sy = Int32.toFloat64(srcY);
-                    let dx = Int32.toFloat64(col) * cs;
-                    let dy = Int32.toFloat64(row) * cs;
-                    gc.drawImage(image, sx, sy, ts, ts, dx, dy, cs, cs)
+                    let c = tileCoords({col = col, row = row}, {x = srcX, y = srcY},
+                                        {tileSize = tileSize, cellPx = cellPx});
+                    gc.drawImage(image, c#srcX, c#srcY, c#tileSize, c#tileSize,
+                                  c#dstX, c#dstY, c#cellPx, c#cellPx)
                 }
             }
         }, wallCells)
@@ -333,8 +329,6 @@ mod MapGridCanvas {
                             tileSize: Int32, cellPx: Int32): Unit \ IO = {
         let gc = canvas.getGraphicsContext2D();
         gc.setImageSmoothing(false);
-        let ts = Int32.toFloat64(tileSize);
-        let cs = Int32.toFloat64(cellPx);
         List.forEach(i -> {
             let col = Int32.remainder(i, width);
             let row = i / width;
@@ -342,11 +336,10 @@ mod MapGridCanvas {
             else match applyFirstMatchingRule(intGrid, width, height, col, row, rules) {
                 case None              => ()
                 case Some((srcX, srcY)) => {
-                    let sx = Int32.toFloat64(srcX);
-                    let sy = Int32.toFloat64(srcY);
-                    let dx = Int32.toFloat64(col) * cs;
-                    let dy = Int32.toFloat64(row) * cs;
-                    gc.drawImage(image, sx, sy, ts, ts, dx, dy, cs, cs)
+                    let c = tileCoords({col = col, row = row}, {x = srcX, y = srcY},
+                                        {tileSize = tileSize, cellPx = cellPx});
+                    gc.drawImage(image, c#srcX, c#srcY, c#tileSize, c#tileSize,
+                                  c#dstX, c#dstY, c#cellPx, c#cellPx)
                 }
             }
         }, List.range(0, width * height))
@@ -409,22 +402,52 @@ mod MapGridCanvas {
                    image: Image, tileSize: Int32, cellPx: Int32): Unit \ IO = {
         let gc = canvas.getGraphicsContext2D();
         gc.setImageSmoothing(false);
-        let ts = Int32.toFloat64(tileSize);
-        let cs = Int32.toFloat64(cellPx);
         List.forEach(t -> {
-            let sx = Int32.toFloat64(t#srcX);
-            let sy = Int32.toFloat64(t#srcY);
-            let dx = Int32.toFloat64(t#x) * cs;
-            let dy = Int32.toFloat64(t#y) * cs;
-            drawTileFlipped(gc, image, sx, sy, ts, dx, dy, cs, t#flipH, t#flipV)
+            let c = tileCoords({col = t#x, row = t#y}, {x = t#srcX, y = t#srcY},
+                                {tileSize = tileSize, cellPx = cellPx});
+            drawTileFlipped(gc, image, c, t#flipH, t#flipV)
         }, tiles)
+    }
+
+    /// drawTileFlipped に渡す座標一式 (全 Float64)。
+    /// src 側 (srcX/srcY/tileSize) と dst 側 (dstX/dstY/cellPx) を名前付きで束ねて、
+    /// Float64 6 連続の取り違えを防ぐ。
+    type alias DrawTileCoords = {
+        srcX     = Float64,
+        srcY     = Float64,
+        dstX     = Float64,
+        dstY     = Float64,
+        tileSize = Float64,
+        cellPx   = Float64
+    }
+
+    /// グリッド (col,row) と atlas (src x,y) から描画座標 (全 Float64) を計算する純粋関数。
+    /// src 側 (srcX/srcY/tileSize) は atlas px、dst 側 (dstX/dstY/cellPx) は canvas px。
+    /// `dstX = col * cellPx`, `dstY = row * cellPx` で grid → pixel 変換する。
+    pub def tileCoords(cell: {col = Int32, row = Int32}, src: {x = Int32, y = Int32},
+                        size: {tileSize = Int32, cellPx = Int32}): DrawTileCoords = {
+        let ts = Int32.toFloat64(size#tileSize);
+        let cs = Int32.toFloat64(size#cellPx);
+        {
+            srcX     = Int32.toFloat64(src#x),
+            srcY     = Int32.toFloat64(src#y),
+            dstX     = Int32.toFloat64(cell#col) * cs,
+            dstY     = Int32.toFloat64(cell#row) * cs,
+            tileSize = ts,
+            cellPx   = cs
+        }
     }
 
     /// 1 タイルを必要に応じて flip して描画する。flip しないなら drawImage 直呼び。
     def drawTileFlipped(gc: GraphicsContext, image: Image,
-                         srcX: Float64, srcY: Float64, srcSize: Float64,
-                         dstX: Float64, dstY: Float64, dstSize: Float64,
-                         flipH: Bool, flipV: Bool): Unit \ IO =
+                         coords: DrawTileCoords,
+                         flipH: Bool, flipV: Bool): Unit \ IO = {
+        let srcX = coords#srcX;
+        let srcY = coords#srcY;
+        let srcSize = coords#tileSize;
+        let dstX = coords#dstX;
+        let dstY = coords#dstY;
+        let dstSize = coords#cellPx;
         if (not flipH and not flipV)
             gc.drawImage(image, srcX, srcY, srcSize, srcSize, dstX, dstY, dstSize, dstSize)
         else {
@@ -438,6 +461,7 @@ mod MapGridCanvas {
             gc.drawImage(image, srcX, srcY, srcSize, srcSize, 0.0, 0.0, dstSize, dstSize);
             gc.restore()
         }
+    }
 
     /// grid 線を Canvas 全面に引く。
     def drawGridLines(canvas: Canvas, width: Int32, height: Int32, cellPx: Int32): Unit \ IO = {
@@ -515,7 +539,8 @@ mod MapGridCanvas {
                             case Some((sc, sr)) => {
                                 MapEditorState.setIsDragging(state#mapEditor, true);
                                 MapEditorState.setSelectedRange(state#mapEditor,
-                                    Some((sc, sr, col, row)));
+                                    Some({startCol = sc, startRow = sr,
+                                          endCol = col, endRow = row}));
                                 MapEditorPanel.redrawCanvas(state)
                             }
                         }
@@ -664,13 +689,12 @@ mod MapGridCanvas {
                MapEditorState.getEditingLevel(state#mapEditor),
                MapEditorState.getSelectedSrc(state#mapEditor)) {
             case (Some(range), Some(level), Some((srcX, srcY))) => {
-                let (c1, r1, c2, r2) = range;
-                let minC = Int32.max(0, Int32.min(c1, c2));
+                let minC = Int32.max(0, Int32.min(range#startCol, range#endCol));
                 let maxC = Int32.min(MapResource.levelData(level)#width - 1,
-                                       Int32.max(c1, c2));
-                let minR = Int32.max(0, Int32.min(r1, r2));
+                                       Int32.max(range#startCol, range#endCol));
+                let minR = Int32.max(0, Int32.min(range#startRow, range#endRow));
                 let maxR = Int32.min(MapResource.levelData(level)#height - 1,
-                                       Int32.max(r1, r2));
+                                       Int32.max(range#startRow, range#endRow));
                 let mode = MapEditorState.getLayerMode(state#mapEditor);
                 // 範囲内の (col, row) 列を生成
                 let cols = List.range(minC, maxC + 1);
@@ -711,11 +735,10 @@ mod MapGridCanvas {
         match (MapEditorState.getSelectedRange(state#mapEditor),
                MapEditorState.getEditingLevel(state#mapEditor)) {
             case (Some(range), Some(level)) => {
-                let (c1, r1, c2, r2) = range;
-                let minC = Int32.min(c1, c2);
-                let maxC = Int32.max(c1, c2);
-                let minR = Int32.min(r1, r2);
-                let maxR = Int32.max(r1, r2);
+                let minC = Int32.min(range#startCol, range#endCol);
+                let maxC = Int32.max(range#startCol, range#endCol);
+                let minR = Int32.min(range#startRow, range#endRow);
+                let maxR = Int32.max(range#startRow, range#endRow);
                 let d = MapResource.levelData(level);
                 let mode = MapEditorState.getLayerMode(state#mapEditor);
                 let inRange = (x, y) ->

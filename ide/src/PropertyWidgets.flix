@@ -89,6 +89,30 @@ mod PropertyWidgets {
         case Percent(Float64)
     }
 
+    /// アトラス preview の描画状態をまとめた record。
+    /// wirePanDrag と drawFullSheetWithSelection の共通引数集合
+    /// (gc/image/hframes/vframes/frame/imgW/imgH/canvasW/canvasH/zoomMode/showGrid)。
+    /// imgW/imgH/canvasW/canvasH の Float64 4 連続を名前付きで束ねて取り違えを防ぐ。
+    /// canvas (wirePanDrag のみ) と panX/panY (drawFullSheetWithSelection のみ) は
+    /// 共通でないため各関数の別引数として残す。
+    type alias AtlasDrawState = {
+        gc       = GraphicsContext,
+        image    = Image,
+        hframes  = Int32,
+        vframes  = Int32,
+        frame    = Int32,
+        imgW     = Float64,
+        imgH     = Float64,
+        canvasW  = Float64,
+        canvasH  = Float64,
+        zoomMode = ZoomMode,
+        showGrid = Bool
+    }
+
+    /// spriteFrames anim の 1 フレーム分 (frame index と表示秒数)。
+    /// currentFrame / parseFrameJson / currentFramesList の共通戻り値型。
+    type alias FrameEntry = {frame = Int32, duration = Float64}
+
     /// プロジェクト起動時 / ResourceState 初期化時のデフォルトズーム。
     /// 100% = ネイティブピクセル等倍 (1 image px = 1 logical px)
     pub def defaultZoom(): ZoomMode =
@@ -256,20 +280,9 @@ mod PropertyWidgets {
             case Some(Json.JsonElement.JsonString(s)) => s
             case _                                    => ""
         };
-        let combo: ComboBox[String] = new ComboBox();
-        let items = combo.getItems();
-        List.forEach(name -> discard items.add(name), textureNames);
-        combo.setEditable(false);
-        combo.setValue(current);
-        combo.setPrefWidth(160.0);
+        let combo = makeStringComboBox(textureNames, current, 160.0,
+            newVal -> commit(Json.JsonElement.JsonString(newVal)));
         combo.setMaxWidth(160.0);
-        combo.valueProperty().addListener(new ChangeListener[String] {
-            def changed(_cThis: ChangeListener[String], _obs: ObservableValue[JObject],
-                         _old: String, newVal: String): Unit \ IO = {
-                if (Object.isNull(newVal)) ()
-                else commit(Json.JsonElement.JsonString(newVal))
-            }
-        });
         checked_cast(combo)
     }
 
@@ -329,17 +342,9 @@ mod PropertyWidgets {
     pub def buildIntWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
         let current: Int32 = NodeInspector.jsonToInt(value |> Option.getWithDefault(Json.JsonElement.JsonNull))
                               |> Option.getWithDefault(0i32);
-        let spinner: Spinner[Integer] = new Spinner(-999999i32, 999999i32, current);
-        spinner.setEditable(true);
-        spinner.setPrefWidth(110.0);
+        let spinner = makeIntSpinner({min = -999999i32, max = 999999i32}, current, 110.0,
+            v -> commit(NodeInspector.intToJson(v)));
         spinner.setMaxWidth(110.0);
-        spinner.valueProperty().addListener(new ChangeListener[Integer] {
-            def changed(_cThis: ChangeListener[Integer], _obs: ObservableValue[JObject],
-                         _old: Integer, newVal: Integer): Unit \ IO = {
-                let v: Int32 = newVal.intValue();
-                commit(NodeInspector.intToJson(v))
-            }
-        });
         checked_cast(spinner)
     }
 
@@ -375,24 +380,76 @@ mod PropertyWidgets {
             }
         }
 
+    /// String 値の ComboBox を生成する具体型固定ヘルパ。
+    /// options を getItems().add で追加し、editable=false / setValue(initial) / setPrefWidth を設定。
+    /// valueProperty().addListener の ChangeListener[String] は inline で定義し、
+    /// null チェック (Object.isNull) を内部に閉じ込め、非 null 時のみ onChanged を呼ぶ。
+    /// setMaxWidth が要る呼び出し側は返り値に対して別途設定すること (ここでは設定しない)。
+    def makeStringComboBox(options: List[String], initial: String, prefWidth: Float64,
+                            onChanged: String -> Unit \ IO): ComboBox[String] \ IO = {
+        let combo: ComboBox[String] = new ComboBox();
+        let items = combo.getItems();
+        List.forEach(o -> discard items.add(o), options);
+        combo.setEditable(false);
+        combo.setValue(initial);
+        combo.setPrefWidth(prefWidth);
+        combo.valueProperty().addListener(new ChangeListener[String] {
+            def changed(_cThis: ChangeListener[String], _obs: ObservableValue[JObject],
+                         _old: String, newVal: String): Unit \ IO = {
+                if (Object.isNull(newVal)) ()
+                else onChanged(newVal)
+            }
+        });
+        combo
+    }
+
+    /// Int32 用 Spinner[Integer] を生成する具体型固定ヘルパ。
+    /// editable=true / setPrefWidth を設定。valueProperty().addListener の
+    /// ChangeListener[Integer] は inline で定義し、newVal.intValue() を onChanged に渡す。
+    def makeIntSpinner(range: {min = Int32, max = Int32}, initial: Int32, prefWidth: Float64,
+                        onChanged: Int32 -> Unit \ IO): Spinner[Integer] \ IO = {
+        let spinner: Spinner[Integer] = new Spinner(range#min, range#max, initial);
+        spinner.setEditable(true);
+        spinner.setPrefWidth(prefWidth);
+        spinner.valueProperty().addListener(new ChangeListener[Integer] {
+            def changed(_cThis: ChangeListener[Integer], _obs: ObservableValue[JObject],
+                         _old: Integer, newVal: Integer): Unit \ IO = {
+                let v: Int32 = newVal.intValue();
+                onChanged(v)
+            }
+        });
+        spinner
+    }
+
+    /// Float64 用 Spinner[Double] を生成する具体型固定ヘルパ。
+    /// editable=true / setPrefWidth / 3 桁丸めコンバータ (roundedDoubleConverter) を設定。
+    /// valueProperty().addListener の ChangeListener[Double] は inline で定義し、
+    /// roundTo3(newVal.doubleValue()) を onChanged に渡す。
+    def makeDoubleSpinner(range: {min = Float64, max = Float64, step = Float64}, initial: Float64,
+                           prefWidth: Float64, onChanged: Float64 -> Unit \ IO): Spinner[Double] \ IO = {
+        let spinner: Spinner[Double] = new Spinner(range#min, range#max, initial, range#step);
+        spinner.setEditable(true);
+        spinner.setPrefWidth(prefWidth);
+        spinner.getValueFactory().setConverter(roundedDoubleConverter());
+        spinner.valueProperty().addListener(new ChangeListener[Double] {
+            def changed(_cThis: ChangeListener[Double], _obs: ObservableValue[JObject],
+                         _old: Double, newVal: Double): Unit \ IO = {
+                let v: Float64 = roundTo3(newVal.doubleValue());
+                onChanged(v)
+            }
+        });
+        spinner
+    }
+
     /// Float フィールド: Spinner<Double> (step 0.1)。
     /// 表示・入力・commit すべて 3 桁丸めポリシーで統一する (roundedDoubleConverter 参照)。
     pub def buildFloatWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
         let raw: Float64 = NodeInspector.jsonToFloat(value |> Option.getWithDefault(Json.JsonElement.JsonNull))
                             |> Option.getWithDefault(0.0);
         let current = roundTo3(raw);
-        let spinner: Spinner[Double] = new Spinner(-999999.0, 999999.0, current, 0.1);
-        spinner.setEditable(true);
-        spinner.setPrefWidth(110.0);
+        let spinner = makeDoubleSpinner({min = -999999.0, max = 999999.0, step = 0.1}, current, 110.0,
+            v -> commit(NodeInspector.floatToJson(v)));
         spinner.setMaxWidth(110.0);
-        spinner.getValueFactory().setConverter(roundedDoubleConverter());
-        spinner.valueProperty().addListener(new ChangeListener[Double] {
-            def changed(_cThis: ChangeListener[Double], _obs: ObservableValue[JObject],
-                         _old: Double, newVal: Double): Unit \ IO = {
-                let v: Float64 = roundTo3(newVal.doubleValue());
-                commit(NodeInspector.floatToJson(v))
-            }
-        });
         checked_cast(spinner)
     }
 
@@ -450,20 +507,9 @@ mod PropertyWidgets {
             case Some(Json.JsonElement.JsonString(s)) => s
             case _ => List.head(options) |> Option.getWithDefault("")
         };
-        let combo: ComboBox[String] = new ComboBox();
-        let items = combo.getItems();
-        List.forEach(o -> discard items.add(o), options);
-        combo.setEditable(false);
-        combo.setValue(current);
-        combo.setPrefWidth(140.0);
+        let combo = makeStringComboBox(options, current, 140.0,
+            newVal -> commit(Json.JsonElement.JsonString(newVal)));
         combo.setMaxWidth(140.0);
-        combo.valueProperty().addListener(new ChangeListener[String] {
-            def changed(_cThis: ChangeListener[String], _obs: ObservableValue[JObject],
-                         _old: String, newVal: String): Unit \ IO = {
-                if (Object.isNull(newVal)) ()
-                else commit(Json.JsonElement.JsonString(newVal))
-            }
-        });
         checked_cast(combo)
     }
 
@@ -527,8 +573,10 @@ mod PropertyWidgets {
         match remaining {
             case Nil => ()
             case (id, pct) :: rest => {
-                let row = buildRefPercentRow(idx, id, pct, outer, rowsRef, sumLabelRef,
-                                              options, commit);
+                let row = buildRefPercentRow(idx, id, pct, {
+                    outer = outer, rowsRef = rowsRef, sumLabelRef = sumLabelRef,
+                    options = options, commit = commit
+                });
                 let rowNode: Node = checked_cast(row);
                 discard outer.getChildren().add(rowNode);
                 renderRefPercentListRows(idx + 1i32, rest, outer, rowsRef, sumLabelRef,
@@ -536,48 +584,41 @@ mod PropertyWidgets {
             }
         }
 
+    /// renderRefPercentList 系で共有する文脈 (行に依らない参照)。
+    /// idx/id/pct の行ごとに変わる値とは分けて束ねる。
+    type alias RefPercentRowContext = {
+        outer       = VBox,
+        rowsRef     = Array[List[(String, Int32)], Static],
+        sumLabelRef = Array[Option[Label], Static],
+        options     = List[String],
+        commit      = Commit
+    }
+
     /// 1 行ぶん: [ComboBox] [Spinner] % [✕]
-    def buildRefPercentRow(idx: Int32, id: String, pct: Int32, outer: VBox,
-                            rowsRef: Array[List[(String, Int32)], Static],
-                            sumLabelRef: Array[Option[Label], Static],
-                            options: List[String],
-                            commit: Commit): HBox \ IO = {
+    def buildRefPercentRow(idx: Int32, id: String, pct: Int32,
+                            ctx: RefPercentRowContext): HBox \ IO = {
+        let outer = ctx#outer;
+        let rowsRef = ctx#rowsRef;
+        let sumLabelRef = ctx#sumLabelRef;
+        let options = ctx#options;
+        let commit = ctx#commit;
         let row = new HBox(4.0);
         row.setAlignment(Pos.CENTER_LEFT);
         // ComboBox
-        let combo: ComboBox[String] = new ComboBox();
-        let items = combo.getItems();
-        List.forEach(o -> discard items.add(o), options);
-        combo.setEditable(false);
-        combo.setValue(id);
-        combo.setPrefWidth(140.0);
-        combo.valueProperty().addListener(new ChangeListener[String] {
-            def changed(_this: ChangeListener[String], _obs: ObservableValue[JObject],
-                         _old: String, newVal: String): Unit \ IO = {
-                if (Object.isNull(newVal)) ()
-                else {
-                    let cur = Array.get(0, rowsRef);
-                    let curPct = nthPercent(idx, cur);
-                    Array.put(replaceRowAt(idx, (newVal, curPct), cur), 0, rowsRef);
-                    commitRefPercentRows(rowsRef, commit);
-                    updateSumLabel(rowsRef, sumLabelRef)
-                }
-            }
+        let combo = makeStringComboBox(options, id, 140.0, newVal -> {
+            let cur = Array.get(0, rowsRef);
+            let curPct = nthPercent(idx, cur);
+            Array.put(replaceRowAt(idx, (newVal, curPct), cur), 0, rowsRef);
+            commitRefPercentRows(rowsRef, commit);
+            updateSumLabel(rowsRef, sumLabelRef)
         });
         // Spinner (percent)
-        let spinner: Spinner[Integer] = new Spinner(0i32, 100i32, pct);
-        spinner.setEditable(true);
-        spinner.setPrefWidth(80.0);
-        spinner.valueProperty().addListener(new ChangeListener[Integer] {
-            def changed(_this: ChangeListener[Integer], _obs: ObservableValue[JObject],
-                         _old: Integer, newVal: Integer): Unit \ IO = {
-                let v: Int32 = newVal.intValue();
-                let cur = Array.get(0, rowsRef);
-                let curId = nthId(idx, cur);
-                Array.put(replaceRowAt(idx, (curId, v), cur), 0, rowsRef);
-                commitRefPercentRows(rowsRef, commit);
-                updateSumLabel(rowsRef, sumLabelRef)
-            }
+        let spinner = makeIntSpinner({min = 0i32, max = 100i32}, pct, 80.0, v -> {
+            let cur = Array.get(0, rowsRef);
+            let curId = nthId(idx, cur);
+            Array.put(replaceRowAt(idx, (curId, v), cur), 0, rowsRef);
+            commitRefPercentRows(rowsRef, commit);
+            updateSumLabel(rowsRef, sumLabelRef)
         });
         let pctLbl = new Label("%");
         // Remove ボタン
@@ -789,62 +830,54 @@ mod PropertyWidgets {
         match remaining {
             case Nil => ()
             case (kindId, id) :: rest => {
-                let row = buildKindedRow(idx, kindId, id, outer, rowsRef, kinds, refOptions, commit);
+                let row = buildKindedRow(idx, kindId, id, {
+                    outer = outer, rowsRef = rowsRef, kinds = kinds,
+                    refOptions = refOptions, commit = commit
+                });
                 let rowNode: Node = checked_cast(row);
                 discard outer.getChildren().add(rowNode);
                 renderKindedRows(idx + 1i32, rest, outer, rowsRef, kinds, refOptions, commit)
             }
         }
 
+    /// renderKindedRefList 系で共有する文脈 (行に依らない参照)。
+    /// idx/kindId/id の行ごとに変わる値とは分けて束ねる。
+    type alias KindedRowContext = {
+        outer      = VBox,
+        rowsRef    = Array[List[(String, String)], Static],
+        kinds      = List[Resource.KindSpec],
+        refOptions = Map[String, List[String]],
+        commit     = Commit
+    }
+
     /// 1 行: [kind ComboBox] [id ComboBox] [✕]
-    def buildKindedRow(idx: Int32, kindId: String, id: String, outer: VBox,
-                        rowsRef: Array[List[(String, String)], Static],
-                        kinds: List[Resource.KindSpec],
-                        refOptions: Map[String, List[String]],
-                        commit: Commit): HBox \ IO = {
+    def buildKindedRow(idx: Int32, kindId: String, id: String,
+                        ctx: KindedRowContext): HBox \ IO = {
+        let outer = ctx#outer;
+        let rowsRef = ctx#rowsRef;
+        let kinds = ctx#kinds;
+        let refOptions = ctx#refOptions;
+        let commit = ctx#commit;
         let row = new HBox(4.0);
         row.setAlignment(Pos.CENTER_LEFT);
         // kind ComboBox: 表示は label、内部状態は kindId
-        let kindCombo: ComboBox[String] = new ComboBox();
-        let kindItems = kindCombo.getItems();
-        List.forEach(k -> discard kindItems.add(k#label), kinds);
-        kindCombo.setEditable(false);
-        kindCombo.setValue(labelOfKindId(kindId, kinds));
-        kindCombo.setPrefWidth(80.0);
-        // id ComboBox: 現 kind の catalog から候補を引く
-        let idCombo: ComboBox[String] = new ComboBox();
-        let idItems = idCombo.getItems();
-        List.forEach(o -> discard idItems.add(o), idOptionsForKind(kindId, kinds, refOptions));
-        idCombo.setEditable(false);
-        idCombo.setValue(id);
-        idCombo.setPrefWidth(140.0);
         // kind 変更時: 行の kindId を更新、id を新 kind の先頭に reset、再描画 + commit
-        kindCombo.valueProperty().addListener(new ChangeListener[String] {
-            def changed(_t: ChangeListener[String], _o: ObservableValue[JObject],
-                         _old: String, newLabel: String): Unit \ IO = {
-                if (Object.isNull(newLabel)) ()
-                else {
-                    let newKindId = kindIdOfLabel(newLabel, kinds);
-                    let firstId = firstIdForKind(newKindId, kinds, refOptions);
-                    let cur = Array.get(0, rowsRef);
-                    Array.put(replaceKindedRowAt(idx, (newKindId, firstId), cur), 0, rowsRef);
-                    renderKindedRefList(outer, rowsRef, kinds, refOptions, commit);
-                    commitKindedRows(rowsRef, commit)
-                }
-            }
+        let kindLabels = List.map(k -> k#label, kinds);
+        let kindCombo = makeStringComboBox(kindLabels, labelOfKindId(kindId, kinds), 80.0, newLabel -> {
+            let newKindId = kindIdOfLabel(newLabel, kinds);
+            let firstId = firstIdForKind(newKindId, kinds, refOptions);
+            let cur = Array.get(0, rowsRef);
+            Array.put(replaceKindedRowAt(idx, (newKindId, firstId), cur), 0, rowsRef);
+            renderKindedRefList(outer, rowsRef, kinds, refOptions, commit);
+            commitKindedRows(rowsRef, commit)
         });
+        // id ComboBox: 現 kind の catalog から候補を引く
         // id 変更時: 行の id だけ更新、commit
-        idCombo.valueProperty().addListener(new ChangeListener[String] {
-            def changed(_t: ChangeListener[String], _o: ObservableValue[JObject],
-                         _old: String, newId: String): Unit \ IO = {
-                if (Object.isNull(newId)) ()
-                else {
-                    let cur = Array.get(0, rowsRef);
-                    let curKind = nthKindId(idx, cur);
-                    Array.put(replaceKindedRowAt(idx, (curKind, newId), cur), 0, rowsRef);
-                    commitKindedRows(rowsRef, commit)
-                }
-            }
+        let idCombo = makeStringComboBox(idOptionsForKind(kindId, kinds, refOptions), id, 140.0, newId -> {
+            let cur = Array.get(0, rowsRef);
+            let curKind = nthKindId(idx, cur);
+            Array.put(replaceKindedRowAt(idx, (curKind, newId), cur), 0, rowsRef);
+            commitKindedRows(rowsRef, commit)
         });
         // 削除ボタン
         let removeBtn = new Button("✕");
@@ -1004,25 +1037,25 @@ mod PropertyWidgets {
         } else {
             let initXR = roundTo3(initX);
             let initYR = roundTo3(initY);
-            let xs: Spinner[Double] = new Spinner(-999999.0, 999999.0, initXR, 0.1);
-            let ys: Spinner[Double] = new Spinner(-999999.0, 999999.0, initYR, 0.1);
-            xs.setEditable(true); ys.setEditable(true);
-            xs.setPrefWidth(140.0); ys.setPrefWidth(140.0);
-            xs.getValueFactory().setConverter(roundedDoubleConverter());
-            ys.getValueFactory().setConverter(roundedDoubleConverter());
-            let commitBoth = () -> {
-                let x: Float64 = roundTo3(xs.getValue().doubleValue());
-                let y: Float64 = roundTo3(ys.getValue().doubleValue());
-                commit(NodeInspector.vec2ToJson({x = x, y = y}))
+            // 両成分の Spinner を Static 配列に保持し、片方の変更時に他方の現在値も読んで
+            // 同時に commit する (元コードの commitBoth と等価)。配列に入れるのは
+            // makeDoubleSpinner 内 listener が両 Spinner 生成前に登録されるため。
+            let xsRef: Array[Option[Spinner[Double]], Static] = Array#{(None: Option[Spinner[Double]])} @ Static;
+            let ysRef: Array[Option[Spinner[Double]], Static] = Array#{(None: Option[Spinner[Double]])} @ Static;
+            let commitBoth = () -> match (Array.get(0, xsRef), Array.get(0, ysRef)) {
+                case (Some(xs), Some(ys)) => {
+                    let x: Float64 = roundTo3(xs.getValue().doubleValue());
+                    let y: Float64 = roundTo3(ys.getValue().doubleValue());
+                    commit(NodeInspector.vec2ToJson({x = x, y = y}))
+                }
+                case _ => ()
             };
-            xs.valueProperty().addListener(new ChangeListener[Double] {
-                def changed(_cThis: ChangeListener[Double], _obs: ObservableValue[JObject],
-                             _old: Double, _newVal: Double): Unit \ IO = commitBoth()
-            });
-            ys.valueProperty().addListener(new ChangeListener[Double] {
-                def changed(_cThis: ChangeListener[Double], _obs: ObservableValue[JObject],
-                             _old: Double, _newVal: Double): Unit \ IO = commitBoth()
-            });
+            let xs = makeDoubleSpinner({min = -999999.0, max = 999999.0, step = 0.1}, initXR, 140.0,
+                _v -> commitBoth());
+            let ys = makeDoubleSpinner({min = -999999.0, max = 999999.0, step = 0.1}, initYR, 140.0,
+                _v -> commitBoth());
+            Array.put(Some(xs), 0, xsRef);
+            Array.put(Some(ys), 0, ysRef);
             assembleVec2Box(checked_cast(xs), checked_cast(ys))
         }
     }
@@ -1190,10 +1223,14 @@ mod PropertyWidgets {
                         let (panX, panY) = panOffset;
                         let fullSheetMode = frameAdjust and hframes > 0i32 and vframes > 0i32
                                               and imgW > 0.0 and imgH > 0.0;
+                        let atlasDraw = {
+                            gc = gc, image = image, hframes = hframes, vframes = vframes,
+                            frame = frame, imgW = imgW, imgH = imgH,
+                            canvasW = canvasW, canvasH = canvasH,
+                            zoomMode = zoomMode, showGrid = showGrid
+                        };
                         if (fullSheetMode) {
-                            drawFullSheetWithSelection(gc, image, hframes, vframes, frame,
-                                                        imgW, imgH, canvasW, canvasH, zoomMode,
-                                                        showGrid, panX, panY)
+                            drawFullSheetWithSelection(atlasDraw, panX, panY)
                         } else {
                             drawSingleCell(gc, image, sr, hframes, vframes, frame,
                                             imgW, imgH, canvasW, canvasH, zoomMode, showGrid)
@@ -1201,9 +1238,7 @@ mod PropertyWidgets {
                         // フレーム調整モードでのみドラッグ pan を有効化（毎回 set し直す = 直近フレームの座標で更新）。
                         // ピンチハンドラは ResourcePanel.wirePreviewPinchZoom で永続 canvas に 1 回だけ登録済み。
                         if (fullSheetMode) {
-                            wirePanDrag(persistentCanvas, gc, image, hframes, vframes, frame,
-                                         imgW, imgH, canvasW, canvasH, zoomMode, showGrid,
-                                         getCurrentPan, onPanCommit)
+                            wirePanDrag(persistentCanvas, atlasDraw, getCurrentPan, onPanCommit)
                         } else ()
                     }
                 }
@@ -1230,11 +1265,7 @@ mod PropertyWidgets {
     /// drag のたびに新 pan を計算して同じ canvas に直接 redraw する。
     /// onPanCommit は ResourceState を更新し、後続の updateSpritePreview 呼び出しが
     /// 新しい pan を反映できるようにする
-    def wirePanDrag(canvas: Canvas, gc: GraphicsContext, image: Image,
-                     hframes: Int32, vframes: Int32, frame: Int32,
-                     imgW: Float64, imgH: Float64,
-                     canvasW: Float64, canvasH: Float64,
-                     zoomMode: ZoomMode, showGrid: Bool,
+    def wirePanDrag(canvas: Canvas, draw: AtlasDrawState,
                      getCurrentPan: Unit -> (Float64, Float64) \ IO,
                      onPanCommit: ((Float64, Float64)) -> Unit \ IO): Unit \ IO = {
         // ドラッグ起点: 押下時のマウス座標と pan 値を保持する。
@@ -1262,9 +1293,7 @@ mod PropertyWidgets {
                 let newPanY = Array.get(0, startPanY) + dy;
                 onPanCommit((newPanX, newPanY));
                 // 同じ canvas 上に直接 redraw (children.clear はしない)
-                drawFullSheetWithSelection(gc, image, hframes, vframes, frame,
-                                            imgW, imgH, canvasW, canvasH, zoomMode, showGrid,
-                                            newPanX, newPanY)
+                drawFullSheetWithSelection(draw, newPanX, newPanY)
             }
         })
     }
@@ -1303,12 +1332,19 @@ mod PropertyWidgets {
     /// フレーム調整モード: texture 全体を fit-scale * zoom% で描画し、選択フレーム以外を
     /// 半透明黒でディマー、選択フレームを再描画して 100% 不透明に戻し、黄色枠でハイライト。
     /// offset は適用しない (アトラス上の物理セル位置を見せる用途のため)
-    def drawFullSheetWithSelection(gc: GraphicsContext, image: Image,
-                                    hframes: Int32, vframes: Int32, frame: Int32,
-                                    imgW: Float64, imgH: Float64,
-                                    canvasW: Float64, canvasH: Float64,
-                                    zoomMode: ZoomMode, showGrid: Bool,
+    def drawFullSheetWithSelection(draw: AtlasDrawState,
                                     panX: Float64, panY: Float64): Unit \ IO = {
+        let gc = draw#gc;
+        let image = draw#image;
+        let hframes = draw#hframes;
+        let vframes = draw#vframes;
+        let frame = draw#frame;
+        let imgW = draw#imgW;
+        let imgH = draw#imgH;
+        let canvasW = draw#canvasW;
+        let canvasH = draw#canvasH;
+        let zoomMode = draw#zoomMode;
+        let showGrid = draw#showGrid;
         gc.clearRect(0.0, 0.0, canvasW, canvasH);
         let fitScale = Float64.min(canvasW / imgW, canvasH / imgH);
         let zoomMul = match zoomMode {
@@ -1587,7 +1623,7 @@ mod PropertyWidgets {
 
     /// 選択 anim の frames[0] を取り出す。frames が空 / anim が無いなら {frame=0, duration=1.0}。
     def currentFirstFrame(anims: Map[String, Json.JsonElement], sel: String):
-            {frame = Int32, duration = Float64} =
+            FrameEntry =
         currentFrame(anims, sel, 0i32)
 
     /// spriteFrames JSON object を anim 名 → JSON の Map に解す。
@@ -1632,7 +1668,7 @@ mod PropertyWidgets {
 
     /// 選択 anim の frames を `{frame, duration}` のリストとして取り出す。
     def currentFramesList(anims: Map[String, Json.JsonElement], sel: String):
-            List[{frame = Int32, duration = Float64}] =
+            List[FrameEntry] =
         match Map.get(sel, anims) {
             case Some(Json.JsonElement.JsonObject(animMap)) =>
                 match Map.get("frames", animMap) {
@@ -1643,7 +1679,7 @@ mod PropertyWidgets {
             case _ => Nil
         }
 
-    def parseFrameJson(frameJson: Json.JsonElement): {frame = Int32, duration = Float64} =
+    def parseFrameJson(frameJson: Json.JsonElement): FrameEntry =
         match frameJson {
             case Json.JsonElement.JsonObject(fm) =>
                 let fIdx = match Map.get("frame", fm) {
@@ -1664,7 +1700,7 @@ mod PropertyWidgets {
 
     /// 選択 anim の frames[idx] を取り出す。範囲外なら {frame=0, duration=1.0}。
     def currentFrame(anims: Map[String, Json.JsonElement], sel: String, idx: Int32):
-            {frame = Int32, duration = Float64} =
+            FrameEntry =
         let frames = currentFramesList(anims, sel);
         match List.nth(idx, frames) {
             case Some(f) => f

@@ -132,4 +132,35 @@ mod TestMapGridCanvas {
         let d1 = MapResource.levelData(wallPlaced);
         let result = MapGridCanvas.removeFloorTileAt(wallPlaced, d1, 1i32, 1i32);
         Assert.assertEq(expected = 1i32, manualTileCount(result))
+
+    // ========================================================================
+    // tileCoords — グリッド↔ピクセル座標変換の純粋関数
+    // ========================================================================
+
+    @Test
+    def testTileCoordsDstFromGrid(): Unit \ Assert =
+        // col=2,row=3,cellPx=16 → dstX=32, dstY=48
+        let c = MapGridCanvas.tileCoords({col = 2i32, row = 3i32}, {x = 0i32, y = 0i32},
+                                          {tileSize = 16i32, cellPx = 16i32});
+        Assert.assertEq(expected = 32.0f64, c#dstX);
+        Assert.assertEq(expected = 48.0f64, c#dstY)
+
+    @Test
+    def testTileCoordsSrcPassthrough(): Unit \ Assert =
+        // src (x,y) は atlas px のまま Float64 化される
+        let c = MapGridCanvas.tileCoords({col = 0i32, row = 0i32}, {x = 176i32, y = 16i32},
+                                          {tileSize = 16i32, cellPx = 24i32});
+        Assert.assertEq(expected = 176.0f64, c#srcX);
+        Assert.assertEq(expected = 16.0f64, c#srcY)
+
+    @Test
+    def testTileCoordsSizes(): Unit \ Assert =
+        // tileSize/cellPx がそのまま Float64 化される (独立な値で取り違え検出)
+        let c = MapGridCanvas.tileCoords({col = 1i32, row = 1i32}, {x = 0i32, y = 0i32},
+                                          {tileSize = 16i32, cellPx = 24i32});
+        Assert.assertEq(expected = 16.0f64, c#tileSize);
+        Assert.assertEq(expected = 24.0f64, c#cellPx);
+        // dst も cellPx=24 基準: col=1,row=1 → 24,24
+        Assert.assertEq(expected = 24.0f64, c#dstX);
+        Assert.assertEq(expected = 24.0f64, c#dstY)
 }

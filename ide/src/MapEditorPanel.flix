@@ -263,14 +263,31 @@ mod MapEditorPanel {
         Array.put(settings, 0, state#mapEditor#paletteSettingsRef)
     }
 
-    def toLayerPalette(lp: MapResource.EditorLayerPalette): MapEditorState.LayerPalette =
-        ({
+    /// MapResource.EditorLayerPalette と MapEditorState.LayerPalette は同じ 5 フィールドを
+    /// 持つ (textureName/cellW/cellH/marginX/marginY)。双方向変換の手詰めを 1 箇所に
+    /// 集約するための共通中間型。engine 側型は変更不可なので、ここでブリッジする。
+    type alias PaletteSpec = {
+        textureName = Option[String],
+        cellW       = Int32,
+        cellH       = Int32,
+        marginX     = Int32,
+        marginY     = Int32
+    }
+
+    /// 同じ 5 フィールドを持つ任意の record から共通の PaletteSpec を取り出す。
+    /// EditorLayerPalette / LayerPalette どちらにも適用できる。
+    def paletteSpecOf(lp: {textureName = Option[String], cellW = Int32, cellH = Int32,
+                            marginX = Int32, marginY = Int32 | r}): PaletteSpec =
+        {
             textureName = lp#textureName,
             cellW       = lp#cellW,
             cellH       = lp#cellH,
             marginX     = lp#marginX,
             marginY     = lp#marginY
-        }: MapEditorState.LayerPalette)
+        }
+
+    def toLayerPalette(lp: MapResource.EditorLayerPalette): MapEditorState.LayerPalette =
+        (paletteSpecOf(lp): MapEditorState.LayerPalette)
 
     /// MapEditorState.PaletteSettings から Level.editorPalette を構築する (save 時に使う)。
     def buildEditorPaletteForLevel(state: IdeState.IdeState):
@@ -283,13 +300,7 @@ mod MapEditorPanel {
     }
 
     def fromLayerPalette(lp: MapEditorState.LayerPalette): MapResource.EditorLayerPalette =
-        ({
-            textureName = lp#textureName,
-            cellW       = lp#cellW,
-            cellH       = lp#cellH,
-            marginX     = lp#marginX,
-            marginY     = lp#marginY
-        }: MapResource.EditorLayerPalette)
+        (paletteSpecOf(lp): MapResource.EditorLayerPalette)
 
     /// 編集後に呼ぶ自動保存。editingLevel を selectedLevelPath に書き戻す。
     /// 失敗時は println のみ (Dialog は出さない、ユーザー操作を妨げない)。
