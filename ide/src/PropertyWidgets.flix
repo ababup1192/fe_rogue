@@ -48,6 +48,7 @@ mod PropertyWidgets {
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
     import javafx.scene.input.MouseEvent
+    import javafx.scene.input.ZoomEvent
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
     import java.lang.Double
@@ -77,51 +78,44 @@ mod PropertyWidgets {
     }
 
     /// Resources タブ Preview の拡大モード。
-    /// ネイティブピクセル基準のパーセント表示倍率。
-    ///   100 = 1 image pixel = 1 logical screen pixel (IDE プレビュー上の等倍)、
-    ///   200 = 2 倍拡大、50 = 半分縮小
+    /// ネイティブピクセル基準のパーセント表示倍率（Float64 で連続値）。
+    ///   100.0 = 1 image pixel = 1 logical screen pixel (IDE プレビュー上の等倍)、
+    ///   200.0 = 2 倍拡大、50.0 = 半分縮小
     /// 注意: 「ゲームでの実際の見え方」は Sprite2D.scale / Camera2D.zoom /
     /// Viewport (design → window) の合成で決まるため、Resource (texture/frame/
     /// hframes/vframes) 単独では再現できない。この preview は texture アトラスの
     /// ピクセル自体を確認する用途
     pub enum ZoomMode with Eq, ToString {
-        case Percent(Int32)
+        case Percent(Float64)
     }
-
-    /// ズーム段階の昇順リスト (パーセント値)。zoomIn/zoomOut が辿る
-    def zoomSteps(): List[Int32] =
-        25i32 :: 50i32 :: 75i32 :: 100i32 :: 150i32 :: 200i32 :: 300i32 :: 400i32 :: 600i32 :: 800i32 :: 1600i32 :: Nil
 
     /// プロジェクト起動時 / ResourceState 初期化時のデフォルトズーム。
     /// 100% = ネイティブピクセル等倍 (1 image px = 1 logical px)
     pub def defaultZoom(): ZoomMode =
-        ZoomMode.Percent(100)
+        ZoomMode.Percent(100.0)
 
     /// ZoomMode を UI 表示用の短い文字列にする ("100%" / "200%" ...)
+    /// 小数倍率は整数に丸めて表示する（"103.5%" は冗長なので "104%"）。
     pub def zoomModeLabel(mode: ZoomMode): String =
         match mode {
-            case ZoomMode.Percent(p) => "${p}%"
+            case ZoomMode.Percent(p) =>
+                let rounded = Float64.tryToInt32(p) |> Option.getWithDefault(100i32);
+                "${rounded}%"
         }
 
-    /// "-" ボタン: 段階リストの 1 つ下に降りる。最小 (25%) は no-op
-    pub def zoomOut(mode: ZoomMode): ZoomMode =
+    /// ピンチズームの incremental factor（macOS trackpad の `ZoomEvent.getZoomFactor()`）
+    /// を現倍率に乗算して新 ZoomMode を返す。範囲 [25%, 1600%] にクランプ。
+    /// `Percent` は Float64 なので、小さな factor（1.01 程度）でも丸められず連続的に拡縮できる。
+    pub def pinchZoom(mode: ZoomMode, factor: Float64): ZoomMode =
         match mode {
-            case ZoomMode.Percent(p) =>
-                let lower = List.filter(s -> s < p, zoomSteps());
-                match List.last(lower) {
-                    case None       => mode
-                    case Some(prev) => ZoomMode.Percent(prev)
-                }
-        }
-
-    /// "+" ボタン: 段階リストの 1 つ上に上がる。最大 (1600%) は no-op
-    pub def zoomIn(mode: ZoomMode): ZoomMode =
-        match mode {
-            case ZoomMode.Percent(p) =>
-                match List.find(s -> s > p, zoomSteps()) {
-                    case None       => mode
-                    case Some(next) => ZoomMode.Percent(next)
-                }
+            case ZoomMode.Percent(p) => {
+                let next = p * factor;
+                let clamped =
+                    if (next < 25.0) 25.0
+                    else if (next > 1600.0) 1600.0
+                    else next;
+                ZoomMode.Percent(clamped)
+            }
         }
 
     /// 共通テンプレ property-row.fxml をロードして「key Label + 値 slot」の HBox を返す
@@ -907,7 +901,11 @@ mod PropertyWidgets {
     /// Canvas を使うのは GraphicsContext.setImageSmoothing(false) で
     /// nearest-neighbor 描画を明示的に効かせるため (ImageView.setSmooth(false) は
     /// JavaFX の Prism レンダラ環境で効かないケースがあるため避ける)。
-    pub def updateSpritePreview(pane: StackPane, pathMap: Map[String, String],
+    /// 永続 canvas に preview を描画する。pane はピンチハンドラの target である canvas を
+    /// scene graph に保持させたままにしたいので、ここでは pane.getChildren() を **触らない**。
+    /// 「no preview」「path unknown」状態は status label で示す（canvas は空 = 暗背景になる）。
+    pub def updateSpritePreview(pane: StackPane, persistentCanvas: Canvas,
+                                 pathMap: Map[String, String],
                                  spriteRef: Option[SpriteRef],
                                  zoomMode: ZoomMode,
                                  showGrid: Bool,
@@ -916,25 +914,26 @@ mod PropertyWidgets {
                                  getCurrentPan: Unit -> (Float64, Float64) \ IO,
                                  onPanCommit: ((Float64, Float64)) -> Unit \ IO,
                                  onStatus: String -> Unit \ IO): Unit \ IO = {
-        let children = pane.getChildren();
-        children.clear();
+        // canvas のサイズは pane に追従させる（window resize で見える範囲が増減）
+        let paneW = pane.getWidth();
+        let paneH = pane.getHeight();
+        let canvasW = if (paneW > 16.0) paneW else 220.0;
+        let canvasH = if (paneH > 16.0) paneH else 220.0;
+        if (Float64.abs(persistentCanvas.getWidth() - canvasW) > 0.5)
+            persistentCanvas.setWidth(canvasW)
+        else ();
+        if (Float64.abs(persistentCanvas.getHeight() - canvasH) > 0.5)
+            persistentCanvas.setHeight(canvasH)
+        else ();
+        let gc: GraphicsContext = persistentCanvas.getGraphicsContext2D();
+        gc.setImageSmoothing(false);
+        gc.clearRect(0.0, 0.0, canvasW, canvasH);
+
         match spriteRef {
-            case None => {
-                let l = new Label("(no preview)");
-                l.getStyleClass().add("inspector-empty");
-                let n: Node = checked_cast(l);
-                discard children.add(n);
-                onStatus("")
-            }
+            case None => onStatus("(no preview)")
             case Some(sr) => {
                 match Map.get(sr#texture, pathMap) {
-                    case None => {
-                        let l = new Label("(path unknown: ${sr#texture})");
-                        l.getStyleClass().add("inspector-empty");
-                        let n: Node = checked_cast(l);
-                        discard children.add(n);
-                        onStatus("")
-                    }
+                    case None => onStatus("(path unknown: ${sr#texture})")
                     case Some(absPath) => {
                         let url = new File(absPath).toURI().toString();
                         let image = new Image(url);
@@ -943,18 +942,7 @@ mod PropertyWidgets {
                         let frame   = sr#frame   |> Option.getWithDefault(0i32);
                         let imgW = image.getWidth();
                         let imgH = image.getHeight();
-                        // status label: セル native px / 現在 zoom
                         onStatus(formatSpriteStatus(imgW, imgH, hframes, vframes, zoomMode));
-                        // canvas サイズは pane の実サイズに追従させて、window resize で
-                        // 「見える範囲」が増減するようにする。レイアウト未確定 (= 0) の
-                        // フレームでは保守的な 220 にフォールバック
-                        let paneW = pane.getWidth();
-                        let paneH = pane.getHeight();
-                        let canvasW = if (paneW > 16.0) paneW else 220.0;
-                        let canvasH = if (paneH > 16.0) paneH else 220.0;
-                        let canvas = new Canvas(canvasW, canvasH);
-                        let gc: GraphicsContext = canvas.getGraphicsContext2D();
-                        gc.setImageSmoothing(false);
                         let (panX, panY) = panOffset;
                         let fullSheetMode = frameAdjust and hframes > 0i32 and vframes > 0i32
                                               and imgW > 0.0 and imgH > 0.0;
@@ -966,16 +954,13 @@ mod PropertyWidgets {
                             drawSingleCell(gc, image, sr, hframes, vframes, frame,
                                             imgW, imgH, canvasW, canvasH, zoomMode, showGrid)
                         };
-                        // フレーム調整モードでのみドラッグ pan を有効化。
-                        // 同じ canvas 上に直接 redraw して JavaFX のドラッグ追跡を保つ
-                        // (canvas を pane から外すと press 後の dragged イベントが届かない)
+                        // フレーム調整モードでのみドラッグ pan を有効化（毎回 set し直す = 直近フレームの座標で更新）。
+                        // ピンチハンドラは ResourcePanel.wirePreviewPinchZoom で永続 canvas に 1 回だけ登録済み。
                         if (fullSheetMode) {
-                            wirePanDrag(canvas, gc, image, hframes, vframes, frame,
+                            wirePanDrag(persistentCanvas, gc, image, hframes, vframes, frame,
                                          imgW, imgH, canvasW, canvasH, zoomMode, showGrid,
                                          getCurrentPan, onPanCommit)
-                        } else ();
-                        let n: Node = checked_cast(canvas);
-                        discard children.add(n)
+                        } else ()
                     }
                 }
             }
@@ -1060,7 +1045,7 @@ mod PropertyWidgets {
             } else (0.0, 0.0, imgW, imgH);
         let scale = if (srcW <= 0.0 or srcH <= 0.0) 1.0 else
             match zoomMode {
-                case ZoomMode.Percent(p) => Int32.toFloat64(p) / 100.0
+                case ZoomMode.Percent(p) => p / 100.0
             };
         let dstW = srcW * scale;
         let dstH = srcH * scale;
@@ -1083,7 +1068,7 @@ mod PropertyWidgets {
         gc.clearRect(0.0, 0.0, canvasW, canvasH);
         let fitScale = Float64.min(canvasW / imgW, canvasH / imgH);
         let zoomMul = match zoomMode {
-            case ZoomMode.Percent(p) => Int32.toFloat64(p) / 100.0
+            case ZoomMode.Percent(p) => p / 100.0
         };
         let effScale = fitScale * zoomMul;
         let sheetW = imgW * effScale;

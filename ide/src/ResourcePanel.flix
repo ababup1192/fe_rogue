@@ -21,11 +21,13 @@ mod ResourcePanel {
     import javafx.scene.control.Label
     import javafx.scene.control.ListView
     import javafx.scene.control.TextInputDialog
+    import javafx.scene.canvas.Canvas
     import javafx.scene.layout.StackPane
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
+    import javafx.scene.input.ZoomEvent
 
     /// Resources ListView 選択 → displayName から ResourceEntry を引き、
     /// data + schema を Fs.FileRead 経由で読み、Sub-entries を埋める
@@ -315,12 +317,13 @@ mod ResourcePanel {
         let getPan = () -> ResourceState.getPreviewPan(state#resource);
         let onPan = newPan -> ResourceState.setPreviewPan(state#resource, newPan);
         let onStatus = txt -> setStatusLabel(state, txt);
-        match Array.get(0, state#widgets#resourcePreviewPane) {
-            case Some(pane) =>
-                PropertyWidgets.updateSpritePreview(pane, pathMap, spriteRef, zoomMode,
+        match (Array.get(0, state#widgets#resourcePreviewPane),
+                Array.get(0, state#widgets#resourcePreviewCanvas)) {
+            case (Some(pane), Some(canvas)) =>
+                PropertyWidgets.updateSpritePreview(pane, canvas, pathMap, spriteRef, zoomMode,
                                                      showGrid, frameAdjust, pan, getPan, onPan,
                                                      onStatus)
-            case None       => ()
+            case _       => ()
         }
     }
 
@@ -332,13 +335,44 @@ mod ResourcePanel {
         let getPan = () -> ResourceState.getPreviewPan(state#resource);
         let onPan = newPan -> ResourceState.setPreviewPan(state#resource, newPan);
         let onStatus = txt -> setStatusLabel(state, txt);
-        match Array.get(0, state#widgets#resourcePreviewPane) {
-            case Some(pane) =>
-                PropertyWidgets.updateSpritePreview(pane, Map.empty(), None, zoomMode,
+        match (Array.get(0, state#widgets#resourcePreviewPane),
+                Array.get(0, state#widgets#resourcePreviewCanvas)) {
+            case (Some(pane), Some(canvas)) =>
+                PropertyWidgets.updateSpritePreview(pane, canvas, Map.empty(), None, zoomMode,
                                                      showGrid, frameAdjust, pan, getPan, onPan,
                                                      onStatus)
-            case None       => ()
+            case _       => ()
         }
+    }
+
+    /// 永続 Preview canvas を生成して pane に常駐させ、ピンチハンドラを直接登録する。
+    /// updateSpritePreview は以降この canvas の中身を clear + 再描画するだけで、
+    /// pane.getChildren() には手を入れない。canvas が scene graph に常駐するため
+    /// JavaFX の gesture continuity が切れず、ピンチが滑らかになる。
+    /// （MapEditor の mapPaletteCanvas + wireTilesetZoom と同じ流儀）
+    pub def wirePreviewPinchZoom(state: IdeState.IdeState, pane: StackPane): Unit \ IO = {
+        let paneW = pane.getWidth();
+        let paneH = pane.getHeight();
+        let canvasW = if (paneW > 16.0) paneW else 220.0;
+        let canvasH = if (paneH > 16.0) paneH else 220.0;
+        let canvas = new Canvas(canvasW, canvasH);
+        Array.put(Some(canvas), 0, state#widgets#resourcePreviewCanvas);
+        // 初回は pane に追加。以降 updateSpritePreview は pane を触らない
+        let canvasNode: Node = checked_cast(canvas);
+        let children = pane.getChildren();
+        children.clear();
+        discard children.add(canvasNode);
+        // ピンチハンドラを canvas に 1 回だけ登録（canvas は永続）
+        canvas.setOnZoom(new EventHandler[ZoomEvent] {
+            def handle(_this: EventHandler[ZoomEvent], event: ZoomEvent): Unit \ IO = {
+                let factor = event.getZoomFactor();
+                let cur = ResourceState.getPreviewZoom(state#resource);
+                let next = PropertyWidgets.pinchZoom(cur, factor);
+                ResourceState.setPreviewZoom(state#resource, next);
+                repaintPreview(state);
+                event.consume()
+            }
+        })
     }
 
     /// Preview 下の resourceStatusLabel に文字列を書き込む。
@@ -362,38 +396,6 @@ mod ResourcePanel {
         }
     }
 
-    /// previewZoomLabel に "Fit" / "1x" / "2x" 等を反映
-    pub def updateZoomLabel(state: IdeState.IdeState): Unit \ IO = {
-        let mode = ResourceState.getPreviewZoom(state#resource);
-        let text = PropertyWidgets.zoomModeLabel(mode);
-        match Array.get(0, state#widgets#resourcePreviewZoomLbl) {
-            case Some(label) => label.setText(text)
-            case None        => ()
-        }
-    }
-
-    /// Preview の - / + ボタンを ZoomMode 操作に配線する。
-    /// 押下のたびに ResourceState の zoomMode を更新し、ラベルと preview を再描画する。
-    pub def wireZoomButtons(state: IdeState.IdeState,
-                             zoomOutBtn: Button,
-                             zoomInBtn:  Button): Unit \ IO = {
-        zoomOutBtn.setOnAction(new EventHandler[ActionEvent] {
-            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
-                let current = ResourceState.getPreviewZoom(state#resource);
-                ResourceState.setPreviewZoom(state#resource, PropertyWidgets.zoomOut(current));
-                updateZoomLabel(state);
-                repaintPreview(state)
-            }
-        });
-        zoomInBtn.setOnAction(new EventHandler[ActionEvent] {
-            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
-                let current = ResourceState.getPreviewZoom(state#resource);
-                ResourceState.setPreviewZoom(state#resource, PropertyWidgets.zoomIn(current));
-                updateZoomLabel(state);
-                repaintPreview(state)
-            }
-        })
-    }
 
     /// グリッド表示チェックボックスを配線する。トグルで preview を再描画する。
     pub def wireGridCheckbox(state: IdeState.IdeState,

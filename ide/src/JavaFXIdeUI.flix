@@ -80,9 +80,7 @@ mod JavaFXIdeUI {
         let subEntryRemoveBtn: Button = unchecked_cast(ns.get("subEntryRemoveBtn") as Button);
         let propertyPanel: VBox = unchecked_cast(ns.get("propertyPanel") as VBox);
         let resourcePreviewPane: StackPane = unchecked_cast(ns.get("resourcePreviewPane") as StackPane);
-        let previewZoomLabel: Label = unchecked_cast(ns.get("previewZoomLabel") as Label);
-        let previewZoomOut:   Button = unchecked_cast(ns.get("previewZoomOut") as Button);
-        let previewZoomIn:    Button = unchecked_cast(ns.get("previewZoomIn") as Button);
+        // 拡縮ボタン・ラベルは廃止（canvas へのピンチで操作）
         let previewGridCheck: CheckBox = unchecked_cast(ns.get("previewGridCheck") as CheckBox);
         let previewFrameAdjustCheck: CheckBox =
             unchecked_cast(ns.get("previewFrameAdjustCheck") as CheckBox);
@@ -97,7 +95,6 @@ mod JavaFXIdeUI {
         Array.put(Some(subEntryRemoveBtn),   0, state#widgets#subEntryRemoveBtn);
         Array.put(Some(propertyPanel),       0, state#widgets#propertyPanel);
         Array.put(Some(resourcePreviewPane), 0, state#widgets#resourcePreviewPane);
-        Array.put(Some(previewZoomLabel),    0, state#widgets#resourcePreviewZoomLbl);
         Array.put(Some(previewGridCheck),    0, state#widgets#resourcePreviewGridChk);
         Array.put(Some(previewFrameAdjustCheck), 0, state#widgets#resourcePreviewFrameAdjustChk);
         Array.put(Some(resourceStatusLabel), 0, state#widgets#resourceStatusLabel);
@@ -118,12 +115,12 @@ mod JavaFXIdeUI {
         ResourcePanel.wireResourceSelection(state, resourcesList, subEntriesList);
         ResourcePanel.wireSubEntrySelection(state, subEntriesList);
         ResourcePanel.wireSubEntryButtons(state, subEntriesList, subEntryAddBtn, subEntryRemoveBtn);
-        ResourcePanel.wireZoomButtons(state, previewZoomOut, previewZoomIn);
         ResourcePanel.wireGridCheckbox(state, previewGridCheck);
         ResourcePanel.wireFrameAdjustCheckbox(state, previewFrameAdjustCheck);
         // pane の幅高変化 (window resize / divider 移動) で preview canvas を作り直す
         ResourcePanel.wirePreviewResize(state, resourcePreviewPane);
-        ResourcePanel.updateZoomLabel(state);
+        // ピンチズームは永続 pane に 1 回だけ登録 (canvas 再生成と無関係に gesture が続く)
+        ResourcePanel.wirePreviewPinchZoom(state, resourcePreviewPane);
 
         // Maps タブの中身は map-editor.fxml に分離。
         // fx:include だと inner fx:id が親 namespace から見えないため、別 FXMLLoader で

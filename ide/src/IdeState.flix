@@ -40,6 +40,9 @@ mod IdeState {
         subEntryRemoveBtn             = Array[Option[Button], Static],
         propertyPanel                 = Array[Option[VBox], Static],
         resourcePreviewPane           = Array[Option[StackPane], Static],
+        // Resources Preview の永続 canvas。updateSpritePreview は再生成せず、これを clear+redraw する
+        // ことで、ピンチズーム中の JavaFX gesture continuity を保つ（MapEditor の mapPaletteCanvas と同じ流儀）
+        resourcePreviewCanvas         = Array[Option[Canvas], Static],
         resourcePreviewZoomLbl        = Array[Option[Label], Static],
         resourcePreviewGridChk        = Array[Option[CheckBox], Static],
         resourcePreviewFrameAdjustChk = Array[Option[CheckBox], Static],
@@ -253,6 +256,7 @@ mod IdeState {
             subEntryRemoveBtn             = Array#{(None: Option[Button])} @ Static,
             propertyPanel                 = Array#{(None: Option[VBox])} @ Static,
             resourcePreviewPane           = Array#{(None: Option[StackPane])} @ Static,
+            resourcePreviewCanvas         = Array#{(None: Option[Canvas])} @ Static,
             resourcePreviewZoomLbl        = Array#{(None: Option[Label])} @ Static,
             resourcePreviewGridChk        = Array#{(None: Option[CheckBox])} @ Static,
             resourcePreviewFrameAdjustChk = Array#{(None: Option[CheckBox])} @ Static,
