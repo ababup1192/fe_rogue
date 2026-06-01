@@ -8,13 +8,16 @@
 /// (`ide/src/ResourceCatalog.flix` の classify は最初の container のみ採用)。
 /// weapons を units.json に同居させていた時代は IDE から武器を編集できなかった。
 ///
-/// 各ユニットは `initialWeapon` フィールドで自分の初期装備武器 id を直接持つ。
+/// 各ユニットは `initialInventory` で初期持ち物（武器・杖の混在リスト）を持つ。
 /// `players` / `enemies` プールはユニット id の配列で、ゲーム側がスポーン順を決める。
 ///
 /// JSON 形状（units.json）:
 ///   {
 ///     "units": {
-///       "knight": { "moveTiles": 4, "hp": 14, ..., "initialWeapon": "trainingSpear" },
+///       "knight": {
+///         "moveTiles": 4, "hp": 14, ...,
+///         "initialInventory": [{ "kind": "weapon", "id": "trainingSpear" }]
+///       },
 ///       ...
 ///     },
 ///     "players": ["knight", "archer", "mage"],
@@ -53,32 +56,45 @@ mod UnitCatalog {
         })
     }
 
+    /// 持ち物アイテムの種別。`weapons.json` か `staves.json` のどちらの id を指すか判別する。
+    /// JSON では小文字文字列 `"weapon"` / `"staff"` でシリアライズする。
+    pub enum ItemKind with Eq, ToString {
+        case Weapon
+        case Staff
+    }
+
+    /// `initialInventory` の 1 エントリ。JSON は `{"kind": "weapon", "id": "trainingSpear"}` の形。
+    /// 並び順は意味あり: weapon は最初のものが装備中、staff は配列順で持ち物に積まれる。
+    pub type alias InventoryEntry = {
+        kind = ItemKind,
+        id   = String
+    }
+
     /// ユニット 1 種別ぶんのデータ。
     /// `attack` は素の「力」(might)。物理武器装備時の与ダメは `attack + 武器の attack - 防御`。
     /// `magicAttack` は魔力。魔法武器装備時の与ダメは `magicAttack + 武器の attack - 魔防`。
     /// `magicDefense` は魔防。魔法攻撃を受けた際の防御に使う。
-    /// `initialWeapon` は武器カタログ (weapons.json) 内の武器 id への参照。
-    /// `initialStaves` は杖カタログ (staves.json) 内の杖 id の配列。省略可、空配列でも可。
+    /// `initialInventory` は spawn 時に持たせる武器・杖を kind 別に並べたリスト。
+    /// 旧フィールド `initialWeapon` / `initialStaves` を統合した形。
     pub type alias UnitResource = {
-        moveTiles     = Int32,
-        hp            = Int32,
-        attack        = Int32,
-        defense       = Int32,
-        magicAttack   = Int32,
-        magicDefense  = Int32,
-        speed         = Int32,
-        sprite        = SpriteResource,
-        initialWeapon = String,
-        initialStaves = List[String],
+        moveTiles        = Int32,
+        hp               = Int32,
+        attack           = Int32,
+        defense          = Int32,
+        magicAttack      = Int32,
+        magicDefense     = Int32,
+        speed            = Int32,
+        sprite           = SpriteResource,
+        initialInventory = List[InventoryEntry],
         // 兵種名 (例: "アーチャー" / "ナイト" / "メイジ")。UI 上で表示する用途。
         // 旧 JSON に値が無い場合は decoder が "" を埋める (後方互換)。
-        description   = String,
+        description      = String,
         // 方向別アニメ用 SpriteFrames リソース (Godot AnimatedSprite2D 準拠)。
         // 設定されていれば PlayerScene / EnemyScene が AnimatedSprite2D で表示し、
         // `idle` / `walk_up` / `walk_down` / `walk_left` / `walk_right` アニメ名を
         // 移動方向に応じて再生する。設定されていなければ従来通り Sprite2D で
         // `sprite` フィールドの単一フレームを表示する。
-        spriteFrames  = Option[SpriteFrames]
+        spriteFrames     = Option[SpriteFrames]
     }
 
     /// 武器の属性（物理 / 魔法）。
@@ -242,7 +258,7 @@ mod UnitCatalog {
         }
 
     /// 武器 id を引いて `WeaponResource` を返す。未定義 id は起動時 typo として panic。
-    /// 各ユニットの `initialWeapon` から武器インスタンスを解決する用途で使う。
+    /// 各ユニットの `initialInventory` の weapon kind エントリから武器インスタンスを解決する用途で使う。
     pub def lookupWeapon(id: String, catalog: UnitCatalog): WeaponResource =
         match Map.get(id, weaponsOf(catalog)) {
             case Some(w) => w
@@ -254,7 +270,7 @@ mod UnitCatalog {
     /// engine 側 `Resource.checkConsistency` がこの集合と `_schema.json` を照合する。
     pub def expectedUnitFields(): Set[String] =
         Set#{"moveTiles", "hp", "attack", "defense", "magicAttack", "magicDefense",
-              "speed", "sprite", "initialWeapon", "initialStaves",
+              "speed", "sprite", "initialInventory",
               "description", "spriteFrames"}
 
     /// `WeaponResource` のフィールド名集合。`weapons.schema.json` との整合性検査に使う。
@@ -303,18 +319,16 @@ mod UnitCatalogCodec {
 
     def encodeUnit(u: UnitResource): JsonElement =
         let base = Map#{
-            "moveTiles"     => JsonNumber(intToBd(u#moveTiles)),
-            "hp"            => JsonNumber(intToBd(u#hp)),
-            "attack"        => JsonNumber(intToBd(u#attack)),
-            "defense"       => JsonNumber(intToBd(u#defense)),
-            "magicAttack"   => JsonNumber(intToBd(u#magicAttack)),
-            "magicDefense"  => JsonNumber(intToBd(u#magicDefense)),
-            "speed"         => JsonNumber(intToBd(u#speed)),
-            "sprite"        => encodeSprite(u#sprite),
-            "initialWeapon" => JsonString(u#initialWeapon),
-            "initialStaves" => JsonArray(
-                List.map(JsonString, u#initialStaves) |> List.toVector),
-            "description"   => JsonString(u#description)
+            "moveTiles"        => JsonNumber(intToBd(u#moveTiles)),
+            "hp"               => JsonNumber(intToBd(u#hp)),
+            "attack"           => JsonNumber(intToBd(u#attack)),
+            "defense"          => JsonNumber(intToBd(u#defense)),
+            "magicAttack"      => JsonNumber(intToBd(u#magicAttack)),
+            "magicDefense"     => JsonNumber(intToBd(u#magicDefense)),
+            "speed"            => JsonNumber(intToBd(u#speed)),
+            "sprite"           => encodeSprite(u#sprite),
+            "initialInventory" => encodeInventory(u#initialInventory),
+            "description"      => JsonString(u#description)
         };
         // spriteFrames は設定がある unit (= AnimatedSprite2D で描く unit) だけ書き出す。
         // grid 形式 ({frame: Int, duration: Float}) で書き出す。frame index は
@@ -324,6 +338,21 @@ mod UnitCatalogCodec {
             case Some(sf) => Map.insert("spriteFrames", encodeSpriteFrames(sf, u#sprite#hframes), base)
         };
         JsonObject(withSf)
+
+    /// `initialInventory` を `[{"kind": "weapon"|"staff", "id": "..."}, ...]` JSON にする。
+    def encodeInventory(inv: List[UnitCatalog.InventoryEntry]): JsonElement =
+        JsonArray(List.map(encodeInventoryEntry, inv) |> List.toVector)
+
+    def encodeInventoryEntry(e: UnitCatalog.InventoryEntry): JsonElement =
+        JsonObject(Map#{
+            "kind" => JsonString(itemKindToString(e#kind)),
+            "id"   => JsonString(e#id)
+        })
+
+    def itemKindToString(k: UnitCatalog.ItemKind): String = match k {
+        case UnitCatalog.ItemKind.Weapon => "weapon"
+        case UnitCatalog.ItemKind.Staff  => "staff"
+    }
 
     def encodeSprite(s: SpriteResource): JsonElement =
         JsonObject(Map#{
@@ -459,14 +488,14 @@ mod UnitCatalogCodec {
             defJ   <- Map.get("defense", obj);
             spdJ   <- Map.get("speed", obj);
             spJ    <- Map.get("sprite", obj);
-            iwJ    <- Map.get("initialWeapon", obj);
+            invJ   <- Map.get("initialInventory", obj);
             mt     <- expectInt(mtJ);
             hp     <- expectInt(hpJ);
             atk    <- expectInt(atkJ);
             df     <- expectInt(defJ);
             spd    <- expectInt(spdJ);
             sp     <- decodeSprite(spJ);
-            iw     <- expectString(iwJ)
+            inv    <- decodeInventory(invJ)
         ) yield {
             // magicAttack / magicDefense は省略可能。欠落時は 0。
             // IDE のスライダーが 0 のときフィールドを省略するケース、および
@@ -477,10 +506,6 @@ mod UnitCatalogCodec {
             let mDef = Map.get("magicDefense", obj)
                          |> Option.flatMap(expectInt)
                          |> Option.getWithDefault(0);
-            // initialStaves は省略可。欠落 / 空配列 / 配列以外はすべて Nil として扱う。
-            let staves = Map.get("initialStaves", obj)
-                            |> Option.flatMap(decodeStringList)
-                            |> Option.getWithDefault(Nil);
             // description (兵種名表示用) は省略可。後方互換のため欠落時は "" を埋める。
             let desc = Map.get("description", obj)
                             |> Option.flatMap(expectString)
@@ -490,10 +515,39 @@ mod UnitCatalogCodec {
             // sprite.hframes/vframes と texture 実寸から格子→px に解決される。
             ({moveTiles = mt, hp = hp, attack = atk, defense = df,
               magicAttack = mAtk, magicDefense = mDef,
-              speed = spd, sprite = sp, initialWeapon = iw,
-              initialStaves = staves, description = desc,
+              speed = spd, sprite = sp, initialInventory = inv,
+              description = desc,
               spriteFrames = None}: UnitResource)
         }
+
+    /// `[{"kind": "weapon"|"staff", "id": "..."}, ...]` を decode する。
+    /// 配列以外なら None（必須フィールドとして扱い、欠落は schema 不整合として panic させる）。
+    def decodeInventory(element: JsonElement): Option[List[UnitCatalog.InventoryEntry]] =
+        match element {
+            case JsonArray(items) =>
+                List.foldRight(item -> acc ->
+                    Option.flatMap(soFar ->
+                        decodeInventoryEntry(item) |> Option.map(e -> e :: soFar),
+                        acc),
+                    Some(Nil), Vector.toList(items))
+            case _ => None
+        }
+
+    def decodeInventoryEntry(element: JsonElement): Option[UnitCatalog.InventoryEntry] =
+        forM (
+            obj    <- expectObject(element);
+            kindJ  <- Map.get("kind", obj);
+            idJ    <- Map.get("id", obj);
+            kStr   <- expectString(kindJ);
+            id     <- expectString(idJ);
+            kind   <- parseItemKind(kStr)
+        ) yield ({kind = kind, id = id}: UnitCatalog.InventoryEntry)
+
+    def parseItemKind(s: String): Option[UnitCatalog.ItemKind] = match s {
+        case "weapon" => Some(UnitCatalog.ItemKind.Weapon)
+        case "staff"  => Some(UnitCatalog.ItemKind.Staff)
+        case _        => None
+    }
 
     def decodeWeapon(element: JsonElement): Option[WeaponResource] =
         forM (

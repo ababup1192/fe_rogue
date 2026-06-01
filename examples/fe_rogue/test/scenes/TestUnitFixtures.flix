@@ -18,7 +18,7 @@ mod TestUnitFixtures {
     /// 戦闘 4 値はバランス調整に直結しないテスト用の中庸値（atk=3, def=1, spd=3）。
     /// 魔力・魔防はデフォルト 0（物理武器主体のテスト用デフォルト）。
     /// sprite は character_sheet 既存テクスチャを使い frame=0（実描画は確認しない想定）。
-    /// `initialWeapon` はテスト用カタログに普段は登録しない仮 id（ID 解決を踏まないテストでの埋め値）。
+    /// `initialInventory` はテスト用カタログに普段は登録しない仮 id（ID 解決を踏まないテストでの埋め値）。
     pub def testResource(moveTiles: Int32, hp: Int32): UnitCatalog.UnitResource = {
         moveTiles     = moveTiles,
         hp            = hp,
@@ -27,8 +27,9 @@ mod TestUnitFixtures {
         magicAttack   = 0,
         magicDefense  = 0,
         speed         = 3,
-        initialWeapon = "test-weapon",
-        initialStaves = Nil,
+        initialInventory =
+            ({kind = UnitCatalog.ItemKind.Weapon, id = "test-weapon"}:
+               UnitCatalog.InventoryEntry) :: Nil,
         description   = "",
         sprite        = {
             texture = "character_sheet",
@@ -54,8 +55,9 @@ mod TestUnitFixtures {
         magicAttack   = 0,
         magicDefense  = 0,
         speed         = speed,
-        initialWeapon = "test-weapon",
-        initialStaves = Nil,
+        initialInventory =
+            ({kind = UnitCatalog.ItemKind.Weapon, id = "test-weapon"}:
+               UnitCatalog.InventoryEntry) :: Nil,
         description   = "",
         sprite        = {
             texture = "character_sheet",
@@ -80,8 +82,9 @@ mod TestUnitFixtures {
         magicAttack   = magicAttack,
         magicDefense  = magicDefense,
         speed         = speed,
-        initialWeapon = "test-weapon",
-        initialStaves = Nil,
+        initialInventory =
+            ({kind = UnitCatalog.ItemKind.Weapon, id = "test-weapon"}:
+               UnitCatalog.InventoryEntry) :: Nil,
         description   = "",
         sprite        = {
             texture = "character_sheet",

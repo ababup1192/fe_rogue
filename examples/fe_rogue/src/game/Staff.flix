@@ -145,7 +145,7 @@ mod Staff {
         }
 
     /// 杖 id を引いて `StaffResource` を返す。未定義 id は起動時 typo として panic。
-    /// 各ユニットの `initialStaves` から杖インスタンスを解決する用途で使う。
+    /// 各ユニットの `initialInventory` の staff kind エントリから杖インスタンスを解決する用途で使う。
     /// `UnitCatalog.lookupWeapon` と同じ「起動時 typo は即発覚」方針。
     pub def lookup(id: String, catalog: StaffCatalog): StaffResource =
         match Map.get(id, stavesOf(catalog)) {

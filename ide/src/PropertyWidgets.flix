@@ -241,6 +241,8 @@ mod PropertyWidgets {
             case Resource.FieldType.RefPercentListT(target) =>
                 let options = Map.get(target, refOptions) |> Option.getWithDefault(Nil);
                 buildRefPercentListWidget(value, options, commit)
+            case Resource.FieldType.KindedRefListT(kinds) =>
+                buildKindedRefListWidget(value, kinds, refOptions, commit)
             case Resource.FieldType.EnumT(values) =>
                 // 2 値なら segmented toggle で両ラベル可視、3 値以上は ComboBox にフォールバック
                 if (List.length(values) == 2) buildEnumToggleWidget(value, values, commit)
@@ -686,6 +688,248 @@ mod PropertyWidgets {
             case None      => ()
         }
     }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // KindedRefListT widget — 動的長の `[{kind, id}]` 配列を編集する
+    //
+    // 各行は (kind ComboBox, id ComboBox, 削除ボタン) の組。
+    // kind を変えると id ComboBox の候補が新しい kind に紐づく catalog の id 一覧に切替わる。
+    // 下部に「＋ 追加」ボタン。
+    // fe_rogue の `initialInventory`（武器・杖の混在リスト）等で使う想定。
+    // ════════════════════════════════════════════════════════════════════════
+
+    /// `KindedRefListT(kinds)` 用 widget。`refOptions[kindSpec.target]` で各 kind の id 候補を引く。
+    pub def buildKindedRefListWidget(value: Option[Json.JsonElement],
+                                       kinds: List[Resource.KindSpec],
+                                       refOptions: Map[String, List[String]],
+                                       commit: Commit): Node \ IO = {
+        let initial = parseKindedRows(value);
+        let rowsRef: Array[List[(String, String)], Static] = Array#{initial} @ Static;
+        let outer = new VBox(4.0);
+        outer.getStyleClass().add("kinded-ref-list");
+        renderKindedRefList(outer, rowsRef, kinds, refOptions, commit);
+        checked_cast(outer)
+    }
+
+    /// JSON `[{"kind": "...", "id": "..."}, ...]` を `(kindId, id)` のリストに変換する。
+    /// 不正な要素はスキップ。
+    def parseKindedRows(value: Option[Json.JsonElement]): List[(String, String)] =
+        match value {
+            case Some(Json.JsonElement.JsonArray(arr)) =>
+                List.filterMap(parseKindedRow, Vector.toList(arr))
+            case _ => Nil
+        }
+
+    def parseKindedRow(elem: Json.JsonElement): Option[(String, String)] =
+        match elem {
+            case Json.JsonElement.JsonObject(m) =>
+                let kindOpt = Map.get("kind", m) |> Option.flatMap(j -> match j {
+                    case Json.JsonElement.JsonString(s) => Some(s)
+                    case _ => None
+                });
+                let idOpt = Map.get("id", m) |> Option.flatMap(j -> match j {
+                    case Json.JsonElement.JsonString(s) => Some(s)
+                    case _ => None
+                });
+                match (kindOpt, idOpt) {
+                    case (Some(k), Some(i)) => Some((k, i))
+                    case _                  => None
+                }
+            case _ => None
+        }
+
+    /// 内部 state を JSON に書き戻して commit する
+    def commitKindedRows(rowsRef: Array[List[(String, String)], Static],
+                          commit: Commit): Unit \ IO = {
+        let rows = Array.get(0, rowsRef);
+        let items = rows |> List.map(p -> {
+            let (k, i) = p;
+            Json.JsonElement.JsonObject(Map#{
+                "kind" => Json.JsonElement.JsonString(k),
+                "id"   => Json.JsonElement.JsonString(i)
+            })
+        });
+        commit(Json.JsonElement.JsonArray(List.toVector(items)))
+    }
+
+    /// outer の子をクリアして再描画。Add/Remove/kind 切替 のたびに呼ぶ
+    def renderKindedRefList(outer: VBox,
+                              rowsRef: Array[List[(String, String)], Static],
+                              kinds: List[Resource.KindSpec],
+                              refOptions: Map[String, List[String]],
+                              commit: Commit): Unit \ IO = {
+        let children = outer.getChildren();
+        children.clear();
+        let rows = Array.get(0, rowsRef);
+        renderKindedRows(0i32, rows, outer, rowsRef, kinds, refOptions, commit);
+        // 追加ボタン: 最初の kind を default にして、その catalog の先頭 id を採用
+        let addBtn = new Button("＋ 追加");
+        addBtn.getStyleClass().add("catalog-btn");
+        addBtn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                let defaultRow = defaultKindedRow(kinds, refOptions);
+                let cur = Array.get(0, rowsRef);
+                let newRows = List.append(cur, defaultRow :: Nil);
+                Array.put(newRows, 0, rowsRef);
+                renderKindedRefList(outer, rowsRef, kinds, refOptions, commit);
+                commitKindedRows(rowsRef, commit)
+            }
+        });
+        let addNode: Node = checked_cast(addBtn);
+        discard children.add(addNode)
+    }
+
+    /// 各行を VBox に append する。idx は再描画のたびに 0 から数え直し
+    def renderKindedRows(idx: Int32, remaining: List[(String, String)],
+                          outer: VBox,
+                          rowsRef: Array[List[(String, String)], Static],
+                          kinds: List[Resource.KindSpec],
+                          refOptions: Map[String, List[String]],
+                          commit: Commit): Unit \ IO =
+        match remaining {
+            case Nil => ()
+            case (kindId, id) :: rest => {
+                let row = buildKindedRow(idx, kindId, id, outer, rowsRef, kinds, refOptions, commit);
+                let rowNode: Node = checked_cast(row);
+                discard outer.getChildren().add(rowNode);
+                renderKindedRows(idx + 1i32, rest, outer, rowsRef, kinds, refOptions, commit)
+            }
+        }
+
+    /// 1 行: [kind ComboBox] [id ComboBox] [✕]
+    def buildKindedRow(idx: Int32, kindId: String, id: String, outer: VBox,
+                        rowsRef: Array[List[(String, String)], Static],
+                        kinds: List[Resource.KindSpec],
+                        refOptions: Map[String, List[String]],
+                        commit: Commit): HBox \ IO = {
+        let row = new HBox(4.0);
+        row.setAlignment(Pos.CENTER_LEFT);
+        // kind ComboBox: 表示は label、内部状態は kindId
+        let kindCombo: ComboBox[String] = new ComboBox();
+        let kindItems = kindCombo.getItems();
+        List.forEach(k -> discard kindItems.add(k#label), kinds);
+        kindCombo.setEditable(false);
+        kindCombo.setValue(labelOfKindId(kindId, kinds));
+        kindCombo.setPrefWidth(80.0);
+        // id ComboBox: 現 kind の catalog から候補を引く
+        let idCombo: ComboBox[String] = new ComboBox();
+        let idItems = idCombo.getItems();
+        List.forEach(o -> discard idItems.add(o), idOptionsForKind(kindId, kinds, refOptions));
+        idCombo.setEditable(false);
+        idCombo.setValue(id);
+        idCombo.setPrefWidth(140.0);
+        // kind 変更時: 行の kindId を更新、id を新 kind の先頭に reset、再描画 + commit
+        kindCombo.valueProperty().addListener(new ChangeListener[String] {
+            def changed(_t: ChangeListener[String], _o: ObservableValue[JObject],
+                         _old: String, newLabel: String): Unit \ IO = {
+                if (Object.isNull(newLabel)) ()
+                else {
+                    let newKindId = kindIdOfLabel(newLabel, kinds);
+                    let firstId = firstIdForKind(newKindId, kinds, refOptions);
+                    let cur = Array.get(0, rowsRef);
+                    Array.put(replaceKindedRowAt(idx, (newKindId, firstId), cur), 0, rowsRef);
+                    renderKindedRefList(outer, rowsRef, kinds, refOptions, commit);
+                    commitKindedRows(rowsRef, commit)
+                }
+            }
+        });
+        // id 変更時: 行の id だけ更新、commit
+        idCombo.valueProperty().addListener(new ChangeListener[String] {
+            def changed(_t: ChangeListener[String], _o: ObservableValue[JObject],
+                         _old: String, newId: String): Unit \ IO = {
+                if (Object.isNull(newId)) ()
+                else {
+                    let cur = Array.get(0, rowsRef);
+                    let curKind = nthKindId(idx, cur);
+                    Array.put(replaceKindedRowAt(idx, (curKind, newId), cur), 0, rowsRef);
+                    commitKindedRows(rowsRef, commit)
+                }
+            }
+        });
+        // 削除ボタン
+        let removeBtn = new Button("✕");
+        removeBtn.getStyleClass().add("catalog-btn");
+        removeBtn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                let cur = Array.get(0, rowsRef);
+                Array.put(removeKindedRowAt(idx, cur), 0, rowsRef);
+                renderKindedRefList(outer, rowsRef, kinds, refOptions, commit);
+                commitKindedRows(rowsRef, commit)
+            }
+        });
+        let children = row.getChildren();
+        let kindComboNode: Node = checked_cast(kindCombo);
+        let idComboNode: Node = checked_cast(idCombo);
+        let removeBtnNode: Node = checked_cast(removeBtn);
+        discard children.add(kindComboNode);
+        discard children.add(idComboNode);
+        discard children.add(removeBtnNode);
+        row
+    }
+
+    /// kindId → label。未知 kindId は kindId 自体を返す（表示崩れ防止）。
+    def labelOfKindId(kindId: String, kinds: List[Resource.KindSpec]): String =
+        match List.find(k -> k#kindId == kindId, kinds) {
+            case Some(k) => k#label
+            case None    => kindId
+        }
+
+    /// label → kindId。未知 label は先頭 kind の kindId にフォールバック。
+    def kindIdOfLabel(label: String, kinds: List[Resource.KindSpec]): String =
+        match List.find(k -> k#label == label, kinds) {
+            case Some(k) => k#kindId
+            case None    => match List.head(kinds) {
+                case Some(k) => k#kindId
+                case None    => ""
+            }
+        }
+
+    /// 指定 kindId の catalog から id 候補リストを引く。未定義なら空。
+    def idOptionsForKind(kindId: String, kinds: List[Resource.KindSpec],
+                          refOptions: Map[String, List[String]]): List[String] =
+        match List.find(k -> k#kindId == kindId, kinds) {
+            case Some(k) => Map.get(k#target, refOptions) |> Option.getWithDefault(Nil)
+            case None    => Nil
+        }
+
+    /// 指定 kindId の catalog の先頭 id。空なら "".
+    def firstIdForKind(kindId: String, kinds: List[Resource.KindSpec],
+                        refOptions: Map[String, List[String]]): String =
+        List.head(idOptionsForKind(kindId, kinds, refOptions)) |> Option.getWithDefault("")
+
+    /// 「＋ 追加」のデフォルト行: 先頭 kind の先頭 id を採用
+    def defaultKindedRow(kinds: List[Resource.KindSpec],
+                          refOptions: Map[String, List[String]]): (String, String) =
+        match List.head(kinds) {
+            case Some(k) => (k#kindId, firstIdForKind(k#kindId, kinds, refOptions))
+            case None    => ("", "")
+        }
+
+    /// idx 番目の (kindId, id) を newPair で置換した新リスト
+    def replaceKindedRowAt(idx: Int32, newPair: (String, String),
+                            rows: List[(String, String)]): List[(String, String)] =
+        match rows {
+            case Nil     => Nil
+            case x :: xs =>
+                if (idx == 0i32) newPair :: xs
+                else x :: replaceKindedRowAt(idx - 1i32, newPair, xs)
+        }
+
+    /// idx 番目を除いた新リスト
+    def removeKindedRowAt(idx: Int32, rows: List[(String, String)]):
+            List[(String, String)] =
+        match rows {
+            case Nil     => Nil
+            case x :: xs =>
+                if (idx == 0i32) xs
+                else x :: removeKindedRowAt(idx - 1i32, xs)
+        }
+
+    def nthKindId(idx: Int32, rows: List[(String, String)]): String =
+        match List.nth(idx, rows) {
+            case Some((k, _)) => k
+            case None         => ""
+        }
 
     /// Color widget: JavaFX ColorPicker。値は JsonObject{"r","g","b"} (Float64 各 0-1)。
     /// valueProperty listener で newVal を直接受け取る (setOnAction の getValue() は

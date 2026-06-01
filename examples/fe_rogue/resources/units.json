@@ -14,7 +14,9 @@
       "defense": 4,
       "description": "アーチャー",
       "hp": 13,
-      "initialWeapon": "trainingBow",
+      "initialInventory": [
+        { "kind": "weapon", "id": "trainingBow" }
+      ],
       "magicAttack": 0,
       "magicDefense": 2,
       "moveTiles": 5,
@@ -87,7 +89,9 @@
       "defense": 2,
       "description": "ゴブリン",
       "hp": 10,
-      "initialWeapon": "trainingSword",
+      "initialInventory": [
+        { "kind": "weapon", "id": "trainingSword" }
+      ],
       "magicAttack": 0,
       "magicDefense": 0,
       "moveTiles": 4,
@@ -107,7 +111,9 @@
       "defense": 4,
       "description": "ナイト",
       "hp": 17,
-      "initialWeapon": "trainingSpear",
+      "initialInventory": [
+        { "kind": "weapon", "id": "trainingSpear" }
+      ],
       "magicAttack": 0,
       "magicDefense": 1,
       "moveTiles": 4,
@@ -124,12 +130,12 @@
       "defense": 2,
       "description": "メイジ",
       "hp": 11,
-      "initialStaves": [
-        "live_staff",
-        "blowback_staff",
-        "swap_staff"
+      "initialInventory": [
+        { "kind": "weapon", "id": "fire_magic" },
+        { "kind": "staff",  "id": "live_staff" },
+        { "kind": "staff",  "id": "blowback_staff" },
+        { "kind": "staff",  "id": "swap_staff" }
       ],
-      "initialWeapon": "fire_magic",
       "magicAttack": 8,
       "magicDefense": 3,
       "moveTiles": 5,
@@ -146,7 +152,9 @@
       "defense": 3,
       "description": "オーク",
       "hp": 13,
-      "initialWeapon": "trainingSword",
+      "initialInventory": [
+        { "kind": "weapon", "id": "trainingSword" }
+      ],
       "magicAttack": 0,
       "magicDefense": 0,
       "moveTiles": 3,

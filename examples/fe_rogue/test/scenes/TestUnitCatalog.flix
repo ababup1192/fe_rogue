@@ -10,9 +10,9 @@
 mod TestUnitCatalog {
 
     /// units.json と同じ構造の JSON 文字列リテラル。
-    /// 各ユニットは `initialWeapon` で武器 id を直接持つ。
-    /// `magicAttack` / `magicDefense` / `initialStaves` は省略可能。
-    /// knight 側は明示・goblin 側は省略して、省略時のデフォルトデコードも同時に検証する。
+    /// 各ユニットは `initialInventory` で持ち物（武器・杖の混在）を持つ。
+    /// `magicAttack` / `magicDefense` は省略可能。
+    /// knight は武器 + 杖を持ち、goblin は武器のみ持つ。
     def sampleUnitsJson(): String = String.unlines(
         "{" ::
         "  \"units\": {" ::
@@ -24,8 +24,10 @@ mod TestUnitCatalog {
         "      \"magicAttack\":  1," ::
         "      \"magicDefense\": 2," ::
         "      \"speed\":   2," ::
-        "      \"initialWeapon\": \"trainingSpear\"," ::
-        "      \"initialStaves\": [\"live_staff\"]," ::
+        "      \"initialInventory\": [" ::
+        "        { \"kind\": \"weapon\", \"id\": \"trainingSpear\" }," ::
+        "        { \"kind\": \"staff\",  \"id\": \"live_staff\" }" ::
+        "      ]," ::
         "      \"sprite\": { \"texture\": \"character_sheet\", \"hframes\": 5, \"vframes\": 2, \"frame\": 0 }" ::
         "    }," ::
         "    \"goblin\": {" ::
@@ -34,7 +36,9 @@ mod TestUnitCatalog {
         "      \"attack\":  3," ::
         "      \"defense\": 1," ::
         "      \"speed\":   4," ::
-        "      \"initialWeapon\": \"trainingSword\"," ::
+        "      \"initialInventory\": [" ::
+        "        { \"kind\": \"weapon\", \"id\": \"trainingSword\" }" ::
+        "      ]," ::
         "      \"sprite\": { \"texture\": \"character_sheet\", \"hframes\": 5, \"vframes\": 2, \"frame\": 4 }" ::
         "    }" ::
         "  }," ::
@@ -69,8 +73,8 @@ mod TestUnitCatalog {
             UnitCatalog.UnitCatalog({weapons = w | payload})
         }
 
-    /// units / weapons / pools の key 集合が期待通りで、各ユニットの initialWeapon が
-    /// 正しい id を保持していること。
+    /// units / weapons / pools の key 集合が期待通りで、各ユニットの initialInventory が
+    /// 正しく decode されていること。
     @Test
     def testDecodeSampleCatalog(): Unit \ Assert =
         let decoded = buildSampleCatalog();
@@ -93,7 +97,14 @@ mod TestUnitCatalog {
                          Set#{"players", "enemies"}),
             (Option.nonEmpty(decoded), unitKeys, weaponKeys, poolKeys))
 
-    /// pool 取得が期待通りに UnitResource を返す
+    /// 持ち物リストの最初の武器エントリ id を取り出す helper（テスト用）
+    def firstWeaponId(u: UnitCatalog.UnitResource): String =
+        match List.find(e -> e#kind == UnitCatalog.ItemKind.Weapon, u#initialInventory) {
+            case Some(e) => e#id
+            case None    => ""
+        }
+
+    /// pool 取得が期待通りに UnitResource を返す。初期持ち物の先頭武器が trainingSpear であること。
     @Test
     def testPoolLookup(): Unit \ Assert =
         match buildSampleCatalog() {
@@ -102,14 +113,14 @@ mod TestUnitCatalog {
                 let party = UnitCatalog.pool("players", c);
                 let knight = List.head(party);
                 let (hp, weaponId) = match knight {
-                    case Some(u) => (u#hp, u#initialWeapon)
+                    case Some(u) => (u#hp, firstWeaponId(u))
                     case None    => (-1, "")
                 };
                 Assert.assertEq(expected = (1, 14, "trainingSpear"),
                                 (List.length(party), hp, weaponId))
         }
 
-    /// initialWeapon → lookupWeapon の経路で `WeaponResource` が引けること。
+    /// initialInventory の先頭武器 → lookupWeapon の経路で `WeaponResource` が引けること。
     @Test
     def testLookupWeapon(): Unit \ Assert =
         match buildSampleCatalog() {
@@ -119,7 +130,7 @@ mod TestUnitCatalog {
                     case Some(u) => u
                     case None    => bug!("knight not in sample catalog")
                 };
-                let weapon = UnitCatalog.lookupWeapon(knight#initialWeapon, c);
+                let weapon = UnitCatalog.lookupWeapon(firstWeaponId(knight), c);
                 Assert.assertEq(expected = (2, 41, 1, 1),
                                 (weapon#attack, weapon#durability,
                                  weapon#range#min, weapon#range#max))
@@ -190,12 +201,22 @@ mod TestUnitCatalog {
         }
 
     // ════════════════════════════════════════════════════════
-    // initialStaves: 杖 id 配列のデコード（knight は明示・goblin は省略でデフォルト Nil）
+    // initialInventory: 持ち物リスト (kind + id) のデコード
     // ════════════════════════════════════════════════════════
 
-    /// knight の `initialStaves` が ["live_staff"] として読まれる
+    /// InventoryEntry record を `(kindStr, id)` の tuple list に変換する（assertEq 用）。
+    def entriesToTuples(inv: List[UnitCatalog.InventoryEntry]): List[(String, String)] =
+        List.map(e -> {
+            let kindStr = match e#kind {
+                case UnitCatalog.ItemKind.Weapon => "weapon"
+                case UnitCatalog.ItemKind.Staff  => "staff"
+            };
+            (kindStr, e#id)
+        }, inv)
+
+    /// knight の `initialInventory` が [weapon:trainingSpear, staff:live_staff] として読まれる
     @Test
-    def testUnitDecodesInitialStaves(): Unit \ Assert =
+    def testUnitDecodesInitialInventory(): Unit \ Assert =
         match buildSampleCatalog() {
             case None    => Assert.assertEq(expected = "decoded", "none")
             case Some(c) =>
@@ -203,14 +224,14 @@ mod TestUnitCatalog {
                     case Some(u) => u
                     case None    => bug!("knight not in sample catalog")
                 };
-                Assert.assertEq(expected = "live_staff" :: Nil,
-                                knight#initialStaves)
+                Assert.assertEq(
+                    expected = ("weapon", "trainingSpear") :: ("staff", "live_staff") :: Nil,
+                    entriesToTuples(knight#initialInventory))
         }
 
-    /// `initialStaves` を省略したユニットは空配列（Nil）でデコードされる
-    /// （旧 units.json への後方互換）
+    /// goblin の `initialInventory` は武器のみ 1 件で杖は無い
     @Test
-    def testUnitDecodesInitialStavesDefaultsToNil(): Unit \ Assert =
+    def testUnitDecodesInventoryWeaponOnly(): Unit \ Assert =
         match buildSampleCatalog() {
             case None    => Assert.assertEq(expected = "decoded", "none")
             case Some(c) =>
@@ -218,7 +239,8 @@ mod TestUnitCatalog {
                     case Some(u) => u
                     case None    => bug!("goblin not in sample catalog")
                 };
-                Assert.assertEq(expected = (Nil: List[String]),
-                                goblin#initialStaves)
+                Assert.assertEq(
+                    expected = ("weapon", "trainingSword") :: Nil,
+                    entriesToTuples(goblin#initialInventory))
         }
 }

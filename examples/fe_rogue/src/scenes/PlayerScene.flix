@@ -163,9 +163,8 @@ mod PlayerScene {
     /// MapScene が登録済みの scene にプレイヤー全員（`players` プールの全員）を追加する。
     /// 0 番目は MapScene が記録した spawnGrid に、残りはその近傍の床セルに配置する。
     /// 各プレイヤーには `players` プールのリスト順で `UnitResource` を割り当て、
-    /// その `initialWeapon` id から weapons カタログを引いて `WeaponResource` を装備させる
-    /// （1 プレイヤー = 1 武器）。`initialStaves` の各 id は `staffCatalog` から
-    /// `StaffResource` を引いて初期インベントリに加える。未定義 id は起動時 typo として
+    /// `initialInventory` を kind 別に分割して `Data.weapons` / `Data.staves` に詰め直す
+    /// （weapons.head が装備中、staves は配列順で持ち物に積まれる）。未定義 id は起動時 typo として
     /// 即 panic する。
     pub def add(catalog: UnitCatalog.UnitCatalog,
                   staffCatalog: Staff.StaffCatalog,
@@ -183,12 +182,35 @@ mod PlayerScene {
                     case Some(r) => r
                     case None    => bug!("PlayerScene.add: party index ${id} out of range")
                 };
-                let weapon = UnitCatalog.lookupWeapon(res#initialWeapon, catalog);
-                let staves = List.map(staffId -> Staff.lookup(staffId, staffCatalog),
-                                       res#initialStaves);
+                let split = splitInventory(res#initialInventory, catalog, staffCatalog);
                 ({id = id, gridPos = c, resource = res,
-                   weapons = weapon :: Nil, staves = staves}: Spawn));
+                   weapons = split#weapons, staves = split#staves}: Spawn));
         List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), scene, spawns)
+
+    /// `initialInventory` を kind 別に振り分けて weapons / staves リストに展開する。
+    /// 各 kind の中での出現順を保つので、weapons.head が装備中の武器になる。
+    /// 未定義 id は `lookupWeapon` / `Staff.lookup` で panic（起動時 typo の検知）。
+    def splitInventory(inv: List[UnitCatalog.InventoryEntry],
+                        catalog: UnitCatalog.UnitCatalog,
+                        staffCatalog: Staff.StaffCatalog):
+            {weapons = List[UnitCatalog.WeaponResource],
+              staves  = List[Staff.StaffResource]} =
+        let init: {weapons = List[UnitCatalog.WeaponResource],
+                    staves  = List[Staff.StaffResource]} =
+            {weapons = Nil, staves = Nil};
+        let acc = List.foldLeft((soFar, entry) -> {
+            match entry#kind {
+                case UnitCatalog.ItemKind.Weapon =>
+                    let w = UnitCatalog.lookupWeapon(entry#id, catalog);
+                    {weapons = List.append(soFar#weapons, w :: Nil),
+                      staves  = soFar#staves}
+                case UnitCatalog.ItemKind.Staff =>
+                    let s = Staff.lookup(entry#id, staffCatalog);
+                    {weapons = soFar#weapons,
+                      staves  = List.append(soFar#staves, s :: Nil)}
+            }
+        }, init, inv);
+        acc
 
     /// spawnGrid を中心に N 個の床セルを近い順で選ぶ。`isFloor` で篩い、
     /// 候補不足の場合は呼び出し側が `padCells` で埋める。

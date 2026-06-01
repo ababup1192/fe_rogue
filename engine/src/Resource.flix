@@ -16,6 +16,17 @@ mod Resource {
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool, JsonArray, JsonNull}
 
+    /// `KindedRefListT` で使う 1 種別ぶんの記述。
+    ///   kindId : JSON 上で kind 判別子として書かれる文字列（例: "weapon"）
+    ///   label  : IDE の kind ComboBox 表示用ラベル（例: "武器"）
+    ///   target : 参照先 catalog の containerKey（例: "weapons"）
+    /// schema JSON では `{"kindId": "...", "label": "...", "to": "..."}` の object として表す。
+    pub type alias KindSpec = {
+        kindId = String,
+        label  = String,
+        target = String
+    }
+
     /// フィールドの値型。IDE はこれと `FieldHint` の組から widget を選ぶ。
     ///   RefT(target) : 値が別 catalog の sub-entry id を指す（例: 武器 id）。IDE は
     ///                  `target` 配下の sub-entries を ComboBox 候補に並べる。
@@ -24,6 +35,10 @@ mod Resource {
     ///                  `target` catalog の sub-entry id への ref と 0-100 整数のペア。
     ///                  fe_rogue の floor spawn テーブル等に使う。
     ///                  schema JSON では `{"type": "refPercentList", "to": target}` で表す。
+    ///   KindedRefListT(kinds) : 値が `[{kind, id}]` の object 配列。各要素は `kinds`
+    ///                  のいずれかの種別を選び、その種別に紐づく catalog の sub-entry id を指す。
+    ///                  fe_rogue のユニット「初期持ち物」(武器・杖を一括編集) 等に使う。
+    ///                  schema JSON では `{"type": "kindedRefList", "kinds": [{kindId,label,to}, ...]}` で表す。
     pub enum FieldType {
         case TextT
         case IntT
@@ -32,6 +47,7 @@ mod Resource {
         case TexturePathT      // プロジェクト登録済みテクスチャから選択
         case RefT(String)      // 別 catalog (containerKey = target) の sub-entry id
         case RefPercentListT(String)  // [{id: ref, percent: 0-100}] の動的長配列
+        case KindedRefListT(List[KindSpec])  // [{kind, id}] の動的長配列。複数 catalog から ref を選ぶ
         case EnumT(List[String])      // 有限の文字列選択肢（Godot @export_enum 相当）。
                                        // IDE は 2 値なら ToggleGroup、3 値以上なら ComboBox を出す。
                                        // schema JSON では `{"type": "enum", "values": ["A", "B"]}` で表す。
@@ -260,12 +276,25 @@ mod ResourceCodec {
                 "type" => JsonString("refPercentList"),
                 "to"   => JsonString(target)
             })
+        case FieldType.KindedRefListT(kinds) =>
+            JsonObject(Map#{
+                "type"  => JsonString("kindedRefList"),
+                "kinds" => JsonArray(List.map(encodeKindSpec, kinds) |> List.toVector)
+            })
         case FieldType.EnumT(values) =>
             JsonObject(Map#{
                 "type"   => JsonString("enum"),
                 "values" => JsonArray(List.map(JsonString, values) |> List.toVector)
             })
     }
+
+    /// 1 つの KindSpec を `{"kindId": "...", "label": "...", "to": "..."}` に encode する。
+    def encodeKindSpec(k: Resource.KindSpec): JsonElement =
+        JsonObject(Map#{
+            "kindId" => JsonString(k#kindId),
+            "label"  => JsonString(k#label),
+            "to"     => JsonString(k#target)
+        })
 
     def encodeFieldHint(h: FieldHint): JsonElement = match h {
         case FieldHint.Plain         => JsonString("plain")
@@ -408,6 +437,10 @@ mod ResourceCodec {
                         Map.get("to", obj)
                             |> Option.flatMap(expectString)
                             |> Option.map(FieldType.RefPercentListT)
+                    case "kindedRefList" =>
+                        Map.get("kinds", obj)
+                            |> Option.flatMap(decodeKindSpecList)
+                            |> Option.map(FieldType.KindedRefListT)
                     case "enum" =>
                         Map.get("values", obj)
                             |> Option.flatMap(decodeStringList)
@@ -429,6 +462,29 @@ mod ResourceCodec {
                 Some(Nil), Vector.toList(items))
         case _ => None
     }
+
+    /// `[{kindId, label, to}, ...]` の JsonArray を `List[KindSpec]` に decode する。
+    /// 要素のいずれかが不正なら全体を None にする（schema 不整合は起動時 panic に上げる）。
+    def decodeKindSpecList(element: JsonElement): Option[List[Resource.KindSpec]] = match element {
+        case JsonArray(items) =>
+            List.foldRight(item -> acc ->
+                Option.flatMap(soFar ->
+                    decodeKindSpec(item) |> Option.map(k -> k :: soFar),
+                    acc),
+                Some(Nil), Vector.toList(items))
+        case _ => None
+    }
+
+    def decodeKindSpec(element: JsonElement): Option[Resource.KindSpec] =
+        forM (
+            obj      <- expectObject(element);
+            kindIdJ  <- Map.get("kindId", obj);
+            labelJ   <- Map.get("label", obj);
+            toJ      <- Map.get("to", obj);
+            kindId   <- expectString(kindIdJ);
+            label    <- expectString(labelJ);
+            target   <- expectString(toJ)
+        ) yield ({kindId = kindId, label = label, target = target}: Resource.KindSpec)
 
     def decodeFieldHint(element: JsonElement): Option[FieldHint] = match element {
         case JsonString("plain")     => Some(FieldHint.Plain)

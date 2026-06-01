@@ -64,11 +64,17 @@
         "order": 7
       }
     },
-    "initialWeapon": {
+    "initialInventory": {
       "field": {
-        "ftype": { "type": "ref", "to": "weapons" },
+        "ftype": {
+          "type": "kindedRefList",
+          "kinds": [
+            { "kindId": "weapon", "label": "武器", "to": "weapons" },
+            { "kindId": "staff",  "label": "杖",   "to": "staves" }
+          ]
+        },
         "hint":  "plain",
-        "label": "初期装備",
+        "label": "初期持ち物",
         "order": 8
       }
     },
@@ -142,14 +148,6 @@
             }
           }
         }
-      }
-    },
-    "initialStaves": {
-      "field": {
-        "ftype": "text",
-        "hint":  "plain",
-        "label": "初期杖 id (CSV)",
-        "order": 9
       }
     },
     "spriteFrames": {
