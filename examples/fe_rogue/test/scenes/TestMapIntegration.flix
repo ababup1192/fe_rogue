@@ -47,7 +47,7 @@ mod TestMapIntegration {
     def realGridSize(): {x = Int32, y = Int32} = {x = 13, y = 13}
 
     /// World_Level_0 の Walls intGridCsv から抽出した壁セル（86 個）。
-    /// LDTKLoader.extractCollisionCells と同じ row-major 規約:
+    /// `MapLoader` の collisionCells 抽出と同じ row-major 規約:
     ///   col = i % cWid, row = i / cWid
     /// ASCII マップ上で '#' のセル位置と一対一対応する。
     def realWallCells(): List[Vec2.Vec2] =

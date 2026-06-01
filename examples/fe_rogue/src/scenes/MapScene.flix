@@ -126,7 +126,7 @@ mod MapScene {
             \ {GameEngine.Game, Fs.FileRead} =
         // Walls 層 (manualTiles + collisionCells): loadLevelRaw で raw を取って手動で GPU upload
         let raw = MapLoader.loadLevelRaw(levelPath, textureName());
-        let instances = LDTKLoader.buildTileInstances(raw#tiles, raw#tileSet, raw#tileSize);
+        let instances = TileRendering.buildTileInstances(raw#tiles, raw#tileSet, raw#tileSize);
         let (tileVaoId, tileCount) = GameEngine.Game.initTileBuffer(instances);
         let wallsLayer = TileMapLayer.make({
             tileSet        = raw#tileSet,

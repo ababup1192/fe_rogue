@@ -4,7 +4,7 @@
 /// 衝突セル（collisionCells）は PhysicsStep が仮想 StaticBody として展開する。
 /// Scene に直接 TileMapLayerWithState として登録し、子ノードは一切持たない。
 ///
-/// tileVaoId / tileCount は LDTKLoader.loadLevel() が initTileBuffer() で設定する。
+/// tileVaoId / tileCount は tilemap loader が initTileBuffer() で設定する。
 /// 初期値 0 = 未初期化（GPU リソース未アップロード）。
 pub enum TileMapLayer {
     case TileMapLayer({
@@ -25,7 +25,7 @@ pub enum TileMapLayer {
     })
 }
 
-/// 1 タイルの描画情報（LDTKLoader が autoLayerTiles から生成する）
+/// 1 タイルの描画情報（tilemap loader が tilemap tile データから生成する）
 pub type alias TileData = {
     px    = Vec2.Vec2,
     srcX  = Float64,
@@ -153,7 +153,7 @@ mod TileMapLayer {
     pub def isFloor(coords: {x = Int32, y = Int32}, tileMap: TileMapLayer): Bool =
         isInBounds(coords, tileMap) and not isWall(coords, tileMap)
 
-    /// GPU リソース ID を設定する（LDTKLoader が initTileBuffer の結果を書き込む）
+    /// GPU リソース ID を設定する（tilemap loader が initTileBuffer の結果を書き込む）
     pub def withGpuResources(tileVaoId: Int32, tileCount: Int32,
                               tileMap: TileMapLayer): TileMapLayer =
         let TileMapLayer.TileMapLayer(r) = tileMap;
