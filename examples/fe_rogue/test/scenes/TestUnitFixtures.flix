@@ -132,7 +132,7 @@ mod TestUnitFixtures {
     }
 
     /// テスト用の sprite。テクスチャ名やフレームは戦闘ロジックに影響しないのでダミー値。
-    def testSprite(): UnitCatalog.SpriteResource = {
+    def testSprite(): Sprite.SpriteResource = {
         texture = "test-texture",
         hframes = 1,
         vframes = 1,

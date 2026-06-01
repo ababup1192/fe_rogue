@@ -199,8 +199,15 @@ mod ResourcePanel {
                                 let textureNames = Array.get(0, state#textureNamesRef);
                                 let texturePathMap = Array.get(0, state#texturePathMapRef);
                                 // collectRefOptions のフル走査を避け、cache を参照する。
-                                // cache は populateResourcesList と sub-entries 変化 commit で更新される
-                                let refOptions = ResourceState.getRefOptions(state#resource);
+                                // cache は populateResourcesList と sub-entries 変化 commit で更新される。
+                                // 未計算 (None) のときは呼出順序に依存せず lazy に 1 回計算してから取る。
+                                let refOptions = match ResourceState.getRefOptions(state#resource) {
+                                    case Some(cached) => cached
+                                    case None         =>
+                                        refreshRefOptions(state);
+                                        ResourceState.getRefOptions(state#resource)
+                                            |> Option.getWithDefault(Map.empty())
+                                };
                                 let mkCommit = kp -> { (json2: Json.JsonElement) ->
                                     commitToResource(state, kp, json2)
                                 };

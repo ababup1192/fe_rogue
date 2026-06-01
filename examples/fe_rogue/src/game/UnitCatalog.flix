@@ -39,6 +39,7 @@ mod UnitCatalog {
 
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray}
+    use Sprite.SpriteResource
 
     // ────────────────────────────────────────────────────────
     // (A) 型定義
@@ -115,12 +116,6 @@ mod UnitCatalog {
     /// `WeaponType` が物理武器か。`WeaponCatalog.isPhysical` への薄い委譲 (後方互換)。
     pub def isPhysical(weaponType: WeaponType): Bool =
         WeaponCatalog.isPhysical(weaponType)
-
-    /// 静止スプライト情報 (Sprite2D 用)。`Sprite.SpriteResource` の alias (後方互換)。
-    /// 実体は中立な `Sprite` mod に移動した (依存方向を Unit/Weapon/Staff → Sprite に揃える)。
-    /// HUD / popup / 単一フレーム表示で使う。`UnitResource.sprite` の型として参照する。
-    /// 方向別アニメは `UnitResource.spriteFrames` (engine の SpriteFrames) で別途持つ。
-    pub type alias SpriteResource = Sprite.SpriteResource
 
     /// units 部 (id → UnitResource の Map) を取り出す。
     /// 段階 9 で内部は `CatalogContainer[UnitResource]` 保持に変わったため、
@@ -279,7 +274,8 @@ mod UnitCatalogCodec {
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray}
     use JsonCodec.{expectObject, expectString, expectInt, expectFloat, expectBool, floatToBd, intToBd}
-    use UnitCatalog.{UnitCatalog, UnitResource, WeaponResource, SpriteResource}
+    use UnitCatalog.{UnitCatalog, UnitResource, WeaponResource}
+    use Sprite.SpriteResource
 
     // ── エンコード ──
 

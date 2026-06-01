@@ -41,7 +41,7 @@ mod ItemScene {
     }
 
     /// アイテム種別から sprite を取り出すヘルパー（表示・縁取り構築で共通利用）。
-    pub def spriteOf(kind: GroundItemKind): UnitCatalog.SpriteResource = match kind {
+    pub def spriteOf(kind: GroundItemKind): Sprite.SpriteResource = match kind {
         case GroundItemKind.WeaponItem(weapon) => weapon#sprite
         case GroundItemKind.StaffItem(staff)   => staff#sprite
     }

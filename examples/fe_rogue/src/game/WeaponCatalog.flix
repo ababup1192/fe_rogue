@@ -15,8 +15,8 @@
 ///   }
 ///
 /// **設計メモ**:
-///   - `WeaponSpriteResource` は段階 6b では `UnitCatalog.SpriteResource` と構造が同一だが
-///     重複定義する (純粋追加に閉じる)。段階 6c で UnitCatalog 側を整理する際に共通化を検討
+///   - `WeaponSpriteResource` は中立な `Sprite.SpriteResource` の alias。
+///     sprite 型は `Sprite` mod に集約済みで、Unit/Weapon/Staff が共有する (逆向き依存なし)
 ///   - encode は `Saveable[WeaponCatalog]` 経由で pure シグネチャ
 ///     (内部の `JsonCodec.floatToBd` / `intToBd` が `unsafe IO` を隠蔽)
 ///   - decode は完全 pure。エラーは Option で伝播し、`load` で panic に上げる

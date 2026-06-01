@@ -31,8 +31,10 @@ mod ResourceState {
         previewPanRef          = Array[(Float64, Float64), Static],
         // Ref widget の ComboBox 候補 (`{catalog containerKey → sub-entry id 一覧}`) のキャッシュ。
         // resource 一覧ロード時に 1 回計算し、sub-entries を変える commit でのみ再計算する。
-        // Property Panel 再構築のたびに全 catalog を読み直さないための I/O 回避用
-        refOptionsRef          = Array[Map[String, List[String]], Static]
+        // Property Panel 再構築のたびに全 catalog を読み直さないための I/O 回避用。
+        // `None` = 未計算 (= 初回 / 無効化後)、`Some(map)` = 計算済み (空 Map も計算済みとして扱う)。
+        // 呼出順序に依存せず、参照側が未計算なら lazy に計算できるようにするため Option で持つ。
+        refOptionsRef          = Array[Option[Map[String, List[String]]], Static]
     }
 
     /// 空の ResourceState を作る
@@ -49,7 +51,7 @@ mod ResourceState {
             previewGridRef         = Array#{false} @ Static,
             previewFrameAdjustRef  = Array#{false} @ Static,
             previewPanRef          = Array#{(0.0, 0.0)} @ Static,
-            refOptionsRef          = Array#{(Map.empty(): Map[String, List[String]])} @ Static
+            refOptionsRef          = Array#{(None: Option[Map[String, List[String]]])} @ Static
         }
 
     pub def setDiscovered(state: ResourceState, entries: List[ResourceEntry]): Unit \ IO =
@@ -127,12 +129,13 @@ mod ResourceState {
     pub def resetPreviewPan(state: ResourceState): Unit \ IO =
         Array.put((0.0, 0.0), 0, state#previewPanRef)
 
-    /// Ref widget の ComboBox 候補キャッシュを上書きする。
+    /// Ref widget の ComboBox 候補キャッシュを上書きする (計算済みとしてマーク)。
     /// resource 一覧ロード時 / sub-entries を変える commit 後に ResourcePanel が呼ぶ
     pub def setRefOptions(state: ResourceState, options: Map[String, List[String]]): Unit \ IO =
-        Array.put(options, 0, state#refOptionsRef)
+        Array.put(Some(options), 0, state#refOptionsRef)
 
-    /// キャッシュ済みの Ref widget 候補を返す。未計算時は空 Map
-    pub def getRefOptions(state: ResourceState): Map[String, List[String]] \ IO =
+    /// キャッシュ済みの Ref widget 候補を返す。`None` = 未計算。
+    /// 参照側は None なら自分で計算 (refreshRefOptions) してから再取得する。
+    pub def getRefOptions(state: ResourceState): Option[Map[String, List[String]]] \ IO =
         Array.get(0, state#refOptionsRef)
 }
