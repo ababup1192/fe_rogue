@@ -424,7 +424,11 @@ mod Game {
             let sceneRef = Ref.fresh(rc, Scene.empty());
             // ユニットカタログをロード + schema 整合性検査（Z 戦略の安全網）。
             // 各段階で失敗内容を panic に出して原因を即可視化する。
-            let catalog = UnitCatalog.load("resources/units.json", "resources/weapons.json");
+            // units.json の spriteFrames は格子インデックス形式で書かれているため、
+            // load 直後は spriteFrames = None。GameEngine.Game effect が使えるここで
+            // resolveSpriteFrames を呼んで texture 実寸から px 矩形に解決する。
+            let catalog0 = UnitCatalog.load("resources/units.json", "resources/weapons.json");
+            let catalog = UnitCatalog.resolveSpriteFrames("resources/units.json", catalog0);
             let schema = match Resource.loadSchemaDiagnostic("resources/units.schema.json") {
                 case Ok(s)    => s
                 case Err(msg) => bug!("Resource.loadSchema failed :: ${msg}")

@@ -234,8 +234,25 @@ mod ResourcePanel {
                 match currentRecordJson(state, updated) {
                     case Some(rec) => refreshPreview(state, rec)
                     case None      => clearPreview(state)
-                }
+                };
+                // sprite.hframes / vframes / texture を変更したときは、それを sibling
+                // 参照する spriteFrames widget が古い snapshot を持っているので、
+                // Property Panel ごと作り直して最新の sibling を反映させる。
+                // 頻繁には変更しないフィールドなので focus 喪失は許容範囲。
+                if (isGridSiblingPath(keyPath)) rebuildPropertyPanel(state)
+                else ()
             }
+        }
+
+    /// sprite.hframes / sprite.vframes / sprite.texture（および将来の同階層 sibling）
+    /// を編集する keyPath か判定する。spriteFrames widget の表示パラメータに影響する
+    /// フィールドのみ true にする。
+    def isGridSiblingPath(keyPath: List[String]): Bool =
+        match List.reverse(keyPath) {
+            case "hframes" :: _ => true
+            case "vframes" :: _ => true
+            case "texture" :: _ => true
+            case _              => false
         }
 
     /// 編集対象 record への JSON key path を返す

@@ -20,7 +20,7 @@
       "moveTiles": 5,
       "speed": 4,
       "sprite": {
-        "frame": 0,
+        "frame": 1,
         "hframes": 5,
         "scale": {
           "x": 1.5,
@@ -33,17 +33,8 @@
         "idle": {
           "frames": [
             {
-              "region": {
-                "pos": [
-                  0,
-                  0
-                ],
-                "size": [
-                  20,
-                  17
-                ]
-              },
-              "texture": "fe_archer"
+              "duration": 1,
+              "frame": 0
             }
           ],
           "loop": true,
@@ -52,17 +43,8 @@
         "walk_down": {
           "frames": [
             {
-              "region": {
-                "pos": [
-                  60,
-                  0
-                ],
-                "size": [
-                  20,
-                  17
-                ]
-              },
-              "texture": "fe_archer"
+              "duration": 1.0,
+              "frame": 3
             }
           ],
           "loop": true,
@@ -71,17 +53,8 @@
         "walk_left": {
           "frames": [
             {
-              "region": {
-                "pos": [
-                  20,
-                  0
-                ],
-                "size": [
-                  20,
-                  17
-                ]
-              },
-              "texture": "fe_archer"
+              "duration": 1.0,
+              "frame": 1
             }
           ],
           "loop": true,
@@ -90,17 +63,8 @@
         "walk_right": {
           "frames": [
             {
-              "region": {
-                "pos": [
-                  40,
-                  0
-                ],
-                "size": [
-                  20,
-                  17
-                ]
-              },
-              "texture": "fe_archer"
+              "duration": 1.0,
+              "frame": 2
             }
           ],
           "loop": true,
@@ -109,17 +73,8 @@
         "walk_up": {
           "frames": [
             {
-              "region": {
-                "pos": [
-                  80,
-                  0
-                ],
-                "size": [
-                  20,
-                  17
-                ]
-              },
-              "texture": "fe_archer"
+              "duration": 1.0,
+              "frame": 4
             }
           ],
           "loop": true,
