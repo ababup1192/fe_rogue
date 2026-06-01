@@ -23,10 +23,11 @@ mod FloorCatalog {
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray}
 
-    /// floor id → FloorResource の Map。
-    /// Flix の規約により、モジュール名と同名の enum (companion) はモジュール先頭に置く必要がある
+    /// floor カタログ。段階 8 のリファクタで `CatalogContainer[FloorResource]` を wrap する
+    /// 形に変更し、`Saveable` instance を追加した (IDE Resources タブで編集可能に)。
+    /// containerKey は `"floors"` 固定。
     pub enum FloorCatalog {
-        case FloorCatalog(Map[String, FloorResource])
+        case FloorCatalog(CatalogContainer[FloorResource])
     }
 
     /// 1 エントリ: ある id (units / weapons の sub-entry id) が percent の重みで出現する
@@ -57,32 +58,25 @@ mod FloorCatalog {
         itemsPerRoom    = SpawnRange
     }
 
-    /// `resources/floors.json` をロード。decode 失敗は panic（即可視化）。
-    pub def load(path: String): FloorCatalog \ Fs.FileRead =
-        let readResult = run {
-            Fs.ReadFile.read(path)
-        } with Fs.ReadFile.runWithFileRead;
-        match readResult {
-            case Err(e) =>
-                bug!("FloorCatalog.load file read failed: ${path} :: ${e}")
-            case Ok(content) =>
-                match Json.Parse.parse(content) {
-                    case None =>
-                        bug!("FloorCatalog.load JSON parse failed: ${path}")
-                    case Some(json) =>
-                        match decodeFile(json) {
-                            case None    => bug!("FloorCatalog.load decode failed: ${path}")
-                            case Some(c) => c
-                        }
-                }
-        }
+    /// `resources/floors.json` をロードし、`resources/floors.schema.json` で整合検査する。
+    /// 段階 8 のリファクタで `CatalogContainer.loadWithCheck` に委譲する形に変更した。
+    /// 失敗は panic（即可視化）。起動時の `Game.start` で 1 度だけ呼ぶ想定。
+    pub def load(): FloorCatalog \ Fs.FileRead =
+        let container = CatalogContainer.loadWithCheck({
+            dataPath       = "resources/floors.json",
+            schemaPath     = "resources/floors.schema.json",
+            containerKey   = "floors",
+            expectedFields = expectedFloorFields(),
+            decodeEntry    = FloorCatalogCodec.decodeFloor
+        });
+        FloorCatalog.FloorCatalog(container)
 
     /// 指定 id のフロアを取り出す。未定義なら panic（floor id の typo を即発覚させる）
     pub def get(id: String, catalog: FloorCatalog): FloorResource =
-        let FloorCatalog.FloorCatalog(m) = catalog;
-        match Map.get(id, m) {
-            case Some(f) => f
-            case None    => bug!("FloorCatalog.get: unknown floor id: ${id}")
+        let FloorCatalog.FloorCatalog(container) = catalog;
+        match CatalogContainer.get(id, container) {
+            case Some(floor) => floor
+            case None        => bug!("FloorCatalog.get: unknown floor id: ${id}")
         }
 
     /// percent 配列から 1 件をランダムに抽選。
@@ -125,108 +119,109 @@ mod FloorCatalog {
     pub def expectedFloorFields(): Set[String] =
         Set#{"label", "generation", "monsters", "items", "monstersPerRoom", "itemsPerRoom"}
 
-    // ─────────────────────────────────────────────────────────
-    // Decoder
-    // ─────────────────────────────────────────────────────────
+}
 
-    def decodeFile(element: JsonElement): Option[FloorCatalog] = match element {
-        case JsonObject(top) =>
-            match Map.get("floors", top) {
-                case Some(JsonObject(fm)) =>
-                    let decoded = Map.foldLeftWithKey((acc, key, v) -> match acc {
-                        case None      => None
-                        case Some(acc2) =>
-                            match decodeFloor(v) {
-                                case None    => None
-                                case Some(f) => Some(Map.insert(key, f, acc2))
-                            }
-                    }, Some(Map.empty()), fm);
-                    decoded |> Option.map(FloorCatalog.FloorCatalog)
-                case _ => None
-            }
-        case _ => None
-    }
+// ════════════════════════════════════════════════════════════════════════
+// Saveable[FloorCatalog] — floors.json の round-trip 実装 (薄い wrap)
+// ════════════════════════════════════════════════════════════════════════
 
-    def decodeFloor(element: JsonElement): Option[FloorResource] = match element {
-        case JsonObject(obj) =>
-            forM (
-                labelJ           <- Map.get("label", obj);
-                generationJ      <- Map.get("generation", obj);
-                monstersJ        <- Map.get("monsters", obj);
-                itemsJ           <- Map.get("items", obj);
-                monstersPerRoomJ <- Map.get("monstersPerRoom", obj);
-                itemsPerRoomJ    <- Map.get("itemsPerRoom", obj);
-                label            <- expectString(labelJ);
-                generation       <- decodeGeneration(generationJ);
-                monsters         <- decodeSpawnArray(monstersJ);
-                items            <- decodeSpawnArray(itemsJ);
-                mpr              <- decodeSpawnRange(monstersPerRoomJ);
-                ipr              <- decodeSpawnRange(itemsPerRoomJ)
-            ) yield ({
-                label = label,
-                generation = generation,
-                monsters = monsters,
-                items = items,
-                monstersPerRoom = mpr,
-                itemsPerRoom = ipr
-            }: FloorResource)
-        case _ => None
-    }
+instance Saveable[FloorCatalog.FloorCatalog] {
+    pub def toJson(value: FloorCatalog.FloorCatalog): Json.JsonElement =
+        let FloorCatalog.FloorCatalog.FloorCatalog(container) = value;
+        CatalogContainer.encode(FloorCatalogCodec.encodeFloor, container)
+
+    pub def fromJson(element: Json.JsonElement): Option[FloorCatalog.FloorCatalog] =
+        CatalogContainer.decode("floors", FloorCatalogCodec.decodeFloor, element)
+            |> Option.map(FloorCatalog.FloorCatalog.FloorCatalog)
+}
+
+/// FloorResource 1 件分の encode / decode。container 巡回は `CatalogContainer.encode/decode` に委譲する。
+mod FloorCatalogCodec {
+
+    use Json.JsonElement
+    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray}
+    use JsonCodec.{expectObject, expectString, expectInt, intToBd, encodeList, decodeList}
+    use FloorCatalog.{FloorResource, SpawnEntry, SpawnRange, GenerationConfig}
+
+    // ── エンコード ──
+
+    pub def encodeFloor(floor: FloorResource): JsonElement =
+        JsonObject(Map#{
+            "label"           => JsonString(floor#label),
+            "generation"      => encodeGeneration(floor#generation),
+            "monsters"        => encodeList(encodeSpawnEntry, floor#monsters),
+            "items"           => encodeList(encodeSpawnEntry, floor#items),
+            "monstersPerRoom" => encodeRange(floor#monstersPerRoom),
+            "itemsPerRoom"    => encodeRange(floor#itemsPerRoom)
+        })
+
+    def encodeGeneration(config: GenerationConfig): JsonElement =
+        JsonObject(Map#{
+            "roomCount" => JsonNumber(intToBd(config#roomCount))
+        })
+
+    def encodeRange(range: SpawnRange): JsonElement =
+        JsonObject(Map#{
+            "min" => JsonNumber(intToBd(range#min)),
+            "max" => JsonNumber(intToBd(range#max))
+        })
+
+    def encodeSpawnEntry(entry: SpawnEntry): JsonElement =
+        JsonObject(Map#{
+            "id"      => JsonString(entry#id),
+            "percent" => JsonNumber(intToBd(entry#percent))
+        })
+
+    // ── デコード ──
+
+    pub def decodeFloor(element: JsonElement): Option[FloorResource] =
+        forM (
+            obj              <- expectObject(element);
+            labelJ           <- Map.get("label", obj);
+            generationJ      <- Map.get("generation", obj);
+            monstersJ        <- Map.get("monsters", obj);
+            itemsJ           <- Map.get("items", obj);
+            monstersPerRoomJ <- Map.get("monstersPerRoom", obj);
+            itemsPerRoomJ    <- Map.get("itemsPerRoom", obj);
+            label            <- expectString(labelJ);
+            generation       <- decodeGeneration(generationJ);
+            monsters         <- decodeList(decodeSpawnEntry, monstersJ);
+            items            <- decodeList(decodeSpawnEntry, itemsJ);
+            monstersPerRoom  <- decodeSpawnRange(monstersPerRoomJ);
+            itemsPerRoom     <- decodeSpawnRange(itemsPerRoomJ)
+        ) yield ({
+            label = label, generation = generation,
+            monsters = monsters, items = items,
+            monstersPerRoom = monstersPerRoom, itemsPerRoom = itemsPerRoom
+        }: FloorResource)
 
     /// `{"roomCount": Int32}` を GenerationConfig に decode
-    def decodeGeneration(element: JsonElement): Option[GenerationConfig] = match element {
-        case JsonObject(obj) =>
-            forM (
-                roomCountJ <- Map.get("roomCount", obj);
-                rc         <- expectInt(roomCountJ)
-            ) yield ({roomCount = rc}: GenerationConfig)
-        case _ => None
-    }
+    def decodeGeneration(element: JsonElement): Option[GenerationConfig] =
+        forM (
+            obj        <- expectObject(element);
+            roomCountJ <- Map.get("roomCount", obj);
+            roomCount  <- expectInt(roomCountJ)
+        ) yield ({roomCount = roomCount}: GenerationConfig)
 
     /// `{"min": Int32, "max": Int32}` を SpawnRange に decode
-    def decodeSpawnRange(element: JsonElement): Option[SpawnRange] = match element {
-        case JsonObject(obj) =>
-            forM (
-                minJ <- Map.get("min", obj);
-                maxJ <- Map.get("max", obj);
-                mn   <- expectInt(minJ);
-                mx   <- expectInt(maxJ)
-            ) yield ({min = mn, max = mx}: SpawnRange)
-        case _ => None
-    }
+    def decodeSpawnRange(element: JsonElement): Option[SpawnRange] =
+        forM (
+            obj  <- expectObject(element);
+            minJ <- Map.get("min", obj);
+            maxJ <- Map.get("max", obj);
+            mn   <- expectInt(minJ);
+            mx   <- expectInt(maxJ)
+        ) yield ({min = mn, max = mx}: SpawnRange)
 
-    def decodeSpawnArray(element: JsonElement): Option[List[SpawnEntry]] = match element {
-        case JsonArray(items) =>
-            let decoded = Vector.toList(items)
-                |> List.foldLeft((acc, v) -> match acc {
-                    case None      => None
-                    case Some(xs)  => match decodeSpawnEntry(v) {
-                        case None    => None
-                        case Some(e) => Some(List.append(xs, e :: Nil))
-                    }
-                }, Some(Nil));
-            decoded
-        case _ => None
-    }
+    def decodeSpawnEntry(element: JsonElement): Option[SpawnEntry] =
+        forM (
+            obj      <- expectObject(element);
+            idJ      <- Map.get("id", obj);
+            percentJ <- Map.get("percent", obj);
+            id       <- expectString(idJ);
+            percent  <- expectInt(percentJ)
+        ) yield ({id = id, percent = percent}: SpawnEntry)
 
-    def decodeSpawnEntry(element: JsonElement): Option[SpawnEntry] = match element {
-        case JsonObject(obj) =>
-            forM (
-                idJ      <- Map.get("id", obj);
-                percentJ <- Map.get("percent", obj);
-                id       <- expectString(idJ);
-                percent  <- expectInt(percentJ)
-            ) yield ({id = id, percent = percent}: SpawnEntry)
-        case _ => None
-    }
-
-    def expectString(element: JsonElement): Option[String] = match element {
-        case JsonString(s) => Some(s)
-        case _             => None
-    }
-
-    def expectInt(element: JsonElement): Option[Int32] = match element {
-        case JsonNumber(bd) => BigDecimal.tryToFloat64(bd) |> Option.flatMap(Float64.tryToInt32)
-        case _              => None
-    }
+    // expectXxx / 数値変換 / List round-trip は engine の JsonCodec mod に集約されている。
+    // 本 mod では `use JsonCodec.{...}` 経由で参照する。
 }

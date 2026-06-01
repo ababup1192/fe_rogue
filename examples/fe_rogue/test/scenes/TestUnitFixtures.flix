@@ -106,7 +106,7 @@ mod TestUnitFixtures {
         attack     = 2,
         durability = 10,
         range      = { min = 1, max = 1 },
-        weaponType = UnitCatalog.WeaponType.Physical,
+        weaponType = WeaponCatalog.WeaponType.Physical,
         sprite     = testSprite()
     }
 
@@ -116,12 +116,12 @@ mod TestUnitFixtures {
         attack     = attack,
         durability = durability,
         range      = { min = 1, max = 1 },
-        weaponType = UnitCatalog.WeaponType.Physical,
+        weaponType = WeaponCatalog.WeaponType.Physical,
         sprite     = testSprite()
     }
 
     /// 物理/魔法トグルを切り替えたい時用のテスト用 WeaponResource。射程は 1-1 固定、耐久 10。
-    pub def testWeaponWithType(attack: Int32, weaponType: UnitCatalog.WeaponType):
+    pub def testWeaponWithType(attack: Int32, weaponType: WeaponCatalog.WeaponType):
             UnitCatalog.WeaponResource = {
         name       = "test-weapon",
         attack     = attack,

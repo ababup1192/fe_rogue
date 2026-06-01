@@ -17,9 +17,9 @@ mod Resource {
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool, JsonArray, JsonNull}
 
     /// `KindedRefListT` で使う 1 種別ぶんの記述。
-    ///   kindId : JSON 上で kind 判別子として書かれる文字列（例: "weapon"）
-    ///   label  : IDE の kind ComboBox 表示用ラベル（例: "武器"）
-    ///   target : 参照先 catalog の containerKey（例: "weapons"）
+    ///   kindId : JSON 上で kind 判別子として書かれる文字列（例: "itemA"）
+    ///   label  : IDE の kind ComboBox 表示用ラベル（例: "種別 A"）
+    ///   target : 参照先 catalog の containerKey（例: "catalogA"）
     /// schema JSON では `{"kindId": "...", "label": "...", "to": "..."}` の object として表す。
     pub type alias KindSpec = {
         kindId = String,
@@ -28,16 +28,16 @@ mod Resource {
     }
 
     /// フィールドの値型。IDE はこれと `FieldHint` の組から widget を選ぶ。
-    ///   RefT(target) : 値が別 catalog の sub-entry id を指す（例: 武器 id）。IDE は
+    ///   RefT(target) : 値が別 catalog の sub-entry id を指す。IDE は
     ///                  `target` 配下の sub-entries を ComboBox 候補に並べる。
     ///                  schema JSON では `{"type": "ref", "to": target}` で表す。
     ///   RefPercentListT(target) : 値が `[{id, percent}]` の object 配列。各要素は
     ///                  `target` catalog の sub-entry id への ref と 0-100 整数のペア。
-    ///                  fe_rogue の floor spawn テーブル等に使う。
+    ///                  抽選テーブル等の「重み付き ref リスト」を表現する。
     ///                  schema JSON では `{"type": "refPercentList", "to": target}` で表す。
     ///   KindedRefListT(kinds) : 値が `[{kind, id}]` の object 配列。各要素は `kinds`
     ///                  のいずれかの種別を選び、その種別に紐づく catalog の sub-entry id を指す。
-    ///                  fe_rogue のユニット「初期持ち物」(武器・杖を一括編集) 等に使う。
+    ///                  複数種別の catalog にまたがる ref を 1 つのリストで編集したいときに使う。
     ///                  schema JSON では `{"type": "kindedRefList", "kinds": [{kindId,label,to}, ...]}` で表す。
     pub enum FieldType {
         case TextT
@@ -200,10 +200,9 @@ instance Saveable[Resource.ResourceSchema] {
 /// `ResourceSchema` の JSON エンコード／デコード本体。
 /// 外部からは `Saveable[Resource.ResourceSchema]` 経由でしか触らない想定。
 mod ResourceCodec {
-    import java.math.{BigDecimal => JBigDecimal}
-
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool, JsonArray}
+    use JsonCodec.{expectObject, expectString, expectInt, expectFloat, floatToBd, intToBd}
     use Resource.{ResourceSchema, FieldEntry, FieldSchema, FieldType, FieldHint, MetaHint}
 
     // ── エンコード ──
@@ -316,21 +315,6 @@ mod ResourceCodec {
                 "vframesField" => JsonString(g#vframesField)
             })})
     }
-
-    /// Float64 → BigDecimal。整数値の trailing zero を取り除いて
-    /// `100` (not `100.0`) として書き出す。SaveDataCodec.floatToBd と同じ手法。
-    def floatToBd(value: Float64): BigDecimal =
-        unsafe IO {
-            let stripped = JBigDecimal.valueOf(value).stripTrailingZeros();
-            if (stripped.scale() < 0) stripped.setScale(0) else stripped
-        }
-
-    /// Int32 → BigDecimal。trailing zero を取り除いて `100` (not `100.0`) として書き出す。
-    def intToBd(value: Int32): BigDecimal =
-        unsafe IO {
-            let stripped = JBigDecimal.valueOf(Int32.toFloat64(value)).stripTrailingZeros();
-            if (stripped.scale() < 0) stripped.setScale(0) else stripped
-        }
 
     // ── デコード ──
 
@@ -534,32 +518,14 @@ mod ResourceCodec {
         ) yield FieldHint.FrameGrid({hframesField = hf, vframesField = vf})
 
     // ── ヘルパー ──
+    //
+    // expectObject / expectString / expectInt / expectFloat / floatToBd / intToBd は
+    // `engine/src/JsonCodec.flix` に集約されている。本 mod の `use JsonCodec.{...}` で
+    // 参照を引き込んでいるため、ローカル定義は持たない。
 
     def singleEntry(map: Map[String, JsonElement]): Option[(String, JsonElement)] =
         match Map.toList(map) {
             case head :: Nil => Some(head)
             case _           => None
         }
-
-    def expectObject(element: JsonElement): Option[Map[String, JsonElement]] =
-        match element {
-            case JsonObject(map) => Some(map)
-            case _               => None
-        }
-
-    def expectString(element: JsonElement): Option[String] =
-        match element {
-            case JsonString(text) => Some(text)
-            case _                => None
-        }
-
-    def expectFloat(element: JsonElement): Option[Float64] = match element {
-        case JsonNumber(bd) => BigDecimal.tryToFloat64(bd)
-        case _              => None
-    }
-
-    def expectInt(element: JsonElement): Option[Int32] = match element {
-        case JsonNumber(bd) => BigDecimal.tryToFloat64(bd) |> Option.flatMap(Float64.tryToInt32)
-        case _              => None
-    }
 }

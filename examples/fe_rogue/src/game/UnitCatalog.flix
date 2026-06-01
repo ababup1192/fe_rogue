@@ -46,12 +46,14 @@ mod UnitCatalog {
 
     /// カタログ全体。`Saveable` を持たせるため enum でラップする。
     /// 名前がモジュール名と同じなので「companion 宣言」となり、モジュール先頭に置く必要がある。
-    /// `weapons` は weapons.json から読んだ武器カタログ。`pools` は id 配列の参照で
-    /// `"players"` / `"enemies"` は `units` を指す。
+    /// 段階 9 のリファクタで `units` を `CatalogContainer[UnitResource]` に変更した。
+    /// `weapons` は段階 6 で `WeaponCatalog.WeaponCatalog` (独立 catalog) に分離済み。
+    /// `pools` は id 配列の参照で `"players"` / `"enemies"` は `units` を指す。encode/decode 時に
+    /// units container の meta としても投影される。
     pub enum UnitCatalog {
         case UnitCatalog({
-            units   = Map[String, UnitResource],
-            weapons = Map[String, WeaponResource],
+            units   = CatalogContainer[UnitResource],
+            weapons = WeaponCatalog.WeaponCatalog,
             pools   = Map[String, List[String]]
         })
     }
@@ -97,43 +99,22 @@ mod UnitCatalog {
         spriteFrames     = Option[SpriteFrames]
     }
 
-    /// 武器の属性（物理 / 魔法）。
-    /// 物理は `力 vs 防御`、魔法は `魔力 vs 魔防` で計算される。
-    /// JSON では `"Physical"` / `"Magic"` の文字列でシリアライズされ、
-    /// IDE は `EnumT(["Physical","Magic"])` のトグル UI で編集する。
-    pub enum WeaponType with Eq, ToString {
-        case Physical
-        case Magic
-    }
+    // 武器系の型 (WeaponType / WeaponRange / WeaponResource) は段階 6 で
+    // `WeaponCatalog` mod に移動した。本 mod では後方互換のため type alias 経由で参照する。
+    // 既存コード (`UnitCatalog.WeaponResource` 等の参照) はそのまま動く。
 
-    /// `WeaponType` が物理武器か。Combat 系の分岐で使う薄いヘルパー。
-    pub def isPhysical(wt: WeaponType): Bool = match wt {
-        case WeaponType.Physical => true
-        case WeaponType.Magic    => false
-    }
+    /// 武器の属性。`WeaponCatalog.WeaponType` の alias (後方互換)。
+    pub type alias WeaponType = WeaponCatalog.WeaponType
 
-    /// 武器 1 種別ぶんのデータ。
-    /// `name` は表示用の和名（例: "くんれんやり"）。`attack` は武器の攻撃力ボーナス、
-    /// `durability` は耐久度。攻撃するたびに 1 減り、0 になると武器が壊れて
-    /// 装備者の `weapon` は `None` になる（= 攻撃できなくなる）。
-    /// `range` は攻撃可能な距離の範囲 (`min..max` inclusive)。`min == max == 1` で
-    /// 直接攻撃 (剣・槍・杖)、`min == 2 && max == 2` で 2 マス先のみ (弓)、
-    /// `min == 1 && max == 2` で隣接 + 2 マス先 (手槍・手斧) などを表現する。
-    /// `weaponType` は物理 / 魔法のカテゴリ。`attack` 値はどちらの場合も装備者のステに加算される。
-    pub type alias WeaponResource = {
-        name       = String,
-        attack     = Int32,
-        durability = Int32,
-        range      = WeaponRange,
-        weaponType = WeaponType,
-        sprite     = SpriteResource
-    }
+    /// 武器 1 種別ぶんのデータ。`WeaponCatalog.WeaponResource` の alias (後方互換)。
+    pub type alias WeaponResource = WeaponCatalog.WeaponResource
 
-    /// 攻撃可能な距離の範囲。`min..max` inclusive のマンハッタン距離で判定する。
-    pub type alias WeaponRange = {
-        min = Int32,
-        max = Int32
-    }
+    /// 攻撃可能な距離の範囲。`WeaponCatalog.WeaponRange` の alias (後方互換)。
+    pub type alias WeaponRange = WeaponCatalog.WeaponRange
+
+    /// `WeaponType` が物理武器か。`WeaponCatalog.isPhysical` への薄い委譲 (後方互換)。
+    pub def isPhysical(weaponType: WeaponType): Bool =
+        WeaponCatalog.isPhysical(weaponType)
 
     /// 静止スプライト情報 (Sprite2D 用)。HUD / popup / 単一フレーム表示で使う。
     /// `offset` は描画時の x/y シフト（px）。スプライトシートに padding がある場合
@@ -152,13 +133,26 @@ mod UnitCatalog {
         scale   = Vec2.Vec2
     }
 
-    /// units 部を取り出す。
+    /// units 部 (id → UnitResource の Map) を取り出す。
+    /// 段階 9 で内部は `CatalogContainer[UnitResource]` 保持に変わったため、
+    /// `CatalogContainer.entriesOf` を経由する。
     pub def unitsOf(catalog: UnitCatalog): Map[String, UnitResource] =
+        let UnitCatalog.UnitCatalog(payload) = catalog;
+        CatalogContainer.entriesOf(payload#units)
+
+    /// `CatalogContainer[UnitResource]` そのものを取り出す (新 API、IDE Resources タブ等で利用想定)。
+    pub def unitsContainerOf(catalog: UnitCatalog): CatalogContainer[UnitResource] =
         let UnitCatalog.UnitCatalog(payload) = catalog;
         payload#units
 
-    /// weapons 部を取り出す。
+    /// weapons 部 (id → WeaponResource の Map) を取り出す。
+    /// 内部は `WeaponCatalog.WeaponCatalog` 保持に変わったため、`WeaponCatalog.weaponsOf` を経由する。
     pub def weaponsOf(catalog: UnitCatalog): Map[String, WeaponResource] =
+        let UnitCatalog.UnitCatalog(payload) = catalog;
+        WeaponCatalog.weaponsOf(payload#weapons)
+
+    /// `WeaponCatalog.WeaponCatalog` そのものを取り出す (新 API)。
+    pub def weaponCatalogOf(catalog: UnitCatalog): WeaponCatalog.WeaponCatalog =
         let UnitCatalog.UnitCatalog(payload) = catalog;
         payload#weapons
 
@@ -171,7 +165,9 @@ mod UnitCatalog {
     // (B) ロード・参照
     // ────────────────────────────────────────────────────────
 
-    /// `resources/units.json` + `resources/weapons.json` をロードしてマージする。
+    /// `resources/units.json` をロードして UnitCatalog を組む。
+    /// 段階 6 のリファクタで weapons は別 catalog (`WeaponCatalog`) に分離されたため、
+    /// **事前に** `WeaponCatalog.load()` で得た `weaponCatalog` を渡す必要がある。
     /// 失敗は panic（即可視化）。起動時の Game.start で 1 度だけ呼ぶ想定。
     ///
     /// **注意**: `spriteFrames` は authoring 形式（`{frame: Int, duration: Float}`）で
@@ -179,19 +175,27 @@ mod UnitCatalog {
     /// この関数は pure（`\ Fs.FileRead`）に保つため、UnitResource.spriteFrames は
     /// すべて None で返す。Game.start のように `GameEngine.Game` が使える文脈では
     /// 続けて `UnitCatalog.resolveSpriteFrames(unitsPath, catalog)` を呼んで埋め直す。
-    pub def load(unitsPath: String, weaponsPath: String): UnitCatalog \ Fs.FileRead =
-        let unitsJson   = readFile(unitsPath);
-        let weaponsJson = readFile(weaponsPath);
-        loadFromString(unitsJson, weaponsJson)
+    pub def load(unitsPath: String, weaponCatalog: WeaponCatalog.WeaponCatalog):
+            UnitCatalog \ Fs.FileRead =
+        let unitsJson = readFile(unitsPath);
+        let catalog = loadFromString(unitsJson, weaponCatalog);
+        // 段階 9 のリファクタで schema 整合性検査を load 内部に内包させた
+        // (他 catalog の `CatalogContainer.loadWithCheck` と同じ責務境界に揃える)。
+        let schema = match Resource.loadSchemaDiagnostic("resources/units.schema.json") {
+            case Ok(value) => value
+            case Err(msg)  => bug!("UnitCatalog schema load failed: ${msg}")
+        };
+        match Resource.checkConsistency(expectedUnitFields(), schema) {
+            case Ok(())    => catalog
+            case Err(msg)  => bug!("UnitResource schema/type mismatch: ${msg}")
+        }
 
     /// I/O から分離したデコード経路: JSON 文字列から `UnitCatalog` を組む。
-    /// テスト・runtime 生成カタログ・resource pack 等、file 以外のソースから読みたい
-    /// ケースで使う (`load` は file 版 wrapper)。spriteFrames は常に None で返す。
-    pub def loadFromString(unitsJson: String, weaponsJson: String): UnitCatalog =
+    /// テスト・runtime 生成カタログ等で使う。weapons は `weaponCatalog` を直接組み込む。
+    pub def loadFromString(unitsJson: String, weaponCatalog: WeaponCatalog.WeaponCatalog): UnitCatalog =
         let catalog = decodeUnitsJson(unitsJson);
-        let weapons = decodeWeaponsJson(weaponsJson);
         let UnitCatalog.UnitCatalog(payload) = catalog;
-        UnitCatalog.UnitCatalog({weapons = weapons | payload})
+        UnitCatalog.UnitCatalog({weapons = weaponCatalog | payload})
 
     /// `units.json` を再読してその中の `spriteFrames` セクションを texture の実寸を用いて
     /// **格子インデックス → px 矩形** に解決し、`catalog` の各 UnitResource に埋め直す。
@@ -230,17 +234,6 @@ mod UnitCatalog {
             case Ok(content) => content
         }
 
-    /// weapons.json 形式の JSON 文字列を `{"weapons": {...}}` の Map にデコード。
-    def decodeWeaponsJson(content: String): Map[String, WeaponResource] =
-        match Json.Parse.parse(content) {
-            case None       => bug!("UnitCatalog weapons JSON parse failed")
-            case Some(json) =>
-                match UnitCatalogCodec.decodeWeaponsFile(json) {
-                    case None    => bug!("UnitCatalog weapons decode failed")
-                    case Some(w) => w
-                }
-        }
-
     /// プール名 → そのプールに属する `UnitResource` のリスト。
     /// プール未定義 / 内部 id がカタログに存在しない場合は panic。
     /// （PlayerScene.add / EnemyScene.add から呼ばれる前提で、起動時の typo は即発覚させる）
@@ -258,12 +251,9 @@ mod UnitCatalog {
         }
 
     /// 武器 id を引いて `WeaponResource` を返す。未定義 id は起動時 typo として panic。
-    /// 各ユニットの `initialInventory` の weapon kind エントリから武器インスタンスを解決する用途で使う。
+    /// 内部は `WeaponCatalog.lookup` への薄い委譲 (段階 6 のリファクタ後の後方互換 API)。
     pub def lookupWeapon(id: String, catalog: UnitCatalog): WeaponResource =
-        match Map.get(id, weaponsOf(catalog)) {
-            case Some(w) => w
-            case None    => bug!("UnitCatalog.lookupWeapon: weapon '${id}' not in catalog")
-        }
+        WeaponCatalog.lookup(id, weaponCatalogOf(catalog))
 
     /// Z 戦略の整合性検査用に Flix 型のフィールド名集合を公開する。
     /// `UnitResource` のフィールド構造を変更したらここも更新すること。
@@ -273,9 +263,11 @@ mod UnitCatalog {
               "speed", "sprite", "initialInventory",
               "description", "spriteFrames"}
 
-    /// `WeaponResource` のフィールド名集合。`weapons.schema.json` との整合性検査に使う。
+    /// `WeaponResource` のフィールド名集合。`WeaponCatalog.expectedFields` への委譲 (後方互換)。
+    /// 段階 6 のリファクタで weapons schema 検査は `WeaponCatalog.load` 内部で行うので
+    /// Game.start からの直接呼び出しは不要になる予定。
     pub def expectedWeaponFields(): Set[String] =
-        Set#{"name", "attack", "durability", "range", "weaponType", "sprite"}
+        WeaponCatalog.expectedFields()
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -295,27 +287,27 @@ instance Saveable[UnitCatalog.UnitCatalog] {
 }
 
 mod UnitCatalogCodec {
-    import java.math.{BigDecimal => JBigDecimal}
-
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray}
+    use JsonCodec.{expectObject, expectString, expectInt, expectFloat, expectBool, floatToBd, intToBd}
     use UnitCatalog.{UnitCatalog, UnitResource, WeaponResource, SpriteResource}
 
     // ── エンコード ──
 
     /// units.json の round-trip 用エンコーダ。weapons は含めない (別ファイルで管理)。
     /// 例: { "units": {...}, "players": [...], "enemies": [...] }
+    /// 段階 9 のリファクタで `units` 部の巡回は `CatalogContainer.encode` に委譲する形に変更。
+    /// pools (players / enemies) は CatalogContainer の meta に投影してから encode する。
     pub def encode(c: UnitCatalog): JsonElement =
-        let units = UnitCatalog.unitsOf(c)
-            |> Map.foldLeftWithKey((acc, id, u) ->
-                Map.insert(id, encodeUnit(u), acc),
-                Map.empty());
-        let topWithUnits = Map#{"units" => JsonObject(units)};
-        let top = UnitCatalog.poolsOf(c)
+        let unitsContainer = UnitCatalog.unitsContainerOf(c);
+        let poolsMeta = UnitCatalog.poolsOf(c)
             |> Map.foldLeftWithKey((acc, name, ids) ->
                 Map.insert(name, JsonArray(List.map(JsonString, ids) |> List.toVector), acc),
-                topWithUnits);
-        JsonObject(top)
+                (Map.empty(): Map[String, JsonElement]));
+        // CatalogContainer の meta を pools で差し替える (元の meta は今は空想定)
+        let CatalogContainer.CatalogContainer(containerPayload) = unitsContainer;
+        let enrichedContainer = CatalogContainer.CatalogContainer({meta = poolsMeta | containerPayload});
+        CatalogContainer.encode(encodeUnit, enrichedContainer)
 
     def encodeUnit(u: UnitResource): JsonElement =
         let base = Map#{
@@ -413,71 +405,38 @@ mod UnitCatalogCodec {
             "y" => JsonNumber(floatToBd(v#y))
         })
 
-    def floatToBd(value: Float64): BigDecimal =
-        unsafe IO {
-            JBigDecimal.valueOf(value).stripTrailingZeros()
-        }
-
-    def intToBd(value: Int32): BigDecimal =
-        unsafe IO {
-            let stripped = JBigDecimal.valueOf(Int32.toFloat64(value)).stripTrailingZeros();
-            if (stripped.scale() < 0) stripped.setScale(0) else stripped
-        }
+    // floatToBd / intToBd は engine の JsonCodec mod に集約済み (上の use 経由で参照)。
 
     // ── デコード ──
 
-    /// units.json をデコード。weapons は常に空 Map で返す (別ファイル管理)。
-    /// pools は `units` 以外のトップレベル array (= `players` / `enemies` 等) を全部取り込む。
+    /// units.json をデコード。weapons は常に空 (`WeaponCatalog.empty()`) で返す (別ファイル管理)。
+    /// 段階 9 のリファクタで units 部分の巡回は `CatalogContainer.decode` に委譲。
+    /// pools (players / enemies 等の id 配列) は container の meta から再構築する。
     pub def decode(element: JsonElement): Option[UnitCatalog] =
         forM (
-            top      <- expectObject(element);
-            unitsJ   <- Map.get("units", top);
-            unitsM   <- expectObject(unitsJ);
-            units    <- traverseUnits(unitsM);
-            pools    <- collectPools(top)
-        ) yield UnitCatalog.UnitCatalog({units = units, weapons = Map.empty(), pools = pools})
+            container <- CatalogContainer.decode("units", decodeUnit, element);
+            pools     <- decodePoolsFromMeta(CatalogContainer.metaOf(container))
+        ) yield UnitCatalog.UnitCatalog({
+            units   = container,
+            weapons = WeaponCatalog.empty(),  // 実 weapons は UnitCatalog.loadFromString で後段で組み込む
+            pools   = pools
+        })
 
-    /// weapons.json の top JsonElement (`{"weapons": {...}}`) から武器マップを取り出す。
-    pub def decodeWeaponsFile(element: JsonElement): Option[Map[String, WeaponResource]] =
-        forM (
-            top      <- expectObject(element);
-            weaponsJ <- Map.get("weapons", top);
-            weaponsM <- expectObject(weaponsJ);
-            weapons  <- traverseWeapons(weaponsM)
-        ) yield weapons
-
-    /// top の `units` を除いた残りのキーで、値が JsonArray of JsonString のものを pool として収集。
-    def collectPools(top: Map[String, JsonElement]): Option[Map[String, List[String]]] =
+    /// container の meta (= units 以外の top-level フィールド) から
+    /// JsonArray of JsonString のものを pool として抽出する。それ以外の meta フィールドは無視。
+    def decodePoolsFromMeta(meta: Map[String, JsonElement]):
+            Option[Map[String, List[String]]] =
         let init: Option[Map[String, List[String]]] = Some(Map.empty());
         Map.foldLeftWithKey((acc, key, value) ->
-            Option.flatMap(soFar -> {
-                if (key == "units") Some(soFar)
-                else match value {
+            Option.flatMap(soFar ->
+                match value {
                     case JsonArray(_) =>
                         decodeStringList(value)
                             |> Option.map(ids -> Map.insert(key, ids, soFar))
                     case _ => Some(soFar)
-                }
-            }, acc),
-            init, top)
-
-    def traverseUnits(map: Map[String, JsonElement]):
-                       Option[Map[String, UnitResource]] =
-        Map.foldLeftWithKey((acc, id, json) ->
-            Option.flatMap(soFar ->
-                decodeUnit(json) |> Option.map(u -> Map.insert(id, u, soFar)),
+                },
                 acc),
-            Some(Map.empty()),
-            map)
-
-    def traverseWeapons(map: Map[String, JsonElement]):
-                       Option[Map[String, WeaponResource]] =
-        Map.foldLeftWithKey((acc, id, json) ->
-            Option.flatMap(soFar ->
-                decodeWeapon(json) |> Option.map(w -> Map.insert(id, w, soFar)),
-                acc),
-            Some(Map.empty()),
-            map)
+            init, meta)
 
     def decodeUnit(element: JsonElement): Option[UnitResource] =
         forM (
@@ -549,46 +508,8 @@ mod UnitCatalogCodec {
         case _        => None
     }
 
-    def decodeWeapon(element: JsonElement): Option[WeaponResource] =
-        forM (
-            obj    <- expectObject(element);
-            nameJ  <- Map.get("name", obj);
-            atkJ   <- Map.get("attack", obj);
-            durJ   <- Map.get("durability", obj);
-            rngJ   <- Map.get("range", obj);
-            spJ    <- Map.get("sprite", obj);
-            name   <- expectString(nameJ);
-            atk    <- expectInt(atkJ);
-            dur    <- expectInt(durJ);
-            rng    <- decodeRange(rngJ);
-            sp     <- decodeSprite(spJ)
-        ) yield {
-            // weaponType は省略可能。欠落時は Physical（物理武器がデフォルト）。
-            // 旧 weapons.json への後方互換。未知文字列は Physical にフォールバック。
-            let wt = Map.get("weaponType", obj)
-                        |> Option.flatMap(expectString)
-                        |> Option.map(parseWeaponType)
-                        |> Option.getWithDefault(UnitCatalog.WeaponType.Physical);
-            ({name = name, attack = atk, durability = dur, range = rng,
-              weaponType = wt, sprite = sp}: WeaponResource)
-        }
-
-    /// `"Physical"` / `"Magic"` 文字列から `WeaponType` に。
-    /// 未知文字列は Physical にフォールバックする（schema が文字列を強制するため
-    /// 通常は到達しないが、JSON 直編集の typo を panic させずに済ませる）。
-    def parseWeaponType(s: String): UnitCatalog.WeaponType = match s {
-        case "Magic"    => UnitCatalog.WeaponType.Magic
-        case _          => UnitCatalog.WeaponType.Physical
-    }
-
-    def decodeRange(element: JsonElement): Option[UnitCatalog.WeaponRange] =
-        forM (
-            obj    <- expectObject(element);
-            minJ   <- Map.get("min", obj);
-            maxJ   <- Map.get("max", obj);
-            mn     <- expectInt(minJ);
-            mx     <- expectInt(maxJ)
-        ) yield ({min = mn, max = mx}: UnitCatalog.WeaponRange)
+    // 武器系の decode (decodeWeapon / parseWeaponType / decodeRange) は段階 6 で
+    // `WeaponCatalogCodec` mod へ移動した。UnitCatalogCodec は units.json の round-trip にのみ責任を持つ。
 
     def decodeSprite(element: JsonElement): Option[SpriteResource] =
         forM (
@@ -660,10 +581,18 @@ mod UnitCatalogCodec {
                     case None         => baseCatalog
                     case Some(unitsM) =>
                         let UnitCatalog.UnitCatalog(payload) = baseCatalog;
-                        let resolvedUnits = Map.foldLeftWithKey((acc, id, unitJson) ->
+                        let container = payload#units;
+                        let CatalogContainer.CatalogContainer(containerPayload) = container;
+                        let originalEntries = containerPayload#entries;
+                        // 段階 9 のリファクタで units 部は CatalogContainer 経由になったため、
+                        // entries (Map) を fold で resolve → 新しい container を再構築して差し戻す。
+                        let resolvedEntries = Map.foldLeftWithKey((acc, id, unitJson) ->
                             resolveOneUnit(id, unitJson, acc),
-                            payload#units, unitsM);
-                        UnitCatalog.UnitCatalog({units = resolvedUnits | payload})
+                            originalEntries, unitsM);
+                        let resolvedContainer = CatalogContainer.CatalogContainer({
+                            entries = resolvedEntries | containerPayload
+                        });
+                        UnitCatalog.UnitCatalog({units = resolvedContainer | payload})
                 }
         }
 
@@ -767,12 +696,6 @@ mod UnitCatalogCodec {
             ({texture = ctx#texture, regionRect = Some(rect), duration = dur}: SpriteFrames.Frame)
         }
 
-    def expectBool(element: JsonElement): Option[Bool] =
-        match element {
-            case Json.JsonElement.JsonBool(b) => Some(b)
-            case _                             => None
-        }
-
     /// `{"x": ..., "y": ...}` の片方だけでも読めるように、x/y を独立に optional に扱う。
     /// IDE のスライダーは値 0 のときフィールドを書き出さないことがあるので、片方欠落への
     /// 寛容な decoder にする。両方欠落でも `{x = 0, y = 0}` を返す。
@@ -797,27 +720,6 @@ mod UnitCatalogCodec {
         case _ => None
     }
 
-    // ── ヘルパー ──
-
-    def expectObject(element: JsonElement): Option[Map[String, JsonElement]] =
-        match element {
-            case JsonObject(map) => Some(map)
-            case _               => None
-        }
-
-    def expectString(element: JsonElement): Option[String] =
-        match element {
-            case JsonString(text) => Some(text)
-            case _                => None
-        }
-
-    def expectInt(element: JsonElement): Option[Int32] = match element {
-        case JsonNumber(bd) => BigDecimal.tryToFloat64(bd) |> Option.flatMap(Float64.tryToInt32)
-        case _              => None
-    }
-
-    def expectFloat(element: JsonElement): Option[Float64] = match element {
-        case JsonNumber(bd) => BigDecimal.tryToFloat64(bd)
-        case _              => None
-    }
+    // expectObject / expectString / expectInt / expectFloat / expectBool は
+    // engine の JsonCodec mod に集約済み。本 mod では `use JsonCodec.{...}` 経由で参照する。
 }

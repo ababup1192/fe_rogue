@@ -59,15 +59,17 @@ mod TestUnitCatalog {
 
     /// 2 つの JSON 文字列をパースしてマージし、本番 `UnitCatalog.load` 相当の
     /// in-memory カタログを返す。テスト用ヘルパー。
+    /// 段階 6 のリファクタで weapons は `WeaponCatalog` の Saveable 経由で decode する。
     def buildSampleCatalog(): Option[UnitCatalog.UnitCatalog] =
         let unitsParsed   = Json.Parse.parse(sampleUnitsJson());
         let weaponsParsed = Json.Parse.parse(sampleWeaponsJson());
         let unitCatalogOpt: Option[UnitCatalog.UnitCatalog] =
             Option.flatMap(Saveable.fromJson, unitsParsed);
-        let weaponsOpt = Option.flatMap(UnitCatalogCodec.decodeWeaponsFile, weaponsParsed);
+        let weaponCatalogOpt: Option[WeaponCatalog.WeaponCatalog] =
+            Option.flatMap(Saveable.fromJson, weaponsParsed);
         forM (
             c <- unitCatalogOpt;
-            w <- weaponsOpt
+            w <- weaponCatalogOpt
         ) yield {
             let UnitCatalog.UnitCatalog(payload) = c;
             UnitCatalog.UnitCatalog({weapons = w | payload})
@@ -184,7 +186,7 @@ mod TestUnitCatalog {
             case None    => Assert.assertEq(expected = "decoded", "none")
             case Some(c) =>
                 let sword = UnitCatalog.lookupWeapon("trainingSword", c);
-                Assert.assertEq(expected = UnitCatalog.WeaponType.Magic,
+                Assert.assertEq(expected = WeaponCatalog.WeaponType.Magic,
                                 sword#weaponType)
         }
 
@@ -196,7 +198,7 @@ mod TestUnitCatalog {
             case None    => Assert.assertEq(expected = "decoded", "none")
             case Some(c) =>
                 let spear = UnitCatalog.lookupWeapon("trainingSpear", c);
-                Assert.assertEq(expected = UnitCatalog.WeaponType.Physical,
+                Assert.assertEq(expected = WeaponCatalog.WeaponType.Physical,
                                 spear#weaponType)
         }
 

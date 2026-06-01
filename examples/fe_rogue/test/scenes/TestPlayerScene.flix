@@ -206,8 +206,9 @@ mod TestPlayerScene {
     def loadTestCatalogs(): {catalog = UnitCatalog.UnitCatalog,
                               staffCatalog = Staff.StaffCatalog,
                               unitSample = UnitCatalog.UnitResource} \ Fs.FileRead =
-        let catalog = UnitCatalog.load("resources/units.json", "resources/weapons.json");
-        let staffCatalog = Staff.load("resources/staves.json");
+        let weaponCatalog = WeaponCatalog.load();
+        let catalog = UnitCatalog.load("resources/units.json", weaponCatalog);
+        let staffCatalog = Staff.load();
         let unitSample = match List.head(UnitCatalog.pool("players", catalog)) {
             case Some(r) => r
             case None    => bug!("no players in catalog")

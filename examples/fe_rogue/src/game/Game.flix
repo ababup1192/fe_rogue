@@ -427,52 +427,23 @@ mod Game {
             // units.json の spriteFrames は格子インデックス形式で書かれているため、
             // load 直後は spriteFrames = None。GameEngine.Game effect が使えるここで
             // resolveSpriteFrames を呼んで texture 実寸から px 矩形に解決する。
-            let catalog0 = UnitCatalog.load("resources/units.json", "resources/weapons.json");
+            // 段階 6 のリファクタで weapons は独立 catalog (`WeaponCatalog`) に分離された。
+            // `WeaponCatalog.load()` 内部で schema 読込 + 整合性検査 + データ読込が完結するため、
+            // ここでの schema 検査コードは不要になった。`UnitCatalog.load` には weaponCatalog を渡す。
+            // 段階 9 のリファクタで schema 整合性検査は `UnitCatalog.load` 内部で完結する
+            // (他 catalog の `CatalogContainer.loadWithCheck` と揃えた)。
+            let weaponCatalog = WeaponCatalog.load();
+            let catalog0 = UnitCatalog.load("resources/units.json", weaponCatalog);
             let catalog = UnitCatalog.resolveSpriteFrames("resources/units.json", catalog0);
-            let schema = match Resource.loadSchemaDiagnostic("resources/units.schema.json") {
-                case Ok(s)    => s
-                case Err(msg) => bug!("Resource.loadSchema failed :: ${msg}")
-            };
-            // checkConsistency は純粋なので let _ で式を明示的に消化する
-            // （そうしないと "Useless expression: pure and discarded" になる）
-            let _ = match Resource.checkConsistency(UnitCatalog.expectedUnitFields(), schema) {
-                case Ok(_)    => ()
-                case Err(msg) => bug!("UnitResource schema/type mismatch: ${msg}")
-            };
-            // 武器も同じ規格で schema を持ち、起動時に整合性検査だけ通す。
-            // (IDE の resource エディタは weapons map 自体のフォーム編集に対応していないため、
-            //  この schema は型と data の対応を保証するための「契約」として使う)
             // フロア定義をロード。現状は floor "f01" 固定（フロア進行は未実装）。
             // 新しいフロアを足したくなったら resources/floors.json に sub-entry を追加し、
-            // ここの "f01" を選択ロジックに差し替える
-            let floors = FloorCatalog.load("resources/floors.json");
+            // ここの "f01" を選択ロジックに差し替える。
+            // 段階 8 のリファクタで schema 整合性検査は `FloorCatalog.load()` 内部で完結する。
+            let floors = FloorCatalog.load();
             let floor  = FloorCatalog.get("f01", floors);
-            let floorsSchema = match Resource.loadSchemaDiagnostic("resources/floors.schema.json") {
-                case Ok(s)    => s
-                case Err(msg) => bug!("Resource.loadSchema (floors) failed :: ${msg}")
-            };
-            let _ = match Resource.checkConsistency(FloorCatalog.expectedFloorFields(), floorsSchema) {
-                case Ok(_)    => ()
-                case Err(msg) => bug!("FloorResource schema/type mismatch: ${msg}")
-            };
-            let weaponsSchema = match Resource.loadSchemaDiagnostic("resources/weapons.schema.json") {
-                case Ok(s)    => s
-                case Err(msg) => bug!("Resource.loadSchema (weapons) failed :: ${msg}")
-            };
-            let _ = match Resource.checkConsistency(UnitCatalog.expectedWeaponFields(), weaponsSchema) {
-                case Ok(_)    => ()
-                case Err(msg) => bug!("WeaponResource schema/type mismatch: ${msg}")
-            };
-            // 杖カタログを別ファイルでロードし、schema 整合性も同じ規格で検査する。
-            let staffCatalog = Staff.load("resources/staves.json");
-            let stavesSchema = match Resource.loadSchemaDiagnostic("resources/staves.schema.json") {
-                case Ok(s)    => s
-                case Err(msg) => bug!("Resource.loadSchema (staves) failed :: ${msg}")
-            };
-            let _ = match Resource.checkConsistency(Staff.expectedFields(), stavesSchema) {
-                case Ok(_)    => ()
-                case Err(msg) => bug!("StaffResource schema/type mismatch: ${msg}")
-            };
+            // 杖カタログをロード。段階 7 のリファクタで `CatalogContainer.loadWithCheck` 経由になり
+            // schema 整合性検査も `Staff.load()` 内部で完結する。
+            let staffCatalog = Staff.load();
             run {
                 // 初回 build と spawn snapshot 保存をまとめて行う (GameOver リビルドと同じ経路)。
                 // BGM は BgmScene の AudioStreamPlayer ノード (autoplay=true, loop=true,
