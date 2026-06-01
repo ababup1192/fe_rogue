@@ -23,7 +23,7 @@ mod Staff {
 
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber}
-    use UnitCatalog.SpriteResource
+    use Sprite.SpriteResource
 
     // ────────────────────────────────────────────────────────
     // (A) 型定義
@@ -167,7 +167,7 @@ mod StaffCatalogCodec {
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber}
     use JsonCodec.{expectObject, expectString, expectInt, expectFloat, floatToBd, intToBd}
     use Staff.{StaffResource, StaffEffect}
-    use UnitCatalog.SpriteResource
+    use Sprite.SpriteResource
 
     // ── エンコード ──
 
@@ -185,13 +185,7 @@ mod StaffCatalogCodec {
             "hframes" => JsonNumber(intToBd(sprite#hframes)),
             "vframes" => JsonNumber(intToBd(sprite#vframes)),
             "frame"   => JsonNumber(intToBd(sprite#frame)),
-            "offset"  => encodeOffset(sprite#offset)
-        })
-
-    def encodeOffset(vec: Vec2.Vec2): JsonElement =
-        JsonObject(Map#{
-            "x" => JsonNumber(floatToBd(vec#x)),
-            "y" => JsonNumber(floatToBd(vec#y))
+            "offset"  => JsonCodec.encodeVec2(sprite#offset)
         })
 
     // ── デコード ──
@@ -223,35 +217,11 @@ mod StaffCatalogCodec {
             vf     <- expectInt(vfJ);
             fr     <- expectInt(frJ)
         ) yield {
-            let off = match Map.get("offset", obj) {
-                case None     => ({x = 0.0, y = 0.0}: Vec2.Vec2)
-                case Some(oj) => match decodeOffset(oj) {
-                    case Some(v) => v
-                    case None    => ({x = 0.0, y = 0.0}: Vec2.Vec2)
-                }
-            };
+            let off = JsonCodec.decodeVec2OrDefault(Map.get("offset", obj), 0.0);
             // scale は省略可能。staves UI アイコンは board に並べないので既定 {1, 1}。
-            let sc = match Map.get("scale", obj) {
-                case None     => ({x = 1.0, y = 1.0}: Vec2.Vec2)
-                case Some(sj) => match decodeOffset(sj) {
-                    case Some(v) => v
-                    case None    => ({x = 1.0, y = 1.0}: Vec2.Vec2)
-                }
-            };
+            let sc = JsonCodec.decodeVec2OrDefault(Map.get("scale", obj), 1.0);
             ({texture = tex, hframes = hf, vframes = vf, frame = fr,
               offset = off, scale = sc}: SpriteResource)
-        }
-
-    /// `{"x": ..., "y": ...}` のどちらか欠落でも 0.0 で補完する（IDE の省略仕様）。
-    def decodeOffset(element: JsonElement): Option[Vec2.Vec2] =
-        match element {
-            case JsonObject(obj) =>
-                let x = Map.get("x", obj) |> Option.flatMap(expectFloat)
-                          |> Option.getWithDefault(0.0);
-                let y = Map.get("y", obj) |> Option.flatMap(expectFloat)
-                          |> Option.getWithDefault(0.0);
-                Some({x = x, y = y})
-            case _ => None
         }
 
     // expect helpers / 数値変換は engine の JsonCodec mod に集約されている。

@@ -109,4 +109,29 @@ mod TestJsonCodec {
         });
         Assert.assertEq(expected = None,
                           JsonCodec.decodeList(JsonCodec.expectInt, mixed))
+
+    // ════════════════════════════════════════════════════════
+    // Vec2 round-trip: encode → decode で元の Vec2 に戻る
+    // ════════════════════════════════════════════════════════
+
+    /// {x=16.0, y=8.0} を encode → decode すると元の Vec2 (x, y) に戻る
+    @Test
+    def testVec2RoundTrip(): Unit \ Assert =
+        let original: Vec2.Vec2 = {x = 16.0, y = 8.0};
+        let decoded = JsonCodec.decodeVec2(JsonCodec.encodeVec2(original));
+        Assert.assertEq(expected = Some((16.0, 8.0)),
+                          Option.map(v -> (v#x, v#y), decoded))
+
+    /// x が欠落した object は y だけ読み x を 0.0 で補完する
+    @Test
+    def testDecodeVec2FillsMissingXWithZero(): Unit \ Assert =
+        let partial = JsonObject(Map#{"y" => JsonNumber(JsonCodec.floatToBd(8.0))});
+        Assert.assertEq(expected = Some((0.0, 8.0)),
+                          Option.map(v -> (v#x, v#y), JsonCodec.decodeVec2(partial)))
+
+    /// None を渡すと defaultValue (1.0) で埋めた Vec2 を返す
+    @Test
+    def testDecodeVec2OrDefaultReturnsDefaultForNone(): Unit \ Assert =
+        let result = JsonCodec.decodeVec2OrDefault(None, 1.0);
+        Assert.assertEq(expected = (1.0, 1.0), (result#x, result#y))
 }

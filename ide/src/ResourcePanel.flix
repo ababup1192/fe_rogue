@@ -133,6 +133,15 @@ mod ResourcePanel {
             },
             Map.empty(), entries)
 
+    /// `collectRefOptions` を 1 回計算して ResourceState の cache に格納する。
+    /// resource 一覧ロード完了時 (`populateResourcesList`) と、sub-entries が変化しうる
+    /// commit 後に呼ぶ。Property Panel 再構築のたびのフル走査を避けるための入口。
+    pub def refreshRefOptions(state: IdeState.IdeState): Unit \ IO =
+        let options = run {
+            collectRefOptions(state)
+        } with Fs.FileRead.runWithIO;
+        ResourceState.setRefOptions(state#resource, options)
+
     /// CatalogIn 形式なら sub-entries の key 一覧を ListView に並べる。
     /// Single 形式なら Property Panel をすぐ build する
     def rebuildSubEntries(state: IdeState.IdeState,
@@ -189,9 +198,9 @@ mod ResourcePanel {
                                     |> List.sortBy(p -> PropertyWidgets.fieldOrderKey(p));
                                 let textureNames = Array.get(0, state#textureNamesRef);
                                 let texturePathMap = Array.get(0, state#texturePathMapRef);
-                                let refOptions = run {
-                                    collectRefOptions(state)
-                                } with Fs.FileRead.runWithIO;
+                                // collectRefOptions のフル走査を避け、cache を参照する。
+                                // cache は populateResourcesList と sub-entries 変化 commit で更新される
+                                let refOptions = ResourceState.getRefOptions(state#resource);
                                 let mkCommit = kp -> { (json2: Json.JsonElement) ->
                                     commitToResource(state, kp, json2)
                                 };
@@ -229,6 +238,9 @@ mod ResourcePanel {
                     case Some(path) => {
                         let pretty = Json.Write.toPrettyString(2i32, updated);
                         discard Files.writeString(Paths.get(path), pretty);
+                        // sub-entries が変化しうるので Ref widget 候補 cache を再計算する。
+                        // （差分計算は難しいため全再計算。古い候補を残さないための無効化）
+                        refreshRefOptions(state);
                         println("[Resources] saved field at ${keyPath}")
                     }
                 };
@@ -299,7 +311,10 @@ mod ResourcePanel {
                 let entries = Array.get(0, state#resource#discoveredRef);
                 let items = listView.getItems();
                 items.clear();
-                List.forEach(e -> discard items.add(e#displayName), entries)
+                List.forEach(e -> discard items.add(e#displayName), entries);
+                // discovered resources が確定したこの時点で Ref widget 候補 cache を
+                // 1 回だけ計算する。以降の Property Panel 再構築は cache を読むだけ
+                refreshRefOptions(state)
             }
         }
     }
@@ -548,6 +563,8 @@ mod ResourcePanel {
                 let pretty = Json.Write.toPrettyString(2i32, json);
                 discard Files.writeString(Paths.get(path), pretty);
                 ResourceState.setDirty(state#resource, false);
+                // + / - で sub-entries が増減したので Ref widget 候補 cache を再計算する
+                refreshRefOptions(state);
                 println("[Resources] saved ${path}")
             }
             case _ => ()

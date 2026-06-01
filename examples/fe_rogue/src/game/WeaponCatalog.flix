@@ -57,9 +57,9 @@ mod WeaponCatalog {
         max = Int32
     }
 
-    /// 武器カタログの sprite メタ情報。`UnitCatalog.SpriteResource` の alias として
-    /// 共有する (段階 6c での共通化)。後段で `Sprite` 等の別 mod に切り出す予定。
-    pub type alias WeaponSpriteResource = UnitCatalog.SpriteResource
+    /// 武器カタログの sprite メタ情報。中立な `Sprite.SpriteResource` の alias として共有する。
+    /// 段階 6c の共通化で実体を `Sprite` mod に切り出し、UnitCatalog への逆向き依存を断った。
+    pub type alias WeaponSpriteResource = Sprite.SpriteResource
 
     /// 武器 1 種類ぶんのデータ。
     /// `name` は表示用の和名。`attack` は武器の攻撃力ボーナス、`durability` は耐久度。
@@ -167,14 +167,8 @@ mod WeaponCatalogCodec {
             "hframes" => JsonNumber(intToBd(sprite#hframes)),
             "vframes" => JsonNumber(intToBd(sprite#vframes)),
             "frame"   => JsonNumber(intToBd(sprite#frame)),
-            "offset"  => encodeOffset(sprite#offset),
-            "scale"   => encodeOffset(sprite#scale)
-        })
-
-    def encodeOffset(vec: Vec2.Vec2): JsonElement =
-        JsonObject(Map#{
-            "x" => JsonNumber(floatToBd(vec#x)),
-            "y" => JsonNumber(floatToBd(vec#y))
+            "offset"  => JsonCodec.encodeVec2(sprite#offset),
+            "scale"   => JsonCodec.encodeVec2(sprite#scale)
         })
 
     // ── デコード ──
@@ -230,32 +224,9 @@ mod WeaponCatalogCodec {
             fr     <- expectInt(frJ)
         ) yield {
             // offset / scale は省略可能。欠落 / 不正は (0,0) / (1,1) にフォールバック
-            let off = decodeOffsetOrDefault(Map.get("offset", obj), 0.0);
-            let sc  = decodeOffsetOrDefault(Map.get("scale", obj),  1.0);
+            let off = JsonCodec.decodeVec2OrDefault(Map.get("offset", obj), 0.0);
+            let sc  = JsonCodec.decodeVec2OrDefault(Map.get("scale", obj),  1.0);
             ({texture = tex, hframes = hf, vframes = vf, frame = fr,
               offset = off, scale = sc}: WeaponSpriteResource)
-        }
-
-    /// optional な `{x, y}` JSON フィールドから Vec2 を取り出す。
-    /// 欠落 / 不正なら `(defaultValue, defaultValue)` で埋める。
-    def decodeOffsetOrDefault(optElement: Option[JsonElement], defaultValue: Float64): Vec2.Vec2 =
-        match optElement {
-            case None          => {x = defaultValue, y = defaultValue}
-            case Some(element) => match decodeOffset(element) {
-                case Some(value) => value
-                case None        => {x = defaultValue, y = defaultValue}
-            }
-        }
-
-    /// `{"x": Float, "y": Float}` を Vec2 に。各キーは省略可能で欠落時は 0.0。
-    def decodeOffset(element: JsonElement): Option[Vec2.Vec2] =
-        match element {
-            case JsonObject(obj) =>
-                let x = Map.get("x", obj) |> Option.flatMap(expectFloat)
-                          |> Option.getWithDefault(0.0);
-                let y = Map.get("y", obj) |> Option.flatMap(expectFloat)
-                          |> Option.getWithDefault(0.0);
-                Some({x = x, y = y})
-            case _ => None
         }
 }

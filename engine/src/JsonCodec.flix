@@ -126,4 +126,39 @@ mod JsonCodec {
                     Vector.toList(items))
             case _ => None
         }
+
+    // ════════════════════════════════════════════════════════
+    // Vec2 の round-trip (offset / scale の defensive default を含む)
+    // ════════════════════════════════════════════════════════
+
+    /// `{x: Float, y: Float}` の Vec2 を JSON object に encode する。
+    pub def encodeVec2(vec: Vec2.Vec2): JsonElement =
+        JsonObject(Map#{
+            "x" => JsonNumber(floatToBd(vec#x)),
+            "y" => JsonNumber(floatToBd(vec#y))
+        })
+
+    /// JSON object を Vec2 に decode する。x/y どちらか欠落でも 0.0 で補完。
+    pub def decodeVec2(element: JsonElement): Option[Vec2.Vec2] =
+        match element {
+            case JsonObject(obj) =>
+                let x = Map.get("x", obj) |> Option.flatMap(expectFloat)
+                          |> Option.getWithDefault(0.0);
+                let y = Map.get("y", obj) |> Option.flatMap(expectFloat)
+                          |> Option.getWithDefault(0.0);
+                Some({x = x, y = y})
+            case _ => None
+        }
+
+    /// `Option[JsonElement]` を Vec2 に。欠落 / 不正なら `(defaultValue, defaultValue)`。
+    /// `offset` (default 0.0) / `scale` (default 1.0) の defensive default で使う。
+    pub def decodeVec2OrDefault(optElement: Option[JsonElement], defaultValue: Float64):
+            Vec2.Vec2 =
+        match optElement {
+            case None          => {x = defaultValue, y = defaultValue}
+            case Some(element) => match decodeVec2(element) {
+                case Some(value) => value
+                case None        => {x = defaultValue, y = defaultValue}
+            }
+        }
 }
