@@ -43,17 +43,26 @@ mod Combat {
     pub def defenseStatFor(defense: Int32, magicDefense: Int32, isPhysical: Bool): Int32 =
         if (isPhysical) defense else magicDefense
 
-    /// 攻撃の命中率（百分率: 0..100）。
-    /// 基準 80% に「攻撃側速 - 防御側速」× 5 を加算してクランプ:
-    ///   - 速さ同等        → 80%
-    ///   - 攻撃側 +4 速い → 100% （上限）
-    ///   - 防御側 +4 速い → 60%
-    ///   - 防御側 +15 速い → 5%   （下限 5% で常に勝機を残す）
-    /// 数値は仮置き。バランス調整時は係数とクランプ範囲だけ触ればよい。
-    pub def hitRate(attackerSpeed: Int32, defenderSpeed: Int32): Int32 =
-        let raw = 80 + (attackerSpeed - defenderSpeed) * 5;
-        // clamp(5, 100, raw) = max(5, min(100, raw))
-        Int32.max(5, Int32.min(100, raw))
+    /// 攻撃の命中率（百分率: 0..100）。FE6 の命中・回避式に準拠:
+    ///   命中  = 武器命中 + 技×2 + 幸運÷2
+    ///   回避  = 速さ×2 + 幸運
+    ///   命中率 = clamp(0, 100, 命中 - 回避)
+    /// 支援・地形・武器相性（→ #3）・武器重さ／体格は今回スコープ外。
+    /// 速さはそのまま攻撃速度として扱う（重さ補正なし）。
+    pub def hitRate(
+        attackerSkill: Int32, attackerLuck: Int32, weaponHit: Int32,
+        defenderSpeed: Int32, defenderLuck: Int32
+    ): Int32 =
+        let accuracy = weaponHit + attackerSkill * 2 + attackerLuck / 2;
+        let avoid    = defenderSpeed * 2 + defenderLuck;
+        // clamp(0, 100, accuracy - avoid)
+        Int32.max(0, Int32.min(100, accuracy - avoid))
+
+    /// 命中ロールの判定。`hitRate` は 0..100 の命中率（百分率）、`roll` は 0..99 の
+    /// 一様乱数を渡す想定（乱数生成は呼び出し側の effect で行い、ここは純粋に保つ）。
+    /// `roll < hitRate` で命中。hitRate=100 なら常に命中、hitRate=0 なら常に回避。
+    pub def isHit(hitRate: Int32, roll: Int32): Bool =
+        roll < hitRate
 
     /// `damage` 適用で防御側 HP が 0 以下になるか（撃破か）。
     pub def willKill(defenderHp: Int32, dmg: Int32): Bool =
@@ -71,15 +80,17 @@ mod Combat {
 
     /// 1 撃ぶんの予報。スペックの「与:N 命中:P% 撃破」表示に直接対応する。
     /// damage = max(0, attack - defense)、hit = hitRate(...)、kill = willKill(...)。
+    /// 命中の内訳は攻撃側の技・幸運・武器命中、防御側の速さ・幸運で決まる（FE6 式）。
     /// 攻撃 UI で命中前にプレビューするのに使う想定（現状はログ出力にのみ流す）。
     pub def forecast(
-        attacker: {attack = Int32, speed = Int32},
-        defender: {hp = Int32, defense = Int32, speed = Int32}
+        attacker: {attack = Int32, skill = Int32, luck = Int32, weaponHit = Int32},
+        defender: {hp = Int32, defense = Int32, speed = Int32, luck = Int32}
     ): {damage = Int32, hit = Int32, kill = Bool} =
         let dmg = attackDamage(attacker#attack, defender#defense);
         {
             damage = dmg,
-            hit    = hitRate(attacker#speed, defender#speed),
+            hit    = hitRate(attacker#skill, attacker#luck, attacker#weaponHit,
+                             defender#speed, defender#luck),
             kill   = willKill(defender#hp, dmg)
         }
 }

@@ -27,6 +27,8 @@ mod TestUnitFixtures {
         magicAttack   = 0,
         magicDefense  = 0,
         speed         = 3,
+        skill         = 2,
+        luck          = 2,
         initialInventory =
             ({kind = UnitCatalog.ItemKind.Weapon, id = "test-weapon"}:
                UnitCatalog.InventoryEntry) :: Nil,
@@ -55,6 +57,8 @@ mod TestUnitFixtures {
         magicAttack   = 0,
         magicDefense  = 0,
         speed         = speed,
+        skill         = 2,
+        luck          = 2,
         initialInventory =
             ({kind = UnitCatalog.ItemKind.Weapon, id = "test-weapon"}:
                UnitCatalog.InventoryEntry) :: Nil,
@@ -82,6 +86,8 @@ mod TestUnitFixtures {
         magicAttack   = magicAttack,
         magicDefense  = magicDefense,
         speed         = speed,
+        skill         = 2,
+        luck          = 2,
         initialInventory =
             ({kind = UnitCatalog.ItemKind.Weapon, id = "test-weapon"}:
                UnitCatalog.InventoryEntry) :: Nil,
@@ -104,6 +110,7 @@ mod TestUnitFixtures {
     pub def testWeapon(): UnitCatalog.WeaponResource = {
         name       = "test-weapon",
         attack     = 2,
+        hit        = 80,
         durability = 10,
         range      = { min = 1, max = 1 },
         weaponType = WeaponCatalog.WeaponType.Physical,
@@ -114,6 +121,7 @@ mod TestUnitFixtures {
     pub def testWeaponFull(attack: Int32, durability: Int32): UnitCatalog.WeaponResource = {
         name       = "test-weapon",
         attack     = attack,
+        hit        = 80,
         durability = durability,
         range      = { min = 1, max = 1 },
         weaponType = WeaponCatalog.WeaponType.Physical,
@@ -125,6 +133,7 @@ mod TestUnitFixtures {
             UnitCatalog.WeaponResource = {
         name       = "test-weapon",
         attack     = attack,
+        hit        = 80,
         durability = 10,
         range      = { min = 1, max = 1 },
         weaponType = weaponType,

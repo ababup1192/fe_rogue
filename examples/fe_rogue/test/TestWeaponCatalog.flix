@@ -21,6 +21,7 @@ mod TestWeaponCatalog {
     def trainingSpear(): WeaponResource = {
         name       = "くんれんやり",
         attack     = 2,
+        hit        = 70,
         durability = 41,
         range      = ({min = 1, max = 1}: WeaponRange),
         weaponType = WeaponType.Physical,

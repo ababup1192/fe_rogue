@@ -506,7 +506,7 @@ mod Game {
                          EnemyTurn.Queue, TurnPhase.State,
                          SelectedPlayer.State,
                          CustomEffects.GameOverRequest,
-                         Pacing.State, r} =
+                         Pacing.State, Math.Random, r} =
         // Escape は通常はゲーム終了に使うが、各種メニュー / 戦闘予報パネル表示中は
         // engine の MenuEvent / InputHandler がそれぞれ「キャンセル」として消費するので、
         // ここでは終了させない。

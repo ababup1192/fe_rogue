@@ -22,10 +22,11 @@ mod FrameAef {
     /// attack:hit / death_blink / attack_lunge を捌き、EnemyTurnDriverScene が phase 判定で
     /// `stepOnce` や `commitWaitedAndAdvance` を起動するため、Audio / EnemyTurn / GameOverRequest /
     /// Pacing が追加される。`BoardSnapshot.fromScene` は純粋関数なので `BoardQuery` 不要。
+    /// `Math.Random` は attack:hit 時の命中ロール（Combat.isHit 用の乱数）に使う。
     pub type alias ProcessT = {GameEngine.Game, GameEngine.Audio,
                                 PlayerScene.PartyQuery, EnemyScene.RosterQuery,
                                 Tween.Scheduler, AnimationPlayer.Scheduler,
                                 GameLogger.GameLogger,
                                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                                CustomEffects.GameOverRequest, Pacing.State}
+                                CustomEffects.GameOverRequest, Pacing.State, Math.Random}
 }

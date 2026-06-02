@@ -110,6 +110,43 @@ mod TestBattlePanelScene {
         }
 
     // ════════════════════════════════════════════════════════
+    // cancel の遷移先 = ActionSelect（行動メニューに戻る / 待機しない）
+    // ════════════════════════════════════════════════════════
+
+    /// `BattlePanelScene.cancel` を呼んだ直後の TurnPhase が `ActionSelect` であること。
+    /// 攻撃予測を X でキャンセルしたら待機 (commit) や PlayerAttack ではなく行動メニューに
+    /// 戻る、という仕様の回帰防止。次フレームの ActionMenuScene.refreshItems が
+    /// ActionSelect を見てメニューを再表示する。
+    @Test
+    def testCancelReturnsToActionSelect(): Unit \ Assert =
+        region rc {
+            let result = run {
+                TurnPhase.State.put(TurnPhase.Phase.AttackForecast);
+                SelectedPlayer.State.put({
+                    id     = Some(0),
+                    origin = Some(({x = 2, y = 2}: {x = Int32, y = Int32}))
+                });
+                let _ = BattlePanelScene.cancel(Scene.empty());
+                TurnPhase.State.get()
+            } with handler PlayerScene.PartyQuery {
+                def get(id, k) =
+                    k(if (id == 0) Some(fixturePlayer()) else None)
+                def getAll(k) = k(fixturePlayer() :: Nil)
+                def getGridPos(id, k) =
+                    k(if (id == 0) fixturePlayer()#gridPos
+                      else ({x = 0, y = 0}: {x = Int32, y = Int32}))
+                def getMoveTiles(id, k) =
+                    k(if (id == 0) fixturePlayer()#moveTiles else 0)
+            } with Tween.withScheduler(rc)
+              with AnimationPlayer.withScheduler(rc)
+              with SelectedPlayer.withState(rc)
+              with TurnPhase.withState(rc);
+            Assert.assertEq(
+                expected = TurnPhase.Phase.ActionSelect,
+                result)
+        }
+
+    // ════════════════════════════════════════════════════════
     // PlayerAttackHold は確定キーを無視する（catch-all で Stay）
     // ════════════════════════════════════════════════════════
 

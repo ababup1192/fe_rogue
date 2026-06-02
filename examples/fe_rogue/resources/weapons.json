@@ -3,6 +3,7 @@
     "fire_magic": {
       "attack": 0,
       "durability": 21,
+      "hit": 90,
       "name": "ファイアー",
       "range": {
         "max": 2,
@@ -19,6 +20,7 @@
     "trainingBow": {
       "attack": 0,
       "durability": 25,
+      "hit": 85,
       "name": "くんれんゆみ",
       "range": {
         "max": 2,
@@ -38,6 +40,7 @@
     "trainingSpear": {
       "attack": 0,
       "durability": 41,
+      "hit": 70,
       "name": "くんれんやり",
       "range": {
         "max": 1,
@@ -57,6 +60,7 @@
     "trainingSword": {
       "attack": 0,
       "durability": 41,
+      "hit": 80,
       "name": "くんれんけん",
       "range": {
         "max": 1,

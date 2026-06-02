@@ -118,15 +118,19 @@ mod BattlePanelScene {
                 }
         }
 
-    /// `AttackForecast` + X: 予報をキャンセルして PlayerAttack に戻る (ターゲット選び直し)。
-    /// 装備中武器を自動使用する新フローでは武器選択窓を経由しないため、`attackTargetId` を
-    /// クリアして「敵を選び直せる」状態に戻す。
+    /// `AttackForecast` + X: 攻撃をやめて行動メニュー (ActionSelect) に戻る。
+    /// 待機にはせず（ターン消費しない）、`attackTargetId` をクリアしてカーソルを選択中
+    /// 味方に戻す。次フレームの `ActionMenuScene.refreshItems` がメニューを再表示する。
     pub def cancel(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
-        TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              TurnPhase.State, SelectedPlayer.State,
+                              PlayerScene.PartyQuery} =
+        TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         match SelectedPlayer.State.get()#id {
             case None             => scene
-            case Some(attackerId) => PlayerScene.clearAttackTargetId(attackerId, scene)
+            case Some(attackerId) =>
+                PlayerScene.clearAttackTargetId(attackerId, scene)
+                    |> CursorScene.snapToPlayer
         }
 
     /// 選択中プレイヤー / 攻撃対象敵 / 選択中武器の組から予報テキストを組み立てる。
@@ -169,8 +173,10 @@ mod BattlePanelScene {
                                                enemy#resource#magicDefense,
                                                phys);
         let playerForecast = Combat.forecast(
-            {attack = playerAtk, speed = player#resource#speed},
-            {hp = enemy#hp, defense = enemyDef, speed = enemy#resource#speed});
+            {attack = playerAtk, skill = player#resource#skill,
+             luck = player#resource#luck, weaponHit = weapon#hit},
+            {hp = enemy#hp, defense = enemyDef,
+             speed = enemy#resource#speed, luck = enemy#resource#luck});
         let enemyCols = formatEnemyColumns(player, enemy);
         let header   = padRight("味方", 10) ++ enemyCols#header;
         let hpLine   = padRight("HP   ${player#hp}", 10) ++ enemyCols#hp;
@@ -201,8 +207,10 @@ mod BattlePanelScene {
                                                            player#resource#magicDefense,
                                                            ePhys);
                     let enemyForecast = Combat.forecast(
-                        {attack = enemyAtk, speed = enemy#resource#speed},
-                        {hp = player#hp, defense = playerDef, speed = player#resource#speed});
+                        {attack = enemyAtk, skill = enemy#resource#skill,
+                         luck = enemy#resource#luck, weaponHit = eWeapon#hit},
+                        {hp = player#hp, defense = playerDef,
+                         speed = player#resource#speed, luck = player#resource#luck});
                     {header = header, hp = hpStr,
                      atk = "威力 ${enemyForecast#damage}",
                      hit = "命中 ${enemyForecast#hit}%"}

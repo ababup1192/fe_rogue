@@ -63,10 +63,12 @@ mod WeaponCatalog {
 
     /// 武器 1 種類ぶんのデータ。
     /// `name` は表示用の和名。`attack` は武器の攻撃力ボーナス、`durability` は耐久度。
+    /// `hit` は武器命中率 (命中 = 武器命中 + 技×2 + 幸運÷2 の基礎値)。
     /// `range` は攻撃可能距離。`weaponType` は物理 / 魔法。`sprite` は ItemMenu アイコン用。
     pub type alias WeaponResource = {
         name       = String,
         attack     = Int32,
+        hit        = Int32,
         durability = Int32,
         range      = WeaponRange,
         weaponType = WeaponType,
@@ -113,7 +115,7 @@ mod WeaponCatalog {
 
     /// `WeaponResource` のフィールド名集合。`weapons.schema.json` との整合性検査に使う。
     pub def expectedFields(): Set[String] =
-        Set#{"name", "attack", "durability", "range", "weaponType", "sprite"}
+        Set#{"name", "attack", "hit", "durability", "range", "weaponType", "sprite"}
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -144,6 +146,7 @@ mod WeaponCatalogCodec {
         JsonObject(Map#{
             "name"       => JsonString(weapon#name),
             "attack"     => JsonNumber(intToBd(weapon#attack)),
+            "hit"        => JsonNumber(intToBd(weapon#hit)),
             "durability" => JsonNumber(intToBd(weapon#durability)),
             "range"      => encodeRange(weapon#range),
             "weaponType" => JsonString(weaponTypeToString(weapon#weaponType)),
@@ -192,7 +195,11 @@ mod WeaponCatalogCodec {
                         |> Option.flatMap(expectString)
                         |> Option.map(parseWeaponType)
                         |> Option.getWithDefault(WeaponType.Physical);
-            ({name = name, attack = atk, durability = dur, range = rng,
+            // hit (武器命中率) も省略可。欠落時は 0 (後方互換)。
+            let hit = Map.get("hit", obj)
+                        |> Option.flatMap(expectInt)
+                        |> Option.getWithDefault(0);
+            ({name = name, attack = atk, hit = hit, durability = dur, range = rng,
               weaponType = wt, sprite = sp}: WeaponResource)
         }
 

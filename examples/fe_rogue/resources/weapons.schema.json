@@ -24,12 +24,20 @@
         "order": 3
       }
     },
+    "hit": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "slider": { "min": 0, "max": 100, "step": 5 } },
+        "label": "命中",
+        "order": 4
+      }
+    },
     "durability": {
       "field": {
         "ftype": "int",
         "hint":  { "slider": { "min": 1, "max": 99, "step": 1 } },
         "label": "耐久",
-        "order": 4
+        "order": 5
       }
     },
     "range": {
