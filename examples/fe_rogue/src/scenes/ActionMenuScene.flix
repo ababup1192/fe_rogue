@@ -96,7 +96,12 @@ mod ActionMenuScene {
                            PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
-        let withItems = if (phase != TurnPhase.Phase.ActionSelect) withVisibility
+        // メニューが閉じている間は選択カーソルを先頭(0)に戻しておく。これにより
+        // 次に開いたときは記憶された位置ではなく常に最初の項目から始まる。
+        // 表示中(ActionSelect)はリセットしないので ↑↓ のカーソル移動は維持される。
+        let withItems = if (phase != TurnPhase.Phase.ActionSelect)
+                withVisibility
+                    |> ItemList.mapAt(menuPath(), ItemList.setSelectedIndex(0))
             else {
                 let items = buildItems(withVisibility);
                 withVisibility
