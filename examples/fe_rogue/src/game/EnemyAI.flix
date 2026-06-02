@@ -40,10 +40,12 @@ mod EnemyAI {
     /// gridPos の更新は行わない（Move を実際に scene に反映するときに呼び出し側で行う）。
     pub def decideAction(board: Board,
                           enemy: EnemyScene.Data): (EnemyAction, EnemyScene.Data) =
-        // 1) 検知判定: dormant なら同モジュールチェックで alerted を更新
-        //    どのプレイヤーでもいいので「同モジュールに 1 人でも居るか」で起動する
-        let alertedNow = if (enemy#alerted) true
-                         else sameModuleAsAnyPlayer(board, enemy#gridPos);
+        // 1) 検知判定: dormant なら「同じ部屋に居る」または「索敵範囲(移動到達範囲)に居る」で起動。
+        //    同モジュール判定だけだと通路(モジュール外)で接敵しても起動せず攻撃しないため、
+        //    reachableCells ベースの索敵範囲判定(ローグ移動モードの検知と同モデル)を OR で足す。
+        let alertedNow = enemy#alerted
+                         or sameModuleAsAnyPlayer(board, enemy#gridPos)
+                         or anyPlayerWithinReach(board, enemy#gridPos, enemy#moveTiles);
         let updated = {alerted = alertedNow | enemy};
         if (not alertedNow) (EnemyAction.Skip(enemy#id), updated)
         else
@@ -79,6 +81,18 @@ mod EnemyAI {
     // ════════════════════════════════════════════════════════
     // 検知ロジック
     // ════════════════════════════════════════════════════════
+
+    /// 敵が索敵範囲(自分の移動到達範囲 = 赤マス)内にプレイヤーを捉えているか。
+    /// `reachableCells`(床ベース BFS, moveTiles まで)にプレイヤー位置が含まれれば true。
+    /// 通路でも「踏み込まれたら反応する」ようにするための検知。部屋判定の補完。
+    def anyPlayerWithinReach(board: Board, enemyPos: {x = Int32, y = Int32},
+                              moveTiles: Int32): Bool =
+        let reach = Board.reachableCells(board#map#isFloor, enemyPos, moveTiles);
+        Board.playerPositions(board)
+            |> List.exists(entry -> {
+                let (_, pos) = entry;
+                Board.containsCell(pos, reach)
+            })
 
     /// 敵セルが「いずれかのプレイヤー」と同じモジュール idx に属するか。
     /// パーティ全員のうち 1 人でも同モジュールに居れば true を返す。

@@ -200,9 +200,10 @@ instance InputEvent.InputHandler[NodeTag] {
                 Some(TurnRules.Input.Cancel)
             else None;
         let phase = TurnPhase.State.get();
+        // ユニット情報ポップアップの X トグルは PlayerCursor の下見中のみ。
+        // PlayerAttack 中はポップアップを出さず、X は戦闘予測のキャンセルに使う。
         let popupShown = UnitInfoPopupScene.isShown(scene)
-                          and (phase == TurnPhase.Phase.PlayerCursor
-                                or phase == TurnPhase.Phase.PlayerAttack);
+                          and phase == TurnPhase.Phase.PlayerCursor;
         // メニュー系フェーズ (ActionMenu / ItemMenu / TradeMenu) の Z/X は別関数で処理。
         // Some が返ってくれば dispatcher が処理済みなのでその scene をそのまま返す。
         match input {
@@ -380,9 +381,11 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
         // ItemList のカーソル移動に使われるので素通り)
         case (TurnPhase.Phase.TradeInventory, None)
                                               => checked_ecast(tradeInventoryDirection(key, scene))
-        case (TurnPhase.Phase.AttackForecast, Some(TurnRules.Input.Confirm))
+        // PlayerAttack = ターゲット選択 + 戦闘予測。Z で(カーソル上の敵に)攻撃確定、
+        // X でメニューに戻る。BattlePanelScene が予報表示と対象同期を担う。
+        case (TurnPhase.Phase.PlayerAttack,   Some(TurnRules.Input.Confirm))
                                               => BattlePanelScene.confirm(scene)
-        case (TurnPhase.Phase.AttackForecast, Some(TurnRules.Input.Cancel))
+        case (TurnPhase.Phase.PlayerAttack,   Some(TurnRules.Input.Cancel))
                                               => checked_ecast(BattlePanelScene.cancel(scene))
         // 明示 case が無いフェーズの Z/X は TurnRules.decide にそのまま渡す
         case (_,                              Some(inp))

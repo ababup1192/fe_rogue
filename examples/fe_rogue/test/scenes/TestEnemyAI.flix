@@ -136,6 +136,19 @@ mod TestEnemyAI {
         let (a, d)  = EnemyAI.decideAction(board, enemy);
         Assert.assertEq(expected = ("Skip", false), (tagOf(a), d#alerted))
 
+    /// dormant + 別モジュールでも、索敵範囲(移動到達範囲)内に居れば起動して chase する。
+    /// 通路などモジュール外で接敵しても敵が反応するための検知。
+    /// プレイヤー (4,2)=module0、敵 (7,2)=module1、距離 3 ≤ moveTiles 3 → 到達範囲内 → Move。
+    @Test
+    def testDecideDormantWithinReachAlerts(): Unit \ Assert =
+        let map     = twoRoomSnapshot(10, 5);
+        let player  = ({x = 4, y = 2}: {x = Int32, y = Int32});   // module 0
+        let enemyP  = ({x = 7, y = 2}: {x = Int32, y = Int32});   // module 1
+        let board   = boardOf(map, player, 0, enemyP);
+        let enemy   = enemyAt(0, enemyP, false, 1, 3);
+        let (a, d)  = EnemyAI.decideAction(board, enemy);
+        Assert.assertEq(expected = ("Move", true), (tagOf(a), d#alerted))
+
     /// dormant + 同モジュール → alerted=true、Move（Q3-B: 検出フレームに動く）。
     @Test
     def testDecideDormantSameModuleAlertsAndMoves(): Unit \ Assert =

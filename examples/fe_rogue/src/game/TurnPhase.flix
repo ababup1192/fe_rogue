@@ -220,13 +220,11 @@ mod TurnRules {
                 match activePlayerAt(context) {
                     case Some(playerId) => Transition.CursorSelectPlayer(playerId)
                     case None           =>
-                        // アクティブ味方が居ない: 床マスで誰も占有していなければ ActionMenu を開く
-                        // (「しゅうごう」のみ表示、確定で旗が立つ)。
-                        // それ以外（壁・敵上・waited 味方上）は何もしない。
-                        if (context#board#map#isFloor(context#cursor)
-                            and not Board.isOccupied(context#cursor, context#board))
-                            Transition.CursorOpenGatherMenu
-                        else Transition.Stay
+                        // アクティブ味方が居ないセル(壁・床の空きマス・敵上・waited 味方上など)では
+                        // 常に空マスメニュー(しゅうごう / ターンエンド)を開く。
+                        // 旧仕様は「床の空きマスに旗を立てる」ため床限定だったが、しゅうごうは
+                        // 旗を使わなくなった(ロードへ合流)ので、どこでもメニューを開けてよい。
+                        Transition.CursorOpenGatherMenu
                 }
             case (TurnPhase.Phase.PlayerMoving, Input.Confirm) =>
                 // Tween 中はガード。さらに「自分以外の味方と同セルで重なっている」

@@ -256,7 +256,7 @@ mod ActionMenuScene {
         match entry#metadata {
             case None    => scene
             case Some(m) =>
-                if (m == attackMeta())        enterAttackForecastFromMenu(scene)
+                if (m == attackMeta())        PlayerScene.enterAttackPhase(scene)
                 else if (m == exchangeMeta()) PhaseTransitions.enterTradeTargetSelect(scene)
                 else if (m == itemMeta())     openItemMenu(scene)
                 else if (m == waitMeta())     PlayerScene.commitWaitedAndAdvance(scene)
@@ -265,47 +265,6 @@ mod ActionMenuScene {
                 else if (m == turnEndMeta())  applyTurnEnd(scene)
                 else if (m == disbandMeta())  AutoMoveScene.disband("かいさん", scene)
                 else                          scene
-        }
-
-    /// 「こうげき」確定: 接敵中の敵から最初の 1 体を自動ターゲットにして、敵ステータスを
-    /// 挟まず直接 AttackForecast (戦闘予測) に入る。カーソルもその敵にスナップして
-    /// 「どの敵を狙っているか」を見せる。射程内に敵が居ない場合 (本来 attack 項目が
-    /// 出ないので到達しないはず) は防御的に従来の手動ターゲット選択にフォールバックする。
-    def enterAttackForecastFromMenu(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State,
-                              PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
-        match SelectedPlayer.State.get()#id {
-            case None           => scene
-            case Some(playerId) =>
-                match PlayerScene.PartyQuery.get(playerId) {
-                    case None         => PlayerScene.enterAttackPhase(scene)
-                    case Some(player) =>
-                        match firstAttackTarget(player) {
-                            case None         => PlayerScene.enterAttackPhase(scene)
-                            case Some(target) =>
-                                PlayerScene.setAttackTargetId(playerId, target#id, scene)
-                                    |> CursorScene.setVisible(true)
-                                    |> CursorScene.snapToCell(target#gridPos)
-                                    |> PhaseTransitions.enterAttackForecast
-                        }
-                }
-        }
-
-    /// 装備武器の射程内に居る生きている敵のうち、reading order (y 昇順 → x 昇順) で
-    /// 最初の 1 体を返す。`canAttackFrom` と同じ判定なので、攻撃メニューが出る場面では
-    /// 必ず 1 体以上居る。
-    def firstAttackTarget(player: PlayerScene.Data):
-            Option[EnemyScene.Data] \ EnemyScene.RosterQuery =
-        match List.head(player#weapons) {
-            case None    => None
-            case Some(w) =>
-                EnemyScene.RosterQuery.getAll()
-                    |> List.filter(e ->
-                        not e#isDying and e#hp > 0
-                        and Weapon.canReach(Weapon.manhattan(player#gridPos, e#gridPos), w))
-                    |> List.sortBy(e -> (e#gridPos#y, e#gridPos#x))
-                    |> List.head
         }
 
     /// 「アイテム」確定で ItemMenuScene を開く。選択中味方の id が必要。

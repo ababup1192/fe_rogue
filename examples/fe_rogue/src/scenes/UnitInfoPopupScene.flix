@@ -1,7 +1,8 @@
 /// UnitInfoPopupScene — カーソル上のユニット情報を画面左上に出す HUD ウィンドウ
 ///
-/// PlayerCursor / PlayerAttack フェーズ中、カーソルが乗っているマスに味方/敵が居れば
-/// 画面左上のパネルに情報を表示する。表示モードは 2 種類:
+/// PlayerCursor フェーズ中（下見）にカーソルが乗っているマスに味方/敵が居れば
+/// 画面左上のパネルに情報を表示する。PlayerAttack(ターゲット選択)中は戦闘予測パネルだけを
+/// 出すため、このポップアップは表示しない。表示モードは 2 種類:
 ///   - Status (デフォルト): スプライト + 名前 + HP + ステータス + HP バー
 ///   - Items: スプライト名 + 所持武器一覧（アイコン + 名前 + 残耐久）
 /// Z (決定) を押すと Status ↔ Items で切替。
@@ -128,8 +129,9 @@ mod UnitInfoPopupScene {
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, TurnPhase.State} =
         let phase = TurnPhase.State.get();
-        let cursorActive = phase == TurnPhase.Phase.PlayerCursor
-                        or phase == TurnPhase.Phase.PlayerAttack;
+        // ユニット情報ポップアップは PlayerCursor の下見専用。
+        // PlayerAttack(ターゲット選択)中は戦闘予測パネルだけ出すので、ここでは表示しない。
+        let cursorActive = phase == TurnPhase.Phase.PlayerCursor;
         let next = if (not cursorActive) {
             if (Option.isEmpty(getShownUnit(scene))) scene
             else hide(scene)

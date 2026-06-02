@@ -47,7 +47,8 @@ mod BattlePanelScene {
     /// 親の可視性を見ない実装で、`visible=true` のまま放置すると非表示中もテキストが
     /// 描画されてしまうため。
     pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let visible = phase == TurnPhase.Phase.AttackForecast;
+        // 戦闘予測 = ターゲット選択フェーズ(PlayerAttack)。カーソルで敵を選ぶ間ずっと表示する。
+        let visible = phase == TurnPhase.Phase.PlayerAttack;
         scene
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(textPath(), CanvasItem.setVisible(visible))
@@ -65,6 +66,7 @@ mod BattlePanelScene {
                        PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         let phase = TurnPhase.State.get();
         let next = scene
+            |> syncTargetToCursor(phase)
             |> applyVisibility(phase)
             |> applyText(phase);
         match Scene.getEngineNode(panelPath(), next) {
@@ -72,12 +74,28 @@ mod BattlePanelScene {
             case None         => (node, next)
         }
 
-    /// AttackForecast フェーズのときだけ Label2D に予報テキストを書き込む。
+    /// PlayerAttack 中、攻撃対象をカーソル位置の敵に毎フレーム同期する。
+    /// カーソルは `CursorScene.stepTargetCycle` で射程内の敵の上を巡回するので、
+    /// 「今カーソルが乗っている敵」が攻撃対象になり、予報も Z の確定もそれを使う。
+    /// カーソルが敵に乗っていなければ対象をクリアする（予報は空・確定は no-op）。
+    def syncTargetToCursor(phase: TurnPhase.Phase, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ SelectedPlayer.State =
+        if (phase != TurnPhase.Phase.PlayerAttack) scene
+        else match SelectedPlayer.State.get()#id {
+            case None             => scene
+            case Some(attackerId) =>
+                match EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene) {
+                    case Some(enemyId) => PlayerScene.setAttackTargetId(attackerId, enemyId, scene)
+                    case None          => PlayerScene.clearAttackTargetId(attackerId, scene)
+                }
+        }
+
+    /// PlayerAttack(= ターゲット選択 + 戦闘予測)中だけ Label2D に予報テキストを書き込む。
     /// 同フェーズ中は毎フレーム呼ばれるが Label2D.setText は冪等。
     def applyText(phase: TurnPhase.Phase, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {SelectedPlayer.State,
                               PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
-        if (phase != TurnPhase.Phase.AttackForecast) scene
+        if (phase != TurnPhase.Phase.PlayerAttack) scene
         else
             let text = buildBattleText();
             Label2D.mapAt(textPath(), Label2D.setText(text), scene)

@@ -94,8 +94,7 @@ mod TestTurnRules {
             expected = TurnRules.Transition.CursorSelectPlayer(0),
             TurnRules.decide(context))
 
-    /// 駒が居ない床マスで Z → 集合メニュー (ActionMenu「しゅうごう」) を開く。
-    /// 確定で旗が立ち自動移動 (PlayerAutoMove) に向かう。
+    /// 駒が居ない床マスで Z → 空マスメニュー (ActionMenu「しゅうごう / ターンエンド」) を開く。
     @Test
     def testCursorConfirmOnEmptyFloorOpensGatherMenu(): Unit \ Assert =
         let context = baseContext(boardWithPlayerOnly(cell(0, 0)), cell(2, 2));
@@ -103,32 +102,32 @@ mod TestTurnRules {
             expected = TurnRules.Transition.CursorOpenGatherMenu,
             TurnRules.decide(context))
 
-    /// 待機済み（waited）の味方上で Z → Stay（findActive=None だが、駒で占有されているので
-    /// 旗も立てられない）。FE で「同じ駒を 2 回動かせない」境界の確認。
+    /// 待機済み（waited）の味方上で Z → アクティブ味方が居ないのでメニューを開く。
+    /// (しゅうごうは旗を使わなくなったため、占有マスでもメニュー自体は開ける。)
     @Test
-    def testCursorConfirmOnWaitedAllyDoesNothing(): Unit \ Assert =
+    def testCursorConfirmOnWaitedAllyOpensGatherMenu(): Unit \ Assert =
         let context = {
             waitedPlayerIds = 0 :: Nil
             | baseContext(boardWithPlayerOnly(cell(2, 2)), cell(2, 2))
         };
         Assert.assertEq(
-            expected = TurnRules.Transition.Stay,
+            expected = TurnRules.Transition.CursorOpenGatherMenu,
             TurnRules.decide(context))
 
-    /// 壁マス上で Z → Stay（床ではないので旗も立たない）
+    /// 壁マス上で Z → メニューを開く（旗を使わなくなったので床制限なし）。
     @Test
-    def testCursorConfirmOnWallDoesNothing(): Unit \ Assert =
+    def testCursorConfirmOnWallOpensGatherMenu(): Unit \ Assert =
         let context = baseContext(boardWithWall(cell(0, 0)), cell(3, 2));
         Assert.assertEq(
-            expected = TurnRules.Transition.Stay,
+            expected = TurnRules.Transition.CursorOpenGatherMenu,
             TurnRules.decide(context))
 
-    /// 敵マス上で Z → Stay（findActive=None で occupied=true、PlantFlag 不可）
+    /// 敵マス上で Z → アクティブ味方が居ないのでメニューを開く。
     @Test
-    def testCursorConfirmOnEnemyDoesNothing(): Unit \ Assert =
+    def testCursorConfirmOnEnemyOpensGatherMenu(): Unit \ Assert =
         let context = baseContext(boardWith(cell(0, 0), cell(2, 2)), cell(2, 2));
         Assert.assertEq(
-            expected = TurnRules.Transition.Stay,
+            expected = TurnRules.Transition.CursorOpenGatherMenu,
             TurnRules.decide(context))
 
     /// PlayerCursor で X → Stay（戻る場所がないのでキャンセルは無効）
