@@ -61,7 +61,8 @@ mod TestPlayerScene {
                         staves            = Nil,
                         selectedItem      = None,
                         moveStepsTaken    = 0,
-                        facing            = Staff.Direction.Down
+                        facing            = Staff.Direction.Down,
+                        hidden            = false
                     })))
 
     /// プレイヤー id のワールド座標を取り出す
@@ -360,4 +361,82 @@ mod TestPlayerScene {
             expected = ("くんれんやり" :: Nil, Nil),
             (PlayerScene.getWeapons(0, after) |> List.map(w -> w#name),
              PlayerScene.getWeapons(1, after) |> List.map(w -> w#name)))
+
+    // ========================================================================
+    // ローグ移動モード — nearestMover(合流順) / pickRespawnCells(解散の再配置)
+    // ========================================================================
+
+    /// セル列を assertEq 用の (x, y) タプル列にする。
+    def cellsToTuples(cells: List[{x = Int32, y = Int32}]): List[(Int32, Int32)] =
+        List.map(c -> (c#x, c#y), cells)
+
+    /// nearestMover テスト用の最小 Data（位置以外はダミー）。
+    def pdata(id: Int32, gridPos: {x = Int32, y = Int32}): PlayerScene.Data = {
+        id              = id,
+        gridPos         = gridPos,
+        moveTiles       = 5,
+        hp              = 10,
+        waited          = false,
+        attackTargetId  = None,
+        resource        = TestUnitFixtures.testResource(5, 10),
+        weapons         = Nil,
+        staves          = Nil,
+        selectedItem    = None,
+        moveStepsTaken  = 0,
+        facing          = Staff.Direction.Down,
+        hidden          = false
+    }
+
+    /// origin 1 マスだけが床で、ほかは壁の MapSnapshot（再配置の不足ケース用）。
+    def singleFloorSnapshot(origin: {x = Int32, y = Int32}): MapSnapshot =
+        {
+            tileSize     = testTileSize(),
+            usedRect     = {position = Vec2i.zero(), size = ({x = 13, y = 13}: {x = Int32, y = Int32})},
+            isWall       = c -> not (c#x == origin#x and c#y == origin#y),
+            isFloor      = c -> c#x == origin#x and c#y == origin#y,
+            mapToLocal   = c -> testGridToWorld(c),
+            gridToWorld  = c -> testGridToWorld(c),
+            moduleOfCell = _ -> None
+        }
+
+    /// 合流で次に動かす 1 体は、ロードに最も近い味方。
+    /// ロード (5,5)、味方 id1 (8,5) は距離 3、id2 (6,5) は距離 1 → id2 が選ばれる。
+    @Test
+    def testNearestMoverPicksClosest(): Unit \ Assert =
+        let lordPos: {x = Int32, y = Int32} = {x = 5, y = 5};
+        let movers = pdata(1, {x = 8, y = 5}) :: pdata(2, {x = 6, y = 5}) :: Nil;
+        match PlayerScene.nearestMover(lordPos, movers) {
+            case Some(d) => Assert.assertEq(expected = 2, d#id)
+            case None    => bug!("nearestMover: expected a mover")
+        }
+
+    /// 再配置: ロード周囲が全部空いていれば、近傍を順に n マス選ぶ（origin は含めない）。
+    /// origin (5,5)、n=2 → 上下左右の先頭 2 マス [(6,5), (4,5)]。
+    @Test
+    def testPickRespawnCellsPicksNeighbors(): Unit \ Assert =
+        let origin: {x = Int32, y = Int32} = {x = 5, y = 5};
+        let board: Board = {map = testSnapshot(), pieces = (Piece.Player(0), origin) :: Nil};
+        let cells = PlayerScene.pickRespawnCells(origin, 2, board);
+        Assert.assertEq(expected = (6, 5) :: (4, 5) :: Nil, cellsToTuples(cells))
+
+    /// 再配置: 駒が占有しているマスは避ける。
+    /// (6,5) に敵が居ると、その次の候補 (4,5), (5,6) が選ばれる。
+    @Test
+    def testPickRespawnCellsAvoidsOccupied(): Unit \ Assert =
+        let origin: {x = Int32, y = Int32} = {x = 5, y = 5};
+        let board: Board = {
+            map    = testSnapshot(),
+            pieces = (Piece.Player(0), origin) :: (Piece.Enemy(0), {x = 6, y = 5}) :: Nil
+        };
+        let cells = PlayerScene.pickRespawnCells(origin, 2, board);
+        Assert.assertEq(expected = (4, 5) :: (5, 6) :: Nil, cellsToTuples(cells))
+
+    /// 再配置: 周囲が壁で空きが足りないときは origin で埋めて長さ n を保つ。
+    /// origin だけ床 → 近傍ゼロ → [(5,5), (5,5)]（重なっても次の移動で解ける）。
+    @Test
+    def testPickRespawnCellsFallsBackToOrigin(): Unit \ Assert =
+        let origin: {x = Int32, y = Int32} = {x = 5, y = 5};
+        let board: Board = {map = singleFloorSnapshot(origin), pieces = (Piece.Player(0), origin) :: Nil};
+        let cells = PlayerScene.pickRespawnCells(origin, 2, board);
+        Assert.assertEq(expected = (5, 5) :: (5, 5) :: Nil, cellsToTuples(cells))
 }

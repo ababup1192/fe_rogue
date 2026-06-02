@@ -65,4 +65,38 @@ mod TestMapScene {
     def testModuleOfCellEmpty(): Unit \ Assert =
         let result = MapScene.moduleOfCellIn(({x = 0, y = 0}: {x = Int32, y = Int32}), Nil);
         Assert.assertEq(expected = None, result)
+
+    // ========================================================================
+    // moduleCenter — 部屋(モジュール)の床範囲の中心セル（発見演出のカメラ寄せ用）
+    // ========================================================================
+
+    /// Option[{x,y}] を assertEq 用タプルに変換 ((None → (false,0,0))。
+    def centerToTuple(o: Option[{x = Int32, y = Int32}]): (Bool, Int32, Int32) =
+        match o {
+            case Some(c) => (true, c#x, c#y)
+            case None    => (false, 0, 0)
+        }
+
+    /// offset(0,0)・床 8×8 の部屋0 の中心は (3,3)。
+    /// floorBoundsMaxEx は排他なので最終床セルは 7、中心 = (0+7)/2 = 3。
+    @Test
+    def testModuleCenterAtOrigin(): Unit \ Assert =
+        let p0 = placement(0, 0, 0, 8, 8);
+        Assert.assertEq(expected = (true, 3, 3),
+            centerToTuple(MapScene.moduleCenter(0, p0 :: Nil)))
+
+    /// offset(10,20)・床 5×3 の部屋2 の中心は (12,21)。
+    /// x: (10 + 14)/2 = 12（14 = 10+5-1）、y: (20 + 22)/2 = 21（22 = 20+3-1）。
+    @Test
+    def testModuleCenterWithOffset(): Unit \ Assert =
+        let p2 = placement(2, 10, 20, 5, 3);
+        Assert.assertEq(expected = (true, 12, 21),
+            centerToTuple(MapScene.moduleCenter(2, p2 :: Nil)))
+
+    /// 未配置の idx は None。
+    @Test
+    def testModuleCenterUnknownIdx(): Unit \ Assert =
+        let p0 = placement(0, 0, 0, 8, 8);
+        Assert.assertEq(expected = (false, 0, 0),
+            centerToTuple(MapScene.moduleCenter(9, p0 :: Nil)))
 }

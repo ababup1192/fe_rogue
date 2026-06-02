@@ -61,6 +61,7 @@ mod ActionMenuScene {
     def pickupMeta(): String    = "pickup"
     def gatherMeta(): String    = "gather"
     def turnEndMeta(): String   = "turnEnd"
+    def disbandMeta(): String   = "disband"
 
     /// scene に ActionMenu ノードツリーを追加する。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
@@ -141,12 +142,13 @@ mod ActionMenuScene {
             \ {SelectedPlayer.State, PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         match SelectedPlayer.State.get()#id {
             case None     =>
-                ({text     = "しゅうごう",
-                  disabled = false,
-                  metadata = Some(gatherMeta())}: ItemEntry) ::
-                ({text     = "ターンエンド",
-                  disabled = false,
-                  metadata = Some(turnEndMeta())}: ItemEntry) :: Nil
+                // SelectedPlayer = None の空マスメニュー。ローグ移動モード中
+                // (合流して退避中の味方が居る) なら「ひろう / かいさん」、
+                // 通常時は「しゅうごう(条件付き) / ターンエンド」。
+                if (not List.isEmpty(PlayerScene.hiddenAllies(scene)))
+                    rogueMenuItems(scene)
+                else
+                    gatherMenuItems(scene)
             case Some(id) =>
                 match PlayerScene.PartyQuery.get(id) {
                     case None         => Nil
@@ -187,6 +189,34 @@ mod ActionMenuScene {
                 }
         }
 
+    /// ローグ移動モード中(合流済み)のメニュー項目。ロード足元にアイテムがあれば「ひろう」、
+    /// 常に「かいさん」。拾いはロード(id 0)を対象に既存の applyPickup を転用する。
+    def rogueMenuItems(scene: Scene[NodeTag]): List[ItemEntry] =
+        let lordPos = PlayerScene.getGridPos(0, scene);
+        let pickup =
+            if (Option.nonEmpty(ItemScene.findAt(lordPos, scene)))
+                ({text = "ひろう", disabled = false,
+                  metadata = Some(pickupMeta())}: ItemEntry) :: Nil
+            else Nil;
+        let disband =
+            ({text = "かいさん", disabled = false,
+              metadata = Some(disbandMeta())}: ItemEntry) :: Nil;
+        List.append(pickup, disband)
+
+    /// 通常の空マスメニュー項目。ロードが敵に未検知(部屋外かつ索敵範囲外)で合流可能な味方が
+    /// 居れば「しゅうごう」、常に「ターンエンド」。
+    def gatherMenuItems(scene: Scene[NodeTag]): List[ItemEntry] =
+        let gather =
+            if (not AutoMoveScene.lordDetected(scene)
+                and not List.isEmpty(PlayerScene.mergeableAllies(scene)))
+                ({text = "しゅうごう", disabled = false,
+                  metadata = Some(gatherMeta())}: ItemEntry) :: Nil
+            else Nil;
+        let turnEnd =
+            ({text = "ターンエンド", disabled = false,
+              metadata = Some(turnEndMeta())}: ItemEntry) :: Nil;
+        List.append(gather, turnEnd)
+
     /// 装備武器の射程内に生きている敵が居るか。
     /// 武器なし / 全員 isDying なら false。
     def canAttackFrom(player: PlayerScene.Data): Bool \ EnemyScene.RosterQuery =
@@ -226,55 +256,15 @@ mod ActionMenuScene {
         match entry#metadata {
             case None    => scene
             case Some(m) =>
-                if (m == attackMeta())        enterAttackForecastFromMenu(scene)
+                if (m == attackMeta())        PlayerScene.enterAttackPhase(scene)
                 else if (m == exchangeMeta()) PhaseTransitions.enterTradeTargetSelect(scene)
                 else if (m == itemMeta())     openItemMenu(scene)
                 else if (m == waitMeta())     PlayerScene.commitWaitedAndAdvance(scene)
                 else if (m == pickupMeta())   applyPickup(scene)
                 else if (m == gatherMeta())   applyGather(scene)
                 else if (m == turnEndMeta())  applyTurnEnd(scene)
+                else if (m == disbandMeta())  AutoMoveScene.disband("かいさん", scene)
                 else                          scene
-        }
-
-    /// 「こうげき」確定: 接敵中の敵から最初の 1 体を自動ターゲットにして、敵ステータスを
-    /// 挟まず直接 AttackForecast (戦闘予測) に入る。カーソルもその敵にスナップして
-    /// 「どの敵を狙っているか」を見せる。射程内に敵が居ない場合 (本来 attack 項目が
-    /// 出ないので到達しないはず) は防御的に従来の手動ターゲット選択にフォールバックする。
-    def enterAttackForecastFromMenu(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State,
-                              PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
-        match SelectedPlayer.State.get()#id {
-            case None           => scene
-            case Some(playerId) =>
-                match PlayerScene.PartyQuery.get(playerId) {
-                    case None         => PlayerScene.enterAttackPhase(scene)
-                    case Some(player) =>
-                        match firstAttackTarget(player) {
-                            case None         => PlayerScene.enterAttackPhase(scene)
-                            case Some(target) =>
-                                PlayerScene.setAttackTargetId(playerId, target#id, scene)
-                                    |> CursorScene.setVisible(true)
-                                    |> CursorScene.snapToCell(target#gridPos)
-                                    |> PhaseTransitions.enterAttackForecast
-                        }
-                }
-        }
-
-    /// 装備武器の射程内に居る生きている敵のうち、reading order (y 昇順 → x 昇順) で
-    /// 最初の 1 体を返す。`canAttackFrom` と同じ判定なので、攻撃メニューが出る場面では
-    /// 必ず 1 体以上居る。
-    def firstAttackTarget(player: PlayerScene.Data):
-            Option[EnemyScene.Data] \ EnemyScene.RosterQuery =
-        match List.head(player#weapons) {
-            case None    => None
-            case Some(w) =>
-                EnemyScene.RosterQuery.getAll()
-                    |> List.filter(e ->
-                        not e#isDying and e#hp > 0
-                        and Weapon.canReach(Weapon.manhattan(player#gridPos, e#gridPos), w))
-                    |> List.sortBy(e -> (e#gridPos#y, e#gridPos#x))
-                    |> List.head
         }
 
     /// 「アイテム」確定で ItemMenuScene を開く。選択中味方の id が必要。
@@ -285,11 +275,15 @@ mod ActionMenuScene {
             case Some(playerId) => ItemMenuScene.openFor(playerId, scene)
         }
 
-    /// 「しゅうごう」確定: その瞬間のカーソル位置に旗を立てて PlayerAutoMove に進む。
-    /// ActionSelect 中はカーソルが動かないので、開いた瞬間のセルがそのままターゲットになる。
+    /// 「しゅうごう」確定: ローグ移動モードの合流を開始する (PlayerAutoMove フェーズへ)。
+    /// 以降は AutoMoveScene の driver が味方をロードへ歩かせ、重なったら退避させる。
+    /// SelectedPlayer は使わないのでクリアしておく。
     def applyGather(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State} =
-        FlagScene.plant(CursorScene.getGridPos(scene), scene)
+            Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
+                              SelectedPlayer.State} =
+        GameLogger.playerLog("しゅうごう");
+        SelectedPlayer.State.put(SelectedPlayer.cleared());
+        PhaseTransitions.enterPlayerAutoMove(scene)
 
     /// 「ターンエンド」確定: 全アクティブ味方を行動済みにして即敵ターンへ進む。
     /// SelectedPlayer が None（空マスメニュー）のときだけ選択肢に出るので、
@@ -313,9 +307,19 @@ mod ActionMenuScene {
     def applyPickup(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger,
                               SelectedPlayer.State, PlayerScene.PartyQuery} =
-        selectedPlayerInfo()
+        pickupTarget(scene)
             |> Option.map(info -> pickupAt(info, scene))
             |> Option.getWithDefault(scene)
+
+    /// 拾う主体(playerId)と拾う位置(gridPos)を決める。ローグ移動モード中(合流済み)は
+    /// ロード(id 0)がロード足元のアイテムを拾う。通常時は選択中の味方が足元のを拾う。
+    def pickupTarget(scene: Scene[NodeTag]):
+            Option[{playerId = Int32, gridPos = {x = Int32, y = Int32}}]
+            \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
+        if (not List.isEmpty(PlayerScene.hiddenAllies(scene)))
+            Some({playerId = 0, gridPos = PlayerScene.getGridPos(0, scene)})
+        else
+            selectedPlayerInfo()
 
     /// 選択中の味方の id と現在位置をまとめて返す。
     /// SelectedPlayer 未選択 / PartyQuery で見つからないいずれでも None。
@@ -369,6 +373,13 @@ mod ActionMenuScene {
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         scene
 
+    /// RogueMove (ローグ自由歩行) + Z 押下時の遷移: メニュー (ひろう / かいさん) を開く。
+    /// SelectedPlayer は None のまま。`buildItems` が「退避中の味方が居る」ことを手掛かりに
+    /// ローグ用メニューを返す。X で `onActionCancelled` が RogueMove に戻す。
+    pub def openFromRogue(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
+        scene
+
     /// X / Escape 押下で呼ばれる。メニューを閉じて元のフェーズに戻る:
     ///   - SelectedPlayer あり (PlayerMoving からの ActionMenu) → PlayerMoving
     ///   - SelectedPlayer なし (PlayerCursor からの集合メニュー) → PlayerCursor
@@ -377,7 +388,13 @@ mod ActionMenuScene {
                               Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
         let target = match SelectedPlayer.State.get()#id {
             case Some(_) => TurnPhase.Phase.PlayerMoving
-            case None    => TurnPhase.Phase.PlayerCursor
+            case None    =>
+                // 退避中の味方が居る = ローグ移動モード由来のメニュー → RogueMove に戻す。
+                // それ以外は通常の空マスメニュー由来 → PlayerCursor に戻す。
+                if (not List.isEmpty(PlayerScene.hiddenAllies(scene)))
+                    TurnPhase.Phase.RogueMove
+                else
+                    TurnPhase.Phase.PlayerCursor
         };
         TurnPhase.State.put(target);
         scene

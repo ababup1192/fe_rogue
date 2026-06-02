@@ -212,6 +212,27 @@ mod Board {
                     bfsReachable(isFloor, maxSteps, newVisited, newQueue)
         }
 
+    /// `cell`(ロード位置) が生存敵に検知されるか（ローグ移動モードの敵検知）。
+    /// 次のいずれかなら true:
+    ///   (a) **同じ部屋**: `cell` と生存敵が同じモジュール(部屋)に居る
+    ///       (`moduleOf` は `MapSnapshot#moduleOfCell` 相当。通路等は None で部屋扱いしない)
+    ///   (b) **索敵範囲内**: `cell` がいずれかの生存敵の移動到達範囲(赤マス = `reachableCells`)に入る
+    /// 死亡演出中(isDying)の敵は数えない。(a) は `EnemyAI.sameModuleAsAnyPlayer` と同じ部屋モデル、
+    /// (b) は EnemyRangeScene と同じ reachableCells 計算。
+    pub def cellDetectedByEnemy(moduleOf: {x = Int32, y = Int32} -> Option[Int32],
+                                 isFloor: {x = Int32, y = Int32} -> Bool,
+                                 enemies: List[{gridPos = {x = Int32, y = Int32},
+                                                moveTiles = Int32, isDying = Bool}],
+                                 cell: {x = Int32, y = Int32}): Bool =
+        let alive = enemies |> List.filter(e -> not e#isDying);
+        let sameRoom = match moduleOf(cell) {
+            case None    => false
+            case Some(m) => List.exists(e -> moduleOf(e#gridPos) == Some(m), alive)
+        };
+        let inRange = List.exists(e ->
+            containsCell(cell, reachableCells(isFloor, e#gridPos, e#moveTiles)), alive);
+        sameRoom or inRange
+
     /// `source` から `goal` への最短経路を返す。経路無しなら None。
     /// 戻り値は **source を含まない** 順序付きリスト（先頭 = 1 歩目、末尾 = goal）。
     /// 障害物 = 壁 + 他駒（自分・goal のセルは通行可）。

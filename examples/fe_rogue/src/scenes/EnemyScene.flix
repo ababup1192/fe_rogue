@@ -342,10 +342,11 @@ mod EnemyScene {
         mapEnemy(id, d -> {hp = 0, isDying = true | d}, scene)
 
     /// `death_blink` 完了時に GameManager が呼ぶ後始末。
-    /// bonus.ogg を再生し、ノードを scene から削除する（damage の後に bonus が鳴る順序保証）。
+    /// 敵撃破 SE (down_enemy) を再生し、ノードを scene から削除する
+    /// （damage の後に down_enemy が鳴る順序保証）。
     pub def completeDeath(id: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameEngine.Audio =
-        AudioStreamPlayer.play("bonus");
+        AudioStreamPlayer.play("down_enemy");
         Scene.removeAt(enemyPath(id), scene)
 
     /// World 直下の `Enemy_<id>` 形式の NodePath から id を取り出す。
@@ -557,8 +558,9 @@ mod EnemyScene {
                 let popupColor = DamagePopupScene.damageToPlayerColor();
                 let (damaged, killed) =
                     if (not Combat.isHit(hitChance, roll)) {
-                        // 回避: SE を鳴らさず "miss" だけ浮かす。HP も変えない。
+                        // 回避: miss SE を鳴らして "miss" を浮かす。HP は変えない。
                         GameLogger.enemyLog("敵${enemyId} → P${targetId} ミス");
+                        AudioStreamPlayer.play("miss");
                         (DamagePopupScene.emitText(popupPos, "miss", popupColor, scene), Nil)
                     } else {
                         // 命中: SE を鳴らしダメージ適用 + 数値ポップアップ。

@@ -75,7 +75,12 @@ mod PlayerScene {
         // 子 Sprite が AnimatedSprite2D の場合、移動時に `walk_<dir>` アニメを再生する
         // ためにここから方向を読む。子が Sprite2D の場合は表示には影響しないが、
         // 戦闘・スキル系で利用しやすいよう値は保持する。
-        facing             = Staff.Direction
+        facing             = Staff.Direction,
+        // ローグ移動モードで「しゅうごう」してロードに合流し、退避中なら true。
+        // hidden の味方は Marker2D ごと不可視 + `BoardSnapshot.fromScene` で盤面から除外され、
+        // 敵範囲判定・占有・経路探索・カーソルの対象から外れる。「かいさん」で false に戻り
+        // ロード周囲へ再出現する。持ち物・HP は hidden の間も Data に保持される。
+        hidden             = Bool
     }
 
     /// 味方パーティの「現フレーム状態」を Scene を介さずに読み取る effect。
@@ -270,7 +275,8 @@ mod PlayerScene {
             staves            = sp#staves,
             selectedItem      = None,
             moveStepsTaken    = 0,
-            facing            = Staff.Direction.Down
+            facing            = Staff.Direction.Down,
+            hidden            = false
         };
         // unit に spriteFrames があれば AnimatedSprite2D で配置、無ければ Sprite2D
         // (静止単一フレーム) で配置する。AnimatedSprite2D は engine の per-node
@@ -475,6 +481,38 @@ mod PlayerScene {
             case _ => (node, scene)
         }
 
+    /// ローグ移動モード(RogueMove)中のロード(id 0)の自由歩行。`physicsProcess` と違い
+    /// **移動力(MoveRange)の制限がなく**、床であれば何マスでも歩ける。他味方は合流して
+    /// hidden = 盤面から除外されているので、実質「地形 + 敵」だけが移動の障害になる。
+    /// 敵範囲入りの判定と自動解散は driver(`AutoMoveScene.roamJudge`)側が行う。
+    pub def lordRoamProcess(_delta: Duration.Duration,
+                             node: EngineNode[NodeTag],
+                             _path: NodePath,
+                             scene: Scene[NodeTag]):
+                            (EngineNode[NodeTag], Scene[NodeTag])
+                            \ {GameEngine.Game, BoardQuery, Tween.Scheduler} =
+        match node {
+            case EngineNode.Marker2DWithState(marker, NodeTag.Player(data)) =>
+                if (isMoving(data#id)) (node, scene)
+                else
+                    let board = BoardQuery.board();
+                    let movement = forM (
+                        dir    <- readHeldDirection();
+                        target <- Board.tryMove(board, data#gridPos, dir)
+                    ) yield {
+                        let (newMarker, newData) =
+                            moveTo(data#id, board#map, target, marker, data, scene);
+                        let nextScene = match directionOfStep(data#gridPos, target) {
+                            case Some(d) => playAnim(data#id, walkAnimName(d), scene)
+                            case None    => scene
+                        };
+                        (EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
+                         nextScene)
+                    };
+                    Option.getWithDefault((node, scene), movement)
+            case _ => (node, scene)
+        }
+
     /// 押されている方向キーを Option で返す（複数同時押しは上 > 下 > 左 > 右）
     def readHeldDirection(): Option[{x = Int32, y = Int32}] \ GameEngine.Game =
         let isDown = key -> GameEngine.Game.isKeyPressed(key);
@@ -603,6 +641,61 @@ mod PlayerScene {
         let ids = getAll(scene) |> List.map(d -> d#id);
         List.foldLeft((sc, id) -> mapPlayer(id, d -> {moveStepsTaken = 0 | d}, sc),
                        scene, ids)
+
+    // ────────────────────────────────────────────────────────
+    // (E') ローグ移動モード — 合流退避 / 再出現 / 候補選び
+    // ────────────────────────────────────────────────────────
+
+    /// 味方 id の表示/退避を切り替える。`flag = true` で Marker2D ごと不可視にして
+    /// hidden を立てる(合流して消える)。`flag = false` で元に戻す(かいさんで再出現)。
+    /// 親 Marker2D を不可視にすると子 Sprite / HPBar も連動して消える(Godot の
+    /// 親子可視性 AND。CursorScene.setVisible と同手法)。
+    pub def setHidden(id: Int32, flag: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(playerPath(id), engineNode -> match engineNode {
+            case EngineNode.Marker2DWithState(marker, NodeTag.Player(d)) =>
+                EngineNode.Marker2DWithState(CanvasItem.setVisible(not flag, marker),
+                                              NodeTag.Player({hidden = flag | d}))
+            case other => other
+        }, scene)
+
+    /// 合流して退避中(hidden)の味方一覧。「かいさん」での再出現対象。
+    /// このリストが空でない = いまローグ移動モード中、の手掛かりとしても使う。
+    pub def hiddenAllies(scene: Scene[NodeTag]): List[Data] =
+        getAll(scene) |> List.filter(d -> d#hidden)
+
+    /// 合流させられる味方一覧(= ロード(id 0)以外で、まだ表示中の味方)。
+    /// 「しゅうごう」を出す条件 / 合流で歩かせる対象として使う。
+    pub def mergeableAllies(scene: Scene[NodeTag]): List[Data] =
+        getAll(scene) |> List.filter(d -> d#id != 0 and not d#hidden)
+
+    /// 合流で次に動かす 1 体を選ぶ純粋関数(= ロードに最も近い味方)。居なければ None。
+    pub def nearestMover(lordPos: {x = Int32, y = Int32},
+                          movers: List[Data]): Option[Data] =
+        movers
+            |> List.sortBy(d -> Weapon.manhattan(d#gridPos, lordPos))
+            |> List.head
+
+    /// 「かいさん」でロード周囲に味方を再配置するためのセルを `n` 個選ぶ純粋関数。
+    /// `origin`(ロード位置)の 8 近傍から「床 かつ 駒に占有されていない かつ origin 以外」を
+    /// 近い順に拾い、不足分は origin で埋めて長さ `n` を保つ(狭所での保険。重なっても
+    /// 次の移動で解ける)。`spawn` 配置(`pickPlayerSpawns`)と同じ近傍・dedup 規則。
+    pub def pickRespawnCells(origin: {x = Int32, y = Int32}, n: Int32,
+                              board: Board): List[{x = Int32, y = Int32}] =
+        let offsets =
+                  ({x =  1, y =  0}: {x = Int32, y = Int32})
+            ::    ({x = -1, y =  0}: {x = Int32, y = Int32})
+            ::    ({x =  0, y =  1}: {x = Int32, y = Int32})
+            ::    ({x =  0, y = -1}: {x = Int32, y = Int32})
+            ::    ({x =  1, y =  1}: {x = Int32, y = Int32})
+            ::    ({x = -1, y =  1}: {x = Int32, y = Int32})
+            ::    ({x =  1, y = -1}: {x = Int32, y = Int32})
+            ::    ({x = -1, y = -1}: {x = Int32, y = Int32})
+            ::    Nil;
+        let cands = offsets
+            |> List.map(o -> ({x = origin#x + o#x, y = origin#y + o#y}: {x = Int32, y = Int32}))
+            |> List.filter(c -> Board.isWalkable(board, c) and not Board.isOccupied(c, board))
+            |> dedupCells;
+        padCells(cands, origin, n)
 
     /// 指定 id の子 Sprite の modulate を変える内部ヘルパー。
     /// Sprite2D / AnimatedSprite2D どちらの実装でも動くように両方の inner mapper を試す。
@@ -1063,8 +1156,9 @@ mod PlayerScene {
                 let popupColor = DamagePopupScene.damageToEnemyColor();
                 let afterDamage =
                     if (not Combat.isHit(hitChance, roll)) {
-                        // 回避: SE を鳴らさず "miss" だけ浮かす。HP も死亡演出も無し。
+                        // 回避: miss SE を鳴らして "miss" を浮かす。HP も死亡演出も無し。
                         GameLogger.playerLog("P${playerId} → 敵${enemyId} ミス");
+                        AudioStreamPlayer.play("miss");
                         DamagePopupScene.emitText(popupPos, "miss", popupColor, scene)
                     } else {
                         // 命中: SE を鳴らしダメージ適用 + 数値ポップアップ。
