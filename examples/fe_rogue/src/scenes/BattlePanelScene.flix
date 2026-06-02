@@ -169,8 +169,10 @@ mod BattlePanelScene {
                                                enemy#resource#magicDefense,
                                                phys);
         let playerForecast = Combat.forecast(
-            {attack = playerAtk, speed = player#resource#speed},
-            {hp = enemy#hp, defense = enemyDef, speed = enemy#resource#speed});
+            {attack = playerAtk, skill = player#resource#skill,
+             luck = player#resource#luck, weaponHit = weapon#hit},
+            {hp = enemy#hp, defense = enemyDef,
+             speed = enemy#resource#speed, luck = enemy#resource#luck});
         let enemyCols = formatEnemyColumns(player, enemy);
         let header   = padRight("味方", 10) ++ enemyCols#header;
         let hpLine   = padRight("HP   ${player#hp}", 10) ++ enemyCols#hp;
@@ -201,8 +203,10 @@ mod BattlePanelScene {
                                                            player#resource#magicDefense,
                                                            ePhys);
                     let enemyForecast = Combat.forecast(
-                        {attack = enemyAtk, speed = enemy#resource#speed},
-                        {hp = player#hp, defense = playerDef, speed = player#resource#speed});
+                        {attack = enemyAtk, skill = enemy#resource#skill,
+                         luck = enemy#resource#luck, weaponHit = eWeapon#hit},
+                        {hp = player#hp, defense = playerDef,
+                         speed = player#resource#speed, luck = player#resource#luck});
                     {header = header, hp = hpStr,
                      atk = "威力 ${enemyForecast#damage}",
                      hit = "命中 ${enemyForecast#hit}%"}

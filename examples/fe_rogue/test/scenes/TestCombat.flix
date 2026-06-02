@@ -55,36 +55,44 @@ mod TestCombat {
         Assert.assertEq(expected = 0, Combat.attackDamage(2, 5))
 
     // ════════════════════════════════════════════════════════
-    // hitRate: clamp(80 + (atkSpd - defSpd) * 5, 5, 100)
+    // hitRate: clamp(0, 100, 命中 - 回避)
+    //   命中 = 武器命中 + 技×2 + 幸運÷2
+    //   回避 = 速さ×2 + 幸運
+    //   引数: (attackerSkill, attackerLuck, weaponHit, defenderSpeed, defenderLuck)
     // ════════════════════════════════════════════════════════
 
-    /// 速さ同等 → 基準値 80%
+    /// 技5 幸運4 武器命中70 / 防御 速さ4 幸運3:
+    /// 命中 = 70 + 5*2 + 4/2 = 82, 回避 = 4*2 + 3 = 11 → 82 - 11 = 71
     @Test
-    def testHitRateEqualSpeed(): Unit \ Assert =
-        Assert.assertEq(expected = 80, Combat.hitRate(3, 3))
+    def testHitRateBasic(): Unit \ Assert =
+        Assert.assertEq(expected = 71, Combat.hitRate(5, 4, 70, 4, 3))
 
-    /// 攻撃側速さ +5 → 上限 100% に張りつく（80 + 25 → clamp）
+    /// 命中が回避を大きく上回る → 上限 100% に張りつく
+    /// 命中 = 100 + 10*2 + 0/2 = 120, 回避 = 0*2 + 0 = 0 → clamp(120) = 100
     @Test
     def testHitRateClampUpper(): Unit \ Assert =
-        Assert.assertEq(expected = 100, Combat.hitRate(8, 3))
+        Assert.assertEq(expected = 100, Combat.hitRate(10, 0, 100, 0, 0))
 
-    /// 防御側速さ +20 → 下限 5% に張りつく（80 - 100 → clamp）
+    /// 回避が命中を上回る → 下限 0% に張りつく（負にならない）
+    /// 命中 = 30 + 0*2 + 0/2 = 30, 回避 = 20*2 + 10 = 50 → clamp(-20) = 0
     @Test
     def testHitRateClampLower(): Unit \ Assert =
-        Assert.assertEq(expected = 5, Combat.hitRate(0, 20))
+        Assert.assertEq(expected = 0, Combat.hitRate(0, 0, 30, 20, 10))
 
     // ════════════════════════════════════════════════════════
     // forecast: スペックの「与:N 命中:P% 撃破」が一発で出る
     // ════════════════════════════════════════════════════════
 
-    /// knight (atk6, spd2) → goblin (hp3, def1, spd4):
-    /// 与 = 6-1 = 5, 命中 = 80 + (2-4)*5 = 70, 残 HP 3-5 ≦ 0 → 撃破
+    /// knight (atk6, skill5, luck3, 武器命中70) → goblin (hp3, def1, spd4, luck1):
+    /// 与 = 6-1 = 5
+    /// 命中 = 70 + 5*2 + 3/2 = 81, 回避 = 4*2 + 1 = 9 → 81 - 9 = 72
+    /// 残 HP 3-5 ≦ 0 → 撃破
     @Test
     def testForecastKnightVsGoblin(): Unit \ Assert =
         let f = Combat.forecast(
-            {attack = 6, speed = 2},
-            {hp = 3, defense = 1, speed = 4});
-        Assert.assertEq(expected = (5, 70, true), (f#damage, f#hit, f#kill))
+            {attack = 6, skill = 5, luck = 3, weaponHit = 70},
+            {hp = 3, defense = 1, speed = 4, luck = 1});
+        Assert.assertEq(expected = (5, 72, true), (f#damage, f#hit, f#kill))
 
     // ════════════════════════════════════════════════════════
     // attackStatFor / defenseStatFor: 物理/魔法のステ参照切替

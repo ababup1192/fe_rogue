@@ -17,9 +17,11 @@
       "initialInventory": [
         { "kind": "weapon", "id": "trainingBow" }
       ],
+      "luck": 4,
       "magicAttack": 0,
       "magicDefense": 2,
       "moveTiles": 5,
+      "skill": 6,
       "speed": 4,
       "sprite": {
         "frame": 1,
@@ -92,9 +94,11 @@
       "initialInventory": [
         { "kind": "weapon", "id": "trainingSword" }
       ],
+      "luck": 1,
       "magicAttack": 0,
       "magicDefense": 0,
       "moveTiles": 4,
+      "skill": 3,
       "speed": 4,
       "sprite": {
         "frame": 4,
@@ -114,9 +118,11 @@
       "initialInventory": [
         { "kind": "weapon", "id": "trainingSpear" }
       ],
+      "luck": 3,
       "magicAttack": 0,
       "magicDefense": 1,
       "moveTiles": 4,
+      "skill": 5,
       "speed": 4,
       "sprite": {
         "frame": 0,
@@ -136,9 +142,11 @@
         { "kind": "staff",  "id": "blowback_staff" },
         { "kind": "staff",  "id": "swap_staff" }
       ],
+      "luck": 5,
       "magicAttack": 8,
       "magicDefense": 3,
       "moveTiles": 5,
+      "skill": 5,
       "speed": 4,
       "sprite": {
         "frame": 2,
@@ -155,9 +163,11 @@
       "initialInventory": [
         { "kind": "weapon", "id": "trainingSword" }
       ],
+      "luck": 0,
       "magicAttack": 0,
       "magicDefense": 0,
       "moveTiles": 3,
+      "skill": 2,
       "speed": 2,
       "sprite": {
         "frame": 3,

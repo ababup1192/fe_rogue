@@ -317,7 +317,7 @@ mod UnitInfoPopupScene {
             |> ProgressBar.setBorderWidth(1);
         let withBar = Scene.addChildAt(panelPath(), "HpBar",
             EngineNode.ProgressBarWithState(hpBar, NodeTag.NoTag), withHpText);
-        let statsText = "ATK ${res#attack}  DEF ${res#defense}\nSPD ${res#speed}  MOV ${res#moveTiles}";
+        let statsText = "ATK ${res#attack}  DEF ${res#defense}\nSPD ${res#speed}  MOV ${res#moveTiles}\nSKL ${res#skill}  LCK ${res#luck}";
         let statsLabel = Label2D.make(statsText, atlas, fontSizeSmall())
             |> Node2D.setPosition(statsLocalPos())
             |> CanvasItem.setModulate(textColor());

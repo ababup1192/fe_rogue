@@ -63,7 +63,7 @@ mod TestWeapon {
     @Test
     def testCanReachAdjacentSword(): Unit \ Assert =
         let sword: UnitCatalog.WeaponResource =
-            {name = "sword", attack = 1, durability = 10,
+            {name = "sword", attack = 1, hit = 80, durability = 10,
              range = {min = 1, max = 1}, weaponType = WeaponCatalog.WeaponType.Physical,
              sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}}};
         Assert.assertEq(expected = true, Weapon.canReach(1, sword))
@@ -72,7 +72,7 @@ mod TestWeapon {
     @Test
     def testCanReachBowCannotCounterAdjacent(): Unit \ Assert =
         let bow: UnitCatalog.WeaponResource =
-            {name = "bow", attack = 1, durability = 10,
+            {name = "bow", attack = 1, hit = 80, durability = 10,
              range = {min = 2, max = 2}, weaponType = WeaponCatalog.WeaponType.Physical,
              sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}}};
         Assert.assertEq(expected = false, Weapon.canReach(1, bow))
@@ -81,7 +81,7 @@ mod TestWeapon {
     @Test
     def testCanReachSwordCannotCounterBow(): Unit \ Assert =
         let sword: UnitCatalog.WeaponResource =
-            {name = "sword", attack = 1, durability = 10,
+            {name = "sword", attack = 1, hit = 80, durability = 10,
              range = {min = 1, max = 1}, weaponType = WeaponCatalog.WeaponType.Physical,
              sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}}};
         Assert.assertEq(expected = false, Weapon.canReach(2, sword))
@@ -90,7 +90,7 @@ mod TestWeapon {
     @Test
     def testCanReachJavelinBoth(): Unit \ Assert =
         let javelin: UnitCatalog.WeaponResource =
-            {name = "javelin", attack = 1, durability = 10,
+            {name = "javelin", attack = 1, hit = 80, durability = 10,
              range = {min = 1, max = 2}, weaponType = WeaponCatalog.WeaponType.Physical,
              sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}}};
         Assert.assertEq(expected = (true, true, false),

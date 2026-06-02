@@ -87,6 +87,12 @@ mod UnitCatalog {
         magicAttack      = Int32,
         magicDefense     = Int32,
         speed            = Int32,
+        // 技。命中計算に使う (命中 = 武器命中 + 技×2 + 幸運÷2)。
+        // 旧 JSON に値が無い場合は decoder が 0 を埋める (後方互換)。
+        skill            = Int32,
+        // 幸運。命中と回避の両方に影響する (回避 = 速さ×2 + 幸運)。
+        // 旧 JSON に値が無い場合は decoder が 0 を埋める (後方互換)。
+        luck             = Int32,
         sprite           = SpriteResource,
         initialInventory = List[InventoryEntry],
         // 兵種名 (例: "アーチャー" / "ナイト" / "メイジ")。UI 上で表示する用途。
@@ -244,7 +250,7 @@ mod UnitCatalog {
     /// engine 側 `Resource.checkConsistency` がこの集合と `_schema.json` を照合する。
     pub def expectedUnitFields(): Set[String] =
         Set#{"moveTiles", "hp", "attack", "defense", "magicAttack", "magicDefense",
-              "speed", "sprite", "initialInventory",
+              "speed", "skill", "luck", "sprite", "initialInventory",
               "description", "spriteFrames"}
 
     /// `WeaponResource` のフィールド名集合。`WeaponCatalog.expectedFields` への委譲 (後方互換)。
@@ -303,6 +309,8 @@ mod UnitCatalogCodec {
             "magicAttack"      => JsonNumber(intToBd(u#magicAttack)),
             "magicDefense"     => JsonNumber(intToBd(u#magicDefense)),
             "speed"            => JsonNumber(intToBd(u#speed)),
+            "skill"            => JsonNumber(intToBd(u#skill)),
+            "luck"             => JsonNumber(intToBd(u#luck)),
             "sprite"           => encodeSprite(u#sprite),
             "initialInventory" => encodeInventory(u#initialInventory),
             "description"      => JsonString(u#description)
@@ -445,6 +453,13 @@ mod UnitCatalogCodec {
             let mDef = Map.get("magicDefense", obj)
                          |> Option.flatMap(expectInt)
                          |> Option.getWithDefault(0);
+            // skill (技) / luck (幸運) も省略可。欠落時は 0 (後方互換)。
+            let skl = Map.get("skill", obj)
+                         |> Option.flatMap(expectInt)
+                         |> Option.getWithDefault(0);
+            let lck = Map.get("luck", obj)
+                         |> Option.flatMap(expectInt)
+                         |> Option.getWithDefault(0);
             // description (兵種名表示用) は省略可。後方互換のため欠落時は "" を埋める。
             let desc = Map.get("description", obj)
                             |> Option.flatMap(expectString)
@@ -454,7 +469,8 @@ mod UnitCatalogCodec {
             // sprite.hframes/vframes と texture 実寸から格子→px に解決される。
             ({moveTiles = mt, hp = hp, attack = atk, defense = df,
               magicAttack = mAtk, magicDefense = mDef,
-              speed = spd, sprite = sp, initialInventory = inv,
+              speed = spd, skill = skl, luck = lck,
+              sprite = sp, initialInventory = inv,
               description = desc,
               spriteFrames = None}: UnitResource)
         }
