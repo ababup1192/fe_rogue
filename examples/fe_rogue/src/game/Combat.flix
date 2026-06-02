@@ -58,6 +58,12 @@ mod Combat {
         // clamp(0, 100, accuracy - avoid)
         Int32.max(0, Int32.min(100, accuracy - avoid))
 
+    /// 命中ロールの判定。`hitRate` は 0..100 の命中率（百分率）、`roll` は 0..99 の
+    /// 一様乱数を渡す想定（乱数生成は呼び出し側の effect で行い、ここは純粋に保つ）。
+    /// `roll < hitRate` で命中。hitRate=100 なら常に命中、hitRate=0 なら常に回避。
+    pub def isHit(hitRate: Int32, roll: Int32): Bool =
+        roll < hitRate
+
     /// `damage` 適用で防御側 HP が 0 以下になるか（撃破か）。
     pub def willKill(defenderHp: Int32, dmg: Int32): Bool =
         defenderHp - dmg <= 0

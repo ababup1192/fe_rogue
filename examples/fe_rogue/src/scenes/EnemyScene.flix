@@ -420,14 +420,13 @@ mod EnemyScene {
     /// killedIds が空でないとき呼び出し側は handlePlayerDeath を発火する。
     pub def applyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger} =
+            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random} =
         match get(enemyId, scene) {
             case None    => (scene, Nil)
             case Some(d) =>
                 match d#attackTargetId {
                     case None             => (scene, Nil)
                     case Some(targetPlayerId) =>
-                        AudioStreamPlayer.play("damage");
                         applyDamageToPlayer(enemyId, d, targetPlayerId, scene)
                 }
         }
@@ -444,7 +443,7 @@ mod EnemyScene {
             Scene[NodeTag] \ {GameEngine.Audio, GameEngine.Game,
                               GameLogger.GameLogger,
                               CustomEffects.GameOverRequest,
-                              SelectedPlayer.State} =
+                              SelectedPlayer.State, Math.Random} =
         let (next, killed) = applyAttackHit(enemyId, scene);
         PlayerScene.removeDeadAndCheckGameOver(killed, next)
 
@@ -468,7 +467,7 @@ mod EnemyScene {
                         CustomEffects.GameOverRequest,
                         Tween.Scheduler,
                         EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State} =
+                        SelectedPlayer.State, Math.Random} =
         match idFromPath(path) {
             case None          => (node, scene)
             case Some(enemyId) =>
@@ -530,6 +529,10 @@ mod EnemyScene {
             }
         }
 
+    /// 命中ロール用の 0..99 の一様乱数。`Combat.isHit(hitRate, roll)` に渡す。
+    def rollPercent(): Int32 \ Math.Random =
+        Float64.truncateToInt32(Float64.floor(Math.Random.randomFloat64() * 100.0))
+
     /// プレイヤー targetId にダメージを与える。攻撃力は `力(enemy#attack) + 武器の攻撃力` で、
     /// `Combat.attackDamage(総合攻撃力, 防御者#defense)` から素ダメージを得て
     /// `Combat.damage` で HP 減算 + 死亡判定。攻撃成立後は武器の `durability` を 1 減らし、
@@ -539,41 +542,56 @@ mod EnemyScene {
     /// 武器なし（None）でここに到達した場合は防御的に何もしない。
     def applyDamageToPlayer(enemyId: Int32, enemy: Data, targetId: Int32,
                              scene: Scene[NodeTag]):
-            (Scene[NodeTag], List[Int32]) \ {GameEngine.Game, GameLogger.GameLogger} =
+            (Scene[NodeTag], List[Int32]) \
+            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random} =
         match (enemy#weapon, PlayerScene.get(targetId, scene)) {
             case (None, _)        => (scene, Nil)
             case (_, None)        => (scene, Nil)
             case (Some(weapon), Some(player)) =>
                 let phys = UnitCatalog.isPhysical(weapon#weaponType);
-                let totalAttack = Combat.attackStatFor(enemy#resource#attack,
-                                                       enemy#resource#magicAttack,
-                                                       weapon#attack, phys);
-                let targetDef   = Combat.defenseStatFor(player#resource#defense,
-                                                        player#resource#magicDefense,
-                                                        phys);
-                let dmg    = Combat.attackDamage(totalAttack, targetDef);
-                let result = Combat.damage(hp = player#hp, amount = dmg);
-                if (result#isDead) {
-                    GameLogger.enemyLog("敵${enemyId} → P${targetId} を撃破")
-                } else {
-                    GameLogger.enemyLog("敵${enemyId} → P${targetId} に ${dmg}ダメージ")
-                };
-                // 被弾位置（プレイヤーの頭上）にダメージ数字を浮かす。撃破時も出す。
+                let hitChance = Combat.hitRate(enemy#resource#skill, enemy#resource#luck,
+                                               weapon#hit,
+                                               player#resource#speed, player#resource#luck);
+                let roll = rollPercent();
                 let popupPos = MapScene.cellCenter(player#gridPos);
                 let popupColor = DamagePopupScene.damageToPlayerColor();
-                let withPopup = DamagePopupScene.emit(popupPos, dmg, popupColor, scene);
-                let damaged = withPopup
-                    |> PlayerScene.mapPlayer(targetId,
-                        playerData -> {hp = result#newHp | playerData})
-                    |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), result#newHp);
+                let (damaged, killed) =
+                    if (not Combat.isHit(hitChance, roll)) {
+                        // 回避: SE を鳴らさず "miss" だけ浮かす。HP も変えない。
+                        GameLogger.enemyLog("敵${enemyId} → P${targetId} ミス");
+                        (DamagePopupScene.emitText(popupPos, "miss", popupColor, scene), Nil)
+                    } else {
+                        // 命中: SE を鳴らしダメージ適用 + 数値ポップアップ。
+                        AudioStreamPlayer.play("damage");
+                        let totalAttack = Combat.attackStatFor(enemy#resource#attack,
+                                                               enemy#resource#magicAttack,
+                                                               weapon#attack, phys);
+                        let targetDef   = Combat.defenseStatFor(player#resource#defense,
+                                                                player#resource#magicDefense,
+                                                                phys);
+                        let dmg    = Combat.attackDamage(totalAttack, targetDef);
+                        let result = Combat.damage(hp = player#hp, amount = dmg);
+                        if (result#isDead) {
+                            GameLogger.enemyLog("敵${enemyId} → P${targetId} を撃破")
+                        } else {
+                            GameLogger.enemyLog("敵${enemyId} → P${targetId} に ${dmg}ダメージ")
+                        };
+                        let withPopup = DamagePopupScene.emit(popupPos, dmg, popupColor, scene);
+                        let dmgScene = withPopup
+                            |> PlayerScene.mapPlayer(targetId,
+                                playerData -> {hp = result#newHp | playerData})
+                            |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), result#newHp);
+                        if (result#isDead) (dmgScene, targetId :: Nil)
+                        else (dmgScene, Nil)
+                    };
+                // 命中/回避どちらでも攻撃したので武器の耐久度は 1 減る
                 let consumed = Weapon.consume(weapon);
                 if (Option.isEmpty(consumed))
                     GameLogger.enemyLog("敵${enemyId} の ${weapon#name} がこわれた")
                 else ();
                 let withWeaponUpdate = mapEnemy(enemyId,
                     d -> {weapon = consumed | d}, damaged);
-                if (result#isDead) (withWeaponUpdate, targetId :: Nil)
-                else (withWeaponUpdate, Nil)
+                (withWeaponUpdate, killed)
         }
 
     /// 指定 id の敵が現在装備している武器を返す。未装備（壊れた後）なら None。

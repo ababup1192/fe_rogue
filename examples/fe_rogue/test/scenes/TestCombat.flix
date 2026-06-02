@@ -80,6 +80,30 @@ mod TestCombat {
         Assert.assertEq(expected = 0, Combat.hitRate(0, 0, 30, 20, 10))
 
     // ════════════════════════════════════════════════════════
+    // isHit: roll < hitRate で命中
+    // ════════════════════════════════════════════════════════
+
+    /// roll(40) < hitRate(70) → 命中
+    @Test
+    def testIsHitRollBelowRateHits(): Unit \ Assert =
+        Assert.assertEq(expected = true, Combat.isHit(70, 40))
+
+    /// roll(70) == hitRate(70) → 外れ（境界。roll は 0..99 なので 100% で必中になる）
+    @Test
+    def testIsHitRollEqualRateMisses(): Unit \ Assert =
+        Assert.assertEq(expected = false, Combat.isHit(70, 70))
+
+    /// hitRate(100) は roll が最大(99)でも命中（必中）
+    @Test
+    def testIsHitFullRateAlwaysHits(): Unit \ Assert =
+        Assert.assertEq(expected = true, Combat.isHit(100, 99))
+
+    /// hitRate(0) は roll が最小(0)でも外れる（必中失敗）
+    @Test
+    def testIsHitZeroRateAlwaysMisses(): Unit \ Assert =
+        Assert.assertEq(expected = false, Combat.isHit(0, 0))
+
+    // ════════════════════════════════════════════════════════
     // forecast: スペックの「与:N 命中:P% 撃破」が一発で出る
     // ════════════════════════════════════════════════════════
 

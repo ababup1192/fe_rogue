@@ -87,11 +87,18 @@ mod DamagePopupScene {
     /// 親が未登録（add 前）なら no-op。
     pub def emit(worldPos: Vec2.Vec2, damage: Int32, color: Color,
                    scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
+        emitText(worldPos, "${damage}", color, scene)
+
+    /// `emit` の文字列版。ダメージ数値の代わりに任意のテキスト（例: "miss"）を
+    /// 同じ float-up 演出で浮かす。命中失敗時に呼び出し側が "miss" を出すのに使う。
+    /// 親が未登録（add 前）なら no-op。
+    pub def emitText(worldPos: Vec2.Vec2, text: String, color: Color,
+                   scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         match Scene.getEngineNode(rootPath(), scene) {
             case Some(EngineNode.Marker2DWithState(parent, NodeTag.DamagePopupsRoot(root))) =>
                 let seq = root#nextSeq;
                 let atlas = GameEngine.Game.getFontAtlas(fontName());
-                let label = Label2D.make("${damage}", atlas, fontSize())
+                let label = Label2D.make(text, atlas, fontSize())
                                 |> Node2D.setPosition(worldPos)
                                 |> Label2D.setHorizontalAlignment(HorizontalAlignment.Center)
                                 |> Label2D.setVerticalAlignment(VerticalAlignment.Bottom)
