@@ -60,7 +60,8 @@ mod TestItemMenuScene {
             staves            = testStaff() :: Nil,
             selectedItem      = None,
             moveStepsTaken    = 0,
-            facing            = Staff.Direction.Down
+            facing            = Staff.Direction.Down,
+            hidden            = false
         };
         let withWorld = Scene.empty()
             |> Scene.addNode(MapScene.worldName(),

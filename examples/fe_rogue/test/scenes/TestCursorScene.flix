@@ -52,7 +52,8 @@ mod TestCursorScene {
                         staves            = Nil,
                         selectedItem      = None,
                         moveStepsTaken    = 0,
-                        facing            = Staff.Direction.Down
+                        facing            = Staff.Direction.Down,
+                        hidden            = false
                     })))
 
     /// SelectedPlayer.State のスタブ handler（未選択を返す）。
@@ -90,7 +91,8 @@ mod TestCursorScene {
                     staves            = Nil,
                     selectedItem      = None,
                     moveStepsTaken    = 0,
-                    facing            = Staff.Direction.Down
+                    facing            = Staff.Direction.Down,
+                    hidden            = false
                 }));
         Scene.empty()
             |> Scene.addNode(MapScene.worldName(),
@@ -395,7 +397,8 @@ mod TestCursorScene {
         staves          = Nil,
         selectedItem    = None,
         moveStepsTaken  = 0,
-        facing          = Staff.Direction.Down
+        facing          = Staff.Direction.Down,
+        hidden          = false
     }
 
     /// World + 与えた party の Marker2D を直接組み立てた scene。

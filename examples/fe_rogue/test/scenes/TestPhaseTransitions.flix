@@ -144,16 +144,15 @@ mod TestPhaseTransitions {
         }
 
     // ════════════════════════════════════════════════════════
-    // enterPlayerAutoMove — EnemyRange だけ消す / cursor 非表示 / 味方 range は触らない
+    // enterPlayerAutoMove — ローグ移動モードの合流開始。全 range を消す / cursor 非表示
     // ════════════════════════════════════════════════════════
 
-    /// PlayerAutoMove 進入で:
-    ///   - EnemyRange は消える
-    ///   - Move / MoveAttack / PlayerAttackRange は **触らない** (前 phase の表示を温存)
+    /// PlayerAutoMove 進入(=「しゅうごう」確定で合流開始)で:
+    ///   - Move / MoveAttack / PlayerAttackRange / EnemyRange は全て消える
     ///   - Cursor は隠れる
     ///   - TurnPhase は PlayerAutoMove
     @Test
-    def testEnterPlayerAutoMoveClearsEnemyRangeAndHidesCursor(): Unit \ Assert =
+    def testEnterPlayerAutoMoveClearsAllRangesAndHidesCursor(): Unit \ Assert =
         region rc {
             let initial = sceneWithAllRangesAndCursor();
             let result = run {
@@ -161,7 +160,24 @@ mod TestPhaseTransitions {
                 observe(after)
             } with TurnPhase.withState(rc);
             Assert.assertEq(
-                expected = (true, true, true, false, false, TurnPhase.Phase.PlayerAutoMove),
+                expected = (false, false, false, false, false, TurnPhase.Phase.PlayerAutoMove),
+                result)
+        }
+
+    /// RogueMove 進入(=合流完了で自由歩行開始)で:
+    ///   - Move / MoveAttack / PlayerAttackRange / EnemyRange は全て消える
+    ///   - Cursor は隠れる
+    ///   - TurnPhase は RogueMove
+    @Test
+    def testEnterRogueMoveClearsAllRangesAndHidesCursor(): Unit \ Assert =
+        region rc {
+            let initial = sceneWithAllRangesAndCursor();
+            let result = run {
+                let after = PhaseTransitions.enterRogueMove(initial);
+                observe(after)
+            } with TurnPhase.withState(rc);
+            Assert.assertEq(
+                expected = (false, false, false, false, false, TurnPhase.Phase.RogueMove),
                 result)
         }
 

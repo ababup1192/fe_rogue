@@ -83,7 +83,8 @@ mod TestActionMenuScene {
         staves          = Nil,
         selectedItem    = None,
         moveStepsTaken  = 0,
-        facing          = Staff.Direction.Down
+        facing          = Staff.Direction.Down,
+        hidden          = false
     }
 
     /// World + 2 人の Player + ActionMenu を組んだテスト scene。
@@ -398,4 +399,67 @@ mod TestActionMenuScene {
                 , groundItemStillThere
                 , weaponCountOf(0, after) ))
         }
+
+    // ════════════════════════════════════════════════════════
+    // ローグ移動モードのメニュー (SelectedPlayer = None × 退避中の味方が居る)
+    //   退避中の味方が居る = ローグ中 → 「ひろう(足元にアイテム時) / かいさん」を出す。
+    // ════════════════════════════════════════════════════════
+
+    /// World + ロード(id0, 表示, (1,1)) + 退避中の味方(id1, hidden) + ActionMenu。
+    /// 「ローグ移動モード中」を表す最小フィクスチャ。
+    def loadRogueActionMenuScene(): Scene[NodeTag] =
+        let world = Marker2D.make(Vec2.zero());
+        let m0 = Marker2D.make(Vec2.zero());
+        let m1 = Marker2D.make(Vec2.zero());
+        let lord = makePlayerData(0, {x = 1, y = 1});
+        let ally = {hidden = true | makePlayerData(1, {x = 5, y = 5})};
+        let withWorld = Scene.empty()
+            |> Scene.addNode(MapScene.worldName(),
+                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
+                EngineNode.Marker2DWithState(m0, NodeTag.Player(lord)))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(1),
+                EngineNode.Marker2DWithState(m1, NodeTag.Player(ally)));
+        actionMenuAddPure(withWorld)
+
+    /// SelectedPlayer = None・ActionSelect で refreshItems を回すランナー
+    /// (空マス / ローグメニューの項目構築を観測する用)。
+    def runRefreshItemsNoSelection(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let menuNode = match Scene.getEngineNode(ActionMenuScene.menuPath(), scene) {
+            case Some(node) => node
+            case None       => bug!("ActionMenu ItemList not found")
+        };
+        let (_, after) = TestUnitFixtures.withMockPartyQuery(scene, () ->
+            TestUnitFixtures.withMockRosterQuery(scene, () ->
+                run {
+                    ActionMenuScene.refreshItems(
+                        Duration.seconds(0.0), menuNode,
+                        ActionMenuScene.menuPath(), scene)
+                } with handler SelectedPlayer.State {
+                    def get(k)    = k({id = None, origin = None})
+                    def put(_, k) = k()
+                } with handler TurnPhase.State {
+                    def get(k)    = k(TurnPhase.Phase.ActionSelect)
+                    def put(_, k) = k()
+                }));
+        after
+
+    /// ローグ中・ロード足元にアイテムが無ければ、メニューは「かいさん」のみ。
+    @Test
+    def testRogueMenuShowsOnlyDisbandWithoutFloorItem(): Unit \ Assert =
+        let after = runRefreshItemsNoSelection(loadRogueActionMenuScene());
+        Assert.assertEq(
+            expected = Some("disband") :: Nil,
+            itemsMetadata(after))
+
+    /// ローグ中・ロード足元((1,1))にアイテムがあれば、「ひろう → かいさん」の順で出る。
+    @Test
+    def testRogueMenuShowsPickupThenDisbandWithFloorItem(): Unit \ Assert =
+        let scene = attachGroundItemAt({x = 1, y = 1},
+            ItemScene.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon()),
+            loadRogueActionMenuScene());
+        let after = runRefreshItemsNoSelection(scene);
+        Assert.assertEq(
+            expected = Some("pickup") :: Some("disband") :: Nil,
+            itemsMetadata(after))
 }

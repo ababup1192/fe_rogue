@@ -92,11 +92,21 @@ mod TurnPhase {
         /// `Pacing.State.hold` が抜けた瞬間に GameManager が `commitWaitedAndAdvance`
         /// を呼び、PlayerCursor または EnemyTurn に遷移する。
         case PlayerAttackHold
-        /// 味方ターン・自動移動フェーズ。空マスに旗を立てた直後、全アクティブ味方が
-        /// その旗に向かって 1 マスずつ自動で歩く。旗の周囲 2 マス以内に到達するか
-        /// 敵に発見されると止まり、PlayerCursor に戻る（旗は自動で消える）。
-        /// 入力は受け付けない。
+        /// ローグ移動モード・合流フェーズ。「しゅうごう」確定直後、ロード(id 0)以外の味方が
+        /// ロードに向かって 1 マスずつ自動で歩き、ロードに重なると非表示になって退避する。
+        /// 全員ロードに合流したら `RogueMove` に進む。入力は受け付けない。
+        /// （旧「旗へ自動移動」フェーズを転用。名前は互換のため据え置き。）
         case PlayerAutoMove
+        /// ローグ移動モード・自由歩行フェーズ。合流して 1 キャラ(ロード)になった状態。
+        /// カーソルは非表示で、WASD/方向キーでロードが移動力制限なく自由に歩き回る。
+        /// 敵の移動到達範囲(赤マス)に踏み込むと自動で解散して通常ターン制に戻る。
+        /// Z でメニュー(「ひろう」/「かいさん」)を開く。敵ターンは発生しない。
+        case RogueMove
+        /// ローグ移動モード・敵発見演出フェーズ。ロードが敵に検知された瞬間に入り、
+        /// 敵の上に「！」を出し、カメラを部屋中心(同部屋の場合)/敵中心(索敵範囲の場合)へ寄せ、
+        /// find SE を鳴らす。`Pacing` の hold が抜けたら隊列を解散して通常ターン制に戻る。
+        /// 入力は受け付けない（短い見せ場）。
+        case RogueAlert
         /// 敵ターン。入力は無効、カーソル非表示、カメラはプレイヤーに固定。
         case EnemyTurn
     }
@@ -268,7 +278,9 @@ mod TurnRules {
                 }
             case (TurnPhase.Phase.TradeTargetSelect, Input.Cancel) =>
                 Transition.TradeCancel
-            // EnemyTurn / PlayerAutoMove は入力無視（自動進行で抜ける）
+            // EnemyTurn / PlayerAutoMove(合流) は入力無視（自動進行で抜ける）。
+            // RogueMove は移動が physicsProcess、メニュー開閉が dispatchNonMenuKey 側で
+            // 直接処理されるため、ここ(TurnRules)は素通り。
             case _ => Transition.Stay
         }
 

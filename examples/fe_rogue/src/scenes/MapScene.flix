@@ -248,6 +248,23 @@ mod MapScene {
             else None
         }, placements)
 
+    /// モジュール idx の床範囲(floorBounds)の中心セルを返す。未配置 idx なら None。
+    /// `moduleOfCellIn` と同じ bbox(offset + floorBoundsMin/MaxEx、MaxEx は排他)で計算する。
+    /// 発見演出で「部屋の中心にカメラを寄せる」ために使う。
+    pub def moduleCenter(idx: Int32,
+                          placements: List[DungeonComposer.ModulePlacement]):
+            Option[{x = Int32, y = Int32}] =
+        List.findMap(p ->
+            if (p#idx == idx) {
+                let minX = p#offset#x + p#floorBoundsMin#x;
+                let minY = p#offset#y + p#floorBoundsMin#y;
+                let maxX = p#offset#x + p#floorBoundsMaxEx#x;
+                let maxY = p#offset#y + p#floorBoundsMaxEx#y;
+                Some(({x = (minX + maxX - 1) / 2,
+                       y = (minY + maxY - 1) / 2}: {x = Int32, y = Int32}))
+            } else None,
+            placements)
+
     def getMapData(scene: Scene[NodeTag]): Data =
         match Scene.getEngineNode(mapPath(), scene) {
             case Some(EngineNode.TileMapLayerWithState(_, NodeTag.Map(data))) => data

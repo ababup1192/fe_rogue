@@ -279,4 +279,60 @@ mod TestBoard {
         Assert.assertEq(
             expected = (2, 2) :: Nil,
             pathToTuples(path))
+
+    // ========================================================================
+    // cellDetectedByEnemy — ローグ移動モードの敵検知 (同じ部屋 or 索敵範囲)
+    //   テスト用 moduleOf: x<5 → 部屋0 / 5..9 → 通路(None) / x>=10 → 部屋1
+    //   isFloor は全面床(= reachableCells はマンハッタン距離 ≤ moveTiles の円)。
+    // ========================================================================
+
+    /// テスト用の部屋わけ述語。
+    def testModuleOf(c: {x = Int32, y = Int32}): Option[Int32] =
+        if (c#x < 5) Some(0)
+        else if (c#x >= 10) Some(1)
+        else None
+
+    /// 同じ部屋なら、索敵範囲(移動到達)の外でも検知する。
+    /// ロード (0,0)・敵 (4,4) は共に部屋0。距離 8 > moveTiles 1 だが同部屋 → true。
+    @Test
+    def testDetectedBySameRoomBeyondRange(): Unit \ Assert =
+        let isFloor = _ -> true;
+        let enemies = {gridPos = src(4, 4), moveTiles = 1, isDying = false} :: Nil;
+        Assert.assertEq(expected = true,
+            Board.cellDetectedByEnemy(testModuleOf, isFloor, enemies, src(0, 0)))
+
+    /// 同じ部屋でなくても、索敵範囲(移動到達)に入れば検知する。
+    /// ロード (7,0)=通路、敵 (10,0)=部屋1・moveTiles 4。距離 3 ≤ 4 なので範囲内 → true。
+    @Test
+    def testDetectedByRangeAcrossRooms(): Unit \ Assert =
+        let isFloor = _ -> true;
+        let enemies = {gridPos = src(10, 0), moveTiles = 4, isDying = false} :: Nil;
+        Assert.assertEq(expected = true,
+            Board.cellDetectedByEnemy(testModuleOf, isFloor, enemies, src(7, 0)))
+
+    /// 別の部屋 かつ 索敵範囲外 なら検知しない。
+    /// ロード (0,0)=部屋0、敵 (15,0)=部屋1・moveTiles 2、距離 15 → false。
+    @Test
+    def testNotDetectedDifferentRoomOutOfRange(): Unit \ Assert =
+        let isFloor = _ -> true;
+        let enemies = {gridPos = src(15, 0), moveTiles = 2, isDying = false} :: Nil;
+        Assert.assertEq(expected = false,
+            Board.cellDetectedByEnemy(testModuleOf, isFloor, enemies, src(0, 0)))
+
+    /// 通路に居て、近くの部屋の敵の索敵範囲外なら安全(検知しない)。
+    /// ロード (7,0)=通路、敵 (3,0)=部屋0・moveTiles 1、距離 4 → false。
+    @Test
+    def testNotDetectedInCorridorOutOfRange(): Unit \ Assert =
+        let isFloor = _ -> true;
+        let enemies = {gridPos = src(3, 0), moveTiles = 1, isDying = false} :: Nil;
+        Assert.assertEq(expected = false,
+            Board.cellDetectedByEnemy(testModuleOf, isFloor, enemies, src(7, 0)))
+
+    /// 死亡演出中(isDying)の敵は部屋でも範囲でも数えない。同部屋・隣接でも false。
+    @Test
+    def testDetectedIgnoresDyingEnemy(): Unit \ Assert =
+        let isFloor = _ -> true;
+        let enemies = {gridPos = src(1, 0), moveTiles = 2, isDying = true} :: Nil;
+        Assert.assertEq(expected = false,
+            Board.cellDetectedByEnemy(testModuleOf, isFloor, enemies, src(0, 0)))
 }

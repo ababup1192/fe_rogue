@@ -29,7 +29,8 @@ mod TestCounterAttackRules {
         staves             = Nil,
         selectedItem       = None,
         moveStepsTaken     = 0,
-        facing             = Staff.Direction.Down
+        facing             = Staff.Direction.Down,
+        hidden             = false
     }
 
     /// 任意 id / 位置 / 武器 / 瀕死状態の Enemy.Data。

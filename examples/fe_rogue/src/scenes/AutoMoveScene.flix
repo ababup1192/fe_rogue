@@ -1,276 +1,240 @@
-/// AutoMoveScene — PlayerAutoMove フェーズの「自動移動」機能一式
+/// AutoMoveScene — ローグ移動モードの駆動（合流アニメ + 自由歩行の判定 + 解散）
 ///
 /// `NodeTag.AutoMoveDriver` を持つ scene tree 常駐ノードと、それを駆動する step ロジックを
-/// 同居させた scene mod。旗 (`FlagScene`) を立てた瞬間に PlayerCursor → PlayerAutoMove に
-/// 遷移し、以降はこのフェーズの間、driver ノードの `process` redef が毎フレーム
-/// `step` を呼ぶ。
+/// 同居させた scene mod。「しゅうごう」確定で PlayerAutoMove フェーズに入り、driver ノードの
+/// `process` redef が毎フレーム phase を見て:
+///   - `PlayerAutoMove` → `gatherStep`（合流アニメ）
+///   - `RogueMove`      → `roamJudge`（敵範囲入りの監視 → 自動解散）
 ///
 /// 公開 API:
-///   - `step`     : 1 フレーム分の自動移動を進める純粋寄りの主ロジック
-///   - `cancel`   : X/Esc 押下で AutoMove を中止 (PlayerCursor に戻す + ログ)
-///   - `add`      : scene tree に driver ノードを追加 (起動時に 1 度だけ)
-///   - `process`  : Node[NodeTag] instance から dispatch される per-frame entry
-///   - `driverPath`: driver ノードの NodePath (テストデバッグ用)
+///   - `process`        : Node[NodeTag] instance から dispatch される per-frame entry
+///   - `cancel`         : 合流中の X/Esc で中止（= 解散）
+///   - `disband`        : 隊列を解散して通常ターン制(PlayerCursor)に戻す（かいさん / 自動解除）
+///   - `lordThreatened` : ロードが敵の移動到達範囲(赤マス)に入っているか（純粋判定）
+///   - `add` / `driverPath` : 常駐 driver ノードの追加 / パス
 ///
-/// 動作モデル（FE 風 "号令"）:
-///   - **1 フレームで動かすのは 1 体だけ**（並列でバラバラに進まない）
-///   - 各味方は最大 `moveTiles` マスまで進んだら `waited = true` で交代
-///   - 味方マスの扱いは **通常移動と同じ**: 通過可、ただし重なって停止 NG。
-///     active / waited は区別せず、味方は常に「通過可能・停止不可」として扱う。
-///   - 旗との Manhattan 距離が近い順に動かす（先頭から行列を詰める）
-///   - 進む先は **旗への BFS 経路（味方通過可）の 1 歩目**。Manhattan ヒューリスティクスは
-///     使わず、L 字 / U 字の回り込みルートも素直に追従する。
-///   - **重なり停止は構造的に防ぐ**:
-///       - 「踏み出すか止まるか」を `Board.isOverlappingAlly` で常時チェックし、
-///         オーバーラップ中は alreadyClose / 予算切れでも `setWaited` せず必ず 1 歩進む
-///       - `moveOneStep` の auto-`setWaited` は「次マスが非味方」のときだけ発火
-///       - BFS 経路が詰まったときの保険として、隣接 4 マスの空きマスへ
-///         横ステップする `stepOffAlly` を最終手段で使う
+/// 合流の動作モデル:
+///   - **1 フレームで動かすのは 1 体だけ**（`anyTweenActive` で補間中は待つ）
+///   - ロード(id 0)以外の表示中の味方を、ロード位置への BFS 経路（味方通過可）の 1 歩目で寄せる
+///   - ロードに重なった味方はその次フレームで非表示(`setHidden`)にして退避（合流）
+///   - 全員合流したら `RogueMove`（自由歩行）へ
 ///
-/// 停止条件:
-///   - 敵検知 → 全員停止 + ログ + PlayerCursor（旗は消す）
-///   - 全アクティブ味方が旗近くに集合 or 進めない → PlayerCursor（旗は消す = 集合完了 / 詰み）
-///   - 全アクティブ味方が `waited` になった → `EnemyTurn` に遷移（旗は残す → 次ターンで再開）
+/// 解散の動作モデル:
+///   - 退避中の味方をロード周囲の空き床マス(`pickRespawnCells`)に snap して再表示
+///   - 通常ターン制(PlayerCursor)に戻し、カーソルをロードに出す
 mod AutoMoveScene {
 
-    /// 旗から見て「停止距離」と判定するマス数（Manhattan 距離）。
-    /// FE で言うなら「周囲 2 マス以内に入ったらそこで止まる」感覚。
-    def stopRadius(): Int32 = 2
+    /// ロードとして扱うパーティ id。
+    def lordId(): Int32 = 0
 
     // ────────────────────────────────────────────────────────
-    // (A) 公開: 1 フレーム分の進行
+    // (A) per-frame entry
     // ────────────────────────────────────────────────────────
 
-    /// PlayerAutoMove フェーズ中に毎フレーム呼ぶ。`GameManager.tickAutoMoveFrame` のパイプライン要素。
-    pub def step(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                GameLogger.GameLogger,
-                EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State,
-                PlayerScene.PartyQuery} =
-        // 入力ハンドラ (`AutoMoveScene.cancel` 等) でこのフレーム中に
-        // 既に他フェーズに抜けた場合は no-op で抜ける。
+    /// Game.flix の `Node[NodeTag] instance` の `process` redef から `NodeTag.AutoMoveDriver`
+    /// ノードに対して dispatch される。phase で合流 / 自由歩行判定に振り分ける。
+    pub def process(_delta: Duration.Duration,
+                     node: EngineNode[NodeTag],
+                     _path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag])
+                    \ {GameLogger.GameLogger, Tween.Scheduler,
+                        AnimationPlayer.Scheduler, TurnPhase.State,
+                        GameEngine.Game, GameEngine.Audio, Pacing.State} =
+        let next = match TurnPhase.State.get() {
+            case TurnPhase.Phase.PlayerAutoMove => gatherStep(scene)
+            case TurnPhase.Phase.RogueMove      => roamJudge(scene)
+            case TurnPhase.Phase.RogueAlert     => alertStep(scene)
+            case _                               => scene
+        };
+        (node, next)
+
+    // ────────────────────────────────────────────────────────
+    // (B) 合流 (PlayerAutoMove)
+    // ────────────────────────────────────────────────────────
+
+    /// 合流の 1 フレーム分。1 フレーム 1 操作（1 歩 or 1 体の非表示化）。
+    def gatherStep(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, TurnPhase.State} =
+        // 入力ハンドラ等でこのフレーム中に既に他フェーズへ抜けたら no-op。
         if (TurnPhase.State.get() != TurnPhase.Phase.PlayerAutoMove) scene
-        else match FlagScene.getTargetPos(scene) {
-            case None       => exitToCursor(scene)
-            case Some(flag) =>
-                let board = BoardSnapshot.fromScene(scene);
-                if (anyEnemyDetected(scene, board)) {
-                    GameLogger.playerLog("敵に発見された");
-                    exitToCursor(scene)
-                }
-                else
-                    let active = activePlayers(scene);
-                    if (List.isEmpty(active)) exitForTurnEnd(scene)
-                    else if (anyTweenActive(active)) scene
-                    else if (not anyoneCanProgress(active, flag, board))
-                        // 全員が旗近く or 経路なし or 移動力使い切り → 集合完了 or 詰み。
-                        // EnemyTurn に渡しても次ターン同じ状況になる可能性が高いので
-                        // 旗を消して PlayerCursor に戻す。
-                        exitToCursor(scene)
-                    else pickAndStep(active, flag, board, scene)
-        }
-
-    /// アクティブ味方の中に「まだ進める」者が 1 人でも居るか。
-    /// 進める = 旗から十分遠い かつ 移動力が残っている かつ
-    ///         旗への BFS 経路の `remaining` 先までに「非味方マス」が 1 つでも有る。
-    def anyoneCanProgress(active: List[PlayerScene.Data],
-                           flag: {x = Int32, y = Int32},
-                           board: Board): Bool =
-        List.exists(p -> canProgress(p, flag, board), active)
-
-    def canProgress(p: PlayerScene.Data,
-                     flag: {x = Int32, y = Int32},
-                     board: Board): Bool =
-        // 重なって停止できないので、オーバーラップ中は必ず「進む余地あり」扱い
-        // （stepOnePlayer 側で BFS or 横ステップで必ず 1 歩動かす）
-        if (Board.isOverlappingAlly(p#id, board)) true
-        else if (alreadyClose(p#gridPos, flag)) false
         else
-            let remaining = p#resource#moveTiles - p#moveStepsTaken;
-            if (remaining <= 0) false
+            let lordPos = PlayerScene.getGridPos(lordId(), scene);
+            let movers  = PlayerScene.mergeableAllies(scene);
+            if (List.isEmpty(movers))
+                // 全員合流完了 → 1 キャラ自由歩行へ
+                PhaseTransitions.enterRogueMove(scene)
+            else if (anyTweenActive(movers)) scene
             else
-                let allyCells = Board.allPlayerCells(board);
-                match Board.bfsPathSkipAllies(board, allyCells, p#gridPos, flag) {
-                    case None       => false
-                    case Some(path) =>
-                        List.take(remaining, path)
-                            |> hasFreeStop(allyCells)
+                // ロードに重なった者が居れば、まずそれを非表示にして退避（重なり→次フレで消す）
+                match List.find(p -> samePos(p#gridPos, lordPos), movers) {
+                    case Some(p) => PlayerScene.setHidden(p#id, true, scene)
+                    case None    => stepOneToward(lordPos, movers, scene)
                 }
 
-    /// 旗との Manhattan 距離が近い順にソートし、先頭 1 体だけ動かす。
-    /// `active` が空でないことは呼び出し側で保証されているので head は常に Some。
-    def pickAndStep(active: List[PlayerScene.Data],
-                     flag: {x = Int32, y = Int32},
-                     board: Board,
-                     scene: Scene[NodeTag]):
-            Scene[NodeTag] \ Tween.Scheduler =
-        let sorted = List.sortBy(p -> Weapon.manhattan(p#gridPos, flag), active);
-        match List.head(sorted) {
-            case None    => scene
-            case Some(p) => stepOnePlayer(p, flag, board, scene)
-        }
-
-    // ────────────────────────────────────────────────────────
-    // (B) 1 体ぶんの 1 歩
-    // ────────────────────────────────────────────────────────
-
-    /// この 1 体について「進める」「もう待機」のいずれか。
-    /// オーバーラップ中は budget / alreadyClose に関わらず必ず 1 歩進めて非味方マスへ抜ける。
-    /// それ以外は旗への BFS 経路 (味方通過可) の 1 歩目を踏み、
-    /// 「`remaining` マスぶんの先頭部分に非味方が 1 つでも有る」場合のみ前進する。
-    def stepOnePlayer(p: PlayerScene.Data,
-                       flag: {x = Int32, y = Int32},
-                       board: Board,
+    /// ロードに最も近い 1 体を、ロード位置への BFS 経路の 1 歩目へ進める。
+    /// 経路が無い（壁・敵で詰み）場合はその場で非表示にして合流完了に近づける。
+    def stepOneToward(lordPos: {x = Int32, y = Int32},
+                       movers: List[PlayerScene.Data],
                        scene: Scene[NodeTag]):
             Scene[NodeTag] \ Tween.Scheduler =
-        let isOverlap = Board.isOverlappingAlly(p#id, board);
-        if (not isOverlap and alreadyClose(p#gridPos, flag)) finishPlayer(p#id, scene)
-        else
-            let remaining = p#resource#moveTiles - p#moveStepsTaken;
-            if (not isOverlap and remaining <= 0) finishPlayer(p#id, scene)
-            else
+        match PlayerScene.nearestMover(lordPos, movers) {
+            case None    => scene
+            case Some(p) =>
+                let board     = BoardSnapshot.fromScene(scene);
                 let allyCells = Board.allPlayerCells(board);
-                // オーバーラップ中は予算 0 でも最低 1 マスは進める
-                let budget = if (isOverlap) Int32.max(remaining, 1) else remaining;
-                match Board.bfsPathSkipAllies(board, allyCells, p#gridPos, flag) {
-                    case None       =>
-                        if (isOverlap) stepOffAlly(p, board, scene)
-                        else finishPlayer(p#id, scene)
-                    case Some(path) =>
-                        let subpath = List.take(budget, path);
-                        if (not isOverlap and not hasFreeStop(allyCells, subpath))
-                            finishPlayer(p#id, scene)
-                        else match List.head(subpath) {
-                            case None       =>
-                                if (isOverlap) stepOffAlly(p, board, scene)
-                                else finishPlayer(p#id, scene)
-                            case Some(next) => moveOneStep(p, next, board, scene)
-                        }
+                match Board.bfsPathSkipAllies(board, allyCells, p#gridPos, lordPos) {
+                    case Some(next :: _) =>
+                        PlayerScene.moveToById(p#id, next, board#map, scene)
+                    case _               =>
+                        PlayerScene.setHidden(p#id, true, scene)
                 }
-
-    /// 旗への BFS 経路から外れてでも、隣接 4 マスのうち空きマス（壁・敵・味方が居ない）
-    /// に 1 マス横ステップする最終手段。重なり中で BFS 経路が詰まったときに使う。
-    def stepOffAlly(p: PlayerScene.Data, board: Board, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ Tween.Scheduler =
-        let dirs = Vec2i.up() :: Vec2i.down() :: Vec2i.left() :: Vec2i.right() :: Nil;
-        let candidates = List.filterMap(d -> {
-            let target = Vec2i.add(p#gridPos, d);
-            if (Board.isWalkable(board, target) and not Board.isOccupied(target, board))
-                Some(target) else None
-        }, dirs);
-        match List.head(candidates) {
-            // 4 マスとも詰まっている真に動けない状態 → やむを得ず重なったまま waited
-            case None       => finishPlayer(p#id, scene)
-            case Some(next) => moveOneStep(p, next, board, scene)
         }
 
-    /// `cells` に 1 つでも非味方マスがあれば true。AutoMove の budget 内で
-    /// 「止まれる場所がある」ことを確認するガード。
-    def hasFreeStop(allyCells: List[{x = Int32, y = Int32}],
-                     cells: List[{x = Int32, y = Int32}]): Bool =
-        List.exists(c -> not Board.containsCell(c, allyCells), cells)
-
-    /// 実際に 1 マス Tween で進める。`moveStepsTaken += 1`。
-    /// 上限到達したときも **次マスが非味方の場合だけ** waited にする。
-    /// 味方マスに乗ったまま waited になると重なって停止してしまうため、
-    /// その場合は waited を保留して次フレームの stepOnePlayer に委ねる
-    /// （`isOverlappingAlly = true` 経路で必ず非味方マスへ抜ける）。
-    def moveOneStep(p: PlayerScene.Data, next: {x = Int32, y = Int32},
-                     board: Board, scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
-        let moved = PlayerScene.moveToById(p#id, next, board#map, scene);
-        let newSteps = p#moveStepsTaken + 1;
-        let recorded = PlayerScene.setMoveStepsTaken(p#id, newSteps, moved);
-        // 移動前の allyCells (= 自分の旧位置 + 他味方の位置) で next を判定。
-        // p#gridPos != next（実移動なので）なので、next が allyCells に含まれる
-        // = 他味方が next に居る、と判定できる。
-        let allyCells = Board.allPlayerCells(board);
-        let nextIsAlly = Board.containsCell(next, allyCells);
-        if (newSteps >= p#resource#moveTiles and not nextIsAlly)
-            PlayerScene.setWaited(p#id, recorded)
-        else recorded
-
-    /// この味方は今ターンの AutoMove では「もう動けない / 動かない」→ waited にして次へ。
-    def finishPlayer(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        PlayerScene.setWaited(id, scene)
+    /// 合流対象に Tween 中の味方が 1 人でも居るか（補間完了を待つガード）。
+    def anyTweenActive(movers: List[PlayerScene.Data]): Bool \ Tween.Scheduler =
+        List.exists(p -> PlayerScene.isMoving(p#id), movers)
 
     // ────────────────────────────────────────────────────────
-    // (C) 停止判定
+    // (C) 自由歩行の監視 (RogueMove)
     // ────────────────────────────────────────────────────────
 
-    /// アクティブな味方と「生きている」敵が同じモジュール idx に居るか。
-    def anyEnemyDetected(scene: Scene[NodeTag], board: Board): Bool =
-        let aliveEnemies = EnemyScene.getAll(scene)
-            |> List.filter(d -> not d#isDying);
-        let active = activePlayers(scene);
-        List.exists(e -> {
-            match board#map#moduleOfCell(e#gridPos) {
-                case None     => false
-                case Some(em) =>
-                    List.exists(p ->
-                        match board#map#moduleOfCell(p#gridPos) {
-                            case Some(pm) => pm == em
-                            case None     => false
-                        },
-                        active)
-            }
-        }, aliveEnemies)
+    /// 自由歩行中、ロードが敵に検知された(同じ部屋 or 索敵範囲内)瞬間に発見演出へ入る。
+    /// 歩行 Tween 中（移動成立フレーム）は判定を 1 フレーム遅らせて、gridPos 確定後に見る。
+    def roamJudge(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, Tween.Scheduler,
+                              Pacing.State, TurnPhase.State} =
+        if (TurnPhase.State.get() != TurnPhase.Phase.RogueMove) scene
+        else if (PlayerScene.isMoving(lordId())) scene
+        else if (lordDetected(scene)) triggerAlert(scene)
+        else scene
 
-    /// 旗との Manhattan 距離が ≤ stopRadius なら「もう近い」扱い。
-    def alreadyClose(src: {x = Int32, y = Int32}, flag: {x = Int32, y = Int32}): Bool =
-        Weapon.manhattan(src, flag) <= stopRadius()
-
-    def anyTweenActive(active: List[PlayerScene.Data]): Bool \ Tween.Scheduler =
-        List.exists(p -> Tween.Scheduler.isActive(PlayerScene.playerPath(p#id)), active)
+    /// 発見演出フェーズ(RogueAlert)の進行。hold 中はカメラ・「！」を見せて待ち、
+    /// hold が抜けたら隊列を解散して通常ターン制に戻る。
+    def alertStep(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, Tween.Scheduler,
+                              AnimationPlayer.Scheduler, TurnPhase.State, Pacing.State} =
+        if (TurnPhase.State.get() != TurnPhase.Phase.RogueAlert) scene
+        else if (Pacing.State.isHolding()) scene
+        else disband("敵に見つかった", scene)
 
     // ────────────────────────────────────────────────────────
-    // (D) 終了処理
+    // (D) 敵検知（純粋）と発見演出
     // ────────────────────────────────────────────────────────
 
-    /// PlayerAutoMove → PlayerCursor に戻す共通処理。
-    /// `step` 内のフォールバック (旗無し / 敵検知 / 集合完了 / 詰み) からは log なしで
-    /// 呼び、`cancel` (X/Esc 押下) はこれをラップしてログを足す。
-    /// 旗の片付け (AutoMove の責務) と move step リセット (味方データの責務) を自分で行い、
-    /// overlay / cursor の整理は `PhaseTransitions.enterPlayerCursor` に委ねる。
-    def exitToCursor(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State,
-                              PlayerScene.PartyQuery} =
-        scene
-            |> FlagScene.clear
-            |> PlayerScene.resetAllMoveStepsTaken
-            |> PhaseTransitions.enterPlayerCursor
+    /// ロードが生存敵に検知されるか（同じ部屋 or 索敵範囲(移動到達範囲)内）。
+    /// `Board.cellDetectedByEnemy` に委譲する純粋判定。
+    /// 「しゅうごう」をメニューに出す条件 / 自由歩行中の発見判定の両方で使う。
+    pub def lordDetected(scene: Scene[NodeTag]): Bool =
+        let board   = BoardSnapshot.fromScene(scene);
+        let enemies = EnemyScene.getAll(scene)
+            |> List.map(e -> {gridPos = e#gridPos, moveTiles = e#moveTiles,
+                              isDying = e#isDying});
+        let lordPos = PlayerScene.getGridPos(lordId(), scene);
+        Board.cellDetectedByEnemy(board#map#moduleOfCell, board#map#isFloor,
+                                   enemies, lordPos)
 
-    /// X/Esc 押下時の AutoMove キャンセル: ログ + 共通の exit 処理。
-    /// `exitToCursor` との差分はログ 1 行だけなので、本体を共有する。
-    /// `waited` 状態は残す (AutoMove 途中まで動いた味方は既に waited の可能性あり)。
+    /// 「！」を出す対象の敵と、カメラの焦点(ワールド座標)をまとめて返す純粋関数。
+    ///   - ロードが敵の居る部屋に居る → 対象 = その部屋の全生存敵 / 焦点 = 部屋の中心
+    ///   - そうでなく索敵範囲で見つかった → 対象 = ロードを範囲に収める生存敵 / 焦点 = その先頭の敵
+    /// 「！」表示(`triggerAlert`)とカメラ注視(`CameraScene`)が同じ判断を共有するための単一窓口。
+    pub def alertInfo(scene: Scene[NodeTag]):
+            {enemies = List[EnemyScene.Data], focus = Vec2.Vec2} =
+        let board      = BoardSnapshot.fromScene(scene);
+        let placements = MapScene.getPlacements(scene);
+        let lordPos    = PlayerScene.getGridPos(lordId(), scene);
+        let alive      = EnemyScene.getAll(scene) |> List.filter(e -> not e#isDying);
+        let lordMod    = board#map#moduleOfCell(lordPos);
+        let inRoom     = match lordMod {
+            case Some(m) => alive |> List.filter(e -> board#map#moduleOfCell(e#gridPos) == Some(m))
+            case None    => Nil
+        };
+        if (not List.isEmpty(inRoom)) {
+            let centerCell = match lordMod {
+                case Some(m) => MapScene.moduleCenter(m, placements)
+                                    |> Option.getWithDefault(lordPos)
+                case None    => lordPos
+            };
+            {enemies = inRoom, focus = board#map#gridToWorld(centerCell)}
+        } else {
+            let detectors = alive |> List.filter(e ->
+                Board.containsCell(lordPos,
+                    Board.reachableCells(board#map#isFloor, e#gridPos, e#moveTiles)));
+            let focus = match List.head(detectors) {
+                case Some(e) => board#map#gridToWorld(e#gridPos)
+                case None    => board#map#gridToWorld(lordPos)
+            };
+            {enemies = detectors, focus = focus}
+        }
+
+    /// 「！」を対象の敵の上に出し、find SE を鳴らし、hold をセットして RogueAlert へ入る。
+    def triggerAlert(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio,
+                              Pacing.State, TurnPhase.State} =
+        let info  = alertInfo(scene);
+        let board = BoardSnapshot.fromScene(scene);
+        let withMarks = List.foldLeft((sc, e) ->
+            DamagePopupScene.emitText(board#map#gridToWorld(e#gridPos), "！",
+                                       exclaimColor(), sc),
+            scene, info#enemies);
+        AudioStreamPlayer.play("find");
+        Pacing.State.hold(alertHold());
+        PhaseTransitions.enterRogueAlert(withMarks)
+
+    /// 「！」の色（黄色）。
+    def exclaimColor(): Color = {r = 1.0f32, g = 0.9f32, b = 0.2f32}
+
+    /// 発見演出の hold 時間。DamagePopupScene の寿命(700ms)に合わせ、「！」が出ている間
+    /// カメラを焦点に留めてから解散する。
+    def alertHold(): Duration.Duration = Duration.millis(700)
+
+    // ────────────────────────────────────────────────────────
+    // (E) 解散（かいさん / 自動解除 / 合流中止）
+    // ────────────────────────────────────────────────────────
+
+    /// 退避中の味方をロードから歩いて分かれる演出で再出現させ、通常ターン制(PlayerCursor)に戻す。
+    /// `msg` だけが「かいさん」「敵の部屋に入った」「中止」で異なる。持ち物・HP は Data に残るので保持される。
+    pub def disband(msg: String, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, Tween.Scheduler,
+                              AnimationPlayer.Scheduler, TurnPhase.State} =
+        GameLogger.playerLog(msg);
+        let lordPos = PlayerScene.getGridPos(lordId(), scene);
+        let hidden  = PlayerScene.hiddenAllies(scene);
+        let board   = BoardSnapshot.fromScene(scene);
+        let cells   = PlayerScene.pickRespawnCells(lordPos, List.length(hidden), board);
+        let placed  = emergeAll(hidden, cells, lordPos, board#map, scene);
+        PhaseTransitions.enterPlayerCursorAt(lordPos, placed)
+
+    /// 退避中の味方を 1 体ずつ「ロード位置から再表示 → 各セルへ歩いて移動」で分かれさせる。
+    /// snapTo でロードに重ねてから setHidden(false) で見せ、moveToById で 1 マス先へ Tween。
+    /// これで「急に出現」ではなく「ロードから別れ出る」見た目になる(合流の逆再生)。
+    def emergeAll(hidden: List[PlayerScene.Data],
+                   cells: List[{x = Int32, y = Int32}],
+                   lordPos: {x = Int32, y = Int32},
+                   map: MapSnapshot,
+                   scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        List.foldLeft((sc, pair) -> {
+            let (d, cell) = pair;
+            sc
+                |> PlayerScene.snapTo(d#id, lordPos)
+                |> PlayerScene.setHidden(d#id, false)
+                |> PlayerScene.moveToById(d#id, cell, map)
+        }, scene, List.zip(hidden, cells))
+
+    /// 合流中の X/Esc キャンセル: 解散して PlayerCursor に戻す。
     pub def cancel(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger,
-                              TurnPhase.State, SelectedPlayer.State,
-                              PlayerScene.PartyQuery} =
-        GameLogger.playerLog("自動移動を中止");
-        exitToCursor(scene)
-
-    /// PlayerAutoMove → EnemyTurn（旗を残して通常のターン終了）。
-    /// 全アクティブ味方が waited になった時に使う。旗は次ターン開始時に
-    /// AutoMove 再開のトリガとして残す。
-    def exitForTurnEnd(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State} =
-        SelectedPlayer.State.put(SelectedPlayer.cleared());
-        EnemyTurnDriverScene.beginTurn(scene)
+            Scene[NodeTag] \ {GameLogger.GameLogger, Tween.Scheduler,
+                              AnimationPlayer.Scheduler, TurnPhase.State} =
+        disband("自動移動を中止", scene)
 
     // ────────────────────────────────────────────────────────
-    // (E) ヘルパー
+    // (F) ヘルパー
     // ────────────────────────────────────────────────────────
 
-    /// アクティブ（waited = false）な味方一覧。
-    def activePlayers(scene: Scene[NodeTag]): List[PlayerScene.Data] =
-        PlayerScene.getAll(scene) |> List.filter(d -> not d#waited)
+    def samePos(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Bool =
+        a#x == b#x and a#y == b#y
 
     // ────────────────────────────────────────────────────────
-    // (F) scene tree 統合
+    // (G) scene tree 統合
     // ────────────────────────────────────────────────────────
 
     /// 常駐タグ専用ノードの名前。Marker2D を World 配下に置く。
@@ -278,27 +242,8 @@ mod AutoMoveScene {
     pub def driverPath(): NodePath = MapScene.worldName() :: driverName() :: Nil
 
     /// scene tree に常駐ノードを追加する。`GameLifecycle.buildPlayingScene` で 1 回だけ呼ぶ。
-    /// engine の `Scene.processAll` が preorder で各ノードを巡回するとき、この driver の
-    /// `process` redef が phase 判定 + `step` を起動する。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
         let marker = Marker2D.make(Vec2.zero());
         Scene.addChild(MapScene.worldName(), driverName(),
             EngineNode.Marker2DWithState(marker, NodeTag.AutoMoveDriver), scene)
-
-    /// per-frame entry。Game.flix の `Node[NodeTag] instance` の `process` redef から
-    /// `NodeTag.AutoMoveDriver` ノードに対して dispatch される。
-    /// phase=PlayerAutoMove のときだけ `step` を呼ぶ。それ以外は no-op。
-    pub def process(_delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     _path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                        GameLogger.GameLogger,
-                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                        PlayerScene.PartyQuery} =
-        let next = match TurnPhase.State.get() {
-            case TurnPhase.Phase.PlayerAutoMove => step(scene)
-            case _                               => scene
-        };
-        (node, next)
 }

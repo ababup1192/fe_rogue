@@ -28,7 +28,8 @@ mod TestBattlePanelScene {
         staves            = Nil,
         selectedItem      = None,
         moveStepsTaken    = 0,
-        facing            = Staff.Direction.Down
+        facing            = Staff.Direction.Down,
+        hidden            = false
     }
 
     /// 隣接マス (3,2) に立つ生存中の敵。武器持ち（反撃可）。

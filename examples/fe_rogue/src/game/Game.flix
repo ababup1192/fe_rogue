@@ -66,10 +66,14 @@ instance Node[NodeTag] {
                          (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.T =
         match node {
             case EngineNode.Marker2DWithState(_, NodeTag.Player(data)) =>
-                // 選択中プレイヤー & PlayerMoving フェーズだけが移動を受け付ける
-                if (TurnPhase.State.get() == TurnPhase.Phase.PlayerMoving
+                // 選択中プレイヤー & PlayerMoving フェーズだけが移動を受け付ける。
+                // ローグ移動モード(RogueMove)ではロード(id 0)が移動力制限なしで自由歩行する。
+                let phase = TurnPhase.State.get();
+                if (phase == TurnPhase.Phase.PlayerMoving
                     and SelectedPlayer.State.get()#id == Some(data#id))
                     PlayerScene.physicsProcess(delta, node, path, scene)
+                else if (phase == TurnPhase.Phase.RogueMove and data#id == 0)
+                    PlayerScene.lordRoamProcess(delta, node, path, scene)
                 else (node, scene)
             case EngineNode.Marker2DWithState(_, NodeTag.Cursor(_)) =>
                 // PlayerCursor / PlayerAttack の場合分けは CursorScene 内部に閉じている
@@ -362,6 +366,9 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                                               => UnitInfoPopupScene.toggleView(scene)
         case (TurnPhase.Phase.PlayerAutoMove, Some(TurnRules.Input.Cancel))
                                               => checked_ecast(AutoMoveScene.cancel(scene))
+        // ローグ自由歩行中の Z でメニュー(ひろう / かいさん)を開く。X は無視。
+        case (TurnPhase.Phase.RogueMove,      Some(TurnRules.Input.Confirm))
+                                              => checked_ecast(ActionMenuScene.openFromRogue(scene))
         case (TurnPhase.Phase.StaffAim,       Some(TurnRules.Input.Cancel))
                                               => checked_ecast(staffAimCancel(scene))
         case (TurnPhase.Phase.StaffAim,       Some(TurnRules.Input.Confirm))
@@ -451,7 +458,9 @@ mod Game {
                 let scene = GameLifecycle.buildAndRecord(catalog, staffCatalog, floor);
                 // SE は半分で鳴らす (Inspector 対応の Scene Node にしていない通常の SE 系)
                 AudioStreamPlayer.setVolume("damage", 0.5f32);
-                AudioStreamPlayer.setVolume("bonus",  0.5f32);
+                AudioStreamPlayer.setVolume("down_enemy", 0.5f32);
+                AudioStreamPlayer.setVolume("miss", 0.5f32);
+                AudioStreamPlayer.setVolume("find", 0.5f32);
                 GameLogger.playerLog("T1 味方のターン");
                 gameLoop(sceneRef, scene)
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。

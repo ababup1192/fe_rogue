@@ -26,8 +26,11 @@
     {"name": "ui", "path": "assets/fonts/BestTen-DOT.otf", "fontSize": 16.0}
   ],
   "sounds": [
-    {"name": "bgm",    "path": "assets/audio/bgm.ogg",    "looping": true},
-    {"name": "damage", "path": "assets/audio/damage.ogg", "looping": false},
-    {"name": "bonus",  "path": "assets/audio/bonus.ogg",  "looping": false}
+    {"name": "bgm",        "path": "assets/audio/bgm.ogg",        "looping": true},
+    {"name": "damage",     "path": "assets/audio/damage.ogg",     "looping": false},
+    {"name": "bonus",      "path": "assets/audio/bonus.ogg",      "looping": false},
+    {"name": "down_enemy", "path": "assets/audio/down_enemy.wav", "looping": false},
+    {"name": "miss",       "path": "assets/audio/miss.wav",       "looping": false},
+    {"name": "find",       "path": "assets/audio/find.wav",       "looping": false}
   ]
 }

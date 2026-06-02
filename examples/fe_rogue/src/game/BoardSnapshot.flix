@@ -28,7 +28,11 @@ mod BoardSnapshot {
             gridToWorld  = c -> Vec2.add(mapGlobal, TileMapLayer.mapToLocal(c, layer)),
             moduleOfCell = c -> MapScene.moduleOfCellIn(c, placements)
         };
+        // ローグ移動モードで合流して退避中(hidden)の味方は盤面から除外する。
+        // これ 1 箇所で、Board 経由の全クエリ(敵範囲判定・占有・経路探索・カーソル)が
+        // 自動的に hidden を無視する (詳細は PlayerScene.setHidden 参照)。
         let players = PlayerScene.getAll(scene)
+            |> List.filter(d -> not d#hidden)
             |> List.map(d -> (Piece.Player(d#id), d#gridPos));
         let enemies = EnemyScene.getAll(scene)
             |> List.map(e -> (Piece.Enemy(e#id), e#gridPos));

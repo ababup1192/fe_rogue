@@ -13,7 +13,9 @@
 ///   - PlayerMoving    → 選択中味方のワールド座標（drag margin で「画面内なら据え置き」が
 ///                        engine の Camera2D 側で自動的に効く）
 ///   - PlayerAttack    → カーソルのワールド座標（赤マスを動くカーソルに追従）
-///   - PlayerAutoMove  → 旗のワールド座標
+///   - PlayerAutoMove  → ロード(id 0)のワールド座標（合流先 = ロードを映す）
+///   - RogueMove       → ロード(id 0)のワールド座標（自由歩行するロードに追従）
+///   - RogueAlert      → 発見演出の焦点（同部屋なら部屋中心 / 索敵範囲なら検知した敵）
 ///   - EnemyTurn       → **alerted な敵が行動中ならその敵を映す**（`enemyTurnTarget`）。
 ///                        attacking 中の敵 > キュー先頭の敵 > 非 alerted ならプレイヤーへフォールバック
 ///
@@ -119,7 +121,9 @@ mod CameraScene {
             case TurnPhase.Phase.PlayerAttackHold => cursorWorldPos(scene)
             case TurnPhase.Phase.TradeTargetSelect => cursorWorldPos(scene)
             case TurnPhase.Phase.TradeInventory    => focusPos
-            case TurnPhase.Phase.PlayerAutoMove   => autoMoveTarget(scene)
+            case TurnPhase.Phase.PlayerAutoMove   => lordWorldPos(scene)
+            case TurnPhase.Phase.RogueMove        => lordWorldPos(scene)
+            case TurnPhase.Phase.RogueAlert       => AutoMoveScene.alertInfo(scene)#focus
             case TurnPhase.Phase.EnemyTurn        => enemyTurnTarget(focusPos, scene)
         }
 
@@ -208,29 +212,9 @@ mod CameraScene {
     def cursorWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
         Scene.globalPositionAt(CursorScene.cursorPath(), scene)
 
-    /// 旗の現在ワールド座標。FlagScene 未登録なら原点。
-    /// 立てていない場合 Marker2D の位置はダミーだが、PlayerAutoMove フェーズにしか
-    /// 参照されないので、立てた直後は必ず正しい位置にある。
-    def flagWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
-        match Scene.getEngineNode(FlagScene.flagPath(), scene) {
-            case Some(_) => Scene.globalPositionAt(FlagScene.flagPath(), scene)
-            case None    => Vec2.zero()
-        }
-
-    /// AutoMove 中のカメラ target を「いま動いている味方」に合わせる。
-    /// AutoMoveScene の pickAndStep と同じ規則で「アクティブかつ旗に最も近い味方」を選び、
-    /// その味方のワールド座標を返す。アクティブが居なければ旗にフォールバック。
-    def autoMoveTarget(scene: Scene[NodeTag]): Vec2.Vec2 \ PlayerScene.PartyQuery =
-        match FlagScene.getTargetPos(scene) {
-            case None       => flagWorldPos(scene)
-            case Some(flag) =>
-                let active = PlayerScene.PartyQuery.getAll()
-                              |> List.filter(d -> not d#waited);
-                let distTo = d -> Weapon.manhattan(d#gridPos, flag);
-                match List.minimumBy((a, b) -> Order.compare(distTo(a), distTo(b)),
-                                      active) {
-                    case None    => flagWorldPos(scene)
-                    case Some(d) => focusedPlayerWorldPos(d#id, scene)
-                }
-        }
+    /// ローグ移動モード中のカメラ target = ロード(id 0)のワールド座標。
+    /// 合流中(PlayerAutoMove)はロードに味方が集まり、自由歩行中(RogueMove)はロードが動くので、
+    /// どちらもロードを映していれば見せ場を外さない。
+    def lordWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
+        focusedPlayerWorldPos(0, scene)
 }

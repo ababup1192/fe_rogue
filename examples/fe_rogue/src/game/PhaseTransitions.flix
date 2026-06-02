@@ -18,7 +18,9 @@
 /// | PlayerMoving      | Refresh   | Refresh         | Keep              | Clear      | Clear      | Hide               |
 /// | PlayerAttack      | Clear     | Clear           | Show              | Clear      | Keep       | Show + SnapTarget  |
 /// | TradeTargetSelect | Clear     | Clear           | Clear             | Show       | Clear      | Show + SnapPlayer  |
-/// | PlayerAutoMove    | Keep      | Keep            | Keep              | Keep       | Clear      | Hide               |
+/// | PlayerAutoMove    | Clear     | Clear           | Clear             | Clear      | Clear      | Hide               |
+/// | RogueMove         | Clear     | Clear           | Clear             | Clear      | Clear      | Hide               |
+/// | RogueAlert        | Keep      | Keep            | Keep              | Keep       | Keep       | Keep(Hidden)       |
 /// | EnemyTurn         | Clear     | Clear           | Clear             | Clear      | Keep       | Keep               |
 ///
 /// **意味**:
@@ -122,16 +124,34 @@ mod PhaseTransitions {
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToFirstTargetOrPlayer
 
-    /// PlayerAutoMove フェーズに入る (空マスで Z 押下 → 旗を立てた直後)。
-    /// 動作 (表 5 行目): EnemyRange のみ消去 (味方系 range は前 phase の表示を温存) →
-    ///                    カーソルを隠す。
-    /// 旗自体の表示は呼び出し側 (`FlagScene.markAt`) が責任。
+    /// PlayerAutoMove フェーズに入る (「しゅうごう」確定直後 = ロードへの合流開始)。
+    /// 動作: 味方系 range と EnemyRange を全消し → カーソルを隠す。
+    /// 合流者の移動・非表示化は `AutoMoveScene` の driver が担当する。
     pub def enterPlayerAutoMove(scene: Scene[NodeTag]):
             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.PlayerAutoMove);
-        scene
+        clearAllPlayerRanges(scene)
             |> EnemyRangeScene.clear
             |> CursorScene.setVisible(false)
+
+    /// RogueMove フェーズに入る (合流完了 = 1 キャラ自由歩行の開始)。
+    /// 動作: 味方系 range と EnemyRange を全消し → カーソルを隠す
+    ///       (ロードは自分の physicsProcess で動くのでカーソルは不要)。
+    pub def enterRogueMove(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.RogueMove);
+        clearAllPlayerRanges(scene)
+            |> EnemyRangeScene.clear
+            |> CursorScene.setVisible(false)
+
+    /// RogueAlert フェーズに入る (敵に検知された瞬間の発見演出)。
+    /// overlay / cursor は RogueMove の状態(全消し・カーソル非表示)を温存し、フェーズだけ進める。
+    /// 「！」表示・カメラ寄せ・find SE・hold は呼び出し側 (`AutoMoveScene.triggerAlert`) と
+    /// `CameraScene` が担当する。
+    pub def enterRogueAlert(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.RogueAlert);
+        scene
 
     /// EnemyTurn フェーズに入る (全味方 waited または 敵ターン遷移時)。
     /// 動作 (表 6 行目): 味方系 3 range 全消し (敵ターン中は赤/青マス不要)。
