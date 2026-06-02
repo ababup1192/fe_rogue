@@ -1,4 +1,4 @@
-// Tests for PropertyWidgets.extractSpriteRefHere — Resources タブ preview の
+// Tests for SpritePreview.extractSpriteRefHere — Resources タブ preview の
 // sprite 切り抜きに使う情報抽出ロジックの単体テスト
 //
 // extractSpriteRefHere は純粋関数なので、手作りの Json.JsonElement Map で
@@ -14,7 +14,7 @@ mod TestSpriteRef {
 
     /// SpriteRef の Option フィールドを assertEq で比べやすい形に直す。
     /// Option[Int32] のタプルにすると 1 assert にまとめられる。
-    def asTuple(spriteRefOpt: Option[PropertyWidgets.SpriteRef]):
+    def asTuple(spriteRefOpt: Option[SpritePreview.SpriteRef]):
             Option[(String, Option[Int32], Option[Int32], Option[Int32])] =
         spriteRefOpt |> Option.map(sr -> (sr#texture, sr#frame, sr#hframes, sr#vframes))
 
@@ -34,7 +34,7 @@ mod TestSpriteRef {
         };
         Assert.assertEq(
             expected = Some(("character_sheet", Some(1i32), Some(5i32), Some(2i32))),
-            asTuple(PropertyWidgets.extractSpriteRefHere(m, Set#{"character_sheet"})))
+            asTuple(SpritePreview.extractSpriteRefHere(m, Set#{"character_sheet"})))
 
     /// texture 文字列だけが入った bare object でも SpriteRef は作られるが、
     /// frame/hframes/vframes は None になる。updateSpritePreview 側の
@@ -47,7 +47,7 @@ mod TestSpriteRef {
         Assert.assertEq(
             expected = Some(("character_sheet", (None: Option[Int32]),
                              (None: Option[Int32]), (None: Option[Int32]))),
-            asTuple(PropertyWidgets.extractSpriteRefHere(m, Set#{"character_sheet"})))
+            asTuple(SpritePreview.extractSpriteRefHere(m, Set#{"character_sheet"})))
 
     /// textureNames に登録されていない texture 文字列は無視され、抽出は None。
     /// (texture 候補が他になければ object として preview 対象外)
@@ -59,7 +59,7 @@ mod TestSpriteRef {
         };
         Assert.assertEq(
             expected = (None: Option[(String, Option[Int32], Option[Int32], Option[Int32])]),
-            asTuple(PropertyWidgets.extractSpriteRefHere(m, Set#{"other_atlas"})))
+            asTuple(SpritePreview.extractSpriteRefHere(m, Set#{"other_atlas"})))
 
     /// frame が文字列など整数で表現できない場合は frame=None として扱う。
     /// (object 自体は texture を持つので SpriteRef は返るが、preview は全体表示に
@@ -75,7 +75,7 @@ mod TestSpriteRef {
         Assert.assertEq(
             expected = Some(("character_sheet", (None: Option[Int32]),
                              Some(5i32), Some(2i32))),
-            asTuple(PropertyWidgets.extractSpriteRefHere(m, Set#{"character_sheet"})))
+            asTuple(SpritePreview.extractSpriteRefHere(m, Set#{"character_sheet"})))
 
     // ========================================================================
     // findFirstSpriteRef — DFS でネストを掘って最初に見つかった sprite 情報を返す
@@ -109,7 +109,7 @@ mod TestSpriteRef {
         });
         Assert.assertEq(
             expected = Some(("character_sheet", Some(1i32), Some(5i32), Some(2i32))),
-            asTuple(PropertyWidgets.findFirstSpriteRef(record, "character_sheet" :: Nil)))
+            asTuple(SpritePreview.findFirstSpriteRef(record, "character_sheet" :: Nil)))
 
     // ========================================================================
     // pinchZoom — Preview のピンチズーム動作（連続値）

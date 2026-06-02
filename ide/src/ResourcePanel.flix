@@ -331,7 +331,7 @@ mod ResourcePanel {
     def refreshPreview(state: IdeState.IdeState, record: Json.JsonElement): Unit \ IO = {
         let textureNames = Array.get(0, state#textureNamesRef);
         let pathMap = Array.get(0, state#texturePathMapRef);
-        let spriteRef = PropertyWidgets.findFirstSpriteRef(record, textureNames);
+        let spriteRef = SpritePreview.findFirstSpriteRef(record, textureNames);
         let zoomMode = ResourceState.getPreviewZoom(state#resource);
         let showGrid = ResourceState.getPreviewGrid(state#resource);
         let frameAdjust = ResourceState.getPreviewFrameAdjust(state#resource);
@@ -342,7 +342,7 @@ mod ResourcePanel {
         match (Array.get(0, state#widgets#resourcePreviewPane),
                 Array.get(0, state#widgets#resourcePreviewCanvas)) {
             case (Some(pane), Some(canvas)) =>
-                PropertyWidgets.updateSpritePreview(pane, canvas, pathMap, spriteRef, zoomMode,
+                SpritePreview.updateSpritePreview(pane, canvas, pathMap, spriteRef, zoomMode,
                                                      showGrid, frameAdjust, pan, getPan, onPan,
                                                      onStatus)
             case _       => ()
@@ -360,7 +360,7 @@ mod ResourcePanel {
         match (Array.get(0, state#widgets#resourcePreviewPane),
                 Array.get(0, state#widgets#resourcePreviewCanvas)) {
             case (Some(pane), Some(canvas)) =>
-                PropertyWidgets.updateSpritePreview(pane, canvas, Map.empty(), None, zoomMode,
+                SpritePreview.updateSpritePreview(pane, canvas, Map.empty(), None, zoomMode,
                                                      showGrid, frameAdjust, pan, getPan, onPan,
                                                      onStatus)
             case _       => ()
