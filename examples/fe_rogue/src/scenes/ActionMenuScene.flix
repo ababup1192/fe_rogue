@@ -99,12 +99,33 @@ mod ActionMenuScene {
         let withItems = if (phase != TurnPhase.Phase.ActionSelect) withVisibility
             else {
                 let items = buildItems(withVisibility);
-                withVisibility |> ItemList.mapAt(menuPath(), ItemList.setItems(items))
+                withVisibility
+                    |> ItemList.mapAt(menuPath(), ItemList.setItems(items))
+                    |> fitMenuToItems(List.length(items))
             };
         match Scene.getEngineNode(menuPath(), withItems) {
             case Some(latest) => (latest, withItems)
             case None         => (node, withItems)
         }
+
+    /// ItemList 1 項目の高さ (px)。scene.json の menu `itemHeight` と一致させること。
+    def menuItemHeight(): Float64 = 6.0
+    /// panel 内での menu の上下パディング (px)。scene.json の menu `pos` の y と一致させる。
+    def menuPadding(): Float64 = 2.0
+
+    /// メニュー項目数 `count` に合わせて ItemList と Panel の高さを詰める。
+    /// 幅は scene.json の値を `getSize` で保持し、高さだけ `count` 行ぶんに変える。
+    /// これにより「たいき」などの項目が増減してもウィンドウがピッタリ収まる。
+    /// 項目 0 でも最低 1 行ぶんの高さは残す (空ウィンドウが潰れて見えないように)。
+    def fitMenuToItems(count: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let rows   = Int32.max(1, count);
+        let menuH  = Int32.toFloat64(rows) * menuItemHeight();
+        let panelH = menuH + 2.0 * menuPadding();
+        scene
+            |> ItemList.mapAt(menuPath(), l ->
+                ItemList.setSize({x = ItemList.getSize(l)#x, y = menuH}, l))
+            |> Panel.mapAt(panelPath(), p ->
+                Panel.setSize({x = Panel.getSize(p)#x, y = panelH}, p))
 
     /// 選択中プレイヤーの状況から「こうげき / こうかん / アイテム / ひろう / たいき」の
     /// うち成立するものだけ返す。
