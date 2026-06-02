@@ -126,24 +126,34 @@ mod EnemyTurnDriverScene {
                     d -> {alerted = updated#alerted | d}, scene);
                 match action {
                     case EnemyAI.EnemyAction.Move(id, target) =>
-                        let moved = EnemyScene.moveTo(id, target, board#map, withAlert);
-                        // 残り step があれば次の 1 マス分を継続して pushFront
-                        if (step#remaining > 1)
+                        if (step#remaining <= 0)
+                            // 移動予算を使い切ったうえで隣接できなかった
+                            // (decideAction が Move を返す = 非隣接) → 攻撃せず終了。
+                            withAlert
+                        else {
+                            let moved = EnemyScene.moveTo(id, target, board#map, withAlert);
+                            // 残り step を 1 減らして継続。0 になっても 1 度だけ積むことで、
+                            // 「移動しきって隣接 → 次 step で攻撃」を可能にする
+                            // (次 step は隣接なら Attack、非隣接なら上の <=0 分岐で終了)。
                             EnemyTurn.Queue.pushFront({id = id,
-                                                        remaining = step#remaining - 1})
-                        else ();
-                        // 移動後の溜め: tween (~133ms) 終了後に 100ms ほど静止して区切る
-                        Pacing.State.hold(250 |> Duration.millis);
-                        moved
+                                                        remaining = step#remaining - 1});
+                            // 移動後の溜め: tween (~133ms) 終了後に 100ms ほど静止して区切る
+                            Pacing.State.hold(250 |> Duration.millis);
+                            moved
+                        }
                     case EnemyAI.EnemyAction.Attack(enemyId, targetId) =>
+                        // 隣接する味方が複数いるときは HP 最少の味方を狙う (とどめ優先)。
+                        // 該当が無ければ EnemyAI が選んだ targetId にフォールバック。
+                        let chosenId =
+                            lowestHpAdjacentPlayerId(data#gridPos, targetId, withAlert);
                         // 体当たりモーションを開始するだけ。HP 適用 / 音 / 死亡判定は
                         // attack_lunge の `attack:hit` メソッド発火時に dispatchAnimationEvents が行う。
                         // 攻撃前後の溜め: lunge (~160ms) より長い hold で「攻撃終了の余韻」を作る
-                        match PlayerScene.get(targetId, withAlert) {
+                        match PlayerScene.get(chosenId, withAlert) {
                             case None    => withAlert
                             case Some(p) =>
                                 Pacing.State.hold(450 |> Duration.millis);
-                                EnemyScene.startAttack(enemyId, targetId,
+                                EnemyScene.startAttack(enemyId, chosenId,
                                                         p#gridPos, withAlert)
                         }
                     case EnemyAI.EnemyAction.Wait(_) =>
@@ -153,6 +163,19 @@ mod EnemyTurnDriverScene {
                     case EnemyAI.EnemyAction.Skip(_) => withAlert
                 }
         }
+
+    /// 敵 (enemyPos) に隣接する味方のうち HP が最少の味方 id を返す。HP 同値は id 昇順。
+    /// 隣接味方が居なければ `fallbackId` (EnemyAI が選んだ id) を返す。
+    /// 「とどめを優先する」FE 風の敵 AI ターゲティング。Scene 直読みの純粋関数。
+    def lowestHpAdjacentPlayerId(enemyPos: {x = Int32, y = Int32},
+                                  fallbackId: Int32,
+                                  scene: Scene[NodeTag]): Int32 =
+        PlayerScene.getAll(scene)
+            |> List.filter(p -> EnemyAI.isAdjacent(p#gridPos, enemyPos))
+            |> List.sortBy(p -> (p#hp, p#id))
+            |> List.head
+            |> Option.map(p -> p#id)
+            |> Option.getWithDefault(fallbackId)
 
     /// 敵ターンの後始末: ターン番号繰り上げ + 全プレイヤーを `waited = false` にリセット +
     /// カーソル復活 + 味方ターン宣言。旗が残っていれば AutoMove に再突入する
