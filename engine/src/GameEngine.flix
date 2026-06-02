@@ -78,7 +78,8 @@ mod GameEngine {
     }
 
     /// GPU インスタンスバッファ 1 タイル分のデータ
-    /// LDTKLoader が生成し、initTileBuffer で GPU にアップロードする。
+    /// tilemap loader (fe_rogue 側 `TileRendering.buildTileInstances` 等) が生成し、
+    /// `initTileBuffer` で GPU にアップロードする。
     pub type alias TileInstance = {
         px    = Vec2.Vec2,
         uvOff = Vec2.Vec2,

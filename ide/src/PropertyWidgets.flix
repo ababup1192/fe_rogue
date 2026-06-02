@@ -35,6 +35,7 @@ mod PropertyWidgets {
     import javafx.scene.control.CheckBox
     import javafx.scene.control.ColorPicker
     import javafx.scene.control.ComboBox
+    import javafx.scene.control.ListView
     import javafx.scene.control.Spinner
     import javafx.scene.control.ToggleButton
     import javafx.scene.control.ToggleGroup
@@ -47,6 +48,7 @@ mod PropertyWidgets {
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
     import javafx.scene.input.MouseEvent
+    import javafx.scene.input.ZoomEvent
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
     import java.lang.Double
@@ -57,70 +59,45 @@ mod PropertyWidgets {
     /// JSON を消費して書き戻し or pending queue に積む
     pub type alias Commit = Json.JsonElement -> Unit \ IO
 
-    /// Sprite preview に渡す表示情報。
-    ///   - texture:  textureNames に登録されている texture 名
-    ///   - frame / hframes / vframes: 同じオブジェクト内に sibling として並ぶ
-    ///     アトラス分割情報。sprite ブロックが無く texture だけの record では
-    ///     全て None になり、preview 側で 1, 1, 0 にフォールバックして
-    ///     画像全体を表示する。
-    ///   - offsetX / offsetY: 同じ object 内に `"offset": {"x": ..., "y": ...}`
-    ///     としてあれば取り出す。preview ではセルクロップ後の描画位置にオフセットを
-    ///     image-pixel 単位で加算する（zoom と同じスケールで拡大される）。
-    pub type alias SpriteRef = {
-        texture  = String,
-        frame    = Option[Int32],
-        hframes  = Option[Int32],
-        vframes  = Option[Int32],
-        offsetX  = Float64,
-        offsetY  = Float64
-    }
-
     /// Resources タブ Preview の拡大モード。
-    /// ネイティブピクセル基準のパーセント表示倍率。
-    ///   100 = 1 image pixel = 1 logical screen pixel (IDE プレビュー上の等倍)、
-    ///   200 = 2 倍拡大、50 = 半分縮小
+    /// ネイティブピクセル基準のパーセント表示倍率（Float64 で連続値）。
+    ///   100.0 = 1 image pixel = 1 logical screen pixel (IDE プレビュー上の等倍)、
+    ///   200.0 = 2 倍拡大、50.0 = 半分縮小
     /// 注意: 「ゲームでの実際の見え方」は Sprite2D.scale / Camera2D.zoom /
     /// Viewport (design → window) の合成で決まるため、Resource (texture/frame/
     /// hframes/vframes) 単独では再現できない。この preview は texture アトラスの
     /// ピクセル自体を確認する用途
     pub enum ZoomMode with Eq, ToString {
-        case Percent(Int32)
+        case Percent(Float64)
     }
-
-    /// ズーム段階の昇順リスト (パーセント値)。zoomIn/zoomOut が辿る
-    def zoomSteps(): List[Int32] =
-        25i32 :: 50i32 :: 75i32 :: 100i32 :: 150i32 :: 200i32 :: 300i32 :: 400i32 :: 600i32 :: 800i32 :: 1600i32 :: Nil
 
     /// プロジェクト起動時 / ResourceState 初期化時のデフォルトズーム。
     /// 100% = ネイティブピクセル等倍 (1 image px = 1 logical px)
     pub def defaultZoom(): ZoomMode =
-        ZoomMode.Percent(100)
+        ZoomMode.Percent(100.0)
 
     /// ZoomMode を UI 表示用の短い文字列にする ("100%" / "200%" ...)
+    /// 小数倍率は整数に丸めて表示する（"103.5%" は冗長なので "104%"）。
     pub def zoomModeLabel(mode: ZoomMode): String =
         match mode {
-            case ZoomMode.Percent(p) => "${p}%"
+            case ZoomMode.Percent(p) =>
+                let rounded = Float64.tryToInt32(p) |> Option.getWithDefault(100i32);
+                "${rounded}%"
         }
 
-    /// "-" ボタン: 段階リストの 1 つ下に降りる。最小 (25%) は no-op
-    pub def zoomOut(mode: ZoomMode): ZoomMode =
+    /// ピンチズームの incremental factor（macOS trackpad の `ZoomEvent.getZoomFactor()`）
+    /// を現倍率に乗算して新 ZoomMode を返す。範囲 [25%, 1600%] にクランプ。
+    /// `Percent` は Float64 なので、小さな factor（1.01 程度）でも丸められず連続的に拡縮できる。
+    pub def pinchZoom(mode: ZoomMode, factor: Float64): ZoomMode =
         match mode {
-            case ZoomMode.Percent(p) =>
-                let lower = List.filter(s -> s < p, zoomSteps());
-                match List.last(lower) {
-                    case None       => mode
-                    case Some(prev) => ZoomMode.Percent(prev)
-                }
-        }
-
-    /// "+" ボタン: 段階リストの 1 つ上に上がる。最大 (1600%) は no-op
-    pub def zoomIn(mode: ZoomMode): ZoomMode =
-        match mode {
-            case ZoomMode.Percent(p) =>
-                match List.find(s -> s > p, zoomSteps()) {
-                    case None       => mode
-                    case Some(next) => ZoomMode.Percent(next)
-                }
+            case ZoomMode.Percent(p) => {
+                let next = p * factor;
+                let clamped =
+                    if (next < 25.0) 25.0
+                    else if (next > 1600.0) 1600.0
+                    else next;
+                ZoomMode.Percent(clamped)
+            }
         }
 
     /// 共通テンプレ property-row.fxml をロードして「key Label + 値 slot」の HBox を返す
@@ -175,14 +152,29 @@ mod PropertyWidgets {
                         key: String, entry: Resource.FieldEntry,
                         record: Json.JsonElement, basePath: List[String],
                         textureNames: List[String],
+                        texturePathMap: Map[String, String],
                         refOptions: Map[String, List[String]],
                         mkCommit: List[String] -> Commit): Unit \ IO =
+        addFieldRowWithRoot(children, key, entry, record, record, basePath,
+                              textureNames, texturePathMap, refOptions, mkCommit)
+
+    /// `addFieldRow` の内部実装。`rootRecord` は最初に呼ばれたときの「ユニット全体の record」で、
+    /// Nested 再帰中も保持して widget 側に渡す（sibling 参照に使う）。
+    /// `record` は現在の Nested レベルでの sub-record。
+    def addFieldRowWithRoot(children: ObservableList[Node],
+                             key: String, entry: Resource.FieldEntry,
+                             record: Json.JsonElement, rootRecord: Json.JsonElement,
+                             basePath: List[String],
+                             textureNames: List[String],
+                             texturePathMap: Map[String, String],
+                             refOptions: Map[String, List[String]],
+                             mkCommit: List[String] -> Commit): Unit \ IO =
         match entry {
             case Resource.FieldEntry.Field(fs) => {
                 let value = jsonFieldOf(record, key);
                 let keyPath = List.append(basePath, key :: Nil);
-                let widget = buildFieldWidget(fs, value, textureNames, refOptions,
-                                                mkCommit(keyPath));
+                let widget = buildFieldWidget(fs, value, rootRecord, textureNames,
+                                                texturePathMap, refOptions, mkCommit(keyPath));
                 addPropertyRow(children, "${fs#label}:", widget)
             }
             case Resource.FieldEntry.Nested(innerMap) => {
@@ -198,15 +190,19 @@ mod PropertyWidgets {
                                    |> List.sortBy(p -> fieldOrderKey(p));
                 List.forEach(p -> {
                     let (k, e) = p;
-                    addFieldRow(children, k, e, innerRecord, innerBasePath,
-                                  textureNames, refOptions, mkCommit)
+                    addFieldRowWithRoot(children, k, e, innerRecord, rootRecord, innerBasePath,
+                                          textureNames, texturePathMap, refOptions, mkCommit)
                 }, sortedInner)
             }
         }
 
     /// FieldType に応じた編集 widget を返す
+    /// `rootRecord` はユニット全体の record。spriteFrames widget が sibling
+    /// `sprite.hframes / vframes / texture` を引くために必要。
     def buildFieldWidget(fs: Resource.FieldSchema, value: Option[Json.JsonElement],
+                         rootRecord: Json.JsonElement,
                          textureNames: List[String],
+                         texturePathMap: Map[String, String],
                          refOptions: Map[String, List[String]],
                          commit: Commit): Node \ IO =
         match fs#ftype {
@@ -219,12 +215,16 @@ mod PropertyWidgets {
             case Resource.FieldType.FloatT        => buildFloatWidget(value, commit)
             case Resource.FieldType.BoolT         => buildBoolWidget(value, commit)
             case Resource.FieldType.TexturePathT  => buildTexturePathWidget(value, textureNames, commit)
+            case Resource.FieldType.SpriteFramesT =>
+                SpriteFramesEditor.buildSpriteFramesEditorWidget(value, rootRecord, texturePathMap, commit)
             case Resource.FieldType.RefT(target)  =>
                 let options = Map.get(target, refOptions) |> Option.getWithDefault(Nil);
                 buildEnumWidget(value, options, commit)
             case Resource.FieldType.RefPercentListT(target) =>
                 let options = Map.get(target, refOptions) |> Option.getWithDefault(Nil);
-                buildRefPercentListWidget(value, options, commit)
+                RefListWidgets.buildRefPercentListWidget(value, options, commit)
+            case Resource.FieldType.KindedRefListT(kinds) =>
+                RefListWidgets.buildKindedRefListWidget(value, kinds, refOptions, commit)
             case Resource.FieldType.EnumT(values) =>
                 // 2 値なら segmented toggle で両ラベル可視、3 値以上は ComboBox にフォールバック
                 if (List.length(values) == 2) buildEnumToggleWidget(value, values, commit)
@@ -238,20 +238,9 @@ mod PropertyWidgets {
             case Some(Json.JsonElement.JsonString(s)) => s
             case _                                    => ""
         };
-        let combo: ComboBox[String] = new ComboBox();
-        let items = combo.getItems();
-        List.forEach(name -> discard items.add(name), textureNames);
-        combo.setEditable(false);
-        combo.setValue(current);
-        combo.setPrefWidth(160.0);
+        let combo = makeStringComboBox(textureNames, current, 160.0,
+            newVal -> commit(Json.JsonElement.JsonString(newVal)));
         combo.setMaxWidth(160.0);
-        combo.valueProperty().addListener(new ChangeListener[String] {
-            def changed(_cThis: ChangeListener[String], _obs: ObservableValue[JObject],
-                         _old: String, newVal: String): Unit \ IO = {
-                if (Object.isNull(newVal)) ()
-                else commit(Json.JsonElement.JsonString(newVal))
-            }
-        });
         checked_cast(combo)
     }
 
@@ -311,17 +300,9 @@ mod PropertyWidgets {
     pub def buildIntWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
         let current: Int32 = NodeInspector.jsonToInt(value |> Option.getWithDefault(Json.JsonElement.JsonNull))
                               |> Option.getWithDefault(0i32);
-        let spinner: Spinner[Integer] = new Spinner(-999999i32, 999999i32, current);
-        spinner.setEditable(true);
-        spinner.setPrefWidth(110.0);
+        let spinner = makeIntSpinner({min = -999999i32, max = 999999i32}, current, 110.0,
+            v -> commit(NodeInspector.intToJson(v)));
         spinner.setMaxWidth(110.0);
-        spinner.valueProperty().addListener(new ChangeListener[Integer] {
-            def changed(_cThis: ChangeListener[Integer], _obs: ObservableValue[JObject],
-                         _old: Integer, newVal: Integer): Unit \ IO = {
-                let v: Int32 = newVal.intValue();
-                commit(NodeInspector.intToJson(v))
-            }
-        });
         checked_cast(spinner)
     }
 
@@ -329,7 +310,7 @@ mod PropertyWidgets {
     /// ドラッグ操作などで `0.6845279517513342` のような過剰精度が混入することを防ぎ、
     /// scene.json にも 3 桁までしか書かれないようにする。
     /// 切り上げではなく HALF_UP (四捨五入) を採用。
-    def roundTo3(v: Float64): Float64 =
+    pub def roundTo3(v: Float64): Float64 =
         JBigDecimal.valueOf(v).setScale(3i32, RoundingMode.HALF_UP).doubleValue()
 
     /// `roundTo3` を通したあと末尾 0 を落として表示文字列にする。
@@ -342,7 +323,7 @@ mod PropertyWidgets {
     /// Spinner[Double] 用 StringConverter。表示は formatRoundedFloat、
     /// 入力は parseDouble → roundTo3。parse 失敗時は 0.0 にフォールバック
     /// (JavaFX 既定の挙動と違うが、Inspector では Enter 押下時に必ず数値が確定する方が望ましい)。
-    def roundedDoubleConverter(): StringConverter[Double] \ IO =
+    pub def roundedDoubleConverter(): StringConverter[Double] \ IO =
         new StringConverter[Double] {
             def toString(_this: StringConverter[Double], value: Double): String =
                 if (Object.isNull(value)) ""
@@ -357,24 +338,76 @@ mod PropertyWidgets {
             }
         }
 
+    /// String 値の ComboBox を生成する具体型固定ヘルパ。
+    /// options を getItems().add で追加し、editable=false / setValue(initial) / setPrefWidth を設定。
+    /// valueProperty().addListener の ChangeListener[String] は inline で定義し、
+    /// null チェック (Object.isNull) を内部に閉じ込め、非 null 時のみ onChanged を呼ぶ。
+    /// setMaxWidth が要る呼び出し側は返り値に対して別途設定すること (ここでは設定しない)。
+    pub def makeStringComboBox(options: List[String], initial: String, prefWidth: Float64,
+                            onChanged: String -> Unit \ IO): ComboBox[String] \ IO = {
+        let combo: ComboBox[String] = new ComboBox();
+        let items = combo.getItems();
+        List.forEach(o -> discard items.add(o), options);
+        combo.setEditable(false);
+        combo.setValue(initial);
+        combo.setPrefWidth(prefWidth);
+        combo.valueProperty().addListener(new ChangeListener[String] {
+            def changed(_cThis: ChangeListener[String], _obs: ObservableValue[JObject],
+                         _old: String, newVal: String): Unit \ IO = {
+                if (Object.isNull(newVal)) ()
+                else onChanged(newVal)
+            }
+        });
+        combo
+    }
+
+    /// Int32 用 Spinner[Integer] を生成する具体型固定ヘルパ。
+    /// editable=true / setPrefWidth を設定。valueProperty().addListener の
+    /// ChangeListener[Integer] は inline で定義し、newVal.intValue() を onChanged に渡す。
+    pub def makeIntSpinner(range: {min = Int32, max = Int32}, initial: Int32, prefWidth: Float64,
+                        onChanged: Int32 -> Unit \ IO): Spinner[Integer] \ IO = {
+        let spinner: Spinner[Integer] = new Spinner(range#min, range#max, initial);
+        spinner.setEditable(true);
+        spinner.setPrefWidth(prefWidth);
+        spinner.valueProperty().addListener(new ChangeListener[Integer] {
+            def changed(_cThis: ChangeListener[Integer], _obs: ObservableValue[JObject],
+                         _old: Integer, newVal: Integer): Unit \ IO = {
+                let v: Int32 = newVal.intValue();
+                onChanged(v)
+            }
+        });
+        spinner
+    }
+
+    /// Float64 用 Spinner[Double] を生成する具体型固定ヘルパ。
+    /// editable=true / setPrefWidth / 3 桁丸めコンバータ (roundedDoubleConverter) を設定。
+    /// valueProperty().addListener の ChangeListener[Double] は inline で定義し、
+    /// roundTo3(newVal.doubleValue()) を onChanged に渡す。
+    def makeDoubleSpinner(range: {min = Float64, max = Float64, step = Float64}, initial: Float64,
+                           prefWidth: Float64, onChanged: Float64 -> Unit \ IO): Spinner[Double] \ IO = {
+        let spinner: Spinner[Double] = new Spinner(range#min, range#max, initial, range#step);
+        spinner.setEditable(true);
+        spinner.setPrefWidth(prefWidth);
+        spinner.getValueFactory().setConverter(roundedDoubleConverter());
+        spinner.valueProperty().addListener(new ChangeListener[Double] {
+            def changed(_cThis: ChangeListener[Double], _obs: ObservableValue[JObject],
+                         _old: Double, newVal: Double): Unit \ IO = {
+                let v: Float64 = roundTo3(newVal.doubleValue());
+                onChanged(v)
+            }
+        });
+        spinner
+    }
+
     /// Float フィールド: Spinner<Double> (step 0.1)。
     /// 表示・入力・commit すべて 3 桁丸めポリシーで統一する (roundedDoubleConverter 参照)。
     pub def buildFloatWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
         let raw: Float64 = NodeInspector.jsonToFloat(value |> Option.getWithDefault(Json.JsonElement.JsonNull))
                             |> Option.getWithDefault(0.0);
         let current = roundTo3(raw);
-        let spinner: Spinner[Double] = new Spinner(-999999.0, 999999.0, current, 0.1);
-        spinner.setEditable(true);
-        spinner.setPrefWidth(110.0);
+        let spinner = makeDoubleSpinner({min = -999999.0, max = 999999.0, step = 0.1}, current, 110.0,
+            v -> commit(NodeInspector.floatToJson(v)));
         spinner.setMaxWidth(110.0);
-        spinner.getValueFactory().setConverter(roundedDoubleConverter());
-        spinner.valueProperty().addListener(new ChangeListener[Double] {
-            def changed(_cThis: ChangeListener[Double], _obs: ObservableValue[JObject],
-                         _old: Double, newVal: Double): Unit \ IO = {
-                let v: Float64 = roundTo3(newVal.doubleValue());
-                commit(NodeInspector.floatToJson(v))
-            }
-        });
         checked_cast(spinner)
     }
 
@@ -432,243 +465,10 @@ mod PropertyWidgets {
             case Some(Json.JsonElement.JsonString(s)) => s
             case _ => List.head(options) |> Option.getWithDefault("")
         };
-        let combo: ComboBox[String] = new ComboBox();
-        let items = combo.getItems();
-        List.forEach(o -> discard items.add(o), options);
-        combo.setEditable(false);
-        combo.setValue(current);
-        combo.setPrefWidth(140.0);
+        let combo = makeStringComboBox(options, current, 140.0,
+            newVal -> commit(Json.JsonElement.JsonString(newVal)));
         combo.setMaxWidth(140.0);
-        combo.valueProperty().addListener(new ChangeListener[String] {
-            def changed(_cThis: ChangeListener[String], _obs: ObservableValue[JObject],
-                         _old: String, newVal: String): Unit \ IO = {
-                if (Object.isNull(newVal)) ()
-                else commit(Json.JsonElement.JsonString(newVal))
-            }
-        });
         checked_cast(combo)
-    }
-
-    /// RefPercentListT widget: 動的長の `[{id: <ref>, percent: 0-100}]` 配列を編集する。
-    /// 行ごとに ComboBox (ref dropdown) + Spinner (percent) + 削除ボタン、最下段に追加ボタン
-    /// と合計表示。Add / Remove は VBox を再描画、value 変更は in-place で commit + 合計
-    /// ラベル更新のみ (Spinner / ComboBox が壊れないように)
-    pub def buildRefPercentListWidget(value: Option[Json.JsonElement],
-                                        options: List[String],
-                                        commit: Commit): Node \ IO = {
-        let initial = parseRefPercentRows(value);
-        let rowsRef: Array[List[(String, Int32)], Static] = Array#{initial} @ Static;
-        let sumLabelRef: Array[Option[Label], Static] = Array#{(None: Option[Label])} @ Static;
-        let outer = new VBox(4.0);
-        outer.getStyleClass().add("ref-percent-list");
-        renderRefPercentList(outer, rowsRef, sumLabelRef, options, commit);
-        checked_cast(outer)
-    }
-
-    /// outer の子をクリアして再描画。Add/Remove のたびに呼ぶ
-    def renderRefPercentList(outer: VBox,
-                              rowsRef: Array[List[(String, Int32)], Static],
-                              sumLabelRef: Array[Option[Label], Static],
-                              options: List[String],
-                              commit: Commit): Unit \ IO = {
-        let children = outer.getChildren();
-        children.clear();
-        let rows = Array.get(0, rowsRef);
-        renderRefPercentListRows(0i32, rows, outer, rowsRef, sumLabelRef, options, commit);
-        // 追加ボタン
-        let addBtn = new Button("＋ 追加");
-        addBtn.getStyleClass().add("catalog-btn");
-        addBtn.setOnAction(new EventHandler[ActionEvent] {
-            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
-                let cur = Array.get(0, rowsRef);
-                let firstOpt = List.head(options) |> Option.getWithDefault("");
-                let newRows = List.append(cur, (firstOpt, 0i32) :: Nil);
-                Array.put(newRows, 0, rowsRef);
-                renderRefPercentList(outer, rowsRef, sumLabelRef, options, commit);
-                commitRefPercentRows(rowsRef, commit)
-            }
-        });
-        let addNode: Node = checked_cast(addBtn);
-        discard children.add(addNode);
-        // 合計ラベル
-        let sum = sumPercents(rows);
-        let lbl = new Label(formatSumLabel(sum));
-        lbl.getStyleClass().add("ref-percent-sum");
-        Array.put(Some(lbl), 0, sumLabelRef);
-        let lblNode: Node = checked_cast(lbl);
-        discard children.add(lblNode)
-    }
-
-    /// 各行 (HBox) を VBox に append する。idx は再描画のたびに 0 から数え直し
-    def renderRefPercentListRows(idx: Int32, remaining: List[(String, Int32)],
-                                  outer: VBox,
-                                  rowsRef: Array[List[(String, Int32)], Static],
-                                  sumLabelRef: Array[Option[Label], Static],
-                                  options: List[String],
-                                  commit: Commit): Unit \ IO =
-        match remaining {
-            case Nil => ()
-            case (id, pct) :: rest => {
-                let row = buildRefPercentRow(idx, id, pct, outer, rowsRef, sumLabelRef,
-                                              options, commit);
-                let rowNode: Node = checked_cast(row);
-                discard outer.getChildren().add(rowNode);
-                renderRefPercentListRows(idx + 1i32, rest, outer, rowsRef, sumLabelRef,
-                                          options, commit)
-            }
-        }
-
-    /// 1 行ぶん: [ComboBox] [Spinner] % [✕]
-    def buildRefPercentRow(idx: Int32, id: String, pct: Int32, outer: VBox,
-                            rowsRef: Array[List[(String, Int32)], Static],
-                            sumLabelRef: Array[Option[Label], Static],
-                            options: List[String],
-                            commit: Commit): HBox \ IO = {
-        let row = new HBox(4.0);
-        row.setAlignment(Pos.CENTER_LEFT);
-        // ComboBox
-        let combo: ComboBox[String] = new ComboBox();
-        let items = combo.getItems();
-        List.forEach(o -> discard items.add(o), options);
-        combo.setEditable(false);
-        combo.setValue(id);
-        combo.setPrefWidth(140.0);
-        combo.valueProperty().addListener(new ChangeListener[String] {
-            def changed(_this: ChangeListener[String], _obs: ObservableValue[JObject],
-                         _old: String, newVal: String): Unit \ IO = {
-                if (Object.isNull(newVal)) ()
-                else {
-                    let cur = Array.get(0, rowsRef);
-                    let curPct = nthPercent(idx, cur);
-                    Array.put(replaceRowAt(idx, (newVal, curPct), cur), 0, rowsRef);
-                    commitRefPercentRows(rowsRef, commit);
-                    updateSumLabel(rowsRef, sumLabelRef)
-                }
-            }
-        });
-        // Spinner (percent)
-        let spinner: Spinner[Integer] = new Spinner(0i32, 100i32, pct);
-        spinner.setEditable(true);
-        spinner.setPrefWidth(80.0);
-        spinner.valueProperty().addListener(new ChangeListener[Integer] {
-            def changed(_this: ChangeListener[Integer], _obs: ObservableValue[JObject],
-                         _old: Integer, newVal: Integer): Unit \ IO = {
-                let v: Int32 = newVal.intValue();
-                let cur = Array.get(0, rowsRef);
-                let curId = nthId(idx, cur);
-                Array.put(replaceRowAt(idx, (curId, v), cur), 0, rowsRef);
-                commitRefPercentRows(rowsRef, commit);
-                updateSumLabel(rowsRef, sumLabelRef)
-            }
-        });
-        let pctLbl = new Label("%");
-        // Remove ボタン
-        let removeBtn = new Button("✕");
-        removeBtn.getStyleClass().add("catalog-btn");
-        removeBtn.setOnAction(new EventHandler[ActionEvent] {
-            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
-                let cur = Array.get(0, rowsRef);
-                Array.put(removeRowAt(idx, cur), 0, rowsRef);
-                renderRefPercentList(outer, rowsRef, sumLabelRef, options, commit);
-                commitRefPercentRows(rowsRef, commit)
-            }
-        });
-        let children = row.getChildren();
-        let comboNode:  Node = checked_cast(combo);
-        let spinNode:   Node = checked_cast(spinner);
-        let pctLblNode: Node = checked_cast(pctLbl);
-        let rmNode:     Node = checked_cast(removeBtn);
-        discard children.add(comboNode);
-        discard children.add(spinNode);
-        discard children.add(pctLblNode);
-        discard children.add(rmNode);
-        row
-    }
-
-    /// JSON 値 (Option[JsonArray of JsonObject{id, percent}]) を [(id, percent)] にパース。
-    /// 不正な要素はスキップ。値無しは空リスト
-    def parseRefPercentRows(value: Option[Json.JsonElement]): List[(String, Int32)] =
-        match value {
-            case Some(Json.JsonElement.JsonArray(items)) =>
-                Vector.toList(items)
-                    |> List.filterMap(decodeRefPercentRow)
-            case _ => Nil
-        }
-
-    def decodeRefPercentRow(elem: Json.JsonElement): Option[(String, Int32)] =
-        match elem {
-            case Json.JsonElement.JsonObject(m) =>
-                let idOpt = Map.get("id", m) |> Option.flatMap(j -> match j {
-                    case Json.JsonElement.JsonString(s) => Some(s)
-                    case _ => None
-                });
-                let pctOpt = Map.get("percent", m) |> Option.flatMap(NodeInspector.jsonToInt);
-                match (idOpt, pctOpt) {
-                    case (Some(i), Some(p)) => Some((i, p))
-                    case _                  => None
-                }
-            case _ => None
-        }
-
-    /// 内部 state を JSON に書き戻して commit
-    def commitRefPercentRows(rowsRef: Array[List[(String, Int32)], Static],
-                              commit: Commit): Unit \ IO = {
-        let rows = Array.get(0, rowsRef);
-        let items = rows |> List.map(p -> {
-            let (id, pct) = p;
-            Json.JsonElement.JsonObject(Map#{
-                "id"      => Json.JsonElement.JsonString(id),
-                "percent" => NodeInspector.intToJson(pct)
-            })
-        });
-        commit(Json.JsonElement.JsonArray(List.toVector(items)))
-    }
-
-    /// idx 番目の (id, pct) を newPair で置き換えた新リストを返す
-    def replaceRowAt(idx: Int32, newPair: (String, Int32),
-                      rows: List[(String, Int32)]): List[(String, Int32)] =
-        match rows {
-            case Nil     => Nil
-            case x :: xs =>
-                if (idx == 0i32) newPair :: xs
-                else x :: replaceRowAt(idx - 1i32, newPair, xs)
-        }
-
-    /// idx 番目を取り除いた新リストを返す
-    def removeRowAt(idx: Int32, rows: List[(String, Int32)]): List[(String, Int32)] =
-        match rows {
-            case Nil     => Nil
-            case x :: xs =>
-                if (idx == 0i32) xs
-                else x :: removeRowAt(idx - 1i32, xs)
-        }
-
-    def nthPercent(idx: Int32, rows: List[(String, Int32)]): Int32 =
-        match List.nth(idx, rows) {
-            case Some((_, p)) => p
-            case None         => 0i32
-        }
-
-    def nthId(idx: Int32, rows: List[(String, Int32)]): String =
-        match List.nth(idx, rows) {
-            case Some((i, _)) => i
-            case None         => ""
-        }
-
-    def sumPercents(rows: List[(String, Int32)]): Int32 =
-        List.foldLeft((acc, p) -> { let (_, v) = p; acc + v }, 0i32, rows)
-
-    def formatSumLabel(sum: Int32): String =
-        if (sum == 100i32) "合計: ${sum}% ✓"
-        else "合計: ${sum}% ⚠"
-
-    def updateSumLabel(rowsRef: Array[List[(String, Int32)], Static],
-                        sumLabelRef: Array[Option[Label], Static]): Unit \ IO = {
-        let sum = sumPercents(Array.get(0, rowsRef));
-        match Array.get(0, sumLabelRef) {
-            case Some(lbl) => lbl.setText(formatSumLabel(sum))
-            case None      => ()
-        }
     }
 
     /// Color widget: JavaFX ColorPicker。値は JsonObject{"r","g","b"} (Float64 各 0-1)。
@@ -744,25 +544,25 @@ mod PropertyWidgets {
         } else {
             let initXR = roundTo3(initX);
             let initYR = roundTo3(initY);
-            let xs: Spinner[Double] = new Spinner(-999999.0, 999999.0, initXR, 0.1);
-            let ys: Spinner[Double] = new Spinner(-999999.0, 999999.0, initYR, 0.1);
-            xs.setEditable(true); ys.setEditable(true);
-            xs.setPrefWidth(140.0); ys.setPrefWidth(140.0);
-            xs.getValueFactory().setConverter(roundedDoubleConverter());
-            ys.getValueFactory().setConverter(roundedDoubleConverter());
-            let commitBoth = () -> {
-                let x: Float64 = roundTo3(xs.getValue().doubleValue());
-                let y: Float64 = roundTo3(ys.getValue().doubleValue());
-                commit(NodeInspector.vec2ToJson({x = x, y = y}))
+            // 両成分の Spinner を Static 配列に保持し、片方の変更時に他方の現在値も読んで
+            // 同時に commit する (元コードの commitBoth と等価)。配列に入れるのは
+            // makeDoubleSpinner 内 listener が両 Spinner 生成前に登録されるため。
+            let xsRef: Array[Option[Spinner[Double]], Static] = Array#{(None: Option[Spinner[Double]])} @ Static;
+            let ysRef: Array[Option[Spinner[Double]], Static] = Array#{(None: Option[Spinner[Double]])} @ Static;
+            let commitBoth = () -> match (Array.get(0, xsRef), Array.get(0, ysRef)) {
+                case (Some(xs), Some(ys)) => {
+                    let x: Float64 = roundTo3(xs.getValue().doubleValue());
+                    let y: Float64 = roundTo3(ys.getValue().doubleValue());
+                    commit(NodeInspector.vec2ToJson({x = x, y = y}))
+                }
+                case _ => ()
             };
-            xs.valueProperty().addListener(new ChangeListener[Double] {
-                def changed(_cThis: ChangeListener[Double], _obs: ObservableValue[JObject],
-                             _old: Double, _newVal: Double): Unit \ IO = commitBoth()
-            });
-            ys.valueProperty().addListener(new ChangeListener[Double] {
-                def changed(_cThis: ChangeListener[Double], _obs: ObservableValue[JObject],
-                             _old: Double, _newVal: Double): Unit \ IO = commitBoth()
-            });
+            let xs = makeDoubleSpinner({min = -999999.0, max = 999999.0, step = 0.1}, initXR, 140.0,
+                _v -> commitBoth());
+            let ys = makeDoubleSpinner({min = -999999.0, max = 999999.0, step = 0.1}, initYR, 140.0,
+                _v -> commitBoth());
+            Array.put(Some(xs), 0, xsRef);
+            Array.put(Some(ys), 0, ysRef);
             assembleVec2Box(checked_cast(xs), checked_cast(ys))
         }
     }
@@ -797,358 +597,4 @@ mod PropertyWidgets {
             case Json.JsonElement.JsonObject(m) => Map.get(key, m)
             case _                              => None
         }
-
-    /// record JSON を DFS で walk して、textureNames に含まれる文字列値を持つ
-    /// 最初のオブジェクトを見つけ、その texture と sibling の frame/hframes/vframes
-    /// (もし存在すれば) をまとめて SpriteRef として返す。
-    /// sprite ブロックを持たない bare texture record では frame 系が全て None に
-    /// なり、updateSpritePreview のフォールバックで全体表示と等価になる。
-    pub def findFirstSpriteRef(record: Json.JsonElement, textureNames: List[String]):
-            Option[SpriteRef] = {
-        let names = List.toSet(textureNames);
-        scanForSpriteRef(record, names)
-    }
-
-    def scanForSpriteRef(elem: Json.JsonElement, textureNames: Set[String]):
-            Option[SpriteRef] =
-        match elem {
-            case Json.JsonElement.JsonObject(m) =>
-                // この object 自身が texture フィールドを持っていれば
-                // sibling (frame/hframes/vframes) を一緒に拾って即返す
-                match extractSpriteRefHere(m, textureNames) {
-                    case Some(spriteRef) => Some(spriteRef)
-                    case None            =>
-                        Map.foldLeftWithKey((acc, _k, v) -> match acc {
-                            case Some(_) => acc
-                            case None    => scanForSpriteRef(v, textureNames)
-                        }, None, m)
-                }
-            case _ => None
-        }
-
-    /// JsonObject 内で「textureNames に含まれる文字列値を持つフィールド」を 1 つ
-    /// 見つけたら、その object 自身の frame/hframes/vframes (整数) も sibling
-    /// として抜き出して SpriteRef を作る。
-    /// texture を保持しているキーの名前は問わない (sprite ブロック内なら "texture"
-    /// だが key 名に依存しない設計)。frame/hframes/vframes が無い、または整数で
-    /// ない場合はそれぞれ None として返す。
-    pub def extractSpriteRefHere(m: Map[String, Json.JsonElement], textureNames: Set[String]):
-            Option[SpriteRef] =
-        let entries = Map.toList(m);
-        let textureOpt = List.findMap(entry -> {
-            let (_k, v) = entry;
-            match v {
-                case Json.JsonElement.JsonString(s) =>
-                    if (Set.memberOf(s, textureNames)) Some(s) else None
-                case _ => None
-            }
-        }, entries);
-        match textureOpt {
-            case None          => None
-            case Some(texture) =>
-                let frame   = Map.get("frame",   m) |> Option.flatMap(NodeInspector.jsonToInt);
-                let hframes = Map.get("hframes", m) |> Option.flatMap(NodeInspector.jsonToInt);
-                let vframes = Map.get("vframes", m) |> Option.flatMap(NodeInspector.jsonToInt);
-                let (ox, oy) = extractOffset(m);
-                Some({
-                    texture = texture,
-                    frame   = frame,
-                    hframes = hframes,
-                    vframes = vframes,
-                    offsetX = ox,
-                    offsetY = oy
-                })
-        }
-
-    /// `"offset": {"x": Float, "y": Float}` の sibling から (offsetX, offsetY) を抜き出す。
-    /// 無ければ (0, 0)。
-    def extractOffset(m: Map[String, Json.JsonElement]): (Float64, Float64) =
-        match Map.get("offset", m) {
-            case Some(Json.JsonElement.JsonObject(om)) =>
-                let x = Map.get("x", om) |> Option.flatMap(NodeInspector.jsonToFloat)
-                          |> Option.getWithDefault(0.0);
-                let y = Map.get("y", om) |> Option.flatMap(NodeInspector.jsonToFloat)
-                          |> Option.getWithDefault(0.0);
-                (x, y)
-            case _ => (0.0, 0.0)
-        }
-
-    /// SpriteRef から絶対パスを引いて JavaFX Image をロードし、frame/hframes/vframes
-    /// が指定されていればその 1 セル分だけを Canvas にコピーして表示する。
-    /// None なら "(no preview)" 表示。`pathMap` は texture 名 → 絶対パスの解決マップ。
-    /// 切り抜き式は engine 側の Sprite2D.computeUv と同じ:
-    ///   cellW = imgW / hframes, cellH = imgH / vframes,
-    ///   col = frame % hframes,  row = frame / hframes,
-    ///   srcRect = (col * cellW, row * cellH, cellW, cellH)
-    /// frame 系が None または不正値のときは画像全体を表示する (sprite ブロックなしの
-    /// bare texture record も同じ経路でフォールバック)。
-    /// Canvas を使うのは GraphicsContext.setImageSmoothing(false) で
-    /// nearest-neighbor 描画を明示的に効かせるため (ImageView.setSmooth(false) は
-    /// JavaFX の Prism レンダラ環境で効かないケースがあるため避ける)。
-    pub def updateSpritePreview(pane: StackPane, pathMap: Map[String, String],
-                                 spriteRef: Option[SpriteRef],
-                                 zoomMode: ZoomMode,
-                                 showGrid: Bool,
-                                 frameAdjust: Bool,
-                                 panOffset: (Float64, Float64),
-                                 getCurrentPan: Unit -> (Float64, Float64) \ IO,
-                                 onPanCommit: ((Float64, Float64)) -> Unit \ IO,
-                                 onStatus: String -> Unit \ IO): Unit \ IO = {
-        let children = pane.getChildren();
-        children.clear();
-        match spriteRef {
-            case None => {
-                let l = new Label("(no preview)");
-                l.getStyleClass().add("inspector-empty");
-                let n: Node = checked_cast(l);
-                discard children.add(n);
-                onStatus("")
-            }
-            case Some(sr) => {
-                match Map.get(sr#texture, pathMap) {
-                    case None => {
-                        let l = new Label("(path unknown: ${sr#texture})");
-                        l.getStyleClass().add("inspector-empty");
-                        let n: Node = checked_cast(l);
-                        discard children.add(n);
-                        onStatus("")
-                    }
-                    case Some(absPath) => {
-                        let url = new File(absPath).toURI().toString();
-                        let image = new Image(url);
-                        let hframes = sr#hframes |> Option.getWithDefault(1i32);
-                        let vframes = sr#vframes |> Option.getWithDefault(1i32);
-                        let frame   = sr#frame   |> Option.getWithDefault(0i32);
-                        let imgW = image.getWidth();
-                        let imgH = image.getHeight();
-                        // status label: セル native px / 現在 zoom
-                        onStatus(formatSpriteStatus(imgW, imgH, hframes, vframes, zoomMode));
-                        // canvas サイズは pane の実サイズに追従させて、window resize で
-                        // 「見える範囲」が増減するようにする。レイアウト未確定 (= 0) の
-                        // フレームでは保守的な 220 にフォールバック
-                        let paneW = pane.getWidth();
-                        let paneH = pane.getHeight();
-                        let canvasW = if (paneW > 16.0) paneW else 220.0;
-                        let canvasH = if (paneH > 16.0) paneH else 220.0;
-                        let canvas = new Canvas(canvasW, canvasH);
-                        let gc: GraphicsContext = canvas.getGraphicsContext2D();
-                        gc.setImageSmoothing(false);
-                        let (panX, panY) = panOffset;
-                        let fullSheetMode = frameAdjust and hframes > 0i32 and vframes > 0i32
-                                              and imgW > 0.0 and imgH > 0.0;
-                        if (fullSheetMode) {
-                            drawFullSheetWithSelection(gc, image, hframes, vframes, frame,
-                                                        imgW, imgH, canvasW, canvasH, zoomMode,
-                                                        showGrid, panX, panY)
-                        } else {
-                            drawSingleCell(gc, image, sr, hframes, vframes, frame,
-                                            imgW, imgH, canvasW, canvasH, zoomMode, showGrid)
-                        };
-                        // フレーム調整モードでのみドラッグ pan を有効化。
-                        // 同じ canvas 上に直接 redraw して JavaFX のドラッグ追跡を保つ
-                        // (canvas を pane から外すと press 後の dragged イベントが届かない)
-                        if (fullSheetMode) {
-                            wirePanDrag(canvas, gc, image, hframes, vframes, frame,
-                                         imgW, imgH, canvasW, canvasH, zoomMode, showGrid,
-                                         getCurrentPan, onPanCommit)
-                        } else ();
-                        let n: Node = checked_cast(canvas);
-                        discard children.add(n)
-                    }
-                }
-            }
-        }
-    }
-
-    /// Preview 下の status label に出す「セル native px / Zoom」文字列。
-    /// resource に scale を持たせない方針なので、純粋にアトラスのピクセル情報のみ表示
-    def formatSpriteStatus(imgW: Float64, imgH: Float64, hframes: Int32, vframes: Int32,
-                            zoomMode: ZoomMode): String = {
-        let hfSafe = if (hframes > 0i32) hframes else 1i32;
-        let vfSafe = if (vframes > 0i32) vframes else 1i32;
-        let cellW = imgW / Int32.toFloat64(hfSafe);
-        let cellH = imgH / Int32.toFloat64(vfSafe);
-        let cellWi = Float64.tryToInt32(cellW) |> Option.getWithDefault(0i32);
-        let cellHi = Float64.tryToInt32(cellH) |> Option.getWithDefault(0i32);
-        let zoomStr = zoomModeLabel(zoomMode);
-        "セル: ${cellWi}×${cellHi} px ／ Zoom: ${zoomStr}"
-    }
-
-    /// フレーム調整モードの canvas にマウスドラッグ pan を貼る。
-    /// 押下時の (mouse, pan) を closure-capture した Static Array に記録し、
-    /// drag のたびに新 pan を計算して同じ canvas に直接 redraw する。
-    /// onPanCommit は ResourceState を更新し、後続の updateSpritePreview 呼び出しが
-    /// 新しい pan を反映できるようにする
-    def wirePanDrag(canvas: Canvas, gc: GraphicsContext, image: Image,
-                     hframes: Int32, vframes: Int32, frame: Int32,
-                     imgW: Float64, imgH: Float64,
-                     canvasW: Float64, canvasH: Float64,
-                     zoomMode: ZoomMode, showGrid: Bool,
-                     getCurrentPan: Unit -> (Float64, Float64) \ IO,
-                     onPanCommit: ((Float64, Float64)) -> Unit \ IO): Unit \ IO = {
-        // ドラッグ起点: 押下時のマウス座標と pan 値を保持する。
-        // 初期 0.0 はダミー — 実際の値は MOUSE_PRESSED で setReplace される
-        let startMouseX = Array#{0.0} @ Static;
-        let startMouseY = Array#{0.0} @ Static;
-        let startPanX = Array#{0.0} @ Static;
-        let startPanY = Array#{0.0} @ Static;
-        canvas.setOnMousePressed(new EventHandler[MouseEvent] {
-            def handle(_this: EventHandler[MouseEvent], e: MouseEvent): Unit \ IO = {
-                Array.put(e.getX(), 0, startMouseX);
-                Array.put(e.getY(), 0, startMouseY);
-                // 押下のたびに ResourceState から最新 pan を取り直す。
-                // これで 2 回目以降のドラッグストロークでも累積した pan を起点にできる
-                let (curX, curY) = getCurrentPan();
-                Array.put(curX, 0, startPanX);
-                Array.put(curY, 0, startPanY)
-            }
-        });
-        canvas.setOnMouseDragged(new EventHandler[MouseEvent] {
-            def handle(_this: EventHandler[MouseEvent], e: MouseEvent): Unit \ IO = {
-                let dx = e.getX() - Array.get(0, startMouseX);
-                let dy = e.getY() - Array.get(0, startMouseY);
-                let newPanX = Array.get(0, startPanX) + dx;
-                let newPanY = Array.get(0, startPanY) + dy;
-                onPanCommit((newPanX, newPanY));
-                // 同じ canvas 上に直接 redraw (children.clear はしない)
-                drawFullSheetWithSelection(gc, image, hframes, vframes, frame,
-                                            imgW, imgH, canvasW, canvasH, zoomMode, showGrid,
-                                            newPanX, newPanY)
-            }
-        })
-    }
-
-    /// 既存挙動: 選択フレーム 1 セルだけを切り抜いて中央描画。offset と zoom を反映。
-    /// hframes/vframes が無効値のときは画像全体を表示するフォールバックを兼ねる
-    def drawSingleCell(gc: GraphicsContext, image: Image, sr: SpriteRef,
-                        hframes: Int32, vframes: Int32, frame: Int32,
-                        imgW: Float64, imgH: Float64,
-                        canvasW: Float64, canvasH: Float64,
-                        zoomMode: ZoomMode, showGrid: Bool): Unit \ IO = {
-        gc.clearRect(0.0, 0.0, canvasW, canvasH);
-        let (srcX, srcY, srcW, srcH) =
-            if (hframes > 0i32 and vframes > 0i32 and imgW > 0.0 and imgH > 0.0) {
-                let cellW = imgW / Int32.toFloat64(hframes);
-                let cellH = imgH / Int32.toFloat64(vframes);
-                let col   = Int32.modulo(frame, hframes);
-                let row   = frame / hframes;
-                (Int32.toFloat64(col) * cellW,
-                 Int32.toFloat64(row) * cellH,
-                 cellW, cellH)
-            } else (0.0, 0.0, imgW, imgH);
-        let scale = if (srcW <= 0.0 or srcH <= 0.0) 1.0 else
-            match zoomMode {
-                case ZoomMode.Percent(p) => Int32.toFloat64(p) / 100.0
-            };
-        let dstW = srcW * scale;
-        let dstH = srcH * scale;
-        let dstX = (canvasW - dstW) / 2.0 + sr#offsetX * scale;
-        let dstY = (canvasH - dstH) / 2.0 + sr#offsetY * scale;
-        gc.drawImage(image, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH);
-        if (showGrid) drawPreviewGrid(gc, canvasW, canvasH, dstW, dstH)
-        else ()
-    }
-
-    /// フレーム調整モード: texture 全体を fit-scale * zoom% で描画し、選択フレーム以外を
-    /// 半透明黒でディマー、選択フレームを再描画して 100% 不透明に戻し、黄色枠でハイライト。
-    /// offset は適用しない (アトラス上の物理セル位置を見せる用途のため)
-    def drawFullSheetWithSelection(gc: GraphicsContext, image: Image,
-                                    hframes: Int32, vframes: Int32, frame: Int32,
-                                    imgW: Float64, imgH: Float64,
-                                    canvasW: Float64, canvasH: Float64,
-                                    zoomMode: ZoomMode, showGrid: Bool,
-                                    panX: Float64, panY: Float64): Unit \ IO = {
-        gc.clearRect(0.0, 0.0, canvasW, canvasH);
-        let fitScale = Float64.min(canvasW / imgW, canvasH / imgH);
-        let zoomMul = match zoomMode {
-            case ZoomMode.Percent(p) => Int32.toFloat64(p) / 100.0
-        };
-        let effScale = fitScale * zoomMul;
-        let sheetW = imgW * effScale;
-        let sheetH = imgH * effScale;
-
-        let cellW = imgW / Int32.toFloat64(hframes);
-        let cellH = imgH / Int32.toFloat64(vframes);
-        let safeFrame = if (frame < 0i32) 0i32 else frame;
-        let col = Int32.modulo(safeFrame, hframes);
-        let row = safeFrame / hframes;
-        let srcX = Int32.toFloat64(col) * cellW;
-        let srcY = Int32.toFloat64(row) * cellH;
-        let cellDstW = cellW * effScale;
-        let cellDstH = cellH * effScale;
-        // 選択セル中心 + ユーザーの drag pan を canvas 中心に配置する。
-        // pan は canvas pixel 単位、zoom に応じて拡縮しない (ドラッグ感覚を保つため)
-        let cellCx = (Int32.toFloat64(col) + 0.5) * cellW * effScale;
-        let cellCy = (Int32.toFloat64(row) + 0.5) * cellH * effScale;
-        let dstX0 = canvasW / 2.0 - cellCx + panX;
-        let dstY0 = canvasH / 2.0 - cellCy + panY;
-        let cellDstX = dstX0 + srcX * effScale;
-        let cellDstY = dstY0 + srcY * effScale;
-
-        // 1. full sheet
-        gc.drawImage(image, 0.0, 0.0, imgW, imgH, dstX0, dstY0, sheetW, sheetH);
-        // 2. dim overlay (~65% black)
-        let dim = FxColor.color(0.0, 0.0, 0.0, 0.65);
-        gc.setFill(dim);
-        gc.fillRect(dstX0, dstY0, sheetW, sheetH);
-        // 3. selected cell at full opacity (frame が grid 内に収まるときだけ)
-        let frameInGrid = row < vframes;
-        if (frameInGrid) {
-            gc.drawImage(image, srcX, srcY, cellW, cellH, cellDstX, cellDstY, cellDstW, cellDstH)
-        } else ();
-        // 4. atlas grid lines (if showGrid)
-        if (showGrid) drawAtlasGrid(gc, dstX0, dstY0, sheetW, sheetH, hframes, vframes)
-        else ();
-        // 5. selection outline (grid 内のときだけ)
-        if (frameInGrid) {
-            let yellow = FxColor.color(1.0, 0.85, 0.0);
-            gc.setStroke(yellow);
-            gc.setLineWidth(2.0);
-            gc.strokeRect(cellDstX, cellDstY, cellDstW, cellDstH)
-        } else ()
-    }
-
-    /// アトラス全体の hframes × vframes セル境界線を半透明白で描く。
-    /// drawPreviewGrid (中央十字 + cell 単独) と用途が異なる: フレーム調整モードで
-    /// 「全セルの分割位置」を可視化するためのもの
-    def drawAtlasGrid(gc: GraphicsContext, dstX0: Float64, dstY0: Float64,
-                       sheetW: Float64, sheetH: Float64,
-                       hframes: Int32, vframes: Int32): Unit \ IO = {
-        let line = FxColor.color(1.0, 1.0, 1.0, 0.4);
-        gc.setStroke(line);
-        gc.setLineWidth(1.0);
-        let cellW = sheetW / Int32.toFloat64(hframes);
-        let cellH = sheetH / Int32.toFloat64(vframes);
-        // 縦線 (hframes - 1 本)
-        List.range(1i32, hframes) |> List.forEach(i -> {
-            let x = dstX0 + Int32.toFloat64(i) * cellW;
-            gc.strokeLine(x, dstY0, x, dstY0 + sheetH)
-        });
-        // 横線 (vframes - 1 本)
-        List.range(1i32, vframes) |> List.forEach(j -> {
-            let y = dstY0 + Int32.toFloat64(j) * cellH;
-            gc.strokeLine(dstX0, y, dstX0 + sheetW, y)
-        })
-    }
-
-    /// プレビュー用の補助グリッド。canvas の中央十字（赤）と「offset=0 のときの
-    /// セル矩形」（白）を上に重ねて描く。中央合わせの目視確認に使う。
-    def drawPreviewGrid(gc: GraphicsContext, canvasW: Float64, canvasH: Float64,
-                         cellW: Float64, cellH: Float64): Unit \ IO = {
-        let red   = FxColor.color(1.0, 0.0, 0.0);
-        let white = FxColor.color(1.0, 1.0, 1.0);
-        let cx = canvasW / 2.0;
-        let cy = canvasH / 2.0;
-        // 1. cell 矩形（offset=0 で中央寄せした場合の位置）= 白
-        gc.setStroke(white);
-        gc.setLineWidth(1.0);
-        let cellX = cx - cellW / 2.0;
-        let cellY = cy - cellH / 2.0;
-        gc.strokeRect(cellX, cellY, cellW, cellH);
-        // 2. 中央十字 = 赤
-        gc.setStroke(red);
-        gc.setLineWidth(1.0);
-        gc.strokeLine(0.0, cy, canvasW, cy);
-        gc.strokeLine(cx, 0.0, cx, canvasH)
-    }
 }

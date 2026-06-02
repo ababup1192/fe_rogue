@@ -1,0 +1,17 @@
+{
+  "decorPalette": [
+    [
+      0,
+      0
+    ]
+  ],
+  "floorPalette": [
+    [
+      0,
+      0
+    ]
+  ],
+  "tileSize": 16,
+  "tileset": "inca_tileset",
+  "wallMap": {}
+}

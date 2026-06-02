@@ -23,16 +23,27 @@ mod JavaFXIdeUI {
     import javafx.scene.Scene
     import javafx.scene.image.ImageView
     import javafx.scene.image.WritableImage
+    import javafx.scene.canvas.Canvas
+    import javafx.scene.control.Tab
+    import javafx.scene.Node
+    import java.lang.Integer
     import javafx.scene.control.Button
+    import javafx.scene.control.ToggleButton
     import javafx.scene.control.CheckBox
+    import javafx.scene.control.ComboBox
+    import javafx.scene.control.Spinner
     import javafx.scene.control.Label
     import javafx.scene.control.TextArea
+    import javafx.scene.control.TextField
     import javafx.scene.control.MenuItem
     import javafx.scene.control.ProgressBar
     import javafx.scene.control.TreeView
     import javafx.scene.control.ListView
     import javafx.scene.layout.StackPane
     import javafx.scene.layout.VBox
+    import javafx.scene.layout.HBox
+    import javafx.scene.control.TabPane
+    import javafx.scene.layout.GridPane
     import javafx.application.Platform
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
@@ -69,9 +80,7 @@ mod JavaFXIdeUI {
         let subEntryRemoveBtn: Button = unchecked_cast(ns.get("subEntryRemoveBtn") as Button);
         let propertyPanel: VBox = unchecked_cast(ns.get("propertyPanel") as VBox);
         let resourcePreviewPane: StackPane = unchecked_cast(ns.get("resourcePreviewPane") as StackPane);
-        let previewZoomLabel: Label = unchecked_cast(ns.get("previewZoomLabel") as Label);
-        let previewZoomOut:   Button = unchecked_cast(ns.get("previewZoomOut") as Button);
-        let previewZoomIn:    Button = unchecked_cast(ns.get("previewZoomIn") as Button);
+        // 拡縮ボタン・ラベルは廃止（canvas へのピンチで操作）
         let previewGridCheck: CheckBox = unchecked_cast(ns.get("previewGridCheck") as CheckBox);
         let previewFrameAdjustCheck: CheckBox =
             unchecked_cast(ns.get("previewFrameAdjustCheck") as CheckBox);
@@ -86,7 +95,6 @@ mod JavaFXIdeUI {
         Array.put(Some(subEntryRemoveBtn),   0, state#widgets#subEntryRemoveBtn);
         Array.put(Some(propertyPanel),       0, state#widgets#propertyPanel);
         Array.put(Some(resourcePreviewPane), 0, state#widgets#resourcePreviewPane);
-        Array.put(Some(previewZoomLabel),    0, state#widgets#resourcePreviewZoomLbl);
         Array.put(Some(previewGridCheck),    0, state#widgets#resourcePreviewGridChk);
         Array.put(Some(previewFrameAdjustCheck), 0, state#widgets#resourcePreviewFrameAdjustChk);
         Array.put(Some(resourceStatusLabel), 0, state#widgets#resourceStatusLabel);
@@ -107,12 +115,165 @@ mod JavaFXIdeUI {
         ResourcePanel.wireResourceSelection(state, resourcesList, subEntriesList);
         ResourcePanel.wireSubEntrySelection(state, subEntriesList);
         ResourcePanel.wireSubEntryButtons(state, subEntriesList, subEntryAddBtn, subEntryRemoveBtn);
-        ResourcePanel.wireZoomButtons(state, previewZoomOut, previewZoomIn);
         ResourcePanel.wireGridCheckbox(state, previewGridCheck);
         ResourcePanel.wireFrameAdjustCheckbox(state, previewFrameAdjustCheck);
         // pane の幅高変化 (window resize / divider 移動) で preview canvas を作り直す
         ResourcePanel.wirePreviewResize(state, resourcePreviewPane);
-        ResourcePanel.updateZoomLabel(state);
+        // ピンチズームは永続 pane に 1 回だけ登録 (canvas 再生成と無関係に gesture が続く)
+        ResourcePanel.wirePreviewPinchZoom(state, resourcePreviewPane);
+
+        // Maps タブの中身は map-editor.fxml に分離。
+        // fx:include だと inner fx:id が親 namespace から見えないため、別 FXMLLoader で
+        // ロードして Tab.setContent + 専用 namespace から widget を引く。
+        let mapsTab: Tab = unchecked_cast(ns.get("mapsTab") as Tab);
+        let mapFxmlUrl = new File("src/map-editor.fxml").toURI().toURL();
+        let mapLoader = new FXMLLoader(mapFxmlUrl);
+        mapLoader.setClassLoader(probe.getClass().getClassLoader());
+        let mapRootObj: JObject = mapLoader.load();
+        let mapRoot: Node = unchecked_cast(mapRootObj as Node);
+        mapsTab.setContent(mapRoot);
+        let mapNs = mapLoader.getNamespace();
+        let mapsList: ListView[String] = unchecked_cast(mapNs.get("mapsList") as ListView[String]);
+        let mapGridCanvas: Canvas = unchecked_cast(mapNs.get("mapGridCanvas") as Canvas);
+        Array.put(Some(mapsList), 0, state#widgets#mapsList);
+        Array.put(Some(mapGridCanvas), 0, state#widgets#mapGridCanvas);
+        // Layer リスト (Floor/Walls/Entities) + tile パレット + identifier 入力 + 新規ボタン
+        let mapLayerRowFloor: HBox = unchecked_cast(mapNs.get("mapLayerRowFloor") as HBox);
+        let mapLayerRowWalls: HBox = unchecked_cast(mapNs.get("mapLayerRowWalls") as HBox);
+        let mapLayerRowEntities: HBox = unchecked_cast(mapNs.get("mapLayerRowEntities") as HBox);
+        let mapLayerVisibleFloor: ToggleButton =
+            unchecked_cast(mapNs.get("mapLayerVisibleFloor") as ToggleButton);
+        let mapLayerVisibleWalls: ToggleButton =
+            unchecked_cast(mapNs.get("mapLayerVisibleWalls") as ToggleButton);
+        let mapLayerVisibleEntities: ToggleButton =
+            unchecked_cast(mapNs.get("mapLayerVisibleEntities") as ToggleButton);
+        let mapPaletteCanvas: Canvas = unchecked_cast(mapNs.get("mapPaletteCanvas") as Canvas);
+        let mapPaletteStatus: Label = unchecked_cast(mapNs.get("mapPaletteStatus") as Label);
+        let mapPaletteLabel: Label = unchecked_cast(mapNs.get("mapPaletteLabel") as Label);
+        let mapPaletteTextureCombo: ComboBox[String] =
+            unchecked_cast(mapNs.get("mapPaletteTextureCombo") as ComboBox[String]);
+        let mapPaletteCellWSpinner: Spinner[Integer] =
+            unchecked_cast(mapNs.get("mapPaletteCellWSpinner") as Spinner[Integer]);
+        let mapPaletteCellHSpinner: Spinner[Integer] =
+            unchecked_cast(mapNs.get("mapPaletteCellHSpinner") as Spinner[Integer]);
+        let mapPaletteMarginXSpinner: Spinner[Integer] =
+            unchecked_cast(mapNs.get("mapPaletteMarginXSpinner") as Spinner[Integer]);
+        let mapPaletteMarginYSpinner: Spinner[Integer] =
+            unchecked_cast(mapNs.get("mapPaletteMarginYSpinner") as Spinner[Integer]);
+        let mapEntityIdField: TextField =
+            unchecked_cast(mapNs.get("mapEntityIdField") as TextField);
+        let mapNewBtn: Button = unchecked_cast(mapNs.get("mapNewBtn") as Button);
+        let mapDeleteBtn: Button = unchecked_cast(mapNs.get("mapDeleteBtn") as Button);
+        let mapDuplicateBtn: Button = unchecked_cast(mapNs.get("mapDuplicateBtn") as Button);
+        let mapToolPencilBtn: ToggleButton =
+            unchecked_cast(mapNs.get("mapToolPencilBtn") as ToggleButton);
+        let mapToolRangeBtn: ToggleButton =
+            unchecked_cast(mapNs.get("mapToolRangeBtn") as ToggleButton);
+        let mapPreviewToggleBtn: ToggleButton =
+            unchecked_cast(mapNs.get("mapPreviewToggleBtn") as ToggleButton);
+        let mapPaletteSection: VBox = unchecked_cast(mapNs.get("mapPaletteSection") as VBox);
+        let mapEntitySection: VBox = unchecked_cast(mapNs.get("mapEntitySection") as VBox);
+        let mapRightTabs: TabPane = unchecked_cast(mapNs.get("mapRightTabs") as TabPane);
+        let mapMaterialsWallMapBox: VBox =
+            unchecked_cast(mapNs.get("mapMaterialsWallMapBox") as VBox);
+        let mapMaterialsStatus: Label =
+            unchecked_cast(mapNs.get("mapMaterialsStatus") as Label);
+        let mapMaterialsTilesetCanvas: Canvas =
+            unchecked_cast(mapNs.get("mapMaterialsTilesetCanvas") as Canvas);
+        let mapRuleAddBtn: Button =
+            unchecked_cast(mapNs.get("mapRuleAddBtn") as Button);
+        let mapRuleRemoveBtn: Button =
+            unchecked_cast(mapNs.get("mapRuleRemoveBtn") as Button);
+        let mapRuleList: ComboBox[String] =
+            unchecked_cast(mapNs.get("mapRuleList") as ComboBox[String]);
+        let mapRuleEditor: VBox =
+            unchecked_cast(mapNs.get("mapRuleEditor") as VBox);
+        let mapRuleNameField: TextField =
+            unchecked_cast(mapNs.get("mapRuleNameField") as TextField);
+        let mapRulePatternGrid: GridPane =
+            unchecked_cast(mapNs.get("mapRulePatternGrid") as GridPane);
+        let mapRulePaletteBox: VBox =
+            unchecked_cast(mapNs.get("mapRulePaletteBox") as VBox);
+        let mapRuleTileLabel: Label =
+            unchecked_cast(mapNs.get("mapRuleTileLabel") as Label);
+        let mapRuleTilesetCanvas: Canvas =
+            unchecked_cast(mapNs.get("mapRuleTilesetCanvas") as Canvas);
+        let mapRuleSizeCombo: ComboBox[String] =
+            unchecked_cast(mapNs.get("mapRuleSizeCombo") as ComboBox[String]);
+        let mapSettingsTab: Tab =
+            unchecked_cast(mapNs.get("mapSettingsTab") as Tab);
+        let mapSettingsNameField: TextField =
+            unchecked_cast(mapNs.get("mapSettingsNameField") as TextField);
+        let mapSettingsWidthSpinner: Spinner[Integer] =
+            unchecked_cast(mapNs.get("mapSettingsWidthSpinner") as Spinner[Integer]);
+        let mapSettingsHeightSpinner: Spinner[Integer] =
+            unchecked_cast(mapNs.get("mapSettingsHeightSpinner") as Spinner[Integer]);
+        let mapSettingsResizeInfo: Label =
+            unchecked_cast(mapNs.get("mapSettingsResizeInfo") as Label);
+        let mapSettingsRenameWarning: Label =
+            unchecked_cast(mapNs.get("mapSettingsRenameWarning") as Label);
+        let mapSettingsApplyBtn: Button =
+            unchecked_cast(mapNs.get("mapSettingsApplyBtn") as Button);
+        let mapSettingsStatus: Label =
+            unchecked_cast(mapNs.get("mapSettingsStatus") as Label);
+        Array.put(Some(mapLayerRowFloor), 0, state#widgets#mapLayerRowFloor);
+        Array.put(Some(mapLayerRowWalls), 0, state#widgets#mapLayerRowWalls);
+        Array.put(Some(mapLayerRowEntities), 0, state#widgets#mapLayerRowEntities);
+        Array.put(Some(mapLayerVisibleFloor), 0, state#widgets#mapLayerVisibleFloor);
+        Array.put(Some(mapLayerVisibleWalls), 0, state#widgets#mapLayerVisibleWalls);
+        Array.put(Some(mapLayerVisibleEntities), 0, state#widgets#mapLayerVisibleEntities);
+        Array.put(Some(mapPaletteCanvas), 0, state#widgets#mapPaletteCanvas);
+        Array.put(Some(mapPaletteStatus), 0, state#widgets#mapPaletteStatus);
+        Array.put(Some(mapPaletteLabel), 0, state#widgets#mapPaletteLabel);
+        Array.put(Some(mapPaletteTextureCombo), 0, state#widgets#mapPaletteTextureCombo);
+        Array.put(Some(mapPaletteCellWSpinner), 0, state#widgets#mapPaletteCellWSpinner);
+        Array.put(Some(mapPaletteCellHSpinner), 0, state#widgets#mapPaletteCellHSpinner);
+        Array.put(Some(mapPaletteMarginXSpinner), 0, state#widgets#mapPaletteMarginXSpinner);
+        Array.put(Some(mapPaletteMarginYSpinner), 0, state#widgets#mapPaletteMarginYSpinner);
+        Array.put(Some(mapEntityIdField), 0, state#widgets#mapEntityIdField);
+        Array.put(Some(mapNewBtn), 0, state#widgets#mapNewBtn);
+        Array.put(Some(mapDeleteBtn), 0, state#widgets#mapDeleteBtn);
+        Array.put(Some(mapDuplicateBtn), 0, state#widgets#mapDuplicateBtn);
+        Array.put(Some(mapToolPencilBtn), 0, state#widgets#mapToolPencilBtn);
+        Array.put(Some(mapToolRangeBtn), 0, state#widgets#mapToolRangeBtn);
+        Array.put(Some(mapPreviewToggleBtn), 0, state#widgets#mapPreviewToggleBtn);
+        Array.put(Some(mapPaletteSection), 0, state#widgets#mapPaletteSection);
+        Array.put(Some(mapEntitySection), 0, state#widgets#mapEntitySection);
+        Array.put(Some(mapRightTabs), 0, state#widgets#mapRightTabs);
+        Array.put(Some(mapMaterialsWallMapBox), 0, state#widgets#mapMaterialsWallMapBox);
+        Array.put(Some(mapMaterialsStatus), 0, state#widgets#mapMaterialsStatus);
+        Array.put(Some(mapMaterialsTilesetCanvas), 0, state#widgets#mapMaterialsTilesetCanvas);
+        Array.put(Some(mapRuleAddBtn), 0, state#widgets#mapRuleAddBtn);
+        Array.put(Some(mapRuleRemoveBtn), 0, state#widgets#mapRuleRemoveBtn);
+        Array.put(Some(mapRuleList), 0, state#widgets#mapRuleList);
+        Array.put(Some(mapRuleEditor), 0, state#widgets#mapRuleEditor);
+        Array.put(Some(mapRuleNameField), 0, state#widgets#mapRuleNameField);
+        Array.put(Some(mapRulePatternGrid), 0, state#widgets#mapRulePatternGrid);
+        Array.put(Some(mapRulePaletteBox), 0, state#widgets#mapRulePaletteBox);
+        Array.put(Some(mapRuleTileLabel), 0, state#widgets#mapRuleTileLabel);
+        Array.put(Some(mapRuleTilesetCanvas), 0, state#widgets#mapRuleTilesetCanvas);
+        Array.put(Some(mapRuleSizeCombo), 0, state#widgets#mapRuleSizeCombo);
+        Array.put(Some(mapSettingsTab), 0, state#widgets#mapSettingsTab);
+        Array.put(Some(mapSettingsNameField), 0, state#widgets#mapSettingsNameField);
+        Array.put(Some(mapSettingsWidthSpinner), 0, state#widgets#mapSettingsWidthSpinner);
+        Array.put(Some(mapSettingsHeightSpinner), 0, state#widgets#mapSettingsHeightSpinner);
+        Array.put(Some(mapSettingsResizeInfo), 0, state#widgets#mapSettingsResizeInfo);
+        Array.put(Some(mapSettingsRenameWarning), 0, state#widgets#mapSettingsRenameWarning);
+        Array.put(Some(mapSettingsApplyBtn), 0, state#widgets#mapSettingsApplyBtn);
+        Array.put(Some(mapSettingsStatus), 0, state#widgets#mapSettingsStatus);
+        // Map canvas: クリック・ピンチズーム・Ctrl/Cmd+Z undo を 1 か所で配線
+        MapGridCanvas.wireMapCanvas(state, mapGridCanvas);
+        MapEditorPanel.wireToolButtons(state, mapToolPencilBtn, mapToolRangeBtn);
+        MapEditorPanel.wirePreviewToggle(state);
+        MapEditorPanel.wireLayerList(state);
+        MapEditorPanel.initPaletteWidgets(state);
+        MapEditorPanel.wirePaletteClick(state, mapPaletteCanvas);
+        MapEditorPanel.wireNewLevelButton(state, mapNewBtn);
+        MapEditorPanel.wireDeleteLevelButton(state, mapDeleteBtn);
+        MapEditorPanel.wireDuplicateLevelButton(state, mapDuplicateBtn);
+        MapEditorPanel.wireMapSelection(state, mapsList);
+        MapEditorPanel.initMaterialsTab(state);
+        MapEditorPanel.initSettingsTab(state);
 
         // ステータスバー Label を取得
         let statusScene:     Label = unchecked_cast(ns.get("statusScene") as Label);
@@ -202,7 +363,10 @@ mod JavaFXIdeUI {
         Platform.runLater(new Runnable {
             def $run(_this: Runnable): Unit \ IO = {
                 ScenePanel.populateSceneTree(state);
-                ResourcePanel.populateResourcesList(state)
+                ResourcePanel.populateResourcesList(state);
+                MapEditorPanel.populateMapList(state);
+                MapEditorPanel.populatePaletteTextureCombo(state);
+                MapEditorPanel.drawPalette(state)
             }
         })
     }

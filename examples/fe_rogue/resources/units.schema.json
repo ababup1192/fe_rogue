@@ -64,11 +64,17 @@
         "order": 7
       }
     },
-    "initialWeapon": {
+    "initialInventory": {
       "field": {
-        "ftype": { "type": "ref", "to": "weapons" },
+        "ftype": {
+          "type": "kindedRefList",
+          "kinds": [
+            { "kindId": "weapon", "label": "武器", "to": "weapons" },
+            { "kindId": "staff",  "label": "杖",   "to": "staves" }
+          ]
+        },
         "hint":  "plain",
-        "label": "初期装備",
+        "label": "初期持ち物",
         "order": 8
       }
     },
@@ -123,7 +129,33 @@
               }
             }
           }
+        },
+        "scale": {
+          "nested": {
+            "x": {
+              "field": {
+                "ftype": "float",
+                "hint":  { "slider": { "min": 0.5, "max": 4.0, "step": 0.1 } },
+                "label": "スケール X"
+              }
+            },
+            "y": {
+              "field": {
+                "ftype": "float",
+                "hint":  { "slider": { "min": 0.5, "max": 4.0, "step": 0.1 } },
+                "label": "スケール Y"
+              }
+            }
+          }
         }
+      }
+    },
+    "spriteFrames": {
+      "field": {
+        "ftype": "spriteFrames",
+        "hint":  "plain",
+        "label": "AnimatedSprite2D",
+        "order": 10
       }
     }
   },

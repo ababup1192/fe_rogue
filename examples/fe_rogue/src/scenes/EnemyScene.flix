@@ -138,7 +138,8 @@ mod EnemyScene {
     /// MapScene + PlayerScene が登録済みの scene に敵を追加する。
     /// 各部屋について 0..`floor#monstersPerRoom` 体のスポーン位置を決め、
     /// それぞれに `floor#monsters` から percent 重みでランダム抽選した unit id を引いて
-    /// UnitResource を割り当て、`initialWeapon` id から武器カタログを引いて装備させる。
+    /// UnitResource を割り当て、`initialInventory` の先頭武器を装備させる
+    /// （敵は杖を使わない前提で、weapon kind の最初のエントリだけを採用）。
     /// `Math.Random` を使うのでこの effect が必要。
     pub def add(catalog: UnitCatalog.UnitCatalog,
                  floor: FloorCatalog.FloorResource,
@@ -165,11 +166,22 @@ mod EnemyScene {
         let spawns = List.reverse(accSpawns);
         List.foldLeft(acc -> sp -> addOneEnemy(sp, acc), scene, spawns)
 
+    /// `initialInventory` の中で最初の `weapon` kind の id を `lookupWeapon` で解決する。
+    /// 敵は杖を持たない前提なので weapon kind だけを採用する。weapon が一つも無いユニットは
+    /// 起動時 typo / schema 不整合として `bug!` で落とす（パーティ運用には不可避）。
+    def lookupFirstWeapon(res: UnitCatalog.UnitResource,
+                            catalog: UnitCatalog.UnitCatalog): UnitCatalog.WeaponResource =
+        match List.find(e -> e#kind == UnitCatalog.ItemKind.Weapon, res#initialInventory) {
+            case Some(e) => UnitCatalog.lookupWeapon(e#id, catalog)
+            case None    =>
+                bug!("EnemyScene.lookupFirstWeapon: unit has no weapon in initialInventory")
+        }
+
     /// 部屋 1 つから `count` 個のスポーンセルを選んで state に積む。
     /// state = (次に振る id, スポーン済みセル累積, spawn list 累積)。
     /// 候補不足のときは取れる分だけ積んで打ち切る。
     /// 各セルにつき floor の `monsters` (percent 配列) から重み付き抽選した unit id を
-    /// `catalog#units` で UnitResource に解決し、`initialWeapon` id から武器カタログを引いて装備させる。
+    /// `catalog#units` で UnitResource に解決し、`initialInventory` の先頭武器を装備させる。
     def spawnInRoom(layer: TileMapLayer,
                      p: DungeonComposer.ModulePlacement,
                      count: Int32,
@@ -193,7 +205,7 @@ mod EnemyScene {
                                 case None    =>
                                     bug!("EnemyScene.spawnInRoom: unit id '${id}' not in catalog")
                             };
-                            let weapon = UnitCatalog.lookupWeapon(res#initialWeapon, catalog);
+                            let weapon = lookupFirstWeapon(res, catalog);
                             let entry: Spawn = {
                                 id = nextId, gridPos = cell, moduleIdx = p#idx,
                                 resource = res, weapon = weapon
@@ -203,13 +215,15 @@ mod EnemyScene {
                     }
             }
 
-    /// 部屋の bbox（offset + gridSize）に含まれる床セルを列挙する。
+    /// 部屋の bbox（offset + floorBounds）に含まれる床セルを列挙する。
+    /// n-format では gridSize が床範囲より広いため、floorBounds で絞らないと
+    /// 隣接する通路の床まで候補に入って通路に敵がスポーンしてしまう。
     def floorCellsInRoom(layer: TileMapLayer,
                           p: DungeonComposer.ModulePlacement): List[{x = Int32, y = Int32}] =
-        let minX = p#offset#x;
-        let minY = p#offset#y;
-        let maxX = p#offset#x + p#gridSize#x;
-        let maxY = p#offset#y + p#gridSize#y;
+        let minX = p#offset#x + p#floorBoundsMin#x;
+        let minY = p#offset#y + p#floorBoundsMin#y;
+        let maxX = p#offset#x + p#floorBoundsMaxEx#x;
+        let maxY = p#offset#y + p#floorBoundsMaxEx#y;
         let xs = List.range(minX, maxX);
         let ys = List.range(minY, maxY);
         List.flatMap(y ->
@@ -238,7 +252,8 @@ mod EnemyScene {
             resource       = res,
             weapon         = Some(sp#weapon)
         };
-        let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset, Vec2.one())
+        let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset,
+                                    res#sprite#scale)
                         |> Sprite2D.setHframes(res#sprite#hframes)
                         |> Sprite2D.setVframes(res#sprite#vframes)
                         |> Sprite2D.setFrame(res#sprite#frame)

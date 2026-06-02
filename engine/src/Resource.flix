@@ -16,14 +16,29 @@ mod Resource {
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool, JsonArray, JsonNull}
 
+    /// `KindedRefListT` で使う 1 種別ぶんの記述。
+    ///   kindId : JSON 上で kind 判別子として書かれる文字列（例: "itemA"）
+    ///   label  : IDE の kind ComboBox 表示用ラベル（例: "種別 A"）
+    ///   target : 参照先 catalog の containerKey（例: "catalogA"）
+    /// schema JSON では `{"kindId": "...", "label": "...", "to": "..."}` の object として表す。
+    pub type alias KindSpec = {
+        kindId = String,
+        label  = String,
+        target = String
+    }
+
     /// フィールドの値型。IDE はこれと `FieldHint` の組から widget を選ぶ。
-    ///   RefT(target) : 値が別 catalog の sub-entry id を指す（例: 武器 id）。IDE は
+    ///   RefT(target) : 値が別 catalog の sub-entry id を指す。IDE は
     ///                  `target` 配下の sub-entries を ComboBox 候補に並べる。
     ///                  schema JSON では `{"type": "ref", "to": target}` で表す。
     ///   RefPercentListT(target) : 値が `[{id, percent}]` の object 配列。各要素は
     ///                  `target` catalog の sub-entry id への ref と 0-100 整数のペア。
-    ///                  fe_rogue の floor spawn テーブル等に使う。
+    ///                  抽選テーブル等の「重み付き ref リスト」を表現する。
     ///                  schema JSON では `{"type": "refPercentList", "to": target}` で表す。
+    ///   KindedRefListT(kinds) : 値が `[{kind, id}]` の object 配列。各要素は `kinds`
+    ///                  のいずれかの種別を選び、その種別に紐づく catalog の sub-entry id を指す。
+    ///                  複数種別の catalog にまたがる ref を 1 つのリストで編集したいときに使う。
+    ///                  schema JSON では `{"type": "kindedRefList", "kinds": [{kindId,label,to}, ...]}` で表す。
     pub enum FieldType {
         case TextT
         case IntT
@@ -32,9 +47,14 @@ mod Resource {
         case TexturePathT      // プロジェクト登録済みテクスチャから選択
         case RefT(String)      // 別 catalog (containerKey = target) の sub-entry id
         case RefPercentListT(String)  // [{id: ref, percent: 0-100}] の動的長配列
+        case KindedRefListT(List[KindSpec])  // [{kind, id}] の動的長配列。複数 catalog から ref を選ぶ
         case EnumT(List[String])      // 有限の文字列選択肢（Godot @export_enum 相当）。
                                        // IDE は 2 値なら ToggleGroup、3 値以上なら ComboBox を出す。
                                        // schema JSON では `{"type": "enum", "values": ["A", "B"]}` で表す。
+        case SpriteFramesT     // Godot SpriteFrames リソース (Map[anim_name, Animation])。
+                                // IDE は アニメ選択 + region (pos/size) spinner + アトラスプレビューの
+                                // 専用 widget を出して spriteFrames の region 編集を視覚化する。
+                                // schema JSON では `"spriteFrames"` 文字列で表す。
     }
 
     /// 編集 UI のヒント。`Plain` は型相応の素直な入力欄（数値スピナー / テキスト等）。
@@ -180,10 +200,9 @@ instance Saveable[Resource.ResourceSchema] {
 /// `ResourceSchema` の JSON エンコード／デコード本体。
 /// 外部からは `Saveable[Resource.ResourceSchema]` 経由でしか触らない想定。
 mod ResourceCodec {
-    import java.math.{BigDecimal => JBigDecimal}
-
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool, JsonArray}
+    use JsonCodec.{expectObject, expectString, expectInt, expectFloat, floatToBd, intToBd}
     use Resource.{ResourceSchema, FieldEntry, FieldSchema, FieldType, FieldHint, MetaHint}
 
     // ── エンコード ──
@@ -245,6 +264,7 @@ mod ResourceCodec {
         case FieldType.FloatT        => JsonString("float")
         case FieldType.BoolT         => JsonString("bool")
         case FieldType.TexturePathT  => JsonString("texturePath")
+        case FieldType.SpriteFramesT => JsonString("spriteFrames")
         case FieldType.RefT(target)  =>
             JsonObject(Map#{
                 "type" => JsonString("ref"),
@@ -255,12 +275,25 @@ mod ResourceCodec {
                 "type" => JsonString("refPercentList"),
                 "to"   => JsonString(target)
             })
+        case FieldType.KindedRefListT(kinds) =>
+            JsonObject(Map#{
+                "type"  => JsonString("kindedRefList"),
+                "kinds" => JsonArray(List.map(encodeKindSpec, kinds) |> List.toVector)
+            })
         case FieldType.EnumT(values) =>
             JsonObject(Map#{
                 "type"   => JsonString("enum"),
                 "values" => JsonArray(List.map(JsonString, values) |> List.toVector)
             })
     }
+
+    /// 1 つの KindSpec を `{"kindId": "...", "label": "...", "to": "..."}` に encode する。
+    def encodeKindSpec(k: Resource.KindSpec): JsonElement =
+        JsonObject(Map#{
+            "kindId" => JsonString(k#kindId),
+            "label"  => JsonString(k#label),
+            "to"     => JsonString(k#target)
+        })
 
     def encodeFieldHint(h: FieldHint): JsonElement = match h {
         case FieldHint.Plain         => JsonString("plain")
@@ -282,21 +315,6 @@ mod ResourceCodec {
                 "vframesField" => JsonString(g#vframesField)
             })})
     }
-
-    /// Float64 → BigDecimal。整数値の trailing zero を取り除いて
-    /// `100` (not `100.0`) として書き出す。SaveDataCodec.floatToBd と同じ手法。
-    def floatToBd(value: Float64): BigDecimal =
-        unsafe IO {
-            let stripped = JBigDecimal.valueOf(value).stripTrailingZeros();
-            if (stripped.scale() < 0) stripped.setScale(0) else stripped
-        }
-
-    /// Int32 → BigDecimal。trailing zero を取り除いて `100` (not `100.0`) として書き出す。
-    def intToBd(value: Int32): BigDecimal =
-        unsafe IO {
-            let stripped = JBigDecimal.valueOf(Int32.toFloat64(value)).stripTrailingZeros();
-            if (stripped.scale() < 0) stripped.setScale(0) else stripped
-        }
 
     // ── デコード ──
 
@@ -384,11 +402,12 @@ mod ResourceCodec {
         }
 
     def decodeFieldType(element: JsonElement): Option[FieldType] = match element {
-        case JsonString("text")         => Some(FieldType.TextT)
-        case JsonString("int")          => Some(FieldType.IntT)
-        case JsonString("float")        => Some(FieldType.FloatT)
-        case JsonString("bool")         => Some(FieldType.BoolT)
-        case JsonString("texturePath")  => Some(FieldType.TexturePathT)
+        case JsonString("text")          => Some(FieldType.TextT)
+        case JsonString("int")           => Some(FieldType.IntT)
+        case JsonString("float")         => Some(FieldType.FloatT)
+        case JsonString("bool")          => Some(FieldType.BoolT)
+        case JsonString("texturePath")   => Some(FieldType.TexturePathT)
+        case JsonString("spriteFrames")  => Some(FieldType.SpriteFramesT)
         case JsonObject(obj)            =>
             forM (
                 typeJ <- Map.get("type", obj);
@@ -402,6 +421,10 @@ mod ResourceCodec {
                         Map.get("to", obj)
                             |> Option.flatMap(expectString)
                             |> Option.map(FieldType.RefPercentListT)
+                    case "kindedRefList" =>
+                        Map.get("kinds", obj)
+                            |> Option.flatMap(decodeKindSpecList)
+                            |> Option.map(FieldType.KindedRefListT)
                     case "enum" =>
                         Map.get("values", obj)
                             |> Option.flatMap(decodeStringList)
@@ -423,6 +446,29 @@ mod ResourceCodec {
                 Some(Nil), Vector.toList(items))
         case _ => None
     }
+
+    /// `[{kindId, label, to}, ...]` の JsonArray を `List[KindSpec]` に decode する。
+    /// 要素のいずれかが不正なら全体を None にする（schema 不整合は起動時 panic に上げる）。
+    def decodeKindSpecList(element: JsonElement): Option[List[Resource.KindSpec]] = match element {
+        case JsonArray(items) =>
+            List.foldRight(item -> acc ->
+                Option.flatMap(soFar ->
+                    decodeKindSpec(item) |> Option.map(k -> k :: soFar),
+                    acc),
+                Some(Nil), Vector.toList(items))
+        case _ => None
+    }
+
+    def decodeKindSpec(element: JsonElement): Option[Resource.KindSpec] =
+        forM (
+            obj      <- expectObject(element);
+            kindIdJ  <- Map.get("kindId", obj);
+            labelJ   <- Map.get("label", obj);
+            toJ      <- Map.get("to", obj);
+            kindId   <- expectString(kindIdJ);
+            label    <- expectString(labelJ);
+            target   <- expectString(toJ)
+        ) yield ({kindId = kindId, label = label, target = target}: Resource.KindSpec)
 
     def decodeFieldHint(element: JsonElement): Option[FieldHint] = match element {
         case JsonString("plain")     => Some(FieldHint.Plain)
@@ -472,32 +518,14 @@ mod ResourceCodec {
         ) yield FieldHint.FrameGrid({hframesField = hf, vframesField = vf})
 
     // ── ヘルパー ──
+    //
+    // expectObject / expectString / expectInt / expectFloat / floatToBd / intToBd は
+    // `engine/src/JsonCodec.flix` に集約されている。本 mod の `use JsonCodec.{...}` で
+    // 参照を引き込んでいるため、ローカル定義は持たない。
 
     def singleEntry(map: Map[String, JsonElement]): Option[(String, JsonElement)] =
         match Map.toList(map) {
             case head :: Nil => Some(head)
             case _           => None
         }
-
-    def expectObject(element: JsonElement): Option[Map[String, JsonElement]] =
-        match element {
-            case JsonObject(map) => Some(map)
-            case _               => None
-        }
-
-    def expectString(element: JsonElement): Option[String] =
-        match element {
-            case JsonString(text) => Some(text)
-            case _                => None
-        }
-
-    def expectFloat(element: JsonElement): Option[Float64] = match element {
-        case JsonNumber(bd) => BigDecimal.tryToFloat64(bd)
-        case _              => None
-    }
-
-    def expectInt(element: JsonElement): Option[Int32] = match element {
-        case JsonNumber(bd) => BigDecimal.tryToFloat64(bd) |> Option.flatMap(Float64.tryToInt32)
-        case _              => None
-    }
 }

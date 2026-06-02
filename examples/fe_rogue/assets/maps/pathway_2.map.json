@@ -1,0 +1,231 @@
+{
+  "decorTiles": [
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 1,
+      "y": 0
+    },
+    {
+      "srcX": 17,
+      "srcY": 68,
+      "x": 2,
+      "y": 0
+    },
+    {
+      "srcX": 17,
+      "srcY": 68,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 1,
+      "y": 1
+    },
+    {
+      "srcX": 17,
+      "srcY": 68,
+      "x": 2,
+      "y": 1
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 0,
+      "y": 2
+    },
+    {
+      "srcX": 17,
+      "srcY": 68,
+      "x": 1,
+      "y": 2
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 2,
+      "y": 2
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 0,
+      "y": 3
+    },
+    {
+      "srcX": 17,
+      "srcY": 68,
+      "x": 1,
+      "y": 3
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 2,
+      "y": 3
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 0,
+      "y": 4
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 1,
+      "y": 4
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 2,
+      "y": 4
+    }
+  ],
+  "editorPalette": {
+    "floor": {
+      "cellH": 16,
+      "cellW": 16,
+      "marginX": 1,
+      "marginY": 1,
+      "textureName": "tilemap_floor"
+    },
+    "walls": {
+      "cellH": 16,
+      "cellW": 16,
+      "marginX": 0,
+      "marginY": 0,
+      "textureName": "inca_tileset"
+    }
+  },
+  "entities": [
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 1,
+      "y": 0
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 1,
+      "y": 4
+    }
+  ],
+  "height": 5,
+  "manualTiles": [
+    {
+      "srcX": 176,
+      "srcY": 16,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "srcX": 176,
+      "srcY": 16,
+      "x": 2,
+      "y": 0
+    },
+    {
+      "srcX": 176,
+      "srcY": 16,
+      "x": 0,
+      "y": 4
+    },
+    {
+      "srcX": 176,
+      "srcY": 16,
+      "x": 2,
+      "y": 4
+    },
+    {
+      "flipH": true,
+      "srcX": 224,
+      "srcY": 16,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "srcX": 224,
+      "srcY": 16,
+      "x": 2,
+      "y": 0
+    },
+    {
+      "flipH": true,
+      "srcX": 224,
+      "srcY": 0,
+      "x": 0,
+      "y": 4
+    },
+    {
+      "srcX": 224,
+      "srcY": 0,
+      "x": 2,
+      "y": 4
+    },
+    {
+      "flipH": true,
+      "srcX": 160,
+      "srcY": 16,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "srcX": 160,
+      "srcY": 16,
+      "x": 2,
+      "y": 1
+    },
+    {
+      "flipH": true,
+      "srcX": 160,
+      "srcY": 16,
+      "x": 0,
+      "y": 2
+    },
+    {
+      "srcX": 160,
+      "srcY": 16,
+      "x": 2,
+      "y": 2
+    },
+    {
+      "flipH": true,
+      "srcX": 160,
+      "srcY": 16,
+      "x": 0,
+      "y": 3
+    },
+    {
+      "srcX": 160,
+      "srcY": 16,
+      "x": 2,
+      "y": 3
+    },
+    {
+      "srcX": 176,
+      "srcY": 48,
+      "x": 1,
+      "y": 0
+    },
+    {
+      "srcX": 176,
+      "srcY": 0,
+      "x": 1,
+      "y": 4
+    }
+  ],
+  "materialId": "inca_stone",
+  "tileSize": 16,
+  "width": 3
+}

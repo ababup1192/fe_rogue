@@ -1,4 +1,4 @@
-// Tests for PropertyWidgets.extractSpriteRefHere — Resources タブ preview の
+// Tests for SpritePreview.extractSpriteRefHere — Resources タブ preview の
 // sprite 切り抜きに使う情報抽出ロジックの単体テスト
 //
 // extractSpriteRefHere は純粋関数なので、手作りの Json.JsonElement Map で
@@ -14,7 +14,7 @@ mod TestSpriteRef {
 
     /// SpriteRef の Option フィールドを assertEq で比べやすい形に直す。
     /// Option[Int32] のタプルにすると 1 assert にまとめられる。
-    def asTuple(spriteRefOpt: Option[PropertyWidgets.SpriteRef]):
+    def asTuple(spriteRefOpt: Option[SpritePreview.SpriteRef]):
             Option[(String, Option[Int32], Option[Int32], Option[Int32])] =
         spriteRefOpt |> Option.map(sr -> (sr#texture, sr#frame, sr#hframes, sr#vframes))
 
@@ -34,7 +34,7 @@ mod TestSpriteRef {
         };
         Assert.assertEq(
             expected = Some(("character_sheet", Some(1i32), Some(5i32), Some(2i32))),
-            asTuple(PropertyWidgets.extractSpriteRefHere(m, Set#{"character_sheet"})))
+            asTuple(SpritePreview.extractSpriteRefHere(m, Set#{"character_sheet"})))
 
     /// texture 文字列だけが入った bare object でも SpriteRef は作られるが、
     /// frame/hframes/vframes は None になる。updateSpritePreview 側の
@@ -47,7 +47,7 @@ mod TestSpriteRef {
         Assert.assertEq(
             expected = Some(("character_sheet", (None: Option[Int32]),
                              (None: Option[Int32]), (None: Option[Int32]))),
-            asTuple(PropertyWidgets.extractSpriteRefHere(m, Set#{"character_sheet"})))
+            asTuple(SpritePreview.extractSpriteRefHere(m, Set#{"character_sheet"})))
 
     /// textureNames に登録されていない texture 文字列は無視され、抽出は None。
     /// (texture 候補が他になければ object として preview 対象外)
@@ -59,7 +59,7 @@ mod TestSpriteRef {
         };
         Assert.assertEq(
             expected = (None: Option[(String, Option[Int32], Option[Int32], Option[Int32])]),
-            asTuple(PropertyWidgets.extractSpriteRefHere(m, Set#{"other_atlas"})))
+            asTuple(SpritePreview.extractSpriteRefHere(m, Set#{"other_atlas"})))
 
     /// frame が文字列など整数で表現できない場合は frame=None として扱う。
     /// (object 自体は texture を持つので SpriteRef は返るが、preview は全体表示に
@@ -75,7 +75,7 @@ mod TestSpriteRef {
         Assert.assertEq(
             expected = Some(("character_sheet", (None: Option[Int32]),
                              Some(5i32), Some(2i32))),
-            asTuple(PropertyWidgets.extractSpriteRefHere(m, Set#{"character_sheet"})))
+            asTuple(SpritePreview.extractSpriteRefHere(m, Set#{"character_sheet"})))
 
     // ========================================================================
     // findFirstSpriteRef — DFS でネストを掘って最初に見つかった sprite 情報を返す
@@ -109,59 +109,44 @@ mod TestSpriteRef {
         });
         Assert.assertEq(
             expected = Some(("character_sheet", Some(1i32), Some(5i32), Some(2i32))),
-            asTuple(PropertyWidgets.findFirstSpriteRef(record, "character_sheet" :: Nil)))
+            asTuple(SpritePreview.findFirstSpriteRef(record, "character_sheet" :: Nil)))
 
     // ========================================================================
-    // zoomIn / zoomOut — Preview のパーセントズーム切替の遷移
+    // pinchZoom — Preview のピンチズーム動作（連続値）
     // ========================================================================
 
-    /// "+" を 100% から押し続けたときのシーケンス。
-    /// 100 → 150 → 200 → 300 → 400 → 600 → 800 → 1600 → 1600 (上限クランプ)
+    /// 連続するピンチイン factor を 100% から乗算したときの最終倍率。
+    /// 1.05 を 5 回 ≒ 1.276 → 127.628%（クランプ無し）
     @Test
-    def testZoomInSequence(): Unit \ Assert =
-        let s0 = PropertyWidgets.ZoomMode.Percent(100);
-        let s1 = PropertyWidgets.zoomIn(s0);
-        let s2 = PropertyWidgets.zoomIn(s1);
-        let s3 = PropertyWidgets.zoomIn(s2);
-        let s4 = PropertyWidgets.zoomIn(s3);
-        let s5 = PropertyWidgets.zoomIn(s4);
-        let s6 = PropertyWidgets.zoomIn(s5);
-        let s7 = PropertyWidgets.zoomIn(s6);
-        let s8 = PropertyWidgets.zoomIn(s7);
-        Assert.assertEq(
-            expected = (PropertyWidgets.ZoomMode.Percent(150),
-                        PropertyWidgets.ZoomMode.Percent(200),
-                        PropertyWidgets.ZoomMode.Percent(300),
-                        PropertyWidgets.ZoomMode.Percent(400),
-                        PropertyWidgets.ZoomMode.Percent(600),
-                        PropertyWidgets.ZoomMode.Percent(800),
-                        PropertyWidgets.ZoomMode.Percent(1600),
-                        PropertyWidgets.ZoomMode.Percent(1600)),
-            (s1, s2, s3, s4, s5, s6, s7, s8))
+    def testPinchZoomAccumulates(): Unit \ Assert =
+        let s0 = PropertyWidgets.ZoomMode.Percent(100.0);
+        let s1 = PropertyWidgets.pinchZoom(s0, 1.05);
+        let s2 = PropertyWidgets.pinchZoom(s1, 1.05);
+        let actual = match s2 {
+            case PropertyWidgets.ZoomMode.Percent(p) => p
+        };
+        // 100 * 1.05 * 1.05 = 110.25
+        Assert.assertEq(expected = true, Float64.abs(actual - 110.25) < 0.001)
 
-    /// "-" を 100% から押し続けたときのシーケンス。
-    /// 100 → 75 → 50 → 25 → 25 (下限クランプ)
+    /// 上限クランプ: 1600% を超える factor を渡しても 1600% にクランプされる
     @Test
-    def testZoomOutSequence(): Unit \ Assert =
-        let s0 = PropertyWidgets.ZoomMode.Percent(100);
-        let s1 = PropertyWidgets.zoomOut(s0);
-        let s2 = PropertyWidgets.zoomOut(s1);
-        let s3 = PropertyWidgets.zoomOut(s2);
-        let s4 = PropertyWidgets.zoomOut(s3);
-        Assert.assertEq(
-            expected = (PropertyWidgets.ZoomMode.Percent(75),
-                        PropertyWidgets.ZoomMode.Percent(50),
-                        PropertyWidgets.ZoomMode.Percent(25),
-                        PropertyWidgets.ZoomMode.Percent(25)),
-            (s1, s2, s3, s4))
+    def testPinchZoomClampsUpper(): Unit \ Assert =
+        let s = PropertyWidgets.pinchZoom(PropertyWidgets.ZoomMode.Percent(1000.0), 5.0);
+        Assert.assertEq(expected = PropertyWidgets.ZoomMode.Percent(1600.0), s)
 
-    /// ZoomMode の表示文字列はパーセント値そのまま
+    /// 下限クランプ: 25% を下回る factor を渡しても 25% にクランプされる
+    @Test
+    def testPinchZoomClampsLower(): Unit \ Assert =
+        let s = PropertyWidgets.pinchZoom(PropertyWidgets.ZoomMode.Percent(50.0), 0.1);
+        Assert.assertEq(expected = PropertyWidgets.ZoomMode.Percent(25.0), s)
+
+    /// ZoomMode の表示文字列は整数 % に丸める
     @Test
     def testZoomModeLabel(): Unit \ Assert =
         Assert.assertEq(
             expected = ("25%", "100%", "200%", "1600%"),
-            (PropertyWidgets.zoomModeLabel(PropertyWidgets.ZoomMode.Percent(25)),
-             PropertyWidgets.zoomModeLabel(PropertyWidgets.ZoomMode.Percent(100)),
-             PropertyWidgets.zoomModeLabel(PropertyWidgets.ZoomMode.Percent(200)),
-             PropertyWidgets.zoomModeLabel(PropertyWidgets.ZoomMode.Percent(1600))))
+            (PropertyWidgets.zoomModeLabel(PropertyWidgets.ZoomMode.Percent(25.0)),
+             PropertyWidgets.zoomModeLabel(PropertyWidgets.ZoomMode.Percent(100.0)),
+             PropertyWidgets.zoomModeLabel(PropertyWidgets.ZoomMode.Percent(200.0)),
+             PropertyWidgets.zoomModeLabel(PropertyWidgets.ZoomMode.Percent(1600.0))))
 }

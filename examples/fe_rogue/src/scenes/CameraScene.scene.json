@@ -16,10 +16,10 @@
     0
   ],
   "positionSmoothingEnabled": true,
-  "positionSmoothingSpeed": 5.0,
+  "positionSmoothingSpeed": 5,
   "type": "Camera2D",
-  "zoom": [
-    0.5,
-    0.5
-  ]
+  "zoom": [0.4, 0.4],
+  "processCallback": "IdleProcess",
+  "rotationSmoothingSpeed": 5,
+  "scale": [1, 1]
 }

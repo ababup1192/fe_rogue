@@ -41,7 +41,7 @@ mod ItemScene {
     }
 
     /// アイテム種別から sprite を取り出すヘルパー（表示・縁取り構築で共通利用）。
-    pub def spriteOf(kind: GroundItemKind): UnitCatalog.SpriteResource = match kind {
+    pub def spriteOf(kind: GroundItemKind): Sprite.SpriteResource = match kind {
         case GroundItemKind.WeaponItem(weapon) => weapon#sprite
         case GroundItemKind.StaffItem(staff)   => staff#sprite
     }
@@ -234,13 +234,14 @@ mod ItemScene {
             }
         }
 
-    /// 部屋の bbox に含まれる床セルを列挙する（EnemyScene と同じロジック）
+    /// 部屋の bbox（offset + floorBounds）に含まれる床セルを列挙する（EnemyScene と同じロジック）。
+    /// n-format で通路の床がアイテム候補に混ざらないよう floorBounds で絞る。
     def floorCellsInRoom(layer: TileMapLayer,
                           p: DungeonComposer.ModulePlacement): List[{x = Int32, y = Int32}] =
-        let minX = p#offset#x;
-        let minY = p#offset#y;
-        let maxX = p#offset#x + p#gridSize#x;
-        let maxY = p#offset#y + p#gridSize#y;
+        let minX = p#offset#x + p#floorBoundsMin#x;
+        let minY = p#offset#y + p#floorBoundsMin#y;
+        let maxX = p#offset#x + p#floorBoundsMaxEx#x;
+        let maxY = p#offset#y + p#floorBoundsMaxEx#y;
         let xs = List.range(minX, maxX);
         let ys = List.range(minY, maxY);
         List.flatMap(y ->

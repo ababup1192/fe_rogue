@@ -4,18 +4,14 @@
       "frame": 4,
       "hframes": 5,
       "name": "Sprite",
-      "pos": [
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1
-      ],
+      "pos": [0, 0],
+      "scale": [1, 1],
       "texture": "character_sheet",
       "type": "Sprite2D",
       "vframes": 2,
-      "zIndex": 10
+      "zIndex": 10,
+      "flipH": false,
+      "flipV": false
     }
   ],
   "description": "敵 1 体テンプレ (Marker2D + Sprite2D)\nランタイムで Enemy_<id> として量産、敵ターンは EnemyTurnDriver が消化",

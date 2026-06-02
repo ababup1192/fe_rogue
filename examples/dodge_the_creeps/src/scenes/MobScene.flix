@@ -44,8 +44,8 @@ mod MobScene {
         let anim: SpriteFrames.Animation = {
             loop  = true,
             speed = 5.0,
-            frames = ({texture = t1, duration = 1.0}: SpriteFrames.Frame) ::
-                      ({texture = t2, duration = 1.0}: SpriteFrames.Frame) :: Nil
+            frames = ({texture = t1, regionRect = None, duration = 1.0}: SpriteFrames.Frame) ::
+                      ({texture = t2, regionRect = None, duration = 1.0}: SpriteFrames.Frame) :: Nil
         };
         SpriteFrames.empty()
             |> SpriteFrames.addAnimation(animName, anim)

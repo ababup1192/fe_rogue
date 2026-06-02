@@ -1,0 +1,450 @@
+{
+  "decorTiles": [
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 1,
+      "y": 0
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 2,
+      "y": 0
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 3,
+      "y": 0
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 4,
+      "y": 0
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 5,
+      "y": 0
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "srcX": 17,
+      "srcY": 68,
+      "x": 1,
+      "y": 1
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 2,
+      "y": 1
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 3,
+      "y": 1
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 4,
+      "y": 1
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 5,
+      "y": 1
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 0,
+      "y": 2
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 1,
+      "y": 2
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 2,
+      "y": 2
+    },
+    {
+      "srcX": 17,
+      "srcY": 68,
+      "x": 3,
+      "y": 2
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 4,
+      "y": 2
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 5,
+      "y": 2
+    },
+    {
+      "srcX": 17,
+      "srcY": 68,
+      "x": 0,
+      "y": 3
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 1,
+      "y": 3
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 2,
+      "y": 3
+    },
+    {
+      "srcX": 17,
+      "srcY": 68,
+      "x": 3,
+      "y": 3
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 4,
+      "y": 3
+    },
+    {
+      "srcX": 17,
+      "srcY": 68,
+      "x": 5,
+      "y": 3
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 0,
+      "y": 4
+    },
+    {
+      "srcX": 17,
+      "srcY": 68,
+      "x": 1,
+      "y": 4
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 2,
+      "y": 4
+    },
+    {
+      "srcX": 17,
+      "srcY": 68,
+      "x": 3,
+      "y": 4
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 4,
+      "y": 4
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 5,
+      "y": 4
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 0,
+      "y": 5
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 1,
+      "y": 5
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 2,
+      "y": 5
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 3,
+      "y": 5
+    },
+    {
+      "srcX": 0,
+      "srcY": 68,
+      "x": 4,
+      "y": 5
+    },
+    {
+      "srcX": 102,
+      "srcY": 51,
+      "x": 5,
+      "y": 5
+    }
+  ],
+  "editorPalette": {
+    "floor": {
+      "cellH": 16,
+      "cellW": 16,
+      "marginX": 0,
+      "marginY": 0,
+      "textureName": "tilemap_floor"
+    },
+    "walls": {
+      "cellH": 16,
+      "cellW": 16,
+      "marginX": 0,
+      "marginY": 0,
+      "textureName": "inca_tileset"
+    }
+  },
+  "entities": [
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 1,
+      "y": 5
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 5,
+      "y": 1
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 4,
+      "y": 5
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 0,
+      "y": 1
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 2,
+      "y": 0
+    }
+  ],
+  "height": 6,
+  "manualTiles": [
+    {
+      "srcX": 176,
+      "srcY": 16,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "srcX": 176,
+      "srcY": 16,
+      "x": 5,
+      "y": 0
+    },
+    {
+      "srcX": 176,
+      "srcY": 16,
+      "x": 0,
+      "y": 5
+    },
+    {
+      "srcX": 176,
+      "srcY": 16,
+      "x": 5,
+      "y": 5
+    },
+    {
+      "flipH": true,
+      "srcX": 224,
+      "srcY": 16,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "srcX": 224,
+      "srcY": 16,
+      "x": 5,
+      "y": 0
+    },
+    {
+      "flipH": true,
+      "srcX": 224,
+      "srcY": 0,
+      "x": 0,
+      "y": 5
+    },
+    {
+      "srcX": 224,
+      "srcY": 0,
+      "x": 5,
+      "y": 5
+    },
+    {
+      "flipH": true,
+      "srcX": 160,
+      "srcY": 16,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "srcX": 160,
+      "srcY": 16,
+      "x": 5,
+      "y": 1
+    },
+    {
+      "flipH": true,
+      "srcX": 160,
+      "srcY": 16,
+      "x": 0,
+      "y": 2
+    },
+    {
+      "srcX": 160,
+      "srcY": 16,
+      "x": 5,
+      "y": 2
+    },
+    {
+      "flipH": true,
+      "srcX": 160,
+      "srcY": 16,
+      "x": 0,
+      "y": 3
+    },
+    {
+      "srcX": 160,
+      "srcY": 16,
+      "x": 5,
+      "y": 3
+    },
+    {
+      "flipH": true,
+      "srcX": 160,
+      "srcY": 16,
+      "x": 0,
+      "y": 4
+    },
+    {
+      "srcX": 160,
+      "srcY": 16,
+      "x": 5,
+      "y": 4
+    },
+    {
+      "srcX": 176,
+      "srcY": 48,
+      "x": 1,
+      "y": 0
+    },
+    {
+      "srcX": 176,
+      "srcY": 48,
+      "x": 2,
+      "y": 0
+    },
+    {
+      "srcX": 176,
+      "srcY": 48,
+      "x": 3,
+      "y": 0
+    },
+    {
+      "srcX": 176,
+      "srcY": 48,
+      "x": 4,
+      "y": 0
+    },
+    {
+      "srcX": 176,
+      "srcY": 0,
+      "x": 1,
+      "y": 5
+    },
+    {
+      "srcX": 176,
+      "srcY": 0,
+      "x": 2,
+      "y": 5
+    },
+    {
+      "srcX": 176,
+      "srcY": 0,
+      "x": 3,
+      "y": 5
+    },
+    {
+      "srcX": 176,
+      "srcY": 0,
+      "x": 4,
+      "y": 5
+    },
+    {
+      "srcX": 160,
+      "srcY": 48,
+      "x": 2,
+      "y": 3
+    },
+    {
+      "flipH": true,
+      "srcX": 160,
+      "srcY": 48,
+      "x": 3,
+      "y": 3
+    },
+    {
+      "srcX": 160,
+      "srcY": 0,
+      "x": 2,
+      "y": 2
+    },
+    {
+      "flipH": true,
+      "srcX": 160,
+      "srcY": 0,
+      "x": 3,
+      "y": 2
+    }
+  ],
+  "materialId": "inca_stone",
+  "tileSize": 16,
+  "width": 6
+}

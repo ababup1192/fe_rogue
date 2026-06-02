@@ -24,7 +24,8 @@ mod TestTradeRangeScene {
         weapons         = TestUnitFixtures.testWeapon() :: Nil,
         staves          = Nil,
         selectedItem    = None,
-        moveStepsTaken  = 0
+        moveStepsTaken  = 0,
+        facing          = Staff.Direction.Down
     }
 
     /// World + 与えた party の Marker2D 並びで scene を組む。

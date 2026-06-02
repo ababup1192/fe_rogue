@@ -96,8 +96,8 @@ mod TestEditableNode {
     /// 矩形サイズは現フレームのテクスチャ × scale
     def testCollectAllAnimatedSprite(): Unit \ {Assert, GameEngine.Game} =
         let frames: List[SpriteFrames.Frame] =
-            {texture = "frame_a", duration = 1.0} ::
-            {texture = "frame_b", duration = 1.0} :: Nil;
+            {texture = "frame_a", regionRect = None, duration = 1.0} ::
+            {texture = "frame_b", regionRect = None, duration = 1.0} :: Nil;
         let flapAnim: SpriteFrames.Animation =
             {loop = true, speed = 10.0, frames = frames};
         let sf = SpriteFrames.empty()
@@ -422,7 +422,7 @@ mod TestEditableNode {
         let bird = RigidBody2D.make({x = 144.0, y = 256.0},
             CollisionShape2D.CircleShape2D({radius = 13.0}));
         let frames: List[SpriteFrames.Frame] =
-            {texture = "f1", duration = 1.0} :: Nil;
+            {texture = "f1", regionRect = None, duration = 1.0} :: Nil;
         let anim: SpriteFrames.Animation = {loop = true, speed = 10.0, frames = frames};
         let sf = SpriteFrames.empty() |> SpriteFrames.addAnimation("flap", anim);
         let spriteNode = AnimatedSprite2D.make(sf, {animation = "flap"},

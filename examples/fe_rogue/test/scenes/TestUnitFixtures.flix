@@ -18,7 +18,7 @@ mod TestUnitFixtures {
     /// 戦闘 4 値はバランス調整に直結しないテスト用の中庸値（atk=3, def=1, spd=3）。
     /// 魔力・魔防はデフォルト 0（物理武器主体のテスト用デフォルト）。
     /// sprite は character_sheet 既存テクスチャを使い frame=0（実描画は確認しない想定）。
-    /// `initialWeapon` はテスト用カタログに普段は登録しない仮 id（ID 解決を踏まないテストでの埋め値）。
+    /// `initialInventory` はテスト用カタログに普段は登録しない仮 id（ID 解決を踏まないテストでの埋め値）。
     pub def testResource(moveTiles: Int32, hp: Int32): UnitCatalog.UnitResource = {
         moveTiles     = moveTiles,
         hp            = hp,
@@ -27,16 +27,19 @@ mod TestUnitFixtures {
         magicAttack   = 0,
         magicDefense  = 0,
         speed         = 3,
-        initialWeapon = "test-weapon",
-        initialStaves = Nil,
+        initialInventory =
+            ({kind = UnitCatalog.ItemKind.Weapon, id = "test-weapon"}:
+               UnitCatalog.InventoryEntry) :: Nil,
         description   = "",
         sprite        = {
             texture = "character_sheet",
             hframes = 5,
             vframes = 2,
             frame   = 0,
-            offset  = {x = 0.0, y = 0.0}
-        }
+            offset  = {x = 0.0, y = 0.0},
+            scale   = {x = 1.0, y = 1.0}
+        },
+        spriteFrames  = None
     }
 
     /// 戦闘パラメータも明示的に指定したいケース用。
@@ -52,16 +55,19 @@ mod TestUnitFixtures {
         magicAttack   = 0,
         magicDefense  = 0,
         speed         = speed,
-        initialWeapon = "test-weapon",
-        initialStaves = Nil,
+        initialInventory =
+            ({kind = UnitCatalog.ItemKind.Weapon, id = "test-weapon"}:
+               UnitCatalog.InventoryEntry) :: Nil,
         description   = "",
         sprite        = {
             texture = "character_sheet",
             hframes = 5,
             vframes = 2,
             frame   = 0,
-            offset  = {x = 0.0, y = 0.0}
-        }
+            offset  = {x = 0.0, y = 0.0},
+            scale   = {x = 1.0, y = 1.0}
+        },
+        spriteFrames  = None
     }
 
     /// 魔力・魔防まで明示したいケース用。物理ステ・魔法ステを両方検証したいときに使う。
@@ -76,16 +82,19 @@ mod TestUnitFixtures {
         magicAttack   = magicAttack,
         magicDefense  = magicDefense,
         speed         = speed,
-        initialWeapon = "test-weapon",
-        initialStaves = Nil,
+        initialInventory =
+            ({kind = UnitCatalog.ItemKind.Weapon, id = "test-weapon"}:
+               UnitCatalog.InventoryEntry) :: Nil,
         description   = "",
         sprite        = {
             texture = "character_sheet",
             hframes = 5,
             vframes = 2,
             frame   = 0,
-            offset  = {x = 0.0, y = 0.0}
-        }
+            offset  = {x = 0.0, y = 0.0},
+            scale   = {x = 1.0, y = 1.0}
+        },
+        spriteFrames  = None
     }
 
     /// テスト用 WeaponResource。中庸な攻撃力 2 / 耐久度 10 / 直接攻撃 (range 1-1)。
@@ -97,7 +106,7 @@ mod TestUnitFixtures {
         attack     = 2,
         durability = 10,
         range      = { min = 1, max = 1 },
-        weaponType = UnitCatalog.WeaponType.Physical,
+        weaponType = WeaponCatalog.WeaponType.Physical,
         sprite     = testSprite()
     }
 
@@ -107,12 +116,12 @@ mod TestUnitFixtures {
         attack     = attack,
         durability = durability,
         range      = { min = 1, max = 1 },
-        weaponType = UnitCatalog.WeaponType.Physical,
+        weaponType = WeaponCatalog.WeaponType.Physical,
         sprite     = testSprite()
     }
 
     /// 物理/魔法トグルを切り替えたい時用のテスト用 WeaponResource。射程は 1-1 固定、耐久 10。
-    pub def testWeaponWithType(attack: Int32, weaponType: UnitCatalog.WeaponType):
+    pub def testWeaponWithType(attack: Int32, weaponType: WeaponCatalog.WeaponType):
             UnitCatalog.WeaponResource = {
         name       = "test-weapon",
         attack     = attack,
@@ -123,12 +132,13 @@ mod TestUnitFixtures {
     }
 
     /// テスト用の sprite。テクスチャ名やフレームは戦闘ロジックに影響しないのでダミー値。
-    def testSprite(): UnitCatalog.SpriteResource = {
+    def testSprite(): Sprite.SpriteResource = {
         texture = "test-texture",
         hframes = 1,
         vframes = 1,
         frame   = 0,
-        offset  = {x = 0.0, y = 0.0}
+        offset  = {x = 0.0, y = 0.0},
+        scale   = {x = 1.0, y = 1.0}
     }
 
     /// テスト用 FontAtlas。`loadScene` が実際に getFontAtlas を呼び出すのは Label2D 系の

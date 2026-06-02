@@ -13,9 +13,14 @@ mod SpriteFrames {
     /// 1 フレームの定義
     /// duration はそのアニメーションの基本フレーム時間 (1/speed) に対する倍率。
     /// 1.0 = 通常、2.0 = 2 倍長く表示。Godot の Frame Duration と同じ意味。
+    /// `regionRect` はテクスチャ内の切り出し矩形（ピクセル単位）。None ならテクスチャ全体
+    /// を表示する。スプライトシートを 1 枚のテクスチャに収めて各フレームを切り出すとき
+    /// に使う（Godot の AtlasTexture 相当）。`region` は Flix 予約語なので
+    /// Sprite2D に合わせて `regionRect` 命名。
     pub type alias Frame = {
-        texture = String,    // 表示するテクスチャ名
-        duration = Float64   // フレーム時間倍率（デフォルト 1.0）
+        texture = String,                      // 表示するテクスチャ名
+        regionRect = Option[Rect2.Rect2],      // 切り出し矩形（None ならテクスチャ全体）
+        duration = Float64                     // フレーム時間倍率（デフォルト 1.0）
     }
 
     /// 1 アニメーションの定義
@@ -57,4 +62,14 @@ mod SpriteFrames {
             anim <- getAnimation(name, spriteFrames);
             f    <- List.nth(frame, anim#frames)
         ) yield f#texture
+
+    /// 指定アニメ・フレーム index の regionRect（切り出し矩形）を返す。
+    /// アニメ未定義・frame 範囲外・regionRect 未指定はすべて None。
+    pub def frameRegion(name: String, frame: Int32,
+                         spriteFrames: SpriteFrames): Option[Rect2.Rect2] =
+        forM (
+            anim <- getAnimation(name, spriteFrames);
+            f    <- List.nth(frame, anim#frames);
+            rect <- f#regionRect
+        ) yield rect
 }

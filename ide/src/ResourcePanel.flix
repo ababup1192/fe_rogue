@@ -21,11 +21,13 @@ mod ResourcePanel {
     import javafx.scene.control.Label
     import javafx.scene.control.ListView
     import javafx.scene.control.TextInputDialog
+    import javafx.scene.canvas.Canvas
     import javafx.scene.layout.StackPane
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
+    import javafx.scene.input.ZoomEvent
 
     /// Resources ListView 選択 → displayName から ResourceEntry を引き、
     /// data + schema を Fs.FileRead 経由で読み、Sub-entries を埋める
@@ -131,6 +133,15 @@ mod ResourcePanel {
             },
             Map.empty(), entries)
 
+    /// `collectRefOptions` を 1 回計算して ResourceState の cache に格納する。
+    /// resource 一覧ロード完了時 (`populateResourcesList`) と、sub-entries が変化しうる
+    /// commit 後に呼ぶ。Property Panel 再構築のたびのフル走査を避けるための入口。
+    pub def refreshRefOptions(state: IdeState.IdeState): Unit \ IO =
+        let options = run {
+            collectRefOptions(state)
+        } with Fs.FileRead.runWithIO;
+        ResourceState.setRefOptions(state#resource, options)
+
     /// CatalogIn 形式なら sub-entries の key 一覧を ListView に並べる。
     /// Single 形式なら Property Panel をすぐ build する
     def rebuildSubEntries(state: IdeState.IdeState,
@@ -186,16 +197,25 @@ mod ResourcePanel {
                                 let sorted = Map.toList(fields)
                                     |> List.sortBy(p -> PropertyWidgets.fieldOrderKey(p));
                                 let textureNames = Array.get(0, state#textureNamesRef);
-                                let refOptions = run {
-                                    collectRefOptions(state)
-                                } with Fs.FileRead.runWithIO;
+                                let texturePathMap = Array.get(0, state#texturePathMapRef);
+                                // collectRefOptions のフル走査を避け、cache を参照する。
+                                // cache は populateResourcesList と sub-entries 変化 commit で更新される。
+                                // 未計算 (None) のときは呼出順序に依存せず lazy に 1 回計算してから取る。
+                                let refOptions = match ResourceState.getRefOptions(state#resource) {
+                                    case Some(cached) => cached
+                                    case None         =>
+                                        refreshRefOptions(state);
+                                        ResourceState.getRefOptions(state#resource)
+                                            |> Option.getWithDefault(Map.empty())
+                                };
                                 let mkCommit = kp -> { (json2: Json.JsonElement) ->
                                     commitToResource(state, kp, json2)
                                 };
                                 List.forEach(p -> {
                                     let (k, e) = p;
                                     PropertyWidgets.addFieldRow(children, k, e, record, basePath,
-                                                                  textureNames, refOptions, mkCommit)
+                                                                  textureNames, texturePathMap,
+                                                                  refOptions, mkCommit)
                                 }, sorted);
                                 refreshPreview(state, record)
                             }
@@ -225,6 +245,9 @@ mod ResourcePanel {
                     case Some(path) => {
                         let pretty = Json.Write.toPrettyString(2i32, updated);
                         discard Files.writeString(Paths.get(path), pretty);
+                        // sub-entries が変化しうるので Ref widget 候補 cache を再計算する。
+                        // （差分計算は難しいため全再計算。古い候補を残さないための無効化）
+                        refreshRefOptions(state);
                         println("[Resources] saved field at ${keyPath}")
                     }
                 };
@@ -232,8 +255,25 @@ mod ResourcePanel {
                 match currentRecordJson(state, updated) {
                     case Some(rec) => refreshPreview(state, rec)
                     case None      => clearPreview(state)
-                }
+                };
+                // sprite.hframes / vframes / texture を変更したときは、それを sibling
+                // 参照する spriteFrames widget が古い snapshot を持っているので、
+                // Property Panel ごと作り直して最新の sibling を反映させる。
+                // 頻繁には変更しないフィールドなので focus 喪失は許容範囲。
+                if (isGridSiblingPath(keyPath)) rebuildPropertyPanel(state)
+                else ()
             }
+        }
+
+    /// sprite.hframes / sprite.vframes / sprite.texture（および将来の同階層 sibling）
+    /// を編集する keyPath か判定する。spriteFrames widget の表示パラメータに影響する
+    /// フィールドのみ true にする。
+    def isGridSiblingPath(keyPath: List[String]): Bool =
+        match List.reverse(keyPath) {
+            case "hframes" :: _ => true
+            case "vframes" :: _ => true
+            case "texture" :: _ => true
+            case _              => false
         }
 
     /// 編集対象 record への JSON key path を返す
@@ -278,7 +318,10 @@ mod ResourcePanel {
                 let entries = Array.get(0, state#resource#discoveredRef);
                 let items = listView.getItems();
                 items.clear();
-                List.forEach(e -> discard items.add(e#displayName), entries)
+                List.forEach(e -> discard items.add(e#displayName), entries);
+                // discovered resources が確定したこの時点で Ref widget 候補 cache を
+                // 1 回だけ計算する。以降の Property Panel 再構築は cache を読むだけ
+                refreshRefOptions(state)
             }
         }
     }
@@ -288,7 +331,7 @@ mod ResourcePanel {
     def refreshPreview(state: IdeState.IdeState, record: Json.JsonElement): Unit \ IO = {
         let textureNames = Array.get(0, state#textureNamesRef);
         let pathMap = Array.get(0, state#texturePathMapRef);
-        let spriteRef = PropertyWidgets.findFirstSpriteRef(record, textureNames);
+        let spriteRef = SpritePreview.findFirstSpriteRef(record, textureNames);
         let zoomMode = ResourceState.getPreviewZoom(state#resource);
         let showGrid = ResourceState.getPreviewGrid(state#resource);
         let frameAdjust = ResourceState.getPreviewFrameAdjust(state#resource);
@@ -296,12 +339,13 @@ mod ResourcePanel {
         let getPan = () -> ResourceState.getPreviewPan(state#resource);
         let onPan = newPan -> ResourceState.setPreviewPan(state#resource, newPan);
         let onStatus = txt -> setStatusLabel(state, txt);
-        match Array.get(0, state#widgets#resourcePreviewPane) {
-            case Some(pane) =>
-                PropertyWidgets.updateSpritePreview(pane, pathMap, spriteRef, zoomMode,
+        match (Array.get(0, state#widgets#resourcePreviewPane),
+                Array.get(0, state#widgets#resourcePreviewCanvas)) {
+            case (Some(pane), Some(canvas)) =>
+                SpritePreview.updateSpritePreview(pane, canvas, pathMap, spriteRef, zoomMode,
                                                      showGrid, frameAdjust, pan, getPan, onPan,
                                                      onStatus)
-            case None       => ()
+            case _       => ()
         }
     }
 
@@ -313,13 +357,44 @@ mod ResourcePanel {
         let getPan = () -> ResourceState.getPreviewPan(state#resource);
         let onPan = newPan -> ResourceState.setPreviewPan(state#resource, newPan);
         let onStatus = txt -> setStatusLabel(state, txt);
-        match Array.get(0, state#widgets#resourcePreviewPane) {
-            case Some(pane) =>
-                PropertyWidgets.updateSpritePreview(pane, Map.empty(), None, zoomMode,
+        match (Array.get(0, state#widgets#resourcePreviewPane),
+                Array.get(0, state#widgets#resourcePreviewCanvas)) {
+            case (Some(pane), Some(canvas)) =>
+                SpritePreview.updateSpritePreview(pane, canvas, Map.empty(), None, zoomMode,
                                                      showGrid, frameAdjust, pan, getPan, onPan,
                                                      onStatus)
-            case None       => ()
+            case _       => ()
         }
+    }
+
+    /// 永続 Preview canvas を生成して pane に常駐させ、ピンチハンドラを直接登録する。
+    /// updateSpritePreview は以降この canvas の中身を clear + 再描画するだけで、
+    /// pane.getChildren() には手を入れない。canvas が scene graph に常駐するため
+    /// JavaFX の gesture continuity が切れず、ピンチが滑らかになる。
+    /// （MapEditor の mapPaletteCanvas + wireTilesetZoom と同じ流儀）
+    pub def wirePreviewPinchZoom(state: IdeState.IdeState, pane: StackPane): Unit \ IO = {
+        let paneW = pane.getWidth();
+        let paneH = pane.getHeight();
+        let canvasW = if (paneW > 16.0) paneW else 220.0;
+        let canvasH = if (paneH > 16.0) paneH else 220.0;
+        let canvas = new Canvas(canvasW, canvasH);
+        Array.put(Some(canvas), 0, state#widgets#resourcePreviewCanvas);
+        // 初回は pane に追加。以降 updateSpritePreview は pane を触らない
+        let canvasNode: Node = checked_cast(canvas);
+        let children = pane.getChildren();
+        children.clear();
+        discard children.add(canvasNode);
+        // ピンチハンドラを canvas に 1 回だけ登録（canvas は永続）
+        canvas.setOnZoom(new EventHandler[ZoomEvent] {
+            def handle(_this: EventHandler[ZoomEvent], event: ZoomEvent): Unit \ IO = {
+                let factor = event.getZoomFactor();
+                let cur = ResourceState.getPreviewZoom(state#resource);
+                let next = PropertyWidgets.pinchZoom(cur, factor);
+                ResourceState.setPreviewZoom(state#resource, next);
+                repaintPreview(state);
+                event.consume()
+            }
+        })
     }
 
     /// Preview 下の resourceStatusLabel に文字列を書き込む。
@@ -343,38 +418,6 @@ mod ResourcePanel {
         }
     }
 
-    /// previewZoomLabel に "Fit" / "1x" / "2x" 等を反映
-    pub def updateZoomLabel(state: IdeState.IdeState): Unit \ IO = {
-        let mode = ResourceState.getPreviewZoom(state#resource);
-        let text = PropertyWidgets.zoomModeLabel(mode);
-        match Array.get(0, state#widgets#resourcePreviewZoomLbl) {
-            case Some(label) => label.setText(text)
-            case None        => ()
-        }
-    }
-
-    /// Preview の - / + ボタンを ZoomMode 操作に配線する。
-    /// 押下のたびに ResourceState の zoomMode を更新し、ラベルと preview を再描画する。
-    pub def wireZoomButtons(state: IdeState.IdeState,
-                             zoomOutBtn: Button,
-                             zoomInBtn:  Button): Unit \ IO = {
-        zoomOutBtn.setOnAction(new EventHandler[ActionEvent] {
-            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
-                let current = ResourceState.getPreviewZoom(state#resource);
-                ResourceState.setPreviewZoom(state#resource, PropertyWidgets.zoomOut(current));
-                updateZoomLabel(state);
-                repaintPreview(state)
-            }
-        });
-        zoomInBtn.setOnAction(new EventHandler[ActionEvent] {
-            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
-                let current = ResourceState.getPreviewZoom(state#resource);
-                ResourceState.setPreviewZoom(state#resource, PropertyWidgets.zoomIn(current));
-                updateZoomLabel(state);
-                repaintPreview(state)
-            }
-        })
-    }
 
     /// グリッド表示チェックボックスを配線する。トグルで preview を再描画する。
     pub def wireGridCheckbox(state: IdeState.IdeState,
@@ -527,6 +570,8 @@ mod ResourcePanel {
                 let pretty = Json.Write.toPrettyString(2i32, json);
                 discard Files.writeString(Paths.get(path), pretty);
                 ResourceState.setDirty(state#resource, false);
+                // + / - で sub-entries が増減したので Ref widget 候補 cache を再計算する
+                refreshRefOptions(state);
                 println("[Resources] saved ${path}")
             }
             case _ => ()

@@ -76,6 +76,13 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
                     let resources = ResourceDiscovery.discover(path);
                     println("[Main] Discovered ${List.length(resources)} resource(s) in ${path}/resources");
                     ResourceState.setDiscovered(state#resource, resources);
+                    // assets/maps/*.map.json を列挙して MapEditorState に登録 (S8)。
+                    let mapFiles = MapEditorPanel.findMapFiles(path);
+                    println("[Main] Discovered ${List.length(mapFiles)} map(s) in ${path}/assets/maps");
+                    MapEditorState.setLevelFiles(state#mapEditor, mapFiles);
+                    // tileset PNG を Image としてキャッシュ (S13 で Canvas に切り抜き描画)
+                    MapEditorPanel.loadTilesetImages(state);
+                    IdeState.setCurrentProjectRoot(state, Some(path));
                     decorateTitle(proj#config, path)
                 case Err(msg) =>
                     // project.json が無い / パース失敗。クラッシュさせず empty state へ。
@@ -85,6 +92,8 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
                     IdeState.setTexturePathMap(state, Map.empty());
                     IdeState.setSoundNames(state, Nil);
                     ResourceState.setDiscovered(state#resource, Nil);
+                    MapEditorState.setLevelFiles(state#mapEditor, Nil);
+                    IdeState.setCurrentProjectRoot(state, None);
                     emptyConfig()
             }
         case None =>
@@ -94,6 +103,8 @@ def sessionLoop(state: IdeState.IdeState, projectPath: Option[String]):
             IdeState.setTexturePathMap(state, Map.empty());
             IdeState.setSoundNames(state, Nil);
             ResourceState.setDiscovered(state#resource, Nil);
+            MapEditorState.setLevelFiles(state#mapEditor, Nil);
+            IdeState.setCurrentProjectRoot(state, None);
             emptyConfig()
     };
     let customize = (stage, imageView) -> JavaFXIdeUI.customize(state, stage, imageView);
@@ -287,6 +298,12 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
             IdeState.setSoundNames(state, soundNames);
             let resources = ResourceDiscovery.discover(path);
             ResourceState.setDiscovered(state#resource, resources);
+            // S8: assets/maps/*.map.json を列挙して Maps タブ用に登録
+            let mapFiles = MapEditorPanel.findMapFiles(path);
+            MapEditorState.setLevelFiles(state#mapEditor, mapFiles);
+            // S13: tileset PNG を Image としてキャッシュ
+            MapEditorPanel.loadTilesetImages(state);
+            IdeState.setCurrentProjectRoot(state, Some(path));
             IdeGui.Gui.setLoadingProgress("リソースを検索中...", 0.50f64);
             let newFontName = List.head(proj#config#fontManifest) |> Option.map(f -> f#name);
             // Editor の scene.json 索引を新プロジェクトのものに差し替える。

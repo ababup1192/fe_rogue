@@ -14,11 +14,21 @@ mod IdeState {
     import javafx.scene.control.Label
     import javafx.scene.control.TextField
     import javafx.scene.control.TextArea
+    import java.lang.Integer
     import javafx.scene.control.CheckBox
     import javafx.scene.control.Button
+    import javafx.scene.control.ToggleButton
+    import javafx.scene.control.ComboBox
+    import javafx.scene.control.Spinner
     import javafx.scene.control.ProgressBar
     import javafx.scene.layout.VBox
+    import javafx.scene.layout.HBox
     import javafx.scene.layout.StackPane
+    import javafx.scene.canvas.Canvas
+    import javafx.scene.image.Image
+    import javafx.scene.control.TabPane
+    import javafx.scene.control.Tab
+    import javafx.scene.layout.GridPane
     import javafx.stage.Stage
 
     /// FXML の fx:id 経由で取得した主要 widget 参照。customize で全フィールドに値が入る
@@ -30,6 +40,9 @@ mod IdeState {
         subEntryRemoveBtn             = Array[Option[Button], Static],
         propertyPanel                 = Array[Option[VBox], Static],
         resourcePreviewPane           = Array[Option[StackPane], Static],
+        // Resources Preview の永続 canvas。updateSpritePreview は再生成せず、これを clear+redraw する
+        // ことで、ピンチズーム中の JavaFX gesture continuity を保つ（MapEditor の mapPaletteCanvas と同じ流儀）
+        resourcePreviewCanvas         = Array[Option[Canvas], Static],
         resourcePreviewZoomLbl        = Array[Option[Label], Static],
         resourcePreviewGridChk        = Array[Option[CheckBox], Static],
         resourcePreviewFrameAdjustChk = Array[Option[CheckBox], Static],
@@ -41,7 +54,79 @@ mod IdeState {
         stage                         = Array[Option[Stage], Static],
         loadingOverlay                = Array[Option[VBox], Static],
         loadingLabel                  = Array[Option[Label], Static],
-        loadingBar                    = Array[Option[ProgressBar], Static]
+        loadingBar                    = Array[Option[ProgressBar], Static],
+        // Maps タブの Level リスト
+        mapsList                      = Array[Option[ListView[String]], Static],
+        // Maps タブの中央 Canvas (ピンチズーム + 自動保存対応)
+        mapGridCanvas                 = Array[Option[Canvas], Static],
+        // Maps タブ用 tileset PNG キャッシュ (S13 で manualTiles / decorTiles 描画に使う)。
+        // 現状は texture 名を inca_tileset / tilemap_floor でハードコード参照する。
+        // Material 概念を導入したら Level → Material → texture name の引き直しに置換予定。
+        mapWallsImage                 = Array[Option[Image], Static],
+        mapFloorImage                 = Array[Option[Image], Static],
+        // Maps タブの Layer リスト行 (HBox) — クリックで選択、styleClass の付け外しで選択 highlight
+        mapLayerRowFloor              = Array[Option[HBox], Static],
+        mapLayerRowWalls              = Array[Option[HBox], Static],
+        mapLayerRowEntities           = Array[Option[HBox], Static],
+        // 各 Layer の visibility 目玉トグル (ToggleButton)
+        mapLayerVisibleFloor          = Array[Option[ToggleButton], Static],
+        mapLayerVisibleWalls          = Array[Option[ToggleButton], Static],
+        mapLayerVisibleEntities       = Array[Option[ToggleButton], Static],
+        // Maps タブの tile パレット (S15)
+        mapPaletteCanvas              = Array[Option[Canvas], Static],
+        mapPaletteStatus              = Array[Option[Label], Static],
+        // Maps タブのパレット見出し (Layer 切替で "Palette (Floor/Walls)" 等に書き換える)
+        mapPaletteLabel               = Array[Option[Label], Static],
+        // Palette の SpriteSheet 選択 ComboBox と セル px 入力 Spinner
+        mapPaletteTextureCombo        = Array[Option[ComboBox[String]], Static],
+        mapPaletteCellWSpinner        = Array[Option[Spinner[Integer]], Static],
+        mapPaletteCellHSpinner        = Array[Option[Spinner[Integer]], Static],
+        // タイル間マージン (タイルセットによってはタイル間に隙間 px がある)
+        mapPaletteMarginXSpinner      = Array[Option[Spinner[Integer]], Static],
+        mapPaletteMarginYSpinner      = Array[Option[Spinner[Integer]], Static],
+        // Floor/Walls 用 Palette セクション と Entities 用 Entity Id セクション (visible 切替)
+        mapPaletteSection             = Array[Option[VBox], Static],
+        mapEntitySection              = Array[Option[VBox], Static],
+        // Maps タブの Entity identifier 入力 (S16)
+        mapEntityIdField              = Array[Option[TextField], Static],
+        // Maps タブの「+ New」ボタン (S17: 新規 Level 作成)
+        mapNewBtn                     = Array[Option[Button], Static],
+        // Maps タブの「- Delete」ボタン (map.json + 関連 material.json を削除)
+        mapDeleteBtn                  = Array[Option[Button], Static],
+        // Maps タブの「Duplicate」ボタン (map.json + 関連 material.json を複製)
+        mapDuplicateBtn               = Array[Option[Button], Static],
+        // Map Canvas 上のツール切替トグル (Pencil / RangeSelect)
+        mapToolPencilBtn              = Array[Option[ToggleButton], Static],
+        mapToolRangeBtn               = Array[Option[ToggleButton], Static],
+        // Preview モード切替トグル (Layers ヘッダー横、ON でゲーム見え)
+        mapPreviewToggleBtn           = Array[Option[ToggleButton], Static],
+        // Materials サブタブ (wallMap 編集)
+        mapRightTabs                  = Array[Option[TabPane], Static],
+        mapMaterialsWallMapBox        = Array[Option[VBox], Static],
+        mapMaterialsStatus            = Array[Option[Label], Static],
+        mapMaterialsTilesetCanvas     = Array[Option[Canvas], Static],
+        // AutoRule (装飾) エディタ
+        mapRuleAddBtn                 = Array[Option[Button], Static],
+        mapRuleRemoveBtn              = Array[Option[Button], Static],
+        mapRuleList                   = Array[Option[ComboBox[String]], Static],
+        mapRuleEditor                 = Array[Option[VBox], Static],
+        mapRuleNameField              = Array[Option[TextField], Static],
+        mapRulePatternGrid            = Array[Option[GridPane], Static],
+        mapRulePaletteBox             = Array[Option[VBox], Static],
+        mapRuleTileLabel              = Array[Option[Label], Static],
+        // Rules タブ専用 tileset Canvas (Rule.srcXY 選択用)
+        mapRuleTilesetCanvas          = Array[Option[Canvas], Static],
+        // Rule の Pattern サイズ切替 (3×3 / 5×5)
+        mapRuleSizeCombo              = Array[Option[ComboBox[String]], Static],
+        // Settings サブタブ (map 名 + サイズ編集)
+        mapSettingsTab                = Array[Option[Tab], Static],
+        mapSettingsNameField          = Array[Option[TextField], Static],
+        mapSettingsWidthSpinner       = Array[Option[Spinner[Integer]], Static],
+        mapSettingsHeightSpinner      = Array[Option[Spinner[Integer]], Static],
+        mapSettingsResizeInfo         = Array[Option[Label], Static],
+        mapSettingsRenameWarning      = Array[Option[Label], Static],
+        mapSettingsApplyBtn           = Array[Option[Button], Static],
+        mapSettingsStatus             = Array[Option[Label], Static]
     }
 
     /// 描画ループと FX レイヤーを橋渡しする ref 群。
@@ -124,6 +209,8 @@ mod IdeState {
         pendingSceneRef            = Array[Option[String], Static],
         sceneFilesRef              = Array[List[(String, String)], Static],
         currentScenePathRef        = Array[Option[String], Static],
+        // 現在ロード中のプロジェクトルート絶対パス (新規ファイル作成等で必要)
+        currentProjectRootRef      = Array[Option[String], Static],
         textureNamesRef            = Array[List[String], Static],
         texturePathMapRef          = Array[Map[String, String], Static],
         soundNamesRef              = Array[List[String], Static],
@@ -134,7 +221,8 @@ mod IdeState {
         runtime                    = RuntimeRefs,
         statusBar                  = StatusBarRefs,
         inspector                  = InspectorRefs,
-        resource                   = ResourceState.ResourceState
+        resource                   = ResourceState.ResourceState,
+        mapEditor                  = MapEditorState.MapEditorState
     }
 
     /// 空の IDE 状態を作る。Static 領域の Ref を全フィールド分用意する。
@@ -144,6 +232,7 @@ mod IdeState {
             pendingSceneRef            = Array#{(None: Option[String])} @ Static,
             sceneFilesRef              = Array#{(Nil: List[(String, String)])} @ Static,
             currentScenePathRef        = Array#{(None: Option[String])} @ Static,
+            currentProjectRootRef      = Array#{(None: Option[String])} @ Static,
             textureNamesRef            = Array#{(Nil: List[String])} @ Static,
             texturePathMapRef          = Array#{(Map.empty(): Map[String, String])} @ Static,
             soundNamesRef              = Array#{(Nil: List[String])} @ Static,
@@ -154,7 +243,8 @@ mod IdeState {
             runtime                    = newRuntime(),
             statusBar                  = newStatusBar(),
             inspector                  = newInspector(),
-            resource                   = ResourceState.newState()
+            resource                   = ResourceState.newState(),
+            mapEditor                  = MapEditorState.newState()
         }
 
     def newWidgets(): WidgetRefs \ IO =
@@ -166,6 +256,7 @@ mod IdeState {
             subEntryRemoveBtn             = Array#{(None: Option[Button])} @ Static,
             propertyPanel                 = Array#{(None: Option[VBox])} @ Static,
             resourcePreviewPane           = Array#{(None: Option[StackPane])} @ Static,
+            resourcePreviewCanvas         = Array#{(None: Option[Canvas])} @ Static,
             resourcePreviewZoomLbl        = Array#{(None: Option[Label])} @ Static,
             resourcePreviewGridChk        = Array#{(None: Option[CheckBox])} @ Static,
             resourcePreviewFrameAdjustChk = Array#{(None: Option[CheckBox])} @ Static,
@@ -175,7 +266,56 @@ mod IdeState {
             stage                         = Array#{(None: Option[Stage])} @ Static,
             loadingOverlay                = Array#{(None: Option[VBox])} @ Static,
             loadingLabel                  = Array#{(None: Option[Label])} @ Static,
-            loadingBar                    = Array#{(None: Option[ProgressBar])} @ Static
+            loadingBar                    = Array#{(None: Option[ProgressBar])} @ Static,
+            mapsList                      = Array#{(None: Option[ListView[String]])} @ Static,
+            mapGridCanvas                 = Array#{(None: Option[Canvas])} @ Static,
+            mapWallsImage                 = Array#{(None: Option[Image])} @ Static,
+            mapFloorImage                 = Array#{(None: Option[Image])} @ Static,
+            mapLayerRowFloor              = Array#{(None: Option[HBox])} @ Static,
+            mapLayerRowWalls              = Array#{(None: Option[HBox])} @ Static,
+            mapLayerRowEntities           = Array#{(None: Option[HBox])} @ Static,
+            mapLayerVisibleFloor          = Array#{(None: Option[ToggleButton])} @ Static,
+            mapLayerVisibleWalls          = Array#{(None: Option[ToggleButton])} @ Static,
+            mapLayerVisibleEntities       = Array#{(None: Option[ToggleButton])} @ Static,
+            mapPaletteCanvas              = Array#{(None: Option[Canvas])} @ Static,
+            mapPaletteStatus              = Array#{(None: Option[Label])} @ Static,
+            mapPaletteLabel               = Array#{(None: Option[Label])} @ Static,
+            mapPaletteTextureCombo        = Array#{(None: Option[ComboBox[String]])} @ Static,
+            mapPaletteCellWSpinner        = Array#{(None: Option[Spinner[Integer]])} @ Static,
+            mapPaletteCellHSpinner        = Array#{(None: Option[Spinner[Integer]])} @ Static,
+            mapPaletteMarginXSpinner      = Array#{(None: Option[Spinner[Integer]])} @ Static,
+            mapPaletteMarginYSpinner      = Array#{(None: Option[Spinner[Integer]])} @ Static,
+            mapPaletteSection             = Array#{(None: Option[VBox])} @ Static,
+            mapEntitySection              = Array#{(None: Option[VBox])} @ Static,
+            mapEntityIdField              = Array#{(None: Option[TextField])} @ Static,
+            mapNewBtn                     = Array#{(None: Option[Button])} @ Static,
+            mapDeleteBtn                  = Array#{(None: Option[Button])} @ Static,
+            mapDuplicateBtn               = Array#{(None: Option[Button])} @ Static,
+            mapToolPencilBtn              = Array#{(None: Option[ToggleButton])} @ Static,
+            mapToolRangeBtn               = Array#{(None: Option[ToggleButton])} @ Static,
+            mapPreviewToggleBtn           = Array#{(None: Option[ToggleButton])} @ Static,
+            mapRightTabs                  = Array#{(None: Option[TabPane])} @ Static,
+            mapMaterialsWallMapBox        = Array#{(None: Option[VBox])} @ Static,
+            mapMaterialsStatus            = Array#{(None: Option[Label])} @ Static,
+            mapMaterialsTilesetCanvas     = Array#{(None: Option[Canvas])} @ Static,
+            mapRuleAddBtn                 = Array#{(None: Option[Button])} @ Static,
+            mapRuleRemoveBtn              = Array#{(None: Option[Button])} @ Static,
+            mapRuleList                   = Array#{(None: Option[ComboBox[String]])} @ Static,
+            mapRuleEditor                 = Array#{(None: Option[VBox])} @ Static,
+            mapRuleNameField              = Array#{(None: Option[TextField])} @ Static,
+            mapRulePatternGrid            = Array#{(None: Option[GridPane])} @ Static,
+            mapRulePaletteBox             = Array#{(None: Option[VBox])} @ Static,
+            mapRuleTileLabel              = Array#{(None: Option[Label])} @ Static,
+            mapRuleTilesetCanvas          = Array#{(None: Option[Canvas])} @ Static,
+            mapRuleSizeCombo              = Array#{(None: Option[ComboBox[String]])} @ Static,
+            mapSettingsTab                = Array#{(None: Option[Tab])} @ Static,
+            mapSettingsNameField          = Array#{(None: Option[TextField])} @ Static,
+            mapSettingsWidthSpinner       = Array#{(None: Option[Spinner[Integer]])} @ Static,
+            mapSettingsHeightSpinner      = Array#{(None: Option[Spinner[Integer]])} @ Static,
+            mapSettingsResizeInfo         = Array#{(None: Option[Label])} @ Static,
+            mapSettingsRenameWarning      = Array#{(None: Option[Label])} @ Static,
+            mapSettingsApplyBtn           = Array#{(None: Option[Button])} @ Static,
+            mapSettingsStatus             = Array#{(None: Option[Label])} @ Static
         }
 
     def newRuntime(): RuntimeRefs \ IO =
@@ -256,4 +396,12 @@ mod IdeState {
     /// 現在開いている scene.json の絶対パスを返す。プロジェクト未ロード時や未選択時は None
     pub def getCurrentScenePath(state: IdeState): Option[String] \ IO =
         Array.get(0, state#currentScenePathRef)
+
+    /// 現在ロード中のプロジェクトルート絶対パスを保存する。
+    pub def setCurrentProjectRoot(state: IdeState, path: Option[String]): Unit \ IO =
+        Array.put(path, 0, state#currentProjectRootRef)
+
+    /// 現在ロード中のプロジェクトルート絶対パスを返す。未ロード時は None
+    pub def getCurrentProjectRoot(state: IdeState): Option[String] \ IO =
+        Array.get(0, state#currentProjectRootRef)
 }

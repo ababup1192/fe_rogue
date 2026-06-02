@@ -64,8 +64,8 @@ mod TestWeapon {
     def testCanReachAdjacentSword(): Unit \ Assert =
         let sword: UnitCatalog.WeaponResource =
             {name = "sword", attack = 1, durability = 10,
-             range = {min = 1, max = 1}, weaponType = UnitCatalog.WeaponType.Physical,
-             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}}};
+             range = {min = 1, max = 1}, weaponType = WeaponCatalog.WeaponType.Physical,
+             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}}};
         Assert.assertEq(expected = true, Weapon.canReach(1, sword))
 
     /// 隣接 (距離 1) を弓 {min:2, max:2} は届かない → 反撃不可ケース
@@ -73,8 +73,8 @@ mod TestWeapon {
     def testCanReachBowCannotCounterAdjacent(): Unit \ Assert =
         let bow: UnitCatalog.WeaponResource =
             {name = "bow", attack = 1, durability = 10,
-             range = {min = 2, max = 2}, weaponType = UnitCatalog.WeaponType.Physical,
-             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}}};
+             range = {min = 2, max = 2}, weaponType = WeaponCatalog.WeaponType.Physical,
+             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}}};
         Assert.assertEq(expected = false, Weapon.canReach(1, bow))
 
     /// 距離 1 の剣 {min:1, max:1} は 2 マス先には届かない (= 弓に反撃できない)
@@ -82,8 +82,8 @@ mod TestWeapon {
     def testCanReachSwordCannotCounterBow(): Unit \ Assert =
         let sword: UnitCatalog.WeaponResource =
             {name = "sword", attack = 1, durability = 10,
-             range = {min = 1, max = 1}, weaponType = UnitCatalog.WeaponType.Physical,
-             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}}};
+             range = {min = 1, max = 1}, weaponType = WeaponCatalog.WeaponType.Physical,
+             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}}};
         Assert.assertEq(expected = false, Weapon.canReach(2, sword))
 
     /// 手槍 {min:1, max:2} は隣接にも 2 マス先にも届く
@@ -91,8 +91,8 @@ mod TestWeapon {
     def testCanReachJavelinBoth(): Unit \ Assert =
         let javelin: UnitCatalog.WeaponResource =
             {name = "javelin", attack = 1, durability = 10,
-             range = {min = 1, max = 2}, weaponType = UnitCatalog.WeaponType.Physical,
-             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}}};
+             range = {min = 1, max = 2}, weaponType = WeaponCatalog.WeaponType.Physical,
+             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}}};
         Assert.assertEq(expected = (true, true, false),
                         (Weapon.canReach(1, javelin),
                          Weapon.canReach(2, javelin),
@@ -121,7 +121,7 @@ mod TestWeapon {
     def testMagicWeaponDamageUsesMagicStats(): Unit \ Assert =
         let unit   = TestUnitFixtures.testResourceMagic(4, 14, 2, 1, 8, 4, 3);
         let target = TestUnitFixtures.testResourceMagic(4, 14, 6, 5, 1, 3, 2);
-        let weapon = TestUnitFixtures.testWeaponWithType(2, UnitCatalog.WeaponType.Magic);
+        let weapon = TestUnitFixtures.testWeaponWithType(2, WeaponCatalog.WeaponType.Magic);
         let phys   = UnitCatalog.isPhysical(weapon#weaponType);
         let totalAttack = Combat.attackStatFor(unit#attack, unit#magicAttack,
                                                 weapon#attack, phys);
@@ -135,7 +135,7 @@ mod TestWeapon {
     def testPhysicalWeaponIgnoresMagicStats(): Unit \ Assert =
         let unit   = TestUnitFixtures.testResourceMagic(4, 14, 2, 1, 8, 4, 3);
         let target = TestUnitFixtures.testResourceMagic(4, 14, 6, 4, 1, 0, 2);
-        let weapon = TestUnitFixtures.testWeaponWithType(3, UnitCatalog.WeaponType.Physical);
+        let weapon = TestUnitFixtures.testWeaponWithType(3, WeaponCatalog.WeaponType.Physical);
         let phys   = UnitCatalog.isPhysical(weapon#weaponType);
         let totalAttack = Combat.attackStatFor(unit#attack, unit#magicAttack,
                                                 weapon#attack, phys);

@@ -1,5 +1,5 @@
 /// タイルセットアトラスソース（Godot TileSetAtlasSource 準拠）
-/// texWidth / texHeight は LDTKLoader が getTextureInfo() で自動補完する。
+/// texWidth / texHeight は tilemap loader 側で getTextureInfo() を呼んで自動補完する想定。
 /// tileSize は .ldtkl の __gridSize から自動補完する。
 pub type alias TileSetAtlasSource = {
     textureName = String,
@@ -25,7 +25,7 @@ mod TileSet {
 
 mod TileSetAtlasSource {
     /// margin/spacing のデフォルトを 0 として生成する。
-    /// texWidth / texHeight / tileSize は LDTKLoader が後から補完するため 0 で初期化する。
+    /// texWidth / texHeight / tileSize は tilemap loader が後から補完するため 0 で初期化する。
     pub def make(config: { textureName = String,
                            marginX = Float64, marginY = Float64,
                            spacingX = Float64, spacingY = Float64 }): TileSetAtlasSource = {

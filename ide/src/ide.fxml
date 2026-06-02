@@ -122,7 +122,8 @@
                                 <VBox alignment="TOP_CENTER" spacing="8">
                                     <children>
                                         <Label text="Preview" styleClass="section-header"/>
-                                        <!-- Zoom toolbar: 段階的なパーセントズーム。
+                                        <!-- Preview のズームは canvas へのピンチで操作する
+                                             (Maps タブの tileset と同じ操作感)。
                                              100% は IDE プレビュー上のネイティブ等倍
                                              (1 image px = 1 logical px) — texture アトラスの
                                              ピクセル自体を確認する用途。ゲーム実機での見え方は
@@ -131,22 +132,6 @@
                                         <HBox alignment="CENTER" spacing="4"
                                               styleClass="resource-zoom-bar">
                                             <children>
-                                                <Button fx:id="previewZoomOut"
-                                                        styleClass="zoom-icon-button">
-                                                    <graphic>
-                                                        <SVGPath styleClass="zoom-icon"
-                                                                 content="M6,3 A3,3 0 1,1 6,9 A3,3 0 1,1 6,3 Z M8.7,8.7 L13,13 M4,6 L8,6"/>
-                                                    </graphic>
-                                                </Button>
-                                                <Label fx:id="previewZoomLabel" text="100%"
-                                                       styleClass="resource-zoom-label"/>
-                                                <Button fx:id="previewZoomIn"
-                                                        styleClass="zoom-icon-button">
-                                                    <graphic>
-                                                        <SVGPath styleClass="zoom-icon"
-                                                                 content="M6,3 A3,3 0 1,1 6,9 A3,3 0 1,1 6,3 Z M8.7,8.7 L13,13 M4,6 L8,6 M6,4 L6,8"/>
-                                                    </graphic>
-                                                </Button>
                                                 <CheckBox fx:id="previewGridCheck" text="グリッド"/>
                                                 <CheckBox fx:id="previewFrameAdjustCheck"
                                                           text="フレーム調整"/>
@@ -174,6 +159,8 @@
                         </SplitPane>
                     </content>
                 </Tab>
+                <!-- ────────── Maps mode (中身は map-editor.fxml に分離、Flix 側で setContent) ────────── -->
+                <Tab fx:id="mapsTab" text="Maps"/>
             </tabs>
         </TabPane>
         <VBox fx:id="loadingOverlay" alignment="CENTER" spacing="10"

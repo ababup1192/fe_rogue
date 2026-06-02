@@ -1,0 +1,391 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maps タブの中身 (Level リスト + 中央 Canvas + 右に Layer / auto-layer / Rules タブ)。
+  ide.fxml が <fx:include source="map-editor.fxml"/> ではなく別 FXMLLoader で
+  ロードして mapsTab.setContent でマウントする。inner fx:id は専用 namespace
+  経由でアクセスする (JavaFXIdeUI.flix)。
+
+  右ペイン上部の TabPane で 3 つのサブタブを切替:
+    - Layer      : レイヤー切替 (Floor/Walls/Entities) + Palette 設定
+    - auto-layer : 現 Level の materialId に紐づく wallMap (TRBL) 編集 + tileset
+    - Rules      : ldtk 風 3×3 AutoRule の追加・編集 (Tile 指定は auto-layer 側)
+-->
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ToggleButton?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Spinner?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.TabPane?>
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.canvas.Canvas?>
+<?import javafx.geometry.Insets?>
+
+<SplitPane xmlns:fx="http://javafx.com/fxml" fx:id="mapsSplit"
+           dividerPositions="0.18, 0.55">
+    <items>
+        <!-- 左: Level リスト (assets/maps/*.map.json) + 新規作成ボタン -->
+        <VBox>
+            <children>
+                <Label text="Maps" styleClass="section-header"/>
+                <ListView fx:id="mapsList" VBox.vgrow="ALWAYS"/>
+                <HBox alignment="CENTER_LEFT" spacing="4" styleClass="map-list-toolbar">
+                    <children>
+                        <Button fx:id="mapNewBtn" text="+ New" prefWidth="80"/>
+                        <Button fx:id="mapDuplicateBtn" text="Duplicate" prefWidth="80"/>
+                        <Button fx:id="mapDeleteBtn" text="- Delete" prefWidth="80"/>
+                    </children>
+                </HBox>
+            </children>
+        </VBox>
+        <!-- 中央: ツールバー + Canvas (自動保存なので保存ボタンは無し)。
+             ピンチで拡大縮小、Ctrl+Z (macOS は Cmd+Z) で 1 操作 undo。
+             Pencil / RangeSelect で操作モードを切り替える。 -->
+        <VBox fx:id="mapEditorPane" alignment="TOP_CENTER" spacing="4">
+            <children>
+                <HBox alignment="CENTER_LEFT" spacing="4"
+                      styleClass="map-tool-bar">
+                    <children>
+                        <ToggleButton fx:id="mapToolPencilBtn"
+                                       text="✎" selected="true"
+                                       prefWidth="26" prefHeight="26"
+                                       minWidth="26" minHeight="26"
+                                       maxWidth="26" maxHeight="26"
+                                       focusTraversable="false"
+                                       styleClass="map-tool-btn"/>
+                        <ToggleButton fx:id="mapToolRangeBtn"
+                                       text="▭"
+                                       prefWidth="26" prefHeight="26"
+                                       minWidth="26" minHeight="26"
+                                       maxWidth="26" maxHeight="26"
+                                       focusTraversable="false"
+                                       styleClass="map-tool-btn"/>
+                    </children>
+                </HBox>
+                <ScrollPane fx:id="mapGridScroll" VBox.vgrow="ALWAYS">
+                    <content>
+                        <Canvas fx:id="mapGridCanvas" width="400" height="400"/>
+                    </content>
+                </ScrollPane>
+            </children>
+        </VBox>
+        <!-- 右: Layer / auto-layer / Rules の 3 タブ -->
+        <VBox alignment="TOP_CENTER" spacing="4" styleClass="map-side-pane">
+            <children>
+                <TabPane fx:id="mapRightTabs" VBox.vgrow="ALWAYS"
+                         tabClosingPolicy="UNAVAILABLE">
+                    <tabs>
+                        <!-- Layer タブ: レイヤー切替 + Palette -->
+                        <Tab fx:id="mapLayerTab" text="Layer">
+                            <content>
+                                <VBox alignment="TOP_CENTER" spacing="4">
+                                    <padding>
+                                        <Insets top="6" right="6" bottom="6" left="6"/>
+                                    </padding>
+                                    <children>
+                                        <HBox alignment="CENTER_LEFT" spacing="6">
+                                            <children>
+                                                <Label text="Layers"
+                                                       styleClass="section-header"
+                                                       HBox.hgrow="ALWAYS"
+                                                       maxWidth="Infinity"/>
+                                                <ToggleButton fx:id="mapPreviewToggleBtn"
+                                                              text="Preview"
+                                                              styleClass="layer-preview-btn"
+                                                              focusTraversable="false"/>
+                                            </children>
+                                        </HBox>
+                                        <VBox fx:id="mapLayerList" styleClass="layer-list">
+                                            <children>
+                                                <HBox fx:id="mapLayerRowEntities"
+                                                      styleClass="layer-row"
+                                                      alignment="CENTER_LEFT" spacing="6">
+                                                    <children>
+                                                        <ToggleButton fx:id="mapLayerVisibleEntities"
+                                                                      text="&#x1F440;" selected="true"
+                                                                      styleClass="layer-eye-btn"
+                                                                      focusTraversable="false"/>
+                                                        <Label fx:id="mapLayerNameEntities"
+                                                               text="Entities"
+                                                               styleClass="layer-name"
+                                                               HBox.hgrow="ALWAYS"
+                                                               maxWidth="Infinity"/>
+                                                    </children>
+                                                </HBox>
+                                                <HBox fx:id="mapLayerRowWalls"
+                                                      styleClass="layer-row"
+                                                      alignment="CENTER_LEFT" spacing="6">
+                                                    <children>
+                                                        <ToggleButton fx:id="mapLayerVisibleWalls"
+                                                                      text="&#x1F440;" selected="true"
+                                                                      styleClass="layer-eye-btn"
+                                                                      focusTraversable="false"/>
+                                                        <Label fx:id="mapLayerNameWalls"
+                                                               text="Walls"
+                                                               styleClass="layer-name"
+                                                               HBox.hgrow="ALWAYS"
+                                                               maxWidth="Infinity"/>
+                                                    </children>
+                                                </HBox>
+                                                <HBox fx:id="mapLayerRowFloor"
+                                                      styleClass="layer-row,layer-row-selected"
+                                                      alignment="CENTER_LEFT" spacing="6">
+                                                    <children>
+                                                        <ToggleButton fx:id="mapLayerVisibleFloor"
+                                                                      text="&#x1F440;" selected="true"
+                                                                      styleClass="layer-eye-btn"
+                                                                      focusTraversable="false"/>
+                                                        <Label fx:id="mapLayerNameFloor"
+                                                               text="Floor"
+                                                               styleClass="layer-name"
+                                                               HBox.hgrow="ALWAYS"
+                                                               maxWidth="Infinity"/>
+                                                    </children>
+                                                </HBox>
+                                            </children>
+                                        </VBox>
+                                        <Separator/>
+                                        <!-- Floor / Walls 選択中に表示する Palette セクション -->
+                                        <VBox fx:id="mapPaletteSection"
+                                              alignment="TOP_CENTER" spacing="4"
+                                              VBox.vgrow="ALWAYS">
+                                            <children>
+                                                <Label fx:id="mapPaletteLabel"
+                                                       text="Palette"
+                                                       styleClass="section-header"/>
+                                                <HBox spacing="4"
+                                                      alignment="CENTER_LEFT"
+                                                      styleClass="palette-config-row">
+                                                    <children>
+                                                        <Label text="Sheet:"/>
+                                                        <ComboBox fx:id="mapPaletteTextureCombo"
+                                                                  maxWidth="Infinity"
+                                                                  HBox.hgrow="ALWAYS"/>
+                                                    </children>
+                                                </HBox>
+                                                <HBox spacing="4"
+                                                      alignment="CENTER_LEFT"
+                                                      styleClass="palette-config-row">
+                                                    <children>
+                                                        <Label text="Cell:"/>
+                                                        <Spinner fx:id="mapPaletteCellWSpinner"
+                                                                 prefWidth="68"
+                                                                 editable="true"/>
+                                                        <Label text="×"/>
+                                                        <Spinner fx:id="mapPaletteCellHSpinner"
+                                                                 prefWidth="68"
+                                                                 editable="true"/>
+                                                        <Label text="px"/>
+                                                    </children>
+                                                </HBox>
+                                                <HBox spacing="4"
+                                                      alignment="CENTER_LEFT"
+                                                      styleClass="palette-config-row">
+                                                    <children>
+                                                        <Label text="Margin:"/>
+                                                        <Spinner fx:id="mapPaletteMarginXSpinner"
+                                                                 prefWidth="68"
+                                                                 editable="true"/>
+                                                        <Label text="×"/>
+                                                        <Spinner fx:id="mapPaletteMarginYSpinner"
+                                                                 prefWidth="68"
+                                                                 editable="true"/>
+                                                        <Label text="px"/>
+                                                    </children>
+                                                </HBox>
+                                                <Label fx:id="mapPaletteStatus"
+                                                       text="未選択"
+                                                       styleClass="map-palette-status"/>
+                                                <ScrollPane fx:id="mapPaletteScroll"
+                                                            fitToWidth="false"
+                                                            VBox.vgrow="ALWAYS">
+                                                    <content>
+                                                        <Canvas fx:id="mapPaletteCanvas"
+                                                                width="480" height="336"/>
+                                                    </content>
+                                                </ScrollPane>
+                                            </children>
+                                        </VBox>
+                                        <!-- Entities 選択中の Entity Id 入力セクション -->
+                                        <VBox fx:id="mapEntitySection"
+                                              alignment="TOP_CENTER" spacing="4"
+                                              visible="false" managed="false"
+                                              VBox.vgrow="ALWAYS">
+                                            <children>
+                                                <Label text="Entity"
+                                                       styleClass="section-header"/>
+                                                <HBox spacing="4"
+                                                      alignment="CENTER_LEFT"
+                                                      styleClass="palette-config-row">
+                                                    <children>
+                                                        <Label text="id:"/>
+                                                        <TextField fx:id="mapEntityIdField"
+                                                                   text="Door"
+                                                                   maxWidth="Infinity"
+                                                                   HBox.hgrow="ALWAYS"/>
+                                                    </children>
+                                                </HBox>
+                                                <Label text="グリッドをクリックで配置 / 右クリックで削除"
+                                                       styleClass="map-palette-status"/>
+                                            </children>
+                                        </VBox>
+                                    </children>
+                                </VBox>
+                            </content>
+                        </Tab>
+                        <!-- auto-layer タブ: wallMap (TRBL) 編集 + tileset -->
+                        <Tab fx:id="mapMaterialsTab" text="auto-layer">
+                            <content>
+                                <VBox alignment="TOP_CENTER" spacing="6"
+                                      styleClass="auto-layer-tab-content">
+                                    <padding>
+                                        <Insets top="8" right="8" bottom="8" left="8"/>
+                                    </padding>
+                                    <children>
+                                        <VBox fx:id="mapMaterialsWallMapBox"
+                                              spacing="3" alignment="TOP_LEFT"/>
+                                        <Label fx:id="mapMaterialsStatus"
+                                               text="セル未選択"
+                                               styleClass="map-palette-status"/>
+                                        <ScrollPane fx:id="mapMaterialsTilesetScroll"
+                                                    fitToWidth="false"
+                                                    VBox.vgrow="ALWAYS">
+                                            <content>
+                                                <Canvas fx:id="mapMaterialsTilesetCanvas"
+                                                        width="480" height="336"/>
+                                            </content>
+                                        </ScrollPane>
+                                    </children>
+                                </VBox>
+                            </content>
+                        </Tab>
+                        <!-- Rules タブ: ldtk 風 3×3 AutoRule の追加・編集。
+                             3×3 の中央=装飾 (出力位置、固定)、周辺 8 セルは 壁/床 トグル。
+                             Tile は同タブ下部の tileset Canvas をクリックして選ぶ。 -->
+                        <Tab fx:id="mapRulesTab" text="Rules">
+                            <content>
+                                <VBox alignment="TOP_CENTER" spacing="6"
+                                      styleClass="auto-layer-tab-content">
+                                    <padding>
+                                        <Insets top="8" right="8" bottom="8" left="8"/>
+                                    </padding>
+                                    <children>
+                                        <ComboBox fx:id="mapRuleList"
+                                                  maxWidth="Infinity"/>
+                                        <HBox spacing="4" alignment="CENTER_LEFT">
+                                            <children>
+                                                <Button fx:id="mapRuleAddBtn"
+                                                        text="+ New" prefWidth="80"/>
+                                                <Button fx:id="mapRuleRemoveBtn"
+                                                        text="- Delete" prefWidth="80"/>
+                                            </children>
+                                        </HBox>
+                                        <VBox fx:id="mapRuleEditor"
+                                              visible="false" managed="false"
+                                              spacing="4">
+                                            <children>
+                                                <HBox spacing="4"
+                                                      alignment="CENTER_LEFT">
+                                                    <children>
+                                                        <Label text="Name:"/>
+                                                        <TextField fx:id="mapRuleNameField"
+                                                                   maxWidth="Infinity"
+                                                                   HBox.hgrow="ALWAYS"/>
+                                                    </children>
+                                                </HBox>
+                                                <HBox spacing="4"
+                                                      alignment="CENTER_LEFT">
+                                                    <children>
+                                                        <Label text="Size:"/>
+                                                        <ComboBox fx:id="mapRuleSizeCombo"
+                                                                  prefWidth="80"/>
+                                                    </children>
+                                                </HBox>
+                                                <HBox spacing="8" alignment="TOP_LEFT">
+                                                    <children>
+                                                        <GridPane fx:id="mapRulePatternGrid"
+                                                                  hgap="2" vgap="2"
+                                                                  alignment="CENTER_LEFT"/>
+                                                        <VBox fx:id="mapRulePaletteBox"
+                                                              spacing="4"
+                                                              alignment="TOP_LEFT"/>
+                                                    </children>
+                                                </HBox>
+                                                <Label fx:id="mapRuleTileLabel"
+                                                       text="Tile: 未設定 (下の tileset をクリックで指定)"
+                                                       styleClass="map-palette-status"
+                                                       wrapText="true"/>
+                                            </children>
+                                        </VBox>
+                                        <ScrollPane fx:id="mapRuleTilesetScroll"
+                                                    fitToWidth="false"
+                                                    VBox.vgrow="ALWAYS">
+                                            <content>
+                                                <Canvas fx:id="mapRuleTilesetCanvas"
+                                                        width="480" height="336"/>
+                                            </content>
+                                        </ScrollPane>
+                                    </children>
+                                </VBox>
+                            </content>
+                        </Tab>
+                        <!-- Settings タブ: マップ名 (関連ファイル名追従) と サイズ (width × height) を編集 -->
+                        <Tab fx:id="mapSettingsTab" text="Settings">
+                            <content>
+                                <VBox alignment="TOP_CENTER" spacing="6"
+                                      styleClass="auto-layer-tab-content">
+                                    <padding>
+                                        <Insets top="8" right="8" bottom="8" left="8"/>
+                                    </padding>
+                                    <children>
+                                        <HBox spacing="4" alignment="CENTER_LEFT">
+                                            <children>
+                                                <Label text="Name:"/>
+                                                <TextField fx:id="mapSettingsNameField"
+                                                           maxWidth="Infinity"
+                                                           HBox.hgrow="ALWAYS"/>
+                                            </children>
+                                        </HBox>
+                                        <HBox spacing="4" alignment="CENTER_LEFT">
+                                            <children>
+                                                <Label text="Size (tiles):"/>
+                                                <Spinner fx:id="mapSettingsWidthSpinner"
+                                                         prefWidth="80" editable="true"/>
+                                                <Label text="×"/>
+                                                <Spinner fx:id="mapSettingsHeightSpinner"
+                                                         prefWidth="80" editable="true"/>
+                                            </children>
+                                        </HBox>
+                                        <Label fx:id="mapSettingsResizeInfo" text=""
+                                               styleClass="map-palette-status"
+                                               wrapText="true"/>
+                                        <Label fx:id="mapSettingsRenameWarning"
+                                               text="注意: ゲームコード (例: scenes/MapScene.flix) は map 名をハードコードしている場合があります。リネーム後は参照先を手動で更新してください。"
+                                               styleClass="map-palette-status"
+                                               wrapText="true"/>
+                                        <HBox spacing="4" alignment="CENTER_RIGHT">
+                                            <children>
+                                                <Button fx:id="mapSettingsApplyBtn"
+                                                        text="Apply" prefWidth="100"/>
+                                            </children>
+                                        </HBox>
+                                        <Label fx:id="mapSettingsStatus" text=""
+                                               styleClass="map-palette-status"
+                                               wrapText="true"/>
+                                    </children>
+                                </VBox>
+                            </content>
+                        </Tab>
+                    </tabs>
+                </TabPane>
+            </children>
+        </VBox>
+    </items>
+</SplitPane>

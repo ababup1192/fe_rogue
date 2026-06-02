@@ -17,8 +17,9 @@
 // 対応 collision shape: RectShape2D / CircleShape2D
 //
 // 注:
-//   TileMapLayer は LDTKLoader 経由で `.ldtkl` を読むため GameEngine.Game eff を要求する。
-//   このため loadScene 全体の eff に GameEngine.Game が含まれる（TileMapLayer を使わない
+//   段階 4 後段で LDtk 経路 (TileMapLayer 用 buildTileMapLayer) を削除済み。
+//   loadScene の eff は他の effectful builder (Fs.FileRead 等) のためのみ残る (TileMapLayer 用 GameEngine.Game 要件は不要になった)。
+//   過去経緯メモ:
 //   JSON では実質 no-op）。
 
 mod SceneLoader {
@@ -76,8 +77,7 @@ mod SceneLoader {
     /// JSON ファイルを読み込み、scene にノードツリーを追加して返す。
     /// tagParser: JSON の "tag" 文字列（None = キーなし）をゲーム固有の t に変換する関数。
     /// Label2D を含む JSON では loadSceneWithFont を使うこと（FontAtlas が必須）。
-    /// TileMapLayer を含む JSON では LDTKLoader が GameEngine.Game eff を要求するため
-    /// 呼び出し側もそのスコープから呼ぶ必要がある。
+    /// `GameEngine.Game` eff は将来 effectful な builder を追加する余地のため保持している。
     /// 失敗時は bug! でクラッシュする
     pub def loadScene(path: String, tagParser: Option[String] -> Result[Json.JsonError, t],
                       scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
@@ -334,14 +334,10 @@ mod SceneLoader {
     def buildByType(tagParser: Option[String] -> Result[Json.JsonError, t],
                     nodeType: String, fontAtlas: Option[FontAtlas],
                     map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] \ {GameEngine.Game, Fs.FileRead} =
-        match nodeType {
-            case "TileMapLayer" => buildTileMapLayer(tagParser, map)
-            case other          => checked_ecast(buildPureNodeType(tagParser, other, fontAtlas, map))
-        }
+        checked_ecast(buildPureNodeType(tagParser, nodeType, fontAtlas, map))
 
-    /// `TileMapLayer` を除く、副作用を持たないビルダーへのディスパッチ。
-    /// 関数 1 つあたりの case が増えると Flix の型推論が破綻するため、
-    /// `buildByType` から effectful な `TileMapLayer` を分離して残りをまとめる。
+    /// 副作用を持たないビルダーへのディスパッチ。
+    /// 段階 4 後段で LDtk (`TileMapLayer`) 削除に伴い、effectful 分岐は無くなった。
     def buildPureNodeType(tagParser: Option[String] -> Result[Json.JsonError, t],
                           nodeType: String, fontAtlas: Option[FontAtlas],
                           map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
@@ -704,15 +700,33 @@ mod SceneLoader {
             frames     <- Result.traverse(parseFrame, frameMaps)
         ) yield ({loop = loops, speed = speed, frames = frames}: SpriteFrames.Animation)
 
-    /// JSON の 1 フレーム定義を SpriteFrames.Frame に変換する。duration は任意（デフォルト 1.0）
+    /// JSON の 1 フレーム定義を SpriteFrames.Frame に変換する。
+    /// duration は任意（デフォルト 1.0）、region も任意（None ならテクスチャ全体）。
+    /// region JSON 形式: `{"pos": [x, y], "size": [w, h]}` (Godot Rect2 と同じ位置/サイズ)。
     def parseFrame(frameMap: Map[String, Json.JsonElement]):
                     Result[Json.JsonError, SpriteFrames.Frame] =
         forM (
-            texture     <- (Json.FromJson.getAtKey(Root, "texture", frameMap): Result[Json.JsonError, String]);
-            durationOpt <- (Json.FromJson.getAtKeyOpt(Root, "duration", frameMap):
-                             Result[Json.JsonError, Option[Float64]])
+            texture      <- (Json.FromJson.getAtKey(Root, "texture", frameMap): Result[Json.JsonError, String]);
+            durationOpt  <- (Json.FromJson.getAtKeyOpt(Root, "duration", frameMap):
+                              Result[Json.JsonError, Option[Float64]]);
+            regionMapOpt <- (Json.FromJson.getAtKeyOpt(Root, "region", frameMap):
+                              Result[Json.JsonError, Option[Map[String, Json.JsonElement]]]);
+            regionOpt    <- parseRegionOpt(regionMapOpt)
         ) yield ({texture = texture,
+                  regionRect = regionOpt,
                   duration = Option.getWithDefault(1.0, durationOpt)}: SpriteFrames.Frame)
+
+    /// region が JSON 上に存在すれば `{"pos": [...], "size": [...]}` を Rect2 に
+    /// デコード、無ければ None を返す。
+    def parseRegionOpt(regionMapOpt: Option[Map[String, Json.JsonElement]]):
+                        Result[Json.JsonError, Option[Rect2.Rect2]] =
+        match regionMapOpt {
+            case None    => Ok(None)
+            case Some(m) => forM (
+                              pos  <- parseVec2("pos", m);
+                              size <- parseVec2("size", m)
+                            ) yield Some({position = pos, size = size})
+        }
 
     /// JSON の spriteFrames オブジェクトを SpriteFrames リソースに変換する
     def parseSpriteFrames(sfMap: Map[String, Json.JsonElement]):
@@ -1017,53 +1031,6 @@ mod SceneLoader {
             case Some(other)             =>
                 Err(JsonError(Root, Set#{"PhysicsProcess|IdleProcess (got: ${other})"}))
         }
-
-    /// LDTK レベル（.ldtkl）を読み込んで TileMapLayer ノードを構築する。
-    /// JSON フィールド: ldtkPath / textureName / marginX / marginY / spacingX / spacingY
-    def buildTileMapLayer(tagParser: Option[String] -> Result[Json.JsonError, t],
-                          map: Map[String, Json.JsonElement]):
-                          Result[Json.JsonError, EngineNode[t]] \ {GameEngine.Game, Fs.FileRead} =
-        let header = forM (
-            tag         <- parseTagField(tagParser, map);
-            ldtkPath    <- (Json.FromJson.getAtKey(Root, "ldtkPath", map): Result[Json.JsonError, String]);
-            textureName <- (Json.FromJson.getAtKey(Root, "textureName", map): Result[Json.JsonError, String]);
-            marginXOpt  <- (Json.FromJson.getAtKeyOpt(Root, "marginX", map): Result[Json.JsonError, Option[Float64]]);
-            marginYOpt  <- (Json.FromJson.getAtKeyOpt(Root, "marginY", map): Result[Json.JsonError, Option[Float64]]);
-            spacingXOpt <- (Json.FromJson.getAtKeyOpt(Root, "spacingX", map): Result[Json.JsonError, Option[Float64]]);
-            spacingYOpt <- (Json.FromJson.getAtKeyOpt(Root, "spacingY", map): Result[Json.JsonError, Option[Float64]]);
-            ySortEnabledOpt <- (Json.FromJson.getAtKeyOpt(Root, "ySortEnabled", map): Result[Json.JsonError, Option[Bool]]);
-            visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
-            zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
-            modulateOpt <- parseColorOpt("modulate", map)
-        ) yield {
-            tag = tag,
-            config = ({
-                path        = ldtkPath,
-                textureName = textureName,
-                marginX     = Option.getWithDefault(0.0, marginXOpt),
-                marginY     = Option.getWithDefault(0.0, marginYOpt),
-                spacingX    = Option.getWithDefault(0.0, spacingXOpt),
-                spacingY    = Option.getWithDefault(0.0, spacingYOpt)
-            }: LDTKLoader.LDTKLoaderConfig),
-            ySortEnabledOpt = ySortEnabledOpt,
-            visibleOpt = visibleOpt,
-            zIndexOpt = zIndexOpt,
-            modulateOpt = modulateOpt
-        };
-        match header {
-            case Err(e) => Err(e)
-            case Ok(h)  =>
-                let levelData = LDTKLoader.loadLevel(h#config);
-                let layer = levelData#tileLayer
-                    |> applyOpt(h#ySortEnabledOpt, setTileMapLayerYSortEnabled)
-                    |> applyOpt(h#visibleOpt, (v, l) -> CanvasItem.setVisible(v, l))
-                    |> applyOpt(h#zIndexOpt, (z, l) -> CanvasItem.setZIndex(z, l))
-                    |> applyOpt(h#modulateOpt, (c, l) -> CanvasItem.setModulate(c, l));
-                Ok(EngineNode.TileMapLayerWithState(layer, h#tag))
-        }
-
-    def setTileMapLayerYSortEnabled(v: Bool, tm: TileMapLayer): TileMapLayer =
-        CanvasItem.setYSortEnabled(v, tm)
 
     def buildLabel2D(tagParser: Option[String] -> Result[Json.JsonError, t],
                      fontAtlas: Option[FontAtlas],

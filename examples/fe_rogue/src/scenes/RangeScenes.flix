@@ -35,15 +35,16 @@ mod RangeOverlay {
             scene)
 
     /// `cells` を順に列挙して半透明 Sprite2D を `Tile_<idx>` として子追加する。
-    /// `Vec2.one()` スケールで、テクスチャ自身を 16×16 として描く前提。
+    /// `move_tile.png` (16×16) を 1.625 倍にスケールして 26×26 セル枠に揃える。
     pub def renderTiles(parentName: String,
                          cells: List[{x = Int32, y = Int32}],
                          color: Color, alpha: Float32,
                          scene: Scene[NodeTag]): Scene[NodeTag] =
         let indexed = List.zipWithIndex(cells);
+        let tileScale: Vec2.Vec2 = ({x = 1.625, y = 1.625}: Vec2.Vec2);
         List.foldLeft(acc -> entry -> {
             let (idx, cell) = entry;
-            let sprite = Sprite2D.make(textureName(), MapScene.cellCenter(cell), Vec2.one())
+            let sprite = Sprite2D.make(textureName(), MapScene.cellCenter(cell), tileScale)
                             |> Sprite2D.setAlpha(alpha)
                             |> CanvasItem.setModulate(color)
                             |> CanvasItem.setZIndex(tileZIndex());

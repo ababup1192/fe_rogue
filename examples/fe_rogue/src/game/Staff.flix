@@ -23,7 +23,7 @@ mod Staff {
 
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber}
-    use UnitCatalog.SpriteResource
+    use Sprite.SpriteResource
 
     // ────────────────────────────────────────────────────────
     // (A) 型定義
@@ -63,19 +63,16 @@ mod Staff {
         sprite     = SpriteResource
     }
 
-    /// 杖カタログ全体。`Saveable` を持たせるため enum でラップする。
-    /// 名前がモジュール名と同じなので「companion 宣言」として
-    /// モジュール先頭付近に置く必要がある。
+    /// 杖カタログ全体。段階 7 のリファクタで `CatalogContainer[StaffResource]` を wrap して
+    /// `Saveable` を持たせる形に変更した。containerKey は `"staves"` 固定。
     pub enum StaffCatalog {
-        case StaffCatalog({
-            staves = Map[String, StaffResource]
-        })
+        case StaffCatalog(CatalogContainer[StaffResource])
     }
 
-    /// staves 部を取り出す。
+    /// staves 部 (id → StaffResource の Map) を取り出す。
     pub def stavesOf(catalog: StaffCatalog): Map[String, StaffResource] =
-        let StaffCatalog.StaffCatalog(payload) = catalog;
-        payload#staves
+        let StaffCatalog.StaffCatalog(container) = catalog;
+        CatalogContainer.entriesOf(container)
 
     // ────────────────────────────────────────────────────────
     // (B) 純粋ロジック
@@ -120,37 +117,27 @@ mod Staff {
     // (C) ロード・参照
     // ────────────────────────────────────────────────────────
 
-    /// `resources/staves.json` をロードして `StaffCatalog` を返す。
-    /// 失敗は panic（即可視化）。起動時の `Game.start` で 1 度だけ呼ぶ想定。
-    pub def load(path: String): StaffCatalog \ Fs.FileRead =
-        let readResult = run {
-            Fs.ReadFile.read(path)
-        } with Fs.ReadFile.runWithFileRead;
-        match readResult {
-            case Err(e)      => bug!("Staff.load file read failed: ${path} :: ${e}")
-            case Ok(content) => loadFromString(content)
-        }
-
-    /// I/O から分離したデコード経路: JSON 文字列から `StaffCatalog` を組む。
-    /// テスト・runtime 生成・resource pack 等、file 以外のソースから読みたいケースで使う。
-    pub def loadFromString(content: String): StaffCatalog =
-        match Json.Parse.parse(content) {
-            case None       => bug!("Staff JSON parse failed")
-            case Some(json) =>
-                let decoded: Option[StaffCatalog] = Saveable.fromJson(json);
-                match decoded {
-                    case None    => bug!("Staff decode failed (schema mismatch?)")
-                    case Some(c) => c
-                }
-        }
+    /// `resources/staves.json` をロードし、`resources/staves.schema.json` で整合検査する。
+    /// 起動時の `Game.start` で 1 度だけ呼ぶ想定。失敗は panic で即可視化。
+    /// 段階 7 のリファクタで `CatalogContainer.loadWithCheck` に処理を委譲する形に変更した。
+    pub def load(): StaffCatalog \ Fs.FileRead =
+        let container = CatalogContainer.loadWithCheck({
+            dataPath       = "resources/staves.json",
+            schemaPath     = "resources/staves.schema.json",
+            containerKey   = "staves",
+            expectedFields = expectedFields(),
+            decodeEntry    = StaffCatalogCodec.decodeStaff
+        });
+        StaffCatalog.StaffCatalog(container)
 
     /// 杖 id を引いて `StaffResource` を返す。未定義 id は起動時 typo として panic。
-    /// 各ユニットの `initialStaves` から杖インスタンスを解決する用途で使う。
+    /// 各ユニットの `initialInventory` の staff kind エントリから杖インスタンスを解決する用途で使う。
     /// `UnitCatalog.lookupWeapon` と同じ「起動時 typo は即発覚」方針。
     pub def lookup(id: String, catalog: StaffCatalog): StaffResource =
-        match Map.get(id, stavesOf(catalog)) {
-            case Some(s) => s
-            case None    => bug!("Staff.lookup: staff '${id}' not in catalog")
+        let StaffCatalog.StaffCatalog(container) = catalog;
+        match CatalogContainer.get(id, container) {
+            case Some(staff) => staff
+            case None        => bug!("Staff.lookup: staff '${id}' not in catalog")
         }
 
     /// `StaffResource` のフィールド名集合。`staves.schema.json` との整合性検査に使う。
@@ -160,36 +147,31 @@ mod Staff {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// Saveable[StaffCatalog] — staves.json の round-trip 実装
+// Saveable[StaffCatalog] — staves.json の round-trip 実装 (薄い wrap)
 // ════════════════════════════════════════════════════════════════════════
 
 instance Saveable[Staff.StaffCatalog] {
     pub def toJson(value: Staff.StaffCatalog): Json.JsonElement =
-        StaffCatalogCodec.encode(value)
+        let Staff.StaffCatalog.StaffCatalog(container) = value;
+        CatalogContainer.encode(StaffCatalogCodec.encodeStaff, container)
 
     pub def fromJson(element: Json.JsonElement): Option[Staff.StaffCatalog] =
-        StaffCatalogCodec.decode(element)
+        CatalogContainer.decode("staves", StaffCatalogCodec.decodeStaff, element)
+            |> Option.map(Staff.StaffCatalog.StaffCatalog)
 }
 
+/// StaffResource 1 件分の encode / decode のみ。container 巡回は `CatalogContainer.encode/decode` に委譲する。
 mod StaffCatalogCodec {
-    import java.math.{BigDecimal => JBigDecimal}
 
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber}
-    use Staff.{StaffCatalog, StaffResource, StaffEffect}
-    use UnitCatalog.SpriteResource
+    use JsonCodec.{expectObject, expectString, expectInt, expectFloat, floatToBd, intToBd}
+    use Staff.{StaffResource, StaffEffect}
+    use Sprite.SpriteResource
 
     // ── エンコード ──
 
-    /// `{ "staves": { <id>: <staff>, ... } }` 形式で書き出す。
-    pub def encode(catalog: StaffCatalog): JsonElement =
-        let staves = Staff.stavesOf(catalog)
-            |> Map.foldLeftWithKey((acc, id, staff) ->
-                Map.insert(id, encodeStaff(staff), acc),
-                Map.empty());
-        JsonObject(Map#{"staves" => JsonObject(staves)})
-
-    def encodeStaff(staff: StaffResource): JsonElement =
+    pub def encodeStaff(staff: StaffResource): JsonElement =
         JsonObject(Map#{
             "name"       => JsonString(staff#name),
             "effect"     => JsonString(Staff.effectToString(staff#effect)),
@@ -203,47 +185,12 @@ mod StaffCatalogCodec {
             "hframes" => JsonNumber(intToBd(sprite#hframes)),
             "vframes" => JsonNumber(intToBd(sprite#vframes)),
             "frame"   => JsonNumber(intToBd(sprite#frame)),
-            "offset"  => encodeOffset(sprite#offset)
+            "offset"  => JsonCodec.encodeVec2(sprite#offset)
         })
-
-    def encodeOffset(vec: Vec2.Vec2): JsonElement =
-        JsonObject(Map#{
-            "x" => JsonNumber(floatToBd(vec#x)),
-            "y" => JsonNumber(floatToBd(vec#y))
-        })
-
-    def floatToBd(value: Float64): BigDecimal =
-        unsafe IO {
-            JBigDecimal.valueOf(value).stripTrailingZeros()
-        }
-
-    def intToBd(value: Int32): BigDecimal =
-        unsafe IO {
-            let stripped = JBigDecimal.valueOf(Int32.toFloat64(value)).stripTrailingZeros();
-            if (stripped.scale() < 0) stripped.setScale(0) else stripped
-        }
 
     // ── デコード ──
 
-    /// `{ "staves": {...} }` を `StaffCatalog` にデコード。
-    pub def decode(element: JsonElement): Option[StaffCatalog] =
-        forM (
-            top      <- expectObject(element);
-            stavesJ  <- Map.get("staves", top);
-            stavesM  <- expectObject(stavesJ);
-            staves   <- traverseStaves(stavesM)
-        ) yield Staff.StaffCatalog.StaffCatalog({staves = staves})
-
-    def traverseStaves(map: Map[String, JsonElement]):
-                       Option[Map[String, StaffResource]] =
-        Map.foldLeftWithKey((acc, id, json) ->
-            Option.flatMap(soFar ->
-                decodeStaff(json) |> Option.map(staff -> Map.insert(id, staff, soFar)),
-                acc),
-            Some(Map.empty()),
-            map)
-
-    def decodeStaff(element: JsonElement): Option[StaffResource] =
+    pub def decodeStaff(element: JsonElement): Option[StaffResource] =
         forM (
             obj      <- expectObject(element);
             nameJ    <- Map.get("name", obj);
@@ -270,50 +217,13 @@ mod StaffCatalogCodec {
             vf     <- expectInt(vfJ);
             fr     <- expectInt(frJ)
         ) yield {
-            let off = match Map.get("offset", obj) {
-                case None     => ({x = 0.0, y = 0.0}: Vec2.Vec2)
-                case Some(oj) => match decodeOffset(oj) {
-                    case Some(v) => v
-                    case None    => ({x = 0.0, y = 0.0}: Vec2.Vec2)
-                }
-            };
+            let off = JsonCodec.decodeVec2OrDefault(Map.get("offset", obj), 0.0);
+            // scale は省略可能。staves UI アイコンは board に並べないので既定 {1, 1}。
+            let sc = JsonCodec.decodeVec2OrDefault(Map.get("scale", obj), 1.0);
             ({texture = tex, hframes = hf, vframes = vf, frame = fr,
-              offset = off}: SpriteResource)
+              offset = off, scale = sc}: SpriteResource)
         }
 
-    /// `{"x": ..., "y": ...}` のどちらか欠落でも 0.0 で補完する（IDE の省略仕様）。
-    def decodeOffset(element: JsonElement): Option[Vec2.Vec2] =
-        match element {
-            case JsonObject(obj) =>
-                let x = Map.get("x", obj) |> Option.flatMap(expectFloat)
-                          |> Option.getWithDefault(0.0);
-                let y = Map.get("y", obj) |> Option.flatMap(expectFloat)
-                          |> Option.getWithDefault(0.0);
-                Some({x = x, y = y})
-            case _ => None
-        }
-
-    // ── ヘルパー ──
-
-    def expectObject(element: JsonElement): Option[Map[String, JsonElement]] =
-        match element {
-            case JsonObject(map) => Some(map)
-            case _               => None
-        }
-
-    def expectString(element: JsonElement): Option[String] =
-        match element {
-            case JsonString(text) => Some(text)
-            case _                => None
-        }
-
-    def expectInt(element: JsonElement): Option[Int32] = match element {
-        case JsonNumber(bd) => BigDecimal.tryToFloat64(bd) |> Option.flatMap(Float64.tryToInt32)
-        case _              => None
-    }
-
-    def expectFloat(element: JsonElement): Option[Float64] = match element {
-        case JsonNumber(bd) => BigDecimal.tryToFloat64(bd)
-        case _              => None
-    }
+    // expect helpers / 数値変換は engine の JsonCodec mod に集約されている。
+    // 本 mod では `use JsonCodec.{...}` 経由で参照する。
 }
