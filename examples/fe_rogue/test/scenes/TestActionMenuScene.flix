@@ -84,7 +84,8 @@ mod TestActionMenuScene {
         selectedItem    = None,
         moveStepsTaken  = 0,
         facing          = Staff.Direction.Down,
-        hidden          = false
+        hidden          = false,
+        usedStairs          = false
     }
 
     /// World + 2 人の Player + ActionMenu を組んだテスト scene。
@@ -236,7 +237,7 @@ mod TestActionMenuScene {
         entry          = ItemEntry
     }
 
-    /// `onActionConfirmed` の 8 effect を一括でスタブして実行し、
+    /// `onActionConfirmed` の 9 effect を一括でスタブして実行し、
     /// 最終 scene と最終 phase をタプルで返すテストランナー。
     ///
     /// 各 effect の振る舞い:
@@ -268,6 +269,9 @@ mod TestActionMenuScene {
                                         Ref.put(target, phaseRef);
                                         k()
                                     }
+                                } with handler CustomEffects.FloorAdvanceRequest {
+                                    // 既存の回帰テストは「かいだん」分岐を踏まないので no-op で十分。
+                                    def advance(scene, k) = k(scene)
                                 }))))));
         (result, Ref.get(phaseRef))
 

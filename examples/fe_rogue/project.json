@@ -20,7 +20,8 @@
     {"name": "item_skills",      "path": "assets/sprites/Item_Sheet_Skills.png", "hasAlpha": true},
     {"name": "item_weapons",     "path": "assets/sprites/Item_Sheet_Weapons.png", "hasAlpha": true},
     {"name": "item_icons",       "path": "assets/sprites/Tex_Item_Icons.png", "hasAlpha": true},
-    {"name": "fe_archer",        "path": "assets/sprites/fe_archer.png", "hasAlpha": true}
+    {"name": "fe_archer",        "path": "assets/sprites/fe_archer.png", "hasAlpha": true},
+    {"name": "stairs",           "path": "assets/sprites/stairs.png", "hasAlpha": true}
   ],
   "fonts": [
     {"name": "ui", "path": "assets/fonts/BestTen-DOT.otf", "fontSize": 16.0}

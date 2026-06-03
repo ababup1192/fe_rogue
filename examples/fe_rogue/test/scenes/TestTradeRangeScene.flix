@@ -26,7 +26,8 @@ mod TestTradeRangeScene {
         selectedItem    = None,
         moveStepsTaken  = 0,
         facing          = Staff.Direction.Down,
-        hidden          = false
+        hidden          = false,
+        usedStairs          = false
     }
 
     /// World + 与えた party の Marker2D 並びで scene を組む。

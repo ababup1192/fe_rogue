@@ -1,4 +1,5 @@
 {
+  "order": ["f01", "f02", "f03"],
   "floors": {
     "f01": {
       "generation": {
@@ -48,6 +49,106 @@
       "monstersPerRoom": {
         "max": 3,
         "min": 0
+      }
+    },
+    "f02": {
+      "generation": {
+        "roomCount": 10
+      },
+      "items": [
+        {
+          "id": "trainingBow",
+          "percent": 20
+        },
+        {
+          "id": "trainingSpear",
+          "percent": 20
+        },
+        {
+          "id": "fire_magic",
+          "percent": 25
+        },
+        {
+          "id": "live_staff",
+          "percent": 20
+        },
+        {
+          "id": "blowback_staff",
+          "percent": 10
+        },
+        {
+          "id": "swap_staff",
+          "percent": 5
+        }
+      ],
+      "itemsPerRoom": {
+        "max": 1,
+        "min": 0
+      },
+      "label": "2F",
+      "monsters": [
+        {
+          "id": "goblin",
+          "percent": 50
+        },
+        {
+          "id": "orc",
+          "percent": 50
+        }
+      ],
+      "monstersPerRoom": {
+        "max": 3,
+        "min": 1
+      }
+    },
+    "f03": {
+      "generation": {
+        "roomCount": 12
+      },
+      "items": [
+        {
+          "id": "trainingBow",
+          "percent": 15
+        },
+        {
+          "id": "trainingSpear",
+          "percent": 15
+        },
+        {
+          "id": "fire_magic",
+          "percent": 30
+        },
+        {
+          "id": "live_staff",
+          "percent": 25
+        },
+        {
+          "id": "blowback_staff",
+          "percent": 10
+        },
+        {
+          "id": "swap_staff",
+          "percent": 5
+        }
+      ],
+      "itemsPerRoom": {
+        "max": 2,
+        "min": 0
+      },
+      "label": "3F",
+      "monsters": [
+        {
+          "id": "goblin",
+          "percent": 30
+        },
+        {
+          "id": "orc",
+          "percent": 70
+        }
+      ],
+      "monstersPerRoom": {
+        "max": 4,
+        "min": 1
       }
     }
   }

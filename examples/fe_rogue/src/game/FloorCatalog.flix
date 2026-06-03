@@ -79,6 +79,38 @@ mod FloorCatalog {
             case None        => bug!("FloorCatalog.get: unknown floor id: ${id}")
         }
 
+    /// floors.json トップレベルの `"order"` 配列（フロア進行順）を取り出す。
+    /// `CatalogContainer` は containerKey (`"floors"`) 以外の top-level フィールドを
+    /// meta に保持するため、`order` は meta から読む（schema 検査の対象外）。
+    /// 未定義なら空リスト（呼び出し側で panic / フォールバック）。
+    pub def order(catalog: FloorCatalog): List[String] =
+        let FloorCatalog.FloorCatalog(container) = catalog;
+        match Map.get("order", CatalogContainer.metaOf(container)) {
+            case Some(element) =>
+                JsonCodec.decodeList(JsonCodec.expectString, element)
+                    |> Option.getWithDefault(Nil)
+            case None => Nil
+        }
+
+    /// 進行順の先頭フロア id。`order` が空なら panic（floors.json の設定漏れを即可視化）。
+    /// 起動時・全滅リスタート・ゲームクリア後のループで「1F」を指す唯一の入口。
+    pub def firstFloorId(catalog: FloorCatalog): String =
+        match List.head(order(catalog)) {
+            case Some(id) => id
+            case None     => bug!("FloorCatalog.firstFloorId: 'order' is empty in floors.json")
+        }
+
+    /// 進行順で `currentId` の次のフロア id。`currentId` が最後（= 最終フロア）なら None。
+    /// None は「これ以上フロアが無い = ゲームクリア」を意味する。
+    pub def nextFloorId(currentId: String, catalog: FloorCatalog): Option[String] =
+        idAfter(currentId, order(catalog))
+
+    /// `ids` の中で `target` の直後の要素を返す。`target` が最後 / 未登場なら None。
+    def idAfter(target: String, ids: List[String]): Option[String] = match ids {
+        case Nil        => None
+        case id :: rest => if (id == target) List.head(rest) else idAfter(target, rest)
+    }
+
     /// percent 配列から 1 件をランダムに抽選。
     /// entries 空 / 合計 percent <= 0 なら None（呼び出し側でスキップ）
     pub def pickWeighted(entries: List[SpawnEntry]): Option[String] \ Math.Random = {

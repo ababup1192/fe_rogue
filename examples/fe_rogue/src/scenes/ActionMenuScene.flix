@@ -62,6 +62,7 @@ mod ActionMenuScene {
     def gatherMeta(): String    = "gather"
     def turnEndMeta(): String   = "turnEnd"
     def disbandMeta(): String   = "disband"
+    def stairsMeta(): String    = "stairs"
 
     /// scene に ActionMenu ノードツリーを追加する。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
@@ -178,6 +179,12 @@ mod ActionMenuScene {
                                   disabled = false,
                                   metadata = Some(pickupMeta())}: ItemEntry) :: Nil
                             else Nil;
+                        let stairsItem =
+                            if (StairsScene.isAt(player#gridPos, scene))
+                                ({text     = "かいだん",
+                                  disabled = false,
+                                  metadata = Some(stairsMeta())}: ItemEntry) :: Nil
+                            else Nil;
                         let waitItem =
                             if (canWaitOn(player))
                                 ({text     = "たいき",
@@ -185,7 +192,7 @@ mod ActionMenuScene {
                                   metadata = Some(waitMeta())}: ItemEntry) :: Nil
                             else Nil;
                         List.flatten(attackItem :: exchangeItem :: itemItem ::
-                                       pickupItem :: waitItem :: Nil)
+                                       pickupItem :: stairsItem :: waitItem :: Nil)
                 }
         }
 
@@ -252,7 +259,8 @@ mod ActionMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+                PlayerScene.PartyQuery, EnemyScene.RosterQuery,
+                CustomEffects.FloorAdvanceRequest} =
         match entry#metadata {
             case None    => scene
             case Some(m) =>
@@ -264,8 +272,28 @@ mod ActionMenuScene {
                 else if (m == gatherMeta())   applyGather(scene)
                 else if (m == turnEndMeta())  applyTurnEnd(scene)
                 else if (m == disbandMeta())  AutoMoveScene.disband("かいさん", scene)
+                else if (m == stairsMeta())   applyStairs(scene)
                 else                          scene
         }
+
+    /// 「かいだん」確定: 選択中の味方を階段で退場させる。
+    ///   - 生存味方が全員退場したら `FloorAdvanceRequest` で次フロアへ（最終フロアならクリア）
+    ///   - まだ動ける味方が残っていれば `commitWaitedAndAdvance` で次の味方／敵ターンへ
+    /// 退場処理 (`useStairs`) は盤面除外 + 行動済み化を含むので、ここはログと進行判定だけ。
+    def applyStairs(scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                GameLogger.GameLogger,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                CustomEffects.FloorAdvanceRequest} =
+        GameLogger.playerLog("階段を降りた");
+        let exited = match SelectedPlayer.State.get()#id {
+            case Some(id) => PlayerScene.useStairs(id, scene)
+            case None     => scene
+        };
+        if (PlayerScene.allLivingUsedStairs(exited))
+            CustomEffects.FloorAdvanceRequest.advance(exited)
+        else
+            PlayerScene.commitWaitedAndAdvance(exited)
 
     /// 「アイテム」確定で ItemMenuScene を開く。選択中味方の id が必要。
     def openItemMenu(scene: Scene[NodeTag]):
@@ -405,7 +433,8 @@ mod ActionMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+                PlayerScene.PartyQuery, EnemyScene.RosterQuery,
+                CustomEffects.FloorAdvanceRequest} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             case Some(entry) => onActionConfirmed(entry, scene)
             case None        => scene
