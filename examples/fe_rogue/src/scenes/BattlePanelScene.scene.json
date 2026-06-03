@@ -40,21 +40,48 @@
                 "kind": "Panel",
                 "children": [
                   { "type": "ColorRect", "name": "leftBg", "anchor": "FullRect", "size": [ 15, 28 ], "color": { "r": 0.22, "g": 0.37, "b": 0.75 }, "alpha": 0.8, "visible": false, "zIndex": 0 },
-                  { "type": "Label2D", "name": "leftText", "anchor": "TopLeft", "pos": [ 0, 0 ], "fontSize": 4, "text": "-", "visible": false, "zIndex": 1 }
+                  {
+                    "kind": "VBoxContainer",
+                    "separation": 0,
+                    "alignment": "Begin",
+                    "crossAxis": "Stretch",
+                    "children": [
+                      { "type": "Label2D", "name": "leftHp", "pos": [ 0, 0 ], "fontSize": 4, "text": "-", "visible": false, "zIndex": 1 },
+                      { "type": "Label2D", "name": "leftRest", "pos": [ 0, 0 ], "fontSize": 4, "text": "-", "visible": false, "zIndex": 1 }
+                    ]
+                  }
                 ]
               },
               {
                 "kind": "Panel",
                 "children": [
                   { "type": "ColorRect", "name": "centerBg", "anchor": "FullRect", "size": [ 14, 28 ], "color": { "r": 0.12, "g": 0.14, "b": 0.20 }, "alpha": 0.8, "visible": false, "zIndex": 0 },
-                  { "type": "Label2D", "name": "centerText", "anchor": "TopLeft", "pos": [ 0, 0 ], "fontSize": 4, "text": "-", "visible": false, "zIndex": 1 }
+                  {
+                    "kind": "VBoxContainer",
+                    "separation": 0,
+                    "alignment": "Begin",
+                    "crossAxis": "Stretch",
+                    "children": [
+                      { "type": "Label2D", "name": "centerHp", "pos": [ 0, 0 ], "fontSize": 4, "text": "-", "visible": false, "zIndex": 1 },
+                      { "type": "Label2D", "name": "centerRest", "pos": [ 0, 0 ], "fontSize": 4, "text": "-", "visible": false, "zIndex": 1 }
+                    ]
+                  }
                 ]
               },
               {
                 "kind": "Panel",
                 "children": [
                   { "type": "ColorRect", "name": "rightBg", "anchor": "FullRect", "size": [ 15, 28 ], "color": { "r": 0.75, "g": 0.22, "b": 0.22 }, "alpha": 0.8, "visible": false, "zIndex": 0 },
-                  { "type": "Label2D", "name": "rightText", "anchor": "TopLeft", "pos": [ 0, 0 ], "fontSize": 4, "text": "-", "visible": false, "zIndex": 1 }
+                  {
+                    "kind": "VBoxContainer",
+                    "separation": 0,
+                    "alignment": "Begin",
+                    "crossAxis": "Stretch",
+                    "children": [
+                      { "type": "Label2D", "name": "rightHp", "pos": [ 0, 0 ], "fontSize": 4, "text": "-", "visible": false, "zIndex": 1 },
+                      { "type": "Label2D", "name": "rightRest", "pos": [ 0, 0 ], "fontSize": 4, "text": "-", "visible": false, "zIndex": 1 }
+                    ]
+                  }
                 ]
               }
             ]
@@ -70,7 +97,7 @@
       }
     }
   ],
-  "description": "攻撃前の戦闘予報パネル (AttackForecast 中)\n青のΓ字=味方(上帯+左数値)/赤の逆Γ字=敵(右数値+下帯)。中央は HP/威力/命中。枠背景は透明",
+  "description": "攻撃前の戦闘予報パネル (AttackForecast 中)\n青Γ字=味方/赤逆Γ字=敵。HP行は独立ラベルで、戦闘後HPを現在HP(白)⇄戦闘後HP(灰)で点滅シミュレーション",
   "layer": 3,
   "name": "BattlePanel",
   "pos": [ 0, 0 ],
