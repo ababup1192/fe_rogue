@@ -624,6 +624,14 @@ mod PlayerScene {
             |> setSpriteModulate(id, waitedColor())
             |> playAnim(id, idleAnimName())
 
+    /// 全プレイヤーを「行動済み(非アクティブ)」にする。各 id に `setWaited` を適用し、
+    /// waited を立てて灰色 modulate + idle アニメへ揃える。
+    /// 「集合 → 解散」でパーティ全員のターンを一括消費するときに使う
+    /// (この後 active な味方が居なくなるので呼び出し側は敵ターンへ進める)。
+    pub def setAllWaited(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let ids = getAll(scene) |> List.map(d -> d#id);
+        List.foldLeft((sc, id) -> setWaited(id, sc), scene, ids)
+
     /// 全プレイヤーの waited をクリアし、sprite を白に戻す。
     /// ターン開始時に呼ばれ、AnimatedSprite2D 持ち unit は idle アニメに戻す
     /// (= 新ターン開始時の待機モーション)。
@@ -664,6 +672,16 @@ mod PlayerScene {
                                               NodeTag.Player({hidden = flag | d}))
             case other => other
         }, scene)
+
+    /// 味方 id を「正面待機」に戻す。`facing` を Down にし、AnimatedSprite2D 持ち unit は
+    /// idle アニメ(= 正面フレーム)へ切り替える。Sprite2D 静止 unit は playAnim が no-op。
+    /// 移動 Tween 完了を idle 復帰のトリガーにしない設計のため(`process` 参照)、
+    /// 「かいさん」など歩いて再出現した直後の settle 地点で明示的に呼ぶ。
+    /// これが無いと walk_<dir> のまま固まり、再出現した archer が横/後ろを向いたままになる。
+    pub def faceFrontIdle(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> mapPlayer(id, d -> {facing = Staff.Direction.Down | d})
+            |> playAnim(id, idleAnimName())
 
     /// 合流して退避中(hidden)の味方一覧。「かいさん」での再出現対象。
     /// このリストが空でない = いまローグ移動モード中、の手掛かりとしても使う。

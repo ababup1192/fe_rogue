@@ -107,11 +107,19 @@ mod CameraScene {
             case TurnPhase.Phase.PlayerCursor     => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerMoving     => focusPos
             case TurnPhase.Phase.ActionSelect     =>
-                // PlayerCursor 由来 (集合メニュー) のときは SelectedPlayer = None。
-                // カーソル位置にカメラを保ったままメニューを開く。
+                // SelectedPlayer = None でメニューを開くのは 2 系統あり、由来で追従先が違う:
+                //   - PlayerCursor 由来 (集合メニュー)     → カーソルにカメラを保つ
+                //   - RogueMove 由来 (ひろう / かいさん)   → ロードを映す
+                // RogueMove 中はカーソルが非表示で更新されず集合地点に置き去りなので、
+                // cursorWorldPos を使うとカメラが集合した場所へ飛んでしまう。
+                // 由来の判別は onActionCancelled と同じく hiddenAllies 非空 = ローグ由来。
                 match selected {
                     case Some(_) => focusPos
-                    case None    => cursorWorldPos(scene)
+                    case None    =>
+                        if (not List.isEmpty(PlayerScene.hiddenAllies(scene)))
+                            lordWorldPos(scene)
+                        else
+                            cursorWorldPos(scene)
                 }
             case TurnPhase.Phase.ItemSelect       => focusPos
             case TurnPhase.Phase.ItemActionSelect => focusPos
