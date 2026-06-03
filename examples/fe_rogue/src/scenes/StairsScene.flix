@@ -51,14 +51,14 @@ mod StairsScene {
             |> Scene.setState(stairsPath(), NodeTag.Stairs(initialData))
 
     /// 床セルからランダムに 1 つ選んで階段を配置する。
-    /// 候補は「部屋の床 かつ 駒（味方・敵）に占有されていない かつ 床アイテムが無い」セル。
+    /// 候補は「部屋の内部床セル かつ 駒（味方・敵）に占有されていない かつ 床アイテムが無い」セル。
     /// 部屋は anchor（プレイヤー初期配置, idx=0）を除いた idx 1..roomCount を対象にする
-    /// （= 階段はスタート部屋以外に出す）。EnemyScene / ItemScene と同じ床セル列挙を使うので、
-    /// usedRect の void（部屋外）を拾って画面外に出る不具合が起きない。
+    /// （= 階段はスタート部屋以外に出す）。各部屋の `interiorCells`（decorTiles の world 座標）を
+    /// そのまま使うので、door セル（通路の出入口）や通路の床は最初から候補に入らず、
+    /// 階段が「通路にある」状態にならない。
     /// 候補が 1 つも無い極端なマップでは何もしない（階段は非表示のまま）。
     /// プレイヤー・敵・アイテム配置が済んだ後（= buildPlayingScene の末尾）に呼ぶ。
     pub def placeRandom(scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
-        let layer      = MapScene.getMapLayer(scene);
         let placements = MapScene.getPlacements(scene);
         let roomCount  = MapScene.getRoomCount(scene);
         let occupied   = List.append(
@@ -67,7 +67,7 @@ mod StairsScene {
         // anchor (idx=0) を除いた部屋だけを候補に（idx >= 1 かつ idx < roomCount = 部屋）
         let rooms = List.filter(p -> p#idx >= 1 and p#idx < roomCount, placements);
         let candidates = rooms
-            |> List.flatMap(p -> floorCellsInRoom(layer, p))
+            |> List.flatMap(p -> p#interiorCells)
             |> List.filter(cell ->
                 not isOccupied(cell, occupied)
                 and Option.isEmpty(ItemScene.findAt(cell, scene)));
@@ -75,21 +75,6 @@ mod StairsScene {
             case Some(cell) => placeAt(cell, scene)
             case None       => scene
         }
-
-    /// 部屋の bbox（offset + floorBounds）に含まれる床セルを列挙する。
-    /// n-format で通路の床が候補に混ざらないよう floorBounds で絞る（ItemScene と同じロジック）。
-    def floorCellsInRoom(layer: TileMapLayer,
-                          p: DungeonComposer.ModulePlacement): List[{x = Int32, y = Int32}] =
-        let minX = p#offset#x + p#floorBoundsMin#x;
-        let minY = p#offset#y + p#floorBoundsMin#y;
-        let maxX = p#offset#x + p#floorBoundsMaxEx#x;
-        let maxY = p#offset#y + p#floorBoundsMaxEx#y;
-        let xs = List.range(minX, maxX);
-        let ys = List.range(minY, maxY);
-        ys
-            |> List.flatMap(y ->
-                xs |> List.map(x -> ({x = x, y = y}: {x = Int32, y = Int32})))
-            |> List.filter(cell -> TileMapLayer.isFloor(cell, layer))
 
     /// セルが占有リストに含まれるか。
     def isOccupied(cell: {x = Int32, y = Int32},

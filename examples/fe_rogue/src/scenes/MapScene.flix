@@ -45,14 +45,16 @@ mod MapScene {
         // 「セル → モジュール idx」逆引きや、敵スポーン候補セルの列挙に使う。
         // anchor を除く部屋判定 / 通路除外もこのリストから判定する（idx < roomCount）。
         // 構造は engine の DungeonComposer.ModulePlacement と一致：
-        //   {idx, offset, gridSize, floorBoundsMin, floorBoundsMaxEx}
+        //   {idx, offset, gridSize, floorBoundsMin, floorBoundsMaxEx, interiorCells}
         // n-format では gridSize ≫ 床範囲なので bbox 判定は floorBounds を使う。
+        // interiorCells は decorTiles の world 座標リスト（door は含まない）。
         // Flix 0.72.0 の test stage で cross-package type alias が解決されないため展開済み。
         placements   = List[{idx = Int32,
                               offset = {x = Int32, y = Int32},
                               gridSize = {x = Int32, y = Int32},
                               floorBoundsMin = {x = Int32, y = Int32},
-                              floorBoundsMaxEx = {x = Int32, y = Int32}}],
+                              floorBoundsMaxEx = {x = Int32, y = Int32},
+                              interiorCells = List[{x = Int32, y = Int32}]}],
         // 部屋数。modulePaths が「部屋を先・通路を後ろ」で並ぶ前提なので
         // idx < roomCount なら「部屋」、それ以外は「通路」と判定できる。
         roomCount    = Int32
@@ -149,9 +151,13 @@ mod MapScene {
                 gridSize         = gs,
                 // map-test では合成しないので floorBounds = gridSize 全体を採用
                 floorBoundsMin   = ({x = 0, y = 0}: {x = Int32, y = Int32}),
-                floorBoundsMaxEx = gs
+                floorBoundsMaxEx = gs,
+                // map-test ではこの placement は idx=0 = anchor 扱いなので
+                // StairsScene.placeRandom の対象（idx >= 1）にならない → Nil で OK
+                interiorCells    = (Nil: List[{x = Int32, y = Int32}])
             }: {idx = Int32, offset = {x = Int32, y = Int32}, gridSize = {x = Int32, y = Int32},
-                 floorBoundsMin = {x = Int32, y = Int32}, floorBoundsMaxEx = {x = Int32, y = Int32}}) :: Nil,
+                 floorBoundsMin = {x = Int32, y = Int32}, floorBoundsMaxEx = {x = Int32, y = Int32},
+                 interiorCells = List[{x = Int32, y = Int32}]}) :: Nil,
             roomCount    = 1
         };
         scene
