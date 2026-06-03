@@ -28,8 +28,9 @@ pub enum NodeTag {
     case ActionPanel
     /// ActionMenuScene の ItemList（こうげき / たいき）
     case ActionMenu
-    /// BattlePanelScene の Panel ルート（戦闘予報の外枠）
-    case BattlePanel
+    /// BattlePanelScene の Panel ルート（戦闘予報の外枠）。
+    /// 内部の Duration は HP シミュレーション点滅のサイクル内経過時間（process で進める）。
+    case BattlePanel(Duration.Duration)
     /// BattlePanelScene の Label2D（HP / 威力 / 命中 を 2 列で表示）
     case BattleText
     /// DamagePopupScene の Marker2D 親（World 直下に永続）
@@ -157,7 +158,7 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.TradePartnerMenu) =>
             checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
-        case EngineNode.PanelWithState(_, NodeTag.BattlePanel) =>
+        case EngineNode.PanelWithState(_, NodeTag.BattlePanel(_)) =>
             checked_ecast(BattlePanelScene.process(delta, node, path, scene))
         case _ => (node, scene)
     }

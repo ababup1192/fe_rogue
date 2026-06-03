@@ -43,7 +43,8 @@ mod TestWeapon {
         let unit   = TestUnitFixtures.testResourceFull(4, 14, 6, 5, 2);
         let weapon = TestUnitFixtures.testWeaponFull(2, 41);
         let totalAttack = unit#attack + weapon#attack;
-        let dmg = Combat.attackDamage(totalAttack, 1);
+        // 武器相性は本テストの対象外なので中立（補正なし）で計算する
+        let dmg = Combat.attackDamage(totalAttack, 1, WeaponTriangle.Relation.Neutral);
         Assert.assertEq(expected = 7, dmg)
 
     /// 力 1 + 武器 1 - 防御 5 = 0 ダメージ（max(0, ...) で下限 0 にクランプ）
@@ -52,7 +53,8 @@ mod TestWeapon {
         let unit   = TestUnitFixtures.testResourceFull(4, 14, 1, 5, 2);
         let weapon = TestUnitFixtures.testWeaponFull(1, 41);
         let totalAttack = unit#attack + weapon#attack;
-        let dmg = Combat.attackDamage(totalAttack, 5);
+        // 武器相性は本テストの対象外なので中立（補正なし）で計算する
+        let dmg = Combat.attackDamage(totalAttack, 5, WeaponTriangle.Relation.Neutral);
         Assert.assertEq(expected = 0, dmg)
 
     // ════════════════════════════════════════════════════════
@@ -64,7 +66,7 @@ mod TestWeapon {
     def testCanReachAdjacentSword(): Unit \ Assert =
         let sword: UnitCatalog.WeaponResource =
             {name = "sword", attack = 1, hit = 80, durability = 10,
-             range = {min = 1, max = 1}, weaponType = WeaponCatalog.WeaponType.Physical,
+             range = {min = 1, max = 1}, weaponType = WeaponCatalog.WeaponType.Sword,
              sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}}};
         Assert.assertEq(expected = true, Weapon.canReach(1, sword))
 
@@ -73,7 +75,7 @@ mod TestWeapon {
     def testCanReachBowCannotCounterAdjacent(): Unit \ Assert =
         let bow: UnitCatalog.WeaponResource =
             {name = "bow", attack = 1, hit = 80, durability = 10,
-             range = {min = 2, max = 2}, weaponType = WeaponCatalog.WeaponType.Physical,
+             range = {min = 2, max = 2}, weaponType = WeaponCatalog.WeaponType.Bow,
              sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}}};
         Assert.assertEq(expected = false, Weapon.canReach(1, bow))
 
@@ -82,7 +84,7 @@ mod TestWeapon {
     def testCanReachSwordCannotCounterBow(): Unit \ Assert =
         let sword: UnitCatalog.WeaponResource =
             {name = "sword", attack = 1, hit = 80, durability = 10,
-             range = {min = 1, max = 1}, weaponType = WeaponCatalog.WeaponType.Physical,
+             range = {min = 1, max = 1}, weaponType = WeaponCatalog.WeaponType.Sword,
              sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}}};
         Assert.assertEq(expected = false, Weapon.canReach(2, sword))
 
@@ -91,7 +93,7 @@ mod TestWeapon {
     def testCanReachJavelinBoth(): Unit \ Assert =
         let javelin: UnitCatalog.WeaponResource =
             {name = "javelin", attack = 1, hit = 80, durability = 10,
-             range = {min = 1, max = 2}, weaponType = WeaponCatalog.WeaponType.Physical,
+             range = {min = 1, max = 2}, weaponType = WeaponCatalog.WeaponType.Lance,
              sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}}};
         Assert.assertEq(expected = (true, true, false),
                         (Weapon.canReach(1, javelin),
@@ -126,7 +128,8 @@ mod TestWeapon {
         let totalAttack = Combat.attackStatFor(unit#attack, unit#magicAttack,
                                                 weapon#attack, phys);
         let targetDef   = Combat.defenseStatFor(target#defense, target#magicDefense, phys);
-        let dmg = Combat.attackDamage(totalAttack, targetDef);
+        // 武器相性は本テストの対象外なので中立（補正なし）で計算する
+        let dmg = Combat.attackDamage(totalAttack, targetDef, WeaponTriangle.Relation.Neutral);
         Assert.assertEq(expected = 7, dmg)
 
     /// 物理武器なら魔力・魔防は完全に無視される
@@ -135,11 +138,12 @@ mod TestWeapon {
     def testPhysicalWeaponIgnoresMagicStats(): Unit \ Assert =
         let unit   = TestUnitFixtures.testResourceMagic(4, 14, 2, 1, 8, 4, 3);
         let target = TestUnitFixtures.testResourceMagic(4, 14, 6, 4, 1, 0, 2);
-        let weapon = TestUnitFixtures.testWeaponWithType(3, WeaponCatalog.WeaponType.Physical);
+        let weapon = TestUnitFixtures.testWeaponWithType(3, WeaponCatalog.WeaponType.Sword);
         let phys   = UnitCatalog.isPhysical(weapon#weaponType);
         let totalAttack = Combat.attackStatFor(unit#attack, unit#magicAttack,
                                                 weapon#attack, phys);
         let targetDef   = Combat.defenseStatFor(target#defense, target#magicDefense, phys);
-        let dmg = Combat.attackDamage(totalAttack, targetDef);
+        // 武器相性は本テストの対象外なので中立（補正なし）で計算する
+        let dmg = Combat.attackDamage(totalAttack, targetDef, WeaponTriangle.Relation.Neutral);
         Assert.assertEq(expected = 1, dmg)
 }

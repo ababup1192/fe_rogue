@@ -22,11 +22,26 @@ mod Combat {
         let newHp = hp#hp - amount#amount;
         {newHp = newHp, isDead = newHp <= 0}
 
-    /// 攻撃側の「攻」と防御側の「防」から 1 撃ぶんの素ダメージを返す。
-    /// `max(0, attack - defense)` の単純引き算。下限 0（防御が攻撃以上なら 0 ダメ）。
-    /// 0 は仕様上ありうる（弱攻撃が硬い相手に通らない）。最低 1 保証はしない。
-    pub def attackDamage(attack: Int32, defense: Int32): Int32 =
-        Int32.max(0, attack - defense)
+    /// 武器相性による攻撃力補正。有利で +1、不利で -1、中立で 0。
+    /// 三竦み（剣 → 斧 → 槍）で有利な側のダメージを底上げする。
+    def attackBonus(rel: WeaponTriangle.Relation): Int32 = match rel {
+        case WeaponTriangle.Relation.Advantage    => 1
+        case WeaponTriangle.Relation.Disadvantage => -1
+        case WeaponTriangle.Relation.Neutral      => 0
+    }
+
+    /// 武器相性による命中補正。有利で +15、不利で -15、中立で 0。
+    def hitBonus(rel: WeaponTriangle.Relation): Int32 = match rel {
+        case WeaponTriangle.Relation.Advantage    => 15
+        case WeaponTriangle.Relation.Disadvantage => -15
+        case WeaponTriangle.Relation.Neutral      => 0
+    }
+
+    /// 攻撃側の「攻」と防御側の「防」、武器相性から 1 撃ぶんの素ダメージを返す。
+    /// `max(0, attack + 相性補正 - defense)`。相性補正は有利 +1 / 不利 -1 / 中立 0。
+    /// 下限 0（補正後でも防御が攻撃以上なら 0 ダメ）。最低 1 保証はしない。
+    pub def attackDamage(attack: Int32, defense: Int32, rel: WeaponTriangle.Relation): Int32 =
+        Int32.max(0, attack + attackBonus(rel) - defense)
 
     /// 装備武器の `isPhysical` に応じて、攻撃側の素ステ + 武器ボーナスの「総合攻撃力」を返す。
     /// 物理: `attack + weaponAttack`、魔法: `magicAttack + weaponAttack`。
@@ -43,17 +58,18 @@ mod Combat {
     pub def defenseStatFor(defense: Int32, magicDefense: Int32, isPhysical: Bool): Int32 =
         if (isPhysical) defense else magicDefense
 
-    /// 攻撃の命中率（百分率: 0..100）。FE6 の命中・回避式に準拠:
-    ///   命中  = 武器命中 + 技×2 + 幸運÷2
+    /// 攻撃の命中率（百分率: 0..100）。FE6 の命中・回避式 + 武器相性補正に準拠:
+    ///   命中  = 武器命中 + 技×2 + 幸運÷2 + 相性補正（有利 +15 / 不利 -15 / 中立 0）
     ///   回避  = 速さ×2 + 幸運
     ///   命中率 = clamp(0, 100, 命中 - 回避)
-    /// 支援・地形・武器相性（→ #3）・武器重さ／体格は今回スコープ外。
+    /// 支援・地形・武器重さ／体格は今回スコープ外。
     /// 速さはそのまま攻撃速度として扱う（重さ補正なし）。
     pub def hitRate(
         attackerSkill: Int32, attackerLuck: Int32, weaponHit: Int32,
-        defenderSpeed: Int32, defenderLuck: Int32
+        defenderSpeed: Int32, defenderLuck: Int32,
+        rel: WeaponTriangle.Relation
     ): Int32 =
-        let accuracy = weaponHit + attackerSkill * 2 + attackerLuck / 2;
+        let accuracy = weaponHit + attackerSkill * 2 + attackerLuck / 2 + hitBonus(rel);
         let avoid    = defenderSpeed * 2 + defenderLuck;
         // clamp(0, 100, accuracy - avoid)
         Int32.max(0, Int32.min(100, accuracy - avoid))
@@ -79,18 +95,60 @@ mod Combat {
         {newHp = Int32.min(maxHp, raw)}
 
     /// 1 撃ぶんの予報。スペックの「与:N 命中:P% 撃破」表示に直接対応する。
-    /// damage = max(0, attack - defense)、hit = hitRate(...)、kill = willKill(...)。
-    /// 命中の内訳は攻撃側の技・幸運・武器命中、防御側の速さ・幸運で決まる（FE6 式）。
-    /// 攻撃 UI で命中前にプレビューするのに使う想定（現状はログ出力にのみ流す）。
+    /// damage = max(0, attack + 相性補正 - defense)、hit = hitRate(...)、kill = willKill(...)。
+    /// 命中の内訳は攻撃側の技・幸運・武器命中、防御側の速さ・幸運、武器相性で決まる（FE6 式）。
+    /// `rel` は攻撃側武器から見た防御側武器との相性（有利 / 不利 / 中立）。
+    /// 攻撃 UI で命中前にプレビューするのに使う想定。
     pub def forecast(
         attacker: {attack = Int32, skill = Int32, luck = Int32, weaponHit = Int32},
-        defender: {hp = Int32, defense = Int32, speed = Int32, luck = Int32}
+        defender: {hp = Int32, defense = Int32, speed = Int32, luck = Int32},
+        rel: WeaponTriangle.Relation
     ): {damage = Int32, hit = Int32, kill = Bool} =
-        let dmg = attackDamage(attacker#attack, defender#defense);
+        let dmg = attackDamage(attacker#attack, defender#defense, rel);
         {
             damage = dmg,
             hit    = hitRate(attacker#skill, attacker#luck, attacker#weaponHit,
-                             defender#speed, defender#luck),
+                             defender#speed, defender#luck, rel),
             kill   = willKill(defender#hp, dmg)
         }
+}
+
+/// WeaponTriangle — 武器の三竦み（剣 → 斧 → 槍 → 剣）の純粋判定。
+///
+/// 各矢印が「有利」方向を表す: 剣は斧に、斧は槍に、槍は剣に有利。
+/// 弓・魔法は三竦みの外で常に中立。
+/// Scene[NodeTag] / effect / 数値補正には依存しない（補正値の適用は `Combat` 側）。
+/// 戦闘計算の純粋ロジックとして Combat と同居させ、テストも数値だけで書ける。
+mod WeaponTriangle {
+
+    use WeaponCatalog.WeaponType
+
+    /// 攻撃側の武器から見た、防御側の武器との相性。
+    pub enum Relation with Eq, ToString {
+        case Advantage     // 有利（攻撃 +1 / 命中 +15）
+        case Disadvantage  // 不利（攻撃 -1 / 命中 -15）
+        case Neutral       // 補正なし（同種・弓・魔法が絡む組合せ）
+    }
+
+    /// `attacker` の武器が `defender` の武器に対して三竦みで有利か。
+    /// 有利な辺は剣 → 斧 → 槍 → 剣 の 3 本だけ。不利は `relation` 側で向きを反転して導く。
+    /// 武器種を増やす場合はこの辺の一覧に追記すればよい。
+    def beats(attacker: WeaponType, defender: WeaponType): Bool =
+        match (attacker, defender) {
+            case (WeaponType.Sword, WeaponType.Axe)   => true
+            case (WeaponType.Axe,   WeaponType.Lance) => true
+            case (WeaponType.Lance, WeaponType.Sword) => true
+            case _                                    => false
+        }
+
+    /// 三竦みの相性。有利な辺なら `Advantage`、その逆向きなら `Disadvantage`、
+    /// それ以外（同種同士・弓・魔法が絡む組合せ）は `Neutral`。
+    pub def relation(attacker: WeaponType, defender: WeaponType): Relation =
+        if (beats(attacker, defender))      Relation.Advantage
+        else if (beats(defender, attacker)) Relation.Disadvantage
+        else                                Relation.Neutral
+
+    /// 防御側が武器未装備（`None`）なら `Neutral`。`Option` を剥がす呼び出し側向けヘルパ。
+    pub def relationOpt(attacker: WeaponType, defender: Option[WeaponType]): Relation =
+        defender |> Option.map(relation(attacker)) |> Option.getWithDefault(Relation.Neutral)
 }

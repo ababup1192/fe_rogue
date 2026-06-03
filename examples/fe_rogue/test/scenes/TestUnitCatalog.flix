@@ -47,7 +47,7 @@ mod TestUnitCatalog {
         "}" :: Nil)
 
     /// weapons.json と同じ構造の JSON 文字列リテラル。
-    /// trainingSpear は `weaponType` 省略（Physical デフォルトを検証）、
+    /// trainingSpear は `weaponType` 省略（Sword デフォルトを検証）、
     /// trainingSword は明示 "Magic"（魔法トグル切替の効果を検証）。
     def sampleWeaponsJson(): String = String.unlines(
         "{" ::
@@ -190,15 +190,15 @@ mod TestUnitCatalog {
                                 sword#weaponType)
         }
 
-    /// `weaponType` 省略の武器は物理武器（Physical）としてデコードされる
-    /// （旧 weapons.json への後方互換）
+    /// `weaponType` 省略の武器は剣（Sword）としてデコードされる
+    /// （旧 weapons.json への後方互換。欠落時のフォールバックは Sword）
     @Test
-    def testWeaponDecodesTypeDefaultsToPhysical(): Unit \ Assert =
+    def testWeaponDecodesTypeDefaultsToSword(): Unit \ Assert =
         match buildSampleCatalog() {
             case None    => Assert.assertEq(expected = "decoded", "none")
             case Some(c) =>
                 let spear = UnitCatalog.lookupWeapon("trainingSpear", c);
-                Assert.assertEq(expected = WeaponCatalog.WeaponType.Physical,
+                Assert.assertEq(expected = WeaponCatalog.WeaponType.Sword,
                                 spear#weaponType)
         }
 

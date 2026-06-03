@@ -10,7 +10,7 @@
     },
     "weaponType": {
       "field": {
-        "ftype": { "type": "enum", "values": ["Physical", "Magic"] },
+        "ftype": { "type": "enum", "values": ["Sword", "Axe", "Lance", "Bow", "Magic"] },
         "hint":  "plain",
         "label": "属性",
         "order": 2

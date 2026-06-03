@@ -17,14 +17,14 @@ mod TestWeaponCatalog {
     // フィクスチャ
     // ════════════════════════════════════════════════════════
 
-    /// 「くんれんやり」風の最小武器。range 1-1、Physical、durability 41。
+    /// 「くんれんやり」風の最小武器。range 1-1、Lance（槍）、durability 41。
     def trainingSpear(): WeaponResource = {
         name       = "くんれんやり",
         attack     = 2,
         hit        = 70,
         durability = 41,
         range      = ({min = 1, max = 1}: WeaponRange),
-        weaponType = WeaponType.Physical,
+        weaponType = WeaponType.Lance,
         sprite     = testSprite()
     }
 
@@ -87,8 +87,8 @@ mod TestWeaponCatalog {
     // weaponType の後方互換 / フォールバック
     // ════════════════════════════════════════════════════════
 
-    /// weaponType フィールドが無い JSON は Physical にフォールバックする
-    /// (旧 weapons.json への後方互換、現行 UnitCatalog 側と同じ動作)
+    /// weaponType フィールドが無い JSON は剣 (Sword) にフォールバックする
+    /// (旧 weapons.json への後方互換。Sword は物理武器なので isPhysical = true)
     @Test
     def testDecodeWeaponDefaultsToPhysicalWhenWeaponTypeMissing(): Unit \ Assert =
         let json = JsonObject(Map#{
@@ -108,7 +108,7 @@ mod TestWeaponCatalog {
             case None => bug!("expected weapon decode to succeed without weaponType")
         }
 
-    /// weaponType 文字列が未知 ("Foo") の場合も Physical にフォールバックする
+    /// weaponType 文字列が未知 ("Foo") の場合も剣 (Sword) にフォールバックする
     /// (schema が enum を強制するため通常は到達しないが、JSON 直編集の typo 対策)
     @Test
     def testDecodeWeaponFallsBackToPhysicalForUnknownType(): Unit \ Assert =

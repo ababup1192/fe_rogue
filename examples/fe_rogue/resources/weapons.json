@@ -35,7 +35,7 @@
         "texture": "item_weapons",
         "vframes": 25
       },
-      "weaponType": "Physical"
+      "weaponType": "Bow"
     },
     "trainingSpear": {
       "attack": 0,
@@ -55,7 +55,7 @@
         "texture": "item_weapons",
         "vframes": 25
       },
-      "weaponType": "Physical"
+      "weaponType": "Lance"
     },
     "trainingSword": {
       "attack": 0,
@@ -75,7 +75,7 @@
         "texture": "item_weapons",
         "vframes": 25
       },
-      "weaponType": "Physical"
+      "weaponType": "Sword"
     }
   }
 }
