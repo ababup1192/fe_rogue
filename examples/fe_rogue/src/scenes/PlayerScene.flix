@@ -1148,9 +1148,12 @@ mod PlayerScene {
             case (_, None)        => scene
             case (Some(weapon), Some(enemy)) =>
                 let phys = UnitCatalog.isPhysical(weapon#weaponType);
+                // 武器相性: 攻撃側（味方）の武器 vs 敵の装備武器。敵が未装備なら中立。
+                let rel = WeaponTriangle.relationOpt(weapon#weaponType,
+                                                     enemy#weapon |> Option.map(w -> w#weaponType));
                 let hitChance = Combat.hitRate(player#resource#skill, player#resource#luck,
                                                weapon#hit,
-                                               enemy#resource#speed, enemy#resource#luck);
+                                               enemy#resource#speed, enemy#resource#luck, rel);
                 let roll = rollPercent();
                 let popupPos = MapScene.cellCenter(enemy#gridPos);
                 let popupColor = DamagePopupScene.damageToEnemyColor();
@@ -1169,7 +1172,7 @@ mod PlayerScene {
                         let targetDef   = Combat.defenseStatFor(enemy#resource#defense,
                                                                 enemy#resource#magicDefense,
                                                                 phys);
-                        let dmg    = Combat.attackDamage(totalAttack, targetDef);
+                        let dmg    = Combat.attackDamage(totalAttack, targetDef, rel);
                         let result = Combat.damage(hp = enemy#hp, amount = dmg);
                         let withPopup = DamagePopupScene.emit(popupPos, dmg, popupColor, scene);
                         if (result#isDead) {

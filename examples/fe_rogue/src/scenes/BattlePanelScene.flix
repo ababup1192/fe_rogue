@@ -20,11 +20,32 @@ mod BattlePanelScene {
 
     def rootName(): String = "BattlePanel"
     pub def panelName(): String = "panel"
-    pub def textName(): String  = "text"
+    // VBox 構成: 上=味方武器名(青帯) / 中=数値 3 カラム(青|暗|赤) / 下=敵武器名(赤帯)。
+    // 各セルは背景 ColorRect（FullRect）+ テキスト Label2D の 2 ノード。
+    // Container はロード時 directive なので、これらは CanvasLayer 直下 (root::名前) に並ぶ。
+    def topBgName(): String       = "topBg"
+    def pWeaponName(): String     = "playerWeaponText"
+    def leftBgName(): String      = "leftBg"
+    def leftTextName(): String    = "leftText"
+    def centerBgName(): String    = "centerBg"
+    def centerTextName(): String  = "centerText"
+    def rightBgName(): String     = "rightBg"
+    def rightTextName(): String   = "rightText"
+    def botBgName(): String       = "botBg"
+    def eWeaponName(): String     = "enemyWeaponText"
 
     pub def rootPath(): NodePath  = rootName() :: Nil
     pub def panelPath(): NodePath = rootName() :: panelName() :: Nil
-    pub def textPath(): NodePath  = rootName() :: panelName() :: textName() :: Nil
+    def topBgPath(): NodePath      = rootName() :: topBgName()      :: Nil
+    def pWeaponPath(): NodePath    = rootName() :: pWeaponName()    :: Nil
+    def leftBgPath(): NodePath     = rootName() :: leftBgName()     :: Nil
+    def leftTextPath(): NodePath   = rootName() :: leftTextName()   :: Nil
+    def centerBgPath(): NodePath   = rootName() :: centerBgName()   :: Nil
+    def centerTextPath(): NodePath = rootName() :: centerTextName() :: Nil
+    def rightBgPath(): NodePath    = rootName() :: rightBgName()    :: Nil
+    def rightTextPath(): NodePath  = rootName() :: rightTextName()  :: Nil
+    def botBgPath(): NodePath      = rootName() :: botBgName()      :: Nil
+    def eWeaponPath(): NodePath    = rootName() :: eWeaponName()    :: Nil
 
     /// scene.json 内の "tag" 文字列 → NodeTag への変換
     def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
@@ -51,7 +72,22 @@ mod BattlePanelScene {
         let visible = phase == TurnPhase.Phase.PlayerAttack;
         scene
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
-            |> Label2D.mapAt(textPath(), CanvasItem.setVisible(visible))
+            |> setBgVisible(topBgPath(), visible)
+            |> setBgVisible(leftBgPath(), visible)
+            |> setBgVisible(centerBgPath(), visible)
+            |> setBgVisible(rightBgPath(), visible)
+            |> setBgVisible(botBgPath(), visible)
+            |> Label2D.mapAt(pWeaponPath(), CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(leftTextPath(), CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(centerTextPath(), CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(rightTextPath(), CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(eWeaponPath(), CanvasItem.setVisible(visible))
+
+    /// 背景 ColorRect の可視性を path 指定で切り替える。
+    /// ColorRect には mapAt が無いので Scene.mapEngineNode + EngineNode.mapColorRect を使う。
+    def setBgVisible(path: NodePath, visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(path,
+            en -> EngineNode.mapColorRect(rect -> CanvasItem.setVisible(visible, rect), en), scene)
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から BattlePanel の Panel
     /// ノードに対して dispatch される (panel は 1 個のみなので 1 フレーム 1 回)。
@@ -90,15 +126,20 @@ mod BattlePanelScene {
                 }
         }
 
-    /// PlayerAttack(= ターゲット選択 + 戦闘予測)中だけ Label2D に予報テキストを書き込む。
-    /// 同フェーズ中は毎フレーム呼ばれるが Label2D.setText は冪等。
+    /// PlayerAttack(= ターゲット選択 + 戦闘予測)中だけ 3 カラムの Label2D に
+    /// 予報テキストを書き込む。同フェーズ中は毎フレーム呼ばれるが setText は冪等。
     def applyText(phase: TurnPhase.Phase, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {SelectedPlayer.State,
                               PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         if (phase != TurnPhase.Phase.PlayerAttack) scene
         else
-            let text = buildBattleText();
-            Label2D.mapAt(textPath(), Label2D.setText(text), scene)
+            let cols = buildColumns();
+            scene
+                |> Label2D.mapAt(pWeaponPath(),    Label2D.setText(cols#pWeapon))
+                |> Label2D.mapAt(leftTextPath(),   Label2D.setText(cols#left))
+                |> Label2D.mapAt(centerTextPath(), Label2D.setText(cols#center))
+                |> Label2D.mapAt(rightTextPath(),  Label2D.setText(cols#right))
+                |> Label2D.mapAt(eWeaponPath(),    Label2D.setText(cols#eWeapon))
 
     /// `AttackForecast` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
     /// 攻撃モーションの完了 (`attack_lunge` finished) で `PlayerScene.onAttackLungeDone`
@@ -115,26 +156,19 @@ mod BattlePanelScene {
                               GameLogger.GameLogger,
                               TurnPhase.State, SelectedPlayer.State,
                               PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
-        match SelectedPlayer.State.get()#id {
-            case None             => scene
-            case Some(attackerId) =>
-                match PlayerScene.PartyQuery.get(attackerId) {
-                    case None         => scene
-                    case Some(player) =>
-                        match player#attackTargetId {
-                            case None             => scene
-                            case Some(defenderId) =>
-                                match EnemyScene.RosterQuery.get(defenderId) {
-                                    case None        => scene
-                                    case Some(enemy) =>
-                                        TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
-                                        GameLogger.playerLog("味方${attackerId}の攻撃");
-                                        PlayerScene.startAttack(attackerId, defenderId,
-                                                                  enemy#gridPos, scene)
-                                }
-                        }
-                }
-        }
+        // 選択中の味方 → 攻撃対象 → 対象の敵 が揃ったら攻撃を開始。欠けていれば何もしない。
+        // Option を forM でたどってネストを浅くする（揃ったときだけ yield 本体の副作用が走る）。
+        let started = forM (
+            attackerId <- SelectedPlayer.State.get()#id;
+            player     <- PlayerScene.PartyQuery.get(attackerId);
+            defenderId <- player#attackTargetId;
+            enemy      <- EnemyScene.RosterQuery.get(defenderId)
+        ) yield {
+            TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
+            GameLogger.playerLog("味方${attackerId}の攻撃");
+            PlayerScene.startAttack(attackerId, defenderId, enemy#gridPos, scene)
+        };
+        Option.getWithDefault(scene, started)
 
     /// `AttackForecast` + X: 攻撃をやめて行動メニュー (ActionSelect) に戻る。
     /// 待機にはせず（ターン消費しない）、`attackTargetId` をクリアしてカーソルを選択中
@@ -151,39 +185,38 @@ mod BattlePanelScene {
                     |> CursorScene.snapToPlayer
         }
 
-    /// 選択中プレイヤー / 攻撃対象敵 / 選択中武器の組から予報テキストを組み立てる。
-    /// 反撃が成立する（敵が生存・隣接・武器装備中）なら敵側の予報も出す。
-    /// 該当条件が揃わなければ空文字を返す（visible でないフェーズで描画されない想定）。
-    def buildBattleText(): String
+    /// 選択中プレイヤー / 攻撃対象敵 / 選択中武器の組から 3 カラム分の予報テキストを組み立てる。
+    /// 反撃が成立する（敵が生存・隣接・武器装備中）なら敵側の数値も出す。
+    /// 該当条件が揃わなければ 3 カラムとも空文字（visible でないフェーズで描画されない想定）。
+    def buildColumns(): {pWeapon = String, left = String, center = String, right = String, eWeapon = String}
             \ {SelectedPlayer.State, PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
-        match SelectedPlayer.State.get()#id {
-            case None     => ""
-            case Some(pid) =>
-                match PlayerScene.PartyQuery.get(pid) {
-                    case None         => ""
-                    case Some(player) =>
-                        match player#attackTargetId {
-                            case None         => ""
-                            case Some(eid) =>
-                                match EnemyScene.RosterQuery.get(eid) {
-                                    case None        => ""
-                                    case Some(enemy) =>
-                                        // 装備中武器 = weapons の先頭。空なら予報は空文字。
-                                        match List.head(player#weapons) {
-                                            case None        => ""
-                                            case Some(weapon) =>
-                                                formatForecast(player, weapon, enemy)
-                                        }
-                                }
-                        }
-                }
-        }
+        // 選択中の味方 → 攻撃対象の敵 → 装備武器（weapons の先頭）まで揃って初めて予報を出す。
+        // どれか欠けたら（None）全カラム空文字。Option を forM でたどってネストを浅くする。
+        let columns = forM (
+            pid    <- SelectedPlayer.State.get()#id;
+            player <- PlayerScene.PartyQuery.get(pid);
+            eid    <- player#attackTargetId;
+            enemy  <- EnemyScene.RosterQuery.get(eid);
+            weapon <- List.head(player#weapons)
+        ) yield formatColumns(player, weapon, enemy);
+        Option.getWithDefault(
+            {pWeapon = "", left = "", center = "", right = "", eWeapon = ""}, columns)
 
-    /// 予報文字列の整形。1 行目はヘッダ、以降は HP / 威力 / 命中 を 2 列で並べる。
-    /// 反撃可能（敵が武器を持っている）なら敵側の威力/命中も出す。範囲外なら "--" を出す。
-    def formatForecast(player: PlayerScene.Data, weapon: UnitCatalog.WeaponResource,
-                        enemy: EnemyScene.Data): String =
+    /// 予報を 5 つのテキストに整形する（FE 流レイアウト）。
+    ///   pWeapon … 味方の武器名（＋相性マーク）。上の青帯に中央寄せで載せる。
+    ///   left / center / right … 数値 3 行（HP / 威力 / 命中）の 味方 / ラベル / 敵 カラム。
+    ///   eWeapon … 敵の武器名（＋相性マーク）。下の赤帯に中央寄せで載せる。
+    /// カラムの横並び・色分け・行の縦積みは VBox/HBox + ColorRect が担う。ここは各セル内の
+    /// 文字寄せ（武器名＝中央, 味方の数値＝右寄せ, 敵の数値＝右寄せ）だけを文字幅で調整する。
+    /// 敵が反撃できない（武器なし / 射程外）場合は敵側の威力 / 命中を "--" にする。
+    /// 相性マークは有利 △ / 不利 ▽ / 中立 なし（武器名の隣に置く）。
+    def formatColumns(player: PlayerScene.Data, weapon: UnitCatalog.WeaponResource,
+                       enemy: EnemyScene.Data):
+                      {pWeapon = String, left = String, center = String, right = String, eWeapon = String} =
         let phys = UnitCatalog.isPhysical(weapon#weaponType);
+        // 武器相性: 味方の武器 vs 敵の装備武器。敵が未装備なら中立。
+        let rel  = WeaponTriangle.relationOpt(weapon#weaponType,
+                                              enemy#weapon |> Option.map(w -> w#weaponType));
         let playerAtk = Combat.attackStatFor(player#resource#attack,
                                               player#resource#magicAttack,
                                               weapon#attack, phys);
@@ -194,28 +227,45 @@ mod BattlePanelScene {
             {attack = playerAtk, skill = player#resource#skill,
              luck = player#resource#luck, weaponHit = weapon#hit},
             {hp = enemy#hp, defense = enemyDef,
-             speed = enemy#resource#speed, luck = enemy#resource#luck});
+             speed = enemy#resource#speed, luck = enemy#resource#luck},
+            rel);
         let enemyCols = formatEnemyColumns(player, enemy);
-        let header   = padRight("味方", 10) ++ enemyCols#header;
-        let hpLine   = padRight("HP   ${player#hp}", 10) ++ enemyCols#hp;
-        let atkLine  = padRight("威力 ${playerForecast#damage}", 10) ++ enemyCols#atk;
-        let hitLine  = padRight("命中 ${playerForecast#hit}%", 10) ++ enemyCols#hit;
-        String.unlines(header :: hpLine :: atkLine :: hitLine :: Nil)
+        // 武器名は帯の幅（おおよその文字数）に中央寄せ。数値カラムは文字数で右寄せ。
+        let bandWidth  = 16;  // 上下の帯の文字幅（武器名の中央寄せ用）
+        let numWidth   = 5;   // 数値カラムの文字幅（右寄せ用）
+        let labelWidth = 5;   // 中央ラベルの文字幅（左マージン込みで中央へ寄せる）
+        let pWeapon = padCenter("${weapon#name}${relationMark(rel)}", bandWidth);
+        let eWeapon = padCenter(enemyCols#name, bandWidth);
+        let left = String.unlines(
+            padLeft("${player#hp}", numWidth) ::
+            padLeft("${playerForecast#damage}", numWidth) ::
+            padLeft("${playerForecast#hit}%", numWidth) :: Nil);
+        let center = String.unlines(
+            padCenter("HP", labelWidth) :: padCenter("威力", labelWidth) :: padCenter("命中", labelWidth) :: Nil);
+        // 敵の数値も右寄せ（味方と同じく右端そろえ）。
+        let right = String.unlines(
+            padLeft(enemyCols#hp, numWidth) ::
+            padLeft(enemyCols#atk, numWidth) ::
+            padLeft(enemyCols#hit, numWidth) :: Nil);
+        {pWeapon = pWeapon, left = left, center = center, right = right, eWeapon = eWeapon}
 
-    /// 敵側の列。武器を装備していて かつ 敵の武器射程が「敵 → 味方」距離に届くときだけ
-    /// 反撃可として威力/命中を出す。武器なし or 射程外なら "--" 表示。
+    /// 敵側の数値。武器を装備していて かつ 敵の武器射程が「敵 → 味方」距離に届くときだけ
+    /// 反撃可として威力 / 命中の数値を出す。武器なし or 射程外なら "--"。
+    /// name は敵の武器名（＋相性マーク）。hp / atk / hit は数値だけ（ラベルは付けない）。
     /// 例: 味方が射程 2 の弓で 2 マス先の敵 (剣 range=1-1) を攻撃 → 敵は反撃不能。
     def formatEnemyColumns(player: PlayerScene.Data,
-                            enemy: EnemyScene.Data): {header = String, hp = String, atk = String, hit = String} =
-        let header = "敵";
-        let hpStr  = "HP   ${enemy#hp}";
-        let unable = {header = header, hp = hpStr,
-                       atk = "威力 --", hit = "命中 --"};
+                            enemy: EnemyScene.Data): {name = String, hp = String, atk = String, hit = String} =
+        let playerWeaponType = List.head(player#weapons) |> Option.map(w -> w#weaponType);
+        let hpStr = "${enemy#hp}";
         match enemy#weapon {
-            case None          => unable
+            case None          => {name = "", hp = hpStr, atk = "--", hit = "--"}
             case Some(eWeapon) =>
+                // 相性は射程に関係なく武器どうしで決まるので、武器名の隣のマークは常に出す。
+                let eRel    = WeaponTriangle.relationOpt(eWeapon#weaponType, playerWeaponType);
+                let nameStr = "${eWeapon#name}${relationMark(eRel)}";
                 let d = Weapon.manhattan(enemy#gridPos, player#gridPos);
-                if (not Weapon.canReach(d, eWeapon)) unable
+                if (not Weapon.canReach(d, eWeapon))
+                    {name = nameStr, hp = hpStr, atk = "--", hit = "--"}
                 else {
                     let ePhys = UnitCatalog.isPhysical(eWeapon#weaponType);
                     let enemyAtk = Combat.attackStatFor(enemy#resource#attack,
@@ -228,19 +278,38 @@ mod BattlePanelScene {
                         {attack = enemyAtk, skill = enemy#resource#skill,
                          luck = enemy#resource#luck, weaponHit = eWeapon#hit},
                         {hp = player#hp, defense = playerDef,
-                         speed = player#resource#speed, luck = player#resource#luck});
-                    {header = header, hp = hpStr,
-                     atk = "威力 ${enemyForecast#damage}",
-                     hit = "命中 ${enemyForecast#hit}%"}
+                         speed = player#resource#speed, luck = player#resource#luck},
+                        eRel);
+                    {name = nameStr, hp = hpStr,
+                     atk = "${enemyForecast#damage}", hit = "${enemyForecast#hit}%"}
                 }
         }
 
-    /// 右側に半角スペースで埋めて指定幅にする（全角は 1 文字 2 幅で扱う簡易版）。
-    /// 列をきれいに揃えるためのヘルパ。
-    def padRight(text: String, width: Int32): String =
+    /// 武器相性マーク。有利は △、不利は ▽、中立は空文字。
+    /// 数値の直後に置くため、マークがあるときだけ先頭に半角スペースを 1 つ含める。
+    def relationMark(rel: WeaponTriangle.Relation): String = match rel {
+        case WeaponTriangle.Relation.Advantage    => " △"
+        case WeaponTriangle.Relation.Disadvantage => " ▽"
+        case WeaponTriangle.Relation.Neutral      => ""
+    }
+
+    /// 左側をスペースで埋めて指定幅にする（右寄せ。全角は 1 文字 2 幅で扱う）。
+    /// 味方の数値を中央のラベル列に右から寄せるのに使う。
+    def padLeft(text: String, width: Int32): String =
         let len = visualWidth(text);
         if (len >= width) text
-        else text ++ String.repeat(width - len, " ")
+        else String.repeat(width - len, " ") ++ text
+
+    /// 中央寄せで指定幅にそろえる（全角は 1 文字 2 幅で扱う。余り 1 は左側に寄せる）。
+    /// 余りを左に寄せるのは、中央帯のラベルにわずかな左マージンを持たせて中央に寄せるため。
+    def padCenter(text: String, width: Int32): String =
+        let len = visualWidth(text);
+        if (len >= width) text
+        else {
+            let pad      = width - len;
+            let rightPad = pad / 2;
+            String.repeat(pad - rightPad, " ") ++ text ++ String.repeat(rightPad, " ")
+        }
 
     /// 表示幅の概算: ASCII は 1、それ以外は 2 として数える。完全ではないが
     /// CJK と半角の混在で列を概ね揃えるための簡易計算。

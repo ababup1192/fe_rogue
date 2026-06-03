@@ -550,9 +550,12 @@ mod EnemyScene {
             case (_, None)        => (scene, Nil)
             case (Some(weapon), Some(player)) =>
                 let phys = UnitCatalog.isPhysical(weapon#weaponType);
+                // 武器相性: 攻撃側（敵）の武器 vs 味方の装備武器（先頭）。未装備なら中立。
+                let rel = WeaponTriangle.relationOpt(weapon#weaponType,
+                                                     List.head(player#weapons) |> Option.map(w -> w#weaponType));
                 let hitChance = Combat.hitRate(enemy#resource#skill, enemy#resource#luck,
                                                weapon#hit,
-                                               player#resource#speed, player#resource#luck);
+                                               player#resource#speed, player#resource#luck, rel);
                 let roll = rollPercent();
                 let popupPos = MapScene.cellCenter(player#gridPos);
                 let popupColor = DamagePopupScene.damageToPlayerColor();
@@ -571,7 +574,7 @@ mod EnemyScene {
                         let targetDef   = Combat.defenseStatFor(player#resource#defense,
                                                                 player#resource#magicDefense,
                                                                 phys);
-                        let dmg    = Combat.attackDamage(totalAttack, targetDef);
+                        let dmg    = Combat.attackDamage(totalAttack, targetDef, rel);
                         let result = Combat.damage(hp = player#hp, amount = dmg);
                         if (result#isDead) {
                             GameLogger.enemyLog("敵${enemyId} → P${targetId} を撃破")

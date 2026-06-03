@@ -1,58 +1,80 @@
 {
   "children": [
     {
-      "background": {
-        "b": 0.6000000238418579,
-        "g": 0.20000000298023224,
-        "r": 0.10196078568696976
-      },
-      "backgroundAlpha": 0.85,
-      "border": {
-        "b": 1,
-        "g": 1,
-        "r": 1
-      },
+      "background": { "r": 0.12, "g": 0.14, "b": 0.20 },
+      "backgroundAlpha": 0.0,
+      "border": { "r": 1, "g": 1, "b": 1 },
       "borderWidth": 1,
-      "children": [
-        {
-          "fontSize": 4,
-          "name": "text",
-          "pos": [
-            3,
-            2
-          ],
-          "tag": "BattleText",
-          "text": "-",
-          "type": "Label2D",
-          "visible": false
-        }
-      ],
+      "children": [],
       "name": "panel",
-      "pos": [
-        58,
-        2
-      ],
-      "size": [
-        68,
-        38
-      ],
+      "pos": [ 80, 2 ],
+      "size": [ 46, 48 ],
       "tag": "BattlePanel",
       "type": "Panel",
       "visible": false,
       "zIndex": 0
+    },
+    {
+      "type": "Container",
+      "rect": { "x": 81, "y": 3, "width": 44, "height": 46 },
+      "layout": {
+        "kind": "VBoxContainer",
+        "separation": 0,
+        "alignment": "Begin",
+        "crossAxis": "Stretch",
+        "children": [
+          {
+            "kind": "Panel",
+            "children": [
+              { "type": "ColorRect", "name": "topBg", "anchor": "FullRect", "size": [ 44, 9 ], "color": { "r": 0.22, "g": 0.37, "b": 0.75 }, "alpha": 0.8, "visible": false, "zIndex": 0 },
+              { "type": "Label2D", "name": "playerWeaponText", "anchor": "LeftCenter", "pos": [ 0, 0 ], "fontSize": 4, "text": "-", "visible": false, "zIndex": 1 }
+            ]
+          },
+          {
+            "kind": "HBoxContainer",
+            "separation": 0,
+            "alignment": "Begin",
+            "crossAxis": "Stretch",
+            "children": [
+              {
+                "kind": "Panel",
+                "children": [
+                  { "type": "ColorRect", "name": "leftBg", "anchor": "FullRect", "size": [ 15, 28 ], "color": { "r": 0.22, "g": 0.37, "b": 0.75 }, "alpha": 0.8, "visible": false, "zIndex": 0 },
+                  { "type": "Label2D", "name": "leftText", "anchor": "TopLeft", "pos": [ 0, 0 ], "fontSize": 4, "text": "-", "visible": false, "zIndex": 1 }
+                ]
+              },
+              {
+                "kind": "Panel",
+                "children": [
+                  { "type": "ColorRect", "name": "centerBg", "anchor": "FullRect", "size": [ 14, 28 ], "color": { "r": 0.12, "g": 0.14, "b": 0.20 }, "alpha": 0.8, "visible": false, "zIndex": 0 },
+                  { "type": "Label2D", "name": "centerText", "anchor": "TopLeft", "pos": [ 0, 0 ], "fontSize": 4, "text": "-", "visible": false, "zIndex": 1 }
+                ]
+              },
+              {
+                "kind": "Panel",
+                "children": [
+                  { "type": "ColorRect", "name": "rightBg", "anchor": "FullRect", "size": [ 15, 28 ], "color": { "r": 0.75, "g": 0.22, "b": 0.22 }, "alpha": 0.8, "visible": false, "zIndex": 0 },
+                  { "type": "Label2D", "name": "rightText", "anchor": "TopLeft", "pos": [ 0, 0 ], "fontSize": 4, "text": "-", "visible": false, "zIndex": 1 }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "Panel",
+            "children": [
+              { "type": "ColorRect", "name": "botBg", "anchor": "FullRect", "size": [ 44, 9 ], "color": { "r": 0.75, "g": 0.22, "b": 0.22 }, "alpha": 0.8, "visible": false, "zIndex": 0 },
+              { "type": "Label2D", "name": "enemyWeaponText", "anchor": "LeftCenter", "pos": [ 0, 0 ], "fontSize": 4, "text": "-", "visible": false, "zIndex": 1 }
+            ]
+          }
+        ]
+      }
     }
   ],
-  "description": "攻撃前の戦闘予報パネル (AttackForecast 中)\n攻撃/防御側の HP/威力/命中 を Combat.forecast から並べる",
+  "description": "攻撃前の戦闘予報パネル (AttackForecast 中)\n青のΓ字=味方(上帯+左数値)/赤の逆Γ字=敵(右数値+下帯)。中央は HP/威力/命中。枠背景は透明",
   "layer": 3,
   "name": "BattlePanel",
-  "pos": [
-    0,
-    0
-  ],
+  "pos": [ 0, 0 ],
   "rotation": 0,
-  "scale": [
-    1,
-    1
-  ],
+  "scale": [ 1, 1 ],
   "type": "CanvasLayer"
 }

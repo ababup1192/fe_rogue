@@ -37,18 +37,24 @@ mod WeaponCatalog {
         case WeaponCatalog(CatalogContainer[WeaponResource])
     }
 
-    /// 武器の属性 (物理 / 魔法)。
-    /// 物理は `力 vs 防御`、魔法は `魔力 vs 魔防` で計算される。
-    /// JSON では `"Physical"` / `"Magic"` の文字列でシリアライズされる。
+    /// 武器の種類。三竦み（剣 → 斧 → 槍 → 剣）の判定と、物理 / 魔法の区別を兼ねる。
+    /// 剣・斧・槍は三竦みに参加する物理武器、弓は三竦み外の物理武器、魔法は魔力 vs 魔防。
+    /// 力 vs 防御で計算するのは Magic 以外（= 物理武器）すべて。
+    /// JSON では case 名の文字列（`"Sword"` 等）でシリアライズされる。
+    /// 旧データの `"Physical"` は読み込み時に `Sword` へ読み替える（後方互換）。
     pub enum WeaponType with Eq, ToString {
-        case Physical
-        case Magic
+        case Sword   // 剣（斧に有利）
+        case Axe     // 斧（槍に有利）
+        case Lance   // 槍（剣に有利）
+        case Bow     // 弓（三竦みの外・常に中立）
+        case Magic   // 魔法（中立・魔防を参照）
     }
 
     /// `WeaponType` が物理武器か。Combat 系の分岐で使う薄いヘルパ。
+    /// 魔法だけが魔力 vs 魔防で、剣・斧・槍・弓はすべて力 vs 防御の物理武器。
     pub def isPhysical(weaponType: WeaponType): Bool = match weaponType {
-        case WeaponType.Physical => true
-        case WeaponType.Magic    => false
+        case WeaponType.Magic => false
+        case _                => true
     }
 
     /// 攻撃可能な距離の範囲。`min..max` inclusive のマンハッタン距離で判定する。
@@ -160,8 +166,11 @@ mod WeaponCatalogCodec {
         })
 
     def weaponTypeToString(weaponType: WeaponType): String = match weaponType {
-        case WeaponType.Physical => "Physical"
-        case WeaponType.Magic    => "Magic"
+        case WeaponType.Sword => "Sword"
+        case WeaponType.Axe   => "Axe"
+        case WeaponType.Lance => "Lance"
+        case WeaponType.Bow   => "Bow"
+        case WeaponType.Magic => "Magic"
     }
 
     def encodeSprite(sprite: WeaponSpriteResource): JsonElement =
@@ -190,11 +199,11 @@ mod WeaponCatalogCodec {
             rng    <- decodeRange(rngJ);
             sp     <- decodeSprite(spJ)
         ) yield {
-            // weaponType は省略可能。欠落 / 未知文字列は Physical (旧 weapons.json への後方互換)
+            // weaponType は省略可能。欠落 / 未知文字列は Sword (旧 weapons.json への後方互換)
             let wt = Map.get("weaponType", obj)
                         |> Option.flatMap(expectString)
                         |> Option.map(parseWeaponType)
-                        |> Option.getWithDefault(WeaponType.Physical);
+                        |> Option.getWithDefault(WeaponType.Sword);
             // hit (武器命中率) も省略可。欠落時は 0 (後方互換)。
             let hit = Map.get("hit", obj)
                         |> Option.flatMap(expectInt)
@@ -203,10 +212,16 @@ mod WeaponCatalogCodec {
               weaponType = wt, sprite = sp}: WeaponResource)
         }
 
-    /// `"Physical"` / `"Magic"` 文字列から `WeaponType` に。未知文字列は Physical にフォールバック。
+    /// case 名文字列から `WeaponType` に。旧データの `"Physical"` は剣として読み替え、
+    /// 未知文字列も剣にフォールバックする（JSON 直編集の typo / 後方互換対策）。
     def parseWeaponType(text: String): WeaponType = match text {
-        case "Magic" => WeaponType.Magic
-        case _       => WeaponType.Physical
+        case "Sword"    => WeaponType.Sword
+        case "Axe"      => WeaponType.Axe
+        case "Lance"    => WeaponType.Lance
+        case "Bow"      => WeaponType.Bow
+        case "Magic"    => WeaponType.Magic
+        case "Physical" => WeaponType.Sword
+        case _          => WeaponType.Sword
     }
 
     def decodeRange(element: JsonElement): Option[WeaponRange] =
