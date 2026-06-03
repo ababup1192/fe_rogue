@@ -103,7 +103,7 @@ mod TestTurnRules {
             TurnRules.decide(context))
 
     /// 待機済み（waited）の味方上で Z → アクティブ味方が居ないのでメニューを開く。
-    /// (しゅうごうは旗を使わなくなったため、占有マスでもメニュー自体は開ける。)
+    /// (しゅうごうはロード合流するだけなので、占有マスでもメニュー自体は開ける。)
     @Test
     def testCursorConfirmOnWaitedAllyOpensGatherMenu(): Unit \ Assert =
         let context = {
@@ -114,7 +114,7 @@ mod TestTurnRules {
             expected = TurnRules.Transition.CursorOpenGatherMenu,
             TurnRules.decide(context))
 
-    /// 壁マス上で Z → メニューを開く（旗を使わなくなったので床制限なし）。
+    /// 壁マス上で Z → メニューを開く（しゅうごうはロード合流なので床制限なし）。
     @Test
     def testCursorConfirmOnWallOpensGatherMenu(): Unit \ Assert =
         let context = baseContext(boardWithWall(cell(0, 0)), cell(3, 2));
@@ -283,7 +283,7 @@ mod TestTurnRules {
             expected = TurnRules.Transition.Stay,
             TurnRules.decide(context))
 
-    /// PlayerAutoMove 中の Confirm → Stay（旗に向かって自動移動中は入力を受け付けない）
+    /// PlayerAutoMove 中の Confirm → Stay（ロードへ合流中は入力を受け付けない）
     @Test
     def testAutoMoveIgnoresInput(): Unit \ Assert =
         let context = {

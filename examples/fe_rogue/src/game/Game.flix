@@ -12,7 +12,6 @@ pub enum NodeTag {
     case Cursor(CursorScene.Data)
     /// ArrowCursorScene の Marker2D（杖発射方向を視覚化する矢印カーソル）
     case ArrowCursor(ArrowCursorScene.Data)
-    case Flag(FlagScene.Data)
     /// StairsScene の Marker2D（フロアの階段。床のランダムセルに 1 つ配置される）
     case Stairs(StairsScene.Data)
     case Log(LogScene.Data)
@@ -169,7 +168,7 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
 // 判断ロジックは `TurnRules.decide` に集約してあり、ここでは
 // 「キー → Input → 判断 → apply」という配線だけを行う（実体は `GameManager`）。
 //
-//   PlayerCursor + Z   : 味方マス → 選択 / 床マス → 旗を立てる / それ以外 → 何もしない
+//   PlayerCursor + Z   : 味方マス → 選択 / それ以外 → しゅうごうメニュー
 //   PlayerMoving + Z/X : Tween 中はガード。Z で攻撃フェーズ、X で origin へ戻して PlayerCursor
 //   PlayerAttack + Z/X : 敵マスで Z → 攻撃モーション開始、X / 空マスで Z → 行動終了
 //   EnemyTurn / PlayerAutoMove : 入力無視（自動進行）

@@ -39,7 +39,6 @@ mod GameLifecycle {
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
             |> CursorScene.add
             |> ArrowCursorScene.add     // 杖発射方向の矢印カーソル (初期は非表示)
-            |> FlagScene.add            // 自動移動先マーカー (初期は非表示)
             |> StairsScene.add          // 次フロアへの階段 (初期は非表示。配置は末尾の placeRandom)
             |> CameraScene.add
             |> EnemyTurnDriverScene.add // 敵ターン進行の常駐タグノード (process で phase 判定)

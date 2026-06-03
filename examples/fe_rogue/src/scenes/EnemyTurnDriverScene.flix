@@ -64,8 +64,8 @@ mod EnemyTurnDriverScene {
         (node, next)
 
     /// 敵ターン開始の共通処理。死亡演出 / 攻撃モーション中の敵はキューに含めない。
-    /// `commitWaitedAndAdvance` (全味方 waited) や `endTurn` (旗で AutoMove 継続) の
-    /// 流れから呼ばれる「敵ターン入口」。
+    /// `commitWaitedAndAdvance` (全味方 waited) や AutoMove の `disband` (集合→解散で
+    /// 全員 waited) の流れから呼ばれる「敵ターン入口」。
     pub def beginTurn(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State} =
@@ -181,8 +181,7 @@ mod EnemyTurnDriverScene {
             |> Option.getWithDefault(fallbackId)
 
     /// 敵ターンの後始末: ターン番号繰り上げ + 全プレイヤーを `waited = false` にリセット +
-    /// カーソル復活 + 味方ターン宣言。旗が残っていれば AutoMove に再突入する
-    /// (プレイヤーが旗を立てたまま敵ターンが終わった → 続けて行進)。
+    /// カーソル復活 + 味方ターン宣言。
     def endTurn(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, TurnPhase.State,
@@ -192,10 +191,6 @@ mod EnemyTurnDriverScene {
             |> PlayerScene.clearAllWaited        // 全員アクティブに戻す
             |> PlayerScene.resetAllMoveStepsTaken;
         GameLogger.playerLog("味方のターン");
-        if (FlagScene.isPlanted(reset))
-            // 旗が立ったまま → AutoMove 継続 (カーソルは消したまま)
-            PhaseTransitions.enterPlayerAutoMove(reset)
-        else
-            PhaseTransitions.enterPlayerCursor(reset)
+        PhaseTransitions.enterPlayerCursor(reset)
 
 }

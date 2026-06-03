@@ -237,7 +237,7 @@ mod Board {
     /// 戻り値は **source を含まない** 順序付きリスト（先頭 = 1 歩目、末尾 = goal）。
     /// 障害物 = 壁 + 他駒（自分・goal のセルは通行可）。
     /// 隣接判定は呼び出し側が済ませている前提（source == goal は使用想定外）。
-    /// EnemyAI の chase / AutoMove の旗追跡が共通で使う。
+    /// EnemyAI の chase / AutoMove のロード合流が共通で使う。
     pub def bfsPath(board: Board, source: {x = Int32, y = Int32},
                      goal: {x = Int32, y = Int32}): Option[List[{x = Int32, y = Int32}]] =
         let isOpen = c -> bfsPathIsOpen(board, c, source, goal);
@@ -281,7 +281,7 @@ mod Board {
 
     /// 味方マスは通過可能、敵マスは NG、壁・範囲外も NG な BFS。
     /// `allyCells` には source 以外の全味方位置を渡す（source が含まれていてもよい）。
-    /// AutoMove の旗追跡 / テストから経路全体を確認したい場合に使う。
+    /// AutoMove のロード合流 / テストから経路全体を確認したい場合に使う。
     /// 経路の途中マスは味方占有でも可（通過可能）。停止可否は呼び出し側が
     /// `stoppableForUnit` 等で別途担保する。
     pub def bfsPathSkipAllies(board: Board,

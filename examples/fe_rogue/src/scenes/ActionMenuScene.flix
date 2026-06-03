@@ -3,7 +3,7 @@
 /// PlayerMoving / PlayerCursor で Z を押した瞬間に `ActionSelect` フェーズに入り、
 /// 画面に出る ItemList。文脈 (= SelectedPlayer の有無) で項目が切り替わる:
 ///   - PlayerMoving 由来 (SelectedPlayer あり) → こうげき / アイテム / ひろう / たいき
-///   - PlayerCursor 由来・空マス (SelectedPlayer なし) → しゅうごう (確定で旗を立てる)
+///   - PlayerCursor 由来・空マス (SelectedPlayer なし) → しゅうごう (確定でロードへ合流開始)
 /// ↑↓ で選択、Enter/Z で確定、X/Escape で元のフェーズ (PlayerMoving / PlayerCursor) に戻る。
 ///
 /// ノード構造（visible のとき）:
@@ -23,7 +23,7 @@
 ///       こうげき (PlayerAttack を経由してから commit) / たいき / ターンエンド
 ///   - 行動継続 (確定後 ActionSelect に戻り、ActionMenu の項目が再構築される)
 ///       ひろう (拾うとセルから消えるので次フレームの `refreshItems` で項目から外れる)
-///       しゅうごう (旗を立てて PlayerAutoMove に移るが、これは別フローの遷移)
+///       しゅうごう (PlayerAutoMove に移ってロードへ合流開始。これは別フローの遷移)
 mod ActionMenuScene {
 
     use Json.JsonError.JsonError
@@ -138,7 +138,7 @@ mod ActionMenuScene {
     /// うち成立するものだけ返す。
     /// 順序は固定: こうげき → こうかん → アイテム → ひろう → たいき (FE 流の並び)。
     /// SelectedPlayer が None のときは PlayerCursor から空マスで開かれた「集合メニュー」
-    /// として「しゅうごう」だけを返す (確定で旗を立てる)。
+    /// として「しゅうごう」だけを返す (確定でロードへ合流開始)。
     def buildItems(scene: Scene[NodeTag]): List[ItemEntry]
             \ {SelectedPlayer.State, PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         match SelectedPlayer.State.get()#id {
@@ -251,7 +251,7 @@ mod ActionMenuScene {
     ///   - attack: 攻撃ターゲット選択フェーズへ (`PlayerScene.enterAttackPhase` に委譲)
     ///   - wait:   その場で waited 確定
     ///   - pickup: 床アイテムを拾って waited 確定 (拾うで 1 ターン使う)
-    ///   - gather: カーソル位置に旗を立てて PlayerAutoMove へ (`FlagScene.plant`)
+    ///   - gather: しゅうごう。PlayerAutoMove へ移ってロードへ合流開始 (`applyGather`)
     /// 「次セレクトか敵ターンか」の判定は Scene 跨ぎなので `PlayerScene.commitWaitedAndAdvance`
     /// を呼ぶ (Scene → GameManager 方向は許容)。
     pub def onActionConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
@@ -396,7 +396,7 @@ mod ActionMenuScene {
 
     /// PlayerCursor + Z 押下時 (空マス) の遷移: 集合メニュー (しゅうごう) を開く。
     /// SelectedPlayer は None のままなので `buildItems` がしゅうごうのみを返す。
-    /// カーソルは PlayerCursor で visible のまま据え置き、確定時に同じセルに旗が立つ。
+    /// カーソルは PlayerCursor で visible のまま据え置く。
     pub def openFromCursor(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         scene

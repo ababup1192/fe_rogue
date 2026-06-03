@@ -3,11 +3,11 @@
 /// 各フロアに 1 つだけ、床のランダムなセルに配置される。味方がそのセルに乗ると
 /// 行動メニューに「かいだん」が出て、選ぶとその味方はマップから退場し次フロアへ進む。
 ///
-/// ノード構造（Cursor / Flag と並列のトップレベル）:
+/// ノード構造（Cursor と並列のトップレベル）:
 ///   Stairs (Marker2D, NodeTag.Stairs(Data))
 ///     └─ Sprite (Sprite2D, stairs.png)
 ///
-/// 設計（FlagScene を踏襲）:
+/// 設計:
 ///   - 親 Marker2D に配置セルと placed フラグを持たせる
 ///   - 配置するまでは親 Marker2D を invisible にする（add 直後）
 ///   - `placeRandom` で床セルを 1 つ選び、`isAt` で「そのセルに階段があるか」を答える
@@ -41,7 +41,7 @@ mod StairsScene {
     /// MapScene 登録済みの scene に階段ノードを追加する（初期は未配置 = 非表示）。
     /// レイアウト（Marker2D + 子 Sprite2D, テクスチャ, scale, zIndex, 初期不可視）は
     /// `StairsScene.scene.json` に閉じ込めてあり、ロード後にゲーム状態 (`Data`) を
-    /// `Scene.setState` で後付け注入する分業（FlagScene.add と同じ）。
+    /// `Scene.setState` で後付け注入する分業。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead} =
         let initialData: Data = {gridPos = {x = 0, y = 0}, placed = false};
@@ -118,7 +118,7 @@ mod StairsScene {
     // (E) ボイラプレート
     // ────────────────────────────────────────────────────────
 
-    /// Stairs の Marker2D + Data をまとめて変換する（FlagScene.mapFlag と同形）。
+    /// Stairs の Marker2D + Data をまとめて変換する。
     def mapStairs(f: (Marker2D, Data) -> (Marker2D, Data),
                    scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(stairsPath(), engineNode -> match engineNode {

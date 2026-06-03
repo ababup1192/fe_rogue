@@ -95,7 +95,6 @@ mod TurnPhase {
         /// ローグ移動モード・合流フェーズ。「しゅうごう」確定直後、ロード(id 0)以外の味方が
         /// ロードに向かって 1 マスずつ自動で歩き、ロードに重なると非表示になって退避する。
         /// 全員ロードに合流したら `RogueMove` に進む。入力は受け付けない。
-        /// （旧「旗へ自動移動」フェーズを転用。名前は互換のため据え置き。）
         case PlayerAutoMove
         /// ローグ移動モード・自由歩行フェーズ。合流して 1 キャラ(ロード)になった状態。
         /// カーソルは非表示で、WASD/方向キーでロードが移動力制限なく自由に歩き回る。
@@ -167,8 +166,7 @@ mod TurnRules {
         /// PlayerCursor 中、カーソル位置にアクティブ味方が居て選択した
         case CursorSelectPlayer(Int32)
         /// PlayerCursor 中、カーソルが空き床マスで ActionMenu を開く（「しゅうごう」のみ）。
-        /// 「しゅうごう」確定で旗が立ち PlayerAutoMove へ向かう。確定時の旗位置は
-        /// その瞬間のカーソル位置から取る（メニュー表示中カーソルは動かない）。
+        /// 「しゅうごう」確定で PlayerAutoMove へ向かい、ロードへ合流開始する。
         case CursorOpenGatherMenu
         /// PlayerMoving 中の Confirm: 行動選択ウィンドウ (ActionSelect) を開く。
         /// 「こうげき / たいき」を文脈に応じて並べ、ItemList の Enter/X で次フェーズを決める。
@@ -222,8 +220,7 @@ mod TurnRules {
                     case None           =>
                         // アクティブ味方が居ないセル(壁・床の空きマス・敵上・waited 味方上など)では
                         // 常に空マスメニュー(しゅうごう / ターンエンド)を開く。
-                        // 旧仕様は「床の空きマスに旗を立てる」ため床限定だったが、しゅうごうは
-                        // 旗を使わなくなった(ロードへ合流)ので、どこでもメニューを開けてよい。
+                        // しゅうごうはロードへ合流するだけでセルを問わないので、どこでもメニューを開けてよい。
                         Transition.CursorOpenGatherMenu
                 }
             case (TurnPhase.Phase.PlayerMoving, Input.Confirm) =>

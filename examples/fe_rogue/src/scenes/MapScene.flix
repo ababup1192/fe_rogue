@@ -232,7 +232,7 @@ mod MapScene {
 
     /// グリッド座標 → セル中心ピクセル座標。`tileSize` で求めた正方形セルの中央点を返す。
     /// MapScene の `mapToLocal` 慣習に揃えてあり、Marker2D / Sprite2D を「マスのど真ん中」に
-    /// 置きたい全 Scene（Player/Enemy/Cursor/Flag/Range 系）が共通で使う。
+    /// 置きたい全 Scene（Player/Enemy/Cursor/Stairs/Range 系）が共通で使う。
     pub def cellCenter(cell: {x = Int32, y = Int32}): Vec2.Vec2 =
         let s = tileSize();
         let v = Vec2i.toVec2(cell);
