@@ -17,4 +17,14 @@ mod CustomEffects {
     pub eff GameOverRequest {
         def request(scene: Scene[NodeTag]): Scene[NodeTag]
     }
+
+    /// 次フロアへの進行（または最終フロアクリア）を要求する。
+    /// emit 元 (ActionMenuScene.applyStairs) は「生存味方が全員階段を使った」を検知したら
+    /// `advance(scene)` を呼び、次フロアの scene を受け取る。
+    /// handler は `GameLifecycle.advanceFloor` で HP / 武器 / 持ち物を引き継いで次フロアを
+    /// 組み立てる（次が無ければクリア → 1F ループ）。`GameOverRequest` と同じく
+    /// `Math.Random` / `Fs.FileRead` / `IO` 等が必要なので start でしか handler 注入できない。
+    pub eff FloorAdvanceRequest {
+        def advance(scene: Scene[NodeTag]): Scene[NodeTag]
+    }
 }

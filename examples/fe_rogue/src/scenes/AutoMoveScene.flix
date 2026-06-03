@@ -38,8 +38,8 @@ mod AutoMoveScene {
                      _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameLogger.GameLogger, Tween.Scheduler,
-                        AnimationPlayer.Scheduler, TurnPhase.State,
-                        GameEngine.Game, GameEngine.Audio, Pacing.State} =
+                        TurnPhase.State, GameEngine.Game, GameEngine.Audio,
+                        Pacing.State, EnemyTurn.Queue} =
         let next = match TurnPhase.State.get() {
             case TurnPhase.Phase.PlayerAutoMove => gatherStep(scene)
             case TurnPhase.Phase.RogueMove      => roamJudge(scene)
@@ -112,7 +112,7 @@ mod AutoMoveScene {
     /// hold が抜けたら隊列を解散して通常ターン制に戻る。
     def alertStep(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, Tween.Scheduler,
-                              AnimationPlayer.Scheduler, TurnPhase.State, Pacing.State} =
+                              TurnPhase.State, Pacing.State, EnemyTurn.Queue} =
         if (TurnPhase.State.get() != TurnPhase.Phase.RogueAlert) scene
         else if (Pacing.State.isHolding()) scene
         else disband("敵に見つかった", scene)
@@ -191,22 +191,30 @@ mod AutoMoveScene {
     // (E) 解散（かいさん / 自動解除 / 合流中止）
     // ────────────────────────────────────────────────────────
 
-    /// 退避中の味方をロードから歩いて分かれる演出で再出現させ、通常ターン制(PlayerCursor)に戻す。
-    /// `msg` だけが「かいさん」「敵の部屋に入った」「中止」で異なる。持ち物・HP は Data に残るので保持される。
+    /// 退避中の味方をロードから歩いて分かれる演出で再出現させ、パーティ全員の行動を
+    /// 締めて敵ターンへ進む。`msg` だけが「かいさん」「敵の部屋に入った」「中止」で異なる。
+    /// 持ち物・HP は Data に残るので保持される。
+    /// 「集合 → 解散」はパーティ全員のターンを消費する仕様: 再出現後に `setAllWaited` で
+    /// 全員を非アクティブ(灰色)にし、行動可能な味方が居なくなるので `beginTurn` で敵ターンへ
+    /// (= commitWaitedAndAdvance の「全員 waited → 敵ターン」入口と同じ流れ)。
     pub def disband(msg: String, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, Tween.Scheduler,
-                              AnimationPlayer.Scheduler, TurnPhase.State} =
+                              TurnPhase.State, EnemyTurn.Queue} =
         GameLogger.playerLog(msg);
         let lordPos = PlayerScene.getGridPos(lordId(), scene);
         let hidden  = PlayerScene.hiddenAllies(scene);
         let board   = BoardSnapshot.fromScene(scene);
         let cells   = PlayerScene.pickRespawnCells(lordPos, List.length(hidden), board);
         let placed  = emergeAll(hidden, cells, lordPos, board#map, scene);
-        PhaseTransitions.enterPlayerCursorAt(lordPos, placed)
+        let waited  = PlayerScene.setAllWaited(placed);
+        EnemyTurnDriverScene.beginTurn(waited)
 
     /// 退避中の味方を 1 体ずつ「ロード位置から再表示 → 各セルへ歩いて移動」で分かれさせる。
     /// snapTo でロードに重ねてから setHidden(false) で見せ、moveToById で 1 マス先へ Tween。
     /// これで「急に出現」ではなく「ロードから別れ出る」見た目になる(合流の逆再生)。
+    /// 最後に faceFrontIdle で正面待機へ戻す: moveToById が再生する walk_<dir> は移動 Tween
+    /// 完了では idle に戻らない設計のため、settle 地点で明示的に正面へ揃える
+    /// (これが無いと AnimatedSprite2D の archer が横/後ろ向きのまま固まる)。
     def emergeAll(hidden: List[PlayerScene.Data],
                    cells: List[{x = Int32, y = Int32}],
                    lordPos: {x = Int32, y = Int32},
@@ -218,12 +226,13 @@ mod AutoMoveScene {
                 |> PlayerScene.snapTo(d#id, lordPos)
                 |> PlayerScene.setHidden(d#id, false)
                 |> PlayerScene.moveToById(d#id, cell, map)
+                |> PlayerScene.faceFrontIdle(d#id)
         }, scene, List.zip(hidden, cells))
 
-    /// 合流中の X/Esc キャンセル: 解散して PlayerCursor に戻す。
+    /// 合流中の X/Esc キャンセル: 解散して全員行動済み → 敵ターンへ。
     pub def cancel(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, Tween.Scheduler,
-                              AnimationPlayer.Scheduler, TurnPhase.State} =
+                              TurnPhase.State, EnemyTurn.Queue} =
         disband("自動移動を中止", scene)
 
     // ────────────────────────────────────────────────────────

@@ -80,7 +80,12 @@ mod PlayerScene {
         // hidden の味方は Marker2D ごと不可視 + `BoardSnapshot.fromScene` で盤面から除外され、
         // 敵範囲判定・占有・経路探索・カーソルの対象から外れる。「かいさん」で false に戻り
         // ロード周囲へ再出現する。持ち物・HP は hidden の間も Data に保持される。
-        hidden             = Bool
+        hidden             = Bool,
+        // 階段を使ってこのフロアから退場したら true。`hidden` も同時に立てて盤面・敵範囲・
+        // カーソルから外す。ローグの「しゅうごう」(hidden のみ) と区別するためのフラグで、
+        // 「かいさん」での再出現対象から除外し、フロア終了判定 (全員退場) にも使う。
+        // 次フロア開始時は false にリセットされる。
+        usedStairs         = Bool
     }
 
     /// 味方パーティの「現フレーム状態」を Scene を介さずに読み取る effect。
@@ -276,7 +281,8 @@ mod PlayerScene {
             selectedItem      = None,
             moveStepsTaken    = 0,
             facing            = Staff.Direction.Down,
-            hidden            = false
+            hidden            = false,
+            usedStairs        = false
         };
         // unit に spriteFrames があれば AnimatedSprite2D で配置、無ければ Sprite2D
         // (静止単一フレーム) で配置する。AnimatedSprite2D は engine の per-node
@@ -618,12 +624,21 @@ mod PlayerScene {
             |> setSpriteModulate(id, waitedColor())
             |> playAnim(id, idleAnimName())
 
+    /// 全プレイヤーを「行動済み(非アクティブ)」にする。各 id に `setWaited` を適用し、
+    /// waited を立てて灰色 modulate + idle アニメへ揃える。
+    /// 「集合 → 解散」でパーティ全員のターンを一括消費するときに使う
+    /// (この後 active な味方が居なくなるので呼び出し側は敵ターンへ進める)。
+    pub def setAllWaited(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let ids = getAll(scene) |> List.map(d -> d#id);
+        List.foldLeft((sc, id) -> setWaited(id, sc), scene, ids)
+
     /// 全プレイヤーの waited をクリアし、sprite を白に戻す。
     /// ターン開始時に呼ばれ、AnimatedSprite2D 持ち unit は idle アニメに戻す
     /// (= 新ターン開始時の待機モーション)。
     /// 敵ターン終了後に呼ぶ（次の味方ターン開始）。
     pub def clearAllWaited(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let ids = getAll(scene) |> List.map(d -> d#id);
+        // 階段で退場した味方 (usedStairs) は「行動済み」を維持し、敵ターン後も再行動させない。
+        let ids = getAll(scene) |> List.filter(d -> not d#usedStairs) |> List.map(d -> d#id);
         List.foldLeft((sc, id) ->
             sc
                 |> mapPlayer(id, d -> {waited = false | d})
@@ -658,10 +673,21 @@ mod PlayerScene {
             case other => other
         }, scene)
 
+    /// 味方 id を「正面待機」に戻す。`facing` を Down にし、AnimatedSprite2D 持ち unit は
+    /// idle アニメ(= 正面フレーム)へ切り替える。Sprite2D 静止 unit は playAnim が no-op。
+    /// 移動 Tween 完了を idle 復帰のトリガーにしない設計のため(`process` 参照)、
+    /// 「かいさん」など歩いて再出現した直後の settle 地点で明示的に呼ぶ。
+    /// これが無いと walk_<dir> のまま固まり、再出現した archer が横/後ろを向いたままになる。
+    pub def faceFrontIdle(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> mapPlayer(id, d -> {facing = Staff.Direction.Down | d})
+            |> playAnim(id, idleAnimName())
+
     /// 合流して退避中(hidden)の味方一覧。「かいさん」での再出現対象。
     /// このリストが空でない = いまローグ移動モード中、の手掛かりとしても使う。
+    /// 階段で退場した味方 (usedStairs) は hidden だが再出現対象ではないので除外する。
     pub def hiddenAllies(scene: Scene[NodeTag]): List[Data] =
-        getAll(scene) |> List.filter(d -> d#hidden)
+        getAll(scene) |> List.filter(d -> d#hidden and not d#usedStairs)
 
     /// 合流させられる味方一覧(= ロード(id 0)以外で、まだ表示中の味方)。
     /// 「しゅうごう」を出す条件 / 合流で歩かせる対象として使う。
@@ -752,6 +778,60 @@ mod PlayerScene {
         let cleared = List.foldLeft((sc, d) ->
             Scene.removeAt(playerPath(d#id), sc), scene, getAll(scene));
         List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), cleared, spawns)
+
+    // ────────────────────────────────────────────────────────
+    // (F') フロア進行 — 階段退場 / フロア持ち越し
+    // ────────────────────────────────────────────────────────
+
+    /// フロア間で引き継ぐ味方ステータス。HP / 武器 / 持ち物だけを持ち、
+    /// 配置（gridPos）や waited は次フロアで作り直すので含めない。
+    pub type alias CarryData = {
+        id      = Int32,
+        hp      = Int32,
+        weapons = List[UnitCatalog.WeaponResource],
+        staves  = List[Staff.StaffResource]
+    }
+
+    /// 味方 id を「階段で退場」させる。`usedStairs` を立て、`hidden` も同時に立てて
+    /// Marker2D ごと不可視にする（= 盤面・敵範囲・占有・経路・カーソルから外れる）。
+    /// `waited` も立てるので「行動済み」扱いになり、`firstActive` / `anyActive` の対象から
+    /// 外れて以後このフロアでは動けない。`clearAllWaited` は usedStairs を維持するため
+    /// 敵ターンを跨いでも退場状態のままになる。次フロア構築 (addOnePlayer) で全て false に戻る。
+    pub def useStairs(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> setHidden(id, true)
+            |> mapPlayer(id, d -> {usedStairs = true, waited = true | d})
+
+    /// 生存している味方が「全員」階段を使ったか（= このフロアの終了条件）。
+    /// 生存者が 1 人も居ない場合は false（それは全滅 = ゲームオーバー側の扱い）。
+    pub def allLivingUsedStairs(scene: Scene[NodeTag]): Bool =
+        let living = getAll(scene) |> List.filter(d -> d#hp > 0);
+        not List.isEmpty(living) and List.forAll(d -> d#usedStairs, living)
+
+    /// 現在の生存味方の引き継ぎ用ステータス（HP / 武器 / 持ち物）を抽出する。
+    /// 次フロアへ進む直前に呼び、構築後の `reconcileWithCarry` で復元する。
+    pub def snapshotCarry(scene: Scene[NodeTag]): List[CarryData] =
+        getAll(scene)
+            |> List.filter(d -> d#hp > 0)
+            |> List.map(d ->
+                ({id = d#id, hp = d#hp, weapons = d#weapons, staves = d#staves}: CarryData))
+
+    /// 次フロアを通常 build した直後の scene に、前フロアの引き継ぎ値を反映する。
+    ///   - carry に居ない id（前フロアで戦死）の味方ノードを除去する
+    ///   - 生存 id は HP / 武器 / 持ち物を carry で上書きし、HP バーも更新する
+    /// `waited` / `usedStairs` / `hidden` / `moveStepsTaken` は addOnePlayer が false / 0 で
+    /// 作り直しているのでリセット不要（= フロア開始時に全員再行動可・たいきリセット）。
+    pub def reconcileWithCarry(carry: List[CarryData], scene: Scene[NodeTag]): Scene[NodeTag] =
+        let carryIds = carry |> List.map(c -> c#id);
+        let pruned = getAll(scene)
+            |> List.filter(d -> not List.exists(id -> id == d#id, carryIds))
+            |> List.foldLeft((sc, d) -> Scene.removeAt(playerPath(d#id), sc), scene);
+        List.foldLeft((sc, c) ->
+            sc
+                |> mapPlayer(c#id, d ->
+                    {hp = c#hp, weapons = c#weapons, staves = c#staves | d})
+                |> UnitHPBarScene.update(playerPath(c#id), c#hp),
+            pruned, carry)
 
     // ────────────────────────────────────────────────────────
     // (G) 個別 getter（呼び出し側の便宜）

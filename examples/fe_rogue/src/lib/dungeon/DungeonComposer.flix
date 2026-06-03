@@ -52,12 +52,16 @@ mod DungeonComposer {
     /// - `floorBoundsMin/MaxEx` はモジュール内の **decorTiles ∪ doors** の bbox（モジュール局所座標、
     ///   半開区間）。n-format では `gridSize` が床まわりの余白を含むため、セル所有判定
     ///   （moduleOfCell / 敵・アイテムのスポーン候補）には floorBounds を使う。
+    /// - `interiorCells` はモジュールの decorTiles をワールド座標化したリスト
+    ///   （door は含まない = 部屋の純粋な内部床セル）。bbox では door や壁を巻き込むので、
+    ///   「部屋の中のセルだけが欲しい」場合（階段の配置など）はこちらを使う。
     pub type alias ModulePlacement = {
         idx              = Int32,
         offset           = {x = Int32, y = Int32},
         gridSize         = {x = Int32, y = Int32},
         floorBoundsMin   = {x = Int32, y = Int32},
-        floorBoundsMaxEx = {x = Int32, y = Int32}
+        floorBoundsMaxEx = {x = Int32, y = Int32},
+        interiorCells    = List[{x = Int32, y = Int32}]
     }
 
     /// 合成結果。
@@ -417,19 +421,25 @@ mod DungeonComposer {
 
     /// loaded と offsets を組み合わせて ModulePlacement リストを idx 順に作る。
     /// floorBounds は decorTiles ∪ doors の bbox（モジュール局所、半開区間）。
+    /// interiorCells は decorTiles を offset 加算してワールド座標化したセル列。
     def buildPlacements(loaded: List[LoadedModule],
                          offsets: Map[Int32, {x = Int32, y = Int32}]): List[ModulePlacement] =
         let (_, reversed) = List.foldLeft(acc -> lm -> {
             let (i, list) = acc;
             let off = lookupOffset(i, offsets);
             let (fbMin, fbMaxEx) = computeFloorBounds(lm);
+            let interior: List[{x = Int32, y = Int32}] =
+                lm#levelData#decorTiles
+                    |> List.map(t -> ({x = t#x + off#x,
+                                       y = t#y + off#y}: {x = Int32, y = Int32}));
             let p: ModulePlacement = ({
                 idx              = i,
                 offset           = off,
                 gridSize         = ({x = lm#levelData#width,
                                      y = lm#levelData#height}: {x = Int32, y = Int32}),
                 floorBoundsMin   = fbMin,
-                floorBoundsMaxEx = fbMaxEx
+                floorBoundsMaxEx = fbMaxEx,
+                interiorCells    = interior
             }: ModulePlacement);
             (i + 1, p :: list)
         }, (0, Nil), loaded);

@@ -261,7 +261,8 @@ mod TestMapIntegration {
                         selectedItem      = None,
                         moveStepsTaken    = 0,
                         facing            = Staff.Direction.Down,
-                        hidden            = false
+                        hidden            = false,
+                        usedStairs            = false
                     })))
 
     /// プレイヤー id=0 の world 座標

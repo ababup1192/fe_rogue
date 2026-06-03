@@ -62,7 +62,8 @@ mod TestPlayerScene {
                         selectedItem      = None,
                         moveStepsTaken    = 0,
                         facing            = Staff.Direction.Down,
-                        hidden            = false
+                        hidden            = false,
+                        usedStairs            = false
                     })))
 
     /// プレイヤー id のワールド座標を取り出す
@@ -384,7 +385,8 @@ mod TestPlayerScene {
         selectedItem    = None,
         moveStepsTaken  = 0,
         facing          = Staff.Direction.Down,
-        hidden          = false
+        hidden          = false,
+        usedStairs          = false
     }
 
     /// origin 1 マスだけが床で、ほかは壁の MapSnapshot（再配置の不足ケース用）。
@@ -439,4 +441,70 @@ mod TestPlayerScene {
         let board: Board = {map = singleFloorSnapshot(origin), pieces = (Piece.Player(0), origin) :: Nil};
         let cells = PlayerScene.pickRespawnCells(origin, 2, board);
         Assert.assertEq(expected = (5, 5) :: (5, 5) :: Nil, cellsToTuples(cells))
+
+    // ========================================================================
+    // フロア進行 — 階段退場 (useStairs) / フロア終了判定 / 持ち越し (reconcileWithCarry)
+    // ========================================================================
+
+    /// 階段を使った味方は「退場」する: usedStairs / hidden / waited が同時に立つ。
+    /// hidden で盤面・カーソルから外れ、waited で行動済み扱いになって動けなくなる。
+    @Test
+    def testUseStairsExitsUnitFromFloor(): Unit \ {Assert, Fs.FileRead} =
+        let fx = loadTestCatalogs();
+        let mkSpawn = (id, pos) -> ({id = id, gridPos = pos, resource = fx#unitSample,
+                                       weapons = Nil, staves = Nil}: PlayerScene.Spawn);
+        let scene = Scene.empty()
+            |> MapScene.addWorldNode
+            |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}));
+        let after = PlayerScene.useStairs(0, scene);
+        match PlayerScene.get(0, after) {
+            case Some(d) =>
+                Assert.assertEq(expected = (true, true, true),
+                                (d#usedStairs, d#hidden, d#waited))
+            case None    => bug!("player 0 not found")
+        }
+
+    /// フロア終了は「生存味方が全員」階段を使ったときだけ true。
+    /// 味方 2 人のうち 1 人だけ使った段階では false、2 人とも使うと true。
+    @Test
+    def testAllLivingUsedStairsRequiresEveryone(): Unit \ {Assert, Fs.FileRead} =
+        let fx = loadTestCatalogs();
+        let mkSpawn = (id, pos) -> ({id = id, gridPos = pos, resource = fx#unitSample,
+                                       weapons = Nil, staves = Nil}: PlayerScene.Spawn);
+        let scene = Scene.empty()
+            |> MapScene.addWorldNode
+            |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}))
+            |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 4, y = 3}));
+        let oneUsed  = PlayerScene.useStairs(0, scene);
+        let bothUsed = PlayerScene.useStairs(1, oneUsed);
+        Assert.assertEq(
+            expected = (false, true),
+            (PlayerScene.allLivingUsedStairs(oneUsed),
+             PlayerScene.allLivingUsedStairs(bothUsed)))
+
+    /// 次フロアの持ち越し: carry に居る味方は HP / 武器を引き継ぎ、carry に居ない id
+    /// （前フロアで戦死）はノードごと除去される。
+    /// 配置: 味方 0/1/2 をフル HP で生成 → carry = {0: HP3 + 槍, 1: HP7} のみ。
+    /// 期待: 残るのは 0,1 のみ。HP は 3 / 7。0 の武器は くんれんやり。
+    @Test
+    def testReconcileWithCarryPersistsHpAndDropsDead(): Unit \ {Assert, Fs.FileRead} =
+        let fx = loadTestCatalogs();
+        let spear = UnitCatalog.lookupWeapon("trainingSpear", fx#catalog);
+        let mkSpawn = id -> ({id = id, gridPos = {x = 0, y = 0}, resource = fx#unitSample,
+                               weapons = Nil, staves = Nil}: PlayerScene.Spawn);
+        let scene = Scene.empty()
+            |> MapScene.addWorldNode
+            |> PlayerScene.addOnePlayer(mkSpawn(0))
+            |> PlayerScene.addOnePlayer(mkSpawn(1))
+            |> PlayerScene.addOnePlayer(mkSpawn(2));
+        let carry =
+            ({id = 0, hp = 3, weapons = spear :: Nil, staves = Nil}: PlayerScene.CarryData) ::
+            ({id = 1, hp = 7, weapons = Nil,          staves = Nil}: PlayerScene.CarryData) :: Nil;
+        let after = PlayerScene.reconcileWithCarry(carry, scene);
+        Assert.assertEq(
+            expected = (0 :: 1 :: Nil, 3, 7, "くんれんやり" :: Nil),
+            (PlayerScene.getAll(after) |> List.map(d -> d#id),
+             PlayerScene.getHp(0, after),
+             PlayerScene.getHp(1, after),
+             PlayerScene.getWeapons(0, after) |> List.map(weapon -> weapon#name)))
 }

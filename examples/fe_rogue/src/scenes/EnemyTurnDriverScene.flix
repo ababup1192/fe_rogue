@@ -167,10 +167,13 @@ mod EnemyTurnDriverScene {
     /// 敵 (enemyPos) に隣接する味方のうち HP が最少の味方 id を返す。HP 同値は id 昇順。
     /// 隣接味方が居なければ `fallbackId` (EnemyAI が選んだ id) を返す。
     /// 「とどめを優先する」FE 風の敵 AI ターゲティング。Scene 直読みの純粋関数。
+    /// hidden（階段で退場 / 合流退避中）の味方は盤面から外れているので除外する
+    /// (BoardSnapshot.fromScene と同じフィルタ。これが無いと退場済みの味方が狙われる)。
     def lowestHpAdjacentPlayerId(enemyPos: {x = Int32, y = Int32},
                                   fallbackId: Int32,
                                   scene: Scene[NodeTag]): Int32 =
         PlayerScene.getAll(scene)
+            |> List.filter(p -> not p#hidden)
             |> List.filter(p -> EnemyAI.isAdjacent(p#gridPos, enemyPos))
             |> List.sortBy(p -> (p#hp, p#id))
             |> List.head

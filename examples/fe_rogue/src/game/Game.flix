@@ -13,6 +13,8 @@ pub enum NodeTag {
     /// ArrowCursorScene の Marker2D（杖発射方向を視覚化する矢印カーソル）
     case ArrowCursor(ArrowCursorScene.Data)
     case Flag(FlagScene.Data)
+    /// StairsScene の Marker2D（フロアの階段。床のランダムセルに 1 つ配置される）
+    case Stairs(StairsScene.Data)
     case Log(LogScene.Data)
     /// ItemMenuScene の Panel ルート（外枠）
     case ItemPanel
@@ -175,7 +177,8 @@ instance InputEvent.InputHandler[NodeTag] {
     type Aef = {GameEngine.Game, BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State,
-                 PlayerScene.PartyQuery, EnemyScene.RosterQuery}
+                 PlayerScene.PartyQuery, EnemyScene.RosterQuery,
+                 CustomEffects.FloorAdvanceRequest}
     // ActionMenu / ItemMenu / ItemActionMenu / AttackForecast フェーズでは
     // FERogue のキー慣習として Z（決定）/ X（ウィンドウを閉じる）でメニュー操作する。
     // ItemMenu と ItemActionMenu は同じ ItemMenuScene が扱い、`confirmCurrentSelection`
@@ -190,7 +193,8 @@ instance InputEvent.InputHandler[NodeTag] {
                                           EnemyTurn.Queue, TurnPhase.State,
                                           SelectedPlayer.State,
                                           PlayerScene.PartyQuery,
-                                          EnemyScene.RosterQuery} =
+                                          EnemyScene.RosterQuery,
+                                          CustomEffects.FloorAdvanceRequest} =
         // 物理キーを「決定 / キャンセル / それ以外 (None)」の意味論的入力に正規化する。
         // phase と独立した直交概念として扱いたいので、bool 2 個ではなく Option[Input] に畳む。
         let input: Option[TurnRules.Input] =
@@ -224,7 +228,8 @@ instance MenuEvent.MenuHandler[NodeTag] {
     type Aef = {Tween.Scheduler, AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State,
-                 PlayerScene.PartyQuery, EnemyScene.RosterQuery}
+                 PlayerScene.PartyQuery, EnemyScene.RosterQuery,
+                 CustomEffects.FloorAdvanceRequest}
     redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
                            state: NodeTag,
                            scene: Scene[NodeTag]):
@@ -232,7 +237,8 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              GameLogger.GameLogger, EnemyTurn.Queue,
                                              TurnPhase.State, SelectedPlayer.State,
                                              PlayerScene.PartyQuery,
-                                             EnemyScene.RosterQuery} =
+                                             EnemyScene.RosterQuery,
+                                             CustomEffects.FloorAdvanceRequest} =
         match state {
             case NodeTag.ItemMenu   =>
                 // ItemSelect / ItemActionSelect いずれも同じ ItemList なので、
@@ -245,6 +251,8 @@ instance MenuEvent.MenuHandler[NodeTag] {
                         checked_ecast(ItemMenuScene.onActionConfirmed(entry, scene))
                     case _                                 => scene
                 }
+            // onActionConfirmed は「かいだん」で CustomEffects.FloorAdvanceRequest を emit するため、
+            // この instance の Aef にも FloorAdvanceRequest を含めてある（start で handler 注入済み）。
             case NodeTag.ActionMenu        => ActionMenuScene.onActionConfirmed(entry, scene)
             case NodeTag.TradeSelfMenu     => checked_ecast(TradeMenuScene.onConfirmSelf(entry, scene))
             case NodeTag.TradePartnerMenu  => checked_ecast(TradeMenuScene.onConfirmPartner(entry, scene))
@@ -256,7 +264,8 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              GameLogger.GameLogger, EnemyTurn.Queue,
                                              TurnPhase.State, SelectedPlayer.State,
                                              PlayerScene.PartyQuery,
-                                             EnemyScene.RosterQuery} =
+                                             EnemyScene.RosterQuery,
+                                             CustomEffects.FloorAdvanceRequest} =
         match state {
             case NodeTag.ItemMenu   =>
                 let phase = TurnPhase.State.get();
@@ -329,7 +338,8 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
         Option[Scene[NodeTag]] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                                     GameLogger.GameLogger, EnemyTurn.Queue,
                                     TurnPhase.State, SelectedPlayer.State,
-                                    PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+                                    PlayerScene.PartyQuery, EnemyScene.RosterQuery,
+                                    CustomEffects.FloorAdvanceRequest} =
     match (phase, input) {
         case (TurnPhase.Phase.ActionSelect,      TurnRules.Input.Confirm)
                                               => Some(ActionMenuScene.confirmCurrentSelection(scene))
@@ -446,12 +456,11 @@ mod Game {
             let weaponCatalog = WeaponCatalog.load();
             let catalog0 = UnitCatalog.load("resources/units.json", weaponCatalog);
             let catalog = UnitCatalog.resolveSpriteFrames("resources/units.json", catalog0);
-            // フロア定義をロード。現状は floor "f01" 固定（フロア進行は未実装）。
-            // 新しいフロアを足したくなったら resources/floors.json に sub-entry を追加し、
-            // ここの "f01" を選択ロジックに差し替える。
+            // フロア定義をロード。進行順は floors.json の "order" 配列で管理し、
+            // 現在いるフロアは FloorProgress effect が保持する（初期値 = 先頭フロア）。
+            // 階段で次階へ / 全滅で 1F へ / クリアで 1F ループ、はいずれも FloorProgress 経由。
             // 段階 8 のリファクタで schema 整合性検査は `FloorCatalog.load()` 内部で完結する。
             let floors = FloorCatalog.load();
-            let floor  = FloorCatalog.get("f01", floors);
             // 杖カタログをロード。段階 7 のリファクタで `CatalogContainer.loadWithCheck` 経由になり
             // schema 整合性検査も `Staff.load()` 内部で完結する。
             let staffCatalog = Staff.load();
@@ -459,7 +468,7 @@ mod Game {
                 // 初回 build と spawn snapshot 保存をまとめて行う (GameOver リビルドと同じ経路)。
                 // BGM は BgmScene の AudioStreamPlayer ノード (autoplay=true, loop=true,
                 // volume=0.05) で applyAudioAttach 経由で再生される (= ここでは触らない)
-                let scene = GameLifecycle.buildAndRecord(catalog, staffCatalog, floor);
+                let scene = GameLifecycle.buildCurrentFloor(catalog, staffCatalog, floors);
                 // SE は半分で鳴らす (Inspector 対応の Scene Node にしていない通常の SE 系)
                 AudioStreamPlayer.setVolume("damage", 0.5f32);
                 AudioStreamPlayer.setVolume("down_enemy", 0.5f32);
@@ -473,9 +482,14 @@ mod Game {
             // 使うため、これらより **内側** (= 構文上で先) に書く必要がある。
             // 同様に `BoardQuery` も `Ref` 経由で sceneRef を読むだけだが内側に置く。
             } with handler CustomEffects.GameOverRequest {
-                  // 全味方脱落でフルリビルド: turn 系 state をリセットしてから scene を作り直し、
-                  // 新しい spawn 一覧を InitialSpawns に書き戻す。本体は GameLifecycle 側。
-                  def request(_scene, k) = k(GameLifecycle.resetForGameOver(catalog, staffCatalog, floor))
+                  // 全味方脱落でフルリビルド: フロアを 1F に戻し turn 系 state をリセットしてから
+                  // scene を作り直し、新しい spawn 一覧を InitialSpawns に書き戻す。本体は GameLifecycle 側。
+                  def request(_scene, k) = k(GameLifecycle.resetForGameOver(catalog, staffCatalog, floors))
+              }
+              with handler CustomEffects.FloorAdvanceRequest {
+                  // 生存味方が全員階段を使ったら次フロアへ（最終フロアならクリア → 1F ループ）。
+                  // HP / 武器 / 持ち物の引き継ぎを含め本体は GameLifecycle.advanceFloor 側。
+                  def advance(scene, k) = k(GameLifecycle.advanceFloor(catalog, staffCatalog, floors, scene))
               }
               with handler BoardQuery {
                   def board(k) = k(BoardSnapshot.fromScene(Ref.get(sceneRef)))
@@ -500,6 +514,7 @@ mod Game {
               with TurnPhase.withState(rc)        // 味方ターン内のサブフェーズ + 敵ターン
               with SelectedPlayer.withState(rc)   // 操作中プレイヤー id の保持
               with InitialSpawns.withState(rc)    // ゲームオーバー時に同じ敵 / 味方配置を復元
+              with FloorProgress.withState(rc, FloorCatalog.firstFloorId(floors))  // 現在フロア id
         }
 
     /// メインループ。phase で分岐せず、**固定パイプライン** を毎フレーム回す:
@@ -519,6 +534,8 @@ mod Game {
                          EnemyTurn.Queue, TurnPhase.State,
                          SelectedPlayer.State,
                          CustomEffects.GameOverRequest,
+                         CustomEffects.FloorAdvanceRequest,
+                         FloorProgress.State,
                          Pacing.State, Math.Random, r} =
         // Escape は通常はゲーム終了に使うが、各種メニュー / 戦闘予報パネル表示中は
         // engine の MenuEvent / InputHandler がそれぞれ「キャンセル」として消費するので、
