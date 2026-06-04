@@ -197,7 +197,8 @@ mod ActionMenuScene {
         }
 
     /// ローグ移動モード中(合流済み)のメニュー項目。ロード足元にアイテムがあれば「ひろう」、
-    /// 常に「かいさん」。拾いはロード(id 0)を対象に既存の applyPickup を転用する。
+    /// ロードが階段に乗っていれば「かいだん」(パーティごと次フロアへ)、常に「かいさん」。
+    /// 拾いはロード(id 0)を対象に既存の applyPickup を転用する。
     def rogueMenuItems(scene: Scene[NodeTag]): List[ItemEntry] =
         let lordPos = PlayerScene.getGridPos(0, scene);
         let pickup =
@@ -205,17 +206,26 @@ mod ActionMenuScene {
                 ({text = "ひろう", disabled = false,
                   metadata = Some(pickupMeta())}: ItemEntry) :: Nil
             else Nil;
+        let stairs =
+            if (StairsScene.isAt(lordPos, scene))
+                ({text = "かいだん", disabled = false,
+                  metadata = Some(stairsMeta())}: ItemEntry) :: Nil
+            else Nil;
         let disband =
             ({text = "かいさん", disabled = false,
               metadata = Some(disbandMeta())}: ItemEntry) :: Nil;
-        List.append(pickup, disband)
+        List.flatten(pickup :: stairs :: disband :: Nil)
 
-    /// 通常の空マスメニュー項目。ロードが敵に未検知(部屋外かつ索敵範囲外)で合流可能な味方が
-    /// 居れば「しゅうごう」、常に「ターンエンド」。
+    /// 合流対象の味方を全員集めるのに必要な「周囲マス数」。これ以内に全員居ないと「しゅうごう」は出さない。
+    def gatherRange(): Int32 = 3
+
+    /// 通常の空マスメニュー項目。ロードが敵に未検知(部屋外かつ索敵範囲外)で、合流可能な味方が
+    /// 全員ロードの周囲 `gatherRange` マス以内に居れば「しゅうごう」、常に「ターンエンド」。
     def gatherMenuItems(scene: Scene[NodeTag]): List[ItemEntry] =
         let gather =
             if (not AutoMoveScene.lordDetected(scene)
-                and not List.isEmpty(PlayerScene.mergeableAllies(scene)))
+                and not List.isEmpty(PlayerScene.mergeableAllies(scene))
+                and PlayerScene.allMergeableWithin(gatherRange(), scene))
                 ({text = "しゅうごう", disabled = false,
                   metadata = Some(gatherMeta())}: ItemEntry) :: Nil
             else Nil;
@@ -276,24 +286,28 @@ mod ActionMenuScene {
                 else                          scene
         }
 
-    /// 「かいだん」確定: 選択中の味方を階段で退場させる。
-    ///   - 生存味方が全員退場したら `FloorAdvanceRequest` で次フロアへ（最終フロアならクリア）
-    ///   - まだ動ける味方が残っていれば `commitWaitedAndAdvance` で次の味方／敵ターンへ
-    /// 退場処理 (`useStairs`) は盤面除外 + 行動済み化を含むので、ここはログと進行判定だけ。
+    /// 「かいだん」確定。文脈で 2 通り:
+    ///   - 通常（選択中の味方あり）: その味方を階段で退場させる。生存味方が全員退場したら
+    ///     `FloorAdvanceRequest` で次フロアへ、まだ動ける味方が残っていれば `commitWaitedAndAdvance`。
+    ///   - しゅうごう中（ローグ移動・選択なし）: 合流したパーティ全員で降りる → そのまま次フロアへ。
+    ///     退避中(hidden)の味方も生存していれば `snapshotCarry` で引き継がれる。
     def applyStairs(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 CustomEffects.FloorAdvanceRequest} =
         GameLogger.playerLog("階段を降りた");
-        let exited = match SelectedPlayer.State.get()#id {
-            case Some(id) => PlayerScene.useStairs(id, scene)
-            case None     => scene
-        };
-        if (PlayerScene.allLivingUsedStairs(exited))
-            CustomEffects.FloorAdvanceRequest.advance(exited)
-        else
-            PlayerScene.commitWaitedAndAdvance(exited)
+        match SelectedPlayer.State.get()#id {
+            case Some(id) =>
+                let exited = PlayerScene.useStairs(id, scene);
+                if (PlayerScene.allLivingUsedStairs(exited))
+                    CustomEffects.FloorAdvanceRequest.advance(exited)
+                else
+                    PlayerScene.commitWaitedAndAdvance(exited)
+            case None =>
+                // しゅうごう状態でロードが階段に乗っている → パーティごと次フロアへ。
+                CustomEffects.FloorAdvanceRequest.advance(scene)
+        }
 
     /// 「アイテム」確定で ItemMenuScene を開く。選択中味方の id が必要。
     def openItemMenu(scene: Scene[NodeTag]):

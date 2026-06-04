@@ -704,6 +704,20 @@ mod PlayerScene {
     pub def mergeableAllies(scene: Scene[NodeTag]): List[Data] =
         getAll(scene) |> List.filter(d -> d#id != 0 and not d#hidden)
 
+    /// すべての座標が `center` の周囲 `range` マス以内（チェビシェフ距離 = max(|dx|,|dy|)）に
+    /// あるか。空リストは true。位置だけのピュア判定（テストしやすいよう座標で受け取る）。
+    pub def allWithinRange(range: Int32, center: {x = Int32, y = Int32},
+                            positions: List[{x = Int32, y = Int32}]): Bool =
+        List.forAll(pos ->
+            Int32.max(Int32.abs(pos#x - center#x), Int32.abs(pos#y - center#y)) <= range,
+            positions)
+
+    /// 合流対象の味方（mergeableAllies）が全員、ロード(id 0)の周囲 `range` マス以内に居るか。
+    /// 「しゅうごう」をその場でできる（全員が近くに固まっている）かの判定に使う。
+    pub def allMergeableWithin(range: Int32, scene: Scene[NodeTag]): Bool =
+        allWithinRange(range, getGridPos(0, scene),
+                       mergeableAllies(scene) |> List.map(d -> d#gridPos))
+
     /// 合流で次に動かす 1 体を選ぶ純粋関数(= ロードに最も近い味方)。居なければ None。
     pub def nearestMover(lordPos: {x = Int32, y = Int32},
                           movers: List[Data]): Option[Data] =

@@ -516,4 +516,30 @@ mod TestPlayerScene {
              PlayerScene.getHp(0, after),
              PlayerScene.getHp(1, after),
              PlayerScene.getWeapons(0, after) |> List.map(weapon -> weapon#name)))
+
+    // ========================================================================
+    // しゅうごう可否: 全員がロード周囲 range マス以内か（チェビシェフ距離）
+    // ========================================================================
+
+    /// center (5,5) を中心に、斜めに 3 マス (8,8)=距離3 は範囲内、横に 4 マス (9,5)=距離4 は範囲外。
+    /// チェビシェフ距離なので斜めも 1 軸の差で測る（(8,8) は max(3,3)=3）。
+    @Test
+    def testAllWithinRangeChebyshevBoundary(): Unit \ Assert =
+        let center: {x = Int32, y = Int32} = {x = 5, y = 5};
+        let inside  = ({x = 8, y = 8}: {x = Int32, y = Int32}) :: {x = 2, y = 5} :: Nil;  // 距離 3 と 3
+        let outside = ({x = 9, y = 5}: {x = Int32, y = Int32}) :: Nil;                     // 距離 4
+        Assert.assertEq(
+            expected = (true, false),
+            (PlayerScene.allWithinRange(3, center, inside),
+             PlayerScene.allWithinRange(3, center, outside)))
+
+    /// 1 人でも範囲外なら false（全員が条件を満たす必要がある）。空リストは true。
+    @Test
+    def testAllWithinRangeRequiresEveryone(): Unit \ Assert =
+        let center: {x = Int32, y = Int32} = {x = 0, y = 0};
+        let mixed = ({x = 1, y = 1}: {x = Int32, y = Int32}) :: {x = 0, y = 5} :: Nil;  // 距離 1 と 5
+        Assert.assertEq(
+            expected = (false, true),
+            (PlayerScene.allWithinRange(3, center, mixed),
+             PlayerScene.allWithinRange(3, center, Nil)))
 }
