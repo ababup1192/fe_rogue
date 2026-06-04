@@ -49,7 +49,7 @@ mod TestCounterAttackRules {
         hp             = if (isDying) 0 else 10,
         isDying        = isDying,
         attackTargetId = None,
-        resource       = TestUnitFixtures.testResource(3, 10),
+        resource       = TestUnitFixtures.testEnemyResource(3, 10),
         weapon         = weapon
     }
 

@@ -1,9 +1,8 @@
 {
-  "order": ["f01", "f02", "f03"],
   "floors": {
     "f01": {
       "generation": {
-        "roomCount": 8
+        "roomCount": 6
       },
       "items": [
         {
@@ -151,5 +150,10 @@
         "min": 1
       }
     }
-  }
+  },
+  "order": [
+    "f01",
+    "f02",
+    "f03"
+  ]
 }

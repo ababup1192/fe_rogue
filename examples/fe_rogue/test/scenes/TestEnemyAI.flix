@@ -86,7 +86,7 @@ mod TestEnemyAI {
         { id = id, gridPos = pos, alerted = alerted,
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
-          resource = TestUnitFixtures.testResource(moveTiles, 3),
+          resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
           weapon = Some(TestUnitFixtures.testWeapon()) }
 
     /// 武器が壊れた状態（`weapon = None`）の敵 Data。武器なしで隣接プレイヤーに
@@ -96,7 +96,7 @@ mod TestEnemyAI {
         { id = id, gridPos = pos, alerted = alerted,
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
-          resource = TestUnitFixtures.testResource(moveTiles, 3),
+          resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
           weapon = None }
 
     /// EnemyAction を tag だけのタプルに圧縮（id 付き）。Eq が無いので比較しやすくする。

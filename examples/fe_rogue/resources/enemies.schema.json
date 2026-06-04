@@ -275,94 +275,6 @@
         "order": 11
       }
     },
-    "growthRates": {
-      "nested": {
-        "hp": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "slider": {
-                "min": 0,
-                "max": 100,
-                "step": 5
-              }
-            },
-            "label": "HP成長",
-            "order": 1
-          }
-        },
-        "attack": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "slider": {
-                "min": 0,
-                "max": 100,
-                "step": 5
-              }
-            },
-            "label": "力成長",
-            "order": 2
-          }
-        },
-        "defense": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "slider": {
-                "min": 0,
-                "max": 100,
-                "step": 5
-              }
-            },
-            "label": "防成長",
-            "order": 3
-          }
-        },
-        "magicAttack": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "slider": {
-                "min": 0,
-                "max": 100,
-                "step": 5
-              }
-            },
-            "label": "魔力成長",
-            "order": 4
-          }
-        },
-        "magicDefense": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "slider": {
-                "min": 0,
-                "max": 100,
-                "step": 5
-              }
-            },
-            "label": "魔防成長",
-            "order": 5
-          }
-        },
-        "speed": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "slider": {
-                "min": 0,
-                "max": 100,
-                "step": 5
-              }
-            },
-            "label": "速成長",
-            "order": 6
-          }
-        }
-      }
-    },
     "level": {
       "field": {
         "ftype": "int",
@@ -378,10 +290,5 @@
       }
     }
   },
-  "metaHints": {
-    "players": {
-      "type": "ref",
-      "to": "units"
-    }
-  }
+  "metaHints": {}
 }

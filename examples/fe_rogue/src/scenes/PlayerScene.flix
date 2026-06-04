@@ -207,7 +207,7 @@ mod PlayerScene {
     /// `initialInventory` を kind 別に振り分けて weapons / staves リストに展開する。
     /// 各 kind の中での出現順を保つので、weapons.head が装備中の武器になる。
     /// 未定義 id は `lookupWeapon` / `Staff.lookup` で panic（起動時 typo の検知）。
-    def splitInventory(inv: List[UnitCatalog.InventoryEntry],
+    def splitInventory(inv: List[UnitBase.InventoryEntry],
                         catalog: UnitCatalog.UnitCatalog,
                         staffCatalog: Staff.StaffCatalog):
             {weapons = List[UnitCatalog.WeaponResource],
@@ -217,11 +217,11 @@ mod PlayerScene {
             {weapons = Nil, staves = Nil};
         let acc = List.foldLeft((soFar, entry) -> {
             match entry#kind {
-                case UnitCatalog.ItemKind.Weapon =>
+                case UnitBase.ItemKind.Weapon =>
                     let w = UnitCatalog.lookupWeapon(entry#id, catalog);
                     {weapons = List.append(soFar#weapons, w :: Nil),
                       staves  = soFar#staves}
-                case UnitCatalog.ItemKind.Staff =>
+                case UnitBase.ItemKind.Staff =>
                     let s = Staff.lookup(entry#id, staffCatalog);
                     {weapons = soFar#weapons,
                       staves  = List.append(soFar#staves, s :: Nil)}

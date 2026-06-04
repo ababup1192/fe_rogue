@@ -1,8 +1,4 @@
 {
-  "enemies": [
-    "goblin",
-    "orc"
-  ],
   "players": [
     "knight",
     "archer",
@@ -98,34 +94,6 @@
         }
       }
     },
-    "goblin": {
-      "attack": 5,
-      "defense": 2,
-      "description": "ゴブリン",
-      "hp": 10,
-      "initialInventory": [
-        {
-          "id": "trainingSword",
-          "kind": "weapon"
-        }
-      ],
-      "level": 1,
-      "luck": 1,
-      "magicAttack": 0,
-      "magicDefense": 0,
-      "moveTiles": 4,
-      "skill": 3,
-      "speed": 4,
-      "sprite": {
-        "frame": 4,
-        "hframes": 5,
-        "offset": {
-          "x": 0.0
-        },
-        "texture": "character_sheet",
-        "vframes": 2
-      }
-    },
     "knight": {
       "attack": 7,
       "defense": 4,
@@ -199,31 +167,6 @@
       "speed": 4,
       "sprite": {
         "frame": 2,
-        "hframes": 5,
-        "texture": "character_sheet",
-        "vframes": 2
-      }
-    },
-    "orc": {
-      "attack": 6,
-      "defense": 3,
-      "description": "オーク",
-      "hp": 13,
-      "initialInventory": [
-        {
-          "id": "trainingSword",
-          "kind": "weapon"
-        }
-      ],
-      "level": 4,
-      "luck": 0,
-      "magicAttack": 0,
-      "magicDefense": 0,
-      "moveTiles": 3,
-      "skill": 2,
-      "speed": 2,
-      "sprite": {
-        "frame": 3,
         "hframes": 5,
         "texture": "character_sheet",
         "vframes": 2

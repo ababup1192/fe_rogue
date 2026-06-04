@@ -465,6 +465,10 @@ mod Game {
             let weaponCatalog = WeaponCatalog.load();
             let catalog0 = UnitCatalog.load("resources/units.json", weaponCatalog);
             let catalog = UnitCatalog.resolveSpriteFrames("resources/units.json", catalog0);
+            // 敵カタログをロード（段階 10 のリファクタで units.json から enemies.json に分離）。
+            // 味方（成長率あり）と別管理。spriteFrames は味方と同じ格子→px 解決を通す。
+            let enemyCatalog0 = EnemyCatalog.load();
+            let enemyCatalog = EnemyCatalog.resolveSpriteFrames("resources/enemies.json", enemyCatalog0);
             // フロア定義をロード。進行順は floors.json の "order" 配列で管理し、
             // 現在いるフロアは FloorProgress effect が保持する（初期値 = 先頭フロア）。
             // 階段で次階へ / 全滅で 1F へ / クリアで 1F ループ、はいずれも FloorProgress 経由。
@@ -473,11 +477,19 @@ mod Game {
             // 杖カタログをロード。段階 7 のリファクタで `CatalogContainer.loadWithCheck` 経由になり
             // schema 整合性検査も `Staff.load()` 内部で完結する。
             let staffCatalog = Staff.load();
+            // 5 カタログを 1 つの record に束ねて構築 / リビルド経路へ引き回す。
+            let catalogs = {
+                weapons = weaponCatalog,
+                players = catalog,
+                enemies = enemyCatalog,
+                floors  = floors,
+                staves  = staffCatalog
+            };
             run {
                 // 初回 build と spawn snapshot 保存をまとめて行う (GameOver リビルドと同じ経路)。
                 // BGM は BgmScene の AudioStreamPlayer ノード (autoplay=true, loop=true,
                 // volume=0.05) で applyAudioAttach 経由で再生される (= ここでは触らない)
-                let scene = GameLifecycle.buildCurrentFloor(catalog, staffCatalog, floors);
+                let scene = GameLifecycle.buildCurrentFloor(catalogs);
                 // SE は半分で鳴らす (Inspector 対応の Scene Node にしていない通常の SE 系)
                 AudioStreamPlayer.setVolume("damage", 0.5f32);
                 AudioStreamPlayer.setVolume("down_enemy", 0.5f32);
@@ -493,12 +505,12 @@ mod Game {
             } with handler CustomEffects.GameOverRequest {
                   // 全味方脱落でフルリビルド: フロアを 1F に戻し turn 系 state をリセットしてから
                   // scene を作り直し、新しい spawn 一覧を InitialSpawns に書き戻す。本体は GameLifecycle 側。
-                  def request(_scene, k) = k(GameLifecycle.resetForGameOver(catalog, staffCatalog, floors))
+                  def request(_scene, k) = k(GameLifecycle.resetForGameOver(catalogs))
               }
               with handler CustomEffects.FloorAdvanceRequest {
                   // 生存味方が全員階段を使ったら次フロアへ（最終フロアならクリア → 1F ループ）。
                   // HP / 武器 / 持ち物の引き継ぎを含め本体は GameLifecycle.advanceFloor 側。
-                  def advance(scene, k) = k(GameLifecycle.advanceFloor(catalog, staffCatalog, floors, scene))
+                  def advance(scene, k) = k(GameLifecycle.advanceFloor(catalogs, scene))
               }
               with handler BoardQuery {
                   def board(k) = k(BoardSnapshot.fromScene(Ref.get(sceneRef)))

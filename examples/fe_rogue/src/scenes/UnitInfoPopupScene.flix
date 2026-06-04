@@ -274,7 +274,11 @@ mod UnitInfoPopupScene {
         }
 
     /// viewMode に従って Status または Items view を描く。
-    def renderPanel(res: UnitCatalog.UnitResource,
+    /// `res` は味方 (`UnitCatalog.UnitResource`) も敵 (`EnemyCatalog.EnemyResource`) も
+    /// unify する開きレコード（共有フィールドだけを読む。成長率・敵能力は `r` に吸収）。
+    def renderPanel(res: {description = String, hp = Int32, attack = Int32, defense = Int32,
+                          speed = Int32, moveTiles = Int32, skill = Int32, luck = Int32,
+                          sprite = Sprite.SpriteResource | r},
                      currentHp: Int32,
                      weapons: List[UnitCatalog.WeaponResource],
                      levelExp: Option[LevelExp],
@@ -289,7 +293,9 @@ mod UnitInfoPopupScene {
 
     // ─── Status view 描画 ────────────────────────────────────
 
-    def renderStatusView(res: UnitCatalog.UnitResource,
+    def renderStatusView(res: {description = String, hp = Int32, attack = Int32, defense = Int32,
+                               speed = Int32, moveTiles = Int32, skill = Int32, luck = Int32,
+                               sprite = Sprite.SpriteResource | r},
                           currentHp: Int32,
                           levelExp: Option[LevelExp],
                           scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
@@ -344,7 +350,9 @@ mod UnitInfoPopupScene {
 
     // ─── Items view 描画 ─────────────────────────────────────
 
-    def renderItemsView(_res: UnitCatalog.UnitResource,
+    def renderItemsView(_res: {description = String, hp = Int32, attack = Int32, defense = Int32,
+                               speed = Int32, moveTiles = Int32, skill = Int32, luck = Int32,
+                               sprite = Sprite.SpriteResource | r},
                          weapons: List[UnitCatalog.WeaponResource],
                          scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let atlas = GameEngine.Game.getFontAtlas(fontName());

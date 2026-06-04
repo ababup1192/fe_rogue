@@ -22,7 +22,7 @@
     },
     "monsters": {
       "field": {
-        "ftype": { "type": "refPercentList", "to": "units" },
+        "ftype": { "type": "refPercentList", "to": "enemies" },
         "hint":  "plain",
         "label": "出現モンスター",
         "order": 2

@@ -44,7 +44,7 @@ mod EnemyScene {
         hp             = Int32,
         isDying        = Bool,
         attackTargetId = Option[Int32],
-        resource       = UnitCatalog.UnitResource,
+        resource       = EnemyCatalog.EnemyResource,
         weapon         = Option[UnitCatalog.WeaponResource]
     }
 
@@ -55,7 +55,7 @@ mod EnemyScene {
         id        = Int32,
         gridPos   = {x = Int32, y = Int32},
         moduleIdx = Int32,
-        resource  = UnitCatalog.UnitResource,
+        resource  = EnemyCatalog.EnemyResource,
         weapon    = UnitCatalog.WeaponResource
     }
 
@@ -141,7 +141,8 @@ mod EnemyScene {
     /// UnitResource を割り当て、`initialInventory` の先頭武器を装備させる
     /// （敵は杖を使わない前提で、weapon kind の最初のエントリだけを採用）。
     /// `Math.Random` を使うのでこの effect が必要。
-    pub def add(catalog: UnitCatalog.UnitCatalog,
+    pub def add(enemies: EnemyCatalog.EnemyCatalog,
+                 weapons: WeaponCatalog.WeaponCatalog,
                  floor: FloorCatalog.FloorResource,
                  scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random} =
         let layer       = MapScene.getMapLayer(scene);
@@ -160,7 +161,7 @@ mod EnemyScene {
         let range = floor#monstersPerRoom;
         let (_, _, accSpawns) = List.foldLeft(state -> p ->
             spawnInRoom(layer, p, FloorCatalog.randomCountInRange(range),
-                         monsters, catalog, state),
+                         monsters, enemies, weapons, state),
             initial, rooms);
         // accSpawns は逆順（cons で積んだ）なので reverse して id 昇順に揃える
         let spawns = List.reverse(accSpawns);
@@ -169,10 +170,10 @@ mod EnemyScene {
     /// `initialInventory` の中で最初の `weapon` kind の id を `lookupWeapon` で解決する。
     /// 敵は杖を持たない前提なので weapon kind だけを採用する。weapon が一つも無いユニットは
     /// 起動時 typo / schema 不整合として `bug!` で落とす（パーティ運用には不可避）。
-    def lookupFirstWeapon(res: UnitCatalog.UnitResource,
-                            catalog: UnitCatalog.UnitCatalog): UnitCatalog.WeaponResource =
-        match List.find(e -> e#kind == UnitCatalog.ItemKind.Weapon, res#initialInventory) {
-            case Some(e) => UnitCatalog.lookupWeapon(e#id, catalog)
+    def lookupFirstWeapon(res: EnemyCatalog.EnemyResource,
+                            weapons: WeaponCatalog.WeaponCatalog): UnitCatalog.WeaponResource =
+        match List.find(e -> e#kind == UnitBase.ItemKind.Weapon, res#initialInventory) {
+            case Some(e) => WeaponCatalog.lookup(e#id, weapons)
             case None    =>
                 bug!("EnemyScene.lookupFirstWeapon: unit has no weapon in initialInventory")
         }
@@ -186,7 +187,8 @@ mod EnemyScene {
                      p: DungeonComposer.ModulePlacement,
                      count: Int32,
                      monsters: List[FloorCatalog.SpawnEntry],
-                     catalog: UnitCatalog.UnitCatalog,
+                     enemies: EnemyCatalog.EnemyCatalog,
+                     weapons: WeaponCatalog.WeaponCatalog,
                      state: (Int32, List[{x = Int32, y = Int32}], List[Spawn])):
                     (Int32, List[{x = Int32, y = Int32}], List[Spawn]) \ Math.Random =
         if (count <= 0) state
@@ -200,17 +202,17 @@ mod EnemyScene {
                     match FloorCatalog.pickWeighted(monsters) {
                         case None => state  // weight 配列が空 / 合計 0 → スキップ
                         case Some(id) =>
-                            let res = match Map.get(id, UnitCatalog.unitsOf(catalog)) {
+                            let res = match EnemyCatalog.get(id, enemies) {
                                 case Some(u) => u
                                 case None    =>
-                                    bug!("EnemyScene.spawnInRoom: unit id '${id}' not in catalog")
+                                    bug!("EnemyScene.spawnInRoom: enemy id '${id}' not in catalog")
                             };
-                            let weapon = lookupFirstWeapon(res, catalog);
+                            let weapon = lookupFirstWeapon(res, weapons);
                             let entry: Spawn = {
                                 id = nextId, gridPos = cell, moduleIdx = p#idx,
                                 resource = res, weapon = weapon
                             };
-                            spawnInRoom(layer, p, count - 1, monsters, catalog,
+                            spawnInRoom(layer, p, count - 1, monsters, enemies, weapons,
                                          (nextId + 1, cell :: taken, entry :: list))
                     }
             }

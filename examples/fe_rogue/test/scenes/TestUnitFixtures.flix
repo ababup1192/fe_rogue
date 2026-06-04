@@ -31,8 +31,8 @@ mod TestUnitFixtures {
         skill         = 2,
         luck          = 2,
         initialInventory =
-            ({kind = UnitCatalog.ItemKind.Weapon, id = "test-weapon"}:
-               UnitCatalog.InventoryEntry) :: Nil,
+            ({kind = UnitBase.ItemKind.Weapon, id = "test-weapon"}:
+               UnitBase.InventoryEntry) :: Nil,
         description   = "",
         sprite        = {
             texture = "character_sheet",
@@ -44,6 +44,35 @@ mod TestUnitFixtures {
         },
         spriteFrames  = None,
         growthRates   = UnitCatalog.zeroGrowthRates()
+    }
+
+    /// 任意の moveTiles / hp を持つテスト用 EnemyResource（敵カタログ）。
+    /// `testResource` から **growthRates を除いた** 共有 14 フィールドのみ（敵は成長率を持たない）。
+    /// `NodeTag.Enemy(...)` の `Data#resource` を埋める用途。値は `testResource` と揃える。
+    pub def testEnemyResource(moveTiles: Int32, hp: Int32): EnemyCatalog.EnemyResource = {
+        moveTiles     = moveTiles,
+        level         = 1,
+        hp            = hp,
+        attack        = 3,
+        defense       = 1,
+        magicAttack   = 0,
+        magicDefense  = 0,
+        speed         = 3,
+        skill         = 2,
+        luck          = 2,
+        initialInventory =
+            ({kind = UnitBase.ItemKind.Weapon, id = "test-weapon"}:
+               UnitBase.InventoryEntry) :: Nil,
+        description   = "",
+        sprite        = {
+            texture = "character_sheet",
+            hframes = 5,
+            vframes = 2,
+            frame   = 0,
+            offset  = {x = 0.0, y = 0.0},
+            scale   = {x = 1.0, y = 1.0}
+        },
+        spriteFrames  = None
     }
 
     /// 戦闘パラメータも明示的に指定したいケース用。
@@ -63,8 +92,8 @@ mod TestUnitFixtures {
         skill         = 2,
         luck          = 2,
         initialInventory =
-            ({kind = UnitCatalog.ItemKind.Weapon, id = "test-weapon"}:
-               UnitCatalog.InventoryEntry) :: Nil,
+            ({kind = UnitBase.ItemKind.Weapon, id = "test-weapon"}:
+               UnitBase.InventoryEntry) :: Nil,
         description   = "",
         sprite        = {
             texture = "character_sheet",
@@ -94,8 +123,8 @@ mod TestUnitFixtures {
         skill         = 2,
         luck          = 2,
         initialInventory =
-            ({kind = UnitCatalog.ItemKind.Weapon, id = "test-weapon"}:
-               UnitCatalog.InventoryEntry) :: Nil,
+            ({kind = UnitBase.ItemKind.Weapon, id = "test-weapon"}:
+               UnitBase.InventoryEntry) :: Nil,
         description   = "",
         sprite        = {
             texture = "character_sheet",

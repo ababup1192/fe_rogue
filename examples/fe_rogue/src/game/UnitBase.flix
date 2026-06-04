@@ -1,0 +1,359 @@
+/// UnitBase — 味方ユニット（UnitCatalog）と敵ユニット（EnemyCatalog）で共有する土台。
+///
+/// 共有する戦闘ステータス・スプライト・持ち物の型と、その JSON codec をここに集約する。
+/// 味方専用（`growthRates`）は `UnitCatalog`、敵専用（将来の特殊能力）は `EnemyCatalog` に置く。
+/// 依存方向は一方向: `UnitCatalog → UnitBase ← EnemyCatalog`（UnitBase は両者を知らない）。
+///
+/// Scene[NodeTag] / effect には依存しない（spriteFrames の格子→px 解決のみ `GameEngine.Game` を使う）。
+mod UnitBase {
+
+    use Sprite.SpriteResource
+
+    // ────────────────────────────────────────────────────────
+    // (A) 共有型
+    // ────────────────────────────────────────────────────────
+
+    /// 持ち物アイテムの種別。`weapons.json` か `staves.json` のどちらの id を指すか判別する。
+    /// JSON では小文字文字列 `"weapon"` / `"staff"` でシリアライズする。
+    pub enum ItemKind with Eq, ToString {
+        case Weapon
+        case Staff
+    }
+
+    /// `initialInventory` の 1 エントリ。JSON は `{"kind": "weapon", "id": "trainingSpear"}` の形。
+    /// 並び順は意味あり: weapon は最初のものが装備中、staff は配列順で持ち物に積まれる。
+    pub type alias InventoryEntry = {
+        kind = ItemKind,
+        id   = String
+    }
+
+    /// 味方・敵で共通のユニット土台（14 フィールド）。味方は別途 `growthRates` を、
+    /// 敵は将来別途「特殊能力」を足す。`attack` は素の「力」、`magicAttack` は魔力。
+    /// `level` は基準レベル（味方の現在レベルは PlayerScene.Data#level、敵はこの値が戦闘相手の Lv）。
+    pub type alias UnitBase = {
+        moveTiles        = Int32,
+        level            = Int32,
+        hp               = Int32,
+        attack           = Int32,
+        defense          = Int32,
+        magicAttack      = Int32,
+        magicDefense     = Int32,
+        speed            = Int32,
+        skill            = Int32,
+        luck             = Int32,
+        sprite           = SpriteResource,
+        initialInventory = List[InventoryEntry],
+        description      = String,
+        spriteFrames     = Option[SpriteFrames]
+    }
+}
+
+mod UnitBaseCodec {
+    use Json.JsonElement
+    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray}
+    use JsonCodec.{expectObject, expectString, expectInt, expectFloat, expectBool, floatToBd, intToBd}
+    use UnitBase.{UnitBase, ItemKind, InventoryEntry}
+    use Sprite.SpriteResource
+
+    // ────────────────────────────────────────────────────────
+    // (B) 共有エンコード
+    // ────────────────────────────────────────────────────────
+
+    /// 共有 14 フィールドを JSON オブジェクトの Map に書き出す。味方は呼び出し側で
+    /// `growthRates` を足す。spriteFrames は設定がある unit だけ格子形式で書き出す。
+    /// row-polymorphic にして PlayerResource / EnemyResource どちらも受ける。
+    pub def encodeBase(u: {moveTiles = Int32, level = Int32, hp = Int32, attack = Int32,
+                            defense = Int32, magicAttack = Int32, magicDefense = Int32,
+                            speed = Int32, skill = Int32, luck = Int32, sprite = SpriteResource,
+                            initialInventory = List[InventoryEntry], description = String,
+                            spriteFrames = Option[SpriteFrames] | r}):
+            Map[String, JsonElement] =
+        let base = Map#{
+            "moveTiles"        => JsonNumber(intToBd(u#moveTiles)),
+            "level"            => JsonNumber(intToBd(u#level)),
+            "hp"               => JsonNumber(intToBd(u#hp)),
+            "attack"           => JsonNumber(intToBd(u#attack)),
+            "defense"          => JsonNumber(intToBd(u#defense)),
+            "magicAttack"      => JsonNumber(intToBd(u#magicAttack)),
+            "magicDefense"     => JsonNumber(intToBd(u#magicDefense)),
+            "speed"            => JsonNumber(intToBd(u#speed)),
+            "skill"            => JsonNumber(intToBd(u#skill)),
+            "luck"             => JsonNumber(intToBd(u#luck)),
+            "sprite"           => encodeSprite(u#sprite),
+            "initialInventory" => encodeInventory(u#initialInventory),
+            "description"      => JsonString(u#description)
+        };
+        match u#spriteFrames {
+            case None     => base
+            case Some(sf) => Map.insert("spriteFrames", encodeSpriteFrames(sf, u#sprite#hframes), base)
+        }
+
+    /// `initialInventory` を `[{"kind": ..., "id": ...}, ...]` JSON にする。
+    pub def encodeInventory(inv: List[InventoryEntry]): JsonElement =
+        JsonArray(List.map(encodeInventoryEntry, inv) |> List.toVector)
+
+    def encodeInventoryEntry(e: InventoryEntry): JsonElement =
+        JsonObject(Map#{
+            "kind" => JsonString(itemKindToString(e#kind)),
+            "id"   => JsonString(e#id)
+        })
+
+    def itemKindToString(k: ItemKind): String = match k {
+        case ItemKind.Weapon => "weapon"
+        case ItemKind.Staff  => "staff"
+    }
+
+    pub def encodeSprite(s: SpriteResource): JsonElement =
+        JsonObject(Map#{
+            "texture" => JsonString(s#texture),
+            "hframes" => JsonNumber(intToBd(s#hframes)),
+            "vframes" => JsonNumber(intToBd(s#vframes)),
+            "frame"   => JsonNumber(intToBd(s#frame)),
+            "offset"  => JsonCodec.encodeVec2(s#offset),
+            "scale"   => JsonCodec.encodeVec2(s#scale)
+        })
+
+    /// SpriteFrames を `{anim_name: {loop, speed, frames}}` 形式で書き出す。
+    /// 各 frame は格子 index（hframes と regionRect から逆算）+ duration。
+    def encodeSpriteFrames(sf: SpriteFrames, hframes: Int32): JsonElement =
+        let names = SpriteFrames.animationNames(sf);
+        let obj = List.foldLeft((acc, name) ->
+            match SpriteFrames.getAnimation(name, sf) {
+                case None    => acc
+                case Some(a) => Map.insert(name, encodeSpriteAnimation(a, hframes), acc)
+            }, (Map.empty(): Map[String, JsonElement]), names);
+        JsonObject(obj)
+
+    def encodeSpriteAnimation(a: SpriteFrames.Animation, hframes: Int32): JsonElement =
+        JsonObject(Map#{
+            "loop"   => Json.JsonElement.JsonBool(a#loop),
+            "speed"  => JsonNumber(floatToBd(a#speed)),
+            "frames" => JsonArray(
+                List.map(f -> encodeSpriteFrame(f, hframes), a#frames) |> List.toVector)
+        })
+
+    def encodeSpriteFrame(f: SpriteFrames.Frame, hframes: Int32): JsonElement =
+        let frameIdx = match f#regionRect {
+            case None       => 0
+            case Some(rect) =>
+                let cellW = rect#size#x;
+                let cellH = rect#size#y;
+                let col = if (cellW > 0.0) Float64.floor(rect#position#x / cellW) |> Float64.tryToInt32
+                                              |> Option.getWithDefault(0)
+                            else 0;
+                let row = if (cellH > 0.0) Float64.floor(rect#position#y / cellH) |> Float64.tryToInt32
+                                              |> Option.getWithDefault(0)
+                            else 0;
+                col + row * hframes
+        };
+        JsonObject(Map#{
+            "frame"    => JsonNumber(intToBd(frameIdx)),
+            "duration" => JsonNumber(floatToBd(f#duration))
+        })
+
+    // ────────────────────────────────────────────────────────
+    // (C) 共有デコード
+    // ────────────────────────────────────────────────────────
+
+    /// 共有 14 フィールドを decode して `UnitBase` を返す。`spriteFrames` は pure 経路では
+    /// 常に None（実体は `resolveEntriesSpriteFrames` の effectful 後段で埋める）。
+    /// 味方は別途 `growthRates` を、敵は別途特殊能力を足す。
+    pub def decodeBase(element: JsonElement): Option[UnitBase] =
+        forM (
+            obj    <- expectObject(element);
+            mtJ    <- Map.get("moveTiles", obj);
+            hpJ    <- Map.get("hp", obj);
+            atkJ   <- Map.get("attack", obj);
+            defJ   <- Map.get("defense", obj);
+            spdJ   <- Map.get("speed", obj);
+            spJ    <- Map.get("sprite", obj);
+            invJ   <- Map.get("initialInventory", obj);
+            mt     <- expectInt(mtJ);
+            hp     <- expectInt(hpJ);
+            atk    <- expectInt(atkJ);
+            df     <- expectInt(defJ);
+            spd    <- expectInt(spdJ);
+            sp     <- decodeSprite(spJ);
+            inv    <- decodeInventory(invJ)
+        ) yield {
+            // magicAttack / magicDefense / skill / luck / description / level は省略可（後方互換）。
+            let optInt = (key, default) -> Map.get(key, obj) |> Option.flatMap(expectInt)
+                                                |> Option.getWithDefault(default);
+            let mAtk = optInt("magicAttack", 0);
+            let mDef = optInt("magicDefense", 0);
+            let skl  = optInt("skill", 0);
+            let lck  = optInt("luck", 0);
+            let lvl  = optInt("level", 1);
+            let desc = Map.get("description", obj) |> Option.flatMap(expectString)
+                            |> Option.getWithDefault("");
+            ({moveTiles = mt, level = lvl, hp = hp, attack = atk, defense = df,
+              magicAttack = mAtk, magicDefense = mDef,
+              speed = spd, skill = skl, luck = lck,
+              sprite = sp, initialInventory = inv,
+              description = desc,
+              spriteFrames = None}: UnitBase)
+        }
+
+    /// `[{"kind": ..., "id": ...}, ...]` を decode。配列以外は None（schema 不整合扱い）。
+    pub def decodeInventory(element: JsonElement): Option[List[InventoryEntry]] =
+        match element {
+            case JsonArray(items) =>
+                List.foldRight(item -> acc ->
+                    Option.flatMap(soFar ->
+                        decodeInventoryEntry(item) |> Option.map(e -> e :: soFar),
+                        acc),
+                    Some(Nil), Vector.toList(items))
+            case _ => None
+        }
+
+    def decodeInventoryEntry(element: JsonElement): Option[InventoryEntry] =
+        forM (
+            obj    <- expectObject(element);
+            kindJ  <- Map.get("kind", obj);
+            idJ    <- Map.get("id", obj);
+            kStr   <- expectString(kindJ);
+            id     <- expectString(idJ);
+            kind   <- parseItemKind(kStr)
+        ) yield ({kind = kind, id = id}: InventoryEntry)
+
+    def parseItemKind(s: String): Option[ItemKind] = match s {
+        case "weapon" => Some(ItemKind.Weapon)
+        case "staff"  => Some(ItemKind.Staff)
+        case _        => None
+    }
+
+    pub def decodeSprite(element: JsonElement): Option[SpriteResource] =
+        forM (
+            obj    <- expectObject(element);
+            texJ   <- Map.get("texture", obj);
+            hfJ    <- Map.get("hframes", obj);
+            vfJ    <- Map.get("vframes", obj);
+            frJ    <- Map.get("frame", obj);
+            tex    <- expectString(texJ);
+            hf     <- expectInt(hfJ);
+            vf     <- expectInt(vfJ);
+            fr     <- expectInt(frJ)
+        ) yield {
+            let off = JsonCodec.decodeVec2OrDefault(Map.get("offset", obj), 0.0);
+            let sc  = JsonCodec.decodeVec2OrDefault(Map.get("scale", obj), 1.0);
+            ({texture = tex, hframes = hf, vframes = vf, frame = fr,
+              offset = off, scale = sc}: SpriteResource)
+        }
+
+    // ── spriteFrames の格子 → px 解決（effectful 後段パス。味方・敵で共有）──
+
+    /// 解決時のコンテキスト。1 ユニットの sprite 設定 + 解決済み cell サイズ。
+    type alias SpriteCtx = {
+        texture = String,
+        hframes = Int32,
+        vframes = Int32,
+        cellW   = Float64,
+        cellH   = Float64
+    }
+
+    /// データ JSON（units.json / enemies.json の top）から `containerKey`（"units"/"enemies"）配下の
+    /// 各エントリの `spriteFrames` を texture 実寸で格子→px 解決し、`entries` の対応リソースに差し込む。
+    /// row-polymorphic で sprite/spriteFrames を持つ任意のリソース Map に使える。
+    /// texture 未登録 / hframes×vframes 無効 / JSON 不整合のエントリは None のまま（静止フォールバック）。
+    pub def resolveEntriesSpriteFrames(dataJson: JsonElement, containerKey: String,
+                                        entries: Map[String, {sprite = SpriteResource,
+                                                               spriteFrames = Option[SpriteFrames] | r}]):
+            Map[String, {sprite = SpriteResource, spriteFrames = Option[SpriteFrames] | r}] \ GameEngine.Game =
+        match expectObject(dataJson) {
+            case None     => entries
+            case Some(top) =>
+                match Map.get(containerKey, top) |> Option.flatMap(expectObject) {
+                    case None        => entries
+                    case Some(unitsM) =>
+                        Map.foldLeftWithKey((acc, id, unitJson) ->
+                            resolveOne(id, unitJson, acc), entries, unitsM)
+                }
+        }
+
+    def resolveOne(id: String, unitJson: JsonElement,
+                    entries: Map[String, {sprite = SpriteResource,
+                                          spriteFrames = Option[SpriteFrames] | r}]):
+            Map[String, {sprite = SpriteResource, spriteFrames = Option[SpriteFrames] | r}] \ GameEngine.Game =
+        match (Map.get(id, entries), expectObject(unitJson)) {
+            case (Some(res), Some(unitObj)) =>
+                match Map.get("spriteFrames", unitObj) {
+                    case None     => entries
+                    case Some(sf) =>
+                        match buildSpriteCtx(res#sprite) {
+                            case None      => entries
+                            case Some(ctx) =>
+                                match decodeSpriteFramesGrid(sf, ctx) {
+                                    case None      => entries
+                                    case Some(sff) =>
+                                        Map.insert(id, {spriteFrames = Some(sff) | res}, entries)
+                                }
+                        }
+                }
+            case _ => entries
+        }
+
+    def buildSpriteCtx(sprite: SpriteResource): Option[SpriteCtx] \ GameEngine.Game =
+        if (sprite#hframes <= 0 or sprite#vframes <= 0) None
+        else match GameEngine.Game.getTextureInfo(sprite#texture) {
+            case None       => None
+            case Some(info) =>
+                let cellW = info#width  / Int32.toFloat64(sprite#hframes);
+                let cellH = info#height / Int32.toFloat64(sprite#vframes);
+                Some(({texture = sprite#texture, hframes = sprite#hframes,
+                        vframes = sprite#vframes, cellW = cellW, cellH = cellH}: SpriteCtx))
+        }
+
+    def decodeSpriteFramesGrid(element: JsonElement, ctx: SpriteCtx): Option[SpriteFrames] =
+        match expectObject(element) {
+            case None      => None
+            case Some(obj) =>
+                Map.foldLeftWithKey((acc, name, animJson) ->
+                    Option.flatMap(soFar ->
+                        decodeSpriteAnimationGrid(animJson, ctx) |> Option.map(anim ->
+                            SpriteFrames.addAnimation(name, anim, soFar)),
+                        acc),
+                    Some(SpriteFrames.empty()), obj)
+        }
+
+    def decodeSpriteAnimationGrid(element: JsonElement, ctx: SpriteCtx):
+            Option[SpriteFrames.Animation] =
+        forM (
+            obj      <- expectObject(element);
+            loopJ    <- Map.get("loop", obj);
+            speedJ   <- Map.get("speed", obj);
+            framesJ  <- Map.get("frames", obj);
+            lp       <- expectBool(loopJ);
+            spd      <- expectFloat(speedJ);
+            frames   <- decodeGridFrameList(framesJ, ctx)
+        ) yield ({loop = lp, speed = spd, frames = frames}: SpriteFrames.Animation)
+
+    def decodeGridFrameList(element: JsonElement, ctx: SpriteCtx):
+            Option[List[SpriteFrames.Frame]] =
+        match element {
+            case JsonArray(items) =>
+                List.foldRight(item -> acc ->
+                    Option.flatMap(soFar ->
+                        decodeGridFrame(item, ctx) |> Option.map(f -> f :: soFar),
+                        acc),
+                    Some(Nil), Vector.toList(items))
+            case _ => None
+        }
+
+    def decodeGridFrame(element: JsonElement, ctx: SpriteCtx): Option[SpriteFrames.Frame] =
+        forM (
+            obj      <- expectObject(element);
+            frameJ   <- Map.get("frame", obj);
+            frameIdx <- expectInt(frameJ)
+        ) yield {
+            let dur = Map.get("duration", obj) |> Option.flatMap(expectFloat)
+                            |> Option.getWithDefault(1.0);
+            let col = Int32.remainder(frameIdx, ctx#hframes);
+            let row = frameIdx / ctx#hframes;
+            let rect = ({
+                position = {x = Int32.toFloat64(col) * ctx#cellW,
+                             y = Int32.toFloat64(row) * ctx#cellH},
+                size = {x = ctx#cellW, y = ctx#cellH}
+            }: Rect2.Rect2);
+            ({texture = ctx#texture, regionRect = Some(rect), duration = dur}: SpriteFrames.Frame)
+        }
+}

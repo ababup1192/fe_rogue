@@ -46,7 +46,7 @@ mod TestBattlePanelScene {
         hp             = 10,
         isDying        = false,
         attackTargetId = None,
-        resource       = TestUnitFixtures.testResource(3, 10),
+        resource       = TestUnitFixtures.testEnemyResource(3, 10),
         weapon         = Some(TestUnitFixtures.testWeapon())
     }
 

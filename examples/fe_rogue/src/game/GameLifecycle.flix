@@ -21,21 +21,31 @@
 /// プール定義 (`party` / `enemyTier1`) を辿らせる。
 mod GameLifecycle {
 
+    /// 5 つのカタログを 1 つに束ねた引き回し用 record。`Game.start` で 1 度ロードして
+    /// 構築 / リビルド経路 (buildAndRecord / resetForGameOver / advanceFloor) を貫通する。
+    /// 味方 (`players`) と敵 (`enemies`) はここで別カタログとして分かれて入る。
+    pub type alias Catalogs = {
+        weapons = WeaponCatalog.WeaponCatalog,
+        players = UnitCatalog.UnitCatalog,
+        enemies = EnemyCatalog.EnemyCatalog,
+        floors  = FloorCatalog.FloorCatalog,
+        staves  = Staff.StaffCatalog
+    }
+
     /// プレイ用シーンを 1 回で組み立てる。`MapScene.add` が `IO` を要求するため
     /// 戻り値の Aef にも `IO` を含める。
     /// **直接呼ぶのは `buildAndRecord` だけ** にする (起動 / リビルド時の snapshot 記録漏れ
     /// を防ぐため、外向き API は `buildAndRecord` を使う)。
-    pub def buildPlayingScene(catalog: UnitCatalog.UnitCatalog,
-                                staffCatalog: Staff.StaffCatalog,
+    pub def buildPlayingScene(catalogs: Catalogs,
                                 floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State} =
         Scene.empty()
             |> MapScene.add(floor)
             |> DamagePopupScene.add     // World 配下に空の Marker2D 親を 1 つ生やす
-            |> PlayerScene.add(catalog, staffCatalog)
-            |> EnemyScene.add(catalog, floor)
-            |> ItemScene.add(catalog, staffCatalog, floor)   // 部屋の床に武器/杖をランダムドロップ
+            |> PlayerScene.add(catalogs#players, catalogs#staves)
+            |> EnemyScene.add(catalogs#enemies, catalogs#weapons, floor)
+            |> ItemScene.add(catalogs#players, catalogs#staves, floor)   // 部屋の床に武器/杖をランダムドロップ
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
             |> CursorScene.add
             |> ArrowCursorScene.add     // 杖発射方向の矢印カーソル (初期は非表示)
@@ -56,12 +66,11 @@ mod GameLifecycle {
     /// プレイ用シーンを組み立て + 初期 spawn 一覧 (敵 / 味方) を `InitialSpawns` に保存する。
     /// 起動時と GameOver リビルド時の両方が必ず通る経路。これで「scene 構築」と
     /// 「ゲームオーバー復帰用のスポーン記録」が必ず同じタイミングで揃う。
-    pub def buildAndRecord(catalog: UnitCatalog.UnitCatalog,
-                            staffCatalog: Staff.StaffCatalog,
+    pub def buildAndRecord(catalogs: Catalogs,
                             floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State, InitialSpawns.State} =
-        let scene = buildPlayingScene(catalog, staffCatalog, floor);
+        let scene = buildPlayingScene(catalogs, floor);
         InitialSpawns.State.put({
             enemies = EnemyScene.snapshotSpawns(scene),
             players = PlayerScene.snapshotSpawns(scene)
@@ -93,34 +102,28 @@ mod GameLifecycle {
 
     /// `FloorProgress` が指す現在フロアを解決して build + spawn snapshot 保存する。
     /// 起動時 / 全滅リスタート / クリア後ループの共通エントリ。
-    pub def buildCurrentFloor(catalog: UnitCatalog.UnitCatalog,
-                               staffCatalog: Staff.StaffCatalog,
-                               floors: FloorCatalog.FloorCatalog): Scene[NodeTag]
+    pub def buildCurrentFloor(catalogs: Catalogs): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State, InitialSpawns.State, FloorProgress.State} =
-        let floor = FloorCatalog.get(FloorProgress.State.get(), floors);
-        buildAndRecord(catalog, staffCatalog, floor)
+        let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
+        buildAndRecord(catalogs, floor)
 
     /// `CustomEffects.GameOverRequest` handler の本体。
     /// フロアを 1F に戻し、ターン進行系を初期化してから scene をリビルドして返す。
     /// handler 側は `k(GameLifecycle.resetForGameOver(catalog, staffCatalog, floors))` の 1 行で済む。
-    pub def resetForGameOver(catalog: UnitCatalog.UnitCatalog,
-                              staffCatalog: Staff.StaffCatalog,
-                              floors: FloorCatalog.FloorCatalog): Scene[NodeTag]
+    pub def resetForGameOver(catalogs: Catalogs): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State,
                 InitialSpawns.State, FloorProgress.State} =
         resetTurnState();
-        FloorProgress.State.put(FloorCatalog.firstFloorId(floors));
-        buildCurrentFloor(catalog, staffCatalog, floors)
+        FloorProgress.State.put(FloorCatalog.firstFloorId(catalogs#floors));
+        buildCurrentFloor(catalogs)
 
     /// `CustomEffects.FloorAdvanceRequest` handler の本体。
     /// 生存味方の HP / 武器 / 持ち物を引き継ぎつつ、次フロアを組み立てる。
     /// 最終フロアをクリアした（次が無い）場合はクリアログを出して 1F へループする。
-    pub def advanceFloor(catalog: UnitCatalog.UnitCatalog,
-                          staffCatalog: Staff.StaffCatalog,
-                          floors: FloorCatalog.FloorCatalog,
+    pub def advanceFloor(catalogs: Catalogs,
                           scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
@@ -128,20 +131,20 @@ mod GameLifecycle {
                 InitialSpawns.State, FloorProgress.State} =
         // 引き継ぐステータスを「現フロア退場前」に確保しておく。
         let carry = PlayerScene.snapshotCarry(scene);
-        match FloorCatalog.nextFloorId(FloorProgress.State.get(), floors) {
+        match FloorCatalog.nextFloorId(FloorProgress.State.get(), catalogs#floors) {
             case Some(nextId) =>
                 FloorProgress.State.put(nextId);
-                let nextFloor = FloorCatalog.get(nextId, floors);
+                let nextFloor = FloorCatalog.get(nextId, catalogs#floors);
                 GameLogger.playerLog("${nextFloor#label} に進む");
                 resetTurnQueues();
-                let built = buildAndRecord(catalog, staffCatalog, nextFloor);
+                let built = buildAndRecord(catalogs, nextFloor);
                 // 構築直後の party に前フロアの HP / 武器 / 持ち物を反映（たいきはリセット済み）
                 PlayerScene.reconcileWithCarry(carry, built)
             case None =>
                 // 最終フロアクリア → クリアログ → 1F へループ（フレッシュな party で再開）
                 GameLogger.playerLog("ゲームクリア！ 1F からもう一度");
                 resetTurnQueues();
-                FloorProgress.State.put(FloorCatalog.firstFloorId(floors));
-                buildCurrentFloor(catalog, staffCatalog, floors)
+                FloorProgress.State.put(FloorCatalog.firstFloorId(catalogs#floors));
+                buildCurrentFloor(catalogs)
         }
 }
