@@ -31,7 +31,10 @@ mod TestCounterAttackRules {
         moveStepsTaken     = 0,
         facing             = Staff.Direction.Down,
         hidden             = false,
-        usedStairs             = false
+        usedStairs             = false,
+        level                      = 1,
+        exp                        = 0,
+        pendingLevelUp             = None
     }
 
     /// 任意 id / 位置 / 武器 / 瀕死状態の Enemy.Data。

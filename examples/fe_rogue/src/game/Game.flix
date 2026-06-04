@@ -34,6 +34,9 @@ pub enum NodeTag {
     case BattlePanel(Duration.Duration)
     /// BattlePanelScene の Label2D（HP / 威力 / 命中 を 2 列で表示）
     case BattleText
+    /// LevelUpPanelScene の Panel ルート（レベルアップ時のステータス変化パネルの外枠）。
+    /// 内部 state は演出の進行（bonus 再生済みか / 右側を出し終えた上昇ステータス数 / 次までの残り時間）。
+    case LevelUpPanel(LevelUpPanelScene.PanelState)
     /// DamagePopupScene の Marker2D 親（World 直下に永続）
     case DamagePopupsRoot(DamagePopupScene.RootData)
     /// DamagePopupScene の Label2D 子（寿命を持つ）
@@ -161,6 +164,8 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.PanelWithState(_, NodeTag.BattlePanel(_)) =>
             checked_ecast(BattlePanelScene.process(delta, node, path, scene))
+        case EngineNode.PanelWithState(_, NodeTag.LevelUpPanel(_)) =>
+            checked_ecast(LevelUpPanelScene.process(delta, node, path, scene))
         case _ => (node, scene)
     }
 
@@ -356,6 +361,11 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
                                               => Some(checked_ecast(TradeMenuScene.confirmCurrentSelection(scene)))
         case (TurnPhase.Phase.TradeInventory,    TurnRules.Input.Cancel)
                                               => Some(checked_ecast(TradeMenuScene.cancelCurrent(scene)))
+        // レベルアップのステータス変化パネルは Z / Enter / X いずれでも閉じる（確認するだけ）。
+        case (TurnPhase.Phase.LevelUpView,       TurnRules.Input.Confirm)
+                                              => Some(checked_ecast(LevelUpPanelScene.confirm(scene)))
+        case (TurnPhase.Phase.LevelUpView,       TurnRules.Input.Cancel)
+                                              => Some(checked_ecast(LevelUpPanelScene.confirm(scene)))
         case _                                => None
     }
 

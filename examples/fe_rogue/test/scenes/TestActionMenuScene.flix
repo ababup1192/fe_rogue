@@ -85,7 +85,10 @@ mod TestActionMenuScene {
         moveStepsTaken  = 0,
         facing          = Staff.Direction.Down,
         hidden          = false,
-        usedStairs          = false
+        usedStairs          = false,
+        level                   = 1,
+        exp                     = 0,
+        pendingLevelUp          = None
     }
 
     /// World + 2 人の Player + ActionMenu を組んだテスト scene。

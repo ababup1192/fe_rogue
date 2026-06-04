@@ -81,6 +81,10 @@ mod UnitCatalog {
     /// 旧フィールド `initialWeapon` / `initialStaves` を統合した形。
     pub type alias UnitResource = {
         moveTiles        = Int32,
+        // ユニットのレベル。経験値計算（Combat.battleExp のレベル差）に使う。
+        // 味方の現在レベルは PlayerScene.Data#level が持ち、ここは「初期/基準レベル」。
+        // 敵はこの基準レベルがそのまま戦闘相手のレベルになる。旧 JSON 欠落時は decoder が 1 を埋める。
+        level            = Int32,
         hp               = Int32,
         attack           = Int32,
         defense          = Int32,
@@ -103,8 +107,27 @@ mod UnitCatalog {
         // `idle` / `walk_up` / `walk_down` / `walk_left` / `walk_right` アニメ名を
         // 移動方向に応じて再生する。設定されていなければ従来通り Sprite2D で
         // `sprite` フィールドの単一フレームを表示する。
-        spriteFrames     = Option[SpriteFrames]
+        spriteFrames     = Option[SpriteFrames],
+        // レベルアップ時のステータス成長率。旧 JSON に無い場合は decoder が全 0 を埋める。
+        growthRates      = GrowthRates
     }
+
+    /// レベルアップ時の各ステータスの成長率 (%)。0..100 を想定。
+    /// レベルアップ時にステータスごとに 0..99 の乱数を振り、`乱数 < 成長率` なら +1 する
+    /// (FE 流の成長判定)。`moveTiles` は成長対象外なので含めない。
+    pub type alias GrowthRates = {
+        hp           = Int32,   // 最大 HP の成長率
+        attack       = Int32,   // 力（物理攻撃）の成長率
+        defense      = Int32,   // 防御の成長率
+        magicAttack  = Int32,   // 魔力の成長率
+        magicDefense = Int32,   // 魔防の成長率
+        speed        = Int32    // 速さの成長率
+    }
+
+    /// 成長率が全て 0 のデフォルト値（= 一切成長しない）。JSON に `growthRates` が
+    /// 無いユニット（敵など）と後方互換のために使う。
+    pub def zeroGrowthRates(): GrowthRates =
+        {hp = 0, attack = 0, defense = 0, magicAttack = 0, magicDefense = 0, speed = 0}
 
     // 武器系の型 (WeaponType / WeaponRange / WeaponResource) は段階 6 で
     // `WeaponCatalog` mod に移動した。本 mod では後方互換のため type alias 経由で参照する。
@@ -249,9 +272,9 @@ mod UnitCatalog {
     /// `UnitResource` のフィールド構造を変更したらここも更新すること。
     /// engine 側 `Resource.checkConsistency` がこの集合と `_schema.json` を照合する。
     pub def expectedUnitFields(): Set[String] =
-        Set#{"moveTiles", "hp", "attack", "defense", "magicAttack", "magicDefense",
+        Set#{"moveTiles", "level", "hp", "attack", "defense", "magicAttack", "magicDefense",
               "speed", "skill", "luck", "sprite", "initialInventory",
-              "description", "spriteFrames"}
+              "description", "spriteFrames", "growthRates"}
 
     /// `WeaponResource` のフィールド名集合。`WeaponCatalog.expectedFields` への委譲 (後方互換)。
     /// 段階 6 のリファクタで weapons schema 検査は `WeaponCatalog.load` 内部で行うので
@@ -280,7 +303,7 @@ mod UnitCatalogCodec {
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray}
     use JsonCodec.{expectObject, expectString, expectInt, expectFloat, expectBool, floatToBd, intToBd}
-    use UnitCatalog.{UnitCatalog, UnitResource, WeaponResource}
+    use UnitCatalog.{UnitCatalog, UnitResource, WeaponResource, GrowthRates}
     use Sprite.SpriteResource
 
     // ── エンコード ──
@@ -303,6 +326,7 @@ mod UnitCatalogCodec {
     def encodeUnit(u: UnitResource): JsonElement =
         let base = Map#{
             "moveTiles"        => JsonNumber(intToBd(u#moveTiles)),
+            "level"            => JsonNumber(intToBd(u#level)),
             "hp"               => JsonNumber(intToBd(u#hp)),
             "attack"           => JsonNumber(intToBd(u#attack)),
             "defense"          => JsonNumber(intToBd(u#defense)),
@@ -464,16 +488,34 @@ mod UnitCatalogCodec {
             let desc = Map.get("description", obj)
                             |> Option.flatMap(expectString)
                             |> Option.getWithDefault("");
+            // level (ユニットのレベル) は省略可。欠落時は 1（後方互換）。
+            let lvl = Map.get("level", obj)
+                         |> Option.flatMap(expectInt)
+                         |> Option.getWithDefault(1);
+            // growthRates (レベルアップ時の成長率) は省略可。欠落時は全 0（成長しない）。
+            let growth = Map.get("growthRates", obj)
+                            |> Option.flatMap(decodeGrowthRates)
+                            |> Option.getWithDefault(UnitCatalog.zeroGrowthRates());
             // spriteFrames は pure 経路では None。
             // 実体は `UnitCatalog.loadFromString` の effectful な後段パスで、
             // sprite.hframes/vframes と texture 実寸から格子→px に解決される。
-            ({moveTiles = mt, hp = hp, attack = atk, defense = df,
+            ({moveTiles = mt, level = lvl, hp = hp, attack = atk, defense = df,
               magicAttack = mAtk, magicDefense = mDef,
               speed = spd, skill = skl, luck = lck,
               sprite = sp, initialInventory = inv,
               description = desc,
-              spriteFrames = None}: UnitResource)
+              spriteFrames = None,
+              growthRates = growth}: UnitResource)
         }
+
+    /// `{"hp": 80, "attack": 50, ...}` を `GrowthRates` に decode する。
+    /// 各キーは省略可で、欠落時はそのステータスの成長率を 0 にする。
+    def decodeGrowthRates(element: JsonElement): Option[GrowthRates] =
+        expectObject(element) |> Option.map(obj ->
+            let rate = key -> Map.get(key, obj) |> Option.flatMap(expectInt) |> Option.getWithDefault(0);
+            ({hp = rate("hp"), attack = rate("attack"), defense = rate("defense"),
+              magicAttack = rate("magicAttack"), magicDefense = rate("magicDefense"),
+              speed = rate("speed")}: GrowthRates))
 
     /// `[{"kind": "weapon"|"staff", "id": "..."}, ...]` を decode する。
     /// 配列以外なら None（必須フィールドとして扱い、欠落は schema 不整合として panic させる）。

@@ -271,4 +271,53 @@ mod TestCombat {
             {hp = 3, defense = 1, speed = 4, luck = 1},
             rel);
         Assert.assertEq(expected = (6, 87, true), (f#damage, f#hit, f#kill))
+
+    // ════════════════════════════════════════════════════════
+    // EXP 獲得（FE7 流のレベル差ベース）
+    //   定数: クラスの強さ=3 / 基準値=31 / 撃破固定=20。Int32 除算は 0 方向に切り捨て。
+    //   戦闘EXP hitExp = max(1, (31 + 敵Lv − 自Lv) / 3)
+    //   撃破EXP killExp = max(0, 3×(敵Lv − 自Lv) + 20)
+    //   1攻撃   battleExp = hitExp + (撃破なら killExp)
+    // ════════════════════════════════════════════════════════
+
+    /// 同レベルなら戦闘EXPは基準値どおり: (31 + 0) / 3 = 10
+    @Test
+    def testHitExpEqualLevels(): Unit \ Assert =
+        Assert.assertEq(expected = 10, Combat.hitExp(5, 5))
+
+    /// 自分が遥かに高レベルでも下限 1 にクランプ。
+    /// (31 + 2 − 39) / 3 = (−6) / 3 = −2 → max(1, −2) = 1（負の切り捨ても確認）
+    @Test
+    def testHitExpFarBelowFloorsAtOne(): Unit \ Assert =
+        Assert.assertEq(expected = 1, Combat.hitExp(2, 39))
+
+    /// 敵が自分より高レベルだと戦闘EXPが増える: (31 + 8 − 2) / 3 = 37 / 3 = 12（切り捨て）
+    @Test
+    def testHitExpHigherEnemyGivesMore(): Unit \ Assert =
+        Assert.assertEq(expected = 12, Combat.hitExp(8, 2))
+
+    /// 同レベル撃破の上乗せは固定値どおり: max(0, 3×0 + 20) = 20
+    @Test
+    def testKillExpEqualLevels(): Unit \ Assert =
+        Assert.assertEq(expected = 20, Combat.killExp(5, 5))
+
+    /// 敵が高レベルなら撃破EXPも増える: max(0, 3×(10 − 5) + 20) = max(0, 35) = 35
+    @Test
+    def testKillExpHigherEnemyAddsBonus(): Unit \ Assert =
+        Assert.assertEq(expected = 35, Combat.killExp(10, 5))
+
+    /// 自分より十分弱い敵の撃破は 0 にクランプ: max(0, 3×(0 − 10) + 20) = max(0, −10) = 0
+    @Test
+    def testKillExpFarBelowEnemyFloorsAtZero(): Unit \ Assert =
+        Assert.assertEq(expected = 0, Combat.killExp(0, 10))
+
+    /// 未撃破（killed=false）は戦闘EXPのみ: battleExp(5,5,false) = hitExp(5,5) = 10
+    @Test
+    def testBattleExpHitOnlyEqualsHitExp(): Unit \ Assert =
+        Assert.assertEq(expected = 10, Combat.battleExp(5, 5, false))
+
+    /// 撃破（killed=true）は戦闘EXP + 撃破EXP: battleExp(5,5,true) = 10 + 20 = 30
+    @Test
+    def testBattleExpKillAddsKillExp(): Unit \ Assert =
+        Assert.assertEq(expected = 30, Combat.battleExp(5, 5, true))
 }

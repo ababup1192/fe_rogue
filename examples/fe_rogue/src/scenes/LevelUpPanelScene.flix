@@ -1,0 +1,337 @@
+/// LevelUpPanelScene — レベルアップ時のステータス変化パネル
+///
+/// `LevelUpView` フェーズで画面中央に表示される。攻撃解決でレベルアップを検出した味方の
+/// `pendingLevelUp`（`LevelSystem.Result`）を読み、ヘッダに「{兵種名} Lv {前} -> Lv {後}」、
+/// 本文に各ステータスを並べる。
+///
+/// 演出（時間で進む簡易ステートマシン。音の再生終了は検知できないので、各音の長さぶん待つ）:
+///   1. パネルを出す瞬間に bonus.ogg を鳴らす。この間はステータスの「左側」(現在値) だけ見せる。
+///   2. bonus.ogg が鳴り終わったら、**上昇したステータスだけ** 右側「-> 新値 +1」を 1 つずつ出す。
+///   3. 1 つ出すたびに status_up.mp3 を鳴らし、鳴り終わったら次へ。無ければ終わり。
+///   4. `+1` は丸括弧を外し、目立つ色（金色）で色付けする。
+/// Z / Enter / X で閉じると `confirm` が `pendingLevelUp` を消して通常のターン確定に戻る。
+///
+/// ノード構造（visible のとき）。本文は列ごとに Label2D を分け、数値列を右揃えにして
+/// フォントのスペース幅・全角幅に依存せず桁と `+1` がそろうようにしている:
+///   LevelUpPanel (CanvasLayer, layer=5)
+///     ├─ panel      (Panel, NodeTag.LevelUpPanel(PanelState))
+///     ├─ header     (Label2D, NoTag) — 「{兵種名} Lv 前 -> 後」
+///     ├─ bodyLabels (Label2D, 左揃え) — ステータス名 6 行
+///     ├─ bodyBefore (Label2D, 右揃え) — 現在値 6 行
+///     ├─ bodyArrow  (Label2D, 左揃え) — "->"（上昇を出した行だけ）
+///     ├─ bodyAfter  (Label2D, 右揃え) — 新値（同上）
+///     ├─ bodyPlus   (Label2D, 左揃え・金色) — "+1"（同上）
+///     └─ footer     (Label2D, NoTag)
+mod LevelUpPanelScene {
+
+    use Json.JsonError.JsonError
+    use Json.Path.Path.Root
+
+    // ────────────────────────────────────────────────────────
+    // (A) 演出ステート
+    // ────────────────────────────────────────────────────────
+
+    /// パネル表示中の演出の進行状態。Panel ノードのタグに載せてフレーム間で持ち越す。
+    ///   - `started`  : bonus.ogg を鳴らして演出を開始済みか（LevelUpView 突入の最初のフレームで true）。
+    ///   - `revealed` : 右側「-> 新値 +1」を出し終えた「上昇ステータス」の数。
+    ///   - `timer`    : 次のアクション（最初の reveal / 次の reveal）までの残り時間 = 直前に鳴らした音の長さ。
+    pub type alias PanelState = {
+        started  = Bool,
+        revealed = Int32,
+        timer    = Duration.Duration
+    }
+
+    /// 演出開始前の初期状態。LevelUpView の外では常にこれに戻し、次のレベルアップで鳴らし直す。
+    def initialState(): PanelState =
+        {started = false, revealed = 0, timer = Duration.zero()}
+
+    // ────────────────────────────────────────────────────────
+    // (B) 定数
+    // ────────────────────────────────────────────────────────
+
+    def sceneJsonPath(): String = "src/scenes/LevelUpPanelScene.scene.json"
+
+    /// fontManifest で登録した name（BattlePanel / LogScene と同じ "ui"）。
+    def fontName(): String = "ui"
+
+    /// 効果音名（assets/audio のファイル名から拡張子を除いたもの）。
+    def bonusSound(): String    = "bonus"
+    def statusUpSound(): String = "status_up"
+
+    /// 各音の長さ。鳴り終わりを検知する API が無いので、音の長さぶん待って「鳴り終わった」とみなす。
+    /// （bonus.ogg ≈ 2.04 秒 / status_up.ogg ≈ 0.82 秒）
+    def bonusDuration(): Duration.Duration    = Duration.millis(2036)
+    def statusUpDuration(): Duration.Duration = Duration.millis(816)
+
+    /// 上昇しなかった行を「さっと（無音で）」出すときの待ち時間。ごく短くして一瞬で送る。
+    def quickDuration(): Duration.Duration = Duration.millis(90)
+
+    /// `+1` の色（レベルアップを喜ぶ明るい金色 #FFE94A）。`+1` 列の Label2D を丸ごとこの色にする。
+    def plusColor(): Color = {r = 1.0f32, g = 0.914f32, b = 0.29f32}
+
+    /// 本文の通常テキスト色（白）。ラベル・数値・矢印列に使う。
+    def whiteColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+
+    def rootName(): String       = "LevelUpPanel"
+    def panelName(): String      = "panel"
+    def headerName(): String     = "header"
+    // 本文は列ごとに別ノードに分ける。各列を Label2D の右揃え（数値）/左揃え（ラベル・矢印・+1）で
+    // 固定 x に置くことで、フォントのスペース幅や全角幅に依存せず桁と `+1` がそろう。
+    def bodyLabelsName(): String = "bodyLabels"
+    def bodyBeforeName(): String = "bodyBefore"
+    def bodyArrowName(): String  = "bodyArrow"
+    def bodyAfterName(): String  = "bodyAfter"
+    def bodyPlusName(): String   = "bodyPlus"
+    def footerName(): String     = "footer"
+
+    def panelPath(): NodePath      = rootName() :: panelName()      :: Nil
+    def headerPath(): NodePath     = rootName() :: headerName()     :: Nil
+    def bodyLabelsPath(): NodePath = rootName() :: bodyLabelsName() :: Nil
+    def bodyBeforePath(): NodePath = rootName() :: bodyBeforeName() :: Nil
+    def bodyArrowPath(): NodePath  = rootName() :: bodyArrowName()  :: Nil
+    def bodyAfterPath(): NodePath  = rootName() :: bodyAfterName()  :: Nil
+    def bodyPlusPath(): NodePath   = rootName() :: bodyPlusName()   :: Nil
+    def footerPath(): NodePath     = rootName() :: footerName()     :: Nil
+
+    /// scene.json 内の "tag" 文字列 → NodeTag への変換。
+    def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+        match opt {
+            case None                   => Ok(NodeTag.NoTag)
+            case Some("NoTag")          => Ok(NodeTag.NoTag)
+            case Some("LevelUpPanel")   => Ok(NodeTag.LevelUpPanel(initialState()))
+            case Some(unknown)          =>
+                Err(JsonError(Root, Set#{"LevelUpPanelScene tag (got: ${unknown})"}))
+        }
+
+    /// scene にパネルを追加する。`GameLifecycle.buildPlayingScene` の構築パイプで 1 回呼ぶ。
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+        let atlas = GameEngine.Game.getFontAtlas(fontName());
+        SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas, tagParser, scene)
+
+    // ────────────────────────────────────────────────────────
+    // (C) 毎フレーム処理（演出ステートマシン）
+    // ────────────────────────────────────────────────────────
+
+    /// Game.flix の `Node[NodeTag] instance` の `process` redef から LevelUpPanel の Panel
+    /// ノードに対して dispatch される（panel は 1 個なので 1 フレーム 1 回）。
+    /// LevelUpView 中は演出を 1 フレームぶん進め、可視性と本文を再評価する。
+    pub def process(delta: Duration.Duration,
+                     node: EngineNode[NodeTag],
+                     _path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag]) \ {TurnPhase.State, GameEngine.Audio} =
+        let phase = TurnPhase.State.get();
+        let next =
+            if (phase != TurnPhase.Phase.LevelUpView)
+                // 表示外: 隠してステートを初期化（次のレベルアップで bonus を鳴らし直すため）。
+                scene |> applyVisibility(false) |> writeState(initialState())
+            else match pendingResult(scene) {
+                case None         => applyVisibility(true, scene)
+                case Some(result) => stepReveal(delta, result, scene)
+            };
+        match Scene.getEngineNode(panelPath(), next) {
+            case Some(latest) => (latest, next)
+            case None         => (node, next)
+        }
+
+    /// 演出を 1 フレーム進める。bonus → 各ステータス行を上から 1 行ずつ出す。
+    /// 上昇した行は status_up を鳴らしてゆっくり、上昇しなかった行は無音で一瞬で送る。
+    /// `revealed` は「出し終えた行数」(0..6)。
+    def stepReveal(delta: Duration.Duration, result: LevelSystem.Result,
+                    scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Audio =
+        let st   = currentState(scene);
+        let rows = List.length(result#changes);
+        let nextState =
+            if (not st#started) {
+                // 表示の瞬間: bonus.ogg を鳴らし、鳴り終わるまで本文の数値は出さない。
+                AudioStreamPlayer.play(bonusSound());
+                {started = true, revealed = 0, timer = bonusDuration()}
+            } else {
+                let remaining = Duration.subClampedToZero(st#timer, delta);
+                if (not Duration.isPositive(remaining) and st#revealed < rows)
+                    // 直前の待ちが明けた & まだ出していない行がある → 次のステップを出す。
+                    revealNextStep(result, st#revealed)
+                else
+                    {started = true, revealed = st#revealed, timer = remaining}
+            };
+        scene
+            |> applyVisibility(true)
+            |> applyContent(result, nextState#revealed)
+            |> writeState(nextState)
+
+    /// 次のステップを出す。上昇した行は 1 行だけ status_up を鳴らしてゆっくり、
+    /// 据え置きの行は**連続する分をまとめて**無音で一気に出し、待ちは（各行ではなく）まとめて 1 回ぶん。
+    def revealNextStep(result: LevelSystem.Result, revealed: Int32):
+            PanelState \ GameEngine.Audio =
+        if (rowGained(result, revealed)) {
+            AudioStreamPlayer.play(statusUpSound());
+            {started = true, revealed = revealed + 1, timer = statusUpDuration()}
+        } else
+            // 据え置き行は次の上昇行（または末尾）まで一気に revealed を進める → まとめて 1 回の待ち。
+            {started = true, revealed = nextGainedIndex(result, revealed), timer = quickDuration()}
+
+    /// `index` 以降で最初に「上昇した行」のインデックス。無ければ総行数（= まとめて末尾まで出す）。
+    def nextGainedIndex(result: LevelSystem.Result, index: Int32): Int32 =
+        if (index >= List.length(result#changes)) index
+        else if (rowGained(result, index)) index
+        else nextGainedIndex(result, index + 1)
+
+    /// `index` 行目のステータスが上昇したか。範囲外は false。
+    def rowGained(result: LevelSystem.Result, index: Int32): Bool =
+        List.nth(index, result#changes) |> Option.map(change -> change#gained) |> Option.getWithDefault(false)
+
+    // ────────────────────────────────────────────────────────
+    // (D) 可視性・内容・ステート読み書き
+    // ────────────────────────────────────────────────────────
+
+    /// Panel と各ラベル/列の visible をまとめて切り替える（Label2D は親の可視性を見ないので個別に）。
+    def applyVisibility(visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(headerPath(),     CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(bodyLabelsPath(), CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(bodyBeforePath(), CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(bodyArrowPath(),  CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(bodyAfterPath(),  CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(bodyPlusPath(),   CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(footerPath(),     CanvasItem.setVisible(visible))
+
+    /// ヘッダと本文の各列を「出し終えた行数」`revealed` に合わせて書き込む。
+    /// ラベル列は固定。現在値は出した行だけ、矢印/新値/+1 は出した行のうち上昇した行だけ出す。
+    /// 数値は列ごとに右揃え（Label2D の Right アライメント）なので桁・`+1` がそろう。
+    def applyContent(result: LevelSystem.Result, revealed: Int32,
+                      scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> Label2D.mapAt(headerPath(), Label2D.setText(formatHeader(result)))
+            |> setColumn(bodyLabelsPath(), HorizontalAlignment.Left,  whiteColor(), colLabels(result))
+            |> setColumn(bodyBeforePath(), HorizontalAlignment.Right, whiteColor(), colBefore(result, revealed))
+            |> setColumn(bodyArrowPath(),  HorizontalAlignment.Left,  whiteColor(), colArrow(result, revealed))
+            |> setColumn(bodyAfterPath(),  HorizontalAlignment.Right, whiteColor(), colAfter(result, revealed))
+            |> setColumn(bodyPlusPath(),   HorizontalAlignment.Left,  plusColor(),  colPlus(result, revealed))
+
+    /// 列 Label2D にテキスト・揃え・色をまとめて設定する。
+    def setColumn(path: NodePath, align: HorizontalAlignment, color: Color,
+                   text: String, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Label2D.mapAt(path, label ->
+            label
+                |> Label2D.setText(text)
+                |> Label2D.setHorizontalAlignment(align)
+                |> CanvasItem.setModulate(color), scene)
+
+    /// Panel ノードのタグから現在の演出ステートを読む。未設定なら初期状態。
+    def currentState(scene: Scene[NodeTag]): PanelState =
+        match Scene.getState(panelPath(), scene) {
+            case Some(NodeTag.LevelUpPanel(st)) => st
+            case _                              => initialState()
+        }
+
+    /// 演出ステートを Panel ノードのタグに書き戻す。
+    def writeState(st: PanelState, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(panelPath(), n -> match n {
+            case EngineNode.PanelWithState(panel, NodeTag.LevelUpPanel(_)) =>
+                EngineNode.PanelWithState(panel, NodeTag.LevelUpPanel(st))
+            case other => other
+        }, scene)
+
+    /// レベルアップ保留中の味方の結果を 1 つ拾う（味方ターンなので同時に複数は出ない）。
+    def pendingResult(scene: Scene[NodeTag]): Option[LevelSystem.Result] =
+        PlayerScene.getAll(scene)
+            |> List.filterMap(d -> d#pendingLevelUp)
+            |> List.head
+
+    /// パネルが何行ぶん出し終えれば「全部表示済み」か（= ステータス行数）。
+    def totalRows(result: LevelSystem.Result): Int32 =
+        List.length(result#changes)
+
+    // ────────────────────────────────────────────────────────
+    // (E) 入力
+    // ────────────────────────────────────────────────────────
+
+    /// `LevelUpView` + Z/Enter/X の確定。2 段階にする:
+    ///   1 回目（まだ全行を出し切っていない）→ 残りを**一気に全部出して止める**（閉じない）。
+    ///   2 回目（既に全て出ている）→ 今表示中の味方のパネルを閉じる。まだレベルアップ待ちの
+    ///      味方が居れば（敵ターン中の複数反撃など）演出を初期化して次の味方を表示し、居なければ復帰する。
+    pub def confirm(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger, EnemyTurn.Queue,
+                              TurnPhase.State, SelectedPlayer.State} =
+        let st    = currentState(scene);
+        let total = pendingResult(scene) |> Option.map(totalRows) |> Option.getWithDefault(0);
+        if (st#revealed < total)
+            // まだ出し切っていない → 全行を即座に表示して止める（閉じない）。
+            // revealed を total に飛ばすと process が次フレームで全行・全 `+1` を描く。
+            writeState({revealed = total, started = true, timer = st#timer}, scene)
+        else match firstPendingId(scene) {
+            case None     => resume(scene)
+            case Some(id) =>
+                // 今表示中（先頭）の味方の保留を 1 件だけ消す。
+                let cleared = PlayerScene.mapPlayer(id, dd -> {pendingLevelUp = None | dd}, scene);
+                if (PlayerScene.anyPendingLevelUp(cleared))
+                    // まだ他に居る → 演出 state を初期化し、次の味方を最初（bonus）から表示。
+                    PhaseTransitions.enterLevelUpView(writeState(initialState(), cleared))
+                else
+                    resume(cleared)
+        }
+
+    /// パネルを閉じ切ったあとの復帰先を文脈で分ける:
+    ///   - 自分の攻撃中（SelectedPlayer あり）→ `commitWaitedAndAdvance` でターンを確定・続行。
+    ///   - 敵ターン中の反撃由来（SelectedPlayer なし）→ 敵ターンに戻って続行（キューはそのまま）。
+    def resume(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger, EnemyTurn.Queue,
+                              TurnPhase.State, SelectedPlayer.State} =
+        match SelectedPlayer.State.get()#id {
+            case Some(_) => PlayerScene.commitWaitedAndAdvance(scene)
+            case None    => PhaseTransitions.enterEnemyTurn(scene)
+        }
+
+    /// レベルアップ表示待ちの味方のうち先頭（= いま表示している味方）の id。
+    def firstPendingId(scene: Scene[NodeTag]): Option[Int32] =
+        PlayerScene.getAll(scene)
+            |> List.filter(d -> Option.nonEmpty(d#pendingLevelUp))
+            |> List.map(d -> d#id)
+            |> List.head
+
+    // ────────────────────────────────────────────────────────
+    // (F) テキスト整形
+    // ────────────────────────────────────────────────────────
+
+    /// ヘッダ行「{兵種名}   Lv {前} -> Lv {後}」。
+    def formatHeader(result: LevelSystem.Result): String =
+        "${result#unitName}   Lv ${result#fromLevel} -> Lv ${result#toLevel}"
+
+    /// ラベル列（左揃え）。各行は兵種ステータス名のみ（常に全行表示）。
+    def colLabels(result: LevelSystem.Result): String =
+        result#changes |> List.map(change -> change#label) |> joinLines
+
+    /// 現在値列（右揃え）。出し終えた行（index < revealed）にだけ「前の値」を出す。
+    def colBefore(result: LevelSystem.Result, revealed: Int32): String =
+        result#changes
+            |> List.mapWithIndex(i -> change -> if (i < revealed) "${change#before}" else "")
+            |> joinLines
+
+    /// 矢印列（左揃え）。出した行のうち上昇した行だけ "->"。
+    def colArrow(result: LevelSystem.Result, revealed: Int32): String =
+        result#changes
+            |> List.mapWithIndex(i -> change -> if (i < revealed and change#gained) "->" else "")
+            |> joinLines
+
+    /// 新値列（右揃え）。出した行のうち上昇した行だけ「後の値」。
+    def colAfter(result: LevelSystem.Result, revealed: Int32): String =
+        result#changes
+            |> List.mapWithIndex(i -> change -> if (i < revealed and change#gained) "${change#after}" else "")
+            |> joinLines
+
+    /// `+1` 列（左揃え・金色）。出した行のうち上昇した行だけ "+1"。
+    def colPlus(result: LevelSystem.Result, revealed: Int32): String =
+        result#changes
+            |> List.mapWithIndex(i -> change -> if (i < revealed and change#gained) "+1" else "")
+            |> joinLines
+
+    /// 文字列リストを改行で連結する（末尾改行なし）。
+    def joinLines(lines: List[String]): String =
+        match lines {
+            case Nil          => ""
+            case head :: rest => List.foldLeft((acc, line) -> "${acc}\n${line}", head, rest)
+        }
+
+}

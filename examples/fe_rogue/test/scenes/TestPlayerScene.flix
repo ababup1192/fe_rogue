@@ -63,7 +63,10 @@ mod TestPlayerScene {
                         moveStepsTaken    = 0,
                         facing            = Staff.Direction.Down,
                         hidden            = false,
-                        usedStairs            = false
+                        usedStairs            = false,
+                        level                     = 1,
+                        exp                       = 0,
+                        pendingLevelUp            = None
                     })))
 
     /// プレイヤー id のワールド座標を取り出す
@@ -386,7 +389,10 @@ mod TestPlayerScene {
         moveStepsTaken  = 0,
         facing          = Staff.Direction.Down,
         hidden          = false,
-        usedStairs          = false
+        usedStairs          = false,
+        level                   = 1,
+        exp                     = 0,
+        pendingLevelUp          = None
     }
 
     /// origin 1 マスだけが床で、ほかは壁の MapSnapshot（再配置の不足ケース用）。
@@ -497,9 +503,12 @@ mod TestPlayerScene {
             |> PlayerScene.addOnePlayer(mkSpawn(0))
             |> PlayerScene.addOnePlayer(mkSpawn(1))
             |> PlayerScene.addOnePlayer(mkSpawn(2));
+        let baseStats = LevelSystem.statsOf(fx#unitSample);
         let carry =
-            ({id = 0, hp = 3, weapons = spear :: Nil, staves = Nil}: PlayerScene.CarryData) ::
-            ({id = 1, hp = 7, weapons = Nil,          staves = Nil}: PlayerScene.CarryData) :: Nil;
+            ({id = 0, hp = 3, weapons = spear :: Nil, staves = Nil,
+              level = 1, exp = 0, stats = baseStats}: PlayerScene.CarryData) ::
+            ({id = 1, hp = 7, weapons = Nil,          staves = Nil,
+              level = 1, exp = 0, stats = baseStats}: PlayerScene.CarryData) :: Nil;
         let after = PlayerScene.reconcileWithCarry(carry, scene);
         Assert.assertEq(
             expected = (0 :: 1 :: Nil, 3, 7, "くんれんやり" :: Nil),

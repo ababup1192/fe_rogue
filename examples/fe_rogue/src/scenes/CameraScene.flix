@@ -127,6 +127,8 @@ mod CameraScene {
             case TurnPhase.Phase.AttackForecast   => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerAttack     => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerAttackHold => cursorWorldPos(scene)
+            // レベルアップ表示中はレベルアップした味方（選択中の駒）を映したまま据え置く。
+            case TurnPhase.Phase.LevelUpView      => focusPos
             case TurnPhase.Phase.TradeTargetSelect => cursorWorldPos(scene)
             case TurnPhase.Phase.TradeInventory    => focusPos
             case TurnPhase.Phase.PlayerAutoMove   => lordWorldPos(scene)

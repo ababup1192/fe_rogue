@@ -47,6 +47,7 @@ mod GameLifecycle {
             |> ActionMenuScene.add      // 行動選択ウィンドウ (初期は非表示)
             |> TradeMenuScene.add       // 物交換ウィンドウ (2 ペイン、初期は非表示)
             |> BattlePanelScene.add   // 戦闘予報パネル (初期は非表示)
+            |> LevelUpPanelScene.add  // レベルアップのステータス変化パネル (初期は非表示)
             |> UnitInfoPopupScene.add   // カーソル上のユニット情報パネル (初期は非表示)
             |> BgmScene.add             // BGM (AudioStreamPlayer, autoplay=true で起動時から再生)
             // 全ノード配置後に階段を床のランダムセルへ置く (駒・アイテムを避けるため最後)
