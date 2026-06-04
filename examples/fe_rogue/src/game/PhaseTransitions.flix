@@ -97,6 +97,16 @@ mod PhaseTransitions {
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToCell(target)
 
+    /// LevelUpView フェーズに入る (攻撃解決でレベルアップを検出したとき)。
+    /// ステータス変化パネルを出して入力待ちにするフェーズ。味方の範囲表示を全消しし、
+    /// カーソルも隠してモーダル表示にする。パネルの可視化と内容は LevelUpPanelScene.process が
+    /// phase を見て行うので、ここはフェーズ設定と下地の片付けだけに徹する。
+    pub def enterLevelUpView(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.LevelUpView);
+        clearAllPlayerRanges(scene)
+            |> CursorScene.setVisible(false)
+
     /// PlayerMoving フェーズに入る (味方マスで Z 押下時)。
     /// 動作 (表 3 行目): EnemyRange 消去 → Move/MoveAttack を選択中味方起点で refresh →
     ///                    カーソルを隠す (移動中はカーソル不要)。

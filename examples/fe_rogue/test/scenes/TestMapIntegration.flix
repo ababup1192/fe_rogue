@@ -262,7 +262,10 @@ mod TestMapIntegration {
                         moveStepsTaken    = 0,
                         facing            = Staff.Direction.Down,
                         hidden            = false,
-                        usedStairs            = false
+                        usedStairs            = false,
+                        level                     = 1,
+                        exp                       = 0,
+                        pendingLevelUp            = None
                     })))
 
     /// プレイヤー id=0 の world 座標

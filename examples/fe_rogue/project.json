@@ -32,6 +32,7 @@
     {"name": "bonus",      "path": "assets/audio/bonus.ogg",      "looping": false},
     {"name": "down_enemy", "path": "assets/audio/down_enemy.wav", "looping": false},
     {"name": "miss",       "path": "assets/audio/miss.wav",       "looping": false},
-    {"name": "find",       "path": "assets/audio/find.wav",       "looping": false}
+    {"name": "find",       "path": "assets/audio/find.wav",       "looping": false},
+    {"name": "status_up",  "path": "assets/audio/status_up.ogg",  "looping": false}
   ]
 }

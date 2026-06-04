@@ -30,7 +30,10 @@ mod TestBattlePanelScene {
         moveStepsTaken    = 0,
         facing            = Staff.Direction.Down,
         hidden            = false,
-        usedStairs            = false
+        usedStairs            = false,
+        level                     = 1,
+        exp                       = 0,
+        pendingLevelUp            = None
     }
 
     /// 隣接マス (3,2) に立つ生存中の敵。武器持ち（反撃可）。

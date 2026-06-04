@@ -92,6 +92,11 @@ mod TurnPhase {
         /// `Pacing.State.hold` が抜けた瞬間に GameManager が `commitWaitedAndAdvance`
         /// を呼び、PlayerCursor または EnemyTurn に遷移する。
         case PlayerAttackHold
+        /// レベルアップのステータス変化パネルを表示して入力待ちにするフェーズ。
+        /// 攻撃解決でレベルアップを検出した味方の `pendingLevelUp` を LevelUpPanelScene が表示し、
+        /// Z / Enter で閉じると通常のターン確定（commitWaitedAndAdvance）に戻る。
+        /// その間は移動・選択など他の入力を受け付けない（モーダル）。
+        case LevelUpView
         /// ローグ移動モード・合流フェーズ。「しゅうごう」確定直後、ロード(id 0)以外の味方が
         /// ロードに向かって 1 マスずつ自動で歩き、ロードに重なると非表示になって退避する。
         /// 全員ロードに合流したら `RogueMove` に進む。入力は受け付けない。

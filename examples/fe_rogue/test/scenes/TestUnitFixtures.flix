@@ -21,6 +21,7 @@ mod TestUnitFixtures {
     /// `initialInventory` はテスト用カタログに普段は登録しない仮 id（ID 解決を踏まないテストでの埋め値）。
     pub def testResource(moveTiles: Int32, hp: Int32): UnitCatalog.UnitResource = {
         moveTiles     = moveTiles,
+        level         = 1,
         hp            = hp,
         attack        = 3,
         defense       = 1,
@@ -41,7 +42,8 @@ mod TestUnitFixtures {
             offset  = {x = 0.0, y = 0.0},
             scale   = {x = 1.0, y = 1.0}
         },
-        spriteFrames  = None
+        spriteFrames  = None,
+        growthRates   = UnitCatalog.zeroGrowthRates()
     }
 
     /// 戦闘パラメータも明示的に指定したいケース用。
@@ -51,6 +53,7 @@ mod TestUnitFixtures {
                               attack: Int32, defense: Int32, speed: Int32):
                               UnitCatalog.UnitResource = {
         moveTiles     = moveTiles,
+        level         = 1,
         hp            = hp,
         attack        = attack,
         defense       = defense,
@@ -71,7 +74,8 @@ mod TestUnitFixtures {
             offset  = {x = 0.0, y = 0.0},
             scale   = {x = 1.0, y = 1.0}
         },
-        spriteFrames  = None
+        spriteFrames  = None,
+        growthRates   = UnitCatalog.zeroGrowthRates()
     }
 
     /// 魔力・魔防まで明示したいケース用。物理ステ・魔法ステを両方検証したいときに使う。
@@ -80,6 +84,7 @@ mod TestUnitFixtures {
                                magicAttack: Int32, magicDefense: Int32,
                                speed: Int32): UnitCatalog.UnitResource = {
         moveTiles     = moveTiles,
+        level         = 1,
         hp            = hp,
         attack        = attack,
         defense       = defense,
@@ -100,7 +105,8 @@ mod TestUnitFixtures {
             offset  = {x = 0.0, y = 0.0},
             scale   = {x = 1.0, y = 1.0}
         },
-        spriteFrames  = None
+        spriteFrames  = None,
+        growthRates   = UnitCatalog.zeroGrowthRates()
     }
 
     /// テスト用 WeaponResource。中庸な攻撃力 2 / 耐久度 10 / 直接攻撃 (range 1-1)。

@@ -62,7 +62,10 @@ mod TestItemMenuScene {
             moveStepsTaken    = 0,
             facing            = Staff.Direction.Down,
             hidden            = false,
-            usedStairs            = false
+            usedStairs            = false,
+            level                     = 1,
+            exp                       = 0,
+            pendingLevelUp            = None
         };
         let withWorld = Scene.empty()
             |> Scene.addNode(MapScene.worldName(),

@@ -182,6 +182,8 @@ mod EnemyTurnDriverScene {
 
     /// 敵ターンの後始末: ターン番号繰り上げ + 全プレイヤーを `waited = false` にリセット +
     /// カーソル復活 + 味方ターン宣言。
+    /// （反撃でのレベルアップは反撃ごとに `PlayerScene.onAttackLungeDone` がその場で表示するので、
+    ///  ここに来る時点で保留は残っていない。）
     def endTurn(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, TurnPhase.State,

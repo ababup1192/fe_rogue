@@ -18,12 +18,14 @@ mod TestUnitCatalog {
         "  \"units\": {" ::
         "    \"knight\": {" ::
         "      \"moveTiles\": 4," ::
+        "      \"level\": 5," ::
         "      \"hp\": 14," ::
         "      \"attack\":  6," ::
         "      \"defense\": 5," ::
         "      \"magicAttack\":  1," ::
         "      \"magicDefense\": 2," ::
         "      \"speed\":   2," ::
+        "      \"growthRates\": { \"hp\": 80, \"attack\": 50, \"defense\": 40, \"magicAttack\": 20, \"magicDefense\": 30, \"speed\": 45 }," ::
         "      \"initialInventory\": [" ::
         "        { \"kind\": \"weapon\", \"id\": \"trainingSpear\" }," ::
         "        { \"kind\": \"staff\",  \"id\": \"live_staff\" }" ::
@@ -177,6 +179,54 @@ mod TestUnitCatalog {
                 };
                 Assert.assertEq(expected = (0, 0),
                                 (goblin#magicAttack, goblin#magicDefense))
+        }
+
+    /// level は指定があればその値、省略時は 1（後方互換）。knight=5 / goblin=未指定→1。
+    @Test
+    def testUnitDecodesLevelWithDefault(): Unit \ Assert =
+        match buildSampleCatalog() {
+            case None    => Assert.assertEq(expected = "decoded", "none")
+            case Some(c) =>
+                let units = UnitCatalog.unitsOf(c);
+                let knight = match Map.get("knight", units) {
+                    case Some(u) => u
+                    case None    => bug!("knight not in sample catalog")
+                };
+                let goblin = match Map.get("goblin", units) {
+                    case Some(u) => u
+                    case None    => bug!("goblin not in sample catalog")
+                };
+                Assert.assertEq(expected = (5, 1), (knight#level, goblin#level))
+        }
+
+    /// growthRates が指定されたユニットは各成長率を読み取る（knight: hp80/atk50/def40/魔20/魔防30/速45）。
+    @Test
+    def testUnitDecodesGrowthRates(): Unit \ Assert =
+        match buildSampleCatalog() {
+            case None    => Assert.assertEq(expected = "decoded", "none")
+            case Some(c) =>
+                let knight = match Map.get("knight", UnitCatalog.unitsOf(c)) {
+                    case Some(u) => u
+                    case None    => bug!("knight not in sample catalog")
+                };
+                let g = knight#growthRates;
+                Assert.assertEq(expected = (80, 50, 40, 20, 30, 45),
+                                (g#hp, g#attack, g#defense, g#magicAttack, g#magicDefense, g#speed))
+        }
+
+    /// growthRates を省略したユニットは全成長率 0 でデコードされる（後方互換）。
+    @Test
+    def testUnitGrowthRatesDefaultsToZero(): Unit \ Assert =
+        match buildSampleCatalog() {
+            case None    => Assert.assertEq(expected = "decoded", "none")
+            case Some(c) =>
+                let goblin = match Map.get("goblin", UnitCatalog.unitsOf(c)) {
+                    case Some(u) => u
+                    case None    => bug!("goblin not in sample catalog")
+                };
+                let g = goblin#growthRates;
+                Assert.assertEq(expected = (0, 0, 0, 0, 0, 0),
+                                (g#hp, g#attack, g#defense, g#magicAttack, g#magicDefense, g#speed))
         }
 
     /// `weaponType` 明示の武器が魔法武器としてデコードされる（trainingSword: "Magic"）

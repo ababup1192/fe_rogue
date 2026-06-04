@@ -251,13 +251,17 @@ mod UnitInfoPopupScene {
         if (kind == "enemy") renderEnemy(id, scene)
         else renderPlayer(id, scene)
 
+    /// ステータス画面に出すレベル / 経験値。味方のみ持つので Option で渡す（敵は None）。
+    type alias LevelExp = {level = Int32, exp = Int32}
+
     def renderEnemy(id: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameEngine.Game =
         match EnemyScene.get(id, scene) {
             case None    => hide(scene)
             case Some(d) =>
                 let weapons = Option.toList(d#weapon);
-                renderPanel(d#resource, d#hp, weapons, scene)
+                // 敵はレベル / 経験値の概念が無いので None。
+                renderPanel(d#resource, d#hp, weapons, None, scene)
         }
 
     def renderPlayer(id: Int32, scene: Scene[NodeTag]):
@@ -265,17 +269,19 @@ mod UnitInfoPopupScene {
         match PlayerScene.get(id, scene) {
             case None    => hide(scene)
             case Some(d) =>
-                renderPanel(d#resource, d#hp, d#weapons, scene)
+                renderPanel(d#resource, d#hp, d#weapons,
+                            Some({level = d#level, exp = d#exp}), scene)
         }
 
     /// viewMode に従って Status または Items view を描く。
     def renderPanel(res: UnitCatalog.UnitResource,
                      currentHp: Int32,
                      weapons: List[UnitCatalog.WeaponResource],
+                     levelExp: Option[LevelExp],
                      scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let cleared = clearContents(scene);
         let withContents = match getViewMode(cleared) {
-            case ViewMode.Status => renderStatusView(res, currentHp, cleared)
+            case ViewMode.Status => renderStatusView(res, currentHp, levelExp, cleared)
             case ViewMode.Items  => renderItemsView(res, weapons, cleared)
         };
         // パネルを可視化
@@ -285,6 +291,7 @@ mod UnitInfoPopupScene {
 
     def renderStatusView(res: UnitCatalog.UnitResource,
                           currentHp: Int32,
+                          levelExp: Option[LevelExp],
                           scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         // offset を sprite center 位置に加算（scale 倍する必要があるので注意: ここは
@@ -300,12 +307,21 @@ mod UnitInfoPopupScene {
             |> Sprite2D.setFrame(res#sprite#frame);
         let withSprite = Scene.addChildAt(panelPath(), "Sprite",
             EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag), scene);
-        let nameLabel = Label2D.make(res#description, atlas, fontSizeBig())
+        // 味方は名前の隣に Lv、HP 行の隣に EXP を出す（敵は素の名前 / HP のみ）。
+        let nameText = match levelExp {
+            case Some(le) => "${res#description}  Lv ${le#level}"
+            case None     => res#description
+        };
+        let hpStr = match levelExp {
+            case Some(le) => "HP ${currentHp}/${res#hp}  EXP ${le#exp}/100"
+            case None     => "HP ${currentHp}/${res#hp}"
+        };
+        let nameLabel = Label2D.make(nameText, atlas, fontSizeBig())
             |> Node2D.setPosition(nameLocalPos())
             |> CanvasItem.setModulate(textColor());
         let withName = Scene.addChildAt(panelPath(), "Name",
             EngineNode.Label2DWithState(nameLabel, NodeTag.NoTag), withSprite);
-        let hpText = Label2D.make("HP ${currentHp}/${res#hp}", atlas, fontSizeSmall())
+        let hpText = Label2D.make(hpStr, atlas, fontSizeSmall())
             |> Node2D.setPosition(hpTextLocalPos())
             |> CanvasItem.setModulate(textColor());
         let withHpText = Scene.addChildAt(panelPath(), "HpText",

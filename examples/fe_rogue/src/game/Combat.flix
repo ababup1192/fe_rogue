@@ -111,6 +111,37 @@ mod Combat {
                              defender#speed, defender#luck, rel),
             kill   = willKill(defender#hp, dmg)
         }
+
+    // ────────────────────────────────────────────────────────
+    // 経験値（EXP）— FE7 流のレベル差ベース
+    //   命中で必ず得る「戦闘経験値」と、撃破時に上乗せする「撃破経験値」を、
+    //   敵と自分のレベル差から導く。攻撃 1 回が生む結果の一部なのでここ（Combat）に置く。
+    //   本作には上級職・プレイモード差・ボス/シーフ/瞬殺が無いので、それらの項は 0 / ×1。
+    // ────────────────────────────────────────────────────────
+
+    /// クラスの強さ（全ユニット共通の除数・係数）。値が大きいほど 1 戦闘で得る EXP が小さくなる。要調整。
+    def classPower(): Int32 = 3
+
+    /// 戦闘経験値の基準値（FE7 の式の「31 +」に相当）。要調整。
+    def baseHitExp(): Int32 = 31
+
+    /// 撃破経験値の固定加算（FE7 の式の「+ 20」に相当）。要調整。
+    def killFlat(): Int32 = 20
+
+    /// 命中したとき必ず得る「戦闘経験値」。FE7: (31 + 敵Lv − 自Lv) ÷ クラスの強さ。
+    /// 整数除算（0 方向に切り捨て）で、自分が高レベルでも最低 1 は得る。
+    pub def hitExp(enemyLevel: Int32, selfLevel: Int32): Int32 =
+        Int32.max(1, (baseHitExp() + enemyLevel - selfLevel) / classPower())
+
+    /// 撃破時に上乗せする「撃破経験値」。FE7: max(0, クラスの強さ ×(敵Lv − 自Lv) + 20)。
+    /// 自分より十分弱い敵を倒しても 0 にクランプ（撃破ボーナスが付かない）。
+    pub def killExp(enemyLevel: Int32, selfLevel: Int32): Int32 =
+        Int32.max(0, classPower() * (enemyLevel - selfLevel) + killFlat())
+
+    /// 1 回の攻撃で得る EXP。命中したら `hitExp`、さらに撃破なら `killExp` を足す。
+    /// ミス（非命中）で 0 にするのは呼び出し側（命中判定の分岐）の責務。
+    pub def battleExp(enemyLevel: Int32, selfLevel: Int32, killed: Bool): Int32 =
+        hitExp(enemyLevel, selfLevel) + (if (killed) killExp(enemyLevel, selfLevel) else 0)
 }
 
 /// WeaponTriangle — 武器の三竦み（剣 → 斧 → 槍 → 剣）の純粋判定。

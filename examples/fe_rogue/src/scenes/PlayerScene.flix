@@ -85,7 +85,14 @@ mod PlayerScene {
         // カーソルから外す。ローグの「しゅうごう」(hidden のみ) と区別するためのフラグで、
         // 「かいさん」での再出現対象から除外し、フロア終了判定 (全員退場) にも使う。
         // 次フロア開始時は false にリセットされる。
-        usedStairs         = Bool
+        usedStairs         = Bool,
+        // 現在レベル（初期 1）。フロアを跨いで引き継ぐ。
+        level              = Int32,
+        // 現在 EXP（0..99）。敵に与ダメ・撃破で増え、100 到達でレベルアップして余剰を繰り越す。
+        exp                = Int32,
+        // 直近のレベルアップ結果。Some の間はステータス変化パネルを表示し、
+        // commitWaitedAndAdvance がターンを進めずに LevelUpView へ割り込む。パネルを閉じると None。
+        pendingLevelUp     = Option[LevelSystem.Result]
     }
 
     /// 味方パーティの「現フレーム状態」を Scene を介さずに読み取る effect。
@@ -282,7 +289,10 @@ mod PlayerScene {
             moveStepsTaken    = 0,
             facing            = Staff.Direction.Down,
             hidden            = false,
-            usedStairs        = false
+            usedStairs        = false,
+            level             = res#level,
+            exp               = 0,
+            pendingLevelUp    = None
         };
         // unit に spriteFrames があれば AnimatedSprite2D で配置、無ければ Sprite2D
         // (静止単一フレーム) で配置する。AnimatedSprite2D は engine の per-node
@@ -783,13 +793,18 @@ mod PlayerScene {
     // (F') フロア進行 — 階段退場 / フロア持ち越し
     // ────────────────────────────────────────────────────────
 
-    /// フロア間で引き継ぐ味方ステータス。HP / 武器 / 持ち物だけを持ち、
-    /// 配置（gridPos）や waited は次フロアで作り直すので含めない。
+    /// フロア間で引き継ぐ味方ステータス。HP / 武器 / 持ち物に加え、レベルアップで得た
+    /// `level` / `exp` / 成長後ステータス (`stats`) を持つ。配置（gridPos）や waited は
+    /// 次フロアで作り直すので含めない。
     pub type alias CarryData = {
         id      = Int32,
         hp      = Int32,
         weapons = List[UnitCatalog.WeaponResource],
-        staves  = List[Staff.StaffResource]
+        staves  = List[Staff.StaffResource],
+        level   = Int32,
+        exp     = Int32,
+        // 成長後の 6 ステータス（最大 HP 含む）。次フロアの新規 resource に上書きして引き継ぐ。
+        stats   = LevelSystem.Stats
     }
 
     /// 味方 id を「階段で退場」させる。`usedStairs` を立て、`hidden` も同時に立てて
@@ -814,11 +829,14 @@ mod PlayerScene {
         getAll(scene)
             |> List.filter(d -> d#hp > 0)
             |> List.map(d ->
-                ({id = d#id, hp = d#hp, weapons = d#weapons, staves = d#staves}: CarryData))
+                ({id = d#id, hp = d#hp, weapons = d#weapons, staves = d#staves,
+                  level = d#level, exp = d#exp,
+                  stats = LevelSystem.statsOf(d#resource)}: CarryData))
 
     /// 次フロアを通常 build した直後の scene に、前フロアの引き継ぎ値を反映する。
     ///   - carry に居ない id（前フロアで戦死）の味方ノードを除去する
-    ///   - 生存 id は HP / 武器 / 持ち物を carry で上書きし、HP バーも更新する
+    ///   - 生存 id は HP / 武器 / 持ち物 / レベル / EXP / 成長後ステータスを carry で上書きし、
+    ///     HP バーも更新する
     /// `waited` / `usedStairs` / `hidden` / `moveStepsTaken` は addOnePlayer が false / 0 で
     /// 作り直しているのでリセット不要（= フロア開始時に全員再行動可・たいきリセット）。
     pub def reconcileWithCarry(carry: List[CarryData], scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -829,7 +847,9 @@ mod PlayerScene {
         List.foldLeft((sc, c) ->
             sc
                 |> mapPlayer(c#id, d ->
-                    {hp = c#hp, weapons = c#weapons, staves = c#staves | d})
+                    {hp = c#hp, weapons = c#weapons, staves = c#staves,
+                     level = c#level, exp = c#exp,
+                     resource = LevelSystem.withStats(c#stats, d#resource) | d})
                 |> UnitHPBarScene.update(playerPath(c#id), c#hp),
             pruned, carry)
 
@@ -1124,11 +1144,24 @@ mod PlayerScene {
     /// 複数 Scene 跨ぎなので「次フェーズ判定」をまとめてここに置く。
     /// ActionMenu / EnemyScene / BattlePanel / EnemyTurnDriverScene / TurnInputBridge から
     /// 呼ばれる。
+    /// レベルアップ表示待ち (pendingLevelUp = Some) の味方が 1 人でも居るか。
+    /// 自分の攻撃（commitWaitedAndAdvance）でも敵ターンの反撃（endTurn）でも、この判定で
+    /// ステータス変化パネルへ割り込む。
+    pub def anyPendingLevelUp(scene: Scene[NodeTag]): Bool =
+        getAll(scene) |> List.exists(d -> Option.nonEmpty(d#pendingLevelUp))
+
     pub def commitWaitedAndAdvance(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State} =
+        // レベルアップ表示待ちの味方が居れば、ターンを進めずステータス変化パネル (LevelUpView) へ割り込む。
+        // パネルを閉じると LevelUpPanelScene.confirm が pendingLevelUp を消して再度ここを呼ぶので、
+        // そのとき保留が無くなって通常の確定・前進に進む。Kill / Counter / Commit の 3 経路すべてが
+        // 最後にここを通るため、自分の攻撃で得たレベルアップ表示の割り込みは 1 箇所で足りる。
+        if (anyPendingLevelUp(scene))
+            PhaseTransitions.enterLevelUpView(scene)
+        else
         let withWaited = match SelectedPlayer.State.get()#id {
             case Some(id) => setWaited(id, scene)
             case None     => scene   // 防御的 (選択なしで Attack に入ることは想定外)
@@ -1164,9 +1197,15 @@ mod PlayerScene {
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, Pacing.State} =
-        if (TurnPhase.State.get() == TurnPhase.Phase.EnemyTurn)
-            clearAttackTarget(playerId, scene)
-        else match get(playerId, scene) {
+        if (TurnPhase.State.get() == TurnPhase.Phase.EnemyTurn) {
+            // 敵ターン中の味方反撃が完了した。反撃でレベルアップしていれば、その場で
+            // （反撃ごとに）ステータス変化パネルへ割り込む。閉じると敵ターンに戻って続行する。
+            let cleared = clearAttackTarget(playerId, scene);
+            if (anyPendingLevelUp(cleared))
+                PhaseTransitions.enterLevelUpView(cleared)
+            else
+                cleared
+        } else match get(playerId, scene) {
             case None         => scene
             case Some(player) =>
                 let target = player#attackTargetId
@@ -1237,12 +1276,13 @@ mod PlayerScene {
                 let roll = rollPercent();
                 let popupPos = MapScene.cellCenter(enemy#gridPos);
                 let popupColor = DamagePopupScene.damageToEnemyColor();
-                let afterDamage =
+                // 命中なら EXP を得る（回避時は 0）。獲得量はレベル差から Combat.battleExp が算出する。
+                let (afterDamage, expGain) =
                     if (not Combat.isHit(hitChance, roll)) {
                         // 回避: miss SE を鳴らして "miss" を浮かす。HP も死亡演出も無し。
                         GameLogger.playerLog("P${playerId} → 敵${enemyId} ミス");
                         AudioStreamPlayer.play("miss");
-                        DamagePopupScene.emitText(popupPos, "miss", popupColor, scene)
+                        (DamagePopupScene.emitText(popupPos, "miss", popupColor, scene), 0)
                     } else {
                         // 命中: SE を鳴らしダメージ適用 + 数値ポップアップ。
                         AudioStreamPlayer.play("damage");
@@ -1255,18 +1295,20 @@ mod PlayerScene {
                         let dmg    = Combat.attackDamage(totalAttack, targetDef, rel);
                         let result = Combat.damage(hp = enemy#hp, amount = dmg);
                         let withPopup = DamagePopupScene.emit(popupPos, dmg, popupColor, scene);
-                        if (result#isDead) {
-                            GameLogger.playerLog("P${playerId} → 敵${enemyId} を撃破");
-                            withPopup
-                                |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), result#newHp)
-                                |> EnemyScene.startDeathAnimation(enemyId)
-                        } else {
-                            GameLogger.playerLog("P${playerId} → 敵${enemyId} に ${dmg}ダメージ");
-                            withPopup
-                                |> EnemyScene.mapEnemy(enemyId,
-                                    enemyData -> {hp = result#newHp | enemyData})
-                                |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), result#newHp)
-                        }
+                        let sceneAfter =
+                            if (result#isDead) {
+                                GameLogger.playerLog("P${playerId} → 敵${enemyId} を撃破");
+                                withPopup
+                                    |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), result#newHp)
+                                    |> EnemyScene.startDeathAnimation(enemyId)
+                            } else {
+                                GameLogger.playerLog("P${playerId} → 敵${enemyId} に ${dmg}ダメージ");
+                                withPopup
+                                    |> EnemyScene.mapEnemy(enemyId,
+                                        enemyData -> {hp = result#newHp | enemyData})
+                                    |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), result#newHp)
+                            };
+                        (sceneAfter, Combat.battleExp(enemy#resource#level, player#level, result#isDead))
                     };
                 let consumed = Weapon.consume(weapon);
                 let newWeapons = match consumed {
@@ -1282,8 +1324,57 @@ mod PlayerScene {
                 if (Option.isEmpty(consumed))
                     GameLogger.playerLog("P${playerId} の ${weapon#name} がこわれた")
                 else ();
-                mapPlayer(playerId,
-                    d -> {weapons = newWeapons | d}, afterDamage)
+                let withWeapons = mapPlayer(playerId,
+                    d -> {weapons = newWeapons | d}, afterDamage);
+                // 命中していれば EXP を加算する。自分の攻撃でも敵ターンの反撃でも同様（FE 流）。
+                // 反撃で得たレベルアップは敵ターン終了後にまとめて表示する
+                // （pendingLevelUp を立て、EnemyTurnDriverScene.endTurn が LevelUpView へ流す）。
+                if (expGain <= 0)
+                    withWeapons
+                else
+                    applyExpGain(playerId, expGain, withWeapons)
+        }
+
+    /// 6 ステータスぶんの成長判定用乱数 (各 0..99) をまとめて振る。
+    /// 値の意味づけ・成長判定は LevelSystem 側のピュア関数が行う。
+    def rollGrowth(): LevelSystem.Rolls \ Math.Random =
+        {hp           = rollPercent(),
+         attack       = rollPercent(),
+         defense      = rollPercent(),
+         magicAttack  = rollPercent(),
+         magicDefense = rollPercent(),
+         speed        = rollPercent()}
+
+    /// 味方 id に EXP を加算し、100 到達ならレベルアップを解決する。
+    ///   - レベルアップしない → `exp` だけ更新。
+    ///   - レベルアップする   → 成長ロールを振って各ステータスを成長させ、最大 HP が
+    ///     増えた分だけ現在 HP も増やし、`pendingLevelUp` に結果を積む（パネル表示の合図）。
+    /// `pendingLevelUp` が立つと commitWaitedAndAdvance がターンを進めずパネルへ割り込む。
+    def applyExpGain(playerId: Int32, expGain: Int32,
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, GameLogger.GameLogger} =
+        match get(playerId, scene) {
+            case None    => scene
+            case Some(d) =>
+                let outcome = LevelSystem.gainExp(d#exp, expGain);
+                if (not outcome#levelUp)
+                    mapPlayer(playerId, dd -> {exp = outcome#exp | dd}, scene)
+                else {
+                    let rolls  = rollGrowth();
+                    let before = LevelSystem.statsOf(d#resource);
+                    let after  = LevelSystem.applyGrowth(before, d#resource#growthRates, rolls);
+                    let hpGain = after#hp - before#hp;
+                    let result = LevelSystem.buildResult(d#resource#description, d#level,
+                                                         before, after);
+                    let newHp  = d#hp + hpGain;
+                    GameLogger.playerLog("P${playerId} Lv${d#level} → Lv${d#level + 1}");
+                    mapPlayer(playerId, dd ->
+                        {exp            = outcome#exp,
+                         level          = dd#level + 1,
+                         resource       = LevelSystem.withStats(after, dd#resource),
+                         hp             = newHp,
+                         pendingLevelUp = Some(result) | dd}, scene)
+                        |> UnitHPBarScene.update(playerPath(playerId), newHp)
+                }
         }
 
     // ────────────────────────────────────────────────────────
