@@ -33,7 +33,9 @@ mod RenderFrame {
                               clearColor: Color, designW: Float64, designH: Float64,
                               fbW: Int32, fbH: Int32,
                               sprites: List[RenderType.Drawable],
-                              tileMaps: List[RenderType.TileMapRenderCmd]): Unit \ IO =
+                              tileMaps: List[RenderType.TileMapRenderCmd],
+                              polygons: List[RenderType.PolygonCmd],
+                              polyVao: Int32, polyVbo: Int32): Unit \ IO =
         if (fbW > 0 and fbH > 0) {
             let (vpX, vpY, vpW, vpH) = calcViewport(fbW, fbH, designW, designH);
             GL11.glViewport(0, 0, fbW, fbH);
@@ -88,7 +90,16 @@ mod RenderFrame {
                         case None => ()
                     }
                 }
-            }, sortedSprites)
+            }, sortedSprites);
+            // polygons: スプライトの後に zIndex 昇順で塗る（Polygon2D は最前面 HUD 想定）。
+            let sortedPolys = polygons
+                |> List.zipWithIndex
+                |> List.sortBy(idxP -> let (idx, pc) = idxP; (pc#zIndex, idx))
+                |> List.map(idxP -> let (_, pc) = idxP; pc);
+            List.forEach(pc ->
+                RenderSprite.drawPolygon(spriteShader, polyVao, polyVbo,
+                                          pc#vertices, pc#color, pc#alpha),
+                sortedPolys)
         } else ()
 
 }

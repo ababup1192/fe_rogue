@@ -66,6 +66,8 @@ mod GameLifecycle {
             // players/stairs 確定後に初回フォグ適用 (スポーン部屋を点灯。以降は FogScene.process が毎フレーム更新)
             // 起動時は通常モード (集合モードではない) なので torchCorridors=false
             |> FogScene.applyFog(false)
+            // ミニマップ (最終 placements / 階段を読むため末尾)。訪問記憶はフロア再構築で自動リセット。
+            |> MinimapScene.add
 
     /// プレイ用シーンを組み立て + 初期 spawn 一覧 (敵 / 味方) を `InitialSpawns` に保存する。
     /// 起動時と GameOver リビルド時の両方が必ず通る経路。これで「scene 構築」と

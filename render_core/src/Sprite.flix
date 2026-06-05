@@ -83,6 +83,67 @@ mod RenderSprite {
         GL30.glBindVertexArray(0)
 
     // ========================================================================
+    // Polygon (Polygon2D) Rendering — sprite シェーダを useTexture=0 で流用
+    // ========================================================================
+
+    /// 多角形描画用の VAO と動的 VBO を生成する。
+    /// vertex layout は sprite と同じ (x, y, u, v) の 4 floats（u,v は未使用）。
+    /// 戻り値: (vao, vbo)
+    pub def initPolygonRenderer(): (Int32, Int32) \ IO =
+        let vao = GL30.glGenVertexArrays();
+        let vbo = GL15.glGenBuffers();
+        GL30.glBindVertexArray(vao);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+        GL20.glEnableVertexAttribArray(0);
+        GL20.glVertexAttribPointer(0, 4, GL11.GL_FLOAT, false, 16, 0i64);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+        (vao, vbo)
+
+    /// 凸多角形を単色で塗り潰す（GL_TRIANGLE_FAN）。頂点は既にスクリーン px。
+    /// sprite シェーダを model=identity / useTexture=0 で流用する。
+    pub def drawPolygon(spriteShader: Int32, polyVao: Int32, polyVbo: Int32,
+                         verts: List[Vec2.Vec2], color: Color, alpha: Float32): Unit \ IO =
+        let f32 = RenderUtil.f32;
+        let n = List.length(verts);
+        if (n < 3) () else {
+            GL20.glUseProgram(spriteShader);
+            let model = Array#{
+                1.0f32, 0.0f32, 0.0f32, 0.0f32,
+                0.0f32, 1.0f32, 0.0f32, 0.0f32,
+                0.0f32, 0.0f32, 1.0f32, 0.0f32,
+                0.0f32, 0.0f32, 0.0f32, 1.0f32
+            } @ Static;
+            let modelLoc = GL20.glGetUniformLocation(spriteShader, "model");
+            GL20.glUniformMatrix4fv(modelLoc, false, model);
+            let colorLoc = GL20.glGetUniformLocation(spriteShader, "spriteColor");
+            GL20.glUniform3f(colorLoc, color#r, color#g, color#b);
+            let alphaLoc = GL20.glGetUniformLocation(spriteShader, "spriteAlpha");
+            GL20.glUniform1f(alphaLoc, alpha);
+            let uvOffsetLoc = GL20.glGetUniformLocation(spriteShader, "uvOffset");
+            GL20.glUniform2f(uvOffsetLoc, 0.0f32, 0.0f32);
+            let uvScaleLoc = GL20.glGetUniformLocation(spriteShader, "uvScale");
+            GL20.glUniform2f(uvScaleLoc, 1.0f32, 1.0f32);
+            let useTexLoc = GL20.glGetUniformLocation(spriteShader, "useTexture");
+            GL20.glUniform1i(useTexLoc, 0);
+            let data = Array.empty(Static, n * 4);
+            let _ = List.foldLeft((i, v) -> {
+                let base = i * 4;
+                Array.put(f32(v#x), base + 0, data);
+                Array.put(f32(v#y), base + 1, data);
+                Array.put(0.0f32,   base + 2, data);
+                Array.put(0.0f32,   base + 3, data);
+                i + 1
+            }, 0, verts);
+            GL30.glBindVertexArray(polyVao);
+            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, polyVbo);
+            GL15.glBufferData(GL15.GL_ARRAY_BUFFER, data, GL15.GL_DYNAMIC_DRAW);
+            GL11.glDrawArrays(GL11.GL_TRIANGLE_FAN, 0, n);
+            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            GL30.glBindVertexArray(0)
+        }
+
+    // ========================================================================
     // Tile Map Instanced Rendering
     // ========================================================================
 

@@ -356,6 +356,7 @@ mod SceneLoader {
             case "Marker2D"         => buildMarker2D(tagParser, map)
             case "Camera2D"         => buildCamera2D(tagParser, map)
             case "ColorRect"        => buildColorRect(tagParser, map)
+            case "Polygon2D"        => buildPolygon2D(tagParser, map)
             case "RichTextLabel"    => buildRichTextLabel(tagParser, fontAtlas, map)
             case "Panel"            => buildPanel(tagParser, map)
             case "ProgressBar"      => buildProgressBar(tagParser, map)
@@ -1132,6 +1133,42 @@ mod SceneLoader {
                 |> applyOpt(skewOpt, (s, c) -> Node2D.setSkew(s, c))
                 |> applyOpt(modulateOpt, (c, rect) -> CanvasItem.setModulate(c, rect));
             EngineNode.ColorRectWithState(rect, tag)
+        }
+
+    /// Polygon2D を JSON から構築する。`radius` があれば円（12 角形）、無ければ `points`
+    /// （[[x,y],...] の配列）を頂点列とする。色は `color`、その他は ColorRect と同様。
+    def buildPolygon2D(tagParser: Option[String] -> Result[Json.JsonError, t],
+                       map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
+        forM (
+            tag         <- parseTagField(tagParser, map);
+            posOpt      <- parseVec2Opt("pos", map);
+            scaleOpt    <- parseVec2Opt("scale", map);
+            color       <- parseColor("color", map);
+            radiusOpt   <- (Json.FromJson.getAtKeyOpt(Root, "radius", map): Result[Json.JsonError, Option[Float64]]);
+            pointsOpt   <- (Json.FromJson.getAtKeyOpt(Root, "points", map): Result[Json.JsonError, Option[List[(Float64, Float64)]]]);
+            alphaOpt    <- (Json.FromJson.getAtKeyOpt(Root, "alpha", map): Result[Json.JsonError, Option[Float64]]);
+            visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]]);
+            modulateOpt <- parseColorOpt("modulate", map)
+        ) yield {
+            let pos = Option.getWithDefault(Vec2.zero(), posOpt);
+            let base = match radiusOpt {
+                case Some(r) => Polygon2D.circle(r, color)
+                case None    =>
+                    let pts = Option.getWithDefault(Nil, pointsOpt)
+                        |> List.map(xy -> let (x, y) = xy; ({x = x, y = y}: Vec2.Vec2));
+                    Polygon2D.make(pts, color)
+            };
+            let poly = base
+                |> Node2D.setPosition(pos)
+                |> applyOpt(scaleOpt, (sc, p) -> Node2D.setScale(sc, p))
+                |> applyOpt(alphaOpt, (a, p) -> Polygon2D.setAlpha(Float64.truncateToFloat32(a), p))
+                |> applyOpt(visibleOpt, (v, p) -> CanvasItem.setVisible(v, p))
+                |> applyOpt(zIndexOpt, (z, p) -> CanvasItem.setZIndex(z, p))
+                |> applyOpt(rotationOpt, (rot, p) -> Node2D.setRotation(rot, p))
+                |> applyOpt(modulateOpt, (c, p) -> CanvasItem.setModulate(c, p));
+            EngineNode.Polygon2DWithState(poly, tag)
         }
 
     def setColorRectAlpha(alpha: Float64, rect: ColorRect): ColorRect =

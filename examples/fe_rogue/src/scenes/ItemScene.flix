@@ -296,6 +296,18 @@ mod ItemScene {
             case last :: rest => List.reverse(("${last}_outline_${suffix}") :: rest)
         }
 
+    /// 床に落ちている全アイテムのグリッド座標。`MinimapScene` が訪問済み部屋内の
+    /// アイテムをマーカー表示するために使う（読み取り専用）。
+    pub def getAllPositions(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
+        let childNames = Scene.getChildrenAt(parentPath(), scene);
+        List.foldLeft((acc, name) -> {
+            let itemPath = List.append(parentPath(), name :: Nil);
+            match Scene.getState(itemPath, scene) {
+                case Some(NodeTag.GroundItem(d)) => d#gridPos :: acc
+                case _                            => acc
+            }
+        }, Nil, childNames)
+
     /// フォグ適用: 各 GroundItem を「現在地が lit なら表示、さもなくば非表示」にする。
     /// 本体 Sprite と 4 方向の縁取り Sprite をまとめて visible トグルする（点滅 alpha とは直交）。
     /// `FogScene` から毎フレーム呼ばれる。

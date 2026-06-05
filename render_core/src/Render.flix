@@ -26,6 +26,15 @@ mod RenderType {
         alpha = Float32
     }
 
+    /// Polygon2D の塗り潰し描画コマンド。vertices は既にスクリーン座標（px）に
+    /// 変換済みの凸多角形の頂点列（GL_TRIANGLE_FAN で塗る）。
+    pub type alias PolygonCmd = {
+        vertices = List[Vec2.Vec2],
+        color    = Color,
+        alpha    = Float32,
+        zIndex   = Int32
+    }
+
     /// TileMapLayer のインスタンス描画コマンド (1 draw call で全タイル)
     pub type alias TileMapRenderCmd = {
         textureName = String,

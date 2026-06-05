@@ -152,7 +152,7 @@ mod TestDragInput {
             def readLines(_, _) = bug!("unexpected file readLines")
             def readBytes(_, _) = bug!("unexpected file readBytes")
         } with handler GameEngine.Game {
-            def renderCommands(_, _, k) = k(())
+            def renderCommands(_, _, _, k) = k(())
             def initTileBuffer(_, k) = k((0i32, 0i32))
             def shouldClose(k) = k(false)
             def getDeltaTime(k) = k(16 |> Duration.millis)

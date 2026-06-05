@@ -282,8 +282,11 @@ mod JavaFXLayer {
                     let curConfig = Array.get(0, currentConfigRef);
                     let curScreenW = Int32.toFloat64(curConfig#designWidth);
                     let curScreenH = Int32.toFloat64(curConfig#designHeight);
+                    // Polygon2D はエディタ描画では未対応。空リストを渡す（polyVao/polyVbo は
+                    // リストが空なら未使用なので sprite VAO を流用する）。
                     RenderFrame.renderFrameMixed(spriteShader, tileShader, vao, registry,
-                        curConfig#clearColor, curScreenW, curScreenH, w, h, sprites, tileMaps);
+                        curConfig#clearColor, curScreenW, curScreenH, w, h, sprites, tileMaps,
+                        (Nil: List[GameEngine.PolygonRenderCmd]), vao, vao);
 
                     pixels.position(0i32);
                     GL11.glReadPixels(0i32, 0i32, w, h,
@@ -421,7 +424,8 @@ mod JavaFXLayer {
                 k(())
             }
         } with handler GameEngine.Game {
-            def renderCommands(sprites, tileMaps, k) = {
+            def renderCommands(sprites, tileMaps, _polygons, k) = {
+                // Polygon2D（_polygons）はシーンエディタ描画では未対応（無視）。
                 Array.put((sprites, tileMaps), 0, renderStateArr);
                 k(())
             }

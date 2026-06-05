@@ -79,7 +79,7 @@ mod TestTradeMenuScene {
         run {
             TestUnitFixtures.withMockGame(() -> TradeMenuScene.add(scene))
         } with handler GameEngine.Game {
-            def renderCommands(_, _, k)     = k(())
+            def renderCommands(_, _, _, k)     = k(())
             def initTileBuffer(_, k)        = k((0i32, 0i32))
             def shouldClose(k)              = k(false)
             def getDeltaTime(k)             = k(Duration.seconds(0.016))

@@ -77,6 +77,15 @@ mod GameEngine {
         tileCount   = Int32
     }
 
+    /// Polygon2D の塗り潰し描画コマンド。vertices は変換済みのスクリーン px 凸多角形頂点列。
+    /// render_core の RenderType.PolygonCmd と構造一致（そのまま渡せる）。
+    pub type alias PolygonRenderCmd = {
+        vertices = List[Vec2.Vec2],
+        color    = Color,
+        alpha    = Float32,
+        zIndex   = Int32
+    }
+
     /// GPU インスタンスバッファ 1 タイル分のデータ
     /// tilemap loader (fe_rogue 側 `TileRendering.buildTileInstances` 等) が生成し、
     /// `initTileBuffer` で GPU にアップロードする。
@@ -103,6 +112,7 @@ mod GameEngine {
         case D
         case Z
         case X
+        case M
         case Up
         case Down
         case Left
@@ -119,7 +129,7 @@ mod GameEngine {
     /// Key の全バリアント。InputEvent などのイベント駆動入力で
     /// 走査対象として使う。新しい Key を追加した際はここにも追加する。
     pub def allKeys(): List[Key] =
-        Key.W :: Key.A :: Key.S :: Key.D :: Key.Z :: Key.X ::
+        Key.W :: Key.A :: Key.S :: Key.D :: Key.Z :: Key.X :: Key.M ::
         Key.Up :: Key.Down :: Key.Left :: Key.Right ::
         Key.Enter :: Key.Space :: Key.Escape :: Key.F1 ::
         Key.LeftShift :: Key.LeftCtrl :: Key.LeftSuper :: Nil
@@ -166,8 +176,9 @@ mod GameEngine {
     /// ゲームエフェクト: 描画・ウィンドウ制御・時間取得・キー入力・マウス入力・フォント・
     /// ビューポート・マウスカーソル形状切り替え
     pub eff Game {
-        /// zIndex 混合で sprites と tileMaps を 1 フレーム描画する
-        def renderCommands(sprites: List[Drawable], tileMaps: List[TileMapRenderCmd]): Unit
+        /// zIndex 混合で sprites と tileMaps を 1 フレーム描画し、最後に polygons を塗る
+        def renderCommands(sprites: List[Drawable], tileMaps: List[TileMapRenderCmd],
+                           polygons: List[PolygonRenderCmd]): Unit
         /// タイルインスタンスデータを GPU VBO にアップロードし (vaoId, count) を返す
         def initTileBuffer(instances: List[TileInstance]): (Int32, Int32)
         def shouldClose(): Bool
@@ -284,7 +295,23 @@ mod GameEngine {
                     Some(TileMapLayer.toRenderCmd(layerScreenPos, transform#scale, tm))
                 case _ => None
             }, Scene.preorderPaths(scene));
-        Game.renderCommands(sprites, tileMaps)
+        // Polygon2D ノードを収集（CanvasLayer 配下はカメラ非適用、zoom はワールドのみ）。
+        // 不可視（祖先含む）はスキップ。スプライトの後に最前面で塗られる。
+        let polygons: List[PolygonRenderCmd] =
+            List.filterMap(p -> match Scene.getEngineNode(p, scene) {
+                case Some(EngineNode.Polygon2DWithState(poly, _)) =>
+                    // 自ノードの visible（effectiveVisibleAt は祖先のみ検査するため別途）と
+                    // 祖先の visible の両方が真のときだけ描画する。
+                    if (not (CanvasItem.isVisible(poly) and Scene.effectiveVisibleAt(p, scene))) None
+                    else {
+                        let screenPos = Scene.screenPositionAt(p, transform, scene);
+                        let sc = if (Scene.isUnderCanvasLayer(p, scene))
+                                    ({x = 1.0, y = 1.0}: Vec2.Vec2) else transform#scale;
+                        Some(Polygon2D.toRenderCmd(screenPos, sc, poly))
+                    }
+                case _ => None
+            }, Scene.preorderPaths(scene));
+        Game.renderCommands(sprites, tileMaps, polygons)
 
     // ========================================================================
     // プラットフォーム
