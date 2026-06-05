@@ -128,4 +128,12 @@ mod StairsScene {
             case other => other
         }, scene)
 
+    /// フォグ適用: 配置済み(placed) かつ 現在地が lit のときだけ階段を表示する。
+    /// 位置・placed・gridPos は素通し（`placeAt` と責務分離）。`FogScene` から毎フレーム呼ばれる。
+    pub def applyFog(isLit: {x = Int32, y = Int32} -> Bool,
+                      scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapStairs((marker, data) ->
+            (CanvasItem.setVisible(data#placed and isLit(data#gridPos), marker), data),
+            scene)
+
 }

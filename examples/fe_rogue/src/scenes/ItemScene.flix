@@ -296,6 +296,25 @@ mod ItemScene {
             case last :: rest => List.reverse(("${last}_outline_${suffix}") :: rest)
         }
 
+    /// フォグ適用: 各 GroundItem を「現在地が lit なら表示、さもなくば非表示」にする。
+    /// 本体 Sprite と 4 方向の縁取り Sprite をまとめて visible トグルする（点滅 alpha とは直交）。
+    /// `FogScene` から毎フレーム呼ばれる。
+    pub def applyFog(isLit: {x = Int32, y = Int32} -> Bool,
+                      scene: Scene[NodeTag]): Scene[NodeTag] =
+        let childNames = Scene.getChildrenAt(parentPath(), scene);
+        List.foldLeft((acc, name) -> {
+            let itemPath = List.append(parentPath(), name :: Nil);
+            match Scene.getState(itemPath, acc) {
+                case Some(NodeTag.GroundItem(d)) =>
+                    let vis = isLit(d#gridPos);
+                    let withBody = Sprite2D.mapAt(itemPath, CanvasItem.setVisible(vis), acc);
+                    List.foldLeft((a2, suffix) ->
+                        Sprite2D.mapAt(outlinePathOf(itemPath, suffix), CanvasItem.setVisible(vis), a2),
+                        withBody, outlineSuffixes())
+                case _ => acc
+            }
+        }, scene, childNames)
+
     // ─── tick（点滅アニメーション） ───────────────────────────
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から、各 GroundItem に
