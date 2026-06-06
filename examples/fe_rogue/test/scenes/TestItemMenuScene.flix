@@ -19,7 +19,7 @@ mod TestItemMenuScene {
             TestUnitFixtures.withMockGame(() -> ItemMenuScene.add(scene))
         } with handler GameEngine.Game {
             // unreachable: withMockGame が中で全部処理する。型を合わせるため定義だけ。
-            def renderCommands(_, _, k)     = k(())
+            def renderCommands(_, _, _, k)     = k(())
             def initTileBuffer(_, k)        = k((0i32, 0i32))
             def shouldClose(k)              = k(false)
             def getDeltaTime(k)             = k(Duration.seconds(0.016))

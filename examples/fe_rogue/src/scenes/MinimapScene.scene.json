@@ -1,0 +1,10 @@
+{
+  "description": "探索済みマップ (ミニマップ)。M キーで全画面トグル。\n内容 (背景/部屋矩形/マーカー) は MinimapScene が contentPath 配下に動的生成する。",
+  "type": "CanvasLayer",
+  "name": "Minimap",
+  "layer": 6,
+  "pos": [0, 0],
+  "rotation": 0,
+  "scale": [1, 1],
+  "children": []
+}

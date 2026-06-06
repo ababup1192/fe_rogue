@@ -34,6 +34,7 @@ mod LwjglLayer {
         case GameEngine.Key.D         => 68
         case GameEngine.Key.Z         => 90
         case GameEngine.Key.X         => 88
+        case GameEngine.Key.M         => 77
         case GameEngine.Key.Up        => 265
         case GameEngine.Key.Down      => 264
         case GameEngine.Key.Left      => 263
@@ -132,6 +133,7 @@ mod LwjglLayer {
         RenderShader.setProjectionMatrix(tileShader, screenW, screenH);
 
         let (vao, quadVBO) = RenderSprite.initSpriteRenderer();
+        let (polyVao, polyVbo) = RenderSprite.initPolygonRenderer();
 
         println("Loading textures...");
         let registry0 = RenderTexture.loadTextureRegistry(config#textureManifest);
@@ -164,9 +166,10 @@ mod LwjglLayer {
 
         let timeHolder = Array#{System.nanoTime()} @ Static;
 
-        // リサイズ中の再描画用に最後のフレームの描画コマンドを保持する (sprites + tileMaps)
+        // リサイズ中の再描画用に最後のフレームの描画コマンドを保持する (sprites + tileMaps + polygons)
         let renderStateHolder = Array#{((Nil: List[GameEngine.Drawable]),
-                                         (Nil: List[GameEngine.TileMapRenderCmd]))} @ Static;
+                                         (Nil: List[GameEngine.TileMapRenderCmd]),
+                                         (Nil: List[GameEngine.PolygonRenderCmd]))} @ Static;
 
         // 6 種のスタンダードカーソルを起動時に作成して再利用する。
         // setCursor 呼び出しの度に都度作成 / 破棄すると重く、リーク源にもなる
@@ -222,10 +225,10 @@ mod LwjglLayer {
         // フレームバッファサイズ変更コールバックで再描画を行う
         discard GLFW.glfwSetFramebufferSizeCallback(window, new GLFWFramebufferSizeCallbackI {
             def invoke(_this: GLFWFramebufferSizeCallbackI, cbWindow: Int64, width: Int32, height: Int32): Unit \ IO = {
-                let (sprites, tileMaps) = Array.get(0, renderStateHolder);
+                let (sprites, tileMaps, polygons) = Array.get(0, renderStateHolder);
                 RenderFrame.renderFrameMixed(spriteShader, tileShader, vao, registry,
                                  config#clearColor, screenW, screenH,
-                                 width, height, sprites, tileMaps);
+                                 width, height, sprites, tileMaps, polygons, polyVao, polyVbo);
                 GLFW.glfwSwapBuffers(cbWindow)
             }
         });
@@ -264,8 +267,8 @@ mod LwjglLayer {
                 k(())
             }
         } with handler GameEngine.Game {
-            def renderCommands(sprites, tileMaps, k) = {
-                Array.put((sprites, tileMaps), 0, renderStateHolder);
+            def renderCommands(sprites, tileMaps, polygons, k) = {
+                Array.put((sprites, tileMaps, polygons), 0, renderStateHolder);
                 let stack = MemoryStack.stackPush();
                 let wBuf = stack.mallocInt(1);
                 let hBuf = stack.mallocInt(1);
@@ -275,7 +278,7 @@ mod LwjglLayer {
                 discard MemoryStack.stackPop();
                 RenderFrame.renderFrameMixed(spriteShader, tileShader, vao, registry,
                                  config#clearColor, screenW, screenH, fbW, fbH,
-                                 sprites, tileMaps);
+                                 sprites, tileMaps, polygons, polyVao, polyVbo);
                 GLFW.glfwSwapBuffers(window);
                 k(())
             }

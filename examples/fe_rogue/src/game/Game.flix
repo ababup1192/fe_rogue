@@ -53,6 +53,12 @@ pub enum NodeTag {
     /// `AutoMoveScene` の常駐タグ専用ノード (Marker2D)。
     /// `AutoMoveScene.process` redef で phase を見て PlayerAutoMove 中なら `step` を呼ぶ。
     case AutoMoveDriver
+    /// `FogScene` の常駐タグ専用ノード (Marker2D)。process redef で毎フレーム、現在パーティの
+    /// いる部屋/通路だけ明るくし、それ以外は薄暗いモヤ＋敵/アイテム/階段を非表示にする。
+    case FogDriver
+    /// `MinimapScene` の常駐タグノード (Marker2D)。process redef で毎フレーム、訪問済み
+    /// module を蓄積 (Set[Int32]) し、M キーで全画面ミニマップを出し入れ・再描画する。
+    case MinimapDriver(MinimapScene.DriverData)
     case NoTag
 }
 
@@ -146,6 +152,10 @@ def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(AutoMoveScene.process(delta, node, path, scene))
         case EngineNode.Marker2DWithState(_, NodeTag.ArrowCursor(_)) =>
             checked_ecast(ArrowCursorScene.process(delta, node, path, scene))
+        case EngineNode.Marker2DWithState(_, NodeTag.FogDriver) =>
+            checked_ecast(FogScene.process(delta, node, path, scene))
+        case EngineNode.Marker2DWithState(_, NodeTag.MinimapDriver(_)) =>
+            checked_ecast(MinimapScene.process(delta, node, path, scene))
         case _ => (node, scene)
     }
 

@@ -28,6 +28,7 @@ pub enum EngineNode[state] {
     case TimerWithState(Timer, state)
     /// 色付き矩形ノード（テクスチャなしの単色矩形）
     case ColorRectWithState(ColorRect, state)
+    case Polygon2DWithState(Polygon2D, state)
     /// GPU パーティクルエミッター（残像エフェクト）
     case GPUParticles2DWithState(GPUParticles2D, state)
     /// キャンバスレイヤー（独立した描画レイヤー）
@@ -73,6 +74,7 @@ mod EngineNode {
         case EngineNode.ScreenNotifier2DWithState(_, state) => state
         case EngineNode.TimerWithState(_, state) => state
         case EngineNode.ColorRectWithState(_, state) => state
+        case EngineNode.Polygon2DWithState(_, state) => state
         case EngineNode.GPUParticles2DWithState(_, state) => state
         case EngineNode.CanvasLayerWithState(_, state) => state
         case EngineNode.ControlWithState(_, state) => state
@@ -102,6 +104,7 @@ mod EngineNode {
         case EngineNode.ScreenNotifier2DWithState(inner, _) => EngineNode.ScreenNotifier2DWithState(inner, newState)
         case EngineNode.TimerWithState(inner, _) => EngineNode.TimerWithState(inner, newState)
         case EngineNode.ColorRectWithState(inner, _) => EngineNode.ColorRectWithState(inner, newState)
+        case EngineNode.Polygon2DWithState(inner, _) => EngineNode.Polygon2DWithState(inner, newState)
         case EngineNode.GPUParticles2DWithState(inner, _) => EngineNode.GPUParticles2DWithState(inner, newState)
         case EngineNode.CanvasLayerWithState(inner, _) => EngineNode.CanvasLayerWithState(inner, newState)
         case EngineNode.ControlWithState(inner, _) => EngineNode.ControlWithState(inner, newState)
@@ -131,6 +134,7 @@ mod EngineNode {
         case EngineNode.ScreenNotifier2DWithState(inner, state) => EngineNode.ScreenNotifier2DWithState(inner, f(state))
         case EngineNode.TimerWithState(inner, state) => EngineNode.TimerWithState(inner, f(state))
         case EngineNode.ColorRectWithState(inner, state) => EngineNode.ColorRectWithState(inner, f(state))
+        case EngineNode.Polygon2DWithState(inner, state) => EngineNode.Polygon2DWithState(inner, f(state))
         case EngineNode.GPUParticles2DWithState(inner, state) => EngineNode.GPUParticles2DWithState(inner, f(state))
         case EngineNode.CanvasLayerWithState(inner, state) => EngineNode.CanvasLayerWithState(inner, f(state))
         case EngineNode.ControlWithState(inner, state) => EngineNode.ControlWithState(inner, f(state))
@@ -159,6 +163,12 @@ mod EngineNode {
     }
 
     /// ColorRect の inner node に関数を適用する（他バリアントは変更なし）
+    /// Polygon2D の inner node に関数を適用する（他バリアントは変更なし）
+    pub def mapPolygon2D(f: Polygon2D -> Polygon2D, node: EngineNode[s]): EngineNode[s] = match node {
+        case EngineNode.Polygon2DWithState(inner, st) => EngineNode.Polygon2DWithState(f(inner), st)
+        case other => other
+    }
+
     pub def mapColorRect(f: ColorRect -> ColorRect, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.ColorRectWithState(inner, st) => EngineNode.ColorRectWithState(f(inner), st)
         case _ => node
@@ -454,6 +464,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.ScreenNotifier2DWithState(_, _) => true
         case EngineNode.TimerWithState(timer, _) => CanvasItem.isVisible(timer)
         case EngineNode.ColorRectWithState(rect, _) => CanvasItem.isVisible(rect)
+        case EngineNode.Polygon2DWithState(poly, _) => CanvasItem.isVisible(poly)
         case EngineNode.GPUParticles2DWithState(emitter, _) => CanvasItem.isVisible(emitter)
         case EngineNode.CanvasLayerWithState(cl, _) => CanvasItem.isVisible(cl)
         case EngineNode.ControlWithState(ctrl, _) => CanvasItem.isVisible(ctrl)
@@ -481,6 +492,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.ScreenNotifier2DWithState(_, _) => node
         case EngineNode.TimerWithState(timer, st) => EngineNode.TimerWithState(CanvasItem.setVisible(visible, timer), st)
         case EngineNode.ColorRectWithState(rect, st) => EngineNode.ColorRectWithState(CanvasItem.setVisible(visible, rect), st)
+        case EngineNode.Polygon2DWithState(poly, st) => EngineNode.Polygon2DWithState(CanvasItem.setVisible(visible, poly), st)
         case EngineNode.GPUParticles2DWithState(emitter, st) => EngineNode.GPUParticles2DWithState(CanvasItem.setVisible(visible, emitter), st)
         case EngineNode.CanvasLayerWithState(cl, st) => EngineNode.CanvasLayerWithState(CanvasItem.setVisible(visible, cl), st)
         case EngineNode.ControlWithState(ctrl, st) => EngineNode.ControlWithState(CanvasItem.setVisible(visible, ctrl), st)
@@ -508,6 +520,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.ScreenNotifier2DWithState(_, _) => {r = 1.0f32, g = 1.0f32, b = 1.0f32}
         case EngineNode.TimerWithState(timer, _) => CanvasItem.getModulate(timer)
         case EngineNode.ColorRectWithState(rect, _) => CanvasItem.getModulate(rect)
+        case EngineNode.Polygon2DWithState(poly, _) => CanvasItem.getModulate(poly)
         case EngineNode.GPUParticles2DWithState(emitter, _) => CanvasItem.getModulate(emitter)
         case EngineNode.CanvasLayerWithState(cl, _) => CanvasItem.getModulate(cl)
         case EngineNode.ControlWithState(ctrl, _) => CanvasItem.getModulate(ctrl)
@@ -535,6 +548,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.ScreenNotifier2DWithState(_, _) => node
         case EngineNode.TimerWithState(timer, st) => EngineNode.TimerWithState(CanvasItem.setModulate(color, timer), st)
         case EngineNode.ColorRectWithState(rect, st) => EngineNode.ColorRectWithState(CanvasItem.setModulate(color, rect), st)
+        case EngineNode.Polygon2DWithState(poly, st) => EngineNode.Polygon2DWithState(CanvasItem.setModulate(color, poly), st)
         case EngineNode.GPUParticles2DWithState(emitter, st) => EngineNode.GPUParticles2DWithState(CanvasItem.setModulate(color, emitter), st)
         case EngineNode.CanvasLayerWithState(cl, st) => EngineNode.CanvasLayerWithState(CanvasItem.setModulate(color, cl), st)
         case EngineNode.ControlWithState(ctrl, st) => EngineNode.ControlWithState(CanvasItem.setModulate(color, ctrl), st)
@@ -562,6 +576,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.ScreenNotifier2DWithState(_, _) => 0
         case EngineNode.TimerWithState(timer, _) => CanvasItem.getZIndex(timer)
         case EngineNode.ColorRectWithState(rect, _) => CanvasItem.getZIndex(rect)
+        case EngineNode.Polygon2DWithState(poly, _) => CanvasItem.getZIndex(poly)
         case EngineNode.GPUParticles2DWithState(emitter, _) => CanvasItem.getZIndex(emitter)
         case EngineNode.CanvasLayerWithState(cl, _) => CanvasItem.getZIndex(cl)
         case EngineNode.ControlWithState(ctrl, _) => CanvasItem.getZIndex(ctrl)
@@ -589,6 +604,7 @@ instance CanvasItem[EngineNode[s]] {
         case EngineNode.ScreenNotifier2DWithState(_, _) => node
         case EngineNode.TimerWithState(timer, st) => EngineNode.TimerWithState(CanvasItem.setZIndex(zIndex, timer), st)
         case EngineNode.ColorRectWithState(rect, st) => EngineNode.ColorRectWithState(CanvasItem.setZIndex(zIndex, rect), st)
+        case EngineNode.Polygon2DWithState(poly, st) => EngineNode.Polygon2DWithState(CanvasItem.setZIndex(zIndex, poly), st)
         case EngineNode.GPUParticles2DWithState(emitter, st) => EngineNode.GPUParticles2DWithState(CanvasItem.setZIndex(zIndex, emitter), st)
         case EngineNode.CanvasLayerWithState(cl, st) => EngineNode.CanvasLayerWithState(CanvasItem.setZIndex(zIndex, cl), st)
         case EngineNode.ControlWithState(ctrl, st) => EngineNode.ControlWithState(CanvasItem.setZIndex(zIndex, ctrl), st)
@@ -635,6 +651,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ScreenNotifier2DWithState(_, _) => Vec2.zero()
         case EngineNode.TimerWithState(timer, _) => Node2D.getPosition(timer)
         case EngineNode.ColorRectWithState(rect, _) => Node2D.getPosition(rect)
+        case EngineNode.Polygon2DWithState(poly, _) => Node2D.getPosition(poly)
         case EngineNode.GPUParticles2DWithState(emitter, _) => Node2D.getPosition(emitter)
         case EngineNode.CanvasLayerWithState(cl, _) => Node2D.getPosition(cl)
         case EngineNode.ControlWithState(ctrl, _) => Node2D.getPosition(ctrl)
@@ -662,6 +679,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ScreenNotifier2DWithState(_, _) => node
         case EngineNode.TimerWithState(timer, st) => EngineNode.TimerWithState(Node2D.setPosition(position, timer), st)
         case EngineNode.ColorRectWithState(rect, st) => EngineNode.ColorRectWithState(Node2D.setPosition(position, rect), st)
+        case EngineNode.Polygon2DWithState(poly, st) => EngineNode.Polygon2DWithState(Node2D.setPosition(position, poly), st)
         case EngineNode.GPUParticles2DWithState(emitter, st) => EngineNode.GPUParticles2DWithState(Node2D.setPosition(position, emitter), st)
         case EngineNode.CanvasLayerWithState(cl, st) => EngineNode.CanvasLayerWithState(Node2D.setPosition(position, cl), st)
         case EngineNode.ControlWithState(ctrl, st) => EngineNode.ControlWithState(Node2D.setPosition(position, ctrl), st)
@@ -689,6 +707,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ScreenNotifier2DWithState(_, _) => 0.0
         case EngineNode.TimerWithState(timer, _) => Node2D.getRotation(timer)
         case EngineNode.ColorRectWithState(rect, _) => Node2D.getRotation(rect)
+        case EngineNode.Polygon2DWithState(poly, _) => Node2D.getRotation(poly)
         case EngineNode.GPUParticles2DWithState(emitter, _) => Node2D.getRotation(emitter)
         case EngineNode.CanvasLayerWithState(cl, _) => Node2D.getRotation(cl)
         case EngineNode.ControlWithState(ctrl, _) => Node2D.getRotation(ctrl)
@@ -716,6 +735,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ScreenNotifier2DWithState(_, _) => node
         case EngineNode.TimerWithState(timer, st) => EngineNode.TimerWithState(Node2D.setRotation(rotation, timer), st)
         case EngineNode.ColorRectWithState(rect, st) => EngineNode.ColorRectWithState(Node2D.setRotation(rotation, rect), st)
+        case EngineNode.Polygon2DWithState(poly, st) => EngineNode.Polygon2DWithState(Node2D.setRotation(rotation, poly), st)
         case EngineNode.GPUParticles2DWithState(emitter, st) => EngineNode.GPUParticles2DWithState(Node2D.setRotation(rotation, emitter), st)
         case EngineNode.CanvasLayerWithState(cl, st) => EngineNode.CanvasLayerWithState(Node2D.setRotation(rotation, cl), st)
         case EngineNode.ControlWithState(ctrl, st) => EngineNode.ControlWithState(Node2D.setRotation(rotation, ctrl), st)
@@ -743,6 +763,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ScreenNotifier2DWithState(_, _) => {x = 1.0, y = 1.0}
         case EngineNode.TimerWithState(timer, _) => Node2D.getScale(timer)
         case EngineNode.ColorRectWithState(rect, _) => Node2D.getScale(rect)
+        case EngineNode.Polygon2DWithState(poly, _) => Node2D.getScale(poly)
         case EngineNode.GPUParticles2DWithState(emitter, _) => Node2D.getScale(emitter)
         case EngineNode.CanvasLayerWithState(cl, _) => Node2D.getScale(cl)
         case EngineNode.ControlWithState(ctrl, _) => Node2D.getScale(ctrl)
@@ -770,6 +791,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ScreenNotifier2DWithState(_, _) => node
         case EngineNode.TimerWithState(timer, st) => EngineNode.TimerWithState(Node2D.setScale(scale, timer), st)
         case EngineNode.ColorRectWithState(rect, st) => EngineNode.ColorRectWithState(Node2D.setScale(scale, rect), st)
+        case EngineNode.Polygon2DWithState(poly, st) => EngineNode.Polygon2DWithState(Node2D.setScale(scale, poly), st)
         case EngineNode.GPUParticles2DWithState(emitter, st) => EngineNode.GPUParticles2DWithState(Node2D.setScale(scale, emitter), st)
         case EngineNode.CanvasLayerWithState(cl, st) => EngineNode.CanvasLayerWithState(Node2D.setScale(scale, cl), st)
         case EngineNode.ControlWithState(ctrl, st) => EngineNode.ControlWithState(Node2D.setScale(scale, ctrl), st)
@@ -797,6 +819,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ScreenNotifier2DWithState(_, _) => 0.0
         case EngineNode.TimerWithState(timer, _) => Node2D.getSkew(timer)
         case EngineNode.ColorRectWithState(rect, _) => Node2D.getSkew(rect)
+        case EngineNode.Polygon2DWithState(poly, _) => Node2D.getSkew(poly)
         case EngineNode.GPUParticles2DWithState(emitter, _) => Node2D.getSkew(emitter)
         case EngineNode.CanvasLayerWithState(cl, _) => Node2D.getSkew(cl)
         case EngineNode.ControlWithState(ctrl, _) => Node2D.getSkew(ctrl)
@@ -824,6 +847,7 @@ instance Node2D[EngineNode[s]] {
         case EngineNode.ScreenNotifier2DWithState(_, _) => node
         case EngineNode.TimerWithState(timer, st) => EngineNode.TimerWithState(Node2D.setSkew(skew, timer), st)
         case EngineNode.ColorRectWithState(rect, st) => EngineNode.ColorRectWithState(Node2D.setSkew(skew, rect), st)
+        case EngineNode.Polygon2DWithState(poly, st) => EngineNode.Polygon2DWithState(Node2D.setSkew(skew, poly), st)
         case EngineNode.GPUParticles2DWithState(emitter, st) => EngineNode.GPUParticles2DWithState(Node2D.setSkew(skew, emitter), st)
         case EngineNode.CanvasLayerWithState(cl, st) => EngineNode.CanvasLayerWithState(Node2D.setSkew(skew, cl), st)
         case EngineNode.ControlWithState(ctrl, st) => EngineNode.ControlWithState(Node2D.setSkew(skew, ctrl), st)
@@ -903,6 +927,8 @@ instance GameEngine.Renderable[EngineNode[s]] {
                 RichTextLabel.toDrawables(label, globalPos)
             case EngineNode.ColorRectWithState(rect, _) =>
                 ColorRect.toDrawable(rect, globalPos) :: Nil
+            // Polygon2D は別経路（polygons コマンド）で塗るのでここでは Drawable を出さない
+            case EngineNode.Polygon2DWithState(_, _) => Nil
             case EngineNode.GPUParticles2DWithState(emitter, _) =>
                 GPUParticles2D.toDrawables(emitter, globalPos)
             case EngineNode.Path2DWithState(_, _) => Nil

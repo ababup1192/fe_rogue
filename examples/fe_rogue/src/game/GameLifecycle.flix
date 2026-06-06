@@ -42,6 +42,7 @@ mod GameLifecycle {
                 SelectedPlayer.State} =
         Scene.empty()
             |> MapScene.add(floor)
+            |> FogScene.add             // 各 module の薄暗いモヤ矩形 + 常駐 FogDriver。placements 確定後
             |> DamagePopupScene.add     // World 配下に空の Marker2D 親を 1 つ生やす
             |> PlayerScene.add(catalogs#players, catalogs#staves)
             |> EnemyScene.add(catalogs#enemies, catalogs#weapons, floor)
@@ -62,6 +63,11 @@ mod GameLifecycle {
             |> BgmScene.add             // BGM (AudioStreamPlayer, autoplay=true で起動時から再生)
             // 全ノード配置後に階段を床のランダムセルへ置く (駒・アイテムを避けるため最後)
             |> StairsScene.placeRandom
+            // players/stairs 確定後に初回フォグ適用 (スポーン部屋を点灯。以降は FogScene.process が毎フレーム更新)
+            // 起動時は通常モード (集合モードではない) なので torchCorridors=false
+            |> FogScene.applyFog(false)
+            // ミニマップ (最終 placements / 階段を読むため末尾)。訪問記憶はフロア再構築で自動リセット。
+            |> MinimapScene.add
 
     /// プレイ用シーンを組み立て + 初期 spawn 一覧 (敵 / 味方) を `InitialSpawns` に保存する。
     /// 起動時と GameOver リビルド時の両方が必ず通る経路。これで「scene 構築」と

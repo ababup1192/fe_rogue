@@ -295,6 +295,22 @@ mod EnemyScene {
             case other => other
         }, scene)
 
+    /// フォグ適用: 各敵を「現在地が lit(=isLit) なら表示、さもなくば非表示」にする。
+    /// 親 Marker2D の visible を切り替えるので子 Sprite / HPBar も連動する。
+    /// 非表示でも process(AI) は走るため、見えないだけで活動は継続する。`FogScene` から毎フレーム呼ばれる。
+    pub def applyFog(isLit: {x = Int32, y = Int32} -> Bool,
+                      scene: Scene[NodeTag]): Scene[NodeTag] =
+        List.foldLeft((acc, d) -> setEnemyVisible(d#id, isLit(d#gridPos), acc),
+                      scene, getAll(scene))
+
+    /// 敵 id の親 Marker2D の visible を設定する（Data は素通し）。
+    def setEnemyVisible(id: Int32, vis: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(enemyPath(id), engineNode -> match engineNode {
+            case EngineNode.Marker2DWithState(marker, NodeTag.Enemy(data)) =>
+                EngineNode.Marker2DWithState(CanvasItem.setVisible(vis, marker), NodeTag.Enemy(data))
+            case other => other
+        }, scene)
+
     /// 敵 id を `target` に移動させる。論理位置（gridPos）は即時更新し、
     /// 見た目の補間は Tween に委ねる（PlayerScene.moveTo と同じ機構）。
     /// 呼び出しごとに 1 マス分（隣接セル）の Tween を登録する前提。複数マス分の

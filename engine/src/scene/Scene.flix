@@ -719,6 +719,12 @@ pub mod Scene {
         let ctx = drawContext(path, scene);
         ctx#underCanvasLayer
 
+    /// パスのノードが実効的に可視か（祖先の visible も加味、toDrawables と同じ判定）。
+    /// toDrawables を経由しない描画パス（Polygon2D 収集など）で可視性を尊重するために使う。
+    pub def effectiveVisibleAt(path: NodePath, scene: Scene[s]): Bool =
+        let ctx = drawContext(path, scene);
+        ctx#visible
+
     /// パスのノードがレンダラ上で実際に描画されるスクリーン座標を返す。
     /// CanvasLayer 配下のノードはカメラの ViewTransform を受けないので worldPos のまま、
     /// それ以外（ゲームワールドのノード）は `Camera2D.applyToWorldPos` で変換する。

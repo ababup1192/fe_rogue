@@ -15,7 +15,7 @@ def withMockAudio(f: Unit -> a \ ef + GameEngine.Audio): a \ ef =
 /// HUDScene.addHUD など SceneLoader.loadSceneWithFont を呼ぶ箇所で要求される。
 def withMockGame(f: Unit -> a \ ef + GameEngine.Game): a \ ef =
     run f() with handler GameEngine.Game {
-        def renderCommands(_, _, k)     = k(())
+        def renderCommands(_, _, _, k)     = k(())
         def initTileBuffer(_, k)        = k((0i32, 0i32))
         def shouldClose(k)              = k(false)
         def getDeltaTime(k)             = k(Duration.seconds(0.016))

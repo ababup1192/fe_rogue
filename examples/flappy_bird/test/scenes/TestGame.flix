@@ -26,7 +26,7 @@ def withMockRecycle(f: Unit -> a \ ef + Recycle):
               k(PipeScene.spawnRecycledPair(ScoreScene.getScore(scene), scene))
       }
       with handler GameEngine.Game {
-          def renderCommands(_, _, k) = k(())
+          def renderCommands(_, _, _, k) = k(())
           def initTileBuffer(_, k) = k((0i32, 0i32))
           def shouldClose(k) = k(false)
           def getDeltaTime(k) = k(Duration.zero())
@@ -70,7 +70,7 @@ def withMockAudioAndState(f: Unit -> a \ ef + GameEngine.Audio + BirdStateChange
 /// テクスチャ問い合わせ等は使われない想定なので bug! / ダミー値を返す
 def withMockGame(f: Unit -> a \ ef + GameEngine.Game): a \ ef =
     run f() with handler GameEngine.Game {
-        def renderCommands(_, _, k) = k(())
+        def renderCommands(_, _, _, k) = k(())
         def initTileBuffer(_, k) = k((0i32, 0i32))
         def shouldClose(k) = k(false)
         def getDeltaTime(k) = k(Duration.zero())
