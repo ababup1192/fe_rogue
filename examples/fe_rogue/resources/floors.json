@@ -38,11 +38,15 @@
       "monsters": [
         {
           "id": "goblin",
-          "percent": 70
+          "percent": 50
         },
         {
           "id": "orc",
           "percent": 30
+        },
+        {
+          "id": "dwarf",
+          "percent": 20
         }
       ],
       "monstersPerRoom": {

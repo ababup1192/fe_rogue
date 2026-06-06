@@ -1,9 +1,9 @@
 {
   "weapons": {
     "fire_magic": {
-      "attack": 0,
-      "durability": 21,
-      "hit": 90,
+      "attack": 5,
+      "durability": 30,
+      "hit": 95,
       "name": "ファイアー",
       "range": {
         "max": 2,
@@ -17,11 +17,28 @@
       },
       "weaponType": "Magic"
     },
+    "iron_axe": {
+      "attack": 8,
+      "durability": 45,
+      "hit": 65,
+      "name": "てつの斧",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 248,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Axe"
+    },
     "trainingBow": {
-      "attack": 0,
-      "durability": 25,
-      "hit": 85,
-      "name": "くんれんゆみ",
+      "attack": 6,
+      "durability": 45,
+      "hit": 80,
+      "name": "てつの弓",
       "range": {
         "max": 2,
         "min": 2
@@ -38,10 +55,10 @@
       "weaponType": "Bow"
     },
     "trainingSpear": {
-      "attack": 0,
-      "durability": 41,
+      "attack": 7,
+      "durability": 45,
       "hit": 70,
-      "name": "くんれんやり",
+      "name": "てつのやり",
       "range": {
         "max": 1,
         "min": 1
@@ -58,10 +75,10 @@
       "weaponType": "Lance"
     },
     "trainingSword": {
-      "attack": 0,
-      "durability": 41,
-      "hit": 80,
-      "name": "くんれんけん",
+      "attack": 5,
+      "durability": 46,
+      "hit": 85,
+      "name": "てつの剣",
       "range": {
         "max": 1,
         "min": 1

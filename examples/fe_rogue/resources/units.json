@@ -6,18 +6,18 @@
   ],
   "units": {
     "archer": {
-      "attack": 5,
+      "attack": 4,
       "defense": 4,
       "description": "アーチャー",
       "growthRates": {
-        "attack": 55,
-        "defense": 30,
-        "hp": 70,
-        "magicAttack": 10,
-        "magicDefense": 25,
-        "speed": 60
+        "attack": 40,
+        "defense": 20,
+        "hp": 80,
+        "magicAttack": 15,
+        "magicDefense": 15,
+        "speed": 40
       },
-      "hp": 13,
+      "hp": 18,
       "initialInventory": [
         {
           "id": "trainingBow",
@@ -25,12 +25,12 @@
         }
       ],
       "level": 1,
-      "luck": 4,
+      "luck": 2,
       "magicAttack": 0,
-      "magicDefense": 2,
+      "magicDefense": 0,
       "moveTiles": 5,
-      "skill": 6,
-      "speed": 4,
+      "skill": 4,
+      "speed": 5,
       "sprite": {
         "frame": 1,
         "hframes": 5,
@@ -95,51 +95,51 @@
       }
     },
     "knight": {
-      "attack": 7,
-      "defense": 4,
-      "description": "ナイト",
+      "attack": 5,
+      "defense": 5,
+      "description": "ロード",
       "growthRates": {
-        "attack": 50,
-        "defense": 40,
+        "attack": 40,
+        "defense": 25,
         "hp": 80,
         "magicAttack": 10,
-        "magicDefense": 25,
+        "magicDefense": 30,
         "speed": 40
       },
-      "hp": 17,
+      "hp": 18,
       "initialInventory": [
         {
-          "id": "trainingSpear",
+          "id": "trainingSword",
           "kind": "weapon"
         }
       ],
       "level": 1,
-      "luck": 3,
+      "luck": 7,
       "magicAttack": 0,
-      "magicDefense": 1,
-      "moveTiles": 4,
+      "magicDefense": 0,
+      "moveTiles": 5,
       "skill": 5,
-      "speed": 4,
+      "speed": 7,
       "sprite": {
-        "frame": 0,
+        "frame": 8,
         "hframes": 5,
         "texture": "character_sheet",
         "vframes": 2
       }
     },
     "mage": {
-      "attack": 2,
-      "defense": 2,
+      "attack": 0,
+      "defense": 3,
       "description": "メイジ",
       "growthRates": {
-        "attack": 15,
+        "attack": 10,
         "defense": 20,
-        "hp": 55,
-        "magicAttack": 65,
-        "magicDefense": 45,
-        "speed": 45
+        "hp": 50,
+        "magicAttack": 40,
+        "magicDefense": 30,
+        "speed": 50
       },
-      "hp": 11,
+      "hp": 16,
       "initialInventory": [
         {
           "id": "fire_magic",
@@ -160,11 +160,11 @@
       ],
       "level": 1,
       "luck": 5,
-      "magicAttack": 8,
-      "magicDefense": 3,
+      "magicAttack": 4,
+      "magicDefense": 5,
       "moveTiles": 5,
       "skill": 5,
-      "speed": 4,
+      "speed": 6,
       "sprite": {
         "frame": 2,
         "hframes": 5,

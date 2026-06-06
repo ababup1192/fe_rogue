@@ -1,13 +1,35 @@
 {
   "enemies": {
-    "goblin": {
-      "attack": 5,
-      "defense": 2,
-      "description": "ゴブリン",
-      "hp": 10,
+    "dwarf": {
+      "attack": 6,
+      "defense": 4,
+      "description": "アーチャー",
+      "hp": 18,
       "initialInventory": [
         {
-          "id": "trainingSword",
+          "id": "trainingBow",
+          "kind": "weapon"
+        }
+      ],
+      "luck": 2,
+      "moveTiles": 5,
+      "skill": 4,
+      "speed": 5,
+      "sprite": {
+        "frame": 1,
+        "hframes": 5,
+        "texture": "character_sheet",
+        "vframes": 2
+      }
+    },
+    "goblin": {
+      "attack": 9,
+      "defense": 3,
+      "description": "ゴブリン",
+      "hp": 26,
+      "initialInventory": [
+        {
+          "id": "iron_axe",
           "kind": "weapon"
         }
       ],
@@ -15,9 +37,9 @@
       "luck": 1,
       "magicAttack": 0,
       "magicDefense": 0,
-      "moveTiles": 4,
+      "moveTiles": 5,
       "skill": 3,
-      "speed": 4,
+      "speed": 7,
       "sprite": {
         "frame": 4,
         "hframes": 5,
@@ -29,29 +51,34 @@
       }
     },
     "orc": {
-      "attack": 6,
+      "attack": 11,
       "defense": 3,
       "description": "オーク",
-      "hp": 13,
+      "hp": 30,
       "initialInventory": [
         {
-          "id": "trainingSword",
+          "id": "iron_axe",
           "kind": "weapon"
         }
       ],
       "level": 4,
       "luck": 0,
       "magicAttack": 0,
-      "magicDefense": 0,
-      "moveTiles": 3,
-      "skill": 2,
-      "speed": 2,
+      "magicDefense": 1,
+      "moveTiles": 4,
+      "skill": 3,
+      "speed": 5,
       "sprite": {
         "frame": 3,
         "hframes": 5,
         "texture": "character_sheet",
         "vframes": 2
       }
+    }
+  },
+  "weapons": {
+    "iron_axe": {
+      "durability": 45
     }
   }
 }
