@@ -224,7 +224,9 @@ mod CursorScene {
                                     moveStep(target, marker, data, slide);
                                 let (hovered, updatedScene) =
                                     handleHoverChange(movedData, board, scene);
-                                let onPiece = Board.isOccupied(target, board);
+                                // フォグで隠れている敵では snag させない（一瞬の引っかかりで
+                                // 見えない敵の位置がバレるのを防ぐ）。可視の駒のみ引っかける。
+                                let onPiece = isVisiblyOccupied(target, board, scene);
                                 if (onPiece) AnimationPlayer.play(cursorPath(), snagAnimation())
                                 else ();
                                 let finalData = applyHoldUpdate(hovered, dir,
@@ -277,7 +279,10 @@ mod CursorScene {
     def handleHoverChange(data: Data, board: Board,
                            scene: Scene[NodeTag]):
             (Data, Scene[NodeTag]) \ {GameLogger.GameLogger, EnemyScene.RosterQuery} =
-        let enemyId = enemyIdAt(data#gridPos, board);
+        // フォグで隠れている敵はホバーしても情報を出さない（配置バレ防止）。
+        // 見えていない敵セルは「敵が居ない」扱いに倒し、ログ・赤レンジを発火させない。
+        let enemyId = enemyIdAt(data#gridPos, board)
+                        |> Option.filter(id -> EnemyScene.isVisible(id, scene));
         if (enemyId == data#lastHoveredEnemyId) (data, scene)
         else
             let nextScene = match enemyId {
@@ -515,6 +520,17 @@ mod CursorScene {
             case None         => -1
         }
 
+
+    /// target セルに「見えている駒」が居るか。味方は常に可視。敵はフォグで隠れていれば
+    /// 居ないものとして扱う（カーソルの snag が見えない敵の位置を漏らさないように）。
+    /// Board に駒が居て、それが敵でない（=味方）なら可視。敵なら EnemyScene.isVisible で判定。
+    def isVisiblyOccupied(coord: {x = Int32, y = Int32}, board: Board,
+                           scene: Scene[NodeTag]): Bool =
+        if (not Board.isOccupied(coord, board)) false
+        else match enemyIdAt(coord, board) {
+            case Some(id) => EnemyScene.isVisible(id, scene)
+            case None     => true
+        }
 
     /// 指定セルに居る敵の id を返す（居なければ None）
     def enemyIdAt(coord: {x = Int32, y = Int32}, board: Board): Option[Int32] =

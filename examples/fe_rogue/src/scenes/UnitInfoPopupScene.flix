@@ -216,7 +216,10 @@ mod UnitInfoPopupScene {
     /// effect 経由の RosterQuery/PartyQuery は使わない）。
     def lookupUnitAtScene(coord: {x = Int32, y = Int32},
                             scene: Scene[NodeTag]): Option[(String, Int32)] =
-        match EnemyScene.findIdAt(coord, scene) {
+        // フォグで隠れている敵は「居ない」扱いにして情報を出さない（配置バレ防止）。
+        let visibleEnemy = EnemyScene.findIdAt(coord, scene)
+                            |> Option.filter(id -> EnemyScene.isVisible(id, scene));
+        match visibleEnemy {
             case Some(id) => Some(("enemy", id))
             case None     =>
                 PlayerScene.getAll(scene)

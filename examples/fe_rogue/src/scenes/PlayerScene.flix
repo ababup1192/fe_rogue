@@ -99,6 +99,22 @@ mod PlayerScene {
         pendingLevelUp     = Option[LevelSystem.Result]
     }
 
+    /// この味方の戦闘ビュー（faction 非依存）。装備武器は `weapons` の先頭。
+    /// `Combat.estimate` / `Encounter` の join で使う（ダメージ式は `Combat` に集約）。
+    pub def combatView(data: Data): Combat.CombatView =
+        {attack = data#resource#attack, magicAttack = data#resource#magicAttack,
+         defense = data#resource#defense, magicDefense = data#resource#magicDefense,
+         skill = data#resource#skill, speed = data#resource#speed, luck = data#resource#luck,
+         hp = data#hp, weapon = Combat.weaponView(List.head(data#weapons))}
+
+    /// この味方の盤上ビュー（faction = Player）。`Encounter.fromScene` の join で使う。
+    /// `weaponRange` は装備武器(先頭)の射程。味方に `isDying` は無いので常に false。
+    pub def unitView(data: Data): UnitView =
+        {id = data#id, faction = Faction.Player, pos = data#gridPos,
+         hp = data#hp, moveTiles = data#moveTiles,
+         weaponRange = List.head(data#weapons) |> Option.map(w -> w#range),
+         combat = combatView(data), isDying = false, hidden = data#hidden}
+
     /// 味方パーティの「現フレーム状態」を Scene を介さずに読み取る effect。
     ///
     /// 非 driver / 非 data Scene (HUD / Camera / Menu / Overlay) は `PlayerScene` モジュールを

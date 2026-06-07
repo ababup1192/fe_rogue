@@ -290,22 +290,12 @@ mod BattlePanelScene {
     /// 敵が反撃できない（武器なし / 射程外）場合は敵側の威力 / 命中を "--"・反撃ダメージ 0。
     def formatColumns(player: PlayerScene.Data, weapon: UnitCatalog.WeaponResource,
                        enemy: EnemyScene.Data): Forecast =
-        let phys = UnitCatalog.isPhysical(weapon#weaponType);
-        // 武器相性: 味方の武器 vs 敵の装備武器。敵が未装備なら中立。
+        // 武器相性マーク表示用（味方の武器 vs 敵の装備武器。敵が未装備なら中立）。
+        // 威力 / 命中の数値計算は `Combat.estimate`（faction 非依存）に集約済み。
         let rel  = WeaponTriangle.relationOpt(weapon#weaponType,
                                               enemy#weapon |> Option.map(w -> w#weaponType));
-        let playerAtk = Combat.attackStatFor(player#resource#attack,
-                                              player#resource#magicAttack,
-                                              weapon#attack, phys);
-        let enemyDef  = Combat.defenseStatFor(enemy#resource#defense,
-                                               enemy#resource#magicDefense,
-                                               phys);
-        let playerForecast = Combat.forecast(
-            {attack = playerAtk, skill = player#resource#skill,
-             luck = player#resource#luck, weaponHit = weapon#hit},
-            {hp = enemy#hp, defense = enemyDef,
-             speed = enemy#resource#speed, luck = enemy#resource#luck},
-            rel);
+        let playerForecast = Combat.estimate(PlayerScene.combatView(player),
+                                             EnemyScene.combatView(enemy));
         let enemyCols = formatEnemyColumns(player, enemy);
         let bandWidth  = 16;  // 上下の帯の文字幅（武器名の中央寄せ用）
         let labelWidth = 5;   // 中央ラベルの文字幅（左マージン込みで中央へ寄せる）
@@ -340,19 +330,9 @@ mod BattlePanelScene {
                 if (not Weapon.canReach(d, eWeapon))
                     {name = nameStr, atk = "--", hit = "--", counterDamage = 0}
                 else {
-                    let ePhys = UnitCatalog.isPhysical(eWeapon#weaponType);
-                    let enemyAtk = Combat.attackStatFor(enemy#resource#attack,
-                                                         enemy#resource#magicAttack,
-                                                         eWeapon#attack, ePhys);
-                    let playerDef = Combat.defenseStatFor(player#resource#defense,
-                                                           player#resource#magicDefense,
-                                                           ePhys);
-                    let enemyForecast = Combat.forecast(
-                        {attack = enemyAtk, skill = enemy#resource#skill,
-                         luck = enemy#resource#luck, weaponHit = eWeapon#hit},
-                        {hp = player#hp, defense = playerDef,
-                         speed = player#resource#speed, luck = player#resource#luck},
-                        eRel);
+                    // 反撃の威力 / 命中は敵 → 味方の `Combat.estimate`（味方の予報と同一経路）。
+                    let enemyForecast = Combat.estimate(EnemyScene.combatView(enemy),
+                                                         PlayerScene.combatView(player));
                     {name = nameStr,
                      atk = "${enemyForecast#damage}", hit = "${enemyForecast#hit}%",
                      counterDamage = enemyForecast#damage}

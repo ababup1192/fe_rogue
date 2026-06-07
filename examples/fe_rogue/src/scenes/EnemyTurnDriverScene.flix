@@ -120,9 +120,12 @@ mod EnemyTurnDriverScene {
         match EnemyScene.get(step#id, scene) {
             case None       => scene   // 既に除外済み (死亡演出完了など)
             case Some(data) =>
-                let board = BoardSnapshot.fromScene(scene);
-                let targets = buildTargets(data, scene);
-                let (action, updated) = EnemyAI.decideAction(board, data, targets);
+                // 盤面 + 盤上ユニットを 1 箇所で結合 (位置×ステータスの join は Encounter に集約)。
+                // driver は手元の (mid-frame mutation 済み) scene に live で適用する。
+                let enc = Encounter.fromScene(scene);
+                let board = enc#board;
+                let self = EnemyScene.unitView(data);
+                let (action, updated) = EnemyAI.decideAction(enc, self, data#alerted);
                 let withAlert = EnemyScene.mapEnemy(step#id,
                     d -> {alerted = updated#alerted | d}, scene);
                 match action {
@@ -161,23 +164,6 @@ mod EnemyTurnDriverScene {
                     case EnemyAI.EnemyAction.Skip(_) => withAlert
                 }
         }
-
-    /// `EnemyAI.decideAction` に渡すターゲット評価材料を scene から組む。
-    /// hidden（階段で退場 / 合流退避中）の味方は盤面から外れているので除外する
-    /// （`BoardSnapshot.fromScene` と同じフィルタ。これが無いと退場済みの味方が狙われる）。
-    /// `estDamage` はこの敵 → 各味方の推定与ダメ（`EnemyScene.estimateDamage`、命中前提・RNG無し）、
-    /// `counterRange` は味方の装備武器（先頭）の射程。標的の最終選択は EnemyAI が辞書式で行う。
-    def buildTargets(enemy: EnemyScene.Data, scene: Scene[NodeTag]):
-            List[EnemyAI.TargetInfo] =
-        PlayerScene.getAll(scene)
-            |> List.filter(p -> not p#hidden)
-            |> List.map(p -> ({
-                id           = p#id,
-                pos          = p#gridPos,
-                hp           = p#hp,
-                estDamage    = EnemyScene.estimateDamage(enemy, p),
-                counterRange = List.head(p#weapons) |> Option.map(w -> w#range)
-            }: EnemyAI.TargetInfo))
 
     /// 敵ターンの後始末: ターン番号繰り上げ + 全プレイヤーを `waited = false` にリセット +
     /// カーソル復活 + 味方ターン宣言。

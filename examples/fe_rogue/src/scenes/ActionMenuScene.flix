@@ -235,17 +235,12 @@ mod ActionMenuScene {
         List.append(gather, turnEnd)
 
     /// 装備武器の射程内に生きている敵が居るか。
-    /// 武器なし / 全員 isDying なら false。
+    /// 武器なし / 全員 isDying なら false。位置×ステータスの結合と射程判定は
+    /// `UnitView.canAttack`（faction 非依存の共通述語）に集約済み。
     def canAttackFrom(player: PlayerScene.Data): Bool \ EnemyScene.RosterQuery =
-        match List.head(player#weapons) {
-            case None    => false
-            case Some(w) =>
-                List.exists(e ->
-                    not e#isDying
-                    and e#hp > 0
-                    and Weapon.canReach(Weapon.manhattan(player#gridPos, e#gridPos), w),
+        let attacker = PlayerScene.unitView(player);
+        List.exists(e -> UnitView.canAttack(attacker, EnemyScene.unitView(e)),
                     EnemyScene.RosterQuery.getAll())
-        }
 
     /// 自分の現在セルに「自分以外の味方」が居なければたいき可。
     /// 同じセルに別味方が居る (重なり) ときは false。

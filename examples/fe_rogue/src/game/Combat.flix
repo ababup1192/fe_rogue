@@ -113,6 +113,48 @@ mod Combat {
         }
 
     // ────────────────────────────────────────────────────────
+    // faction 非依存の戦闘ビュー + 予報
+    //   位置×ステータスの結合（味方/敵どちらが攻撃側でも）を 1 経路に集約する。
+    //   旧 `EnemyScene.estimateDamage` と BattlePanel のインライン予報がここを通る。
+    // ────────────────────────────────────────────────────────
+
+    /// 1 ユニットを faction 非依存で見た戦闘ステータス。攻撃側はオフェンス値 + `weapon`、
+    /// 防御側はディフェンス値 + `weapon`（相性判定用）を `estimate` が参照する。
+    /// `weapon#isPhysical` は構築時に解決して持つ（`Combat` を `UnitCatalog` 非依存に保つ）。
+    pub type alias CombatView = {
+        attack = Int32, magicAttack = Int32, defense = Int32, magicDefense = Int32,
+        skill = Int32, speed = Int32, luck = Int32, hp = Int32,
+        weapon = Option[{weaponType = WeaponCatalog.WeaponType, attack = Int32,
+                          hit = Int32, isPhysical = Bool}]
+    }
+
+    /// 装備武器（Option）から `CombatView#weapon` を組む。`isPhysical` をここで解決する。
+    pub def weaponView(weapon: Option[WeaponCatalog.WeaponResource]):
+            Option[{weaponType = WeaponCatalog.WeaponType, attack = Int32,
+                    hit = Int32, isPhysical = Bool}] =
+        weapon |> Option.map(w ->
+            {weaponType = w#weaponType, attack = w#attack, hit = w#hit,
+             isPhysical = WeaponCatalog.isPhysical(w#weaponType)})
+
+    /// 攻撃側 → 防御側 1 撃ぶんの予報（faction 非依存）。攻撃側が武器を持たないなら {0, 0, false}。
+    /// 武器相性・物理/魔法・攻防の解決は `attackStatFor`/`defenseStatFor`/`WeaponTriangle.relationOpt`/
+    /// `forecast` に委譲する（式は不変）。`damage` のみ欲しい呼び出し側は `#damage` を取る。
+    pub def estimate(attacker: CombatView, defender: CombatView):
+            {damage = Int32, hit = Int32, kill = Bool} =
+        match attacker#weapon {
+            case None    => {damage = 0, hit = 0, kill = false}
+            case Some(w) =>
+                let rel = WeaponTriangle.relationOpt(w#weaponType,
+                              defender#weapon |> Option.map(dw -> dw#weaponType));
+                let atk = attackStatFor(attacker#attack, attacker#magicAttack, w#attack, w#isPhysical);
+                let dfn = defenseStatFor(defender#defense, defender#magicDefense, w#isPhysical);
+                forecast(
+                    {attack = atk, skill = attacker#skill, luck = attacker#luck, weaponHit = w#hit},
+                    {hp = defender#hp, defense = dfn, speed = defender#speed, luck = defender#luck},
+                    rel)
+        }
+
+    // ────────────────────────────────────────────────────────
     // 経験値（EXP）— FE7 流のレベル差ベース
     //   命中で必ず得る「戦闘経験値」と、撃破時に上乗せする「撃破経験値」を、
     //   敵と自分のレベル差から導く。攻撃 1 回が生む結果の一部なのでここ（Combat）に置く。

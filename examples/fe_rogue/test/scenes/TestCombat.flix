@@ -320,4 +320,65 @@ mod TestCombat {
     @Test
     def testBattleExpKillAddsKillExp(): Unit \ Assert =
         Assert.assertEq(expected = 30, Combat.battleExp(5, 5, true))
+
+    // ════════════════════════════════════════════════════════
+    // estimate: faction 非依存の予報（攻撃側 view → 防御側 view）
+    //   旧 EnemyScene.estimateDamage / BattlePanel のインライン予報が通る 1 経路。
+    //   forecast に CombatView の物理/魔法・武器相性解決を被せただけなので、
+    //   物理中立・武器なし・魔法ステ参照・相性有利の 4 経路だけ確認する。
+    // ════════════════════════════════════════════════════════
+
+    /// 物理・中立: 剣(atk4 + 武器2 = 6) → 防御 def1 hp3。forecast 版と同値の (5, 72, 撃破)。
+    @Test
+    def testEstimatePhysicalNeutral(): Unit \ Assert =
+        let attacker: Combat.CombatView =
+            {attack = 4, magicAttack = 0, defense = 0, magicDefense = 0,
+             skill = 5, speed = 0, luck = 3, hp = 10,
+             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, isPhysical = true})};
+        let defender: Combat.CombatView =
+            {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
+             skill = 0, speed = 4, luck = 1, hp = 3, weapon = None};
+        let f = Combat.estimate(attacker, defender);
+        Assert.assertEq(expected = (5, 72, true), (f#damage, f#hit, f#kill))
+
+    /// 武器なしの攻撃側は {0, 0, false}（攻撃不能）。
+    @Test
+    def testEstimateNoWeaponIsZero(): Unit \ Assert =
+        let attacker: Combat.CombatView =
+            {attack = 9, magicAttack = 9, defense = 0, magicDefense = 0,
+             skill = 9, speed = 0, luck = 0, hp = 10, weapon = None};
+        let defender: Combat.CombatView =
+            {attack = 0, magicAttack = 0, defense = 0, magicDefense = 0,
+             skill = 0, speed = 0, luck = 0, hp = 5, weapon = None};
+        let f = Combat.estimate(attacker, defender);
+        Assert.assertEq(expected = (0, 0, false), (f#damage, f#hit, f#kill))
+
+    /// 魔法武器(isPhysical=false)は攻撃側 magicAttack と防御側 magicDefense を参照。
+    /// magicAttack6 + 武器0 = 6 vs magicDefense1 → 与5・命中100・未撃破(hp10)。物理ステは無視。
+    @Test
+    def testEstimateMagicUsesMagicStats(): Unit \ Assert =
+        let attacker: Combat.CombatView =
+            {attack = 99, magicAttack = 6, defense = 0, magicDefense = 0,
+             skill = 0, speed = 0, luck = 0, hp = 10,
+             weapon = Some({weaponType = WeaponType.Magic, attack = 0, hit = 100, isPhysical = false})};
+        let defender: Combat.CombatView =
+            {attack = 0, magicAttack = 0, defense = 99, magicDefense = 1,
+             skill = 0, speed = 0, luck = 0, hp = 10, weapon = None};
+        let f = Combat.estimate(attacker, defender);
+        Assert.assertEq(expected = (5, 100, false), (f#damage, f#hit, f#kill))
+
+    /// 武器相性は防御側 weapon の種別で決まる。剣 → 斧 で有利（攻 +1 / 命 +15）。
+    /// forecast 版 testForecastSwordVsAxeGetsAdvantage と同値の (6, 87, 撃破)。
+    @Test
+    def testEstimateTriangleAdvantageFromDefenderWeapon(): Unit \ Assert =
+        let attacker: Combat.CombatView =
+            {attack = 4, magicAttack = 0, defense = 0, magicDefense = 0,
+             skill = 5, speed = 0, luck = 3, hp = 10,
+             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, isPhysical = true})};
+        let defender: Combat.CombatView =
+            {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
+             skill = 0, speed = 4, luck = 1, hp = 3,
+             weapon = Some({weaponType = WeaponType.Axe, attack = 0, hit = 0, isPhysical = true})};
+        let f = Combat.estimate(attacker, defender);
+        Assert.assertEq(expected = (6, 87, true), (f#damage, f#hit, f#kill))
 }

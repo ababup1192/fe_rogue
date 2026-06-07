@@ -23,8 +23,13 @@ mod Weapon {
     pub def manhattan(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Int32 =
         Int32.abs(a#x - b#x) + Int32.abs(a#y - b#y)
 
+    /// `distance` (マンハッタン距離) が射程 `min..max` (inclusive) に入るか。
+    /// `WeaponResource` を持たない呼び出し側（`UnitView` の射程レコードなど）でも使える素の判定。
+    pub def inRange(distance: Int32, range: {min = Int32, max = Int32}): Bool =
+        distance >= range#min and distance <= range#max
+
     /// `weapon` が `distance` (マンハッタン距離) の相手に届くか。
-    /// `min..max` inclusive で判定する。
+    /// `min..max` inclusive で判定する（`inRange` への薄い委譲）。
     pub def canReach(distance: Int32, weapon: WeaponResource): Bool =
-        distance >= weapon#range#min and distance <= weapon#range#max
+        inRange(distance, weapon#range)
 }

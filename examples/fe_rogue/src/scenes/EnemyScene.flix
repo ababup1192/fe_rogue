@@ -311,6 +311,16 @@ mod EnemyScene {
             case other => other
         }, scene)
 
+    /// 敵 id の親 Marker2D が現在 visible か（フォグで隠れていないか）を返す。
+    /// フォグは `applyFog` で毎フレーム visible を設定するため、これが「いま見えているか」の
+    /// 真実源になる。プレイヤーターン中は敵が動かないので前フレームの値で判定して問題ない。
+    /// 未登録なら false（居ない＝見えない扱い）。CursorScene のホバー情報抑制に使う。
+    pub def isVisible(id: Int32, scene: Scene[NodeTag]): Bool =
+        match Scene.getEngineNode(enemyPath(id), scene) {
+            case Some(EngineNode.Marker2DWithState(marker, _)) => CanvasItem.isVisible(marker)
+            case _                                              => false
+        }
+
     /// 敵 id を `target` に移動させる。論理位置（gridPos）は即時更新し、
     /// 見た目の補間は Tween に委ねる（PlayerScene.moveTo と同じ機構）。
     /// 呼び出しごとに 1 マス分（隣接セル）の Tween を登録する前提。複数マス分の
@@ -614,20 +624,24 @@ mod EnemyScene {
 
     /// この敵がプレイヤーに与える素ダメージ（命中前提・RNG なし。武器相性・物理/魔法を含む）。
     /// 実ダメージ適用（`applyDamageToPlayer` の命中時）と AI の「今ターン仕留められるか」判定で
-    /// 同じ式を共用するための純粋関数。武器を持たない敵は 0。
+    /// 同じ式を共用する。ダメージ式は `Combat.estimate`（faction 非依存）に集約済み。
     pub def estimateDamage(enemy: Data, player: PlayerScene.Data): Int32 =
-        match enemy#weapon {
-            case None         => 0
-            case Some(weapon) =>
-                let phys = UnitCatalog.isPhysical(weapon#weaponType);
-                let rel  = WeaponTriangle.relationOpt(weapon#weaponType,
-                              List.head(player#weapons) |> Option.map(w -> w#weaponType));
-                let totalAttack = Combat.attackStatFor(enemy#resource#attack,
-                                      enemy#resource#magicAttack, weapon#attack, phys);
-                let targetDef   = Combat.defenseStatFor(player#resource#defense,
-                                      player#resource#magicDefense, phys);
-                Combat.attackDamage(totalAttack, targetDef, rel)
-        }
+        Combat.estimate(combatView(enemy), PlayerScene.combatView(player))#damage
+
+    /// この敵の戦闘ビュー（faction 非依存）。`Combat.estimate` / `Encounter` の join で使う。
+    pub def combatView(data: Data): Combat.CombatView =
+        {attack = data#resource#attack, magicAttack = data#resource#magicAttack,
+         defense = data#resource#defense, magicDefense = data#resource#magicDefense,
+         skill = data#resource#skill, speed = data#resource#speed, luck = data#resource#luck,
+         hp = data#hp, weapon = Combat.weaponView(data#weapon)}
+
+    /// この敵の盤上ビュー（faction = Enemy）。`Encounter.fromScene` の join で使う。
+    /// `weaponRange` は装備武器の射程。敵に `hidden` は無いので常に false。
+    pub def unitView(data: Data): UnitView =
+        {id = data#id, faction = Faction.Enemy, pos = data#gridPos,
+         hp = data#hp, moveTiles = data#moveTiles,
+         weaponRange = data#weapon |> Option.map(w -> w#range),
+         combat = combatView(data), isDying = data#isDying, hidden = false}
 
     /// 指定 id の敵が現在装備している武器を返す。未装備（壊れた後）なら None。
     /// EnemyAI 等が「攻撃できるか」を判定するために使う。
