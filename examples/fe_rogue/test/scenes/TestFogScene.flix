@@ -97,4 +97,55 @@ mod TestFogScene {
         let p0 = placement(0, 0, 0, 8, 8);
         Assert.assertEq(expected = (Nil: List[(Int32, Int32, Int32, Int32)]),
             holesT(FogScene.holesFor(unit(3, 4, true) :: Nil, p0 :: Nil, 1, false)))
+
+    // ── cursorRangeRects ─────────────────────────────────────
+
+    /// 明るい部屋だけ（visited 空）→ moduleRect(p0)=(-1,-1,9,9) を radius=5 拡張した
+    /// (-6,-6,14,14) 1 枚。既訪 module の矩形は付かない。
+    @Test
+    def testCursorRangeLitOnly(): Unit \ Assert =
+        let p0 = placement(0, 0,  0, 8, 8);
+        let p1 = placement(1, 20, 0, 8, 8);
+        Assert.assertEq(expected = (-6, -6, 14, 14) :: Nil,
+            holesT(FogScene.cursorRangeRects(unit(3, 4, false) :: Nil,
+                                              p0 :: p1 :: Nil, 2, Set.empty(), 5)))
+
+    /// 既訪 module(idx 1) があれば、明るい部屋の拡張矩形に加えて moduleRect(p1)
+    /// （余白なし、(19,-1,29,9)）が和に入る。
+    @Test
+    def testCursorRangeVisitedAdded(): Unit \ Assert =
+        let p0 = placement(0, 0,  0, 8, 8);
+        let p1 = placement(1, 20, 0, 8, 8);
+        Assert.assertEq(
+            expected = (-6, -6, 14, 14) :: (19, -1, 29, 9) :: Nil,
+            holesT(FogScene.cursorRangeRects(unit(3, 4, false) :: Nil,
+                                              p0 :: p1 :: Nil, 2,
+                                              Set.insert(1, Set.empty()), 5)))
+
+    /// radius=5 の境界: moduleRect(p0) の右端 x1=9（=床 x≤8）から 5 マス先 x=13 は内側、
+    /// x=14 は外側。
+    @Test
+    def testCursorRangeRadiusBoundary(): Unit \ Assert =
+        let p0    = placement(0, 0, 0, 8, 8);
+        let rects = FogScene.cursorRangeRects(unit(3, 4, false) :: Nil,
+                                               p0 :: Nil, 1, Set.empty(), 5);
+        Assert.assertEq(expected = true,
+            FogScene.insideAny(({x = 13, y = 4}: {x = Int32, y = Int32}), rects));
+        Assert.assertEq(expected = false,
+            FogScene.insideAny(({x = 14, y = 4}: {x = Int32, y = Int32}), rects))
+
+    /// 未踏（visited に無い）遠方 module のセルは可動域外。visited に入れると可動域内。
+    @Test
+    def testCursorRangeUnvisitedExcluded(): Unit \ Assert =
+        let p0   = placement(0, 0,  0, 8, 8);
+        let p1   = placement(1, 20, 0, 8, 8);
+        let cell = ({x = 24, y = 4}: {x = Int32, y = Int32});   // p1 内
+        let units = unit(3, 4, false) :: Nil;
+        Assert.assertEq(expected = false,
+            FogScene.insideAny(cell,
+                FogScene.cursorRangeRects(units, p0 :: p1 :: Nil, 2, Set.empty(), 5)));
+        Assert.assertEq(expected = true,
+            FogScene.insideAny(cell,
+                FogScene.cursorRangeRects(units, p0 :: p1 :: Nil, 2,
+                                           Set.insert(1, Set.empty()), 5)))
 }

@@ -208,8 +208,12 @@ mod CursorScene {
                             let board = BoardQuery.board();
                             let nextSteps = stepCountAfter(data#holdDir,
                                                             data#holdSteps, dir);
-                            let target = clampToMap(Vec2i.add(data#gridPos, dir),
-                                                     board#map);
+                            // マップ端で clamp したうえで、可動域（明るい部屋+半径 ∪ 既訪）外なら
+                            // 据え置く。target == gridPos なら下の「端で動けない」分岐が発火する。
+                            let candidate = clampToMap(Vec2i.add(data#gridPos, dir),
+                                                        board#map);
+                            let target = if (cursorCanEnter(candidate, scene)) candidate
+                                         else data#gridPos;
                             if (target#x == data#gridPos#x and target#y == data#gridPos#y) {
                                 // 端で動けない。hold 状態だけ更新して入力は捨てる。
                                 let nextData = {holdDir = Some(dir),
@@ -302,6 +306,20 @@ mod CursorScene {
         else if (isDown(GameEngine.Key.A) or isDown(GameEngine.Key.Left))  Some(Vec2i.left())
         else if (isDown(GameEngine.Key.D) or isDown(GameEngine.Key.Right)) Some(Vec2i.right())
         else None
+
+    /// 明るい部屋の外周からカーソルが踏み出せるタイル数（可動域の余白）。tunable。
+    def cursorRangeRadius(): Int32 = 5
+
+    /// 候補セルがカーソルの可動域（明るい部屋 +半径 ∪ 訪問済み module）に入っているか。
+    /// 範囲は FogScene.cursorRangeRects（明るい部屋を半径拡張 ∪ 既訪 module 矩形）で求め、
+    /// 既訪記憶は MinimapScene の driver state を再利用する。scene 直読みの純粋判定。
+    def cursorCanEnter(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Bool =
+        let placements = MapScene.getPlacements(scene);
+        let roomCount  = MapScene.getRoomCount(scene);
+        let visited    = MinimapScene.visitedModules(scene);
+        let rects = FogScene.cursorRangeRects(PlayerScene.getAll(scene), placements,
+                                               roomCount, visited, cursorRangeRadius());
+        FogScene.insideAny(cell, rects)
 
     /// 候補セルをマップの usedRect 内にクランプする。FE と同じく壁・敵・味方マスは
     /// 通り抜け可能（カーソルは情報表示専用なので地形に縛られない）。

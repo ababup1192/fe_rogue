@@ -158,20 +158,41 @@ mod TestEnemyAI {
         let playerPieces = List.map(p -> let (id, pos) = p; (Piece.Player(id), pos), players);
         {map = map, pieces = List.append(playerPieces, (Piece.Enemy(enemyId), enemyPos) :: Nil)}
 
-    /// 評価軸テスト用の味方 UnitView を明示的に作る。
-    /// `weaponRange`（反撃用）と `combat`（ダメージ用）は UnitView では独立フィールドなので、
-    /// counterRange は反撃判定に、estDamage は仕留め判定に分けて与えられる。
-    /// estDamage の再現: self の攻撃力は固定 5（resource.attack 3 + testWeapon.attack 2、三竦み中立）
-    /// なので、防御 = max(0, 5 − estDamage) にすると `Combat.estimate` が estDamage を返す
-    /// （estDamage は 0..5 を想定。本テスト群が使う値はこの範囲内）。
+    /// 敵 self の実効攻撃力（素攻撃 + 装備武器攻撃）。フィクスチャから計算してハードコードを避ける。
+    /// 三竦み中立前提: 本テスト群の敵（enemyAt / enemyAtBow）と target は全て Sword 型なので
+    /// 相性補正 0。攻撃力フィクスチャ（attack 3 / 武器 2）を変えてもこの値が追従する。
+    def selfAttack(): Int32 =
+        TestUnitFixtures.testEnemyResource(0, 0)#attack + TestUnitFixtures.testWeapon()#attack
+
+    /// 反撃射程 counterRange → その射程を持つ実武器（None は武器なし）。
+    /// 武器タイプは testWeapon と同じ Sword（三竦み中立を保つ）。
+    def counterWeapon(range: Option[{min = Int32, max = Int32}]):
+            Option[UnitCatalog.WeaponResource] =
+        Option.map(r -> {range = r | TestUnitFixtures.testWeapon()}, range)
+
+    /// 評価軸テスト用の味方 Data。`defense` と装備武器を指定して `testResourceFull` で組む。
+    def playerData(id: Int32, pos: {x = Int32, y = Int32}, hp: Int32, defense: Int32,
+                   weapons: List[UnitCatalog.WeaponResource]): PlayerScene.Data =
+        {id = id, gridPos = pos, moveTiles = 4, hp = hp, waited = false,
+         attackTargetId = None,
+         resource = TestUnitFixtures.testResourceFull(4, hp, 3, defense, 3),
+         weapons = weapons, staves = Nil, consumables = Nil, selectedItem = None,
+         moveStepsTaken = 0, facing = Staff.Direction.Down, hidden = false,
+         usedStairs = false, level = 1, exp = 0, pendingLevelUp = None}
+
+    /// 評価軸テスト用の味方 UnitView を実 projection（`PlayerScene.unitView`）で組む。
+    /// 実武器由来なので `weaponRange`(反撃) と `combat`(ダメージ) は同じ武器から一貫して埋まる。
+    /// estDamage の再現: 防御 = max(0, selfAttack() − estDamage) にすると `Combat.estimate` が
+    /// estDamage を返す（estDamage は 0..selfAttack の範囲。本テスト群が使う 0/5 は範囲内）。
+    /// counterRange はその射程の実武器として装備させ、反撃判定（NoCounter）に使う。
     def mkTarget(id: Int32, pos: {x = Int32, y = Int32}, hp: Int32, estDamage: Int32,
                   counterRange: Option[{min = Int32, max = Int32}]): UnitView =
-        let defense = Int32.max(0, 5 - estDamage);
-        {id = id, faction = Faction.Player, pos = pos, hp = hp, moveTiles = 4,
-         weaponRange = counterRange,
-         combat = {attack = 0, magicAttack = 0, defense = defense, magicDefense = defense,
-                   skill = 0, speed = 0, luck = 0, hp = hp, weapon = None},
-         isDying = false, hidden = false}
+        let defense = Int32.max(0, selfAttack() - estDamage);
+        let weapons = match counterWeapon(counterRange) {
+            case Some(w) => w :: Nil
+            case None    => Nil
+        };
+        PlayerScene.unitView(playerData(id, pos, hp, defense, weapons))
 
     /// 剣（射程1-1）/ 弓（射程2-2）の反撃射程。
     def swordRange(): Option[{min = Int32, max = Int32}] = Some({min = 1, max = 1})

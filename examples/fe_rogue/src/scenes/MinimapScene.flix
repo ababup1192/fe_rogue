@@ -47,6 +47,8 @@ mod MinimapScene {
     def contentName(): String = "MinimapContent"
     def contentPath(): NodePath = rootName() :: contentName() :: Nil
     def driverName(): String = "MinimapDriver"
+    /// driver ノードの NodePath（`add` は World 直下に追加する）。
+    def driverPath(): NodePath = List.append(MapScene.worldPath(), driverName() :: Nil)
     def fontName(): String = "ui"
     def sceneJsonPath(): String = "src/scenes/MinimapScene.scene.json"
 
@@ -92,6 +94,14 @@ mod MinimapScene {
     /// 起動時から右上に表示（非侵襲な常設 HUD）。M で出し入れする。
     def initialData(): DriverData =
         {visited = Set.empty(), stairsSeen = false, visible = true, mPrev = false}
+
+    /// driver ノードに蓄積された訪問済み module idx を返す。未登録なら空集合（安全側）。
+    /// カーソルの移動可能範囲（既訪エリア）の算出に CursorScene が使う。
+    pub def visitedModules(scene: Scene[NodeTag]): Set[Int32] =
+        match Scene.getState(driverPath(), scene) {
+            case Some(NodeTag.MinimapDriver(d)) => d#visited
+            case _                              => Set.empty()
+        }
 
     // ────────────────────────────────────────────────────────
     // (C) 構築

@@ -137,10 +137,33 @@ mod FogScene {
         ({x0 = cell#x - rad, y0 = cell#y - rad,
           x1 = cell#x + rad + 1, y1 = cell#y + rad + 1}: GridRect)
 
-    /// セルがいずれかの穴矩形の内側か。
-    def insideAny(cell: {x = Int32, y = Int32}, holes: List[GridRect]): Bool =
+    /// セルがいずれかの矩形の内側か（半開区間 [x0,x1) × [y0,y1)）。
+    /// フォグの穴判定のほか、CursorScene の移動可動域判定にも使う。
+    pub def insideAny(cell: {x = Int32, y = Int32}, holes: List[GridRect]): Bool =
         List.exists(h ->
             cell#x >= h#x0 and cell#x < h#x1 and cell#y >= h#y0 and cell#y < h#y1, holes)
+
+    /// GridRect を四方に n タイル広げる（Chebyshev 拡張）。半開区間なので x1/y1 は + n。
+    def dilate(r: GridRect, n: Int32): GridRect =
+        ({x0 = r#x0 - n, y0 = r#y0 - n, x1 = r#x1 + n, y1 = r#y1 + n}: GridRect)
+
+    /// カーソルが動ける範囲の矩形群。
+    ///   - いま明るい部屋（holesFor, torch=false）を radius タイル四方に拡張したもの
+    ///   - すでに訪れた module（visited）の矩形（moduleRect, 壁リング込み）
+    /// の和。CursorScene が候補セルの可否判定（insideAny）に使う。純粋（テスト対象）。
+    /// PlayerCursor フェーズは torchCorridors=false なので holesFor は各非 hidden
+    /// プレイヤーの module 矩形を返す。明るい部屋は visited にも含まれるが、litExpanded が
+    /// +radius の余白を足す（visited 矩形は余白なし＝「行った部屋まで」）。
+    pub def cursorRangeRects(units: List[{gridPos = {x = Int32, y = Int32}, hidden = Bool | r}],
+                              placements: List[DungeonComposer.ModulePlacement],
+                              roomCount: Int32, visited: Set[Int32],
+                              radius: Int32): List[GridRect] =
+        let litExpanded  = holesFor(units, placements, roomCount, false)
+                            |> List.map(rc -> dilate(rc, radius));
+        let visitedRects = placements
+                            |> List.filter(p -> Set.memberOf(p#idx, visited))
+                            |> List.map(moduleRect);
+        List.append(litExpanded, visitedRects)
 
     /// 補集合矩形リストを ColorRect プールに割り当てる。余ったプールは非表示にする。
     def applyHazePool(rects: List[GridRect], scene: Scene[NodeTag]): Scene[NodeTag] =
