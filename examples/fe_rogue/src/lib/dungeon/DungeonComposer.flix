@@ -155,10 +155,17 @@ mod DungeonComposer {
         // 7. ModuleSpec / ModulePlacement
         let modules = buildModuleSpecs(modulePaths, offsets);
         let placements = buildPlacements(loaded, offsets);
-        // 8. mergedFloor（world 座標 + door 出っ張り床追加）
+        // 8. 連結開口部（ドアが一致するセル）。1/2 マス幅の開口セル集合。
+        let openingCells = collectSharedDoorCells(loaded, offsets, connections);
+        // 8b. mergedFloor（world 座標 + door 出っ張り床追加）
         let mergedFloor = buildMergedFloor(loaded, offsets, connections, doorFloorSrc);
-        // 8b. mergedManual（各モジュール固有の manualTiles を world 座標へ）
-        let mergedManual = buildMergedManual(loaded, offsets);
+        // 8c. mergedManual（各モジュール固有の manualTiles を world 座標へ）。
+        //     ただし開口部セルに重なる manualTile は除外する。
+        //     部屋のドア位置に手置き壁（蔦壁など）があると、出っ張り床で開けても
+        //     manualTile が collisionCells に入って通行不能になってしまうため、
+        //     開口部では床を優先して manualTile を消す（壁チップの種類は問わない）。
+        let mergedManual = buildMergedManual(loaded, offsets)
+            |> List.filter(t -> not List.exists(c -> c#x == t#x and c#y == t#y, openingCells));
         // 9. 合成 grid 寸法
         let mergedGridSize = boundingBoxGridSize(loaded, offsets);
         // 10. TileSet（テクスチャ共通）
