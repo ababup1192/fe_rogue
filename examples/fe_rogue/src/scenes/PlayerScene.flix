@@ -202,18 +202,19 @@ mod PlayerScene {
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
-    /// MapScene が登録済みの scene にプレイヤー全員（`players` プールの全員）を追加する。
-    /// 0 番目は MapScene が記録した spawnGrid に、残りはその近傍の床セルに配置する。
-    /// 各プレイヤーには `players` プールのリスト順で `UnitResource` を割り当て、
-    /// `initialInventory` を kind 別に分割して `Data.weapons` / `Data.staves` に詰め直す
-    /// （weapons.head が装備中、staves は配列順で持ち物に積まれる）。未定義 id は起動時 typo として
-    /// 即 panic する。
+    /// MapScene が登録済みの scene に出撃メンバーを追加する。
+    /// `players` プールから **先頭（ロード）を固定し、残りからランダムに 2 体** を選んだ
+    /// 計 3 体を出撃させる（候補が 3 未満ならいる分だけ）。`selectParty` 参照。
+    /// 先頭は MapScene が記録した spawnGrid に、残りはその近傍の床セルに配置する。
+    /// 各プレイヤーの `initialInventory` を kind 別に分割して `Data.weapons` / `Data.staves` に
+    /// 詰め直す（weapons.head が装備中、staves は配列順で持ち物に積まれる）。未定義 id は
+    /// 起動時 typo として即 panic する。
     pub def add(catalog: UnitCatalog.UnitCatalog,
                   staffCatalog: Staff.StaffCatalog,
                   consumableCatalog: Consumable.ConsumableCatalog,
-                  scene: Scene[NodeTag]): Scene[NodeTag] =
-        let party        = UnitCatalog.pool("players", catalog);
-        let n            = List.length(party);
+                  scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+        let selected     = selectParty(UnitCatalog.pool("players", catalog));
+        let n            = List.length(selected);
         let spawnGrid    = MapScene.getSpawnGrid(scene);
         let layer        = MapScene.getMapLayer(scene);
         let cells        = pickPlayerSpawns(spawnGrid, n, layer);
@@ -221,7 +222,7 @@ mod PlayerScene {
         let padded       = padCells(cells, spawnGrid, n);
         let spawns: List[Spawn] = padded
             |> List.mapWithIndex(id -> c ->
-                let res = match List.nth(id, party) {
+                let res = match List.nth(id, selected) {
                     case Some(r) => r
                     case None    => bug!("PlayerScene.add: party index ${id} out of range")
                 };
@@ -231,6 +232,38 @@ mod PlayerScene {
                    weapons = split#weapons, staves = split#staves,
                    consumables = split#consumables}: Spawn));
         List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), scene, spawns)
+
+    /// 出撃メンバーを選抜する: **先頭（ロード）を固定**し、残りからランダムに 2 体選ぶ。
+    /// プールが空なら空、ロードのみ（残り 0）ならロード 1 体、残りが 1 体ならロード + その 1 体。
+    /// 並びは「ロードが先頭、続いて抽選された順」になる（先頭 = spawnGrid に配置されるため固定）。
+    /// pub: 抽選プロパティ（ロード固定・件数・重複なし・部分集合）をテストから直接検証するため。
+    pub def selectParty(party: List[a]): List[a] \ Math.Random =
+        match party {
+            case Nil          => Nil
+            case lord :: rest => lord :: sampleN(2, rest)
+        }
+
+    /// `xs` から distinct な最大 k 件をランダムに取り出す（k >= 件数なら全件、順不同）。
+    def sampleN(k: Int32, xs: List[a]): List[a] \ Math.Random =
+        if (k <= 0 or List.isEmpty(xs))
+            Nil
+        else
+            let i = randomIndex(List.length(xs));
+            match List.nth(i, xs) {
+                case None    => Nil  // 到達しない（i < length のため）
+                case Some(x) => x :: sampleN(k - 1, removeNth(i, xs))
+            }
+
+    /// `[0, n)` の一様乱数インデックス（n > 0 前提）。
+    def randomIndex(n: Int32): Int32 \ Math.Random =
+        Float64.truncateToInt32(Float64.floor(Math.Random.randomFloat64() * Int32.toFloat64(n)))
+
+    /// `xs` から i 番目（0 始まり）の要素を取り除いたリストを返す。
+    def removeNth(i: Int32, xs: List[a]): List[a] =
+        match xs {
+            case Nil    => Nil
+            case h :: t => if (i == 0) t else h :: removeNth(i - 1, t)
+        }
 
     /// `initialInventory` を kind 別に振り分けて weapons / staves リストに展開する。
     /// 各 kind の中での出現順を保つので、weapons.head が装備中の武器になる。

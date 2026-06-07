@@ -626,4 +626,50 @@ mod TestPlayerScene {
         let result = withNoSelection(() -> withGameOverToEmpty(() ->
             PlayerScene.removeDeadAndCheckGameOver(1 :: Nil, scene)));
         Assert.assertEq(expected = 0 :: Nil, PlayerScene.getAll(result) |> List.map(d -> d#id))
+
+    // ========================================================================
+    // 出撃メンバー選抜 — selectParty（ロード固定 + 残りからランダム 2 体）
+    // 乱数に依存しないプロパティのみを検証する。
+    // ========================================================================
+
+    /// プールが 3 体以上なら、先頭（ロード）固定 + 残りから 2 体で計 3 体。
+    /// 乱数に関わらず: head = ロード / 件数 3 / 重複なし / すべて元プールの要素。
+    @Test
+    def testSelectPartyKeepsLordFixedAndPicksThree(): Unit \ {Assert, Math.Random} =
+        let party  = "lord" :: "a" :: "b" :: "c" :: "d" :: Nil;
+        let result = PlayerScene.selectParty(party);
+        let distinct = Set.size(List.toSet(result)) == List.length(result);
+        let subset   = List.forAll(x -> List.memberOf(x, party), result);
+        Assert.assertEq(
+            expected = (Some("lord"), 3, true, true),
+            (List.head(result), List.length(result), distinct, subset))
+
+    /// ちょうど 3 体（ロード + 2）なら全員が選ばれる（残り 2 体は両方出る）。
+    @Test
+    def testSelectPartyWithExactlyThreeReturnsAll(): Unit \ {Assert, Math.Random} =
+        let party  = "lord" :: "a" :: "b" :: Nil;
+        let result = PlayerScene.selectParty(party);
+        Assert.assertEq(
+            expected = (Some("lord"), 3, true),
+            (List.head(result), List.length(result),
+             List.memberOf("a", result) and List.memberOf("b", result)))
+
+    /// 候補がロードのみなら、ロード 1 体だけを返す。
+    @Test
+    def testSelectPartyLordOnlyReturnsLord(): Unit \ {Assert, Math.Random} =
+        Assert.assertEq(expected = "lord" :: Nil, PlayerScene.selectParty("lord" :: Nil))
+
+    /// 候補が 3 未満（ロード + 1）なら、いる分だけ（ロード先頭 + その 1 体）を返す。
+    @Test
+    def testSelectPartyFewerThanThreeReturnsAvailable(): Unit \ {Assert, Math.Random} =
+        let result = PlayerScene.selectParty("lord" :: "a" :: Nil);
+        Assert.assertEq(
+            expected = (Some("lord"), 2, true),
+            (List.head(result), List.length(result), List.memberOf("a", result)))
+
+    /// 空プールは空を返す（防御的フォールバック、panic しない）。
+    @Test
+    def testSelectPartyEmptyReturnsEmpty(): Unit \ {Assert, Math.Random} =
+        let empty: List[String] = Nil;
+        Assert.assertEq(expected = empty, PlayerScene.selectParty(empty))
 }

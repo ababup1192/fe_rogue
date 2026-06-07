@@ -1,7 +1,7 @@
 {
   "weapons": {
     "bronze_sword": {
-      "attack": 3,
+      "attack": 2,
       "durability": 12,
       "hit": 90,
       "name": "どうの剣",
@@ -18,7 +18,7 @@
       "weaponType": "Sword"
     },
     "bronze_lance": {
-      "attack": 5,
+      "attack": 3,
       "durability": 12,
       "hit": 80,
       "name": "どうのやり",
@@ -35,7 +35,7 @@
       "weaponType": "Lance"
     },
     "bronze_axe": {
-      "attack": 6,
+      "attack": 4,
       "durability": 12,
       "hit": 70,
       "name": "どうのおの",
@@ -52,7 +52,7 @@
       "weaponType": "Axe"
     },
     "bronze_bow": {
-      "attack": 4,
+      "attack": 3,
       "durability": 12,
       "hit": 90,
       "name": "どうの弓",

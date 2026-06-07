@@ -2,7 +2,7 @@
   "floors": {
     "f01": {
       "generation": {
-        "roomCount": 1
+        "roomCount": 2
       },
       "items": [
         {
@@ -27,7 +27,11 @@
         },
         {
           "id": "swap_staff",
-          "percent": 5
+          "percent": 4
+        },
+        {
+          "id": "mithril_sword",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -38,15 +42,19 @@
       "monsters": [
         {
           "id": "goblin",
-          "percent": 50
-        },
-        {
-          "id": "orc",
           "percent": 30
         },
         {
           "id": "dwarf",
           "percent": 20
+        },
+        {
+          "id": "fighter",
+          "percent": 25
+        },
+        {
+          "id": "rogue",
+          "percent": 25
         }
       ],
       "monstersPerRoom": {
@@ -81,7 +89,11 @@
         },
         {
           "id": "swap_staff",
-          "percent": 5
+          "percent": 4
+        },
+        {
+          "id": "mithril_sword",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -92,11 +104,23 @@
       "monsters": [
         {
           "id": "goblin",
-          "percent": 50
+          "percent": 20
         },
         {
           "id": "orc",
-          "percent": 50
+          "percent": 20
+        },
+        {
+          "id": "fighter",
+          "percent": 20
+        },
+        {
+          "id": "ranger",
+          "percent": 20
+        },
+        {
+          "id": "barbarian",
+          "percent": 20
         }
       ],
       "monstersPerRoom": {
@@ -131,7 +155,11 @@
         },
         {
           "id": "swap_staff",
-          "percent": 5
+          "percent": 4
+        },
+        {
+          "id": "mithril_sword",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -141,12 +169,24 @@
       "label": "3F",
       "monsters": [
         {
-          "id": "goblin",
-          "percent": 30
+          "id": "orc",
+          "percent": 25
         },
         {
-          "id": "orc",
-          "percent": 70
+          "id": "barbarian",
+          "percent": 25
+        },
+        {
+          "id": "paladin",
+          "percent": 25
+        },
+        {
+          "id": "ranger",
+          "percent": 15
+        },
+        {
+          "id": "cleric",
+          "percent": 10
         }
       ],
       "monstersPerRoom": {
