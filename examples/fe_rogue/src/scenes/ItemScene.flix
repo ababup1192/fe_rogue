@@ -22,11 +22,14 @@ mod ItemScene {
 
     // ─── 状態 ─────────────────────────────────────────────────
 
-    /// ground item の中身。武器 (`WeaponItem`) と杖 (`StaffItem`) を区別する ADT。
-    /// 拾うとプレイヤーの weapons / staves リストに追加される。
+    /// ground item の中身。武器 (`WeaponItem`) / 杖 (`StaffItem`) / 消費アイテム
+    /// (`ConsumableItem`) を区別する ADT。拾う・こうかんでプレイヤーの
+    /// weapons / staves / consumables リストに追加される。
+    /// 消費アイテムは床ドロップ対象ではなく、「こうかん」での持ち物移動に使う。
     pub enum GroundItemKind {
         case WeaponItem(UnitCatalog.WeaponResource)
         case StaffItem(Staff.StaffResource)
+        case ConsumableItem(Consumable.ConsumableResource)
     }
 
     /// 個別 ground item に紐づくデータ。
@@ -42,8 +45,9 @@ mod ItemScene {
 
     /// アイテム種別から sprite を取り出すヘルパー（表示・縁取り構築で共通利用）。
     pub def spriteOf(kind: GroundItemKind): Sprite.SpriteResource = match kind {
-        case GroundItemKind.WeaponItem(weapon) => weapon#sprite
-        case GroundItemKind.StaffItem(staff)   => staff#sprite
+        case GroundItemKind.WeaponItem(weapon)   => weapon#sprite
+        case GroundItemKind.StaffItem(staff)     => staff#sprite
+        case GroundItemKind.ConsumableItem(item) => item#sprite
     }
 
     // ─── 定数 ─────────────────────────────────────────────────

@@ -25,11 +25,12 @@ mod GameLifecycle {
     /// 構築 / リビルド経路 (buildAndRecord / resetForGameOver / advanceFloor) を貫通する。
     /// 味方 (`players`) と敵 (`enemies`) はここで別カタログとして分かれて入る。
     pub type alias Catalogs = {
-        weapons = WeaponCatalog.WeaponCatalog,
-        players = UnitCatalog.UnitCatalog,
-        enemies = EnemyCatalog.EnemyCatalog,
-        floors  = FloorCatalog.FloorCatalog,
-        staves  = Staff.StaffCatalog
+        weapons     = WeaponCatalog.WeaponCatalog,
+        players     = UnitCatalog.UnitCatalog,
+        enemies     = EnemyCatalog.EnemyCatalog,
+        floors      = FloorCatalog.FloorCatalog,
+        staves      = Staff.StaffCatalog,
+        consumables = Consumable.ConsumableCatalog
     }
 
     /// プレイ用シーンを 1 回で組み立てる。`MapScene.add` が `IO` を要求するため
@@ -44,7 +45,7 @@ mod GameLifecycle {
             |> MapScene.add(floor)
             |> FogScene.add             // 各 module の薄暗いモヤ矩形 + 常駐 FogDriver。placements 確定後
             |> DamagePopupScene.add     // World 配下に空の Marker2D 親を 1 つ生やす
-            |> PlayerScene.add(catalogs#players, catalogs#staves)
+            |> PlayerScene.add(catalogs#players, catalogs#staves, catalogs#consumables)
             |> EnemyScene.add(catalogs#enemies, catalogs#weapons, floor)
             |> ItemScene.add(catalogs#players, catalogs#staves, floor)   // 部屋の床に武器/杖をランダムドロップ
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op

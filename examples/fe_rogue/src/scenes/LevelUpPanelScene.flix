@@ -16,8 +16,8 @@
 ///   LevelUpPanel (CanvasLayer, layer=5)
 ///     ├─ panel      (Panel, NodeTag.LevelUpPanel(PanelState))
 ///     ├─ header     (Label2D, NoTag) — 「{兵種名} Lv 前 -> 後」
-///     ├─ bodyLabels (Label2D, 左揃え) — ステータス名 6 行
-///     ├─ bodyBefore (Label2D, 右揃え) — 現在値 6 行
+///     ├─ bodyLabels (Label2D, 左揃え) — ステータス名 8 行
+///     ├─ bodyBefore (Label2D, 右揃え) — 現在値 8 行
 ///     ├─ bodyArrow  (Label2D, 左揃え) — "->"（上昇を出した行だけ）
 ///     ├─ bodyAfter  (Label2D, 右揃え) — 新値（同上）
 ///     ├─ bodyPlus   (Label2D, 左揃え・金色) — "+1"（同上）

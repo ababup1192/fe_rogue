@@ -57,12 +57,15 @@ mod UnitCatalog {
         defense      = Int32,
         magicAttack  = Int32,
         magicDefense = Int32,
-        speed        = Int32
+        speed        = Int32,
+        skill        = Int32,
+        luck         = Int32
     }
 
     /// 成長率が全て 0 のデフォルト値（= 一切成長しない）。JSON に `growthRates` が無いときに使う。
     pub def zeroGrowthRates(): GrowthRates =
-        {hp = 0, attack = 0, defense = 0, magicAttack = 0, magicDefense = 0, speed = 0}
+        {hp = 0, attack = 0, defense = 0, magicAttack = 0, magicDefense = 0,
+         speed = 0, skill = 0, luck = 0}
 
     /// 武器の属性。`WeaponCatalog.WeaponType` の alias (後方互換)。
     pub type alias WeaponType = WeaponCatalog.WeaponType
@@ -240,7 +243,9 @@ mod UnitCatalogCodec {
             "defense"      => JsonNumber(JsonCodec.intToBd(g#defense)),
             "magicAttack"  => JsonNumber(JsonCodec.intToBd(g#magicAttack)),
             "magicDefense" => JsonNumber(JsonCodec.intToBd(g#magicDefense)),
-            "speed"        => JsonNumber(JsonCodec.intToBd(g#speed))
+            "speed"        => JsonNumber(JsonCodec.intToBd(g#speed)),
+            "skill"        => JsonNumber(JsonCodec.intToBd(g#skill)),
+            "luck"         => JsonNumber(JsonCodec.intToBd(g#luck))
         })
 
     // ── デコード ──
@@ -278,7 +283,7 @@ mod UnitCatalogCodec {
             let rate = key -> Map.get(key, obj) |> Option.flatMap(expectInt) |> Option.getWithDefault(0);
             ({hp = rate("hp"), attack = rate("attack"), defense = rate("defense"),
               magicAttack = rate("magicAttack"), magicDefense = rate("magicDefense"),
-              speed = rate("speed")}: GrowthRates))
+              speed = rate("speed"), skill = rate("skill"), luck = rate("luck")}: GrowthRates))
 
     /// container の meta から JsonArray of JsonString のものを pool として抽出する。
     def decodePoolsFromMeta(meta: Map[String, JsonElement]):

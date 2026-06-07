@@ -142,10 +142,11 @@ mod EnemyTurnDriverScene {
                             moved
                         }
                     case EnemyAI.EnemyAction.Attack(enemyId, targetId) =>
-                        // 隣接する味方が複数いるときは HP 最少の味方を狙う (とどめ優先)。
+                        // 武器射程内の味方が複数いるときは HP 最少の味方を狙う (とどめ優先)。
                         // 該当が無ければ EnemyAI が選んだ targetId にフォールバック。
                         let chosenId =
-                            lowestHpAdjacentPlayerId(data#gridPos, targetId, withAlert);
+                            lowestHpTargetInRange(data#gridPos, data#weapon,
+                                                   targetId, withAlert);
                         // 体当たりモーションを開始するだけ。HP 適用 / 音 / 死亡判定は
                         // attack_lunge の `attack:hit` メソッド発火時に dispatchAnimationEvents が行う。
                         // 攻撃前後の溜め: lunge (~160ms) より長い hold で「攻撃終了の余韻」を作る
@@ -164,21 +165,29 @@ mod EnemyTurnDriverScene {
                 }
         }
 
-    /// 敵 (enemyPos) に隣接する味方のうち HP が最少の味方 id を返す。HP 同値は id 昇順。
-    /// 隣接味方が居なければ `fallbackId` (EnemyAI が選んだ id) を返す。
-    /// 「とどめを優先する」FE 風の敵 AI ターゲティング。Scene 直読みの純粋関数。
-    /// hidden（階段で退場 / 合流退避中）の味方は盤面から外れているので除外する
-    /// (BoardSnapshot.fromScene と同じフィルタ。これが無いと退場済みの味方が狙われる)。
-    def lowestHpAdjacentPlayerId(enemyPos: {x = Int32, y = Int32},
-                                  fallbackId: Int32,
-                                  scene: Scene[NodeTag]): Int32 =
-        PlayerScene.getAll(scene)
-            |> List.filter(p -> not p#hidden)
-            |> List.filter(p -> EnemyAI.isAdjacent(p#gridPos, enemyPos))
-            |> List.sortBy(p -> (p#hp, p#id))
-            |> List.head
-            |> Option.map(p -> p#id)
-            |> Option.getWithDefault(fallbackId)
+    /// 敵 (enemyPos) の装備武器の射程内に居る味方のうち HP が最少の味方 id を返す。
+    /// HP 同値は id 昇順。射程内に味方が居なければ / 武器が無ければ `fallbackId`
+    /// (EnemyAI が選んだ id) を返す。「とどめを優先する」FE 風の敵 AI ターゲティング。
+    /// 近接(剣=距離1)でも遠隔(弓=距離2)でも、武器の `min..max` に入る味方だけを候補にする。
+    /// Scene 直読みの純粋関数。hidden（階段で退場 / 合流退避中）の味方は盤面から外れて
+    /// いるので除外する (BoardSnapshot.fromScene と同じフィルタ。これが無いと退場済みの
+    /// 味方が狙われる)。
+    def lowestHpTargetInRange(enemyPos: {x = Int32, y = Int32},
+                               weapon: Option[UnitCatalog.WeaponResource],
+                               fallbackId: Int32,
+                               scene: Scene[NodeTag]): Int32 =
+        match weapon {
+            case None    => fallbackId
+            case Some(w) =>
+                PlayerScene.getAll(scene)
+                    |> List.filter(p -> not p#hidden)
+                    |> List.filter(p ->
+                        Weapon.canReach(Weapon.manhattan(p#gridPos, enemyPos), w))
+                    |> List.sortBy(p -> (p#hp, p#id))
+                    |> List.head
+                    |> Option.map(p -> p#id)
+                    |> Option.getWithDefault(fallbackId)
+        }
 
     /// 敵ターンの後始末: ターン番号繰り上げ + 全プレイヤーを `waited = false` にリセット +
     /// カーソル復活 + 味方ターン宣言。

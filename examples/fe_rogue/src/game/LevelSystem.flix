@@ -17,14 +17,16 @@ mod LevelSystem {
     // (A) 型定義
     // ────────────────────────────────────────────────────────
 
-    /// 成長対象の 6 ステータス。`hp` は最大 HP を指す。`moveTiles` は成長対象外なので含めない。
+    /// 成長対象の 8 ステータス。`hp` は最大 HP を指す。`moveTiles` は成長対象外なので含めない。
     pub type alias Stats = {
         hp           = Int32,
         attack       = Int32,
         defense      = Int32,
         magicAttack  = Int32,
         magicDefense = Int32,
-        speed        = Int32
+        speed        = Int32,
+        skill        = Int32,
+        luck         = Int32
     }
 
     /// 成長判定に使う各ステータスの乱数（いずれも 0..99）。呼び出し側が振って渡す。
@@ -34,7 +36,9 @@ mod LevelSystem {
         defense      = Int32,
         magicAttack  = Int32,
         magicDefense = Int32,
-        speed        = Int32
+        speed        = Int32,
+        skill        = Int32,
+        luck         = Int32
     }
 
     /// パネル 1 行ぶんのステータス変化。`gained` が true なら上昇（パネルで (+1) を出す）。
@@ -46,7 +50,7 @@ mod LevelSystem {
     }
 
     /// レベルアップ結果。ステータス変化パネルが表示にそのまま使う。
-    /// `changes` は HP / こうげき / まもり / まほう力 / まほうまもり / すばやさ の固定 6 行。
+    /// `changes` は HP / こうげき / まもり / まほう力 / まほうまもり / すばやさ / わざ / こううん の固定 8 行。
     pub type alias Result = {
         unitName  = String,
         fromLevel = Int32,
@@ -93,29 +97,35 @@ mod LevelSystem {
          defense      = bump(stats#defense,      rolls#defense,      rates#defense),
          magicAttack  = bump(stats#magicAttack,  rolls#magicAttack,  rates#magicAttack),
          magicDefense = bump(stats#magicDefense, rolls#magicDefense, rates#magicDefense),
-         speed        = bump(stats#speed,        rolls#speed,        rates#speed)}
+         speed        = bump(stats#speed,        rolls#speed,        rates#speed),
+         skill        = bump(stats#skill,        rolls#skill,        rates#skill),
+         luck         = bump(stats#luck,         rolls#luck,         rates#luck)}
 
     // ────────────────────────────────────────────────────────
     // (E) UnitResource との橋渡し
     // ────────────────────────────────────────────────────────
 
-    /// UnitResource から成長対象の 6 ステータスを抜き出す（hp は最大 HP）。
+    /// UnitResource から成長対象の 8 ステータスを抜き出す（hp は最大 HP）。
     pub def statsOf(res: UnitResource): Stats =
         {hp           = res#hp,
          attack       = res#attack,
          defense      = res#defense,
          magicAttack  = res#magicAttack,
          magicDefense = res#magicDefense,
-         speed        = res#speed}
+         speed        = res#speed,
+         skill        = res#skill,
+         luck         = res#luck}
 
-    /// 成長後の 6 ステータスを UnitResource に書き戻す（他フィールドは保つ）。
+    /// 成長後の 8 ステータスを UnitResource に書き戻す（他フィールドは保つ）。
     pub def withStats(stats: Stats, res: UnitResource): UnitResource =
         {hp           = stats#hp,
          attack       = stats#attack,
          defense      = stats#defense,
          magicAttack  = stats#magicAttack,
          magicDefense = stats#magicDefense,
-         speed        = stats#speed | res}
+         speed        = stats#speed,
+         skill        = stats#skill,
+         luck         = stats#luck | res}
 
     // ────────────────────────────────────────────────────────
     // (F) パネル用の結果組み立て
@@ -128,13 +138,15 @@ mod LevelSystem {
     def labelMagicAttack(): String   = "まほう力"
     def labelMagicDefense(): String  = "まほうまもり"
     def labelSpeed(): String         = "すばやさ"
+    def labelSkill(): String         = "わざ"
+    def labelLuck(): String          = "こううん"
 
     /// 1 行ぶんの変化を作る。上がっていれば `gained = true`。
     def change(label: String, before: Int32, after: Int32): StatChange =
         {label = label, before = before, after = after, gained = after > before}
 
     /// レベルアップ前後のステータスから、パネル表示用の `Result` を組み立てる。
-    /// `toLevel` は `fromLevel + 1`。`changes` は固定 6 行（HP から すばやさ の順）。
+    /// `toLevel` は `fromLevel + 1`。`changes` は固定 8 行（HP から こううん の順）。
     pub def buildResult(unitName: String, fromLevel: Int32,
                         before: Stats, after: Stats): Result =
         {unitName  = unitName,
@@ -146,6 +158,8 @@ mod LevelSystem {
              change(labelDefense(),      before#defense,      after#defense)      ::
              change(labelMagicAttack(),  before#magicAttack,  after#magicAttack)  ::
              change(labelMagicDefense(), before#magicDefense, after#magicDefense) ::
-             change(labelSpeed(),        before#speed,        after#speed)        :: Nil}
+             change(labelSpeed(),        before#speed,        after#speed)        ::
+             change(labelSkill(),        before#skill,        after#skill)        ::
+             change(labelLuck(),         before#luck,         after#luck)         :: Nil}
 
 }

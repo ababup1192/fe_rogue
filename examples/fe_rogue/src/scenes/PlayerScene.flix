@@ -33,8 +33,9 @@ mod PlayerScene {
     /// ItemMenu で選択中のアイテムの種別と inventory 内 index。
     /// 武器と杖は別リストに格納されているため、どちらに属するかを ADT で区別する。
     pub enum ItemKind with Eq, ToString {
-        case Weapon(Int32)   // weapons リスト上の index
-        case Staff(Int32)    // staves リスト上の index
+        case Weapon(Int32)     // weapons リスト上の index
+        case Staff(Int32)      // staves リスト上の index
+        case Consumable(Int32) // consumables リスト上の index
     }
 
 
@@ -54,7 +55,9 @@ mod PlayerScene {
     ///   攻撃で耐久度が 1 減り、0 になったら weapons から取り除かれる（武器が壊れた）。
     /// staves: 杖のインベントリ。攻撃には使わず、ItemMenu の「使う」で発動する。
     ///   発動で耐久度が 1 減り、0 になったら staves から取り除かれる。
-    /// selectedItem: ItemMenu で選択中のアイテム（武器 or 杖）。
+    /// consumables: 消費アイテム（きずぐすり等）のインベントリ。ItemMenu の「使う」で
+    ///   使用者自身に効果が出る。使用で耐久度（使用回数）が 1 減り、0 で取り除かれる。
+    /// selectedItem: ItemMenu で選択中のアイテム（武器 / 杖 / 消費アイテム）。
     ///   一覧画面で選んだ瞬間にセット、サブメニュー（使う/装備/捨てる）で確定後にクリアされる。
     pub type alias Data = {
         id                 = Int32,
@@ -66,6 +69,7 @@ mod PlayerScene {
         resource           = UnitCatalog.UnitResource,
         weapons            = List[UnitCatalog.WeaponResource],
         staves             = List[Staff.StaffResource],
+        consumables        = List[Consumable.ConsumableResource],
         selectedItem       = Option[ItemKind],
         // AutoMove 中にこの味方が当ターン何マス進んだか。
         // moveTiles に達したら `waited = true` にして次の味方に交代する。
@@ -122,16 +126,21 @@ mod PlayerScene {
     /// `weapons` / `staves` は初期インベントリ（壊れる前の固定リスト）で、
     /// respawn 時にこの値で復元する。
     pub type alias Spawn = {
-        id       = Int32,
-        gridPos  = {x = Int32, y = Int32},
-        resource = UnitCatalog.UnitResource,
-        weapons  = List[UnitCatalog.WeaponResource],
-        staves   = List[Staff.StaffResource]
+        id          = Int32,
+        gridPos     = {x = Int32, y = Int32},
+        resource    = UnitCatalog.UnitResource,
+        weapons     = List[UnitCatalog.WeaponResource],
+        staves      = List[Staff.StaffResource],
+        consumables = List[Consumable.ConsumableResource]
     }
 
     // ────────────────────────────────────────────────────────
     // (B) 定数
     // ────────────────────────────────────────────────────────
+
+    /// ロード（主人公）として扱うパーティ id。合流・カメラ追従の中心であり、
+    /// このユニットが倒れると 1F からやり直し（ゲームオーバー扱い）になる。
+    pub def lordId(): Int32 = 0
 
     /// プレイヤー Sprite の zIndex（Player は前面に立つ）。EnemyScene と同じ 10。
     def spriteZIndex(): Int32 = 10
@@ -185,6 +194,7 @@ mod PlayerScene {
     /// 即 panic する。
     pub def add(catalog: UnitCatalog.UnitCatalog,
                   staffCatalog: Staff.StaffCatalog,
+                  consumableCatalog: Consumable.ConsumableCatalog,
                   scene: Scene[NodeTag]): Scene[NodeTag] =
         let party        = UnitCatalog.pool("players", catalog);
         let n            = List.length(party);
@@ -199,9 +209,11 @@ mod PlayerScene {
                     case Some(r) => r
                     case None    => bug!("PlayerScene.add: party index ${id} out of range")
                 };
-                let split = splitInventory(res#initialInventory, catalog, staffCatalog);
+                let split = splitInventory(res#initialInventory, catalog,
+                                            staffCatalog, consumableCatalog);
                 ({id = id, gridPos = c, resource = res,
-                   weapons = split#weapons, staves = split#staves}: Spawn));
+                   weapons = split#weapons, staves = split#staves,
+                   consumables = split#consumables}: Spawn));
         List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), scene, spawns)
 
     /// `initialInventory` を kind 別に振り分けて weapons / staves リストに展開する。
@@ -209,22 +221,30 @@ mod PlayerScene {
     /// 未定義 id は `lookupWeapon` / `Staff.lookup` で panic（起動時 typo の検知）。
     def splitInventory(inv: List[UnitBase.InventoryEntry],
                         catalog: UnitCatalog.UnitCatalog,
-                        staffCatalog: Staff.StaffCatalog):
-            {weapons = List[UnitCatalog.WeaponResource],
-              staves  = List[Staff.StaffResource]} =
-        let init: {weapons = List[UnitCatalog.WeaponResource],
-                    staves  = List[Staff.StaffResource]} =
-            {weapons = Nil, staves = Nil};
+                        staffCatalog: Staff.StaffCatalog,
+                        consumableCatalog: Consumable.ConsumableCatalog):
+            {weapons     = List[UnitCatalog.WeaponResource],
+              staves      = List[Staff.StaffResource],
+              consumables = List[Consumable.ConsumableResource]} =
+        let init: {weapons     = List[UnitCatalog.WeaponResource],
+                    staves      = List[Staff.StaffResource],
+                    consumables = List[Consumable.ConsumableResource]} =
+            {weapons = Nil, staves = Nil, consumables = Nil};
         let acc = List.foldLeft((soFar, entry) -> {
             match entry#kind {
                 case UnitBase.ItemKind.Weapon =>
                     let w = UnitCatalog.lookupWeapon(entry#id, catalog);
                     {weapons = List.append(soFar#weapons, w :: Nil),
-                      staves  = soFar#staves}
+                      staves  = soFar#staves, consumables = soFar#consumables}
                 case UnitBase.ItemKind.Staff =>
                     let s = Staff.lookup(entry#id, staffCatalog);
                     {weapons = soFar#weapons,
-                      staves  = List.append(soFar#staves, s :: Nil)}
+                      staves  = List.append(soFar#staves, s :: Nil),
+                      consumables = soFar#consumables}
+                case UnitBase.ItemKind.Consumable =>
+                    let c = Consumable.lookup(entry#id, consumableCatalog);
+                    {weapons = soFar#weapons, staves = soFar#staves,
+                      consumables = List.append(soFar#consumables, c :: Nil)}
             }
         }, init, inv);
         acc
@@ -285,6 +305,7 @@ mod PlayerScene {
             resource          = res,
             weapons           = sp#weapons,
             staves            = sp#staves,
+            consumables       = sp#consumables,
             selectedItem      = None,
             moveStepsTaken    = 0,
             facing            = Staff.Direction.Down,
@@ -603,8 +624,10 @@ mod PlayerScene {
     /// 敵攻撃で HP=0 になったプレイヤーを scene から取り除く。`killed` は
     /// `EnemyScene.applyAttackHit` が返した死亡 id のリスト (通常 1 要素)。
     /// 選択中プレイヤーが含まれていれば (反撃で死亡したケース) 選択も解除する。
-    /// 全員脱落していれば `CustomEffects.GameOverRequest.request` を emit して、
-    /// handler 側でマップ・配置をフルリビルドする。
+    /// 次のいずれかでゲームオーバー (`CustomEffects.GameOverRequest.request`) を emit し、
+    /// handler 側でマップ・配置を 1F からフルリビルドする:
+    ///   - 味方が全員脱落した
+    ///   - ロード（主人公 = `lordId()`）が倒れた（他の味方が残っていても 1F やり直し）
     pub def removeDeadAndCheckGameOver(killed: List[Int32],
                                          scene: Scene[NodeTag]):
             Scene[NodeTag] \ {CustomEffects.GameOverRequest, SelectedPlayer.State} =
@@ -620,7 +643,8 @@ mod PlayerScene {
             if (selectedKilled)
                 SelectedPlayer.State.put(SelectedPlayer.cleared())
             else ();
-            if (List.isEmpty(getAll(removed)))
+            let lordDead = List.exists(k -> k == lordId(), killed);
+            if (List.isEmpty(getAll(removed)) or lordDead)
                 CustomEffects.GameOverRequest.request(removed)
             else removed
         }
@@ -793,7 +817,8 @@ mod PlayerScene {
         getAll(scene)
             |> List.map(d ->
                 ({id = d#id, gridPos = d#gridPos, resource = d#resource,
-                   weapons = d#weapons, staves = d#staves}: Spawn))
+                   weapons = d#weapons, staves = d#staves,
+                   consumables = d#consumables}: Spawn))
 
     /// 既存のプレイヤーを全て scene から取り除き、`spawns` から再構築する。
     /// HP / waited / gridPos を初期値で生成する。
@@ -811,12 +836,13 @@ mod PlayerScene {
     /// `level` / `exp` / 成長後ステータス (`stats`) を持つ。配置（gridPos）や waited は
     /// 次フロアで作り直すので含めない。
     pub type alias CarryData = {
-        id      = Int32,
-        hp      = Int32,
-        weapons = List[UnitCatalog.WeaponResource],
-        staves  = List[Staff.StaffResource],
-        level   = Int32,
-        exp     = Int32,
+        id          = Int32,
+        hp          = Int32,
+        weapons     = List[UnitCatalog.WeaponResource],
+        staves      = List[Staff.StaffResource],
+        consumables = List[Consumable.ConsumableResource],
+        level       = Int32,
+        exp         = Int32,
         // 成長後の 6 ステータス（最大 HP 含む）。次フロアの新規 resource に上書きして引き継ぐ。
         stats   = LevelSystem.Stats
     }
@@ -844,6 +870,7 @@ mod PlayerScene {
             |> List.filter(d -> d#hp > 0)
             |> List.map(d ->
                 ({id = d#id, hp = d#hp, weapons = d#weapons, staves = d#staves,
+                  consumables = d#consumables,
                   level = d#level, exp = d#exp,
                   stats = LevelSystem.statsOf(d#resource)}: CarryData))
 
@@ -862,6 +889,7 @@ mod PlayerScene {
             sc
                 |> mapPlayer(c#id, d ->
                     {hp = c#hp, weapons = c#weapons, staves = c#staves,
+                     consumables = c#consumables,
                      level = c#level, exp = c#exp,
                      resource = LevelSystem.withStats(c#stats, d#resource) | d})
                 |> UnitHPBarScene.update(playerPath(c#id), c#hp),
@@ -913,6 +941,14 @@ mod PlayerScene {
             case None    => Nil
         }
 
+    /// 指定 id のプレイヤーの消費アイテムインベントリを返す（無ければ空）。
+    pub def getConsumables(id: Int32, scene: Scene[NodeTag]):
+            List[Consumable.ConsumableResource] =
+        match get(id, scene) {
+            case Some(d) => d#consumables
+            case None    => Nil
+        }
+
     /// ItemMenu で選ばれたアイテム（武器 or 杖）の種別と index を Data#selectedItem にセットする。
     /// `ItemActionSelect` フェーズに進むときに ItemMenuScene から呼ばれる。
     pub def setSelectedItem(playerId: Int32, item: ItemKind,
@@ -940,6 +976,11 @@ mod PlayerScene {
     pub def dropStaff(playerId: Int32, idx: Int32,
                         scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPlayer(playerId, d -> {staves = removeAt(idx, d#staves) | d}, scene)
+
+    /// 指定 idx の消費アイテムをインベントリから削除（捨てる）。範囲外なら no-op。
+    pub def dropConsumable(playerId: Int32, idx: Int32,
+                             scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId, d -> {consumables = removeAt(idx, d#consumables) | d}, scene)
 
     /// 2 プレイヤー間でインベントリのアイテム 1 個ずつを交換する純粋関数。
     ///   - 双方が実体アイテム持ちなら相互スワップ（ともに元の場所から消え、相手の末尾に追加）
@@ -988,6 +1029,9 @@ mod PlayerScene {
             case ItemKind.Staff(idx) =>
                 List.nth(idx, getStaves(playerId, scene))
                     |> Option.map(s -> ItemScene.GroundItemKind.StaffItem(s))
+            case ItemKind.Consumable(idx) =>
+                List.nth(idx, getConsumables(playerId, scene))
+                    |> Option.map(c -> ItemScene.GroundItemKind.ConsumableItem(c))
         }
 
     /// 指定 player の `kind` のアイテムをインベントリから取り除く。
@@ -995,8 +1039,9 @@ mod PlayerScene {
     def removeInventoryItem(playerId: Int32, kind: ItemKind,
                               scene: Scene[NodeTag]): Scene[NodeTag] =
         match kind {
-            case ItemKind.Weapon(idx) => dropWeapon(playerId, idx, scene)
-            case ItemKind.Staff(idx)  => dropStaff(playerId, idx, scene)
+            case ItemKind.Weapon(idx)     => dropWeapon(playerId, idx, scene)
+            case ItemKind.Staff(idx)      => dropStaff(playerId, idx, scene)
+            case ItemKind.Consumable(idx) => dropConsumable(playerId, idx, scene)
         }
 
     /// `partnerKind = None` (= 空スロット相手) の場合は no-op、Some なら removeInventoryItem。
@@ -1006,17 +1051,21 @@ mod PlayerScene {
             |> Option.map(k -> removeInventoryItem(playerId, k, scene))
             |> Option.getWithDefault(scene)
 
-    /// 指定 player のインベントリに `item` を追加 (武器なら weapons 末尾、杖なら staves 末尾)。
+    /// 指定 player のインベントリに `item` を追加
+    /// (武器なら weapons 末尾、杖なら staves 末尾、消費アイテムなら consumables 末尾)。
     /// `ActionMenuScene.addPickedItem` と同じ追加ルール (ログを出さない版)。
     def addInventoryItem(playerId: Int32, item: ItemScene.GroundItemKind,
                           scene: Scene[NodeTag]): Scene[NodeTag] =
         match item {
-            case ItemScene.GroundItemKind.WeaponItem(weapon) =>
+            case ItemScene.GroundItemKind.WeaponItem(weapon)   =>
                 mapPlayer(playerId,
                     d -> {weapons = List.append(d#weapons, weapon :: Nil) | d}, scene)
-            case ItemScene.GroundItemKind.StaffItem(staff)   =>
+            case ItemScene.GroundItemKind.StaffItem(staff)     =>
                 mapPlayer(playerId,
                     d -> {staves = List.append(d#staves, staff :: Nil) | d}, scene)
+            case ItemScene.GroundItemKind.ConsumableItem(consumable) =>
+                mapPlayer(playerId,
+                    d -> {consumables = List.append(d#consumables, consumable :: Nil) | d}, scene)
         }
 
     /// `optItem = None` のときは no-op、Some なら addInventoryItem。
@@ -1357,7 +1406,9 @@ mod PlayerScene {
          defense      = rollPercent(),
          magicAttack  = rollPercent(),
          magicDefense = rollPercent(),
-         speed        = rollPercent()}
+         speed        = rollPercent(),
+         skill        = rollPercent(),
+         luck         = rollPercent()}
 
     /// 味方 id に EXP を加算し、100 到達ならレベルアップを解決する。
     ///   - レベルアップしない → `exp` だけ更新。
@@ -1467,11 +1518,11 @@ mod PlayerScene {
                 scene
         }
 
-    /// ライブ × 味方: 対象味方の HP を「魔力 × 2」回復、HPBar 更新、ログ。
+    /// ライブ × 味方: 対象味方の HP を「魔力 + 10」回復、HPBar 更新、ログ。
     def applyHealToPlayer(srcId: Int32, player: Data, targetId: Int32,
                            scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
-        let amount = player#resource#magicAttack * 2;
+        let amount = player#resource#magicAttack + 10;
         match get(targetId, scene) {
             case None         => scene
             case Some(target) =>
@@ -1483,11 +1534,11 @@ mod PlayerScene {
                     |> UnitHPBarScene.update(playerPath(targetId), result#newHp)
         }
 
-    /// ライブ × 敵: 敵の HP を「魔力 × 2」回復（敵にも効く仕様）。
+    /// ライブ × 敵: 敵の HP を「魔力 + 10」回復（敵にも効く仕様）。
     def applyHealToEnemy(srcId: Int32, player: Data, enemyId: Int32,
                           scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
-        let amount = player#resource#magicAttack * 2;
+        let amount = player#resource#magicAttack + 10;
         match EnemyScene.get(enemyId, scene) {
             case None        => scene
             case Some(enemy) =>
@@ -1588,20 +1639,69 @@ mod PlayerScene {
                        scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
         let consumed = Staff.consume(staff);
-        let newStaves = match consumed {
-            case Some(updated) =>
-                // 同じ index の要素だけ更新後の値に差し替える
-                let originalStaves = getStaves(playerId, scene);
-                List.mapWithIndex(i -> s -> if (i == staffIdx) updated else s,
-                                   originalStaves)
-            case None =>
-                // 壊れた → index 位置の要素を取り除く
-                getStaves(playerId, scene) |> dropAt(staffIdx)
-        };
+        let newStaves = replaceOrDropAt(staffIdx, consumed, getStaves(playerId, scene));
         if (Option.isEmpty(consumed))
             GameLogger.playerLog("P${playerId} の ${staff#name} がこわれた")
         else ();
         mapPlayer(playerId, d -> {staves = newStaves | d}, scene)
+
+    /// 消費アイテム（きずぐすり等）を「つかう」: 使用者自身を回復し、耐久を 1 減らして
+    /// 0 なら一覧から除去、選択クリア → ターン消費して次へ進む。杖と違い方向・対象選択は無いので
+    /// `StaffAim` のような中間フェーズは経由せず、メニュー確定経路でそのまま完結する。
+    /// BoardQuery / GameEngine.Game は不要（`commitWaitedAndAdvance` の effect 集合で足りる）。
+    /// 該当プレイヤー / アイテムが見つからない場合は防御的に no-op。
+    pub def applyConsumableUse(playerId: Int32, idx: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+        match get(playerId, scene) {
+            case None         => scene
+            case Some(player) =>
+                match List.nth(idx, player#consumables) {
+                    case None       => scene
+                    case Some(item) =>
+                        let afterHeal    = applyConsumableHeal(playerId, player, item, scene);
+                        let afterConsume = consumeConsumable(playerId, idx, item, afterHeal);
+                        let cleared      = clearSelectedItem(playerId, afterConsume);
+                        commitWaitedAndAdvance(cleared)
+                }
+        }
+
+    /// 消費アイテムで使用者自身の HP を `healAmount` 回復、HPBar 更新、ログ。
+    def applyConsumableHeal(playerId: Int32, player: Data,
+                             item: Consumable.ConsumableResource,
+                             scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        let result = Combat.heal(player#hp, player#resource#hp, item#healAmount);
+        let healed = result#newHp - player#hp;
+        GameLogger.playerLog("P${playerId} は ${item#name} で ${healed}回復");
+        scene
+            |> mapPlayer(playerId, d -> {hp = result#newHp | d})
+            |> UnitHPBarScene.update(playerPath(playerId), result#newHp)
+
+    /// 消費アイテムの耐久（使用回数）を 1 減らし、0 なら consumables から除去 + 使い切りログ。
+    /// `consumeStaff` と同形。
+    def consumeConsumable(playerId: Int32, idx: Int32,
+                           item: Consumable.ConsumableResource,
+                           scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        let consumed = Consumable.consume(item);
+        let newConsumables = replaceOrDropAt(idx, consumed, getConsumables(playerId, scene));
+        if (Option.isEmpty(consumed))
+            GameLogger.playerLog("P${playerId} の ${item#name} を使い切った")
+        else ();
+        mapPlayer(playerId, d -> {consumables = newConsumables | d}, scene)
+
+    /// idx 番目を `updatedOpt` の中身で差し替えたリストを返す。`None`（耐久 0 で消滅）なら
+    /// その要素を除去する。`consumeStaff` / `consumeConsumable` で共有する
+    /// 「耐久を減らした結果の差し替え or 除去」処理。
+    def replaceOrDropAt(idx: Int32, updatedOpt: Option[a], list: List[a]): List[a] =
+        match updatedOpt {
+            case Some(updated) =>
+                List.mapWithIndex(i -> x -> if (i == idx) updated else x, list)
+            case None =>
+                dropAt(idx, list)
+        }
 
     /// List から `idx` 番目を取り除く（範囲外なら元のリスト）。
     def dropAt(idx: Int32, list: List[a]): List[a] =

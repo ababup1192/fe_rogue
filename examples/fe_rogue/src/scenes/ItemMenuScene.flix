@@ -127,23 +127,29 @@ mod ItemMenuScene {
             case None         => (node, withItems)
         }
 
-    /// 選択中プレイヤーの weapons + staves を 1 つの ItemList に並べる（ItemSelect 中）。
-    /// 順序は「武器（先頭が装備中）→ 杖」。metadata に種別と index を持たせて確定時に取り出す。
+    /// 選択中プレイヤーの weapons + staves + consumables を 1 つの ItemList に並べる（ItemSelect 中）。
+    /// 順序は「武器（先頭が装備中）→ 杖 → 消費アイテム」。metadata に種別と index を持たせて確定時に取り出す。
     def refreshItemList(scene: Scene[NodeTag]):
             Scene[NodeTag] \ SelectedPlayer.State =
         match SelectedPlayer.State.get()#id {
             case None => scene
             case Some(playerId) =>
-                let weapons = PlayerScene.getWeapons(playerId, scene);
-                let staves  = PlayerScene.getStaves(playerId, scene);
+                let weapons     = PlayerScene.getWeapons(playerId, scene);
+                let staves      = PlayerScene.getStaves(playerId, scene);
+                let consumables = PlayerScene.getConsumables(playerId, scene);
                 let weaponEntries = List.mapWithIndex(idx -> w ->
                     weaponEntry(idx, w), weapons);
                 let staffEntries = List.mapWithIndex(idx -> s ->
                     staffEntry(idx, s), staves);
-                let items = List.append(weaponEntries, staffEntries);
-                let weaponIcons = buildWeaponIcons(weapons);
-                let staffIcons  = buildStaffIcons(staves, List.length(weapons));
-                let icons = mergeIconMaps(weaponIcons, staffIcons);
+                let consumableEntries = List.mapWithIndex(idx -> c ->
+                    consumableEntry(idx, c), consumables);
+                let items = List.append(weaponEntries,
+                    List.append(staffEntries, consumableEntries));
+                // アイコンは items と同じ並び（武器 → 杖 → 消費アイテム）の sprite 列から作る。
+                let iconSprites = List.append(List.map(w -> w#sprite, weapons),
+                    List.append(List.map(s -> s#sprite, staves),
+                                List.map(c -> c#sprite, consumables)));
+                let icons = rowIcons(iconSprites);
                 scene |> ItemList.mapAt(menuPath(), list ->
                     list
                         |> ItemList.setItems(items)
@@ -152,8 +158,20 @@ mod ItemMenuScene {
                         |> ItemList.setIconTextGap(iconTextGap()))
         }
 
+    /// 「そうび」項目（武器のみ）。
+    def equipEntry(): ItemEntry =
+        {text = "そうび", disabled = false, metadata = Some(equipMeta())}
+
+    /// 「つかう」項目（杖・消費アイテム）。
+    def useEntry(): ItemEntry =
+        {text = "つかう", disabled = false, metadata = Some(useMeta())}
+
+    /// 「すてる」項目（武器・杖・消費アイテム共通）。
+    def dropEntry(): ItemEntry =
+        {text = "すてる", disabled = false, metadata = Some(dropMeta())}
+
     /// サブメニュー項目を組む（ItemActionSelect 中）。
-    /// 選択中アイテムが武器なら `[装備, 捨てる]`、杖なら `[使う, 捨てる]`。
+    /// 武器なら `[そうび, すてる]`、杖・消費アイテムなら `[つかう, すてる]`。
     def refreshActionList(scene: Scene[NodeTag]):
             Scene[NodeTag] \ SelectedPlayer.State =
         match SelectedPlayer.State.get()#id {
@@ -163,16 +181,12 @@ mod ItemMenuScene {
                     case None         => scene
                     case Some(player) =>
                         let items = match player#selectedItem {
-                            case Some(PlayerScene.ItemKind.Weapon(_)) =>
-                                ({text = "そうび",     disabled = false,
-                                   metadata = Some(equipMeta())}: ItemEntry) ::
-                                ({text = "すてる",     disabled = false,
-                                   metadata = Some(dropMeta())}: ItemEntry) :: Nil
-                            case Some(PlayerScene.ItemKind.Staff(_)) =>
-                                ({text = "つかう",     disabled = false,
-                                   metadata = Some(useMeta())}: ItemEntry) ::
-                                ({text = "すてる",     disabled = false,
-                                   metadata = Some(dropMeta())}: ItemEntry) :: Nil
+                            case Some(PlayerScene.ItemKind.Weapon(_))     =>
+                                equipEntry() :: dropEntry() :: Nil
+                            case Some(PlayerScene.ItemKind.Staff(_))      =>
+                                useEntry() :: dropEntry() :: Nil
+                            case Some(PlayerScene.ItemKind.Consumable(_)) =>
+                                useEntry() :: dropEntry() :: Nil
                             case None => Nil
                         };
                         scene |> ItemList.mapAt(menuPath(), list ->
@@ -199,38 +213,28 @@ mod ItemMenuScene {
         metadata = Some("s:${idx}")
     }
 
-    /// 武器アイコンを ItemList の itemIcons Map に詰める（行 index → ItemIcon）。
-    def buildWeaponIcons(weapons: List[UnitCatalog.WeaponResource]):
-            Map[Int32, ItemIcon] =
-        List.foldLeft((acc, pair) -> {
-            let (idx, w) = pair;
-            let icon: ItemIcon = {
-                texture = w#sprite#texture,
-                hframes = w#sprite#hframes,
-                vframes = w#sprite#vframes,
-                frame   = w#sprite#frame
-            };
-            Map.insert(idx, icon, acc)
-        }, Map.empty(), List.zipWithIndex(weapons))
+    /// 消費アイテム 1 個ぶんの ItemEntry。metadata は `"c:<idx>"` 形式。残り使用回数を表示する。
+    def consumableEntry(idx: Int32, item: Consumable.ConsumableResource): ItemEntry = {
+        text     = "${item#name} ${item#durability}",
+        disabled = false,
+        metadata = Some("c:${idx}")
+    }
 
-    /// 杖アイコンを ItemList の itemIcons Map に詰める。行 index は `weaponCount` でオフセット。
-    def buildStaffIcons(staves: List[Staff.StaffResource],
-                          weaponCount: Int32): Map[Int32, ItemIcon] =
-        List.foldLeft((acc, pair) -> {
-            let (idx, s) = pair;
-            let icon: ItemIcon = {
-                texture = s#sprite#texture,
-                hframes = s#sprite#hframes,
-                vframes = s#sprite#vframes,
-                frame   = s#sprite#frame
-            };
-            Map.insert(weaponCount + idx, icon, acc)
-        }, Map.empty(), List.zipWithIndex(staves))
+    /// SpriteResource から ItemList 用の ItemIcon を作る。
+    def spriteIcon(sprite: Sprite.SpriteResource): ItemIcon = {
+        texture = sprite#texture,
+        hframes = sprite#hframes,
+        vframes = sprite#vframes,
+        frame   = sprite#frame
+    }
 
-    /// 2 つのアイコン Map を統合する（key 衝突しない前提）。
-    def mergeIconMaps(a: Map[Int32, ItemIcon],
-                       b: Map[Int32, ItemIcon]): Map[Int32, ItemIcon] =
-        Map.foldLeftWithKey((acc, k, v) -> Map.insert(k, v, acc), a, b)
+    /// 表示順に並んだ sprite 列を「行 index → ItemIcon」の Map にする。
+    /// items の並び（武器 → 杖 → 消費アイテム）と同じ順序で渡すこと。
+    def rowIcons(sprites: List[Sprite.SpriteResource]): Map[Int32, ItemIcon] =
+        List.foldLeft((acc, pair) ->
+            let (idx, sprite) = pair;
+            Map.insert(idx, spriteIcon(sprite), acc),
+            Map.empty(), List.zipWithIndex(sprites))
 
     /// metadata の `"w:<idx>"` / `"s:<idx>"` を `PlayerScene.ItemKind` にパースする。
     /// 不明形式は `None`。
@@ -241,6 +245,9 @@ mod ItemMenuScene {
         else if (String.startsWith({prefix = "s:"}, meta))
             String.dropLeft(2, meta) |> Int32.fromString
                                      |> Option.map(PlayerScene.ItemKind.Staff)
+        else if (String.startsWith({prefix = "c:"}, meta))
+            String.dropLeft(2, meta) |> Int32.fromString
+                                     |> Option.map(PlayerScene.ItemKind.Consumable)
         else None
 
     // ────────────────────────────────────────────────────────
@@ -282,7 +289,8 @@ mod ItemMenuScene {
     ///   - 使う: 杖の場合のみ。StaffAim フェーズへ（方向選択を待つ）
     pub def onActionConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                               Scene[NodeTag]
-            \ {GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State} =
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State} =
         match entry#metadata {
             case None    => scene
             case Some(m) =>
@@ -305,7 +313,8 @@ mod ItemMenuScene {
     def dispatchAction(meta: String, playerId: Int32, kind: PlayerScene.ItemKind,
                         scene: Scene[NodeTag]):
                        Scene[NodeTag]
-            \ {GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State} =
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State} =
         if (meta == equipMeta())
             applyEquip(playerId, kind, scene)
         else if (meta == dropMeta())
@@ -320,9 +329,10 @@ mod ItemMenuScene {
                      scene: Scene[NodeTag]):
                     Scene[NodeTag] \ TurnPhase.State =
         let equipped = match kind {
-            case PlayerScene.ItemKind.Weapon(idx) =>
+            case PlayerScene.ItemKind.Weapon(idx)   =>
                 PlayerScene.equipWeapon(playerId, idx, scene)
-            case PlayerScene.ItemKind.Staff(_)    => scene
+            case PlayerScene.ItemKind.Staff(_)      => scene
+            case PlayerScene.ItemKind.Consumable(_) => scene
         };
         let cleared = PlayerScene.clearSelectedItem(playerId, equipped);
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
@@ -350,6 +360,14 @@ mod ItemMenuScene {
                 };
                 GameLogger.playerLog("P${playerId} は ${name} をすてた");
                 PlayerScene.dropStaff(playerId, idx, scene)
+            case PlayerScene.ItemKind.Consumable(idx) =>
+                let withConsumables = PlayerScene.getConsumables(playerId, scene);
+                let name = match List.nth(idx, withConsumables) {
+                    case Some(c) => c#name
+                    case None    => "?"
+                };
+                GameLogger.playerLog("P${playerId} は ${name} をすてた");
+                PlayerScene.dropConsumable(playerId, idx, scene)
         };
         let cleared = PlayerScene.clearSelectedItem(playerId, dropped);
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
@@ -362,12 +380,16 @@ mod ItemMenuScene {
     def applyUse(playerId: Int32, kind: PlayerScene.ItemKind,
                    scene: Scene[NodeTag]):
                   Scene[NodeTag]
-            \ {TurnPhase.State, SelectedPlayer.State, GameLogger.GameLogger} =
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+                TurnPhase.State, SelectedPlayer.State, GameLogger.GameLogger} =
         match kind {
             case PlayerScene.ItemKind.Staff(idx) =>
                 let name = staffNameOf(playerId, idx, scene);
                 GameLogger.playerLog("P${playerId} は ${name} の方向を選び Z で発射 (X で中止)");
                 PhaseTransitions.enterStaffAim(scene)
+            // 消費アイテムは方向選択不要。その場で使用者を回復しターンを消費する。
+            case PlayerScene.ItemKind.Consumable(idx) =>
+                PlayerScene.applyConsumableUse(playerId, idx, scene)
             case PlayerScene.ItemKind.Weapon(_) => scene
         }
 
@@ -395,7 +417,8 @@ mod ItemMenuScene {
     /// `onActionConfirmed` に流す（共通エントリ）。
     pub def confirmCurrentSelection(scene: Scene[NodeTag]):
                                     Scene[NodeTag]
-            \ {GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State} =
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State} =
         let phase = TurnPhase.State.get();
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             case None        => scene

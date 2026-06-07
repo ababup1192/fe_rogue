@@ -259,8 +259,9 @@ mod TestUnitCatalog {
     def entriesToTuples(inv: List[UnitBase.InventoryEntry]): List[(String, String)] =
         List.map(e -> {
             let kindStr = match e#kind {
-                case UnitBase.ItemKind.Weapon => "weapon"
-                case UnitBase.ItemKind.Staff  => "staff"
+                case UnitBase.ItemKind.Weapon     => "weapon"
+                case UnitBase.ItemKind.Staff      => "staff"
+                case UnitBase.ItemKind.Consumable => "consumable"
             };
             (kindStr, e#id)
         }, inv)

@@ -148,6 +148,11 @@
               "kindId": "staff",
               "label": "杖",
               "to": "staves"
+            },
+            {
+              "kindId": "consumable",
+              "label": "消費アイテム",
+              "to": "consumables"
             }
           ]
         },
@@ -359,6 +364,34 @@
             },
             "label": "速成長",
             "order": 6
+          }
+        },
+        "skill": {
+          "field": {
+            "ftype": "int",
+            "hint": {
+              "slider": {
+                "min": 0,
+                "max": 100,
+                "step": 5
+              }
+            },
+            "label": "技成長",
+            "order": 7
+          }
+        },
+        "luck": {
+          "field": {
+            "ftype": "int",
+            "hint": {
+              "slider": {
+                "min": 0,
+                "max": 100,
+                "step": 5
+              }
+            },
+            "label": "幸運成長",
+            "order": 8
           }
         }
       }

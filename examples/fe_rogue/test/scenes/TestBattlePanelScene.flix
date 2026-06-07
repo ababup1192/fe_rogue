@@ -26,6 +26,7 @@ mod TestBattlePanelScene {
         resource          = TestUnitFixtures.testResource(4, 10),
         weapons           = TestUnitFixtures.testWeapon() :: Nil,
         staves            = Nil,
+        consumables       = Nil,
         selectedItem      = None,
         moveStepsTaken    = 0,
         facing            = Staff.Direction.Down,

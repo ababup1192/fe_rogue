@@ -1,0 +1,16 @@
+{
+  "consumables": {
+    "vulnerary": {
+      "description": "使用者のHPを10回復する",
+      "durability": 3,
+      "healAmount": 10,
+      "name": "きずぐすり",
+      "sprite": {
+        "frame": 512,
+        "hframes": 16,
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    }
+  }
+}

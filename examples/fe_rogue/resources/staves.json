@@ -13,7 +13,7 @@
       }
     },
     "live_staff": {
-      "description": "魔力x3だけHPを回復する",
+      "description": "魔力+10だけHPを回復する",
       "durability": 8,
       "effect": "Heal",
       "name": "かいふくのつえ",

@@ -487,13 +487,17 @@ mod Game {
             // 杖カタログをロード。段階 7 のリファクタで `CatalogContainer.loadWithCheck` 経由になり
             // schema 整合性検査も `Staff.load()` 内部で完結する。
             let staffCatalog = Staff.load();
-            // 5 カタログを 1 つの record に束ねて構築 / リビルド経路へ引き回す。
+            // 消費アイテム（きずぐすり等）カタログをロード。Staff と同じ
+            // `CatalogContainer.loadWithCheck` 経由で schema 整合性検査まで完結する。
+            let consumableCatalog = Consumable.load();
+            // 6 カタログを 1 つの record に束ねて構築 / リビルド経路へ引き回す。
             let catalogs = {
-                weapons = weaponCatalog,
-                players = catalog,
-                enemies = enemyCatalog,
-                floors  = floors,
-                staves  = staffCatalog
+                weapons     = weaponCatalog,
+                players     = catalog,
+                enemies     = enemyCatalog,
+                floors      = floors,
+                staves      = staffCatalog,
+                consumables = consumableCatalog
             };
             run {
                 // 初回 build と spawn snapshot 保存をまとめて行う (GameOver リビルドと同じ経路)。

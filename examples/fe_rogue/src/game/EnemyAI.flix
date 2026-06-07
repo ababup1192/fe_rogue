@@ -9,7 +9,7 @@
 ///       └ 同モジュールにプレイヤー → `alerted := true`、その場で chase 計算に進む
 ///       └ 別モジュール             → `Skip(id)`（ターン消費せず何もしない）
 ///   - alerted (`alerted = true`、永続)
-///       ├ プレイヤーと隣接          → `Attack(id)`
+///       ├ 武器射程内にプレイヤー    → `Attack(id)`（剣=距離1 / 弓=距離2 など min..max）
 ///       ├ BFS で最短経路あり        → `Move(id, firstStep)`（隣接セルへの 1 マス）
 ///       └ 経路なし（壁・他駒で詰み）→ `Wait(id)`
 ///
@@ -49,34 +49,40 @@ mod EnemyAI {
         let updated = {alerted = alertedNow | enemy};
         if (not alertedNow) (EnemyAction.Skip(enemy#id), updated)
         else
-            // 2) Attack 優先: 隣接プレイヤーが居れば 1 名殴る（最寄り問わず）。
-            //    ただし武器が壊れている（None）敵は攻撃できないので Wait に切り替える。
-            match Board.adjacentPlayer(enemy#gridPos, board) {
-                case Some(adj) =>
-                    if (Option.isEmpty(enemy#weapon))
-                        (EnemyAction.Wait(enemy#id), updated)
-                    else {
-                        let (targetId, _) = adj;
-                        (EnemyAction.Attack(enemy#id, targetId), updated)
-                    }
-                case None =>
-                    // 3) chase: 最寄りのプレイヤーを target にして 1 歩目を返す
-                    match Board.nearestPlayer(enemy#gridPos, board) {
-                        case None              => (EnemyAction.Skip(enemy#id), updated)
-                        case Some(targetEntry) =>
-                            let (_, target) = targetEntry;
-                            match Board.bfsPath(board, enemy#gridPos, target) {
-                                case None       => (EnemyAction.Wait(enemy#id), updated)
-                                case Some(path) =>
-                                    match List.init(path) |> Option.flatMap(List.head) {
-                                        case Some(step) =>
-                                            (EnemyAction.Move(enemy#id, step), updated)
-                                        case None       =>
-                                            (EnemyAction.Wait(enemy#id), updated)
-                                    }
-                            }
+            // 2) Attack 優先: 装備武器の射程 (min..max) 内にプレイヤーが居れば 1 名狙う。
+            //    武器が壊れている（None）敵 / 射程外（弓で距離 1 など）は攻撃できないので
+            //    chase に落ちる。decideAction は移動キューの 1 step ごとに再評価されるため、
+            //    「前進 → 射程に入った step で Attack」が自然に成立する（Attack が Move より優先）。
+            match enemy#weapon {
+                case None    => chase(board, enemy, updated)
+                case Some(w) =>
+                    match Board.playerInRange(enemy#gridPos, w#range#min, w#range#max, board) {
+                        case Some(target) =>
+                            let (targetId, _) = target;
+                            (EnemyAction.Attack(enemy#id, targetId), updated)
+                        case None         => chase(board, enemy, updated)
                     }
             }
+
+    /// 攻撃できないとき（射程外 / 武器なし）の追跡。最寄りプレイヤーへの最短経路の
+    /// 1 歩目を返す。経路無し（壁・他駒で詰み）なら Wait、プレイヤー不在なら Skip。
+    def chase(board: Board, enemy: EnemyScene.Data,
+              updated: EnemyScene.Data): (EnemyAction, EnemyScene.Data) =
+        match Board.nearestPlayer(enemy#gridPos, board) {
+            case None              => (EnemyAction.Skip(enemy#id), updated)
+            case Some(targetEntry) =>
+                let (_, target) = targetEntry;
+                match Board.bfsPath(board, enemy#gridPos, target) {
+                    case None       => (EnemyAction.Wait(enemy#id), updated)
+                    case Some(path) =>
+                        match List.init(path) |> Option.flatMap(List.head) {
+                            case Some(step) =>
+                                (EnemyAction.Move(enemy#id, step), updated)
+                            case None       =>
+                                (EnemyAction.Wait(enemy#id), updated)
+                        }
+                }
+        }
 
     // ════════════════════════════════════════════════════════
     // 検知ロジック

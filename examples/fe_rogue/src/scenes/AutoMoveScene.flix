@@ -24,8 +24,8 @@
 ///   - 通常ターン制(PlayerCursor)に戻し、カーソルをロードに出す
 mod AutoMoveScene {
 
-    /// ロードとして扱うパーティ id。
-    def lordId(): Int32 = 0
+    /// ロードとして扱うパーティ id（定義は `PlayerScene.lordId()` に一元化）。
+    def lordId(): Int32 = PlayerScene.lordId()
 
     // ────────────────────────────────────────────────────────
     // (A) per-frame entry

@@ -399,6 +399,11 @@ mod ActionMenuScene {
                 PlayerScene.mapPlayer(playerId,
                     d -> {staves = List.append(d#staves, staff :: Nil) | d},
                     scene)
+            case ItemScene.GroundItemKind.ConsumableItem(item) =>
+                GameLogger.playerLog("P${playerId} が ${item#name} を拾った");
+                PlayerScene.mapPlayer(playerId,
+                    d -> {consumables = List.append(d#consumables, item :: Nil) | d},
+                    scene)
         }
 
     /// PlayerMoving + Z 押下時の遷移: 行動選択ウィンドウを開く (フェーズ = ActionSelect)。

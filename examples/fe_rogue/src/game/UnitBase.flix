@@ -13,11 +13,13 @@ mod UnitBase {
     // (A) 共有型
     // ────────────────────────────────────────────────────────
 
-    /// 持ち物アイテムの種別。`weapons.json` か `staves.json` のどちらの id を指すか判別する。
-    /// JSON では小文字文字列 `"weapon"` / `"staff"` でシリアライズする。
+    /// 持ち物アイテムの種別。`weapons.json` / `staves.json` / `consumables.json` の
+    /// どの id を指すか判別する。
+    /// JSON では小文字文字列 `"weapon"` / `"staff"` / `"consumable"` でシリアライズする。
     pub enum ItemKind with Eq, ToString {
         case Weapon
         case Staff
+        case Consumable
     }
 
     /// `initialInventory` の 1 エントリ。JSON は `{"kind": "weapon", "id": "trainingSpear"}` の形。
@@ -99,8 +101,9 @@ mod UnitBaseCodec {
         })
 
     def itemKindToString(k: ItemKind): String = match k {
-        case ItemKind.Weapon => "weapon"
-        case ItemKind.Staff  => "staff"
+        case ItemKind.Weapon     => "weapon"
+        case ItemKind.Staff      => "staff"
+        case ItemKind.Consumable => "consumable"
     }
 
     pub def encodeSprite(s: SpriteResource): JsonElement =
@@ -217,9 +220,10 @@ mod UnitBaseCodec {
         ) yield ({kind = kind, id = id}: InventoryEntry)
 
     def parseItemKind(s: String): Option[ItemKind] = match s {
-        case "weapon" => Some(ItemKind.Weapon)
-        case "staff"  => Some(ItemKind.Staff)
-        case _        => None
+        case "weapon"     => Some(ItemKind.Weapon)
+        case "staff"      => Some(ItemKind.Staff)
+        case "consumable" => Some(ItemKind.Consumable)
+        case _            => None
     }
 
     pub def decodeSprite(element: JsonElement): Option[SpriteResource] =

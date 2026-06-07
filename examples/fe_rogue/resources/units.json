@@ -15,6 +15,8 @@
         "hp": 80,
         "magicAttack": 15,
         "magicDefense": 15,
+        "skill": 45,
+        "luck": 25,
         "speed": 40
       },
       "hp": 18,
@@ -22,6 +24,10 @@
         {
           "id": "trainingBow",
           "kind": "weapon"
+        },
+        {
+          "id": "vulnerary",
+          "kind": "consumable"
         }
       ],
       "level": 1,
@@ -104,6 +110,8 @@
         "hp": 80,
         "magicAttack": 10,
         "magicDefense": 30,
+        "skill": 35,
+        "luck": 25,
         "speed": 40
       },
       "hp": 18,
@@ -111,6 +119,10 @@
         {
           "id": "trainingSword",
           "kind": "weapon"
+        },
+        {
+          "id": "vulnerary",
+          "kind": "consumable"
         }
       ],
       "level": 1,
@@ -137,6 +149,8 @@
         "hp": 50,
         "magicAttack": 40,
         "magicDefense": 30,
+        "skill": 40,
+        "luck": 30,
         "speed": 50
       },
       "hp": 16,
@@ -156,6 +170,10 @@
         {
           "id": "swap_staff",
           "kind": "staff"
+        },
+        {
+          "id": "vulnerary",
+          "kind": "consumable"
         }
       ],
       "level": 1,

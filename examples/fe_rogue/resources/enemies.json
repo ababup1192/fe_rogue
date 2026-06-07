@@ -23,7 +23,7 @@
       }
     },
     "goblin": {
-      "attack": 9,
+      "attack": 7,
       "defense": 3,
       "description": "ゴブリン",
       "hp": 26,
@@ -51,7 +51,7 @@
       }
     },
     "orc": {
-      "attack": 11,
+      "attack": 8,
       "defense": 3,
       "description": "オーク",
       "hp": 30,

@@ -99,6 +99,17 @@ mod TestEnemyAI {
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
           weapon = None }
 
+    /// 射程 2-2 の弓を装備した敵 Data。アーチャーが距離 2 でのみ攻撃し、
+    /// 隣接（距離 1）では体当たりしないことを検証するテストで使う。
+    def enemyAtBow(id: Int32, pos: {x = Int32, y = Int32}, alerted: Bool,
+                   home: Int32, moveTiles: Int32): EnemyScene.Data =
+        let bow = { range = { min = 2, max = 2 } | TestUnitFixtures.testWeapon() };
+        { id = id, gridPos = pos, alerted = alerted,
+          homeModuleIdx = home, moveTiles = moveTiles,
+          hp = 3, isDying = false, attackTargetId = None,
+          resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
+          weapon = Some(bow) }
+
     /// EnemyAction を tag だけのタプルに圧縮（id 付き）。Eq が無いので比較しやすくする。
     def tagOf(a: EnemyAction): String =
         match a {
@@ -149,6 +160,38 @@ mod TestEnemyAI {
         let (a, d)  = EnemyAI.decideAction(board, enemy);
         Assert.assertEq(expected = ("Move", true), (tagOf(a), d#alerted))
 
+    // ════════════════════════════════════════════════════════
+    // 「敵が隣室からワープしてくる」原因確定の回帰テスト
+    //   検知が `moveTiles` の床フラッド (reachableCells) と直結しているため、
+    //   moveTiles が大きいと通路/床続きで隣室のプレイヤーを拾って即起動する。
+    //   バランス調整 (a37e25e) で moveTiles を 3→5 に上げたことが引き金。
+    //   幾何 (床距離 5・モジュール境界越し) を固定し moveTiles だけ変えて回帰を示す。
+    //   ※現状仕様 (= バグ) を pin する形。修正時は期待値を反転する想定。
+    // ════════════════════════════════════════════════════════
+
+    /// moveTiles=3 のときは床距離 5 の隣室プレイヤーを検知できず dormant のまま (Skip)。
+    @Test
+    def testCrossRoomMoveTiles3StaysDormant(): Unit \ Assert =
+        let map     = twoRoomSnapshot(14, 5);                       // half = 7
+        let player  = ({x = 4, y = 2}: {x = Int32, y = Int32});    // module 0
+        let enemyP  = ({x = 9, y = 2}: {x = Int32, y = Int32});    // module 1, 床距離 5
+        let board   = boardOf(map, player, 0, enemyP);
+        let enemy   = enemyAt(0, enemyP, false, 1, 3);
+        let (a, d)  = EnemyAI.decideAction(board, enemy);
+        Assert.assertEq(expected = ("Skip", false), (tagOf(a), d#alerted))
+
+    /// 同一幾何でも moveTiles=5 にすると床距離 5 が索敵範囲に入り、隣室を越えて即起動 (Move)。
+    /// これが「通路を挟んだ隣室の敵がいきなり追ってくる」回帰の核心。
+    @Test
+    def testCrossRoomMoveTiles5AlertsAcrossRoom(): Unit \ Assert =
+        let map     = twoRoomSnapshot(14, 5);                       // half = 7
+        let player  = ({x = 4, y = 2}: {x = Int32, y = Int32});    // module 0
+        let enemyP  = ({x = 9, y = 2}: {x = Int32, y = Int32});    // module 1, 床距離 5
+        let board   = boardOf(map, player, 0, enemyP);
+        let enemy   = enemyAt(0, enemyP, false, 1, 5);
+        let (a, d)  = EnemyAI.decideAction(board, enemy);
+        Assert.assertEq(expected = ("Move", true), (tagOf(a), d#alerted))
+
     /// dormant + 同モジュール → alerted=true、Move（Q3-B: 検出フレームに動く）。
     @Test
     def testDecideDormantSameModuleAlertsAndMoves(): Unit \ Assert =
@@ -196,6 +239,46 @@ mod TestEnemyAI {
         let enemy   = enemyAtUnarmed(0, enemyP, true, 0, 3);
         let (a, _)  = EnemyAI.decideAction(board, enemy);
         Assert.assertEq(expected = "Wait", tagOf(a))
+
+    // ════════════════════════════════════════════════════════
+    // 武器射程に基づく Attack 判定
+    // ════════════════════════════════════════════════════════
+
+    /// 弓 (range 2-2) の敵が隣接 (距離 1) では Attack を返さない。
+    /// このバグ（アーチャーが隣接で体当たりしてくる）の回帰防止。
+    /// 射程外なので chase に落ち、隣接だと経路が詰まって Wait になる。
+    @Test
+    def testBowAdjacentDoesNotAttack(): Unit \ Assert =
+        let map     = singleRoomSnapshot(10, 10);
+        let player  = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 距離 1
+        let board   = boardOf(map, player, 0, enemyP);
+        let enemy   = enemyAtBow(0, enemyP, true, 0, 3);
+        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        Assert.assertEq(expected = false, tagOf(a) == "Attack")
+
+    /// 弓 (range 2-2) の敵が距離 2 の味方を Attack する。
+    @Test
+    def testBowAtRangeTwoAttacks(): Unit \ Assert =
+        let map     = singleRoomSnapshot(10, 10);
+        let player  = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let enemyP  = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 距離 2
+        let board   = boardOf(map, player, 0, enemyP);
+        let enemy   = enemyAtBow(0, enemyP, true, 0, 3);
+        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        Assert.assertEq(expected = "Attack", tagOf(a))
+
+    /// 剣 (range 1-1) の敵は距離 2 では Attack せず前進 (Move) する。
+    /// 近接武器が射程外で chase に落ちることの確認（弓と対になるケース）。
+    @Test
+    def testSwordAtRangeTwoChases(): Unit \ Assert =
+        let map     = singleRoomSnapshot(10, 10);
+        let player  = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let enemyP  = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 距離 2
+        let board   = boardOf(map, player, 0, enemyP);
+        let enemy   = enemyAt(0, enemyP, true, 0, 3);            // testWeapon = 剣 1-1
+        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        Assert.assertEq(expected = "Move", tagOf(a))
 
     @Test
     def testIsAdjacentManhattanOne(): Unit \ Assert =

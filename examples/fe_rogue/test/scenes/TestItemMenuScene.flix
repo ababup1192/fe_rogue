@@ -58,6 +58,7 @@ mod TestItemMenuScene {
             resource          = TestUnitFixtures.testResource(4, 10),
             weapons           = TestUnitFixtures.testWeapon() :: Nil,
             staves            = testStaff() :: Nil,
+            consumables       = Nil,
             selectedItem      = None,
             moveStepsTaken    = 0,
             facing            = Staff.Direction.Down,

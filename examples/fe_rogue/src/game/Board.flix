@@ -140,6 +140,20 @@ mod Board {
                 else None
             })
 
+    /// `pos` から見て武器射程 `lo..hi`（マンハッタン距離, inclusive）に入る
+    /// 最初のプレイヤー駒の (id, position) を返す。該当が無ければ None。
+    /// EnemyAI の Attack 判定で「武器射程内の誰かを 1 体狙う」のに使う。
+    /// `adjacentPlayer`（距離 1 固定）の一般化版で、`lo..hi` は呼び出し側の武器射程に従う。
+    pub def playerInRange(pos: {x = Int32, y = Int32}, lo: Int32, hi: Int32,
+                           board: Board): Option[(Int32, {x = Int32, y = Int32})] =
+        playerPositions(board)
+            |> List.findMap(p -> {
+                let (id, ppos) = p;
+                let d = Int32.abs(ppos#x - pos#x) + Int32.abs(ppos#y - pos#y);
+                if (d >= lo and d <= hi) Some((id, ppos))
+                else None
+            })
+
     // ════════════════════════════════════════════════════════
     // (C) 動きルール
     // ════════════════════════════════════════════════════════

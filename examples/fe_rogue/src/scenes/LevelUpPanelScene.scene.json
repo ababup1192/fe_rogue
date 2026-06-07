@@ -7,8 +7,8 @@
       "borderWidth": 1,
       "children": [],
       "name": "panel",
-      "pos": [ 8, 20 ],
-      "size": [ 112, 86 ],
+      "pos": [ 8, 14 ],
+      "size": [ 112, 104 ],
       "tag": "LevelUpPanel",
       "type": "Panel",
       "visible": false,
@@ -17,7 +17,7 @@
     {
       "type": "Label2D",
       "name": "header",
-      "pos": [ 14, 25 ],
+      "pos": [ 14, 19 ],
       "fontSize": 5,
       "text": "-",
       "visible": false,
@@ -26,7 +26,7 @@
     {
       "type": "Label2D",
       "name": "bodyLabels",
-      "pos": [ 14, 38 ],
+      "pos": [ 14, 32 ],
       "fontSize": 4,
       "text": "",
       "visible": false,
@@ -35,7 +35,7 @@
     {
       "type": "Label2D",
       "name": "bodyBefore",
-      "pos": [ 58, 38 ],
+      "pos": [ 58, 32 ],
       "fontSize": 4,
       "text": "",
       "visible": false,
@@ -44,7 +44,7 @@
     {
       "type": "Label2D",
       "name": "bodyArrow",
-      "pos": [ 66, 38 ],
+      "pos": [ 66, 32 ],
       "fontSize": 4,
       "text": "",
       "visible": false,
@@ -53,7 +53,7 @@
     {
       "type": "Label2D",
       "name": "bodyAfter",
-      "pos": [ 82, 38 ],
+      "pos": [ 82, 32 ],
       "fontSize": 4,
       "text": "",
       "visible": false,
@@ -62,7 +62,7 @@
     {
       "type": "Label2D",
       "name": "bodyPlus",
-      "pos": [ 86, 38 ],
+      "pos": [ 86, 32 ],
       "fontSize": 4,
       "text": "",
       "visible": false,
@@ -71,14 +71,14 @@
     {
       "type": "Label2D",
       "name": "footer",
-      "pos": [ 14, 96 ],
+      "pos": [ 14, 110 ],
       "fontSize": 4,
       "text": "Z / Enter で とじる",
       "visible": false,
       "zIndex": 1
     }
   ],
-  "description": "レベルアップ時のステータス変化パネル (LevelUpView 中)\nヘッダに Lv 変化、本文に6ステータスの before -> after と上昇時 (+1) を出す",
+  "description": "レベルアップ時のステータス変化パネル (LevelUpView 中)\nヘッダに Lv 変化、本文に8ステータスの before -> after と上昇時 (+1) を出す",
   "layer": 5,
   "name": "LevelUpPanel",
   "pos": [ 0, 0 ],

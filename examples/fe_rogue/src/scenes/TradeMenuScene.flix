@@ -248,6 +248,14 @@ mod TradeMenuScene {
         metadata = Some("s:${idx}")
     }
 
+    /// 消費アイテム 1 個ぶんの ItemEntry。metadata は `"c:<idx>"` 規約。残り使用回数を表示する。
+    /// pub: テストから「本体が実際に ItemList に並べている entry」と同じ値を組むのに使う。
+    pub def consumableEntry(idx: Int32, item: Consumable.ConsumableResource): ItemEntry = {
+        text     = "${item#name} ${item#durability}",
+        disabled = false,
+        metadata = Some("c:${idx}")
+    }
+
     /// 空スロット (相手側で「ここに自分のアイテムを置ける」位置) を表す ItemEntry。
     /// pub: テストから「本体が実際に ItemList に並べている entry」と同じ値を組むのに使う。
     pub def emptySlotEntry(): ItemEntry = {
@@ -256,14 +264,16 @@ mod TradeMenuScene {
         metadata = Some(emptySlotMeta())
     }
 
-    /// 指定 player の weapons + staves を ItemEntry 列に変換する (自分側用)。
+    /// 指定 player の weapons + staves + consumables を ItemEntry 列に変換する (自分側用)。
     /// player が居ない場合は空。
     def inventoryEntries(playerId: Int32, scene: Scene[NodeTag]): List[ItemEntry] =
-        let weapons = PlayerScene.getWeapons(playerId, scene);
-        let staves  = PlayerScene.getStaves(playerId, scene);
-        let weaponEntries = List.mapWithIndex(idx -> w -> weaponEntry(idx, w), weapons);
-        let staffEntries  = List.mapWithIndex(idx -> s -> staffEntry(idx, s),  staves);
-        List.append(weaponEntries, staffEntries)
+        let weapons     = PlayerScene.getWeapons(playerId, scene);
+        let staves      = PlayerScene.getStaves(playerId, scene);
+        let consumables = PlayerScene.getConsumables(playerId, scene);
+        let weaponEntries     = List.mapWithIndex(idx -> w -> weaponEntry(idx, w), weapons);
+        let staffEntries      = List.mapWithIndex(idx -> s -> staffEntry(idx, s),  staves);
+        let consumableEntries = List.mapWithIndex(idx -> c -> consumableEntry(idx, c), consumables);
+        List.append(weaponEntries, List.append(staffEntries, consumableEntries))
 
     /// 武器 + 杖を並べた後、末尾に空スロット行を 1 つ追加する。
     /// 「相手のアイテムを空きに受け取る (片方向 transfer)」のスワップが選べるようにする。

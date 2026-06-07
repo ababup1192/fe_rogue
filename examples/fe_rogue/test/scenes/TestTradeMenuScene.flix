@@ -51,7 +51,8 @@ mod TestTradeMenuScene {
         let mkSpawn = (id, weaponIds, staffIds) ->
             ({id = id, gridPos = {x = 0, y = 0}, resource = unitSample,
               weapons = List.map(wId -> UnitCatalog.lookupWeapon(wId, catalog), weaponIds),
-              staves  = List.map(sId -> Staff.lookup(sId, staffCatalog), staffIds)}:
+              staves  = List.map(sId -> Staff.lookup(sId, staffCatalog), staffIds),
+              consumables = Nil}:
                 PlayerScene.Spawn);
         let withParty = Scene.empty()
             |> MapScene.addWorldNode
@@ -203,10 +204,10 @@ mod TestTradeMenuScene {
         region rc {
             let s0 = freshTradeWithWeapons("trainingSpear" :: Nil, "trainingBow" :: Nil);
             let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, 0, () -> {
-                s0 |> pressZOnSelf("くんれんやり") |> pressZOnPartner("くんれんゆみ")
+                s0 |> pressZOnSelf("てつのやり") |> pressZOnPartner("てつの弓")
             });
             Assert.assertEq(
-                expected = ("くんれんゆみ" :: Nil, "くんれんやり" :: Nil),
+                expected = ("てつの弓" :: Nil, "てつのやり" :: Nil),
                 (PlayerScene.getWeapons(after#selfId,    after#scene) |> List.map(w -> w#name),
                  PlayerScene.getWeapons(after#partnerId, after#scene) |> List.map(w -> w#name)))
         }
@@ -219,11 +220,11 @@ mod TestTradeMenuScene {
             let s0 = freshTradeWithWeapons("trainingSpear" :: Nil, "trainingBow" :: Nil);
             let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, 0, () -> {
                 s0 |> pressRightArrow
-                   |> pressZOnPartner("くんれんゆみ")
-                   |> pressZOnSelf("くんれんやり")
+                   |> pressZOnPartner("てつの弓")
+                   |> pressZOnSelf("てつのやり")
             });
             Assert.assertEq(
-                expected = ("くんれんゆみ" :: Nil, "くんれんやり" :: Nil),
+                expected = ("てつの弓" :: Nil, "てつのやり" :: Nil),
                 (PlayerScene.getWeapons(after#selfId,    after#scene) |> List.map(w -> w#name),
                  PlayerScene.getWeapons(after#partnerId, after#scene) |> List.map(w -> w#name)))
         }
@@ -234,10 +235,10 @@ mod TestTradeMenuScene {
         region rc {
             let s0 = freshTradeWithWeapons(Nil, "trainingBow" :: Nil);
             let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, 0, () -> {
-                s0 |> pressZOnSelfEmpty |> pressZOnPartner("くんれんゆみ")
+                s0 |> pressZOnSelfEmpty |> pressZOnPartner("てつの弓")
             });
             Assert.assertEq(
-                expected = ("くんれんゆみ" :: Nil, Nil),
+                expected = ("てつの弓" :: Nil, Nil),
                 (PlayerScene.getWeapons(after#selfId,    after#scene) |> List.map(w -> w#name),
                  PlayerScene.getWeapons(after#partnerId, after#scene) |> List.map(w -> w#name)))
         }
