@@ -219,6 +219,14 @@ mod MapScene {
     pub def getPlacements(scene: Scene[NodeTag]): List[DungeonComposer.ModulePlacement] =
         getMapData(scene)#placements
 
+    /// Map ノードが未登録でも `bug!` しない placements 取得。未登録なら Nil。
+    /// マップが無い文脈（カーソル可動域判定の単体テスト等）でも安全に呼べるようにする。
+    pub def tryGetPlacements(scene: Scene[NodeTag]): List[DungeonComposer.ModulePlacement] =
+        match Scene.getEngineNode(mapPath(), scene) {
+            case Some(EngineNode.TileMapLayerWithState(_, NodeTag.Map(data))) => data#placements
+            case _ => Nil
+        }
+
     /// 部屋数。`idx < roomCount` なら部屋、それ以外は通路と判定できる。
     pub def getRoomCount(scene: Scene[NodeTag]): Int32 =
         getMapData(scene)#roomCount
