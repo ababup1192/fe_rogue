@@ -2,7 +2,7 @@
   "floors": {
     "f01": {
       "generation": {
-        "roomCount": 2
+        "roomCount": 1
       },
       "items": [
         {
@@ -31,8 +31,8 @@
         }
       ],
       "itemsPerRoom": {
-        "max": 1,
-        "min": 1
+        "max": 4,
+        "min": 2
       },
       "label": "1F",
       "monsters": [
@@ -85,8 +85,8 @@
         }
       ],
       "itemsPerRoom": {
-        "max": 2,
-        "min": 0
+        "max": 4,
+        "min": 1
       },
       "label": "2F",
       "monsters": [
@@ -100,7 +100,7 @@
         }
       ],
       "monstersPerRoom": {
-        "max": 5,
+        "max": 4,
         "min": 1
       }
     },
