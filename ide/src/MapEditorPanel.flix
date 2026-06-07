@@ -15,6 +15,9 @@ mod MapEditorPanel {
     import java.nio.file.Paths
     import javafx.scene.control.ListView
     import javafx.scene.control.ListCell
+    import javafx.scene.control.TreeView
+    import javafx.scene.control.TreeItem
+    import javafx.collections.ObservableList
     import javafx.scene.control.Button
     import javafx.scene.control.ToggleButton
     import javafx.scene.control.ComboBox
@@ -105,32 +108,154 @@ mod MapEditorPanel {
         else if (String.charAt(idx, path) == '/') path.substring(idx + 1, String.length(path))
         else basenameRec(path, idx - 1)
 
-    /// Maps ListView を MapEditorState.levelFilesRef から populate する。
+    /// ".map.json" 拡張子を除いたステム名を返す ("level_0.map.json" → "level_0")。
+    def stemName(absPath: String): String = {
+        let base = displayName(absPath);
+        let n = String.length(base);
+        base.substring(0, n - 9)
+    }
+
+    /// "_" で分割したセグメントリストを返す ("pathway_vertical_1" → ["pathway","vertical","1"])。
+    def splitByUnderscore(s: String): List[String] = {
+        let n = String.length(s);
+        def go(start: Int32, i: Int32, acc: List[String]): List[String] =
+            if (i >= n) List.reverse(s.substring(start, n) :: acc)
+            else if (String.charAt(i, s) == '_') go(i + 1, i + 1, s.substring(start, i) :: acc)
+            else go(start, i + 1, acc);
+        go(0, 0, Nil)
+    }
+
+    def joinWith(sep: String, parts: List[String]): String =
+        match parts {
+            case Nil       => ""
+            case x :: Nil  => x
+            case x :: rest => x + sep + joinWith(sep, rest)
+        }
+
+    def findChildByValue(parent: TreeItem[String], value: String): Option[TreeItem[String]] \ IO = {
+        let kids = parent.getChildren();
+        let n = kids.size();
+        def go(i: Int32): Option[TreeItem[String]] \ IO =
+            if (i >= n) None
+            else {
+                let c: TreeItem[String] = kids.get(i);
+                if (c.getValue() == value) Some(c)
+                else go(i + 1i32)
+            };
+        go(0i32)
+    }
+
+    def insertSegments(parent: TreeItem[String], segs: List[String]): Unit \ IO =
+        match segs {
+            case Nil        => ()
+            case last :: Nil =>
+                let leaf: TreeItem[String] = new TreeItem(last);
+                discard parent.getChildren().add(leaf)
+            case s :: rest  =>
+                let group = match findChildByValue(parent, s) {
+                    case Some(g) => g
+                    case None    =>
+                        let g: TreeItem[String] = new TreeItem(s);
+                        g.setExpanded(true);
+                        discard parent.getChildren().add(g);
+                        g
+                };
+                insertSegments(group, rest)
+        }
+
+    def collectSegments(item: TreeItem[String]): List[String] \ IO = {
+        let parent = item.getParent();
+        if (Object.isNull(parent)) Nil
+        else if (Object.isNull(parent.getParent())) item.getValue() :: Nil
+        else List.append(collectSegments(parent), item.getValue() :: Nil)
+    }
+
+    def reconstructName(item: TreeItem[String]): String \ IO =
+        joinWith("_", collectSegments(item))
+
+    def findLeafBySegments(root: TreeItem[String], segs: List[String]): Option[TreeItem[String]] \ IO =
+        match segs {
+            case Nil         => None
+            case last :: Nil => findChildByValue(root, last)
+            case s :: rest   =>
+                match findChildByValue(root, s) {
+                    case None      => None
+                    case Some(grp) => findLeafBySegments(grp, rest)
+                }
+        }
+
+    /// 現在折りたたまれているグループの名前 (セグメント "_" 結合) を収集する。
+    def collectCollapsedPaths(item: TreeItem[String], prefix: String, acc: Set[String]): Set[String] \ IO = {
+        let kids = item.getChildren();
+        let n = kids.size();
+        def go(i: Int32, a: Set[String]): Set[String] \ IO =
+            if (i >= n) a
+            else {
+                let c: TreeItem[String] = kids.get(i);
+                if (c.isLeaf()) go(i + 1i32, a)
+                else {
+                    let name = if (prefix == "") c.getValue() else prefix + "_" + c.getValue();
+                    let a2 = if (not c.isExpanded()) Set.insert(name, a) else a;
+                    go(i + 1i32, collectCollapsedPaths(c, name, a2))
+                }
+            };
+        go(0i32, acc)
+    }
+
+    /// rebuild 後に折りたたみ状態を復元する。
+    def restoreCollapsedState(item: TreeItem[String], prefix: String, collapsed: Set[String]): Unit \ IO = {
+        let kids = item.getChildren();
+        let n = kids.size();
+        def go(i: Int32): Unit \ IO =
+            if (i >= n) ()
+            else {
+                let c: TreeItem[String] = kids.get(i);
+                if (not c.isLeaf()) {
+                    let name = if (prefix == "") c.getValue() else prefix + "_" + c.getValue();
+                    if (Set.memberOf(name, collapsed)) c.setExpanded(false) else ();
+                    restoreCollapsedState(c, name, collapsed)
+                } else ();
+                go(i + 1i32)
+            };
+        go(0i32)
+    }
+
+    /// Maps TreeView を MapEditorState.levelFilesRef から populate する。
     /// FX EDT で呼ぶ (FXMLLoader.load 直後 or schedulePopulateTree から)。
     pub def populateMapList(state: IdeState.IdeState): Unit \ IO = {
         match Array.get(0, state#widgets#mapsList) {
             case None => ()
-            case Some(listView) => {
+            case Some(tv) => {
+                // rebuild 前に折りたたみ状態を保存
+                let prevRoot = tv.getRoot();
+                let collapsed = if (Object.isNull(prevRoot)) Set.empty()
+                                else collectCollapsedPaths(prevRoot, "", Set.empty());
                 let paths = MapEditorState.getLevelFiles(state#mapEditor);
-                let items = listView.getItems();
-                items.clear();
-                List.forEach(p -> discard items.add(displayName(p)), paths)
+                let sorted = List.sortBy(p -> displayName(p), paths);
+                let root: TreeItem[String] = new TreeItem("Maps");
+                root.setExpanded(true);
+                List.forEach(p -> insertSegments(root, splitByUnderscore(stemName(p))), sorted);
+                tv.setRoot(root);
+                // 折りたたみ状態を復元
+                restoreCollapsedState(root, "", collapsed)
             }
         }
     }
 
-    /// Maps ListView の選択イベントを listen し、選択された Level の `.map.json` を
-    /// `Persistence.load` で読んで editingLevelRef に積み、Canvas に grid を描く (S9)。
-    pub def wireMapSelection(state: IdeState.IdeState, listView: ListView[String]): Unit \ IO = {
-        let prop = listView.getSelectionModel().selectedItemProperty();
-        let listener = new ChangeListener[String] {
-            def changed(_cThis: ChangeListener[String],
+    /// Maps TreeView の選択イベントを listen し、葉が選択されたとき `.map.json` を
+    /// `Persistence.load` で読んで editingLevelRef に積み、Canvas に grid を描く。
+    pub def wireMapSelection(state: IdeState.IdeState, treeView: TreeView[String]): Unit \ IO = {
+        let prop = treeView.getSelectionModel().selectedItemProperty();
+        let listener = new ChangeListener[TreeItem[String]] {
+            def changed(_cThis: ChangeListener[TreeItem[String]],
                          _obs: ObservableValue[JObject],
-                         _old: String, newSel: String): Unit \ IO = {
+                         _old: TreeItem[String], newSel: TreeItem[String]): Unit \ IO = {
                 if (Object.isNull(newSel)) ()
+                else if (not newSel.isLeaf()) ()
                 else {
+                    let stem = reconstructName(newSel);
+                    let target = stem + ".map.json";
                     let paths = MapEditorState.getLevelFiles(state#mapEditor);
-                    let target = newSel;
                     match List.find(p -> displayName(p) == target, paths) {
                         case None      => ()
                         case Some(abs) =>
@@ -1041,17 +1166,19 @@ mod MapEditorPanel {
             }
         } with Fs.FileWrite.runWithIO
 
-    /// mapsList で指定 path の項目を選択する (見つからなければ何もしない)。
+    /// mapsList で指定 path の葉を選択する (見つからなければ何もしない)。
     /// 選択により wireMapSelection の listener が発火して onLevelSelected が走る。
     def selectMapByPath(state: IdeState.IdeState, mapPath: String): Unit \ IO =
         match Array.get(0, state#widgets#mapsList) {
             case None     => ()
-            case Some(lv) => {
-                let items = lv.getItems();
-                let idx = items.indexOf(displayName(mapPath));
-                if (idx >= 0i32) {
-                    let model: MultipleSelectionModel[String] = lv.getSelectionModel();
-                    model.clearAndSelect(idx)
+            case Some(tv) => {
+                let segs = splitByUnderscore(stemName(mapPath));
+                let root = tv.getRoot();
+                if (not Object.isNull(root)) {
+                    match findLeafBySegments(root, segs) {
+                        case None       => ()
+                        case Some(leaf) => tv.getSelectionModel().clearAndSelect(tv.getRow(leaf))
+                    }
                 } else ()
             }
         }
@@ -3146,14 +3273,20 @@ mod MapEditorPanel {
         let mapFiles = findMapFilesIO(root);
         MapEditorState.setLevelFiles(state#mapEditor, mapFiles);
         populateMapList(state);
-        // ListView の選択を新ファイルに合わせる
+        // TreeView の選択を新ファイルに合わせる
         match Array.get(0, state#widgets#mapsList) {
             case None     => ()
-            case Some(lv) => {
-                let model: MultipleSelectionModel[String] = lv.getSelectionModel();
-                let items = lv.getItems();
-                let idx = items.indexOf(displayName(newMapPath));
-                if (idx >= 0i32) model.clearAndSelect(idx) else model.clearSelection()
+            case Some(tv) => {
+                let model: MultipleSelectionModel[TreeItem[String]] = tv.getSelectionModel();
+                let segs = splitByUnderscore(stemName(newMapPath));
+                let treeRoot = tv.getRoot();
+                if (Object.isNull(treeRoot)) model.clearSelection()
+                else {
+                    match findLeafBySegments(treeRoot, segs) {
+                        case None       => model.clearSelection()
+                        case Some(leaf) => model.clearAndSelect(tv.getRow(leaf))
+                    }
+                }
             }
         };
         // intGrid 再構築のために再ロード (新 path から)

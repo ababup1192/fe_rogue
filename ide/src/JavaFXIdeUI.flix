@@ -133,7 +133,7 @@ mod JavaFXIdeUI {
         let mapRoot: Node = unchecked_cast(mapRootObj as Node);
         mapsTab.setContent(mapRoot);
         let mapNs = mapLoader.getNamespace();
-        let mapsList: ListView[String] = unchecked_cast(mapNs.get("mapsList") as ListView[String]);
+        let mapsList: TreeView[String] = unchecked_cast(mapNs.get("mapsList") as TreeView[String]);
         let mapGridCanvas: Canvas = unchecked_cast(mapNs.get("mapGridCanvas") as Canvas);
         Array.put(Some(mapsList), 0, state#widgets#mapsList);
         Array.put(Some(mapGridCanvas), 0, state#widgets#mapGridCanvas);
