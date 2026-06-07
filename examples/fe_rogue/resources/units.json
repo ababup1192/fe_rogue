@@ -22,7 +22,7 @@
       "hp": 18,
       "initialInventory": [
         {
-          "id": "trainingBow",
+          "id": "bronze_bow",
           "kind": "weapon"
         },
         {
@@ -117,7 +117,7 @@
       "hp": 18,
       "initialInventory": [
         {
-          "id": "trainingSword",
+          "id": "iron_sword",
           "kind": "weapon"
         },
         {
@@ -156,7 +156,7 @@
       "hp": 16,
       "initialInventory": [
         {
-          "id": "fire_magic",
+          "id": "tome_grimoire",
           "kind": "weapon"
         },
         {

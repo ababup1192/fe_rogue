@@ -22,7 +22,7 @@ mod UnitBase {
         case Consumable
     }
 
-    /// `initialInventory` の 1 エントリ。JSON は `{"kind": "weapon", "id": "trainingSpear"}` の形。
+    /// `initialInventory` の 1 エントリ。JSON は `{"kind": "weapon", "id": "iron_lance"}` の形。
     /// 並び順は意味あり: weapon は最初のものが装備中、staff は配列順で持ち物に積まれる。
     pub type alias InventoryEntry = {
         kind = ItemKind,

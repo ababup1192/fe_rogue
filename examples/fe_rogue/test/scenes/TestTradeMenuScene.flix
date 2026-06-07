@@ -34,7 +34,7 @@ mod TestTradeMenuScene {
 
     /// 「自分 (selfId) と相手 (partnerId) のインベントリ」を初期状態として
     /// TradeMenu フィクスチャを組む。
-    /// インベントリは **本番 catalog の ID** ("trainingSpear", "trainingBow", "live_staff" 等)
+    /// インベントリは **本番 catalog の ID** ("iron_lance", "iron_bow", "live_staff" 等)
     /// のリストで指定する。catalog は本番 `resources/*.json` を `UnitCatalog.load` / `Staff.load`
     /// で読む。scene は `MapScene.addWorldNode` + `PlayerScene.addOnePlayer` の本体経路で組む。
     pub def freshTrade(args: {selfId = Int32, partnerId = Int32,
@@ -66,7 +66,7 @@ mod TestTradeMenuScene {
     /// 武器だけ持つ最小シナリオ用の簡易版。多くのテストは「selfWeapons / partnerWeapons」
     /// 以外は固定 (selfId=0, partnerId=1, staves=Nil) なので、各テスト先頭の record 引数を
     /// 1 行に縮めるためのコンストラクタ。杖を使うときは `freshTrade` を直接使う。
-    /// 引数の string は **catalog 武器 ID** ("trainingSpear", "trainingBow" 等)。
+    /// 引数の string は **catalog 武器 ID** ("iron_lance", "iron_bow" 等)。
     pub def freshTradeWithWeapons(selfWeapons: List[String],
                                     partnerWeapons: List[String]):
             TradeScenario \ Fs.FileRead =
@@ -202,7 +202,7 @@ mod TestTradeMenuScene {
     @Test
     def testFullSwapFlowExchangesInventories(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshTradeWithWeapons("trainingSpear" :: Nil, "trainingBow" :: Nil);
+            let s0 = freshTradeWithWeapons("iron_lance" :: Nil, "iron_bow" :: Nil);
             let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, 0, () -> {
                 s0 |> pressZOnSelf("てつのやり") |> pressZOnPartner("てつの弓")
             });
@@ -217,7 +217,7 @@ mod TestTradeMenuScene {
     @Test
     def testPartnerStartSwapExchangesInventories(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshTradeWithWeapons("trainingSpear" :: Nil, "trainingBow" :: Nil);
+            let s0 = freshTradeWithWeapons("iron_lance" :: Nil, "iron_bow" :: Nil);
             let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, 0, () -> {
                 s0 |> pressRightArrow
                    |> pressZOnPartner("てつの弓")
@@ -233,7 +233,7 @@ mod TestTradeMenuScene {
     @Test
     def testReceivePartnerItemViaSelfEmptyPick(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshTradeWithWeapons(Nil, "trainingBow" :: Nil);
+            let s0 = freshTradeWithWeapons(Nil, "iron_bow" :: Nil);
             let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, 0, () -> {
                 s0 |> pressZOnSelfEmpty |> pressZOnPartner("てつの弓")
             });
@@ -248,7 +248,7 @@ mod TestTradeMenuScene {
     @Test
     def testCancelWithNoPickExitsToActionSelect(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshTradeWithWeapons("trainingSpear" :: Nil, "trainingBow" :: Nil);
+            let s0 = freshTradeWithWeapons("iron_lance" :: Nil, "iron_bow" :: Nil);
             let (_, finalPhase) = runScenario(rc, TurnPhase.Phase.TradeInventory, 0, () -> {
                 s0 |> pressXOnSelf
             });

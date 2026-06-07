@@ -30,7 +30,7 @@ mod TestEnemyCatalog {
         skill        = 2,
         luck         = 1,
         initialInventory =
-            ({kind = UnitBase.ItemKind.Weapon, id = "trainingSword"}:
+            ({kind = UnitBase.ItemKind.Weapon, id = "iron_sword"}:
                UnitBase.InventoryEntry) :: Nil,
         description  = "ゴブリン",
         sprite       = {
@@ -54,7 +54,7 @@ mod TestEnemyCatalog {
         JsonArray(Vector#{
             JsonObject(Map#{
                 "kind" => JsonString("weapon"),
-                "id"   => JsonString("trainingSword")
+                "id"   => JsonString("iron_sword")
             })
         })
 

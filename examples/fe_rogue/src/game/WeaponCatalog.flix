@@ -7,9 +7,9 @@
 /// JSON 形状 (`resources/weapons.json`):
 ///   {
 ///     "weapons": {
-///       "trainingSpear": { "name": "くんれんやり", "attack": 2, "durability": 41,
-///                            "range": {"min":1, "max":1}, "weaponType": "Physical",
-///                            "sprite": {...} },
+///       "iron_lance": { "name": "てつのやり", "attack": 7, "durability": 10,
+///                         "range": {"min":1, "max":1}, "weaponType": "Lance",
+///                         "sprite": {...} },
 ///       ...
 ///     }
 ///   }

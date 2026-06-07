@@ -202,7 +202,7 @@ mod TestPlayerScene {
     //   - `PlayerScene.swapItem(args, scene)` を record-style 引数で呼ぶ
     //   - インベントリ確認は `PlayerScene.getWeapons` / `getStaves` の戻り値を直接 map
     //
-    // 武器: trainingSpear (てつのやり) / trainingBow (てつの弓) / fire_magic (ファイアー)
+    // 武器: iron_lance (てつのやり) / iron_bow (てつの弓) / tome_grimoire (魔導書)
     // 杖:   live_staff (かいふくのつえ) / swap_staff (いれかえのつえ)
     // ========================================================================
 
@@ -221,17 +221,17 @@ mod TestPlayerScene {
         };
         {catalog = catalog, staffCatalog = staffCatalog, unitSample = unitSample}
 
-    /// P0 weapons=[槍, ファイアー] / P1 weapons=[弓]
+    /// P0 weapons=[槍, 魔導書] / P1 weapons=[弓]
     /// P0 の Weapon(0)=槍 と P1 の Weapon(0)=弓 を交換。
     /// 期待:
-    ///   P0: weapons=[ファイアー, 弓]   (槍が抜けて末尾に 弓 追加)
+    ///   P0: weapons=[魔導書, 弓]   (槍が抜けて末尾に 弓 追加)
     ///   P1: weapons=[槍]              (弓が抜けて末尾に 槍 追加)
     @Test
     def testSwapItemWeaponToWeaponExchangesBothInventories(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let spear = UnitCatalog.lookupWeapon("trainingSpear", fx#catalog);
-        let bow   = UnitCatalog.lookupWeapon("trainingBow",   fx#catalog);
-        let fire  = UnitCatalog.lookupWeapon("fire_magic",    fx#catalog);
+        let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
+        let bow   = UnitCatalog.lookupWeapon("iron_bow",      fx#catalog);
+        let fire  = UnitCatalog.lookupWeapon("tome_grimoire", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
@@ -247,7 +247,7 @@ mod TestPlayerScene {
             partnerKind = Some(PlayerScene.ItemKind.Weapon(0))
         }, scene);
         Assert.assertEq(
-            expected = ("ファイアー" :: "てつの弓" :: Nil, "てつのやり" :: Nil),
+            expected = ("魔導書" :: "てつの弓" :: Nil, "てつのやり" :: Nil),
             (PlayerScene.getWeapons(0, after) |> List.map(w -> w#name),
              PlayerScene.getWeapons(1, after) |> List.map(w -> w#name)))
 
@@ -286,7 +286,7 @@ mod TestPlayerScene {
     @Test
     def testSwapItemWeaponToStaffCrossesInventoryLists(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let spear = UnitCatalog.lookupWeapon("trainingSpear", fx#catalog);
+        let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let live  = Staff.lookup("live_staff", fx#staffCatalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
@@ -317,7 +317,7 @@ mod TestPlayerScene {
     @Test
     def testSwapItemTransfersToEmptySlot(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let spear = UnitCatalog.lookupWeapon("trainingSpear", fx#catalog);
+        let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
@@ -347,7 +347,7 @@ mod TestPlayerScene {
     @Test
     def testSwapItemPartnerAsGiverTransfersToSelf(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let spear = UnitCatalog.lookupWeapon("trainingSpear", fx#catalog);
+        let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
@@ -527,7 +527,7 @@ mod TestPlayerScene {
     @Test
     def testReconcileWithCarryPersistsHpAndDropsDead(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let spear = UnitCatalog.lookupWeapon("trainingSpear", fx#catalog);
+        let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let mkSpawn = id -> ({id = id, gridPos = {x = 0, y = 0}, resource = fx#unitSample,
                                weapons = Nil, staves = Nil, consumables = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()

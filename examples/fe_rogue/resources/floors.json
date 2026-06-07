@@ -2,23 +2,23 @@
   "floors": {
     "f01": {
       "generation": {
-        "roomCount": 6
+        "roomCount": 2
       },
       "items": [
         {
-          "id": "trainingBow",
+          "id": "bronze_bow",
           "percent": 25
         },
         {
-          "id": "trainingSpear",
+          "id": "bronze_lance",
           "percent": 25
         },
         {
-          "id": "fire_magic",
+          "id": "tome_apprentice",
           "percent": 20
         },
         {
-          "id": "live_staff",
+          "id": "iron_bow",
           "percent": 15
         },
         {
@@ -32,7 +32,7 @@
       ],
       "itemsPerRoom": {
         "max": 1,
-        "min": 0
+        "min": 1
       },
       "label": "1F",
       "monsters": [
@@ -50,25 +50,25 @@
         }
       ],
       "monstersPerRoom": {
-        "max": 3,
-        "min": 0
+        "max": 2,
+        "min": 2
       }
     },
     "f02": {
       "generation": {
-        "roomCount": 10
+        "roomCount": 12
       },
       "items": [
         {
-          "id": "trainingBow",
+          "id": "iron_bow",
           "percent": 20
         },
         {
-          "id": "trainingSpear",
+          "id": "iron_lance",
           "percent": 20
         },
         {
-          "id": "fire_magic",
+          "id": "tome_grimoire",
           "percent": 25
         },
         {
@@ -85,7 +85,7 @@
         }
       ],
       "itemsPerRoom": {
-        "max": 1,
+        "max": 2,
         "min": 0
       },
       "label": "2F",
@@ -100,7 +100,7 @@
         }
       ],
       "monstersPerRoom": {
-        "max": 3,
+        "max": 5,
         "min": 1
       }
     },
@@ -110,15 +110,15 @@
       },
       "items": [
         {
-          "id": "trainingBow",
+          "id": "iron_bow",
           "percent": 15
         },
         {
-          "id": "trainingSpear",
+          "id": "iron_lance",
           "percent": 15
         },
         {
-          "id": "fire_magic",
+          "id": "tome_sage",
           "percent": 30
         },
         {
@@ -150,8 +150,8 @@
         }
       ],
       "monstersPerRoom": {
-        "max": 4,
-        "min": 1
+        "max": 8,
+        "min": 2
       }
     }
   },

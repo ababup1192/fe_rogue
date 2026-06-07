@@ -1,27 +1,44 @@
 {
   "weapons": {
-    "fire_magic": {
-      "attack": 5,
-      "durability": 30,
-      "hit": 95,
-      "name": "ファイアー",
+    "bronze_sword": {
+      "attack": 3,
+      "durability": 12,
+      "hit": 90,
+      "name": "どうの剣",
       "range": {
-        "max": 2,
+        "max": 1,
         "min": 1
       },
       "sprite": {
         "frame": 0,
         "hframes": 20,
-        "texture": "item_skills",
-        "vframes": 30
+        "texture": "item_weapons",
+        "vframes": 25
       },
-      "weaponType": "Magic"
+      "weaponType": "Sword"
     },
-    "iron_axe": {
-      "attack": 7,
-      "durability": 45,
-      "hit": 65,
-      "name": "てつの斧",
+    "bronze_lance": {
+      "attack": 5,
+      "durability": 12,
+      "hit": 80,
+      "name": "どうのやり",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 263,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Lance"
+    },
+    "bronze_axe": {
+      "attack": 6,
+      "durability": 12,
+      "hit": 70,
+      "name": "どうのおの",
       "range": {
         "max": 1,
         "min": 1
@@ -34,11 +51,11 @@
       },
       "weaponType": "Axe"
     },
-    "trainingBow": {
-      "attack": 6,
-      "durability": 45,
-      "hit": 80,
-      "name": "てつの弓",
+    "bronze_bow": {
+      "attack": 4,
+      "durability": 12,
+      "hit": 90,
+      "name": "どうの弓",
       "range": {
         "max": 2,
         "min": 2
@@ -46,37 +63,14 @@
       "sprite": {
         "frame": 254,
         "hframes": 20,
-        "offset": {
-          "x": 0.0
-        },
         "texture": "item_weapons",
         "vframes": 25
       },
       "weaponType": "Bow"
     },
-    "trainingSpear": {
-      "attack": 7,
-      "durability": 45,
-      "hit": 70,
-      "name": "てつのやり",
-      "range": {
-        "max": 1,
-        "min": 1
-      },
-      "sprite": {
-        "frame": 263,
-        "hframes": 20,
-        "offset": {
-          "x": 0.0
-        },
-        "texture": "item_weapons",
-        "vframes": 25
-      },
-      "weaponType": "Lance"
-    },
-    "trainingSword": {
+    "iron_sword": {
       "attack": 5,
-      "durability": 46,
+      "durability": 10,
       "hit": 85,
       "name": "てつの剣",
       "range": {
@@ -86,13 +80,333 @@
       "sprite": {
         "frame": 0,
         "hframes": 20,
-        "offset": {
-          "x": 0.0
-        },
         "texture": "item_weapons",
         "vframes": 25
       },
       "weaponType": "Sword"
+    },
+    "iron_lance": {
+      "attack": 7,
+      "durability": 10,
+      "hit": 70,
+      "name": "てつのやり",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 263,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Lance"
+    },
+    "iron_axe": {
+      "attack": 7,
+      "durability": 10,
+      "hit": 65,
+      "name": "てつのおの",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 248,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Axe"
+    },
+    "iron_bow": {
+      "attack": 6,
+      "durability": 10,
+      "hit": 80,
+      "name": "てつの弓",
+      "range": {
+        "max": 2,
+        "min": 2
+      },
+      "sprite": {
+        "frame": 254,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Bow"
+    },
+    "steel_sword": {
+      "attack": 8,
+      "durability": 12,
+      "hit": 80,
+      "name": "はがねの剣",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 0,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Sword"
+    },
+    "steel_lance": {
+      "attack": 10,
+      "durability": 12,
+      "hit": 65,
+      "name": "はがねのやり",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 263,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Lance"
+    },
+    "steel_axe": {
+      "attack": 11,
+      "durability": 12,
+      "hit": 60,
+      "name": "はがねのおの",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 248,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Axe"
+    },
+    "steel_bow": {
+      "attack": 9,
+      "durability": 12,
+      "hit": 75,
+      "name": "はがねの弓",
+      "range": {
+        "max": 2,
+        "min": 2
+      },
+      "sprite": {
+        "frame": 254,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Bow"
+    },
+    "silver_sword": {
+      "attack": 11,
+      "durability": 5,
+      "hit": 90,
+      "name": "ぎんの剣",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 0,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Sword"
+    },
+    "silver_lance": {
+      "attack": 13,
+      "durability": 5,
+      "hit": 80,
+      "name": "ぎんのやり",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 263,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Lance"
+    },
+    "silver_axe": {
+      "attack": 14,
+      "durability": 5,
+      "hit": 70,
+      "name": "ぎんのおの",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 248,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Axe"
+    },
+    "silver_bow": {
+      "attack": 12,
+      "durability": 5,
+      "hit": 85,
+      "name": "ぎんの弓",
+      "range": {
+        "max": 2,
+        "min": 2
+      },
+      "sprite": {
+        "frame": 254,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Bow"
+    },
+    "mithril_sword": {
+      "attack": 14,
+      "durability": 8,
+      "hit": 95,
+      "name": "ミスリルの剣",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 0,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Sword"
+    },
+    "mithril_lance": {
+      "attack": 16,
+      "durability": 8,
+      "hit": 85,
+      "name": "ミスリルのやり",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 263,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Lance"
+    },
+    "mithril_axe": {
+      "attack": 17,
+      "durability": 8,
+      "hit": 75,
+      "name": "ミスリルのおの",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 248,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Axe"
+    },
+    "mithril_bow": {
+      "attack": 15,
+      "durability": 8,
+      "hit": 90,
+      "name": "ミスリルの弓",
+      "range": {
+        "max": 2,
+        "min": 2
+      },
+      "sprite": {
+        "frame": 254,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Bow"
+    },
+    "tome_apprentice": {
+      "attack": 4,
+      "durability": 8,
+      "hit": 90,
+      "name": "見習いの魔導書",
+      "range": {
+        "max": 2,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 0,
+        "hframes": 20,
+        "texture": "item_skills",
+        "vframes": 30
+      },
+      "weaponType": "Magic"
+    },
+    "tome_grimoire": {
+      "attack": 6,
+      "durability": 8,
+      "hit": 90,
+      "name": "魔導書",
+      "range": {
+        "max": 2,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 0,
+        "hframes": 20,
+        "texture": "item_skills",
+        "vframes": 30
+      },
+      "weaponType": "Magic"
+    },
+    "tome_sage": {
+      "attack": 9,
+      "durability": 6,
+      "hit": 85,
+      "name": "賢者の魔導書",
+      "range": {
+        "max": 2,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 0,
+        "hframes": 20,
+        "texture": "item_skills",
+        "vframes": 30
+      },
+      "weaponType": "Magic"
+    },
+    "tome_archsage": {
+      "attack": 12,
+      "durability": 5,
+      "hit": 85,
+      "name": "大賢者の魔導書",
+      "range": {
+        "max": 2,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 0,
+        "hframes": 20,
+        "texture": "item_skills",
+        "vframes": 30
+      },
+      "weaponType": "Magic"
     }
   }
 }
