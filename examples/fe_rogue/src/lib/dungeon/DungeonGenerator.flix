@@ -112,6 +112,13 @@ mod DungeonGenerator {
             // 4. 部屋数の実績をログ出力
             let placedRoomCount = countRooms(finalState);
             println("DungeonGenerator: placed ${placedRoomCount} rooms (target ${config#roomCount})");
+            // debug: どの部屋が選ばれているかを確認
+            let roomEntries = Map.toList(finalState#entries)
+                              |> List.filter(kv -> { let (_, e) = kv; e#isRoom });
+            List.forEach(kv -> {
+                let (i, e) = kv;
+                println("  room[${i}] = ${e#ldtkPath}")
+            }, roomEntries);
             // 5. Plan に整形（部屋優先・index 再採番）
             buildPlan(finalState)
 

@@ -77,12 +77,16 @@ mod MapScene {
     /// Walls / Floor 共通テクスチャ名（n-format は両層で同一タイルセットを使う）。
     def textureName(): String = "tileset_dungeon_green"
 
-    /// ランダム生成設定: 部屋数 (引数) と利用可能な部屋・通路プール (n-format)。
-    /// 部屋は 1 種類 (level_0n)、通路は横 (pathway_1n) / 縦 (pathway_2n) 各 1 種類。
+    /// ランダム生成設定: 部屋数 (引数) と利用可能な部屋・通路プール。
     def generatorConfig(roomCount: Int32): DungeonGenerator.Config = {
-        roomPaths       = "assets/maps/level_0n.map.json" :: Nil,
-        horizontalPaths = "assets/maps/pathway_1n.map.json" :: Nil,
-        verticalPaths   = "assets/maps/pathway_2n.map.json" :: Nil,
+        roomPaths       = "assets/maps/room_1.map.json" ::
+                          "assets/maps/room_2.map.json" ::
+                          "assets/maps/room_3.map.json" ::
+                          "assets/maps/room_4.map.json" :: Nil,
+        horizontalPaths = "assets/maps/pathway_horizontal_1.map.json" ::
+                          "assets/maps/pathway_horizontal_2.map.json" :: Nil,
+        verticalPaths   = "assets/maps/pathway_vertical_1.map.json" ::
+                          "assets/maps/pathway_vertical_2.map.json" :: Nil,
         roomCount       = roomCount
     }
 
@@ -93,7 +97,7 @@ mod MapScene {
         // 単一 .map.json (level_0) を MapLoader 経由で描画する。視覚一致確認用。
         let modeStr = unsafe IO { JSystem.getenv("FE_ROGUE_MODE") };
         let isMapTest = not Object.isNull(modeStr) and modeStr == "map-test";
-        if (isMapTest) addFromMapJson("assets/maps/level_0n.map.json", scene)
+        if (isMapTest) addFromMapJson("assets/maps/room_1.map.json", scene)
         else           addFromLdtk(floor, scene)
 
     /// 既存ルート: DungeonGenerator + DungeonComposer で複数モジュールを連結する。
