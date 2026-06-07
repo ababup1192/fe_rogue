@@ -314,12 +314,17 @@ mod CursorScene {
     /// 範囲は FogScene.cursorRangeRects（明るい部屋を半径拡張 ∪ 既訪 module 矩形）で求め、
     /// 既訪記憶は MinimapScene の driver state を再利用する。scene 直読みの純粋判定。
     def cursorCanEnter(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Bool =
-        let placements = MapScene.getPlacements(scene);
-        let roomCount  = MapScene.getRoomCount(scene);
-        let visited    = MinimapScene.visitedModules(scene);
-        let rects = FogScene.cursorRangeRects(PlayerScene.getAll(scene), placements,
-                                               roomCount, visited, cursorRangeRadius());
-        FogScene.insideAny(cell, rects)
+        let placements = MapScene.tryGetPlacements(scene);
+        // マップ情報が無い（= 単体テスト等）なら制限しない（fail-open: カーソルを固めない）。
+        if (List.isEmpty(placements)) true
+        else {
+            let roomCount = MapScene.getRoomCount(scene);
+            let visited   = MinimapScene.visitedModules(scene);
+            let rects = FogScene.cursorRangeRects(PlayerScene.getAll(scene), placements,
+                                                   roomCount, visited, cursorRangeRadius());
+            // 可動域がまだ算出できないフレームでも固めない（防御的）。
+            List.isEmpty(rects) or FogScene.insideAny(cell, rects)
+        }
 
     /// 候補セルをマップの usedRect 内にクランプする。FE と同じく壁・敵・味方マスは
     /// 通り抜け可能（カーソルは情報表示専用なので地形に縛られない）。
