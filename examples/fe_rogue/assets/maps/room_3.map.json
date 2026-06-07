@@ -377,6 +377,30 @@
       "identifier": "Door",
       "x": 2,
       "y": 7
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 10,
+      "y": 8
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 7,
+      "y": 3
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 2,
+      "y": 8
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 7,
+      "y": 12
     }
   ],
   "height": 14,
