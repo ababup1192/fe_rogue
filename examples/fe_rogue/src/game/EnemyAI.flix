@@ -77,53 +77,103 @@ mod EnemyAI {
         if (not alertedNow) (EnemyAction.Skip(enemy#id), updated)
         else
             let ctx = ({pos = enemy#gridPos, weaponMax = weaponMaxOf(enemy)}: Ctx);
-            // フェーズ1: 今ターン攻撃できる相手（武器射程内）が居れば、その中で最良を攻撃する。
-            // 攻撃を優先することで「射程内に相手が居るのに、遠くの弱い相手を追って攻撃を見送る／
-            // 待機する」のを防ぐ。誰を攻撃するか自体は評価軸（仕留め>反撃不能>低HP>近さ）で選ぶ。
-            match pickTarget(ctx, attackableTargets(enemy, targets)) {
-                case Some(t) => (EnemyAction.Attack(enemy#id, t#id), updated)
-                case None    =>
-                    // フェーズ2: 射程内に相手が居ない → 全候補から最良を選び、接近 or カイティング。
-                    match pickTarget(ctx, targets) {
-                        case None    => chase(board, enemy, updated)   // 候補なし → 従来追跡（最寄り）
-                        case Some(t) => moveTowardOrKite(board, enemy, updated, t)
-                    }
+            // フェーズ1: 今ターン攻撃できる相手（武器射程内）の最良。攻撃を優先することで
+            //   「射程内に相手が居るのに遠くの弱い相手を追って攻撃を見送る」のを防ぐ。
+            // フェーズ2: 射程内に居なければ全候補の最良へ接近 or カイティング。
+            // 2 つの選択結果をタプルで一度に見て分岐する（ネストを浅く保つ）。
+            let attackTarget = pickTarget(ctx, attackableTargets(enemy, targets));
+            let engageTarget = pickTarget(ctx, targets);
+            match (attackTarget, engageTarget) {
+                case (Some(t), _)    => (EnemyAction.Attack(enemy#id, t#id), updated)
+                case (None, Some(t)) => moveTowardOrKite(board, enemy, updated, t)
+                case (None, None)    => chase(board, enemy, updated)   // 候補なし → 最寄り追跡
             }
 
     /// 今ターン攻撃できる（武器射程 min..max 内の）相手だけを残す。武器なしは空。
     def attackableTargets(enemy: EnemyScene.Data,
                            targets: List[TargetInfo]): List[TargetInfo] =
-        match enemy#weapon {
-            case None    => Nil
-            case Some(w) =>
-                List.filter(t -> {
-                    let d = manhattan(enemy#gridPos, t#pos);
-                    d >= w#range#min and d <= w#range#max
-                }, targets)
-        }
+        enemy#weapon
+            |> Option.map(w -> List.filter(t ->
+                let d = manhattan(enemy#gridPos, t#pos);
+                d >= w#range#min and d <= w#range#max, targets))
+            |> Option.getWithDefault(Nil)
 
     /// 射程内に相手が居ないときの移動。選んだ相手が（弓の最小射程より）近すぎれば後退
     /// （カイティング）、それ以外はその相手へ最短経路で 1 歩接近する。
     def moveTowardOrKite(board: Board, enemy: EnemyScene.Data, updated: EnemyScene.Data,
                           t: TargetInfo): (EnemyAction, EnemyScene.Data) =
-        match enemy#weapon {
-            case None    => approachOrFallback(board, enemy, updated, t#pos)
-            case Some(w) =>
-                if (manhattan(enemy#gridPos, t#pos) < w#range#min)
-                    retreat(board, enemy, updated)
-                else
-                    approachOrFallback(board, enemy, updated, t#pos)
-        }
+        let tooClose = enemy#weapon
+            |> Option.map(w -> manhattan(enemy#gridPos, t#pos) < w#range#min)
+            |> Option.getWithDefault(false);
+        if (tooClose) retreat(board, enemy, updated)
+        else approachOrFallback(board, enemy, updated, t#pos)
 
-    /// 選んだ相手 `targetCell` へ接近する。到達経路が無い（他ユニットや壁で塞がれている）場合は、
-    /// 最寄りの相手へ向かう従来の追跡 (`chase`) にフォールバックする。
-    /// これにより「低HP の相手が前線の後ろに居て直接届かない」ときでも、敵は止まらず
-    /// 最寄りの相手へ近づき続ける（＝発見したら近づく挙動を保つ）。
+    /// 選んだ相手 `targetCell` へ接近する。発見したら止まらず近づくため、3 段階で粘る:
+    ///   1) 選んだ相手へ到達経路があれば、その相手へ 1 歩。
+    ///   2) 無ければ最寄りプレイヤーへ。到達経路があればそこへ 1 歩。
+    ///   3) それも無い（通路を別ユニットが塞ぐ等で誰にも届かない）→ 行ける範囲で最寄り
+    ///      プレイヤーに一番近づけるマスへ 1 歩（通路口の手前まで詰める）。
     def approachOrFallback(board: Board, enemy: EnemyScene.Data, updated: EnemyScene.Data,
                             targetCell: {x = Int32, y = Int32}): (EnemyAction, EnemyScene.Data) =
-        match chaseTo(board, enemy, targetCell, updated) {
+        // 「Move が出たらそれを採用、ダメなら次の手段」を orElseMove で段階的に試す（ネストを浅く）。
+        orElseMove(chaseTo(board, enemy, targetCell, updated), () ->
+            approachNearest(board, enemy, updated))
+
+    /// 最寄りプレイヤーへ接近。到達経路があればそこへ、無ければ「行ける範囲で一番近づけるマス」へ。
+    def approachNearest(board: Board, enemy: EnemyScene.Data,
+                         updated: EnemyScene.Data): (EnemyAction, EnemyScene.Data) =
+        match Board.nearestPlayer(enemy#gridPos, board) {
+            case None          => (EnemyAction.Wait(enemy#id), updated)
+            case Some(nearest) =>
+                let (_, np) = nearest;
+                orElseMove(chaseTo(board, enemy, np, updated), () ->
+                    stepClosestTo(board, enemy, updated, np))
+        }
+
+    /// `primary` が Move ならそれを、そうでなければ代替 `alt` を評価して返す。
+    /// 接近フォールバックの「ダメなら次」を入れ子 match なしで連結するための高階ヘルパー。
+    def orElseMove(primary: (EnemyAction, EnemyScene.Data),
+                    alt: Unit -> (EnemyAction, EnemyScene.Data)):
+            (EnemyAction, EnemyScene.Data) =
+        match primary {
             case (EnemyAction.Move(id, step), u) => (EnemyAction.Move(id, step), u)
-            case _                               => chase(board, enemy, updated)
+            case _                               => alt()
+        }
+
+    /// `target` への到達経路が無いとき、到達可能なマスのうち `target` に最も近いマスへ向けて
+    /// 1 歩進む。現在地より近づけるマスが無ければ Wait。通路が塞がれていても「行けるところまで
+    /// 寄る」ことで、発見した敵が遠くで止まらないようにする。
+    def stepClosestTo(board: Board, enemy: EnemyScene.Data, updated: EnemyScene.Data,
+                       target: {x = Int32, y = Int32}): (EnemyAction, EnemyScene.Data) =
+        let pos     = enemy#gridPos;
+        let curDist = manhattan(pos, target);
+        let passable = c ->
+            Board.isWalkable(board, c)
+                and ((c#x == pos#x and c#y == pos#y) or not Board.isOccupied(c, board));
+        Board.reachableCells(passable, pos, approachReach())
+            |> List.filter(c -> manhattan(c, target) < curDist)
+            |> List.minimumBy((a, b) ->
+                Order.compare(manhattan(a, target), manhattan(b, target)))
+            |> Option.map(c -> stepTo(board, enemy, c, updated))
+            |> Option.getWithDefault((EnemyAction.Wait(enemy#id), updated))
+
+    /// 空きマス `cell` へ最短経路で 1 歩進む（`cell` 自体に乗る）。`chaseTo` と違い末尾を
+    /// 落とさないので、プレイヤーではなく「行きたい空きマス」へ向かうのに使う。
+    def stepTo(board: Board, enemy: EnemyScene.Data, cell: {x = Int32, y = Int32},
+                updated: EnemyScene.Data): (EnemyAction, EnemyScene.Data) =
+        Board.bfsPath(board, enemy#gridPos, cell)
+            |> Option.flatMap(List.head)
+            |> moveOrWait(enemy, updated)
+
+    /// `stepClosestTo` の到達範囲上限（マップ全域を見渡せるよう十分大きく取る）。
+    def approachReach(): Int32 = 64
+
+    /// 進む先 `stepOpt` があれば Move、無ければ Wait（経路探索系の共通の締め）。
+    def moveOrWait(enemy: EnemyScene.Data, updated: EnemyScene.Data,
+                    stepOpt: Option[{x = Int32, y = Int32}]): (EnemyAction, EnemyScene.Data) =
+        match stepOpt {
+            case Some(step) => (EnemyAction.Move(enemy#id, step), updated)
+            case None       => (EnemyAction.Wait(enemy#id), updated)
         }
 
     // ════════════════════════════════════════════════════════
@@ -166,22 +216,17 @@ mod EnemyAI {
 
     /// 相手が距離 `d` で反撃できるか。`None`（武器なし）は反撃不能。
     pub def canCounterAt(range: Option[{min = Int32, max = Int32}], d: Int32): Bool =
-        match range {
-            case None    => false
-            case Some(r) => d >= r#min and d <= r#max
-        }
+        Option.exists(r -> d >= r#min and d <= r#max, range)
 
     /// 敵の装備武器の最大射程（武器なしは 0）。
-    def weaponMaxOf(enemy: EnemyScene.Data): Int32 = match enemy#weapon {
-        case None    => 0
-        case Some(w) => w#range#max
-    }
+    def weaponMaxOf(enemy: EnemyScene.Data): Int32 =
+        enemy#weapon |> Option.map(w -> w#range#max) |> Option.getWithDefault(0)
 
     // ════════════════════════════════════════════════════════
     // 移動（接近・後退）
     // ════════════════════════════════════════════════════════
 
-    /// 最寄りプレイヤーへ接近する（ターゲット未選択時のフォールバック）。
+    /// 最寄りプレイヤーへ接近する（ターゲット未選択時のフォールバック）。プレイヤー不在なら Skip。
     def chase(board: Board, enemy: EnemyScene.Data,
               updated: EnemyScene.Data): (EnemyAction, EnemyScene.Data) =
         match Board.nearestPlayer(enemy#gridPos, board) {
@@ -191,18 +236,14 @@ mod EnemyAI {
                 chaseTo(board, enemy, target, updated)
         }
 
-    /// 指定セル `targetCell` への最短経路の 1 歩目を返す。経路無し（壁・他駒で詰み）なら Wait。
+    /// 指定セル `targetCell`（プレイヤー想定）への最短経路の 1 歩目を返す。末尾（相手セル）は
+    /// 落として隣で止まる。経路無し（壁・他駒で詰み）なら Wait。
     def chaseTo(board: Board, enemy: EnemyScene.Data,
                  targetCell: {x = Int32, y = Int32},
                  updated: EnemyScene.Data): (EnemyAction, EnemyScene.Data) =
-        match Board.bfsPath(board, enemy#gridPos, targetCell) {
-            case None       => (EnemyAction.Wait(enemy#id), updated)
-            case Some(path) =>
-                match List.init(path) |> Option.flatMap(List.head) {
-                    case Some(step) => (EnemyAction.Move(enemy#id, step), updated)
-                    case None       => (EnemyAction.Wait(enemy#id), updated)
-                }
-        }
+        Board.bfsPath(board, enemy#gridPos, targetCell)
+            |> Option.flatMap(path -> List.init(path) |> Option.flatMap(List.head))
+            |> moveOrWait(enemy, updated)
 
     /// 最小射程より近づかれた弓系の敵が、隣接 1 マスへ後退して間合いを取り直す（カイティング）。
     /// 4 近傍のうち「床 + 駒に占有されていない」マスから、最寄りプレイヤーとの距離を最も

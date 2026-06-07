@@ -419,11 +419,11 @@ mod TestEnemyAI {
         Assert.assertEq(expected = ("Move", true),
                          (tagOf(a), isSome(moveTarget(a))))
 
-    /// 経路無し → Wait。1×1 の独房に敵を閉じ込めて、周囲全部壁にする。
-    /// 4×3 で wall 列 x=1 全部 → (0,*) は (2,*) に到達不能。
+    /// 壁で味方に到達できなくても、敵は止まらず「行ける範囲で味方に一番近いマス」へ寄る。
+    /// 5×3・x=2 列を壁で分断。敵側 (3,4) と味方側 (0,1) は到達不能。
+    /// 期待: Wait せず、壁際で味方に最も近い (3,1) へ 1 歩寄る。
     @Test
-    def testBfsNoPathWaits(): Unit \ Assert =
-        // 全床 5×3 だが、x=2 列を全部壁にして敵側 (3+) と Player 側 (0,1) を分離する。
+    def testNoPathStillStepsTowardPlayer(): Unit \ Assert =
         let inB = c -> c#x >= 0 and c#x < 5 and c#y >= 0 and c#y < 3;
         let isW = c -> c#x == 2;
         let map: MapSnapshot = {
@@ -440,7 +440,10 @@ mod TestEnemyAI {
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, true, 0, 3);
         let (a, _)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
-        Assert.assertEq(expected = "Wait", tagOf(a))
+        Assert.assertEq(expected = ("Move", 3, 1),
+                         (tagOf(a),
+                          moveTarget(a) |> Option.map(t -> t#x) |> Option.getWithDefault(-1),
+                          moveTarget(a) |> Option.map(t -> t#y) |> Option.getWithDefault(-1)))
 
     /// 他敵駒は障害物。Q7-A を確認する。
     /// 配置（5×3 全床、敵 0 が (4,1)、プレイヤー (0,1)、別の敵 (3,1) で直線が塞がれる）:
@@ -628,6 +631,39 @@ mod TestEnemyAI {
         let (a, _)  = EnemyAI.decideAction(board, enemy, targets);
         // p1(3,1) へ 1 歩 → (4,1)。到達不能な p0 を選んで Wait しないことを確認。
         Assert.assertEq(expected = ("Move", 4, 1),
+                         (tagOf(a),
+                          moveTarget(a) |> Option.map(t -> t#x) |> Option.getWithDefault(-1),
+                          moveTarget(a) |> Option.map(t -> t#y) |> Option.getWithDefault(-1)))
+
+    /// 通路口を別の敵が塞いで味方に到達できないときでも、敵は止まらず味方の方へ寄る。
+    /// 配置: 左の 3×3 部屋 + y=1 の 1 マス幅通路で右へ。敵9(1,1) / 通路口を塞ぐ敵8(3,1) /
+    ///       味方(5,1)。敵9 から味方への経路は (3,1) で塞がれ到達不能。
+    /// 期待: Wait せず、味方に一番近づける (2,1) へ 1 歩寄る（通路口の手前まで詰める）。
+    @Test
+    def testApproachesTowardBlockedCorridorInsteadOfWaiting(): Unit \ Assert =
+        let inFloor = c -> (c#x >= 0 and c#x <= 2 and c#y >= 0 and c#y <= 2)
+                            or (c#y == 1 and c#x >= 0 and c#x <= 5);
+        let map: MapSnapshot = {
+            tileSize     = testTileSize(),
+            usedRect     = {position = Vec2i.zero(), size = ({x = 6, y = 3}: {x = Int32, y = Int32})},
+            isWall       = c -> not inFloor(c),
+            isFloor      = inFloor,
+            mapToLocal   = c -> testGridToWorld(c),
+            gridToWorld  = c -> testGridToWorld(c),
+            moduleOfCell = c -> if (inFloor(c)) Some(0) else None
+        };
+        let enemyP  = ({x = 1, y = 1}: {x = Int32, y = Int32});
+        let playerP = ({x = 5, y = 1}: {x = Int32, y = Int32});
+        let board: Board = {
+            map    = map,
+            pieces = (Piece.Player(0), playerP)
+                  :: (Piece.Enemy(9), enemyP)
+                  :: (Piece.Enemy(8), ({x = 3, y = 1}: {x = Int32, y = Int32})) :: Nil
+        };
+        let enemy   = enemyAt(9, enemyP, true, 0, 3);
+        let targets = mkTarget(0, playerP, 10, 0, swordRange()) :: Nil;
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targets);
+        Assert.assertEq(expected = ("Move", 2, 1),
                          (tagOf(a),
                           moveTarget(a) |> Option.map(t -> t#x) |> Option.getWithDefault(-1),
                           moveTarget(a) |> Option.map(t -> t#y) |> Option.getWithDefault(-1)))
