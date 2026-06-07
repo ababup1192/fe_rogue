@@ -187,8 +187,7 @@ mod TestCursorScene {
             let result = run {
                 SelectedPlayer.State.put({
                     id     = Some(0),
-                    origin = Some(p0Pos),
-                    picked = None
+                    drafts = Nil
                 });
                 let scene = cursorAddPure(initial);
                 let after = PlayerScene.commitWaitedAndAdvance(scene);
@@ -433,10 +432,10 @@ mod TestCursorScene {
         }, withWorld, party)
 
     /// SelectedPlayer.State の get を指定 id 固定にする stub。
-    def withSelectedFor(playerId: Int32, gridPos: {x = Int32, y = Int32},
+    def withSelectedFor(playerId: Int32, _gridPos: {x = Int32, y = Int32},
                          thunk: Unit -> a \ ef): a \ (ef - SelectedPlayer.State) =
         run { thunk() } with handler SelectedPlayer.State {
-            def get(k)    = k({id = Some(playerId), origin = Some(gridPos), picked = None})
+            def get(k)    = k({id = Some(playerId), drafts = Nil})
             def put(_, k) = k()
         }
 

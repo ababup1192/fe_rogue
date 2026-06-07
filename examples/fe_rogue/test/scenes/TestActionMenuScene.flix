@@ -206,9 +206,7 @@ mod TestActionMenuScene {
                         ActionMenuScene.menuPath(),
                         args#scene)
                 } with handler SelectedPlayer.State {
-                    def get(k)    = k({id = Some(args#selectedId),
-                                        origin = Some(args#selectedOrigin),
-                                        picked = None})
+                    def get(k)    = k({id = Some(args#selectedId), drafts = Nil})
                     def put(_, k) = k()
                 } with handler TurnPhase.State {
                     def get(k)    = k(args#phase)
@@ -265,9 +263,7 @@ mod TestActionMenuScene {
                                                                        args#scene)
                                 } with handler SelectedPlayer.State {
                                     def get(k)    =
-                                        k({id = Some(args#selectedId),
-                                           origin = Some(args#selectedOrigin),
-                                           picked = None})
+                                        k({id = Some(args#selectedId), drafts = Nil})
                                     def put(_, k) = k()
                                 } with handler TurnPhase.State {
                                     def get(k)         = k(Ref.get(phaseRef))
@@ -375,9 +371,7 @@ mod TestActionMenuScene {
         region rc {
             let scene = loadActionMenuSceneWithFloorWeapon();
             let selRef = Ref.fresh(rc,
-                ({id     = Some(0),
-                  origin = Some(({x = 1, y = 1}: {x = Int32, y = Int32})),
-                  picked = None}: SelectedPlayer.Selection));
+                ({id = Some(0), drafts = Nil}: SelectedPlayer.Selection));
             let pickupEntry: ItemEntry =
                 { text = "ひろう", disabled = false, metadata = Some("pickup") };
             let after = TestUnitFixtures.withNoopTween(() ->
@@ -405,6 +399,84 @@ mod TestActionMenuScene {
             Assert.assertEq(
                 expected = (true, 1),
                 (groundItemBack, weaponCountOf(0, after)))
+        }
+
+    // ════════════════════════════════════════════════════════
+    // 装備 / 捨てる の巻き戻し（移動中の仮アクションを逆順 revert）
+    //   各アクションを積み、cancelSelection が新しい順に逆操作することを検証する。
+    // ════════════════════════════════════════════════════════
+
+    /// World + 単一プレイヤー(id0) で weapons を指定した最小 scene（巻き戻し検証用）。
+    def loadPlayerWithWeapons(pos: {x = Int32, y = Int32},
+                                weapons: List[UnitCatalog.WeaponResource]): Scene[NodeTag] =
+        let world = Marker2D.make(Vec2.zero());
+        let data  = {weapons = weapons | makePlayerData(0, pos)};
+        Scene.empty()
+            |> Scene.addNode(MapScene.worldName(),
+                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
+                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Player(data)))
+
+    /// 与えた drafts を SelectedPlayer に載せて `cancelSelection` を実行するランナー。
+    /// cancelSelection の 5 effect (Tween/Anim/TurnPhase/SelectedPlayer/PartyQuery) をスタブ。
+    def runCancelWithDrafts(rc: Region[r], scene: Scene[NodeTag],
+                              drafts: List[MoveDraft.DraftAction]):
+            Scene[NodeTag] \ r =
+        let selRef = Ref.fresh(rc,
+            ({id = Some(0), drafts = drafts}: SelectedPlayer.Selection));
+        TestUnitFixtures.withNoopTween(() ->
+            TestUnitFixtures.withNoopAnim(() ->
+                TestUnitFixtures.withMockPartyQuery(scene, () ->
+                    run {
+                        PlayerScene.cancelSelection(scene)
+                    } with handler SelectedPlayer.State {
+                        def get(k)    = k(Ref.get(selRef))
+                        def put(s, k) = { Ref.put(s, selRef); k() }
+                    } with handler TurnPhase.State {
+                        def get(k)    = k(TurnPhase.Phase.ActionSelect)
+                        def put(_, k) = k()
+                    })))
+
+    /// 報告バグの回帰: 拾得 → 装備 → 選択解除キャンセル で、装備の並び替えも拾得も
+    /// 正しく巻き戻る（元の武器 A が残り、拾った B は床へ復活）。逆順 revert により
+    /// 装備を先に戻すので `PickedUp` の末尾削除も正しい物（B）を消す。
+    @Test
+    def testEquipAfterPickupThenCancelRevertsBoth(): Unit \ Assert =
+        region rc {
+            let wA = TestUnitFixtures.testWeaponFull(5, 10);    // 元々持っていた武器
+            let wB = TestUnitFixtures.testWeaponFull(99, 10);   // 拾って装備した武器
+            // 拾得+装備後の状態: weapons=[B, A]（B を先頭に装備）、床アイテムは取得済みで無し
+            let scene = loadPlayerWithWeapons({x = 1, y = 1}, wB :: wA :: Nil);
+            // 積んだ順(古→新): MovedFrom, PickedUp, Equipped。drafts は新しい順で保持。
+            let drafts =
+                MoveDraft.DraftAction.Equipped(0, 1) ::
+                MoveDraft.DraftAction.PickedUp(0, {x = 1, y = 1}, "wB",
+                    ItemScene.GroundItemKind.WeaponItem(wB)) ::
+                MoveDraft.DraftAction.MovedFrom(0, {x = 1, y = 1}) :: Nil;
+            let after   = runCancelWithDrafts(rc, scene, drafts);
+            let attacks = List.map(w -> w#attack, PlayerScene.getWeapons(0, after));
+            let floorB  = Option.nonEmpty(ItemScene.findAt({x = 1, y = 1}, after));
+            // 期待: weapons=[A](attack 5) のみ・B が床に復活
+            Assert.assertEq(expected = (5 :: Nil, true), (attacks, floorB))
+        }
+
+    /// 中央の武器を捨ててからキャンセルすると、元の idx に正確に戻る（順序保持）。
+    @Test
+    def testDropThenCancelRestoresItemAtIndex(): Unit \ Assert =
+        region rc {
+            let wA = TestUnitFixtures.testWeaponFull(1, 10);
+            let wB = TestUnitFixtures.testWeaponFull(2, 10);
+            let wC = TestUnitFixtures.testWeaponFull(3, 10);
+            // B(idx1) を捨てた後の状態: weapons=[A, C]
+            let scene = loadPlayerWithWeapons({x = 2, y = 2}, wA :: wC :: Nil);
+            let drafts =
+                MoveDraft.DraftAction.Dropped(0, PlayerScene.ItemKind.Weapon(1),
+                    ItemScene.GroundItemKind.WeaponItem(wB)) ::
+                MoveDraft.DraftAction.MovedFrom(0, {x = 2, y = 2}) :: Nil;
+            let after   = runCancelWithDrafts(rc, scene, drafts);
+            let attacks = List.map(w -> w#attack, PlayerScene.getWeapons(0, after));
+            // 期待: [A, B, C]（attack 1,2,3）に元 idx で復元
+            Assert.assertEq(expected = 1 :: 2 :: 3 :: Nil, attacks)
         }
 
     // ════════════════════════════════════════════════════════
@@ -480,7 +552,7 @@ mod TestActionMenuScene {
                         Duration.seconds(0.0), menuNode,
                         ActionMenuScene.menuPath(), scene)
                 } with handler SelectedPlayer.State {
-                    def get(k)    = k({id = None, origin = None, picked = None})
+                    def get(k)    = k({id = None, drafts = Nil})
                     def put(_, k) = k()
                 } with handler TurnPhase.State {
                     def get(k)    = k(TurnPhase.Phase.ActionSelect)

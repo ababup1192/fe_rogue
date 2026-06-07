@@ -182,7 +182,7 @@ mod TestTradeMenuScene {
                 run {
                     thunk()
                 } with handler SelectedPlayer.State {
-                    def get(k)    = k({id = Some(selfId), origin = Some({x = 0i32, y = 0i32}), picked = None})
+                    def get(k)    = k({id = Some(selfId), drafts = Nil})
                     def put(_, k) = k()
                 } with handler TurnPhase.State {
                     def get(k)         = k(Ref.get(phaseRef))

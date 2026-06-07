@@ -333,9 +333,15 @@ mod ItemMenuScene {
     /// `equipWeapon` で対象武器を weapons の先頭に移動 → `ItemSelect` フェーズに戻る。
     def applyEquip(playerId: Int32, kind: PlayerScene.ItemKind,
                      scene: Scene[NodeTag]):
-                    Scene[NodeTag] \ TurnPhase.State =
+                    Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
         let equipped = match kind {
             case PlayerScene.ItemKind.Weapon(idx)   =>
+                // 実際に並びが変わるとき (0 < idx < 本数) だけ巻き戻しドラフトを積む。
+                // idx=0 / 範囲外は equipWeapon が no-op なので積まない（誤巻き戻し防止）。
+                let n = List.length(PlayerScene.getWeapons(playerId, scene));
+                if (idx >= 1 and idx < n)
+                    SelectedPlayer.pushDraft(MoveDraft.DraftAction.Equipped(playerId, idx))
+                else ();
                 PlayerScene.equipWeapon(playerId, idx, scene)
             case PlayerScene.ItemKind.Staff(_)      => scene
             case PlayerScene.ItemKind.Consumable(_) => scene
@@ -348,32 +354,38 @@ mod ItemMenuScene {
     /// ターン消費せず ItemSelect に戻る（連続して捨てられる）。
     def applyDrop(playerId: Int32, kind: PlayerScene.ItemKind,
                     scene: Scene[NodeTag]):
-                   Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State} =
+                   Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
+                                     SelectedPlayer.State} =
+        // 捨てる前に実体を取り、巻き戻し用に Dropped(元 idx, 実体) を積んでから削除する。
+        // 該当アイテムが無ければ no-op。
         let dropped = match kind {
             case PlayerScene.ItemKind.Weapon(idx) =>
-                let withWeapons = PlayerScene.getWeapons(playerId, scene);
-                let name = match List.nth(idx, withWeapons) {
-                    case Some(w) => w#name
-                    case None    => "?"
-                };
-                GameLogger.playerLog("P${playerId} は ${name} をすてた");
-                PlayerScene.dropWeapon(playerId, idx, scene)
+                match List.nth(idx, PlayerScene.getWeapons(playerId, scene)) {
+                    case None    => scene
+                    case Some(w) =>
+                        GameLogger.playerLog("P${playerId} は ${w#name} をすてた");
+                        SelectedPlayer.pushDraft(MoveDraft.DraftAction.Dropped(
+                            playerId, kind, ItemScene.GroundItemKind.WeaponItem(w)));
+                        PlayerScene.dropWeapon(playerId, idx, scene)
+                }
             case PlayerScene.ItemKind.Staff(idx) =>
-                let withStaves = PlayerScene.getStaves(playerId, scene);
-                let name = match List.nth(idx, withStaves) {
-                    case Some(s) => s#name
-                    case None    => "?"
-                };
-                GameLogger.playerLog("P${playerId} は ${name} をすてた");
-                PlayerScene.dropStaff(playerId, idx, scene)
+                match List.nth(idx, PlayerScene.getStaves(playerId, scene)) {
+                    case None    => scene
+                    case Some(s) =>
+                        GameLogger.playerLog("P${playerId} は ${s#name} をすてた");
+                        SelectedPlayer.pushDraft(MoveDraft.DraftAction.Dropped(
+                            playerId, kind, ItemScene.GroundItemKind.StaffItem(s)));
+                        PlayerScene.dropStaff(playerId, idx, scene)
+                }
             case PlayerScene.ItemKind.Consumable(idx) =>
-                let withConsumables = PlayerScene.getConsumables(playerId, scene);
-                let name = match List.nth(idx, withConsumables) {
-                    case Some(c) => c#name
-                    case None    => "?"
-                };
-                GameLogger.playerLog("P${playerId} は ${name} をすてた");
-                PlayerScene.dropConsumable(playerId, idx, scene)
+                match List.nth(idx, PlayerScene.getConsumables(playerId, scene)) {
+                    case None    => scene
+                    case Some(c) =>
+                        GameLogger.playerLog("P${playerId} は ${c#name} をすてた");
+                        SelectedPlayer.pushDraft(MoveDraft.DraftAction.Dropped(
+                            playerId, kind, ItemScene.GroundItemKind.ConsumableItem(c)));
+                        PlayerScene.dropConsumable(playerId, idx, scene)
+                }
         };
         let cleared = PlayerScene.clearSelectedItem(playerId, dropped);
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect);

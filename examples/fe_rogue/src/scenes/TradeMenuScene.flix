@@ -314,7 +314,7 @@ mod TradeMenuScene {
     def applyTradeSwap(selfPlayerId: Int32, partnerPlayerId: Int32,
                         pick: Pick, receiverKindOpt: Option[PlayerScene.ItemKind],
                         scene: Scene[NodeTag]):
-                       Scene[NodeTag] \ GameLogger.GameLogger =
+                       Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
         let (pickerId, receiverId) = match pick#side {
             case Pane.Self    => (selfPlayerId,    partnerPlayerId)
             case Pane.Partner => (partnerPlayerId, selfPlayerId)
@@ -326,6 +326,7 @@ mod TradeMenuScene {
             case (Some(pickerKind), receiverOpt) =>
                 // picker 実体: picker → 受け側へ swap (受け側が None なら片方向 transfer)
                 GameLogger.playerLog("P${selfPlayerId} と P${partnerPlayerId} がアイテム交換");
+                recordTradeDraft(pickerId, pickerKind, receiverId, receiverOpt, scene);
                 PlayerScene.swapItem({selfId      = pickerId,
                                        selfKind    = pickerKind,
                                        partnerId   = receiverId,
@@ -333,10 +334,30 @@ mod TradeMenuScene {
             case (None, Some(receiverKind)) =>
                 // picker 空 (= 受取希望) & 受け側実体: 受け側 → picker へ片方向 transfer
                 GameLogger.playerLog("P${selfPlayerId} と P${partnerPlayerId} がアイテム交換");
+                recordTradeDraft(receiverId, receiverKind, pickerId, None, scene);
                 PlayerScene.swapItem({selfId      = receiverId,
                                        selfKind    = receiverKind,
                                        partnerId   = pickerId,
                                        partnerKind = None}, scene)
+        }
+
+    /// swap 実行前に、巻き戻し用 `Traded` ドラフトを SelectedPlayer に積む。
+    /// swap 前の実体・元 idx を控えるので、キャンセル時に双方の在庫を正確に戻せる。
+    /// self 側に実体が無い（swap が no-op になる）場合は積まない。
+    def recordTradeDraft(selfId: Int32, selfKind: PlayerScene.ItemKind,
+                          partnerId: Int32, partnerKindOpt: Option[PlayerScene.ItemKind],
+                          scene: Scene[NodeTag]): Unit \ SelectedPlayer.State =
+        match PlayerScene.getInventoryItem(selfId, selfKind, scene) {
+            case None           => ()
+            case Some(selfItem) =>
+                let partnerItemOpt = partnerKindOpt
+                    |> Option.flatMap(pk -> PlayerScene.getInventoryItem(partnerId, pk, scene));
+                SelectedPlayer.pushDraft(MoveDraft.DraftAction.Traded({
+                    selfId      = selfId,      selfKind    = selfKind,
+                    selfItem    = selfItem,
+                    partnerId   = partnerId,   partnerKind = partnerKindOpt,
+                    partnerItem = partnerItemOpt
+                }))
         }
 
     /// Z 押下の中核処理。`currentSide` で押されたペインを示し、現在の `pick` 状態と

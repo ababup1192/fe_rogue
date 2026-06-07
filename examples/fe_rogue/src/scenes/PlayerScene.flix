@@ -408,8 +408,8 @@ mod PlayerScene {
             Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
         SelectedPlayer.State.put({
             id     = Some(playerId),
-            origin = Some(getGridPos(playerId, scene)),
-            picked = None   // 新しい移動の開始。前の移動の仮取得ドラフトは破棄
+            // 移動開始。元位置を巻き戻しドラフトの底に積む（前の移動の残骸は drafts ごと破棄）
+            drafts = MoveDraft.DraftAction.MovedFrom(playerId, getGridPos(playerId, scene)) :: Nil
         });
         PhaseTransitions.enterPlayerMoving(scene)
 
@@ -420,25 +420,46 @@ mod PlayerScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
                               PartyQuery} =
-        let selection = SelectedPlayer.State.get();
-        // 選択解除キャンセルでは「この移動で仮取得した床アイテム」も巻き戻す
-        // (拾ってからキャンセルしたら拾っていないことにする)。床へ戻し + 在庫から取り消し。
-        let unpicked = match selection#picked {
-            case None    => scene
-            case Some(p) =>
-                scene
-                    |> ItemScene.respawn(p#cell, p#itemKey, p#kind)
-                    |> removeLastInventoryItem(p#playerId, p#kind)
-        };
-        // origin にスナップして戻したあと、AnimatedSprite2D 持ち unit は idle に戻す。
-        // (移動中の walk_<dir> 表示のままだと「キャンセル後に動いてないのに横向き」になる)
-        let restored = match (selection#id, selection#origin) {
-            case (Some(id), Some(origin)) =>
-                snapTo(id, origin, unpicked) |> playAnim(id, idleAnimName())
-            case _                         => unpicked
-        };
+        // この移動で積んだ可逆ドラフトを新しい順に巻き戻す（拾得→元位置への復帰など）。
+        // 「拾ってからキャンセルしたら拾っていないことにする」もこの一括巻き戻しで実現。
+        let drafts   = SelectedPlayer.State.get()#drafts;
+        let restored = List.foldLeft((acc, a) -> revertDraftAction(a, acc), scene, drafts);
         SelectedPlayer.State.put(SelectedPlayer.cleared());
         PhaseTransitions.enterPlayerCursor(restored)
+
+    /// 移動ドラフト 1 件を巻き戻す。巻き戻しの実体はここに集約する
+    /// （新しい可逆操作を足すときはこの match に 1 分岐追加するだけ）。
+    ///   - `MovedFrom`: origin に snapTo で戻し、walk 表示を idle に戻す
+    ///     （移動中の walk_<dir> のままだと「キャンセル後に動いてないのに横向き」になる）
+    ///   - `PickedUp` : 床へ戻し（`ItemScene.respawn`）+ 在庫末尾の仮取得分を取り消す
+    def revertDraftAction(action: MoveDraft.DraftAction,
+                            scene: Scene[NodeTag]):
+            Scene[NodeTag] \ Tween.Scheduler =
+        match action {
+            case MoveDraft.DraftAction.MovedFrom(id, cell)              =>
+                snapTo(id, cell, scene) |> playAnim(id, idleAnimName())
+            case MoveDraft.DraftAction.PickedUp(pid, cell, itemKey, kind) =>
+                scene
+                    |> ItemScene.respawn(cell, itemKey, kind)
+                    |> removeLastInventoryItem(pid, kind)
+            case MoveDraft.DraftAction.Equipped(pid, idx)               =>
+                // 装備 = moveToHead(idx) の逆。先頭を idx 位置へ戻す。
+                mapPlayer(pid, d -> {weapons = moveHeadTo(idx, d#weapons) | d}, scene)
+            case MoveDraft.DraftAction.Dropped(pid, kind, item)        =>
+                // 捨てる = removeAt(idx) の逆。元 idx に挿入し直す。
+                insertInventoryItem(pid, kind, item, scene)
+            case MoveDraft.DraftAction.Traded(t)                       =>
+                // こうかん = swapItem の逆。相手末尾の付加分を除去 → 双方の元 idx へ戻す。
+                // (逆順 revert なので付加分は各リストの末尾に在る前提が成立する)
+                let s1 = removeLastInventoryItem(t#partnerId, t#selfItem, scene);
+                let s2 = insertInventoryItem(t#selfId, t#selfKind, t#selfItem, s1);
+                match (t#partnerKind, t#partnerItem) {
+                    case (Some(pk), Some(pi)) =>
+                        let s3 = removeLastInventoryItem(t#selfId, pi, s2);
+                        insertInventoryItem(t#partnerId, pk, pi, s3)
+                    case _                    => s2
+                }
+        }
 
     /// ActionMenu「こうげき」確定で呼ばれる: 攻撃ターゲット選択フェーズへ。
     /// overlay / cursor 整理は `PhaseTransitions.enterPlayerAttack` が担当。
@@ -1030,7 +1051,7 @@ mod PlayerScene {
     /// player が居ない / index が範囲外なら None
     /// (getWeapons / getStaves が居ない player に対し Nil を返すので、その経由で None)。
     /// 戻り値は `ItemScene.GroundItemKind` を流用 (= 「インベントリ可能なアイテム値」)。
-    def getInventoryItem(playerId: Int32, kind: ItemKind, scene: Scene[NodeTag]):
+    pub def getInventoryItem(playerId: Int32, kind: ItemKind, scene: Scene[NodeTag]):
             Option[ItemScene.GroundItemKind] =
         match kind {
             case ItemKind.Weapon(idx) =>
@@ -1115,6 +1136,40 @@ mod PlayerScene {
         List.zipWithIndex(list)
             |> List.filter(pair -> let (i, _) = pair; i != idx)
             |> List.map(pair -> let (_, x) = pair; x)
+
+    /// `moveToHead` の逆操作: 先頭要素を `idx` 位置へ戻す。
+    /// `[c, a, b, d]` の idx=2 → `[a, b, c, d]`（c を index 2 に挿入し直す）。
+    /// 空リストはそのまま。
+    def moveHeadTo(idx: Int32, list: List[a]): List[a] =
+        match list {
+            case Nil    => Nil
+            case h :: t => insertAt(idx, h, t)
+        }
+
+    /// `removeAt` の逆操作: `x` を `idx` 位置に挿入する。
+    /// idx <= 0 は先頭、idx >= 長さ は末尾に clamp。
+    def insertAt(idx: Int32, x: a, list: List[a]): List[a] =
+        if (idx <= 0) x :: list
+        else match list {
+            case Nil    => x :: Nil
+            case h :: t => h :: insertAt(idx - 1, x, t)
+        }
+
+    /// `removeInventoryItem` の対: `kind`(Weapon/Staff/Consumable idx) の示す位置に
+    /// `item` を挿入し直す（捨てる・交換のキャンセル巻き戻しで元の並びを復元する）。
+    /// kind と item の種別が食い違う場合は防御的に no-op。
+    def insertInventoryItem(playerId: Int32, kind: ItemKind,
+                              item: ItemScene.GroundItemKind,
+                              scene: Scene[NodeTag]): Scene[NodeTag] =
+        match (kind, item) {
+            case (ItemKind.Weapon(idx), ItemScene.GroundItemKind.WeaponItem(w))         =>
+                mapPlayer(playerId, d -> {weapons = insertAt(idx, w, d#weapons) | d}, scene)
+            case (ItemKind.Staff(idx), ItemScene.GroundItemKind.StaffItem(s))           =>
+                mapPlayer(playerId, d -> {staves = insertAt(idx, s, d#staves) | d}, scene)
+            case (ItemKind.Consumable(idx), ItemScene.GroundItemKind.ConsumableItem(c)) =>
+                mapPlayer(playerId, d -> {consumables = insertAt(idx, c, d#consumables) | d}, scene)
+            case _ => scene
+        }
 
     /// 攻撃ターゲットの敵 id を Data#attackTargetId に記録する。
     /// 武器選択ウィンドウを開く前に GameManager から呼ばれ、ウィンドウ確定後の

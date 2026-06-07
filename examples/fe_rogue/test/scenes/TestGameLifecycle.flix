@@ -34,18 +34,17 @@ mod TestGameLifecycle {
                 TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
                 SelectedPlayer.State.put({
                     id     = Some(0),
-                    origin = Some(({x = 5, y = 5}: {x = Int32, y = Int32})),
-                    picked = None
+                    drafts = Nil
                 });
                 // 2) リセットを 1 呼び出しで実行
                 GameLifecycle.resetTurnState();
                 // 3) 3 effect の状態を 1 タプルで観測
-                // 座標 record は Eq 未定義なので origin は isEmpty で Bool 化して比較する
+                // ドラフトスタックも空に戻ることを isEmpty で Bool 化して比較する
                 let sel = SelectedPlayer.State.get();
                 (EnemyTurn.Queue.isEmpty(),
                  TurnPhase.State.get(),
                  sel#id,
-                 Option.isEmpty(sel#origin))
+                 List.isEmpty(sel#drafts))
             } with EnemyTurn.withQueue(rc)
               with TurnPhase.withState(rc)
               with SelectedPlayer.withState(rc)

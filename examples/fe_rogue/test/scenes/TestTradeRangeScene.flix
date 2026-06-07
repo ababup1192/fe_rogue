@@ -49,10 +49,10 @@ mod TestTradeRangeScene {
 
     /// SelectedPlayer.State の get を指定 id 固定にする stub。put は捨てる。
     /// TradeRangeScene.show は「選択中味方の隣接味方」を見るので必要。
-    def withSelectedFor(playerId: Int32, gridPos: {x = Int32, y = Int32},
+    def withSelectedFor(playerId: Int32, _gridPos: {x = Int32, y = Int32},
                          thunk: Unit -> a \ ef): a \ (ef - SelectedPlayer.State) =
         run { thunk() } with handler SelectedPlayer.State {
-            def get(k)    = k({id = Some(playerId), origin = Some(gridPos), picked = None})
+            def get(k)    = k({id = Some(playerId), drafts = Nil})
             def put(_, k) = k()
         }
 

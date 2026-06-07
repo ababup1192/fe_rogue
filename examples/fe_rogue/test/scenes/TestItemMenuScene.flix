@@ -78,7 +78,7 @@ mod TestItemMenuScene {
     /// `SelectedPlayer.State` のスタブ handler（id=0 を返す）。
     def withSelectedZero(thunk: Unit -> a \ ef): a \ (ef - SelectedPlayer.State) =
         run { thunk() } with handler SelectedPlayer.State {
-            def get(k)   = k({id = Some(0), origin = Some({x = 1, y = 1}), picked = None})
+            def get(k)   = k({id = Some(0), drafts = Nil})
             def put(_, k) = k()
         }
 

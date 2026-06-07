@@ -19,36 +19,34 @@
 mod SelectedPlayer {
 
     /// 選択中プレイヤーの状態。`id` と `origin` は常に揃って Some / None を取る。
-    /// `picked` は「この移動中に仮取得した床アイテム」(FE 移動の仮確定と同じ扱い)。
-    /// `applyPickup` で Some になり、`cancelSelection`（選択解除キャンセル）で巻き戻し、
-    /// 行動確定（`commitWaitedAndAdvance` の `cleared()`）や次の選択開始で None に戻る。
+    /// `drafts` は「この移動中に scene へ加えた可逆な副作用」のスタック（新しい順）。
+    /// 移動開始で `MovedFrom`、拾得で `PickedUp` を積み、`cancelSelection` で先頭から
+    /// 逆操作、行動確定（`cleared()`）や次の選択開始で破棄する（FE 移動の仮確定モデル）。
+    /// 旧 `origin`/`picked` フィールドを 1 本のドラフトスタックに統合したもの。
     pub type alias Selection = {
         id     = Option[Int32],
-        origin = Option[{x = Int32, y = Int32}],
-        picked = Option[PickedItem]
+        drafts = List[MoveDraft.DraftAction]
     }
 
-    /// 仮取得した床アイテムの巻き戻し情報。床へ戻す（`ItemScene.respawn`）のに
-    /// 必要な cell / itemKey / kind と、在庫から取り消す対象 playerId を持つ。
-    pub type alias PickedItem = {
-        playerId = Int32,
-        cell     = {x = Int32, y = Int32},
-        itemKey  = String,
-        kind     = ItemScene.GroundItemKind
-    }
-
-    /// 未選択を表す Selection（すべて None）。
-    /// 解除時に `put(cleared())` と書ける。picked も None（取得は行動確定で別途確定済み）。
-    pub def cleared(): Selection = {id = None, origin = None, picked = None}
+    /// 未選択を表す Selection（選択なし・ドラフト空）。
+    /// 解除時に `put(cleared())` と書ける。drafts も空（取得等は行動確定で別途確定済み）。
+    pub def cleared(): Selection = {id = None, drafts = Nil}
 
     /// 選択状態の読み書き effect。
     pub eff State {
         /// 現在の選択状態を返す。未選択（PlayerCursor / EnemyTurn 等）なら
-        /// `cleared()` 相当（id・origin ともに None）。
+        /// `cleared()` 相当（id None・drafts 空）。
         def get(): Selection
-        /// 選択状態を上書きする。`Some/Some` で選択開始 / `cleared()` で解除。
+        /// 選択状態を上書きする。`Some` で選択開始 / `cleared()` で解除。
         def put(target: Selection): Unit
     }
+
+    /// 巻き戻しドラフトを 1 件スタック先頭へ積む（新しい順）。移動中の可逆操作
+    /// （拾得 / 装備 / 捨てる / こうかん）を行った各所から呼ぶ。`cancelSelection` が
+    /// この順に逆操作して巻き戻す。
+    pub def pushDraft(action: MoveDraft.DraftAction): Unit \ State =
+        let sel = State.get();
+        State.put({drafts = action :: sel#drafts | sel})
 
     /// `TurnPhase.withState` と同じ流儀の handler 注入。
     /// 内部 `selectionRef` は closure に閉じ込められ、外からは見えない。

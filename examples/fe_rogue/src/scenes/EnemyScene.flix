@@ -567,8 +567,8 @@ mod EnemyScene {
             case (None, _)        => (scene, Nil)
             case (_, None)        => (scene, Nil)
             case (Some(weapon), Some(player)) =>
-                let phys = UnitCatalog.isPhysical(weapon#weaponType);
                 // 武器相性: 攻撃側（敵）の武器 vs 味方の装備武器（先頭）。未装備なら中立。
+                // 命中率算出に使う（素ダメージ計算は estimateDamage に集約済み）。
                 let rel = WeaponTriangle.relationOpt(weapon#weaponType,
                                                      List.head(player#weapons) |> Option.map(w -> w#weaponType));
                 let hitChance = Combat.hitRate(enemy#resource#skill, enemy#resource#luck,
@@ -585,14 +585,9 @@ mod EnemyScene {
                         (DamagePopupScene.emitText(popupPos, "miss", popupColor, scene), Nil)
                     } else {
                         // 命中: SE を鳴らしダメージ適用 + 数値ポップアップ。
+                        // 素ダメージ計算は `estimateDamage` に集約（AI の仕留め判定と同一式）。
                         AudioStreamPlayer.play("damage");
-                        let totalAttack = Combat.attackStatFor(enemy#resource#attack,
-                                                               enemy#resource#magicAttack,
-                                                               weapon#attack, phys);
-                        let targetDef   = Combat.defenseStatFor(player#resource#defense,
-                                                                player#resource#magicDefense,
-                                                                phys);
-                        let dmg    = Combat.attackDamage(totalAttack, targetDef, rel);
+                        let dmg    = estimateDamage(enemy, player);
                         let result = Combat.damage(hp = player#hp, amount = dmg);
                         if (result#isDead) {
                             GameLogger.enemyLog("敵${enemyId} → P${targetId} を撃破")
@@ -615,6 +610,23 @@ mod EnemyScene {
                 let withWeaponUpdate = mapEnemy(enemyId,
                     d -> {weapon = consumed | d}, damaged);
                 (withWeaponUpdate, killed)
+        }
+
+    /// この敵がプレイヤーに与える素ダメージ（命中前提・RNG なし。武器相性・物理/魔法を含む）。
+    /// 実ダメージ適用（`applyDamageToPlayer` の命中時）と AI の「今ターン仕留められるか」判定で
+    /// 同じ式を共用するための純粋関数。武器を持たない敵は 0。
+    pub def estimateDamage(enemy: Data, player: PlayerScene.Data): Int32 =
+        match enemy#weapon {
+            case None         => 0
+            case Some(weapon) =>
+                let phys = UnitCatalog.isPhysical(weapon#weaponType);
+                let rel  = WeaponTriangle.relationOpt(weapon#weaponType,
+                              List.head(player#weapons) |> Option.map(w -> w#weaponType));
+                let totalAttack = Combat.attackStatFor(enemy#resource#attack,
+                                      enemy#resource#magicAttack, weapon#attack, phys);
+                let targetDef   = Combat.defenseStatFor(player#resource#defense,
+                                      player#resource#magicDefense, phys);
+                Combat.attackDamage(totalAttack, targetDef, rel)
         }
 
     /// 指定 id の敵が現在装備している武器を返す。未装備（壊れた後）なら None。

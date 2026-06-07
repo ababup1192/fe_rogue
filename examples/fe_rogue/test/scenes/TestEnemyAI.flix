@@ -132,6 +132,46 @@ mod TestEnemyAI {
             case None    => false
         }
 
+    /// board の Player 駒から既定値の TargetInfo を組む
+    /// （hp 高め=仕留め不可・estDamage 0・反撃不能）。既存テストはこの既定値で挙動が変わらない
+    /// （候補が 1 体なら選択は自明）。
+    def targetsOf(board: Board): List[EnemyAI.TargetInfo] =
+        Board.playerPositions(board)
+            |> List.map(entry -> {
+                let (id, pos) = entry;
+                ({id = id, pos = pos, hp = 99, estDamage = 0,
+                  counterRange = None}: EnemyAI.TargetInfo)
+            })
+
+    /// 複数プレイヤー + 敵 1 体の Board。`players` は (id, pos) のリスト。
+    def boardOfMany(map: MapSnapshot, players: List[(Int32, {x = Int32, y = Int32})],
+                     enemyId: Int32, enemyPos: {x = Int32, y = Int32}): Board =
+        let playerPieces = List.map(p -> let (id, pos) = p; (Piece.Player(id), pos), players);
+        {map = map, pieces = List.append(playerPieces, (Piece.Enemy(enemyId), enemyPos) :: Nil)}
+
+    /// TargetInfo を明示的に作る（評価軸テスト用）。
+    def mkTarget(id: Int32, pos: {x = Int32, y = Int32}, hp: Int32, estDamage: Int32,
+                  counterRange: Option[{min = Int32, max = Int32}]): EnemyAI.TargetInfo =
+        {id = id, pos = pos, hp = hp, estDamage = estDamage, counterRange = counterRange}
+
+    /// 剣（射程1-1）/ 弓（射程2-2）の反撃射程。
+    def swordRange(): Option[{min = Int32, max = Int32}] = Some({min = 1, max = 1})
+    def bowRange():   Option[{min = Int32, max = Int32}] = Some({min = 2, max = 2})
+
+    /// Attack の対象 id（Attack でなければ -1）。
+    def attackId(a: EnemyAction): Int32 = match a {
+        case EnemyAction.Attack(_, tid) => tid
+        case _                          => -1
+    }
+
+    /// Move 先からセル s までのマンハッタン距離（Move でなければ -1）。
+    /// 「どの相手に向かって動いたか」を BFS のタイブレークに依らず確認するのに使う。
+    def moveDistTo(a: EnemyAction, s: {x = Int32, y = Int32}): Int32 =
+        match a {
+            case EnemyAction.Move(_, t) => Int32.abs(t#x - s#x) + Int32.abs(t#y - s#y)
+            case _                      => -1
+        }
+
     // ════════════════════════════════════════════════════════
     // dormant ↔ alerted の遷移
     // ════════════════════════════════════════════════════════
@@ -144,7 +184,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 7, y = 2}: {x = Int32, y = Int32});   // module 1
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, false, 1, 3);
-        let (a, d)  = EnemyAI.decideAction(board, enemy);
+        let (a, d)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         Assert.assertEq(expected = ("Skip", false), (tagOf(a), d#alerted))
 
     /// dormant + 別モジュールでも、索敵範囲(移動到達範囲)内に居れば起動して chase する。
@@ -157,7 +197,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 7, y = 2}: {x = Int32, y = Int32});   // module 1
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, false, 1, 3);
-        let (a, d)  = EnemyAI.decideAction(board, enemy);
+        let (a, d)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         Assert.assertEq(expected = ("Move", true), (tagOf(a), d#alerted))
 
     // ════════════════════════════════════════════════════════
@@ -177,7 +217,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 9, y = 2}: {x = Int32, y = Int32});    // module 1, 床距離 5
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, false, 1, 3);
-        let (a, d)  = EnemyAI.decideAction(board, enemy);
+        let (a, d)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         Assert.assertEq(expected = ("Skip", false), (tagOf(a), d#alerted))
 
     /// 同一幾何でも moveTiles=5 にすると床距離 5 が索敵範囲に入り、隣室を越えて即起動 (Move)。
@@ -189,7 +229,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 9, y = 2}: {x = Int32, y = Int32});    // module 1, 床距離 5
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, false, 1, 5);
-        let (a, d)  = EnemyAI.decideAction(board, enemy);
+        let (a, d)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         Assert.assertEq(expected = ("Move", true), (tagOf(a), d#alerted))
 
     /// dormant + 同モジュール → alerted=true、Move（Q3-B: 検出フレームに動く）。
@@ -200,7 +240,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, false, 0, 3);
-        let (a, d)  = EnemyAI.decideAction(board, enemy);
+        let (a, d)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         Assert.assertEq(expected = ("Move", true), (tagOf(a), d#alerted))
 
     /// 一度 alerted なら別モジュールでも chase 継続。
@@ -211,7 +251,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 7, y = 2}: {x = Int32, y = Int32});
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, true, 1, 3);    // 既に alerted
-        let (a, d)  = EnemyAI.decideAction(board, enemy);
+        let (a, d)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         Assert.assertEq(expected = ("Move", true), (tagOf(a), d#alerted))
 
     // ════════════════════════════════════════════════════════
@@ -225,7 +265,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, true, 0, 3);
-        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         Assert.assertEq(expected = "Attack", tagOf(a))
 
     /// 武器が壊れている（weapon = None）敵は隣接プレイヤーがあっても攻撃しない。
@@ -237,7 +277,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAtUnarmed(0, enemyP, true, 0, 3);
-        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         Assert.assertEq(expected = "Wait", tagOf(a))
 
     // ════════════════════════════════════════════════════════
@@ -254,7 +294,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 距離 1
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAtBow(0, enemyP, true, 0, 3);
-        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         Assert.assertEq(expected = false, tagOf(a) == "Attack")
 
     /// 弓の敵が隣接 (距離 1) されたら後退して間合いを取り直す（カイティング）。
@@ -267,7 +307,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 距離 1
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAtBow(0, enemyP, true, 0, 3);
-        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         let dist    = moveTarget(a)
             |> Option.map(t -> Int32.abs(t#x - 5) + Int32.abs(t#y - 5))
             |> Option.getWithDefault(-1);
@@ -282,7 +322,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 1, y = 0}: {x = Int32, y = Int32});   // 距離 1、逃げ場なし
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAtBow(0, enemyP, true, 0, 3);
-        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         Assert.assertEq(expected = "Wait", tagOf(a))
 
     /// 弓 (range 2-2) の敵が距離 2 の味方を Attack する。
@@ -293,7 +333,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 距離 2
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAtBow(0, enemyP, true, 0, 3);
-        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         Assert.assertEq(expected = "Attack", tagOf(a))
 
     /// 剣 (range 1-1) の敵は距離 2 では Attack せず前進 (Move) する。
@@ -305,7 +345,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 距離 2
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, true, 0, 3);            // testWeapon = 剣 1-1
-        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         Assert.assertEq(expected = "Move", tagOf(a))
 
     @Test
@@ -332,7 +372,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, true, 0, 1);
-        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         let target  = moveTarget(a);
         Assert.assertEq(
             expected = ("Move", true, 4, 5),
@@ -351,7 +391,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 3, y = 5}: {x = Int32, y = Int32});
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, true, 0, 3);
-        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         let target  = moveTarget(a);
         Assert.assertEq(
             expected = ("Move", true, 2, 5),
@@ -375,7 +415,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 4, y = 1}: {x = Int32, y = Int32});
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, true, 0, 3);
-        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         Assert.assertEq(expected = ("Move", true),
                          (tagOf(a), isSome(moveTarget(a))))
 
@@ -399,7 +439,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 4, y = 1}: {x = Int32, y = Int32});
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, true, 0, 3);
-        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         Assert.assertEq(expected = "Wait", tagOf(a))
 
     /// 他敵駒は障害物。Q7-A を確認する。
@@ -420,7 +460,7 @@ mod TestEnemyAI {
                   :: (Piece.Enemy(1), ({x = 3, y = 1}: {x = Int32, y = Int32})) :: Nil
         };
         let enemy   = enemyAt(0, ({x = 4, y = 1}: {x = Int32, y = Int32}), true, 0, 3);
-        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targetsOf(board));
         let target  = moveTarget(a);
         let okTarget = match target {
             case Some(t) =>
@@ -430,4 +470,179 @@ mod TestEnemyAI {
             case None    => false
         };
         Assert.assertEq(expected = ("Move", true), (tagOf(a), okTarget))
+
+    // ════════════════════════════════════════════════════════
+    // 評価軸の組み合わせ（辞書式ターゲット選択）: 仕留め > 反撃不能 > 低HP > 近さ
+    //   開けた 12×12 部屋・弓敵 (5,5)・moveTiles 5 で「どの相手に・どう動くか」を pin。
+    // ════════════════════════════════════════════════════════
+
+    /// 仕留め最優先: 瀕死の相手は「反撃可能でも」最優先で攻撃する。
+    /// 配置: 剣ローグ p0(7,5) 距離2・反撃不能・HP満タン / 弓P p1(5,3) 距離2・反撃可・瀕死(estDmg5≥hp2)。
+    /// 期待: Killable が最優先なので、反撃される弓P(id1)を距離2で Attack。
+    @Test
+    def testKillablePreferredEvenIfCounterable(): Unit \ Assert =
+        let map     = singleRoomSnapshot(12, 12);
+        let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let p0      = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 剣・距離2・反撃不能
+        let p1      = ({x = 5, y = 3}: {x = Int32, y = Int32});   // 弓・距離2・瀕死
+        let board   = boardOfMany(map, (0, p0) :: (1, p1) :: Nil, 9, enemyP);
+        let enemy   = enemyAtBow(9, enemyP, true, 0, 5);
+        let targets = mkTarget(0, p0, 99, 0, swordRange())
+                   :: mkTarget(1, p1, 2, 5, bowRange()) :: Nil;
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targets);
+        Assert.assertEq(expected = ("Attack", 1), (tagOf(a), attackId(a)))
+
+    /// 攻撃優先: 射程内に相手が居れば、遠くの弱い相手を追わず「今攻撃できる相手」を攻撃する。
+    /// 配置: 弓敵 (5,5)・射程内 p0(7,5) 距離2・HP10 / 遠くの瀕死 p1(5,10) 距離5・HP1（射程外）。
+    /// 期待: 遠くの低HP p1 を追いかけず、射程内の p0(id0) を Attack（待機・素通りしない）。
+    @Test
+    def testRangedAttacksInRangeRatherThanChasingFarWeaker(): Unit \ Assert =
+        let map     = singleRoomSnapshot(12, 12);
+        let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let pNear   = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 距離2・射程内・HP10
+        let pFar    = ({x = 5, y = 10}: {x = Int32, y = Int32});  // 距離5・射程外・HP1
+        let board   = boardOfMany(map, (0, pNear) :: (1, pFar) :: Nil, 9, enemyP);
+        let enemy   = enemyAtBow(9, enemyP, true, 0, 5);
+        let targets = mkTarget(0, pNear, 10, 0, swordRange())
+                   :: mkTarget(1, pFar, 1, 0, swordRange()) :: Nil;
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targets);
+        Assert.assertEq(expected = ("Attack", 0), (tagOf(a), attackId(a)))
+
+    /// 接近後の射撃: 反撃不能な相手が距離2（射程内）に居れば、そのまま安全に Attack。
+    /// （上のテストで接近した次のターン相当。）
+    @Test
+    def testRangedAttacksSafeTargetWhenInRange(): Unit \ Assert =
+        let map     = singleRoomSnapshot(12, 12);
+        let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});
+        let pSword  = ({x = 8, y = 5}: {x = Int32, y = Int32});   // 距離2・反撃不能
+        let board   = boardOfMany(map, (0, pSword) :: Nil, 9, enemyP);
+        let enemy   = enemyAtBow(9, enemyP, true, 0, 5);
+        let targets = mkTarget(0, pSword, 99, 0, swordRange()) :: Nil;
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targets);
+        Assert.assertEq(expected = ("Attack", 0), (tagOf(a), attackId(a)))
+
+    /// 低HP タイブレーク: 仕留め不可・どちらも反撃不能・距離も同じなら、HP の低い相手を選ぶ。
+    /// 配置: 剣 p0(8,5) HP10・距離3 / 剣 p1(5,8) HP4・距離3。
+    /// 期待: p1(id1, 低HP)へ向かって 1 歩接近（p1 までの距離が 3→2 に縮む）。
+    @Test
+    def testRangedPrefersLowerHpAmongSafeTargets(): Unit \ Assert =
+        let map     = singleRoomSnapshot(12, 12);
+        let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let pA      = ({x = 8, y = 5}: {x = Int32, y = Int32});   // 距離3・HP10
+        let pB      = ({x = 5, y = 8}: {x = Int32, y = Int32});   // 距離3・HP4
+        let board   = boardOfMany(map, (0, pA) :: (1, pB) :: Nil, 9, enemyP);
+        let enemy   = enemyAtBow(9, enemyP, true, 0, 5);
+        let targets = mkTarget(0, pA, 10, 0, swordRange())
+                   :: mkTarget(1, pB, 4, 0, swordRange()) :: Nil;
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targets);
+        Assert.assertEq(expected = ("Move", 2), (tagOf(a), moveDistTo(a, pB)))
+
+    /// 近さタイブレーク: 仕留め不可・反撃不能・HP も同じなら、近い相手を選ぶ。
+    /// 配置: 剣 p0(8,5) 距離3 / 剣 p1(7,5) 距離2（射程内）。どちらも HP10。
+    /// 期待: 近い p1(id1, 距離2)を選び、射程内なので Attack。
+    @Test
+    def testRangedPrefersNearerWhenOtherwiseTied(): Unit \ Assert =
+        let map     = singleRoomSnapshot(12, 12);
+        let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let pFar    = ({x = 8, y = 5}: {x = Int32, y = Int32});   // 距離3
+        let pNear   = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 距離2
+        let board   = boardOfMany(map, (0, pFar) :: (1, pNear) :: Nil, 9, enemyP);
+        let enemy   = enemyAtBow(9, enemyP, true, 0, 5);
+        let targets = mkTarget(0, pFar, 10, 0, swordRange())
+                   :: mkTarget(1, pNear, 10, 0, swordRange()) :: Nil;
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targets);
+        Assert.assertEq(expected = ("Attack", 1), (tagOf(a), attackId(a)))
+
+    /// 近接の敵も NoCounter を効かせる: 距離1で反撃できない弓兵を、HP の低い剣士より優先する。
+    /// 配置: 剣敵 (5,5)・剣P p0(6,5) 隣接・HP5（距離1で反撃可）/ 弓P p1(5,6) 隣接・HP10（射程2で反撃不可）。
+    /// 期待: 反撃不能 > 低HP なので、満タンでも反撃されない弓P(id1)を Attack。
+    @Test
+    def testMeleePrefersNoCounterTarget(): Unit \ Assert =
+        let map     = singleRoomSnapshot(12, 12);
+        let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let pSword  = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 隣接・HP5・反撃可
+        let pBow    = ({x = 5, y = 6}: {x = Int32, y = Int32});   // 隣接・HP10・反撃不可
+        let board   = boardOfMany(map, (0, pSword) :: (1, pBow) :: Nil, 9, enemyP);
+        let enemy   = enemyAt(9, enemyP, true, 0, 3);             // testWeapon = 剣 1-1（近接）
+        let targets = mkTarget(0, pSword, 5, 0, swordRange())
+                   :: mkTarget(1, pBow, 10, 0, bowRange()) :: Nil;
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targets);
+        Assert.assertEq(expected = ("Attack", 1), (tagOf(a), attackId(a)))
+
+    /// 近接（射程1）の敵も「弱い相手から優先」: 隣接する同武器の 2 体なら HP の低い方を攻撃する。
+    /// 配置: 剣敵 (5,5)・剣P p0(6,5) HP8・剣P p1(5,6) HP3（どちらも隣接・反撃可）。
+    /// 期待: 低HP の p1(id1) を Attack。
+    @Test
+    def testMeleeAttacksWeakerAdjacentFirst(): Unit \ Assert =
+        let map     = singleRoomSnapshot(12, 12);
+        let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let p0      = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 隣接・HP8
+        let p1      = ({x = 5, y = 6}: {x = Int32, y = Int32});   // 隣接・HP3
+        let board   = boardOfMany(map, (0, p0) :: (1, p1) :: Nil, 9, enemyP);
+        let enemy   = enemyAt(9, enemyP, true, 0, 3);             // testWeapon = 剣 1-1（近接）
+        let targets = mkTarget(0, p0, 8, 0, swordRange())
+                   :: mkTarget(1, p1, 3, 0, swordRange()) :: Nil;
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targets);
+        Assert.assertEq(expected = ("Attack", 1), (tagOf(a), attackId(a)))
+
+    /// 近接（射程1）の敵は、隣に攻撃できる相手が居れば、遠くの弱い相手を追わず隣を攻撃する。
+    /// 配置: 剣敵 (5,5)・隣接 p0(6,5) HP9 / 遠くの瀕死 p1(5,8) 距離3・HP2。
+    /// 期待: 遠くの低HP p1 を追わず、隣接の p0(id0) を Attack（攻撃を優先）。
+    @Test
+    def testMeleeAttacksAdjacentRatherThanChaseFarWeaker(): Unit \ Assert =
+        let map     = singleRoomSnapshot(12, 12);
+        let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let p0      = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 隣接・HP9
+        let p1      = ({x = 5, y = 8}: {x = Int32, y = Int32});   // 距離3・HP2（射程外）
+        let board   = boardOfMany(map, (0, p0) :: (1, p1) :: Nil, 9, enemyP);
+        let enemy   = enemyAt(9, enemyP, true, 0, 3);
+        let targets = mkTarget(0, p0, 9, 0, swordRange())
+                   :: mkTarget(1, p1, 2, 0, swordRange()) :: Nil;
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targets);
+        Assert.assertEq(expected = ("Attack", 0), (tagOf(a), attackId(a)))
+
+    /// 回帰: 低HP の相手が到達不能（壁の向こう）でも、敵は止まらず最寄りの相手へ近づく。
+    /// 配置: x=2 を壁列で左右に分断。左に瀕死 p0(0,1) HP1（到達不能）/ 右に p1(3,1) HP10。
+    ///       敵 (5,1) は右側。最良ターゲットは低HP の p0 だが経路が無い。
+    /// 期待: Wait せず、最寄りで到達可能な p1 へ向かって Move（発見したら近づく挙動を保つ）。
+    @Test
+    def testChasesNearestWhenPreferredUnreachable(): Unit \ Assert =
+        let inB = c -> c#x >= 0 and c#x < 6 and c#y >= 0 and c#y < 3;
+        let isW = c -> c#x == 2;
+        let map: MapSnapshot = {
+            tileSize     = testTileSize(),
+            usedRect     = {position = Vec2i.zero(), size = ({x = 6, y = 3}: {x = Int32, y = Int32})},
+            isWall       = c -> not inB(c) or isW(c),
+            isFloor      = c -> inB(c) and not isW(c),
+            mapToLocal   = c -> testGridToWorld(c),
+            gridToWorld  = c -> testGridToWorld(c),
+            moduleOfCell = c -> if (inB(c) and not isW(c)) Some(0) else None
+        };
+        let enemyP  = ({x = 5, y = 1}: {x = Int32, y = Int32});
+        let p0      = ({x = 0, y = 1}: {x = Int32, y = Int32});   // 壁の向こう・HP1・到達不能
+        let p1      = ({x = 3, y = 1}: {x = Int32, y = Int32});   // 同じ側・HP10・距離2
+        let board   = boardOfMany(map, (0, p0) :: (1, p1) :: Nil, 9, enemyP);
+        let enemy   = enemyAt(9, enemyP, true, 0, 3);            // 剣（近接）
+        let targets = mkTarget(0, p0, 1, 0, swordRange())
+                   :: mkTarget(1, p1, 10, 0, swordRange()) :: Nil;
+        let (a, _)  = EnemyAI.decideAction(board, enemy, targets);
+        // p1(3,1) へ 1 歩 → (4,1)。到達不能な p0 を選んで Wait しないことを確認。
+        Assert.assertEq(expected = ("Move", 4, 1),
+                         (tagOf(a),
+                          moveTarget(a) |> Option.map(t -> t#x) |> Option.getWithDefault(-1),
+                          moveTarget(a) |> Option.map(t -> t#y) |> Option.getWithDefault(-1)))
+
+    // ════════════════════════════════════════════════════════
+    // 辞書式比較ヘルパー lexGreater
+    // ════════════════════════════════════════════════════════
+
+    /// 先頭の要素で差がつけばそれで決定。先頭が同点なら次の要素で比較。完全同点は false。
+    @Test
+    def testLexGreaterComparesHeadFirst(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (true, false, true, false),
+            (EnemyAI.lexGreater(1 :: 0 :: Nil, 0 :: 9 :: Nil),   // 先頭 1>0（後続無視）
+             EnemyAI.lexGreater(0 :: 1 :: Nil, 1 :: 9 :: Nil),   // 先頭 0<1
+             EnemyAI.lexGreater(1 :: 5 :: Nil, 1 :: 3 :: Nil),   // 先頭同点・次 5>3
+             EnemyAI.lexGreater(1 :: 3 :: Nil, 1 :: 3 :: Nil)))  // 完全同点
 }

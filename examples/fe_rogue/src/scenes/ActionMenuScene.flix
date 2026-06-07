@@ -362,7 +362,7 @@ mod ActionMenuScene {
                 pickupAt(info, recorded)
         }
 
-    /// `info` のセルにある床アイテムを SelectedPlayer の `picked` に控える（巻き戻し用）。
+    /// `info` のセルにある床アイテムを SelectedPlayer の巻き戻しドラフトに積む。
     /// 床に何も無ければ no-op。実際の在庫追加 / 床撤去は後続の `pickupAt` が行う。
     def recordPickupDraft(info: {playerId = Int32, gridPos = {x = Int32, y = Int32}},
                             scene: Scene[NodeTag]):
@@ -370,12 +370,9 @@ mod ActionMenuScene {
         match ItemScene.dataAt(info#gridPos, scene) {
             case None    => scene
             case Some(d) =>
-                let sel = SelectedPlayer.State.get();
-                SelectedPlayer.State.put({
-                    picked = Some({playerId = info#playerId, cell = d#gridPos,
-                                    itemKey = d#itemKey, kind = d#item})
-                    | sel
-                });
+                SelectedPlayer.pushDraft(
+                    MoveDraft.DraftAction.PickedUp(info#playerId, d#gridPos,
+                                                    d#itemKey, d#item));
                 scene
         }
 
