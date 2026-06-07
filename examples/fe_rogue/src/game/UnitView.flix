@@ -46,8 +46,4 @@ mod UnitView {
     /// EnemyAI の「今ターン仕留められるか（Killable）」判定に使う。
     pub def estDamage(attacker: UnitView, defender: UnitView): Int32 =
         Combat.estimate(attacker#combat, defender#combat)#damage
-
-    /// `a` と `b` が異なる faction か（= 交戦相手か）。
-    pub def isEnemyOf(a: UnitView, b: UnitView): Bool =
-        a#faction != b#faction
 }

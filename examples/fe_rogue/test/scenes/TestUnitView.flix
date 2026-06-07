@@ -1,7 +1,7 @@
 /// UnitView のテスト — faction 非依存の攻撃可否 / 推定ダメージ述語
 ///
-/// `canAttack`（射程内 + 防御側生存）と `estDamage`（`Combat.estimate` 委譲）、
-/// `isEnemyOf`（faction 異同）を純粋値で検証する。散在していた join 述語の集約先。
+/// `canAttack`（射程内 + 防御側生存）と `estDamage`（`Combat.estimate` 委譲）を純粋値で検証する。
+/// 散在していた join 述語の集約先。
 mod TestUnitView {
 
     use WeaponCatalog.WeaponType
@@ -77,15 +77,73 @@ mod TestUnitView {
         Assert.assertEq(expected = 5, UnitView.estDamage(attacker, defender))
 
     // ════════════════════════════════════════════════════════
-    // isEnemyOf: faction 異同
+    // projection: PlayerScene.unitView / EnemyScene.unitView の結線
+    //   scene を介す `Encounter.fromScene` は TileMapLayer 構築が要る統合テストになるため
+    //   （TestEnemyRangeScene の注記と同様、実機側に委ねる）、ここでは join の核である
+    //   Data → UnitView の projection を直接検証する: faction / weaponRange / combat 結線 /
+    //   hidden / isDying フラグ。
     // ════════════════════════════════════════════════════════
 
-    /// Player と Enemy は交戦相手 → true、同 faction 同士 → false
+    /// 武器を持つ味方 Data。装備武器は `weapons` の先頭（剣・射程1-1・攻2）、防御 1（testResource）。
+    def playerData(id: Int32, pos: {x = Int32, y = Int32}, hp: Int32, hidden: Bool,
+                   weapons: List[UnitCatalog.WeaponResource]): PlayerScene.Data =
+        {id = id, gridPos = pos, moveTiles = 4, hp = hp, waited = false,
+         attackTargetId = None, resource = TestUnitFixtures.testResource(4, hp),
+         weapons = weapons, staves = Nil, consumables = Nil, selectedItem = None,
+         moveStepsTaken = 0, facing = Staff.Direction.Down, hidden = hidden,
+         usedStairs = false, level = 1, exp = 0, pendingLevelUp = None}
+
+    /// 敵 Data。装備武器は `weapon`（攻2・剣）、攻撃 3（testEnemyResource）。
+    def enemyData(id: Int32, pos: {x = Int32, y = Int32}, hp: Int32, isDying: Bool,
+                  weapon: Option[UnitCatalog.WeaponResource]): EnemyScene.Data =
+        {id = id, gridPos = pos, alerted = false, homeModuleIdx = 0, moveTiles = 4,
+         hp = hp, isDying = isDying, attackTargetId = None,
+         resource = TestUnitFixtures.testEnemyResource(4, hp), weapon = weapon}
+
+    /// 味方 projection: faction = Player、weaponRange = 装備武器(先頭)の射程、hidden を引き継ぐ。
     @Test
-    def testIsEnemyOf(): Unit \ Assert =
-        let p = mkUnit(0, Faction.Player, at(0, 0), 10, false, None);
-        let e = mkUnit(1, Faction.Enemy, at(1, 0), 10, false, None);
-        let p2 = mkUnit(2, Faction.Player, at(2, 0), 10, false, None);
+    def testPlayerUnitViewWiring(): Unit \ Assert =
+        let v = PlayerScene.unitView(playerData(2, at(3, 4), 7, true,
+                                                TestUnitFixtures.testWeapon() :: Nil));
+        let rangeTuple = match v#weaponRange {
+            case Some(r) => (true, r#min, r#max)
+            case None    => (false, -1, -1)
+        };
+        Assert.assertEq(
+            expected = (2, true, 3, 4, 7, true, (true, 1, 1)),
+            (v#id, v#faction == Faction.Player, v#pos#x, v#pos#y, v#hp, v#hidden, rangeTuple))
+
+    /// 武器なしの味方 projection: weaponRange = None（攻撃不能）。
+    @Test
+    def testPlayerUnitViewNoWeaponHasNoRange(): Unit \ Assert =
+        let v = PlayerScene.unitView(playerData(0, at(0, 0), 10, false, Nil));
+        let hasRange = match v#weaponRange {
+            case Some(_) => true
+            case None    => false
+        };
         Assert.assertEq(expected = (true, false),
-                          (UnitView.isEnemyOf(p, e), UnitView.isEnemyOf(p, p2)))
+                          (v#faction == Faction.Player, hasRange))
+
+    /// 敵 projection: faction = Enemy、weaponRange = 装備武器の射程、isDying を引き継ぐ。
+    @Test
+    def testEnemyUnitViewWiring(): Unit \ Assert =
+        let v = EnemyScene.unitView(enemyData(9, at(5, 6), 3, true,
+                                              Some(TestUnitFixtures.testWeapon())));
+        let rangeTuple = match v#weaponRange {
+            case Some(r) => (true, r#min, r#max)
+            case None    => (false, -1, -1)
+        };
+        Assert.assertEq(
+            expected = (9, true, 5, 6, 3, true, (true, 1, 1)),
+            (v#id, v#faction == Faction.Enemy, v#pos#x, v#pos#y, v#hp, v#isDying, rangeTuple))
+
+    /// combat 結線: 敵 (攻 3 + 武器 2 = 5) → 味方 (防 1) の推定ダメージは 4。
+    /// projection が `combatView` を正しく埋めていることを estDamage 経由で確認する。
+    @Test
+    def testUnitViewCombatWiredThroughProjection(): Unit \ Assert =
+        let enemyV  = EnemyScene.unitView(enemyData(9, at(0, 0), 5, false,
+                                                    Some(TestUnitFixtures.testWeapon())));
+        let playerV = PlayerScene.unitView(playerData(0, at(1, 0), 10, false,
+                                                      TestUnitFixtures.testWeapon() :: Nil));
+        Assert.assertEq(expected = 4, UnitView.estDamage(enemyV, playerV))
 }
