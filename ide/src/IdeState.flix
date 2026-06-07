@@ -56,7 +56,7 @@ mod IdeState {
         loadingLabel                  = Array[Option[Label], Static],
         loadingBar                    = Array[Option[ProgressBar], Static],
         // Maps タブの Level リスト
-        mapsList                      = Array[Option[ListView[String]], Static],
+        mapsList                      = Array[Option[TreeView[String]], Static],
         // Maps タブの中央 Canvas (ピンチズーム + 自動保存対応)
         mapGridCanvas                 = Array[Option[Canvas], Static],
         // Maps タブ用 tileset PNG キャッシュ (S13 で manualTiles / decorTiles 描画に使う)。
@@ -267,7 +267,7 @@ mod IdeState {
             loadingOverlay                = Array#{(None: Option[VBox])} @ Static,
             loadingLabel                  = Array#{(None: Option[Label])} @ Static,
             loadingBar                    = Array#{(None: Option[ProgressBar])} @ Static,
-            mapsList                      = Array#{(None: Option[ListView[String]])} @ Static,
+            mapsList                      = Array#{(None: Option[TreeView[String]])} @ Static,
             mapGridCanvas                 = Array#{(None: Option[Canvas])} @ Static,
             mapWallsImage                 = Array#{(None: Option[Image])} @ Static,
             mapFloorImage                 = Array#{(None: Option[Image])} @ Static,
