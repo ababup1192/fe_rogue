@@ -550,6 +550,7 @@ mod Game {
               with SelectedPlayer.withState(rc)   // 操作中プレイヤー id の保持
               with InitialSpawns.withState(rc)    // ゲームオーバー時に同じ敵 / 味方配置を復元
               with FloorProgress.withState(rc, FloorCatalog.firstFloorId(floors))  // 現在フロア id
+              with PartySelection.withState(rc)   // 出撃メンバー（開始時に1回抽選、フロア間で維持）
         }
 
     /// メインループ。phase で分岐せず、**固定パイプライン** を毎フレーム回す:

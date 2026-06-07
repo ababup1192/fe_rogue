@@ -55,18 +55,18 @@ mod TestFloorCatalog {
     // フロア進行順 (order) — firstFloorId / nextFloorId
     // ════════════════════════════════════════════════════════
 
-    /// 本番 floors.json の "order" 配列 ["f01","f02","f03"] を実際にロードして、
-    /// 先頭フロアと「次フロア」の遷移（最終フロアの次は None = クリア）を固定する。
+    /// 本番 floors.json の "order" 配列 (f01..f10) を実際にロードして、
+    /// 先頭フロアと「次フロア」の遷移（最終フロア f10 の次は None = クリア）を固定する。
     /// load() は schema 整合性検査も通るので、order 追加が既存の検査を壊していないことも兼ねる。
     @Test
     def testFloorOrderProgression(): Unit \ {Assert, Fs.FileRead} =
         let catalog = FloorCatalog.load();
         Assert.assertEq(
-            expected = ("f01", Some("f02"), Some("f03"), None),
+            expected = ("f01", Some("f02"), Some("f10"), None),
             (FloorCatalog.firstFloorId(catalog),
              FloorCatalog.nextFloorId("f01", catalog),
-             FloorCatalog.nextFloorId("f02", catalog),
-             FloorCatalog.nextFloorId("f03", catalog)))
+             FloorCatalog.nextFloorId("f09", catalog),
+             FloorCatalog.nextFloorId("f10", catalog)))
 
     // ════════════════════════════════════════════════════════
     // pickWeighted の境界

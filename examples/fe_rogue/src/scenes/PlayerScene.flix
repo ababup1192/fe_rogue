@@ -203,8 +203,11 @@ mod PlayerScene {
     // ────────────────────────────────────────────────────────
 
     /// MapScene が登録済みの scene に出撃メンバーを追加する。
-    /// `players` プールから **先頭（ロード）を固定し、残りからランダムに 2 体** を選んだ
-    /// 計 3 体を出撃させる（候補が 3 未満ならいる分だけ）。`selectParty` 参照。
+    /// 出撃メンバーは `PartySelection.State` に保持された選抜結果を使う。**未選抜のときだけ**
+    /// `players` プールから「先頭（ロード）固定 + 残りからランダム 2 体」を抽選して保存し、
+    /// 以降の build（フロア移動など）は同じメンバーを再利用する（＝シャッフルは開始時のみ）。
+    /// `selectParty` 参照。フレッシュに組み直したい経路（ゲームオーバー / クリア周回）は
+    /// 呼び出し側が `PartySelection.State.clear()` してから build する。
     /// 先頭は MapScene が記録した spawnGrid に、残りはその近傍の床セルに配置する。
     /// 各プレイヤーの `initialInventory` を kind 別に分割して `Data.weapons` / `Data.staves` に
     /// 詰め直す（weapons.head が装備中、staves は配列順で持ち物に積まれる）。未定義 id は
@@ -212,8 +215,14 @@ mod PlayerScene {
     pub def add(catalog: UnitCatalog.UnitCatalog,
                   staffCatalog: Staff.StaffCatalog,
                   consumableCatalog: Consumable.ConsumableCatalog,
-                  scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
-        let selected     = selectParty(UnitCatalog.pool("players", catalog));
+                  scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, PartySelection.State} =
+        let selected     = match PartySelection.State.get() {
+            case Some(party) => party
+            case None        =>
+                let rolled = selectParty(UnitCatalog.pool("players", catalog));
+                PartySelection.State.put(rolled);
+                rolled
+        };
         let n            = List.length(selected);
         let spawnGrid    = MapScene.getSpawnGrid(scene);
         let layer        = MapScene.getMapLayer(scene);
