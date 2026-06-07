@@ -287,6 +287,39 @@ mod ItemScene {
                 (cleaned, Some(kind))
         }
 
+    /// 指定セルに落ちているアイテムの Data を返す。無ければ None。
+    /// `takeAt` は kind しか返さないので、再配置 (`respawn`) に必要な itemKey まで
+    /// 含めて拾いたい「ひろうのキャンセル巻き戻し」用に Data 全体を返す。
+    pub def dataAt(coord: {x = Int32, y = Int32},
+                    scene: Scene[NodeTag]): Option[Data] =
+        let childNames = Scene.getChildrenAt(parentPath(), scene);
+        List.findMap(name -> {
+            let path = List.append(parentPath(), name :: Nil);
+            match Scene.getState(path, scene) {
+                case Some(NodeTag.GroundItem(d)) =>
+                    if (d#gridPos#x == coord#x and d#gridPos#y == coord#y)
+                        Some(d)
+                    else None
+                case _ => None
+            }
+        }, childNames)
+
+    /// 床アイテムを `cell` に再配置する（`takeAt` の逆操作）。新しい idx を採番して
+    /// 本体 + 縁取りを作り直す。「ひろう」をキャンセルしたときの巻き戻しに使う。
+    pub def respawn(cell: {x = Int32, y = Int32}, itemKey: String,
+                     kind: GroundItemKind, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let withParent = ensureParent(scene);
+        addOneItem(nextItemIdx(withParent), cell, itemKey, kind, withParent)
+
+    /// 既存 `Item_<n>` の最大 idx + 1（無ければ 0）。`Item_<n>_outline_<dir>` は
+    /// `dropLeft(5)` → `Int32.fromString` が None になるので自然に除外される。
+    def nextItemIdx(scene: Scene[NodeTag]): Int32 =
+        Scene.getChildrenAt(parentPath(), scene)
+            |> List.filterMap(name -> Int32.fromString(String.dropLeft(5, name)))
+            |> List.maximum
+            |> Option.map(m -> m + 1)
+            |> Option.getWithDefault(0)
+
     /// `Item_<n>` のパスから 4 つの兄弟 `Item_<n>_outline_<dir>` を削除する。
     def removeOutlinesFor(itemPath: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
         List.foldLeft((acc, suffix) ->

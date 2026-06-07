@@ -19,14 +19,27 @@
 mod SelectedPlayer {
 
     /// 選択中プレイヤーの状態。`id` と `origin` は常に揃って Some / None を取る。
+    /// `picked` は「この移動中に仮取得した床アイテム」(FE 移動の仮確定と同じ扱い)。
+    /// `applyPickup` で Some になり、`cancelSelection`（選択解除キャンセル）で巻き戻し、
+    /// 行動確定（`commitWaitedAndAdvance` の `cleared()`）や次の選択開始で None に戻る。
     pub type alias Selection = {
         id     = Option[Int32],
-        origin = Option[{x = Int32, y = Int32}]
+        origin = Option[{x = Int32, y = Int32}],
+        picked = Option[PickedItem]
     }
 
-    /// 未選択を表す Selection（id・origin ともに None）。
-    /// 解除時に `put(cleared())` と書ける。
-    pub def cleared(): Selection = {id = None, origin = None}
+    /// 仮取得した床アイテムの巻き戻し情報。床へ戻す（`ItemScene.respawn`）のに
+    /// 必要な cell / itemKey / kind と、在庫から取り消す対象 playerId を持つ。
+    pub type alias PickedItem = {
+        playerId = Int32,
+        cell     = {x = Int32, y = Int32},
+        itemKey  = String,
+        kind     = ItemScene.GroundItemKind
+    }
+
+    /// 未選択を表す Selection（すべて None）。
+    /// 解除時に `put(cleared())` と書ける。picked も None（取得は行動確定で別途確定済み）。
+    pub def cleared(): Selection = {id = None, origin = None, picked = None}
 
     /// 選択状態の読み書き effect。
     pub eff State {

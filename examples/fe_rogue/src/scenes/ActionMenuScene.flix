@@ -349,9 +349,35 @@ mod ActionMenuScene {
     def applyPickup(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger,
                               SelectedPlayer.State, PlayerScene.PartyQuery} =
-        pickupTarget(scene)
-            |> Option.map(info -> pickupAt(info, scene))
-            |> Option.getWithDefault(scene)
+        match pickupTarget(scene) {
+            case None       => scene
+            case Some(info) =>
+                // 通常モード(退避中の味方が居ない)では拾得を SelectedPlayer の picked に
+                // ドラフト記録し、選択解除キャンセル(cancelSelection)で床へ巻き戻せるようにする。
+                // ローグ移動モードは選択が無く巻き戻し対象外なので即取得のまま。
+                let recorded =
+                    if (List.isEmpty(PlayerScene.hiddenAllies(scene)))
+                        recordPickupDraft(info, scene)
+                    else scene;
+                pickupAt(info, recorded)
+        }
+
+    /// `info` のセルにある床アイテムを SelectedPlayer の `picked` に控える（巻き戻し用）。
+    /// 床に何も無ければ no-op。実際の在庫追加 / 床撤去は後続の `pickupAt` が行う。
+    def recordPickupDraft(info: {playerId = Int32, gridPos = {x = Int32, y = Int32}},
+                            scene: Scene[NodeTag]):
+            Scene[NodeTag] \ SelectedPlayer.State =
+        match ItemScene.dataAt(info#gridPos, scene) {
+            case None    => scene
+            case Some(d) =>
+                let sel = SelectedPlayer.State.get();
+                SelectedPlayer.State.put({
+                    picked = Some({playerId = info#playerId, cell = d#gridPos,
+                                    itemKey = d#itemKey, kind = d#item})
+                    | sel
+                });
+                scene
+        }
 
     /// 拾う主体(playerId)と拾う位置(gridPos)を決める。ローグ移動モード中(合流済み)は
     /// ロード(id 0)がロード足元のアイテムを拾う。通常時は選択中の味方が足元のを拾う。

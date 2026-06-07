@@ -52,7 +52,7 @@ mod TestTradeRangeScene {
     def withSelectedFor(playerId: Int32, gridPos: {x = Int32, y = Int32},
                          thunk: Unit -> a \ ef): a \ (ef - SelectedPlayer.State) =
         run { thunk() } with handler SelectedPlayer.State {
-            def get(k)    = k({id = Some(playerId), origin = Some(gridPos)})
+            def get(k)    = k({id = Some(playerId), origin = Some(gridPos), picked = None})
             def put(_, k) = k()
         }
 

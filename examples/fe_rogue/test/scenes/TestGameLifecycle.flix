@@ -34,7 +34,8 @@ mod TestGameLifecycle {
                 TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
                 SelectedPlayer.State.put({
                     id     = Some(0),
-                    origin = Some(({x = 5, y = 5}: {x = Int32, y = Int32}))
+                    origin = Some(({x = 5, y = 5}: {x = Int32, y = Int32})),
+                    picked = None
                 });
                 // 2) リセットを 1 呼び出しで実行
                 GameLifecycle.resetTurnState();

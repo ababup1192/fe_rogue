@@ -408,7 +408,8 @@ mod PlayerScene {
             Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
         SelectedPlayer.State.put({
             id     = Some(playerId),
-            origin = Some(getGridPos(playerId, scene))
+            origin = Some(getGridPos(playerId, scene)),
+            picked = None   // 新しい移動の開始。前の移動の仮取得ドラフトは破棄
         });
         PhaseTransitions.enterPlayerMoving(scene)
 
@@ -420,12 +421,21 @@ mod PlayerScene {
                               TurnPhase.State, SelectedPlayer.State,
                               PartyQuery} =
         let selection = SelectedPlayer.State.get();
+        // 選択解除キャンセルでは「この移動で仮取得した床アイテム」も巻き戻す
+        // (拾ってからキャンセルしたら拾っていないことにする)。床へ戻し + 在庫から取り消し。
+        let unpicked = match selection#picked {
+            case None    => scene
+            case Some(p) =>
+                scene
+                    |> ItemScene.respawn(p#cell, p#itemKey, p#kind)
+                    |> removeLastInventoryItem(p#playerId, p#kind)
+        };
         // origin にスナップして戻したあと、AnimatedSprite2D 持ち unit は idle に戻す。
         // (移動中の walk_<dir> 表示のままだと「キャンセル後に動いてないのに横向き」になる)
         let restored = match (selection#id, selection#origin) {
             case (Some(id), Some(origin)) =>
-                snapTo(id, origin, scene) |> playAnim(id, idleAnimName())
-            case _                         => scene
+                snapTo(id, origin, unpicked) |> playAnim(id, idleAnimName())
+            case _                         => unpicked
         };
         SelectedPlayer.State.put(SelectedPlayer.cleared());
         PhaseTransitions.enterPlayerCursor(restored)
@@ -1074,6 +1084,23 @@ mod PlayerScene {
         optItem
             |> Option.map(item -> addInventoryItem(playerId, item, scene))
             |> Option.getWithDefault(scene)
+
+    /// `kind` 種別の在庫リスト末尾の 1 個を取り除く（`addInventoryItem` の逆操作）。
+    /// 「ひろう」をキャンセルしたときに、末尾追加した仮取得アイテムを取り消すのに使う。
+    /// 該当リストが空なら no-op。
+    def removeLastInventoryItem(playerId: Int32, kind: ItemScene.GroundItemKind,
+                                  scene: Scene[NodeTag]): Scene[NodeTag] =
+        match kind {
+            case ItemScene.GroundItemKind.WeaponItem(_)     =>
+                let n = List.length(getWeapons(playerId, scene));
+                if (n > 0) dropWeapon(playerId, n - 1, scene) else scene
+            case ItemScene.GroundItemKind.StaffItem(_)      =>
+                let n = List.length(getStaves(playerId, scene));
+                if (n > 0) dropStaff(playerId, n - 1, scene) else scene
+            case ItemScene.GroundItemKind.ConsumableItem(_) =>
+                let n = List.length(getConsumables(playerId, scene));
+                if (n > 0) dropConsumable(playerId, n - 1, scene) else scene
+        }
 
     /// List の `idx` 番目の要素を先頭に移動する。範囲外なら元のリストをそのまま返す。
     /// `[a, b, c, d]` の idx=2 を頭に → `[c, a, b, d]`。

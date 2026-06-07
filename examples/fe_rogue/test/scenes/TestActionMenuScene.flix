@@ -207,7 +207,8 @@ mod TestActionMenuScene {
                         args#scene)
                 } with handler SelectedPlayer.State {
                     def get(k)    = k({id = Some(args#selectedId),
-                                        origin = Some(args#selectedOrigin)})
+                                        origin = Some(args#selectedOrigin),
+                                        picked = None})
                     def put(_, k) = k()
                 } with handler TurnPhase.State {
                     def get(k)    = k(args#phase)
@@ -265,7 +266,8 @@ mod TestActionMenuScene {
                                 } with handler SelectedPlayer.State {
                                     def get(k)    =
                                         k({id = Some(args#selectedId),
-                                           origin = Some(args#selectedOrigin)})
+                                           origin = Some(args#selectedOrigin),
+                                           picked = None})
                                     def put(_, k) = k()
                                 } with handler TurnPhase.State {
                                     def get(k)         = k(Ref.get(phaseRef))
@@ -334,13 +336,76 @@ mod TestActionMenuScene {
                 (finalPhase, waitedOf(0, after), waitedOf(1, after)))
         }
 
-    // ════════════════════════════════════════════════════════
-    // Step 1-B: 新規「ひろう = 行動継続」テスト
-    //
-    // Step 1-C で applyPickup を「行動継続」に書き換える前提のテスト。
-    // 実装変更前は赤になることを確認 (フェーズが ActionSelect から外れる /
-    // waited が立つため)。Step 1-C 適用後に緑に転じる。
-    // ════════════════════════════════════════════════════════
+    /// ひろう (`pickupMeta`) を確定すると:
+    ///   - フェーズが `ActionSelect` のまま (行動継続: ActionMenu に戻る)
+    ///   - 選択中プレイヤーの `waited` は **false** のまま (ターン消費しない)
+    ///   - 床アイテムが消える (拾った)
+    ///   - 選択中プレイヤーの所持武器が 1 → 2 本に増える (拾った武器が末尾追加)
+    @Test
+    def testPickupKeepsActionSelectAndAddsItemToInventory(): Unit \ Assert =
+        region rc {
+            let scene = loadActionMenuSceneWithFloorWeapon();
+            let pickupEntry: ItemEntry =
+                { text = "ひろう", disabled = false, metadata = Some("pickup") };
+            let (after, finalPhase) = runOnActionConfirm(rc, {
+                initialPhase   = TurnPhase.Phase.ActionSelect,
+                selectedId     = 0,
+                selectedOrigin = {x = 1, y = 1},
+                scene          = scene,
+                entry          = pickupEntry
+            });
+            let groundItemStillThere =
+                Option.nonEmpty(ItemScene.findAt({x = 1, y = 1}, after));
+            // 期待: (ActionSelect 維持, waited 立たず, 床から消えた, 武器2本)
+            Assert.assertEq(
+                expected = (TurnPhase.Phase.ActionSelect, false, false, 2),
+                ( finalPhase
+                , waitedOf(0, after)
+                , groundItemStillThere
+                , weaponCountOf(0, after) ))
+        }
+
+    /// 「ひろう」で拾った後に選択解除キャンセル (cancelSelection) すると拾得が巻き戻る:
+    ///   - 床アイテムが (1,1) に戻る
+    ///   - 仮取得した武器が在庫から取り消され 2 → 1 本に戻る
+    /// SelectedPlayer を Ref で持ち、pickup が立てた picked ドラフトが cancel まで残る
+    /// 実プレイ経路を再現する (runOnActionConfirm は put を捨てるのでここは専用ランナー)。
+    @Test
+    def testPickupThenCancelSelectionRevertsPickup(): Unit \ Assert =
+        region rc {
+            let scene = loadActionMenuSceneWithFloorWeapon();
+            let selRef = Ref.fresh(rc,
+                ({id     = Some(0),
+                  origin = Some(({x = 1, y = 1}: {x = Int32, y = Int32})),
+                  picked = None}: SelectedPlayer.Selection));
+            let pickupEntry: ItemEntry =
+                { text = "ひろう", disabled = false, metadata = Some("pickup") };
+            let after = TestUnitFixtures.withNoopTween(() ->
+                TestUnitFixtures.withNoopAnim(() ->
+                    TestUnitFixtures.withMockGameLogger(() ->
+                        TestUnitFixtures.withMockEnemyTurnQueue(() ->
+                            TestUnitFixtures.withMockPartyQuery(scene, () ->
+                                TestUnitFixtures.withMockRosterQuery(scene, () ->
+                                    run {
+                                        let afterPick =
+                                            ActionMenuScene.onActionConfirmed(pickupEntry, scene);
+                                        PlayerScene.cancelSelection(afterPick)
+                                    } with handler SelectedPlayer.State {
+                                        def get(k)    = k(Ref.get(selRef))
+                                        def put(s, k) = { Ref.put(s, selRef); k() }
+                                    } with handler TurnPhase.State {
+                                        def get(k)    = k(TurnPhase.Phase.ActionSelect)
+                                        def put(_, k) = k()
+                                    } with handler CustomEffects.FloorAdvanceRequest {
+                                        def advance(s, k) = k(s)
+                                    }))))));
+            let groundItemBack =
+                Option.nonEmpty(ItemScene.findAt({x = 1, y = 1}, after));
+            // 期待: (床に戻った, 武器が 1 本に戻った)
+            Assert.assertEq(
+                expected = (true, 1),
+                (groundItemBack, weaponCountOf(0, after)))
+        }
 
     // ════════════════════════════════════════════════════════
     // Phase 2: 「こうかん」項目の表示制御
@@ -379,35 +444,6 @@ mod TestActionMenuScene {
             expected = false,
             List.memberOf(Some("exchange"), itemsMetadata(after)))
 
-    /// ひろう (`pickupMeta`) を確定すると:
-    ///   - フェーズが `ActionSelect` のまま (行動継続: ActionMenu に戻る)
-    ///   - 選択中プレイヤーの `waited` は **false** のまま (ターン消費しない)
-    ///   - 床アイテムが消える (拾った)
-    ///   - 選択中プレイヤーの所持武器が 1 → 2 本に増える (拾った武器が末尾追加)
-    @Test
-    def testPickupKeepsActionSelectAndAddsItemToInventory(): Unit \ Assert =
-        region rc {
-            let scene = loadActionMenuSceneWithFloorWeapon();
-            let pickupEntry: ItemEntry =
-                { text = "ひろう", disabled = false, metadata = Some("pickup") };
-            let (after, finalPhase) = runOnActionConfirm(rc, {
-                initialPhase   = TurnPhase.Phase.ActionSelect,
-                selectedId     = 0,
-                selectedOrigin = {x = 1, y = 1},
-                scene          = scene,
-                entry          = pickupEntry
-            });
-            let groundItemStillThere =
-                Option.nonEmpty(ItemScene.findAt({x = 1, y = 1}, after));
-            // 期待: (ActionSelect 維持, waited 立たず, 床から消えた, 武器2本)
-            Assert.assertEq(
-                expected = (TurnPhase.Phase.ActionSelect, false, false, 2),
-                ( finalPhase
-                , waitedOf(0, after)
-                , groundItemStillThere
-                , weaponCountOf(0, after) ))
-        }
-
     // ════════════════════════════════════════════════════════
     // ローグ移動モードのメニュー (SelectedPlayer = None × 退避中の味方が居る)
     //   退避中の味方が居る = ローグ中 → 「ひろう(足元にアイテム時) / かいさん」を出す。
@@ -444,7 +480,7 @@ mod TestActionMenuScene {
                         Duration.seconds(0.0), menuNode,
                         ActionMenuScene.menuPath(), scene)
                 } with handler SelectedPlayer.State {
-                    def get(k)    = k({id = None, origin = None})
+                    def get(k)    = k({id = None, origin = None, picked = None})
                     def put(_, k) = k()
                 } with handler TurnPhase.State {
                     def get(k)    = k(TurnPhase.Phase.ActionSelect)

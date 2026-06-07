@@ -192,8 +192,13 @@ mod TradeMenuScene {
                          \ {SelectedPlayer.State, TurnPhase.State} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
-        let withItems = if (phase != TurnPhase.Phase.TradeInventory) withVisibility
-                        else refreshBothPanes(withVisibility);
+        // 閉じている間は両ペインのカーソルを先頭(0)に戻し、次に開いたとき必ず
+        // 最初の項目から始まるようにする。表示中はリセットしないので ↑↓ 移動は維持。
+        let withItems = if (phase != TurnPhase.Phase.TradeInventory)
+                withVisibility
+                    |> ItemList.mapAt(selfMenuPath(), ItemList.setSelectedIndex(0))
+                    |> ItemList.mapAt(partnerMenuPath(), ItemList.setSelectedIndex(0))
+            else refreshBothPanes(withVisibility);
         match Scene.getEngineNode(path, withItems) {
             case Some(latest) => (latest, withItems)
             case None         => (node, withItems)

@@ -120,7 +120,11 @@ mod ItemMenuScene {
                 refreshItemList(withVisibility)
             case TurnPhase.Phase.ItemActionSelect =>
                 refreshActionList(withVisibility)
+            // メニューが閉じている間はカーソルを先頭(0)に戻しておく。これで次に
+            // ItemSelect を開いたときは記憶位置ではなく常に最初の項目から始まる。
+            // 表示中のフェーズではリセットしないので ↑↓ のカーソル移動は維持される。
             case _ => withVisibility
+                |> ItemList.mapAt(menuPath(), ItemList.setSelectedIndex(0))
         };
         match Scene.getEngineNode(menuPath(), withItems) {
             case Some(latest) => (latest, withItems)
@@ -273,7 +277,9 @@ mod ItemMenuScene {
                     case Some(playerId) =>
                         let withItem = PlayerScene.setSelectedItem(playerId, kind, scene);
                         TurnPhase.State.put(TurnPhase.Phase.ItemActionSelect);
-                        withItem
+                        // サブメニューは常に先頭（「そうび」/「つかう」）から始める。
+                        // ItemSelect での選択位置を引き継いで「すてる」に当たるのを防ぐ。
+                        withItem |> ItemList.mapAt(menuPath(), ItemList.setSelectedIndex(0))
                 }
         }
 

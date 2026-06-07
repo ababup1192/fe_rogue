@@ -85,7 +85,8 @@ mod TestBattlePanelScene {
                 TurnPhase.State.put(TurnPhase.Phase.AttackForecast);
                 SelectedPlayer.State.put({
                     id     = Some(0),
-                    origin = Some(({x = 2, y = 2}: {x = Int32, y = Int32}))
+                    origin = Some(({x = 2, y = 2}: {x = Int32, y = Int32})),
+                    picked = None
                 });
                 let _ = BattlePanelScene.confirm(Scene.empty());
                 TurnPhase.State.get()
@@ -130,7 +131,8 @@ mod TestBattlePanelScene {
                 TurnPhase.State.put(TurnPhase.Phase.AttackForecast);
                 SelectedPlayer.State.put({
                     id     = Some(0),
-                    origin = Some(({x = 2, y = 2}: {x = Int32, y = Int32}))
+                    origin = Some(({x = 2, y = 2}: {x = Int32, y = Int32})),
+                    picked = None
                 });
                 let _ = BattlePanelScene.cancel(Scene.empty());
                 TurnPhase.State.get()

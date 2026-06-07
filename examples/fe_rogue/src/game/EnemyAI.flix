@@ -9,9 +9,10 @@
 ///       └ 同モジュールにプレイヤー → `alerted := true`、その場で chase 計算に進む
 ///       └ 別モジュール             → `Skip(id)`（ターン消費せず何もしない）
 ///   - alerted (`alerted = true`、永続)
-///       ├ 武器射程内にプレイヤー    → `Attack(id)`（剣=距離1 / 弓=距離2 など min..max）
-///       ├ BFS で最短経路あり        → `Move(id, firstStep)`（隣接セルへの 1 マス）
-///       └ 経路なし（壁・他駒で詰み）→ `Wait(id)`
+///       ├ 武器射程内にプレイヤー        → `Attack(id)`（剣=距離1 / 弓=距離2 など min..max）
+///       ├ 最小射程より近づかれた(弓系)  → `Move(id, retreatStep)`（後退して間合い再確保 = カイティング）
+///       ├ BFS で最短経路あり            → `Move(id, firstStep)`（隣接セルへの 1 マス）
+///       └ 経路なし（壁・他駒で詰み）    → `Wait(id)`
 ///
 /// **1 step / 1 frame 実装**: `decideAction` は「次の 1 マス」だけを返す。複数マス分の
 /// 移動は `EnemyTurn.Queue` に step を積み、1 フレームに 1 step ずつ取り出して処理する
@@ -56,11 +57,19 @@ mod EnemyAI {
             match enemy#weapon {
                 case None    => chase(board, enemy, updated)
                 case Some(w) =>
-                    match Board.playerInRange(enemy#gridPos, w#range#min, w#range#max, board) {
-                        case Some(target) =>
+                    // 「攻撃射程内か」と「最小射程より近い（弓に踏み込まれた）か」を
+                    // 1 回のタプル判定でまとめて分岐する。
+                    let inAttackRange = Board.playerInRange(enemy#gridPos, w#range#min, w#range#max, board);
+                    let tooClose      = Board.playerInRange(enemy#gridPos, 0, w#range#min - 1, board);
+                    match (inAttackRange, tooClose) {
+                        // 射程内 → 1 名狙って攻撃（近すぎ判定は無視）
+                        case (Some(target), _) =>
                             let (targetId, _) = target;
                             (EnemyAction.Attack(enemy#id, targetId), updated)
-                        case None         => chase(board, enemy, updated)
+                        // 射程外かつ近すぎ → 後退して間合いを取り直す（カイティング）
+                        case (None, Some(_))   => retreat(board, enemy, updated)
+                        // 射程外で遠い → 前進して間合いを詰める
+                        case (None, None)      => chase(board, enemy, updated)
                     }
             }
 
@@ -82,6 +91,38 @@ mod EnemyAI {
                                 (EnemyAction.Wait(enemy#id), updated)
                         }
                 }
+        }
+
+    /// 最小射程より近づかれた弓系の敵が、隣接 1 マスへ後退して間合いを取り直す（カイティング）。
+    /// 4 近傍のうち「床 + 駒に占有されていない」マスから、最寄りプレイヤーとの距離を最も
+    /// 広げられるマスを選ぶ。現在地より距離を広げられるマスが無い（壁際・包囲）なら chase に
+    /// 委譲（= Wait に落ちる）。後退後は decideAction が step ごとに再評価され、射程に入った
+    /// 時点で Attack へ切り替わる。
+    def retreat(board: Board, enemy: EnemyScene.Data,
+                updated: EnemyScene.Data): (EnemyAction, EnemyScene.Data) =
+        let pos     = enemy#gridPos;
+        let curDist = distToNearestPlayer(pos, board);
+        let dirs    = Vec2i.up() :: Vec2i.down() :: Vec2i.left() :: Vec2i.right() :: Nil;
+        let best    = dirs
+            |> List.map(d -> Board.stepTarget(pos, d))
+            |> List.filter(c -> Board.isWalkable(board, c) and not Board.isOccupied(c, board))
+            |> List.maximumBy((a, b) ->
+                Order.compare(distToNearestPlayer(a, board), distToNearestPlayer(b, board)));
+        match best {
+            case Some(c) =>
+                if (distToNearestPlayer(c, board) > curDist)
+                    (EnemyAction.Move(enemy#id, c), updated)
+                else chase(board, enemy, updated)
+            case None    => chase(board, enemy, updated)
+        }
+
+    /// `cell` から最も近いプレイヤーまでのマンハッタン距離。プレイヤー不在なら 0。
+    def distToNearestPlayer(cell: {x = Int32, y = Int32}, board: Board): Int32 =
+        match Board.nearestPlayer(cell, board) {
+            case None    => 0
+            case Some(p) =>
+                let (_, pp) = p;
+                Int32.abs(cell#x - pp#x) + Int32.abs(cell#y - pp#y)
         }
 
     // ════════════════════════════════════════════════════════

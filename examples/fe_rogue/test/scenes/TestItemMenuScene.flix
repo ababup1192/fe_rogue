@@ -78,7 +78,7 @@ mod TestItemMenuScene {
     /// `SelectedPlayer.State` のスタブ handler（id=0 を返す）。
     def withSelectedZero(thunk: Unit -> a \ ef): a \ (ef - SelectedPlayer.State) =
         run { thunk() } with handler SelectedPlayer.State {
-            def get(k)   = k({id = Some(0), origin = Some({x = 1, y = 1})})
+            def get(k)   = k({id = Some(0), origin = Some({x = 1, y = 1}), picked = None})
             def put(_, k) = k()
         }
 
@@ -193,4 +193,31 @@ mod TestItemMenuScene {
             case _ => Nil
         };
         Assert.assertEq(expected = "つかう" :: "すてる" :: Nil, texts)
+
+    // ════════════════════════════════════════════════════════
+    // カーソル位置: サブメニューに入ると必ず先頭(0)から始まる
+    // ════════════════════════════════════════════════════════
+
+    /// ItemSelect で 2 番目の項目にカーソルを置いた状態でアイテムを確定しても、
+    /// サブメニュー(ItemActionSelect)に入った瞬間カーソルは先頭(index 0)に戻る。
+    /// （回帰: 以前は ItemSelect の選択位置を引き継ぎ「すてる」に当たっていた）
+    @Test
+    def testEnteringActionSubmenuResetsCursorToFirst(): Unit \ {Assert, Fs.FileRead} =
+        let menuPath = ItemMenuScene.menuPath();
+        // ItemList に 2 項目入れて、カーソルを 2 番目(index 1)に動かした状態を再現する。
+        let twoEntries =
+            ({text = "a", disabled = false, metadata = Some("w:0")}: ItemEntry) ::
+            ({text = "b", disabled = false, metadata = Some("s:0")}: ItemEntry) :: Nil;
+        let scene = sceneWithPlayer()
+            |> ItemList.mapAt(menuPath, list ->
+                list |> ItemList.setItems(twoEntries) |> ItemList.setSelectedIndex(1));
+        let entry = ({text = "a", disabled = false, metadata = Some("w:0")}: ItemEntry);
+        let after = withSelectedZero(() ->
+            withFixedPhase(TurnPhase.Phase.ItemSelect, () ->
+                ItemMenuScene.onItemConfirmed(entry, scene)));
+        let idx = match Scene.getEngineNode(menuPath, after) {
+            case Some(EngineNode.ItemListWithState(list, _)) => ItemList.getSelectedIndex(list)
+            case _ => -1
+        };
+        Assert.assertEq(expected = 0, idx)
 }

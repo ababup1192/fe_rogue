@@ -246,7 +246,7 @@ mod TestEnemyAI {
 
     /// 弓 (range 2-2) の敵が隣接 (距離 1) では Attack を返さない。
     /// このバグ（アーチャーが隣接で体当たりしてくる）の回帰防止。
-    /// 射程外なので chase に落ち、隣接だと経路が詰まって Wait になる。
+    /// 射程外（距離 1 < min 2）なので体当たりせず、後退 Move に切り替わる。
     @Test
     def testBowAdjacentDoesNotAttack(): Unit \ Assert =
         let map     = singleRoomSnapshot(10, 10);
@@ -256,6 +256,34 @@ mod TestEnemyAI {
         let enemy   = enemyAtBow(0, enemyP, true, 0, 3);
         let (a, _)  = EnemyAI.decideAction(board, enemy);
         Assert.assertEq(expected = false, tagOf(a) == "Attack")
+
+    /// 弓の敵が隣接 (距離 1) されたら後退して間合いを取り直す（カイティング）。
+    /// 開けた部屋なら Move を返し、移動先はプレイヤーから距離 2（= 弓射程）に広がる。
+    /// 「間接攻撃後に隣接したら動かなくなる」硬直の回帰防止。
+    @Test
+    def testBowAdjacentRetreats(): Unit \ Assert =
+        let map     = singleRoomSnapshot(10, 10);
+        let player  = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 距離 1
+        let board   = boardOf(map, player, 0, enemyP);
+        let enemy   = enemyAtBow(0, enemyP, true, 0, 3);
+        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        let dist    = moveTarget(a)
+            |> Option.map(t -> Int32.abs(t#x - 5) + Int32.abs(t#y - 5))
+            |> Option.getWithDefault(-1);
+        Assert.assertEq(expected = ("Move", 2), (tagOf(a), dist))
+
+    /// 後退できない（壁際・包囲で間合いを広げられない）弓の敵は Wait に落ちる。
+    /// 2×1 の通路でプレイヤー (0,0) に隣接した敵 (1,0) は逃げ場が無く、後退不可 → Wait。
+    @Test
+    def testBowCorneredWaits(): Unit \ Assert =
+        let map     = singleRoomSnapshot(2, 1);
+        let player  = ({x = 0, y = 0}: {x = Int32, y = Int32});
+        let enemyP  = ({x = 1, y = 0}: {x = Int32, y = Int32});   // 距離 1、逃げ場なし
+        let board   = boardOf(map, player, 0, enemyP);
+        let enemy   = enemyAtBow(0, enemyP, true, 0, 3);
+        let (a, _)  = EnemyAI.decideAction(board, enemy);
+        Assert.assertEq(expected = "Wait", tagOf(a))
 
     /// 弓 (range 2-2) の敵が距離 2 の味方を Attack する。
     @Test

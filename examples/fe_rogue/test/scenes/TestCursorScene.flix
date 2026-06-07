@@ -187,7 +187,8 @@ mod TestCursorScene {
             let result = run {
                 SelectedPlayer.State.put({
                     id     = Some(0),
-                    origin = Some(p0Pos)
+                    origin = Some(p0Pos),
+                    picked = None
                 });
                 let scene = cursorAddPure(initial);
                 let after = PlayerScene.commitWaitedAndAdvance(scene);
@@ -435,7 +436,7 @@ mod TestCursorScene {
     def withSelectedFor(playerId: Int32, gridPos: {x = Int32, y = Int32},
                          thunk: Unit -> a \ ef): a \ (ef - SelectedPlayer.State) =
         run { thunk() } with handler SelectedPlayer.State {
-            def get(k)    = k({id = Some(playerId), origin = Some(gridPos)})
+            def get(k)    = k({id = Some(playerId), origin = Some(gridPos), picked = None})
             def put(_, k) = k()
         }
 
