@@ -36,6 +36,30 @@
         "order": 3
       }
     },
+    "roomMaps": {
+      "field": {
+        "ftype": { "type": "refPercentList", "to": "maps" },
+        "hint":  "plain",
+        "label": "出現部屋",
+        "order": 4
+      }
+    },
+    "horizontalMaps": {
+      "field": {
+        "ftype": { "type": "refPercentList", "to": "maps" },
+        "hint":  "plain",
+        "label": "横通路",
+        "order": 5
+      }
+    },
+    "verticalMaps": {
+      "field": {
+        "ftype": { "type": "refPercentList", "to": "maps" },
+        "hint":  "plain",
+        "label": "縦通路",
+        "order": 6
+      }
+    },
     "monstersPerRoom": {
       "nested": {
         "min": {

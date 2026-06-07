@@ -13,14 +13,18 @@ mod TestFloorCatalog {
     // フィクスチャ
     // ════════════════════════════════════════════════════════
 
-    /// 1 フロア (f01) 分のサンプル。monsters / items を 1 件ずつ持つ最小構成。
+    /// 1 フロア (f01) 分のサンプル。monsters / items / マッププールを 1〜2 件持つ最小構成。
     def sampleFloor(): FloorResource = {
         label           = "1F",
         generation      = ({roomCount = 5}: GenerationConfig),
         monsters        = ({id = "goblin", percent = 70}: SpawnEntry) :: Nil,
         items           = ({id = "noviceStaff", percent = 50}: SpawnEntry) :: Nil,
         monstersPerRoom = ({min = 1, max = 2}: SpawnRange),
-        itemsPerRoom    = ({min = 0, max = 1}: SpawnRange)
+        itemsPerRoom    = ({min = 0, max = 1}: SpawnRange),
+        roomMaps        = ({id = "room_1", percent = 60}: SpawnEntry) ::
+                          ({id = "room_2", percent = 40}: SpawnEntry) :: Nil,
+        horizontalMaps  = ({id = "pathway_horizontal_1", percent = 100}: SpawnEntry) :: Nil,
+        verticalMaps    = ({id = "pathway_vertical_1", percent = 100}: SpawnEntry) :: Nil
     }
 
     // ════════════════════════════════════════════════════════
@@ -49,6 +53,31 @@ mod TestFloorCatalog {
                      List.length(floor#monsters),
                      floor#monstersPerRoom#max))
             case None => bug!("expected floor catalog round-trip to succeed")
+        }
+
+    /// マッププール (roomMaps/horizontalMaps/verticalMaps) も round-trip で保たれる。
+    /// 件数と先頭 roomMaps の (id, percent) を固定する。
+    @Test
+    def testCatalogRoundTripPreservesMapPools(): Unit \ Assert =
+        let container = CatalogContainer.CatalogContainer({
+            containerKey = "floors",
+            entries      = Map#{"f01" => sampleFloor()},
+            meta         = (Map.empty(): Map[String, Json.JsonElement])
+        });
+        let catalog = FloorCatalog.FloorCatalog.FloorCatalog(container);
+        let encoded = Saveable.toJson(catalog);
+        let decoded: Option[FloorCatalog] = Saveable.fromJson(encoded);
+        match decoded {
+            case Some(restored) =>
+                let floor = FloorCatalog.get("f01", restored);
+                let firstRoom = List.head(floor#roomMaps);
+                Assert.assertEq(
+                    expected = (2, 1, 1, Some(("room_1", 60))),
+                    (List.length(floor#roomMaps),
+                     List.length(floor#horizontalMaps),
+                     List.length(floor#verticalMaps),
+                     Option.map(e -> (e#id, e#percent), firstRoom)))
+            case None => bug!("expected map-pool round-trip to succeed")
         }
 
     // ════════════════════════════════════════════════════════

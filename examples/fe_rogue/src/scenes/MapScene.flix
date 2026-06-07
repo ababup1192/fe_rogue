@@ -77,18 +77,43 @@ mod MapScene {
     /// Walls / Floor 共通テクスチャ名（n-format は両層で同一タイルセットを使う）。
     def textureName(): String = "tileset_dungeon_green"
 
-    /// ランダム生成設定: 部屋数 (引数) と利用可能な部屋・通路プール。
-    def generatorConfig(roomCount: Int32): DungeonGenerator.Config = {
-        roomPaths       = "assets/maps/room_1.map.json" ::
-                          "assets/maps/room_2.map.json" ::
-                          "assets/maps/room_3.map.json" ::
-                          "assets/maps/room_4.map.json" :: Nil,
-        horizontalPaths = "assets/maps/pathway_horizontal_1.map.json" ::
-                          "assets/maps/pathway_horizontal_2.map.json" :: Nil,
-        verticalPaths   = "assets/maps/pathway_vertical_1.map.json" ::
-                          "assets/maps/pathway_vertical_2.map.json" :: Nil,
-        roomCount       = roomCount
+    /// ランダム生成設定: フロアの roomCount と、フロアごとに設定された部屋・通路プール
+    /// （出現率付き）から `DungeonGenerator.Config` を組み立てる。
+    /// floors.json でプール未設定（空リスト）のフロアは従来のハードコード既定プールに
+    /// フォールバックする（未移行 floors.json でも起動できるようにするため）。
+    def generatorConfig(floor: FloorCatalog.FloorResource): DungeonGenerator.Config = {
+        roomPaths       = poolOrDefault(floor#roomMaps, defaultRoomPaths()),
+        horizontalPaths = poolOrDefault(floor#horizontalMaps, defaultHorizontalPaths()),
+        verticalPaths   = poolOrDefault(floor#verticalMaps, defaultVerticalPaths()),
+        roomCount       = floor#generation#roomCount
     }
+
+    /// フロアの出現率付きマップ一覧を `(path, weight)` リストに変換する。
+    /// stem → `.map.json` パスは `FloorCatalog.mapPathOf` で解決。
+    /// 空リストなら fallback（既定プール）を返す。
+    def poolOrDefault(entries: List[FloorCatalog.SpawnEntry],
+                       fallback: List[(String, Int32)]): List[(String, Int32)] =
+        match entries {
+            case Nil => fallback
+            case _   => List.map(e -> (FloorCatalog.mapPathOf(e#id), e#percent), entries)
+        }
+
+    /// 既定の部屋プール（floors.json でフロアに roomMaps が無いとき用）。
+    def defaultRoomPaths(): List[(String, Int32)] =
+        ("assets/maps/room_1.map.json", 25) ::
+        ("assets/maps/room_2.map.json", 25) ::
+        ("assets/maps/room_3.map.json", 25) ::
+        ("assets/maps/room_4.map.json", 25) :: Nil
+
+    /// 既定の横通路プール。
+    def defaultHorizontalPaths(): List[(String, Int32)] =
+        ("assets/maps/pathway_horizontal_1.map.json", 50) ::
+        ("assets/maps/pathway_horizontal_2.map.json", 50) :: Nil
+
+    /// 既定の縦通路プール。
+    def defaultVerticalPaths(): List[(String, Int32)] =
+        ("assets/maps/pathway_vertical_1.map.json", 50) ::
+        ("assets/maps/pathway_vertical_2.map.json", 50) :: Nil
 
     // (C) 構築
     pub def add(floor: FloorCatalog.FloorResource, scene: Scene[NodeTag]): Scene[NodeTag]
@@ -105,7 +130,7 @@ mod MapScene {
     def addFromLdtk(floor: FloorCatalog.FloorResource, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO} =
         let plan = DungeonGenerator.generate(textureName(),
-                                              generatorConfig(floor#generation#roomCount));
+                                              generatorConfig(floor));
         let result = DungeonComposer.composeFromSideConnections(textureName(),
                                                                  plan#modulePaths,
                                                                  plan#sideConnections);

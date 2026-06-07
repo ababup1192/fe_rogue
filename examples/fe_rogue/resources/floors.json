@@ -52,7 +52,21 @@
       "monstersPerRoom": {
         "max": 3,
         "min": 0
-      }
+      },
+      "roomMaps": [
+        { "id": "room_1", "percent": 25 },
+        { "id": "room_2", "percent": 25 },
+        { "id": "room_3", "percent": 25 },
+        { "id": "room_4", "percent": 25 }
+      ],
+      "horizontalMaps": [
+        { "id": "pathway_horizontal_1", "percent": 50 },
+        { "id": "pathway_horizontal_2", "percent": 50 }
+      ],
+      "verticalMaps": [
+        { "id": "pathway_vertical_1", "percent": 50 },
+        { "id": "pathway_vertical_2", "percent": 50 }
+      ]
     },
     "f02": {
       "generation": {
@@ -102,7 +116,21 @@
       "monstersPerRoom": {
         "max": 3,
         "min": 1
-      }
+      },
+      "roomMaps": [
+        { "id": "room_1", "percent": 25 },
+        { "id": "room_2", "percent": 25 },
+        { "id": "room_3", "percent": 25 },
+        { "id": "room_4", "percent": 25 }
+      ],
+      "horizontalMaps": [
+        { "id": "pathway_horizontal_1", "percent": 50 },
+        { "id": "pathway_horizontal_2", "percent": 50 }
+      ],
+      "verticalMaps": [
+        { "id": "pathway_vertical_1", "percent": 50 },
+        { "id": "pathway_vertical_2", "percent": 50 }
+      ]
     },
     "f03": {
       "generation": {
@@ -152,7 +180,21 @@
       "monstersPerRoom": {
         "max": 4,
         "min": 1
-      }
+      },
+      "roomMaps": [
+        { "id": "room_1", "percent": 25 },
+        { "id": "room_2", "percent": 25 },
+        { "id": "room_3", "percent": 25 },
+        { "id": "room_4", "percent": 25 }
+      ],
+      "horizontalMaps": [
+        { "id": "pathway_horizontal_1", "percent": 50 },
+        { "id": "pathway_horizontal_2", "percent": 50 }
+      ],
+      "verticalMaps": [
+        { "id": "pathway_vertical_1", "percent": 50 },
+        { "id": "pathway_vertical_2", "percent": 50 }
+      ]
     }
   },
   "order": [
