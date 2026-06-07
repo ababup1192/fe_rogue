@@ -155,15 +155,24 @@ mod DungeonComposer {
         // 7. ModuleSpec / ModulePlacement
         let modules = buildModuleSpecs(modulePaths, offsets);
         let placements = buildPlacements(loaded, offsets);
-        // 8. mergedFloor（world 座標 + door 出っ張り床追加）
+        // 8. 連結開口部（ドアが一致するセル）。1/2 マス幅の開口セル集合。
+        let openingCells = collectSharedDoorCells(loaded, offsets, connections);
+        // 8b. mergedFloor（world 座標 + door 出っ張り床追加）
         let mergedFloor = buildMergedFloor(loaded, offsets, connections, doorFloorSrc);
+        // 8c. mergedManual（各モジュール固有の manualTiles を world 座標へ）。
+        //     ただし開口部セルに重なる manualTile は除外する。
+        //     部屋のドア位置に手置き壁（蔦壁など）があると、出っ張り床で開けても
+        //     manualTile が collisionCells に入って通行不能になってしまうため、
+        //     開口部では床を優先して manualTile を消す（壁チップの種類は問わない）。
+        let mergedManual = buildMergedManual(loaded, offsets)
+            |> List.filter(t -> not List.exists(c -> c#x == t#x and c#y == t#y, openingCells));
         // 9. 合成 grid 寸法
         let mergedGridSize = boundingBoxGridSize(loaded, offsets);
         // 10. TileSet（テクスチャ共通）
         let tileSet = buildTileSet(textureName, tileSize);
         // 11. Floor / Walls 層構築
         let floorLayer = buildFloorLayer(mergedFloor, mergedGridSize, tileSet, tileSize);
-        let wallsLayer = buildWallsLayer(mergedFloor, mergedGridSize, anchorMaterial,
+        let wallsLayer = buildWallsLayer(mergedFloor, mergedManual, mergedGridSize, anchorMaterial,
                                           tileSet, tileSize, tileSizeI);
         ({
             layer        = wallsLayer,
@@ -214,7 +223,9 @@ mod DungeonComposer {
     // ────────────────────────────────────────────────────────
 
     /// 各モジュールの decorTiles を world 座標へ変換し、先勝ち dedup でマージ。
-    /// その後、各 connection の合成座標 (= offset[a.idx] + a.grid) に door 出っ張り床を追加。
+    /// その後、連結された 2 モジュールの **ドアがワールド座標で一致するセルすべて** に
+    /// door 出っ張り床を追加する。1 マス幅通路なら 1 セル、2 マス幅通路（隣接ドア 2 枚）なら
+    /// 2 セルとなり、通路の幅に応じた開口部が自動的にできる。
     /// door 床の srcX/srcY は anchor の floorSrc を使う。
     def buildMergedFloor(loaded: List[LoadedModule],
                           offsets: Map[Int32, {x = Int32, y = Int32}],
@@ -236,16 +247,14 @@ mod DungeonComposer {
             (i + 1, List.append(list, newTiles))
         }, (0, Nil), loaded);
         let (sx, sy) = doorFloorSrc;
-        List.foldLeft(acc -> c -> {
-            let off = lookupOffset(c#a#moduleIndex, offsets);
-            let worldX = off#x + c#a#grid#x;
-            let worldY = off#y + c#a#grid#y;
-            if (List.exists(t -> t#x == worldX and t#y == worldY, acc))
+        let doorCells = collectSharedDoorCells(loaded, offsets, connections);
+        List.foldLeft(acc -> cell -> {
+            if (List.exists(t -> t#x == cell#x and t#y == cell#y, acc))
                 acc
             else {
                 let tile: MapResource.ManualTile = {
-                    x     = worldX,
-                    y     = worldY,
+                    x     = cell#x,
+                    y     = cell#y,
                     srcX  = sx,
                     srcY  = sy,
                     flipH = false,
@@ -253,7 +262,59 @@ mod DungeonComposer {
                 };
                 List.append(acc, tile :: Nil)
             }
-        }, baseTiles, connections)
+        }, baseTiles, doorCells)
+
+    /// 連結された各モジュールペアについて、両モジュールのドアが
+    /// ワールド座標で一致するセルを列挙する（= 実際に開口部となる連結点）。
+    /// ドア選択を `betterDoorForSide` で決定的に揃えてあるため、隣接する 2 枚の
+    /// ドアペアは連結時にそろって一致し、ここで 2 セルとも検出される。
+    def collectSharedDoorCells(loaded: List[LoadedModule],
+                                offsets: Map[Int32, {x = Int32, y = Int32}],
+                                connections: List[Connection]):
+            List[{x = Int32, y = Int32}] =
+        List.foldLeft(acc -> c -> {
+            let doorsA = doorsWorldOf(c#a#moduleIndex, loaded, offsets);
+            let doorsB = doorsWorldOf(c#b#moduleIndex, loaded, offsets);
+            let shared = List.filter(da ->
+                List.exists(db -> db#x == da#x and db#y == da#y, doorsB), doorsA);
+            List.append(acc, shared)
+        }, Nil, connections)
+
+    /// 指定モジュールの全ドアをワールド座標に変換して返す。
+    def doorsWorldOf(idx: Int32,
+                      loaded: List[LoadedModule],
+                      offsets: Map[Int32, {x = Int32, y = Int32}]):
+            List[{x = Int32, y = Int32}] =
+        let off = lookupOffset(idx, offsets);
+        match List.nth(idx, loaded) {
+            case Some(lm) => List.map(d -> ({x = d#x + off#x,
+                                             y = d#y + off#y}: {x = Int32, y = Int32}), lm#doors)
+            case None     => Nil
+        }
+
+    /// 各モジュールの manualTiles（手置きの壁・装飾）を world 座標へ変換し、
+    /// 先勝ち dedup でマージする。decorTiles と違い door 出っ張り床は足さない
+    /// （manualTiles はモジュール固有のレイアウトをそのまま重ねるだけ）。
+    /// 4 部屋は decorTiles が同一で manualTiles だけが異なるため、これを描かないと
+    /// 全部屋が同じ見た目になる（合成経路で部屋差が消える原因）。
+    def buildMergedManual(loaded: List[LoadedModule],
+                          offsets: Map[Int32, {x = Int32, y = Int32}]): List[MapResource.ManualTile] =
+        let (_, tiles) = List.foldLeft(acc -> lm -> {
+            let (i, list) = acc;
+            let off = lookupOffset(i, offsets);
+            let shifted: List[MapResource.ManualTile] = List.map(t -> ({
+                x     = t#x + off#x,
+                y     = t#y + off#y,
+                srcX  = t#srcX,
+                srcY  = t#srcY,
+                flipH = t#flipH,
+                flipV = t#flipV
+            }: MapResource.ManualTile), lm#levelData#manualTiles);
+            let newTiles = List.filter(t -> not List.exists(a ->
+                a#x == t#x and a#y == t#y, list), shifted);
+            (i + 1, List.append(list, newTiles))
+        }, (0, Nil), loaded);
+        tiles
 
     /// 配置済みモジュール群のワールド bbox 右下端を求める。
     /// 各モジュールの (offset + gridSize) の max を取る。
@@ -324,9 +385,12 @@ mod DungeonComposer {
     /// 1. mergedFloor から floorMask を計算
     /// 2. computeWallCells で自動壁セルを抽出
     /// 3. material#wallMap で各 wall セルのタイルを決定
-    /// 4. material#autoRules で装飾タイルを overlay
-    /// 5. 衝突セル = wallCells（door 出っ張り床のおかげで door 位置は floor になり通れる）
+    /// 4. material#autoRules で装飾タイルを overlay（manualTiles のセルは除外）
+    /// 5. mergedManual（各モジュール固有の手置きタイル）を最前面に重ねる
+    /// 6. 衝突セル = wallCells ∪ manualTiles のセル
+    ///    （door 出っ張り床のおかげで door 位置は floor になり通れる）
     def buildWallsLayer(mergedFloor: List[MapResource.ManualTile],
+                         mergedManual: List[MapResource.ManualTile],
                          gridSize: {x = Int32, y = Int32},
                          material: MapResource.Material,
                          tileSet: TileSet,
@@ -355,11 +419,25 @@ mod DungeonComposer {
                     }: TileData))
                 }
             });
-        let manualCoordsEmpty: Set[(Int32, Int32)] = Set.empty();
+        // manualTiles の占有セル: autoRules を抑止し、最前面に重ね、衝突にも使う
+        let manualCoords: Set[(Int32, Int32)] =
+            mergedManual |> List.map(t -> (t#x, t#y)) |> List.toSet;
+        let manualTileData: List[TileData] = List.map(t -> ({
+            px    = ({x = Int32.toFloat64(t#x * tileSizeI),
+                      y = Int32.toFloat64(t#y * tileSizeI)}: Vec2.Vec2),
+            srcX  = Int32.toFloat64(t#srcX),
+            srcY  = Int32.toFloat64(t#srcY),
+            flipH = t#flipH,
+            flipV = t#flipV,
+            alpha = 1.0f32
+        }: TileData), mergedManual);
         let ruleTiles = MapLoader.buildAutoRuleTiles(intGrid, gridSize#x, gridSize#y,
-                                                       md#autoRules, manualCoordsEmpty, tileSizeI);
-        let tiles = List.append(wallTiles, ruleTiles);
-        let collisionCells: List[Vec2.Vec2] = wallCells
+                                                       md#autoRules, manualCoords, tileSizeI);
+        // 重ね順: 自動壁 → autoRules → manualTiles（最前面、MapLoader と同じく手置き優先）
+        let tiles = List.append(List.append(wallTiles, ruleTiles), manualTileData);
+        // 衝突セル = wallCells ∪ manualTiles のセル
+        let collisionSet: Set[(Int32, Int32)] = Set.union(wallCells, manualCoords);
+        let collisionCells: List[Vec2.Vec2] = collisionSet
             |> Set.toList
             |> List.map(c -> {
                 let (col, row) = c;
@@ -380,13 +458,18 @@ mod DungeonComposer {
 
     /// anchor の decorTiles で「中央に最も近い床セル」を選び、worldOffset 加算して返す。
     /// PlayerScene のスポーン地点に使う。decorTile が空なら bug!。
+    /// manualTiles（衝突する手置きの壁）のセルは候補から除外し、プレイヤーが
+    /// 壁に埋まってスタートするのを防ぐ。
     def findSpawnInAnchor(anchor: LoadedModule,
                            anchorOffset: {x = Int32, y = Int32}): {x = Int32, y = Int32} =
         let gridW = anchor#levelData#width;
         let gridH = anchor#levelData#height;
         let cx = gridW / 2;
         let cy = gridH / 2;
-        let tiles = anchor#levelData#decorTiles;
+        let blocked: Set[(Int32, Int32)] =
+            anchor#levelData#manualTiles |> List.map(t -> (t#x, t#y)) |> List.toSet;
+        let tiles = anchor#levelData#decorTiles
+            |> List.filter(t -> not Set.memberOf((t#x, t#y), blocked));
         match tiles {
             case Nil => bug!("DungeonComposer: anchor has no decorTile (no floor cell)")
             case head :: rest =>
@@ -422,14 +505,20 @@ mod DungeonComposer {
     /// loaded と offsets を組み合わせて ModulePlacement リストを idx 順に作る。
     /// floorBounds は decorTiles ∪ doors の bbox（モジュール局所、半開区間）。
     /// interiorCells は decorTiles を offset 加算してワールド座標化したセル列。
+    /// ただし manualTiles（= 衝突する手置きの壁・装飾）のセルは除外する。
+    /// 階段・ドロップアイテムの配置候補に使われるため、壁の上に置いて
+    /// 取得不能になるのを防ぐ（manualTiles は collisionCells に入っている）。
     def buildPlacements(loaded: List[LoadedModule],
                          offsets: Map[Int32, {x = Int32, y = Int32}]): List[ModulePlacement] =
         let (_, reversed) = List.foldLeft(acc -> lm -> {
             let (i, list) = acc;
             let off = lookupOffset(i, offsets);
             let (fbMin, fbMaxEx) = computeFloorBounds(lm);
+            let blocked: Set[(Int32, Int32)] =
+                lm#levelData#manualTiles |> List.map(t -> (t#x, t#y)) |> List.toSet;
             let interior: List[{x = Int32, y = Int32}] =
                 lm#levelData#decorTiles
+                    |> List.filter(t -> not Set.memberOf((t#x, t#y), blocked))
                     |> List.map(t -> ({x = t#x + off#x,
                                        y = t#y + off#y}: {x = Int32, y = Int32}));
             let p: ModulePlacement = ({
@@ -624,21 +713,29 @@ mod DungeonComposer {
             let grid = pickDoorBySide(ref#side, lm#doors, ref#moduleIndex);
             ({moduleIndex = ref#moduleIndex, grid = grid}: DoorRef)
 
-    /// Side に応じて min/max 比較で 1 つの Door grid 座標を選ぶ。
-    /// Left / Right は x 軸、Top / Bottom は y 軸で min / max を取る。
+    /// Side 方向で「端」のドアを 1 枚、決定的に選ぶ。
+    /// 主軸（Left/Right→x, Top/Bottom→y）で辺を決め、同一辺に複数ドアがある場合は
+    /// 垂直軸（Left/Right→y, Top/Bottom→x）の最小値で一意に決める。
+    /// 部屋側・通路側がともにペアの「先頭」ドアを選ぶことで、連結時に
+    /// 隣接する 2 枚のドアペアがそのままワールド座標で重なり、2 マス幅連結が成立する。
+    def betterDoorForSide(side: DoorSide,
+                           a: {x = Int32, y = Int32},
+                           b: {x = Int32, y = Int32}): {x = Int32, y = Int32} =
+        match side {
+            case DoorSide.Left   => if (b#x < a#x or (b#x == a#x and b#y < a#y)) b else a
+            case DoorSide.Right  => if (b#x > a#x or (b#x == a#x and b#y < a#y)) b else a
+            case DoorSide.Top    => if (b#y < a#y or (b#y == a#y and b#x < a#x)) b else a
+            case DoorSide.Bottom => if (b#y > a#y or (b#y == a#y and b#x < a#x)) b else a
+        }
+
+    /// Side 指定で代表 Door grid 座標を 1 つ選ぶ（`betterDoorForSide` の畳み込み）。
     def pickDoorBySide(side: DoorSide,
                         doors: List[{x = Int32, y = Int32}],
                         moduleIndex: Int32): {x = Int32, y = Int32} =
         match doors {
             case Nil => bug!("DungeonComposer: module ${moduleIndex} has no Doors")
             case head :: rest =>
-                let pick = match side {
-                    case DoorSide.Left   => (a, b) -> if (b#x < a#x) b else a
-                    case DoorSide.Right  => (a, b) -> if (b#x > a#x) b else a
-                    case DoorSide.Top    => (a, b) -> if (b#y < a#y) b else a
-                    case DoorSide.Bottom => (a, b) -> if (b#y > a#y) b else a
-                };
-                List.foldLeft(acc -> d -> pick(acc, d), head, rest)
+                List.foldLeft(acc -> d -> betterDoorForSide(side, acc, d), head, rest)
         }
 
     /// Generator 等の外部利用向けに公開した版。Doors 空なら None。
@@ -647,12 +744,6 @@ mod DungeonComposer {
         match doors {
             case Nil => None
             case head :: rest =>
-                let pick = match side {
-                    case DoorSide.Left   => (a, b) -> if (b#x < a#x) b else a
-                    case DoorSide.Right  => (a, b) -> if (b#x > a#x) b else a
-                    case DoorSide.Top    => (a, b) -> if (b#y < a#y) b else a
-                    case DoorSide.Bottom => (a, b) -> if (b#y > a#y) b else a
-                };
-                Some(List.foldLeft(acc -> d -> pick(acc, d), head, rest))
+                Some(List.foldLeft(acc -> d -> betterDoorForSide(side, acc, d), head, rest))
         }
 }
