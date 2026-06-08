@@ -75,8 +75,8 @@ mod TestLevelSystem {
     // パネル用の結果組み立て: 8 行の前後差分と (+1) フラグ
     // ========================================================================
 
-    /// HP・まほう力・わざ が上がった場合、その 3 行だけ gained=true になり、
-    /// toLevel は fromLevel + 1、ラベルは固定 8 行の順（HP から こううん）で並ぶ。
+    /// HP・魔力・技 が上がった場合、その 3 行だけ gained=true になり、
+    /// toLevel は fromLevel + 1、ラベルは FE 烈火の順（HP, 力, 魔力, 技, 速さ, 幸運, 守備, 魔防）で並ぶ。
     @Test
     def testBuildResultMarksRaisedStats(): Unit \ Assert =
         let before: Stats =
@@ -88,14 +88,14 @@ mod TestLevelSystem {
         let result = LevelSystem.buildResult("ナイト", 3, before, after);
         // ヘッダ情報（名前・前後レベル）と 8 行ぶんの (ラベル, 前, 後, 上昇したか) を一括比較。
         let expectedRows =
-            ("HP",           14, 15, true)  ::
-            ("こうげき",     5,  5,  false) ::
-            ("まもり",       3,  3,  false) ::
-            ("まほう力",     2,  3,  true)  ::
-            ("まほうまもり", 1,  1,  false) ::
-            ("すばやさ",     4,  4,  false) ::
-            ("わざ",         6,  7,  true)  ::
-            ("こううん",     7,  7,  false) :: Nil;
+            ("HP",   14, 15, true)  ::
+            ("力",   5,  5,  false) ::
+            ("魔力", 2,  3,  true)  ::
+            ("技",   6,  7,  true)  ::
+            ("速さ", 4,  4,  false) ::
+            ("幸運", 7,  7,  false) ::
+            ("守備", 3,  3,  false) ::
+            ("魔防", 1,  1,  false) :: Nil;
         Assert.assertEq(
             expected = ("ナイト", 3, 4, expectedRows),
             (result#unitName, result#fromLevel, result#toLevel,

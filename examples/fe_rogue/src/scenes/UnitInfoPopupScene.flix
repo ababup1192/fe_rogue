@@ -222,9 +222,11 @@ mod UnitInfoPopupScene {
         match visibleEnemy {
             case Some(id) => Some(("enemy", id))
             case None     =>
+                // hidden の味方（階段で退場 = usedStairs、ローグの「しゅうごう」= 合流）は
+                // 盤面から外れているので情報を出さない（敵のフォグ隠し と同じ扱い）。
                 PlayerScene.getAll(scene)
                     |> List.findMap(d ->
-                        if (d#gridPos#x == coord#x and d#gridPos#y == coord#y)
+                        if (not d#hidden and d#gridPos#x == coord#x and d#gridPos#y == coord#y)
                             Some(("player", d#id))
                         else None)
         }
@@ -281,6 +283,7 @@ mod UnitInfoPopupScene {
     /// unify する開きレコード（共有フィールドだけを読む。成長率・敵能力は `r` に吸収）。
     def renderPanel(res: {description = String, hp = Int32, attack = Int32, defense = Int32,
                           speed = Int32, moveTiles = Int32, skill = Int32, luck = Int32,
+                          magicAttack = Int32, magicDefense = Int32,
                           sprite = Sprite.SpriteResource | r},
                      currentHp: Int32,
                      weapons: List[UnitCatalog.WeaponResource],
@@ -298,6 +301,7 @@ mod UnitInfoPopupScene {
 
     def renderStatusView(res: {description = String, hp = Int32, attack = Int32, defense = Int32,
                                speed = Int32, moveTiles = Int32, skill = Int32, luck = Int32,
+                               magicAttack = Int32, magicDefense = Int32,
                                sprite = Sprite.SpriteResource | r},
                           currentHp: Int32,
                           levelExp: Option[LevelExp],
@@ -344,7 +348,9 @@ mod UnitInfoPopupScene {
             |> ProgressBar.setBorderWidth(1);
         let withBar = Scene.addChildAt(panelPath(), "HpBar",
             EngineNode.ProgressBarWithState(hpBar, NodeTag.NoTag), withHpText);
-        let statsText = "ATK ${res#attack}  DEF ${res#defense}\nSPD ${res#speed}  MOV ${res#moveTiles}\nSKL ${res#skill}  LCK ${res#luck}";
+        // FE 烈火の漢字表記・並び順。左列 力/魔力/技/速さ、右列 幸運/守備/魔防/移動。
+        // 1 文字ラベル(力/技)は全角スペースで詰めて数値列を揃える。
+        let statsText = "力　 ${res#attack}    幸運 ${res#luck}\n魔力 ${res#magicAttack}    守備 ${res#defense}\n技　 ${res#skill}    魔防 ${res#magicDefense}\n速さ ${res#speed}    移動 ${res#moveTiles}";
         let statsLabel = Label2D.make(statsText, atlas, fontSizeSmall())
             |> Node2D.setPosition(statsLocalPos())
             |> CanvasItem.setModulate(textColor());
@@ -355,6 +361,7 @@ mod UnitInfoPopupScene {
 
     def renderItemsView(_res: {description = String, hp = Int32, attack = Int32, defense = Int32,
                                speed = Int32, moveTiles = Int32, skill = Int32, luck = Int32,
+                               magicAttack = Int32, magicDefense = Int32,
                                sprite = Sprite.SpriteResource | r},
                          weapons: List[UnitCatalog.WeaponResource],
                          scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =

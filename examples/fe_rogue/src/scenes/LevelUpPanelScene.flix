@@ -82,6 +82,12 @@ mod LevelUpPanelScene {
     def bodyArrowName(): String  = "bodyArrow"
     def bodyAfterName(): String  = "bodyAfter"
     def bodyPlusName(): String   = "bodyPlus"
+    // 右列（FE 烈火の 2 列レイアウト。後半 4 ステータスをここに割る）。
+    def bodyLabels2Name(): String = "bodyLabels2"
+    def bodyBefore2Name(): String = "bodyBefore2"
+    def bodyArrow2Name(): String  = "bodyArrow2"
+    def bodyAfter2Name(): String  = "bodyAfter2"
+    def bodyPlus2Name(): String   = "bodyPlus2"
     def footerName(): String     = "footer"
 
     def panelPath(): NodePath      = rootName() :: panelName()      :: Nil
@@ -91,6 +97,11 @@ mod LevelUpPanelScene {
     def bodyArrowPath(): NodePath  = rootName() :: bodyArrowName()  :: Nil
     def bodyAfterPath(): NodePath  = rootName() :: bodyAfterName()  :: Nil
     def bodyPlusPath(): NodePath   = rootName() :: bodyPlusName()   :: Nil
+    def bodyLabels2Path(): NodePath = rootName() :: bodyLabels2Name() :: Nil
+    def bodyBefore2Path(): NodePath = rootName() :: bodyBefore2Name() :: Nil
+    def bodyArrow2Path(): NodePath  = rootName() :: bodyArrow2Name()  :: Nil
+    def bodyAfter2Path(): NodePath  = rootName() :: bodyAfter2Name()  :: Nil
+    def bodyPlus2Path(): NodePath   = rootName() :: bodyPlus2Name()   :: Nil
     def footerPath(): NodePath     = rootName() :: footerName()     :: Nil
 
     /// scene.json 内の "tag" 文字列 → NodeTag への変換。
@@ -193,6 +204,11 @@ mod LevelUpPanelScene {
             |> Label2D.mapAt(bodyArrowPath(),  CanvasItem.setVisible(visible))
             |> Label2D.mapAt(bodyAfterPath(),  CanvasItem.setVisible(visible))
             |> Label2D.mapAt(bodyPlusPath(),   CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(bodyLabels2Path(), CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(bodyBefore2Path(), CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(bodyArrow2Path(),  CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(bodyAfter2Path(),  CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(bodyPlus2Path(),   CanvasItem.setVisible(visible))
             |> Label2D.mapAt(footerPath(),     CanvasItem.setVisible(visible))
 
     /// ヘッダと本文の各列を「出し終えた行数」`revealed` に合わせて書き込む。
@@ -200,13 +216,24 @@ mod LevelUpPanelScene {
     /// 数値は列ごとに右揃え（Label2D の Right アライメント）なので桁・`+1` がそろう。
     def applyContent(result: LevelSystem.Result, revealed: Int32,
                       scene: Scene[NodeTag]): Scene[NodeTag] =
+        // FE 烈火の 2 列レイアウト: 前半 4 ステータスを左列、後半 4 を右列に割る。
+        // reveal の判定は global index（左 0..half-1 / 右 half..）で行う。
+        let changes = result#changes;
+        let half    = (List.length(changes) + 1) / 2;
+        let left    = List.take(half, changes);
+        let right   = List.drop(half, changes);
         scene
             |> Label2D.mapAt(headerPath(), Label2D.setText(formatHeader(result)))
-            |> setColumn(bodyLabelsPath(), HorizontalAlignment.Left,  whiteColor(), colLabels(result))
-            |> setColumn(bodyBeforePath(), HorizontalAlignment.Right, whiteColor(), colBefore(result, revealed))
-            |> setColumn(bodyArrowPath(),  HorizontalAlignment.Left,  whiteColor(), colArrow(result, revealed))
-            |> setColumn(bodyAfterPath(),  HorizontalAlignment.Right, whiteColor(), colAfter(result, revealed))
-            |> setColumn(bodyPlusPath(),   HorizontalAlignment.Left,  plusColor(),  colPlus(result, revealed))
+            |> setColumn(bodyLabelsPath(), HorizontalAlignment.Left,  whiteColor(), colLabelsOf(left))
+            |> setColumn(bodyBeforePath(), HorizontalAlignment.Right, whiteColor(), colBeforeOf(left, 0, revealed))
+            |> setColumn(bodyArrowPath(),  HorizontalAlignment.Left,  whiteColor(), colArrowOf(left, 0, revealed))
+            |> setColumn(bodyAfterPath(),  HorizontalAlignment.Right, whiteColor(), colAfterOf(left, 0, revealed))
+            |> setColumn(bodyPlusPath(),   HorizontalAlignment.Left,  plusColor(),  colPlusOf(left, 0, revealed))
+            |> setColumn(bodyLabels2Path(), HorizontalAlignment.Left,  whiteColor(), colLabelsOf(right))
+            |> setColumn(bodyBefore2Path(), HorizontalAlignment.Right, whiteColor(), colBeforeOf(right, half, revealed))
+            |> setColumn(bodyArrow2Path(),  HorizontalAlignment.Left,  whiteColor(), colArrowOf(right, half, revealed))
+            |> setColumn(bodyAfter2Path(),  HorizontalAlignment.Right, whiteColor(), colAfterOf(right, half, revealed))
+            |> setColumn(bodyPlus2Path(),   HorizontalAlignment.Left,  plusColor(),  colPlusOf(right, half, revealed))
 
     /// 列 Label2D にテキスト・揃え・色をまとめて設定する。
     def setColumn(path: NodePath, align: HorizontalAlignment, color: Color,
@@ -299,32 +326,32 @@ mod LevelUpPanelScene {
     def formatHeader(result: LevelSystem.Result): String =
         "${result#unitName}   Lv ${result#fromLevel} -> Lv ${result#toLevel}"
 
-    /// ラベル列（左揃え）。各行は兵種ステータス名のみ（常に全行表示）。
-    def colLabels(result: LevelSystem.Result): String =
-        result#changes |> List.map(change -> change#label) |> joinLines
+    /// ラベル列（左揃え）。サブリスト（左列 or 右列）のステータス名を縦に並べる（常に全行表示）。
+    def colLabelsOf(changes: List[LevelSystem.StatChange]): String =
+        changes |> List.map(change -> change#label) |> joinLines
 
-    /// 現在値列（右揃え）。出し終えた行（index < revealed）にだけ「前の値」を出す。
-    def colBefore(result: LevelSystem.Result, revealed: Int32): String =
-        result#changes
-            |> List.mapWithIndex(i -> change -> if (i < revealed) "${change#before}" else "")
+    /// 現在値列（右揃え）。global index（offset + i）< revealed の行にだけ「前の値」を出す。
+    def colBeforeOf(changes: List[LevelSystem.StatChange], offset: Int32, revealed: Int32): String =
+        changes
+            |> List.mapWithIndex(i -> change -> if (offset + i < revealed) "${change#before}" else "")
             |> joinLines
 
     /// 矢印列（左揃え）。出した行のうち上昇した行だけ "->"。
-    def colArrow(result: LevelSystem.Result, revealed: Int32): String =
-        result#changes
-            |> List.mapWithIndex(i -> change -> if (i < revealed and change#gained) "->" else "")
+    def colArrowOf(changes: List[LevelSystem.StatChange], offset: Int32, revealed: Int32): String =
+        changes
+            |> List.mapWithIndex(i -> change -> if (offset + i < revealed and change#gained) "->" else "")
             |> joinLines
 
     /// 新値列（右揃え）。出した行のうち上昇した行だけ「後の値」。
-    def colAfter(result: LevelSystem.Result, revealed: Int32): String =
-        result#changes
-            |> List.mapWithIndex(i -> change -> if (i < revealed and change#gained) "${change#after}" else "")
+    def colAfterOf(changes: List[LevelSystem.StatChange], offset: Int32, revealed: Int32): String =
+        changes
+            |> List.mapWithIndex(i -> change -> if (offset + i < revealed and change#gained) "${change#after}" else "")
             |> joinLines
 
     /// `+1` 列（左揃え・金色）。出した行のうち上昇した行だけ "+1"。
-    def colPlus(result: LevelSystem.Result, revealed: Int32): String =
-        result#changes
-            |> List.mapWithIndex(i -> change -> if (i < revealed and change#gained) "+1" else "")
+    def colPlusOf(changes: List[LevelSystem.StatChange], offset: Int32, revealed: Int32): String =
+        changes
+            |> List.mapWithIndex(i -> change -> if (offset + i < revealed and change#gained) "+1" else "")
             |> joinLines
 
     /// 文字列リストを改行で連結する（末尾改行なし）。
