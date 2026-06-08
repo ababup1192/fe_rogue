@@ -176,6 +176,8 @@ mod PhaseTransitions {
             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
         clearAllPlayerRanges(scene)
+            // Shift の危険範囲(紫)は敵が動くと古くなるので敵ターン開始で消す（トグルは OFF に戻る）
+            |> DangerZoneScene.clear
             |> PlayerScene.showAllActive       // 敵フェーズ中は味方を通常色(アクティブ)で見せる
 
     /// ItemSelect フェーズに入る (ActionMenu「アイテム」確定時)。

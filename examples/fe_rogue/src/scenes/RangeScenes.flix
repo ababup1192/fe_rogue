@@ -322,27 +322,31 @@ mod EnemyAttackRangeScene {
     /// 既存ノードを取り除き、`enemyId` の敵の脅威範囲で構築し直す。
     /// `EnemyRangeScene` が直前に build した敵移動到達セルを読み、武器射程で広げて差集合を作る。
     /// 敵が居ない / 武器なし / 脅威セルが空なら何も描かない。
+    /// 「敵が居て武器を持つ」の 2 段の Option は forM で 1 段に畳み、空セル判定は
+    /// `renderThreat` に寄せてネストを浅く保つ。
     pub def refreshFor(enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ EnemyScene.RosterQuery =
         let cleared = clear(scene);
-        match EnemyScene.RosterQuery.get(enemyId) {
-            case None       => cleared
-            case Some(data) =>
-                match data#weapon {
-                    case None    => cleared
-                    case Some(w) =>
-                        let reachable = EnemyRangeScene.reachable(cleared);
-                        let lo = Int32.max(1, w#range#min);
-                        let hi = w#range#max;
-                        let cells = Board.computeThreatCells(reachable, lo, hi);
-                        if (List.isEmpty(cells)) cleared
-                        else
-                            cleared
-                                |> RangeOverlay.attachParent(name(),
-                                    NodeTag.EnemyAttackRange({enemyId = enemyId, cells = cells}))
-                                |> RangeOverlay.renderTiles(name(), cells, color(), alpha())
-                }
-        }
+        let built = forM (
+            data <- EnemyScene.RosterQuery.get(enemyId);
+            w    <- data#weapon
+        ) yield renderThreat(enemyId, threatCells(w, cleared), cleared);
+        Option.getWithDefault(cleared, built)
+
+    /// 敵移動到達セル (EnemyRangeScene.reachable) を武器射程で広げた脅威セル。
+    def threatCells(weapon: UnitCatalog.WeaponResource,
+                     scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
+        let reachable = EnemyRangeScene.reachable(scene);
+        Board.computeThreatCells(reachable, Int32.max(1, weapon#range#min), weapon#range#max)
+
+    /// 脅威セルが空でなければ EnemyAttackRange ノードを敷く。空なら scene をそのまま返す。
+    def renderThreat(enemyId: Int32, cells: List[{x = Int32, y = Int32}],
+                      scene: Scene[NodeTag]): Scene[NodeTag] =
+        if (List.isEmpty(cells)) scene
+        else scene
+            |> RangeOverlay.attachParent(name(),
+                NodeTag.EnemyAttackRange({enemyId = enemyId, cells = cells}))
+            |> RangeOverlay.renderTiles(name(), cells, color(), alpha())
 
     /// 表示中の EnemyAttackRange ノードがあれば取り除く。なければ何もしない。
     pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -544,6 +548,89 @@ mod TradeRangeScene {
     pub def cells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
         match Scene.getState(rangePath(), scene) {
             case Some(NodeTag.TradeRange(data)) => data#cells
+            case _                              => Nil
+        }
+}
+
+/// DangerZoneScene — Shift トグルで「全(可視)敵に攻撃される可能性があるマス」を紫で可視化する。
+///
+/// 各敵について「移動到達セル ∪ そこから武器射程で届くセル」を求め、全敵ぶんを統合した
+/// 危険範囲（= どこかの敵に攻撃されうるマス）を紫マスで描く。FE の敵射程一括表示(危険範囲)相当。
+/// 表示状態は「ノードの有無」で表す（在れば ON）。Shift で `toggle` を呼んで出し入れする。
+///
+/// **ライフサイクル**:
+///   - `Game.flix` の onKeyPressed が LeftShift のエッジで `toggle` を呼ぶ（PlayerCursor / PlayerMoving）。
+///   - 敵が動くと内容が古くなるので、`PhaseTransitions.enterEnemyTurn` で `clear` する。
+mod DangerZoneScene {
+
+    /// 親 Marker2D に紐づくデータ。統合済みの危険マス一覧。
+    pub type alias Data = {
+        cells = List[{x = Int32, y = Int32}]
+    }
+
+    def name(): String = "DangerZone"
+    pub def rangePath(): NodePath = name() :: Nil
+
+    /// 紫系 modulate。移動(青/白)・攻撃(赤)・交換(緑)と区別する危険範囲色。
+    def color(): Color = {r = 0.6f32, g = 0.3f32, b = 0.9f32}
+
+    /// 下のマップ・駒が見える程度に透かす。
+    def alpha(): Float32 = 0.5f32
+
+    /// 現在表示中か（= DangerZone ノードが在るか）。Shift トグルの状態に使う。
+    pub def isShown(scene: Scene[NodeTag]): Bool =
+        match Scene.getState(rangePath(), scene) {
+            case Some(NodeTag.DangerZone(_)) => true
+            case _                           => false
+        }
+
+    /// Shift トグル: 表示中なら消す、非表示なら全敵の危険範囲を組んで紫で描く。
+    pub def toggle(scene: Scene[NodeTag]): Scene[NodeTag] =
+        if (isShown(scene)) clear(scene) else show(scene)
+
+    /// 全可視敵の危険マス（移動到達 ∪ 攻撃到達）を統合して紫で描く。空なら何もしない。
+    /// `EnemyScene.getAll` は scene を直接読む純粋関数なので effect 不要。
+    def show(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let cleared = clear(scene);
+        let layer   = MapScene.getMapLayer(cleared);
+        // 敵 1 体の危険マス: 移動到達セル + (武器があれば)そこから射程で届くセル。
+        let dangerOf = e -> {
+            let reachable = Board.reachableCells(
+                c -> TileMapLayer.isFloor(c, layer), e#gridPos, e#moveTiles);
+            match e#weapon {
+                case None    => reachable
+                case Some(w) =>
+                    let lo = Int32.max(1, w#range#min);
+                    let hi = w#range#max;
+                    List.append(reachable, Board.computeThreatCells(reachable, lo, hi))
+            }
+        };
+        let cells = EnemyScene.getAll(cleared)
+            |> List.filter(e -> EnemyScene.isVisible(e#id, cleared))
+            |> List.foldLeft((acc, e) -> List.append(acc, dangerOf(e)), Nil)
+            |> dedupCells;
+        if (List.isEmpty(cells)) cleared
+        else
+            cleared
+                |> RangeOverlay.attachParent(name(), NodeTag.DangerZone({cells = cells}))
+                |> RangeOverlay.renderTiles(name(), cells, color(), alpha())
+
+    /// セル一覧から重複 (x,y 一致) を除く。先に出たものを残す。
+    def dedupCells(cells: List[{x = Int32, y = Int32}]):
+            List[{x = Int32, y = Int32}] =
+        List.foldLeft((acc, c) ->
+            if (List.exists(d -> d#x == c#x and d#y == c#y, acc)) acc
+            else List.append(acc, c :: Nil),
+            Nil, cells)
+
+    /// 表示中の DangerZone ノードがあれば取り除く。なければ何もしない。
+    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.removeAt(rangePath(), scene)
+
+    /// 現在の危険マス一覧 (テスト・デバッグ用)。未登録なら空リスト。
+    pub def cells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
+        match Scene.getState(rangePath(), scene) {
+            case Some(NodeTag.DangerZone(data)) => data#cells
             case _                              => Nil
         }
 }

@@ -11,6 +11,8 @@ pub enum NodeTag {
     case MoveAttackRange(MoveAttackRangeScene.Data)
     /// TradeRangeScene の緑マス overlay（「こうかん」確定後の隣接味方マス）
     case TradeRange(TradeRangeScene.Data)
+    /// DangerZoneScene の紫マス overlay（Shift トグル: 全敵に攻撃されうるマスの統合）
+    case DangerZone(DangerZoneScene.Data)
     case Cursor(CursorScene.Data)
     /// ArrowCursorScene の Marker2D（杖発射方向を視覚化する矢印カーソル）
     case ArrowCursor(ArrowCursorScene.Data)
@@ -231,22 +233,31 @@ instance InputEvent.InputHandler[NodeTag] {
                 Some(TurnRules.Input.Cancel)
             else None;
         let phase = TurnPhase.State.get();
-        // プレイヤー操作のフィードバック効果音（決定 / キャンセル / メニューカーソル移動）。
-        // onKeyPressed は物理キー押下ごとに 1 度だけ発火するので、ここで鳴らせば 1 押下 = 1 音。
-        // 実際の処理分岐 (dispatchMenuKey 等) は別途行うが、音はこの単一地点に集約する。
-        playInputSfx(phase, input, key);
-        // ユニット情報ポップアップの X トグルは PlayerCursor の下見中のみ。
-        // PlayerAttack 中はポップアップを出さず、X は戦闘予測のキャンセルに使う。
-        let popupShown = UnitInfoPopupScene.isShown(scene)
-                          and phase == TurnPhase.Phase.PlayerCursor;
-        // メニュー系フェーズ (ActionMenu / ItemMenu / TradeMenu) の Z/X は別関数で処理。
-        // Some が返ってくれば dispatcher が処理済みなのでその scene をそのまま返す。
-        match input {
-            case Some(inp) => match checked_ecast(dispatchMenuKey(phase, inp, scene)) {
-                case Some(after) => after
-                case None        => dispatchNonMenuKey(phase, input, key, popupShown, scene)
+        // Shift トグル: 危険範囲(紫 = 全敵に攻撃されうるマス)の表示/非表示。
+        // メニューの効果音を鳴らし、PlayerCursor / PlayerMoving の地図プランニング中のみ反応する。
+        if (key == GameEngine.Key.LeftShift)
+            if (phase == TurnPhase.Phase.PlayerCursor or phase == TurnPhase.Phase.PlayerMoving) {
+                AudioStreamPlayer.play("confirm");
+                DangerZoneScene.toggle(scene)
+            } else scene
+        else {
+            // プレイヤー操作のフィードバック効果音（決定 / キャンセル / メニューカーソル移動）。
+            // onKeyPressed は物理キー押下ごとに 1 度だけ発火するので、ここで鳴らせば 1 押下 = 1 音。
+            // 実際の処理分岐 (dispatchMenuKey 等) は別途行うが、音はこの単一地点に集約する。
+            playInputSfx(phase, input, key);
+            // ユニット情報ポップアップの X トグルは PlayerCursor の下見中のみ。
+            // PlayerAttack 中はポップアップを出さず、X は戦闘予測のキャンセルに使う。
+            let popupShown = UnitInfoPopupScene.isShown(scene)
+                              and phase == TurnPhase.Phase.PlayerCursor;
+            // メニュー系フェーズ (ActionMenu / ItemMenu / TradeMenu) の Z/X は別関数で処理。
+            // Some が返ってくれば dispatcher が処理済みなのでその scene をそのまま返す。
+            match input {
+                case Some(inp) => match checked_ecast(dispatchMenuKey(phase, inp, scene)) {
+                    case Some(after) => after
+                    case None        => dispatchNonMenuKey(phase, input, key, popupShown, scene)
+                }
+                case None => dispatchNonMenuKey(phase, input, key, popupShown, scene)
             }
-            case None => dispatchNonMenuKey(phase, input, key, popupShown, scene)
         }
 }
 
