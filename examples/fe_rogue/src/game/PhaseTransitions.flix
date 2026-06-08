@@ -81,6 +81,7 @@ mod PhaseTransitions {
                               PlayerScene.PartyQuery} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         clearAllPlayerRanges(scene)
+            |> EnemyScene.showAllActive        // 味方フェーズ中は敵を通常色(アクティブ)で見せる
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToPlayer
 
@@ -94,6 +95,7 @@ mod PhaseTransitions {
                               TurnPhase.State} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         clearAllPlayerRanges(scene)
+            |> EnemyScene.showAllActive        // 味方フェーズ中は敵を通常色(アクティブ)で見せる
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToCell(target)
 
@@ -171,6 +173,7 @@ mod PhaseTransitions {
             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
         clearAllPlayerRanges(scene)
+            |> PlayerScene.showAllActive       // 敵フェーズ中は味方を通常色(アクティブ)で見せる
 
     /// ItemSelect フェーズに入る (ActionMenu「アイテム」確定時)。
     /// 動作: 味方系の青/赤マスを片付けて、カーソルを隠す（メニュー操作専用画面のため）。

@@ -5,10 +5,14 @@
 /// 帯は左から横に滑り込み、少し止まってから右へ滑り抜けて消える。
 ///
 /// 自走モデル: 専用ノードの `process` が毎フレーム今のフェーズを見て、前フレームと
-/// 「味方か敵か」が変わったときにバナーを出し直す。`PhaseTransitions` 等の遷移関数には
-/// 手を入れない（味方ターン中のサブフェーズ移動でも `PlayerCursor` には何度も入るため、
-/// 遷移関数にフックを足すと味方ターン中に何度も再表示されてしまう。トップレベルの
-/// 「敵ターンか否か」の変化だけを見るのが正しい単一の判定点）。
+/// 「味方か敵か」が変わったらバナーを出す。`PhaseTransitions` 等の遷移関数には手を入れない
+/// （味方ターン中のサブフェーズ移動でも `PlayerCursor` には何度も入るため、遷移関数にフックを
+/// 足すと味方ターン中に何度も再表示されてしまう。トップレベルの「敵ターンか否か」の変化だけを
+/// 見るのが正しい単一の判定点）。
+///
+/// 演出中にターンが変わっても帯は上書きしない。「次に見せたいターン」を控えておき、今の帯が
+/// 出終わってから控えを再生する。これにより、敵が一瞬で行動を終える（敵がいない・その場待機）
+/// 短い敵ターンでも「エネミーフェーズ」→「プレイヤーフェーズ」が必ず順番に最後まで見える。
 ///
 /// 文字は alpha を持たず（`DamagePopupScene` 参照）、描画パス上で親 CanvasLayer の可視性も
 /// 見ない（`BattlePanelScene` 参照）ため、フェードや visible 切替には頼らない。代わりに
@@ -41,10 +45,14 @@ mod PhaseBannerScene {
     /// `elapsed`  — 今の段階に入ってからの経過時間（段階ごとに 0 から数え直す）。
     /// `wasEnemy` — 前フレームに観測した「敵ターンだったか」。None は未観測（起動直後）で、
     ///              最初のフレームで必ず味方バナーを出すための初期値。
+    /// `pending`  — 演出中に新しいターンへ切り替わったときに「次に見せたいターン」を覚えておく枠。
+    ///              今の帯を最後まで再生したいので即座には出さず、Idle に戻ってから出す。
+    ///              None は保留なし。Some(敵ターンか) が次に出すバナー。
     pub type alias BannerData = {
         stage    = Stage,
         elapsed  = Duration.Duration,
-        wasEnemy = Option[Bool]
+        wasEnemy = Option[Bool],
+        pending  = Option[Bool]
     }
 
     /// `step` の結果。
@@ -103,6 +111,9 @@ mod PhaseBannerScene {
     def playerText(): String = "プレイヤーフェーズ"
     def enemyText(): String = "エネミーフェーズ"
 
+    /// 演出開始時に鳴らすフェーズ切替音（project.json の "sounds" に登録した name と一致させる）。
+    def phaseChangeSound(): String = "phase_change"
+
     /// 滑り込み / 静止 / 滑り抜けの各時間（合計 ≈ 2.4 秒）。
     def slideInDuration(): Duration.Duration = Duration.millis(440)
     def holdDuration(): Duration.Duration = Duration.millis(1520)
@@ -119,7 +130,7 @@ mod PhaseBannerScene {
 
     /// 起動直後の状態。`wasEnemy = None` なので最初のフレームで味方バナーが出る。
     def initialData(): BannerData =
-        {stage = Stage.Idle, elapsed = Duration.zero(), wasEnemy = None}
+        {stage = Stage.Idle, elapsed = Duration.zero(), wasEnemy = None, pending = None}
 
     // ────────────────────────────────────────────────────────
     // (C) 構築
@@ -153,24 +164,51 @@ mod PhaseBannerScene {
                 EngineNode.Label2DWithState(text, NodeTag.NoTag))
 
     // ────────────────────────────────────────────────────────
-    // (D) ロジック（純粋）
+    // (D) 問い合わせ
+    // ────────────────────────────────────────────────────────
+
+    /// バナーが表示中（滑り込み・静止・滑り抜けのいずれか）か。Idle（非表示）なら false。
+    /// 敵ターンの進行役（EnemyTurnDriverScene）が「エネミーフェーズの帯が出ている間は
+    /// 敵を行動させない」ために参照する。
+    pub def isBusy(scene: Scene[NodeTag]): Bool =
+        match Scene.getState(rootPath(), scene) {
+            case Some(NodeTag.PhaseBanner(data)) => data#stage != Stage.Idle
+            case _                               => false
+        }
+
+    // ────────────────────────────────────────────────────────
+    // (E) ロジック（純粋）
     // ────────────────────────────────────────────────────────
 
     /// 1 フレーム分の状態更新（副作用なし。テスト対象）。
-    /// 今のフェーズが「敵ターンか(isEnemy)」を受け取り、前フレームと変わっていれば
-    /// 滑り込みをやり直す。続いて今の段階を経過時間で進め、帯に与える横オフセットを返す。
+    /// 今のフェーズが「敵ターンか(isEnemy)」を受け取り、前フレームと変わっていればそのターンを
+    /// 「次に見せたいターン」として控える。演出していない（Idle）ときだけ控えを取り出して
+    /// 滑り込みを開始する。演出中はそのまま最後まで進めて上書きしない（FE 流に必ず順番に見せる）。
+    /// 続いて今の段階を経過時間で進め、帯に与える横オフセットを返す。
     pub def step(data: BannerData, isEnemy: Bool, dt: Duration.Duration): StepResult =
-        let changed = data#wasEnemy != Some(isEnemy);
-        // ターンが切り替わった（または起動直後）なら滑り込みを先頭からやり直す。
-        let restarted =
-            if (changed)
-                {stage = Stage.SlideIn, elapsed = Duration.zero(), wasEnemy = Some(isEnemy)}
-            else
-                data;
-        let advanced = advance(restarted, dt);
-        {data = advanced#data,
-         offsetX = advanced#offsetX,
-         triggered = if (changed) Some(isEnemy) else None}
+        let observedChange = data#wasEnemy != Some(isEnemy);
+        // 新しい変化があればそれを最優先で控える。なければ前回の控えを維持する。
+        let queued =
+            if (observedChange) Some(isEnemy)
+            else data#pending;
+        // 観測したターンは常に記録して、同じ切り替わりを二重に拾わないようにする。
+        let observed = {wasEnemy = Some(isEnemy) | data};
+        if (data#stage == Stage.Idle)
+            // 演出していない。控えがあれば今すぐ開始し、そのフレームだけ triggered を返す。
+            match queued {
+                case None         =>
+                    let advanced = advance({pending = None | observed}, dt);
+                    {data = advanced#data, offsetX = advanced#offsetX, triggered = None}
+                case Some(target) =>
+                    let started = {stage = Stage.SlideIn, elapsed = Duration.zero(),
+                                   wasEnemy = Some(isEnemy), pending = None};
+                    let advanced = advance(started, dt);
+                    {data = advanced#data, offsetX = advanced#offsetX, triggered = Some(target)}
+            }
+        else
+            // 演出中は上書きしない。今の帯を最後まで進め、見せたいターンは控えに残す。
+            let advanced = advance({pending = queued | observed}, dt);
+            {data = advanced#data, offsetX = advanced#offsetX, triggered = None}
 
     /// 今の段階を `dt` 分進めて、新しい状態とこのフレームの横オフセットを返す。
     /// 各段階は時間切れで次の段階へ移り、経過時間を 0 に戻す。
@@ -223,21 +261,26 @@ mod PhaseBannerScene {
         ratio * ratio
 
     // ────────────────────────────────────────────────────────
-    // (D) ロジック（毎フレーム・副作用あり）
+    // (F) ロジック（毎フレーム・副作用あり）
     // ────────────────────────────────────────────────────────
 
     /// Game.flix の `process` redef から `NodeTag.PhaseBanner` ノードに対して dispatch される
     /// (バナーは 1 個のみなので 1 フレーム 1 回)。今のフェーズを `step` に渡して状態を進め、
-    /// バナーが始まったフレームでは文字と帯色を差し替え、横オフセットを反映する。
+    /// バナーが始まったフレームでは文字と帯色を差し替え、フェーズ切替音を鳴らし、横オフセットを反映する。
     /// 末尾で scene から self の最新ノードを取り直して返す（offset/state 更新が打ち消されないように）。
     pub def process(delta: Duration.Duration,
                      node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) \ TurnPhase.State =
+                    (EngineNode[NodeTag], Scene[NodeTag]) \ {TurnPhase.State, GameEngine.Audio} =
         match node {
             case EngineNode.CanvasLayerWithState(_, NodeTag.PhaseBanner(data)) =>
                 let isEnemy = TurnPhase.State.get() == TurnPhase.Phase.EnemyTurn;
                 let result = step(data, isEnemy, delta);
+                // 演出（帯の滑り込み）が始まったフレームの冒頭でフェーズ切替音を鳴らす。
+                match result#triggered {
+                    case Some(_) => AudioStreamPlayer.play(phaseChangeSound())
+                    case None    => ()
+                };
                 let next = scene
                     |> applyTrigger(result#triggered)
                     |> setOffsetX(result#offsetX)

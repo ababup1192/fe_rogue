@@ -1,8 +1,9 @@
 /// PhaseBannerScene の純粋な状態更新 `step` を検証する。
 ///
-/// `step` は「今のフェーズが敵ターンか」と前フレームの状態から、(1) ターンが切り替わった
-/// 瞬間にバナーを出し直すか、(2) スライド演出の段階を時間で進める、の 2 つを担う。
-/// 帯の描画・色差し替え・オフセット反映は scene 副作用なので、ここでは扱わず実機確認に委ねる。
+/// `step` は「今のフェーズが敵ターンか」と前フレームの状態から、(1) 見せたいターンを控える、
+/// (2) 演出していないときだけ控えを取り出してバナーを開始する、(3) スライド演出の段階を時間で
+/// 進める、を担う。帯の描画・色差し替え・オフセット反映は scene 副作用なので、ここでは扱わず
+/// 実機確認に委ねる。
 ///
 /// 段階の長さ: 滑り込み 440ms / 静止 1520ms / 滑り抜け 440ms。
 /// 「段階が終わる」系のテストは、どの段階の長さ(最大 1520ms)も確実に超える 2 秒(2000ms)を
@@ -12,7 +13,7 @@ mod TestPhaseBannerScene {
     use PhaseBannerScene.Stage
 
     // ════════════════════════════════════════════════════════
-    // トリガー判定: ターンの切り替わりでバナーが出る／同一ターンでは出ない
+    // トリガー: 演出していない(Idle)ときはターンに合わせて即座にバナーを出す
     // ════════════════════════════════════════════════════════
 
     /// 起動直後（wasEnemy = None）の最初のフレームは、味方ターンとして味方バナーを出し始める。
@@ -20,33 +21,64 @@ mod TestPhaseBannerScene {
     @Test
     def testFirstFrameTriggersPlayerBanner(): Unit \ Assert =
         let result = PhaseBannerScene.step(
-            {stage = Stage.Idle, elapsed = Duration.zero(), wasEnemy = None},
+            {stage = Stage.Idle, elapsed = Duration.zero(), wasEnemy = None, pending = None},
             false,
             Duration.millis(50));
         Assert.assertEq(expected = (Some(false), Stage.SlideIn),
                         (result#triggered, result#data#stage))
 
-    /// 味方ターン表示中(wasEnemy = Some(false))に敵ターンへ切り替わると、敵バナーを出し直す。
-    /// triggered = Some(true)、段階は滑り込みに戻る。
+    /// 非表示(Idle)中に味方→敵へ切り替わると、その場で敵バナーを出し始める。
+    /// triggered = Some(true)、段階は滑り込み。
     @Test
-    def testTurnChangeTriggersEnemyBanner(): Unit \ Assert =
+    def testTurnChangeWhileIdleTriggersEnemyBanner(): Unit \ Assert =
         let result = PhaseBannerScene.step(
-            {stage = Stage.Hold, elapsed = Duration.zero(), wasEnemy = Some(false)},
+            {stage = Stage.Idle, elapsed = Duration.zero(),
+             wasEnemy = Some(false), pending = None},
             true,
             Duration.millis(50));
         Assert.assertEq(expected = (Some(true), Stage.SlideIn),
                         (result#triggered, result#data#stage))
 
-    /// 同じターンが続くフレームでは出し直さない（triggered = None、段階も維持）。
-    /// 味方ターン中のサブフェーズ移動で何度もバナーが再生されないことの保証。
+    // ════════════════════════════════════════════════════════
+    // 上書きしない: 演出中にターンが変わっても今の帯を最後まで出し、次は控える
+    // ════════════════════════════════════════════════════════
+
+    /// 味方バナーの静止中に敵ターンへ切り替わっても、味方バナーは上書きしない。
+    /// triggered は出さず（None）、段階は静止のまま、敵ターンは控え(pending)に積む。
+    /// これが「敵が一瞬で行動を終えても順番に最後まで見せる」ための核心。
+    @Test
+    def testBusyBannerDefersTurnChangeToPending(): Unit \ Assert =
+        let result = PhaseBannerScene.step(
+            {stage = Stage.Hold, elapsed = Duration.zero(),
+             wasEnemy = Some(false), pending = None},
+            true,
+            Duration.millis(50));
+        Assert.assertEq(expected = (None, Stage.Hold, Some(true)),
+                        (result#triggered, result#data#stage, result#data#pending))
+
+    /// 同じターンが続くフレームでは何も出さない（triggered = None、段階も控えも変わらない）。
+    /// 味方ターン中のサブフェーズ移動でバナーが何度も走らないことの保証。
     @Test
     def testSameTurnDoesNotRetrigger(): Unit \ Assert =
         let result = PhaseBannerScene.step(
-            {stage = Stage.Hold, elapsed = Duration.millis(100), wasEnemy = Some(false)},
+            {stage = Stage.Hold, elapsed = Duration.millis(100),
+             wasEnemy = Some(false), pending = None},
             false,
             Duration.millis(50));
-        Assert.assertEq(expected = (None, Stage.Hold),
-                        (result#triggered, result#data#stage))
+        Assert.assertEq(expected = (None, Stage.Hold, None),
+                        (result#triggered, result#data#stage, result#data#pending))
+
+    /// 帯が出終わって非表示(Idle)に戻ったフレームで、控えていたターンのバナーを出し始める。
+    /// triggered = Some(true)、段階は滑り込み、控えは空に戻る。
+    @Test
+    def testIdleStartsPendingBanner(): Unit \ Assert =
+        let result = PhaseBannerScene.step(
+            {stage = Stage.Idle, elapsed = Duration.zero(),
+             wasEnemy = Some(true), pending = Some(true)},
+            true,
+            Duration.millis(50));
+        Assert.assertEq(expected = (Some(true), Stage.SlideIn, None),
+                        (result#triggered, result#data#stage, result#data#pending))
 
     // ════════════════════════════════════════════════════════
     // 段階遷移: 滑り込み → 静止 → 滑り抜け → 非表示
@@ -56,7 +88,8 @@ mod TestPhaseBannerScene {
     @Test
     def testSlideInEndsAtCenter(): Unit \ Assert =
         let result = PhaseBannerScene.step(
-            {stage = Stage.SlideIn, elapsed = Duration.zero(), wasEnemy = Some(false)},
+            {stage = Stage.SlideIn, elapsed = Duration.zero(),
+             wasEnemy = Some(false), pending = None},
             false,
             Duration.millis(2000));
         Assert.assertEq(expected = (Stage.Hold, 0.0),
@@ -66,7 +99,8 @@ mod TestPhaseBannerScene {
     @Test
     def testHoldEndsStartsSlideOut(): Unit \ Assert =
         let result = PhaseBannerScene.step(
-            {stage = Stage.Hold, elapsed = Duration.zero(), wasEnemy = Some(false)},
+            {stage = Stage.Hold, elapsed = Duration.zero(),
+             wasEnemy = Some(false), pending = None},
             false,
             Duration.millis(2000));
         Assert.assertEq(expected = (Stage.SlideOut, 0.0),
@@ -76,7 +110,8 @@ mod TestPhaseBannerScene {
     @Test
     def testSlideOutEndsParksOffScreen(): Unit \ Assert =
         let result = PhaseBannerScene.step(
-            {stage = Stage.SlideOut, elapsed = Duration.zero(), wasEnemy = Some(false)},
+            {stage = Stage.SlideOut, elapsed = Duration.zero(),
+             wasEnemy = Some(false), pending = None},
             false,
             Duration.millis(2000));
         Assert.assertEq(expected = (Stage.Idle, 140.0),

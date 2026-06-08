@@ -331,6 +331,17 @@ mod EnemyScene {
                 |> UnitHPBarScene.setModulate(enemyPath(id), activeColor()),
             scene, ids)
 
+    /// 全敵の sprite / HP ゲージを通常色(active)に戻す。`acted` フラグは変えない。
+    /// 味方フェーズ中に「敵の行動済み灰色」を消してアクティブに見せるために使う
+    /// （行動済みという扱い自体は残し、見た目だけ通常色に戻す）。
+    pub def showAllActive(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let ids = getAll(scene) |> List.map(d -> d#id);
+        List.foldLeft((sc, id) ->
+            sc
+                |> setSpriteModulate(id, activeColor())
+                |> UnitHPBarScene.setModulate(enemyPath(id), activeColor()),
+            scene, ids)
+
     /// フォグ適用: 各敵を「現在地が lit(=isLit) なら表示、さもなくば非表示」にする。
     /// 親 Marker2D の visible を切り替えるので子 Sprite / HPBar も連動する。
     /// 非表示でも process(AI) は走るため、見えないだけで活動は継続する。`FogScene` から毎フレーム呼ばれる。

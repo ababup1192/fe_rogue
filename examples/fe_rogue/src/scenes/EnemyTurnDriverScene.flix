@@ -93,7 +93,9 @@ mod EnemyTurnDriverScene {
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State,
                 Pacing.State, PlayerScene.PartyQuery} =
-        if (Pacing.State.isHolding()) scene
+        // 「エネミーフェーズ」の帯が出ている間は敵を動かさない（帯が出終わってから行動開始）。
+        if (PhaseBannerScene.isBusy(scene)) scene
+        else if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
         else if (EnemyScene.anyAttacking(scene)) scene
         else if (PlayerScene.anyAttacking(scene)) scene

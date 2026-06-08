@@ -513,6 +513,7 @@ mod Game {
                 AudioStreamPlayer.setVolume("down_enemy", 0.5f32);
                 AudioStreamPlayer.setVolume("miss", 0.5f32);
                 AudioStreamPlayer.setVolume("find", 0.5f32);
+                AudioStreamPlayer.setVolume("phase_change", 0.5f32);
                 GameLogger.playerLog("T1 味方のターン");
                 gameLoop(sceneRef, scene)
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。

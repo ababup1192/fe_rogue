@@ -781,6 +781,17 @@ mod PlayerScene {
                 |> playAnim(id, idleAnimName()),
             scene, ids)
 
+    /// 全プレイヤーの sprite / HP ゲージを通常色(active)に戻す。`waited` フラグは変えない。
+    /// 敵フェーズ中に「味方の行動済み灰色」を消してアクティブに見せるために使う
+    /// （待機しているという扱い自体は残し、見た目だけ通常色に戻す。階段で退場済みの味方は対象外）。
+    pub def showAllActive(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let ids = getAll(scene) |> List.filter(d -> not d#usedStairs) |> List.map(d -> d#id);
+        List.foldLeft((sc, id) ->
+            sc
+                |> setSpriteModulate(id, activeColor())
+                |> UnitHPBarScene.setModulate(playerPath(id), activeColor()),
+            scene, ids)
+
     /// AutoMove で消費した移動歩数を記録するための setter。
     pub def setMoveStepsTaken(id: Int32, steps: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPlayer(id, d -> {moveStepsTaken = steps | d}, scene)

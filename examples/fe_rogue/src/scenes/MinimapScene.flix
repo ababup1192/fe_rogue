@@ -174,17 +174,24 @@ mod MinimapScene {
                     (EngineNode[NodeTag], Scene[NodeTag]) \ {GameEngine.Game, TurnPhase.State} =
         match node {
             case EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(data)) =>
+                let phase = TurnPhase.State.get();
                 let mDown = GameEngine.Game.isKeyPressed(GameEngine.Key.M);
-                let visible2 = if (mDown and not data#mPrev) not data#visible else data#visible;
+                // 敵ターン中は M を受け付けない（エネミーフェーズ中はミニマップを開けないようにする）。
+                // トグル自体を無視するので、敵ターン中に押しても敵ターン明けに開いたりしない。
+                let acceptsToggle = phase != TurnPhase.Phase.EnemyTurn;
+                let visible2 =
+                    if (mDown and not data#mPrev and acceptsToggle) not data#visible
+                    else data#visible;
                 let placements = MapScene.getPlacements(scene);
                 let frame = visitedThisFrame(PlayerScene.getAll(scene), placements);
                 let visited2 = accumulate(data#visited, frame);
                 let stairs2 = data#stairsSeen or stairsDiscovered(visited2, placements, scene);
                 let nextData = {visited = visited2, stairsSeen = stairs2,
                                 visible = visible2, mPrev = mDown};
-                // レベルアップ画面の間は隠す（M トグルの記憶 visible2 は維持）。
-                let levelUp = TurnPhase.State.get() == TurnPhase.Phase.LevelUpView;
-                let show = visible2 and not levelUp;
+                // レベルアップ画面・敵ターン中は隠す（M トグルの記憶 visible2 は維持）。
+                let hidden = phase == TurnPhase.Phase.LevelUpView
+                              or phase == TurnPhase.Phase.EnemyTurn;
+                let show = visible2 and not hidden;
                 (EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(nextData)),
                  renderMinimap(show, nextData, scene))
             case _ => (node, scene)
