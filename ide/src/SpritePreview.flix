@@ -71,6 +71,34 @@ mod SpritePreview {
         scanForSpriteRef(record, names)
     }
 
+    /// `findFirstSpriteRef` と同じ DFS だが、ヒットした object（texture を持つ object =
+    /// sprite ブロック）への record ルートからのキー列も一緒に返す。
+    /// 実データでは `("sprite" :: Nil)`。frame を commit するときの keyPath
+    /// (`basePath ++ spritePath ++ ["frame"]`) を組み立てるために使う。
+    pub def findFirstSpriteRefWithPath(record: Json.JsonElement, textureNames: List[String]):
+            Option[(SpriteRef, List[String])] = {
+        let names = List.toSet(textureNames);
+        scanForSpriteRefWithPath(record, names, Nil)
+    }
+
+    /// `scanForSpriteRef` のパス付き版。`pathAcc` は走査済みのキー列（逆順ではなく順方向）。
+    def scanForSpriteRefWithPath(elem: Json.JsonElement, textureNames: Set[String],
+                                  pathAcc: List[String]): Option[(SpriteRef, List[String])] =
+        match elem {
+            case Json.JsonElement.JsonObject(m) =>
+                match extractSpriteRefHere(m, textureNames) {
+                    case Some(spriteRef) => Some((spriteRef, pathAcc))
+                    case None            =>
+                        Map.foldLeftWithKey((acc, k, v) -> match acc {
+                            case Some(_) => acc
+                            case None    =>
+                                scanForSpriteRefWithPath(v, textureNames,
+                                                          List.append(pathAcc, k :: Nil))
+                        }, None, m)
+                }
+            case _ => None
+        }
+
     def scanForSpriteRef(elem: Json.JsonElement, textureNames: Set[String]):
             Option[SpriteRef] =
         match elem {
@@ -159,6 +187,7 @@ mod SpritePreview {
                                  panOffset: (Float64, Float64),
                                  getCurrentPan: Unit -> (Float64, Float64) \ IO,
                                  onPanCommit: ((Float64, Float64)) -> Unit \ IO,
+                                 onFrameSelect: Int32 -> Unit \ IO,
                                  onStatus: String -> Unit \ IO): Unit \ IO = {
         // canvas のサイズは pane に追従させる（window resize で見える範囲が増減）
         let paneW = pane.getWidth();
@@ -207,7 +236,8 @@ mod SpritePreview {
                         // フレーム調整モードでのみドラッグ pan を有効化（毎回 set し直す = 直近フレームの座標で更新）。
                         // ピンチハンドラは ResourcePanel.wirePreviewPinchZoom で永続 canvas に 1 回だけ登録済み。
                         if (fullSheetMode) {
-                            wirePanDrag(persistentCanvas, atlasDraw, getCurrentPan, onPanCommit)
+                            wirePanDrag(persistentCanvas, atlasDraw, getCurrentPan, onPanCommit,
+                                         onFrameSelect)
                         } else ()
                     }
                 }
@@ -229,24 +259,31 @@ mod SpritePreview {
         "セル: ${cellWi}×${cellHi} px ／ Zoom: ${zoomStr}"
     }
 
-    /// フレーム調整モードの canvas にマウスドラッグ pan を貼る。
+    /// フレーム調整モードの canvas にマウスドラッグ pan + クリックでのフレーム選択を貼る。
     /// 押下時の (mouse, pan) を closure-capture した Static Array に記録し、
     /// drag のたびに新 pan を計算して同じ canvas に直接 redraw する。
     /// onPanCommit は ResourceState を更新し、後続の updateSpritePreview 呼び出しが
-    /// 新しい pan を反映できるようにする
+    /// 新しい pan を反映できるようにする。
+    /// クリック（ドラッグを伴わない押下→離上）では描画と同じ変換を逆に解いて、
+    /// 押した位置のアトラスセル番号を求め onFrameSelect で確定する。
+    /// JavaFX はドラッグ後も MOUSE_CLICKED を発火しうるので、`moved` フラグで pan と区別する。
     def wirePanDrag(canvas: Canvas, draw: AtlasDrawState,
                      getCurrentPan: Unit -> (Float64, Float64) \ IO,
-                     onPanCommit: ((Float64, Float64)) -> Unit \ IO): Unit \ IO = {
+                     onPanCommit: ((Float64, Float64)) -> Unit \ IO,
+                     onFrameSelect: Int32 -> Unit \ IO): Unit \ IO = {
         // ドラッグ起点: 押下時のマウス座標と pan 値を保持する。
         // 初期 0.0 はダミー — 実際の値は MOUSE_PRESSED で setReplace される
         let startMouseX = Array#{0.0} @ Static;
         let startMouseY = Array#{0.0} @ Static;
         let startPanX = Array#{0.0} @ Static;
         let startPanY = Array#{0.0} @ Static;
+        // ドラッグが発生したか。press で false、drag で true。click はこれを見て選択を抑止する
+        let moved = Array#{false} @ Static;
         canvas.setOnMousePressed(new EventHandler[MouseEvent] {
             def handle(_this: EventHandler[MouseEvent], e: MouseEvent): Unit \ IO = {
                 Array.put(e.getX(), 0, startMouseX);
                 Array.put(e.getY(), 0, startMouseY);
+                Array.put(false, 0, moved);
                 // 押下のたびに ResourceState から最新 pan を取り直す。
                 // これで 2 回目以降のドラッグストロークでも累積した pan を起点にできる
                 let (curX, curY) = getCurrentPan();
@@ -258,13 +295,70 @@ mod SpritePreview {
             def handle(_this: EventHandler[MouseEvent], e: MouseEvent): Unit \ IO = {
                 let dx = e.getX() - Array.get(0, startMouseX);
                 let dy = e.getY() - Array.get(0, startMouseY);
+                // 微小なブレはクリック扱いにするため、しきい値を超えたら moved とみなす
+                if (Float64.abs(dx) > 3.0 or Float64.abs(dy) > 3.0)
+                    Array.put(true, 0, moved)
+                else ();
                 let newPanX = Array.get(0, startPanX) + dx;
                 let newPanY = Array.get(0, startPanY) + dy;
                 onPanCommit((newPanX, newPanY));
                 // 同じ canvas 上に直接 redraw (children.clear はしない)
                 drawFullSheetWithSelection(draw, newPanX, newPanY)
             }
+        });
+        canvas.setOnMouseClicked(new EventHandler[MouseEvent] {
+            def handle(_this: EventHandler[MouseEvent], e: MouseEvent): Unit \ IO = {
+                if (Array.get(0, moved)) ()  // ドラッグだった → pan 専用、選択しない
+                else {
+                    let (panX, panY) = getCurrentPan();
+                    match frameAtPoint(draw, e.getX(), e.getY(), panX, panY) {
+                        case Some(f) => onFrameSelect(f)
+                        case None    => ()
+                    }
+                }
+            }
         })
+    }
+
+    /// canvas 上のクリック座標 (mx, my) を `drawFullSheetWithSelection` と同じ変換の逆で
+    /// アトラスのセル番号に変換する。グリッド外（負方向のはみ出し含む）は None。
+    /// 戻り値の frame = row * hframes + col。
+    def frameAtPoint(draw: AtlasDrawState, mx: Float64, my: Float64,
+                      panX: Float64, panY: Float64): Option[Int32] = {
+        let hframes = draw#hframes;
+        let vframes = draw#vframes;
+        let imgW = draw#imgW;
+        let imgH = draw#imgH;
+        let canvasW = draw#canvasW;
+        let canvasH = draw#canvasH;
+        if (hframes <= 0i32 or vframes <= 0i32 or imgW <= 0.0 or imgH <= 0.0) None
+        else {
+            let fitScale = Float64.min(canvasW / imgW, canvasH / imgH);
+            let zoomMul = match draw#zoomMode {
+                case PropertyWidgets.ZoomMode.Percent(p) => p / 100.0
+            };
+            let effScale = fitScale * zoomMul;
+            let cellW = imgW / Int32.toFloat64(hframes);
+            let cellH = imgH / Int32.toFloat64(vframes);
+            // 現在選択セルを canvas 中心に置いた描画と同じ原点 (dstX0, dstY0) を再構築する
+            let safeFrame = if (draw#frame < 0i32) 0i32 else draw#frame;
+            let curCol = Int32.modulo(safeFrame, hframes);
+            let curRow = safeFrame / hframes;
+            let cellCx = (Int32.toFloat64(curCol) + 0.5) * cellW * effScale;
+            let cellCy = (Int32.toFloat64(curRow) + 0.5) * cellH * effScale;
+            let dstX0 = canvasW / 2.0 - cellCx + panX;
+            let dstY0 = canvasH / 2.0 - cellCy + panY;
+            if (effScale <= 0.0) None
+            else {
+                let imageX = (mx - dstX0) / effScale;
+                let imageY = (my - dstY0) / effScale;
+                let col = Float64.floor(imageX / cellW) |> Float64.tryToInt32 |> Option.getWithDefault(-1i32);
+                let row = Float64.floor(imageY / cellH) |> Float64.tryToInt32 |> Option.getWithDefault(-1i32);
+                if (col >= 0i32 and col < hframes and row >= 0i32 and row < vframes)
+                    Some(row * hframes + col)
+                else None
+            }
+        }
     }
 
     /// 既存挙動: 選択フレーム 1 セルだけを切り抜いて中央描画。offset と zoom を反映。

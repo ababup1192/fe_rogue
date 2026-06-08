@@ -154,9 +154,10 @@ mod PropertyWidgets {
                         textureNames: List[String],
                         texturePathMap: Map[String, String],
                         refOptions: Map[String, List[String]],
-                        mkCommit: List[String] -> Commit): Unit \ IO =
+                        mkCommit: List[String] -> Commit,
+                        framePick: Unit -> Unit \ IO): Unit \ IO =
         addFieldRowWithRoot(children, key, entry, record, record, basePath,
-                              textureNames, texturePathMap, refOptions, mkCommit)
+                              textureNames, texturePathMap, refOptions, mkCommit, framePick)
 
     /// `addFieldRow` の内部実装。`rootRecord` は最初に呼ばれたときの「ユニット全体の record」で、
     /// Nested 再帰中も保持して widget 側に渡す（sibling 参照に使う）。
@@ -168,14 +169,21 @@ mod PropertyWidgets {
                              textureNames: List[String],
                              texturePathMap: Map[String, String],
                              refOptions: Map[String, List[String]],
-                             mkCommit: List[String] -> Commit): Unit \ IO =
+                             mkCommit: List[String] -> Commit,
+                             framePick: Unit -> Unit \ IO): Unit \ IO =
         match entry {
             case Resource.FieldEntry.Field(fs) => {
                 let value = jsonFieldOf(record, key);
                 let keyPath = List.append(basePath, key :: Nil);
                 let widget = buildFieldWidget(fs, value, rootRecord, textureNames,
                                                 texturePathMap, refOptions, mkCommit(keyPath));
-                addPropertyRow(children, "${fs#label}:", widget)
+                // sprite ブロック内の frame 行だけ「Previewから選択」ボタンを併設する。
+                // (sprite.frame の判定: basePath 末尾が "sprite" かつ key が "frame")
+                let isSpriteFrame = key == "frame" and (List.last(basePath) == Some("sprite"));
+                let finalWidget =
+                    if (isSpriteFrame) wrapWithFramePickButton(widget, framePick)
+                    else widget;
+                addPropertyRow(children, "${fs#label}:", finalWidget)
             }
             case Resource.FieldEntry.Nested(innerMap) => {
                 let header = new Label(key);
@@ -191,10 +199,27 @@ mod PropertyWidgets {
                 List.forEach(p -> {
                     let (k, e) = p;
                     addFieldRowWithRoot(children, k, e, innerRecord, rootRecord, innerBasePath,
-                                          textureNames, texturePathMap, refOptions, mkCommit)
+                                          textureNames, texturePathMap, refOptions, mkCommit, framePick)
                 }, sortedInner)
             }
         }
+
+    /// frame の spinner の右に「Previewから選択」ボタンを並べた HBox を返す。
+    /// ボタン押下で `framePick()` を呼ぶ (= フレーム調整モードを ON にして preview で拾える状態にする)。
+    def wrapWithFramePickButton(spinner: Node, framePick: Unit -> Unit \ IO): Node \ IO = {
+        let btn = new Button("Previewから選択");
+        btn.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                framePick()
+        });
+        let box = new HBox(4.0);
+        box.setAlignment(Pos.CENTER_LEFT);
+        let children = box.getChildren();
+        let btnNode: Node = checked_cast(btn);
+        discard children.add(spinner);
+        discard children.add(btnNode);
+        checked_cast(box)
+    }
 
     /// FieldType に応じた編集 widget を返す
     /// `rootRecord` はユニット全体の record。spriteFrames widget が sibling

@@ -45,6 +45,8 @@ pub enum NodeTag {
     case HPBar(UnitHPBarScene.HPBarData)
     /// UnitInfoPopupScene の CanvasLayer 親（表示中ユニット識別子を持つ）
     case UnitInfoPanel(UnitInfoPopupScene.PanelState)
+    /// PhaseBannerScene の CanvasLayer 親（ターン切替バナーのスライド演出状態を持つ）
+    case PhaseBanner(PhaseBannerScene.BannerData)
     /// ItemScene の床に落ちている武器（拾える）
     case GroundItem(ItemScene.Data)
     /// `EnemyTurnDriverScene` の常駐タグ専用ノード (Marker2D)。process redef で phase を
@@ -134,6 +136,8 @@ def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(ItemScene.process(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.UnitInfoPanel(_)) =>
             checked_ecast(UnitInfoPopupScene.process(delta, node, path, scene))
+        case EngineNode.CanvasLayerWithState(_, NodeTag.PhaseBanner(_)) =>
+            checked_ecast(PhaseBannerScene.process(delta, node, path, scene))
         case EngineNode.Camera2DWithState(_, _) =>
             checked_ecast(CameraScene.process(delta, node, path, scene))
         case EngineNode.RichTextLabelWithState(_, NodeTag.Log(_)) =>

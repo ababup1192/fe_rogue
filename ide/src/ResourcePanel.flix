@@ -238,11 +238,19 @@ mod ResourcePanel {
                                 let mkCommit = kp -> { (json2: Json.JsonElement) ->
                                     commitToResource(state, kp, json2)
                                 };
+                                // sprite.frame 行の「Previewから選択」ボタン: フレーム調整モードを
+                                // ON にする (= アトラス全体表示にして preview クリックで拾える状態にする)。
+                                let onFramePick = () -> {
+                                    ResourceState.setPreviewFrameAdjust(state#resource, true);
+                                    PropertyWidgets.withRef(state#widgets#resourcePreviewFrameAdjustChk,
+                                        chk -> chk.setSelected(true));
+                                    repaintPreview(state)
+                                };
                                 List.forEach(p -> {
                                     let (k, e) = p;
                                     PropertyWidgets.addFieldRow(children, k, e, record, basePath,
                                                                   textureNames, texturePathMap,
-                                                                  refOptions, mkCommit)
+                                                                  refOptions, mkCommit, onFramePick)
                                 }, sorted);
                                 refreshPreview(state, record)
                             }
@@ -358,7 +366,22 @@ mod ResourcePanel {
     def refreshPreview(state: IdeState.IdeState, record: Json.JsonElement): Unit \ IO = {
         let textureNames = Array.get(0, state#textureNamesRef);
         let pathMap = Array.get(0, state#texturePathMapRef);
-        let spriteRef = SpritePreview.findFirstSpriteRef(record, textureNames);
+        // SpriteRef とその sprite ブロックへの相対パスを同時に取得する。
+        // path は frame の keyPath (basePath ++ spritePath ++ ["frame"]) を組むのに使う。
+        let spriteWithPath = SpritePreview.findFirstSpriteRefWithPath(record, textureNames);
+        let spriteRef = Option.map(fst, spriteWithPath);
+        let spritePath = Option.map(snd, spriteWithPath) |> Option.getWithDefault(Nil);
+        let basePath = match ResourceState.getEditingJson(state#resource) {
+            case Some(json) => recordKeyPath(state, json)
+            case None       => Nil
+        };
+        let frameKeyPath = List.append(basePath, List.append(spritePath, "frame" :: Nil));
+        // Preview のセルをクリックしたとき: frame を確定し、spinner 表示も更新するため
+        // Property Panel を作り直す (pan はリセットしないので視点は保たれる)。
+        let onFrameSelect = newFrame -> {
+            commitToResource(state, frameKeyPath, NodeInspector.intToJson(newFrame));
+            rebuildPropertyPanel(state)
+        };
         let zoomMode = ResourceState.getPreviewZoom(state#resource);
         let showGrid = ResourceState.getPreviewGrid(state#resource);
         let frameAdjust = ResourceState.getPreviewFrameAdjust(state#resource);
@@ -371,7 +394,7 @@ mod ResourcePanel {
             case (Some(pane), Some(canvas)) =>
                 SpritePreview.updateSpritePreview(pane, canvas, pathMap, spriteRef, zoomMode,
                                                      showGrid, frameAdjust, pan, getPan, onPan,
-                                                     onStatus)
+                                                     onFrameSelect, onStatus)
             case _       => ()
         }
     }
@@ -383,13 +406,16 @@ mod ResourcePanel {
         let pan = ResourceState.getPreviewPan(state#resource);
         let getPan = () -> ResourceState.getPreviewPan(state#resource);
         let onPan = newPan -> ResourceState.setPreviewPan(state#resource, newPan);
+        // 空 preview ではクリック選択は無効。spriteRef=None でハンドラ自体が配線されないため
+        // 呼ばれないが、引数の効果を IO に揃えるため harmless な IO 読み取りを 1 つ挟む。
+        let onFrameSelect = _newFrame -> { discard getPan(); () };
         let onStatus = txt -> setStatusLabel(state, txt);
         match (Array.get(0, state#widgets#resourcePreviewPane),
                 Array.get(0, state#widgets#resourcePreviewCanvas)) {
             case (Some(pane), Some(canvas)) =>
                 SpritePreview.updateSpritePreview(pane, canvas, Map.empty(), None, zoomMode,
                                                      showGrid, frameAdjust, pan, getPan, onPan,
-                                                     onStatus)
+                                                     onFrameSelect, onStatus)
             case _       => ()
         }
     }
