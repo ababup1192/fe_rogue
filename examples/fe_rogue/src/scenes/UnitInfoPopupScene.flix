@@ -54,7 +54,13 @@ mod UnitInfoPopupScene {
     def hpTextLocalPos(): Vec2.Vec2   = {x = 14.0, y = 14.0}
     def hpBarLocalPos(): Vec2.Vec2    = {x = 14.0, y = 20.0}
     def hpBarSize(): Vec2.Vec2        = {x = 44.0, y = 4.0}
-    def statsLocalPos(): Vec2.Vec2    = {x = 3.0,  y = 28.0}
+    // 能力値は HP ゲージの左端 (x=14) にそろえる。
+    def statsLocalPos(): Vec2.Vec2    = {x = 14.0, y = 34.0}
+
+    // HP ゲージの下に出す「装備中の武器 + 耐久」の行（アイコン + テキスト）。
+    def equipRowY(): Float64          = 26.0
+    def equipIconX(): Float64         = 14.0   // HP ゲージ左端にそろえる
+    def equipTextX(): Float64         = 21.0   // アイコンの右
 
     // Items view 用レイアウト（種族名ヘッダは表示しないので 1 行目を上に詰める）
     def itemsListStartY(): Float64    = 4.0    // 1 行目の y
@@ -131,7 +137,10 @@ mod UnitInfoPopupScene {
         let phase = TurnPhase.State.get();
         // ユニット情報ポップアップは PlayerCursor の下見専用。
         // PlayerAttack(ターゲット選択)中は戦闘予測パネルだけ出すので、ここでは表示しない。
-        let cursorActive = phase == TurnPhase.Phase.PlayerCursor;
+        // さらにターン切替バナー（プレイヤー/エネミーフェーズの帯）が出ている間も隠す。
+        // バナーが滑り抜けて Idle に戻れば、次フレームから通常どおり表示される。
+        let cursorActive = phase == TurnPhase.Phase.PlayerCursor
+                            and not PhaseBannerScene.isBusy(scene);
         let next = if (not cursorActive) {
             if (Option.isEmpty(getShownUnit(scene))) scene
             else hide(scene)
@@ -291,7 +300,7 @@ mod UnitInfoPopupScene {
                      scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let cleared = clearContents(scene);
         let withContents = match getViewMode(cleared) {
-            case ViewMode.Status => renderStatusView(res, currentHp, levelExp, cleared)
+            case ViewMode.Status => renderStatusView(res, currentHp, weapons, levelExp, cleared)
             case ViewMode.Items  => renderItemsView(res, weapons, cleared)
         };
         // パネルを可視化
@@ -304,6 +313,7 @@ mod UnitInfoPopupScene {
                                magicAttack = Int32, magicDefense = Int32,
                                sprite = Sprite.SpriteResource | r},
                           currentHp: Int32,
+                          weapons: List[UnitCatalog.WeaponResource],
                           levelExp: Option[LevelExp],
                           scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
@@ -348,6 +358,11 @@ mod UnitInfoPopupScene {
             |> ProgressBar.setBorderWidth(1);
         let withBar = Scene.addChildAt(panelPath(), "HpBar",
             EngineNode.ProgressBarWithState(hpBar, NodeTag.NoTag), withHpText);
+        // HP ゲージの下に「装備中の武器 (先頭) + 耐久」をアイコン付きで出す。武器なしなら省略。
+        let withWeapon = match List.head(weapons) {
+            case Some(weapon) => renderEquippedWeapon(weapon, atlas, withBar)
+            case None         => withBar
+        };
         // FE 烈火の漢字表記・並び順。左列 力/魔力/技/速さ、右列 幸運/守備/魔防/移動。
         // 1 文字ラベル(力/技)は全角スペースで詰めて数値列を揃える。
         let statsText = "力　 ${res#attack}    幸運 ${res#luck}\n魔力 ${res#magicAttack}    守備 ${res#defense}\n技　 ${res#skill}    魔防 ${res#magicDefense}\n速さ ${res#speed}    移動 ${res#moveTiles}";
@@ -355,7 +370,29 @@ mod UnitInfoPopupScene {
             |> Node2D.setPosition(statsLocalPos())
             |> CanvasItem.setModulate(textColor());
         Scene.addChildAt(panelPath(), "Stats",
-            EngineNode.Label2DWithState(statsLabel, NodeTag.NoTag), withBar)
+            EngineNode.Label2DWithState(statsLabel, NodeTag.NoTag), withWeapon)
+
+    /// 装備中の武器 1 個を HP ゲージの下にアイコン + 「名前 耐久」で描く。
+    /// Items view の `addItemRow` と同じ作法（アイコンは左上基準、offset を表示スケールで加算）。
+    def renderEquippedWeapon(weapon: UnitCatalog.WeaponResource, atlas: FontAtlas,
+                              scene: Scene[NodeTag]): Scene[NodeTag] =
+        let off = weapon#sprite#offset;
+        let iconPos: Vec2.Vec2 = {
+            x = equipIconX() + off#x * itemSpriteScale()#x,
+            y = equipRowY() + off#y * itemSpriteScale()#y
+        };
+        let iconSprite = Sprite2D.make(weapon#sprite#texture, iconPos, itemSpriteScale())
+            |> Sprite2D.setHframes(weapon#sprite#hframes)
+            |> Sprite2D.setVframes(weapon#sprite#vframes)
+            |> Sprite2D.setFrame(weapon#sprite#frame)
+            |> Sprite2D.setCentered(false);
+        let withIcon = Scene.addChildAt(panelPath(), "EquipIcon",
+            EngineNode.Sprite2DWithState(iconSprite, NodeTag.NoTag), scene);
+        let label = Label2D.make("${weapon#name} ${weapon#durability}", atlas, fontSizeSmall())
+            |> Node2D.setPosition({x = equipTextX(), y = equipRowY()})
+            |> CanvasItem.setModulate(textColor());
+        Scene.addChildAt(panelPath(), "EquipText",
+            EngineNode.Label2DWithState(label, NodeTag.NoTag), withIcon)
 
     // ─── Items view 描画 ─────────────────────────────────────
 

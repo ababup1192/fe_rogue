@@ -339,11 +339,13 @@ mod BattlePanelScene {
                 }
         }
 
-    /// 武器相性マーク。有利は △、不利は ▽、中立は空文字。
+    /// 武器相性マーク。有利は ▲、不利は ▼、中立は空文字。
     /// 数値の直後に置くため、マークがあるときだけ先頭に半角スペースを 1 つ含める。
+    /// ▲▼（塗りつぶし三角）を使うのは、現在の UI フォント(MPLUSU-Medium)が
+    /// △▽（白抜き三角 U+25B3/U+25BD）のグリフを持たず別字に化けるため。
     def relationMark(rel: WeaponTriangle.Relation): String = match rel {
-        case WeaponTriangle.Relation.Advantage    => " △"
-        case WeaponTriangle.Relation.Disadvantage => " ▽"
+        case WeaponTriangle.Relation.Advantage    => " ▲"
+        case WeaponTriangle.Relation.Disadvantage => " ▼"
         case WeaponTriangle.Relation.Neutral      => ""
     }
 

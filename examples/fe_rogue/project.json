@@ -25,7 +25,7 @@
     {"name": "rogues",           "path": "assets/sprites/rogues.png", "hasAlpha": true}
   ],
   "fonts": [
-    {"name": "ui", "path": "assets/fonts/BestTen-DOT.otf", "fontSize": 16.0}
+    {"name": "ui", "path": "assets/fonts/MPLUSU-Medium.ttf", "fontSize": 16.0}
   ],
   "sounds": [
     {"name": "bgm",        "path": "assets/audio/bgm.ogg",        "looping": true},
@@ -35,6 +35,11 @@
     {"name": "miss",       "path": "assets/audio/miss.wav",       "looping": false},
     {"name": "find",         "path": "assets/audio/find.wav",         "looping": false},
     {"name": "status_up",    "path": "assets/audio/status_up.ogg",    "looping": false},
-    {"name": "phase_change", "path": "assets/audio/phase_change.wav", "looping": false}
+    {"name": "phase_change", "path": "assets/audio/phase_change.wav", "looping": false},
+    {"name": "confirm",      "path": "assets/audio/confirm.wav",      "looping": false},
+    {"name": "cancel",       "path": "assets/audio/cancel.wav",       "looping": false},
+    {"name": "cursor",       "path": "assets/audio/cursor.wav",       "looping": false},
+    {"name": "get_item",     "path": "assets/audio/get_item.wav",     "looping": false},
+    {"name": "cure",         "path": "assets/audio/cure.wav",         "looping": false}
   ]
 }

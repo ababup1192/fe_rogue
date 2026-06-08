@@ -136,7 +136,7 @@ mod ActionMenuScene {
 
     /// 選択中プレイヤーの状況から「こうげき / こうかん / アイテム / ひろう / たいき」の
     /// うち成立するものだけ返す。
-    /// 順序は固定: こうげき → こうかん → アイテム → ひろう → たいき (FE 流の並び)。
+    /// 順序は固定: 階段 → こうげき → アイテム → こうかん → ひろう → たいき。
     /// SelectedPlayer が None のときは PlayerCursor から空マスで開かれた「集合メニュー」
     /// として「しゅうごう」だけを返す (確定でロードへ合流開始)。
     def buildItems(scene: Scene[NodeTag]): List[ItemEntry]
@@ -156,13 +156,13 @@ mod ActionMenuScene {
                     case Some(player) =>
                         let attackItem =
                             if (canAttackFrom(player))
-                                ({text     = "こうげき",
+                                ({text     = "攻撃",
                                   disabled = false,
                                   metadata = Some(attackMeta())}: ItemEntry) :: Nil
                             else Nil;
                         let exchangeItem =
                             if (not List.isEmpty(PlayerScene.adjacentAllies(player)))
-                                ({text     = "こうかん",
+                                ({text     = "交換",
                                   disabled = false,
                                   metadata = Some(exchangeMeta())}: ItemEntry) :: Nil
                             else Nil;
@@ -175,24 +175,24 @@ mod ActionMenuScene {
                             else Nil;
                         let pickupItem =
                             if (Option.nonEmpty(ItemScene.findAt(player#gridPos, scene)))
-                                ({text     = "ひろう",
+                                ({text     = "拾う",
                                   disabled = false,
                                   metadata = Some(pickupMeta())}: ItemEntry) :: Nil
                             else Nil;
                         let stairsItem =
                             if (StairsScene.isAt(player#gridPos, scene))
-                                ({text     = "かいだん",
+                                ({text     = "階段",
                                   disabled = false,
                                   metadata = Some(stairsMeta())}: ItemEntry) :: Nil
                             else Nil;
                         let waitItem =
                             if (canWaitOn(player))
-                                ({text     = "たいき",
+                                ({text     = "待機",
                                   disabled = false,
                                   metadata = Some(waitMeta())}: ItemEntry) :: Nil
                             else Nil;
-                        List.flatten(attackItem :: exchangeItem :: itemItem ::
-                                       pickupItem :: stairsItem :: waitItem :: Nil)
+                        List.flatten(stairsItem :: attackItem :: itemItem :: exchangeItem ::
+                                       pickupItem :: waitItem :: Nil)
                 }
         }
 
@@ -203,16 +203,16 @@ mod ActionMenuScene {
         let lordPos = PlayerScene.getGridPos(0, scene);
         let pickup =
             if (Option.nonEmpty(ItemScene.findAt(lordPos, scene)))
-                ({text = "ひろう", disabled = false,
+                ({text = "拾う", disabled = false,
                   metadata = Some(pickupMeta())}: ItemEntry) :: Nil
             else Nil;
         let stairs =
             if (StairsScene.isAt(lordPos, scene))
-                ({text = "かいだん", disabled = false,
+                ({text = "階段", disabled = false,
                   metadata = Some(stairsMeta())}: ItemEntry) :: Nil
             else Nil;
         let disband =
-            ({text = "かいさん", disabled = false,
+            ({text = "解散", disabled = false,
               metadata = Some(disbandMeta())}: ItemEntry) :: Nil;
         List.flatten(pickup :: stairs :: disband :: Nil)
 
@@ -226,7 +226,7 @@ mod ActionMenuScene {
             if (not AutoMoveScene.lordDetected(scene)
                 and not List.isEmpty(PlayerScene.mergeableAllies(scene))
                 and PlayerScene.allMergeableWithin(gatherRange(), scene))
-                ({text = "しゅうごう", disabled = false,
+                ({text = "集合", disabled = false,
                   metadata = Some(gatherMeta())}: ItemEntry) :: Nil
             else Nil;
         let turnEnd =
@@ -276,7 +276,7 @@ mod ActionMenuScene {
                 else if (m == pickupMeta())   applyPickup(scene)
                 else if (m == gatherMeta())   applyGather(scene)
                 else if (m == turnEndMeta())  applyTurnEnd(scene)
-                else if (m == disbandMeta())  AutoMoveScene.disband("かいさん", scene)
+                else if (m == disbandMeta())  AutoMoveScene.disband("解散", scene)
                 else if (m == stairsMeta())   applyStairs(scene)
                 else                          scene
         }
@@ -318,7 +318,7 @@ mod ActionMenuScene {
     def applyGather(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
                               SelectedPlayer.State} =
-        GameLogger.playerLog("しゅうごう");
+        GameLogger.playerLog("集合");
         SelectedPlayer.State.put(SelectedPlayer.cleared());
         PhaseTransitions.enterPlayerAutoMove(scene)
 
@@ -412,16 +412,19 @@ mod ActionMenuScene {
                 PlayerScene.mapPlayer(playerId,
                     d -> {weapons = List.append(d#weapons, weapon :: Nil) | d},
                     scene)
+                    |> ItemPickupPopupScene.show(weapon#name)
             case ItemScene.GroundItemKind.StaffItem(staff) =>
                 GameLogger.playerLog("P${playerId} が ${staff#name} を拾った");
                 PlayerScene.mapPlayer(playerId,
                     d -> {staves = List.append(d#staves, staff :: Nil) | d},
                     scene)
+                    |> ItemPickupPopupScene.show(staff#name)
             case ItemScene.GroundItemKind.ConsumableItem(item) =>
                 GameLogger.playerLog("P${playerId} が ${item#name} を拾った");
                 PlayerScene.mapPlayer(playerId,
                     d -> {consumables = List.append(d#consumables, item :: Nil) | d},
                     scene)
+                    |> ItemPickupPopupScene.show(item#name)
         }
 
     /// PlayerMoving + Z 押下時の遷移: 行動選択ウィンドウを開く (フェーズ = ActionSelect)。

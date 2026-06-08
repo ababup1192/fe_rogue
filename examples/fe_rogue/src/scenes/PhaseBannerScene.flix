@@ -95,7 +95,7 @@ mod PhaseBannerScene {
     def bandHeight(): Float64 = 22.0
 
     /// 文字の表示フォントサイズ（論理 px）。帯の中に収まる控えめな大きさ。
-    def fontSize(): Float64 = 10.5
+    def fontSize(): Float64 = 8.9
 
     /// 帯の半透明度。
     def bandAlpha(): Float32 = 0.6f32

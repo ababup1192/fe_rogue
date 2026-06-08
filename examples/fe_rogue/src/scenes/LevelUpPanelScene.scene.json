@@ -116,9 +116,9 @@
     {
       "type": "Label2D",
       "name": "footer",
-      "pos": [ 14, 60 ],
+      "pos": [ 14, 66 ],
       "fontSize": 4,
-      "text": "Z / Enter で とじる",
+      "text": "Z / Enter で 閉じる",
       "visible": false,
       "zIndex": 1
     }

@@ -198,7 +198,13 @@ mod PhaseTransitions {
                 match PlayerScene.get(playerId, withCursorHidden) {
                     case None         => withCursorHidden
                     case Some(player) =>
-                        ArrowCursorScene.showFor(player#gridPos, withCursorHidden)
+                        let withArrow =
+                            ArrowCursorScene.showFor(player#gridPos, withCursorHidden);
+                        // 回復の杖なら HP が減っている味方の方向に初期照準を向ける。
+                        // 負傷味方が居ない / 回復杖でないならデフォルト(Up)のまま。
+                        PlayerScene.staffAimInitialDirection(playerId, withArrow)
+                            |> Option.map(dir -> ArrowCursorScene.aim(dir, withArrow))
+                            |> Option.getWithDefault(withArrow)
                 }
         }
 

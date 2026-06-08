@@ -47,6 +47,8 @@ pub enum NodeTag {
     case UnitInfoPanel(UnitInfoPopupScene.PanelState)
     /// PhaseBannerScene の CanvasLayer 親（ターン切替バナーのスライド演出状態を持つ）
     case PhaseBanner(PhaseBannerScene.BannerData)
+    /// ItemPickupPopupScene の CanvasLayer 親（アイテム取得ポップアップのフェード演出状態を持つ）
+    case ItemPickupPopup(ItemPickupPopupScene.PopupData)
     /// ItemScene の床に落ちている武器（拾える）
     case GroundItem(ItemScene.Data)
     /// `EnemyTurnDriverScene` の常駐タグ専用ノード (Marker2D)。process redef で phase を
@@ -138,6 +140,8 @@ def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(UnitInfoPopupScene.process(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.PhaseBanner(_)) =>
             checked_ecast(PhaseBannerScene.process(delta, node, path, scene))
+        case EngineNode.CanvasLayerWithState(_, NodeTag.ItemPickupPopup(_)) =>
+            checked_ecast(ItemPickupPopupScene.process(delta, node, path, scene))
         case EngineNode.Camera2DWithState(_, _) =>
             checked_ecast(CameraScene.process(delta, node, path, scene))
         case EngineNode.RichTextLabelWithState(_, NodeTag.Log(_)) =>
@@ -192,7 +196,8 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
 //   PlayerAttack + Z/X : 敵マスで Z → 攻撃モーション開始、X / 空マスで Z → 行動終了
 //   EnemyTurn / PlayerAutoMove : 入力無視（自動進行）
 instance InputEvent.InputHandler[NodeTag] {
-    type Aef = {GameEngine.Game, BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
+    type Aef = {GameEngine.Game, GameEngine.Audio, BoardQuery, Tween.Scheduler,
+                 AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State,
                  PlayerScene.PartyQuery, EnemyScene.RosterQuery,
@@ -205,7 +210,8 @@ instance InputEvent.InputHandler[NodeTag] {
     // Status ↔ Items 切替**に取られる（通常のキャンセルは popup 非表示時のみ）。
     // それ以外のフェーズではこれまで通り TurnRules 経由で振る舞いを決める。
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
-                       Scene[NodeTag] \ {GameEngine.Game, BoardQuery, Tween.Scheduler,
+                       Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, BoardQuery,
+                                          Tween.Scheduler,
                                           AnimationPlayer.Scheduler,
                                           GameLogger.GameLogger,
                                           EnemyTurn.Queue, TurnPhase.State,
@@ -223,6 +229,10 @@ instance InputEvent.InputHandler[NodeTag] {
                 Some(TurnRules.Input.Cancel)
             else None;
         let phase = TurnPhase.State.get();
+        // プレイヤー操作のフィードバック効果音（決定 / キャンセル / メニューカーソル移動）。
+        // onKeyPressed は物理キー押下ごとに 1 度だけ発火するので、ここで鳴らせば 1 押下 = 1 音。
+        // 実際の処理分岐 (dispatchMenuKey 等) は別途行うが、音はこの単一地点に集約する。
+        playInputSfx(phase, input, key);
         // ユニット情報ポップアップの X トグルは PlayerCursor の下見中のみ。
         // PlayerAttack 中はポップアップを出さず、X は戦闘予測のキャンセルに使う。
         let popupShown = UnitInfoPopupScene.isShown(scene)
@@ -243,7 +253,7 @@ instance InputEvent.InputHandler[NodeTag] {
 /// ItemMenu の Enter は「現在フェーズ（ItemSelect / ItemActionSelect）に応じた確定」、
 /// Escape は「ItemSelect→ActionMenu / ItemActionSelect→ItemSelect」のように親へ戻る。
 instance MenuEvent.MenuHandler[NodeTag] {
-    type Aef = {Tween.Scheduler, AnimationPlayer.Scheduler,
+    type Aef = {Tween.Scheduler, AnimationPlayer.Scheduler, GameEngine.Audio,
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State,
                  PlayerScene.PartyQuery, EnemyScene.RosterQuery,
@@ -252,6 +262,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                            state: NodeTag,
                            scene: Scene[NodeTag]):
                           Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                                             GameEngine.Audio,
                                              GameLogger.GameLogger, EnemyTurn.Queue,
                                              TurnPhase.State, SelectedPlayer.State,
                                              PlayerScene.PartyQuery,
@@ -279,6 +290,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
     redef onItemCancelled(_menuPath: NodePath, state: NodeTag,
                            scene: Scene[NodeTag]):
                           Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                                             GameEngine.Audio,
                                              GameLogger.GameLogger, EnemyTurn.Queue,
                                              TurnPhase.State, SelectedPlayer.State,
                                              PlayerScene.PartyQuery,
@@ -331,7 +343,8 @@ def staffAimDirection(key: GameEngine.Key, scene: Scene[NodeTag]):
 def staffAimConfirm(scene: Scene[NodeTag]):
         Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                            BoardQuery, GameLogger.GameLogger,
-                           EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+                           EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                           GameEngine.Audio} =
     let dir = ArrowCursorScene.getDirection(scene);
     match SelectedPlayer.State.get()#id {
         case None           => scene
@@ -348,6 +361,48 @@ def staffAimConfirm(scene: Scene[NodeTag]):
     }
 
 /// StaffAim フェーズで X/Esc が押されたら ItemActionSelect に戻る（杖は消費しない）。
+/// プレイヤー操作のフィードバック効果音を鳴らす。
+///   - 決定 (Z / Space / Enter)        → "confirm"（メニューを開く / 項目を確定する操作も含む）
+///   - キャンセル (X / Escape)         → "cancel"
+///   - メニュー中の方向キー            → "cursor"（リストのカーソル移動 / 交換のペイン切替）
+/// onKeyPressed から 1 押下につき 1 回だけ呼ばれる。確定/取消は phase を問わず鳴らし、
+/// カーソル音だけはメニュー系フェーズに限定して誤発火を防ぐ。
+def playInputSfx(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
+                  key: GameEngine.Key): Unit \ GameEngine.Audio =
+    match input {
+        case Some(TurnRules.Input.Confirm) => AudioStreamPlayer.play("confirm")
+        case Some(TurnRules.Input.Cancel)  => AudioStreamPlayer.play("cancel")
+        case None                          =>
+            if (isMenuCursorMove(phase, key)) AudioStreamPlayer.play("cursor")
+            else ()
+    }
+
+/// メニュー系フェーズで「カーソル移動とみなす方向キー」か判定する。
+/// リスト選択 (ActionSelect / ItemSelect / ItemActionSelect) は ↑↓ (W/S) のみ、
+/// 交換 (TradeInventory) は ↑↓ のカーソル移動と ←→ のペイン切替の両方を移動音の対象にする。
+def isMenuCursorMove(phase: TurnPhase.Phase, key: GameEngine.Key): Bool =
+    let vertical = match key {
+        case GameEngine.Key.Up   => true
+        case GameEngine.Key.Down => true
+        case GameEngine.Key.W    => true
+        case GameEngine.Key.S    => true
+        case _                   => false
+    };
+    let horizontal = match key {
+        case GameEngine.Key.Left  => true
+        case GameEngine.Key.Right => true
+        case GameEngine.Key.A     => true
+        case GameEngine.Key.D     => true
+        case _                    => false
+    };
+    match phase {
+        case TurnPhase.Phase.ActionSelect     => vertical
+        case TurnPhase.Phase.ItemSelect       => vertical
+        case TurnPhase.Phase.ItemActionSelect => vertical
+        case TurnPhase.Phase.TradeInventory   => vertical or horizontal
+        case _                                => false
+    }
+
 /// メニュー系フェーズ (ActionSelect / ItemSelect / ItemActionSelect / TradeInventory)
 /// の Z/X dispatch をまとめる。`onKeyPressed` の match は phase 数 × bool パターンで
 /// 型推論の複雑度が膨らみがちなので、メニュー dispatch を関数に切り出して肩代わりする。
@@ -357,7 +412,7 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
                                     GameLogger.GameLogger, EnemyTurn.Queue,
                                     TurnPhase.State, SelectedPlayer.State,
                                     PlayerScene.PartyQuery, EnemyScene.RosterQuery,
-                                    CustomEffects.FloorAdvanceRequest} =
+                                    CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
     match (phase, input) {
         case (TurnPhase.Phase.ActionSelect,      TurnRules.Input.Confirm)
                                               => Some(ActionMenuScene.confirmCurrentSelection(scene))
@@ -388,7 +443,7 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
 /// 方向キーなど input = None もここに来る (StaffAim 中の direction、ほかは no-op)。
 def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                         key: GameEngine.Key, popupShown: Bool, scene: Scene[NodeTag]):
-        Scene[NodeTag] \ {GameEngine.Game, BoardQuery, Tween.Scheduler,
+        Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, BoardQuery, Tween.Scheduler,
                             AnimationPlayer.Scheduler,
                             GameLogger.GameLogger,
                             EnemyTurn.Queue, TurnPhase.State,
@@ -509,11 +564,18 @@ mod Game {
                 // volume=0.05) で applyAudioAttach 経由で再生される (= ここでは触らない)
                 let scene = GameLifecycle.buildCurrentFloor(catalogs);
                 // SE は半分で鳴らす (Inspector 対応の Scene Node にしていない通常の SE 系)
-                AudioStreamPlayer.setVolume("damage", 0.5f32);
+                AudioStreamPlayer.setVolume("damage", 0.35f32);
                 AudioStreamPlayer.setVolume("down_enemy", 0.5f32);
                 AudioStreamPlayer.setVolume("miss", 0.5f32);
                 AudioStreamPlayer.setVolume("find", 0.5f32);
                 AudioStreamPlayer.setVolume("phase_change", 0.5f32);
+                AudioStreamPlayer.setVolume("get_item", 0.5f32);
+                // メニュー操作の UI 効果音 (決定 / キャンセル / カーソル移動)
+                AudioStreamPlayer.setVolume("confirm", 0.5f32);
+                AudioStreamPlayer.setVolume("cancel", 0.5f32);
+                AudioStreamPlayer.setVolume("cursor", 0.5f32);
+                // 回復成立音 (きずぐすり / 回復の杖)
+                AudioStreamPlayer.setVolume("cure", 0.5f32);
                 GameLogger.playerLog("T1 味方のターン");
                 gameLoop(sceneRef, scene)
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。

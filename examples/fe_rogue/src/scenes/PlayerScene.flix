@@ -1650,7 +1650,7 @@ mod PlayerScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio} =
         match get(playerId, scene) {
             case None         => scene
             case Some(player) =>
@@ -1662,6 +1662,14 @@ mod PlayerScene {
                         // 杖は射程を持たない: 盤面外は壁扱いなので、十分大きい上限を渡せば
                         // 必ず壁または駒で止まる（無限射程と等価）。
                         let hit   = Board.rayCast(player#gridPos, dir, staffMaxRange(), board);
+                        // 回復の杖が味方/敵に当たった瞬間に回復音を鳴らす（空振りは鳴らさない）
+                        match (staff#effect, hit) {
+                            case (Staff.StaffEffect.Heal, RayHit.HitPlayer(_, _)) =>
+                                AudioStreamPlayer.play("cure")
+                            case (Staff.StaffEffect.Heal, RayHit.HitEnemy(_, _)) =>
+                                AudioStreamPlayer.play("cure")
+                            case _ => ()
+                        };
                         let afterEffect = applyStaffEffect(playerId, player, staff,
                                                             dir, hit, scene);
                         let afterConsume = consumeStaff(playerId, staffIdx, staff, afterEffect);
@@ -1672,6 +1680,64 @@ mod PlayerScene {
 
     /// 杖の射程上限。盤面の最大寸法より大きければ実質「無限」として機能する。
     def staffMaxRange(): Int32 = 1000
+
+    /// 杖を構えるときの初期照準方向。選択中アイテムが回復の杖で、HP が減っている味方が
+    /// 居れば、一番ふさわしい味方の方向(4方位)を返す。同じ行/列に並ぶ(=射線が届く)味方を
+    /// 優先し、無ければ最も近い負傷味方の主軸方向を返す。
+    /// 回復杖でない / 負傷味方が居ないなら None（呼び出し側はデフォルト Up のまま）。
+    /// ネストした match を避けるため Option の forM で短絡的に畳む。
+    pub def staffAimInitialDirection(playerId: Int32, scene: Scene[NodeTag]):
+            Option[Staff.Direction] =
+        forM (
+            player <- get(playerId, scene);
+            idx    <- selectedStaffIndex(player);
+            staff  <- List.nth(idx, player#staves);
+            dir    <- healDirectionFor(player, playerId, staff, scene)
+        ) yield dir
+
+    /// 選択中アイテムが杖ならその staves index、それ以外は None。
+    def selectedStaffIndex(player: Data): Option[Int32] =
+        match player#selectedItem {
+            case Some(ItemKind.Staff(idx)) => Some(idx)
+            case _                          => None
+        }
+
+    /// 回復杖なら負傷味方への方向、それ以外（攻撃杖等）は None。
+    def healDirectionFor(player: Data, playerId: Int32, staff: Staff.StaffResource,
+                          scene: Scene[NodeTag]): Option[Staff.Direction] =
+        if (staff#effect == Staff.StaffEffect.Heal)
+            pickHealDirection(player#gridPos, injuredAlliesExcept(playerId, scene))
+        else None
+
+    /// 自分以外で HP が最大未満（負傷している）の味方一覧。
+    def injuredAlliesExcept(playerId: Int32, scene: Scene[NodeTag]): List[Data] =
+        getAll(scene) |> List.filter(a -> a#id != playerId and a#hp < a#resource#hp)
+
+    /// 負傷味方リストから構える 4 方位を選ぶ。同じ行/列に整列している味方を優先し、
+    /// 次にマンハッタン距離が近い味方を選ぶ。空なら None。
+    def pickHealDirection(origin: {x = Int32, y = Int32}, allies: List[Data]):
+            Option[Staff.Direction] =
+        let scored = allies |> List.map(a -> {
+            let dx = a#gridPos#x - origin#x;
+            let dy = a#gridPos#y - origin#y;
+            (dx == 0 or dy == 0, Int32.abs(dx) + Int32.abs(dy), deltaToDirection(dx, dy))
+        });
+        let best = List.foldLeft((acc, cur) -> match acc {
+            case None    => Some(cur)
+            case Some(b) =>
+                let (ba, bd, _) = b;
+                let (ca, cd, _) = cur;
+                if ((ca and not ba) or (ca == ba and cd < bd)) Some(cur) else acc
+        }, None, scored);
+        Option.map(t -> { let (_ali, _dist, d) = t; d }, best)
+
+    /// グリッドの差分ベクトルを 4 方位に丸める。主軸(絶対値が大きい方)を採用し、
+    /// 整列している(片軸が 0)場合はその軸方向になる。
+    def deltaToDirection(dx: Int32, dy: Int32): Staff.Direction =
+        if (Int32.abs(dx) >= Int32.abs(dy))
+            (if (dx < 0) Staff.Direction.Left else Staff.Direction.Right)
+        else
+            (if (dy < 0) Staff.Direction.Up else Staff.Direction.Down)
 
     /// `staff#effect × hit` の組み合わせで効果を適用する。
     /// 9 通り（うち実意味のあるのは 6 通り）の分岐は table comment を参照。
@@ -1842,13 +1908,15 @@ mod PlayerScene {
     pub def applyConsumableUse(playerId: Int32, idx: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio} =
         match get(playerId, scene) {
             case None         => scene
             case Some(player) =>
                 match List.nth(idx, player#consumables) {
                     case None       => scene
                     case Some(item) =>
+                        // きずぐすり等の消費アイテムは使用＝回復成立なので回復音を鳴らす
+                        AudioStreamPlayer.play("cure");
                         let afterHeal    = applyConsumableHeal(playerId, player, item, scene);
                         let afterConsume = consumeConsumable(playerId, idx, item, afterHeal);
                         let cleared      = clearSelectedItem(playerId, afterConsume);

@@ -164,15 +164,15 @@ mod ItemMenuScene {
 
     /// 「そうび」項目（武器のみ）。
     def equipEntry(): ItemEntry =
-        {text = "そうび", disabled = false, metadata = Some(equipMeta())}
+        {text = "装備", disabled = false, metadata = Some(equipMeta())}
 
     /// 「つかう」項目（杖・消費アイテム）。
     def useEntry(): ItemEntry =
-        {text = "つかう", disabled = false, metadata = Some(useMeta())}
+        {text = "使う", disabled = false, metadata = Some(useMeta())}
 
     /// 「すてる」項目（武器・杖・消費アイテム共通）。
     def dropEntry(): ItemEntry =
-        {text = "すてる", disabled = false, metadata = Some(dropMeta())}
+        {text = "捨てる", disabled = false, metadata = Some(dropMeta())}
 
     /// サブメニュー項目を組む（ItemActionSelect 中）。
     /// 武器なら `[そうび, すてる]`、杖・消費アイテムなら `[つかう, すてる]`。
@@ -296,7 +296,8 @@ mod ItemMenuScene {
     pub def onActionConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                               Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State} =
+                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State,
+                GameEngine.Audio} =
         match entry#metadata {
             case None    => scene
             case Some(m) =>
@@ -320,7 +321,8 @@ mod ItemMenuScene {
                         scene: Scene[NodeTag]):
                        Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State} =
+                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State,
+                GameEngine.Audio} =
         if (meta == equipMeta())
             applyEquip(playerId, kind, scene)
         else if (meta == dropMeta())
@@ -399,7 +401,8 @@ mod ItemMenuScene {
                    scene: Scene[NodeTag]):
                   Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State, GameLogger.GameLogger} =
+                TurnPhase.State, SelectedPlayer.State, GameLogger.GameLogger,
+                GameEngine.Audio} =
         match kind {
             case PlayerScene.ItemKind.Staff(idx) =>
                 let name = staffNameOf(playerId, idx, scene);
@@ -415,7 +418,7 @@ mod ItemMenuScene {
     def staffNameOf(playerId: Int32, idx: Int32, scene: Scene[NodeTag]): String =
         match List.nth(idx, PlayerScene.getStaves(playerId, scene)) {
             case Some(staff) => staff#name
-            case None        => "つえ"
+            case None        => "杖"
         }
 
     /// ItemActionSelect で X / Escape 押下: ItemSelect に戻る（アイテム一覧画面）。
@@ -436,7 +439,8 @@ mod ItemMenuScene {
     pub def confirmCurrentSelection(scene: Scene[NodeTag]):
                                     Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State} =
+                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State,
+                GameEngine.Audio} =
         let phase = TurnPhase.State.get();
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             case None        => scene
