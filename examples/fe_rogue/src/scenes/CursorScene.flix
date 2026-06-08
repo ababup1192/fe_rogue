@@ -292,9 +292,12 @@ mod CursorScene {
             let nextScene = match enemyId {
                 case Some(id) =>
                     GameLogger.playerLog("敵${id}を捕捉");
+                    // 移動範囲(白)を先に組み、その reachable を読んで攻撃到達範囲(赤)を重ねる
                     EnemyRangeScene.refreshFor(id, scene)
+                        |> EnemyAttackRangeScene.refreshFor(id)
                 case None =>
                     EnemyRangeScene.clear(scene)
+                        |> EnemyAttackRangeScene.clear
             };
             ({lastHoveredEnemyId = enemyId | data}, nextScene)
 
@@ -304,6 +307,14 @@ mod CursorScene {
         if      (isDown(GameEngine.Key.W) or isDown(GameEngine.Key.Up))    Some(Vec2i.up())
         else if (isDown(GameEngine.Key.S) or isDown(GameEngine.Key.Down))  Some(Vec2i.down())
         else if (isDown(GameEngine.Key.A) or isDown(GameEngine.Key.Left))  Some(Vec2i.left())
+        else if (isDown(GameEngine.Key.D) or isDown(GameEngine.Key.Right)) Some(Vec2i.right())
+        else None
+
+    /// 押されている **左右** 方向キーだけを返す (PlayerAttack のターゲットサイクル用)。
+    /// 上下は武器リスト (ItemMenu の focused ItemList ナビ) に回すため無視する。
+    def readHeldHorizontal(): Option[{x = Int32, y = Int32}] \ GameEngine.Game =
+        let isDown = key -> GameEngine.Game.isKeyPressed(key);
+        if      (isDown(GameEngine.Key.A) or isDown(GameEngine.Key.Left))  Some(Vec2i.left())
         else if (isDown(GameEngine.Key.D) or isDown(GameEngine.Key.Right)) Some(Vec2i.right())
         else None
 
@@ -346,7 +357,8 @@ mod CursorScene {
     /// ターゲットサイクル方式。間接武器でも自然に敵を選べる。
     ///   - 押下開始フレーム (`holdDir == None && readHeldDirection == Some(dir)`) でのみ
     ///     サイクル発火。キーを押しっぱなしの間は連続サイクルしない (誤連打防止)。
-    ///   - 上 / 左 = 前の敵、下 / 右 = 次の敵 (reading order でソート)
+    ///   - **左 = 前の敵、右 = 次の敵** (reading order でソート)。上下は武器切り替え
+    ///     (ItemMenu の focused ItemList) に回すのでカーソルは動かさない。
     ///   - 射程内に敵が居なければ何もしない (X キャンセル待ち)
     ///   - スナップは Tween 経由で滑らかに移動。snag アニメも従来通り再生
     def stepTargetCycle(_delta: Duration.Duration,
@@ -362,7 +374,8 @@ mod CursorScene {
                 if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
                 else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
                 else
-                    let held = readHeldDirection();
+                    // 左右だけでターゲットを選ぶ (上下は武器リストへ)。
+                    let held = readHeldHorizontal();
                     match (data#holdDir, held) {
                         case (_, None) =>
                             // キー離した: holdDir をリセットして次の押下に備える

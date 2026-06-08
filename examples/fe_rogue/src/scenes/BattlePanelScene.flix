@@ -117,11 +117,13 @@ mod BattlePanelScene {
             case _                            => Duration.zero()
         };
         let newElapsed = advanceBlink(Duration.add(elapsed, delta));
-        let next = scene
-            |> syncTargetToCursor(phase)
-            |> applyVisibility(phase)
-            |> applyForecast(phase, newElapsed)
-            |> writeElapsed(newElapsed);
+        let synced     = syncTargetToCursor(phase, scene);
+        let visible    = applyVisibility(phase, synced);
+        // 予測に使う武器は「攻撃中の武器選択リストでアクティブな武器」(= カーソル上の敵に
+        // 届く選択武器)。武器を上下で切り替えるたびに予測も切り替わる。
+        let selWeapon  = selectedAttackWeapon(synced);
+        let forecasted = applyForecast(phase, newElapsed, selWeapon, visible);
+        let next       = writeElapsed(newElapsed, forecasted);
         match Scene.getEngineNode(panelPath(), next) {
             case Some(latest) => (latest, next)
             case None         => (node, next)
@@ -167,12 +169,13 @@ mod BattlePanelScene {
     /// PlayerAttack(= ターゲット選択 + 戦闘予測)中だけ各 Label2D に予報を書き込む。
     /// 静的なラベル（武器名・威力/命中・中央ラベル）はそのまま、HP 行は点滅で
     /// 現在HP(白) ⇄ 戦闘後HP(灰) を切り替える。同フェーズ中は毎フレーム呼ばれる。
-    def applyForecast(phase: TurnPhase.Phase, elapsed: Duration.Duration, scene: Scene[NodeTag]):
+    def applyForecast(phase: TurnPhase.Phase, elapsed: Duration.Duration,
+                       selWeapon: Option[UnitCatalog.WeaponResource], scene: Scene[NodeTag]):
             Scene[NodeTag] \ {SelectedPlayer.State,
                               PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         if (phase != TurnPhase.Phase.PlayerAttack) scene
         else
-            let cols = buildColumns();
+            let cols = buildColumns(selWeapon);
             let showDamaged = blinkShowsDamaged(elapsed);
             scene
                 |> Label2D.mapAt(pWeaponPath(),    Label2D.setText(cols#pWeapon))
@@ -229,9 +232,13 @@ mod BattlePanelScene {
             defenderId <- player#attackTargetId;
             enemy      <- EnemyScene.RosterQuery.get(defenderId)
         ) yield {
+            // 選択中の武器を先頭に装備してから攻撃する（startAttack は weapons.head を使う）。
+            // activeAttackWeaponIndex は予報に出ていた武器と同じ index を返す。
+            let idx      = ItemMenuScene.activeAttackWeaponIndex(scene) |> Option.getWithDefault(0);
+            let equipped = PlayerScene.equipWeapon(attackerId, idx, scene);
             TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
             GameLogger.playerLog("味方${attackerId}の攻撃");
-            PlayerScene.startAttack(attackerId, defenderId, enemy#gridPos, scene)
+            PlayerScene.startAttack(attackerId, defenderId, enemy#gridPos, equipped)
         };
         Option.getWithDefault(scene, started)
 
@@ -260,17 +267,29 @@ mod BattlePanelScene {
         enemyHpCur = Int32, enemyHpPost = Int32, enemyTakesDmg = Bool
     }
 
-    /// 選択中プレイヤー / 攻撃対象敵 / 装備武器が揃ったら予報を組み立てる。
+    /// 攻撃中の武器選択リストでアクティブな武器 `selWeapon` を返す（カーソル上の敵に届く
+    /// 選択武器）。`process` から呼んで `applyForecast` / `buildColumns` に渡す。
+    /// 敵が居ない / 届く武器が無いなら None（予報は空になる）。
+    def selectedAttackWeapon(scene: Scene[NodeTag]):
+            Option[UnitCatalog.WeaponResource] \ SelectedPlayer.State =
+        forM (
+            idx      <- ItemMenuScene.activeAttackWeaponIndex(scene);
+            playerId <- SelectedPlayer.State.get()#id;
+            player   <- PlayerScene.get(playerId, scene);
+            w        <- List.nth(idx, player#weapons)
+        ) yield w
+
+    /// 選択中プレイヤー / 攻撃対象敵 / 選択武器が揃ったら予報を組み立てる。
     /// 揃わなければ全カラム空・HP 0 を返す（visible でないフェーズで描画されない想定）。
-    def buildColumns(): Forecast
+    def buildColumns(selWeapon: Option[UnitCatalog.WeaponResource]): Forecast
             \ {SelectedPlayer.State, PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
-        // 選択中の味方 → 攻撃対象の敵 → 装備武器（weapons の先頭）まで Option を forM でたどる。
+        // 選択中の味方 → 攻撃対象の敵 → 選択武器まで Option を forM でたどる。
         let columns = forM (
             pid    <- SelectedPlayer.State.get()#id;
             player <- PlayerScene.PartyQuery.get(pid);
             eid    <- player#attackTargetId;
             enemy  <- EnemyScene.RosterQuery.get(eid);
-            weapon <- List.head(player#weapons)
+            weapon <- selWeapon
         ) yield formatColumns(player, weapon, enemy);
         Option.getWithDefault(emptyForecast(), columns)
 
@@ -294,9 +313,9 @@ mod BattlePanelScene {
         // 威力 / 命中の数値計算は `Combat.estimate`（faction 非依存）に集約済み。
         let rel  = WeaponTriangle.relationOpt(weapon#weaponType,
                                               enemy#weapon |> Option.map(w -> w#weaponType));
-        let playerForecast = Combat.estimate(PlayerScene.combatView(player),
+        let playerForecast = Combat.estimate(PlayerScene.combatViewWith(player, weapon),
                                              EnemyScene.combatView(enemy));
-        let enemyCols = formatEnemyColumns(player, enemy);
+        let enemyCols = formatEnemyColumns(player, weapon, enemy);
         let bandWidth  = 16;  // 上下の帯の文字幅（武器名の中央寄せ用）
         let labelWidth = 5;   // 中央ラベルの文字幅（左マージン込みで中央へ寄せる）
         let pWeapon    = padCenter("${weapon#name}${relationMark(rel)}", bandWidth);
@@ -317,9 +336,10 @@ mod BattlePanelScene {
     /// 反撃成立で数値を出す。武器なし or 射程外なら "--"・反撃ダメージ 0。
     /// name は敵の武器名（＋相性マーク）。counterDamage は味方が受ける反撃ダメージ（点滅 HP 用）。
     def formatEnemyColumns(player: PlayerScene.Data,
+                            weapon: UnitCatalog.WeaponResource,
                             enemy: EnemyScene.Data):
                            {name = String, atk = String, hit = String, counterDamage = Int32} =
-        let playerWeaponType = List.head(player#weapons) |> Option.map(w -> w#weaponType);
+        let playerWeaponType = Some(weapon#weaponType);
         match enemy#weapon {
             case None          => {name = "", atk = "--", hit = "--", counterDamage = 0}
             case Some(eWeapon) =>
@@ -332,7 +352,7 @@ mod BattlePanelScene {
                 else {
                     // 反撃の威力 / 命中は敵 → 味方の `Combat.estimate`（味方の予報と同一経路）。
                     let enemyForecast = Combat.estimate(EnemyScene.combatView(enemy),
-                                                         PlayerScene.combatView(player));
+                                                         PlayerScene.combatViewWith(player, weapon));
                     {name = nameStr,
                      atk = "${enemyForecast#damage}", hit = "${enemyForecast#hit}%",
                      counterDamage = enemyForecast#damage}

@@ -243,8 +243,9 @@ mod EnemyRangeScene {
     def name(): String = "EnemyRange"
     pub def enemyRangePath(): NodePath = name() :: Nil
 
-    /// 赤系 modulate。MoveRange の青と対比する。
-    def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
+    /// 白系 modulate。敵の「移動範囲」を表す。攻撃到達範囲(EnemyAttackRange=赤)と
+    /// 色で区別するため移動範囲は白にしている。
+    def color(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
 
     /// 情報表示なので少し透かして駒や床を見やすくする。
     def alpha(): Float32 = 0.7f32
@@ -289,6 +290,72 @@ mod EnemyRangeScene {
         }
 }
 
+/// EnemyAttackRangeScene — カーソルが敵に乗っているとき、その敵の「攻撃到達範囲（脅威範囲）」を
+/// 赤色で可視化する。`MoveAttackRangeScene`(プレイヤーの脅威範囲) の敵版ミラー。
+///
+/// 脅威範囲 = ⋃ {敵の移動到達セル c から武器射程 (min..max マンハッタン) で届くセル} − 移動到達セル。
+/// 移動到達セル自身は `EnemyRangeScene`(白) が描くので、ここでは「移動の外側で攻撃が届くセル」だけを
+/// 赤で出す。
+///
+/// **ライフサイクル**:
+///   - `EnemyRangeScene.refreshFor` の直後に `refreshFor` を呼ぶ
+///     (敵移動到達セルを `EnemyRangeScene.reachable` から読むため、白マス構築後でないとデータが無い)
+///   - 敵から離れたとき / 該当フェーズを抜けるときは `clear`
+mod EnemyAttackRangeScene {
+
+    /// 親 Marker2D に紐づくデータ。
+    /// `enemyId` は今表示している対象敵。`cells` は移動到達セルと重複しない「赤マスだけ」。
+    pub type alias Data = {
+        enemyId = Int32,
+        cells   = List[{x = Int32, y = Int32}]
+    }
+
+    def name(): String = "EnemyAttackRange"
+    pub def rangePath(): NodePath = name() :: Nil
+
+    /// 赤系 modulate。EnemyRange(移動範囲=白) と区別する「攻撃到達」の色。
+    def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
+
+    /// 移動範囲(白, alpha=0.7) と区別するため少し透かす。
+    def alpha(): Float32 = 0.5f32
+
+    /// 既存ノードを取り除き、`enemyId` の敵の脅威範囲で構築し直す。
+    /// `EnemyRangeScene` が直前に build した敵移動到達セルを読み、武器射程で広げて差集合を作る。
+    /// 敵が居ない / 武器なし / 脅威セルが空なら何も描かない。
+    pub def refreshFor(enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ EnemyScene.RosterQuery =
+        let cleared = clear(scene);
+        match EnemyScene.RosterQuery.get(enemyId) {
+            case None       => cleared
+            case Some(data) =>
+                match data#weapon {
+                    case None    => cleared
+                    case Some(w) =>
+                        let reachable = EnemyRangeScene.reachable(cleared);
+                        let lo = Int32.max(1, w#range#min);
+                        let hi = w#range#max;
+                        let cells = Board.computeThreatCells(reachable, lo, hi);
+                        if (List.isEmpty(cells)) cleared
+                        else
+                            cleared
+                                |> RangeOverlay.attachParent(name(),
+                                    NodeTag.EnemyAttackRange({enemyId = enemyId, cells = cells}))
+                                |> RangeOverlay.renderTiles(name(), cells, color(), alpha())
+                }
+        }
+
+    /// 表示中の EnemyAttackRange ノードがあれば取り除く。なければ何もしない。
+    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.removeAt(rangePath(), scene)
+
+    /// 現在の脅威セル一覧 (テスト・デバッグ用)。未登録なら空リスト。
+    pub def cells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
+        match Scene.getState(rangePath(), scene) {
+            case Some(NodeTag.EnemyAttackRange(data)) => data#cells
+            case _                                    => Nil
+        }
+}
+
 /// PlayerAttackRangeScene — 攻撃フェーズ中に味方の射程を赤色で可視化する
 ///
 /// `EnemyRangeScene` のミラー実装で、起点が「ホバー中の敵」ではなく「味方」になる。
@@ -318,7 +385,9 @@ mod PlayerAttackRangeScene {
     def alpha(): Float32 = 0.7f32
 
     /// 既存の PlayerAttackRange ノードがあれば取り除き、**選択中プレイヤー** の現在位置
-    /// origin に対して装備中武器の `range` で赤マスを敷き直す。
+    /// origin に対して **インベントリ全武器の射程の和集合** で赤マスを敷き直す。
+    /// 攻撃中はどの武器に持ち替えても届く敵にカーソルを乗せられるように、装備中(先頭)だけ
+    /// でなく全武器の射程を合わせて表示する (重複セルは除去)。
     /// 未選択時は cleared を返す (赤マス表示なし)。
     /// 選択中プレイヤーの武器が壊れている (`weapons = Nil`) 場合は cells を空にして
     /// 親ノードだけ追加する。これにより PlayerAttack フェーズに入ってもカーソルが
@@ -332,19 +401,26 @@ mod PlayerAttackRangeScene {
                 match PlayerScene.get(id, cleared) {
                     case None    => cleared
                     case Some(d) =>
-                        let cells = match List.head(d#weapons) {
-                            case None    => Nil
-                            case Some(w) =>
-                                let origin = d#gridPos;
-                                let layer  = MapScene.getMapLayer(cleared);
-                                computeAttackCells(origin, w#range, layer)
-                        };
+                        let layer = MapScene.getMapLayer(cleared);
+                        let cells = unionWeaponCells(d#gridPos, d#weapons, layer);
                         cleared
                             |> RangeOverlay.attachParent(name(),
                                 NodeTag.PlayerAttackRange({cells = cells}))
                             |> RangeOverlay.renderTiles(name(), cells, color(), alpha())
                 }
         }
+
+    /// インベントリ全武器の射程セルの和集合 (重複除去)。武器ごとに `computeAttackCells` で
+    /// 菱形セルを出し、(x, y) タプルで dedup してから record に戻す。武器なしなら空。
+    def unionWeaponCells(origin: {x = Int32, y = Int32},
+                          weapons: List[UnitCatalog.WeaponResource],
+                          layer: TileMapLayer): List[{x = Int32, y = Int32}] =
+        weapons
+            |> List.flatMap(w -> computeAttackCells(origin, w#range, layer))
+            |> List.map(c -> (c#x, c#y))
+            |> List.toSet
+            |> Set.toList
+            |> List.map(p -> match p { case (x, y) => {x = x, y = y} })
 
     /// 表示中の PlayerAttackRange ノードがあれば取り除く。なければ何もしない。
     pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =

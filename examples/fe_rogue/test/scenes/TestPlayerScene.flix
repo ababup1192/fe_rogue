@@ -672,4 +672,62 @@ mod TestPlayerScene {
     def testSelectPartyEmptyReturnsEmpty(): Unit \ {Assert, Math.Random} =
         let empty: List[String] = Nil;
         Assert.assertEq(expected = empty, PlayerScene.selectParty(empty))
+
+    // ════════════════════════════════════════════════════════
+    // firstWeaponIdxReaching — 攻撃中の武器選択ロジック（純粋）
+    // ════════════════════════════════════════════════════════
+
+    /// 射程 1-1 の剣。
+    def swordWeapon(): UnitCatalog.WeaponResource =
+        {range = ({min = 1, max = 1}: UnitCatalog.WeaponRange) | TestUnitFixtures.testWeapon()}
+
+    /// 射程 2-2 の弓。
+    def bowWeapon(): UnitCatalog.WeaponResource =
+        {range = ({min = 2, max = 2}: UnitCatalog.WeaponRange) | TestUnitFixtures.testWeapon()}
+
+    /// 指定の武器リストを持つ Data（位置・ステータスはダミー）。
+    def playerWithWeapons(weapons: List[UnitCatalog.WeaponResource]): PlayerScene.Data = {
+        id                = 0,
+        gridPos           = {x = 5, y = 5},
+        moveTiles         = 5,
+        hp                = 10,
+        waited            = false,
+        attackTargetId    = None,
+        resource          = TestUnitFixtures.testResource(5, 10),
+        weapons           = weapons,
+        staves            = Nil,
+        consumables       = Nil,
+        selectedItem      = None,
+        moveStepsTaken    = 0,
+        facing            = Staff.Direction.Down,
+        hidden            = false,
+        usedStairs        = false,
+        level             = 1,
+        exp               = 0,
+        pendingLevelUp    = None
+    }
+
+    /// 距離 1 では剣 (index 0) が届く。
+    @Test
+    def testFirstWeaponIdxReachingPicksSwordAtDistance1(): Unit \ Assert =
+        let data = playerWithWeapons(swordWeapon() :: bowWeapon() :: Nil);
+        Assert.assertEq(expected = Some(0), PlayerScene.firstWeaponIdxReaching(data, 1))
+
+    /// 距離 2 では剣は届かず弓 (index 1) が届く。
+    @Test
+    def testFirstWeaponIdxReachingPicksBowAtDistance2(): Unit \ Assert =
+        let data = playerWithWeapons(swordWeapon() :: bowWeapon() :: Nil);
+        Assert.assertEq(expected = Some(1), PlayerScene.firstWeaponIdxReaching(data, 2))
+
+    /// どの武器も届かない距離 3 では None。
+    @Test
+    def testFirstWeaponIdxReachingNoneWhenOutOfRange(): Unit \ Assert =
+        let data = playerWithWeapons(swordWeapon() :: bowWeapon() :: Nil);
+        Assert.assertEq(expected = None, PlayerScene.firstWeaponIdxReaching(data, 3))
+
+    /// 同距離に届く武器が複数あるときは先頭の index を返す。
+    @Test
+    def testFirstWeaponIdxReachingReturnsFirstMatch(): Unit \ Assert =
+        let data = playerWithWeapons(swordWeapon() :: swordWeapon() :: Nil);
+        Assert.assertEq(expected = Some(0), PlayerScene.firstWeaponIdxReaching(data, 1))
 }

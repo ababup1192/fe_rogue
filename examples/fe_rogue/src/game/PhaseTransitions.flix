@@ -119,6 +119,7 @@ mod PhaseTransitions {
         TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
         scene
             |> EnemyRangeScene.clear
+            |> EnemyAttackRangeScene.clear
             |> MoveRangeScene.refresh
             |> MoveAttackRangeScene.refresh
             |> CursorScene.setVisible(false)
@@ -144,6 +145,7 @@ mod PhaseTransitions {
         TurnPhase.State.put(TurnPhase.Phase.PlayerAutoMove);
         clearAllPlayerRanges(scene)
             |> EnemyRangeScene.clear
+            |> EnemyAttackRangeScene.clear
             |> CursorScene.setVisible(false)
 
     /// RogueMove フェーズに入る (合流完了 = 1 キャラ自由歩行の開始)。
@@ -154,6 +156,7 @@ mod PhaseTransitions {
         TurnPhase.State.put(TurnPhase.Phase.RogueMove);
         clearAllPlayerRanges(scene)
             |> EnemyRangeScene.clear
+            |> EnemyAttackRangeScene.clear
             |> CursorScene.setVisible(false)
 
     /// RogueAlert フェーズに入る (敵に検知された瞬間の発見演出)。
@@ -258,6 +261,7 @@ mod PhaseTransitions {
         clearMoveOnlyRanges(scene)
             |> PlayerAttackRangeScene.clear
             |> EnemyRangeScene.clear
+            |> EnemyAttackRangeScene.clear
             |> TradeRangeScene.show
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToFirstTradeCellOrPlayer

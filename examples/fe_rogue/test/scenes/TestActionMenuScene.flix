@@ -258,6 +258,7 @@ mod TestActionMenuScene {
                     TestUnitFixtures.withMockEnemyTurnQueue(() ->
                         TestUnitFixtures.withMockPartyQuery(args#scene, () ->
                             TestUnitFixtures.withMockRosterQuery(args#scene, () ->
+                              TestUnitFixtures.withMockAudio(() ->
                                 run {
                                     ActionMenuScene.onActionConfirmed(args#entry,
                                                                        args#scene)
@@ -274,7 +275,7 @@ mod TestActionMenuScene {
                                 } with handler CustomEffects.FloorAdvanceRequest {
                                     // 既存の回帰テストは「かいだん」分岐を踏まないので no-op で十分。
                                     def advance(scene, k) = k(scene)
-                                }))))));
+                                })))))));
         (result, Ref.get(phaseRef))
 
     // ════════════════════════════════════════════════════════
@@ -380,6 +381,7 @@ mod TestActionMenuScene {
                         TestUnitFixtures.withMockEnemyTurnQueue(() ->
                             TestUnitFixtures.withMockPartyQuery(scene, () ->
                                 TestUnitFixtures.withMockRosterQuery(scene, () ->
+                                  TestUnitFixtures.withMockAudio(() ->
                                     run {
                                         let afterPick =
                                             ActionMenuScene.onActionConfirmed(pickupEntry, scene);
@@ -392,7 +394,7 @@ mod TestActionMenuScene {
                                         def put(_, k) = k()
                                     } with handler CustomEffects.FloorAdvanceRequest {
                                         def advance(s, k) = k(s)
-                                    }))))));
+                                    })))))));
             let groundItemBack =
                 Option.nonEmpty(ItemScene.findAt({x = 1, y = 1}, after));
             // 期待: (床に戻った, 武器が 1 本に戻った)

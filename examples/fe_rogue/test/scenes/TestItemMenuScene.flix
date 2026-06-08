@@ -3,7 +3,7 @@
 ///   2. `ItemSelect` フェーズで `refreshItems` が weapons + staves を 1 つの ItemList に
 ///      並べる（合計件数が一致する）
 ///   3. `ItemActionSelect` フェーズで選択中アイテム種別に応じてサブメニュー項目が出し分けされる
-///      （武器 → 「そうび / すてる」、杖 → 「つかう / すてる」）
+///      （武器 → 「装備 / 捨てる」、杖 → 「使う / 捨てる」）
 mod TestItemMenuScene {
 
     use Json.JsonError.JsonError
@@ -170,9 +170,9 @@ mod TestItemMenuScene {
                 List.map(entry -> entry#text, ItemList.getItems(list))
             case _ => Nil
         };
-        Assert.assertEq(expected = "そうび" :: "すてる" :: Nil, texts)
+        Assert.assertEq(expected = "装備" :: "捨てる" :: Nil, texts)
 
-    /// 選択中アイテムが杖（idx=0）→ サブメニュー項目は「つかう / すてる」の 2 件
+    /// 選択中アイテムが杖（idx=0）→ サブメニュー項目は「使う / 捨てる」の 2 件
     @Test
     def testActionMenuForStaff(): Unit \ {Assert, Fs.FileRead} =
         let withSelection = sceneWithPlayer()
@@ -192,7 +192,7 @@ mod TestItemMenuScene {
                 List.map(entry -> entry#text, ItemList.getItems(list))
             case _ => Nil
         };
-        Assert.assertEq(expected = "つかう" :: "すてる" :: Nil, texts)
+        Assert.assertEq(expected = "使う" :: "捨てる" :: Nil, texts)
 
     // ════════════════════════════════════════════════════════
     // カーソル位置: サブメニューに入ると必ず先頭(0)から始まる

@@ -327,6 +327,18 @@ mod TestUnitFixtures {
             def drainEntries(k)    = k(Nil)
         }
 
+    /// GameEngine.Audio の no-op スタブ。効果音再生の effect だけ剥がす用途。
+    /// 例: `onActionConfirmed` が「階段」で `play("change_floor")` を鳴らすため、
+    /// それを呼ぶテストはこのハンドラで Audio effect を吸収する。
+    pub def withMockAudio(thunk: Unit -> a \ ef):
+            a \ (ef - GameEngine.Audio) =
+        run { thunk() } with handler GameEngine.Audio {
+            def playAudio(_, k)     = k()
+            def stopAudio(_, k)     = k()
+            def setVolume(_, _, k)  = k()
+            def setLooping(_, _, k) = k()
+        }
+
     /// EnemyTurn.Queue の no-op スタブ。`isEmpty` は true、その他の操作は捨てる。
     /// 「敵ターンの駆動」までは見ないテスト（味方ターンの挙動だけ確認する系）で使う。
     pub def withMockEnemyTurnQueue(thunk: Unit -> a \ ef):

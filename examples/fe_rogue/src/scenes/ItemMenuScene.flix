@@ -92,11 +92,15 @@ mod ItemMenuScene {
     // ────────────────────────────────────────────────────────
 
     /// フェーズ遷移時の visibility 適用（Push モデル）。
-    /// `ItemSelect` または `ItemActionSelect` のいずれかで visible + focused、
-    /// それ以外のフェーズでは hidden。
+    /// `ItemSelect` / `ItemActionSelect` / `PlayerAttack`（攻撃中の武器選択リスト）で
+    /// visible + focused、それ以外のフェーズでは hidden。
+    /// PlayerAttack でも focused にするのは、武器リストの上下移動 (engine の ItemList ナビ)
+    /// とカーソルglyph を有効にするため。Enter/Escape は MenuHandler 側で PlayerAttack 時
+    /// no-op なので、実際の攻撃確定/取消 (Z/X) と干渉しない。
     pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = phase == TurnPhase.Phase.ItemSelect
-                    or phase == TurnPhase.Phase.ItemActionSelect;
+                    or phase == TurnPhase.Phase.ItemActionSelect
+                    or phase == TurnPhase.Phase.PlayerAttack;
         scene
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
             |> ItemList.mapAt(menuPath(), list ->
@@ -120,6 +124,8 @@ mod ItemMenuScene {
                 refreshItemList(withVisibility)
             case TurnPhase.Phase.ItemActionSelect =>
                 refreshActionList(withVisibility)
+            case TurnPhase.Phase.PlayerAttack =>
+                refreshAttackWeaponList(withVisibility)
             // メニューが閉じている間はカーソルを先頭(0)に戻しておく。これで次に
             // ItemSelect を開いたときは記憶位置ではなく常に最初の項目から始まる。
             // 表示中のフェーズではリセットしないので ↑↓ のカーソル移動は維持される。
@@ -161,6 +167,108 @@ mod ItemMenuScene {
                         |> ItemList.setIconSize(iconSize())
                         |> ItemList.setIconTextGap(iconTextGap()))
         }
+
+    /// 攻撃中 (PlayerAttack) の武器選択リストを組む。`refreshItemList` と同じ並び
+    /// (武器 → 杖 → 消費アイテム) ・アイコンだが、**カーソルが乗っている敵に届く武器だけ
+    /// アクティブ (disabled = false)**、それ以外の武器と道具 (杖・消費アイテム) は disabled。
+    /// 選択 index は `activeAttackWeaponIndex` で「届く武器」に正規化する (engine の上下移動は
+    /// disabled をスキップするので、左右でターゲットが変わって選択が射程外になったときの補正)。
+    def refreshAttackWeaponList(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ SelectedPlayer.State =
+        match SelectedPlayer.State.get()#id {
+            case None => scene
+            case Some(playerId) =>
+                let weapons     = PlayerScene.getWeapons(playerId, scene);
+                let staves      = PlayerScene.getStaves(playerId, scene);
+                let consumables = PlayerScene.getConsumables(playerId, scene);
+                let dist        = cursorTargetDistance(playerId, scene);
+                let weaponEntries = List.mapWithIndex(idx -> w ->
+                    attackWeaponEntry(idx, w, weaponActiveAt(dist, w)), weapons);
+                let staffEntries = List.mapWithIndex(idx -> s ->
+                    attackStaffEntry(idx, s), staves);
+                let consumableEntries = List.mapWithIndex(idx -> c ->
+                    attackConsumableEntry(idx, c), consumables);
+                let items = List.append(weaponEntries,
+                    List.append(staffEntries, consumableEntries));
+                let iconSprites = List.append(List.map(w -> w#sprite, weapons),
+                    List.append(List.map(s -> s#sprite, staves),
+                                List.map(c -> c#sprite, consumables)));
+                let icons = rowIcons(iconSprites);
+                let selIdx = activeAttackWeaponIndex(scene) |> Option.getWithDefault(0);
+                scene |> ItemList.mapAt(menuPath(), list ->
+                    list
+                        |> ItemList.setItems(items)
+                        |> ItemList.setItemIcons(icons)
+                        |> ItemList.setIconSize(iconSize())
+                        |> ItemList.setIconTextGap(iconTextGap())
+                        |> ItemList.setSelectedIndex(selIdx))
+        }
+
+    /// 攻撃中に「選択すべき武器」の index (weapons 内) を返す。真理点として
+    /// `BattlePanelScene` (予測) と `refreshAttackWeaponList` (リスト正規化) が共用する。
+    /// 現在の選択 index の武器がカーソル上の敵に届けばそのまま、届かなければ届く先頭武器。
+    /// カーソルが敵に乗っていない / 届く武器が無いなら None。
+    pub def activeAttackWeaponIndex(scene: Scene[NodeTag]): Option[Int32]
+            \ SelectedPlayer.State =
+        forM (
+            playerId <- SelectedPlayer.State.get()#id;
+            player   <- PlayerScene.get(playerId, scene);
+            d        <- cursorTargetDistance(playerId, scene);
+            idx      <- chooseAttackWeaponIdx(player, currentSelectedIndex(scene), d)
+        ) yield idx
+
+    /// 現在の選択 index `cur` の武器が距離 `d` に届けば `cur`、でなければ `d` に届く先頭武器。
+    def chooseAttackWeaponIdx(player: PlayerScene.Data, cur: Int32, d: Int32): Option[Int32] =
+        let curReaches = match List.nth(cur, player#weapons) {
+            case Some(w) => Weapon.inRange(d, w#range)
+            case None    => false
+        };
+        if (curReaches) Some(cur)
+        else PlayerScene.firstWeaponIdxReaching(player, d)
+
+    /// カーソルが乗っている敵と選択中味方とのマンハッタン距離。敵が居なければ None。
+    def cursorTargetDistance(playerId: Int32, scene: Scene[NodeTag]): Option[Int32] =
+        forM (
+            player <- PlayerScene.get(playerId, scene);
+            eid    <- EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene);
+            enemy  <- EnemyScene.get(eid, scene)
+        ) yield Weapon.manhattan(player#gridPos, enemy#gridPos)
+
+    /// ItemMenu リストの現在の選択 index。未登録なら 0。
+    def currentSelectedIndex(scene: Scene[NodeTag]): Int32 =
+        ItemList.getAt(menuPath(), scene)
+            |> Option.map(ItemList.getSelectedIndex)
+            |> Option.getWithDefault(0)
+
+    /// 距離 `dist`（カーソル上の敵）に対し、武器 `w` がアクティブ (射程が届く) か。
+    /// 敵に乗っていない (dist = None) ならどの武器も非アクティブ。
+    def weaponActiveAt(dist: Option[Int32], w: UnitCatalog.WeaponResource): Bool =
+        match dist {
+            case Some(d) => Weapon.inRange(d, w#range)
+            case None    => false
+        }
+
+    /// 攻撃中の武器エントリ。`active = false` で disabled (灰)。表記は `weaponEntry` と同じ。
+    def attackWeaponEntry(idx: Int32, weapon: UnitCatalog.WeaponResource,
+                           active: Bool): ItemEntry = {
+        text     = "${weapon#name} ${weapon#durability}",
+        disabled = not active,
+        metadata = Some("w:${idx}")
+    }
+
+    /// 攻撃中の杖エントリ。武器ではないので常に disabled。
+    def attackStaffEntry(idx: Int32, staff: Staff.StaffResource): ItemEntry = {
+        text     = "${staff#name} ${staff#durability}",
+        disabled = true,
+        metadata = Some("s:${idx}")
+    }
+
+    /// 攻撃中の消費アイテムエントリ。武器ではないので常に disabled。
+    def attackConsumableEntry(idx: Int32, item: Consumable.ConsumableResource): ItemEntry = {
+        text     = "${item#name} ${item#durability}",
+        disabled = true,
+        metadata = Some("c:${idx}")
+    }
 
     /// 「そうび」項目（武器のみ）。
     def equipEntry(): ItemEntry =

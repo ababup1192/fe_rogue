@@ -107,6 +107,14 @@ mod PlayerScene {
          skill = data#resource#skill, speed = data#resource#speed, luck = data#resource#luck,
          hp = data#hp, weapon = Combat.weaponView(List.head(data#weapons))}
 
+    /// `combatView` の「装備武器を明示指定する」版。攻撃中に選択した武器（装備中=先頭とは
+    /// 限らない）で戦闘予測を計算するため、`BattlePanelScene` から使う。
+    pub def combatViewWith(data: Data, weapon: UnitCatalog.WeaponResource): Combat.CombatView =
+        {attack = data#resource#attack, magicAttack = data#resource#magicAttack,
+         defense = data#resource#defense, magicDefense = data#resource#magicDefense,
+         skill = data#resource#skill, speed = data#resource#speed, luck = data#resource#luck,
+         hp = data#hp, weapon = Combat.weaponView(Some(weapon))}
+
     /// この味方の盤上ビュー（faction = Player）。`Encounter.fromScene` の join で使う。
     /// `weaponRange` は装備武器(先頭)の射程。味方に `isDying` は無いので常に false。
     pub def unitView(data: Data): UnitView =
@@ -522,12 +530,42 @@ mod PlayerScene {
         }
 
     /// ActionMenu「こうげき」確定で呼ばれる: 攻撃ターゲット選択フェーズへ。
-    /// overlay / cursor 整理は `PhaseTransitions.enterPlayerAttack` が担当。
+    /// overlay / cursor 整理は `PhaseTransitions.enterPlayerAttack` が担当
+    /// (全武器の射程の和集合で赤マスを敷き、最初のターゲットへカーソルをスナップ)。
+    /// その後、カーソルが乗った敵に届く先頭の武器を装備(先頭へ移動)しておく。これにより
+    /// 装備中(先頭)武器が届かない敵でも、届く武器を「装備した扱い」で攻撃ウィンドウを開ける。
     pub def enterAttackPhase(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
                               PartyQuery, EnemyScene.RosterQuery} =
-        PhaseTransitions.enterPlayerAttack(scene)
+        let withPhase = PhaseTransitions.enterPlayerAttack(scene);
+        equipReachingWeaponForCursor(withPhase)
+
+    /// カーソルが乗っている敵に届く先頭の武器を装備する (届く武器が無ければ no-op)。
+    /// 進入直後の「装備した扱い」初期化用。`enterAttackPhase` からのみ呼ぶ。
+    def equipReachingWeaponForCursor(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ SelectedPlayer.State =
+        match SelectedPlayer.State.get()#id {
+            case None     => scene
+            case Some(id) =>
+                let equipped = forM (
+                    player <- get(id, scene);
+                    eid    <- EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene);
+                    enemy  <- EnemyScene.get(eid, scene);
+                    idx    <- firstWeaponIdxReaching(player,
+                                  Weapon.manhattan(player#gridPos, enemy#gridPos))
+                ) yield equipWeapon(id, idx, scene);
+                Option.getWithDefault(scene, equipped)
+        }
+
+    /// インベントリの先頭から、距離 `distance` に射程が届く最初の武器の index を返す。
+    /// 届く武器が無ければ None。攻撃中の武器選択・進入時装備で共用する純粋関数。
+    pub def firstWeaponIdxReaching(data: Data, distance: Int32): Option[Int32] =
+        data#weapons
+            |> List.zipWithIndex
+            |> List.findMap(p -> match p {
+                case (i, w) => if (Weapon.inRange(distance, w#range)) Some(i) else None
+            })
 
     /// 各 Player ノードの毎フレーム process。AnimationPlayer から自分宛 (`playerPath(id)`)
     /// の signal だけ pull し、attack:hit (中点) / attack_lunge (完了) に反応する。

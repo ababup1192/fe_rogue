@@ -136,7 +136,7 @@ mod ActionMenuScene {
 
     /// 選択中プレイヤーの状況から「こうげき / こうかん / アイテム / ひろう / たいき」の
     /// うち成立するものだけ返す。
-    /// 順序は固定: 階段 → こうげき → アイテム → こうかん → ひろう → たいき。
+    /// 順序は固定: ひろう → 階段 → こうげき → アイテム → こうかん → たいき。
     /// SelectedPlayer が None のときは PlayerCursor から空マスで開かれた「集合メニュー」
     /// として「しゅうごう」だけを返す (確定でロードへ合流開始)。
     def buildItems(scene: Scene[NodeTag]): List[ItemEntry]
@@ -191,8 +191,8 @@ mod ActionMenuScene {
                                   disabled = false,
                                   metadata = Some(waitMeta())}: ItemEntry) :: Nil
                             else Nil;
-                        List.flatten(stairsItem :: attackItem :: itemItem :: exchangeItem ::
-                                       pickupItem :: waitItem :: Nil)
+                        List.flatten(pickupItem :: stairsItem :: attackItem :: itemItem ::
+                                       exchangeItem :: waitItem :: Nil)
                 }
         }
 
@@ -234,13 +234,23 @@ mod ActionMenuScene {
               metadata = Some(turnEndMeta())}: ItemEntry) :: Nil;
         List.append(gather, turnEnd)
 
-    /// 装備武器の射程内に生きている敵が居るか。
-    /// 武器なし / 全員 isDying なら false。位置×ステータスの結合と射程判定は
-    /// `UnitView.canAttack`（faction 非依存の共通述語）に集約済み。
+    /// インベントリのいずれかの武器の射程内に生きている敵が居るか。
+    /// 装備中(先頭)だけでなく全武器を見る: 射程を変えれば(= 別の武器に持ち替えれば)
+    /// 攻撃できる場合も「攻撃」を出すため。武器なし / 全員 isDying / どの武器も射程外なら false。
+    /// 持ち替え後の実際の装備は `PlayerScene.enterAttackPhase` が行う。
     def canAttackFrom(player: PlayerScene.Data): Bool \ EnemyScene.RosterQuery =
-        let attacker = PlayerScene.unitView(player);
-        List.exists(e -> UnitView.canAttack(attacker, EnemyScene.unitView(e)),
-                    EnemyScene.RosterQuery.getAll())
+        let enemies = EnemyScene.RosterQuery.getAll();
+        List.exists(w -> weaponReachesAnyEnemy(player#gridPos, w, enemies), player#weapons)
+
+    /// 指定位置から `weapon` の射程内に生きている敵 (hp > 0 かつ not isDying) が居るか。
+    def weaponReachesAnyEnemy(pos: {x = Int32, y = Int32},
+                               weapon: UnitCatalog.WeaponResource,
+                               enemies: List[EnemyScene.Data]): Bool =
+        List.exists(e -> {
+            let ev = EnemyScene.unitView(e);
+            ev#hp > 0 and not ev#isDying
+                and Weapon.inRange(Weapon.manhattan(pos, ev#pos), weapon#range)
+        }, enemies)
 
     /// 自分の現在セルに「自分以外の味方」が居なければたいき可。
     /// 同じセルに別味方が居る (重なり) ときは false。
@@ -265,7 +275,7 @@ mod ActionMenuScene {
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 PlayerScene.PartyQuery, EnemyScene.RosterQuery,
-                CustomEffects.FloorAdvanceRequest} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
         match entry#metadata {
             case None    => scene
             case Some(m) =>
@@ -290,7 +300,9 @@ mod ActionMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                CustomEffects.FloorAdvanceRequest} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
+        // 階段を決定した瞬間にフロア移動音を鳴らす
+        AudioStreamPlayer.play("change_floor");
         GameLogger.playerLog("階段を降りた");
         match SelectedPlayer.State.get()#id {
             case Some(id) =>
@@ -474,7 +486,7 @@ mod ActionMenuScene {
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 PlayerScene.PartyQuery, EnemyScene.RosterQuery,
-                CustomEffects.FloorAdvanceRequest} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             case Some(entry) => onActionConfirmed(entry, scene)
             case None        => scene

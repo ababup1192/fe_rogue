@@ -5,6 +5,8 @@ pub enum NodeTag {
     case Map(MapScene.Data)
     case MoveRange(MoveRangeScene.Data)
     case EnemyRange(EnemyRangeScene.Data)
+    /// EnemyAttackRangeScene の赤マス overlay（敵の攻撃到達=脅威範囲。移動範囲の外側）
+    case EnemyAttackRange(EnemyAttackRangeScene.Data)
     case PlayerAttackRange(PlayerAttackRangeScene.Data)
     case MoveAttackRange(MoveAttackRangeScene.Data)
     /// TradeRangeScene の緑マス overlay（「こうかん」確定後の隣接味方マス）
@@ -400,6 +402,8 @@ def isMenuCursorMove(phase: TurnPhase.Phase, key: GameEngine.Key): Bool =
         case TurnPhase.Phase.ItemSelect       => vertical
         case TurnPhase.Phase.ItemActionSelect => vertical
         case TurnPhase.Phase.TradeInventory   => vertical or horizontal
+        // 攻撃中: 上下=武器切り替え / 左右=ターゲット選択。どちらもカーソル移動音を鳴らす。
+        case TurnPhase.Phase.PlayerAttack     => vertical or horizontal
         case _                                => false
     }
 
@@ -576,6 +580,8 @@ mod Game {
                 AudioStreamPlayer.setVolume("cursor", 0.5f32);
                 // 回復成立音 (きずぐすり / 回復の杖)
                 AudioStreamPlayer.setVolume("cure", 0.4f32);
+                // 階段でフロア移動する音
+                AudioStreamPlayer.setVolume("change_floor", 0.5f32);
                 GameLogger.playerLog("T1 味方のターン");
                 gameLoop(sceneRef, scene)
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。

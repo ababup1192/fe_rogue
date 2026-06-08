@@ -40,6 +40,7 @@
     {"name": "cancel",       "path": "assets/audio/cancel.wav",       "looping": false},
     {"name": "cursor",       "path": "assets/audio/cursor.wav",       "looping": false},
     {"name": "get_item",     "path": "assets/audio/get_item.wav",     "looping": false},
-    {"name": "cure",         "path": "assets/audio/cure.wav",         "looping": false}
+    {"name": "cure",         "path": "assets/audio/cure.wav",         "looping": false},
+    {"name": "change_floor", "path": "assets/audio/change_floor.wav", "looping": false}
   ]
 }
