@@ -564,7 +564,7 @@ mod Game {
                 // volume=0.05) で applyAudioAttach 経由で再生される (= ここでは触らない)
                 let scene = GameLifecycle.buildCurrentFloor(catalogs);
                 // SE は半分で鳴らす (Inspector 対応の Scene Node にしていない通常の SE 系)
-                AudioStreamPlayer.setVolume("damage", 0.35f32);
+                AudioStreamPlayer.setVolume("damage", 0.2625f32);
                 AudioStreamPlayer.setVolume("down_enemy", 0.5f32);
                 AudioStreamPlayer.setVolume("miss", 0.5f32);
                 AudioStreamPlayer.setVolume("find", 0.5f32);
@@ -575,7 +575,7 @@ mod Game {
                 AudioStreamPlayer.setVolume("cancel", 0.5f32);
                 AudioStreamPlayer.setVolume("cursor", 0.5f32);
                 // 回復成立音 (きずぐすり / 回復の杖)
-                AudioStreamPlayer.setVolume("cure", 0.5f32);
+                AudioStreamPlayer.setVolume("cure", 0.4f32);
                 GameLogger.playerLog("T1 味方のターン");
                 gameLoop(sceneRef, scene)
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
