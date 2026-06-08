@@ -48,15 +48,26 @@ mod FloorCatalog {
         roomCount = Int32
     }
 
-    /// 1 フロア分の出現テーブル + 部屋あたりスポーン数レンジ + ダンジョン生成設定
+    /// 1 フロア分の出現テーブル + 部屋あたりスポーン数レンジ + ダンジョン生成設定。
+    /// `roomMaps` / `horizontalMaps` / `verticalMaps` は「このフロアで使う部屋・通路マップの
+    /// プール」を出現率（percent = 重み）付きで持つ。各 `SpawnEntry#id` はマップの stem
+    /// （拡張子なしのファイル名、例 `"room_1"`）で、`mapPathOf` で `.map.json` パスに解決する。
+    /// 空リストのフロアは MapScene 側で従来のハードコード既定プールにフォールバックする。
     pub type alias FloorResource = {
         label           = String,
         generation      = GenerationConfig,
         monsters        = List[SpawnEntry],
         items           = List[SpawnEntry],
         monstersPerRoom = SpawnRange,
-        itemsPerRoom    = SpawnRange
+        itemsPerRoom    = SpawnRange,
+        roomMaps        = List[SpawnEntry],
+        horizontalMaps  = List[SpawnEntry],
+        verticalMaps    = List[SpawnEntry]
     }
+
+    /// マップ stem（例 `"room_1"`）を `assets/maps/room_1.map.json` パスに解決する。
+    /// floors.json の roomMaps/horizontalMaps/verticalMaps の id ↔ 実ファイルの橋渡し。
+    pub def mapPathOf(stem: String): String = "assets/maps/${stem}.map.json"
 
     /// `resources/floors.json` をロードし、`resources/floors.schema.json` で整合検査する。
     /// 段階 8 のリファクタで `CatalogContainer.loadWithCheck` に委譲する形に変更した。
@@ -149,7 +160,8 @@ mod FloorCatalog {
 
     /// schema 整合性チェックに使う期待フィールド名集合
     pub def expectedFloorFields(): Set[String] =
-        Set#{"label", "generation", "monsters", "items", "monstersPerRoom", "itemsPerRoom"}
+        Set#{"label", "generation", "monsters", "items", "monstersPerRoom", "itemsPerRoom",
+             "roomMaps", "horizontalMaps", "verticalMaps"}
 
 }
 
@@ -184,7 +196,10 @@ mod FloorCatalogCodec {
             "monsters"        => encodeList(encodeSpawnEntry, floor#monsters),
             "items"           => encodeList(encodeSpawnEntry, floor#items),
             "monstersPerRoom" => encodeRange(floor#monstersPerRoom),
-            "itemsPerRoom"    => encodeRange(floor#itemsPerRoom)
+            "itemsPerRoom"    => encodeRange(floor#itemsPerRoom),
+            "roomMaps"        => encodeList(encodeSpawnEntry, floor#roomMaps),
+            "horizontalMaps"  => encodeList(encodeSpawnEntry, floor#horizontalMaps),
+            "verticalMaps"    => encodeList(encodeSpawnEntry, floor#verticalMaps)
         })
 
     def encodeGeneration(config: GenerationConfig): JsonElement =
@@ -224,8 +239,19 @@ mod FloorCatalogCodec {
         ) yield ({
             label = label, generation = generation,
             monsters = monsters, items = items,
-            monstersPerRoom = monstersPerRoom, itemsPerRoom = itemsPerRoom
+            monstersPerRoom = monstersPerRoom, itemsPerRoom = itemsPerRoom,
+            // マッププールは省略可能（未移行 floors.json でも起動できるよう欠落時は Nil）。
+            roomMaps       = decodeMapsField("roomMaps", obj),
+            horizontalMaps = decodeMapsField("horizontalMaps", obj),
+            verticalMaps   = decodeMapsField("verticalMaps", obj)
         }: FloorResource)
+
+    /// マッププールフィールドを decode する。キー欠落 / 形式不正なら空リストにフォールバックする
+    /// （必須の forM バインドに入れず、後方互換のため defensive に Nil 既定とする）。
+    def decodeMapsField(key: String, obj: Map[String, JsonElement]): List[SpawnEntry] =
+        Map.get(key, obj)
+            |> Option.flatMap(decodeList(decodeSpawnEntry))
+            |> Option.getWithDefault(Nil)
 
     /// `{"roomCount": Int32}` を GenerationConfig に decode
     def decodeGeneration(element: JsonElement): Option[GenerationConfig] =

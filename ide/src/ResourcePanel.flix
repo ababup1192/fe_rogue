@@ -121,7 +121,7 @@ mod ResourcePanel {
     def collectRefOptions(state: IdeState.IdeState):
             Map[String, List[String]] \ {Fs.FileRead, IO} =
         let entries = Array.get(0, state#resource#discoveredRef);
-        List.foldLeft((acc, e) ->
+        let base = List.foldLeft((acc, e) ->
             match loadJsonElement(e#dataPath) {
                 case Some(json) =>
                     match ResourceCatalog.classify(json) {
@@ -131,7 +131,34 @@ mod ResourcePanel {
                     }
                 case None => acc
             },
-            Map.empty(), entries)
+            Map.empty(), entries);
+        // 擬似カタログ "maps": assets/maps/*.map.json の stem を候補にする。
+        // schema の `refPercentList(to:"maps")` 用（floors.json のマッププール編集）。
+        // projectRoot は discovered resource (絶対パス) の `<root>/resources/<name>.json` から導出。
+        match projectRootOf(entries) {
+            case Some(root) =>
+                let stems = run {
+                    MapEditorPanel.findMapStems(root)
+                } with Fs.Glob.runWithIO;
+                Map.insert("maps", stems, base)
+            case None => base
+        }
+
+    /// discovered resource の絶対 dataPath（`<root>/resources/<name>.json`）から
+    /// projectRoot を導出する。親ディレクトリを 2 段上る（… → resources → root）。
+    /// 1 件も無ければ None。
+    def projectRootOf(entries: List[ResourceDiscovery.ResourceEntry]): Option[String] =
+        List.head(entries)
+            |> Option.map(e -> parentDir(parentDir(e#dataPath)))
+
+    /// パス末尾の `/<segment>` を 1 段落とす。区切りが無ければ入力をそのまま返す。
+    def parentDir(path: String): String =
+        parentDirRec(path, String.length(path) - 1)
+
+    def parentDirRec(path: String, idx: Int32): String =
+        if (idx < 0) path
+        else if (String.charAt(idx, path) == '/') path.substring(0, idx)
+        else parentDirRec(path, idx - 1)
 
     /// `collectRefOptions` を 1 回計算して ResourceState の cache に格納する。
     /// resource 一覧ロード完了時 (`populateResourcesList`) と、sub-entries が変化しうる

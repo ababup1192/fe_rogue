@@ -99,6 +99,12 @@ mod MapEditorPanel {
         Fs.Glob.glob(rootDir, "assets/maps/*.map.json")
             |> Result.getWithDefault(Nil)
 
+    /// `assets/maps/*.map.json` を glob して各ファイルの stem（拡張子なし名、例 `"room_1"`）の
+    /// リストを返す。Resources タブで floors.json の `refPercentList(to:"maps")` の
+    /// ComboBox 候補に使う（ResourcePanel.collectRefOptions から呼ぶ）。
+    pub def findMapStems(rootDir: String): List[String] \ Fs.Glob =
+        findMapFiles(rootDir) |> List.map(stemName)
+
     /// 絶対パスから表示用 basename を取り出す ("/path/level_0.map.json" → "level_0.map.json")。
     pub def displayName(absPath: String): String =
         basenameRec(absPath, String.length(absPath) - 1)

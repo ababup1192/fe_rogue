@@ -19,11 +19,13 @@ mod DungeonGenerator {
     use DungeonComposer.{DoorSide, SideConnection, SideRef}
 
     /// 利用可能な部屋プール / 通路 / 目標部屋数の設定。
+    /// 各プールは `(path, weight)` のリストで、weight（出現率）に比例した重み付き抽選で選ぶ。
+    /// weight 合計が 0 / 全要素 0 のときは一様抽選にフォールバックする（破綻させない）。
     pub type alias Config = {
-        roomPaths       = List[String],   // 部屋 LDTK プール（複数可）
-        horizontalPaths = List[String],   // 横通路 LDTK プール（複数可、空不可）
-        verticalPaths   = List[String],   // 縦通路 LDTK プール（複数可、空不可）
-        roomCount       = Int32           // 目標部屋数（>= 1）
+        roomPaths       = List[(String, Int32)],   // 部屋 LDTK プール（path, 重み）
+        horizontalPaths = List[(String, Int32)],   // 横通路 LDTK プール（path, 重み。空不可）
+        verticalPaths   = List[(String, Int32)],   // 縦通路 LDTK プール（path, 重み。空不可）
+        roomCount       = Int32                     // 目標部屋数（>= 1）
     }
 
     /// composeFromSideConnections に渡す入力一式。
@@ -86,11 +88,11 @@ mod DungeonGenerator {
         if (config#roomCount < 1) bug!("DungeonGenerator: roomCount must be >= 1")
         else
             // 1. 全 LDTK ファイルのメタデータを一度だけ読み込む（重複ロード回避）
-            let allPaths = List.append(config#horizontalPaths,
-                            List.append(config#verticalPaths, config#roomPaths));
+            let allPaths = List.append(pathsOf(config#horizontalPaths),
+                            List.append(pathsOf(config#verticalPaths), pathsOf(config#roomPaths)));
             let metaMap = loadAllMetadata(textureName, allPaths);
             // 2. 最初の部屋を配置（offset (0,0), index 0）
-            let firstPath = pickOrBug(config#roomPaths, "roomPaths must not be empty");
+            let firstPath = pickWeightedOrBug(config#roomPaths, "roomPaths must not be empty");
             let firstMeta = metaOf(firstPath, metaMap);
             let firstEntry: Entry = {
                 ldtkPath         = firstPath,
@@ -225,14 +227,14 @@ mod DungeonGenerator {
                 match RandomUtil.pick(freeSides) {
                     case None => None
                     case Some(anchorSide) =>
-                        match RandomUtil.pick(config#roomPaths) {
+                        match pickWeightedPath(config#roomPaths) {
                             case None => None
                             case Some(newRoomPath) =>
                                 let pool = if (DungeonComposer.isHorizontalSide(anchorSide))
                                                config#horizontalPaths
                                            else
                                                config#verticalPaths;
-                                match RandomUtil.pick(pool) {
+                                match pickWeightedPath(pool) {
                                     case None => None
                                     case Some(pathwayPath) =>
                                         tryPlacement(anchorIdx, anchorSide, newRoomPath,
@@ -407,8 +409,34 @@ mod DungeonGenerator {
             case None    => bug!("DungeonGenerator: index remap failed for ${oldIdx}")
         }
 
-    def pickOrBug(list: List[a], msg: String): a \ Math.Random =
-        match RandomUtil.pick(list) {
+    /// `(path, weight)` リストから path だけを取り出す（メタデータ収集用）。
+    def pathsOf(entries: List[(String, Int32)]): List[String] =
+        List.map(p -> { let (path, _) = p; path }, entries)
+
+    /// 出現率（weight）に比例した重み付き抽選で 1 つの path を選ぶ。
+    /// 空なら None。weight 合計が 0（全要素 0 など）なら一様抽選にフォールバックする
+    /// （0 重みでも「選べない」より「等確率」の方が破綻しないため）。
+    /// `FloorCatalog.pickWeighted` と同じ正規化ロジック。
+    pub def pickWeightedPath(entries: List[(String, Int32)]): Option[String] \ Math.Random =
+        let total = List.foldLeft((acc, p) -> { let (_, w) = p; acc + w }, 0i32, entries);
+        if (total <= 0i32) RandomUtil.pick(pathsOf(entries))
+        else {
+            let r = Math.Random.randomFloat64() * Int32.toFloat64(total);
+            pickWeightedPathRec(r, 0.0, entries)
+        }
+
+    def pickWeightedPathRec(r: Float64, acc: Float64,
+                             entries: List[(String, Int32)]): Option[String] = match entries {
+        case Nil           => None
+        case (path, w) :: rest =>
+            let next = acc + Int32.toFloat64(w);
+            if (r < next) Some(path)
+            else pickWeightedPathRec(r, next, rest)
+    }
+
+    /// 重み付き抽選で 1 件選ぶ。空プールなら bug!（設定漏れを即可視化）。
+    def pickWeightedOrBug(entries: List[(String, Int32)], msg: String): String \ Math.Random =
+        match pickWeightedPath(entries) {
             case Some(x) => x
             case None    => bug!("DungeonGenerator: ${msg}")
         }
