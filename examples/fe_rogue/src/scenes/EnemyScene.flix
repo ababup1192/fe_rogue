@@ -45,7 +45,8 @@ mod EnemyScene {
         isDying        = Bool,
         attackTargetId = Option[Int32],
         resource       = EnemyCatalog.EnemyResource,
-        weapon         = Option[UnitCatalog.WeaponResource]
+        weapon         = Option[UnitCatalog.WeaponResource],
+        acted          = Bool
     }
 
     /// スポーン時の中間表現。`add` 内のループで部屋ごとに積み上げ、最後に Marker2D へ展開する。
@@ -252,7 +253,8 @@ mod EnemyScene {
             isDying        = false,
             attackTargetId = None,
             resource       = res,
-            weapon         = Some(sp#weapon)
+            weapon         = Some(sp#weapon),
+            acted          = false
         };
         let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset,
                                     res#sprite#scale)
@@ -265,7 +267,7 @@ mod EnemyScene {
                                  EngineNode.Marker2DWithState(marker, NodeTag.Enemy(data)))
             |> Scene.addChildAt(enemyPath(sp#id), "Sprite",
                                  EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
-            |> UnitHPBarScene.attach(enemyPath(sp#id), res#hp, UnitHPBarScene.BarPosition.Below)
+            |> UnitHPBarScene.attach(enemyPath(sp#id), res#hp, UnitHPBarScene.Team.Enemy)
 
     // ────────────────────────────────────────────────────────
     // (D) クエリ
@@ -294,6 +296,40 @@ mod EnemyScene {
                 EngineNode.Marker2DWithState(marker, NodeTag.Enemy(f(data)))
             case other => other
         }, scene)
+
+    // ─── 行動済み（待機）暗転 ──────────────────────────────────
+
+    /// 行動済みの sprite / HP ゲージ modulate（薄い灰色）。プレイヤーの waitedColor と揃える。
+    def actedColor(): Color = {r = 0.5f32, g = 0.5f32, b = 0.5f32}
+    /// 通常時の modulate（白 = 元色）。
+    def activeColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+
+    /// 敵 id の子 Sprite に modulate を設定する（Sprite2D / AnimatedSprite2D 両対応）。
+    def setSpriteModulate(id: Int32, color: Color, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(spritePath(id),
+            n -> n
+                |> EngineNode.mapSprite2D(s -> CanvasItem.setModulate(color, s))
+                |> EngineNode.mapAnimSprite2D(s -> CanvasItem.setModulate(color, s)),
+            scene)
+
+    /// 敵 id を「行動済み」にして本体スプライトと HP ゲージを暗転する。
+    /// 敵ターン中、その敵の行動が終わった時点で呼ぶ。
+    pub def setActed(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> mapEnemy(id, d -> {acted = true | d})
+            |> setSpriteModulate(id, actedColor())
+            |> UnitHPBarScene.setModulate(enemyPath(id), actedColor())
+
+    /// 全敵の「行動済み」を解除し、本体スプライトと HP ゲージを通常の明るさへ戻す。
+    /// 敵ターン開始時に呼ぶ（プレイヤーの clearAllWaited と対称）。
+    pub def clearActedAll(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let ids = getAll(scene) |> List.map(d -> d#id);
+        List.foldLeft((sc, id) ->
+            sc
+                |> mapEnemy(id, d -> {acted = false | d})
+                |> setSpriteModulate(id, activeColor())
+                |> UnitHPBarScene.setModulate(enemyPath(id), activeColor()),
+            scene, ids)
 
     /// フォグ適用: 各敵を「現在地が lit(=isLit) なら表示、さもなくば非表示」にする。
     /// 親 Marker2D の visible を切り替えるので子 Sprite / HPBar も連動する。

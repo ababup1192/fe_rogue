@@ -48,7 +48,8 @@ mod TestBattlePanelScene {
         isDying        = false,
         attackTargetId = None,
         resource       = TestUnitFixtures.testEnemyResource(3, 10),
-        weapon         = Some(TestUnitFixtures.testWeapon())
+        weapon         = Some(TestUnitFixtures.testWeapon()),
+        acted          = false
     }
 
     /// 5x5 床のみの MapSnapshot（Board 構築用、本テストでは isFloor / isWall は使わない）

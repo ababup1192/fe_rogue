@@ -87,7 +87,7 @@ mod TestEnemyAI {
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
-          weapon = Some(TestUnitFixtures.testWeapon()) }
+          weapon = Some(TestUnitFixtures.testWeapon()), acted = false }
 
     /// 武器が壊れた状態（`weapon = None`）の敵 Data。武器なしで隣接プレイヤーに
     /// 攻撃しないことを確認するテストで使う。
@@ -97,7 +97,7 @@ mod TestEnemyAI {
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
-          weapon = None }
+          weapon = None, acted = false }
 
     /// 射程 2-2 の弓を装備した敵 Data。アーチャーが距離 2 でのみ攻撃し、
     /// 隣接（距離 1）では体当たりしないことを検証するテストで使う。
@@ -108,7 +108,7 @@ mod TestEnemyAI {
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
-          weapon = Some(bow) }
+          weapon = Some(bow), acted = false }
 
     /// EnemyAction を tag だけのタプルに圧縮（id 付き）。Eq が無いので比較しやすくする。
     def tagOf(a: EnemyAction): String =

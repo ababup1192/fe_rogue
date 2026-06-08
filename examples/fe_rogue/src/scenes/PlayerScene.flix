@@ -397,7 +397,7 @@ mod PlayerScene {
             |> Scene.addChildAt(MapScene.worldPath(), playerName(sp#id),
                                  EngineNode.Marker2DWithState(marker, NodeTag.Player(data)))
             |> Scene.addChildAt(playerPath(sp#id), "Sprite", spriteNode)
-            |> UnitHPBarScene.attach(playerPath(sp#id), res#hp, UnitHPBarScene.BarPosition.Above)
+            |> UnitHPBarScene.attach(playerPath(sp#id), res#hp, UnitHPBarScene.Team.Player)
 
     // ────────────────────────────────────────────────────────
     // (D) ロジック — 移動
@@ -755,6 +755,7 @@ mod PlayerScene {
         scene
             |> mapPlayer(id, d -> {waited = true | d})
             |> setSpriteModulate(id, waitedColor())
+            |> UnitHPBarScene.setModulate(playerPath(id), waitedColor())
             |> playAnim(id, idleAnimName())
 
     /// 全プレイヤーを「行動済み(非アクティブ)」にする。各 id に `setWaited` を適用し、
@@ -776,6 +777,7 @@ mod PlayerScene {
             sc
                 |> mapPlayer(id, d -> {waited = false | d})
                 |> setSpriteModulate(id, activeColor())
+                |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
                 |> playAnim(id, idleAnimName()),
             scene, ids)
 

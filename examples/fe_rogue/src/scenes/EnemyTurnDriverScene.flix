@@ -74,9 +74,11 @@ mod EnemyTurnDriverScene {
                                  and Option.isEmpty(e#attackTargetId))
             |> List.sortBy(e -> e#id)
             |> List.map(e -> ({id = e#id, remaining = e#moveTiles}: EnemyTurn.Step));
+        // 敵ターン開始時に全敵の「行動済み」暗転を解除（プレイヤーの clearAllWaited と対称）。
+        let cleared = EnemyScene.clearActedAll(scene);
         EnemyTurn.Queue.replace(steps);
         GameLogger.enemyLog("敵のターン");
-        PhaseTransitions.enterEnemyTurn(scene)
+        PhaseTransitions.enterEnemyTurn(cleared)
 
     /// 敵ターンキューの先頭 step を 1 つ進める。`process` redef から phase=EnemyTurn のとき呼ぶ。
     /// 動作:
@@ -132,8 +134,8 @@ mod EnemyTurnDriverScene {
                     case EnemyAI.EnemyAction.Move(id, target) =>
                         if (step#remaining <= 0)
                             // 移動予算を使い切ったうえで隣接できなかった
-                            // (decideAction が Move を返す = 非隣接) → 攻撃せず終了。
-                            withAlert
+                            // (decideAction が Move を返す = 非隣接) → 攻撃せず終了。行動済み暗転。
+                            EnemyScene.setActed(id, withAlert)
                         else {
                             let moved = EnemyScene.moveTo(id, target, board#map, withAlert);
                             // 残り step を 1 減らして継続。0 になっても 1 度だけ積むことで、
@@ -150,18 +152,20 @@ mod EnemyTurnDriverScene {
                         // ここでは体当たりモーションを開始するだけ。HP 適用 / 音 / 死亡判定は
                         // attack_lunge の `attack:hit` メソッド発火時に dispatchAnimationEvents が行う。
                         // 攻撃前後の溜め: lunge (~160ms) より長い hold で「攻撃終了の余韻」を作る
+                        // Attack はその敵の最終行動 → 行動済み暗転。
                         match PlayerScene.get(targetId, withAlert) {
-                            case None    => withAlert
+                            case None    => EnemyScene.setActed(enemyId, withAlert)
                             case Some(p) =>
                                 Pacing.State.hold(450 |> Duration.millis);
-                                EnemyScene.startAttack(enemyId, targetId,
-                                                        p#gridPos, withAlert)
+                                EnemyScene.setActed(enemyId,
+                                    EnemyScene.startAttack(enemyId, targetId,
+                                                            p#gridPos, withAlert))
                         }
                     case EnemyAI.EnemyAction.Wait(_) =>
-                        // Wait も「動こうとして詰まった」演出の一部なので軽く溜める
+                        // Wait も「動こうとして詰まった」演出の一部なので軽く溜める。行動済み暗転。
                         Pacing.State.hold(150 |> Duration.millis);
-                        withAlert
-                    case EnemyAI.EnemyAction.Skip(_) => withAlert
+                        EnemyScene.setActed(step#id, withAlert)
+                    case EnemyAI.EnemyAction.Skip(_) => EnemyScene.setActed(step#id, withAlert)
                 }
         }
 

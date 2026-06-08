@@ -344,58 +344,6 @@
         },
         "texture": "rogues",
         "vframes": 7
-      },
-      "spriteFrames": {
-        "idle": {
-          "frames": [
-            {
-              "duration": 1,
-              "frame": 0
-            }
-          ],
-          "loop": true,
-          "speed": 1.0
-        },
-        "walk_down": {
-          "frames": [
-            {
-              "duration": 1.0,
-              "frame": 3
-            }
-          ],
-          "loop": true,
-          "speed": 1.0
-        },
-        "walk_left": {
-          "frames": [
-            {
-              "duration": 1.0,
-              "frame": 1
-            }
-          ],
-          "loop": true,
-          "speed": 1.0
-        },
-        "walk_right": {
-          "frames": [
-            {
-              "duration": 1.0,
-              "frame": 2
-            }
-          ],
-          "loop": true,
-          "speed": 1.0
-        },
-        "walk_up": {
-          "frames": [
-            {
-              "duration": 1.0,
-              "frame": 4
-            }
-          ],
-          "loop": true,
-          "speed": 1.0
-        }
       }
     },
     "rogue": {
