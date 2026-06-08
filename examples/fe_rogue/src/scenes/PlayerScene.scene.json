@@ -1,20 +1,17 @@
 {
   "children": [
     {
-      "frame": 0,
-      "hframes": 5,
+      "frame": 33,
+      "hframes": 7,
       "name": "Sprite",
       "pos": [
         0,
         0
       ],
-      "scale": [
-        1,
-        1
-      ],
-      "texture": "character_sheet",
+      "scale": [1, 1],
+      "texture": "rogues",
       "type": "Sprite2D",
-      "vframes": 2,
+      "vframes": 7,
       "zIndex": 10
     }
   ],

@@ -2,20 +2,304 @@
   "floors": {
     "f01": {
       "generation": {
+        "roomCount": 2
+      },
+      "items": [
+        {
+          "id": "bronze_sword",
+          "percent": 30
+        },
+        {
+          "id": "bronze_bow",
+          "percent": 30
+        },
+        {
+          "id": "tome_apprentice",
+          "percent": 20
+        },
+        {
+          "id": "live_staff",
+          "percent": 20
+        },
+        {
+          "id": "mithril_sword",
+          "percent": 1
+        },
+        {
+          "id": "mithril_lance",
+          "percent": 1
+        },
+        {
+          "id": "mithril_axe",
+          "percent": 1
+        },
+        {
+          "id": "mithril_bow",
+          "percent": 1
+        }
+      ],
+      "itemsPerRoom": {
+        "max": 2,
+        "min": 1
+      },
+      "label": "1F",
+      "monsters": [
+        {
+          "id": "fighter_t1",
+          "percent": 25
+        },
+        {
+          "id": "ranger_t1",
+          "percent": 25
+        },
+        {
+          "id": "rogue_t1",
+          "percent": 25
+        },
+        {
+          "id": "cleric_t1",
+          "percent": 25
+        }
+      ],
+      "monstersPerRoom": {
+        "max": 2,
+        "min": 1
+      }
+    },
+    "f02": {
+      "generation": {
+        "roomCount": 4
+      },
+      "items": [
+        {
+          "id": "bronze_lance",
+          "percent": 25
+        },
+        {
+          "id": "bronze_axe",
+          "percent": 25
+        },
+        {
+          "id": "bronze_bow",
+          "percent": 20
+        },
+        {
+          "id": "tome_apprentice",
+          "percent": 15
+        },
+        {
+          "id": "live_staff",
+          "percent": 15
+        },
+        {
+          "id": "mithril_sword",
+          "percent": 1
+        },
+        {
+          "id": "mithril_lance",
+          "percent": 1
+        },
+        {
+          "id": "mithril_axe",
+          "percent": 1
+        },
+        {
+          "id": "mithril_bow",
+          "percent": 1
+        }
+      ],
+      "itemsPerRoom": {
+        "max": 2,
+        "min": 1
+      },
+      "label": "2F",
+      "monsters": [
+        {
+          "id": "fighter_t1",
+          "percent": 30
+        },
+        {
+          "id": "ranger_t1",
+          "percent": 25
+        },
+        {
+          "id": "barbarian_t1",
+          "percent": 25
+        },
+        {
+          "id": "paladin_t1",
+          "percent": 20
+        }
+      ],
+      "monstersPerRoom": {
+        "max": 2,
+        "min": 1
+      }
+    },
+    "f03": {
+      "generation": {
+        "roomCount": 5
+      },
+      "items": [
+        {
+          "id": "iron_sword",
+          "percent": 25
+        },
+        {
+          "id": "iron_bow",
+          "percent": 25
+        },
+        {
+          "id": "bronze_axe",
+          "percent": 20
+        },
+        {
+          "id": "tome_apprentice",
+          "percent": 15
+        },
+        {
+          "id": "swap_staff",
+          "percent": 15
+        },
+        {
+          "id": "mithril_sword",
+          "percent": 1
+        },
+        {
+          "id": "mithril_lance",
+          "percent": 1
+        },
+        {
+          "id": "mithril_axe",
+          "percent": 1
+        },
+        {
+          "id": "mithril_bow",
+          "percent": 1
+        }
+      ],
+      "itemsPerRoom": {
+        "max": 2,
+        "min": 1
+      },
+      "label": "3F",
+      "monsters": [
+        {
+          "id": "barbarian_t1",
+          "percent": 25
+        },
+        {
+          "id": "paladin_t1",
+          "percent": 25
+        },
+        {
+          "id": "rogue_t1",
+          "percent": 20
+        },
+        {
+          "id": "ranger_t1",
+          "percent": 15
+        },
+        {
+          "id": "fighter_t2",
+          "percent": 15
+        }
+      ],
+      "monstersPerRoom": {
+        "max": 3,
+        "min": 1
+      }
+    },
+    "f04": {
+      "generation": {
         "roomCount": 6
       },
       "items": [
         {
-          "id": "trainingBow",
+          "id": "iron_lance",
           "percent": 25
         },
         {
-          "id": "trainingSpear",
+          "id": "iron_axe",
           "percent": 25
         },
         {
-          "id": "fire_magic",
+          "id": "iron_bow",
           "percent": 20
+        },
+        {
+          "id": "tome_grimoire",
+          "percent": 15
+        },
+        {
+          "id": "live_staff",
+          "percent": 15
+        },
+        {
+          "id": "mithril_sword",
+          "percent": 1
+        },
+        {
+          "id": "mithril_lance",
+          "percent": 1
+        },
+        {
+          "id": "mithril_axe",
+          "percent": 1
+        },
+        {
+          "id": "mithril_bow",
+          "percent": 1
+        }
+      ],
+      "itemsPerRoom": {
+        "max": 2,
+        "min": 1
+      },
+      "label": "4F",
+      "monsters": [
+        {
+          "id": "fighter_t2",
+          "percent": 25
+        },
+        {
+          "id": "ranger_t2",
+          "percent": 25
+        },
+        {
+          "id": "rogue_t2",
+          "percent": 20
+        },
+        {
+          "id": "barbarian_t1",
+          "percent": 15
+        },
+        {
+          "id": "paladin_t1",
+          "percent": 15
+        }
+      ],
+      "monstersPerRoom": {
+        "max": 3,
+        "min": 2
+      }
+    },
+    "f05": {
+      "generation": {
+        "roomCount": 7
+      },
+      "items": [
+        {
+          "id": "iron_sword",
+          "percent": 25
+        },
+        {
+          "id": "iron_bow",
+          "percent": 20
+        },
+        {
+          "id": "tome_grimoire",
+          "percent": 25
         },
         {
           "id": "live_staff",
@@ -23,70 +307,224 @@
         },
         {
           "id": "blowback_staff",
-          "percent": 10
+          "percent": 15
         },
         {
-          "id": "swap_staff",
-          "percent": 5
+          "id": "mithril_sword",
+          "percent": 1
+        },
+        {
+          "id": "mithril_lance",
+          "percent": 1
+        },
+        {
+          "id": "mithril_axe",
+          "percent": 1
+        },
+        {
+          "id": "mithril_bow",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
-        "max": 1,
-        "min": 0
+        "max": 2,
+        "min": 1
       },
-      "label": "1F",
+      "label": "5F",
       "monsters": [
         {
-          "id": "goblin",
-          "percent": 50
+          "id": "barbarian_t2",
+          "percent": 25
         },
         {
-          "id": "orc",
-          "percent": 30
+          "id": "paladin_t2",
+          "percent": 25
         },
         {
-          "id": "dwarf",
+          "id": "ranger_t2",
           "percent": 20
+        },
+        {
+          "id": "fighter_t2",
+          "percent": 20
+        },
+        {
+          "id": "cleric_t2",
+          "percent": 10
         }
       ],
       "monstersPerRoom": {
         "max": 3,
-        "min": 0
-      },
-      "roomMaps": [
-        { "id": "room_1", "percent": 25 },
-        { "id": "room_2", "percent": 25 },
-        { "id": "room_3", "percent": 25 },
-        { "id": "room_4", "percent": 25 }
-      ],
-      "horizontalMaps": [
-        { "id": "pathway_horizontal_1", "percent": 50 },
-        { "id": "pathway_horizontal_2", "percent": 50 }
-      ],
-      "verticalMaps": [
-        { "id": "pathway_vertical_1", "percent": 50 },
-        { "id": "pathway_vertical_2", "percent": 50 }
-      ]
+        "min": 2
+      }
     },
-    "f02": {
+    "f06": {
+      "generation": {
+        "roomCount": 8
+      },
+      "items": [
+        {
+          "id": "steel_sword",
+          "percent": 20
+        },
+        {
+          "id": "iron_lance",
+          "percent": 20
+        },
+        {
+          "id": "iron_axe",
+          "percent": 20
+        },
+        {
+          "id": "tome_grimoire",
+          "percent": 25
+        },
+        {
+          "id": "swap_staff",
+          "percent": 15
+        },
+        {
+          "id": "mithril_sword",
+          "percent": 1
+        },
+        {
+          "id": "mithril_lance",
+          "percent": 1
+        },
+        {
+          "id": "mithril_axe",
+          "percent": 1
+        },
+        {
+          "id": "mithril_bow",
+          "percent": 1
+        }
+      ],
+      "itemsPerRoom": {
+        "max": 3,
+        "min": 1
+      },
+      "label": "6F",
+      "monsters": [
+        {
+          "id": "fighter_t2",
+          "percent": 20
+        },
+        {
+          "id": "barbarian_t2",
+          "percent": 20
+        },
+        {
+          "id": "rogue_t2",
+          "percent": 20
+        },
+        {
+          "id": "ranger_t2",
+          "percent": 20
+        },
+        {
+          "id": "paladin_t2",
+          "percent": 20
+        }
+      ],
+      "monstersPerRoom": {
+        "max": 4,
+        "min": 2
+      }
+    },
+    "f07": {
+      "generation": {
+        "roomCount": 9
+      },
+      "items": [
+        {
+          "id": "steel_lance",
+          "percent": 25
+        },
+        {
+          "id": "steel_bow",
+          "percent": 25
+        },
+        {
+          "id": "iron_sword",
+          "percent": 20
+        },
+        {
+          "id": "tome_sage",
+          "percent": 20
+        },
+        {
+          "id": "live_staff",
+          "percent": 10
+        },
+        {
+          "id": "mithril_sword",
+          "percent": 1
+        },
+        {
+          "id": "mithril_lance",
+          "percent": 1
+        },
+        {
+          "id": "mithril_axe",
+          "percent": 1
+        },
+        {
+          "id": "mithril_bow",
+          "percent": 1
+        }
+      ],
+      "itemsPerRoom": {
+        "max": 3,
+        "min": 1
+      },
+      "label": "7F",
+      "monsters": [
+        {
+          "id": "paladin_t2",
+          "percent": 20
+        },
+        {
+          "id": "barbarian_t2",
+          "percent": 20
+        },
+        {
+          "id": "fighter_t3",
+          "percent": 20
+        },
+        {
+          "id": "ranger_t3",
+          "percent": 20
+        },
+        {
+          "id": "cleric_t2",
+          "percent": 20
+        }
+      ],
+      "monstersPerRoom": {
+        "max": 4,
+        "min": 3
+      }
+    },
+    "f08": {
       "generation": {
         "roomCount": 10
       },
       "items": [
         {
-          "id": "trainingBow",
-          "percent": 20
-        },
-        {
-          "id": "trainingSpear",
-          "percent": 20
-        },
-        {
-          "id": "fire_magic",
+          "id": "steel_axe",
           "percent": 25
         },
         {
-          "id": "live_staff",
+          "id": "steel_sword",
+          "percent": 25
+        },
+        {
+          "id": "steel_bow",
+          "percent": 20
+        },
+        {
+          "id": "tome_sage",
           "percent": 20
         },
         {
@@ -94,112 +532,205 @@
           "percent": 10
         },
         {
-          "id": "swap_staff",
-          "percent": 5
+          "id": "mithril_sword",
+          "percent": 1
+        },
+        {
+          "id": "mithril_lance",
+          "percent": 1
+        },
+        {
+          "id": "mithril_axe",
+          "percent": 1
+        },
+        {
+          "id": "mithril_bow",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
-        "max": 1,
-        "min": 0
-      },
-      "label": "2F",
-      "monsters": [
-        {
-          "id": "goblin",
-          "percent": 50
-        },
-        {
-          "id": "orc",
-          "percent": 50
-        }
-      ],
-      "monstersPerRoom": {
         "max": 3,
         "min": 1
       },
-      "roomMaps": [
-        { "id": "room_1", "percent": 25 },
-        { "id": "room_2", "percent": 25 },
-        { "id": "room_3", "percent": 25 },
-        { "id": "room_4", "percent": 25 }
+      "label": "8F",
+      "monsters": [
+        {
+          "id": "fighter_t3",
+          "percent": 25
+        },
+        {
+          "id": "barbarian_t3",
+          "percent": 25
+        },
+        {
+          "id": "ranger_t3",
+          "percent": 20
+        },
+        {
+          "id": "paladin_t2",
+          "percent": 15
+        },
+        {
+          "id": "rogue_t3",
+          "percent": 15
+        }
       ],
-      "horizontalMaps": [
-        { "id": "pathway_horizontal_1", "percent": 50 },
-        { "id": "pathway_horizontal_2", "percent": 50 }
-      ],
-      "verticalMaps": [
-        { "id": "pathway_vertical_1", "percent": 50 },
-        { "id": "pathway_vertical_2", "percent": 50 }
-      ]
+      "monstersPerRoom": {
+        "max": 4,
+        "min": 3
+      }
     },
-    "f03": {
+    "f09": {
+      "generation": {
+        "roomCount": 11
+      },
+      "items": [
+        {
+          "id": "silver_sword",
+          "percent": 25
+        },
+        {
+          "id": "silver_bow",
+          "percent": 20
+        },
+        {
+          "id": "steel_lance",
+          "percent": 20
+        },
+        {
+          "id": "tome_sage",
+          "percent": 20
+        },
+        {
+          "id": "swap_staff",
+          "percent": 15
+        },
+        {
+          "id": "mithril_sword",
+          "percent": 1
+        },
+        {
+          "id": "mithril_lance",
+          "percent": 1
+        },
+        {
+          "id": "mithril_axe",
+          "percent": 1
+        },
+        {
+          "id": "mithril_bow",
+          "percent": 1
+        }
+      ],
+      "itemsPerRoom": {
+        "max": 3,
+        "min": 1
+      },
+      "label": "9F",
+      "monsters": [
+        {
+          "id": "barbarian_t3",
+          "percent": 25
+        },
+        {
+          "id": "paladin_t3",
+          "percent": 25
+        },
+        {
+          "id": "ranger_t3",
+          "percent": 20
+        },
+        {
+          "id": "rogue_t3",
+          "percent": 20
+        },
+        {
+          "id": "cleric_t3",
+          "percent": 10
+        }
+      ],
+      "monstersPerRoom": {
+        "max": 5,
+        "min": 3
+      }
+    },
+    "f10": {
       "generation": {
         "roomCount": 12
       },
       "items": [
         {
-          "id": "trainingBow",
-          "percent": 15
+          "id": "silver_lance",
+          "percent": 20
         },
         {
-          "id": "trainingSpear",
-          "percent": 15
+          "id": "mithril_sword",
+          "percent": 1
         },
         {
-          "id": "fire_magic",
-          "percent": 30
+          "id": "silver_axe",
+          "percent": 20
         },
         {
-          "id": "live_staff",
+          "id": "mithril_bow",
+          "percent": 1
+        },
+        {
+          "id": "tome_archsage",
           "percent": 25
         },
         {
-          "id": "blowback_staff",
-          "percent": 10
+          "id": "mithril_lance",
+          "percent": 1
         },
         {
-          "id": "swap_staff",
-          "percent": 5
+          "id": "mithril_axe",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
-        "max": 2,
-        "min": 0
+        "max": 3,
+        "min": 1
       },
-      "label": "3F",
+      "label": "10F",
       "monsters": [
         {
-          "id": "goblin",
-          "percent": 30
+          "id": "paladin_t3",
+          "percent": 25
         },
         {
-          "id": "orc",
-          "percent": 70
+          "id": "barbarian_t3",
+          "percent": 25
+        },
+        {
+          "id": "fighter_t3",
+          "percent": 20
+        },
+        {
+          "id": "ranger_t3",
+          "percent": 15
+        },
+        {
+          "id": "rogue_t3",
+          "percent": 15
         }
       ],
       "monstersPerRoom": {
-        "max": 4,
-        "min": 1
-      },
-      "roomMaps": [
-        { "id": "room_1", "percent": 25 },
-        { "id": "room_2", "percent": 25 },
-        { "id": "room_3", "percent": 25 },
-        { "id": "room_4", "percent": 25 }
-      ],
-      "horizontalMaps": [
-        { "id": "pathway_horizontal_1", "percent": 50 },
-        { "id": "pathway_horizontal_2", "percent": 50 }
-      ],
-      "verticalMaps": [
-        { "id": "pathway_vertical_1", "percent": 50 },
-        { "id": "pathway_vertical_2", "percent": 50 }
-      ]
+        "max": 5,
+        "min": 4
+      }
     }
   },
   "order": [
     "f01",
     "f02",
-    "f03"
+    "f03",
+    "f04",
+    "f05",
+    "f06",
+    "f07",
+    "f08",
+    "f09",
+    "f10"
   ]
 }

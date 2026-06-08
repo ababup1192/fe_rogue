@@ -32,7 +32,8 @@ mod TestWeaponCatalog {
         texture = "weapons_atlas",
         hframes = 4, vframes = 1, frame = 0,
         offset  = ({x = 0.0, y = 0.0}: Vec2.Vec2),
-        scale   = ({x = 1.0, y = 1.0}: Vec2.Vec2)
+        scale   = ({x = 1.0, y = 1.0}: Vec2.Vec2),
+        flipForFacing = false
     }
 
     /// 1 件 (trainingSpear) を含む weapons.json 相当の minimum JSON。

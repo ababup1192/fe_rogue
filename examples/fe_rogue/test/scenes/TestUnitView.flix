@@ -98,7 +98,7 @@ mod TestUnitView {
                   weapon: Option[UnitCatalog.WeaponResource]): EnemyScene.Data =
         {id = id, gridPos = pos, alerted = false, homeModuleIdx = 0, moveTiles = 4,
          hp = hp, isDying = isDying, attackTargetId = None,
-         resource = TestUnitFixtures.testEnemyResource(4, hp), weapon = weapon}
+         resource = TestUnitFixtures.testEnemyResource(4, hp), weapon = weapon, acted = false}
 
     /// 味方 projection: faction = Player、weaponRange = 装備武器(先頭)の射程、hidden を引き継ぐ。
     @Test

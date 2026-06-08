@@ -40,7 +40,7 @@ mod GameLifecycle {
     pub def buildPlayingScene(catalogs: Catalogs,
                                 floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
-                SelectedPlayer.State} =
+                SelectedPlayer.State, PartySelection.State} =
         Scene.empty()
             |> MapScene.add(floor)
             |> FogScene.add             // 各 module の薄暗いモヤ矩形 + 常駐 FogDriver。placements 確定後
@@ -76,7 +76,7 @@ mod GameLifecycle {
     pub def buildAndRecord(catalogs: Catalogs,
                             floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
-                SelectedPlayer.State, InitialSpawns.State} =
+                SelectedPlayer.State, InitialSpawns.State, PartySelection.State} =
         let scene = buildPlayingScene(catalogs, floor);
         InitialSpawns.State.put({
             enemies = EnemyScene.snapshotSpawns(scene),
@@ -111,7 +111,8 @@ mod GameLifecycle {
     /// 起動時 / 全滅リスタート / クリア後ループの共通エントリ。
     pub def buildCurrentFloor(catalogs: Catalogs): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
-                SelectedPlayer.State, InitialSpawns.State, FloorProgress.State} =
+                SelectedPlayer.State, InitialSpawns.State, FloorProgress.State,
+                PartySelection.State} =
         let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
         buildAndRecord(catalogs, floor)
 
@@ -122,9 +123,11 @@ mod GameLifecycle {
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State,
-                InitialSpawns.State, FloorProgress.State} =
+                InitialSpawns.State, FloorProgress.State, PartySelection.State} =
         resetTurnState();
         FloorProgress.State.put(FloorCatalog.firstFloorId(catalogs#floors));
+        // リスタートは新しい run 扱い: メンバーを再抽選する（次の build で抽選される）
+        PartySelection.State.clear();
         buildCurrentFloor(catalogs)
 
     /// `CustomEffects.FloorAdvanceRequest` handler の本体。
@@ -135,7 +138,7 @@ mod GameLifecycle {
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State,
-                InitialSpawns.State, FloorProgress.State} =
+                InitialSpawns.State, FloorProgress.State, PartySelection.State} =
         // 引き継ぐステータスを「現フロア退場前」に確保しておく。
         let carry = PlayerScene.snapshotCarry(scene);
         match FloorCatalog.nextFloorId(FloorProgress.State.get(), catalogs#floors) {
@@ -152,6 +155,8 @@ mod GameLifecycle {
                 GameLogger.playerLog("ゲームクリア！ 1F からもう一度");
                 resetTurnQueues();
                 FloorProgress.State.put(FloorCatalog.firstFloorId(catalogs#floors));
+                // 周回は新しい run 扱い: メンバーを再抽選する
+                PartySelection.State.clear();
                 buildCurrentFloor(catalogs)
         }
 }

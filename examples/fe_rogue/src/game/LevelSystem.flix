@@ -131,22 +131,24 @@ mod LevelSystem {
     // (F) パネル用の結果組み立て
     // ────────────────────────────────────────────────────────
 
-    /// ステータス名（パネル左列の固定ラベル）。
+    /// ステータス名（FE 烈火の漢字表記に合わせる）。
     def label1Hp(): String           = "HP"
-    def labelAttack(): String        = "こうげき"
-    def labelDefense(): String       = "まもり"
-    def labelMagicAttack(): String   = "まほう力"
-    def labelMagicDefense(): String  = "まほうまもり"
-    def labelSpeed(): String         = "すばやさ"
-    def labelSkill(): String         = "わざ"
-    def labelLuck(): String          = "こううん"
+    def labelAttack(): String        = "力"
+    def labelDefense(): String       = "守備"
+    def labelMagicAttack(): String   = "魔力"
+    def labelMagicDefense(): String  = "魔防"
+    def labelSpeed(): String         = "速さ"
+    def labelSkill(): String         = "技"
+    def labelLuck(): String          = "幸運"
 
     /// 1 行ぶんの変化を作る。上がっていれば `gained = true`。
     def change(label: String, before: Int32, after: Int32): StatChange =
         {label = label, before = before, after = after, gained = after > before}
 
     /// レベルアップ前後のステータスから、パネル表示用の `Result` を組み立てる。
-    /// `toLevel` は `fromLevel + 1`。`changes` は固定 8 行（HP から こううん の順）。
+    /// `toLevel` は `fromLevel + 1`。`changes` は FE 烈火の並び順 固定 8 行
+    /// （HP, 力, 魔力, 技, 速さ, 幸運, 守備, 魔防）。レベルアップパネルは前 4 行を左列・
+    /// 後 4 行を右列に割る。
     pub def buildResult(unitName: String, fromLevel: Int32,
                         before: Stats, after: Stats): Result =
         {unitName  = unitName,
@@ -155,11 +157,11 @@ mod LevelSystem {
          changes   =
              change(label1Hp(),          before#hp,           after#hp)           ::
              change(labelAttack(),       before#attack,       after#attack)       ::
-             change(labelDefense(),      before#defense,      after#defense)      ::
              change(labelMagicAttack(),  before#magicAttack,  after#magicAttack)  ::
-             change(labelMagicDefense(), before#magicDefense, after#magicDefense) ::
-             change(labelSpeed(),        before#speed,        after#speed)        ::
              change(labelSkill(),        before#skill,        after#skill)        ::
-             change(labelLuck(),         before#luck,         after#luck)         :: Nil}
+             change(labelSpeed(),        before#speed,        after#speed)        ::
+             change(labelLuck(),         before#luck,         after#luck)         ::
+             change(labelDefense(),      before#defense,      after#defense)      ::
+             change(labelMagicDefense(), before#magicDefense, after#magicDefense) :: Nil}
 
 }

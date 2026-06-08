@@ -7,9 +7,9 @@
 /// JSON 形状 (`resources/weapons.json`):
 ///   {
 ///     "weapons": {
-///       "trainingSpear": { "name": "くんれんやり", "attack": 2, "durability": 41,
-///                            "range": {"min":1, "max":1}, "weaponType": "Physical",
-///                            "sprite": {...} },
+///       "iron_lance": { "name": "てつのやり", "attack": 7, "durability": 10,
+///                         "range": {"min":1, "max":1}, "weaponType": "Lance",
+///                         "sprite": {...} },
 ///       ...
 ///     }
 ///   }
@@ -248,7 +248,9 @@ mod WeaponCatalogCodec {
             // offset / scale は省略可能。欠落 / 不正は (0,0) / (1,1) にフォールバック
             let off = JsonCodec.decodeVec2OrDefault(Map.get("offset", obj), 0.0);
             let sc  = JsonCodec.decodeVec2OrDefault(Map.get("scale", obj),  1.0);
+            let flip = Map.get("flipForFacing", obj)
+                        |> Option.flatMap(JsonCodec.expectBool) |> Option.getWithDefault(false);
             ({texture = tex, hframes = hf, vframes = vf, frame = fr,
-              offset = off, scale = sc}: WeaponSpriteResource)
+              offset = off, scale = sc, flipForFacing = flip}: WeaponSpriteResource)
         }
 }

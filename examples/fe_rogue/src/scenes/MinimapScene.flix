@@ -65,7 +65,17 @@ mod MinimapScene {
 
     /// 探索マップを収める「左下のボックス」（design 解像度 128×128 のピクセル座標、y は下向き）。
     /// シレン風に左下隅へ半透明で置く。背景枠は描かず、フロア/通路の矩形だけを描く（29×42 を 2 倍 ≈ 58×84）。
-    def targetRect(): GridRect = ({x0 = 2, y0 = 38, x1 = 60, y1 = 122}: GridRect)
+    pub def targetRect(): GridRect = ({x0 = 2, y0 = 38, x1 = 60, y1 = 122}: GridRect)
+
+    /// スケール基準となる「参照フロア寸法」（タイル）。実測した最大級フロアの bbox
+    /// (おおよそ 47×51) を基準にする。**この1枚を `targetRect` に収める倍率を全フロア
+    /// 共通の縮尺とする**ことで、フロアの実寸（部屋数）に依らずミニマップのズーム率を
+    /// 一定（= どのフロアでも 3F と同じ見え方）にする。見せ方（左下アンカー・アスペクト
+    /// 比維持・フレームレス）は変えない。
+    def scaleReferenceRect(): GridRect = ({x0 = 0, y0 = 0, x1 = 47, y1 = 51}: GridRect)
+
+    /// 全フロア共通の縮尺（定数）。`scaleReferenceRect` を `targetRect` に収める倍率。
+    pub def referenceScale(): Float64 = fitTransform(scaleReferenceRect(), targetRect())#scale
 
     /// マーカー（丸）の直径は「セル幅(scale)に比例」させ、隣接セルの円どうしが重ならないよう
     /// セル幅未満に保つ。同時に最大値 `markerMaxPx` で頭打ちにして大きくなりすぎないようにする。
@@ -204,9 +214,13 @@ mod MinimapScene {
             let placements = MapScene.getPlacements(scene);
             let roomCount  = MapScene.getRoomCount(scene);
             let rawRects   = displayedModuleRects(data#visited, placements, roomCount);
-            // スケールはフロア全体基準（探索しても拡大率が変わらない）。配置は探索済み
-            // コンテンツの bbox を画面ボックスの左下に合わせる（左下の部屋を画面左下へ）。
-            let t          = anchorBL(tightRegion(placements), boundsOf(rawRects), targetRect());
+            // 縮尺は全フロア共通の固定値（`referenceScale`）。フロアの実寸に依らず一定。
+            // ただし参照より大きい稀な巨大フロアは画面ボックスからはみ出さないよう、その
+            // フロアの fit 倍率でクランプ（縮小）する。配置は探索済みコンテンツの bbox を
+            // 画面ボックスの左下に合わせる（左下の部屋を画面左下へ）。
+            let fitScale   = fitTransform(tightRegion(placements), targetRect())#scale;
+            let scale      = minF(referenceScale(), fitScale);
+            let t          = anchorBLWithScale(scale, boundsOf(rawRects), targetRect());
             let disjoint   = unionBands(rawRects);
             let markers    = collectMarkers(data, placements, roomCount, scene);
             scene
@@ -372,8 +386,11 @@ mod MinimapScene {
     /// `content`（探索済みコンテンツ）の **左下** を `target` の左下に合わせる。
     /// これで「探索しても拡大率は一定」「左下の部屋は常に画面左下（マージン内）」になる。
     pub def anchorBL(scaleArea: GridRect, content: GridRect, target: GridRect): Fit =
-        let scale = fitTransform(scaleArea, target)#scale;
-        // content 左下 (x0, y1) を target 左下 (x0, y1) へ。mapCell(c) = o + c*scale。
+        anchorBLWithScale(fitTransform(scaleArea, target)#scale, content, target)
+
+    /// `anchorBL` の **scale 固定版**。倍率を呼び出し側が決め、`content` の左下 (x0, y1) を
+    /// `target` の左下 (x0, y1) へ合わせる。mapCell(c) = o + c*scale。
+    pub def anchorBLWithScale(scale: Float64, content: GridRect, target: GridRect): Fit =
         let ox = Int32.toFloat64(target#x0) - Int32.toFloat64(content#x0) * scale;
         let oy = Int32.toFloat64(target#y1) - Int32.toFloat64(content#y1) * scale;
         {scale = scale, ox = ox, oy = oy}

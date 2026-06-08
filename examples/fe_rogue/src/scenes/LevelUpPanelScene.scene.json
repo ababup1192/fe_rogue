@@ -8,7 +8,7 @@
       "children": [],
       "name": "panel",
       "pos": [ 8, 14 ],
-      "size": [ 112, 104 ],
+      "size": [ 112, 62 ],
       "tag": "LevelUpPanel",
       "type": "Panel",
       "visible": false,
@@ -18,7 +18,7 @@
       "type": "Label2D",
       "name": "header",
       "pos": [ 14, 19 ],
-      "fontSize": 5,
+      "fontSize": 6,
       "text": "-",
       "visible": false,
       "zIndex": 1
@@ -27,7 +27,7 @@
       "type": "Label2D",
       "name": "bodyLabels",
       "pos": [ 14, 32 ],
-      "fontSize": 4,
+      "fontSize": 5,
       "text": "",
       "visible": false,
       "zIndex": 1
@@ -35,8 +35,8 @@
     {
       "type": "Label2D",
       "name": "bodyBefore",
-      "pos": [ 58, 32 ],
-      "fontSize": 4,
+      "pos": [ 32, 32 ],
+      "fontSize": 5,
       "text": "",
       "visible": false,
       "zIndex": 1
@@ -44,8 +44,8 @@
     {
       "type": "Label2D",
       "name": "bodyArrow",
-      "pos": [ 66, 32 ],
-      "fontSize": 4,
+      "pos": [ 35, 32 ],
+      "fontSize": 5,
       "text": "",
       "visible": false,
       "zIndex": 1
@@ -53,8 +53,8 @@
     {
       "type": "Label2D",
       "name": "bodyAfter",
-      "pos": [ 82, 32 ],
-      "fontSize": 4,
+      "pos": [ 48, 32 ],
+      "fontSize": 5,
       "text": "",
       "visible": false,
       "zIndex": 1
@@ -62,8 +62,53 @@
     {
       "type": "Label2D",
       "name": "bodyPlus",
-      "pos": [ 86, 32 ],
-      "fontSize": 4,
+      "pos": [ 51, 32 ],
+      "fontSize": 5,
+      "text": "",
+      "visible": false,
+      "zIndex": 1
+    },
+    {
+      "type": "Label2D",
+      "name": "bodyLabels2",
+      "pos": [ 66, 32 ],
+      "fontSize": 5,
+      "text": "",
+      "visible": false,
+      "zIndex": 1
+    },
+    {
+      "type": "Label2D",
+      "name": "bodyBefore2",
+      "pos": [ 84, 32 ],
+      "fontSize": 5,
+      "text": "",
+      "visible": false,
+      "zIndex": 1
+    },
+    {
+      "type": "Label2D",
+      "name": "bodyArrow2",
+      "pos": [ 87, 32 ],
+      "fontSize": 5,
+      "text": "",
+      "visible": false,
+      "zIndex": 1
+    },
+    {
+      "type": "Label2D",
+      "name": "bodyAfter2",
+      "pos": [ 100, 32 ],
+      "fontSize": 5,
+      "text": "",
+      "visible": false,
+      "zIndex": 1
+    },
+    {
+      "type": "Label2D",
+      "name": "bodyPlus2",
+      "pos": [ 103, 32 ],
+      "fontSize": 5,
       "text": "",
       "visible": false,
       "zIndex": 1
@@ -71,14 +116,14 @@
     {
       "type": "Label2D",
       "name": "footer",
-      "pos": [ 14, 110 ],
+      "pos": [ 14, 60 ],
       "fontSize": 4,
       "text": "Z / Enter で とじる",
       "visible": false,
       "zIndex": 1
     }
   ],
-  "description": "レベルアップ時のステータス変化パネル (LevelUpView 中)\nヘッダに Lv 変化、本文に8ステータスの before -> after と上昇時 (+1) を出す",
+  "description": "レベルアップ時のステータス変化パネル (LevelUpView 中)\nヘッダに Lv 変化、本文に8ステータスの before -> after と上昇時 (+1) を 2 列で出す",
   "layer": 5,
   "name": "LevelUpPanel",
   "pos": [ 0, 0 ],

@@ -51,7 +51,8 @@ mod TestCounterAttackRules {
         isDying        = isDying,
         attackTargetId = None,
         resource       = TestUnitFixtures.testEnemyResource(3, 10),
-        weapon         = weapon
+        weapon         = weapon,
+        acted          = false
     }
 
     /// 射程 2-2 の弓 (隣接攻撃には届かない)

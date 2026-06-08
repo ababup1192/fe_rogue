@@ -164,6 +164,38 @@ mod TestMinimapScene {
         Assert.assertEq(expected = (0.0, 100.0),
             vecT(MinimapScene.mapCell(({x = 10, y = 4}: {x = Int32, y = Int32}), t)))
 
+    // ── anchorBLWithScale / 縮尺一定（フロア間統一） ─────────────
+
+    /// 与えた scale をそのまま使い、content 左下を target 左下へ合わせる。
+    @Test
+    def testAnchorBLWithScaleUsesGivenScale(): Unit \ Assert =
+        let target  = ({x0 = 0, y0 = 0, x1 = 100, y1 = 100}: GridRect);
+        let content = ({x0 = 10, y0 = 0, x1 = 14, y1 = 4}: GridRect);
+        let t = MinimapScene.anchorBLWithScale(3.0, content, target);
+        let pos = MinimapScene.mapCell(({x = 10, y = 4}: {x = Int32, y = Int32}), t);
+        Assert.assertEq(expected = (3.0, 0.0, 100.0), (t#scale, pos#x, pos#y))
+
+    /// 参照内に収まる 2 つの異なるフロア寸法でも、適用される縮尺は同一（referenceScale）。
+    /// = フロアの実寸に依らずミニマップのズーム率が一定になることの回帰テスト。
+    @Test
+    def testMinimapScaleConstantAcrossFloorSizes(): Unit \ Assert =
+        let target = MinimapScene.targetRect();
+        let small  = ({x0 = 0, y0 = 0, x1 = 23, y1 = 12}: GridRect);   // 小フロア (rc2 相当)
+        let mid    = ({x0 = 0, y0 = 0, x1 = 35, y1 = 38}: GridRect);   // 大きめ (rc6 相当)
+        let ref    = MinimapScene.referenceScale();
+        let sSmall = Float64.min(ref, MinimapScene.fitTransform(small, target)#scale);
+        let sMid   = Float64.min(ref, MinimapScene.fitTransform(mid, target)#scale);
+        Assert.assertEq(expected = (ref, ref), (sSmall, sMid))
+
+    /// 参照より大きい巨大フロアは、はみ出し防止のため fit 倍率にクランプ（縮小）される。
+    @Test
+    def testMinimapScaleClampedForHugeFloor(): Unit \ Assert =
+        let target = MinimapScene.targetRect();
+        let huge   = ({x0 = 0, y0 = 0, x1 = 70, y1 = 51}: GridRect);   // 参照(47×51)より広い
+        let ref    = MinimapScene.referenceScale();
+        let fit    = MinimapScene.fitTransform(huge, target)#scale;
+        Assert.assertEq(expected = true, Float64.min(ref, fit) < ref)
+
     // ── corridorHints（出口ヒント） ──────────────────────────
 
     /// 訪問済み部屋に隣接する未訪問通路だけを出口ヒントとして出す。遠い通路は出さない。

@@ -40,7 +40,8 @@ mod TestUnitFixtures {
             vframes = 2,
             frame   = 0,
             offset  = {x = 0.0, y = 0.0},
-            scale   = {x = 1.0, y = 1.0}
+            scale   = {x = 1.0, y = 1.0},
+            flipForFacing = false
         },
         spriteFrames  = None,
         growthRates   = UnitCatalog.zeroGrowthRates()
@@ -70,7 +71,8 @@ mod TestUnitFixtures {
             vframes = 2,
             frame   = 0,
             offset  = {x = 0.0, y = 0.0},
-            scale   = {x = 1.0, y = 1.0}
+            scale   = {x = 1.0, y = 1.0},
+            flipForFacing = false
         },
         spriteFrames  = None
     }
@@ -101,7 +103,8 @@ mod TestUnitFixtures {
             vframes = 2,
             frame   = 0,
             offset  = {x = 0.0, y = 0.0},
-            scale   = {x = 1.0, y = 1.0}
+            scale   = {x = 1.0, y = 1.0},
+            flipForFacing = false
         },
         spriteFrames  = None,
         growthRates   = UnitCatalog.zeroGrowthRates()
@@ -132,7 +135,8 @@ mod TestUnitFixtures {
             vframes = 2,
             frame   = 0,
             offset  = {x = 0.0, y = 0.0},
-            scale   = {x = 1.0, y = 1.0}
+            scale   = {x = 1.0, y = 1.0},
+            flipForFacing = false
         },
         spriteFrames  = None,
         growthRates   = UnitCatalog.zeroGrowthRates()
@@ -182,7 +186,8 @@ mod TestUnitFixtures {
         vframes = 1,
         frame   = 0,
         offset  = {x = 0.0, y = 0.0},
-        scale   = {x = 1.0, y = 1.0}
+        scale   = {x = 1.0, y = 1.0},
+        flipForFacing = false
     }
 
     /// テスト用 FontAtlas。`loadScene` が実際に getFontAtlas を呼び出すのは Label2D 系の

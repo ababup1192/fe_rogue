@@ -202,7 +202,7 @@ mod TestPlayerScene {
     //   - `PlayerScene.swapItem(args, scene)` を record-style 引数で呼ぶ
     //   - インベントリ確認は `PlayerScene.getWeapons` / `getStaves` の戻り値を直接 map
     //
-    // 武器: trainingSpear (てつのやり) / trainingBow (てつの弓) / fire_magic (ファイアー)
+    // 武器: iron_lance (てつのやり) / iron_bow (てつの弓) / tome_grimoire (魔導書)
     // 杖:   live_staff (かいふくのつえ) / swap_staff (いれかえのつえ)
     // ========================================================================
 
@@ -221,17 +221,17 @@ mod TestPlayerScene {
         };
         {catalog = catalog, staffCatalog = staffCatalog, unitSample = unitSample}
 
-    /// P0 weapons=[槍, ファイアー] / P1 weapons=[弓]
+    /// P0 weapons=[槍, 魔導書] / P1 weapons=[弓]
     /// P0 の Weapon(0)=槍 と P1 の Weapon(0)=弓 を交換。
     /// 期待:
-    ///   P0: weapons=[ファイアー, 弓]   (槍が抜けて末尾に 弓 追加)
+    ///   P0: weapons=[魔導書, 弓]   (槍が抜けて末尾に 弓 追加)
     ///   P1: weapons=[槍]              (弓が抜けて末尾に 槍 追加)
     @Test
     def testSwapItemWeaponToWeaponExchangesBothInventories(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let spear = UnitCatalog.lookupWeapon("trainingSpear", fx#catalog);
-        let bow   = UnitCatalog.lookupWeapon("trainingBow",   fx#catalog);
-        let fire  = UnitCatalog.lookupWeapon("fire_magic",    fx#catalog);
+        let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
+        let bow   = UnitCatalog.lookupWeapon("iron_bow",      fx#catalog);
+        let fire  = UnitCatalog.lookupWeapon("tome_grimoire", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
@@ -247,7 +247,7 @@ mod TestPlayerScene {
             partnerKind = Some(PlayerScene.ItemKind.Weapon(0))
         }, scene);
         Assert.assertEq(
-            expected = ("ファイアー" :: "てつの弓" :: Nil, "てつのやり" :: Nil),
+            expected = ("魔導書" :: "てつの弓" :: Nil, "てつのやり" :: Nil),
             (PlayerScene.getWeapons(0, after) |> List.map(w -> w#name),
              PlayerScene.getWeapons(1, after) |> List.map(w -> w#name)))
 
@@ -286,7 +286,7 @@ mod TestPlayerScene {
     @Test
     def testSwapItemWeaponToStaffCrossesInventoryLists(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let spear = UnitCatalog.lookupWeapon("trainingSpear", fx#catalog);
+        let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let live  = Staff.lookup("live_staff", fx#staffCatalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
@@ -317,7 +317,7 @@ mod TestPlayerScene {
     @Test
     def testSwapItemTransfersToEmptySlot(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let spear = UnitCatalog.lookupWeapon("trainingSpear", fx#catalog);
+        let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
@@ -347,7 +347,7 @@ mod TestPlayerScene {
     @Test
     def testSwapItemPartnerAsGiverTransfersToSelf(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let spear = UnitCatalog.lookupWeapon("trainingSpear", fx#catalog);
+        let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
@@ -377,7 +377,7 @@ mod TestPlayerScene {
         let potion = ({name = "きずぐすり", healAmount = 10, durability = 3,
                         sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                                     offset = {x = 0.0, y = 0.0},
-                                    scale = {x = 1.0, y = 1.0}}: Sprite.SpriteResource)}:
+                                    scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource)}:
                         Consumable.ConsumableResource);
         let mkSpawn = (id, cons) -> ({id = id, gridPos = {x = 0, y = 0},
                                        resource = fx#unitSample, weapons = Nil, staves = Nil,
@@ -527,7 +527,7 @@ mod TestPlayerScene {
     @Test
     def testReconcileWithCarryPersistsHpAndDropsDead(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let spear = UnitCatalog.lookupWeapon("trainingSpear", fx#catalog);
+        let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let mkSpawn = id -> ({id = id, gridPos = {x = 0, y = 0}, resource = fx#unitSample,
                                weapons = Nil, staves = Nil, consumables = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
@@ -626,4 +626,50 @@ mod TestPlayerScene {
         let result = withNoSelection(() -> withGameOverToEmpty(() ->
             PlayerScene.removeDeadAndCheckGameOver(1 :: Nil, scene)));
         Assert.assertEq(expected = 0 :: Nil, PlayerScene.getAll(result) |> List.map(d -> d#id))
+
+    // ========================================================================
+    // 出撃メンバー選抜 — selectParty（ロード固定 + 残りからランダム 2 体）
+    // 乱数に依存しないプロパティのみを検証する。
+    // ========================================================================
+
+    /// プールが 3 体以上なら、先頭（ロード）固定 + 残りから 2 体で計 3 体。
+    /// 乱数に関わらず: head = ロード / 件数 3 / 重複なし / すべて元プールの要素。
+    @Test
+    def testSelectPartyKeepsLordFixedAndPicksThree(): Unit \ {Assert, Math.Random} =
+        let party  = "lord" :: "a" :: "b" :: "c" :: "d" :: Nil;
+        let result = PlayerScene.selectParty(party);
+        let distinct = Set.size(List.toSet(result)) == List.length(result);
+        let subset   = List.forAll(x -> List.memberOf(x, party), result);
+        Assert.assertEq(
+            expected = (Some("lord"), 3, true, true),
+            (List.head(result), List.length(result), distinct, subset))
+
+    /// ちょうど 3 体（ロード + 2）なら全員が選ばれる（残り 2 体は両方出る）。
+    @Test
+    def testSelectPartyWithExactlyThreeReturnsAll(): Unit \ {Assert, Math.Random} =
+        let party  = "lord" :: "a" :: "b" :: Nil;
+        let result = PlayerScene.selectParty(party);
+        Assert.assertEq(
+            expected = (Some("lord"), 3, true),
+            (List.head(result), List.length(result),
+             List.memberOf("a", result) and List.memberOf("b", result)))
+
+    /// 候補がロードのみなら、ロード 1 体だけを返す。
+    @Test
+    def testSelectPartyLordOnlyReturnsLord(): Unit \ {Assert, Math.Random} =
+        Assert.assertEq(expected = "lord" :: Nil, PlayerScene.selectParty("lord" :: Nil))
+
+    /// 候補が 3 未満（ロード + 1）なら、いる分だけ（ロード先頭 + その 1 体）を返す。
+    @Test
+    def testSelectPartyFewerThanThreeReturnsAvailable(): Unit \ {Assert, Math.Random} =
+        let result = PlayerScene.selectParty("lord" :: "a" :: Nil);
+        Assert.assertEq(
+            expected = (Some("lord"), 2, true),
+            (List.head(result), List.length(result), List.memberOf("a", result)))
+
+    /// 空プールは空を返す（防御的フォールバック、panic しない）。
+    @Test
+    def testSelectPartyEmptyReturnsEmpty(): Unit \ {Assert, Math.Random} =
+        let empty: List[String] = Nil;
+        Assert.assertEq(expected = empty, PlayerScene.selectParty(empty))
 }

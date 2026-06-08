@@ -202,18 +202,28 @@ mod PlayerScene {
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
-    /// MapScene が登録済みの scene にプレイヤー全員（`players` プールの全員）を追加する。
-    /// 0 番目は MapScene が記録した spawnGrid に、残りはその近傍の床セルに配置する。
-    /// 各プレイヤーには `players` プールのリスト順で `UnitResource` を割り当て、
-    /// `initialInventory` を kind 別に分割して `Data.weapons` / `Data.staves` に詰め直す
-    /// （weapons.head が装備中、staves は配列順で持ち物に積まれる）。未定義 id は起動時 typo として
-    /// 即 panic する。
+    /// MapScene が登録済みの scene に出撃メンバーを追加する。
+    /// 出撃メンバーは `PartySelection.State` に保持された選抜結果を使う。**未選抜のときだけ**
+    /// `players` プールから「先頭（ロード）固定 + 残りからランダム 2 体」を抽選して保存し、
+    /// 以降の build（フロア移動など）は同じメンバーを再利用する（＝シャッフルは開始時のみ）。
+    /// `selectParty` 参照。フレッシュに組み直したい経路（ゲームオーバー / クリア周回）は
+    /// 呼び出し側が `PartySelection.State.clear()` してから build する。
+    /// 先頭は MapScene が記録した spawnGrid に、残りはその近傍の床セルに配置する。
+    /// 各プレイヤーの `initialInventory` を kind 別に分割して `Data.weapons` / `Data.staves` に
+    /// 詰め直す（weapons.head が装備中、staves は配列順で持ち物に積まれる）。未定義 id は
+    /// 起動時 typo として即 panic する。
     pub def add(catalog: UnitCatalog.UnitCatalog,
                   staffCatalog: Staff.StaffCatalog,
                   consumableCatalog: Consumable.ConsumableCatalog,
-                  scene: Scene[NodeTag]): Scene[NodeTag] =
-        let party        = UnitCatalog.pool("players", catalog);
-        let n            = List.length(party);
+                  scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, PartySelection.State} =
+        let selected     = match PartySelection.State.get() {
+            case Some(party) => party
+            case None        =>
+                let rolled = selectParty(UnitCatalog.pool("players", catalog));
+                PartySelection.State.put(rolled);
+                rolled
+        };
+        let n            = List.length(selected);
         let spawnGrid    = MapScene.getSpawnGrid(scene);
         let layer        = MapScene.getMapLayer(scene);
         let cells        = pickPlayerSpawns(spawnGrid, n, layer);
@@ -221,7 +231,7 @@ mod PlayerScene {
         let padded       = padCells(cells, spawnGrid, n);
         let spawns: List[Spawn] = padded
             |> List.mapWithIndex(id -> c ->
-                let res = match List.nth(id, party) {
+                let res = match List.nth(id, selected) {
                     case Some(r) => r
                     case None    => bug!("PlayerScene.add: party index ${id} out of range")
                 };
@@ -231,6 +241,38 @@ mod PlayerScene {
                    weapons = split#weapons, staves = split#staves,
                    consumables = split#consumables}: Spawn));
         List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), scene, spawns)
+
+    /// 出撃メンバーを選抜する: **先頭（ロード）を固定**し、残りからランダムに 2 体選ぶ。
+    /// プールが空なら空、ロードのみ（残り 0）ならロード 1 体、残りが 1 体ならロード + その 1 体。
+    /// 並びは「ロードが先頭、続いて抽選された順」になる（先頭 = spawnGrid に配置されるため固定）。
+    /// pub: 抽選プロパティ（ロード固定・件数・重複なし・部分集合）をテストから直接検証するため。
+    pub def selectParty(party: List[a]): List[a] \ Math.Random =
+        match party {
+            case Nil          => Nil
+            case lord :: rest => lord :: sampleN(2, rest)
+        }
+
+    /// `xs` から distinct な最大 k 件をランダムに取り出す（k >= 件数なら全件、順不同）。
+    def sampleN(k: Int32, xs: List[a]): List[a] \ Math.Random =
+        if (k <= 0 or List.isEmpty(xs))
+            Nil
+        else
+            let i = randomIndex(List.length(xs));
+            match List.nth(i, xs) {
+                case None    => Nil  // 到達しない（i < length のため）
+                case Some(x) => x :: sampleN(k - 1, removeNth(i, xs))
+            }
+
+    /// `[0, n)` の一様乱数インデックス（n > 0 前提）。
+    def randomIndex(n: Int32): Int32 \ Math.Random =
+        Float64.truncateToInt32(Float64.floor(Math.Random.randomFloat64() * Int32.toFloat64(n)))
+
+    /// `xs` から i 番目（0 始まり）の要素を取り除いたリストを返す。
+    def removeNth(i: Int32, xs: List[a]): List[a] =
+        match xs {
+            case Nil    => Nil
+            case h :: t => if (i == 0) t else h :: removeNth(i - 1, t)
+        }
 
     /// `initialInventory` を kind 別に振り分けて weapons / staves リストに展開する。
     /// 各 kind の中での出現順を保つので、weapons.head が装備中の武器になる。
@@ -355,7 +397,7 @@ mod PlayerScene {
             |> Scene.addChildAt(MapScene.worldPath(), playerName(sp#id),
                                  EngineNode.Marker2DWithState(marker, NodeTag.Player(data)))
             |> Scene.addChildAt(playerPath(sp#id), "Sprite", spriteNode)
-            |> UnitHPBarScene.attach(playerPath(sp#id), res#hp, UnitHPBarScene.BarPosition.Above)
+            |> UnitHPBarScene.attach(playerPath(sp#id), res#hp, UnitHPBarScene.Team.Player)
 
     // ────────────────────────────────────────────────────────
     // (D) ロジック — 移動
@@ -400,10 +442,12 @@ mod PlayerScene {
         }, scene);
         // AnimatedSprite2D を持つ unit なら walk_<dir> アニメに切り替える。
         // 方向が決まらなければ (= 同セル移動) 切り替えなし。
-        match dirOpt {
+        let visuals = match dirOpt {
             case None    => withState
             case Some(d) => playAnim(id, walkAnimName(d), withState)
-        }
+        };
+        // flipForFacing 付き (= 左向き絵) の駒は左右移動で水平反転する。
+        if (flipsForFacing(id, scene)) applyFacingFlip(id, dirOpt, visuals) else visuals
 
     /// 指定 id のプレイヤーを `target` グリッドに **瞬間移動** で戻す。
     /// 進行中の Tween があればキャンセルし、Marker2D の world 位置と Data#gridPos を
@@ -554,10 +598,14 @@ mod PlayerScene {
                         // 子 Sprite が AnimatedSprite2D なら、進行方向の walk_<dir> アニメに
                         // 切り替える (Sprite2D の unit は playAnim が no-op)。
                         // direction が決まらない (= 同セル移動) ケースは scene 据え置き。
-                        let nextScene = match directionOfStep(data#gridPos, target) {
+                        let dirOpt = directionOfStep(data#gridPos, target);
+                        let animScene = match dirOpt {
                             case Some(d) => playAnim(data#id, walkAnimName(d), scene)
                             case None    => scene
                         };
+                        let nextScene = if (data#resource#sprite#flipForFacing)
+                                            applyFacingFlip(data#id, dirOpt, animScene)
+                                        else animScene;
                         (EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
                          nextScene)
                     };
@@ -586,10 +634,14 @@ mod PlayerScene {
                     ) yield {
                         let (newMarker, newData) =
                             moveTo(data#id, board#map, target, marker, data, scene);
-                        let nextScene = match directionOfStep(data#gridPos, target) {
+                        let dirOpt = directionOfStep(data#gridPos, target);
+                        let animScene = match dirOpt {
                             case Some(d) => playAnim(data#id, walkAnimName(d), scene)
                             case None    => scene
                         };
+                        let nextScene = if (data#resource#sprite#flipForFacing)
+                                            applyFacingFlip(data#id, dirOpt, animScene)
+                                        else animScene;
                         (EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
                          nextScene)
                     };
@@ -703,6 +755,7 @@ mod PlayerScene {
         scene
             |> mapPlayer(id, d -> {waited = true | d})
             |> setSpriteModulate(id, waitedColor())
+            |> UnitHPBarScene.setModulate(playerPath(id), waitedColor())
             |> playAnim(id, idleAnimName())
 
     /// 全プレイヤーを「行動済み(非アクティブ)」にする。各 id に `setWaited` を適用し、
@@ -724,6 +777,7 @@ mod PlayerScene {
             sc
                 |> mapPlayer(id, d -> {waited = false | d})
                 |> setSpriteModulate(id, activeColor())
+                |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
                 |> playAnim(id, idleAnimName()),
             scene, ids)
 
@@ -837,6 +891,32 @@ mod PlayerScene {
                 EngineNode.AnimSprite2DWithState(AnimatedSprite2D.play(animName, sp), tag)
             case other => other
         }, scene)
+
+    /// 子 Sprite (Sprite2D / AnimatedSprite2D いずれの実装でも) に flipH を設定する。
+    def setSpriteFlipH(id: Int32, h: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(spritePath(id),
+            n -> n
+                |> EngineNode.mapSprite2D(s -> Sprite2D.setFlipH(h, s))
+                |> EngineNode.mapAnimSprite2D(s -> AnimatedSprite2D.setFlipH(h, s)),
+            scene)
+
+    /// 進行方向に応じて「左向きの絵」を水平反転する。Right で flipH=true (右向き)、
+    /// Left で flipH=false (左向き=素材そのまま)。Up/Down/None は現状維持。
+    /// `sprite#flipForFacing` を持たない駒では呼び出し側 (`flipsForFacing`) が抑止する。
+    def applyFacingFlip(id: Int32, dirOpt: Option[Staff.Direction],
+                         scene: Scene[NodeTag]): Scene[NodeTag] =
+        match dirOpt {
+            case Some(Staff.Direction.Right) => setSpriteFlipH(id, true, scene)
+            case Some(Staff.Direction.Left)  => setSpriteFlipH(id, false, scene)
+            case _                           => scene
+        }
+
+    /// 指定 id の味方が「左向き絵を右移動で反転」する駒か (resource の sprite フラグ)。
+    def flipsForFacing(id: Int32, scene: Scene[NodeTag]): Bool =
+        match Scene.getState(playerPath(id), scene) {
+            case Some(NodeTag.Player(d)) => d#resource#sprite#flipForFacing
+            case _                       => false
+        }
 
     /// 1 マス分の差分 (prev → target) から進行方向を求める。
     /// 同セル / 0 ベクトルは None。斜めは便宜上 |x| >= |y| を横優先で扱う

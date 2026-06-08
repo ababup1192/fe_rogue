@@ -1,35 +1,17 @@
 {
   "enemies": {
-    "dwarf": {
-      "attack": 6,
-      "defense": 4,
-      "description": "アーチャー",
-      "hp": 18,
-      "initialInventory": [
-        {
-          "id": "trainingBow",
-          "kind": "weapon"
-        }
-      ],
-      "luck": 2,
-      "moveTiles": 5,
-      "skill": 4,
-      "speed": 5,
-      "sprite": {
-        "frame": 1,
-        "hframes": 5,
-        "texture": "character_sheet",
-        "vframes": 2
-      }
-    },
-    "goblin": {
+    "barbarian_t1": {
       "attack": 7,
-      "defense": 3,
-      "description": "ゴブリン",
-      "hp": 26,
+      "defense": 1,
+      "description": "バーバリアン_T1",
+      "hp": 22,
       "initialInventory": [
         {
-          "id": "iron_axe",
+          "id": "bronze_axe",
+          "kind": "weapon"
+        },
+        {
+          "id": "bronze_lance",
           "kind": "weapon"
         }
       ],
@@ -39,46 +21,584 @@
       "magicDefense": 0,
       "moveTiles": 5,
       "skill": 3,
-      "speed": 7,
+      "speed": 4,
       "sprite": {
-        "frame": 4,
-        "hframes": 5,
-        "offset": {
-          "x": 0.0
+        "flipForFacing": true,
+        "frame": 21,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
         },
-        "texture": "character_sheet",
-        "vframes": 2
+        "texture": "rogues",
+        "vframes": 7
       }
     },
-    "orc": {
-      "attack": 8,
-      "defense": 3,
-      "description": "オーク",
-      "hp": 30,
+    "barbarian_t2": {
+      "attack": 9,
+      "defense": 2,
+      "description": "バーバリアン_T2",
+      "hp": 28,
       "initialInventory": [
+        {
+          "id": "iron_axe",
+          "kind": "weapon"
+        },
+        {
+          "id": "iron_lance",
+          "kind": "weapon"
+        }
+      ],
+      "level": 3,
+      "luck": 1,
+      "magicAttack": 0,
+      "magicDefense": 0,
+      "moveTiles": 5,
+      "skill": 3,
+      "speed": 5,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 23,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "barbarian_t3": {
+      "attack": 13,
+      "defense": 3,
+      "description": "バーバリアン_T3",
+      "hp": 36,
+      "initialInventory": [
+        {
+          "id": "steel_axe",
+          "kind": "weapon"
+        },
+        {
+          "id": "steel_lance",
+          "kind": "weapon"
+        }
+      ],
+      "level": 6,
+      "luck": 2,
+      "magicAttack": 0,
+      "magicDefense": 0,
+      "moveTiles": 5,
+      "skill": 4,
+      "speed": 6,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 26,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "cleric_t1": {
+      "attack": 2,
+      "defense": 2,
+      "description": "クレリック_T1",
+      "hp": 14,
+      "initialInventory": [
+        {
+          "id": "live_staff",
+          "kind": "staff"
+        },
+        {
+          "id": "bronze_sword",
+          "kind": "weapon"
+        }
+      ],
+      "level": 1,
+      "luck": 5,
+      "magicAttack": 3,
+      "magicDefense": 4,
+      "moveTiles": 5,
+      "skill": 4,
+      "speed": 4,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 14,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "cleric_t2": {
+      "attack": 3,
+      "defense": 3,
+      "description": "クレリック_T2",
+      "hp": 18,
+      "initialInventory": [
+        {
+          "id": "live_staff",
+          "kind": "staff"
+        },
+        {
+          "id": "iron_sword",
+          "kind": "weapon"
+        }
+      ],
+      "level": 3,
+      "luck": 5,
+      "magicAttack": 4,
+      "magicDefense": 5,
+      "moveTiles": 5,
+      "skill": 4,
+      "speed": 5,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 15,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "cleric_t3": {
+      "attack": 5,
+      "defense": 4,
+      "description": "クレリック_T3",
+      "hp": 24,
+      "initialInventory": [
+        {
+          "id": "live_staff",
+          "kind": "staff"
+        },
+        {
+          "id": "steel_sword",
+          "kind": "weapon"
+        }
+      ],
+      "level": 6,
+      "luck": 6,
+      "magicAttack": 6,
+      "magicDefense": 7,
+      "moveTiles": 5,
+      "skill": 5,
+      "speed": 6,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 15,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "fighter_t1": {
+      "attack": 5,
+      "defense": 3,
+      "description": "ファイター_T1",
+      "hp": 18,
+      "initialInventory": [
+        {
+          "id": "bronze_sword",
+          "kind": "weapon"
+        },
+        {
+          "id": "bronze_axe",
+          "kind": "weapon"
+        }
+      ],
+      "level": 1,
+      "luck": 2,
+      "magicAttack": 0,
+      "magicDefense": 0,
+      "moveTiles": 5,
+      "skill": 4,
+      "speed": 4,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 1,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "fighter_t2": {
+      "attack": 7,
+      "defense": 4,
+      "description": "ファイター_T2",
+      "hp": 22,
+      "initialInventory": [
+        {
+          "id": "iron_sword",
+          "kind": "weapon"
+        },
         {
           "id": "iron_axe",
           "kind": "weapon"
         }
       ],
-      "level": 4,
-      "luck": 0,
+      "level": 3,
+      "luck": 2,
       "magicAttack": 0,
-      "magicDefense": 1,
-      "moveTiles": 4,
-      "skill": 3,
+      "magicDefense": 0,
+      "moveTiles": 5,
+      "skill": 4,
       "speed": 5,
       "sprite": {
-        "frame": 3,
-        "hframes": 5,
-        "texture": "character_sheet",
-        "vframes": 2
+        "flipForFacing": true,
+        "frame": 7,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
       }
-    }
-  },
-  "weapons": {
-    "iron_axe": {
-      "durability": 45
+    },
+    "fighter_t3": {
+      "attack": 10,
+      "defense": 6,
+      "description": "ファイター_T3",
+      "hp": 28,
+      "initialInventory": [
+        {
+          "id": "steel_sword",
+          "kind": "weapon"
+        },
+        {
+          "id": "steel_axe",
+          "kind": "weapon"
+        }
+      ],
+      "level": 6,
+      "luck": 3,
+      "magicAttack": 0,
+      "magicDefense": 0,
+      "moveTiles": 5,
+      "skill": 5,
+      "speed": 6,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 7,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "paladin_t1": {
+      "attack": 5,
+      "defense": 6,
+      "description": "パラディン_T1",
+      "hp": 22,
+      "initialInventory": [
+        {
+          "id": "bronze_lance",
+          "kind": "weapon"
+        }
+      ],
+      "level": 1,
+      "luck": 3,
+      "magicAttack": 0,
+      "magicDefense": 2,
+      "moveTiles": 4,
+      "skill": 4,
+      "speed": 2,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 17,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "paladin_t2": {
+      "attack": 6,
+      "defense": 8,
+      "description": "パラディン_T2",
+      "hp": 26,
+      "initialInventory": [
+        {
+          "id": "iron_lance",
+          "kind": "weapon"
+        }
+      ],
+      "level": 3,
+      "luck": 3,
+      "magicAttack": 0,
+      "magicDefense": 3,
+      "moveTiles": 4,
+      "skill": 4,
+      "speed": 3,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 18,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "paladin_t3": {
+      "attack": 8,
+      "defense": 11,
+      "description": "パラディン_T3",
+      "hp": 34,
+      "initialInventory": [
+        {
+          "id": "silver_lance",
+          "kind": "weapon"
+        }
+      ],
+      "level": 6,
+      "luck": 4,
+      "magicAttack": 0,
+      "magicDefense": 4,
+      "moveTiles": 4,
+      "skill": 5,
+      "speed": 4,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 11,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "ranger_t1": {
+      "attack": 5,
+      "defense": 2,
+      "description": "レンジャー_T1",
+      "hp": 16,
+      "initialInventory": [
+        {
+          "id": "bronze_bow",
+          "kind": "weapon"
+        },
+        {
+          "id": "bronze_sword",
+          "kind": "weapon"
+        }
+      ],
+      "level": 1,
+      "luck": 2,
+      "magicAttack": 0,
+      "magicDefense": 2,
+      "moveTiles": 5,
+      "skill": 5,
+      "speed": 5,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 2,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "ranger_t2": {
+      "attack": 7,
+      "defense": 3,
+      "description": "レンジャー_T2",
+      "hp": 20,
+      "initialInventory": [
+        {
+          "id": "iron_bow",
+          "kind": "weapon"
+        },
+        {
+          "id": "iron_sword",
+          "kind": "weapon"
+        }
+      ],
+      "level": 3,
+      "luck": 2,
+      "magicAttack": 0,
+      "magicDefense": 2,
+      "moveTiles": 5,
+      "skill": 6,
+      "speed": 6,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 1,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "ranger_t3": {
+      "attack": 10,
+      "defense": 4,
+      "description": "レンジャー_T3",
+      "hp": 26,
+      "initialInventory": [
+        {
+          "id": "steel_bow",
+          "kind": "weapon"
+        },
+        {
+          "id": "steel_sword",
+          "kind": "weapon"
+        }
+      ],
+      "level": 6,
+      "luck": 3,
+      "magicAttack": 0,
+      "magicDefense": 3,
+      "moveTiles": 5,
+      "skill": 7,
+      "speed": 7,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 2,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "rogue_t1": {
+      "attack": 4,
+      "defense": 1,
+      "description": "ローグ_T1",
+      "hp": 14,
+      "initialInventory": [
+        {
+          "id": "bronze_sword",
+          "kind": "weapon"
+        },
+        {
+          "id": "bronze_bow",
+          "kind": "weapon"
+        }
+      ],
+      "level": 1,
+      "luck": 4,
+      "magicAttack": 0,
+      "magicDefense": 1,
+      "moveTiles": 6,
+      "skill": 6,
+      "speed": 7,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 45,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "rogue_t2": {
+      "attack": 5,
+      "defense": 2,
+      "description": "ローグ_T2",
+      "hp": 18,
+      "initialInventory": [
+        {
+          "id": "iron_sword",
+          "kind": "weapon"
+        },
+        {
+          "id": "iron_bow",
+          "kind": "weapon"
+        }
+      ],
+      "level": 3,
+      "luck": 4,
+      "magicAttack": 0,
+      "magicDefense": 2,
+      "moveTiles": 6,
+      "skill": 7,
+      "speed": 9,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 35,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "rogue_t3": {
+      "attack": 7,
+      "defense": 3,
+      "description": "ローグ_T3",
+      "hp": 22,
+      "initialInventory": [
+        {
+          "id": "steel_sword",
+          "kind": "weapon"
+        },
+        {
+          "id": "steel_bow",
+          "kind": "weapon"
+        }
+      ],
+      "level": 6,
+      "luck": 5,
+      "magicAttack": 0,
+      "magicDefense": 3,
+      "moveTiles": 6,
+      "skill": 9,
+      "speed": 12,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 3,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
     }
   }
 }

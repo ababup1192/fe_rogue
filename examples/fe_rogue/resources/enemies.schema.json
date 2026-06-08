@@ -60,7 +60,7 @@
             "step": 1
           }
         },
-        "label": "防",
+        "label": "守備",
         "order": 4
       }
     },
@@ -88,7 +88,7 @@
             "step": 1
           }
         },
-        "label": "速",
+        "label": "速さ",
         "order": 6
       }
     },
@@ -130,7 +130,7 @@
             "step": 1
           }
         },
-        "label": "移動力",
+        "label": "移動",
         "order": 9
       }
     },
@@ -203,6 +203,14 @@
             },
             "label": "縦分割",
             "order": 4
+          }
+        },
+        "flipForFacing": {
+          "field": {
+            "ftype": "bool",
+            "hint": "plain",
+            "label": "左右反転 (右移動で反転)",
+            "order": 5
           }
         },
         "offset": {
