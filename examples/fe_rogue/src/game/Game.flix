@@ -373,21 +373,46 @@ def staffAimConfirm(scene: Scene[NodeTag]):
             }
     }
 
-/// StaffAim フェーズで X/Esc が押されたら ItemActionSelect に戻る（杖は消費しない）。
 /// プレイヤー操作のフィードバック効果音を鳴らす。
 ///   - 決定 (Z / Space / Enter)        → "confirm"（メニューを開く / 項目を確定する操作も含む）
 ///   - キャンセル (X / Escape)         → "cancel"
 ///   - メニュー中の方向キー            → "cursor"（リストのカーソル移動 / 交換のペイン切替）
-/// onKeyPressed から 1 押下につき 1 回だけ呼ばれる。確定/取消は phase を問わず鳴らし、
-/// カーソル音だけはメニュー系フェーズに限定して誤発火を防ぐ。
+/// onKeyPressed から 1 押下につき 1 回だけ呼ばれる。確定/取消・カーソル音いずれも
+/// 「その入力が実際に何かする」フェーズでだけ鳴らす（演出中・自動進行中など、ボタンを
+/// 押しても無反応なフェーズで音だけ鳴るのを防ぐ）。判定は `confirmCancelMakesSound` /
+/// `isMenuCursorMove` に集約。
 def playInputSfx(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                   key: GameEngine.Key): Unit \ GameEngine.Audio =
     match input {
-        case Some(TurnRules.Input.Confirm) => AudioStreamPlayer.play("confirm")
-        case Some(TurnRules.Input.Cancel)  => AudioStreamPlayer.play("cancel")
+        case Some(TurnRules.Input.Confirm) =>
+            if (confirmCancelMakesSound(phase, TurnRules.Input.Confirm))
+                AudioStreamPlayer.play("confirm") else ()
+        case Some(TurnRules.Input.Cancel)  =>
+            if (confirmCancelMakesSound(phase, TurnRules.Input.Cancel))
+                AudioStreamPlayer.play("cancel") else ()
         case None                          =>
             if (isMenuCursorMove(phase, key)) AudioStreamPlayer.play("cursor")
             else ()
+    }
+
+/// 決定 / キャンセル音を鳴らすべきフェーズ×入力か。
+/// 演出・自動進行など「その入力が何もしない（メニューも開けない）」フェーズでは false にして、
+/// ボタンを押しても無反応なのに音だけ鳴るのを防ぐ。
+/// 何かしらの操作が成立する通常フェーズ（カーソル選択・各メニュー・攻撃・レベルアップ確認など）
+/// では true。`dispatchMenuKey` / `dispatchNonMenuKey` / `TurnRules.decide` の「無反応(Stay)」
+/// 分岐と対応させてある。
+def confirmCancelMakesSound(phase: TurnPhase.Phase, input: TurnRules.Input): Bool =
+    match (phase, input) {
+        // 全入力を無視する演出フェーズ（攻撃モーション中 / 敵ターン / 発見演出 / 旧戦闘予報）
+        case (TurnPhase.Phase.PlayerAttackHold, _) => false
+        case (TurnPhase.Phase.EnemyTurn,        _) => false
+        case (TurnPhase.Phase.RogueAlert,       _) => false
+        case (TurnPhase.Phase.AttackForecast,   _) => false
+        // 合流の自動歩行: X で中断できるが Z は無反応
+        case (TurnPhase.Phase.PlayerAutoMove, TurnRules.Input.Confirm) => false
+        // ローグ自由歩行: Z でメニューを開く / X(キャンセル) は無視
+        case (TurnPhase.Phase.RogueMove,      TurnRules.Input.Cancel)  => false
+        case _                                                          => true
     }
 
 /// メニュー系フェーズで「カーソル移動とみなす方向キー」か判定する。

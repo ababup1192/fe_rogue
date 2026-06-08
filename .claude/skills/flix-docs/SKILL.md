@@ -76,9 +76,9 @@ def makeLine(line: {pos = Vec2.Vec2, size = Vec2.Vec2}, color: Color): ColorRect
 
 ### 高階関数
 
-- パターンマッチがネストしないように、高階関数をなるべく利用すること
-- `map`, `flatMap` などが続いたら、`forM` が使えないか検討すること
-- `map`, `filter` などが続いたら、`filterMap` 等の関数が使えないか検討すること
+- パターンマッチ(match, case)がネストしないように、高階関数をなるべく利用すること
+  - `map`, `flatMap` などが続いたら、`forM` が使えないか検討すること
+  - `map`, `filter` などが続いたら、`filterMap` 等の関数が使えないか検討すること
 
 ### Algebraic Effect の扱い方
 

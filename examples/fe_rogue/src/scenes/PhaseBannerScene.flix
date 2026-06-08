@@ -180,6 +180,18 @@ mod PhaseBannerScene {
     // (E) ロジック（純粋）
     // ────────────────────────────────────────────────────────
 
+    /// 帯が観測する「今は敵ターンか」を返す。通常は phase == EnemyTurn だが、
+    /// `LevelUpView` はターンを止めるモーダル割り込みなので、その間は実フェーズが
+    /// EnemyTurn から外れても **直前の認識(wasEnemy)を維持** してターン変化を観測しない。
+    /// こうしないと、敵ターン中の反撃でレベルアップした瞬間にフェーズが
+    /// EnemyTurn → LevelUpView になり「プレイヤーフェーズ」帯がパネルに被って出てしまい、
+    /// パネルを閉じて EnemyTurn に戻ると「エネミーフェーズ」帯が二重に出る。
+    pub def perceivedIsEnemy(phase: TurnPhase.Phase, wasEnemy: Option[Bool]): Bool =
+        if (phase == TurnPhase.Phase.LevelUpView)
+            Option.getWithDefault(false, wasEnemy)
+        else
+            phase == TurnPhase.Phase.EnemyTurn
+
     /// 1 フレーム分の状態更新（副作用なし。テスト対象）。
     /// 今のフェーズが「敵ターンか(isEnemy)」を受け取り、前フレームと変わっていればそのターンを
     /// 「次に見せたいターン」として控える。演出していない（Idle）ときだけ控えを取り出して
@@ -274,7 +286,7 @@ mod PhaseBannerScene {
                     (EngineNode[NodeTag], Scene[NodeTag]) \ {TurnPhase.State, GameEngine.Audio} =
         match node {
             case EngineNode.CanvasLayerWithState(_, NodeTag.PhaseBanner(data)) =>
-                let isEnemy = TurnPhase.State.get() == TurnPhase.Phase.EnemyTurn;
+                let isEnemy = perceivedIsEnemy(TurnPhase.State.get(), data#wasEnemy);
                 let result = step(data, isEnemy, delta);
                 // 演出（帯の滑り込み）が始まったフレームの冒頭でフェーズ切替音を鳴らす。
                 match result#triggered {

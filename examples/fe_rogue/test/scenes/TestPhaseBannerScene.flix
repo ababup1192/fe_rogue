@@ -116,4 +116,38 @@ mod TestPhaseBannerScene {
             Duration.millis(2000));
         Assert.assertEq(expected = (Stage.Idle, 140.0),
                         (result#data#stage, result#offsetX))
+
+    // ════════════════════════════════════════════════════════
+    // perceivedIsEnemy: LevelUpView 中はターン認識を据え置く
+    // ════════════════════════════════════════════════════════
+
+    /// 通常フェーズはそのまま敵ターン判定: EnemyTurn は true、それ以外は false。
+    @Test
+    def testPerceivedIsEnemyNormalPhases(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (true, false, false),
+            (PhaseBannerScene.perceivedIsEnemy(TurnPhase.Phase.EnemyTurn, Some(false)),
+             PhaseBannerScene.perceivedIsEnemy(TurnPhase.Phase.PlayerCursor, Some(true)),
+             PhaseBannerScene.perceivedIsEnemy(TurnPhase.Phase.PlayerAttack, None)))
+
+    /// LevelUpView 中は実フェーズが EnemyTurn を外れても直前の認識(wasEnemy)を返す。
+    /// 敵ターン由来なら true 据え置き、味方ターン由来なら false 据え置き。
+    @Test
+    def testPerceivedIsEnemyHoldsDuringLevelUpView(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (true, false),
+            (PhaseBannerScene.perceivedIsEnemy(TurnPhase.Phase.LevelUpView, Some(true)),
+             PhaseBannerScene.perceivedIsEnemy(TurnPhase.Phase.LevelUpView, Some(false))))
+
+    /// 回帰: 敵ターン中(wasEnemy = Some(true))の反撃でレベルアップして LevelUpView に
+    /// 入っても、据え置きの isEnemy(= true) を step に渡せば帯は新規に出ない(triggered = None)。
+    /// これが「レベルアップパネルにプレイヤーフェーズ帯が被る」不具合の回帰防止。
+    @Test
+    def testLevelUpViewDoesNotTriggerBannerDuringEnemyTurn(): Unit \ Assert =
+        let data = {stage = Stage.Idle, elapsed = Duration.zero(),
+                    wasEnemy = Some(true), pending = None};
+        let isEnemy = PhaseBannerScene.perceivedIsEnemy(TurnPhase.Phase.LevelUpView, data#wasEnemy);
+        let result = PhaseBannerScene.step(data, isEnemy, Duration.millis(50));
+        Assert.assertEq(expected = (None, Stage.Idle),
+                        (result#triggered, result#data#stage))
 }
