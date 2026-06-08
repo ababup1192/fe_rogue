@@ -10,127 +10,6 @@
     "mage"
   ],
   "units": {
-    "knight": {
-      "attack": 5,
-      "defense": 5,
-      "description": "ロード",
-      "growthRates": {
-        "attack": 40,
-        "defense": 25,
-        "hp": 80,
-        "magicAttack": 10,
-        "magicDefense": 30,
-        "skill": 35,
-        "luck": 25,
-        "speed": 40
-      },
-      "hp": 18,
-      "initialInventory": [
-        {
-          "id": "bronze_sword",
-          "kind": "weapon"
-        },
-        {
-          "id": "vulnerary",
-          "kind": "consumable"
-        }
-      ],
-      "level": 1,
-      "luck": 7,
-      "magicAttack": 0,
-      "magicDefense": 0,
-      "moveTiles": 5,
-      "skill": 5,
-      "speed": 7,
-      "sprite": {
-        "frame": 8,
-        "hframes": 5,
-        "texture": "character_sheet",
-        "vframes": 2
-      }
-    },
-    "fighter": {
-      "attack": 6,
-      "defense": 4,
-      "description": "ファイター",
-      "growthRates": {
-        "attack": 50,
-        "defense": 30,
-        "hp": 70,
-        "magicAttack": 5,
-        "magicDefense": 15,
-        "skill": 45,
-        "luck": 25,
-        "speed": 40
-      },
-      "hp": 20,
-      "initialInventory": [
-        {
-          "id": "bronze_sword",
-          "kind": "weapon"
-        },
-        {
-          "id": "bronze_axe",
-          "kind": "weapon"
-        },
-        {
-          "id": "vulnerary",
-          "kind": "consumable"
-        }
-      ],
-      "level": 1,
-      "luck": 3,
-      "magicAttack": 0,
-      "magicDefense": 0,
-      "moveTiles": 5,
-      "skill": 5,
-      "speed": 5,
-      "sprite": {
-        "frame": 0,
-        "hframes": 5,
-        "texture": "character_sheet",
-        "vframes": 2
-      }
-    },
-    "paladin": {
-      "attack": 5,
-      "defense": 7,
-      "description": "パラディン",
-      "growthRates": {
-        "attack": 35,
-        "defense": 45,
-        "hp": 85,
-        "magicAttack": 5,
-        "magicDefense": 25,
-        "skill": 30,
-        "luck": 30,
-        "speed": 20
-      },
-      "hp": 24,
-      "initialInventory": [
-        {
-          "id": "bronze_lance",
-          "kind": "weapon"
-        },
-        {
-          "id": "vulnerary",
-          "kind": "consumable"
-        }
-      ],
-      "level": 1,
-      "luck": 4,
-      "magicAttack": 0,
-      "magicDefense": 3,
-      "moveTiles": 4,
-      "skill": 4,
-      "speed": 3,
-      "sprite": {
-        "frame": 5,
-        "hframes": 5,
-        "texture": "character_sheet",
-        "vframes": 2
-      }
-    },
     "barbarian": {
       "attack": 8,
       "defense": 2,
@@ -139,10 +18,10 @@
         "attack": 55,
         "defense": 15,
         "hp": 90,
+        "luck": 20,
         "magicAttack": 0,
         "magicDefense": 10,
         "skill": 30,
-        "luck": 20,
         "speed": 35
       },
       "hp": 26,
@@ -168,34 +47,39 @@
       "skill": 3,
       "speed": 5,
       "sprite": {
-        "frame": 6,
-        "hframes": 5,
-        "texture": "character_sheet",
-        "vframes": 2
+        "flipForFacing": true,
+        "frame": 22,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
       }
     },
-    "rogue": {
-      "attack": 4,
-      "defense": 2,
-      "description": "ローグ",
+    "cleric": {
+      "attack": 3,
+      "defense": 3,
+      "description": "クレリック",
       "growthRates": {
-        "attack": 35,
-        "defense": 15,
-        "hp": 60,
-        "magicAttack": 10,
-        "magicDefense": 20,
-        "skill": 55,
-        "luck": 35,
-        "speed": 60
+        "attack": 25,
+        "defense": 20,
+        "hp": 55,
+        "luck": 40,
+        "magicAttack": 35,
+        "magicDefense": 35,
+        "skill": 35,
+        "speed": 40
       },
       "hp": 16,
       "initialInventory": [
         {
-          "id": "bronze_sword",
-          "kind": "weapon"
+          "id": "live_staff",
+          "kind": "staff"
         },
         {
-          "id": "bronze_bow",
+          "id": "bronze_sword",
           "kind": "weapon"
         },
         {
@@ -204,17 +88,214 @@
         }
       ],
       "level": 1,
-      "luck": 5,
-      "magicAttack": 0,
-      "magicDefense": 2,
-      "moveTiles": 6,
-      "skill": 7,
-      "speed": 9,
+      "luck": 6,
+      "magicAttack": 4,
+      "magicDefense": 5,
+      "moveTiles": 5,
+      "skill": 4,
+      "speed": 5,
       "sprite": {
-        "frame": 7,
-        "hframes": 5,
-        "texture": "character_sheet",
-        "vframes": 2
+        "flipForFacing": true,
+        "frame": 16,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "fighter": {
+      "attack": 6,
+      "defense": 4,
+      "description": "ファイター",
+      "growthRates": {
+        "attack": 50,
+        "defense": 30,
+        "hp": 70,
+        "luck": 25,
+        "magicAttack": 5,
+        "magicDefense": 15,
+        "skill": 45,
+        "speed": 40
+      },
+      "hp": 20,
+      "initialInventory": [
+        {
+          "id": "bronze_sword",
+          "kind": "weapon"
+        },
+        {
+          "id": "bronze_axe",
+          "kind": "weapon"
+        },
+        {
+          "id": "vulnerary",
+          "kind": "consumable"
+        }
+      ],
+      "level": 1,
+      "luck": 3,
+      "magicAttack": 0,
+      "magicDefense": 0,
+      "moveTiles": 5,
+      "skill": 5,
+      "speed": 5,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 0,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "knight": {
+      "attack": 5,
+      "defense": 5,
+      "description": "ロード",
+      "growthRates": {
+        "attack": 40,
+        "defense": 25,
+        "hp": 80,
+        "luck": 25,
+        "magicAttack": 10,
+        "magicDefense": 30,
+        "skill": 35,
+        "speed": 40
+      },
+      "hp": 18,
+      "initialInventory": [
+        {
+          "id": "bronze_sword",
+          "kind": "weapon"
+        },
+        {
+          "id": "vulnerary",
+          "kind": "consumable"
+        }
+      ],
+      "level": 1,
+      "luck": 7,
+      "magicAttack": 0,
+      "magicDefense": 0,
+      "moveTiles": 5,
+      "skill": 5,
+      "speed": 7,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 10,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "mage": {
+      "attack": 0,
+      "defense": 3,
+      "description": "メイジ",
+      "growthRates": {
+        "attack": 10,
+        "defense": 20,
+        "hp": 50,
+        "luck": 30,
+        "magicAttack": 40,
+        "magicDefense": 30,
+        "skill": 40,
+        "speed": 50
+      },
+      "hp": 16,
+      "initialInventory": [
+        {
+          "id": "tome_apprentice",
+          "kind": "weapon"
+        },
+        {
+          "id": "live_staff",
+          "kind": "staff"
+        },
+        {
+          "id": "blowback_staff",
+          "kind": "staff"
+        },
+        {
+          "id": "swap_staff",
+          "kind": "staff"
+        },
+        {
+          "id": "vulnerary",
+          "kind": "consumable"
+        }
+      ],
+      "level": 1,
+      "luck": 5,
+      "magicAttack": 4,
+      "magicDefense": 5,
+      "moveTiles": 5,
+      "skill": 5,
+      "speed": 6,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 29,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "paladin": {
+      "attack": 5,
+      "defense": 7,
+      "description": "パラディン",
+      "growthRates": {
+        "attack": 35,
+        "defense": 45,
+        "hp": 85,
+        "luck": 30,
+        "magicAttack": 5,
+        "magicDefense": 25,
+        "skill": 30,
+        "speed": 20
+      },
+      "hp": 24,
+      "initialInventory": [
+        {
+          "id": "bronze_lance",
+          "kind": "weapon"
+        },
+        {
+          "id": "vulnerary",
+          "kind": "consumable"
+        }
+      ],
+      "level": 1,
+      "luck": 4,
+      "magicAttack": 0,
+      "magicDefense": 3,
+      "moveTiles": 4,
+      "skill": 4,
+      "speed": 3,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 18,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
       }
     },
     "ranger": {
@@ -225,10 +306,10 @@
         "attack": 50,
         "defense": 20,
         "hp": 70,
+        "luck": 25,
         "magicAttack": 10,
         "magicDefense": 15,
         "skill": 50,
-        "luck": 25,
         "speed": 40
       },
       "hp": 18,
@@ -254,14 +335,15 @@
       "skill": 6,
       "speed": 6,
       "sprite": {
-        "frame": 1,
-        "hframes": 5,
+        "flipForFacing": true,
+        "frame": 2,
+        "hframes": 7,
         "scale": {
-          "x": 1.5,
-          "y": 1.5
+          "x": 0.8,
+          "y": 0.8
         },
-        "texture": "fe_archer",
-        "vframes": 1
+        "texture": "rogues",
+        "vframes": 7
       },
       "spriteFrames": {
         "idle": {
@@ -316,80 +398,29 @@
         }
       }
     },
-    "cleric": {
-      "attack": 3,
-      "defense": 3,
-      "description": "クレリック",
+    "rogue": {
+      "attack": 4,
+      "defense": 2,
+      "description": "ローグ",
       "growthRates": {
-        "attack": 25,
-        "defense": 20,
-        "hp": 55,
-        "magicAttack": 35,
-        "magicDefense": 35,
-        "skill": 35,
-        "luck": 40,
-        "speed": 40
+        "attack": 35,
+        "defense": 15,
+        "hp": 60,
+        "luck": 35,
+        "magicAttack": 10,
+        "magicDefense": 20,
+        "skill": 55,
+        "speed": 60
       },
       "hp": 16,
       "initialInventory": [
-        {
-          "id": "live_staff",
-          "kind": "staff"
-        },
         {
           "id": "bronze_sword",
           "kind": "weapon"
         },
         {
-          "id": "vulnerary",
-          "kind": "consumable"
-        }
-      ],
-      "level": 1,
-      "luck": 6,
-      "magicAttack": 4,
-      "magicDefense": 5,
-      "moveTiles": 5,
-      "skill": 4,
-      "speed": 5,
-      "sprite": {
-        "frame": 9,
-        "hframes": 5,
-        "texture": "character_sheet",
-        "vframes": 2
-      }
-    },
-    "mage": {
-      "attack": 0,
-      "defense": 3,
-      "description": "メイジ",
-      "growthRates": {
-        "attack": 10,
-        "defense": 20,
-        "hp": 50,
-        "magicAttack": 40,
-        "magicDefense": 30,
-        "skill": 40,
-        "luck": 30,
-        "speed": 50
-      },
-      "hp": 16,
-      "initialInventory": [
-        {
-          "id": "tome_apprentice",
+          "id": "bronze_bow",
           "kind": "weapon"
-        },
-        {
-          "id": "live_staff",
-          "kind": "staff"
-        },
-        {
-          "id": "blowback_staff",
-          "kind": "staff"
-        },
-        {
-          "id": "swap_staff",
-          "kind": "staff"
         },
         {
           "id": "vulnerary",
@@ -398,16 +429,21 @@
       ],
       "level": 1,
       "luck": 5,
-      "magicAttack": 4,
-      "magicDefense": 5,
-      "moveTiles": 5,
-      "skill": 5,
-      "speed": 6,
+      "magicAttack": 0,
+      "magicDefense": 2,
+      "moveTiles": 6,
+      "skill": 7,
+      "speed": 9,
       "sprite": {
-        "frame": 2,
-        "hframes": 5,
-        "texture": "character_sheet",
-        "vframes": 2
+        "flipForFacing": true,
+        "frame": 3,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
       }
     }
   }

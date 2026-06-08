@@ -442,10 +442,12 @@ mod PlayerScene {
         }, scene);
         // AnimatedSprite2D を持つ unit なら walk_<dir> アニメに切り替える。
         // 方向が決まらなければ (= 同セル移動) 切り替えなし。
-        match dirOpt {
+        let visuals = match dirOpt {
             case None    => withState
             case Some(d) => playAnim(id, walkAnimName(d), withState)
-        }
+        };
+        // flipForFacing 付き (= 左向き絵) の駒は左右移動で水平反転する。
+        if (flipsForFacing(id, scene)) applyFacingFlip(id, dirOpt, visuals) else visuals
 
     /// 指定 id のプレイヤーを `target` グリッドに **瞬間移動** で戻す。
     /// 進行中の Tween があればキャンセルし、Marker2D の world 位置と Data#gridPos を
@@ -596,10 +598,14 @@ mod PlayerScene {
                         // 子 Sprite が AnimatedSprite2D なら、進行方向の walk_<dir> アニメに
                         // 切り替える (Sprite2D の unit は playAnim が no-op)。
                         // direction が決まらない (= 同セル移動) ケースは scene 据え置き。
-                        let nextScene = match directionOfStep(data#gridPos, target) {
+                        let dirOpt = directionOfStep(data#gridPos, target);
+                        let animScene = match dirOpt {
                             case Some(d) => playAnim(data#id, walkAnimName(d), scene)
                             case None    => scene
                         };
+                        let nextScene = if (data#resource#sprite#flipForFacing)
+                                            applyFacingFlip(data#id, dirOpt, animScene)
+                                        else animScene;
                         (EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
                          nextScene)
                     };
@@ -628,10 +634,14 @@ mod PlayerScene {
                     ) yield {
                         let (newMarker, newData) =
                             moveTo(data#id, board#map, target, marker, data, scene);
-                        let nextScene = match directionOfStep(data#gridPos, target) {
+                        let dirOpt = directionOfStep(data#gridPos, target);
+                        let animScene = match dirOpt {
                             case Some(d) => playAnim(data#id, walkAnimName(d), scene)
                             case None    => scene
                         };
+                        let nextScene = if (data#resource#sprite#flipForFacing)
+                                            applyFacingFlip(data#id, dirOpt, animScene)
+                                        else animScene;
                         (EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
                          nextScene)
                     };
@@ -879,6 +889,32 @@ mod PlayerScene {
                 EngineNode.AnimSprite2DWithState(AnimatedSprite2D.play(animName, sp), tag)
             case other => other
         }, scene)
+
+    /// 子 Sprite (Sprite2D / AnimatedSprite2D いずれの実装でも) に flipH を設定する。
+    def setSpriteFlipH(id: Int32, h: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(spritePath(id),
+            n -> n
+                |> EngineNode.mapSprite2D(s -> Sprite2D.setFlipH(h, s))
+                |> EngineNode.mapAnimSprite2D(s -> AnimatedSprite2D.setFlipH(h, s)),
+            scene)
+
+    /// 進行方向に応じて「左向きの絵」を水平反転する。Right で flipH=true (右向き)、
+    /// Left で flipH=false (左向き=素材そのまま)。Up/Down/None は現状維持。
+    /// `sprite#flipForFacing` を持たない駒では呼び出し側 (`flipsForFacing`) が抑止する。
+    def applyFacingFlip(id: Int32, dirOpt: Option[Staff.Direction],
+                         scene: Scene[NodeTag]): Scene[NodeTag] =
+        match dirOpt {
+            case Some(Staff.Direction.Right) => setSpriteFlipH(id, true, scene)
+            case Some(Staff.Direction.Left)  => setSpriteFlipH(id, false, scene)
+            case _                           => scene
+        }
+
+    /// 指定 id の味方が「左向き絵を右移動で反転」する駒か (resource の sprite フラグ)。
+    def flipsForFacing(id: Int32, scene: Scene[NodeTag]): Bool =
+        match Scene.getState(playerPath(id), scene) {
+            case Some(NodeTag.Player(d)) => d#resource#sprite#flipForFacing
+            case _                       => false
+        }
 
     /// 1 マス分の差分 (prev → target) から進行方向を求める。
     /// 同セル / 0 ベクトルは None。斜めは便宜上 |x| >= |y| を横優先で扱う

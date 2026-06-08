@@ -333,7 +333,29 @@ mod EnemyScene {
         let startWorld  = Scene.globalPositionAt(enemyPath(id), scene);
         let targetWorld = map#gridToWorld(target);
         Tween.tweenPosition(enemyPath(id), startWorld, targetWorld, slideDuration());
-        mapEnemy(id, d -> {gridPos = target | d}, scene)
+        // flipForFacing 付き (= 左向き絵) の敵は左右移動で水平反転する。
+        let flipped = match get(id, scene) {
+            case Some(d) =>
+                if (d#resource#sprite#flipForFacing)
+                    applyFacingFlip(id, d#gridPos#x, target#x, scene)
+                else scene
+            case None => scene
+        };
+        mapEnemy(id, d -> {gridPos = target | d}, flipped)
+
+    /// 子 Sprite2D に flipH を設定する内部ヘルパー (敵スプライトは常に Sprite2D)。
+    def setSpriteFlipH(id: Int32, h: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(spritePath(id),
+            n -> EngineNode.mapSprite2D(s -> Sprite2D.setFlipH(h, s), n), scene)
+
+    /// 横移動の符号で「左向き絵」を反転する。右移動 (dx>0) で flipH=true (右向き)、
+    /// 左移動で flipH=false。縦移動 (dx==0) は現状維持。
+    def applyFacingFlip(id: Int32, prevX: Int32, targetX: Int32,
+                         scene: Scene[NodeTag]): Scene[NodeTag] =
+        let dx = targetX - prevX;
+        if (dx > 0) setSpriteFlipH(id, true, scene)
+        else if (dx < 0) setSpriteFlipH(id, false, scene)
+        else scene
 
     /// 敵 id を `target` に **瞬間移動** で戻す（杖の「いれかえ」用）。
     /// 進行中の Tween があればキャンセルし、ノードの world 位置と Data#gridPos を

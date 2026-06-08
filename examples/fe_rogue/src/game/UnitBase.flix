@@ -52,7 +52,7 @@ mod UnitBase {
 
 mod UnitBaseCodec {
     use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray}
+    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray, JsonBool}
     use JsonCodec.{expectObject, expectString, expectInt, expectFloat, expectBool, floatToBd, intToBd}
     use UnitBase.{UnitBase, ItemKind, InventoryEntry}
     use Sprite.SpriteResource
@@ -113,7 +113,8 @@ mod UnitBaseCodec {
             "vframes" => JsonNumber(intToBd(s#vframes)),
             "frame"   => JsonNumber(intToBd(s#frame)),
             "offset"  => JsonCodec.encodeVec2(s#offset),
-            "scale"   => JsonCodec.encodeVec2(s#scale)
+            "scale"   => JsonCodec.encodeVec2(s#scale),
+            "flipForFacing" => JsonBool(s#flipForFacing)
         })
 
     /// SpriteFrames を `{anim_name: {loop, speed, frames}}` 形式で書き出す。
@@ -240,8 +241,11 @@ mod UnitBaseCodec {
         ) yield {
             let off = JsonCodec.decodeVec2OrDefault(Map.get("offset", obj), 0.0);
             let sc  = JsonCodec.decodeVec2OrDefault(Map.get("scale", obj), 1.0);
+            // flipForFacing は省略可能。欠落 / 不正は false。
+            let flip = Map.get("flipForFacing", obj)
+                        |> Option.flatMap(expectBool) |> Option.getWithDefault(false);
             ({texture = tex, hframes = hf, vframes = vf, frame = fr,
-              offset = off, scale = sc}: SpriteResource)
+              offset = off, scale = sc, flipForFacing = flip}: SpriteResource)
         }
 
     // ── spriteFrames の格子 → px 解決（effectful 後段パス。味方・敵で共有）──

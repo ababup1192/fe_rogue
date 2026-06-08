@@ -37,7 +37,8 @@ mod TestEnemyCatalog {
             texture = "character_sheet",
             hframes = 5, vframes = 2, frame = 4,
             offset  = ({x = 0.0, y = 0.0}: Vec2.Vec2),
-            scale   = ({x = 1.0, y = 1.0}: Vec2.Vec2)
+            scale   = ({x = 1.0, y = 1.0}: Vec2.Vec2),
+            flipForFacing = false
         },
         spriteFrames = None
     }

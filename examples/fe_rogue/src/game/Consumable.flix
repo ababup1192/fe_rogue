@@ -164,7 +164,9 @@ mod ConsumableCatalogCodec {
         ) yield {
             let off = JsonCodec.decodeVec2OrDefault(Map.get("offset", obj), 0.0);
             let sc = JsonCodec.decodeVec2OrDefault(Map.get("scale", obj), 1.0);
+            let flip = Map.get("flipForFacing", obj)
+                        |> Option.flatMap(JsonCodec.expectBool) |> Option.getWithDefault(false);
             ({texture = tex, hframes = hf, vframes = vf, frame = fr,
-              offset = off, scale = sc}: SpriteResource)
+              offset = off, scale = sc, flipForFacing = flip}: SpriteResource)
         }
 }
