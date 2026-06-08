@@ -29,7 +29,7 @@ mod ActionMenuScene {
     use Json.JsonError.JsonError
     use Json.Path.Path.Root
 
-    def sceneJsonPath(): String = "src/scenes/ActionMenuScene.scene.json"
+    def sceneJsonPath(): String = AssetPath.resolve("src/scenes/ActionMenuScene.scene.json")
 
     def fontName(): String = "ui"
 

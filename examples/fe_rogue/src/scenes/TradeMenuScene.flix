@@ -93,7 +93,7 @@ mod TradeMenuScene {
     // (B) 定数
     // ────────────────────────────────────────────────────────
 
-    def sceneJsonPath(): String = "src/scenes/TradeMenuScene.scene.json"
+    def sceneJsonPath(): String = AssetPath.resolve("src/scenes/TradeMenuScene.scene.json")
 
     def fontName(): String = "ui"
 

@@ -94,8 +94,8 @@ mod WeaponCatalog {
     /// 起動時の `Game.start` で 1 度だけ呼ぶ想定。失敗は panic で即可視化。
     pub def load(): WeaponCatalog \ Fs.FileRead =
         let container = CatalogContainer.loadWithCheck({
-            dataPath       = "resources/weapons.json",
-            schemaPath     = "resources/weapons.schema.json",
+            dataPath       = AssetPath.resolve("resources/weapons.json"),
+            schemaPath     = AssetPath.resolve("resources/weapons.schema.json"),
             containerKey   = "weapons",
             expectedFields = expectedFields(),
             decodeEntry    = WeaponCatalogCodec.decodeWeapon

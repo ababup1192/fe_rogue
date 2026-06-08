@@ -49,7 +49,7 @@ mod LevelUpPanelScene {
     // (B) 定数
     // ────────────────────────────────────────────────────────
 
-    def sceneJsonPath(): String = "src/scenes/LevelUpPanelScene.scene.json"
+    def sceneJsonPath(): String = AssetPath.resolve("src/scenes/LevelUpPanelScene.scene.json")
 
     /// fontManifest で登録した name（BattlePanel / LogScene と同じ "ui"）。
     def fontName(): String = "ui"

@@ -13,7 +13,7 @@ mod BattlePanelScene {
     use Json.JsonError.JsonError
     use Json.Path.Path.Root
 
-    def sceneJsonPath(): String = "src/scenes/BattlePanelScene.scene.json"
+    def sceneJsonPath(): String = AssetPath.resolve("src/scenes/BattlePanelScene.scene.json")
 
     /// fontManifest で登録した name と一致させる（LogScene / WeaponMenuScene と同じ "ui"）
     def fontName(): String = "ui"

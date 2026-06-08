@@ -46,7 +46,7 @@ mod LogScene {
     /// scene.json の Container `rect.height` と一致させる
     def panelHeight(): Float64 = 28.0
     /// scene.json のパス
-    def sceneJsonPath(): String = "src/scenes/LogScene.scene.json"
+    def sceneJsonPath(): String = AssetPath.resolve("src/scenes/LogScene.scene.json")
 
     // ────────────────────────────────────────────────────────
     // 構築

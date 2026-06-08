@@ -50,7 +50,7 @@ mod MinimapScene {
     /// driver ノードの NodePath（`add` は World 直下に追加する）。
     def driverPath(): NodePath = List.append(MapScene.worldPath(), driverName() :: Nil)
     def fontName(): String = "ui"
-    def sceneJsonPath(): String = "src/scenes/MinimapScene.scene.json"
+    def sceneJsonPath(): String = AssetPath.resolve("src/scenes/MinimapScene.scene.json")
 
     def roomChildName(i: Int32): String = "Room_${i}"
     def roomChildPath(i: Int32): NodePath = List.append(contentPath(), roomChildName(i) :: Nil)

@@ -9,6 +9,7 @@
 
 mod LwjglLayer {
     import org.lwjgl.glfw.GLFW
+    import org.lwjgl.glfw.GLFWGamepadState
     import org.lwjgl.glfw.Callbacks
     import org.lwjgl.glfw.GLFWFramebufferSizeCallbackI
     import org.lwjgl.glfw.GLFWMouseButtonCallbackI
@@ -221,6 +222,45 @@ mod LwjglLayer {
             }
         });
 
+        // ===== Gamepad (Xbox レイアウト) =====
+        // GLFW gamepad API でコントローラ入力を読み、isKeyPressed に OR する。
+        // これにより Key を参照する全 Scene を無改修でコントローラ対応にできる
+        // (currentKeys() も isKeyPressed 経由なので onKeyPressed のエッジ検出も反映される)。
+        // GLFWGamepadState.create() は GC 管理のダイレクトバッファ上に確保されるため明示解放は不要。
+        // 状態は shouldClose で 1 フレーム 1 回更新し、padPressed が読み出す。
+        let gamepadState = GLFWGamepadState.create();
+        let gamepadConnectedHolder = Array#{false} @ Static;
+        let padBtn = (idx: Int32) -> gamepadState.buttons(idx) != 0i8;
+        let padAxis = (idx: Int32) -> gamepadState.axes(idx);
+        // 方向は D-pad と左スティック（デッドゾーン 0.5）の両方で受ける。
+        // GLFW のスティック Y 軸は上が負。
+        let padUp    = () -> padBtn(GLFW.GLFW_GAMEPAD_BUTTON_DPAD_UP)    or (padAxis(GLFW.GLFW_GAMEPAD_AXIS_LEFT_Y) < -0.5f32);
+        let padDown  = () -> padBtn(GLFW.GLFW_GAMEPAD_BUTTON_DPAD_DOWN)  or (padAxis(GLFW.GLFW_GAMEPAD_AXIS_LEFT_Y) >  0.5f32);
+        let padLeft  = () -> padBtn(GLFW.GLFW_GAMEPAD_BUTTON_DPAD_LEFT)  or (padAxis(GLFW.GLFW_GAMEPAD_AXIS_LEFT_X) < -0.5f32);
+        let padRight = () -> padBtn(GLFW.GLFW_GAMEPAD_BUTTON_DPAD_RIGHT) or (padAxis(GLFW.GLFW_GAMEPAD_AXIS_LEFT_X) >  0.5f32);
+        // 物理キー → ゲームパッド入力の対応 (fe_rogue: 決定=Z/Space/Enter=A/Start,
+        // キャンセル=X/Escape=B/Back, 危険範囲トグル=LeftShift=LB, ミニマップ=M=Y)。
+        let padPressed = (key: GameEngine.Key) ->
+            if (not Array.get(0, gamepadConnectedHolder)) false
+            else match key {
+                case GameEngine.Key.Up        => padUp()
+                case GameEngine.Key.W         => padUp()
+                case GameEngine.Key.Down      => padDown()
+                case GameEngine.Key.S         => padDown()
+                case GameEngine.Key.Left      => padLeft()
+                case GameEngine.Key.A         => padLeft()
+                case GameEngine.Key.Right     => padRight()
+                case GameEngine.Key.D         => padRight()
+                case GameEngine.Key.Z         => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_A)
+                case GameEngine.Key.Space     => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_A)
+                case GameEngine.Key.Enter     => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_A) or padBtn(GLFW.GLFW_GAMEPAD_BUTTON_START)
+                case GameEngine.Key.X         => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_B)
+                case GameEngine.Key.Escape    => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_B) or padBtn(GLFW.GLFW_GAMEPAD_BUTTON_BACK)
+                case GameEngine.Key.M         => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_Y)
+                case GameEngine.Key.LeftShift => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_LEFT_BUMPER)
+                case _                        => false
+            };
+
         // macOS ではリサイズ中に glfwPollEvents がブロックされるため、
         // フレームバッファサイズ変更コールバックで再描画を行う
         discard GLFW.glfwSetFramebufferSizeCallback(window, new GLFWFramebufferSizeCallbackI {
@@ -296,6 +336,10 @@ mod LwjglLayer {
                 Array.put(false, 1, mouseButtonPressedHolder);
                 Array.put(false, 2, mouseButtonPressedHolder);
                 GLFW.glfwPollEvents();
+                // ゲームパッド状態を 1 フレーム 1 回更新（接続かつ gamepad マッピング有効時のみ）。
+                let padConnected = GLFW.glfwJoystickIsGamepad(GLFW.GLFW_JOYSTICK_1);
+                if (padConnected) discard GLFW.glfwGetGamepadState(GLFW.GLFW_JOYSTICK_1, gamepadState) else ();
+                Array.put(padConnected, 0, gamepadConnectedHolder);
                 k(GLFW.glfwWindowShouldClose(window))
             }
             def getDeltaTime(k) = {
@@ -309,7 +353,10 @@ mod LwjglLayer {
             }
             def isKeyPressed(key, k) = {
                 let code = keyToGlfw(key);
-                k(GLFW.glfwGetKey(window, code) == 1)
+                let kb = GLFW.glfwGetKey(window, code) == 1;
+                // キーボード OR ゲームパッド。エッジ検出は Scene 側 (prevKeyState) が行うため
+                // ここでは押下状態を返すだけでよい。
+                k(kb or padPressed(key))
             }
             def getMousePosition(k) = {
                 let mStack = MemoryStack.stackPush();

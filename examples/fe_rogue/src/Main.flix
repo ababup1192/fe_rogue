@@ -3,7 +3,7 @@ def main(): Unit \ IO =
     else {
         run {
             Game.start()
-        } with LwjglLayer.withProject(".")
+        } with LwjglLayer.withProject(AssetPath.root())
           with Fs.FileRead.runWithIO
           with Math.Random.runWithIO
     }

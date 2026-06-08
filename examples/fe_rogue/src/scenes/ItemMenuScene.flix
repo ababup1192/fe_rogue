@@ -35,7 +35,7 @@ mod ItemMenuScene {
     // ────────────────────────────────────────────────────────
 
     /// scene.json 相対パス。プロジェクトルートから読まれる。
-    def sceneJsonPath(): String = "src/scenes/ItemMenuScene.scene.json"
+    def sceneJsonPath(): String = AssetPath.resolve("src/scenes/ItemMenuScene.scene.json")
 
     /// fontManifest で登録した name と一致させる（WeaponMenuScene と同じ "ui"）。
     def fontName(): String = "ui"

@@ -34,8 +34,8 @@ mod EnemyCatalog {
     /// `spriteFrames` は pure 経路では None。続けて `resolveSpriteFrames` で埋める。
     pub def load(): EnemyCatalog \ Fs.FileRead =
         let container = CatalogContainer.loadWithCheck({
-            dataPath       = "resources/enemies.json",
-            schemaPath     = "resources/enemies.schema.json",
+            dataPath       = AssetPath.resolve("resources/enemies.json"),
+            schemaPath     = AssetPath.resolve("resources/enemies.schema.json"),
             containerKey   = "enemies",
             expectedFields = expectedEnemyFields(),
             decodeEntry    = EnemyCatalogCodec.decodeEnemy

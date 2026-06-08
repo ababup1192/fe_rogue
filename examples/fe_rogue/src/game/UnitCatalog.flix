@@ -120,7 +120,7 @@ mod UnitCatalog {
             UnitCatalog \ Fs.FileRead =
         let unitsJson = readFile(unitsPath);
         let catalog = loadFromString(unitsJson, weaponCatalog);
-        let schema = match Resource.loadSchemaDiagnostic("resources/units.schema.json") {
+        let schema = match Resource.loadSchemaDiagnostic(AssetPath.resolve("resources/units.schema.json")) {
             case Ok(value) => value
             case Err(msg)  => bug!("UnitCatalog schema load failed: ${msg}")
         };

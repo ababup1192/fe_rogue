@@ -32,7 +32,7 @@ mod StairsScene {
     pub def stairsPath(): NodePath = name() :: Nil
 
     /// scene.json への相対パス（cwd = プロジェクトルート想定）
-    def scenePath(): String = "src/scenes/StairsScene.scene.json"
+    def scenePath(): String = AssetPath.resolve("src/scenes/StairsScene.scene.json")
 
     // ────────────────────────────────────────────────────────
     // (C) 構築

@@ -67,15 +67,15 @@ mod FloorCatalog {
 
     /// マップ stem（例 `"room_1"`）を `assets/maps/room_1.map.json` パスに解決する。
     /// floors.json の roomMaps/horizontalMaps/verticalMaps の id ↔ 実ファイルの橋渡し。
-    pub def mapPathOf(stem: String): String = "assets/maps/${stem}.map.json"
+    pub def mapPathOf(stem: String): String = AssetPath.resolve("assets/maps/${stem}.map.json")
 
     /// `resources/floors.json` をロードし、`resources/floors.schema.json` で整合検査する。
     /// 段階 8 のリファクタで `CatalogContainer.loadWithCheck` に委譲する形に変更した。
     /// 失敗は panic（即可視化）。起動時の `Game.start` で 1 度だけ呼ぶ想定。
     pub def load(): FloorCatalog \ Fs.FileRead =
         let container = CatalogContainer.loadWithCheck({
-            dataPath       = "resources/floors.json",
-            schemaPath     = "resources/floors.schema.json",
+            dataPath       = AssetPath.resolve("resources/floors.json"),
+            schemaPath     = AssetPath.resolve("resources/floors.schema.json"),
             containerKey   = "floors",
             expectedFields = expectedFloorFields(),
             decodeEntry    = FloorCatalogCodec.decodeFloor
