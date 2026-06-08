@@ -48,7 +48,7 @@ mod UnitInfoPopupScene {
     def sceneJsonPath(): String = "src/scenes/UnitInfoPopupScene.scene.json"
 
     // Status view 用レイアウト
-    def spriteScale(): Vec2.Vec2 = {x = 0.5, y = 0.5}
+    def spriteScale(): Vec2.Vec2 = {x = 0.4, y = 0.4}
     def spriteCenterLocal(): Vec2.Vec2 = {x = 7.0, y = 8.0}
     def nameLocalPos(): Vec2.Vec2     = {x = 14.0, y = 4.0}
     def hpTextLocalPos(): Vec2.Vec2   = {x = 14.0, y = 14.0}
