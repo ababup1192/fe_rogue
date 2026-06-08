@@ -35,7 +35,7 @@ mod ArrowCursorScene {
     def spriteName(): String = "Sprite"
     pub def spritePath(): NodePath = name() :: spriteName() :: Nil
 
-    def scenePath(): String = "src/scenes/ArrowCursorScene.scene.json"
+    def scenePath(): String = AssetPath.resolve("src/scenes/ArrowCursorScene.scene.json")
 
     /// 各方向の回転角（ラジアン）。arrow.png は **上向き** に描かれている前提。
     ///   - Up    →   0°

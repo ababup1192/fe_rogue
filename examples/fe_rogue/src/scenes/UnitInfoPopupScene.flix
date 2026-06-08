@@ -45,7 +45,7 @@ mod UnitInfoPopupScene {
     def fontName(): String = "ui"
 
     /// scene.json のパス
-    def sceneJsonPath(): String = "src/scenes/UnitInfoPopupScene.scene.json"
+    def sceneJsonPath(): String = AssetPath.resolve("src/scenes/UnitInfoPopupScene.scene.json")
 
     // Status view 用レイアウト
     def spriteScale(): Vec2.Vec2 = {x = 0.4, y = 0.4}

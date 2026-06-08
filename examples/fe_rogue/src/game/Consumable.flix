@@ -70,8 +70,8 @@ mod Consumable {
     /// 起動時の `Game.start` で 1 度だけ呼ぶ想定。失敗は panic で即可視化。
     pub def load(): ConsumableCatalog \ Fs.FileRead =
         let container = CatalogContainer.loadWithCheck({
-            dataPath       = "resources/consumables.json",
-            schemaPath     = "resources/consumables.schema.json",
+            dataPath       = AssetPath.resolve("resources/consumables.json"),
+            schemaPath     = AssetPath.resolve("resources/consumables.schema.json"),
             containerKey   = "consumables",
             expectedFields = expectedFields(),
             decodeEntry    = ConsumableCatalogCodec.decodeConsumable

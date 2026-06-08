@@ -100,20 +100,20 @@ mod MapScene {
 
     /// 既定の部屋プール（floors.json でフロアに roomMaps が無いとき用）。
     def defaultRoomPaths(): List[(String, Int32)] =
-        ("assets/maps/room_1.map.json", 25) ::
-        ("assets/maps/room_2.map.json", 25) ::
-        ("assets/maps/room_3.map.json", 25) ::
-        ("assets/maps/room_4.map.json", 25) :: Nil
+        (AssetPath.resolve("assets/maps/room_1.map.json"), 25) ::
+        (AssetPath.resolve("assets/maps/room_2.map.json"), 25) ::
+        (AssetPath.resolve("assets/maps/room_3.map.json"), 25) ::
+        (AssetPath.resolve("assets/maps/room_4.map.json"), 25) :: Nil
 
     /// 既定の横通路プール。
     def defaultHorizontalPaths(): List[(String, Int32)] =
-        ("assets/maps/pathway_horizontal_1.map.json", 50) ::
-        ("assets/maps/pathway_horizontal_2.map.json", 50) :: Nil
+        (AssetPath.resolve("assets/maps/pathway_horizontal_1.map.json"), 50) ::
+        (AssetPath.resolve("assets/maps/pathway_horizontal_2.map.json"), 50) :: Nil
 
     /// 既定の縦通路プール。
     def defaultVerticalPaths(): List[(String, Int32)] =
-        ("assets/maps/pathway_vertical_1.map.json", 50) ::
-        ("assets/maps/pathway_vertical_2.map.json", 50) :: Nil
+        (AssetPath.resolve("assets/maps/pathway_vertical_1.map.json"), 50) ::
+        (AssetPath.resolve("assets/maps/pathway_vertical_2.map.json"), 50) :: Nil
 
     // (C) 構築
     pub def add(floor: FloorCatalog.FloorResource, scene: Scene[NodeTag]): Scene[NodeTag]
@@ -122,7 +122,7 @@ mod MapScene {
         // 単一 .map.json (level_0) を MapLoader 経由で描画する。視覚一致確認用。
         let modeStr = unsafe IO { JSystem.getenv("FE_ROGUE_MODE") };
         let isMapTest = not Object.isNull(modeStr) and modeStr == "map-test";
-        if (isMapTest) addFromMapJson("assets/maps/room_1.map.json", scene)
+        if (isMapTest) addFromMapJson(AssetPath.resolve("assets/maps/room_1.map.json"), scene)
         else           addFromLdtk(floor, scene)
 
     /// 既存ルート: DungeonGenerator + DungeonComposer で複数モジュールを連結する。

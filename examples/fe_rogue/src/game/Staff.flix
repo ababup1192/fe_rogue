@@ -122,8 +122,8 @@ mod Staff {
     /// 段階 7 のリファクタで `CatalogContainer.loadWithCheck` に処理を委譲する形に変更した。
     pub def load(): StaffCatalog \ Fs.FileRead =
         let container = CatalogContainer.loadWithCheck({
-            dataPath       = "resources/staves.json",
-            schemaPath     = "resources/staves.schema.json",
+            dataPath       = AssetPath.resolve("resources/staves.json"),
+            schemaPath     = AssetPath.resolve("resources/staves.schema.json"),
             containerKey   = "staves",
             expectedFields = expectedFields(),
             decodeEntry    = StaffCatalogCodec.decodeStaff

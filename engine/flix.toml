@@ -15,5 +15,8 @@ authors     = ["ababup1192 <ababup1192@gmail.com>"]
 [mvn-dependencies]
 "org.lwjgl:lwjgl-glfw" = "3.4.1"
 
+# macOS arm64 (開発機) と Windows x86_64 (配布先) の GLFW ネイティブを両方宣言。
+# 複数プラットフォームのネイティブは同居でき、実行時に適切なものが選ばれる。
 [jar-dependencies]
 "lwjgl-glfw-3.4.1-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-glfw/3.4.1/lwjgl-glfw-3.4.1-natives-macos-arm64.jar"
+"lwjgl-glfw-3.4.1-natives-windows.jar"     = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-glfw/3.4.1/lwjgl-glfw-3.4.1-natives-windows.jar"

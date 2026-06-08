@@ -4,6 +4,7 @@
 .GITHUB_TOKEN
 artifact/
 build/
+dist/
 lib/
 # 依存解決で生成されるパッケージ直下の lib/ は無視するが、
 # src/lib/ 配下は実ソース(DungeonComposer/DungeonGenerator/MapLoader/TileRendering 等)

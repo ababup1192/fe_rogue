@@ -547,12 +547,12 @@ mod Game {
             // 段階 9 のリファクタで schema 整合性検査は `UnitCatalog.load` 内部で完結する
             // (他 catalog の `CatalogContainer.loadWithCheck` と揃えた)。
             let weaponCatalog = WeaponCatalog.load();
-            let catalog0 = UnitCatalog.load("resources/units.json", weaponCatalog);
-            let catalog = UnitCatalog.resolveSpriteFrames("resources/units.json", catalog0);
+            let catalog0 = UnitCatalog.load(AssetPath.resolve("resources/units.json"), weaponCatalog);
+            let catalog = UnitCatalog.resolveSpriteFrames(AssetPath.resolve("resources/units.json"), catalog0);
             // 敵カタログをロード（段階 10 のリファクタで units.json から enemies.json に分離）。
             // 味方（成長率あり）と別管理。spriteFrames は味方と同じ格子→px 解決を通す。
             let enemyCatalog0 = EnemyCatalog.load();
-            let enemyCatalog = EnemyCatalog.resolveSpriteFrames("resources/enemies.json", enemyCatalog0);
+            let enemyCatalog = EnemyCatalog.resolveSpriteFrames(AssetPath.resolve("resources/enemies.json"), enemyCatalog0);
             // フロア定義をロード。進行順は floors.json の "order" 配列で管理し、
             // 現在いるフロアは FloorProgress effect が保持する（初期値 = 先頭フロア）。
             // 階段で次階へ / 全滅で 1F へ / クリアで 1F ループ、はいずれも FloorProgress 経由。

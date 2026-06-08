@@ -111,7 +111,7 @@ mod CursorScene {
     /// シーン定義 JSON のパス。Marker2D Cursor + 子 Sprite2D (cursor.png, zIndex=20) の
     /// 構造を持つ。位置はパーティ先頭プレイヤーから計算するため post-load で setPosition する。
     /// Cursor(Data) は Data を含むため scene.json では復元できず post-load で setState する。
-    def scenePath(): String = "src/scenes/CursorScene.scene.json"
+    def scenePath(): String = AssetPath.resolve("src/scenes/CursorScene.scene.json")
 
     /// MapScene + PlayerScene 登録済みの scene にカーソルを追加する。
     /// 初期位置はパーティ先頭プレイヤー（id=0）と同じセル。

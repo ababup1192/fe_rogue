@@ -17,8 +17,15 @@ repository  = "github:ababup1192/flix_render_core"
 "org.lwjgl:lwjgl-stb"    = "3.4.1"
 "org.lwjgl:lwjgl-openal" = "3.4.1"
 
+# LWJGL ネイティブは複数プラットフォームを同一 classpath に同居でき、実行時に
+# os.name/os.arch で正しいものが選択される。macOS arm64 (開発機) と
+# Windows x86_64 (ROG Xbox Ally 等の配布先) の両方を宣言しておく。
 [jar-dependencies]
 "lwjgl-3.4.1-natives-macos-arm64.jar"        = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl/3.4.1/lwjgl-3.4.1-natives-macos-arm64.jar"
 "lwjgl-opengl-3.4.1-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-opengl/3.4.1/lwjgl-opengl-3.4.1-natives-macos-arm64.jar"
 "lwjgl-stb-3.4.1-natives-macos-arm64.jar"    = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-stb/3.4.1/lwjgl-stb-3.4.1-natives-macos-arm64.jar"
 "lwjgl-openal-3.4.1-natives-macos-arm64.jar" = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-openal/3.4.1/lwjgl-openal-3.4.1-natives-macos-arm64.jar"
+"lwjgl-3.4.1-natives-windows.jar"            = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl/3.4.1/lwjgl-3.4.1-natives-windows.jar"
+"lwjgl-opengl-3.4.1-natives-windows.jar"     = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-opengl/3.4.1/lwjgl-opengl-3.4.1-natives-windows.jar"
+"lwjgl-stb-3.4.1-natives-windows.jar"        = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-stb/3.4.1/lwjgl-stb-3.4.1-natives-windows.jar"
+"lwjgl-openal-3.4.1-natives-windows.jar"     = "url:https://repo1.maven.org/maven2/org/lwjgl/lwjgl-openal/3.4.1/lwjgl-openal-3.4.1-natives-windows.jar"

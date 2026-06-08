@@ -18,7 +18,7 @@ mod BgmScene {
     pub def bgmPath(): NodePath = name() :: Nil
 
     /// scene.json への相対パス（cwd = プロジェクトルート想定）
-    def scenePath(): String = "src/scenes/BgmScene.scene.json"
+    def scenePath(): String = AssetPath.resolve("src/scenes/BgmScene.scene.json")
 
     /// BGM ノードを scene tree に追加する。SceneLoader が AudioStreamPlayer ノードを
     /// パースし、`applyAudioAttach` を別途呼ぶことで autoplay = true の場合に再生開始する。
