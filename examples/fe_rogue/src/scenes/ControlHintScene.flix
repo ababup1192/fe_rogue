@@ -117,7 +117,7 @@ mod ControlHintScene {
     /// (ActionSelect / ItemSelect など、入力処理が直接捌く) は遷移から意味が取れないので、
     /// フェーズごとの固定文言を返す。
     pub def hintFor(phase: TurnPhase.Phase, zTransition: TurnRules.Transition):
-            {dpad = String, decide = String, cancel = String} =
+            {dpad = String, decide = String} =
         match phase {
             // カーソル移動中。味方の上か空マスかで決定の行き先が変わる。
             // カーソルを十字で動かすのは自明なので十字ボタンの案内は出さない。
@@ -127,45 +127,48 @@ mod ControlHintScene {
                     case TurnRules.Transition.CursorOpenGatherMenu  => "メニュー"
                     case _                                          => ""
                 };
-                {dpad = "", decide = decide, cancel = ""}
+                {dpad = "", decide = decide}
             // 味方を選んで動かしている最中。決定で行動メニュー。
             // 移動が十字なのは自明なので十字ボタンの案内は出さない。
             // また zTransition を見ず固定にする。Tween 中 (playerBusy) は decide が一瞬
             // 無効 (Stay) になり、毎歩「行動」が点滅して見えてしまうため。
             case TurnPhase.Phase.PlayerMoving =>
-                {dpad = "", decide = "行動", cancel = ""}
-            // 攻撃対象選択。敵の上でだけ決定が「こうげき」。キャンセルは「こうげきせず」(行動終了)。
+                {dpad = "", decide = "行動"}
+            // 攻撃対象選択。←・→ で対象を変えられる。敵の上でだけ決定が「こうげき」。
+            // キャンセルの案内は出さない。
             case TurnPhase.Phase.PlayerAttack =>
                 let decide = match zTransition {
                     case TurnRules.Transition.OpenAttackForecast(_, _, _, _) => "こうげき"
                     case _                                                   => ""
                 };
-                {dpad = "", decide = decide, cancel = "こうげきせず"}
+                {dpad = "←・→: 攻撃対象の変更", decide = decide}
             // 交換相手の選択。隣接味方の上でだけ決定が「こうかん」。
             case TurnPhase.Phase.TradeTargetSelect =>
                 let decide = match zTransition {
                     case TurnRules.Transition.OpenTradeInventory(_) => "こうかん"
                     case _                                          => ""
                 };
-                {dpad = "", decide = decide, cancel = ""}
+                {dpad = "", decide = decide}
             // 杖の発射方向を十字で選ぶ。
-            case TurnPhase.Phase.StaffAim         => {dpad = "ほうこう", decide = "",       cancel = ""}
+            case TurnPhase.Phase.StaffAim         => {dpad = "十字ボタン: ほうこう", decide = ""}
             // 戦闘予報。決定で攻撃実行。
-            case TurnPhase.Phase.AttackForecast   => {dpad = "",       decide = "こうげき", cancel = ""}
+            case TurnPhase.Phase.AttackForecast   => {dpad = "",       decide = "こうげき"}
             // ローグ自由移動。決定でメニュー (歩くのが十字なのは自明なので案内しない)。
-            case TurnPhase.Phase.RogueMove        => {dpad = "",     decide = "メニュー", cancel = ""}
+            case TurnPhase.Phase.RogueMove        => {dpad = "",     decide = "メニュー"}
             // メニュー表示中 (ActionSelect / ItemSelect / ItemActionSelect / TradeInventory) は
             // 項目自体が画面に見えているので案内不要。入力を受け付けないフェーズ (敵ターン・
             // 演出ホールド・自動移動など) も含め、ここに来たら何も出さない (帯を隠す)。
-            case _ => {dpad = "", decide = "", cancel = ""}
+            case _ => {dpad = "", decide = ""}
         }
 
     /// 文言レコードを画面に出す 1 行に整える。空文字のボタンは省き、残りを「／」で繋ぐ。
     /// すべて空なら空文字 (= 帯を隠す)。
-    pub def renderLine(hint: {dpad = String, decide = String, cancel = String}): String =
-        (segment("十字ボタン", hint#dpad)
+    /// `dpad` は十字キーの案内で、ボタン名込みの整形済み文字列をそのまま使う
+    /// (例 "十字ボタン: ほうこう" / "←・→: 攻撃対象の変更")。文脈で左右だけ等が変わるため。
+    /// `decide` は行き先だけを持ち、ここで "決定ボタン: ◯◯" に整える。
+    pub def renderLine(hint: {dpad = String, decide = String}): String =
+        (hint#dpad
             :: segment("決定ボタン", hint#decide)
-            :: segment("キャンセルボタン", hint#cancel)
             :: Nil)
             |> List.filter(part -> part != "")
             |> String.intercalate(" ／ ")

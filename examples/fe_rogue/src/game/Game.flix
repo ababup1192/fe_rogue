@@ -40,8 +40,10 @@ pub enum NodeTag {
     case Log(LogScene.Data)
     /// ItemMenuScene の Panel ルート（外枠）
     case ItemPanel
-    /// ItemMenuScene の ItemList（武器+杖の一覧 + サブメニュー兼用）
-    case ItemMenu
+    /// ItemMenuScene の ItemList（武器+杖の一覧 + サブメニュー兼用）。
+    /// 内部の Int32 は現在表示中のページ番号（0 起点）。ロード職は 16 個 = 2 ページ持てるため、
+    /// ←/→ でページを切り替えるとここが更新され、refreshItems がそのページぶんを並べ直す。
+    case ItemMenu(Int32)
     /// TradeMenuScene の Panel ルート（partnerId / pick / focus を抱えるセッション状態）
     case TradePanel(TradeMenuScene.PanelData)
     /// TradeMenuScene の左 ItemList (じぶん)
@@ -202,7 +204,7 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
                    path: NodePath, scene: Scene[NodeTag]):
                   (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
     match node {
-        case EngineNode.ItemListWithState(_, NodeTag.ItemMenu) =>
+        case EngineNode.ItemListWithState(_, NodeTag.ItemMenu(_)) =>
             checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
             checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
@@ -324,7 +326,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              EnemyScene.RosterQuery,
                                              CustomEffects.FloorAdvanceRequest} =
         match state {
-            case NodeTag.ItemMenu   =>
+            case NodeTag.ItemMenu(_) =>
                 // ItemSelect / ItemActionSelect いずれも同じ ItemList なので、
                 // フェーズに応じて ItemMenuScene 内部で分岐させる。
                 let phase = TurnPhase.State.get();
@@ -352,7 +354,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              EnemyScene.RosterQuery,
                                              CustomEffects.FloorAdvanceRequest} =
         match state {
-            case NodeTag.ItemMenu   =>
+            case NodeTag.ItemMenu(_) =>
                 let phase = TurnPhase.State.get();
                 match phase {
                     case TurnPhase.Phase.ItemSelect       =>
@@ -477,7 +479,8 @@ def isMenuCursorMove(phase: TurnPhase.Phase, key: GameEngine.Key): Bool =
     };
     match phase {
         case TurnPhase.Phase.ActionSelect     => vertical
-        case TurnPhase.Phase.ItemSelect       => vertical
+        // ItemSelect は ↑↓ がアイテム選択、←→ がページ切替（ロード職の 2 ページ）。
+        case TurnPhase.Phase.ItemSelect       => vertical or horizontal
         case TurnPhase.Phase.ItemActionSelect => vertical
         case TurnPhase.Phase.TradeInventory   => vertical or horizontal
         // 攻撃中: 上下=武器切り替え / 左右=ターゲット選択。どちらもカーソル移動音を鳴らす。
@@ -552,6 +555,10 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
         // ItemList のカーソル移動に使われるので素通り)
         case (TurnPhase.Phase.TradeInventory, None)
                                               => checked_ecast(tradeInventoryDirection(key, scene))
+        // ItemSelect 中の ←/→ はアイテム window のページ切替へ (↑↓ は handleMenus 側で
+        // ItemList のカーソル移動に使われるので素通り)
+        case (TurnPhase.Phase.ItemSelect,     None)
+                                              => checked_ecast(itemSelectDirection(key, scene))
         // PlayerAttack = ターゲット選択 + 戦闘予測。Z で(カーソル上の敵に)攻撃確定、
         // X でメニューに戻る。BattlePanelScene が予報表示と対象同期を担う。
         case (TurnPhase.Phase.PlayerAttack,   Some(TurnRules.Input.Confirm))
@@ -574,6 +581,19 @@ def tradeInventoryDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[N
         case GameEngine.Key.A     => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Self,    scene)
         case GameEngine.Key.Right => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Partner, scene)
         case GameEngine.Key.D     => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Partner, scene)
+        case _                    => scene
+    }
+
+/// ItemSelect 中の方向キーをアイテム window のページ切替に変換する。
+/// Left / A → 前ページ、Right / D → 次ページ。Up / Down は handleMenus が ItemList の
+/// カーソル移動に使うので、ここでは素通し（ロード職以外は 1 ページなのでページ送りは効かない）。
+def itemSelectDirection(key: GameEngine.Key, scene: Scene[NodeTag]):
+        Scene[NodeTag] \ SelectedPlayer.State =
+    match key {
+        case GameEngine.Key.Left  => ItemMenuScene.pageLeft(scene)
+        case GameEngine.Key.A     => ItemMenuScene.pageLeft(scene)
+        case GameEngine.Key.Right => ItemMenuScene.pageRight(scene)
+        case GameEngine.Key.D     => ItemMenuScene.pageRight(scene)
         case _                    => scene
     }
 

@@ -698,11 +698,12 @@ mod EnemyScene {
         Combat.estimate(combatView(enemy), PlayerScene.combatView(player))#damage
 
     /// この敵の戦闘ビュー（faction 非依存）。`Combat.estimate` / `Encounter` の join で使う。
+    /// 敵には得意/苦手の概念が無いので、持っている武器は常に得意（proficient = true、100%）。
     pub def combatView(data: Data): Combat.CombatView =
         {attack = data#resource#attack, magicAttack = data#resource#magicAttack,
          defense = data#resource#defense, magicDefense = data#resource#magicDefense,
          skill = data#resource#skill, speed = data#resource#speed, luck = data#resource#luck,
-         hp = data#hp, weapon = Combat.weaponView(data#weapon)}
+         hp = data#hp, weapon = Combat.weaponView(data#weapon, true)}
 
     /// この敵の盤上ビュー（faction = Enemy）。`Encounter.fromScene` の join で使う。
     /// `weaponRange` は装備武器の射程。敵に `hidden` は無いので常に false。

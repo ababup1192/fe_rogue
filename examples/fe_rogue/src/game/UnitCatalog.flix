@@ -44,7 +44,11 @@ mod UnitCatalog {
         description      = String,
         spriteFrames     = Option[SpriteFrames],
         // レベルアップ時のステータス成長率。旧 JSON に無い場合は decoder が全 0 を埋める。
-        growthRates      = GrowthRates
+        growthRates      = GrowthRates,
+        // 得意武器タイプ（習熟）。ここに含まれるタイプは性能 100%、含まれないタイプ（苦手）は
+        // 威力・命中 80%。ロード職種は全タイプ、他職種は初期装備のタイプを既定とする。
+        // 旧 JSON に無い場合は decoder が空リストを埋める。IDE で編集可能。
+        proficientWeaponTypes = List[WeaponCatalog.WeaponType]
     }
 
     /// 後方互換 alias。既存コードの `UnitCatalog.UnitResource` 参照はそのまま味方リソースを指す。
@@ -188,11 +192,16 @@ mod UnitCatalog {
     pub def lookupWeapon(id: String, catalog: UnitCatalog): WeaponResource =
         WeaponCatalog.lookup(id, weaponCatalogOf(catalog))
 
-    /// Z 戦略の整合性検査用に Flix 型のフィールド名集合を公開する（14 共有 + growthRates）。
+    /// このユニットが指定の武器タイプを得意とするか（= 性能 100%）。
+    /// 含まれないタイプは苦手（威力・命中 80%）。`Combat.proficiencyAdjust` と組で使う。
+    pub def proficientWith(resource: PlayerResource, weaponType: WeaponCatalog.WeaponType): Bool =
+        List.memberOf(weaponType, resource#proficientWeaponTypes)
+
+    /// Z 戦略の整合性検査用に Flix 型のフィールド名集合を公開する（14 共有 + growthRates + 習熟）。
     pub def expectedUnitFields(): Set[String] =
         Set#{"moveTiles", "level", "hp", "attack", "defense", "magicAttack", "magicDefense",
               "speed", "skill", "luck", "sprite", "initialInventory",
-              "description", "spriteFrames", "growthRates"}
+              "description", "spriteFrames", "growthRates", "proficientWeaponTypes"}
 
     /// `WeaponResource` のフィールド名集合（後方互換の委譲）。
     pub def expectedWeaponFields(): Set[String] =
@@ -231,10 +240,14 @@ mod UnitCatalogCodec {
         let enrichedContainer = CatalogContainer.CatalogContainer({meta = poolsMeta | containerPayload});
         CatalogContainer.encode(encodePlayer, enrichedContainer)
 
-    /// 味方 = 共有ベース（`UnitBaseCodec.encodeBase`）+ `growthRates`。
+    /// 味方 = 共有ベース（`UnitBaseCodec.encodeBase`）+ `growthRates` + `proficientWeaponTypes`。
     def encodePlayer(u: PlayerResource): JsonElement =
         let base = UnitBaseCodec.encodeBase(u);
-        JsonObject(Map.insert("growthRates", encodeGrowthRates(u#growthRates), base))
+        let withGrowth = Map.insert("growthRates", encodeGrowthRates(u#growthRates), base);
+        let profArray = JsonCodec.encodeList(
+            weaponType -> JsonString(WeaponCatalogCodec.weaponTypeToString(weaponType)),
+            u#proficientWeaponTypes);
+        JsonObject(Map.insert("proficientWeaponTypes", profArray, withGrowth))
 
     def encodeGrowthRates(g: GrowthRates): JsonElement =
         JsonObject(Map#{
@@ -270,13 +283,22 @@ mod UnitCatalogCodec {
             let growth = Map.get("growthRates", obj)
                             |> Option.flatMap(decodeGrowthRates)
                             |> Option.getWithDefault(UnitCatalog.zeroGrowthRates());
+            let proficient = Map.get("proficientWeaponTypes", obj)
+                            |> Option.flatMap(decodeWeaponTypes)
+                            |> Option.getWithDefault(Nil);
             ({moveTiles = base#moveTiles, level = base#level, hp = base#hp, attack = base#attack,
               defense = base#defense, magicAttack = base#magicAttack,
               magicDefense = base#magicDefense, speed = base#speed, skill = base#skill,
               luck = base#luck, sprite = base#sprite, initialInventory = base#initialInventory,
               description = base#description, spriteFrames = base#spriteFrames,
-              growthRates = growth}: PlayerResource)
+              growthRates = growth, proficientWeaponTypes = proficient}: PlayerResource)
         }
+
+    /// 得意武器タイプ配列（`["Sword","Axe"]` 等）をデコード。未知文字列は parseWeaponType が剣に倒す。
+    def decodeWeaponTypes(element: JsonElement): Option[List[WeaponCatalog.WeaponType]] =
+        JsonCodec.decodeList(
+            item -> expectString(item) |> Option.map(WeaponCatalogCodec.parseWeaponType),
+            element)
 
     def decodeGrowthRates(element: JsonElement): Option[GrowthRates] =
         expectObject(element) |> Option.map(obj ->

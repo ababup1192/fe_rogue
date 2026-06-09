@@ -55,6 +55,9 @@ mod Resource {
                                 // IDE は アニメ選択 + region (pos/size) spinner + アトラスプレビューの
                                 // 専用 widget を出して spriteFrames の region 編集を視覚化する。
                                 // schema JSON では `"spriteFrames"` 文字列で表す。
+        case WeaponProfT       // 武器タイプ習熟（得意/苦手）。値は WeaponType 文字列の配列
+                                // (例 ["Sword","Axe"])。IDE は 5 タイプの正方形アイコンを並べた
+                                // 複数トグルを出す。schema JSON では `"weaponProf"` 文字列で表す。
     }
 
     /// 編集 UI のヒント。`Plain` は型相応の素直な入力欄（数値スピナー / テキスト等）。
@@ -265,6 +268,7 @@ mod ResourceCodec {
         case FieldType.BoolT         => JsonString("bool")
         case FieldType.TexturePathT  => JsonString("texturePath")
         case FieldType.SpriteFramesT => JsonString("spriteFrames")
+        case FieldType.WeaponProfT   => JsonString("weaponProf")
         case FieldType.RefT(target)  =>
             JsonObject(Map#{
                 "type" => JsonString("ref"),
@@ -408,6 +412,7 @@ mod ResourceCodec {
         case JsonString("bool")          => Some(FieldType.BoolT)
         case JsonString("texturePath")   => Some(FieldType.TexturePathT)
         case JsonString("spriteFrames")  => Some(FieldType.SpriteFramesT)
+        case JsonString("weaponProf")    => Some(FieldType.WeaponProfT)
         case JsonObject(obj)            =>
             forM (
                 typeJ <- Map.get("type", obj);

@@ -28,6 +28,7 @@ mod BattlePanelScene {
     def pWeaponName(): String     = "playerWeaponText"
     def leftBgName(): String      = "leftBg"
     def leftHpName(): String      = "leftHp"
+    def leftPowerName(): String   = "leftPower"
     def leftRestName(): String    = "leftRest"
     def centerBgName(): String    = "centerBg"
     def centerHpName(): String    = "centerHp"
@@ -44,6 +45,7 @@ mod BattlePanelScene {
     def pWeaponPath(): NodePath    = rootName() :: pWeaponName()    :: Nil
     def leftBgPath(): NodePath     = rootName() :: leftBgName()     :: Nil
     def leftHpPath(): NodePath     = rootName() :: leftHpName()     :: Nil
+    def leftPowerPath(): NodePath  = rootName() :: leftPowerName()  :: Nil
     def leftRestPath(): NodePath   = rootName() :: leftRestName()   :: Nil
     def centerBgPath(): NodePath   = rootName() :: centerBgName()   :: Nil
     def centerHpPath(): NodePath   = rootName() :: centerHpName()   :: Nil
@@ -86,6 +88,7 @@ mod BattlePanelScene {
             |> setBgVisible(botBgPath(), visible)
             |> Label2D.mapAt(pWeaponPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(leftHpPath(), CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(leftPowerPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(leftRestPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(centerHpPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(centerRestPath(), CanvasItem.setVisible(visible))
@@ -182,6 +185,11 @@ mod BattlePanelScene {
             scene
                 |> Label2D.mapAt(pWeaponPath(),    Label2D.setText(cols#pWeapon))
                 |> Label2D.mapAt(eWeaponPath(),    Label2D.setText(cols#eWeapon))
+                // 威力は独立ラベル。苦手武器のときだけ青字で「80% に下がっている」と知らせる。
+                |> Label2D.mapAt(leftPowerPath(), lbl -> lbl
+                       |> Label2D.setText(cols#leftPower)
+                       |> CanvasItem.setModulate(
+                            if (cols#playerProficient) powerNormalColor() else powerWeakColor()))
                 |> Label2D.mapAt(leftRestPath(),   Label2D.setText(cols#leftRest))
                 |> Label2D.mapAt(centerHpPath(),   Label2D.setText(cols#centerHp))
                 |> Label2D.mapAt(centerRestPath(), Label2D.setText(cols#centerRest))
@@ -228,6 +236,11 @@ mod BattlePanelScene {
             scene)
 
     /// 現在HP（通常）の文字色 = 白。
+    /// 威力ラベルの通常色（白）。得意武器のときはこれ。
+    def powerNormalColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    /// 苦手武器のときの威力ラベル色（青）。80% に下がっていることを示す。
+    def powerWeakColor(): Color = {r = 0.45f32, g = 0.65f32, b = 1.0f32}
+
     def hpNormalColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
     /// 戦闘後HP（減少予測）の文字色 = グレー。
     def hpDamagedColor(): Color = {r = 0.55f32, g = 0.55f32, b = 0.55f32}
@@ -291,6 +304,8 @@ mod BattlePanelScene {
     type alias Forecast = {
         attackerId = Int32, defenderId = Int32,
         pWeapon = String, eWeapon = String,
+        // leftPower = 味方の威力（独立ラベル・苦手なら青）。leftRest = 味方の命中。
+        leftPower = String, playerProficient = Bool,
         leftRest = String, centerHp = String, centerRest = String, rightRest = String,
         playerHpCur = Int32, playerHpPost = Int32, playerTakesDmg = Bool,
         enemyHpCur = Int32, enemyHpPost = Int32, enemyTakesDmg = Bool
@@ -326,13 +341,15 @@ mod BattlePanelScene {
     def emptyForecast(): Forecast =
         {attackerId = -1, defenderId = -1,
          pWeapon = "", eWeapon = "",
+         leftPower = "", playerProficient = true,
          leftRest = "", centerHp = "", centerRest = "", rightRest = "",
          playerHpCur = 0, playerHpPost = 0, playerTakesDmg = false,
          enemyHpCur = 0, enemyHpPost = 0, enemyTakesDmg = false}
 
     /// 予報を Forecast に整形する（FE 流レイアウト）。
     ///   pWeapon / eWeapon … 味方 / 敵の武器名（＋相性マーク）。上下の帯に中央寄せ。
-    ///   leftRest / rightRest … 威力 / 命中 の 2 行（味方 / 敵）。HP は別ラベルなので含めない。
+    ///   leftPower … 味方の威力（独立ラベル。苦手武器なら applyForecast が青字にする）。
+    ///   leftRest … 味方の命中。rightRest … 敵の威力 / 命中 の 2 行。HP は別ラベルなので含めない。
     ///   centerHp / centerRest … 中央ラベル "HP" と "威力 / 命中"。
     ///   *HpCur / *HpPost … HP 点滅シミュレーション用の現在 / 戦闘後HP。
     /// 戦闘後HP = 現在HP − 受けるダメージ（下限 0）。敵は味方の攻撃で、味方は敵の反撃で減る。
@@ -350,7 +367,10 @@ mod BattlePanelScene {
         let labelWidth = 5;   // 中央ラベルの文字幅（左マージン込みで中央へ寄せる）
         let pWeapon    = padCenter("${weapon#name}${relationMark(rel)}", bandWidth);
         let eWeapon    = padCenter(enemyCols#name, bandWidth);
-        let leftRest   = "${padLeft("${playerForecast#damage}", numWidth())}\n${padLeft("${playerForecast#hit}%", numWidth())}";
+        // 威力は独立ラベル（苦手なら青字）、命中は leftRest。中央/敵カラムは 2 行のまま。
+        let proficient = UnitCatalog.proficientWith(player#resource, weapon#weaponType);
+        let leftPower  = padLeft("${playerForecast#damage}", numWidth());
+        let leftRest   = padLeft("${playerForecast#hit}%", numWidth());
         let centerHp   = padCenter("HP", labelWidth);
         let centerRest = "${padCenter("威力", labelWidth)}\n${padCenter("命中", labelWidth)}";
         let rightRest  = "${padLeft(enemyCols#atk, numWidth())}\n${padLeft(enemyCols#hit, numWidth())}";
@@ -360,6 +380,7 @@ mod BattlePanelScene {
         // attackerId/defenderId は buildColumns の yield で実 id に上書きする（ここは仮置き 0）。
         {attackerId = 0, defenderId = 0,
          pWeapon = pWeapon, eWeapon = eWeapon,
+         leftPower = leftPower, playerProficient = proficient,
          leftRest = leftRest, centerHp = centerHp, centerRest = centerRest, rightRest = rightRest,
          playerHpCur = player#hp, playerHpPost = playerHpPost, playerTakesDmg = playerHpPost < player#hp,
          enemyHpCur = enemy#hp, enemyHpPost = enemyHpPost, enemyTakesDmg = enemyHpPost < enemy#hp}

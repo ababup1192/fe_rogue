@@ -334,7 +334,7 @@ mod TestCombat {
         let attacker: Combat.CombatView =
             {attack = 4, magicAttack = 0, defense = 0, magicDefense = 0,
              skill = 5, speed = 0, luck = 3, hp = 10,
-             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, isPhysical = true})};
+             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, isPhysical = true, proficient = true})};
         let defender: Combat.CombatView =
             {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
              skill = 0, speed = 4, luck = 1, hp = 3, weapon = None};
@@ -360,7 +360,7 @@ mod TestCombat {
         let attacker: Combat.CombatView =
             {attack = 99, magicAttack = 6, defense = 0, magicDefense = 0,
              skill = 0, speed = 0, luck = 0, hp = 10,
-             weapon = Some({weaponType = WeaponType.Magic, attack = 0, hit = 100, isPhysical = false})};
+             weapon = Some({weaponType = WeaponType.Magic, attack = 0, hit = 100, isPhysical = false, proficient = true})};
         let defender: Combat.CombatView =
             {attack = 0, magicAttack = 0, defense = 99, magicDefense = 1,
              skill = 0, speed = 0, luck = 0, hp = 10, weapon = None};
@@ -374,11 +374,11 @@ mod TestCombat {
         let attacker: Combat.CombatView =
             {attack = 4, magicAttack = 0, defense = 0, magicDefense = 0,
              skill = 5, speed = 0, luck = 3, hp = 10,
-             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, isPhysical = true})};
+             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, isPhysical = true, proficient = true})};
         let defender: Combat.CombatView =
             {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
              skill = 0, speed = 4, luck = 1, hp = 3,
-             weapon = Some({weaponType = WeaponType.Axe, attack = 0, hit = 0, isPhysical = true})};
+             weapon = Some({weaponType = WeaponType.Axe, attack = 0, hit = 0, isPhysical = true, proficient = true})};
         let f = Combat.estimate(attacker, defender);
         Assert.assertEq(expected = (6, 87, true), (f#damage, f#hit, f#kill))
 }

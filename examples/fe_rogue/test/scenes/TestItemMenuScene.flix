@@ -220,4 +220,67 @@ mod TestItemMenuScene {
             case _ => -1
         };
         Assert.assertEq(expected = 0, idx)
+
+    // ════════════════════════════════════════════════════════
+    // ページング: ロード職など 8 個超の持ち物を 8 件ずつページ分けする
+    // ════════════════════════════════════════════════════════
+
+    /// 容量カウントに影響しないダミー sprite。
+    def pageDummySprite(): Sprite.SpriteResource = {
+        texture = "t", hframes = 1, vframes = 1, frame = 0,
+        offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false
+    }
+
+    /// 連番テキスト "0".."n-1" を持つ (表示エントリ, ダミー sprite) の組を n 個ぶん作る。
+    /// スライス後に「どの組が並んだか」をテキストで追えるよう、入力データだけを用意する
+    /// ヘルパー（期待値の計算はしない）。
+    def numberedPairs(n: Int32): List[(ItemEntry, Sprite.SpriteResource)] =
+        List.map(i ->
+            (({text = "${i}", disabled = false, metadata = Some("${i}")}: ItemEntry),
+             pageDummySprite()),
+            List.range(0, n))
+
+    /// 総ページ数: 8 個 = 1 ページ、9 個 = 2 ページ、16 個 = 2 ページ、0 個 = 1 ページ（最低 1）。
+    @Test
+    def testTotalPages(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (1, 2, 2, 1),
+            (ItemMenuScene.totalPages(8), ItemMenuScene.totalPages(9),
+             ItemMenuScene.totalPages(16), ItemMenuScene.totalPages(0)))
+
+    /// 持ち物 16 個・1 ページ目: 先頭 8 件が並び、先頭エントリは入力の 0 番、
+    /// アイコンも 8 件ぶん（行 index 0..7 に振り直されている）。
+    @Test
+    def testPageSliceFirstPage(): Unit \ Assert =
+        let (items, icons) = ItemMenuScene.pageSlice(numberedPairs(16), 0);
+        match List.head(items) {
+            case Some(entry) =>
+                Assert.assertEq(
+                    expected = (8, "0", 8),
+                    (List.length(items), entry#text, Map.size(icons)))
+            case None => bug!("1 ページ目には 8 件並ぶはず")
+        }
+
+    /// 持ち物 16 個・2 ページ目: 後半 8 件が並び、先頭エントリは入力の 8 番
+    /// （ページ内は 0 起点にスライスされている）。
+    @Test
+    def testPageSliceSecondPage(): Unit \ Assert =
+        let (items, _) = ItemMenuScene.pageSlice(numberedPairs(16), 1);
+        match List.head(items) {
+            case Some(entry) =>
+                Assert.assertEq(expected = (8, "8"), (List.length(items), entry#text))
+            case None => bug!("2 ページ目には 8 件並ぶはず")
+        }
+
+    /// 1 ページぶん（持ち物 2 個）のプレイヤーで → を押してもページは 0 のまま頭打ち
+    /// （ループしないこと）。`sceneWithPlayer` は武器 1 + 杖 1 = 2 個 = 1 ページ。
+    @Test
+    def testPageRightClampsWhenSinglePage(): Unit \ {Assert, Fs.FileRead} =
+        let scene = sceneWithPlayer();
+        let after = withSelectedZero(() -> ItemMenuScene.pageRight(scene));
+        let page = match Scene.getState(ItemMenuScene.menuPath(), after) {
+            case Some(NodeTag.ItemMenu(currentPage)) => currentPage
+            case _                                   => bug!("ItemMenu タグが無い")
+        };
+        Assert.assertEq(expected = 0, page)
 }

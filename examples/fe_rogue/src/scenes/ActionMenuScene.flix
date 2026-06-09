@@ -359,14 +359,28 @@ mod ActionMenuScene {
         match pickupTarget(scene) {
             case None       => scene
             case Some(info) =>
-                // 通常モード(退避中の味方が居ない)では拾得を SelectedPlayer の picked に
-                // ドラフト記録し、選択解除キャンセル(cancelSelection)で床へ巻き戻せるようにする。
-                // ローグ移動モードは選択が無く巻き戻し対象外なので即取得のまま。
-                let recorded =
-                    if (List.isEmpty(PlayerScene.hiddenAllies(scene)))
-                        recordPickupDraft(info, scene)
-                    else scene;
-                pickupAt(info, recorded)
+                // 拾う主体の持ち物が満杯なら、床アイテムを取らずにポップアップだけ出す
+                // （ドラフト記録も床撤去もしないので、アイテムは床に残る）。
+                if (isPickerInventoryFull(info#playerId))
+                    ItemPickupPopupScene.showFull(scene)
+                else {
+                    // 通常モード(退避中の味方が居ない)では拾得を SelectedPlayer の picked に
+                    // ドラフト記録し、選択解除キャンセル(cancelSelection)で床へ巻き戻せるようにする。
+                    // ローグ移動モードは選択が無く巻き戻し対象外なので即取得のまま。
+                    let recorded =
+                        if (List.isEmpty(PlayerScene.hiddenAllies(scene)))
+                            recordPickupDraft(info, scene)
+                        else scene;
+                    pickupAt(info, recorded)
+                }
+        }
+
+    /// 拾う主体 (playerId) の持ち物が満杯か。PartyQuery で現フレームの Data を読む。
+    /// 見つからなければ満杯ではない扱い（防御的）。
+    def isPickerInventoryFull(playerId: Int32): Bool \ PlayerScene.PartyQuery =
+        match PlayerScene.PartyQuery.get(playerId) {
+            case Some(player) => PlayerScene.isInventoryFull(player)
+            case None         => false
         }
 
     /// `info` のセルにある床アイテムを SelectedPlayer の巻き戻しドラフトに積む。

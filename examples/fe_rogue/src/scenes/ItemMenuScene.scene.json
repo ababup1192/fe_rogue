@@ -12,7 +12,7 @@
       "name": "panel",
       "tag": "ItemPanel",
       "pos": [16, 4],
-      "size": [54, 38],
+      "size": [54, 56],
       "background": {"r": 0.10196078568696976, "g": 0.20000000298023224, "b": 0.6000000238418579},
       "backgroundAlpha": 0.8,
       "border": {"r": 1, "g": 1, "b": 1},
@@ -24,7 +24,7 @@
           "type": "ItemList",
           "name": "menu",
           "pos": [2, 2],
-          "size": [50, 34],
+          "size": [50, 48],
           "fontSize": 4,
           "tag": "ItemMenu",
           "items": [],
@@ -33,6 +33,15 @@
           "visible": false,
           "cursorGlyph": ">",
           "itemHeight": 6
+        },
+        {
+          "type": "Label2D",
+          "name": "pageLabel",
+          "pos": [38, 51],
+          "fontSize": 4,
+          "text": "",
+          "visible": false,
+          "zIndex": 1
         }
       ]
     }

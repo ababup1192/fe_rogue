@@ -417,6 +417,14 @@
         "label": "レベル",
         "order": 12
       }
+    },
+    "proficientWeaponTypes": {
+      "field": {
+        "ftype": "weaponProf",
+        "hint": "plain",
+        "label": "得意武器",
+        "order": 13
+      }
     }
   },
   "metaHints": {

@@ -125,16 +125,24 @@ mod Combat {
         attack = Int32, magicAttack = Int32, defense = Int32, magicDefense = Int32,
         skill = Int32, speed = Int32, luck = Int32, hp = Int32,
         weapon = Option[{weaponType = WeaponCatalog.WeaponType, attack = Int32,
-                          hit = Int32, isPhysical = Bool}]
+                          hit = Int32, isPhysical = Bool, proficient = Bool}]
     }
 
     /// 装備武器（Option）から `CombatView#weapon` を組む。`isPhysical` をここで解決する。
-    pub def weaponView(weapon: Option[WeaponCatalog.WeaponResource]):
+    /// `proficient` は「この攻撃側がこの武器タイプを得意とするか」。苦手（false）なら
+    /// `estimate` が威力・命中を 80% に下げる。敵は常に true（得意/苦手の概念なし）を渡す。
+    pub def weaponView(weapon: Option[WeaponCatalog.WeaponResource], proficient: Bool):
             Option[{weaponType = WeaponCatalog.WeaponType, attack = Int32,
-                    hit = Int32, isPhysical = Bool}] =
+                    hit = Int32, isPhysical = Bool, proficient = Bool}] =
         weapon |> Option.map(w ->
             {weaponType = w#weaponType, attack = w#attack, hit = w#hit,
-             isPhysical = WeaponCatalog.isPhysical(w#weaponType)})
+             isPhysical = WeaponCatalog.isPhysical(w#weaponType), proficient = proficient})
+
+    /// 武器タイプ習熟による補正。得意なら据え置き、苦手なら威力・命中を 80%（整数 ×4/5、切り捨て）に。
+    /// 戦闘予報（`estimate`）と実ダメージ（PlayerScene の直接計算）の両方から呼んで一貫させる。
+    pub def proficiencyAdjust(attack: Int32, hit: Int32, proficient: Bool): (Int32, Int32) =
+        if (proficient) (attack, hit)
+        else ((attack * 4) / 5, (hit * 4) / 5)
 
     /// 攻撃側 → 防御側 1 撃ぶんの予報（faction 非依存）。攻撃側が武器を持たないなら {0, 0, false}。
     /// 武器相性・物理/魔法・攻防の解決は `attackStatFor`/`defenseStatFor`/`WeaponTriangle.relationOpt`/
@@ -148,8 +156,10 @@ mod Combat {
                               defender#weapon |> Option.map(dw -> dw#weaponType));
                 let atk = attackStatFor(attacker#attack, attacker#magicAttack, w#attack, w#isPhysical);
                 let dfn = defenseStatFor(defender#defense, defender#magicDefense, w#isPhysical);
+                // 苦手武器は威力・命中を 80% に下げる（得意ならそのまま）。
+                let (adjAtk, adjHit) = proficiencyAdjust(atk, w#hit, w#proficient);
                 forecast(
-                    {attack = atk, skill = attacker#skill, luck = attacker#luck, weaponHit = w#hit},
+                    {attack = adjAtk, skill = attacker#skill, luck = attacker#luck, weaponHit = adjHit},
                     {hp = defender#hp, defense = dfn, speed = defender#speed, luck = defender#luck},
                     rel)
         }

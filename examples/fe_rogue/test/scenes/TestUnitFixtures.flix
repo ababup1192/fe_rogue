@@ -44,7 +44,9 @@ mod TestUnitFixtures {
             flipForFacing = false
         },
         spriteFrames  = None,
-        growthRates   = UnitCatalog.zeroGrowthRates()
+        growthRates   = UnitCatalog.zeroGrowthRates(),
+        // テストでは武器タイプ習熟による 80% 補正を起こさないよう全タイプ得意にする。
+        proficientWeaponTypes = WeaponCatalog.allWeaponTypes()
     }
 
     /// 任意の moveTiles / hp を持つテスト用 EnemyResource（敵カタログ）。
@@ -107,7 +109,9 @@ mod TestUnitFixtures {
             flipForFacing = false
         },
         spriteFrames  = None,
-        growthRates   = UnitCatalog.zeroGrowthRates()
+        growthRates   = UnitCatalog.zeroGrowthRates(),
+        // テストでは武器タイプ習熟による 80% 補正を起こさないよう全タイプ得意にする。
+        proficientWeaponTypes = WeaponCatalog.allWeaponTypes()
     }
 
     /// 魔力・魔防まで明示したいケース用。物理ステ・魔法ステを両方検証したいときに使う。
@@ -139,7 +143,9 @@ mod TestUnitFixtures {
             flipForFacing = false
         },
         spriteFrames  = None,
-        growthRates   = UnitCatalog.zeroGrowthRates()
+        growthRates   = UnitCatalog.zeroGrowthRates(),
+        // テストでは武器タイプ習熟による 80% 補正を起こさないよう全タイプ得意にする。
+        proficientWeaponTypes = WeaponCatalog.allWeaponTypes()
     }
 
     /// テスト用 WeaponResource。中庸な攻撃力 2 / 耐久度 10 / 直接攻撃 (range 1-1)。

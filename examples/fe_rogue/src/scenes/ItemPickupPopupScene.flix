@@ -157,10 +157,24 @@ mod ItemPickupPopupScene {
     /// 先頭から開始し、取得音の予約を立てる。副作用は無く（音は `process` が鳴らす）、
     /// 既に表示中でも先頭からやり直す（拾い直しでも必ず最初から演出する）。
     pub def show(itemName: String, scene: Scene[NodeTag]): Scene[NodeTag] =
+        showWith("${itemName}を手に入れた", true, scene)
+
+    /// 取得以外の通知（例: 「持ち物がいっぱいです」）を中央ポップアップに出す。
+    /// 取得音は鳴らさず、フェードイン → 表示保持 → フェードアウトの演出だけ流す。
+    pub def showMessage(text: String, scene: Scene[NodeTag]): Scene[NodeTag] =
+        showWith(text, false, scene)
+
+    /// 「持ち物がいっぱいです」を中央ポップアップで知らせる薄いラッパ。
+    pub def showFull(scene: Scene[NodeTag]): Scene[NodeTag] =
+        showMessage("持ち物がいっぱいです", scene)
+
+    /// 文言と「取得音を鳴らすか」を受け取り、フェードを先頭から開始する共通処理。
+    /// `playSound = true` のときだけ `process` が取得音を 1 回鳴らす。
+    def showWith(text: String, playSound: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
         let started: PopupData =
-            {stage = Stage.FadeIn, elapsed = Duration.zero(), soundPending = true};
+            {stage = Stage.FadeIn, elapsed = Duration.zero(), soundPending = playSound};
         scene
-            |> Label2D.mapAt(textPath(), Label2D.setText("${itemName}を手に入れた"))
+            |> Label2D.mapAt(textPath(), Label2D.setText(text))
             |> setState(started)
 
     // ────────────────────────────────────────────────────────

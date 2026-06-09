@@ -49,9 +49,17 @@ mod ItemMenuScene {
     /// ItemList 子ノード名
     pub def menuName(): String = "menu"
 
+    /// ページ表示ラベル（"1/2" など）の子ノード名。1 ページしか無いときは非表示。
+    def pageLabelName(): String = "pageLabel"
+
     pub def rootPath():  NodePath = rootName() :: Nil
     pub def panelPath(): NodePath = rootName() :: panelName() :: Nil
     pub def menuPath():  NodePath = rootName() :: panelName() :: menuName() :: Nil
+    def pageLabelPath(): NodePath = rootName() :: panelName() :: pageLabelName() :: Nil
+
+    /// 1 ページに並べる持ち物の最大数（アイテム window の表示行数と一致）。
+    /// ロード職は 16 個持てるので 2 ページに分かれる。それ以外は 8 個＝1 ページに収まる。
+    def itemsPerPage(): Int32 = 8
 
     /// 武器アイコンの表示サイズ（px）。fontSize 4 / itemHeight 6 の中に収まるよう 5px。
     def iconSize(): Float64 = 5.0
@@ -65,7 +73,7 @@ mod ItemMenuScene {
             case None                  => Ok(NodeTag.NoTag)
             case Some("NoTag")         => Ok(NodeTag.NoTag)
             case Some("ItemPanel")     => Ok(NodeTag.ItemPanel)
-            case Some("ItemMenu")      => Ok(NodeTag.ItemMenu)
+            case Some("ItemMenu")      => Ok(NodeTag.ItemMenu(0))
             case Some(unknown)         =>
                 Err(JsonError(Root, Set#{"ItemMenuScene tag (got: ${unknown})"}))
         }
@@ -101,10 +109,15 @@ mod ItemMenuScene {
         let visible = phase == TurnPhase.Phase.ItemSelect
                     or phase == TurnPhase.Phase.ItemActionSelect
                     or phase == TurnPhase.Phase.PlayerAttack;
+        // ページ表示は ItemSelect のときだけ意味を持つ（サブメニュー/攻撃中は隠す）。
+        // ItemSelect 中の実際の表示/文言は refreshItemList が総ページ数を見て設定する。
+        let pageLabelVisible = visible and phase == TurnPhase.Phase.ItemSelect;
         scene
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
             |> ItemList.mapAt(menuPath(), list ->
                 list |> CanvasItem.setVisible(visible) |> ItemList.setFocused(visible))
+            |> Label2D.mapAt(pageLabelPath(), label ->
+                if (pageLabelVisible) label else CanvasItem.setVisible(false, label))
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から ItemMenu の ItemList
     /// ノードに対して dispatch される (per-node、ItemList は 1 個のみなので 1 フレーム 1 回)。
@@ -126,19 +139,70 @@ mod ItemMenuScene {
                 refreshActionList(withVisibility)
             case TurnPhase.Phase.PlayerAttack =>
                 refreshAttackWeaponList(withVisibility)
-            // メニューが閉じている間はカーソルを先頭(0)に戻しておく。これで次に
-            // ItemSelect を開いたときは記憶位置ではなく常に最初の項目から始まる。
-            // 表示中のフェーズではリセットしないので ↑↓ のカーソル移動は維持される。
-            case _ => withVisibility
-                |> ItemList.mapAt(menuPath(), ItemList.setSelectedIndex(0))
+            // メニューが閉じている間はカーソルとページを先頭(0)に戻しておく。これで次に
+            // ItemSelect を開いたときは記憶位置ではなく常に 1 ページ目の最初の項目から始まる。
+            // 表示中のフェーズではリセットしないので ↑↓ のカーソル移動・←→ のページ送りは維持される。
+            case _ => setMenuPage(0, withVisibility)
         };
         match Scene.getEngineNode(menuPath(), withItems) {
             case Some(latest) => (latest, withItems)
             case None         => (node, withItems)
         }
 
-    /// 選択中プレイヤーの weapons + staves + consumables を 1 つの ItemList に並べる（ItemSelect 中）。
-    /// 順序は「武器（先頭が装備中）→ 杖 → 消費アイテム」。metadata に種別と index を持たせて確定時に取り出す。
+    // ── ページング（ロード職は 16 個 = 2 ページ持てる）──
+
+    /// アイテム total 個を 1 ページ itemsPerPage 件で割ったときの総ページ数（最低 1）。
+    pub def totalPages(count: Int32): Int32 =
+        if (count <= 0) 1
+        else (count + itemsPerPage() - 1) / itemsPerPage()
+
+    /// ページ番号を有効範囲 [0, 総ページ数 - 1] に収める。
+    def clampPage(page: Int32, count: Int32): Int32 =
+        Int32.max(0, Int32.min(page, totalPages(count) - 1))
+
+    /// ItemMenu ノードに積んである現在ページ番号。未設定なら 0。
+    def getMenuPage(scene: Scene[NodeTag]): Int32 =
+        match Scene.getState(menuPath(), scene) {
+            case Some(NodeTag.ItemMenu(page)) => page
+            case _                            => 0
+        }
+
+    /// 現在ページ番号を ItemMenu ノードに書き戻し、選択カーソルを先頭(0)に戻す。
+    def setMenuPage(page: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> Scene.setState(menuPath(), NodeTag.ItemMenu(page))
+            |> ItemList.mapAt(menuPath(), ItemList.setSelectedIndex(0))
+
+    /// 全持ち物（武器 → 杖 → 消費アイテム）の「表示エントリ」と「アイコン用 sprite」を
+    /// 並び順を保ったまま組にして返す。metadata は各リスト内の絶対 index（`w:idx` など）の
+    /// ままなので、ページで切り出しても確定・装備・破棄ロジックはそのまま動く。
+    def itemSpritePairs(weapons: List[UnitCatalog.WeaponResource],
+                         staves: List[Staff.StaffResource],
+                         consumables: List[Consumable.ConsumableResource]):
+            List[(ItemEntry, Sprite.SpriteResource)] =
+        let weaponPairs = List.mapWithIndex(idx -> w ->
+            (weaponEntry(idx, w), w#sprite), weapons);
+        let staffPairs = List.mapWithIndex(idx -> s ->
+            (staffEntry(idx, s), s#sprite), staves);
+        let consumablePairs = List.mapWithIndex(idx -> c ->
+            (consumableEntry(idx, c), c#sprite), consumables);
+        List.append(weaponPairs, List.append(staffPairs, consumablePairs))
+
+    /// 全アイテムの組から指定ページ（0 起点）の最大 itemsPerPage 件を取り出し、
+    /// ItemList 用の (items, アイコン Map) に変換する。アイコン Map のキーは
+    /// 切り出したページ内で 0..件数-1 に振り直す（ItemList は表示行 index でアイコンを引くため）。
+    pub def pageSlice(pairs: List[(ItemEntry, Sprite.SpriteResource)], page: Int32):
+            (List[ItemEntry], Map[Int32, ItemIcon]) =
+        let pageItems = pairs
+            |> List.drop(page * itemsPerPage())
+            |> List.take(itemsPerPage());
+        let items   = List.map(fst, pageItems);
+        let sprites = List.map(snd, pageItems);
+        (items, rowIcons(sprites))
+
+    /// 選択中プレイヤーの weapons + staves + consumables を ItemList に並べる（ItemSelect 中）。
+    /// 順序は「武器（先頭が装備中）→ 杖 → 消費アイテム」。ロード職など 8 個を超える持ち物は
+    /// 現在ページぶん（最大 8 件）だけを表示し、`pageLabel` に "現在/総数" を出す。
     def refreshItemList(scene: Scene[NodeTag]):
             Scene[NodeTag] \ SelectedPlayer.State =
         match SelectedPlayer.State.get()#id {
@@ -147,25 +211,55 @@ mod ItemMenuScene {
                 let weapons     = PlayerScene.getWeapons(playerId, scene);
                 let staves      = PlayerScene.getStaves(playerId, scene);
                 let consumables = PlayerScene.getConsumables(playerId, scene);
-                let weaponEntries = List.mapWithIndex(idx -> w ->
-                    weaponEntry(idx, w), weapons);
-                let staffEntries = List.mapWithIndex(idx -> s ->
-                    staffEntry(idx, s), staves);
-                let consumableEntries = List.mapWithIndex(idx -> c ->
-                    consumableEntry(idx, c), consumables);
-                let items = List.append(weaponEntries,
-                    List.append(staffEntries, consumableEntries));
-                // アイコンは items と同じ並び（武器 → 杖 → 消費アイテム）の sprite 列から作る。
-                let iconSprites = List.append(List.map(w -> w#sprite, weapons),
-                    List.append(List.map(s -> s#sprite, staves),
-                                List.map(c -> c#sprite, consumables)));
-                let icons = rowIcons(iconSprites);
-                scene |> ItemList.mapAt(menuPath(), list ->
-                    list
-                        |> ItemList.setItems(items)
-                        |> ItemList.setItemIcons(icons)
-                        |> ItemList.setIconSize(iconSize())
-                        |> ItemList.setIconTextGap(iconTextGap()))
+                let pairs = itemSpritePairs(weapons, staves, consumables);
+                let count = List.length(pairs);
+                let page  = clampPage(getMenuPage(scene), count);
+                let (items, icons) = pageSlice(pairs, page);
+                scene
+                    |> Scene.setState(menuPath(), NodeTag.ItemMenu(page))
+                    |> ItemList.mapAt(menuPath(), list ->
+                        list
+                            |> ItemList.setItems(items)
+                            |> ItemList.setItemIcons(icons)
+                            |> ItemList.setIconSize(iconSize())
+                            |> ItemList.setIconTextGap(iconTextGap()))
+                    |> applyPageLabel(page, count)
+        }
+
+    /// `pageLabel` に "現在ページ/総ページ" を表示する。総ページが 1 のときは隠す。
+    def applyPageLabel(page: Int32, count: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let pages = totalPages(count);
+        let visible = pages > 1;
+        scene |> Label2D.mapAt(pageLabelPath(), label ->
+            label
+                |> Label2D.setText("${page + 1}/${pages}")
+                |> CanvasItem.setVisible(visible))
+
+    /// ←（前ページ）。ItemSelect 中の Left / A から呼ばれる。
+    pub def pageLeft(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
+        changePage(-1, scene)
+
+    /// →（次ページ）。ItemSelect 中の Right / D から呼ばれる。
+    pub def pageRight(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
+        changePage(1, scene)
+
+    /// 現在ページを `direction`（-1 / +1）ぶん動かす。対象プレイヤーの持ち物総数から
+    /// 総ページ数を出して範囲内にクランプするので、端では頭打ち（ループしない）。
+    def changePage(direction: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ SelectedPlayer.State =
+        match SelectedPlayer.State.get()#id {
+            case None           => scene
+            case Some(playerId) =>
+                let count = inventoryCount(playerId, scene);
+                let next  = clampPage(getMenuPage(scene) + direction, count);
+                setMenuPage(next, scene)
+        }
+
+    /// 指定プレイヤーの持ち物総数（武器 + 杖 + 消費アイテムの合計）。見つからなければ 0。
+    def inventoryCount(playerId: Int32, scene: Scene[NodeTag]): Int32 =
+        match PlayerScene.get(playerId, scene) {
+            case Some(data) => PlayerScene.itemCount(data)
+            case None       => 0
         }
 
     /// 攻撃中 (PlayerAttack) の武器選択リストを組む。`refreshItemList` と同じ並び
@@ -370,7 +464,8 @@ mod ItemMenuScene {
     /// PhaseTransitions が overlay 片付け + カーソル非表示も合わせて行う。
     pub def openFor(_playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ TurnPhase.State =
-        PhaseTransitions.enterItemSelect(scene)
+        // 常に 1 ページ目から開く。
+        setMenuPage(0, PhaseTransitions.enterItemSelect(scene))
 
     /// ItemSelect で項目を Enter 確定したとき。選択中アイテム種別を Data に書いて
     /// `ItemActionSelect` フェーズに進む（サブメニュー表示へ）。
@@ -395,7 +490,8 @@ mod ItemMenuScene {
     pub def onItemCancelled(scene: Scene[NodeTag]):
                             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
-        scene
+        // 閉じる時にページを 1 ページ目へ戻す（次に開いたとき先頭から始まるように）。
+        setMenuPage(0, scene)
 
     /// ItemActionSelect でサブメニュー項目を Enter 確定したとき。
     ///   - 装備: weapons リスト先頭に移動、ItemSelect に戻る（ターン消費なし）

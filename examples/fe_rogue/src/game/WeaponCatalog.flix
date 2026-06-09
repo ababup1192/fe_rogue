@@ -50,6 +50,11 @@ mod WeaponCatalog {
         case Magic   // 魔法（中立・魔防を参照）
     }
 
+    /// 全武器タイプ（得意武器トグル UI / 「ロード=全得意」の生成などで使う）。
+    pub def allWeaponTypes(): List[WeaponType] =
+        WeaponType.Sword :: WeaponType.Axe :: WeaponType.Lance ::
+        WeaponType.Bow :: WeaponType.Magic :: Nil
+
     /// `WeaponType` が物理武器か。Combat 系の分岐で使う薄いヘルパ。
     /// 魔法だけが魔力 vs 魔防で、剣・斧・槍・弓はすべて力 vs 防御の物理武器。
     pub def isPhysical(weaponType: WeaponType): Bool = match weaponType {
@@ -165,7 +170,9 @@ mod WeaponCatalogCodec {
             "max" => JsonNumber(intToBd(range#max))
         })
 
-    def weaponTypeToString(weaponType: WeaponType): String = match weaponType {
+    /// `WeaponType` を JSON / 設定で使う case 名文字列に。`parseWeaponType` と対。
+    /// 武器タイプ習熟（得意/苦手）の units.json 配列でも使うため pub。
+    pub def weaponTypeToString(weaponType: WeaponType): String = match weaponType {
         case WeaponType.Sword => "Sword"
         case WeaponType.Axe   => "Axe"
         case WeaponType.Lance => "Lance"
@@ -214,7 +221,7 @@ mod WeaponCatalogCodec {
 
     /// case 名文字列から `WeaponType` に。旧データの `"Physical"` は剣として読み替え、
     /// 未知文字列も剣にフォールバックする（JSON 直編集の typo / 後方互換対策）。
-    def parseWeaponType(text: String): WeaponType = match text {
+    pub def parseWeaponType(text: String): WeaponType = match text {
         case "Sword"    => WeaponType.Sword
         case "Axe"      => WeaponType.Axe
         case "Lance"    => WeaponType.Lance

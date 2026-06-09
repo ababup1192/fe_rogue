@@ -102,10 +102,11 @@ mod PlayerScene {
     /// この味方の戦闘ビュー（faction 非依存）。装備武器は `weapons` の先頭。
     /// `Combat.estimate` / `Encounter` の join で使う（ダメージ式は `Combat` に集約）。
     pub def combatView(data: Data): Combat.CombatView =
+        let equipped = List.head(data#weapons);
         {attack = data#resource#attack, magicAttack = data#resource#magicAttack,
          defense = data#resource#defense, magicDefense = data#resource#magicDefense,
          skill = data#resource#skill, speed = data#resource#speed, luck = data#resource#luck,
-         hp = data#hp, weapon = Combat.weaponView(List.head(data#weapons))}
+         hp = data#hp, weapon = Combat.weaponView(equipped, weaponProficient(data, equipped))}
 
     /// `combatView` の「装備武器を明示指定する」版。攻撃中に選択した武器（装備中=先頭とは
     /// 限らない）で戦闘予測を計算するため、`BattlePanelScene` から使う。
@@ -113,7 +114,16 @@ mod PlayerScene {
         {attack = data#resource#attack, magicAttack = data#resource#magicAttack,
          defense = data#resource#defense, magicDefense = data#resource#magicDefense,
          skill = data#resource#skill, speed = data#resource#speed, luck = data#resource#luck,
-         hp = data#hp, weapon = Combat.weaponView(Some(weapon))}
+         hp = data#hp,
+         weapon = Combat.weaponView(Some(weapon),
+                     UnitCatalog.proficientWith(data#resource, weapon#weaponType))}
+
+    /// この味方が指定の装備武器（Option）を得意とするか。武器なしは true（estimate が None を扱う）。
+    def weaponProficient(data: Data, weapon: Option[UnitCatalog.WeaponResource]): Bool =
+        match weapon {
+            case None    => true
+            case Some(w) => UnitCatalog.proficientWith(data#resource, w#weaponType)
+        }
 
     /// この味方の盤上ビュー（faction = Player）。`Encounter.fromScene` の join で使う。
     /// `weaponRange` は装備武器(先頭)の射程。味方に `isDying` は無いので常に false。
@@ -165,6 +175,31 @@ mod PlayerScene {
     /// ロード（主人公）として扱うパーティ id。合流・カメラ追従の中心であり、
     /// このユニットが倒れると 1F からやり直し（ゲームオーバー扱い）になる。
     pub def lordId(): Int32 = 0
+
+    /// 持ち物（武器 + 杖 + 消費アイテム）を判定する職種名。`units.json` の "description" と一致させる。
+    /// この職種だけ持ち物上限が広い（2 ページぶん持てる）。
+    def lordClass(): String = "ロード"
+
+    /// ロード職以外の持ち物上限（合計個数）。
+    def normalItemCapacity(): Int32 = 8
+
+    /// ロード職の持ち物上限（合計個数）。8 個 × 2 ページぶん。
+    def lordItemCapacity(): Int32 = 16
+
+    /// この味方が持てる持ち物の合計上限。職種が「ロード」なら 16、それ以外は 8。
+    pub def itemCapacity(data: Data): Int32 =
+        if (data#resource#description == lordClass()) lordItemCapacity()
+        else normalItemCapacity()
+
+    /// いま持っている持ち物の合計個数（武器 + 杖 + 消費アイテムを合算する）。
+    pub def itemCount(data: Data): Int32 =
+        List.length(data#weapons)
+            + List.length(data#staves)
+            + List.length(data#consumables)
+
+    /// 持ち物が上限に達しているか（これ以上拾えないか）。
+    pub def isInventoryFull(data: Data): Bool =
+        itemCount(data) >= itemCapacity(data)
 
     /// プレイヤー Sprite の zIndex（Player は前面に立つ）。EnemyScene と同じ 10。
     def spriteZIndex(): Int32 = 10
@@ -1566,11 +1601,18 @@ mod PlayerScene {
             case (_, None)        => scene
             case (Some(weapon), Some(enemy)) =>
                 let phys = UnitCatalog.isPhysical(weapon#weaponType);
+                // 苦手武器なら威力・命中を 80% に。武器タイプ習熟（得意=100%）を 1 か所で解決し、
+                // 命中判定とダメージ計算の両方に同じ補正を効かせる（予報 estimate と一致させる）。
+                let proficient  = UnitCatalog.proficientWith(player#resource, weapon#weaponType);
+                let totalAttack = Combat.attackStatFor(player#resource#attack,
+                                                       player#resource#magicAttack,
+                                                       weapon#attack, phys);
+                let (adjAttack, adjHit) = Combat.proficiencyAdjust(totalAttack, weapon#hit, proficient);
                 // 武器相性: 攻撃側（味方）の武器 vs 敵の装備武器。敵が未装備なら中立。
                 let rel = WeaponTriangle.relationOpt(weapon#weaponType,
                                                      enemy#weapon |> Option.map(w -> w#weaponType));
                 let hitChance = Combat.hitRate(player#resource#skill, player#resource#luck,
-                                               weapon#hit,
+                                               adjHit,
                                                enemy#resource#speed, enemy#resource#luck, rel);
                 let roll = rollPercent();
                 let popupPos = MapScene.cellCenter(enemy#gridPos);
@@ -1585,13 +1627,11 @@ mod PlayerScene {
                     } else {
                         // 命中: SE を鳴らしダメージ適用 + 数値ポップアップ。
                         AudioStreamPlayer.play("damage");
-                        let totalAttack = Combat.attackStatFor(player#resource#attack,
-                                                               player#resource#magicAttack,
-                                                               weapon#attack, phys);
                         let targetDef   = Combat.defenseStatFor(enemy#resource#defense,
                                                                 enemy#resource#magicDefense,
                                                                 phys);
-                        let dmg    = Combat.attackDamage(totalAttack, targetDef, rel);
+                        // 威力は習熟補正済み（adjAttack）。苦手なら 80%。
+                        let dmg    = Combat.attackDamage(adjAttack, targetDef, rel);
                         let result = Combat.damage(hp = enemy#hp, amount = dmg);
                         let withPopup = DamagePopupScene.emit(popupPos, dmg, popupColor, scene);
                         let sceneAfter =

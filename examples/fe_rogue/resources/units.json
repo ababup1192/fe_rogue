@@ -44,6 +44,10 @@
       "magicAttack": 0,
       "magicDefense": 0,
       "moveTiles": 5,
+      "proficientWeaponTypes": [
+        "Axe",
+        "Lance"
+      ],
       "skill": 3,
       "speed": 5,
       "sprite": {
@@ -92,6 +96,9 @@
       "magicAttack": 4,
       "magicDefense": 5,
       "moveTiles": 5,
+      "proficientWeaponTypes": [
+        "Sword"
+      ],
       "skill": 4,
       "speed": 5,
       "sprite": {
@@ -140,6 +147,10 @@
       "magicAttack": 0,
       "magicDefense": 0,
       "moveTiles": 5,
+      "proficientWeaponTypes": [
+        "Sword",
+        "Axe"
+      ],
       "skill": 5,
       "speed": 5,
       "sprite": {
@@ -184,6 +195,13 @@
       "magicAttack": 0,
       "magicDefense": 0,
       "moveTiles": 5,
+      "proficientWeaponTypes": [
+        "Sword",
+        "Axe",
+        "Lance",
+        "Bow",
+        "Magic"
+      ],
       "skill": 5,
       "speed": 7,
       "sprite": {
@@ -240,6 +258,9 @@
       "magicAttack": 4,
       "magicDefense": 5,
       "moveTiles": 5,
+      "proficientWeaponTypes": [
+        "Magic"
+      ],
       "skill": 5,
       "speed": 6,
       "sprite": {
@@ -284,6 +305,9 @@
       "magicAttack": 0,
       "magicDefense": 3,
       "moveTiles": 4,
+      "proficientWeaponTypes": [
+        "Lance"
+      ],
       "skill": 4,
       "speed": 3,
       "sprite": {
@@ -332,6 +356,10 @@
       "magicAttack": 0,
       "magicDefense": 2,
       "moveTiles": 5,
+      "proficientWeaponTypes": [
+        "Bow",
+        "Sword"
+      ],
       "skill": 6,
       "speed": 6,
       "sprite": {
@@ -380,6 +408,10 @@
       "magicAttack": 0,
       "magicDefense": 2,
       "moveTiles": 6,
+      "proficientWeaponTypes": [
+        "Sword",
+        "Bow"
+      ],
       "skill": 7,
       "speed": 9,
       "sprite": {

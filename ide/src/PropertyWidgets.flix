@@ -242,6 +242,7 @@ mod PropertyWidgets {
             case Resource.FieldType.TexturePathT  => buildTexturePathWidget(value, textureNames, commit)
             case Resource.FieldType.SpriteFramesT =>
                 SpriteFramesEditor.buildSpriteFramesEditorWidget(value, rootRecord, texturePathMap, commit)
+            case Resource.FieldType.WeaponProfT  => buildWeaponProfWidget(value, commit)
             case Resource.FieldType.RefT(target)  =>
                 let options = Map.get(target, refOptions) |> Option.getWithDefault(Nil);
                 buildEnumWidget(value, options, commit)
@@ -481,6 +482,62 @@ mod PropertyWidgets {
         });
         checked_cast(box)
     }
+
+    /// 武器タイプ習熟（得意/苦手）widget。5 武器タイプの正方形トグルボタンを横に並べ、
+    /// 押されている（得意）タイプだけを JSON 配列 (例 ["Sword","Axe"]) として commit する。
+    /// 各ボタンは独立トグル（ToggleGroup なし）。ボタン操作のたびに 5 個の状態から配列を組み直す。
+    pub def buildWeaponProfWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
+        // (typeId（JSON 文字列）, 表示ラベル) の 5 タイプ。
+        let types =
+            ("Sword", "剣") :: ("Axe", "斧") :: ("Lance", "槍") ::
+            ("Bow", "弓") :: ("Magic", "魔") :: Nil;
+        let selected = parseWeaponProfSet(value);
+        let box = new HBox();
+        box.setSpacing(2.0);
+        // まず 5 ボタンを作って (typeId, button) のリストに保持する（handler が全状態を読むため）。
+        let buttons = List.map(pair -> {
+            let (typeId, label) = pair;
+            let btn = new ToggleButton(label);
+            btn.setPrefWidth(28.0);
+            btn.setPrefHeight(28.0);
+            if (Set.memberOf(typeId, selected)) btn.setSelected(true) else ();
+            (typeId, btn)
+        }, types);
+        // 各ボタンに「押されたら全ボタン状態から配列を組んで commit」する handler を付け、box に追加。
+        let children = box.getChildren();
+        List.forEach(pair -> {
+            let (_typeId, btn) = pair;
+            btn.setOnAction(new EventHandler[ActionEvent] {
+                def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                    commit(weaponProfArray(buttons))
+            });
+            let btnNode: Node = checked_cast(btn);
+            discard children.add(btnNode)
+        }, buttons);
+        checked_cast(box)
+    }
+
+    /// 現在押されている（得意の）タイプ id を JSON 文字列配列にまとめる。
+    /// `JsonArray` の中身は `Vector` なので List→Vector に変換する。
+    def weaponProfArray(buttons: List[(String, ToggleButton)]): Json.JsonElement \ IO =
+        let selectedIds = List.filterMap(pair -> {
+            let (typeId, btn) = pair;
+            if (btn.isSelected()) Some(typeId) else None
+        }, buttons);
+        Json.JsonElement.JsonArray(List.toVector(List.map(id -> Json.JsonElement.JsonString(id), selectedIds)))
+
+    /// JSON 配列（["Sword",...]）から得意タイプ id の集合を作る。未設定/型不一致は空集合。
+    def parseWeaponProfSet(value: Option[Json.JsonElement]): Set[String] =
+        match value {
+            case Some(Json.JsonElement.JsonArray(arr)) =>
+                Vector.toList(arr)
+                    |> List.filterMap(element -> match element {
+                        case Json.JsonElement.JsonString(s) => Some(s)
+                        case _                              => None
+                    })
+                    |> List.toSet
+            case _ => Set.empty()
+        }
 
     /// Enum widget: 有限の選択肢を持つ ComboBox<String>。値は JSON 文字列。
     /// SceneLoader 側が "Left" / "Center" 等のラベルから enum 値を parse する想定
