@@ -1236,6 +1236,57 @@ mod PlayerScene {
                 |> addInventoryItem(partnerId, selfItem))
             |> Option.getWithDefault(scene)
 
+    /// 同じ player のインベントリ内で 2 アイテムの並び順を入れ替える（並び替え）。
+    /// 表示順 (weapons ++ staves ++ consumables) を 1 列とみなして kindA / kindB の位置を
+    /// 入れ替え、種別ごとのリストに振り直す。同じ種類同士なら純粋な位置入替、種別を跨ぐ
+    /// ときは各リスト内での相対順だけが変わる。weapons[0] が装備なので武器の並び替えは
+    /// 装備変更も兼ねる。
+    pub def reorderItem(playerId: Int32, kindA: ItemKind, kindB: ItemKind,
+                         scene: Scene[NodeTag]): Scene[NodeTag] =
+        let weapons     = getWeapons(playerId, scene);
+        let staves      = getStaves(playerId, scene);
+        let consumables = getConsumables(playerId, scene);
+        let nw = List.length(weapons);
+        let ns = List.length(staves);
+        let seq = List.append(
+            List.map(w -> ItemScene.GroundItemKind.WeaponItem(w), weapons),
+            List.append(
+                List.map(s -> ItemScene.GroundItemKind.StaffItem(s), staves),
+                List.map(c -> ItemScene.GroundItemKind.ConsumableItem(c), consumables)));
+        let swapped = swapListAt(displaySeqIndex(kindA, nw, ns),
+                                  displaySeqIndex(kindB, nw, ns), seq);
+        let newWeapons = List.filterMap(item -> match item {
+            case ItemScene.GroundItemKind.WeaponItem(w) => Some(w)
+            case _                                      => None
+        }, swapped);
+        let newStaves = List.filterMap(item -> match item {
+            case ItemScene.GroundItemKind.StaffItem(s) => Some(s)
+            case _                                     => None
+        }, swapped);
+        let newConsumables = List.filterMap(item -> match item {
+            case ItemScene.GroundItemKind.ConsumableItem(c) => Some(c)
+            case _                                          => None
+        }, swapped);
+        mapPlayer(playerId, d ->
+            {weapons = newWeapons, staves = newStaves, consumables = newConsumables | d}, scene)
+
+    /// ItemKind を、表示順 (weapons ++ staves ++ consumables) 上の通し index に変換する。
+    def displaySeqIndex(kind: ItemKind, nw: Int32, ns: Int32): Int32 =
+        match kind {
+            case ItemKind.Weapon(i)     => i
+            case ItemKind.Staff(i)      => nw + i
+            case ItemKind.Consumable(i) => nw + ns + i
+        }
+
+    /// list の index a と b の要素を入れ替える。範囲外 / a==b なら元の list。
+    def swapListAt(a: Int32, b: Int32, list: List[t]): List[t] =
+        if (a == b) list
+        else match (List.nth(a, list), List.nth(b, list)) {
+            case (Some(x), Some(y)) =>
+                List.mapWithIndex(i -> v -> if (i == a) y else if (i == b) x else v, list)
+            case _ => list
+        }
+
     /// 指定 player の (kind = Weapon(idx) | Staff(idx)) のアイテム実体を返す。
     /// player が居ない / index が範囲外なら None
     /// (getWeapons / getStaves が居ない player に対し Nil を返すので、その経由で None)。

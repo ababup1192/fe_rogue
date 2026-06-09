@@ -63,6 +63,9 @@ mod ActionMenuScene {
     def turnEndMeta(): String   = "turnEnd"
     def disbandMeta(): String   = "disband"
     def stairsMeta(): String    = "stairs"
+    /// 集合後の N 人持ち物交換 (RogueMove メニューの「交換」)。
+    /// 通常ターン隣接 2 人交換の `exchangeMeta` とは別物。
+    def gatherTradeMeta(): String = "gatherTrade"
 
     /// scene に ActionMenu ノードツリーを追加する。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
@@ -211,10 +214,26 @@ mod ActionMenuScene {
                 ({text = "階段", disabled = false,
                   metadata = Some(stairsMeta())}: ItemEntry) :: Nil
             else Nil;
+        let trade =
+            if (List.length(gatherTradeMembers(scene)) >= 2)
+                ({text = "交換", disabled = false,
+                  metadata = Some(gatherTradeMeta())}: ItemEntry) :: Nil
+            else Nil;
         let disband =
             ({text = "解散", disabled = false,
               metadata = Some(disbandMeta())}: ItemEntry) :: Nil;
-        List.flatten(pickup :: stairs :: disband :: Nil)
+        List.flatten(pickup :: stairs :: trade :: disband :: Nil)
+
+    /// 集合した生存メンバーの player id リスト (= 交換に参加できる面々)。
+    /// ロード(id 0) + 退避中(hidden)の味方。死亡(hp<=0)・階段退場は除外し、id 昇順に並べる。
+    /// (`hiddenAllies` が既に usedStairs を除外。`getAll` は hp<=0 を残すので hp フィルタ必須。)
+    def gatherTradeMembers(scene: Scene[NodeTag]): List[Int32] =
+        let lord   = PlayerScene.get(0, scene) |> Option.toList;
+        let hidden = PlayerScene.hiddenAllies(scene);
+        List.append(lord, hidden)
+            |> List.filter(d -> d#hp > 0)
+            |> List.map(d -> d#id)
+            |> List.sort
 
     /// 合流対象の味方を全員集めるのに必要な「周囲マス数」。これ以内に全員居ないと「しゅうごう」は出さない。
     def gatherRange(): Int32 = 3
@@ -288,6 +307,7 @@ mod ActionMenuScene {
                 else if (m == turnEndMeta())  applyTurnEnd(scene)
                 else if (m == disbandMeta())  AutoMoveScene.disband("解散", scene)
                 else if (m == stairsMeta())   applyStairs(scene)
+                else if (m == gatherTradeMeta()) openGatherTrade(scene)
                 else                          scene
         }
 
@@ -323,6 +343,12 @@ mod ActionMenuScene {
             case None           => scene
             case Some(playerId) => ItemMenuScene.openFor(playerId, scene)
         }
+
+    /// 「交換」確定 (集合後): 集合した生存メンバー全員の N 人持ち物交換画面を開く。
+    /// TradeInventory フェーズ (origin = FromRogue) に入り、TradeMenuScene が 3 ペイン表示する。
+    def openGatherTrade(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        PhaseTransitions.enterGatherTrade(gatherTradeMembers(scene), scene)
 
     /// 「しゅうごう」確定: ローグ移動モードの合流を開始する (PlayerAutoMove フェーズへ)。
     /// 以降は AutoMoveScene の driver が味方をロードへ歩かせ、重なったら退避させる。

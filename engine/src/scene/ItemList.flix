@@ -54,6 +54,9 @@ pub enum ItemList {
         cursorColor     = Color,
         textColor       = Color,
         disabledColor   = Color,
+        // 行 index → 文字色の個別上書き。指定行は textColor/disabledColor の代わりにこの色で描く。
+        // Godot の ItemList.set_item_custom_fg_color 相当（pick 中アイテムの強調などに使う）。
+        itemColors      = Map[Int32, Color],
         itemHeight      = Float64,
         cursorOffsetX   = Float64,
         wrap            = Bool,
@@ -94,6 +97,7 @@ mod ItemList {
             cursorColor     = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
             textColor       = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
             disabledColor   = {r = 0.5f32, g = 0.5f32, b = 0.5f32},
+            itemColors      = (Map.empty(): Map[Int32, Color]),
             itemHeight      = fontSize + 4.0,
             cursorOffsetX   = fontSize,
             wrap            = true,
@@ -129,6 +133,27 @@ mod ItemList {
     pub def setItemIcons(icons: Map[Int32, ItemIcon], list: ItemList): ItemList =
         let ItemList.ItemList(r) = list;
         ItemList.ItemList({itemIcons = icons | r})
+
+    // ── 個別文字色（Godot の set_item_custom_fg_color 相当）──
+
+    pub def getItemColors(list: ItemList): Map[Int32, Color] =
+        let ItemList.ItemList(r) = list;
+        r#itemColors
+
+    /// 行 index → 文字色の上書きマップを丸ごと差し替える。
+    pub def setItemColors(colors: Map[Int32, Color], list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({itemColors = colors | r})
+
+    /// 指定行の文字色を上書きする（既存のマップに 1 件追加）。
+    pub def setItemColor(idx: Int32, color: Color, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({itemColors = Map.insert(idx, color, r#itemColors) | r})
+
+    /// 個別文字色をすべて消す（textColor/disabledColor の既定描画に戻す）。
+    pub def clearItemColors(list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({itemColors = (Map.empty(): Map[Int32, Color]) | r})
 
     /// 単一行のアイコンを設定/上書きする。
     pub def setIconAt(idx: Int32, icon: ItemIcon, list: ItemList): ItemList =
@@ -371,7 +396,10 @@ mod ItemList {
         let result = List.foldLeft((acc, entry) -> {
             let idx = acc#idx;
             let lineY = globalPos#y + Int32.toFloat64(idx) * r#itemHeight;
-            let color = if (entry#disabled) r#disabledColor else r#textColor;
+            let color = match Map.get(idx, r#itemColors) {
+                case Some(c) => c
+                case None    => if (entry#disabled) r#disabledColor else r#textColor
+            };
             // テキスト
             let textLabel = Label2D.make(entry#text, r#font, r#fontSize)
                 |> CanvasItem.setModulate(color)

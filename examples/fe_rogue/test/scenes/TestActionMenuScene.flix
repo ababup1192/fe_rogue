@@ -562,15 +562,17 @@ mod TestActionMenuScene {
                 }));
         after
 
-    /// ローグ中・ロード足元にアイテムが無ければ、メニューは「かいさん」のみ。
+    /// ローグ中・ロード足元にアイテムが無ければ、メニューは「こうかん → かいさん」。
+    /// (集合した生存メンバーが 2 人以上 = ロード + 退避中の味方なので「交換」が出る)
     @Test
     def testRogueMenuShowsOnlyDisbandWithoutFloorItem(): Unit \ Assert =
         let after = runRefreshItemsNoSelection(loadRogueActionMenuScene());
         Assert.assertEq(
-            expected = Some("disband") :: Nil,
+            expected = Some("gatherTrade") :: Some("disband") :: Nil,
             itemsMetadata(after))
 
-    /// ローグ中・ロード足元((1,1))にアイテムがあれば、「ひろう → かいさん」の順で出る。
+    /// ローグ中・ロード足元((1,1))にアイテムがあれば、「ひろう → こうかん → かいさん」の順で出る。
+    /// (集合した生存メンバーが 2 人以上なので「交換」が挟まる)
     @Test
     def testRogueMenuShowsPickupThenDisbandWithFloorItem(): Unit \ Assert =
         let scene = attachGroundItemAt({x = 1, y = 1},
@@ -578,6 +580,6 @@ mod TestActionMenuScene {
             loadRogueActionMenuScene());
         let after = runRefreshItemsNoSelection(scene);
         Assert.assertEq(
-            expected = Some("pickup") :: Some("disband") :: Nil,
+            expected = Some("pickup") :: Some("gatherTrade") :: Some("disband") :: Nil,
             itemsMetadata(after))
 }

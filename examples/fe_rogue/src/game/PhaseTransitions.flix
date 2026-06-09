@@ -232,21 +232,41 @@ mod PhaseTransitions {
             |> TradeRangeScene.clear
             |> TradeMenuScene.mapPanelData(_ -> TradeMenuScene.defaultPanelData())
 
-    /// TradeInventory フェーズに入る (TradeTargetSelect で Z 押下時)。
-    /// 緑マス overlay を片付け (もう不要)、`partnerId` を PanelData にセットして
-    /// `focus = Self / pick = None` に初期化する。
+    /// TradeInventory フェーズに入る (TradeTargetSelect で Z 押下時の隣接 2 人交換)。
+    /// 緑マス overlay を片付け (もう不要)、`members = [選択中味方, partnerId]` を PanelData に
+    /// セットして `focus = 0 / pick = None / origin = FromTurn` に初期化する。
     /// カーソルは TradeInventory 中は使われないので隠す (ActionSelect から
     /// 戻ったときに再表示される)。
     pub def enterTradeInventory(partnerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TurnPhase.State =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
         TurnPhase.State.put(TurnPhase.Phase.TradeInventory);
+        let selfId = SelectedPlayer.State.get()#id |> Option.getWithDefault(0);
         scene
             |> TradeRangeScene.clear
             |> CursorScene.setVisible(false)
             |> TradeMenuScene.mapPanelData(_ ->
-                ({partnerId = partnerId,
-                  pick      = None,
-                  focus     = TradeMenuScene.Pane.Self}: TradeMenuScene.PanelData))
+                ({members = selfId :: partnerId :: Nil,
+                  focus   = 0,
+                  pick    = None,
+                  origin  = TradeMenuScene.Origin.FromTurn}: TradeMenuScene.PanelData))
+
+    /// TradeInventory フェーズに入る (集合後の RogueMove「交換」確定時の N 人交換)。
+    /// `members` は集合した生存メンバーの player id (ロード + 退避中の味方)。
+    /// `origin = FromRogue` なので、交換を抜けると RogueMove に戻る。
+    /// members が 2 人未満なら交換相手が居ないので何もしない (防御)。
+    pub def enterGatherTrade(members: List[Int32], scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        if (List.length(members) < 2) scene
+        else {
+            TurnPhase.State.put(TurnPhase.Phase.TradeInventory);
+            scene
+                |> CursorScene.setVisible(false)
+                |> TradeMenuScene.mapPanelData(_ ->
+                    ({members = members,
+                      focus   = 0,
+                      pick    = None,
+                      origin  = TradeMenuScene.Origin.FromRogue}: TradeMenuScene.PanelData))
+        }
 
     /// TradeTargetSelect フェーズに入る (ActionMenu「こうかん」確定時)。
     /// 動作 (上の表): 味方系の青/赤マスを片付け、緑マス (TradeRange) を敷き直し、

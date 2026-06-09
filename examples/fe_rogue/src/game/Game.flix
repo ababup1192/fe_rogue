@@ -44,12 +44,10 @@ pub enum NodeTag {
     /// 内部の Int32 は現在表示中のページ番号（0 起点）。ロード職は 16 個 = 2 ページ持てるため、
     /// ←/→ でページを切り替えるとここが更新され、refreshItems がそのページぶんを並べ直す。
     case ItemMenu(Int32)
-    /// TradeMenuScene の Panel ルート（partnerId / pick / focus を抱えるセッション状態）
+    /// TradeMenuScene の Panel ルート（members / focus / pick / origin を抱えるセッション状態）
     case TradePanel(TradeMenuScene.PanelData)
-    /// TradeMenuScene の左 ItemList (じぶん)
-    case TradeSelfMenu
-    /// TradeMenuScene の右 ItemList (あいて)
-    case TradePartnerMenu
+    /// TradeMenuScene の各ペイン ItemList。内部の Int32 はペイン index (0 起点、最大 3)。
+    case TradeMenu(Int32)
     /// ActionMenuScene の Panel ルート（外枠）
     case ActionPanel
     /// ActionMenuScene の ItemList（こうげき / たいき）
@@ -208,9 +206,7 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
             checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
-        case EngineNode.ItemListWithState(_, NodeTag.TradeSelfMenu) =>
-            checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
-        case EngineNode.ItemListWithState(_, NodeTag.TradePartnerMenu) =>
+        case EngineNode.ItemListWithState(_, NodeTag.TradeMenu(_)) =>
             checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.PanelWithState(_, NodeTag.BattlePanel(_)) =>
             checked_ecast(BattlePanelScene.process(delta, node, path, scene))
@@ -340,8 +336,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
             // onActionConfirmed は「かいだん」で CustomEffects.FloorAdvanceRequest を emit するため、
             // この instance の Aef にも FloorAdvanceRequest を含めてある（start で handler 注入済み）。
             case NodeTag.ActionMenu        => ActionMenuScene.onActionConfirmed(entry, scene)
-            case NodeTag.TradeSelfMenu     => checked_ecast(TradeMenuScene.onConfirmSelf(entry, scene))
-            case NodeTag.TradePartnerMenu  => checked_ecast(TradeMenuScene.onConfirmPartner(entry, scene))
+            case NodeTag.TradeMenu(_)      => checked_ecast(TradeMenuScene.confirmCurrentSelection(scene))
             case _                         => scene
         }
     redef onItemCancelled(_menuPath: NodePath, state: NodeTag,
@@ -364,8 +359,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                     case _                                 => scene
                 }
             case NodeTag.ActionMenu        => checked_ecast(ActionMenuScene.onActionCancelled(scene))
-            case NodeTag.TradeSelfMenu     => checked_ecast(TradeMenuScene.onCancelSelf(scene))
-            case NodeTag.TradePartnerMenu  => checked_ecast(TradeMenuScene.onCancelPartner(scene))
+            case NodeTag.TradeMenu(_)      => checked_ecast(TradeMenuScene.cancelCurrent(scene))
             case _                         => scene
         }
 }
@@ -573,14 +567,14 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
     }
 
 /// TradeInventory 中の方向キーを左右ペイン切替に変換する。
-/// Left / A → Self ペイン、Right / D → Partner ペイン。
+/// Left / A → focus を 1 つ左へ、Right / D → 1 つ右へ (0..paneCount-1 にクランプ)。
 /// Up / Down は handleMenus が ItemList カーソル移動に使うので、ここでは素通し。
 def tradeInventoryDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[NodeTag] =
     match key {
-        case GameEngine.Key.Left  => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Self,    scene)
-        case GameEngine.Key.A     => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Self,    scene)
-        case GameEngine.Key.Right => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Partner, scene)
-        case GameEngine.Key.D     => TradeMenuScene.setPaneFocus(TradeMenuScene.Pane.Partner, scene)
+        case GameEngine.Key.Left  => TradeMenuScene.setPaneFocusDelta(-1, scene)
+        case GameEngine.Key.A     => TradeMenuScene.setPaneFocusDelta(-1, scene)
+        case GameEngine.Key.Right => TradeMenuScene.setPaneFocusDelta(1, scene)
+        case GameEngine.Key.D     => TradeMenuScene.setPaneFocusDelta(1, scene)
         case _                    => scene
     }
 
