@@ -72,11 +72,11 @@ mod EnemyAI {
             // フェーズ2: 射程内に居なければ全候補の最良へ接近 or カイティング。
             let targets = Encounter.enemiesOf(self#faction, enc);
             let attackTarget = pickTarget(self, attackableTargets(self, targets));
-            let engageTarget = pickTarget(self, targets);
-            let action = match (attackTarget, engageTarget) {
-                case (Some(t), _)    => EnemyAction.Attack(self#id, t#id)
-                case (None, Some(t)) => moveTowardOrKite(board, self, t)
-                case (None, None)    => chase(board, self)   // 候補なし → 最寄り追跡
+            // 射程内に居れば評価軸で選んだ最良を攻撃。居なければ距離フィールドの勾配を降りて
+            // 「経路最寄りのプレイヤー」へ 1 歩寄る（迷路でも詰まらない・遠回りしない）。
+            let action = match attackTarget {
+                case Some(t) => EnemyAction.Attack(self#id, t#id)
+                case None    => approachField(board, self)
             };
             (action, {alerted = alertedNow})
 
@@ -89,72 +89,51 @@ mod EnemyAI {
                 List.filter(t -> Weapon.inRange(manhattan(self#pos, t#pos), r), targets)
         }
 
-    /// 射程内に相手が居ないときの移動。選んだ相手が（弓の最小射程より）近すぎれば後退
-    /// （カイティング）、それ以外はその相手へ最短経路で 1 歩接近する。
-    def moveTowardOrKite(board: Board, self: UnitView, t: UnitView): EnemyAction =
-        match self#weaponRange {
-            case None    => approachOrFallback(board, self, t#pos)
-            case Some(r) =>
-                if (manhattan(self#pos, t#pos) < r#min)
-                    retreat(board, self)
-                else
-                    approachOrFallback(board, self, t#pos)
+    /// 射程内に相手が居ないときの移動。プレイヤー始点の距離フィールドを降りて 1 歩近づく。
+    /// 弓系は最小射程より近すぎれば後退（カイティング）。経路最寄りへ向かうので迷路でも詰まらない。
+    def approachField(board: Board, self: UnitView): EnemyAction =
+        let players = Board.allPlayerCells(board);
+        if (List.isEmpty(players)) EnemyAction.Wait(self#id)
+        else {
+            // 壁のみ通行可（ユニット透過）の素直な距離フィールド。カイティング判定と
+            // 「経路が塞がれたときの寄せ」に使う（ターン中プレイヤー不動なので安価で一貫）。
+            let openField = Board.distanceField(c -> Board.isWalkable(board, c),
+                                                 players, floodSteps());
+            match self#weaponRange {
+                case Some(r) =>
+                    if (Board.fieldDist(openField, self#pos) < r#min)
+                        retreat(board, self, openField)
+                    else descendTwoTier(board, self, players, openField)
+                case None => descendTwoTier(board, self, players, openField)
+            }
         }
 
-    /// 選んだ相手 `targetCell` へ接近する。発見したら止まらず近づくため、3 段階で粘る:
-    ///   1) 選んだ相手へ到達経路があれば、その相手へ 1 歩。
-    ///   2) 無ければ最寄りプレイヤーへ。到達経路があればそこへ 1 歩。
-    ///   3) それも無い（通路を別ユニットが塞ぐ等で誰にも届かない）→ 行ける範囲で最寄り
-    ///      プレイヤーに一番近づけるマスへ 1 歩（通路口の手前まで詰める）。
-    def approachOrFallback(board: Board, self: UnitView,
-                            targetCell: {x = Int32, y = Int32}): EnemyAction =
-        match chaseTo(board, self, targetCell) {
-            case EnemyAction.Move(id, step) => EnemyAction.Move(id, step)
-            case _                          =>
-                match Board.nearestPlayer(self#pos, board) {
-                    case None               => EnemyAction.Wait(self#id)
-                    case Some(nearestEntry) =>
-                        let (_, np) = nearestEntry;
-                        match chaseTo(board, self, np) {
-                            case EnemyAction.Move(id, step) => EnemyAction.Move(id, step)
-                            case _ => stepClosestTo(board, self, np)
-                        }
-                }
-        }
-
-    /// `target` への到達経路が無いとき、到達可能なマスのうち `target` に最も近いマスへ向けて
-    /// 1 歩進む。現在地より近づけるマスが無ければ Wait。通路が塞がれていても「行けるところまで
-    /// 寄る」ことで、発見した敵が遠くで止まらないようにする。
-    def stepClosestTo(board: Board, self: UnitView,
-                       target: {x = Int32, y = Int32}): EnemyAction =
-        let pos     = self#pos;
-        let curDist = manhattan(pos, target);
-        let passable = c ->
-            Board.isWalkable(board, c)
-                and ((c#x == pos#x and c#y == pos#y) or not Board.isOccupied(c, board));
-        let best = Board.reachableCells(passable, pos, approachReach())
-            |> List.filter(c -> manhattan(c, target) < curDist)
-            |> List.minimumBy((a, b) ->
-                Order.compare(manhattan(a, target), manhattan(b, target)));
-        match best {
-            case None    => EnemyAction.Wait(self#id)
-            case Some(c) => stepTo(board, self, c)
-        }
-
-    /// 空きマス `cell` へ最短経路で 1 歩進む（`cell` 自体に乗る）。`chaseTo` と違い末尾を
-    /// 落とさないので、プレイヤーではなく「行きたい空きマス」へ向かうのに使う。
-    def stepTo(board: Board, self: UnitView, cell: {x = Int32, y = Int32}): EnemyAction =
-        match Board.bfsPath(board, self#pos, cell) {
-            case None       => EnemyAction.Wait(self#id)
-            case Some(path) =>
-                match List.head(path) {
+    /// 距離フィールドの勾配を 1 歩降りる。2 段で粘る:
+    ///   1) **他敵を障害物**にしたフィールド（= 実際に通れる経路）の勾配を降りる
+    ///      → 別の敵を迂回しつつ最短で寄る（局所最小なし）。
+    ///   2) それで降りられない（前を敵が塞いで経路が断たれている）→ **壁のみ**フィールド
+    ///      （ユニット透過）の勾配で「行けるところまで」寄せる（通路口の手前まで詰める）。
+    /// どちらも降りられなければ Wait（列で待つ / 壁で隔絶）。実際の 1 歩は空きマスのみに踏む。
+    def descendTwoTier(board: Board, self: UnitView,
+                        players: List[{x = Int32, y = Int32}],
+                        openField: Map[(Int32, Int32), Int32]): EnemyAction =
+        let pos = self#pos;
+        let blockedField = Board.distanceField(
+            c -> Board.isWalkable(board, c)
+                  and ((c#x == pos#x and c#y == pos#y) or not Board.isEnemyAt(c, board)),
+            players, floodSteps());
+        let okStep = c -> not Board.isOccupied(c, board);
+        match Board.stepDownhill(blockedField, pos, okStep) {
+            case Some(step) => EnemyAction.Move(self#id, step)
+            case None       =>
+                match Board.stepDownhill(openField, pos, okStep) {
                     case Some(step) => EnemyAction.Move(self#id, step)
                     case None       => EnemyAction.Wait(self#id)
                 }
         }
 
-    /// `stepClosestTo` の到達範囲上限（マップ全域を見渡せるよう十分大きく取る）。
-    def approachReach(): Int32 = 64
+    /// 距離フィールドのフラッド上限（マップ全域を覆えるよう十分大きく取る）。
+    def floodSteps(): Int32 = 4096
 
     // ════════════════════════════════════════════════════════
     // ターゲット選択（優先度つき評価軸の辞書式比較）
@@ -211,54 +190,25 @@ mod EnemyAI {
     // 移動（接近・後退）
     // ════════════════════════════════════════════════════════
 
-    /// 最寄りプレイヤーへ接近する（ターゲット未選択時のフォールバック）。
-    def chase(board: Board, self: UnitView): EnemyAction =
-        match Board.nearestPlayer(self#pos, board) {
-            case None              => EnemyAction.Skip(self#id)
-            case Some(targetEntry) =>
-                let (_, target) = targetEntry;
-                chaseTo(board, self, target)
-        }
-
-    /// 指定セル `targetCell` への最短経路の 1 歩目を返す。経路無し（壁・他駒で詰み）なら Wait。
-    def chaseTo(board: Board, self: UnitView,
-                 targetCell: {x = Int32, y = Int32}): EnemyAction =
-        match Board.bfsPath(board, self#pos, targetCell) {
-            case None       => EnemyAction.Wait(self#id)
-            case Some(path) =>
-                match List.init(path) |> Option.flatMap(List.head) {
-                    case Some(step) => EnemyAction.Move(self#id, step)
-                    case None       => EnemyAction.Wait(self#id)
-                }
-        }
-
     /// 最小射程より近づかれた弓系の敵が、隣接 1 マスへ後退して間合いを取り直す（カイティング）。
-    /// 4 近傍のうち「床 + 駒に占有されていない」マスから、最寄りプレイヤーとの距離を最も
-    /// 広げられるマスを選ぶ。距離を広げられるマスが無い（壁際・包囲）なら chase に委譲（= Wait）。
-    def retreat(board: Board, self: UnitView): EnemyAction =
-        let pos     = self#pos;
-        let curDist = distToNearestPlayer(pos, board);
-        let dirs    = Vec2i.up() :: Vec2i.down() :: Vec2i.left() :: Vec2i.right() :: Nil;
-        let best    = dirs
+    /// 4 近傍の「床 + 空きマス」から、距離フィールド値が最も大きい（プレイヤーから経路上で
+    /// 最も遠い）マスへ退く。間合いを広げられるマスが無い（壁際・包囲）なら Wait。
+    /// `field` は壁のみフィールド（経路距離が一意に決まる）を渡す。
+    def retreat(board: Board, self: UnitView,
+                 field: Map[(Int32, Int32), Int32]): EnemyAction =
+        let pos  = self#pos;
+        let here = Board.fieldDist(field, pos);
+        let dirs = Vec2i.up() :: Vec2i.down() :: Vec2i.left() :: Vec2i.right() :: Nil;
+        let best = dirs
             |> List.map(d -> Board.stepTarget(pos, d))
             |> List.filter(c -> Board.isWalkable(board, c) and not Board.isOccupied(c, board))
             |> List.maximumBy((a, b) ->
-                Order.compare(distToNearestPlayer(a, board), distToNearestPlayer(b, board)));
+                Order.compare(Board.fieldDist(field, a), Board.fieldDist(field, b)));
         match best {
             case Some(c) =>
-                if (distToNearestPlayer(c, board) > curDist)
-                    EnemyAction.Move(self#id, c)
-                else chase(board, self)
-            case None    => chase(board, self)
-        }
-
-    /// `cell` から最も近いプレイヤーまでのマンハッタン距離。プレイヤー不在なら 0。
-    def distToNearestPlayer(cell: {x = Int32, y = Int32}, board: Board): Int32 =
-        match Board.nearestPlayer(cell, board) {
-            case None    => 0
-            case Some(p) =>
-                let (_, pp) = p;
-                manhattan(cell, pp)
+                if (Board.fieldDist(field, c) > here) EnemyAction.Move(self#id, c)
+                else EnemyAction.Wait(self#id)
+            case None    => EnemyAction.Wait(self#id)
         }
 
     // ════════════════════════════════════════════════════════

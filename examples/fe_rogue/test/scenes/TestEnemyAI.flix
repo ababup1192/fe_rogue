@@ -459,9 +459,11 @@ mod TestEnemyAI {
         Assert.assertEq(expected = ("Move", true),
                          (tagOf(a), isSome(moveTarget(a))))
 
-    /// 壁で味方に到達できなくても、敵は止まらず「行ける範囲で味方に一番近いマス」へ寄る。
-    /// 5×3・x=2 列を壁で分断。敵側 (3,4) と味方側 (0,1) は到達不能。
-    /// 期待: Wait せず、壁際で味方に最も近い (3,1) へ 1 歩寄る。
+    /// 壁で**完全分断**され、到達可能なプレイヤーが 1 人も居ないときは Wait する。
+    /// 5×3・x=2 列を壁で分断。味方(0,1)は左、敵(4,1)は右で、壁越しに行き来できない。
+    /// 距離フィールド方式では「到達不能な方向へは進まない」（旧: マンハッタンで壁際まで寄せていた）。
+    /// 通常のダンジョンは連結なのでこのケースは合成的。塞いでいるのが*ユニット*の場合は
+    /// `testApproachesTowardBlockedCorridorInsteadOfWaiting` の通り壁のみフィールドで詰める。
     @Test
     def testNoPathStillStepsTowardPlayer(): Unit \ Assert =
         let inB = c -> c#x >= 0 and c#x < 5 and c#y >= 0 and c#y < 3;
@@ -480,10 +482,7 @@ mod TestEnemyAI {
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, true, 0, 3);
         let (a, _)  = decide(board, targetsOf(board), enemy);
-        Assert.assertEq(expected = ("Move", 3, 1),
-                         (tagOf(a),
-                          moveTarget(a) |> Option.map(t -> t#x) |> Option.getWithDefault(-1),
-                          moveTarget(a) |> Option.map(t -> t#y) |> Option.getWithDefault(-1)))
+        Assert.assertEq(expected = "Wait", tagOf(a))
 
     /// 他敵駒は障害物。Q7-A を確認する。
     /// 配置（5×3 全床、敵 0 が (4,1)、プレイヤー (0,1)、別の敵 (3,1) で直線が塞がれる）:
@@ -564,9 +563,11 @@ mod TestEnemyAI {
         let (a, _)  = decide(board, targets, enemy);
         Assert.assertEq(expected = ("Attack", 0), (tagOf(a), attackId(a)))
 
-    /// 低HP タイブレーク: 仕留め不可・どちらも反撃不能・距離も同じなら、HP の低い相手を選ぶ。
-    /// 配置: 剣 p0(8,5) HP10・距離3 / 剣 p1(5,8) HP4・距離3。
-    /// 期待: p1(id1, 低HP)へ向かって 1 歩接近（p1 までの距離が 3→2 に縮む）。
+    /// 移動は「経路最寄りのプレイヤー」へ向かう（距離フィールド方式）。二者が経路距離で同じ
+    /// （pA(8,5)・pB(5,8) とも距離3）なら、フィールド勾配の決定的タイブレーク（down 優先）で
+    /// pB 方向へ 1 歩（pB までの距離が 3→2 に縮む）。
+    /// 注: 旧仕様は評価軸の低HP で移動先を選んでいたが、移動先選定は最寄り（経路距離）基準に変更。
+    /// 低HP/仕留め等の評価軸は「射程内に居る相手の攻撃選定」では引き続き効く（下の Attack 系テスト）。
     @Test
     def testRangedPrefersLowerHpAmongSafeTargets(): Unit \ Assert =
         let map     = singleRoomSnapshot(12, 12);
@@ -703,6 +704,37 @@ mod TestEnemyAI {
         let enemy   = enemyAt(9, enemyP, true, 0, 3);
         let targets = mkTarget(0, playerP, 10, 0, swordRange()) :: Nil;
         let (a, _)  = decide(board, targets, enemy);
+        Assert.assertEq(expected = ("Move", 2, 1),
+                         (tagOf(a),
+                          moveTarget(a) |> Option.map(t -> t#x) |> Option.getWithDefault(-1),
+                          moveTarget(a) |> Option.map(t -> t#y) |> Option.getWithDefault(-1)))
+
+    /// 角を曲がる: 前進にいったん manhattan 距離を増やす必要があるスパイラル/U字でも止まらない。
+    /// 3×3・(1,0)(1,1) が壁の U 字。味方(0,0)・敵(2,0)。敵→味方の経路は下へ回り込む
+    /// （(2,0)→(2,1)→(2,2)→(1,2)→(0,2)→(0,1)→(0,0)）。1 歩目 (2,1) は味方への manhattan が
+    /// 2→3 と**増える**ため、純マンハッタン貪欲なら却下して凍結するが、距離フィールドは降下できる。
+    ///   P # E   row0: P=(0,0) 壁(1,0) E=(2,0)
+    ///   . # .   row1: 壁(1,1)
+    ///   . . .   row2: 開通（ここを回る）
+    @Test
+    def testSpiralCornerDoesNotFreeze(): Unit \ Assert =
+        let inB = c -> c#x >= 0 and c#x < 3 and c#y >= 0 and c#y < 3;
+        let isW = c -> (c#x == 1 and c#y == 0) or (c#x == 1 and c#y == 1);
+        let map: MapSnapshot = {
+            tileSize     = testTileSize(),
+            usedRect     = {position = Vec2i.zero(), size = ({x = 3, y = 3}: {x = Int32, y = Int32})},
+            isWall       = c -> not inB(c) or isW(c),
+            isFloor      = c -> inB(c) and not isW(c),
+            mapToLocal   = c -> testGridToWorld(c),
+            gridToWorld  = c -> testGridToWorld(c),
+            moduleOfCell = c -> if (inB(c) and not isW(c)) Some(0) else None
+        };
+        let player  = ({x = 0, y = 0}: {x = Int32, y = Int32});
+        let enemyP  = ({x = 2, y = 0}: {x = Int32, y = Int32});
+        let board   = boardOf(map, player, 0, enemyP);
+        let enemy   = enemyAt(0, enemyP, true, 0, 3);
+        let (a, _)  = decide(board, targetsOf(board), enemy);
+        // 凍結せず、回り込みの 1 歩目 (2,1) へ降下する（manhattan は 2→3 に増える）。
         Assert.assertEq(expected = ("Move", 2, 1),
                          (tagOf(a),
                           moveTarget(a) |> Option.map(t -> t#x) |> Option.getWithDefault(-1),

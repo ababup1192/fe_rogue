@@ -321,6 +321,66 @@ mod Board {
         else not isOccupied(c, board)            // 残り = 敵駒 / その他なら NG
 
     // ════════════════════════════════════════════════════════
+    // (D') ダイクストラ距離フィールド（多始点 BFS。均一コスト = BFS）
+    //     ゴール（プレイヤー等）始点でマップを塗り、各セルに「真の経路距離」を持たせる。
+    //     敵は値の小さい隣マスへ降下するだけで局所最小に陥らず迷路でも詰まらない。
+    // ════════════════════════════════════════════════════════
+
+    /// 実質 ∞（到達不能）を表す番兵値。距離フィールドの未到達セルに使う。
+    pub def infDist(): Int32 = 1000000000
+
+    /// `sources` を距離 0 とする多始点 BFS で、各セルの最短ステップ数を Map で返す。
+    /// `passable` が通行可否（床か・ユニット透過か等）を決める述語。到達不能セルは Map に
+    /// 含めない（= ∞）。均一コストなので BFS = ダイクストラ（優先度キュー不要）。
+    /// frontier をレベル毎リストで広げ、距離は Map に積む（list + isInList の O(n²) を回避）。
+    pub def distanceField(passable: {x = Int32, y = Int32} -> Bool,
+                           sources: List[{x = Int32, y = Int32}],
+                           maxSteps: Int32): Map[(Int32, Int32), Int32] =
+        let seeds = List.filter(passable, sources);
+        let dist0 = List.foldLeft((m, c) -> Map.insert((c#x, c#y), 0, m), Map.empty(), seeds);
+        floodField(passable, maxSteps, 0, seeds, dist0)
+
+    /// `frontier`（距離 `depth` のセル群）の 4 近傍を距離 `depth+1` で登録し、次レベルへ進む。
+    /// 既登録セルは Map メンバ判定で弾く（同レベル内の重複も threading した Map で防ぐ）。
+    def floodField(passable: {x = Int32, y = Int32} -> Bool,
+                    maxSteps: Int32, depth: Int32,
+                    frontier: List[{x = Int32, y = Int32}],
+                    dist: Map[(Int32, Int32), Int32]): Map[(Int32, Int32), Int32] =
+        if (List.isEmpty(frontier) or depth >= maxSteps) dist
+        else
+            let dirs = Vec2i.up() :: Vec2i.down() :: Vec2i.left() :: Vec2i.right() :: Nil;
+            let (nextFrontier, nextDist) =
+                List.foldLeft((acc, cur) ->
+                    List.foldLeft((acc2, d) -> {
+                        let (f2, m2) = acc2;
+                        let n   = Vec2i.add(cur, d);
+                        let key = (n#x, n#y);
+                        if (passable(n) and not Map.memberOf(key, m2))
+                            (n :: f2, Map.insert(key, depth + 1, m2))
+                        else acc2
+                    }, acc, dirs),
+                    (Nil, dist), frontier);
+            floodField(passable, maxSteps, depth + 1, nextFrontier, nextDist)
+
+    /// 距離フィールドのセル値。未到達は番兵 `infDist`（実質 ∞）。順位付け・降下判定に使う。
+    pub def fieldDist(field: Map[(Int32, Int32), Int32], cell: {x = Int32, y = Int32}): Int32 =
+        Map.get((cell#x, cell#y), field) |> Option.getWithDefault(infDist())
+
+    /// `field` 上で `pos` から「値がより小さい」隣接セルのうち `ok` を満たす最小値セルを返す。
+    /// 降下できる隣接が無ければ None。同値は up→down→left→right の決定的順序で先勝ち。
+    /// 壁/未到達セルは ∞ なので「`< here`」で自動的に除外される。
+    pub def stepDownhill(field: Map[(Int32, Int32), Int32],
+                          pos: {x = Int32, y = Int32},
+                          ok: {x = Int32, y = Int32} -> Bool): Option[{x = Int32, y = Int32}] =
+        let here = fieldDist(field, pos);
+        let dirs = Vec2i.up() :: Vec2i.down() :: Vec2i.left() :: Vec2i.right() :: Nil;
+        dirs
+            |> List.map(d -> Vec2i.add(pos, d))
+            |> List.filter(c -> ok(c) and fieldDist(field, c) < here)
+            |> List.minimumBy((a, b) ->
+                Order.compare(fieldDist(field, a), fieldDist(field, b)))
+
+    // ════════════════════════════════════════════════════════
     // (E) 駒視点ヘルパー — 「壁・敵だけ通行不可、味方マスは通過可。停止は味方マス NG」
     //     という FE 流の動きモデルを公開する。MoveRangeScene の青マス表示はこのレイヤ
     //     経由で計算する。AutoMove は同じモデルを `bfsPathSkipAllies` 直叩きで使う。

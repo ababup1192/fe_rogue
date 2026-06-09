@@ -335,4 +335,55 @@ mod TestBoard {
         let enemies = {gridPos = src(1, 0), moveTiles = 2, isDying = true} :: Nil;
         Assert.assertEq(expected = false,
             Board.cellDetectedByEnemy(testModuleOf, isFloor, enemies, src(0, 0)))
+
+    // ========================================================================
+    // ダイクストラ距離フィールド: distanceField / fieldDist / stepDownhill
+    // ========================================================================
+
+    /// 壁で迂回が強制されるとき、フィールド値は manhattan より大きい（= 真の経路距離）。
+    /// 3×3・(1,1) のみ壁。源 (0,1) から (2,1) は直線 manhattan 2 だが、壁を回って経路距離 4。
+    ///   . . .
+    ///   S # G    源=(0,1)。(2,1) へは (0,0)(1,0)(2,0) か (0,2)(1,2)(2,2) を回る = 4 歩。
+    ///   . . .
+    @Test
+    def testDistanceFieldDetourGreaterThanManhattan(): Unit \ Assert =
+        let map   = floorSnapshotWithWall(3, 3, src(1, 1));
+        let field = Board.distanceField(map#isFloor, src(0, 1) :: Nil, 64);
+        Assert.assertEq(expected = (0, 4),
+            (Board.fieldDist(field, src(0, 1)), Board.fieldDist(field, src(2, 1))))
+
+    /// stepDownhill は「値がより小さい隣」へ進む。(2,1)(値4) からは値3の隣へ。
+    /// タイブレークに依らず「降下したこと（値3）」を確認する。
+    @Test
+    def testStepDownhillDescends(): Unit \ Assert =
+        let map   = floorSnapshotWithWall(3, 3, src(1, 1));
+        let field = Board.distanceField(map#isFloor, src(0, 1) :: Nil, 64);
+        let next  = Board.stepDownhill(field, src(2, 1), _ -> true);
+        Assert.assertEq(expected = Some(3),
+            Option.map(c -> Board.fieldDist(field, c), next))
+
+    /// 開けた 5×1。源 (0,0) から (4,0)(値4) を 1 歩降りると (3,0)。
+    @Test
+    def testStepDownhillTowardSource(): Unit \ Assert =
+        let map   = emptySnapshot(5, 1);
+        let field = Board.distanceField(map#isFloor, src(0, 0) :: Nil, 64);
+        Assert.assertEq(expected = (true, 3, 0),
+            unpackOption(Board.stepDownhill(field, src(4, 0), _ -> true)))
+
+    /// 壁で分断された領域のセルはフィールドに含まれない（= infDist）。
+    /// 3×1・(1,0) が壁。源 (0,0) から (2,0) は壁越しで到達不能。
+    @Test
+    def testDistanceFieldDisconnectedIsInfinite(): Unit \ Assert =
+        let map   = floorSnapshotWithWall(3, 1, src(1, 0));
+        let field = Board.distanceField(map#isFloor, src(0, 0) :: Nil, 64);
+        Assert.assertEq(expected = (0, Board.infDist()),
+            (Board.fieldDist(field, src(0, 0)), Board.fieldDist(field, src(2, 0))))
+
+    /// 降下できる隣が無ければ None（源そのもの = 値0）。
+    @Test
+    def testStepDownhillNoneAtSource(): Unit \ Assert =
+        let map   = emptySnapshot(3, 1);
+        let field = Board.distanceField(map#isFloor, src(0, 0) :: Nil, 64);
+        Assert.assertEq(expected = true,
+            Option.isEmpty(Board.stepDownhill(field, src(0, 0), _ -> true)))
 }

@@ -69,10 +69,22 @@ mod EnemyTurnDriverScene {
     pub def beginTurn(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State} =
-        let steps = EnemyScene.getAll(scene)
-            |> List.filter(e -> not e#isDying
-                                 and Option.isEmpty(e#attackTargetId))
-            |> List.sortBy(e -> e#id)
+        let actives = EnemyScene.getAll(scene)
+            |> List.filter(e -> not e#isDying and Option.isEmpty(e#attackTargetId));
+        // プレイヤー始点の距離フィールド（壁のみ）で「経路最寄り」の敵から動かす。
+        // 列の先頭（プレイヤーに近い敵）が先に動いて前を空けるので、後続が同ターンに詰められ、
+        // 1 マス幅通路の渋滞凍結が減る。到達不能（∞）は id 順で末尾側に回る。
+        // マップ未構築のテスト/初期化シーン（placements 空）では盤面を組めないので id 順へフォールバック。
+        let ordered =
+            if (List.isEmpty(MapScene.tryGetPlacements(scene)))
+                List.sortBy(e -> e#id, actives)
+            else {
+                let board0 = Encounter.fromScene(scene)#board;
+                let field0 = Board.distanceField(c -> Board.isWalkable(board0, c),
+                                                  Board.allPlayerCells(board0), 4096);
+                List.sortBy(e -> (Board.fieldDist(field0, e#gridPos), e#id), actives)
+            };
+        let steps = ordered
             |> List.map(e -> ({id = e#id, remaining = e#moveTiles}: EnemyTurn.Step));
         // 敵ターン開始時に全敵の「行動済み」暗転を解除（プレイヤーの clearAllWaited と対称）。
         let cleared = EnemyScene.clearActedAll(scene);
