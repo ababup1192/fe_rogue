@@ -25,6 +25,12 @@ rm -rf "$WORK"; mkdir -p "$WORK"
 for j in "$HERE"/lib/external/lwjgl-*-natives-*.jar; do
     ( cd "$WORK" && jar xf "$j" )
 done
+# テストクラスを除外（`flix test` の生成物が build/class 経由で fatjar に混入し
+# 数万クラス分肥大化する）。Flix はテストモジュールを `TestXxx/` という
+# トップレベルのディレクトリに固める（中身は Clo$... という名前）。Main からは
+# 参照されないので、トップレベルの Test* ディレクトリごと削除する。
+# 注: Fs/Eff$FileTest.class のような実依存クラスは Test 始まりでないので残る。
+find "$WORK" -maxdepth 1 -type d -name 'Test*' -exec rm -rf {} +
 # Main-Class を保ったまま再パッケージ。
 ( cd "$WORK" && jar --create --file "$OUT" --main-class Main . )
 rm -rf "$WORK"

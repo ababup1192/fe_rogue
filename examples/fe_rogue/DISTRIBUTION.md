@@ -34,7 +34,25 @@ bash scripts/package-macos-dmg.sh     # → dist/fe_rogue-1.0.0.dmg
 `.dmg` を開いて `fe_rogue.app` を Applications にドラッグ → ダブルクリックで起動。
 （未署名なので初回は「右クリック→開く」で Gatekeeper を回避。）
 
-### Windows `.exe`（Ally / Windows 機で実行）
+### Windows `.exe` をビルドする — 2通り
+
+**(a) Mac だけで作る（クロスビルド・推奨）**
+
+`jpackage` は使えないが、jpackage と同じ app-image を Mac 上で手組みできる:
+self-contained jar ＋ Windows ランタイム（wine 経由の `jlink.exe` で生成）＋ jpackage の
+launcher exe（`jpackageapplauncherw.exe` を jmod から取り出し）＋ `.cfg` を組み合わせる。
+
+```bash
+cd examples/fe_rogue
+bash scripts/package-windows-exe-on-mac.sh          # → dist-win/fe_rogue/ と dist-win/fe_rogue-win.zip
+# 任意: wine で起動確認  →  bash scripts/package-windows-exe-on-mac.sh --test
+```
+
+前提: `wine64`（`brew install --cask wine-stable`）, JDK 21+, ネット接続（初回に Windows JDK を DL）。
+`dist-win/fe_rogue-win.zip` を Ally に展開して `fe_rogue.exe` を実行。**JRE 同梱・Java 不要**。
+（生成物の最終確認は Windows 実機で。Mac では wine による起動確認まで。）
+
+**(b) Windows 機（Ally など）で `jpackage` を使う**
 
 リポジトリ一式と JDK 21 を Windows に用意し:
 
@@ -46,9 +64,6 @@ scripts\package-windows-exe.bat        REM → dist\fe_rogue\fe_rogue.exe (porta
 `dist\fe_rogue\` フォルダごと置いて `fe_rogue.exe` を実行。
 単一インストーラ（`.exe`/`.msi`）が必要なら `.bat` 内の `--type app-image` を `exe`/`msi` に変更
 （[WiX Toolset](https://wixtoolset.org/) のインストールが必要）。
-
-> 開発機（Mac）でビルドした self-contained jar（両 OS のネイティブ入り）を Windows にコピーして
-> jpackage だけ流す運用も可。`scripts/_make-selfcontained-jar.sh` が `artifact/fe_rogue-all.jar` を作る。
 
 ---
 
@@ -110,16 +125,20 @@ OS を見て macOS のときだけ自己再起動するため、Windows では�
 ## コントローラ操作（Xbox レイアウト）
 
 `engine/src/LwjglLayer.flix` でゲームパッド入力を `isKeyPressed` に OR している。
-fe_rogue のキー意味論に合わせた割当:
+**1 ボタン = 1 キー**を厳守する（1 ボタンを複数キーに割り当てると `onKeyPressed` が
+同フレームで複数回発火し、決定の多重実行などの誤作動になる）。
 
-| 操作 | ゲームパッド | （対応する物理キー） |
+| 操作 | ゲームパッド | 物理キー |
 |---|---|---|
-| カーソル移動 | D-pad ＋ 左スティック | 矢印 / WASD |
-| 決定（移動確定・攻撃・メニュー選択） | **A** / Start | Z / Space / Enter |
-| キャンセル（戻る） | **B** / View(Back) | X / Escape |
+| カーソル移動 | D-pad ＋ 左スティック | 矢印キー |
+| 決定（移動確定・攻撃・メニュー選択） | **A** | Z |
+| メニュー確定（A の別系統） | **Start** | Enter |
+| キャンセル / 戻る | **B** | X |
 | ミニマップ | **Y** | M |
 | 危険範囲トグル | **LB** | Left Shift |
 
+> **Esc / View(Back) はパッドに割り当てない**：Escape はマップ上でゲーム終了を誘発するため。
+> キャンセル・メニュー戻りは B(=X) だけで全サブメニューを処理できる（`dispatchMenuKey` の Cancel）。
 > 割当を変えたい場合は `LwjglLayer.flix` の `padPressed` を編集する。
 > 左スティックのデッドゾーンは 0.5（同ファイル内の `padUp/padDown/padLeft/padRight`）。
 

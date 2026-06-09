@@ -5,6 +5,7 @@
 artifact/
 build/
 dist/
+dist-win/
 lib/
 # 依存解決で生成されるパッケージ直下の lib/ は無視するが、
 # src/lib/ 配下は実ソース(DungeonComposer/DungeonGenerator/MapLoader/TileRendering 等)
@@ -12,3 +13,4 @@ lib/
 !**/src/lib/
 !**/src/lib/**
 crash_report_*.txt
+hs_err_pid*.log

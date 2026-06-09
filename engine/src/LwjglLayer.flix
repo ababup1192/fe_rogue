@@ -238,24 +238,26 @@ mod LwjglLayer {
         let padDown  = () -> padBtn(GLFW.GLFW_GAMEPAD_BUTTON_DPAD_DOWN)  or (padAxis(GLFW.GLFW_GAMEPAD_AXIS_LEFT_Y) >  0.5f32);
         let padLeft  = () -> padBtn(GLFW.GLFW_GAMEPAD_BUTTON_DPAD_LEFT)  or (padAxis(GLFW.GLFW_GAMEPAD_AXIS_LEFT_X) < -0.5f32);
         let padRight = () -> padBtn(GLFW.GLFW_GAMEPAD_BUTTON_DPAD_RIGHT) or (padAxis(GLFW.GLFW_GAMEPAD_AXIS_LEFT_X) >  0.5f32);
-        // 物理キー → ゲームパッド入力の対応 (fe_rogue: 決定=Z/Space/Enter=A/Start,
-        // キャンセル=X/Escape=B/Back, 危険範囲トグル=LeftShift=LB, ミニマップ=M=Y)。
+        // 物理キー → ゲームパッド入力の対応。**1 ボタン = 1 キー**を厳守する。
+        // 1 ボタンを複数キーに割り当てると、その 1 押しで複数キーが同フレームに「新規押下」
+        // 扱いになり onKeyPressed が複数回発火する。例えば A→Z/Space/Enter にすると Confirm が
+        // 3 連発し、メニューを開いた直後に確定して行動を消費してしまう
+        // (キーボードは 1 キー 1 入力なのでこの問題は出ない)。
+        // fe_rogue: 決定=Z=A / メニュー確定=Enter=Start / キャンセル=X=B /
+        // ミニマップ=M=Y / 危険範囲トグル=LeftShift=LB。
+        // Escape はマップ上でゲーム終了を誘発するためパッドには **割り当てない**。
+        // キャンセル / メニュー戻りは X=B で十分 (dispatchMenuKey が X→Cancel を全サブメニューで処理)。
+        // 方向は arrows のみ (CursorScene は W/A/S/D と Up/Down/Left/Right の両対応なので arrows で足りる)。
         let padPressed = (key: GameEngine.Key) ->
             if (not Array.get(0, gamepadConnectedHolder)) false
             else match key {
                 case GameEngine.Key.Up        => padUp()
-                case GameEngine.Key.W         => padUp()
                 case GameEngine.Key.Down      => padDown()
-                case GameEngine.Key.S         => padDown()
                 case GameEngine.Key.Left      => padLeft()
-                case GameEngine.Key.A         => padLeft()
                 case GameEngine.Key.Right     => padRight()
-                case GameEngine.Key.D         => padRight()
                 case GameEngine.Key.Z         => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_A)
-                case GameEngine.Key.Space     => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_A)
-                case GameEngine.Key.Enter     => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_A) or padBtn(GLFW.GLFW_GAMEPAD_BUTTON_START)
                 case GameEngine.Key.X         => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_B)
-                case GameEngine.Key.Escape    => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_B) or padBtn(GLFW.GLFW_GAMEPAD_BUTTON_BACK)
+                case GameEngine.Key.Enter     => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_START)
                 case GameEngine.Key.M         => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_Y)
                 case GameEngine.Key.LeftShift => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_LEFT_BUMPER)
                 case _                        => false
