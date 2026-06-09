@@ -26,11 +26,16 @@ mod RenderFont {
     import java.io.FileInputStream
 
     /// アトラスにベイクする漢字 + UI 記号のコードポイント列。
-    /// 常用漢字 2,140 字 + ▼ などの UI 記号を engine_core 同梱の `JoyoKanji.text()` から取得。
+    /// 常用漢字 2,140 字 + ▼ などの UI 記号を engine_core 同梱の `JoyoKanji.text()` から取得し、
+    /// さらに `extraKanji()`（常用漢字外だがゲームで使う字）を足す。
     /// `Char.toBmpCodePoint` は U+8000 以上で負値になるので 0xFFFF でマスクする。
     pub def kanjiCodepoints(): List[Int32] =
-        String.toList(JoyoKanji.text())
+        String.toList("${JoyoKanji.text()}${extraKanji()}")
             |> List.map(ch -> Int32.bitwiseAnd(Char.toBmpCodePoint(ch), 0xFFFF))
+
+    /// 常用漢字に含まれないがゲーム UI で使う文字。
+    ///   斧（アクス）/ 槍（ランス）。武器タイプ表示などで使う。
+    def extraKanji(): String = "斧槍"
 
     /// stbtt_PackFontRanges でベイクされる単一レンジの記述。
     /// `firstCp = 0` のとき `cps` の個別 cp が使われる (stbtt の仕様)。

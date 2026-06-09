@@ -170,7 +170,6 @@ mod CharacterSelectScene {
     def buttonFocusBorder(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
 
     def buttonText(): String = "出撃"
-    def descPlaceholder(): String = "とくせい: ここに説明が入ります"
 
     // ────────────────────────────────────────────────────────
     // (C) 構築
@@ -589,15 +588,34 @@ mod CharacterSelectScene {
                 |> CanvasItem.setVisible(deployable))
             |> Label2D.mapAt(buttonLabelPath(), CanvasItem.setModulate(label))
 
-    /// 右側の説明（注目キャラ名 + プレースホルダ本文）を更新する。
+    /// 右側の説明（注目キャラ名 + 得意武器）を更新する。
     def writeDesc(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let name = match List.nth(effectiveFocus(data), data#players) {
-            case Some(resource) => resource#description
-            case None           => ""
+        let (name, proficiency) = match List.nth(effectiveFocus(data), data#players) {
+            case Some(resource) => (resource#description, proficiencyText(resource))
+            case None           => ("", "")
         };
         scene
             |> Label2D.mapAt(descTitlePath(), Label2D.setText(name))
-            |> Label2D.mapAt(descTextPath(), Label2D.setText(descPlaceholder()))
+            |> Label2D.mapAt(descTextPath(), Label2D.setText(proficiency))
+
+    /// 注目キャラの得意武器を「得意武器:\n剣 斧 …」の 2 行テキストにする（狭いパネル幅に収めるため改行）。
+    /// 得意タイプが無ければ「得意武器:\nなし」。
+    pub def proficiencyText(resource: UnitCatalog.PlayerResource): String =
+        let labels = List.map(weaponTypeLabel, resource#proficientWeaponTypes);
+        match labels {
+            case Nil => "得意武器:\nなし"
+            case _   => "得意武器:\n${String.intercalate(" ", labels)}"
+        }
+
+    /// 武器タイプの日本語 1 文字ラベル。
+    def weaponTypeLabel(weaponType: WeaponCatalog.WeaponType): String =
+        match weaponType {
+            case WeaponCatalog.WeaponType.Sword => "剣"
+            case WeaponCatalog.WeaponType.Axe   => "斧"
+            case WeaponCatalog.WeaponType.Lance => "槍"
+            case WeaponCatalog.WeaponType.Bow   => "弓"
+            case WeaponCatalog.WeaponType.Magic => "魔"
+        }
 
     // ────────────────────────────────────────────────────────
     // (G) ボイラプレート（状態の取り出し / 書き戻し）

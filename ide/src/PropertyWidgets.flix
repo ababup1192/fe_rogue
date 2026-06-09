@@ -500,6 +500,9 @@ mod PropertyWidgets {
             let btn = new ToggleButton(label);
             btn.setPrefWidth(28.0);
             btn.setPrefHeight(28.0);
+            // デフォルト padding（左右 ~8.7px）が 28px 幅を食い潰し漢字 1 文字が
+            // 省略記号 "..." に切り詰められるため、padding を 0 にして文字が収まるようにする。
+            btn.setStyle("-fx-padding: 0; -fx-content-display: center;");
             if (Set.memberOf(typeId, selected)) btn.setSelected(true) else ();
             (typeId, btn)
         }, types);

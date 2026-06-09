@@ -129,4 +129,29 @@ mod TestCharacterSelectScene {
         Assert.assertEq(
             expected = (58.0, 18.0),
             (CharacterSelectScene.targetCarouselX(0), CharacterSelectScene.targetCarouselX(1)))
+
+    // ════════════════════════════════════════════════════════
+    // 右パネルの得意武器テキスト
+    // ════════════════════════════════════════════════════════
+
+    /// description でユニットを引く（本番カタログ）。
+    def unitNamed(name: String): UnitCatalog.PlayerResource \ Fs.FileRead =
+        match List.find(u -> u#description == name, testPlayers()) {
+            case Some(u) => u
+            case None    => bug!("unit with description '${name}' not found")
+        }
+
+    /// ロード（全タイプ得意）は「得意武器:\n剣 斧 槍 弓 魔」。
+    @Test
+    def testProficiencyTextLordAllTypes(): Unit \ {Assert, Fs.FileRead} =
+        Assert.assertEq(
+            expected = "得意武器:\n剣 斧 槍 弓 魔",
+            CharacterSelectScene.proficiencyText(unitNamed("ロード")))
+
+    /// メイジ（魔法のみ）は「得意武器:\n魔」。
+    @Test
+    def testProficiencyTextMageMagicOnly(): Unit \ {Assert, Fs.FileRead} =
+        Assert.assertEq(
+            expected = "得意武器:\n魔",
+            CharacterSelectScene.proficiencyText(unitNamed("メイジ")))
 }
