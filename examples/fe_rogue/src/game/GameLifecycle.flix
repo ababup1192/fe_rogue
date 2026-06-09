@@ -61,6 +61,7 @@ mod GameLifecycle {
             |> BattlePanelScene.add   // 戦闘予報パネル (初期は非表示)
             |> LevelUpPanelScene.add  // レベルアップのステータス変化パネル (初期は非表示)
             |> UnitInfoPopupScene.add   // カーソル上のユニット情報パネル (初期は非表示)
+            |> FloorLabelScene.add(floor#label)  // 現在フロア "○○F" を左上に常時表示
             |> PhaseBannerScene.add     // ターン切替バナー (最前面。起動直後に味方ターンを表示)
             |> ItemPickupPopupScene.add // アイテム取得ポップアップ (初期は非表示)
             |> BgmScene.add             // BGM (AudioStreamPlayer, autoplay=true で起動時から再生)

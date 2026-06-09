@@ -542,10 +542,12 @@ def staffAimCancel(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
 mod Game {
 
     /// デザイン解像度。プレイヤーをズームインで見せるため、マップ全体（208×208）より
-    /// 小さい 128×128（= 8×8 グリッド分）で切り出す。Camera2D 追従でビューが動く。
+    /// 小さく切り出す。Camera2D 追従でビューが動く。横は左右余白も使うため 170 に拡張。
     /// この値はカメラのビューポートと投影行列の基準で、ウィンドウサイズに合わせて
-    /// 引き伸ばし表示される（Godot の Stretch Mode = canvas_items 相当）
-    pub def designWi(): Int32 = 128
+    /// 引き伸ばし表示される（Godot の Stretch Mode = canvas_items 相当）。
+    /// **project.json の "designWidth"/"designHeight" と必ず一致させること**（HUD の中央寄せ
+    /// 計算がこの値を使うため、ずれると PhaseBanner 等の帯が画面幅とずれる）。
+    pub def designWi(): Int32 = 170
     pub def designHi(): Int32 = 128
 
     /// 初期ウィンドウサイズ（OS ピクセル単位）。design とは独立して指定でき、

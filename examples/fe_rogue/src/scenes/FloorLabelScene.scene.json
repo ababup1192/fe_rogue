@@ -1,0 +1,20 @@
+{
+  "description": "現在の階層を画面左上に常時表示する HUD ラベル (例: 3F, 10F)\nテキストは構築時に FloorLabelScene.add が現在フロアのラベルへ差し替える",
+  "type": "CanvasLayer",
+  "name": "FloorLabel",
+  "layer": 4,
+  "pos": [0, 0],
+  "rotation": 0,
+  "scale": [1, 1],
+  "children": [
+    {
+      "type": "Label2D",
+      "name": "text",
+      "pos": [3, 1],
+      "fontSize": 4.8,
+      "text": "1F",
+      "modulate": {"r": 1, "g": 1, "b": 1},
+      "zIndex": 1
+    }
+  ]
+}

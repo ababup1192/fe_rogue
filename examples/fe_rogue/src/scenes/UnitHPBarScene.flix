@@ -36,6 +36,13 @@ mod UnitHPBarScene {
     /// 残量トラック（暗背景・枠兼用）。
     def trackColor(): Color = {r = 0.08f32, g = 0.08f32, b = 0.08f32}
 
+    /// 攻撃予報中に「これから減る分」を示す暗色オーバーレイの子ノード名。
+    def dmgPreviewName(): String = "DmgPreview"
+    /// 点滅の「暗」側 modulate（フィル色を暗く落とす乗算色）。減少分が暗く沈んで見える。
+    def dmgDarkModulate(): Color = {r = 0.3f32, g = 0.3f32, b = 0.3f32}
+    /// 点滅の「明」側 modulate（通常色 = フィルと同色に見え、満タンに戻って見える）。
+    def dmgNormalModulate(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+
     // ─── サイズ・位置 ─────────────────────────────────────────
     /// バー幅 = 1 マス × 0.9（最大 HP 非依存）。
     def barWidthPx(): Float64 = MapScene.tileSize() * 0.9
@@ -91,8 +98,16 @@ mod UnitHPBarScene {
             let fill = ColorRect.make({x = innerWidthPx(), y = innerHeightPx()}, fillColorFor(team))
                 |> Node2D.setPosition({x = borderPx(), y = borderPx()})
                 |> CanvasItem.setZIndex(barZIndex() + 1);
-            Scene.addChildAt(barPath, "Fill",
-                EngineNode.ColorRectWithState(fill, NodeTag.NoTag), withBg)
+            let withFill = Scene.addChildAt(barPath, "Fill",
+                EngineNode.ColorRectWithState(fill, NodeTag.NoTag), withBg);
+            // ダメージ予測オーバーレイ（初期は非表示・幅 0）。フィルと同色をフィル最前面
+            // （zIndex +2）に重ね、攻撃予報中だけ「減る分」の矩形へ被せて暗色で点滅させる。
+            let preview = ColorRect.make({x = 0.0, y = innerHeightPx()}, fillColorFor(team))
+                |> Node2D.setPosition({x = borderPx(), y = borderPx()})
+                |> CanvasItem.setZIndex(barZIndex() + 2)
+                |> CanvasItem.setVisible(false);
+            Scene.addChildAt(barPath, dmgPreviewName(),
+                EngineNode.ColorRectWithState(preview, NodeTag.NoTag), withFill)
         }
 
     /// HP 変化を反映する。Fill の幅を残量比でリサイズし、HPBarData.currentHp を更新する。
@@ -123,6 +138,43 @@ mod UnitHPBarScene {
                 EngineNode.Marker2DWithState(CanvasItem.setModulate(color, m), tag)
             case other => other
         }, scene)
+
+    /// 攻撃予報中、対象ユニットの HP バーで「これから減る分」(postHp..currentHp) を
+    /// 暗色オーバーレイで示す。`dark=true` のフレームは暗 modulate（= 減少分が暗く沈む）、
+    /// `false` のフレームは通常色（= フィルと同色で満タンに見える）。点滅は呼び出し側が
+    /// `dark` を毎フレーム切り替えて作る（BattlePanel の HP 点滅と同位相にする）。
+    /// ダメージが無い（postHp >= currentHp）か HPBar 未設置なら非表示にする。
+    pub def showDamageForecast(unitPath: NodePath, currentHp: Int32, postHp: Int32,
+                                dark: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let barPath = List.append(unitPath, childName() :: Nil);
+        match Scene.getState(barPath, scene) {
+            case Some(NodeTag.HPBar(d)) =>
+                if (postHp >= currentHp) hideDamageForecast(unitPath, scene)
+                else {
+                    let innerW = innerWidthPx();
+                    let xStart = borderPx() + fillWidth(postHp, d#maxHp, innerW);
+                    let w      = fillWidth(currentHp, d#maxHp, innerW)
+                                 - fillWidth(postHp, d#maxHp, innerW);
+                    let modColor = if (dark) dmgDarkModulate() else dmgNormalModulate();
+                    let previewPath = List.append(barPath, dmgPreviewName() :: Nil);
+                    Scene.mapEngineNode(previewPath, n ->
+                        EngineNode.mapColorRect(c ->
+                            c |> ColorRect.setSize({x = w, y = innerHeightPx()})
+                              |> Node2D.setPosition({x = xStart, y = borderPx()})
+                              |> CanvasItem.setModulate(modColor)
+                              |> CanvasItem.setVisible(true), n),
+                        scene)
+                }
+            case _ => scene
+        }
+
+    /// ダメージ予測オーバーレイを隠す（攻撃予報を抜けた / 対象が変わった / ダメージ無し）。
+    /// HPBar や DmgPreview が無いパスでも安全な no-op。
+    pub def hideDamageForecast(unitPath: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let previewPath =
+            List.append(List.append(unitPath, childName() :: Nil), dmgPreviewName() :: Nil);
+        Scene.mapEngineNode(previewPath, n ->
+            EngineNode.mapColorRect(c -> CanvasItem.setVisible(false, c), n), scene)
 
     /// 常時表示のため per-frame 処理は不要。Game.flix のディスパッチ互換のための no-op。
     pub def process(_dt: Duration.Duration,

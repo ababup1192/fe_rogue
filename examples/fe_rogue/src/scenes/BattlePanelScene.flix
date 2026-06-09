@@ -173,7 +173,9 @@ mod BattlePanelScene {
                        selWeapon: Option[UnitCatalog.WeaponResource], scene: Scene[NodeTag]):
             Scene[NodeTag] \ {SelectedPlayer.State,
                               PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
-        if (phase != TurnPhase.Phase.PlayerAttack) scene
+        if (phase != TurnPhase.Phase.PlayerAttack)
+            // 予報を抜けたら足元 HP バーの予測オーバーレイを消す（パネルは applyVisibility が隠す）。
+            clearAllHpForecasts(scene)
         else
             let cols = buildColumns(selWeapon);
             let showDamaged = blinkShowsDamaged(elapsed);
@@ -186,6 +188,30 @@ mod BattlePanelScene {
                 |> Label2D.mapAt(rightRestPath(),  Label2D.setText(cols#rightRest))
                 |> applyHpLabel(leftHpPath(),  cols#playerHpCur, cols#playerHpPost, cols#playerTakesDmg, showDamaged)
                 |> applyHpLabel(rightHpPath(), cols#enemyHpCur,  cols#enemyHpPost,  cols#enemyTakesDmg,  showDamaged)
+                // パネルの HP 点滅と同位相で、足元 HP バーの「減る分」を暗色点滅させる。
+                |> applyHpBarForecast(cols, showDamaged)
+
+    /// 攻撃予報中、攻撃側（味方）と対象（敵）の足元 HP バーに「減る分」の暗色点滅を反映する。
+    /// 毎フレーム全ユニットの予測を一旦消してから対象 2 体へ出し直すので、カーソルが別の敵へ
+    /// 移っても古い予測が残らない。`showDamaged` は BattlePanel の HP 点滅と同位相。
+    def applyHpBarForecast(cols: Forecast, showDamaged: Bool, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+        let cleared = clearAllHpForecasts(scene);
+        if (cols#attackerId < 0 or cols#defenderId < 0) cleared
+        else cleared
+            |> UnitHPBarScene.showDamageForecast(EnemyScene.enemyPath(cols#defenderId),
+                    cols#enemyHpCur, cols#enemyHpPost, showDamaged)
+            |> UnitHPBarScene.showDamageForecast(PlayerScene.playerPath(cols#attackerId),
+                    cols#playerHpCur, cols#playerHpPost, showDamaged)
+
+    /// 全ユニット（味方・敵）の足元 HP バー予測オーバーレイを消す。
+    /// 予報フェーズを抜けたフレームや、対象が変わったフレームの取りこぼし防止に使う。
+    def clearAllHpForecasts(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+        let hidePlayer = (acc, p) -> UnitHPBarScene.hideDamageForecast(PlayerScene.playerPath(p#id), acc);
+        let hideEnemy  = (acc, e) -> UnitHPBarScene.hideDamageForecast(EnemyScene.enemyPath(e#id), acc);
+        let withPlayers = List.foldLeft(hidePlayer, scene, PlayerScene.PartyQuery.getAll());
+        List.foldLeft(hideEnemy, withPlayers, EnemyScene.RosterQuery.getAll())
 
     /// HP ラベル 1 つを点滅で更新する。ダメージを受ける側でサイクル前半のときだけ
     /// 戦闘後HP(灰)、それ以外は現在HP(白)。数値は他の数値列と同じ幅で右寄せ。
@@ -260,7 +286,10 @@ mod BattlePanelScene {
     /// 予報セルの組（点滅 HP 用の数値を含む）。テキスト系は整形済み文字列、HP 系は数値。
     /// playerHpCur/Post は味方の現在/戦闘後HP、enemyHpCur/Post は敵の現在/戦闘後HP。
     /// takesDmg はそのユニットがダメージを受けるか（点滅させるかの判定）。
+    /// `attackerId` / `defenderId` は足元 HP バーへ予測を反映するための対象 id
+    /// （味方 = 攻撃側 / 敵 = 防御側）。予報が出せないときは -1（= 対象なし）。
     type alias Forecast = {
+        attackerId = Int32, defenderId = Int32,
         pWeapon = String, eWeapon = String,
         leftRest = String, centerHp = String, centerRest = String, rightRest = String,
         playerHpCur = Int32, playerHpPost = Int32, playerTakesDmg = Bool,
@@ -290,12 +319,13 @@ mod BattlePanelScene {
             eid    <- player#attackTargetId;
             enemy  <- EnemyScene.RosterQuery.get(eid);
             weapon <- selWeapon
-        ) yield formatColumns(player, weapon, enemy);
+        ) yield {attackerId = pid, defenderId = eid | formatColumns(player, weapon, enemy)};
         Option.getWithDefault(emptyForecast(), columns)
 
     /// 予報が出せないときの空 Forecast。
     def emptyForecast(): Forecast =
-        {pWeapon = "", eWeapon = "",
+        {attackerId = -1, defenderId = -1,
+         pWeapon = "", eWeapon = "",
          leftRest = "", centerHp = "", centerRest = "", rightRest = "",
          playerHpCur = 0, playerHpPost = 0, playerTakesDmg = false,
          enemyHpCur = 0, enemyHpPost = 0, enemyTakesDmg = false}
@@ -327,7 +357,9 @@ mod BattlePanelScene {
         // HP シミュレーション: 戦闘後HP と「減るか」フラグ。
         let enemyHpPost  = Int32.max(0, enemy#hp - playerForecast#damage);
         let playerHpPost = Int32.max(0, player#hp - enemyCols#counterDamage);
-        {pWeapon = pWeapon, eWeapon = eWeapon,
+        // attackerId/defenderId は buildColumns の yield で実 id に上書きする（ここは仮置き 0）。
+        {attackerId = 0, defenderId = 0,
+         pWeapon = pWeapon, eWeapon = eWeapon,
          leftRest = leftRest, centerHp = centerHp, centerRest = centerRest, rightRest = rightRest,
          playerHpCur = player#hp, playerHpPost = playerHpPost, playerTakesDmg = playerHpPost < player#hp,
          enemyHpCur = enemy#hp, enemyHpPost = enemyHpPost, enemyTakesDmg = enemyHpPost < enemy#hp}
