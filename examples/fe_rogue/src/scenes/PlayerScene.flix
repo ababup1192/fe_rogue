@@ -169,9 +169,15 @@ mod PlayerScene {
     /// プレイヤー Sprite の zIndex（Player は前面に立つ）。EnemyScene と同じ 10。
     def spriteZIndex(): Int32 = 10
 
-    /// 1 マス分のスライド時間（≈ 0.133 秒）
+    /// 1 マス分のスライド時間（≈ 0.133 秒）。ローグ自由移動・自動移動で使う通常スピード。
     def slideDuration(): Duration.Duration =
         Duration.frames(count = 16, fps = 120)
+
+    /// キャラ選択後の手動移動（PlayerMoving）の 1 マス時間（≈ 0.167 秒）。
+    /// 通常の約 80% スピード（時間 1.25 倍 = 16→20 フレーム）にして、落ち着いて移動先を
+    /// 狙えるよう少しゆっくりにする。自動移動やローグ自由移動には影響させない。
+    def selectedSlideDuration(): Duration.Duration =
+        Duration.frames(count = 20, fps = 120)
 
     /// `waited = true` 時の sprite modulate（薄い灰色）。
     /// CanvasItem.setModulate で sprite の RGB を乗算する。
@@ -412,14 +418,15 @@ mod PlayerScene {
     // ────────────────────────────────────────────────────────
 
     /// 目標グリッドへの移動を開始する。**壁判定は呼び出し側（Board）が済ませている前提**。
-    /// gridPos を即更新し、見た目は Tween に委ねる。
+    /// gridPos を即更新し、見た目は Tween に委ねる。`slide` は 1 マス分のスライド時間で、
+    /// 呼び出し側がスピードを決める（手動移動は少しゆっくり、ローグ自由移動は通常）。
     pub def moveTo(id: Int32, map: MapSnapshot, target: {x = Int32, y = Int32},
-                    marker: Marker2D, data: Data,
+                    marker: Marker2D, data: Data, slide: Duration.Duration,
                     scene: Scene[NodeTag]): (Marker2D, Data)
                     \ Tween.Scheduler =
         let targetWorld = map#gridToWorld(target);
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
-        Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slideDuration());
+        Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slide);
         // 進行方向を facing に反映し、AnimatedSprite2D なら walk_<dir> 再生 (副作用)。
         // sprite ノード書き換えは moveToById 側でやる (moveTo は state を返すだけ)。
         let nextFacing = directionOfStep(data#gridPos, target)
@@ -632,7 +639,8 @@ mod PlayerScene {
                         target <- Board.tryMoveWithRange(board, data#gridPos, dir, allowed)
                     ) yield {
                         let (newMarker, newData) =
-                            moveTo(data#id, board#map, target, marker, data, scene);
+                            moveTo(data#id, board#map, target, marker, data,
+                                   selectedSlideDuration(), scene);
                         // 子 Sprite が AnimatedSprite2D なら、進行方向の walk_<dir> アニメに
                         // 切り替える (Sprite2D の unit は playAnim が no-op)。
                         // direction が決まらない (= 同セル移動) ケースは scene 据え置き。
@@ -671,7 +679,8 @@ mod PlayerScene {
                         target <- Board.tryMove(board, data#gridPos, dir)
                     ) yield {
                         let (newMarker, newData) =
-                            moveTo(data#id, board#map, target, marker, data, scene);
+                            moveTo(data#id, board#map, target, marker, data,
+                                   slideDuration(), scene);
                         let dirOpt = directionOfStep(data#gridPos, target);
                         let animScene = match dirOpt {
                             case Some(d) => playAnim(data#id, walkAnimName(d), scene)

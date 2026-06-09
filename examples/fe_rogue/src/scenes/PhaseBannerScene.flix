@@ -288,20 +288,34 @@ mod PhaseBannerScene {
                     (EngineNode[NodeTag], Scene[NodeTag]) \ {TurnPhase.State, GameEngine.Audio} =
         match node {
             case EngineNode.CanvasLayerWithState(_, NodeTag.PhaseBanner(data)) =>
-                let isEnemy = perceivedIsEnemy(TurnPhase.State.get(), data#wasEnemy);
-                let result = step(data, isEnemy, delta);
-                // 演出（帯の滑り込み）が始まったフレームの冒頭でフェーズ切替音を鳴らす。
-                match result#triggered {
-                    case Some(_) => AudioStreamPlayer.play(phaseChangeSound())
-                    case None    => ()
-                };
-                let next = scene
-                    |> applyTrigger(result#triggered)
-                    |> setOffsetX(result#offsetX)
-                    |> setState(result#data);
-                match Scene.getEngineNode(path, next) {
-                    case Some(latest) => (latest, next)
-                    case None         => (node, next)
+                let phase = TurnPhase.State.get();
+                // レベルアップ表示 (LevelUpView) 中は帯を画面外へ退避して隠し、state(stage/elapsed/
+                // wasEnemy) は据え置く（step を呼ばず時間も進めない）。これで、進行中の帯はパネルの
+                // 間だけ一時停止し、ウィンドウが閉じてから続きを再生する。まだ出していない遷移は
+                // wasEnemy 据え置きで保留され、閉じてから出る。→「フェーズ帯がレベルアップ
+                // ウィンドウに被る」のを防ぐ。
+                if (phase == TurnPhase.Phase.LevelUpView) {
+                    let next = setOffsetX(offStartX(), scene);
+                    match Scene.getEngineNode(path, next) {
+                        case Some(latest) => (latest, next)
+                        case None         => (node, next)
+                    }
+                } else {
+                    let isEnemy = perceivedIsEnemy(phase, data#wasEnemy);
+                    let result = step(data, isEnemy, delta);
+                    // 演出（帯の滑り込み）が始まったフレームの冒頭でフェーズ切替音を鳴らす。
+                    match result#triggered {
+                        case Some(_) => AudioStreamPlayer.play(phaseChangeSound())
+                        case None    => ()
+                    };
+                    let next = scene
+                        |> applyTrigger(result#triggered)
+                        |> setOffsetX(result#offsetX)
+                        |> setState(result#data);
+                    match Scene.getEngineNode(path, next) {
+                        case Some(latest) => (latest, next)
+                        case None         => (node, next)
+                    }
                 }
             case _ => (node, scene)
         }

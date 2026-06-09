@@ -348,21 +348,25 @@ mod TurnInputBridge {
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                               PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
-        let context = buildContext(input, scene);
+        let context = buildContext(input, BoardQuery.board(), scene);
         apply(TurnRules.decide(context), scene)
 
     /// 現フレームの scene と各 effect から `TurnRules.Context` を組み立てる。
     /// `TurnRules.decide` は純粋関数だが、その入力 (Context) を作るには:
     ///   - `TurnPhase.State.get()` (現フェーズ)
     ///   - `SelectedPlayer.State.get()` (選択中味方 id)
-    ///   - `BoardQuery.board()` (盤面スナップショット)
     ///   - `CursorScene.getGridPos(scene)` (カーソル位置)
     ///   - `PlayerScene.getAll` / `EnemyScene.getAll` (waited / dying の id 集合)
     ///   - `Tween.Scheduler.isActive(...)` (選択中味方が Tween 中か)
-    /// と複数の窓口を引く必要がある。これを 1 関数に集約して、`handle` が
-    /// `decide` を呼ぶ前段だけ受け持つ。`handle` 専用の internal builder なので private。
-    def buildContext(input: TurnRules.Input, scene: Scene[NodeTag]):
-            TurnRules.Context \ {BoardQuery, Tween.Scheduler,
+    /// と複数の窓口を引く必要がある。これを 1 関数に集約する。
+    ///
+    /// 盤面 (`board`) は呼び出し側から渡す。`handle` は `BoardQuery.board()` を、
+    /// 操作ガイド HUD (`ControlHintScene`) は process 内で純粋な
+    /// `BoardSnapshot.fromScene(scene)` を渡す。どちらも同じ盤面スナップショットだが、
+    /// `process` 用 Aef (`FrameAef.ProcessT`) には `BoardQuery` が含まれないため、
+    /// ここで `BoardQuery` 効果を要求せず引数で受けることで両方から再利用できる。
+    pub def buildContext(input: TurnRules.Input, board: Board, scene: Scene[NodeTag]):
+            TurnRules.Context \ {Tween.Scheduler,
                                   TurnPhase.State, SelectedPlayer.State,
                                   PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
         let selected = SelectedPlayer.State.get()#id;
@@ -377,7 +381,7 @@ mod TurnInputBridge {
         {
             phase           = TurnPhase.State.get(),
             input           = input,
-            board           = BoardQuery.board(),
+            board           = board,
             cursor          = CursorScene.getGridPos(scene),
             selected        = selected,
             waitedPlayerIds = waitedIds,

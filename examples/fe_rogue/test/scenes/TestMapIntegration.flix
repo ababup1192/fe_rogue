@@ -279,7 +279,8 @@ mod TestMapIntegration {
         match Scene.getEngineNode(PlayerScene.playerPath(0), scene) {
             case Some(EngineNode.Marker2DWithState(marker, NodeTag.Player(data))) =>
                 let (newMarker, newData) =
-                    PlayerScene.moveTo(0, map, target, marker, data, scene);
+                    PlayerScene.moveTo(0, map, target, marker, data,
+                                       Duration.frames(count = 16, fps = 120), scene);
                 Scene.setEngineNode(PlayerScene.playerPath(0),
                     EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
                     scene)

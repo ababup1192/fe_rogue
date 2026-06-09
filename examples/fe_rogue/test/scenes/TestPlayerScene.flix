@@ -80,7 +80,8 @@ mod TestPlayerScene {
         match Scene.getEngineNode(PlayerScene.playerPath(id), scene) {
             case Some(EngineNode.Marker2DWithState(marker, NodeTag.Player(data))) =>
                 let (newMarker, newData) =
-                    PlayerScene.moveTo(id, map, target, marker, data, scene);
+                    PlayerScene.moveTo(id, map, target, marker, data,
+                                       Duration.frames(count = 16, fps = 120), scene);
                 Scene.setEngineNode(PlayerScene.playerPath(id),
                     EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
                     scene)
