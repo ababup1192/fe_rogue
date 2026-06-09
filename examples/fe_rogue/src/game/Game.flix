@@ -1,8 +1,27 @@
+/// ゲーム全体の進行状態。ノード単位の状態（NodeTag）や戦闘ターンのサブフェーズ（TurnPhase）
+/// とは別レイヤーで、「今どの画面か」を表す。
+///   CharacterSelect — 起動直後の出撃メンバー / リーダー選択画面。
+///   Playing         — ダンジョン本編。
+pub enum GamePhase with Eq {
+    case CharacterSelect
+    case Playing
+}
+
+/// GamePhase の読み書き effect。どの handler からでも `put` で遷移を要求でき、
+/// 実体（region の Ref）は `Game.start` で注入する。gameLoop が前フレームとの差分を見て
+/// `applyPhaseChange` で画面を組み替える。
+pub eff GamePhaseState {
+    def get(): GamePhase
+    def put(target: GamePhase): Unit
+}
+
 /// シーンノードに紐づくゲーム状態タグ。各 Scene 固有の Data 型を内部に持つ。
 pub enum NodeTag {
     case Player(PlayerScene.Data)
     case Enemy(EnemyScene.Data)
     case Map(MapScene.Data)
+    /// CharacterSelectScene のルート CanvasLayer（出撃メンバー選択画面の状態を持つ）
+    case CharacterSelect(CharacterSelectScene.Data)
     case MoveRange(MoveRangeScene.Data)
     case EnemyRange(EnemyRangeScene.Data)
     /// EnemyAttackRangeScene の赤マス overlay（敵の攻撃到達=脅威範囲。移動範囲の外側）
@@ -151,6 +170,8 @@ def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(ControlHintScene.process(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.ItemPickupPopup(_)) =>
             checked_ecast(ItemPickupPopupScene.process(delta, node, path, scene))
+        case EngineNode.CanvasLayerWithState(_, NodeTag.CharacterSelect(_)) =>
+            checked_ecast(CharacterSelectScene.process(delta, node, path, scene))
         case EngineNode.Camera2DWithState(_, _) =>
             checked_ecast(CameraScene.process(delta, node, path, scene))
         case EngineNode.RichTextLabelWithState(_, NodeTag.Log(_)) =>
@@ -210,7 +231,8 @@ instance InputEvent.InputHandler[NodeTag] {
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State,
                  PlayerScene.PartyQuery, EnemyScene.RosterQuery,
-                 CustomEffects.FloorAdvanceRequest}
+                 CustomEffects.FloorAdvanceRequest,
+                 GamePhaseState, PartySelection.State}
     // ActionMenu / ItemMenu / ItemActionMenu / AttackForecast フェーズでは
     // FERogue のキー慣習として Z（決定）/ X（ウィンドウを閉じる）でメニュー操作する。
     // ItemMenu と ItemActionMenu は同じ ItemMenuScene が扱い、`confirmCurrentSelection`
@@ -227,7 +249,23 @@ instance InputEvent.InputHandler[NodeTag] {
                                           SelectedPlayer.State,
                                           PlayerScene.PartyQuery,
                                           EnemyScene.RosterQuery,
-                                          CustomEffects.FloorAdvanceRequest} =
+                                          CustomEffects.FloorAdvanceRequest,
+                                          GamePhaseState, PartySelection.State} =
+        // 画面が選択中（CharacterSelect）なら、キー操作は選択画面に委譲する。
+        // 本編（Playing）のときだけ下の戦闘用ルーティングを走らせる。
+        match GamePhaseState.get() {
+            case GamePhase.CharacterSelect => CharacterSelectScene.onKeyPressed(key, scene)
+            case GamePhase.Playing         => onPlayingKeyPressed(key, scene)
+        }
+}
+
+/// 本編（Playing）のキー処理。元の onKeyPressed 本体をそのまま関数に切り出したもの。
+def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
+        Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, BoardQuery,
+                           Tween.Scheduler, AnimationPlayer.Scheduler,
+                           GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
+                           SelectedPlayer.State, PlayerScene.PartyQuery,
+                           EnemyScene.RosterQuery, CustomEffects.FloorAdvanceRequest} =
         // 物理キーを「決定 / キャンセル / それ以外 (None)」の意味論的入力に正規化する。
         // phase と独立した直交概念として扱いたいので、bool 2 個ではなく Option[Input] に畳む。
         let input: Option[TurnRules.Input] =
@@ -264,7 +302,6 @@ instance InputEvent.InputHandler[NodeTag] {
                 case None => dispatchNonMenuKey(phase, input, key, popupShown, scene)
             }
         }
-}
 
 /// MenuHandler instance — ItemList の Enter/Escape を各 MenuScene へ流す。
 /// 入力キー固定: Up/Down=カーソル移動 / Enter=確定 / Escape=キャンセル（engine 規約）。
@@ -568,6 +605,8 @@ mod Game {
         region rc {
             // BoardQuery handler が現在のシーンを読むための窓口（毎フレーム gameLoop が更新）
             let sceneRef = Ref.fresh(rc, Scene.empty());
+            // ゲーム全体の進行状態（画面）。起動直後はキャラクター選択画面から始める。
+            let phaseRef = Ref.fresh(rc, GamePhase.CharacterSelect);
             // ユニットカタログをロード + schema 整合性検査（Z 戦略の安全網）。
             // 各段階で失敗内容を panic に出して原因を即可視化する。
             // units.json の spriteFrames は格子インデックス形式で書かれているため、
@@ -606,10 +645,11 @@ mod Game {
                 consumables = consumableCatalog
             };
             run {
-                // 初回 build と spawn snapshot 保存をまとめて行う (GameOver リビルドと同じ経路)。
+                // 起動直後はキャラクター選択画面を組む。本編（ダンジョン）は出撃メンバー確定後の
+                // Playing 遷移時に applyPhaseChange(Playing) が buildCurrentFloor で組む。
                 // BGM は BgmScene の AudioStreamPlayer ノード (autoplay=true, loop=true,
                 // volume=0.05) で applyAudioAttach 経由で再生される (= ここでは触らない)
-                let scene = GameLifecycle.buildCurrentFloor(catalogs);
+                let scene = applyPhaseChange(GamePhase.CharacterSelect, catalogs, Scene.empty());
                 // SE は半分で鳴らす (Inspector 対応の Scene Node にしていない通常の SE 系)
                 AudioStreamPlayer.setVolume("damage", 0.2625f32);
                 AudioStreamPlayer.setVolume("down_enemy", 0.5f32);
@@ -625,8 +665,8 @@ mod Game {
                 AudioStreamPlayer.setVolume("cure", 0.4f32);
                 // 階段でフロア移動する音
                 AudioStreamPlayer.setVolume("change_floor", 0.5f32);
-                GameLogger.playerLog("T1 味方のターン");
-                gameLoop(sceneRef, scene)
+                // "T1 味方のターン" のログは Playing 突入時（applyPhaseChange）に出す。
+                gameLoop(catalogs, sceneRef, GamePhase.CharacterSelect, scene)
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
             // `GameOverRequest` の handler 本体は `GameLogger` / `EnemyTurn.Queue` /
             // `TurnPhase.State` / `SelectedPlayer.State` / `InitialSpawns.State` 等を
@@ -657,6 +697,11 @@ mod Game {
                   def findIdAt(coord, k)   = k(EnemyScene.findIdAt(coord, Ref.get(sceneRef)))
                   def anyAttacking(k)      = k(EnemyScene.anyAttacking(Ref.get(sceneRef)))
               }
+              with handler GamePhaseState {
+                  // 画面（CharacterSelect / Playing）の現在値を region の Ref で保持する。
+                  def get(k)         = k(Ref.get(phaseRef))
+                  def put(target, k) = { Ref.put(target, phaseRef); k() }
+              }
               with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽
               with AnimationPlayer.withScheduler(rc)  // 名前付きアニメ + イベントドレイン
               with Pacing.withState(rc)           // 演出の溜め (hold)
@@ -669,6 +714,25 @@ mod Game {
               with PartySelection.withState(rc)   // 出撃メンバー（開始時に1回抽選、フロア間で維持）
         }
 
+    /// GamePhase に応じて画面（Scene）を組み立てる。**配線役** に徹し、ここに画面固有の
+    /// ロジックは書かない（各 Scene の構築関数を呼ぶだけ）。
+    ///   CharacterSelect — 出撃メンバー選択画面を組む。
+    ///   Playing         — 現在フロアのダンジョンを組む（出撃メンバーは選択画面で確定済み）。
+    /// gameLoop が前フレームとの差分を見て、画面が変わったフレームだけ呼ぶ。
+    def applyPhaseChange(phase: GamePhase, catalogs: GameLifecycle.Catalogs,
+                          _scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, IO, Math.Random,
+                SelectedPlayer.State, InitialSpawns.State, FloorProgress.State,
+                PartySelection.State, GameLogger.GameLogger} =
+        match phase {
+            case GamePhase.CharacterSelect =>
+                CharacterSelectScene.add(UnitCatalog.pool("players", catalogs#players),
+                                          Scene.empty())
+            case GamePhase.Playing =>
+                GameLogger.playerLog("T1 味方のターン");
+                GameLifecycle.buildCurrentFloor(catalogs)
+        }
+
     /// メインループ。phase で分岐せず、**固定パイプライン** を毎フレーム回す:
     ///   handleInput → handleMenus → physicsProcess → Tween → Animation → process → epilogue
     /// 各 process / input redef 内で「自分が今動くべきか」を phase で判断する (Godot 流)。
@@ -676,9 +740,12 @@ mod Game {
     ///     `AutoMoveScene.process` は phase=PlayerAutoMove で動作。
     /// ゲームオーバー時のフルリビルドは `CustomEffects.GameOverRequest` handler が
     /// catalog をクロージャに閉じ込めて実行するため、ここで catalog を引き回す必要はない。
-    def gameLoop(sceneRef: Ref[Scene[NodeTag], r],
+    def gameLoop(catalogs: GameLifecycle.Catalogs,
+                  sceneRef: Ref[Scene[NodeTag], r],
+                  previousPhase: GamePhase,
                   scene: Scene[NodeTag]):
                  Unit \ {GameEngine.Game, GameEngine.Audio,
+                         Fs.FileRead, IO,
                          BoardQuery,
                          PlayerScene.PartyQuery, EnemyScene.RosterQuery,
                          Tween.Scheduler, AnimationPlayer.Scheduler,
@@ -687,21 +754,11 @@ mod Game {
                          SelectedPlayer.State,
                          CustomEffects.GameOverRequest,
                          CustomEffects.FloorAdvanceRequest,
-                         FloorProgress.State,
+                         FloorProgress.State, InitialSpawns.State,
+                         GamePhaseState, PartySelection.State,
                          Pacing.State, Math.Random, r} =
-        // Escape は通常はゲーム終了に使うが、各種メニュー / 戦闘予報パネル表示中は
-        // engine の MenuEvent / InputHandler がそれぞれ「キャンセル」として消費するので、
-        // ここでは終了させない。
-        let phase = TurnPhase.State.get();
-        let inSubMenu = phase == TurnPhase.Phase.ActionSelect
-                         or phase == TurnPhase.Phase.ItemSelect
-                         or phase == TurnPhase.Phase.ItemActionSelect
-                         or phase == TurnPhase.Phase.StaffAim
-                         or phase == TurnPhase.Phase.AttackForecast;
-        let escapeQuit =
-            GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)
-            and not inSubMenu;
-        if (GameEngine.Game.shouldClose() or escapeQuit) ()
+        // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
+        if (GameEngine.Game.shouldClose()) ()
         else {
             // BoardQuery handler が読む窓口を毎フレーム最新の scene に更新する。
             Ref.put(scene, sceneRef);
@@ -710,7 +767,7 @@ mod Game {
             // フレーム頭で進めるので「前フレーム末で hold した値を今フレームの判定で使う」
             // 形になり、Scene に紐づかないため gameLoop 内で 1 行のままにする。
             Pacing.State.tick(dt);
-            let next = scene
+            let updated = scene
                 |> GameEngine.handleInput
                 |> GameEngine.handleMenus
                 |> GameEngine.physicsProcess(delta = dt, paused = false,
@@ -718,7 +775,13 @@ mod Game {
                 |> Tween.tickAll(dt)
                 |> AnimationPlayer.tickAll(dt)
                 |> GameEngine.process(delta = dt, paused = false);
+            // 画面（GamePhase）が変わったフレームだけ、新しい画面を組み立て直す。
+            // 例: 選択画面でリーダー確定 → Playing に切り替わり、ここでダンジョンが組まれる。
+            let currentPhase = GamePhaseState.get();
+            let next = if (currentPhase != previousPhase)
+                           applyPhaseChange(currentPhase, catalogs, updated)
+                       else updated;
             GameEngine.render(next);
-            gameLoop(sceneRef, next)
+            gameLoop(catalogs, sceneRef, currentPhase, next)
         }
 }
