@@ -356,4 +356,14 @@ mod TestUnitFixtures {
             def peekFront(k)    = k(None)
             def isEmpty(k)      = k(true)
         }
+
+    /// Math.Random の決定的スタブ。`randomFloat64` を 0.5 固定で返す。
+    /// `rollPercent()`(= floor(randomFloat64 * 100)) が常に 50 になるので、
+    /// `Combat.isHit(hitRate, 50)` の命中/回避境界（hitRate > 50 で命中）を決定的にできる。
+    /// 成長判定（`rollGrowth` の各ロール）も全て 50 固定になる。
+    pub def withMockRandom(thunk: Unit -> a \ ef): a \ (ef - Math.Random) =
+        run { thunk() } with handler Math.Random {
+            def randomFloat64(k) = k(0.5)
+            def randomInt64(k)   = k(42i64)
+        }
 }

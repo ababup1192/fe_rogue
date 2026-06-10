@@ -56,7 +56,7 @@ mod EnemyTurnDriverScene {
                 // gating する: 演出ホールド中 / 味方 attack_lunge 中 / 敵反撃 attack_lunge 中。
                 // どれも抜けた瞬間に commitWaitedAndAdvance で味方を waited にして次フェーズへ。
                 if (Pacing.State.isHolding()
-                    or PlayerScene.anyAttacking(scene)
+                    or PlayerCombatScene.anyAttacking(scene)
                     or EnemyScene.anyAttacking(scene)) scene
                 else PlayerScene.commitWaitedAndAdvance(scene)
             case _                                 => scene
@@ -110,7 +110,7 @@ mod EnemyTurnDriverScene {
         else if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
         else if (EnemyScene.anyAttacking(scene)) scene
-        else if (PlayerScene.anyAttacking(scene)) scene
+        else if (PlayerCombatScene.anyAttacking(scene)) scene
         else match EnemyTurn.Queue.peekFront() {
             case None       =>
                 // キュー空 + 攻撃モーション無し → 敵ターン終了
@@ -185,7 +185,7 @@ mod EnemyTurnDriverScene {
 
     /// 敵ターンの後始末: ターン番号繰り上げ + 全プレイヤーを `waited = false` にリセット +
     /// カーソル復活 + 味方ターン宣言。
-    /// （反撃でのレベルアップは反撃ごとに `PlayerScene.onAttackLungeDone` がその場で表示するので、
+    /// （反撃でのレベルアップは反撃ごとに `PlayerCombatScene.onAttackLungeDone` がその場で表示するので、
     ///  ここに来る時点で保留は残っていない。）
     def endTurn(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,

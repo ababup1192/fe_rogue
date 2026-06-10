@@ -502,7 +502,7 @@ mod EnemyScene {
                 if (Option.isEmpty(d#weapon)) scene
                 else {
                     AnimationPlayer.play(enemyPath(id),
-                        PlayerScene.attackLungeAnimation(enemyPath(id),
+                        PlayerCombatScene.attackLungeAnimation(enemyPath(id),
                                                            d#gridPos, targetGrid));
                     mapEnemy(id, dd -> {attackTargetId = Some(targetPlayerId) | dd}, scene)
                 }
@@ -596,7 +596,7 @@ mod EnemyScene {
     ///   - `PlayerAttackHold` (= 味方攻撃に対する敵反撃の完了) → commit
     ///   - `EnemyTurn` (= 敵ターン中の主攻撃完了) → 味方反撃判定。
     ///       PlayerScene 側の counterpart として CounterAttackRules.decidePlayerCounter を
-    ///       回し、Counter(playerId) なら PlayerScene.startAttack で反撃モーション開始。
+    ///       回し、Counter(playerId) なら PlayerCombatScene.startAttack で反撃モーション開始。
     ///       それ以外は単純に attackTargetId クリアして EnemyTurnDriver に制御を戻す。
     /// フェーズが `PlayerAttackHold` なのは `BattlePanelScene.confirm` が攻撃モーション
     /// 開始時にここへ遷移させているため (味方 attack_lunge → 反撃 attack_lunge の間ずっと Hold)。
@@ -620,7 +620,7 @@ mod EnemyScene {
                         case CounterAttackRules.Outcome.Counter(playerId) =>
                             let cleared = clearAttackTarget(enemyId, scene);
                             GameLogger.playerLog("P${playerId} の反撃");
-                            PlayerScene.startAttack(playerId, enemyId,
+                            PlayerCombatScene.startAttack(playerId, enemyId,
                                                       e#gridPos, cleared)
                         case _ => clearAttackTarget(enemyId, scene)
                     }

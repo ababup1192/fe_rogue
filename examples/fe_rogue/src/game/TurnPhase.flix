@@ -410,7 +410,7 @@ mod TurnInputBridge {
             case TurnRules.Transition.OpenAttackForecast(attackerId, defenderId, _defX, _defY) =>
                 // 装備中武器 (weapons.head) を自動使用するので武器選択は介さず AttackForecast 直行。
                 // attackTargetId を立てて BattlePanelScene が予報を組み立てる。
-                PlayerScene.setAttackTargetId(attackerId, defenderId, scene)
+                PlayerCombatScene.setAttackTargetId(attackerId, defenderId, scene)
                     |> PhaseTransitions.enterAttackForecast
             case TurnRules.Transition.AttackSkip                        =>
                 PlayerScene.commitWaitedAndAdvance(scene)

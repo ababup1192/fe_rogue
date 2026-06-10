@@ -163,8 +163,8 @@ mod BattlePanelScene {
             case None             => scene
             case Some(attackerId) =>
                 match EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene) {
-                    case Some(enemyId) => PlayerScene.setAttackTargetId(attackerId, enemyId, scene)
-                    case None          => PlayerScene.clearAttackTargetId(attackerId, scene)
+                    case Some(enemyId) => PlayerCombatScene.setAttackTargetId(attackerId, enemyId, scene)
+                    case None          => PlayerCombatScene.clearAttackTargetId(attackerId, scene)
                 }
         }
 
@@ -248,7 +248,7 @@ mod BattlePanelScene {
     def numWidth(): Int32 = 5
 
     /// `AttackForecast` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
-    /// 攻撃モーションの完了 (`attack_lunge` finished) で `PlayerScene.onAttackLungeDone`
+    /// 攻撃モーションの完了 (`attack_lunge` finished) で `PlayerCombatScene.onAttackLungeDone`
     /// が反撃 / kill 演出 / commit に流す。
     ///
     /// 遷移先は `PlayerAttack` ではなく **`PlayerAttackHold`**。`PlayerAttack` は
@@ -276,7 +276,7 @@ mod BattlePanelScene {
             let equipped = PlayerScene.equipWeapon(attackerId, idx, scene);
             TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
             GameLogger.playerLog("味方${attackerId}の攻撃");
-            PlayerScene.startAttack(attackerId, defenderId, enemy#gridPos, equipped)
+            PlayerCombatScene.startAttack(attackerId, defenderId, enemy#gridPos, equipped)
         };
         Option.getWithDefault(scene, started)
 
@@ -291,7 +291,7 @@ mod BattlePanelScene {
         match SelectedPlayer.State.get()#id {
             case None             => scene
             case Some(attackerId) =>
-                PlayerScene.clearAttackTargetId(attackerId, scene)
+                PlayerCombatScene.clearAttackTargetId(attackerId, scene)
                     |> CursorScene.snapToPlayer
         }
 
