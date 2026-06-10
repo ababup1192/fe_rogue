@@ -285,7 +285,7 @@ mod ActionMenuScene {
     ///   - wait:   その場で waited 確定
     ///   - pickup: 床アイテムを拾って waited 確定 (拾うで 1 ターン使う)
     ///   - gather: しゅうごう。PlayerAutoMove へ移ってロードへ合流開始 (`applyGather`)
-    /// 「次セレクトか敵ターンか」の判定は Scene 跨ぎなので `PlayerScene.commitWaitedAndAdvance`
+    /// 「次セレクトか敵ターンか」の判定は Scene 跨ぎなので `TurnFlow.commitWaitedAndAdvance`
     /// を呼ぶ (Scene → GameManager 方向は許容)。
     pub def onActionConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                               Scene[NodeTag]
@@ -300,7 +300,7 @@ mod ActionMenuScene {
                 if (m == attackMeta())        PlayerScene.enterAttackPhase(scene)
                 else if (m == exchangeMeta()) PhaseTransitions.enterTradeTargetSelect(scene)
                 else if (m == itemMeta())     openItemMenu(scene)
-                else if (m == waitMeta())     PlayerScene.commitWaitedAndAdvance(scene)
+                else if (m == waitMeta())     TurnFlow.commitWaitedAndAdvance(scene)
                 else if (m == pickupMeta())   applyPickup(scene)
                 else if (m == gatherMeta())   applyGather(scene)
                 else if (m == turnEndMeta())  applyTurnEnd(scene)
@@ -329,7 +329,7 @@ mod ActionMenuScene {
                 if (PlayerScene.allLivingUsedStairs(exited))
                     CustomEffects.FloorAdvanceRequest.advance(exited)
                 else
-                    PlayerScene.commitWaitedAndAdvance(exited)
+                    TurnFlow.commitWaitedAndAdvance(exited)
             case None =>
                 // しゅうごう状態でロードが階段に乗っている → パーティごと次フロアへ。
                 CustomEffects.FloorAdvanceRequest.advance(scene)

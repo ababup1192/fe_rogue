@@ -149,7 +149,9 @@ mod EnemyScene {
         let layer       = MapScene.getMapLayer(scene);
         let placements  = MapScene.getPlacements(scene);
         let roomCount   = MapScene.getRoomCount(scene);
-        // パーティ全員のセルを taken に入れて避ける（敵が味方の上にスポーンしないように）
+        // パーティ全員のセルを taken に入れて避ける（敵が味方の上にスポーンしないように）。
+        // 意図的な PlayerScene 直接 read: build 中の scene は PartyQuery handler の
+        // sceneRef にまだ反映されていないため、effect 経由では構築中の味方が見えない。
         let playerCells = PlayerScene.getAll(scene) |> List.map(d -> d#gridPos);
         // anchor (idx = 0) を除いた部屋だけを対象にする
         let rooms = List.filter(p ->
@@ -483,219 +485,20 @@ mod EnemyScene {
         List.foldLeft((sc, sp) -> addOneEnemy(sp, sc), cleared, spawns)
 
     // ────────────────────────────────────────────────────────
-    // (G) 体当たり攻撃モーション — AnimationPlayer ベース
+    // (G) 攻撃モーション関連のクエリとシグナル受信
+    //     攻撃の解決本体（startAttack / 命中適用 / 反撃判定）は CombatScene に集約。
     // ────────────────────────────────────────────────────────
-
-    /// 敵 id の体当たり攻撃モーションを開始する。
-    /// `attack_lunge` アニメーションを再生し `attackTargetId = Some(targetPlayerId)` を立てる。
-    /// 中点で `attack:hit` メソッド、終端で finished が GameManager に届き、
-    /// それぞれダメージ適用・後始末（味方死亡なら handlePlayerDeath）が走る。
-    /// 武器が壊れている（`weapon = None`）敵はそもそも EnemyAI が Attack を返さない設計で、
-    /// ここに到達したら防御的に no-op する。
-    pub def startAttack(id: Int32, targetPlayerId: Int32,
-                         targetGrid: {x = Int32, y = Int32},
-                         scene: Scene[NodeTag]): Scene[NodeTag]
-            \ AnimationPlayer.Scheduler =
-        match get(id, scene) {
-            case None    => scene
-            case Some(d) =>
-                if (Option.isEmpty(d#weapon)) scene
-                else {
-                    AnimationPlayer.play(enemyPath(id),
-                        PlayerScene.attackLungeAnimation(enemyPath(id),
-                                                           d#gridPos, targetGrid));
-                    mapEnemy(id, dd -> {attackTargetId = Some(targetPlayerId) | dd}, scene)
-                }
-        }
 
     /// scene 内に攻撃モーション中の敵が居れば true。stepEnemyTurn が次ステップに進んで
     /// 良いかの判定に使う（攻撃モーション中はキューを進めない）。
     pub def anyAttacking(scene: Scene[NodeTag]): Bool =
         List.exists(d -> Option.nonEmpty(d#attackTargetId), getAll(scene))
 
-    /// `attack:hit` メソッド発火時に GameManager から呼ばれるダメージ適用。
-    /// 戻り値は (新 scene, HP=0 になったプレイヤー id のリスト)。
-    /// killedIds が空でないとき呼び出し側は handlePlayerDeath を発火する。
-    pub def applyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
-            (Scene[NodeTag], List[Int32]) \
-            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random} =
-        match get(enemyId, scene) {
-            case None    => (scene, Nil)
-            case Some(d) =>
-                match d#attackTargetId {
-                    case None             => (scene, Nil)
-                    case Some(targetPlayerId) =>
-                        applyDamageToPlayer(enemyId, d, targetPlayerId, scene)
-                }
-        }
-
-    /// `attack_lunge` finished 時に呼ばれる。`attackTargetId` をクリアする。
-    pub def clearAttackTarget(enemyId: Int32,
-                               scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapEnemy(enemyId, d -> {attackTargetId = None | d}, scene)
-
-    /// AnimationPlayer の `attack:hit` method イベント受信時の処理 (敵側)。
-    /// 既存 `applyAttackHit` の killed リストを `PlayerScene.removeDeadAndCheckGameOver`
-    /// に流し、全滅時は `CustomEffects.GameOverRequest` でフルリビルドさせる。
-    pub def onAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Audio, GameEngine.Game,
-                              GameLogger.GameLogger,
-                              CustomEffects.GameOverRequest,
-                              SelectedPlayer.State, Math.Random} =
-        let (next, killed) = applyAttackHit(enemyId, scene);
-        PlayerScene.removeDeadAndCheckGameOver(killed, next)
-
     /// AnimationPlayer の `death_blink` finished イベント受信時の処理。
     /// 死亡演出が終わったので scene から該当敵ノードを削除する (SE 込み)。
     pub def onDeathBlinkDone(enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameEngine.Audio =
         completeDeath(enemyId, scene)
-
-    /// 各 Enemy ノードの毎フレーム process。AnimationPlayer から自分宛 (`enemyPath(id)`)
-    /// の signal だけ pull し、attack:hit (中点) / death_blink (完了) / attack_lunge (反撃完了)
-    /// に反応する。Game.flix の `Node[NodeTag] instance` の process redef から全 Enemy に
-    /// dispatch される (per-node)。owner 完全一致なので他 Enemy の signal は取りこぼさない。
-    /// 「Sceneのライフサイクルで処理が完結」する Godot 流の per-node signal モデル。
-    pub def process(_delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game,
-                        GameLogger.GameLogger,
-                        CustomEffects.GameOverRequest,
-                        Tween.Scheduler,
-                        EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State, Math.Random} =
-        match idFromPath(path) {
-            case None          => (node, scene)
-            case Some(enemyId) =>
-                let bundle = AnimationPlayer.Scheduler.drainSignals(enemyPath(enemyId));
-                let afterMethods = List.foldLeft(
-                    (sc, ev) -> match AnimEvent.parseTag(ev#name) {
-                        case Some(AnimEvent.Tag.AttackHit) => onAttackHit(enemyId, sc)
-                        case _                              => sc
-                    },
-                    scene, bundle#methods);
-                let afterFinished = List.foldLeft(
-                    (sc, ev) -> match AnimEvent.parseTag(ev#name) {
-                        case Some(AnimEvent.Tag.DeathBlink)  => onDeathBlinkDone(enemyId, sc)
-                        case Some(AnimEvent.Tag.AttackLunge) => onCounterLungeDone(enemyId, sc)
-                        case _                                => sc
-                    },
-                    afterMethods, bundle#finished);
-                // signal handler が scene 経由で self (Enemy ノード) を更新する可能性が
-                // あるため、最新ノードを取り直して返す (古い node で打ち消されないように)
-                match Scene.getEngineNode(path, afterFinished) {
-                    case Some(latest) => (latest, afterFinished)
-                    case None         => (node, afterFinished)
-                }
-        }
-
-    /// AnimationPlayer の `attack_lunge` finished イベント受信時の処理 (敵側)。
-    /// 2 通りある:
-    ///   - `PlayerAttackHold` (= 味方攻撃に対する敵反撃の完了) → commit
-    ///   - `EnemyTurn` (= 敵ターン中の主攻撃完了) → 味方反撃判定。
-    ///       PlayerScene 側の counterpart として CounterAttackRules.decidePlayerCounter を
-    ///       回し、Counter(playerId) なら PlayerScene.startAttack で反撃モーション開始。
-    ///       それ以外は単純に attackTargetId クリアして EnemyTurnDriver に制御を戻す。
-    /// フェーズが `PlayerAttackHold` なのは `BattlePanelScene.confirm` が攻撃モーション
-    /// 開始時にここへ遷移させているため (味方 attack_lunge → 反撃 attack_lunge の間ずっと Hold)。
-    pub def onCounterLungeDone(enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State} =
-        if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttackHold) {
-            let cleared = clearAttackTarget(enemyId, scene);
-            PlayerScene.commitWaitedAndAdvance(cleared)
-        } else {
-            // EnemyTurn 中の敵主攻撃完了。clear する前に attackTargetId を読み、
-            // 味方反撃の対象を決める
-            match get(enemyId, scene) {
-                case None    => clearAttackTarget(enemyId, scene)
-                case Some(e) =>
-                    let target = e#attackTargetId
-                        |> Option.flatMap(pid -> PlayerScene.get(pid, scene));
-                    match CounterAttackRules.decidePlayerCounter(e, target) {
-                        case CounterAttackRules.Outcome.Counter(playerId) =>
-                            let cleared = clearAttackTarget(enemyId, scene);
-                            GameLogger.playerLog("P${playerId} の反撃");
-                            PlayerScene.startAttack(playerId, enemyId,
-                                                      e#gridPos, cleared)
-                        case _ => clearAttackTarget(enemyId, scene)
-                    }
-            }
-        }
-
-    /// 命中ロール用の 0..99 の一様乱数。`Combat.isHit(hitRate, roll)` に渡す。
-    def rollPercent(): Int32 \ Math.Random =
-        Float64.truncateToInt32(Float64.floor(Math.Random.randomFloat64() * 100.0))
-
-    /// プレイヤー targetId にダメージを与える。攻撃力は `力(enemy#attack) + 武器の攻撃力` で、
-    /// `Combat.attackDamage(総合攻撃力, 防御者#defense)` から素ダメージを得て
-    /// `Combat.damage` で HP 減算 + 死亡判定。攻撃成立後は武器の `durability` を 1 減らし、
-    /// 0 になったら `weapon = None` に切り替え、ログに「敵N の {武器名} がこわれた」を出す。
-    /// ログはスペック準拠で「敵{N} → P{M} に Xダメージ」、撃破時「敵{N} → P{M} を撃破」。
-    /// HP=0 なら killedIds に追加して返す（呼び出し側 GameManager が handlePlayerDeath を発火する）。
-    /// 武器なし（None）でここに到達した場合は防御的に何もしない。
-    def applyDamageToPlayer(enemyId: Int32, enemy: Data, targetId: Int32,
-                             scene: Scene[NodeTag]):
-            (Scene[NodeTag], List[Int32]) \
-            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random} =
-        match (enemy#weapon, PlayerScene.get(targetId, scene)) {
-            case (None, _)        => (scene, Nil)
-            case (_, None)        => (scene, Nil)
-            case (Some(weapon), Some(player)) =>
-                // 武器相性: 攻撃側（敵）の武器 vs 味方の装備武器（先頭）。未装備なら中立。
-                // 命中率算出に使う（素ダメージ計算は estimateDamage に集約済み）。
-                let rel = WeaponTriangle.relationOpt(weapon#weaponType,
-                                                     List.head(player#weapons) |> Option.map(w -> w#weaponType));
-                let hitChance = Combat.hitRate(enemy#resource#skill, enemy#resource#luck,
-                                               weapon#hit,
-                                               player#resource#speed, player#resource#luck, rel);
-                let roll = rollPercent();
-                let popupPos = MapScene.cellCenter(player#gridPos);
-                let popupColor = DamagePopupScene.damageToPlayerColor();
-                let (damaged, killed) =
-                    if (not Combat.isHit(hitChance, roll)) {
-                        // 回避: miss SE を鳴らして "miss" を浮かす。HP は変えない。
-                        GameLogger.enemyLog("敵${enemyId} → P${targetId} ミス");
-                        AudioStreamPlayer.play("miss");
-                        (DamagePopupScene.emitText(popupPos, "miss", popupColor, scene), Nil)
-                    } else {
-                        // 命中: SE を鳴らしダメージ適用 + 数値ポップアップ。
-                        // 素ダメージ計算は `estimateDamage` に集約（AI の仕留め判定と同一式）。
-                        AudioStreamPlayer.play("damage");
-                        let dmg    = estimateDamage(enemy, player);
-                        let result = Combat.damage(hp = player#hp, amount = dmg);
-                        if (result#isDead) {
-                            GameLogger.enemyLog("敵${enemyId} → P${targetId} を撃破")
-                        } else {
-                            GameLogger.enemyLog("敵${enemyId} → P${targetId} に ${dmg}ダメージ")
-                        };
-                        let withPopup = DamagePopupScene.emit(popupPos, dmg, popupColor, scene);
-                        let dmgScene = withPopup
-                            |> PlayerScene.mapPlayer(targetId,
-                                playerData -> {hp = result#newHp | playerData})
-                            |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), result#newHp);
-                        if (result#isDead) (dmgScene, targetId :: Nil)
-                        else (dmgScene, Nil)
-                    };
-                // 命中/回避どちらでも攻撃したので武器の耐久度は 1 減る
-                let consumed = Weapon.consume(weapon);
-                if (Option.isEmpty(consumed))
-                    GameLogger.enemyLog("敵${enemyId} の ${weapon#name} がこわれた")
-                else ();
-                let withWeaponUpdate = mapEnemy(enemyId,
-                    d -> {weapon = consumed | d}, damaged);
-                (withWeaponUpdate, killed)
-        }
-
-    /// この敵がプレイヤーに与える素ダメージ（命中前提・RNG なし。武器相性・物理/魔法を含む）。
-    /// 実ダメージ適用（`applyDamageToPlayer` の命中時）と AI の「今ターン仕留められるか」判定で
-    /// 同じ式を共用する。ダメージ式は `Combat.estimate`（faction 非依存）に集約済み。
-    pub def estimateDamage(enemy: Data, player: PlayerScene.Data): Int32 =
-        Combat.estimate(combatView(enemy), PlayerScene.combatView(player))#damage
 
     /// この敵の戦闘ビュー（faction 非依存）。`Combat.estimate` / `Encounter` の join で使う。
     /// 敵には得意/苦手の概念が無いので、持っている武器は常に得意（proficient = true、100%）。

@@ -5,8 +5,8 @@
 /// を導く forecast を集約する。
 ///
 /// 体当たり攻撃モーションの再生は AnimationPlayer + `attack_lunge` Animation
-/// （PlayerScene.attackLungeAnimation）が担当し、HP 適用は `attack:hit` メソッド
-/// 発火時に GameManager.dispatchAnimationEvents が呼ぶ Player/EnemyScene.applyAttackHit
+/// （CombatScene.attackLungeAnimation）が担当し、HP 適用は `attack:hit` メソッド
+/// 発火時に CombatScene.process が呼ぶ CombatScene.onAttackHit
 /// 経由でここの関数を使う。
 ///
 /// Scene[NodeTag] / effect には依存しない。テストは数値だけで書ける。

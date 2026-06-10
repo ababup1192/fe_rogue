@@ -35,7 +35,7 @@
 ///
 /// ## 呼び出し元の典型
 ///   - `TurnInputBridge.apply` (TurnRules.decide の結果) → enter* を呼ぶ
-///   - データ Scene の遷移関数 (`PlayerScene.commitWaitedAndAdvance` 等) → enter* を呼ぶ
+///   - データ Scene の遷移関数 (`TurnFlow.commitWaitedAndAdvance` 等) → enter* を呼ぶ
 ///   - 駆動 Scene (`EnemyTurnDriverScene.beginTurn`) → enter* を呼ぶ
 ///
 /// データ Scene 側 (PlayerScene 等) は「自分のデータ更新」のみ責任を持ち、overlay/cursor は

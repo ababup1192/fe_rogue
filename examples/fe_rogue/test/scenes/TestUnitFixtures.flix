@@ -314,6 +314,24 @@ mod TestUnitFixtures {
             def drainSignals(_, k) = k(({methods = Nil, finished = Nil}: AnimationPlayer.EventBundle))
         }
 
+    /// AnimationPlayer.Scheduler のスタブで **`drainSignals` を owner 別に応答**させる。
+    /// `ownerPath` 宛の drain にだけ `bundle` を返し、他 owner 宛には空 bundle を返す
+    /// （実物 Scheduler の「自分宛 signal だけ pull できる」挙動の再現）。
+    /// CombatScene.process の「他ユニットのシグナルを食わない」検証に使う。
+    pub def withSignalsFor(ownerPath: NodePath, bundle: AnimationPlayer.EventBundle,
+                            thunk: Unit -> a \ ef): a \ (ef - AnimationPlayer.Scheduler) =
+        run { thunk() } with handler AnimationPlayer.Scheduler {
+            def schedule(_, k) = k()
+            def isPlaying(_, k) = k(false)
+            def stop(_, k) = k()
+            def cancelAll(k) = k()
+            def activeOwners(k) = k(Nil)
+            def consumeTick(_, k) = k(({propertyUpdates = Nil}: AnimationPlayer.Tick))
+            def drainSignals(owner, k) =
+                if (owner == ownerPath) k(bundle)
+                else k(({methods = Nil, finished = Nil}: AnimationPlayer.EventBundle))
+        }
+
     /// BoardQuery のスタブ。指定 `board` を毎回返す。
     /// テストで盤面を 1 つ用意して、その盤面の上での挙動を検証する用途。
     pub def withMockBoard(board: Board, thunk: Unit -> a \ ef): a \ (ef - BoardQuery) =
@@ -355,5 +373,15 @@ mod TestUnitFixtures {
             def replace(_, k)   = k()
             def peekFront(k)    = k(None)
             def isEmpty(k)      = k(true)
+        }
+
+    /// Math.Random の決定的スタブ。`randomFloat64` を 0.5 固定で返す。
+    /// `rollPercent()`(= floor(randomFloat64 * 100)) が常に 50 になるので、
+    /// `Combat.isHit(hitRate, 50)` の命中/回避境界（hitRate > 50 で命中）を決定的にできる。
+    /// 成長判定（`rollGrowth` の各ロール）も全て 50 固定になる。
+    pub def withMockRandom(thunk: Unit -> a \ ef): a \ (ef - Math.Random) =
+        run { thunk() } with handler Math.Random {
+            def randomFloat64(k) = k(0.5)
+            def randomInt64(k)   = k(42i64)
         }
 }
