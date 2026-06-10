@@ -47,7 +47,7 @@ mod GameLifecycle {
             |> DamagePopupScene.add     // World 配下に空の Marker2D 親を 1 つ生やす
             |> PlayerScene.add(catalogs#players, catalogs#staves, catalogs#consumables)
             |> EnemyScene.add(catalogs#enemies, catalogs#weapons, floor)
-            |> ItemScene.add(catalogs#players, catalogs#staves, floor)   // 部屋の床に武器/杖をランダムドロップ
+            |> ItemScene.add(catalogs#players, catalogs#staves, catalogs#consumables, floor)   // 部屋の床に武器/杖/消耗品をランダムドロップ
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
             |> CursorScene.add
             |> ArrowCursorScene.add     // 杖発射方向の矢印カーソル (初期は非表示)

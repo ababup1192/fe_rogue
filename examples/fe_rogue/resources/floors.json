@@ -7,19 +7,31 @@
       "items": [
         {
           "id": "bronze_sword",
-          "percent": 30
+          "percent": 12
         },
         {
           "id": "bronze_bow",
-          "percent": 30
+          "percent": 12
+        },
+        {
+          "id": "iron_sword",
+          "percent": 18
+        },
+        {
+          "id": "iron_bow",
+          "percent": 18
         },
         {
           "id": "tome_apprentice",
-          "percent": 20
+          "percent": 12
         },
         {
           "id": "live_staff",
-          "percent": 20
+          "percent": 12
+        },
+        {
+          "id": "vulnerary",
+          "percent": 15
         },
         {
           "id": "mithril_sword",
@@ -39,8 +51,8 @@
         }
       ],
       "itemsPerRoom": {
-        "max": 2,
-        "min": 1
+        "max": 3,
+        "min": 2
       },
       "label": "1F",
       "monsters": [
@@ -73,22 +85,34 @@
       "items": [
         {
           "id": "bronze_lance",
-          "percent": 25
+          "percent": 10
         },
         {
           "id": "bronze_axe",
-          "percent": 25
+          "percent": 10
         },
         {
-          "id": "bronze_bow",
-          "percent": 20
+          "id": "iron_lance",
+          "percent": 18
+        },
+        {
+          "id": "iron_axe",
+          "percent": 18
+        },
+        {
+          "id": "iron_bow",
+          "percent": 12
         },
         {
           "id": "tome_apprentice",
-          "percent": 15
+          "percent": 10
         },
         {
           "id": "live_staff",
+          "percent": 12
+        },
+        {
+          "id": "vulnerary",
           "percent": 15
         },
         {
@@ -109,8 +133,8 @@
         }
       ],
       "itemsPerRoom": {
-        "max": 2,
-        "min": 1
+        "max": 3,
+        "min": 2
       },
       "label": "2F",
       "monsters": [
@@ -143,22 +167,30 @@
       "items": [
         {
           "id": "iron_sword",
-          "percent": 25
-        },
-        {
-          "id": "iron_bow",
-          "percent": 25
-        },
-        {
-          "id": "bronze_axe",
           "percent": 20
         },
         {
+          "id": "iron_bow",
+          "percent": 20
+        },
+        {
+          "id": "iron_axe",
+          "percent": 12
+        },
+        {
+          "id": "steel_sword",
+          "percent": 12
+        },
+        {
           "id": "tome_apprentice",
-          "percent": 15
+          "percent": 12
         },
         {
           "id": "swap_staff",
+          "percent": 12
+        },
+        {
+          "id": "vulnerary",
           "percent": 15
         },
         {
@@ -179,8 +211,8 @@
         }
       ],
       "itemsPerRoom": {
-        "max": 2,
-        "min": 1
+        "max": 3,
+        "min": 2
       },
       "label": "3F",
       "monsters": [
@@ -201,7 +233,7 @@
           "percent": 15
         },
         {
-          "id": "fighter_t2",
+          "id": "fighter_t1",
           "percent": 15
         }
       ],
@@ -217,15 +249,19 @@
       "items": [
         {
           "id": "iron_lance",
-          "percent": 25
+          "percent": 20
         },
         {
           "id": "iron_axe",
-          "percent": 25
+          "percent": 18
         },
         {
           "id": "iron_bow",
-          "percent": 20
+          "percent": 12
+        },
+        {
+          "id": "steel_sword",
+          "percent": 12
         },
         {
           "id": "tome_grimoire",
@@ -233,6 +269,10 @@
         },
         {
           "id": "live_staff",
+          "percent": 12
+        },
+        {
+          "id": "vulnerary",
           "percent": 15
         },
         {
@@ -253,26 +293,26 @@
         }
       ],
       "itemsPerRoom": {
-        "max": 2,
-        "min": 1
+        "max": 4,
+        "min": 2
       },
       "label": "4F",
       "monsters": [
         {
           "id": "fighter_t2",
+          "percent": 20
+        },
+        {
+          "id": "ranger_t1",
           "percent": 25
         },
         {
-          "id": "ranger_t2",
-          "percent": 25
-        },
-        {
-          "id": "rogue_t2",
+          "id": "rogue_t1",
           "percent": 20
         },
         {
           "id": "barbarian_t1",
-          "percent": 15
+          "percent": 20
         },
         {
           "id": "paladin_t1",
@@ -291,22 +331,30 @@
       "items": [
         {
           "id": "iron_sword",
-          "percent": 25
-        },
-        {
-          "id": "iron_bow",
-          "percent": 20
-        },
-        {
-          "id": "tome_grimoire",
-          "percent": 25
-        },
-        {
-          "id": "live_staff",
           "percent": 15
         },
         {
+          "id": "iron_bow",
+          "percent": 15
+        },
+        {
+          "id": "steel_lance",
+          "percent": 15
+        },
+        {
+          "id": "tome_grimoire",
+          "percent": 20
+        },
+        {
+          "id": "live_staff",
+          "percent": 12
+        },
+        {
           "id": "blowback_staff",
+          "percent": 12
+        },
+        {
+          "id": "vulnerary",
           "percent": 15
         },
         {
@@ -327,8 +375,8 @@
         }
       ],
       "itemsPerRoom": {
-        "max": 2,
-        "min": 1
+        "max": 4,
+        "min": 2
       },
       "label": "5F",
       "monsters": [
@@ -368,19 +416,23 @@
           "percent": 20
         },
         {
-          "id": "iron_lance",
-          "percent": 20
+          "id": "steel_lance",
+          "percent": 15
         },
         {
           "id": "iron_axe",
-          "percent": 20
+          "percent": 15
         },
         {
           "id": "tome_grimoire",
-          "percent": 25
+          "percent": 20
         },
         {
           "id": "swap_staff",
+          "percent": 12
+        },
+        {
+          "id": "vulnerary",
           "percent": 15
         },
         {
@@ -401,8 +453,8 @@
         }
       ],
       "itemsPerRoom": {
-        "max": 3,
-        "min": 1
+        "max": 4,
+        "min": 2
       },
       "label": "6F",
       "monsters": [
@@ -439,15 +491,15 @@
       "items": [
         {
           "id": "steel_lance",
-          "percent": 25
+          "percent": 20
         },
         {
           "id": "steel_bow",
-          "percent": 25
+          "percent": 18
         },
         {
-          "id": "iron_sword",
-          "percent": 20
+          "id": "steel_axe",
+          "percent": 15
         },
         {
           "id": "tome_sage",
@@ -455,7 +507,11 @@
         },
         {
           "id": "live_staff",
-          "percent": 10
+          "percent": 12
+        },
+        {
+          "id": "vulnerary",
+          "percent": 15
         },
         {
           "id": "mithril_sword",
@@ -475,8 +531,8 @@
         }
       ],
       "itemsPerRoom": {
-        "max": 3,
-        "min": 1
+        "max": 4,
+        "min": 3
       },
       "label": "7F",
       "monsters": [
@@ -489,11 +545,11 @@
           "percent": 20
         },
         {
-          "id": "fighter_t3",
+          "id": "fighter_t2",
           "percent": 20
         },
         {
-          "id": "ranger_t3",
+          "id": "ranger_t2",
           "percent": 20
         },
         {
@@ -513,23 +569,31 @@
       "items": [
         {
           "id": "steel_axe",
-          "percent": 25
+          "percent": 20
         },
         {
           "id": "steel_sword",
-          "percent": 25
+          "percent": 18
         },
         {
           "id": "steel_bow",
-          "percent": 20
+          "percent": 15
+        },
+        {
+          "id": "silver_sword",
+          "percent": 12
         },
         {
           "id": "tome_sage",
-          "percent": 20
+          "percent": 18
         },
         {
           "id": "blowback_staff",
-          "percent": 10
+          "percent": 12
+        },
+        {
+          "id": "vulnerary",
+          "percent": 15
         },
         {
           "id": "mithril_sword",
@@ -549,8 +613,8 @@
         }
       ],
       "itemsPerRoom": {
-        "max": 3,
-        "min": 1
+        "max": 4,
+        "min": 3
       },
       "label": "8F",
       "monsters": [
@@ -587,22 +651,30 @@
       "items": [
         {
           "id": "silver_sword",
-          "percent": 25
+          "percent": 20
         },
         {
           "id": "silver_bow",
-          "percent": 20
+          "percent": 15
         },
         {
-          "id": "steel_lance",
-          "percent": 20
+          "id": "silver_lance",
+          "percent": 15
+        },
+        {
+          "id": "steel_axe",
+          "percent": 12
         },
         {
           "id": "tome_sage",
-          "percent": 20
+          "percent": 15
         },
         {
           "id": "swap_staff",
+          "percent": 12
+        },
+        {
+          "id": "vulnerary",
           "percent": 15
         },
         {
@@ -623,8 +695,8 @@
         }
       ],
       "itemsPerRoom": {
-        "max": 3,
-        "min": 1
+        "max": 5,
+        "min": 3
       },
       "label": "9F",
       "monsters": [
@@ -664,20 +736,28 @@
           "percent": 20
         },
         {
-          "id": "mithril_sword",
-          "percent": 1
-        },
-        {
           "id": "silver_axe",
-          "percent": 20
+          "percent": 15
         },
         {
-          "id": "mithril_bow",
-          "percent": 1
+          "id": "silver_sword",
+          "percent": 15
+        },
+        {
+          "id": "silver_bow",
+          "percent": 12
         },
         {
           "id": "tome_archsage",
-          "percent": 25
+          "percent": 20
+        },
+        {
+          "id": "vulnerary",
+          "percent": 15
+        },
+        {
+          "id": "mithril_sword",
+          "percent": 1
         },
         {
           "id": "mithril_lance",
@@ -686,11 +766,15 @@
         {
           "id": "mithril_axe",
           "percent": 1
+        },
+        {
+          "id": "mithril_bow",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
-        "max": 3,
-        "min": 1
+        "max": 5,
+        "min": 3
       },
       "label": "10F",
       "monsters": [

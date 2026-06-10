@@ -524,7 +524,7 @@ mod PlayerScene {
         PhaseTransitions.enterPlayerMoving(scene)
 
     /// PlayerMoving + X: 選択駒を origin に瞬間移動で戻し、選択解除して PlayerCursor に戻す。
-    /// 「キャンセル → 再選択の繰り返しで実質ターン制限なしの自由移動」を防ぐ FE 流。
+    /// 「キャンセル → 再選択の繰り返しで実質ターン制限なしの自由移動」を防ぐ。
     /// overlay / cursor の片付けは `PhaseTransitions.enterPlayerCursor` が担当。
     pub def cancelSelection(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
@@ -1716,7 +1716,7 @@ mod PlayerScene {
                 else ();
                 let withWeapons = mapPlayer(playerId,
                     d -> {weapons = newWeapons | d}, afterDamage);
-                // 命中していれば EXP を加算する。自分の攻撃でも敵ターンの反撃でも同様（FE 流）。
+                // 命中していれば EXP を加算する。自分の攻撃でも敵ターンの反撃でも同様。
                 // 反撃で得たレベルアップは敵ターン終了後にまとめて表示する
                 // （pendingLevelUp を立て、EnemyTurnDriverScene.endTurn が LevelUpView へ流す）。
                 if (expGain <= 0)

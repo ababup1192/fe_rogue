@@ -18,7 +18,7 @@ mod Weapon {
         if (newDur <= 0) None
         else Some({durability = newDur | weapon})
 
-    /// 2 セル間のマンハッタン距離（FE 流の十字 + 斜め判定）。
+    /// 2 セル間のマンハッタン距離（十字 + 斜め判定）。
     /// 反撃や射程内判定に共通で使う。
     pub def manhattan(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Int32 =
         Int32.abs(a#x - b#x) + Int32.abs(a#y - b#y)

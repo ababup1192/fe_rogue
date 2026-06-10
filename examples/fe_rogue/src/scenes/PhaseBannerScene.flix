@@ -197,7 +197,7 @@ mod PhaseBannerScene {
     /// 1 フレーム分の状態更新（副作用なし。テスト対象）。
     /// 今のフェーズが「敵ターンか(isEnemy)」を受け取り、前フレームと変わっていればそのターンを
     /// 「次に見せたいターン」として控える。演出していない（Idle）ときだけ控えを取り出して
-    /// 滑り込みを開始する。演出中はそのまま最後まで進めて上書きしない（FE 流に必ず順番に見せる）。
+    /// 滑り込みを開始する。演出中はそのまま最後まで進めて上書きしない（必ず順番に見せる）。
     /// 続いて今の段階を経過時間で進め、帯に与える横オフセットを返す。
     pub def step(data: BannerData, isEnemy: Bool, dt: Duration.Duration): StepResult =
         let observedChange = data#wasEnemy != Some(isEnemy);

@@ -81,7 +81,7 @@ mod LevelUpPanelScene {
     def bodyArrowName(): String  = "bodyArrow"
     def bodyAfterName(): String  = "bodyAfter"
     def bodyPlusName(): String   = "bodyPlus"
-    // 右列（FE 烈火の 2 列レイアウト。後半 4 ステータスをここに割る）。
+    // 右列（2 列レイアウト。後半 4 ステータスをここに割る）。
     def bodyLabels2Name(): String = "bodyLabels2"
     def bodyBefore2Name(): String = "bodyBefore2"
     def bodyArrow2Name(): String  = "bodyArrow2"
@@ -215,7 +215,7 @@ mod LevelUpPanelScene {
     /// 数値は列ごとに右揃え（Label2D の Right アライメント）なので桁・`+1` がそろう。
     def applyContent(result: LevelSystem.Result, revealed: Int32,
                       scene: Scene[NodeTag]): Scene[NodeTag] =
-        // FE 烈火の 2 列レイアウト: 前半 4 ステータスを左列、後半 4 を右列に割る。
+        // 2 列レイアウト: 前半 4 ステータスを左列、後半 4 を右列に割る。
         // reveal の判定は global index（左 0..half-1 / 右 half..）で行う。
         let changes = result#changes;
         let half    = (List.length(changes) + 1) / 2;
