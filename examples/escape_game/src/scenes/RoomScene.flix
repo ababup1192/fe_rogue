@@ -78,9 +78,9 @@ mod RoomScene {
     ///   - "Hotspot:<id>" → NodeTag.Hotspot({roomId = "", hotspotId = <id>})
     ///                       (roomId は `enter` で `applyHotspotTags` が後埋め)
     /// その他は Err でロード失敗させる (typo を黙って NoTag に流さない)。
-    pub def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
-        use Json.JsonError.JsonError;
-        use Json.Path.Path.Root;
+    pub def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
+        use Util.Json.JsonError.JsonError;
+        use JsonCompat.PathTag.Root;
         match opt {
             case None              => Ok(NodeTag.NoTag)
             case Some("NoTag")     => Ok(NodeTag.NoTag)
@@ -90,7 +90,7 @@ mod RoomScene {
                     let data = ({roomId = initialHotspotRoomId(), hotspotId = id}: HotspotData);
                     Ok(NodeTag.Hotspot(data))
                 else
-                    Err(JsonError(Root,
+                    Err(JsonCompat.jsonError(Root,
                         Set#{"known tag (got: ${s}; expected NoTag or Hotspot:<id>)"}))
         }
 

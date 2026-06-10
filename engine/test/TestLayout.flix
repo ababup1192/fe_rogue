@@ -10,8 +10,8 @@ mod TestLayout {
         and approx(r#size#x, w) and approx(r#size#y, h)
 
     /// 空の JSON definition (resolve / measure テストでは Node の definition は使われない)
-    def stubJson(): Json.JsonElement =
-        Json.JsonElement.JsonObject(Map.empty())
+    def stubJson(): Util.Json.Json =
+        Util.Json.Json.JObject(Map.empty())
 
     /// 指定 name の Layout.Node を作る (definition は stub)
     def nodeRef(name: String): Layout =
@@ -301,8 +301,8 @@ mod TestLayout {
     // fromJson — JSON デシリアライズ
     // ========================================================================
 
-    def parseJson(text: String): Json.JsonElement =
-        match Json.Parse.parse(text) {
+    def parseJson(text: String): Util.Json.Json =
+        match JsonCompat.parse(text) {
             case Some(j) => j
             case None    => bug!("JSON parse failed for test input: ${text}")
         }

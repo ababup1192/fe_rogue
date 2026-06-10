@@ -65,7 +65,7 @@ mod SpritePreview {
     /// (もし存在すれば) をまとめて SpriteRef として返す。
     /// sprite ブロックを持たない bare texture record では frame 系が全て None に
     /// なり、updateSpritePreview のフォールバックで全体表示と等価になる。
-    pub def findFirstSpriteRef(record: Json.JsonElement, textureNames: List[String]):
+    pub def findFirstSpriteRef(record: Util.Json.Json, textureNames: List[String]):
             Option[SpriteRef] = {
         let names = List.toSet(textureNames);
         scanForSpriteRef(record, names)
@@ -75,17 +75,17 @@ mod SpritePreview {
     /// sprite ブロック）への record ルートからのキー列も一緒に返す。
     /// 実データでは `("sprite" :: Nil)`。frame を commit するときの keyPath
     /// (`basePath ++ spritePath ++ ["frame"]`) を組み立てるために使う。
-    pub def findFirstSpriteRefWithPath(record: Json.JsonElement, textureNames: List[String]):
+    pub def findFirstSpriteRefWithPath(record: Util.Json.Json, textureNames: List[String]):
             Option[(SpriteRef, List[String])] = {
         let names = List.toSet(textureNames);
         scanForSpriteRefWithPath(record, names, Nil)
     }
 
     /// `scanForSpriteRef` のパス付き版。`pathAcc` は走査済みのキー列（逆順ではなく順方向）。
-    def scanForSpriteRefWithPath(elem: Json.JsonElement, textureNames: Set[String],
+    def scanForSpriteRefWithPath(elem: Util.Json.Json, textureNames: Set[String],
                                   pathAcc: List[String]): Option[(SpriteRef, List[String])] =
         match elem {
-            case Json.JsonElement.JsonObject(m) =>
+            case Util.Json.Json.JObject(m) =>
                 match extractSpriteRefHere(m, textureNames) {
                     case Some(spriteRef) => Some((spriteRef, pathAcc))
                     case None            =>
@@ -99,10 +99,10 @@ mod SpritePreview {
             case _ => None
         }
 
-    def scanForSpriteRef(elem: Json.JsonElement, textureNames: Set[String]):
+    def scanForSpriteRef(elem: Util.Json.Json, textureNames: Set[String]):
             Option[SpriteRef] =
         match elem {
-            case Json.JsonElement.JsonObject(m) =>
+            case Util.Json.Json.JObject(m) =>
                 // この object 自身が texture フィールドを持っていれば
                 // sibling (frame/hframes/vframes) を一緒に拾って即返す
                 match extractSpriteRefHere(m, textureNames) {
@@ -116,19 +116,19 @@ mod SpritePreview {
             case _ => None
         }
 
-    /// JsonObject 内で「textureNames に含まれる文字列値を持つフィールド」を 1 つ
+    /// JObject 内で「textureNames に含まれる文字列値を持つフィールド」を 1 つ
     /// 見つけたら、その object 自身の frame/hframes/vframes (整数) も sibling
     /// として抜き出して SpriteRef を作る。
     /// texture を保持しているキーの名前は問わない (sprite ブロック内なら "texture"
     /// だが key 名に依存しない設計)。frame/hframes/vframes が無い、または整数で
     /// ない場合はそれぞれ None として返す。
-    pub def extractSpriteRefHere(m: Map[String, Json.JsonElement], textureNames: Set[String]):
+    pub def extractSpriteRefHere(m: Map[String, Util.Json.Json], textureNames: Set[String]):
             Option[SpriteRef] =
         let entries = Map.toList(m);
         let textureOpt = List.findMap(entry -> {
             let (_k, v) = entry;
             match v {
-                case Json.JsonElement.JsonString(s) =>
+                case Util.Json.Json.JString(s) =>
                     if (Set.memberOf(s, textureNames)) Some(s) else None
                 case _ => None
             }
@@ -152,9 +152,9 @@ mod SpritePreview {
 
     /// `"offset": {"x": Float, "y": Float}` の sibling から (offsetX, offsetY) を抜き出す。
     /// 無ければ (0, 0)。
-    def extractOffset(m: Map[String, Json.JsonElement]): (Float64, Float64) =
+    def extractOffset(m: Map[String, Util.Json.Json]): (Float64, Float64) =
         match Map.get("offset", m) {
-            case Some(Json.JsonElement.JsonObject(om)) =>
+            case Some(Util.Json.Json.JObject(om)) =>
                 let x = Map.get("x", om) |> Option.flatMap(NodeInspector.jsonToFloat)
                           |> Option.getWithDefault(0.0);
                 let y = Map.get("y", om) |> Option.flatMap(NodeInspector.jsonToFloat)

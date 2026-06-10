@@ -9,8 +9,8 @@
 /// ファイル I/O は介さない（起動時の `CatalogContainer.loadWithCheck` が schema 整合性を担保する）。
 mod TestEnemyCatalog {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber, JArray}
     use EnemyCatalog.{EnemyCatalog, EnemyResource}
 
     // ════════════════════════════════════════════════════════
@@ -43,34 +43,34 @@ mod TestEnemyCatalog {
         spriteFrames = None
     }
 
-    def spriteJson(): JsonElement =
-        JsonObject(Map#{
-            "texture" => JsonString("character_sheet"),
-            "hframes" => JsonNumber(JsonCodec.intToBd(5)),
-            "vframes" => JsonNumber(JsonCodec.intToBd(2)),
-            "frame"   => JsonNumber(JsonCodec.intToBd(4))
+    def spriteJson(): Json =
+        JObject(Map#{
+            "texture" => JString("character_sheet"),
+            "hframes" => JNumber(JsonCodec.intToBd(5)),
+            "vframes" => JNumber(JsonCodec.intToBd(2)),
+            "frame"   => JNumber(JsonCodec.intToBd(4))
         })
 
-    def inventoryJson(): JsonElement =
-        JsonArray(Vector#{
-            JsonObject(Map#{
-                "kind" => JsonString("weapon"),
-                "id"   => JsonString("iron_sword")
+    def inventoryJson(): Json =
+        JArray(Vector#{
+            JObject(Map#{
+                "kind" => JString("weapon"),
+                "id"   => JString("iron_sword")
             })
         })
 
     /// 敵 1 種ぶんの完全な JSON（成長率なし）。
-    def goblinJson(): JsonElement =
-        JsonObject(Map#{
-            "moveTiles"        => JsonNumber(JsonCodec.intToBd(3)),
-            "level"            => JsonNumber(JsonCodec.intToBd(4)),
-            "hp"               => JsonNumber(JsonCodec.intToBd(6)),
-            "attack"           => JsonNumber(JsonCodec.intToBd(3)),
-            "defense"          => JsonNumber(JsonCodec.intToBd(1)),
-            "speed"            => JsonNumber(JsonCodec.intToBd(4)),
-            "skill"            => JsonNumber(JsonCodec.intToBd(2)),
-            "luck"             => JsonNumber(JsonCodec.intToBd(1)),
-            "description"      => JsonString("ゴブリン"),
+    def goblinJson(): Json =
+        JObject(Map#{
+            "moveTiles"        => JNumber(JsonCodec.intToBd(3)),
+            "level"            => JNumber(JsonCodec.intToBd(4)),
+            "hp"               => JNumber(JsonCodec.intToBd(6)),
+            "attack"           => JNumber(JsonCodec.intToBd(3)),
+            "defense"          => JNumber(JsonCodec.intToBd(1)),
+            "speed"            => JNumber(JsonCodec.intToBd(4)),
+            "skill"            => JNumber(JsonCodec.intToBd(2)),
+            "luck"             => JNumber(JsonCodec.intToBd(1)),
+            "description"      => JString("ゴブリン"),
             "initialInventory" => inventoryJson(),
             "sprite"           => spriteJson()
         })
@@ -101,14 +101,14 @@ mod TestEnemyCatalog {
     @Test
     def testEnemyDecodeIgnoresGrowthRates(): Unit \ Assert =
         let withGrowth = match goblinJson() {
-            case JsonObject(m) =>
-                JsonObject(Map.insert("growthRates", JsonObject(Map#{
-                    "hp"           => JsonNumber(JsonCodec.intToBd(80)),
-                    "attack"       => JsonNumber(JsonCodec.intToBd(50)),
-                    "defense"      => JsonNumber(JsonCodec.intToBd(40)),
-                    "magicAttack"  => JsonNumber(JsonCodec.intToBd(20)),
-                    "magicDefense" => JsonNumber(JsonCodec.intToBd(30)),
-                    "speed"        => JsonNumber(JsonCodec.intToBd(45))
+            case JObject(m) =>
+                JObject(Map.insert("growthRates", JObject(Map#{
+                    "hp"           => JNumber(JsonCodec.intToBd(80)),
+                    "attack"       => JNumber(JsonCodec.intToBd(50)),
+                    "defense"      => JNumber(JsonCodec.intToBd(40)),
+                    "magicAttack"  => JNumber(JsonCodec.intToBd(20)),
+                    "magicDefense" => JNumber(JsonCodec.intToBd(30)),
+                    "speed"        => JNumber(JsonCodec.intToBd(45))
                 }), m))
             case other => other
         };
@@ -133,7 +133,7 @@ mod TestEnemyCatalog {
         let container = CatalogContainer.CatalogContainer({
             containerKey = "enemies",
             entries      = Map#{"goblin" => goblin()},
-            meta         = (Map.empty(): Map[String, JsonElement])
+            meta         = (Map.empty(): Map[String, Json])
         });
         let catalog = EnemyCatalog.EnemyCatalog(container);
         let encoded = Saveable.toJson(catalog);

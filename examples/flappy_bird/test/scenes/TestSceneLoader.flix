@@ -118,7 +118,7 @@ def testPlayButtonTextureButton(): Unit \ {Assert, Fs.FileRead} =
 /// GroundScene.addGrounds は同じプレハブから 2 タイルを生成し、合計 4 ノードになる
 /// （ground_0, ground_0/sprite, ground_1, ground_1/sprite）
 @Test
-def testGroundSceneJsonArrayRoots(): Unit \ {Assert, Fs.FileRead} =
+def testGroundSceneJArrayRoots(): Unit \ {Assert, Fs.FileRead} =
     let scene = loadedGroundScene();
     Assert.assertEq(
         expected = Set#{"ground_0" :: Nil, "ground_0" :: "sprite" :: Nil,

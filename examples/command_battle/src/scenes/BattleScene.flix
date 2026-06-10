@@ -10,8 +10,7 @@
 ///     InputHandler は dispatch のみに留める。
 mod BattleScene {
 
-    use Json.JsonError.JsonError
-    use Json.Path.Path.Root
+    use JsonCompat.PathTag.Root
 
     // ── 型 ──
 
@@ -119,7 +118,7 @@ mod BattleScene {
 
     // ── SceneLoader 用 ──
 
-    def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+    def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None                  => Ok(NodeTag.NoTag)
             case Some("NoTag")         => Ok(NodeTag.NoTag)
@@ -129,7 +128,7 @@ mod BattleScene {
             case Some("StatusLabel")   => Ok(NodeTag.StatusLabel)
             case Some("FlashOverlay")  => Ok(NodeTag.FlashOverlay)
             case Some("TargetCursor")  => Ok(NodeTag.TargetCursor)
-            case Some(unknown)         => Err(JsonError(Root, Set#{"BattleScene tag (got: ${unknown})"}))
+            case Some(unknown)         => Err(JsonCompat.jsonError(Root, Set#{"BattleScene tag (got: ${unknown})"}))
         }
 
     /// scene.json をロード + Resource (player.json / monsters.json / spells.json) から

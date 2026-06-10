@@ -1,6 +1,6 @@
 // Tests for PackedScene module
 //
-// fromJsonString で JSON 文字列からテンプレートを構築し、instantiate の各オプションを検証する。
+// fromJString で JSON 文字列からテンプレートを構築し、instantiate の各オプションを検証する。
 // 実ファイル I/O は走らないが、API シグネチャ上必要なので Fs.FileRead / GameEngine.Game を
 // no-op ハンドラで run する。
 
@@ -10,7 +10,7 @@
 
 /// 単純な StaticBody2D テンプレート（子なし）
 def singleNodeTemplate(): PackedScene =
-    PackedScene.fromJsonString({
+    PackedScene.fromJString({
         source = "test-template",
         jsonText = String.unlines(
             "{" ::
@@ -23,7 +23,7 @@ def singleNodeTemplate(): PackedScene =
 
 /// StaticBody2D + 子 Sprite2D のテンプレート（子ツリーのコピー検証用）
 def nodeWithChildTemplate(): PackedScene =
-    PackedScene.fromJsonString({
+    PackedScene.fromJString({
         source = "test-template-child",
         jsonText = String.unlines(
             "{" ::
@@ -44,7 +44,7 @@ def nodeWithChildTemplate(): PackedScene =
     })
 
 /// タグ無視 tagParser（テスト用、Unit を返す）
-def unitTagParser(): Option[String] -> Result[Json.JsonError, Unit] = _ -> Ok(())
+def unitTagParser(): Option[String] -> Result[Util.Json.JsonError, Unit] = _ -> Ok(())
 
 /// PackedScene.instantiate を no-op エフェクトハンドラで実行する。
 /// 引数を直接渡すことで closure を作らず、JVM の method-size 制限を回避する。
@@ -56,7 +56,7 @@ def runInstantiate(args: InstantiateArgs[Unit]): Scene[Unit] =
         def readLines(_, _) = bug!("unexpected file readLines")
         def readBytes(_, _) = bug!("unexpected file readBytes")
     } with handler GameEngine.Game {
-        def renderCommands(_, _, k) = k(())
+        def renderCommands(_, _, _, k) = k(())
         def initTileBuffer(_, k) = k((0i32, 0i32))
         def shouldClose(k) = k(false)
         def getDeltaTime(k) = k(16 |> Duration.millis)

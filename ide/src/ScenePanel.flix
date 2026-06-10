@@ -337,7 +337,7 @@ mod ScenePanel {
                 let children = box.getChildren();
                 children.clear();
                 Array.put((None: Option[Label]), 0, state#inspector#posLabel);
-                Array.put((Map.empty(): Map[String, Json.JsonElement -> Unit \ IO]),
+                Array.put((Map.empty(): Map[String, Util.Json.Json -> Unit \ IO]),
                           0, state#inspector#widgetUpdaters);
                 if (selDisplay == "-") {
                     let placeholder = new Label("(nothing selected)");
@@ -396,7 +396,7 @@ mod ScenePanel {
     /// TitledPane で展開可能にし、初期状態は折りたたみ (普段は隠したいフィールド用)
     def addAdvancedDisclosure(state: IdeState.IdeState, children: ObservableList[Node],
                                advancedFields: List[NodeInspector.FieldDef],
-                               currentValues: Map[String, Json.JsonElement],
+                               currentValues: Map[String, Util.Json.Json],
                                sel: Editor.Selection): Unit \ IO = {
         let inner = new VBox(4.0);
         let innerKids = inner.getChildren();
@@ -416,7 +416,7 @@ mod ScenePanel {
     /// IdeState.enqueueAudioCommand する (button 作成時 capture だと編集直後の値を見落とす)。
     /// renderLoop が `consumePendingAudioCommand` で GameEngine.Audio に流す。
     def addAudioPreviewButtons(state: IdeState.IdeState, children: ObservableList[Node],
-                                 _currentValues: Map[String, Json.JsonElement]): Unit \ IO = {
+                                 _currentValues: Map[String, Util.Json.Json]): Unit \ IO = {
         let row = new HBox(6.0);
         let playBtn = new Button("▶ Play");
         let stopBtn = new Button("⏹ Stop");
@@ -458,7 +458,7 @@ mod ScenePanel {
     /// 1 FieldDef を Inspector に追加する
     def addSchemaRow(state: IdeState.IdeState, children: ObservableList[Node],
                       fd: NodeInspector.FieldDef,
-                      currentValues: Map[String, Json.JsonElement],
+                      currentValues: Map[String, Util.Json.Json],
                       sel: Editor.Selection): Unit \ IO = {
         let currentJson = Map.get(fd#name, currentValues);
         let applyFn = fd#apply;
@@ -477,47 +477,47 @@ mod ScenePanel {
 
     /// FieldKind に応じた widget を生成し、(widget, 値更新 closure) を返す
     def buildWidgetForKind(kind: NodeInspector.FieldKind,
-                           current: Option[Json.JsonElement],
+                           current: Option[Util.Json.Json],
                            textureNames: List[String],
                            soundNames: List[String],
                            commit: PropertyWidgets.Commit):
-            (Node, Json.JsonElement -> Unit \ IO) \ IO =
+            (Node, Util.Json.Json -> Unit \ IO) \ IO =
         match kind {
             case NodeInspector.FieldKind.Vec2T => {
                 let isInt = false;
                 let widget = PropertyWidgets.buildVec2Widget(current, isInt, commit);
-                let updater = (json: Json.JsonElement) -> updateVec2Widget(widget, json, isInt);
+                let updater = (json: Util.Json.Json) -> updateVec2Widget(widget, json, isInt);
                 (widget, updater)
             }
             case NodeInspector.FieldKind.Vec2IntT => {
                 let isInt = true;
                 let widget = PropertyWidgets.buildVec2Widget(current, isInt, commit);
-                let updater = (json: Json.JsonElement) -> updateVec2Widget(widget, json, isInt);
+                let updater = (json: Util.Json.Json) -> updateVec2Widget(widget, json, isInt);
                 (widget, updater)
             }
             case NodeInspector.FieldKind.FloatT => {
                 let widget = PropertyWidgets.buildFloatWidget(current, commit);
-                let updater = (json: Json.JsonElement) -> updateFloatSpinner(widget, json);
+                let updater = (json: Util.Json.Json) -> updateFloatSpinner(widget, json);
                 (widget, updater)
             }
             case NodeInspector.FieldKind.IntT => {
                 let widget = PropertyWidgets.buildIntWidget(current, commit);
-                let updater = (json: Json.JsonElement) -> updateIntSpinner(widget, json);
+                let updater = (json: Util.Json.Json) -> updateIntSpinner(widget, json);
                 (widget, updater)
             }
             case NodeInspector.FieldKind.TextT => {
                 let widget = PropertyWidgets.buildTextWidget(current, commit);
-                let updater = (json: Json.JsonElement) -> updateTextField(widget, json);
+                let updater = (json: Util.Json.Json) -> updateTextField(widget, json);
                 (widget, updater)
             }
             case NodeInspector.FieldKind.TexturePathT => {
                 let widget = PropertyWidgets.buildTexturePathWidget(current, textureNames, commit);
-                let updater = (json: Json.JsonElement) -> updateComboBox(widget, json);
+                let updater = (json: Util.Json.Json) -> updateComboBox(widget, json);
                 (widget, updater)
             }
             case NodeInspector.FieldKind.BoolT => {
                 let widget = PropertyWidgets.buildBoolWidget(current, commit);
-                let updater = (json: Json.JsonElement) -> updateCheckBox(widget, json);
+                let updater = (json: Util.Json.Json) -> updateCheckBox(widget, json);
                 (widget, updater)
             }
             case NodeInspector.FieldKind.ColorT => {
@@ -525,7 +525,7 @@ mod ScenePanel {
                 // ColorPicker は per-frame で setValue しない。snapshot が user pick より
                 // ラグするタイミングで古い色を上書きしてしまうため。
                 // rebuildInspector (選択変更時) で picker が再生成されて値が同期する
-                let updater = (j: Json.JsonElement) -> {
+                let updater = (j: Util.Json.Json) -> {
                     let _ = j;
                     let _: Array[Int32, Static] = Array#{0i32} @ Static;
                     ()
@@ -534,20 +534,20 @@ mod ScenePanel {
             }
             case NodeInspector.FieldKind.EnumT(options) => {
                 let widget = PropertyWidgets.buildEnumWidget(current, options, commit);
-                let updater = (json: Json.JsonElement) -> updateEnumCombo(widget, json);
+                let updater = (json: Util.Json.Json) -> updateEnumCombo(widget, json);
                 (widget, updater)
             }
             case NodeInspector.FieldKind.SoundNameT => {
                 // texture と同じ ComboBox 系。候補リストだけ soundNames から渡す
                 let widget = PropertyWidgets.buildTexturePathWidget(current, soundNames, commit);
-                let updater = (json: Json.JsonElement) -> updateComboBox(widget, json);
+                let updater = (json: Util.Json.Json) -> updateComboBox(widget, json);
                 (widget, updater)
             }
         }
 
     /// Vec2 widget (VBox の 2 行、各行 HBox(Label, Spinner)) を JSON から復元する。
     /// PropertyWidgets.buildVec2Widget の構造に合わせて X / Y Spinner を引き直す
-    def updateVec2Widget(widget: Node, json: Json.JsonElement, isInt: Bool): Unit \ IO = {
+    def updateVec2Widget(widget: Node, json: Util.Json.Json, isInt: Bool): Unit \ IO = {
         let box: VBox = unchecked_cast(widget as VBox);
         let rows = box.getChildren();
         let xRow: HBox = unchecked_cast(rows.get(0i32) as HBox);
@@ -581,7 +581,7 @@ mod ScenePanel {
         }
     }
 
-    def updateFloatSpinner(widget: Node, json: Json.JsonElement): Unit \ IO = {
+    def updateFloatSpinner(widget: Node, json: Util.Json.Json): Unit \ IO = {
         let sp: Spinner[Double] = unchecked_cast(widget as Spinner[Double]);
         match NodeInspector.jsonToFloat(json) {
             case None => ()
@@ -592,7 +592,7 @@ mod ScenePanel {
         }
     }
 
-    def updateIntSpinner(widget: Node, json: Json.JsonElement): Unit \ IO = {
+    def updateIntSpinner(widget: Node, json: Util.Json.Json): Unit \ IO = {
         let sp: Spinner[Integer] = unchecked_cast(widget as Spinner[Integer]);
         match NodeInspector.jsonToInt(json) {
             case None => ()
@@ -603,7 +603,7 @@ mod ScenePanel {
         }
     }
 
-    def updateTextField(widget: Node, json: Json.JsonElement): Unit \ IO = {
+    def updateTextField(widget: Node, json: Util.Json.Json): Unit \ IO = {
         let tf: TextField = unchecked_cast(widget as TextField);
         match NodeInspector.jsonToString(json) {
             case None    => ()
@@ -611,7 +611,7 @@ mod ScenePanel {
         }
     }
 
-    def updateComboBox(widget: Node, json: Json.JsonElement): Unit \ IO = {
+    def updateComboBox(widget: Node, json: Util.Json.Json): Unit \ IO = {
         let cb: ComboBox[String] = unchecked_cast(widget as ComboBox[String]);
         match NodeInspector.jsonToString(json) {
             case None    => ()
@@ -619,7 +619,7 @@ mod ScenePanel {
         }
     }
 
-    def updateCheckBox(widget: Node, json: Json.JsonElement): Unit \ IO = {
+    def updateCheckBox(widget: Node, json: Util.Json.Json): Unit \ IO = {
         let cb: CheckBox = unchecked_cast(widget as CheckBox);
         match NodeInspector.jsonToBool(json) {
             case None    => ()
@@ -627,7 +627,7 @@ mod ScenePanel {
         }
     }
 
-    def updateEnumCombo(widget: Node, json: Json.JsonElement): Unit \ IO = {
+    def updateEnumCombo(widget: Node, json: Util.Json.Json): Unit \ IO = {
         let cb: ComboBox[String] = unchecked_cast(widget as ComboBox[String]);
         match NodeInspector.jsonToString(json) {
             case None    => ()
@@ -668,13 +668,13 @@ mod ScenePanel {
                     match readResult {
                         case Err(_) => ()
                         case Ok(content) =>
-                            match Json.Parse.parse(String.trim(content)) {
+                            match JsonCompat.parse(String.trim(content)) {
                                 case None       => ()
                                 case Some(json) => {
                                     let updated = JsonOps.setAtKeyPath(json,
                                         "description" :: Nil,
-                                        Json.JsonElement.JsonString(text));
-                                    let pretty = Json.Write.toPrettyString(2i32, updated);
+                                        Util.Json.Json.JString(text));
+                                    let pretty = Util.Json.toPrettyString(2i32, updated);
                                     discard Files.writeString(Paths.get(path), pretty);
                                     println("[Scenes] saved description: ${path}")
                                 }
@@ -702,10 +702,10 @@ mod ScenePanel {
         }
 
     def extractDescription(content: String): String =
-        match Json.Parse.parse(String.trim(content)) {
-            case Some(Json.JsonElement.JsonObject(m)) =>
+        match JsonCompat.parse(String.trim(content)) {
+            case Some(Util.Json.Json.JObject(m)) =>
                 match Map.get("description", m) {
-                    case Some(Json.JsonElement.JsonString(s)) => s
+                    case Some(Util.Json.Json.JString(s)) => s
                     case _                                    => ""
                 }
             case _ => ""

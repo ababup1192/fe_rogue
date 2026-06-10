@@ -6,8 +6,7 @@
 ///      （武器 → 「装備 / 捨てる」、杖 → 「使う / 捨てる」）
 mod TestItemMenuScene {
 
-    use Json.JsonError.JsonError
-    use Json.Path.Path.Root
+    use JsonCompat.PathTag.Root
 
     // ════════════════════════════════════════════════════════
     // フィクスチャ

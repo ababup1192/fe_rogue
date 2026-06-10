@@ -24,7 +24,7 @@
 // 渡す慣習。
 
 mod ProjectLoader {
-    use Json.JsonElement.{JsonObject, JsonArray, JsonString, JsonNumber, JsonBool}
+    use Util.Json.Json.{JObject, JArray, JString, JNumber, JBool}
 
     /// project.json から組み立てた、engine 起動に渡すための設定。
     /// shape は engine の `GameEngine.EngineConfig` と完全一致させてあり、
@@ -59,13 +59,13 @@ mod ProjectLoader {
         match readResult {
             case Err(e) => Err("Failed to read ${projectJsonPath}: ${e}")
             case Ok(content) =>
-                match Json.Parse.parse(String.trim(content)) {
+                match (Util.Json.parse(String.trim(content)) |> Result.toOption) {
                     case None    => Err("JSON parse failed: ${projectJsonPath}")
                     case Some(j) => Ok(buildProject(rootDir, j))
                 }
         }
 
-    def buildProject(rootDir: String, json: Json.JsonElement): Project =
+    def buildProject(rootDir: String, json: Util.Json.Json): Project =
         let root = matchObject(json, "root");
         let title       = getString(root, "title");
         let designW     = getInt(root, "designWidth");
@@ -113,56 +113,56 @@ mod ProjectLoader {
     // JSON 抽出ヘルパー
     // ========================================================================
 
-    def matchObject(elem: Json.JsonElement, ctx: String): Map[String, Json.JsonElement] =
+    def matchObject(elem: Util.Json.Json, ctx: String): Map[String, Util.Json.Json] =
         match elem {
-            case JsonObject(m) => m
+            case JObject(m) => m
             case _             => bug!("ProjectLoader: ${ctx} is not a JSON object")
         }
 
-    def getField(map: Map[String, Json.JsonElement], key: String): Json.JsonElement =
+    def getField(map: Map[String, Util.Json.Json], key: String): Util.Json.Json =
         match Map.get(key, map) {
             case Some(v) => v
             case None    => bug!("ProjectLoader: missing key '${key}' in project.json")
         }
 
-    def getString(map: Map[String, Json.JsonElement], key: String): String =
+    def getString(map: Map[String, Util.Json.Json], key: String): String =
         match getField(map, key) {
-            case JsonString(s) => s
+            case JString(s) => s
             case _             => bug!("ProjectLoader: '${key}' is not a string")
         }
 
-    def getInt(map: Map[String, Json.JsonElement], key: String): Int32 =
+    def getInt(map: Map[String, Util.Json.Json], key: String): Int32 =
         match getField(map, key) {
-            case JsonNumber(n) => n.intValue()
+            case JNumber(n) => n.intValue()
             case _             => bug!("ProjectLoader: '${key}' is not a number")
         }
 
-    def getFloat(map: Map[String, Json.JsonElement], key: String): Float64 =
+    def getFloat(map: Map[String, Util.Json.Json], key: String): Float64 =
         match getField(map, key) {
-            case JsonNumber(n) => n.doubleValue()
+            case JNumber(n) => n.doubleValue()
             case _             => bug!("ProjectLoader: '${key}' is not a number")
         }
 
-    def getFloat32(map: Map[String, Json.JsonElement], key: String): Float32 =
+    def getFloat32(map: Map[String, Util.Json.Json], key: String): Float32 =
         match getField(map, key) {
-            case JsonNumber(n) => n.floatValue()
+            case JNumber(n) => n.floatValue()
             case _             => bug!("ProjectLoader: '${key}' is not a number")
         }
 
-    def getBool(map: Map[String, Json.JsonElement], key: String): Bool =
+    def getBool(map: Map[String, Util.Json.Json], key: String): Bool =
         match getField(map, key) {
-            case JsonBool(b) => b
+            case JBool(b) => b
             case _           => bug!("ProjectLoader: '${key}' is not a boolean")
         }
 
-    def readColor(elem: Json.JsonElement): Color =
+    def readColor(elem: Util.Json.Json): Color =
         let m = matchObject(elem, "clearColor");
         { r = getFloat32(m, "r"), g = getFloat32(m, "g"), b = getFloat32(m, "b") }
 
-    def readTextures(rootDir: String, elem: Json.JsonElement):
+    def readTextures(rootDir: String, elem: Util.Json.Json):
                        List[{name = String, path = String, hasAlpha = Bool}] =
         match elem {
-            case JsonArray(v) =>
+            case JArray(v) =>
                 Vector.toList(v) |> List.map(item ->
                     let m = matchObject(item, "texture entry");
                     {
@@ -174,10 +174,10 @@ mod ProjectLoader {
             case _ => bug!("ProjectLoader: 'textures' is not an array")
         }
 
-    def readFonts(rootDir: String, elem: Json.JsonElement):
+    def readFonts(rootDir: String, elem: Util.Json.Json):
                     List[{name = String, path = String, fontSize = Float64}] =
         match elem {
-            case JsonArray(v) =>
+            case JArray(v) =>
                 Vector.toList(v) |> List.map(item ->
                     let m = matchObject(item, "font entry");
                     {
@@ -189,10 +189,10 @@ mod ProjectLoader {
             case _ => bug!("ProjectLoader: 'fonts' is not an array")
         }
 
-    def readSounds(rootDir: String, elem: Json.JsonElement):
+    def readSounds(rootDir: String, elem: Util.Json.Json):
                      List[{name = String, path = String, looping = Bool}] =
         match elem {
-            case JsonArray(v) =>
+            case JArray(v) =>
                 Vector.toList(v) |> List.map(item ->
                     let m = matchObject(item, "sound entry");
                     {

@@ -24,7 +24,7 @@
 pub enum PackedScene {
     case PackedScene({
         sourcePath = String,                       // ファイルパス（エディタ書き戻し先と bug! メッセージに使う）
-        rootJson = Json.JsonElement,               // パース済み JSON（再パース不要）
+        rootJson = Util.Json.Json,               // パース済み JSON（再パース不要）
         templateRootName = Option[NodeName]        // テンプレートのルートノード名（Some なら instantiate 時に sourceTemplate を設定）
     })
 }
@@ -36,8 +36,8 @@ pub type alias InstantiateOpts = {
     positionOverride = Option[Vec2.Vec2]    // ルートノード pos の上書き
 }
 
-/// PackedScene.fromJsonString 用引数
-pub type alias FromJsonStringArgs = {
+/// PackedScene.fromJString 用引数
+pub type alias FromJStringArgs = {
     source = String,        // デバッグ用ラベル
     jsonText = String       // JSON 本体
 }
@@ -46,7 +46,7 @@ pub type alias FromJsonStringArgs = {
 /// fontAtlas は Label2D を含むテンプレートのとき Some(...) を指定する
 pub type alias InstantiateArgs[t] = {
     opts = InstantiateOpts,
-    tagParser = Option[String] -> Result[Json.JsonError, t],
+    tagParser = Option[String] -> Result[Util.Json.JsonError, t],
     template = PackedScene,
     fontAtlas = Option[FontAtlas],
     scene = Scene[t]
@@ -67,7 +67,7 @@ mod PackedScene {
         match content {
             case Err(msg) => bug!("PackedScene.load: ${path}: failed to read: ${msg}")
             case Ok(text) =>
-                match Json.Parse.parse(String.trim(text)) {
+                match JsonCompat.parse(String.trim(text)) {
                     case None       => bug!("PackedScene.load: ${path}: JSON parse failed")
                     case Some(json) =>
                         PackedScene.PackedScene({
@@ -80,9 +80,9 @@ mod PackedScene {
 
     /// JSON 文字列から直接構築（テスト・動的生成用）。
     /// 失敗時 bug!。
-    pub def fromJsonString(args: FromJsonStringArgs): PackedScene =
-        match Json.Parse.parse(String.trim(args#jsonText)) {
-            case None       => bug!("PackedScene.fromJsonString: ${args#source}: JSON parse failed")
+    pub def fromJString(args: FromJStringArgs): PackedScene =
+        match JsonCompat.parse(String.trim(args#jsonText)) {
+            case None       => bug!("PackedScene.fromJString: ${args#source}: JSON parse failed")
             case Some(json) =>
                 PackedScene.PackedScene({
                     sourcePath = args#source,
@@ -112,8 +112,7 @@ mod PackedScene {
         match SceneLoader.addJsonAt(args#opts#parentPath, args#tagParser,
                                      args#fontAtlas, json, args#scene) {
             case Err(e) =>
-                let Json.JsonError.JsonError(p, expected) = e;
-                bug!("PackedScene.instantiate: ${r#sourcePath}: at ${p}: expected ${expected}")
+                bug!("PackedScene.instantiate: ${r#sourcePath}: ${e}")
             case Ok(added) =>
                 match r#templateRootName {
                     case None => added  // root name 不明なら tag できない
@@ -133,14 +132,14 @@ mod PackedScene {
     // ========================================================================
 
     def applyNameOverride(nameOpt: Option[NodeName],
-                            json: Json.JsonElement): Json.JsonElement =
+                            json: Util.Json.Json): Util.Json.Json =
         match nameOpt {
             case None       => json
             case Some(name) => SceneLoader.withRootName(name, json)
         }
 
     def applyPositionOverride(posOpt: Option[Vec2.Vec2],
-                                json: Json.JsonElement): Json.JsonElement =
+                                json: Util.Json.Json): Util.Json.Json =
         match posOpt {
             case None      => json
             case Some(pos) => SceneLoader.withRootPosition(pos, json)

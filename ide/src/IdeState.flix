@@ -139,7 +139,7 @@ mod IdeState {
         pendingConfig        = Array[Option[GameEngine.EngineConfig], Static],
         sceneTree            = Array[List[NodeInspector.SceneTreeNode], Static],
         pendingNodeSelection = Array[Option[Editor.Selection], Static],
-        currentSceneJson     = Array[Option[Json.JsonElement], Static]
+        currentSceneJson     = Array[Option[Util.Json.Json], Static]
     }
 
     /// ステータスバーに並ぶ 4 つの Label。FX EDT 上の AnimationTimer (ScenePanel) が
@@ -166,9 +166,9 @@ mod IdeState {
         lastSel          = Array[String, Static],
         schema           = Array[List[NodeInspector.FieldSection], Static],
         currentSelection = Array[Option[Editor.Selection], Static],
-        currentValues    = Array[Map[String, Json.JsonElement], Static],
+        currentValues    = Array[Map[String, Util.Json.Json], Static],
         pendingEdits     = Array[List[NodeInspector.PendingEdit], Static],
-        widgetUpdaters   = Array[Map[String, Json.JsonElement -> Unit \ IO], Static],
+        widgetUpdaters   = Array[Map[String, Util.Json.Json -> Unit \ IO], Static],
         posLabel         = Array[Option[Label], Static],
         worldPos         = Array[Option[(Float64, Float64)], Static]
     }
@@ -325,7 +325,7 @@ mod IdeState {
             pendingConfig        = Array#{(None: Option[GameEngine.EngineConfig])} @ Static,
             sceneTree            = Array#{(Nil: List[NodeInspector.SceneTreeNode])} @ Static,
             pendingNodeSelection = Array#{(None: Option[Editor.Selection])} @ Static,
-            currentSceneJson     = Array#{(None: Option[Json.JsonElement])} @ Static
+            currentSceneJson     = Array#{(None: Option[Util.Json.Json])} @ Static
         }
 
     def newStatusBar(): StatusBarRefs \ IO =
@@ -342,9 +342,9 @@ mod IdeState {
             lastSel          = Array#{""} @ Static,
             schema           = Array#{(Nil: List[NodeInspector.FieldSection])} @ Static,
             currentSelection = Array#{(None: Option[Editor.Selection])} @ Static,
-            currentValues    = Array#{(Map.empty(): Map[String, Json.JsonElement])} @ Static,
+            currentValues    = Array#{(Map.empty(): Map[String, Util.Json.Json])} @ Static,
             pendingEdits     = Array#{(Nil: List[NodeInspector.PendingEdit])} @ Static,
-            widgetUpdaters   = Array#{(Map.empty(): Map[String, Json.JsonElement -> Unit \ IO])} @ Static,
+            widgetUpdaters   = Array#{(Map.empty(): Map[String, Util.Json.Json -> Unit \ IO])} @ Static,
             posLabel         = Array#{(None: Option[Label])} @ Static,
             worldPos         = Array#{(None: Option[(Float64, Float64)])} @ Static
         }

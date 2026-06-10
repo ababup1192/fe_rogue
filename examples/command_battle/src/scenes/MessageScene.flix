@@ -8,8 +8,7 @@
 /// 同じテキストなら typewriter 進行（+1/frame、60fps で 60 文字/秒）。
 mod MessageScene {
 
-    use Json.JsonError.JsonError
-    use Json.Path.Path.Root
+    use JsonCompat.PathTag.Root
 
     def sceneJsonPath(): String = "src/scenes/MessageScene.scene.json"
 
@@ -19,13 +18,13 @@ mod MessageScene {
     pub def panelPath(): NodePath = BattleScene.uiLayerPath() ::: name() :: Nil
     pub def textPath(): NodePath = panelPath() ::: textName() :: Nil
 
-    def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+    def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None                  => Ok(NodeTag.NoTag)
             case Some("NoTag")         => Ok(NodeTag.NoTag)
             case Some("MessagePanel")  => Ok(NodeTag.MessagePanel)
             case Some("MessageBox")    => Ok(NodeTag.MessageBox)
-            case Some(unknown)         => Err(JsonError(Root, Set#{"MessageScene tag (got: ${unknown})"}))
+            case Some(unknown)         => Err(JsonCompat.jsonError(Root, Set#{"MessageScene tag (got: ${unknown})"}))
         }
 
     pub def add(fontAtlas: FontAtlas, scene: Scene[NodeTag]):

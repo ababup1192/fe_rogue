@@ -60,8 +60,8 @@ mod TestResource {
             })
         });
         let json     = Saveable.toJson(original);
-        let written  = Json.Write.toPrettyString(2, json);
-        let parsed   = Json.Parse.parse(written);
+        let written  = Util.Json.toPrettyString(2, json);
+        let parsed   = JsonCompat.parse(written);
         let restored: Option[ResourceSchema] = Option.flatMap(Saveable.fromJson, parsed);
         // 完全な比較は派生が無いため、key 集合と各 leaf の label 等を抽出して比較する
         let originalKeys = Map.keysOf(Resource.fieldsOf(original));

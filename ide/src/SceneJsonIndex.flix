@@ -28,11 +28,11 @@ mod SceneJsonIndex {
 
     /// JSON ルート（オブジェクト or 配列）から各要素の "name" 文字列を取り出す。
     /// 単体テストしやすいよう pub
-    pub def rootNamesOf(json: Json.JsonElement): List[NodeName] =
+    pub def rootNamesOf(json: Util.Json.Json): List[NodeName] =
         match json {
-            case Json.JsonElement.JsonObject(_) =>
+            case Util.Json.Json.JObject(_) =>
                 nameOf(json) |> Option.toList
-            case Json.JsonElement.JsonArray(arr) =>
+            case Util.Json.Json.JArray(arr) =>
                 Vector.toList(arr) |> List.filterMap(nameOf)
             case _ => Nil
         }
@@ -44,7 +44,7 @@ mod SceneJsonIndex {
         match content {
             case Err(_) => acc
             case Ok(text) =>
-                match Json.Parse.parse(String.trim(text)) {
+                match JsonCompat.parse(String.trim(text)) {
                     case None => acc
                     case Some(json) =>
                         rootNamesOf(json) |> List.foldLeft((m, name) ->
@@ -53,11 +53,11 @@ mod SceneJsonIndex {
         }
 
     /// 単一 JSON オブジェクトの "name" フィールドを取り出す
-    def nameOf(json: Json.JsonElement): Option[NodeName] =
+    def nameOf(json: Util.Json.Json): Option[NodeName] =
         match json {
-            case Json.JsonElement.JsonObject(map) =>
+            case Util.Json.Json.JObject(map) =>
                 match Map.get("name", map) {
-                    case Some(Json.JsonElement.JsonString(s)) => Some(s)
+                    case Some(Util.Json.Json.JString(s)) => Some(s)
                     case _                   => None
                 }
             case _ => None

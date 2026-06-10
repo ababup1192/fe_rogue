@@ -57,7 +57,7 @@ mod PropertyWidgets {
 
     /// 編集確定時の callback。受け取る側 (ResourcePanel / ScenePanel) が
     /// JSON を消費して書き戻し or pending queue に積む
-    pub type alias Commit = Json.JsonElement -> Unit \ IO
+    pub type alias Commit = Util.Json.Json -> Unit \ IO
 
     /// Resources タブ Preview の拡大モード。
     /// ネイティブピクセル基準のパーセント表示倍率（Float64 で連続値）。
@@ -150,7 +150,7 @@ mod PropertyWidgets {
     /// `target` (= 参照先 catalog の containerKey)、value はその catalog の sub-entry id 一覧。
     pub def addFieldRow(children: ObservableList[Node],
                         key: String, entry: Resource.FieldEntry,
-                        record: Json.JsonElement, basePath: List[String],
+                        record: Util.Json.Json, basePath: List[String],
                         textureNames: List[String],
                         texturePathMap: Map[String, String],
                         refOptions: Map[String, List[String]],
@@ -164,7 +164,7 @@ mod PropertyWidgets {
     /// `record` は現在の Nested レベルでの sub-record。
     def addFieldRowWithRoot(children: ObservableList[Node],
                              key: String, entry: Resource.FieldEntry,
-                             record: Json.JsonElement, rootRecord: Json.JsonElement,
+                             record: Util.Json.Json, rootRecord: Util.Json.Json,
                              basePath: List[String],
                              textureNames: List[String],
                              texturePathMap: Map[String, String],
@@ -192,7 +192,7 @@ mod PropertyWidgets {
                 discard children.add(headerNode);
 
                 let innerRecord = jsonFieldOf(record, key)
-                                   |> Option.getWithDefault(Json.JsonElement.JsonObject(Map.empty()));
+                                   |> Option.getWithDefault(Util.Json.Json.JObject(Map.empty()));
                 let innerBasePath = List.append(basePath, key :: Nil);
                 let sortedInner = Map.toList(innerMap)
                                    |> List.sortBy(p -> fieldOrderKey(p));
@@ -224,8 +224,8 @@ mod PropertyWidgets {
     /// FieldType に応じた編集 widget を返す
     /// `rootRecord` はユニット全体の record。spriteFrames widget が sibling
     /// `sprite.hframes / vframes / texture` を引くために必要。
-    def buildFieldWidget(fs: Resource.FieldSchema, value: Option[Json.JsonElement],
-                         rootRecord: Json.JsonElement,
+    def buildFieldWidget(fs: Resource.FieldSchema, value: Option[Util.Json.Json],
+                         rootRecord: Util.Json.Json,
                          textureNames: List[String],
                          texturePathMap: Map[String, String],
                          refOptions: Map[String, List[String]],
@@ -258,21 +258,21 @@ mod PropertyWidgets {
         }
 
     /// TexturePathT: project 登録 texture から選択する ComboBox<String>
-    pub def buildTexturePathWidget(value: Option[Json.JsonElement], textureNames: List[String],
+    pub def buildTexturePathWidget(value: Option[Util.Json.Json], textureNames: List[String],
                                     commit: Commit): Node \ IO = {
         let current = match value {
-            case Some(Json.JsonElement.JsonString(s)) => s
+            case Some(Util.Json.Json.JString(s)) => s
             case _                                    => ""
         };
         let combo = makeStringComboBox(textureNames, current, 160.0,
-            newVal -> commit(Json.JsonElement.JsonString(newVal)));
+            newVal -> commit(Util.Json.Json.JString(newVal)));
         combo.setMaxWidth(160.0);
         checked_cast(combo)
     }
 
-    pub def buildTextWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
+    pub def buildTextWidget(value: Option[Util.Json.Json], commit: Commit): Node \ IO = {
         let current = match value {
-            case Some(Json.JsonElement.JsonString(s)) => s
+            case Some(Util.Json.Json.JString(s)) => s
             case _                                    => ""
         };
         let field = new TextField(current);
@@ -281,7 +281,7 @@ mod PropertyWidgets {
         // Enter キー押下でコミット
         field.setOnAction(new EventHandler[ActionEvent] {
             def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
-                commit(Json.JsonElement.JsonString(field.getText()))
+                commit(Util.Json.Json.JString(field.getText()))
         });
         // フォーカスを外した瞬間にもコミット (Enter を押し忘れたまま別 widget を
         // 触ったときに入力が消えるのを防ぐ)。値が変わってない場合も無害に再 commit
@@ -290,7 +290,7 @@ mod PropertyWidgets {
                          _obs: ObservableValue[JObject],
                          _old: Boolean, _new: Boolean): Unit \ IO =
                 if (not field.isFocused())
-                    commit(Json.JsonElement.JsonString(field.getText()))
+                    commit(Util.Json.Json.JString(field.getText()))
                 else ()
         });
         checked_cast(field)
@@ -300,9 +300,9 @@ mod PropertyWidgets {
     /// 用途: resource sub-entry の `description` 等、自由メモのフィールド。
     /// 単行 TextField と同じく Enter キーでも commit するが、改行を入れるには Shift+Enter
     /// を使う必要がある (TextArea のデフォルト挙動)。フォーカス外しでも commit
-    pub def buildMultilineTextWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
+    pub def buildMultilineTextWidget(value: Option[Util.Json.Json], commit: Commit): Node \ IO = {
         let current = match value {
-            case Some(Json.JsonElement.JsonString(s)) => s
+            case Some(Util.Json.Json.JString(s)) => s
             case _                                    => ""
         };
         let area = new TextArea(current);
@@ -316,15 +316,15 @@ mod PropertyWidgets {
                          _obs: ObservableValue[JObject],
                          _old: Boolean, _new: Boolean): Unit \ IO =
                 if (not area.isFocused())
-                    commit(Json.JsonElement.JsonString(area.getText()))
+                    commit(Util.Json.Json.JString(area.getText()))
                 else ()
         });
         checked_cast(area)
     }
 
     /// Int フィールド: Spinner<Integer>
-    pub def buildIntWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
-        let current: Int32 = NodeInspector.jsonToInt(value |> Option.getWithDefault(Json.JsonElement.JsonNull))
+    pub def buildIntWidget(value: Option[Util.Json.Json], commit: Commit): Node \ IO = {
+        let current: Int32 = NodeInspector.jsonToInt(value |> Option.getWithDefault(Util.Json.Json.JNull))
                               |> Option.getWithDefault(0i32);
         let spinner = makeIntSpinner({min = -999999i32, max = 999999i32}, current, 110.0,
             v -> commit(NodeInspector.intToJson(v)));
@@ -427,8 +427,8 @@ mod PropertyWidgets {
 
     /// Float フィールド: Spinner<Double> (step 0.1)。
     /// 表示・入力・commit すべて 3 桁丸めポリシーで統一する (roundedDoubleConverter 参照)。
-    pub def buildFloatWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
-        let raw: Float64 = NodeInspector.jsonToFloat(value |> Option.getWithDefault(Json.JsonElement.JsonNull))
+    pub def buildFloatWidget(value: Option[Util.Json.Json], commit: Commit): Node \ IO = {
+        let raw: Float64 = NodeInspector.jsonToFloat(value |> Option.getWithDefault(Util.Json.Json.JNull))
                             |> Option.getWithDefault(0.0);
         let current = roundTo3(raw);
         let spinner = makeDoubleSpinner({min = -999999.0, max = 999999.0, step = 0.1}, current, 110.0,
@@ -442,10 +442,10 @@ mod PropertyWidgets {
     /// 片方しか押せないことを保証。値は JSON 文字列 (選択中ボタンのラベル) として commit する。
     /// CheckBox の「チェック有無」と違って、未選択側のラベルも常に見えるので
     /// 「ON 時は何で OFF 時は何か」をユーザーが推測する必要がない。
-    pub def buildEnumToggleWidget(value: Option[Json.JsonElement], options: List[String],
+    pub def buildEnumToggleWidget(value: Option[Util.Json.Json], options: List[String],
                                     commit: Commit): Node \ IO = {
         let current = match value {
-            case Some(Json.JsonElement.JsonString(s)) => s
+            case Some(Util.Json.Json.JString(s)) => s
             case _ => List.head(options) |> Option.getWithDefault("")
         };
         let group = new ToggleGroup();
@@ -477,7 +477,7 @@ mod PropertyWidgets {
                     } else ()
                 } else {
                     let btn: ToggleButton = unchecked_cast(newVal as ToggleButton);
-                    commit(Json.JsonElement.JsonString(btn.getText()))
+                    commit(Util.Json.Json.JString(btn.getText()))
                 }
         });
         checked_cast(box)
@@ -486,7 +486,7 @@ mod PropertyWidgets {
     /// 武器タイプ習熟（得意/苦手）widget。5 武器タイプの正方形トグルボタンを横に並べ、
     /// 押されている（得意）タイプだけを JSON 配列 (例 ["Sword","Axe"]) として commit する。
     /// 各ボタンは独立トグル（ToggleGroup なし）。ボタン操作のたびに 5 個の状態から配列を組み直す。
-    pub def buildWeaponProfWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
+    pub def buildWeaponProfWidget(value: Option[Util.Json.Json], commit: Commit): Node \ IO = {
         // (typeId（JSON 文字列）, 表示ラベル) の 5 タイプ。
         let types =
             ("Sword", "剣") :: ("Axe", "斧") :: ("Lance", "槍") ::
@@ -521,21 +521,21 @@ mod PropertyWidgets {
     }
 
     /// 現在押されている（得意の）タイプ id を JSON 文字列配列にまとめる。
-    /// `JsonArray` の中身は `Vector` なので List→Vector に変換する。
-    def weaponProfArray(buttons: List[(String, ToggleButton)]): Json.JsonElement \ IO =
+    /// `JArray` の中身は `Vector` なので List→Vector に変換する。
+    def weaponProfArray(buttons: List[(String, ToggleButton)]): Util.Json.Json \ IO =
         let selectedIds = List.filterMap(pair -> {
             let (typeId, btn) = pair;
             if (btn.isSelected()) Some(typeId) else None
         }, buttons);
-        Json.JsonElement.JsonArray(List.toVector(List.map(id -> Json.JsonElement.JsonString(id), selectedIds)))
+        Util.Json.Json.JArray(List.toVector(List.map(id -> Util.Json.Json.JString(id), selectedIds)))
 
     /// JSON 配列（["Sword",...]）から得意タイプ id の集合を作る。未設定/型不一致は空集合。
-    def parseWeaponProfSet(value: Option[Json.JsonElement]): Set[String] =
+    def parseWeaponProfSet(value: Option[Util.Json.Json]): Set[String] =
         match value {
-            case Some(Json.JsonElement.JsonArray(arr)) =>
+            case Some(Util.Json.Json.JArray(arr)) =>
                 Vector.toList(arr)
                     |> List.filterMap(element -> match element {
-                        case Json.JsonElement.JsonString(s) => Some(s)
+                        case Util.Json.Json.JString(s) => Some(s)
                         case _                              => None
                     })
                     |> List.toSet
@@ -544,24 +544,24 @@ mod PropertyWidgets {
 
     /// Enum widget: 有限の選択肢を持つ ComboBox<String>。値は JSON 文字列。
     /// SceneLoader 側が "Left" / "Center" 等のラベルから enum 値を parse する想定
-    pub def buildEnumWidget(value: Option[Json.JsonElement], options: List[String],
+    pub def buildEnumWidget(value: Option[Util.Json.Json], options: List[String],
                              commit: Commit): Node \ IO = {
         let current = match value {
-            case Some(Json.JsonElement.JsonString(s)) => s
+            case Some(Util.Json.Json.JString(s)) => s
             case _ => List.head(options) |> Option.getWithDefault("")
         };
         let combo = makeStringComboBox(options, current, 140.0,
-            newVal -> commit(Json.JsonElement.JsonString(newVal)));
+            newVal -> commit(Util.Json.Json.JString(newVal)));
         combo.setMaxWidth(140.0);
         checked_cast(combo)
     }
 
-    /// Color widget: JavaFX ColorPicker。値は JsonObject{"r","g","b"} (Float64 各 0-1)。
+    /// Color widget: JavaFX ColorPicker。値は JObject{"r","g","b"} (Float64 各 0-1)。
     /// valueProperty listener で newVal を直接受け取る (setOnAction の getValue() は
     /// JavaFX のタイミングで古い値を返すことがあるため)。
     /// 自前の setValue で listener が再発火するのを防ぐため `suppressNextRef` で抑制
-    pub def buildColorWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
-        let init = NodeInspector.jsonToColor(value |> Option.getWithDefault(Json.JsonElement.JsonNull))
+    pub def buildColorWidget(value: Option[Util.Json.Json], commit: Commit): Node \ IO = {
+        let init = NodeInspector.jsonToColor(value |> Option.getWithDefault(Util.Json.Json.JNull))
                     |> Option.getWithDefault({r = 1.0f32, g = 1.0f32, b = 1.0f32});
         let picker: ColorPicker = new ColorPicker(
             FxColor.color(Float32.toFloat64(init#r),
@@ -584,8 +584,8 @@ mod PropertyWidgets {
         checked_cast(picker)
     }
 
-    pub def buildBoolWidget(value: Option[Json.JsonElement], commit: Commit): Node \ IO = {
-        let current = NodeInspector.jsonToBool(value |> Option.getWithDefault(Json.JsonElement.JsonNull))
+    pub def buildBoolWidget(value: Option[Util.Json.Json], commit: Commit): Node \ IO = {
+        let current = NodeInspector.jsonToBool(value |> Option.getWithDefault(Util.Json.Json.JNull))
                        |> Option.getWithDefault(false);
         let check = new CheckBox();
         check.setSelected(current);
@@ -598,11 +598,11 @@ mod PropertyWidgets {
 
     /// Vec2 widget: X / Y 2 つの Spinner を VBox に縦に並べ、軸ラベル付きで表示する。
     /// 1 行に詰めると 3-4 桁数値が欠ける問題を回避する。一方が変わると現在の (X, Y) ペアを
-    /// JsonObject{"x":x, "y":y} として commit する。
+    /// JObject{"x":x, "y":y} として commit する。
     /// `isInt` true で整数 Spinner、false で float Spinner (step 0.1)
-    pub def buildVec2Widget(value: Option[Json.JsonElement], isInt: Bool,
+    pub def buildVec2Widget(value: Option[Util.Json.Json], isInt: Bool,
                              commit: Commit): Node \ IO = {
-        let (initX, initY) = NodeInspector.jsonToVec2(value |> Option.getWithDefault(Json.JsonElement.JsonNull))
+        let (initX, initY) = NodeInspector.jsonToVec2(value |> Option.getWithDefault(Util.Json.Json.JNull))
                               |> Option.map(v -> (v#x, v#y))
                               |> Option.getWithDefault((0.0, 0.0));
         if (isInt) {
@@ -677,9 +677,9 @@ mod PropertyWidgets {
         checked_cast(vbox)
     }
 
-    def jsonFieldOf(record: Json.JsonElement, key: String): Option[Json.JsonElement] =
+    def jsonFieldOf(record: Util.Json.Json, key: String): Option[Util.Json.Json] =
         match record {
-            case Json.JsonElement.JsonObject(m) => Map.get(key, m)
+            case Util.Json.Json.JObject(m) => Map.get(key, m)
             case _                              => None
         }
 }

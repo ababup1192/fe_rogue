@@ -9,8 +9,8 @@
 ///     `WeaponCatalog.weaponsOf` ↔ `Map.get` で確認する
 mod TestWeaponCatalog {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber}
     use WeaponCatalog.{WeaponCatalog, WeaponResource, WeaponRange, WeaponType, WeaponSpriteResource}
 
     // ════════════════════════════════════════════════════════
@@ -37,32 +37,32 @@ mod TestWeaponCatalog {
     }
 
     /// 1 件 (trainingSpear) を含む weapons.json 相当の minimum JSON。
-    def trainingSpearJson(): JsonElement =
-        JsonObject(Map#{
-            "name"       => JsonString("くんれんやり"),
-            "attack"     => JsonNumber(JsonCodec.intToBd(2)),
-            "durability" => JsonNumber(JsonCodec.intToBd(41)),
-            "range"      => JsonObject(Map#{
-                "min" => JsonNumber(JsonCodec.intToBd(1)),
-                "max" => JsonNumber(JsonCodec.intToBd(1))
+    def trainingSpearJson(): Json =
+        JObject(Map#{
+            "name"       => JString("くんれんやり"),
+            "attack"     => JNumber(JsonCodec.intToBd(2)),
+            "durability" => JNumber(JsonCodec.intToBd(41)),
+            "range"      => JObject(Map#{
+                "min" => JNumber(JsonCodec.intToBd(1)),
+                "max" => JNumber(JsonCodec.intToBd(1))
             }),
-            "weaponType" => JsonString("Physical"),
+            "weaponType" => JString("Physical"),
             "sprite"     => spriteJson()
         })
 
-    def spriteJson(): JsonElement =
-        JsonObject(Map#{
-            "texture" => JsonString("weapons_atlas"),
-            "hframes" => JsonNumber(JsonCodec.intToBd(4)),
-            "vframes" => JsonNumber(JsonCodec.intToBd(1)),
-            "frame"   => JsonNumber(JsonCodec.intToBd(0)),
-            "offset"  => JsonObject(Map#{
-                "x" => JsonNumber(JsonCodec.floatToBd(0.0)),
-                "y" => JsonNumber(JsonCodec.floatToBd(0.0))
+    def spriteJson(): Json =
+        JObject(Map#{
+            "texture" => JString("weapons_atlas"),
+            "hframes" => JNumber(JsonCodec.intToBd(4)),
+            "vframes" => JNumber(JsonCodec.intToBd(1)),
+            "frame"   => JNumber(JsonCodec.intToBd(0)),
+            "offset"  => JObject(Map#{
+                "x" => JNumber(JsonCodec.floatToBd(0.0)),
+                "y" => JNumber(JsonCodec.floatToBd(0.0))
             }),
-            "scale"   => JsonObject(Map#{
-                "x" => JsonNumber(JsonCodec.floatToBd(1.0)),
-                "y" => JsonNumber(JsonCodec.floatToBd(1.0))
+            "scale"   => JObject(Map#{
+                "x" => JNumber(JsonCodec.floatToBd(1.0)),
+                "y" => JNumber(JsonCodec.floatToBd(1.0))
             })
         })
 
@@ -92,13 +92,13 @@ mod TestWeaponCatalog {
     /// (旧 weapons.json への後方互換。Sword は物理武器なので isPhysical = true)
     @Test
     def testDecodeWeaponDefaultsToPhysicalWhenWeaponTypeMissing(): Unit \ Assert =
-        let json = JsonObject(Map#{
-            "name"       => JsonString("test"),
-            "attack"     => JsonNumber(JsonCodec.intToBd(1)),
-            "durability" => JsonNumber(JsonCodec.intToBd(10)),
-            "range"      => JsonObject(Map#{
-                "min" => JsonNumber(JsonCodec.intToBd(1)),
-                "max" => JsonNumber(JsonCodec.intToBd(1))
+        let json = JObject(Map#{
+            "name"       => JString("test"),
+            "attack"     => JNumber(JsonCodec.intToBd(1)),
+            "durability" => JNumber(JsonCodec.intToBd(10)),
+            "range"      => JObject(Map#{
+                "min" => JNumber(JsonCodec.intToBd(1)),
+                "max" => JNumber(JsonCodec.intToBd(1))
             }),
             "sprite"     => spriteJson()
         });
@@ -113,15 +113,15 @@ mod TestWeaponCatalog {
     /// (schema が enum を強制するため通常は到達しないが、JSON 直編集の typo 対策)
     @Test
     def testDecodeWeaponFallsBackToPhysicalForUnknownType(): Unit \ Assert =
-        let json = JsonObject(Map#{
-            "name"       => JsonString("test"),
-            "attack"     => JsonNumber(JsonCodec.intToBd(1)),
-            "durability" => JsonNumber(JsonCodec.intToBd(10)),
-            "range"      => JsonObject(Map#{
-                "min" => JsonNumber(JsonCodec.intToBd(1)),
-                "max" => JsonNumber(JsonCodec.intToBd(1))
+        let json = JObject(Map#{
+            "name"       => JString("test"),
+            "attack"     => JNumber(JsonCodec.intToBd(1)),
+            "durability" => JNumber(JsonCodec.intToBd(10)),
+            "range"      => JObject(Map#{
+                "min" => JNumber(JsonCodec.intToBd(1)),
+                "max" => JNumber(JsonCodec.intToBd(1))
             }),
-            "weaponType" => JsonString("Foo"),
+            "weaponType" => JString("Foo"),
             "sprite"     => spriteJson()
         });
         match WeaponCatalogCodec.decodeWeapon(json) {
@@ -138,15 +138,15 @@ mod TestWeaponCatalog {
     /// weaponType "Magic" の JSON は Magic 武器として decode される
     @Test
     def testDecodeWeaponPreservesMagicType(): Unit \ Assert =
-        let json = JsonObject(Map#{
-            "name"       => JsonString("staff"),
-            "attack"     => JsonNumber(JsonCodec.intToBd(3)),
-            "durability" => JsonNumber(JsonCodec.intToBd(20)),
-            "range"      => JsonObject(Map#{
-                "min" => JsonNumber(JsonCodec.intToBd(1)),
-                "max" => JsonNumber(JsonCodec.intToBd(2))
+        let json = JObject(Map#{
+            "name"       => JString("staff"),
+            "attack"     => JNumber(JsonCodec.intToBd(3)),
+            "durability" => JNumber(JsonCodec.intToBd(20)),
+            "range"      => JObject(Map#{
+                "min" => JNumber(JsonCodec.intToBd(1)),
+                "max" => JNumber(JsonCodec.intToBd(2))
             }),
-            "weaponType" => JsonString("Magic"),
+            "weaponType" => JString("Magic"),
             "sprite"     => spriteJson()
         });
         match WeaponCatalogCodec.decodeWeapon(json) {
@@ -167,7 +167,7 @@ mod TestWeaponCatalog {
         let container = CatalogContainer.CatalogContainer({
             containerKey = "weapons",
             entries      = Map#{"trainingSpear" => trainingSpear()},
-            meta         = (Map.empty(): Map[String, JsonElement])
+            meta         = (Map.empty(): Map[String, Json])
         });
         let catalog = WeaponCatalog.WeaponCatalog.WeaponCatalog(container);
         let encoded = Saveable.toJson(catalog);

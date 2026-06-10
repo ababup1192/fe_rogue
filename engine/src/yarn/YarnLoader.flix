@@ -1,8 +1,8 @@
 /// Yarn Spinner が出力した output.json 形式の文字列を `YarnProject` に変換する。
 ///
-/// 内部では `mlutze/flix-json` の `Json.Parse.parse` で `JsonElement` AST に
+/// 内部では標準ライブラリ `Util.Json`（`JsonCompat.parse` 経由）で `Json` AST に
 /// 落としたあと、自前のデコーダで構造をたどって型付け済みデータに組み立てる。
-/// `Json.Parse.parse` は pure（effect なし）なので、本モジュールも pure。
+/// `JsonCompat.parse` は pure（effect なし）なので、本モジュールも pure。
 ///
 /// 命令の JSON は `{"<opcode>": { ...operands }}` の単一キーオブジェクト。
 /// このキー文字列で `Instruction` バリアントへ振り分ける。
@@ -11,7 +11,7 @@
 /// の単一キー判別。
 mod Yarn.Loader {
     use Yarn.Types.{Value, Instruction, Header, YarnNode, Program, YarnProject, LineRef}
-    use Json.JsonElement.{JsonObject, JsonArray, JsonString, JsonNumber, JsonBool, JsonNull}
+    use Util.Json.Json.{JObject, JArray, JString, JNumber, JBool, JNull}
 
     /// ローダの失敗。位置情報は `where` に文字列で残し、原因は `message`。
     pub enum YarnLoadError with Eq, ToString {
@@ -24,13 +24,13 @@ mod Yarn.Loader {
 
     /// JSON 文字列から `YarnProject` を組み立てる入口。
     pub def parseProject(jsonText: String): Result[YarnLoadError, YarnProject] =
-        match Json.Parse.parse(jsonText) {
+        match JsonCompat.parse(jsonText) {
             case None        => Err(YarnLoadError.JsonParseError("invalid JSON"))
             case Some(root)  => decodeRoot(root)
         }
 
     /// ルート: `{"program": ..., "strings": ..., "diagnostics": [...]}`
-    def decodeRoot(element: Json.JsonElement): Result[YarnLoadError, YarnProject] =
+    def decodeRoot(element: Util.Json.Json): Result[YarnLoadError, YarnProject] =
         forM (
             object       <- expectObject(element, "<root>");
             programJson  <- requireKey("program", object);
@@ -42,13 +42,13 @@ mod Yarn.Loader {
         }
 
     /// `strings` セクション: `{ lineRef: { "text": "..." } }`
-    def decodeStrings(element: Json.JsonElement): Result[YarnLoadError, Map[LineRef, String]] =
+    def decodeStrings(element: Util.Json.Json): Result[YarnLoadError, Map[LineRef, String]] =
         forM (
             object  <- expectObject(element, "strings");
             entries <- traverseMap(decodeStringEntry, object)
         ) yield entries
 
-    def decodeStringEntry(element: Json.JsonElement): Result[YarnLoadError, String] =
+    def decodeStringEntry(element: Util.Json.Json): Result[YarnLoadError, String] =
         forM (
             object   <- expectObject(element, "strings[*]");
             textJson <- requireKey("text", object);
@@ -56,7 +56,7 @@ mod Yarn.Loader {
         ) yield text
 
     /// `program` セクション。
-    def decodeProgram(element: Json.JsonElement): Result[YarnLoadError, Program] =
+    def decodeProgram(element: Util.Json.Json): Result[YarnLoadError, Program] =
         forM (
             object              <- expectObject(element, "program");
             nameJson            <- requireKey("name", object);
@@ -76,13 +76,13 @@ mod Yarn.Loader {
             }
         }
 
-    def decodeNodes(element: Json.JsonElement): Result[YarnLoadError, Map[String, YarnNode]] =
+    def decodeNodes(element: Util.Json.Json): Result[YarnLoadError, Map[String, YarnNode]] =
         forM (
             object  <- expectObject(element, "program.nodes");
             entries <- traverseMap(decodeNode, object)
         ) yield entries
 
-    def decodeNode(element: Json.JsonElement): Result[YarnLoadError, YarnNode] =
+    def decodeNode(element: Util.Json.Json): Result[YarnLoadError, YarnNode] =
         forM (
             object           <- expectObject(element, "node");
             nameJson         <- requireKey("name", object);
@@ -95,13 +95,13 @@ mod Yarn.Loader {
             { name = name, headers = headers, instructions = instructions }
         }
 
-    def decodeHeaders(element: Json.JsonElement): Result[YarnLoadError, List[Header]] =
+    def decodeHeaders(element: Util.Json.Json): Result[YarnLoadError, List[Header]] =
         forM (
             elements <- expectArray(element, "node.headers");
             headers  <- traverseVector(decodeHeader, elements)
         ) yield Vector.toList(headers)
 
-    def decodeHeader(element: Json.JsonElement): Result[YarnLoadError, Header] =
+    def decodeHeader(element: Util.Json.Json): Result[YarnLoadError, Header] =
         forM (
             object    <- expectObject(element, "header");
             keyJson   <- requireKey("key", object);
@@ -112,14 +112,14 @@ mod Yarn.Loader {
             { key = keyValue, value = valueText }
         }
 
-    def decodeInstructions(element: Json.JsonElement): Result[YarnLoadError, Vector[Instruction]] =
+    def decodeInstructions(element: Util.Json.Json): Result[YarnLoadError, Vector[Instruction]] =
         forM (
             elements     <- expectArray(element, "node.instructions");
             instructions <- traverseVector(decodeInstruction, elements)
         ) yield instructions
 
     /// 命令: `{"<opcode>": { ...operands }}` の単一キーオブジェクト。
-    def decodeInstruction(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    def decodeInstruction(element: Util.Json.Json): Result[YarnLoadError, Instruction] =
         forM (
             object   <- expectObject(element, "instruction");
             single   <- expectSingleEntry(object, "instruction");
@@ -127,7 +127,7 @@ mod Yarn.Loader {
             decoded  <- decodeOperands(opcode, operands)
         ) yield decoded
 
-    def decodeOperands(opcode: String, operands: Json.JsonElement):
+    def decodeOperands(opcode: String, operands: Util.Json.Json):
                         Result[YarnLoadError, Instruction] =
         match opcode {
             case "runLine"        => decodeRunLine(operands)
@@ -151,7 +151,7 @@ mod Yarn.Loader {
             case _                => Err(YarnLoadError.UnknownInstruction(opcode))
         }
 
-    def decodeRunLine(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    def decodeRunLine(element: Util.Json.Json): Result[YarnLoadError, Instruction] =
         forM (
             object               <- expectObject(element, "runLine");
             lineIdJson           <- requireKey("lineID", object);
@@ -161,7 +161,7 @@ mod Yarn.Loader {
         ) yield Instruction.RunLine(lineRef, substitutionCount)
 
     /// JSON 上のキーは `"addOption"` (Yarn Spinner 仕様) だが、Flix 側型は `AddChoice`。
-    def decodeAddChoice(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    def decodeAddChoice(element: Util.Json.Json): Result[YarnLoadError, Instruction] =
         forM (
             object               <- expectObject(element, "addOption");
             lineIdJson           <- requireKey("lineID", object);
@@ -174,63 +174,63 @@ mod Yarn.Loader {
             hasCondition         <- expectBool(hasConditionJson, "addOption.hasCondition")
         ) yield Instruction.AddChoice(lineRef, destination, substitutionCount, hasCondition)
 
-    def decodeJumpIfFalse(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    def decodeJumpIfFalse(element: Util.Json.Json): Result[YarnLoadError, Instruction] =
         forM (
             object          <- expectObject(element, "jumpIfFalse");
             destinationJson <- requireKey("destination", object);
             destination     <- expectInt32(destinationJson, "jumpIfFalse.destination")
         ) yield Instruction.JumpIfFalse(destination)
 
-    def decodeJumpTo(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    def decodeJumpTo(element: Util.Json.Json): Result[YarnLoadError, Instruction] =
         forM (
             object          <- expectObject(element, "jumpTo");
             destinationJson <- requireKey("destination", object);
             destination     <- expectInt32(destinationJson, "jumpTo.destination")
         ) yield Instruction.JumpTo(destination)
 
-    def decodePushString(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    def decodePushString(element: Util.Json.Json): Result[YarnLoadError, Instruction] =
         forM (
             object   <- expectObject(element, "pushString");
             valueJson <- requireKey("value", object);
             value    <- expectString(valueJson, "pushString.value")
         ) yield Instruction.PushString(value)
 
-    def decodePushFloat(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    def decodePushFloat(element: Util.Json.Json): Result[YarnLoadError, Instruction] =
         forM (
             object   <- expectObject(element, "pushFloat");
             valueJson <- requireKey("value", object);
             value    <- expectFloat64(valueJson, "pushFloat.value")
         ) yield Instruction.PushFloat(value)
 
-    def decodePushBool(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    def decodePushBool(element: Util.Json.Json): Result[YarnLoadError, Instruction] =
         forM (
             object   <- expectObject(element, "pushBool");
             valueJson <- requireKey("value", object);
             value    <- expectBool(valueJson, "pushBool.value")
         ) yield Instruction.PushBool(value)
 
-    def decodePushVariable(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    def decodePushVariable(element: Util.Json.Json): Result[YarnLoadError, Instruction] =
         forM (
             object       <- expectObject(element, "pushVariable");
             nameJson     <- requireKey("variableName", object);
             variableName <- expectString(nameJson, "pushVariable.variableName")
         ) yield Instruction.PushVariable(variableName)
 
-    def decodeStoreVariable(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    def decodeStoreVariable(element: Util.Json.Json): Result[YarnLoadError, Instruction] =
         forM (
             object       <- expectObject(element, "storeVariable");
             nameJson     <- requireKey("variableName", object);
             variableName <- expectString(nameJson, "storeVariable.variableName")
         ) yield Instruction.StoreVariable(variableName)
 
-    def decodeCallFunc(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    def decodeCallFunc(element: Util.Json.Json): Result[YarnLoadError, Instruction] =
         forM (
             object       <- expectObject(element, "callFunc");
             nameJson     <- requireKey("functionName", object);
             functionName <- expectString(nameJson, "callFunc.functionName")
         ) yield Instruction.CallFunc(functionName)
 
-    def decodeRunCommand(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    def decodeRunCommand(element: Util.Json.Json): Result[YarnLoadError, Instruction] =
         forM (
             object               <- expectObject(element, "runCommand");
             commandTextJson      <- requireKey("commandText", object);
@@ -239,7 +239,7 @@ mod Yarn.Loader {
             substitutionCount    <- expectInt32(substitutionCountJson, "runCommand.substitutionCount")
         ) yield Instruction.RunCommand(commandText, substitutionCount)
 
-    def decodeRunNode(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    def decodeRunNode(element: Util.Json.Json): Result[YarnLoadError, Instruction] =
         forM (
             object   <- expectObject(element, "runNode");
             nameJson <- requireKey("nodeName", object);
@@ -248,7 +248,7 @@ mod Yarn.Loader {
 
     /// `<<detour Foo>>` 由来。`Instruction.Detour` にデコード（`RunNode` とは
     /// 異なり callStack に戻りフレームを積む VM 側の実装に対応）。
-    def decodeDetourToNode(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    def decodeDetourToNode(element: Util.Json.Json): Result[YarnLoadError, Instruction] =
         forM (
             object   <- expectObject(element, "detourToNode");
             nameJson <- requireKey("nodeName", object);
@@ -256,7 +256,7 @@ mod Yarn.Loader {
         ) yield Instruction.Detour(nodeName)
 
     /// `initialValues`: `{ "$var": { boolValue/floatValue/stringValue: ... } }`
-    def decodeInitialValues(element: Json.JsonElement):
+    def decodeInitialValues(element: Util.Json.Json):
                               Result[YarnLoadError, Map[String, Value]] =
         forM (
             object  <- expectObject(element, "initialValues");
@@ -264,7 +264,7 @@ mod Yarn.Loader {
         ) yield entries
 
     /// `Value` の単一キー判別（boolValue / floatValue / stringValue）。
-    pub def decodeValue(element: Json.JsonElement): Result[YarnLoadError, Value] =
+    pub def decodeValue(element: Util.Json.Json): Result[YarnLoadError, Value] =
         forM (
             object <- expectObject(element, "value");
             single <- expectSingleEntry(object, "value");
@@ -272,7 +272,7 @@ mod Yarn.Loader {
             v      <- decodeValueByKind(kind, payload)
         ) yield v
 
-    def decodeValueByKind(kind: String, payload: Json.JsonElement):
+    def decodeValueByKind(kind: String, payload: Util.Json.Json):
                            Result[YarnLoadError, Value] =
         match kind {
             case "boolValue"   => Result.map(Value.BoolV, expectBool(payload, "boolValue"))
@@ -285,52 +285,52 @@ mod Yarn.Loader {
     // 汎用ヘルパー
     // ════════════════════════════════════════════════════════════════════════
 
-    def expectObject(element: Json.JsonElement, path: String):
-                       Result[YarnLoadError, Map[String, Json.JsonElement]] =
+    def expectObject(element: Util.Json.Json, path: String):
+                       Result[YarnLoadError, Map[String, Util.Json.Json]] =
         match element {
-            case JsonObject(map) => Ok(map)
+            case JObject(map) => Ok(map)
             case _               => Err(YarnLoadError.BadType("${path}:expected object"))
         }
 
-    def expectArray(element: Json.JsonElement, path: String):
-                      Result[YarnLoadError, Vector[Json.JsonElement]] =
+    def expectArray(element: Util.Json.Json, path: String):
+                      Result[YarnLoadError, Vector[Util.Json.Json]] =
         match element {
-            case JsonArray(elements) => Ok(elements)
+            case JArray(elements) => Ok(elements)
             case _                   => Err(YarnLoadError.BadType("${path}:expected array"))
         }
 
-    def expectString(element: Json.JsonElement, path: String):
+    def expectString(element: Util.Json.Json, path: String):
                        Result[YarnLoadError, String] =
         match element {
-            case JsonString(text) => Ok(text)
+            case JString(text) => Ok(text)
             case _                => Err(YarnLoadError.BadType("${path}:expected string"))
         }
 
-    def expectBool(element: Json.JsonElement, path: String):
+    def expectBool(element: Util.Json.Json, path: String):
                      Result[YarnLoadError, Bool] =
         match element {
-            case JsonBool(b) => Ok(b)
+            case JBool(b) => Ok(b)
             case _           => Err(YarnLoadError.BadType("${path}:expected bool"))
         }
 
-    def expectFloat64(element: Json.JsonElement, path: String):
+    def expectFloat64(element: Util.Json.Json, path: String):
                         Result[YarnLoadError, Float64] =
         match element {
-            case JsonNumber(big) => Ok(BigDecimal.tryToFloat64(big) |> Option.getWithDefault(0.0))
+            case JNumber(big) => Ok(BigDecimal.tryToFloat64(big) |> Option.getWithDefault(0.0))
             case _               => Err(YarnLoadError.BadType("${path}:expected number"))
         }
 
-    def expectInt32(element: Json.JsonElement, path: String):
+    def expectInt32(element: Util.Json.Json, path: String):
                       Result[YarnLoadError, Int32] =
         match element {
-            case JsonNumber(big) =>
+            case JNumber(big) =>
                 Ok(Float64.tryToInt32(BigDecimal.tryToFloat64(big) |> Option.getWithDefault(0.0))
                     |> Option.getWithDefault(0))
             case _ => Err(YarnLoadError.BadType("${path}:expected integer"))
         }
 
-    def requireKey(key: String, object: Map[String, Json.JsonElement]):
-                     Result[YarnLoadError, Json.JsonElement] =
+    def requireKey(key: String, object: Map[String, Util.Json.Json]):
+                     Result[YarnLoadError, Util.Json.Json] =
         match Map.get(key, object) {
             case Some(v) => Ok(v)
             case None    => Err(YarnLoadError.MissingField(key))
@@ -338,8 +338,8 @@ mod Yarn.Loader {
 
     /// オブジェクトが「ちょうど 1 エントリ」であることを確かめてキーと値を返す。
     /// 命令や Value の単一キー判別に使う。
-    def expectSingleEntry(object: Map[String, Json.JsonElement], path: String):
-                            Result[YarnLoadError, (String, Json.JsonElement)] =
+    def expectSingleEntry(object: Map[String, Util.Json.Json], path: String):
+                            Result[YarnLoadError, (String, Util.Json.Json)] =
         let entries = Map.toList(object);
         match entries {
             case (key, value) :: Nil => Ok((key, value))
@@ -348,10 +348,10 @@ mod Yarn.Loader {
                     "${path}:expected single-key object, got ${List.length(entries)} keys"))
         }
 
-    /// `Map[String, JsonElement]` の各値を decoder で変換して `Map[String, b]` を返す。
+    /// `Map[String, Json]` の各値を decoder で変換して `Map[String, b]` を返す。
     /// 1 つでも失敗したら最初のエラーを返す。
-    def traverseMap(decoder: Json.JsonElement -> Result[YarnLoadError, b],
-                     object: Map[String, Json.JsonElement]):
+    def traverseMap(decoder: Util.Json.Json -> Result[YarnLoadError, b],
+                     object: Map[String, Util.Json.Json]):
                      Result[YarnLoadError, Map[String, b]] =
         Map.toList(object)
             |> Result.traverse(entry -> {
@@ -360,9 +360,9 @@ mod Yarn.Loader {
             })
             |> Result.map(List.toMap)
 
-    /// `Vector[JsonElement]` の各要素を decoder で変換。
-    def traverseVector(decoder: Json.JsonElement -> Result[YarnLoadError, b],
-                        elements: Vector[Json.JsonElement]):
+    /// `Vector[Json]` の各要素を decoder で変換。
+    def traverseVector(decoder: Util.Json.Json -> Result[YarnLoadError, b],
+                        elements: Vector[Util.Json.Json]):
                         Result[YarnLoadError, Vector[b]] =
         Vector.toList(elements)
             |> Result.traverse(decoder)

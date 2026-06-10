@@ -4,8 +4,8 @@
 // 新しい node 型のフィールド追加は基本この module 内で完結する。
 //
 // 各 FieldDef は:
-//   - snapshot: 現値を node から取り出して JsonElement で返す (Main が毎フレーム呼ぶ)
-//   - apply:    編集確定時に Selection と JsonElement を受け取り SceneSerializer 経由で書き戻す
+//   - snapshot: 現値を node から取り出して Json で返す (Main が毎フレーム呼ぶ)
+//   - apply:    編集確定時に Selection と Json を受け取り SceneSerializer 経由で書き戻す
 //
 // Inspector の UI 構築は ScenePanel.rebuildInspector / startStatusBarTimer が schema を読んで
 // PropertyWidgets で widget を組み立てる。値の往復は state#inspector#currentValues /
@@ -43,8 +43,8 @@ mod NodeInspector {
         name     = String,
         label    = String,
         kind     = FieldKind,
-        snapshot = EngineNode[Unit] -> Option[Json.JsonElement],
-        apply    = (Editor.Selection, Json.JsonElement) -> Unit \ {Fs.FileRead, Fs.FileWrite}
+        snapshot = EngineNode[Unit] -> Option[Util.Json.Json],
+        apply    = (Editor.Selection, Util.Json.Json) -> Unit \ {Fs.FileRead, Fs.FileWrite}
     }
 
     /// Pending edit (FX EDT の widget commit から Main の renderLoop に渡す要素)
@@ -134,16 +134,16 @@ mod NodeInspector {
     /// 選択 node の JSON `properties` オブジェクトを編集可能フィールドとして返す。
     /// "properties": {"jumpVelocity": -300, ...} のような自由形式のキー値ペアを Inspector に
     /// 表示する。type は JSON 値の種類で自動判定 (Number/String/Bool)。
-    pub def propertiesSectionFor(sceneJson: Option[Json.JsonElement],
+    pub def propertiesSectionFor(sceneJson: Option[Util.Json.Json],
                                   nodePath: List[String]): List[FieldSection] =
         match (sceneJson, nodePath) {
             case (Some(json), rootName :: Nil) =>
                 match findRootIfNamed(json, rootName) {
                     case None       => Nil
                     case Some(root) => match root {
-                        case Json.JsonElement.JsonObject(m) =>
+                        case Util.Json.Json.JObject(m) =>
                             match Map.get("properties", m) {
-                                case Some(Json.JsonElement.JsonObject(props)) =>
+                                case Some(Util.Json.Json.JObject(props)) =>
                                     let basePath = rootName :: "@@properties" :: Nil;
                                     let fields = buildPropertyFields(props, basePath);
                                     if (List.isEmpty(fields)) Nil
@@ -159,7 +159,7 @@ mod NodeInspector {
         }
 
     /// properties オブジェクトの各 key-value から FieldDef を生成する
-    def buildPropertyFields(props: Map[String, Json.JsonElement], basePath: List[String]):
+    def buildPropertyFields(props: Map[String, Util.Json.Json], basePath: List[String]):
             List[FieldDef] = {
         Map.toList(props)
             |> List.foldLeft((acc, p) -> {
@@ -171,10 +171,10 @@ mod NodeInspector {
             }, Nil)
     }
 
-    def propertyFieldDef(key: String, value: Json.JsonElement, basePath: List[String]):
+    def propertyFieldDef(key: String, value: Util.Json.Json, basePath: List[String]):
             Option[FieldDef] = {
         match value {
-            case Json.JsonElement.JsonNumber(bd) =>
+            case Util.Json.Json.JNumber(bd) =>
                 let captured = BigDecimal.tryToFloat64(bd) |> Option.getWithDefault(0.0);
                 Some({
                     name     = "@@prop:${key}",
@@ -189,7 +189,7 @@ mod NodeInspector {
                         case None    => ()
                     }
                 })
-            case Json.JsonElement.JsonString(s) =>
+            case Util.Json.Json.JString(s) =>
                 Some({
                     name     = "@@prop:${key}",
                     label    = key,
@@ -201,7 +201,7 @@ mod NodeInspector {
                         case None      => ()
                     }
                 })
-            case Json.JsonElement.JsonBool(b) =>
+            case Util.Json.Json.JBool(b) =>
                 Some({
                     name     = "@@prop:${key}",
                     label    = key,
@@ -220,7 +220,7 @@ mod NodeInspector {
     /// 選択 node の JSON 子に Container があれば、その layout primitive の編集セクションを返す。
     /// sceneJson は現シーンファイルのルート JSON、nodePath は選択 node の live path。
     /// 現状の MVP では nodePath が長さ 1 (top-level scene root) のときのみ対応。
-    pub def extraLayoutSectionsFor(sceneJson: Option[Json.JsonElement],
+    pub def extraLayoutSectionsFor(sceneJson: Option[Util.Json.Json],
                                     nodePath: List[String]): List[FieldSection] =
         match (sceneJson, nodePath) {
             case (Some(json), rootName :: Nil) =>
@@ -232,11 +232,11 @@ mod NodeInspector {
         }
 
     /// JSON root が rootName と一致するなら Some(root) を返す
-    def findRootIfNamed(json: Json.JsonElement, rootName: String): Option[Json.JsonElement] =
+    def findRootIfNamed(json: Util.Json.Json, rootName: String): Option[Util.Json.Json] =
         match json {
-            case Json.JsonElement.JsonObject(m) =>
+            case Util.Json.Json.JObject(m) =>
                 match Map.get("name", m) {
-                    case Some(Json.JsonElement.JsonString(s)) =>
+                    case Some(Util.Json.Json.JString(s)) =>
                         if (s == rootName) Some(json) else None
                     case _ => None
                 }
@@ -244,12 +244,12 @@ mod NodeInspector {
         }
 
     /// root の children を走査し、Container が見つかればその layout に対する FieldSection を生成
-    def findContainersAndBuildSections(rootJson: Json.JsonElement, rootName: String):
+    def findContainersAndBuildSections(rootJson: Util.Json.Json, rootName: String):
             List[FieldSection] =
         match rootJson {
-            case Json.JsonElement.JsonObject(m) =>
+            case Util.Json.Json.JObject(m) =>
                 match Map.get("children", m) {
-                    case Some(Json.JsonElement.JsonArray(arr)) =>
+                    case Some(Util.Json.Json.JArray(arr)) =>
                         let items = Vector.toList(arr);
                         let indexed = List.zipWithIndex(items);
                         List.foldLeft((acc, p) -> {
@@ -264,10 +264,10 @@ mod NodeInspector {
             case _ => Nil
         }
 
-    def isContainer(item: Json.JsonElement): Bool = match item {
-        case Json.JsonElement.JsonObject(m) =>
+    def isContainer(item: Util.Json.Json): Bool = match item {
+        case Util.Json.Json.JObject(m) =>
             match Map.get("type", m) {
-                case Some(Json.JsonElement.JsonString(s)) => s == "Container"
+                case Some(Util.Json.Json.JString(s)) => s == "Container"
                 case _ => false
             }
         case _ => false
@@ -275,10 +275,10 @@ mod NodeInspector {
 
     /// Container の layout を読んで FieldSection リストを生成。
     /// 現状は top-level layout primitive のみ (HBoxContainer / VBoxContainer / MarginContainer)
-    def buildSectionsForContainer(containerJson: Json.JsonElement, containerIdx: Int32,
+    def buildSectionsForContainer(containerJson: Util.Json.Json, containerIdx: Int32,
                                    rootName: String): List[FieldSection] =
         match containerJson {
-            case Json.JsonElement.JsonObject(m) =>
+            case Util.Json.Json.JObject(m) =>
                 match Map.get("layout", m) {
                     case Some(layoutJson) =>
                         let basePath = rootName :: "@@${containerIdx}" :: "@@layout" :: Nil;
@@ -288,20 +288,20 @@ mod NodeInspector {
             case _ => Nil
         }
 
-    def buildLayoutSection(layoutJson: Json.JsonElement, basePath: List[String]):
+    def buildLayoutSection(layoutJson: Util.Json.Json, basePath: List[String]):
             List[FieldSection] =
         match layoutJson {
-            case Json.JsonElement.JsonObject(m) =>
+            case Util.Json.Json.JObject(m) =>
                 match Map.get("kind", m) {
-                    case Some(Json.JsonElement.JsonString("HBoxContainer")) =>
+                    case Some(Util.Json.Json.JString("HBoxContainer")) =>
                         ({typeName = "HBoxContainer",
                           common = boxContainerFields(m, basePath),
                           advanced = (Nil: List[FieldDef])}: FieldSection) :: Nil
-                    case Some(Json.JsonElement.JsonString("VBoxContainer")) =>
+                    case Some(Util.Json.Json.JString("VBoxContainer")) =>
                         ({typeName = "VBoxContainer",
                           common = boxContainerFields(m, basePath),
                           advanced = (Nil: List[FieldDef])}: FieldSection) :: Nil
-                    case Some(Json.JsonElement.JsonString("MarginContainer")) =>
+                    case Some(Util.Json.Json.JString("MarginContainer")) =>
                         ({typeName = "MarginContainer",
                           common = marginContainerFields(m, basePath),
                           advanced = (Nil: List[FieldDef])}: FieldSection) :: Nil
@@ -311,7 +311,7 @@ mod NodeInspector {
         }
 
     /// HBoxContainer / VBoxContainer の編集フィールド: separation / alignment / crossAxis
-    def boxContainerFields(layoutEntries: Map[String, Json.JsonElement],
+    def boxContainerFields(layoutEntries: Map[String, Util.Json.Json],
                             basePath: List[String]): List[FieldDef] =
         let alignOpts = "Begin" :: "Center" :: "End" :: Nil;
         let crossOpts = "Begin" :: "Center" :: "End" :: "Stretch" :: Nil;
@@ -328,7 +328,7 @@ mod NodeInspector {
         layoutEnumField("alignment", "Alignment", alignOpts, alignmentVal, basePath) ::
         layoutEnumField("crossAxis", "Cross axis", crossOpts, crossAxisVal, basePath) :: Nil
 
-    def marginContainerFields(layoutEntries: Map[String, Json.JsonElement],
+    def marginContainerFields(layoutEntries: Map[String, Util.Json.Json],
                                basePath: List[String]): List[FieldDef] =
         let marginVal = Map.get("margin", layoutEntries)
                          |> Option.flatMap(jsonToFloat)
@@ -935,13 +935,13 @@ mod NodeInspector {
 
     // ───────────────────────── JSON ↔ 値 変換ヘルパー ─────────────────────────
 
-    pub def vec2ToJson(v: Vec2.Vec2): Json.JsonElement =
+    pub def vec2ToJson(v: Vec2.Vec2): Util.Json.Json =
         let pairs = ("x", floatToJson(v#x)) :: ("y", floatToJson(v#y)) :: Nil;
-        Json.JsonElement.JsonObject(List.toMap(pairs))
+        Util.Json.Json.JObject(List.toMap(pairs))
 
-    pub def jsonToVec2(j: Json.JsonElement): Option[Vec2.Vec2] =
+    pub def jsonToVec2(j: Util.Json.Json): Option[Vec2.Vec2] =
         match j {
-            case Json.JsonElement.JsonObject(m) =>
+            case Util.Json.Json.JObject(m) =>
                 let xOpt = Map.get("x", m) |> Option.flatMap(jsonToFloat);
                 let yOpt = Map.get("y", m) |> Option.flatMap(jsonToFloat);
                 match (xOpt, yOpt) {
@@ -951,52 +951,52 @@ mod NodeInspector {
             case _ => None
         }
 
-    pub def floatToJson(v: Float64): Json.JsonElement =
-        Json.JsonElement.JsonNumber(JBigDecimal.valueOf(v))
+    pub def floatToJson(v: Float64): Util.Json.Json =
+        Util.Json.Json.JNumber(JBigDecimal.valueOf(v))
 
-    pub def jsonToFloat(j: Json.JsonElement): Option[Float64] =
+    pub def jsonToFloat(j: Util.Json.Json): Option[Float64] =
         match j {
-            case Json.JsonElement.JsonNumber(bd) => BigDecimal.tryToFloat64(bd)
+            case Util.Json.Json.JNumber(bd) => BigDecimal.tryToFloat64(bd)
             case _                               => None
         }
 
-    pub def intToJson(v: Int32): Json.JsonElement =
-        Json.JsonElement.JsonNumber(unsafe IO {
+    pub def intToJson(v: Int32): Util.Json.Json =
+        Util.Json.Json.JNumber(unsafe IO {
             let bd = JBigDecimal.valueOf(Int32.toFloat64(v)).stripTrailingZeros();
             if (bd.scale() < 0) bd.setScale(0) else bd
         })
 
-    pub def jsonToInt(j: Json.JsonElement): Option[Int32] =
+    pub def jsonToInt(j: Util.Json.Json): Option[Int32] =
         jsonToFloat(j) |> Option.flatMap(Float64.tryToInt32)
 
-    pub def stringToJson(v: String): Json.JsonElement =
-        Json.JsonElement.JsonString(v)
+    pub def stringToJson(v: String): Util.Json.Json =
+        Util.Json.Json.JString(v)
 
-    pub def jsonToString(j: Json.JsonElement): Option[String] =
+    pub def jsonToString(j: Util.Json.Json): Option[String] =
         match j {
-            case Json.JsonElement.JsonString(s) => Some(s)
+            case Util.Json.Json.JString(s) => Some(s)
             case _                              => None
         }
 
-    pub def boolToJson(v: Bool): Json.JsonElement =
-        Json.JsonElement.JsonBool(v)
+    pub def boolToJson(v: Bool): Util.Json.Json =
+        Util.Json.Json.JBool(v)
 
-    pub def jsonToBool(j: Json.JsonElement): Option[Bool] =
+    pub def jsonToBool(j: Util.Json.Json): Option[Bool] =
         match j {
-            case Json.JsonElement.JsonBool(b) => Some(b)
+            case Util.Json.Json.JBool(b) => Some(b)
             case _                            => None
         }
 
-    /// Color (r, g, b: Float32) を {r, g, b} の JsonObject に変換
-    pub def colorToJson(c: Color): Json.JsonElement =
+    /// Color (r, g, b: Float32) を {r, g, b} の JObject に変換
+    pub def colorToJson(c: Color): Util.Json.Json =
         let pairs = ("r", floatToJson(Float32.toFloat64(c#r))) ::
                     ("g", floatToJson(Float32.toFloat64(c#g))) ::
                     ("b", floatToJson(Float32.toFloat64(c#b))) :: Nil;
-        Json.JsonElement.JsonObject(List.toMap(pairs))
+        Util.Json.Json.JObject(List.toMap(pairs))
 
-    pub def jsonToColor(j: Json.JsonElement): Option[Color] =
+    pub def jsonToColor(j: Util.Json.Json): Option[Color] =
         match j {
-            case Json.JsonElement.JsonObject(m) =>
+            case Util.Json.Json.JObject(m) =>
                 let rOpt = Map.get("r", m) |> Option.flatMap(jsonToFloat);
                 let gOpt = Map.get("g", m) |> Option.flatMap(jsonToFloat);
                 let bOpt = Map.get("b", m) |> Option.flatMap(jsonToFloat);

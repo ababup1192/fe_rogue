@@ -2,8 +2,8 @@
 // パース・再シリアライズする軽量モジュール
 //
 // なぜ自前で実装するか:
-//   Flix 標準ライブラリの Json.Parse は Map ベースで返すためキー順が失われる。
-//   Json.Write.toPrettyString はアルファベット順に並べ替えて出力する。
+//   標準ライブラリの Util.Json.parse は Map ベースで返すためキー順が失われる。
+//   Util.Json.toPrettyString はアルファベット順に並べ替えて出力する。
 //   この組み合わせで SceneSerializer の書き戻し diff が「全行変更」扱いとなり
 //   レビューが地獄になる。元 JSON のキー順を維持できれば diff は実質変更行のみになる。
 //

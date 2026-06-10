@@ -1,7 +1,7 @@
 // Tests for SpritePreview.extractSpriteRefHere — Resources タブ preview の
 // sprite 切り抜きに使う情報抽出ロジックの単体テスト
 //
-// extractSpriteRefHere は純粋関数なので、手作りの Json.JsonElement Map で
+// extractSpriteRefHere は純粋関数なので、手作りの Util.Json.Json Map で
 // 直接テストできる。検証の観点:
 //   - sprite ブロック (texture + frame + hframes + vframes) を持つ object から
 //     SpriteRef が抽出できるか
@@ -27,10 +27,10 @@ mod TestSpriteRef {
     @Test
     def testExtractFullSpriteBlock(): Unit \ Assert =
         let m = Map#{
-            "texture" => Json.JsonElement.JsonString("character_sheet"),
-            "frame"   => Json.JsonElement.JsonNumber(1.0ff),
-            "hframes" => Json.JsonElement.JsonNumber(5.0ff),
-            "vframes" => Json.JsonElement.JsonNumber(2.0ff)
+            "texture" => Util.Json.Json.JString("character_sheet"),
+            "frame"   => Util.Json.Json.JNumber(1.0ff),
+            "hframes" => Util.Json.Json.JNumber(5.0ff),
+            "vframes" => Util.Json.Json.JNumber(2.0ff)
         };
         Assert.assertEq(
             expected = Some(("character_sheet", Some(1i32), Some(5i32), Some(2i32))),
@@ -42,7 +42,7 @@ mod TestSpriteRef {
     @Test
     def testExtractBareTextureNoSiblings(): Unit \ Assert =
         let m = Map#{
-            "texture" => Json.JsonElement.JsonString("character_sheet")
+            "texture" => Util.Json.Json.JString("character_sheet")
         };
         Assert.assertEq(
             expected = Some(("character_sheet", (None: Option[Int32]),
@@ -54,8 +54,8 @@ mod TestSpriteRef {
     @Test
     def testExtractUnregisteredTextureReturnsNone(): Unit \ Assert =
         let m = Map#{
-            "texture" => Json.JsonElement.JsonString("character_sheet"),
-            "frame"   => Json.JsonElement.JsonNumber(1.0ff)
+            "texture" => Util.Json.Json.JString("character_sheet"),
+            "frame"   => Util.Json.Json.JNumber(1.0ff)
         };
         Assert.assertEq(
             expected = (None: Option[(String, Option[Int32], Option[Int32], Option[Int32])]),
@@ -67,10 +67,10 @@ mod TestSpriteRef {
     @Test
     def testExtractInvalidFrameTypeBecomesNone(): Unit \ Assert =
         let m = Map#{
-            "texture" => Json.JsonElement.JsonString("character_sheet"),
-            "frame"   => Json.JsonElement.JsonString("not-a-number"),
-            "hframes" => Json.JsonElement.JsonNumber(5.0ff),
-            "vframes" => Json.JsonElement.JsonNumber(2.0ff)
+            "texture" => Util.Json.Json.JString("character_sheet"),
+            "frame"   => Util.Json.Json.JString("not-a-number"),
+            "hframes" => Util.Json.Json.JNumber(5.0ff),
+            "vframes" => Util.Json.Json.JNumber(2.0ff)
         };
         Assert.assertEq(
             expected = Some(("character_sheet", (None: Option[Int32]),
@@ -93,18 +93,18 @@ mod TestSpriteRef {
     ///                   hframes=Some(5), vframes=Some(2)})
     @Test
     def testFindFirstSpriteRefNested(): Unit \ Assert =
-        let sprite = Json.JsonElement.JsonObject(Map#{
-            "frame"   => Json.JsonElement.JsonNumber(1.0ff),
-            "hframes" => Json.JsonElement.JsonNumber(5.0ff),
-            "texture" => Json.JsonElement.JsonString("character_sheet"),
-            "vframes" => Json.JsonElement.JsonNumber(2.0ff)
+        let sprite = Util.Json.Json.JObject(Map#{
+            "frame"   => Util.Json.Json.JNumber(1.0ff),
+            "hframes" => Util.Json.Json.JNumber(5.0ff),
+            "texture" => Util.Json.Json.JString("character_sheet"),
+            "vframes" => Util.Json.Json.JNumber(2.0ff)
         });
-        let record = Json.JsonElement.JsonObject(Map#{
-            "attack"    => Json.JsonElement.JsonNumber(5.0ff),
-            "defense"   => Json.JsonElement.JsonNumber(2.0ff),
-            "hp"        => Json.JsonElement.JsonNumber(8.0ff),
-            "moveTiles" => Json.JsonElement.JsonNumber(6.0ff),
-            "speed"     => Json.JsonElement.JsonNumber(6.0ff),
+        let record = Util.Json.Json.JObject(Map#{
+            "attack"    => Util.Json.Json.JNumber(5.0ff),
+            "defense"   => Util.Json.Json.JNumber(2.0ff),
+            "hp"        => Util.Json.Json.JNumber(8.0ff),
+            "moveTiles" => Util.Json.Json.JNumber(6.0ff),
+            "speed"     => Util.Json.Json.JNumber(6.0ff),
             "sprite"    => sprite
         });
         Assert.assertEq(

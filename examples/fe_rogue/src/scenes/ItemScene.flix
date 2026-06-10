@@ -17,8 +17,7 @@
 ///   - アイテムノードを Sprite2D で表示。武器の `sprite` を使う
 mod ItemScene {
 
-    use Json.JsonError.JsonError
-    use Json.Path.Path.Root
+    use JsonCompat.PathTag.Root
 
     // ─── 状態 ─────────────────────────────────────────────────
 

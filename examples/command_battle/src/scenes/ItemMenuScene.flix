@@ -4,8 +4,7 @@
 /// 各項目の `metadata` に item_id を入れ、 確定時に `BattleScene.applyItem` を呼び出す。
 mod ItemMenuScene {
 
-    use Json.JsonError.JsonError
-    use Json.Path.Path.Root
+    use JsonCompat.PathTag.Root
 
     def sceneJsonPath(): String = "src/scenes/ItemMenuScene.scene.json"
 
@@ -14,13 +13,13 @@ mod ItemMenuScene {
     pub def panelPath(): NodePath = BattleScene.uiLayerPath() ::: panelName() :: Nil
     pub def menuPath(): NodePath = panelPath() ::: menuName() :: Nil
 
-    def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+    def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None                => Ok(NodeTag.NoTag)
             case Some("NoTag")       => Ok(NodeTag.NoTag)
             case Some("ItemPanel")   => Ok(NodeTag.ItemPanel)
             case Some("ItemMenu")    => Ok(NodeTag.ItemMenu)
-            case Some(unknown)       => Err(JsonError(Root, Set#{"ItemMenuScene tag (got: ${unknown})"}))
+            case Some(unknown)       => Err(JsonCompat.jsonError(Root, Set#{"ItemMenuScene tag (got: ${unknown})"}))
         }
 
     pub def add(fontAtlas: FontAtlas, scene: Scene[NodeTag]):

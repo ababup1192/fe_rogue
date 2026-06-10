@@ -8,8 +8,8 @@
 ///   { "units": { "knight": {...}, ... }, "players": ["knight", "archer", "mage"] }
 mod UnitCatalog {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber, JArray}
     use UnitBase.{UnitBase, ItemKind, InventoryEntry}
 
     // ────────────────────────────────────────────────────────
@@ -144,7 +144,7 @@ mod UnitCatalog {
     pub def resolveSpriteFrames(unitsPath: String, catalog: UnitCatalog):
             UnitCatalog \ {Fs.FileRead, GameEngine.Game} =
         let unitsJson = readFile(unitsPath);
-        let parsed = match Json.Parse.parse(unitsJson) {
+        let parsed = match JsonCompat.parse(unitsJson) {
             case None       => bug!("UnitCatalog units JSON re-parse failed during resolveSpriteFrames")
             case Some(json) => json
         };
@@ -156,7 +156,7 @@ mod UnitCatalog {
 
     /// JSON 文字列から `UnitCatalog` を decode する内部ヘルパ（spriteFrames は常に None）。
     def decodeUnitsJson(content: String): UnitCatalog =
-        match Json.Parse.parse(content) {
+        match JsonCompat.parse(content) {
             case None       => bug!("UnitCatalog units JSON parse failed")
             case Some(json) =>
                 let decoded: Option[UnitCatalog] = Saveable.fromJson(json);
@@ -213,16 +213,16 @@ mod UnitCatalog {
 // ════════════════════════════════════════════════════════════════════════
 
 instance Saveable[UnitCatalog.UnitCatalog] {
-    pub def toJson(value: UnitCatalog.UnitCatalog): Json.JsonElement =
+    pub def toJson(value: UnitCatalog.UnitCatalog): Util.Json.Json =
         UnitCatalogCodec.encode(value)
 
-    pub def fromJson(element: Json.JsonElement): Option[UnitCatalog.UnitCatalog] =
+    pub def fromJson(element: Util.Json.Json): Option[UnitCatalog.UnitCatalog] =
         UnitCatalogCodec.decode(element)
 }
 
 mod UnitCatalogCodec {
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber, JArray}
     use JsonCodec.{expectObject, expectString, expectInt}
     use UnitCatalog.{UnitCatalog, PlayerResource, GrowthRates}
 
@@ -230,41 +230,41 @@ mod UnitCatalogCodec {
 
     /// units.json の round-trip 用エンコーダ。weapons は含めない（別ファイル）。
     /// pools を CatalogContainer の meta に投影してから encode する。
-    pub def encode(c: UnitCatalog): JsonElement =
+    pub def encode(c: UnitCatalog): Json =
         let unitsContainer = UnitCatalog.unitsContainerOf(c);
         let poolsMeta = UnitCatalog.poolsOf(c)
             |> Map.foldLeftWithKey((acc, name, ids) ->
-                Map.insert(name, JsonArray(List.map(JsonString, ids) |> List.toVector), acc),
-                (Map.empty(): Map[String, JsonElement]));
+                Map.insert(name, JArray(List.map(JString, ids) |> List.toVector), acc),
+                (Map.empty(): Map[String, Json]));
         let CatalogContainer.CatalogContainer(containerPayload) = unitsContainer;
         let enrichedContainer = CatalogContainer.CatalogContainer({meta = poolsMeta | containerPayload});
         CatalogContainer.encode(encodePlayer, enrichedContainer)
 
     /// 味方 = 共有ベース（`UnitBaseCodec.encodeBase`）+ `growthRates` + `proficientWeaponTypes`。
-    def encodePlayer(u: PlayerResource): JsonElement =
+    def encodePlayer(u: PlayerResource): Json =
         let base = UnitBaseCodec.encodeBase(u);
         let withGrowth = Map.insert("growthRates", encodeGrowthRates(u#growthRates), base);
         let profArray = JsonCodec.encodeList(
-            weaponType -> JsonString(WeaponCatalogCodec.weaponTypeToString(weaponType)),
+            weaponType -> JString(WeaponCatalogCodec.weaponTypeToString(weaponType)),
             u#proficientWeaponTypes);
-        JsonObject(Map.insert("proficientWeaponTypes", profArray, withGrowth))
+        JObject(Map.insert("proficientWeaponTypes", profArray, withGrowth))
 
-    def encodeGrowthRates(g: GrowthRates): JsonElement =
-        JsonObject(Map#{
-            "hp"           => JsonNumber(JsonCodec.intToBd(g#hp)),
-            "attack"       => JsonNumber(JsonCodec.intToBd(g#attack)),
-            "defense"      => JsonNumber(JsonCodec.intToBd(g#defense)),
-            "magicAttack"  => JsonNumber(JsonCodec.intToBd(g#magicAttack)),
-            "magicDefense" => JsonNumber(JsonCodec.intToBd(g#magicDefense)),
-            "speed"        => JsonNumber(JsonCodec.intToBd(g#speed)),
-            "skill"        => JsonNumber(JsonCodec.intToBd(g#skill)),
-            "luck"         => JsonNumber(JsonCodec.intToBd(g#luck))
+    def encodeGrowthRates(g: GrowthRates): Json =
+        JObject(Map#{
+            "hp"           => JNumber(JsonCodec.intToBd(g#hp)),
+            "attack"       => JNumber(JsonCodec.intToBd(g#attack)),
+            "defense"      => JNumber(JsonCodec.intToBd(g#defense)),
+            "magicAttack"  => JNumber(JsonCodec.intToBd(g#magicAttack)),
+            "magicDefense" => JNumber(JsonCodec.intToBd(g#magicDefense)),
+            "speed"        => JNumber(JsonCodec.intToBd(g#speed)),
+            "skill"        => JNumber(JsonCodec.intToBd(g#skill)),
+            "luck"         => JNumber(JsonCodec.intToBd(g#luck))
         })
 
     // ── デコード ──
 
     /// units.json をデコード。weapons は常に空（別ファイル管理）。pools は container の meta から再構築。
-    pub def decode(element: JsonElement): Option[UnitCatalog] =
+    pub def decode(element: Json): Option[UnitCatalog] =
         forM (
             container <- CatalogContainer.decode("units", decodePlayer, element);
             pools     <- decodePoolsFromMeta(CatalogContainer.metaOf(container))
@@ -275,7 +275,7 @@ mod UnitCatalogCodec {
         })
 
     /// 味方 = 共有 14 フィールド（`UnitBaseCodec.decodeBase`）+ `growthRates`（省略時は全 0）。
-    def decodePlayer(element: JsonElement): Option[PlayerResource] =
+    def decodePlayer(element: Json): Option[PlayerResource] =
         forM (
             base <- UnitBaseCodec.decodeBase(element);
             obj  <- expectObject(element)
@@ -295,26 +295,26 @@ mod UnitCatalogCodec {
         }
 
     /// 得意武器タイプ配列（`["Sword","Axe"]` 等）をデコード。未知文字列は parseWeaponType が剣に倒す。
-    def decodeWeaponTypes(element: JsonElement): Option[List[WeaponCatalog.WeaponType]] =
+    def decodeWeaponTypes(element: Json): Option[List[WeaponCatalog.WeaponType]] =
         JsonCodec.decodeList(
             item -> expectString(item) |> Option.map(WeaponCatalogCodec.parseWeaponType),
             element)
 
-    def decodeGrowthRates(element: JsonElement): Option[GrowthRates] =
+    def decodeGrowthRates(element: Json): Option[GrowthRates] =
         expectObject(element) |> Option.map(obj ->
             let rate = key -> Map.get(key, obj) |> Option.flatMap(expectInt) |> Option.getWithDefault(0);
             ({hp = rate("hp"), attack = rate("attack"), defense = rate("defense"),
               magicAttack = rate("magicAttack"), magicDefense = rate("magicDefense"),
               speed = rate("speed"), skill = rate("skill"), luck = rate("luck")}: GrowthRates))
 
-    /// container の meta から JsonArray of JsonString のものを pool として抽出する。
-    def decodePoolsFromMeta(meta: Map[String, JsonElement]):
+    /// container の meta から JArray of JString のものを pool として抽出する。
+    def decodePoolsFromMeta(meta: Map[String, Json]):
             Option[Map[String, List[String]]] =
         let init: Option[Map[String, List[String]]] = Some(Map.empty());
         Map.foldLeftWithKey((acc, key, value) ->
             Option.flatMap(soFar ->
                 match value {
-                    case JsonArray(_) =>
+                    case JArray(_) =>
                         decodeStringList(value)
                             |> Option.map(ids -> Map.insert(key, ids, soFar))
                     case _ => Some(soFar)
@@ -322,8 +322,8 @@ mod UnitCatalogCodec {
                 acc),
             init, meta)
 
-    def decodeStringList(element: JsonElement): Option[List[String]] = match element {
-        case JsonArray(items) =>
+    def decodeStringList(element: Json): Option[List[String]] = match element {
+        case JArray(items) =>
             List.foldRight(item -> acc ->
                 Option.flatMap(soFar ->
                     expectString(item) |> Option.map(s -> s :: soFar),

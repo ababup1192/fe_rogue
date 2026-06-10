@@ -13,7 +13,7 @@ mod ResourceState {
     ///   editingJsonRef:       Resource 選択時にメモリにロードした data JSON。
     ///                         widget の commit でこの Ref が更新される
     ///   editingSchemaRef:     Resource 選択時にロードした ResourceSchema
-    ///   editingSchemaJsonRef: schema の生 JsonElement。metaHints の直接 parse 用
+    ///   editingSchemaJsonRef: schema の生 Json。metaHints の直接 parse 用
     ///   dirtyRef:             現在の editingJson が未保存変更を持つか。即時書込モードでは
     ///                         Phase 10f 以降ファイル書込時に false にリセット
     ///   previewZoomRef:       Preview の拡大率 (パーセント)。100% = ネイティブ等倍 (1 image px = 1 logical px)
@@ -21,9 +21,9 @@ mod ResourceState {
         discoveredRef          = Array[List[ResourceEntry], Static],
         selectedDataPathRef    = Array[Option[String], Static],
         selectedSubEntryRef    = Array[Option[String], Static],
-        editingJsonRef         = Array[Option[Json.JsonElement], Static],
+        editingJsonRef         = Array[Option[Util.Json.Json], Static],
         editingSchemaRef       = Array[Option[Resource.ResourceSchema], Static],
-        editingSchemaJsonRef   = Array[Option[Json.JsonElement], Static],
+        editingSchemaJsonRef   = Array[Option[Util.Json.Json], Static],
         dirtyRef               = Array[Bool, Static],
         previewZoomRef         = Array[PropertyWidgets.ZoomMode, Static],
         previewGridRef         = Array[Bool, Static],
@@ -43,9 +43,9 @@ mod ResourceState {
             discoveredRef          = Array#{(Nil: List[ResourceEntry])} @ Static,
             selectedDataPathRef    = Array#{(None: Option[String])} @ Static,
             selectedSubEntryRef    = Array#{(None: Option[String])} @ Static,
-            editingJsonRef         = Array#{(None: Option[Json.JsonElement])} @ Static,
+            editingJsonRef         = Array#{(None: Option[Util.Json.Json])} @ Static,
             editingSchemaRef       = Array#{(None: Option[Resource.ResourceSchema])} @ Static,
-            editingSchemaJsonRef   = Array#{(None: Option[Json.JsonElement])} @ Static,
+            editingSchemaJsonRef   = Array#{(None: Option[Util.Json.Json])} @ Static,
             dirtyRef               = Array#{false} @ Static,
             previewZoomRef         = Array#{PropertyWidgets.defaultZoom()} @ Static,
             previewGridRef         = Array#{false} @ Static,
@@ -72,10 +72,10 @@ mod ResourceState {
     pub def getSelectedSubEntry(state: ResourceState): Option[String] \ IO =
         Array.get(0, state#selectedSubEntryRef)
 
-    pub def setEditingJson(state: ResourceState, json: Option[Json.JsonElement]): Unit \ IO =
+    pub def setEditingJson(state: ResourceState, json: Option[Util.Json.Json]): Unit \ IO =
         Array.put(json, 0, state#editingJsonRef)
 
-    pub def getEditingJson(state: ResourceState): Option[Json.JsonElement] \ IO =
+    pub def getEditingJson(state: ResourceState): Option[Util.Json.Json] \ IO =
         Array.get(0, state#editingJsonRef)
 
     pub def setEditingSchema(state: ResourceState, schema: Option[Resource.ResourceSchema]): Unit \ IO =
@@ -84,12 +84,12 @@ mod ResourceState {
     pub def getEditingSchema(state: ResourceState): Option[Resource.ResourceSchema] \ IO =
         Array.get(0, state#editingSchemaRef)
 
-    /// schema の生 JsonElement を保持。engine 側 fpkg がまだ MetaHint を含まないため、
+    /// schema の生 Json を保持。engine 側 fpkg がまだ MetaHint を含まないため、
     /// IDE 内で metaHints セクションを直接 JSON から parse する用途
-    pub def setEditingSchemaJson(state: ResourceState, json: Option[Json.JsonElement]): Unit \ IO =
+    pub def setEditingSchemaJson(state: ResourceState, json: Option[Util.Json.Json]): Unit \ IO =
         Array.put(json, 0, state#editingSchemaJsonRef)
 
-    pub def getEditingSchemaJson(state: ResourceState): Option[Json.JsonElement] \ IO =
+    pub def getEditingSchemaJson(state: ResourceState): Option[Util.Json.Json] \ IO =
         Array.get(0, state#editingSchemaJsonRef)
 
     pub def setDirty(state: ResourceState, dirty: Bool): Unit \ IO =

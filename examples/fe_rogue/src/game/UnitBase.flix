@@ -51,8 +51,8 @@ mod UnitBase {
 }
 
 mod UnitBaseCodec {
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray, JsonBool}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber, JArray, JBool}
     use JsonCodec.{expectObject, expectString, expectInt, expectFloat, expectBool, floatToBd, intToBd}
     use UnitBase.{UnitBase, ItemKind, InventoryEntry}
     use Sprite.SpriteResource
@@ -69,21 +69,21 @@ mod UnitBaseCodec {
                             speed = Int32, skill = Int32, luck = Int32, sprite = SpriteResource,
                             initialInventory = List[InventoryEntry], description = String,
                             spriteFrames = Option[SpriteFrames] | r}):
-            Map[String, JsonElement] =
+            Map[String, Json] =
         let base = Map#{
-            "moveTiles"        => JsonNumber(intToBd(u#moveTiles)),
-            "level"            => JsonNumber(intToBd(u#level)),
-            "hp"               => JsonNumber(intToBd(u#hp)),
-            "attack"           => JsonNumber(intToBd(u#attack)),
-            "defense"          => JsonNumber(intToBd(u#defense)),
-            "magicAttack"      => JsonNumber(intToBd(u#magicAttack)),
-            "magicDefense"     => JsonNumber(intToBd(u#magicDefense)),
-            "speed"            => JsonNumber(intToBd(u#speed)),
-            "skill"            => JsonNumber(intToBd(u#skill)),
-            "luck"             => JsonNumber(intToBd(u#luck)),
+            "moveTiles"        => JNumber(intToBd(u#moveTiles)),
+            "level"            => JNumber(intToBd(u#level)),
+            "hp"               => JNumber(intToBd(u#hp)),
+            "attack"           => JNumber(intToBd(u#attack)),
+            "defense"          => JNumber(intToBd(u#defense)),
+            "magicAttack"      => JNumber(intToBd(u#magicAttack)),
+            "magicDefense"     => JNumber(intToBd(u#magicDefense)),
+            "speed"            => JNumber(intToBd(u#speed)),
+            "skill"            => JNumber(intToBd(u#skill)),
+            "luck"             => JNumber(intToBd(u#luck)),
             "sprite"           => encodeSprite(u#sprite),
             "initialInventory" => encodeInventory(u#initialInventory),
-            "description"      => JsonString(u#description)
+            "description"      => JString(u#description)
         };
         match u#spriteFrames {
             case None     => base
@@ -91,13 +91,13 @@ mod UnitBaseCodec {
         }
 
     /// `initialInventory` を `[{"kind": ..., "id": ...}, ...]` JSON にする。
-    pub def encodeInventory(inv: List[InventoryEntry]): JsonElement =
-        JsonArray(List.map(encodeInventoryEntry, inv) |> List.toVector)
+    pub def encodeInventory(inv: List[InventoryEntry]): Json =
+        JArray(List.map(encodeInventoryEntry, inv) |> List.toVector)
 
-    def encodeInventoryEntry(e: InventoryEntry): JsonElement =
-        JsonObject(Map#{
-            "kind" => JsonString(itemKindToString(e#kind)),
-            "id"   => JsonString(e#id)
+    def encodeInventoryEntry(e: InventoryEntry): Json =
+        JObject(Map#{
+            "kind" => JString(itemKindToString(e#kind)),
+            "id"   => JString(e#id)
         })
 
     def itemKindToString(k: ItemKind): String = match k {
@@ -106,37 +106,37 @@ mod UnitBaseCodec {
         case ItemKind.Consumable => "consumable"
     }
 
-    pub def encodeSprite(s: SpriteResource): JsonElement =
-        JsonObject(Map#{
-            "texture" => JsonString(s#texture),
-            "hframes" => JsonNumber(intToBd(s#hframes)),
-            "vframes" => JsonNumber(intToBd(s#vframes)),
-            "frame"   => JsonNumber(intToBd(s#frame)),
+    pub def encodeSprite(s: SpriteResource): Json =
+        JObject(Map#{
+            "texture" => JString(s#texture),
+            "hframes" => JNumber(intToBd(s#hframes)),
+            "vframes" => JNumber(intToBd(s#vframes)),
+            "frame"   => JNumber(intToBd(s#frame)),
             "offset"  => JsonCodec.encodeVec2(s#offset),
             "scale"   => JsonCodec.encodeVec2(s#scale),
-            "flipForFacing" => JsonBool(s#flipForFacing)
+            "flipForFacing" => JBool(s#flipForFacing)
         })
 
     /// SpriteFrames を `{anim_name: {loop, speed, frames}}` 形式で書き出す。
     /// 各 frame は格子 index（hframes と regionRect から逆算）+ duration。
-    def encodeSpriteFrames(sf: SpriteFrames, hframes: Int32): JsonElement =
+    def encodeSpriteFrames(sf: SpriteFrames, hframes: Int32): Json =
         let names = SpriteFrames.animationNames(sf);
         let obj = List.foldLeft((acc, name) ->
             match SpriteFrames.getAnimation(name, sf) {
                 case None    => acc
                 case Some(a) => Map.insert(name, encodeSpriteAnimation(a, hframes), acc)
-            }, (Map.empty(): Map[String, JsonElement]), names);
-        JsonObject(obj)
+            }, (Map.empty(): Map[String, Json]), names);
+        JObject(obj)
 
-    def encodeSpriteAnimation(a: SpriteFrames.Animation, hframes: Int32): JsonElement =
-        JsonObject(Map#{
-            "loop"   => Json.JsonElement.JsonBool(a#loop),
-            "speed"  => JsonNumber(floatToBd(a#speed)),
-            "frames" => JsonArray(
+    def encodeSpriteAnimation(a: SpriteFrames.Animation, hframes: Int32): Json =
+        JObject(Map#{
+            "loop"   => Util.Json.Json.JBool(a#loop),
+            "speed"  => JNumber(floatToBd(a#speed)),
+            "frames" => JArray(
                 List.map(f -> encodeSpriteFrame(f, hframes), a#frames) |> List.toVector)
         })
 
-    def encodeSpriteFrame(f: SpriteFrames.Frame, hframes: Int32): JsonElement =
+    def encodeSpriteFrame(f: SpriteFrames.Frame, hframes: Int32): Json =
         let frameIdx = match f#regionRect {
             case None       => 0
             case Some(rect) =>
@@ -150,9 +150,9 @@ mod UnitBaseCodec {
                             else 0;
                 col + row * hframes
         };
-        JsonObject(Map#{
-            "frame"    => JsonNumber(intToBd(frameIdx)),
-            "duration" => JsonNumber(floatToBd(f#duration))
+        JObject(Map#{
+            "frame"    => JNumber(intToBd(frameIdx)),
+            "duration" => JNumber(floatToBd(f#duration))
         })
 
     // ────────────────────────────────────────────────────────
@@ -162,7 +162,7 @@ mod UnitBaseCodec {
     /// 共有 14 フィールドを decode して `UnitBase` を返す。`spriteFrames` は pure 経路では
     /// 常に None（実体は `resolveEntriesSpriteFrames` の effectful 後段で埋める）。
     /// 味方は別途 `growthRates` を、敵は別途特殊能力を足す。
-    pub def decodeBase(element: JsonElement): Option[UnitBase] =
+    pub def decodeBase(element: Json): Option[UnitBase] =
         forM (
             obj    <- expectObject(element);
             mtJ    <- Map.get("moveTiles", obj);
@@ -199,9 +199,9 @@ mod UnitBaseCodec {
         }
 
     /// `[{"kind": ..., "id": ...}, ...]` を decode。配列以外は None（schema 不整合扱い）。
-    pub def decodeInventory(element: JsonElement): Option[List[InventoryEntry]] =
+    pub def decodeInventory(element: Json): Option[List[InventoryEntry]] =
         match element {
-            case JsonArray(items) =>
+            case JArray(items) =>
                 List.foldRight(item -> acc ->
                     Option.flatMap(soFar ->
                         decodeInventoryEntry(item) |> Option.map(e -> e :: soFar),
@@ -210,7 +210,7 @@ mod UnitBaseCodec {
             case _ => None
         }
 
-    def decodeInventoryEntry(element: JsonElement): Option[InventoryEntry] =
+    def decodeInventoryEntry(element: Json): Option[InventoryEntry] =
         forM (
             obj    <- expectObject(element);
             kindJ  <- Map.get("kind", obj);
@@ -227,7 +227,7 @@ mod UnitBaseCodec {
         case _            => None
     }
 
-    pub def decodeSprite(element: JsonElement): Option[SpriteResource] =
+    pub def decodeSprite(element: Json): Option[SpriteResource] =
         forM (
             obj    <- expectObject(element);
             texJ   <- Map.get("texture", obj);
@@ -263,7 +263,7 @@ mod UnitBaseCodec {
     /// 各エントリの `spriteFrames` を texture 実寸で格子→px 解決し、`entries` の対応リソースに差し込む。
     /// row-polymorphic で sprite/spriteFrames を持つ任意のリソース Map に使える。
     /// texture 未登録 / hframes×vframes 無効 / JSON 不整合のエントリは None のまま（静止フォールバック）。
-    pub def resolveEntriesSpriteFrames(dataJson: JsonElement, containerKey: String,
+    pub def resolveEntriesSpriteFrames(dataJson: Json, containerKey: String,
                                         entries: Map[String, {sprite = SpriteResource,
                                                                spriteFrames = Option[SpriteFrames] | r}]):
             Map[String, {sprite = SpriteResource, spriteFrames = Option[SpriteFrames] | r}] \ GameEngine.Game =
@@ -278,7 +278,7 @@ mod UnitBaseCodec {
                 }
         }
 
-    def resolveOne(id: String, unitJson: JsonElement,
+    def resolveOne(id: String, unitJson: Json,
                     entries: Map[String, {sprite = SpriteResource,
                                           spriteFrames = Option[SpriteFrames] | r}]):
             Map[String, {sprite = SpriteResource, spriteFrames = Option[SpriteFrames] | r}] \ GameEngine.Game =
@@ -311,7 +311,7 @@ mod UnitBaseCodec {
                         vframes = sprite#vframes, cellW = cellW, cellH = cellH}: SpriteCtx))
         }
 
-    def decodeSpriteFramesGrid(element: JsonElement, ctx: SpriteCtx): Option[SpriteFrames] =
+    def decodeSpriteFramesGrid(element: Json, ctx: SpriteCtx): Option[SpriteFrames] =
         match expectObject(element) {
             case None      => None
             case Some(obj) =>
@@ -323,7 +323,7 @@ mod UnitBaseCodec {
                     Some(SpriteFrames.empty()), obj)
         }
 
-    def decodeSpriteAnimationGrid(element: JsonElement, ctx: SpriteCtx):
+    def decodeSpriteAnimationGrid(element: Json, ctx: SpriteCtx):
             Option[SpriteFrames.Animation] =
         forM (
             obj      <- expectObject(element);
@@ -335,10 +335,10 @@ mod UnitBaseCodec {
             frames   <- decodeGridFrameList(framesJ, ctx)
         ) yield ({loop = lp, speed = spd, frames = frames}: SpriteFrames.Animation)
 
-    def decodeGridFrameList(element: JsonElement, ctx: SpriteCtx):
+    def decodeGridFrameList(element: Json, ctx: SpriteCtx):
             Option[List[SpriteFrames.Frame]] =
         match element {
-            case JsonArray(items) =>
+            case JArray(items) =>
                 List.foldRight(item -> acc ->
                     Option.flatMap(soFar ->
                         decodeGridFrame(item, ctx) |> Option.map(f -> f :: soFar),
@@ -347,7 +347,7 @@ mod UnitBaseCodec {
             case _ => None
         }
 
-    def decodeGridFrame(element: JsonElement, ctx: SpriteCtx): Option[SpriteFrames.Frame] =
+    def decodeGridFrame(element: Json, ctx: SpriteCtx): Option[SpriteFrames.Frame] =
         forM (
             obj      <- expectObject(element);
             frameJ   <- Map.get("frame", obj);

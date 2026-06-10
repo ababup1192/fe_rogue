@@ -2,17 +2,16 @@
 /// 全シーン常駐設計なので、自分の表示・非表示は `process` で GamePhase を読んで決める。
 mod TitleScene {
 
-    use Json.JsonError.JsonError
-    use Json.Path.Path.Root
+    use JsonCompat.PathTag.Root
 
     def sceneJsonPath(): String = "src/scenes/TitleScene.scene.json"
 
-    def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+    def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None                  => Ok(NodeTag.NoTag)
             case Some("NoTag")         => Ok(NodeTag.NoTag)
             case Some("TitleLayer")    => Ok(NodeTag.TitleLayer)
-            case Some(unknown)         => Err(JsonError(Root, Set#{"TitleScene tag (got: ${unknown})"}))
+            case Some(unknown)         => Err(JsonCompat.jsonError(Root, Set#{"TitleScene tag (got: ${unknown})"}))
         }
 
     pub def add(fontAtlas: FontAtlas, scene: Scene[NodeTag]):

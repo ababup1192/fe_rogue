@@ -21,8 +21,8 @@
 ///   }
 mod Staff {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber}
     use Sprite.SpriteResource
 
     // ────────────────────────────────────────────────────────
@@ -151,11 +151,11 @@ mod Staff {
 // ════════════════════════════════════════════════════════════════════════
 
 instance Saveable[Staff.StaffCatalog] {
-    pub def toJson(value: Staff.StaffCatalog): Json.JsonElement =
+    pub def toJson(value: Staff.StaffCatalog): Util.Json.Json =
         let Staff.StaffCatalog.StaffCatalog(container) = value;
         CatalogContainer.encode(StaffCatalogCodec.encodeStaff, container)
 
-    pub def fromJson(element: Json.JsonElement): Option[Staff.StaffCatalog] =
+    pub def fromJson(element: Util.Json.Json): Option[Staff.StaffCatalog] =
         CatalogContainer.decode("staves", StaffCatalogCodec.decodeStaff, element)
             |> Option.map(Staff.StaffCatalog.StaffCatalog)
 }
@@ -163,34 +163,34 @@ instance Saveable[Staff.StaffCatalog] {
 /// StaffResource 1 件分の encode / decode のみ。container 巡回は `CatalogContainer.encode/decode` に委譲する。
 mod StaffCatalogCodec {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber}
     use JsonCodec.{expectObject, expectString, expectInt, expectFloat, floatToBd, intToBd}
     use Staff.{StaffResource, StaffEffect}
     use Sprite.SpriteResource
 
     // ── エンコード ──
 
-    pub def encodeStaff(staff: StaffResource): JsonElement =
-        JsonObject(Map#{
-            "name"       => JsonString(staff#name),
-            "effect"     => JsonString(Staff.effectToString(staff#effect)),
-            "durability" => JsonNumber(intToBd(staff#durability)),
+    pub def encodeStaff(staff: StaffResource): Json =
+        JObject(Map#{
+            "name"       => JString(staff#name),
+            "effect"     => JString(Staff.effectToString(staff#effect)),
+            "durability" => JNumber(intToBd(staff#durability)),
             "sprite"     => encodeSprite(staff#sprite)
         })
 
-    def encodeSprite(sprite: SpriteResource): JsonElement =
-        JsonObject(Map#{
-            "texture" => JsonString(sprite#texture),
-            "hframes" => JsonNumber(intToBd(sprite#hframes)),
-            "vframes" => JsonNumber(intToBd(sprite#vframes)),
-            "frame"   => JsonNumber(intToBd(sprite#frame)),
+    def encodeSprite(sprite: SpriteResource): Json =
+        JObject(Map#{
+            "texture" => JString(sprite#texture),
+            "hframes" => JNumber(intToBd(sprite#hframes)),
+            "vframes" => JNumber(intToBd(sprite#vframes)),
+            "frame"   => JNumber(intToBd(sprite#frame)),
             "offset"  => JsonCodec.encodeVec2(sprite#offset)
         })
 
     // ── デコード ──
 
-    pub def decodeStaff(element: JsonElement): Option[StaffResource] =
+    pub def decodeStaff(element: Json): Option[StaffResource] =
         forM (
             obj      <- expectObject(element);
             nameJ    <- Map.get("name", obj);
@@ -205,7 +205,7 @@ mod StaffCatalogCodec {
         ) yield ({name = name, effect = effect, durability = dur,
                    sprite = sprite}: StaffResource)
 
-    def decodeSprite(element: JsonElement): Option[SpriteResource] =
+    def decodeSprite(element: Json): Option[SpriteResource] =
         forM (
             obj    <- expectObject(element);
             texJ   <- Map.get("texture", obj);

@@ -6,7 +6,6 @@ flix        = "0.73.0"
 authors     = ["ababup1192 <ababup1192@gmail.com>"]
 
 [dependencies]
-"github:mlutze/flix-json" = "0.13.2"
 # engine 経由で render_core + engine_core を transitive に取得する。
 # SceneLoader / Scene / GameEngine 型などを使うため engine 自体に依存する必要がある。
 "github:ababup1192/flix_game_engine" = { version = "0.1.0", security = "unrestricted" }

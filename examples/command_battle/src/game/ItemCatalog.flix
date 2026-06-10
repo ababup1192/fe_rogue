@@ -6,8 +6,8 @@
 /// を構築する。 戦闘中はゲーム側の State#inventory が消費とともに変化する。
 mod ItemCatalog {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonArray, JsonNumber, JsonString}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JArray, JNumber, JString}
 
     /// アイテムの効果種別。 PR4 では Heal のみ（やくそう）。
     pub enum ItemKind with Eq, ToString {
@@ -41,7 +41,7 @@ mod ItemCatalog {
         match readResult {
             case Err(e) => bug!("ItemCatalog.load file read failed: ${path} :: ${e}")
             case Ok(content) =>
-                match Json.Parse.parse(content) {
+                match JsonCompat.parse(content) {
                     case None => bug!("ItemCatalog.load JSON parse failed: ${path}")
                     case Some(json) =>
                         match decodeCatalog(json) {
@@ -76,7 +76,7 @@ mod ItemCatalog {
 
     // ── デコード ──
 
-    def decodeCatalog(element: JsonElement): Option[Catalog] =
+    def decodeCatalog(element: Json): Option[Catalog] =
         forM (
             top         <- expectObject(element);
             itemsJ      <- Map.get("items", top);
@@ -86,14 +86,14 @@ mod ItemCatalog {
             inventory   <- decodeInventory(inventoryJ)
         ) yield ({items = items, inventory = inventory}: Catalog)
 
-    def traverseItems(map: Map[String, JsonElement]): Option[Map[String, ItemDef]] =
+    def traverseItems(map: Map[String, Json]): Option[Map[String, ItemDef]] =
         Map.foldLeftWithKey((acc, id, json) ->
             Option.flatMap(soFar ->
                 decodeItem(id, json) |> Option.map(i -> Map.insert(id, i, soFar)),
                 acc),
             Some(Map.empty()), map)
 
-    def decodeItem(id: String, element: JsonElement): Option[ItemDef] =
+    def decodeItem(id: String, element: Json): Option[ItemDef] =
         forM (
             obj    <- expectObject(element);
             nameJ  <- Map.get("name", obj);
@@ -111,9 +111,9 @@ mod ItemCatalog {
             case _      => None
         }
 
-    def decodeInventory(element: JsonElement): Option[List[InventoryEntry]] =
+    def decodeInventory(element: Json): Option[List[InventoryEntry]] =
         match element {
-            case JsonArray(items) =>
+            case JArray(items) =>
                 List.foldRight(item -> acc ->
                     Option.flatMap(soFar ->
                         decodeInventoryEntry(item) |> Option.map(e -> e :: soFar),
@@ -122,7 +122,7 @@ mod ItemCatalog {
             case _ => None
         }
 
-    def decodeInventoryEntry(element: JsonElement): Option[InventoryEntry] =
+    def decodeInventoryEntry(element: Json): Option[InventoryEntry] =
         forM (
             obj     <- expectObject(element);
             idJ     <- Map.get("id", obj);
@@ -131,21 +131,21 @@ mod ItemCatalog {
             qty     <- expectInt(qtyJ)
         ) yield ({id = id, quantity = qty}: InventoryEntry)
 
-    def expectObject(element: JsonElement): Option[Map[String, JsonElement]] =
+    def expectObject(element: Json): Option[Map[String, Json]] =
         match element {
-            case JsonObject(map) => Some(map)
+            case JObject(map) => Some(map)
             case _               => None
         }
 
-    def expectString(element: JsonElement): Option[String] =
+    def expectString(element: Json): Option[String] =
         match element {
-            case JsonString(text) => Some(text)
+            case JString(text) => Some(text)
             case _                => None
         }
 
-    def expectInt(element: JsonElement): Option[Int32] =
+    def expectInt(element: Json): Option[Int32] =
         match element {
-            case JsonNumber(bd) =>
+            case JNumber(bd) =>
                 BigDecimal.tryToFloat64(bd) |> Option.flatMap(Float64.tryToInt32)
             case _              => None
         }

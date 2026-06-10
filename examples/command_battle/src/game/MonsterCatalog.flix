@@ -5,8 +5,8 @@
 /// バトル開始時の敵として配置する。
 mod MonsterCatalog {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonNumber, JsonString}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JNumber, JString}
 
     /// 敵 1 体のスプライト情報。 IDE Resource 画面でプレビューを出すための nested で、
     /// 単一画像なら hframes=vframes=1, frame=0 で OK。 シート分割テクスチャの場合は
@@ -35,7 +35,7 @@ mod MonsterCatalog {
         match readResult {
             case Err(e) => bug!("MonsterCatalog.load file read failed: ${path} :: ${e}")
             case Ok(content) =>
-                match Json.Parse.parse(content) {
+                match JsonCompat.parse(content) {
                     case None => bug!("MonsterCatalog.load JSON parse failed: ${path}")
                     case Some(json) =>
                         match decodeCatalog(json) {
@@ -54,7 +54,7 @@ mod MonsterCatalog {
 
     // ── デコード ──
 
-    def decodeCatalog(element: JsonElement): Option[Map[String, EnemyStats]] =
+    def decodeCatalog(element: Json): Option[Map[String, EnemyStats]] =
         forM (
             top       <- expectObject(element);
             monstersJ <- Map.get("monsters", top);
@@ -62,14 +62,14 @@ mod MonsterCatalog {
             catalog   <- traverse(monstersM)
         ) yield catalog
 
-    def traverse(map: Map[String, JsonElement]): Option[Map[String, EnemyStats]] =
+    def traverse(map: Map[String, Json]): Option[Map[String, EnemyStats]] =
         Map.foldLeftWithKey((acc, id, json) ->
             Option.flatMap(soFar ->
                 decodeMonster(json) |> Option.map(m -> Map.insert(id, m, soFar)),
                 acc),
             Some(Map.empty()), map)
 
-    def decodeMonster(element: JsonElement): Option[EnemyStats] =
+    def decodeMonster(element: Json): Option[EnemyStats] =
         forM (
             obj      <- expectObject(element);
             nameJ    <- Map.get("name", obj);
@@ -89,7 +89,7 @@ mod MonsterCatalog {
             attack = attack, defense = defense, sprite = sprite
         }: EnemyStats)
 
-    def decodeSprite(element: JsonElement): Option[SpriteSpec] =
+    def decodeSprite(element: Json): Option[SpriteSpec] =
         forM (
             obj       <- expectObject(element);
             textureJ  <- Map.get("texture", obj);
@@ -105,21 +105,21 @@ mod MonsterCatalog {
             vframes = vframes, frame = frame
         }: SpriteSpec)
 
-    def expectObject(element: JsonElement): Option[Map[String, JsonElement]] =
+    def expectObject(element: Json): Option[Map[String, Json]] =
         match element {
-            case JsonObject(map) => Some(map)
+            case JObject(map) => Some(map)
             case _               => None
         }
 
-    def expectString(element: JsonElement): Option[String] =
+    def expectString(element: Json): Option[String] =
         match element {
-            case JsonString(text) => Some(text)
+            case JString(text) => Some(text)
             case _                => None
         }
 
-    def expectInt(element: JsonElement): Option[Int32] =
+    def expectInt(element: Json): Option[Int32] =
         match element {
-            case JsonNumber(bd) =>
+            case JNumber(bd) =>
                 BigDecimal.tryToFloat64(bd) |> Option.flatMap(Float64.tryToInt32)
             case _              => None
         }

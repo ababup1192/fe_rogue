@@ -13,8 +13,8 @@
 /// 別ジャンルの Resource を追加するときは `_schema.json` をこの規格で書き、
 /// 自前の data 型に `instance Saveable[T]` を実装するだけで engine の機構に乗る。
 mod Resource {
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool, JsonArray, JsonNull}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber, JBool, JArray, JNull}
 
     /// `KindedRefListT` で使う 1 種別ぶんの記述。
     ///   kindId : JSON 上で kind 判別子として書かれる文字列（例: "itemA"）
@@ -148,7 +148,7 @@ mod Resource {
         match readResult {
             case Err(e) => Err("file read failed (${path}): ${e}")
             case Ok(content) =>
-                match Json.Parse.parse(content) {
+                match JsonCompat.parse(content) {
                     case None => Err("JSON parse failed (${path})")
                     case Some(json) =>
                         let decoded: Option[ResourceSchema] = Saveable.fromJson(json);
@@ -193,136 +193,136 @@ mod Resource {
 // FieldHint は `"plain"`（文字列）または `{"slider": {...}}` 等の単一キー判別。
 
 instance Saveable[Resource.ResourceSchema] {
-    pub def toJson(value: Resource.ResourceSchema): Json.JsonElement =
+    pub def toJson(value: Resource.ResourceSchema): Util.Json.Json =
         ResourceCodec.encodeSchema(value)
 
-    pub def fromJson(element: Json.JsonElement): Option[Resource.ResourceSchema] =
+    pub def fromJson(element: Util.Json.Json): Option[Resource.ResourceSchema] =
         ResourceCodec.decodeSchema(element)
 }
 
 /// `ResourceSchema` の JSON エンコード／デコード本体。
 /// 外部からは `Saveable[Resource.ResourceSchema]` 経由でしか触らない想定。
 mod ResourceCodec {
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool, JsonArray}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber, JBool, JArray}
     use JsonCodec.{expectObject, expectString, expectInt, expectFloat, floatToBd, intToBd}
     use Resource.{ResourceSchema, FieldEntry, FieldSchema, FieldType, FieldHint, MetaHint}
 
     // ── エンコード ──
 
-    pub def encodeSchema(s: ResourceSchema): JsonElement =
+    pub def encodeSchema(s: ResourceSchema): Json =
         let meta = Resource.metaHintsOf(s);
         let base = Map#{"fields" => encodeEntries(Resource.fieldsOf(s))};
         if (Map.isEmpty(meta))
-            JsonObject(base)
+            JObject(base)
         else
-            JsonObject(Map.insert("metaHints", encodeMetaHints(meta), base))
+            JObject(Map.insert("metaHints", encodeMetaHints(meta), base))
 
-    def encodeMetaHints(meta: Map[String, MetaHint]): JsonElement =
+    def encodeMetaHints(meta: Map[String, MetaHint]): Json =
         let inner = meta
             |> Map.foldLeftWithKey((acc, name, hint) ->
                 Map.insert(name, encodeMetaHint(hint), acc),
                 Map.empty());
-        JsonObject(inner)
+        JObject(inner)
 
-    def encodeMetaHint(h: MetaHint): JsonElement = match h {
+    def encodeMetaHint(h: MetaHint): Json = match h {
         case MetaHint.Ref(target) =>
-            JsonObject(Map#{
-                "type" => JsonString("ref"),
-                "to"   => JsonString(target)
+            JObject(Map#{
+                "type" => JString("ref"),
+                "to"   => JString(target)
             })
         case MetaHint.Text =>
-            JsonObject(Map#{"type" => JsonString("text")})
+            JObject(Map#{"type" => JString("text")})
     }
 
-    def encodeEntries(entries: Map[String, FieldEntry]): JsonElement =
+    def encodeEntries(entries: Map[String, FieldEntry]): Json =
         let inner = entries
             |> Map.foldLeftWithKey((acc, name, entry) ->
                 Map.insert(name, encodeEntry(entry), acc),
                 Map.empty());
-        JsonObject(inner)
+        JObject(inner)
 
-    def encodeEntry(entry: FieldEntry): JsonElement = match entry {
+    def encodeEntry(entry: FieldEntry): Json = match entry {
         case FieldEntry.Field(fs) =>
-            JsonObject(Map#{"field" => encodeFieldSchema(fs)})
+            JObject(Map#{"field" => encodeFieldSchema(fs)})
         case FieldEntry.Nested(m) =>
-            JsonObject(Map#{"nested" => encodeEntries(m)})
+            JObject(Map#{"nested" => encodeEntries(m)})
     }
 
-    def encodeFieldSchema(fs: FieldSchema): JsonElement =
+    def encodeFieldSchema(fs: FieldSchema): Json =
         let base = Map#{
             "ftype" => encodeFieldType(fs#ftype),
             "hint"  => encodeFieldHint(fs#hint),
-            "label" => JsonString(fs#label)
+            "label" => JString(fs#label)
         };
         let withOrder = match fs#order {
-            case Some(n) => Map.insert("order", JsonNumber(intToBd(n)), base)
+            case Some(n) => Map.insert("order", JNumber(intToBd(n)), base)
             case None    => base
         };
-        JsonObject(withOrder)
+        JObject(withOrder)
 
-    def encodeFieldType(t: FieldType): JsonElement = match t {
-        case FieldType.TextT         => JsonString("text")
-        case FieldType.IntT          => JsonString("int")
-        case FieldType.FloatT        => JsonString("float")
-        case FieldType.BoolT         => JsonString("bool")
-        case FieldType.TexturePathT  => JsonString("texturePath")
-        case FieldType.SpriteFramesT => JsonString("spriteFrames")
-        case FieldType.WeaponProfT   => JsonString("weaponProf")
+    def encodeFieldType(t: FieldType): Json = match t {
+        case FieldType.TextT         => JString("text")
+        case FieldType.IntT          => JString("int")
+        case FieldType.FloatT        => JString("float")
+        case FieldType.BoolT         => JString("bool")
+        case FieldType.TexturePathT  => JString("texturePath")
+        case FieldType.SpriteFramesT => JString("spriteFrames")
+        case FieldType.WeaponProfT   => JString("weaponProf")
         case FieldType.RefT(target)  =>
-            JsonObject(Map#{
-                "type" => JsonString("ref"),
-                "to"   => JsonString(target)
+            JObject(Map#{
+                "type" => JString("ref"),
+                "to"   => JString(target)
             })
         case FieldType.RefPercentListT(target) =>
-            JsonObject(Map#{
-                "type" => JsonString("refPercentList"),
-                "to"   => JsonString(target)
+            JObject(Map#{
+                "type" => JString("refPercentList"),
+                "to"   => JString(target)
             })
         case FieldType.KindedRefListT(kinds) =>
-            JsonObject(Map#{
-                "type"  => JsonString("kindedRefList"),
-                "kinds" => JsonArray(List.map(encodeKindSpec, kinds) |> List.toVector)
+            JObject(Map#{
+                "type"  => JString("kindedRefList"),
+                "kinds" => JArray(List.map(encodeKindSpec, kinds) |> List.toVector)
             })
         case FieldType.EnumT(values) =>
-            JsonObject(Map#{
-                "type"   => JsonString("enum"),
-                "values" => JsonArray(List.map(JsonString, values) |> List.toVector)
+            JObject(Map#{
+                "type"   => JString("enum"),
+                "values" => JArray(List.map(JString, values) |> List.toVector)
             })
     }
 
     /// 1 つの KindSpec を `{"kindId": "...", "label": "...", "to": "..."}` に encode する。
-    def encodeKindSpec(k: Resource.KindSpec): JsonElement =
-        JsonObject(Map#{
-            "kindId" => JsonString(k#kindId),
-            "label"  => JsonString(k#label),
-            "to"     => JsonString(k#target)
+    def encodeKindSpec(k: Resource.KindSpec): Json =
+        JObject(Map#{
+            "kindId" => JString(k#kindId),
+            "label"  => JString(k#label),
+            "to"     => JString(k#target)
         })
 
-    def encodeFieldHint(h: FieldHint): JsonElement = match h {
-        case FieldHint.Plain         => JsonString("plain")
-        case FieldHint.Multiline     => JsonString("multiline")
+    def encodeFieldHint(h: FieldHint): Json = match h {
+        case FieldHint.Plain         => JString("plain")
+        case FieldHint.Multiline     => JString("multiline")
         case FieldHint.Slider(s)     =>
-            JsonObject(Map#{"slider" => JsonObject(Map#{
-                "min"  => JsonNumber(floatToBd(s#min)),
-                "max"  => JsonNumber(floatToBd(s#max)),
-                "step" => JsonNumber(floatToBd(s#step))
+            JObject(Map#{"slider" => JObject(Map#{
+                "min"  => JNumber(floatToBd(s#min)),
+                "max"  => JNumber(floatToBd(s#max)),
+                "step" => JNumber(floatToBd(s#step))
             })})
         case FieldHint.Spinner(s)    =>
-            JsonObject(Map#{"spinner" => JsonObject(Map#{
-                "min" => JsonNumber(intToBd(s#min)),
-                "max" => JsonNumber(intToBd(s#max))
+            JObject(Map#{"spinner" => JObject(Map#{
+                "min" => JNumber(intToBd(s#min)),
+                "max" => JNumber(intToBd(s#max))
             })})
         case FieldHint.FrameGrid(g)  =>
-            JsonObject(Map#{"frameGrid" => JsonObject(Map#{
-                "hframesField" => JsonString(g#hframesField),
-                "vframesField" => JsonString(g#vframesField)
+            JObject(Map#{"frameGrid" => JObject(Map#{
+                "hframesField" => JString(g#hframesField),
+                "vframesField" => JString(g#vframesField)
             })})
     }
 
     // ── デコード ──
 
-    pub def decodeSchema(element: JsonElement): Option[ResourceSchema] =
+    pub def decodeSchema(element: Json): Option[ResourceSchema] =
         forM (
             top         <- expectObject(element);
             fieldsJson  <- Map.get("fields", top);
@@ -332,14 +332,14 @@ mod ResourceCodec {
         ) yield Resource.mkSchemaWithMeta(fields, metaHints)
 
     /// `metaHints` セクションは省略可能。欠落していれば空 Map を返す (後方互換)。
-    def decodeMetaHintsOpt(top: Map[String, JsonElement]): Option[Map[String, MetaHint]] =
+    def decodeMetaHintsOpt(top: Map[String, Json]): Option[Map[String, MetaHint]] =
         match Map.get("metaHints", top) {
             case None         => Some(Map.empty())
             case Some(metaJ)  =>
                 expectObject(metaJ) |> Option.flatMap(decodeMetaHints)
         }
 
-    def decodeMetaHints(map: Map[String, JsonElement]): Option[Map[String, MetaHint]] =
+    def decodeMetaHints(map: Map[String, Json]): Option[Map[String, MetaHint]] =
         Map.foldLeftWithKey((acc, name, json) ->
             Option.flatMap(soFar ->
                 decodeMetaHint(json) |> Option.map(h -> Map.insert(name, h, soFar)),
@@ -347,7 +347,7 @@ mod ResourceCodec {
             Some(Map.empty()),
             map)
 
-    def decodeMetaHint(element: JsonElement): Option[MetaHint] =
+    def decodeMetaHint(element: Json): Option[MetaHint] =
         forM (
             obj    <- expectObject(element);
             typeJ  <- Map.get("type", obj);
@@ -362,7 +362,7 @@ mod ResourceCodec {
             }
         ) yield hint
 
-    def decodeEntries(map: Map[String, JsonElement]): Option[Map[String, FieldEntry]] =
+    def decodeEntries(map: Map[String, Json]): Option[Map[String, FieldEntry]] =
         Map.foldLeftWithKey((acc, name, json) ->
             Option.flatMap(soFar ->
                 decodeEntry(json) |> Option.map(e -> Map.insert(name, e, soFar)),
@@ -370,12 +370,12 @@ mod ResourceCodec {
             Some(Map.empty()),
             map)
 
-    def decodeEntry(element: JsonElement): Option[FieldEntry] =
+    def decodeEntry(element: Json): Option[FieldEntry] =
         expectObject(element)
             |> Option.flatMap(singleEntry)
             |> Option.flatMap(matchEntryKind)
 
-    def matchEntryKind(pair: (String, JsonElement)): Option[FieldEntry] =
+    def matchEntryKind(pair: (String, Json)): Option[FieldEntry] =
         match pair {
             case ("field", payload) =>
                 decodeFieldSchema(payload) |> Option.map(FieldEntry.Field)
@@ -386,7 +386,7 @@ mod ResourceCodec {
             case _ => None
         }
 
-    def decodeFieldSchema(element: JsonElement): Option[FieldSchema] =
+    def decodeFieldSchema(element: Json): Option[FieldSchema] =
         forM (
             obj      <- expectObject(element);
             ftypeJ   <- Map.get("ftype", obj);
@@ -399,21 +399,21 @@ mod ResourceCodec {
         ) yield ({ftype = ftype, hint = hint, label = label, order = order}: FieldSchema)
 
     /// `order` フィールドは省略可能。欠落時は `None`、値あり時は `Some(n)`。
-    def decodeOrderOpt(obj: Map[String, JsonElement]): Option[Option[Int32]] =
+    def decodeOrderOpt(obj: Map[String, Json]): Option[Option[Int32]] =
         match Map.get("order", obj) {
             case None      => Some(None)
             case Some(orderJ) => expectInt(orderJ) |> Option.map(Some)
         }
 
-    def decodeFieldType(element: JsonElement): Option[FieldType] = match element {
-        case JsonString("text")          => Some(FieldType.TextT)
-        case JsonString("int")           => Some(FieldType.IntT)
-        case JsonString("float")         => Some(FieldType.FloatT)
-        case JsonString("bool")          => Some(FieldType.BoolT)
-        case JsonString("texturePath")   => Some(FieldType.TexturePathT)
-        case JsonString("spriteFrames")  => Some(FieldType.SpriteFramesT)
-        case JsonString("weaponProf")    => Some(FieldType.WeaponProfT)
-        case JsonObject(obj)            =>
+    def decodeFieldType(element: Json): Option[FieldType] = match element {
+        case JString("text")          => Some(FieldType.TextT)
+        case JString("int")           => Some(FieldType.IntT)
+        case JString("float")         => Some(FieldType.FloatT)
+        case JString("bool")          => Some(FieldType.BoolT)
+        case JString("texturePath")   => Some(FieldType.TexturePathT)
+        case JString("spriteFrames")  => Some(FieldType.SpriteFramesT)
+        case JString("weaponProf")    => Some(FieldType.WeaponProfT)
+        case JObject(obj)            =>
             forM (
                 typeJ <- Map.get("type", obj);
                 tName <- expectString(typeJ);
@@ -440,10 +440,10 @@ mod ResourceCodec {
         case _                          => None
     }
 
-    /// `["A", "B", ...]` の JsonArray を List[String] に。
+    /// `["A", "B", ...]` の JArray を List[String] に。
     /// EnumT.values の decoding に使う。
-    def decodeStringList(element: JsonElement): Option[List[String]] = match element {
-        case JsonArray(items) =>
+    def decodeStringList(element: Json): Option[List[String]] = match element {
+        case JArray(items) =>
             List.foldRight(item -> acc ->
                 Option.flatMap(soFar ->
                     expectString(item) |> Option.map(s -> s :: soFar),
@@ -452,10 +452,10 @@ mod ResourceCodec {
         case _ => None
     }
 
-    /// `[{kindId, label, to}, ...]` の JsonArray を `List[KindSpec]` に decode する。
+    /// `[{kindId, label, to}, ...]` の JArray を `List[KindSpec]` に decode する。
     /// 要素のいずれかが不正なら全体を None にする（schema 不整合は起動時 panic に上げる）。
-    def decodeKindSpecList(element: JsonElement): Option[List[Resource.KindSpec]] = match element {
-        case JsonArray(items) =>
+    def decodeKindSpecList(element: Json): Option[List[Resource.KindSpec]] = match element {
+        case JArray(items) =>
             List.foldRight(item -> acc ->
                 Option.flatMap(soFar ->
                     decodeKindSpec(item) |> Option.map(k -> k :: soFar),
@@ -464,7 +464,7 @@ mod ResourceCodec {
         case _ => None
     }
 
-    def decodeKindSpec(element: JsonElement): Option[Resource.KindSpec] =
+    def decodeKindSpec(element: Json): Option[Resource.KindSpec] =
         forM (
             obj      <- expectObject(element);
             kindIdJ  <- Map.get("kindId", obj);
@@ -475,17 +475,17 @@ mod ResourceCodec {
             target   <- expectString(toJ)
         ) yield ({kindId = kindId, label = label, target = target}: Resource.KindSpec)
 
-    def decodeFieldHint(element: JsonElement): Option[FieldHint] = match element {
-        case JsonString("plain")     => Some(FieldHint.Plain)
-        case JsonString("multiline") => Some(FieldHint.Multiline)
-        case JsonObject(_)           =>
+    def decodeFieldHint(element: Json): Option[FieldHint] = match element {
+        case JString("plain")     => Some(FieldHint.Plain)
+        case JString("multiline") => Some(FieldHint.Multiline)
+        case JObject(_)           =>
             expectObject(element)
                 |> Option.flatMap(singleEntry)
                 |> Option.flatMap(matchHintKind)
         case _                       => None
     }
 
-    def matchHintKind(pair: (String, JsonElement)): Option[FieldHint] =
+    def matchHintKind(pair: (String, Json)): Option[FieldHint] =
         match pair {
             case ("slider", payload)    => decodeSliderHint(payload)
             case ("spinner", payload)   => decodeSpinnerHint(payload)
@@ -493,7 +493,7 @@ mod ResourceCodec {
             case _                      => None
         }
 
-    def decodeSliderHint(element: JsonElement): Option[FieldHint] =
+    def decodeSliderHint(element: Json): Option[FieldHint] =
         forM (
             obj   <- expectObject(element);
             minJ  <- Map.get("min",  obj);
@@ -504,7 +504,7 @@ mod ResourceCodec {
             st    <- expectFloat(stepJ)
         ) yield FieldHint.Slider({min = mn, max = mx, step = st})
 
-    def decodeSpinnerHint(element: JsonElement): Option[FieldHint] =
+    def decodeSpinnerHint(element: Json): Option[FieldHint] =
         forM (
             obj  <- expectObject(element);
             minJ <- Map.get("min", obj);
@@ -513,7 +513,7 @@ mod ResourceCodec {
             mx   <- expectInt(maxJ)
         ) yield FieldHint.Spinner({min = mn, max = mx})
 
-    def decodeFrameGridHint(element: JsonElement): Option[FieldHint] =
+    def decodeFrameGridHint(element: Json): Option[FieldHint] =
         forM (
             obj  <- expectObject(element);
             hfJ  <- Map.get("hframesField", obj);
@@ -528,7 +528,7 @@ mod ResourceCodec {
     // `engine/src/JsonCodec.flix` に集約されている。本 mod の `use JsonCodec.{...}` で
     // 参照を引き込んでいるため、ローカル定義は持たない。
 
-    def singleEntry(map: Map[String, JsonElement]): Option[(String, JsonElement)] =
+    def singleEntry(map: Map[String, Json]): Option[(String, Json)] =
         match Map.toList(map) {
             case head :: Nil => Some(head)
             case _           => None

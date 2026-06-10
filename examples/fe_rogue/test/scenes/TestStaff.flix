@@ -114,7 +114,7 @@ mod TestStaff {
     /// 3 つの杖がすべて id でひけて、effect が期待通りに enum に解決される
     @Test
     def testDecodeSampleCatalog(): Unit \ Assert =
-        let parsed = Json.Parse.parse(sampleStavesJson());
+        let parsed = JsonCompat.parse(sampleStavesJson());
         let decoded: Option[Staff.StaffCatalog] =
             Option.flatMap(Saveable.fromJson, parsed);
         match decoded {
@@ -141,7 +141,7 @@ mod TestStaff {
     /// `durability` / `sprite#frame` の値が期待通りに読み取られる
     @Test
     def testDecodeDurabilityAndSprite(): Unit \ Assert =
-        let parsed = Json.Parse.parse(sampleStavesJson());
+        let parsed = JsonCompat.parse(sampleStavesJson());
         let decoded: Option[Staff.StaffCatalog] =
             Option.flatMap(Saveable.fromJson, parsed);
         match decoded {

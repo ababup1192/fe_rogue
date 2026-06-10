@@ -62,7 +62,7 @@ pub enum Layout {
     /// scene tree (Container の親 path 配下) に追加する。
     /// Layout.apply は parentPath ++ [name] の path に対し setGlobalPositionAt + setSize を呼ぶ。
     /// definition 内の `"anchor"` / `"margin"` は Panel 内での anchor 配置に使われる。
-    case Node({ name = String, definition = Json.JsonElement })
+    case Node({ name = String, definition = Util.Json.Json })
     /// Panel — 親 rect を共有する子レイアウト群。各 Node 子は個別の `anchor` で配置 (Godot の Plain Control に最も近い)。
     /// anchor 未指定の子は TopLeft 扱い。anchor=FullRect の Node は size も親 rect に合わせる。
     case Panel(List[Layout])
@@ -70,66 +70,65 @@ pub enum Layout {
 
 mod Layout {
 
-    use Json.JsonElement.{JsonObject}
-    use Json.JsonError.JsonError
-    use Json.Path.Path.Root
+    use Util.Json.Json.{JObject}
+    use JsonCompat.PathTag.Root
 
     // ========================================================================
     // JSON デシリアライズ
     // ========================================================================
 
-    /// JsonElement から Layout を再帰的に構築する。
+    /// Json から Layout を再帰的に構築する。
     /// "type" を持つ object は実 node 定義 → Layout.Node に変換。
     /// "kind" を持つ object は Layout primitive (HBoxContainer 等)。
-    pub def fromJson(json: Json.JsonElement): Result[Json.JsonError, Layout] =
+    pub def fromJson(json: Util.Json.Json): Result[Util.Json.JsonError, Layout] =
         match json {
-            case JsonObject(map) =>
+            case JObject(map) =>
                 if (Map.memberOf("type", map))
                     forM (
-                        name <- (Json.FromJson.getAtKey(Root, "name", map): Result[Json.JsonError, String])
+                        name <- (JsonCompat.getAtKey(Root, "name", map): Result[Util.Json.JsonError, String])
                     ) yield Layout.Node({name = name, definition = json})
                 else
                     forM (
-                        kind <- (Json.FromJson.getAtKey(Root, "kind", map): Result[Json.JsonError, String]);
+                        kind <- (JsonCompat.getAtKey(Root, "kind", map): Result[Util.Json.JsonError, String]);
                         layout <- buildByKind(kind, map)
                     ) yield layout
-            case _ => Err(JsonError(Root, Set#{"JsonObject for Layout"}))
+            case _ => Err(JsonCompat.jsonError(Root, Set#{"JObject for Layout"}))
         }
 
     def buildByKind(kind: String,
-                     map: Map[String, Json.JsonElement]): Result[Json.JsonError, Layout] =
+                     map: Map[String, Util.Json.Json]): Result[Util.Json.JsonError, Layout] =
         match kind {
             case "MarginContainer" =>
                 forM (
-                    margin    <- (Json.FromJson.getAtKey(Root, "margin", map): Result[Json.JsonError, Float64]);
-                    childJson <- (Json.FromJson.getAtKey(Root, "child", map): Result[Json.JsonError, Json.JsonElement]);
+                    margin    <- (JsonCompat.getAtKey(Root, "margin", map): Result[Util.Json.JsonError, Float64]);
+                    childJson <- (JsonCompat.getAtKey(Root, "child", map): Result[Util.Json.JsonError, Util.Json.Json]);
                     child     <- fromJson(childJson)
                 ) yield Layout.MarginContainer({margin = margin, child = child})
             case "CenterContainer" =>
                 forM (
-                    childJson <- (Json.FromJson.getAtKey(Root, "child", map): Result[Json.JsonError, Json.JsonElement]);
+                    childJson <- (JsonCompat.getAtKey(Root, "child", map): Result[Util.Json.JsonError, Util.Json.Json]);
                     child     <- fromJson(childJson)
                 ) yield Layout.CenterContainer(child)
             case "VBoxContainer" => buildBoxContainer(true, map)
             case "HBoxContainer" => buildBoxContainer(false, map)
             case "Panel" =>
                 forM (
-                    childrenJson <- (Json.FromJson.getAtKey(Root, "children", map): Result[Json.JsonError, List[Json.JsonElement]]);
+                    childrenJson <- (JsonCompat.getAtKey(Root, "children", map): Result[Util.Json.JsonError, List[Util.Json.Json]]);
                     children     <- traverseLayouts(childrenJson)
                 ) yield Layout.Panel(children)
             case unknown =>
-                Err(JsonError(Root, Set#{"known Layout kind (got: ${unknown})"}))
+                Err(JsonCompat.jsonError(Root, Set#{"known Layout kind (got: ${unknown})"}))
         }
 
     def buildBoxContainer(vertical: Bool,
-                           map: Map[String, Json.JsonElement]): Result[Json.JsonError, Layout] =
+                           map: Map[String, Util.Json.Json]): Result[Util.Json.JsonError, Layout] =
         forM (
-            separation   <- (Json.FromJson.getAtKey(Root, "separation", map): Result[Json.JsonError, Float64]);
-            alignStr     <- (Json.FromJson.getAtKey(Root, "alignment", map): Result[Json.JsonError, String]);
-            crossStr     <- (Json.FromJson.getAtKey(Root, "crossAxis", map): Result[Json.JsonError, String]);
+            separation   <- (JsonCompat.getAtKey(Root, "separation", map): Result[Util.Json.JsonError, Float64]);
+            alignStr     <- (JsonCompat.getAtKey(Root, "alignment", map): Result[Util.Json.JsonError, String]);
+            crossStr     <- (JsonCompat.getAtKey(Root, "crossAxis", map): Result[Util.Json.JsonError, String]);
             alignment    <- parseMainAxis(alignStr);
             crossAxis    <- parseCrossAxis(crossStr);
-            childrenJson <- (Json.FromJson.getAtKey(Root, "children", map): Result[Json.JsonError, List[Json.JsonElement]]);
+            childrenJson <- (JsonCompat.getAtKey(Root, "children", map): Result[Util.Json.JsonError, List[Util.Json.Json]]);
             children     <- traverseLayouts(childrenJson)
         ) yield if (vertical)
             Layout.VBoxContainer({separation = separation, alignment = alignment,
@@ -140,7 +139,7 @@ mod Layout {
 
     /// children 配列の各要素を Layout に変換する。
     /// 動的な繰り返しが必要な場合は flix code 側で `List.range` などで生成すること。
-    def traverseLayouts(jsons: List[Json.JsonElement]): Result[Json.JsonError, List[Layout]] =
+    def traverseLayouts(jsons: List[Util.Json.Json]): Result[Util.Json.JsonError, List[Layout]] =
         match jsons {
             case Nil       => Ok(Nil)
             case j :: rest =>
@@ -150,21 +149,21 @@ mod Layout {
                 ) yield head :: tail
         }
 
-    def parseMainAxis(s: String): Result[Json.JsonError, MainAxisAlign] =
+    def parseMainAxis(s: String): Result[Util.Json.JsonError, MainAxisAlign] =
         match s {
             case "Begin"  => Ok(MainAxisAlign.Begin)
             case "Center" => Ok(MainAxisAlign.Center)
             case "End"    => Ok(MainAxisAlign.End)
-            case other    => Err(JsonError(Root, Set#{"MainAxisAlign (got: ${other})"}))
+            case other    => Err(JsonCompat.jsonError(Root, Set#{"MainAxisAlign (got: ${other})"}))
         }
 
-    def parseCrossAxis(s: String): Result[Json.JsonError, CrossAxisAlign] =
+    def parseCrossAxis(s: String): Result[Util.Json.JsonError, CrossAxisAlign] =
         match s {
             case "Begin"   => Ok(CrossAxisAlign.Begin)
             case "Center"  => Ok(CrossAxisAlign.Center)
             case "End"     => Ok(CrossAxisAlign.End)
             case "Stretch" => Ok(CrossAxisAlign.Stretch)
-            case other     => Err(JsonError(Root, Set#{"CrossAxisAlign (got: ${other})"}))
+            case other     => Err(JsonCompat.jsonError(Root, Set#{"CrossAxisAlign (got: ${other})"}))
         }
 
     // ========================================================================
@@ -229,12 +228,12 @@ mod Layout {
                 resolveRec(parentPath, origin, layout, scene, acc)
         }
 
-    /// JsonElement から `"anchor": "..."` を Anchor preset として読む
-    def readAnchor(definition: Json.JsonElement): Option[Anchor] =
+    /// Json から `"anchor": "..."` を Anchor preset として読む
+    def readAnchor(definition: Util.Json.Json): Option[Anchor] =
         match definition {
-            case JsonObject(map) =>
-                let result: Result[Json.JsonError, Option[String]] =
-                    Json.FromJson.getAtKeyOpt(Root, "anchor", map);
+            case JObject(map) =>
+                let result: Result[Util.Json.JsonError, Option[String]] =
+                    JsonCompat.getAtKeyOpt(Root, "anchor", map);
                 match result {
                     case Ok(Some(s)) => Anchor.fromString(s)
                     case _           => None
@@ -242,12 +241,12 @@ mod Layout {
             case _ => None
         }
 
-    /// JsonElement から `"margin": Float64` を読む (デフォルト 0.0)
-    def readMargin(definition: Json.JsonElement): Float64 =
+    /// Json から `"margin": Float64` を読む (デフォルト 0.0)
+    def readMargin(definition: Util.Json.Json): Float64 =
         match definition {
-            case JsonObject(map) =>
-                let result: Result[Json.JsonError, Option[Float64]] =
-                    Json.FromJson.getAtKeyOpt(Root, "margin", map);
+            case JObject(map) =>
+                let result: Result[Util.Json.JsonError, Option[Float64]] =
+                    JsonCompat.getAtKeyOpt(Root, "margin", map);
                 match result {
                     case Ok(Some(m)) => m
                     case _           => 0.0

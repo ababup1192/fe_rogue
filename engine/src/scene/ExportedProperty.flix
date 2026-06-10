@@ -39,29 +39,29 @@ pub type alias PropertyDecl = {
 }
 
 /// 1 つのノードに紐づくプロパティ値の集合。SceneLoader が JSON から作る
-/// 値は raw JsonElement のまま運び、Export.read で型付きに復元する方式にしているため
+/// 値は raw Json のまま運び、Export.read で型付きに復元する方式にしているため
 /// engine 側はゲーム固有の型を知らずに済む
-pub type alias PropertyBag = Map[String, Json.JsonElement]
+pub type alias PropertyBag = Map[String, Util.Json.Json]
 
 /// Property[a] の値型 a が JSON から a として復元できることを示す trait
 /// MVP では Float64 / Int32 / Bool のみ実装
 pub trait Exportable[a] {
-    /// JsonElement を a として復元する。失敗時 None を返し、呼び出し側が default にフォールバックする
-    pub def decodeFromJson(json: Json.JsonElement): Option[a]
+    /// Json を a として復元する。失敗時 None を返し、呼び出し側が default にフォールバックする
+    pub def decodeFromJson(json: Util.Json.Json): Option[a]
 }
 
 instance Exportable[Float64] {
-    pub def decodeFromJson(json: Json.JsonElement): Option[Float64] =
+    pub def decodeFromJson(json: Util.Json.Json): Option[Float64] =
         ExportedProperty.decodeFloat(json)
 }
 
 instance Exportable[Int32] {
-    pub def decodeFromJson(json: Json.JsonElement): Option[Int32] =
+    pub def decodeFromJson(json: Util.Json.Json): Option[Int32] =
         ExportedProperty.decodeInt(json)
 }
 
 instance Exportable[Bool] {
-    pub def decodeFromJson(json: Json.JsonElement): Option[Bool] =
+    pub def decodeFromJson(json: Util.Json.Json): Option[Bool] =
         ExportedProperty.decodeBool(json)
 }
 
@@ -72,34 +72,34 @@ mod ExportedProperty {
     /// 空の PropertyBag。"properties" セクションが無いノードに使う既定値
     pub def emptyBag(): PropertyBag = Map.empty()
 
-    /// JsonNumber → Float64。Java の BigDecimal.doubleValue を使って変換
-    pub def decodeFloat(json: Json.JsonElement): Option[Float64] =
+    /// JNumber → Float64。Java の BigDecimal.doubleValue を使って変換
+    pub def decodeFloat(json: Util.Json.Json): Option[Float64] =
         match json {
-            case Json.JsonElement.JsonNumber(big) => Some(big.doubleValue())
+            case Util.Json.Json.JNumber(big) => Some(big.doubleValue())
             case _ => None
         }
 
-    /// JsonNumber → Int32（小数は切り捨て、Int32 範囲外なら None）
-    pub def decodeInt(json: Json.JsonElement): Option[Int32] =
+    /// JNumber → Int32（小数は切り捨て、Int32 範囲外なら None）
+    pub def decodeInt(json: Util.Json.Json): Option[Int32] =
         match json {
-            case Json.JsonElement.JsonNumber(big) =>
+            case Util.Json.Json.JNumber(big) =>
                 Float64.tryToInt32(big.doubleValue())
             case _ => None
         }
 
-    /// JsonBool → Bool
-    pub def decodeBool(json: Json.JsonElement): Option[Bool] =
+    /// JBool → Bool
+    pub def decodeBool(json: Util.Json.Json): Option[Bool] =
         match json {
-            case Json.JsonElement.JsonBool(b) => Some(b)
+            case Util.Json.Json.JBool(b) => Some(b)
             case _ => None
         }
 
     /// JSON Object 内の "properties" キーを取り出して PropertyBag にする。
     /// "properties" キーが無い / オブジェクトでない場合は空 bag を返す。
     /// SceneLoader.addJsonAt から呼ばれる
-    pub def fromJsonNode(map: Map[String, Json.JsonElement]): PropertyBag =
+    pub def fromJsonNode(map: Map[String, Util.Json.Json]): PropertyBag =
         match Map.get("properties", map) {
-            case Some(Json.JsonElement.JsonObject(propsMap)) => propsMap
+            case Some(Util.Json.Json.JObject(propsMap)) => propsMap
             case _ => emptyBag()
         }
 }

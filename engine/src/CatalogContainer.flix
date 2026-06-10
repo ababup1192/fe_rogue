@@ -7,7 +7,7 @@
 ///
 /// 例: `units.json` は `{"units": {...}, "players": [...], "enemies": [...]}`
 ///       containerKey = "units", entries = {knight => ...},
-///       meta = {"players" => JsonArray(...), "enemies" => JsonArray(...)}
+///       meta = {"players" => JArray(...), "enemies" => JArray(...)}
 ///
 /// **設計メモ**: `Saveable[CatalogContainer[t]]` 用の polymorphic instance は付けない。
 /// `fromJson` のシグネチャに containerKey を値として渡せないため (純粋関数の型では
@@ -15,8 +15,8 @@
 /// 各 catalog 側で `enum WeaponCatalog { case WeaponCatalog(CatalogContainer[WeaponResource]) }`
 /// の wrap enum + 単相 Saveable instance を書く形にする。
 mod CatalogContainer {
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject}
 
     /// 1 container の中身。
     /// `containerKey` は JSON top でこの container を保持しているキー名 (例: "weapons")。
@@ -25,7 +25,7 @@ mod CatalogContainer {
         case CatalogContainer({
             containerKey = String,
             entries      = Map[String, t],
-            meta         = Map[String, JsonElement]
+            meta         = Map[String, Json]
         })
     }
 
@@ -35,7 +35,7 @@ mod CatalogContainer {
         payload#entries
 
     /// meta フィールド (containerKey 以外の top-level フィールド) を取り出す。
-    pub def metaOf(catalog: CatalogContainer[t]): Map[String, JsonElement] =
+    pub def metaOf(catalog: CatalogContainer[t]): Map[String, Json] =
         let CatalogContainer.CatalogContainer(payload) = catalog;
         payload#meta
 
@@ -46,17 +46,17 @@ mod CatalogContainer {
     /// catalog を JSON object として encode する。
     /// 形式: `{containerKey: encodeStringMap(entries), ...meta}`
     /// entry encoder は pure として渡す (内部で `unsafe IO` を隠した形 = JsonCodec の慣例と整合)。
-    pub def encode(encodeEntry: t -> JsonElement, catalog: CatalogContainer[t]): JsonElement =
+    pub def encode(encodeEntry: t -> Json, catalog: CatalogContainer[t]): Json =
         let CatalogContainer.CatalogContainer(payload) = catalog;
         let entriesJson = JsonCodec.encodeStringMap(encodeEntry, payload#entries);
         let base = Map.insert(payload#containerKey, entriesJson, payload#meta);
-        JsonObject(base)
+        JObject(base)
 
     /// JSON object から containerKey 配下を entries、残りを meta として decode する。
     /// 失敗ケース (None): containerKey が無い / object でない / 要素 decode 失敗のいずれか。
     pub def decode(containerKey: String,
-                    decodeEntry: JsonElement -> Option[t],
-                    element: JsonElement): Option[CatalogContainer[t]] =
+                    decodeEntry: Json -> Option[t],
+                    element: Json): Option[CatalogContainer[t]] =
         forM (
             top         <- JsonCodec.expectObject(element);
             entriesJson <- Map.get(containerKey, top);
@@ -86,7 +86,7 @@ mod CatalogContainer {
                 bug!("CatalogContainer.loadWithCheck file read failed: ${spec#dataPath} :: ${error}")
             case Ok(text)   => text
         };
-        let parsed = match Json.Parse.parse(content) {
+        let parsed = match JsonCompat.parse(content) {
             case None       =>
                 bug!("CatalogContainer.loadWithCheck JSON parse failed: ${spec#dataPath}")
             case Some(json) => json
@@ -114,6 +114,6 @@ mod CatalogContainer {
         schemaPath     = String,
         containerKey   = String,
         expectedFields = Set[String],
-        decodeEntry    = JsonElement -> Option[t]
+        decodeEntry    = Json -> Option[t]
     }
 }

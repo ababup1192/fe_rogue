@@ -24,8 +24,7 @@
 ///     └─ footer     (Label2D, NoTag)
 mod LevelUpPanelScene {
 
-    use Json.JsonError.JsonError
-    use Json.Path.Path.Root
+    use JsonCompat.PathTag.Root
 
     // ────────────────────────────────────────────────────────
     // (A) 演出ステート
@@ -105,13 +104,13 @@ mod LevelUpPanelScene {
     def footerPath(): NodePath     = rootName() :: footerName()     :: Nil
 
     /// scene.json 内の "tag" 文字列 → NodeTag への変換。
-    def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+    def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None                   => Ok(NodeTag.NoTag)
             case Some("NoTag")          => Ok(NodeTag.NoTag)
             case Some("LevelUpPanel")   => Ok(NodeTag.LevelUpPanel(initialState()))
             case Some(unknown)          =>
-                Err(JsonError(Root, Set#{"LevelUpPanelScene tag (got: ${unknown})"}))
+                Err(JsonCompat.jsonError(Root, Set#{"LevelUpPanelScene tag (got: ${unknown})"}))
         }
 
     /// scene にパネルを追加する。`GameLifecycle.buildPlayingScene` の構築パイプで 1 回呼ぶ。

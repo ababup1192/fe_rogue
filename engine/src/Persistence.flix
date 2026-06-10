@@ -1,6 +1,6 @@
 /// 永続化（セーブ／ロード）のための汎用機構。
 ///
-/// 「`Json.JsonElement` に双方向変換できるならディスクに書き出せる」という
+/// 「`Util.Json.Json` に双方向変換できるならディスクに書き出せる」という
 /// 最小制約を `Saveable` trait として表現し、`Persistence.save` /
 /// `Persistence.load` がその制約を持つ任意の型を受け取って I/O を行う。
 ///
@@ -15,13 +15,13 @@
 ///   - 形式不一致は `None`／`Err(message)` で握り潰さず素直に伝える
 pub trait Saveable[a] {
 
-    /// 値を `Json.JsonElement` へ変換する。エンコードは全域関数を想定し
+    /// 値を `Util.Json.Json` へ変換する。エンコードは全域関数を想定し
     /// 失敗を返さない（ドメイン上常に成功するため）。
-    pub def toJson(value: a): Json.JsonElement
+    pub def toJson(value: a): Util.Json.Json
 
-    /// `Json.JsonElement` から値を復元する。形式不一致は `None`。
+    /// `Util.Json.Json` から値を復元する。形式不一致は `None`。
     /// パース後のスキーマ検証もここで完結させる。
-    pub def fromJson(element: Json.JsonElement): Option[a]
+    pub def fromJson(element: Util.Json.Json): Option[a]
 }
 
 mod Persistence {
@@ -32,7 +32,7 @@ mod Persistence {
     /// 失敗時は `Err(message)` を返す。
     pub def save(path: String, value: a): Result[String, Unit] \ Fs.FileWrite with Saveable[a] =
         let json = Saveable.toJson(value);
-        let pretty = Json.Write.toPrettyString(2, json);
+        let pretty = Util.Json.toPrettyString(2, json);
         let result = run {
             Fs.WriteFile.write({str = pretty}, path)
         } with Fs.WriteFile.runWithFileWrite;
@@ -49,6 +49,6 @@ mod Persistence {
         } with Fs.ReadFile.runWithFileRead;
         readResult
             |> Result.toOption
-            |> Option.flatMap(Json.Parse.parse)
+            |> Option.flatMap(JsonCompat.parse)
             |> Option.flatMap(Saveable.fromJson)
 }

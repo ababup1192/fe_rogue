@@ -73,7 +73,7 @@ def runWithInput(keys: Set[GameEngine.Key],
                  mousePos: Vec2.Vec2,
                  f: Unit -> a \ GameEngine.Game): a =
     run f() with handler GameEngine.Game {
-        def renderCommands(_, _, k) = k(())
+        def renderCommands(_, _, _, k) = k(())
         def initTileBuffer(_, k) = k((0i32, 0i32))
         def shouldClose(k) = k(false)
         def getDeltaTime(k) = k(16 |> Duration.millis)
@@ -216,7 +216,7 @@ def testHandleInputEmptyPrevState(): Unit \ Assert =
 @Test
 def testAllKeysContainsAll(): Unit \ Assert =
     let keys = GameEngine.allKeys();
-    Assert.assertEq(expected = 17, List.length(keys));
+    Assert.assertEq(expected = 18, List.length(keys));
     Assert.assertTrue(List.memberOf(GameEngine.Key.W, keys));
     Assert.assertTrue(List.memberOf(GameEngine.Key.Escape, keys));
     Assert.assertTrue(List.memberOf(GameEngine.Key.F1, keys));

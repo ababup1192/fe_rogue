@@ -1,7 +1,7 @@
 /// Yarn 用セーブデータの型と、その `Saveable` インスタンス。
 ///
 /// 「現在ノード名 + 全変数」を 1 セットにした Yarn 固有のドメイン型 `SaveData`
-/// と、それを `Json.JsonElement` に往復させるエンコーダ／デコーダを提供する。
+/// と、それを `Util.Json.Json` に往復させるエンコーダ／デコーダを提供する。
 /// I/O 自体は `engine/SaveManager.flix` の `SaveManager.write` /
 /// `SaveManager.read` が `Saveable` 経由で行う。
 ///
@@ -47,10 +47,10 @@ mod Game.SaveData {
 // 自体は engine 側の汎用機構に委ねている（責務分離）。
 
 instance Saveable[Game.SaveData.SaveData] {
-    pub def toJson(data: Game.SaveData.SaveData): Json.JsonElement =
+    pub def toJson(data: Game.SaveData.SaveData): Util.Json.Json =
         SaveDataCodec.encode(data)
 
-    pub def fromJson(element: Json.JsonElement): Option[Game.SaveData.SaveData] =
+    pub def fromJson(element: Util.Json.Json): Option[Game.SaveData.SaveData] =
         SaveDataCodec.decode(element)
 }
 
@@ -61,30 +61,30 @@ mod SaveDataCodec {
 
     use Yarn.Types.Value
     use Yarn.Types.Value.{BoolV, FloatV, StringV}
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber, JBool}
     use Game.SaveData.SaveData
 
     // ── エンコード ──
 
-    /// `SaveData` → `JsonElement`。`{"node":..., "variables":{...}}`。
-    pub def encode(data: SaveData): JsonElement =
+    /// `SaveData` → `Json`。`{"node":..., "variables":{...}}`。
+    pub def encode(data: SaveData): Json =
         let SaveData.SaveData(name, vars) = data;
         let variablesJson = vars
             |> Map.foldLeftWithKey((acc, varName, value) ->
                 Map.insert(varName, encodeValue(value), acc),
                 Map.empty());
-        JsonObject(Map#{
-            "node"      => JsonString(name),
-            "variables" => JsonObject(variablesJson)
+        JObject(Map#{
+            "node"      => JString(name),
+            "variables" => JObject(variablesJson)
         })
 
     /// `Value` → `{"boolValue"|"floatValue"|"stringValue": ...}`。
     /// `output.json` の `initialValues` と同じ表現。
-    def encodeValue(value: Value): JsonElement = match value {
-        case BoolV(b)   => JsonObject(Map#{"boolValue"   => JsonBool(b)})
-        case FloatV(n)  => JsonObject(Map#{"floatValue"  => JsonNumber(floatToBd(n))})
-        case StringV(s) => JsonObject(Map#{"stringValue" => JsonString(s)})
+    def encodeValue(value: Value): Json = match value {
+        case BoolV(b)   => JObject(Map#{"boolValue"   => JBool(b)})
+        case FloatV(n)  => JObject(Map#{"floatValue"  => JNumber(floatToBd(n))})
+        case StringV(s) => JObject(Map#{"stringValue" => JString(s)})
     }
 
     /// Float64 → BigDecimal。整数値の trailing zero を取り除いて
@@ -102,9 +102,9 @@ mod SaveDataCodec {
 
     // ── デコード ──
 
-    /// `JsonElement` → `Option[SaveData]`。形式不一致は `None`。
+    /// `Json` → `Option[SaveData]`。形式不一致は `None`。
     /// forM で「全部 Some なら Some(SaveData)、ひとつでも None なら None」を平らに表現。
-    pub def decode(element: JsonElement): Option[SaveData] =
+    pub def decode(element: Json): Option[SaveData] =
         forM (
             top      <- expectObject(element);
             nodeJson <- Map.get("node", top);
@@ -114,9 +114,9 @@ mod SaveDataCodec {
             vars     <- traverseVariables(varsMap)
         ) yield SaveData.SaveData(node, vars)
 
-    /// `Map[String, JsonElement]` の全要素を `decodeValue` に通す。
+    /// `Map[String, Json]` の全要素を `decodeValue` に通す。
     /// 1 つでも失敗したら全体 `None`。foldLeftWithKey で `Option` を畳む。
-    def traverseVariables(map: Map[String, JsonElement]):
+    def traverseVariables(map: Map[String, Json]):
                            Option[Map[String, Value]] =
         Map.foldLeftWithKey((acc, name, json) ->
             Option.flatMap(soFar ->
@@ -127,14 +127,14 @@ mod SaveDataCodec {
 
     /// 1 変数値の JSON → `Value`。`{kind: payload}` の単一キー判別を
     /// `expectObject |> singleEntry |> matchValueKind` の 3 段パイプで表現。
-    def decodeValue(element: JsonElement): Option[Value] =
+    def decodeValue(element: Json): Option[Value] =
         expectObject(element)
             |> Option.flatMap(singleEntry)
             |> Option.flatMap(matchValueKind)
 
     /// `Map` がちょうど 1 エントリなら `(key, value)` を返す。それ以外は `None`。
-    def singleEntry(map: Map[String, JsonElement]):
-                     Option[(String, JsonElement)] =
+    def singleEntry(map: Map[String, Json]):
+                     Option[(String, Json)] =
         match Map.toList(map) {
             case head :: Nil => Some(head)
             case _           => None
@@ -143,26 +143,26 @@ mod SaveDataCodec {
     /// `(kind, payload)` を `Value` のいずれかに対応付ける。
     /// `floatValue` は `tryToFloat64` の None をそのまま伝播させる
     /// （壊れた数値で 0.0 にフォールバックしない）。
-    def matchValueKind(pair: (String, JsonElement)): Option[Value] =
+    def matchValueKind(pair: (String, Json)): Option[Value] =
         match pair {
-            case ("boolValue",   JsonBool(b))   => Some(BoolV(b))
-            case ("floatValue",  JsonNumber(n)) =>
+            case ("boolValue",   JBool(b))   => Some(BoolV(b))
+            case ("floatValue",  JNumber(n)) =>
                 BigDecimal.tryToFloat64(n) |> Option.map(FloatV)
-            case ("stringValue", JsonString(s)) => Some(StringV(s))
+            case ("stringValue", JString(s)) => Some(StringV(s))
             case _                               => None
         }
 
-    /// `JsonObject` なら中身の Map を、それ以外は `None`。
-    def expectObject(element: JsonElement): Option[Map[String, JsonElement]] =
+    /// `JObject` なら中身の Map を、それ以外は `None`。
+    def expectObject(element: Json): Option[Map[String, Json]] =
         match element {
-            case JsonObject(map) => Some(map)
+            case JObject(map) => Some(map)
             case _               => None
         }
 
-    /// `JsonString` なら中身の文字列、それ以外は `None`。
-    def expectString(element: JsonElement): Option[String] =
+    /// `JString` なら中身の文字列、それ以外は `None`。
+    def expectString(element: Json): Option[String] =
         match element {
-            case JsonString(text) => Some(text)
+            case JString(text) => Some(text)
             case _                => None
         }
 }

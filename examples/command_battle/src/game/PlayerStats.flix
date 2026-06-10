@@ -5,8 +5,8 @@
 /// シミュレーションなど数値調整に使う）。
 mod PlayerStats {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonNumber, JsonString}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JNumber, JString}
 
     /// 勇者ステータス。 BattleScene.State の hero フィールドにそのまま入る型。
     pub type alias HeroStats = {
@@ -25,7 +25,7 @@ mod PlayerStats {
         match readResult {
             case Err(e) => bug!("PlayerStats.load file read failed: ${path} :: ${e}")
             case Ok(content) =>
-                match Json.Parse.parse(content) {
+                match JsonCompat.parse(content) {
                     case None => bug!("PlayerStats.load JSON parse failed: ${path}")
                     case Some(json) =>
                         match decode(json) {
@@ -35,8 +35,8 @@ mod PlayerStats {
                 }
         }
 
-    /// JsonElement → HeroStats のデコード。 必要キーが欠けていれば None。
-    def decode(element: JsonElement): Option[HeroStats] =
+    /// Json → HeroStats のデコード。 必要キーが欠けていれば None。
+    def decode(element: Json): Option[HeroStats] =
         forM (
             obj      <- expectObject(element);
             nameJ    <- Map.get("name", obj);
@@ -61,21 +61,21 @@ mod PlayerStats {
             attack = attack, defense = defense, level = level
         }: HeroStats)
 
-    def expectObject(element: JsonElement): Option[Map[String, JsonElement]] =
+    def expectObject(element: Json): Option[Map[String, Json]] =
         match element {
-            case JsonObject(map) => Some(map)
+            case JObject(map) => Some(map)
             case _               => None
         }
 
-    def expectString(element: JsonElement): Option[String] =
+    def expectString(element: Json): Option[String] =
         match element {
-            case JsonString(text) => Some(text)
+            case JString(text) => Some(text)
             case _                => None
         }
 
-    def expectInt(element: JsonElement): Option[Int32] =
+    def expectInt(element: Json): Option[Int32] =
         match element {
-            case JsonNumber(bd) =>
+            case JNumber(bd) =>
                 BigDecimal.tryToFloat64(bd) |> Option.flatMap(Float64.tryToInt32)
             case _              => None
         }

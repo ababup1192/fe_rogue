@@ -38,7 +38,7 @@ mod TestFloorCatalog {
         let container = CatalogContainer.CatalogContainer({
             containerKey = "floors",
             entries      = Map#{"f01" => sampleFloor()},
-            meta         = (Map.empty(): Map[String, Json.JsonElement])
+            meta         = (Map.empty(): Map[String, Util.Json.Json])
         });
         let catalog = FloorCatalog.FloorCatalog.FloorCatalog(container);
         let encoded = Saveable.toJson(catalog);
@@ -62,7 +62,7 @@ mod TestFloorCatalog {
         let container = CatalogContainer.CatalogContainer({
             containerKey = "floors",
             entries      = Map#{"f01" => sampleFloor()},
-            meta         = (Map.empty(): Map[String, Json.JsonElement])
+            meta         = (Map.empty(): Map[String, Util.Json.Json])
         });
         let catalog = FloorCatalog.FloorCatalog.FloorCatalog(container);
         let encoded = Saveable.toJson(catalog);

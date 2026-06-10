@@ -4,14 +4,14 @@
 // 「子インデックス列で目的ノードまで降りる」「キー列で値を差し替える」「BigDecimal にパースする」
 // など、IO や Swing から切り離してテストできるロジックだけを集める。
 //
-// 注意: JSON ファイル書き込み (Fs.WriteFile) や Json.Write.toPrettyString は IO 寄りなので
+// 注意: JSON ファイル書き込み (Fs.WriteFile) や Util.Json.toPrettyString は IO 寄りなので
 // ここには置かない。それらは IdeState / InspectorView 側で扱う。
 
 mod JsonOps {
 
     import java.math.BigDecimal
 
-    use Json.JsonElement.{JsonObject, JsonArray, JsonString, JsonNull}
+    use Util.Json.Json.{JObject, JArray, JString, JNull}
 
     /// 不変リストの idx 番目を newElem に差し替えた新リストを返す。
     /// idx が範囲外なら元のリストをそのまま返す（クラッシュさせない）。
@@ -23,29 +23,29 @@ mod JsonOps {
                 else x :: replaceListAt(idx - 1i32, newElem, xs)
         }
 
-    /// JsonObject / JsonArray の中をキー列で降りて末端を newValue に置き換える。
+    /// JObject / JArray の中をキー列で降りて末端を newValue に置き換える。
     /// keys が空なら obj を newValue で置き換える。
-    /// 現在位置が JsonObject なら headKey をフィールド名として降りる。
-    /// 現在位置が JsonArray なら headKey を整数インデックス（"0", "1" ...）として降りる。
+    /// 現在位置が JObject なら headKey をフィールド名として降りる。
+    /// 現在位置が JArray なら headKey を整数インデックス（"0", "1" ...）として降りる。
     /// 途中で型が合わなければ（= 想定外のスキーマ）そこで諦めて obj を返す。
-    pub def setAtKeyPath(obj: Json.JsonElement, keys: List[String], newValue: Json.JsonElement): Json.JsonElement =
+    pub def setAtKeyPath(obj: Util.Json.Json, keys: List[String], newValue: Util.Json.Json): Util.Json.Json =
         match keys {
             case Nil => newValue
             case headKey :: restKeys =>
                 match obj {
-                    case JsonObject(map) =>
-                        let raw = Map.get(headKey, map) |> Option.getWithDefault(JsonNull);
-                        // 中間レベルで JsonNull / 非オブジェクトの場合は空 object を作って降りる
+                    case JObject(map) =>
+                        let raw = Map.get(headKey, map) |> Option.getWithDefault(JNull);
+                        // 中間レベルで JNull / 非オブジェクトの場合は空 object を作って降りる
                         // （schema にあるが JSON にまだ無い nested フィールドを編集できるようにする）
                         let child = match raw {
-                            case JsonObject(_) => raw
+                            case JObject(_) => raw
                             case _             =>
                                 if (List.isEmpty(restKeys)) raw
-                                else JsonObject(Map.empty())
+                                else JObject(Map.empty())
                         };
                         let updatedChild = setAtKeyPath(child, restKeys, newValue);
-                        JsonObject(Map.insert(headKey, updatedChild, map))
-                    case JsonArray(items) =>
+                        JObject(Map.insert(headKey, updatedChild, map))
+                    case JArray(items) =>
                         match Int32.fromString(headKey) {
                             case Some(idx) =>
                                 let itemList = Vector.toList(items);
@@ -53,7 +53,7 @@ mod JsonOps {
                                     case None => obj
                                     case Some(child) =>
                                         let updatedChild = setAtKeyPath(child, restKeys, newValue);
-                                        JsonArray(List.toVector(replaceListAt(idx, updatedChild, itemList)))
+                                        JArray(List.toVector(replaceListAt(idx, updatedChild, itemList)))
                                 }
                             case None => obj
                         }
@@ -64,30 +64,30 @@ mod JsonOps {
     /// scene root JSON を walk して、子インデックス列 `nodePath` で辿った先のノードの中で、
     /// さらに `subKeys` を順に降りて末端を `newValue` で差し替えた新 root を返す。
     /// path 途中で children/index/key が無いときは root を変えずに返す（クラッシュ回避）。
-    pub def setAtNodePath(root: {root = Json.JsonElement, nodePath = List[Int32],
-                                  subKeys = List[String], newValue = Json.JsonElement}): Json.JsonElement =
+    pub def setAtNodePath(root: {root = Util.Json.Json, nodePath = List[Int32],
+                                  subKeys = List[String], newValue = Util.Json.Json}): Util.Json.Json =
         setAtNodePathRec(root#root, root#nodePath, root#subKeys, root#newValue)
 
-    def setAtNodePathRec(root: Json.JsonElement, nodePath: List[Int32],
-                         subKeys: List[String], newValue: Json.JsonElement): Json.JsonElement =
+    def setAtNodePathRec(root: Util.Json.Json, nodePath: List[Int32],
+                         subKeys: List[String], newValue: Util.Json.Json): Util.Json.Json =
         match nodePath {
             case Nil => setAtKeyPath(root, subKeys, newValue)
             case idx :: restPath =>
                 match root {
-                    case JsonObject(map) =>
+                    case JObject(map) =>
                         match Map.get("type", map) {
-                            case Some(JsonString("Container")) =>
+                            case Some(JString("Container")) =>
                                 setContainerChildAt(map, idx, restPath, subKeys, newValue, root)
                             case _ =>
                                 match Map.get("children", map) {
-                                    case Some(JsonArray(children)) =>
+                                    case Some(JArray(children)) =>
                                         let childList = Vector.toList(children);
                                         match List.nth(idx, childList) {
                                             case Some(child) =>
                                                 let updatedChild = setAtNodePathRec(child, restPath, subKeys, newValue);
                                                 let updated = replaceListAt(idx, updatedChild, childList);
-                                                let newChildren = JsonArray(List.toVector(updated));
-                                                JsonObject(Map.insert("children", newChildren, map))
+                                                let newChildren = JArray(List.toVector(updated));
+                                                JObject(Map.insert("children", newChildren, map))
                                             case None => root
                                         }
                                     case _ => root
@@ -98,35 +98,35 @@ mod JsonOps {
         }
 
     /// Container 内の idx 番目の子（layout 配下の実ノード）を更新して、Container を
-    /// 再構築した JsonObject を返す。Panel/HBox/VBox は layout.children[idx]、
+    /// 再構築した JObject を返す。Panel/HBox/VBox は layout.children[idx]、
     /// Margin/Center は layout.child を idx=0 のときだけ書き換える
-    def setContainerChildAt(map: Map[String, Json.JsonElement], idx: Int32,
+    def setContainerChildAt(map: Map[String, Util.Json.Json], idx: Int32,
                             restPath: List[Int32], subKeys: List[String],
-                            newValue: Json.JsonElement, originalRoot: Json.JsonElement): Json.JsonElement =
+                            newValue: Util.Json.Json, originalRoot: Util.Json.Json): Util.Json.Json =
         match Map.get("layout", map) {
-            case Some(JsonObject(layoutMap)) =>
+            case Some(JObject(layoutMap)) =>
                 match Map.get("kind", layoutMap) {
-                    case Some(JsonString(kind)) =>
+                    case Some(JString(kind)) =>
                         if (kind == "MarginContainer" or kind == "CenterContainer") {
                             if (idx != 0i32) originalRoot
                             else match Map.get("child", layoutMap) {
                                 case Some(childElem) =>
                                     let updatedChild = setAtNodePathRec(childElem, restPath, subKeys, newValue);
-                                    let newLayout = JsonObject(Map.insert("child", updatedChild, layoutMap));
-                                    JsonObject(Map.insert("layout", newLayout, map))
+                                    let newLayout = JObject(Map.insert("child", updatedChild, layoutMap));
+                                    JObject(Map.insert("layout", newLayout, map))
                                 case None => originalRoot
                             }
                         } else
                             match Map.get("children", layoutMap) {
-                                case Some(JsonArray(children)) =>
+                                case Some(JArray(children)) =>
                                     let childList = Vector.toList(children);
                                     match List.nth(idx, childList) {
                                         case Some(child) =>
                                             let updatedChild = setAtNodePathRec(child, restPath, subKeys, newValue);
                                             let updated = replaceListAt(idx, updatedChild, childList);
-                                            let newChildren = JsonArray(List.toVector(updated));
-                                            let newLayout = JsonObject(Map.insert("children", newChildren, layoutMap));
-                                            JsonObject(Map.insert("layout", newLayout, map))
+                                            let newChildren = JArray(List.toVector(updated));
+                                            let newLayout = JObject(Map.insert("children", newChildren, layoutMap));
+                                            JObject(Map.insert("layout", newLayout, map))
                                         case None => originalRoot
                                     }
                                 case _ => originalRoot
@@ -136,18 +136,18 @@ mod JsonOps {
             case _ => originalRoot
         }
 
-    /// JsonObject / JsonArray の中をキー列で降りて末端の値を返す。
+    /// JObject / JArray の中をキー列で降りて末端の値を返す。
     /// `setAtKeyPath` の逆方向で、widget が現在値を読み出すために使う。
     /// 途中で型が合わなかったり、キーが存在しない場合は None。
-    pub def getAtKeyPath(obj: Json.JsonElement, keys: List[String]): Option[Json.JsonElement] =
+    pub def getAtKeyPath(obj: Util.Json.Json, keys: List[String]): Option[Util.Json.Json] =
         match keys {
             case Nil => Some(obj)
             case headKey :: restKeys =>
                 match obj {
-                    case JsonObject(map) =>
+                    case JObject(map) =>
                         Map.get(headKey, map)
                             |> Option.flatMap(child -> getAtKeyPath(child, restKeys))
-                    case JsonArray(items) =>
+                    case JArray(items) =>
                         match Int32.fromString(headKey) {
                             case Some(idx) =>
                                 Vector.toList(items)
@@ -159,10 +159,10 @@ mod JsonOps {
                 }
         }
 
-    /// 子インデックス列 `nodePath` を辿って該当ノードの JsonElement を返す。
+    /// 子インデックス列 `nodePath` を辿って該当ノードの Json を返す。
     /// 途中で children/index が無いときは None。
     /// Tree 選択時の Inspector 初期化に使う。
-    pub def getAtNodePath(root: Json.JsonElement, nodePath: List[Int32]): Option[Json.JsonElement] =
+    pub def getAtNodePath(root: Util.Json.Json, nodePath: List[Int32]): Option[Util.Json.Json] =
         match nodePath {
             case Nil => Some(root)
             case idx :: restPath =>
@@ -184,21 +184,21 @@ mod JsonOps {
     /// 集めて NodePath 相当を作る。
     ///
     /// ルートの扱い:
-    ///   - JsonObject root (例 BirdScene): tree の root は JSON root オブジェクト
+    ///   - JObject root (例 BirdScene): tree の root は JSON root オブジェクト
     ///     そのものを表示する。よって engine NodePath はルート name から始める。
     ///     tree [] = engine ["root"]; tree [0] = engine ["root", "child0"]。
-    ///   - JsonArray root: tree root は合成された "<root array>" なので、
+    ///   - JArray root: tree root は合成された "<root array>" なので、
     ///     indices[0] が配列要素 = engine ルートを指す。tree [0] = engine ["root0"]。
     ///
     /// 途中で children が無かったり index 範囲外だったり、"name" が文字列でなければ None
-    pub def extractNodeNames(root: Json.JsonElement, indices: List[Int32]): Option[List[String]] =
+    pub def extractNodeNames(root: Util.Json.Json, indices: List[Int32]): Option[List[String]] =
         let initialAcc = match root {
-            case JsonObject(_) => nameOf(root) |> Option.toList
+            case JObject(_) => nameOf(root) |> Option.toList
             case _             => Nil
         };
         extractNodeNamesRec(root, indices, initialAcc)
 
-    def extractNodeNamesRec(root: Json.JsonElement, indices: List[Int32],
+    def extractNodeNamesRec(root: Util.Json.Json, indices: List[Int32],
                             acc: List[String]): Option[List[String]] =
         match indices {
             case Nil =>
@@ -222,34 +222,34 @@ mod JsonOps {
         }
 
     /// JSON 要素の idx 番目の子を返す。
-    /// - type が "Container" の JsonObject は layout 配下の実ノード列の idx 番目を返す
+    /// - type が "Container" の JObject は layout 配下の実ノード列の idx 番目を返す
     ///   (SceneTreeModel.jsonChildrenOf と同じ規約)
-    /// - その他の JsonObject は "children" 配列の idx 番目
-    /// - JsonArray は idx 番目の要素
+    /// - その他の JObject は "children" 配列の idx 番目
+    /// - JArray は idx 番目の要素
     /// - それ以外や範囲外は None
-    def getChildAt(elem: Json.JsonElement, idx: Int32): Option[Json.JsonElement] =
+    def getChildAt(elem: Util.Json.Json, idx: Int32): Option[Util.Json.Json] =
         match elem {
-            case JsonObject(map) =>
+            case JObject(map) =>
                 match Map.get("type", map) {
-                    case Some(JsonString("Container")) =>
+                    case Some(JString("Container")) =>
                         List.nth(idx, containerInnerChildren(map))
                     case _ =>
                         match Map.get("children", map) {
-                            case Some(JsonArray(children)) =>
+                            case Some(JArray(children)) =>
                                 List.nth(idx, Vector.toList(children))
                             case _ => None
                         }
                 }
-            case JsonArray(items) => List.nth(idx, Vector.toList(items))
+            case JArray(items) => List.nth(idx, Vector.toList(items))
             case _ => None
         }
 
-    /// JSON 要素が type=="Container" の JsonObject か判定する
-    pub def isContainerJson(elem: Json.JsonElement): Bool =
+    /// JSON 要素が type=="Container" の JObject か判定する
+    pub def isContainerJson(elem: Util.Json.Json): Bool =
         match elem {
-            case JsonObject(map) =>
+            case JObject(map) =>
                 match Map.get("type", map) {
-                    case Some(JsonString("Container")) => true
+                    case Some(JString("Container")) => true
                     case _ => false
                 }
             case _ => false
@@ -257,15 +257,15 @@ mod JsonOps {
 
     /// JSON 要素が engine の scene tree には現れない「透過ノード」か判定する。
     /// - type=="Container" → load-time directive
-    /// - "kind" のみ持ち "type" を持たない JsonObject → Layout primitive
+    /// - "kind" のみ持ち "type" を持たない JObject → Layout primitive
     ///   (Panel / HBoxContainer / VBoxContainer / MarginContainer / CenterContainer)
     /// これらは IDE tree には見えるが、engine NodePath には積まれないので、
     /// extractNodeNames / namesToIndices で name を skip し、子を素通しで辿る
-    pub def isTransparentJson(elem: Json.JsonElement): Bool =
+    pub def isTransparentJson(elem: Util.Json.Json): Bool =
         match elem {
-            case JsonObject(map) =>
+            case JObject(map) =>
                 match Map.get("type", map) {
-                    case Some(JsonString("Container")) => true
+                    case Some(JString("Container")) => true
                     case Some(_)                       => false
                     case None                          => Map.memberOf("kind", map)
                 }
@@ -274,28 +274,28 @@ mod JsonOps {
 
     /// Container ("type": "Container") の "layout" を覗き、Panel/HBox/VBox の
     /// "children" または Margin/Center の "child" を返す
-    pub def containerInnerChildren(map: Map[String, Json.JsonElement]): List[Json.JsonElement] =
+    pub def containerInnerChildren(map: Map[String, Util.Json.Json]): List[Util.Json.Json] =
         match Map.get("layout", map) {
-            case Some(JsonObject(layoutMap)) => layoutChildren(layoutMap)
+            case Some(JObject(layoutMap)) => layoutChildren(layoutMap)
             case _ => Nil
         }
 
-    /// 透過 JsonObject の「直接の子」列を返す。
+    /// 透過 JObject の「直接の子」列を返す。
     /// - Container: layout 配下 (containerInnerChildren と同じ)
     /// - Panel / HBoxContainer / VBoxContainer: 自身の "children"
     /// - MarginContainer / CenterContainer: 自身の "child" を 1 要素リストにラップ
-    pub def transparentInnerChildren(map: Map[String, Json.JsonElement]): List[Json.JsonElement] =
+    pub def transparentInnerChildren(map: Map[String, Util.Json.Json]): List[Util.Json.Json] =
         match Map.get("type", map) {
-            case Some(JsonString("Container")) => containerInnerChildren(map)
+            case Some(JString("Container")) => containerInnerChildren(map)
             case _                             => layoutChildren(map)
         }
 
     /// Layout JSON の kind に応じた子ノード列。
     /// Panel/HBoxContainer/VBoxContainer は "children" 配列、
     /// MarginContainer/CenterContainer は 1 件の "child"
-    def layoutChildren(layoutMap: Map[String, Json.JsonElement]): List[Json.JsonElement] =
+    def layoutChildren(layoutMap: Map[String, Util.Json.Json]): List[Util.Json.Json] =
         match Map.get("kind", layoutMap) {
-            case Some(JsonString(kind)) =>
+            case Some(JString(kind)) =>
                 if (kind == "MarginContainer" or kind == "CenterContainer")
                     match Map.get("child", layoutMap) {
                         case Some(c) => c :: Nil
@@ -303,7 +303,7 @@ mod JsonOps {
                     }
                 else
                     match Map.get("children", layoutMap) {
-                        case Some(JsonArray(children)) => Vector.toList(children)
+                        case Some(JArray(children)) => Vector.toList(children)
                         case _                         => Nil
                     }
             case _ => Nil
@@ -311,11 +311,11 @@ mod JsonOps {
 
     /// JSON 要素の "name" フィールド (文字列) を取り出す。
     /// "name" が無い・文字列でない場合は None
-    def nameOf(elem: Json.JsonElement): Option[String] =
+    def nameOf(elem: Util.Json.Json): Option[String] =
         match elem {
-            case JsonObject(map) =>
+            case JObject(map) =>
                 match Map.get("name", map) {
-                    case Some(Json.JsonElement.JsonString(s)) => Some(s)
+                    case Some(Util.Json.Json.JString(s)) => Some(s)
                     case _ => None
                 }
             case _ => None

@@ -8,8 +8,8 @@
 /// レベルアップ習得などに発展可能）。
 mod SpellCatalog {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonArray, JsonNumber, JsonString}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JArray, JNumber, JString}
 
     /// 呪文の効果種別。 表示メッセージ・ターゲット選択 (敵 / 味方) の分岐に使う。
     pub enum SpellKind with Eq, ToString {
@@ -41,7 +41,7 @@ mod SpellCatalog {
         match readResult {
             case Err(e) => bug!("SpellCatalog.load file read failed: ${path} :: ${e}")
             case Ok(content) =>
-                match Json.Parse.parse(content) {
+                match JsonCompat.parse(content) {
                     case None => bug!("SpellCatalog.load JSON parse failed: ${path}")
                     case Some(json) =>
                         match decodeCatalog(json) {
@@ -64,7 +64,7 @@ mod SpellCatalog {
 
     // ── デコード ──
 
-    def decodeCatalog(element: JsonElement): Option[Catalog] =
+    def decodeCatalog(element: Json): Option[Catalog] =
         forM (
             top      <- expectObject(element);
             spellsJ  <- Map.get("spells", top);
@@ -74,14 +74,14 @@ mod SpellCatalog {
             known    <- decodeStringList(knownJ)
         ) yield ({spells = spells, known = known}: Catalog)
 
-    def traverse(map: Map[String, JsonElement]): Option[Map[String, SpellDef]] =
+    def traverse(map: Map[String, Json]): Option[Map[String, SpellDef]] =
         Map.foldLeftWithKey((acc, id, json) ->
             Option.flatMap(soFar ->
                 decodeSpell(id, json) |> Option.map(s -> Map.insert(id, s, soFar)),
                 acc),
             Some(Map.empty()), map)
 
-    def decodeSpell(id: String, element: JsonElement): Option[SpellDef] =
+    def decodeSpell(id: String, element: Json): Option[SpellDef] =
         forM (
             obj      <- expectObject(element);
             nameJ    <- Map.get("name", obj);
@@ -107,9 +107,9 @@ mod SpellCatalog {
             case _        => None
         }
 
-    def decodeStringList(element: JsonElement): Option[List[String]] =
+    def decodeStringList(element: Json): Option[List[String]] =
         match element {
-            case JsonArray(items) =>
+            case JArray(items) =>
                 List.foldRight(item -> acc ->
                     Option.flatMap(soFar ->
                         expectString(item) |> Option.map(s -> s :: soFar),
@@ -118,21 +118,21 @@ mod SpellCatalog {
             case _ => None
         }
 
-    def expectObject(element: JsonElement): Option[Map[String, JsonElement]] =
+    def expectObject(element: Json): Option[Map[String, Json]] =
         match element {
-            case JsonObject(map) => Some(map)
+            case JObject(map) => Some(map)
             case _               => None
         }
 
-    def expectString(element: JsonElement): Option[String] =
+    def expectString(element: Json): Option[String] =
         match element {
-            case JsonString(text) => Some(text)
+            case JString(text) => Some(text)
             case _                => None
         }
 
-    def expectInt(element: JsonElement): Option[Int32] =
+    def expectInt(element: Json): Option[Int32] =
         match element {
-            case JsonNumber(bd) =>
+            case JNumber(bd) =>
                 BigDecimal.tryToFloat64(bd) |> Option.flatMap(Float64.tryToInt32)
             case _              => None
         }

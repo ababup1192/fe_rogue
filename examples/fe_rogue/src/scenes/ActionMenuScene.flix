@@ -26,8 +26,7 @@
 ///       しゅうごう (PlayerAutoMove に移ってロードへ合流開始。これは別フローの遷移)
 mod ActionMenuScene {
 
-    use Json.JsonError.JsonError
-    use Json.Path.Path.Root
+    use JsonCompat.PathTag.Root
 
     def sceneJsonPath(): String = AssetPath.resolve("src/scenes/ActionMenuScene.scene.json")
 
@@ -43,14 +42,14 @@ mod ActionMenuScene {
     pub def menuPath(): NodePath = rootName() :: panelName() :: menuName() :: Nil
 
     /// scene.json 内の "tag" 文字列 → NodeTag への変換。
-    def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+    def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None                  => Ok(NodeTag.NoTag)
             case Some("NoTag")         => Ok(NodeTag.NoTag)
             case Some("ActionPanel")   => Ok(NodeTag.ActionPanel)
             case Some("ActionMenu")    => Ok(NodeTag.ActionMenu)
             case Some(unknown)         =>
-                Err(JsonError(Root, Set#{"ActionMenuScene tag (got: ${unknown})"}))
+                Err(JsonCompat.jsonError(Root, Set#{"ActionMenuScene tag (got: ${unknown})"}))
         }
 
     /// metadata の値。`onItemConfirmed` で再現するためのアクション識別子。

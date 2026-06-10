@@ -4,8 +4,7 @@
 ///   - ItemList: GamePhase.CommandSelect のときだけ focused=true、それ以外は false
 mod CommandScene {
 
-    use Json.JsonError.JsonError
-    use Json.Path.Path.Root
+    use JsonCompat.PathTag.Root
 
     def sceneJsonPath(): String = "src/scenes/CommandScene.scene.json"
 
@@ -14,13 +13,13 @@ mod CommandScene {
     pub def panelPath(): NodePath = BattleScene.uiLayerPath() ::: name() :: Nil
     pub def menuPath(): NodePath = panelPath() ::: menuName() :: Nil
 
-    def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+    def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None                   => Ok(NodeTag.NoTag)
             case Some("NoTag")          => Ok(NodeTag.NoTag)
             case Some("CommandPanel")   => Ok(NodeTag.CommandPanel)
             case Some("CommandMenu")    => Ok(NodeTag.CommandMenu)
-            case Some(unknown)          => Err(JsonError(Root, Set#{"CommandScene tag (got: ${unknown})"}))
+            case Some(unknown)          => Err(JsonCompat.jsonError(Root, Set#{"CommandScene tag (got: ${unknown})"}))
         }
 
     pub def add(fontAtlas: FontAtlas, scene: Scene[NodeTag]):

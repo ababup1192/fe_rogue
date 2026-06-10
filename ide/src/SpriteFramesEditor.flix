@@ -58,8 +58,8 @@ mod SpriteFramesEditor {
     // sibling 参照: rootRecord から sprite.{texture, hframes, vframes} を読む。
     // ════════════════════════════════════════════════════════════════════════
 
-    pub def buildSpriteFramesEditorWidget(value: Option[Json.JsonElement],
-                                            rootRecord: Json.JsonElement,
+    pub def buildSpriteFramesEditorWidget(value: Option[Util.Json.Json],
+                                            rootRecord: Util.Json.Json,
                                             texturePathMap: Map[String, String],
                                             commit: PropertyWidgets.Commit): Node \ IO = {
         // sibling sprite.{texture, hframes, vframes} を読む（preview と frame max のため）
@@ -78,7 +78,7 @@ mod SpriteFramesEditor {
             case Some(n) => n
             case None    => ""
         };
-        let animsRef: Array[Map[String, Json.JsonElement], Static] =
+        let animsRef: Array[Map[String, Util.Json.Json], Static] =
             Array.empty(Static, 1);
         Array.put(initialAnims, 0, animsRef);
         let selectedRef: Array[String, Static] = Array.empty(Static, 1);
@@ -166,9 +166,9 @@ mod SpriteFramesEditor {
                         let anims = Array.get(0, animsRef);
                         let v: Int32 = newVal.intValue();
                         let updated = setFrameField(anims, sel, 0i32, "frame",
-                                                      Json.JsonElement.JsonNumber(intToBd(v)));
+                                                      Util.Json.Json.JNumber(intToBd(v)));
                         Array.put(updated, 0, animsRef);
-                        commit(Json.JsonElement.JsonObject(updated));
+                        commit(Util.Json.Json.JObject(updated));
                         redraw()
                     }
                 }
@@ -186,9 +186,9 @@ mod SpriteFramesEditor {
                         let anims = Array.get(0, animsRef);
                         let v = PropertyWidgets.roundTo3(newVal.doubleValue());
                         let updated = setFrameField(anims, sel, 0i32, "duration",
-                                                      Json.JsonElement.JsonNumber(floatToBdRounded(v)));
+                                                      Util.Json.Json.JNumber(floatToBdRounded(v)));
                         Array.put(updated, 0, animsRef);
-                        commit(Json.JsonElement.JsonObject(updated))
+                        commit(Util.Json.Json.JObject(updated))
                     }
                 }
             }
@@ -211,39 +211,39 @@ mod SpriteFramesEditor {
     }
 
     /// 選択 anim の frames[0] を取り出す。frames が空 / anim が無いなら {frame=0, duration=1.0}。
-    def currentFirstFrame(anims: Map[String, Json.JsonElement], sel: String):
+    def currentFirstFrame(anims: Map[String, Util.Json.Json], sel: String):
             FrameEntry =
         currentFrame(anims, sel, 0i32)
 
     /// spriteFrames JSON object を anim 名 → JSON の Map に解す。
-    /// JsonObject 以外は空 Map (= 編集不能だが widget は表示される)。
-    def parseAnimsMap(v: Option[Json.JsonElement]): Map[String, Json.JsonElement] =
+    /// JObject 以外は空 Map (= 編集不能だが widget は表示される)。
+    def parseAnimsMap(v: Option[Util.Json.Json]): Map[String, Util.Json.Json] =
         match v {
-            case Some(Json.JsonElement.JsonObject(m)) => m
+            case Some(Util.Json.Json.JObject(m)) => m
             case _                                     => Map.empty()
         }
 
     /// rootRecord (ユニット全体の JSON) から `sprite.{texture, hframes, vframes}` を抽出。
     /// 欠落時は空文字列 / 0 を埋める。
-    def extractSpriteSiblings(rootRecord: Json.JsonElement):
+    def extractSpriteSiblings(rootRecord: Util.Json.Json):
             {texture = String, hframes = Int32, vframes = Int32} =
         match rootRecord {
-            case Json.JsonElement.JsonObject(rec) =>
+            case Util.Json.Json.JObject(rec) =>
                 match Map.get("sprite", rec) {
-                    case Some(Json.JsonElement.JsonObject(sp)) =>
+                    case Some(Util.Json.Json.JObject(sp)) =>
                         let tex = match Map.get("texture", sp) {
-                            case Some(Json.JsonElement.JsonString(s)) => s
+                            case Some(Util.Json.Json.JString(s)) => s
                             case _ => ""
                         };
                         let hf = match Map.get("hframes", sp) {
-                            case Some(Json.JsonElement.JsonNumber(bd)) =>
+                            case Some(Util.Json.Json.JNumber(bd)) =>
                                 BigDecimal.tryToFloat64(bd)
                                     |> Option.flatMap(Float64.tryToInt32)
                                     |> Option.getWithDefault(0i32)
                             case _ => 0i32
                         };
                         let vf = match Map.get("vframes", sp) {
-                            case Some(Json.JsonElement.JsonNumber(bd)) =>
+                            case Some(Util.Json.Json.JNumber(bd)) =>
                                 BigDecimal.tryToFloat64(bd)
                                     |> Option.flatMap(Float64.tryToInt32)
                                     |> Option.getWithDefault(0i32)
@@ -256,30 +256,30 @@ mod SpriteFramesEditor {
         }
 
     /// 選択 anim の frames を `{frame, duration}` のリストとして取り出す。
-    def currentFramesList(anims: Map[String, Json.JsonElement], sel: String):
+    def currentFramesList(anims: Map[String, Util.Json.Json], sel: String):
             List[FrameEntry] =
         match Map.get(sel, anims) {
-            case Some(Json.JsonElement.JsonObject(animMap)) =>
+            case Some(Util.Json.Json.JObject(animMap)) =>
                 match Map.get("frames", animMap) {
-                    case Some(Json.JsonElement.JsonArray(arr)) =>
+                    case Some(Util.Json.Json.JArray(arr)) =>
                         Vector.toList(arr) |> List.map(parseFrameJson)
                     case _ => Nil
                 }
             case _ => Nil
         }
 
-    def parseFrameJson(frameJson: Json.JsonElement): FrameEntry =
+    def parseFrameJson(frameJson: Util.Json.Json): FrameEntry =
         match frameJson {
-            case Json.JsonElement.JsonObject(fm) =>
+            case Util.Json.Json.JObject(fm) =>
                 let fIdx = match Map.get("frame", fm) {
-                    case Some(Json.JsonElement.JsonNumber(bd)) =>
+                    case Some(Util.Json.Json.JNumber(bd)) =>
                         BigDecimal.tryToFloat64(bd)
                             |> Option.flatMap(Float64.tryToInt32)
                             |> Option.getWithDefault(0i32)
                     case _ => 0i32
                 };
                 let dur = match Map.get("duration", fm) {
-                    case Some(Json.JsonElement.JsonNumber(bd)) =>
+                    case Some(Util.Json.Json.JNumber(bd)) =>
                         BigDecimal.tryToFloat64(bd) |> Option.getWithDefault(1.0)
                     case _ => 1.0
                 };
@@ -288,7 +288,7 @@ mod SpriteFramesEditor {
         }
 
     /// 選択 anim の frames[idx] を取り出す。範囲外なら {frame=0, duration=1.0}。
-    def currentFrame(anims: Map[String, Json.JsonElement], sel: String, idx: Int32):
+    def currentFrame(anims: Map[String, Util.Json.Json], sel: String, idx: Int32):
             FrameEntry =
         let frames = currentFramesList(anims, sel);
         match List.nth(idx, frames) {
@@ -298,23 +298,23 @@ mod SpriteFramesEditor {
 
     /// 指定 anim の frames[idx].key を上書きする。
     /// 多フレーム対応用に idx 引数を取るが、MVP widget では idx=0 固定で呼ぶ。
-    def setFrameField(anims: Map[String, Json.JsonElement], sel: String, idx: Int32,
-                        key: String, newVal: Json.JsonElement): Map[String, Json.JsonElement] =
+    def setFrameField(anims: Map[String, Util.Json.Json], sel: String, idx: Int32,
+                        key: String, newVal: Util.Json.Json): Map[String, Util.Json.Json] =
         match Map.get(sel, anims) {
-            case Some(Json.JsonElement.JsonObject(animMap)) =>
+            case Some(Util.Json.Json.JObject(animMap)) =>
                 match Map.get("frames", animMap) {
-                    case Some(Json.JsonElement.JsonArray(arr)) =>
+                    case Some(Util.Json.Json.JArray(arr)) =>
                         if (idx < 0i32 or idx >= Vector.length(arr)) anims
                         else {
                             let frameElem = Vector.get(idx, arr);
                             let newFrame = match frameElem {
-                                case Json.JsonElement.JsonObject(fm) =>
-                                    Json.JsonElement.JsonObject(Map.insert(key, newVal, fm))
+                                case Util.Json.Json.JObject(fm) =>
+                                    Util.Json.Json.JObject(Map.insert(key, newVal, fm))
                                 case _ => frameElem
                             };
                             let newArr = Vector.update(idx, newFrame, arr);
-                            let updatedAnim = Json.JsonElement.JsonObject(
-                                Map.insert("frames", Json.JsonElement.JsonArray(newArr), animMap));
+                            let updatedAnim = Util.Json.Json.JObject(
+                                Map.insert("frames", Util.Json.Json.JArray(newArr), animMap));
                             Map.insert(sel, updatedAnim, anims)
                         }
                     case _ => anims

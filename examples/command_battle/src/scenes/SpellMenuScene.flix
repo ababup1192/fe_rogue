@@ -4,8 +4,7 @@
 /// `BattleScene.applySpell(spellId, scene)` を呼び出す。
 mod SpellMenuScene {
 
-    use Json.JsonError.JsonError
-    use Json.Path.Path.Root
+    use JsonCompat.PathTag.Root
 
     def sceneJsonPath(): String = "src/scenes/SpellMenuScene.scene.json"
     def spellsJsonPath(): String = "resources/spells.json"
@@ -15,13 +14,13 @@ mod SpellMenuScene {
     pub def panelPath(): NodePath = BattleScene.uiLayerPath() ::: panelName() :: Nil
     pub def menuPath(): NodePath = panelPath() ::: menuName() :: Nil
 
-    def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+    def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None                 => Ok(NodeTag.NoTag)
             case Some("NoTag")        => Ok(NodeTag.NoTag)
             case Some("SpellPanel")   => Ok(NodeTag.SpellPanel)
             case Some("SpellMenu")    => Ok(NodeTag.SpellMenu)
-            case Some(unknown)        => Err(JsonError(Root, Set#{"SpellMenuScene tag (got: ${unknown})"}))
+            case Some(unknown)        => Err(JsonCompat.jsonError(Root, Set#{"SpellMenuScene tag (got: ${unknown})"}))
         }
 
     /// scene.json をロード + `resources/spells.json` から呪文項目を動的に構築 +

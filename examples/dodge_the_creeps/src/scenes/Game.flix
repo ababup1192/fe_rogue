@@ -192,7 +192,7 @@ mod Game {
     /// パラメータ付きの variant (Player(Data) / Mob(Data) / ScoreLabel(Score) / MobTimer(MobId))
     /// は scene.json 側からは復元できないため、構築コードが loadScene 直後の Scene.setState
     /// で別途注入する。ここではパラメータレスの variant のみ扱う。
-    pub def parseNodeTag(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+    pub def parseNodeTag(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None => Ok(NodeTag.NoTag)
             case Some(s) => match s {

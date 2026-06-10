@@ -8,44 +8,44 @@
 ///   - decode の全要素 or 全体 None ポリシー: 1 つでも壊れたら全体 None
 mod TestJsonCodec {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool, JsonArray}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber, JBool, JArray}
 
     // ════════════════════════════════════════════════════════
     // 値の取り出し: 期待型なら Some、それ以外なら None
     // ════════════════════════════════════════════════════════
 
-    /// JsonString に対して expectString は中身を取り出す
+    /// JString に対して expectString は中身を取り出す
     @Test
-    def testExpectStringReturnsSomeForJsonString(): Unit \ Assert =
+    def testExpectStringReturnsSomeForJString(): Unit \ Assert =
         Assert.assertEq(expected = Some("hello"),
-                          JsonCodec.expectString(JsonString("hello")))
+                          JsonCodec.expectString(JString("hello")))
 
-    /// 整数や真偽値などの非文字列 JsonElement は None を返す
+    /// 整数や真偽値などの非文字列 Json は None を返す
     @Test
     def testExpectStringReturnsNoneForNonString(): Unit \ Assert =
         Assert.assertEq(expected = None,
-                          JsonCodec.expectString(JsonNumber(JsonCodec.intToBd(42))))
+                          JsonCodec.expectString(JNumber(JsonCodec.intToBd(42))))
 
-    /// expectInt に JsonString を渡すと None になる (型不一致)。
-    /// 仕様メモ: JsonNumber 100.5 を渡した場合は truncate されて Some(100) になる
+    /// expectInt に JString を渡すと None になる (型不一致)。
+    /// 仕様メモ: JNumber 100.5 を渡した場合は truncate されて Some(100) になる
     /// (BigDecimal -> Float64 -> Int32 の `Float64.tryToInt32` が truncate するため)。
     @Test
     def testExpectIntReturnsNoneForNonNumber(): Unit \ Assert =
         Assert.assertEq(expected = None,
-                          JsonCodec.expectInt(JsonString("not a number")))
+                          JsonCodec.expectInt(JString("not a number")))
 
     /// expectInt は整数値 42 を Int32 として取り出す
     @Test
     def testExpectIntReturnsSomeForIntegralNumber(): Unit \ Assert =
         Assert.assertEq(expected = Some(42),
-                          JsonCodec.expectInt(JsonNumber(JsonCodec.intToBd(42))))
+                          JsonCodec.expectInt(JNumber(JsonCodec.intToBd(42))))
 
-    /// expectBool は JsonBool(true) から true を取り出す
+    /// expectBool は JBool(true) から true を取り出す
     @Test
-    def testExpectBoolReturnsSomeForJsonBool(): Unit \ Assert =
+    def testExpectBoolReturnsSomeForJBool(): Unit \ Assert =
         Assert.assertEq(expected = Some(true),
-                          JsonCodec.expectBool(JsonBool(true)))
+                          JsonCodec.expectBool(JBool(true)))
 
     // ════════════════════════════════════════════════════════
     // BigDecimal 変換: trailing zero を除去して「100」と書き出す
@@ -72,7 +72,7 @@ mod TestJsonCodec {
     def testStringMapRoundTrip(): Unit \ Assert =
         let original = Map#{"a" => 10, "b" => 20};
         let encoded = JsonCodec.encodeStringMap(
-            n -> JsonNumber(JsonCodec.intToBd(n)), original);
+            n -> JNumber(JsonCodec.intToBd(n)), original);
         let decoded = JsonCodec.decodeStringMap(JsonCodec.expectInt, encoded);
         Assert.assertEq(expected = Some(original), decoded)
 
@@ -80,9 +80,9 @@ mod TestJsonCodec {
     /// (schema 不整合を部分成功として隠さないための設計)
     @Test
     def testStringMapDecodeReturnsNoneIfAnyEntryFails(): Unit \ Assert =
-        let mixed = JsonObject(Map#{
-            "good" => JsonNumber(JsonCodec.intToBd(10)),
-            "bad"  => JsonString("not a number")
+        let mixed = JObject(Map#{
+            "good" => JNumber(JsonCodec.intToBd(10)),
+            "bad"  => JString("not a number")
         });
         Assert.assertEq(expected = None,
                           JsonCodec.decodeStringMap(JsonCodec.expectInt, mixed))
@@ -96,16 +96,16 @@ mod TestJsonCodec {
     def testListRoundTrip(): Unit \ Assert =
         let original = 10 :: 20 :: 30 :: Nil;
         let encoded = JsonCodec.encodeList(
-            n -> JsonNumber(JsonCodec.intToBd(n)), original);
+            n -> JNumber(JsonCodec.intToBd(n)), original);
         let decoded = JsonCodec.decodeList(JsonCodec.expectInt, encoded);
         Assert.assertEq(expected = Some(original), decoded)
 
     /// 要素のひとつが壊れたリストは全体 None になる
     @Test
     def testListDecodeReturnsNoneIfAnyEntryFails(): Unit \ Assert =
-        let mixed = JsonArray(Vector#{
-            JsonNumber(JsonCodec.intToBd(10)),
-            JsonString("not a number")
+        let mixed = JArray(Vector#{
+            JNumber(JsonCodec.intToBd(10)),
+            JString("not a number")
         });
         Assert.assertEq(expected = None,
                           JsonCodec.decodeList(JsonCodec.expectInt, mixed))
@@ -125,7 +125,7 @@ mod TestJsonCodec {
     /// x が欠落した object は y だけ読み x を 0.0 で補完する
     @Test
     def testDecodeVec2FillsMissingXWithZero(): Unit \ Assert =
-        let partial = JsonObject(Map#{"y" => JsonNumber(JsonCodec.floatToBd(8.0))});
+        let partial = JObject(Map#{"y" => JNumber(JsonCodec.floatToBd(8.0))});
         Assert.assertEq(expected = Some((0.0, 8.0)),
                           Option.map(v -> (v#x, v#y), JsonCodec.decodeVec2(partial)))
 

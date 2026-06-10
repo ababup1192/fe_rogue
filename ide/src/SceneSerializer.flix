@@ -129,7 +129,7 @@ mod SceneSerializer {
     /// 失敗時は bug! でクラッシュ。
     ///
     /// JSON のキー順と配列スタイル (inline / block) は元ファイルの状態を維持する
-    /// （Json.Write.toPrettyString を使わず JsonOrdered 経由で書き出すため）。
+    /// （Util.Json.toPrettyString を使わず JsonOrdered 経由で書き出すため）。
     pub def updateMany(jsonPath: String, nodeUpdates: List[NodeUpdate]):
             Unit \ {Fs.FileRead, Fs.FileWrite} =
         if (List.isEmpty(nodeUpdates)) ()

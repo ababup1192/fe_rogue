@@ -26,8 +26,7 @@
 ///           └─ menu0..2  (ItemList, NodeTag.TradeMenu(i))
 mod TradeMenuScene {
 
-    use Json.JsonError.JsonError
-    use Json.Path.Path.Root
+    use JsonCompat.PathTag.Root
 
     // ────────────────────────────────────────────────────────
     // (A) 型定義
@@ -122,7 +121,7 @@ mod TradeMenuScene {
     pub def classPath(i: Int32): NodePath = rootName() :: panelName() :: className(i) :: Nil
 
     /// scene.json 内の "tag" 文字列 → NodeTag への変換。
-    def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+    def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None                  => Ok(NodeTag.NoTag)
             case Some("NoTag")         => Ok(NodeTag.NoTag)
@@ -131,7 +130,7 @@ mod TradeMenuScene {
             case Some("TradeMenu1")    => Ok(NodeTag.TradeMenu(1))
             case Some("TradeMenu2")    => Ok(NodeTag.TradeMenu(2))
             case Some(unknown)         =>
-                Err(JsonError(Root, Set#{"TradeMenuScene tag (got: ${unknown})"}))
+                Err(JsonCompat.jsonError(Root, Set#{"TradeMenuScene tag (got: ${unknown})"}))
         }
 
     // ────────────────────────────────────────────────────────

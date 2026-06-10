@@ -20,8 +20,8 @@
 ///   }
 mod FloorCatalog {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber, JArray}
 
     /// floor カタログ。段階 8 のリファクタで `CatalogContainer[FloorResource]` を wrap する
     /// 形に変更し、`Saveable` instance を追加した (IDE Resources タブで編集可能に)。
@@ -170,11 +170,11 @@ mod FloorCatalog {
 // ════════════════════════════════════════════════════════════════════════
 
 instance Saveable[FloorCatalog.FloorCatalog] {
-    pub def toJson(value: FloorCatalog.FloorCatalog): Json.JsonElement =
+    pub def toJson(value: FloorCatalog.FloorCatalog): Util.Json.Json =
         let FloorCatalog.FloorCatalog.FloorCatalog(container) = value;
         CatalogContainer.encode(FloorCatalogCodec.encodeFloor, container)
 
-    pub def fromJson(element: Json.JsonElement): Option[FloorCatalog.FloorCatalog] =
+    pub def fromJson(element: Util.Json.Json): Option[FloorCatalog.FloorCatalog] =
         CatalogContainer.decode("floors", FloorCatalogCodec.decodeFloor, element)
             |> Option.map(FloorCatalog.FloorCatalog.FloorCatalog)
 }
@@ -182,16 +182,16 @@ instance Saveable[FloorCatalog.FloorCatalog] {
 /// FloorResource 1 件分の encode / decode。container 巡回は `CatalogContainer.encode/decode` に委譲する。
 mod FloorCatalogCodec {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonArray}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber, JArray}
     use JsonCodec.{expectObject, expectString, expectInt, intToBd, encodeList, decodeList}
     use FloorCatalog.{FloorResource, SpawnEntry, SpawnRange, GenerationConfig}
 
     // ── エンコード ──
 
-    pub def encodeFloor(floor: FloorResource): JsonElement =
-        JsonObject(Map#{
-            "label"           => JsonString(floor#label),
+    pub def encodeFloor(floor: FloorResource): Json =
+        JObject(Map#{
+            "label"           => JString(floor#label),
             "generation"      => encodeGeneration(floor#generation),
             "monsters"        => encodeList(encodeSpawnEntry, floor#monsters),
             "items"           => encodeList(encodeSpawnEntry, floor#items),
@@ -202,26 +202,26 @@ mod FloorCatalogCodec {
             "verticalMaps"    => encodeList(encodeSpawnEntry, floor#verticalMaps)
         })
 
-    def encodeGeneration(config: GenerationConfig): JsonElement =
-        JsonObject(Map#{
-            "roomCount" => JsonNumber(intToBd(config#roomCount))
+    def encodeGeneration(config: GenerationConfig): Json =
+        JObject(Map#{
+            "roomCount" => JNumber(intToBd(config#roomCount))
         })
 
-    def encodeRange(range: SpawnRange): JsonElement =
-        JsonObject(Map#{
-            "min" => JsonNumber(intToBd(range#min)),
-            "max" => JsonNumber(intToBd(range#max))
+    def encodeRange(range: SpawnRange): Json =
+        JObject(Map#{
+            "min" => JNumber(intToBd(range#min)),
+            "max" => JNumber(intToBd(range#max))
         })
 
-    def encodeSpawnEntry(entry: SpawnEntry): JsonElement =
-        JsonObject(Map#{
-            "id"      => JsonString(entry#id),
-            "percent" => JsonNumber(intToBd(entry#percent))
+    def encodeSpawnEntry(entry: SpawnEntry): Json =
+        JObject(Map#{
+            "id"      => JString(entry#id),
+            "percent" => JNumber(intToBd(entry#percent))
         })
 
     // ── デコード ──
 
-    pub def decodeFloor(element: JsonElement): Option[FloorResource] =
+    pub def decodeFloor(element: Json): Option[FloorResource] =
         forM (
             obj              <- expectObject(element);
             labelJ           <- Map.get("label", obj);
@@ -248,13 +248,13 @@ mod FloorCatalogCodec {
 
     /// マッププールフィールドを decode する。キー欠落 / 形式不正なら空リストにフォールバックする
     /// （必須の forM バインドに入れず、後方互換のため defensive に Nil 既定とする）。
-    def decodeMapsField(key: String, obj: Map[String, JsonElement]): List[SpawnEntry] =
+    def decodeMapsField(key: String, obj: Map[String, Json]): List[SpawnEntry] =
         Map.get(key, obj)
             |> Option.flatMap(decodeList(decodeSpawnEntry))
             |> Option.getWithDefault(Nil)
 
     /// `{"roomCount": Int32}` を GenerationConfig に decode
-    def decodeGeneration(element: JsonElement): Option[GenerationConfig] =
+    def decodeGeneration(element: Json): Option[GenerationConfig] =
         forM (
             obj        <- expectObject(element);
             roomCountJ <- Map.get("roomCount", obj);
@@ -262,7 +262,7 @@ mod FloorCatalogCodec {
         ) yield ({roomCount = roomCount}: GenerationConfig)
 
     /// `{"min": Int32, "max": Int32}` を SpawnRange に decode
-    def decodeSpawnRange(element: JsonElement): Option[SpawnRange] =
+    def decodeSpawnRange(element: Json): Option[SpawnRange] =
         forM (
             obj  <- expectObject(element);
             minJ <- Map.get("min", obj);
@@ -271,7 +271,7 @@ mod FloorCatalogCodec {
             mx   <- expectInt(maxJ)
         ) yield ({min = mn, max = mx}: SpawnRange)
 
-    def decodeSpawnEntry(element: JsonElement): Option[SpawnEntry] =
+    def decodeSpawnEntry(element: Json): Option[SpawnEntry] =
         forM (
             obj      <- expectObject(element);
             idJ      <- Map.get("id", obj);

@@ -18,8 +18,7 @@
 ///           └─ menu (ItemList, NodeTag.ItemMenu)
 mod ItemMenuScene {
 
-    use Json.JsonError.JsonError
-    use Json.Path.Path.Root
+    use JsonCompat.PathTag.Root
 
     // ────────────────────────────────────────────────────────
     // (A) 型定義
@@ -68,14 +67,14 @@ mod ItemMenuScene {
     def iconTextGap(): Float64 = 1.0
 
     /// scene.json 内の "tag" 文字列 → NodeTag への変換。
-    def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+    def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None                  => Ok(NodeTag.NoTag)
             case Some("NoTag")         => Ok(NodeTag.NoTag)
             case Some("ItemPanel")     => Ok(NodeTag.ItemPanel)
             case Some("ItemMenu")      => Ok(NodeTag.ItemMenu(0))
             case Some(unknown)         =>
-                Err(JsonError(Root, Set#{"ItemMenuScene tag (got: ${unknown})"}))
+                Err(JsonCompat.jsonError(Root, Set#{"ItemMenuScene tag (got: ${unknown})"}))
         }
 
     // ────────────────────────────────────────────────────────

@@ -205,7 +205,7 @@ mod Game {
     /// `Bird(...)` `Camera(...)` `ScoreLabel(...)` のようなデータ付きタグは
     /// JSON 側ではタグを書かず、ロード後に `Scene.setState` で注入する方針なので
     /// ここでは扱わない（None もしくは未知タグ → NoTag フォールバック）。
-    pub def parseNodeTag(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+    pub def parseNodeTag(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None => Ok(NodeTag.NoTag)
             case Some(s) => match s {

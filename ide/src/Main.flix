@@ -226,7 +226,7 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
             case None => {
                 Array.put((Nil: List[NodeInspector.FieldSection]), 0, state#inspector#schema);
                 Array.put((None: Option[Editor.Selection]), 0, state#inspector#currentSelection);
-                Array.put((Map.empty(): Map[String, Json.JsonElement]), 0,
+                Array.put((Map.empty(): Map[String, Util.Json.Json]), 0,
                           state#inspector#currentValues);
                 Array.put(None, 0, state#inspector#worldPos)
             }
@@ -238,7 +238,7 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
                     case None => {
                         Array.put((Nil: List[NodeInspector.FieldSection]), 0,
                                   state#inspector#schema);
-                        Array.put((Map.empty(): Map[String, Json.JsonElement]), 0,
+                        Array.put((Map.empty(): Map[String, Util.Json.Json]), 0,
                                   state#inspector#currentValues)
                     }
                     case Some(engineNode) => {
@@ -263,7 +263,7 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
                                 }, acc, fields)
                         };
                         let snapshot = List.foldLeft(foldFields,
-                            (Map.empty(): Map[String, Json.JsonElement]), sections);
+                            (Map.empty(): Map[String, Util.Json.Json]), sections);
                         Array.put(snapshot, 0, state#inspector#currentValues)
                     }
                 }
@@ -361,7 +361,7 @@ def loadPendingSceneOrKeep(state: IdeState.IdeState, fontName: Option[String],
                 Fs.ReadFile.read(path)
             } with Fs.ReadFile.runWithFileRead;
             let jsonOpt = Result.toOption(readResult)
-                |> Option.flatMap(s -> Json.Parse.parse(String.trim(s)));
+                |> Option.flatMap(s -> JsonCompat.parse(String.trim(s)));
             Array.put(jsonOpt, 0, state#runtime#currentSceneJson);
             match fontName {
                 case Some(name) =>

@@ -88,7 +88,7 @@ mod ResourcePanel {
         // 新しいリソースに切り替えるとき、フレーム調整 pan はリセット
         ResourceState.resetPreviewPan(state#resource);
 
-        let dataJson = loadJsonElement(entry#dataPath);
+        let dataJson = loadJson(entry#dataPath);
         ResourceState.setEditingJson(state#resource, dataJson);
 
         match Resource.loadSchemaDiagnostic(entry#schemaPath) {
@@ -99,20 +99,20 @@ mod ResourcePanel {
             }
         };
 
-        let schemaJson = loadJsonElement(entry#schemaPath);
+        let schemaJson = loadJson(entry#schemaPath);
         ResourceState.setEditingSchemaJson(state#resource, schemaJson);
 
         rebuildSubEntries(state, subEntriesList)
     }
 
-    /// JSON ファイルを読んで JsonElement にパース。失敗は None
-    def loadJsonElement(path: String): Option[Json.JsonElement] \ Fs.FileRead =
+    /// JSON ファイルを読んで Json にパース。失敗は None
+    def loadJson(path: String): Option[Util.Json.Json] \ Fs.FileRead =
         let readResult = run {
             Fs.ReadFile.read(path)
         } with Fs.ReadFile.runWithFileRead;
         readResult
             |> Result.toOption
-            |> Option.flatMap(s -> Json.Parse.parse(String.trim(s)))
+            |> Option.flatMap(s -> JsonCompat.parse(String.trim(s)))
 
     /// 全 discovered resources をその場で読み直し、`{catalog containerKey → sub-entry id 一覧}`
     /// の Map を作る。`Resource.FieldType.RefT(target)` の widget が ComboBox 候補を
@@ -122,7 +122,7 @@ mod ResourcePanel {
             Map[String, List[String]] \ {Fs.FileRead, IO} =
         let entries = Array.get(0, state#resource#discoveredRef);
         let base = List.foldLeft((acc, e) ->
-            match loadJsonElement(e#dataPath) {
+            match loadJson(e#dataPath) {
                 case Some(json) =>
                     match ResourceCatalog.classify(json) {
                         case ResourceCatalog.Classification.CatalogIn(info) =>
@@ -210,12 +210,12 @@ mod ResourcePanel {
                                 // ─── implicit description (sub-entry のメモ。schema 宣言不要、
                                 //     全 catalog で常に sub-entry 先頭に表示) ───
                                 let descValue = match record {
-                                    case Json.JsonElement.JsonObject(m) => Map.get("description", m)
+                                    case Util.Json.Json.JObject(m) => Map.get("description", m)
                                     case _                              => None
                                 };
                                 let descKeyPath = List.append(basePath, "description" :: Nil);
                                 let descCommit =
-                                    (json2: Json.JsonElement) -> commitToResource(state, descKeyPath, json2);
+                                    (json2: Util.Json.Json) -> commitToResource(state, descKeyPath, json2);
                                 let descWidget =
                                     PropertyWidgets.buildMultilineTextWidget(descValue, descCommit);
                                 PropertyWidgets.addPropertyRow(children, "メモ:", descWidget);
@@ -235,7 +235,7 @@ mod ResourcePanel {
                                         ResourceState.getRefOptions(state#resource)
                                             |> Option.getWithDefault(Map.empty())
                                 };
-                                let mkCommit = kp -> { (json2: Json.JsonElement) ->
+                                let mkCommit = kp -> { (json2: Util.Json.Json) ->
                                     commitToResource(state, kp, json2)
                                 };
                                 // sprite.frame 行の「Previewから選択」ボタン: フレーム調整モードを
@@ -268,7 +268,7 @@ mod ResourcePanel {
     /// プレビュー再描画 (texture 変更時に効く)。
     /// HotReload watcher が拾って次フレームで scene 再 load される
     def commitToResource(state: IdeState.IdeState, keyPath: List[String],
-                          newValue: Json.JsonElement): Unit \ IO =
+                          newValue: Util.Json.Json): Unit \ IO =
         match ResourceState.getEditingJson(state#resource) {
             case None => ()
             case Some(json) => {
@@ -278,7 +278,7 @@ mod ResourcePanel {
                 match ResourceState.getSelectedDataPath(state#resource) {
                     case None => ()
                     case Some(path) => {
-                        let pretty = Json.Write.toPrettyString(2i32, updated);
+                        let pretty = Util.Json.toPrettyString(2i32, updated);
                         discard Files.writeString(Paths.get(path), pretty);
                         // sub-entries が変化しうるので Ref widget 候補 cache を再計算する。
                         // （差分計算は難しいため全再計算。古い候補を残さないための無効化）
@@ -312,7 +312,7 @@ mod ResourcePanel {
         }
 
     /// 編集対象 record への JSON key path を返す
-    def recordKeyPath(state: IdeState.IdeState, json: Json.JsonElement): List[String] \ IO =
+    def recordKeyPath(state: IdeState.IdeState, json: Util.Json.Json): List[String] \ IO =
         match ResourceCatalog.classify(json) {
             case ResourceCatalog.Classification.Single => Nil
             case ResourceCatalog.Classification.CatalogIn(info) =>
@@ -323,9 +323,9 @@ mod ResourcePanel {
             case _ => Nil
         }
 
-    /// 編集対象 record の JsonElement を返す
-    def currentRecordJson(state: IdeState.IdeState, json: Json.JsonElement):
-            Option[Json.JsonElement] \ IO =
+    /// 編集対象 record の Json を返す
+    def currentRecordJson(state: IdeState.IdeState, json: Util.Json.Json):
+            Option[Util.Json.Json] \ IO =
         match ResourceCatalog.classify(json) {
             case ResourceCatalog.Classification.Single => Some(json)
             case ResourceCatalog.Classification.CatalogIn(info) =>
@@ -333,9 +333,9 @@ mod ResourcePanel {
                     case None => None
                     case Some(subKey) =>
                         match json {
-                            case Json.JsonElement.JsonObject(topMap) =>
+                            case Util.Json.Json.JObject(topMap) =>
                                 match Map.get(info#containerKey, topMap) {
-                                    case Some(Json.JsonElement.JsonObject(subMap)) =>
+                                    case Some(Util.Json.Json.JObject(subMap)) =>
                                         Map.get(subKey, subMap)
                                     case _ => None
                                 }
@@ -363,7 +363,7 @@ mod ResourcePanel {
 
     /// record の中から texture 名 + 同居する frame/hframes/vframes を探し、
     /// sprite preview pane に該当セルだけを切り抜いて表示する
-    def refreshPreview(state: IdeState.IdeState, record: Json.JsonElement): Unit \ IO = {
+    def refreshPreview(state: IdeState.IdeState, record: Util.Json.Json): Unit \ IO = {
         let textureNames = Array.get(0, state#textureNamesRef);
         let pathMap = Array.get(0, state#texturePathMapRef);
         // SpriteRef とその sprite ブロックへの相対パスを同時に取得する。
@@ -557,7 +557,7 @@ mod ResourcePanel {
                             else if (List.exists(s -> s == name, info#subEntries))
                                 println("[Resources] add sub-entry skipped: duplicate id '${name}'")
                             else {
-                                let emptyObj = Json.JsonElement.JsonObject(Map.empty());
+                                let emptyObj = Util.Json.Json.JObject(Map.empty());
                                 let keyPath = info#containerKey :: name :: Nil;
                                 let updated = JsonOps.setAtKeyPath(json, keyPath, emptyObj);
                                 ResourceState.setEditingJson(state#resource, Some(updated));
@@ -597,17 +597,17 @@ mod ResourcePanel {
         }
     }
 
-    /// 既存 json (top-level JsonObject) の `[containerKey]` 配下から `subKey` を削除し、
-    /// 更新後の JsonElement を返す。型が想定外なら None。
-    def removeKeyFromContainer(json: Json.JsonElement, containerKey: String, subKey: String):
-            Option[Json.JsonElement] =
+    /// 既存 json (top-level JObject) の `[containerKey]` 配下から `subKey` を削除し、
+    /// 更新後の Json を返す。型が想定外なら None。
+    def removeKeyFromContainer(json: Util.Json.Json, containerKey: String, subKey: String):
+            Option[Util.Json.Json] =
         match json {
-            case Json.JsonElement.JsonObject(topMap) =>
+            case Util.Json.Json.JObject(topMap) =>
                 match Map.get(containerKey, topMap) {
-                    case Some(Json.JsonElement.JsonObject(subMap)) => {
+                    case Some(Util.Json.Json.JObject(subMap)) => {
                         let newSubMap = Map.remove(subKey, subMap);
-                        let newContainer = Json.JsonElement.JsonObject(newSubMap);
-                        Some(Json.JsonElement.JsonObject(Map.insert(containerKey, newContainer, topMap)))
+                        let newContainer = Util.Json.Json.JObject(newSubMap);
+                        Some(Util.Json.Json.JObject(Map.insert(containerKey, newContainer, topMap)))
                     }
                     case _ => None
                 }
@@ -620,7 +620,7 @@ mod ResourcePanel {
         match (ResourceState.getEditingJson(state#resource),
                ResourceState.getSelectedDataPath(state#resource)) {
             case (Some(json), Some(path)) => {
-                let pretty = Json.Write.toPrettyString(2i32, json);
+                let pretty = Util.Json.toPrettyString(2i32, json);
                 discard Files.writeString(Paths.get(path), pretty);
                 ResourceState.setDirty(state#resource, false);
                 // + / - で sub-entries が増減したので Ref widget 候補 cache を再計算する

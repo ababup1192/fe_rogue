@@ -60,7 +60,7 @@ mod TestConsumable {
     def testDecodeSampleCatalog(): Unit \ Assert =
         // デコード → consumables Map 取得までを Option チェーンで 1 本にして、
         // 期待ケース（vulnerary が引ける）だけにマッチさせる。
-        let items = Json.Parse.parse(sampleConsumablesJson())
+        let items = JsonCompat.parse(sampleConsumablesJson())
             |> Option.flatMap(Saveable.fromJson)
             |> Option.map(Consumable.consumablesOf)
             |> Option.getWithDefault(Map.empty());

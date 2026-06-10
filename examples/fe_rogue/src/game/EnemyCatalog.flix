@@ -47,7 +47,7 @@ mod EnemyCatalog {
     pub def resolveSpriteFrames(enemiesPath: String, catalog: EnemyCatalog):
             EnemyCatalog \ {Fs.FileRead, GameEngine.Game} =
         let json = readFile(enemiesPath);
-        let parsed = match Json.Parse.parse(json) {
+        let parsed = match JsonCompat.parse(json) {
             case None       => bug!("EnemyCatalog enemies JSON re-parse failed during resolveSpriteFrames")
             case Some(elem) => elem
         };
@@ -78,23 +78,23 @@ mod EnemyCatalog {
 // ════════════════════════════════════════════════════════════════════════
 
 instance Saveable[EnemyCatalog.EnemyCatalog] {
-    pub def toJson(value: EnemyCatalog.EnemyCatalog): Json.JsonElement =
+    pub def toJson(value: EnemyCatalog.EnemyCatalog): Util.Json.Json =
         let EnemyCatalog.EnemyCatalog(container) = value;
         CatalogContainer.encode(EnemyCatalogCodec.encodeEnemy, container)
 
-    pub def fromJson(element: Json.JsonElement): Option[EnemyCatalog.EnemyCatalog] =
+    pub def fromJson(element: Util.Json.Json): Option[EnemyCatalog.EnemyCatalog] =
         CatalogContainer.decode("enemies", EnemyCatalogCodec.decodeEnemy, element)
             |> Option.map(EnemyCatalog.EnemyCatalog.EnemyCatalog)
 }
 
 mod EnemyCatalogCodec {
-    use Json.JsonElement
+    use Util.Json.Json
     use EnemyCatalog.EnemyResource
 
     /// 敵 = 共有ベースのみ（成長率なし）。decode/encode は `UnitBaseCodec` に委譲。
-    pub def decodeEnemy(element: JsonElement): Option[EnemyResource] =
+    pub def decodeEnemy(element: Json): Option[EnemyResource] =
         UnitBaseCodec.decodeBase(element)
 
-    pub def encodeEnemy(e: EnemyResource): JsonElement =
-        Json.JsonElement.JsonObject(UnitBaseCodec.encodeBase(e))
+    pub def encodeEnemy(e: EnemyResource): Json =
+        Util.Json.Json.JObject(UnitBaseCodec.encodeBase(e))
 }

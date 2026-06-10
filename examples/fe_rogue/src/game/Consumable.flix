@@ -19,8 +19,8 @@
 ///   }
 mod Consumable {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber}
     use Sprite.SpriteResource
 
     // ────────────────────────────────────────────────────────
@@ -97,11 +97,11 @@ mod Consumable {
 // ════════════════════════════════════════════════════════════════════════
 
 instance Saveable[Consumable.ConsumableCatalog] {
-    pub def toJson(value: Consumable.ConsumableCatalog): Json.JsonElement =
+    pub def toJson(value: Consumable.ConsumableCatalog): Util.Json.Json =
         let Consumable.ConsumableCatalog.ConsumableCatalog(container) = value;
         CatalogContainer.encode(ConsumableCatalogCodec.encodeConsumable, container)
 
-    pub def fromJson(element: Json.JsonElement): Option[Consumable.ConsumableCatalog] =
+    pub def fromJson(element: Util.Json.Json): Option[Consumable.ConsumableCatalog] =
         CatalogContainer.decode("consumables", ConsumableCatalogCodec.decodeConsumable, element)
             |> Option.map(Consumable.ConsumableCatalog.ConsumableCatalog)
 }
@@ -109,34 +109,34 @@ instance Saveable[Consumable.ConsumableCatalog] {
 /// ConsumableResource 1 件分の encode / decode のみ。container 巡回は `CatalogContainer.encode/decode` に委譲する。
 mod ConsumableCatalogCodec {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber}
     use JsonCodec.{expectObject, expectString, expectInt, intToBd}
     use Consumable.ConsumableResource
     use Sprite.SpriteResource
 
     // ── エンコード ──
 
-    pub def encodeConsumable(item: ConsumableResource): JsonElement =
-        JsonObject(Map#{
-            "name"       => JsonString(item#name),
-            "healAmount" => JsonNumber(intToBd(item#healAmount)),
-            "durability" => JsonNumber(intToBd(item#durability)),
+    pub def encodeConsumable(item: ConsumableResource): Json =
+        JObject(Map#{
+            "name"       => JString(item#name),
+            "healAmount" => JNumber(intToBd(item#healAmount)),
+            "durability" => JNumber(intToBd(item#durability)),
             "sprite"     => encodeSprite(item#sprite)
         })
 
-    def encodeSprite(sprite: SpriteResource): JsonElement =
-        JsonObject(Map#{
-            "texture" => JsonString(sprite#texture),
-            "hframes" => JsonNumber(intToBd(sprite#hframes)),
-            "vframes" => JsonNumber(intToBd(sprite#vframes)),
-            "frame"   => JsonNumber(intToBd(sprite#frame)),
+    def encodeSprite(sprite: SpriteResource): Json =
+        JObject(Map#{
+            "texture" => JString(sprite#texture),
+            "hframes" => JNumber(intToBd(sprite#hframes)),
+            "vframes" => JNumber(intToBd(sprite#vframes)),
+            "frame"   => JNumber(intToBd(sprite#frame)),
             "offset"  => JsonCodec.encodeVec2(sprite#offset)
         })
 
     // ── デコード ──
 
-    pub def decodeConsumable(element: JsonElement): Option[ConsumableResource] =
+    pub def decodeConsumable(element: Json): Option[ConsumableResource] =
         forM (
             obj      <- expectObject(element);
             nameJ    <- Map.get("name", obj);
@@ -150,7 +150,7 @@ mod ConsumableCatalogCodec {
         ) yield ({name = name, healAmount = heal, durability = dur,
                    sprite = sprite}: ConsumableResource)
 
-    def decodeSprite(element: JsonElement): Option[SpriteResource] =
+    def decodeSprite(element: Json): Option[SpriteResource] =
         forM (
             obj    <- expectObject(element);
             texJ   <- Map.get("texture", obj);

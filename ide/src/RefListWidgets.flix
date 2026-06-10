@@ -26,7 +26,7 @@ mod RefListWidgets {
     /// 行ごとに ComboBox (ref dropdown) + Spinner (percent) + 削除ボタン、最下段に追加ボタン
     /// と合計表示。Add / Remove は VBox を再描画、value 変更は in-place で commit + 合計
     /// ラベル更新のみ (Spinner / ComboBox が壊れないように)
-    pub def buildRefPercentListWidget(value: Option[Json.JsonElement],
+    pub def buildRefPercentListWidget(value: Option[Util.Json.Json],
                                         options: List[String],
                                         commit: PropertyWidgets.Commit): Node \ IO = {
         let initial = parseRefPercentRows(value);
@@ -153,21 +153,21 @@ mod RefListWidgets {
         row
     }
 
-    /// JSON 値 (Option[JsonArray of JsonObject{id, percent}]) を [(id, percent)] にパース。
+    /// JSON 値 (Option[JArray of JObject{id, percent}]) を [(id, percent)] にパース。
     /// 不正な要素はスキップ。値無しは空リスト
-    def parseRefPercentRows(value: Option[Json.JsonElement]): List[(String, Int32)] =
+    def parseRefPercentRows(value: Option[Util.Json.Json]): List[(String, Int32)] =
         match value {
-            case Some(Json.JsonElement.JsonArray(items)) =>
+            case Some(Util.Json.Json.JArray(items)) =>
                 Vector.toList(items)
                     |> List.filterMap(decodeRefPercentRow)
             case _ => Nil
         }
 
-    def decodeRefPercentRow(elem: Json.JsonElement): Option[(String, Int32)] =
+    def decodeRefPercentRow(elem: Util.Json.Json): Option[(String, Int32)] =
         match elem {
-            case Json.JsonElement.JsonObject(m) =>
+            case Util.Json.Json.JObject(m) =>
                 let idOpt = Map.get("id", m) |> Option.flatMap(j -> match j {
-                    case Json.JsonElement.JsonString(s) => Some(s)
+                    case Util.Json.Json.JString(s) => Some(s)
                     case _ => None
                 });
                 let pctOpt = Map.get("percent", m) |> Option.flatMap(NodeInspector.jsonToInt);
@@ -184,12 +184,12 @@ mod RefListWidgets {
         let rows = Array.get(0, rowsRef);
         let items = rows |> List.map(p -> {
             let (id, pct) = p;
-            Json.JsonElement.JsonObject(Map#{
-                "id"      => Json.JsonElement.JsonString(id),
+            Util.Json.Json.JObject(Map#{
+                "id"      => Util.Json.Json.JString(id),
                 "percent" => NodeInspector.intToJson(pct)
             })
         });
-        commit(Json.JsonElement.JsonArray(List.toVector(items)))
+        commit(Util.Json.Json.JArray(List.toVector(items)))
     }
 
     /// idx 番目の (id, pct) を newPair で置き換えた新リストを返す
@@ -249,7 +249,7 @@ mod RefListWidgets {
     // ════════════════════════════════════════════════════════════════════════
 
     /// `KindedRefListT(kinds)` 用 widget。`refOptions[kindSpec.target]` で各 kind の id 候補を引く。
-    pub def buildKindedRefListWidget(value: Option[Json.JsonElement],
+    pub def buildKindedRefListWidget(value: Option[Util.Json.Json],
                                        kinds: List[Resource.KindSpec],
                                        refOptions: Map[String, List[String]],
                                        commit: PropertyWidgets.Commit): Node \ IO = {
@@ -263,22 +263,22 @@ mod RefListWidgets {
 
     /// JSON `[{"kind": "...", "id": "..."}, ...]` を `(kindId, id)` のリストに変換する。
     /// 不正な要素はスキップ。
-    def parseKindedRows(value: Option[Json.JsonElement]): List[(String, String)] =
+    def parseKindedRows(value: Option[Util.Json.Json]): List[(String, String)] =
         match value {
-            case Some(Json.JsonElement.JsonArray(arr)) =>
+            case Some(Util.Json.Json.JArray(arr)) =>
                 List.filterMap(parseKindedRow, Vector.toList(arr))
             case _ => Nil
         }
 
-    def parseKindedRow(elem: Json.JsonElement): Option[(String, String)] =
+    def parseKindedRow(elem: Util.Json.Json): Option[(String, String)] =
         match elem {
-            case Json.JsonElement.JsonObject(m) =>
+            case Util.Json.Json.JObject(m) =>
                 let kindOpt = Map.get("kind", m) |> Option.flatMap(j -> match j {
-                    case Json.JsonElement.JsonString(s) => Some(s)
+                    case Util.Json.Json.JString(s) => Some(s)
                     case _ => None
                 });
                 let idOpt = Map.get("id", m) |> Option.flatMap(j -> match j {
-                    case Json.JsonElement.JsonString(s) => Some(s)
+                    case Util.Json.Json.JString(s) => Some(s)
                     case _ => None
                 });
                 match (kindOpt, idOpt) {
@@ -294,12 +294,12 @@ mod RefListWidgets {
         let rows = Array.get(0, rowsRef);
         let items = rows |> List.map(p -> {
             let (k, i) = p;
-            Json.JsonElement.JsonObject(Map#{
-                "kind" => Json.JsonElement.JsonString(k),
-                "id"   => Json.JsonElement.JsonString(i)
+            Util.Json.Json.JObject(Map#{
+                "kind" => Util.Json.Json.JString(k),
+                "id"   => Util.Json.Json.JString(i)
             })
         });
-        commit(Json.JsonElement.JsonArray(List.toVector(items)))
+        commit(Util.Json.Json.JArray(List.toVector(items)))
     }
 
     /// outer の子をクリアして再描画。Add/Remove/kind 切替 のたびに呼ぶ

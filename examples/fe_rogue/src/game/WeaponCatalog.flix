@@ -22,8 +22,8 @@
 ///   - decode は完全 pure。エラーは Option で伝播し、`load` で panic に上げる
 mod WeaponCatalog {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject}
 
     // ────────────────────────────────────────────────────────
     // (A) 型定義
@@ -121,7 +121,7 @@ mod WeaponCatalog {
         WeaponCatalog.WeaponCatalog(CatalogContainer.CatalogContainer({
             containerKey = "weapons",
             entries      = (Map.empty(): Map[String, WeaponResource]),
-            meta         = (Map.empty(): Map[String, Json.JsonElement])
+            meta         = (Map.empty(): Map[String, Util.Json.Json])
         }))
 
     /// `WeaponResource` のフィールド名集合。`weapons.schema.json` との整合性検査に使う。
@@ -134,11 +134,11 @@ mod WeaponCatalog {
 // ════════════════════════════════════════════════════════════════════════
 
 instance Saveable[WeaponCatalog.WeaponCatalog] {
-    pub def toJson(value: WeaponCatalog.WeaponCatalog): Json.JsonElement =
+    pub def toJson(value: WeaponCatalog.WeaponCatalog): Util.Json.Json =
         let WeaponCatalog.WeaponCatalog.WeaponCatalog(container) = value;
         CatalogContainer.encode(WeaponCatalogCodec.encodeWeapon, container)
 
-    pub def fromJson(element: Json.JsonElement): Option[WeaponCatalog.WeaponCatalog] =
+    pub def fromJson(element: Util.Json.Json): Option[WeaponCatalog.WeaponCatalog] =
         CatalogContainer.decode("weapons", WeaponCatalogCodec.decodeWeapon, element)
             |> Option.map(WeaponCatalog.WeaponCatalog.WeaponCatalog)
 }
@@ -146,28 +146,28 @@ instance Saveable[WeaponCatalog.WeaponCatalog] {
 /// WeaponResource 1 件分の encode / decode。container 巡回は `CatalogContainer.encode/decode` に委譲する。
 mod WeaponCatalogCodec {
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber}
     use JsonCodec.{expectObject, expectString, expectInt, expectFloat, floatToBd, intToBd}
     use WeaponCatalog.{WeaponResource, WeaponRange, WeaponType, WeaponSpriteResource}
 
     // ── エンコード ──
 
-    pub def encodeWeapon(weapon: WeaponResource): JsonElement =
-        JsonObject(Map#{
-            "name"       => JsonString(weapon#name),
-            "attack"     => JsonNumber(intToBd(weapon#attack)),
-            "hit"        => JsonNumber(intToBd(weapon#hit)),
-            "durability" => JsonNumber(intToBd(weapon#durability)),
+    pub def encodeWeapon(weapon: WeaponResource): Json =
+        JObject(Map#{
+            "name"       => JString(weapon#name),
+            "attack"     => JNumber(intToBd(weapon#attack)),
+            "hit"        => JNumber(intToBd(weapon#hit)),
+            "durability" => JNumber(intToBd(weapon#durability)),
             "range"      => encodeRange(weapon#range),
-            "weaponType" => JsonString(weaponTypeToString(weapon#weaponType)),
+            "weaponType" => JString(weaponTypeToString(weapon#weaponType)),
             "sprite"     => encodeSprite(weapon#sprite)
         })
 
-    def encodeRange(range: WeaponRange): JsonElement =
-        JsonObject(Map#{
-            "min" => JsonNumber(intToBd(range#min)),
-            "max" => JsonNumber(intToBd(range#max))
+    def encodeRange(range: WeaponRange): Json =
+        JObject(Map#{
+            "min" => JNumber(intToBd(range#min)),
+            "max" => JNumber(intToBd(range#max))
         })
 
     /// `WeaponType` を JSON / 設定で使う case 名文字列に。`parseWeaponType` と対。
@@ -180,19 +180,19 @@ mod WeaponCatalogCodec {
         case WeaponType.Magic => "Magic"
     }
 
-    def encodeSprite(sprite: WeaponSpriteResource): JsonElement =
-        JsonObject(Map#{
-            "texture" => JsonString(sprite#texture),
-            "hframes" => JsonNumber(intToBd(sprite#hframes)),
-            "vframes" => JsonNumber(intToBd(sprite#vframes)),
-            "frame"   => JsonNumber(intToBd(sprite#frame)),
+    def encodeSprite(sprite: WeaponSpriteResource): Json =
+        JObject(Map#{
+            "texture" => JString(sprite#texture),
+            "hframes" => JNumber(intToBd(sprite#hframes)),
+            "vframes" => JNumber(intToBd(sprite#vframes)),
+            "frame"   => JNumber(intToBd(sprite#frame)),
             "offset"  => JsonCodec.encodeVec2(sprite#offset),
             "scale"   => JsonCodec.encodeVec2(sprite#scale)
         })
 
     // ── デコード ──
 
-    pub def decodeWeapon(element: JsonElement): Option[WeaponResource] =
+    pub def decodeWeapon(element: Json): Option[WeaponResource] =
         forM (
             obj    <- expectObject(element);
             nameJ  <- Map.get("name", obj);
@@ -231,7 +231,7 @@ mod WeaponCatalogCodec {
         case _          => WeaponType.Sword
     }
 
-    def decodeRange(element: JsonElement): Option[WeaponRange] =
+    def decodeRange(element: Json): Option[WeaponRange] =
         forM (
             obj    <- expectObject(element);
             minJ   <- Map.get("min", obj);
@@ -240,7 +240,7 @@ mod WeaponCatalogCodec {
             mx     <- expectInt(maxJ)
         ) yield ({min = mn, max = mx}: WeaponRange)
 
-    def decodeSprite(element: JsonElement): Option[WeaponSpriteResource] =
+    def decodeSprite(element: Json): Option[WeaponSpriteResource] =
         forM (
             obj    <- expectObject(element);
             texJ   <- Map.get("texture", obj);

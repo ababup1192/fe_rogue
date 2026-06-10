@@ -242,26 +242,26 @@ mod MapResource {
 // ════════════════════════════════════════════════════════════════════════
 
 instance Saveable[MapResource.Level] {
-    pub def toJson(value: MapResource.Level): Json.JsonElement =
+    pub def toJson(value: MapResource.Level): Util.Json.Json =
         MapResourceCodec.encodeLevel(value)
 
-    pub def fromJson(element: Json.JsonElement): Option[MapResource.Level] =
+    pub def fromJson(element: Util.Json.Json): Option[MapResource.Level] =
         MapResourceCodec.decodeLevel(element)
 }
 
 instance Saveable[MapResource.Material] {
-    pub def toJson(value: MapResource.Material): Json.JsonElement =
+    pub def toJson(value: MapResource.Material): Util.Json.Json =
         MapResourceCodec.encodeMaterial(value)
 
-    pub def fromJson(element: Json.JsonElement): Option[MapResource.Material] =
+    pub def fromJson(element: Util.Json.Json): Option[MapResource.Material] =
         MapResourceCodec.decodeMaterial(element)
 }
 
 instance Saveable[MapResource.FieldValue] {
-    pub def toJson(value: MapResource.FieldValue): Json.JsonElement =
+    pub def toJson(value: MapResource.FieldValue): Util.Json.Json =
         MapResourceCodec.encodeFieldValue(value)
 
-    pub def fromJson(element: Json.JsonElement): Option[MapResource.FieldValue] =
+    pub def fromJson(element: Util.Json.Json): Option[MapResource.FieldValue] =
         MapResourceCodec.decodeFieldValue(element)
 }
 
@@ -270,26 +270,26 @@ instance Saveable[MapResource.FieldValue] {
 mod MapResourceCodec {
     import java.math.{BigDecimal => JBigDecimal}
 
-    use Json.JsonElement
-    use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool, JsonArray}
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JNumber, JBool, JArray}
     use MapResource.{Level, LevelData, ManualTile, Entity, FieldValue, Material, MaterialData, EditorPalette, EditorLayerPalette, AutoRule, PatternCell}
 
     // ── Level ──
 
-    pub def encodeLevel(l: Level): JsonElement =
+    pub def encodeLevel(l: Level): Json =
         let d = MapResource.levelData(l);
         let base = Map#{
-            "tileSize"    => JsonNumber(intToBd(d#tileSize)),
-            "width"       => JsonNumber(intToBd(d#width)),
-            "height"      => JsonNumber(intToBd(d#height)),
-            "materialId"  => JsonString(d#materialId),
-            "manualTiles" => JsonArray(d#manualTiles |> List.map(encodeManualTile) |> List.toVector),
-            "entities"    => JsonArray(d#entities    |> List.map(encodeEntity)     |> List.toVector)
+            "tileSize"    => JNumber(intToBd(d#tileSize)),
+            "width"       => JNumber(intToBd(d#width)),
+            "height"      => JNumber(intToBd(d#height)),
+            "materialId"  => JString(d#materialId),
+            "manualTiles" => JArray(d#manualTiles |> List.map(encodeManualTile) |> List.toVector),
+            "entities"    => JArray(d#entities    |> List.map(encodeEntity)     |> List.toVector)
         };
         // decorTiles は空なら省略 (後方互換: 既存 .map.json に decorTiles キーが無くても decode 可)
         let withDecor = if (List.isEmpty(d#decorTiles)) base
                         else Map.insert("decorTiles",
-                            JsonArray(d#decorTiles |> List.map(encodeManualTile) |> List.toVector),
+                            JArray(d#decorTiles |> List.map(encodeManualTile) |> List.toVector),
                             base);
         // editorPalette は None なら省略
         let withEditor = match d#editorPalette {
@@ -297,9 +297,9 @@ mod MapResourceCodec {
             case Some(p) => Map.insert("editorPalette", encodeEditorPalette(p), withDecor)
         };
         // intGrid は load 時に再構築されるため、保存は省略 (毎回 decorTiles から再生成)
-        JsonObject(withEditor)
+        JObject(withEditor)
 
-    pub def decodeLevel(element: JsonElement): Option[Level] =
+    pub def decodeLevel(element: Json): Option[Level] =
         forM (
             obj           <- expectObject(element);
             tileSizeJ     <- Map.get("tileSize",    obj);
@@ -341,13 +341,13 @@ mod MapResourceCodec {
 
     // ── EditorPalette ──
 
-    def encodeEditorPalette(p: EditorPalette): JsonElement =
-        JsonObject(Map#{
+    def encodeEditorPalette(p: EditorPalette): Json =
+        JObject(Map#{
             "floor" => encodeEditorLayerPalette(p#floor),
             "walls" => encodeEditorLayerPalette(p#walls)
         })
 
-    def decodeEditorPalette(element: JsonElement): Option[EditorPalette] =
+    def decodeEditorPalette(element: Json): Option[EditorPalette] =
         forM (
             obj   <- expectObject(element);
             floorJ <- Map.get("floor", obj);
@@ -356,21 +356,21 @@ mod MapResourceCodec {
             walls  <- decodeEditorLayerPalette(wallsJ)
         ) yield ({floor = floor, walls = walls}: EditorPalette)
 
-    def encodeEditorLayerPalette(lp: EditorLayerPalette): JsonElement = {
+    def encodeEditorLayerPalette(lp: EditorLayerPalette): Json = {
         let base = Map#{
-            "cellW"   => JsonNumber(intToBd(lp#cellW)),
-            "cellH"   => JsonNumber(intToBd(lp#cellH)),
-            "marginX" => JsonNumber(intToBd(lp#marginX)),
-            "marginY" => JsonNumber(intToBd(lp#marginY))
+            "cellW"   => JNumber(intToBd(lp#cellW)),
+            "cellH"   => JNumber(intToBd(lp#cellH)),
+            "marginX" => JNumber(intToBd(lp#marginX)),
+            "marginY" => JNumber(intToBd(lp#marginY))
         };
         let withTex = match lp#textureName {
             case None    => base
-            case Some(n) => Map.insert("textureName", JsonString(n), base)
+            case Some(n) => Map.insert("textureName", JString(n), base)
         };
-        JsonObject(withTex)
+        JObject(withTex)
     }
 
-    def decodeEditorLayerPalette(element: JsonElement): Option[EditorLayerPalette] =
+    def decodeEditorLayerPalette(element: Json): Option[EditorLayerPalette] =
         forM (
             obj   <- expectObject(element);
             cellWJ <- Map.get("cellW", obj);
@@ -387,7 +387,7 @@ mod MapResourceCodec {
                 case None    => 0
             };
             let textureName = match Map.get("textureName", obj) {
-                case Some(JsonString(s)) => Some(s)
+                case Some(JString(s)) => Some(s)
                 case _                   => None
             };
             ({textureName = textureName, cellW = cellW, cellH = cellH,
@@ -396,18 +396,18 @@ mod MapResourceCodec {
 
     // ── ManualTile ──
 
-    def encodeManualTile(t: ManualTile): JsonElement =
+    def encodeManualTile(t: ManualTile): Json =
         let base = Map#{
-            "x"    => JsonNumber(intToBd(t#x)),
-            "y"    => JsonNumber(intToBd(t#y)),
-            "srcX" => JsonNumber(intToBd(t#srcX)),
-            "srcY" => JsonNumber(intToBd(t#srcY))
+            "x"    => JNumber(intToBd(t#x)),
+            "y"    => JNumber(intToBd(t#y)),
+            "srcX" => JNumber(intToBd(t#srcX)),
+            "srcY" => JNumber(intToBd(t#srcY))
         };
-        let withH = if (t#flipH) Map.insert("flipH", JsonBool(true), base) else base;
-        let withV = if (t#flipV) Map.insert("flipV", JsonBool(true), withH) else withH;
-        JsonObject(withV)
+        let withH = if (t#flipH) Map.insert("flipH", JBool(true), base) else base;
+        let withV = if (t#flipV) Map.insert("flipV", JBool(true), withH) else withH;
+        JObject(withV)
 
-    def decodeManualTile(element: JsonElement): Option[ManualTile] =
+    def decodeManualTile(element: Json): Option[ManualTile] =
         forM (
             obj   <- expectObject(element);
             xJ    <- Map.get("x",    obj);
@@ -420,11 +420,11 @@ mod MapResourceCodec {
             srcY  <- expectInt(syJ)
         ) yield {
             let flipH = match Map.get("flipH", obj) {
-                case Some(JsonBool(b)) => b
+                case Some(JBool(b)) => b
                 case _                 => false
             };
             let flipV = match Map.get("flipV", obj) {
-                case Some(JsonBool(b)) => b
+                case Some(JBool(b)) => b
                 case _                 => false
             };
             ({x = x, y = y, srcX = srcX, srcY = srcY, flipH = flipH, flipV = flipV}: ManualTile)
@@ -432,15 +432,15 @@ mod MapResourceCodec {
 
     // ── Entity ──
 
-    def encodeEntity(e: Entity): JsonElement =
-        JsonObject(Map#{
-            "identifier" => JsonString(e#identifier),
-            "x"          => JsonNumber(intToBd(e#x)),
-            "y"          => JsonNumber(intToBd(e#y)),
+    def encodeEntity(e: Entity): Json =
+        JObject(Map#{
+            "identifier" => JString(e#identifier),
+            "x"          => JNumber(intToBd(e#x)),
+            "y"          => JNumber(intToBd(e#y)),
             "fields"     => encodeFieldsMap(e#fields)
         })
 
-    def decodeEntity(element: JsonElement): Option[Entity] =
+    def decodeEntity(element: Json): Option[Entity] =
         forM (
             obj          <- expectObject(element);
             identifierJ  <- Map.get("identifier", obj);
@@ -453,14 +453,14 @@ mod MapResourceCodec {
             fields       <- decodeFieldsMap(fieldsJ)
         ) yield ({identifier = identifier, x = x, y = y, fields = fields}: Entity)
 
-    def encodeFieldsMap(m: Map[String, FieldValue]): JsonElement =
+    def encodeFieldsMap(m: Map[String, FieldValue]): Json =
         let inner = m
             |> Map.foldLeftWithKey((acc, name, v) ->
                 Map.insert(name, encodeFieldValue(v), acc),
                 Map.empty());
-        JsonObject(inner)
+        JObject(inner)
 
-    def decodeFieldsMap(element: JsonElement): Option[Map[String, FieldValue]] =
+    def decodeFieldsMap(element: Json): Option[Map[String, FieldValue]] =
         forM (
             obj <- expectObject(element);
             res <- Map.foldLeftWithKey((acc, name, json) ->
@@ -473,42 +473,42 @@ mod MapResourceCodec {
 
     // ── FieldValue ──
 
-    pub def encodeFieldValue(v: FieldValue): JsonElement = match v {
-        case FieldValue.StringV(s) => JsonObject(Map#{"string" => JsonString(s)})
-        case FieldValue.IntV(i)    => JsonObject(Map#{"int"    => JsonNumber(intToBd(i))})
-        case FieldValue.BoolV(b)   => JsonObject(Map#{"bool"   => JsonBool(b)})
+    pub def encodeFieldValue(v: FieldValue): Json = match v {
+        case FieldValue.StringV(s) => JObject(Map#{"string" => JString(s)})
+        case FieldValue.IntV(i)    => JObject(Map#{"int"    => JNumber(intToBd(i))})
+        case FieldValue.BoolV(b)   => JObject(Map#{"bool"   => JBool(b)})
     }
 
-    pub def decodeFieldValue(element: JsonElement): Option[FieldValue] =
+    pub def decodeFieldValue(element: Json): Option[FieldValue] =
         forM (
             obj  <- expectObject(element);
             pair <- singleEntry(obj);
             fv   <- match pair {
-                case ("string", JsonString(s)) => Some(FieldValue.StringV(s))
+                case ("string", JString(s)) => Some(FieldValue.StringV(s))
                 case ("int",    j)             => expectInt(j)  |> Option.map(FieldValue.IntV)
-                case ("bool",   JsonBool(b))   => Some(FieldValue.BoolV(b))
+                case ("bool",   JBool(b))   => Some(FieldValue.BoolV(b))
                 case _                         => None
             }
         ) yield fv
 
     // ── Material ──
 
-    pub def encodeMaterial(m: Material): JsonElement =
+    pub def encodeMaterial(m: Material): Json =
         let d = MapResource.materialData(m);
         let base = Map#{
-            "tileset"      => JsonString(d#tileset),
-            "tileSize"     => JsonNumber(intToBd(d#tileSize)),
+            "tileset"      => JString(d#tileset),
+            "tileSize"     => JNumber(intToBd(d#tileSize)),
             "wallMap"      => encodeWallMap(d#wallMap),
             "floorPalette" => encodeCoordList(d#floorPalette),
             "decorPalette" => encodeCoordList(d#decorPalette)
         };
         let withRules = if (List.isEmpty(d#autoRules)) base
                         else Map.insert("autoRules",
-                            JsonArray(d#autoRules |> List.map(encodeAutoRule) |> List.toVector),
+                            JArray(d#autoRules |> List.map(encodeAutoRule) |> List.toVector),
                             base);
-        JsonObject(withRules)
+        JObject(withRules)
 
-    pub def decodeMaterial(element: JsonElement): Option[Material] =
+    pub def decodeMaterial(element: Json): Option[Material] =
         forM (
             obj            <- expectObject(element);
             tilesetJ       <- Map.get("tileset",      obj);
@@ -576,15 +576,15 @@ mod MapResourceCodec {
         else if (n >= 1i32) PatternCell.Value(n)
         else PatternCell.NotValue(-n)
 
-    def encodeAutoRule(r: AutoRule): JsonElement =
-        JsonObject(Map#{
-            "name"    => JsonString(r#name),
-            "size"    => JsonNumber(intToBd(r#size)),
-            "v"       => JsonNumber(intToBd(currentAutoRuleVersion())),
-            "pattern" => JsonArray(r#pattern
-                |> Vector.map(c -> JsonNumber(intToBd(encodePatternCell(c))))),
-            "srcX"    => JsonNumber(intToBd(r#srcX)),
-            "srcY"    => JsonNumber(intToBd(r#srcY))
+    def encodeAutoRule(r: AutoRule): Json =
+        JObject(Map#{
+            "name"    => JString(r#name),
+            "size"    => JNumber(intToBd(r#size)),
+            "v"       => JNumber(intToBd(currentAutoRuleVersion())),
+            "pattern" => JArray(r#pattern
+                |> Vector.map(c -> JNumber(intToBd(encodePatternCell(c))))),
+            "srcX"    => JNumber(intToBd(r#srcX)),
+            "srcY"    => JNumber(intToBd(r#srcY))
         })
 
     /// AutoRule の正規 size。すべてのルールはこれに揃える。
@@ -592,7 +592,7 @@ mod MapResourceCodec {
     def canonicalAutoRuleSize(): Int32 = 5i32
 
     // 旧フォーマットに含まれていた "chance" キーは無視する (存在しても decode は成功)。
-    def decodeAutoRule(element: JsonElement): Option[AutoRule] =
+    def decodeAutoRule(element: Json): Option[AutoRule] =
         forM (
             obj      <- expectObject(element);
             nameJ    <- Map.get("name", obj);
@@ -647,15 +647,15 @@ mod MapResourceCodec {
     /// (LDtk と同じく中央もマッチ条件を持てる)。legacy `-1` (旧 装飾) は
     /// decodePatternCell 側で Unspecified に変換されるので互換は維持される。
     def decodePatternVector(version: Option[Int32], _size: Int32,
-                              element: JsonElement): Option[Vector[PatternCell]] = match element {
-        case JsonArray(items) =>
+                              element: Json): Option[Vector[PatternCell]] = match element {
+        case JArray(items) =>
             decodePatternCellsFrom(version, Vector.toList(items), Nil)
                 |> Option.map(List.toVector)
         case _ => None
     }
 
     def decodePatternCellsFrom(version: Option[Int32],
-                                 items: List[JsonElement],
+                                 items: List[Json],
                                  acc: List[PatternCell]): Option[List[PatternCell]] = match items {
         case Nil       => Some(List.reverse(acc))
         case x :: rest =>
@@ -667,14 +667,14 @@ mod MapResourceCodec {
             }
     }
 
-    def encodeWallMap(m: Map[String, (Int32, Int32)]): JsonElement =
+    def encodeWallMap(m: Map[String, (Int32, Int32)]): Json =
         let inner = m
             |> Map.foldLeftWithKey((acc, key, coord) ->
                 Map.insert(key, encodeCoord(coord), acc),
                 Map.empty());
-        JsonObject(inner)
+        JObject(inner)
 
-    def decodeWallMap(element: JsonElement): Option[Map[String, (Int32, Int32)]] =
+    def decodeWallMap(element: Json): Option[Map[String, (Int32, Int32)]] =
         forM (
             obj <- expectObject(element);
             res <- Map.foldLeftWithKey((acc, key, json) ->
@@ -685,12 +685,12 @@ mod MapResourceCodec {
                        obj)
         ) yield res
 
-    def encodeCoord(coord: (Int32, Int32)): JsonElement =
+    def encodeCoord(coord: (Int32, Int32)): Json =
         let (col, row) = coord;
-        JsonArray(Vector#{JsonNumber(intToBd(col)), JsonNumber(intToBd(row))})
+        JArray(Vector#{JNumber(intToBd(col)), JNumber(intToBd(row))})
 
-    def decodeCoord(element: JsonElement): Option[(Int32, Int32)] = match element {
-        case JsonArray(items) =>
+    def decodeCoord(element: Json): Option[(Int32, Int32)] = match element {
+        case JArray(items) =>
             match Vector.toList(items) {
                 case j1 :: j2 :: Nil =>
                     forM (
@@ -702,19 +702,19 @@ mod MapResourceCodec {
         case _ => None
     }
 
-    def encodeCoordList(coords: List[(Int32, Int32)]): JsonElement =
-        JsonArray(coords |> List.map(encodeCoord) |> List.toVector)
+    def encodeCoordList(coords: List[(Int32, Int32)]): Json =
+        JArray(coords |> List.map(encodeCoord) |> List.toVector)
 
-    def decodeCoordList(element: JsonElement): Option[List[(Int32, Int32)]] =
+    def decodeCoordList(element: Json): Option[List[(Int32, Int32)]] =
         decodeList(decodeCoord, element)
 
     // ── ヘルパー ──
 
-    /// JsonArray を `decode` で 1 要素ずつデコードし List にまとめる。
+    /// JArray を `decode` で 1 要素ずつデコードし List にまとめる。
     /// 失敗要素があれば全体 None。
-    def decodeList(decode: JsonElement -> Option[a], element: JsonElement): Option[List[a]] =
+    def decodeList(decode: Json -> Option[a], element: Json): Option[List[a]] =
         match element {
-            case JsonArray(items) =>
+            case JArray(items) =>
                 List.foldRight(item -> acc ->
                     Option.flatMap(soFar ->
                         decode(item) |> Option.map(x -> x :: soFar),
@@ -723,26 +723,26 @@ mod MapResourceCodec {
             case _ => None
         }
 
-    def singleEntry(map: Map[String, JsonElement]): Option[(String, JsonElement)] =
+    def singleEntry(map: Map[String, Json]): Option[(String, Json)] =
         match Map.toList(map) {
             case head :: Nil => Some(head)
             case _           => None
         }
 
-    def expectObject(element: JsonElement): Option[Map[String, JsonElement]] =
+    def expectObject(element: Json): Option[Map[String, Json]] =
         match element {
-            case JsonObject(map) => Some(map)
+            case JObject(map) => Some(map)
             case _               => None
         }
 
-    def expectString(element: JsonElement): Option[String] =
+    def expectString(element: Json): Option[String] =
         match element {
-            case JsonString(text) => Some(text)
+            case JString(text) => Some(text)
             case _                => None
         }
 
-    def expectInt(element: JsonElement): Option[Int32] = match element {
-        case JsonNumber(bd) => BigDecimal.tryToFloat64(bd) |> Option.flatMap(Float64.tryToInt32)
+    def expectInt(element: Json): Option[Int32] = match element {
+        case JNumber(bd) => BigDecimal.tryToFloat64(bd) |> Option.flatMap(Float64.tryToInt32)
         case _              => None
     }
 

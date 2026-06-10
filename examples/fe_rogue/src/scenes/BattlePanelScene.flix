@@ -10,8 +10,7 @@
 ///           └─ text (Label2D, NodeTag.BattleText)
 mod BattlePanelScene {
 
-    use Json.JsonError.JsonError
-    use Json.Path.Path.Root
+    use JsonCompat.PathTag.Root
 
     def sceneJsonPath(): String = AssetPath.resolve("src/scenes/BattlePanelScene.scene.json")
 
@@ -57,14 +56,14 @@ mod BattlePanelScene {
     def eWeaponPath(): NodePath    = rootName() :: eWeaponName()    :: Nil
 
     /// scene.json 内の "tag" 文字列 → NodeTag への変換
-    def tagParser(opt: Option[String]): Result[Json.JsonError, NodeTag] =
+    def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None                  => Ok(NodeTag.NoTag)
             case Some("NoTag")         => Ok(NodeTag.NoTag)
             case Some("BattlePanel") => Ok(NodeTag.BattlePanel(Duration.zero()))
             case Some("BattleText")  => Ok(NodeTag.BattleText)
             case Some(unknown)         =>
-                Err(JsonError(Root, Set#{"BattlePanelScene tag (got: ${unknown})"}))
+                Err(JsonCompat.jsonError(Root, Set#{"BattlePanelScene tag (got: ${unknown})"}))
         }
 
     /// scene にパネルを追加する
