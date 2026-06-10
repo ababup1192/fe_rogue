@@ -196,8 +196,6 @@ mod TestCursorScene {
                 // 古い snapshot: setWaited 前の両方 active な状態を返し続ける
                 def get(id, k)           = k(PlayerScene.get(id, initial))
                 def getAll(k)            = k(PlayerScene.getAll(initial))
-                def getGridPos(id, k)    = k(PlayerScene.getGridPos(id, initial))
-                def getMoveTiles(id, k)  = k(PlayerScene.getMoveTiles(id, initial))
             }
               with Tween.withScheduler(rc)
               with AnimationPlayer.withScheduler(rc)

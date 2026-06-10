@@ -150,8 +150,6 @@ mod PlayerScene {
     pub eff PartyQuery {
         def get(id: Int32): Option[Data]
         def getAll(): List[Data]
-        def getGridPos(id: Int32): {x = Int32, y = Int32}
-        def getMoveTiles(id: Int32): Int32
     }
 
     /// スポーン時の中間表現。`add` で配置するセルの id/gridPos に加え、
@@ -618,32 +616,32 @@ mod PlayerScene {
     pub def anyAttacking(scene: Scene[NodeTag]): Bool =
         List.exists(d -> Option.nonEmpty(d#attackTargetId), getAll(scene))
 
-    /// 毎フレーム engine から呼ばれる。**選択中プレイヤーのみ** 動かす。
-    /// Game.flix の Node[NodeTag] redef からは PlayerMoving フェーズで
-    /// 「id == SelectedPlayer.State.get()」のノードに対してだけ dispatch される。
-    pub def physicsProcess(_delta: Duration.Duration,
-                            node: EngineNode[NodeTag],
-                            _path: NodePath,
-                            scene: Scene[NodeTag]):
-                           (EngineNode[NodeTag], Scene[NodeTag])
-                           \ {GameEngine.Game, BoardQuery, Tween.Scheduler} =
+    /// 手動移動 driver の共通本体。`physicsProcess`（移動力制限あり・低速）と
+    /// `lordRoamProcess`（制限なし・通常速）の差分は (a) 進入可否述語 `allowedPred`、
+    /// (b) スライド速度 `slide` の 2 点だけなので、ここに畳んで両者を薄ラッパにする。
+    /// `Board.tryMove(b,p,d)` は `tryMoveWithRange(b,p,d,_->true)` 等価なので、roam は
+    /// `allowedPred = _ -> true` を渡すだけで従来挙動と一致する。
+    def stepProcess(allowedPred: {x = Int32, y = Int32} -> Bool,
+                     slide: Duration.Duration,
+                     node: EngineNode[NodeTag],
+                     scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag])
+                    \ {GameEngine.Game, BoardQuery, Tween.Scheduler} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Player(data)) =>
                 if (isMoving(data#id)) (node, scene)
                 else
                     let board = BoardQuery.board();
-                    let allowed = c -> MoveRangeScene.isInRange(c, scene);
                     // 方向キー押下で 1 セルだけ進む。味方セルへ進入可能 (重なる)、
                     // ただし重なっている間は Z で行動決定できない (`Board.isOverlappingAlly`
                     // で `TurnRules` がブロック)。「味方を超えて自動スライド」する旧
                     // `stepThroughAllies` 挙動は廃止。
                     let movement = forM (
                         dir    <- readHeldDirection();
-                        target <- Board.tryMoveWithRange(board, data#gridPos, dir, allowed)
+                        target <- Board.tryMoveWithRange(board, data#gridPos, dir, allowedPred)
                     ) yield {
                         let (newMarker, newData) =
-                            moveTo(data#id, board#map, target, marker, data,
-                                   selectedSlideDuration(), scene);
+                            moveTo(data#id, board#map, target, marker, data, slide, scene);
                         // 子 Sprite が AnimatedSprite2D なら、進行方向の walk_<dir> アニメに
                         // 切り替える (Sprite2D の unit は playAnim が no-op)。
                         // direction が決まらない (= 同セル移動) ケースは scene 据え置き。
@@ -662,6 +660,19 @@ mod PlayerScene {
             case _ => (node, scene)
         }
 
+    /// 毎フレーム engine から呼ばれる。**選択中プレイヤーのみ** 動かす。
+    /// Game.flix の Node[NodeTag] redef からは PlayerMoving フェーズで
+    /// 「id == SelectedPlayer.State.get()」のノードに対してだけ dispatch される。
+    /// 移動力(MoveRange)範囲内のみ・低速スライド。
+    pub def physicsProcess(_delta: Duration.Duration,
+                            node: EngineNode[NodeTag],
+                            _path: NodePath,
+                            scene: Scene[NodeTag]):
+                           (EngineNode[NodeTag], Scene[NodeTag])
+                           \ {GameEngine.Game, BoardQuery, Tween.Scheduler} =
+        stepProcess(c -> MoveRangeScene.isInRange(c, scene),
+                    selectedSlideDuration(), node, scene)
+
     /// ローグ移動モード(RogueMove)中のロード(id 0)の自由歩行。`physicsProcess` と違い
     /// **移動力(MoveRange)の制限がなく**、床であれば何マスでも歩ける。他味方は合流して
     /// hidden = 盤面から除外されているので、実質「地形 + 敵」だけが移動の障害になる。
@@ -672,32 +683,7 @@ mod PlayerScene {
                              scene: Scene[NodeTag]):
                             (EngineNode[NodeTag], Scene[NodeTag])
                             \ {GameEngine.Game, BoardQuery, Tween.Scheduler} =
-        match node {
-            case EngineNode.Marker2DWithState(marker, NodeTag.Player(data)) =>
-                if (isMoving(data#id)) (node, scene)
-                else
-                    let board = BoardQuery.board();
-                    let movement = forM (
-                        dir    <- readHeldDirection();
-                        target <- Board.tryMove(board, data#gridPos, dir)
-                    ) yield {
-                        let (newMarker, newData) =
-                            moveTo(data#id, board#map, target, marker, data,
-                                   slideDuration(), scene);
-                        let dirOpt = directionOfStep(data#gridPos, target);
-                        let animScene = match dirOpt {
-                            case Some(d) => playAnim(data#id, walkAnimName(d), scene)
-                            case None    => scene
-                        };
-                        let nextScene = if (data#resource#sprite#flipForFacing)
-                                            applyFacingFlip(data#id, dirOpt, animScene)
-                                        else animScene;
-                        (EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
-                         nextScene)
-                    };
-                    Option.getWithDefault((node, scene), movement)
-            case _ => (node, scene)
-        }
+        stepProcess(_ -> true, slideDuration(), node, scene)
 
     /// 押されている方向キーを Option で返す（複数同時押しは上 > 下 > 左 > 右）
     def readHeldDirection(): Option[{x = Int32, y = Int32}] \ GameEngine.Game =
@@ -746,20 +732,6 @@ mod PlayerScene {
             |> List.filter(other ->
                 other#id != player#id
                 and Weapon.manhattan(player#gridPos, other#gridPos) == 1)
-
-    /// 指定セル上の全プレイヤー（waited 含む）の id を返す。
-    /// 敵が攻撃する隣接プレイヤーの判定など、waited 含めて見たいときに使う。
-    pub def findIdAt(coord: {x = Int32, y = Int32},
-                      scene: Scene[NodeTag]): Option[Int32] =
-        getAll(scene)
-            |> List.findMap(d ->
-                if (d#gridPos#x == coord#x and d#gridPos#y == coord#y) Some(d#id)
-                else None)
-
-    /// アクティブなプレイヤーが 1 人でも残っていれば true。
-    /// 「全員行動済みなら敵ターンへ」の判定に使う。
-    pub def anyActive(scene: Scene[NodeTag]): Bool =
-        List.exists(d -> not d#waited, getAll(scene))
 
     /// アクティブ（waited でない）味方のうち、id 最小のものを返す。誰も居なければ None。
     /// `commitWaitedAndAdvance` の直後にカーソルを次に動ける駒へ飛ばす用途で使う
@@ -1037,7 +1009,7 @@ mod PlayerScene {
 
     /// 味方 id を「階段で退場」させる。`usedStairs` を立て、`hidden` も同時に立てて
     /// Marker2D ごと不可視にする（= 盤面・敵範囲・占有・経路・カーソルから外れる）。
-    /// `waited` も立てるので「行動済み」扱いになり、`firstActive` / `anyActive` の対象から
+    /// `waited` も立てるので「行動済み」扱いになり、`firstActive` の対象から
     /// 外れて以後このフロアでは動けない。`clearAllWaited` は usedStairs を維持するため
     /// 敵ターンを跨いでも退場状態のままになる。次フロア構築 (addOnePlayer) で全て false に戻る。
     pub def useStairs(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -1105,22 +1077,12 @@ mod PlayerScene {
             case None    => bug!("PlayerScene: player ${id} not found")
         }
 
-    pub def isWaited(id: Int32, scene: Scene[NodeTag]): Bool =
-        match get(id, scene) {
-            case Some(d) => d#waited
-            case None    => false
-        }
-
     /// 指定 id のプレイヤーの武器インベントリを返す。武器が 1 つも無ければ Nil。
     pub def getWeapons(id: Int32, scene: Scene[NodeTag]): List[UnitCatalog.WeaponResource] =
         match get(id, scene) {
             case Some(d) => d#weapons
             case None    => Nil
         }
-
-    /// 指定 id のプレイヤーが攻撃可能か（武器を 1 本以上持っているか）。
-    pub def canAttack(id: Int32, scene: Scene[NodeTag]): Bool =
-        not List.isEmpty(getWeapons(id, scene))
 
     /// 指定 id のプレイヤーの杖インベントリを返す（無ければ空）。
     pub def getStaves(id: Int32, scene: Scene[NodeTag]): List[Staff.StaffResource] =
@@ -1290,21 +1252,36 @@ mod PlayerScene {
             |> Option.map(k -> removeInventoryItem(playerId, k, scene))
             |> Option.getWithDefault(scene)
 
-    /// 指定 player のインベントリに `item` を追加
-    /// (武器なら weapons 末尾、杖なら staves 末尾、消費アイテムなら consumables 末尾)。
+    /// 在庫末尾に 1 個積む per-type の単一 writer。「末尾 = 装備中の後ろ」という
+    /// 追加ルールの真理点をここに集約し、`addInventoryItem`（ひろう undo / 取引）と
+    /// `ActionMenuScene.addPickedItem`（ひろう）の両方がこれを呼ぶ。kind の再 match を
+    /// 各呼び出し側に持たせないことで、追加ルールの変更を 1 箇所で完結させる。
+    pub def addWeapon(playerId: Int32, weapon: UnitCatalog.WeaponResource,
+                       scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId,
+            d -> {weapons = List.append(d#weapons, weapon :: Nil) | d}, scene)
+
+    pub def addStaff(playerId: Int32, staff: Staff.StaffResource,
+                      scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId,
+            d -> {staves = List.append(d#staves, staff :: Nil) | d}, scene)
+
+    pub def addConsumable(playerId: Int32, item: Consumable.ConsumableResource,
+                            scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId,
+            d -> {consumables = List.append(d#consumables, item :: Nil) | d}, scene)
+
+    /// 指定 player のインベントリに `item` を追加（種別ごとに上記 writer へ委譲）。
     /// `ActionMenuScene.addPickedItem` と同じ追加ルール (ログを出さない版)。
     def addInventoryItem(playerId: Int32, item: ItemScene.GroundItemKind,
                           scene: Scene[NodeTag]): Scene[NodeTag] =
         match item {
-            case ItemScene.GroundItemKind.WeaponItem(weapon)   =>
-                mapPlayer(playerId,
-                    d -> {weapons = List.append(d#weapons, weapon :: Nil) | d}, scene)
-            case ItemScene.GroundItemKind.StaffItem(staff)     =>
-                mapPlayer(playerId,
-                    d -> {staves = List.append(d#staves, staff :: Nil) | d}, scene)
+            case ItemScene.GroundItemKind.WeaponItem(weapon)        =>
+                addWeapon(playerId, weapon, scene)
+            case ItemScene.GroundItemKind.StaffItem(staff)          =>
+                addStaff(playerId, staff, scene)
             case ItemScene.GroundItemKind.ConsumableItem(consumable) =>
-                mapPlayer(playerId,
-                    d -> {consumables = List.append(d#consumables, consumable :: Nil) | d}, scene)
+                addConsumable(playerId, consumable, scene)
         }
 
     /// `optItem = None` のときは no-op、Some なら addInventoryItem。

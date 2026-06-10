@@ -94,11 +94,6 @@ mod TestBattlePanelScene {
                 def get(id, k) =
                     k(if (id == 0) Some(fixturePlayer()) else None)
                 def getAll(k) = k(fixturePlayer() :: Nil)
-                def getGridPos(id, k) =
-                    k(if (id == 0) fixturePlayer()#gridPos
-                      else ({x = 0, y = 0}: {x = Int32, y = Int32}))
-                def getMoveTiles(id, k) =
-                    k(if (id == 0) fixturePlayer()#moveTiles else 0)
             } with handler EnemyScene.RosterQuery {
                 def get(id, k) =
                     k(if (id == 1) Some(fixtureEnemy()) else None)
@@ -139,11 +134,6 @@ mod TestBattlePanelScene {
                 def get(id, k) =
                     k(if (id == 0) Some(fixturePlayer()) else None)
                 def getAll(k) = k(fixturePlayer() :: Nil)
-                def getGridPos(id, k) =
-                    k(if (id == 0) fixturePlayer()#gridPos
-                      else ({x = 0, y = 0}: {x = Int32, y = Int32}))
-                def getMoveTiles(id, k) =
-                    k(if (id == 0) fixturePlayer()#moveTiles else 0)
             } with Tween.withScheduler(rc)
               with AnimationPlayer.withScheduler(rc)
               with SelectedPlayer.withState(rc)

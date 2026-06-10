@@ -460,21 +460,15 @@ mod ActionMenuScene {
         match kind {
             case ItemScene.GroundItemKind.WeaponItem(weapon) =>
                 GameLogger.playerLog("P${playerId} が ${weapon#name} を拾った");
-                PlayerScene.mapPlayer(playerId,
-                    d -> {weapons = List.append(d#weapons, weapon :: Nil) | d},
-                    scene)
+                PlayerScene.addWeapon(playerId, weapon, scene)
                     |> ItemPickupPopupScene.show(weapon#name)
             case ItemScene.GroundItemKind.StaffItem(staff) =>
                 GameLogger.playerLog("P${playerId} が ${staff#name} を拾った");
-                PlayerScene.mapPlayer(playerId,
-                    d -> {staves = List.append(d#staves, staff :: Nil) | d},
-                    scene)
+                PlayerScene.addStaff(playerId, staff, scene)
                     |> ItemPickupPopupScene.show(staff#name)
             case ItemScene.GroundItemKind.ConsumableItem(item) =>
                 GameLogger.playerLog("P${playerId} が ${item#name} を拾った");
-                PlayerScene.mapPlayer(playerId,
-                    d -> {consumables = List.append(d#consumables, item :: Nil) | d},
-                    scene)
+                PlayerScene.addConsumable(playerId, item, scene)
                     |> ItemPickupPopupScene.show(item#name)
         }
 

@@ -703,8 +703,6 @@ mod Game {
               with handler PlayerScene.PartyQuery {
                   def get(id, k)           = k(PlayerScene.get(id, Ref.get(sceneRef)))
                   def getAll(k)            = k(PlayerScene.getAll(Ref.get(sceneRef)))
-                  def getGridPos(id, k)    = k(PlayerScene.getGridPos(id, Ref.get(sceneRef)))
-                  def getMoveTiles(id, k)  = k(PlayerScene.getMoveTiles(id, Ref.get(sceneRef)))
               }
               with handler EnemyScene.RosterQuery {
                   def get(id, k)           = k(EnemyScene.get(id, Ref.get(sceneRef)))

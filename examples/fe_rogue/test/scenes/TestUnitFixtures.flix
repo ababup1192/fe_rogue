@@ -266,8 +266,6 @@ mod TestUnitFixtures {
         run { thunk() } with handler PlayerScene.PartyQuery {
             def get(id, k)          = k(PlayerScene.get(id, scene))
             def getAll(k)           = k(PlayerScene.getAll(scene))
-            def getGridPos(id, k)   = k(PlayerScene.getGridPos(id, scene))
-            def getMoveTiles(id, k) = k(PlayerScene.getMoveTiles(id, scene))
         }
 
     /// EnemyScene.RosterQuery のスタブ。クロージャに閉じ込めた `scene` を読みに行く。
