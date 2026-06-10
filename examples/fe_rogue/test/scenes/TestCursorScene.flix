@@ -190,7 +190,7 @@ mod TestCursorScene {
                     drafts = Nil
                 });
                 let scene = cursorAddPure(initial);
-                let after = PlayerScene.commitWaitedAndAdvance(scene);
+                let after = TurnFlow.commitWaitedAndAdvance(scene);
                 cursorState(after)
             } with handler PlayerScene.PartyQuery {
                 // 古い snapshot: setWaited 前の両方 active な状態を返し続ける

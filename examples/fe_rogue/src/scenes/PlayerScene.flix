@@ -585,6 +585,9 @@ mod PlayerScene {
 
     /// カーソルが乗っている敵に届く先頭の武器を装備する (届く武器が無ければ no-op)。
     /// 進入直後の「装備した扱い」初期化用。`enterAttackPhase` からのみ呼ぶ。
+    /// 意図的な EnemyScene 直接 read: `RosterQuery` handler はフレーム冒頭の snapshot
+    /// (sceneRef) を読むため、mid-frame で更新済みの `scene` を見るにはモジュール直読みが必要
+    /// (TestCursorScene の stale PartyQuery 回帰テスト参照)。
     def equipReachingWeaponForCursor(scene: Scene[NodeTag]):
             Scene[NodeTag] \ SelectedPlayer.State =
         match SelectedPlayer.State.get()#id {
@@ -609,46 +612,11 @@ mod PlayerScene {
                 case (i, w) => if (Weapon.inRange(distance, w#range)) Some(i) else None
             })
 
-    /// 各 Player ノードの毎フレーム process。AnimationPlayer から自分宛 (`playerPath(id)`)
-    /// の signal だけ pull し、attack:hit (中点) / attack_lunge (完了) に反応する。
-    /// Game.flix の `Node[NodeTag] instance` の process redef から全 Player に dispatch
-    /// される (per-node)。owner 完全一致なので他 Player の signal は取りこぼさない。
-    /// 「Sceneのライフサイクルで処理が完結」する Godot 流の per-node signal モデル。
-    pub def process(_delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                        GameEngine.Audio, GameEngine.Game,
-                        GameLogger.GameLogger,
-                        EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State, Pacing.State, Math.Random} =
-        match idFromPath(path) {
-            case None           => (node, scene)
-            case Some(playerId) =>
-                let bundle = AnimationPlayer.Scheduler.drainSignals(playerPath(playerId));
-                let afterMethods = List.foldLeft(
-                    (sc, ev) -> match AnimEvent.parseTag(ev#name) {
-                        case Some(AnimEvent.Tag.AttackHit) => PlayerCombatScene.onAttackHit(playerId, sc)
-                        case _                              => sc
-                    },
-                    scene, bundle#methods);
-                let afterFinished = List.foldLeft(
-                    (sc, ev) -> match AnimEvent.parseTag(ev#name) {
-                        case Some(AnimEvent.Tag.AttackLunge) => PlayerCombatScene.onAttackLungeDone(playerId, sc)
-                        case _                                => sc
-                    },
-                    afterMethods, bundle#finished);
-                // 待機モーションへの復帰は Tween 完了をトリガーにせず、
-                // setWaited / clearAllWaited (= 待機確定 / 次ターン開始) に集約している。
-                // 移動 Tween 完了後は最後に向いた walk_<dir> アニメをそのまま維持する。
-                // signal handler が scene 経由で self (Player ノード) を更新する可能性が
-                // あるため、最新ノードを取り直して返す (古い node で打ち消されないように)
-                match Scene.getEngineNode(path, afterFinished) {
-                    case Some(latest) => (latest, afterFinished)
-                    case None         => (node, afterFinished)
-                }
-        }
+    /// scene 内に攻撃モーション中のプレイヤーが居れば true。
+    /// EnemyTurnDriver の「敵の行動を進めて良いか」のガードに使う
+    /// （味方の反撃モーション中はキューを進めない）。
+    pub def anyAttacking(scene: Scene[NodeTag]): Bool =
+        List.exists(d -> Option.nonEmpty(d#attackTargetId), getAll(scene))
 
     /// 毎フレーム engine から呼ばれる。**選択中プレイヤーのみ** 動かす。
     /// Game.flix の Node[NodeTag] redef からは PlayerMoving フェーズで
@@ -803,7 +771,7 @@ mod PlayerScene {
             |> List.head
 
     /// 敵攻撃で HP=0 になったプレイヤーを scene から取り除く。`killed` は
-    /// `EnemyScene.applyAttackHit` が返した死亡 id のリスト (通常 1 要素)。
+    /// `CombatScene.applyEnemyAttackHit` が返した死亡 id のリスト (通常 1 要素)。
     /// 選択中プレイヤーが含まれていれば (反撃で死亡したケース) 選択も解除する。
     /// 次のいずれかでゲームオーバー (`CustomEffects.GameOverRequest.request`) を emit し、
     /// handler 側でマップ・配置を 1F からフルリビルドする:
@@ -1412,46 +1380,11 @@ mod PlayerScene {
         }
 
 
-    /// PlayerAttack / WeaponSelect / ActionMenu「たいき」を抜けるときの共通処理:
-    ///   1) 選択中駒を waited に (灰色 modulate)
-    ///   2) 選択クリア
-    ///   3) 残ったアクティブが居れば PlayerCursor に戻り、次セレクト準備
-    ///      居なければ `EnemyTurnDriverScene.beginTurn` で敵ターン開始
-    /// 複数 Scene 跨ぎなので「次フェーズ判定」をまとめてここに置く。
-    /// ActionMenu / EnemyScene / BattlePanel / EnemyTurnDriverScene / TurnInputBridge から
-    /// 呼ばれる。
     /// レベルアップ表示待ち (pendingLevelUp = Some) の味方が 1 人でも居るか。
-    /// 自分の攻撃（commitWaitedAndAdvance）でも敵ターンの反撃（endTurn）でも、この判定で
-    /// ステータス変化パネルへ割り込む。
+    /// 自分の攻撃（TurnFlow.commitWaitedAndAdvance）でも敵ターンの反撃（endTurn）でも、
+    /// この判定でステータス変化パネルへ割り込む。
     pub def anyPendingLevelUp(scene: Scene[NodeTag]): Bool =
         getAll(scene) |> List.exists(d -> Option.nonEmpty(d#pendingLevelUp))
-
-    pub def commitWaitedAndAdvance(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State} =
-        // レベルアップ表示待ちの味方が居れば、ターンを進めずステータス変化パネル (LevelUpView) へ割り込む。
-        // パネルを閉じると LevelUpPanelScene.confirm が pendingLevelUp を消して再度ここを呼ぶので、
-        // そのとき保留が無くなって通常の確定・前進に進む。Kill / Counter / Commit の 3 経路すべてが
-        // 最後にここを通るため、自分の攻撃で得たレベルアップ表示の割り込みは 1 箇所で足りる。
-        if (anyPendingLevelUp(scene))
-            PhaseTransitions.enterLevelUpView(scene)
-        else
-        let withWaited = match SelectedPlayer.State.get()#id {
-            case Some(id) => setWaited(id, scene)
-            case None     => scene   // 防御的 (選択なしで Attack に入ることは想定外)
-        };
-        SelectedPlayer.State.put(SelectedPlayer.cleared());
-        // 次の active 味方の gridPos をローカル `withWaited` から直接拾って渡す。
-        // `enterPlayerCursor` 側の PartyQuery フォールバックは sceneRef (frame 冒頭の snapshot)
-        // を読むので、たった今 setWaited した駒をまだ active として返してしまう。
-        match firstActive(withWaited) {
-            case Some(next) =>
-                PhaseTransitions.enterPlayerCursorAt(next#gridPos, withWaited)
-            case None       =>
-                EnemyTurnDriverScene.beginTurn(withWaited)
-        }
 
     /// World 直下の `Player_<id>` 形式の NodePath から id を取り出す。
     /// それ以外なら None。AnimationPlayer の event 振り分けに使う

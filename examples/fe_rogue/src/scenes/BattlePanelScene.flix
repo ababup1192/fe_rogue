@@ -163,8 +163,8 @@ mod BattlePanelScene {
             case None             => scene
             case Some(attackerId) =>
                 match EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene) {
-                    case Some(enemyId) => PlayerCombatScene.setAttackTargetId(attackerId, enemyId, scene)
-                    case None          => PlayerCombatScene.clearAttackTargetId(attackerId, scene)
+                    case Some(enemyId) => CombatScene.setAttackTargetId(attackerId, enemyId, scene)
+                    case None          => CombatScene.clearAttackTargetId(attackerId, scene)
                 }
         }
 
@@ -248,7 +248,7 @@ mod BattlePanelScene {
     def numWidth(): Int32 = 5
 
     /// `AttackForecast` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
-    /// 攻撃モーションの完了 (`attack_lunge` finished) で `PlayerCombatScene.onAttackLungeDone`
+    /// 攻撃モーションの完了 (`attack_lunge` finished) で `CombatScene.onLungeDone`
     /// が反撃 / kill 演出 / commit に流す。
     ///
     /// 遷移先は `PlayerAttack` ではなく **`PlayerAttackHold`**。`PlayerAttack` は
@@ -256,7 +256,7 @@ mod BattlePanelScene {
     /// 攻撃モーション中もここに居ると Z 連打で `PlayerAttack → WeaponSelect → AttackForecast
     /// → PlayerAttack ...` のループが回って `startAttack` が再起動される（連打バグ）。
     /// `PlayerAttackHold` は `TurnRules.decide` の catch-all で全入力を `Stay` 扱いに
-    /// するため、`attack_lunge` 完了 (`onAttackLungeDone`) までキー入力をブロックできる。
+    /// するため、`attack_lunge` 完了 (`onLungeDone`) までキー入力をブロックできる。
     pub def confirm(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
@@ -276,7 +276,7 @@ mod BattlePanelScene {
             let equipped = PlayerScene.equipWeapon(attackerId, idx, scene);
             TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
             GameLogger.playerLog("味方${attackerId}の攻撃");
-            PlayerCombatScene.startAttack(attackerId, defenderId, enemy#gridPos, equipped)
+            CombatScene.startAttack(Faction.Player, attackerId, defenderId, enemy#gridPos, equipped)
         };
         Option.getWithDefault(scene, started)
 
@@ -291,7 +291,7 @@ mod BattlePanelScene {
         match SelectedPlayer.State.get()#id {
             case None             => scene
             case Some(attackerId) =>
-                PlayerCombatScene.clearAttackTargetId(attackerId, scene)
+                CombatScene.clearAttackTargetId(attackerId, scene)
                     |> CursorScene.snapToPlayer
         }
 

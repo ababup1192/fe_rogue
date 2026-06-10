@@ -13,7 +13,7 @@
 ///   - `add(scene)`       — `GameLifecycle.buildPlayingScene` で scene tree に常駐ノードを追加
 ///   - `process(...)`     — `Node[NodeTag]` instance から per-frame で呼ばれる。phase 判定。
 ///   - `beginTurn(scene)` — 敵ターン開始 (敵キュー構築 + フェーズ遷移 + 周辺片付け)
-///     `PlayerScene.commitWaitedAndAdvance` から「全員 waited」のときに呼ばれる
+///     `TurnFlow.commitWaitedAndAdvance` から「全員 waited」のときに呼ばれる
 ///
 /// 4 段 gating (stepOnce の冒頭):
 ///   1. 演出の溜め (`Pacing.isHolding`) 中 → scene 据え置き
@@ -21,6 +21,11 @@
 ///   3. `attack_lunge` 中の敵が居る (モーション完了待ち) → 据え置き
 ///   4. `attack_lunge` 中の味方が居る (= 味方反撃モーション中) → 据え置き
 /// これにより「キャラ行動 → 溜め → カメラ移動 → 到達 → 次のキャラ行動」のリズムを作る。
+///
+/// 許容している相互参照（ターン編成ペア）: 本モジュールは `TurnFlow.commitWaitedAndAdvance`
+/// を呼び、`commitWaitedAndAdvance` は全員 waited のとき `beginTurn` を呼び返す。
+/// 「味方ターンの終わり」と「敵ターンの始まり」が表裏一体であるための設計的サイクル
+/// （詳細は TurnFlow.flix ヘッダ参照）。
 mod EnemyTurnDriverScene {
 
     /// 常駐タグ専用ノードの NodePath。Marker2D を World 配下に置く。
@@ -51,14 +56,14 @@ mod EnemyTurnDriverScene {
             case TurnPhase.Phase.EnemyTurn        => stepOnce(scene)
             case TurnPhase.Phase.PlayerAttackHold =>
                 // PlayerAttackHold は (a) BattlePanelScene.confirm が攻撃モーション
-                // 開始時にセット (b) onAttackLungeDone の Kill 演出 (Pacing.hold で 700ms)
+                // 開始時にセット (b) onLungeDone の Kill 演出 (Pacing.hold で 700ms)
                 // (c) Counter 反撃中、の 3 段階で居続けるため、commit 可否を 3 つの待ち条件で
                 // gating する: 演出ホールド中 / 味方 attack_lunge 中 / 敵反撃 attack_lunge 中。
                 // どれも抜けた瞬間に commitWaitedAndAdvance で味方を waited にして次フェーズへ。
                 if (Pacing.State.isHolding()
-                    or PlayerCombatScene.anyAttacking(scene)
+                    or PlayerScene.anyAttacking(scene)
                     or EnemyScene.anyAttacking(scene)) scene
-                else PlayerScene.commitWaitedAndAdvance(scene)
+                else TurnFlow.commitWaitedAndAdvance(scene)
             case _                                 => scene
         };
         (node, next)
@@ -110,7 +115,7 @@ mod EnemyTurnDriverScene {
         else if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
         else if (EnemyScene.anyAttacking(scene)) scene
-        else if (PlayerCombatScene.anyAttacking(scene)) scene
+        else if (PlayerScene.anyAttacking(scene)) scene
         else match EnemyTurn.Queue.peekFront() {
             case None       =>
                 // キュー空 + 攻撃モーション無し → 敵ターン終了
@@ -128,7 +133,7 @@ mod EnemyTurnDriverScene {
     /// step 1 つぶんの行動を適用する。Move なら Tween で 1 マス進めて remaining-1 を
     /// pushFront、Attack なら **体当たり攻撃モーションを開始** するだけ。HP 適用 / 音 /
     /// 死亡判定は AnimationPlayer の `attack:hit` メソッドが発火されたとき
-    /// `dispatchAnimationEvents` 側で行われる。
+    /// `CombatScene.process` 側で行われる。
     /// Skip/Wait は無動作 (remaining も捨てる)。
     def applyStep(step: EnemyTurn.Step, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
@@ -164,7 +169,7 @@ mod EnemyTurnDriverScene {
                     case EnemyAI.EnemyAction.Attack(enemyId, targetId) =>
                         // 狙う相手は EnemyAI の評価軸（仕留め > 反撃不能 > 低HP > 近さ）で決定済み。
                         // ここでは体当たりモーションを開始するだけ。HP 適用 / 音 / 死亡判定は
-                        // attack_lunge の `attack:hit` メソッド発火時に dispatchAnimationEvents が行う。
+                        // attack_lunge の `attack:hit` メソッド発火時に CombatScene.process が行う。
                         // 攻撃前後の溜め: lunge (~160ms) より長い hold で「攻撃終了の余韻」を作る
                         // Attack はその敵の最終行動 → 行動済み暗転。
                         match PlayerScene.get(targetId, withAlert) {
@@ -172,7 +177,7 @@ mod EnemyTurnDriverScene {
                             case Some(p) =>
                                 Pacing.State.hold(450 |> Duration.millis);
                                 EnemyScene.setActed(enemyId,
-                                    EnemyScene.startAttack(enemyId, targetId,
+                                    CombatScene.startAttack(Faction.Enemy, enemyId, targetId,
                                                             p#gridPos, withAlert))
                         }
                     case EnemyAI.EnemyAction.Wait(_) =>
@@ -185,7 +190,7 @@ mod EnemyTurnDriverScene {
 
     /// 敵ターンの後始末: ターン番号繰り上げ + 全プレイヤーを `waited = false` にリセット +
     /// カーソル復活 + 味方ターン宣言。
-    /// （反撃でのレベルアップは反撃ごとに `PlayerCombatScene.onAttackLungeDone` がその場で表示するので、
+    /// （反撃でのレベルアップは反撃ごとに `CombatScene.onLungeDone` がその場で表示するので、
     ///  ここに来る時点で保留は残っていない。）
     def endTurn(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,

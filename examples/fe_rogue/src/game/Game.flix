@@ -139,15 +139,16 @@ instance Node[NodeTag] {
         dispatchMenus(delta, n3, path, s3)
 }
 
-/// Player / Enemy ノード (AnimationPlayer signal drain を持つエンティティ系)
+/// Player / Enemy ノード (AnimationPlayer signal drain を持つエンティティ系)。
+/// 戦闘シグナルの解決は CombatScene.process が攻守共通で受ける。
 def dispatchEntities(delta: Duration.Duration, node: EngineNode[NodeTag],
                       path: NodePath, scene: Scene[NodeTag]):
                      (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
     match node {
         case EngineNode.Marker2DWithState(_, NodeTag.Player(_)) =>
-            checked_ecast(PlayerScene.process(delta, node, path, scene))
+            checked_ecast(CombatScene.process(delta, node, path, scene))
         case EngineNode.Marker2DWithState(_, NodeTag.Enemy(_)) =>
-            checked_ecast(EnemyScene.process(delta, node, path, scene))
+            checked_ecast(CombatScene.process(delta, node, path, scene))
         case _ => (node, scene)
     }
 

@@ -12,7 +12,7 @@
 mod CounterAttackRules {
 
     /// 攻撃完了後の分類。呼び出し側はこれを match して
-    /// Pacing.hold / EnemyScene.startAttack / commit のいずれかを起動する。
+    /// Pacing.hold / CombatScene.startAttack / commit のいずれかを起動する。
     pub enum Outcome with Eq, ToString {
         /// 狙った敵が瀕死 (death_blink 中) → kill 演出
         case Kill

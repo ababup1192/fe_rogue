@@ -306,7 +306,7 @@ mod LevelUpPanelScene {
                               GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State, SelectedPlayer.State} =
         match SelectedPlayer.State.get()#id {
-            case Some(_) => PlayerScene.commitWaitedAndAdvance(scene)
+            case Some(_) => TurnFlow.commitWaitedAndAdvance(scene)
             case None    => PhaseTransitions.enterEnemyTurn(scene)
         }
 

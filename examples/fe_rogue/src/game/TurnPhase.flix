@@ -339,7 +339,7 @@ mod TurnRules {
 /// この match が「ゲームの中心ルールが画面にどう反映されるか」を一覧できる窓口で、
 /// 各 case は 1 行 (対応する Scene 関数の呼び出しのみ) に痩せている。
 /// 「次セレクトか敵ターンか」を決める `AttackSkip` だけは複数 effect を跨ぐので
-/// `PlayerScene.commitWaitedAndAdvance` を経由する。
+/// `TurnFlow.commitWaitedAndAdvance` を経由する。
 mod TurnInputBridge {
 
     /// 1 回のキー入力 (Confirm / Cancel) を処理する。
@@ -410,10 +410,10 @@ mod TurnInputBridge {
             case TurnRules.Transition.OpenAttackForecast(attackerId, defenderId, _defX, _defY) =>
                 // 装備中武器 (weapons.head) を自動使用するので武器選択は介さず AttackForecast 直行。
                 // attackTargetId を立てて BattlePanelScene が予報を組み立てる。
-                PlayerCombatScene.setAttackTargetId(attackerId, defenderId, scene)
+                CombatScene.setAttackTargetId(attackerId, defenderId, scene)
                     |> PhaseTransitions.enterAttackForecast
             case TurnRules.Transition.AttackSkip                        =>
-                PlayerScene.commitWaitedAndAdvance(scene)
+                TurnFlow.commitWaitedAndAdvance(scene)
             case TurnRules.Transition.OpenTradeInventory(partnerId)     =>
                 PhaseTransitions.enterTradeInventory(partnerId, scene)
             case TurnRules.Transition.TradeCancel                       =>

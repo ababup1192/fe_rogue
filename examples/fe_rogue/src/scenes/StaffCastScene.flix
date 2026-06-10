@@ -56,7 +56,7 @@ mod StaffCastScene {
         let afterEffect  = applyStaffEffect(playerId, player, staff, dir, hit, scene);
         let afterConsume = consumeStaff(playerId, staffIdx, staff, afterEffect);
         let cleared      = PlayerScene.clearSelectedItem(playerId, afterConsume);
-        PlayerScene.commitWaitedAndAdvance(cleared)
+        TurnFlow.commitWaitedAndAdvance(cleared)
 
     /// 回復の杖が味方/敵に当たった瞬間だけ回復音を鳴らす（空振りは鳴らさない）。
     def playHitSound(effect: Staff.StaffEffect, hit: RayHit): Unit \ GameEngine.Audio =
@@ -299,7 +299,7 @@ mod StaffCastScene {
         let afterHeal    = applyConsumableHeal(playerId, player, item, scene);
         let afterConsume = consumeConsumable(playerId, idx, item, afterHeal);
         let cleared      = PlayerScene.clearSelectedItem(playerId, afterConsume);
-        PlayerScene.commitWaitedAndAdvance(cleared)
+        TurnFlow.commitWaitedAndAdvance(cleared)
 
     /// 消費アイテムで使用者自身の HP を `healAmount` 回復、HPBar 更新、ログ。
     /// `applyConsumableUse` から呼ばれる内部処理だが、回復量を単体検証できるように
