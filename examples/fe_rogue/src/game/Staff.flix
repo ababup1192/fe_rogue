@@ -8,7 +8,7 @@
 ///   - 空振り（壁・射程外）でも耐久 -1
 ///
 /// このモジュールは Scene[NodeTag] / effect に依存せず、テストが純粋値で完結する。
-/// 効果適用の Scene 操作は呼び出し側 (`PlayerScene.applyStaffCast`) が担う。
+/// 効果適用の Scene 操作は呼び出し側 (`StaffCastScene.applyStaffCast`) が担う。
 ///
 /// JSON 形状 (`resources/staves.json`):
 ///   {
@@ -94,6 +94,33 @@ mod Staff {
         case Direction.Left  => {x = -1, y =  0}
         case Direction.Right => {x =  1, y =  0}
     }
+
+    /// グリッドの差分ベクトルを 4 方位に丸める。主軸(絶対値が大きい方)を採用し、
+    /// 整列している(片軸が 0)場合はその軸方向になる。
+    pub def deltaToDirection(dx: Int32, dy: Int32): Direction =
+        if (Int32.abs(dx) >= Int32.abs(dy))
+            (if (dx < 0) Direction.Left else Direction.Right)
+        else
+            (if (dy < 0) Direction.Up else Direction.Down)
+
+    /// 負傷味方の位置リストから杖を構える 4 方位を選ぶ。同じ行/列に整列している位置
+    /// （射線が届く）を優先し、次にマンハッタン距離（縦横の移動マス合計）が近い位置を
+    /// 選ぶ。候補が空なら None。`origin` は構える本人の位置、`targets` は候補位置の一覧。
+    pub def pickHealDirection(origin: {x = Int32, y = Int32},
+                               targets: List[{x = Int32, y = Int32}]): Option[Direction] =
+        let scored = targets |> List.map(cell -> {
+            let dx = cell#x - origin#x;
+            let dy = cell#y - origin#y;
+            (dx == 0 or dy == 0, Int32.abs(dx) + Int32.abs(dy), deltaToDirection(dx, dy))
+        });
+        let best = List.foldLeft((acc, cur) -> match acc {
+            case None    => Some(cur)
+            case Some(b) =>
+                let (ba, bd, _) = b;
+                let (ca, cd, _) = cur;
+                if ((ca and not ba) or (ca == ba and cd < bd)) Some(cur) else acc
+        }, None, scored);
+        Option.map(t -> { let (_aligned, _dist, d) = t; d }, best)
 
     /// 文字列 → `StaffEffect` のパース。JSON の `"Heal"` / `"Blowback"` / `"Swap"` を
     /// enum に変換する。未知文字列は `Err(その文字列)` を返す。

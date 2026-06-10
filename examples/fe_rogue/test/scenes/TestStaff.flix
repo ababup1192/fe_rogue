@@ -82,6 +82,43 @@ mod TestStaff {
     def vecToTuple(v: {x = Int32, y = Int32}): (Int32, Int32) = (v#x, v#y)
 
     // ════════════════════════════════════════════════════════
+    // Staff.deltaToDirection — 差分ベクトルを 4 方位に丸める
+    // ════════════════════════════════════════════════════════
+
+    /// 主軸（絶対値が大きい方）を採用する。横と縦が同じ大きさのときは横を優先する。
+    ///   ( 3,  0) → 右 / (-2, 1) → 左（|x|=2 >= |y|=1 なので横、x<0 で左）
+    ///   ( 0, -4) → 上（縦で y<0）/ (1, 5) → 下（|x|=1 < |y|=5 なので縦、y>0 で下）
+    @Test
+    def testDeltaToDirectionPicksDominantAxis(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (Staff.Direction.Right, Staff.Direction.Left,
+                         Staff.Direction.Up, Staff.Direction.Down),
+            (Staff.deltaToDirection(3, 0),
+             Staff.deltaToDirection(-2, 1),
+             Staff.deltaToDirection(0, -4),
+             Staff.deltaToDirection(1, 5)))
+
+    // ════════════════════════════════════════════════════════
+    // Staff.pickHealDirection — 構える方位の選択
+    // ════════════════════════════════════════════════════════
+
+    /// 同じ行/列に並ぶ（射線が届く）位置を、近いだけの斜め位置より優先する。
+    /// 原点(0,0)に対し、整列した遠い味方(0,5)＝下 と 近いが斜めの味方(1,1)。
+    /// 整列優先なので Down を選ぶ。
+    @Test
+    def testPickHealDirectionPrefersAligned(): Unit \ Assert =
+        let dir = Staff.pickHealDirection({x = 0, y = 0},
+                    {x = 1, y = 1} :: {x = 0, y = 5} :: Nil);
+        Assert.assertEq(expected = Some(Staff.Direction.Down), dir)
+
+    /// 候補が空なら None（呼び出し側は既定 Up のまま構える）。
+    @Test
+    def testPickHealDirectionEmptyIsNone(): Unit \ Assert =
+        let none: Option[Staff.Direction] = None;
+        Assert.assertEq(expected = none,
+            Staff.pickHealDirection({x = 0, y = 0}, Nil))
+
+    // ════════════════════════════════════════════════════════
     // Staff.load round-trip — staves.json 文字列リテラルからのデコード
     // ════════════════════════════════════════════════════════
 

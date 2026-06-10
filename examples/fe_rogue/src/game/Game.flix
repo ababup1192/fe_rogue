@@ -405,7 +405,7 @@ def staffAimConfirm(scene: Scene[NodeTag]):
                 case Some(player) =>
                     match player#selectedItem {
                         case Some(PlayerScene.ItemKind.Staff(idx)) =>
-                            PlayerScene.applyStaffCast(playerId, idx, dir, scene)
+                            StaffCastScene.applyStaffCast(playerId, idx, dir, scene)
                         case _ => scene
                     }
             }

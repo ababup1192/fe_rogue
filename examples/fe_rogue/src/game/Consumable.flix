@@ -8,7 +8,7 @@
 /// きずぐすり: 使用者の HP を `healAmount` だけ回復する。
 ///
 /// このモジュールは Scene[NodeTag] / effect に依存せず、テストが純粋値で完結する。
-/// 効果適用の Scene 操作は呼び出し側 (`PlayerScene.applyConsumableUse`) が担う。
+/// 効果適用の Scene 操作は呼び出し側 (`StaffCastScene.applyConsumableUse`) が担う。
 ///
 /// JSON 形状 (`resources/consumables.json`):
 ///   {

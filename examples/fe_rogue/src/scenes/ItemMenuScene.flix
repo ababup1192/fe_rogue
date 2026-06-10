@@ -599,7 +599,7 @@ mod ItemMenuScene {
     /// 「つかう」: 杖の場合のみ実行（武器の場合は「装備」項目が出るのでここには来ない）。
     /// 杖の発動方向選択フェーズ `StaffAim` に進み、ログに方向キーの操作プロンプトを出す。
     /// selectedItem は保持しておき、`StaffAim` 中の方向入力で
-    /// `PlayerScene.applyStaffCast` が読む。
+    /// `StaffCastScene.applyStaffCast` が読む。
     def applyUse(playerId: Int32, kind: PlayerScene.ItemKind,
                    scene: Scene[NodeTag]):
                   Scene[NodeTag]
@@ -613,7 +613,7 @@ mod ItemMenuScene {
                 PhaseTransitions.enterStaffAim(scene)
             // 消費アイテムは方向選択不要。その場で使用者を回復しターンを消費する。
             case PlayerScene.ItemKind.Consumable(idx) =>
-                PlayerScene.applyConsumableUse(playerId, idx, scene)
+                StaffCastScene.applyConsumableUse(playerId, idx, scene)
             case PlayerScene.ItemKind.Weapon(_) => scene
         }
 
