@@ -65,7 +65,7 @@ mod CounterAttackRules {
             case None    => Outcome.Commit
             case Some(p) =>
                 if (p#hp <= 0) Outcome.Kill
-                else match List.head(p#weapons) {
+                else match PlayerScene.equippedWeapon(p#weapons) {
                     case None    => Outcome.Commit
                     case Some(w) =>
                         let d = Weapon.manhattan(p#gridPos, enemy#gridPos);

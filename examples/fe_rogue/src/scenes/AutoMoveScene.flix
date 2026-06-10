@@ -204,7 +204,7 @@ mod AutoMoveScene {
         let lordPos = PlayerScene.getGridPos(lordId(), scene);
         let hidden  = PlayerScene.hiddenAllies(scene);
         let board   = BoardSnapshot.fromScene(scene);
-        let cells   = PlayerScene.pickRespawnCells(lordPos, List.length(hidden), board);
+        let cells   = pickRespawnCells(lordPos, List.length(hidden), board);
         let placed  = emergeAll(hidden, cells, lordPos, board#map, scene);
         let waited  = PlayerScene.setAllWaited(placed);
         EnemyTurnDriverScene.beginTurn(waited)
@@ -228,6 +228,30 @@ mod AutoMoveScene {
                 |> PlayerScene.moveToById(d#id, cell, map)
                 |> PlayerScene.faceFrontIdle(d#id)
         }, scene, List.zip(hidden, cells))
+
+    /// 「かいさん」でロード周囲に味方を再配置するためのセルを `n` 個選ぶ純粋関数。
+    /// `origin`(ロード位置)の 8 近傍から「床 かつ 駒に占有されていない かつ origin 以外」を
+    /// 拾い、不足分は origin で埋めて長さ `n` を保つ(狭所での保険。重なっても次の移動で解ける)。
+    /// `spawn` 配置(`PlayerScene.pickPlayerSpawns`)と同じ近傍・dedup 規則(`Board.dedupCells`)。
+    /// ローグ移動の解散演出専用なので、その orchestrator である本 driver に置く。
+    /// pub: 純粋関数のため `TestPlayerScene` のローグ移動ブロックから直接テストする。
+    pub def pickRespawnCells(origin: {x = Int32, y = Int32}, n: Int32,
+                          board: Board): List[{x = Int32, y = Int32}] =
+        let offsets =
+                  ({x =  1, y =  0}: {x = Int32, y = Int32})
+            ::    ({x = -1, y =  0}: {x = Int32, y = Int32})
+            ::    ({x =  0, y =  1}: {x = Int32, y = Int32})
+            ::    ({x =  0, y = -1}: {x = Int32, y = Int32})
+            ::    ({x =  1, y =  1}: {x = Int32, y = Int32})
+            ::    ({x = -1, y =  1}: {x = Int32, y = Int32})
+            ::    ({x =  1, y = -1}: {x = Int32, y = Int32})
+            ::    ({x = -1, y = -1}: {x = Int32, y = Int32})
+            ::    Nil;
+        let cands = offsets
+            |> List.map(o -> ({x = origin#x + o#x, y = origin#y + o#y}: {x = Int32, y = Int32}))
+            |> List.filter(c -> Board.isWalkable(board, c) and not Board.isOccupied(c, board))
+            |> Board.dedupCells;
+        Board.padCells(cands, origin, n)
 
     /// 合流中の X/Esc キャンセル: 解散して全員行動済み → 敵ターンへ。
     pub def cancel(scene: Scene[NodeTag]):

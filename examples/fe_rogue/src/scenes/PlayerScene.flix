@@ -99,10 +99,17 @@ mod PlayerScene {
         pendingLevelUp     = Option[LevelSystem.Result]
     }
 
+    /// 装備中の武器 = `weapons` リストの先頭、という規約をここに集約する単一の読み口。
+    /// 「先頭 = 装備中」を各所で直接 `List.head` するのをやめ、装備モデルを変えるときの
+    /// 唯一の変更点にする（`equipWeapon`/`swapItem`/`reorderItem` が先頭を装備として維持する）。
+    pub def equippedWeapon(weapons: List[UnitCatalog.WeaponResource]):
+            Option[UnitCatalog.WeaponResource] =
+        List.head(weapons)
+
     /// この味方の戦闘ビュー（faction 非依存）。装備武器は `weapons` の先頭。
     /// `Combat.estimate` / `Encounter` の join で使う（ダメージ式は `Combat` に集約）。
     pub def combatView(data: Data): Combat.CombatView =
-        let equipped = List.head(data#weapons);
+        let equipped = equippedWeapon(data#weapons);
         {attack = data#resource#attack, magicAttack = data#resource#magicAttack,
          defense = data#resource#defense, magicDefense = data#resource#magicDefense,
          skill = data#resource#skill, speed = data#resource#speed, luck = data#resource#luck,
@@ -130,7 +137,7 @@ mod PlayerScene {
     pub def unitView(data: Data): UnitView =
         {id = data#id, faction = Faction.Player, pos = data#gridPos,
          hp = data#hp, moveTiles = data#moveTiles,
-         weaponRange = List.head(data#weapons) |> Option.map(w -> w#range),
+         weaponRange = equippedWeapon(data#weapons) |> Option.map(w -> w#range),
          combat = combatView(data), isDying = false, hidden = data#hidden}
 
     /// 味方パーティの「現フレーム状態」を Scene を介さずに読み取る effect。
@@ -275,7 +282,7 @@ mod PlayerScene {
         let layer        = MapScene.getMapLayer(scene);
         let cells        = pickPlayerSpawns(spawnGrid, n, layer);
         // cells が n に満たない場合（極端に狭い anchor）は重複セルを許容して埋める
-        let padded       = padCells(cells, spawnGrid, n);
+        let padded       = Board.padCells(cells, spawnGrid, n);
         let spawns: List[Spawn] = padded
             |> List.mapWithIndex(id -> c ->
                 let res = match List.nth(id, selected) {
@@ -372,25 +379,8 @@ mod PlayerScene {
         offsets
             |> List.map(o -> ({x = origin#x + o#x, y = origin#y + o#y}: {x = Int32, y = Int32}))
             |> List.filter(c -> TileMapLayer.isFloor(c, layer))
-            |> dedupCells
+            |> Board.dedupCells
             |> List.take(n)
-
-    /// `cells` が n 個に満たない場合、不足分を spawnGrid で埋める。
-    /// 配置不能なほど狭い部屋への保険（実運用では candidate がほぼ充足する想定）。
-    def padCells(cells: List[{x = Int32, y = Int32}], fallback: {x = Int32, y = Int32},
-                  n: Int32): List[{x = Int32, y = Int32}] =
-        let len = List.length(cells);
-        if (len >= n) List.take(n, cells)
-        else
-            let padding = List.repeat(n - len, fallback);
-            List.append(cells, padding)
-
-    /// セル一覧から重複を取り除く（順序保持・先勝ち）
-    def dedupCells(cells: List[{x = Int32, y = Int32}]): List[{x = Int32, y = Int32}] =
-        List.foldLeft((acc, c) ->
-            if (List.exists(p -> p#x == c#x and p#y == c#y, acc)) acc
-            else List.append(acc, c :: Nil),
-            (Nil: List[{x = Int32, y = Int32}]), cells)
 
     /// プレイヤー 1 体ぶんの Marker2D + 子 Sprite2D を scene に追加する。
     /// ステータス・テクスチャ・フレームは `sp#resource`（UnitResource）から取る。
@@ -882,28 +872,6 @@ mod PlayerScene {
         movers
             |> List.sortBy(d -> Weapon.manhattan(d#gridPos, lordPos))
             |> List.head
-
-    /// 「かいさん」でロード周囲に味方を再配置するためのセルを `n` 個選ぶ純粋関数。
-    /// `origin`(ロード位置)の 8 近傍から「床 かつ 駒に占有されていない かつ origin 以外」を
-    /// 近い順に拾い、不足分は origin で埋めて長さ `n` を保つ(狭所での保険。重なっても
-    /// 次の移動で解ける)。`spawn` 配置(`pickPlayerSpawns`)と同じ近傍・dedup 規則。
-    pub def pickRespawnCells(origin: {x = Int32, y = Int32}, n: Int32,
-                              board: Board): List[{x = Int32, y = Int32}] =
-        let offsets =
-                  ({x =  1, y =  0}: {x = Int32, y = Int32})
-            ::    ({x = -1, y =  0}: {x = Int32, y = Int32})
-            ::    ({x =  0, y =  1}: {x = Int32, y = Int32})
-            ::    ({x =  0, y = -1}: {x = Int32, y = Int32})
-            ::    ({x =  1, y =  1}: {x = Int32, y = Int32})
-            ::    ({x = -1, y =  1}: {x = Int32, y = Int32})
-            ::    ({x =  1, y = -1}: {x = Int32, y = Int32})
-            ::    ({x = -1, y = -1}: {x = Int32, y = Int32})
-            ::    Nil;
-        let cands = offsets
-            |> List.map(o -> ({x = origin#x + o#x, y = origin#y + o#y}: {x = Int32, y = Int32}))
-            |> List.filter(c -> Board.isWalkable(board, c) and not Board.isOccupied(c, board))
-            |> dedupCells;
-        padCells(cands, origin, n)
 
     /// 指定 id の子 Sprite の modulate を変える内部ヘルパー。
     /// Sprite2D / AnimatedSprite2D どちらの実装でも動くように両方の inner mapper を試す。

@@ -457,7 +457,7 @@ mod TestPlayerScene {
     def testPickRespawnCellsPicksNeighbors(): Unit \ Assert =
         let origin: {x = Int32, y = Int32} = {x = 5, y = 5};
         let board: Board = {map = testSnapshot(), pieces = (Piece.Player(0), origin) :: Nil};
-        let cells = PlayerScene.pickRespawnCells(origin, 2, board);
+        let cells = AutoMoveScene.pickRespawnCells(origin, 2, board);
         Assert.assertEq(expected = (6, 5) :: (4, 5) :: Nil, cellsToTuples(cells))
 
     /// 再配置: 駒が占有しているマスは避ける。
@@ -469,7 +469,7 @@ mod TestPlayerScene {
             map    = testSnapshot(),
             pieces = (Piece.Player(0), origin) :: (Piece.Enemy(0), {x = 6, y = 5}) :: Nil
         };
-        let cells = PlayerScene.pickRespawnCells(origin, 2, board);
+        let cells = AutoMoveScene.pickRespawnCells(origin, 2, board);
         Assert.assertEq(expected = (4, 5) :: (5, 6) :: Nil, cellsToTuples(cells))
 
     /// 再配置: 周囲が壁で空きが足りないときは origin で埋めて長さ n を保つ。
@@ -478,7 +478,7 @@ mod TestPlayerScene {
     def testPickRespawnCellsFallsBackToOrigin(): Unit \ Assert =
         let origin: {x = Int32, y = Int32} = {x = 5, y = 5};
         let board: Board = {map = singleFloorSnapshot(origin), pieces = (Piece.Player(0), origin) :: Nil};
-        let cells = PlayerScene.pickRespawnCells(origin, 2, board);
+        let cells = AutoMoveScene.pickRespawnCells(origin, 2, board);
         Assert.assertEq(expected = (5, 5) :: (5, 5) :: Nil, cellsToTuples(cells))
 
     // ========================================================================

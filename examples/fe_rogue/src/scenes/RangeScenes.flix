@@ -189,7 +189,7 @@ mod MoveAttackRangeScene {
                 match PlayerScene.get(id, cleared) {
                     case None         => cleared
                     case Some(player) =>
-                        match List.head(player#weapons) {
+                        match PlayerScene.equippedWeapon(player#weapons) {
                             case None    => cleared
                             case Some(w) =>
                                 let reachable = MoveRangeScene.reachable(cleared);
@@ -608,20 +608,12 @@ mod DangerZoneScene {
         let cells = EnemyScene.getAll(cleared)
             |> List.filter(e -> EnemyScene.isVisible(e#id, cleared))
             |> List.foldLeft((acc, e) -> List.append(acc, dangerOf(e)), Nil)
-            |> dedupCells;
+            |> Board.dedupCells;
         if (List.isEmpty(cells)) cleared
         else
             cleared
                 |> RangeOverlay.attachParent(name(), NodeTag.DangerZone({cells = cells}))
                 |> RangeOverlay.renderTiles(name(), cells, color(), alpha())
-
-    /// セル一覧から重複 (x,y 一致) を除く。先に出たものを残す。
-    def dedupCells(cells: List[{x = Int32, y = Int32}]):
-            List[{x = Int32, y = Int32}] =
-        List.foldLeft((acc, c) ->
-            if (List.exists(d -> d#x == c#x and d#y == c#y, acc)) acc
-            else List.append(acc, c :: Nil),
-            Nil, cells)
 
     /// 表示中の DangerZone ノードがあれば取り除く。なければ何もしない。
     pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =

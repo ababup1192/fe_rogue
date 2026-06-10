@@ -519,6 +519,22 @@ mod Board {
         else if (isOccupied(next, board)) List.reverse(acc)
         else knockbackLoop(next, dir, board, next :: acc)
 
+    /// セル一覧から重複 (x,y 一致) を除く。先に出たものを残す（順序保持・先勝ち）。
+    /// spawn 配置・再配置・危険域表示など、座標集合を作る各所で共有する。
+    pub def dedupCells(cells: List[{x = Int32, y = Int32}]): List[{x = Int32, y = Int32}] =
+        List.foldLeft((acc, c) ->
+            if (isInList(c, acc)) acc else List.append(acc, c :: Nil),
+            (Nil: List[{x = Int32, y = Int32}]), cells)
+
+    /// `cells` が `n` 個に満たない場合、不足分を `fallback` で埋めて長さ `n` に揃える。
+    /// 足りていれば先頭 `n` 個に切り詰める。狭所での配置保険。
+    pub def padCells(cells: List[{x = Int32, y = Int32}],
+                      fallback: {x = Int32, y = Int32}, n: Int32):
+            List[{x = Int32, y = Int32}] =
+        let len = List.length(cells);
+        if (len >= n) List.take(n, cells)
+        else List.append(cells, List.repeat(n - len, fallback))
+
     // ════════════════════════════════════════════════════════
     // 内部ヘルパー
     // ════════════════════════════════════════════════════════
