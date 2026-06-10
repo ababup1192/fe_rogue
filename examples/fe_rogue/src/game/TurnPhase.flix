@@ -231,7 +231,7 @@ mod TurnRules {
             case (TurnPhase.Phase.PlayerMoving, Input.Confirm) =>
                 // Tween 中はガード。さらに「自分以外の味方と同セルで重なっている」
                 // 場合も Z を完全に無視する (ActionMenu すら開かない)。
-                // 移動中は味方マスを通過できるが、停止しての行動決定は許さない FE 流。
+                // 移動中は味方マスを通過できるが、停止しての行動決定は許さない。
                 if (context#playerBusy) Transition.Stay
                 else match context#selected {
                     case Some(pid) =>

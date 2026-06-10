@@ -5,7 +5,7 @@
 /// 「成長判定の乱数」は呼び出し側（`PlayerScene.applyDamageToEnemy`）が振った
 /// 0..99 の値を `Rolls` として受け取るので、テストは決め打ちの値だけで完結する。
 ///
-/// FE 流の方式:
+/// 方式:
 ///   - 1 戦闘で得る EXP の「獲得量」は `Combat.battleExp`（レベル差ベース）が算出する。
 ///   - EXP は 0..99 で管理し、100 到達でレベルアップ（余剰は繰り越し、`gainExp`）。
 ///   - レベルアップ時、ステータスごとに 0..99 の乱数を振り `乱数 < 成長率` なら +1（`applyGrowth`）。
@@ -67,7 +67,7 @@ mod LevelSystem {
 
     // ────────────────────────────────────────────────────────
     // (C) EXP 蓄積
-    //   1 戦闘で得る EXP の「獲得量」は Combat.battleExp（FE7 流のレベル差ベース）が算出する。
+    //   1 戦闘で得る EXP の「獲得量」は Combat.battleExp（レベル差ベース）が算出する。
     //   ここではその獲得量を現在 EXP に足し込み、100 到達のレベルアップ判定と繰り越しを行う。
     // ────────────────────────────────────────────────────────
 
@@ -85,7 +85,7 @@ mod LevelSystem {
     // (D) ステータス成長
     // ────────────────────────────────────────────────────────
 
-    /// 成長判定 1 つ。乱数が成長率を下回れば成長する（FE 流: `roll < rate`）。
+    /// 成長判定 1 つ。乱数が成長率を下回れば成長する（`roll < rate`）。
     /// 成長率 0 なら決して成長せず、100 なら必ず成長する。
     pub def grew(roll: Int32, rate: Int32): Bool = roll < rate
 
@@ -131,7 +131,7 @@ mod LevelSystem {
     // (F) パネル用の結果組み立て
     // ────────────────────────────────────────────────────────
 
-    /// ステータス名（FE 烈火の漢字表記に合わせる）。
+    /// ステータス名（漢字表記に合わせる）。
     def label1Hp(): String           = "HP"
     def labelAttack(): String        = "力"
     def labelDefense(): String       = "守備"
@@ -146,7 +146,7 @@ mod LevelSystem {
         {label = label, before = before, after = after, gained = after > before}
 
     /// レベルアップ前後のステータスから、パネル表示用の `Result` を組み立てる。
-    /// `toLevel` は `fromLevel + 1`。`changes` は FE 烈火の並び順 固定 8 行
+    /// `toLevel` は `fromLevel + 1`。`changes` は固定 8 行
     /// （HP, 力, 魔力, 技, 速さ, 幸運, 守備, 魔防）。レベルアップパネルは前 4 行を左列・
     /// 後 4 行を右列に割る。
     pub def buildResult(unitName: String, fromLevel: Int32,

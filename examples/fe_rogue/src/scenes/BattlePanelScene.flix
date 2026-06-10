@@ -345,7 +345,7 @@ mod BattlePanelScene {
          playerHpCur = 0, playerHpPost = 0, playerTakesDmg = false,
          enemyHpCur = 0, enemyHpPost = 0, enemyTakesDmg = false}
 
-    /// 予報を Forecast に整形する（FE 流レイアウト）。
+    /// 予報を Forecast に整形する。
     ///   pWeapon / eWeapon … 味方 / 敵の武器名（＋相性マーク）。上下の帯に中央寄せ。
     ///   leftPower … 味方の威力（独立ラベル。苦手武器なら applyForecast が青字にする）。
     ///   leftRest … 味方の命中。rightRest … 敵の威力 / 命中 の 2 行。HP は別ラベルなので含めない。

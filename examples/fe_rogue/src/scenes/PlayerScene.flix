@@ -524,7 +524,7 @@ mod PlayerScene {
         PhaseTransitions.enterPlayerMoving(scene)
 
     /// PlayerMoving + X: 選択駒を origin に瞬間移動で戻し、選択解除して PlayerCursor に戻す。
-    /// 「キャンセル → 再選択の繰り返しで実質ターン制限なしの自由移動」を防ぐ FE 流。
+    /// 「キャンセル → 再選択の繰り返しで実質ターン制限なしの自由移動」を防ぐ。
     /// overlay / cursor の片付けは `PhaseTransitions.enterPlayerCursor` が担当。
     pub def cancelSelection(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,

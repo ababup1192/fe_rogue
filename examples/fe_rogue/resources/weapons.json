@@ -1,8 +1,8 @@
 {
   "weapons": {
     "bronze_axe": {
-      "attack": 4,
-      "durability": 12,
+      "attack": 3,
+      "durability": 20,
       "hit": 70,
       "name": "どうのおの",
       "range": {
@@ -18,8 +18,8 @@
       "weaponType": "Axe"
     },
     "bronze_bow": {
-      "attack": 3,
-      "durability": 12,
+      "attack": 2,
+      "durability": 20,
       "hit": 90,
       "name": "どうの弓",
       "range": {
@@ -35,8 +35,8 @@
       "weaponType": "Bow"
     },
     "bronze_lance": {
-      "attack": 3,
-      "durability": 12,
+      "attack": 2,
+      "durability": 20,
       "hit": 80,
       "name": "どうのやり",
       "range": {
@@ -52,8 +52,8 @@
       "weaponType": "Lance"
     },
     "bronze_sword": {
-      "attack": 2,
-      "durability": 12,
+      "attack": 1,
+      "durability": 20,
       "hit": 90,
       "name": "どうの剣",
       "range": {
@@ -341,8 +341,8 @@
       "weaponType": "Sword"
     },
     "tome_apprentice": {
-      "attack": 4,
-      "durability": 8,
+      "attack": 3,
+      "durability": 20,
       "hit": 90,
       "name": "見習いの魔導書",
       "range": {

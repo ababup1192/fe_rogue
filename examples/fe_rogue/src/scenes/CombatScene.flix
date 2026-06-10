@@ -439,7 +439,7 @@ mod CombatScene {
             else
                 (applyMiss(playerId, enemyId, popupPos, popupColor, scene), 0);
         let afterWeapon = consumeEquippedWeapon(playerId, weapon, afterDamage);
-        // 命中していれば EXP を加算する。自分の攻撃でも敵ターンの反撃でも同様（FE 流）。
+        // 命中していれば EXP を加算する。自分の攻撃でも敵ターンの反撃でも同様。
         // 反撃で得たレベルアップは敵ターン終了後にまとめて表示する。
         if (expGain <= 0) afterWeapon
         else applyExpGain(playerId, expGain, afterWeapon)

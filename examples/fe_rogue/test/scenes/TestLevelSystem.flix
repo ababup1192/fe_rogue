@@ -76,7 +76,7 @@ mod TestLevelSystem {
     // ========================================================================
 
     /// HP・魔力・技 が上がった場合、その 3 行だけ gained=true になり、
-    /// toLevel は fromLevel + 1、ラベルは FE 烈火の順（HP, 力, 魔力, 技, 速さ, 幸運, 守備, 魔防）で並ぶ。
+    /// toLevel は fromLevel + 1、ラベルは固定順（HP, 力, 魔力, 技, 速さ, 幸運, 守備, 魔防）で並ぶ。
     @Test
     def testBuildResultMarksRaisedStats(): Unit \ Assert =
         let before: Stats =

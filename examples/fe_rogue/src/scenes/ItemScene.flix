@@ -97,10 +97,11 @@ mod ItemScene {
     // ─── 構築 ─────────────────────────────────────────────────
 
     /// 部屋の床セルに floor の `items` (percent 配列) から重み付き抽選したアイテムを配置する。
-    /// `items` の id は **weapons catalog → staves catalog の順** で解決される。
+    /// `items` の id は **weapons catalog → staves catalog → consumables catalog の順** で解決される。
     /// player / enemy が居るセルは避ける。
     pub def add(catalog: UnitCatalog.UnitCatalog,
                  staffCatalog: Staff.StaffCatalog,
+                 consumableCatalog: Consumable.ConsumableCatalog,
                  floor: FloorCatalog.FloorResource,
                  scene: Scene[NodeTag]):
             Scene[NodeTag] \ Math.Random =
@@ -127,7 +128,7 @@ mod ItemScene {
             let range = floor#itemsPerRoom;
             let (_, _, accDrops) = List.foldLeft(state -> p ->
                 dropsInRoom(layer, p, FloorCatalog.randomCountInRange(range),
-                             items, catalog, staffCatalog, state),
+                             items, catalog, staffCatalog, consumableCatalog, state),
                 initial, rooms);
             let drops = List.reverse(accDrops);
             // 親 Marker2D + 各 Item Sprite2D を追加
@@ -138,18 +139,23 @@ mod ItemScene {
             }, withParent, drops)
         }
 
-    /// id を weapons catalog → staves catalog の順で引いて、見つかった方を ADT で返す。
-    /// どちらにも無ければ起動時 typo として panic。
+    /// id を weapons catalog → staves catalog → consumables catalog の順で引いて、
+    /// 見つかった方を ADT で返す。どれにも無ければ起動時 typo として panic。
     def lookupItem(id: String,
                     catalog: UnitCatalog.UnitCatalog,
-                    staffCatalog: Staff.StaffCatalog): GroundItemKind =
+                    staffCatalog: Staff.StaffCatalog,
+                    consumableCatalog: Consumable.ConsumableCatalog): GroundItemKind =
         match Map.get(id, UnitCatalog.weaponsOf(catalog)) {
             case Some(weapon) => GroundItemKind.WeaponItem(weapon)
             case None         =>
                 match Map.get(id, Staff.stavesOf(staffCatalog)) {
                     case Some(staff) => GroundItemKind.StaffItem(staff)
                     case None        =>
-                        bug!("ItemScene.lookupItem: id '${id}' not in weapons / staves catalog")
+                        match Map.get(id, Consumable.consumablesOf(consumableCatalog)) {
+                            case Some(item) => GroundItemKind.ConsumableItem(item)
+                            case None       =>
+                                bug!("ItemScene.lookupItem: id '${id}' not in weapons / staves / consumables catalog")
+                        }
                 }
         }
 
@@ -212,6 +218,7 @@ mod ItemScene {
                      items: List[FloorCatalog.SpawnEntry],
                      catalog: UnitCatalog.UnitCatalog,
                      staffCatalog: Staff.StaffCatalog,
+                     consumableCatalog: Consumable.ConsumableCatalog,
                      state: (Int32, List[{x = Int32, y = Int32}],
                               List[(Int32, {x = Int32, y = Int32}, String, GroundItemKind)])):
                     (Int32, List[{x = Int32, y = Int32}],
@@ -228,10 +235,10 @@ mod ItemScene {
                     match FloorCatalog.pickWeighted(items) {
                         case None     => state
                         case Some(id) =>
-                            let kind = lookupItem(id, catalog, staffCatalog);
+                            let kind = lookupItem(id, catalog, staffCatalog, consumableCatalog);
                             let entry = (nextId, cell, id, kind);
                             dropsInRoom(layer, p, count - 1, items, catalog,
-                                         staffCatalog,
+                                         staffCatalog, consumableCatalog,
                                          (nextId + 1, cell :: taken, entry :: list))
                     }
             }

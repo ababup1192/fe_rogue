@@ -363,7 +363,7 @@ mod UnitInfoPopupScene {
             case Some(weapon) => renderEquippedWeapon(weapon, atlas, withBar)
             case None         => withBar
         };
-        // FE 烈火の漢字表記・並び順。左列 力/魔力/技/速さ、右列 幸運/守備/魔防/移動。
+        // 漢字表記・並び順。左列 力/魔力/技/速さ、右列 幸運/守備/魔防/移動。
         // 1 文字ラベル(力/技)は全角スペースで詰めて数値列を揃える。
         let statsText = "力　 ${res#attack}    幸運 ${res#luck}\n魔力 ${res#magicAttack}    守備 ${res#defense}\n技　 ${res#skill}    魔防 ${res#magicDefense}\n速さ ${res#speed}    移動 ${res#moveTiles}";
         let statsLabel = Label2D.make(statsText, atlas, fontSizeSmall())

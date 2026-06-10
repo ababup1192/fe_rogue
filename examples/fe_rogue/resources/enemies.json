@@ -69,10 +69,10 @@
       }
     },
     "barbarian_t3": {
-      "attack": 13,
+      "attack": 11,
       "defense": 3,
       "description": "バーバリアン_T3",
-      "hp": 36,
+      "hp": 31,
       "initialInventory": [
         {
           "id": "steel_axe",
@@ -174,7 +174,7 @@
       "attack": 5,
       "defense": 4,
       "description": "クレリック_T3",
-      "hp": 24,
+      "hp": 20,
       "initialInventory": [
         {
           "id": "live_staff",
@@ -187,7 +187,7 @@
       ],
       "level": 6,
       "luck": 6,
-      "magicAttack": 6,
+      "magicAttack": 5,
       "magicDefense": 7,
       "moveTiles": 5,
       "skill": 5,
@@ -273,10 +273,10 @@
       }
     },
     "fighter_t3": {
-      "attack": 10,
+      "attack": 9,
       "defense": 6,
       "description": "ファイター_T3",
-      "hp": 28,
+      "hp": 24,
       "initialInventory": [
         {
           "id": "steel_sword",
@@ -367,10 +367,10 @@
       }
     },
     "paladin_t3": {
-      "attack": 8,
+      "attack": 7,
       "defense": 11,
       "description": "パラディン_T3",
-      "hp": 34,
+      "hp": 29,
       "initialInventory": [
         {
           "id": "silver_lance",
@@ -465,10 +465,10 @@
       }
     },
     "ranger_t3": {
-      "attack": 10,
+      "attack": 9,
       "defense": 4,
       "description": "レンジャー_T3",
-      "hp": 26,
+      "hp": 22,
       "initialInventory": [
         {
           "id": "steel_bow",
@@ -567,10 +567,10 @@
       }
     },
     "rogue_t3": {
-      "attack": 7,
+      "attack": 6,
       "defense": 3,
       "description": "ローグ_T3",
-      "hp": 22,
+      "hp": 19,
       "initialInventory": [
         {
           "id": "steel_sword",
