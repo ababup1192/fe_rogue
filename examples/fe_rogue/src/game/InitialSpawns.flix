@@ -10,13 +10,13 @@
 /// ため、1 つの record (`Snapshot`) にまとめて単一の effect で扱う。
 mod InitialSpawns {
 
-    /// 初回 build 時のスポーン一覧。敵 / 味方を 1 つの record で持つ。
+    /// ゲームオーバー復活用の不変スナップショット。`Game.start` 初回 build 直後に一度だけ保存し、以後は読み出し専用として扱う。
     pub type alias Snapshot = {
         enemies = List[EnemyData.Spawn],
         players = List[PlayerData.Spawn]
     }
 
-    /// スポーン一覧の読み書き effect。
+    /// Ref を直接公開せず handler 注入で差し替え可能にするための effect 境界。テストや将来の実装切り替えでハンドラを替えるだけで済む。
     pub eff State {
         /// 保存済みスポーン一覧を返す（初期化前は空リスト同士の record）。
         def get(): Snapshot
@@ -25,8 +25,7 @@ mod InitialSpawns {
         def put(snapshot: Snapshot): Unit
     }
 
-    /// `TurnPhase.withState` と同じ流儀の handler 注入。
-    /// 内部 `snapshotRef` は closure に閉じ込められ、外からは見えない。
+    /// handler injection パターン。`snapshotRef` を closure に閉じ込め、呼び出し元には effect 境界だけを見せる。
     pub def withState(rc: Region[r]):
             (Unit -> a \ ef) -> a \ (ef - State) + r =
         thunk -> {

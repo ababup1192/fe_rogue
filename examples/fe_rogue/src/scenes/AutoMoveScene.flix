@@ -11,7 +11,7 @@
 ///   - `cancel`         : 合流中の X/Esc で中止（= 解散）
 ///   - `disband`        : 隊列を解散して通常ターン制(PlayerCursor)に戻す（かいさん / 自動解除）
 ///   - `lordThreatened` : ロードが敵の移動到達範囲(赤マス)に入っているか（純粋判定）
-///   - `add` / `driverPath` : 常駐 driver ノードの追加 / パス
+///   - `add` / `driverPath` : 常駐 driver ノードの追加 / パス（`GameLifecycle.buildPlayingScene` から利用）
 ///
 /// 合流の動作モデル:
 ///   - **1 フレームで動かすのは 1 体だけ**（`anyTweenActive` で補間中は待つ）
@@ -52,10 +52,11 @@ mod AutoMoveScene {
     // (B) 合流 (PlayerAutoMove)
     // ────────────────────────────────────────────────────────
 
-    /// 合流の 1 フレーム分。1 フレーム 1 操作（1 歩 or 1 体の非表示化）。
+    /// `anyTweenActive` で補間完了を待ちながら合流を 1 フレームずつ進める。
+    /// 入力ハンドラと同一フレームに両方走り得るため、全 step は先頭で phase を再確認して
+    /// 既に他フェーズへ遷移済みなら no-op とする（再入防止）。
     def gatherStep(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, TurnPhase.State} =
-        // 入力ハンドラ等でこのフレーム中に既に他フェーズへ抜けたら no-op。
         if (TurnPhase.State.get() != TurnPhase.Phase.PlayerAutoMove) scene
         else
             let lordPos = PlayerScene.getGridPos(lordId(), scene);
@@ -90,7 +91,8 @@ mod AutoMoveScene {
                 }
         }
 
-    /// 合流対象に Tween 中の味方が 1 人でも居るか（補間完了を待つガード）。
+    /// 1 フレーム 1 操作を保証するガード: Tween 中に stepOneToward を重ねると二重移動が起きるため、
+    /// 合流対象に 1 人でも移動中の味方が居る間は次の操作を保留する。
     def anyTweenActive(movers: List[PlayerScene.Data]): Bool \ Tween.Scheduler =
         List.exists(p -> PlayerScene.isMoving(p#id), movers)
 
@@ -103,6 +105,7 @@ mod AutoMoveScene {
     def roamJudge(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, Tween.Scheduler,
                               Pacing.State, TurnPhase.State} =
+        // gatherStep と同じ再入防止ガード。
         if (TurnPhase.State.get() != TurnPhase.Phase.RogueMove) scene
         else if (PlayerScene.isMoving(lordId())) scene
         else if (lordDetected(scene)) triggerAlert(scene)
@@ -113,6 +116,7 @@ mod AutoMoveScene {
     def alertStep(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, Tween.Scheduler,
                               TurnPhase.State, Pacing.State, EnemyTurn.Queue} =
+        // gatherStep と同じ再入防止ガード。
         if (TurnPhase.State.get() != TurnPhase.Phase.RogueAlert) scene
         else if (Pacing.State.isHolding()) scene
         else disband("敵に見つかった", scene)
@@ -181,7 +185,7 @@ mod AutoMoveScene {
         Pacing.State.hold(alertHold());
         PhaseTransitions.enterRogueAlert(withMarks)
 
-    /// 「！」の色（黄色）。
+    /// 暖色系の黄色で「警戒」を視覚的に示す。DamagePopup の白（ダメージ）と区別するための色選択。
     def exclaimColor(): Color = {r = 1.0f32, g = 0.9f32, b = 0.2f32}
 
     /// 発見演出の hold 時間。DamagePopupScene の寿命(700ms)に合わせ、「！」が出ている間
@@ -264,6 +268,8 @@ mod AutoMoveScene {
     // (F) ヘルパー
     // ────────────────────────────────────────────────────────
 
+    // Flix 0.71.0 時点では record の `==` が構造的比較として機能しないケースがあるため、
+    // フィールドを明示的に比較する専用関数を用意している。
     def samePos(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Bool =
         a#x == b#x and a#y == b#y
 
@@ -273,6 +279,8 @@ mod AutoMoveScene {
 
     /// 常駐タグ専用ノードの名前。Marker2D を World 配下に置く。
     def driverName(): String = "AutoMoveDriver"
+    /// `GameLifecycle` が `add` で追加した常駐ノードへの NodePath を返す。
+    /// `Game.flix` の process dispatch で AutoMoveDriver を特定するときに使う。
     pub def driverPath(): NodePath = MapScene.worldName() :: driverName() :: Nil
 
     /// scene tree に常駐ノードを追加する。`GameLifecycle.buildPlayingScene` で 1 回だけ呼ぶ。

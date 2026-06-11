@@ -22,17 +22,17 @@ mod SelectedPlayer {
     /// `drafts` は「この移動中に scene へ加えた可逆な副作用」のスタック（新しい順）。
     /// 移動開始で `MovedFrom`、拾得で `PickedUp` を積み、`cancelSelection` で先頭から
     /// 逆操作、行動確定（`cleared()`）や次の選択開始で破棄する（FE 移動の仮確定モデル）。
-    /// 旧 `origin`/`picked` フィールドを 1 本のドラフトスタックに統合したもの。
     pub type alias Selection = {
         id     = Option[Int32],
         drafts = List[MoveDraft.DraftAction]
     }
 
     /// 未選択を表す Selection（選択なし・ドラフト空）。
-    /// 解除時に `put(cleared())` と書ける。drafts も空（取得等は行動確定で別途確定済み）。
+    /// 解除時に `put(cleared())` と書ける。行動確定後の解除では drafts の巻き戻しは不要で、
+    /// このゼロ値で上書きするだけで済む。
     pub def cleared(): Selection = {id = None, drafts = Nil}
 
-    /// 選択状態の読み書き effect。
+    /// `withState` が提供する handler 1 つで処理し、入れ子ハンドラは想定しない。
     pub eff State {
         /// 現在の選択状態を返す。未選択（PlayerCursor / EnemyTurn 等）なら
         /// `cleared()` 相当（id None・drafts 空）。
@@ -48,8 +48,9 @@ mod SelectedPlayer {
         let sel = State.get();
         State.put({drafts = action :: sel#drafts | sel})
 
-    /// `TurnPhase.withState` と同じ流儀の handler 注入。
-    /// 内部 `selectionRef` は closure に閉じ込められ、外からは見えない。
+    /// 内部 `selectionRef` は closure に閉じ込めることで外部から直接変更できない。
+    /// 読み書きはすべて `State.get` / `State.put` 経由に強制されるため、
+    /// `id` と `drafts` の整合性（常に同じ選択文脈に属する）を崩せない。
     pub def withState(rc: Region[r]):
             (Unit -> a \ ef) -> a \ (ef - State) + r =
         thunk -> {

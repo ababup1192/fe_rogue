@@ -7,7 +7,7 @@
 /// ↑↓ で選択、Enter/Z で確定、X/Escape で元のフェーズ (PlayerMoving / PlayerCursor) に戻る。
 ///
 /// ノード構造（visible のとき）:
-///   ActionMenu (CanvasLayer, layer=2)
+///   ActionMenu (CanvasLayer, layer=2)  ← layer=2 により HUD/マップより手前に描画
 ///     └─ panel (Panel, NodeTag.ActionPanel)
 ///           └─ menu (ItemList, NodeTag.ActionMenu)
 ///
@@ -89,9 +89,8 @@ mod ActionMenuScene {
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から ActionMenu の ItemList
     /// ノードに対して dispatch される (per-node、ItemList は 1 個のみなので 1 フレーム 1 回)。
-    /// 2 つの責務を 1 か所で処理:
-    ///   1. **Panel + ItemList の visible/focused** を毎フレーム phase で再評価
-    ///   2. **ActionSelect 中**に items を文脈に応じて再計算 (`buildItems`)
+    /// visibility 更新と items 再計算を同一フレームで行うのは、分離すると phase 変化フレームで
+    /// 「表示は ActionSelect だが items はまだ前フェーズの状態」というズレが生じるため。
     pub def refreshItems(_delta: Duration.Duration, node: EngineNode[NodeTag],
                          _path: NodePath,
                          scene: Scene[NodeTag]):
@@ -100,8 +99,8 @@ mod ActionMenuScene {
                            PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
-        // メニューが閉じている間は選択カーソルを先頭(0)に戻しておく。これにより
-        // 次に開いたときは記憶された位置ではなく常に最初の項目から始まる。
+        // UX: メニューを開き直すたびに意図しない項目を誤確定しないよう、
+        // 非表示中(ActionSelect 以外)はカーソルを先頭(0)に戻しておく。
         // 表示中(ActionSelect)はリセットしないので ↑↓ のカーソル移動は維持される。
         let withItems = if (phase != TurnPhase.Phase.ActionSelect)
                 withVisibility
@@ -316,7 +315,7 @@ mod ActionMenuScene {
     ///   - 通常（選択中の味方あり）: その味方を階段で退場させる。生存味方が全員退場したら
     ///     `FloorAdvanceRequest` で次フロアへ、まだ動ける味方が残っていれば `commitWaitedAndAdvance`。
     ///   - しゅうごう中（ローグ移動・選択なし）: 合流したパーティ全員で降りる → そのまま次フロアへ。
-    ///     退避中(hidden)の味方も生存していれば `snapshotCarry` で引き継がれる。
+    ///     退避中(hidden)の味方は次フロア側の FloorAdvanceRequest 処理時に snapshotCarry で引き継がれる。
     def applyStairs(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
@@ -375,7 +374,8 @@ mod ActionMenuScene {
         EnemyTurnDriverScene.beginTurn(afterWait)
 
     /// 「ひろう」確定の本体。床アイテムを取得してインベントリに加え、
-    /// ログを出して **ActionSelect フェーズに留まる**（行動継続。ターン消費しない）。
+    /// ログを出して ActionSelect フェーズに留まる。
+    /// 拾うはアクションポイントを使わない設計（FE 原作準拠）のためターン消費しない。
     /// 次フレームの `refreshItems` が「床に何もなくなった」状態を見て自動的に
     /// 「ひろう」をメニューから外す。
     /// 武器なら weapons の末尾に、杖なら staves の末尾に追加する。
@@ -477,6 +477,10 @@ mod ActionMenuScene {
     /// PlayerMoving + Z 押下時の遷移: 行動選択ウィンドウを開く (フェーズ = ActionSelect)。
     /// 青マス表示はそのまま維持し、ItemList を visibility 適用で表示する。
     /// 「こうげき / たいき / ひろう」の項目は `refreshItems` が毎フレーム再構築。
+    ///
+    /// 3 関数 (openFromMoving / openFromCursor / openFromRogue) の実装は
+    /// `TurnPhase.State.put(ActionSelect); scene` と同一だが、呼び出し元フェーズを
+    /// コールサイトで明示してファイル内 grep を容易にするために分けている。
     pub def openFromMoving(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         scene
@@ -484,6 +488,7 @@ mod ActionMenuScene {
     /// PlayerCursor + Z 押下時 (空マス) の遷移: 集合メニュー (しゅうごう) を開く。
     /// SelectedPlayer は None のままなので `buildItems` がしゅうごうのみを返す。
     /// カーソルは PlayerCursor で visible のまま据え置く。
+    /// (openFromMoving の doc に設計意図を記載)
     pub def openFromCursor(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         scene
@@ -491,6 +496,7 @@ mod ActionMenuScene {
     /// RogueMove (ローグ自由歩行) + Z 押下時の遷移: メニュー (ひろう / かいさん) を開く。
     /// SelectedPlayer は None のまま。`buildItems` が「退避中の味方が居る」ことを手掛かりに
     /// ローグ用メニューを返す。X で `onActionCancelled` が RogueMove に戻す。
+    /// (openFromMoving の doc に設計意図を記載)
     pub def openFromRogue(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         scene

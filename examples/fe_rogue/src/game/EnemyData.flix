@@ -4,7 +4,20 @@
 /// game/ 純ロジックはこの game/ 定義に依存できる（game→scenes の型逆流を防ぐ）。
 mod EnemyData {
 
-    /// 敵駒の状態。`weapon` は装備中武器（攻撃で耐久が減り 0 で None）。
+    /// 1 ターン内で `acted` と `isDying` が排他的に敵の行動可否を制御する。
+    /// `acted` は EnemyTurn キュー消化時に true にセットされ、ターン終端でリセットされる（二重行動防止の不変条件）。
+    /// `isDying = true` の敵は EnemyTurn.Queue / `findIdAt` などから除外され、以降一切行動しない。
+    /// `id`/`gridPos` はスポーン時に確定し、以降 EnemyScene の配置管理キーとして不変。
+    /// `alerted` はプレイヤーと同モジュールに入った瞬間 true になり、以降永続（一方向フラグ）。
+    /// `homeModuleIdx` はスポーン時の部屋 idx（検知判定の補助情報）。
+    /// `moveTiles` は 1 ターンに進めるマス数（FE の「移動力」相当、`resource` から初期値継承）。
+    /// EnemyAI が BFS パスからこの値ぶんだけ進めて 1 マスずつ Tween する。
+    /// `hp` は残り体力。0 になると `isDying = true` がセットされ、`death_blink`
+    /// アニメーションが再生される。アニメ終了で GameManager がノードを scene から削除する。
+    /// `resource` はスポーン時のユニット定義テンプレート（EnemyResource）。
+    /// ゲームオーバー時の `respawnFromInitial` で同じ敵種別で再生するために保持。
+    /// `weapon` は装備中武器。攻撃するたびに耐久度が 1 減り、0 で `None` になる
+    /// （以降、その敵は EnemyAI 側で Attack を返さなくなる）。攻撃力は `resource#attack + weapon#attack`。
     pub type alias Data = {
         id             = Int32,
         gridPos        = {x = Int32, y = Int32},
@@ -19,7 +32,9 @@ mod EnemyData {
         acted          = Bool
     }
 
-    /// スポーン時の中間表現（respawnFromInitial での復元にも使う）。
+    /// respawn 時に再生成するために必要な最小情報だけを永続保持する型。
+    /// Data 全体でなく resource+weapon の初期値のみを保存することで、
+    /// アクティブ状態（hp/acted/isDying 等）を Spawn 側に混入させない設計上の境界を維持する。
     pub type alias Spawn = {
         id        = Int32,
         gridPos   = {x = Int32, y = Int32},
@@ -29,7 +44,7 @@ mod EnemyData {
     }
 
     /// 敵駒の「現フレーム状態」を Scene を介さずに読み取る effect（PartyQuery の敵版）。
-    /// handler は Game.start で sceneRef から EnemyScene.get/getAll/findIdAt/anyAttacking を呼ぶ。
+    /// handler は scenes 側の実態に委譲する設計で、game/ ロジックが scenes/ 型に直接依存しない境界を保つ。
     pub eff RosterQuery {
         def get(id: Int32): Option[Data]
         def getAll(): List[Data]

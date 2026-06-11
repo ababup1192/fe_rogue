@@ -66,7 +66,8 @@ mod BattlePanelScene {
                 Err(JsonCompat.jsonError(Root, Set#{"BattlePanelScene tag (got: ${unknown})"}))
         }
 
-    /// scene にパネルを追加する
+    /// `GameEngine.Game`（フォントアトラス取得）と `Fs.FileRead`（scene.json ロード）の
+    /// 両 effect を要求する。フォントは `fontManifest` の `fontName()` で登録済みの atlas を使う。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas, tagParser, scene)
@@ -95,8 +96,8 @@ mod BattlePanelScene {
             |> Label2D.mapAt(rightRestPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(eWeaponPath(), CanvasItem.setVisible(visible))
 
-    /// 背景 ColorRect の可視性を path 指定で切り替える。
-    /// ColorRect には mapAt が無いので Scene.mapEngineNode + EngineNode.mapColorRect を使う。
+    /// ColorRect には型付き `mapAt` が無いため、`Scene.mapEngineNode` + `EngineNode.mapColorRect`
+    /// を経由して可視性を変える。
     def setBgVisible(path: NodePath, visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(path,
             en -> EngineNode.mapColorRect(rect -> CanvasItem.setVisible(visible, rect), en), scene)
@@ -144,7 +145,9 @@ mod BattlePanelScene {
     def blinkShowsDamaged(elapsed: Duration.Duration): Bool =
         Duration.toSeconds(elapsed) < Duration.toSeconds(blinkCycle()) / 2.0
 
-    /// 点滅経過時間を panel ノードのタグに書き戻す。
+    /// 点滅経過時間を `BattlePanel` タグに埋め込んで panel ノードへ書き戻す。
+    /// Scene ツリー内に状態を持つことで、外部の Ref や effect を増やさずに
+    /// 点滅タイマーを自走させられる。
     def writeElapsed(newElapsed: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(panelPath(), n -> match n {
             case EngineNode.PanelWithState(p, NodeTag.BattlePanel(_)) =>
@@ -234,12 +237,12 @@ mod BattlePanelScene {
                 |> CanvasItem.setModulate(color),
             scene)
 
-    /// 現在HP（通常）の文字色 = 白。
     /// 威力ラベルの通常色（白）。得意武器のときはこれ。
     def powerNormalColor(): Color = UITheme.white()
     /// 苦手武器のときの威力ラベル色（青）。80% に下がっていることを示す。
     def powerWeakColor(): Color = {r = 0.45f32, g = 0.65f32, b = 1.0f32}
 
+    /// 現在HP（通常）の文字色 = 白。
     def hpNormalColor(): Color = UITheme.white()
     /// 戦闘後HP（減少予測）の文字色 = グレー。
     def hpDamagedColor(): Color = {r = 0.55f32, g = 0.55f32, b = 0.55f32}

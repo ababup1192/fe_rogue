@@ -23,15 +23,11 @@ mod Consumable {
     use Util.Json.Json.{JObject, JString, JNumber}
     use Sprite.SpriteResource
 
-    // ────────────────────────────────────────────────────────
-    // (A) 型定義
-    // ────────────────────────────────────────────────────────
-
     /// 消費アイテム 1 種類ぶんのデータ。
-    /// `name` は表示用の和名（例: "きずぐすり"）。
-    /// `healAmount` は使用時に使用者の HP を回復する量。
-    /// `durability` は使用回数（使うたびに 1 減り、0 で無くなる）。
-    /// `sprite` は ItemMenu のアイコンに使う見た目情報。
+    /// `healAmount` は正の整数のみ有効（0 以下は `consume` で即 None になり実質壊れた定義になる）。
+    /// `durability` は JSON から読み込んだ初期値が必ず正であることを前提とする。
+    ///   `consume` が durability ≤ 0 で None を返すため、JSON に 0 以下が入ると 1 度も使えない。
+    /// `sprite` は ItemMenu のアイコンに使う。
     pub type alias ConsumableResource = {
         name       = String,
         healAmount = Int32,
@@ -39,8 +35,11 @@ mod Consumable {
         sprite     = SpriteResource
     }
 
-    /// 消費アイテムカタログ全体。`CatalogContainer[ConsumableResource]` を wrap して
-    /// `Saveable` を持たせる（Staff / Weapon と同じ形）。containerKey は `"consumables"` 固定。
+    /// 消費アイテムカタログ全体。
+    /// `CatalogContainer[ConsumableResource]` を wrap する理由は `Saveable` instance を付与して
+    /// consumables.json への round-trip 保存を可能にするため。
+    /// containerKey を `"consumables"` に固定することで JSON ルートキーと 1 対 1 に対応し、
+    /// `CatalogContainer.loadWithCheck` が正しいネストを解析できる。
     pub enum ConsumableCatalog {
         case ConsumableCatalog(CatalogContainer[ConsumableResource])
     }
@@ -50,21 +49,14 @@ mod Consumable {
         let ConsumableCatalog.ConsumableCatalog(container) = catalog;
         CatalogContainer.entriesOf(container)
 
-    // ────────────────────────────────────────────────────────
-    // (B) 純粋ロジック
-    // ────────────────────────────────────────────────────────
-
     /// 消費アイテムを 1 回使用したあとの状態を返す（`Staff.consume` と同形）。
     /// 耐久度が 1 → 0 に遷移するなら `None`（使い切った）。
     /// それ以上残っていれば `Some(更新後 consumable)`。
+    /// `<= 0` で判定するのは durability=0 の異常 JSON が来た場合も即 None にして防衛するため。
     pub def consume(item: ConsumableResource): Option[ConsumableResource] =
         let newDurability = item#durability - 1;
         if (newDurability <= 0) None
         else Some({durability = newDurability | item})
-
-    // ────────────────────────────────────────────────────────
-    // (C) ロード・参照
-    // ────────────────────────────────────────────────────────
 
     /// `resources/consumables.json` をロードし、`resources/consumables.schema.json` で整合検査する。
     /// 起動時の `Game.start` で 1 度だけ呼ぶ想定。失敗は panic で即可視化。
@@ -78,8 +70,8 @@ mod Consumable {
         });
         ConsumableCatalog.ConsumableCatalog(container)
 
-    /// 消費アイテム id を引いて `ConsumableResource` を返す。未定義 id は起動時 typo として panic。
-    /// 各ユニットの `initialInventory` の consumable kind エントリから実体を解決する用途で使う。
+    /// 消費アイテム id を引いて `ConsumableResource` を返す。
+    /// 未定義 id は起動時の typo として panic し、定義漏れを即可視化する。
     pub def lookup(id: String, catalog: ConsumableCatalog): ConsumableResource =
         let ConsumableCatalog.ConsumableCatalog(container) = catalog;
         match CatalogContainer.get(id, container) {
@@ -87,15 +79,13 @@ mod Consumable {
             case None       => bug!("Consumable.lookup: consumable '${id}' not in catalog")
         }
 
-    /// `ConsumableResource` のフィールド名集合。`consumables.schema.json` との整合性検査に使う。
+    /// `ConsumableResource` のフィールド名集合。
+    /// Set で持つことで load 時に JSON フィールドの追加漏れ・typo を検出できる。
     pub def expectedFields(): Set[String] =
         Set#{"name", "healAmount", "durability", "sprite"}
 }
 
-// ════════════════════════════════════════════════════════════════════════
-// Saveable[ConsumableCatalog] — consumables.json の round-trip 実装 (薄い wrap)
-// ════════════════════════════════════════════════════════════════════════
-
+// container の巡回・schema 検査は CatalogContainer に委譲し、ここは wrap のみ。
 instance Saveable[Consumable.ConsumableCatalog] {
     pub def toJson(value: Consumable.ConsumableCatalog): Util.Json.Json =
         let Consumable.ConsumableCatalog.ConsumableCatalog(container) = value;
@@ -115,8 +105,6 @@ mod ConsumableCatalogCodec {
     use Consumable.ConsumableResource
     use Sprite.SpriteResource
 
-    // ── エンコード ──
-
     pub def encodeConsumable(item: ConsumableResource): Json =
         JObject(Map#{
             "name"       => JString(item#name),
@@ -133,8 +121,6 @@ mod ConsumableCatalogCodec {
             "frame"   => JNumber(intToBd(sprite#frame)),
             "offset"  => JsonCodec.encodeVec2(sprite#offset)
         })
-
-    // ── デコード ──
 
     pub def decodeConsumable(element: Json): Option[ConsumableResource] =
         forM (

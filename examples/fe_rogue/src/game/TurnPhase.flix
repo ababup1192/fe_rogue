@@ -1,10 +1,12 @@
 /// TurnPhase / TurnRules / TurnInputBridge — ターン進行に関わるロジックを集約したファイル
 ///
-/// 同居理由: 3 つは「ターンを進める」というデータフローを共有しており、別ファイルに分けると
-/// 往復読みが必要になる:
+/// 同居理由: 3 つは `TurnPhase.Phase`（現フェーズ）と `TurnRules.Context`（判断入力）を
+/// 中心データとして共有しており、別ファイルに分けると往復読みが必要になる:
 ///   - `TurnPhase`        : Phase enum + 現フェーズの State effect
 ///   - `TurnRules`        : 純粋判断 (フェーズ × 入力 × 盤面 → Transition)
+///     ↑ Phase を読む側。`TurnRules.Context#phase` で参照する
 ///   - `TurnInputBridge`  : 入力 → Context build → decide → apply の 3 段 pipeline
+///     ↑ Phase を書く側 (apply 内で TurnPhase.State.put を呼ぶ)。Context は TurnRules へ渡す
 ///
 /// ────────────────────────────────────────────────────────
 ///
@@ -185,8 +187,7 @@ mod TurnRules {
         case AttackSkip
         /// TradeTargetSelect 中の Confirm: カーソル位置に居る隣接味方を交換相手として確定。
         /// 引数: partnerId (= 交換相手の player id)。
-        /// Phase 4 で TradeInventory フェーズに遷移する予定。Phase 3 では仮実装で
-        /// `enterActionSelectFromTrade` に流して ActionSelect に戻る (= 何もしない)。
+        /// 確定後は `enterTradeInventory` を呼び、TradeInventory フェーズに遷移する。
         case OpenTradeInventory(Int32)
         /// TradeTargetSelect 中の Cancel: 緑マス overlay を片付けて ActionSelect に戻す
         /// (= ActionMenu を再表示する。ターン消費しない)。
@@ -279,8 +280,8 @@ mod TurnRules {
             case (TurnPhase.Phase.TradeTargetSelect, Input.Cancel) =>
                 Transition.TradeCancel
             // EnemyTurn / PlayerAutoMove(合流) は入力無視（自動進行で抜ける）。
-            // RogueMove は移動が physicsProcess、メニュー開閉が dispatchNonMenuKey 側で
-            // 直接処理されるため、ここ(TurnRules)は素通り。
+            // RogueMove は移動・メニュー開閉ともに TurnRules を経由しない
+            // （各入力ハンドラが直接処理するため）。
             case _ => Transition.Stay
         }
 
@@ -336,10 +337,9 @@ mod TurnRules {
 ///   2. `TurnRules.decide` (純粋関数) で次の `Transition` を決める
 ///   3. `apply` の中央 match で対応する 1 つの Scene 関数を呼ぶ
 ///
-/// この match が「ゲームの中心ルールが画面にどう反映されるか」を一覧できる窓口で、
-/// 各 case は 1 行 (対応する Scene 関数の呼び出しのみ) に痩せている。
-/// 「次セレクトか敵ターンか」を決める `AttackSkip` だけは複数 effect を跨ぐので
-/// `TurnFlow.commitWaitedAndAdvance` を経由する。
+/// `AttackSkip` だけは `TurnPhase.State.put` / `EnemyTurn.Queue` / `SelectedPlayer.State`
+/// の複数 effect を跨ぐため、直接 Scene 関数を呼ばず `TurnFlow.commitWaitedAndAdvance`
+/// を経由する（他の Transition は必ず単一の Scene 関数に収まる）。
 mod TurnInputBridge {
 
     /// 1 回のキー入力 (Confirm / Cancel) を処理する。
@@ -360,11 +360,9 @@ mod TurnInputBridge {
     ///   - `Tween.Scheduler.isActive(...)` (選択中味方が Tween 中か)
     /// と複数の窓口を引く必要がある。これを 1 関数に集約する。
     ///
-    /// 盤面 (`board`) は呼び出し側から渡す。`handle` は `BoardQuery.board()` を、
-    /// 操作ガイド HUD (`ControlHintScene`) は process 内で純粋な
-    /// `BoardSnapshot.fromScene(scene)` を渡す。どちらも同じ盤面スナップショットだが、
-    /// `process` 用 Aef (`FrameAef.ProcessT`) には `BoardQuery` が含まれないため、
-    /// ここで `BoardQuery` 効果を要求せず引数で受けることで両方から再利用できる。
+    /// 盤面 (`board`) は呼び出し側から渡す。`FrameAef.ProcessT` には `BoardQuery`
+    /// が含まれないため、`buildContext` 自身が `BoardQuery` 効果を要求しない設計にして
+    /// process 経路からも再利用できるようにしている。
     pub def buildContext(input: TurnRules.Input, board: Board, scene: Scene[NodeTag]):
             TurnRules.Context \ {Tween.Scheduler,
                                   TurnPhase.State, SelectedPlayer.State,
@@ -390,7 +388,6 @@ mod TurnInputBridge {
         }
 
     /// `decide` が返した `Transition` をシーンに適用する。
-    /// 各 case の本体は対応する 1 つの Scene 関数を呼ぶだけに痩せている。
     def apply(transition: TurnRules.Transition,
                scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,

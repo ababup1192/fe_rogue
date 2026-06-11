@@ -13,10 +13,6 @@
 ///   - `placeRandom` で床セルを 1 つ選び、`isAt` で「そのセルに階段があるか」を答える
 mod StairsScene {
 
-    // ────────────────────────────────────────────────────────
-    // (A) 型定義
-    // ────────────────────────────────────────────────────────
-
     /// `gridPos`: 階段を置いたグリッド座標（placed = false のときは未使用）
     /// `placed`: 階段が配置済みか。false の間は描画されず、`isAt` も常に false を返す
     pub type alias Data = {
@@ -24,19 +20,11 @@ mod StairsScene {
         placed  = Bool
     }
 
-    // ────────────────────────────────────────────────────────
-    // (B) 定数
-    // ────────────────────────────────────────────────────────
-
     def name(): String = "Stairs"
     pub def stairsPath(): NodePath = name() :: Nil
 
-    /// scene.json への相対パス（cwd = プロジェクトルート想定）
+    /// AssetPath.resolve は cwd を基点に解決するため、プロジェクトルートから実行が前提。
     def scenePath(): String = AssetPath.resolve("src/scenes/StairsScene.scene.json")
-
-    // ────────────────────────────────────────────────────────
-    // (C) 構築
-    // ────────────────────────────────────────────────────────
 
     /// MapScene 登録済みの scene に階段ノードを追加する（初期は未配置 = 非表示）。
     /// レイアウト（Marker2D + 子 Sprite2D, テクスチャ, scale, zIndex, 初期不可視）は
@@ -76,7 +64,6 @@ mod StairsScene {
             case None       => scene
         }
 
-    /// セルが占有リストに含まれるか。
     def isOccupied(cell: {x = Int32, y = Int32},
                     occupied: List[{x = Int32, y = Int32}]): Bool =
         List.exists(o -> o#x == cell#x and o#y == cell#y, occupied)
@@ -91,10 +78,6 @@ mod StairsScene {
                 (CanvasItem.setVisible(true, marker),
                  ({gridPos = target, placed = true}: Data)))
 
-    // ────────────────────────────────────────────────────────
-    // (D) 問い合わせ
-    // ────────────────────────────────────────────────────────
-
     /// 指定セルに（配置済みの）階段があるか。ActionMenuScene が「かいだん」コマンドの
     /// 出現条件として使う。
     pub def isAt(gridPos: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Bool =
@@ -106,7 +89,7 @@ mod StairsScene {
             case _ => false
         }
 
-    /// 階段の現在の配置セル。未配置なら None。
+    /// placed = false（未配置）のときは座標として意味のある値を持たないため None を返す。
     pub def getPos(scene: Scene[NodeTag]): Option[{x = Int32, y = Int32}] =
         match Scene.getState(stairsPath(), scene) {
             case Some(NodeTag.Stairs(data)) =>
@@ -114,11 +97,8 @@ mod StairsScene {
             case _ => None
         }
 
-    // ────────────────────────────────────────────────────────
-    // (E) ボイラプレート
-    // ────────────────────────────────────────────────────────
-
-    /// Stairs の Marker2D + Data をまとめて変換する。
+    /// `Scene.mapEngineNode` のパターンマッチにより、Stairs 以外のノードは `other => other` で
+    /// 素通しされるため、他ノードへの副作用なく安全に呼べる。
     def mapStairs(f: (Marker2D, Data) -> (Marker2D, Data),
                    scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(stairsPath(), engineNode -> match engineNode {

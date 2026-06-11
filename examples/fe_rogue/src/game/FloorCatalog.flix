@@ -23,9 +23,9 @@ mod FloorCatalog {
     use Util.Json.Json
     use Util.Json.Json.{JObject, JString, JNumber, JArray}
 
-    /// floor カタログ。段階 8 のリファクタで `CatalogContainer[FloorResource]` を wrap する
-    /// 形に変更し、`Saveable` instance を追加した (IDE Resources タブで編集可能に)。
-    /// containerKey は `"floors"` 固定。
+    /// floor カタログ。`CatalogContainer[FloorResource]` を wrap する。
+    /// containerKey は `"floors"` 固定（floors.json のトップレベルキーと対応）。
+    /// `Saveable` instance を持つことで IDE Resources タブから直接編集・保存できる。
     pub enum FloorCatalog {
         case FloorCatalog(CatalogContainer[FloorResource])
     }
@@ -70,8 +70,7 @@ mod FloorCatalog {
     pub def mapPathOf(stem: String): String = AssetPath.resolve("assets/maps/${stem}.map.json")
 
     /// `resources/floors.json` をロードし、`resources/floors.schema.json` で整合検査する。
-    /// 段階 8 のリファクタで `CatalogContainer.loadWithCheck` に委譲する形に変更した。
-    /// 失敗は panic（即可視化）。起動時の `Game.start` で 1 度だけ呼ぶ想定。
+    /// 失敗は panic（設定ミスを即可視化するため）。起動時の `Game.start` で 1 度だけ呼ぶ想定。
     pub def load(): FloorCatalog \ Fs.FileRead =
         let container = CatalogContainer.loadWithCheck({
             dataPath       = AssetPath.resolve("resources/floors.json"),
@@ -117,6 +116,7 @@ mod FloorCatalog {
         idAfter(currentId, order(catalog))
 
     /// `ids` の中で `target` の直後の要素を返す。`target` が最後 / 未登場なら None。
+    /// `nextFloorId` 専用の純粋ヘルパー。再帰で末尾まで走って見つからなければ None を返す。
     def idAfter(target: String, ids: List[String]): Option[String] = match ids {
         case Nil        => None
         case id :: rest => if (id == target) List.head(rest) else idAfter(target, rest)
@@ -166,7 +166,9 @@ mod FloorCatalog {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// Saveable[FloorCatalog] — floors.json の round-trip 実装 (薄い wrap)
+// Saveable[FloorCatalog] — floors.json の round-trip 実装
+// encode/decode の実装はすべて FloorCatalogCodec に委譲し、
+// ここでは FloorCatalog 型への包装・展開のみを担う。
 // ════════════════════════════════════════════════════════════════════════
 
 instance Saveable[FloorCatalog.FloorCatalog] {
@@ -253,7 +255,7 @@ mod FloorCatalogCodec {
             |> Option.flatMap(decodeList(decodeSpawnEntry))
             |> Option.getWithDefault(Nil)
 
-    /// `{"roomCount": Int32}` を GenerationConfig に decode
+    /// GenerationConfig を decode する。将来フィールドが増える際の拡張ポイント。
     def decodeGeneration(element: Json): Option[GenerationConfig] =
         forM (
             obj        <- expectObject(element);
@@ -280,6 +282,4 @@ mod FloorCatalogCodec {
             percent  <- expectInt(percentJ)
         ) yield ({id = id, percent = percent}: SpawnEntry)
 
-    // expectXxx / 数値変換 / List round-trip は engine の JsonCodec mod に集約されている。
-    // 本 mod では `use JsonCodec.{...}` 経由で参照する。
 }

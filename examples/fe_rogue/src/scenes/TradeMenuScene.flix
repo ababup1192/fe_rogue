@@ -28,10 +28,6 @@ mod TradeMenuScene {
 
     use JsonCompat.PathTag.Root
 
-    // ────────────────────────────────────────────────────────
-    // (A) 型定義
-    // ────────────────────────────────────────────────────────
-
     /// どちらかのペインで「選択中」のスロット。`paneIndex` は picker のペイン (0 起点)。
     /// `kind` は picker が選んだスロットの中身: `Some(k)` なら実体アイテム、
     /// `None` なら空スロット (= 「受け取り希望」のマーカー)。
@@ -98,10 +94,6 @@ mod TradeMenuScene {
     pub def emptySlotEntryText(): String = "--------"
     pub def emptySlotMeta(): String      = "empty"
 
-    // ────────────────────────────────────────────────────────
-    // (B) 定数 / パス
-    // ────────────────────────────────────────────────────────
-
     def sceneJsonPath(): String = AssetPath.resolve("src/scenes/TradeMenuScene.scene.json")
 
     def fontName(): String = "ui"
@@ -133,11 +125,6 @@ mod TradeMenuScene {
                 Err(JsonCompat.jsonError(Root, Set#{"TradeMenuScene tag (got: ${unknown})"}))
         }
 
-    // ────────────────────────────────────────────────────────
-    // (C) 構築 / 状態アクセス
-    // ────────────────────────────────────────────────────────
-
-    /// scene に TradeMenu ノードツリーを追加する。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas, tagParser, scene)
@@ -158,7 +145,6 @@ mod TradeMenuScene {
             case _                               => scene
         }
 
-    /// Panel 状態を丸ごと差し替える。
     def setPanelData(data: PanelData, scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPanelData(_ -> data, scene)
 
@@ -168,11 +154,6 @@ mod TradeMenuScene {
             |> Option.map(CanvasItem.isVisible)
             |> Option.getWithDefault(false)
 
-    // ────────────────────────────────────────────────────────
-    // (D) 純粋ロジック (effect 無し・テスト対象)
-    // ────────────────────────────────────────────────────────
-
-    /// 現在のペイン数 (= members の長さ)。
     pub def paneCount(data: PanelData): Int32 = List.length(data#members)
 
     /// ペイン index に対応する player id。範囲外なら None。
@@ -255,10 +236,6 @@ mod TradeMenuScene {
         let layout = paneLayout(count, i);
         {x = layout#pos#x, y = 2.0}
 
-    // ────────────────────────────────────────────────────────
-    // (E) 表示更新 (毎フレーム)
-    // ────────────────────────────────────────────────────────
-
     /// フェーズ遷移時の visibility 適用 (Push モデル)。
     /// `TradeInventory` のとき paneCount 個のペイン (+兵種ラベル) を visible にし、
     /// `paneLayout` で位置・サイズを設定する。focus ペインだけ focused = true。
@@ -285,7 +262,7 @@ mod TradeMenuScene {
                         |> Node2D.setPosition(classPos(count, i)))
         }, withPanel, List.range(0, maxPanes()))
 
-    /// Game.flix の process redef から各 TradeMenu ItemList に dispatch される。
+    /// 毎フレーム呼ばれる ItemList の process コールバック (Game.flix が TradeMenu ノードに dispatch する)。
     ///   1. visibility/focus/layout を毎フレーム再評価
     ///   2. TradeInventory なら各ペインに対応 player のインベントリを同期 (満杯でなければ空スロット行を足す)
     pub def refreshItems(_delta: Duration.Duration, node: EngineNode[NodeTag],
@@ -304,7 +281,6 @@ mod TradeMenuScene {
             case None         => (node, withItems)
         }
 
-    /// 全ペインの選択カーソルを先頭(0)に戻す。
     def resetAllCursors(scene: Scene[NodeTag]): Scene[NodeTag] =
         List.foldLeft((acc, i) ->
             ItemList.mapAt(menuPath(i), ItemList.setSelectedIndex(0), acc),
@@ -339,7 +315,8 @@ mod TradeMenuScene {
             case _ => None
         }
 
-    /// pick 中アイテムの行を強調色にする (それ以外は色をクリアして既定色に戻す)。
+    /// pick 中アイテムの行を強調色にする。ItemList に部分更新 API が無いため、一度
+    /// `clearItemColors` で全行リセットしてから対象行だけ再塗りする。
     def applyHighlight(idxOpt: Option[Int32], list: ItemList): ItemList =
         let cleared = ItemList.clearItemColors(list);
         match idxOpt {
@@ -347,7 +324,7 @@ mod TradeMenuScene {
             case None      => cleared
         }
 
-    /// pick 中アイテムの強調色 (黄)。
+    // UI 強調色を 1 か所に集約し、テーマ変更時の散逸を防ぐ。
     def pickColor(): Color = {r = 1.0f32, g = 0.85f32, b = 0.2f32}
 
     /// ItemKind を、ペイン表示 (weapons ++ staves ++ consumables) 上の行 index に変換する。
@@ -396,9 +373,9 @@ mod TradeMenuScene {
         metadata = Some(emptySlotMeta())
     }
 
-    /// 指定 player の weapons + staves + consumables を ItemEntry 列に変換する。
-    // 非driver の在庫 read を effect 経由（PartyQuery）に寄せる薄ラッパ（op 非増殖）。
-    // render/refresh 経路でのみ使う。mutator 経路の recordTradeDraft 内 read は scene-arg 据え置き。
+    // 非 driver からの在庫 read は PartyQuery effect 経由に統一する。
+    // 呼び出し回数を増やさないよう、render/refresh 経路だけで使う薄ラッパ。
+    // mutator 経路 (recordTradeDraft) 内の read は scene-arg を直接渡すので経路が異なる。
     def weaponsOf(id: Int32): List[UnitCatalog.WeaponResource] \ PlayerData.PartyQuery =
         PlayerData.PartyQuery.get(id) |> Option.map(d -> d#weapons) |> Option.getWithDefault(Nil)
 
@@ -433,10 +410,6 @@ mod TradeMenuScene {
             case Some(d) => PlayerScene.isInventoryFull(d)
             case None    => false
         }
-
-    // ────────────────────────────────────────────────────────
-    // (F) swap の適用
-    // ────────────────────────────────────────────────────────
 
     /// エントリの metadata から「対象アイテム種別 / 空スロット」を判定。
     /// "empty" → None (空スロット)、"w:<idx>" / "s:<idx>" / "c:<idx>" は ItemKind に parse。
@@ -497,10 +470,6 @@ mod TradeMenuScene {
                     partnerItem = partnerItemOpt
                 }))
         }
-
-    // ────────────────────────────────────────────────────────
-    // (G) 入力ハンドラ (InputHandler / MenuHandler から呼ばれる)
-    // ────────────────────────────────────────────────────────
 
     /// 指定ペインの指定 entry に対する Z 確定処理。`decideConfirm` の結果を scene に適用する。
     /// `confirmCurrentSelection` から focus ペインの selected entry を渡して使うほか、

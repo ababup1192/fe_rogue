@@ -11,7 +11,9 @@ mod EnemyCatalog {
 
     use UnitBase.UnitBase
 
-    /// カタログ全体。`Saveable` を持たせるため enum でラップする（companion 宣言）。
+    /// カタログ全体。Flix の trait instance は型定義と同モジュールに置く必要があるが、
+    /// `Saveable` は外部モジュール定義のため mod 外 instance になる（orphan instance）。
+    /// 外部型への orphan instance を付与するには自モジュール所有の enum でラップするのが唯一の手段。
     pub enum EnemyCatalog {
         case EnemyCatalog(CatalogContainer[EnemyResource])
     }
@@ -20,7 +22,8 @@ mod EnemyCatalog {
     /// 将来の特殊能力は `{abilities = ... | UnitBase}` の形でここを拡張する。
     pub type alias EnemyResource = UnitBase
 
-    /// enemies 部 (id → EnemyResource の Map) を取り出す。
+    /// 全 id を列挙・イテレートしたいとき（EnemyScene のロスター構築など）に使う。
+    /// 個別取得は `get` を使い、この関数でフィルタするのは避ける。
     pub def enemiesOf(catalog: EnemyCatalog): Map[String, EnemyResource] =
         let EnemyCatalog.EnemyCatalog(container) = catalog;
         CatalogContainer.entriesOf(container)
@@ -73,9 +76,9 @@ mod EnemyCatalog {
               "speed", "skill", "luck", "sprite", "initialInventory", "description", "spriteFrames"}
 }
 
-// ════════════════════════════════════════════════════════════════════════
-// Saveable[EnemyCatalog] — enemies.json の round-trip
-// ════════════════════════════════════════════════════════════════════════
+// Saveable[EnemyCatalog.EnemyCatalog] は mod 外 instance として置く。
+// Flix の orphan ルールにより、自モジュール外の型（EnemyCatalog.EnemyCatalog）への
+// instance は呼び出し側モジュールに定義しなければならないため。
 
 instance Saveable[EnemyCatalog.EnemyCatalog] {
     pub def toJson(value: EnemyCatalog.EnemyCatalog): Util.Json.Json =
@@ -95,6 +98,8 @@ mod EnemyCatalogCodec {
     pub def decodeEnemy(element: Json): Option[EnemyResource] =
         UnitBaseCodec.decodeBase(element)
 
+    /// 敵 = 共有ベースのみ（成長率なし）。encode は `UnitBaseCodec` に委譲し、
+    /// JObject でラップして `CatalogContainer.encode` が期待するエントリ形式に整える。
     pub def encodeEnemy(e: EnemyResource): Json =
         Util.Json.Json.JObject(UnitBaseCodec.encodeBase(e))
 }

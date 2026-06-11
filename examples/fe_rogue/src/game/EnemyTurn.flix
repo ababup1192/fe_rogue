@@ -20,14 +20,15 @@
 ///   - キューが空 = プレイヤーターン
 mod EnemyTurn {
 
-    /// 1 マスぶんの行動権。`id` は `EnemyScene.Data#id`。
-    /// `remaining` は「この step を処理した後に同じ敵が動ける残りマス数」。
-    /// 初期化時は `enemy#moveTiles - 1` を最初の step に入れて、Move のたびに更に -1 する
-    /// ……ではなく、本実装では「step を処理する直前の残数 = remaining」とする。
-    /// つまり remaining = N の step を処理 → Move で 1 マス進む → remaining = N - 1 を pushFront。
-    /// remaining = 0 の step は処理されずに捨てる（または到達しない）。
+    /// 1 マスぶんの行動権。`id` は `EnemyScene.Data` の `id` フィールド。
+    /// remaining は「残り移動マス数」。処理時に 1 マス進み remaining - 1 を pushFront する。
+    /// remaining = 0 の step が先頭に来たら移動を終了し捨てる。
     pub type alias Step = { id = Int32, remaining = Int32 }
 
+    /// キューの要素順序: List[Step] の先頭がキュー先頭 (FIFO)。
+    /// ただし pushFront で先頭挿入できるため、popFront→pushFront の組み合わせで
+    /// 同一敵の継続 step を先頭に戻す LIFO 的な使い方も成立する。
+    /// この「継続 step を割り込ませる」仕組みが 1 体ずつ動く順序を保証する。
     pub eff Queue {
         /// キュー先頭の step を取り出して返す。空なら None。
         def popFront(): Option[Step]
@@ -42,7 +43,8 @@ mod EnemyTurn {
     }
 
     /// `Tween.withScheduler` と同じ流儀の handler 注入。
-    /// 内部 Ref `queueRef` は closure に閉じ込められ、外からは見えない。
+    /// 注入後は thunk のスコープ内で `Queue` effect が解決される。
+    /// スコープを抜けると queueRef は破棄されるため、複数スコープをまたいで状態を共有しない。
     pub def withQueue(rc: Region[r]):
             (Unit -> a \ ef) -> a \ (ef - Queue) + r =
         thunk -> {

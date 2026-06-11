@@ -21,9 +21,6 @@ mod ItemScene {
 
     // ─── 状態 ─────────────────────────────────────────────────
 
-    // ground item の中身 ADT は game/ItemData.flix の `mod ItemData` へ移設した。
-    // enum は再export できないため、参照は `ItemData.GroundItemKind` に統一済み。
-
     /// 個別 ground item に紐づくデータ。
     /// `itemKey` はカタログ id (weapons / staves のどちらかに登録された id)。
     /// `item` は実体（拾う時にプレイヤーに渡す用）。
@@ -85,7 +82,6 @@ mod ItemScene {
     def outlineSuffixes(): List[String] = "n" :: "s" :: "e" :: "w" :: Nil
 
     // per-room cap は引数で受け取る floor の `itemsPerRoom` を使う (resource 駆動)。
-    // 旧 `dropsPerRoom()` 定数は floor 駆動化で廃止
 
     // ─── 構築 ─────────────────────────────────────────────────
 
@@ -204,7 +200,7 @@ mod ItemScene {
 
     /// 部屋 1 つから count 個のドロップセルを選び state に積む。
     /// 各セルにつき floor の `items` (percent 配列) から重み付き抽選した id を
-    /// weapons → staves の順で解決して配置する。
+    /// weapons → staves → consumables の順で解決して配置する。
     def dropsInRoom(layer: TileMapLayer,
                      p: DungeonComposer.ModulePlacement,
                      count: Int32,
@@ -239,7 +235,7 @@ mod ItemScene {
 
     /// 「offset + 半開 bbox(boundsMin..boundsMaxEx)」内で床述語 `isFloorAt` を満たすセルを列挙する
     /// 純粋関数。床判定の供給元（`TileMapLayer` 等）に依存しないので単体テストできる。
-    /// `floorCellsInRoom` の純粋コア（engine 非依存）。EnemyScene 側にも同型の列挙がある。
+    /// `floorCellsInRoom` の純粋コア（engine 非依存）。
     pub def floorCellsInBounds(isFloorAt: {x = Int32, y = Int32} -> Bool,
                                 offset: {x = Int32, y = Int32},
                                 boundsMin: {x = Int32, y = Int32},
@@ -264,8 +260,7 @@ mod ItemScene {
                             p#offset, p#floorBoundsMin, p#floorBoundsMaxEx)
 
     /// セル `c` が既取得リスト `taken` に含まれるか（同セル二重ドロップ防止）。
-    /// `pub`: 単体テスト用に公開。
-    pub def isTaken(c: {x = Int32, y = Int32}, taken: List[{x = Int32, y = Int32}]): Bool =
+    pub def isTaken(c: {x = Int32, y = Int32}, taken: List[{x = Int32, y = Int32}]): Bool = // pub: 単体テスト用に公開
         List.exists(t -> t#x == c#x and t#y == c#y, taken)
 
     // ─── クエリ ───────────────────────────────────────────────
@@ -300,8 +295,8 @@ mod ItemScene {
         }
 
     /// 指定セルに落ちているアイテムの Data を返す。無ければ None。
-    /// `takeAt` は kind しか返さないので、再配置 (`respawn`) に必要な itemKey まで
-    /// 含めて拾いたい「ひろうのキャンセル巻き戻し」用に Data 全体を返す。
+    /// `itemKey` を含む全データが必要な場面（ひろうキャンセル等）向け。
+    /// `takeAt` が kind のみ返すのに対し、こちらは再配置に必要な全フィールドを保持する。
     pub def dataAt(coord: {x = Int32, y = Int32},
                     scene: Scene[NodeTag]): Option[Data] =
         let childNames = Scene.getChildrenAt(parentPath(), scene);
@@ -316,8 +311,8 @@ mod ItemScene {
             }
         }, childNames)
 
-    /// 床アイテムを `cell` に再配置する（`takeAt` の逆操作）。新しい idx を採番して
-    /// 本体 + 縁取りを作り直す。「ひろう」をキャンセルしたときの巻き戻しに使う。
+    /// `takeAt` の逆操作として、アイテムを `cell` に再配置する。
+    /// 新しい idx を採番して本体 + 縁取りを作り直す。
     pub def respawn(cell: {x = Int32, y = Int32}, itemKey: String,
                      kind: ItemData.GroundItemKind, scene: Scene[NodeTag]): Scene[NodeTag] =
         let withParent = ensureParent(scene);
@@ -381,8 +376,8 @@ mod ItemScene {
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から、各 GroundItem に
     /// 対して per-node dispatch される。`elapsed` を進めて 4 兄弟の縁取り Sprite に alpha
     /// (`pulseAlpha`) を反映する。
-    /// `writeElapsed` は self を更新し `applyAlphaToOutlines` は子ノードを更新するため
-    /// scene 経由で両方処理してから、scene から self の最新ノードを取り直して返す。
+    /// `writeElapsed` が scene を書き換えるため、同 path から再取得しないと返す node が stale になる。
+    /// そのため scene で両方の更新を終えてから最新ノードを取り直して返す。
     pub def process(dt: Duration.Duration,
                      node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
@@ -401,7 +396,8 @@ mod ItemScene {
             case None         => (node, next)
         }
 
-    /// `elapsed` をサイクル長で巻き戻す（mod の代わり）。dt が cycle 未満であることを前提に 1 回引き算するだけ。
+    /// `elapsed` をサイクル長で巻き戻す。`Duration` に mod 演算がなく float 誤差も避けたいため、
+    /// dt が cycle 未満であることを前提に 1 回の減算で対応する。
     def advance(e: Duration.Duration): Duration.Duration =
         if (Duration.toSeconds(e) >= Duration.toSeconds(cycleDuration()))
             Duration.sub(e, cycleDuration())

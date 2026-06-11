@@ -11,8 +11,10 @@
 ///                 containsCell
 ///   (C) 動きルール: isWalkable / stepTarget / tryMove / tryMoveWithRange
 ///   (D) 経路探索: reachableCells / bfsPath / bfsPathSkipAllies
+///   (D') 距離フィールド: distanceField / fieldDist / stepDownhill
 ///   (E) 駒視点ヘルパー: reachableForUnit / stoppableForUnit
 ///   (F) 射程計算: manhattanOffsets / computeThreatCells
+///   (G) 直線射出: rayCast / knockbackPath / dedupCells / padCells
 ///
 /// EnemyAI / AutoMove / MoveRangeScene / EnemyRangeScene / PlayerScene などはこの
 /// Board を 1 つ受け取れば「次の手」を計算できる。Scene[NodeTag] には依存しない。
@@ -57,7 +59,7 @@ mod Board {
     // ════════════════════════════════════════════════════════
 
     /// 盤面上のプレイヤー駒一覧（id, gridPos）。pieces 順を保つ。
-    /// パーティ 3 人がそれぞれ id=0/1/2 で並んでいる想定。
+    /// id の連続性（0/1/2）は呼び出し側（PlayerScene）が保証する前提。
     pub def playerPositions(board: Board): List[(Int32, {x = Int32, y = Int32})] =
         List.filterMap(entry -> match entry {
             case (Piece.Player(id), pos) => Some((id, pos))
@@ -71,7 +73,6 @@ mod Board {
             case _                      => None
         }, board#pieces)
 
-    /// 全プレイヤー駒の位置だけを並べたリスト（id は捨てる）。
     /// AutoMove / MoveRange など「味方マスのリスト」だけ要る用途で使う。
     pub def allPlayerCells(board: Board): List[{x = Int32, y = Int32}] =
         playerPositions(board)
@@ -164,7 +165,7 @@ mod Board {
     pub def isWalkable(board: Board, coord: {x = Int32, y = Int32}): Bool =
         MapSnapshot.isFloor(coord, board#map)
 
-    /// origin から dir 方向に 1 マス進む候補座標
+    /// 地形・駒の占有は確認しない。歩行可否は呼び出し側が `isWalkable` / `isOccupied` で別途判定する。
     pub def stepTarget(origin: {x = Int32, y = Int32}, dir: {x = Int32, y = Int32}): {x = Int32, y = Int32} =
         Vec2i.add(origin, dir)
 
@@ -229,10 +230,9 @@ mod Board {
     /// `cell`(ロード位置) が生存敵に検知されるか（ローグ移動モードの敵検知）。
     /// 次のいずれかなら true:
     ///   (a) **同じ部屋**: `cell` と生存敵が同じモジュール(部屋)に居る
-    ///       (`moduleOf` は `MapSnapshot#moduleOfCell` 相当。通路等は None で部屋扱いしない)
     ///   (b) **索敵範囲内**: `cell` がいずれかの生存敵の移動到達範囲(赤マス = `reachableCells`)に入る
-    /// 死亡演出中(isDying)の敵は数えない。(a) は `EnemyAI.sameModuleAsAnyPlayer` と同じ部屋モデル、
-    /// (b) は EnemyRangeScene と同じ reachableCells 計算。
+    /// 死亡演出中(isDying)の敵は数えない。
+    /// `moduleOf`: グリッドセルの部屋IDを返す述語。通路等は None（部屋扱いしない）。
     pub def cellDetectedByEnemy(moduleOf: {x = Int32, y = Int32} -> Option[Int32],
                                  isFloor: {x = Int32, y = Int32} -> Bool,
                                  enemies: List[{gridPos = {x = Int32, y = Int32},
@@ -294,7 +294,7 @@ mod Board {
         else not isOccupied(c, board)
 
     /// 味方マスは通過可能、敵マスは NG、壁・範囲外も NG な BFS。
-    /// `allyCells` には source 以外の全味方位置を渡す（source が含まれていてもよい）。
+    /// `allyCells` に source を含んでいても安全（source は常に通行可として扱う）。
     /// AutoMove のロード合流 / テストから経路全体を確認したい場合に使う。
     /// 経路の途中マスは味方占有でも可（通過可能）。停止可否は呼び出し側が
     /// `stoppableForUnit` 等で別途担保する。
@@ -309,8 +309,7 @@ mod Board {
         let initQueue: List[({x = Int32, y = Int32}, List[{x = Int32, y = Int32}])] = (source, Nil) :: Nil;
         bfsPathLoop(isOpen, goal, initVisited, initQueue)
 
-    /// `bfsPathIsOpen` の派生: 味方マスは「通過可能」として true を返す。
-    /// 敵駒は引き続き NG（`isOccupied` で他駒検出後、味方リストに含まれるかでフィルタ）。
+    /// `bfsPathIsOpen` の派生: 敵駒のみブロック、味方駒は透過扱いにする。
     def bfsPathIsOpenSkipAllies(board: Board, c: {x = Int32, y = Int32},
                                  source: {x = Int32, y = Int32},
                                  goal: {x = Int32, y = Int32},

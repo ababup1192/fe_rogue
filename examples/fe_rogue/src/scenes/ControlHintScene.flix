@@ -35,7 +35,7 @@ mod ControlHintScene {
     def rootPath(): NodePath = rootName() :: Nil
     def textPath(): NodePath = rootName() :: textName() :: Nil
 
-    /// 他の HUD と同じフォント。
+    /// UITheme 統一ポリシーにより全 HUD で共通フォントを使う。
     def fontName(): String = "ui"
 
     /// 描画レイヤー。フロア表示 (FloorLabel) と同じく前面寄り、ログ (layer=1) より前。
@@ -61,7 +61,9 @@ mod ControlHintScene {
     def bandAlpha(): Float32 = 0.5f32
     def textColor(): Color = UITheme.white()
 
-    /// CanvasLayer の横オフセット。`homeX` で表示、`offHiddenX` で画面外へ隠す。
+    /// CanvasLayer の横オフセット。CanvasLayer のオフセットは子ノードの絶対座標ではなく
+    /// レイヤー全体をシフトするため、設計解像度 170px を大きく超える負値にすることで
+    /// 帯と文字を確実に画面外へ追い出せる。-170 では端にかかる恐れがあるため余裕を持たせる。
     def homeX(): Float64 = 0.0
     def offHiddenX(): Float64 = -300.0
 
@@ -151,7 +153,8 @@ mod ControlHintScene {
                 {dpad = "", decide = decide}
             // 杖の発射方向を十字で選ぶ。
             case TurnPhase.Phase.StaffAim         => {dpad = "十字ボタン: ほうこう", decide = ""}
-            // 戦闘予報。決定で攻撃実行。
+            // 戦闘予報。予報が出た時点で攻撃相手は確定しており、決定の結果は常に「こうげき」で
+            // あるため zTransition を見ず固定にする。
             case TurnPhase.Phase.AttackForecast   => {dpad = "",       decide = "こうげき"}
             // ローグ自由移動。決定でメニュー (歩くのが十字なのは自明なので案内しない)。
             case TurnPhase.Phase.RogueMove        => {dpad = "",     decide = "メニュー"}
@@ -163,8 +166,9 @@ mod ControlHintScene {
 
     /// 文言レコードを画面に出す 1 行に整える。空文字のボタンは省き、残りを「／」で繋ぐ。
     /// すべて空なら空文字 (= 帯を隠す)。
-    /// `dpad` は十字キーの案内で、ボタン名込みの整形済み文字列をそのまま使う
-    /// (例 "十字ボタン: ほうこう" / "←・→: 攻撃対象の変更")。文脈で左右だけ等が変わるため。
+    /// `dpad` は十字キーの案内で、ボタン名込みの整形済み文字列をそのまま使う。
+    /// フェーズによって "十字ボタン: ほうこう"（全方向）や "←・→: 攻撃対象の変更"（左右のみ）
+    /// のように書式が変わるため、呼び出し側で整形済みにして渡す設計にしている。
     /// `decide` は行き先だけを持ち、ここで "決定ボタン: ◯◯" に整える。
     pub def renderLine(hint: {dpad = String, decide = String}): String =
         (hint#dpad
@@ -179,9 +183,9 @@ mod ControlHintScene {
 
     // ─── ロジック (毎フレーム・副作用あり) ──────────────────────
 
-    /// Game.flix の `process` redef から `NodeTag.ControlHint` ノードに dispatch される。
-    /// 現フレームの文言を計算し、前フレームと変わったときだけテキストと表示位置を書き換える
-    /// (毎フレームの無駄な再構築を避ける)。文言が空なら帯ごと画面外へ隠す。
+    /// Game.flix の physicsProcess ループから NodeTag.ControlHint を持つノードに対して
+    /// 毎フレーム呼ばれる。現フレームの文言を計算し、前フレームと変わったときだけテキストと
+    /// 表示位置を書き換える (毎フレームの無駄な再構築を避ける)。文言が空なら帯ごと画面外へ隠す。
     pub def process(_delta: Duration.Duration,
                      node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):

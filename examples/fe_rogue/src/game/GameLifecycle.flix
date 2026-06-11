@@ -4,10 +4,9 @@
 ///   1. `Game.start` 初回起動: catalog → `buildAndRecord` → BGM / ログ → gameLoop
 ///   2. `CustomEffects.GameOverRequest` handler: `resetForGameOver` → 新 scene を継続
 ///
-/// 重複を避けるため、この 2 経路が共有する部分を以下の関数に集約する:
-///   - `buildAndRecord(catalog)` — シーン構築 + 初期 spawn の snapshot 保存 (起動 / リビルド両方)
-///   - `resetTurnState()`        — ゲームオーバー時に巻き戻す 3 effect (Queue / Phase / Selection)
-///   - `resetForGameOver(catalog)` — handler 用の 1 行エントリ (両方を結合)
+/// この 2 経路が共有するロジックを集約することで、snapshot 記録漏れや state 巻き戻し漏れを
+/// 防ぐ。外向き API として `buildCurrentFloor` / `resetForGameOver` / `advanceFloor` を使い、
+/// `buildPlayingScene` を直接呼ぶと snapshot が記録されない点に注意。
 ///
 /// 各 Scene の `add` は **順序が意味を持つ**:
 ///   - MapScene が先 (他 Scene が `worldPath()` / `getMapLayer()` を参照する)
@@ -43,7 +42,7 @@ mod GameLifecycle {
                 SelectedPlayer.State, PartySelection.State} =
         Scene.empty()
             |> MapScene.add(floor)
-            |> FogScene.add             // 各 module の薄暗いモヤ矩形 + 常駐 FogDriver。placements 確定後
+            |> FogScene.add             // 各 module の薄暗いモヤ矩形 + 常駐 FogDriver
             |> DamagePopupScene.add     // World 配下に空の Marker2D 親を 1 つ生やす
             |> PlayerScene.add(catalogs#players, catalogs#staves, catalogs#consumables)
             |> EnemyScene.add(catalogs#enemies, catalogs#weapons, floor)
@@ -87,7 +86,7 @@ mod GameLifecycle {
             players = PlayerScene.snapshotSpawns(scene)
         });
         // AudioStreamPlayer ノード (BGM 等) の volume / loop / autoplay を OpenAL に反映する。
-        // 初回起動時と GameOver 後のリビルド時の両方でこの経路を通る
+        // scene を組み立てただけでは Audio ノードが有効にならないため、構築後に必ず呼ぶ。
         SceneLoader.applyAudioAttach(scene);
         scene
 
@@ -122,7 +121,6 @@ mod GameLifecycle {
 
     /// `CustomEffects.GameOverRequest` handler の本体。
     /// フロアを 1F に戻し、ターン進行系を初期化してから scene をリビルドして返す。
-    /// handler 側は `k(GameLifecycle.resetForGameOver(catalog, staffCatalog, floors))` の 1 行で済む。
     pub def resetForGameOver(catalogs: Catalogs): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
@@ -130,7 +128,8 @@ mod GameLifecycle {
                 InitialSpawns.State, FloorProgress.State, PartySelection.State} =
         resetTurnState();
         FloorProgress.State.put(FloorCatalog.firstFloorId(catalogs#floors));
-        // リスタートは新しい run 扱い: メンバーを再抽選する（次の build で抽選される）
+        // リスタートは新しい run 扱い: 前回の party 構成を引き継がず再抽選する。
+        // PartySelection をクリアすると次の buildCurrentFloor 時に抽選が走る。
         PartySelection.State.clear();
         buildCurrentFloor(catalogs)
 
@@ -152,14 +151,14 @@ mod GameLifecycle {
                 GameLogger.playerLog("${nextFloor#label} に進む");
                 resetTurnQueues();
                 let built = buildAndRecord(catalogs, nextFloor);
-                // 構築直後の party に前フロアの HP / 武器 / 持ち物を反映（たいきはリセット済み）
+                // 構築直後の party に前フロアの HP / 武器 / 持ち物を反映（待機状態はリセット済み）
                 PlayerScene.reconcileWithCarry(carry, built)
             case None =>
                 // 最終フロアクリア → クリアログ → 1F へループ（フレッシュな party で再開）
                 GameLogger.playerLog("ゲームクリア！ 1F からもう一度");
                 resetTurnQueues();
                 FloorProgress.State.put(FloorCatalog.firstFloorId(catalogs#floors));
-                // 周回は新しい run 扱い: メンバーを再抽選する
+                // 周回も新しい run 扱い（リスタートと同じ理由: party 構成を再抽選）
                 PartySelection.State.clear();
                 buildCurrentFloor(catalogs)
         }

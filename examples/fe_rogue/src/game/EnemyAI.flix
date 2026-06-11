@@ -50,10 +50,6 @@ mod EnemyAI {
         case Near
     }
 
-    // ════════════════════════════════════════════════════════
-    // 公開: 1 体ぶんの decision
-    // ════════════════════════════════════════════════════════
-
     /// 敵 1 体の sense + ターゲット選択 + 行動を決定する。
     /// `self` は自分の盤上ビュー、`alerted` は現在の起動フラグ、`enc` は盤面 + 盤上ユニット。
     /// 返り値の `{alerted}` は更新後の起動フラグ（呼び出し側が Data に反映する）。
@@ -81,7 +77,7 @@ mod EnemyAI {
             (action, {alerted = alertedNow})
 
     /// 今ターン攻撃できる（武器射程 min..max 内の）相手だけを残す。武器なしは空。
-    /// 射程のみで判定する（生存判定は呼び出し側の文脈に委ねる従来仕様を保つ）。
+    /// 射程判定と生存判定を分離することで、フィルタ条件を独立してテスト・再利用できる。
     def attackableTargets(self: UnitView, targets: List[UnitView]): List[UnitView] =
         match self#weaponRange {
             case None    => Nil
@@ -95,8 +91,8 @@ mod EnemyAI {
         let players = Board.allPlayerCells(board);
         if (List.isEmpty(players)) EnemyAction.Wait(self#id)
         else {
-            // 壁のみ通行可（ユニット透過）の素直な距離フィールド。カイティング判定と
-            // 「経路が塞がれたときの寄せ」に使う（ターン中プレイヤー不動なので安価で一貫）。
+            // プレイヤーはターン中不動なので 1 回計算を共有できる。カイティング判定と
+            // 「経路が塞がれたときの寄せ」の両方に使う。
             let openField = Board.distanceField(c -> Board.isWalkable(board, c),
                                                  players, floodSteps());
             match self#weaponRange {
@@ -122,9 +118,9 @@ mod EnemyAI {
             c -> Board.isWalkable(board, c)
                   and ((c#x == pos#x and c#y == pos#y) or not Board.isEnemyAt(c, board)),
             players, floodSteps());
+        // okStep は「空きマスか」だけ見る。blockedField は他敵を障害物として計算した経路なので、
+        // ここでは二重にユニット位置を見る必要がなく空き判定だけで足りる。
         let okStep = c -> not Board.isOccupied(c, board);
-        // 経路フィールド優先・壁のみフィールドを fallback として 1 歩を求める。
-        // どちらも降りられなければ Wait。
         let onBlocked = Board.stepDownhill(blockedField, pos, okStep);
         let step = if (Option.isEmpty(onBlocked))
                        Board.stepDownhill(openField, pos, okStep)
@@ -136,9 +132,7 @@ mod EnemyAI {
     /// 距離フィールドのフラッド上限（マップ全域を覆えるよう十分大きく取る）。
     def floodSteps(): Int32 = 4096
 
-    // ════════════════════════════════════════════════════════
-    // ターゲット選択（優先度つき評価軸の辞書式比較）
-    // ════════════════════════════════════════════════════════
+    // ターゲット選択: Criterion を enum でデータ化することで、優先順位変更が priorities() 1 箇所で完結する。
 
     /// 賢さの定義＝この並び（先頭が最優先）。性質追加はここに 1 行足すだけ。
     pub def priorities(): List[Criterion] =
@@ -187,10 +181,6 @@ mod EnemyAI {
         case Some(r) => r#max
     }
 
-    // ════════════════════════════════════════════════════════
-    // 移動（接近・後退）
-    // ════════════════════════════════════════════════════════
-
     /// 最小射程より近づかれた弓系の敵が、隣接 1 マスへ後退して間合いを取り直す（カイティング）。
     /// 4 近傍の「床 + 空きマス」から、距離フィールド値が最も大きい（プレイヤーから経路上で
     /// 最も遠い）マスへ退く。間合いを広げられるマスが無い（壁際・包囲）なら Wait。
@@ -212,9 +202,7 @@ mod EnemyAI {
             case None    => EnemyAction.Wait(self#id)
         }
 
-    // ════════════════════════════════════════════════════════
-    // 検知ロジック
-    // ════════════════════════════════════════════════════════
+    // 検知: 「同じ部屋」と「移動到達範囲内」の2条件で dormant → alerted に遷移する。
 
     /// 敵が索敵範囲（自分の移動到達範囲 = 赤マス）内にプレイヤーを捉えているか。
     def anyPlayerWithinReach(board: Board, enemyPos: {x = Int32, y = Int32},
@@ -241,10 +229,7 @@ mod EnemyAI {
                     })
         }
 
-    // ════════════════════════════════════════════════════════
-    // ヘルパー
-    // ════════════════════════════════════════════════════════
-
+    /// 斜め隣接を含まない 4 近傍判定（上下左右のみ）。
     pub def isAdjacent(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Bool =
         let dx = Int32.abs(a#x - b#x);
         let dy = Int32.abs(a#y - b#y);

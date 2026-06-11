@@ -30,13 +30,10 @@ mod PlayerScene {
     // (A) 型定義
     // ────────────────────────────────────────────────────────
 
-    // 駒ドメイン型（Data / Spawn / PlayerData.ItemKind）は game/PlayerData.flix の `mod PlayerData` へ移設した。
-    // ここでは Data / Spawn を再export（既存参照 `PlayerScene.Data` 温存）。PlayerData.ItemKind は enum のため
-    // 再export できず `PlayerData.ItemKind` に統一済み。
+    // Data / Spawn は PlayerData の型エイリアス。既存の呼び出し元は PlayerScene.Data / PlayerScene.Spawn
+    // のまま参照できる（PlayerData.ItemKind は enum のため型エイリアスで再 export できない点に注意）。
     pub type alias Data = PlayerData.Data
     pub type alias Spawn = PlayerData.Spawn
-
-    // PlayerData.equippedWeapon（装備=weapons先頭の純関数）は game/PlayerData へ移設（参照は PlayerData.equippedWeapon）。
 
     /// この味方の戦闘ビュー（faction 非依存）。装備武器は `weapons` の先頭。
     /// `Combat.estimate` / `Encounter` の join で使う（ダメージ式は `Combat` に集約）。
@@ -71,9 +68,6 @@ mod PlayerScene {
          hp = data#hp, moveTiles = data#moveTiles,
          weaponRange = PlayerData.equippedWeapon(data#weapons) |> Option.map(w -> w#range),
          combat = combatView(data), isDying = false, hidden = data#hidden}
-
-    // PlayerData.PartyQuery effect は game/PlayerData へ移設した（参照は PlayerData.PartyQuery）。
-    // Spawn 型は game/PlayerData へ移設・上部で再export 済み。
 
     // ────────────────────────────────────────────────────────
     // (B) 定数
@@ -288,8 +282,7 @@ mod PlayerScene {
 
     /// プレイヤー 1 体ぶんの Marker2D + 子 Sprite2D を scene に追加する。
     /// ステータス・テクスチャ・フレームは `sp#resource`（UnitResource）から取る。
-    /// pub: `PlayerScene.add` の party 追加ループから呼ばれる本体内部ロジック。
-    /// テストでも catalog からの Spawn 構築 → addOnePlayer の本体経路を流用する。
+    /// pub: テストから catalog 経由の Spawn 構築 → 配置経路を直接検証するため公開する。
     pub def addOnePlayer(sp: Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
@@ -478,8 +471,7 @@ mod PlayerScene {
     /// カーソルが乗っている敵に届く先頭の武器を装備する (届く武器が無ければ no-op)。
     /// 進入直後の「装備した扱い」初期化用。`enterAttackPhase` からのみ呼ぶ。
     /// 意図的な EnemyScene 直接 read: `RosterQuery` handler はフレーム冒頭の snapshot
-    /// (sceneRef) を読むため、mid-frame で更新済みの `scene` を見るにはモジュール直読みが必要
-    /// (TestCursorScene の stale PlayerData.PartyQuery 回帰テスト参照)。
+    /// (sceneRef) を読むため、mid-frame で更新済みの `scene` を見るにはモジュール直読みが必要。
     def equipReachingWeaponForCursor(scene: Scene[NodeTag]):
             Scene[NodeTag] \ SelectedPlayer.State =
         match SelectedPlayer.State.get()#id {
@@ -509,10 +501,6 @@ mod PlayerScene {
     /// （味方の反撃モーション中はキューを進めない）。
     pub def anyAttacking(scene: Scene[NodeTag]): Bool =
         List.exists(d -> Option.nonEmpty(d#attackTargetId), getAll(scene))
-
-    // 手動移動の打ち手ロジック（physicsProcess / lordRoamProcess / stepProcess /
-    // readHeldDirection）は **駒(PlayerScene)から打ち手層 PlayerMovementScene へ移設**した。
-    // 駒は Board を読まず、moveTo / moveToById（座標適用＋見た目）だけを公開する。
 
     // ────────────────────────────────────────────────────────
     // (E) 状態クエリ・更新
@@ -876,18 +864,21 @@ mod PlayerScene {
     // (G) 個別 getter（呼び出し側の便宜）
     // ────────────────────────────────────────────────────────
 
+    /// 指定 id のプレイヤーの現在グリッド座標を返す。未登録なら panic。
     pub def getGridPos(id: Int32, scene: Scene[NodeTag]): {x = Int32, y = Int32} =
         match get(id, scene) {
             case Some(d) => d#gridPos
             case None    => bug!("PlayerScene: player ${id} not found")
         }
 
+    /// 指定 id のプレイヤーの移動力（マス数）を返す。未登録なら panic。
     pub def getMoveTiles(id: Int32, scene: Scene[NodeTag]): Int32 =
         match get(id, scene) {
             case Some(d) => d#moveTiles
             case None    => bug!("PlayerScene: player ${id} not found")
         }
 
+    /// 指定 id のプレイヤーの現在 HP を返す。未登録なら panic。
     pub def getHp(id: Int32, scene: Scene[NodeTag]): Int32 =
         match get(id, scene) {
             case Some(d) => d#hp
@@ -1069,20 +1060,21 @@ mod PlayerScene {
             |> Option.map(k -> removeInventoryItem(playerId, k, scene))
             |> Option.getWithDefault(scene)
 
-    /// 在庫末尾に 1 個積む per-type の単一 writer。「末尾 = 装備中の後ろ」という
-    /// 追加ルールの真理点をここに集約し、`addInventoryItem`（ひろう undo / 取引）と
-    /// `ActionMenuScene.addPickedItem`（ひろう）の両方がこれを呼ぶ。kind の再 match を
-    /// 各呼び出し側に持たせないことで、追加ルールの変更を 1 箇所で完結させる。
+    /// 武器インベントリの末尾に 1 個追加する。末尾追加により weapons[0] が常に装備中を保つ。
+    /// 「ひろう」「こうかん」「キャンセル undo」など複数の追加経路がここに集約されるため、
+    /// 追加ルール（末尾 = 装備中の後ろ）の変更は 1 箇所で完結する。
     pub def addWeapon(playerId: Int32, weapon: UnitCatalog.WeaponResource,
                        scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPlayer(playerId,
             d -> {weapons = List.append(d#weapons, weapon :: Nil) | d}, scene)
 
+    /// 杖インベントリの末尾に 1 個追加する。追加ルールは `addWeapon` と同じ（末尾追加）。
     pub def addStaff(playerId: Int32, staff: Staff.StaffResource,
                       scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPlayer(playerId,
             d -> {staves = List.append(d#staves, staff :: Nil) | d}, scene)
 
+    /// 消費アイテムインベントリの末尾に 1 個追加する。追加ルールは `addWeapon` と同じ（末尾追加）。
     pub def addConsumable(playerId: Int32, item: Consumable.ConsumableResource,
                             scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPlayer(playerId,

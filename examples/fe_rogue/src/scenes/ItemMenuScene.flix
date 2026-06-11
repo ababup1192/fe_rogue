@@ -81,8 +81,7 @@ mod ItemMenuScene {
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
-    /// scene に ItemMenu ノードツリーを追加する。
-    /// `loadSceneWithFont` は ItemList を含むので FontAtlas 必須。
+    /// ItemList を含むため FontAtlas が必須であり、`loadSceneWithFont` 経由でロードする。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas, tagParser, scene)
@@ -120,10 +119,6 @@ mod ItemMenuScene {
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から ItemMenu の ItemList
     /// ノードに対して dispatch される (per-node、ItemList は 1 個のみなので 1 フレーム 1 回)。
-    /// 責務:
-    ///   1. Panel + ItemList の visible/focused を毎フレーム phase で再評価
-    ///   2. `ItemSelect` フェーズなら weapons + staves を items + icons に同期
-    ///   3. `ItemActionSelect` フェーズなら選択中アイテムに応じてサブメニュー項目を組む
     pub def refreshItems(_delta: Duration.Duration, node: EngineNode[NodeTag],
                          _path: NodePath,
                          scene: Scene[NodeTag]):
@@ -202,8 +197,7 @@ mod ItemMenuScene {
     /// 選択中プレイヤーの weapons + staves + consumables を ItemList に並べる（ItemSelect 中）。
     /// 順序は「武器（先頭が装備中）→ 杖 → 消費アイテム」。ロード職など 8 個を超える持ち物は
     /// 現在ページぶん（最大 8 件）だけを表示し、`pageLabel` に "現在/総数" を出す。
-    // 非driver の在庫 read は effect 経由（PartyQuery）に寄せる薄ラッパ。op を増やさず
-    // getAll/get の2基盤 op だけで読み、render/refresh 経路の getWeapons(id,scene) 直タイプを置換する。
+    // 非driver の在庫 read は effect 経由（PartyQuery）に寄せる薄ラッパ。
     // ※ mutator(applyEquip/applyDrop/applyUse)内部の「同フレーム write 直後 read」は scene 引数の
     //   最新値を読む必要があるため、これらは使わず scene-arg のまま据え置く（stale snapshot 回避）。
     def weaponsOf(id: Int32): List[UnitCatalog.WeaponResource] \ PlayerData.PartyQuery =
@@ -566,7 +560,6 @@ mod ItemMenuScene {
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
         cleared
 
-    /// 捨てる処理の共通末尾。ログ + 巻き戻し用 Dropped ドラフト + 削除後 scene を返す。
     /// `droppedScene` は呼び出し側で `dropXxx` 済みの scene（純粋変換）。
     def dropResolved(playerId: Int32, kind: PlayerData.ItemKind, name: String,
                       ground: ItemData.GroundItemKind, droppedScene: Scene[NodeTag]):
@@ -581,11 +574,8 @@ mod ItemMenuScene {
                     scene: Scene[NodeTag]):
                    Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
                                      SelectedPlayer.State} =
-        // 捨てる前に実体を取り、巻き戻し用に Dropped(元 idx, 実体) を積んでから削除する。
+        // 削除前に実体を取得してから Dropped ドラフトを積む（誤巻き戻し防止）。
         // 該当アイテムが無ければ no-op。
-        // 各種別とも「実体を取得 → ログ + 巻き戻しドラフト + 削除」の同型処理。
-        // 内側の Option は forM で 1 段下げ、共通末尾を dropResolved に集約する。
-        // 外側 match は getter / GroundItemKind / drop 関数が種別ごとに異なる正当な dispatch。
         let dropped = match kind {
             case PlayerData.ItemKind.Weapon(idx) =>
                 Option.getWithDefault(scene,

@@ -27,10 +27,10 @@ mod ItemPickupPopupScene {
     // ────────────────────────────────────────────────────────
 
     /// 演出段階。
-    ///   Idle    — 非表示
-    ///   FadeIn  — 浮かび上がり中
-    ///   Hold    — はっきり表示して見せている最中
-    ///   FadeOut — 消えていく最中
+    ///   Idle    — フェード終了後に戻る終端状態。ratio=0 で窓も非表示。`show` で FadeIn へ抜け出す。
+    ///   FadeIn  — ratio が 0→1 に上がる過渡状態。完了即 Hold へ。
+    ///   Hold    — ratio=1.0 固定のまま holdDuration だけ待つ（補間は不要なので elapsed だけ加算）。
+    ///   FadeOut — ratio が 1→0 に下がる過渡状態。完了即 Idle へ戻り窓を消す。
     pub enum Stage with Eq, ToString {
         case Idle
         case FadeIn
@@ -216,7 +216,7 @@ mod ItemPickupPopupScene {
                      playSound = playSound}
         }
 
-    /// 経過時間が段階の長さに達したか。
+    /// `>=` なので、ちょうど total に達したフレームも「段階終了」とみなす（境界フレームを次段階に送らない）。
     def isOver(elapsed: Duration.Duration, total: Duration.Duration): Bool =
         Duration.toSeconds(elapsed) >= Duration.toSeconds(total)
 
@@ -252,9 +252,10 @@ mod ItemPickupPopupScene {
             case _ => (node, scene)
         }
 
-    /// 表示の濃さ `ratio` を見た目へ反映する。
+    /// Label2D の glyph は CanvasItem の alpha に従わず常に不透明（モジュール doc L15-17 参照）。
+    /// そのため窓と文字で別戦略を取る:
     ///   窓: 背景/枠の alpha = ratio × ピーク不透明度。ratio が 0 なら窓ごと非表示。
-    ///   文字: しきい値以上で表示し、色を「窓の背景色 → 白」に補間（濃いほど白く＝読める）。
+    ///   文字: しきい値以上で表示し、modulate を「窓の背景色 → 白」に補間（濃いほど白く＝読める）。
     def applyAppearance(ratio: Float64, scene: Scene[NodeTag]): Scene[NodeTag] =
         let windowVisible = ratio > 0.0;
         let bgAlpha = toAlpha(ratio * maxBgAlpha());
@@ -280,13 +281,14 @@ mod ItemPickupPopupScene {
     def toAlpha(value: Float64): Float32 =
         Float64.clampToFloat32(min = 0.0f32, max = 1.0f32, value)
 
-    /// 2 色を `t`（0.0=startColor, 1.0=endColor）で線形補間する。
+    /// alpha チャネルは変更しない（Color 型は r/g/b のみ。RGB のみ補間）。
     def lerpColor(startColor: Color, endColor: Color, t: Float32): Color =
         {r = startColor#r + (endColor#r - startColor#r) * t,
          g = startColor#g + (endColor#g - startColor#g) * t,
          b = startColor#b + (endColor#b - startColor#b) * t}
 
-    /// CanvasLayer に紐づくポップアップの状態を書き戻す。
+    /// `case other => other` により、ItemPickupPopup 以外の NodeTag を持つ CanvasLayer があっても
+    /// 状態を壊さない（将来ノードが増えた際の防御）。
     def setState(data: PopupData, scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(rootPath(), node -> match node {
             case EngineNode.CanvasLayerWithState(layer, NodeTag.ItemPickupPopup(_)) =>

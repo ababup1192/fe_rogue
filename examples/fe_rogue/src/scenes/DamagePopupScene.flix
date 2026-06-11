@@ -22,10 +22,6 @@
 ///   寿命を 700ms 程度にすれば違和感は最小。
 mod DamagePopupScene {
 
-    // ────────────────────────────────────────────────────────
-    // (A) 型定義
-    // ────────────────────────────────────────────────────────
-
     /// 親 Marker2D に紐づくデータ。子 Popup_<seq> の連番採番にだけ使う。
     pub type alias RootData = { nextSeq = Int32 }
 
@@ -39,16 +35,14 @@ mod DamagePopupScene {
         startY    = Float64
     }
 
-    // ────────────────────────────────────────────────────────
-    // (B) 定数
-    // ────────────────────────────────────────────────────────
-
     def rootName(): String = "DamagePopups"
 
-    /// 親 Marker2D の NodePath。`World/DamagePopups` 固定。
+    /// 親 Marker2D の NodePath。`World/DamagePopups` として固定。
     pub def rootPath(): NodePath = MapScene.worldName() :: rootName() :: Nil
 
-    /// fontManifest で登録した name と一致させる（LogScene / BattlePanelScene と同じ "ui"）
+    /// fontManifest で登録した name。フォントアトラスはゲーム全体で共有されるため、
+    /// LogScene / BattlePanelScene など他の UI シーンと同じ "ui" を指定しないと
+    /// 実行時に別アトラスを要求してクラッシュする。
     def fontName(): String = "ui"
 
     /// 1 つのポップアップの寿命（出現 → 消滅まで）
@@ -60,7 +54,8 @@ mod DamagePopupScene {
     /// Label2D の表示フォントサイズ。LDTK タイル 16px に対して読める粒度。
     def fontSize(): Float64 = 8.0
 
-    /// 描画 zIndex。Player Sprite (= 10) より上に出す。
+    /// 描画 zIndex。ゲームオブジェクト（スプライト・マップ）よりも前面に重ね、
+    /// ダメージ数字がユニットや地形に埋もれないようにする。
     def popupZIndex(): Int32 = 100
 
     /// プレイヤー攻撃 → 敵（被弾は敵）に使う色: 白
@@ -68,10 +63,6 @@ mod DamagePopupScene {
 
     /// 敵攻撃 → プレイヤー（被弾は味方）に使う色: 赤寄り
     pub def damageToPlayerColor(): Color = {r = 1.0f32, g = 0.4f32, b = 0.4f32}
-
-    // ────────────────────────────────────────────────────────
-    // (C) 構築
-    // ────────────────────────────────────────────────────────
 
     /// World 配下に親 Marker2D を 1 つだけ生やす。
     /// `Game.start` の Scene 構築チェーンで MapScene の後に挟む（World が必要）。
@@ -118,10 +109,6 @@ mod DamagePopupScene {
             case _ => scene
         }
 
-    // ────────────────────────────────────────────────────────
-    // (D) 毎フレーム更新
-    // ────────────────────────────────────────────────────────
-
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から、`DamagePopupsRoot` ノードに
     /// 対して dispatch される (root は 1 個のみなので 1 フレーム 1 回)。
     /// 各 Popup_<seq> 子の remaining を dt 分減らし、上方向に補間移動し、寿命満了の子は
@@ -139,7 +126,6 @@ mod DamagePopupScene {
                     if (Duration.isExpired(newRemaining))
                         Scene.removeAt(childPath, acc)
                     else {
-                        // ratio: 0.0（生成直後）→ 1.0（寿命満了）
                         let elapsed = Duration.sub(data#total, newRemaining);
                         let ratio = Duration.ratio(elapsed, data#total);
                         let newY = data#startY - floatDistancePx() * ratio;

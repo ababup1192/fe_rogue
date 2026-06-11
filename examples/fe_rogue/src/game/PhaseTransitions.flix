@@ -42,10 +42,6 @@
 /// この module に全部任せる。これで PlayerScene → 各 overlay Scene の直接依存が消える。
 mod PhaseTransitions {
 
-    // ────────────────────────────────────────────────────────
-    // 共通 overlay clear パターン
-    // ────────────────────────────────────────────────────────
-
     /// 味方系 4 range (Move / MoveAttack / PlayerAttack / TradeRange) を全消し。
     /// PlayerCursor / PlayerCursorAt / EnemyTurn が共通で使う「味方の範囲表示を全部閉じる」操作。
     def clearAllPlayerRanges(scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -62,19 +58,14 @@ mod PhaseTransitions {
             |> MoveRangeScene.clear
             |> MoveAttackRangeScene.clear
 
-    // ────────────────────────────────────────────────────────
-    // フェーズ別 enter 関数
-    // ────────────────────────────────────────────────────────
-
     /// PlayerCursor フェーズに入る。
     /// `cancelSelection` で「移動キャンセルで戻す」分岐、`AutoMoveScene.exitToCursor` の
     /// AutoMove 終了などから呼ぶ。
-    /// 動作 (上の表 1 行目): 味方 3 range 全消し → カーソル表示 + 選択中味方位置にスナップ。
     ///
-    /// `commitWaitedAndAdvance` のように **フレーム内で `setWaited` を行った直後** に呼ぶ
-    /// 経路では `enterPlayerCursorAt` の方を使う。snapToPlayer 内のフォールバックは
-    /// `PartyQuery` (= `sceneRef` = フレーム冒頭の snapshot) を読むので、mid-frame 更新が
-    /// 反映されず「いま waited にした駒」をアクティブ扱いしてしまうため。
+    /// **フレーム内で `setWaited` した直後** に呼ぶ経路では `enterPlayerCursorAt` の方を使う。
+    /// `snapToPlayer` 内のフォールバックは `PartyQuery` (= `sceneRef` = フレーム冒頭の snapshot)
+    /// を読むため、同フレーム内の waited 更新が反映されず「いま waited にした駒」を
+    /// まだアクティブと誤判定してしまう。
     pub def enterPlayerCursor(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
@@ -110,10 +101,10 @@ mod PhaseTransitions {
             |> CursorScene.setVisible(false)
 
     /// PlayerMoving フェーズに入る (味方マスで Z 押下時)。
-    /// 動作 (表 3 行目): EnemyRange 消去 → Move/MoveAttack を選択中味方起点で refresh →
-    ///                    カーソルを隠す (移動中はカーソル不要)。
-    /// `SelectedPlayer.State` には選択駒の id を入れた後でこの関数を呼ぶ前提
-    /// (MoveRangeScene.refresh が選択 id を見るため)。
+    /// EnemyRange を先に消してから Move/MoveAttack を refresh する順序を守る必要がある。
+    /// `MoveRangeScene.refresh` は `SelectedPlayer.State` から選択駒 id を読むため、
+    /// この関数を呼ぶ **前** に `SelectedPlayer.State` に id をセットしておくこと。
+    /// 逆順 (先に refresh) にすると敵の危険範囲と移動範囲が重複表示される。
     pub def enterPlayerMoving(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
@@ -161,8 +152,8 @@ mod PhaseTransitions {
 
     /// RogueAlert フェーズに入る (敵に検知された瞬間の発見演出)。
     /// overlay / cursor は RogueMove の状態(全消し・カーソル非表示)を温存し、フェーズだけ進める。
-    /// 「！」表示・カメラ寄せ・find SE・hold は呼び出し側 (`AutoMoveScene.triggerAlert`) と
-    /// `CameraScene` が担当する。
+    /// 「！」表示・カメラ寄せ・find SE・入力ロック(hold = 演出中の操作無効) は
+    /// 呼び出し側 (`AutoMoveScene.triggerAlert`) と `CameraScene` が担当する。
     pub def enterRogueAlert(scene: Scene[NodeTag]):
             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.RogueAlert);
@@ -253,7 +244,8 @@ mod PhaseTransitions {
     /// TradeInventory フェーズに入る (集合後の RogueMove「交換」確定時の N 人交換)。
     /// `members` は集合した生存メンバーの player id (ロード + 退避中の味方)。
     /// `origin = FromRogue` なので、交換を抜けると RogueMove に戻る。
-    /// members が 2 人未満なら交換相手が居ないので何もしない (防御)。
+    /// `members` の構築は RogueMove 側で行うが、集合対象が 1 人になる端ケースを
+    /// その場で排除しきれないため、ここで 2 人未満ガードを入れる (防御)。
     pub def enterGatherTrade(members: List[Int32], scene: Scene[NodeTag]):
             Scene[NodeTag] \ TurnPhase.State =
         if (List.length(members) < 2) scene

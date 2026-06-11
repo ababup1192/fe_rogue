@@ -42,8 +42,8 @@ mod CounterAttackRules {
                 }
         }
 
-    /// 反撃する敵 id を返す。Counter ケースだけ Some、それ以外は None。
-    /// 呼び出し側の利便のためのアダプタ (`decide` を使うのが推奨)。
+    /// `decide` の Counter ケースだけを Option に射影する薄いアダプタ。
+    /// 反撃が起きない場合も呼び元が分岐を書かずに済む。
     pub def attackerForPlayer(player: PlayerData.Data,
                                target: Option[EnemyData.Data]): Option[Int32] =
         match decide(player, target) {
@@ -51,7 +51,7 @@ mod CounterAttackRules {
             case _                    => None
         }
 
-    /// `decide` の鏡像。敵の攻撃完了後に「味方が反撃するか」を決める。
+    /// `decide` の鏡像（主体と対象を敵→プレイヤー視点へ反転）。敵の攻撃完了後に「味方が反撃するか」を決める。
     /// PlayerData.Data は isDying を持たない (HP <= 0 で即 scene から除去される) ため、
     /// hp <= 0 を kill 判定として扱う。武器は先頭 (weapons.head) を反撃武器として使う想定。
     ///   target = None        → Commit
@@ -74,8 +74,8 @@ mod CounterAttackRules {
                 }
         }
 
-    /// 攻撃で倒した敵 id を返す。target が isDying なら Some(id)、それ以外は None。
-    /// 「いま完了した attack_lunge が敵を倒したか」判定に使う。
+    /// attack_lunge 完了直後に呼ぶことで、KillOutcome 判定と敵 id 取得を一度に行える。
+    /// decide より先に呼んで Kill か否かを確認し、kill 演出の対象 id を得るのが想定用途。
     pub def killedTargetEnemyId(target: Option[EnemyData.Data]): Option[Int32] =
         match target {
             case Some(e) => if (e#isDying) Some(e#id) else None

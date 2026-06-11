@@ -31,13 +31,12 @@ mod AnimEvent {
         case DeathBlink
         /// `attack_lunge` 完了。dispatch 側が attackTarget クリア + commitWaitedAndAdvance を行う。
         case AttackLunge
-        /// `snag` 完了。current 設計では dispatch 側で何もしない（CursorScene が
-        /// `AnimationPlayer.Scheduler.isPlaying(cursorPath())` を直接見るため）。
+        /// `snag` 完了。CursorScene が `AnimationPlayer.Scheduler.isPlaying(cursorPath())` を
+        /// 直接監視するため dispatch 不要。
         case Snag
     }
 
     /// `Animation#name` / `MethodKey#name` に詰める文字列表現。
-    /// 書き手側はこの関数経由で Animation を組み立てることで typo を防ぐ。
     pub def tagToString(t: Tag): String = match t {
         case Tag.AttackHit   => "attack:hit"
         case Tag.DeathBlink  => "death_blink"
@@ -45,8 +44,8 @@ mod AnimEvent {
         case Tag.Snag        => "snag"
     }
 
-    /// dispatch 側で `event#name` を Tag に戻す。未知文字列は `None`（防御的に no-op）。
-    /// 既存テスト用の保険でもある（外部から流入した文字列を dispatch に通すケースで安全）。
+    /// dispatch 側で `event#name` を Tag に戻す。外部から流入した未知文字列は `None` として
+    /// dispatch が no-op になることを保証する（防御的契約）。
     pub def parseTag(s: String): Option[Tag] = match s {
         case "attack:hit"   => Some(Tag.AttackHit)
         case "death_blink"  => Some(Tag.DeathBlink)

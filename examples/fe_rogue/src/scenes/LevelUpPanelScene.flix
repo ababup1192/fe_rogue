@@ -33,7 +33,7 @@ mod LevelUpPanelScene {
     /// パネル表示中の演出の進行状態。Panel ノードのタグに載せてフレーム間で持ち越す。
     ///   - `started`  : bonus.ogg を鳴らして演出を開始済みか（LevelUpView 突入の最初のフレームで true）。
     ///   - `revealed` : 右側「-> 新値 +1」を出し終えた「上昇ステータス」の数。
-    ///   - `timer`    : 次のアクション（最初の reveal / 次の reveal）までの残り時間 = 直前に鳴らした音の長さ。
+    ///   - `timer`    : 次のアクション（最初の reveal / 次の reveal）までの残り待ち時間。フレームごとに delta だけ減算し 0 になったら次の演出へ進む。
     pub type alias PanelState = {
         started  = Bool,
         revealed = Int32,
@@ -81,7 +81,6 @@ mod LevelUpPanelScene {
     def bodyArrowName(): String  = "bodyArrow"
     def bodyAfterName(): String  = "bodyAfter"
     def bodyPlusName(): String   = "bodyPlus"
-    // 右列（2 列レイアウト。後半 4 ステータスをここに割る）。
     def bodyLabels2Name(): String = "bodyLabels2"
     def bodyBefore2Name(): String = "bodyBefore2"
     def bodyArrow2Name(): String  = "bodyArrow2"
@@ -103,7 +102,9 @@ mod LevelUpPanelScene {
     def bodyPlus2Path(): NodePath   = rootName() :: bodyPlus2Name()   :: Nil
     def footerPath(): NodePath     = rootName() :: footerName()     :: Nil
 
-    /// scene.json 内の "tag" 文字列 → NodeTag への変換。
+    /// SceneLoader から呼ばれる tag 文字列 → NodeTag の変換。
+    /// 既知の値（"NoTag" / "LevelUpPanel"）以外は `JsonError` を返す（SceneLoader がロードを中断する）。
+    /// "LevelUpPanel" は演出開始前の `initialState` を付与して返す。
     def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None                   => Ok(NodeTag.NoTag)
@@ -122,8 +123,10 @@ mod LevelUpPanelScene {
     // (C) 毎フレーム処理（演出ステートマシン）
     // ────────────────────────────────────────────────────────
 
-    /// Game.flix の `Node[NodeTag] instance` の `process` redef から LevelUpPanel の Panel
-    /// ノードに対して dispatch される（panel は 1 個なので 1 フレーム 1 回）。
+    /// LevelUpPanel ノード（Panel）に対して毎フレーム dispatch される。
+    /// Scene は immutable に扱う設計のため演出ステートを Scene 外に持てない。
+    /// Panel ノードのタグ（`NodeTag.LevelUpPanel(PanelState)`）を状態置き場にすることで、
+    /// フレーム間の演出進行をイミュータブルな Scene 更新として表現している。
     /// LevelUpView 中は演出を 1 フレームぶん進め、可視性と本文を再評価する。
     pub def process(delta: Duration.Duration,
                      node: EngineNode[NodeTag],
@@ -264,7 +267,7 @@ mod LevelUpPanelScene {
             |> List.filterMap(d -> d#pendingLevelUp)
             |> List.head
 
-    /// パネルが何行ぶん出し終えれば「全部表示済み」か（= ステータス行数）。
+    /// `confirm` で「全行出し切ったか」を判定するための閾値として使う。
     def totalRows(result: LevelSystem.Result): Int32 =
         List.length(result#changes)
 
@@ -353,7 +356,7 @@ mod LevelUpPanelScene {
             |> List.mapWithIndex(i -> change -> if (offset + i < revealed and change#gained) "+1" else "")
             |> joinLines
 
-    /// 文字列リストを改行で連結する（末尾改行なし）。
+    /// 末尾改行なしで各行を結合。Label2D.setText に渡す前提で末尾 \n を付けない。
     def joinLines(lines: List[String]): String =
         match lines {
             case Nil          => ""

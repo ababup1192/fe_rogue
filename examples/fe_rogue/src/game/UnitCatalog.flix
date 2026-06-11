@@ -16,8 +16,7 @@ mod UnitCatalog {
     // (A) 型定義
     // ────────────────────────────────────────────────────────
 
-    /// カタログ全体。`Saveable` を持たせるため enum でラップする（companion 宣言）。
-    /// `units` は味方 `PlayerResource` の container、`weapons` は別 catalog、`pools` は id 配列の参照。
+    /// カタログ全体。trait instance（`Saveable`）を companion 宣言で持たせるため enum でラップする。
     pub enum UnitCatalog {
         case UnitCatalog({
             units   = CatalogContainer[PlayerResource],
@@ -27,7 +26,6 @@ mod UnitCatalog {
     }
 
     /// 味方ユニット 1 種別ぶんのデータ = 共有 14 フィールド + 成長率 `growthRates`。
-    /// （`UnitBase.UnitBase` の各フィールドをここに並べ、`growthRates` を加えた形。）
     pub type alias PlayerResource = {
         moveTiles        = Int32,
         level            = Int32,
@@ -51,7 +49,8 @@ mod UnitCatalog {
         proficientWeaponTypes = List[WeaponCatalog.WeaponType]
     }
 
-    /// 後方互換 alias。既存コードの `UnitCatalog.UnitResource` 参照はそのまま味方リソースを指す。
+    /// WeaponCatalog 分離前の呼び出し元を壊さないための後方互換 alias。
+    /// 新規コードでは `PlayerResource` を直接使うこと。
     pub type alias UnitResource = PlayerResource
 
     /// レベルアップ時の各ステータスの成長率 (%)。0..100 を想定。`moveTiles` は成長対象外。
@@ -71,16 +70,14 @@ mod UnitCatalog {
         {hp = 0, attack = 0, defense = 0, magicAttack = 0, magicDefense = 0,
          speed = 0, skill = 0, luck = 0}
 
-    /// 武器の属性。`WeaponCatalog.WeaponType` の alias (後方互換)。
+    /// 以下 WeaponType / WeaponResource / WeaponRange / isPhysical は WeaponCatalog 分離前の
+    /// 呼び出し元を壊さないための後方互換 shim。新規コードは WeaponCatalog を直接参照すること。
     pub type alias WeaponType = WeaponCatalog.WeaponType
 
-    /// 武器 1 種別ぶんのデータ。`WeaponCatalog.WeaponResource` の alias (後方互換)。
     pub type alias WeaponResource = WeaponCatalog.WeaponResource
 
-    /// 攻撃可能な距離の範囲。`WeaponCatalog.WeaponRange` の alias (後方互換)。
     pub type alias WeaponRange = WeaponCatalog.WeaponRange
 
-    /// `WeaponType` が物理武器か。`WeaponCatalog.isPhysical` への薄い委譲 (後方互換)。
     pub def isPhysical(weaponType: WeaponType): Bool =
         WeaponCatalog.isPhysical(weaponType)
 
@@ -88,27 +85,23 @@ mod UnitCatalog {
     // (B) 参照
     // ────────────────────────────────────────────────────────
 
-    /// units 部 (id → PlayerResource の Map) を取り出す。
     pub def unitsOf(catalog: UnitCatalog): Map[String, PlayerResource] =
         let UnitCatalog.UnitCatalog(payload) = catalog;
         CatalogContainer.entriesOf(payload#units)
 
-    /// `CatalogContainer[PlayerResource]` そのものを取り出す (IDE Resources タブ等で利用想定)。
+    /// `CatalogContainer` ごと必要な場合（直接 entries を操作したいとき）に使う。
     pub def unitsContainerOf(catalog: UnitCatalog): CatalogContainer[PlayerResource] =
         let UnitCatalog.UnitCatalog(payload) = catalog;
         payload#units
 
-    /// weapons 部 (id → WeaponResource の Map) を取り出す。
     pub def weaponsOf(catalog: UnitCatalog): Map[String, WeaponResource] =
         let UnitCatalog.UnitCatalog(payload) = catalog;
         WeaponCatalog.weaponsOf(payload#weapons)
 
-    /// `WeaponCatalog.WeaponCatalog` そのものを取り出す。
     pub def weaponCatalogOf(catalog: UnitCatalog): WeaponCatalog.WeaponCatalog =
         let UnitCatalog.UnitCatalog(payload) = catalog;
         payload#weapons
 
-    /// pools 部を取り出す。
     pub def poolsOf(catalog: UnitCatalog): Map[String, List[String]] =
         let UnitCatalog.UnitCatalog(payload) = catalog;
         payload#pools
@@ -197,7 +190,8 @@ mod UnitCatalog {
     pub def proficientWith(resource: PlayerResource, weaponType: WeaponCatalog.WeaponType): Bool =
         List.memberOf(weaponType, resource#proficientWeaponTypes)
 
-    /// Z 戦略の整合性検査用に Flix 型のフィールド名集合を公開する（14 共有 + growthRates + 習熟）。
+    /// スキーマと型定義の整合性検査用（`Resource.checkConsistency` に渡す）。
+    /// 共有 14 フィールド + growthRates + proficientWeaponTypes の全フィールド名集合。
     pub def expectedUnitFields(): Set[String] =
         Set#{"moveTiles", "level", "hp", "attack", "defense", "magicAttack", "magicDefense",
               "speed", "skill", "luck", "sprite", "initialInventory",
@@ -226,9 +220,8 @@ mod UnitCatalogCodec {
     use JsonCodec.{expectObject, expectString, expectInt}
     use UnitCatalog.{UnitCatalog, PlayerResource, GrowthRates}
 
-    // ── エンコード ──
+    // ── エンコード（weapons は含まない。別ファイル管理のため round-trip しない）──
 
-    /// units.json の round-trip 用エンコーダ。weapons は含めない（別ファイル）。
     /// pools を CatalogContainer の meta に投影してから encode する。
     pub def encode(c: UnitCatalog): Json =
         let unitsContainer = UnitCatalog.unitsContainerOf(c);
@@ -261,9 +254,9 @@ mod UnitCatalogCodec {
             "luck"         => JNumber(JsonCodec.intToBd(g#luck))
         })
 
-    // ── デコード ──
+    // ── デコード（weapons は常に空で返す。load 側で別途 WeaponCatalog を差し込む）──
 
-    /// units.json をデコード。weapons は常に空（別ファイル管理）。pools は container の meta から再構築。
+    /// pools は container の meta から再構築する。
     pub def decode(element: Json): Option[UnitCatalog] =
         forM (
             container <- CatalogContainer.decode("units", decodePlayer, element);
@@ -307,7 +300,8 @@ mod UnitCatalogCodec {
               magicAttack = rate("magicAttack"), magicDefense = rate("magicDefense"),
               speed = rate("speed"), skill = rate("skill"), luck = rate("luck")}: GrowthRates))
 
-    /// container の meta から JArray of JString のものを pool として抽出する。
+    /// meta の各キーのうち JArray of JString のみを pool として採用する。
+    /// それ以外の型（JObject 等）はスキップするため、pools 以外の meta キーを汚染しない設計。
     def decodePoolsFromMeta(meta: Map[String, Json]):
             Option[Map[String, List[String]]] =
         let init: Option[Map[String, List[String]]] = Some(Map.empty());

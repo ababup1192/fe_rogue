@@ -12,12 +12,8 @@
 /// （arrow.png は上向きに描かれている前提）。
 mod ArrowCursorScene {
 
-    // ────────────────────────────────────────────────────────
-    // (A) 型定義
-    // ────────────────────────────────────────────────────────
-
     /// 矢印カーソルの状態。
-    /// `anchor` は選択中プレイヤーの位置（隣接 4 マスの中心）。
+    /// `anchor` はプレイヤーのグリッドセル座標（隣接セル算出の起点）。
     /// `direction` は現在の発射方向。
     /// `gridPos` は anchor から direction だけ進めた隣接セル（= 矢印の論理位置）。
     pub type alias Data = {
@@ -25,10 +21,6 @@ mod ArrowCursorScene {
         direction = Staff.Direction,
         gridPos   = {x = Int32, y = Int32}
     }
-
-    // ────────────────────────────────────────────────────────
-    // (B) 定数
-    // ────────────────────────────────────────────────────────
 
     def name(): String = "ArrowCursor"
     pub def arrowPath():  NodePath = name() :: Nil
@@ -49,15 +41,12 @@ mod ArrowCursorScene {
         case Staff.Direction.Left  => -1.5707963267948966
     }
 
-    /// anchor から direction だけ進めた隣接セル。`Staff.toVec2i` と等価だがログ目的で残す。
+    /// anchor から direction だけ進めた隣接セル。
+    /// `Staff.toVec2i` と同等の計算だが、将来デバッグで中間値を確認しやすくするため独立定義。
     def cellOf(anchor: {x = Int32, y = Int32},
                 direction: Staff.Direction): {x = Int32, y = Int32} =
         let offset = Staff.toVec2i(direction);
         {x = anchor#x + offset#x, y = anchor#y + offset#y}
-
-    // ────────────────────────────────────────────────────────
-    // (C) 構築
-    // ────────────────────────────────────────────────────────
 
     /// scene に矢印カーソルを追加する。初期は非表示 (visible は scene.json 側で false)。
     /// `anchor` は (0, 0) で初期化し、`showFor` で正しい位置に動かす。
@@ -72,10 +61,6 @@ mod ArrowCursorScene {
                               SceneLoader.constTagParser(NodeTag.NoTag),
                               scene)
             |> Scene.setState(arrowPath(), NodeTag.ArrowCursor(data))
-
-    // ────────────────────────────────────────────────────────
-    // (D) ロジック
-    // ────────────────────────────────────────────────────────
 
     /// 毎フレーム呼ばれる process（Game.flix の dispatch から）。
     /// フェーズが `StaffAim` のときだけ visible にし、それ以外では hidden。
@@ -119,7 +104,8 @@ mod ArrowCursorScene {
     pub def getDirection(scene: Scene[NodeTag]): Staff.Direction =
         getData(scene)#direction
 
-    /// 矢印の Data を取り出す（無ければデフォルト値で safe-default）。
+    /// 矢印の Data を取り出す。ノードが未ロードの場合にクラッシュしないよう、
+    /// Up 方向・原点を返すフォールバックを持つ。
     def getData(scene: Scene[NodeTag]): Data =
         match Scene.getState(arrowPath(), scene) {
             case Some(NodeTag.ArrowCursor(data)) => data

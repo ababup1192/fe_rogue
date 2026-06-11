@@ -15,8 +15,6 @@
 ///          └─ Items  view children: Name / ItemSprite_<i> / ItemText_<i> ...
 mod UnitInfoPopupScene {
 
-    // ─── 状態 ─────────────────────────────────────────────────
-
     /// 表示モード。Z 押下で flip する。
     pub enum ViewMode with Eq, ToString {
         case Status
@@ -43,12 +41,10 @@ mod UnitInfoPopupScene {
         lastHp    = Option[Int32]
     }
 
-    // ─── 定数 ─────────────────────────────────────────────────
-
     def rootName(): String = "UnitInfoPopup"
     pub def rootPath(): NodePath = rootName() :: Nil
 
-    /// scene.json の Panel.name と一致させる (lowercase で他 window と統一)
+    /// lowercase で他 window と統一
     def panelChildName(): String = "panel"
     def panelPath(): NodePath = rootName() :: panelChildName() :: Nil
 
@@ -89,8 +85,6 @@ mod UnitInfoPopupScene {
     def textColor(): Color = UITheme.white()
     def hpBarFillColor(): Color = {r = 0.5f32, g = 0.9f32, b = 0.2f32}
 
-    // ─── 構築（初回） ─────────────────────────────────────────
-
     /// scene.json で外枠 (CanvasLayer + Panel + initial 非表示) を宣言し、
     /// 動的 children は renderForKind が `panelPath()` 配下に追加・削除する。
     /// CanvasLayer に PanelState を後から差し込む (NodeTag.NoTag → UnitInfoPanel(state))
@@ -103,8 +97,6 @@ mod UnitInfoPopupScene {
                                        SceneLoader.constTagParser(NodeTag.NoTag),
                                        scene)
             |> Scene.setState(rootPath(), NodeTag.UnitInfoPanel(initialState))
-
-    // ─── 公開 API ─────────────────────────────────────────────
 
     /// popup が現在表示中（カーソルがユニットの上に乗っている）か。
     /// 入力ハンドラから Z の意味を切り替える判定に使う。
@@ -133,10 +125,6 @@ mod UnitInfoPopupScene {
             case ViewMode.Items  => ViewMode.Status
         }
 
-    // ─── 毎フレーム更新 ───────────────────────────────────────
-
-    /// Game.flix の `Node[NodeTag] instance` の `process` redef から、`UnitInfoPanel` ノードに
-    /// 対して dispatch される (panel は 1 個のみなので 1 フレーム 1 回)。
     /// カーソル位置のユニットに変化があれば再描画。空マス / cursor フェーズ外なら隠す。
     /// scene 経由で self (rootPath) と子ノードの両方を更新するため、最後に scene から
     /// self の最新ノードを取り直して返す (古い node で打ち消されないように)。
@@ -211,8 +199,6 @@ mod UnitInfoPopupScene {
             case None    => None
         }
 
-    // ─── 内部: state アクセス ─────────────────────────────────
-
     def getState(scene: Scene[NodeTag]): Option[PanelState] =
         match Scene.getState(rootPath(), scene) {
             case Some(NodeTag.UnitInfoPanel(s)) => Some(s)
@@ -238,8 +224,6 @@ mod UnitInfoPopupScene {
             case None    => ViewMode.Status
         }
 
-    // ─── ユニット参照 ─────────────────────────────────────────
-
     /// カーソル位置のユニット種別と id（敵優先）。空マスなら None。
     /// 引数 `scene` から直接読み取る（フレーム末の最新状態を反映するため、
     /// effect 経由の RosterQuery/PartyQuery は使わない）。
@@ -259,8 +243,6 @@ mod UnitInfoPopupScene {
                             Some(("player", d#id))
                         else None)
         }
-
-    // ─── 表示/非表示 ──────────────────────────────────────────
 
     /// Panel 配下の動的 children を全部消す（view 切替時に呼ぶ）。
     def clearContents(scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -323,10 +305,7 @@ mod UnitInfoPopupScene {
             case ViewMode.Status => renderStatusView(res, currentHp, weapons, levelExp, cleared)
             case ViewMode.Items  => renderItemsView(res, weapons, cleared)
         };
-        // パネルを可視化
         Panel.mapAt(panelPath(), CanvasItem.setVisible(true), withContents)
-
-    // ─── Status view 描画 ────────────────────────────────────
 
     def renderStatusView(res: {description = String, hp = Int32, attack = Int32, defense = Int32,
                                speed = Int32, moveTiles = Int32, skill = Int32, luck = Int32,
@@ -337,8 +316,7 @@ mod UnitInfoPopupScene {
                           levelExp: Option[LevelExp],
                           scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
-        // offset を sprite center 位置に加算（scale 倍する必要があるので注意: ここは
-        // popup の表示用なので半分縮小スケールに合わせて offset も半分にする）
+        // offset は spriteScale() 倍したうえで加算する（生 offset をそのまま足すと位置がずれる）
         let off = res#sprite#offset;
         let spritePos: Vec2.Vec2 = {
             x = spriteCenterLocal()#x + off#x * spriteScale()#x,
@@ -414,8 +392,6 @@ mod UnitInfoPopupScene {
         Scene.addChildAt(panelPath(), "EquipText",
             EngineNode.Label2DWithState(label, NodeTag.NoTag), withIcon)
 
-    // ─── Items view 描画 ─────────────────────────────────────
-
     def renderItemsView(_res: {description = String, hp = Int32, attack = Int32, defense = Int32,
                                speed = Int32, moveTiles = Int32, skill = Int32, luck = Int32,
                                magicAttack = Int32, magicDefense = Int32,
@@ -442,13 +418,12 @@ mod UnitInfoPopupScene {
     def addItemRow(i: Int32, w: UnitCatalog.WeaponResource, atlas: FontAtlas,
                     scene: Scene[NodeTag]): Scene[NodeTag] =
         let rowY = itemsListStartY() + Int32.toFloat64(i) * itemsRowHeight();
-        // offset を表示スケールに合わせて加算
+        // offset は itemSpriteScale() 倍したうえで加算する（生 offset をそのまま足すと位置がずれる）
         let off = w#sprite#offset;
         let iconPos: Vec2.Vec2 = {
             x = itemSpriteX() + off#x * itemSpriteScale()#x,
             y = rowY + off#y * itemSpriteScale()#y
         };
-        // sprite icon
         let iconSprite = Sprite2D.make(w#sprite#texture, iconPos, itemSpriteScale())
             |> Sprite2D.setHframes(w#sprite#hframes)
             |> Sprite2D.setVframes(w#sprite#vframes)
@@ -456,7 +431,6 @@ mod UnitInfoPopupScene {
             |> Sprite2D.setCentered(false);
         let withSprite = Scene.addChildAt(panelPath(), "ItemSprite_${i}",
             EngineNode.Sprite2DWithState(iconSprite, NodeTag.NoTag), scene);
-        // 名前 + 残耐久
         let text = "${w#name} ${w#durability}";
         let label = Label2D.make(text, atlas, fontSizeSmall())
             |> Node2D.setPosition({x = itemTextX(), y = rowY})

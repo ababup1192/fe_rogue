@@ -14,19 +14,15 @@
 /// 出終わってから控えを再生する。これにより、敵が一瞬で行動を終える（敵がいない・その場待機）
 /// 短い敵ターンでも「エネミーフェーズ」→「プレイヤーフェーズ」が必ず順番に最後まで見える。
 ///
-/// 文字は alpha を持たず（`DamagePopupScene` 参照）、描画パス上で親 CanvasLayer の可視性も
-/// 見ない（`BattlePanelScene` 参照）ため、フェードや visible 切替には頼らない。代わりに
-/// CanvasLayer の offset(x) を動かして帯ごと画面外へ出し入れする（スライド演出と兼用）。
+/// Label2D は alpha チャンネルを持たないため modulate でしか色を変えられず段階的フェードが
+/// できない。また CanvasLayer は親 Scene の visible を継承しないため visible 切替でも隠せない。
+/// そのため CanvasLayer の offset(x) を動かして帯ごと画面外へ出し入れする（スライド演出と兼用）。
 ///
 /// ノード構造（drawLayer=5。戦闘予報=3 / ユニット情報=4 より前面）:
 ///   PhaseBanner (CanvasLayer, NodeTag.PhaseBanner(BannerData))   ← offset(x) を動かして出し入れ
 ///     ├─ band (ColorRect, 画面幅 × bandHeight の半透明帯, NoTag)
 ///     └─ text (Label2D, 中央寄せ・大きめフォント, NoTag)
 mod PhaseBannerScene {
-
-    // ────────────────────────────────────────────────────────
-    // (A) 型定義
-    // ────────────────────────────────────────────────────────
 
     /// バナーの演出段階。
     ///   Idle     — 非表示（帯は画面外で待機）
@@ -66,12 +62,9 @@ mod PhaseBannerScene {
         triggered = Option[Bool]
     }
 
-    /// `advance` の結果（状態と横オフセットの組）。
+    /// `advance` 専用の内部結果型。`StepResult` と違い `triggered` を持たない軽量版で、
+    /// モジュール外に公開する必要がないため非 pub にしている。
     type alias AdvanceResult = { data = BannerData, offsetX = Float64 }
-
-    // ────────────────────────────────────────────────────────
-    // (B) 定数
-    // ────────────────────────────────────────────────────────
 
     def rootName(): String = "PhaseBanner"
     def bandName(): String = "band"
@@ -134,10 +127,6 @@ mod PhaseBannerScene {
     def initialData(): BannerData =
         {stage = Stage.Idle, elapsed = Duration.zero(), wasEnemy = None, pending = None}
 
-    // ────────────────────────────────────────────────────────
-    // (C) 構築
-    // ────────────────────────────────────────────────────────
-
     /// 画面 HUD の最前面にバナー一式を追加する。`GameLifecycle.buildPlayingScene` の UI 群で
     /// 1 回だけ呼ぶ。帯は初期状態では画面左外（offStartX）に置いて見えないようにする。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
@@ -165,10 +154,6 @@ mod PhaseBannerScene {
             |> Scene.addChild(rootName(), textName(),
                 EngineNode.Label2DWithState(text, NodeTag.NoTag))
 
-    // ────────────────────────────────────────────────────────
-    // (D) 問い合わせ
-    // ────────────────────────────────────────────────────────
-
     /// バナーが表示中（滑り込み・静止・滑り抜けのいずれか）か。Idle（非表示）なら false。
     /// 敵ターンの進行役（EnemyTurnDriverScene）が「エネミーフェーズの帯が出ている間は
     /// 敵を行動させない」ために参照する。
@@ -177,10 +162,6 @@ mod PhaseBannerScene {
             case Some(NodeTag.PhaseBanner(data)) => data#stage != Stage.Idle
             case _                               => false
         }
-
-    // ────────────────────────────────────────────────────────
-    // (E) ロジック（純粋）
-    // ────────────────────────────────────────────────────────
 
     /// 帯が観測する「今は敵ターンか」を返す。通常は phase == EnemyTurn だが、
     /// `LevelUpView` はターンを止めるモーダル割り込みなので、その間は実フェーズが
@@ -258,7 +239,8 @@ mod PhaseBannerScene {
                      offsetX = lerp(homeX(), offEndX(), easeIn(ratio))}
         }
 
-    /// 経過時間が段階の長さに達したか。
+    /// フレーム delta は離散なので elapsed がちょうど total と一致することは稀。`>=` で
+    /// オーバーシュートも含めて段階切替を確実に捕捉する。
     def isOver(elapsed: Duration.Duration, total: Duration.Duration): Bool =
         Duration.toSeconds(elapsed) >= Duration.toSeconds(total)
 
@@ -273,10 +255,6 @@ mod PhaseBannerScene {
     /// 抜けはゆっくり加速（滑り抜けの最初がふわっと動き出す）。
     def easeIn(ratio: Float64): Float64 =
         ratio * ratio
-
-    // ────────────────────────────────────────────────────────
-    // (F) ロジック（毎フレーム・副作用あり）
-    // ────────────────────────────────────────────────────────
 
     /// Game.flix の `process` redef から `NodeTag.PhaseBanner` ノードに対して dispatch される
     /// (バナーは 1 個のみなので 1 フレーム 1 回)。今のフェーズを `step` に渡して状態を進め、
@@ -333,14 +311,15 @@ mod PhaseBannerScene {
                     |> setBandColor(color)
         }
 
-    /// 帯（ColorRect）の色を差し替える。ColorRect には mapAt が無いので
-    /// `Scene.mapEngineNode` + `EngineNode.mapColorRect` を使う（BattlePanelScene と同じ作法）。
+    /// 帯（ColorRect）の色を差し替える。ColorRect には `Label2D.mapAt` 相当の専用 API が
+    /// ないため `Scene.mapEngineNode` + `EngineNode.mapColorRect` を組み合わせて書き換える。
     def setBandColor(color: Color, scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(bandPath(),
             node -> EngineNode.mapColorRect(rect -> CanvasItem.setModulate(color, rect), node),
             scene)
 
-    /// CanvasLayer の横オフセットを与えて、帯と文字をまとめて動かす。
+    /// CanvasLayer の offset を1か所書き換えるだけで band・text 両子ノードが一括移動する。
+    /// 個別子ノードを触らずに済むのは CanvasLayer の offset 機構が全子を相対移動させるため。
     def setOffsetX(offsetX: Float64, scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(rootPath(), node -> match node {
             case EngineNode.CanvasLayerWithState(layer, tag) =>

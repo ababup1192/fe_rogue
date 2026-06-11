@@ -81,7 +81,8 @@ mod MoveRangeScene {
     /// 移動可能マスとして識別しやすいように青寄りに着色する。
     def color(): Color = {r = 0.3f32, g = 0.5f32, b = 1.0f32}
 
-    /// プレイヤーや床タイルが透けて見える程度の不透明度 (= ほぼ不透明)。
+    /// 移動可能マスをはっきり認識させるため完全不透明にする。
+    /// 半透明にすると青が薄れて床と区別しにくくなる。
     def alpha(): Float32 = 1.0f32
 
     /// MapScene + PlayerScene が登録済みのシーンに MoveRange ノードと各セルの Sprite2D
@@ -175,7 +176,8 @@ mod MoveAttackRangeScene {
     /// PlayerAttackRangeScene / EnemyRangeScene と同じ赤系 modulate。
     def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
 
-    /// alpha は青マス (0.5–1.0) より少し透けさせて区別する。
+    /// 青マス (MoveRange = 1.0) より透かすことで、移動範囲より外側の脅威範囲を
+    /// 視覚的に奥の層として見せ、「動けるマス」と「そこから攻撃が届くマス」を階層化する。
     def alpha(): Float32 = 0.5f32
 
     /// 既存ノードを取り除いて再構築する。`MoveRangeScene` の青マスが既に build 済みの
@@ -430,7 +432,8 @@ mod PlayerAttackRangeScene {
     pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.removeAt(attackRangePath(), scene)
 
-    /// 範囲計算の純粋関数。
+    /// `show` から切り出して `unionWeaponCells` でも再利用できるようにした純粋関数。
+    /// テスト時は scene や effect なしで直接呼び出せる。
     /// origin から **マンハッタン距離** `range#min..range#max` (inclusive) にある全セルを
     /// 列挙する (= 菱形パターン)。斜め (1,1) もマンハッタン距離 2 として含まれる。
     /// 例:
@@ -496,7 +499,8 @@ mod PlayerAttackRangeScene {
 mod TradeRangeScene {
 
     /// 親 Marker2D に紐づくデータ。
-    /// `cells` は緑く描画されている隣接味方マス一覧 (= 選択中味方の上下左右の他味方)。
+    /// `cells` は交換可能な相手候補のグリッド位置一覧 (= 選択中味方の上下左右に居る他味方)。
+    /// カーソル移動制限と Confirm 時の相手判定に使う。
     pub type alias Data = {
         cells = List[{x = Int32, y = Int32}]
     }
@@ -507,7 +511,8 @@ mod TradeRangeScene {
     /// 緑系 modulate。MoveRange (青) / PlayerAttackRange (赤) と区別する。
     def color(): Color = {r = 0.3f32, g = 1.0f32, b = 0.3f32}
 
-    /// EnemyRange / PlayerAttackRange と同じ透過度に揃える (情報表示用)。
+    /// 他の情報表示 Range (EnemyRange / PlayerAttackRange) と透過度を揃えることで
+    /// 各種ハイライトの視覚的重みを統一し、特定レイヤーだけが浮きあがるのを防ぐ。
     def alpha(): Float32 = 0.7f32
 
     /// 既存の TradeRange ノードがあれば取り除き、`SelectedPlayer.State` から
@@ -521,8 +526,12 @@ mod TradeRangeScene {
             |> Option.map(allyCells -> paintCells(allyCells, cleared))
             |> Option.getWithDefault(cleared)
 
-    /// 選択中味方の隣接味方マスを返す。SelectedPlayer 未選択 / PartyQuery で
-    /// 居ないいずれでも None。隣接味方ゼロのときは `Some(Nil)`。
+    /// 選択中味方の隣接味方マスを返す。
+    /// `None` と `Some(Nil)` を区別している理由: 上流の `show` は `Option.filter` で
+    /// 空リストを弾くが、「選択中プレイヤー自体が居ない」場合も同じ分岐に落とすと
+    /// デフォルト値の選択が曖昧になる。`None` は「計算不能」、`Some(Nil)` は
+    /// 「隣接味方ゼロ(正常計算済み)」として意味を分けておくことで、
+    /// 将来 None を別途ログ・fallback 処理したいときに判別できる。
     def adjacentAllyCells():
             Option[List[{x = Int32, y = Int32}]]
             \ {SelectedPlayer.State, PlayerData.PartyQuery} =
@@ -589,7 +598,9 @@ mod DangerZoneScene {
         if (isShown(scene)) clear(scene) else show(scene)
 
     /// 全可視敵の危険マス（移動到達 ∪ 攻撃到達）を統合して紫で描く。空なら何もしない。
-    /// `EnemyScene.getAll` は scene を直接読む純粋関数なので effect 不要。
+    /// `EnemyScene.getAll` は scene ツリーを走査するだけで外部 effect を発火しないため、
+    /// `EnemyData.RosterQuery` を使わずに呼び出せる (Flix では pure 関数でも
+    /// 内部で scene を読むことは許容されている)。
     def show(scene: Scene[NodeTag]): Scene[NodeTag] =
         let cleared = clear(scene);
         let layer   = MapScene.getMapLayer(cleared);

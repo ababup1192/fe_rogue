@@ -1,11 +1,12 @@
-/// ItemData — 床アイテムの「中身」を表すドメイン ADT（GroundItemKind）。
+/// ItemData — 床アイテムの「中身」を scenes 層から独立したドメイン ADT として定義する。
 ///
-/// 武器/杖/消費アイテムを区別する。拾う・こうかんでプレイヤーのインベントリに追加される。
-/// scenes/ItemScene は床アイテムの Sprite 表示・点滅 process（view）を持ち、この型を参照する。
-/// game/ 純ロジック（MoveDraft 等）はこの game/ 定義に依存できる。
+/// ItemScene（Sprite 表示・点滅）と MoveDraft 等の移動ロジックの両方が「床に何が置かれているか」を
+/// 参照するため、scenes でも game でもなく game/ に置くことで双方から import できる。
+/// 表示・副作用の責務は ItemScene/InventoryScene が担い、このモジュールは純データのみを持つ。
 mod ItemData {
 
-    /// ground item の中身。武器 (`WeaponItem`) / 杖 (`StaffItem`) / 消費アイテム (`ConsumableItem`)。
+    /// 床に置かれるアイテムの種別。武器・杖・消費アイテムの 3 種が現在のゲームデザインの柱であり、
+    /// 弓や防具など新カテゴリを追加する場合は新 variant を追加してここを拡張する。
     pub enum GroundItemKind {
         case WeaponItem(UnitCatalog.WeaponResource)
         case StaffItem(Staff.StaffResource)

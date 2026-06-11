@@ -63,13 +63,15 @@ mod Staff {
         sprite     = SpriteResource
     }
 
-    /// 杖カタログ全体。段階 7 のリファクタで `CatalogContainer[StaffResource]` を wrap して
-    /// `Saveable` を持たせる形に変更した。containerKey は `"staves"` 固定。
+    /// 杖カタログ全体。`CatalogContainer[StaffResource]` を wrap して `Saveable` を持たせる。
+    /// `containerKey` を `"staves"` 固定にすることで JSON ルートキーと型の対応を 1 か所に集約し、
+    /// 将来的な containerKey の取り違えを型境界で防ぐ。
     pub enum StaffCatalog {
         case StaffCatalog(CatalogContainer[StaffResource])
     }
 
-    /// staves 部 (id → StaffResource の Map) を取り出す。
+    /// `CatalogContainer` の内部 Map を外部に公開するアクセサ。
+    /// カタログを走査するユーティリティ（一覧表示・統計等）はこの Map を使う。
     pub def stavesOf(catalog: StaffCatalog): Map[String, StaffResource] =
         let StaffCatalog.StaffCatalog(container) = catalog;
         CatalogContainer.entriesOf(container)
@@ -133,7 +135,7 @@ mod Staff {
         case other      => Err(other)
     }
 
-    /// `StaffEffect` → 文字列。JSON シリアライズ用。`parseEffect` と round-trip する。
+    /// `parseEffect` と round-trip する文字列表現を返す。
     pub def effectToString(effect: StaffEffect): String = match effect {
         case StaffEffect.Heal     => "Heal"
         case StaffEffect.Blowback => "Blowback"
@@ -145,8 +147,8 @@ mod Staff {
     // ────────────────────────────────────────────────────────
 
     /// `resources/staves.json` をロードし、`resources/staves.schema.json` で整合検査する。
-    /// 起動時の `Game.start` で 1 度だけ呼ぶ想定。失敗は panic で即可視化。
-    /// 段階 7 のリファクタで `CatalogContainer.loadWithCheck` に処理を委譲する形に変更した。
+    /// 起動時の `Game.start` で 1 度だけ呼ぶ想定。失敗は panic で即可視化し、
+    /// 不正な JSON や schema 不一致をゲーム起動直後に発覚させる。
     pub def load(): StaffCatalog \ Fs.FileRead =
         let container = CatalogContainer.loadWithCheck({
             dataPath       = AssetPath.resolve("resources/staves.json"),
@@ -167,8 +169,9 @@ mod Staff {
             case None        => bug!("Staff.lookup: staff '${id}' not in catalog")
         }
 
-    /// `StaffResource` のフィールド名集合。`staves.schema.json` との整合性検査に使う。
-    /// engine 側 `Resource.checkConsistency` がこの集合と schema を照合する。
+    /// `StaffResource` が持つべきフィールド名の集合。
+    /// schema との照合で「型定義と JSON schema の乖離」を起動時に発覚させる不変条件として機能する。
+    // 実際の照合は engine の Resource.checkConsistency が担う。
     pub def expectedFields(): Set[String] =
         Set#{"name", "effect", "durability", "sprite"}
 }
@@ -196,8 +199,6 @@ mod StaffCatalogCodec {
     use Staff.{StaffResource, StaffEffect}
     use Sprite.SpriteResource
 
-    // ── エンコード ──
-
     pub def encodeStaff(staff: StaffResource): Json =
         JObject(Map#{
             "name"       => JString(staff#name),
@@ -214,8 +215,6 @@ mod StaffCatalogCodec {
             "frame"   => JNumber(intToBd(sprite#frame)),
             "offset"  => JsonCodec.encodeVec2(sprite#offset)
         })
-
-    // ── デコード ──
 
     pub def decodeStaff(element: Json): Option[StaffResource] =
         forM (
@@ -254,5 +253,6 @@ mod StaffCatalogCodec {
         }
 
     // expect helpers / 数値変換は engine の JsonCodec mod に集約されている。
-    // 本 mod では `use JsonCodec.{...}` 経由で参照する。
+    // 本 mod で再実装せず `use JsonCodec.{...}` 経由で参照するのは、
+    // 変換ロジックの一元管理と将来の変更影響範囲を engine 側に限定するため。
 }

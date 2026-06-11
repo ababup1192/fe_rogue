@@ -34,9 +34,6 @@
 ///     └─ buttonBg  (Panel, NoTag) + buttonLabel (Label2D)         ← 出撃ボタン
 mod CharacterSelectScene {
 
-    // ────────────────────────────────────────────────────────
-    // (A) 型定義
-    // ────────────────────────────────────────────────────────
 
     /// 選択画面のサブモード。
     ///   PickingMembers — 出撃する 3 人を選んでいる段階。
@@ -64,11 +61,7 @@ mod CharacterSelectScene {
         carouselX   = Float64
     }
 
-    // ────────────────────────────────────────────────────────
-    // (B) 定数
-    // ────────────────────────────────────────────────────────
-
-    /// 出撃メンバーの人数。
+    /// UI 幅・カルーセル間隔を含む制約から決まる上限。FE シリーズ慣習とも一致。
     def partySize(): Int32 = 3
 
     def rootName(): String = "CharacterSelect"
@@ -94,7 +87,7 @@ mod CharacterSelectScene {
     def framePath(index: Int32): NodePath = rootName() :: frameName(index) :: Nil
     def cardPath(index: Int32): NodePath = rootName() :: cardName(index) :: Nil
 
-    /// 他 HUD と同じフォント名（project.json の "fonts" に登録した name）。
+    /// project.json の "fonts" エントリで解決される論理名。
     def fontName(): String = "ui"
 
     /// 描画レイヤー（ゲーム HUD の最前面より更に前。独立画面なので上書きで良い）。
@@ -109,7 +102,7 @@ mod CharacterSelectScene {
     def cardPitch(): Float64 = 40.0
     /// カード（枠）の縦中央。
     def cardCenterY(): Float64 = 52.0
-    /// 注目カードの拡大率（さらに 30% 縮小。枠サイズは据え置きなので余白が増える）。
+    /// 注目カードの拡大率。枠サイズは据え置きなので余白が生まれ、枠の大きさで注目を示す。
     def focusScale(): Float64 = 0.98
     /// 注目の隣のカードの拡大率。
     def neighborScale(): Float64 = 0.77
@@ -134,11 +127,10 @@ mod CharacterSelectScene {
     def buttonGlossPos(): Vec2.Vec2 = {x = 37.0, y = 104.0}
     def buttonGlossSize(): Vec2.Vec2 = {x = 42.0, y = 6.0}
     def buttonGlossAlpha(): Float32 = 0.5f32
-    /// 出撃ラベルの中心 = ボタンの中心（x: 35+46/2=58, y: 102+16/2=110）。中央そろえ（H/V）で真ん中に出す。
+    /// buttonPos + buttonSize/2 がラベル中心。H/V 中央そろえと合わせて文字を枠内に収める。
     def buttonLabelPos(): Vec2.Vec2 = {x = 58.0, y = 110.0}
 
     def counterFontSize(): Float64 = 7.5
-    /// 右パネルの文字は前回から 40% 縮小。
     def descTitleFontSize(): Float64 = 4.5
     def descTextFontSize(): Float64 = 4.0
     def buttonFontSize(): Float64 = 8.0
@@ -171,12 +163,8 @@ mod CharacterSelectScene {
 
     def buttonText(): String = "出撃"
 
-    // ────────────────────────────────────────────────────────
-    // (C) 構築
-    // ────────────────────────────────────────────────────────
-
     /// 候補一覧を受け取り、選択画面のノードツリーを scene に追加する。
-    /// `applyPhaseChange(CharacterSelect)` から空 Scene に対して 1 回呼ばれる。
+    /// 初期化は 1 回のみ（`applyPhaseChange(CharacterSelect)` から呼ばれる）。
     /// 文字を出すためにフォントを引く（GameEngine.Game）。最後に初期状態の見た目を一度流し込む。
     pub def add(players: List[UnitCatalog.PlayerResource], scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameEngine.Game =
@@ -288,9 +276,6 @@ mod CharacterSelectScene {
             |> Scene.addChild(rootName(), buttonLabelName(),
                 EngineNode.Label2DWithState(label, NodeTag.NoTag))
 
-    // ────────────────────────────────────────────────────────
-    // (D) 純粋ロジック（effect なし・テスト対象）
-    // ────────────────────────────────────────────────────────
 
     /// 起動直後の状態。注目は先頭カード、未選択、メンバー選び段階。
     pub def initialState(players: List[UnitCatalog.PlayerResource]): Data =
@@ -393,13 +378,8 @@ mod CharacterSelectScene {
     def lerp(startValue: Float64, endValue: Float64, ratio: Float64): Float64 =
         startValue + (endValue - startValue) * ratio
 
-    // ────────────────────────────────────────────────────────
-    // (E) ライフサイクル（毎フレーム・1 押下ごと）
-    // ────────────────────────────────────────────────────────
-
-    /// 毎フレーム呼ばれる（Game.flix の `process` redef から CharacterSelect ルートに dispatch）。
     /// カード列の横位置を目標へ寄せ、状態から見た目を作り直し、状態を書き戻す。
-    /// 末尾で最新ノードを取り直して返す（PhaseBannerScene と同じ作法）。
+    /// 末尾で `getEngineNode` により最新ノードを取り直す（writeVisuals が内部でノードを差し替えるため）。
     pub def process(delta: Duration.Duration,
                      node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
@@ -461,7 +441,7 @@ mod CharacterSelectScene {
         GamePhaseState.put(GamePhase.Playing);
         scene
 
-    // ─── キー判定（左右/上下/決定/キャンセル）────────────────────
+    // WASD と矢印キーの両方を受け付ける（キーボード配置の違いを吸収するため）。
 
     def isLeft(key: GameEngine.Key): Bool =
         key == GameEngine.Key.Left or key == GameEngine.Key.A
@@ -476,9 +456,6 @@ mod CharacterSelectScene {
     def isCancel(key: GameEngine.Key): Bool =
         key == GameEngine.Key.X or key == GameEngine.Key.Escape
 
-    // ────────────────────────────────────────────────────────
-    // (F) 見た目の書き戻し
-    // ────────────────────────────────────────────────────────
 
     /// 状態からカード・カウンタ・ボタン・説明をまとめて作り直す。
     def writeVisuals(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -526,7 +503,7 @@ mod CharacterSelectScene {
         else if (distance == 1) neighborScale()
         else farScale()
 
-    /// カードの前後関係（注目を最前面に）。枠は絵の 1 つ後ろ（zIndex-1）に置く。
+    /// 重なり時に注目カードが他カードに隠れないよう、注目を最前面に固定する。
     def cardZIndex(data: Data, index: Int32): Int32 =
         let distance = Int32.abs(index - effectiveFocus(data));
         if (distance == 0) 100 else 50 - distance
@@ -617,10 +594,6 @@ mod CharacterSelectScene {
             case WeaponCatalog.WeaponType.Magic => "魔"
         }
 
-    // ────────────────────────────────────────────────────────
-    // (G) ボイラプレート（状態の取り出し / 書き戻し）
-    // ────────────────────────────────────────────────────────
-
     /// ルートに紐づく選択状態を取り出す。
     def getData(scene: Scene[NodeTag]): Data =
         match Scene.getState(rootPath(), scene) {
@@ -628,7 +601,7 @@ mod CharacterSelectScene {
             case _                                   => bug!("CharacterSelect root not found")
         }
 
-    /// 選択状態を関数で更新して書き戻す。
+    /// getData + setState を必ず組み合わせて使う規約を強制する唯一の窓口。
     def mapData(f: Data -> Data, scene: Scene[NodeTag]): Scene[NodeTag] =
         setState(f(getData(scene)), scene)
 

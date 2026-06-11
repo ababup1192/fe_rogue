@@ -24,10 +24,6 @@
 
 mod MinimapScene {
 
-    // ────────────────────────────────────────────────────────
-    // (A) 型
-    // ────────────────────────────────────────────────────────
-
     /// driver ノードが持つ永続 state。フロア跨ぎはシーン再構築でリセットされる。
     pub type alias DriverData = {
         visited    = Set[Int32],  // 訪問済み module idx（= 記憶。核心）
@@ -38,10 +34,6 @@ mod MinimapScene {
 
     /// fitTransform が返す「grid → minimap ピクセル」のアフィン変換パラメータ。
     pub type alias Fit = { scale = Float64, ox = Float64, oy = Float64 }
-
-    // ────────────────────────────────────────────────────────
-    // (B) 定数
-    // ────────────────────────────────────────────────────────
 
     def rootName(): String = "Minimap"
     def contentName(): String = "MinimapContent"
@@ -102,7 +94,7 @@ mod MinimapScene {
     def itemColor(): Color = {r = 0.95f32, g = 0.60f32, b = 0.20f32}
     def markerAlpha(): Float32 = 0.85f32
 
-    /// 起動時から右上に表示（非侵襲な常設 HUD）。M で出し入れする。
+    /// 起動時から左下に表示（非侵襲な常設 HUD）。M で出し入れする。
     def initialData(): DriverData =
         {visited = Set.empty(), stairsSeen = false, visible = true, mPrev = false}
 
@@ -113,10 +105,6 @@ mod MinimapScene {
             case Some(NodeTag.MinimapDriver(d)) => d#visited
             case _                              => Set.empty()
         }
-
-    // ────────────────────────────────────────────────────────
-    // (C) 構築
-    // ────────────────────────────────────────────────────────
 
     /// CanvasLayer（scene.json）+ 描画コンテナ + 背景 + 矩形/マーカープール（初期非表示）+
     /// 常駐 MinimapDriver を scene tree に追加する。`GameLifecycle.buildPlayingScene` の末尾
@@ -161,10 +149,6 @@ mod MinimapScene {
             |> Polygon2D.setAlpha(markerAlpha())
             |> CanvasItem.setZIndex(markerZIndex())
             |> CanvasItem.setVisible(false)
-
-    // ────────────────────────────────────────────────────────
-    // (D) ロジック（毎フレーム）
-    // ────────────────────────────────────────────────────────
 
     /// Game.flix の `process` redef から `NodeTag.MinimapDriver` に対して dispatch される
     /// per-frame entry。訪問 module を蓄積し、M トグルを反映し、ミニマップを再描画する。
@@ -268,8 +252,6 @@ mod MinimapScene {
             case None      => false
         }
 
-    // ─── プール再配置 ─────────────────────────────────────────
-
     /// 互いに重ならない矩形群（部屋・通路を一体化した union 分割）を部屋プールに割り当てる。
     /// 重なりが無いので半透明でも継ぎ目（重なり部分の濃い帯）が出ない。
     def drawRoomPool(rects: List[GridRect], t: Fit, scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -329,15 +311,12 @@ mod MinimapScene {
         Scene.mapEngineNode(markerChildPath(i),
             n -> EngineNode.mapPolygon2D(p -> CanvasItem.setVisible(false, p), n), scene)
 
-    /// 非表示時: 全プールを隠す。
+    /// M で閉じたとき・LevelUpView/EnemyTurn で強制非表示になったとき、
+    /// 前フレームのプール残骸が画面に残らないようすべての矩形とマーカーを消す。
     def hideAll(scene: Scene[NodeTag]): Scene[NodeTag] =
         let withRooms =
             List.foldLeft((acc, i) -> hideRoom(i, acc), scene, List.range(0, roomPoolSize()));
         List.foldLeft((acc, i) -> hideMarker(i, acc), withRooms, List.range(0, markerPoolSize()))
-
-    // ────────────────────────────────────────────────────────
-    // (E) 純粋ジオメトリ（テスト対象）
-    // ────────────────────────────────────────────────────────
 
     /// 今フレームに非 hidden ユニットが居る module idx の集合（module 外セルは無視）。
     /// 引数は開いた行多相なので `PlayerScene.Data`（gridPos/hidden を含む）をそのまま渡せる。
@@ -493,7 +472,8 @@ mod MinimapScene {
             })
         })
 
-    // ─── バンド分割ヘルパー（FogScene と同等の純粋関数） ───────
+    // FogScene のバンド分割は「霧として覆う補集合」を返すため流用できない。
+    // ミニマップは被覆部（union）が必要なので、同一アルゴリズムをここで再実装している。
 
     def sortedDistinct(xs: List[Int32]): List[Int32] = dedupSorted(List.sort(xs))
 

@@ -8,11 +8,11 @@
 /// 「フレッシュな party で始めたい」経路（ゲームオーバー復帰 / クリアループ）は `clear()` を
 /// 呼んで `None` に戻すことで、次の build で再抽選させる。
 ///
-/// `FloorProgress` / `InitialSpawns` と同じ Ref ベースの state effect。
+/// ゲーム起動時に一箇所で handler を注入することで、どの Scene からも同じ Ref を参照できる。
 /// 初期値は `None`（= 最初の build で抽選される）。
 mod PartySelection {
 
-    /// 選抜済み出撃メンバーの読み書き effect。中身は `UnitResource` のリスト（先頭がロード）。
+    /// 選抜済み出撃メンバーの読み書き effect。中身は `PlayerResource` のリスト（先頭がロード）。
     pub eff State {
         /// 選抜済みなら `Some(party)`、未選抜なら `None` を返す。
         def get(): Option[List[UnitCatalog.PlayerResource]]
@@ -22,7 +22,7 @@ mod PartySelection {
         def clear(): Unit
     }
 
-    /// `FloorProgress.withState` と同じ流儀の handler 注入。
+    /// Ref を closure に閉じ込めた handler 注入パターン。
     /// 内部 `selRef` は closure に閉じ込められ、外からは見えない。初期値は `None`。
     pub def withState(rc: Region[r]):
             (Unit -> a \ ef) -> a \ (ef - State) + r =

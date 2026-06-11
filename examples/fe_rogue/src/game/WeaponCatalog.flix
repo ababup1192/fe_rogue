@@ -1,8 +1,6 @@
 /// 武器カタログ (`resources/weapons.json` + `resources/weapons.schema.json`)。
-///
-/// 段階 6 のリファクタで UnitCatalog 内に同居していた weapons 部分を独立 catalog として
-/// 抽出した。engine の `CatalogContainer[WeaponResource]` + `Saveable` 単相 instance の
-/// パターンに従う。
+/// UnitCatalog から分離した独立カタログ。engine の `CatalogContainer[WeaponResource]` +
+/// `Saveable` 単相 instance のパターンに従う。
 ///
 /// JSON 形状 (`resources/weapons.json`):
 ///   {
@@ -31,8 +29,8 @@ mod WeaponCatalog {
 
     /// 武器カタログ全体。`CatalogContainer[WeaponResource]` を wrap して `Saveable` を持たせる。
     /// containerKey は `"weapons"` 固定。
-    /// **配置順の注意**: companion enum (= モジュール名と同名 enum) は Flix の規約により
-    /// 必ずモジュール先頭に置く必要がある。
+    /// **配置順の注意**: companion enum (= モジュール名と同名 enum) は Flix の規約上、
+    /// モジュール先頭に置く。
     pub enum WeaponCatalog {
         case WeaponCatalog(CatalogContainer[WeaponResource])
     }
@@ -69,7 +67,7 @@ mod WeaponCatalog {
     }
 
     /// 武器カタログの sprite メタ情報。中立な `Sprite.SpriteResource` の alias として共有する。
-    /// 段階 6c の共通化で実体を `Sprite` mod に切り出し、UnitCatalog への逆向き依存を断った。
+    /// UnitCatalog への逆依存を避けるため `Sprite` mod に集約している。
     pub type alias WeaponSpriteResource = Sprite.SpriteResource
 
     /// 武器 1 種類ぶんのデータ。
@@ -90,7 +88,7 @@ mod WeaponCatalog {
     // (B) アクセサ / ロード
     // ────────────────────────────────────────────────────────
 
-    /// weapons 部 (id → WeaponResource) を取り出す。
+    /// `WeaponCatalog` ラップを剥がして生 Map を返す。
     pub def weaponsOf(catalog: WeaponCatalog): Map[String, WeaponResource] =
         let WeaponCatalog.WeaponCatalog(container) = catalog;
         CatalogContainer.entriesOf(container)
@@ -115,8 +113,7 @@ mod WeaponCatalog {
             case None         => bug!("WeaponCatalog.lookup: weapon '${id}' not in catalog")
         }
 
-    /// 空の `WeaponCatalog` (entries 0 件) を返す。`UnitCatalog` の Saveable.fromJson が
-    /// placeholder として使う (実際の weapons は `loadFromString` 経由で後段で組み込まれる)。
+    /// 空の `WeaponCatalog` (entries 0 件) を返す。デシリアライズ前の初期値として使用する。
     pub def empty(): WeaponCatalog =
         WeaponCatalog.WeaponCatalog(CatalogContainer.CatalogContainer({
             containerKey = "weapons",
@@ -124,7 +121,7 @@ mod WeaponCatalog {
             meta         = (Map.empty(): Map[String, Util.Json.Json])
         }))
 
-    /// `WeaponResource` のフィールド名集合。`weapons.schema.json` との整合性検査に使う。
+    /// schema 検査用の expected key 集合（`CatalogContainer.loadWithCheck` に渡す）。
     pub def expectedFields(): Set[String] =
         Set#{"name", "attack", "hit", "durability", "range", "weaponType", "sprite"}
 }
@@ -143,15 +140,13 @@ instance Saveable[WeaponCatalog.WeaponCatalog] {
             |> Option.map(WeaponCatalog.WeaponCatalog.WeaponCatalog)
 }
 
-/// WeaponResource 1 件分の encode / decode。container 巡回は `CatalogContainer.encode/decode` に委譲する。
+/// container 巡回は `CatalogContainer.encode/decode` に委譲する。
 mod WeaponCatalogCodec {
 
     use Util.Json.Json
     use Util.Json.Json.{JObject, JString, JNumber}
     use JsonCodec.{expectObject, expectString, expectInt, expectFloat, floatToBd, intToBd}
     use WeaponCatalog.{WeaponResource, WeaponRange, WeaponType, WeaponSpriteResource}
-
-    // ── エンコード ──
 
     pub def encodeWeapon(weapon: WeaponResource): Json =
         JObject(Map#{
@@ -189,8 +184,6 @@ mod WeaponCatalogCodec {
             "offset"  => JsonCodec.encodeVec2(sprite#offset),
             "scale"   => JsonCodec.encodeVec2(sprite#scale)
         })
-
-    // ── デコード ──
 
     pub def decodeWeapon(element: Json): Option[WeaponResource] =
         forM (

@@ -105,7 +105,7 @@ mod StaffCastScene {
             |> List.filter(a -> a#id != playerId and a#hp < a#resource#hp)
 
     /// `staff#effect × hit` の組み合わせで効果を適用する。
-    /// 9 通り（うち実意味のあるのは 6 通り）の分岐は table comment を参照。
+    /// 空振りを含む 3 効果 × 3 ヒット種 = 9 通り。空振り arm でまとめてログを出す。
     def applyStaffEffect(playerId: Int32, player: PlayerScene.Data,
                           staff: Staff.StaffResource,
                           dir: {x = Int32, y = Int32},
@@ -138,7 +138,7 @@ mod StaffCastScene {
                 scene
         }
 
-    /// ライブ × 味方: 対象味方の HP を「魔力 + 10」回復、HPBar 更新、ログ。
+    /// Heal × 味方: 対象味方の HP を「魔力 + 10」回復、HPBar 更新、ログ。
     /// `applyStaffEffect` から呼ばれる内部処理だが、回復量の上限クランプを単体検証できる
     /// ように pub にしている（`TestStaffCastScene` 参照）。
     pub def applyHealToPlayer(srcId: Int32, player: PlayerScene.Data, targetId: Int32,
@@ -156,7 +156,7 @@ mod StaffCastScene {
                     |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), result#newHp)
         }
 
-    /// ライブ × 敵: 敵の HP を「魔力 + 10」回復（敵にも効く仕様）。
+    /// Heal × 敵: 敵の HP を「魔力 + 10」回復（敵にも効く仕様）。
     def applyHealToEnemy(srcId: Int32, player: PlayerScene.Data, enemyId: Int32,
                           scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
@@ -173,8 +173,7 @@ mod StaffCastScene {
         }
 
     /// ふきとばし × 味方: 1 ダメ → 死亡なら止まる、生存なら最終位置までスナップで移動。
-    /// 仕様確認: MVP では「最終位置に瞬間移動 + ダメージ popup」で済ませる
-    /// （1 マスずつ tween は engine の sequence 機能が要るため、後続タスクで強化）。
+    /// 将来: sequence engine が揃えば 1 マスずつ tween に置換できる（現在は瞬間移動）。
     def applyBlowbackToPlayer(srcId: Int32, targetId: Int32,
                                 hitCell: {x = Int32, y = Int32},
                                 dir: {x = Int32, y = Int32},
@@ -294,7 +293,7 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio} =
-        // きずぐすり等の消費アイテムは使用＝回復成立なので回復音を鳴らす
+        // 消費アイテムは使う時点で効果が自己確定するため、杖の空振り判定とは異なり無条件で回復音を鳴らす
         AudioStreamPlayer.play("cure");
         let afterHeal    = applyConsumableHeal(playerId, player, item, scene);
         let afterConsume = consumeConsumable(playerId, idx, item, afterHeal);
@@ -316,7 +315,7 @@ mod StaffCastScene {
             |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), result#newHp)
 
     /// 消費アイテムの耐久（使用回数）を 1 減らし、0 なら consumables から除去 + 使い切りログ。
-    /// `consumeStaff` と同形。
+    /// `consumeStaff` と構造は同じだが、型が `Consumable.ConsumableResource` のため共通化できない。
     def consumeConsumable(playerId: Int32, idx: Int32,
                            item: Consumable.ConsumableResource,
                            scene: Scene[NodeTag]):
@@ -328,9 +327,8 @@ mod StaffCastScene {
         else ();
         PlayerScene.mapPlayer(playerId, d -> {consumables = newConsumables | d}, scene)
 
-    /// idx 番目を `updatedOpt` の中身で差し替えたリストを返す。`None`（耐久 0 で消滅）なら
-    /// その要素を除去する。`consumeStaff` / `consumeConsumable` で共有する
-    /// 「耐久を減らした結果の差し替え or 除去」処理。
+    /// idx 番目を `updatedOpt` の中身で差し替えたリストを返す。
+    /// `None`（耐久 0 で消滅）ならその要素を除去し、`Some` なら更新値で置換する。
     def replaceOrDropAt(idx: Int32, updatedOpt: Option[a], list: List[a]): List[a] =
         match updatedOpt {
             case Some(updated) =>

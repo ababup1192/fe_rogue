@@ -27,19 +27,12 @@
 ///   滑らか追従や画面端マージンは engine が担当するため、手書きの `isPlayerVisible` 等は撤廃。
 mod CameraScene {
 
-    // ────────────────────────────────────────────────────────
-    // (B) 定数
-    // ────────────────────────────────────────────────────────
-
     def name(): String = "Camera"
     pub def cameraPath(): NodePath = name() :: Nil
 
-    /// scene.json への相対パス（cwd = プロジェクトルート想定）
+    /// `AssetPath.resolve` はプロジェクトルートを起点に絶対パスに展開するため、
+    /// 起動 cwd がどこであっても常に同じファイルを指す。
     def scenePath(): String = AssetPath.resolve("src/scenes/CameraScene.scene.json")
-
-    // ────────────────────────────────────────────────────────
-    // (C) 構築
-    // ────────────────────────────────────────────────────────
 
     /// MapScene + PlayerScene 登録済みの scene にトップレベル Camera2D を追加する。
     /// レイアウトと追従パラメータ（zoom / smoothing / drag margin）は scene.json
@@ -59,12 +52,8 @@ mod CameraScene {
                     c |> Node2D.setPosition(initial)
                       |> Camera2D.setSmoothPosition(initial), n))
 
-    // ────────────────────────────────────────────────────────
-    // (D) ロジック
-    // ────────────────────────────────────────────────────────
-
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から、Camera ノードに
-    /// 対して dispatch される (Camera は 1 個のみなので 1 フレーム 1 回)。
+    /// 対して dispatch される。複数カメラを持たない設計（分割画面・ミニマップ不使用）のため、
     /// Tween / AnimationPlayer による Player / Cursor の世界座標が反映された後に実行する。
     /// 動作:
     ///   1. フェーズに応じてターゲット NodePath の world 位置を取る
@@ -92,7 +81,6 @@ mod CameraScene {
             node);
         (newNode, scene)
 
-    /// 各フェーズでカメラが向かうべきターゲット位置を計算する。
     /// `selected` が None のときはパーティの代表（id=0、または最初のアクティブ）の位置に向く。
     /// PlayerMoving の「画面内なら維持」は engine の drag margin が引き受けるため、
     /// この関数は単に「選択中味方の位置」を返すだけになる。
@@ -172,10 +160,6 @@ mod CameraScene {
                 if (Option.nonEmpty(e#attackTargetId)) Some(e#id) else None)
             |> List.head
 
-    // ────────────────────────────────────────────────────────
-    // (E) カメラ追従の到達判定
-    // ────────────────────────────────────────────────────────
-
     /// 現在のカメラ target に smoothPosition が「drag dead zone 内」に収まったか。
     /// 敵ターン中、カメラが新しい敵に切り替わったあと「カメラが到達するまで敵の行動を待つ」
     /// gating に使う（`stepEnemyTurn` の冒頭で `not isSettled(scene)` なら処理スキップ）。
@@ -205,20 +189,15 @@ mod CameraScene {
                 }
         }
 
-    // ────────────────────────────────────────────────────────
-    // 内部: 座標取得
-    // ────────────────────────────────────────────────────────
-
     /// 指定 id のプレイヤーの現在ワールド座標。Tween 中ならその時点の補間位置を返す。
-    /// 該当 id が登録されていなければ scene の原点（0,0）を返す。
+    /// 該当 id が未登録の場合は Vec2.zero() を返す（初期化前に呼ばれた場合の安全側デフォルト）。
     def focusedPlayerWorldPos(id: Int32, scene: Scene[NodeTag]): Vec2.Vec2 =
         match Scene.getEngineNode(PlayerScene.playerPath(id), scene) {
             case Some(_) => Scene.globalPositionAt(PlayerScene.playerPath(id), scene)
             case None    => Vec2.zero()
         }
 
-    /// カーソルの現在ワールド座標。CursorScene 未登録なら原点を返すが、`add` 後に
-    /// `update` を呼ぶ運用なので実機では到達しない。
+    /// カーソルの現在ワールド座標。CursorScene 未登録なら安全側（原点）を返す。
     def cursorWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
         Scene.globalPositionAt(CursorScene.cursorPath(), scene)
 

@@ -13,10 +13,6 @@ mod LevelSystem {
 
     use UnitCatalog.{UnitResource, GrowthRates}
 
-    // ────────────────────────────────────────────────────────
-    // (A) 型定義
-    // ────────────────────────────────────────────────────────
-
     /// 成長対象の 8 ステータス。`hp` は最大 HP を指す。`moveTiles` は成長対象外なので含めない。
     pub type alias Stats = {
         hp           = Int32,
@@ -58,18 +54,8 @@ mod LevelSystem {
         changes   = List[StatChange]
     }
 
-    // ────────────────────────────────────────────────────────
-    // (B) 定数（いずれも要調整）
-    // ────────────────────────────────────────────────────────
-
-    /// レベルアップに必要な EXP。100 到達でレベルアップする。
+    /// SRPG 標準の 100 を採用。1 攻撃の最大獲得量が 100 未満のため、1 戦闘で 2 連続レベルアップは起きない。
     pub def levelThreshold(): Int32 = 100
-
-    // ────────────────────────────────────────────────────────
-    // (C) EXP 蓄積
-    //   1 戦闘で得る EXP の「獲得量」は Combat.battleExp（レベル差ベース）が算出する。
-    //   ここではその獲得量を現在 EXP に足し込み、100 到達のレベルアップ判定と繰り越しを行う。
-    // ────────────────────────────────────────────────────────
 
     /// 現在 EXP に `gain` を足し、100 到達でレベルアップしたかを返す。
     /// レベルアップ時は 100 を引いた余剰を繰り越す。1 回で 2 レベルは想定しない
@@ -80,10 +66,6 @@ mod LevelSystem {
             {exp = total - levelThreshold(), levelUp = true}
         else
             {exp = total, levelUp = false}
-
-    // ────────────────────────────────────────────────────────
-    // (D) ステータス成長
-    // ────────────────────────────────────────────────────────
 
     /// 成長判定 1 つ。乱数が成長率を下回れば成長する（`roll < rate`）。
     /// 成長率 0 なら決して成長せず、100 なら必ず成長する。
@@ -100,10 +82,6 @@ mod LevelSystem {
          speed        = bump(stats#speed,        rolls#speed,        rates#speed),
          skill        = bump(stats#skill,        rolls#skill,        rates#skill),
          luck         = bump(stats#luck,         rolls#luck,         rates#luck)}
-
-    // ────────────────────────────────────────────────────────
-    // (E) UnitResource との橋渡し
-    // ────────────────────────────────────────────────────────
 
     /// UnitResource から成長対象の 8 ステータスを抜き出す（hp は最大 HP）。
     pub def statsOf(res: UnitResource): Stats =
@@ -127,11 +105,7 @@ mod LevelSystem {
          skill        = stats#skill,
          luck         = stats#luck | res}
 
-    // ────────────────────────────────────────────────────────
-    // (F) パネル用の結果組み立て
-    // ────────────────────────────────────────────────────────
-
-    /// ステータス名（漢字表記に合わせる）。
+    // 漢字表記はパネルの表示文字列と 1 対 1 で対応させる。変更時は UI 側と合わせること。
     def label1Hp(): String           = "HP"
     def labelAttack(): String        = "力"
     def labelDefense(): String       = "守備"
@@ -146,9 +120,7 @@ mod LevelSystem {
         {label = label, before = before, after = after, gained = after > before}
 
     /// レベルアップ前後のステータスから、パネル表示用の `Result` を組み立てる。
-    /// `toLevel` は `fromLevel + 1`。`changes` は固定 8 行
-    /// （HP, 力, 魔力, 技, 速さ, 幸運, 守備, 魔防）。レベルアップパネルは前 4 行を左列・
-    /// 後 4 行を右列に割る。
+    /// `toLevel` は `fromLevel + 1`。`changes` は固定 8 行（HP→力→魔力→技→速さ→幸運→守備→魔防）。
     pub def buildResult(unitName: String, fromLevel: Int32,
                         before: Stats, after: Stats): Result =
         {unitName  = unitName,

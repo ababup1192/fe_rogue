@@ -16,9 +16,8 @@
 ///
 /// 取得は `BoardQuery` effect の戻り値（Board）に含まれる形で行う。Board が盤面情報の
 /// 唯一の入口。
-// 盤面地形の純粋データ型 `MapSnapshot`（root）と純クエリ層（isFloor/isWall/moduleOfCell/
-// gridToWorld 等）は src/game/MapSnapshot.flix へ移設した（盤面ロジック→View 逆流を断つため）。
-// MapScene には tilemap の view 操作と engine→snapshot 射影(snapshotOf)だけ残す。
+// MapScene の責務は tilemap の view 操作と engine→snapshot 射影(snapshotOf)に限る。
+// 衝突セルは TileMapLayer 内部に格納され、外部は MapSnapshot 経由でのみ参照する。
 
 mod MapScene {
     import java.lang.{System => JSystem}
@@ -49,7 +48,6 @@ mod MapScene {
         roomCount    = Int32
     }
 
-    // (B) 定数
     def name(): String = "DungeonLevel0"
     def floorName(): String = "DungeonLevel0Floor"
     pub def mapPath(): NodePath = name() :: Nil
@@ -94,17 +92,14 @@ mod MapScene {
         (AssetPath.resolve("assets/maps/room_3.map.json"), 25) ::
         (AssetPath.resolve("assets/maps/room_4.map.json"), 25) :: Nil
 
-    /// 既定の横通路プール。
     def defaultHorizontalPaths(): List[(String, Int32)] =
         (AssetPath.resolve("assets/maps/pathway_horizontal_1.map.json"), 50) ::
         (AssetPath.resolve("assets/maps/pathway_horizontal_2.map.json"), 50) :: Nil
 
-    /// 既定の縦通路プール。
     def defaultVerticalPaths(): List[(String, Int32)] =
         (AssetPath.resolve("assets/maps/pathway_vertical_1.map.json"), 50) ::
         (AssetPath.resolve("assets/maps/pathway_vertical_2.map.json"), 50) :: Nil
 
-    // (C) 構築
     pub def add(floor: FloorCatalog.FloorResource, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO} =
         // FE_ROGUE_MODE=map-test のとき、ランダム生成と DungeonComposer をバイパスして
@@ -201,12 +196,8 @@ mod MapScene {
         Scene.addNode(worldName(),
                        EngineNode.Marker2DWithState(worldMarker, NodeTag.NoTag), scene)
 
-    // ────────────────────────────────────────────────────────
-    // (D) Scene からの取り出しヘルパ
-    // ────────────────────────────────────────────────────────
-
-    /// scene 内に登録された TileMapLayer を取り出す。
-    /// MapScene.add 済みであることが前提（未登録なら bug!）
+    /// `MapScene.add` 後にのみ呼ぶことを前提とする。
+    /// 呼び出し順に依存した破綻を早期検出するため、未登録なら即 bug! する。
     pub def getMapLayer(scene: Scene[NodeTag]): TileMapLayer =
         match Scene.getEngineNode(mapPath(), scene) {
             case Some(EngineNode.TileMapLayerWithState(layer, _)) => layer
@@ -227,8 +218,7 @@ mod MapScene {
     pub def getPlacements(scene: Scene[NodeTag]): List[DungeonComposer.ModulePlacement] =
         getMapData(scene)#placements
 
-    /// Map ノードが未登録でも `bug!` しない placements 取得。未登録なら Nil。
-    /// マップが無い文脈（カーソル可動域判定の単体テスト等）でも安全に呼べるようにする。
+    /// マップが無い文脈（カーソル可動域判定の単体テスト等）でも安全に placements を取れるよう、未登録なら Nil を返す。
     pub def tryGetPlacements(scene: Scene[NodeTag]): List[DungeonComposer.ModulePlacement] =
         match Scene.getEngineNode(mapPath(), scene) {
             case Some(EngineNode.TileMapLayerWithState(_, NodeTag.Map(data))) => data#placements
@@ -262,8 +252,7 @@ mod MapScene {
             case _ => bug!("MapScene.snapshotOf: non-integer collision cell (${v#x}, ${v#y})")
         }
 
-    /// 単一 ModulePlacement を作る。床範囲は gridSize 全体（offset 0）。
-    /// テスト・map-test・診断で「全床の素朴な部屋」を組むときの共通構築関数。
+    /// テスト・map-test・診断で全床の素朴な部屋を素早く組むための共通構築点。
     pub def placement(idx: Int32, ox: Int32, oy: Int32, w: Int32, h: Int32):
             DungeonComposer.ModulePlacement =
         {
@@ -279,7 +268,7 @@ mod MapScene {
     pub def singleRoom(w: Int32, h: Int32): List[DungeonComposer.ModulePlacement] =
         placement(0, 0, 0, w, h) :: Nil
 
-    /// 全床 w×h を縦半分で 2 モジュール（左 idx0 / 右 idx1）に割る placements。
+    /// floorBounds を左右に分割した 2 モジュール（idx0 / idx1）の placements。
     /// 検知テスト（同じ部屋にいるか）で moduleOfCell を 2 部屋にしたいときに使う。
     pub def twoRoom(w: Int32, h: Int32): List[DungeonComposer.ModulePlacement] =
         let half = w / 2;
@@ -294,9 +283,8 @@ mod MapScene {
           floorBoundsMaxEx = ({x = w, y = h}: {x = Int32, y = Int32}),
           interiorCells = (Nil: List[{x = Int32, y = Int32}])}: DungeonComposer.ModulePlacement) :: Nil
 
-    /// モジュール idx の床範囲(floorBounds)の中心セルを返す。未配置 idx なら None。
-    /// `moduleOfCellIn` と同じ bbox(offset + floorBoundsMin/MaxEx、MaxEx は排他)で計算する。
     /// 発見演出で「部屋の中心にカメラを寄せる」ために使う。
+    /// floorBounds の bbox 計算を `moduleOfCellIn` と一致させることで、境界判定との一貫性を保つ。
     pub def moduleCenter(idx: Int32,
                           placements: List[DungeonComposer.ModulePlacement]):
             Option[{x = Int32, y = Int32}] =

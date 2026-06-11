@@ -25,9 +25,7 @@ mod UnitHPBarScene {
     }
 
     // ─── 色 ───────────────────────────────────────────────────
-    /// 味方フィル色: 青。
     def fillColorPlayer(): Color = {r = 0.25f32, g = 0.5f32, b = 0.95f32}
-    /// 敵フィル色: 赤。
     def fillColorEnemy(): Color = {r = 0.9f32, g = 0.25f32, b = 0.25f32}
     def fillColorFor(team: Team): Color = match team {
         case Team.Player => fillColorPlayer()
@@ -44,12 +42,12 @@ mod UnitHPBarScene {
     def dmgNormalModulate(): Color = UITheme.white()
 
     // ─── サイズ・位置 ─────────────────────────────────────────
-    /// バー幅 = 1 マス × 0.9（最大 HP 非依存）。
+    /// 全ユニット共通幅（最大 HP に依らない）。HP 量で見た目が変わると比較が難しくなるため固定。
     def barWidthPx(): Float64 = MapSnapshot.tileSize() * 0.9
-    /// バー高さ（調整可）。
     def barHeightPx(): Float64 = 5.0
+    /// 暗トラックの枠として機能する。Fill を 1px インセットすることで別枠ノードなしで枠線を表現。
     def borderPx(): Float64 = 1.0
-    /// 足元オフセット（ユニット中心からの下方向 px、スプライト 0.8 倍の足元あたり・調整可）。
+    /// スプライトが 0.8 倍スケールのため、中心基準で下方向へこの値だけずらすと足元に重なる。
     def barFeetY(): Float64 = 13.0
     def barZIndex(): Int32 = 50
 
@@ -82,26 +80,26 @@ mod UnitHPBarScene {
         else {
             let barOffset: Vec2.Vec2 = {x = 0.0 - barWidthPx() / 2.0, y = barFeetY()};
             let data: HPBarData = {maxHp = maxHp, currentHp = maxHp};
-            // 親 Marker2D（常時表示。make 既定で visible=true）
+            // HPBar は常時表示（待機/行動済み状態も色で伝えるためゲージ自体は消さない）
             let parent = Marker2D.make(barOffset);
             let barPath = List.append(unitPath, childName() :: Nil);
             let withParent =
                 Scene.addChildAt(unitPath, childName(),
                     EngineNode.Marker2DWithState(parent, NodeTag.HPBar(data)), scene);
-            // 背景トラック（暗・全体サイズ = 枠兼用）
+            // 暗トラックを枠として兼用することでノード数を減らしている（別枠ノードは不要）
             let bg = ColorRect.make({x = barWidthPx(), y = barHeightPx()}, trackColor())
                 |> CanvasItem.setZIndex(barZIndex());
             let withBg =
                 Scene.addChildAt(barPath, "Bg",
                     EngineNode.ColorRectWithState(bg, NodeTag.NoTag), withParent);
-            // フィル（チーム色）= 初期満タン（innerW）、枠 1px インセット
+            // borderPx 分だけ内側に配置することで暗トラックを枠として見せる
             let fill = ColorRect.make({x = innerWidthPx(), y = innerHeightPx()}, fillColorFor(team))
                 |> Node2D.setPosition({x = borderPx(), y = borderPx()})
                 |> CanvasItem.setZIndex(barZIndex() + 1);
             let withFill = Scene.addChildAt(barPath, "Fill",
                 EngineNode.ColorRectWithState(fill, NodeTag.NoTag), withBg);
-            // ダメージ予測オーバーレイ（初期は非表示・幅 0）。フィルと同色をフィル最前面
-            // （zIndex +2）に重ね、攻撃予報中だけ「減る分」の矩形へ被せて暗色で点滅させる。
+            // フィルと同色にすることで、通常 modulate では Fill と一体に見え、
+            // 暗 modulate に切り替えるだけで「減る分」が沈んで見える点滅演出が成立する。
             let preview = ColorRect.make({x = 0.0, y = innerHeightPx()}, fillColorFor(team))
                 |> Node2D.setPosition({x = borderPx(), y = borderPx()})
                 |> CanvasItem.setZIndex(barZIndex() + 2)
@@ -129,7 +127,7 @@ mod UnitHPBarScene {
             case _ => scene
         }
 
-    /// HPBar 親 Marker2D の modulate を設定する。祖先伝播で Bg/Fill ごと暗転/復帰する。
+    /// Bg/Fill を個別に操作せず親 Marker2D 1 か所に設定することで一括暗転できる。
     /// 待機（プレイヤー）・行動済み（敵）の本体スプライト暗転と揃えて呼ぶ。
     pub def setModulate(unitPath: NodePath, color: Color, scene: Scene[NodeTag]): Scene[NodeTag] =
         let barPath = List.append(unitPath, childName() :: Nil);
@@ -176,7 +174,7 @@ mod UnitHPBarScene {
         Scene.mapEngineNode(previewPath, n ->
             EngineNode.mapColorRect(c -> CanvasItem.setVisible(false, c), n), scene)
 
-    /// 常時表示のため per-frame 処理は不要。Game.flix のディスパッチ互換のための no-op。
+    /// 常時表示のため per-frame 更新は不要。Scene インタフェースの要件を満たすための no-op。
     pub def process(_dt: Duration.Duration,
                      node: EngineNode[NodeTag],
                      _path: NodePath, scene: Scene[NodeTag]):

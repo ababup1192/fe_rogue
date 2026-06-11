@@ -4,8 +4,7 @@
 /// 加える「あとで巻き戻せる変更」を 1 件ずつ表す。`SelectedPlayer.Selection.drafts` に
 /// **新しい順**（先頭が直近の操作）で積み、
 ///   - キャンセル（`PlayerScene.cancelSelection`）→ 先頭から順に逆操作
-///   - 行動確定（`commitWaitedAndAdvance` の `SelectedPlayer.cleared()`）/ 次の選択開始
-///     → スタックごと破棄（＝確定）
+///   - 行動確定 / 次の選択開始 → drafts スタックごと破棄（revert 不要）
 /// で扱う。巻き戻しの実体（snapTo / respawn / 在庫取り消し）は `PlayerScene.revertDraftAction`
 /// に集約する。
 ///
@@ -13,21 +12,19 @@
 ///   (1) `DraftAction` に case 追加
 ///   (2) `PlayerScene.revertDraftAction` に 1 分岐追加
 ///   (3) その操作を行う箇所で `drafts` に push
-/// の 3 点だけで済む（`cancelSelection` 本体や `SelectedPlayer` のフィールドは触らない）。
+/// の 3 点だけで済む。cancelSelection 本体や SelectedPlayer のフィールドには触らずに済むのは、
+/// 巻き戻し責務をこの 3 箇所に局所化しているため（open/closed 的なローカリティ）。
 mod MoveDraft {
 
     /// 移動中に加えた可逆な副作用 1 件。巻き戻しは `PlayerScene.revertDraftAction` が
     /// **新しい順**に逆操作する（後勝ちで積んだ操作から戻すので、各 revert は「その操作の
     /// 直後の状態」に対して走る＝末尾前提の取り消しも正しく動く）。
-    ///   - `MovedFrom(playerId, fromCell)`        : 移動。巻き戻しは `snapTo(fromCell)`。
-    ///   - `PickedUp(playerId, cell, itemKey, kind)`: 床アイテム取得。巻き戻しは
-    ///       `ItemScene.respawn`（床へ戻す）+ 在庫末尾の取り消し。
-    ///   - `Equipped(playerId, idx)`              : 装備（`weapons` を `moveToHead(idx)`）。
-    ///       巻き戻しは先頭を idx 位置へ戻す（`moveHeadTo`）。
-    ///   - `Dropped(playerId, kind, item)`        : 捨てる（`removeAt(idx)`）。
-    ///       巻き戻しは元 idx に `item` を挿入し直す。
-    ///   - `Traded(...)`                          : こうかん（`swapItem`）。巻き戻しは
-    ///       相手末尾の付加分を除去し、双方の元 idx へ戻す。
+    ///
+    /// 各 case で非自明な巻き戻し契約のみ記す:
+    ///   - `Equipped`: 装備時に先頭へ移動した武器を、元の idx 位置へ戻す必要がある
+    ///     （先頭以外の順序は `moveHeadTo` で復元できるが、idx がズレると別の武器を指す）。
+    ///   - `Traded`: 相手側に末尾付加した分を除去してから双方の元 idx へ戻す
+    ///     （除去を先に行わないと idx がズレる）。
     pub enum DraftAction {
         case MovedFrom(Int32, {x = Int32, y = Int32})
         case PickedUp(Int32, {x = Int32, y = Int32}, String, ItemData.GroundItemKind)

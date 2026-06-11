@@ -18,18 +18,18 @@ mod Weapon {
         if (newDur <= 0) None
         else Some({durability = newDur | weapon})
 
-    /// 2 セル間のマンハッタン距離（十字 + 斜め判定）。
+    /// 2 セル間のマンハッタン距離（|dx|+|dy|）。
     /// 反撃や射程内判定に共通で使う。
     pub def manhattan(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Int32 =
         Int32.abs(a#x - b#x) + Int32.abs(a#y - b#y)
 
     /// `distance` (マンハッタン距離) が射程 `min..max` (inclusive) に入るか。
-    /// `WeaponResource` を持たない呼び出し側（`UnitView` の射程レコードなど）でも使える素の判定。
+    /// `WeaponResource` を経由しないゼロ依存の判定関数。射程レコードだけ持つ呼び出し側でも使える。
     pub def inRange(distance: Int32, range: {min = Int32, max = Int32}): Bool =
         distance >= range#min and distance <= range#max
 
     /// `weapon` が `distance` (マンハッタン距離) の相手に届くか。
-    /// `min..max` inclusive で判定する（`inRange` への薄い委譲）。
+    /// 呼び出し側が射程レコードではなく `WeaponResource` を直接渡せる場面向けに分離している。
     pub def canReach(distance: Int32, weapon: WeaponResource): Bool =
         inRange(distance, weapon#range)
 }

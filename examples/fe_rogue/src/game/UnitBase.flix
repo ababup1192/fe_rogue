@@ -9,9 +9,6 @@ mod UnitBase {
 
     use Sprite.SpriteResource
 
-    // ────────────────────────────────────────────────────────
-    // (A) 共有型
-    // ────────────────────────────────────────────────────────
 
     /// 持ち物アイテムの種別。`weapons.json` / `staves.json` / `consumables.json` の
     /// どの id を指すか判別する。
@@ -29,9 +26,10 @@ mod UnitBase {
         id   = String
     }
 
-    /// 味方・敵で共通のユニット土台（14 フィールド）。味方は別途 `growthRates` を、
+    /// 味方・敵で共通の戦闘ステータス一式。味方は別途 `growthRates` を、
     /// 敵は将来別途「特殊能力」を足す。`attack` は素の「力」、`magicAttack` は魔力。
-    /// `level` は基準レベル（味方の現在レベルは PlayerScene.Data#level、敵はこの値が戦闘相手の Lv）。
+    /// `level` は JSON に記録された基準レベル（味方の現在レベルは PlayerScene が動的に管理し、
+    /// 敵はこの値がそのまま戦闘相手の Lv として使われる）。
     pub type alias UnitBase = {
         moveTiles        = Int32,
         level            = Int32,
@@ -57,12 +55,9 @@ mod UnitBaseCodec {
     use UnitBase.{UnitBase, ItemKind, InventoryEntry}
     use Sprite.SpriteResource
 
-    // ────────────────────────────────────────────────────────
-    // (B) 共有エンコード
-    // ────────────────────────────────────────────────────────
-
-    /// 共有 14 フィールドを JSON オブジェクトの Map に書き出す。味方は呼び出し側で
-    /// `growthRates` を足す。spriteFrames は設定がある unit だけ格子形式で書き出す。
+    /// 共有戦闘ステータスを JSON オブジェクトの Map に書き出す。呼び出し側が
+    /// `growthRates`（味方）や将来の特殊能力（敵）を追加できるよう Map を返す。
+    /// `spriteFrames` は設定がある unit だけ格子形式で書き出す。
     /// row-polymorphic にして PlayerResource / EnemyResource どちらも受ける。
     pub def encodeBase(u: {moveTiles = Int32, level = Int32, hp = Int32, attack = Int32,
                             defense = Int32, magicAttack = Int32, magicDefense = Int32,
@@ -90,7 +85,7 @@ mod UnitBaseCodec {
             case Some(sf) => Map.insert("spriteFrames", encodeSpriteFrames(sf, u#sprite#hframes), base)
         }
 
-    /// `initialInventory` を `[{"kind": ..., "id": ...}, ...]` JSON にする。
+    /// `initialInventory` を JSON 配列にシリアライズする。エントリが空のときは空配列を返す。
     pub def encodeInventory(inv: List[InventoryEntry]): Json =
         JArray(List.map(encodeInventoryEntry, inv) |> List.toVector)
 
@@ -155,11 +150,7 @@ mod UnitBaseCodec {
             "duration" => JNumber(floatToBd(f#duration))
         })
 
-    // ────────────────────────────────────────────────────────
-    // (C) 共有デコード
-    // ────────────────────────────────────────────────────────
-
-    /// 共有 14 フィールドを decode して `UnitBase` を返す。`spriteFrames` は pure 経路では
+    /// 共有戦闘ステータスを decode して `UnitBase` を返す。`spriteFrames` は pure 経路では
     /// 常に None（実体は `resolveEntriesSpriteFrames` の effectful 後段で埋める）。
     /// 味方は別途 `growthRates` を、敵は別途特殊能力を足す。
     pub def decodeBase(element: Json): Option[UnitBase] =
@@ -198,7 +189,8 @@ mod UnitBaseCodec {
               spriteFrames = None}: UnitBase)
         }
 
-    /// `[{"kind": ..., "id": ...}, ...]` を decode。配列以外は None（schema 不整合扱い）。
+    /// インベントリ配列を decode する。配列以外（オブジェクト・プリミティブ等の schema 不整合）は None を返す。
+    /// 配列内にデコード不能なエントリが 1 件でもあれば全体を None とする（部分成功なし）。
     pub def decodeInventory(element: Json): Option[List[InventoryEntry]] =
         match element {
             case JArray(items) =>

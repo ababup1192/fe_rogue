@@ -33,10 +33,6 @@
 /// 攻撃の完了がそのままターン遷移のトリガになるための設計。
 mod CombatScene {
 
-    // ────────────────────────────────────────────────────────
-    // (A) 攻撃ターゲットの記録 / クリア
-    // ────────────────────────────────────────────────────────
-
     /// 攻撃ターゲットの敵 id を Data#attackTargetId に記録する。
     /// 武器選択ウィンドウを開く前に GameManager から呼ばれ、ウィンドウ確定後の
     /// フェーズが AttackForecast に進み、`BattlePanelScene.confirm` がこの値を読んで
@@ -50,14 +46,10 @@ mod CombatScene {
                                   scene: Scene[NodeTag]): Scene[NodeTag] =
         PlayerScene.mapPlayer(playerId, d -> {attackTargetId = None | d}, scene)
 
-    /// 敵側の `attackTargetId` クリア（`attack_lunge` finished 時）。
+    /// 敵側の attackTargetId をクリアする（clearAttackTargetId と対称）。
     def clearEnemyAttackTarget(enemyId: Int32,
                                 scene: Scene[NodeTag]): Scene[NodeTag] =
         EnemyScene.mapEnemy(enemyId, d -> {attackTargetId = None | d}, scene)
-
-    // ────────────────────────────────────────────────────────
-    // (B) 体当たり攻撃モーション — AnimationPlayer ベース
-    // ────────────────────────────────────────────────────────
 
     /// 体当たりの片道（origin → target）所要時間。Forward + Returning の合計が
     /// アニメ全長になる。視認性を保つため移動 (16/120) より速めに設定する。
@@ -99,10 +91,6 @@ mod CombatScene {
             tracks  = track :: Nil,
             methods = methodHit :: Nil
         }
-
-    // ────────────────────────────────────────────────────────
-    // (C) 攻撃開始
-    // ────────────────────────────────────────────────────────
 
     /// 体当たり攻撃モーションを開始する（攻守共通の入口）。
     /// `attack_lunge` を AnimationPlayer に登録し `attackTargetId = Some(defenderId)` を立てる。
@@ -153,10 +141,6 @@ mod CombatScene {
         };
         Option.getWithDefault(scene, started)
 
-    // ────────────────────────────────────────────────────────
-    // (D) 命中適用 — attack:hit メソッド発火時
-    // ────────────────────────────────────────────────────────
-
     /// AnimationPlayer の `attack:hit` method イベント受信時の処理（攻守共通の入口）。
     /// - Player: `applyAttackHit` で敵への攻撃を解決（命中ロール → ダメージ/EXP → レベルアップ）。
     /// - Enemy: `applyEnemyAttackHit` の killed リストを `PlayerScene.removeDeadAndCheckGameOver`
@@ -198,10 +182,6 @@ mod CombatScene {
             targetPlayerId <- d#attackTargetId
         ) yield applyDamageToPlayer(enemyId, d, targetPlayerId, scene);
         Option.getWithDefault((scene, Nil), resolved)
-
-    // ────────────────────────────────────────────────────────
-    // (E) attack_lunge 完了 — 反撃判定とターン進行（phase マトリクスはヘッダ参照）
-    // ────────────────────────────────────────────────────────
 
     /// AnimationPlayer の `attack_lunge` finished イベント受信時の処理（攻守共通の入口）。
     /// 反撃の往復（味方攻撃 → 敵反撃 / 敵攻撃 → 味方反撃）はこの関数の中で完結する。
@@ -279,8 +259,8 @@ mod CombatScene {
     ///       CounterAttackRules.decidePlayerCounter を回し、Counter(playerId) なら
     ///       `startAttack(Faction.Player, ...)` で反撃モーション開始。
     ///       それ以外は単純に attackTargetId クリアして EnemyTurnDriver に制御を戻す。
-    /// フェーズが `PlayerAttackHold` なのは `BattlePanelScene.confirm` が攻撃モーション
-    /// 開始時にここへ遷移させているため (味方 attack_lunge → 反撃 attack_lunge の間ずっと Hold)。
+    /// `PlayerAttackHold` は「攻撃を振った側が先に attack_lunge を開始する瞬間から
+    /// 反撃 attack_lunge が終わるまで」を Hold させるための設計で、往復の間ずっと Hold が続く。
     def enemyLungeDone(enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
@@ -305,10 +285,6 @@ mod CombatScene {
                 case _ => clearEnemyAttackTarget(enemyId, scene)
             }
         }
-
-    // ────────────────────────────────────────────────────────
-    // (E2) シグナル配信 — Game.flix の dispatch 表から毎フレーム呼ばれる
-    // ────────────────────────────────────────────────────────
 
     /// Player / Enemy ノードの毎フレーム process。AnimationPlayer から自分宛
     /// (`playerPath(id)` / `enemyPath(id)`) の signal だけ pull し、
@@ -369,10 +345,6 @@ mod CombatScene {
         let latest = Scene.getEngineNode(path, afterFinished) |> Option.getWithDefault(node);
         (latest, afterFinished)
 
-    // ────────────────────────────────────────────────────────
-    // (F) ダメージ解決 — 味方 → 敵
-    // ────────────────────────────────────────────────────────
-
     /// 命中ロール用の 0..99 の一様乱数。`Combat.isHit(hitRate, roll)` に渡す。
     def rollPercent(): Int32 \ Math.Random =
         Float64.truncateToInt32(Float64.floor(Math.Random.randomFloat64() * 100.0))
@@ -414,7 +386,6 @@ mod CombatScene {
                             scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger, Math.Random} =
-        // 常に先頭武器（= 装備中）を使う。
         let resolved = forM (
             weapon <- PlayerData.equippedWeapon(player#weapons);
             enemy  <- EnemyScene.get(enemyId, scene)
@@ -432,15 +403,14 @@ mod CombatScene {
         let plan       = attackForecast(player, weapon, enemy);
         let popupPos   = MapSnapshot.cellCenter(enemy#gridPos);
         let popupColor = DamagePopupScene.damageToEnemyColor();
-        // 命中なら経験値を得る（回避時は 0）。
         let (afterDamage, expGain) =
             if (Combat.isHit(plan#hitRate, rollPercent()))
                 (applyHit(playerId, enemyId, plan, popupPos, popupColor, scene), plan#exp)
             else
                 (applyMiss(playerId, enemyId, popupPos, popupColor, scene), 0);
         let afterWeapon = consumeEquippedWeapon(playerId, weapon, afterDamage);
-        // 命中していれば EXP を加算する。自分の攻撃でも敵ターンの反撃でも同様。
-        // 反撃で得たレベルアップは敵ターン終了後にまとめて表示する。
+        // 自分の攻撃でも敵ターンの反撃でも同様（反撃 EXP で即レベルアップした場合は
+        // 敵ターン終了後にまとめてパネル表示する）。
         if (expGain <= 0) afterWeapon
         else applyExpGain(playerId, expGain, afterWeapon)
 
@@ -472,7 +442,8 @@ mod CombatScene {
                 |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), plan#newHp)
         }
 
-    /// 攻撃したので装備武器（先頭）の耐久を 1 減らす。0 になったら先頭を取り除き破損ログを出す。
+    /// FE ルールに従い、攻撃を振った時点で装備武器（先頭）の耐久を 1 減らす（回避されても同様）。
+    /// 耐久が 0 になったら先頭を取り除き破損ログを出す。
     def consumeEquippedWeapon(playerId: Int32, weapon: UnitCatalog.WeaponResource,
                                scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
         let consumed = Weapon.consume(weapon);
@@ -490,10 +461,6 @@ mod CombatScene {
             case (_,       Nil)       => list
         }
 
-    // ────────────────────────────────────────────────────────
-    // (G) ダメージ解決 — 敵 → 味方
-    // ────────────────────────────────────────────────────────
-
     /// プレイヤー targetId にダメージを与える。命中率・素ダメージは `resolveStrike`
     /// （= `Combat.estimate`、武器相性・物理/魔法込み）で算出し、`Combat.damage` 適用後の
     /// HP に更新する。攻撃成立後は武器の `durability` を 1 減らし、
@@ -505,8 +472,7 @@ mod CombatScene {
                              scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random} =
-        // 前提（武器あり・対象あり）の解決だけを担う。実体は `resolveEnemyAttack`
-        //（味方側の applyDamageToEnemy → resolveAttack と同じ 2 段構成）。
+        // 前提（武器あり・対象あり）の解決だけを担う。実体は resolveEnemyAttack に委譲。
         let resolved = forM (
             weapon <- enemy#weapon;
             player <- PlayerScene.get(targetId, scene)
@@ -548,7 +514,7 @@ mod CombatScene {
                 if (strike#killed) (dmgScene, targetId :: Nil)
                 else (dmgScene, Nil)
             };
-        // 命中/回避どちらでも攻撃したので武器の耐久度は 1 減る
+        // FE ルールでは攻撃を振った時点で耐久を消費する（回避されても同様）
         let consumed = Weapon.consume(weapon);
         if (Option.isEmpty(consumed))
             GameLogger.enemyLog("敵${enemyId} の ${weapon#name} がこわれた")
@@ -556,10 +522,6 @@ mod CombatScene {
         let withWeaponUpdate = EnemyScene.mapEnemy(enemyId,
             d -> {weapon = consumed | d}, damaged);
         (withWeaponUpdate, killed)
-
-    // ────────────────────────────────────────────────────────
-    // (H) 経験値・レベルアップ（味方のみ。将来 LevelSystem 側へ分離できる区分）
-    // ────────────────────────────────────────────────────────
 
     /// 6 ステータスぶんの成長判定用乱数 (各 0..99) をまとめて振る。
     /// 値の意味づけ・成長判定は LevelSystem 側のピュア関数が行う。

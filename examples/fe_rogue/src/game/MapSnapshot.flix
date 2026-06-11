@@ -5,16 +5,16 @@
 /// scene を一切読まないため、game 層（Board / EnemyAI 等）がここに依存できる（盤面ロジック→View の逆流を防ぐ）。
 /// 本物の TileMapLayer からの射影（snapshotOf）と scene ノード操作は view 層の `MapScene` 側に置く。
 ///
-/// 型エイリアス `MapSnapshot` は root 定義（bare 参照のまま全 Scene が使う）。
+/// モジュール内に入れると `MapSnapshot.MapSnapshot` と修飾が必要になるため、型エイリアスは root に定義する。
 pub type alias MapSnapshot = {
     tileSize    = Float64,
     usedRect    = { position = {x = Int32, y = Int32}, size = {x = Int32, y = Int32} },
-    // 壁セル（グリッド座標）。範囲外は wallCells に含まれない＝非壁（engine と同義）。
+    // 壁セル（グリッド座標）。範囲外セルは登録しない約束で、isWall が非壁と判定できる。
     // tuple は Order を持つので Set 化でき、床判定が Set.memberOf になる。
     wallCells   = Set[(Int32, Int32)],
     // gridToWorld 用の Map ノード global position（加算オフセット）。
     mapGlobal   = {x = Float64, y = Float64},
-    // moduleOfCell の素。MapScene.Data#placements と同一構造（既に純粋）。
+    // スナップショット取得時に追加変換が不要なため、MapScene.Data#placements をそのまま保持する。
     placements  = List[{idx = Int32,
                         offset = {x = Int32, y = Int32},
                         gridSize = {x = Int32, y = Int32},
@@ -25,31 +25,34 @@ pub type alias MapSnapshot = {
 
 mod MapSnapshot {
 
-    /// マップのセル幅（ピクセル）。n-format ダンジョン (`tileset_dungeon_green`, 26px) に合わせる。
+    /// マップのセル幅（ピクセル）。使用タイルセットのグリッド解像度に固定された定数で、
     /// グリッド ⇄ ピクセル変換が必要な全 Scene が参照する唯一の情報源。
     pub def tileSize(): Float64 = 26.0
 
-    /// グリッド座標 → セル中心ピクセル座標。`tileSize` で求めた正方形セルの中央点を返す。
-    /// Marker2D / Sprite2D を「マスのど真ん中」に置きたい全 Scene が共通で使う。
+    /// グリッド座標 → セル中心ピクセル座標。MapSnapshot を持たない呼び出し側が
+    /// グローバル `tileSize()` だけで中央座標を得るために用意した軽量版。
+    /// MapSnapshot を持つ場合は `mapToLocal` を使えばスナップショット固有の tileSize を参照できる。
     pub def cellCenter(cell: {x = Int32, y = Int32}): Vec2.Vec2 =
         let s = tileSize();
         let v = Vec2i.toVec2(cell);
         {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
 
-    /// セルが壁か。範囲外セルは wallCells に含まれない＝非壁（engine getCellSourceId と同義）。
+    /// セルが壁か。範囲外セルは wallCells に登録されないため、壁として扱わない契約。
     pub def isWall(c: {x = Int32, y = Int32}, m: MapSnapshot): Bool =
         Set.memberOf((c#x, c#y), m#wallCells)
 
-    /// 範囲内 かつ 壁でない＝床（engine TileMapLayer.isFloor と同義）。
+    /// 範囲内 かつ 壁でない＝床。両条件の積で定義することで、範囲外は壁・床どちらでもない扱いになる。
     pub def isFloor(c: {x = Int32, y = Int32}, m: MapSnapshot): Bool =
         inBounds(c, m) and not isWall(c, m)
 
-    /// usedRect 内か。getUsedRect は position=(0,0) 固定なので 0..size で判定（engine isInBounds と同義）。
+    /// usedRect 内か。Godot TileMapLayer の getUsedRect は常に position=(0,0) を返すため、
+    /// 判定は size のみで十分（position を加算しても 0 なので省略できる）。
     def inBounds(c: {x = Int32, y = Int32}, m: MapSnapshot): Bool =
         let sz = m#usedRect#size;
         c#x >= 0 and c#x < sz#x and c#y >= 0 and c#y < sz#y
 
-    /// グリッド座標 → セル中心ローカル座標（cellCenter と同式・tileSize はデータから）。
+    /// グリッド座標 → セル中心ローカル座標。スナップショット固有の tileSize を引数から取るため、
+    /// 呼び出し側が MapSnapshot を保持していれば MapScene のグローバル定数に依存せず変換できる。
     pub def mapToLocal(c: {x = Int32, y = Int32}, m: MapSnapshot): {x = Float64, y = Float64} =
         let s = m#tileSize;
         let v = Vec2i.toVec2(c);
@@ -59,7 +62,7 @@ mod MapSnapshot {
     pub def gridToWorld(c: {x = Int32, y = Int32}, m: MapSnapshot): {x = Float64, y = Float64} =
         Vec2.add(m#mapGlobal, mapToLocal(c, m))
 
-    /// セル → 包含モジュール idx。`moduleOfCellIn` を placements データに当てる。
+    /// セル → 包含モジュール idx。placements を外部に公開せず MapSnapshot ごと渡せる便利 API として提供する。
     pub def moduleOfCell(c: {x = Int32, y = Int32}, m: MapSnapshot): Option[Int32] =
         moduleOfCellIn(c, m#placements)
 

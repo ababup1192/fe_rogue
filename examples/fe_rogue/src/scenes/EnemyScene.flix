@@ -9,37 +9,20 @@
 ///   Enemy_<id> (Marker2D, NodeTag.Enemy(Data))
 ///     └─ Sprite (Sprite2D, frame=4 の `character_sheet` 上段一番右)
 ///
-/// スポーン規則（Q1-B / Q2-B / anchor 除外）:
+/// スポーン規則（anchor 除外）:
 ///   - 部屋（idx in [1, roomCount)）ごとに `Random` で 0..maxPerRoom 体スポーン。
-///   - anchor 部屋（idx 0、プレイヤー初期位置）は除外。Q3-B との組み合わせで
-///     起動瞬間に殴られないようにする。
+///   - anchor 部屋（idx 0、プレイヤー初期位置）は除外。起動直後に敵に隣接しないよう保証する。
 ///   - 通路（idx >= roomCount）は対象外。プレイヤーが通り抜けるだけの空間にする。
 ///   - 各敵は部屋の床セルから 1 つを選ぶ（プレイヤー位置・既存敵セルを避ける）。
-///
-/// Step 2 ではスポーン + 表示までで、AI / ターン進行は Step 3 で接続する。
 mod EnemyScene {
 
     // ────────────────────────────────────────────────────────
     // (A) 型定義
     // ────────────────────────────────────────────────────────
 
-    /// 敵 1 体ぶんの状態。
-    /// `alerted` はプレイヤーと同モジュールに入った瞬間 true になり、以降永続。
-    /// `homeModuleIdx` はスポーンしたときの部屋 idx（検知判定の補助情報）。
-    /// `moveTiles` は 1 ターンに進めるマス数（FE の「移動力」相当、`resource` から初期値継承）。
-    /// EnemyAI が BFS パスからこの値ぶんだけ進めて 1 マスずつ Tween する。
-    /// `hp` は残り体力。0 になると `isDying = true` がセットされ、`death_blink`
-    /// アニメーションが再生される。アニメ終了で GameManager がノードを scene から削除する。
-    /// `isDying = true` の敵は `EnemyTurn.Queue` / `findIdAt` などから除外され、行動しない。
-    /// `resource` はスポーン時のユニット定義テンプレート（UnitResource）。
-    /// ゲームオーバー時の `respawnFromInitial` で同じ敵種別で再生するために保持。
-    /// `weapon` は装備中の武器。攻撃するたびに耐久度が 1 減り、0 で `None` になる
-    /// （以降、その敵は EnemyAI 側で Attack を返さなくなる）。攻撃力は `resource#attack + weapon#attack`。
-    // 駒ドメイン型（Data / Spawn）は game/EnemyData.flix の `mod EnemyData` へ移設し、ここで再export。
+    /// 敵駒状態の再 export。フィールドの詳細は `EnemyData.Data` の doc 参照。
     pub type alias Data = EnemyData.Data
     pub type alias Spawn = EnemyData.Spawn
-
-    // EnemyData.RosterQuery effect は game/EnemyData へ移設した（参照は EnemyData.RosterQuery）。
 
     // ────────────────────────────────────────────────────────
     // (B) 定数
@@ -48,8 +31,7 @@ mod EnemyScene {
     /// プレイヤーと同じ高さで前面に立つ。MoveRange (1) より上。
     def spriteZIndex(): Int32 = 10
 
-    // per-room cap は引数で受け取る floor の `monstersPerRoom` を使う (resource 駆動)。
-    // 旧 `maxPerRoom()` 定数は floor 駆動化で廃止
+    // per-room cap は引数の floor#monstersPerRoom で制御される（resource 駆動）。
 
     /// 1 マス分のスライド時間。Player と同じ感覚で見えるよう揃える。
     def slideDuration(): Duration.Duration =
@@ -67,7 +49,7 @@ mod EnemyScene {
     /// `death_blink` アニメーション。1 → 0.3 → 1 → 0.3 → 1 → 0.3 → 1 を均等な 6 区間で
     /// 並べて 3 サイクルの点滅を表現する。target は子 Sprite ノードの alpha。
     /// アニメ完了時の `finished` イベント (owner=enemyPath, name="death_blink") を
-    /// GameManager がディスパッチして bonus.ogg + Scene.removeAt を実行する。
+    /// GameManager がディスパッチして down_enemy + Scene.removeAt を実行する。
     def deathBlinkAnimation(targetSprite: NodePath): AnimationPlayer.Animation =
         let alphaKeys: List[AnimationPlayer.AlphaKey] =
             ({time = 0.0,        alpha = fullAlpha()}: AnimationPlayer.AlphaKey) ::
@@ -268,7 +250,7 @@ mod EnemyScene {
             case other => other
         }, scene)
 
-    // ─── 行動済み（待機）暗転 ──────────────────────────────────
+    // 行動済み時に sprite / HP ゲージを暗転し、プレイヤーの waitedColor と外観を揃えるグループ。
 
     /// 行動済みの sprite / HP ゲージ modulate（薄い灰色）。プレイヤーの waitedColor と揃える。
     def actedColor(): Color = UITheme.dimmed()
@@ -315,7 +297,7 @@ mod EnemyScene {
 
     /// フォグ適用: 各敵を「現在地が lit(=isLit) なら表示、さもなくば非表示」にする。
     /// 親 Marker2D の visible を切り替えるので子 Sprite / HPBar も連動する。
-    /// 非表示でも process(AI) は走るため、見えないだけで活動は継続する。`FogScene` から毎フレーム呼ばれる。
+    /// visible を落としても AI は継続するため、フォグで隠れた敵も行動する点に注意。
     pub def applyFog(isLit: {x = Int32, y = Int32} -> Bool,
                       scene: Scene[NodeTag]): Scene[NodeTag] =
         List.foldLeft((acc, d) -> setEnemyVisible(d#id, isLit(d#gridPos), acc),
@@ -418,7 +400,7 @@ mod EnemyScene {
         Scene.removeAt(enemyPath(id), scene)
 
     /// World 直下の `Enemy_<id>` 形式の NodePath から id を取り出す。
-    /// それ以外なら None。AnimationPlayer の finished イベント振り分けに使う
+    /// それ以外なら None。AnimationPlayer の finished イベント振り分けに使う。
     pub def idFromPath(path: NodePath): Option[Int32] =
         match path {
             case world :: name :: Nil if world == MapScene.worldName() =>
@@ -458,13 +440,13 @@ mod EnemyScene {
     //     攻撃の解決本体（startAttack / 命中適用 / 反撃判定）は CombatScene に集約。
     // ────────────────────────────────────────────────────────
 
-    /// scene 内に攻撃モーション中の敵が居れば true。stepEnemyTurn が次ステップに進んで
-    /// 良いかの判定に使う（攻撃モーション中はキューを進めない）。
+    /// 攻撃モーション中の敵が 1 体以上いれば true。
+    /// モーション中はキューを進めてはならないため、呼び出し元は必ずこれで待機する。
     pub def anyAttacking(scene: Scene[NodeTag]): Bool =
         List.exists(d -> Option.nonEmpty(d#attackTargetId), getAll(scene))
 
-    /// AnimationPlayer の `death_blink` finished イベント受信時の処理。
-    /// 死亡演出が終わったので scene から該当敵ノードを削除する (SE 込み)。
+    /// `death_blink` finished イベントのエントリポイント。
+    /// SE 再生とノード削除を completeDeath に委譲する。
     pub def onDeathBlinkDone(enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameEngine.Audio =
         completeDeath(enemyId, scene)

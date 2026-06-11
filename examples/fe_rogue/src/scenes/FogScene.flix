@@ -19,21 +19,18 @@ pub type alias GridRect = {x0 = Int32, y0 = Int32, x1 = Int32, y1 = Int32}
 
 mod FogScene {
 
-    // ────────────────────────────────────────────────────────
-    // (B) 定数
-    // ────────────────────────────────────────────────────────
-
     def fogName(): String = "Fog"
     def rectChildName(i: Int32): String = "Fog_${i}"
     def rectChildPath(i: Int32): NodePath = fogName() :: rectChildName(i) :: Nil
     def driverName(): String = "FogDriver"
 
-    /// モヤの色（暗い青灰）と不透明度。地形がうっすら見える程度に薄暗くする。tunable。
+    /// モヤの色（暗い青灰）と不透明度。地形がうっすら見える程度に薄暗くする。
+    /// 視認性とパフォーマンスのトレードオフ調整点。
     def fogColor(): Color = {r = 0.04f32, g = 0.05f32, b = 0.10f32}
     def fogAlpha(): Float32 = 0.66f32
 
     /// モヤ矩形の zIndex。Floor=-1 / Walls=0 の上、Item(4,5)/Unit(10) の下。
-    /// dim 部屋では item/enemy を visible=false にするので z 競合しない。
+    /// 可視性制御は z 順ではなく visible=false で行うため z 競合しない。
     def fogZIndex(): Int32 = 2
 
     /// 明るい部屋矩形を floorBounds から外側へ広げるタイル数（壁リングまで明るくする）。tunable。
@@ -42,13 +39,9 @@ mod FogScene {
     /// モヤで覆う領域をマップ bbox の外側へ広げるタイル数（画面端まで確実にモヤで覆うため）。
     def marginTiles(): Int32 = 60
 
-    /// 補集合矩形を割り当てる ColorRect プールのサイズ。明るい部屋は最大でもパーティ人数分
-    /// （≤3 module）なので、補集合の矩形数は十分これに収まる。
+    /// 補集合矩形を割り当てる ColorRect プールのサイズ。bandDecompose が生成する矩形数は
+    /// holes 数とバンド分割数の積で増えるが、実ダンジョン規模では経験的にこの値で十分足りる。
     def poolSize(): Int32 = 24
-
-    // ────────────────────────────────────────────────────────
-    // (C) 構築
-    // ────────────────────────────────────────────────────────
 
     /// モヤ矩形プール（poolSize 個、初期非表示）と常駐 FogDriver を scene tree に追加する。
     /// `GameLifecycle.buildPlayingScene` で MapScene.add の直後に 1 回だけ呼ぶ。
@@ -69,10 +62,6 @@ mod FogScene {
         Scene.addChild(MapScene.worldName(), driverName(),
             EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.FogDriver),
             withPool)
-
-    // ────────────────────────────────────────────────────────
-    // (D) ロジック
-    // ────────────────────────────────────────────────────────
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から `NodeTag.FogDriver`
     /// ノードに対して dispatch される per-frame entry。集合モード中は通路を松明照らしにする。
@@ -96,8 +85,8 @@ mod FogScene {
         let holes      = holesFor(PlayerScene.getAll(scene), placements, roomCount, torchCorridors);
         let area       = mapRegion(placements);
         let hazeRects  = bandDecompose(area, holes);
-        // isLit クロージャは「let 束縛の最後」に置く（lambda を let で束縛した後に更に let を
-        // 続けると Flix パーサが lambda 本体を貪欲に取り込んで壊れるため）。
+        // isLit クロージャは「let 束縛の最後」に置く（Flix 0.71.0 以降、lambda を let で
+        // 束縛した後に更に let を続けるとパーサが lambda 本体を貪欲に取り込んで壊れるため）。
         let isLit      = (cell: {x = Int32, y = Int32}) -> insideAny(cell, holes);
         scene
             |> applyHazePool(hazeRects)
@@ -107,7 +96,7 @@ mod FogScene {
 
     /// 非 hidden プレイヤーごとの「明るい穴」矩形リスト（純粋・テスト対象）。
     /// 部屋なら部屋全体、通路は torchCorridors のとき周囲1マスだけ。
-    /// 引数は開いた行多相なので `PlayerScene.Data`（gridPos/hidden を含む）をそのまま渡せる。
+    /// 行多相シグネチャにより PlayerScene.Data 以外（CursorScene 等）からも呼べる汎用 API。
     pub def holesFor(units: List[{gridPos = {x = Int32, y = Int32}, hidden = Bool | r}],
                       placements: List[DungeonComposer.ModulePlacement],
                       roomCount: Int32, torchCorridors: Bool): List[GridRect] =
@@ -115,7 +104,8 @@ mod FogScene {
             |> List.filter(d -> not d#hidden)
             |> List.filterMap(d -> holeFor(d#gridPos, placements, roomCount, torchCorridors))
 
-    /// 1 プレイヤーの明るい穴。部屋=部屋矩形 / 通路(torch)=周囲1マス / それ以外=module 矩形。
+    /// 1 プレイヤーの明るい穴。通路では module 矩形ではなく周囲1マスに絞るのは、
+    /// 通路全体が一気に見えないシレン準拠のサプライズ感を保つため。
     def holeFor(cell: {x = Int32, y = Int32},
                  placements: List[DungeonComposer.ModulePlacement],
                  roomCount: Int32, torch: Bool): Option[GridRect] =
@@ -126,7 +116,7 @@ mod FogScene {
                 else moduleRectByIdx(m, placements)
         }
 
-    /// module idx → moduleRect。未配置 idx は None（通常起きない）。
+    /// module idx → moduleRect。未配置 idx は None（DungeonComposer が idx を連番で振るため通常起きない）。
     def moduleRectByIdx(m: Int32, placements: List[DungeonComposer.ModulePlacement]): Option[GridRect] =
         List.find(p -> p#idx == m, placements) |> Option.map(moduleRect)
 
@@ -138,7 +128,7 @@ mod FogScene {
           x1 = cell#x + rad + 1, y1 = cell#y + rad + 1}: GridRect)
 
     /// セルがいずれかの矩形の内側か（半開区間 [x0,x1) × [y0,y1)）。
-    /// フォグの穴判定のほか、CursorScene の移動可動域判定にも使う。
+    /// フォグの穴判定と CursorScene の移動可動域判定で共用するため pub に公開する。
     pub def insideAny(cell: {x = Int32, y = Int32}, holes: List[GridRect]): Bool =
         List.exists(h ->
             cell#x >= h#x0 and cell#x < h#x1 and cell#y >= h#y0 and cell#y < h#y1, holes)
@@ -197,10 +187,6 @@ mod FogScene {
         Scene.mapEngineNode(rectChildPath(i),
             n -> EngineNode.mapColorRect(c -> CanvasItem.setVisible(false, c), n), scene)
 
-    // ────────────────────────────────────────────────────────
-    // (E) 純粋ジオメトリ（テスト対象）
-    // ────────────────────────────────────────────────────────
-
     /// module の floorBounds(±edgePad で壁リングまで拡張) を world grid 矩形にする。
     pub def moduleRect(p: DungeonComposer.ModulePlacement): GridRect =
         { x0 = p#offset#x + p#floorBoundsMin#x   - edgePad(),
@@ -258,18 +244,20 @@ mod FogScene {
         case _              => xs
     }
 
-    /// 連続ペア [a,b,c] -> [(a,b),(b,c)]。
+    /// 連続ペア [a,b,c] -> [(a,b),(b,c)]。bandDecompose でバンド境界の y 区間を生成するために使う。
     def consecutivePairs(xs: List[Int32]): List[(Int32, Int32)] = match xs {
         case a :: b :: rest => (a, b) :: consecutivePairs(b :: rest)
         case _              => Nil
     }
 
     /// x0 昇順ソート済みの区間列を、重なり・隣接を結合する。
+    /// 隣接 hole が重なったとき余分な矩形が生まれないよう、xGaps 適用前に呼ぶ。
     def mergeIntervals(xs: List[(Int32, Int32)]): List[(Int32, Int32)] = match xs {
         case Nil               => Nil
         case (a0, a1) :: rest  => mergeGo(a0, a1, rest)
     }
 
+    /// 不変条件: c0 <= c1 を維持しながら現在の区間 [c0,c1) に次の区間を結合または確定させる。
     def mergeGo(c0: Int32, c1: Int32, rest: List[(Int32, Int32)]): List[(Int32, Int32)] = match rest {
         case Nil              => (c0, c1) :: Nil
         case (b0, b1) :: more =>

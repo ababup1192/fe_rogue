@@ -7,10 +7,8 @@
 ///
 /// ノード構造（layer=4）:
 ///   FloorLabel (CanvasLayer, NodeTag.NoTag)
-///     └─ text (Label2D, NodeTag.NoTag)   ← "3F" などを表示
+///     └─ text (Label2D, NodeTag.NoTag)
 mod FloorLabelScene {
-
-    // ─── 定数 ─────────────────────────────────────────────────
 
     def rootName(): String = "FloorLabel"
     def textChildName(): String = "text"
@@ -19,9 +17,6 @@ mod FloorLabelScene {
     def fontName(): String = "ui"
     def sceneJsonPath(): String = AssetPath.resolve("src/scenes/FloorLabelScene.scene.json")
 
-    // ─── 構築 ─────────────────────────────────────────────────
-
-    /// 左上に現在フロアのラベル（例: "3F"）を出す CanvasLayer を追加する。
     /// `floorLabel` は `FloorCatalog.FloorResource#label`（"1F" / "10F" 等）をそのまま渡す。
     /// 2 桁フロアでも崩れないよう、scene.json 側で十分な左マージンと文字サイズを確保している。
     pub def add(floorLabel: String, scene: Scene[NodeTag]):

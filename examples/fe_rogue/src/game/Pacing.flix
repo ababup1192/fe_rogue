@@ -10,9 +10,8 @@
 ///
 /// 影響範囲:
 ///   - 敵ターンの `stepEnemyTurn` のキュー消化が gating される
-///   - アニメーション (Tween / AnimationPlayer) は Pacing と独立に進行する。つまり
-///     Move tween や attack_lunge がそのまま再生される間も Pacing の残り時間は減る。
-///     hold が tween より長ければ、tween 完了後に静止時間が見える
+///   - アニメーション (Tween / AnimationPlayer) は Pacing と独立に進行する。
+///     tween は Pacing に関係なく走り続けるため、hold 時間は「演出後に確保したい最低静止時間」として設定する
 ///
 /// 設計指針:
 ///   - `Tween.Scheduler` や `AnimationPlayer.Scheduler` と同じく Ref ベースの effect handler。
@@ -32,8 +31,8 @@ mod Pacing {
         def isHolding(): Bool
     }
 
-    /// `Tween.withScheduler` 等と同じ流儀の handler 注入。
-    /// 内部 Ref は closure に閉じ込められ外からは見えない。
+    /// Ref を closure に閉じ込め、外部から残り時間を直接操作させないための handler。
+    /// `hold` / `tick` / `isHolding` という意味のある境界のみ公開し、生の Duration を触らせない。
     pub def withState(rc: Region[r]):
             (Unit -> a \ ef) -> a \ (ef - State) + r =
         thunk -> {

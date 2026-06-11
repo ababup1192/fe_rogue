@@ -258,7 +258,7 @@ instance InputEvent.InputHandler[NodeTag] {
         }
 }
 
-/// 本編（Playing）のキー処理。元の onKeyPressed 本体をそのまま関数に切り出したもの。
+/// Playing フェーズのキー処理。GamePhase 分岐を onKeyPressed から分離し推論複雑度を下げる。
 def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
         Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, BoardQuery,
                            Tween.Scheduler, AnimationPlayer.Scheduler,
@@ -304,8 +304,6 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
 
 /// MenuHandler instance — ItemList の Enter/Escape を各 MenuScene へ流す。
 /// 入力キー固定: Up/Down=カーソル移動 / Enter=確定 / Escape=キャンセル（engine 規約）。
-/// ItemMenu の Enter は「現在フェーズ（ItemSelect / ItemActionSelect）に応じた確定」、
-/// Escape は「ItemSelect→ActionMenu / ItemActionSelect→ItemSelect」のように親へ戻る。
 instance MenuEvent.MenuHandler[NodeTag] {
     type Aef = {Tween.Scheduler, AnimationPlayer.Scheduler, GameEngine.Audio,
                  GameLogger.GameLogger, EnemyTurn.Queue,
@@ -418,8 +416,7 @@ def staffAimConfirm(scene: Scene[NodeTag]):
 ///   - メニュー中の方向キー            → "cursor"（リストのカーソル移動 / 交換のペイン切替）
 /// onKeyPressed から 1 押下につき 1 回だけ呼ばれる。確定/取消・カーソル音いずれも
 /// 「その入力が実際に何かする」フェーズでだけ鳴らす（演出中・自動進行中など、ボタンを
-/// 押しても無反応なフェーズで音だけ鳴るのを防ぐ）。判定は `confirmCancelMakesSound` /
-/// `isMenuCursorMove` に集約。
+/// 押しても無反応なフェーズで音だけ鳴るのを防ぐ）。
 def playInputSfx(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                   key: GameEngine.Key): Unit \ GameEngine.Audio =
     match input {
@@ -622,33 +619,25 @@ mod Game {
             let sceneRef = Ref.fresh(rc, Scene.empty());
             // ゲーム全体の進行状態（画面）。起動直後はキャラクター選択画面から始める。
             let phaseRef = Ref.fresh(rc, GamePhase.CharacterSelect);
-            // ユニットカタログをロード + schema 整合性検査（Z 戦略の安全網）。
-            // 各段階で失敗内容を panic に出して原因を即可視化する。
+            // ユニットカタログをロード + schema 整合性検査（不正データを起動直後に検出して即終了する）。
+            // 各 load() 内で失敗内容を panic に出して原因を即可視化する。
             // units.json の spriteFrames は格子インデックス形式で書かれているため、
             // load 直後は spriteFrames = None。GameEngine.Game effect が使えるここで
             // resolveSpriteFrames を呼んで texture 実寸から px 矩形に解決する。
-            // 段階 6 のリファクタで weapons は独立 catalog (`WeaponCatalog`) に分離された。
-            // `WeaponCatalog.load()` 内部で schema 読込 + 整合性検査 + データ読込が完結するため、
-            // ここでの schema 検査コードは不要になった。`UnitCatalog.load` には weaponCatalog を渡す。
-            // 段階 9 のリファクタで schema 整合性検査は `UnitCatalog.load` 内部で完結する
-            // (他 catalog の `CatalogContainer.loadWithCheck` と揃えた)。
             let weaponCatalog = WeaponCatalog.load();
             let catalog0 = UnitCatalog.load(AssetPath.resolve("resources/units.json"), weaponCatalog);
             let catalog = UnitCatalog.resolveSpriteFrames(AssetPath.resolve("resources/units.json"), catalog0);
-            // 敵カタログをロード（段階 10 のリファクタで units.json から enemies.json に分離）。
-            // 味方（成長率あり）と別管理。spriteFrames は味方と同じ格子→px 解決を通す。
+            // 敵カタログをロード。味方（成長率あり）と別管理。
+            // spriteFrames は味方と同じ格子→px 解決を通す。
             let enemyCatalog0 = EnemyCatalog.load();
             let enemyCatalog = EnemyCatalog.resolveSpriteFrames(AssetPath.resolve("resources/enemies.json"), enemyCatalog0);
             // フロア定義をロード。進行順は floors.json の "order" 配列で管理し、
             // 現在いるフロアは FloorProgress effect が保持する（初期値 = 先頭フロア）。
             // 階段で次階へ / 全滅で 1F へ / クリアで 1F ループ、はいずれも FloorProgress 経由。
-            // 段階 8 のリファクタで schema 整合性検査は `FloorCatalog.load()` 内部で完結する。
             let floors = FloorCatalog.load();
-            // 杖カタログをロード。段階 7 のリファクタで `CatalogContainer.loadWithCheck` 経由になり
-            // schema 整合性検査も `Staff.load()` 内部で完結する。
+            // 杖カタログをロード。
             let staffCatalog = Staff.load();
-            // 消費アイテム（きずぐすり等）カタログをロード。Staff と同じ
-            // `CatalogContainer.loadWithCheck` 経由で schema 整合性検査まで完結する。
+            // 消費アイテム（きずぐすり等）カタログをロード。
             let consumableCatalog = Consumable.load();
             // 6 カタログを 1 つの record に束ねて構築 / リビルド経路へ引き回す。
             let catalogs = {
@@ -686,7 +675,6 @@ mod Game {
             // `GameOverRequest` の handler 本体は `GameLogger` / `EnemyTurn.Queue` /
             // `TurnPhase.State` / `SelectedPlayer.State` / `InitialSpawns.State` 等を
             // 使うため、これらより **内側** (= 構文上で先) に書く必要がある。
-            // 同様に `BoardQuery` も `Ref` 経由で sceneRef を読むだけだが内側に置く。
             } with handler CustomEffects.GameOverRequest {
                   // 全味方脱落でフルリビルド: フロアを 1F に戻し turn 系 state をリセットしてから
                   // scene を作り直し、新しい spawn 一覧を InitialSpawns に書き戻す。本体は GameLifecycle 側。
