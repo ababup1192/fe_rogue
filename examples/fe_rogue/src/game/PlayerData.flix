@@ -1,5 +1,7 @@
 /// PlayerData — 味方駒(Piece)のドメインデータ型。
 ///
+/// 駒ドメインデータを scenes/ から切り離し、engine・game 双方が参照できる
+/// 単一源泉とするために game/ に置く。
 /// game/ 純ロジック(CounterAttackRules 等)はここに依存してよい。
 /// game/ から scenes/ の型を参照することは禁じる（依存方向の不変条件）。
 mod PlayerData {
@@ -16,7 +18,7 @@ mod PlayerData {
     /// `id` は連番（Player_<id> ノード名と一致）。
     /// `gridPos` は盤面論理位置（`moveTo` で更新）。
     /// `moveTiles` は 1 ターン移動力。
-    /// `hp` は残り体力。0 でゲームオーバー。
+    /// `hp` は残り体力（最小 0）。0 を検知した呼び手がゲームオーバー処理を行う責務を持つ。
     /// `waited` は行動済みフラグ（灰色表示・選択不可）。
     /// `attackTargetId` は体当たり攻撃中の被攻撃対象 id（Some の間はモーション実行中）。
     /// `resource` はユニット定義テンプレート（Spawn と同一参照を保持し、復元時に Spawn を再構築できる）。
@@ -24,13 +26,14 @@ mod PlayerData {
     /// `staves` は杖インベントリ（ItemMenu で使用）。
     /// `consumables` は消費アイテムインベントリ。
     /// `selectedItem` は ItemMenu で選択中の種別と index。
-    /// `moveStepsTaken` は AutoMove 当ターンに進行済みマス数。
+    /// `moveStepsTaken` は AutoMove 当ターンに進行済みマス数（範囲 0..moveTiles）。
+    ///   ターン開始時に 0 にリセットされ、moveTiles に達した時点で移動完了とみなす。
     /// `facing` は向き（`walk_<dir>` アニメーション用）。
     /// `hidden` は集合・階段退場で盤面から除外されている状態。
     /// `usedStairs` は階段退場フラグ。
     /// `level` は現レベル（フロア跨ぎで継承）。
     /// `exp` は経験値（0..99）。
-    /// `pendingLevelUp` は直近レベルアップ結果（演出表示後に None に戻す）。
+    /// `pendingLevelUp` は直近レベルアップ結果。LevelUpScene が演出を終えた後に None へ戻す責務を持つ。
     pub type alias Data = {
         id                 = Int32,
         gridPos            = {x = Int32, y = Int32},
@@ -52,7 +55,8 @@ mod PlayerData {
         pendingLevelUp     = Option[LevelSystem.Result]
     }
 
-    /// スポーン時の中間表現（初期 spawn のスナップショット = ゲームオーバー復元用にも使う）。
+    /// スポーン時の中間表現（初期 spawn のスナップショット）。ゲームオーバー復元にも使う。
+    /// hp・waited・exp 等の可変フィールドは含まず、resource から再構築できる最小情報のみを保持する設計。
     pub type alias Spawn = {
         id          = Int32,
         gridPos     = {x = Int32, y = Int32},

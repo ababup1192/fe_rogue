@@ -24,7 +24,9 @@ mod ItemMenuScene {
     // (A) 型定義
     // ────────────────────────────────────────────────────────
 
-    /// サブメニューの操作メタ。`onItemConfirmed` がこの値で分岐する。
+    /// サブメニューの操作メタ。`onItemConfirmed` / `dispatchAction` がこの値で分岐する。
+    /// Flix では型レベルの enum 定数より関数として定義する慣習のため、String リテラル直書きでなく
+    /// ここに集約している（タイポを一か所で検知できる）。
     def equipMeta(): String = "equip"
     def dropMeta():  String = "drop"
     def useMeta():   String = "use"
@@ -36,7 +38,7 @@ mod ItemMenuScene {
     /// scene.json 相対パス。プロジェクトルートから読まれる。
     def sceneJsonPath(): String = AssetPath.resolve("src/scenes/ItemMenuScene.scene.json")
 
-    /// fontManifest で登録した name と一致させる（WeaponMenuScene と同じ "ui"）。
+    /// fontManifest で登録した name と一致させる。フォントは全 ItemList 系で共通の "ui" を使う。
     def fontName(): String = "ui"
 
     /// CanvasLayer ルート名
@@ -82,6 +84,7 @@ mod ItemMenuScene {
     // ────────────────────────────────────────────────────────
 
     /// ItemList を含むため FontAtlas が必須であり、`loadSceneWithFont` 経由でロードする。
+    /// `SceneLoader.load` では FontAtlas を注入できないため、このラッパが必要。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas, tagParser, scene)
@@ -118,7 +121,7 @@ mod ItemMenuScene {
                 if (pageLabelVisible) label else CanvasItem.setVisible(false, label))
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から ItemMenu の ItemList
-    /// ノードに対して dispatch される (per-node、ItemList は 1 個のみなので 1 フレーム 1 回)。
+    /// ノードに対して dispatch される（1 ノード 1 呼び出し。ItemList は 1 個のみなので 1 フレーム 1 回）。
     pub def refreshItems(_delta: Duration.Duration, node: EngineNode[NodeTag],
                          _path: NodePath,
                          scene: Scene[NodeTag]):
@@ -197,9 +200,12 @@ mod ItemMenuScene {
     /// 選択中プレイヤーの weapons + staves + consumables を ItemList に並べる（ItemSelect 中）。
     /// 順序は「武器（先頭が装備中）→ 杖 → 消費アイテム」。ロード職など 8 個を超える持ち物は
     /// 現在ページぶん（最大 8 件）だけを表示し、`pageLabel` に "現在/総数" を出す。
-    // 非driver の在庫 read は effect 経由（PartyQuery）に寄せる薄ラッパ。
-    // ※ mutator(applyEquip/applyDrop/applyUse)内部の「同フレーム write 直後 read」は scene 引数の
-    //   最新値を読む必要があるため、これらは使わず scene-arg のまま据え置く（stale snapshot 回避）。
+    ///
+    /// 以下の薄ラッパ (`weaponsOf` / `stavesOf` / `consumablesOf`) は非 driver の在庫 read を
+    /// effect 経由（PartyQuery）に寄せる設計上の境界線。
+    /// `applyEquip` / `applyDrop` / `applyUse` 内部の「同フレーム write 直後 read」では
+    /// scene 引数の最新値を直接読む必要があるため、これらは使わず scene-arg のまま据え置く
+    /// （PartyQuery snapshot だと stale になる）。
     def weaponsOf(id: Int32): List[UnitCatalog.WeaponResource] \ PlayerData.PartyQuery =
         PlayerData.PartyQuery.get(id) |> Option.map(d -> d#weapons) |> Option.getWithDefault(Nil)
 
@@ -329,7 +335,8 @@ mod ItemMenuScene {
     /// カーソルが乗っている敵と選択中味方とのマンハッタン距離。敵が居なければ None。
     // 注: これはインベントリ read ではなくカーソル/位置の距離計算。player の gridPos・
     // カーソル位置・敵をすべて scene から読む（PartyQuery snapshot に寄せると player 不在時の
-    // 短絡が崩れ、カーソル未配置の経路で CursorScene.getGridPos が bug! する）。scene-arg のまま。
+    // 短絡が崩れ、カーソル未配置の経路で CursorScene.getGridPos が None を bug! として
+    // 扱い Err をスローする）。scene-arg のまま。
     def cursorTargetDistance(playerId: Int32, scene: Scene[NodeTag]): Option[Int32] =
         forM (
             player <- PlayerScene.get(playerId, scene);
@@ -421,7 +428,7 @@ mod ItemMenuScene {
         }
 
     /// 武器 1 本ぶんの ItemEntry。metadata は `"w:<idx>"` 形式で種別と index を持つ。
-    /// 「武器名 残耐久」の表記は WeaponMenuScene と同じ。
+    /// 「武器名 残耐久」の表記は WeaponMenuScene と統一している（一貫した見た目のため）。
     def weaponEntry(idx: Int32, weapon: UnitCatalog.WeaponResource): ItemEntry = {
         text     = "${weapon#name} ${weapon#durability}",
         disabled = false,
@@ -524,7 +531,8 @@ mod ItemMenuScene {
         ) yield dispatchAction(m, playerId, kind, scene);
         Option.getWithDefault(scene, result)
 
-    /// サブメニューの metadata 別に処理を分配する。
+    /// サブメニューの metadata 別に処理を分配する。`onActionConfirmed` の effect 宣言が
+    /// 肥大化しないよう、分岐ロジックをここに委譲している。
     def dispatchAction(meta: String, playerId: Int32, kind: PlayerData.ItemKind,
                         scene: Scene[NodeTag]):
                        Scene[NodeTag]

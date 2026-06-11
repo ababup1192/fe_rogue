@@ -20,7 +20,8 @@
 ///   - キューが空 = プレイヤーターン
 mod EnemyTurn {
 
-    /// 1 マスぶんの行動権。`id` は `EnemyScene.Data` の `id` フィールド。
+    /// 1 マスぶんの行動権。`id` は `EnemyScene.Data` の `id` フィールド（連番で割り当てられ、
+    /// 同一ターン中に同じ id が複数の step に現れることはない前提。同セル 2 体は想定外）。
     /// remaining は「残り移動マス数」。処理時に 1 マス進み remaining - 1 を pushFront する。
     /// remaining = 0 の step が先頭に来たら移動を終了し捨てる。
     pub type alias Step = { id = Int32, remaining = Int32 }
@@ -30,13 +31,15 @@ mod EnemyTurn {
     /// 同一敵の継続 step を先頭に戻す LIFO 的な使い方も成立する。
     /// この「継続 step を割り込ませる」仕組みが 1 体ずつ動く順序を保証する。
     pub eff Queue {
-        /// キュー先頭の step を取り出して返す。空なら None。
+        /// キュー先頭の step を取り出して返す。空なら None を返し、キューは変化しない（副作用なし）。
         def popFront(): Option[Step]
         /// キュー先頭に step を積む（同じ敵の継続 step）。
         def pushFront(step: Step): Unit
         /// キュー全体を差し替える（ターン開始時の populate）。
         def replace(steps: List[Step]): Unit
-        /// 現在の先頭を覗き見る（取り出さない）。
+        /// 現在の先頭を覗き見る（キューは変化しない）。
+        /// Tween アクティブ判定の前に step 種別（id・remaining）を確認し、
+        /// 処理すべき敵・行動か判断してから popFront → Tween 登録する、という用途を想定。
         def peekFront(): Option[Step]
         /// 空かどうか。プレイヤー入力受付の判定に使う。
         def isEmpty(): Bool
@@ -44,7 +47,10 @@ mod EnemyTurn {
 
     /// `Tween.withScheduler` と同じ流儀の handler 注入。
     /// 注入後は thunk のスコープ内で `Queue` effect が解決される。
-    /// スコープを抜けると queueRef は破棄されるため、複数スコープをまたいで状態を共有しない。
+    /// スコープを抜けると queueRef は破棄される。
+    /// 禁止パターン: 同一 rc を別の withQueue 呼び出しに渡す、withQueue を入れ子にする、
+    /// thunk の外側（呼び出し元）で queueRef を保持して後から参照するなど、
+    /// 複数スコープ間で同じキュー状態を共有してはならない。
     pub def withQueue(rc: Region[r]):
             (Unit -> a \ ef) -> a \ (ef - Queue) + r =
         thunk -> {

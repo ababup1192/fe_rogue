@@ -3,6 +3,8 @@
 /// 将棋でいう打ち手。盤面(Board)を読み、入力で次の手(1 マス移動)を決め、駒(PlayerScene)へ
 /// `moveToById`（座標＋見た目の適用）で反映する。**駒は Board を読まない**という分離を保つための層で、
 /// 敵の `EnemyAI`/`EnemyTurnDriverScene`、ローグ合流の `AutoMoveScene` と対称。
+/// 駒(PlayerScene)が Board を直接読むと、盤面の内部表現が変わるたびに駒側の修正が波及し、
+/// テストや再利用も困難になる。打ち手を挟むことで Board 変更の影響範囲をこの層に限定する。
 ///
 /// dispatch は Game.flix の `Node[NodeTag]` redef の **physicsProcess**（入力ポーリングパス）の
 /// Player arm から呼ばれる（PlayerMoving=選択中プレイヤー / RogueMove=ロード id 0）。
@@ -28,7 +30,8 @@ mod PlayerMovementScene {
                 PlayerScene.slideDuration(), node, path, scene)
 
     /// フェーズ別の「進入可否」述語。将来の移動制限（床限定・特定敵回避 等）はここに足す。
-    /// driver にハードコードせず関数化しておくことで拡張に開く。
+    /// physicsStep/roamStep は共通 stepFor に述語を渡す構造のため、フェーズ固有の制限を
+    /// 呼び出し元ごとに重複して書かずに済む。driver にハードコードせず関数化することで拡張にも開く。
     def selectAllowedPred(phase: TurnPhase.Phase,
                            scene: Scene[NodeTag]): {x = Int32, y = Int32} -> Bool =
         match phase {
@@ -50,7 +53,9 @@ mod PlayerMovementScene {
                 if (PlayerScene.isMoving(data#id)) (node, scene)
                 else
                     let board = BoardQuery.board();
-                    // 方向キー押下で 1 セルだけ進む。味方セルへ進入可能（重なる）、敵セルはブロック。
+                    // 方向キー押下で 1 セルだけ進む。
+                    // Board.tryMoveWithRange が壁・敵セルをブロック; allowedPred が MoveRange 制限を追加する。
+                    // 味方セルへは進入可能（重なる）、敵セルはブロック（Board.tryMoveWithRange の責務）。
                     let moved = forM (
                         dir    <- readHeldDirection();
                         target <- Board.tryMoveWithRange(board, data#gridPos, dir, allowedPred)
@@ -66,6 +71,7 @@ mod PlayerMovementScene {
         }
 
     /// 押されている方向キーを Option で返す（複数同時押しは上 > 下 > 左 > 右）。
+    /// 優先順序は特定のゲームデザイン意図によるものではなく、コード記述順による任意の一貫した順序。
     /// 入力ポーリングは打ち手の責務。ここ 1 箇所に集約し PlayerScene からは削除した。
     def readHeldDirection(): Option[{x = Int32, y = Int32}] \ GameEngine.Game =
         let isDown = key -> GameEngine.Game.isKeyPressed(key);

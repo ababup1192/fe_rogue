@@ -8,19 +8,23 @@
 /// `BoardQuery` handler の中身、敵 step 内の盤面更新後の再構築、AutoMove の
 /// step 判定など、scene → Board の変換が必要な全箇所がここを呼ぶ。
 ///
-/// Aef を持たない (scene の値だけで決まる) ため、Board 系のテストから直接呼べる。
+/// 副作用ハンドラ(Aef)不要で scene 値のみに依存するため、Board 系のテストから直接呼べる。
 mod BoardSnapshot {
 
     /// 現フレームの scene から Board (MapSnapshot + 駒一覧) を組み立てる。
     /// 駒は PlayerScene / EnemyScene の Data から (Piece, gridPos) を作る。
     /// 順序: players → enemies (Board.playerPositions / enemyPositions の filterMap が
     /// 順序を保つ前提なので、ここでも安定順を維持する)。
+    /// 順序が崩れると Board.playerPositions / enemyPositions が id と位置のズレを起こし、
+    /// 移動範囲計算や AI の衝突判定が誤った駒を参照する。
     pub def fromScene(scene: Scene[NodeTag]): Board =
         fromParts(scene, PlayerScene.getAll(scene), EnemyScene.getAll(scene))
 
     /// `fromScene` の「取得済みリスト版」。`Encounter.fromScene` が同じ scene を二度歩かない
     /// よう、生の(hidden を含む) players/enemies を渡してこちらを使う。hidden の盤面除外は
     /// 従来どおり**ここ 1 箇所**で行う（Board 経由の全クエリが自動的に hidden を無視する）。
+    /// 非対称: players は hidden フィルタ(line 33)をかけるが、enemies にはかけない。
+    /// EnemyScene.Data に hidden 概念がなく、死亡敵は EnemyScene 側で既に除去されているため。
     pub def fromParts(scene: Scene[NodeTag],
                        players: List[PlayerScene.Data],
                        enemies: List[EnemyScene.Data]): Board =
@@ -28,6 +32,8 @@ mod BoardSnapshot {
         let mapGlobal   = Scene.globalPositionAt(MapScene.mapPath(), scene);
         let placements  = MapScene.getPlacements(scene);
         // engine 値 → 純粋データの MapSnapshot へ射影（唯一の変換点）。
+        // ここ以外で snapshotOf を呼ぶと重複生成によるコストと「同一フレームで2つの盤面が存在する」
+        // 不整合が生じるため、全クエリがこの1点を経由する設計にしている。
         let map = MapScene.snapshotOf(layer, mapGlobal, placements);
         let playerPieces = players
             |> List.filter(d -> not d#hidden)

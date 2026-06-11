@@ -85,7 +85,9 @@ mod UnitBaseCodec {
             case Some(sf) => Map.insert("spriteFrames", encodeSpriteFrames(sf, u#sprite#hframes), base)
         }
 
-    /// `initialInventory` を JSON 配列にシリアライズする。エントリが空のときは空配列を返す。
+    /// `initialInventory` を JSON 配列にシリアライズする。
+    /// pub なのは `UnitCatalog` / `EnemyCatalog` の encode 側が直接呼ぶため。
+    /// 戻り値は常に `JArray`（空リストでも `JArray([])`）— decode 側が `JArray` 以外を None とする契約に対応。
     pub def encodeInventory(inv: List[InventoryEntry]): Json =
         JArray(List.map(encodeInventoryEntry, inv) |> List.toVector)
 
@@ -101,6 +103,8 @@ mod UnitBaseCodec {
         case ItemKind.Consumable => "consumable"
     }
 
+    /// `SpriteResource` を JSON オブジェクトに encode する。`decodeSprite` と 1-to-1 対応。
+    /// `flipForFacing` は「向きに応じてスプライトを左右反転するフラグ」を JSON キーとして保持する。
     pub def encodeSprite(s: SpriteResource): Json =
         JObject(Map#{
             "texture" => JString(s#texture),
@@ -242,7 +246,9 @@ mod UnitBaseCodec {
 
     // ── spriteFrames の格子 → px 解決（effectful 後段パス。味方・敵で共有）──
 
-    /// 解決時のコンテキスト。1 ユニットの sprite 設定 + 解決済み cell サイズ。
+    /// 格子→px 解決の中間パス用コンテキスト。
+    /// `getTextureInfo`（effectful）を 1 回だけ呼んで実寸を取得し、cellW/cellH を確定させる。
+    /// 以後の各フレーム decode はこの値を使い回すことで effect 呼び出しを 1 ユニット 1 回に抑える。
     type alias SpriteCtx = {
         texture = String,
         hframes = Int32,
@@ -270,6 +276,9 @@ mod UnitBaseCodec {
                 }
         }
 
+    /// 1 エントリの `spriteFrames` を解決して `entries` を更新する。
+    /// id 未登録 / JSON 不整合 / texture 取得失敗 / grid decode 失敗のいずれかで詰まった場合は
+    /// 部分更新せず `entries` をそのまま返す（all-or-nothing 方針 — decodeInventory と同様）。
     def resolveOne(id: String, unitJson: Json,
                     entries: Map[String, {sprite = SpriteResource,
                                           spriteFrames = Option[SpriteFrames] | r}]):
@@ -347,6 +356,7 @@ mod UnitBaseCodec {
         ) yield {
             let dur = Map.get("duration", obj) |> Option.flatMap(expectFloat)
                             |> Option.getWithDefault(1.0);
+            // encode 側の `col + row * hframes` の逆算: col = frameIdx % hframes, row = frameIdx / hframes。
             let col = Int32.remainder(frameIdx, ctx#hframes);
             let row = frameIdx / ctx#hframes;
             let rect = ({

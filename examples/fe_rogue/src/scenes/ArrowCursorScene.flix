@@ -42,14 +42,15 @@ mod ArrowCursorScene {
     }
 
     /// anchor から direction だけ進めた隣接セル。
-    /// `Staff.toVec2i` と同等の計算だが、将来デバッグで中間値を確認しやすくするため独立定義。
+    /// `Staff.toVec2i` と同等の計算だが、`gridPos` への代入前に cell 値を名前付きで保持できるよう、
+    /// また `rotationOf` と対称に関数として独立させている。
     def cellOf(anchor: {x = Int32, y = Int32},
                 direction: Staff.Direction): {x = Int32, y = Int32} =
         let offset = Staff.toVec2i(direction);
         {x = anchor#x + offset#x, y = anchor#y + offset#y}
 
     /// scene に矢印カーソルを追加する。初期は非表示 (visible は scene.json 側で false)。
-    /// `anchor` は (0, 0) で初期化し、`showFor` で正しい位置に動かす。
+    /// add 直後は anchor/gridPos が未設定のため、StaffAim 開始前に必ず `showFor` を呼ぶこと。
     pub def add(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let data: Data = {
@@ -62,9 +63,9 @@ mod ArrowCursorScene {
                               scene)
             |> Scene.setState(arrowPath(), NodeTag.ArrowCursor(data))
 
-    /// 毎フレーム呼ばれる process（Game.flix の dispatch から）。
-    /// フェーズが `StaffAim` のときだけ visible にし、それ以外では hidden。
-    /// 位置・回転は `showFor` / `aim` が呼ばれた時点で設定済みなので、ここでは触らない。
+    /// フェーズが `StaffAim` のときだけ visible にし、それ以外では hidden にする。
+    /// 実質的な描画更新（位置・回転）は `StaffAim` 開始時の `showFor` と方向キー毎の `aim` が担い、
+    /// ここでは visibility 切替のみ行う（`showFor` / `aim` で設定済みの値を毎フレーム上書きしない）。
     pub def process(_delta: Duration.Duration, node: EngineNode[NodeTag],
                      _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag]) \ TurnPhase.State =
@@ -94,13 +95,14 @@ mod ArrowCursorScene {
                       scene: Scene[NodeTag]): Scene[NodeTag] =
         setPositionAndRotation(playerCell, Staff.Direction.Up, scene)
 
-    /// 方向キー押下で矢印の向きを変える。`anchor` は変えず direction だけ更新。
+    /// StaffAim 中に方向キーを受けるたびに呼ぶ。`showFor` で固定された `anchor` は変えず、
+    /// `direction` と矢印の表示位置だけを更新する。
     pub def aim(direction: Staff.Direction,
                   scene: Scene[NodeTag]): Scene[NodeTag] =
         let anchor = getData(scene)#anchor;
         setPositionAndRotation(anchor, direction, scene)
 
-    /// 現在指している direction を取り出す。`applyStaffCast` の発射方向に使う。
+    /// 現在指している direction を取り出す。発射確定時（Z キー押下後）に呼び出し元が方向を取得するために公開している。
     pub def getDirection(scene: Scene[NodeTag]): Staff.Direction =
         getData(scene)#direction
 

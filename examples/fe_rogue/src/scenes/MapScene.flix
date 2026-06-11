@@ -1,23 +1,21 @@
 /// MapScene — ダンジョンマップ（TileMapLayer）を Scene に追加する
 ///
-/// 複数の LDTK モジュール（部屋・通路）を `DungeonComposer.compose` でマージし、
-/// 1 枚の TileMapLayer としてシーンに登録する。第一歩として
-/// `Level_0 + Pathway_1 + Level_1` を横一直線（Overlap 配置）で連結する。
+/// `DungeonGenerator.generate` でランダム生成した部屋・通路プランを決定し、
+/// `DungeonComposer.composeFromSideConnections` で側面接続に基づき連結して
+/// 1 枚の TileMapLayer としてシーンに登録する。
 ///
 /// 衝突セルは TileMapLayer 内部に格納され、PhysicsStep / RayCast2D / CharacterBody2D の
 /// 衝突クエリが透過的に利用する（PlayerScene 等は内部実装を知らない）。
 ///
 /// 他シーンが「マップ 1 マスのピクセルサイズ」「セルが床か壁か」などを問い合わせる
 /// 際は `MapSnapshot` レコードを経由する。地形は**純粋データ**で持ち（壁セル集合・モジュール
-/// 配置・Map global）、床判定・座標変換・モジュール逆引きは `MapScene` の純関数
-/// （`isWall`/`isFloor`/`mapToLocal`/`gridToWorld`/`moduleOfCell`）で計算する。
+/// 配置・Map global）、床判定・座標変換・モジュール逆引きは `MapSnapshot` モジュールの
+/// 純関数で計算する。
 /// 旧版は関数フィールド（クロージャ）で持っていたが、テストが地形を literal で組めるよう
 /// 純粋データへ移した。本物の TileMapLayer からの射影は `MapScene.snapshotOf` 1 か所に閉じる。
 ///
 /// 取得は `BoardQuery` effect の戻り値（Board）に含まれる形で行う。Board が盤面情報の
 /// 唯一の入口。
-// MapScene の責務は tilemap の view 操作と engine→snapshot 射影(snapshotOf)に限る。
-// 衝突セルは TileMapLayer 内部に格納され、外部は MapSnapshot 経由でのみ参照する。
 
 mod MapScene {
     import java.lang.{System => JSystem}
@@ -109,8 +107,8 @@ mod MapScene {
         if (isMapTest) addFromMapJson(AssetPath.resolve("assets/maps/room_1.map.json"), scene)
         else           addFromLdtk(floor, scene)
 
-    /// 既存ルート: DungeonGenerator + DungeonComposer で複数モジュールを連結する。
-    /// n-format: composer が Walls 層と Floor 層を同時に構築して返す。
+    /// 通常の生成ルート（map-test バイパス時以外はこちら）: DungeonGenerator + DungeonComposer で複数モジュールを連結する。
+    /// 壁・床 2 層同時構築形式: composer が Walls 層と Floor 層を同時に構築して返す。
     def addFromLdtk(floor: FloorCatalog.FloorResource, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO} =
         let plan = DungeonGenerator.generate(textureName(),
@@ -133,8 +131,8 @@ mod MapScene {
                               EngineNode.TileMapLayerWithState(result#layer, NodeTag.Map(mapData)))
             |> addWorldNode
 
-    /// 新ルート (視覚一致確認用): 単一 .map.json を MapLoader 経由で描画する。
-    /// DungeonComposer は通さない (auto-rule 再評価なし)。
+    /// 視覚一致確認用ルート: 単一 .map.json を MapLoader 経由で描画する。
+    /// DungeonComposer を通さないためタイル自動結合ルールが再評価されない。
     /// Walls / Floor 層は同一テクスチャ (tileset_dungeon_green) を共有する。
     /// Player/Enemy 配置は最小ダミー (spawnGrid を level 内の安全セルに固定)。
     pub def addFromMapJson(levelPath: String, scene: Scene[NodeTag]): Scene[NodeTag]

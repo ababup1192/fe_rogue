@@ -165,7 +165,9 @@ mod Board {
     pub def isWalkable(board: Board, coord: {x = Int32, y = Int32}): Bool =
         MapSnapshot.isFloor(coord, board#map)
 
-    /// 地形・駒の占有は確認しない。歩行可否は呼び出し側が `isWalkable` / `isOccupied` で別途判定する。
+    /// 座標計算のみ行う。地形・駒の占有はチェックしない。
+    /// 呼び出し側が `isWalkable` / `isOccupied` を組み合わせて制御できるよう、
+    /// 責務を分離している（source にいる駒を透過するかどうかは文脈依存のため）。
     pub def stepTarget(origin: {x = Int32, y = Int32}, dir: {x = Int32, y = Int32}): {x = Int32, y = Int32} =
         Vec2i.add(origin, dir)
 
@@ -205,6 +207,7 @@ mod Board {
         bfsReachable(isFloor, maxSteps, initVisited, initQueue)
 
     /// `reachableCells` の BFS。`visited` は到達済みセル（順序保持）。
+    /// 再訪問による無限ループを防ぐため、展開済みセルを `visited` に保持して持ち回る。
     /// 深さ `maxSteps` に達した節点はそれ以上展開しない。
     def bfsReachable(isFloor: {x = Int32, y = Int32} -> Bool,
                       maxSteps: Int32,
@@ -257,7 +260,8 @@ mod Board {
         let isOpen = c -> bfsPathIsOpen(board, c, source, goal);
         let initVisited = source :: Nil;
         // queue: (current, pathReversedFromSource) — source から current までの経路を
-        //   末尾 cons で積んだもの（reverse すれば 1 歩目 → goal）。
+        //   先頭 cons で逆順に積む。Flix のリスト先頭追加が O(1) のため逆順蓄積し、
+        //   goal 到達時に一度だけ reverse して返す（末尾追加を毎ステップ行うより効率的）。
         let initQueue: List[({x = Int32, y = Int32}, List[{x = Int32, y = Int32}])] = (source, Nil) :: Nil;
         bfsPathLoop(isOpen, goal, initVisited, initQueue)
 
@@ -294,8 +298,10 @@ mod Board {
         else not isOccupied(c, board)
 
     /// 味方マスは通過可能、敵マスは NG、壁・範囲外も NG な BFS。
+    /// `bfsPath` は敵も味方もブロックするのに対し、こちらは味方だけを透過扱いにする違いがある。
     /// `allyCells` に source を含んでいても安全（source は常に通行可として扱う）。
-    /// AutoMove のロード合流 / テストから経路全体を確認したい場合に使う。
+    /// AutoMove のロード合流（味方マスを経由しながらゴールへ向かう）に使う。
+    /// テストから経路全体を確認したい場合にも利用できる。
     /// 経路の途中マスは味方占有でも可（通過可能）。停止可否は呼び出し側が
     /// `stoppableForUnit` 等で別途担保する。
     pub def bfsPathSkipAllies(board: Board,
@@ -310,6 +316,8 @@ mod Board {
         bfsPathLoop(isOpen, goal, initVisited, initQueue)
 
     /// `bfsPathIsOpen` の派生: 敵駒のみブロック、味方駒は透過扱いにする。
+    /// `bfsPathLoop` を共通で再利用しつつ open 述語だけをこちらに差し替えることで、
+    /// 同一 BFS ロジックを重複させずに味方透過の挙動を実現している。
     def bfsPathIsOpenSkipAllies(board: Board, c: {x = Int32, y = Int32},
                                  source: {x = Int32, y = Int32},
                                  goal: {x = Int32, y = Int32},
@@ -325,7 +333,9 @@ mod Board {
     //     敵は値の小さい隣マスへ降下するだけで局所最小に陥らず迷路でも詰まらない。
     // ════════════════════════════════════════════════════════
 
-    /// 実質 ∞（到達不能）を表す番兵値。距離フィールドの未到達セルに使う。
+    /// 到達不能を表す番兵値。距離フィールドの未到達セルに使う。
+    /// Int32 最大値 (2^31 - 1 ≈ 2.1e9) の約半分にしており、
+    /// この値同士を加算しても Int32 オーバーフローしない余裕を持たせている。
     pub def infDist(): Int32 = 1000000000
 
     /// `sources` を距離 0 とする多始点 BFS で、各セルの最短ステップ数を Map で返す。
@@ -520,13 +530,16 @@ mod Board {
 
     /// セル一覧から重複 (x,y 一致) を除く。先に出たものを残す（順序保持・先勝ち）。
     /// spawn 配置・再配置・危険域表示など、座標集合を作る各所で共有する。
+    /// 先勝ちにする理由: spawn 等では先に列挙された（優先度が高い）配置を維持し、
+    /// 後から追加された重複候補を自動的に無視したいため。
     pub def dedupCells(cells: List[{x = Int32, y = Int32}]): List[{x = Int32, y = Int32}] =
         List.foldLeft((acc, c) ->
             if (isInList(c, acc)) acc else List.append(acc, c :: Nil),
             (Nil: List[{x = Int32, y = Int32}]), cells)
 
     /// `cells` が `n` 個に満たない場合、不足分を `fallback` で埋めて長さ `n` に揃える。
-    /// 足りていれば先頭 `n` 個に切り詰める。狭所での配置保険。
+    /// `len >= n` のときは先頭 `n` 個に切り詰める（`cells` の先頭が優先配置の意味を持つ）。
+    /// 狭所で候補が足りない場合の配置保険として使う。
     pub def padCells(cells: List[{x = Int32, y = Int32}],
                       fallback: {x = Int32, y = Int32}, n: Int32):
             List[{x = Int32, y = Int32}] =
@@ -538,9 +551,12 @@ mod Board {
     // 内部ヘルパー
     // ════════════════════════════════════════════════════════
 
+    /// `{x, y}` record alias には Flix の `Eq` derive が無いため `==` 比較ができない。
+    /// そのため独自のフィールド比較関数を用意している（Flix の落とし穴）。
     def samePosition(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Bool =
         a#x == b#x and a#y == b#y
 
+    /// `samePosition` を使ったリスト線形探索。`List.memberOf` が使えない理由は `samePosition` と同じ。
     def isInList(c: {x = Int32, y = Int32}, list: List[{x = Int32, y = Int32}]): Bool =
         List.exists(v -> samePosition(v, c), list)
 }

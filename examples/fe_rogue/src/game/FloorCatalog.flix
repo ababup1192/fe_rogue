@@ -30,7 +30,8 @@ mod FloorCatalog {
         case FloorCatalog(CatalogContainer[FloorResource])
     }
 
-    /// 1 エントリ: ある id (units / weapons の sub-entry id) が percent の重みで出現する
+    /// 任意出現テーブルの 1 エントリ。id はカタログ上の識別子（モンスター・アイテム・マップ stem 等）、
+    /// percent は相対重み（正規化せず合計値で割る）。monsters/items/roomMaps 等すべてに共用する汎用型。
     pub type alias SpawnEntry = {
         id      = String,
         percent = Int32
@@ -133,6 +134,8 @@ mod FloorCatalog {
         }
     }
 
+    /// acc に各 percent を累積し、r が区間 [acc, acc+percent) に入った瞬間に確定する線形スキャン O(n)。
+    /// acc を繰り越すことで「残りを再スケール」せずに済み、整数 percent のまま正確に扱える。
     def pickWeightedRec(r: Float64, acc: Float64, entries: List[SpawnEntry]):
             Option[String] = match entries {
         case Nil      => None
@@ -142,6 +145,7 @@ mod FloorCatalog {
             else pickWeightedRec(r, next, rest)
     }
 
+    /// percent の総和。pickWeighted の「合計 > 0」ガードに使用する。
     def sumPercent(entries: List[SpawnEntry]): Int32 =
         List.foldLeft((acc, e) -> acc + e#percent, 0i32, entries)
 
@@ -158,7 +162,8 @@ mod FloorCatalog {
             lo + idx
         }
 
-    /// schema 整合性チェックに使う期待フィールド名集合
+    /// floors.json の各フロアエントリが持つべき必須キー集合。
+    /// `CatalogContainer.loadWithCheck` に渡し、余剰フィールドがある場合に警告を出すために使用する。
     pub def expectedFloorFields(): Set[String] =
         Set#{"label", "generation", "monsters", "items", "monstersPerRoom", "itemsPerRoom",
              "roomMaps", "horizontalMaps", "verticalMaps"}
@@ -182,6 +187,7 @@ instance Saveable[FloorCatalog.FloorCatalog] {
 }
 
 /// FloorResource 1 件分の encode / decode。container 巡回は `CatalogContainer.encode/decode` に委譲する。
+/// FloorCatalog 本体の型定義・ロジックと JSON 変換コードを分離し、codec 変更が型定義に波及しないよう独立モジュールとしている。
 mod FloorCatalogCodec {
 
     use Util.Json.Json
@@ -255,7 +261,8 @@ mod FloorCatalogCodec {
             |> Option.flatMap(decodeList(decodeSpawnEntry))
             |> Option.getWithDefault(Nil)
 
-    /// GenerationConfig を decode する。将来フィールドが増える際の拡張ポイント。
+    /// `{"roomCount": Int32}` を GenerationConfig に decode する。
+    /// 今は roomCount のみ保持する設計理由は `GenerationConfig` の型コメント（L45 付近）を参照。
     def decodeGeneration(element: Json): Option[GenerationConfig] =
         forM (
             obj        <- expectObject(element);
@@ -273,6 +280,7 @@ mod FloorCatalogCodec {
             mx   <- expectInt(maxJ)
         ) yield ({min = mn, max = mx}: SpawnRange)
 
+    /// `{"id": String, "percent": Int32}` を SpawnEntry に decode する。decodeSpawnRange と対称。
     def decodeSpawnEntry(element: Json): Option[SpawnEntry] =
         forM (
             obj      <- expectObject(element);

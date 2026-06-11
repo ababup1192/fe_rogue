@@ -148,7 +148,7 @@ mod LevelUpPanelScene {
 
     /// 演出を 1 フレーム進める。bonus → 各ステータス行を上から 1 行ずつ出す。
     /// 上昇した行は status_up を鳴らしてゆっくり、上昇しなかった行は無音で一瞬で送る。
-    /// `revealed` は「出し終えた行数」(0..6)。
+    /// `revealed` は「出し終えた行数」(0 .. List.length(result#changes)、例: 8 ステータスなら 0..8)。
     def stepReveal(delta: Duration.Duration, result: LevelSystem.Result,
                     scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Audio =
         let st   = currentState(scene);
@@ -267,7 +267,8 @@ mod LevelUpPanelScene {
             |> List.filterMap(d -> d#pendingLevelUp)
             |> List.head
 
-    /// `confirm` で「全行出し切ったか」を判定するための閾値として使う。
+    /// `List.length` の薄いラッパー。名前を付けることで `confirm` での閾値比較の意図を明示する。
+    /// `confirm` が「全行出し切ったか（`st#revealed < total`）」を判定するときに使う。
     def totalRows(result: LevelSystem.Result): Int32 =
         List.length(result#changes)
 
@@ -314,6 +315,8 @@ mod LevelUpPanelScene {
         }
 
     /// レベルアップ表示待ちの味方のうち先頭（= いま表示している味方）の id。
+    /// `confirm` は先頭 id の `pendingLevelUp` だけを 1 件消すので、
+    /// 「先頭 = 今表示中」という不変条件が保たれる。
     def firstPendingId(scene: Scene[NodeTag]): Option[Int32] =
         PlayerScene.getAll(scene)
             |> List.filter(d -> Option.nonEmpty(d#pendingLevelUp))
@@ -357,6 +360,7 @@ mod LevelUpPanelScene {
             |> joinLines
 
     /// 末尾改行なしで各行を結合。Label2D.setText に渡す前提で末尾 \n を付けない。
+    /// 空リストのとき `""` を返し、Label2D の setText に渡すと空欄（行なし）として安全に扱われる。
     def joinLines(lines: List[String]): String =
         match lines {
             case Nil          => ""

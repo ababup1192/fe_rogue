@@ -19,9 +19,8 @@ mod BattlePanelScene {
 
     def rootName(): String = "BattlePanel"
     pub def panelName(): String = "panel"
-    // VBox 構成: 上=味方武器名(青帯) / 中=数値 3 カラム(青|暗|赤) / 下=敵武器名(赤帯)。
-    // 各セルは背景 ColorRect（FullRect）+ テキスト Label2D の 2 ノード。
-    // Container はロード時 directive なので、これらは CanvasLayer 直下 (root::名前) に並ぶ。
+    // Container はロード時 directive なので、子ノードは論理的な VBox を構成しても
+    // 実際は CanvasLayer 直下 (root::名前) にフラットに並ぶ。
     // 各カラムは HP 行だけ独立ラベル（点滅・グレー用）。leftRest/rightRest は威力/命中の 2 行。
     def topBgName(): String       = "topBg"
     def pWeaponName(): String     = "playerWeaponText"
@@ -102,11 +101,11 @@ mod BattlePanelScene {
         Scene.mapEngineNode(path,
             en -> EngineNode.mapColorRect(rect -> CanvasItem.setVisible(visible, rect), en), scene)
 
-    /// Game.flix の `Node[NodeTag] instance` の `process` redef から BattlePanel の Panel
-    /// ノードに対して dispatch される (panel は 1 個のみなので 1 フレーム 1 回)。
+    /// `Game.flix` の `Node[NodeTag] instance` の `process` redef から dispatch される。
+    /// BattlePanel ノードはシーン内に 1 個だけなので 1 フレームにつき 1 回だけ呼ばれる。
+    /// 自走モデルなので外部 (WeaponMenu 等) からテキスト更新を push する必要はない。
     /// phase に応じて Panel + Label2D の visible を再評価し、AttackForecast フェーズ中は
     /// 選択中プレイヤー / 武器 / 攻撃対象から予報テキストを毎フレーム再構築する。
-    /// 自走モデルなので外部 (WeaponMenu 等) からテキスト更新を push する必要はない。
     pub def process(delta: Duration.Duration,
                      node: EngineNode[NodeTag],
                      _path: NodePath, scene: Scene[NodeTag]):
@@ -114,7 +113,7 @@ mod BattlePanelScene {
                     \ {TurnPhase.State, SelectedPlayer.State,
                        PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let phase = TurnPhase.State.get();
-        // HP 点滅のサイクル内経過時間を delta 分進めて panel ノードに書き戻す。
+        // 点滅タイマーを BattlePanel タグから取り出して進める（タグへの書き戻しは writeElapsed）。
         let elapsed = match Scene.getState(panelPath(), scene) {
             case Some(NodeTag.BattlePanel(e)) => e
             case _                            => Duration.zero()
@@ -251,8 +250,8 @@ mod BattlePanelScene {
     def numWidth(): Int32 = 5
 
     /// `AttackForecast` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
-    /// 攻撃モーションの完了 (`attack_lunge` finished) で `CombatScene.onLungeDone`
-    /// が反撃 / kill 演出 / commit に流す。
+    /// 攻撃モーションのアニメーション名は `"attack_lunge"`（`CombatScene.startAttack` が再生）。
+    /// そのアニメーション完了時に `CombatScene.onLungeDone` が呼ばれ、反撃 / kill 演出 / commit に流す。
     ///
     /// 遷移先は `PlayerAttack` ではなく **`PlayerAttackHold`**。`PlayerAttack` は
     /// 「赤マスでターゲット選択中」のフェーズで Z で WeaponMenu を再オープンできてしまうため、
@@ -313,8 +312,9 @@ mod BattlePanelScene {
         enemyHpCur = Int32, enemyHpPost = Int32, enemyTakesDmg = Bool
     }
 
-    /// 攻撃中の武器選択リストでアクティブな武器 `selWeapon` を返す（カーソル上の敵に届く
-    /// 選択武器）。`process` から呼んで `applyForecast` / `buildColumns` に渡す。
+    /// 攻撃中の武器選択リストでアクティブな武器を返す（カーソル上の敵に届く選択武器）。
+    /// `buildColumns` を純計算に保つために effect（SelectedPlayer / PlayerData）をここで吸収し、
+    /// 取得済みの値を引数として渡す分離を実現している。
     /// 敵が居ない / 届く武器が無いなら None（予報は空になる）。
     def selectedAttackWeapon(scene: Scene[NodeTag]):
             Option[UnitCatalog.WeaponResource]
@@ -380,7 +380,8 @@ mod BattlePanelScene {
         // HP シミュレーション: 戦闘後HP と「減るか」フラグ。
         let enemyHpPost  = Int32.max(0, enemy#hp - playerForecast#damage);
         let playerHpPost = Int32.max(0, player#hp - enemyCols#counterDamage);
-        // attackerId/defenderId は buildColumns の yield で実 id に上書きする（ここは仮置き 0）。
+        // attackerId/defenderId はここでは仮置き 0。buildColumns の yield { attackerId = pid, defenderId = eid | ... }
+        // という record update 構文で実 id に置き換えられる。
         {attackerId = 0, defenderId = 0,
          pWeapon = pWeapon, eWeapon = eWeapon,
          leftPower = leftPower, playerProficient = proficient,
@@ -426,7 +427,7 @@ mod BattlePanelScene {
     }
 
     /// 左側をスペースで埋めて指定幅にする（右寄せ。全角は 1 文字 2 幅で扱う）。
-    /// 味方の数値を中央のラベル列に右から寄せるのに使う。
+    /// HP / 威力 / 命中などの数値列を幅合わせするために使う。
     def padLeft(text: String, width: Int32): String =
         let len = visualWidth(text);
         if (len >= width) text

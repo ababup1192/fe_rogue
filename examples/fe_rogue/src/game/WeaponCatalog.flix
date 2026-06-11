@@ -48,7 +48,8 @@ mod WeaponCatalog {
         case Magic   // 魔法（中立・魔防を参照）
     }
 
-    /// 全武器タイプ（得意武器トグル UI / 「ロード=全得意」の生成などで使う）。
+    /// 全武器タイプの列挙。得意武器トグル UI の選択肢生成や、
+    /// 初期ロード時にすべての武器タイプを得意とするユニットを生成する際に使う。
     pub def allWeaponTypes(): List[WeaponType] =
         WeaponType.Sword :: WeaponType.Axe :: WeaponType.Lance ::
         WeaponType.Bow :: WeaponType.Magic :: Nil
@@ -113,7 +114,8 @@ mod WeaponCatalog {
             case None         => bug!("WeaponCatalog.lookup: weapon '${id}' not in catalog")
         }
 
-    /// 空の `WeaponCatalog` (entries 0 件) を返す。デシリアライズ前の初期値として使用する。
+    /// 空の `WeaponCatalog` (entries 0 件) を返す。`Saveable.fromJson` でセーブデータを
+    /// 復元する前の初期値として使用する（`load` ではなく JSON 復元パスで使う）。
     pub def empty(): WeaponCatalog =
         WeaponCatalog.WeaponCatalog(CatalogContainer.CatalogContainer({
             containerKey = "weapons",
@@ -140,7 +142,9 @@ instance Saveable[WeaponCatalog.WeaponCatalog] {
             |> Option.map(WeaponCatalog.WeaponCatalog.WeaponCatalog)
 }
 
-/// container 巡回は `CatalogContainer.encode/decode` に委譲する。
+/// `WeaponResource` ↔ Json の変換ロジックを集約するモジュール。
+/// container 全体の巡回は `CatalogContainer.encode/decode` に委譲し、
+/// このモジュールはエントリ単位の変換のみを担う（責務の分離）。
 mod WeaponCatalogCodec {
 
     use Util.Json.Json
@@ -148,6 +152,8 @@ mod WeaponCatalogCodec {
     use JsonCodec.{expectObject, expectString, expectInt, expectFloat, floatToBd, intToBd}
     use WeaponCatalog.{WeaponResource, WeaponRange, WeaponType, WeaponSpriteResource}
 
+    /// `WeaponResource` を `weapons.json` エントリ形式の `JObject` に変換する。
+    /// `Saveable[WeaponCatalog].toJson` 経由で `CatalogContainer.encode` に渡される。
     pub def encodeWeapon(weapon: WeaponResource): Json =
         JObject(Map#{
             "name"       => JString(weapon#name),
@@ -185,6 +191,10 @@ mod WeaponCatalogCodec {
             "scale"   => JsonCodec.encodeVec2(sprite#scale)
         })
 
+    /// `weapons.json` の 1 エントリを `WeaponResource` に変換する。
+    /// `load` と `Saveable[WeaponCatalog].fromJson` の両パスから呼ばれる。
+    /// 必須フィールドの欠落・型不一致は `None` を返す（panic しない）。
+    /// `weaponType` / `hit` は後方互換のため省略可（欠落時は `Sword` / `0`）。
     pub def decodeWeapon(element: Json): Option[WeaponResource] =
         forM (
             obj    <- expectObject(element);
@@ -245,7 +255,10 @@ mod WeaponCatalogCodec {
             vf     <- expectInt(vfJ);
             fr     <- expectInt(frJ)
         ) yield {
-            // offset / scale は省略可能。欠落 / 不正は (0,0) / (1,1) にフォールバック
+            // offset / scale / flipForFacing は省略可能フィールド。
+            // texture / hframes / vframes / frame と異なり、後から追加されたため
+            // 旧 weapons.json には存在しない場合があり、欠落時はデフォルト値を使う。
+            // offset: (0,0), scale: (1,1), flipForFacing: false。
             let off = JsonCodec.decodeVec2OrDefault(Map.get("offset", obj), 0.0);
             let sc  = JsonCodec.decodeVec2OrDefault(Map.get("scale", obj),  1.0);
             let flip = Map.get("flipForFacing", obj)

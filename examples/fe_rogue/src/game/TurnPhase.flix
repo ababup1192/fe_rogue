@@ -35,8 +35,9 @@
 ///   - 敵ターン終了（`finishEnemyTurn`）→ `PlayerCursor` に戻す
 mod TurnPhase {
 
-    /// ゲーム全体の進行フェーズ。
-    /// `PlayerCursor` がデフォルト = 味方ターン開始時の状態。
+    /// 入力分岐・描画制御の単一情報源として全フェーズを列挙する ADT。
+    /// 味方ターンのサブフェーズ（カーソル / 移動 / 行動選択…）から敵ターンまで、
+    /// ゲーム進行中に取りうる全状態を網羅する。`PlayerCursor` が起動時デフォルト。
     pub enum Phase with Eq, ToString {
         /// 味方ターン・カーソル選択フェーズ。WASD/方向キーでカーソルを動かす。
         case PlayerCursor
@@ -119,6 +120,8 @@ mod TurnPhase {
 
     /// フェーズの読み書きを表す effect。
     /// 内部 `Ref` の存在は handler に隠蔽し、`Game.flix` 側からは effect op だけ見える。
+    /// 隠蔽により Scene が直接 Ref を触れなくなり、`put` が単一経路（handler 内）に限定される。
+    /// 複数の handler が共存しても同じ `Ref` を通じてフェーズが一元管理される。
     pub eff State {
         /// 現在のフェーズを返す。
         def get(): Phase
@@ -127,6 +130,8 @@ mod TurnPhase {
     }
 
     /// `Tween.withScheduler` と同じ流儀の handler 注入。
+    /// `Region[r]` を受け取る設計により、呼び出し側（`Game.start`）が `Ref` の
+    /// ライフタイムを制御できる（region を超えて Ref が生存しない安全性が型で保証される）。
     /// 内部 `phaseRef` は closure に閉じ込められ、外からは見えない。
     pub def withState(rc: Region[r]):
             (Unit -> a \ ef) -> a \ (ef - State) + r =
@@ -150,8 +155,8 @@ mod TurnPhase {
 /// として返す。Game.flix 側はこれを match して、対応する Scene 操作 / effect handler
 /// を起動する（実体の副作用は呼び出し側に閉じ込めて、ここは純粋に保つ）。
 ///
-/// `Phase` enum と同居させているのは、両者が同じ「ターン進行」というデータ構造を
-/// 中心にした処理だから（Phase 単独で別ファイルにすると分割しすぎる）。
+/// 呼び手から見ると: `Context` を組み立て → `decide` 呼び出し → `Transition` を
+/// `TurnInputBridge.apply` に渡す、という 3 段パイプラインの中段に位置する。
 mod TurnRules {
 
     /// プレイヤーが押した決定 / キャンセルのどちらか。
@@ -164,6 +169,7 @@ mod TurnRules {
     /// 1 回の入力に対して起きる遷移。`Stay` は何もしないことを表す（無効入力など）。
     /// 各バリアントは Scene 操作 / effect handler 起動に必要な情報を全部抱える
     /// （apply 側で再ルックアップしないで済むように）。
+    /// 純粋値として渡せるよう effect を持たず、副作用は受け取った `apply` 側に委ねる。
     ///
     /// 位置は `{x = Int32, y = Int32}` ではなく `(x, y)` の Int32 ペアで持つ。
     /// （Vec2i は record alias で auto-derive Eq に対応していないため。）
@@ -287,6 +293,8 @@ mod TurnRules {
 
     /// cursor 位置にアクティブ（waited でない）な味方の id を返す。居なければ None。
     /// PlayerScene.findActiveIdAt の純粋版（Board と waitedPlayerIds から復元）。
+    /// TurnRules はテスト可能な純粋関数モジュールであるため Scene effect を直接呼べない。
+    /// そのため盤面データを Context に持ち込み、effect なしで同等のルックアップを再現する。
     def activePlayerAt(context: Context): Option[Int32] =
         Board.playerPositions(context#board)
             |> List.findMap(entry -> {
@@ -298,7 +306,7 @@ mod TurnRules {
             })
 
     /// cursor 位置に居る「選択中味方以外の味方」の id を返す (= 交換相手候補)。
-    /// 居なければ None。waited フィルタは ActionMenu の項目可視性側でかかっており、
+    /// 居なければ None。waited フィルタは ActionMenuScene の項目フィルタ側でかかっており、
     /// ここでは行わない (交換相手として選んだ味方が waited でも構わない仕様)。
     def adjacentAllyAtCursor(context: Context): Option[Int32] =
         Board.playerPositions(context#board)
@@ -312,6 +320,8 @@ mod TurnRules {
 
     /// cursor 位置に「生きている」敵の id を返す。居なければ None。
     /// EnemyScene.findIdAt の純粋版（Board と dyingEnemyIds から復元）。
+    /// `activePlayerAt` と同様、TurnRules が Scene effect を呼べないため、
+    /// 盤面データを Context に持ち込んで effect なしで同等のルックアップを再現する。
     def aliveEnemyAt(context: Context): Option[Int32] =
         Board.enemyPositions(context#board)
             |> List.findMap(entry -> {
@@ -352,6 +362,10 @@ mod TurnInputBridge {
         apply(TurnRules.decide(context), scene)
 
     /// 現フレームの scene と各 effect から `TurnRules.Context` を組み立てる。
+    /// `board` のみ呼び出し側から注入する。`FrameAef.ProcessT` に `BoardQuery`
+    /// が含まれないため、`buildContext` 自身が `BoardQuery` 効果を要求しない設計にして
+    /// process 経路からも再利用できるようにしている。
+    ///
     /// `TurnRules.decide` は純粋関数だが、その入力 (Context) を作るには:
     ///   - `TurnPhase.State.get()` (現フェーズ)
     ///   - `SelectedPlayer.State.get()` (選択中味方 id)
@@ -359,10 +373,6 @@ mod TurnInputBridge {
     ///   - `PlayerScene.getAll` / `EnemyScene.getAll` (waited / dying の id 集合)
     ///   - `Tween.Scheduler.isActive(...)` (選択中味方が Tween 中か)
     /// と複数の窓口を引く必要がある。これを 1 関数に集約する。
-    ///
-    /// 盤面 (`board`) は呼び出し側から渡す。`FrameAef.ProcessT` には `BoardQuery`
-    /// が含まれないため、`buildContext` 自身が `BoardQuery` 効果を要求しない設計にして
-    /// process 経路からも再利用できるようにしている。
     pub def buildContext(input: TurnRules.Input, board: Board, scene: Scene[NodeTag]):
             TurnRules.Context \ {Tween.Scheduler,
                                   TurnPhase.State, SelectedPlayer.State,
@@ -388,6 +398,8 @@ mod TurnInputBridge {
         }
 
     /// `decide` が返した `Transition` をシーンに適用する。
+    /// Scene 操作・effect 呼び出しをここに集約することで、`TurnRules` 側を
+    /// 純粋関数（テスト容易・effect なし）に保つ。副作用はこの関数が一手に引き受ける。
     def apply(transition: TurnRules.Transition,
                scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,

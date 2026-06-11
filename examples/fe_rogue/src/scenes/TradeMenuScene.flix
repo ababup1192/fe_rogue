@@ -24,11 +24,17 @@
 ///     └─ panel (Panel, NodeTag.TradePanel(PanelData))
 ///           ├─ class0..2 (Label2D, 兵種名)
 ///           └─ menu0..2  (ItemList, NodeTag.TradeMenu(i))
+///
+/// layer=2 は HUD (layer=1) より手前に重ねてウィンドウが常に最前面に来るようにする。
+/// Panel を TradeMenu の直下に置くことで Panel 全体の表示/非表示を TradeMenu の
+/// CanvasItem 操作 1 回で制御でき、子 ItemList/Label2D も連動して隠れる。
 mod TradeMenuScene {
 
     use JsonCompat.PathTag.Root
 
     /// どちらかのペインで「選択中」のスロット。`paneIndex` は picker のペイン (0 起点)。
+    /// `paneIndex` を保持するのは、次の Z 押下が同じペインか別ペインかで
+    /// 「並び替え / 上書き」と「swap」を区別するため。
     /// `kind` は picker が選んだスロットの中身: `Some(k)` なら実体アイテム、
     /// `None` なら空スロット (= 「受け取り希望」のマーカー)。
     pub type alias Pick = {
@@ -56,7 +62,8 @@ mod TradeMenuScene {
         origin  = Origin
     }
 
-    /// PanelData の初期値。`enterTradeInventory` / `enterGatherTrade` が members/origin をセットする。
+    /// PanelData の初期値。members=Nil / origin=FromTurn のゼロ状態。
+    /// セッション開始時に呼び手が members と origin を上書きして使う。
     pub def defaultPanelData(): PanelData = {
         members = Nil,
         focus   = 0,
@@ -65,7 +72,8 @@ mod TradeMenuScene {
     }
 
     /// 確定 (Z) 押下の結果。状態更新だけか、別ペインとの swap か、同ペイン内の並び替えか。
-    /// (中身に record alias を含むので Eq は導出しない。match で分解して使う。)
+    /// (中身に record alias を含む。Flix では record alias に Eq インスタンスを自動導出できない
+    ///  制約があるため、Eq は導出せず match で分解して使う。)
     pub enum ConfirmOutcome {
         case JustUpdate(PanelData)
         case DoSwap(PanelData, SwapPlan)
@@ -136,7 +144,7 @@ mod TradeMenuScene {
             case _                               => defaultPanelData()
         }
 
-    /// Panel 状態を `f` で更新する。
+    /// Panel 状態を `f` で更新する。ノードが未登録の場合は scene をそのまま返す (副作用なし)。
     pub def mapPanelData(f: PanelData -> PanelData, scene: Scene[NodeTag]):
             Scene[NodeTag] =
         match Scene.getState(panelPath(), scene) {
@@ -148,7 +156,7 @@ mod TradeMenuScene {
     def setPanelData(data: PanelData, scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPanelData(_ -> data, scene)
 
-    /// 「物交換ウィンドウが現在 visible か」のヘルパー (gameLoop の Escape→quit 判定用)。
+    /// 「物交換ウィンドウが現在 visible か」のヘルパー。呼び手が visible 判定を行うために使う。
     pub def isVisible(scene: Scene[NodeTag]): Bool =
         Panel.getAt(panelPath(), scene)
             |> Option.map(CanvasItem.isVisible)
@@ -262,9 +270,11 @@ mod TradeMenuScene {
                         |> Node2D.setPosition(classPos(count, i)))
         }, withPanel, List.range(0, maxPanes()))
 
-    /// 毎フレーム呼ばれる ItemList の process コールバック (Game.flix が TradeMenu ノードに dispatch する)。
+    /// 毎フレーム呼ばれる ItemList の process コールバック。
     ///   1. visibility/focus/layout を毎フレーム再評価
     ///   2. TradeInventory なら各ペインに対応 player のインベントリを同期 (満杯でなければ空スロット行を足す)
+    /// 毎フレーム再評価するのは、フェーズ変化や swap によるインベントリ変化を
+    /// イベント駆動でなく一貫した Pull モデルで反映するため。
     pub def refreshItems(_delta: Duration.Duration, node: EngineNode[NodeTag],
                           path: NodePath,
                           scene: Scene[NodeTag]):
@@ -324,7 +334,7 @@ mod TradeMenuScene {
             case None      => cleared
         }
 
-    // UI 強調色を 1 か所に集約し、テーマ変更時の散逸を防ぐ。
+    /// UI 強調色を 1 か所に集約し、テーマ変更時の散逸を防ぐ。
     def pickColor(): Color = {r = 1.0f32, g = 0.85f32, b = 0.2f32}
 
     /// ItemKind を、ペイン表示 (weapons ++ staves ++ consumables) 上の行 index に変換する。
@@ -397,6 +407,7 @@ mod TradeMenuScene {
 
     /// 1 ペインに並べる ItemEntry 列。インベントリ + (上限未満のときだけ) 末尾の空スロット行。
     /// 上限ちょうど (満杯) なら空スロットを出さない = 片方向流入をブロックする。
+    /// 表示とブロックロジックをここに同居させることで、空スロット有無の判断が分散しない。
     /// pub: テストが「満杯ペインに空スロットが出ない」ことを確認するのに使う。
     pub def paneEntries(playerId: Int32, scene: Scene[NodeTag]):
             List[ItemEntry] \ PlayerData.PartyQuery =
@@ -425,6 +436,8 @@ mod TradeMenuScene {
     ///   - pickerKind = Some → picker → receiver (receiver が None なら片方向 transfer)
     ///   - pickerKind = None & receiverKind = Some → receiver → picker (受取)
     ///   - 両方 None → no-op
+    /// UI は direction-free (どちらのペインからでも place できる) なので、
+    /// 実際の「誰が渡すか」は実行時に kind の有無で動的に決定する。
     /// 巻き戻しドラフトは `origin == FromTurn` のときだけ積む (ローグは undo 無し)。
     def applyTradeSwap(plan: SwapPlan, origin: Origin, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =

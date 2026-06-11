@@ -46,7 +46,7 @@ mod LevelSystem {
     }
 
     /// レベルアップ結果。ステータス変化パネルが表示にそのまま使う。
-    /// `changes` は HP / こうげき / まもり / まほう力 / まほうまもり / すばやさ / わざ / こううん の固定 8 行。
+    /// `changes` は HP / 力 / 魔力 / 技 / 速さ / 幸運 / 守備 / 魔防 の固定 8 行（`buildResult` の並び順と一致）。
     pub type alias Result = {
         unitName  = String,
         fromLevel = Int32,
@@ -71,7 +71,9 @@ mod LevelSystem {
     /// 成長率 0 なら決して成長せず、100 なら必ず成長する。
     pub def grew(roll: Int32, rate: Int32): Bool = roll < rate
 
-    /// レベルアップ時の成長を適用する。各ステータスで `grew` が true なら +1 する純粋関数。
+    /// レベルアップ時の成長を適用する。
+    /// `grew` を独立した述語として分離したのは、成長判定単体をテスト・再利用できるようにするため。
+    /// この関数は乱数を持たず、外から注入された `Rolls` だけで確定的に動く。
     pub def applyGrowth(stats: Stats, rates: GrowthRates, rolls: Rolls): Stats =
         let bump = (value, roll, rate) -> if (grew(roll, rate)) value + 1 else value;
         {hp           = bump(stats#hp,           rolls#hp,           rates#hp),
@@ -83,7 +85,9 @@ mod LevelSystem {
          skill        = bump(stats#skill,        rolls#skill,        rates#skill),
          luck         = bump(stats#luck,         rolls#luck,         rates#luck)}
 
-    /// UnitResource から成長対象の 8 ステータスを抜き出す（hp は最大 HP）。
+    /// UnitResource から成長対象の 8 ステータスだけを抜き出す（hp は最大 HP）。
+    /// UnitResource は成長対象外のフィールド（moveTiles 等）も持つため、
+    /// このプロジェクションで成長ロジックが余分なフィールドを誤って触らないようにしている。
     pub def statsOf(res: UnitResource): Stats =
         {hp           = res#hp,
          attack       = res#attack,
@@ -95,6 +99,8 @@ mod LevelSystem {
          luck         = res#luck}
 
     /// 成長後の 8 ステータスを UnitResource に書き戻す（他フィールドは保つ）。
+    /// `statsOf` の逆演算として設計されており、`statsOf` → `applyGrowth` → `withStats` で
+    /// UnitResource のラウンドトリップが成立する。
     pub def withStats(stats: Stats, res: UnitResource): UnitResource =
         {hp           = stats#hp,
          attack       = stats#attack,
@@ -115,12 +121,13 @@ mod LevelSystem {
     def labelSkill(): String         = "技"
     def labelLuck(): String          = "幸運"
 
-    /// 1 行ぶんの変化を作る。上がっていれば `gained = true`。
+    /// 1 行ぶんの変化を作る。`after > before` のときのみ `gained = true`（同値なら false）。
     def change(label: String, before: Int32, after: Int32): StatChange =
         {label = label, before = before, after = after, gained = after > before}
 
     /// レベルアップ前後のステータスから、パネル表示用の `Result` を組み立てる。
     /// `toLevel` は `fromLevel + 1`。`changes` は固定 8 行（HP→力→魔力→技→速さ→幸運→守備→魔防）。
+    /// この並び順はパネルのレイアウト（行の上から下）に対応しており、UI 側と合わせる必要がある（line 108 参照）。
     pub def buildResult(unitName: String, fromLevel: Int32,
                         before: Stats, after: Stats): Result =
         {unitName  = unitName,

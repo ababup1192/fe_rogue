@@ -51,13 +51,13 @@ mod CursorScene {
 
     def name(): String = "Cursor"
     pub def cursorPath(): NodePath = name() :: Nil
-    /// 子 Sprite ノード名 (scene.json で参照されている)。未使用 (構築は scene.json 経由) だが
-    /// 将来 sprite path を組む際に使えるよう残す
+    /// 子 Sprite ノード名 (scene.json で参照されている)。
+    /// EngineNode に Sprite2D の path ヘルパーが存在しないため構築は scene.json 経由で完結しており、
+    /// コードからは直接参照しない。将来 sprite path を組み立てる際の参照用に残す。
     def _spriteName(): String = "Sprite"
 
-    /// `cursor.png` テクスチャ名（Main.flix の textureManifest と整合）
-    /// `cursor.png` テクスチャ名は scene.json に書かれている (sprite ノードの texture フィールド)。
-    /// この constant は参照されないが、ドキュメント目的で残す。
+    /// `cursor.png` テクスチャ名。scene.json の sprite ノード texture フィールドに書かれており
+    /// コードからは参照しないが、Main.flix の textureManifest との整合を示すために残す。
     def _textureName(): String = "cursor"
 
     /// カーソルの描画 zIndex。Player Sprite (= 10) より更に上に表示し、
@@ -278,8 +278,8 @@ mod CursorScene {
     /// 移動後のセルに敵が居るかを判定し、`lastHoveredEnemyId` の遷移に応じて
     /// EnemyRangeScene を出し入れ + ログを出す。返り値の Data は
     /// `lastHoveredEnemyId` を新しい値に更新済み。呼び出し側は **これを** Cursor
-    /// ノードの NodeTag に詰めて返す（foldNodes が EngineNode を path に書き戻すため、
-    /// `mapCursor` で scene 経由に書いても上書きされてしまう）。
+    /// ノードの NodeTag に詰めて返す（foldNodes はすべてのノードを path ベースで評価・書き戻すため、
+    /// `mapCursor` で scene 経由に書いても評価完了後に上書きされてしまう）。
     def handleHoverChange(data: Data, board: Board,
                            scene: Scene[NodeTag]):
             (Data, Scene[NodeTag]) \ {GameLogger.GameLogger, EnemyData.RosterQuery} =
@@ -301,7 +301,8 @@ mod CursorScene {
             };
             ({lastHoveredEnemyId = enemyId | data}, nextScene)
 
-    /// 押されている方向キーを Option で返す（PlayerScene と同じ優先順位で揃える）
+    /// 押されている方向キーを Option で返す（PlayerScene と同じ優先順位で揃えることで
+    /// プレイヤー操作とカーソル操作の体感を統一する）
     def readHeldDirection(): Option[{x = Int32, y = Int32}] \ GameEngine.Game =
         let isDown = key -> GameEngine.Game.isKeyPressed(key);
         if      (isDown(GameEngine.Key.W) or isDown(GameEngine.Key.Up))    Some(Vec2i.up())
@@ -416,7 +417,6 @@ mod CursorScene {
                 (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)), scene)
             case _   =>
                 let n = List.length(targets);
-                // 現在カーソルが居る敵の index。乗っていなければ -1。
                 let curIdx = findCursorTargetIndex(data#gridPos, targets);
                 // 上/左 = 前、下/右 = 次。curIdx == -1 のときは方向に応じて末尾 or 先頭。
                 let step = if (dir#x < 0 or dir#y < 0) -1 else 1;
@@ -443,6 +443,7 @@ mod CursorScene {
         }
 
     /// targets リストの中で `cell` と一致する敵の index を返す。一致しなければ -1。
+    /// 戻り値 -1 は呼び出し元で `curIdx < 0` として扱われ、方向に応じて先頭/末尾を選ぶ分岐に入る。
     def findCursorTargetIndex(cell: {x = Int32, y = Int32},
                                 targets: List[EnemyScene.Data]): Int32 =
         let indexed = List.zipWithIndex(targets);
@@ -572,7 +573,8 @@ mod CursorScene {
             case None     => true
         }
 
-    /// 指定セルに居る敵の id を返す（居なければ None）
+    /// 指定セルに居る敵の id を返す（居なければ None）。
+    /// Board.enemyPositions のみを参照するため味方は対象外。同セルに2体以上いるケースは想定外。
     def enemyIdAt(coord: {x = Int32, y = Int32}, board: Board): Option[Int32] =
         Board.enemyPositions(board)
             |> List.findMap(entry -> {
@@ -622,7 +624,7 @@ mod CursorScene {
             snapped)
 
     /// `PlayerAttack` フェーズ突入時に、赤マス内に居る「生きている敵」が居れば最初の
-     /// 敵にカーソルをスナップする。敵が居なければ選択中プレイヤーへ。
+    /// 敵にカーソルをスナップする。敵が居なければ選択中プレイヤーへ。
     /// 間接武器 (range > 1) の場合、自分のセルが赤マスに含まれないため
     /// `snapToPlayer` 単独では「カーソルが届かない場所に居る」状態になるのを防ぐ。
     pub def snapToFirstTargetOrPlayer(scene: Scene[NodeTag]):

@@ -59,6 +59,7 @@ mod StaffCastScene {
         TurnFlow.commitWaitedAndAdvance(cleared)
 
     /// 回復の杖が味方/敵に当たった瞬間だけ回復音を鳴らす（空振りは鳴らさない）。
+    /// Blowback / Swap は命中と移動が視覚的に自明なため効果音を持たない（現状 SE 未設定）。
     def playHitSound(effect: Staff.StaffEffect, hit: RayHit): Unit \ GameEngine.Audio =
         match (effect, hit) {
             case (Staff.StaffEffect.Heal, RayHit.HitPlayer(_, _)) => AudioStreamPlayer.play("cure")
@@ -100,12 +101,15 @@ mod StaffCastScene {
         else None
 
     /// 自分以外で HP が最大未満（負傷している）の味方一覧。
+    /// 自己を除外するのは、自己回復はメニューの「つかう → きずぐすり」で行う別フローだから。
+    /// HP < maxHp を「負傷」と定義しており、最大 HP ちょうどの味方は照準候補に含めない。
     def injuredAlliesExcept(playerId: Int32, scene: Scene[NodeTag]): List[PlayerScene.Data] =
         PlayerScene.getAll(scene)
             |> List.filter(a -> a#id != playerId and a#hp < a#resource#hp)
 
     /// `staff#effect × hit` の組み合わせで効果を適用する。
-    /// 空振りを含む 3 効果 × 3 ヒット種 = 9 通り。空振り arm でまとめてログを出す。
+    /// ヒット種は RayHit.HitPlayer / RayHit.HitEnemy / それ以外（壁・盤外 = 空振り）の 3 種で、
+    /// 3 効果 × 3 ヒット種 = 9 通り。空振り（壁/盤外）は `_` arm でまとめてログを出す。
     def applyStaffEffect(playerId: Int32, player: PlayerScene.Data,
                           staff: Staff.StaffResource,
                           dir: {x = Int32, y = Int32},
@@ -236,6 +240,7 @@ mod StaffCastScene {
         }
 
     /// いれかえ × 味方: 自分と相手の gridPos を瞬間 swap する。
+    /// 将来: sequence engine が揃えば交差するアニメーションに置換できる（現在は瞬間移動）。
     def applySwapWithPlayer(srcId: Int32, srcCell: {x = Int32, y = Int32},
                               otherId: Int32, otherCell: {x = Int32, y = Int32},
                               scene: Scene[NodeTag]):
@@ -246,6 +251,7 @@ mod StaffCastScene {
             |> PlayerScene.snapTo(otherId, srcCell)
 
     /// いれかえ × 敵: 自分（Player）と敵を交換する。
+    /// 将来: sequence engine が揃えば交差するアニメーションに置換できる（現在は瞬間移動）。
     def applySwapWithEnemy(srcId: Int32, srcCell: {x = Int32, y = Int32},
                              enemyId: Int32, enemyCell: {x = Int32, y = Int32},
                              scene: Scene[NodeTag]):
@@ -279,7 +285,7 @@ mod StaffCastScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio} =
         // プレイヤーと消費アイテムの両方が解決できたときだけ使用。欠ければ scene のまま。
-        // ネストした match を避けるため Option を forM で短絡的に畳む。
+        // forM による短絡は applyStaffCast と同様。
         let used = forM (
             player <- PlayerScene.get(playerId, scene);
             item   <- List.nth(idx, player#consumables)

@@ -44,13 +44,13 @@ mod UnitInfoPopupScene {
     def rootName(): String = "UnitInfoPopup"
     pub def rootPath(): NodePath = rootName() :: Nil
 
-    /// lowercase で他 window と統一
+    /// 他 HUD ウィンドウの panel 名と表記を合わせる（大文字混在防止）
     def panelChildName(): String = "panel"
     def panelPath(): NodePath = rootName() :: panelChildName() :: Nil
 
     def fontName(): String = "ui"
 
-    /// scene.json のパス
+    /// ビルド環境非依存のパス解決のため AssetPath.resolve を使う
     def sceneJsonPath(): String = AssetPath.resolve("src/scenes/UnitInfoPopupScene.scene.json")
 
     // Status view 用レイアウト
@@ -183,9 +183,9 @@ mod UnitInfoPopupScene {
             case None => PopupAction.Hide
         }
 
-    /// 指定ユニット種別 / id の現在 HP を、引数 scene から直接読み取る
-    /// （PartyQuery / RosterQuery は前フレーム頭の sceneRef を返すため、
-    ///  フレーム末の杖発動結果が反映されない）。
+    /// 指定ユニット種別 / id の現在 HP を、引数 scene から直接読み取る。
+    /// effect 経由の PartyQuery / RosterQuery は前フレーム頭の sceneRef を返すため
+    /// フレーム末の変動（杖の回復等）が反映されない。scene 直読みで最新値を得る。
     def currentHp(kind: String, id: Int32, scene: Scene[NodeTag]): Option[Int32] =
         if (kind == "enemy")
             EnemyScene.get(id, scene) |> Option.map(d -> d#hp)
@@ -244,7 +244,8 @@ mod UnitInfoPopupScene {
                         else None)
         }
 
-    /// Panel 配下の動的 children を全部消す（view 切替時に呼ぶ）。
+    /// Panel 配下の動的 children を全部消す。
+    /// 表示内容の全差し替え前（view 切替・非表示化時）に呼ぶ。
     def clearContents(scene: Scene[NodeTag]): Scene[NodeTag] =
         let childNames = Scene.getChildrenAt(panelPath(), scene);
         List.foldLeft(acc -> name -> {
@@ -259,8 +260,7 @@ mod UnitInfoPopupScene {
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(false))
             |> setState({shownUnit = None, viewMode = ViewMode.Status, lastHp = None})
 
-    /// kind / id からそのユニットを引いて現在の viewMode に従って描画する。
-    /// scene 直読みで現フレーム末の最新 HP を取り出す。
+    /// kind に応じて renderEnemy / renderPlayer を振り分ける薄いディスパッチ。
     def renderForKind(kind: String, id: Int32,
                        scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameEngine.Game =
@@ -414,7 +414,8 @@ mod UnitInfoPopupScene {
             }, scene, indexed)
         }
 
-    /// 行 i に武器 1 個ぶんの sprite + text を追加する。
+    /// 行インデックス i から itemsRowHeight() の等間隔ピッチで y 座標を計算し、
+    /// 武器 1 個ぶんの sprite + text を配置する。
     def addItemRow(i: Int32, w: UnitCatalog.WeaponResource, atlas: FontAtlas,
                     scene: Scene[NodeTag]): Scene[NodeTag] =
         let rowY = itemsListStartY() + Int32.toFloat64(i) * itemsRowHeight();

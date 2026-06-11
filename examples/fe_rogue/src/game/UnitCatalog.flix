@@ -85,6 +85,8 @@ mod UnitCatalog {
     // (B) 参照
     // ────────────────────────────────────────────────────────
 
+    /// キーはユニット id（JSON の `"units"` オブジェクトのキー文字列、例: `"knight"`）。
+    /// `CatalogContainer` ごと不要で Map だけ欲しい場合に使う。コンテナ操作が必要なら `unitsContainerOf`。
     pub def unitsOf(catalog: UnitCatalog): Map[String, PlayerResource] =
         let UnitCatalog.UnitCatalog(payload) = catalog;
         CatalogContainer.entriesOf(payload#units)
@@ -94,14 +96,20 @@ mod UnitCatalog {
         let UnitCatalog.UnitCatalog(payload) = catalog;
         payload#units
 
+    /// 武器 id → `WeaponResource` の Map だけ欲しい場合に使う。
+    /// `WeaponCatalog` 本体（`lookup` 等）を操作したい場合は `weaponCatalogOf` を使うこと。
     pub def weaponsOf(catalog: UnitCatalog): Map[String, WeaponResource] =
         let UnitCatalog.UnitCatalog(payload) = catalog;
         WeaponCatalog.weaponsOf(payload#weapons)
 
+    /// `WeaponCatalog` 本体を直接操作したいとき（`lookup`・`weaponsOf` 等）に使う。
+    /// Map だけ欲しい場合は `weaponsOf` の方が簡潔。
     pub def weaponCatalogOf(catalog: UnitCatalog): WeaponCatalog.WeaponCatalog =
         let UnitCatalog.UnitCatalog(payload) = catalog;
         payload#weapons
 
+    /// プール名 → そのプールに属するユニット id 列（例: `"players" -> ["knight", "archer"]`）。
+    /// 出撃可能ユニットの集合管理に使う。個別ユニット取得は `pool(name, catalog)` を通すこと。
     pub def poolsOf(catalog: UnitCatalog): Map[String, List[String]] =
         let UnitCatalog.UnitCatalog(payload) = catalog;
         payload#pools
@@ -126,7 +134,8 @@ mod UnitCatalog {
             case Err(msg)  => bug!("UnitResource schema/type mismatch: ${msg}")
         }
 
-    /// I/O から分離したデコード経路: JSON 文字列から `UnitCatalog` を組む。weapons を直接組み込む。
+    /// I/O から分離したデコード経路。純粋に保つことでテストや依存性注入が容易になる。
+    /// `weaponCatalog` は呼び元が用意して渡す（この関数自体は weapons を読まない）。
     pub def loadFromString(unitsJson: String, weaponCatalog: WeaponCatalog.WeaponCatalog): UnitCatalog =
         let catalog = decodeUnitsJson(unitsJson);
         let UnitCatalog.UnitCatalog(payload) = catalog;
@@ -159,7 +168,7 @@ mod UnitCatalog {
                 }
         }
 
-    /// 指定 path をテキストとして読み、エラーなら即 panic する。
+    /// 失敗を即 panic にすることで、起動時にファイル欠損や権限エラーを可視化する設計判断。
     def readFile(path: String): String \ Fs.FileRead =
         let readResult = run {
             Fs.ReadFile.read(path)
@@ -190,7 +199,8 @@ mod UnitCatalog {
     pub def proficientWith(resource: PlayerResource, weaponType: WeaponCatalog.WeaponType): Bool =
         List.memberOf(weaponType, resource#proficientWeaponTypes)
 
-    /// スキーマと型定義の整合性検査用（`Resource.checkConsistency` に渡す）。
+    /// JSON schema と Flix 型定義（`PlayerResource`）が乖離したときに起動時検知するための防衛機構。
+    /// `Resource.checkConsistency` に渡し、schema 側に存在しないフィールドがあれば即 bug! で可視化する。
     /// 共有 14 フィールド + growthRates + proficientWeaponTypes の全フィールド名集合。
     pub def expectedUnitFields(): Set[String] =
         Set#{"moveTiles", "level", "hp", "attack", "defense", "magicAttack", "magicDefense",
@@ -222,7 +232,8 @@ mod UnitCatalogCodec {
 
     // ── エンコード（weapons は含まない。別ファイル管理のため round-trip しない）──
 
-    /// pools を CatalogContainer の meta に投影してから encode する。
+    /// `CatalogContainer` が汎用の meta フィールドを持つため、pools をそこに相乗りさせる設計。
+    /// pools 専用の JSON キーを設けず meta に格納することで、フォーマットの共通化を維持する。
     pub def encode(c: UnitCatalog): Json =
         let unitsContainer = UnitCatalog.unitsContainerOf(c);
         let poolsMeta = UnitCatalog.poolsOf(c)
@@ -267,7 +278,9 @@ mod UnitCatalogCodec {
             pools   = pools
         })
 
-    /// 味方 = 共有 14 フィールド（`UnitBaseCodec.decodeBase`）+ `growthRates`（省略時は全 0）。
+    /// 味方 = 共有 14 フィールド（`UnitBaseCodec.decodeBase`）+ `growthRates`（省略時は全 0）
+    /// + `proficientWeaponTypes`（省略時は `Nil` = 全タイプ苦手、威力・命中 80%）。
+    /// `proficientWeaponTypes` の既定値については L46-48 の初期装備タイプ規則も参照。
     def decodePlayer(element: Json): Option[PlayerResource] =
         forM (
             base <- UnitBaseCodec.decodeBase(element);
@@ -287,7 +300,8 @@ mod UnitCatalogCodec {
               growthRates = growth, proficientWeaponTypes = proficient}: PlayerResource)
         }
 
-    /// 得意武器タイプ配列（`["Sword","Axe"]` 等）をデコード。未知文字列は parseWeaponType が剣に倒す。
+    /// 得意武器タイプ配列（`["Sword","Axe"]` 等）をデコード。
+    /// 未知文字列は `parseWeaponType` が剣にフォールバックする（フォールバック先の判断は parseWeaponType 側の設計方針）。
     def decodeWeaponTypes(element: Json): Option[List[WeaponCatalog.WeaponType]] =
         JsonCodec.decodeList(
             item -> expectString(item) |> Option.map(WeaponCatalogCodec.parseWeaponType),

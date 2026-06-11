@@ -23,15 +23,18 @@ pub type alias Encounter = {
 
 mod Encounter {
 
-    /// `faction` から見た敵（異なる faction）のユニット一覧。
+    /// AI の攻撃対象列挙・ActionMenu の選択肢絞り込みなど、faction を軸に敵味方を問い合わせる共通起点。
+    /// faction が異なるユニットだけを返すので、呼び手は自分の faction を渡すだけでよい。
     pub def enemiesOf(faction: Faction, enc: Encounter): List[UnitView] =
         List.filter(u -> u#faction != faction, enc#units)
 
-    /// `faction` と同じ味方のユニット一覧。
+    /// 回復・支援対象の列挙など、同 faction のユニットを一覧したい場面で使う共通クエリ。
+    /// `enemiesOf` と対称に設計されており、faction を渡すだけで味方全員を得られる。
     pub def alliesOf(faction: Faction, enc: Encounter): List[UnitView] =
         List.filter(u -> u#faction == faction, enc#units)
 
-    /// `pos` を占有しているユニット（先頭一致）。同セル 2 体は想定外。
+    /// 移動先の占有確認・攻撃対象の特定など、座標からユニットを引く共通起点（先頭一致）。
+    /// 同セル 2 体は想定外のため Option で返す。
     pub def unitAt(pos: {x = Int32, y = Int32}, enc: Encounter): Option[UnitView] =
         List.find(u -> u#pos#x == pos#x and u#pos#y == pos#y, enc#units)
 
