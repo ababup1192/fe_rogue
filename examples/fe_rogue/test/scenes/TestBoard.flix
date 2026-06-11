@@ -373,4 +373,126 @@ mod TestBoard {
         let field = Board.distanceField(c -> MapSnapshot.isFloor(c, map), src(0, 0) :: Nil, 64);
         Assert.assertEq(expected = true,
             Option.isEmpty(Board.stepDownhill(field, src(0, 0), _ -> true)))
+
+    // ========================================================================
+    // (F) 射程プリミティブ — manhattanOffsets / computeThreatCells（RangeScenes が委譲）
+    //   {x,y} record は Eq 無しなので件数 + Board.containsCell で検証する。
+    // ========================================================================
+
+    /// 距離ちょうど 1 のオフセットは上下左右の 4 つ。原点(0,0)は含まない（剣/槍の隣接）。
+    @Test
+    def testManhattanRange1Is4Cells(): Unit \ Assert =
+        let offs = Board.manhattanOffsets(1, 1);
+        Assert.assertEq(
+            expected = (4, true, false),
+            (List.length(offs),
+             Board.containsCell({x = 1, y = 0}, offs),
+             Board.containsCell({x = 0, y = 0}, offs)))
+
+    /// 距離ちょうど 2 は 8 オフセットで、斜め (1,1) を含む（弓 range=2 の斜め射程）。
+    @Test
+    def testManhattanRange2IncludesDiagonal(): Unit \ Assert =
+        let offs = Board.manhattanOffsets(2, 2);
+        Assert.assertEq(
+            expected = (8, true),
+            (List.length(offs), Board.containsCell({x = 1, y = 1}, offs)))
+
+    /// lo > hi（射程下限が上限を超える）なら空（境界）。
+    @Test
+    def testManhattanLoGtHiIsEmpty(): Unit \ Assert =
+        Assert.assertEq(expected = true, List.isEmpty(Board.manhattanOffsets(3, 1)))
+
+    /// 脅威セルは reachable 自身を除外する（青マスに赤を二重表示しない不変条件）。
+    /// reachable=(5,5) のみ・射程1 → 上下左右の 4 セルだけで (5,5) は入らない。
+    @Test
+    def testThreatExcludesReachable(): Unit \ Assert =
+        let threat = Board.computeThreatCells({x = 5, y = 5} :: Nil, 1, 1);
+        Assert.assertEq(
+            expected = (4, false),
+            (List.length(threat), Board.containsCell({x = 5, y = 5}, threat)))
+
+    /// 隣接する 2 起点 (0,0)/(2,0) の射程1脅威は重複 (1,0) を 1 つにまとめる。
+    /// 生セル 8 個から重複 (1,0) を 1 つ落として 7 セル（先勝ち dedup）。
+    @Test
+    def testThreatDedupsOverlap(): Unit \ Assert =
+        let reachable = {x = 0, y = 0} :: {x = 2, y = 0} :: Nil;
+        let threat = Board.computeThreatCells(reachable, 1, 1);
+        Assert.assertEq(
+            expected = (7, true),
+            (List.length(threat), Board.containsCell({x = 1, y = 0}, threat)))
+
+    // ========================================================================
+    // (E) 駒視点の移動範囲 — reachableForUnit / stoppableForUnit（MoveRange の青マス）
+    //   敵=障害物・味方=貫通可、停止は味方マス除外（FE ルール）。
+    // ========================================================================
+
+    /// 隣の敵駒は障害物。すり抜けられず、その先 (2,0) には到達しない。
+    @Test
+    def testReachableBlockedByEnemy(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(5, 1),
+            (Piece.Player(0), {x = 0, y = 0}) :: (Piece.Enemy(1), {x = 1, y = 0}) :: Nil);
+        let reach = Board.reachableForUnit(board, {x = 0, y = 0}, 3);
+        Assert.assertEq(
+            expected = (true, false),
+            (Board.containsCell({x = 0, y = 0}, reach),
+             Board.containsCell({x = 2, y = 0}, reach)))
+
+    /// 味方駒は通過可能。隣の味方を貫通してその先 (3,0) まで到達する。
+    @Test
+    def testReachablePassesThroughAlly(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(5, 1),
+            (Piece.Player(0), {x = 0, y = 0}) :: (Piece.Player(1), {x = 1, y = 0}) :: Nil);
+        let reach = Board.reachableForUnit(board, {x = 0, y = 0}, 3);
+        Assert.assertEq(
+            expected = (true, true),
+            (Board.containsCell({x = 1, y = 0}, reach),
+             Board.containsCell({x = 3, y = 0}, reach)))
+
+    /// 味方マスは「到達はするが停止できない」。reachable には在り stoppable から除外。
+    @Test
+    def testStoppableExcludesAllyCells(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(5, 1),
+            (Piece.Player(0), {x = 0, y = 0}) :: (Piece.Player(1), {x = 1, y = 0}) :: Nil);
+        let reach = Board.reachableForUnit(board, {x = 0, y = 0}, 3);
+        let stop  = Board.stoppableForUnit(board, {x = 0, y = 0}, 3);
+        Assert.assertEq(
+            expected = (true, false),
+            (Board.containsCell({x = 1, y = 0}, reach),
+             Board.containsCell({x = 1, y = 0}, stop)))
+
+    /// stoppable ⊆ reachable（停止可能マスは必ず到達可能。不変条件）。
+    @Test
+    def testStoppableSubsetOfReachable(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(5, 1),
+            (Piece.Player(0), {x = 0, y = 0}) :: (Piece.Player(1), {x = 1, y = 0}) :: Nil);
+        let reach = Board.reachableForUnit(board, {x = 0, y = 0}, 3);
+        let stop  = Board.stoppableForUnit(board, {x = 0, y = 0}, 3);
+        Assert.assertEq(
+            expected = true,
+            List.forAll(c -> Board.containsCell(c, reach), stop))
+
+    // ========================================================================
+    // (D) bfsPathSkipAllies — 味方貫通・敵/壁不可の経路探索（AutoMove のロード合流）
+    // ========================================================================
+
+    /// 間に居る味方マスを通過して goal までの経路を返す（味方は障害にしない）。
+    @Test
+    def testBfsPassesAllyToReachGoal(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(5, 1),
+            (Piece.Player(0), {x = 0, y = 0}) :: (Piece.Player(1), {x = 1, y = 0}) :: Nil);
+        let path = Board.bfsPathSkipAllies(board, {x = 1, y = 0} :: Nil,
+                                            {x = 0, y = 0}, {x = 2, y = 0});
+        Assert.assertEq(
+            expected = (true, true),
+            (Option.nonEmpty(path),
+             path |> Option.map(p -> Board.containsCell({x = 2, y = 0}, p))
+                  |> Option.getWithDefault(false)))
+
+    /// 壁で分断され goal に到達不能なら None（1 マス幅通路の (2,0) が壁）。
+    @Test
+    def testBfsBlockedByWallIsNone(): Unit \ Assert =
+        let board = boardWith(floorSnapshotWithWall(5, 1, {x = 2, y = 0}),
+            (Piece.Player(0), {x = 0, y = 0}) :: Nil);
+        let path = Board.bfsPathSkipAllies(board, Nil, {x = 0, y = 0}, {x = 4, y = 0});
+        Assert.assertEq(expected = true, Option.isEmpty(path))
 }

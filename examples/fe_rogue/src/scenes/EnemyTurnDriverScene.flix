@@ -143,7 +143,7 @@ mod EnemyTurnDriverScene {
             case Some(data) =>
                 // 盤面 + 盤上ユニットを 1 箇所で結合 (位置×ステータスの join は Encounter に集約)。
                 // driver は手元の (mid-frame mutation 済み) scene に live で適用する。
-                let enc = Encounter.fromScene(scene);
+                let enc = EncounterBuilder.fromScene(scene);
                 let board = enc#board;
                 let self = EnemyScene.unitView(data);
                 let (action, updated) = EnemyAI.decideAction(enc, self, data#alerted);

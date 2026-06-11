@@ -18,23 +18,10 @@ pub type alias Encounter = {
     units = List[UnitView]
 }
 
-mod Encounter {
+// scene → Encounter を組み立てる `fromScene` ビルダーは scene を読むため scenes/BoardSnapshot.flix
+// と同層の scenes/EncounterBuilder.flix（mod Encounter）へ置く。ここ(game/)は型と純クエリのみ。
 
-    /// scene から Encounter を組み立てる唯一のビルダー（join はすべてここ）。
-    /// 駒順は `BoardSnapshot.fromScene` と同じ players → enemies を保つ
-    /// （`Board.nearestPlayer` の id 小タイブレークに効くため）。
-    pub def fromScene(scene: Scene[NodeTag]): Encounter =
-        // getAll を players/enemies 各1回だけ歩き、その結果で UnitView と Board の両方を作る
-        // （`BoardSnapshot.fromParts` が hidden 除外と pieces 化を担当）。
-        let allPlayers = PlayerScene.getAll(scene);
-        let allEnemies = EnemyScene.getAll(scene);
-        let board = BoardSnapshot.fromParts(scene, allPlayers, allEnemies);
-        let players = allPlayers
-            |> List.filter(d -> not d#hidden)
-            |> List.map(PlayerScene.unitView);
-        let enemies = allEnemies
-            |> List.map(EnemyScene.unitView);
-        {board = board, units = List.append(players, enemies)}
+mod Encounter {
 
     /// `faction` から見た敵（異なる faction）のユニット一覧。
     pub def enemiesOf(faction: Faction, enc: Encounter): List[UnitView] =
