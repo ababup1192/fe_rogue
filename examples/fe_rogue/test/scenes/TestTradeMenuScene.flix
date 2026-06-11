@@ -173,22 +173,9 @@ mod TestTradeMenuScene {
                      thunk: Unit -> a \ ef):
             (a, TurnPhase.Phase) \
             (ef - GameLogger.GameLogger - SelectedPlayer.State - TurnPhase.State + r) =
-        let phaseRef: Ref[TurnPhase.Phase, r] = Ref.fresh(rc, initialPhase);
-        let result =
+        TestUnitFixtures.withPhaseRef(rc, initialPhase, () ->
             TestUnitFixtures.withMockGameLogger(() ->
-                run {
-                    thunk()
-                } with handler SelectedPlayer.State {
-                    def get(k)    = k({id = Some(0), drafts = Nil})
-                    def put(_, k) = k()
-                } with handler TurnPhase.State {
-                    def get(k)         = k(Ref.get(phaseRef))
-                    def put(target, k) = {
-                        Ref.put(target, phaseRef);
-                        k()
-                    }
-                });
-        (result, Ref.get(phaseRef))
+                TestUnitFixtures.withSelectedPlayer(0, thunk)))
 
     // ════════════════════════════════════════════════════════
     // 2 人交換 (回帰ガード) — index 化前と同じ最終結果を確認する

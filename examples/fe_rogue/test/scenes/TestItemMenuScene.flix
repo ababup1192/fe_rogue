@@ -74,21 +74,6 @@ mod TestItemMenuScene {
                 EngineNode.Marker2DWithState(marker, NodeTag.Player(data)));
         loadItemMenu(withWorld)
 
-    /// `SelectedPlayer.State` のスタブ handler（id=0 を返す）。
-    def withSelectedZero(thunk: Unit -> a \ ef): a \ (ef - SelectedPlayer.State) =
-        run { thunk() } with handler SelectedPlayer.State {
-            def get(k)   = k({id = Some(0), drafts = Nil})
-            def put(_, k) = k()
-        }
-
-    /// `TurnPhase.State` のスタブ handler（指定したフェーズを固定で返す）。
-    def withFixedPhase(phase: TurnPhase.Phase, thunk: Unit -> a \ ef):
-            a \ (ef - TurnPhase.State) =
-        run { thunk() } with handler TurnPhase.State {
-            def get(k)    = k(phase)
-            def put(_, k) = k()
-        }
-
     /// path の ItemList ノードを取り出す（無ければ None）。Some のまま assert に使える。
     def itemListAt(path: NodePath, scene: Scene[NodeTag]): Option[ItemList] =
         match Scene.getEngineNode(path, scene) {
@@ -136,8 +121,8 @@ mod TestItemMenuScene {
     def testItemSelectListsWeaponsAndStaves(): Unit \ {Assert, Fs.FileRead} =
         let scene = sceneWithPlayer();
         let menuPath = ItemMenuScene.menuPath();
-        let updated = withSelectedZero(() ->
-            withFixedPhase(TurnPhase.Phase.ItemSelect, () ->
+        let updated = TestUnitFixtures.withSelectedPlayer(0, () ->
+            TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ItemSelect, () ->
                 TestUnitFixtures.withMockPartyQuery(scene, () ->
                 match Scene.getEngineNode(menuPath, scene) {
                     case Some(node) =>
@@ -159,8 +144,8 @@ mod TestItemMenuScene {
         let withSelection = sceneWithPlayer()
             |> PlayerScene.setSelectedItem(0, PlayerScene.ItemKind.Weapon(0));
         let menuPath = ItemMenuScene.menuPath();
-        let updated = withSelectedZero(() ->
-            withFixedPhase(TurnPhase.Phase.ItemActionSelect, () ->
+        let updated = TestUnitFixtures.withSelectedPlayer(0, () ->
+            TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ItemActionSelect, () ->
                 TestUnitFixtures.withMockPartyQuery(withSelection, () ->
                 match Scene.getEngineNode(menuPath, withSelection) {
                     case Some(node) =>
@@ -182,8 +167,8 @@ mod TestItemMenuScene {
         let withSelection = sceneWithPlayer()
             |> PlayerScene.setSelectedItem(0, PlayerScene.ItemKind.Staff(0));
         let menuPath = ItemMenuScene.menuPath();
-        let updated = withSelectedZero(() ->
-            withFixedPhase(TurnPhase.Phase.ItemActionSelect, () ->
+        let updated = TestUnitFixtures.withSelectedPlayer(0, () ->
+            TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ItemActionSelect, () ->
                 TestUnitFixtures.withMockPartyQuery(withSelection, () ->
                 match Scene.getEngineNode(menuPath, withSelection) {
                     case Some(node) =>
@@ -217,8 +202,8 @@ mod TestItemMenuScene {
             |> ItemList.mapAt(menuPath, list ->
                 list |> ItemList.setItems(twoEntries) |> ItemList.setSelectedIndex(1));
         let entry = ({text = "a", disabled = false, metadata = Some("w:0")}: ItemEntry);
-        let after = withSelectedZero(() ->
-            withFixedPhase(TurnPhase.Phase.ItemSelect, () ->
+        let after = TestUnitFixtures.withSelectedPlayer(0, () ->
+            TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ItemSelect, () ->
                 ItemMenuScene.onItemConfirmed(entry, scene)));
         Assert.assertEq(expected = Some(0),
             itemListAt(menuPath, after) |> Option.map(ItemList.getSelectedIndex))
@@ -279,7 +264,7 @@ mod TestItemMenuScene {
     @Test
     def testPageRightClampsWhenSinglePage(): Unit \ {Assert, Fs.FileRead} =
         let scene = sceneWithPlayer();
-        let after = withSelectedZero(() -> ItemMenuScene.pageRight(scene));
+        let after = TestUnitFixtures.withSelectedPlayer(0, () -> ItemMenuScene.pageRight(scene));
         let page = match Scene.getState(ItemMenuScene.menuPath(), after) {
             case Some(NodeTag.ItemMenu(currentPage)) => currentPage
             case _                                   => bug!("ItemMenu タグが無い")

@@ -197,21 +197,13 @@ mod TestActionMenuScene {
             case Some(node) => node
             case None       => bug!("ActionMenu ItemList not found")
         };
-        let (_, after) = TestUnitFixtures.withMockPartyQuery(args#scene, () ->
-            TestUnitFixtures.withMockRosterQuery(args#scene, () ->
-                run {
-                    ActionMenuScene.refreshItems(
-                        Duration.seconds(0.0),
-                        menuNode,
-                        ActionMenuScene.menuPath(),
-                        args#scene)
-                } with handler SelectedPlayer.State {
-                    def get(k)    = k({id = Some(args#selectedId), drafts = Nil})
-                    def put(_, k) = k()
-                } with handler TurnPhase.State {
-                    def get(k)    = k(args#phase)
-                    def put(_, k) = k()
-                }));
+        let (_, after) = TestUnitFixtures.withMenuReadMocks(
+            args#phase, args#selectedId, args#scene, () ->
+                ActionMenuScene.refreshItems(
+                    Duration.seconds(0.0),
+                    menuNode,
+                    ActionMenuScene.menuPath(),
+                    args#scene));
         after
 
     /// scene 内 ActionMenu の ItemList から各エントリの metadata を順に取り出す。
@@ -251,32 +243,18 @@ mod TestActionMenuScene {
     ///   - TurnPhase.State: Ref-backed で put を観測可能 (戻り値タプルの 2 番目)
     def runOnActionConfirm(rc: Region[r], args: ActionConfirmArgs):
             (Scene[NodeTag], TurnPhase.Phase) \ r =
-        let phaseRef: Ref[TurnPhase.Phase, r] = Ref.fresh(rc, args#initialPhase);
-        let result = TestUnitFixtures.withNoopTween(() ->
-            TestUnitFixtures.withNoopAnim(() ->
-                TestUnitFixtures.withMockGameLogger(() ->
-                    TestUnitFixtures.withMockEnemyTurnQueue(() ->
-                        TestUnitFixtures.withMockPartyQuery(args#scene, () ->
-                            TestUnitFixtures.withMockRosterQuery(args#scene, () ->
-                              TestUnitFixtures.withMockAudio(() ->
-                                run {
-                                    ActionMenuScene.onActionConfirmed(args#entry,
-                                                                       args#scene)
-                                } with handler SelectedPlayer.State {
-                                    def get(k)    =
-                                        k({id = Some(args#selectedId), drafts = Nil})
-                                    def put(_, k) = k()
-                                } with handler TurnPhase.State {
-                                    def get(k)         = k(Ref.get(phaseRef))
-                                    def put(target, k) = {
-                                        Ref.put(target, phaseRef);
-                                        k()
-                                    }
-                                } with handler CustomEffects.FloorAdvanceRequest {
-                                    // 既存の回帰テストは「かいだん」分岐を踏まないので no-op で十分。
-                                    def advance(scene, k) = k(scene)
-                                })))))));
-        (result, Ref.get(phaseRef))
+        TestUnitFixtures.withPhaseRef(rc, args#initialPhase, () ->
+            TestUnitFixtures.withNoopTween(() ->
+                TestUnitFixtures.withNoopAnim(() ->
+                    TestUnitFixtures.withMockGameLogger(() ->
+                        TestUnitFixtures.withMockEnemyTurnQueue(() ->
+                            TestUnitFixtures.withMockPartyQuery(args#scene, () ->
+                                TestUnitFixtures.withMockRosterQuery(args#scene, () ->
+                                  TestUnitFixtures.withMockAudio(() ->
+                                    TestUnitFixtures.withNoopFloorAdvance(() ->
+                                      TestUnitFixtures.withSelectedPlayer(args#selectedId, () ->
+                                        ActionMenuScene.onActionConfirmed(args#entry,
+                                                                          args#scene)))))))))))
 
     // ════════════════════════════════════════════════════════
     // 既存「行動終了」アクション回帰テスト
@@ -371,8 +349,6 @@ mod TestActionMenuScene {
     def testPickupThenCancelSelectionRevertsPickup(): Unit \ Assert =
         region rc {
             let scene = loadActionMenuSceneWithFloorWeapon();
-            let selRef = Ref.fresh(rc,
-                ({id = Some(0), drafts = Nil}: SelectedPlayer.Selection));
             let pickupEntry: ItemEntry =
                 { text = "ひろう", disabled = false, metadata = Some("pickup") };
             let after = TestUnitFixtures.withNoopTween(() ->
@@ -382,19 +358,14 @@ mod TestActionMenuScene {
                             TestUnitFixtures.withMockPartyQuery(scene, () ->
                                 TestUnitFixtures.withMockRosterQuery(scene, () ->
                                   TestUnitFixtures.withMockAudio(() ->
-                                    run {
-                                        let afterPick =
-                                            ActionMenuScene.onActionConfirmed(pickupEntry, scene);
-                                        PlayerScene.cancelSelection(afterPick)
-                                    } with handler SelectedPlayer.State {
-                                        def get(k)    = k(Ref.get(selRef))
-                                        def put(s, k) = { Ref.put(s, selRef); k() }
-                                    } with handler TurnPhase.State {
-                                        def get(k)    = k(TurnPhase.Phase.ActionSelect)
-                                        def put(_, k) = k()
-                                    } with handler CustomEffects.FloorAdvanceRequest {
-                                        def advance(s, k) = k(s)
-                                    })))))));
+                                    TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ActionSelect, () ->
+                                      TestUnitFixtures.withNoopFloorAdvance(() ->
+                                        TestUnitFixtures.withSelectionRef(rc,
+                                            {id = Some(0), drafts = Nil}, () -> {
+                                                let afterPick =
+                                                    ActionMenuScene.onActionConfirmed(pickupEntry, scene);
+                                                PlayerScene.cancelSelection(afterPick)
+                                            }))))))))));
             let groundItemBack =
                 Option.nonEmpty(ItemScene.findAt({x = 1, y = 1}, after));
             // 期待: (床に戻った, 武器が 1 本に戻った)
@@ -424,20 +395,13 @@ mod TestActionMenuScene {
     def runCancelWithDrafts(rc: Region[r], scene: Scene[NodeTag],
                               drafts: List[MoveDraft.DraftAction]):
             Scene[NodeTag] \ r =
-        let selRef = Ref.fresh(rc,
-            ({id = Some(0), drafts = drafts}: SelectedPlayer.Selection));
-        TestUnitFixtures.withNoopTween(() ->
-            TestUnitFixtures.withNoopAnim(() ->
-                TestUnitFixtures.withMockPartyQuery(scene, () ->
-                    run {
-                        PlayerScene.cancelSelection(scene)
-                    } with handler SelectedPlayer.State {
-                        def get(k)    = k(Ref.get(selRef))
-                        def put(s, k) = { Ref.put(s, selRef); k() }
-                    } with handler TurnPhase.State {
-                        def get(k)    = k(TurnPhase.Phase.ActionSelect)
-                        def put(_, k) = k()
-                    })))
+        TestUnitFixtures.withSelectionRef(rc,
+            {id = Some(0), drafts = drafts}, () ->
+                TestUnitFixtures.withNoopTween(() ->
+                    TestUnitFixtures.withNoopAnim(() ->
+                        TestUnitFixtures.withMockPartyQuery(scene, () ->
+                            TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ActionSelect, () ->
+                                PlayerScene.cancelSelection(scene))))))
 
     /// 報告バグの回帰: 拾得 → 装備 → 選択解除キャンセル で、装備の並び替えも拾得も
     /// 正しく巻き戻る（元の武器 A が残り、拾った B は床へ復活）。逆順 revert により
@@ -547,19 +511,11 @@ mod TestActionMenuScene {
             case Some(node) => node
             case None       => bug!("ActionMenu ItemList not found")
         };
-        let (_, after) = TestUnitFixtures.withMockPartyQuery(scene, () ->
-            TestUnitFixtures.withMockRosterQuery(scene, () ->
-                run {
-                    ActionMenuScene.refreshItems(
-                        Duration.seconds(0.0), menuNode,
-                        ActionMenuScene.menuPath(), scene)
-                } with handler SelectedPlayer.State {
-                    def get(k)    = k({id = None, drafts = Nil})
-                    def put(_, k) = k()
-                } with handler TurnPhase.State {
-                    def get(k)    = k(TurnPhase.Phase.ActionSelect)
-                    def put(_, k) = k()
-                }));
+        let (_, after) = TestUnitFixtures.withMenuReadMocksNoSel(
+            TurnPhase.Phase.ActionSelect, scene, () ->
+                ActionMenuScene.refreshItems(
+                    Duration.seconds(0.0), menuNode,
+                    ActionMenuScene.menuPath(), scene));
         after
 
     /// ローグ中・ロード足元にアイテムが無ければ、メニューは「こうかん → かいさん」。

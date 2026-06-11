@@ -587,13 +587,6 @@ mod TestPlayerScene {
             def request(_scene, k) = k(Scene.empty())
         }
 
-    /// 未選択を返す SelectedPlayer.State モック。
-    def withNoSelection(thunk: Unit -> a \ ef): a \ (ef - SelectedPlayer.State) =
-        run { thunk() } with handler SelectedPlayer.State {
-            def get(k) = k(SelectedPlayer.cleared())
-            def put(_, k) = k()
-        }
-
     /// ロード(id 0)が倒れると、ほかの味方が生き残っていてもゲームオーバー（1F やり直し）。
     /// 配置: ロード id0 + 味方 id1。killed=[0]（ロード死亡）。
     /// 期待: GameOverRequest が飛び、モックの空 scene が返るので残存ユニットは 0 体。
@@ -607,7 +600,7 @@ mod TestPlayerScene {
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}))
             |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 4, y = 3}));
-        let result = withNoSelection(() -> withGameOverToEmpty(() ->
+        let result = TestUnitFixtures.withNoSelection(() -> withGameOverToEmpty(() ->
             PlayerScene.removeDeadAndCheckGameOver(0 :: Nil, scene)));
         Assert.assertEq(expected = Nil, PlayerScene.getAll(result) |> List.map(d -> d#id))
 
@@ -623,7 +616,7 @@ mod TestPlayerScene {
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}))
             |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 4, y = 3}));
-        let result = withNoSelection(() -> withGameOverToEmpty(() ->
+        let result = TestUnitFixtures.withNoSelection(() -> withGameOverToEmpty(() ->
             PlayerScene.removeDeadAndCheckGameOver(1 :: Nil, scene)));
         Assert.assertEq(expected = 0 :: Nil, PlayerScene.getAll(result) |> List.map(d -> d#id))
 

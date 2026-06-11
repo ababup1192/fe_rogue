@@ -382,4 +382,94 @@ mod TestUnitFixtures {
             def randomFloat64(k) = k(0.5)
             def randomInt64(k)   = k(42i64)
         }
+
+    // ════════════════════════════════════════════════════════
+    // フェーズ / 選択駒 / フロア進行 の effect モック
+    //   各テストファイルに散在していた inline handler・重複ローカル def を集約。
+    //   固定値版（read-only, put 破棄）と Ref-backed 版（put 観測可）の 2 系統。
+    // ════════════════════════════════════════════════════════
+
+    /// `TurnPhase.State` を固定フェーズで返すスタブ。put は捨てる。
+    /// フェーズ遷移を観測しない（refreshItems / visibility / メニュー項目構築など）系で使う。
+    pub def withFixedPhase(phase: TurnPhase.Phase, thunk: Unit -> a \ ef):
+            a \ (ef - TurnPhase.State) =
+        run { thunk() } with handler TurnPhase.State {
+            def get(k)    = k(phase)
+            def put(_, k) = k()
+        }
+
+    /// `SelectedPlayer.State` を「id 選択中・drafts 空」で固定するスタブ。put は捨てる。
+    /// drafts を巻き戻さないテスト（項目構築 / 隣接判定 / 緑マス描画）用。
+    /// 未選択は `withNoSelection`、id+drafts を観測したいときは `withSelectionRef` を使う。
+    pub def withSelectedPlayer(id: Int32, thunk: Unit -> a \ ef):
+            a \ (ef - SelectedPlayer.State) =
+        run { thunk() } with handler SelectedPlayer.State {
+            def get(k)    = k({id = Some(id), drafts = Nil})
+            def put(_, k) = k()
+        }
+
+    /// `SelectedPlayer.State` を未選択（`cleared()`）で固定するスタブ。put は捨てる。
+    /// 空マスメニュー / ローグメニュー / ゲームオーバー経路など「選択駒なし」を再現する。
+    pub def withNoSelection(thunk: Unit -> a \ ef):
+            a \ (ef - SelectedPlayer.State) =
+        run { thunk() } with handler SelectedPlayer.State {
+            def get(k)    = k(SelectedPlayer.cleared())
+            def put(_, k) = k()
+        }
+
+    /// `CustomEffects.FloorAdvanceRequest` の no-op スタブ。`advance` は渡された scene をそのまま返す。
+    /// 「かいだん」分岐を踏まないアクション確定系テスト用（踏むテストは別途実 handler を使う）。
+    pub def withNoopFloorAdvance(thunk: Unit -> a \ ef):
+            a \ (ef - CustomEffects.FloorAdvanceRequest) =
+        run { thunk() } with handler CustomEffects.FloorAdvanceRequest {
+            def advance(scene, k) = k(scene)
+        }
+
+    /// Ref-backed の `TurnPhase.State`。put を観測でき、最終フェーズを結果と一緒に返す。
+    /// `(result, finalPhase)` を返すので、確定アクションの遷移先を assert できる。
+    /// engine の `TurnPhase.withState` と同じ Ref パターンだが、初期値を渡せて最終値を読み戻す点が test 向け。
+    /// put 観測のため**最外**に巻くこと（内側で先に `- TurnPhase.State` されると届かない）。
+    pub def withPhaseRef(rc: Region[r], initial: TurnPhase.Phase, thunk: Unit -> a \ ef):
+            (a, TurnPhase.Phase) \ (ef - TurnPhase.State) + r =
+        let phaseRef: Ref[TurnPhase.Phase, r] = Ref.fresh(rc, initial);
+        let result = run { thunk() } with handler TurnPhase.State {
+            def get(k)         = k(Ref.get(phaseRef))
+            def put(target, k) = { Ref.put(target, phaseRef); k() }
+        };
+        (result, Ref.get(phaseRef))
+
+    /// Ref-backed の `SelectedPlayer.State`。drafts スタックの push / 巻き戻しを跨いで状態が残る。
+    /// pickup → cancelSelection のように put した drafts を後段が読み返す経路で使う。
+    pub def withSelectionRef(rc: Region[r], initial: SelectedPlayer.Selection,
+                              thunk: Unit -> a \ ef):
+            a \ (ef - SelectedPlayer.State) + r =
+        let selRef: Ref[SelectedPlayer.Selection, r] = Ref.fresh(rc, initial);
+        run { thunk() } with handler SelectedPlayer.State {
+            def get(k)    = k(Ref.get(selRef))
+            def put(s, k) = { Ref.put(s, selRef); k() }
+        }
+
+    /// メニュー系テストで頻出する read-only effect 4 種を 1 呼び出しで剥がす束ね。
+    ///   TurnPhase(固定) + SelectedPlayer(固定 id) + PartyQuery + RosterQuery。
+    /// refreshItems / 項目可視性など「フェーズ遷移を観測しない」テストの定型。
+    /// 遷移を観測するなら `withPhaseRef` を最外に巻き、こちらは使わない。
+    pub def withMenuReadMocks(phase: TurnPhase.Phase, selectedId: Int32,
+                               scene: Scene[NodeTag], thunk: Unit -> a \ ef):
+            a \ (ef - TurnPhase.State - SelectedPlayer.State
+                  - PlayerScene.PartyQuery - EnemyScene.RosterQuery) =
+        withFixedPhase(phase, () ->
+            withSelectedPlayer(selectedId, () ->
+                withMockPartyQuery(scene, () ->
+                    withMockRosterQuery(scene, thunk))))
+
+    /// `withMenuReadMocks` の未選択版（選択駒なし）。`withSelectedPlayer` を `withNoSelection` に
+    /// 差し替えただけ。空マスメニュー / ローグメニューの項目構築テスト用。
+    pub def withMenuReadMocksNoSel(phase: TurnPhase.Phase,
+                                    scene: Scene[NodeTag], thunk: Unit -> a \ ef):
+            a \ (ef - TurnPhase.State - SelectedPlayer.State
+                  - PlayerScene.PartyQuery - EnemyScene.RosterQuery) =
+        withFixedPhase(phase, () ->
+            withNoSelection(() ->
+                withMockPartyQuery(scene, () ->
+                    withMockRosterQuery(scene, thunk))))
 }

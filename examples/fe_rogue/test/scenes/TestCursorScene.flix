@@ -61,13 +61,6 @@ mod TestCursorScene {
                         pendingLevelUp            = None
                     })))
 
-    /// SelectedPlayer.State のスタブ handler（未選択を返す）。
-    def withNoSelection(thunk: Unit -> a \ ef): a \ (ef - SelectedPlayer.State) =
-        run { thunk() } with handler SelectedPlayer.State {
-            def get(k) = k(SelectedPlayer.cleared())
-            def put(_, k) = k()
-        }
-
     /// `add` 後の (gridPos, lastHoveredEnemyId) を 1 タプルにまとめて取り出す
     def cursorState(scene: Scene[NodeTag]): (Int32, Int32, Option[Int32]) =
         let d = CursorScene.getCursorData(scene);
@@ -145,7 +138,7 @@ mod TestCursorScene {
     def testSnapToPlayerResetsCursorAndHover(): Unit \ Assert =
         let player: {x = Int32, y = Int32} = {x = 4, y = 4};
         let initial = sceneWithPlayer(player);
-        let result = withNoSelection(() -> TestUnitFixtures.withNoopTween(() -> TestUnitFixtures.withNoopAnim(() ->
+        let result = TestUnitFixtures.withNoSelection(() -> TestUnitFixtures.withNoopTween(() -> TestUnitFixtures.withNoopAnim(() ->
             TestUnitFixtures.withMockPartyQuery(initial, () ->
                 let scene = cursorAddPure(initial);
                 // カーソルを (10, 10) に移し、ホバー履歴も Some(99) に偽装
@@ -166,7 +159,7 @@ mod TestCursorScene {
         let waitedPos: {x = Int32, y = Int32}  = {x = 2, y = 2};
         let activePos: {x = Int32, y = Int32}  = {x = 5, y = 5};
         let initial = sceneWithTwoPlayers((waitedPos, true), (activePos, false));
-        let result = withNoSelection(() -> TestUnitFixtures.withNoopTween(() -> TestUnitFixtures.withNoopAnim(() ->
+        let result = TestUnitFixtures.withNoSelection(() -> TestUnitFixtures.withNoopTween(() -> TestUnitFixtures.withNoopAnim(() ->
             TestUnitFixtures.withMockPartyQuery(initial, () ->
                 let scene = cursorAddPure(initial);
                 let snapped = CursorScene.snapToPlayer(scene);
@@ -427,22 +420,14 @@ mod TestCursorScene {
                 EngineNode.Marker2DWithState(marker, NodeTag.Player(data)), acc)
         }, withWorld, party)
 
-    /// SelectedPlayer.State の get を指定 id 固定にする stub。
-    def withSelectedFor(playerId: Int32, _gridPos: {x = Int32, y = Int32},
-                         thunk: Unit -> a \ ef): a \ (ef - SelectedPlayer.State) =
-        run { thunk() } with handler SelectedPlayer.State {
-            def get(k)    = k({id = Some(playerId), drafts = Nil})
-            def put(_, k) = k()
-        }
-
     /// 4 effect (SelectedPlayer / PartyQuery / Tween / Anim) を一度に剥がすラッパ。
     /// TradeRangeScene.show + snapToFirstTradeCellOrPlayer を続けて実行する用途。
     def runWithTradeSnapMocks(scene: Scene[NodeTag], selectedId: Int32,
-                                selectedPos: {x = Int32, y = Int32},
+                                _selectedPos: {x = Int32, y = Int32},
                                 thunk: Unit -> a \ ef):
             a \ (ef - SelectedPlayer.State - PlayerScene.PartyQuery
                   - Tween.Scheduler - AnimationPlayer.Scheduler) =
-        withSelectedFor(selectedId, selectedPos, () ->
+        TestUnitFixtures.withSelectedPlayer(selectedId, () ->
             TestUnitFixtures.withMockPartyQuery(scene, () ->
                 TestUnitFixtures.withNoopTween(() ->
                     TestUnitFixtures.withNoopAnim(thunk))))
