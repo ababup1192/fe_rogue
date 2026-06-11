@@ -60,6 +60,10 @@ pub enum ItemList {
         itemHeight      = Float64,
         cursorOffsetX   = Float64,
         wrap            = Bool,
+        // 列数（Godot の ItemList.max_columns 相当）。1 で従来どおりの単一縦リスト。
+        // 2 以上のとき toDrawables は「縦詰め（左列に上から、あふれたら次の列）」で並べる。
+        // カーソル移動は列に関係なく selectedIndex を上下する 1 次元のまま（描画位置だけ列対応）。
+        maxColumns      = Int32,
         font            = FontAtlas,
         fontSize        = Float64,
         position        = Vec2.Vec2,
@@ -101,6 +105,7 @@ mod ItemList {
             itemHeight      = fontSize + 4.0,
             cursorOffsetX   = fontSize,
             wrap            = true,
+            maxColumns      = 1,
             font            = font,
             fontSize        = fontSize,
             position        = Vec2.zero(),
@@ -256,6 +261,15 @@ mod ItemList {
         let ItemList.ItemList(r) = list;
         ItemList.ItemList({wrap = wrap | r})
 
+    pub def getMaxColumns(list: ItemList): Int32 =
+        let ItemList.ItemList(r) = list;
+        r#maxColumns
+
+    /// 列数を設定する（最小 1）。2 以上で toDrawables が縦詰め複数列描画になる。
+    pub def setMaxColumns(n: Int32, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({maxColumns = Int32.max(1, n) | r})
+
     pub def getSize(list: ItemList): Vec2.Vec2 =
         let ItemList.ItemList(r) = list;
         r#size
@@ -389,13 +403,30 @@ mod ItemList {
             List[GameEngine.Drawable] \ GameEngine.Game =
         let ItemList.ItemList(r) = list;
         let hasIconArea = r#iconSize > 0.0;
-        let iconStartX = globalPos#x + r#cursorOffsetX;
-        let textOriginX =
-            if (hasIconArea) iconStartX + r#iconSize + r#iconTextGap
-            else globalPos#x + r#cursorOffsetX;
+        // 列レイアウト（縦詰め）: 列数 cols、1 列あたり rowsPerCol 行。
+        // idx → col = idx / rowsPerCol、row = idx % rowsPerCol。col=0 が左列。
+        // rowsPerCol は「列の高さ size.y に収まる行数」とすることで、**左列を一番下まで埋めてから
+        // 次の列へ**送る（= 列が満ちるまで空スロットも左列の最後に出る）。均等割り(ceil)にすると
+        // 3 項目が左2/右1 に分かれてしまうため高さ基準にする。
+        // cols=1 は全項目を 1 列に積む従来挙動（高さ超過は従来どおり下にあふれる）。
+        let cols = Int32.max(1, r#maxColumns);
+        let count = List.length(r#items);
+        let rowsPerCol =
+            if (cols <= 1) Int32.max(1, count)
+            else Int32.max(1,
+                Float64.tryToInt32(Float64.floor(r#size#y / r#itemHeight))
+                    |> Option.getWithDefault(1));
+        let colWidth = r#size#x / Int32.toFloat64(cols);
         let result = List.foldLeft((acc, entry) -> {
             let idx = acc#idx;
-            let lineY = globalPos#y + Int32.toFloat64(idx) * r#itemHeight;
+            let col = idx / rowsPerCol;
+            let row = Int32.remainder(idx, rowsPerCol);
+            let colX = globalPos#x + Int32.toFloat64(col) * colWidth;
+            let lineY = globalPos#y + Int32.toFloat64(row) * r#itemHeight;
+            let iconStartX = colX + r#cursorOffsetX;
+            let textOriginX =
+                if (hasIconArea) iconStartX + r#iconSize + r#iconTextGap
+                else colX + r#cursorOffsetX;
             let color = match Map.get(idx, r#itemColors) {
                 case Some(c) => c
                 case None    => if (entry#disabled) r#disabledColor else r#textColor
@@ -413,12 +444,12 @@ mod ItemList {
                     case None       => Nil
                 }
                 else Nil;
-            // カーソル glyph（選択中かつ focused のとき）
+            // カーソル glyph（選択中かつ focused のとき）。列対応で colX 基準に出す。
             let lineDrawables = if (idx == r#selectedIndex and r#focused) {
                 let cursorLabel = Label2D.make(r#cursorGlyph, r#font, r#fontSize)
                     |> CanvasItem.setModulate(r#cursorColor)
                     |> CanvasItem.setZIndex(r#zIndex);
-                let cursorDrawables = Label2D.toDrawables(cursorLabel, {x = globalPos#x, y = lineY});
+                let cursorDrawables = Label2D.toDrawables(cursorLabel, {x = colX, y = lineY});
                 List.append(cursorDrawables, List.append(iconDrawables, textDrawables))
             } else
                 List.append(iconDrawables, textDrawables);
