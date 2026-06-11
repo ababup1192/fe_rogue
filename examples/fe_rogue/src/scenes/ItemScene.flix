@@ -237,22 +237,35 @@ mod ItemScene {
             }
         }
 
-    /// 部屋の bbox（offset + floorBounds）に含まれる床セルを列挙する（EnemyScene と同じロジック）。
-    /// n-format で通路の床がアイテム候補に混ざらないよう floorBounds で絞る。
-    def floorCellsInRoom(layer: TileMapLayer,
-                          p: DungeonComposer.ModulePlacement): List[{x = Int32, y = Int32}] =
-        let minX = p#offset#x + p#floorBoundsMin#x;
-        let minY = p#offset#y + p#floorBoundsMin#y;
-        let maxX = p#offset#x + p#floorBoundsMaxEx#x;
-        let maxY = p#offset#y + p#floorBoundsMaxEx#y;
+    /// 「offset + 半開 bbox(boundsMin..boundsMaxEx)」内で床述語 `isFloorAt` を満たすセルを列挙する
+    /// 純粋関数。床判定の供給元（`TileMapLayer` 等）に依存しないので単体テストできる。
+    /// `floorCellsInRoom` の純粋コア（engine 非依存）。EnemyScene 側にも同型の列挙がある。
+    pub def floorCellsInBounds(isFloorAt: {x = Int32, y = Int32} -> Bool,
+                                offset: {x = Int32, y = Int32},
+                                boundsMin: {x = Int32, y = Int32},
+                                boundsMaxEx: {x = Int32, y = Int32}): List[{x = Int32, y = Int32}] =
+        let minX = offset#x + boundsMin#x;
+        let minY = offset#y + boundsMin#y;
+        let maxX = offset#x + boundsMaxEx#x;
+        let maxY = offset#y + boundsMaxEx#y;
         let xs = List.range(minX, maxX);
         let ys = List.range(minY, maxY);
         List.flatMap(y ->
-            List.filter(c -> TileMapLayer.isFloor(c, layer),
+            List.filter(c -> isFloorAt(c),
                 List.map(x -> ({x = x, y = y}: {x = Int32, y = Int32}), xs)),
             ys)
 
-    def isTaken(c: {x = Int32, y = Int32}, taken: List[{x = Int32, y = Int32}]): Bool =
+    /// 部屋の bbox（offset + floorBounds）に含まれる床セルを列挙する（EnemyScene と同じロジック）。
+    /// n-format で通路の床がアイテム候補に混ざらないよう floorBounds で絞る。
+    /// 純粋コア `floorCellsInBounds` に床述語（TileMapLayer 床判定）を注入する薄いシェル。
+    def floorCellsInRoom(layer: TileMapLayer,
+                          p: DungeonComposer.ModulePlacement): List[{x = Int32, y = Int32}] =
+        floorCellsInBounds(c -> TileMapLayer.isFloor(c, layer),
+                            p#offset, p#floorBoundsMin, p#floorBoundsMaxEx)
+
+    /// セル `c` が既取得リスト `taken` に含まれるか（同セル二重ドロップ防止）。
+    /// `pub`: 単体テスト用に公開。
+    pub def isTaken(c: {x = Int32, y = Int32}, taken: List[{x = Int32, y = Int32}]): Bool =
         List.exists(t -> t#x == c#x and t#y == c#y, taken)
 
     // ─── クエリ ───────────────────────────────────────────────

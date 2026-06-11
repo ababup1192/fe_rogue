@@ -495,4 +495,31 @@ mod TestBoard {
             (Piece.Player(0), {x = 0, y = 0}) :: Nil);
         let path = Board.bfsPathSkipAllies(board, Nil, {x = 0, y = 0}, {x = 4, y = 0});
         Assert.assertEq(expected = true, Option.isEmpty(path))
+
+    // ========================================================================
+    // dedupCells / padCells — 座標集合の整形（spawn 配置・危険域表示が共有）
+    //   {x,y} は Eq 無しなので tuple 化して順序ごと比較する。
+    // ========================================================================
+
+    /// 重複セルは先に出たものを残して 1 つに（順序保持・先勝ち）。
+    @Test
+    def testDedupCellsFirstWins(): Unit \ Assert =
+        let out = Board.dedupCells({x = 1, y = 1} :: {x = 2, y = 2} :: {x = 1, y = 1} :: Nil)
+                    |> List.map(c -> (c#x, c#y));
+        Assert.assertEq(expected = (1, 1) :: (2, 2) :: Nil, out)
+
+    /// 不足分は fallback で埋めて長さ n に揃える（狭所スポーンの保険）。
+    @Test
+    def testPadCellsFillsShortfall(): Unit \ Assert =
+        let out = Board.padCells({x = 0, y = 0} :: Nil, {x = 9, y = 9}, 3)
+                    |> List.map(c -> (c#x, c#y));
+        Assert.assertEq(expected = (0, 0) :: (9, 9) :: (9, 9) :: Nil, out)
+
+    /// 余っていれば先頭 n 個に切り詰める（境界）。
+    @Test
+    def testPadCellsTruncatesExcess(): Unit \ Assert =
+        let out = Board.padCells({x = 0, y = 0} :: {x = 1, y = 1} :: {x = 2, y = 2} :: Nil,
+                                  {x = 9, y = 9}, 2)
+                    |> List.map(c -> (c#x, c#y));
+        Assert.assertEq(expected = (0, 0) :: (1, 1) :: Nil, out)
 }

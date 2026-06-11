@@ -485,13 +485,14 @@ mod DungeonComposer {
         }
 
     /// offsets の最小 (x, y) を求める（次元ごと別モジュール由来でも良い）。
-    def computeMinOffset(offsets: Map[Int32, {x = Int32, y = Int32}]): {x = Int32, y = Int32} =
+    /// `pub`: 正規化（min を原点に揃える）の単体テスト用に公開。呼び先は持たない純関数。
+    pub def computeMinOffset(offsets: Map[Int32, {x = Int32, y = Int32}]): {x = Int32, y = Int32} =
         Map.foldLeft(acc -> off -> {
             ({x = Int32.min(acc#x, off#x), y = Int32.min(acc#y, off#y)}: {x = Int32, y = Int32})
         }, ({x = 0i32, y = 0i32}: {x = Int32, y = Int32}), offsets)
 
-    /// 全 offsets に shift を加える。
-    def shiftOffsets(offsets: Map[Int32, {x = Int32, y = Int32}], shift: {x = Int32, y = Int32}):
+    /// 全 offsets に shift を加える。`pub`: 正規化の単体テスト用に公開。
+    pub def shiftOffsets(offsets: Map[Int32, {x = Int32, y = Int32}], shift: {x = Int32, y = Int32}):
                      Map[Int32, {x = Int32, y = Int32}] =
         Map.map(off -> Vec2i.add(shift, off), offsets)
 
@@ -608,7 +609,8 @@ mod DungeonComposer {
 
     /// connections を BFS で辿り、modulePaths[0] をアンカー (0,0) として各モジュールの
     /// offsetGrid を算出する。既配置モジュールに到達した際に offset が食い違ったら bug!。
-    def bfsOffsets(connections: List[Connection]): Map[Int32, {x = Int32, y = Int32}] =
+    /// `pub`: 接続→世界座標解決の単体テスト用に公開（呼び先 bfsLoop/lookupOffset は private のまま）。
+    pub def bfsOffsets(connections: List[Connection]): Map[Int32, {x = Int32, y = Int32}] =
         let edges: List[(Int32, {x = Int32, y = Int32}, Int32, {x = Int32, y = Int32})] =
             List.flatMap(c -> {
                 (c#a#moduleIndex, c#a#grid, c#b#moduleIndex, c#b#grid) ::

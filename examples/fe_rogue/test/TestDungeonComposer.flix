@@ -44,4 +44,34 @@ mod TestDungeonComposer {
              DungeonComposer.isHorizontalSide(DoorSide.Right),
              DungeonComposer.isHorizontalSide(DoorSide.Top),
              DungeonComposer.isHorizontalSide(DoorSide.Bottom)))
+
+    // ── bfsOffsets: 接続 → 各モジュールの世界座標 offset 解決 ──
+
+    /// アンカー（module 0）は常に (0,0)、相手は door 重ね合わせ式で配置される。
+    /// 接続 a=(0, grid(2,0)) ↔ b=(1, grid(0,0)) を「同じ世界座標で重ねる」と
+    ///   offsets[1] = offsets[0] + gridA − gridB = (0,0)+(2,0)−(0,0) = (2,0)。
+    @Test
+    def testBfsAnchorAndDoorAlignment(): Unit \ Assert =
+        let conns =
+            ({a = ({moduleIndex = 0, grid = {x = 2, y = 0}}: DungeonComposer.DoorRef),
+              b = ({moduleIndex = 1, grid = {x = 0, y = 0}}: DungeonComposer.DoorRef)}
+             : DungeonComposer.Connection) :: Nil;
+        let offs = DungeonComposer.bfsOffsets(conns);
+        Assert.assertEq(
+            expected = (Some((0, 0)), Some((2, 0))),
+            (Map.get(0, offs) |> Option.map(o -> (o#x, o#y)),
+             Map.get(1, offs) |> Option.map(o -> (o#x, o#y))))
+
+    /// 正規化: computeMinOffset で全 offset の最小を求め、その符号反転で shift すると
+    /// 配置後の最小は (0,0) に揃う（負座標のはみ出しを防ぐ不変条件）。
+    @Test
+    def testNormalizeMinToZero(): Unit \ Assert =
+        let offs = Map.empty()
+            |> Map.insert(0, ({x = 0, y = 0}: {x = Int32, y = Int32}))
+            |> Map.insert(1, ({x = -2, y = -3}: {x = Int32, y = Int32}));
+        let minOff  = DungeonComposer.computeMinOffset(offs);
+        let shift   = ({x = 0 - minOff#x, y = 0 - minOff#y}: {x = Int32, y = Int32});
+        let shifted = DungeonComposer.shiftOffsets(offs, shift);
+        let newMin  = DungeonComposer.computeMinOffset(shifted);
+        Assert.assertEq(expected = (0, 0), (newMin#x, newMin#y))
 }
