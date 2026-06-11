@@ -322,6 +322,11 @@ mod EnemyScene {
             case _                          => None
         }
 
+    /// 敵 id の表示名（敵種名 = `resource#description`）。ログ文言で使う。
+    /// 見つからない場合は防御的に "敵${id}" を返す。
+    pub def displayName(id: Int32, scene: Scene[NodeTag]): String =
+        get(id, scene) |> Option.map(d -> d#resource#description) |> Option.getWithDefault("敵${id}")
+
     /// 敵 id の Data を `f` で更新する。Marker2D 自体には触れない。
     pub def mapEnemy(id: Int32, f: Data -> Data,
                       scene: Scene[NodeTag]): Scene[NodeTag] =

@@ -99,6 +99,11 @@ mod PlayerScene {
     pub def canOpenChests(data: Data): Bool =
         data#resource#canOpenChests
 
+    /// 味方 id の表示名（職業名 = `resource#description`）。ログ文言で使う。
+    /// 見つからない場合は防御的に "P${id}" を返す。
+    pub def displayName(id: Int32, scene: Scene[NodeTag]): String =
+        get(id, scene) |> Option.map(d -> d#resource#description) |> Option.getWithDefault("P${id}")
+
     /// いま持っている持ち物の合計個数（武器 + 杖 + 消費アイテムを合算する）。
     pub def itemCount(data: Data): Int32 =
         List.length(data#weapons)

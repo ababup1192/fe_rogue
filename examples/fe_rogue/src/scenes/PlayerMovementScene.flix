@@ -16,7 +16,7 @@ mod PlayerMovementScene {
     pub def physicsStep(_delta: Duration.Duration, node: EngineNode[NodeTag],
                          path: NodePath, scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
-                        \ {GameEngine.Game, BoardQuery, Tween.Scheduler} =
+                        \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger} =
         stepFor(selectAllowedPred(TurnPhase.Phase.PlayerMoving, scene),
                 PlayerScene.selectedSlideDuration(), node, path, scene)
 
@@ -25,7 +25,7 @@ mod PlayerMovementScene {
     pub def roamStep(_delta: Duration.Duration, node: EngineNode[NodeTag],
                       path: NodePath, scene: Scene[NodeTag]):
                      (EngineNode[NodeTag], Scene[NodeTag])
-                     \ {GameEngine.Game, BoardQuery, Tween.Scheduler} =
+                     \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger} =
         stepFor(selectAllowedPred(TurnPhase.Phase.RogueMove, scene),
                 PlayerScene.slideDuration(), node, path, scene)
 
@@ -46,7 +46,7 @@ mod PlayerMovementScene {
                  slide: Duration.Duration, node: EngineNode[NodeTag],
                  path: NodePath, scene: Scene[NodeTag]):
                 (EngineNode[NodeTag], Scene[NodeTag])
-                \ {GameEngine.Game, BoardQuery, Tween.Scheduler} =
+                \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger} =
         match node {
             case EngineNode.Marker2DWithState(_, NodeTag.Player(data)) =>
                 // Tween 中（前の 1 マスがまだ滑走中）は入力を捨てる。1 回だけ評価する。
@@ -56,18 +56,37 @@ mod PlayerMovementScene {
                     // 方向キー押下で 1 セルだけ進む。
                     // Board.tryMoveWithRange が壁・敵セルをブロック; allowedPred が MoveRange 制限を追加する。
                     // 味方セルへは進入可能（重なる）、敵セルはブロック（Board.tryMoveWithRange の責務）。
+                    // 着地マス判定のため target を yield に同梱する（forM のラムダ外で参照したいため）。
                     let moved = forM (
                         dir    <- readHeldDirection();
                         target <- Board.tryMoveWithRange(board, data#gridPos, dir, allowedPred)
-                    ) yield PlayerScene.moveToById(data#id, target, board#map, slide, scene);
+                    ) yield (target, PlayerScene.moveToById(data#id, target, board#map, slide, scene));
                     match moved {
-                        case None       => (node, scene)
-                        case Some(next) => match Scene.getEngineNode(path, next) {
-                            case Some(latest) => (latest, next)
-                            case None         => (node, next)
-                        }
+                        case None                 => (node, scene)
+                        case Some((target, next)) =>
+                            returnNode(node, path, logStepOnItem(data, target, next))
                     }
             case _ => (node, scene)
+        }
+
+    /// 着地したマスに床アイテムがあれば「○○の上に乗った」を 1 回だけ記録する（移動成立ごとに 1 回）。
+    /// アイテムが無ければ scene を素通し。`data#resource#description` は乗った味方の表示名。
+    def logStepOnItem(data: PlayerScene.Data, target: {x = Int32, y = Int32},
+                       scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+        match ItemScene.findAt(target, scene) {
+            case Some((_, kind)) =>
+                GameLogger.playerLog(
+                    "${data#resource#description}は ${ItemScene.kindDisplayName(kind)}の上に乗った");
+                scene
+            case None => scene
+        }
+
+    /// engine の physicsProcess 契約に合わせ、scene を更新したあとの最新ノードを取り直して返す。
+    def returnNode(fallback: EngineNode[NodeTag], path: NodePath,
+                    scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) =
+        match Scene.getEngineNode(path, scene) {
+            case Some(latest) => (latest, scene)
+            case None         => (fallback, scene)
         }
 
     /// 押されている方向キーを Option で返す（複数同時押しは上 > 下 > 左 > 右）。

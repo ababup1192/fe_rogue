@@ -62,7 +62,7 @@ mod GameLifecycle {
             |> LevelUpPanelScene.add  // レベルアップのステータス変化パネル (初期は非表示)
             |> UnitInfoPopupScene.add   // カーソル上のユニット情報パネル (初期は非表示)
             |> FloorLabelScene.add(floor#label)  // 現在フロア "○○F" を左上に常時表示
-            |> ControlHintScene.add     // 操作ガイド帯 (右下。Z/X ボタンの行き先を文脈表示)
+            |> LogScene.add             // 右下の3行一時ログ (戦闘ログ・アイテム踏みログ。5秒で消える)
             |> PhaseBannerScene.add     // ターン切替バナー (最前面。起動直後に味方ターンを表示)
             |> ItemPickupPopupScene.add // アイテム取得ポップアップ (初期は非表示)
             |> BgmScene.add             // BGM (AudioStreamPlayer, autoplay=true で起動時から再生)

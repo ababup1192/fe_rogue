@@ -39,6 +39,14 @@ mod ItemScene {
         case ItemData.GroundItemKind.ConsumableItem(item) => item#sprite
     }
 
+    /// アイテム種別から表示名を取り出すヘルパー（`spriteOf` と対称）。
+    /// 「○○の上に乗った」ログなど、種別を問わず名前だけ欲しい場面で使う。
+    pub def kindDisplayName(kind: ItemData.GroundItemKind): String = match kind {
+        case ItemData.GroundItemKind.WeaponItem(weapon)   => weapon#name
+        case ItemData.GroundItemKind.StaffItem(staff)     => staff#name
+        case ItemData.GroundItemKind.ConsumableItem(item) => item#name
+    }
+
     // ─── 定数 ─────────────────────────────────────────────────
 
     def parentName(): String = "Items"

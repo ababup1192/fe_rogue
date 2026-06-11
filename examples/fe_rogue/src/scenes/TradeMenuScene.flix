@@ -167,14 +167,16 @@ mod TradeMenuScene {
     /// ペイン index に対応する player id。範囲外なら None。
     pub def playerIdAt(i: Int32, data: PanelData): Option[Int32] = List.nth(i, data#members)
 
-    /// focus を delta(±1) だけ動かして `0..(paneCount-1)` にクランプする。
+    /// focus を delta(±1) だけ動かす。両端で押すと反対側ペインへラップする
+    /// (左端で← → 右端、右端で→ → 左端)。垂直方向 (ItemList 内) は wrap=true で対応済みなので
+    /// 水平 (ペイン間) もラップして一貫させる。`Int32.modulo` は除数符号 (正) に従うため
+    /// `modulo(-1, n) = n-1`、`modulo(n, n) = 0` となり負の raw も正側へ畳まれる。
     pub def moveFocus(delta: Int32, data: PanelData): PanelData =
         let count = paneCount(data);
         if (count <= 0) data
         else {
-            let raw = data#focus + delta;
-            let clamped = Int32.max(0, Int32.min(count - 1, raw));
-            {focus = clamped | data}
+            let wrapped = Int32.modulo(data#focus + delta, count);
+            {focus = wrapped | data}
         }
 
     /// Z 押下の純粋な状態遷移。`paneIndex` で押されたペイン、`entryKind` でそのスロットの
@@ -219,30 +221,56 @@ mod TradeMenuScene {
                 }
         }
 
-    // panel は 166x84。各ペインの幅は「重み」比で配分する。ロード(持ち物2倍=2列表示)は
+    // panel は最大 166x84。各ペインの幅は「重み」比で配分する。ロード(持ち物2倍=2列表示)は
     // 重み 2.0 で他ペインの倍幅を取り、他ペインはその右へ押し出される（= 全体が少し右寄り）。
-    def panelWidth(): Float64    = 166.0
+    // ただしロードのアイテムが 2 列目に達していないときは重み 1.0 (1 列) に落とし、
+    // ウィンドウ幅もそのぶん縮める (panelWidthFor 参照)。
+    def panelFullWidth(): Float64  = 166.0  // 2 列フル表示時の最大幅 (scene.json と一致)
+    def panelHeight(): Float64     = 84.0   // ウィンドウ高さは固定 (scene.json と一致)
     def paneLeftMargin(): Float64  = 4.0   // 左にわずかな余白（右寄せ感）
     def paneRightMargin(): Float64 = 2.0
     def paneGap(): Float64         = 2.0
     def paneTop(): Float64         = 10.0
     def paneHeight(): Float64      = 70.0
 
-    /// ペインの重み。ロード(2 列)は 2.0、他は 1.0。
-    def paneWeight(isLord: Bool): Float64 = if (isLord) 2.0 else 1.0
+    // 重み 1 ぶんの「快適幅」。基準は「2 人交換でロード 2 列 = 合計重み 3 のときちょうど 166」。
+    // ウィンドウ幅は max=166 を上限に、合計重み × この単位幅で自然に縮める。
+    def comfortUnitWidth(): Float64 =
+        (panelFullWidth() - paneLeftMargin() - paneRightMargin()) / 3.0
+
+    // 1 列に収まる行数 = floor(paneHeight / itemHeight)。itemHeight は scene.json の ItemList と
+    // 一致させる (engine に getItemHeight が無いためここでローカル定数として同期)。
+    def slotHeight(): Float64 = 6.0  // = TradeMenuScene.scene.json の ItemList itemHeight
+    def maxRowsPerColumn(): Int32 =
+        Float64.tryToInt32(Float64.floor(paneHeight() / slotHeight())) |> Option.getWithDefault(1)
+
+    /// 表示エントリ数が 1 列に収まらず 2 列目に達するか (= ロードに 2 列描画が要るか) の純粋判定。
+    pub def needsSecondColumn(entryCount: Int32): Bool = entryCount > maxRowsPerColumn()
+
+    /// ペインの重み。ロードは 2 列が必要なときだけ 2.0、それ以外 (非ロード / 1 列で足りるロード) は 1.0。
+    def paneWeight(isLord: Bool, lordNeeds2Cols: Bool): Float64 =
+        if (isLord and lordNeeds2Cols) 2.0 else 1.0
 
     /// members から各ペインの重みリストを作る。
-    def paneWeights(members: List[Int32]): List[Float64] =
+    pub def paneWeights(members: List[Int32], lordNeeds2Cols: Bool): List[Float64] =
         let lid = PlayerScene.lordId();
-        members |> List.map(m -> paneWeight(m == lid))
+        members |> List.map(m -> paneWeight(m == lid, lordNeeds2Cols))
 
     def sumF(xs: List[Float64]): Float64 = List.foldLeft((a, x) -> a + x, 0.0, xs)
 
-    /// ペイン i の位置とサイズ (panel 相対)。重み比で左から詰め、ロードは倍幅。
-    def paneLayoutFor(members: List[Int32], i: Int32): {pos = Vec2.Vec2, size = Vec2.Vec2} =
-        let weights = paneWeights(members);
+    /// ウィンドウ幅。合計重み × 快適幅 (+ マージン) を 166 で頭打ち。
+    /// 2 人・ロード1列(重み2) → 112.7 / 2 人・ロード2列(重み3) → 166 / 3 人 → 166 頭打ち。
+    pub def panelWidthFor(members: List[Int32], lordNeeds2Cols: Bool): Float64 =
+        let total   = sumF(paneWeights(members, lordNeeds2Cols));
+        let natural = paneLeftMargin() + paneRightMargin() + total * comfortUnitWidth();
+        Float64.min(panelFullWidth(), natural)
+
+    /// ペイン i の位置とサイズ (panel 相対)。重み比で左から詰め、2 列ロードは倍幅。
+    def paneLayoutFor(members: List[Int32], lordNeeds2Cols: Bool, i: Int32):
+            {pos = Vec2.Vec2, size = Vec2.Vec2} =
+        let weights = paneWeights(members, lordNeeds2Cols);
         let total   = sumF(weights);
-        let avail   = panelWidth() - paneLeftMargin() - paneRightMargin();
+        let avail   = panelWidthFor(members, lordNeeds2Cols) - paneLeftMargin() - paneRightMargin();
         let unitW   = if (total <= 0.0) avail else avail / total;
         let before  = sumF(List.take(i, weights));
         let w       = (List.nth(i, weights) |> Option.getWithDefault(1.0)) * unitW;
@@ -250,25 +278,33 @@ mod TradeMenuScene {
          size = {x = w - paneGap(), y = paneHeight()}}
 
     /// 兵種ラベルの位置 (ペインの左上、y=2)。
-    def classPosFor(members: List[Int32], i: Int32): Vec2.Vec2 =
-        let layout = paneLayoutFor(members, i);
+    def classPosFor(members: List[Int32], lordNeeds2Cols: Bool, i: Int32): Vec2.Vec2 =
+        let layout = paneLayoutFor(members, lordNeeds2Cols, i);
         {x = layout#pos#x, y = 2.0}
 
     /// フェーズ遷移時の visibility 適用 (Push モデル)。
     /// `TradeInventory` のとき paneCount 個のペイン (+兵種ラベル) を visible にし、
     /// `paneLayout` で位置・サイズを設定する。focus ペインだけ focused = true。
-    pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def applyVisibility(phase: TurnPhase.Phase, lordNeeds2Cols: Bool,
+                             scene: Scene[NodeTag]): Scene[NodeTag] =
         let open = phase == TurnPhase.Phase.TradeInventory;
         let data = getPanelData(scene);
         let count = paneCount(data);
         let focus = data#focus;
-        let withPanel = Panel.mapAt(panelPath(), CanvasItem.setVisible(open), scene);
+        // 可視時はウィンドウ幅も内容に合わせて縮める (pos は左上固定なので右端が左へ寄る)。
+        let withPanel = Panel.mapAt(panelPath(), p ->
+            let visP = CanvasItem.setVisible(open, p);
+            if (open) Panel.setSize({x = panelWidthFor(data#members, lordNeeds2Cols),
+                                     y = panelHeight()}, visP)
+            else visP,
+            scene);
         List.foldLeft((acc, i) -> {
             let paneVisible = open and i < count;
             let paneFocused = paneVisible and i == focus;
-            let layout = paneLayoutFor(data#members, i);
-            // ロード(持ち物2倍)のペインだけ 2 列描画にして縦の突き抜けを防ぐ。
-            let columns = if (playerIdAt(i, data) == Some(PlayerScene.lordId())) 2 else 1;
+            let layout = paneLayoutFor(data#members, lordNeeds2Cols, i);
+            // ロード(持ち物2倍)が 2 列目に達したときだけ 2 列描画にして縦の突き抜けを防ぐ。
+            let columns =
+                if (playerIdAt(i, data) == Some(PlayerScene.lordId()) and lordNeeds2Cols) 2 else 1;
             acc
                 |> ItemList.mapAt(menuPath(i), list ->
                     list
@@ -280,7 +316,7 @@ mod TradeMenuScene {
                 |> Label2D.mapAt(classPath(i), label ->
                     label
                         |> CanvasItem.setVisible(paneVisible)
-                        |> Node2D.setPosition(classPosFor(data#members, i)))
+                        |> Node2D.setPosition(classPosFor(data#members, lordNeeds2Cols, i)))
         }, withPanel, List.range(0, maxPanes()))
 
     /// 毎フレーム呼ばれる ItemList の process コールバック。
@@ -294,7 +330,8 @@ mod TradeMenuScene {
                          (EngineNode[NodeTag], Scene[NodeTag])
                          \ {TurnPhase.State, PlayerData.PartyQuery} =
         let phase = TurnPhase.State.get();
-        let withVisibility = applyVisibility(phase, scene);
+        let needs2 = lordNeeds2Columns(getPanelData(scene), scene);
+        let withVisibility = applyVisibility(phase, needs2, scene);
         // 閉じている間は全ペインのカーソルを先頭(0)に戻し、次に開いたとき必ず最初から。
         let withItems = if (phase != TurnPhase.Phase.TradeInventory)
                 resetAllCursors(withVisibility)
@@ -308,6 +345,14 @@ mod TradeMenuScene {
         List.foldLeft((acc, i) ->
             ItemList.mapAt(menuPath(i), ItemList.setSelectedIndex(0), acc),
             scene, List.range(0, maxPanes()))
+
+    /// ロードが参加していて、その表示エントリ数 (在庫 + 空スロット) が 1 列に収まらない
+    /// (= 2 列目に達する) か。これが false のときはウィンドウ幅・ロードの列数を縮める。
+    def lordNeeds2Columns(data: PanelData, scene: Scene[NodeTag]): Bool \ PlayerData.PartyQuery =
+        let lid = PlayerScene.lordId();
+        if (List.exists(m -> m == lid, data#members))
+            needsSecondColumn(List.length(paneEntries(lid, scene)))
+        else false
 
     /// 各ペインに対応 player のインベントリ (満杯でなければ末尾に空スロット) と兵種名を反映し、
     /// pick 中のアイテムは強調色 (黄) で描く。

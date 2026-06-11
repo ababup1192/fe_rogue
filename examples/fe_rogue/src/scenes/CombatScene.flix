@@ -245,7 +245,7 @@ mod CombatScene {
         let countered = forM (
             p <- PlayerScene.get(playerId, scene)
         ) yield {
-            GameLogger.enemyLog("敵${enemyId} の反撃");
+            GameLogger.enemyLog("${EnemyScene.displayName(enemyId, scene)}の反撃");
             startAttack(Faction.Enemy, enemyId, playerId, p#gridPos, scene)
         };
         match countered {
@@ -280,7 +280,7 @@ mod CombatScene {
             match decision {
                 case Some((e, CounterAttackRules.Outcome.Counter(playerId))) =>
                     let cleared = clearEnemyAttackTarget(enemyId, scene);
-                    GameLogger.playerLog("P${playerId} の反撃");
+                    GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}の反撃");
                     startAttack(Faction.Player, playerId, enemyId, e#gridPos, cleared)
                 case _ => clearEnemyAttackTarget(enemyId, scene)
             }
@@ -418,7 +418,7 @@ mod CombatScene {
     def applyMiss(playerId: Int32, enemyId: Int32, popupPos: Vec2.Vec2, color: Color,
                    scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger} =
-        GameLogger.playerLog("P${playerId} → 敵${enemyId} ミス");
+        GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}に攻撃を外した");
         AudioStreamPlayer.play("miss");
         DamagePopupScene.emitText(popupPos, "miss", color, scene)
 
@@ -431,12 +431,12 @@ mod CombatScene {
         AudioStreamPlayer.play("damage");
         let withPopup = DamagePopupScene.emit(popupPos, plan#dmg, color, scene);
         if (plan#killed) {
-            GameLogger.playerLog("P${playerId} → 敵${enemyId} を撃破");
+            GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}を倒した");
             withPopup
                 |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), plan#newHp)
                 |> EnemyScene.startDeathAnimation(enemyId)
         } else {
-            GameLogger.playerLog("P${playerId} → 敵${enemyId} に ${plan#dmg}ダメージ");
+            GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}に ${plan#dmg}ダメージ与えた");
             // 攻撃を受けた敵は起動する（GuardUntilInRange を射程外から射ても動き出す）。
             // alerted は一方向フラグなので、ここで立てれば次の敵ターン以降ずっと追跡に入る。
             withPopup
@@ -450,7 +450,7 @@ mod CombatScene {
                                scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
         let consumed = Weapon.consume(weapon);
         if (Option.isEmpty(consumed))
-            GameLogger.playerLog("P${playerId} の ${weapon#name} がこわれた")
+            GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}の ${weapon#name}がこわれた")
         else ();
         PlayerScene.mapPlayer(playerId,
             d -> {weapons = replaceOrDropHead(consumed, d#weapons) | d}, scene)
@@ -497,16 +497,16 @@ mod CombatScene {
         let (damaged, killed) =
             if (not Combat.isHit(strike#hit, roll)) {
                 // 回避: miss SE を鳴らして "miss" を浮かす。HP は変えない。
-                GameLogger.enemyLog("敵${enemyId} → P${targetId} ミス");
+                GameLogger.enemyLog("${enemy#resource#description}は ${player#resource#description}に攻撃を外した");
                 AudioStreamPlayer.play("miss");
                 (DamagePopupScene.emitText(popupPos, "miss", popupColor, scene), Nil)
             } else {
                 // 命中: SE を鳴らしダメージ適用 + 数値ポップアップ。
                 AudioStreamPlayer.play("damage");
                 if (strike#killed) {
-                    GameLogger.enemyLog("敵${enemyId} → P${targetId} を撃破")
+                    GameLogger.enemyLog("${enemy#resource#description}は ${player#resource#description}を倒した")
                 } else {
-                    GameLogger.enemyLog("敵${enemyId} → P${targetId} に ${strike#dmg}ダメージ")
+                    GameLogger.enemyLog("${enemy#resource#description}は ${player#resource#description}に ${strike#dmg}ダメージ与えた")
                 };
                 let withPopup = DamagePopupScene.emit(popupPos, strike#dmg, popupColor, scene);
                 let dmgScene = withPopup
@@ -519,7 +519,7 @@ mod CombatScene {
         // FE ルールでは攻撃を振った時点で耐久を消費する（回避されても同様）
         let consumed = Weapon.consume(weapon);
         if (Option.isEmpty(consumed))
-            GameLogger.enemyLog("敵${enemyId} の ${weapon#name} がこわれた")
+            GameLogger.enemyLog("${enemy#resource#description}の ${weapon#name}がこわれた")
         else ();
         let withWeaponUpdate = EnemyScene.mapEnemy(enemyId,
             d -> {weapon = consumed | d}, damaged);
@@ -566,7 +566,7 @@ mod CombatScene {
         let result = LevelSystem.buildResult(d#resource#description, d#level,
                                              before, after);
         let newHp  = d#hp + hpGain;
-        GameLogger.playerLog("P${playerId} Lv${d#level} → Lv${d#level + 1}");
+        GameLogger.playerLog("${d#resource#description}が Lv${d#level} → Lv${d#level + 1}");
         PlayerScene.mapPlayer(playerId, dd ->
             {exp            = newExp,
              level          = dd#level + 1,

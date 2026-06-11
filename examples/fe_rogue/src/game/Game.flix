@@ -89,9 +89,6 @@ pub enum NodeTag {
     /// `MinimapScene` の常駐タグノード (Marker2D)。process redef で毎フレーム、訪問済み
     /// module を蓄積 (Set[Int32]) し、M キーで全画面ミニマップを出し入れ・再描画する。
     case MinimapDriver(MinimapScene.DriverData)
-    /// `ControlHintScene` の CanvasLayer 親。直近に表示した操作ガイド 1 行を保持し、
-    /// process redef で毎フレーム文脈に合わせて Z/X ボタンの案内文を出し分ける。
-    case ControlHint(String)
     case NoTag
 }
 
@@ -170,16 +167,14 @@ def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(UnitInfoPopupScene.process(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.PhaseBanner(_)) =>
             checked_ecast(PhaseBannerScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.ControlHint(_)) =>
-            checked_ecast(ControlHintScene.process(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.ItemPickupPopup(_)) =>
             checked_ecast(ItemPickupPopupScene.process(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.CharacterSelect(_)) =>
             checked_ecast(CharacterSelectScene.process(delta, node, path, scene))
+        case EngineNode.CanvasLayerWithState(_, NodeTag.Log(_)) =>
+            checked_ecast(LogScene.process(delta, node, path, scene))
         case EngineNode.Camera2DWithState(_, _) =>
             checked_ecast(CameraScene.process(delta, node, path, scene))
-        case EngineNode.RichTextLabelWithState(_, NodeTag.Log(_)) =>
-            checked_ecast(LogScene.process(delta, node, path, scene))
         case _ => (node, scene)
     }
 

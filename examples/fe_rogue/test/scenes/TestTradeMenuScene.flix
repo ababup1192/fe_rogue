@@ -343,15 +343,36 @@ mod TestTradeMenuScene {
     // 純粋関数: decideConfirm / moveFocus / paneEntries(満杯)
     // ════════════════════════════════════════════════════════
 
-    /// moveFocus は 0..(paneCount-1) にクランプする。
+    /// moveFocus は両端でラップする (左端で← → 右端、右端で→ → 左端)。
     @Test
-    def testMoveFocusClampsAtEnds(): Unit \ Assert =
+    def testMoveFocusWrapsAtEnds(): Unit \ Assert =
         let data3 = {members = 0 :: 1 :: 2 :: Nil, focus = 0, pick = None,
                      origin = TradeMenuScene.Origin.FromRogue};
-        let leftAt0  = TradeMenuScene.moveFocus(-1, data3);                 // 0 で左 → 0
-        let rightMax = TradeMenuScene.moveFocus(1, {focus = 2 | data3});    // 2 で右 → 2
+        let leftAt0  = TradeMenuScene.moveFocus(-1, data3);                 // 0 で左 → 2 (wrap)
+        let rightMax = TradeMenuScene.moveFocus(1, {focus = 2 | data3});    // 2 で右 → 0 (wrap)
         let right    = TradeMenuScene.moveFocus(1, data3);                  // 0 で右 → 1
-        Assert.assertEq(expected = (0, 2, 1), (leftAt0#focus, rightMax#focus, right#focus))
+        Assert.assertEq(expected = (2, 0, 1), (leftAt0#focus, rightMax#focus, right#focus))
+
+    /// needsSecondColumn: 1 列に収まる行数 (paneHeight 70 / itemHeight 6 = 11) までは false、
+    /// 12 以上で 2 列目に達して true。
+    @Test
+    def testNeedsSecondColumnThreshold(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (false, false, true),
+            (TradeMenuScene.needsSecondColumn(8),
+             TradeMenuScene.needsSecondColumn(11),
+             TradeMenuScene.needsSecondColumn(12)))
+
+    /// panelWidthFor: ロードが 1 列で足りるとき (false) はウィンドウ幅を ~112.7 に縮め、
+    /// 2 列必要なとき (true) はフル幅 166 に張る。
+    @Test
+    def testPanelWidthShrinksWhenLordSingleColumn(): Unit \ Assert =
+        let members = PlayerScene.lordId() :: 1 :: Nil;  // [ロード, ファイター]
+        let narrow  = TradeMenuScene.panelWidthFor(members, false);
+        let full    = TradeMenuScene.panelWidthFor(members, true);
+        Assert.assertEq(
+            expected = (true, true, true),
+            (narrow > 100.0 and narrow < 120.0, full > 160.0, narrow < full))
 
     /// decideConfirm: pick=None でスロットを pick → JustUpdate で pick がセットされる。
     @Test

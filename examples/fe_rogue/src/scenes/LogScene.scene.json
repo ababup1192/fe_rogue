@@ -1,5 +1,5 @@
 {
-  "description": "画面下部のゲームログ HUD (半透明 Panel + RichTextLabel)\nGameLogger を毎フレーム flush、scrollFollowing + BBCode カラー対応",
+  "description": "右下の3行一時ログ HUD。最新が上(Line0)・最古が下(Line2)。\n新着で表示・最後のログから約5秒で消える(LogScene.process が GameLogger を drain して反映)。\nCanvasLayer の offset を画面外に動かして帯ごと出し入れする(可視切替では隠せないため)。",
   "type": "CanvasLayer",
   "name": "Log",
   "layer": 1,
@@ -8,26 +8,40 @@
   "scale": [1, 1],
   "children": [
     {
-      "type": "Panel",
-      "name": "panel",
-      "pos": [0, 100],
-      "size": [128, 28],
-      "background": {"r": 0, "g": 0, "b": 0},
-      "backgroundAlpha": 0.6,
-      "border": {"r": 1, "g": 1, "b": 1},
-      "borderWidth": 0,
-      "zIndex": 0,
-      "children": [
-        {
-          "type": "RichTextLabel",
-          "name": "Text",
-          "pos": [2, 2],
-          "size": [124, 24],
-          "fontSize": 4,
-          "text": "",
-          "zIndex": 1
-        }
-      ]
+      "type": "ColorRect",
+      "name": "Bg",
+      "pos": [64, 110],
+      "size": [106, 18],
+      "color": {"r": 0, "g": 0, "b": 0},
+      "alpha": 0.55,
+      "zIndex": 0
+    },
+    {
+      "type": "Label2D",
+      "name": "Line0",
+      "pos": [167, 112],
+      "fontSize": 3.8,
+      "text": "",
+      "modulate": {"r": 1, "g": 1, "b": 1},
+      "zIndex": 1
+    },
+    {
+      "type": "Label2D",
+      "name": "Line1",
+      "pos": [167, 117],
+      "fontSize": 3.8,
+      "text": "",
+      "modulate": {"r": 1, "g": 1, "b": 1},
+      "zIndex": 1
+    },
+    {
+      "type": "Label2D",
+      "name": "Line2",
+      "pos": [167, 122],
+      "fontSize": 3.8,
+      "text": "",
+      "modulate": {"r": 1, "g": 1, "b": 1},
+      "zIndex": 1
     }
   ]
 }
