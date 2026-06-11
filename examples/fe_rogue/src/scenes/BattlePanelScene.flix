@@ -314,11 +314,12 @@ mod BattlePanelScene {
     /// 選択武器）。`process` から呼んで `applyForecast` / `buildColumns` に渡す。
     /// 敵が居ない / 届く武器が無いなら None（予報は空になる）。
     def selectedAttackWeapon(scene: Scene[NodeTag]):
-            Option[UnitCatalog.WeaponResource] \ SelectedPlayer.State =
+            Option[UnitCatalog.WeaponResource]
+            \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
         forM (
             idx      <- ItemMenuScene.activeAttackWeaponIndex(scene);
             playerId <- SelectedPlayer.State.get()#id;
-            player   <- PlayerScene.get(playerId, scene);
+            player   <- PlayerScene.PartyQuery.get(playerId);
             w        <- List.nth(idx, player#weapons)
         ) yield w
 

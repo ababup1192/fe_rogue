@@ -18,9 +18,19 @@ mod UnitInfoPopupScene {
     // ─── 状態 ─────────────────────────────────────────────────
 
     /// 表示モード。Z 押下で flip する。
-    pub enum ViewMode with Eq {
+    pub enum ViewMode with Eq, ToString {
         case Status
         case Items
+    }
+
+    /// 毎フレームの判定結果（`process` の純粋な意思決定部分）。
+    ///   Keep            : 何もしない（再描画不要）
+    ///   Hide            : パネルを隠す
+    ///   Render(k, id, m): ユニット k/id を表示モード m で描く
+    pub enum PopupAction with Eq, ToString {
+        case Keep
+        case Hide
+        case Render(String, Int32, ViewMode)
     }
 
     /// 表示中ユニットの識別子（kind は "enemy" か "player"）と現在の表示モード。
@@ -105,21 +115,22 @@ mod UnitInfoPopupScene {
     /// 非表示なら何もしない。
     pub def toggleView(scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameEngine.Game =
-        match getState(scene) {
-            case None    => scene
-            case Some(s) =>
-                match s#shownUnit {
-                    case None              => scene
-                    case Some((kind, id))  =>
-                        let nextMode = match s#viewMode {
-                            case ViewMode.Status => ViewMode.Items
-                            case ViewMode.Items  => ViewMode.Status
-                        };
-                        let withMode = setState({shownUnit = s#shownUnit,
-                                                  viewMode = nextMode,
-                                                  lastHp = s#lastHp}, scene);
-                        renderForKind(kind, id, withMode)
-                }
+        let result = forM (
+            s          <- getState(scene);
+            (kind, id) <- s#shownUnit
+        ) yield {
+            let withMode = setState({shownUnit = s#shownUnit,
+                                      viewMode = flipMode(s#viewMode),
+                                      lastHp = s#lastHp}, scene);
+            renderForKind(kind, id, withMode)
+        };
+        Option.getWithDefault(scene, result)
+
+    /// 表示モードを反転する純粋関数（Z 押下時の Status ↔ Items 切替）。
+    pub def flipMode(m: ViewMode): ViewMode =
+        match m {
+            case ViewMode.Status => ViewMode.Items
+            case ViewMode.Items  => ViewMode.Status
         }
 
     // ─── 毎フレーム更新 ───────────────────────────────────────
@@ -141,38 +152,47 @@ mod UnitInfoPopupScene {
         // バナーが滑り抜けて Idle に戻れば、次フレームから通常どおり表示される。
         let cursorActive = phase == TurnPhase.Phase.PlayerCursor
                             and not PhaseBannerScene.isBusy(scene);
-        let next = if (not cursorActive) {
-            if (Option.isEmpty(getShownUnit(scene))) scene
-            else hide(scene)
-        } else {
-            let cursorPos = CursorScene.getGridPos(scene);
-            let unitIdent = lookupUnitAtScene(cursorPos, scene);
-            let prevIdent = getShownUnit(scene);
-            let curHp = match unitIdent {
-                case None              => None
-                case Some((kind, id))  => currentHp(kind, id, scene)
-            };
-            let prevHp = getLastHp(scene);
-            // ユニットが変わったか、HP が変わったかで再描画する。同一ユニットでも杖の
-            // 回復や 1 ダメで HP が変動した場合に古い表示が残らないようにする。
-            let needsRedraw = unitIdent != prevIdent or curHp != prevHp;
-            if (not needsRedraw) scene
-            else match unitIdent {
-                case Some((kind, id)) =>
-                    // 別ユニットに移ったら viewMode を Status にリセット、同一ユニットの
-                    // HP 変動なら viewMode は維持。
-                    let mode = if (unitIdent != prevIdent) ViewMode.Status
-                                else getViewMode(scene);
-                    let withState = setState({shownUnit = Some((kind, id)),
-                                               viewMode = mode,
-                                               lastHp = curHp}, scene);
-                    renderForKind(kind, id, withState)
-                case None             => hide(scene)
-            }
+        // scene 直読みの純粋な値（effect なし）を集め、判定本体は decideProcess に委譲する。
+        let unitIdent = lookupUnitAtScene(CursorScene.getGridPos(scene), scene);
+        let curHp = match unitIdent {
+            case None              => None
+            case Some((kind, id))  => currentHp(kind, id, scene)
+        };
+        let next = match decideProcess(cursorActive, unitIdent, getShownUnit(scene),
+                                        curHp, getLastHp(scene), getViewMode(scene)) {
+            case PopupAction.Keep => scene
+            case PopupAction.Hide => hide(scene)
+            case PopupAction.Render(kind, id, mode) =>
+                let withState = setState({shownUnit = Some((kind, id)),
+                                           viewMode = mode,
+                                           lastHp = curHp}, scene);
+                renderForKind(kind, id, withState)
         };
         match Scene.getEngineNode(path, next) {
             case Some(latest) => (latest, next)
             case None         => (node, next)
+        }
+
+    /// `process` の純粋な意思決定部分（effect なし・テスト容易）。
+    ///   - カーソル非アクティブ: 表示中なら Hide、もともと未表示なら Keep。
+    ///   - アクティブで前回と同一ユニット・同一 HP: Keep（再描画不要）。
+    ///   - それ以外でカーソル上にユニットあり: Render。別ユニットへ移ったら viewMode を
+    ///     Status にリセット、同一ユニットの HP 変動なら前回の viewMode を維持。
+    ///   - カーソルが空マス: Hide。
+    pub def decideProcess(cursorActive: Bool,
+                          unitIdent: Option[(String, Int32)],
+                          prevIdent: Option[(String, Int32)],
+                          curHp: Option[Int32], prevHp: Option[Int32],
+                          prevMode: ViewMode): PopupAction =
+        if (not cursorActive)
+            if (Option.isEmpty(prevIdent)) PopupAction.Keep else PopupAction.Hide
+        else if (unitIdent == prevIdent and curHp == prevHp)
+            PopupAction.Keep
+        else match unitIdent {
+            case Some((kind, id)) =>
+                let mode = if (unitIdent != prevIdent) ViewMode.Status else prevMode;
+                PopupAction.Render(kind, id, mode)
+            case None => PopupAction.Hide
         }
 
     /// 指定ユニット種別 / id の現在 HP を、引数 scene から直接読み取る

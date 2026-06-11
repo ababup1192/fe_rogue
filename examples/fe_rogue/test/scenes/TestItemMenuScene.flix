@@ -131,13 +131,14 @@ mod TestItemMenuScene {
         let menuPath = ItemMenuScene.menuPath();
         let updated = withSelectedZero(() ->
             withFixedPhase(TurnPhase.Phase.ItemSelect, () ->
+                TestUnitFixtures.withMockPartyQuery(scene, () ->
                 match Scene.getEngineNode(menuPath, scene) {
                     case Some(node) =>
                         let (_, scnAfter) = ItemMenuScene.refreshItems(
                             Duration.seconds(0.016), node, menuPath, scene);
                         scnAfter
                     case None       => scene
-                }));
+                })));
         let count = match Scene.getEngineNode(menuPath, updated) {
             case Some(EngineNode.ItemListWithState(list, _)) =>
                 List.length(ItemList.getItems(list))
@@ -157,13 +158,14 @@ mod TestItemMenuScene {
         let menuPath = ItemMenuScene.menuPath();
         let updated = withSelectedZero(() ->
             withFixedPhase(TurnPhase.Phase.ItemActionSelect, () ->
+                TestUnitFixtures.withMockPartyQuery(withSelection, () ->
                 match Scene.getEngineNode(menuPath, withSelection) {
                     case Some(node) =>
                         let (_, scnAfter) = ItemMenuScene.refreshItems(
                             Duration.seconds(0.016), node, menuPath, withSelection);
                         scnAfter
                     case None       => withSelection
-                }));
+                })));
         let texts = match Scene.getEngineNode(menuPath, updated) {
             case Some(EngineNode.ItemListWithState(list, _)) =>
                 List.map(entry -> entry#text, ItemList.getItems(list))
@@ -179,13 +181,14 @@ mod TestItemMenuScene {
         let menuPath = ItemMenuScene.menuPath();
         let updated = withSelectedZero(() ->
             withFixedPhase(TurnPhase.Phase.ItemActionSelect, () ->
+                TestUnitFixtures.withMockPartyQuery(withSelection, () ->
                 match Scene.getEngineNode(menuPath, withSelection) {
                     case Some(node) =>
                         let (_, scnAfter) = ItemMenuScene.refreshItems(
                             Duration.seconds(0.016), node, menuPath, withSelection);
                         scnAfter
                     case None       => withSelection
-                }));
+                })));
         let texts = match Scene.getEngineNode(menuPath, updated) {
             case Some(EngineNode.ItemListWithState(list, _)) =>
                 List.map(entry -> entry#text, ItemList.getItems(list))
@@ -282,4 +285,67 @@ mod TestItemMenuScene {
             case _                                   => bug!("ItemMenu タグが無い")
         };
         Assert.assertEq(expected = 0, page)
+
+    // ════════════════════════════════════════════════════════
+    // actionItemsFor: 選択中アイテム種別 → サブメニュー項目（純粋）
+    // ════════════════════════════════════════════════════════
+
+    /// 武器選択中 → 「装備 / 捨てる」
+    @Test
+    def testActionItemsForWeapon(): Unit \ Assert =
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerScene.ItemKind.Weapon(0)));
+        Assert.assertEq(
+            expected = "装備" :: "捨てる" :: Nil,
+            List.map(e -> e#text, items))
+
+    /// 杖選択中 → 「使う / 捨てる」
+    @Test
+    def testActionItemsForStaff(): Unit \ Assert =
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerScene.ItemKind.Staff(1)));
+        Assert.assertEq(
+            expected = "使う" :: "捨てる" :: Nil,
+            List.map(e -> e#text, items))
+
+    /// 消費アイテム選択中 → 「使う / 捨てる」（杖と同じ）
+    @Test
+    def testActionItemsForConsumable(): Unit \ Assert =
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerScene.ItemKind.Consumable(2)));
+        Assert.assertEq(
+            expected = "使う" :: "捨てる" :: Nil,
+            List.map(e -> e#text, items))
+
+    /// 未選択 → 空（サブメニューを出さない）
+    @Test
+    def testActionItemsForNone(): Unit \ Assert =
+        let items = ItemMenuScene.actionItemsFor(None);
+        Assert.assertEq(expected = 0, List.length(items))
+
+    // ════════════════════════════════════════════════════════
+    // parseItemKind: metadata 文字列 → ItemKind（純粋）
+    // ════════════════════════════════════════════════════════
+
+    @Test
+    def testParseItemKindWeapon(): Unit \ Assert =
+        Assert.assertEq(
+            expected = Some(PlayerScene.ItemKind.Weapon(1)),
+            ItemMenuScene.parseItemKind("w:1"))
+
+    @Test
+    def testParseItemKindStaff(): Unit \ Assert =
+        Assert.assertEq(
+            expected = Some(PlayerScene.ItemKind.Staff(0)),
+            ItemMenuScene.parseItemKind("s:0"))
+
+    @Test
+    def testParseItemKindConsumable(): Unit \ Assert =
+        Assert.assertEq(
+            expected = Some(PlayerScene.ItemKind.Consumable(2)),
+            ItemMenuScene.parseItemKind("c:2"))
+
+    /// 不明な prefix は None
+    @Test
+    def testParseItemKindUnknown(): Unit \ Assert =
+        Assert.assertEq(
+            expected = None,
+            ItemMenuScene.parseItemKind("x:9"))
 }

@@ -116,7 +116,7 @@ mod CameraScene {
                 match selected {
                     case Some(_) => focusPos
                     case None    =>
-                        if (not List.isEmpty(PlayerScene.hiddenAllies(scene)))
+                        if (not List.isEmpty(PlayerScene.hiddenOf(PlayerScene.PartyQuery.getAll())))
                             lordWorldPos(scene)
                         else
                             cursorWorldPos(scene)

@@ -841,16 +841,26 @@ mod PlayerScene {
             |> mapPlayer(id, d -> {facing = Staff.Direction.Down | d})
             |> playAnim(id, idleAnimName())
 
+    /// hidden(退避中)かつ階段退場でない味方を抽出する純フィルタ（List 版）。
+    /// 述語の真理点をここ1箇所に保ち、driver は `hiddenAllies(scene)`、
+    /// 非driver は `PartyQuery.getAll()` に対してこれを使う（read を effect 経由にしつつ DRY）。
+    pub def hiddenOf(players: List[Data]): List[Data] =
+        List.filter(d -> d#hidden and not d#usedStairs, players)
+
     /// 合流して退避中(hidden)の味方一覧。「かいさん」での再出現対象。
     /// このリストが空でない = いまローグ移動モード中、の手掛かりとしても使う。
     /// 階段で退場した味方 (usedStairs) は hidden だが再出現対象ではないので除外する。
     pub def hiddenAllies(scene: Scene[NodeTag]): List[Data] =
-        getAll(scene) |> List.filter(d -> d#hidden and not d#usedStairs)
+        hiddenOf(getAll(scene))
+
+    /// 合流させられる味方(= ロード(id 0)以外で、まだ表示中)を抽出する純フィルタ（List 版）。
+    pub def mergeableOf(players: List[Data]): List[Data] =
+        List.filter(d -> d#id != 0 and not d#hidden, players)
 
     /// 合流させられる味方一覧(= ロード(id 0)以外で、まだ表示中の味方)。
     /// 「しゅうごう」を出す条件 / 合流で歩かせる対象として使う。
     pub def mergeableAllies(scene: Scene[NodeTag]): List[Data] =
-        getAll(scene) |> List.filter(d -> d#id != 0 and not d#hidden)
+        mergeableOf(getAll(scene))
 
     /// すべての座標が `center` の周囲 `range` マス以内（チェビシェフ距離 = max(|dx|,|dy|)）に
     /// あるか。空リストは true。位置だけのピュア判定（テストしやすいよう座標で受け取る）。
@@ -860,11 +870,20 @@ mod PlayerScene {
             Int32.max(Int32.abs(pos#x - center#x), Int32.abs(pos#y - center#y)) <= range,
             positions)
 
+    /// 合流対象の味方が全員、ロード(id 0)の周囲 `range` マス以内に居るかの純判定（List 版）。
+    /// ロードが居なければ vacuously true。`allMergeableWithin` と非driver の getAll 集計で共有する。
+    pub def allMergeableWithinOf(range: Int32, players: List[Data]): Bool =
+        match List.find(d -> d#id == 0, players) {
+            case None       => true
+            case Some(lord) =>
+                allWithinRange(range, lord#gridPos,
+                               mergeableOf(players) |> List.map(d -> d#gridPos))
+        }
+
     /// 合流対象の味方（mergeableAllies）が全員、ロード(id 0)の周囲 `range` マス以内に居るか。
     /// 「しゅうごう」をその場でできる（全員が近くに固まっている）かの判定に使う。
     pub def allMergeableWithin(range: Int32, scene: Scene[NodeTag]): Bool =
-        allWithinRange(range, getGridPos(0, scene),
-                       mergeableAllies(scene) |> List.map(d -> d#gridPos))
+        allMergeableWithinOf(range, getAll(scene))
 
     /// 合流で次に動かす 1 体を選ぶ純粋関数(= ロードに最も近い味方)。居なければ None。
     pub def nearestMover(lordPos: {x = Int32, y = Int32},

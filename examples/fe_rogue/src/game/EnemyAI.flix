@@ -123,14 +123,15 @@ mod EnemyAI {
                   and ((c#x == pos#x and c#y == pos#y) or not Board.isEnemyAt(c, board)),
             players, floodSteps());
         let okStep = c -> not Board.isOccupied(c, board);
-        match Board.stepDownhill(blockedField, pos, okStep) {
-            case Some(step) => EnemyAction.Move(self#id, step)
-            case None       =>
-                match Board.stepDownhill(openField, pos, okStep) {
-                    case Some(step) => EnemyAction.Move(self#id, step)
-                    case None       => EnemyAction.Wait(self#id)
-                }
-        }
+        // 経路フィールド優先・壁のみフィールドを fallback として 1 歩を求める。
+        // どちらも降りられなければ Wait。
+        let onBlocked = Board.stepDownhill(blockedField, pos, okStep);
+        let step = if (Option.isEmpty(onBlocked))
+                       Board.stepDownhill(openField, pos, okStep)
+                   else onBlocked;
+        step
+            |> Option.map(s -> EnemyAction.Move(self#id, s))
+            |> Option.getWithDefault(EnemyAction.Wait(self#id))
 
     /// 距離フィールドのフラッド上限（マップ全域を覆えるよう十分大きく取る）。
     def floodSteps(): Int32 = 4096

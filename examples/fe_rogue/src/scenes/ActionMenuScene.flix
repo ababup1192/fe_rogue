@@ -148,7 +148,7 @@ mod ActionMenuScene {
                 // SelectedPlayer = None の空マスメニュー。ローグ移動モード中
                 // (合流して退避中の味方が居る) なら「ひろう / かいさん」、
                 // 通常時は「しゅうごう(条件付き) / ターンエンド」。
-                if (not List.isEmpty(PlayerScene.hiddenAllies(scene)))
+                if (not List.isEmpty(PlayerScene.hiddenOf(PlayerScene.PartyQuery.getAll())))
                     rogueMenuItems(scene)
                 else
                     gatherMenuItems(scene)
@@ -201,7 +201,7 @@ mod ActionMenuScene {
     /// ローグ移動モード中(合流済み)のメニュー項目。ロード足元にアイテムがあれば「ひろう」、
     /// ロードが階段に乗っていれば「かいだん」(パーティごと次フロアへ)、常に「かいさん」。
     /// 拾いはロード(id 0)を対象に既存の applyPickup を転用する。
-    def rogueMenuItems(scene: Scene[NodeTag]): List[ItemEntry] =
+    def rogueMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerScene.PartyQuery =
         let lordPos = PlayerScene.getGridPos(0, scene);
         let pickup =
             if (Option.nonEmpty(ItemScene.findAt(lordPos, scene)))
@@ -214,7 +214,7 @@ mod ActionMenuScene {
                   metadata = Some(stairsMeta())}: ItemEntry) :: Nil
             else Nil;
         let trade =
-            if (List.length(gatherTradeMembers(scene)) >= 2)
+            if (List.length(gatherTradeMembers()) >= 2)
                 ({text = "交換", disabled = false,
                   metadata = Some(gatherTradeMeta())}: ItemEntry) :: Nil
             else Nil;
@@ -226,9 +226,10 @@ mod ActionMenuScene {
     /// 集合した生存メンバーの player id リスト (= 交換に参加できる面々)。
     /// ロード(id 0) + 退避中(hidden)の味方。死亡(hp<=0)・階段退場は除外し、id 昇順に並べる。
     /// (`hiddenAllies` が既に usedStairs を除外。`getAll` は hp<=0 を残すので hp フィルタ必須。)
-    def gatherTradeMembers(scene: Scene[NodeTag]): List[Int32] =
-        let lord   = PlayerScene.get(0, scene) |> Option.toList;
-        let hidden = PlayerScene.hiddenAllies(scene);
+    def gatherTradeMembers(): List[Int32] \ PlayerScene.PartyQuery =
+        let players = PlayerScene.PartyQuery.getAll();
+        let lord    = List.filter(d -> d#id == 0, players);
+        let hidden  = PlayerScene.hiddenOf(players);
         List.append(lord, hidden)
             |> List.filter(d -> d#hp > 0)
             |> List.map(d -> d#id)
@@ -239,11 +240,12 @@ mod ActionMenuScene {
 
     /// 通常の空マスメニュー項目。ロードが敵に未検知(部屋外かつ索敵範囲外)で、合流可能な味方が
     /// 全員ロードの周囲 `gatherRange` マス以内に居れば「しゅうごう」、常に「ターンエンド」。
-    def gatherMenuItems(scene: Scene[NodeTag]): List[ItemEntry] =
+    def gatherMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerScene.PartyQuery =
+        let players = PlayerScene.PartyQuery.getAll();
         let gather =
             if (not AutoMoveScene.lordDetected(scene)
-                and not List.isEmpty(PlayerScene.mergeableAllies(scene))
-                and PlayerScene.allMergeableWithin(gatherRange(), scene))
+                and not List.isEmpty(PlayerScene.mergeableOf(players))
+                and PlayerScene.allMergeableWithinOf(gatherRange(), players))
                 ({text = "集合", disabled = false,
                   metadata = Some(gatherMeta())}: ItemEntry) :: Nil
             else Nil;
@@ -346,8 +348,8 @@ mod ActionMenuScene {
     /// 「交換」確定 (集合後): 集合した生存メンバー全員の N 人持ち物交換画面を開く。
     /// TradeInventory フェーズ (origin = FromRogue) に入り、TradeMenuScene が 3 ペイン表示する。
     def openGatherTrade(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TurnPhase.State =
-        PhaseTransitions.enterGatherTrade(gatherTradeMembers(scene), scene)
+            Scene[NodeTag] \ {TurnPhase.State, PlayerScene.PartyQuery} =
+        PhaseTransitions.enterGatherTrade(gatherTradeMembers(), scene)
 
     /// 「しゅうごう」確定: ローグ移動モードの合流を開始する (PlayerAutoMove フェーズへ)。
     /// 以降は AutoMoveScene の driver が味方をロードへ歩かせ、重なったら退避させる。
@@ -393,7 +395,7 @@ mod ActionMenuScene {
                     // ドラフト記録し、選択解除キャンセル(cancelSelection)で床へ巻き戻せるようにする。
                     // ローグ移動モードは選択が無く巻き戻し対象外なので即取得のまま。
                     let recorded =
-                        if (List.isEmpty(PlayerScene.hiddenAllies(scene)))
+                        if (List.isEmpty(PlayerScene.hiddenOf(PlayerScene.PartyQuery.getAll())))
                             recordPickupDraft(info, scene)
                         else scene;
                     pickupAt(info, recorded)
@@ -427,7 +429,7 @@ mod ActionMenuScene {
     def pickupTarget(scene: Scene[NodeTag]):
             Option[{playerId = Int32, gridPos = {x = Int32, y = Int32}}]
             \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
-        if (not List.isEmpty(PlayerScene.hiddenAllies(scene)))
+        if (not List.isEmpty(PlayerScene.hiddenOf(PlayerScene.PartyQuery.getAll())))
             Some({playerId = 0, gridPos = PlayerScene.getGridPos(0, scene)})
         else
             selectedPlayerInfo()
@@ -498,13 +500,14 @@ mod ActionMenuScene {
     ///   - SelectedPlayer なし (PlayerCursor からの集合メニュー) → PlayerCursor
     /// 青マス・カーソルは触らず、ユーザがもう一度操作し直せる状態に復帰する。
     pub def onActionCancelled(scene: Scene[NodeTag]):
-                              Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+                              Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State,
+                                                PlayerScene.PartyQuery} =
         let target = match SelectedPlayer.State.get()#id {
             case Some(_) => TurnPhase.Phase.PlayerMoving
             case None    =>
                 // 退避中の味方が居る = ローグ移動モード由来のメニュー → RogueMove に戻す。
                 // それ以外は通常の空マスメニュー由来 → PlayerCursor に戻す。
-                if (not List.isEmpty(PlayerScene.hiddenAllies(scene)))
+                if (not List.isEmpty(PlayerScene.hiddenOf(PlayerScene.PartyQuery.getAll())))
                     TurnPhase.Phase.RogueMove
                 else
                     TurnPhase.Phase.PlayerCursor

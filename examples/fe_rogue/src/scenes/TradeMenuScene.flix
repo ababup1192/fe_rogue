@@ -291,7 +291,8 @@ mod TradeMenuScene {
     pub def refreshItems(_delta: Duration.Duration, node: EngineNode[NodeTag],
                           path: NodePath,
                           scene: Scene[NodeTag]):
-                         (EngineNode[NodeTag], Scene[NodeTag]) \ TurnPhase.State =
+                         (EngineNode[NodeTag], Scene[NodeTag])
+                         \ {TurnPhase.State, PlayerScene.PartyQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
         // 閉じている間は全ペインのカーソルを先頭(0)に戻し、次に開いたとき必ず最初から。
@@ -311,7 +312,7 @@ mod TradeMenuScene {
 
     /// 各ペインに対応 player のインベントリ (満杯でなければ末尾に空スロット) と兵種名を反映し、
     /// pick 中のアイテムは強調色 (黄) で描く。
-    def refreshPanes(scene: Scene[NodeTag]): Scene[NodeTag] =
+    def refreshPanes(scene: Scene[NodeTag]): Scene[NodeTag] \ PlayerScene.PartyQuery =
         let data = getPanelData(scene);
         let count = paneCount(data);
         List.foldLeft((acc, i) ->
@@ -331,7 +332,7 @@ mod TradeMenuScene {
     /// このペインで pick 中のアイテムの表示行 index (色強調する行)。pick が別ペイン /
     /// 空スロット pick / 未 pick なら None。
     def pickHighlightIndex(paneIndex: Int32, playerId: Int32, data: PanelData,
-                            scene: Scene[NodeTag]): Option[Int32] =
+                            scene: Scene[NodeTag]): Option[Int32] \ PlayerScene.PartyQuery =
         match data#pick {
             case Some(p) if p#paneIndex == paneIndex =>
                 p#kind |> Option.map(k -> displayIndexOf(k, playerId, scene))
@@ -351,9 +352,9 @@ mod TradeMenuScene {
 
     /// ItemKind を、ペイン表示 (weapons ++ staves ++ consumables) 上の行 index に変換する。
     def displayIndexOf(kind: PlayerScene.ItemKind, playerId: Int32,
-                        scene: Scene[NodeTag]): Int32 =
-        let nw = List.length(PlayerScene.getWeapons(playerId, scene));
-        let ns = List.length(PlayerScene.getStaves(playerId, scene));
+                        _scene: Scene[NodeTag]): Int32 \ PlayerScene.PartyQuery =
+        let nw = List.length(weaponsOf(playerId));
+        let ns = List.length(stavesOf(playerId));
         match kind {
             case PlayerScene.ItemKind.Weapon(i)     => i
             case PlayerScene.ItemKind.Staff(i)      => nw + i
@@ -361,8 +362,8 @@ mod TradeMenuScene {
         }
 
     /// 指定 player id の兵種名 (`UnitResource#description`)。居なければ空文字。
-    def classNameOf(id: Int32, scene: Scene[NodeTag]): String =
-        match PlayerScene.get(id, scene) {
+    def classNameOf(id: Int32, _scene: Scene[NodeTag]): String \ PlayerScene.PartyQuery =
+        match PlayerScene.PartyQuery.get(id) {
             case Some(d) => d#resource#description
             case None    => ""
         }
@@ -396,10 +397,22 @@ mod TradeMenuScene {
     }
 
     /// 指定 player の weapons + staves + consumables を ItemEntry 列に変換する。
-    def inventoryEntries(playerId: Int32, scene: Scene[NodeTag]): List[ItemEntry] =
-        let weapons     = PlayerScene.getWeapons(playerId, scene);
-        let staves      = PlayerScene.getStaves(playerId, scene);
-        let consumables = PlayerScene.getConsumables(playerId, scene);
+    // 非driver の在庫 read を effect 経由（PartyQuery）に寄せる薄ラッパ（op 非増殖）。
+    // render/refresh 経路でのみ使う。mutator 経路の recordTradeDraft 内 read は scene-arg 据え置き。
+    def weaponsOf(id: Int32): List[UnitCatalog.WeaponResource] \ PlayerScene.PartyQuery =
+        PlayerScene.PartyQuery.get(id) |> Option.map(d -> d#weapons) |> Option.getWithDefault(Nil)
+
+    def stavesOf(id: Int32): List[Staff.StaffResource] \ PlayerScene.PartyQuery =
+        PlayerScene.PartyQuery.get(id) |> Option.map(d -> d#staves) |> Option.getWithDefault(Nil)
+
+    def consumablesOf(id: Int32): List[Consumable.ConsumableResource] \ PlayerScene.PartyQuery =
+        PlayerScene.PartyQuery.get(id) |> Option.map(d -> d#consumables) |> Option.getWithDefault(Nil)
+
+    def inventoryEntries(playerId: Int32, _scene: Scene[NodeTag]):
+            List[ItemEntry] \ PlayerScene.PartyQuery =
+        let weapons     = weaponsOf(playerId);
+        let staves      = stavesOf(playerId);
+        let consumables = consumablesOf(playerId);
         let weaponEntries     = List.mapWithIndex(idx -> w -> weaponEntry(idx, w), weapons);
         let staffEntries      = List.mapWithIndex(idx -> s -> staffEntry(idx, s),  staves);
         let consumableEntries = List.mapWithIndex(idx -> c -> consumableEntry(idx, c), consumables);
@@ -408,14 +421,15 @@ mod TradeMenuScene {
     /// 1 ペインに並べる ItemEntry 列。インベントリ + (上限未満のときだけ) 末尾の空スロット行。
     /// 上限ちょうど (満杯) なら空スロットを出さない = 片方向流入をブロックする。
     /// pub: テストが「満杯ペインに空スロットが出ない」ことを確認するのに使う。
-    pub def paneEntries(playerId: Int32, scene: Scene[NodeTag]): List[ItemEntry] =
+    pub def paneEntries(playerId: Int32, scene: Scene[NodeTag]):
+            List[ItemEntry] \ PlayerScene.PartyQuery =
         let base = inventoryEntries(playerId, scene);
         if (isFull(playerId, scene)) base
         else List.append(base, emptySlotEntry() :: Nil)
 
     /// 指定 player の持ち物が上限に達しているか。居なければ false。
-    def isFull(playerId: Int32, scene: Scene[NodeTag]): Bool =
-        match PlayerScene.get(playerId, scene) {
+    def isFull(playerId: Int32, _scene: Scene[NodeTag]): Bool \ PlayerScene.PartyQuery =
+        match PlayerScene.PartyQuery.get(playerId) {
             case Some(d) => PlayerScene.isInventoryFull(d)
             case None    => false
         }

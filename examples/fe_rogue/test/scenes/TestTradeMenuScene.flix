@@ -420,7 +420,8 @@ mod TestTradeMenuScene {
             ({id = 0, weapons = sixteen, staves = Nil}: PlayerSpec) ::
             ({id = 1, weapons = "iron_bow" :: Nil, staves = Nil}: PlayerSpec) :: Nil,
             TradeMenuScene.Origin.FromRogue);
-        let entries = TradeMenuScene.paneEntries(0, s0#scene);
+        let entries = TestUnitFixtures.withMockPartyQuery(s0#scene, () ->
+            TradeMenuScene.paneEntries(0, s0#scene));
         let hasEmpty = List.exists(e -> e#metadata == Some(TradeMenuScene.emptySlotMeta()), entries);
         Assert.assertEq(expected = (16, false), (List.length(entries), hasEmpty))
 }
