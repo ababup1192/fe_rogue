@@ -147,9 +147,9 @@ mod CharacterSelectScene {
     def bgColor(): Color = {r = 0.08f32, g = 0.09f32, b = 0.13f32}
     def descBgColor(): Color = {r = 0.12f32, g = 0.13f32, b = 0.18f32}
     def borderColor(): Color = {r = 0.5f32, g = 0.5f32, b = 0.6f32}
-    def focusBorderColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def focusBorderColor(): Color = UITheme.white()
     def selectedColor(): Color = {r = 0.95f32, g = 0.8f32, b = 0.2f32}
-    def textColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def textColor(): Color = UITheme.white()
     def dimModulate(): Color = {r = 0.45f32, g = 0.45f32, b = 0.45f32}
     /// カード枠の背景色（背景より少し明るい）。
     def frameColor(): Color = {r = 0.16f32, g = 0.17f32, b = 0.22f32}
@@ -167,7 +167,7 @@ mod CharacterSelectScene {
     /// 有効かつ注目中（出撃へカーソルを移した）ときの明るいオレンジと白枠。
     def buttonFocusBg(): Color = {r = 0.95f32, g = 0.52f32, b = 0.14f32}
     def buttonFocusGloss(): Color = {r = 1.0f32, g = 0.82f32, b = 0.40f32}
-    def buttonFocusBorder(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def buttonFocusBorder(): Color = UITheme.white()
 
     def buttonText(): String = "出撃"
 

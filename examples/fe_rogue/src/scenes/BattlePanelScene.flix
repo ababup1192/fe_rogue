@@ -236,11 +236,11 @@ mod BattlePanelScene {
 
     /// 現在HP（通常）の文字色 = 白。
     /// 威力ラベルの通常色（白）。得意武器のときはこれ。
-    def powerNormalColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def powerNormalColor(): Color = UITheme.white()
     /// 苦手武器のときの威力ラベル色（青）。80% に下がっていることを示す。
     def powerWeakColor(): Color = {r = 0.45f32, g = 0.65f32, b = 1.0f32}
 
-    def hpNormalColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def hpNormalColor(): Color = UITheme.white()
     /// 戦闘後HP（減少予測）の文字色 = グレー。
     def hpDamagedColor(): Color = {r = 0.55f32, g = 0.55f32, b = 0.55f32}
 

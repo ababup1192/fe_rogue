@@ -105,7 +105,7 @@ mod PhaseBannerScene {
     /// 敵ターンの帯色（濃赤。HP バーの敵=赤に準拠）。
     def enemyColor(): Color = {r = 0.45f32, g = 0.12f32, b = 0.12f32}
     /// 文字色（白）。
-    def textColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def textColor(): Color = UITheme.white()
 
     /// 帯に出す文言。
     def playerText(): String = "プレイヤーフェーズ"

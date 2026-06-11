@@ -16,6 +16,14 @@ mod BoardSnapshot {
     /// 順序: players → enemies (Board.playerPositions / enemyPositions の filterMap が
     /// 順序を保つ前提なので、ここでも安定順を維持する)。
     pub def fromScene(scene: Scene[NodeTag]): Board =
+        fromParts(scene, PlayerScene.getAll(scene), EnemyScene.getAll(scene))
+
+    /// `fromScene` の「取得済みリスト版」。`Encounter.fromScene` が同じ scene を二度歩かない
+    /// よう、生の(hidden を含む) players/enemies を渡してこちらを使う。hidden の盤面除外は
+    /// 従来どおり**ここ 1 箇所**で行う（Board 経由の全クエリが自動的に hidden を無視する）。
+    pub def fromParts(scene: Scene[NodeTag],
+                       players: List[PlayerScene.Data],
+                       enemies: List[EnemyScene.Data]): Board =
         let layer       = MapScene.getMapLayer(scene);
         let mapGlobal   = Scene.globalPositionAt(MapScene.mapPath(), scene);
         let placements  = MapScene.getPlacements(scene);
@@ -28,16 +36,13 @@ mod BoardSnapshot {
             gridToWorld  = c -> Vec2.add(mapGlobal, TileMapLayer.mapToLocal(c, layer)),
             moduleOfCell = c -> MapScene.moduleOfCellIn(c, placements)
         };
-        // ローグ移動モードで合流して退避中(hidden)の味方は盤面から除外する。
-        // これ 1 箇所で、Board 経由の全クエリ(敵範囲判定・占有・経路探索・カーソル)が
-        // 自動的に hidden を無視する (詳細は PlayerScene.setHidden 参照)。
-        let players = PlayerScene.getAll(scene)
+        let playerPieces = players
             |> List.filter(d -> not d#hidden)
             |> List.map(d -> (Piece.Player(d#id), d#gridPos));
-        let enemies = EnemyScene.getAll(scene)
+        let enemyPieces = enemies
             |> List.map(e -> (Piece.Enemy(e#id), e#gridPos));
         {
             map    = map,
-            pieces = List.append(players, enemies)
+            pieces = List.append(playerPieces, enemyPieces)
         }
 }

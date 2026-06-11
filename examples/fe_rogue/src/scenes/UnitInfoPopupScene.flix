@@ -85,8 +85,8 @@ mod UnitInfoPopupScene {
 
     // 色
     def bgColor(): Color = {r = 0.0f32, g = 0.0f32, b = 0.0f32}
-    def borderColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
-    def textColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def borderColor(): Color = UITheme.white()
+    def textColor(): Color = UITheme.white()
     def hpBarFillColor(): Color = {r = 0.5f32, g = 0.9f32, b = 0.2f32}
 
     // ─── 構築（初回） ─────────────────────────────────────────

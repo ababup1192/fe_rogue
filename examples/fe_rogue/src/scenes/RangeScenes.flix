@@ -245,7 +245,7 @@ mod EnemyRangeScene {
 
     /// 白系 modulate。敵の「移動範囲」を表す。攻撃到達範囲(EnemyAttackRange=赤)と
     /// 色で区別するため移動範囲は白にしている。
-    def color(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def color(): Color = UITheme.white()
 
     /// 情報表示なので少し透かして駒や床を見やすくする。
     def alpha(): Float32 = 0.7f32

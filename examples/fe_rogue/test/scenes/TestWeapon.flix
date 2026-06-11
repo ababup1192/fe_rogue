@@ -15,12 +15,8 @@ mod TestWeapon {
     @Test
     def testConsumeDecrementsDurability(): Unit \ Assert =
         let weapon = TestUnitFixtures.testWeaponFull(2, 5);
-        let result = Weapon.consume(weapon);
-        let dur = match result {
-            case Some(w) => w#durability
-            case None    => -1
-        };
-        Assert.assertEq(expected = (true, 4), (Option.nonEmpty(result), dur))
+        // 耐久 5 を 1 回使うと Some(耐久 4) が残る（壊れず Some のまま）
+        Assert.assertEq(expected = Some(4), Weapon.consume(weapon) |> Option.map(w -> w#durability))
 
     /// 耐久度 1 の武器を 1 回使うと壊れる（None）
     /// 「最後の 1 撃で壊れる」境界条件

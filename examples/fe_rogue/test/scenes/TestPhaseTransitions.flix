@@ -54,7 +54,7 @@ mod TestPhaseTransitions {
         let hasNode = path -> Option.nonEmpty(Scene.getEngineNode(path, scene));
         let cursorVisible = match Scene.getEngineNode(CursorScene.cursorPath(), scene) {
             case Some(EngineNode.Marker2DWithState(m, _)) => CanvasItem.isVisible(m)
-            case _                                          => false
+            case _                                          => bug!("Cursor node not found")
         };
         (hasNode(MoveRangeScene.moveRangePath()),
          hasNode(MoveAttackRangeScene.rangePath()),

@@ -41,7 +41,7 @@ mod UnitHPBarScene {
     /// 点滅の「暗」側 modulate（フィル色を暗く落とす乗算色）。減少分が暗く沈んで見える。
     def dmgDarkModulate(): Color = {r = 0.3f32, g = 0.3f32, b = 0.3f32}
     /// 点滅の「明」側 modulate（通常色 = フィルと同色に見え、満タンに戻って見える）。
-    def dmgNormalModulate(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def dmgNormalModulate(): Color = UITheme.white()
 
     // ─── サイズ・位置 ─────────────────────────────────────────
     /// バー幅 = 1 マス × 0.9（最大 HP 非依存）。

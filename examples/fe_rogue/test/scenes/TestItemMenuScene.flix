@@ -89,16 +89,23 @@ mod TestItemMenuScene {
             def put(_, k) = k()
         }
 
+    /// path の ItemList ノードを取り出す（無ければ None）。Some のまま assert に使える。
+    def itemListAt(path: NodePath, scene: Scene[NodeTag]): Option[ItemList] =
+        match Scene.getEngineNode(path, scene) {
+            case Some(EngineNode.ItemListWithState(list, _)) => Some(list)
+            case _                                           => None
+        }
+
     /// 現在の Panel + ItemList の visible 状態をタプルで取り出すヘルパー。
     def visibilityOf(scene: Scene[NodeTag]): (Bool, Bool) =
         let panelVisible = match Scene.getEngineNode(ItemMenuScene.panelPath(), scene) {
             case Some(EngineNode.PanelWithState(p, _)) => CanvasItem.isVisible(p)
-            case _                                      => false
+            case _                                      => bug!("Panel node not found")
         };
         let menuVisible =
             match Scene.getEngineNode(ItemMenuScene.menuPath(), scene) {
                 case Some(EngineNode.ItemListWithState(l, _)) => CanvasItem.isVisible(l)
-                case _                                         => false
+                case _                                         => bug!("ItemList node not found")
             };
         (panelVisible, menuVisible)
 
@@ -137,14 +144,10 @@ mod TestItemMenuScene {
                         let (_, scnAfter) = ItemMenuScene.refreshItems(
                             Duration.seconds(0.016), node, menuPath, scene);
                         scnAfter
-                    case None       => scene
+                    case None       => bug!("menu node not found at ${menuPath}")
                 })));
-        let count = match Scene.getEngineNode(menuPath, updated) {
-            case Some(EngineNode.ItemListWithState(list, _)) =>
-                List.length(ItemList.getItems(list))
-            case _ => -1
-        };
-        Assert.assertEq(expected = 2, count)
+        Assert.assertEq(expected = Some(2),
+            itemListAt(menuPath, updated) |> Option.map(list -> List.length(ItemList.getItems(list))))
 
     // ════════════════════════════════════════════════════════
     // ItemActionSelect: 武器/杖でサブメニュー項目が出し分けされる
@@ -217,11 +220,8 @@ mod TestItemMenuScene {
         let after = withSelectedZero(() ->
             withFixedPhase(TurnPhase.Phase.ItemSelect, () ->
                 ItemMenuScene.onItemConfirmed(entry, scene)));
-        let idx = match Scene.getEngineNode(menuPath, after) {
-            case Some(EngineNode.ItemListWithState(list, _)) => ItemList.getSelectedIndex(list)
-            case _ => -1
-        };
-        Assert.assertEq(expected = 0, idx)
+        Assert.assertEq(expected = Some(0),
+            itemListAt(menuPath, after) |> Option.map(ItemList.getSelectedIndex))
 
     // ════════════════════════════════════════════════════════
     // ページング: ロード職など 8 個超の持ち物を 8 件ずつページ分けする

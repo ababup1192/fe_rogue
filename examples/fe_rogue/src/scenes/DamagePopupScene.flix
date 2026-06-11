@@ -64,7 +64,7 @@ mod DamagePopupScene {
     def popupZIndex(): Int32 = 100
 
     /// プレイヤー攻撃 → 敵（被弾は敵）に使う色: 白
-    pub def damageToEnemyColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    pub def damageToEnemyColor(): Color = UITheme.white()
 
     /// 敵攻撃 → プレイヤー（被弾は味方）に使う色: 赤寄り
     pub def damageToPlayerColor(): Color = {r = 1.0f32, g = 0.4f32, b = 0.4f32}

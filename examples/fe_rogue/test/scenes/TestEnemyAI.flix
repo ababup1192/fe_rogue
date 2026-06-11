@@ -23,51 +23,44 @@ mod TestEnemyAI {
         let v = Vec2i.toVec2(c);
         {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
 
+    /// MapSnapshot の定型を 1 か所に集約する核。床判定 isFloorAt とモジュール判定 moduleOf を渡す。
+    /// isWall / mapToLocal / gridToWorld の決まり文句をここに閉じ込め、各テストは「床の形」だけ書く。
+    def roomSnapshotWith(w: Int32, h: Int32,
+                         isFloorAt: {x = Int32, y = Int32} -> Bool,
+                         moduleOf: {x = Int32, y = Int32} -> Option[Int32]): MapSnapshot =
+        {
+            tileSize     = testTileSize(),
+            usedRect     = {position = Vec2i.zero(), size = ({x = w, y = h}: {x = Int32, y = Int32})},
+            isWall       = c -> not isFloorAt(c),
+            isFloor      = isFloorAt,
+            mapToLocal   = c -> testGridToWorld(c),
+            gridToWorld  = c -> testGridToWorld(c),
+            moduleOfCell = moduleOf
+        }
+
+    /// 単一モジュール(=0)版の別名。床なら Some(0)、壁なら None。大半のテストはこれを使う。
+    def roomSnapshotWhere(w: Int32, h: Int32,
+                          isFloorAt: {x = Int32, y = Int32} -> Bool): MapSnapshot =
+        roomSnapshotWith(w, h, isFloorAt, c -> if (isFloorAt(c)) Some(0) else None)
+
     /// 全床 w×h で 2 つの仮想モジュール領域に区切った MapSnapshot を作る。
     /// (0..w/2, 0..h)  → moduleIdx = Some(0)（プレイヤーの部屋）
     /// (w/2..w, 0..h)  → moduleIdx = Some(1)（敵の部屋）
     def twoRoomSnapshot(w: Int32, h: Int32): MapSnapshot =
-        let inB = c -> c#x >= 0 and c#x < w and c#y >= 0 and c#y < h;
+        let inB  = c -> c#x >= 0 and c#x < w and c#y >= 0 and c#y < h;
         let half = w / 2;
-        {
-            tileSize     = testTileSize(),
-            usedRect     = {position = Vec2i.zero(), size = ({x = w, y = h}: {x = Int32, y = Int32})},
-            isWall       = c -> not inB(c),
-            isFloor      = c -> inB(c),
-            mapToLocal   = c -> testGridToWorld(c),
-            gridToWorld  = c -> testGridToWorld(c),
-            moduleOfCell = c ->
-                if (not inB(c)) None
-                else if (c#x < half) Some(0)
-                else Some(1)
-        }
+        roomSnapshotWith(w, h, inB,
+            c -> if (not inB(c)) None else if (c#x < half) Some(0) else Some(1))
 
     /// 1 部屋だけの snapshot（全マス moduleIdx = 0）。
     def singleRoomSnapshot(w: Int32, h: Int32): MapSnapshot =
-        let inB = c -> c#x >= 0 and c#x < w and c#y >= 0 and c#y < h;
-        {
-            tileSize     = testTileSize(),
-            usedRect     = {position = Vec2i.zero(), size = ({x = w, y = h}: {x = Int32, y = Int32})},
-            isWall       = c -> not inB(c),
-            isFloor      = c -> inB(c),
-            mapToLocal   = c -> testGridToWorld(c),
-            gridToWorld  = c -> testGridToWorld(c),
-            moduleOfCell = c -> if (inB(c)) Some(0) else None
-        }
+        roomSnapshotWhere(w, h, c -> c#x >= 0 and c#x < w and c#y >= 0 and c#y < h)
 
     /// 壁マス wall を持つ単一部屋 snapshot（moduleIdx = 0）。
     def singleRoomWithWall(w: Int32, h: Int32, wall: {x = Int32, y = Int32}): MapSnapshot =
-        let inB = c -> c#x >= 0 and c#x < w and c#y >= 0 and c#y < h;
-        let isW = c -> c#x == wall#x and c#y == wall#y;
-        {
-            tileSize     = testTileSize(),
-            usedRect     = {position = Vec2i.zero(), size = ({x = w, y = h}: {x = Int32, y = Int32})},
-            isWall       = c -> not inB(c) or isW(c),
-            isFloor      = c -> inB(c) and not isW(c),
-            mapToLocal   = c -> testGridToWorld(c),
-            gridToWorld  = c -> testGridToWorld(c),
-            moduleOfCell = c -> if (inB(c) and not isW(c)) Some(0) else None
-        }
+        roomSnapshotWhere(w, h, c ->
+            c#x >= 0 and c#x < w and c#y >= 0 and c#y < h
+                and not (c#x == wall#x and c#y == wall#y))
 
     /// プレイヤー（id=0 単独） + 敵 1 体の Board を組む。
     def boardOf(map: MapSnapshot, player: {x = Int32, y = Int32},
@@ -125,6 +118,15 @@ mod TestEnemyAI {
             case _                      => None
         }
 
+    /// Move の (tag, x, y) を取り出す。Move しか来ない前提の取り出しなので、他は bug!。
+    /// （他アクションも正常に来うる比較系の `attackId` / `moveDistTo` が番兵 -1 を返すのとは別物。）
+    /// 移動先セルを 1 点に pin するテストで、Option.map |> getWithDefault(-1) の 3 行を 1 か所に集約する。
+    def moveTo(a: EnemyAction): (String, Int32, Int32) =
+        match a {
+            case EnemyAction.Move(_, t) => ("Move", t#x, t#y)
+            case _                      => bug!("expected Move action")
+        }
+
     /// Option[{x = Int32, y = Int32}] が Some か（isSome の代わり）。
     def isSome(o: Option[{x = Int32, y = Int32}]): Bool =
         match o {
@@ -152,11 +154,12 @@ mod TestEnemyAI {
                 mkTarget(id, pos, 99, 0, None)
             })
 
-    /// 複数プレイヤー + 敵 1 体の Board。`players` は (id, pos) のリスト。
+    /// 複数プレイヤー + 複数の敵駒を置いた Board。players / enemies はともに (id, pos) のリスト。
     def boardOfMany(map: MapSnapshot, players: List[(Int32, {x = Int32, y = Int32})],
-                     enemyId: Int32, enemyPos: {x = Int32, y = Int32}): Board =
+                     enemies: List[(Int32, {x = Int32, y = Int32})]): Board =
         let playerPieces = List.map(p -> let (id, pos) = p; (Piece.Player(id), pos), players);
-        {map = map, pieces = List.append(playerPieces, (Piece.Enemy(enemyId), enemyPos) :: Nil)}
+        let enemyPieces  = List.map(e -> let (id, pos) = e; (Piece.Enemy(id), pos), enemies);
+        {map = map, pieces = List.append(playerPieces, enemyPieces)}
 
     /// 敵 self の実効攻撃力（素攻撃 + 装備武器攻撃）。フィクスチャから計算してハードコードを避ける。
     /// 三竦み中立前提: 本テスト群の敵（enemyAt / enemyAtBow）と target は全て Sword 型なので
@@ -348,10 +351,8 @@ mod TestEnemyAI {
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAtBow(0, enemyP, true, 0, 3);
         let (a, _)  = decide(board, targetsOf(board), enemy);
-        let dist    = moveTarget(a)
-            |> Option.map(t -> Int32.abs(t#x - 5) + Int32.abs(t#y - 5))
-            |> Option.getWithDefault(-1);
-        Assert.assertEq(expected = ("Move", 2), (tagOf(a), dist))
+        // 移動先がプレイヤー(5,5)から距離 2（弓射程）に広がる。退き方向は pin せず距離だけ見る
+        Assert.assertEq(expected = ("Move", 2), (tagOf(a), moveDistTo(a, player)))
 
     /// 後退できない（壁際・包囲で間合いを広げられない）弓の敵は Wait に落ちる。
     /// 2×1 の通路でプレイヤー (0,0) に隣接した敵 (1,0) は逃げ場が無く、後退不可 → Wait。
@@ -413,13 +414,7 @@ mod TestEnemyAI {
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, true, 0, 1);
         let (a, _)  = decide(board, targetsOf(board), enemy);
-        let target  = moveTarget(a);
-        Assert.assertEq(
-            expected = ("Move", true, 4, 5),
-            (tagOf(a),
-             isSome(target),
-             Option.map(t -> t#x, target) |> Option.getWithDefault(-1),
-             Option.map(t -> t#y, target) |> Option.getWithDefault(-1)))
+        Assert.assertEq(expected = ("Move", 4, 5), moveTo(a))
 
     /// `decideAction` は常に「最短経路の 1 歩目」だけを返す（複数マス分は呼び出し側
     /// の EnemyTurn.Queue が step を積んで処理する）。距離 2 のケースで 1 歩目 (2,5) を
@@ -432,13 +427,7 @@ mod TestEnemyAI {
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, true, 0, 3);
         let (a, _)  = decide(board, targetsOf(board), enemy);
-        let target  = moveTarget(a);
-        Assert.assertEq(
-            expected = ("Move", true, 2, 5),
-            (tagOf(a),
-             isSome(target),
-             Option.map(t -> t#x, target) |> Option.getWithDefault(-1),
-             Option.map(t -> t#y, target) |> Option.getWithDefault(-1)))
+        Assert.assertEq(expected = ("Move", 2, 5), moveTo(a))
 
     /// 壁を迂回するケース。
     /// 配置:
@@ -466,17 +455,9 @@ mod TestEnemyAI {
     /// `testApproachesTowardBlockedCorridorInsteadOfWaiting` の通り壁のみフィールドで詰める。
     @Test
     def testNoPathStillStepsTowardPlayer(): Unit \ Assert =
-        let inB = c -> c#x >= 0 and c#x < 5 and c#y >= 0 and c#y < 3;
-        let isW = c -> c#x == 2;
-        let map: MapSnapshot = {
-            tileSize     = testTileSize(),
-            usedRect     = {position = Vec2i.zero(), size = ({x = 5, y = 3}: {x = Int32, y = Int32})},
-            isWall       = c -> not inB(c) or isW(c),
-            isFloor      = c -> inB(c) and not isW(c),
-            mapToLocal   = c -> testGridToWorld(c),
-            gridToWorld  = c -> testGridToWorld(c),
-            moduleOfCell = c -> if (inB(c) and not isW(c)) Some(0) else None
-        };
+        // 5×3 の床から x=2 の列を壁で抜いて左右を分断する
+        let map = roomSnapshotWhere(5, 3, c ->
+            c#x >= 0 and c#x < 5 and c#y >= 0 and c#y < 3 and c#x != 2);
         let player  = ({x = 0, y = 1}: {x = Int32, y = Int32});
         let enemyP  = ({x = 4, y = 1}: {x = Int32, y = Int32});
         let board   = boardOf(map, player, 0, enemyP);
@@ -489,29 +470,17 @@ mod TestEnemyAI {
     ///   . . . . .
     ///   P . . X E0
     ///   . . . . .
-    /// moveTiles=3 で迂回する。経路は (4,0) や (4,2) を通って 3 歩進む。target はそれぞれ
-    /// (2,0) もしくは (2,2)。BFS の方向タイブレークに依存するので「(3,1) を通っていない」
-    /// 「manhattan 距離 3 以内」「(3,1) でない」の 3 条件で受け入れる。
+    /// moveTiles=3 で迂回する。敵 0 は (3,1) を通れないので上に回り込み、
+    /// 次の 1 歩は (4,0)（上方向優先の決定的タイブレーク。(3,1) は通らない）。
     @Test
     def testBfsAvoidsOtherEnemy(): Unit \ Assert =
-        let map = singleRoomSnapshot(5, 3);
-        let board: Board = {
-            map    = map,
-            pieces = (Piece.Player(0), ({x = 0, y = 1}: {x = Int32, y = Int32}))
-                  :: (Piece.Enemy(0), ({x = 4, y = 1}: {x = Int32, y = Int32}))
-                  :: (Piece.Enemy(1), ({x = 3, y = 1}: {x = Int32, y = Int32})) :: Nil
-        };
-        let enemy   = enemyAt(0, ({x = 4, y = 1}: {x = Int32, y = Int32}), true, 0, 3);
-        let (a, _)  = decide(board, targetsOf(board), enemy);
-        let target  = moveTarget(a);
-        let okTarget = match target {
-            case Some(t) =>
-                let manhattan = Int32.abs(t#x - 4) + Int32.abs(t#y - 1);
-                let notOtherEnemy = not (t#x == 3 and t#y == 1);
-                manhattan >= 1 and manhattan <= 3 and notOtherEnemy
-            case None    => false
-        };
-        Assert.assertEq(expected = ("Move", true), (tagOf(a), okTarget))
+        let map    = singleRoomSnapshot(5, 3);
+        // 敵 0 が本体、敵 1(3,1) は直線を塞ぐ障害物として置く
+        let board  = boardOfMany(map, (0, {x = 0, y = 1}) :: Nil,
+                                      (0, {x = 4, y = 1}) :: (1, {x = 3, y = 1}) :: Nil);
+        let enemy  = enemyAt(0, {x = 4, y = 1}, true, 0, 3);
+        let (a, _) = decide(board, targetsOf(board), enemy);
+        Assert.assertEq(expected = ("Move", 4, 0), moveTo(a))
 
     // ════════════════════════════════════════════════════════
     // 評価軸の組み合わせ（辞書式ターゲット選択）: 仕留め > 反撃不能 > 低HP > 近さ
@@ -527,7 +496,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let p0      = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 剣・距離2・反撃不能
         let p1      = ({x = 5, y = 3}: {x = Int32, y = Int32});   // 弓・距離2・瀕死
-        let board   = boardOfMany(map, (0, p0) :: (1, p1) :: Nil, 9, enemyP);
+        let board   = boardOfMany(map, (0, p0) :: (1, p1) :: Nil, (9, enemyP) :: Nil);
         let enemy   = enemyAtBow(9, enemyP, true, 0, 5);
         let targets = mkTarget(0, p0, 99, 0, swordRange())
                    :: mkTarget(1, p1, 2, 5, bowRange()) :: Nil;
@@ -543,7 +512,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let pNear   = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 距離2・射程内・HP10
         let pFar    = ({x = 5, y = 10}: {x = Int32, y = Int32});  // 距離5・射程外・HP1
-        let board   = boardOfMany(map, (0, pNear) :: (1, pFar) :: Nil, 9, enemyP);
+        let board   = boardOfMany(map, (0, pNear) :: (1, pFar) :: Nil, (9, enemyP) :: Nil);
         let enemy   = enemyAtBow(9, enemyP, true, 0, 5);
         let targets = mkTarget(0, pNear, 10, 0, swordRange())
                    :: mkTarget(1, pFar, 1, 0, swordRange()) :: Nil;
@@ -557,7 +526,7 @@ mod TestEnemyAI {
         let map     = singleRoomSnapshot(12, 12);
         let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});
         let pSword  = ({x = 8, y = 5}: {x = Int32, y = Int32});   // 距離2・反撃不能
-        let board   = boardOfMany(map, (0, pSword) :: Nil, 9, enemyP);
+        let board   = boardOfMany(map, (0, pSword) :: Nil, (9, enemyP) :: Nil);
         let enemy   = enemyAtBow(9, enemyP, true, 0, 5);
         let targets = mkTarget(0, pSword, 99, 0, swordRange()) :: Nil;
         let (a, _)  = decide(board, targets, enemy);
@@ -574,7 +543,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let pA      = ({x = 8, y = 5}: {x = Int32, y = Int32});   // 距離3・HP10
         let pB      = ({x = 5, y = 8}: {x = Int32, y = Int32});   // 距離3・HP4
-        let board   = boardOfMany(map, (0, pA) :: (1, pB) :: Nil, 9, enemyP);
+        let board   = boardOfMany(map, (0, pA) :: (1, pB) :: Nil, (9, enemyP) :: Nil);
         let enemy   = enemyAtBow(9, enemyP, true, 0, 5);
         let targets = mkTarget(0, pA, 10, 0, swordRange())
                    :: mkTarget(1, pB, 4, 0, swordRange()) :: Nil;
@@ -590,7 +559,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let pFar    = ({x = 8, y = 5}: {x = Int32, y = Int32});   // 距離3
         let pNear   = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 距離2
-        let board   = boardOfMany(map, (0, pFar) :: (1, pNear) :: Nil, 9, enemyP);
+        let board   = boardOfMany(map, (0, pFar) :: (1, pNear) :: Nil, (9, enemyP) :: Nil);
         let enemy   = enemyAtBow(9, enemyP, true, 0, 5);
         let targets = mkTarget(0, pFar, 10, 0, swordRange())
                    :: mkTarget(1, pNear, 10, 0, swordRange()) :: Nil;
@@ -606,7 +575,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let pSword  = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 隣接・HP5・反撃可
         let pBow    = ({x = 5, y = 6}: {x = Int32, y = Int32});   // 隣接・HP10・反撃不可
-        let board   = boardOfMany(map, (0, pSword) :: (1, pBow) :: Nil, 9, enemyP);
+        let board   = boardOfMany(map, (0, pSword) :: (1, pBow) :: Nil, (9, enemyP) :: Nil);
         let enemy   = enemyAt(9, enemyP, true, 0, 3);             // testWeapon = 剣 1-1（近接）
         let targets = mkTarget(0, pSword, 5, 0, swordRange())
                    :: mkTarget(1, pBow, 10, 0, bowRange()) :: Nil;
@@ -622,7 +591,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let p0      = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 隣接・HP8
         let p1      = ({x = 5, y = 6}: {x = Int32, y = Int32});   // 隣接・HP3
-        let board   = boardOfMany(map, (0, p0) :: (1, p1) :: Nil, 9, enemyP);
+        let board   = boardOfMany(map, (0, p0) :: (1, p1) :: Nil, (9, enemyP) :: Nil);
         let enemy   = enemyAt(9, enemyP, true, 0, 3);             // testWeapon = 剣 1-1（近接）
         let targets = mkTarget(0, p0, 8, 0, swordRange())
                    :: mkTarget(1, p1, 3, 0, swordRange()) :: Nil;
@@ -638,7 +607,7 @@ mod TestEnemyAI {
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let p0      = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 隣接・HP9
         let p1      = ({x = 5, y = 8}: {x = Int32, y = Int32});   // 距離3・HP2（射程外）
-        let board   = boardOfMany(map, (0, p0) :: (1, p1) :: Nil, 9, enemyP);
+        let board   = boardOfMany(map, (0, p0) :: (1, p1) :: Nil, (9, enemyP) :: Nil);
         let enemy   = enemyAt(9, enemyP, true, 0, 3);
         let targets = mkTarget(0, p0, 9, 0, swordRange())
                    :: mkTarget(1, p1, 2, 0, swordRange()) :: Nil;
@@ -651,30 +620,19 @@ mod TestEnemyAI {
     /// 期待: Wait せず、最寄りで到達可能な p1 へ向かって Move（発見したら近づく挙動を保つ）。
     @Test
     def testChasesNearestWhenPreferredUnreachable(): Unit \ Assert =
-        let inB = c -> c#x >= 0 and c#x < 6 and c#y >= 0 and c#y < 3;
-        let isW = c -> c#x == 2;
-        let map: MapSnapshot = {
-            tileSize     = testTileSize(),
-            usedRect     = {position = Vec2i.zero(), size = ({x = 6, y = 3}: {x = Int32, y = Int32})},
-            isWall       = c -> not inB(c) or isW(c),
-            isFloor      = c -> inB(c) and not isW(c),
-            mapToLocal   = c -> testGridToWorld(c),
-            gridToWorld  = c -> testGridToWorld(c),
-            moduleOfCell = c -> if (inB(c) and not isW(c)) Some(0) else None
-        };
+        // 6×3 の床から x=2 の列を壁で抜いて左右を分断する
+        let map     = roomSnapshotWhere(6, 3, c ->
+            c#x >= 0 and c#x < 6 and c#y >= 0 and c#y < 3 and c#x != 2);
         let enemyP  = ({x = 5, y = 1}: {x = Int32, y = Int32});
         let p0      = ({x = 0, y = 1}: {x = Int32, y = Int32});   // 壁の向こう・HP1・到達不能
         let p1      = ({x = 3, y = 1}: {x = Int32, y = Int32});   // 同じ側・HP10・距離2
-        let board   = boardOfMany(map, (0, p0) :: (1, p1) :: Nil, 9, enemyP);
+        let board   = boardOfMany(map, (0, p0) :: (1, p1) :: Nil, (9, enemyP) :: Nil);
         let enemy   = enemyAt(9, enemyP, true, 0, 3);            // 剣（近接）
         let targets = mkTarget(0, p0, 1, 0, swordRange())
                    :: mkTarget(1, p1, 10, 0, swordRange()) :: Nil;
         let (a, _)  = decide(board, targets, enemy);
         // p1(3,1) へ 1 歩 → (4,1)。到達不能な p0 を選んで Wait しないことを確認。
-        Assert.assertEq(expected = ("Move", 4, 1),
-                         (tagOf(a),
-                          moveTarget(a) |> Option.map(t -> t#x) |> Option.getWithDefault(-1),
-                          moveTarget(a) |> Option.map(t -> t#y) |> Option.getWithDefault(-1)))
+        Assert.assertEq(expected = ("Move", 4, 1), moveTo(a))
 
     /// 通路口を別の敵が塞いで味方に到達できないときでも、敵は止まらず味方の方へ寄る。
     /// 配置: 左の 3×3 部屋 + y=1 の 1 マス幅通路で右へ。敵9(1,1) / 通路口を塞ぐ敵8(3,1) /
@@ -682,32 +640,19 @@ mod TestEnemyAI {
     /// 期待: Wait せず、味方に一番近づける (2,1) へ 1 歩寄る（通路口の手前まで詰める）。
     @Test
     def testApproachesTowardBlockedCorridorInsteadOfWaiting(): Unit \ Assert =
-        let inFloor = c -> (c#x >= 0 and c#x <= 2 and c#y >= 0 and c#y <= 2)
-                            or (c#y == 1 and c#x >= 0 and c#x <= 5);
-        let map: MapSnapshot = {
-            tileSize     = testTileSize(),
-            usedRect     = {position = Vec2i.zero(), size = ({x = 6, y = 3}: {x = Int32, y = Int32})},
-            isWall       = c -> not inFloor(c),
-            isFloor      = inFloor,
-            mapToLocal   = c -> testGridToWorld(c),
-            gridToWorld  = c -> testGridToWorld(c),
-            moduleOfCell = c -> if (inFloor(c)) Some(0) else None
-        };
+        // 左に 3×3 部屋、そこから y=1 の 1 マス幅通路で右(x=5)まで伸びる床
+        let map     = roomSnapshotWhere(6, 3, c ->
+            (c#x >= 0 and c#x <= 2 and c#y >= 0 and c#y <= 2)
+                or (c#y == 1 and c#x >= 0 and c#x <= 5));
         let enemyP  = ({x = 1, y = 1}: {x = Int32, y = Int32});
         let playerP = ({x = 5, y = 1}: {x = Int32, y = Int32});
-        let board: Board = {
-            map    = map,
-            pieces = (Piece.Player(0), playerP)
-                  :: (Piece.Enemy(9), enemyP)
-                  :: (Piece.Enemy(8), ({x = 3, y = 1}: {x = Int32, y = Int32})) :: Nil
-        };
+        // 敵 8(3,1) が通路口を塞ぐ。敵 9 から味方への経路は到達不能
+        let board   = boardOfMany(map, (0, playerP) :: Nil,
+                                       (9, enemyP) :: (8, {x = 3, y = 1}) :: Nil);
         let enemy   = enemyAt(9, enemyP, true, 0, 3);
         let targets = mkTarget(0, playerP, 10, 0, swordRange()) :: Nil;
         let (a, _)  = decide(board, targets, enemy);
-        Assert.assertEq(expected = ("Move", 2, 1),
-                         (tagOf(a),
-                          moveTarget(a) |> Option.map(t -> t#x) |> Option.getWithDefault(-1),
-                          moveTarget(a) |> Option.map(t -> t#y) |> Option.getWithDefault(-1)))
+        Assert.assertEq(expected = ("Move", 2, 1), moveTo(a))
 
     /// 角を曲がる: 前進にいったん manhattan 距離を増やす必要があるスパイラル/U字でも止まらない。
     /// 3×3・(1,0)(1,1) が壁の U 字。味方(0,0)・敵(2,0)。敵→味方の経路は下へ回り込む
@@ -718,27 +663,17 @@ mod TestEnemyAI {
     ///   . . .   row2: 開通（ここを回る）
     @Test
     def testSpiralCornerDoesNotFreeze(): Unit \ Assert =
-        let inB = c -> c#x >= 0 and c#x < 3 and c#y >= 0 and c#y < 3;
-        let isW = c -> (c#x == 1 and c#y == 0) or (c#x == 1 and c#y == 1);
-        let map: MapSnapshot = {
-            tileSize     = testTileSize(),
-            usedRect     = {position = Vec2i.zero(), size = ({x = 3, y = 3}: {x = Int32, y = Int32})},
-            isWall       = c -> not inB(c) or isW(c),
-            isFloor      = c -> inB(c) and not isW(c),
-            mapToLocal   = c -> testGridToWorld(c),
-            gridToWorld  = c -> testGridToWorld(c),
-            moduleOfCell = c -> if (inB(c) and not isW(c)) Some(0) else None
-        };
+        // 3×3 から (1,0) と (1,1) を壁で抜いた U 字（row2 だけで左右がつながる）
+        let map     = roomSnapshotWhere(3, 3, c ->
+            c#x >= 0 and c#x < 3 and c#y >= 0 and c#y < 3
+                and not (c#x == 1 and (c#y == 0 or c#y == 1)));
         let player  = ({x = 0, y = 0}: {x = Int32, y = Int32});
         let enemyP  = ({x = 2, y = 0}: {x = Int32, y = Int32});
         let board   = boardOf(map, player, 0, enemyP);
         let enemy   = enemyAt(0, enemyP, true, 0, 3);
         let (a, _)  = decide(board, targetsOf(board), enemy);
         // 凍結せず、回り込みの 1 歩目 (2,1) へ降下する（manhattan は 2→3 に増える）。
-        Assert.assertEq(expected = ("Move", 2, 1),
-                         (tagOf(a),
-                          moveTarget(a) |> Option.map(t -> t#x) |> Option.getWithDefault(-1),
-                          moveTarget(a) |> Option.map(t -> t#y) |> Option.getWithDefault(-1)))
+        Assert.assertEq(expected = ("Move", 2, 1), moveTo(a))
 
     // ════════════════════════════════════════════════════════
     // 辞書式比較ヘルパー lexGreater

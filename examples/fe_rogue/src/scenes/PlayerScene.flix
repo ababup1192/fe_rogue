@@ -221,10 +221,10 @@ mod PlayerScene {
 
     /// `waited = true` 時の sprite modulate（薄い灰色）。
     /// CanvasItem.setModulate で sprite の RGB を乗算する。
-    def waitedColor(): Color = {r = 0.5f32, g = 0.5f32, b = 0.5f32}
+    def waitedColor(): Color = UITheme.dimmed()
 
     /// `waited = false` 時の sprite modulate（白 = 元色）。
-    def activeColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def activeColor(): Color = UITheme.white()
 
     /// AnimatedSprite2D の「待機」アニメ名。spriteFrames には必ずこれが定義されている前提。
     def idleAnimName(): String = "idle"

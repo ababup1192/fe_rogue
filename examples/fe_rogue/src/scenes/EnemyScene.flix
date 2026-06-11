@@ -302,9 +302,9 @@ mod EnemyScene {
     // ─── 行動済み（待機）暗転 ──────────────────────────────────
 
     /// 行動済みの sprite / HP ゲージ modulate（薄い灰色）。プレイヤーの waitedColor と揃える。
-    def actedColor(): Color = {r = 0.5f32, g = 0.5f32, b = 0.5f32}
+    def actedColor(): Color = UITheme.dimmed()
     /// 通常時の modulate（白 = 元色）。
-    def activeColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def activeColor(): Color = UITheme.white()
 
     /// 敵 id の子 Sprite に modulate を設定する（Sprite2D / AnimatedSprite2D 両対応）。
     def setSpriteModulate(id: Int32, color: Color, scene: Scene[NodeTag]): Scene[NodeTag] =

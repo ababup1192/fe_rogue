@@ -84,7 +84,7 @@ mod EnemyTurnDriverScene {
             if (List.isEmpty(MapScene.tryGetPlacements(scene)))
                 List.sortBy(e -> e#id, actives)
             else {
-                let board0 = Encounter.fromScene(scene)#board;
+                let board0 = BoardSnapshot.fromScene(scene);
                 let field0 = Board.distanceField(c -> Board.isWalkable(board0, c),
                                                   Board.allPlayerCells(board0), 4096);
                 List.sortBy(e -> (Board.fieldDist(field0, e#gridPos), e#id), actives)

@@ -69,7 +69,7 @@ mod LevelUpPanelScene {
     def plusColor(): Color = {r = 1.0f32, g = 0.914f32, b = 0.29f32}
 
     /// 本文の通常テキスト色（白）。ラベル・数値・矢印列に使う。
-    def whiteColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def whiteColor(): Color = UITheme.white()
 
     def rootName(): String       = "LevelUpPanel"
     def panelName(): String      = "panel"

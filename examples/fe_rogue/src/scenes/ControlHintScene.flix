@@ -59,7 +59,7 @@ mod ControlHintScene {
     /// 帯・文字の色。
     def bandColor(): Color = {r = 0.0f32, g = 0.0f32, b = 0.0f32}
     def bandAlpha(): Float32 = 0.5f32
-    def textColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def textColor(): Color = UITheme.white()
 
     /// CanvasLayer の横オフセット。`homeX` で表示、`offHiddenX` で画面外へ隠す。
     def homeX(): Float64 = 0.0

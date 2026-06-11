@@ -15,12 +15,8 @@ mod TestStaff {
     @Test
     def testConsumeDecrementsDurability(): Unit \ Assert =
         let staff = sampleStaff(Staff.StaffEffect.Heal, 3);
-        let result = Staff.consume(staff);
-        let durability = match result {
-            case Some(s) => s#durability
-            case None    => -1
-        };
-        Assert.assertEq(expected = (true, 2), (Option.nonEmpty(result), durability))
+        // 耐久 3 を 1 回使うと Some(耐久 2) が残る（壊れず Some のまま）
+        Assert.assertEq(expected = Some(2), Staff.consume(staff) |> Option.map(s -> s#durability))
 
     /// 耐久 1 の杖を 1 回使うと壊れる（None）
     /// 「最後の 1 回で壊れる」境界条件
