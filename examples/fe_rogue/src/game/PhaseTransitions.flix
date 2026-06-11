@@ -78,7 +78,7 @@ mod PhaseTransitions {
     pub def enterPlayerCursor(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
-                              PlayerScene.PartyQuery} =
+                              PlayerData.PartyQuery} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         clearAllPlayerRanges(scene)
             |> EnemyScene.showAllActive        // 味方フェーズ中は敵を通常色(アクティブ)で見せる
@@ -130,7 +130,7 @@ mod PhaseTransitions {
     pub def enterPlayerAttack(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
-                              PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+                              PlayerData.PartyQuery, EnemyData.RosterQuery} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
         clearMoveOnlyRanges(scene)
             |> PlayerAttackRangeScene.show
@@ -278,7 +278,7 @@ mod PhaseTransitions {
     pub def enterTradeTargetSelect(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
-                              PlayerScene.PartyQuery} =
+                              PlayerData.PartyQuery} =
         TurnPhase.State.put(TurnPhase.Phase.TradeTargetSelect);
         clearMoveOnlyRanges(scene)
             |> PlayerAttackRangeScene.clear

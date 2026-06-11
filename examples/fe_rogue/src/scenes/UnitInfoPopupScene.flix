@@ -379,7 +379,7 @@ mod UnitInfoPopupScene {
         let withBar = Scene.addChildAt(panelPath(), "HpBar",
             EngineNode.ProgressBarWithState(hpBar, NodeTag.NoTag), withHpText);
         // HP ゲージの下に「装備中の武器 (先頭) + 耐久」をアイコン付きで出す。武器なしなら省略。
-        let withWeapon = match PlayerScene.equippedWeapon(weapons) {
+        let withWeapon = match PlayerData.equippedWeapon(weapons) {
             case Some(weapon) => renderEquippedWeapon(weapon, atlas, withBar)
             case None         => withBar
         };

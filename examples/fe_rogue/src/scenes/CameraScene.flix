@@ -80,7 +80,7 @@ mod CameraScene {
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, EnemyTurn.Queue,
                         TurnPhase.State, SelectedPlayer.State,
-                        PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+                        PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let phase = TurnPhase.State.get();
         let selected = SelectedPlayer.State.get()#id;
         let target = computeTarget(phase, selected, scene);
@@ -100,7 +100,7 @@ mod CameraScene {
     def computeTarget(phase: TurnPhase.Phase,
                        selected: Option[Int32],
                        scene: Scene[NodeTag]): Vec2.Vec2
-            \ {EnemyTurn.Queue, PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+            \ {EnemyTurn.Queue, PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let focusId = focusIdOf(selected);
         let focusPos = focusedPlayerWorldPos(focusId, scene);
         match phase {
@@ -116,7 +116,7 @@ mod CameraScene {
                 match selected {
                     case Some(_) => focusPos
                     case None    =>
-                        if (not List.isEmpty(PlayerScene.hiddenOf(PlayerScene.PartyQuery.getAll())))
+                        if (not List.isEmpty(PlayerScene.hiddenOf(PlayerData.PartyQuery.getAll())))
                             lordWorldPos(scene)
                         else
                             cursorWorldPos(scene)
@@ -144,7 +144,7 @@ mod CameraScene {
     /// その敵が `alerted` なら追従、非 alerted (Skip フェーズ) なら fallback (プレイヤー位置)。
     /// 「敵に発見されている状態では敵の動きが見える」ようにするためのロジック。
     def enemyTurnTarget(fallback: Vec2.Vec2, scene: Scene[NodeTag]):
-            Vec2.Vec2 \ {EnemyTurn.Queue, EnemyScene.RosterQuery} =
+            Vec2.Vec2 \ {EnemyTurn.Queue, EnemyData.RosterQuery} =
         let activeId = match attackingEnemyId() {
             case Some(id) => Some(id)
             case None     => match EnemyTurn.Queue.peekFront() {
@@ -155,7 +155,7 @@ mod CameraScene {
         match activeId {
             case None     => fallback
             case Some(id) =>
-                match EnemyScene.RosterQuery.get(id) {
+                match EnemyData.RosterQuery.get(id) {
                     case Some(d) =>
                         if (d#alerted)
                             Scene.globalPositionAt(EnemyScene.enemyPath(id), scene)
@@ -166,8 +166,8 @@ mod CameraScene {
 
     /// attack_lunge 中の敵 id を 1 つ返す。`stepEnemyTurn` が attacking 中は他の step を
     /// 進めない設計なので、複数 attacking 状態は通常起きない（防御的に head を取る）。
-    def attackingEnemyId(): Option[Int32] \ EnemyScene.RosterQuery =
-        EnemyScene.RosterQuery.getAll()
+    def attackingEnemyId(): Option[Int32] \ EnemyData.RosterQuery =
+        EnemyData.RosterQuery.getAll()
             |> List.filterMap(e ->
                 if (Option.nonEmpty(e#attackTargetId)) Some(e#id) else None)
             |> List.head
@@ -195,11 +195,11 @@ mod CameraScene {
 
     /// 「いまカメラが向くべき」プレイヤー id を選ぶ。
     /// 選択中があればそれ、無ければパーティ先頭（id=0、それも無ければ 0 fallback）。
-    def focusIdOf(selected: Option[Int32]): Int32 \ PlayerScene.PartyQuery =
+    def focusIdOf(selected: Option[Int32]): Int32 \ PlayerData.PartyQuery =
         match selected {
             case Some(id) => id
             case None     =>
-                match List.head(PlayerScene.PartyQuery.getAll()) {
+                match List.head(PlayerData.PartyQuery.getAll()) {
                     case Some(d) => d#id
                     case None    => 0
                 }

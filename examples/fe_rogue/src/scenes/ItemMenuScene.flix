@@ -128,7 +128,7 @@ mod ItemMenuScene {
                          _path: NodePath,
                          scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
-                        \ {SelectedPlayer.State, TurnPhase.State, PlayerScene.PartyQuery} =
+                        \ {SelectedPlayer.State, TurnPhase.State, PlayerData.PartyQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
         let withItems = match phase {
@@ -206,17 +206,17 @@ mod ItemMenuScene {
     // getAll/get の2基盤 op だけで読み、render/refresh 経路の getWeapons(id,scene) 直タイプを置換する。
     // ※ mutator(applyEquip/applyDrop/applyUse)内部の「同フレーム write 直後 read」は scene 引数の
     //   最新値を読む必要があるため、これらは使わず scene-arg のまま据え置く（stale snapshot 回避）。
-    def weaponsOf(id: Int32): List[UnitCatalog.WeaponResource] \ PlayerScene.PartyQuery =
-        PlayerScene.PartyQuery.get(id) |> Option.map(d -> d#weapons) |> Option.getWithDefault(Nil)
+    def weaponsOf(id: Int32): List[UnitCatalog.WeaponResource] \ PlayerData.PartyQuery =
+        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#weapons) |> Option.getWithDefault(Nil)
 
-    def stavesOf(id: Int32): List[Staff.StaffResource] \ PlayerScene.PartyQuery =
-        PlayerScene.PartyQuery.get(id) |> Option.map(d -> d#staves) |> Option.getWithDefault(Nil)
+    def stavesOf(id: Int32): List[Staff.StaffResource] \ PlayerData.PartyQuery =
+        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#staves) |> Option.getWithDefault(Nil)
 
-    def consumablesOf(id: Int32): List[Consumable.ConsumableResource] \ PlayerScene.PartyQuery =
-        PlayerScene.PartyQuery.get(id) |> Option.map(d -> d#consumables) |> Option.getWithDefault(Nil)
+    def consumablesOf(id: Int32): List[Consumable.ConsumableResource] \ PlayerData.PartyQuery =
+        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#consumables) |> Option.getWithDefault(Nil)
 
     def refreshItemList(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
+            Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
         match SelectedPlayer.State.get()#id {
             case None => scene
             case Some(playerId) =>
@@ -280,7 +280,7 @@ mod ItemMenuScene {
     /// 選択 index は `activeAttackWeaponIndex` で「届く武器」に正規化する (engine の上下移動は
     /// disabled をスキップするので、左右でターゲットが変わって選択が射程外になったときの補正)。
     def refreshAttackWeaponList(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
+            Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
         match SelectedPlayer.State.get()#id {
             case None => scene
             case Some(playerId) =>
@@ -315,10 +315,10 @@ mod ItemMenuScene {
     /// 現在の選択 index の武器がカーソル上の敵に届けばそのまま、届かなければ届く先頭武器。
     /// カーソルが敵に乗っていない / 届く武器が無いなら None。
     pub def activeAttackWeaponIndex(scene: Scene[NodeTag]): Option[Int32]
-            \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery} =
         forM (
             playerId <- SelectedPlayer.State.get()#id;
-            player   <- PlayerScene.PartyQuery.get(playerId);
+            player   <- PlayerData.PartyQuery.get(playerId);
             d        <- cursorTargetDistance(playerId, scene);
             idx      <- chooseAttackWeaponIdx(player, currentSelectedIndex(scene), d)
         ) yield idx
@@ -414,14 +414,14 @@ mod ItemMenuScene {
     ///   杖・消費品   → [つかう, すてる]
     ///   未選択       → []
     /// `refreshActionList` の判定本体を effect なしで切り出したもの（テスト容易化）。
-    pub def actionItemsFor(sel: Option[PlayerScene.ItemKind]): List[ItemEntry] =
+    pub def actionItemsFor(sel: Option[PlayerData.ItemKind]): List[ItemEntry] =
         match sel {
-            case Some(PlayerScene.ItemKind.Weapon(_)) =>
+            case Some(PlayerData.ItemKind.Weapon(_)) =>
                 equipEntry() :: dropEntry() :: Nil
             // 杖・消費アイテムはどちらも「つかう / すてる」。
-            case Some(PlayerScene.ItemKind.Staff(_))      =>
+            case Some(PlayerData.ItemKind.Staff(_))      =>
                 useEntry() :: dropEntry() :: Nil
-            case Some(PlayerScene.ItemKind.Consumable(_)) =>
+            case Some(PlayerData.ItemKind.Consumable(_)) =>
                 useEntry() :: dropEntry() :: Nil
             case None => Nil
         }
@@ -464,18 +464,18 @@ mod ItemMenuScene {
             Map.insert(idx, spriteIcon(sprite), acc),
             Map.empty(), List.zipWithIndex(sprites))
 
-    /// metadata の `"w:<idx>"` / `"s:<idx>"` を `PlayerScene.ItemKind` にパースする。
+    /// metadata の `"w:<idx>"` / `"s:<idx>"` を `PlayerData.ItemKind` にパースする。
     /// 不明形式は `None`。
-    pub def parseItemKind(meta: String): Option[PlayerScene.ItemKind] =
+    pub def parseItemKind(meta: String): Option[PlayerData.ItemKind] =
         if (String.startsWith({prefix = "w:"}, meta))
             String.dropLeft(2, meta) |> Int32.fromString
-                                     |> Option.map(PlayerScene.ItemKind.Weapon)
+                                     |> Option.map(PlayerData.ItemKind.Weapon)
         else if (String.startsWith({prefix = "s:"}, meta))
             String.dropLeft(2, meta) |> Int32.fromString
-                                     |> Option.map(PlayerScene.ItemKind.Staff)
+                                     |> Option.map(PlayerData.ItemKind.Staff)
         else if (String.startsWith({prefix = "c:"}, meta))
             String.dropLeft(2, meta) |> Int32.fromString
-                                     |> Option.map(PlayerScene.ItemKind.Consumable)
+                                     |> Option.map(PlayerData.ItemKind.Consumable)
         else None
 
     // ────────────────────────────────────────────────────────
@@ -531,7 +531,7 @@ mod ItemMenuScene {
         Option.getWithDefault(scene, result)
 
     /// サブメニューの metadata 別に処理を分配する。
-    def dispatchAction(meta: String, playerId: Int32, kind: PlayerScene.ItemKind,
+    def dispatchAction(meta: String, playerId: Int32, kind: PlayerData.ItemKind,
                         scene: Scene[NodeTag]):
                        Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
@@ -547,11 +547,11 @@ mod ItemMenuScene {
 
     /// 「そうび」: 武器の場合のみ実行（杖は装備という概念がないので no-op）。
     /// `equipWeapon` で対象武器を weapons の先頭に移動 → `ItemSelect` フェーズに戻る。
-    def applyEquip(playerId: Int32, kind: PlayerScene.ItemKind,
+    def applyEquip(playerId: Int32, kind: PlayerData.ItemKind,
                      scene: Scene[NodeTag]):
                     Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
         let equipped = match kind {
-            case PlayerScene.ItemKind.Weapon(idx)   =>
+            case PlayerData.ItemKind.Weapon(idx)   =>
                 // 実際に並びが変わるとき (0 < idx < 本数) だけ巻き戻しドラフトを積む。
                 // idx=0 / 範囲外は equipWeapon が no-op なので積まない（誤巻き戻し防止）。
                 let n = List.length(PlayerScene.getWeapons(playerId, scene));
@@ -559,8 +559,8 @@ mod ItemMenuScene {
                     SelectedPlayer.pushDraft(MoveDraft.DraftAction.Equipped(playerId, idx))
                 else ();
                 PlayerScene.equipWeapon(playerId, idx, scene)
-            case PlayerScene.ItemKind.Staff(_)      => scene
-            case PlayerScene.ItemKind.Consumable(_) => scene
+            case PlayerData.ItemKind.Staff(_)      => scene
+            case PlayerData.ItemKind.Consumable(_) => scene
         };
         let cleared = PlayerScene.clearSelectedItem(playerId, equipped);
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
@@ -568,8 +568,8 @@ mod ItemMenuScene {
 
     /// 捨てる処理の共通末尾。ログ + 巻き戻し用 Dropped ドラフト + 削除後 scene を返す。
     /// `droppedScene` は呼び出し側で `dropXxx` 済みの scene（純粋変換）。
-    def dropResolved(playerId: Int32, kind: PlayerScene.ItemKind, name: String,
-                      ground: ItemScene.GroundItemKind, droppedScene: Scene[NodeTag]):
+    def dropResolved(playerId: Int32, kind: PlayerData.ItemKind, name: String,
+                      ground: ItemData.GroundItemKind, droppedScene: Scene[NodeTag]):
                      Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
         GameLogger.playerLog("P${playerId} は ${name} をすてた");
         SelectedPlayer.pushDraft(MoveDraft.DraftAction.Dropped(playerId, kind, ground));
@@ -577,7 +577,7 @@ mod ItemMenuScene {
 
     /// 「すてる」: 武器なら `dropWeapon`、杖なら `dropStaff`。
     /// ターン消費せず ItemSelect に戻る（連続して捨てられる）。
-    def applyDrop(playerId: Int32, kind: PlayerScene.ItemKind,
+    def applyDrop(playerId: Int32, kind: PlayerData.ItemKind,
                     scene: Scene[NodeTag]):
                    Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
                                      SelectedPlayer.State} =
@@ -587,23 +587,23 @@ mod ItemMenuScene {
         // 内側の Option は forM で 1 段下げ、共通末尾を dropResolved に集約する。
         // 外側 match は getter / GroundItemKind / drop 関数が種別ごとに異なる正当な dispatch。
         let dropped = match kind {
-            case PlayerScene.ItemKind.Weapon(idx) =>
+            case PlayerData.ItemKind.Weapon(idx) =>
                 Option.getWithDefault(scene,
                     forM (w <- List.nth(idx, PlayerScene.getWeapons(playerId, scene)))
                         yield dropResolved(playerId, kind, w#name,
-                                  ItemScene.GroundItemKind.WeaponItem(w),
+                                  ItemData.GroundItemKind.WeaponItem(w),
                                   PlayerScene.dropWeapon(playerId, idx, scene)))
-            case PlayerScene.ItemKind.Staff(idx) =>
+            case PlayerData.ItemKind.Staff(idx) =>
                 Option.getWithDefault(scene,
                     forM (s <- List.nth(idx, PlayerScene.getStaves(playerId, scene)))
                         yield dropResolved(playerId, kind, s#name,
-                                  ItemScene.GroundItemKind.StaffItem(s),
+                                  ItemData.GroundItemKind.StaffItem(s),
                                   PlayerScene.dropStaff(playerId, idx, scene)))
-            case PlayerScene.ItemKind.Consumable(idx) =>
+            case PlayerData.ItemKind.Consumable(idx) =>
                 Option.getWithDefault(scene,
                     forM (c <- List.nth(idx, PlayerScene.getConsumables(playerId, scene)))
                         yield dropResolved(playerId, kind, c#name,
-                                  ItemScene.GroundItemKind.ConsumableItem(c),
+                                  ItemData.GroundItemKind.ConsumableItem(c),
                                   PlayerScene.dropConsumable(playerId, idx, scene)))
         };
         let cleared = PlayerScene.clearSelectedItem(playerId, dropped);
@@ -614,21 +614,21 @@ mod ItemMenuScene {
     /// 杖の発動方向選択フェーズ `StaffAim` に進み、ログに方向キーの操作プロンプトを出す。
     /// selectedItem は保持しておき、`StaffAim` 中の方向入力で
     /// `StaffCastScene.applyStaffCast` が読む。
-    def applyUse(playerId: Int32, kind: PlayerScene.ItemKind,
+    def applyUse(playerId: Int32, kind: PlayerData.ItemKind,
                    scene: Scene[NodeTag]):
                   Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State, GameLogger.GameLogger,
                 GameEngine.Audio} =
         match kind {
-            case PlayerScene.ItemKind.Staff(idx) =>
+            case PlayerData.ItemKind.Staff(idx) =>
                 let name = staffNameOf(playerId, idx, scene);
                 GameLogger.playerLog("P${playerId} は ${name} の方向を選び Z で発射 (X で中止)");
                 PhaseTransitions.enterStaffAim(scene)
             // 消費アイテムは方向選択不要。その場で使用者を回復しターンを消費する。
-            case PlayerScene.ItemKind.Consumable(idx) =>
+            case PlayerData.ItemKind.Consumable(idx) =>
                 StaffCastScene.applyConsumableUse(playerId, idx, scene)
-            case PlayerScene.ItemKind.Weapon(_) => scene
+            case PlayerData.ItemKind.Weapon(_) => scene
         }
 
     /// 指定プレイヤーの staves[idx] の名前を返す。範囲外なら "つえ" フォールバック。

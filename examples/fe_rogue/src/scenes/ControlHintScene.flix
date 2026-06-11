@@ -187,7 +187,7 @@ mod ControlHintScene {
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {Tween.Scheduler, TurnPhase.State, SelectedPlayer.State,
-                        PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+                        PlayerData.PartyQuery, EnemyData.RosterQuery} =
         match node {
             case EngineNode.CanvasLayerWithState(_, NodeTag.ControlHint(shown)) =>
                 let board = BoardSnapshot.fromScene(scene);

@@ -51,7 +51,7 @@ mod EnemyTurnDriverScene {
                         Tween.Scheduler, AnimationPlayer.Scheduler,
                         GameLogger.GameLogger, EnemyTurn.Queue,
                         TurnPhase.State, SelectedPlayer.State,
-                        Pacing.State, PlayerScene.PartyQuery} =
+                        Pacing.State, PlayerData.PartyQuery} =
         let next = match TurnPhase.State.get() {
             case TurnPhase.Phase.EnemyTurn        => stepOnce(scene)
             case TurnPhase.Phase.PlayerAttackHold =>
@@ -109,7 +109,7 @@ mod EnemyTurnDriverScene {
                 Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State,
-                Pacing.State, PlayerScene.PartyQuery} =
+                Pacing.State, PlayerData.PartyQuery} =
         // 「エネミーフェーズ」の帯が出ている間は敵を動かさない（帯が出終わってから行動開始）。
         if (PhaseBannerScene.isBusy(scene)) scene
         else if (Pacing.State.isHolding()) scene
@@ -195,7 +195,7 @@ mod EnemyTurnDriverScene {
     def endTurn(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, TurnPhase.State,
-                SelectedPlayer.State, PlayerScene.PartyQuery} =
+                SelectedPlayer.State, PlayerData.PartyQuery} =
         GameLogger.endTurn();
         let reset = scene
             |> PlayerScene.clearAllWaited        // 全員アクティブに戻す

@@ -416,7 +416,7 @@ mod CombatScene {
                                GameEngine.Game, GameLogger.GameLogger, Math.Random} =
         // 常に先頭武器（= 装備中）を使う。
         let resolved = forM (
-            weapon <- PlayerScene.equippedWeapon(player#weapons);
+            weapon <- PlayerData.equippedWeapon(player#weapons);
             enemy  <- EnemyScene.get(enemyId, scene)
         ) yield resolveAttack(playerId, player, weapon, enemy, enemyId, scene);
         Option.getWithDefault(scene, resolved)

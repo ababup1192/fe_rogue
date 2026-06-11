@@ -28,7 +28,7 @@ mod CounterAttackRules {
     ///   target#isDying       → Kill
     ///   target に武器 + 射程内 → Counter(target#id)
     ///   それ以外              → Commit
-    pub def decide(player: PlayerScene.Data, target: Option[EnemyScene.Data]): Outcome =
+    pub def decide(player: PlayerData.Data, target: Option[EnemyData.Data]): Outcome =
         match target {
             case None      => Outcome.Commit
             case Some(eid) =>
@@ -44,28 +44,28 @@ mod CounterAttackRules {
 
     /// 反撃する敵 id を返す。Counter ケースだけ Some、それ以外は None。
     /// 呼び出し側の利便のためのアダプタ (`decide` を使うのが推奨)。
-    pub def attackerForPlayer(player: PlayerScene.Data,
-                               target: Option[EnemyScene.Data]): Option[Int32] =
+    pub def attackerForPlayer(player: PlayerData.Data,
+                               target: Option[EnemyData.Data]): Option[Int32] =
         match decide(player, target) {
             case Outcome.Counter(eid) => Some(eid)
             case _                    => None
         }
 
     /// `decide` の鏡像。敵の攻撃完了後に「味方が反撃するか」を決める。
-    /// PlayerScene.Data は isDying を持たない (HP <= 0 で即 scene から除去される) ため、
+    /// PlayerData.Data は isDying を持たない (HP <= 0 で即 scene から除去される) ため、
     /// hp <= 0 を kill 判定として扱う。武器は先頭 (weapons.head) を反撃武器として使う想定。
     ///   target = None        → Commit
     ///   target#hp <= 0       → Kill (実際は次フレームで scene から消える)
     ///   weapons 空           → Commit
     ///   先頭武器が射程内      → Counter(target#id)
     ///   それ以外              → Commit
-    pub def decidePlayerCounter(enemy: EnemyScene.Data,
-                                 target: Option[PlayerScene.Data]): Outcome =
+    pub def decidePlayerCounter(enemy: EnemyData.Data,
+                                 target: Option[PlayerData.Data]): Outcome =
         match target {
             case None    => Outcome.Commit
             case Some(p) =>
                 if (p#hp <= 0) Outcome.Kill
-                else match PlayerScene.equippedWeapon(p#weapons) {
+                else match PlayerData.equippedWeapon(p#weapons) {
                     case None    => Outcome.Commit
                     case Some(w) =>
                         let d = Weapon.manhattan(p#gridPos, enemy#gridPos);
@@ -76,7 +76,7 @@ mod CounterAttackRules {
 
     /// 攻撃で倒した敵 id を返す。target が isDying なら Some(id)、それ以外は None。
     /// 「いま完了した attack_lunge が敵を倒したか」判定に使う。
-    pub def killedTargetEnemyId(target: Option[EnemyScene.Data]): Option[Int32] =
+    pub def killedTargetEnemyId(target: Option[EnemyData.Data]): Option[Int32] =
         match target {
             case Some(e) => if (e#isDying) Some(e#id) else None
             case None    => None

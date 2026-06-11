@@ -185,7 +185,7 @@ mod TestCursorScene {
                 let scene = cursorAddPure(initial);
                 let after = TurnFlow.commitWaitedAndAdvance(scene);
                 cursorState(after)
-            } with handler PlayerScene.PartyQuery {
+            } with handler PlayerData.PartyQuery {
                 // 古い snapshot: setWaited 前の両方 active な状態を返し続ける
                 def get(id, k)           = k(PlayerScene.get(id, initial))
                 def getAll(k)            = k(PlayerScene.getAll(initial))
@@ -262,7 +262,7 @@ mod TestCursorScene {
             \ {GameEngine.Game, BoardQuery,
                 Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
-                EnemyScene.RosterQuery, TurnPhase.State} =
+                EnemyData.RosterQuery, TurnPhase.State} =
         TurnPhase.State.put(phase);
         let path = CursorScene.cursorPath();
         match Scene.getEngineNode(path, scene) {
@@ -425,7 +425,7 @@ mod TestCursorScene {
     def runWithTradeSnapMocks(scene: Scene[NodeTag], selectedId: Int32,
                                 _selectedPos: {x = Int32, y = Int32},
                                 thunk: Unit -> a \ ef):
-            a \ (ef - SelectedPlayer.State - PlayerScene.PartyQuery
+            a \ (ef - SelectedPlayer.State - PlayerData.PartyQuery
                   - Tween.Scheduler - AnimationPlayer.Scheduler) =
         TestUnitFixtures.withSelectedPlayer(selectedId, () ->
             TestUnitFixtures.withMockPartyQuery(scene, () ->

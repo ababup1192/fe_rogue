@@ -189,7 +189,7 @@ mod MoveAttackRangeScene {
                 match PlayerScene.get(id, cleared) {
                     case None         => cleared
                     case Some(player) =>
-                        match PlayerScene.equippedWeapon(player#weapons) {
+                        match PlayerData.equippedWeapon(player#weapons) {
                             case None    => cleared
                             case Some(w) =>
                                 let reachable = MoveRangeScene.reachable(cleared);
@@ -255,8 +255,8 @@ mod EnemyRangeScene {
     /// 壁のみ通れない。味方マスや他敵マスも「想定移動範囲」として表示する
     /// (プレイヤーは「もし誰も居なければここまで来られる」を読む)。
     pub def refreshFor(enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ EnemyScene.RosterQuery =
-        match EnemyScene.RosterQuery.get(enemyId) {
+            Scene[NodeTag] \ EnemyData.RosterQuery =
+        match EnemyData.RosterQuery.get(enemyId) {
             case None       => clear(scene)
             case Some(data) =>
                 let cleared = clear(scene);
@@ -325,10 +325,10 @@ mod EnemyAttackRangeScene {
     /// 「敵が居て武器を持つ」の 2 段の Option は forM で 1 段に畳み、空セル判定は
     /// `renderThreat` に寄せてネストを浅く保つ。
     pub def refreshFor(enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ EnemyScene.RosterQuery =
+            Scene[NodeTag] \ EnemyData.RosterQuery =
         let cleared = clear(scene);
         let built = forM (
-            data <- EnemyScene.RosterQuery.get(enemyId);
+            data <- EnemyData.RosterQuery.get(enemyId);
             w    <- data#weapon
         ) yield renderThreat(enemyId, threatCells(w, cleared), cleared);
         Option.getWithDefault(cleared, built)
@@ -469,9 +469,9 @@ mod PlayerAttackRangeScene {
     /// で返す。`PlayerAttack` フェーズでカーソルを敵間でサイクルさせる用。
     /// 死亡演出中 (`isDying`) と HP 0 以下の敵は除外する。
     pub def targetsInRange(scene: Scene[NodeTag]):
-            List[EnemyScene.Data] \ EnemyScene.RosterQuery =
+            List[EnemyScene.Data] \ EnemyData.RosterQuery =
         let inRangeCells = cells(scene);
-        EnemyScene.RosterQuery.getAll()
+        EnemyData.RosterQuery.getAll()
             |> List.filter(d ->
                 not d#isDying
                 and d#hp > 0
@@ -514,7 +514,7 @@ mod TradeRangeScene {
     /// 選択中味方の隣接味方マスを計算して緑マスを描き直す。
     /// 選択中味方なし / 居ない / 隣接味方ゼロのいずれでも安全に何も描かない。
     pub def show(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
+            Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
         let cleared = clear(scene);
         adjacentAllyCells()
             |> Option.filter(allyCells -> not List.isEmpty(allyCells))
@@ -525,10 +525,10 @@ mod TradeRangeScene {
     /// 居ないいずれでも None。隣接味方ゼロのときは `Some(Nil)`。
     def adjacentAllyCells():
             Option[List[{x = Int32, y = Int32}]]
-            \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery} =
         forM (
             playerId <- SelectedPlayer.State.get()#id;
-            player   <- PlayerScene.PartyQuery.get(playerId)
+            player   <- PlayerData.PartyQuery.get(playerId)
         ) yield PlayerScene.adjacentAllies(player) |> List.map(d -> d#gridPos)
 
     /// 指定セル群に親 Marker2D + 緑色 Sprite2D を貼り付ける純粋部分。

@@ -21,15 +21,8 @@ mod ItemScene {
 
     // ─── 状態 ─────────────────────────────────────────────────
 
-    /// ground item の中身。武器 (`WeaponItem`) / 杖 (`StaffItem`) / 消費アイテム
-    /// (`ConsumableItem`) を区別する ADT。拾う・こうかんでプレイヤーの
-    /// weapons / staves / consumables リストに追加される。
-    /// 消費アイテムは床ドロップ対象ではなく、「こうかん」での持ち物移動に使う。
-    pub enum GroundItemKind {
-        case WeaponItem(UnitCatalog.WeaponResource)
-        case StaffItem(Staff.StaffResource)
-        case ConsumableItem(Consumable.ConsumableResource)
-    }
+    // ground item の中身 ADT は game/ItemData.flix の `mod ItemData` へ移設した。
+    // enum は再export できないため、参照は `ItemData.GroundItemKind` に統一済み。
 
     /// 個別 ground item に紐づくデータ。
     /// `itemKey` はカタログ id (weapons / staves のどちらかに登録された id)。
@@ -38,15 +31,15 @@ mod ItemScene {
     pub type alias Data = {
         gridPos = {x = Int32, y = Int32},
         itemKey = String,
-        item    = GroundItemKind,
+        item    = ItemData.GroundItemKind,
         elapsed = Duration.Duration
     }
 
     /// アイテム種別から sprite を取り出すヘルパー（表示・縁取り構築で共通利用）。
-    pub def spriteOf(kind: GroundItemKind): Sprite.SpriteResource = match kind {
-        case GroundItemKind.WeaponItem(weapon)   => weapon#sprite
-        case GroundItemKind.StaffItem(staff)     => staff#sprite
-        case GroundItemKind.ConsumableItem(item) => item#sprite
+    pub def spriteOf(kind: ItemData.GroundItemKind): Sprite.SpriteResource = match kind {
+        case ItemData.GroundItemKind.WeaponItem(weapon)   => weapon#sprite
+        case ItemData.GroundItemKind.StaffItem(staff)     => staff#sprite
+        case ItemData.GroundItemKind.ConsumableItem(item) => item#sprite
     }
 
     // ─── 定数 ─────────────────────────────────────────────────
@@ -123,7 +116,7 @@ mod ItemScene {
                 p#idx >= 1 and p#idx < roomCount, placements);
             // (nextId, takenCells, dropList) を畳み込み
             let initial: (Int32, List[{x = Int32, y = Int32}],
-                           List[(Int32, {x = Int32, y = Int32}, String, GroundItemKind)]) =
+                           List[(Int32, {x = Int32, y = Int32}, String, ItemData.GroundItemKind)]) =
                 (0, occupied, Nil);
             let range = floor#itemsPerRoom;
             let (_, _, accDrops) = List.foldLeft(state -> p ->
@@ -144,15 +137,15 @@ mod ItemScene {
     def lookupItem(id: String,
                     catalog: UnitCatalog.UnitCatalog,
                     staffCatalog: Staff.StaffCatalog,
-                    consumableCatalog: Consumable.ConsumableCatalog): GroundItemKind =
+                    consumableCatalog: Consumable.ConsumableCatalog): ItemData.GroundItemKind =
         match Map.get(id, UnitCatalog.weaponsOf(catalog)) {
-            case Some(weapon) => GroundItemKind.WeaponItem(weapon)
+            case Some(weapon) => ItemData.GroundItemKind.WeaponItem(weapon)
             case None         =>
                 match Map.get(id, Staff.stavesOf(staffCatalog)) {
-                    case Some(staff) => GroundItemKind.StaffItem(staff)
+                    case Some(staff) => ItemData.GroundItemKind.StaffItem(staff)
                     case None        =>
                         match Map.get(id, Consumable.consumablesOf(consumableCatalog)) {
-                            case Some(item) => GroundItemKind.ConsumableItem(item)
+                            case Some(item) => ItemData.GroundItemKind.ConsumableItem(item)
                             case None       =>
                                 bug!("ItemScene.lookupItem: id '${id}' not in weapons / staves / consumables catalog")
                         }
@@ -172,7 +165,7 @@ mod ItemScene {
     /// アイテム 1 個ぶんの Sprite2D を World/Items 配下に追加する。
     /// 視認性のため 4 方向 1px シフトの縁取り Sprite を先に重ね、本体を上に置く。
     def addOneItem(idx: Int32, cell: {x = Int32, y = Int32},
-                    itemKey: String, item: GroundItemKind,
+                    itemKey: String, item: ItemData.GroundItemKind,
                     scene: Scene[NodeTag]): Scene[NodeTag] =
         let sprite0 = spriteOf(item);
         // セル中心 + sprite#offset で sheet padding を補正した位置に置く
@@ -220,9 +213,9 @@ mod ItemScene {
                      staffCatalog: Staff.StaffCatalog,
                      consumableCatalog: Consumable.ConsumableCatalog,
                      state: (Int32, List[{x = Int32, y = Int32}],
-                              List[(Int32, {x = Int32, y = Int32}, String, GroundItemKind)])):
+                              List[(Int32, {x = Int32, y = Int32}, String, ItemData.GroundItemKind)])):
                     (Int32, List[{x = Int32, y = Int32}],
-                     List[(Int32, {x = Int32, y = Int32}, String, GroundItemKind)])
+                     List[(Int32, {x = Int32, y = Int32}, String, ItemData.GroundItemKind)])
                     \ Math.Random =
         if (count <= 0) state
         else {
@@ -266,7 +259,7 @@ mod ItemScene {
 
     /// 指定セルに落ちているアイテムの (path, item) を返す。無ければ None。
     pub def findAt(coord: {x = Int32, y = Int32},
-                    scene: Scene[NodeTag]): Option[(NodePath, GroundItemKind)] =
+                    scene: Scene[NodeTag]): Option[(NodePath, ItemData.GroundItemKind)] =
         let childNames = Scene.getChildrenAt(parentPath(), scene);
         List.findMap(name -> {
             let path = List.append(parentPath(), name :: Nil);
@@ -283,7 +276,7 @@ mod ItemScene {
     /// 本体ノードと一緒に 4 つの縁取り兄弟ノードも消す。
     pub def takeAt(coord: {x = Int32, y = Int32},
                     scene: Scene[NodeTag]):
-            (Scene[NodeTag], Option[GroundItemKind]) =
+            (Scene[NodeTag], Option[ItemData.GroundItemKind]) =
         match findAt(coord, scene) {
             case None              => (scene, None)
             case Some((path, kind)) =>
@@ -313,7 +306,7 @@ mod ItemScene {
     /// 床アイテムを `cell` に再配置する（`takeAt` の逆操作）。新しい idx を採番して
     /// 本体 + 縁取りを作り直す。「ひろう」をキャンセルしたときの巻き戻しに使う。
     pub def respawn(cell: {x = Int32, y = Int32}, itemKey: String,
-                     kind: GroundItemKind, scene: Scene[NodeTag]): Scene[NodeTag] =
+                     kind: ItemData.GroundItemKind, scene: Scene[NodeTag]): Scene[NodeTag] =
         let withParent = ensureParent(scene);
         addOneItem(nextItemIdx(withParent), cell, itemKey, kind, withParent)
 

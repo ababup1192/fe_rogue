@@ -358,7 +358,7 @@ mod TestTradeMenuScene {
     def testDecideConfirmSetsPick(): Unit \ Assert =
         let data = {members = 0 :: 1 :: Nil, focus = 0, pick = None,
                     origin = TradeMenuScene.Origin.FromTurn};
-        let kind = Some(PlayerScene.ItemKind.Weapon(0));
+        let kind = Some(PlayerData.ItemKind.Weapon(0));
         // Pick は record alias で Eq が無いので、primitive のタプルに落として比較する。
         let picked = match TradeMenuScene.decideConfirm(0, kind, data) {
             case TradeMenuScene.ConfirmOutcome.JustUpdate(d) =>
@@ -371,30 +371,30 @@ mod TestTradeMenuScene {
     @Test
     def testDecideConfirmDifferentPaneProducesSwap(): Unit \ Assert =
         let data = {members = 10 :: 20 :: 30 :: Nil, focus = 0,
-                    pick = Some({paneIndex = 0, kind = Some(PlayerScene.ItemKind.Weapon(1))}),
+                    pick = Some({paneIndex = 0, kind = Some(PlayerData.ItemKind.Weapon(1))}),
                     origin = TradeMenuScene.Origin.FromRogue};
-        let receiverKind = Some(PlayerScene.ItemKind.Staff(0));
+        let receiverKind = Some(PlayerData.ItemKind.Staff(0));
         let plan = match TradeMenuScene.decideConfirm(2, receiverKind, data) {
             case TradeMenuScene.ConfirmOutcome.DoSwap(_, p) =>
                 Some((p#pickerId, p#pickerKind, p#receiverId, p#receiverKind))
             case _ => None
         };
         Assert.assertEq(
-            expected = Some((10, Some(PlayerScene.ItemKind.Weapon(1)), 30, receiverKind)),
+            expected = Some((10, Some(PlayerData.ItemKind.Weapon(1)), 30, receiverKind)),
             plan)
 
     /// decideConfirm: 同ペインの別実体スロット → DoReorder で playerId/kindA/kindB が解決される。
     @Test
     def testDecideConfirmSamePaneProducesReorder(): Unit \ Assert =
         let data = {members = 10 :: 20 :: Nil, focus = 0,
-                    pick = Some({paneIndex = 0, kind = Some(PlayerScene.ItemKind.Weapon(0))}),
+                    pick = Some({paneIndex = 0, kind = Some(PlayerData.ItemKind.Weapon(0))}),
                     origin = TradeMenuScene.Origin.FromRogue};
-        let plan = match TradeMenuScene.decideConfirm(0, Some(PlayerScene.ItemKind.Weapon(1)), data) {
+        let plan = match TradeMenuScene.decideConfirm(0, Some(PlayerData.ItemKind.Weapon(1)), data) {
             case TradeMenuScene.ConfirmOutcome.DoReorder(_, p) => Some((p#playerId, p#kindA, p#kindB))
             case _ => None
         };
         Assert.assertEq(
-            expected = Some((10, PlayerScene.ItemKind.Weapon(0), PlayerScene.ItemKind.Weapon(1))),
+            expected = Some((10, PlayerData.ItemKind.Weapon(0), PlayerData.ItemKind.Weapon(1))),
             plan)
 
     /// 満杯メンバーのペインには空スロット "--------" が出ない (片方向流入をブロック)。

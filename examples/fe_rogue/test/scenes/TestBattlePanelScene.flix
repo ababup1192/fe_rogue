@@ -87,11 +87,11 @@ mod TestBattlePanelScene {
                 });
                 let _ = BattlePanelScene.confirm(Scene.empty());
                 TurnPhase.State.get()
-            } with handler PlayerScene.PartyQuery {
+            } with handler PlayerData.PartyQuery {
                 def get(id, k) =
                     k(if (id == 0) Some(fixturePlayer()) else None)
                 def getAll(k) = k(fixturePlayer() :: Nil)
-            } with handler EnemyScene.RosterQuery {
+            } with handler EnemyData.RosterQuery {
                 def get(id, k) =
                     k(if (id == 1) Some(fixtureEnemy()) else None)
                 def getAll(k) = k(fixtureEnemy() :: Nil)
@@ -127,7 +127,7 @@ mod TestBattlePanelScene {
                 });
                 let _ = BattlePanelScene.cancel(Scene.empty());
                 TurnPhase.State.get()
-            } with handler PlayerScene.PartyQuery {
+            } with handler PlayerData.PartyQuery {
                 def get(id, k) =
                     k(if (id == 0) Some(fixturePlayer()) else None)
                 def getAll(k) = k(fixturePlayer() :: Nil)

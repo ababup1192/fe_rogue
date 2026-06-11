@@ -229,7 +229,7 @@ instance InputEvent.InputHandler[NodeTag] {
                  AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State,
-                 PlayerScene.PartyQuery, EnemyScene.RosterQuery,
+                 PlayerData.PartyQuery, EnemyData.RosterQuery,
                  CustomEffects.FloorAdvanceRequest,
                  GamePhaseState, PartySelection.State}
     // ActionMenu / ItemMenu / ItemActionMenu / AttackForecast フェーズでは
@@ -246,8 +246,8 @@ instance InputEvent.InputHandler[NodeTag] {
                                           GameLogger.GameLogger,
                                           EnemyTurn.Queue, TurnPhase.State,
                                           SelectedPlayer.State,
-                                          PlayerScene.PartyQuery,
-                                          EnemyScene.RosterQuery,
+                                          PlayerData.PartyQuery,
+                                          EnemyData.RosterQuery,
                                           CustomEffects.FloorAdvanceRequest,
                                           GamePhaseState, PartySelection.State} =
         // 画面が選択中（CharacterSelect）なら、キー操作は選択画面に委譲する。
@@ -263,8 +263,8 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
         Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, BoardQuery,
                            Tween.Scheduler, AnimationPlayer.Scheduler,
                            GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-                           SelectedPlayer.State, PlayerScene.PartyQuery,
-                           EnemyScene.RosterQuery, CustomEffects.FloorAdvanceRequest} =
+                           SelectedPlayer.State, PlayerData.PartyQuery,
+                           EnemyData.RosterQuery, CustomEffects.FloorAdvanceRequest} =
         // 物理キーを「決定 / キャンセル / それ以外 (None)」の意味論的入力に正規化する。
         // phase と独立した直交概念として扱いたいので、bool 2 個ではなく Option[Input] に畳む。
         let input: Option[TurnRules.Input] =
@@ -310,7 +310,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
     type Aef = {Tween.Scheduler, AnimationPlayer.Scheduler, GameEngine.Audio,
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State,
-                 PlayerScene.PartyQuery, EnemyScene.RosterQuery,
+                 PlayerData.PartyQuery, EnemyData.RosterQuery,
                  CustomEffects.FloorAdvanceRequest}
     redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
                            state: NodeTag,
@@ -319,8 +319,8 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              GameEngine.Audio,
                                              GameLogger.GameLogger, EnemyTurn.Queue,
                                              TurnPhase.State, SelectedPlayer.State,
-                                             PlayerScene.PartyQuery,
-                                             EnemyScene.RosterQuery,
+                                             PlayerData.PartyQuery,
+                                             EnemyData.RosterQuery,
                                              CustomEffects.FloorAdvanceRequest} =
         match state {
             case NodeTag.ItemMenu(_) =>
@@ -346,8 +346,8 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              GameEngine.Audio,
                                              GameLogger.GameLogger, EnemyTurn.Queue,
                                              TurnPhase.State, SelectedPlayer.State,
-                                             PlayerScene.PartyQuery,
-                                             EnemyScene.RosterQuery,
+                                             PlayerData.PartyQuery,
+                                             EnemyData.RosterQuery,
                                              CustomEffects.FloorAdvanceRequest} =
         match state {
             case NodeTag.ItemMenu(_) =>
@@ -405,7 +405,7 @@ def staffAimConfirm(scene: Scene[NodeTag]):
                 case None         => scene
                 case Some(player) =>
                     match player#selectedItem {
-                        case Some(PlayerScene.ItemKind.Staff(idx)) =>
+                        case Some(PlayerData.ItemKind.Staff(idx)) =>
                             StaffCastScene.applyStaffCast(playerId, idx, dir, scene)
                         case _ => scene
                     }
@@ -491,7 +491,7 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
         Option[Scene[NodeTag]] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                                     GameLogger.GameLogger, EnemyTurn.Queue,
                                     TurnPhase.State, SelectedPlayer.State,
-                                    PlayerScene.PartyQuery, EnemyScene.RosterQuery,
+                                    PlayerData.PartyQuery, EnemyData.RosterQuery,
                                     CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
     match (phase, input) {
         case (TurnPhase.Phase.ActionSelect,      TurnRules.Input.Confirm)
@@ -528,8 +528,8 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                             GameLogger.GameLogger,
                             EnemyTurn.Queue, TurnPhase.State,
                             SelectedPlayer.State,
-                            PlayerScene.PartyQuery,
-                            EnemyScene.RosterQuery} =
+                            PlayerData.PartyQuery,
+                            EnemyData.RosterQuery} =
     match (phase, input) {
         // popup 表示中の X は popup view 切替に上書き（通常のキャンセルは走らない）
         case (_,                              Some(TurnRules.Input.Cancel)) if popupShown
@@ -700,11 +700,11 @@ mod Game {
               with handler BoardQuery {
                   def board(k) = k(BoardSnapshot.fromScene(Ref.get(sceneRef)))
               }
-              with handler PlayerScene.PartyQuery {
+              with handler PlayerData.PartyQuery {
                   def get(id, k)           = k(PlayerScene.get(id, Ref.get(sceneRef)))
                   def getAll(k)            = k(PlayerScene.getAll(Ref.get(sceneRef)))
               }
-              with handler EnemyScene.RosterQuery {
+              with handler EnemyData.RosterQuery {
                   def get(id, k)           = k(EnemyScene.get(id, Ref.get(sceneRef)))
                   def getAll(k)            = k(EnemyScene.getAll(Ref.get(sceneRef)))
                   def findIdAt(coord, k)   = k(EnemyScene.findIdAt(coord, Ref.get(sceneRef)))
@@ -760,7 +760,7 @@ mod Game {
                  Unit \ {GameEngine.Game, GameEngine.Audio,
                          Fs.FileRead, IO,
                          BoardQuery,
-                         PlayerScene.PartyQuery, EnemyScene.RosterQuery,
+                         PlayerData.PartyQuery, EnemyData.RosterQuery,
                          Tween.Scheduler, AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
                          EnemyTurn.Queue, TurnPhase.State,

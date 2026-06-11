@@ -241,9 +241,9 @@ mod TestPlayerScene {
                                           weapons = bow :: Nil, staves = Nil, consumables = Nil});
         let after = PlayerScene.swapItem({
             selfId      = 0,
-            selfKind    = PlayerScene.ItemKind.Weapon(0),
+            selfKind    = PlayerData.ItemKind.Weapon(0),
             partnerId   = 1,
-            partnerKind = Some(PlayerScene.ItemKind.Weapon(0))
+            partnerKind = Some(PlayerData.ItemKind.Weapon(0))
         }, scene);
         Assert.assertEq(
             expected = ("魔導書" :: "てつの弓" :: Nil, "てつのやり" :: Nil),
@@ -268,9 +268,9 @@ mod TestPlayerScene {
                                           weapons = Nil, staves = swap :: Nil, consumables = Nil});
         let after = PlayerScene.swapItem({
             selfId      = 0,
-            selfKind    = PlayerScene.ItemKind.Staff(0),
+            selfKind    = PlayerData.ItemKind.Staff(0),
             partnerId   = 1,
-            partnerKind = Some(PlayerScene.ItemKind.Staff(0))
+            partnerKind = Some(PlayerData.ItemKind.Staff(0))
         }, scene);
         Assert.assertEq(
             expected = ("いれかえのつえ" :: Nil, "かいふくのつえ" :: Nil),
@@ -297,9 +297,9 @@ mod TestPlayerScene {
                                           weapons = Nil, staves = live :: Nil, consumables = Nil});
         let after = PlayerScene.swapItem({
             selfId      = 0,
-            selfKind    = PlayerScene.ItemKind.Weapon(0),
+            selfKind    = PlayerData.ItemKind.Weapon(0),
             partnerId   = 1,
-            partnerKind = Some(PlayerScene.ItemKind.Staff(0))
+            partnerKind = Some(PlayerData.ItemKind.Staff(0))
         }, scene);
         Assert.assertEq(
             expected = ((Nil, "かいふくのつえ" :: Nil), ("てつのやり" :: Nil, Nil)),
@@ -327,7 +327,7 @@ mod TestPlayerScene {
                                           weapons = Nil, staves = Nil, consumables = Nil});
         let after = PlayerScene.swapItem({
             selfId      = 0,
-            selfKind    = PlayerScene.ItemKind.Weapon(0),
+            selfKind    = PlayerData.ItemKind.Weapon(0),
             partnerId   = 1,
             partnerKind = None
         }, scene);
@@ -357,7 +357,7 @@ mod TestPlayerScene {
                                           weapons = spear :: Nil, staves = Nil, consumables = Nil});
         let after = PlayerScene.swapItem({
             selfId      = 1,
-            selfKind    = PlayerScene.ItemKind.Weapon(0),
+            selfKind    = PlayerData.ItemKind.Weapon(0),
             partnerId   = 0,
             partnerKind = None
         }, scene);
@@ -387,7 +387,7 @@ mod TestPlayerScene {
             |> PlayerScene.addOnePlayer(mkSpawn(1, Nil));
         let after = PlayerScene.swapItem({
             selfId      = 0,
-            selfKind    = PlayerScene.ItemKind.Consumable(0),
+            selfKind    = PlayerData.ItemKind.Consumable(0),
             partnerId   = 1,
             partnerKind = None
         }, scene);

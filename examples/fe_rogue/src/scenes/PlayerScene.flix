@@ -30,86 +30,18 @@ mod PlayerScene {
     // (A) 型定義
     // ────────────────────────────────────────────────────────
 
-    /// ItemMenu で選択中のアイテムの種別と inventory 内 index。
-    /// 武器と杖は別リストに格納されているため、どちらに属するかを ADT で区別する。
-    pub enum ItemKind with Eq, ToString {
-        case Weapon(Int32)     // weapons リスト上の index
-        case Staff(Int32)      // staves リスト上の index
-        case Consumable(Int32) // consumables リスト上の index
-    }
+    // 駒ドメイン型（Data / Spawn / PlayerData.ItemKind）は game/PlayerData.flix の `mod PlayerData` へ移設した。
+    // ここでは Data / Spawn を再export（既存参照 `PlayerScene.Data` 温存）。PlayerData.ItemKind は enum のため
+    // 再export できず `PlayerData.ItemKind` に統一済み。
+    pub type alias Data = PlayerData.Data
+    pub type alias Spawn = PlayerData.Spawn
 
-
-    /// プレイヤー固有の状態。
-    /// id: 0..N-1 の連番（N は `pools.party` の長さ）。"Player_<id>" ノード名と一致する。
-    /// gridPos: 盤面上の駒の論理位置。moveTo で即座に更新される。
-    /// moveTiles: 1 ターンに移動できるマス数（FE の「移動力」相当）。`resource` から初期値を継承。
-    /// hp: 残り体力。0 になるとゲームオーバー。`resource#hp` が初期値。
-    /// waited: 行動済みフラグ。true なら灰色表示・選択不可。
-    /// attackTargetId: 体当たり攻撃モーション中なら Some(被攻撃者 id)。
-    ///   `attack_lunge` アニメーションの method 発火 / finished 時に GameManager が
-    ///   この値を読んでダメージ適用 / commit を行う。アニメ完了で None に戻す。
-    /// resource: スポーン時のユニット定義テンプレート（UnitResource）。
-    ///   ゲームオーバー時の復元（`respawnFromInitial`）で同じユニット種別で再生するために保持。
-    /// weapons: 装備中の武器インベントリ。先頭が「装備中」武器で、攻撃時に自動使用される。
-    ///   `equipWeapon` で他の武器を先頭に持ってくると装備が切り替わる。
-    ///   攻撃で耐久度が 1 減り、0 になったら weapons から取り除かれる（武器が壊れた）。
-    /// staves: 杖のインベントリ。攻撃には使わず、ItemMenu の「使う」で発動する。
-    ///   発動で耐久度が 1 減り、0 になったら staves から取り除かれる。
-    /// consumables: 消費アイテム（きずぐすり等）のインベントリ。ItemMenu の「使う」で
-    ///   使用者自身に効果が出る。使用で耐久度（使用回数）が 1 減り、0 で取り除かれる。
-    /// selectedItem: ItemMenu で選択中のアイテム（武器 / 杖 / 消費アイテム）。
-    ///   一覧画面で選んだ瞬間にセット、サブメニュー（使う/装備/捨てる）で確定後にクリアされる。
-    pub type alias Data = {
-        id                 = Int32,
-        gridPos            = {x = Int32, y = Int32},
-        moveTiles          = Int32,
-        hp                 = Int32,
-        waited             = Bool,
-        attackTargetId     = Option[Int32],
-        resource           = UnitCatalog.UnitResource,
-        weapons            = List[UnitCatalog.WeaponResource],
-        staves             = List[Staff.StaffResource],
-        consumables        = List[Consumable.ConsumableResource],
-        selectedItem       = Option[ItemKind],
-        // AutoMove 中にこの味方が当ターン何マス進んだか。
-        // moveTiles に達したら `waited = true` にして次の味方に交代する。
-        // プレイヤーターン開始時に 0 リセット。
-        moveStepsTaken     = Int32,
-        // 今向いている方向 (= 直近に動いた方向、初期値 Down)。
-        // 子 Sprite が AnimatedSprite2D の場合、移動時に `walk_<dir>` アニメを再生する
-        // ためにここから方向を読む。子が Sprite2D の場合は表示には影響しないが、
-        // 戦闘・スキル系で利用しやすいよう値は保持する。
-        facing             = Staff.Direction,
-        // ローグ移動モードで「しゅうごう」してロードに合流し、退避中なら true。
-        // hidden の味方は Marker2D ごと不可視 + `BoardSnapshot.fromScene` で盤面から除外され、
-        // 敵範囲判定・占有・経路探索・カーソルの対象から外れる。「かいさん」で false に戻り
-        // ロード周囲へ再出現する。持ち物・HP は hidden の間も Data に保持される。
-        hidden             = Bool,
-        // 階段を使ってこのフロアから退場したら true。`hidden` も同時に立てて盤面・敵範囲・
-        // カーソルから外す。ローグの「しゅうごう」(hidden のみ) と区別するためのフラグで、
-        // 「かいさん」での再出現対象から除外し、フロア終了判定 (全員退場) にも使う。
-        // 次フロア開始時は false にリセットされる。
-        usedStairs         = Bool,
-        // 現在レベル（初期 1）。フロアを跨いで引き継ぐ。
-        level              = Int32,
-        // 現在 EXP（0..99）。敵に与ダメ・撃破で増え、100 到達でレベルアップして余剰を繰り越す。
-        exp                = Int32,
-        // 直近のレベルアップ結果。Some の間はステータス変化パネルを表示し、
-        // commitWaitedAndAdvance がターンを進めずに LevelUpView へ割り込む。パネルを閉じると None。
-        pendingLevelUp     = Option[LevelSystem.Result]
-    }
-
-    /// 装備中の武器 = `weapons` リストの先頭、という規約をここに集約する単一の読み口。
-    /// 「先頭 = 装備中」を各所で直接 `List.head` するのをやめ、装備モデルを変えるときの
-    /// 唯一の変更点にする（`equipWeapon`/`swapItem`/`reorderItem` が先頭を装備として維持する）。
-    pub def equippedWeapon(weapons: List[UnitCatalog.WeaponResource]):
-            Option[UnitCatalog.WeaponResource] =
-        List.head(weapons)
+    // PlayerData.equippedWeapon（装備=weapons先頭の純関数）は game/PlayerData へ移設（参照は PlayerData.equippedWeapon）。
 
     /// この味方の戦闘ビュー（faction 非依存）。装備武器は `weapons` の先頭。
     /// `Combat.estimate` / `Encounter` の join で使う（ダメージ式は `Combat` に集約）。
     pub def combatView(data: Data): Combat.CombatView =
-        let equipped = equippedWeapon(data#weapons);
+        let equipped = PlayerData.equippedWeapon(data#weapons);
         {attack = data#resource#attack, magicAttack = data#resource#magicAttack,
          defense = data#resource#defense, magicDefense = data#resource#magicDefense,
          skill = data#resource#skill, speed = data#resource#speed, luck = data#resource#luck,
@@ -137,41 +69,11 @@ mod PlayerScene {
     pub def unitView(data: Data): UnitView =
         {id = data#id, faction = Faction.Player, pos = data#gridPos,
          hp = data#hp, moveTiles = data#moveTiles,
-         weaponRange = equippedWeapon(data#weapons) |> Option.map(w -> w#range),
+         weaponRange = PlayerData.equippedWeapon(data#weapons) |> Option.map(w -> w#range),
          combat = combatView(data), isDying = false, hidden = data#hidden}
 
-    /// 味方パーティの「現フレーム状態」を Scene を介さずに読み取る effect。
-    ///
-    /// 非 driver / 非 data Scene (HUD / Camera / Menu / Overlay) は `PlayerScene` モジュールを
-    /// 直接タイプせず、この effect 経由で味方データを得る。これにより一方向の依存グラフを
-    /// 保ち、テストで handler を差し替えてスタブできる。
-    ///
-    /// 設計は `BoardQuery` (Board.flix:34) と同じ:
-    ///   - 読み取り専用、Ref を持たない
-    ///   - handler は Game.start で `Ref.get(sceneRef)` から最新 scene を読んで `PlayerScene.*`
-    ///     をそのまま呼び返す inline handler
-    ///   - 毎フレーム gameLoop が sceneRef を更新するため、各 op は最新値を返す
-    ///
-    /// driver Scene (AutoMoveScene / EnemyTurnDriverScene) と data Scene 同士の相互参照は
-    /// orchestrator として現状の直接呼び出しを許容する (本 effect は経由しない)。
-    pub eff PartyQuery {
-        def get(id: Int32): Option[Data]
-        def getAll(): List[Data]
-    }
-
-    /// スポーン時の中間表現。`add` で配置するセルの id/gridPos に加え、
-    /// どのユニット定義（UnitResource）でセットアップするかも持つ。
-    /// 初期 spawn のスナップショット（ゲームオーバー時の復元用）にも使う。
-    /// `weapons` / `staves` は初期インベントリ（壊れる前の固定リスト）で、
-    /// respawn 時にこの値で復元する。
-    pub type alias Spawn = {
-        id          = Int32,
-        gridPos     = {x = Int32, y = Int32},
-        resource    = UnitCatalog.UnitResource,
-        weapons     = List[UnitCatalog.WeaponResource],
-        staves      = List[Staff.StaffResource],
-        consumables = List[Consumable.ConsumableResource]
-    }
+    // PlayerData.PartyQuery effect は game/PlayerData へ移設した（参照は PlayerData.PartyQuery）。
+    // Spawn 型は game/PlayerData へ移設・上部で再export 済み。
 
     // ────────────────────────────────────────────────────────
     // (B) 定数
@@ -519,7 +421,7 @@ mod PlayerScene {
     pub def cancelSelection(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
-                              PartyQuery} =
+                              PlayerData.PartyQuery} =
         // この移動で積んだ可逆ドラフトを新しい順に巻き戻す（拾得→元位置への復帰など）。
         // 「拾ってからキャンセルしたら拾っていないことにする」もこの一括巻き戻しで実現。
         let drafts   = SelectedPlayer.State.get()#drafts;
@@ -569,7 +471,7 @@ mod PlayerScene {
     pub def enterAttackPhase(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
-                              PartyQuery, EnemyScene.RosterQuery} =
+                              PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let withPhase = PhaseTransitions.enterPlayerAttack(scene);
         equipReachingWeaponForCursor(withPhase)
 
@@ -577,7 +479,7 @@ mod PlayerScene {
     /// 進入直後の「装備した扱い」初期化用。`enterAttackPhase` からのみ呼ぶ。
     /// 意図的な EnemyScene 直接 read: `RosterQuery` handler はフレーム冒頭の snapshot
     /// (sceneRef) を読むため、mid-frame で更新済みの `scene` を見るにはモジュール直読みが必要
-    /// (TestCursorScene の stale PartyQuery 回帰テスト参照)。
+    /// (TestCursorScene の stale PlayerData.PartyQuery 回帰テスト参照)。
     def equipReachingWeaponForCursor(scene: Scene[NodeTag]):
             Scene[NodeTag] \ SelectedPlayer.State =
         match SelectedPlayer.State.get()#id {
@@ -645,15 +547,15 @@ mod PlayerScene {
     /// 「こうかん」コマンドや将来の隣接判定 (例: 助太刀) の出現条件として使う。
     /// 斜め (例: (4,4) と (5,5)) は含まない。waited フィルタはここではせず、
     /// 全味方を対象にする (waited 駒との交換可否は呼び出し側で判定)。
-    pub def adjacentAllies(player: Data): List[Data] \ PartyQuery =
-        PartyQuery.getAll()
+    pub def adjacentAllies(player: Data): List[Data] \ PlayerData.PartyQuery =
+        PlayerData.PartyQuery.getAll()
             |> List.filter(other ->
                 other#id != player#id
                 and Weapon.manhattan(player#gridPos, other#gridPos) == 1)
 
     /// アクティブ（waited でない）味方のうち、id 最小のものを返す。誰も居なければ None。
     /// `commitWaitedAndAdvance` の直後にカーソルを次に動ける駒へ飛ばす用途で使う
-    /// (`PartyQuery` 経由だとフレーム冒頭 snapshot を読むため stale)。
+    /// (`PlayerData.PartyQuery` 経由だとフレーム冒頭 snapshot を読むため stale)。
     pub def firstActive(scene: Scene[NodeTag]): Option[Data] =
         getAll(scene)
             |> List.filter(d -> not d#waited)
@@ -771,7 +673,7 @@ mod PlayerScene {
 
     /// hidden(退避中)かつ階段退場でない味方を抽出する純フィルタ（List 版）。
     /// 述語の真理点をここ1箇所に保ち、driver は `hiddenAllies(scene)`、
-    /// 非driver は `PartyQuery.getAll()` に対してこれを使う（read を effect 経由にしつつ DRY）。
+    /// 非driver は `PlayerData.PartyQuery.getAll()` に対してこれを使う（read を effect 経由にしつつ DRY）。
     pub def hiddenOf(players: List[Data]): List[Data] =
         List.filter(d -> d#hidden and not d#usedStairs, players)
 
@@ -1016,7 +918,7 @@ mod PlayerScene {
 
     /// ItemMenu で選ばれたアイテム（武器 or 杖）の種別と index を Data#selectedItem にセットする。
     /// `ItemActionSelect` フェーズに進むときに ItemMenuScene から呼ばれる。
-    pub def setSelectedItem(playerId: Int32, item: ItemKind,
+    pub def setSelectedItem(playerId: Int32, item: PlayerData.ItemKind,
                               scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPlayer(playerId, d -> {selectedItem = Some(item) | d}, scene)
 
@@ -1060,9 +962,9 @@ mod PlayerScene {
     ///   - `selfKind`    : self 側で渡すアイテム種別 (Weapon idx / Staff idx)
     ///   - `partnerId`   : もう一方のプレイヤー id
     ///   - `partnerKind` : Some なら双方向 swap、None なら self 側からの片方向 transfer
-    pub def swapItem(args: {selfId = Int32, selfKind = ItemKind,
+    pub def swapItem(args: {selfId = Int32, selfKind = PlayerData.ItemKind,
                               partnerId = Int32,
-                              partnerKind = Option[ItemKind]},
+                              partnerKind = Option[PlayerData.ItemKind]},
                       scene: Scene[NodeTag]): Scene[NodeTag] =
         let selfId      = args#selfId;
         let selfKind    = args#selfKind;
@@ -1086,7 +988,7 @@ mod PlayerScene {
     /// 入れ替え、種別ごとのリストに振り直す。同じ種類同士なら純粋な位置入替、種別を跨ぐ
     /// ときは各リスト内での相対順だけが変わる。weapons[0] が装備なので武器の並び替えは
     /// 装備変更も兼ねる。
-    pub def reorderItem(playerId: Int32, kindA: ItemKind, kindB: ItemKind,
+    pub def reorderItem(playerId: Int32, kindA: PlayerData.ItemKind, kindB: PlayerData.ItemKind,
                          scene: Scene[NodeTag]): Scene[NodeTag] =
         let weapons     = getWeapons(playerId, scene);
         let staves      = getStaves(playerId, scene);
@@ -1094,33 +996,33 @@ mod PlayerScene {
         let nw = List.length(weapons);
         let ns = List.length(staves);
         let seq = List.append(
-            List.map(w -> ItemScene.GroundItemKind.WeaponItem(w), weapons),
+            List.map(w -> ItemData.GroundItemKind.WeaponItem(w), weapons),
             List.append(
-                List.map(s -> ItemScene.GroundItemKind.StaffItem(s), staves),
-                List.map(c -> ItemScene.GroundItemKind.ConsumableItem(c), consumables)));
+                List.map(s -> ItemData.GroundItemKind.StaffItem(s), staves),
+                List.map(c -> ItemData.GroundItemKind.ConsumableItem(c), consumables)));
         let swapped = swapListAt(displaySeqIndex(kindA, nw, ns),
                                   displaySeqIndex(kindB, nw, ns), seq);
         let newWeapons = List.filterMap(item -> match item {
-            case ItemScene.GroundItemKind.WeaponItem(w) => Some(w)
+            case ItemData.GroundItemKind.WeaponItem(w) => Some(w)
             case _                                      => None
         }, swapped);
         let newStaves = List.filterMap(item -> match item {
-            case ItemScene.GroundItemKind.StaffItem(s) => Some(s)
+            case ItemData.GroundItemKind.StaffItem(s) => Some(s)
             case _                                     => None
         }, swapped);
         let newConsumables = List.filterMap(item -> match item {
-            case ItemScene.GroundItemKind.ConsumableItem(c) => Some(c)
+            case ItemData.GroundItemKind.ConsumableItem(c) => Some(c)
             case _                                          => None
         }, swapped);
         mapPlayer(playerId, d ->
             {weapons = newWeapons, staves = newStaves, consumables = newConsumables | d}, scene)
 
-    /// ItemKind を、表示順 (weapons ++ staves ++ consumables) 上の通し index に変換する。
-    def displaySeqIndex(kind: ItemKind, nw: Int32, ns: Int32): Int32 =
+    /// PlayerData.ItemKind を、表示順 (weapons ++ staves ++ consumables) 上の通し index に変換する。
+    def displaySeqIndex(kind: PlayerData.ItemKind, nw: Int32, ns: Int32): Int32 =
         match kind {
-            case ItemKind.Weapon(i)     => i
-            case ItemKind.Staff(i)      => nw + i
-            case ItemKind.Consumable(i) => nw + ns + i
+            case PlayerData.ItemKind.Weapon(i)     => i
+            case PlayerData.ItemKind.Staff(i)      => nw + i
+            case PlayerData.ItemKind.Consumable(i) => nw + ns + i
         }
 
     /// list の index a と b の要素を入れ替える。範囲外 / a==b なら元の list。
@@ -1135,33 +1037,33 @@ mod PlayerScene {
     /// 指定 player の (kind = Weapon(idx) | Staff(idx)) のアイテム実体を返す。
     /// player が居ない / index が範囲外なら None
     /// (getWeapons / getStaves が居ない player に対し Nil を返すので、その経由で None)。
-    /// 戻り値は `ItemScene.GroundItemKind` を流用 (= 「インベントリ可能なアイテム値」)。
-    pub def getInventoryItem(playerId: Int32, kind: ItemKind, scene: Scene[NodeTag]):
-            Option[ItemScene.GroundItemKind] =
+    /// 戻り値は `ItemData.GroundItemKind` を流用 (= 「インベントリ可能なアイテム値」)。
+    pub def getInventoryItem(playerId: Int32, kind: PlayerData.ItemKind, scene: Scene[NodeTag]):
+            Option[ItemData.GroundItemKind] =
         match kind {
-            case ItemKind.Weapon(idx) =>
+            case PlayerData.ItemKind.Weapon(idx) =>
                 List.nth(idx, getWeapons(playerId, scene))
-                    |> Option.map(w -> ItemScene.GroundItemKind.WeaponItem(w))
-            case ItemKind.Staff(idx) =>
+                    |> Option.map(w -> ItemData.GroundItemKind.WeaponItem(w))
+            case PlayerData.ItemKind.Staff(idx) =>
                 List.nth(idx, getStaves(playerId, scene))
-                    |> Option.map(s -> ItemScene.GroundItemKind.StaffItem(s))
-            case ItemKind.Consumable(idx) =>
+                    |> Option.map(s -> ItemData.GroundItemKind.StaffItem(s))
+            case PlayerData.ItemKind.Consumable(idx) =>
                 List.nth(idx, getConsumables(playerId, scene))
-                    |> Option.map(c -> ItemScene.GroundItemKind.ConsumableItem(c))
+                    |> Option.map(c -> ItemData.GroundItemKind.ConsumableItem(c))
         }
 
     /// 指定 player の `kind` のアイテムをインベントリから取り除く。
     /// `dropWeapon` / `dropStaff` のディスパッチ統合版。
-    def removeInventoryItem(playerId: Int32, kind: ItemKind,
+    def removeInventoryItem(playerId: Int32, kind: PlayerData.ItemKind,
                               scene: Scene[NodeTag]): Scene[NodeTag] =
         match kind {
-            case ItemKind.Weapon(idx)     => dropWeapon(playerId, idx, scene)
-            case ItemKind.Staff(idx)      => dropStaff(playerId, idx, scene)
-            case ItemKind.Consumable(idx) => dropConsumable(playerId, idx, scene)
+            case PlayerData.ItemKind.Weapon(idx)     => dropWeapon(playerId, idx, scene)
+            case PlayerData.ItemKind.Staff(idx)      => dropStaff(playerId, idx, scene)
+            case PlayerData.ItemKind.Consumable(idx) => dropConsumable(playerId, idx, scene)
         }
 
     /// `partnerKind = None` (= 空スロット相手) の場合は no-op、Some なら removeInventoryItem。
-    def removeOptInventoryItem(playerId: Int32, kindOpt: Option[ItemKind],
+    def removeOptInventoryItem(playerId: Int32, kindOpt: Option[PlayerData.ItemKind],
                                  scene: Scene[NodeTag]): Scene[NodeTag] =
         kindOpt
             |> Option.map(k -> removeInventoryItem(playerId, k, scene))
@@ -1188,19 +1090,19 @@ mod PlayerScene {
 
     /// 指定 player のインベントリに `item` を追加（種別ごとに上記 writer へ委譲）。
     /// `ActionMenuScene.addPickedItem` と同じ追加ルール (ログを出さない版)。
-    def addInventoryItem(playerId: Int32, item: ItemScene.GroundItemKind,
+    def addInventoryItem(playerId: Int32, item: ItemData.GroundItemKind,
                           scene: Scene[NodeTag]): Scene[NodeTag] =
         match item {
-            case ItemScene.GroundItemKind.WeaponItem(weapon)        =>
+            case ItemData.GroundItemKind.WeaponItem(weapon)        =>
                 addWeapon(playerId, weapon, scene)
-            case ItemScene.GroundItemKind.StaffItem(staff)          =>
+            case ItemData.GroundItemKind.StaffItem(staff)          =>
                 addStaff(playerId, staff, scene)
-            case ItemScene.GroundItemKind.ConsumableItem(consumable) =>
+            case ItemData.GroundItemKind.ConsumableItem(consumable) =>
                 addConsumable(playerId, consumable, scene)
         }
 
     /// `optItem = None` のときは no-op、Some なら addInventoryItem。
-    def addOptInventoryItem(playerId: Int32, optItem: Option[ItemScene.GroundItemKind],
+    def addOptInventoryItem(playerId: Int32, optItem: Option[ItemData.GroundItemKind],
                               scene: Scene[NodeTag]): Scene[NodeTag] =
         optItem
             |> Option.map(item -> addInventoryItem(playerId, item, scene))
@@ -1209,16 +1111,16 @@ mod PlayerScene {
     /// `kind` 種別の在庫リスト末尾の 1 個を取り除く（`addInventoryItem` の逆操作）。
     /// 「ひろう」をキャンセルしたときに、末尾追加した仮取得アイテムを取り消すのに使う。
     /// 該当リストが空なら no-op。
-    def removeLastInventoryItem(playerId: Int32, kind: ItemScene.GroundItemKind,
+    def removeLastInventoryItem(playerId: Int32, kind: ItemData.GroundItemKind,
                                   scene: Scene[NodeTag]): Scene[NodeTag] =
         match kind {
-            case ItemScene.GroundItemKind.WeaponItem(_)     =>
+            case ItemData.GroundItemKind.WeaponItem(_)     =>
                 let n = List.length(getWeapons(playerId, scene));
                 if (n > 0) dropWeapon(playerId, n - 1, scene) else scene
-            case ItemScene.GroundItemKind.StaffItem(_)      =>
+            case ItemData.GroundItemKind.StaffItem(_)      =>
                 let n = List.length(getStaves(playerId, scene));
                 if (n > 0) dropStaff(playerId, n - 1, scene) else scene
-            case ItemScene.GroundItemKind.ConsumableItem(_) =>
+            case ItemData.GroundItemKind.ConsumableItem(_) =>
                 let n = List.length(getConsumables(playerId, scene));
                 if (n > 0) dropConsumable(playerId, n - 1, scene) else scene
         }
@@ -1258,15 +1160,15 @@ mod PlayerScene {
     /// `removeInventoryItem` の対: `kind`(Weapon/Staff/Consumable idx) の示す位置に
     /// `item` を挿入し直す（捨てる・交換のキャンセル巻き戻しで元の並びを復元する）。
     /// kind と item の種別が食い違う場合は防御的に no-op。
-    def insertInventoryItem(playerId: Int32, kind: ItemKind,
-                              item: ItemScene.GroundItemKind,
+    def insertInventoryItem(playerId: Int32, kind: PlayerData.ItemKind,
+                              item: ItemData.GroundItemKind,
                               scene: Scene[NodeTag]): Scene[NodeTag] =
         match (kind, item) {
-            case (ItemKind.Weapon(idx), ItemScene.GroundItemKind.WeaponItem(w))         =>
+            case (PlayerData.ItemKind.Weapon(idx), ItemData.GroundItemKind.WeaponItem(w))         =>
                 mapPlayer(playerId, d -> {weapons = insertAt(idx, w, d#weapons) | d}, scene)
-            case (ItemKind.Staff(idx), ItemScene.GroundItemKind.StaffItem(s))           =>
+            case (PlayerData.ItemKind.Staff(idx), ItemData.GroundItemKind.StaffItem(s))           =>
                 mapPlayer(playerId, d -> {staves = insertAt(idx, s, d#staves) | d}, scene)
-            case (ItemKind.Consumable(idx), ItemScene.GroundItemKind.ConsumableItem(c)) =>
+            case (PlayerData.ItemKind.Consumable(idx), ItemData.GroundItemKind.ConsumableItem(c)) =>
                 mapPlayer(playerId, d -> {consumables = insertAt(idx, c, d#consumables) | d}, scene)
             case _ => scene
         }

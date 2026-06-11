@@ -257,22 +257,22 @@ mod TestUnitFixtures {
             def setCursor(_, k)             = k(())
         }
 
-    /// PlayerScene.PartyQuery のスタブ。クロージャに閉じ込めた `scene` を読みに行く。
+    /// PlayerData.PartyQuery のスタブ。クロージャに閉じ込めた `scene` を読みに行く。
     /// `Game.start` の handler と同じ実装で、`sceneRef` の代わりに引数の scene を使う。
     /// テスト中に「PartyQuery が古い snapshot を返す」状況を再現したい場合は、
     /// このヘルパーに渡す scene を意図的に古い状態にする。
     pub def withMockPartyQuery(scene: Scene[NodeTag], thunk: Unit -> a \ ef):
-            a \ (ef - PlayerScene.PartyQuery) =
-        run { thunk() } with handler PlayerScene.PartyQuery {
+            a \ (ef - PlayerData.PartyQuery) =
+        run { thunk() } with handler PlayerData.PartyQuery {
             def get(id, k)          = k(PlayerScene.get(id, scene))
             def getAll(k)           = k(PlayerScene.getAll(scene))
         }
 
-    /// EnemyScene.RosterQuery のスタブ。クロージャに閉じ込めた `scene` を読みに行く。
+    /// EnemyData.RosterQuery のスタブ。クロージャに閉じ込めた `scene` を読みに行く。
     /// `Game.start` の handler と同じ実装で、`sceneRef` の代わりに引数の scene を使う。
     pub def withMockRosterQuery(scene: Scene[NodeTag], thunk: Unit -> a \ ef):
-            a \ (ef - EnemyScene.RosterQuery) =
-        run { thunk() } with handler EnemyScene.RosterQuery {
+            a \ (ef - EnemyData.RosterQuery) =
+        run { thunk() } with handler EnemyData.RosterQuery {
             def get(id, k)         = k(EnemyScene.get(id, scene))
             def getAll(k)          = k(EnemyScene.getAll(scene))
             def findIdAt(coord, k) = k(EnemyScene.findIdAt(coord, scene))
@@ -456,7 +456,7 @@ mod TestUnitFixtures {
     pub def withMenuReadMocks(phase: TurnPhase.Phase, selectedId: Int32,
                                scene: Scene[NodeTag], thunk: Unit -> a \ ef):
             a \ (ef - TurnPhase.State - SelectedPlayer.State
-                  - PlayerScene.PartyQuery - EnemyScene.RosterQuery) =
+                  - PlayerData.PartyQuery - EnemyData.RosterQuery) =
         withFixedPhase(phase, () ->
             withSelectedPlayer(selectedId, () ->
                 withMockPartyQuery(scene, () ->
@@ -467,7 +467,7 @@ mod TestUnitFixtures {
     pub def withMenuReadMocksNoSel(phase: TurnPhase.Phase,
                                     scene: Scene[NodeTag], thunk: Unit -> a \ ef):
             a \ (ef - TurnPhase.State - SelectedPlayer.State
-                  - PlayerScene.PartyQuery - EnemyScene.RosterQuery) =
+                  - PlayerData.PartyQuery - EnemyData.RosterQuery) =
         withFixedPhase(phase, () ->
             withNoSelection(() ->
                 withMockPartyQuery(scene, () ->

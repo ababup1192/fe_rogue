@@ -142,7 +142,7 @@ mod TestItemMenuScene {
     @Test
     def testActionMenuForWeapon(): Unit \ {Assert, Fs.FileRead} =
         let withSelection = sceneWithPlayer()
-            |> PlayerScene.setSelectedItem(0, PlayerScene.ItemKind.Weapon(0));
+            |> PlayerScene.setSelectedItem(0, PlayerData.ItemKind.Weapon(0));
         let menuPath = ItemMenuScene.menuPath();
         let updated = TestUnitFixtures.withSelectedPlayer(0, () ->
             TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ItemActionSelect, () ->
@@ -165,7 +165,7 @@ mod TestItemMenuScene {
     @Test
     def testActionMenuForStaff(): Unit \ {Assert, Fs.FileRead} =
         let withSelection = sceneWithPlayer()
-            |> PlayerScene.setSelectedItem(0, PlayerScene.ItemKind.Staff(0));
+            |> PlayerScene.setSelectedItem(0, PlayerData.ItemKind.Staff(0));
         let menuPath = ItemMenuScene.menuPath();
         let updated = TestUnitFixtures.withSelectedPlayer(0, () ->
             TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ItemActionSelect, () ->
@@ -278,7 +278,7 @@ mod TestItemMenuScene {
     /// 武器選択中 → 「装備 / 捨てる」
     @Test
     def testActionItemsForWeapon(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerScene.ItemKind.Weapon(0)));
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Weapon(0)));
         Assert.assertEq(
             expected = "装備" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -286,7 +286,7 @@ mod TestItemMenuScene {
     /// 杖選択中 → 「使う / 捨てる」
     @Test
     def testActionItemsForStaff(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerScene.ItemKind.Staff(1)));
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Staff(1)));
         Assert.assertEq(
             expected = "使う" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -294,7 +294,7 @@ mod TestItemMenuScene {
     /// 消費アイテム選択中 → 「使う / 捨てる」（杖と同じ）
     @Test
     def testActionItemsForConsumable(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerScene.ItemKind.Consumable(2)));
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Consumable(2)));
         Assert.assertEq(
             expected = "使う" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -312,19 +312,19 @@ mod TestItemMenuScene {
     @Test
     def testParseItemKindWeapon(): Unit \ Assert =
         Assert.assertEq(
-            expected = Some(PlayerScene.ItemKind.Weapon(1)),
+            expected = Some(PlayerData.ItemKind.Weapon(1)),
             ItemMenuScene.parseItemKind("w:1"))
 
     @Test
     def testParseItemKindStaff(): Unit \ Assert =
         Assert.assertEq(
-            expected = Some(PlayerScene.ItemKind.Staff(0)),
+            expected = Some(PlayerData.ItemKind.Staff(0)),
             ItemMenuScene.parseItemKind("s:0"))
 
     @Test
     def testParseItemKindConsumable(): Unit \ Assert =
         Assert.assertEq(
-            expected = Some(PlayerScene.ItemKind.Consumable(2)),
+            expected = Some(PlayerData.ItemKind.Consumable(2)),
             ItemMenuScene.parseItemKind("c:2"))
 
     /// 不明な prefix は None

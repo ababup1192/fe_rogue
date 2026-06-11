@@ -12,8 +12,8 @@ mod InitialSpawns {
 
     /// 初回 build 時のスポーン一覧。敵 / 味方を 1 つの record で持つ。
     pub type alias Snapshot = {
-        enemies = List[EnemyScene.Spawn],
-        players = List[PlayerScene.Spawn]
+        enemies = List[EnemyData.Spawn],
+        players = List[PlayerData.Spawn]
     }
 
     /// スポーン一覧の読み書き effect。

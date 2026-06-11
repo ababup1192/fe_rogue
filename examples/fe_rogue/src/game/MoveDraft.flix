@@ -30,13 +30,13 @@ mod MoveDraft {
     ///       相手末尾の付加分を除去し、双方の元 idx へ戻す。
     pub enum DraftAction {
         case MovedFrom(Int32, {x = Int32, y = Int32})
-        case PickedUp(Int32, {x = Int32, y = Int32}, String, ItemScene.GroundItemKind)
+        case PickedUp(Int32, {x = Int32, y = Int32}, String, ItemData.GroundItemKind)
         case Equipped(Int32, Int32)
-        case Dropped(Int32, PlayerScene.ItemKind, ItemScene.GroundItemKind)
-        case Traded({ selfId = Int32, selfKind = PlayerScene.ItemKind,
-                      selfItem = ItemScene.GroundItemKind,
-                      partnerId = Int32, partnerKind = Option[PlayerScene.ItemKind],
-                      partnerItem = Option[ItemScene.GroundItemKind] })
+        case Dropped(Int32, PlayerData.ItemKind, ItemData.GroundItemKind)
+        case Traded({ selfId = Int32, selfKind = PlayerData.ItemKind,
+                      selfItem = ItemData.GroundItemKind,
+                      partnerId = Int32, partnerKind = Option[PlayerData.ItemKind],
+                      partnerItem = Option[ItemData.GroundItemKind] })
     }
 
 }

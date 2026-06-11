@@ -111,7 +111,7 @@ mod BattlePanelScene {
                      _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {TurnPhase.State, SelectedPlayer.State,
-                       PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+                       PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let phase = TurnPhase.State.get();
         // HP 点滅のサイクル内経過時間を delta 分進めて panel ノードに書き戻す。
         let elapsed = match Scene.getState(panelPath(), scene) {
@@ -174,7 +174,7 @@ mod BattlePanelScene {
     def applyForecast(phase: TurnPhase.Phase, elapsed: Duration.Duration,
                        selWeapon: Option[UnitCatalog.WeaponResource], scene: Scene[NodeTag]):
             Scene[NodeTag] \ {SelectedPlayer.State,
-                              PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+                              PlayerData.PartyQuery, EnemyData.RosterQuery} =
         if (phase != TurnPhase.Phase.PlayerAttack)
             // 予報を抜けたら足元 HP バーの予測オーバーレイを消す（パネルは applyVisibility が隠す）。
             clearAllHpForecasts(scene)
@@ -202,7 +202,7 @@ mod BattlePanelScene {
     /// 毎フレーム全ユニットの予測を一旦消してから対象 2 体へ出し直すので、カーソルが別の敵へ
     /// 移っても古い予測が残らない。`showDamaged` は BattlePanel の HP 点滅と同位相。
     def applyHpBarForecast(cols: Forecast, showDamaged: Bool, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+            Scene[NodeTag] \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let cleared = clearAllHpForecasts(scene);
         if (cols#attackerId < 0 or cols#defenderId < 0) cleared
         else cleared
@@ -214,11 +214,11 @@ mod BattlePanelScene {
     /// 全ユニット（味方・敵）の足元 HP バー予測オーバーレイを消す。
     /// 予報フェーズを抜けたフレームや、対象が変わったフレームの取りこぼし防止に使う。
     def clearAllHpForecasts(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+            Scene[NodeTag] \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let hidePlayer = (acc, p) -> UnitHPBarScene.hideDamageForecast(PlayerScene.playerPath(p#id), acc);
         let hideEnemy  = (acc, e) -> UnitHPBarScene.hideDamageForecast(EnemyScene.enemyPath(e#id), acc);
-        let withPlayers = List.foldLeft(hidePlayer, scene, PlayerScene.PartyQuery.getAll());
-        List.foldLeft(hideEnemy, withPlayers, EnemyScene.RosterQuery.getAll())
+        let withPlayers = List.foldLeft(hidePlayer, scene, PlayerData.PartyQuery.getAll());
+        List.foldLeft(hideEnemy, withPlayers, EnemyData.RosterQuery.getAll())
 
     /// HP ラベル 1 つを点滅で更新する。ダメージを受ける側でサイクル前半のときだけ
     /// 戦闘後HP(灰)、それ以外は現在HP(白)。数値は他の数値列と同じ幅で右寄せ。
@@ -261,14 +261,14 @@ mod BattlePanelScene {
             Scene[NodeTag] \ {AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               TurnPhase.State, SelectedPlayer.State,
-                              PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+                              PlayerData.PartyQuery, EnemyData.RosterQuery} =
         // 選択中の味方 → 攻撃対象 → 対象の敵 が揃ったら攻撃を開始。欠けていれば何もしない。
         // Option を forM でたどってネストを浅くする（揃ったときだけ yield 本体の副作用が走る）。
         let started = forM (
             attackerId <- SelectedPlayer.State.get()#id;
-            player     <- PlayerScene.PartyQuery.get(attackerId);
+            player     <- PlayerData.PartyQuery.get(attackerId);
             defenderId <- player#attackTargetId;
-            enemy      <- EnemyScene.RosterQuery.get(defenderId)
+            enemy      <- EnemyData.RosterQuery.get(defenderId)
         ) yield {
             // 選択中の武器を先頭に装備してから攻撃する（startAttack は weapons.head を使う）。
             // activeAttackWeaponIndex は予報に出ていた武器と同じ index を返す。
@@ -286,7 +286,7 @@ mod BattlePanelScene {
     pub def cancel(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
-                              PlayerScene.PartyQuery} =
+                              PlayerData.PartyQuery} =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         match SelectedPlayer.State.get()#id {
             case None             => scene
@@ -315,24 +315,24 @@ mod BattlePanelScene {
     /// 敵が居ない / 届く武器が無いなら None（予報は空になる）。
     def selectedAttackWeapon(scene: Scene[NodeTag]):
             Option[UnitCatalog.WeaponResource]
-            \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery} =
         forM (
             idx      <- ItemMenuScene.activeAttackWeaponIndex(scene);
             playerId <- SelectedPlayer.State.get()#id;
-            player   <- PlayerScene.PartyQuery.get(playerId);
+            player   <- PlayerData.PartyQuery.get(playerId);
             w        <- List.nth(idx, player#weapons)
         ) yield w
 
     /// 選択中プレイヤー / 攻撃対象敵 / 選択武器が揃ったら予報を組み立てる。
     /// 揃わなければ全カラム空・HP 0 を返す（visible でないフェーズで描画されない想定）。
     def buildColumns(selWeapon: Option[UnitCatalog.WeaponResource]): Forecast
-            \ {SelectedPlayer.State, PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
         // 選択中の味方 → 攻撃対象の敵 → 選択武器まで Option を forM でたどる。
         let columns = forM (
             pid    <- SelectedPlayer.State.get()#id;
-            player <- PlayerScene.PartyQuery.get(pid);
+            player <- PlayerData.PartyQuery.get(pid);
             eid    <- player#attackTargetId;
-            enemy  <- EnemyScene.RosterQuery.get(eid);
+            enemy  <- EnemyData.RosterQuery.get(eid);
             weapon <- selWeapon
         ) yield {attackerId = pid, defenderId = eid | formatColumns(player, weapon, enemy)};
         Option.getWithDefault(emptyForecast(), columns)

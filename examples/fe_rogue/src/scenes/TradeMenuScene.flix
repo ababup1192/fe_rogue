@@ -37,7 +37,7 @@ mod TradeMenuScene {
     /// `None` なら空スロット (= 「受け取り希望」のマーカー)。
     pub type alias Pick = {
         paneIndex = Int32,
-        kind      = Option[PlayerScene.ItemKind]
+        kind      = Option[PlayerData.ItemKind]
     }
 
     /// 交換セッションの出口。cancel でメニューを閉じたときの戻り先フェーズを決める。
@@ -81,17 +81,17 @@ mod TradeMenuScene {
     ///   - kind が `None` の側は空スロット (= 受け取り専用)。
     pub type alias SwapPlan = {
         pickerId     = Int32,
-        pickerKind   = Option[PlayerScene.ItemKind],
+        pickerKind   = Option[PlayerData.ItemKind],
         receiverId   = Int32,
-        receiverKind = Option[PlayerScene.ItemKind]
+        receiverKind = Option[PlayerData.ItemKind]
     }
 
     /// 同じペイン (同じ player) 内でアイテムの並び順を入れ替える計画。
     /// kindA (先に pick) と kindB (後から選択) の表示位置を入れ替える。
     pub type alias ReorderPlan = {
         playerId = Int32,
-        kindA    = PlayerScene.ItemKind,
-        kindB    = PlayerScene.ItemKind
+        kindA    = PlayerData.ItemKind,
+        kindB    = PlayerData.ItemKind
     }
 
     /// 空スロットを表す ItemEntry のテキスト / metadata。
@@ -195,7 +195,7 @@ mod TradeMenuScene {
     ///   - pick=Some, 同ペイン別スロット(両実体) → 並び替え (reorder)
     ///   - pick=Some, 同ペイン (空スロット絡み)  → pick を新スロットで上書き
     ///   - pick=Some, 別ペイン              → swap 実行 (pick クリア、focus は place ペインに)
-    pub def decideConfirm(paneIndex: Int32, entryKind: Option[PlayerScene.ItemKind],
+    pub def decideConfirm(paneIndex: Int32, entryKind: Option[PlayerData.ItemKind],
                           data: PanelData): ConfirmOutcome =
         match data#pick {
             case None =>
@@ -292,7 +292,7 @@ mod TradeMenuScene {
                           path: NodePath,
                           scene: Scene[NodeTag]):
                          (EngineNode[NodeTag], Scene[NodeTag])
-                         \ {TurnPhase.State, PlayerScene.PartyQuery} =
+                         \ {TurnPhase.State, PlayerData.PartyQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
         // 閉じている間は全ペインのカーソルを先頭(0)に戻し、次に開いたとき必ず最初から。
@@ -312,7 +312,7 @@ mod TradeMenuScene {
 
     /// 各ペインに対応 player のインベントリ (満杯でなければ末尾に空スロット) と兵種名を反映し、
     /// pick 中のアイテムは強調色 (黄) で描く。
-    def refreshPanes(scene: Scene[NodeTag]): Scene[NodeTag] \ PlayerScene.PartyQuery =
+    def refreshPanes(scene: Scene[NodeTag]): Scene[NodeTag] \ PlayerData.PartyQuery =
         let data = getPanelData(scene);
         let count = paneCount(data);
         List.foldLeft((acc, i) ->
@@ -332,7 +332,7 @@ mod TradeMenuScene {
     /// このペインで pick 中のアイテムの表示行 index (色強調する行)。pick が別ペイン /
     /// 空スロット pick / 未 pick なら None。
     def pickHighlightIndex(paneIndex: Int32, playerId: Int32, data: PanelData,
-                            scene: Scene[NodeTag]): Option[Int32] \ PlayerScene.PartyQuery =
+                            scene: Scene[NodeTag]): Option[Int32] \ PlayerData.PartyQuery =
         match data#pick {
             case Some(p) if p#paneIndex == paneIndex =>
                 p#kind |> Option.map(k -> displayIndexOf(k, playerId, scene))
@@ -351,19 +351,19 @@ mod TradeMenuScene {
     def pickColor(): Color = {r = 1.0f32, g = 0.85f32, b = 0.2f32}
 
     /// ItemKind を、ペイン表示 (weapons ++ staves ++ consumables) 上の行 index に変換する。
-    def displayIndexOf(kind: PlayerScene.ItemKind, playerId: Int32,
-                        _scene: Scene[NodeTag]): Int32 \ PlayerScene.PartyQuery =
+    def displayIndexOf(kind: PlayerData.ItemKind, playerId: Int32,
+                        _scene: Scene[NodeTag]): Int32 \ PlayerData.PartyQuery =
         let nw = List.length(weaponsOf(playerId));
         let ns = List.length(stavesOf(playerId));
         match kind {
-            case PlayerScene.ItemKind.Weapon(i)     => i
-            case PlayerScene.ItemKind.Staff(i)      => nw + i
-            case PlayerScene.ItemKind.Consumable(i) => nw + ns + i
+            case PlayerData.ItemKind.Weapon(i)     => i
+            case PlayerData.ItemKind.Staff(i)      => nw + i
+            case PlayerData.ItemKind.Consumable(i) => nw + ns + i
         }
 
     /// 指定 player id の兵種名 (`UnitResource#description`)。居なければ空文字。
-    def classNameOf(id: Int32, _scene: Scene[NodeTag]): String \ PlayerScene.PartyQuery =
-        match PlayerScene.PartyQuery.get(id) {
+    def classNameOf(id: Int32, _scene: Scene[NodeTag]): String \ PlayerData.PartyQuery =
+        match PlayerData.PartyQuery.get(id) {
             case Some(d) => d#resource#description
             case None    => ""
         }
@@ -399,17 +399,17 @@ mod TradeMenuScene {
     /// 指定 player の weapons + staves + consumables を ItemEntry 列に変換する。
     // 非driver の在庫 read を effect 経由（PartyQuery）に寄せる薄ラッパ（op 非増殖）。
     // render/refresh 経路でのみ使う。mutator 経路の recordTradeDraft 内 read は scene-arg 据え置き。
-    def weaponsOf(id: Int32): List[UnitCatalog.WeaponResource] \ PlayerScene.PartyQuery =
-        PlayerScene.PartyQuery.get(id) |> Option.map(d -> d#weapons) |> Option.getWithDefault(Nil)
+    def weaponsOf(id: Int32): List[UnitCatalog.WeaponResource] \ PlayerData.PartyQuery =
+        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#weapons) |> Option.getWithDefault(Nil)
 
-    def stavesOf(id: Int32): List[Staff.StaffResource] \ PlayerScene.PartyQuery =
-        PlayerScene.PartyQuery.get(id) |> Option.map(d -> d#staves) |> Option.getWithDefault(Nil)
+    def stavesOf(id: Int32): List[Staff.StaffResource] \ PlayerData.PartyQuery =
+        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#staves) |> Option.getWithDefault(Nil)
 
-    def consumablesOf(id: Int32): List[Consumable.ConsumableResource] \ PlayerScene.PartyQuery =
-        PlayerScene.PartyQuery.get(id) |> Option.map(d -> d#consumables) |> Option.getWithDefault(Nil)
+    def consumablesOf(id: Int32): List[Consumable.ConsumableResource] \ PlayerData.PartyQuery =
+        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#consumables) |> Option.getWithDefault(Nil)
 
     def inventoryEntries(playerId: Int32, _scene: Scene[NodeTag]):
-            List[ItemEntry] \ PlayerScene.PartyQuery =
+            List[ItemEntry] \ PlayerData.PartyQuery =
         let weapons     = weaponsOf(playerId);
         let staves      = stavesOf(playerId);
         let consumables = consumablesOf(playerId);
@@ -422,14 +422,14 @@ mod TradeMenuScene {
     /// 上限ちょうど (満杯) なら空スロットを出さない = 片方向流入をブロックする。
     /// pub: テストが「満杯ペインに空スロットが出ない」ことを確認するのに使う。
     pub def paneEntries(playerId: Int32, scene: Scene[NodeTag]):
-            List[ItemEntry] \ PlayerScene.PartyQuery =
+            List[ItemEntry] \ PlayerData.PartyQuery =
         let base = inventoryEntries(playerId, scene);
         if (isFull(playerId, scene)) base
         else List.append(base, emptySlotEntry() :: Nil)
 
     /// 指定 player の持ち物が上限に達しているか。居なければ false。
-    def isFull(playerId: Int32, _scene: Scene[NodeTag]): Bool \ PlayerScene.PartyQuery =
-        match PlayerScene.PartyQuery.get(playerId) {
+    def isFull(playerId: Int32, _scene: Scene[NodeTag]): Bool \ PlayerData.PartyQuery =
+        match PlayerData.PartyQuery.get(playerId) {
             case Some(d) => PlayerScene.isInventoryFull(d)
             case None    => false
         }
@@ -440,7 +440,7 @@ mod TradeMenuScene {
 
     /// エントリの metadata から「対象アイテム種別 / 空スロット」を判定。
     /// "empty" → None (空スロット)、"w:<idx>" / "s:<idx>" / "c:<idx>" は ItemKind に parse。
-    def parseEntryKind(entry: ItemEntry): Option[PlayerScene.ItemKind] =
+    def parseEntryKind(entry: ItemEntry): Option[PlayerData.ItemKind] =
         match entry#metadata {
             case None       => None
             case Some(meta) =>
@@ -471,8 +471,8 @@ mod TradeMenuScene {
         }
 
     /// `origin == FromTurn` のときだけ巻き戻しドラフトを積む。
-    def recordIfTurn(origin: Origin, selfId: Int32, selfKind: PlayerScene.ItemKind,
-                      partnerId: Int32, partnerKindOpt: Option[PlayerScene.ItemKind],
+    def recordIfTurn(origin: Origin, selfId: Int32, selfKind: PlayerData.ItemKind,
+                      partnerId: Int32, partnerKindOpt: Option[PlayerData.ItemKind],
                       scene: Scene[NodeTag]): Unit \ SelectedPlayer.State =
         match origin {
             case Origin.FromTurn  =>
@@ -482,8 +482,8 @@ mod TradeMenuScene {
 
     /// swap 実行前に、巻き戻し用 `Traded` ドラフトを SelectedPlayer に積む。
     /// self 側に実体が無い (swap が no-op になる) 場合は積まない。
-    def recordTradeDraft(selfId: Int32, selfKind: PlayerScene.ItemKind,
-                          partnerId: Int32, partnerKindOpt: Option[PlayerScene.ItemKind],
+    def recordTradeDraft(selfId: Int32, selfKind: PlayerData.ItemKind,
+                          partnerId: Int32, partnerKindOpt: Option[PlayerData.ItemKind],
                           scene: Scene[NodeTag]): Unit \ SelectedPlayer.State =
         match PlayerScene.getInventoryItem(selfId, selfKind, scene) {
             case None           => ()

@@ -86,7 +86,7 @@ mod StaffCastScene {
     /// 選択中アイテムが杖ならその staves index、それ以外は None。
     def selectedStaffIndex(player: PlayerScene.Data): Option[Int32] =
         match player#selectedItem {
-            case Some(PlayerScene.ItemKind.Staff(idx)) => Some(idx)
+            case Some(PlayerData.ItemKind.Staff(idx)) => Some(idx)
             case _                                      => None
         }
 

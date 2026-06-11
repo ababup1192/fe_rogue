@@ -97,7 +97,7 @@ mod ActionMenuScene {
                          scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
                         \ {SelectedPlayer.State, TurnPhase.State,
-                           PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+                           PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
         // メニューが閉じている間は選択カーソルを先頭(0)に戻しておく。これにより
@@ -142,18 +142,18 @@ mod ActionMenuScene {
     /// SelectedPlayer が None のときは PlayerCursor から空マスで開かれた「集合メニュー」
     /// として「しゅうごう」だけを返す (確定でロードへ合流開始)。
     def buildItems(scene: Scene[NodeTag]): List[ItemEntry]
-            \ {SelectedPlayer.State, PlayerScene.PartyQuery, EnemyScene.RosterQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
         match SelectedPlayer.State.get()#id {
             case None     =>
                 // SelectedPlayer = None の空マスメニュー。ローグ移動モード中
                 // (合流して退避中の味方が居る) なら「ひろう / かいさん」、
                 // 通常時は「しゅうごう(条件付き) / ターンエンド」。
-                if (not List.isEmpty(PlayerScene.hiddenOf(PlayerScene.PartyQuery.getAll())))
+                if (not List.isEmpty(PlayerScene.hiddenOf(PlayerData.PartyQuery.getAll())))
                     rogueMenuItems(scene)
                 else
                     gatherMenuItems(scene)
             case Some(id) =>
-                match PlayerScene.PartyQuery.get(id) {
+                match PlayerData.PartyQuery.get(id) {
                     case None         => Nil
                     case Some(player) =>
                         let attackItem =
@@ -201,7 +201,7 @@ mod ActionMenuScene {
     /// ローグ移動モード中(合流済み)のメニュー項目。ロード足元にアイテムがあれば「ひろう」、
     /// ロードが階段に乗っていれば「かいだん」(パーティごと次フロアへ)、常に「かいさん」。
     /// 拾いはロード(id 0)を対象に既存の applyPickup を転用する。
-    def rogueMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerScene.PartyQuery =
+    def rogueMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
         let lordPos = PlayerScene.getGridPos(0, scene);
         let pickup =
             if (Option.nonEmpty(ItemScene.findAt(lordPos, scene)))
@@ -226,8 +226,8 @@ mod ActionMenuScene {
     /// 集合した生存メンバーの player id リスト (= 交換に参加できる面々)。
     /// ロード(id 0) + 退避中(hidden)の味方。死亡(hp<=0)・階段退場は除外し、id 昇順に並べる。
     /// (`hiddenAllies` が既に usedStairs を除外。`getAll` は hp<=0 を残すので hp フィルタ必須。)
-    def gatherTradeMembers(): List[Int32] \ PlayerScene.PartyQuery =
-        let players = PlayerScene.PartyQuery.getAll();
+    def gatherTradeMembers(): List[Int32] \ PlayerData.PartyQuery =
+        let players = PlayerData.PartyQuery.getAll();
         let lord    = List.filter(d -> d#id == 0, players);
         let hidden  = PlayerScene.hiddenOf(players);
         List.append(lord, hidden)
@@ -240,8 +240,8 @@ mod ActionMenuScene {
 
     /// 通常の空マスメニュー項目。ロードが敵に未検知(部屋外かつ索敵範囲外)で、合流可能な味方が
     /// 全員ロードの周囲 `gatherRange` マス以内に居れば「しゅうごう」、常に「ターンエンド」。
-    def gatherMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerScene.PartyQuery =
-        let players = PlayerScene.PartyQuery.getAll();
+    def gatherMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
+        let players = PlayerData.PartyQuery.getAll();
         let gather =
             if (not AutoMoveScene.lordDetected(scene)
                 and not List.isEmpty(PlayerScene.mergeableOf(players))
@@ -258,8 +258,8 @@ mod ActionMenuScene {
     /// 装備中(先頭)だけでなく全武器を見る: 射程を変えれば(= 別の武器に持ち替えれば)
     /// 攻撃できる場合も「攻撃」を出すため。武器なし / 全員 isDying / どの武器も射程外なら false。
     /// 持ち替え後の実際の装備は `PlayerScene.enterAttackPhase` が行う。
-    def canAttackFrom(player: PlayerScene.Data): Bool \ EnemyScene.RosterQuery =
-        let enemies = EnemyScene.RosterQuery.getAll();
+    def canAttackFrom(player: PlayerScene.Data): Bool \ EnemyData.RosterQuery =
+        let enemies = EnemyData.RosterQuery.getAll();
         List.exists(w -> weaponReachesAnyEnemy(player#gridPos, w, enemies), player#weapons)
 
     /// 指定位置から `weapon` の射程内に生きている敵 (hp > 0 かつ not isDying) が居るか。
@@ -274,12 +274,12 @@ mod ActionMenuScene {
 
     /// 自分の現在セルに「自分以外の味方」が居なければたいき可。
     /// 同じセルに別味方が居る (重なり) ときは false。
-    def canWaitOn(player: PlayerScene.Data): Bool \ PlayerScene.PartyQuery =
+    def canWaitOn(player: PlayerScene.Data): Bool \ PlayerData.PartyQuery =
         not List.exists(d ->
             d#id != player#id
             and d#gridPos#x == player#gridPos#x
             and d#gridPos#y == player#gridPos#y,
-            PlayerScene.PartyQuery.getAll())
+            PlayerData.PartyQuery.getAll())
 
     /// ItemList 項目が確定された (Enter) 瞬間に呼ばれる。metadata から
     /// 「attack」/「wait」/「pickup」/「gather」を分岐して、それぞれの帰結を直接適用する。
@@ -294,7 +294,7 @@ mod ActionMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                PlayerScene.PartyQuery, EnemyScene.RosterQuery,
+                PlayerData.PartyQuery, EnemyData.RosterQuery,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
         match entry#metadata {
             case None    => scene
@@ -348,7 +348,7 @@ mod ActionMenuScene {
     /// 「交換」確定 (集合後): 集合した生存メンバー全員の N 人持ち物交換画面を開く。
     /// TradeInventory フェーズ (origin = FromRogue) に入り、TradeMenuScene が 3 ペイン表示する。
     def openGatherTrade(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, PlayerScene.PartyQuery} =
+            Scene[NodeTag] \ {TurnPhase.State, PlayerData.PartyQuery} =
         PhaseTransitions.enterGatherTrade(gatherTradeMembers(), scene)
 
     /// 「しゅうごう」確定: ローグ移動モードの合流を開始する (PlayerAutoMove フェーズへ)。
@@ -382,7 +382,7 @@ mod ActionMenuScene {
     /// 何らかの理由で item が無い場合は no-op（防御的）。
     def applyPickup(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger,
-                              SelectedPlayer.State, PlayerScene.PartyQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery} =
         match pickupTarget(scene) {
             case None       => scene
             case Some(info) =>
@@ -395,7 +395,7 @@ mod ActionMenuScene {
                     // ドラフト記録し、選択解除キャンセル(cancelSelection)で床へ巻き戻せるようにする。
                     // ローグ移動モードは選択が無く巻き戻し対象外なので即取得のまま。
                     let recorded =
-                        if (List.isEmpty(PlayerScene.hiddenOf(PlayerScene.PartyQuery.getAll())))
+                        if (List.isEmpty(PlayerScene.hiddenOf(PlayerData.PartyQuery.getAll())))
                             recordPickupDraft(info, scene)
                         else scene;
                     pickupAt(info, recorded)
@@ -404,8 +404,8 @@ mod ActionMenuScene {
 
     /// 拾う主体 (playerId) の持ち物が満杯か。PartyQuery で現フレームの Data を読む。
     /// 見つからなければ満杯ではない扱い（防御的）。
-    def isPickerInventoryFull(playerId: Int32): Bool \ PlayerScene.PartyQuery =
-        match PlayerScene.PartyQuery.get(playerId) {
+    def isPickerInventoryFull(playerId: Int32): Bool \ PlayerData.PartyQuery =
+        match PlayerData.PartyQuery.get(playerId) {
             case Some(player) => PlayerScene.isInventoryFull(player)
             case None         => false
         }
@@ -428,8 +428,8 @@ mod ActionMenuScene {
     /// ロード(id 0)がロード足元のアイテムを拾う。通常時は選択中の味方が足元のを拾う。
     def pickupTarget(scene: Scene[NodeTag]):
             Option[{playerId = Int32, gridPos = {x = Int32, y = Int32}}]
-            \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
-        if (not List.isEmpty(PlayerScene.hiddenOf(PlayerScene.PartyQuery.getAll())))
+            \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+        if (not List.isEmpty(PlayerScene.hiddenOf(PlayerData.PartyQuery.getAll())))
             Some({playerId = 0, gridPos = PlayerScene.getGridPos(0, scene)})
         else
             selectedPlayerInfo()
@@ -438,10 +438,10 @@ mod ActionMenuScene {
     /// SelectedPlayer 未選択 / PartyQuery で見つからないいずれでも None。
     def selectedPlayerInfo():
             Option[{playerId = Int32, gridPos = {x = Int32, y = Int32}}]
-            \ {SelectedPlayer.State, PlayerScene.PartyQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery} =
         forM (
             playerId <- SelectedPlayer.State.get()#id;
-            player   <- PlayerScene.PartyQuery.get(playerId)
+            player   <- PlayerData.PartyQuery.get(playerId)
         ) yield {playerId = playerId, gridPos = player#gridPos}
 
     /// 指定セルで床アイテムを 1 個取って selectedPlayer のインベントリに追加する。
@@ -456,19 +456,19 @@ mod ActionMenuScene {
 
     /// 拾ったアイテムをプレイヤーのインベントリに追加し、ログも出す。
     /// 武器は weapons の末尾（= 装備中の後ろ）、杖は staves の末尾に積む。
-    def addPickedItem(playerId: Int32, kind: ItemScene.GroundItemKind,
+    def addPickedItem(playerId: Int32, kind: ItemData.GroundItemKind,
                         scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
         match kind {
-            case ItemScene.GroundItemKind.WeaponItem(weapon) =>
+            case ItemData.GroundItemKind.WeaponItem(weapon) =>
                 GameLogger.playerLog("P${playerId} が ${weapon#name} を拾った");
                 PlayerScene.addWeapon(playerId, weapon, scene)
                     |> ItemPickupPopupScene.show(weapon#name)
-            case ItemScene.GroundItemKind.StaffItem(staff) =>
+            case ItemData.GroundItemKind.StaffItem(staff) =>
                 GameLogger.playerLog("P${playerId} が ${staff#name} を拾った");
                 PlayerScene.addStaff(playerId, staff, scene)
                     |> ItemPickupPopupScene.show(staff#name)
-            case ItemScene.GroundItemKind.ConsumableItem(item) =>
+            case ItemData.GroundItemKind.ConsumableItem(item) =>
                 GameLogger.playerLog("P${playerId} が ${item#name} を拾った");
                 PlayerScene.addConsumable(playerId, item, scene)
                     |> ItemPickupPopupScene.show(item#name)
@@ -501,13 +501,13 @@ mod ActionMenuScene {
     /// 青マス・カーソルは触らず、ユーザがもう一度操作し直せる状態に復帰する。
     pub def onActionCancelled(scene: Scene[NodeTag]):
                               Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State,
-                                                PlayerScene.PartyQuery} =
+                                                PlayerData.PartyQuery} =
         let target = match SelectedPlayer.State.get()#id {
             case Some(_) => TurnPhase.Phase.PlayerMoving
             case None    =>
                 // 退避中の味方が居る = ローグ移動モード由来のメニュー → RogueMove に戻す。
                 // それ以外は通常の空マスメニュー由来 → PlayerCursor に戻す。
-                if (not List.isEmpty(PlayerScene.hiddenOf(PlayerScene.PartyQuery.getAll())))
+                if (not List.isEmpty(PlayerScene.hiddenOf(PlayerData.PartyQuery.getAll())))
                     TurnPhase.Phase.RogueMove
                 else
                     TurnPhase.Phase.PlayerCursor
@@ -521,7 +521,7 @@ mod ActionMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                PlayerScene.PartyQuery, EnemyScene.RosterQuery,
+                PlayerData.PartyQuery, EnemyData.RosterQuery,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             case Some(entry) => onActionConfirmed(entry, scene)

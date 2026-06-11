@@ -35,42 +35,11 @@ mod EnemyScene {
     /// ゲームオーバー時の `respawnFromInitial` で同じ敵種別で再生するために保持。
     /// `weapon` は装備中の武器。攻撃するたびに耐久度が 1 減り、0 で `None` になる
     /// （以降、その敵は EnemyAI 側で Attack を返さなくなる）。攻撃力は `resource#attack + weapon#attack`。
-    pub type alias Data = {
-        id             = Int32,
-        gridPos        = {x = Int32, y = Int32},
-        alerted        = Bool,
-        homeModuleIdx  = Int32,
-        moveTiles      = Int32,
-        hp             = Int32,
-        isDying        = Bool,
-        attackTargetId = Option[Int32],
-        resource       = EnemyCatalog.EnemyResource,
-        weapon         = Option[UnitCatalog.WeaponResource],
-        acted          = Bool
-    }
+    // 駒ドメイン型（Data / Spawn）は game/EnemyData.flix の `mod EnemyData` へ移設し、ここで再export。
+    pub type alias Data = EnemyData.Data
+    pub type alias Spawn = EnemyData.Spawn
 
-    /// スポーン時の中間表現。`add` 内のループで部屋ごとに積み上げ、最後に Marker2D へ展開する。
-    /// `respawnFromInitial` で「ゲームオーバー時に同じ位置・同じ種別の敵を出し直す」のにも使うため pub。
-    /// `weapon` は初期装備の固定値で、復元時にこの値が再び敵に持たされる。
-    pub type alias Spawn = {
-        id        = Int32,
-        gridPos   = {x = Int32, y = Int32},
-        moduleIdx = Int32,
-        resource  = EnemyCatalog.EnemyResource,
-        weapon    = UnitCatalog.WeaponResource
-    }
-
-    /// 敵駒の「現フレーム状態」を Scene を介さずに読み取る effect。
-    ///
-    /// 非 driver / 非 data Scene (HUD / Camera / Menu / Overlay) は `EnemyScene` モジュールを
-    /// 直接タイプせず、この effect 経由で敵データを得る。`PlayerScene.Query` の敵版で、設計思想は同じ
-    /// (BoardQuery / PlayerScene.Query 参照)。
-    pub eff RosterQuery {
-        def get(id: Int32): Option[Data]
-        def getAll(): List[Data]
-        def findIdAt(coord: {x = Int32, y = Int32}): Option[Int32]
-        def anyAttacking(): Bool
-    }
+    // EnemyData.RosterQuery effect は game/EnemyData へ移設した（参照は EnemyData.RosterQuery）。
 
     // ────────────────────────────────────────────────────────
     // (B) 定数

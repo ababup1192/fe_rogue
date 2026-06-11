@@ -13,7 +13,7 @@ mod FrameAef {
     /// `ready` / `physicsProcess` 用の Aef 集合。Player.physicsProcess / Cursor.physicsProcess
     /// などが要求する集合 (BoardQuery で盤面参照、Tween でアニメ進行、TurnPhase で gating 等)。
     pub type alias T = {GameEngine.Game, BoardQuery,
-                         EnemyScene.RosterQuery,
+                         EnemyData.RosterQuery,
                          Tween.Scheduler, AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
                          TurnPhase.State, SelectedPlayer.State}
@@ -24,7 +24,7 @@ mod FrameAef {
     /// Pacing が追加される。`BoardSnapshot.fromScene` は純粋関数なので `BoardQuery` 不要。
     /// `Math.Random` は attack:hit 時の命中ロール（Combat.isHit 用の乱数）に使う。
     pub type alias ProcessT = {GameEngine.Game, GameEngine.Audio,
-                                PlayerScene.PartyQuery, EnemyScene.RosterQuery,
+                                PlayerData.PartyQuery, EnemyData.RosterQuery,
                                 Tween.Scheduler, AnimationPlayer.Scheduler,
                                 GameLogger.GameLogger,
                                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,

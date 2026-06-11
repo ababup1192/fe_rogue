@@ -129,7 +129,7 @@ mod TestActionMenuScene {
     /// 視覚要素 (縁取り Sprite 等) は省き、`ItemScene.findAt` が見つけるのに必要な
     /// `NodeTag.GroundItem(Data)` だけを持たせる。
     def attachGroundItemAt(cell: {x = Int32, y = Int32},
-                            kind: ItemScene.GroundItemKind,
+                            kind: ItemData.GroundItemKind,
                             scene: Scene[NodeTag]): Scene[NodeTag] =
         let parentNodeName = "Items";
         let parentMarker = Marker2D.make(Vec2.zero());
@@ -154,7 +154,7 @@ mod TestActionMenuScene {
     /// 「ひろう」確定の挙動を観測するための統合フィクスチャ。
     def loadActionMenuSceneWithFloorWeapon(): Scene[NodeTag] =
         attachGroundItemAt({x = 1, y = 1},
-            ItemScene.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon()),
+            ItemData.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon()),
             loadTwoPlayerActionMenuScene())
 
     /// 「こうかん」項目の出現確認用フィクスチャ。id=0 を (1,1)、id=1 を (2,1) に置き、
@@ -417,7 +417,7 @@ mod TestActionMenuScene {
             let drafts =
                 MoveDraft.DraftAction.Equipped(0, 1) ::
                 MoveDraft.DraftAction.PickedUp(0, {x = 1, y = 1}, "wB",
-                    ItemScene.GroundItemKind.WeaponItem(wB)) ::
+                    ItemData.GroundItemKind.WeaponItem(wB)) ::
                 MoveDraft.DraftAction.MovedFrom(0, {x = 1, y = 1}) :: Nil;
             let after   = runCancelWithDrafts(rc, scene, drafts);
             let attacks = List.map(w -> w#attack, PlayerScene.getWeapons(0, after));
@@ -436,8 +436,8 @@ mod TestActionMenuScene {
             // B(idx1) を捨てた後の状態: weapons=[A, C]
             let scene = loadPlayerWithWeapons({x = 2, y = 2}, wA :: wC :: Nil);
             let drafts =
-                MoveDraft.DraftAction.Dropped(0, PlayerScene.ItemKind.Weapon(1),
-                    ItemScene.GroundItemKind.WeaponItem(wB)) ::
+                MoveDraft.DraftAction.Dropped(0, PlayerData.ItemKind.Weapon(1),
+                    ItemData.GroundItemKind.WeaponItem(wB)) ::
                 MoveDraft.DraftAction.MovedFrom(0, {x = 2, y = 2}) :: Nil;
             let after   = runCancelWithDrafts(rc, scene, drafts);
             let attacks = List.map(w -> w#attack, PlayerScene.getWeapons(0, after));
@@ -532,7 +532,7 @@ mod TestActionMenuScene {
     @Test
     def testRogueMenuShowsPickupThenDisbandWithFloorItem(): Unit \ Assert =
         let scene = attachGroundItemAt({x = 1, y = 1},
-            ItemScene.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon()),
+            ItemData.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon()),
             loadRogueActionMenuScene());
         let after = runRefreshItemsNoSelection(scene);
         Assert.assertEq(
