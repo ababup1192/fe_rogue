@@ -44,7 +44,7 @@ mod RangeOverlay {
         let tileScale: Vec2.Vec2 = ({x = 1.625, y = 1.625}: Vec2.Vec2);
         List.foldLeft(acc -> entry -> {
             let (idx, cell) = entry;
-            let sprite = Sprite2D.make(textureName(), MapScene.cellCenter(cell), tileScale)
+            let sprite = Sprite2D.make(textureName(), MapSnapshot.cellCenter(cell), tileScale)
                             |> Sprite2D.setAlpha(alpha)
                             |> CanvasItem.setModulate(color)
                             |> CanvasItem.setZIndex(tileZIndex());

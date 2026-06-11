@@ -78,8 +78,8 @@ mod CombatScene {
                                  AnimationPlayer.Animation =
         let phase    = attackPhaseDuration();
         let total    = Duration.add(phase, phase);
-        let originW  = MapScene.cellCenter(originGrid);
-        let targetW  = MapScene.cellCenter(targetGrid);
+        let originW  = MapSnapshot.cellCenter(originGrid);
+        let targetW  = MapSnapshot.cellCenter(targetGrid);
         let posKeys: List[AnimationPlayer.PosKey] =
             ({time = 0.0, pos = originW}: AnimationPlayer.PosKey) ::
             ({time = 0.5, pos = targetW}: AnimationPlayer.PosKey) ::
@@ -430,7 +430,7 @@ mod CombatScene {
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger, Math.Random} =
         let plan       = attackForecast(player, weapon, enemy);
-        let popupPos   = MapScene.cellCenter(enemy#gridPos);
+        let popupPos   = MapSnapshot.cellCenter(enemy#gridPos);
         let popupColor = DamagePopupScene.damageToEnemyColor();
         // 命中なら経験値を得る（回避時は 0）。
         let (afterDamage, expGain) =
@@ -524,7 +524,7 @@ mod CombatScene {
         let strike = resolveStrike(EnemyScene.combatView(enemy),
                                    PlayerScene.combatView(player));
         let roll = rollPercent();
-        let popupPos = MapScene.cellCenter(player#gridPos);
+        let popupPos = MapSnapshot.cellCenter(player#gridPos);
         let popupColor = DamagePopupScene.damageToPlayerColor();
         let (damaged, killed) =
             if (not Combat.isHit(strike#hit, roll)) {

@@ -10,22 +10,22 @@ mod TestMapScene {
     @Test
     def testModuleOfCellSingleInside(): Unit \ Assert =
         let p0 = MapScene.placement(0, 0, 0, 8, 8);
-        let result = MapScene.moduleOfCellIn(({x = 3, y = 4}: {x = Int32, y = Int32}), p0 :: Nil);
+        let result = MapSnapshot.moduleOfCellIn(({x = 3, y = 4}: {x = Int32, y = Int32}), p0 :: Nil);
         Assert.assertEq(expected = Some(0), result)
 
     /// 範囲外セル → None
     @Test
     def testModuleOfCellOutsideAllModules(): Unit \ Assert =
         let p0 = MapScene.placement(0, 0, 0, 8, 8);
-        let result = MapScene.moduleOfCellIn(({x = 20, y = 20}: {x = Int32, y = Int32}), p0 :: Nil);
+        let result = MapSnapshot.moduleOfCellIn(({x = 20, y = 20}: {x = Int32, y = Int32}), p0 :: Nil);
         Assert.assertEq(expected = None, result)
 
     /// bbox の右下端は半開区間（exclusive）。 (8,8) は p0 (0..8, 0..8) に含まれない
     @Test
     def testModuleOfCellExclusiveMax(): Unit \ Assert =
         let p0 = MapScene.placement(0, 0, 0, 8, 8);
-        let inside  = MapScene.moduleOfCellIn(({x = 7, y = 7}: {x = Int32, y = Int32}), p0 :: Nil);
-        let outside = MapScene.moduleOfCellIn(({x = 8, y = 8}: {x = Int32, y = Int32}), p0 :: Nil);
+        let inside  = MapSnapshot.moduleOfCellIn(({x = 7, y = 7}: {x = Int32, y = Int32}), p0 :: Nil);
+        let outside = MapSnapshot.moduleOfCellIn(({x = 8, y = 8}: {x = Int32, y = Int32}), p0 :: Nil);
         Assert.assertEq(expected = (Some(0), None), (inside, outside))
 
     /// 部屋（idx 0）と通路（idx 2）が重なる領域では idx 順で先勝ち = 部屋が勝つ。
@@ -37,7 +37,7 @@ mod TestMapScene {
         let p1 = MapScene.placement(1, 10, 0, 8, 8);
         let p2 = MapScene.placement(2, 6, 2, 6, 4);   // 部屋 0 と通路が overlap
         let placements = p0 :: p1 :: p2 :: Nil;
-        let result = MapScene.moduleOfCellIn(({x = 7, y = 3}: {x = Int32, y = Int32}), placements);
+        let result = MapSnapshot.moduleOfCellIn(({x = 7, y = 3}: {x = Int32, y = Int32}), placements);
         Assert.assertEq(expected = Some(0), result)
 
     /// 通路だけが含むセルは通路の idx を返す（部屋に入っていない）。
@@ -47,13 +47,13 @@ mod TestMapScene {
         let p1 = MapScene.placement(1, 10, 0, 8, 8);
         let p2 = MapScene.placement(2, 6, 2, 6, 4);   // (8..10, 2..6) は p2 のみ
         let placements = p0 :: p1 :: p2 :: Nil;
-        let result = MapScene.moduleOfCellIn(({x = 9, y = 4}: {x = Int32, y = Int32}), placements);
+        let result = MapSnapshot.moduleOfCellIn(({x = 9, y = 4}: {x = Int32, y = Int32}), placements);
         Assert.assertEq(expected = Some(2), result)
 
     /// 空リスト → 常に None
     @Test
     def testModuleOfCellEmpty(): Unit \ Assert =
-        let result = MapScene.moduleOfCellIn(({x = 0, y = 0}: {x = Int32, y = Int32}), Nil);
+        let result = MapSnapshot.moduleOfCellIn(({x = 0, y = 0}: {x = Int32, y = Int32}), Nil);
         Assert.assertEq(expected = None, result)
 
     // ========================================================================
@@ -104,10 +104,10 @@ mod TestMapScene {
             wallCells = Set#{(2, 1)}, mapGlobal = {x = 0.0, y = 0.0}, placements = Nil};
         Assert.assertEq(
             expected = (true, false, true, false),
-            (MapScene.isWall({x = 2, y = 1}, m),     // 壁セル
-             MapScene.isFloor({x = 2, y = 1}, m),    // 壁なので床でない
-             MapScene.isFloor({x = 0, y = 0}, m),    // 範囲内の床
-             MapScene.isFloor({x = 5, y = 0}, m)))   // x=5 は size 5 の外 → 床でない
+            (MapSnapshot.isWall({x = 2, y = 1}, m),     // 壁セル
+             MapSnapshot.isFloor({x = 2, y = 1}, m),    // 壁なので床でない
+             MapSnapshot.isFloor({x = 0, y = 0}, m),    // 範囲内の床
+             MapSnapshot.isFloor({x = 5, y = 0}, m)))   // x=5 は size 5 の外 → 床でない
 
     /// mapToLocal: tileSize 26 のセル中心。(1,1) → (1*26+13, 1*26+13) = (39, 39)。
     @Test
@@ -115,7 +115,7 @@ mod TestMapScene {
         let m: MapSnapshot = {tileSize = 26.0,
             usedRect = {position = {x = 0, y = 0}, size = ({x = 5, y = 5}: {x = Int32, y = Int32})},
             wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = Nil};
-        let p = MapScene.mapToLocal({x = 1, y = 1}, m);
+        let p = MapSnapshot.mapToLocal({x = 1, y = 1}, m);
         Assert.assertEq(expected = (39.0, 39.0), (p#x, p#y))
 
     /// gridToWorld: mapToLocal に mapGlobal を加算する。mapGlobal=(10,20) で (1,1) → (49, 59)。
@@ -124,7 +124,7 @@ mod TestMapScene {
         let m: MapSnapshot = {tileSize = 26.0,
             usedRect = {position = {x = 0, y = 0}, size = ({x = 5, y = 5}: {x = Int32, y = Int32})},
             wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 10.0, y = 20.0}, placements = Nil};
-        let p = MapScene.gridToWorld({x = 1, y = 1}, m);
+        let p = MapSnapshot.gridToWorld({x = 1, y = 1}, m);
         Assert.assertEq(expected = (49.0, 59.0), (p#x, p#y))   // (39+10, 39+20)
 
     /// singleRoom: 全床 5×3 が単一モジュール 0。範囲外は None。
@@ -133,9 +133,9 @@ mod TestMapScene {
         let ps = MapScene.singleRoom(5, 3);
         Assert.assertEq(
             expected = (Some(0), Some(0), None),
-            (MapScene.moduleOfCellIn({x = 0, y = 0}, ps),
-             MapScene.moduleOfCellIn({x = 4, y = 2}, ps),
-             MapScene.moduleOfCellIn({x = 5, y = 0}, ps)))   // 範囲外
+            (MapSnapshot.moduleOfCellIn({x = 0, y = 0}, ps),
+             MapSnapshot.moduleOfCellIn({x = 4, y = 2}, ps),
+             MapSnapshot.moduleOfCellIn({x = 5, y = 0}, ps)))   // 範囲外
 
     /// twoRoom: 10×5 を縦半分。左 (x<5)=module0、右 (x>=5)=module1（half=5 の境界）。
     @Test
@@ -143,6 +143,6 @@ mod TestMapScene {
         let ps = MapScene.twoRoom(10, 5);
         Assert.assertEq(
             expected = (Some(0), Some(1)),
-            (MapScene.moduleOfCellIn({x = 4, y = 2}, ps),    // 左半分
-             MapScene.moduleOfCellIn({x = 5, y = 2}, ps)))   // 右半分
+            (MapSnapshot.moduleOfCellIn({x = 4, y = 2}, ps),    // 左半分
+             MapSnapshot.moduleOfCellIn({x = 5, y = 2}, ps)))   // 右半分
 }

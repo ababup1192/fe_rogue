@@ -176,7 +176,7 @@ mod ItemScene {
                     scene: Scene[NodeTag]): Scene[NodeTag] =
         let sprite0 = spriteOf(item);
         // セル中心 + sprite#offset で sheet padding を補正した位置に置く
-        let center = MapScene.cellCenter(cell);
+        let center = MapSnapshot.cellCenter(cell);
         let pos: Vec2.Vec2 = {
             x = center#x + sprite0#offset#x,
             y = center#y + sprite0#offset#y

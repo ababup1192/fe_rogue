@@ -84,7 +84,7 @@ mod StairsScene {
     /// `target` セルに階段を配置する純粋なマーク操作（位置更新 + 可視化）。
     /// `placeRandom` の内部実装。テストからも床セルを固定して配置確認に使う。
     pub def placeAt(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let world = MapScene.cellCenter(target);
+        let world = MapSnapshot.cellCenter(target);
         scene
             |> Scene.setGlobalPositionAt(stairsPath(), world)
             |> mapStairs((marker, _) ->

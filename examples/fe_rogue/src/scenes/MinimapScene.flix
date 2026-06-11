@@ -205,7 +205,7 @@ mod MinimapScene {
         match StairsScene.getPos(scene) {
             case None       => false
             case Some(cell) =>
-                match MapScene.moduleOfCellIn(cell, placements) {
+                match MapSnapshot.moduleOfCellIn(cell, placements) {
                     case Some(idx) => Set.memberOf(idx, visited)
                     case None      => false
                 }
@@ -263,7 +263,7 @@ mod MinimapScene {
     def inVisitedRoom(cell: {x = Int32, y = Int32},
                        placements: List[DungeonComposer.ModulePlacement],
                        roomCount: Int32, visited: Set[Int32]): Bool =
-        match MapScene.moduleOfCellIn(cell, placements) {
+        match MapSnapshot.moduleOfCellIn(cell, placements) {
             case Some(idx) => idx < roomCount and Set.memberOf(idx, visited)
             case None      => false
         }
@@ -345,7 +345,7 @@ mod MinimapScene {
                               placements: List[DungeonComposer.ModulePlacement]): Set[Int32] =
         units
             |> List.filter(d -> not d#hidden)
-            |> List.filterMap(d -> MapScene.moduleOfCellIn(d#gridPos, placements))
+            |> List.filterMap(d -> MapSnapshot.moduleOfCellIn(d#gridPos, placements))
             |> List.toSet
 
     /// 既存の訪問記憶に今フレーム分を足す（= 記憶。部屋を離れても残る）。

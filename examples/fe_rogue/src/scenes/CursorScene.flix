@@ -118,7 +118,7 @@ mod CursorScene {
     pub def add(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let initial = firstPlayerPos(scene);
-        let pos = MapScene.cellCenter(initial);
+        let pos = MapSnapshot.cellCenter(initial);
         let data: Data = {
             gridPos            = initial,
             lastHoveredEnemyId = None,
@@ -270,8 +270,8 @@ mod CursorScene {
     def moveStep(target: {x = Int32, y = Int32}, marker: Marker2D, data: Data,
                   slideDuration: Duration.Duration):
             (Marker2D, Data) \ Tween.Scheduler =
-        let startWorld = MapScene.cellCenter(data#gridPos);
-        let targetWorld = MapScene.cellCenter(target);
+        let startWorld = MapSnapshot.cellCenter(data#gridPos);
+        let targetWorld = MapSnapshot.cellCenter(target);
         Tween.tweenPosition(cursorPath(), startWorld, targetWorld, slideDuration);
         (marker, {gridPos = target | data})
 
@@ -610,7 +610,7 @@ mod CursorScene {
     /// hoveredEnemyId と hold 状態を初期化する。`snapToPlayer` の汎用版。
     pub def snapToCell(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler} =
-        let world = MapScene.cellCenter(target);
+        let world = MapSnapshot.cellCenter(target);
         Tween.Scheduler.cancel(cursorPath());
         AnimationPlayer.Scheduler.stop(cursorPath());
         let snapped = Scene.setGlobalPositionAt(cursorPath(), world, scene);

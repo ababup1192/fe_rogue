@@ -242,7 +242,7 @@ mod EnemyScene {
     /// 1 体ぶんの Marker2D + 子 Sprite2D を scene に追加する。
     /// ステータス・テクスチャ・フレームは `sp#resource`（UnitResource）から取る。
     def addOneEnemy(sp: Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let pos = MapScene.cellCenter(sp#gridPos);
+        let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
         let data: Data = {
@@ -380,7 +380,7 @@ mod EnemyScene {
                     map: MapSnapshot,
                     scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
         let startWorld  = Scene.globalPositionAt(enemyPath(id), scene);
-        let targetWorld = MapScene.gridToWorld(target, map);
+        let targetWorld = MapSnapshot.gridToWorld(target, map);
         Tween.tweenPosition(enemyPath(id), startWorld, targetWorld, slideDuration());
         // flipForFacing 付き (= 左向き絵) の敵は左右移動で水平反転する。
         let flipped = match get(id, scene) {
@@ -411,7 +411,7 @@ mod EnemyScene {
     /// 同時に target に揃える。`PlayerScene.snapTo` と同じ流儀。
     pub def snapTo(id: Int32, target: {x = Int32, y = Int32},
                     scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
-        let world = MapScene.cellCenter(target);
+        let world = MapSnapshot.cellCenter(target);
         Tween.Scheduler.cancel(enemyPath(id));
         scene
             |> Scene.setGlobalPositionAt(enemyPath(id), world)

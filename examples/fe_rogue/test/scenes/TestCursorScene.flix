@@ -31,7 +31,7 @@ mod TestCursorScene {
     /// JSON ロードを介さず Marker2D を直接構築する（PlayerScene.playerPath は
     /// World 配下を指すため、ここでも World Marker2D を挟む）。
     def sceneWithPlayer(gridPos: {x = Int32, y = Int32}): Scene[NodeTag] =
-        let pos = MapScene.cellCenter(gridPos);
+        let pos = MapSnapshot.cellCenter(gridPos);
         let marker = Marker2D.make(pos);
         let world = Marker2D.make(Vec2.zero())
             |> CanvasItem.setYSortEnabled(true);
@@ -76,7 +76,7 @@ mod TestCursorScene {
         let world = Marker2D.make(Vec2.zero())
             |> CanvasItem.setYSortEnabled(true);
         let mk = (id, pos, waited) ->
-            EngineNode.Marker2DWithState(Marker2D.make(MapScene.cellCenter(pos)),
+            EngineNode.Marker2DWithState(Marker2D.make(MapSnapshot.cellCenter(pos)),
                 NodeTag.Player({
                     id                = id,
                     gridPos           = pos,
@@ -233,7 +233,7 @@ mod TestCursorScene {
     def cursorSceneAt(gridPos: {x = Int32, y = Int32},
                        holdDir: Option[{x = Int32, y = Int32}],
                        holdSteps: Int32): Scene[NodeTag] =
-        let marker = Marker2D.make(MapScene.cellCenter(gridPos));
+        let marker = Marker2D.make(MapSnapshot.cellCenter(gridPos));
         let data: CursorScene.Data = {
             gridPos            = gridPos,
             lastHoveredEnemyId = None,
@@ -415,7 +415,7 @@ mod TestCursorScene {
             |> Scene.addNode(MapScene.worldName(),
                 EngineNode.Marker2DWithState(world, NodeTag.NoTag));
         List.foldLeft((acc, data) -> {
-            let marker = Marker2D.make(MapScene.cellCenter(data#gridPos));
+            let marker = Marker2D.make(MapSnapshot.cellCenter(data#gridPos));
             Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(data#id),
                 EngineNode.Marker2DWithState(marker, NodeTag.Player(data)), acc)
         }, withWorld, party)

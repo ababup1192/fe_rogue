@@ -45,7 +45,7 @@ mod UnitHPBarScene {
 
     // ─── サイズ・位置 ─────────────────────────────────────────
     /// バー幅 = 1 マス × 0.9（最大 HP 非依存）。
-    def barWidthPx(): Float64 = MapScene.tileSize() * 0.9
+    def barWidthPx(): Float64 = MapSnapshot.tileSize() * 0.9
     /// バー高さ（調整可）。
     def barHeightPx(): Float64 = 5.0
     def borderPx(): Float64 = 1.0

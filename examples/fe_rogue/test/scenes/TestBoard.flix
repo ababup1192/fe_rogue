@@ -335,7 +335,7 @@ mod TestBoard {
     @Test
     def testDistanceFieldDetourGreaterThanManhattan(): Unit \ Assert =
         let map   = floorSnapshotWithWall(3, 3, src(1, 1));
-        let field = Board.distanceField(c -> MapScene.isFloor(c, map), src(0, 1) :: Nil, 64);
+        let field = Board.distanceField(c -> MapSnapshot.isFloor(c, map), src(0, 1) :: Nil, 64);
         Assert.assertEq(expected = (0, 4),
             (Board.fieldDist(field, src(0, 1)), Board.fieldDist(field, src(2, 1))))
 
@@ -344,7 +344,7 @@ mod TestBoard {
     @Test
     def testStepDownhillDescends(): Unit \ Assert =
         let map   = floorSnapshotWithWall(3, 3, src(1, 1));
-        let field = Board.distanceField(c -> MapScene.isFloor(c, map), src(0, 1) :: Nil, 64);
+        let field = Board.distanceField(c -> MapSnapshot.isFloor(c, map), src(0, 1) :: Nil, 64);
         let next  = Board.stepDownhill(field, src(2, 1), _ -> true);
         Assert.assertEq(expected = Some(3),
             Option.map(c -> Board.fieldDist(field, c), next))
@@ -353,7 +353,7 @@ mod TestBoard {
     @Test
     def testStepDownhillTowardSource(): Unit \ Assert =
         let map   = emptySnapshot(5, 1);
-        let field = Board.distanceField(c -> MapScene.isFloor(c, map), src(0, 0) :: Nil, 64);
+        let field = Board.distanceField(c -> MapSnapshot.isFloor(c, map), src(0, 0) :: Nil, 64);
         Assert.assertEq(expected = (true, 3, 0),
             unpackOption(Board.stepDownhill(field, src(4, 0), _ -> true)))
 
@@ -362,7 +362,7 @@ mod TestBoard {
     @Test
     def testDistanceFieldDisconnectedIsInfinite(): Unit \ Assert =
         let map   = floorSnapshotWithWall(3, 1, src(1, 0));
-        let field = Board.distanceField(c -> MapScene.isFloor(c, map), src(0, 0) :: Nil, 64);
+        let field = Board.distanceField(c -> MapSnapshot.isFloor(c, map), src(0, 0) :: Nil, 64);
         Assert.assertEq(expected = (0, Board.infDist()),
             (Board.fieldDist(field, src(0, 0)), Board.fieldDist(field, src(2, 0))))
 
@@ -370,7 +370,7 @@ mod TestBoard {
     @Test
     def testStepDownhillNoneAtSource(): Unit \ Assert =
         let map   = emptySnapshot(3, 1);
-        let field = Board.distanceField(c -> MapScene.isFloor(c, map), src(0, 0) :: Nil, 64);
+        let field = Board.distanceField(c -> MapSnapshot.isFloor(c, map), src(0, 0) :: Nil, 64);
         Assert.assertEq(expected = true,
             Option.isEmpty(Board.stepDownhill(field, src(0, 0), _ -> true)))
 }

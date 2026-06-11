@@ -119,7 +119,7 @@ mod FogScene {
     def holeFor(cell: {x = Int32, y = Int32},
                  placements: List[DungeonComposer.ModulePlacement],
                  roomCount: Int32, torch: Bool): Option[GridRect] =
-        match MapScene.moduleOfCellIn(cell, placements) {
+        match MapSnapshot.moduleOfCellIn(cell, placements) {
             case None    => if (torch) Some(torchRect(cell)) else None
             case Some(m) =>
                 if (torch and m >= roomCount) Some(torchRect(cell))
@@ -181,7 +181,7 @@ mod FogScene {
 
     /// プール i の ColorRect を矩形 r に合わせて配置・表示する。
     def setPoolRect(i: Int32, r: GridRect, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let s = MapScene.tileSize();
+        let s = MapSnapshot.tileSize();
         let posV  = Vec2i.toVec2(({x = r#x0, y = r#y0}: {x = Int32, y = Int32}));
         let sizeV = Vec2i.toVec2(({x = r#x1 - r#x0, y = r#y1 - r#y0}: {x = Int32, y = Int32}));
         let pos:  Vec2.Vec2 = {x = posV#x * s, y = posV#y * s};

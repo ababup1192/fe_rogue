@@ -389,7 +389,7 @@ mod PlayerScene {
     /// pub: `PlayerScene.add` の party 追加ループから呼ばれる本体内部ロジック。
     /// テストでも catalog からの Spawn 構築 → addOnePlayer の本体経路を流用する。
     pub def addOnePlayer(sp: Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let pos = MapScene.cellCenter(sp#gridPos);
+        let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
         let data: Data = {
@@ -449,7 +449,7 @@ mod PlayerScene {
                     marker: Marker2D, data: Data, slide: Duration.Duration,
                     scene: Scene[NodeTag]): (Marker2D, Data)
                     \ Tween.Scheduler =
-        let targetWorld = MapScene.gridToWorld(target, map);
+        let targetWorld = MapSnapshot.gridToWorld(target, map);
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
         Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slide);
         // 進行方向を facing に反映し、AnimatedSprite2D なら walk_<dir> 再生 (副作用)。
@@ -470,7 +470,7 @@ mod PlayerScene {
                         map: MapSnapshot, slide: Duration.Duration,
                         scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
-        let targetWorld = MapScene.gridToWorld(target, map);
+        let targetWorld = MapSnapshot.gridToWorld(target, map);
         Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slide);
         // 直前のグリッド座標から target への 1 マス差で方向を決める。
         // 0 ベクトル (= 同じセル) の場合は既存の facing を保つ。
@@ -494,7 +494,7 @@ mod PlayerScene {
     /// 同時に target に揃える。PlayerMoving 中のキャンセルで「選択時の位置」に戻すのに使う。
     pub def snapTo(id: Int32, target: {x = Int32, y = Int32},
                     scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
-        let world = MapScene.cellCenter(target);
+        let world = MapSnapshot.cellCenter(target);
         Tween.Scheduler.cancel(playerPath(id));
         scene
             |> Scene.setGlobalPositionAt(playerPath(id), world)

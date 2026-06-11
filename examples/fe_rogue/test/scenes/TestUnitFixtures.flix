@@ -472,4 +472,24 @@ mod TestUnitFixtures {
             withNoSelection(() ->
                 withMockPartyQuery(scene, () ->
                     withMockRosterQuery(scene, thunk))))
+
+    // ════════════════════════════════════════════════════════
+    // 純粋値フィクスチャ / タプル変換（複数ファイルで重複していたものを集約）
+    // ════════════════════════════════════════════════════════
+
+    /// 武器なし・全ステ 0 の戦闘ビュー。`combat` を見ない経路（canAttack / join 述語）用。
+    pub def noCombat(): Combat.CombatView =
+        {attack = 0, magicAttack = 0, defense = 0, magicDefense = 0,
+         skill = 0, speed = 0, luck = 0, hp = 0, weapon = None}
+
+    /// 射程・位置・HP・生存だけ指定して UnitView を組む（combat は空）。
+    /// 3 値だけ要るときは hp=10 / isDying=false / range=None を渡す。
+    pub def mkUnit(id: Int32, faction: Faction, pos: {x = Int32, y = Int32}, hp: Int32,
+                   isDying: Bool, range: Option[{min = Int32, max = Int32}]): UnitView =
+        {id = id, faction = faction, pos = pos, hp = hp, moveTiles = 4,
+         weaponRange = range, combat = noCombat(), isDying = isDying, hidden = false}
+
+    /// GridRect を 4-tuple `(x0, y0, x1, y1)` に整形（範囲を assertEq で比較するため）。
+    pub def rectT(r: GridRect): (Int32, Int32, Int32, Int32) =
+        (r#x0, r#y0, r#x1, r#y1)
 }

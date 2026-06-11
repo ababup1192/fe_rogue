@@ -357,7 +357,7 @@ mod TestMapIntegration {
     /// 指定グリッドに Player(0) を配置した scene を返す
     def placeAt(grid: {x = Int32, y = Int32}, snapshot: MapSnapshot): Scene[NodeTag] -> Scene[NodeTag] =
         scene -> {
-            let world = MapScene.mapToLocal(grid, snapshot);
+            let world = MapSnapshot.mapToLocal(grid, snapshot);
             scene
                 |> Scene.setGlobalPositionAt(PlayerScene.playerPath(0), world)
                 |> Scene.mapEngineNode(PlayerScene.playerPath(0), engineNode -> match engineNode {

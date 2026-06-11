@@ -15,7 +15,6 @@ mod TestMinimapScene {
     def unit(x: Int32, y: Int32, hidden: Bool): {gridPos = {x = Int32, y = Int32}, hidden = Bool} =
         {gridPos = ({x = x, y = y}: {x = Int32, y = Int32}), hidden = hidden}
 
-    def rectT(r: GridRect): (Int32, Int32, Int32, Int32) = (r#x0, r#y0, r#x1, r#y1)
 
     def vecT(v: Vec2.Vec2): (Float64, Float64) = (v#x, v#y)
 
@@ -54,7 +53,7 @@ mod TestMinimapScene {
     @Test
     def testTightRegionSingle(): Unit \ Assert =
         Assert.assertEq(expected = (-1, -1, 9, 9),
-            rectT(MinimapScene.tightRegion(MapScene.placement(0, 0, 0, 8, 8) :: Nil)))
+            TestUnitFixtures.rectT(MinimapScene.tightRegion(MapScene.placement(0, 0, 0, 8, 8) :: Nil)))
 
     /// 複数 module: 各 moduleRect の union。p0→(-1,-1,9,9), p1→(9,-1,16,4)。
     @Test
@@ -62,7 +61,7 @@ mod TestMinimapScene {
         let p0 = MapScene.placement(0, 0,  0, 8, 8);
         let p1 = MapScene.placement(1, 10, 0, 5, 3);
         Assert.assertEq(expected = (-1, -1, 16, 9),
-            rectT(MinimapScene.tightRegion(p0 :: p1 :: Nil)))
+            TestUnitFixtures.rectT(MinimapScene.tightRegion(p0 :: p1 :: Nil)))
 
     // ── fitTransform + mapCell ───────────────────────────────
 
@@ -131,7 +130,7 @@ mod TestMinimapScene {
     def testBoundsOfUnion(): Unit \ Assert =
         let rs = ({x0 = 0, y0 = 0, x1 = 4, y1 = 4}: GridRect)
               :: ({x0 = 10, y0 = 2, x1 = 14, y1 = 8}: GridRect) :: Nil;
-        Assert.assertEq(expected = (0, 0, 14, 8), rectT(MinimapScene.boundsOf(rs)))
+        Assert.assertEq(expected = (0, 0, 14, 8), TestUnitFixtures.rectT(MinimapScene.boundsOf(rs)))
 
     /// content の左下が target の左下に来る（content がどこにあっても）。
     @Test
@@ -223,19 +222,19 @@ mod TestMinimapScene {
     def testUnionBandsMergesOverlap(): Unit \ Assert =
         let rs = gridR(0, 0, 4, 4) :: gridR(2, 0, 6, 4) :: Nil;
         Assert.assertEq(expected = (0, 0, 6, 4) :: Nil,
-            MinimapScene.unionBands(rs) |> List.map(rectT))
+            MinimapScene.unionBands(rs) |> List.map(TestUnitFixtures.rectT))
 
     /// 離れた 2 矩形 → そのまま 2 本（結合しない）。
     @Test
     def testUnionBandsKeepsSeparate(): Unit \ Assert =
         let rs = gridR(0, 0, 2, 2) :: gridR(4, 0, 6, 2) :: Nil;
         Assert.assertEq(expected = (0, 0, 2, 2) :: (4, 0, 6, 2) :: Nil,
-            MinimapScene.unionBands(rs) |> List.map(rectT))
+            MinimapScene.unionBands(rs) |> List.map(TestUnitFixtures.rectT))
 
     /// 部屋＋下に伸びる通路（L 字）→ 互いに重ならない 2 矩形に分割。
     @Test
     def testUnionBandsLShapeDisjoint(): Unit \ Assert =
         let rs = gridR(0, 0, 4, 4) :: gridR(1, 4, 3, 8) :: Nil;
         Assert.assertEq(expected = (0, 0, 4, 4) :: (1, 4, 3, 8) :: Nil,
-            MinimapScene.unionBands(rs) |> List.map(rectT))
+            MinimapScene.unionBands(rs) |> List.map(TestUnitFixtures.rectT))
 }

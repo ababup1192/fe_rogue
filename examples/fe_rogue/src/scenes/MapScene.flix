@@ -16,24 +16,9 @@
 ///
 /// 取得は `BoardQuery` effect の戻り値（Board）に含まれる形で行う。Board が盤面情報の
 /// 唯一の入口。
-// Flix 0.72.0 の test stage で cross-package type alias (Vec2.Vec2 / ModulePlacement 等) が
-// 解決されない不具合のため、`Vec2.Vec2` を `{x = Float64, y = Float64}` に、ModulePlacement を展開している。
-pub type alias MapSnapshot = {
-    tileSize    = Float64,
-    usedRect    = { position = {x = Int32, y = Int32}, size = {x = Int32, y = Int32} },
-    // 壁セル（グリッド座標）。範囲外は wallCells に含まれない＝非壁（engine と同義）。
-    // tuple は Order を持つので Set 化でき、床判定が Set.memberOf になる。
-    wallCells   = Set[(Int32, Int32)],
-    // gridToWorld 用の Map ノード global position（加算オフセット）。
-    mapGlobal   = {x = Float64, y = Float64},
-    // moduleOfCell の素。MapScene.Data#placements と同一構造（既に純粋）。
-    placements  = List[{idx = Int32,
-                        offset = {x = Int32, y = Int32},
-                        gridSize = {x = Int32, y = Int32},
-                        floorBoundsMin = {x = Int32, y = Int32},
-                        floorBoundsMaxEx = {x = Int32, y = Int32},
-                        interiorCells = List[{x = Int32, y = Int32}]}]
-}
+// 盤面地形の純粋データ型 `MapSnapshot`（root）と純クエリ層（isFloor/isWall/moduleOfCell/
+// gridToWorld 等）は src/game/MapSnapshot.flix へ移設した（盤面ロジック→View 逆流を断つため）。
+// MapScene には tilemap の view 操作と engine→snapshot 射影(snapshotOf)だけ残す。
 
 mod MapScene {
     import java.lang.{System => JSystem}
@@ -254,54 +239,6 @@ mod MapScene {
     pub def getRoomCount(scene: Scene[NodeTag]): Int32 =
         getMapData(scene)#roomCount
 
-    /// マップのセル幅（ピクセル）。n-format ダンジョン (`tileset_dungeon_green`, 26px) に合わせる。
-    /// グリッド ⇄ ピクセル変換が必要な全 Scene が参照する唯一の情報源。
-    /// キャラクタースプライト (16x16 / 20x17) は units.json の `sprite.scale` で
-    /// 各ユニットごとに拡大率を指定する（既定 1.5 で 16px→24px に拡大）。
-    /// （UI スプライト: cursor / range / flag / arrow は 1.625 倍にスケールしてセル枠に揃える）。
-    pub def tileSize(): Float64 = 26.0
-
-    /// グリッド座標 → セル中心ピクセル座標。`tileSize` で求めた正方形セルの中央点を返す。
-    /// MapScene の `mapToLocal` 慣習に揃えてあり、Marker2D / Sprite2D を「マスのど真ん中」に
-    /// 置きたい全 Scene（Player/Enemy/Cursor/Stairs/Range 系）が共通で使う。
-    pub def cellCenter(cell: {x = Int32, y = Int32}): Vec2.Vec2 =
-        let s = tileSize();
-        let v = Vec2i.toVec2(cell);
-        {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
-
-    // ────────────────────────────────────────────────────────
-    // (D2) MapSnapshot の純関数層（旧クロージャフィールドの置換）
-    //   地形は純粋データ（wallCells / placements / mapGlobal）で持ち、判定・変換は
-    //   ここで計算する。engine TileMapLayer.flix:130-154 の意味論に厳密一致させる。
-    // ────────────────────────────────────────────────────────
-
-    /// セルが壁か。範囲外セルは wallCells に含まれない＝非壁（engine getCellSourceId と同義）。
-    pub def isWall(c: {x = Int32, y = Int32}, m: MapSnapshot): Bool =
-        Set.memberOf((c#x, c#y), m#wallCells)
-
-    /// 範囲内 かつ 壁でない＝床（engine TileMapLayer.isFloor と同義）。
-    pub def isFloor(c: {x = Int32, y = Int32}, m: MapSnapshot): Bool =
-        inBounds(c, m) and not isWall(c, m)
-
-    /// usedRect 内か。getUsedRect は position=(0,0) 固定なので 0..size で判定（engine isInBounds と同義）。
-    def inBounds(c: {x = Int32, y = Int32}, m: MapSnapshot): Bool =
-        let sz = m#usedRect#size;
-        c#x >= 0 and c#x < sz#x and c#y >= 0 and c#y < sz#y
-
-    /// グリッド座標 → セル中心ローカル座標（cellCenter と同式・tileSize はデータから）。
-    pub def mapToLocal(c: {x = Int32, y = Int32}, m: MapSnapshot): {x = Float64, y = Float64} =
-        let s = m#tileSize;
-        let v = Vec2i.toVec2(c);
-        {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
-
-    /// グリッド座標 → world 座標（Map global 加算済み。呼び出し側が MapScene の位置を知らずに済む）。
-    pub def gridToWorld(c: {x = Int32, y = Int32}, m: MapSnapshot): {x = Float64, y = Float64} =
-        Vec2.add(m#mapGlobal, mapToLocal(c, m))
-
-    /// セル → 包含モジュール idx。既存 `moduleOfCellIn` を placements データに当てる。
-    pub def moduleOfCell(c: {x = Int32, y = Int32}, m: MapSnapshot): Option[Int32] =
-        moduleOfCellIn(c, m#placements)
-
     /// 本物の TileMapLayer / Map global / placements → MapSnapshot へ射影する唯一の変換点。
     /// engine 内部表現（collisionCells が Float64 グリッド座標）への依存はここ 1 関数に閉じる。
     pub def snapshotOf(layer: TileMapLayer,
@@ -356,22 +293,6 @@ mod MapScene {
           floorBoundsMin = ({x = half, y = 0}: {x = Int32, y = Int32}),
           floorBoundsMaxEx = ({x = w, y = h}: {x = Int32, y = Int32}),
           interiorCells = (Nil: List[{x = Int32, y = Int32}])}: DungeonComposer.ModulePlacement) :: Nil
-
-    /// `placements` を「先勝ち（idx 昇順）」で走査し、`coord` を含む最初のモジュール idx を返す。
-    /// modulePaths は「部屋を先・通路を後ろ」で並ぶため、部屋優先で逆引きできる。
-    /// bbox は `floorBoundsMin/MaxEx` ベース（n-format で gridSize より厳しい実効床範囲）。
-    /// MapSnapshot.moduleOfCell の実装。
-    pub def moduleOfCellIn(coord: {x = Int32, y = Int32},
-                            placements: List[DungeonComposer.ModulePlacement]): Option[Int32] =
-        List.findMap(p -> {
-            let minX = p#offset#x + p#floorBoundsMin#x;
-            let minY = p#offset#y + p#floorBoundsMin#y;
-            let maxX = p#offset#x + p#floorBoundsMaxEx#x;
-            let maxY = p#offset#y + p#floorBoundsMaxEx#y;
-            if (coord#x >= minX and coord#x < maxX
-                and coord#y >= minY and coord#y < maxY) Some(p#idx)
-            else None
-        }, placements)
 
     /// モジュール idx の床範囲(floorBounds)の中心セルを返す。未配置 idx なら None。
     /// `moduleOfCellIn` と同じ bbox(offset + floorBoundsMin/MaxEx、MaxEx は排他)で計算する。

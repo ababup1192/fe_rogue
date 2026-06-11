@@ -15,15 +15,11 @@ mod TestEncounter {
             placements   = Nil
         }
 
-    def noCombat(): Combat.CombatView =
-        {attack = 0, magicAttack = 0, defense = 0, magicDefense = 0,
-         skill = 0, speed = 0, luck = 0, hp = 0, weapon = None}
-
     def at(x: Int32, y: Int32): {x = Int32, y = Int32} = {x = x, y = y}
 
+    /// hp=10・武器なし・生存の最小 UnitView。実体は TestUnitFixtures.mkUnit（共有 builder）。
     def mkUnit(id: Int32, faction: Faction, pos: {x = Int32, y = Int32}): UnitView =
-        {id = id, faction = faction, pos = pos, hp = 10, moveTiles = 4,
-         weaponRange = None, combat = noCombat(), isDying = false, hidden = false}
+        TestUnitFixtures.mkUnit(id, faction, pos, 10, false, None)
 
     def encOf(units: List[UnitView]): Encounter =
         {board = {map = trivialMap(), pieces = Nil}, units = units}

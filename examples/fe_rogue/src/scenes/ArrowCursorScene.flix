@@ -134,7 +134,7 @@ mod ArrowCursorScene {
                                  direction: Staff.Direction,
                                  scene: Scene[NodeTag]): Scene[NodeTag] =
         let cell = cellOf(anchor, direction);
-        let world = MapScene.cellCenter(cell);
+        let world = MapSnapshot.cellCenter(cell);
         let rotation = rotationOf(direction);
         let nextData: Data = {anchor = anchor, direction = direction, gridPos = cell};
         scene

@@ -14,8 +14,6 @@ mod TestFogScene {
     def unit(x: Int32, y: Int32, hidden: Bool): {gridPos = {x = Int32, y = Int32}, hidden = Bool} =
         {gridPos = ({x = x, y = y}: {x = Int32, y = Int32}), hidden = hidden}
 
-    def rectT(r: {x0 = Int32, y0 = Int32, x1 = Int32, y1 = Int32}): (Int32, Int32, Int32, Int32) =
-        (r#x0, r#y0, r#x1, r#y1)
 
     // ── moduleRect ───────────────────────────────────────────
 
@@ -23,13 +21,13 @@ mod TestFogScene {
     @Test
     def testModuleRectAtOrigin(): Unit \ Assert =
         Assert.assertEq(expected = (-1, -1, 9, 9),
-            rectT(FogScene.moduleRect(MapScene.placement(0, 0, 0, 8, 8))))
+            TestUnitFixtures.rectT(FogScene.moduleRect(MapScene.placement(0, 0, 0, 8, 8))))
 
     /// offset(10,20)・床 5×3、edgePad=1 で grid (9,19)..(16,24)。
     @Test
     def testModuleRectWithOffset(): Unit \ Assert =
         Assert.assertEq(expected = (9, 19, 16, 24),
-            rectT(FogScene.moduleRect(MapScene.placement(2, 10, 20, 5, 3))))
+            TestUnitFixtures.rectT(FogScene.moduleRect(MapScene.placement(2, 10, 20, 5, 3))))
 
     // ── bandDecompose ────────────────────────────────────────
 
@@ -37,7 +35,7 @@ mod TestFogScene {
     @Test
     def testBandDecomposeNoHoles(): Unit \ Assert =
         let area = ({x0 = 0, y0 = 0, x1 = 10, y1 = 10}: {x0 = Int32, y0 = Int32, x1 = Int32, y1 = Int32});
-        let result = FogScene.bandDecompose(area, Nil) |> List.map(rectT);
+        let result = FogScene.bandDecompose(area, Nil) |> List.map(TestUnitFixtures.rectT);
         Assert.assertEq(expected = (0, 0, 10, 10) :: Nil, result)
 
     /// 中央の穴 (4,4)..(6,6) → 上/左/右/下の 4 矩形で補集合を覆う。
@@ -45,7 +43,7 @@ mod TestFogScene {
     def testBandDecomposeCenterHole(): Unit \ Assert =
         let area = ({x0 = 0, y0 = 0, x1 = 10, y1 = 10}: {x0 = Int32, y0 = Int32, x1 = Int32, y1 = Int32});
         let hole   = ({x0 = 4, y0 = 4, x1 = 6,  y1 = 6 }: {x0 = Int32, y0 = Int32, x1 = Int32, y1 = Int32});
-        let result = FogScene.bandDecompose(area, hole :: Nil) |> List.map(rectT);
+        let result = FogScene.bandDecompose(area, hole :: Nil) |> List.map(TestUnitFixtures.rectT);
         // バンド (0,4): 全幅 / (4,6): 左右 / (6,10): 全幅
         Assert.assertEq(
             expected = (0, 0, 10, 4) :: (0, 4, 4, 6) :: (6, 4, 10, 6) :: (0, 6, 10, 10) :: Nil,
@@ -54,7 +52,7 @@ mod TestFogScene {
     // ── holesFor ─────────────────────────────────────────────
 
     def holesT(rs: List[{x0 = Int32, y0 = Int32, x1 = Int32, y1 = Int32}]):
-            List[(Int32, Int32, Int32, Int32)] = List.map(rectT, rs)
+            List[(Int32, Int32, Int32, Int32)] = List.map(TestUnitFixtures.rectT, rs)
 
     /// 部屋(idx 0 < roomCount)にいる → 部屋全体（moduleRect）が穴。torch は無関係。
     @Test
