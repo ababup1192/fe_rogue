@@ -101,16 +101,7 @@ mod TestMapIntegration {
     /// 実 TileMapLayer をラップした MapSnapshot。
     /// Map ノードのワールド原点は (0,0) と仮定（gridToWorld == mapToLocal）。
     def realMapSnapshot(): MapSnapshot =
-        let layer = realTileMapLayer();
-        {
-            tileSize     = TileMapLayer.tileSize(layer),
-            usedRect     = TileMapLayer.getUsedRect(layer),
-            isWall       = c -> TileMapLayer.isWall(c, layer),
-            isFloor      = c -> TileMapLayer.isFloor(c, layer),
-            mapToLocal   = c -> TileMapLayer.mapToLocal(c, layer),
-            gridToWorld  = c -> TileMapLayer.mapToLocal(c, layer),
-            moduleOfCell = _ -> None
-        }
+        MapScene.snapshotOf(realTileMapLayer(), Vec2.zero(), Nil)
 
     /// 指定位置に Player(0) 駒だけがある盤面
     def realBoardWithPlayerAt(playerPos: {x = Int32, y = Int32}): Board =
@@ -366,7 +357,7 @@ mod TestMapIntegration {
     /// 指定グリッドに Player(0) を配置した scene を返す
     def placeAt(grid: {x = Int32, y = Int32}, snapshot: MapSnapshot): Scene[NodeTag] -> Scene[NodeTag] =
         scene -> {
-            let world = snapshot#mapToLocal(grid);
+            let world = MapScene.mapToLocal(grid, snapshot);
             scene
                 |> Scene.setGlobalPositionAt(PlayerScene.playerPath(0), world)
                 |> Scene.mapEngineNode(PlayerScene.playerPath(0), engineNode -> match engineNode {

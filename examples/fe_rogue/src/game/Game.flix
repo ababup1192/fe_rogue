@@ -112,9 +112,9 @@ instance Node[NodeTag] {
                 let phase = TurnPhase.State.get();
                 if (phase == TurnPhase.Phase.PlayerMoving
                     and SelectedPlayer.State.get()#id == Some(data#id))
-                    PlayerScene.physicsProcess(delta, node, path, scene)
+                    PlayerMovementScene.physicsStep(delta, node, path, scene)
                 else if (phase == TurnPhase.Phase.RogueMove and data#id == 0)
-                    PlayerScene.lordRoamProcess(delta, node, path, scene)
+                    PlayerMovementScene.roamStep(delta, node, path, scene)
                 else (node, scene)
             case EngineNode.Marker2DWithState(_, NodeTag.Cursor(_)) =>
                 // PlayerCursor / PlayerAttack の場合分けは CursorScene 内部に閉じている

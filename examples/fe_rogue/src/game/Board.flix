@@ -162,7 +162,7 @@ mod Board {
     /// 駒の占有は別途 `isOccupied` でチェックする（自分自身が source にいる
     /// ケースを呼び出し側が制御できるよう、ここでは地形のみ見る）。
     pub def isWalkable(board: Board, coord: {x = Int32, y = Int32}): Bool =
-        board#map#isFloor(coord)
+        MapScene.isFloor(coord, board#map)
 
     /// origin から dir 方向に 1 マス進む候補座標
     pub def stepTarget(origin: {x = Int32, y = Int32}, dir: {x = Int32, y = Int32}): {x = Int32, y = Int32} =

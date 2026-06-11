@@ -10,17 +10,7 @@
 /// 統合/手動確認に委ねる（`TestFogScene` と同方針）。
 mod TestMinimapScene {
 
-    /// TestFogScene と同じ placement 生成ヘルパー（gridSize 全体が床と仮定）。
-    def placement(idx: Int32, ox: Int32, oy: Int32, w: Int32, h: Int32):
-                  DungeonComposer.ModulePlacement =
-        {
-            idx              = idx,
-            offset           = ({x = ox, y = oy}: {x = Int32, y = Int32}),
-            gridSize         = ({x = w,  y = h }: {x = Int32, y = Int32}),
-            floorBoundsMin   = ({x = 0,  y = 0 }: {x = Int32, y = Int32}),
-            floorBoundsMaxEx = ({x = w,  y = h }: {x = Int32, y = Int32}),
-            interiorCells    = (Nil: List[{x = Int32, y = Int32}])
-        }
+    // ModulePlacement 生成は本番の MapScene.placement を使う（テスト間の重複定義を廃止）。
 
     def unit(x: Int32, y: Int32, hidden: Bool): {gridPos = {x = Int32, y = Int32}, hidden = Bool} =
         {gridPos = ({x = x, y = y}: {x = Int32, y = Int32}), hidden = hidden}
@@ -34,8 +24,8 @@ mod TestMinimapScene {
     /// 部屋(idx0)と通路(idx1)に居る非 hidden は捕捉、module 外(void)と hidden は除外。
     @Test
     def testVisitedThisFrame(): Unit \ Assert =
-        let p0 = placement(0, 0,  0, 8, 8);   // セル (0..8, 0..8)
-        let p1 = placement(1, 10, 0, 8, 8);   // セル (10..18, 0..8) 通路
+        let p0 = MapScene.placement(0, 0,  0, 8, 8);   // セル (0..8, 0..8)
+        let p1 = MapScene.placement(1, 10, 0, 8, 8);   // セル (10..18, 0..8) 通路
         let units = unit(3, 4, false)      // p0
                  :: unit(12, 4, false)     // p1
                  :: unit(100, 100, false)  // void → 無視
@@ -64,13 +54,13 @@ mod TestMinimapScene {
     @Test
     def testTightRegionSingle(): Unit \ Assert =
         Assert.assertEq(expected = (-1, -1, 9, 9),
-            rectT(MinimapScene.tightRegion(placement(0, 0, 0, 8, 8) :: Nil)))
+            rectT(MinimapScene.tightRegion(MapScene.placement(0, 0, 0, 8, 8) :: Nil)))
 
     /// 複数 module: 各 moduleRect の union。p0→(-1,-1,9,9), p1→(9,-1,16,4)。
     @Test
     def testTightRegionUnion(): Unit \ Assert =
-        let p0 = placement(0, 0,  0, 8, 8);
-        let p1 = placement(1, 10, 0, 5, 3);
+        let p0 = MapScene.placement(0, 0,  0, 8, 8);
+        let p1 = MapScene.placement(1, 10, 0, 5, 3);
         Assert.assertEq(expected = (-1, -1, 16, 9),
             rectT(MinimapScene.tightRegion(p0 :: p1 :: Nil)))
 
@@ -122,16 +112,16 @@ mod TestMinimapScene {
     /// 訪問 {0,1}・roomCount=1 → idx0=部屋, idx1=通路。
     @Test
     def testVisitedRectsRoomAndCorridor(): Unit \ Assert =
-        let p0 = placement(0, 0,  0, 8, 8);
-        let p1 = placement(1, 10, 0, 8, 8);
+        let p0 = MapScene.placement(0, 0,  0, 8, 8);
+        let p1 = MapScene.placement(1, 10, 0, 8, 8);
         Assert.assertEq(expected = (0, true) :: (1, false) :: Nil,
             rectsT(MinimapScene.visitedRects(Set#{0, 1}, p0 :: p1 :: Nil, 1)))
 
     /// 未訪問の module は出ない（visited に無い idx は除外）。
     @Test
     def testVisitedRectsFiltersUnvisited(): Unit \ Assert =
-        let p0 = placement(0, 0,  0, 8, 8);
-        let p1 = placement(1, 10, 0, 8, 8);
+        let p0 = MapScene.placement(0, 0,  0, 8, 8);
+        let p1 = MapScene.placement(1, 10, 0, 8, 8);
         Assert.assertEq(expected = (0, true) :: Nil,
             rectsT(MinimapScene.visitedRects(Set#{0}, p0 :: p1 :: Nil, 1)))
 
@@ -201,25 +191,25 @@ mod TestMinimapScene {
     /// 訪問済み部屋に隣接する未訪問通路だけを出口ヒントとして出す。遠い通路は出さない。
     @Test
     def testCorridorHintsAdjacentOnly(): Unit \ Assert =
-        let p0 = placement(0, 0,   0, 8, 8);  // 部屋(訪問済み)
-        let p1 = placement(1, 8,   0, 4, 8);  // p0 に隣接する通路 → ヒント
-        let p2 = placement(2, 100, 0, 4, 8);  // 遠い通路 → 出さない
+        let p0 = MapScene.placement(0, 0,   0, 8, 8);  // 部屋(訪問済み)
+        let p1 = MapScene.placement(1, 8,   0, 4, 8);  // p0 に隣接する通路 → ヒント
+        let p2 = MapScene.placement(2, 100, 0, 4, 8);  // 遠い通路 → 出さない
         Assert.assertEq(expected = Set#{1},
             MinimapScene.corridorHints(Set#{0}, p0 :: p1 :: p2 :: Nil, 1))
 
     /// 既に訪問済みの通路はヒントに含めない（重複しない）。
     @Test
     def testCorridorHintsExcludesVisited(): Unit \ Assert =
-        let p0 = placement(0, 0, 0, 8, 8);
-        let p1 = placement(1, 8, 0, 4, 8);
+        let p0 = MapScene.placement(0, 0, 0, 8, 8);
+        let p1 = MapScene.placement(1, 8, 0, 4, 8);
         Assert.assertEq(expected = (Set.empty(): Set[Int32]),
             MinimapScene.corridorHints(Set#{0, 1}, p0 :: p1 :: Nil, 1))
 
     /// 訪問済みが無ければヒントも無い。
     @Test
     def testCorridorHintsEmptyWhenNothingVisited(): Unit \ Assert =
-        let p0 = placement(0, 0, 0, 8, 8);
-        let p1 = placement(1, 8, 0, 4, 8);
+        let p0 = MapScene.placement(0, 0, 0, 8, 8);
+        let p1 = MapScene.placement(1, 8, 0, 4, 8);
         Assert.assertEq(expected = (Set.empty(): Set[Int32]),
             MinimapScene.corridorHints(Set.empty(), p0 :: p1 :: Nil, 1))
 

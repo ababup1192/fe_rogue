@@ -219,7 +219,7 @@ mod EnemyAI {
     /// 敵が索敵範囲（自分の移動到達範囲 = 赤マス）内にプレイヤーを捉えているか。
     def anyPlayerWithinReach(board: Board, enemyPos: {x = Int32, y = Int32},
                               moveTiles: Int32): Bool =
-        let reach = Board.reachableCells(board#map#isFloor, enemyPos, moveTiles);
+        let reach = Board.reachableCells(c -> MapScene.isFloor(c, board#map), enemyPos, moveTiles);
         Board.playerPositions(board)
             |> List.exists(entry -> {
                 let (_, pos) = entry;
@@ -228,13 +228,13 @@ mod EnemyAI {
 
     /// 敵セルが「いずれかのプレイヤー」と同じモジュール idx に属するか。
     def sameModuleAsAnyPlayer(board: Board, enemyPos: {x = Int32, y = Int32}): Bool =
-        match board#map#moduleOfCell(enemyPos) {
+        match MapScene.moduleOfCell(enemyPos, board#map) {
             case None    => false
             case Some(a) =>
                 Board.playerPositions(board)
                     |> List.exists(p -> {
                         let (_, pos) = p;
-                        match board#map#moduleOfCell(pos) {
+                        match MapScene.moduleOfCell(pos, board#map) {
                             case Some(b) => a == b
                             case None    => false
                         }

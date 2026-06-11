@@ -54,15 +54,12 @@ mod TestBattlePanelScene {
 
     /// 5x5 床のみの MapSnapshot（Board 構築用、本テストでは isFloor / isWall は使わない）
     def emptySnapshot(): MapSnapshot =
-        let inB = c -> c#x >= 0 and c#x < 5 and c#y >= 0 and c#y < 5;
         {
             tileSize     = 16.0,
-            usedRect     = {position = Vec2i.zero(), size = ({x = 5, y = 5}: {x = Int32, y = Int32})},
-            isWall       = c -> not inB(c),
-            isFloor      = c -> inB(c),
-            mapToLocal   = _ -> Vec2.zero(),
-            gridToWorld  = _ -> Vec2.zero(),
-            moduleOfCell = _ -> None
+            usedRect     = {position = {x = 0, y = 0}, size = ({x = 5, y = 5}: {x = Int32, y = Int32})},
+            wallCells    = (Set#{}: Set[(Int32, Int32)]),
+            mapGlobal    = {x = 0.0, y = 0.0},
+            placements   = Nil
         }
 
     // ════════════════════════════════════════════════════════

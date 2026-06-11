@@ -25,12 +25,10 @@ mod TestPlayerScene {
     def testSnapshot(): MapSnapshot =
         {
             tileSize     = testTileSize(),
-            usedRect     = {position = Vec2i.zero(), size = ({x = 13, y = 13}: {x = Int32, y = Int32})},
-            isWall       = _ -> false,
-            isFloor      = _ -> true,
-            mapToLocal   = c -> testGridToWorld(c),
-            gridToWorld  = c -> testGridToWorld(c),
-            moduleOfCell = _ -> None
+            usedRect     = {position = {x = 0, y = 0}, size = ({x = 13, y = 13}: {x = Int32, y = Int32})},
+            wallCells    = (Set#{}: Set[(Int32, Int32)]),
+            mapGlobal    = {x = 0.0, y = 0.0},
+            placements   = Nil
         }
 
     /// テスト用初期グリッド（PlayerScene.add の経由を回避）。
@@ -432,12 +430,13 @@ mod TestPlayerScene {
     def singleFloorSnapshot(origin: {x = Int32, y = Int32}): MapSnapshot =
         {
             tileSize     = testTileSize(),
-            usedRect     = {position = Vec2i.zero(), size = ({x = 13, y = 13}: {x = Int32, y = Int32})},
-            isWall       = c -> not (c#x == origin#x and c#y == origin#y),
-            isFloor      = c -> c#x == origin#x and c#y == origin#y,
-            mapToLocal   = c -> testGridToWorld(c),
-            gridToWorld  = c -> testGridToWorld(c),
-            moduleOfCell = _ -> None
+            usedRect     = {position = {x = 0, y = 0}, size = ({x = 13, y = 13}: {x = Int32, y = Int32})},
+            wallCells    = (List.range(0, 13) |> List.flatMap(y ->
+                                List.range(0, 13) |> List.filterMap(x ->
+                                    if (x == origin#x and y == origin#y) None else Some((x, y))))
+                            |> List.toSet),
+            mapGlobal    = {x = 0.0, y = 0.0},
+            placements   = Nil
         }
 
     /// 合流で次に動かす 1 体は、ロードに最も近い味方。

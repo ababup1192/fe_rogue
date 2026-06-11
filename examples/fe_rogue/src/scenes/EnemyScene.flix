@@ -380,7 +380,7 @@ mod EnemyScene {
                     map: MapSnapshot,
                     scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
         let startWorld  = Scene.globalPositionAt(enemyPath(id), scene);
-        let targetWorld = map#gridToWorld(target);
+        let targetWorld = MapScene.gridToWorld(target, map);
         Tween.tweenPosition(enemyPath(id), startWorld, targetWorld, slideDuration());
         // flipForFacing 付き (= 左向き絵) の敵は左右移動で水平反転する。
         let flipped = match get(id, scene) {

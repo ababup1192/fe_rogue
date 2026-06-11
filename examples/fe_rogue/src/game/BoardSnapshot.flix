@@ -27,15 +27,8 @@ mod BoardSnapshot {
         let layer       = MapScene.getMapLayer(scene);
         let mapGlobal   = Scene.globalPositionAt(MapScene.mapPath(), scene);
         let placements  = MapScene.getPlacements(scene);
-        let map: MapSnapshot = {
-            tileSize     = TileMapLayer.tileSize(layer),
-            usedRect     = TileMapLayer.getUsedRect(layer),
-            isWall       = c -> TileMapLayer.isWall(c, layer),
-            isFloor      = c -> TileMapLayer.isFloor(c, layer),
-            mapToLocal   = c -> TileMapLayer.mapToLocal(c, layer),
-            gridToWorld  = c -> Vec2.add(mapGlobal, TileMapLayer.mapToLocal(c, layer)),
-            moduleOfCell = c -> MapScene.moduleOfCellIn(c, placements)
-        };
+        // engine 値 → 純粋データの MapSnapshot へ射影（唯一の変換点）。
+        let map = MapScene.snapshotOf(layer, mapGlobal, placements);
         let playerPieces = players
             |> List.filter(d -> not d#hidden)
             |> List.map(d -> (Piece.Player(d#id), d#gridPos));

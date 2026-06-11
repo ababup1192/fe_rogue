@@ -9,12 +9,10 @@ mod TestEncounter {
     def trivialMap(): MapSnapshot =
         {
             tileSize     = 16.0,
-            usedRect     = {position = Vec2i.zero(), size = ({x = 8, y = 8}: {x = Int32, y = Int32})},
-            isWall       = _ -> false,
-            isFloor      = _ -> true,
-            mapToLocal   = c -> Vec2i.toVec2(c),
-            gridToWorld  = c -> Vec2i.toVec2(c),
-            moduleOfCell = _ -> None
+            usedRect     = {position = {x = 0, y = 0}, size = ({x = 8, y = 8}: {x = Int32, y = Int32})},
+            wallCells    = (Set#{}: Set[(Int32, Int32)]),
+            mapGlobal    = {x = 0.0, y = 0.0},
+            placements   = Nil
         }
 
     def noCombat(): Combat.CombatView =

@@ -15,37 +15,24 @@ mod TestBoard {
     /// テスト用 tileSize（実機と同じ 16px 正方形）
     def testTileSize(): Float64 = 16.0
 
-    /// グリッド座標 → タイル中心ピクセル座標
-    def testGridToWorld(c: {x = Int32, y = Int32}): Vec2.Vec2 =
-        let s = testTileSize();
-        let v = Vec2i.toVec2(c);
-        {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
-
     /// w×h サイズの盤面で、全マス床。範囲外は壁扱い。
     def emptySnapshot(w: Int32, h: Int32): MapSnapshot =
-        let inB = c -> c#x >= 0 and c#x < w and c#y >= 0 and c#y < h;
         {
             tileSize     = testTileSize(),
-            usedRect     = {position = Vec2i.zero(), size = ({x = w, y = h}: {x = Int32, y = Int32})},
-            isWall       = c -> not inB(c),
-            isFloor      = c -> inB(c),
-            mapToLocal   = c -> testGridToWorld(c),
-            gridToWorld  = c -> testGridToWorld(c),
-            moduleOfCell = _ -> None
+            usedRect     = {position = {x = 0, y = 0}, size = ({x = w, y = h}: {x = Int32, y = Int32})},
+            wallCells    = (Set#{}: Set[(Int32, Int32)]),
+            mapGlobal    = {x = 0.0, y = 0.0},
+            placements   = Nil
         }
 
     /// w×h サイズの盤面で、wall の 1 マスだけ壁、ほかは床。範囲外も壁扱い。
     def floorSnapshotWithWall(w: Int32, h: Int32, wall: {x = Int32, y = Int32}): MapSnapshot =
-        let inB = c -> c#x >= 0 and c#x < w and c#y >= 0 and c#y < h;
-        let isW = c -> c#x == wall#x and c#y == wall#y;
         {
             tileSize     = testTileSize(),
-            usedRect     = {position = Vec2i.zero(), size = ({x = w, y = h}: {x = Int32, y = Int32})},
-            isWall       = c -> not inB(c) or isW(c),
-            isFloor      = c -> inB(c) and not isW(c),
-            mapToLocal   = c -> testGridToWorld(c),
-            gridToWorld  = c -> testGridToWorld(c),
-            moduleOfCell = _ -> None
+            usedRect     = {position = {x = 0, y = 0}, size = ({x = w, y = h}: {x = Int32, y = Int32})},
+            wallCells    = Set#{(wall#x, wall#y)},
+            mapGlobal    = {x = 0.0, y = 0.0},
+            placements   = Nil
         }
 
     /// snapshot と Player 位置から Board を組む（id=0 単独パーティ）
@@ -348,7 +335,7 @@ mod TestBoard {
     @Test
     def testDistanceFieldDetourGreaterThanManhattan(): Unit \ Assert =
         let map   = floorSnapshotWithWall(3, 3, src(1, 1));
-        let field = Board.distanceField(map#isFloor, src(0, 1) :: Nil, 64);
+        let field = Board.distanceField(c -> MapScene.isFloor(c, map), src(0, 1) :: Nil, 64);
         Assert.assertEq(expected = (0, 4),
             (Board.fieldDist(field, src(0, 1)), Board.fieldDist(field, src(2, 1))))
 
@@ -357,7 +344,7 @@ mod TestBoard {
     @Test
     def testStepDownhillDescends(): Unit \ Assert =
         let map   = floorSnapshotWithWall(3, 3, src(1, 1));
-        let field = Board.distanceField(map#isFloor, src(0, 1) :: Nil, 64);
+        let field = Board.distanceField(c -> MapScene.isFloor(c, map), src(0, 1) :: Nil, 64);
         let next  = Board.stepDownhill(field, src(2, 1), _ -> true);
         Assert.assertEq(expected = Some(3),
             Option.map(c -> Board.fieldDist(field, c), next))
@@ -366,7 +353,7 @@ mod TestBoard {
     @Test
     def testStepDownhillTowardSource(): Unit \ Assert =
         let map   = emptySnapshot(5, 1);
-        let field = Board.distanceField(map#isFloor, src(0, 0) :: Nil, 64);
+        let field = Board.distanceField(c -> MapScene.isFloor(c, map), src(0, 0) :: Nil, 64);
         Assert.assertEq(expected = (true, 3, 0),
             unpackOption(Board.stepDownhill(field, src(4, 0), _ -> true)))
 
@@ -375,7 +362,7 @@ mod TestBoard {
     @Test
     def testDistanceFieldDisconnectedIsInfinite(): Unit \ Assert =
         let map   = floorSnapshotWithWall(3, 1, src(1, 0));
-        let field = Board.distanceField(map#isFloor, src(0, 0) :: Nil, 64);
+        let field = Board.distanceField(c -> MapScene.isFloor(c, map), src(0, 0) :: Nil, 64);
         Assert.assertEq(expected = (0, Board.infDist()),
             (Board.fieldDist(field, src(0, 0)), Board.fieldDist(field, src(2, 0))))
 
@@ -383,7 +370,7 @@ mod TestBoard {
     @Test
     def testStepDownhillNoneAtSource(): Unit \ Assert =
         let map   = emptySnapshot(3, 1);
-        let field = Board.distanceField(map#isFloor, src(0, 0) :: Nil, 64);
+        let field = Board.distanceField(c -> MapScene.isFloor(c, map), src(0, 0) :: Nil, 64);
         Assert.assertEq(expected = true,
             Option.isEmpty(Board.stepDownhill(field, src(0, 0), _ -> true)))
 }

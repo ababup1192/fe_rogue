@@ -8,27 +8,31 @@
 /// 衝突クエリが透過的に利用する（PlayerScene 等は内部実装を知らない）。
 ///
 /// 他シーンが「マップ 1 マスのピクセルサイズ」「セルが床か壁か」などを問い合わせる
-/// 際は `MapSnapshot` レコードを経由する。関数フィールドにフレーム時点の TileMapLayer と
-/// Map global を捕獲したクロージャが入り、何度呼んでも同じフレームの結果を返す。
+/// 際は `MapSnapshot` レコードを経由する。地形は**純粋データ**で持ち（壁セル集合・モジュール
+/// 配置・Map global）、床判定・座標変換・モジュール逆引きは `MapScene` の純関数
+/// （`isWall`/`isFloor`/`mapToLocal`/`gridToWorld`/`moduleOfCell`）で計算する。
+/// 旧版は関数フィールド（クロージャ）で持っていたが、テストが地形を literal で組めるよう
+/// 純粋データへ移した。本物の TileMapLayer からの射影は `MapScene.snapshotOf` 1 か所に閉じる。
 ///
 /// 取得は `BoardQuery` effect の戻り値（Board）に含まれる形で行う。Board が盤面情報の
 /// 唯一の入口。
-// Flix 0.72.0 の test stage で cross-package type alias (Vec2.Vec2 等) が
-// 解決されない不具合のため、`Vec2.Vec2` を `{x = Float64, y = Float64}` に展開している。
+// Flix 0.72.0 の test stage で cross-package type alias (Vec2.Vec2 / ModulePlacement 等) が
+// 解決されない不具合のため、`Vec2.Vec2` を `{x = Float64, y = Float64}` に、ModulePlacement を展開している。
 pub type alias MapSnapshot = {
     tileSize    = Float64,
     usedRect    = { position = {x = Int32, y = Int32}, size = {x = Int32, y = Int32} },
-    isWall      = {x = Int32, y = Int32} -> Bool,
-    isFloor     = {x = Int32, y = Int32} -> Bool,
-    mapToLocal  = {x = Int32, y = Int32} -> {x = Float64, y = Float64},
-    // gridToWorld: mapToLocal と違い Map の global position 加算済み
-    // （呼び出し側が MapScene の位置を知らずに済む）
-    gridToWorld  = {x = Int32, y = Int32} -> {x = Float64, y = Float64},
-    // moduleOfCell: ワールドグリッド座標 → 包含モジュール idx。
-    // 部屋優先で「先勝ち」（modulePaths の若い idx を返す）。
-    // どのモジュールにも含まれない場合（void 領域）は None。
-    // 「同じ部屋／通路にいる」検知やモジュール内セル列挙の起点に使う。
-    moduleOfCell = {x = Int32, y = Int32} -> Option[Int32]
+    // 壁セル（グリッド座標）。範囲外は wallCells に含まれない＝非壁（engine と同義）。
+    // tuple は Order を持つので Set 化でき、床判定が Set.memberOf になる。
+    wallCells   = Set[(Int32, Int32)],
+    // gridToWorld 用の Map ノード global position（加算オフセット）。
+    mapGlobal   = {x = Float64, y = Float64},
+    // moduleOfCell の素。MapScene.Data#placements と同一構造（既に純粋）。
+    placements  = List[{idx = Int32,
+                        offset = {x = Int32, y = Int32},
+                        gridSize = {x = Int32, y = Int32},
+                        floorBoundsMin = {x = Int32, y = Int32},
+                        floorBoundsMaxEx = {x = Int32, y = Int32},
+                        interiorCells = List[{x = Int32, y = Int32}]}]
 }
 
 mod MapScene {
@@ -174,19 +178,9 @@ mod MapScene {
         let mapData: Data = {
             anchorOffset = ({x = 0, y = 0}: {x = Int32, y = Int32}),
             spawnGrid    = safe,
-            placements   = ({
-                idx              = 0,
-                offset           = ({x = 0, y = 0}: {x = Int32, y = Int32}),
-                gridSize         = gs,
-                // map-test では合成しないので floorBounds = gridSize 全体を採用
-                floorBoundsMin   = ({x = 0, y = 0}: {x = Int32, y = Int32}),
-                floorBoundsMaxEx = gs,
-                // map-test ではこの placement は idx=0 = anchor 扱いなので
-                // StairsScene.placeRandom の対象（idx >= 1）にならない → Nil で OK
-                interiorCells    = (Nil: List[{x = Int32, y = Int32}])
-            }: {idx = Int32, offset = {x = Int32, y = Int32}, gridSize = {x = Int32, y = Int32},
-                 floorBoundsMin = {x = Int32, y = Int32}, floorBoundsMaxEx = {x = Int32, y = Int32},
-                 interiorCells = List[{x = Int32, y = Int32}]}) :: Nil,
+            // map-test では合成しないので床範囲 = gridSize 全体の単一部屋（idx=0=anchor）。
+            // idx>=1 にならないので StairsScene.placeRandom の対象外。
+            placements   = singleRoom(gs#x, gs#y),
             roomCount    = 1
         };
         scene
@@ -274,6 +268,94 @@ mod MapScene {
         let s = tileSize();
         let v = Vec2i.toVec2(cell);
         {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
+
+    // ────────────────────────────────────────────────────────
+    // (D2) MapSnapshot の純関数層（旧クロージャフィールドの置換）
+    //   地形は純粋データ（wallCells / placements / mapGlobal）で持ち、判定・変換は
+    //   ここで計算する。engine TileMapLayer.flix:130-154 の意味論に厳密一致させる。
+    // ────────────────────────────────────────────────────────
+
+    /// セルが壁か。範囲外セルは wallCells に含まれない＝非壁（engine getCellSourceId と同義）。
+    pub def isWall(c: {x = Int32, y = Int32}, m: MapSnapshot): Bool =
+        Set.memberOf((c#x, c#y), m#wallCells)
+
+    /// 範囲内 かつ 壁でない＝床（engine TileMapLayer.isFloor と同義）。
+    pub def isFloor(c: {x = Int32, y = Int32}, m: MapSnapshot): Bool =
+        inBounds(c, m) and not isWall(c, m)
+
+    /// usedRect 内か。getUsedRect は position=(0,0) 固定なので 0..size で判定（engine isInBounds と同義）。
+    def inBounds(c: {x = Int32, y = Int32}, m: MapSnapshot): Bool =
+        let sz = m#usedRect#size;
+        c#x >= 0 and c#x < sz#x and c#y >= 0 and c#y < sz#y
+
+    /// グリッド座標 → セル中心ローカル座標（cellCenter と同式・tileSize はデータから）。
+    pub def mapToLocal(c: {x = Int32, y = Int32}, m: MapSnapshot): {x = Float64, y = Float64} =
+        let s = m#tileSize;
+        let v = Vec2i.toVec2(c);
+        {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
+
+    /// グリッド座標 → world 座標（Map global 加算済み。呼び出し側が MapScene の位置を知らずに済む）。
+    pub def gridToWorld(c: {x = Int32, y = Int32}, m: MapSnapshot): {x = Float64, y = Float64} =
+        Vec2.add(m#mapGlobal, mapToLocal(c, m))
+
+    /// セル → 包含モジュール idx。既存 `moduleOfCellIn` を placements データに当てる。
+    pub def moduleOfCell(c: {x = Int32, y = Int32}, m: MapSnapshot): Option[Int32] =
+        moduleOfCellIn(c, m#placements)
+
+    /// 本物の TileMapLayer / Map global / placements → MapSnapshot へ射影する唯一の変換点。
+    /// engine 内部表現（collisionCells が Float64 グリッド座標）への依存はここ 1 関数に閉じる。
+    pub def snapshotOf(layer: TileMapLayer,
+                       mapGlobal: {x = Float64, y = Float64},
+                       placements: List[DungeonComposer.ModulePlacement]): MapSnapshot =
+        let TileMapLayer.TileMapLayer(r) = layer;
+        {
+            tileSize   = TileMapLayer.tileSize(layer),
+            usedRect   = TileMapLayer.getUsedRect(layer),
+            wallCells  = r#collisionCells |> List.map(toGridCell) |> List.toSet,
+            mapGlobal  = mapGlobal,
+            placements = placements
+        }
+
+    /// 壁セルの Float64 座標を整数グリッドへ。collisionCells はタイルグリッド由来で整数 Float64 が
+    /// 保証される（engine getCellSourceId/getUsedRect が整数前提）。非整数が来たら盤面衝突が静かに
+    /// 欠落するので、握りつぶさず即落とす。
+    def toGridCell(v: {x = Float64, y = Float64}): (Int32, Int32) =
+        match (Float64.tryToInt32(v#x), Float64.tryToInt32(v#y)) {
+            case (Some(x), Some(y)) => (x, y)
+            case _ => bug!("MapScene.snapshotOf: non-integer collision cell (${v#x}, ${v#y})")
+        }
+
+    /// 単一 ModulePlacement を作る。床範囲は gridSize 全体（offset 0）。
+    /// テスト・map-test・診断で「全床の素朴な部屋」を組むときの共通構築関数。
+    pub def placement(idx: Int32, ox: Int32, oy: Int32, w: Int32, h: Int32):
+            DungeonComposer.ModulePlacement =
+        {
+            idx              = idx,
+            offset           = ({x = ox, y = oy}: {x = Int32, y = Int32}),
+            gridSize         = ({x = w,  y = h }: {x = Int32, y = Int32}),
+            floorBoundsMin   = ({x = 0,  y = 0 }: {x = Int32, y = Int32}),
+            floorBoundsMaxEx = ({x = w,  y = h }: {x = Int32, y = Int32}),
+            interiorCells    = (Nil: List[{x = Int32, y = Int32}])
+        }
+
+    /// 全床 w×h を単一モジュール(idx=0)に割る placements。
+    pub def singleRoom(w: Int32, h: Int32): List[DungeonComposer.ModulePlacement] =
+        placement(0, 0, 0, w, h) :: Nil
+
+    /// 全床 w×h を縦半分で 2 モジュール（左 idx0 / 右 idx1）に割る placements。
+    /// 検知テスト（同じ部屋にいるか）で moduleOfCell を 2 部屋にしたいときに使う。
+    pub def twoRoom(w: Int32, h: Int32): List[DungeonComposer.ModulePlacement] =
+        let half = w / 2;
+        ({idx = 0, offset = ({x = 0, y = 0}: {x = Int32, y = Int32}),
+          gridSize = ({x = w, y = h}: {x = Int32, y = Int32}),
+          floorBoundsMin = ({x = 0, y = 0}: {x = Int32, y = Int32}),
+          floorBoundsMaxEx = ({x = half, y = h}: {x = Int32, y = Int32}),
+          interiorCells = (Nil: List[{x = Int32, y = Int32}])}: DungeonComposer.ModulePlacement) ::
+        ({idx = 1, offset = ({x = 0, y = 0}: {x = Int32, y = Int32}),
+          gridSize = ({x = w, y = h}: {x = Int32, y = Int32}),
+          floorBoundsMin = ({x = half, y = 0}: {x = Int32, y = Int32}),
+          floorBoundsMaxEx = ({x = w, y = h}: {x = Int32, y = Int32}),
+          interiorCells = (Nil: List[{x = Int32, y = Int32}])}: DungeonComposer.ModulePlacement) :: Nil
 
     /// `placements` を「先勝ち（idx 昇順）」で走査し、`coord` を含む最初のモジュール idx を返す。
     /// modulePaths は「部屋を先・通路を後ろ」で並ぶため、部屋優先で逆引きできる。

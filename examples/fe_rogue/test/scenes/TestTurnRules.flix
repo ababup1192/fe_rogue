@@ -20,29 +20,22 @@ mod TestTurnRules {
     /// 全マス床の MapSnapshot（5×5）。range 外は壁扱い。
     /// moduleOfCell は使わない（TurnRules は使わない）が record 完備のため None を返す。
     def emptySnapshot(): MapSnapshot =
-        let inB = c -> c#x >= 0 and c#x < 5 and c#y >= 0 and c#y < 5;
         {
             tileSize     = 16.0,
-            usedRect     = {position = Vec2i.zero(), size = ({x = 5, y = 5}: {x = Int32, y = Int32})},
-            isWall       = c -> not inB(c),
-            isFloor      = c -> inB(c),
-            mapToLocal   = _ -> Vec2.zero(),
-            gridToWorld  = _ -> Vec2.zero(),
-            moduleOfCell = _ -> None
+            usedRect     = {position = {x = 0, y = 0}, size = ({x = 5, y = 5}: {x = Int32, y = Int32})},
+            wallCells    = (Set#{}: Set[(Int32, Int32)]),
+            mapGlobal    = {x = 0.0, y = 0.0},
+            placements   = Nil
         }
 
     /// (3, 2) だけ壁、それ以外は床の 5×5 スナップショット
     def wallAtSnapshot(): MapSnapshot =
-        let inB = c -> c#x >= 0 and c#x < 5 and c#y >= 0 and c#y < 5;
-        let isW = c -> c#x == 3 and c#y == 2;
         {
             tileSize     = 16.0,
-            usedRect     = {position = Vec2i.zero(), size = ({x = 5, y = 5}: {x = Int32, y = Int32})},
-            isWall       = c -> not inB(c) or isW(c),
-            isFloor      = c -> inB(c) and not isW(c),
-            mapToLocal   = _ -> Vec2.zero(),
-            gridToWorld  = _ -> Vec2.zero(),
-            moduleOfCell = _ -> None
+            usedRect     = {position = {x = 0, y = 0}, size = ({x = 5, y = 5}: {x = Int32, y = Int32})},
+            wallCells    = Set#{(3, 2)},
+            mapGlobal    = {x = 0.0, y = 0.0},
+            placements   = Nil
         }
 
     /// 味方 1 人 + 敵 1 体の Board を組む

@@ -210,13 +210,15 @@ mod PlayerScene {
     def spriteZIndex(): Int32 = 10
 
     /// 1 マス分のスライド時間（≈ 0.133 秒）。ローグ自由移動・自動移動で使う通常スピード。
-    def slideDuration(): Duration.Duration =
+    /// pub: 打ち手層（PlayerMovementScene / AutoMoveScene）が moveToById に渡す。
+    pub def slideDuration(): Duration.Duration =
         Duration.frames(count = 16, fps = 120)
 
     /// キャラ選択後の手動移動（PlayerMoving）の 1 マス時間（≈ 0.167 秒）。
     /// 通常の約 80% スピード（時間 1.25 倍 = 16→20 フレーム）にして、落ち着いて移動先を
     /// 狙えるよう少しゆっくりにする。自動移動やローグ自由移動には影響させない。
-    def selectedSlideDuration(): Duration.Duration =
+    /// pub: 打ち手層（PlayerMovementScene）が手動移動 step で moveToById に渡す。
+    pub def selectedSlideDuration(): Duration.Duration =
         Duration.frames(count = 20, fps = 120)
 
     /// `waited = true` 時の sprite modulate（薄い灰色）。
@@ -447,7 +449,7 @@ mod PlayerScene {
                     marker: Marker2D, data: Data, slide: Duration.Duration,
                     scene: Scene[NodeTag]): (Marker2D, Data)
                     \ Tween.Scheduler =
-        let targetWorld = map#gridToWorld(target);
+        let targetWorld = MapScene.gridToWorld(target, map);
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
         Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slide);
         // 進行方向を facing に反映し、AnimatedSprite2D なら walk_<dir> 再生 (副作用)。
@@ -465,11 +467,11 @@ mod PlayerScene {
     /// physicsProcess の外（AutoMove など）から id だけで呼べるように scene を直接編集する。
     /// `EnemyScene.moveTo` と同じインターフェース。**歩行可否は呼び出し側が確認済み前提**。
     pub def moveToById(id: Int32, target: {x = Int32, y = Int32},
-                        map: MapSnapshot,
+                        map: MapSnapshot, slide: Duration.Duration,
                         scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
-        let targetWorld = map#gridToWorld(target);
-        Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slideDuration());
+        let targetWorld = MapScene.gridToWorld(target, map);
+        Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slide);
         // 直前のグリッド座標から target への 1 マス差で方向を決める。
         // 0 ベクトル (= 同じセル) の場合は既存の facing を保つ。
         let prev      = getGridPos(id, scene);
@@ -606,83 +608,9 @@ mod PlayerScene {
     pub def anyAttacking(scene: Scene[NodeTag]): Bool =
         List.exists(d -> Option.nonEmpty(d#attackTargetId), getAll(scene))
 
-    /// 手動移動 driver の共通本体。`physicsProcess`（移動力制限あり・低速）と
-    /// `lordRoamProcess`（制限なし・通常速）の差分は (a) 進入可否述語 `allowedPred`、
-    /// (b) スライド速度 `slide` の 2 点だけなので、ここに畳んで両者を薄ラッパにする。
-    /// `Board.tryMove(b,p,d)` は `tryMoveWithRange(b,p,d,_->true)` 等価なので、roam は
-    /// `allowedPred = _ -> true` を渡すだけで従来挙動と一致する。
-    def stepProcess(allowedPred: {x = Int32, y = Int32} -> Bool,
-                     slide: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {GameEngine.Game, BoardQuery, Tween.Scheduler} =
-        match node {
-            case EngineNode.Marker2DWithState(marker, NodeTag.Player(data)) =>
-                if (isMoving(data#id)) (node, scene)
-                else
-                    let board = BoardQuery.board();
-                    // 方向キー押下で 1 セルだけ進む。味方セルへ進入可能 (重なる)、
-                    // ただし重なっている間は Z で行動決定できない (`Board.isOverlappingAlly`
-                    // で `TurnRules` がブロック)。「味方を超えて自動スライド」する旧
-                    // `stepThroughAllies` 挙動は廃止。
-                    let movement = forM (
-                        dir    <- readHeldDirection();
-                        target <- Board.tryMoveWithRange(board, data#gridPos, dir, allowedPred)
-                    ) yield {
-                        let (newMarker, newData) =
-                            moveTo(data#id, board#map, target, marker, data, slide, scene);
-                        // 子 Sprite が AnimatedSprite2D なら、進行方向の walk_<dir> アニメに
-                        // 切り替える (Sprite2D の unit は playAnim が no-op)。
-                        // direction が決まらない (= 同セル移動) ケースは scene 据え置き。
-                        let dirOpt = directionOfStep(data#gridPos, target);
-                        let animScene = match dirOpt {
-                            case Some(d) => playAnim(data#id, walkAnimName(d), scene)
-                            case None    => scene
-                        };
-                        let nextScene = if (data#resource#sprite#flipForFacing)
-                                            applyFacingFlip(data#id, dirOpt, animScene)
-                                        else animScene;
-                        (EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
-                         nextScene)
-                    };
-                    Option.getWithDefault((node, scene), movement)
-            case _ => (node, scene)
-        }
-
-    /// 毎フレーム engine から呼ばれる。**選択中プレイヤーのみ** 動かす。
-    /// Game.flix の Node[NodeTag] redef からは PlayerMoving フェーズで
-    /// 「id == SelectedPlayer.State.get()」のノードに対してだけ dispatch される。
-    /// 移動力(MoveRange)範囲内のみ・低速スライド。
-    pub def physicsProcess(_delta: Duration.Duration,
-                            node: EngineNode[NodeTag],
-                            _path: NodePath,
-                            scene: Scene[NodeTag]):
-                           (EngineNode[NodeTag], Scene[NodeTag])
-                           \ {GameEngine.Game, BoardQuery, Tween.Scheduler} =
-        stepProcess(c -> MoveRangeScene.isInRange(c, scene),
-                    selectedSlideDuration(), node, scene)
-
-    /// ローグ移動モード(RogueMove)中のロード(id 0)の自由歩行。`physicsProcess` と違い
-    /// **移動力(MoveRange)の制限がなく**、床であれば何マスでも歩ける。他味方は合流して
-    /// hidden = 盤面から除外されているので、実質「地形 + 敵」だけが移動の障害になる。
-    /// 敵範囲入りの判定と自動解散は driver(`AutoMoveScene.roamJudge`)側が行う。
-    pub def lordRoamProcess(_delta: Duration.Duration,
-                             node: EngineNode[NodeTag],
-                             _path: NodePath,
-                             scene: Scene[NodeTag]):
-                            (EngineNode[NodeTag], Scene[NodeTag])
-                            \ {GameEngine.Game, BoardQuery, Tween.Scheduler} =
-        stepProcess(_ -> true, slideDuration(), node, scene)
-
-    /// 押されている方向キーを Option で返す（複数同時押しは上 > 下 > 左 > 右）
-    def readHeldDirection(): Option[{x = Int32, y = Int32}] \ GameEngine.Game =
-        let isDown = key -> GameEngine.Game.isKeyPressed(key);
-        if      (isDown(GameEngine.Key.W) or isDown(GameEngine.Key.Up))    Some(Vec2i.up())
-        else if (isDown(GameEngine.Key.S) or isDown(GameEngine.Key.Down))  Some(Vec2i.down())
-        else if (isDown(GameEngine.Key.A) or isDown(GameEngine.Key.Left))  Some(Vec2i.left())
-        else if (isDown(GameEngine.Key.D) or isDown(GameEngine.Key.Right)) Some(Vec2i.right())
-        else None
+    // 手動移動の打ち手ロジック（physicsProcess / lordRoamProcess / stepProcess /
+    // readHeldDirection）は **駒(PlayerScene)から打ち手層 PlayerMovementScene へ移設**した。
+    // 駒は Board を読まず、moveTo / moveToById（座標適用＋見た目）だけを公開する。
 
     // ────────────────────────────────────────────────────────
     // (E) 状態クエリ・更新

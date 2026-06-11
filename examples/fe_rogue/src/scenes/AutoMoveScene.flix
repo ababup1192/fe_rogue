@@ -84,7 +84,7 @@ mod AutoMoveScene {
                 let allyCells = Board.allPlayerCells(board);
                 match Board.bfsPathSkipAllies(board, allyCells, p#gridPos, lordPos) {
                     case Some(next :: _) =>
-                        PlayerScene.moveToById(p#id, next, board#map, scene)
+                        PlayerScene.moveToById(p#id, next, board#map, PlayerScene.slideDuration(), scene)
                     case _               =>
                         PlayerScene.setHidden(p#id, true, scene)
                 }
@@ -130,7 +130,8 @@ mod AutoMoveScene {
             |> List.map(e -> {gridPos = e#gridPos, moveTiles = e#moveTiles,
                               isDying = e#isDying});
         let lordPos = PlayerScene.getGridPos(lordId(), scene);
-        Board.cellDetectedByEnemy(board#map#moduleOfCell, board#map#isFloor,
+        Board.cellDetectedByEnemy(c -> MapScene.moduleOfCell(c, board#map),
+                                   c -> MapScene.isFloor(c, board#map),
                                    enemies, lordPos)
 
     /// 「！」を出す対象の敵と、カメラの焦点(ワールド座標)をまとめて返す純粋関数。
@@ -143,9 +144,9 @@ mod AutoMoveScene {
         let placements = MapScene.getPlacements(scene);
         let lordPos    = PlayerScene.getGridPos(lordId(), scene);
         let alive      = EnemyScene.getAll(scene) |> List.filter(e -> not e#isDying);
-        let lordMod    = board#map#moduleOfCell(lordPos);
+        let lordMod    = MapScene.moduleOfCell(lordPos, board#map);
         let inRoom     = match lordMod {
-            case Some(m) => alive |> List.filter(e -> board#map#moduleOfCell(e#gridPos) == Some(m))
+            case Some(m) => alive |> List.filter(e -> MapScene.moduleOfCell(e#gridPos, board#map) == Some(m))
             case None    => Nil
         };
         if (not List.isEmpty(inRoom)) {
@@ -154,14 +155,14 @@ mod AutoMoveScene {
                                     |> Option.getWithDefault(lordPos)
                 case None    => lordPos
             };
-            {enemies = inRoom, focus = board#map#gridToWorld(centerCell)}
+            {enemies = inRoom, focus = MapScene.gridToWorld(centerCell, board#map)}
         } else {
             let detectors = alive |> List.filter(e ->
                 Board.containsCell(lordPos,
-                    Board.reachableCells(board#map#isFloor, e#gridPos, e#moveTiles)));
+                    Board.reachableCells(c -> MapScene.isFloor(c, board#map), e#gridPos, e#moveTiles)));
             let focus = match List.head(detectors) {
-                case Some(e) => board#map#gridToWorld(e#gridPos)
-                case None    => board#map#gridToWorld(lordPos)
+                case Some(e) => MapScene.gridToWorld(e#gridPos, board#map)
+                case None    => MapScene.gridToWorld(lordPos, board#map)
             };
             {enemies = detectors, focus = focus}
         }
@@ -173,7 +174,7 @@ mod AutoMoveScene {
         let info  = alertInfo(scene);
         let board = BoardSnapshot.fromScene(scene);
         let withMarks = List.foldLeft((sc, e) ->
-            DamagePopupScene.emitText(board#map#gridToWorld(e#gridPos), "！",
+            DamagePopupScene.emitText(MapScene.gridToWorld(e#gridPos, board#map), "！",
                                        exclaimColor(), sc),
             scene, info#enemies);
         AudioStreamPlayer.play("find");
@@ -225,7 +226,7 @@ mod AutoMoveScene {
             sc
                 |> PlayerScene.snapTo(d#id, lordPos)
                 |> PlayerScene.setHidden(d#id, false)
-                |> PlayerScene.moveToById(d#id, cell, map)
+                |> PlayerScene.moveToById(d#id, cell, map, PlayerScene.slideDuration())
                 |> PlayerScene.faceFrontIdle(d#id)
         }, scene, List.zip(hidden, cells))
 

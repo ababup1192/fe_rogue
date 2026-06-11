@@ -255,12 +255,10 @@ mod TestCursorScene {
     def testBoard(): Board =
         let map: MapSnapshot = {
             tileSize    = 16.0,
-            usedRect    = {position = Vec2i.zero(), size = ({x = 13, y = 13}: {x = Int32, y = Int32})},
-            isWall      = _ -> false,
-            isFloor     = _ -> true,
-            mapToLocal  = c -> MapScene.cellCenter(c),
-            gridToWorld = c -> MapScene.cellCenter(c),
-            moduleOfCell = _ -> None
+            usedRect    = {position = {x = 0, y = 0}, size = ({x = 13, y = 13}: {x = Int32, y = Int32})},
+            wallCells   = (Set#{}: Set[(Int32, Int32)]),
+            mapGlobal   = {x = 0.0, y = 0.0},
+            placements  = Nil
         };
         {map = map, pieces = Nil}
 
