@@ -29,7 +29,8 @@ mod GameLifecycle {
         enemies     = EnemyCatalog.EnemyCatalog,
         floors      = FloorCatalog.FloorCatalog,
         staves      = Staff.StaffCatalog,
-        consumables = Consumable.ConsumableCatalog
+        consumables = Consumable.ConsumableCatalog,
+        chests      = ChestCatalog.ChestCatalog
     }
 
     /// プレイ用シーンを 1 回で組み立てる。`MapScene.add` が `IO` を要求するため
@@ -67,6 +68,8 @@ mod GameLifecycle {
             |> BgmScene.add             // BGM (AudioStreamPlayer, autoplay=true で起動時から再生)
             // 全ノード配置後に階段を床のランダムセルへ置く (駒・アイテムを避けるため最後)
             |> StairsScene.placeRandom
+            // 階段確定後に宝箱を配置 (駒・アイテム・階段を避けるため階段の後)
+            |> ChestScene.add(catalogs#chests, catalogs#players, catalogs#staves, catalogs#consumables, floor)
             // players/stairs 確定後に初回フォグ適用 (スポーン部屋を点灯。以降は FogScene.process が毎フレーム更新)
             // 起動時は通常モード (集合モードではない) なので torchCorridors=false
             |> FogScene.applyFog(false)
@@ -118,6 +121,16 @@ mod GameLifecycle {
                 PartySelection.State} =
         let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
         buildAndRecord(catalogs, floor)
+
+    /// `CustomEffects.WandererSpawnRequest` handler の本体。
+    /// 現在フロアを解決して、試練型の部屋湧き（Wanderer タイプ）を `EnemyScene` 側に委ねる。
+    /// `tick` は handler が採番する湧きクロック。実際に湧くかの判断
+    /// （周期 + フロア上限 + 視界外部屋セルの有無）は EnemyScene が行う。
+    pub def maybeSpawnWanderer(catalogs: Catalogs, tick: Int32,
+                                scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Math.Random, FloorProgress.State} =
+        let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
+        EnemyScene.maybeSpawnWandererInRoom(catalogs#enemies, catalogs#weapons, floor, tick, scene)
 
     /// `CustomEffects.GameOverRequest` handler の本体。
     /// フロアを 1F に戻し、ターン進行系を初期化してから scene をリビルドして返す。

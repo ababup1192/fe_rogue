@@ -18,9 +18,28 @@ mod EnemyCatalog {
         case EnemyCatalog(CatalogContainer[EnemyResource])
     }
 
-    /// 敵ユニット 1 種別ぶんのデータ = 共有ベース（成長率なし）。
-    /// 将来の特殊能力は `{abilities = ... | UnitBase}` の形でここを拡張する。
-    pub type alias EnemyResource = UnitBase
+    /// 敵ユニット 1 種別ぶんのデータ = 共有 14 フィールド + 索敵/挙動タイプ `aiType`（成長率なし）。
+    /// `aiType` は EnemyAI の起動条件 / 徘徊を決める（IDE では `enemies.json` の 1 フィールド）。
+    /// 味方（UnitBase 共有型）には波及しない敵専用の拡張。将来の特殊能力もこの形でここに足す。
+    /// （`UnitBase` は閉じた型エイリアスのため `{ f | UnitBase }` のスプレッドはできず、
+    ///  PlayerResource と同じく全フィールドを書き下す。codec は共有部を `UnitBaseCodec` に委譲。）
+    pub type alias EnemyResource = {
+        moveTiles        = Int32,
+        level            = Int32,
+        hp               = Int32,
+        attack           = Int32,
+        defense          = Int32,
+        magicAttack      = Int32,
+        magicDefense     = Int32,
+        speed            = Int32,
+        skill            = Int32,
+        luck             = Int32,
+        sprite           = Sprite.SpriteResource,
+        initialInventory = List[UnitBase.InventoryEntry],
+        description      = String,
+        spriteFrames     = Option[SpriteFrames],
+        aiType           = EnemyAI.AiType
+    }
 
     /// 全 id を列挙・イテレートしたいとき（EnemyScene のロスター構築など）に使う。
     /// 個別取得は `get` を使い、この関数でフィルタするのは避ける。
@@ -70,10 +89,13 @@ mod EnemyCatalog {
             case Ok(content) => content
         }
 
-    /// schema 整合性検査用のフィールド名集合（共有 14・**growthRates なし**）。
+    /// schema 整合性検査用のフィールド名集合（共有 14 + 敵専用 `aiType`・**growthRates なし**）。
+    /// `loadWithCheck` がこの集合と `enemies.schema.json` の `fields` キー集合の完全一致を要求するため、
+    /// `aiType` を足すときは schema 側と enemies.json の各エントリも同時に揃える（揃えないと起動 panic）。
     pub def expectedEnemyFields(): Set[String] =
         Set#{"moveTiles", "level", "hp", "attack", "defense", "magicAttack", "magicDefense",
-              "speed", "skill", "luck", "sprite", "initialInventory", "description", "spriteFrames"}
+              "speed", "skill", "luck", "sprite", "initialInventory", "description", "spriteFrames",
+              "aiType"}
 }
 
 // Saveable[EnemyCatalog.EnemyCatalog] は mod 外 instance として置く。
@@ -92,14 +114,35 @@ instance Saveable[EnemyCatalog.EnemyCatalog] {
 
 mod EnemyCatalogCodec {
     use Util.Json.Json
+    use Util.Json.Json.JString
+    use JsonCodec.{expectObject, expectString}
     use EnemyCatalog.EnemyResource
 
-    /// 敵 = 共有ベースのみ（成長率なし）。decode/encode は `UnitBaseCodec` に委譲。
+    /// 敵 = 共有 14 フィールド（`UnitBaseCodec.decodeBase`）+ `aiType`。
+    /// `aiType` 欠落 / 未知文字列は `parseAiType` が Aggressive にフォールバック（後方互換）。
+    /// `UnitBase` は閉じた型のためスプレッドできず、`decodePlayer` と同じく全フィールドを書き下す。
     pub def decodeEnemy(element: Json): Option[EnemyResource] =
-        UnitBaseCodec.decodeBase(element)
+        forM (
+            base <- UnitBaseCodec.decodeBase(element);
+            obj  <- expectObject(element)
+        ) yield {
+            let aiType = Map.get("aiType", obj)
+                            |> Option.flatMap(expectString)
+                            |> Option.map(EnemyAI.parseAiType)
+                            |> Option.getWithDefault(EnemyAI.AiType.Aggressive);
+            ({moveTiles = base#moveTiles, level = base#level, hp = base#hp, attack = base#attack,
+              defense = base#defense, magicAttack = base#magicAttack,
+              magicDefense = base#magicDefense, speed = base#speed, skill = base#skill,
+              luck = base#luck, sprite = base#sprite, initialInventory = base#initialInventory,
+              description = base#description, spriteFrames = base#spriteFrames,
+              aiType = aiType}: EnemyResource)
+        }
 
-    /// 敵 = 共有ベースのみ（成長率なし）。encode は `UnitBaseCodec` に委譲し、
-    /// JObject でラップして `CatalogContainer.encode` が期待するエントリ形式に整える。
+    /// 敵 = 共有ベース + `aiType`。共有部の Map に `aiType` 文字列を差して
+    /// `CatalogContainer.encode` が期待するエントリ形式に整える。
+    /// `encodeBase` は row-polymorphic なので `aiType` 付きの EnemyResource をそのまま渡せる（共有部だけ書く）。
     pub def encodeEnemy(e: EnemyResource): Json =
-        Util.Json.Json.JObject(UnitBaseCodec.encodeBase(e))
+        Util.Json.Json.JObject(
+            Map.insert("aiType", JString(EnemyAI.aiTypeToString(e#aiType)),
+                       UnitBaseCodec.encodeBase(e)))
 }

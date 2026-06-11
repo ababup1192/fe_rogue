@@ -27,6 +27,15 @@ mod AutoMoveScene {
     /// ロードとして扱うパーティ id（定義は `PlayerScene.lordId()` に一元化）。
     def lordId(): Int32 = PlayerScene.lordId()
 
+    /// AutoMoveDriver ノードが持つ自由歩行(RogueMove)のペーサ状態。
+    /// `lastLordPos` は「最後に徘徊敵を 1 歩動かした時点のロード位置」。これとロードの現在位置を
+    /// 比べて「ロードが 1 歩進んだ」エッジを検知し、シレン流に徘徊敵を 1 歩ずつ同期させる。
+    /// None は基準未設定（RogueMove に入った直後 / 非ローグ時）。
+    pub type alias RoamPacer = { lastLordPos = Option[{x = Int32, y = Int32}] }
+
+    /// 基準未設定の初期 / リセット値。
+    def initialPacer(): RoamPacer = {lastLordPos = None}
+
     // ────────────────────────────────────────────────────────
     // (A) per-frame entry
     // ────────────────────────────────────────────────────────
@@ -39,14 +48,30 @@ mod AutoMoveScene {
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameLogger.GameLogger, Tween.Scheduler,
                         TurnPhase.State, GameEngine.Game, GameEngine.Audio,
-                        Pacing.State, EnemyTurn.Queue} =
-        let next = match TurnPhase.State.get() {
-            case TurnPhase.Phase.PlayerAutoMove => gatherStep(scene)
-            case TurnPhase.Phase.RogueMove      => roamJudge(scene)
-            case TurnPhase.Phase.RogueAlert     => alertStep(scene)
-            case _                               => scene
-        };
-        (node, next)
+                        Pacing.State, EnemyTurn.Queue, Math.Random,
+                        CustomEffects.WandererSpawnRequest} =
+        // ノードの RoamPacer を取り出し、phase 別 dispatch（roamDispatch）に渡す。
+        // phase の match は roamDispatch 側に閉じてあるので、ここは node の単層 match だけ。
+        match node {
+            case EngineNode.Marker2DWithState(m, NodeTag.AutoMoveDriver(pacer)) =>
+                let (pacer2, next) = roamDispatch(TurnPhase.State.get(), pacer, scene);
+                (EngineNode.Marker2DWithState(m, NodeTag.AutoMoveDriver(pacer2)), next)
+            case _ => (node, scene)
+        }
+
+    /// phase 別の進行。RogueMove だけがペーサを更新し（徘徊敵を歩かせる）、他フェーズは
+    /// ペーサをリセットして「次に RogueMove へ入ったら基準から始める」状態に戻す。
+    def roamDispatch(phase: TurnPhase.Phase, pacer: RoamPacer, scene: Scene[NodeTag]):
+            (RoamPacer, Scene[NodeTag])
+            \ {GameLogger.GameLogger, Tween.Scheduler, TurnPhase.State,
+                GameEngine.Game, GameEngine.Audio, Pacing.State, EnemyTurn.Queue, Math.Random,
+                CustomEffects.WandererSpawnRequest} =
+        match phase {
+            case TurnPhase.Phase.PlayerAutoMove => (initialPacer(), gatherStep(scene))
+            case TurnPhase.Phase.RogueMove      => roamTick(pacer, scene)
+            case TurnPhase.Phase.RogueAlert     => (initialPacer(), alertStep(scene))
+            case _                               => (initialPacer(), scene)
+        }
 
     // ────────────────────────────────────────────────────────
     // (B) 合流 (PlayerAutoMove)
@@ -100,16 +125,54 @@ mod AutoMoveScene {
     // (C) 自由歩行の監視 (RogueMove)
     // ────────────────────────────────────────────────────────
 
-    /// 自由歩行中、ロードが敵に検知された(同じ部屋 or 索敵範囲内)瞬間に発見演出へ入る。
-    /// 歩行 Tween 中（移動成立フレーム）は判定を 1 フレーム遅らせて、gridPos 確定後に見る。
-    def roamJudge(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, Tween.Scheduler,
-                              Pacing.State, TurnPhase.State} =
-        // gatherStep と同じ再入防止ガード。
-        if (TurnPhase.State.get() != TurnPhase.Phase.RogueMove) scene
-        else if (PlayerScene.isMoving(lordId())) scene
-        else if (lordDetected(scene)) triggerAlert(scene)
-        else scene
+    /// 自由歩行(RogueMove)の 1 フレーム進行。シレン流に「ロードが 1 歩進むたび、徘徊型の敵も
+    /// 1 歩動く」を実現しつつ、敵に検知された(同じ部屋 or 索敵範囲内)瞬間に発見演出へ入る。
+    ///   - 歩行 Tween 中はロードの gridPos 確定待ちで何もしない（ペーサも進めない）。
+    ///   - ロードが基準位置から動いていれば徘徊敵を 1 歩動かし、基準を現在位置へ更新する。
+    ///   - 徘徊で隣接した / ロードが踏み込んだら `lordDetected` で発見演出へ。
+    /// 返り値の RoamPacer は更新後の基準（呼び元 process がノードへ書き戻す）。
+    def roamTick(pacer: RoamPacer, scene: Scene[NodeTag]):
+            (RoamPacer, Scene[NodeTag])
+            \ {GameEngine.Game, GameEngine.Audio, Tween.Scheduler,
+               Pacing.State, TurnPhase.State, Math.Random,
+               CustomEffects.WandererSpawnRequest} =
+        if (PlayerScene.isMoving(lordId())) (pacer, scene)
+        else {
+            let lordPos = PlayerScene.getGridPos(lordId(), scene);
+            let prev    = pacer#lastLordPos;
+            // 初回(None)は基準を置くだけ(false)。基準と異なる位置に来ていたら徘徊敵を 1 歩動かす。
+            let lordMoved = prev |> Option.map(p -> not samePos(p, lordPos))
+                                 |> Option.getWithDefault(false);
+            let stepped   = if (lordMoved) stepWanderers(scene) else scene;
+            // ロードが 1 歩進んだら湧きクロックを進める（試練型の部屋湧きを試みる）。
+            // 自由歩行中は敵ターンが来ない＝endTurn 契機だけだと探索中に湧かないため、ここでも刻む。
+            // 発生判断（周期 tick mod N・上限・視界外の空き部屋セル）は handler / EnemyScene 側。
+            let spawned   = if (lordMoved) CustomEffects.WandererSpawnRequest.maybeSpawn(stepped) else stepped;
+            let pacer2    = {lastLordPos = Some(lordPos)};
+            if (lordDetected(spawned)) (pacer2, triggerAlert(spawned))
+            else (pacer2, spawned)
+        }
+
+    /// 未起動の Wanderer タイプの敵を、それぞれ同モジュール内の歩ける 1 マスへ動かす（1 体 1 歩）。
+    /// 起動済み・死亡演出中・Wanderer 以外は対象外（通常の追跡は敵ターンの責務のまま）。
+    def stepWanderers(scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, Tween.Scheduler} =
+        let wanderers = EnemyScene.getAll(scene)
+            |> List.filter(e -> not e#isDying and not e#alerted
+                                 and e#resource#aiType == EnemyAI.AiType.Wanderer);
+        List.foldLeft((acc, e) -> stepOneWanderer(e#id, acc), scene, wanderers)
+
+    /// 徘徊敵 1 体を 1 歩動かす。先に動いた敵の占有を反映するため board は都度取り直す。
+    /// 候補なし（袋小路・包囲）なら据え置き。
+    def stepOneWanderer(id: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Math.Random, Tween.Scheduler} =
+        let board = BoardSnapshot.fromScene(scene);
+        let cands = EnemyScene.get(id, scene)
+            |> Option.map(d -> EnemyAI.wanderCandidates(board, d#gridPos, d#prevPos))
+            |> Option.getWithDefault(Nil);
+        match RandomUtil.pick(cands) {
+            case None         => scene
+            case Some(target) => EnemyScene.moveTo(id, target, board#map, scene)
+        }
 
     /// 発見演出フェーズ(RogueAlert)の進行。hold 中はカメラ・「！」を見せて待ち、
     /// hold が抜けたら隊列を解散して通常ターン制に戻る。
@@ -287,5 +350,5 @@ mod AutoMoveScene {
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
         let marker = Marker2D.make(Vec2.zero());
         Scene.addChild(MapScene.worldName(), driverName(),
-            EngineNode.Marker2DWithState(marker, NodeTag.AutoMoveDriver), scene)
+            EngineNode.Marker2DWithState(marker, NodeTag.AutoMoveDriver(initialPacer())), scene)
 }

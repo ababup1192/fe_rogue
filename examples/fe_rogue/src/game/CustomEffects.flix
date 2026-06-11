@@ -27,4 +27,14 @@ mod CustomEffects {
     pub eff FloorAdvanceRequest {
         def advance(scene: Scene[NodeTag]): Scene[NodeTag]
     }
+
+    /// 敵ターン終端でシレン型の通路湧き（Wanderer タイプ）を試みることを要求する。
+    /// emit 元 (EnemyTurnDriverScene.endTurn) は「敵ターンが 1 巡終わった」タイミングで
+    /// `maybeSpawn(scene)` を呼ぶ。実際に湧くかは低確率 + フロア上限 + 視界外通路セルの有無で
+    /// handler 側（実体は EnemyScene）が判断する（条件を満たさなければ scene をそのまま返す）。
+    /// 現在フロアを `FloorProgress` で解決し `Math.Random` で抽選するため、catalog を
+    /// クロージャに閉じ込められる `Game.start` でしか handler 注入できない。
+    pub eff WandererSpawnRequest {
+        def maybeSpawn(scene: Scene[NodeTag]): Scene[NodeTag]
+    }
 }

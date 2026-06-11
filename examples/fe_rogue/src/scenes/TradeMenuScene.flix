@@ -197,14 +197,11 @@ mod TradeMenuScene {
                             // 同じスロットをもう一度 → pick 解除
                             ConfirmOutcome.JustUpdate({pick = None | data})
                         else
-                            // 同ペインの別の実体アイテム → 並び替え
-                            match playerIdAt(paneIndex, data) {
-                                case Some(pid) =>
-                                    ConfirmOutcome.DoReorder({pick = None | data},
-                                        {playerId = pid, kindA = ka, kindB = kb})
-                                case None =>
-                                    ConfirmOutcome.JustUpdate({pick = None | data})
-                            }
+                            // 同ペインの別の実体アイテム → 並び替え（player が引ければ DoReorder、引けねば JustUpdate）
+                            playerIdAt(paneIndex, data)
+                                |> Option.map(pid -> ConfirmOutcome.DoReorder({pick = None | data},
+                                       {playerId = pid, kindA = ka, kindB = kb}))
+                                |> Option.getWithDefault(ConfirmOutcome.JustUpdate({pick = None | data}))
                     case _ =>
                         // 空スロットが絡む → pick を新スロットで上書き
                         ConfirmOutcome.JustUpdate(
@@ -222,26 +219,39 @@ mod TradeMenuScene {
                 }
         }
 
-    /// ペイン数に応じた各ペインの位置とサイズ (panel 相対)。panel は 166x84。
-    /// 2 ペインは幅広 (x=2/86, w=80)、3 ペインは 3 分割 (x=2/57/112, w=53)。
-    def paneLayout(count: Int32, i: Int32): {pos = Vec2.Vec2, size = Vec2.Vec2} =
-        let y = 10.0;
-        let h = 70.0;
-        if (count <= 2)
-            match i {
-                case 0 => {pos = {x = 2.0,  y = y}, size = {x = 80.0, y = h}}
-                case _ => {pos = {x = 86.0, y = y}, size = {x = 80.0, y = h}}
-            }
-        else
-            match i {
-                case 0 => {pos = {x = 2.0,   y = y}, size = {x = 53.0, y = h}}
-                case 1 => {pos = {x = 57.0,  y = y}, size = {x = 53.0, y = h}}
-                case _ => {pos = {x = 112.0, y = y}, size = {x = 53.0, y = h}}
-            }
+    // panel は 166x84。各ペインの幅は「重み」比で配分する。ロード(持ち物2倍=2列表示)は
+    // 重み 2.0 で他ペインの倍幅を取り、他ペインはその右へ押し出される（= 全体が少し右寄り）。
+    def panelWidth(): Float64    = 166.0
+    def paneLeftMargin(): Float64  = 4.0   // 左にわずかな余白（右寄せ感）
+    def paneRightMargin(): Float64 = 2.0
+    def paneGap(): Float64         = 2.0
+    def paneTop(): Float64         = 10.0
+    def paneHeight(): Float64      = 70.0
+
+    /// ペインの重み。ロード(2 列)は 2.0、他は 1.0。
+    def paneWeight(isLord: Bool): Float64 = if (isLord) 2.0 else 1.0
+
+    /// members から各ペインの重みリストを作る。
+    def paneWeights(members: List[Int32]): List[Float64] =
+        let lid = PlayerScene.lordId();
+        members |> List.map(m -> paneWeight(m == lid))
+
+    def sumF(xs: List[Float64]): Float64 = List.foldLeft((a, x) -> a + x, 0.0, xs)
+
+    /// ペイン i の位置とサイズ (panel 相対)。重み比で左から詰め、ロードは倍幅。
+    def paneLayoutFor(members: List[Int32], i: Int32): {pos = Vec2.Vec2, size = Vec2.Vec2} =
+        let weights = paneWeights(members);
+        let total   = sumF(weights);
+        let avail   = panelWidth() - paneLeftMargin() - paneRightMargin();
+        let unitW   = if (total <= 0.0) avail else avail / total;
+        let before  = sumF(List.take(i, weights));
+        let w       = (List.nth(i, weights) |> Option.getWithDefault(1.0)) * unitW;
+        {pos  = {x = paneLeftMargin() + before * unitW, y = paneTop()},
+         size = {x = w - paneGap(), y = paneHeight()}}
 
     /// 兵種ラベルの位置 (ペインの左上、y=2)。
-    def classPos(count: Int32, i: Int32): Vec2.Vec2 =
-        let layout = paneLayout(count, i);
+    def classPosFor(members: List[Int32], i: Int32): Vec2.Vec2 =
+        let layout = paneLayoutFor(members, i);
         {x = layout#pos#x, y = 2.0}
 
     /// フェーズ遷移時の visibility 適用 (Push モデル)。
@@ -256,18 +266,21 @@ mod TradeMenuScene {
         List.foldLeft((acc, i) -> {
             let paneVisible = open and i < count;
             let paneFocused = paneVisible and i == focus;
-            let layout = paneLayout(count, i);
+            let layout = paneLayoutFor(data#members, i);
+            // ロード(持ち物2倍)のペインだけ 2 列描画にして縦の突き抜けを防ぐ。
+            let columns = if (playerIdAt(i, data) == Some(PlayerScene.lordId())) 2 else 1;
             acc
                 |> ItemList.mapAt(menuPath(i), list ->
                     list
                         |> CanvasItem.setVisible(paneVisible)
                         |> ItemList.setFocused(paneFocused)
+                        |> ItemList.setMaxColumns(columns)
                         |> Node2D.setPosition(layout#pos)
                         |> ItemList.setSize(layout#size))
                 |> Label2D.mapAt(classPath(i), label ->
                     label
                         |> CanvasItem.setVisible(paneVisible)
-                        |> Node2D.setPosition(classPos(count, i)))
+                        |> Node2D.setPosition(classPosFor(data#members, i)))
         }, withPanel, List.range(0, maxPanes()))
 
     /// 毎フレーム呼ばれる ItemList の process コールバック。

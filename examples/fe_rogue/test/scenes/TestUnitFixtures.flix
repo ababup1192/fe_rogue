@@ -46,7 +46,8 @@ mod TestUnitFixtures {
         spriteFrames  = None,
         growthRates   = UnitCatalog.zeroGrowthRates(),
         // テストでは武器タイプ習熟による 80% 補正を起こさないよう全タイプ得意にする。
-        proficientWeaponTypes = WeaponCatalog.allWeaponTypes()
+        proficientWeaponTypes = WeaponCatalog.allWeaponTypes(),
+        canOpenChests = false
     }
 
     /// 任意の moveTiles / hp を持つテスト用 EnemyResource（敵カタログ）。
@@ -76,7 +77,8 @@ mod TestUnitFixtures {
             scale   = {x = 1.0, y = 1.0},
             flipForFacing = false
         },
-        spriteFrames  = None
+        spriteFrames  = None,
+        aiType        = EnemyAI.AiType.Aggressive
     }
 
     /// 戦闘パラメータも明示的に指定したいケース用。
@@ -111,7 +113,8 @@ mod TestUnitFixtures {
         spriteFrames  = None,
         growthRates   = UnitCatalog.zeroGrowthRates(),
         // テストでは武器タイプ習熟による 80% 補正を起こさないよう全タイプ得意にする。
-        proficientWeaponTypes = WeaponCatalog.allWeaponTypes()
+        proficientWeaponTypes = WeaponCatalog.allWeaponTypes(),
+        canOpenChests = false
     }
 
     /// 魔力・魔防まで明示したいケース用。物理ステ・魔法ステを両方検証したいときに使う。
@@ -145,7 +148,8 @@ mod TestUnitFixtures {
         spriteFrames  = None,
         growthRates   = UnitCatalog.zeroGrowthRates(),
         // テストでは武器タイプ習熟による 80% 補正を起こさないよう全タイプ得意にする。
-        proficientWeaponTypes = WeaponCatalog.allWeaponTypes()
+        proficientWeaponTypes = WeaponCatalog.allWeaponTypes(),
+        canOpenChests = false
     }
 
     /// テスト用 WeaponResource。中庸な攻撃力 2 / 耐久度 10 / 直接攻撃 (range 1-1)。
@@ -487,7 +491,8 @@ mod TestUnitFixtures {
     pub def mkUnit(id: Int32, faction: Faction, pos: {x = Int32, y = Int32}, hp: Int32,
                    isDying: Bool, range: Option[{min = Int32, max = Int32}]): UnitView =
         {id = id, faction = faction, pos = pos, hp = hp, moveTiles = 4,
-         weaponRange = range, combat = noCombat(), isDying = isDying, hidden = false}
+         weaponRange = range, combat = noCombat(), isDying = isDying, hidden = false,
+         aiType = EnemyAI.AiType.Aggressive}
 
     /// GridRect を 4-tuple `(x0, y0, x1, y1)` に整形（範囲を assertEq で比較するため）。
     pub def rectT(r: GridRect): (Int32, Int32, Int32, Int32) =

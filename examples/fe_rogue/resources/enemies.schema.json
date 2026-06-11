@@ -296,6 +296,14 @@
         "label": "レベル",
         "order": 12
       }
+    },
+    "aiType": {
+      "field": {
+        "ftype": { "type": "enum", "values": ["Aggressive", "GuardUntilInRange", "Wanderer"] },
+        "hint": "plain",
+        "label": "AIタイプ",
+        "order": 13
+      }
     }
   },
   "metaHints": {}

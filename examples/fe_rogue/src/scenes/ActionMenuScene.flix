@@ -58,6 +58,7 @@ mod ActionMenuScene {
     def itemMeta(): String      = "item"
     def waitMeta(): String      = "wait"
     def pickupMeta(): String    = "pickup"
+    def openMeta(): String      = "open"
     def gatherMeta(): String    = "gather"
     def turnEndMeta(): String   = "turnEnd"
     def disbandMeta(): String   = "disband"
@@ -186,14 +187,22 @@ mod ActionMenuScene {
                                   disabled = false,
                                   metadata = Some(stairsMeta())}: ItemEntry) :: Nil
                             else Nil;
+                        // 宝箱に乗っていれば「あける」を出す。開錠可否(ローグか)は確定時に判定し、
+                        // 非ローグは「開けることができない」と表示する（=選択は可能・無効化しない）。
+                        let openItem =
+                            if (Option.nonEmpty(ChestScene.findAt(player#gridPos, scene)))
+                                ({text     = "あける",
+                                  disabled = false,
+                                  metadata = Some(openMeta())}: ItemEntry) :: Nil
+                            else Nil;
                         let waitItem =
                             if (canWaitOn(player))
                                 ({text     = "待機",
                                   disabled = false,
                                   metadata = Some(waitMeta())}: ItemEntry) :: Nil
                             else Nil;
-                        List.flatten(pickupItem :: stairsItem :: attackItem :: itemItem ::
-                                       exchangeItem :: waitItem :: Nil)
+                        List.flatten(pickupItem :: openItem :: stairsItem :: attackItem ::
+                                       itemItem :: exchangeItem :: waitItem :: Nil)
                 }
         }
 
@@ -212,6 +221,13 @@ mod ActionMenuScene {
                 ({text = "階段", disabled = false,
                   metadata = Some(stairsMeta())}: ItemEntry) :: Nil
             else Nil;
+        // ロード足元の宝箱。ロードは非ローグなので確定時に「開けることができない」になるが、
+        // 「宝箱がそこにある」ことは見せるため項目自体は出す。
+        let open =
+            if (Option.nonEmpty(ChestScene.findAt(lordPos, scene)))
+                ({text = "あける", disabled = false,
+                  metadata = Some(openMeta())}: ItemEntry) :: Nil
+            else Nil;
         let trade =
             if (List.length(gatherTradeMembers()) >= 2)
                 ({text = "交換", disabled = false,
@@ -220,7 +236,7 @@ mod ActionMenuScene {
         let disband =
             ({text = "解散", disabled = false,
               metadata = Some(disbandMeta())}: ItemEntry) :: Nil;
-        List.flatten(pickup :: stairs :: trade :: disband :: Nil)
+        List.flatten(pickup :: open :: stairs :: trade :: disband :: Nil)
 
     /// 集合した生存メンバーの player id リスト (= 交換に参加できる面々)。
     /// ロード(id 0) + 退避中(hidden)の味方。死亡(hp<=0)・階段退場は除外し、id 昇順に並べる。
@@ -303,6 +319,7 @@ mod ActionMenuScene {
                 else if (m == itemMeta())     openItemMenu(scene)
                 else if (m == waitMeta())     TurnFlow.commitWaitedAndAdvance(scene)
                 else if (m == pickupMeta())   applyPickup(scene)
+                else if (m == openMeta())     applyOpenChest(scene)
                 else if (m == gatherMeta())   applyGather(scene)
                 else if (m == turnEndMeta())  applyTurnEnd(scene)
                 else if (m == disbandMeta())  AutoMoveScene.disband("解散", scene)
@@ -423,6 +440,39 @@ mod ActionMenuScene {
                                                     d#itemKey, d#item));
                 scene
         }
+
+    /// 「あける」確定。宝箱に乗った駒で開錠を試みる。`applyPickup` と同じ取得経路を再用するが、
+    /// 先に **ローグ判定(`canOpenChests`)** を挟む点が違う:
+    ///   - ローグでない → 「開けることができない」を表示して何もしない（宝箱は残る）。
+    ///   - 持ち物が満杯 → showFull を出して何もしない（宝箱は残る）。
+    ///   - それ以外 → 配置時に確定済みの中身(`content`)を `addPickedItem` で在庫へ入れ、宝箱ノードを消す。
+    /// 中身は配置時に抽選済みなので開錠側は Math.Random も catalogs も要さない（決定論的）。
+    def applyOpenChest(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger,
+                              SelectedPlayer.State, PlayerData.PartyQuery} =
+        match openTarget(scene) {
+            case None                      => scene
+            case Some((info, player, chest)) =>
+                if (not PlayerScene.canOpenChests(player))
+                    ItemPickupPopupScene.showMessage("開けることができない", scene)
+                else if (PlayerScene.isInventoryFull(player))
+                    ItemPickupPopupScene.showFull(scene)
+                else
+                    addPickedItem(info#playerId, chest#content, scene)
+                        |> ChestScene.takeAt(info#gridPos)
+        }
+
+    /// 開錠対象を 1 本の Option 連鎖で解決する: 取得主体(`pickupTarget`) → その Data → 足元の宝箱。
+    /// どれかが欠けたら None（宝箱が無い / 駒が見つからない場合は何もしない）。
+    def openTarget(scene: Scene[NodeTag]):
+            Option[({playerId = Int32, gridPos = {x = Int32, y = Int32}},
+                    PlayerScene.Data, ChestScene.Data)]
+            \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+        forM (
+            info   <- pickupTarget(scene);
+            player <- PlayerData.PartyQuery.get(info#playerId);
+            chest  <- ChestScene.findAt(info#gridPos, scene)
+        ) yield (info, player, chest)
 
     /// 拾う主体(playerId)と拾う位置(gridPos)を決める。ローグ移動モード中(合流済み)は
     /// ロード(id 0)がロード足元のアイテムを拾う。通常時は選択中の味方が足元のを拾う。

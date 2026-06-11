@@ -31,12 +31,59 @@ mod EnemyAI {
     /// 敵 1 体の 1 ターンぶんの行動。
     /// `Move` の {x, y} は 1 マス分の移動先（隣接セル）。
     /// `Attack` は (enemyId, targetPlayerId)。
+    /// `Wander` は未起動の徘徊型が「あてもなく 1 歩動きたい」という意図。実際の行先は
+    /// 乱数を要するため driver (EnemyTurnDriverScene.applyStep) が選ぶ — decideAction を pure に保つ。
     pub enum EnemyAction {
         case Move(Int32, {x = Int32, y = Int32})
         case Attack(Int32, Int32)
         case Wait(Int32)
         case Skip(Int32)
+        case Wander(Int32)
     }
+
+    /// 敵の索敵/挙動タイプ。`enemies.json` の `aiType` フィールド 1 つで IDE から選ぶ。
+    /// **新タイプ追加はここに 1 case + `policy()` に 1 行 + `parseAiType` に 1 行 +
+    /// `enemies.schema.json` の values に 1 文字列**。decideAction/driver 側は一切触らない。
+    pub enum AiType with Eq, ToString {
+        case Aggressive          // 既定: 同室 or 移動到達範囲で起動し追跡（従来挙動）
+        case GuardUntilInRange   // 同室でも待機。武器の攻撃射程に入る or 攻撃を受けると起動
+        case Wanderer            // 未発見のうちは徘徊（湧きは driver / spawn 側）
+    }
+
+    /// dormant → alerted に遷移する条件の種別（データ化）。
+    pub enum AlertRule with Eq, ToString {
+        case OnSightOrReach   // 同室 OR 移動到達範囲（従来 Aggressive）
+        case OnWeaponRange    // 武器の攻撃射程に相手が入ったときのみ
+    }
+
+    /// 未起動（dormant）時の振る舞いの種別（データ化）。
+    pub enum IdleBehavior with Eq, ToString {
+        case StayDormant   // Skip（その場で待機）
+        case Roam          // Wander（あてもなく 1 歩徘徊）
+    }
+
+    /// 1 タイプぶんのポリシー。起動条件と未起動時の振る舞いを 1 レコードで宣言する。
+    /// 起動後の振る舞いは現状全タイプ「追跡 + 攻撃」共通なのでフィールド化しない
+    /// （必要になったらここに 1 フィールド足す）。
+    pub type alias AiPolicy = { alert = AlertRule, idle = IdleBehavior }
+
+    /// **唯一のディスパッチ点**。タイプ → ポリシー。match 網羅性検査が
+    /// 「新タイプの policy 追加し忘れ」をコンパイル時に検出する。
+    pub def policy(t: AiType): AiPolicy = match t {
+        case AiType.Aggressive        => { alert = AlertRule.OnSightOrReach, idle = IdleBehavior.StayDormant }
+        case AiType.GuardUntilInRange => { alert = AlertRule.OnWeaponRange,  idle = IdleBehavior.StayDormant }
+        case AiType.Wanderer          => { alert = AlertRule.OnSightOrReach, idle = IdleBehavior.Roam }
+    }
+
+    /// JSON 文字列 → AiType。未知 / 欠落は Aggressive にフォールバック（後方互換）。
+    pub def parseAiType(s: String): AiType = match s {
+        case "GuardUntilInRange" => AiType.GuardUntilInRange
+        case "Wanderer"          => AiType.Wanderer
+        case _                   => AiType.Aggressive
+    }
+
+    /// AiType → JSON 文字列（encode 用）。`parseAiType` と往復一致する。
+    pub def aiTypeToString(t: AiType): String = "${t}"
 
     /// ターゲット評価軸（性質）。`priorities()` に優先度順で並べる。
     ///   - `Killable`  : 今ターン仕留められるか（`estDamage >= hp`）
@@ -56,12 +103,18 @@ mod EnemyAI {
     /// targets（= 対立 faction の hidden でないユニット）は `enc` から内部導出する。
     pub def decideAction(enc: Encounter, self: UnitView, alerted: Bool):
                           (EnemyAction, {alerted = Bool}) =
-        // 検知: dormant なら「同じ部屋」または「索敵範囲（移動到達範囲）にプレイヤー」で起動。
+        // 検知 / 未起動時の振る舞いは AiType のポリシーに従う。ここに `match AiType` は無く、
+        // policy() を 1 回引いて起動条件種別 / 未起動時種別を読むだけ（タイプを増やしても分岐は増えない）。
         let board = enc#board;
-        let alertedNow = alerted
-                         or sameModuleAsAnyPlayer(board, self#pos)
-                         or anyPlayerWithinReach(board, self#pos, self#moveTiles);
-        if (not alertedNow) (EnemyAction.Skip(self#id), {alerted = alertedNow})
+        let pol = policy(self#aiType);
+        let alertedNow = alerted or shouldAlert(pol#alert, enc, self);
+        if (not alertedNow)
+            // 未起動: StayDormant は Skip（静止）、Roam は Wander（行先は driver が乱数選択）。
+            let idleAction = match pol#idle {
+                case IdleBehavior.StayDormant => EnemyAction.Skip(self#id)
+                case IdleBehavior.Roam        => EnemyAction.Wander(self#id)
+            };
+            (idleAction, {alerted = alertedNow})
         else
             // フェーズ1: 今ターン攻撃できる相手（武器射程内）の最良。攻撃を優先することで
             //   「射程内に相手が居るのに遠くの弱い相手を追って攻撃を見送る」のを防ぐ。
@@ -75,6 +128,20 @@ mod EnemyAI {
                 case None    => approachField(board, self)
             };
             (action, {alerted = alertedNow})
+
+    /// 起動条件を AlertRule でディスパッチする。本体は既存の検知ヘルパーを再利用する。
+    ///   - OnSightOrReach: 同室 OR 移動到達範囲（従来の Aggressive 起動）。
+    ///   - OnWeaponRange : 武器の攻撃射程内に攻撃可能な相手が現れたときのみ（GuardUntilInRange）。
+    ///     `attackableTargets` をそのまま使うので射程ロジックの重複なし。
+    def shouldAlert(rule: AlertRule, enc: Encounter, self: UnitView): Bool =
+        let board = enc#board;
+        match rule {
+            case AlertRule.OnSightOrReach =>
+                sameModuleAsAnyPlayer(board, self#pos)
+                    or anyPlayerWithinReach(board, self#pos, self#moveTiles)
+            case AlertRule.OnWeaponRange  =>
+                not List.isEmpty(attackableTargets(self, Encounter.enemiesOf(self#faction, enc)))
+        }
 
     /// 今ターン攻撃できる（武器射程 min..max 内の）相手だけを残す。武器なしは空。
     /// 射程判定と生存判定を分離することで、フィルタ条件を独立してテスト・再利用できる。
@@ -216,18 +283,33 @@ mod EnemyAI {
 
     /// 敵セルが「いずれかのプレイヤー」と同じモジュール idx に属するか。
     def sameModuleAsAnyPlayer(board: Board, enemyPos: {x = Int32, y = Int32}): Bool =
-        match MapSnapshot.moduleOfCell(enemyPos, board#map) {
-            case None    => false
-            case Some(a) =>
+        // 敵セルの所属モジュールを取り、いずれかの味方が同じモジュールに居るか。
+        // 内側の match は「moduleOfCell(pos) == Some(a)」(Option 同値) に、外側は Option.map で畳む。
+        MapSnapshot.moduleOfCell(enemyPos, board#map)
+            |> Option.map(a ->
                 Board.playerPositions(board)
-                    |> List.exists(p -> {
-                        let (_, pos) = p;
-                        match MapSnapshot.moduleOfCell(pos, board#map) {
-                            case Some(b) => a == b
-                            case None    => false
-                        }
-                    })
-        }
+                    |> List.exists(p -> { let (_, pos) = p;
+                        MapSnapshot.moduleOfCell(pos, board#map) == Some(a) }))
+            |> Option.getWithDefault(false)
+
+    /// 徘徊（Wander）で踏める 1 マス先の候補セル一覧（純粋）。シレン流の回遊にするため
+    /// モジュール（部屋/通路）の境界を越えてよい＝部屋から通路、通路から別部屋へ抜けられる。
+    /// 「歩行可能 + 空きマス」の 4 近傍を残し、さらに **直前にいたマス `prevPos` は除外**して
+    /// 「来た道へ戻らない」ようにする（1 幅通路で前後に揺れず直進し、実際に回遊する）。
+    /// ただし除外すると行き場が無くなる（袋小路）場合だけは prevPos を許して引き返せるようにする。
+    /// 実際の 1 つの選択は乱数を要するため driver 側が `RandomUtil.pick` で選ぶ（ここは pure）。
+    pub def wanderCandidates(board: Board, pos: {x = Int32, y = Int32},
+                              prevPos: Option[{x = Int32, y = Int32}]):
+            List[{x = Int32, y = Int32}] =
+        let dirs = Vec2i.up() :: Vec2i.down() :: Vec2i.left() :: Vec2i.right() :: Nil;
+        let open = dirs
+            |> List.map(d -> Board.stepTarget(pos, d))
+            |> List.filter(c -> Board.isWalkable(board, c) and not Board.isOccupied(c, board));
+        let isPrev = c -> prevPos
+            |> Option.map(p -> p#x == c#x and p#y == c#y)
+            |> Option.getWithDefault(false);
+        let forward = List.filter(c -> not isPrev(c), open);
+        if (List.isEmpty(forward)) open else forward
 
     /// 斜め隣接を含まない 4 近傍判定（上下左右のみ）。
     pub def isAdjacent(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Bool =

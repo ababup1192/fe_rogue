@@ -274,32 +274,23 @@ mod ItemMenuScene {
             case None       => 0
         }
 
-    /// 攻撃中 (PlayerAttack) の武器選択リストを組む。`refreshItemList` と同じ並び
-    /// (武器 → 杖 → 消費アイテム) ・アイコンだが、**カーソルが乗っている敵に届く武器だけ
-    /// アクティブ (disabled = false)**、それ以外の武器と道具 (杖・消費アイテム) は disabled。
+    /// 攻撃中 (PlayerAttack) の武器選択リストを組む。攻撃は武器でしか行えないため
+    /// **武器だけ**を並べる (杖・消費アイテムは出さない)。ロードは持ち物 2 倍だが武器は数本なので、
+    /// 杖・薬を含めて全持ち物を出していた旧仕様で起きていた「リストがパネル下に溢れる」を解消する。
+    /// カーソルが乗っている敵に届く武器だけアクティブ (disabled = false)、届かない武器は disabled。
     /// 選択 index は `activeAttackWeaponIndex` で「届く武器」に正規化する (engine の上下移動は
     /// disabled をスキップするので、左右でターゲットが変わって選択が射程外になったときの補正)。
+    /// 武器のみなので weapons 内 index = 表示行 index となり、selIdx 正規化はそのまま使える。
     def refreshAttackWeaponList(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
         match SelectedPlayer.State.get()#id {
             case None => scene
             case Some(playerId) =>
-                let weapons     = weaponsOf(playerId);
-                let staves      = stavesOf(playerId);
-                let consumables = consumablesOf(playerId);
-                let dist        = cursorTargetDistance(playerId, scene);
-                let weaponEntries = List.mapWithIndex(idx -> w ->
+                let weapons = weaponsOf(playerId);
+                let dist    = cursorTargetDistance(playerId, scene);
+                let items = List.mapWithIndex(idx -> w ->
                     attackWeaponEntry(idx, w, weaponActiveAt(dist, w)), weapons);
-                let staffEntries = List.mapWithIndex(idx -> s ->
-                    attackStaffEntry(idx, s), staves);
-                let consumableEntries = List.mapWithIndex(idx -> c ->
-                    attackConsumableEntry(idx, c), consumables);
-                let items = List.append(weaponEntries,
-                    List.append(staffEntries, consumableEntries));
-                let iconSprites = List.append(List.map(w -> w#sprite, weapons),
-                    List.append(List.map(s -> s#sprite, staves),
-                                List.map(c -> c#sprite, consumables)));
-                let icons = rowIcons(iconSprites);
+                let icons = rowIcons(List.map(w -> w#sprite, weapons));
                 let selIdx = activeAttackWeaponIndex(scene) |> Option.getWithDefault(0);
                 scene |> ItemList.mapAt(menuPath(), list ->
                     list
@@ -364,20 +355,6 @@ mod ItemMenuScene {
         text     = "${weapon#name} ${weapon#durability}",
         disabled = not active,
         metadata = Some("w:${idx}")
-    }
-
-    /// 攻撃中の杖エントリ。武器ではないので常に disabled。
-    def attackStaffEntry(idx: Int32, staff: Staff.StaffResource): ItemEntry = {
-        text     = "${staff#name} ${staff#durability}",
-        disabled = true,
-        metadata = Some("s:${idx}")
-    }
-
-    /// 攻撃中の消費アイテムエントリ。武器ではないので常に disabled。
-    def attackConsumableEntry(idx: Int32, item: Consumable.ConsumableResource): ItemEntry = {
-        text     = "${item#name} ${item#durability}",
-        disabled = true,
-        metadata = Some("c:${idx}")
     }
 
     /// 「そうび」項目（武器のみ）。

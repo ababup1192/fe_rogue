@@ -376,6 +376,7 @@
     },
     "rogue": {
       "attack": 4,
+      "canOpenChests": true,
       "defense": 2,
       "description": "ローグ",
       "growthRates": {

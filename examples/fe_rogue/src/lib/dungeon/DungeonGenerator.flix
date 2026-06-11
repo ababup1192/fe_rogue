@@ -219,30 +219,18 @@ mod DungeonGenerator {
     def tryOneAttempt(state: State, config: Config,
                        metaMap: Map[String, Meta],
                        anchorIdxs: List[Int32]): Option[State] \ Math.Random =
-        match RandomUtil.pick(anchorIdxs) {
-            case None => None
-            case Some(anchorIdx) =>
-                let anchor = entryOf(anchorIdx, state);
-                let freeSides = freeSidesOf(anchor);
-                match RandomUtil.pick(freeSides) {
-                    case None => None
-                    case Some(anchorSide) =>
-                        match pickWeightedPath(config#roomPaths) {
-                            case None => None
-                            case Some(newRoomPath) =>
-                                let pool = if (DungeonComposer.isHorizontalSide(anchorSide))
-                                               config#horizontalPaths
-                                           else
-                                               config#verticalPaths;
-                                match pickWeightedPath(pool) {
-                                    case None => None
-                                    case Some(pathwayPath) =>
-                                        tryPlacement(anchorIdx, anchorSide, newRoomPath,
-                                                      pathwayPath, state, config, metaMap)
-                                }
-                        }
-                }
-        }
+        // anchor → side → 新部屋 → 通路 → 配置 を順に引き、どれかが None なら全体 None。
+        // 4 段の match ネストを forM 1 本に畳む（最後の tryPlacement も Option なので bind して短絡させる）。
+        forM (
+            anchorIdx   <- RandomUtil.pick(anchorIdxs);
+            anchorSide  <- RandomUtil.pick(freeSidesOf(entryOf(anchorIdx, state)));
+            newRoomPath <- pickWeightedPath(config#roomPaths);
+            pathwayPath <- pickWeightedPath(
+                             if (DungeonComposer.isHorizontalSide(anchorSide)) config#horizontalPaths
+                             else config#verticalPaths);
+            placed      <- tryPlacement(anchorIdx, anchorSide, newRoomPath,
+                                         pathwayPath, state, config, metaMap)
+        ) yield placed
 
     /// 選択された (anchor, side, 新部屋) の組で実際に offset を計算し配置を確定する。
     /// 通路選択は side が横辺かどうかで決まる。プールから一様ランダムに 1 本選ぶ。

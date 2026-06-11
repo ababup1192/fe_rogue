@@ -93,6 +93,7 @@ mod FogScene {
             |> EnemyScene.applyFog(isLit)
             |> ItemScene.applyFog(isLit)
             |> StairsScene.applyFog(isLit)
+            |> ChestScene.applyFog(isLit)
 
     /// 非 hidden プレイヤーごとの「明るい穴」矩形リスト（純粋・テスト対象）。
     /// 部屋なら部屋全体、通路は torchCorridors のとき周囲1マスだけ。

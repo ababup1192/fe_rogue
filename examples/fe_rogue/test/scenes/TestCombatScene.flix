@@ -54,7 +54,8 @@ mod TestCombatScene {
         attackTargetId = None,
         resource       = TestUnitFixtures.testEnemyResource(3, 10),
         weapon         = Some(TestUnitFixtures.testWeapon()),
-        acted          = false
+        acted          = false,
+        prevPos        = None
     }
 
     /// World 配下に Player(0) と Enemy(1) を直接挿した最小シーン。

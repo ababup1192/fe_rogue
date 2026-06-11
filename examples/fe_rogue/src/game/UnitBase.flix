@@ -283,23 +283,16 @@ mod UnitBaseCodec {
                     entries: Map[String, {sprite = SpriteResource,
                                           spriteFrames = Option[SpriteFrames] | r}]):
             Map[String, {sprite = SpriteResource, spriteFrames = Option[SpriteFrames] | r}] \ GameEngine.Game =
-        match (Map.get(id, entries), expectObject(unitJson)) {
-            case (Some(res), Some(unitObj)) =>
-                match Map.get("spriteFrames", unitObj) {
-                    case None     => entries
-                    case Some(sf) =>
-                        match buildSpriteCtx(res#sprite) {
-                            case None      => entries
-                            case Some(ctx) =>
-                                match decodeSpriteFramesGrid(sf, ctx) {
-                                    case None      => entries
-                                    case Some(sff) =>
-                                        Map.insert(id, {spriteFrames = Some(sff) | res}, entries)
-                                }
-                        }
-                }
-            case _ => entries
-        }
+        // 「res 取得 → unit JSON → spriteFrames キー → ctx 構築 → grid デコード」の
+        // どれか 1 つでも欠けたら entries をそのまま返す。4 段の match ネストを forM 1 本に畳む。
+        let updated = forM (
+            res     <- Map.get(id, entries);
+            unitObj <- expectObject(unitJson);
+            sf      <- Map.get("spriteFrames", unitObj);
+            ctx     <- buildSpriteCtx(res#sprite);
+            sff     <- decodeSpriteFramesGrid(sf, ctx)
+        ) yield Map.insert(id, {spriteFrames = Some(sff) | res}, entries);
+        Option.getWithDefault(entries, updated)
 
     def buildSpriteCtx(sprite: SpriteResource): Option[SpriteCtx] \ GameEngine.Game =
         if (sprite#hframes <= 0 or sprite#vframes <= 0) None

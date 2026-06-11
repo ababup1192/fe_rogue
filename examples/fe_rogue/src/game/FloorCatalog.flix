@@ -63,7 +63,11 @@ mod FloorCatalog {
         itemsPerRoom    = SpawnRange,
         roomMaps        = List[SpawnEntry],
         horizontalMaps  = List[SpawnEntry],
-        verticalMaps    = List[SpawnEntry]
+        verticalMaps    = List[SpawnEntry],
+        // 宝箱の出現種別プール(重み付き)とフロアあたり配置数レンジ。
+        // 後方互換のため省略可能（欠落時は chests=Nil / chestsPerFloor={0,0} = 宝箱なし）。
+        chests          = List[SpawnEntry],
+        chestsPerFloor  = SpawnRange
     }
 
     /// マップ stem（例 `"room_1"`）を `assets/maps/room_1.map.json` パスに解決する。
@@ -166,7 +170,7 @@ mod FloorCatalog {
     /// `CatalogContainer.loadWithCheck` に渡し、余剰フィールドがある場合に警告を出すために使用する。
     pub def expectedFloorFields(): Set[String] =
         Set#{"label", "generation", "monsters", "items", "monstersPerRoom", "itemsPerRoom",
-             "roomMaps", "horizontalMaps", "verticalMaps"}
+             "roomMaps", "horizontalMaps", "verticalMaps", "chests", "chestsPerFloor"}
 
 }
 
@@ -207,7 +211,9 @@ mod FloorCatalogCodec {
             "itemsPerRoom"    => encodeRange(floor#itemsPerRoom),
             "roomMaps"        => encodeList(encodeSpawnEntry, floor#roomMaps),
             "horizontalMaps"  => encodeList(encodeSpawnEntry, floor#horizontalMaps),
-            "verticalMaps"    => encodeList(encodeSpawnEntry, floor#verticalMaps)
+            "verticalMaps"    => encodeList(encodeSpawnEntry, floor#verticalMaps),
+            "chests"          => encodeList(encodeSpawnEntry, floor#chests),
+            "chestsPerFloor"  => encodeRange(floor#chestsPerFloor)
         })
 
     def encodeGeneration(config: GenerationConfig): Json =
@@ -251,8 +257,18 @@ mod FloorCatalogCodec {
             // マッププールは省略可能（未移行 floors.json でも起動できるよう欠落時は Nil）。
             roomMaps       = decodeMapsField("roomMaps", obj),
             horizontalMaps = decodeMapsField("horizontalMaps", obj),
-            verticalMaps   = decodeMapsField("verticalMaps", obj)
+            verticalMaps   = decodeMapsField("verticalMaps", obj),
+            // 宝箱も省略可能（既存 floors.json を壊さないため必須バインドに入れず欠落時は空/0）。
+            chests         = decodeMapsField("chests", obj),
+            chestsPerFloor = decodeRangeField("chestsPerFloor", obj)
         }: FloorResource)
+
+    /// SpawnRange フィールドを decode する。キー欠落 / 形式不正なら {min=0, max=0} にフォールバック
+    /// （chestsPerFloor の後方互換。0 配置 = 宝箱なしになる）。
+    def decodeRangeField(key: String, obj: Map[String, Json]): SpawnRange =
+        Map.get(key, obj)
+            |> Option.flatMap(decodeSpawnRange)
+            |> Option.getWithDefault({min = 0, max = 0})
 
     /// マッププールフィールドを decode する。キー欠落 / 形式不正なら空リストにフォールバックする
     /// （必須の forM バインドに入れず、後方互換のため defensive に Nil 既定とする）。

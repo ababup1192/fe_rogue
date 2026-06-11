@@ -1,5 +1,41 @@
 {
   "fields": {
+    "attack": {
+      "field": {
+        "ftype": "int",
+        "hint": {
+          "slider": {
+            "max": 30,
+            "min": 0,
+            "step": 1
+          }
+        },
+        "label": "力",
+        "order": 2
+      }
+    },
+    "canOpenChests": {
+      "field": {
+        "ftype": "bool",
+        "hint": "plain",
+        "label": "宝箱を開ける",
+        "order": 14
+      }
+    },
+    "defense": {
+      "field": {
+        "ftype": "int",
+        "hint": {
+          "slider": {
+            "max": 30,
+            "min": 0,
+            "step": 1
+          }
+        },
+        "label": "守備",
+        "order": 4
+      }
+    },
     "description": {
       "field": {
         "ftype": "text",
@@ -8,13 +44,129 @@
         "order": 0
       }
     },
+    "growthRates": {
+      "nested": {
+        "attack": {
+          "field": {
+            "ftype": "int",
+            "hint": {
+              "slider": {
+                "max": 100,
+                "min": 0,
+                "step": 5
+              }
+            },
+            "label": "力成長",
+            "order": 2
+          }
+        },
+        "defense": {
+          "field": {
+            "ftype": "int",
+            "hint": {
+              "slider": {
+                "max": 100,
+                "min": 0,
+                "step": 5
+              }
+            },
+            "label": "守備成長",
+            "order": 3
+          }
+        },
+        "hp": {
+          "field": {
+            "ftype": "int",
+            "hint": {
+              "slider": {
+                "max": 100,
+                "min": 0,
+                "step": 5
+              }
+            },
+            "label": "HP成長",
+            "order": 1
+          }
+        },
+        "luck": {
+          "field": {
+            "ftype": "int",
+            "hint": {
+              "slider": {
+                "max": 100,
+                "min": 0,
+                "step": 5
+              }
+            },
+            "label": "幸運成長",
+            "order": 8
+          }
+        },
+        "magicAttack": {
+          "field": {
+            "ftype": "int",
+            "hint": {
+              "slider": {
+                "max": 100,
+                "min": 0,
+                "step": 5
+              }
+            },
+            "label": "魔力成長",
+            "order": 4
+          }
+        },
+        "magicDefense": {
+          "field": {
+            "ftype": "int",
+            "hint": {
+              "slider": {
+                "max": 100,
+                "min": 0,
+                "step": 5
+              }
+            },
+            "label": "魔防成長",
+            "order": 5
+          }
+        },
+        "skill": {
+          "field": {
+            "ftype": "int",
+            "hint": {
+              "slider": {
+                "max": 100,
+                "min": 0,
+                "step": 5
+              }
+            },
+            "label": "技成長",
+            "order": 7
+          }
+        },
+        "speed": {
+          "field": {
+            "ftype": "int",
+            "hint": {
+              "slider": {
+                "max": 100,
+                "min": 0,
+                "step": 5
+              }
+            },
+            "label": "速さ成長",
+            "order": 6
+          }
+        }
+      }
+    },
     "hp": {
       "field": {
         "ftype": "int",
         "hint": {
           "slider": {
-            "min": 1,
             "max": 60,
+            "min": 1,
             "step": 5
           }
         },
@@ -22,122 +174,9 @@
         "order": 1
       }
     },
-    "attack": {
-      "field": {
-        "ftype": "int",
-        "hint": {
-          "slider": {
-            "min": 0,
-            "max": 30,
-            "step": 1
-          }
-        },
-        "label": "力",
-        "order": 2
-      }
-    },
-    "magicAttack": {
-      "field": {
-        "ftype": "int",
-        "hint": {
-          "slider": {
-            "min": 0,
-            "max": 30,
-            "step": 1
-          }
-        },
-        "label": "魔力",
-        "order": 3
-      }
-    },
-    "defense": {
-      "field": {
-        "ftype": "int",
-        "hint": {
-          "slider": {
-            "min": 0,
-            "max": 30,
-            "step": 1
-          }
-        },
-        "label": "守備",
-        "order": 4
-      }
-    },
-    "magicDefense": {
-      "field": {
-        "ftype": "int",
-        "hint": {
-          "slider": {
-            "min": 0,
-            "max": 30,
-            "step": 1
-          }
-        },
-        "label": "魔防",
-        "order": 5
-      }
-    },
-    "speed": {
-      "field": {
-        "ftype": "int",
-        "hint": {
-          "slider": {
-            "min": 0,
-            "max": 30,
-            "step": 1
-          }
-        },
-        "label": "速さ",
-        "order": 6
-      }
-    },
-    "skill": {
-      "field": {
-        "ftype": "int",
-        "hint": {
-          "slider": {
-            "min": 0,
-            "max": 30,
-            "step": 1
-          }
-        },
-        "label": "技",
-        "order": 7
-      }
-    },
-    "luck": {
-      "field": {
-        "ftype": "int",
-        "hint": {
-          "slider": {
-            "min": 0,
-            "max": 30,
-            "step": 1
-          }
-        },
-        "label": "幸運",
-        "order": 8
-      }
-    },
-    "moveTiles": {
-      "field": {
-        "ftype": "int",
-        "hint": {
-          "slider": {
-            "min": 1,
-            "max": 10,
-            "step": 1
-          }
-        },
-        "label": "移動",
-        "order": 9
-      }
-    },
     "initialInventory": {
       "field": {
         "ftype": {
-          "type": "kindedRefList",
           "kinds": [
             {
               "kindId": "weapon",
@@ -154,21 +193,128 @@
               "label": "消費アイテム",
               "to": "consumables"
             }
-          ]
+          ],
+          "type": "kindedRefList"
         },
         "hint": "plain",
         "label": "初期持ち物",
         "order": 10
       }
     },
+    "level": {
+      "field": {
+        "ftype": "int",
+        "hint": {
+          "slider": {
+            "max": 20,
+            "min": 1,
+            "step": 1
+          }
+        },
+        "label": "レベル",
+        "order": 12
+      }
+    },
+    "luck": {
+      "field": {
+        "ftype": "int",
+        "hint": {
+          "slider": {
+            "max": 30,
+            "min": 0,
+            "step": 1
+          }
+        },
+        "label": "幸運",
+        "order": 8
+      }
+    },
+    "magicAttack": {
+      "field": {
+        "ftype": "int",
+        "hint": {
+          "slider": {
+            "max": 30,
+            "min": 0,
+            "step": 1
+          }
+        },
+        "label": "魔力",
+        "order": 3
+      }
+    },
+    "magicDefense": {
+      "field": {
+        "ftype": "int",
+        "hint": {
+          "slider": {
+            "max": 30,
+            "min": 0,
+            "step": 1
+          }
+        },
+        "label": "魔防",
+        "order": 5
+      }
+    },
+    "moveTiles": {
+      "field": {
+        "ftype": "int",
+        "hint": {
+          "slider": {
+            "max": 10,
+            "min": 1,
+            "step": 1
+          }
+        },
+        "label": "移動",
+        "order": 9
+      }
+    },
+    "proficientWeaponTypes": {
+      "field": {
+        "ftype": "weaponProf",
+        "hint": "plain",
+        "label": "得意武器",
+        "order": 13
+      }
+    },
+    "skill": {
+      "field": {
+        "ftype": "int",
+        "hint": {
+          "slider": {
+            "max": 30,
+            "min": 0,
+            "step": 1
+          }
+        },
+        "label": "技",
+        "order": 7
+      }
+    },
+    "speed": {
+      "field": {
+        "ftype": "int",
+        "hint": {
+          "slider": {
+            "max": 30,
+            "min": 0,
+            "step": 1
+          }
+        },
+        "label": "速さ",
+        "order": 6
+      }
+    },
     "sprite": {
       "nested": {
-        "texture": {
+        "flipForFacing": {
           "field": {
-            "ftype": "texturePath",
+            "ftype": "bool",
             "hint": "plain",
-            "label": "テクスチャ",
-            "order": 1
+            "label": "左右反転 (右移動で反転)",
+            "order": 5
           }
         },
         "frame": {
@@ -189,33 +335,12 @@
             "ftype": "int",
             "hint": {
               "spinner": {
-                "min": 1,
-                "max": 16
+                "max": 16,
+                "min": 1
               }
             },
             "label": "横分割",
             "order": 3
-          }
-        },
-        "vframes": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "spinner": {
-                "min": 1,
-                "max": 16
-              }
-            },
-            "label": "縦分割",
-            "order": 4
-          }
-        },
-        "flipForFacing": {
-          "field": {
-            "ftype": "bool",
-            "hint": "plain",
-            "label": "左右反転 (右移動で反転)",
-            "order": 5
           }
         },
         "offset": {
@@ -225,8 +350,8 @@
                 "ftype": "float",
                 "hint": {
                   "slider": {
-                    "min": -16,
                     "max": 16,
+                    "min": -16,
                     "step": 0.5
                   }
                 },
@@ -238,8 +363,8 @@
                 "ftype": "float",
                 "hint": {
                   "slider": {
-                    "min": -16,
                     "max": 16,
+                    "min": -16,
                     "step": 0.5
                   }
                 },
@@ -255,8 +380,8 @@
                 "ftype": "float",
                 "hint": {
                   "slider": {
-                    "min": 0.5,
                     "max": 4.0,
+                    "min": 0.5,
                     "step": 0.1
                   }
                 },
@@ -268,14 +393,35 @@
                 "ftype": "float",
                 "hint": {
                   "slider": {
-                    "min": 0.5,
                     "max": 4.0,
+                    "min": 0.5,
                     "step": 0.1
                   }
                 },
                 "label": "スケール Y"
               }
             }
+          }
+        },
+        "texture": {
+          "field": {
+            "ftype": "texturePath",
+            "hint": "plain",
+            "label": "テクスチャ",
+            "order": 1
+          }
+        },
+        "vframes": {
+          "field": {
+            "ftype": "int",
+            "hint": {
+              "spinner": {
+                "max": 16,
+                "min": 1
+              }
+            },
+            "label": "縦分割",
+            "order": 4
           }
         }
       }
@@ -287,150 +433,12 @@
         "label": "AnimatedSprite2D",
         "order": 11
       }
-    },
-    "growthRates": {
-      "nested": {
-        "hp": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "slider": {
-                "min": 0,
-                "max": 100,
-                "step": 5
-              }
-            },
-            "label": "HP成長",
-            "order": 1
-          }
-        },
-        "attack": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "slider": {
-                "min": 0,
-                "max": 100,
-                "step": 5
-              }
-            },
-            "label": "力成長",
-            "order": 2
-          }
-        },
-        "defense": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "slider": {
-                "min": 0,
-                "max": 100,
-                "step": 5
-              }
-            },
-            "label": "守備成長",
-            "order": 3
-          }
-        },
-        "magicAttack": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "slider": {
-                "min": 0,
-                "max": 100,
-                "step": 5
-              }
-            },
-            "label": "魔力成長",
-            "order": 4
-          }
-        },
-        "magicDefense": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "slider": {
-                "min": 0,
-                "max": 100,
-                "step": 5
-              }
-            },
-            "label": "魔防成長",
-            "order": 5
-          }
-        },
-        "speed": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "slider": {
-                "min": 0,
-                "max": 100,
-                "step": 5
-              }
-            },
-            "label": "速さ成長",
-            "order": 6
-          }
-        },
-        "skill": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "slider": {
-                "min": 0,
-                "max": 100,
-                "step": 5
-              }
-            },
-            "label": "技成長",
-            "order": 7
-          }
-        },
-        "luck": {
-          "field": {
-            "ftype": "int",
-            "hint": {
-              "slider": {
-                "min": 0,
-                "max": 100,
-                "step": 5
-              }
-            },
-            "label": "幸運成長",
-            "order": 8
-          }
-        }
-      }
-    },
-    "level": {
-      "field": {
-        "ftype": "int",
-        "hint": {
-          "slider": {
-            "min": 1,
-            "max": 20,
-            "step": 1
-          }
-        },
-        "label": "レベル",
-        "order": 12
-      }
-    },
-    "proficientWeaponTypes": {
-      "field": {
-        "ftype": "weaponProf",
-        "hint": "plain",
-        "label": "得意武器",
-        "order": 13
-      }
     }
   },
   "metaHints": {
     "players": {
-      "type": "ref",
-      "to": "units"
+      "to": "units",
+      "type": "ref"
     }
   }
 }

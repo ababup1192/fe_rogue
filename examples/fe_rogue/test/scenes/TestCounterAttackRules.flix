@@ -52,7 +52,8 @@ mod TestCounterAttackRules {
         attackTargetId = None,
         resource       = TestUnitFixtures.testEnemyResource(3, 10),
         weapon         = weapon,
-        acted          = false
+        acted          = false,
+        prevPos        = None
     }
 
     /// 射程 2-2 の弓 (隣接攻撃には届かない)

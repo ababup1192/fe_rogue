@@ -29,7 +29,10 @@ mod EnemyData {
         attackTargetId = Option[Int32],
         resource       = EnemyCatalog.EnemyResource,
         weapon         = Option[UnitCatalog.WeaponResource],
-        acted          = Bool
+        acted          = Bool,
+        // 直前にいたマス（`moveTo` が更新）。徘徊(Wander)で「来た道へ戻らない」ために使い、
+        // 1 幅通路を前後に揺れず直進・部屋から通路へ抜けて回遊できるようにする。None は初期 / 未移動。
+        prevPos        = Option[{x = Int32, y = Int32}]
     }
 
     /// respawn 時に再生成するために必要な最小情報だけを永続保持する型。

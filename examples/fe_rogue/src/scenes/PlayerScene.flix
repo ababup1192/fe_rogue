@@ -67,7 +67,9 @@ mod PlayerScene {
         {id = data#id, faction = Faction.Player, pos = data#gridPos,
          hp = data#hp, moveTiles = data#moveTiles,
          weaponRange = PlayerData.equippedWeapon(data#weapons) |> Option.map(w -> w#range),
-         combat = combatView(data), isDying = false, hidden = data#hidden}
+         combat = combatView(data), isDying = false, hidden = data#hidden,
+         // 味方は EnemyAI に渡らないので無害な固定値（型を埋めるためだけ）。
+         aiType = EnemyAI.AiType.Aggressive}
 
     // ────────────────────────────────────────────────────────
     // (B) 定数
@@ -91,6 +93,11 @@ mod PlayerScene {
     pub def itemCapacity(data: Data): Int32 =
         if (data#resource#description == lordClass()) lordItemCapacity()
         else normalItemCapacity()
+
+    /// この味方が床の宝箱を開けられるか。UnitResource の `canOpenChests`（ローグのみ true）を読む。
+    /// `itemCapacity` と同じく「駒の Data からクラス能力を引く」流儀に揃える。
+    pub def canOpenChests(data: Data): Bool =
+        data#resource#canOpenChests
 
     /// いま持っている持ち物の合計個数（武器 + 杖 + 消費アイテムを合算する）。
     pub def itemCount(data: Data): Int32 =

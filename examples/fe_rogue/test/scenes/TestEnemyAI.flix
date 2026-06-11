@@ -25,7 +25,7 @@ mod TestEnemyAI {
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
-          weapon = Some(TestUnitFixtures.testWeapon()), acted = false }
+          weapon = Some(TestUnitFixtures.testWeapon()), acted = false, prevPos = None }
 
     /// 武器が壊れた状態（`weapon = None`）の敵 Data。武器なしで隣接プレイヤーに
     /// 攻撃しないことを確認するテストで使う。
@@ -35,7 +35,7 @@ mod TestEnemyAI {
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
-          weapon = None, acted = false }
+          weapon = None, acted = false, prevPos = None }
 
     /// 射程 2-2 の弓を装備した敵 Data。アーチャーが距離 2 でのみ攻撃し、
     /// 隣接（距離 1）では体当たりしないことを検証するテストで使う。
@@ -46,7 +46,17 @@ mod TestEnemyAI {
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
-          weapon = Some(bow), acted = false }
+          weapon = Some(bow), acted = false, prevPos = None }
+
+    /// `aiType` を指定した敵 Data（GuardUntilInRange / Wanderer の検知分岐を検証する用）。
+    /// resource の aiType フィールドだけ差し替えて、他は enemyAt と同条件にする。
+    def enemyAtTyped(id: Int32, pos: {x = Int32, y = Int32}, alerted: Bool,
+                     home: Int32, moveTiles: Int32, t: EnemyAI.AiType): EnemyScene.Data =
+        { id = id, gridPos = pos, alerted = alerted,
+          homeModuleIdx = home, moveTiles = moveTiles,
+          hp = 3, isDying = false, attackTargetId = None,
+          resource = {aiType = t | TestUnitFixtures.testEnemyResource(moveTiles, 3)},
+          weapon = Some(TestUnitFixtures.testWeapon()), acted = false, prevPos = None }
 
     /// EnemyAction を tag だけのタプルに圧縮（id 付き）。Eq が無いので比較しやすくする。
     def tagOf(a: EnemyAction): String =
@@ -55,6 +65,7 @@ mod TestEnemyAI {
             case EnemyAction.Attack(_, _) => "Attack"
             case EnemyAction.Wait(_)      => "Wait"
             case EnemyAction.Skip(_)      => "Skip"
+            case EnemyAction.Wander(_)    => "Wander"
         }
 
     def moveTarget(a: EnemyAction): Option[{x = Int32, y = Int32}] =
@@ -224,6 +235,75 @@ mod TestEnemyAI {
         let enemy   = enemyAt(0, enemyP, true, 1, 3);    // 既に alerted
         let (a, d)  = EnemyAI.decideAction({board = board, units = targetsOf(board)}, EnemyScene.unitView(enemy), enemy#alerted);
         Assert.assertEq(expected = ("Move", true), (tagOf(a), d#alerted))
+
+    // ════════════════════════════════════════════════════════
+    // AiType（索敵/挙動タイプ）の分岐
+    // ════════════════════════════════════════════════════════
+
+    /// policy() のテーブルが各タイプを期待どおりの (起動条件, 未起動時) に写す（唯一のディスパッチ点）。
+    @Test
+    def testPolicyTable(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (EnemyAI.AlertRule.OnSightOrReach, EnemyAI.IdleBehavior.StayDormant),
+            { let p = EnemyAI.policy(EnemyAI.AiType.Aggressive); (p#alert, p#idle) });
+        Assert.assertEq(
+            expected = (EnemyAI.AlertRule.OnWeaponRange, EnemyAI.IdleBehavior.StayDormant),
+            { let p = EnemyAI.policy(EnemyAI.AiType.GuardUntilInRange); (p#alert, p#idle) });
+        Assert.assertEq(
+            expected = (EnemyAI.AlertRule.OnSightOrReach, EnemyAI.IdleBehavior.Roam),
+            { let p = EnemyAI.policy(EnemyAI.AiType.Wanderer); (p#alert, p#idle) })
+
+    /// GuardUntilInRange は同モジュールでも武器射程外なら起動せず Skip（Aggressive なら Move する状況）。
+    @Test
+    def testGuardSameModuleOutOfRangeStaysDormant(): Unit \ Assert =
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let player  = ({x = 1, y = 1}: {x = Int32, y = Int32});
+        let enemyP  = ({x = 8, y = 8}: {x = Int32, y = Int32});   // 同モジュール・剣射程(1)外
+        let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
+        let enemy   = enemyAtTyped(0, enemyP, false, 0, 3, EnemyAI.AiType.GuardUntilInRange);
+        let (a, d)  = EnemyAI.decideAction({board = board, units = targetsOf(board)}, EnemyScene.unitView(enemy), enemy#alerted);
+        Assert.assertEq(expected = ("Skip", false), (tagOf(a), d#alerted))
+
+    /// GuardUntilInRange は武器射程内（隣接）にプレイヤーが入ると起動して Attack する。
+    @Test
+    def testGuardInWeaponRangeAlertsAndAttacks(): Unit \ Assert =
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let player  = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 隣接 = 剣射程内
+        let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
+        let enemy   = enemyAtTyped(0, enemyP, false, 0, 3, EnemyAI.AiType.GuardUntilInRange);
+        let (a, d)  = EnemyAI.decideAction({board = board, units = targetsOf(board)}, EnemyScene.unitView(enemy), enemy#alerted);
+        Assert.assertEq(expected = ("Attack", true), (tagOf(a), d#alerted))
+
+    /// Wanderer は未起動（別モジュール・索敵範囲外）のとき Skip ではなく Wander を返す（徘徊意図）。
+    /// 起動条件は Aggressive と同じ OnSightOrReach なので、検知幾何は testDecideDormantDifferentModuleSkips と同一。
+    @Test
+    def testWandererDormantWanders(): Unit \ Assert =
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(10, 5)};
+        let player  = ({x = 1, y = 2}: {x = Int32, y = Int32});   // module 0
+        let enemyP  = ({x = 7, y = 2}: {x = Int32, y = Int32});   // module 1, 範囲外
+        let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
+        let enemy   = enemyAtTyped(0, enemyP, false, 1, 3, EnemyAI.AiType.Wanderer);
+        let (a, d)  = EnemyAI.decideAction({board = board, units = targetsOf(board)}, EnemyScene.unitView(enemy), enemy#alerted);
+        Assert.assertEq(expected = ("Wander", false), (tagOf(a), d#alerted))
+
+    /// wanderCandidates は「歩行可能・空き」の 4 近傍を残す（モジュール越え可・回遊）。
+    /// prevPos=None の単室中央セルなら 4 近傍すべてが候補（壁・他駒なし）。
+    @Test
+    def testWanderCandidatesFourNeighborsInOpenRoom(): Unit \ Assert =
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let pos     = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let board: Board = {map = map, pieces = (Piece.Enemy(0), pos) :: Nil};
+        Assert.assertEq(expected = 4, List.length(EnemyAI.wanderCandidates(board, pos, None)))
+
+    /// prevPos を除外して「来た道へ戻らない」: 中央セルで直前が左(4,5)なら候補は残り 3 マス。
+    @Test
+    def testWanderCandidatesExcludesPrev(): Unit \ Assert =
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let pos     = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        let board: Board = {map = map, pieces = (Piece.Enemy(0), pos) :: Nil};
+        Assert.assertEq(expected = 3,
+            List.length(EnemyAI.wanderCandidates(board, pos, Some({x = 4, y = 5}))))
 
     // ════════════════════════════════════════════════════════
     // 隣接 → Attack

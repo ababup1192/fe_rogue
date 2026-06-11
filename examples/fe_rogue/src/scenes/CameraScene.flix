@@ -133,24 +133,17 @@ mod CameraScene {
     /// 「敵に発見されている状態では敵の動きが見える」ようにするためのロジック。
     def enemyTurnTarget(fallback: Vec2.Vec2, scene: Scene[NodeTag]):
             Vec2.Vec2 \ {EnemyTurn.Queue, EnemyData.RosterQuery} =
+        // 注目する敵: attack_lunge 中の敵を優先、居なければキュー先頭。内側 match は Option.map に畳む。
         let activeId = match attackingEnemyId() {
             case Some(id) => Some(id)
-            case None     => match EnemyTurn.Queue.peekFront() {
-                case Some(step) => Some(step#id)
-                case None       => None
-            }
+            case None     => EnemyTurn.Queue.peekFront() |> Option.map(step -> step#id)
         };
-        match activeId {
-            case None     => fallback
-            case Some(id) =>
-                match EnemyData.RosterQuery.get(id) {
-                    case Some(d) =>
-                        if (d#alerted)
-                            Scene.globalPositionAt(EnemyScene.enemyPath(id), scene)
-                        else fallback
-                    case None => fallback
-                }
-        }
+        // activeId → その敵 Data を forM で引き、alerted なら敵を、それ以外(未発見/不在)は fallback を注視。
+        let target = forM (
+            id <- activeId;
+            d  <- EnemyData.RosterQuery.get(id)
+        ) yield (if (d#alerted) Scene.globalPositionAt(EnemyScene.enemyPath(id), scene) else fallback);
+        Option.getWithDefault(fallback, target)
 
     /// attack_lunge 中の敵 id を 1 つ返す。`stepEnemyTurn` が attacking 中は他の step を
     /// 進めない設計なので、複数 attacking 状態は通常起きない（防御的に head を取る）。

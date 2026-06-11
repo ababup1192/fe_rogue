@@ -74,12 +74,15 @@ pub enum NodeTag {
     case ItemPickupPopup(ItemPickupPopupScene.PopupData)
     /// ItemScene の床に落ちている武器（拾える）
     case GroundItem(ItemScene.Data)
+    /// ChestScene の床に置かれた宝箱（ローグだけが開けられる。中身は配置時に確定済み）
+    case Chest(ChestScene.Data)
     /// `EnemyTurnDriverScene` の常駐タグ専用ノード (Marker2D)。process redef で phase を
     /// 見て EnemyTurn 中なら stepOnce、PlayerAttackHold 中なら hold 終了判定を行う。
     case EnemyTurnDriver
-    /// `AutoMoveScene` の常駐タグ専用ノード (Marker2D)。
-    /// `AutoMoveScene.process` redef で phase を見て PlayerAutoMove 中なら `step` を呼ぶ。
-    case AutoMoveDriver
+    /// `AutoMoveScene` の常駐タグ専用ノード (Marker2D)。`RoamPacer` は自由歩行(RogueMove)中に
+    /// 「ロードが 1 歩動いた」エッジを検知して徘徊敵を 1 歩ずつ動かすための直近ロード位置を持つ。
+    /// `AutoMoveScene.process` redef で phase を見て PlayerAutoMove は合流 / RogueMove は徘徊+検知を行う。
+    case AutoMoveDriver(AutoMoveScene.RoamPacer)
     /// `FogScene` の常駐タグ専用ノード (Marker2D)。process redef で毎フレーム、現在パーティの
     /// いる部屋/通路だけ明るくし、それ以外は薄暗いモヤ＋敵/アイテム/階段を非表示にする。
     case FogDriver
@@ -187,7 +190,7 @@ def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
     match node {
         case EngineNode.Marker2DWithState(_, NodeTag.EnemyTurnDriver) =>
             checked_ecast(EnemyTurnDriverScene.process(delta, node, path, scene))
-        case EngineNode.Marker2DWithState(_, NodeTag.AutoMoveDriver) =>
+        case EngineNode.Marker2DWithState(_, NodeTag.AutoMoveDriver(_)) =>
             checked_ecast(AutoMoveScene.process(delta, node, path, scene))
         case EngineNode.Marker2DWithState(_, NodeTag.ArrowCursor(_)) =>
             checked_ecast(ArrowCursorScene.process(delta, node, path, scene))
@@ -293,12 +296,11 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                               and phase == TurnPhase.Phase.PlayerCursor;
             // メニュー系フェーズ (ActionMenu / ItemMenu / TradeMenu) の Z/X は別関数で処理。
             // Some が返ってくれば dispatcher が処理済みなのでその scene をそのまま返す。
-            match input {
-                case Some(inp) => match checked_ecast(dispatchMenuKey(phase, inp, scene)) {
-                    case Some(after) => after
-                    case None        => dispatchNonMenuKey(phase, input, key, popupShown, scene)
-                }
-                case None => dispatchNonMenuKey(phase, input, key, popupShown, scene)
+            // 入力があればメニュー dispatcher に渡す。処理済み(Some)ならその scene、
+            // 未処理(None)・入力なしは非メニュー処理へ。2 段の match を flatMap + 1 match に畳む。
+            match input |> Option.flatMap(inp -> checked_ecast(dispatchMenuKey(phase, inp, scene))) {
+                case Some(after) => after
+                case None        => dispatchNonMenuKey(phase, input, key, popupShown, scene)
             }
         }
 
@@ -396,18 +398,17 @@ def staffAimConfirm(scene: Scene[NodeTag]):
                            EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                            GameEngine.Audio} =
     let dir = ArrowCursorScene.getDirection(scene);
-    match SelectedPlayer.State.get()#id {
-        case None           => scene
-        case Some(playerId) =>
-            match PlayerScene.get(playerId, scene) {
-                case None         => scene
-                case Some(player) =>
-                    match player#selectedItem {
-                        case Some(PlayerData.ItemKind.Staff(idx)) =>
-                            StaffCastScene.applyStaffCast(playerId, idx, dir, scene)
-                        case _ => scene
-                    }
-            }
+    // 選択中プレイヤー → その Data → selectedItem を forM で 1 本に畳み、
+    // 杖(Staff)を選んでいるときだけ発射する（3 段の match ネストを解消）。
+    let selected = forM (
+        playerId <- SelectedPlayer.State.get()#id;
+        player   <- PlayerScene.get(playerId, scene);
+        item     <- player#selectedItem
+    ) yield (playerId, item);
+    match selected {
+        case Some((playerId, PlayerData.ItemKind.Staff(idx))) =>
+            StaffCastScene.applyStaffCast(playerId, idx, dir, scene)
+        case _ => scene
     }
 
 /// プレイヤー操作のフィードバック効果音を鳴らす。
@@ -619,6 +620,9 @@ mod Game {
             let sceneRef = Ref.fresh(rc, Scene.empty());
             // ゲーム全体の進行状態（画面）。起動直後はキャラクター選択画面から始める。
             let phaseRef = Ref.fresh(rc, GamePhase.CharacterSelect);
+            // 試練型の部屋湧きクロック。WandererSpawnRequest が来るたび +1 し、
+            // EnemyScene が周期判定（tick mod N）に使う。modulo 判定ゆえフロア跨ぎのリセット不要。
+            let wanderClockRef = Ref.fresh(rc, 0);
             // ユニットカタログをロード + schema 整合性検査（不正データを起動直後に検出して即終了する）。
             // 各 load() 内で失敗内容を panic に出して原因を即可視化する。
             // units.json の spriteFrames は格子インデックス形式で書かれているため、
@@ -639,14 +643,17 @@ mod Game {
             let staffCatalog = Staff.load();
             // 消費アイテム（きずぐすり等）カタログをロード。
             let consumableCatalog = Consumable.load();
-            // 6 カタログを 1 つの record に束ねて構築 / リビルド経路へ引き回す。
+            // 宝箱カタログをロード（種別ごとの中身プールを持つ）。
+            let chestCatalog = ChestCatalog.load();
+            // 7 カタログを 1 つの record に束ねて構築 / リビルド経路へ引き回す。
             let catalogs = {
                 weapons     = weaponCatalog,
                 players     = catalog,
                 enemies     = enemyCatalog,
                 floors      = floors,
                 staves      = staffCatalog,
-                consumables = consumableCatalog
+                consumables = consumableCatalog,
+                chests      = chestCatalog
             };
             run {
                 // 起動直後はキャラクター選択画面を組む。本編（ダンジョン）は出撃メンバー確定後の
@@ -684,6 +691,15 @@ mod Game {
                   // 生存味方が全員階段を使ったら次フロアへ（最終フロアならクリア → 1F ループ）。
                   // HP / 武器 / 持ち物の引き継ぎを含め本体は GameLifecycle.advanceFloor 側。
                   def advance(scene, k) = k(GameLifecycle.advanceFloor(catalogs, scene))
+              }
+              with handler CustomEffects.WandererSpawnRequest {
+                  // 試練型の部屋湧き。呼ばれるたびクロックを +1 し、その tick を渡して
+                  // 現在フロアを解決し EnemyScene に委ねる（周期・上限・湧くかの判断は EnemyScene 側）。
+                  // catalog とクロック Ref をクロージャに閉じ込めて使う。
+                  def maybeSpawn(scene, k) =
+                      let tick = Ref.get(wanderClockRef) + 1;
+                      Ref.put(tick, wanderClockRef);
+                      k(GameLifecycle.maybeSpawnWanderer(catalogs, tick, scene))
               }
               with handler BoardQuery {
                   def board(k) = k(BoardSnapshot.fromScene(Ref.get(sceneRef)))
@@ -755,6 +771,7 @@ mod Game {
                          SelectedPlayer.State,
                          CustomEffects.GameOverRequest,
                          CustomEffects.FloorAdvanceRequest,
+                         CustomEffects.WandererSpawnRequest,
                          FloorProgress.State, InitialSpawns.State,
                          GamePhaseState, PartySelection.State,
                          Pacing.State, Math.Random, r} =

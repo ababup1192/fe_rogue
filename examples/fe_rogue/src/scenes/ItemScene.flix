@@ -130,22 +130,21 @@ mod ItemScene {
 
     /// id を weapons catalog → staves catalog → consumables catalog の順で引いて、
     /// 見つかった方を ADT で返す。どれにも無ければ起動時 typo として panic。
-    def lookupItem(id: String,
+    /// 宝箱の中身解決(`ChestScene.add`)でも同じ id→GroundItemKind 規則を共有するため pub。
+    pub def lookupItem(id: String,
                     catalog: UnitCatalog.UnitCatalog,
                     staffCatalog: Staff.StaffCatalog,
                     consumableCatalog: Consumable.ConsumableCatalog): ItemData.GroundItemKind =
-        match Map.get(id, UnitCatalog.weaponsOf(catalog)) {
-            case Some(weapon) => ItemData.GroundItemKind.WeaponItem(weapon)
-            case None         =>
-                match Map.get(id, Staff.stavesOf(staffCatalog)) {
-                    case Some(staff) => ItemData.GroundItemKind.StaffItem(staff)
-                    case None        =>
-                        match Map.get(id, Consumable.consumablesOf(consumableCatalog)) {
-                            case Some(item) => ItemData.GroundItemKind.ConsumableItem(item)
-                            case None       =>
-                                bug!("ItemScene.lookupItem: id '${id}' not in weapons / staves / consumables catalog")
-                        }
-                }
+        // weapons → staves → consumables の順に引いて最初に当たった種別を採用する。
+        // 3 段の match ネストにせず「各カタログ引きを Option で並べ、先頭の Some を取る」形にする。
+        let candidates =
+            (Map.get(id, UnitCatalog.weaponsOf(catalog))             |> Option.map(w -> ItemData.GroundItemKind.WeaponItem(w))) ::
+            (Map.get(id, Staff.stavesOf(staffCatalog))               |> Option.map(s -> ItemData.GroundItemKind.StaffItem(s))) ::
+            (Map.get(id, Consumable.consumablesOf(consumableCatalog)) |> Option.map(c -> ItemData.GroundItemKind.ConsumableItem(c))) :: Nil;
+        match List.filterMap(o -> o, candidates) {
+            case kind :: _ => kind
+            case Nil       =>
+                bug!("ItemScene.lookupItem: id '${id}' not in weapons / staves / consumables catalog")
         }
 
     /// 親 Marker2D を Items として World 配下に生やす（既にあれば何もしない）。

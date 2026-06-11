@@ -17,6 +17,7 @@ pub enum Faction with Eq {
 /// 盤上の 1 ユニットビュー。位置・残 HP・移動力・装備射程・戦闘ステータスを結合済み。
 /// `weaponRange` は装備武器(先頭)の射程。`None` は武器なし＝攻撃不能。
 /// `combat` は `Combat.estimate` に渡す戦闘ステータス。`isDying`/`hidden` は攻撃対象・AI ターゲット選定から除外するフラグ。
+/// `aiType` は EnemyAI が起動条件 / 徘徊を分岐するための索敵タイプ。味方は使わないので常に Aggressive を入れる。
 pub type alias UnitView = {
     id          = Int32,
     faction     = Faction,
@@ -26,7 +27,8 @@ pub type alias UnitView = {
     weaponRange = Option[{min = Int32, max = Int32}],
     combat      = Combat.CombatView,
     isDying     = Bool,
-    hidden      = Bool
+    hidden      = Bool,
+    aiType      = EnemyAI.AiType
 }
 
 mod UnitView {

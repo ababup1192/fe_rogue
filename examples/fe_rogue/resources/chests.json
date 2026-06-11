@@ -1,0 +1,70 @@
+{
+  "chests": {
+    "golden": {
+      "contents": [
+        {
+          "id": "mithril_sword",
+          "percent": 25
+        },
+        {
+          "id": "mithril_bow",
+          "percent": 15
+        },
+        {
+          "id": "silver_lance",
+          "percent": 25
+        },
+        {
+          "id": "tome_archsage",
+          "percent": 15
+        },
+        {
+          "id": "vulnerary",
+          "percent": 20
+        }
+      ],
+      "label": "金の宝箱",
+      "sprite": {
+        "frame": 92,
+        "hframes": 12,
+        "offset": {
+          "x": 1.0,
+          "y": 1.0
+        },
+        "texture": "tilemap_floor",
+        "vframes": 11
+      }
+    },
+    "wooden": {
+      "contents": [
+        {
+          "id": "vulnerary",
+          "percent": 40
+        },
+        {
+          "id": "bronze_sword",
+          "percent": 25
+        },
+        {
+          "id": "iron_sword",
+          "percent": 20
+        },
+        {
+          "id": "silver_sword",
+          "percent": 15
+        }
+      ],
+      "label": "木の宝箱",
+      "sprite": {
+        "frame": 89,
+        "hframes": 12,
+        "offset": {
+          "x": 1.0,
+          "y": 1.0
+        },
+        "texture": "tilemap_floor",
+        "vframes": 11
+      }
+    }
+  }
+}

@@ -40,7 +40,8 @@ mod TestEnemyCatalog {
             scale   = ({x = 1.0, y = 1.0}: Vec2.Vec2),
             flipForFacing = false
         },
-        spriteFrames = None
+        spriteFrames = None,
+        aiType       = EnemyAI.AiType.Wanderer
     }
 
     def spriteJson(): Json =
@@ -59,9 +60,10 @@ mod TestEnemyCatalog {
             })
         })
 
-    /// 敵 1 種ぶんの完全な JSON（成長率なし）。
-    def goblinJson(): Json =
-        JObject(Map#{
+    /// 敵 1 種ぶんの完全な JSON フィールド（成長率なし）。aiType を差し込みたいテストが
+    /// パターンマッチせず `Map.insert` で 1 フィールド足せるよう、Map を直接返す。
+    def goblinFields(): Map[String, Json] =
+        Map#{
             "moveTiles"        => JNumber(JsonCodec.intToBd(3)),
             "level"            => JNumber(JsonCodec.intToBd(4)),
             "hp"               => JNumber(JsonCodec.intToBd(6)),
@@ -73,7 +75,14 @@ mod TestEnemyCatalog {
             "description"      => JString("ゴブリン"),
             "initialInventory" => inventoryJson(),
             "sprite"           => spriteJson()
-        })
+        }
+
+    /// 敵 1 種ぶんの完全な JSON（成長率なし）。
+    def goblinJson(): Json = JObject(goblinFields())
+
+    /// goblin JSON に `aiType` 文字列を 1 つ足したもの（パターンマッチ不要）。
+    def goblinJsonWith(aiType: String): Json =
+        JObject(Map.insert("aiType", JString(aiType), goblinFields()))
 
     // ════════════════════════════════════════════════════════
     // decode: 完全な JSON から EnemyResource が組み立てられる
@@ -90,6 +99,34 @@ mod TestEnemyCatalog {
                     (e#level, e#hp, e#attack, e#defense, e#speed))
             case None => bug!("expected enemy decode to succeed")
         }
+
+    /// aiType を指定しない JSON は Aggressive にフォールバックし、明示した文字列は対応 case に decode、
+    /// 未知文字列も Aggressive に落ちる（後方互換 + 安全側）。
+    @Test
+    def testDecodeAiTypeDefaultsAndParses(): Unit \ Assert =
+        // decode 結果から aiType を Option のまま取り出す（マッチせず Option.map で射影）。
+        let typeOf = (j: Json) -> EnemyCatalogCodec.decodeEnemy(j) |> Option.map(e -> e#aiType);
+        // 欠落 → Aggressive / 既知 → 対応 case / 未知 → Aggressive
+        Assert.assertEq(expected = Some(EnemyAI.AiType.Aggressive),        typeOf(goblinJson()));
+        Assert.assertEq(expected = Some(EnemyAI.AiType.GuardUntilInRange), typeOf(goblinJsonWith("GuardUntilInRange")));
+        Assert.assertEq(expected = Some(EnemyAI.AiType.Wanderer),          typeOf(goblinJsonWith("Wanderer")));
+        Assert.assertEq(expected = Some(EnemyAI.AiType.Aggressive),        typeOf(goblinJsonWith("Bogus")))
+
+    /// catalog round-trip で aiType が保存される（goblin = Wanderer）。
+    @Test
+    def testCatalogRoundTripPreservesAiType(): Unit \ Assert =
+        let container = CatalogContainer.CatalogContainer({
+            containerKey = "enemies",
+            entries      = Map#{"goblin" => goblin()},
+            meta         = (Map.empty(): Map[String, Json])
+        });
+        let encoded = Saveable.toJson(EnemyCatalog.EnemyCatalog(container));
+        let decoded: Option[EnemyCatalog] = Saveable.fromJson(encoded);
+        // restore → goblin 取得 → aiType を Option チェーンで射影し、Option ごと比較（マッチ不要）。
+        let aiType = decoded
+            |> Option.flatMap(restored -> EnemyCatalog.get("goblin", restored))
+            |> Option.map(e -> e#aiType);
+        Assert.assertEq(expected = Some(EnemyAI.AiType.Wanderer), aiType)
 
     // ════════════════════════════════════════════════════════
     // 敵は成長率を持たない: 紛れ込んだ growthRates は無視される

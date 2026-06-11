@@ -207,7 +207,8 @@ mod EnemyScene {
             attackTargetId = None,
             resource       = res,
             weapon         = Some(sp#weapon),
-            acted          = false
+            acted          = false,
+            prevPos        = None
         };
         let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset,
                                     res#sprite#scale)
@@ -221,6 +222,86 @@ mod EnemyScene {
             |> Scene.addChildAt(enemyPath(sp#id), "Sprite",
                                  EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
             |> UnitHPBarScene.attach(enemyPath(sp#id), res#hp, UnitHPBarScene.Team.Enemy)
+
+    // ────────────────────────────────────────────────────────
+    // (C2) 試練(シレン)型・部屋湧き（Wanderer タイプの敵をフロア進行中にじわっとスポーン）
+    // ────────────────────────────────────────────────────────
+
+    /// 湧き周期。N ティック（= 敵ターン終端 / ローグ自由歩行の 1 歩の合算カウント）ごとに 1 体湧く。
+    /// 確率式のムラを避け、試練のように「長居でじわ増え」る安定したペースにする（tunable）。
+    def spawnIntervalTicks(): Int32 = 10
+    /// フロア上限。盤上の Wanderer がこの数に達したら湧かせない
+    /// （無限湧き防止 + 敵ターン冗長化防止）。倒せば再び湧ける。
+    def maxWanderersOnFloor(): Int32 = 6
+
+    /// 試練式の部屋湧き。`tick` が周期に達した節目で、盤上 Wanderer 数が上限未満なら
+    /// 「プレイヤー視界外の部屋」へ Wanderer タイプの敵を 1 体湧かせる。
+    /// 発生条件（どれか欠けたら何もしない）: `tick mod 周期 == 0` / 上限未満 /
+    /// 湧ける部屋セル（空き + 視界外）がある / フロアの `monsters` に Wanderer タイプが居る。
+    /// 視界外（フォグ内）に湧かせるので出現の瞬間はプレイヤーから見えない（シレン準拠の不意打ち）。
+    pub def maybeSpawnWandererInRoom(enemies: EnemyCatalog.EnemyCatalog,
+                                      weapons: WeaponCatalog.WeaponCatalog,
+                                      floor: FloorCatalog.FloorResource,
+                                      tick: Int32,
+                                      scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+        let current = getAll(scene);
+        let wandererCount =
+            current |> List.count(d -> d#resource#aiType == EnemyAI.AiType.Wanderer);
+        if (Int32.remainder(tick, spawnIntervalTicks()) != 0) scene
+        else if (wandererCount >= maxWanderersOnFloor()) scene
+        else spawnOneWandererInRoom(enemies, weapons, floor, current, scene)
+
+    /// 部屋の空き・視界外セルを 1 つ選び、フロアの Wanderer タイプ敵を重み抽選して 1 体追加する。
+    def spawnOneWandererInRoom(enemies: EnemyCatalog.EnemyCatalog,
+                                weapons: WeaponCatalog.WeaponCatalog,
+                                floor: FloorCatalog.FloorResource,
+                                current: List[Data],
+                                scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+        let layer      = MapScene.getMapLayer(scene);
+        let placements = MapScene.getPlacements(scene);
+        let roomCount  = MapScene.getRoomCount(scene);
+        let holes      = FogScene.holesFor(PlayerScene.getAll(scene), placements, roomCount, false);
+        let playerCells = PlayerScene.getAll(scene) |> List.map(d -> d#gridPos);
+        let enemyCells  = current |> List.map(d -> d#gridPos);
+        // アンカー除外の部屋 (idx in [1, roomCount)) の床セルを (idx, cell) 付きで集め、
+        // 空き + 視界外（プレイヤーが居ない部屋）のみ残す。初期配置と同じ部屋集合。
+        let candidates = placements
+            |> List.filter(p -> p#idx >= 1 and p#idx < roomCount)
+            |> List.flatMap(p -> floorCellsInRoom(layer, p) |> List.map(c -> (p#idx, c)))
+            |> List.filter(pair -> {
+                let (_, c) = pair;
+                not isTaken(c, playerCells)
+                    and not isTaken(c, enemyCells)
+                    and not FogScene.insideAny(c, holes)
+            });
+        // 「湧ける部屋セル」「Wanderer タイプの抽選」「敵リソース解決」の 3 つの Option を
+        // forM で畳む（ネスト match を回避）。どれかが None なら湧かさず scene を返す。
+        // res は wandererMonstersOf が `EnemyCatalog.get` が Some の id だけに絞っているため実質必ず取れる。
+        let spawned = forM (
+            cellPick <- RandomUtil.pick(candidates);
+            id       <- FloorCatalog.pickWeighted(wandererMonstersOf(floor, enemies));
+            res      <- EnemyCatalog.get(id, enemies)
+        ) yield {
+            let (idx, cell) = cellPick;
+            let entry: Spawn = {
+                id = nextEnemyId(current), gridPos = cell, moduleIdx = idx,
+                resource = res, weapon = lookupFirstWeapon(res, weapons)
+            };
+            addOneEnemy(entry, scene)
+        };
+        Option.getWithDefault(scene, spawned)
+
+    /// フロアの monsters 出現テーブルのうち、catalog 上 `aiType = Wanderer` の敵だけに絞る。
+    def wandererMonstersOf(floor: FloorCatalog.FloorResource,
+                            enemies: EnemyCatalog.EnemyCatalog): List[FloorCatalog.SpawnEntry] =
+        floor#monsters
+            |> List.filter(m -> EnemyCatalog.get(m#id, enemies)
+                                    |> Option.map(r -> r#aiType == EnemyAI.AiType.Wanderer)
+                                    |> Option.getWithDefault(false))
+
+    /// 既存敵 id の最大 + 1（湧き個体に未使用 id を振る）。敵ゼロなら 0。
+    def nextEnemyId(current: List[Data]): Int32 =
+        1 + (current |> List.map(d -> d#id) |> List.maximum |> Option.getWithDefault(-1))
 
     // ────────────────────────────────────────────────────────
     // (D) クエリ
@@ -341,7 +422,8 @@ mod EnemyScene {
                 else scene
             case None => scene
         };
-        mapEnemy(id, d -> {gridPos = target | d}, flipped)
+        // 直前位置を記録（徘徊の「来た道へ戻らない」判定に使う）。論理位置を進める。
+        mapEnemy(id, d -> {gridPos = target, prevPos = Some(d#gridPos) | d}, flipped)
 
     /// 子 Sprite2D に flipH を設定する内部ヘルパー (敵スプライトは常に Sprite2D)。
     def setSpriteFlipH(id: Int32, h: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -465,7 +547,8 @@ mod EnemyScene {
         {id = data#id, faction = Faction.Enemy, pos = data#gridPos,
          hp = data#hp, moveTiles = data#moveTiles,
          weaponRange = data#weapon |> Option.map(w -> w#range),
-         combat = combatView(data), isDying = data#isDying, hidden = false}
+         combat = combatView(data), isDying = data#isDying, hidden = false,
+         aiType = data#resource#aiType}
 
     /// 指定 id の敵が現在装備している武器を返す。未装備（壊れた後）なら None。
     /// EnemyAI 等が「攻撃できるか」を判定するために使う。

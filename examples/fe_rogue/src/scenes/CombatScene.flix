@@ -437,8 +437,10 @@ mod CombatScene {
                 |> EnemyScene.startDeathAnimation(enemyId)
         } else {
             GameLogger.playerLog("P${playerId} → 敵${enemyId} に ${plan#dmg}ダメージ");
+            // 攻撃を受けた敵は起動する（GuardUntilInRange を射程外から射ても動き出す）。
+            // alerted は一方向フラグなので、ここで立てれば次の敵ターン以降ずっと追跡に入る。
             withPopup
-                |> EnemyScene.mapEnemy(enemyId, enemyData -> {hp = plan#newHp | enemyData})
+                |> EnemyScene.mapEnemy(enemyId, enemyData -> {hp = plan#newHp, alerted = true | enemyData})
                 |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), plan#newHp)
         }
 

@@ -28,5 +28,7 @@ mod FrameAef {
                                 Tween.Scheduler, AnimationPlayer.Scheduler,
                                 GameLogger.GameLogger,
                                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                                CustomEffects.GameOverRequest, Pacing.State, Math.Random}
+                                CustomEffects.GameOverRequest,
+                                CustomEffects.WandererSpawnRequest,
+                                Pacing.State, Math.Random}
 }

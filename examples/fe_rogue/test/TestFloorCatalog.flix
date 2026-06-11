@@ -24,7 +24,9 @@ mod TestFloorCatalog {
         roomMaps        = ({id = "room_1", percent = 60}: SpawnEntry) ::
                           ({id = "room_2", percent = 40}: SpawnEntry) :: Nil,
         horizontalMaps  = ({id = "pathway_horizontal_1", percent = 100}: SpawnEntry) :: Nil,
-        verticalMaps    = ({id = "pathway_vertical_1", percent = 100}: SpawnEntry) :: Nil
+        verticalMaps    = ({id = "pathway_vertical_1", percent = 100}: SpawnEntry) :: Nil,
+        chests          = ({id = "wooden", percent = 100}: SpawnEntry) :: Nil,
+        chestsPerFloor  = ({min = 0, max = 1}: SpawnRange)
     }
 
     // ════════════════════════════════════════════════════════
@@ -134,4 +136,28 @@ mod TestFloorCatalog {
     def testRandomCountInRangeWhenMinEqualsMaxReturnsThat(): Unit \ {Assert, Math.Random} =
         let singleRange = ({min = 3, max = 3}: SpawnRange);
         Assert.assertEq(expected = 3, FloorCatalog.randomCountInRange(singleRange))
+
+    // ════════════════════════════════════════════════════════
+    // 後方互換: chests を持たない旧形式 floor JSON もデコードできる
+    // ════════════════════════════════════════════════════════
+
+    /// chests / chestsPerFloor を持たない（宝箱導入前の）floor JSON。
+    def legacyFloorJson(): String = String.unlines(
+        "{" ::
+        "  \"label\": \"1F\"," ::
+        "  \"generation\": { \"roomCount\": 2 }," ::
+        "  \"monsters\": [{\"id\": \"goblin\", \"percent\": 100}]," ::
+        "  \"items\": [{\"id\": \"iron_sword\", \"percent\": 100}]," ::
+        "  \"monstersPerRoom\": { \"min\": 1, \"max\": 2 }," ::
+        "  \"itemsPerRoom\": { \"min\": 0, \"max\": 1 }" ::
+        "}" :: Nil)
+
+    /// chests キーが無くてもデコードに成功し、chests=空 / chestsPerFloor={0,0} に既定化される
+    /// （= 既存 floors.json を壊さない後方互換の担保）。
+    @Test
+    def testDecodeFloorWithoutChestsDefaultsEmpty(): Unit \ Assert =
+        let decoded = JsonCompat.parse(legacyFloorJson())
+            |> Option.flatMap(FloorCatalogCodec.decodeFloor)
+            |> Option.map(f -> (List.length(f#chests), f#chestsPerFloor#min, f#chestsPerFloor#max));
+        Assert.assertEq(expected = Some((0, 0, 0)), decoded)
 }

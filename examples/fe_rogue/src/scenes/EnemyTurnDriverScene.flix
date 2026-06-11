@@ -51,7 +51,8 @@ mod EnemyTurnDriverScene {
                         Tween.Scheduler, AnimationPlayer.Scheduler,
                         GameLogger.GameLogger, EnemyTurn.Queue,
                         TurnPhase.State, SelectedPlayer.State,
-                        Pacing.State, PlayerData.PartyQuery} =
+                        Pacing.State, PlayerData.PartyQuery, Math.Random,
+                        CustomEffects.WandererSpawnRequest} =
         let next = match TurnPhase.State.get() {
             case TurnPhase.Phase.EnemyTurn        => stepOnce(scene)
             case TurnPhase.Phase.PlayerAttackHold =>
@@ -109,7 +110,8 @@ mod EnemyTurnDriverScene {
                 Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State,
-                Pacing.State, PlayerData.PartyQuery} =
+                Pacing.State, PlayerData.PartyQuery, Math.Random,
+                CustomEffects.WandererSpawnRequest} =
         // 「エネミーフェーズ」の帯が出ている間は敵を動かさない（帯が出終わってから行動開始）。
         if (PhaseBannerScene.isBusy(scene)) scene
         else if (Pacing.State.isHolding()) scene
@@ -137,7 +139,7 @@ mod EnemyTurnDriverScene {
     /// Skip/Wait は無動作 (remaining も捨てる)。
     def applyStep(step: EnemyTurn.Step, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                Pacing.State} =
+                Pacing.State, Math.Random} =
         match EnemyScene.get(step#id, scene) {
             case None       => scene   // 既に除外済み (死亡演出完了など)
             case Some(data) =>
@@ -185,6 +187,17 @@ mod EnemyTurnDriverScene {
                         Pacing.State.hold(150 |> Duration.millis);
                         EnemyScene.setActed(step#id, withAlert)
                     case EnemyAI.EnemyAction.Skip(_) => EnemyScene.setActed(step#id, withAlert)
+                    case EnemyAI.EnemyAction.Wander(id) =>
+                        // 未起動の徘徊型: 同モジュール内の歩ける 1 マスへ乱数で動く（1 ターン 1 マス）。
+                        // 行先選択にだけ乱数が要るため decideAction でなくここで選ぶ（decideAction は pure）。
+                        // 候補なし（袋小路・包囲）なら静止。徘徊しても remaining は使わず即行動済み。
+                        match RandomUtil.pick(EnemyAI.wanderCandidates(board, data#gridPos, data#prevPos)) {
+                            case None         => EnemyScene.setActed(id, withAlert)
+                            case Some(target) =>
+                                let moved = EnemyScene.moveTo(id, target, board#map, withAlert);
+                                Pacing.State.hold(150 |> Duration.millis);
+                                EnemyScene.setActed(id, moved)
+                        }
                 }
         }
 
@@ -195,9 +208,13 @@ mod EnemyTurnDriverScene {
     def endTurn(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, TurnPhase.State,
-                SelectedPlayer.State, PlayerData.PartyQuery} =
+                SelectedPlayer.State, PlayerData.PartyQuery,
+                CustomEffects.WandererSpawnRequest} =
         GameLogger.endTurn();
-        let reset = scene
+        // 敵ターンが 1 巡終わった節目に湧きクロックを進める（試練型の部屋湧きを試みる）。
+        // 発生判断（周期 tick mod N・フロア上限・視界外の空き部屋セルの有無）は handler / EnemyScene 側。
+        let spawned = CustomEffects.WandererSpawnRequest.maybeSpawn(scene);
+        let reset = spawned
             |> PlayerScene.clearAllWaited        // 全員アクティブに戻す
             |> PlayerScene.resetAllMoveStepsTaken;
         GameLogger.playerLog("味方のターン");

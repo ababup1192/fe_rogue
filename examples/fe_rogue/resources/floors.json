@@ -1,6 +1,16 @@
 {
   "floors": {
     "f01": {
+      "chests": [
+        {
+          "id": "wooden",
+          "percent": 100
+        }
+      ],
+      "chestsPerFloor": {
+        "max": 1,
+        "min": 1
+      },
       "generation": {
         "roomCount": 2
       },
@@ -79,6 +89,16 @@
       }
     },
     "f02": {
+      "chests": [
+        {
+          "id": "wooden",
+          "percent": 100
+        }
+      ],
+      "chestsPerFloor": {
+        "max": 1,
+        "min": 1
+      },
       "generation": {
         "roomCount": 4
       },
@@ -161,6 +181,16 @@
       }
     },
     "f03": {
+      "chests": [
+        {
+          "id": "wooden",
+          "percent": 100
+        }
+      ],
+      "chestsPerFloor": {
+        "max": 1,
+        "min": 1
+      },
       "generation": {
         "roomCount": 5
       },
@@ -243,6 +273,20 @@
       }
     },
     "f04": {
+      "chests": [
+        {
+          "id": "wooden",
+          "percent": 70
+        },
+        {
+          "id": "golden",
+          "percent": 30
+        }
+      ],
+      "chestsPerFloor": {
+        "max": 1,
+        "min": 1
+      },
       "generation": {
         "roomCount": 6
       },
@@ -325,6 +369,20 @@
       }
     },
     "f05": {
+      "chests": [
+        {
+          "id": "wooden",
+          "percent": 70
+        },
+        {
+          "id": "golden",
+          "percent": 30
+        }
+      ],
+      "chestsPerFloor": {
+        "max": 1,
+        "min": 1
+      },
       "generation": {
         "roomCount": 7
       },
@@ -407,6 +465,20 @@
       }
     },
     "f06": {
+      "chests": [
+        {
+          "id": "wooden",
+          "percent": 70
+        },
+        {
+          "id": "golden",
+          "percent": 30
+        }
+      ],
+      "chestsPerFloor": {
+        "max": 2,
+        "min": 1
+      },
       "generation": {
         "roomCount": 8
       },
@@ -485,6 +557,20 @@
       }
     },
     "f07": {
+      "chests": [
+        {
+          "id": "wooden",
+          "percent": 70
+        },
+        {
+          "id": "golden",
+          "percent": 30
+        }
+      ],
+      "chestsPerFloor": {
+        "max": 2,
+        "min": 1
+      },
       "generation": {
         "roomCount": 9
       },
@@ -563,6 +649,20 @@
       }
     },
     "f08": {
+      "chests": [
+        {
+          "id": "wooden",
+          "percent": 40
+        },
+        {
+          "id": "golden",
+          "percent": 60
+        }
+      ],
+      "chestsPerFloor": {
+        "max": 2,
+        "min": 1
+      },
       "generation": {
         "roomCount": 10
       },
@@ -645,6 +745,20 @@
       }
     },
     "f09": {
+      "chests": [
+        {
+          "id": "wooden",
+          "percent": 40
+        },
+        {
+          "id": "golden",
+          "percent": 60
+        }
+      ],
+      "chestsPerFloor": {
+        "max": 2,
+        "min": 1
+      },
       "generation": {
         "roomCount": 11
       },
@@ -727,6 +841,20 @@
       }
     },
     "f10": {
+      "chests": [
+        {
+          "id": "wooden",
+          "percent": 40
+        },
+        {
+          "id": "golden",
+          "percent": 60
+        }
+      ],
+      "chestsPerFloor": {
+        "max": 2,
+        "min": 1
+      },
       "generation": {
         "roomCount": 12
       },

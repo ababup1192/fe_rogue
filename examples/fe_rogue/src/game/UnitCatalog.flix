@@ -46,7 +46,10 @@ mod UnitCatalog {
         // 得意武器タイプ（習熟）。ここに含まれるタイプは性能 100%、含まれないタイプ（苦手）は
         // 威力・命中 80%。ロード職種は全タイプ、他職種は初期装備のタイプを既定とする。
         // 旧 JSON に無い場合は decoder が空リストを埋める。IDE で編集可能。
-        proficientWeaponTypes = List[WeaponCatalog.WeaponType]
+        proficientWeaponTypes = List[WeaponCatalog.WeaponType],
+        // このクラスが床の宝箱を開けられるか（ローグのみ true）。開けられない駒が宝箱に乗って
+        // 「あける」を選ぶと「開けることができない」と表示される。旧 JSON に無い場合は decoder が false を埋める。
+        canOpenChests    = Bool
     }
 
     /// WeaponCatalog 分離前の呼び出し元を壊さないための後方互換 alias。
@@ -205,7 +208,8 @@ mod UnitCatalog {
     pub def expectedUnitFields(): Set[String] =
         Set#{"moveTiles", "level", "hp", "attack", "defense", "magicAttack", "magicDefense",
               "speed", "skill", "luck", "sprite", "initialInventory",
-              "description", "spriteFrames", "growthRates", "proficientWeaponTypes"}
+              "description", "spriteFrames", "growthRates", "proficientWeaponTypes",
+              "canOpenChests"}
 
     /// `WeaponResource` のフィールド名集合（後方互換の委譲）。
     pub def expectedWeaponFields(): Set[String] =
@@ -251,7 +255,8 @@ mod UnitCatalogCodec {
         let profArray = JsonCodec.encodeList(
             weaponType -> JString(WeaponCatalogCodec.weaponTypeToString(weaponType)),
             u#proficientWeaponTypes);
-        JObject(Map.insert("proficientWeaponTypes", profArray, withGrowth))
+        let withProf = Map.insert("proficientWeaponTypes", profArray, withGrowth);
+        JObject(Map.insert("canOpenChests", Util.Json.Json.JBool(u#canOpenChests), withProf))
 
     def encodeGrowthRates(g: GrowthRates): Json =
         JObject(Map#{
@@ -292,12 +297,17 @@ mod UnitCatalogCodec {
             let proficient = Map.get("proficientWeaponTypes", obj)
                             |> Option.flatMap(decodeWeaponTypes)
                             |> Option.getWithDefault(Nil);
+            // 宝箱開錠可否（省略時は false）。ローグだけ units.json で true にする。
+            let canOpen = Map.get("canOpenChests", obj)
+                            |> Option.flatMap(JsonCodec.expectBool)
+                            |> Option.getWithDefault(false);
             ({moveTiles = base#moveTiles, level = base#level, hp = base#hp, attack = base#attack,
               defense = base#defense, magicAttack = base#magicAttack,
               magicDefense = base#magicDefense, speed = base#speed, skill = base#skill,
               luck = base#luck, sprite = base#sprite, initialInventory = base#initialInventory,
               description = base#description, spriteFrames = base#spriteFrames,
-              growthRates = growth, proficientWeaponTypes = proficient}: PlayerResource)
+              growthRates = growth, proficientWeaponTypes = proficient,
+              canOpenChests = canOpen}: PlayerResource)
         }
 
     /// 得意武器タイプ配列（`["Sword","Axe"]` 等）をデコード。
