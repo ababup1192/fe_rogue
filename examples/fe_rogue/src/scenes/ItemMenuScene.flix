@@ -58,6 +58,23 @@ mod ItemMenuScene {
     pub def menuPath():  NodePath = rootName() :: panelName() :: menuName() :: Nil
     def pageLabelPath(): NodePath = rootName() :: panelName() :: pageLabelName() :: Nil
 
+    /// 詳細ウィンドウ（アイテムパネルの右隣）。選択中アイテムの性能と一言説明を出す。
+    /// Panel "detail" の直下に「名前 / 性能 / 説明」の 3 ラベルを置く構造。
+    def detailName():       String = "detail"
+    def detailIconNode():   String = "detailIcon"
+    def detailNameLabel():  String = "detailName"
+    def detailStatsLabel(): String = "detailStats"
+    def detailDescLabel():  String = "detailDesc"
+    def detailPath():      NodePath = rootName() :: detailName() :: Nil
+    def detailIconPath():  NodePath = rootName() :: detailName() :: detailIconNode() :: Nil
+    def detailNamePath():  NodePath = rootName() :: detailName() :: detailNameLabel() :: Nil
+    def detailStatsPath(): NodePath = rootName() :: detailName() :: detailStatsLabel() :: Nil
+    def detailDescPath():  NodePath = rootName() :: detailName() :: detailDescLabel() :: Nil
+
+    /// 説明文をこの文字数で折り返す（Label2D は自動折返ししないため `\n` を手で挿入する）。
+    /// 詳細パネル幅 82px・fontSize 4 におよそ収まる文字数。
+    def detailWrapWidth(): Int32 = 16
+
     /// 1 ページに並べる持ち物の最大数（アイテム window の表示行数と一致）。
     /// ロード職は 16 個持てるので 2 ページに分かれる。それ以外は 8 個＝1 ページに収まる。
     def itemsPerPage(): Int32 = 8
@@ -113,12 +130,136 @@ mod ItemMenuScene {
         // ページ表示は ItemSelect のときだけ意味を持つ（サブメニュー/攻撃中は隠す）。
         // ItemSelect 中の実際の表示/文言は refreshItemList が総ページ数を見て設定する。
         let pageLabelVisible = visible and phase == TurnPhase.Phase.ItemSelect;
+        // 詳細ウィンドウはアイテム選択中とサブメニュー中だけ出す（攻撃中の武器リストでは出さない）。
+        let detailVisible = phase == TurnPhase.Phase.ItemSelect
+                         or phase == TurnPhase.Phase.ItemActionSelect;
         scene
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
             |> ItemList.mapAt(menuPath(), list ->
                 list |> CanvasItem.setVisible(visible) |> ItemList.setFocused(visible))
             |> Label2D.mapAt(pageLabelPath(), label ->
                 if (pageLabelVisible) label else CanvasItem.setVisible(false, label))
+            |> Panel.mapAt(detailPath(), CanvasItem.setVisible(detailVisible))
+            |> Sprite2D.mapAt(detailIconPath(), CanvasItem.setVisible(detailVisible))
+            |> Label2D.mapAt(detailNamePath(), CanvasItem.setVisible(detailVisible))
+            |> Label2D.mapAt(detailStatsPath(), CanvasItem.setVisible(detailVisible))
+            |> Label2D.mapAt(detailDescPath(), CanvasItem.setVisible(detailVisible))
+
+    // ── 詳細ウィンドウ（性能 + 一言説明）──────────────────────
+
+    /// 武器タイプの和名。詳細ウィンドウの性能表記に使う（JSON は英字なので別途用意）。
+    def weaponTypeJp(weaponType: WeaponCatalog.WeaponType): String = match weaponType {
+        case WeaponCatalog.WeaponType.Sword => "剣"
+        case WeaponCatalog.WeaponType.Axe   => "斧"
+        case WeaponCatalog.WeaponType.Lance => "槍"
+        case WeaponCatalog.WeaponType.Bow   => "弓"
+        case WeaponCatalog.WeaponType.Magic => "魔法"
+    }
+
+    /// 杖の効果の和名。詳細ウィンドウの性能表記に使う。
+    def staffEffectJp(effect: Staff.StaffEffect): String = match effect {
+        case Staff.StaffEffect.Heal     => "回復"
+        case Staff.StaffEffect.Blowback => "ふきとばし"
+        case Staff.StaffEffect.Swap     => "いれかえ"
+    }
+
+    /// 武器の性能 1 行（攻撃 / 命中 / 射程 / 種別）。stats から自動生成する。
+    pub def weaponStatLine(weapon: UnitCatalog.WeaponResource): String =
+        let range = weapon#range;
+        let rangeText =
+            if (range#min == range#max) "射${range#min}"
+            else "射${range#min}-${range#max}";
+        "攻${weapon#attack} 命${weapon#hit} ${rangeText} ${weaponTypeJp(weapon#weaponType)}"
+
+    /// 杖の性能 1 行（効果 / 残り耐久）。
+    pub def staffStatLine(staff: Staff.StaffResource): String =
+        "効果:${staffEffectJp(staff#effect)} 耐久${staff#durability}"
+
+    /// 消費アイテムの性能 1 行（回復量 / 残り使用回数）。
+    pub def consumableStatLine(item: Consumable.ConsumableResource): String =
+        "HP+${item#healAmount} 耐久${item#durability}"
+
+    /// 文字のリストを先頭から `width` 文字ずつのまとまりに分ける。
+    def chunkChars(width: Int32, chars: List[Char]): List[List[Char]] =
+        if (List.isEmpty(chars)) Nil
+        else List.take(width, chars) :: chunkChars(width, List.drop(width, chars))
+
+    /// 文字のリストを 1 つの文字列に戻す。
+    def charsToString(chars: List[Char]): String =
+        List.foldLeft((acc, ch) -> "${acc}${ch}", "", chars)
+
+    /// 改行のないテキストを `width` 文字ごとに `\n` で折り返す。
+    /// Label2D は自動折返ししないので、説明文がパネル幅を超えないよう手で改行を入れる。
+    pub def wrapText(width: Int32, text: String): String =
+        if (width <= 0) text
+        else
+            chunkChars(width, String.toList(text))
+                |> List.map(charsToString)
+                |> List.foldRight((line, acc) ->
+                    if (acc == "") line else "${line}\n${acc}", "")
+
+    /// 詳細ウィンドウに出す 1 アイテムぶんの内容（名前 / 性能 1 行 / 一言説明 / アイコン sprite）。
+    /// 名前の前にアイコンを出すため sprite も持ち回る。
+    type alias ItemDetail = {
+        name = String,
+        stats = String,
+        desc = String,
+        sprite = Sprite.SpriteResource
+    }
+
+    /// 選択中アイテム種別から詳細内容を組む。
+    /// index がリスト範囲外なら None（持ち物が無い・ずれた瞬間など）。
+    def itemDetail(kind: PlayerData.ItemKind,
+                   weapons: List[UnitCatalog.WeaponResource],
+                   staves: List[Staff.StaffResource],
+                   consumables: List[Consumable.ConsumableResource]):
+            Option[ItemDetail] =
+        match kind {
+            case PlayerData.ItemKind.Weapon(idx) =>
+                List.nth(idx, weapons) |> Option.map(weapon ->
+                    {name = weapon#name, stats = weaponStatLine(weapon),
+                     desc = weapon#description, sprite = weapon#sprite})
+            case PlayerData.ItemKind.Staff(idx) =>
+                List.nth(idx, staves) |> Option.map(staff ->
+                    {name = staff#name, stats = staffStatLine(staff),
+                     desc = staff#description, sprite = staff#sprite})
+            case PlayerData.ItemKind.Consumable(idx) =>
+                List.nth(idx, consumables) |> Option.map(item ->
+                    {name = item#name, stats = consumableStatLine(item),
+                     desc = item#description, sprite = item#sprite})
+        }
+
+    /// 詳細ウィンドウの 3 ラベル + アイコンに内容を流し込む（表示/非表示は applyVisibility が担う）。
+    /// 説明文は幅で折り返す。アイコンは sprite の atlas 情報を Sprite2D に写し、表示にする。
+    /// 全 item アトラスはセル 16×16 なので、Sprite2D 側の固定 scale で見た目サイズが揃う。
+    def applyDetail(detail: ItemDetail, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> Label2D.mapAt(detailNamePath(), Label2D.setText(detail#name))
+            |> Label2D.mapAt(detailStatsPath(), Label2D.setText(detail#stats))
+            |> Label2D.mapAt(detailDescPath(),
+                Label2D.setText(wrapText(detailWrapWidth(), detail#desc)))
+            |> Sprite2D.mapAt(detailIconPath(), sprite ->
+                sprite
+                    |> Sprite2D.setTexture(detail#sprite#texture)
+                    |> Sprite2D.setHframes(detail#sprite#hframes)
+                    |> Sprite2D.setVframes(detail#sprite#vframes)
+                    |> Sprite2D.setFrame(detail#sprite#frame)
+                    |> CanvasItem.setVisible(true))
+
+    /// 選択が無いときは 3 ラベルを空にしアイコンを隠す。
+    def blankDetail(scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> Label2D.mapAt(detailNamePath(), Label2D.setText(""))
+            |> Label2D.mapAt(detailStatsPath(), Label2D.setText(""))
+            |> Label2D.mapAt(detailDescPath(), Label2D.setText(""))
+            |> Sprite2D.mapAt(detailIconPath(), CanvasItem.setVisible(false))
+
+    /// 詳細を組めたら流し込み、組めなければ blank にする共通処理。
+    def applyDetailOpt(detail: Option[ItemDetail], scene: Scene[NodeTag]): Scene[NodeTag] =
+        match detail {
+            case Some(itemDetail) => applyDetail(itemDetail, scene)
+            case None             => blankDetail(scene)
+        }
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から ItemMenu の ItemList
     /// ノードに対して dispatch される（1 ノード 1 呼び出し。ItemList は 1 個のみなので 1 フレーム 1 回）。
@@ -227,7 +368,7 @@ mod ItemMenuScene {
                 let count = List.length(pairs);
                 let page  = clampPage(getMenuPage(scene), count);
                 let (items, icons) = pageSlice(pairs, page);
-                scene
+                let built = scene
                     |> Scene.setState(menuPath(), NodeTag.ItemMenu(page))
                     |> ItemList.mapAt(menuPath(), list ->
                         list
@@ -235,7 +376,14 @@ mod ItemMenuScene {
                             |> ItemList.setItemIcons(icons)
                             |> ItemList.setIconSize(iconSize())
                             |> ItemList.setIconTextGap(iconTextGap()))
-                    |> applyPageLabel(page, count)
+                    |> applyPageLabel(page, count);
+                // カーソルが乗っている行のアイテムを詳細ウィンドウに表示する。
+                // 行の metadata（"w:idx" 等）から実体を引いて性能 + 説明を組む。
+                let detail = List.nth(currentSelectedIndex(scene), items)
+                    |> Option.flatMap(entry -> entry#metadata)
+                    |> Option.flatMap(parseItemKind)
+                    |> Option.flatMap(kind -> itemDetail(kind, weapons, staves, consumables));
+                applyDetailOpt(detail, built)
         }
 
     /// `pageLabel` に "現在ページ/総ページ" を表示する。総ページが 1 のときは隠す。
@@ -378,12 +526,17 @@ mod ItemMenuScene {
             player   <- PlayerScene.get(playerId, scene)
         ) yield {
             let items = actionItemsFor(player#selectedItem);
-            scene |> ItemList.mapAt(menuPath(), list ->
+            let built = scene |> ItemList.mapAt(menuPath(), list ->
                 list
                     |> ItemList.setItems(items)
                     |> ItemList.setItemIcons(Map.empty())
                     |> ItemList.setIconSize(iconSize())
-                    |> ItemList.setIconTextGap(iconTextGap()))
+                    |> ItemList.setIconTextGap(iconTextGap()));
+            // サブメニュー中も、確定したアイテムの性能 + 説明を出し続ける。
+            let detail = player#selectedItem
+                |> Option.flatMap(kind ->
+                    itemDetail(kind, player#weapons, player#staves, player#consumables));
+            applyDetailOpt(detail, built)
         };
         Option.getWithDefault(scene, result)
 

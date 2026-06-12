@@ -2,6 +2,7 @@
   "weapons": {
     "bronze_axe": {
       "attack": 3,
+      "description": "扱いやすい銅の斧。命中重視の入門装備",
       "durability": 20,
       "hit": 70,
       "name": "どうのおの",
@@ -19,6 +20,7 @@
     },
     "bronze_bow": {
       "attack": 2,
+      "description": "軽い銅の弓。離れた敵を確実に狙える",
       "durability": 20,
       "hit": 90,
       "name": "どうの弓",
@@ -36,6 +38,7 @@
     },
     "bronze_lance": {
       "attack": 2,
+      "description": "素直な銅の槍。剣に強い間合い武器",
       "durability": 20,
       "hit": 80,
       "name": "どうのやり",
@@ -53,6 +56,7 @@
     },
     "bronze_sword": {
       "attack": 1,
+      "description": "命中の高い銅の剣。最初の一振りに最適",
       "durability": 20,
       "hit": 90,
       "name": "どうの剣",
@@ -70,6 +74,7 @@
     },
     "iron_axe": {
       "attack": 7,
+      "description": "標準的な鉄の斧。力で押し込む一撃",
       "durability": 10,
       "hit": 65,
       "name": "てつのおの",
@@ -87,6 +92,7 @@
     },
     "iron_bow": {
       "attack": 6,
+      "description": "頼れる鉄の弓。安定した遠距離攻撃",
       "durability": 10,
       "hit": 80,
       "name": "てつの弓",
@@ -104,6 +110,7 @@
     },
     "iron_lance": {
       "attack": 7,
+      "description": "扱いやすい鉄の槍。攻守の要となる",
       "durability": 10,
       "hit": 70,
       "name": "てつのやり",
@@ -121,6 +128,7 @@
     },
     "iron_sword": {
       "attack": 5,
+      "description": "バランスのよい鉄の剣。万能の一本",
       "durability": 10,
       "hit": 85,
       "name": "てつの剣",
@@ -138,6 +146,7 @@
     },
     "mithril_axe": {
       "attack": 17,
+      "description": "伝説の金属の斧。圧倒的な破壊力を誇る",
       "durability": 8,
       "hit": 75,
       "name": "ミスリルのおの",
@@ -155,6 +164,7 @@
     },
     "mithril_bow": {
       "attack": 15,
+      "description": "神秘の金属の弓。高命中の遠距離砲",
       "durability": 8,
       "hit": 90,
       "name": "ミスリルの弓",
@@ -172,6 +182,7 @@
     },
     "mithril_lance": {
       "attack": 16,
+      "description": "最高峰の槍。鋭く敵を貫く一撃",
       "durability": 8,
       "hit": 85,
       "name": "ミスリルのやり",
@@ -189,6 +200,7 @@
     },
     "mithril_sword": {
       "attack": 14,
+      "description": "究極の剣。高命中と高威力を両立する",
       "durability": 8,
       "hit": 95,
       "name": "ミスリルの剣",
@@ -206,6 +218,7 @@
     },
     "silver_axe": {
       "attack": 14,
+      "description": "銀の斧。高威力だが壊れやすい",
       "durability": 5,
       "hit": 70,
       "name": "ぎんのおの",
@@ -223,6 +236,7 @@
     },
     "silver_bow": {
       "attack": 12,
+      "description": "銀の弓。強力だが寿命は短い",
       "durability": 5,
       "hit": 85,
       "name": "ぎんの弓",
@@ -240,6 +254,7 @@
     },
     "silver_lance": {
       "attack": 13,
+      "description": "銀の槍。鋭い一撃を放つが脆い",
       "durability": 5,
       "hit": 80,
       "name": "ぎんのやり",
@@ -257,6 +272,7 @@
     },
     "silver_sword": {
       "attack": 11,
+      "description": "銀の剣。高い命中と威力を備えた名品",
       "durability": 5,
       "hit": 90,
       "name": "ぎんの剣",
@@ -274,6 +290,7 @@
     },
     "steel_axe": {
       "attack": 11,
+      "description": "重い鋼の斧。当てにくいが一撃が重い",
       "durability": 12,
       "hit": 60,
       "name": "はがねのおの",
@@ -291,6 +308,7 @@
     },
     "steel_bow": {
       "attack": 9,
+      "description": "頑丈な鋼の弓。威力重視の遠距離武器",
       "durability": 12,
       "hit": 75,
       "name": "はがねの弓",
@@ -308,6 +326,7 @@
     },
     "steel_lance": {
       "attack": 10,
+      "description": "重厚な鋼の槍。力で押し切る一本",
       "durability": 12,
       "hit": 65,
       "name": "はがねのやり",
@@ -325,6 +344,7 @@
     },
     "steel_sword": {
       "attack": 8,
+      "description": "重い鋼の剣。威力を取った実戦向き",
       "durability": 12,
       "hit": 80,
       "name": "はがねの剣",
@@ -342,6 +362,7 @@
     },
     "tome_apprentice": {
       "attack": 3,
+      "description": "初歩の魔導書。魔防を突く遠近両用",
       "durability": 20,
       "hit": 90,
       "name": "見習いの魔導書",
@@ -359,6 +380,7 @@
     },
     "tome_archsage": {
       "attack": 12,
+      "description": "大賢者の秘奥。絶大な魔力を放つ",
       "durability": 5,
       "hit": 85,
       "name": "大賢者の魔導書",
@@ -376,6 +398,7 @@
     },
     "tome_grimoire": {
       "attack": 6,
+      "description": "標準の魔導書。安定した魔法攻撃",
       "durability": 8,
       "hit": 90,
       "name": "魔導書",
@@ -393,6 +416,7 @@
     },
     "tome_sage": {
       "attack": 9,
+      "description": "賢者の魔導書。高い魔力を誇る",
       "durability": 6,
       "hit": 85,
       "name": "賢者の魔導書",

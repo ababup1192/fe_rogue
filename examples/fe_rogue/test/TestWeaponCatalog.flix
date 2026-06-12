@@ -25,7 +25,8 @@ mod TestWeaponCatalog {
         durability = 41,
         range      = ({min = 1, max = 1}: WeaponRange),
         weaponType = WeaponType.Lance,
-        sprite     = testSprite()
+        sprite     = testSprite(),
+        description = "くんれん用の槍"
     }
 
     def testSprite(): WeaponSpriteResource = {
@@ -81,6 +82,16 @@ mod TestWeaponCatalog {
                     expected = ("くんれんやり", 2, 41, 1, true),
                     (weapon#name, weapon#attack, weapon#durability, weapon#range#max,
                      WeaponCatalog.isPhysical(weapon#weaponType)))
+            case None => bug!("expected weapon decode to succeed")
+        }
+
+    /// description フィールドが無い JSON は空文字にフォールバックする。
+    /// （旧 weapons.json / 旧セーブへの後方互換。trainingSpearJson は description を持たない）
+    @Test
+    def testDecodeWeaponDefaultsDescriptionEmptyWhenMissing(): Unit \ Assert =
+        match WeaponCatalogCodec.decodeWeapon(trainingSpearJson()) {
+            case Some(weapon) =>
+                Assert.assertEq(expected = "", weapon#description)
             case None => bug!("expected weapon decode to succeed")
         }
 

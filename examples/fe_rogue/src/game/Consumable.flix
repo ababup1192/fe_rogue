@@ -28,11 +28,13 @@ mod Consumable {
     /// `durability` は JSON から読み込んだ初期値が必ず正であることを前提とする。
     ///   `consume` が durability ≤ 0 で None を返すため、JSON に 0 以下が入ると 1 度も使えない。
     /// `sprite` は ItemMenu のアイコンに使う。
+    /// `description` はアイテム詳細ウィンドウに出す一言説明（フレーバーテキスト）。
     pub type alias ConsumableResource = {
-        name       = String,
-        healAmount = Int32,
-        durability = Int32,
-        sprite     = SpriteResource
+        name        = String,
+        healAmount  = Int32,
+        durability  = Int32,
+        sprite      = SpriteResource,
+        description = String
     }
 
     /// 消費アイテムカタログ全体。
@@ -82,7 +84,7 @@ mod Consumable {
     /// `ConsumableResource` のフィールド名集合。
     /// Set で持つことで load 時に JSON フィールドの追加漏れ・typo を検出できる。
     pub def expectedFields(): Set[String] =
-        Set#{"name", "healAmount", "durability", "sprite"}
+        Set#{"name", "healAmount", "durability", "sprite", "description"}
 }
 
 // container の巡回・schema 検査は CatalogContainer に委譲し、ここは wrap のみ。
@@ -107,10 +109,11 @@ mod ConsumableCatalogCodec {
 
     pub def encodeConsumable(item: ConsumableResource): Json =
         JObject(Map#{
-            "name"       => JString(item#name),
-            "healAmount" => JNumber(intToBd(item#healAmount)),
-            "durability" => JNumber(intToBd(item#durability)),
-            "sprite"     => encodeSprite(item#sprite)
+            "name"        => JString(item#name),
+            "healAmount"  => JNumber(intToBd(item#healAmount)),
+            "durability"  => JNumber(intToBd(item#durability)),
+            "sprite"      => encodeSprite(item#sprite),
+            "description" => JString(item#description)
         })
 
     def encodeSprite(sprite: SpriteResource): Json =
@@ -133,8 +136,14 @@ mod ConsumableCatalogCodec {
             heal     <- expectInt(healJ);
             dur      <- expectInt(durJ);
             sprite   <- decodeSprite(spriteJ)
-        ) yield ({name = name, healAmount = heal, durability = dur,
-                   sprite = sprite}: ConsumableResource)
+        ) yield {
+            // description (一言説明) は省略可。欠落時は空文字 (後方互換)。
+            let desc = Map.get("description", obj)
+                        |> Option.flatMap(expectString)
+                        |> Option.getWithDefault("");
+            ({name = name, healAmount = heal, durability = dur,
+               sprite = sprite, description = desc}: ConsumableResource)
+        }
 
     def decodeSprite(element: Json): Option[SpriteResource] =
         forM (

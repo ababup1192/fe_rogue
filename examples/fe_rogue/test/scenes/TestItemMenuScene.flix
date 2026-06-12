@@ -39,7 +39,8 @@ mod TestItemMenuScene {
         durability = 3,
         sprite     = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                         offset = {x = 0.0, y = 0.0},
-                        scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource)
+                        scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+        description = ""
     }
 
     /// 武器 1 本 + 杖 1 本を持つプレイヤー 1 体を立てた scene を組む。
@@ -333,4 +334,60 @@ mod TestItemMenuScene {
         Assert.assertEq(
             expected = None,
             ItemMenuScene.parseItemKind("x:9"))
+
+    // ════════════════════════════════════════════════════════
+    // 詳細ウィンドウの性能 1 行（stats から自動生成・純粋）
+    // ════════════════════════════════════════════════════════
+
+    /// 武器の性能表記。攻撃 2 / 命中 80 / 射程 1-1（同値なので「射1」）/ 剣。
+    /// テスト武器は attack 2・hit 80・range 1-1・Sword なのでこの 1 行になる。
+    @Test
+    def testWeaponStatLineSingleRange(): Unit \ Assert =
+        Assert.assertEq(
+            expected = "攻2 命80 射1 剣",
+            ItemMenuScene.weaponStatLine(TestUnitFixtures.testWeapon()))
+
+    /// 射程が min≠max のときは「射1-2」のように範囲表記になる。
+    /// テスト武器の射程だけを 1-2 に差し替えて確認する。
+    @Test
+    def testWeaponStatLineRangeSpan(): Unit \ Assert =
+        let javelin = {range = {min = 1, max = 2} | TestUnitFixtures.testWeapon()};
+        Assert.assertEq(
+            expected = "攻2 命80 射1-2 剣",
+            ItemMenuScene.weaponStatLine(javelin))
+
+    /// 杖の性能表記。効果（回復）と残り耐久を出す。テスト杖は Heal・耐久 3。
+    @Test
+    def testStaffStatLine(): Unit \ Assert =
+        Assert.assertEq(
+            expected = "効果:回復 耐久3",
+            ItemMenuScene.staffStatLine(testStaff()))
+
+    /// 消費アイテムの性能表記。回復量と残り使用回数を出す。
+    @Test
+    def testConsumableStatLine(): Unit \ Assert =
+        let potion = ({name = "きずぐすり", healAmount = 10, durability = 3,
+                        sprite = testStaff()#sprite, description = ""}:
+                        Consumable.ConsumableResource);
+        Assert.assertEq(
+            expected = "HP+10 耐久3",
+            ItemMenuScene.consumableStatLine(potion))
+
+    // ════════════════════════════════════════════════════════
+    // wrapText: 説明文の手動折り返し（純粋）
+    // ════════════════════════════════════════════════════════
+
+    /// 幅 4 で 7 文字を折ると、先頭 4 文字と残り 3 文字が `\n` で 2 行に分かれる。
+    @Test
+    def testWrapTextSplitsAtWidth(): Unit \ Assert =
+        Assert.assertEq(
+            expected = "ABCD\nEFG",
+            ItemMenuScene.wrapText(4, "ABCDEFG"))
+
+    /// 幅より短いテキストはそのまま（改行を入れない）。
+    @Test
+    def testWrapTextShortStaysOneLine(): Unit \ Assert =
+        Assert.assertEq(
+            expected = "あいう",
+            ItemMenuScene.wrapText(12, "あいう"))
 }

@@ -63,7 +63,7 @@ mod TestWeapon {
         let sword: UnitCatalog.WeaponResource =
             {name = "sword", attack = 1, hit = 80, durability = 10,
              range = {min = 1, max = 1}, weaponType = WeaponCatalog.WeaponType.Sword,
-             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false}};
+             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false}, description = ""};
         Assert.assertEq(expected = true, Weapon.canReach(1, sword))
 
     /// 隣接 (距離 1) を弓 {min:2, max:2} は届かない → 反撃不可ケース
@@ -72,7 +72,7 @@ mod TestWeapon {
         let bow: UnitCatalog.WeaponResource =
             {name = "bow", attack = 1, hit = 80, durability = 10,
              range = {min = 2, max = 2}, weaponType = WeaponCatalog.WeaponType.Bow,
-             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false}};
+             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false}, description = ""};
         Assert.assertEq(expected = false, Weapon.canReach(1, bow))
 
     /// 距離 1 の剣 {min:1, max:1} は 2 マス先には届かない (= 弓に反撃できない)
@@ -81,7 +81,7 @@ mod TestWeapon {
         let sword: UnitCatalog.WeaponResource =
             {name = "sword", attack = 1, hit = 80, durability = 10,
              range = {min = 1, max = 1}, weaponType = WeaponCatalog.WeaponType.Sword,
-             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false}};
+             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false}, description = ""};
         Assert.assertEq(expected = false, Weapon.canReach(2, sword))
 
     /// 手槍 {min:1, max:2} は隣接にも 2 マス先にも届く
@@ -90,7 +90,7 @@ mod TestWeapon {
         let javelin: UnitCatalog.WeaponResource =
             {name = "javelin", attack = 1, hit = 80, durability = 10,
              range = {min = 1, max = 2}, weaponType = WeaponCatalog.WeaponType.Lance,
-             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false}};
+             sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false}, description = ""};
         Assert.assertEq(expected = (true, true, false),
                         (Weapon.canReach(1, javelin),
                          Weapon.canReach(2, javelin),

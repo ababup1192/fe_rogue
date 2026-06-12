@@ -163,7 +163,8 @@ mod TestUnitFixtures {
         durability = 10,
         range      = { min = 1, max = 1 },
         weaponType = WeaponCatalog.WeaponType.Sword,
-        sprite     = testSprite()
+        sprite     = testSprite(),
+        description = ""
     }
 
     /// 攻撃力 / 耐久度を明示したい時用のテスト用 WeaponResource。射程は 1-1 固定、剣 (物理武器) 扱い。
@@ -174,7 +175,8 @@ mod TestUnitFixtures {
         durability = durability,
         range      = { min = 1, max = 1 },
         weaponType = WeaponCatalog.WeaponType.Sword,
-        sprite     = testSprite()
+        sprite     = testSprite(),
+        description = ""
     }
 
     /// 物理/魔法トグルを切り替えたい時用のテスト用 WeaponResource。射程は 1-1 固定、耐久 10。
@@ -186,7 +188,8 @@ mod TestUnitFixtures {
         durability = 10,
         range      = { min = 1, max = 1 },
         weaponType = weaponType,
-        sprite     = testSprite()
+        sprite     = testSprite(),
+        description = ""
     }
 
     /// テスト用の sprite。テクスチャ名やフレームは戦闘ロジックに影響しないのでダミー値。

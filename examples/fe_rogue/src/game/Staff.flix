@@ -53,14 +53,16 @@ mod Staff {
     /// `effect` は効果の種類。
     /// `durability` は耐久度（攻撃するたびに 1 減り、0 で壊れる）。
     /// `sprite` は ItemMenu のアイコンに使う見た目情報。
+    /// `description` はアイテム詳細ウィンドウに出す一言説明（フレーバーテキスト）。
     ///
     /// 射程の概念は持たない。杖は指定方向に「壁か別のキャラに当たるまで」直線に飛ぶ。
     /// 盤面外は壁扱いなので、`Board.rayCast` には実質無限の上限を渡して呼ぶ。
     pub type alias StaffResource = {
-        name       = String,
-        effect     = StaffEffect,
-        durability = Int32,
-        sprite     = SpriteResource
+        name        = String,
+        effect      = StaffEffect,
+        durability  = Int32,
+        sprite      = SpriteResource,
+        description = String
     }
 
     /// 杖カタログ全体。`CatalogContainer[StaffResource]` を wrap して `Saveable` を持たせる。
@@ -173,7 +175,7 @@ mod Staff {
     /// schema との照合で「型定義と JSON schema の乖離」を起動時に発覚させる不変条件として機能する。
     // 実際の照合は engine の Resource.checkConsistency が担う。
     pub def expectedFields(): Set[String] =
-        Set#{"name", "effect", "durability", "sprite"}
+        Set#{"name", "effect", "durability", "sprite", "description"}
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -201,10 +203,11 @@ mod StaffCatalogCodec {
 
     pub def encodeStaff(staff: StaffResource): Json =
         JObject(Map#{
-            "name"       => JString(staff#name),
-            "effect"     => JString(Staff.effectToString(staff#effect)),
-            "durability" => JNumber(intToBd(staff#durability)),
-            "sprite"     => encodeSprite(staff#sprite)
+            "name"        => JString(staff#name),
+            "effect"      => JString(Staff.effectToString(staff#effect)),
+            "durability"  => JNumber(intToBd(staff#durability)),
+            "sprite"      => encodeSprite(staff#sprite),
+            "description" => JString(staff#description)
         })
 
     def encodeSprite(sprite: SpriteResource): Json =
@@ -228,8 +231,14 @@ mod StaffCatalogCodec {
             effect   <- Result.toOption(Staff.parseEffect(effStr));
             dur      <- expectInt(durJ);
             sprite   <- decodeSprite(spriteJ)
-        ) yield ({name = name, effect = effect, durability = dur,
-                   sprite = sprite}: StaffResource)
+        ) yield {
+            // description (一言説明) は省略可。欠落時は空文字 (後方互換)。
+            let desc = Map.get("description", obj)
+                        |> Option.flatMap(expectString)
+                        |> Option.getWithDefault("");
+            ({name = name, effect = effect, durability = dur,
+               sprite = sprite, description = desc}: StaffResource)
+        }
 
     def decodeSprite(element: Json): Option[SpriteResource] =
         forM (

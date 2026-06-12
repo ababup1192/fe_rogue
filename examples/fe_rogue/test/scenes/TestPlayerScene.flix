@@ -376,7 +376,8 @@ mod TestPlayerScene {
         let potion = ({name = "きずぐすり", healAmount = 10, durability = 3,
                         sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                                     offset = {x = 0.0, y = 0.0},
-                                    scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource)}:
+                                    scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+                        description = ""}:
                         Consumable.ConsumableResource);
         let mkSpawn = (id, cons) -> ({id = id, gridPos = {x = 0, y = 0},
                                        resource = fx#unitSample, weapons = Nil, staves = Nil,

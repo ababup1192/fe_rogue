@@ -8,6 +8,14 @@
         "order": 1
       }
     },
+    "description": {
+      "field": {
+        "ftype": "text",
+        "hint":  "plain",
+        "label": "説明",
+        "order": 99
+      }
+    },
     "effect": {
       "field": {
         "ftype": { "type": "enum", "values": ["Heal", "Blowback", "Swap"] },

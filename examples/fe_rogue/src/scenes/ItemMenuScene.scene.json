@@ -44,6 +44,57 @@
           "zIndex": 1
         }
       ]
+    },
+    {
+      "type": "Panel",
+      "name": "detail",
+      "pos": [72, 4],
+      "size": [82, 60],
+      "background": {"r": 0.10196078568696976, "g": 0.20000000298023224, "b": 0.6000000238418579},
+      "backgroundAlpha": 0.8,
+      "border": {"r": 1, "g": 1, "b": 1},
+      "borderWidth": 1,
+      "zIndex": 0,
+      "visible": false,
+      "children": [
+        {
+          "type": "Sprite2D",
+          "name": "detailIcon",
+          "texture": "item_weapons",
+          "pos": [9, 8],
+          "scale": [0.5, 0.5],
+          "centered": true,
+          "visible": false,
+          "zIndex": 1
+        },
+        {
+          "type": "Label2D",
+          "name": "detailName",
+          "pos": [16, 4],
+          "fontSize": 4,
+          "text": "",
+          "visible": false,
+          "zIndex": 1
+        },
+        {
+          "type": "Label2D",
+          "name": "detailStats",
+          "pos": [4, 13],
+          "fontSize": 4,
+          "text": "",
+          "visible": false,
+          "zIndex": 1
+        },
+        {
+          "type": "Label2D",
+          "name": "detailDesc",
+          "pos": [4, 26],
+          "fontSize": 4,
+          "text": "",
+          "visible": false,
+          "zIndex": 1
+        }
+      ]
     }
   ]
 }

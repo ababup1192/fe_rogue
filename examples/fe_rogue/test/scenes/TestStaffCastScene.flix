@@ -65,7 +65,8 @@ mod TestStaffCastScene {
          durability = 5,
          sprite     = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                          offset = {x = 0.0, y = 0.0},
-                         scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource)}
+                         scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+         description = ""}
 
     // ════════════════════════════════════════════════════════
     // 回復杖（ライブ）— 最大 HP を超えない

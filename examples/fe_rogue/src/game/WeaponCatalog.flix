@@ -75,14 +75,16 @@ mod WeaponCatalog {
     /// `name` は表示用の和名。`attack` は武器の攻撃力ボーナス、`durability` は耐久度。
     /// `hit` は武器命中率 (命中 = 武器命中 + 技×2 + 幸運÷2 の基礎値)。
     /// `range` は攻撃可能距離。`weaponType` は物理 / 魔法。`sprite` は ItemMenu アイコン用。
+    /// `description` はアイテム詳細ウィンドウに出す一言説明（フレーバーテキスト）。
     pub type alias WeaponResource = {
-        name       = String,
-        attack     = Int32,
-        hit        = Int32,
-        durability = Int32,
-        range      = WeaponRange,
-        weaponType = WeaponType,
-        sprite     = WeaponSpriteResource
+        name        = String,
+        attack      = Int32,
+        hit         = Int32,
+        durability  = Int32,
+        range       = WeaponRange,
+        weaponType  = WeaponType,
+        sprite      = WeaponSpriteResource,
+        description = String
     }
 
     // ────────────────────────────────────────────────────────
@@ -125,7 +127,8 @@ mod WeaponCatalog {
 
     /// schema 検査用の expected key 集合（`CatalogContainer.loadWithCheck` に渡す）。
     pub def expectedFields(): Set[String] =
-        Set#{"name", "attack", "hit", "durability", "range", "weaponType", "sprite"}
+        Set#{"name", "attack", "hit", "durability", "range", "weaponType", "sprite",
+             "description"}
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -156,13 +159,14 @@ mod WeaponCatalogCodec {
     /// `Saveable[WeaponCatalog].toJson` 経由で `CatalogContainer.encode` に渡される。
     pub def encodeWeapon(weapon: WeaponResource): Json =
         JObject(Map#{
-            "name"       => JString(weapon#name),
-            "attack"     => JNumber(intToBd(weapon#attack)),
-            "hit"        => JNumber(intToBd(weapon#hit)),
-            "durability" => JNumber(intToBd(weapon#durability)),
-            "range"      => encodeRange(weapon#range),
-            "weaponType" => JString(weaponTypeToString(weapon#weaponType)),
-            "sprite"     => encodeSprite(weapon#sprite)
+            "name"        => JString(weapon#name),
+            "attack"      => JNumber(intToBd(weapon#attack)),
+            "hit"         => JNumber(intToBd(weapon#hit)),
+            "durability"  => JNumber(intToBd(weapon#durability)),
+            "range"       => encodeRange(weapon#range),
+            "weaponType"  => JString(weaponTypeToString(weapon#weaponType)),
+            "sprite"      => encodeSprite(weapon#sprite),
+            "description" => JString(weapon#description)
         })
 
     def encodeRange(range: WeaponRange): Json =
@@ -218,8 +222,12 @@ mod WeaponCatalogCodec {
             let hit = Map.get("hit", obj)
                         |> Option.flatMap(expectInt)
                         |> Option.getWithDefault(0);
+            // description (一言説明) も省略可。欠落時は空文字 (旧 weapons.json / 旧セーブ後方互換)。
+            let desc = Map.get("description", obj)
+                        |> Option.flatMap(expectString)
+                        |> Option.getWithDefault("");
             ({name = name, attack = atk, hit = hit, durability = dur, range = rng,
-              weaponType = wt, sprite = sp}: WeaponResource)
+              weaponType = wt, sprite = sp, description = desc}: WeaponResource)
         }
 
     /// case 名文字列から `WeaponType` に。旧データの `"Physical"` は剣として読み替え、
