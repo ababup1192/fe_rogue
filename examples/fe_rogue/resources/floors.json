@@ -148,6 +148,34 @@
         {
           "id": "tear_potion",
           "percent": 6
+        },
+        {
+          "id": "falchion",
+          "percent": 2
+        },
+        {
+          "id": "gust_tome",
+          "percent": 2
+        },
+        {
+          "id": "backwater_lance",
+          "percent": 2
+        },
+        {
+          "id": "vampire_sword",
+          "percent": 2
+        },
+        {
+          "id": "thief_sword",
+          "percent": 2
+        },
+        {
+          "id": "demon_axe",
+          "percent": 1
+        },
+        {
+          "id": "nyoibo",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -370,6 +398,34 @@
         {
           "id": "tear_potion",
           "percent": 6
+        },
+        {
+          "id": "falchion",
+          "percent": 2
+        },
+        {
+          "id": "gust_tome",
+          "percent": 2
+        },
+        {
+          "id": "backwater_lance",
+          "percent": 2
+        },
+        {
+          "id": "vampire_sword",
+          "percent": 2
+        },
+        {
+          "id": "thief_sword",
+          "percent": 2
+        },
+        {
+          "id": "demon_axe",
+          "percent": 1
+        },
+        {
+          "id": "nyoibo",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -592,6 +648,34 @@
         {
           "id": "tear_potion",
           "percent": 6
+        },
+        {
+          "id": "falchion",
+          "percent": 2
+        },
+        {
+          "id": "gust_tome",
+          "percent": 2
+        },
+        {
+          "id": "backwater_lance",
+          "percent": 2
+        },
+        {
+          "id": "vampire_sword",
+          "percent": 2
+        },
+        {
+          "id": "thief_sword",
+          "percent": 2
+        },
+        {
+          "id": "demon_axe",
+          "percent": 1
+        },
+        {
+          "id": "nyoibo",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -842,6 +926,34 @@
         {
           "id": "tear_potion",
           "percent": 6
+        },
+        {
+          "id": "falchion",
+          "percent": 2
+        },
+        {
+          "id": "gust_tome",
+          "percent": 2
+        },
+        {
+          "id": "backwater_lance",
+          "percent": 2
+        },
+        {
+          "id": "vampire_sword",
+          "percent": 2
+        },
+        {
+          "id": "thief_sword",
+          "percent": 2
+        },
+        {
+          "id": "demon_axe",
+          "percent": 1
+        },
+        {
+          "id": "nyoibo",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -1140,6 +1252,34 @@
         {
           "id": "tear_potion",
           "percent": 6
+        },
+        {
+          "id": "falchion",
+          "percent": 2
+        },
+        {
+          "id": "gust_tome",
+          "percent": 2
+        },
+        {
+          "id": "backwater_lance",
+          "percent": 2
+        },
+        {
+          "id": "vampire_sword",
+          "percent": 2
+        },
+        {
+          "id": "thief_sword",
+          "percent": 2
+        },
+        {
+          "id": "demon_axe",
+          "percent": 1
+        },
+        {
+          "id": "nyoibo",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -1442,6 +1582,34 @@
         {
           "id": "tear_potion",
           "percent": 6
+        },
+        {
+          "id": "falchion",
+          "percent": 2
+        },
+        {
+          "id": "gust_tome",
+          "percent": 2
+        },
+        {
+          "id": "backwater_lance",
+          "percent": 2
+        },
+        {
+          "id": "vampire_sword",
+          "percent": 2
+        },
+        {
+          "id": "thief_sword",
+          "percent": 2
+        },
+        {
+          "id": "demon_axe",
+          "percent": 1
+        },
+        {
+          "id": "nyoibo",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -1752,6 +1920,34 @@
         {
           "id": "tear_potion",
           "percent": 6
+        },
+        {
+          "id": "falchion",
+          "percent": 2
+        },
+        {
+          "id": "gust_tome",
+          "percent": 2
+        },
+        {
+          "id": "backwater_lance",
+          "percent": 2
+        },
+        {
+          "id": "vampire_sword",
+          "percent": 2
+        },
+        {
+          "id": "thief_sword",
+          "percent": 2
+        },
+        {
+          "id": "demon_axe",
+          "percent": 1
+        },
+        {
+          "id": "nyoibo",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -2066,6 +2262,34 @@
         {
           "id": "tear_potion",
           "percent": 6
+        },
+        {
+          "id": "falchion",
+          "percent": 2
+        },
+        {
+          "id": "gust_tome",
+          "percent": 2
+        },
+        {
+          "id": "backwater_lance",
+          "percent": 2
+        },
+        {
+          "id": "vampire_sword",
+          "percent": 2
+        },
+        {
+          "id": "thief_sword",
+          "percent": 2
+        },
+        {
+          "id": "demon_axe",
+          "percent": 1
+        },
+        {
+          "id": "nyoibo",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -2388,6 +2612,34 @@
         {
           "id": "tear_potion",
           "percent": 6
+        },
+        {
+          "id": "falchion",
+          "percent": 2
+        },
+        {
+          "id": "gust_tome",
+          "percent": 2
+        },
+        {
+          "id": "backwater_lance",
+          "percent": 2
+        },
+        {
+          "id": "vampire_sword",
+          "percent": 2
+        },
+        {
+          "id": "thief_sword",
+          "percent": 2
+        },
+        {
+          "id": "demon_axe",
+          "percent": 1
+        },
+        {
+          "id": "nyoibo",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -2710,6 +2962,34 @@
         {
           "id": "tear_potion",
           "percent": 6
+        },
+        {
+          "id": "falchion",
+          "percent": 2
+        },
+        {
+          "id": "gust_tome",
+          "percent": 2
+        },
+        {
+          "id": "backwater_lance",
+          "percent": 2
+        },
+        {
+          "id": "vampire_sword",
+          "percent": 2
+        },
+        {
+          "id": "thief_sword",
+          "percent": 2
+        },
+        {
+          "id": "demon_axe",
+          "percent": 1
+        },
+        {
+          "id": "nyoibo",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {

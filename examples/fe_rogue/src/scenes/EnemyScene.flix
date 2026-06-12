@@ -133,6 +133,24 @@ mod EnemyScene {
                 bug!("EnemyScene.lookupFirstWeapon: unit has no weapon in initialInventory")
         }
 
+    /// 一部の敵職はスポーン時に一定確率（`specialWeaponChance`）で専用武器に持ち替える。
+    ///   - バーバリアン_T3 → あくまの斧（demon_axe）
+    ///   - パラディン_T2   → 如意棒（nyoibo）
+    /// それ以外 / 抽選外なら `base`（通常の initialInventory 武器）のまま。
+    def maybeSwapSpecialWeapon(res: EnemyCatalog.EnemyResource,
+                                base: UnitCatalog.WeaponResource,
+                                weapons: WeaponCatalog.WeaponCatalog):
+            UnitCatalog.WeaponResource \ Math.Random =
+        let roll = Float64.truncateToInt32(Math.Random.randomFloat64() * 100.0);
+        if (res#description == "バーバリアン_T3" and roll < specialWeaponChance())
+            WeaponCatalog.lookup("demon_axe", weapons)
+        else if (res#description == "パラディン_T2" and roll < specialWeaponChance())
+            WeaponCatalog.lookup("nyoibo", weapons)
+        else base
+
+    /// 専用武器に持ち替える確率（%）。「たまに装備」の体感に合わせた約 35%。
+    def specialWeaponChance(): Int32 = 35
+
     /// 部屋 1 つから `count` 個のスポーンセルを選んで state に積む。
     /// state = (次に振る id, スポーン済みセル累積, spawn list 累積)。
     /// 候補不足のときは取れる分だけ積んで打ち切る。
@@ -162,7 +180,7 @@ mod EnemyScene {
                                 case None    =>
                                     bug!("EnemyScene.spawnInRoom: enemy id '${id}' not in catalog")
                             };
-                            let weapon = lookupFirstWeapon(res, weapons);
+                            let weapon = maybeSwapSpecialWeapon(res, lookupFirstWeapon(res, weapons), weapons);
                             let entry: Spawn = {
                                 id = nextId, gridPos = cell, moduleIdx = p#idx,
                                 resource = res, weapon = weapon
@@ -294,7 +312,7 @@ mod EnemyScene {
             let (idx, cell) = cellPick;
             let entry: Spawn = {
                 id = nextEnemyId(current), gridPos = cell, moduleIdx = idx,
-                resource = res, weapon = lookupFirstWeapon(res, weapons)
+                resource = res, weapon = maybeSwapSpecialWeapon(res, lookupFirstWeapon(res, weapons), weapons)
             };
             addOneEnemy(entry, ringCatalog, scene)
         };
