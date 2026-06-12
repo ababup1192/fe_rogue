@@ -312,4 +312,50 @@ mod EffectRule {
             case Verdict.Reject(_) => false
             case _                 => true
         })
+
+    // ════════════════════════════════════════════════════════
+    // resolveTarget — 対象解決（rayFirst / faction 絞り / state フィルタ）
+    //   設計の核心: deliver:throw は「ray が最初に当たった1体を陣営無視で対象化」が既定。
+    //   faction を明示したときだけ陣営で絞る（火炎瓶=enemy / かなしばり=ally）。
+    // ════════════════════════════════════════════════════════
+
+    /// ray 上の候補ユニット 1 体。`ally` は使用者と同陣営か、`immobilized` は完全停止中か、
+    /// `alive` は HP>0 か。実 Scene が PlayerData/EnemyData から組んで渡す（ここは純粋判定のみ）。
+    pub type alias RayUnit = {
+        id          = Int32,
+        ally        = Bool,
+        immobilized = Bool,
+        alive       = Bool
+    }
+
+    /// 陣営フィルタ。FactionAny は常に true（rayFirst・陣営無視＝既定）。
+    pub def factionOk(want: Faction, ally: Bool): Bool = match want {
+        case Faction.FactionAny   => true
+        case Faction.FactionAlly  => ally
+        case Faction.FactionEnemy => not ally
+    }
+
+    /// 状態フィルタ。NotImmobilized は停止中を除外（かなしばり詠唱の対象選定）。
+    pub def stateOk(want: TargetState, u: RayUnit): Bool = match want {
+        case TargetState.StateAny            => true
+        case TargetState.StateNotImmobilized => not u#immobilized
+        case TargetState.StateAlive          => u#alive
+    }
+
+    /// throw/target の対象: ray が最初に当たった、faction/state を満たすユニット id。
+    /// faction 省略（FactionAny）なら敵味方を問わず最初の1体（杖 Heal が敵にも当たる既存挙動）。
+    pub def resolveRayTarget(t: Target, rayUnits: List[RayUnit]): Option[Int32] =
+        rayUnits
+            |> List.filter(u -> factionOk(t#faction, u#ally) and stateOk(t#state, u))
+            |> List.head
+            |> Option.map(u -> u#id)
+
+    /// 役割に応じて対象 id を解決する。Area は単一 id ではない（runPlan が Board.cellsWithin で展開）。
+    pub def resolveTarget(t: Target, selfId: Int32, attackerId: Int32,
+                          rayUnits: List[RayUnit]): Option[Int32] = match t#role {
+        case Role.RoleSelf     => Some(selfId)
+        case Role.RoleAttacker => Some(attackerId)
+        case Role.RoleTarget   => resolveRayTarget(t, rayUnits)
+        case Role.RoleArea(_)  => None
+    }
 }
