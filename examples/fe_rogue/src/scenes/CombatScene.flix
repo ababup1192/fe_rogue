@@ -518,15 +518,18 @@ mod CombatScene {
         // 命中ロールと必殺ロールは別の乱数で独立に引く。
         let hitRoll    = rollPercent();
         let critRoll   = rollPercent();
-        // とどめのリング: 対象が瀕死（残 HP が割合以下）なら必中の必殺にする。
+        // 死神のネックレス: 対象が瀕死（残 HP が割合以下）なら必殺にする。
         let finisherPct = Ring.finisherThreshold(PlayerData.equippedRing(player));
+        let finisherFired = Ring.finisherTriggers(enemy#hp, enemy#resource#hp, finisherPct);
         let (afterDamage, expGain) =
             if (Combat.isHit(plan#hitRate, hitRoll)) {
-                let isCrit = Combat.isCrit(plan#crit, critRoll)
-                             or Ring.finisherTriggers(enemy#hp, enemy#resource#hp, finisherPct);
-                // 必殺なら 3 倍ダメージで撃破判定をやり直し、plan を差し替える。
+                let isCrit = Combat.isCrit(plan#crit, critRoll) or finisherFired;
+                // Finisher は確殺（防御で 0 ダメでも倒す）。通常必殺は 3 倍。撃破判定をやり直し plan を差し替える。
                 let finalPlan =
-                    if (isCrit) {
+                    if (finisherFired) {
+                        let finPlan = Combat.applyFinisher(plan#dmg, enemy#hp);
+                        {dmg = finPlan#dmg, newHp = finPlan#newHp, killed = finPlan#killed | plan}
+                    } else if (isCrit) {
                         let critPlan = Combat.applyCrit(plan#dmg, enemy#hp);
                         {dmg = critPlan#dmg, newHp = critPlan#newHp, killed = critPlan#killed | plan}
                     } else plan;
@@ -737,16 +740,19 @@ mod CombatScene {
                 AudioStreamPlayer.play("miss");
                 (DamagePopupScene.emitText(popupPos, "miss", popupColor, scene), Nil)
             } else {
-                // 命中: 必殺ロールを引く。とどめのリングを敵が持ち味方が瀕死なら必中の必殺。
+                // 命中: 必殺ロールを引く。死神のネックレスを敵が持ち味方が瀕死なら必殺。
                 let critRoll = rollPercent();
-                let crit = Combat.isCrit(strike#crit, critRoll)
-                           or Ring.finisherTriggers(player#hp, player#resource#hp,
-                                                    Ring.finisherThreshold(enemy#ring));
-                // ベース(非必殺)の dmg/newHp/killed を 1 レコードにまとめ、必殺ならその上を
-                // applyCrit の値で更新する（resolveAttack と同じ record-update 形）。
+                let finisherFired = Ring.finisherTriggers(player#hp, player#resource#hp,
+                                                          Ring.finisherThreshold(enemy#ring));
+                let crit = Combat.isCrit(strike#crit, critRoll) or finisherFired;
+                // ベース(非必殺)の dmg/newHp/killed を 1 レコードにまとめ、Finisher は確殺・
+                // 通常必殺は applyCrit の値で更新する（resolveAttack と同じ record-update 形）。
                 let baseOutcome = {dmg = strike#dmg, newHp = strike#newHp, killed = strike#killed};
                 let outcome =
-                    if (crit) {
+                    if (finisherFired) {
+                        let finEff = Combat.applyFinisher(strike#dmg, player#hp);
+                        {dmg = finEff#dmg, newHp = finEff#newHp, killed = finEff#killed | baseOutcome}
+                    } else if (crit) {
                         let critEff = Combat.applyCrit(strike#dmg, player#hp);
                         {dmg = critEff#dmg, newHp = critEff#newHp, killed = critEff#killed | baseOutcome}
                     } else baseOutcome;

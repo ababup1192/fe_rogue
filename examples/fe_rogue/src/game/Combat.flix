@@ -106,6 +106,15 @@ mod Combat {
         let result  = damage(hp = defenderHp, amount = critDmg);
         {dmg = critDmg, newHp = result#newHp, killed = result#isDead}
 
+    /// 死神のネックレス(Finisher)発動時のダメージ(純粋)。瀕死の敵を**確実に倒す**。
+    /// `applyCrit` と違い防御で 0 ダメージになっても倒せるよう、ダメージ下限を防御側の現 HP に
+    /// 引き上げる（= `max(3倍, 現HP)`）。これにより硬い敵にも「必ず必殺」が成立する。
+    pub def applyFinisher(baseDmg: Int32, defenderHp: Int32):
+            {dmg = Int32, newHp = Int32, killed = Bool} =
+        let finDmg = Int32.max(baseDmg * critMultiplier(), defenderHp);
+        let result = damage(hp = defenderHp, amount = finDmg);
+        {dmg = finDmg, newHp = result#newHp, killed = result#isDead}
+
     /// アイテム投擲の命中率（百分率）。基本 60%、命中の高い職（レンジャー / ローグ）は 80%。
     /// FE の命中式とは独立した固定値（投げは技量に依らずざっくり当たる想定）。
     pub def throwHitRate(accurate: Bool): Int32 =

@@ -452,6 +452,18 @@ mod TestCombat {
         let r = Combat.applyCrit(4, 20);
         Assert.assertEq(expected = (12, 8, false), (r#dmg, r#newHp, r#killed))
 
+    /// 死神のネックレス: 素ダメージ0(防御で弾かれる)でも HP5 を確実に倒す(dmg=現HP)。
+    @Test
+    def testApplyFinisherKillsThroughZeroDamage(): Unit \ Assert =
+        let r = Combat.applyFinisher(0, 5);
+        Assert.assertEq(expected = (5, 0, true), (r#dmg, r#newHp, r#killed))
+
+    /// 死神のネックレス: 3倍が現HPを上回るならその大きい方(=overkill値)で倒す。
+    @Test
+    def testApplyFinisherUsesTripleWhenLarger(): Unit \ Assert =
+        let r = Combat.applyFinisher(5, 10);
+        Assert.assertEq(expected = (15, -5, true), (r#dmg, r#newHp, r#killed))
+
     /// estimate は必殺率を出す。武器必殺10・技8・防御幸運4 → crit = 10（ダメージ/命中は従来通り）。
     @Test
     def testEstimateIncludesCritRate(): Unit \ Assert =
