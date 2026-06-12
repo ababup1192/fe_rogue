@@ -53,6 +53,60 @@
       "srcY": 156,
       "x": 9,
       "y": 2
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 1,
+      "y": 3
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 2,
+      "y": 3
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 3,
+      "y": 3
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 4,
+      "y": 3
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 5,
+      "y": 3
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 6,
+      "y": 3
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 7,
+      "y": 3
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 8,
+      "y": 3
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 9,
+      "y": 3
     }
   ],
   "editorPalette": {
@@ -81,13 +135,25 @@
     {
       "fields": {},
       "identifier": "Door",
+      "x": 0,
+      "y": 3
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
       "x": 10,
       "y": 2
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 10,
+      "y": 3
     }
   ],
   "height": 14,
   "manualTiles": [],
-  "materialId": "pathway_horizontal_1",
+  "materialId": "pathway_horizontal_2",
   "tileSize": 26,
   "width": 14
 }

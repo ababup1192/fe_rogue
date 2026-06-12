@@ -618,7 +618,7 @@
         },
         {
           "id": "pathway_horizontal_long",
-          "percent": 22
+          "percent": 24
         },
         {
           "id": "pathway_horizontal_l",
@@ -652,7 +652,7 @@
         },
         {
           "id": "pathway_vertical_long",
-          "percent": 22
+          "percent": 24
         },
         {
           "id": "pathway_vertical_l",
@@ -661,10 +661,6 @@
         {
           "id": "pathway_vertical_revl",
           "percent": 12
-        },
-        {
-          "id": "pathway_vertical_long2w",
-          "percent": 10
         },
         {
           "id": "pathway_vertical_l2w",
@@ -828,7 +824,7 @@
         },
         {
           "id": "pathway_horizontal_long",
-          "percent": 22
+          "percent": 24
         },
         {
           "id": "pathway_horizontal_l",
@@ -862,7 +858,7 @@
         },
         {
           "id": "pathway_vertical_long",
-          "percent": 22
+          "percent": 24
         },
         {
           "id": "pathway_vertical_l",
@@ -871,10 +867,6 @@
         {
           "id": "pathway_vertical_revl",
           "percent": 12
-        },
-        {
-          "id": "pathway_vertical_long2w",
-          "percent": 10
         },
         {
           "id": "pathway_vertical_l2w",
@@ -1038,7 +1030,7 @@
         },
         {
           "id": "pathway_horizontal_long",
-          "percent": 22
+          "percent": 24
         },
         {
           "id": "pathway_horizontal_l",
@@ -1072,7 +1064,7 @@
         },
         {
           "id": "pathway_vertical_long",
-          "percent": 22
+          "percent": 24
         },
         {
           "id": "pathway_vertical_l",
@@ -1081,10 +1073,6 @@
         {
           "id": "pathway_vertical_revl",
           "percent": 12
-        },
-        {
-          "id": "pathway_vertical_long2w",
-          "percent": 10
         },
         {
           "id": "pathway_vertical_l2w",
@@ -1256,7 +1244,7 @@
         },
         {
           "id": "pathway_horizontal_long",
-          "percent": 22
+          "percent": 24
         },
         {
           "id": "pathway_horizontal_l",
@@ -1290,7 +1278,7 @@
         },
         {
           "id": "pathway_vertical_long",
-          "percent": 22
+          "percent": 24
         },
         {
           "id": "pathway_vertical_l",
@@ -1299,10 +1287,6 @@
         {
           "id": "pathway_vertical_revl",
           "percent": 12
-        },
-        {
-          "id": "pathway_vertical_long2w",
-          "percent": 10
         },
         {
           "id": "pathway_vertical_l2w",
@@ -1482,7 +1466,7 @@
         },
         {
           "id": "pathway_horizontal_long",
-          "percent": 18
+          "percent": 22
         },
         {
           "id": "pathway_horizontal_l",
@@ -1520,7 +1504,7 @@
         },
         {
           "id": "pathway_vertical_long",
-          "percent": 18
+          "percent": 22
         },
         {
           "id": "pathway_vertical_l",
@@ -1529,10 +1513,6 @@
         {
           "id": "pathway_vertical_revl",
           "percent": 15
-        },
-        {
-          "id": "pathway_vertical_long2w",
-          "percent": 13
         },
         {
           "id": "pathway_vertical_l2w",
@@ -1716,7 +1696,7 @@
         },
         {
           "id": "pathway_horizontal_long",
-          "percent": 18
+          "percent": 22
         },
         {
           "id": "pathway_horizontal_l",
@@ -1754,7 +1734,7 @@
         },
         {
           "id": "pathway_vertical_long",
-          "percent": 18
+          "percent": 22
         },
         {
           "id": "pathway_vertical_l",
@@ -1763,10 +1743,6 @@
         {
           "id": "pathway_vertical_revl",
           "percent": 15
-        },
-        {
-          "id": "pathway_vertical_long2w",
-          "percent": 13
         },
         {
           "id": "pathway_vertical_l2w",
@@ -1950,7 +1926,7 @@
         },
         {
           "id": "pathway_horizontal_long",
-          "percent": 18
+          "percent": 22
         },
         {
           "id": "pathway_horizontal_l",
@@ -1988,7 +1964,7 @@
         },
         {
           "id": "pathway_vertical_long",
-          "percent": 18
+          "percent": 22
         },
         {
           "id": "pathway_vertical_l",
@@ -1997,10 +1973,6 @@
         {
           "id": "pathway_vertical_revl",
           "percent": 15
-        },
-        {
-          "id": "pathway_vertical_long2w",
-          "percent": 13
         },
         {
           "id": "pathway_vertical_l2w",
