@@ -78,7 +78,8 @@ mod TestUnitFixtures {
             flipForFacing = false
         },
         spriteFrames  = None,
-        aiType        = EnemyAI.AiType.Aggressive
+        aiType        = EnemyAI.AiType.Aggressive,
+        ring          = None
     }
 
     /// 戦闘パラメータも明示的に指定したいケース用。
@@ -164,6 +165,8 @@ mod TestUnitFixtures {
         durability = 10,
         range      = { min = 1, max = 1 },
         weaponType = WeaponCatalog.WeaponType.Sword,
+        effect      = WeaponCatalog.WeaponEffect.NoEffect,
+        effectValue = 0,
         sprite     = testSprite(),
         description = ""
     }
@@ -177,6 +180,8 @@ mod TestUnitFixtures {
         durability = durability,
         range      = { min = 1, max = 1 },
         weaponType = WeaponCatalog.WeaponType.Sword,
+        effect      = WeaponCatalog.WeaponEffect.NoEffect,
+        effectValue = 0,
         sprite     = testSprite(),
         description = ""
     }
@@ -191,6 +196,8 @@ mod TestUnitFixtures {
         durability = 10,
         range      = { min = 1, max = 1 },
         weaponType = weaponType,
+        effect      = WeaponCatalog.WeaponEffect.NoEffect,
+        effectValue = 0,
         sprite     = testSprite(),
         description = ""
     }
@@ -490,7 +497,7 @@ mod TestUnitFixtures {
     /// 武器なし・全ステ 0 の戦闘ビュー。`combat` を見ない経路（canAttack / join 述語）用。
     pub def noCombat(): Combat.CombatView =
         {attack = 0, magicAttack = 0, defense = 0, magicDefense = 0,
-         skill = 0, speed = 0, luck = 0, hp = 0, weapon = None, hitMod = 0}
+         skill = 0, speed = 0, luck = 0, hp = 0, maxHp = 0, weapon = None, hitMod = 0}
 
     /// 射程・位置・HP・生存だけ指定して UnitView を組む（combat は空）。
     /// 3 値だけ要るときは hp=10 / isDying=false / range=None を渡す。

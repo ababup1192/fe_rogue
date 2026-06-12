@@ -33,10 +33,15 @@ mod Staff {
     ///   - `Heal`     : ライブのつえ。ヒット対象の HP を「魔力 + 10」回復する
     ///   - `Blowback` : ふきとばしのつえ。1 ダメージ + 対象を方向に押し流す
     ///   - `Swap`     : いれかえのつえ。ヒット対象（キャラのみ）と位置を交換する
+    ///   - `Bind`     : かなしばりの杖。ヒット対象を完全停止（移動も攻撃も不可）にする。
+    ///                  被攻撃 or 被投擲で解除（ターン経過では解けない）
+    ///   - `Stopgap`  : 一時しのぎの杖。完全停止 + 対象を階段マス（埋まっていれば隣接の空き）へワープ
     pub enum StaffEffect with Eq, ToString {
         case Heal
         case Blowback
         case Swap
+        case Bind
+        case Stopgap
     }
 
     /// 杖の発射方向。縦横 4 方向のみ。
@@ -134,6 +139,8 @@ mod Staff {
         case "Heal"     => Ok(StaffEffect.Heal)
         case "Blowback" => Ok(StaffEffect.Blowback)
         case "Swap"     => Ok(StaffEffect.Swap)
+        case "Bind"     => Ok(StaffEffect.Bind)
+        case "Stopgap"  => Ok(StaffEffect.Stopgap)
         case other      => Err(other)
     }
 
@@ -142,6 +149,8 @@ mod Staff {
         case StaffEffect.Heal     => "Heal"
         case StaffEffect.Blowback => "Blowback"
         case StaffEffect.Swap     => "Swap"
+        case StaffEffect.Bind     => "Bind"
+        case StaffEffect.Stopgap  => "Stopgap"
     }
 
     // ────────────────────────────────────────────────────────

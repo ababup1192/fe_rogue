@@ -27,9 +27,11 @@ mod ItemMenuScene {
     /// サブメニューの操作メタ。`onItemConfirmed` / `dispatchAction` がこの値で分岐する。
     /// Flix では型レベルの enum 定数より関数として定義する慣習のため、String リテラル直書きでなく
     /// ここに集約している（タイポを一か所で検知できる）。
-    def equipMeta(): String = "equip"
-    def dropMeta():  String = "drop"
-    def useMeta():   String = "use"
+    def equipMeta():   String = "equip"
+    def unequipMeta(): String = "unequip"
+    def dropMeta():    String = "drop"
+    def useMeta():     String = "use"
+    def throwMeta():   String = "throw"
 
     // ────────────────────────────────────────────────────────
     // (B) 定数
@@ -91,7 +93,7 @@ mod ItemMenuScene {
             case None                  => Ok(NodeTag.NoTag)
             case Some("NoTag")         => Ok(NodeTag.NoTag)
             case Some("ItemPanel")     => Ok(NodeTag.ItemPanel)
-            case Some("ItemMenu")      => Ok(NodeTag.ItemMenu(0))
+            case Some("ItemMenu")      => Ok(NodeTag.ItemMenu(0, Set#{}))
             case Some(unknown)         =>
                 Err(JsonCompat.jsonError(Root, Set#{"ItemMenuScene tag (got: ${unknown})"}))
         }
@@ -161,6 +163,8 @@ mod ItemMenuScene {
         case Staff.StaffEffect.Heal     => "回復"
         case Staff.StaffEffect.Blowback => "ふきとばし"
         case Staff.StaffEffect.Swap     => "いれかえ"
+        case Staff.StaffEffect.Bind     => "かなしばり"
+        case Staff.StaffEffect.Stopgap  => "一時しのぎ"
     }
 
     /// 武器の性能 1 行（攻撃 / 命中 / 射程 / 種別）。stats から自動生成する。
@@ -175,9 +179,44 @@ mod ItemMenuScene {
     pub def staffStatLine(staff: Staff.StaffResource): String =
         "効果:${staffEffectJp(staff#effect)} 耐久${staff#durability}"
 
-    /// 消費アイテムの性能 1 行（回復量 / 残り使用回数）。
+    /// 消費アイテムの性能 1 行（効果の要約 + 残り使用回数）。
+    /// 回復系以外は「HP+0」のような無意味表記を出さず、効果に応じた要約を出す。
     pub def consumableStatLine(item: Consumable.ConsumableResource): String =
-        "HP+${item#healAmount} 耐久${item#durability}"
+        "${consumableEffectSummary(item)} 耐久${item#durability}"
+
+    /// 符号つき数値表記（+3 / -1）。
+    def signed(n: Int32): String = if (n >= 0) "+${n}" else "${n}"
+
+    /// 指輪の効果 1 行（詳細ウィンドウ用）。
+    pub def ringStatLine(ring: Ring.RingResource): String = match ring#effect {
+        case Ring.RingEffect.Pursuit   => "速+3で追撃15%"
+        case Ring.RingEffect.Power     => "攻撃${signed(ring#power)}"
+        case Ring.RingEffect.Swift     => "速さ${signed(ring#power)}"
+        case Ring.RingEffect.Guard     => "防御${signed(ring#power)}"
+        case Ring.RingEffect.Mend      => "毎ターンHP+${ring#power}"
+        case Ring.RingEffect.Lifesteal => "撃破でHP+${ring#power}"
+        case Ring.RingEffect.Finisher  => "瀕死(${ring#power}%以下)に必殺"
+        case Ring.RingEffect.Trivial   => "効果なし"
+    }
+
+    /// 効果ごとの要約表記（耐久を除く本体）。`magnitude` / `duration` を効果の意味に沿って出す。
+    def consumableEffectSummary(item: Consumable.ConsumableResource): String =
+        let n = item#magnitude;
+        let t = item#duration;
+        match item#effect {
+            case Consumable.ConsumableEffect.Heal       => "HP+${n}"
+            case Consumable.ConsumableEffect.FullHeal   => "HP全回復"
+            case Consumable.ConsumableEffect.MaxHpUp    => "最大HP+${n}"
+            case Consumable.ConsumableEffect.AutoRevive => "復活"
+            case Consumable.ConsumableEffect.BlindHit   => "命中-${n}% ${t}T"
+            case Consumable.ConsumableEffect.SpdDownHit => "速-${n} ${t}T"
+            case Consumable.ConsumableEffect.AtkUp      => "攻+${n} ${t}T"
+            case Consumable.ConsumableEffect.SpdUp      => "速+${n} ${t}T"
+            case Consumable.ConsumableEffect.FireBottle  => "${n}ダメージ"
+            case Consumable.ConsumableEffect.BlastBottle => "爆発${n}"
+            // TODO(throw feature): DefDownHit の表記は実装側の意味に合わせて調整する（暫定）。
+            case Consumable.ConsumableEffect.DefDownHit  => "防-${n} ${t}T"
+        }
 
     /// 文字のリストを先頭から `width` 文字ずつのまとまりに分ける。
     def chunkChars(width: Int32, chars: List[Char]): List[List[Char]] =
@@ -212,7 +251,8 @@ mod ItemMenuScene {
     def itemDetail(kind: PlayerData.ItemKind,
                    weapons: List[UnitCatalog.WeaponResource],
                    staves: List[Staff.StaffResource],
-                   consumables: List[Consumable.ConsumableResource]):
+                   consumables: List[Consumable.ConsumableResource],
+                   rings: List[Ring.RingResource]):
             Option[ItemDetail] =
         match kind {
             case PlayerData.ItemKind.Weapon(idx) =>
@@ -227,6 +267,10 @@ mod ItemMenuScene {
                 List.nth(idx, consumables) |> Option.map(item ->
                     {name = item#name, stats = consumableStatLine(item),
                      desc = item#description, sprite = item#sprite})
+            case PlayerData.ItemKind.Ring(idx) =>
+                List.nth(idx, rings) |> Option.map(ring ->
+                    {name = ring#name, stats = ringStatLine(ring),
+                     desc = ring#description, sprite = ring#sprite})
         }
 
     /// 詳細ウィンドウの 3 ラベル + アイコンに内容を流し込む（表示/非表示は applyVisibility が担う）。
@@ -301,22 +345,39 @@ mod ItemMenuScene {
     /// ItemMenu ノードに積んである現在ページ番号。未設定なら 0。
     def getMenuPage(scene: Scene[NodeTag]): Int32 =
         match Scene.getState(menuPath(), scene) {
-            case Some(NodeTag.ItemMenu(page)) => page
-            case _                            => 0
+            case Some(NodeTag.ItemMenu(page, _)) => page
+            case _                               => 0
         }
 
+    /// ItemMenu ノードに積んである複数選択の印。未設定なら空集合。
+    def getMarks(scene: Scene[NodeTag]): Set[PlayerData.ItemKind] =
+        match Scene.getState(menuPath(), scene) {
+            case Some(NodeTag.ItemMenu(_, marks)) => marks
+            case _                                => Set#{}
+        }
+
+    /// 印だけ差し替える（ページ番号は保持する）。
+    def setMarks(marks: Set[PlayerData.ItemKind], scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene |> Scene.setState(menuPath(), NodeTag.ItemMenu(getMenuPage(scene), marks))
+
     /// 現在ページ番号を ItemMenu ノードに書き戻し、選択カーソルを先頭(0)に戻す。
+    /// 印はページをまたいでも残すため、ここでは消さず保持する。
     def setMenuPage(page: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
         scene
-            |> Scene.setState(menuPath(), NodeTag.ItemMenu(page))
+            |> Scene.setState(menuPath(), NodeTag.ItemMenu(page, getMarks(scene)))
             |> ItemList.mapAt(menuPath(), ItemList.setSelectedIndex(0))
+
+    /// 複数選択した行の強調色（黄系）。交換メニューの pick 色と見た目を揃える。
+    def markColor(): Color = {r = 1.0f32, g = 0.85f32, b = 0.2f32}
 
     /// 全持ち物（武器 → 杖 → 消費アイテム）の「表示エントリ」と「アイコン用 sprite」を
     /// 並び順を保ったまま組にして返す。metadata は各リスト内の絶対 index（`w:idx` など）の
     /// ままなので、ページで切り出しても確定・装備・破棄ロジックはそのまま動く。
     def itemSpritePairs(weapons: List[UnitCatalog.WeaponResource],
                          staves: List[Staff.StaffResource],
-                         consumables: List[Consumable.ConsumableResource]):
+                         consumables: List[Consumable.ConsumableResource],
+                         rings: List[Ring.RingResource],
+                         ringEquipped: Bool):
             List[(ItemEntry, Sprite.SpriteResource)] =
         let weaponPairs = List.mapWithIndex(idx -> w ->
             (weaponEntry(idx, w), w#sprite), weapons);
@@ -324,7 +385,10 @@ mod ItemMenuScene {
             (staffEntry(idx, s), s#sprite), staves);
         let consumablePairs = List.mapWithIndex(idx -> c ->
             (consumableEntry(idx, c), c#sprite), consumables);
-        List.append(weaponPairs, List.append(staffPairs, consumablePairs))
+        let ringPairs = List.mapWithIndex(idx -> r ->
+            (ringEntry(idx, r, ringEquipped), r#sprite), rings);
+        List.append(weaponPairs,
+            List.append(staffPairs, List.append(consumablePairs, ringPairs)))
 
     /// 全アイテムの組から指定ページ（0 起点）の最大 itemsPerPage 件を取り出し、
     /// ItemList 用の (items, アイコン Map) に変換する。アイコン Map のキーは
@@ -356,6 +420,12 @@ mod ItemMenuScene {
     def consumablesOf(id: Int32): List[Consumable.ConsumableResource] \ PlayerData.PartyQuery =
         PlayerData.PartyQuery.get(id) |> Option.map(d -> d#consumables) |> Option.getWithDefault(Nil)
 
+    def ringsOf(id: Int32): List[Ring.RingResource] \ PlayerData.PartyQuery =
+        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#rings) |> Option.getWithDefault(Nil)
+
+    def ringEquippedOf(id: Int32): Bool \ PlayerData.PartyQuery =
+        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#ringEquipped) |> Option.getWithDefault(false)
+
     def refreshItemList(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
         match SelectedPlayer.State.get()#id {
@@ -364,12 +434,15 @@ mod ItemMenuScene {
                 let weapons     = weaponsOf(playerId);
                 let staves      = stavesOf(playerId);
                 let consumables = consumablesOf(playerId);
-                let pairs = itemSpritePairs(weapons, staves, consumables);
+                let rings       = ringsOf(playerId);
+                let ringEquipped = ringEquippedOf(playerId);
+                let pairs = itemSpritePairs(weapons, staves, consumables, rings, ringEquipped);
                 let count = List.length(pairs);
                 let page  = clampPage(getMenuPage(scene), count);
+                let marks = getMarks(scene);
                 let (items, icons) = pageSlice(pairs, page);
                 let built = scene
-                    |> Scene.setState(menuPath(), NodeTag.ItemMenu(page))
+                    |> Scene.setState(menuPath(), NodeTag.ItemMenu(page, marks))
                     |> ItemList.mapAt(menuPath(), list ->
                         list
                             |> ItemList.setItems(items)
@@ -382,9 +455,40 @@ mod ItemMenuScene {
                 let detail = List.nth(currentSelectedIndex(scene), items)
                     |> Option.flatMap(entry -> entry#metadata)
                     |> Option.flatMap(parseItemKind)
-                    |> Option.flatMap(kind -> itemDetail(kind, weapons, staves, consumables));
+                    |> Option.flatMap(kind -> itemDetail(kind, weapons, staves, consumables, rings));
                 applyDetailOpt(detail, built)
+                    |> applyMarkColors(marks, page, pairs)
         }
+
+    /// 印の付いたアイテムを、現在ページに表示されている該当行だけ強調色で塗る。
+    /// 印は種別+絶対 index で持つので、全件 `pairs` の中の位置からページ内の行 index を求める。
+    /// 行の色付けは ItemList の itemColors を使い回す（一度全消ししてから印の行だけ塗る）。
+    def applyMarkColors(marks: Set[PlayerData.ItemKind], page: Int32,
+                         pairs: List[(ItemEntry, Sprite.SpriteResource)],
+                         scene: Scene[NodeTag]): Scene[NodeTag] =
+        let rows = markedRowsOnPage(marks, page * itemsPerPage(), pairs);
+        scene |> ItemList.mapAt(menuPath(), list ->
+            List.foldLeft((acc, row) -> ItemList.setItemColor(row, markColor(), acc),
+                ItemList.clearItemColors(list), rows))
+
+    /// 現在ページに表示される行のうち、印の付いた行の index（ページ内 0 起点）を集める純粋関数。
+    /// `pageStart` は現在ページ先頭の全件 index。`absIdx - pageStart` がページ内の行 index になる。
+    pub def markedRowsOnPage(marks: Set[PlayerData.ItemKind], pageStart: Int32,
+                              pairs: List[(ItemEntry, Sprite.SpriteResource)]): List[Int32] =
+        List.zipWithIndex(pairs)
+            |> List.filterMap(indexed ->
+                let (absIdx, pair) = indexed;
+                markedRow(marks, pageStart, absIdx, fst(pair)))
+
+    /// 1 行が印付きで現在ページ内に入るなら、そのページ内行 index を返す。それ以外は None。
+    def markedRow(marks: Set[PlayerData.ItemKind], pageStart: Int32, absIdx: Int32,
+                   entry: ItemEntry): Option[Int32] =
+        let row = absIdx - pageStart;
+        let marked = entry#metadata
+            |> Option.flatMap(parseItemKind)
+            |> Option.map(kind -> Set.memberOf(kind, marks))
+            |> Option.getWithDefault(false);
+        if (marked and row >= 0 and row < itemsPerPage()) Some(row) else None
 
     /// `pageLabel` に "現在ページ/総ページ" を表示する。総ページが 1 のときは隠す。
     def applyPageLabel(page: Int32, count: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -505,13 +609,21 @@ mod ItemMenuScene {
         metadata = Some("w:${idx}")
     }
 
-    /// 「そうび」項目（武器のみ）。
+    /// 「そうび」項目（武器・指輪）。
     def equipEntry(): ItemEntry =
         {text = "装備", disabled = false, metadata = Some(equipMeta())}
+
+    /// 「はずす」項目（装備中の指輪のみ）。
+    def unequipEntry(): ItemEntry =
+        {text = "外す", disabled = false, metadata = Some(unequipMeta())}
 
     /// 「つかう」項目（杖・消費アイテム）。
     def useEntry(): ItemEntry =
         {text = "使う", disabled = false, metadata = Some(useMeta())}
+
+    /// 「なげる」項目（全種別共通）。方向を選んで投擲する。
+    def throwEntry(): ItemEntry =
+        {text = "投げる", disabled = false, metadata = Some(throwMeta())}
 
     /// 「すてる」項目（武器・杖・消費アイテム共通）。
     def dropEntry(): ItemEntry =
@@ -525,7 +637,7 @@ mod ItemMenuScene {
             playerId <- SelectedPlayer.State.get()#id;
             player   <- PlayerScene.get(playerId, scene)
         ) yield {
-            let items = actionItemsFor(player#selectedItem);
+            let items = actionItemsFor(player#selectedItem, player#ringEquipped);
             let built = scene |> ItemList.mapAt(menuPath(), list ->
                 list
                     |> ItemList.setItems(items)
@@ -535,35 +647,53 @@ mod ItemMenuScene {
             // サブメニュー中も、確定したアイテムの性能 + 説明を出し続ける。
             let detail = player#selectedItem
                 |> Option.flatMap(kind ->
-                    itemDetail(kind, player#weapons, player#staves, player#consumables));
+                    itemDetail(kind, player#weapons, player#staves, player#consumables, player#rings));
             applyDetailOpt(detail, built)
         };
         Option.getWithDefault(scene, result)
 
     /// 選択中アイテム種別に応じたサブメニュー項目。
-    ///   武器        → [そうび, すてる]
-    ///   杖・消費品   → [つかう, すてる]
-    ///   未選択       → []
-    /// `refreshActionList` の判定本体を effect なしで切り出したもの（テスト容易化）。
-    pub def actionItemsFor(sel: Option[PlayerData.ItemKind]): List[ItemEntry] =
+    ///   武器           → [そうび, なげる, すてる]
+    ///   杖・消費品      → [つかう, なげる, すてる]
+    ///   指輪(未装備)    → [そうび, なげる, すてる]
+    ///   指輪(装備中)    → [はずす, なげる, すてる]
+    ///   未選択          → []
+    /// `ringEquipped` は選択中味方の指輪装備フラグ。装備中の指輪（先頭 = index 0）を選んだときだけ
+    /// 「外す」に差し替える。`refreshActionList` の判定本体を effect なしで切り出したもの（テスト容易化）。
+    pub def actionItemsFor(sel: Option[PlayerData.ItemKind], ringEquipped: Bool): List[ItemEntry] =
+        // 並び順は「使う/装備 → 投げる → 捨てる」。投げるは全種別で出す（一律投擲可）。
         match sel {
             case Some(PlayerData.ItemKind.Weapon(_)) =>
-                equipEntry() :: dropEntry() :: Nil
-            // 杖・消費アイテムはどちらも「つかう / すてる」。
+                equipEntry() :: throwEntry() :: dropEntry() :: Nil
             case Some(PlayerData.ItemKind.Staff(_))      =>
-                useEntry() :: dropEntry() :: Nil
+                useEntry() :: throwEntry() :: dropEntry() :: Nil
             case Some(PlayerData.ItemKind.Consumable(_)) =>
-                useEntry() :: dropEntry() :: Nil
+                useEntry() :: throwEntry() :: dropEntry() :: Nil
+            // 指輪: 装備中（先頭かつ ringEquipped）なら「外す」、それ以外は「装備」。
+            case Some(PlayerData.ItemKind.Ring(idx)) =>
+                let equipOrUnequip =
+                    if (ringEquipped and idx == 0) unequipEntry() else equipEntry();
+                equipOrUnequip :: throwEntry() :: dropEntry() :: Nil
             case None => Nil
         }
 
+    /// 装備中（リスト先頭 = index 0）なら "E " を前置するマーク。武器・指輪に付ける。
+    def equipMark(idx: Int32): String = if (idx == 0) "E " else ""
+
     /// 武器 1 本ぶんの ItemEntry。metadata は `"w:<idx>"` 形式で種別と index を持つ。
-    /// 「武器名 残耐久」の表記は WeaponMenuScene と統一している（一貫した見た目のため）。
+    /// 装備中（先頭）は "E " マークを付ける。
     def weaponEntry(idx: Int32, weapon: UnitCatalog.WeaponResource): ItemEntry = {
-        text     = "${weapon#name} ${weapon#durability}",
+        text     = "${equipMark(idx)}${weapon#name} ${weapon#durability}",
         disabled = false,
         metadata = Some("w:${idx}")
     }
+
+    /// 指輪 1 個ぶんの ItemEntry。metadata は `"r:<idx>"` 形式。
+    /// 装備中（先頭 かつ `ringEquipped`）のときだけ "E " を付ける。拾っただけでは付かない。
+    /// 指輪は耐久を持たないので名前だけ（+ E マーク）を出す。
+    def ringEntry(idx: Int32, ring: Ring.RingResource, ringEquipped: Bool): ItemEntry =
+        let mark = if (ringEquipped and idx == 0) "E " else "";
+        {text = "${mark}${ring#name}", disabled = false, metadata = Some("r:${idx}")}
 
     /// 杖 1 本ぶんの ItemEntry。metadata は `"s:<idx>"` 形式。
     def staffEntry(idx: Int32, staff: Staff.StaffResource): ItemEntry = {
@@ -607,6 +737,9 @@ mod ItemMenuScene {
         else if (String.startsWith({prefix = "c:"}, meta))
             String.dropLeft(2, meta) |> Int32.fromString
                                      |> Option.map(PlayerData.ItemKind.Consumable)
+        else if (String.startsWith({prefix = "r:"}, meta))
+            String.dropLeft(2, meta) |> Int32.fromString
+                                     |> Option.map(PlayerData.ItemKind.Ring)
         else None
 
     // ────────────────────────────────────────────────────────
@@ -617,8 +750,20 @@ mod ItemMenuScene {
     /// PhaseTransitions が overlay 片付け + カーソル非表示も合わせて行う。
     pub def openFor(_playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ TurnPhase.State =
-        // 常に 1 ページ目から開く。
-        setMenuPage(0, PhaseTransitions.enterItemSelect(scene))
+        // 常に 1 ページ目・印なしの状態から開く。
+        setMenuPage(0, setMarks(Set#{}, PhaseTransitions.enterItemSelect(scene)))
+
+    /// ItemSelect 中に Shift が押されたとき、カーソル位置のアイテムの印を付け外しする。
+    /// カーソル行の metadata（"w:idx" 等）から種別+index を取り、マーク集合をトグルして書き戻す。
+    /// アイテム以外（空など）に乗っているときは何もしない。
+    pub def toggleMarkAtCursor(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let kindOpt = ItemList.getAt(menuPath(), scene)
+            |> Option.flatMap(ItemList.getSelected)
+            |> Option.flatMap(entry -> entry#metadata)
+            |> Option.flatMap(parseItemKind);
+        kindOpt
+            |> Option.map(kind -> setMarks(PlayerData.toggleMark(kind, getMarks(scene)), scene))
+            |> Option.getWithDefault(scene)
 
     /// ItemSelect で項目を Enter 確定したとき。選択中アイテム種別を Data に書いて
     /// `ItemActionSelect` フェーズに進む（サブメニュー表示へ）。
@@ -641,8 +786,8 @@ mod ItemMenuScene {
     pub def onItemCancelled(scene: Scene[NodeTag]):
                             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
-        // 閉じる時にページを 1 ページ目へ戻す（次に開いたとき先頭から始まるように）。
-        setMenuPage(0, scene)
+        // 閉じる時にページを 1 ページ目へ戻し、複数選択の印も消す（次に開いたとき先頭・印なし）。
+        setMenuPage(0, setMarks(Set#{}, scene))
 
     /// ItemActionSelect でサブメニュー項目を Enter 確定したとき。
     ///   - 装備: weapons リスト先頭に移動、ItemSelect に戻る（ターン消費なし）
@@ -671,11 +816,26 @@ mod ItemMenuScene {
                 GameEngine.Audio} =
         if (meta == equipMeta())
             applyEquip(playerId, kind, scene)
-        else if (meta == dropMeta())
-            applyDrop(playerId, kind, scene)
+        else if (meta == unequipMeta())
+            applyUnequip(playerId, scene)
+        else if (meta == dropMeta()) {
+            // 印が付いていれば印の付いた分をまとめて、無ければカーソルの 1 個だけ捨てる。
+            let marks = getMarks(scene);
+            if (Set.isEmpty(marks)) applyDrop(playerId, kind, scene)
+            else applyBulkDrop(playerId, marks, scene)
+        }
         else if (meta == useMeta())
             applyUse(playerId, kind, scene)
+        else if (meta == throwMeta())
+            applyThrowAction(playerId, scene)
         else scene
+
+    /// 「投げる」: 方向選択フェーズ `ThrowAim` に進む。selectedItem は保持され、
+    /// 方向確定時に `Game.throwAimConfirm` → `StaffCastScene.applyThrow` が読む。
+    def applyThrowAction(playerId: Int32, scene: Scene[NodeTag]):
+                  Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, GameLogger.GameLogger} =
+        GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は 投げる方向を選び Z で投げる (X で中止)");
+        PhaseTransitions.enterThrowAim(scene)
 
     /// 「そうび」: 武器の場合のみ実行（杖は装備という概念がないので no-op）。
     /// `equipWeapon` で対象武器を weapons の先頭に移動 → `ItemSelect` フェーズに戻る。
@@ -693,8 +853,20 @@ mod ItemMenuScene {
                 PlayerScene.equipWeapon(playerId, idx, scene)
             case PlayerData.ItemKind.Staff(_)      => scene
             case PlayerData.ItemKind.Consumable(_) => scene
+            // 指輪は先頭へ移動して装備。並び替えの巻き戻しは武器専用ドラフトのため積まない。
+            case PlayerData.ItemKind.Ring(idx)     => PlayerScene.equipRing(playerId, idx, scene)
         };
         let cleared = PlayerScene.clearSelectedItem(playerId, equipped);
+        TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
+        cleared
+
+    /// 「はずす」: 装備中の指輪を外す（所持は維持・効果だけ止める）。ターン消費なし。
+    /// `ItemSelect` フェーズに戻り、続けて操作できる。
+    def applyUnequip(playerId: Int32, scene: Scene[NodeTag]):
+                    Scene[NodeTag] \ {TurnPhase.State, GameLogger.GameLogger} =
+        GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は 指輪を外した");
+        let cleared = PlayerScene.clearSelectedItem(playerId,
+            PlayerScene.unequipRing(playerId, scene));
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
         cleared
 
@@ -702,7 +874,7 @@ mod ItemMenuScene {
     def dropResolved(playerId: Int32, kind: PlayerData.ItemKind, name: String,
                       ground: ItemData.GroundItemKind, droppedScene: Scene[NodeTag]):
                      Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
-        GameLogger.playerLog("P${playerId} は ${name} をすてた");
+        GameLogger.playerLog("${PlayerScene.displayName(playerId, droppedScene)} は ${name} をすてた");
         SelectedPlayer.pushDraft(MoveDraft.DraftAction.Dropped(playerId, kind, ground));
         droppedScene
 
@@ -733,10 +905,28 @@ mod ItemMenuScene {
                         yield dropResolved(playerId, kind, c#name,
                                   ItemData.GroundItemKind.ConsumableItem(c),
                                   PlayerScene.dropConsumable(playerId, idx, scene)))
+            case PlayerData.ItemKind.Ring(idx) =>
+                Option.getWithDefault(scene,
+                    forM (r <- List.nth(idx, PlayerScene.getRings(playerId, scene)))
+                        yield dropResolved(playerId, kind, r#name,
+                                  ItemData.GroundItemKind.RingItem(r),
+                                  PlayerScene.dropRing(playerId, idx, scene)))
         };
         let cleared = PlayerScene.clearSelectedItem(playerId, dropped);
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
         cleared
+
+    /// 印の付いた複数アイテムをまとめて捨てる。index の大きい順に 1 個ずつ既存の
+    /// `applyDrop` へ流すので、ログ・床落ち・巻き戻しドラフトは 1 個ずつ捨てたのと同じになる。
+    /// 大きい index から消すことで、まだ処理していない小さい index がずれない
+    /// （同じリスト内で前の要素が消えて番号が繰り上がるのを避ける）。捨て終えたら印を消す。
+    def applyBulkDrop(playerId: Int32, marks: Set[PlayerData.ItemKind],
+                       scene: Scene[NodeTag]):
+                      Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
+                                        SelectedPlayer.State} =
+        let dropped = List.foldLeft((acc, kind) -> applyDrop(playerId, kind, acc),
+            scene, PlayerData.marksDescendingPerList(marks));
+        setMarks(Set#{}, dropped)
 
     /// 「つかう」: 杖の場合のみ実行（武器の場合は「装備」項目が出るのでここには来ない）。
     /// 杖の発動方向選択フェーズ `StaffAim` に進み、ログに方向キーの操作プロンプトを出す。
@@ -751,12 +941,13 @@ mod ItemMenuScene {
         match kind {
             case PlayerData.ItemKind.Staff(idx) =>
                 let name = staffNameOf(playerId, idx, scene);
-                GameLogger.playerLog("P${playerId} は ${name} の方向を選び Z で発射 (X で中止)");
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${name} の方向を選び Z で発射 (X で中止)");
                 PhaseTransitions.enterStaffAim(scene)
             // 消費アイテムはデリバリ（自己 / 投擲 / 自動）で経路が分かれるため別関数へ委譲する。
             case PlayerData.ItemKind.Consumable(idx) =>
                 applyConsumableByDelivery(playerId, idx, scene)
             case PlayerData.ItemKind.Weapon(_) => scene
+            case PlayerData.ItemKind.Ring(_)   => scene
         }
 
     /// 消費アイテムを効果から導いたデリバリで分岐する:
@@ -774,7 +965,7 @@ mod ItemMenuScene {
                 StaffCastScene.applyConsumableUse(playerId, idx, scene)
             case Consumable.Delivery.Directional =>
                 let name = consumableNameOf(playerId, idx, scene);
-                GameLogger.playerLog("P${playerId} は ${name} を投げる方向を選び Z で発射 (X で中止)");
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${name} を投げる方向を選び Z で発射 (X で中止)");
                 PhaseTransitions.enterStaffAim(scene)
             case Consumable.Delivery.AutoOnDeath =>
                 scene

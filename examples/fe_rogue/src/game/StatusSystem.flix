@@ -22,11 +22,17 @@ mod StatusSystem {
     ///   - `SpdDown` : 保有者の速さを magnitude 下げる（回避ダウン。鈍足）
     ///   - `AtkUp`   : 保有者の攻撃力を magnitude 上げる
     ///   - `SpdUp`   : 保有者の速さを magnitude 上げる（回避アップ）
+    ///   - `DefDown` : 保有者の守備（物理防御）を magnitude 下げる（ほころび薬）
+    ///   - `Immobilized` : 保有者を完全停止（移動も攻撃も不可）。ターン経過では解けず、
+    ///                     被攻撃 or 被投擲（`clearImmobilized`）でのみ解除される。
+    ///                     `magnitude` / `remaining` は使わない（`immobilize()` で 0 を入れる）。
     pub enum StatusEffect with Eq, ToString {
         case HitDown
         case SpdDown
         case AtkUp
         case SpdUp
+        case DefDown
+        case Immobilized
     }
 
     /// 付与中の時限効果 1 件。
@@ -42,12 +48,27 @@ mod StatusSystem {
     pub def add(status: Status, xs: List[Status]): List[Status] =
         status :: xs
 
-    /// 1 ターン経過。各効果の `remaining` を 1 減らし、0 以下になったものを除去する。
+    /// 1 ターン経過。時限効果は `remaining` を 1 減らし 0 以下を除去する。
+    /// `Immobilized` だけはターンで解けない（被攻撃 or 被投擲でのみ解除）ので減らさず保持する。
     /// ターン開始フック（味方 `clearAllWaited` / 敵 `clearActedAll`）から各ユニットに畳む。
     pub def tick(xs: List[Status]): List[Status] =
-        xs
+        let (held, timed) = List.partition(s -> s#effect == StatusEffect.Immobilized, xs);
+        let ticked = timed
             |> List.map(s -> {remaining = s#remaining - 1 | s})
-            |> List.filter(s -> s#remaining > 0)
+            |> List.filter(s -> s#remaining > 0);
+        List.append(held, ticked)
+
+    /// 完全停止（`Immobilized`）の Status を作る。magnitude / remaining は使わないので 0。
+    pub def immobilize(): Status =
+        {effect = StatusEffect.Immobilized, magnitude = 0, remaining = 0}
+
+    /// このユニットが完全停止中か（`Immobilized` を 1 つでも持つか）。
+    pub def isImmobilized(xs: List[Status]): Bool =
+        List.exists(s -> s#effect == StatusEffect.Immobilized, xs)
+
+    /// 完全停止だけを取り除く（被攻撃 or 被投擲で呼ぶ）。他の時限効果は残す。
+    pub def clearImmobilized(xs: List[Status]): List[Status] =
+        List.filter(s -> s#effect != StatusEffect.Immobilized, xs)
 
     /// 指定種別の効果量の合計。同種の重ねがけを合算する。該当無しは 0。
     /// 戦闘ビュー構築で攻撃力・速さ・命中補正へ足し込むのに使う。
@@ -62,8 +83,11 @@ mod StatusSystem {
     ///   - `atkBonus` : 攻撃力への加算（`AtkUp`）
     ///   - `spdDelta` : 速さへの増減（`SpdUp` − `SpdDown`）。回避 = 速さ×2+幸運 に効く
     ///   - `hitMod`   : 自身の命中率への補正（`HitDown` ぶん負値。目潰し）
-    pub def combatMods(xs: List[Status]): {atkBonus = Int32, spdDelta = Int32, hitMod = Int32} =
+    ///   - `defDelta` : 守備（物理防御）への増減（`DefDown` ぶん負値。ほころび薬）
+    pub def combatMods(xs: List[Status]):
+            {atkBonus = Int32, spdDelta = Int32, hitMod = Int32, defDelta = Int32} =
         {atkBonus = sumOf(StatusEffect.AtkUp, xs),
          spdDelta = sumOf(StatusEffect.SpdUp, xs) - sumOf(StatusEffect.SpdDown, xs),
-         hitMod   = 0 - sumOf(StatusEffect.HitDown, xs)}
+         hitMod   = 0 - sumOf(StatusEffect.HitDown, xs),
+         defDelta = 0 - sumOf(StatusEffect.DefDown, xs)}
 }

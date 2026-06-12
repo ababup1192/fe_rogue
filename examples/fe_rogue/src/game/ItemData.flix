@@ -11,5 +11,6 @@ mod ItemData {
         case WeaponItem(UnitCatalog.WeaponResource)
         case StaffItem(Staff.StaffResource)
         case ConsumableItem(Consumable.ConsumableResource)
+        case RingItem(Ring.RingResource)
     }
 }

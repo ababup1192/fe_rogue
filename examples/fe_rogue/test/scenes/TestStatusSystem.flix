@@ -78,4 +78,44 @@ mod TestStatusSystem {
     def testAddPrepends(): Unit \ Assert =
         let after = StatusSystem.add(st(StatusEffect.AtkUp, 4, 2), Nil);
         Assert.assertEq(expected = 1, List.length(after))
+
+    // ════════════════════════════════════════════════════════
+    // Immobilized（完全停止）— ターンで解けず、被攻撃 / 被投擲でのみ解除
+    // ════════════════════════════════════════════════════════
+
+    /// tick は完全停止を減らさず保持する（remaining=0 でも消えない）。一方、同居する
+    /// 時限効果はちゃんと減算される（停止だけ別扱いになっていることを 1 度で確認する）。
+    @Test
+    def testTickKeepsImmobilizedAndDecrementsOthers(): Unit \ Assert =
+        let after = StatusSystem.tick(
+            StatusSystem.immobilize() :: st(StatusEffect.AtkUp, 4, 2) :: Nil);
+        // 停止は残り、AtkUp は remaining 2→1 に減る。件数 2・停止保持・AtkUp の残り 1。
+        Assert.assertEq(
+            expected = (2, true, 1 :: Nil),
+            (List.length(after),
+             StatusSystem.isImmobilized(after),
+             after |> List.filter(s -> s#effect == StatusEffect.AtkUp) |> List.map(s -> s#remaining)))
+
+    /// isImmobilized は完全停止を含むかどうかを返す。
+    @Test
+    def testIsImmobilized(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (true, false),
+            (StatusSystem.isImmobilized(StatusSystem.immobilize() :: Nil),
+             StatusSystem.isImmobilized(st(StatusEffect.AtkUp, 4, 2) :: Nil)))
+
+    /// clearImmobilized は完全停止だけを取り除き、他の時限効果は残す。
+    @Test
+    def testClearImmobilizedKeepsOthers(): Unit \ Assert =
+        let xs = StatusSystem.immobilize() :: st(StatusEffect.SpdDown, 2, 3) :: Nil;
+        let after = StatusSystem.clearImmobilized(xs);
+        Assert.assertEq(
+            expected = (false, 1),
+            (StatusSystem.isImmobilized(after), List.length(after)))
+
+    /// combatMods は完全停止に影響されない（全補正 0）。停止は移動・行動を止めるだけで戦闘値は変えない。
+    @Test
+    def testCombatModsIgnoresImmobilized(): Unit \ Assert =
+        let m = StatusSystem.combatMods(StatusSystem.immobilize() :: Nil);
+        Assert.assertEq(expected = (0, 0, 0), (m#atkBonus, m#spdDelta, m#hitMod))
 }

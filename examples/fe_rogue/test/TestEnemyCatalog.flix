@@ -41,7 +41,8 @@ mod TestEnemyCatalog {
             flipForFacing = false
         },
         spriteFrames = None,
-        aiType       = EnemyAI.AiType.Wanderer
+        aiType       = EnemyAI.AiType.Wanderer,
+        ring         = None
     }
 
     def spriteJson(): Json =

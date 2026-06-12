@@ -40,20 +40,22 @@ mod PlayerScene {
     pub def combatView(data: Data): Combat.CombatView =
         let equipped = PlayerData.equippedWeapon(data#weapons);
         let m = StatusSystem.combatMods(data#statuses);
-        {attack = data#resource#attack + m#atkBonus, magicAttack = data#resource#magicAttack,
-         defense = data#resource#defense, magicDefense = data#resource#magicDefense,
-         skill = data#resource#skill, speed = data#resource#speed + m#spdDelta,
-         luck = data#resource#luck, hp = data#hp, hitMod = m#hitMod,
+        let rb = Ring.bonuses(PlayerData.equippedRing(data));
+        {attack = data#resource#attack + m#atkBonus + rb#attack, magicAttack = data#resource#magicAttack,
+         defense = data#resource#defense + rb#defense + m#defDelta, magicDefense = data#resource#magicDefense,
+         skill = data#resource#skill + rb#skill, speed = data#resource#speed + m#spdDelta + rb#speed,
+         luck = data#resource#luck + rb#luck, hp = data#hp, maxHp = data#resource#hp, hitMod = m#hitMod,
          weapon = Combat.weaponView(equipped, weaponProficient(data, equipped))}
 
     /// `combatView` の「装備武器を明示指定する」版。攻撃中に選択した武器（装備中=先頭とは
     /// 限らない）で戦闘予測を計算するため、`BattlePanelScene` から使う。
     pub def combatViewWith(data: Data, weapon: UnitCatalog.WeaponResource): Combat.CombatView =
         let m = StatusSystem.combatMods(data#statuses);
-        {attack = data#resource#attack + m#atkBonus, magicAttack = data#resource#magicAttack,
-         defense = data#resource#defense, magicDefense = data#resource#magicDefense,
-         skill = data#resource#skill, speed = data#resource#speed + m#spdDelta,
-         luck = data#resource#luck, hp = data#hp, hitMod = m#hitMod,
+        let rb = Ring.bonuses(PlayerData.equippedRing(data));
+        {attack = data#resource#attack + m#atkBonus + rb#attack, magicAttack = data#resource#magicAttack,
+         defense = data#resource#defense + rb#defense + m#defDelta, magicDefense = data#resource#magicDefense,
+         skill = data#resource#skill + rb#skill, speed = data#resource#speed + m#spdDelta + rb#speed,
+         luck = data#resource#luck + rb#luck, hp = data#hp, maxHp = data#resource#hp, hitMod = m#hitMod,
          weapon = Combat.weaponView(Some(weapon),
                      UnitCatalog.proficientWith(data#resource, weapon#weaponType))}
 
@@ -103,15 +105,16 @@ mod PlayerScene {
         data#resource#canOpenChests
 
     /// 味方 id の表示名（職業名 = `resource#description`）。ログ文言で使う。
-    /// 見つからない場合は防御的に "P${id}" を返す。
+    /// 見つからない場合は防御的に "味方" を返す（ログに id を出さない方針）。
     pub def displayName(id: Int32, scene: Scene[NodeTag]): String =
-        get(id, scene) |> Option.map(d -> d#resource#description) |> Option.getWithDefault("P${id}")
+        get(id, scene) |> Option.map(d -> d#resource#description) |> Option.getWithDefault("味方")
 
     /// いま持っている持ち物の合計個数（武器 + 杖 + 消費アイテムを合算する）。
     pub def itemCount(data: Data): Int32 =
         List.length(data#weapons)
             + List.length(data#staves)
             + List.length(data#consumables)
+            + List.length(data#rings)
 
     /// 持ち物が上限に達しているか（これ以上拾えないか）。
     pub def isInventoryFull(data: Data): Bool =
@@ -206,7 +209,7 @@ mod PlayerScene {
                                             staffCatalog, consumableCatalog);
                 ({id = id, gridPos = c, resource = res,
                    weapons = split#weapons, staves = split#staves,
-                   consumables = split#consumables}: Spawn));
+                   consumables = split#consumables, rings = Nil}: Spawn));
         List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), scene, spawns)
 
     /// 出撃メンバーを選抜する: **先頭（ロード）を固定**し、残りからランダムに 2 体選ぶ。
@@ -321,7 +324,10 @@ mod PlayerScene {
             level             = res#level,
             exp               = 0,
             pendingLevelUp    = None,
-            statuses          = Nil
+            statuses          = Nil,
+            rings             = sp#rings,
+            ringEquipped      = false,
+            followUpUsed      = false
         };
         // unit に spriteFrames があれば AnimatedSprite2D で配置、無ければ Sprite2D
         // (静止単一フレーム) で配置する。AnimatedSprite2D は engine の per-node
@@ -631,6 +637,11 @@ mod PlayerScene {
             |> UnitHPBarScene.setModulate(playerPath(id), waitedColor())
             |> playAnim(id, idleAnimName())
 
+    /// 完全停止（かなしばり）を解除する。被攻撃 or 被投擲の瞬間に呼ぶ。
+    /// 停止していなければ no-op（他の時限ステータスは残す）。
+    pub def releaseBind(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, scene)
+
     /// 全プレイヤーを「行動済み(非アクティブ)」にする。各 id に `setWaited` を適用し、
     /// waited を立てて灰色 modulate + idle アニメへ揃える。
     /// 「集合 → 解散」でパーティ全員のターンを一括消費するときに使う
@@ -643,17 +654,48 @@ mod PlayerScene {
     /// ターン開始時に呼ばれ、AnimatedSprite2D 持ち unit は idle アニメに戻す
     /// (= 新ターン開始時の待機モーション)。
     /// 敵ターン終了後に呼ぶ（次の味方ターン開始）。
-    pub def clearAllWaited(scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def clearAllWaited(scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
         // 階段で退場した味方 (usedStairs) は「行動済み」を維持し、敵ターン後も再行動させない。
         let ids = getAll(scene) |> List.filter(d -> not d#usedStairs) |> List.map(d -> d#id);
-        List.foldLeft((sc, id) ->
+        let reset = List.foldLeft((sc, id) ->
             sc
-                // 味方ターン開始ごとに時限ステータス（自己バフ等）を 1 ターン分減算する。
-                |> mapPlayer(id, d -> {waited = false, statuses = StatusSystem.tick(d#statuses) | d})
+                // 味方ターン開始ごとに時限ステータス（自己バフ等）を 1 ターン分減算し、
+                // 追撃リングの二重発動フラグを戻す。
+                |> mapPlayer(id, d -> {waited = false, statuses = StatusSystem.tick(d#statuses),
+                                       followUpUsed = false | d})
                 |> setSpriteModulate(id, activeColor())
                 |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
                 |> playAnim(id, idleAnimName()),
-            scene, ids)
+            scene, ids);
+        // 味方ターン開始時に、いやしのリングを装備した味方の HP を回復する。
+        applyRingRegen(reset)
+
+    /// いやしのリングを装備した味方の HP を回復する（最大 HP でクランプ）。味方ターン開始で呼ぶ。
+    /// 実際に回復した味方はログに出す。
+    pub def applyRingRegen(scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+        let ids = getAll(scene) |> List.map(d -> d#id);
+        List.foldLeft((sc, id) -> regenOnePlayer(id, sc), scene, ids)
+
+    /// 1 味方ぶんの Mend 回復。Mend 以外 / 未装備なら no-op（match は入れ子にしない）。
+    def regenOnePlayer(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+        match get(id, scene) {
+            case None    => scene
+            case Some(d) => mendOnePlayer(id, d, scene)
+        }
+
+    /// 回復量を計算して適用するヘルパー（regenOnePlayer から呼ぶ）。
+    /// 満タン等で実際に HP が増えないときはログも出さない。
+    def mendOnePlayer(id: Int32, d: Data, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        let amt = Ring.mendAmount(PlayerData.equippedRing(d));
+        let newHp = Combat.heal(d#hp, d#resource#hp, amt)#newHp;
+        if (amt <= 0 or newHp <= d#hp) scene
+        else {
+            GameLogger.playerLog("${d#resource#description} は いやしのリングで HP+${newHp - d#hp}");
+            scene
+                |> mapPlayer(id, dd -> {hp = newHp | dd})
+                |> UnitHPBarScene.update(playerPath(id), newHp)
+        }
 
     /// 全プレイヤーの sprite / HP ゲージを通常色(active)に戻す。`waited` フラグは変えない。
     /// 敵フェーズ中に「味方の行動済み灰色」を消してアクティブに見せるために使う
@@ -827,7 +869,7 @@ mod PlayerScene {
             |> List.map(d ->
                 ({id = d#id, gridPos = d#gridPos, resource = d#resource,
                    weapons = d#weapons, staves = d#staves,
-                   consumables = d#consumables}: Spawn))
+                   consumables = d#consumables, rings = d#rings}: Spawn))
 
     /// 既存のプレイヤーを全て scene から取り除き、`spawns` から再構築する。
     /// HP / waited / gridPos を初期値で生成する。
@@ -850,6 +892,10 @@ mod PlayerScene {
         weapons     = List[UnitCatalog.WeaponResource],
         staves      = List[Staff.StaffResource],
         consumables = List[Consumable.ConsumableResource],
+        // 装備中の指輪。フロアを跨いでも装備が消えないよう引き継ぐ。
+        rings       = List[Ring.RingResource],
+        // 指輪を装備中かどうか。フロアを跨いでも装備状態を保つ。
+        ringEquipped = Bool,
         level       = Int32,
         exp         = Int32,
         // 成長後の 6 ステータス（最大 HP 含む）。次フロアの新規 resource に上書きして引き継ぐ。
@@ -879,7 +925,8 @@ mod PlayerScene {
             |> List.filter(d -> d#hp > 0)
             |> List.map(d ->
                 ({id = d#id, hp = d#hp, weapons = d#weapons, staves = d#staves,
-                  consumables = d#consumables,
+                  consumables = d#consumables, rings = d#rings,
+                  ringEquipped = d#ringEquipped,
                   level = d#level, exp = d#exp,
                   stats = LevelSystem.statsOf(d#resource)}: CarryData))
 
@@ -898,7 +945,8 @@ mod PlayerScene {
             sc
                 |> mapPlayer(c#id, d ->
                     {hp = c#hp, weapons = c#weapons, staves = c#staves,
-                     consumables = c#consumables,
+                     consumables = c#consumables, rings = c#rings,
+                     ringEquipped = c#ringEquipped,
                      level = c#level, exp = c#exp,
                      resource = LevelSystem.withStats(c#stats, d#resource) | d})
                 |> UnitHPBarScene.updateMaxHp(playerPath(c#id), c#hp, c#stats#hp),
@@ -1058,6 +1106,7 @@ mod PlayerScene {
             case PlayerData.ItemKind.Weapon(i)     => i
             case PlayerData.ItemKind.Staff(i)      => nw + i
             case PlayerData.ItemKind.Consumable(i) => nw + ns + i
+            case PlayerData.ItemKind.Ring(i)       => nw + ns + i
         }
 
     /// list の index a と b の要素を入れ替える。範囲外 / a==b なら元の list。
@@ -1085,6 +1134,9 @@ mod PlayerScene {
             case PlayerData.ItemKind.Consumable(idx) =>
                 List.nth(idx, getConsumables(playerId, scene))
                     |> Option.map(c -> ItemData.GroundItemKind.ConsumableItem(c))
+            case PlayerData.ItemKind.Ring(idx) =>
+                List.nth(idx, getRings(playerId, scene))
+                    |> Option.map(r -> ItemData.GroundItemKind.RingItem(r))
         }
 
     /// 指定 player の `kind` のアイテムをインベントリから取り除く。
@@ -1095,6 +1147,7 @@ mod PlayerScene {
             case PlayerData.ItemKind.Weapon(idx)     => dropWeapon(playerId, idx, scene)
             case PlayerData.ItemKind.Staff(idx)      => dropStaff(playerId, idx, scene)
             case PlayerData.ItemKind.Consumable(idx) => dropConsumable(playerId, idx, scene)
+            case PlayerData.ItemKind.Ring(idx)       => dropRing(playerId, idx, scene)
         }
 
     /// `partnerKind = None` (= 空スロット相手) の場合は no-op、Some なら removeInventoryItem。
@@ -1124,6 +1177,72 @@ mod PlayerScene {
         mapPlayer(playerId,
             d -> {consumables = List.append(d#consumables, item :: Nil) | d}, scene)
 
+    /// 指輪インベントリ（先頭が装備中）。居ない player は Nil。
+    pub def getRings(id: Int32, scene: Scene[NodeTag]): List[Ring.RingResource] =
+        match get(id, scene) {
+            case Some(d) => d#rings
+            case None    => Nil
+        }
+
+    /// 指輪インベントリの末尾に 1 個追加する（末尾追加 = 装備中の後ろ）。
+    pub def addRing(playerId: Int32, ring: Ring.RingResource,
+                     scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId,
+            d -> {rings = List.append(d#rings, ring :: Nil) | d}, scene)
+
+    /// 指定 idx の指輪を先頭へ移動し、装備状態にする（`ringEquipped = true`）。範囲外なら no-op。
+    /// 拾っただけでは装備されないので、ここを通って初めて効果が出る。
+    pub def equipRing(playerId: Int32, idx: Int32,
+                       scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId,
+            d -> {rings = moveToHead(idx, d#rings), ringEquipped = true | d}, scene)
+
+    /// 装備中の指輪を外す（所持は維持し、効果だけ止める）。並びは変えない。
+    pub def unequipRing(playerId: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId, d -> {ringEquipped = false | d}, scene)
+
+    /// 指定 idx の指輪をインベントリから削除（捨てる）。範囲外なら no-op。
+    /// 装備中の指輪（先頭）を捨てたら装備状態も解除する（残った先頭が勝手に装備されないように）。
+    pub def dropRing(playerId: Int32, idx: Int32,
+                      scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapPlayer(playerId,
+            d -> {rings = removeAt(idx, d#rings),
+                  ringEquipped = if (idx == 0) false else d#ringEquipped | d}, scene)
+
+    /// ringman の特殊行動で「指輪に変えられる」持ち物 = 装備外のアイテムを (種別 index, 表示名) で列挙する。
+    /// 装備中の武器（weapons 先頭）と装備中の指輪（ringEquipped のときの rings 先頭）は守り、
+    /// それ以外の武器・杖・薬・指輪を対象にする。居ない player は Nil。
+    pub def transformableItems(playerId: Int32, scene: Scene[NodeTag]):
+            List[(PlayerData.ItemKind, String)] =
+        match get(playerId, scene) {
+            case None    => Nil
+            case Some(d) => transformableOf(d)
+        }
+
+    /// `transformableItems` の本体（Data から純粋に列挙）。装備中の武器先頭・装備中の指輪先頭を除く。
+    pub def transformableOf(d: Data): List[(PlayerData.ItemKind, String)] =
+        let weaponItems = d#weapons
+            |> List.mapWithIndex(idx -> w -> (idx, w#name))
+            |> List.filterMap(t -> let (idx, name) = t;
+                if (idx >= 1) Some((PlayerData.ItemKind.Weapon(idx), name)) else None);
+        let staffItems = d#staves
+            |> List.mapWithIndex(idx -> s -> (PlayerData.ItemKind.Staff(idx), s#name));
+        let consumableItems = d#consumables
+            |> List.mapWithIndex(idx -> c -> (PlayerData.ItemKind.Consumable(idx), c#name));
+        let ringItems = d#rings
+            |> List.mapWithIndex(idx -> r -> (idx, r#name))
+            |> List.filterMap(t -> let (idx, name) = t;
+                if (d#ringEquipped and idx == 0) None
+                else Some((PlayerData.ItemKind.Ring(idx), name)));
+        List.append(weaponItems,
+            List.append(staffItems, List.append(consumableItems, ringItems)))
+
+    /// 指定 player の `kind` の持ち物を 1 つ取り除き、代わりに `ring` を持ち物末尾に加える。
+    /// ringman の特殊行動の scene 変換部（どの指輪にするかの抽選は catalog を持つ呼び出し側）。
+    pub def replaceItemWithRing(playerId: Int32, kind: PlayerData.ItemKind,
+                                 ring: Ring.RingResource, scene: Scene[NodeTag]): Scene[NodeTag] =
+        addRing(playerId, ring, removeInventoryItem(playerId, kind, scene))
+
     /// 指定 player のインベントリに `item` を追加（種別ごとに上記 writer へ委譲）。
     /// `ActionMenuScene.addPickedItem` と同じ追加ルール (ログを出さない版)。
     def addInventoryItem(playerId: Int32, item: ItemData.GroundItemKind,
@@ -1135,6 +1254,8 @@ mod PlayerScene {
                 addStaff(playerId, staff, scene)
             case ItemData.GroundItemKind.ConsumableItem(consumable) =>
                 addConsumable(playerId, consumable, scene)
+            case ItemData.GroundItemKind.RingItem(ring)            =>
+                addRing(playerId, ring, scene)
         }
 
     /// `optItem = None` のときは no-op、Some なら addInventoryItem。
@@ -1159,6 +1280,9 @@ mod PlayerScene {
             case ItemData.GroundItemKind.ConsumableItem(_) =>
                 let n = List.length(getConsumables(playerId, scene));
                 if (n > 0) dropConsumable(playerId, n - 1, scene) else scene
+            case ItemData.GroundItemKind.RingItem(_)       =>
+                let n = List.length(getRings(playerId, scene));
+                if (n > 0) dropRing(playerId, n - 1, scene) else scene
         }
 
     /// List の `idx` 番目の要素を先頭に移動する。範囲外なら元のリストをそのまま返す。
@@ -1206,6 +1330,8 @@ mod PlayerScene {
                 mapPlayer(playerId, d -> {staves = insertAt(idx, s, d#staves) | d}, scene)
             case (PlayerData.ItemKind.Consumable(idx), ItemData.GroundItemKind.ConsumableItem(c)) =>
                 mapPlayer(playerId, d -> {consumables = insertAt(idx, c, d#consumables) | d}, scene)
+            case (PlayerData.ItemKind.Ring(idx), ItemData.GroundItemKind.RingItem(r)) =>
+                mapPlayer(playerId, d -> {rings = insertAt(idx, r, d#rings) | d}, scene)
             case _ => scene
         }
 

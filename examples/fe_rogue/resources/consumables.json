@@ -1,5 +1,20 @@
 {
   "consumables": {
+    "blast_bottle": {
+      "description": "当たった対象と周囲1マス(味方含む)に10ダメージ",
+      "durability": 1,
+      "duration": 0,
+      "effect": "BlastBottle",
+      "healAmount": 0,
+      "magnitude": 10,
+      "name": "爆発瓶",
+      "sprite": {
+        "frame": 510,
+        "hframes": 16,
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
     "blind_potion": {
       "description": "投げて当てた相手の命中を5ターン25%下げる",
       "durability": 3,
@@ -25,6 +40,21 @@
       "name": "特効薬",
       "sprite": {
         "frame": 514,
+        "hframes": 16,
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "fire_bottle": {
+      "description": "投げて当たった相手に15ダメージ",
+      "durability": 1,
+      "duration": 0,
+      "effect": "FireBottle",
+      "healAmount": 0,
+      "magnitude": 15,
+      "name": "火炎瓶",
+      "sprite": {
+        "frame": 509,
         "hframes": 16,
         "texture": "item_icons",
         "vframes": 39
@@ -115,6 +145,21 @@
       "name": "すばやさ薬",
       "sprite": {
         "frame": 519,
+        "hframes": 16,
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "tear_potion": {
+      "description": "投げて当てた相手の守備を3ターン5下げる",
+      "durability": 3,
+      "duration": 3,
+      "effect": "DefDownHit",
+      "healAmount": 0,
+      "magnitude": 5,
+      "name": "ほころび薬",
+      "sprite": {
+        "frame": 522,
         "hframes": 16,
         "texture": "item_icons",
         "vframes": 39

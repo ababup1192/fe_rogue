@@ -65,6 +65,10 @@ mod TurnPhase {
         /// 方向確定で杖が直線に飛び、効果が発動 → ターンを進める。
         /// X/Escape で杖をキャンセル（耐久を消費せず ItemActionSelect に戻る）。
         case StaffAim
+        /// 味方ターン・アイテム投擲の方向選択フェーズ（「投げる」確定で入る）。
+        /// StaffAim と同じ矢印カーソルで方向を選び、Z で投げる（命中ロールあり）。
+        /// X/Escape でキャンセル（消費せず ItemActionSelect に戻る）。
+        case ThrowAim
         /// 味方ターン・物交換の相手選択フェーズ。
         /// ActionMenu の「こうかん」確定で入り、選択中味方の上下左右 1 マスの
         /// 他味方マスが緑マスで描かれる (`TradeRangeScene`)。カーソルは緑マス上
@@ -255,6 +259,8 @@ mod TurnRules {
             case (TurnPhase.Phase.ItemActionSelect, _) =>
                 Transition.Stay
             case (TurnPhase.Phase.StaffAim, _) =>
+                Transition.Stay
+            case (TurnPhase.Phase.ThrowAim, _) =>
                 Transition.Stay
             case (TurnPhase.Phase.AttackForecast, _) =>
                 Transition.Stay

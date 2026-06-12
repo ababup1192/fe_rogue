@@ -1,0 +1,148 @@
+{
+  "rings": {
+    "finisher_ring": {
+      "description": "瀕死(残HP3割以下)の敵に必ず必殺",
+      "effect": "Finisher",
+      "name": "死神のネックレス",
+      "power": 30,
+      "sprite": {
+        "frame": 355,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "guard_ring": {
+      "description": "防御が3上がる",
+      "effect": "Guard",
+      "name": "まもりのリング",
+      "power": 3,
+      "sprite": {
+        "frame": 341,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "mend_ring": {
+      "description": "自分のターン開始時にHPが2回復",
+      "effect": "Mend",
+      "name": "いやしのリング",
+      "power": 2,
+      "sprite": {
+        "frame": 349,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "plain_ring": {
+      "description": "なんの効果もない。ただの輪っか",
+      "effect": "Trivial",
+      "name": "ただのリング",
+      "power": 0,
+      "sprite": {
+        "frame": 336,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "power_ring": {
+      "description": "攻撃力が3上がる",
+      "effect": "Power",
+      "name": "ちからのリング",
+      "power": 3,
+      "sprite": {
+        "frame": 337,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "pursuit_ring": {
+      "description": "速さが相手より3以上高いと稀に2回攻撃",
+      "effect": "Pursuit",
+      "name": "追撃のリング",
+      "power": 0,
+      "sprite": {
+        "frame": 344,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "rusty_ring": {
+      "description": "赤茶けている。むしろ弱くなった気がする",
+      "effect": "Power",
+      "name": "さびのリング",
+      "power": -1,
+      "sprite": {
+        "frame": 336,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "swift_ring": {
+      "description": "速さが3上がる",
+      "effect": "Swift",
+      "name": "すばやさのリング",
+      "power": 3,
+      "sprite": {
+        "frame": 346,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.1
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "vengeance_ring": {
+      "description": "敵を倒すとHPが5回復する",
+      "effect": "Lifesteal",
+      "name": "みかえりのリング",
+      "power": 5,
+      "sprite": {
+        "frame": 342,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    }
+  }
+}

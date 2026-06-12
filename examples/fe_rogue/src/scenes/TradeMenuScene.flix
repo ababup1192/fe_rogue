@@ -51,24 +51,31 @@ mod TradeMenuScene {
     }
 
     /// Panel ノード (`NodeTag.TradePanel(PanelData)`) に紐づくセッション状態。
-    ///   - `members` : 各ペインに対応する player id (左→右の表示順)。length = ペイン数 (2..3)。
-    ///   - `focus`   : 現在の入力フォーカスのペイン index (0 起点)。
-    ///   - `pick`    : 先に選んだスロット (無ければ None)。
-    ///   - `origin`  : セッションの出口 (cancel の戻り先)。
+    ///   - `members`  : 各ペインに対応する player id (左→右の表示順)。length = ペイン数 (2..3)。
+    ///   - `focus`    : 現在の入力フォーカスのペイン index (0 起点)。
+    ///   - `pick`     : 先に選んだスロット (無ければ None)。
+    ///   - `origin`   : セッションの出口 (cancel の戻り先)。
+    ///   - `marks`    : Shift で複数選択した「まとめ渡し」対象アイテムの印。
+    ///   - `markPane` : 印が属するペイン index (= 渡す側)。印は 1 人ぶんだけ持つので、
+    ///                  別ペインに付け替えたら前の印は捨てる。印なしなら None。
     pub type alias PanelData = {
-        members = List[Int32],
-        focus   = Int32,
-        pick    = Option[Pick],
-        origin  = Origin
+        members  = List[Int32],
+        focus    = Int32,
+        pick     = Option[Pick],
+        origin   = Origin,
+        marks    = Set[PlayerData.ItemKind],
+        markPane = Option[Int32]
     }
 
-    /// PanelData の初期値。members=Nil / origin=FromTurn のゼロ状態。
+    /// PanelData の初期値。members=Nil / origin=FromTurn / 印なしのゼロ状態。
     /// セッション開始時に呼び手が members と origin を上書きして使う。
     pub def defaultPanelData(): PanelData = {
-        members = Nil,
-        focus   = 0,
-        pick    = None,
-        origin  = Origin.FromTurn
+        members  = Nil,
+        focus    = 0,
+        pick     = None,
+        origin   = Origin.FromTurn,
+        marks    = Set#{},
+        markPane = None
     }
 
     /// 確定 (Z) 押下の結果。状態更新だけか、別ペインとの swap か、同ペイン内の並び替えか。
@@ -366,9 +373,13 @@ mod TradeMenuScene {
                     let cls = classNameOf(pid, acc);
                     let items = paneEntries(pid, acc);
                     let highlightIdx = pickHighlightIndex(i, pid, data, acc);
+                    let markRows = markHighlightRows(i, pid, data, acc);
                     acc
                         |> ItemList.mapAt(menuPath(i), list ->
-                            list |> ItemList.setItems(items) |> applyHighlight(highlightIdx))
+                            list
+                                |> ItemList.setItems(items)
+                                |> applyHighlight(highlightIdx)
+                                |> applyMarkHighlight(markRows))
                         |> Label2D.mapAt(classPath(i), Label2D.setText(cls))
             },
             scene, List.range(0, count))
@@ -395,15 +406,32 @@ mod TradeMenuScene {
     /// UI 強調色を 1 か所に集約し、テーマ変更時の散逸を防ぐ。
     def pickColor(): Color = {r = 1.0f32, g = 0.85f32, b = 0.2f32}
 
+    /// このペインが印の付け元 (`markPane`) なら、印の付いた各アイテムの表示行 index 集合を返す。
+    /// 別ペイン / 印なしなら空集合。pick の強調と同じ色を後から重ねるために行集合だけ返す。
+    def markHighlightRows(paneIndex: Int32, playerId: Int32, data: PanelData,
+                           scene: Scene[NodeTag]): Set[Int32] \ PlayerData.PartyQuery =
+        if (data#markPane == Some(paneIndex))
+            Set.toList(data#marks)
+                |> List.map(kind -> displayIndexOf(kind, playerId, scene))
+                |> List.toSet
+        else Set#{}
+
+    /// 指定した行をすべて pick 色で塗る（pick 強調の後に重ねる）。すでに `applyHighlight` が
+    /// 全消し済みなので、ここでは消さずに印の行を足すだけにする。
+    def applyMarkHighlight(rows: Set[Int32], list: ItemList): ItemList =
+        Set.foldLeft((acc, idx) -> ItemList.setItemColor(idx, pickColor(), acc), list, rows)
+
     /// ItemKind を、ペイン表示 (weapons ++ staves ++ consumables) 上の行 index に変換する。
     def displayIndexOf(kind: PlayerData.ItemKind, playerId: Int32,
                         _scene: Scene[NodeTag]): Int32 \ PlayerData.PartyQuery =
         let nw = List.length(weaponsOf(playerId));
         let ns = List.length(stavesOf(playerId));
+        let nc = List.length(consumablesOf(playerId));
         match kind {
             case PlayerData.ItemKind.Weapon(i)     => i
             case PlayerData.ItemKind.Staff(i)      => nw + i
             case PlayerData.ItemKind.Consumable(i) => nw + ns + i
+            case PlayerData.ItemKind.Ring(i)       => nw + ns + nc + i
         }
 
     /// 指定 player id の兵種名 (`UnitResource#description`)。居なければ空文字。
@@ -503,12 +531,12 @@ mod TradeMenuScene {
             case (None, None) =>
                 scene
             case (Some(pickerKind), receiverOpt) =>
-                GameLogger.playerLog("P${plan#pickerId} と P${plan#receiverId} がアイテム交換");
+                GameLogger.playerLog("${PlayerScene.displayName(plan#pickerId, scene)} と ${PlayerScene.displayName(plan#receiverId, scene)} がアイテム交換");
                 recordIfTurn(origin, plan#pickerId, pickerKind, plan#receiverId, receiverOpt, scene);
                 PlayerScene.swapItem({selfId      = plan#pickerId,   selfKind    = pickerKind,
                                        partnerId   = plan#receiverId, partnerKind = receiverOpt}, scene)
             case (None, Some(receiverKind)) =>
-                GameLogger.playerLog("P${plan#pickerId} と P${plan#receiverId} がアイテム交換");
+                GameLogger.playerLog("${PlayerScene.displayName(plan#pickerId, scene)} と ${PlayerScene.displayName(plan#receiverId, scene)} がアイテム交換");
                 recordIfTurn(origin, plan#receiverId, receiverKind, plan#pickerId, None, scene);
                 PlayerScene.swapItem({selfId      = plan#receiverId, selfKind    = receiverKind,
                                        partnerId   = plan#pickerId,   partnerKind = None}, scene)
@@ -542,23 +570,96 @@ mod TradeMenuScene {
                 }))
         }
 
+    /// TradeInventory 中に Shift が押されたとき、focus ペインのカーソル位置にある自分の
+    /// アイテムの印を付け外しする。空スロットには印を付けない（種別が引けず None になる）。
+    pub def toggleTradeMarkAtCursor(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let data = getPanelData(scene);
+        let i = data#focus;
+        let kindOpt = ItemList.getAt(menuPath(i), scene)
+            |> Option.flatMap(ItemList.getSelected)
+            |> Option.flatMap(parseEntryKind);
+        kindOpt
+            |> Option.map(kind -> setPanelData(toggledMarks(i, kind, data), scene))
+            |> Option.getWithDefault(scene)
+
+    /// 印を付け外しした後の PanelData を返す純粋関数。focus ペインが今の印元 (`markPane`) と
+    /// 違うときは前の印を捨てて focus を新しい印元にする（印は 1 ペインぶんだけ持つ）。
+    /// 結果が空集合になったら印元も None に戻す。
+    pub def toggledMarks(paneIndex: Int32, kind: PlayerData.ItemKind, data: PanelData): PanelData =
+        let baseMarks = if (data#markPane == Some(paneIndex)) data#marks else Set#{};
+        let newMarks = PlayerData.toggleMark(kind, baseMarks);
+        if (Set.isEmpty(newMarks)) {marks = newMarks, markPane = None | data}
+        else {marks = newMarks, markPane = Some(paneIndex) | data}
+
+    /// 印が付いていて、その付け元 (`markPane`) と違うペインで Z を押したか（= まとめ渡し条件）。
+    def isBulkConfirm(paneIndex: Int32, data: PanelData): Bool =
+        match data#markPane {
+            case Some(giverPane) => not Set.isEmpty(data#marks) and giverPane != paneIndex
+            case None            => false
+        }
+
+    /// 印の付いた自分の複数アイテムを、別ペイン (`receiverPane` = 受け取り側) の空き枠ぶんだけ
+    /// まとめて渡す。index の大きい順に 1 個ずつ既存の片方向 transfer に流すので、ログと
+    /// 巻き戻しドラフトは 1 個ずつ渡したのと同じになる。渡し終えたら focus を受け取り側に残し印を消す。
+    def confirmBulkTransfer(receiverPane: Int32, data: PanelData, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
+        let giverIdOpt    = data#markPane |> Option.flatMap(giverPane -> playerIdAt(giverPane, data));
+        let receiverIdOpt = playerIdAt(receiverPane, data);
+        let ordered       = PlayerData.marksDescendingPerList(data#marks);
+        let transferred   = transferEach(giverIdOpt, receiverIdOpt, data#origin, ordered, scene);
+        setPanelData({pick = None, marks = Set#{}, markPane = None, focus = receiverPane | data},
+                     transferred)
+
+    /// giver / receiver が両方そろうときだけ、印の付いたアイテムを順に渡す。どちらか欠けたら no-op。
+    def transferEach(giverIdOpt: Option[Int32], receiverIdOpt: Option[Int32], origin: Origin,
+                      kinds: List[PlayerData.ItemKind], scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
+        let resolved = forM (giverId <- giverIdOpt; receiverId <- receiverIdOpt)
+            yield List.foldLeft((acc, kind) -> transferOne(giverId, receiverId, origin, kind, acc),
+                scene, kinds);
+        Option.getWithDefault(scene, resolved)
+
+    /// 1 個を giver → receiver に片方向で渡す。受け取り側が満杯なら何もしない（部分転送の停止）。
+    /// 容量は scene-arg から最新値を読む（連続して渡す途中で在庫数が変わるため snapshot に頼らない）。
+    /// 渡せるときは既存の `applyTradeSwap`（片方向 transfer 経路）に流し、ログとドラフトを揃える。
+    def transferOne(giverId: Int32, receiverId: Int32, origin: Origin,
+                     kind: PlayerData.ItemKind, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
+        if (receiverHasRoom(receiverId, scene))
+            applyTradeSwap({pickerId = giverId, pickerKind = Some(kind),
+                            receiverId = receiverId, receiverKind = None}, origin, scene)
+        else scene
+
+    /// 受け取り側にまだ空き枠があるか。scene から最新の持ち物数を読む。居なければ渡せない扱い。
+    def receiverHasRoom(receiverId: Int32, scene: Scene[NodeTag]): Bool =
+        match PlayerScene.get(receiverId, scene) {
+            case Some(d) => not PlayerScene.isInventoryFull(d)
+            case None    => false
+        }
+
     /// 指定ペインの指定 entry に対する Z 確定処理。`decideConfirm` の結果を scene に適用する。
     /// `confirmCurrentSelection` から focus ペインの selected entry を渡して使うほか、
     /// テストが ItemList の中身に依存せず確定操作を直接駆動するのにも使う。
     pub def confirmAt(paneIndex: Int32, entry: ItemEntry, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
         let data = getPanelData(scene);
-        let entryKind = parseEntryKind(entry);
-        match decideConfirm(paneIndex, entryKind, data) {
-            case ConfirmOutcome.JustUpdate(d2)      =>
-                checked_ecast(setPanelData(d2, scene))
-            case ConfirmOutcome.DoSwap(d2, plan)    =>
-                applyTradeSwap(plan, data#origin, scene)
-                    |> setPanelData(d2)
-            case ConfirmOutcome.DoReorder(d2, plan) =>
-                checked_ecast(
-                    PlayerScene.reorderItem(plan#playerId, plan#kindA, plan#kindB, scene)
-                        |> setPanelData(d2))
+        // 印が付いていて、その付け元と違うペインで Z を押したら「まとめ渡し」。
+        // それ以外（印なし / 同じペインで Z）は従来どおり 1 個ずつの pick / swap / 並び替え。
+        if (isBulkConfirm(paneIndex, data))
+            confirmBulkTransfer(paneIndex, data, scene)
+        else {
+            let entryKind = parseEntryKind(entry);
+            match decideConfirm(paneIndex, entryKind, data) {
+                case ConfirmOutcome.JustUpdate(d2)      =>
+                    checked_ecast(setPanelData(d2, scene))
+                case ConfirmOutcome.DoSwap(d2, plan)    =>
+                    applyTradeSwap(plan, data#origin, scene)
+                        |> setPanelData(d2)
+                case ConfirmOutcome.DoReorder(d2, plan) =>
+                    checked_ecast(
+                        PlayerScene.reorderItem(plan#playerId, plan#kindA, plan#kindB, scene)
+                            |> setPanelData(d2))
+            }
         }
 
     /// Z 押下: focus ペインの selected entry を取り、`confirmAt` に流す。
@@ -571,20 +672,25 @@ mod TradeMenuScene {
             case Some(entry) => confirmAt(i, entry, scene)
         }
 
-    /// X 押下: pick=Some なら pick 解除 (focus 据置)、pick=None なら origin に応じて閉じる。
+    /// X 押下の優先順位: pick=Some なら pick 解除（focus 据置）→ 印があれば印を解除 →
+    /// どちらも無ければ origin に応じてウィンドウを閉じる。複数選択を 1 段で全部消さず、
+    /// 「まず選択を取り消す」段階を踏めるようにしている。
     pub def cancelCurrent(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
         let data = getPanelData(scene);
-        match data#pick {
-            case Some(_) =>
-                checked_ecast(mapPanelData(d -> {pick = None | d}, scene))
-            case None    =>
-                match data#origin {
-                    case Origin.FromTurn  =>
-                        PhaseTransitions.enterActionSelectFromTrade(scene)
-                    case Origin.FromRogue =>
-                        PhaseTransitions.enterRogueMove(scene)
-                            |> mapPanelData(_ -> defaultPanelData())
-                }
+        if (not Option.isEmpty(data#pick))
+            checked_ecast(mapPanelData(d -> {pick = None | d}, scene))
+        else if (not Set.isEmpty(data#marks))
+            checked_ecast(mapPanelData(d -> {marks = Set#{}, markPane = None | d}, scene))
+        else closeTrade(data#origin, scene)
+
+    /// pick も印も無いときの X: origin に応じて交換ウィンドウを閉じる。
+    def closeTrade(origin: Origin, scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+        match origin {
+            case Origin.FromTurn  =>
+                PhaseTransitions.enterActionSelectFromTrade(scene)
+            case Origin.FromRogue =>
+                PhaseTransitions.enterRogueMove(scene)
+                    |> mapPanelData(_ -> defaultPanelData())
         }
 
     /// ←/→ 押下: focus ペインを delta(±1) 動かす。

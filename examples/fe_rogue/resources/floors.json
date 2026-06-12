@@ -108,6 +108,46 @@
         {
           "id": "speed_potion",
           "percent": 4
+        },
+        {
+          "id": "plain_ring",
+          "percent": 12
+        },
+        {
+          "id": "mend_ring",
+          "percent": 15
+        },
+        {
+          "id": "swift_ring",
+          "percent": 12
+        },
+        {
+          "id": "power_ring",
+          "percent": 10
+        },
+        {
+          "id": "guard_ring",
+          "percent": 8
+        },
+        {
+          "id": "pursuit_ring",
+          "percent": 10
+        },
+        {
+          "id": "vengeance_ring",
+          "percent": 8
+        },
+        {
+          "id": "finisher_ring",
+          "percent": 8
+        },
+        {
+          "id": "fire_bottle",
+          "percent": 5
+        },
+        {
+          "id": "tear_potion",
+          "percent": 6
         }
       ],
       "itemsPerRoom": {
@@ -290,6 +330,46 @@
         {
           "id": "speed_potion",
           "percent": 4
+        },
+        {
+          "id": "plain_ring",
+          "percent": 12
+        },
+        {
+          "id": "mend_ring",
+          "percent": 15
+        },
+        {
+          "id": "swift_ring",
+          "percent": 12
+        },
+        {
+          "id": "power_ring",
+          "percent": 10
+        },
+        {
+          "id": "guard_ring",
+          "percent": 8
+        },
+        {
+          "id": "pursuit_ring",
+          "percent": 10
+        },
+        {
+          "id": "vengeance_ring",
+          "percent": 8
+        },
+        {
+          "id": "finisher_ring",
+          "percent": 8
+        },
+        {
+          "id": "fire_bottle",
+          "percent": 5
+        },
+        {
+          "id": "tear_potion",
+          "percent": 6
         }
       ],
       "itemsPerRoom": {
@@ -472,6 +552,46 @@
         {
           "id": "speed_potion",
           "percent": 4
+        },
+        {
+          "id": "plain_ring",
+          "percent": 12
+        },
+        {
+          "id": "mend_ring",
+          "percent": 15
+        },
+        {
+          "id": "swift_ring",
+          "percent": 12
+        },
+        {
+          "id": "power_ring",
+          "percent": 10
+        },
+        {
+          "id": "guard_ring",
+          "percent": 8
+        },
+        {
+          "id": "pursuit_ring",
+          "percent": 10
+        },
+        {
+          "id": "vengeance_ring",
+          "percent": 8
+        },
+        {
+          "id": "finisher_ring",
+          "percent": 8
+        },
+        {
+          "id": "fire_bottle",
+          "percent": 5
+        },
+        {
+          "id": "tear_potion",
+          "percent": 6
         }
       ],
       "itemsPerRoom": {
@@ -498,6 +618,10 @@
         },
         {
           "id": "fighter_t1",
+          "percent": 15
+        },
+        {
+          "id": "ringman",
           "percent": 15
         }
       ],
@@ -678,6 +802,46 @@
         {
           "id": "elixir",
           "percent": 2
+        },
+        {
+          "id": "plain_ring",
+          "percent": 12
+        },
+        {
+          "id": "mend_ring",
+          "percent": 15
+        },
+        {
+          "id": "swift_ring",
+          "percent": 12
+        },
+        {
+          "id": "power_ring",
+          "percent": 10
+        },
+        {
+          "id": "guard_ring",
+          "percent": 8
+        },
+        {
+          "id": "pursuit_ring",
+          "percent": 10
+        },
+        {
+          "id": "vengeance_ring",
+          "percent": 8
+        },
+        {
+          "id": "finisher_ring",
+          "percent": 8
+        },
+        {
+          "id": "fire_bottle",
+          "percent": 5
+        },
+        {
+          "id": "tear_potion",
+          "percent": 6
         }
       ],
       "itemsPerRoom": {
@@ -704,6 +868,10 @@
         },
         {
           "id": "paladin_t1",
+          "percent": 15
+        },
+        {
+          "id": "ringman",
           "percent": 15
         }
       ],
@@ -928,6 +1096,50 @@
         {
           "id": "elixir",
           "percent": 2
+        },
+        {
+          "id": "plain_ring",
+          "percent": 12
+        },
+        {
+          "id": "mend_ring",
+          "percent": 15
+        },
+        {
+          "id": "swift_ring",
+          "percent": 12
+        },
+        {
+          "id": "power_ring",
+          "percent": 10
+        },
+        {
+          "id": "guard_ring",
+          "percent": 8
+        },
+        {
+          "id": "pursuit_ring",
+          "percent": 10
+        },
+        {
+          "id": "vengeance_ring",
+          "percent": 8
+        },
+        {
+          "id": "finisher_ring",
+          "percent": 8
+        },
+        {
+          "id": "fire_bottle",
+          "percent": 5
+        },
+        {
+          "id": "blast_bottle",
+          "percent": 1
+        },
+        {
+          "id": "tear_potion",
+          "percent": 6
         }
       ],
       "itemsPerRoom": {
@@ -955,6 +1167,10 @@
         {
           "id": "cleric_t2",
           "percent": 10
+        },
+        {
+          "id": "ringman",
+          "percent": 15
         }
       ],
       "monstersPerRoom": {
@@ -1182,6 +1398,50 @@
         {
           "id": "revival_drug",
           "percent": 2
+        },
+        {
+          "id": "plain_ring",
+          "percent": 12
+        },
+        {
+          "id": "mend_ring",
+          "percent": 15
+        },
+        {
+          "id": "swift_ring",
+          "percent": 12
+        },
+        {
+          "id": "power_ring",
+          "percent": 10
+        },
+        {
+          "id": "guard_ring",
+          "percent": 8
+        },
+        {
+          "id": "pursuit_ring",
+          "percent": 10
+        },
+        {
+          "id": "vengeance_ring",
+          "percent": 8
+        },
+        {
+          "id": "finisher_ring",
+          "percent": 8
+        },
+        {
+          "id": "fire_bottle",
+          "percent": 5
+        },
+        {
+          "id": "blast_bottle",
+          "percent": 1
+        },
+        {
+          "id": "tear_potion",
+          "percent": 6
         }
       ],
       "itemsPerRoom": {
@@ -1209,6 +1469,10 @@
         {
           "id": "paladin_t2",
           "percent": 20
+        },
+        {
+          "id": "ringman",
+          "percent": 15
         }
       ],
       "monstersPerRoom": {
@@ -1444,6 +1708,50 @@
         {
           "id": "revival_drug",
           "percent": 2
+        },
+        {
+          "id": "plain_ring",
+          "percent": 12
+        },
+        {
+          "id": "mend_ring",
+          "percent": 15
+        },
+        {
+          "id": "swift_ring",
+          "percent": 12
+        },
+        {
+          "id": "power_ring",
+          "percent": 10
+        },
+        {
+          "id": "guard_ring",
+          "percent": 8
+        },
+        {
+          "id": "pursuit_ring",
+          "percent": 10
+        },
+        {
+          "id": "vengeance_ring",
+          "percent": 8
+        },
+        {
+          "id": "finisher_ring",
+          "percent": 8
+        },
+        {
+          "id": "fire_bottle",
+          "percent": 5
+        },
+        {
+          "id": "blast_bottle",
+          "percent": 1
+        },
+        {
+          "id": "tear_potion",
+          "percent": 6
         }
       ],
       "itemsPerRoom": {
@@ -1714,6 +2022,50 @@
         {
           "id": "revival_drug",
           "percent": 2
+        },
+        {
+          "id": "plain_ring",
+          "percent": 12
+        },
+        {
+          "id": "mend_ring",
+          "percent": 15
+        },
+        {
+          "id": "swift_ring",
+          "percent": 12
+        },
+        {
+          "id": "power_ring",
+          "percent": 10
+        },
+        {
+          "id": "guard_ring",
+          "percent": 8
+        },
+        {
+          "id": "pursuit_ring",
+          "percent": 10
+        },
+        {
+          "id": "vengeance_ring",
+          "percent": 8
+        },
+        {
+          "id": "finisher_ring",
+          "percent": 8
+        },
+        {
+          "id": "fire_bottle",
+          "percent": 5
+        },
+        {
+          "id": "blast_bottle",
+          "percent": 1
+        },
+        {
+          "id": "tear_potion",
+          "percent": 6
         }
       ],
       "itemsPerRoom": {
@@ -1992,6 +2344,50 @@
         {
           "id": "revival_drug",
           "percent": 2
+        },
+        {
+          "id": "plain_ring",
+          "percent": 12
+        },
+        {
+          "id": "mend_ring",
+          "percent": 15
+        },
+        {
+          "id": "swift_ring",
+          "percent": 12
+        },
+        {
+          "id": "power_ring",
+          "percent": 10
+        },
+        {
+          "id": "guard_ring",
+          "percent": 8
+        },
+        {
+          "id": "pursuit_ring",
+          "percent": 10
+        },
+        {
+          "id": "vengeance_ring",
+          "percent": 8
+        },
+        {
+          "id": "finisher_ring",
+          "percent": 8
+        },
+        {
+          "id": "fire_bottle",
+          "percent": 5
+        },
+        {
+          "id": "blast_bottle",
+          "percent": 1
+        },
+        {
+          "id": "tear_potion",
+          "percent": 6
         }
       ],
       "itemsPerRoom": {
@@ -2270,6 +2666,50 @@
         {
           "id": "revival_drug",
           "percent": 2
+        },
+        {
+          "id": "plain_ring",
+          "percent": 12
+        },
+        {
+          "id": "mend_ring",
+          "percent": 15
+        },
+        {
+          "id": "swift_ring",
+          "percent": 12
+        },
+        {
+          "id": "power_ring",
+          "percent": 10
+        },
+        {
+          "id": "guard_ring",
+          "percent": 8
+        },
+        {
+          "id": "pursuit_ring",
+          "percent": 10
+        },
+        {
+          "id": "vengeance_ring",
+          "percent": 8
+        },
+        {
+          "id": "finisher_ring",
+          "percent": 8
+        },
+        {
+          "id": "fire_bottle",
+          "percent": 5
+        },
+        {
+          "id": "blast_bottle",
+          "percent": 1
+        },
+        {
+          "id": "tear_potion",
+          "percent": 6
         }
       ],
       "itemsPerRoom": {

@@ -49,8 +49,10 @@ mod PlayerMovementScene {
                 \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger} =
         match node {
             case EngineNode.Marker2DWithState(_, NodeTag.Player(data)) =>
+                // かなしばり（完全停止）中は移動入力を捨てる。攻撃も ActionMenu 側で封じる。
+                if (StatusSystem.isImmobilized(data#statuses)) (node, scene)
                 // Tween 中（前の 1 マスがまだ滑走中）は入力を捨てる。1 回だけ評価する。
-                if (PlayerScene.isMoving(data#id)) (node, scene)
+                else if (PlayerScene.isMoving(data#id)) (node, scene)
                 else
                     let board = BoardQuery.board();
                     // 方向キー押下で 1 セルだけ進む。

@@ -16,80 +16,20 @@
         "order": 99
       }
     },
-    "weaponType": {
+    "effect": {
       "field": {
-        "ftype": { "type": "enum", "values": ["Sword", "Axe", "Lance", "Bow", "Magic"] },
+        "ftype": { "type": "enum", "values": ["Pursuit", "Power", "Swift", "Guard", "Mend", "Lifesteal", "Finisher", "Trivial"] },
         "hint":  "plain",
-        "label": "属性",
+        "label": "効果",
         "order": 2
       }
     },
-    "attack": {
+    "power": {
       "field": {
         "ftype": "int",
-        "hint":  { "slider": { "min": 0, "max": 30, "step": 1 } },
-        "label": "攻撃",
-        "order": 3
-      }
-    },
-    "hit": {
-      "field": {
-        "ftype": "int",
-        "hint":  { "slider": { "min": 0, "max": 100, "step": 5 } },
-        "label": "命中",
-        "order": 4
-      }
-    },
-    "crit": {
-      "field": {
-        "ftype": "int",
-        "hint":  { "slider": { "min": 0, "max": 100, "step": 1 } },
-        "label": "必殺",
-        "order": 5
-      }
-    },
-    "effect": {
-      "field": {
-        "ftype": { "type": "enum", "values": ["NoEffect", "BraveOnSpeed", "Knockback", "Desperation", "Lifesteal", "ThiefDrop"] },
-        "hint":  "plain",
-        "label": "特殊効果",
-        "order": 7
-      }
-    },
-    "effectValue": {
-      "field": {
-        "ftype": "int",
-        "hint":  { "slider": { "min": 0, "max": 100, "step": 1 } },
+        "hint":  { "slider": { "min": -5, "max": 30, "step": 1 } },
         "label": "効果量",
-        "order": 8
-      }
-    },
-    "durability": {
-      "field": {
-        "ftype": "int",
-        "hint":  { "slider": { "min": 1, "max": 99, "step": 1 } },
-        "label": "耐久",
-        "order": 6
-      }
-    },
-    "range": {
-      "nested": {
-        "min": {
-          "field": {
-            "ftype": "int",
-            "hint":  { "spinner": { "min": 1, "max": 10 } },
-            "label": "最小射程",
-            "order": 1
-          }
-        },
-        "max": {
-          "field": {
-            "ftype": "int",
-            "hint":  { "spinner": { "min": 1, "max": 10 } },
-            "label": "最大射程",
-            "order": 2
-          }
-        }
+        "order": 3
       }
     },
     "sprite": {

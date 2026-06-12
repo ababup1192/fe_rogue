@@ -61,6 +61,76 @@ mod WeaponCatalog {
         case _                => true
     }
 
+    /// 武器の特殊効果。`effectValue` がその効果の数値パラメータ（種類で意味が変わる）。
+    /// `Staff.StaffEffect` / `Ring.RingEffect` と同様、JSON では case 名文字列でシリアライズ。
+    ///   - `NoEffect`     : 効果なし（通常武器・あくまの斧）。`effectValue` 未使用
+    ///   - `BraveOnSpeed` : 速さが相手より `effectValue` 以上速ければ 2 回攻撃（はやぶさの剣）
+    ///   - `Knockback`    : 当てた相手を `effectValue` マス押し流す（0=無制限）。突風の書 / 如意棒
+    ///   - `Desperation`  : 自分の HP が `effectValue`% 以下のとき威力 1.5 倍（背水の槍）
+    ///   - `Lifesteal`    : 与ダメージの `effectValue`% を毎ヒット回復（血吸いの剣）
+    ///   - `ThiefDrop`    : ローグ装備時のみ、命中時 `effectValue`% で敵がアイテムを落とす（盗人の剣）
+    pub enum WeaponEffect with Eq, ToString {
+        case NoEffect
+        case BraveOnSpeed
+        case Knockback
+        case Desperation
+        case Lifesteal
+        case ThiefDrop
+    }
+
+    /// 文字列 → `WeaponEffect`。未知文字列は `Err`（JSON 直編集 typo を起動時に発覚させる）。
+    pub def parseEffect(text: String): Result[String, WeaponEffect] = match text {
+        case "NoEffect"     => Ok(WeaponEffect.NoEffect)
+        case "BraveOnSpeed" => Ok(WeaponEffect.BraveOnSpeed)
+        case "Knockback"    => Ok(WeaponEffect.Knockback)
+        case "Desperation"  => Ok(WeaponEffect.Desperation)
+        case "Lifesteal"    => Ok(WeaponEffect.Lifesteal)
+        case "ThiefDrop"    => Ok(WeaponEffect.ThiefDrop)
+        case other          => Err(other)
+    }
+
+    /// `parseEffect` と round-trip する文字列表現。
+    pub def effectToString(effect: WeaponEffect): String = match effect {
+        case WeaponEffect.NoEffect     => "NoEffect"
+        case WeaponEffect.BraveOnSpeed => "BraveOnSpeed"
+        case WeaponEffect.Knockback    => "Knockback"
+        case WeaponEffect.Desperation  => "Desperation"
+        case WeaponEffect.Lifesteal    => "Lifesteal"
+        case WeaponEffect.ThiefDrop    => "ThiefDrop"
+    }
+
+    // ── 効果アクセサ（純粋・match 入れ子なし。Ring の lifestealAmount 等に倣う）─────
+
+    /// はやぶさ: 2 回攻撃に必要な「自分−相手」の速さ差しきい値（None=ブレイブ武器でない）。
+    pub def braveThreshold(effect: WeaponEffect, value: Int32): Option[Int32] = match effect {
+        case WeaponEffect.BraveOnSpeed => Some(value)
+        case _                         => None
+    }
+
+    /// ノックバック: 押し流すマス数（0 は無制限）。None=ノックバック武器でない。
+    pub def knockbackTiles(effect: WeaponEffect, value: Int32): Option[Int32] = match effect {
+        case WeaponEffect.Knockback => Some(value)
+        case _                      => None
+    }
+
+    /// 背水: 威力 1.5 倍が発動する自 HP%しきい値。None=背水武器でない。
+    pub def desperationThreshold(effect: WeaponEffect, value: Int32): Option[Int32] = match effect {
+        case WeaponEffect.Desperation => Some(value)
+        case _                        => None
+    }
+
+    /// 血吸い: 与ダメージの何 % を回復するか。0=吸収武器でない。
+    pub def lifestealPercent(effect: WeaponEffect, value: Int32): Int32 = match effect {
+        case WeaponEffect.Lifesteal => value
+        case _                      => 0
+    }
+
+    /// 盗人: アイテムを落とす確率 %。0=盗人武器でない。
+    pub def thiefDropChance(effect: WeaponEffect, value: Int32): Int32 = match effect {
+        case WeaponEffect.ThiefDrop => value
+        case _                      => 0
+    }
+
     /// 攻撃可能な距離の範囲。`min..max` inclusive のマンハッタン距離で判定する。
     pub type alias WeaponRange = {
         min = Int32,
@@ -84,6 +154,8 @@ mod WeaponCatalog {
         durability  = Int32,
         range       = WeaponRange,
         weaponType  = WeaponType,
+        effect      = WeaponEffect,
+        effectValue = Int32,
         sprite      = WeaponSpriteResource,
         description = String
     }
@@ -128,8 +200,8 @@ mod WeaponCatalog {
 
     /// schema 検査用の expected key 集合（`CatalogContainer.loadWithCheck` に渡す）。
     pub def expectedFields(): Set[String] =
-        Set#{"name", "attack", "hit", "crit", "durability", "range", "weaponType", "sprite",
-             "description"}
+        Set#{"name", "attack", "hit", "crit", "durability", "range", "weaponType",
+             "effect", "effectValue", "sprite", "description"}
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -167,6 +239,8 @@ mod WeaponCatalogCodec {
             "durability"  => JNumber(intToBd(weapon#durability)),
             "range"       => encodeRange(weapon#range),
             "weaponType"  => JString(weaponTypeToString(weapon#weaponType)),
+            "effect"      => JString(WeaponCatalog.effectToString(weapon#effect)),
+            "effectValue" => JNumber(intToBd(weapon#effectValue)),
             "sprite"      => encodeSprite(weapon#sprite),
             "description" => JString(weapon#description)
         })
@@ -232,8 +306,18 @@ mod WeaponCatalogCodec {
             let crit = Map.get("crit", obj)
                         |> Option.flatMap(expectInt)
                         |> Option.getWithDefault(0);
+            // effect (特殊効果) / effectValue も省略可。欠落 / 未知文字列は NoEffect / 0 (後方互換)。
+            let effect = Map.get("effect", obj)
+                        |> Option.flatMap(expectString)
+                        |> Option.map(WeaponCatalog.parseEffect)
+                        |> Option.flatMap(Result.toOption)
+                        |> Option.getWithDefault(WeaponCatalog.WeaponEffect.NoEffect);
+            let effectValue = Map.get("effectValue", obj)
+                        |> Option.flatMap(expectInt)
+                        |> Option.getWithDefault(0);
             ({name = name, attack = atk, hit = hit, crit = crit, durability = dur, range = rng,
-              weaponType = wt, sprite = sp, description = desc}: WeaponResource)
+              weaponType = wt, effect = effect, effectValue = effectValue,
+              sprite = sp, description = desc}: WeaponResource)
         }
 
     /// case 名文字列から `WeaponType` に。旧データの `"Physical"` は剣として読み替え、

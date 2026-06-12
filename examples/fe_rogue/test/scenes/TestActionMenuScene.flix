@@ -90,7 +90,10 @@ mod TestActionMenuScene {
         level                   = 1,
         exp                     = 0,
         pendingLevelUp          = None,
-        statuses                = Nil
+        statuses                = Nil,
+        rings          = Nil,
+        ringEquipped          = false,
+        followUpUsed   = false
     }
 
     /// World + 2 人の Player + ActionMenu を組んだテスト scene。

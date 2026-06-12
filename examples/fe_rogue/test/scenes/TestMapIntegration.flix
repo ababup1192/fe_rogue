@@ -258,7 +258,10 @@ mod TestMapIntegration {
                         level                     = 1,
                         exp                       = 0,
                         pendingLevelUp            = None,
-                        statuses                  = Nil
+                        statuses                  = Nil,
+                        rings          = Nil,
+                        ringEquipped          = false,
+                        followUpUsed   = false
                     })))
 
     /// プレイヤー id=0 の world 座標

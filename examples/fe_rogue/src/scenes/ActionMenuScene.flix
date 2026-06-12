@@ -156,6 +156,9 @@ mod ActionMenuScene {
                 match PlayerData.PartyQuery.get(id) {
                     case None         => Nil
                     case Some(player) =>
+                        // かなしばり（完全停止）中は行動不能。待機だけ出してターンを閉じられるようにする。
+                        if (StatusSystem.isImmobilized(player#statuses)) boundMenuItems()
+                        else {
                         let attackItem =
                             if (canAttackFrom(player))
                                 ({text     = "攻撃",
@@ -203,8 +206,13 @@ mod ActionMenuScene {
                             else Nil;
                         List.flatten(pickupItem :: openItem :: stairsItem :: attackItem ::
                                        itemItem :: exchangeItem :: waitItem :: Nil)
+                        }
                 }
         }
+
+    /// かなしばり中のメニュー: 行動不能なので「待機」だけ出す（ターンを閉じるため）。
+    def boundMenuItems(): List[ItemEntry] =
+        ({text = "待機", disabled = false, metadata = Some(waitMeta())}: ItemEntry) :: Nil
 
     /// ローグ移動モード中(合流済み)のメニュー項目。ロード足元にアイテムがあれば「ひろう」、
     /// ロードが階段に乗っていれば「かいだん」(パーティごと次フロアへ)、常に「かいさん」。
@@ -511,17 +519,21 @@ mod ActionMenuScene {
             Scene[NodeTag] \ GameLogger.GameLogger =
         match kind {
             case ItemData.GroundItemKind.WeaponItem(weapon) =>
-                GameLogger.playerLog("P${playerId} が ${weapon#name} を拾った");
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} が${weapon#name} を拾った");
                 PlayerScene.addWeapon(playerId, weapon, scene)
                     |> ItemPickupPopupScene.show(weapon#name)
             case ItemData.GroundItemKind.StaffItem(staff) =>
-                GameLogger.playerLog("P${playerId} が ${staff#name} を拾った");
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} が${staff#name} を拾った");
                 PlayerScene.addStaff(playerId, staff, scene)
                     |> ItemPickupPopupScene.show(staff#name)
             case ItemData.GroundItemKind.ConsumableItem(item) =>
-                GameLogger.playerLog("P${playerId} が ${item#name} を拾った");
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} が${item#name} を拾った");
                 PlayerScene.addConsumable(playerId, item, scene)
                     |> ItemPickupPopupScene.show(item#name)
+            case ItemData.GroundItemKind.RingItem(ring) =>
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} が${ring#name} を拾った");
+                PlayerScene.addRing(playerId, ring, scene)
+                    |> ItemPickupPopupScene.show(ring#name)
         }
 
     /// PlayerMoving + Z 押下時の遷移: 行動選択ウィンドウを開く (フェーズ = ActionSelect)。

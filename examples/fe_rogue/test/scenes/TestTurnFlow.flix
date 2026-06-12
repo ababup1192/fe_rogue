@@ -31,7 +31,10 @@ mod TestTurnFlow {
         level             = 1,
         exp               = 0,
         pendingLevelUp    = pendingLevelUp,
-        statuses          = Nil
+        statuses          = Nil,
+        rings          = Nil,
+        ringEquipped          = false,
+        followUpUsed   = false
     }
 
     /// World 配下に味方 1 体だけの最小シーン。

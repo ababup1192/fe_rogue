@@ -38,7 +38,9 @@ mod EnemyCatalog {
         initialInventory = List[UnitBase.InventoryEntry],
         description      = String,
         spriteFrames     = Option[SpriteFrames],
-        aiType           = EnemyAI.AiType
+        aiType           = EnemyAI.AiType,
+        // 装備する指輪の id（rings.json）。多くの敵は持たないので Option。欠落 → None。
+        ring             = Option[String]
     }
 
     /// 全 id を列挙・イテレートしたいとき（EnemyScene のロスター構築など）に使う。
@@ -95,7 +97,7 @@ mod EnemyCatalog {
     pub def expectedEnemyFields(): Set[String] =
         Set#{"moveTiles", "level", "hp", "attack", "defense", "magicAttack", "magicDefense",
               "speed", "skill", "luck", "sprite", "initialInventory", "description", "spriteFrames",
-              "aiType"}
+              "aiType", "ring"}
 }
 
 // Saveable[EnemyCatalog.EnemyCatalog] は mod 外 instance として置く。
@@ -130,19 +132,26 @@ mod EnemyCatalogCodec {
                             |> Option.flatMap(expectString)
                             |> Option.map(EnemyAI.parseAiType)
                             |> Option.getWithDefault(EnemyAI.AiType.Aggressive);
+            // ring (装備指輪 id) は省略可。欠落 → None。
+            let ring = Map.get("ring", obj) |> Option.flatMap(expectString);
             ({moveTiles = base#moveTiles, level = base#level, hp = base#hp, attack = base#attack,
               defense = base#defense, magicAttack = base#magicAttack,
               magicDefense = base#magicDefense, speed = base#speed, skill = base#skill,
               luck = base#luck, sprite = base#sprite, initialInventory = base#initialInventory,
               description = base#description, spriteFrames = base#spriteFrames,
-              aiType = aiType}: EnemyResource)
+              aiType = aiType, ring = ring}: EnemyResource)
         }
 
     /// 敵 = 共有ベース + `aiType`。共有部の Map に `aiType` 文字列を差して
     /// `CatalogContainer.encode` が期待するエントリ形式に整える。
     /// `encodeBase` は row-polymorphic なので `aiType` 付きの EnemyResource をそのまま渡せる（共有部だけ書く）。
     pub def encodeEnemy(e: EnemyResource): Json =
-        Util.Json.Json.JObject(
-            Map.insert("aiType", JString(EnemyAI.aiTypeToString(e#aiType)),
-                       UnitBaseCodec.encodeBase(e)))
+        let withAi = Map.insert("aiType", JString(EnemyAI.aiTypeToString(e#aiType)),
+                                UnitBaseCodec.encodeBase(e));
+        // ring は Some のときだけ書き出す（None は省略 → decode 既定 None で round-trip）。
+        let withRing = match e#ring {
+            case Some(id) => Map.insert("ring", JString(id), withAi)
+            case None     => withAi
+        };
+        Util.Json.Json.JObject(withRing)
 }

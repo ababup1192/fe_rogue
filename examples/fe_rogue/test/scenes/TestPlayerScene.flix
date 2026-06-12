@@ -66,7 +66,10 @@ mod TestPlayerScene {
                         level                     = 1,
                         exp                       = 0,
                         pendingLevelUp            = None,
-                        statuses                  = Nil
+                        statuses                  = Nil,
+                        rings          = Nil,
+                        ringEquipped          = false,
+                        followUpUsed   = false
                     })))
 
     /// プレイヤー id のワールド座標を取り出す
@@ -151,7 +154,7 @@ mod TestPlayerScene {
     def testAdjacentAlliesReturnsOnlyOrthogonalNeighbors(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
         let mkSpawn = (id, pos) -> ({id = id, gridPos = pos, resource = fx#unitSample,
-                                       weapons = Nil, staves = Nil, consumables = Nil}: PlayerScene.Spawn);
+                                       weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 5, y = 5}))
@@ -177,7 +180,7 @@ mod TestPlayerScene {
     def testAdjacentAlliesReturnsEmptyWhenNoOrthogonalNeighbor(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
         let mkSpawn = (id, pos) -> ({id = id, gridPos = pos, resource = fx#unitSample,
-                                       weapons = Nil, staves = Nil, consumables = Nil}: PlayerScene.Spawn);
+                                       weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 5, y = 5}))
@@ -236,10 +239,10 @@ mod TestPlayerScene {
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
-                                          weapons = spear :: fire :: Nil, staves = Nil, consumables = Nil})
+                                          weapons = spear :: fire :: Nil, staves = Nil, consumables = Nil, rings = Nil})
             |> PlayerScene.addOnePlayer({id = 1, gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
-                                          weapons = bow :: Nil, staves = Nil, consumables = Nil});
+                                          weapons = bow :: Nil, staves = Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Weapon(0),
@@ -263,10 +266,10 @@ mod TestPlayerScene {
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
-                                          weapons = Nil, staves = live :: Nil, consumables = Nil})
+                                          weapons = Nil, staves = live :: Nil, consumables = Nil, rings = Nil})
             |> PlayerScene.addOnePlayer({id = 1, gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
-                                          weapons = Nil, staves = swap :: Nil, consumables = Nil});
+                                          weapons = Nil, staves = swap :: Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Staff(0),
@@ -292,10 +295,10 @@ mod TestPlayerScene {
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
-                                          weapons = spear :: Nil, staves = Nil, consumables = Nil})
+                                          weapons = spear :: Nil, staves = Nil, consumables = Nil, rings = Nil})
             |> PlayerScene.addOnePlayer({id = 1, gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
-                                          weapons = Nil, staves = live :: Nil, consumables = Nil});
+                                          weapons = Nil, staves = live :: Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Weapon(0),
@@ -322,10 +325,10 @@ mod TestPlayerScene {
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
-                                          weapons = spear :: Nil, staves = Nil, consumables = Nil})
+                                          weapons = spear :: Nil, staves = Nil, consumables = Nil, rings = Nil})
             |> PlayerScene.addOnePlayer({id = 1, gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
-                                          weapons = Nil, staves = Nil, consumables = Nil});
+                                          weapons = Nil, staves = Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Weapon(0),
@@ -352,10 +355,10 @@ mod TestPlayerScene {
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
-                                          weapons = Nil, staves = Nil, consumables = Nil})
+                                          weapons = Nil, staves = Nil, consumables = Nil, rings = Nil})
             |> PlayerScene.addOnePlayer({id = 1, gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
-                                          weapons = spear :: Nil, staves = Nil, consumables = Nil});
+                                          weapons = spear :: Nil, staves = Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
             selfId      = 1,
             selfKind    = PlayerData.ItemKind.Weapon(0),
@@ -384,7 +387,7 @@ mod TestPlayerScene {
                         Consumable.ConsumableResource);
         let mkSpawn = (id, cons) -> ({id = id, gridPos = {x = 0, y = 0},
                                        resource = fx#unitSample, weapons = Nil, staves = Nil,
-                                       consumables = cons}: PlayerScene.Spawn);
+                                       consumables = cons, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer(mkSpawn(0, potion :: Nil))
@@ -428,7 +431,10 @@ mod TestPlayerScene {
         level                   = 1,
         exp                     = 0,
         pendingLevelUp          = None,
-        statuses                = Nil
+        statuses                = Nil,
+        rings          = Nil,
+        ringEquipped          = false,
+        followUpUsed   = false
     }
 
     /// origin 1 マスだけが床で、ほかは壁の MapSnapshot（再配置の不足ケース用）。
@@ -495,7 +501,7 @@ mod TestPlayerScene {
     def testUseStairsExitsUnitFromFloor(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
         let mkSpawn = (id, pos) -> ({id = id, gridPos = pos, resource = fx#unitSample,
-                                       weapons = Nil, staves = Nil, consumables = Nil}: PlayerScene.Spawn);
+                                       weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}));
@@ -513,7 +519,7 @@ mod TestPlayerScene {
     def testAllLivingUsedStairsRequiresEveryone(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
         let mkSpawn = (id, pos) -> ({id = id, gridPos = pos, resource = fx#unitSample,
-                                       weapons = Nil, staves = Nil, consumables = Nil}: PlayerScene.Spawn);
+                                       weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}))
@@ -534,7 +540,7 @@ mod TestPlayerScene {
         let fx = loadTestCatalogs();
         let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let mkSpawn = id -> ({id = id, gridPos = {x = 0, y = 0}, resource = fx#unitSample,
-                               weapons = Nil, staves = Nil, consumables = Nil}: PlayerScene.Spawn);
+                               weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer(mkSpawn(0))
@@ -543,9 +549,9 @@ mod TestPlayerScene {
         let baseStats = LevelSystem.statsOf(fx#unitSample);
         let carry =
             ({id = 0, hp = 3, weapons = spear :: Nil, staves = Nil, consumables = Nil,
-              level = 1, exp = 0, stats = baseStats}: PlayerScene.CarryData) ::
+              rings = Nil, ringEquipped = false, level = 1, exp = 0, stats = baseStats}: PlayerScene.CarryData) ::
             ({id = 1, hp = 7, weapons = Nil,          staves = Nil, consumables = Nil,
-              level = 1, exp = 0, stats = baseStats}: PlayerScene.CarryData) :: Nil;
+              rings = Nil, ringEquipped = false, level = 1, exp = 0, stats = baseStats}: PlayerScene.CarryData) :: Nil;
         let after = PlayerScene.reconcileWithCarry(carry, scene);
         Assert.assertEq(
             expected = (0 :: 1 :: Nil, 3, 7, "てつのやり" :: Nil),
@@ -600,7 +606,7 @@ mod TestPlayerScene {
     def testLordDeathTriggersGameOverEvenWithSurvivors(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
         let mkSpawn = (id, pos) -> ({id = id, gridPos = pos, resource = fx#unitSample,
-                                       weapons = Nil, staves = Nil, consumables = Nil}: PlayerScene.Spawn);
+                                       weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}))
@@ -617,7 +623,7 @@ mod TestPlayerScene {
     def testNonLordDeathRemovesUnitWithoutGameOver(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
         let mkSpawn = (id, pos) -> ({id = id, gridPos = pos, resource = fx#unitSample,
-                                       weapons = Nil, staves = Nil, consumables = Nil}: PlayerScene.Spawn);
+                                       weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}))
@@ -705,7 +711,10 @@ mod TestPlayerScene {
         level             = 1,
         exp               = 0,
         pendingLevelUp    = None,
-        statuses          = Nil
+        statuses          = Nil,
+        rings          = Nil,
+        ringEquipped          = false,
+        followUpUsed   = false
     }
 
     /// 距離 1 では剣 (index 0) が届く。
@@ -731,4 +740,43 @@ mod TestPlayerScene {
     def testFirstWeaponIdxReachingReturnsFirstMatch(): Unit \ Assert =
         let data = playerWithWeapons(swordWeapon() :: swordWeapon() :: Nil);
         Assert.assertEq(expected = Some(0), PlayerScene.firstWeaponIdxReaching(data, 1))
+
+    // ========================================================================
+    // transformableOf — ringman の特殊行動で「指輪に変えられる」装備外アイテムの列挙
+    // ========================================================================
+
+    /// transformableOf テスト用の最小指輪（効果なし）。
+    def transformTestRing(name: String): Ring.RingResource = {
+        name        = name,
+        effect      = Ring.RingEffect.Trivial,
+        power       = 0,
+        sprite      = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
+                        offset = {x = 0.0, y = 0.0},
+                        scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+        description = ""
+    }
+
+    /// 装備中の武器（先頭）と装備中の指輪（ringEquipped 時の先頭）は対象外。
+    /// 武器2本（先頭=装備）+ 指輪2個（ringEquipped で先頭=装備）→ 対象は weapons[1] と rings[1]。
+    @Test
+    def testTransformableExcludesEquipped(): Unit \ Assert =
+        let player = {
+            weapons      = TestUnitFixtures.testWeapon() :: TestUnitFixtures.testWeapon() :: Nil,
+            rings        = transformTestRing("a") :: transformTestRing("b") :: Nil,
+            ringEquipped = true
+            | pdata(0, {x = 0, y = 0})};
+        Assert.assertEq(
+            expected = PlayerData.ItemKind.Weapon(1) :: PlayerData.ItemKind.Ring(1) :: Nil,
+            List.map(fst, PlayerScene.transformableOf(player)))
+
+    /// 指輪を 1 つも装備していない（ringEquipped=false）なら、先頭の指輪も対象に含まれる。
+    @Test
+    def testTransformableIncludesUnequippedRings(): Unit \ Assert =
+        let player = {
+            rings        = transformTestRing("a") :: transformTestRing("b") :: Nil,
+            ringEquipped = false
+            | pdata(0, {x = 0, y = 0})};
+        Assert.assertEq(
+            expected = PlayerData.ItemKind.Ring(0) :: PlayerData.ItemKind.Ring(1) :: Nil,
+            List.map(fst, PlayerScene.transformableOf(player)))
 }

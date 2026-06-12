@@ -35,7 +35,14 @@ mod EnemyData {
         prevPos        = Option[{x = Int32, y = Int32}],
         // 付与中の時限ステータス効果（目潰し薬/鈍足薬を投げ当てられた場合）。
         // 敵ターン開始 (`clearActedAll`) で `StatusSystem.tick` され、効果は `combatView` に反映される。
-        statuses       = List[StatusSystem.Status]
+        statuses       = List[StatusSystem.Status],
+        // 装備中の指輪（効果発動）。多くの敵は持たないので Option。spawn 時に resource#ring から解決。
+        ring           = Option[Ring.RingResource],
+        // 追撃リングの 2 回攻撃を 1 度に制限するフラグ。敵ターン開始でリセット、追撃発火で true。
+        followUpUsed   = Bool,
+        // 投擲瓶（ローグ_T3=爆発瓶 / クレリック_T3=火炎瓶）を 1 度だけ投げるための使用済みフラグ。
+        // 投擲は `description` で持つ瓶を判定し、未使用かつ直線上に味方が居れば敵ターンに投げる。
+        bottleUsed     = Bool
     }
 
     /// respawn 時に再生成するために必要な最小情報だけを永続保持する型。

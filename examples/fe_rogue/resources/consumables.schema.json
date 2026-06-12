@@ -10,7 +10,7 @@
     },
     "effect": {
       "field": {
-        "ftype": { "type": "enum", "values": ["Heal", "FullHeal", "MaxHpUp", "AutoRevive", "BlindHit", "SpdDownHit", "AtkUp", "SpdUp"] },
+        "ftype": { "type": "enum", "values": ["Heal", "FullHeal", "MaxHpUp", "AutoRevive", "BlindHit", "SpdDownHit", "DefDownHit", "AtkUp", "SpdUp", "FireBottle", "BlastBottle"] },
         "hint":  "plain",
         "label": "効果",
         "order": 2

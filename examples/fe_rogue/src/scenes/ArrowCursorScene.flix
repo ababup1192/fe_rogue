@@ -79,7 +79,7 @@ mod ArrowCursorScene {
     /// `StaffAim` 中だけ親 Marker2D + 子 Sprite を visible にする。
     pub def applyVisibility(phase: TurnPhase.Phase,
                               scene: Scene[NodeTag]): Scene[NodeTag] =
-        let visible = phase == TurnPhase.Phase.StaffAim;
+        let visible = phase == TurnPhase.Phase.StaffAim or phase == TurnPhase.Phase.ThrowAim;
         scene
             |> Scene.mapEngineNode(arrowPath(), n -> match n {
                 case EngineNode.Marker2DWithState(marker, st) =>

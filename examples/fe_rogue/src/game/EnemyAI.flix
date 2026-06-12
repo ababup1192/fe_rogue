@@ -46,14 +46,16 @@ mod EnemyAI {
     /// `enemies.schema.json` の values に 1 文字列**。decideAction/driver 側は一切触らない。
     pub enum AiType with Eq, ToString {
         case Aggressive          // 既定: 同室 or 移動到達範囲で起動し追跡（従来挙動）
-        case GuardUntilInRange   // 同室でも待機。武器の攻撃射程に入る or 攻撃を受けると起動
+        case GuardUntilInRange   // 同室でも待機。武器の攻撃射程+1 に相手が来る or 攻撃を受けると起動して動き出す
         case Wanderer            // 未発見のうちは徘徊（湧きは driver / spawn 側）
+        case RingMan             // Aggressive と同じ索敵/追跡。隣接時に 30% で攻撃の代わりに持ち物を指輪に変える
+                                 // （特殊行動の実体は driver = EnemyTurnDriverScene 側。policy は追跡のみ）
     }
 
     /// dormant → alerted に遷移する条件の種別（データ化）。
     pub enum AlertRule with Eq, ToString {
         case OnSightOrReach   // 同室 OR 移動到達範囲（従来 Aggressive）
-        case OnWeaponRange    // 武器の攻撃射程に相手が入ったときのみ
+        case OnWeaponRange    // 武器の攻撃射程+1 に相手が入ったとき（射程ぎりぎりの外で起動して寄る）
     }
 
     /// 未起動（dormant）時の振る舞いの種別（データ化）。
@@ -73,12 +75,16 @@ mod EnemyAI {
         case AiType.Aggressive        => { alert = AlertRule.OnSightOrReach, idle = IdleBehavior.StayDormant }
         case AiType.GuardUntilInRange => { alert = AlertRule.OnWeaponRange,  idle = IdleBehavior.StayDormant }
         case AiType.Wanderer          => { alert = AlertRule.OnSightOrReach, idle = IdleBehavior.Roam }
+        // RingMan は追跡・攻撃は Aggressive と同じ。攻撃を 30% で「持ち物を指輪に変える」に
+        // 差し替えるのは driver 側（policy には特殊行動の概念が無いのでここは追跡のみ宣言）。
+        case AiType.RingMan           => { alert = AlertRule.OnSightOrReach, idle = IdleBehavior.StayDormant }
     }
 
     /// JSON 文字列 → AiType。未知 / 欠落は Aggressive にフォールバック（後方互換）。
     pub def parseAiType(s: String): AiType = match s {
         case "GuardUntilInRange" => AiType.GuardUntilInRange
         case "Wanderer"          => AiType.Wanderer
+        case "RingMan"           => AiType.RingMan
         case _                   => AiType.Aggressive
     }
 
@@ -131,8 +137,9 @@ mod EnemyAI {
 
     /// 起動条件を AlertRule でディスパッチする。本体は既存の検知ヘルパーを再利用する。
     ///   - OnSightOrReach: 同室 OR 移動到達範囲（従来の Aggressive 起動）。
-    ///   - OnWeaponRange : 武器の攻撃射程内に攻撃可能な相手が現れたときのみ（GuardUntilInRange）。
-    ///     `attackableTargets` をそのまま使うので射程ロジックの重複なし。
+    ///   - OnWeaponRange : 武器の攻撃射程+1 に相手が入ったとき（GuardUntilInRange）。
+    ///     攻撃可否（`attackableTargets`）より 1 マス外で起動するので、射程ぎりぎりの外で
+    ///     待ち構える相手に対しても「動き出して」間合いを詰めにいく。
     def shouldAlert(rule: AlertRule, enc: Encounter, self: UnitView): Bool =
         let board = enc#board;
         match rule {
@@ -140,7 +147,16 @@ mod EnemyAI {
                 sameModuleAsAnyPlayer(board, self#pos)
                     or anyPlayerWithinReach(board, self#pos, self#moveTiles)
             case AlertRule.OnWeaponRange  =>
-                not List.isEmpty(attackableTargets(self, Encounter.enemiesOf(self#faction, enc)))
+                anyTargetWithinAlertRange(self, Encounter.enemiesOf(self#faction, enc))
+        }
+
+    /// 起動用の「攻撃射程 + 1」判定。実際に攻撃できるか（`attackableTargets`）とは別に、
+    /// 射程の 1 マス外まで相手が近づいた時点で起動させ、寄って攻撃できるようにする。
+    /// 武器なしは起動しない。下限（最小射程）は見ない＝すぐ隣に来た相手も起動扱いにする。
+    def anyTargetWithinAlertRange(self: UnitView, targets: List[UnitView]): Bool =
+        match self#weaponRange {
+            case None    => false
+            case Some(r) => List.exists(t -> manhattan(self#pos, t#pos) <= r#max + 1, targets)
         }
 
     /// 今ターン攻撃できる（武器射程 min..max 内の）相手だけを残す。武器なしは空。

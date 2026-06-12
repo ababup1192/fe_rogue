@@ -46,6 +46,16 @@ mod TestStaff {
     def testParseEffectUnknownReturnsErr(): Unit \ Assert =
         Assert.assertEq(expected = Err("Bogus"), Staff.parseEffect("Bogus"))
 
+    /// "Bind"（かなしばり）/ "Stopgap"（一時しのぎ）も enum と相互変換できる
+    @Test
+    def testParseEffectImmobilizeValues(): Unit \ Assert =
+        let bind    = Staff.parseEffect(Staff.effectToString(Staff.StaffEffect.Bind));
+        let stopgap = Staff.parseEffect(Staff.effectToString(Staff.StaffEffect.Stopgap));
+        Assert.assertEq(
+            expected = (Ok(Staff.StaffEffect.Bind), Ok(Staff.StaffEffect.Stopgap),
+                         Ok(Staff.StaffEffect.Bind), Ok(Staff.StaffEffect.Stopgap)),
+            (Staff.parseEffect("Bind"), Staff.parseEffect("Stopgap"), bind, stopgap))
+
     /// `effectToString` → `parseEffect` で同じ enum に戻る
     @Test
     def testEffectStringRoundTrip(): Unit \ Assert =

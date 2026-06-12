@@ -26,6 +26,8 @@ mod TestWeaponCatalog {
         durability = 41,
         range      = ({min = 1, max = 1}: WeaponRange),
         weaponType = WeaponType.Lance,
+        effect      = WeaponCatalog.WeaponEffect.NoEffect,
+        effectValue = 0,
         sprite     = testSprite(),
         description = "くんれん用の槍"
     }

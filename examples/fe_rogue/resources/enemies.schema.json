@@ -299,10 +299,18 @@
     },
     "aiType": {
       "field": {
-        "ftype": { "type": "enum", "values": ["Aggressive", "GuardUntilInRange", "Wanderer"] },
+        "ftype": { "type": "enum", "values": ["Aggressive", "GuardUntilInRange", "Wanderer", "RingMan"] },
         "hint": "plain",
         "label": "AIタイプ",
         "order": 13
+      }
+    },
+    "ring": {
+      "field": {
+        "ftype": "text",
+        "hint": "plain",
+        "label": "指輪id",
+        "order": 14
       }
     }
   },

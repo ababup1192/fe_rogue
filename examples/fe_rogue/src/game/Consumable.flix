@@ -35,6 +35,8 @@ mod Consumable {
     ///   - `SpdDownHit` : 杖式に投げ、当たったキャラの速さ（回避）を `magnitude` を `duration` ターン下げる
     ///   - `AtkUp`      : 使用者の攻撃力を `magnitude` を `duration` ターン上げる（自己使用）
     ///   - `SpdUp`      : 使用者の速さ（回避）を `magnitude` を `duration` ターン上げる（自己使用）
+    ///   - `FireBottle` : 火炎瓶。投げて当たった対象に `magnitude` の固定ダメージ（防御無視）
+    ///   - `BlastBottle`: 爆発瓶。当たった対象とその周囲 1 マス（味方含む）に `magnitude` 固定ダメージ
     pub enum ConsumableEffect with Eq, ToString {
         case Heal
         case FullHeal
@@ -44,6 +46,9 @@ mod Consumable {
         case SpdDownHit
         case AtkUp
         case SpdUp
+        case DefDownHit
+        case FireBottle
+        case BlastBottle
     }
 
     /// 効果から導かれる「使い方（デリバリ）」。`effect` から `deliveryFor` で 1:1 に決まるため
@@ -84,9 +89,12 @@ mod Consumable {
         case ConsumableEffect.MaxHpUp    => Delivery.SelfUse
         case ConsumableEffect.AtkUp      => Delivery.SelfUse
         case ConsumableEffect.SpdUp      => Delivery.SelfUse
-        case ConsumableEffect.BlindHit   => Delivery.Directional
-        case ConsumableEffect.SpdDownHit => Delivery.Directional
-        case ConsumableEffect.AutoRevive => Delivery.AutoOnDeath
+        case ConsumableEffect.BlindHit    => Delivery.Directional
+        case ConsumableEffect.SpdDownHit  => Delivery.Directional
+        case ConsumableEffect.DefDownHit  => Delivery.Directional
+        case ConsumableEffect.FireBottle  => Delivery.Directional
+        case ConsumableEffect.BlastBottle => Delivery.Directional
+        case ConsumableEffect.AutoRevive  => Delivery.AutoOnDeath
     }
 
     /// 文字列 → `ConsumableEffect` のパース（`Staff.parseEffect` と同形）。
@@ -97,11 +105,14 @@ mod Consumable {
         case "FullHeal"   => Ok(ConsumableEffect.FullHeal)
         case "MaxHpUp"    => Ok(ConsumableEffect.MaxHpUp)
         case "AutoRevive" => Ok(ConsumableEffect.AutoRevive)
-        case "BlindHit"   => Ok(ConsumableEffect.BlindHit)
-        case "SpdDownHit" => Ok(ConsumableEffect.SpdDownHit)
-        case "AtkUp"      => Ok(ConsumableEffect.AtkUp)
-        case "SpdUp"      => Ok(ConsumableEffect.SpdUp)
-        case other        => Err(other)
+        case "BlindHit"    => Ok(ConsumableEffect.BlindHit)
+        case "SpdDownHit"  => Ok(ConsumableEffect.SpdDownHit)
+        case "DefDownHit"  => Ok(ConsumableEffect.DefDownHit)
+        case "AtkUp"       => Ok(ConsumableEffect.AtkUp)
+        case "SpdUp"       => Ok(ConsumableEffect.SpdUp)
+        case "FireBottle"  => Ok(ConsumableEffect.FireBottle)
+        case "BlastBottle" => Ok(ConsumableEffect.BlastBottle)
+        case other         => Err(other)
     }
 
     /// `parseEffect` と round-trip する文字列表現を返す。
@@ -110,10 +121,13 @@ mod Consumable {
         case ConsumableEffect.FullHeal   => "FullHeal"
         case ConsumableEffect.MaxHpUp    => "MaxHpUp"
         case ConsumableEffect.AutoRevive => "AutoRevive"
-        case ConsumableEffect.BlindHit   => "BlindHit"
-        case ConsumableEffect.SpdDownHit => "SpdDownHit"
-        case ConsumableEffect.AtkUp      => "AtkUp"
-        case ConsumableEffect.SpdUp      => "SpdUp"
+        case ConsumableEffect.BlindHit    => "BlindHit"
+        case ConsumableEffect.SpdDownHit  => "SpdDownHit"
+        case ConsumableEffect.DefDownHit  => "DefDownHit"
+        case ConsumableEffect.AtkUp       => "AtkUp"
+        case ConsumableEffect.SpdUp       => "SpdUp"
+        case ConsumableEffect.FireBottle  => "FireBottle"
+        case ConsumableEffect.BlastBottle => "BlastBottle"
     }
 
     /// 消費アイテムカタログ全体。
@@ -159,6 +173,18 @@ mod Consumable {
             case Some(item) => item
             case None       => bug!("Consumable.lookup: consumable '${id}' not in catalog")
         }
+
+    /// 敵が投げる消費アイテム（火炎瓶 / 爆発瓶 / ほころび薬）の ConsumableResource を即席で作る。
+    /// 敵（ローグ_T3 / クレリック_T3 / レンジャー_T2,3）が持つ投擲物をコード側から組むのに使う。
+    /// 投擲は `effect` / `magnitude` / `duration` / `name` で決まり sprite は使わないのでダミーで埋める。
+    pub def bottle(effect: ConsumableEffect, magnitude: Int32, duration: Int32,
+                    name: String): ConsumableResource =
+        {name = name, effect = effect, magnitude = magnitude, duration = duration,
+         healAmount = 0, durability = 1,
+         sprite = ({texture = "item_icons", hframes = 16, vframes = 39, frame = 0,
+                     offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0},
+                     flipForFacing = false}: SpriteResource),
+         description = ""}
 
     /// `ConsumableResource` のフィールド名集合。
     /// Set で持つことで load 時に JSON フィールドの追加漏れ・typo を検出できる。

@@ -44,7 +44,10 @@ mod TestStaffCastScene {
             level             = 1,
             exp               = 0,
             pendingLevelUp    = None,
-            statuses          = Nil
+            statuses          = Nil,
+            rings          = Nil,
+            ringEquipped          = false,
+            followUpUsed   = false
         };
         Scene.empty()
             |> Scene.addNode(MapScene.worldName(),
@@ -99,4 +102,68 @@ mod TestStaffCastScene {
         let after = TestUnitFixtures.withMockGameLogger(() ->
             StaffCastScene.applyConsumableHeal(0, user, healItem(3), scene));
         Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
+
+    // ════════════════════════════════════════════════════════
+    // 一時しのぎのワープ先選定（warpCellFor・純粋）
+    // ════════════════════════════════════════════════════════
+
+    /// 13×13 床・指定 wallCells・指定 pieces のテスト用 Board。
+    def mkBoard(wallCells: Set[(Int32, Int32)],
+                 pieces: List[(Piece, {x = Int32, y = Int32})]): Board =
+        let map: MapSnapshot = {
+            tileSize    = 16.0,
+            usedRect    = {position = {x = 0, y = 0}, size = ({x = 13, y = 13}: {x = Int32, y = Int32})},
+            wallCells   = wallCells,
+            mapGlobal   = {x = 0.0, y = 0.0},
+            placements  = Nil
+        };
+        {map = map, pieces = pieces}
+
+    /// `{x, y}` は Eq を持たないので、比較用にタプルへ落とす。
+    def cellTuple(c: Option[{x = Int32, y = Int32}]): Option[(Int32, Int32)] =
+        Option.map(p -> (p#x, p#y), c)
+
+    /// 階段が空いていれば、ワープ先は階段マスそのもの。
+    @Test
+    def testWarpCellStairsFree(): Unit \ Assert =
+        let board = mkBoard(Set#{}, Nil);
+        Assert.assertEq(
+            expected = Some((5, 5)),
+            cellTuple(StaffCastScene.warpCellFor(Some({x = 5, y = 5}), board)))
+
+    /// 階段が埋まっていれば、隣接する歩ける空きマス（最初に試す上 = y-1）へ。
+    @Test
+    def testWarpCellStairsOccupied(): Unit \ Assert =
+        let board = mkBoard(Set#{}, (Piece.Enemy(9), {x = 5, y = 5}) :: Nil);
+        Assert.assertEq(
+            expected = Some((5, 4)),
+            cellTuple(StaffCastScene.warpCellFor(Some({x = 5, y = 5}), board)))
+
+    /// 階段が埋まり隣接 4 マスがすべて壁なら、ワープ先なし（None → 停止だけ）。
+    @Test
+    def testWarpCellNoFreeNeighbor(): Unit \ Assert =
+        let walls = Set#{(5, 4), (5, 6), (4, 5), (6, 5)};
+        let board = mkBoard(walls, (Piece.Enemy(9), {x = 5, y = 5}) :: Nil);
+        Assert.assertEq(
+            expected = None,
+            cellTuple(StaffCastScene.warpCellFor(Some({x = 5, y = 5}), board)))
+
+    /// 階段が未配置（None）ならワープ先なし。
+    @Test
+    def testWarpCellNoStairs(): Unit \ Assert =
+        let board = mkBoard(Set#{}, Nil);
+        Assert.assertEq(expected = None, cellTuple(StaffCastScene.warpCellFor(None, board)))
+
+    // ════════════════════════════════════════════════════════
+    // 敵クレリックが詠唱する杖（enemyStaffFor・純粋）
+    // ════════════════════════════════════════════════════════
+
+    /// クレリック_T2 はかなしばり、T3 は一時しのぎ、それ以外の職は詠唱しない。
+    @Test
+    def testEnemyStaffForByClass(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (Some(Staff.StaffEffect.Bind), Some(Staff.StaffEffect.Stopgap), None),
+            (StaffCastScene.enemyStaffFor("クレリック_T2"),
+             StaffCastScene.enemyStaffFor("クレリック_T3"),
+             StaffCastScene.enemyStaffFor("ファイター_T1")))
 }

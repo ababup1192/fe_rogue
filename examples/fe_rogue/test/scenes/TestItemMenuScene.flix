@@ -67,7 +67,10 @@ mod TestItemMenuScene {
             level                     = 1,
             exp                       = 0,
             pendingLevelUp            = None,
-            statuses                  = Nil
+            statuses                  = Nil,
+            rings          = Nil,
+            ringEquipped          = false,
+            followUpUsed   = false
         };
         let withWorld = Scene.empty()
             |> Scene.addNode(MapScene.worldName(),
@@ -161,7 +164,7 @@ mod TestItemMenuScene {
                 List.map(entry -> entry#text, ItemList.getItems(list))
             case _ => Nil
         };
-        Assert.assertEq(expected = "装備" :: "捨てる" :: Nil, texts)
+        Assert.assertEq(expected = "装備" :: "投げる" :: "捨てる" :: Nil, texts)
 
     /// 選択中アイテムが杖（idx=0）→ サブメニュー項目は「使う / 捨てる」の 2 件
     @Test
@@ -184,7 +187,7 @@ mod TestItemMenuScene {
                 List.map(entry -> entry#text, ItemList.getItems(list))
             case _ => Nil
         };
-        Assert.assertEq(expected = "使う" :: "捨てる" :: Nil, texts)
+        Assert.assertEq(expected = "使う" :: "投げる" :: "捨てる" :: Nil, texts)
 
     // ════════════════════════════════════════════════════════
     // カーソル位置: サブメニューに入ると必ず先頭(0)から始まる
@@ -268,8 +271,8 @@ mod TestItemMenuScene {
         let scene = sceneWithPlayer();
         let after = TestUnitFixtures.withSelectedPlayer(0, () -> ItemMenuScene.pageRight(scene));
         let page = match Scene.getState(ItemMenuScene.menuPath(), after) {
-            case Some(NodeTag.ItemMenu(currentPage)) => currentPage
-            case _                                   => bug!("ItemMenu タグが無い")
+            case Some(NodeTag.ItemMenu(currentPage, _)) => currentPage
+            case _                                      => bug!("ItemMenu タグが無い")
         };
         Assert.assertEq(expected = 0, page)
 
@@ -280,31 +283,55 @@ mod TestItemMenuScene {
     /// 武器選択中 → 「装備 / 捨てる」
     @Test
     def testActionItemsForWeapon(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Weapon(0)));
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Weapon(0)), false);
         Assert.assertEq(
-            expected = "装備" :: "捨てる" :: Nil,
+            expected = "装備" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
 
     /// 杖選択中 → 「使う / 捨てる」
     @Test
     def testActionItemsForStaff(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Staff(1)));
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Staff(1)), false);
         Assert.assertEq(
-            expected = "使う" :: "捨てる" :: Nil,
+            expected = "使う" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
 
     /// 消費アイテム選択中 → 「使う / 捨てる」（杖と同じ）
     @Test
     def testActionItemsForConsumable(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Consumable(2)));
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Consumable(2)), false);
         Assert.assertEq(
-            expected = "使う" :: "捨てる" :: Nil,
+            expected = "使う" :: "投げる" :: "捨てる" :: Nil,
+            List.map(e -> e#text, items))
+
+    /// 未装備の指輪を選択中 → 「装備 / 投げる / 捨てる」（拾っただけは装備されない）
+    @Test
+    def testActionItemsForRingUnequipped(): Unit \ Assert =
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(0)), false);
+        Assert.assertEq(
+            expected = "装備" :: "投げる" :: "捨てる" :: Nil,
+            List.map(e -> e#text, items))
+
+    /// 装備中の指輪（先頭 + ringEquipped=true）を選択中 → 「外す」に変わる
+    @Test
+    def testActionItemsForRingEquipped(): Unit \ Assert =
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(0)), true);
+        Assert.assertEq(
+            expected = "外す" :: "投げる" :: "捨てる" :: Nil,
+            List.map(e -> e#text, items))
+
+    /// ringEquipped=true でも先頭以外の指輪（idx=1）は装備中ではない → 「装備」のまま
+    @Test
+    def testActionItemsForRingNonHeadStillEquip(): Unit \ Assert =
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(1)), true);
+        Assert.assertEq(
+            expected = "装備" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
 
     /// 未選択 → 空（サブメニューを出さない）
     @Test
     def testActionItemsForNone(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(None);
+        let items = ItemMenuScene.actionItemsFor(None, false);
         Assert.assertEq(expected = 0, List.length(items))
 
     // ════════════════════════════════════════════════════════
@@ -393,4 +420,59 @@ mod TestItemMenuScene {
         Assert.assertEq(
             expected = "あいう",
             ItemMenuScene.wrapText(12, "あいう"))
+
+    // ════════════════════════════════════════════════════════
+    // 複数選択（マーク）の純粋ヘルパー
+    // ════════════════════════════════════════════════════════
+
+    /// toggleMark: 印が無いアイテムに付け、付いているアイテムからは外す。
+    @Test
+    def testToggleMarkAddsThenRemoves(): Unit \ Assert =
+        let w0 = PlayerData.ItemKind.Weapon(0);
+        let added   = PlayerData.toggleMark(w0, Set#{});    // 無 → 付く
+        let removed = PlayerData.toggleMark(w0, added);     // 有 → 外れる
+        Assert.assertEq(
+            expected = (true, false),
+            (Set.memberOf(w0, added), Set.memberOf(w0, removed)))
+
+    /// marksDescendingPerList: 各リスト内で index の大きい順に並べる（武器は 2→0、杖は 1）。
+    /// まとめて捨てる/渡すとき大きい index から処理して小さい index がずれないことを支える並び。
+    @Test
+    def testMarksDescendingPerList(): Unit \ Assert =
+        let marks = Set#{PlayerData.ItemKind.Weapon(0), PlayerData.ItemKind.Weapon(2),
+                         PlayerData.ItemKind.Staff(1)};
+        Assert.assertEq(
+            expected = PlayerData.ItemKind.Weapon(2) :: PlayerData.ItemKind.Weapon(0)
+                        :: PlayerData.ItemKind.Staff(1) :: Nil,
+            PlayerData.marksDescendingPerList(marks))
+
+    /// planBulkTransfer: 空きの数だけ index の大きい順に渡し、入りきらない分は残す。
+    /// (渡す数, 残す数) で 3 ケース確認: 余裕あり全渡し / 空き0で全残し / 空き2で 2 渡し 2 残し。
+    @Test
+    def testPlanBulkTransferSplitsByFreeSlots(): Unit \ Assert =
+        let two  = Set#{PlayerData.ItemKind.Weapon(0), PlayerData.ItemKind.Weapon(1)};
+        let four = Set#{PlayerData.ItemKind.Weapon(0), PlayerData.ItemKind.Weapon(1),
+                        PlayerData.ItemKind.Weapon(2), PlayerData.ItemKind.Weapon(3)};
+        let (t5, l5) = PlayerData.planBulkTransfer(two, 5);
+        let (t0, l0) = PlayerData.planBulkTransfer(two, 0);
+        let (t2, l2) = PlayerData.planBulkTransfer(four, 2);
+        Assert.assertEq(
+            expected = ((2, 0), (0, 2), (2, 2)),
+            ((List.length(t5), List.length(l5)),
+             (List.length(t0), List.length(l0)),
+             (List.length(t2), List.length(l2))))
+
+    /// markedRowsOnPage: 印は種別+絶対 index なので、現在ページに表示される行だけを
+    /// ページ内 0 起点の行 index に直す。10 個並びで w:0 と w:8 に印を付けると、
+    /// 1 ページ目(先頭0)では w:0 が行0(w:8 は範囲外)、2 ページ目(先頭8)では w:8 が行0。
+    @Test
+    def testMarkedRowsOnPageMapsToCurrentPage(): Unit \ Assert =
+        let pairs = List.map(i ->
+            (({text = "${i}", disabled = false, metadata = Some("w:${i}")}: ItemEntry),
+             pageDummySprite()), List.range(0, 10));
+        let marks = Set#{PlayerData.ItemKind.Weapon(0), PlayerData.ItemKind.Weapon(8)};
+        Assert.assertEq(
+            expected = (0 :: Nil, 0 :: Nil),
+            (ItemMenuScene.markedRowsOnPage(marks, 0, pairs),
+             ItemMenuScene.markedRowsOnPage(marks, 8, pairs)))
 }

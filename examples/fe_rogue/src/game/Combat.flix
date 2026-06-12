@@ -106,6 +106,16 @@ mod Combat {
         let result  = damage(hp = defenderHp, amount = critDmg);
         {dmg = critDmg, newHp = result#newHp, killed = result#isDead}
 
+    /// アイテム投擲の命中率（百分率）。基本 60%、命中の高い職（レンジャー / ローグ）は 80%。
+    /// FE の命中式とは独立した固定値（投げは技量に依らずざっくり当たる想定）。
+    pub def throwHitRate(accurate: Bool): Int32 =
+        if (accurate) 80 else 60
+
+    /// 武器を投げたときのダメージ。攻撃力（素ステ + 武器攻撃）の 8 割で、防御は無視する。
+    /// 最低 1 を保証する（投げ当てれば必ず 1 は入る）。呼び出し側は防御を引かずにそのまま適用する。
+    pub def thrownWeaponDamage(attackPower: Int32): Int32 =
+        Int32.max(1, (attackPower * 4) / 5)
+
     /// 回復計算。`currentHp` に `amount` を加算した結果を返す。
     /// `maxHp` を超える分はクランプ（過剰回復は無効）。
     /// `amount` が負なら回復量 0 に丸める（ダメージ用途と分離するため負の amount は無視）。
@@ -147,11 +157,14 @@ mod Combat {
     /// `hitMod` はこのユニット「自身の命中率」への一時補正（目潰し等のデバフは負値）。
     /// 習熟補正後の命中に加算する（`estimate` 参照）。バフ（攻撃・速さ）は `attack`/`speed`
     /// に反映済みの値を構築側（projection）で渡すため、ここに専用フィールドは持たない。
+    /// `maxHp` は背水（Desperation）の「HP%」判定用に持つ（hp は現在値）。
+    /// 武器サブレコードの `effect`/`effectValue` は背水の威力倍率判定に使う（他効果は CombatScene 側）。
     pub type alias CombatView = {
         attack = Int32, magicAttack = Int32, defense = Int32, magicDefense = Int32,
-        skill = Int32, speed = Int32, luck = Int32, hp = Int32, hitMod = Int32,
+        skill = Int32, speed = Int32, luck = Int32, hp = Int32, maxHp = Int32, hitMod = Int32,
         weapon = Option[{weaponType = WeaponCatalog.WeaponType, attack = Int32,
-                          hit = Int32, crit = Int32, isPhysical = Bool, proficient = Bool}]
+                          hit = Int32, crit = Int32, isPhysical = Bool, proficient = Bool,
+                          effect = WeaponCatalog.WeaponEffect, effectValue = Int32}]
     }
 
     /// 装備武器（Option）から `CombatView#weapon` を組む。`isPhysical` をここで解決する。
@@ -159,10 +172,12 @@ mod Combat {
     /// `estimate` が威力・命中を 80% に下げる。敵は常に true（得意/苦手の概念なし）を渡す。
     pub def weaponView(weapon: Option[WeaponCatalog.WeaponResource], proficient: Bool):
             Option[{weaponType = WeaponCatalog.WeaponType, attack = Int32,
-                    hit = Int32, crit = Int32, isPhysical = Bool, proficient = Bool}] =
+                    hit = Int32, crit = Int32, isPhysical = Bool, proficient = Bool,
+                    effect = WeaponCatalog.WeaponEffect, effectValue = Int32}] =
         weapon |> Option.map(w ->
             {weaponType = w#weaponType, attack = w#attack, hit = w#hit, crit = w#crit,
-             isPhysical = WeaponCatalog.isPhysical(w#weaponType), proficient = proficient})
+             isPhysical = WeaponCatalog.isPhysical(w#weaponType), proficient = proficient,
+             effect = w#effect, effectValue = w#effectValue})
 
     /// 武器タイプ習熟による補正。得意なら据え置き、苦手なら威力・命中を 80%（整数 ×4/5、切り捨て）に。
     /// 戦闘予報（`estimate`）と実ダメージ（PlayerScene の直接計算）の両方から呼んで一貫させる。
@@ -184,11 +199,18 @@ mod Combat {
                 let dfn = defenseStatFor(defender#defense, defender#magicDefense, w#isPhysical);
                 // 苦手武器は威力・命中を 80% に下げる（得意ならそのまま）。必殺率は下げない。
                 let (adjAtk, adjHit) = proficiencyAdjust(atk, w#hit, w#proficient);
+                // 背水（Desperation）: 攻撃側の HP が effectValue% 以下なら威力 1.5 倍。
+                // estimate 内で適用するので BattlePanel 予報と実ダメージが自動一致する。
+                let despAtk = match WeaponCatalog.desperationThreshold(w#effect, w#effectValue) {
+                    case Some(pct) =>
+                        if (attacker#hp * 100 <= attacker#maxHp * pct) (adjAtk * 3) / 2 else adjAtk
+                    case None      => adjAtk
+                };
                 // 時限デバフ（目潰し等）の命中補正を習熟補正の「後」に加算する。
                 // ×4/5 を通さないことで「-25%」がそのまま -25 として効く（0 未満は 0 に丸める）。
                 let adjHit2 = Int32.max(0, adjHit + attacker#hitMod);
                 forecast(
-                    {attack = adjAtk, skill = attacker#skill, luck = attacker#luck,
+                    {attack = despAtk, skill = attacker#skill, luck = attacker#luck,
                      weaponHit = adjHit2, weaponCrit = w#crit},
                     {hp = defender#hp, defense = dfn, speed = defender#speed, luck = defender#luck},
                     rel)

@@ -37,6 +37,7 @@ mod ItemScene {
         case ItemData.GroundItemKind.WeaponItem(weapon)   => weapon#sprite
         case ItemData.GroundItemKind.StaffItem(staff)     => staff#sprite
         case ItemData.GroundItemKind.ConsumableItem(item) => item#sprite
+        case ItemData.GroundItemKind.RingItem(ring)       => ring#sprite
     }
 
     /// アイテム種別から表示名を取り出すヘルパー（`spriteOf` と対称）。
@@ -45,6 +46,7 @@ mod ItemScene {
         case ItemData.GroundItemKind.WeaponItem(weapon)   => weapon#name
         case ItemData.GroundItemKind.StaffItem(staff)     => staff#name
         case ItemData.GroundItemKind.ConsumableItem(item) => item#name
+        case ItemData.GroundItemKind.RingItem(ring)       => ring#name
     }
 
     // ─── 定数 ─────────────────────────────────────────────────
@@ -99,6 +101,7 @@ mod ItemScene {
     pub def add(catalog: UnitCatalog.UnitCatalog,
                  staffCatalog: Staff.StaffCatalog,
                  consumableCatalog: Consumable.ConsumableCatalog,
+                 ringCatalog: Ring.RingCatalog,
                  floor: FloorCatalog.FloorResource,
                  scene: Scene[NodeTag]):
             Scene[NodeTag] \ Math.Random =
@@ -125,7 +128,7 @@ mod ItemScene {
             let range = floor#itemsPerRoom;
             let (_, _, accDrops) = List.foldLeft(state -> p ->
                 dropsInRoom(layer, p, FloorCatalog.randomCountInRange(range),
-                             items, catalog, staffCatalog, consumableCatalog, state),
+                             items, catalog, staffCatalog, consumableCatalog, ringCatalog, state),
                 initial, rooms);
             let drops = List.reverse(accDrops);
             // 親 Marker2D + 各 Item Sprite2D を追加
@@ -142,17 +145,19 @@ mod ItemScene {
     pub def lookupItem(id: String,
                     catalog: UnitCatalog.UnitCatalog,
                     staffCatalog: Staff.StaffCatalog,
-                    consumableCatalog: Consumable.ConsumableCatalog): ItemData.GroundItemKind =
-        // weapons → staves → consumables の順に引いて最初に当たった種別を採用する。
-        // 3 段の match ネストにせず「各カタログ引きを Option で並べ、先頭の Some を取る」形にする。
+                    consumableCatalog: Consumable.ConsumableCatalog,
+                    ringCatalog: Ring.RingCatalog): ItemData.GroundItemKind =
+        // weapons → staves → consumables → rings の順に引いて最初に当たった種別を採用する。
+        // 各カタログ引きを Option で並べ、先頭の Some を取る形にする（match ネストにしない）。
         let candidates =
             (Map.get(id, UnitCatalog.weaponsOf(catalog))             |> Option.map(w -> ItemData.GroundItemKind.WeaponItem(w))) ::
             (Map.get(id, Staff.stavesOf(staffCatalog))               |> Option.map(s -> ItemData.GroundItemKind.StaffItem(s))) ::
-            (Map.get(id, Consumable.consumablesOf(consumableCatalog)) |> Option.map(c -> ItemData.GroundItemKind.ConsumableItem(c))) :: Nil;
+            (Map.get(id, Consumable.consumablesOf(consumableCatalog)) |> Option.map(c -> ItemData.GroundItemKind.ConsumableItem(c))) ::
+            (Map.get(id, Ring.ringsOf(ringCatalog))                  |> Option.map(r -> ItemData.GroundItemKind.RingItem(r))) :: Nil;
         match List.filterMap(o -> o, candidates) {
             case kind :: _ => kind
             case Nil       =>
-                bug!("ItemScene.lookupItem: id '${id}' not in weapons / staves / consumables catalog")
+                bug!("ItemScene.lookupItem: id '${id}' not in weapons / staves / consumables / rings catalog")
         }
 
     /// 親 Marker2D を Items として World 配下に生やす（既にあれば何もしない）。
@@ -215,6 +220,7 @@ mod ItemScene {
                      catalog: UnitCatalog.UnitCatalog,
                      staffCatalog: Staff.StaffCatalog,
                      consumableCatalog: Consumable.ConsumableCatalog,
+                     ringCatalog: Ring.RingCatalog,
                      state: (Int32, List[{x = Int32, y = Int32}],
                               List[(Int32, {x = Int32, y = Int32}, String, ItemData.GroundItemKind)])):
                     (Int32, List[{x = Int32, y = Int32}],
@@ -231,10 +237,10 @@ mod ItemScene {
                     match FloorCatalog.pickWeighted(items) {
                         case None     => state
                         case Some(id) =>
-                            let kind = lookupItem(id, catalog, staffCatalog, consumableCatalog);
+                            let kind = lookupItem(id, catalog, staffCatalog, consumableCatalog, ringCatalog);
                             let entry = (nextId, cell, id, kind);
                             dropsInRoom(layer, p, count - 1, items, catalog,
-                                         staffCatalog, consumableCatalog,
+                                         staffCatalog, consumableCatalog, ringCatalog,
                                          (nextId + 1, cell :: taken, entry :: list))
                     }
             }

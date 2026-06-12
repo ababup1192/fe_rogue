@@ -50,6 +50,7 @@ mod ChestScene {
                  catalog: UnitCatalog.UnitCatalog,
                  staffCatalog: Staff.StaffCatalog,
                  consumableCatalog: Consumable.ConsumableCatalog,
+                 ringCatalog: Ring.RingCatalog,
                  floor: FloorCatalog.FloorResource,
                  scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
         // 宝箱は希少: フロアごとに chestSpawnChance の確率でのみ出現させる
@@ -72,7 +73,7 @@ mod ChestScene {
                 else nonAnchor;
             let withParent = ensureParent(scene);
             placeChests(count, 0, candidates,
-                         chestCatalog, catalog, staffCatalog, consumableCatalog, floor, withParent)
+                         chestCatalog, catalog, staffCatalog, consumableCatalog, ringCatalog, floor, withParent)
         }
 
     /// 述語 `roomPred` を満たす部屋の interiorCells のうち、占有されていない床セルを集める。
@@ -106,6 +107,7 @@ mod ChestScene {
                      catalog: UnitCatalog.UnitCatalog,
                      staffCatalog: Staff.StaffCatalog,
                      consumableCatalog: Consumable.ConsumableCatalog,
+                     ringCatalog: Ring.RingCatalog,
                      floor: FloorCatalog.FloorResource,
                      scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
         if (remaining <= 0) scene
@@ -116,7 +118,7 @@ mod ChestScene {
                 contentId <- FloorCatalog.pickWeighted(ChestCatalog.lookup(chestKey, chestCatalog)#contents)
             ) yield {
                 let chest = ChestCatalog.lookup(chestKey, chestCatalog);
-                let content = ItemScene.lookupItem(contentId, catalog, staffCatalog, consumableCatalog);
+                let content = ItemScene.lookupItem(contentId, catalog, staffCatalog, consumableCatalog, ringCatalog);
                 (cell, chestKey, chest#sprite, content)
             };
             match chosen {
@@ -124,7 +126,7 @@ mod ChestScene {
                 case Some((cell, chestKey, sprite, content)) =>
                     let placed = addOneChest(idx, cell, chestKey, sprite, content, scene);
                     placeChests(remaining - 1, idx + 1, removeCell(cell, candidates),
-                                 chestCatalog, catalog, staffCatalog, consumableCatalog, floor, placed)
+                                 chestCatalog, catalog, staffCatalog, consumableCatalog, ringCatalog, floor, placed)
             }
         }
 

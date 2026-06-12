@@ -51,7 +51,7 @@ mod TestTradeMenuScene {
             ({id = spec#id, gridPos = {x = 0, y = 0}, resource = unitSample,
               weapons = List.map(wId -> UnitCatalog.lookupWeapon(wId, catalog), spec#weapons),
               staves  = List.map(sId -> Staff.lookup(sId, staffCatalog), spec#staves),
-              consumables = Nil}:
+              consumables = Nil, rings = Nil}:
                 PlayerScene.Spawn);
         let withParty = List.foldLeft((acc, spec) ->
             PlayerScene.addOnePlayer(mkSpawn(spec), acc),
@@ -59,7 +59,8 @@ mod TestTradeMenuScene {
         let withMenu = loadTradeMenu(withParty);
         let members = List.map(s -> s#id, specs);
         let withPanel = TradeMenuScene.mapPanelData(_ ->
-            ({members = members, focus = 0, pick = None, origin = origin}:
+            ({members = members, focus = 0, pick = None, origin = origin,
+              marks = Set#{}, markPane = None}:
                 TradeMenuScene.PanelData), withMenu);
         {scene = withPanel, members = members}
 
@@ -127,6 +128,24 @@ mod TestTradeMenuScene {
     /// → (右矢印) = focus を 1 つ右へ。
     pub def moveFocusRight(s: TradeScenario): TradeScenario =
         {scene = TradeMenuScene.setPaneFocusDelta(1, s#scene) | s}
+
+    /// ペイン `giverPane` の `itemName` に印を付ける (Shift 相当)。ItemList カーソルを介さず
+    /// PanelData を直接更新するので、本体の `toggledMarks` のトグル規約をそのまま通す。
+    pub def markOnPane(giverPane: Int32, itemName: String, s: TradeScenario): TradeScenario =
+        let pid = memberId(giverPane, s);
+        let entry = entryForInventoryItem(itemName, pid, s#scene);
+        match entry#metadata |> Option.flatMap(ItemMenuScene.parseItemKind) {
+            case Some(kind) =>
+                {scene = TradeMenuScene.mapPanelData(
+                    d -> TradeMenuScene.toggledMarks(giverPane, kind, d), s#scene) | s}
+            case None => bug!("cannot parse item kind for '${itemName}'")
+        }
+
+    /// ペイン `receiverPane` でまとめ渡しの Z を押す。印が別ペインに付いていれば bulk transfer。
+    /// 受け取り側の entry は bulk 時は使われないので空スロット entry を渡す。
+    pub def pressZBulkOnPane(receiverPane: Int32, s: TradeScenario):
+            TradeScenario \ {GameLogger.GameLogger, SelectedPlayer.State} =
+        {scene = TradeMenuScene.confirmAt(receiverPane, TradeMenuScene.emptySlotEntry(), s#scene) | s}
 
     // ────────────────────────────────────────────────────────
     // (D) 内部ヘルパー
@@ -340,6 +359,61 @@ mod TestTradeMenuScene {
         }
 
     // ════════════════════════════════════════════════════════
+    // 複数選択 → まとめ渡し (Shift で印 → 別ペインで Z)
+    // ════════════════════════════════════════════════════════
+
+    /// 「ペイン0で槍と弓に印 → ペイン1でまとめ確定」→ 両方 P1 へ移り P0 は空になる。
+    /// 渡す順は index の大きい方からなので、P1 には弓 (index1) → 槍 (index0) の順で末尾に積まれる。
+    @Test
+    def testBulkTransferMovesAllMarkedItems(): Unit \ {Assert, Fs.FileRead} =
+        region rc {
+            let s0 = freshTradeWithWeapons("iron_lance" :: "iron_bow" :: Nil, Nil);
+            let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, () -> {
+                s0 |> markOnPane(0, "てつのやり")
+                   |> markOnPane(0, "てつの弓")
+                   |> pressZBulkOnPane(1)
+            });
+            Assert.assertEq(
+                expected = (Nil, "てつの弓" :: "てつのやり" :: Nil),
+                (weaponNames(0, after#scene), weaponNames(1, after#scene)))
+        }
+
+    /// 受け取り側に空きが 1 つだけのとき、印 2 個でも入る 1 個だけ渡し残りは手元に残る (部分転送)。
+    /// 渡るのは index の大きい弓。槍は P0 に残り、P1 は上限 16 個ちょうどで満杯になる。
+    @Test
+    def testBulkTransferStopsWhenReceiverFull(): Unit \ {Assert, Fs.FileRead} =
+        region rc {
+            // P1 は 15 個持ち (上限 16 → 空き 1)。P0 は槍と弓の 2 個に印を付ける。
+            let fifteen = List.repeat(15, "iron_sword");
+            let s0 = buildScenario(
+                ({id = 0, weapons = "iron_lance" :: "iron_bow" :: Nil, staves = Nil}: PlayerSpec) ::
+                ({id = 1, weapons = fifteen, staves = Nil}: PlayerSpec) :: Nil,
+                TradeMenuScene.Origin.FromTurn);
+            let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, () -> {
+                s0 |> markOnPane(0, "てつのやり")
+                   |> markOnPane(0, "てつの弓")
+                   |> pressZBulkOnPane(1)
+            });
+            Assert.assertEq(
+                expected = ("てつのやり" :: Nil, 16),
+                (weaponNames(0, after#scene), List.length(weaponNames(1, after#scene))))
+        }
+
+    /// toggledMarks (純粋): 別ペインに印を付け替えると前ペインの印は捨て、新しいペインを印元にする。
+    /// 同じアイテムをもう一度トグルすると外れ、空になった時点で印元 (markPane) も None に戻る。
+    @Test
+    def testToggledMarksReplacesPaneAndClears(): Unit \ Assert =
+        let base = {members = 0 :: 1 :: Nil, focus = 0, pick = None,
+                    origin = TradeMenuScene.Origin.FromTurn, marks = Set#{}, markPane = None};
+        // ペイン0で武器0に印 → ペイン1で武器0に印 (ペイン替え) → もう一度ペイン1武器0 (解除)
+        let m0 = TradeMenuScene.toggledMarks(0, PlayerData.ItemKind.Weapon(0), base);
+        let m1 = TradeMenuScene.toggledMarks(1, PlayerData.ItemKind.Weapon(0), m0);
+        let m2 = TradeMenuScene.toggledMarks(1, PlayerData.ItemKind.Weapon(0), m1);
+        Assert.assertEq(
+            expected = (Some(0), Some(1), None, 0),
+            (m0#markPane, m1#markPane, m2#markPane, Set.size(m2#marks)))
+
+    // ════════════════════════════════════════════════════════
     // 純粋関数: decideConfirm / moveFocus / paneEntries(満杯)
     // ════════════════════════════════════════════════════════
 
@@ -347,7 +421,7 @@ mod TestTradeMenuScene {
     @Test
     def testMoveFocusWrapsAtEnds(): Unit \ Assert =
         let data3 = {members = 0 :: 1 :: 2 :: Nil, focus = 0, pick = None,
-                     origin = TradeMenuScene.Origin.FromRogue};
+                     origin = TradeMenuScene.Origin.FromRogue, marks = Set#{}, markPane = None};
         let leftAt0  = TradeMenuScene.moveFocus(-1, data3);                 // 0 で左 → 2 (wrap)
         let rightMax = TradeMenuScene.moveFocus(1, {focus = 2 | data3});    // 2 で右 → 0 (wrap)
         let right    = TradeMenuScene.moveFocus(1, data3);                  // 0 で右 → 1
@@ -378,7 +452,7 @@ mod TestTradeMenuScene {
     @Test
     def testDecideConfirmSetsPick(): Unit \ Assert =
         let data = {members = 0 :: 1 :: Nil, focus = 0, pick = None,
-                    origin = TradeMenuScene.Origin.FromTurn};
+                    origin = TradeMenuScene.Origin.FromTurn, marks = Set#{}, markPane = None};
         let kind = Some(PlayerData.ItemKind.Weapon(0));
         // Pick は record alias で Eq が無いので、primitive のタプルに落として比較する。
         let picked = match TradeMenuScene.decideConfirm(0, kind, data) {
@@ -393,7 +467,7 @@ mod TestTradeMenuScene {
     def testDecideConfirmDifferentPaneProducesSwap(): Unit \ Assert =
         let data = {members = 10 :: 20 :: 30 :: Nil, focus = 0,
                     pick = Some({paneIndex = 0, kind = Some(PlayerData.ItemKind.Weapon(1))}),
-                    origin = TradeMenuScene.Origin.FromRogue};
+                    origin = TradeMenuScene.Origin.FromRogue, marks = Set#{}, markPane = None};
         let receiverKind = Some(PlayerData.ItemKind.Staff(0));
         let plan = match TradeMenuScene.decideConfirm(2, receiverKind, data) {
             case TradeMenuScene.ConfirmOutcome.DoSwap(_, p) =>
@@ -409,7 +483,7 @@ mod TestTradeMenuScene {
     def testDecideConfirmSamePaneProducesReorder(): Unit \ Assert =
         let data = {members = 10 :: 20 :: Nil, focus = 0,
                     pick = Some({paneIndex = 0, kind = Some(PlayerData.ItemKind.Weapon(0))}),
-                    origin = TradeMenuScene.Origin.FromRogue};
+                    origin = TradeMenuScene.Origin.FromRogue, marks = Set#{}, markPane = None};
         let plan = match TradeMenuScene.decideConfirm(0, Some(PlayerData.ItemKind.Weapon(1)), data) {
             case TradeMenuScene.ConfirmOutcome.DoReorder(_, p) => Some((p#playerId, p#kindA, p#kindB))
             case _ => None

@@ -25,7 +25,7 @@ mod TestEnemyAI {
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
-          weapon = Some(TestUnitFixtures.testWeapon()), acted = false, prevPos = None, statuses = Nil }
+          weapon = Some(TestUnitFixtures.testWeapon()), acted = false, prevPos = None, statuses = Nil, ring = None, followUpUsed = false, bottleUsed = false}
 
     /// 武器が壊れた状態（`weapon = None`）の敵 Data。武器なしで隣接プレイヤーに
     /// 攻撃しないことを確認するテストで使う。
@@ -35,7 +35,7 @@ mod TestEnemyAI {
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
-          weapon = None, acted = false, prevPos = None, statuses = Nil }
+          weapon = None, acted = false, prevPos = None, statuses = Nil, ring = None, followUpUsed = false, bottleUsed = false}
 
     /// 射程 2-2 の弓を装備した敵 Data。アーチャーが距離 2 でのみ攻撃し、
     /// 隣接（距離 1）では体当たりしないことを検証するテストで使う。
@@ -46,7 +46,7 @@ mod TestEnemyAI {
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
-          weapon = Some(bow), acted = false, prevPos = None, statuses = Nil }
+          weapon = Some(bow), acted = false, prevPos = None, statuses = Nil, ring = None, followUpUsed = false, bottleUsed = false}
 
     /// `aiType` を指定した敵 Data（GuardUntilInRange / Wanderer の検知分岐を検証する用）。
     /// resource の aiType フィールドだけ差し替えて、他は enemyAt と同条件にする。
@@ -56,7 +56,7 @@ mod TestEnemyAI {
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = {aiType = t | TestUnitFixtures.testEnemyResource(moveTiles, 3)},
-          weapon = Some(TestUnitFixtures.testWeapon()), acted = false, prevPos = None, statuses = Nil }
+          weapon = Some(TestUnitFixtures.testWeapon()), acted = false, prevPos = None, statuses = Nil, ring = None, followUpUsed = false, bottleUsed = false}
 
     /// EnemyAction を tag だけのタプルに圧縮（id 付き）。Eq が無いので比較しやすくする。
     def tagOf(a: EnemyAction): String =
@@ -120,7 +120,7 @@ mod TestEnemyAI {
          resource = TestUnitFixtures.testResourceFull(4, hp, 3, defense, 3),
          weapons = weapons, staves = Nil, consumables = Nil, selectedItem = None,
          moveStepsTaken = 0, facing = Staff.Direction.Down, hidden = false,
-         usedStairs = false, level = 1, exp = 0, pendingLevelUp = None, statuses = Nil}
+         usedStairs = false, level = 1, exp = 0, pendingLevelUp = None, statuses = Nil, rings = Nil, ringEquipped = false, followUpUsed = false}
 
     /// 評価軸テスト用の味方 UnitView を実 projection（`PlayerScene.unitView`）で組む。
     /// 実武器由来なので `weaponRange`(反撃) と `combat`(ダメージ) は同じ武器から一貫して埋まる。
@@ -253,6 +253,19 @@ mod TestEnemyAI {
             expected = (EnemyAI.AlertRule.OnSightOrReach, EnemyAI.IdleBehavior.Roam),
             { let p = EnemyAI.policy(EnemyAI.AiType.Wanderer); (p#alert, p#idle) })
 
+    /// RingMan は追跡・攻撃の policy は Aggressive と同じ（同室/到達で起動・未起動は静止）。
+    /// 特殊行動（攻撃の代わりに持ち物を指輪に変える）は driver 側にあり policy には現れない。
+    @Test
+    def testRingManPolicyMatchesAggressive(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (EnemyAI.AlertRule.OnSightOrReach, EnemyAI.IdleBehavior.StayDormant),
+            { let p = EnemyAI.policy(EnemyAI.AiType.RingMan); (p#alert, p#idle) })
+
+    /// aiType 文字列 "RingMan" を AiType.RingMan に解釈する（enemies.json → catalog 復元）。
+    @Test
+    def testParseRingManAiType(): Unit \ Assert =
+        Assert.assertEq(expected = EnemyAI.AiType.RingMan, EnemyAI.parseAiType("RingMan"))
+
     /// GuardUntilInRange は同モジュールでも武器射程外なら起動せず Skip（Aggressive なら Move する状況）。
     @Test
     def testGuardSameModuleOutOfRangeStaysDormant(): Unit \ Assert =
@@ -274,6 +287,19 @@ mod TestEnemyAI {
         let enemy   = enemyAtTyped(0, enemyP, false, 0, 3, EnemyAI.AiType.GuardUntilInRange);
         let (a, d)  = EnemyAI.decideAction({board = board, units = targetsOf(board)}, EnemyScene.unitView(enemy), enemy#alerted);
         Assert.assertEq(expected = ("Attack", true), (tagOf(a), d#alerted))
+
+    /// GuardUntilInRange は剣射程(1)の 1 マス外＝距離 2（射程+1）に相手が来ると、
+    /// まだ攻撃はできないが起動して 1 歩寄る（Skip ではなく Move）。
+    /// プレイヤー(4,5) と敵(6,5) はマンハッタン距離 2。
+    @Test
+    def testGuardAtRangePlusOneAlertsAndMoves(): Unit \ Assert =
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let player  = ({x = 4, y = 5}: {x = Int32, y = Int32});
+        let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 距離 2 = 剣射程(1) + 1
+        let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
+        let enemy   = enemyAtTyped(0, enemyP, false, 0, 3, EnemyAI.AiType.GuardUntilInRange);
+        let (a, d)  = EnemyAI.decideAction({board = board, units = targetsOf(board)}, EnemyScene.unitView(enemy), enemy#alerted);
+        Assert.assertEq(expected = ("Move", true), (tagOf(a), d#alerted))
 
     /// Wanderer は未起動（別モジュール・索敵範囲外）のとき Skip ではなく Wander を返す（徘徊意図）。
     /// 起動条件は Aggressive と同じ OnSightOrReach なので、検知幾何は testDecideDormantDifferentModuleSkips と同一。

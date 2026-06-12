@@ -152,6 +152,10 @@
           "kind": "staff"
         },
         {
+          "id": "bind_staff",
+          "kind": "staff"
+        },
+        {
           "id": "iron_sword",
           "kind": "weapon"
         }
@@ -184,6 +188,10 @@
       "initialInventory": [
         {
           "id": "live_staff",
+          "kind": "staff"
+        },
+        {
+          "id": "stopgap_staff",
           "kind": "staff"
         },
         {
@@ -504,6 +512,37 @@
       "sprite": {
         "flipForFacing": true,
         "frame": 2,
+        "hframes": 7,
+        "scale": {
+          "x": 0.8,
+          "y": 0.8
+        },
+        "texture": "rogues",
+        "vframes": 7
+      }
+    },
+    "ringman": {
+      "aiType": "RingMan",
+      "attack": 6,
+      "defense": 2,
+      "description": "相手の持ち物をランダムで、リングに変える",
+      "hp": 18,
+      "initialInventory": [
+        {
+          "id": "bronze_lance",
+          "kind": "weapon"
+        }
+      ],
+      "level": 1,
+      "luck": 3,
+      "magicAttack": 0,
+      "magicDefense": 0,
+      "moveTiles": 4,
+      "skill": 8,
+      "speed": 3,
+      "sprite": {
+        "flipForFacing": true,
+        "frame": 46,
         "hframes": 7,
         "scale": {
           "x": 0.8,

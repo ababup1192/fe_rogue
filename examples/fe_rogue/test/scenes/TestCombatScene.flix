@@ -40,7 +40,10 @@ mod TestCombatScene {
         level             = 1,
         exp               = 0,
         pendingLevelUp    = None,
-        statuses          = Nil
+        statuses          = Nil,
+        rings          = Nil,
+        ringEquipped          = false,
+        followUpUsed   = false
     }
 
     /// 隣接 (3,2) の生存中の敵。HP 10・剣持ち（相性は中立）。
@@ -57,7 +60,10 @@ mod TestCombatScene {
         weapon         = Some(TestUnitFixtures.testWeapon()),
         acted          = false,
         prevPos        = None,
-        statuses       = Nil
+        statuses       = Nil,
+        ring           = None,
+        followUpUsed   = false,
+        bottleUsed     = false
     }
 
     /// World 配下に Player(0) と Enemy(1) を直接挿した最小シーン。
@@ -77,12 +83,14 @@ mod TestCombatScene {
 
     /// applyAttackHit を 5 つの副作用モックで包んで実行する。
     def runAttack(scene: Scene[NodeTag]): Scene[NodeTag] =
+        withNoopThiefDrop(() ->
         TestUnitFixtures.withMockRandom(() ->
         TestUnitFixtures.withMockGame(() ->
         TestUnitFixtures.withMockAudio(() ->
         TestUnitFixtures.withMockGameLogger(() ->
         TestUnitFixtures.withNoopAnim(() ->
-            CombatScene.applyAttackHit(0, scene))))))
+        TestUnitFixtures.withNoopTween(() ->
+            CombatScene.applyAttackHit(0, scene))))))))
 
     // ════════════════════════════════════════════════════════
     // attackLungeAnimation — 中点で attack:hit を 1 つ発火（純粋）
@@ -163,7 +171,8 @@ mod TestCombatScene {
         TestUnitFixtures.withMockGame(() ->
         TestUnitFixtures.withMockAudio(() ->
         TestUnitFixtures.withMockGameLogger(() ->
-            CombatScene.applyEnemyAttackHit(1, scene)))))
+        TestUnitFixtures.withNoopTween(() ->
+            CombatScene.applyEnemyAttackHit(1, scene))))))
 
     /// 敵→味方の鏡像数値: 敵(素3+武器2) vs 味方防御 1 → 4 ダメージ、
     /// 命中率 = 80 + 技2×2 + 幸運2÷2 − (速さ3×2 + 幸運2) = 77 > 50 で命中。
@@ -211,6 +220,7 @@ mod TestCombatScene {
                 TestUnitFixtures.withMockGameLogger(() ->
                 TestUnitFixtures.withMockEnemyTurnQueue(() ->
                 TestUnitFixtures.withNoopAnim(() ->
+                TestUnitFixtures.withMockRandom(() ->
                     run {
                         TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
                         let _ = CombatScene.onLungeDone(Faction.Player, 0, scene);
@@ -218,7 +228,7 @@ mod TestCombatScene {
                     } with Tween.withScheduler(rc)
                       with TurnPhase.withState(rc)
                       with SelectedPlayer.withState(rc)
-                      with Pacing.withState(rc))));
+                      with Pacing.withState(rc)))));
             Assert.assertEq(
                 expected = (TurnPhase.Phase.PlayerAttackHold, true), result)
         }
@@ -232,6 +242,13 @@ mod TestCombatScene {
             a \ (ef - CustomEffects.GameOverRequest) =
         run { thunk() } with handler CustomEffects.GameOverRequest {
             def request(scene, k) = k(scene)
+        }
+
+    /// ThiefDropRequest の no-op スタブ（盗人ドロップが飛んだら scene をそのまま返す）。
+    def withNoopThiefDrop(thunk: Unit -> a \ ef):
+            a \ (ef - CustomEffects.ThiefDropRequest) =
+        run { thunk() } with handler CustomEffects.ThiefDropRequest {
+            def drop(_cell, scene, k) = k(scene)
         }
 
     /// `path` のノードに対して CombatScene.process を全副作用モックで 1 回回す。
@@ -256,6 +273,7 @@ mod TestCombatScene {
             TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withMockEnemyTurnQueue(() ->
             TestUnitFixtures.withSignalsFor(ownerPath, lungeDone, () ->
+            withNoopThiefDrop(() ->
             withNoopGameOver(() ->
                 run {
                     TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
@@ -263,7 +281,7 @@ mod TestCombatScene {
                 } with Tween.withScheduler(rc)
                   with TurnPhase.withState(rc)
                   with SelectedPlayer.withState(rc)
-                  with Pacing.withState(rc))))))))
+                  with Pacing.withState(rc)))))))))
         }
 
     /// 他ユニット宛の signal は食わない: Player(0) 宛の attack_lunge finished があるとき、

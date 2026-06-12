@@ -52,7 +52,9 @@ mod EnemyTurnDriverScene {
                         GameLogger.GameLogger, EnemyTurn.Queue,
                         TurnPhase.State, SelectedPlayer.State,
                         Pacing.State, PlayerData.PartyQuery, Math.Random,
-                        CustomEffects.WandererSpawnRequest} =
+                        CustomEffects.WandererSpawnRequest,
+                        CustomEffects.RingTransformRequest,
+                        CustomEffects.GameOverRequest, GameEngine.Audio} =
         let next = match TurnPhase.State.get() {
             case TurnPhase.Phase.EnemyTurn        => stepOnce(scene)
             case TurnPhase.Phase.PlayerAttackHold =>
@@ -111,7 +113,9 @@ mod EnemyTurnDriverScene {
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State,
                 Pacing.State, PlayerData.PartyQuery, Math.Random,
-                CustomEffects.WandererSpawnRequest} =
+                CustomEffects.WandererSpawnRequest,
+                CustomEffects.RingTransformRequest,
+                CustomEffects.GameOverRequest, GameEngine.Audio} =
         // 「エネミーフェーズ」の帯が出ている間は敵を動かさない（帯が出終わってから行動開始）。
         if (PhaseBannerScene.isBusy(scene)) scene
         else if (Pacing.State.isHolding()) scene
@@ -139,10 +143,70 @@ mod EnemyTurnDriverScene {
     /// Skip/Wait は無動作 (remaining も捨てる)。
     def applyStep(step: EnemyTurn.Step, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                Pacing.State, Math.Random} =
+                Pacing.State, Math.Random, GameLogger.GameLogger,
+                CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
+                SelectedPlayer.State, GameEngine.Audio} =
         match EnemyScene.get(step#id, scene) {
             case None       => scene   // 既に除外済み (死亡演出完了など)
-            case Some(data) =>
+            case Some(data) => applyStepForEnemy(step, data, scene)
+        }
+
+    /// 敵 1 体の行動分岐。優先順位:
+    ///   ① かなしばり中 → 完全停止（何もせず行動済み）
+    ///   ② 杖詠唱職（クレリック_T2/T3）で直線上に未停止の味方が居れば詠唱
+    ///   ③ 未使用の瓶（ローグ_T3=爆発瓶 / クレリック_T3=火炎瓶）で直線上に味方が居れば投げる
+    ///   ④ それ以外は通常 AI（Move / Attack / Wait / Skip / Wander）
+    /// ネストした match を避けるため、各分岐は単一 match の小関数に切り出す。
+    def applyStepForEnemy(step: EnemyTurn.Step, data: EnemyScene.Data,
+                           scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+                Pacing.State, Math.Random, GameLogger.GameLogger,
+                CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
+                SelectedPlayer.State, GameEngine.Audio} =
+        if (StatusSystem.isImmobilized(data#statuses))
+            bindSkip(step, data, scene)
+        else match StaffCastScene.enemyTryStaff(step#id, data#gridPos,
+                                                 data#resource#description, scene) {
+            case Some(afterCast) => castDone(step, afterCast)
+            case None            => tryThrowOrNormal(step, data, scene)
+        }
+
+    /// かなしばり中の敵: 移動も攻撃も詠唱もせず行動済みにする。
+    def bindSkip(step: EnemyTurn.Step, data: EnemyScene.Data, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        GameLogger.enemyLog("${data#resource#description}は かなしばりで動けない");
+        EnemyScene.setActed(step#id, scene)
+
+    /// 詠唱が成立した敵: 軽く溜めて行動済みにする（詠唱がその敵の行動）。
+    def castDone(step: EnemyTurn.Step, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ Pacing.State =
+        Pacing.State.hold(450 |> Duration.millis);
+        EnemyScene.setActed(step#id, scene)
+
+    /// 詠唱しなかった敵: 未使用の瓶を投げられれば投げ、でなければ通常 AI。
+    def tryThrowOrNormal(step: EnemyTurn.Step, data: EnemyScene.Data,
+                          scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+                Pacing.State, Math.Random, GameLogger.GameLogger,
+                CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
+                SelectedPlayer.State, GameEngine.Audio} =
+        if (data#bottleUsed)
+            applyNormalStep(step, data, scene)
+        else match StaffCastScene.enemyTryThrow(step#id, data#gridPos,
+                                                 data#resource#description, scene) {
+            case Some(afterThrow) =>
+                // 投げた → このターンは投擲で終了。瓶を使用済みにして行動済み暗転。
+                Pacing.State.hold(450 |> Duration.millis);
+                EnemyScene.setActed(step#id,
+                    EnemyScene.mapEnemy(step#id, d -> {bottleUsed = true | d}, afterThrow))
+            case None => applyNormalStep(step, data, scene)
+        }
+
+    /// 通常 AI の 1 step 適用（既存ロジック）。Move / Attack / Wait / Skip / Wander。
+    def applyNormalStep(step: EnemyTurn.Step, data: EnemyScene.Data,
+                         scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+                Pacing.State, Math.Random, CustomEffects.RingTransformRequest} =
                 // 盤面 + 盤上ユニットを 1 箇所で結合 (位置×ステータスの join は Encounter に集約)。
                 // driver は手元の (mid-frame mutation 済み) scene に live で適用する。
                 let enc = EncounterBuilder.fromScene(scene);
@@ -170,7 +234,8 @@ mod EnemyTurnDriverScene {
                         }
                     case EnemyAI.EnemyAction.Attack(enemyId, targetId) =>
                         // 狙う相手は EnemyAI の評価軸（仕留め > 反撃不能 > 低HP > 近さ）で決定済み。
-                        // ここでは体当たりモーションを開始するだけ。HP 適用 / 音 / 死亡判定は
+                        // ringman は隣接時 30% で攻撃の代わりに「持ち物を指輪に変える」特殊行動を取る。
+                        // それ以外は体当たりモーションを開始するだけ。HP 適用 / 音 / 死亡判定は
                         // attack_lunge の `attack:hit` メソッド発火時に CombatScene.process が行う。
                         // 攻撃前後の溜め: lunge (~160ms) より長い hold で「攻撃終了の余韻」を作る
                         // Attack はその敵の最終行動 → 行動済み暗転。
@@ -178,9 +243,15 @@ mod EnemyTurnDriverScene {
                             case None    => EnemyScene.setActed(enemyId, withAlert)
                             case Some(p) =>
                                 Pacing.State.hold(450 |> Duration.millis);
-                                EnemyScene.setActed(enemyId,
-                                    CombatScene.startAttack(Faction.Enemy, enemyId, targetId,
-                                                            p#gridPos, withAlert))
+                                let resolved =
+                                    if (isRingSpecial(data, targetId, withAlert))
+                                        // 特殊行動: 攻撃せず、対象の装備外アイテムを 1 つ指輪に変える。
+                                        CustomEffects.RingTransformRequest.transform(
+                                            data#resource#description, targetId, withAlert)
+                                    else
+                                        CombatScene.startAttack(Faction.Enemy, enemyId, targetId,
+                                                                p#gridPos, withAlert);
+                                EnemyScene.setActed(enemyId, resolved)
                         }
                     case EnemyAI.EnemyAction.Wait(_) =>
                         // Wait も「動こうとして詰まった」演出の一部なので軽く溜める。行動済み暗転。
@@ -199,7 +270,18 @@ mod EnemyTurnDriverScene {
                                 EnemyScene.setActed(id, moved)
                         }
                 }
-        }
+
+    /// ringman が「攻撃の代わりに持ち物を指輪に変える」特殊行動を取るか。
+    /// ringman（aiType = RingMan）以外は常に false（= 通常攻撃）。
+    /// 対象に装備外の持ち物が無ければ false（特殊行動はスキップして通常攻撃）。
+    /// 30% の乱数を引くのは「ringman かつ対象に持ち物がある」ときだけ（無駄に乱数を消費しない）。
+    def isRingSpecial(data: EnemyScene.Data, targetId: Int32, scene: Scene[NodeTag]):
+            Bool \ Math.Random =
+        if (data#resource#aiType == EnemyAI.AiType.RingMan
+                and not List.isEmpty(PlayerScene.transformableItems(targetId, scene)))
+            Math.Random.randomFloat64() < 0.30
+        else
+            false
 
     /// 敵ターンの後始末: ターン番号繰り上げ + 全プレイヤーを `waited = false` にリセット +
     /// カーソル復活 + 味方ターン宣言。

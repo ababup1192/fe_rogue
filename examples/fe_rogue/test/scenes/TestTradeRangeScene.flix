@@ -32,7 +32,10 @@ mod TestTradeRangeScene {
         level                   = 1,
         exp                     = 0,
         pendingLevelUp          = None,
-        statuses                = Nil
+        statuses                = Nil,
+        rings          = Nil,
+        ringEquipped          = false,
+        followUpUsed   = false
     }
 
     /// World + 与えた party の Marker2D 並びで scene を組む。

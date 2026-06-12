@@ -30,7 +30,8 @@ mod GameLifecycle {
         floors      = FloorCatalog.FloorCatalog,
         staves      = Staff.StaffCatalog,
         consumables = Consumable.ConsumableCatalog,
-        chests      = ChestCatalog.ChestCatalog
+        chests      = ChestCatalog.ChestCatalog,
+        rings       = Ring.RingCatalog
     }
 
     /// プレイ用シーンを 1 回で組み立てる。`MapScene.add` が `IO` を要求するため
@@ -45,9 +46,10 @@ mod GameLifecycle {
             |> MapScene.add(floor)
             |> FogScene.add             // 各 module の薄暗いモヤ矩形 + 常駐 FogDriver
             |> DamagePopupScene.add     // World 配下に空の Marker2D 親を 1 つ生やす
+            |> ExplosionScene.add       // 爆発エフェクト用の空 Marker2D 親（火炎瓶/爆発瓶/魔法着弾）
             |> PlayerScene.add(catalogs#players, catalogs#staves, catalogs#consumables)
-            |> EnemyScene.add(catalogs#enemies, catalogs#weapons, floor)
-            |> ItemScene.add(catalogs#players, catalogs#staves, catalogs#consumables, floor)   // 部屋の床に武器/杖/消耗品をランダムドロップ
+            |> EnemyScene.add(catalogs#enemies, catalogs#weapons, catalogs#rings, floor)
+            |> ItemScene.add(catalogs#players, catalogs#staves, catalogs#consumables, catalogs#rings, floor)   // 部屋の床に武器/杖/消耗品/指輪をランダムドロップ
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
             |> CursorScene.add
             |> ArrowCursorScene.add     // 杖発射方向の矢印カーソル (初期は非表示)
@@ -69,7 +71,7 @@ mod GameLifecycle {
             // 全ノード配置後に階段を床のランダムセルへ置く (駒・アイテムを避けるため最後)
             |> StairsScene.placeRandom
             // 階段確定後に宝箱を配置 (駒・アイテム・階段を避けるため階段の後)
-            |> ChestScene.add(catalogs#chests, catalogs#players, catalogs#staves, catalogs#consumables, floor)
+            |> ChestScene.add(catalogs#chests, catalogs#players, catalogs#staves, catalogs#consumables, catalogs#rings, floor)
             // players/stairs 確定後に初回フォグ適用 (スポーン部屋を点灯。以降は FogScene.process が毎フレーム更新)
             // 起動時は通常モード (集合モードではない) なので torchCorridors=false
             |> FogScene.applyFog(false)
@@ -130,7 +132,53 @@ mod GameLifecycle {
                                 scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Math.Random, FloorProgress.State} =
         let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
-        EnemyScene.maybeSpawnWandererInRoom(catalogs#enemies, catalogs#weapons, floor, tick, scene)
+        EnemyScene.maybeSpawnWandererInRoom(catalogs#enemies, catalogs#weapons, catalogs#rings, floor, tick, scene)
+
+    /// `CustomEffects.ThiefDropRequest` handler の本体。盗人の剣で敵がアイテムを落とす。
+    /// 現在フロアの `items` ドロップ表から重み付き抽選し、解決したアイテムを `cell` に落とす。
+    /// 抽選不能（表が空）なら no-op。
+    pub def dropFloorItem(catalogs: Catalogs, cell: {x = Int32, y = Int32},
+                           scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Math.Random, FloorProgress.State} =
+        let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
+        match FloorCatalog.pickWeighted(floor#items) {
+            case None     => scene
+            case Some(id) =>
+                let kind = ItemScene.lookupItem(id, catalogs#players, catalogs#staves,
+                                                 catalogs#consumables, catalogs#rings);
+                ItemScene.respawn(cell, id, kind, scene)
+        }
+
+    /// `CustomEffects.RingTransformRequest` handler の本体。ringman の特殊行動。
+    /// 対象味方の装備外アイテムを 1 つ無作為に選び、確率分布で選んだ指輪に変える
+    /// （7割ただの・1割サビ・2割その他）。変える持ち物が無ければ scene をそのまま返す。
+    /// 変化先の指輪解決に `Ring.lookup` が要るため、catalog を持つ handler からのみ呼ばれる。
+    pub def applyRingTransform(catalogs: Catalogs, enemyName: String, targetId: Int32,
+                                scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Math.Random, GameLogger.GameLogger} =
+        match RandomUtil.pick(PlayerScene.transformableItems(targetId, scene)) {
+            case None               => scene
+            case Some((kind, name)) =>
+                let ring = Ring.lookup(pickTransformRingId(catalogs#rings), catalogs#rings);
+                GameLogger.enemyLog(
+                    "${enemyName} は ${PlayerScene.displayName(targetId, scene)} の ${name} を ${ring#name} に変えた");
+                PlayerScene.replaceItemWithRing(targetId, kind, ring, scene)
+        }
+
+    /// 変化先の指輪 id を確率で選ぶ。7割 plain_ring・1割 rusty_ring・2割 その他（plain/rusty 以外）。
+    def pickTransformRingId(rings: Ring.RingCatalog): String \ Math.Random =
+        let roll = Math.Random.randomFloat64();
+        if (roll < 0.7) "plain_ring"
+        else if (roll < 0.8) "rusty_ring"
+        else otherTransformRingId(rings)
+
+    /// plain_ring / rusty_ring 以外の指輪 id を 1 つ無作為に返す。候補が無ければ plain_ring。
+    def otherTransformRingId(rings: Ring.RingCatalog): String \ Math.Random =
+        let others = Ring.ringsOf(rings)
+            |> Map.toList
+            |> List.map(fst)
+            |> List.filter(id -> id != "plain_ring" and id != "rusty_ring");
+        RandomUtil.pick(others) |> Option.getWithDefault("plain_ring")
 
     /// `CustomEffects.GameOverRequest` handler の本体。
     /// フロアを 1F に戻し、ターン進行系を初期化してから scene をリビルドして返す。

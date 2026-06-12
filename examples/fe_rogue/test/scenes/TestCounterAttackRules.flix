@@ -36,7 +36,10 @@ mod TestCounterAttackRules {
         level                      = 1,
         exp                        = 0,
         pendingLevelUp             = None,
-        statuses                   = Nil
+        statuses                   = Nil,
+        rings          = Nil,
+        ringEquipped          = false,
+        followUpUsed   = false
     }
 
     /// 任意 id / 位置 / 武器 / 瀕死状態の Enemy.Data。
@@ -55,7 +58,10 @@ mod TestCounterAttackRules {
         weapon         = weapon,
         acted          = false,
         prevPos        = None,
-        statuses       = Nil
+        statuses       = Nil,
+        ring           = None,
+        followUpUsed   = false,
+        bottleUsed     = false
     }
 
     /// 射程 2-2 の弓 (隣接攻撃には届かない)

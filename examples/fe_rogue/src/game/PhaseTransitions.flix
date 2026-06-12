@@ -204,6 +204,22 @@ mod PhaseTransitions {
                 }
         }
 
+    /// ThrowAim フェーズに入る（アイテム「投げる」確定時）。StaffAim と同じ矢印カーソルを
+    /// 選択中プレイヤーの隣接マス（デフォルト Up）に出すだけ。回復方向の初期照準は行わない
+    /// （投擲は対象を読み合うので一律 Up から始める）。
+    pub def enterThrowAim(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+        TurnPhase.State.put(TurnPhase.Phase.ThrowAim);
+        let withCursorHidden = CursorScene.setVisible(false, scene);
+        match SelectedPlayer.State.get()#id {
+            case None           => withCursorHidden
+            case Some(playerId) =>
+                match PlayerScene.get(playerId, withCursorHidden) {
+                    case None         => withCursorHidden
+                    case Some(player) => ArrowCursorScene.showFor(player#gridPos, withCursorHidden)
+                }
+        }
+
     /// AttackForecast フェーズに入る (PlayerAttack で敵に Z 押下時)。
     /// 動作: overlay/cursor は PlayerAttack 中の状態を温存し、フェーズだけ進める。
     /// `BattlePanelScene` の毎フレーム process が visible 切替と内容更新を担う。
@@ -236,10 +252,12 @@ mod PhaseTransitions {
             |> TradeRangeScene.clear
             |> CursorScene.setVisible(false)
             |> TradeMenuScene.mapPanelData(_ ->
-                ({members = selfId :: partnerId :: Nil,
-                  focus   = 0,
-                  pick    = None,
-                  origin  = TradeMenuScene.Origin.FromTurn}: TradeMenuScene.PanelData))
+                ({members  = selfId :: partnerId :: Nil,
+                  focus    = 0,
+                  pick     = None,
+                  origin   = TradeMenuScene.Origin.FromTurn,
+                  marks    = Set#{},
+                  markPane = None}: TradeMenuScene.PanelData))
 
     /// TradeInventory フェーズに入る (集合後の RogueMove「交換」確定時の N 人交換)。
     /// `members` は集合した生存メンバーの player id (ロード + 退避中の味方)。
@@ -254,10 +272,12 @@ mod PhaseTransitions {
             scene
                 |> CursorScene.setVisible(false)
                 |> TradeMenuScene.mapPanelData(_ ->
-                    ({members = members,
-                      focus   = 0,
-                      pick    = None,
-                      origin  = TradeMenuScene.Origin.FromRogue}: TradeMenuScene.PanelData))
+                    ({members  = members,
+                      focus    = 0,
+                      pick     = None,
+                      origin   = TradeMenuScene.Origin.FromRogue,
+                      marks    = Set#{},
+                      markPane = None}: TradeMenuScene.PanelData))
         }
 
     /// TradeTargetSelect フェーズに入る (ActionMenu「こうかん」確定時)。

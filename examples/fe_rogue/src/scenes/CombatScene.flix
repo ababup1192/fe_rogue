@@ -146,10 +146,11 @@ mod CombatScene {
     /// - Enemy: `applyEnemyAttackHit` の killed リストを `PlayerScene.removeDeadAndCheckGameOver`
     ///   に流し、全滅時は `CustomEffects.GameOverRequest` でフルリビルドさせる。
     pub def onAttackHit(side: Faction, id: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                               GameEngine.Game, GameLogger.GameLogger,
                               CustomEffects.GameOverRequest,
-                              SelectedPlayer.State, Math.Random} =
+                              SelectedPlayer.State, Math.Random,
+                              CustomEffects.ThiefDropRequest} =
         match side {
             case Faction.Player => applyAttackHit(id, scene)
             case Faction.Enemy  =>
@@ -162,9 +163,10 @@ mod CombatScene {
     /// 命中ロールは `applyDamageToEnemy` 側で行い、命中なら SE + ダメージ + ログ、
     /// 回避なら SE を鳴らさず "miss" 表示のみ。HP <= 0 なら death_blink を開始する。
     pub def applyAttackHit(playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                               GameEngine.Game,
-                              GameLogger.GameLogger, Math.Random} =
+                              GameLogger.GameLogger, Math.Random,
+                              CustomEffects.ThiefDropRequest} =
         let resolved = forM (
             d       <- PlayerScene.get(playerId, scene);
             enemyId <- d#attackTargetId
@@ -176,7 +178,8 @@ mod CombatScene {
     /// killedIds が空でないとき呼び出し側は死亡処理（removeDeadAndCheckGameOver）を発火する。
     pub def applyEnemyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random} =
+            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
+             Tween.Scheduler} =
         let resolved = forM (
             d              <- EnemyScene.get(enemyId, scene);
             targetPlayerId <- d#attackTargetId
@@ -190,7 +193,7 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State} =
+                              SelectedPlayer.State, Pacing.State, Math.Random} =
         match side {
             case Faction.Player => playerLungeDone(id, scene)
             case Faction.Enemy  => enemyLungeDone(id, scene)
@@ -206,7 +209,7 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State} =
+                              SelectedPlayer.State, Pacing.State, Math.Random} =
         if (TurnPhase.State.get() == TurnPhase.Phase.EnemyTurn) {
             // 敵ターン中の味方反撃が完了した。反撃でレベルアップしていれば、その場で
             // （反撃ごとに）ステータス変化パネルへ割り込む。閉じると敵ターンに戻って続行する。
@@ -216,23 +219,85 @@ mod CombatScene {
             else
                 cleared
         } else {
-            // 味方主攻撃の完了。攻撃者が消えていれば (None) 何もしない。
-            let outcome = PlayerScene.get(playerId, scene)
-                |> Option.map(player -> CounterAttackRules.decide(player,
-                       player#attackTargetId
-                           |> Option.flatMap(eid -> EnemyScene.get(eid, scene))));
-            match outcome {
-                case None => scene
-                case Some(CounterAttackRules.Outcome.Kill) =>
-                    let cleared = clearAttackTargetId(playerId, scene);
-                    TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
-                    Pacing.State.hold(700 |> Duration.millis);
-                    cleared
-                case Some(CounterAttackRules.Outcome.Counter(enemyId)) =>
-                    startEnemyCounter(enemyId, playerId, clearAttackTargetId(playerId, scene))
-                case Some(CounterAttackRules.Outcome.Commit) =>
-                    TurnFlow.commitWaitedAndAdvance(clearAttackTargetId(playerId, scene))
+            // 味方主攻撃の完了。まず追撃リング判定（補正後speed差+3 & 15% & 未追撃 & 敵生存）。
+            // 追撃するなら decide（反撃/確定）より前に同じ敵へもう一度攻撃する（追撃→反撃の直列）。
+            match playerFollowUpEnemy(playerId, scene, rollPercent()) {
+                case Some(enemyId) =>
+                    let marked = PlayerScene.mapPlayer(playerId, d -> {followUpUsed = true | d}, scene);
+                    startPlayerFollowUp(playerId, enemyId, marked)
+                case None =>
+                    resolvePlayerMainAttack(playerId, scene)
             }
+        }
+
+    /// 追撃するか（純粋）。攻撃側 speed が防御側 speed +3 以上、追撃リング所持、15% 抽選命中、
+    /// かつまだこの攻撃で追撃していない。`roll` は 0..99。
+    pub def shouldFollowUp(atkSpeed: Int32, defSpeed: Int32, roll: Int32,
+                            hasPursuit: Bool, alreadyFollowedUp: Bool): Bool =
+        hasPursuit and not alreadyFollowedUp and atkSpeed >= defSpeed + 3 and roll < 15
+
+    /// はやぶさの剣などブレイブ武器による 2 回攻撃判定（純粋）。攻撃側 speed が防御側 speed +d
+    /// 以上なら**確定**で追撃（指輪 Pursuit の 15% 抽選とは別。乱数なし）。`braveThreshold` は
+    /// 装備武器から導く（None=ブレイブ武器でない）。`alreadyFollowedUp` で 1 攻撃 1 回に制限。
+    pub def braveFollowUp(atkSpeed: Int32, defSpeed: Int32, alreadyFollowedUp: Bool,
+                           braveThreshold: Option[Int32]): Bool =
+        not alreadyFollowedUp and (match braveThreshold {
+            case Some(d) => atkSpeed >= defSpeed + d
+            case None    => false
+        })
+
+    /// 味方が追撃すべきなら対象の敵 id を返す（しないなら None）。speed は combatView の補正後値。
+    /// 攻撃者・対象の敵が揃ったときだけ判定する（match は入れ子にしない）。
+    def playerFollowUpEnemy(playerId: Int32, scene: Scene[NodeTag], roll: Int32): Option[Int32] =
+        let pOpt = PlayerScene.get(playerId, scene);
+        let eOpt = pOpt |> Option.flatMap(p -> p#attackTargetId)
+                        |> Option.flatMap(eid -> EnemyScene.get(eid, scene));
+        match (pOpt, eOpt) {
+            case (Some(p), Some(e)) =>
+                let braveT = PlayerData.equippedWeapon(p#weapons)
+                    |> Option.flatMap(w -> WeaponCatalog.braveThreshold(w#effect, w#effectValue));
+                let atkSpd = PlayerScene.combatView(p)#speed;
+                let defSpd = EnemyScene.combatView(e)#speed;
+                if (shouldFollowUp(atkSpd, defSpd, roll, Ring.hasPursuit(PlayerData.equippedRing(p)), p#followUpUsed)
+                    or braveFollowUp(atkSpd, defSpd, p#followUpUsed, braveT))
+                    p#attackTargetId
+                else None
+            case _ => None
+        }
+
+    /// 味方の追撃モーションを開始する（同じ敵へ再突進）。敵が消えていれば通常進行に落とす。
+    def startPlayerFollowUp(playerId: Int32, enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
+                              SelectedPlayer.State, Pacing.State} =
+        match EnemyScene.get(enemyId, scene) {
+            case Some(e) =>
+                GameLogger.playerLog("追撃！");
+                startAttack(Faction.Player, playerId, enemyId, e#gridPos, scene)
+            case None =>
+                resolvePlayerMainAttack(playerId, scene)
+        }
+
+    /// 味方主攻撃完了の従来分岐（追撃なし）。CounterAttackRules.decide で Kill/Counter/Commit。
+    def resolvePlayerMainAttack(playerId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
+                              SelectedPlayer.State, Pacing.State} =
+        let outcome = PlayerScene.get(playerId, scene)
+            |> Option.map(player -> CounterAttackRules.decide(player,
+                   player#attackTargetId
+                       |> Option.flatMap(eid -> EnemyScene.get(eid, scene))));
+        match outcome {
+            case None => scene
+            case Some(CounterAttackRules.Outcome.Kill) =>
+                let cleared = clearAttackTargetId(playerId, scene);
+                TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
+                Pacing.State.hold(700 |> Duration.millis);
+                cleared
+            case Some(CounterAttackRules.Outcome.Counter(enemyId)) =>
+                startEnemyCounter(enemyId, playerId, clearAttackTargetId(playerId, scene))
+            case Some(CounterAttackRules.Outcome.Commit) =>
+                TurnFlow.commitWaitedAndAdvance(clearAttackTargetId(playerId, scene))
         }
 
     /// 敵 enemyId による反撃モーションを開始する（Counter 分岐の本体）。
@@ -265,25 +330,65 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State} =
+                              SelectedPlayer.State, Math.Random} =
         if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttackHold) {
             let cleared = clearEnemyAttackTarget(enemyId, scene);
             TurnFlow.commitWaitedAndAdvance(cleared)
         } else {
-            // EnemyTurn 中の敵主攻撃完了。clear する前に attackTargetId を読み、
-            // 味方反撃の対象を決める（e#gridPos も clear 前の読み取りが必要）。
-            let decision = forM (
-                e <- EnemyScene.get(enemyId, scene)
-            ) yield (e, CounterAttackRules.decidePlayerCounter(e,
-                         e#attackTargetId
-                             |> Option.flatMap(pid -> PlayerScene.get(pid, scene))));
-            match decision {
-                case Some((e, CounterAttackRules.Outcome.Counter(playerId))) =>
-                    let cleared = clearEnemyAttackTarget(enemyId, scene);
-                    GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}の反撃");
-                    startAttack(Faction.Player, playerId, enemyId, e#gridPos, cleared)
-                case _ => clearEnemyAttackTarget(enemyId, scene)
+            // EnemyTurn 中の敵主攻撃完了。先に追撃リング判定（敵 speed 差+3 & 15% & 未追撃 & 味方生存）。
+            // 追撃するなら反撃判定より前に同じ味方へもう一度攻撃する。
+            match enemyFollowUpPlayer(enemyId, scene, rollPercent()) {
+                case Some(playerId) =>
+                    let marked = EnemyScene.mapEnemy(enemyId, d -> {followUpUsed = true | d}, scene);
+                    startEnemyFollowUp(enemyId, playerId, marked)
+                case None =>
+                    resolveEnemyMainAttack(enemyId, scene)
             }
+        }
+
+    /// 敵が追撃すべきなら対象の味方 id を返す（しないなら None）。speed は combatView の補正後値。
+    def enemyFollowUpPlayer(enemyId: Int32, scene: Scene[NodeTag], roll: Int32): Option[Int32] =
+        let eOpt = EnemyScene.get(enemyId, scene);
+        let pOpt = eOpt |> Option.flatMap(e -> e#attackTargetId)
+                        |> Option.flatMap(pid -> PlayerScene.get(pid, scene));
+        match (eOpt, pOpt) {
+            case (Some(e), Some(p)) =>
+                let braveT = e#weapon
+                    |> Option.flatMap(w -> WeaponCatalog.braveThreshold(w#effect, w#effectValue));
+                let atkSpd = EnemyScene.combatView(e)#speed;
+                let defSpd = PlayerScene.combatView(p)#speed;
+                if (shouldFollowUp(atkSpd, defSpd, roll, Ring.hasPursuit(e#ring), e#followUpUsed)
+                    or braveFollowUp(atkSpd, defSpd, e#followUpUsed, braveT))
+                    e#attackTargetId
+                else None
+            case _ => None
+        }
+
+    /// 敵の追撃モーションを開始する（同じ味方へ再突進）。味方が消えていれば反撃判定に落とす。
+    def startEnemyFollowUp(enemyId: Int32, playerId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger} =
+        match PlayerScene.get(playerId, scene) {
+            case Some(p) =>
+                GameLogger.enemyLog("追撃！");
+                startAttack(Faction.Enemy, enemyId, playerId, p#gridPos, scene)
+            case None =>
+                resolveEnemyMainAttack(enemyId, scene)
+        }
+
+    /// 敵主攻撃完了の従来分岐（追撃なし）。味方反撃の対象を決め、反撃なら startAttack。
+    def resolveEnemyMainAttack(enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger} =
+        let decision = forM (
+            e <- EnemyScene.get(enemyId, scene)
+        ) yield (e, CounterAttackRules.decidePlayerCounter(e,
+                     e#attackTargetId
+                         |> Option.flatMap(pid -> PlayerScene.get(pid, scene))));
+        match decision {
+            case Some((e, CounterAttackRules.Outcome.Counter(playerId))) =>
+                let cleared = clearEnemyAttackTarget(enemyId, scene);
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}の反撃");
+                startAttack(Faction.Player, playerId, enemyId, e#gridPos, cleared)
+            case _ => clearEnemyAttackTarget(enemyId, scene)
         }
 
     /// Player / Enemy ノードの毎フレーム process。AnimationPlayer から自分宛
@@ -300,6 +405,7 @@ mod CombatScene {
                         GameEngine.Audio, GameEngine.Game,
                         GameLogger.GameLogger,
                         CustomEffects.GameOverRequest,
+                        CustomEffects.ThiefDropRequest,
                         EnemyTurn.Queue, TurnPhase.State,
                         SelectedPlayer.State, Pacing.State, Math.Random} =
         match (PlayerScene.idFromPath(path), EnemyScene.idFromPath(path)) {
@@ -320,6 +426,7 @@ mod CombatScene {
                              GameEngine.Audio, GameEngine.Game,
                              GameLogger.GameLogger,
                              CustomEffects.GameOverRequest,
+                             CustomEffects.ThiefDropRequest,
                              EnemyTurn.Queue, TurnPhase.State,
                              SelectedPlayer.State, Pacing.State, Math.Random} =
         let ownerPath = match side {
@@ -387,8 +494,9 @@ mod CombatScene {
     /// ネストを避けるため Option を `forM` で短絡的に畳む。
     def applyDamageToEnemy(playerId: Int32, player: PlayerScene.Data, enemyId: Int32,
                             scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                               GameEngine.Game, GameLogger.GameLogger, Math.Random} =
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
+                               GameEngine.Game, GameLogger.GameLogger, Math.Random,
+                               CustomEffects.ThiefDropRequest} =
         let resolved = forM (
             weapon <- PlayerData.equippedWeapon(player#weapons);
             enemy  <- EnemyScene.get(enemyId, scene)
@@ -401,17 +509,21 @@ mod CombatScene {
     def resolveAttack(playerId: Int32, player: PlayerScene.Data,
                        weapon: UnitCatalog.WeaponResource, enemy: EnemyScene.Data,
                        enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                               GameEngine.Game, GameLogger.GameLogger, Math.Random} =
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
+                               GameEngine.Game, GameLogger.GameLogger, Math.Random,
+                               CustomEffects.ThiefDropRequest} =
         let plan       = attackForecast(player, weapon, enemy);
         let popupPos   = MapSnapshot.cellCenter(enemy#gridPos);
         let popupColor = DamagePopupScene.damageToEnemyColor();
         // 命中ロールと必殺ロールは別の乱数で独立に引く。
         let hitRoll    = rollPercent();
         let critRoll   = rollPercent();
+        // とどめのリング: 対象が瀕死（残 HP が割合以下）なら必中の必殺にする。
+        let finisherPct = Ring.finisherThreshold(PlayerData.equippedRing(player));
         let (afterDamage, expGain) =
             if (Combat.isHit(plan#hitRate, hitRoll)) {
-                let isCrit = Combat.isCrit(plan#crit, critRoll);
+                let isCrit = Combat.isCrit(plan#crit, critRoll)
+                             or Ring.finisherTriggers(enemy#hp, enemy#resource#hp, finisherPct);
                 // 必殺なら 3 倍ダメージで撃破判定をやり直し、plan を差し替える。
                 let finalPlan =
                     if (isCrit) {
@@ -424,7 +536,18 @@ mod CombatScene {
                     if (isCrit and finalPlan#killed and not plan#killed)
                         Combat.battleExp(enemy#resource#level, player#level, true)
                     else plan#exp;
-                (applyHit(playerId, enemyId, finalPlan, isCrit, weapon#weaponType, popupPos, popupColor, scene), expGained)
+                let afterHit = applyHit(playerId, enemyId, finalPlan, isCrit, weapon#weaponType, popupPos, popupColor, scene);
+                // みかえりのリング: 撃破したら攻撃側（味方）の HP を回復する。
+                let afterSteal =
+                    if (finalPlan#killed) applyPlayerLifesteal(playerId, player, afterHit)
+                    else afterHit;
+                // 血吸いの剣: 与ダメージの一定%を毎ヒット回復（撃破非依存）。
+                let afterWSteal = applyPlayerWeaponLifesteal(playerId, player, weapon, finalPlan#dmg, afterSteal);
+                // 如意棒 / 突風の書: 生存している敵をノックバック。
+                let afterKnock = applyAttackKnockback(weapon, player#gridPos, enemy#gridPos, enemyId, finalPlan#killed, afterWSteal);
+                // 盗人の剣: ローグ装備時、命中・生存時に確率でフロア表からアイテムを落とす。
+                let afterThief = maybeThiefDrop(playerId, player, weapon, enemyId, enemy#gridPos, finalPlan#killed, rollPercent(), afterKnock);
+                (afterThief, expGained)
             } else
                 (applyMiss(playerId, enemyId, popupPos, popupColor, scene), 0);
         let afterWeapon = consumeEquippedWeapon(playerId, weapon, afterDamage);
@@ -432,6 +555,73 @@ mod CombatScene {
         // 敵ターン終了後にまとめてパネル表示する）。
         if (expGain <= 0) afterWeapon
         else applyExpGain(playerId, expGain, afterWeapon)
+
+    /// みかえりのリングを装備した味方が撃破したとき、その味方の HP を回復する（最大 HP でクランプ）。
+    /// リング未装備 / Lifesteal 以外なら回復量 0 で no-op。
+    def applyPlayerLifesteal(playerId: Int32, player: PlayerScene.Data,
+                              scene: Scene[NodeTag]): Scene[NodeTag] =
+        let amt = Ring.lifestealAmount(PlayerData.equippedRing(player));
+        if (amt <= 0) scene
+        else
+            let newHp = Combat.heal(player#hp, player#resource#hp, amt)#newHp;
+            scene
+                |> PlayerScene.mapPlayer(playerId, d -> {hp = newHp | d})
+                |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), newHp)
+
+    /// 血吸いの剣: 与えたダメージの `effectValue`% を攻撃側へ回復（毎ヒット・撃破非依存）。
+    /// 攻撃側の HP は自分の攻撃では変わらないので `player#hp` をそのまま基準にしてよい。
+    def applyPlayerWeaponLifesteal(playerId: Int32, player: PlayerScene.Data,
+                                    weapon: UnitCatalog.WeaponResource, dmgDealt: Int32,
+                                    scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+        let pct = WeaponCatalog.lifestealPercent(weapon#effect, weapon#effectValue);
+        if (pct <= 0 or dmgDealt <= 0) scene
+        else
+            let amt = (dmgDealt * pct) / 100;
+            let newHp = Combat.heal(player#hp, player#resource#hp, amt)#newHp;
+            GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}は 血を吸って HP+${newHp - player#hp}");
+            scene
+                |> PlayerScene.mapPlayer(playerId, d -> {hp = newHp | d})
+                |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), newHp)
+
+    /// 如意棒 / 突風の書: ノックバック武器なら、生存している敵を攻撃方向へ押し流す。
+    /// 上限マス数は `effectValue`（0=無制限）。`Staff.deltaToDirection` で 4 方位に丸める。
+    def applyAttackKnockback(weapon: UnitCatalog.WeaponResource,
+                              attackerPos: {x = Int32, y = Int32},
+                              defenderPos: {x = Int32, y = Int32},
+                              enemyId: Int32, killed: Bool,
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        match WeaponCatalog.knockbackTiles(weapon#effect, weapon#effectValue) {
+            case None        => scene
+            case Some(tiles) => if (killed) scene else pushEnemyBack(tiles, attackerPos, defenderPos, enemyId, scene)
+        }
+
+    /// ノックバック本体: 方向算出 → `knockbackPathCapped` の最終着地へ `snapTo`。
+    def pushEnemyBack(tiles: Int32, attackerPos: {x = Int32, y = Int32},
+                       defenderPos: {x = Int32, y = Int32}, enemyId: Int32,
+                       scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        let dir = Staff.toVec2i(Staff.deltaToDirection(
+                    defenderPos#x - attackerPos#x, defenderPos#y - attackerPos#y));
+        let board: Board = BoardSnapshot.fromScene(scene);
+        let cap = if (tiles <= 0) None else Some(tiles);
+        match List.last(Board.knockbackPathCapped(defenderPos, dir, board, cap)) {
+            case None       => scene
+            case Some(last) => EnemyScene.snapTo(enemyId, last, scene)
+        }
+
+    /// 盗人の剣: 装備者がローグ かつ 命中・敵生存 かつ `roll < effectValue`% のとき、
+    /// `ThiefDropRequest` を emit してフロアのドロップ表からアイテムを敵の足元に落とす。
+    def maybeThiefDrop(_playerId: Int32, player: PlayerScene.Data,
+                        weapon: UnitCatalog.WeaponResource, enemyId: Int32,
+                        enemyCell: {x = Int32, y = Int32}, killed: Bool, roll: Int32,
+                        scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {CustomEffects.ThiefDropRequest, GameLogger.GameLogger} =
+        let pct = WeaponCatalog.thiefDropChance(weapon#effect, weapon#effectValue);
+        let isRogue = player#resource#description == "ローグ";
+        if (pct <= 0 or not isRogue or killed or roll >= pct) scene
+        else {
+            GameLogger.playerLog("${EnemyScene.displayName(enemyId, scene)}が アイテムを落とした");
+            CustomEffects.ThiefDropRequest.drop(enemyCell, scene)
+        }
 
     /// 回避: miss SE を鳴らし "miss" を浮かす。HP も死亡演出も変えない。
     def applyMiss(playerId: Int32, enemyId: Int32, popupPos: Vec2.Vec2, color: Color,
@@ -464,7 +654,12 @@ mod CombatScene {
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger} =
         AudioStreamPlayer.play(hitSoundName(plan#dmg, isCrit, weaponType));
-        let withPopup = DamagePopupScene.emit(popupPos, plan#dmg, color, scene);
+        // 魔法攻撃（マージ等）の着弾時は敵中心に爆発エフェクトを出す。
+        let withFx = match weaponType {
+            case WeaponCatalog.WeaponType.Magic => ExplosionScene.emitNormal(popupPos, scene)
+            case _                              => scene
+        };
+        let withPopup = DamagePopupScene.emit(popupPos, plan#dmg, color, withFx);
         // 必殺のときはログ先頭に「必殺！」を付ける。
         let critTag = if (isCrit) "必殺！ " else "";
         if (plan#killed) {
@@ -476,9 +671,11 @@ mod CombatScene {
             GameLogger.playerLog("${critTag}${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}に ${plan#dmg}ダメージ与えた");
             // 攻撃を受けた敵は起動する（GuardUntilInRange を射程外から射ても動き出す）。
             // alerted は一方向フラグなので、ここで立てれば次の敵ターン以降ずっと追跡に入る。
+            // 殴られたので、かなしばり中なら完全停止を解除する。
             withPopup
                 |> EnemyScene.mapEnemy(enemyId, enemyData -> {hp = plan#newHp, alerted = true | enemyData})
                 |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), plan#newHp)
+                |> EnemyScene.releaseBind(enemyId)
         }
 
     /// FE ルールに従い、攻撃を振った時点で装備武器（先頭）の耐久を 1 減らす（回避されても同様）。
@@ -510,7 +707,8 @@ mod CombatScene {
     def applyDamageToPlayer(enemyId: Int32, enemy: EnemyScene.Data, targetId: Int32,
                              scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random} =
+            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
+             Tween.Scheduler} =
         // 前提（武器あり・対象あり）の解決だけを担う。実体は resolveEnemyAttack に委譲。
         let resolved = forM (
             weapon <- enemy#weapon;
@@ -525,7 +723,8 @@ mod CombatScene {
                             weapon: UnitCatalog.WeaponResource, player: PlayerScene.Data,
                             targetId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random} =
+            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
+             Tween.Scheduler} =
         let strike = resolveStrike(EnemyScene.combatView(enemy),
                                    PlayerScene.combatView(player));
         let roll = rollPercent();
@@ -538,9 +737,11 @@ mod CombatScene {
                 AudioStreamPlayer.play("miss");
                 (DamagePopupScene.emitText(popupPos, "miss", popupColor, scene), Nil)
             } else {
-                // 命中: 必殺ロールを引き、必殺なら 3 倍ダメージで撃破判定をやり直す。
+                // 命中: 必殺ロールを引く。とどめのリングを敵が持ち味方が瀕死なら必中の必殺。
                 let critRoll = rollPercent();
-                let crit = Combat.isCrit(strike#crit, critRoll);
+                let crit = Combat.isCrit(strike#crit, critRoll)
+                           or Ring.finisherTriggers(player#hp, player#resource#hp,
+                                                    Ring.finisherThreshold(enemy#ring));
                 // ベース(非必殺)の dmg/newHp/killed を 1 レコードにまとめ、必殺ならその上を
                 // applyCrit の値で更新する（resolveAttack と同じ record-update 形）。
                 let baseOutcome = {dmg = strike#dmg, newHp = strike#newHp, killed = strike#killed};
@@ -558,12 +759,19 @@ mod CombatScene {
                     GameLogger.enemyLog("${critTag}${enemy#resource#description}は ${player#resource#description}に ${outcome#dmg}ダメージ与えた")
                 };
                 let withPopup = DamagePopupScene.emit(popupPos, outcome#dmg, popupColor, scene);
+                // 殴られたので、かなしばり中なら完全停止を解除する。
                 let dmgScene = withPopup
                     |> PlayerScene.mapPlayer(targetId,
                         playerData -> {hp = outcome#newHp | playerData})
-                    |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), outcome#newHp);
-                if (outcome#killed) (dmgScene, targetId :: Nil)
-                else (dmgScene, Nil)
+                    |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), outcome#newHp)
+                    |> PlayerScene.releaseBind(targetId);
+                // みかえりのリング: 敵が味方を倒したら、その敵の HP を回復する。
+                let afterRingSteal = if (outcome#killed) applyEnemyLifesteal(enemyId, enemy, dmgScene) else dmgScene;
+                // 血吸いの剣（敵装備時）: 与ダメージの一定%を回復（撃破非依存）。
+                let afterWSteal = applyEnemyWeaponLifesteal(enemyId, enemy, weapon, outcome#dmg, afterRingSteal);
+                // 如意棒 / 突風の書（敵装備時）: 生存している味方をノックバック。
+                let afterKnock = applyEnemyKnockback(weapon, enemy#gridPos, player#gridPos, targetId, outcome#killed, afterWSteal);
+                if (outcome#killed) (afterKnock, targetId :: Nil) else (afterKnock, Nil)
             };
         // FE ルールでは攻撃を振った時点で耐久を消費する（回避されても同様）
         let consumed = Weapon.consume(weapon);
@@ -573,6 +781,56 @@ mod CombatScene {
         let withWeaponUpdate = EnemyScene.mapEnemy(enemyId,
             d -> {weapon = consumed | d}, damaged);
         (withWeaponUpdate, killed)
+
+    /// みかえりのリングを装備した敵が撃破したとき、その敵の HP を回復する（最大 HP でクランプ）。
+    /// リング未装備 / Lifesteal 以外なら回復量 0 で no-op。
+    def applyEnemyLifesteal(enemyId: Int32, enemy: EnemyScene.Data,
+                             scene: Scene[NodeTag]): Scene[NodeTag] =
+        let amt = Ring.lifestealAmount(enemy#ring);
+        if (amt <= 0) scene
+        else
+            let newHp = Combat.heal(enemy#hp, enemy#resource#hp, amt)#newHp;
+            scene
+                |> EnemyScene.mapEnemy(enemyId, d -> {hp = newHp | d})
+                |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), newHp)
+
+    /// 血吸いの剣を敵が装備していたとき: 与ダメージの `effectValue`% を敵へ回復（毎ヒット）。
+    def applyEnemyWeaponLifesteal(enemyId: Int32, enemy: EnemyScene.Data,
+                                   weapon: UnitCatalog.WeaponResource, dmgDealt: Int32,
+                                   scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+        let pct = WeaponCatalog.lifestealPercent(weapon#effect, weapon#effectValue);
+        if (pct <= 0 or dmgDealt <= 0) scene
+        else
+            let amt = (dmgDealt * pct) / 100;
+            let newHp = Combat.heal(enemy#hp, enemy#resource#hp, amt)#newHp;
+            GameLogger.enemyLog("${enemy#resource#description}は 血を吸って HP+${newHp - enemy#hp}");
+            scene
+                |> EnemyScene.mapEnemy(enemyId, d -> {hp = newHp | d})
+                |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), newHp)
+
+    /// 敵の如意棒 / 突風の書: ノックバック武器なら、生存している味方を攻撃方向へ押し流す。
+    def applyEnemyKnockback(weapon: UnitCatalog.WeaponResource,
+                             attackerPos: {x = Int32, y = Int32},
+                             defenderPos: {x = Int32, y = Int32},
+                             targetId: Int32, killed: Bool,
+                             scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        match WeaponCatalog.knockbackTiles(weapon#effect, weapon#effectValue) {
+            case None        => scene
+            case Some(tiles) => if (killed) scene else pushPlayerBack(tiles, attackerPos, defenderPos, targetId, scene)
+        }
+
+    /// 味方ノックバック本体: 方向算出 → `knockbackPathCapped` の最終着地へ `snapTo`。
+    def pushPlayerBack(tiles: Int32, attackerPos: {x = Int32, y = Int32},
+                        defenderPos: {x = Int32, y = Int32}, targetId: Int32,
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        let dir = Staff.toVec2i(Staff.deltaToDirection(
+                    defenderPos#x - attackerPos#x, defenderPos#y - attackerPos#y));
+        let board: Board = BoardSnapshot.fromScene(scene);
+        let cap = if (tiles <= 0) None else Some(tiles);
+        match List.last(Board.knockbackPathCapped(defenderPos, dir, board, cap)) {
+            case None       => scene
+            case Some(last) => PlayerScene.snapTo(targetId, last, scene)
+        }
 
     /// 6 ステータスぶんの成長判定用乱数 (各 0..99) をまとめて振る。
     /// 値の意味づけ・成長判定は LevelSystem 側のピュア関数が行う。

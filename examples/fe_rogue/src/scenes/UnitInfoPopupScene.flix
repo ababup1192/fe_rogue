@@ -386,7 +386,8 @@ mod UnitInfoPopupScene {
             |> Sprite2D.setCentered(false);
         let withIcon = Scene.addChildAt(panelPath(), "EquipIcon",
             EngineNode.Sprite2DWithState(iconSprite, NodeTag.NoTag), scene);
-        let label = Label2D.make("${weapon#name} ${weapon#durability}", atlas, fontSizeSmall())
+        // この行は装備中の武器（weapons 先頭）なので常に E マークを付ける。
+        let label = Label2D.make("E ${weapon#name} ${weapon#durability}", atlas, fontSizeSmall())
             |> Node2D.setPosition({x = equipTextX(), y = equipRowY()})
             |> CanvasItem.setModulate(textColor());
         Scene.addChildAt(panelPath(), "EquipText",

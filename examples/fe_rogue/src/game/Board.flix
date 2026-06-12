@@ -528,6 +528,18 @@ mod Board {
         else if (isOccupied(next, board)) List.reverse(acc)
         else knockbackLoop(next, dir, board, next :: acc)
 
+    /// `knockbackPath` を最大 `maxTiles` マスに制限する版。如意棒（2 マス）など距離上限つき用。
+    /// `None` または 0 以下なら無制限（突風の書）。壁/駒での停止は `knockbackPath` 同様に効く。
+    pub def knockbackPathCapped(hitCell: {x = Int32, y = Int32},
+                                 dir: {x = Int32, y = Int32},
+                                 board: Board, maxTiles: Option[Int32]):
+            List[{x = Int32, y = Int32}] =
+        let full = knockbackPath(hitCell, dir, board);
+        match maxTiles {
+            case Some(n) => if (n <= 0) full else List.take(n, full)
+            case None    => full
+        }
+
     /// セル一覧から重複 (x,y 一致) を除く。先に出たものを残す（順序保持・先勝ち）。
     /// spawn 配置・再配置・危険域表示など、座標集合を作る各所で共有する。
     /// 先勝ちにする理由: spawn 等では先に列挙された（優先度が高い）配置を維持し、

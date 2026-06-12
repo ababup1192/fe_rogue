@@ -291,7 +291,7 @@ mod CursorScene {
         else
             let nextScene = match enemyId {
                 case Some(id) =>
-                    GameLogger.playerLog("敵${id}を捕捉");
+                    GameLogger.playerLog("${EnemyScene.displayName(id, scene)}を捕捉");
                     // 移動範囲(白)を先に組み、その reachable を読んで攻撃到達範囲(赤)を重ねる
                     EnemyRangeScene.refreshFor(id, scene)
                         |> EnemyAttackRangeScene.refreshFor(id)

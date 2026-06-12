@@ -130,15 +130,29 @@ mod StaffCastScene {
                 applySwapWithPlayer(playerId, player#gridPos, otherId, otherCell, scene)
             case (Staff.StaffEffect.Swap, RayHit.HitEnemy(enemyId, enemyCell)) =>
                 applySwapWithEnemy(playerId, player#gridPos, enemyId, enemyCell, scene)
+            case (Staff.StaffEffect.Bind, RayHit.HitPlayer(targetId, _)) =>
+                applyBindToPlayer(PlayerScene.displayName(playerId, scene), targetId, scene)
+            case (Staff.StaffEffect.Bind, RayHit.HitEnemy(targetId, _)) =>
+                applyBindToEnemy(PlayerScene.displayName(playerId, scene), targetId, scene)
+            case (Staff.StaffEffect.Stopgap, RayHit.HitPlayer(targetId, _)) =>
+                applyStopgapToPlayer(PlayerScene.displayName(playerId, scene), targetId, scene)
+            case (Staff.StaffEffect.Stopgap, RayHit.HitEnemy(targetId, _)) =>
+                applyStopgapToEnemy(PlayerScene.displayName(playerId, scene), targetId, scene)
             // 空振り系: 効果なし、ログだけ（実際の杖名を表示する）
             case (Staff.StaffEffect.Heal, _) =>
-                GameLogger.playerLog("P${playerId} の ${staff#name} は届かなかった");
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった");
                 scene
             case (Staff.StaffEffect.Blowback, _) =>
-                GameLogger.playerLog("P${playerId} の ${staff#name} は届かなかった");
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった");
                 scene
             case (Staff.StaffEffect.Swap, _) =>
-                GameLogger.playerLog("P${playerId} の ${staff#name} は消えた");
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は消えた");
+                scene
+            case (Staff.StaffEffect.Bind, _) =>
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった");
+                scene
+            case (Staff.StaffEffect.Stopgap, _) =>
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった");
                 scene
         }
 
@@ -154,7 +168,7 @@ mod StaffCastScene {
             case Some(target) =>
                 let result = Combat.heal(target#hp, target#resource#hp, amount);
                 let healed = result#newHp - target#hp;
-                GameLogger.playerLog("P${srcId} → P${targetId} を ${healed}回復");
+                GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} → ${PlayerScene.displayName(targetId, scene)} を ${healed}回復");
                 scene
                     |> PlayerScene.mapPlayer(targetId, d -> {hp = result#newHp | d})
                     |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), result#newHp)
@@ -170,7 +184,7 @@ mod StaffCastScene {
             case Some(enemy) =>
                 let result = Combat.heal(enemy#hp, enemy#resource#hp, amount);
                 let healed = result#newHp - enemy#hp;
-                GameLogger.playerLog("P${srcId} → 敵${enemyId} を ${healed}回復");
+                GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} → ${EnemyScene.displayName(enemyId, scene)} を ${healed}回復");
                 scene
                     |> EnemyScene.mapEnemy(enemyId, d -> {hp = result#newHp | d})
                     |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), result#newHp)
@@ -191,7 +205,7 @@ mod StaffCastScene {
                     |> PlayerScene.mapPlayer(targetId, d -> {hp = dmgResult#newHp | d})
                     |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), dmgResult#newHp);
                 GameLogger.playerLog(
-                    "P${srcId} → P${targetId} を ふきとばし (1ダメージ)");
+                    "${PlayerScene.displayName(srcId, scene)} → ${PlayerScene.displayName(targetId, scene)} を ふきとばし (1ダメージ)");
                 if (dmgResult#isDead) withDamage
                 else applyBlowbackMove(targetId, hitCell, dir, withDamage,
                                         cell -> PlayerScene.snapTo(targetId, cell, withDamage))
@@ -209,7 +223,7 @@ mod StaffCastScene {
             case Some(enemy) =>
                 let dmgResult = Combat.damage(hp = enemy#hp, amount = 1);
                 if (dmgResult#isDead) {
-                    GameLogger.playerLog("P${srcId} → 敵${enemyId} を ふきとばし撃破");
+                    GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} → ${EnemyScene.displayName(enemyId, scene)} を ふきとばし撃破");
                     scene
                         |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), 0)
                         |> EnemyScene.startDeathAnimation(enemyId)
@@ -218,7 +232,7 @@ mod StaffCastScene {
                         |> EnemyScene.mapEnemy(enemyId, d -> {hp = dmgResult#newHp | d})
                         |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), dmgResult#newHp);
                     GameLogger.playerLog(
-                        "P${srcId} → 敵${enemyId} を ふきとばし (1ダメージ)");
+                        "${PlayerScene.displayName(srcId, scene)} → ${EnemyScene.displayName(enemyId, scene)} を ふきとばし (1ダメージ)");
                     applyBlowbackMove(enemyId, hitCell, dir, withDamage,
                                        cell -> EnemyScene.snapTo(enemyId, cell, withDamage))
                 }
@@ -245,7 +259,7 @@ mod StaffCastScene {
                               otherId: Int32, otherCell: {x = Int32, y = Int32},
                               scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
-        GameLogger.playerLog("P${srcId} と P${otherId} がいれかわった");
+        GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} と ${PlayerScene.displayName(otherId, scene)} がいれかわった");
         scene
             |> PlayerScene.snapTo(srcId, otherCell)
             |> PlayerScene.snapTo(otherId, srcCell)
@@ -256,10 +270,88 @@ mod StaffCastScene {
                              enemyId: Int32, enemyCell: {x = Int32, y = Int32},
                              scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
-        GameLogger.playerLog("P${srcId} と 敵${enemyId} がいれかわった");
+        GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} と ${EnemyScene.displayName(enemyId, scene)} がいれかわった");
         scene
             |> PlayerScene.snapTo(srcId, enemyCell)
             |> EnemyScene.snapTo(enemyId, srcCell)
+
+    // ── かなしばり / 一時しのぎ（完全停止 / 停止 + ワープ）──────────────
+
+    /// 完全停止を 1 件付与する純粋関数。既に停止中なら重複させず据え置く。
+    def bindStatuses(xs: List[StatusSystem.Status]): List[StatusSystem.Status] =
+        if (StatusSystem.isImmobilized(xs)) xs
+        else StatusSystem.add(StatusSystem.immobilize(), xs)
+
+    /// かなしばり × 味方: 対象を完全停止にする。`srcLabel` は撃った側の表示名（敵詠唱でも使う）。
+    def applyBindToPlayer(srcLabel: String, targetId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        GameLogger.playerLog("${srcLabel} は ${PlayerScene.displayName(targetId, scene)} を かなしばりにした");
+        PlayerScene.mapPlayer(targetId, d -> {statuses = bindStatuses(d#statuses) | d}, scene)
+
+    /// かなしばり × 敵: 対象を完全停止にする。
+    def applyBindToEnemy(srcLabel: String, enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        GameLogger.playerLog("${srcLabel} は ${EnemyScene.displayName(enemyId, scene)} を かなしばりにした");
+        EnemyScene.mapEnemy(enemyId, d -> {statuses = bindStatuses(d#statuses) | d}, scene)
+
+    /// 一時しのぎ × 味方: 完全停止にしたうえで階段（埋まっていれば隣接の空き）へワープさせる。
+    def applyStopgapToPlayer(srcLabel: String, targetId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+        let bound = applyBindToPlayer(srcLabel, targetId, scene);
+        warpPlayer(targetId, bound)
+
+    /// 一時しのぎ × 敵: 同上（敵対象）。
+    def applyStopgapToEnemy(srcLabel: String, enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+        let bound = applyBindToEnemy(srcLabel, enemyId, scene);
+        warpEnemy(enemyId, bound)
+
+    /// 味方をワープ先（階段 or 隣接空き）へ瞬間移動させる。行き先が無ければ停止のみ。
+    def warpPlayer(targetId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+        let board = BoardSnapshot.fromScene(scene);
+        match warpCellFor(StairsScene.getPos(scene), board) {
+            case Some(cell) =>
+                GameLogger.playerLog("${PlayerScene.displayName(targetId, scene)} は 階段の方へ とばされた");
+                PlayerScene.snapTo(targetId, cell, scene)
+            case None       =>
+                GameLogger.playerLog("ワープ先がなかった");
+                scene
+        }
+
+    /// 敵をワープ先（階段 or 隣接空き）へ瞬間移動させる。行き先が無ければ停止のみ。
+    def warpEnemy(enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+        let board = BoardSnapshot.fromScene(scene);
+        match warpCellFor(StairsScene.getPos(scene), board) {
+            case Some(cell) =>
+                GameLogger.playerLog("${EnemyScene.displayName(enemyId, scene)} は 階段の方へ とばされた");
+                EnemyScene.snapTo(enemyId, cell, scene)
+            case None       =>
+                GameLogger.playerLog("ワープ先がなかった");
+                scene
+        }
+
+    /// ワープ先セルを選ぶ純粋関数。階段が空いていれば階段、埋まっていれば階段に隣接する
+    /// 歩ける空きマス、どちらも無ければ None（停止だけ適用してワープしない）。
+    pub def warpCellFor(stairs: Option[{x = Int32, y = Int32}], board: Board):
+            Option[{x = Int32, y = Int32}] =
+        match stairs {
+            case None     => None
+            case Some(st) =>
+                if (not Board.isOccupied(st, board)) Some(st)
+                else adjacentFreeCell(st, board)
+        }
+
+    /// 中心セルに隣接する 4 マスのうち、歩けて空いているマスを 1 つ返す（無ければ None）。
+    def adjacentFreeCell(center: {x = Int32, y = Int32}, board: Board):
+            Option[{x = Int32, y = Int32}] =
+        let dirs = Staff.Direction.Up :: Staff.Direction.Down
+                    :: Staff.Direction.Left :: Staff.Direction.Right :: Nil;
+        dirs
+            |> List.map(d -> Board.stepTarget(center, Staff.toVec2i(d)))
+            |> List.filter(c -> Board.isWalkable(board, c) and not Board.isOccupied(c, board))
+            |> List.head
 
     /// 杖の耐久を 1 減らし、0 なら staves から除去 + 破損ログ。
     def consumeStaff(playerId: Int32, staffIdx: Int32, staff: Staff.StaffResource,
@@ -268,7 +360,7 @@ mod StaffCastScene {
         let consumed = Staff.consume(staff);
         let newStaves = replaceOrDropAt(staffIdx, consumed, PlayerScene.getStaves(playerId, scene));
         if (Option.isEmpty(consumed))
-            GameLogger.playerLog("P${playerId} の ${staff#name} がこわれた")
+            GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} がこわれた")
         else ();
         PlayerScene.mapPlayer(playerId, d -> {staves = newStaves | d}, scene)
 
@@ -325,7 +417,7 @@ mod StaffCastScene {
             case Consumable.ConsumableEffect.SpdUp    =>
                 applySelfStatus(playerId, item, StatusSystem.StatusEffect.SpdUp, scene)
             case _                                    =>
-                GameLogger.playerLog("P${playerId} の ${item#name} は ここでは使えなかった");
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${item#name} は ここでは使えなかった");
                 scene
         }
 
@@ -338,7 +430,7 @@ mod StaffCastScene {
             Scene[NodeTag] \ GameLogger.GameLogger =
         let result = Combat.heal(player#hp, player#resource#hp, item#magnitude);
         let healed = result#newHp - player#hp;
-        GameLogger.playerLog("P${playerId} は ${item#name} で ${healed}回復");
+        GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${item#name} で ${healed}回復");
         scene
             |> PlayerScene.mapPlayer(playerId, d -> {hp = result#newHp | d})
             |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), result#newHp)
@@ -350,7 +442,7 @@ mod StaffCastScene {
             Scene[NodeTag] \ GameLogger.GameLogger =
         let maxHp  = player#resource#hp;
         let healed = maxHp - player#hp;
-        GameLogger.playerLog("P${playerId} は ${item#name} で ${healed}回復");
+        GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${item#name} で ${healed}回復");
         scene
             |> PlayerScene.mapPlayer(playerId, d -> {hp = maxHp | d})
             |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), maxHp)
@@ -363,7 +455,7 @@ mod StaffCastScene {
         let inc    = item#magnitude;
         let newMax = player#resource#hp + inc;
         let newHp  = player#hp + inc;
-        GameLogger.playerLog("P${playerId} は ${item#name} で 最大HP+${inc}");
+        GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${item#name} で 最大HP+${inc}");
         scene
             |> PlayerScene.mapPlayer(playerId,
                 d -> {hp = newHp, resource = {hp = newMax | d#resource} | d})
@@ -375,7 +467,7 @@ mod StaffCastScene {
                          kind: StatusSystem.StatusEffect, scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
         let status = {effect = kind, magnitude = item#magnitude, remaining = item#duration};
-        GameLogger.playerLog("P${playerId} は ${item#name} を使った (${item#duration}ターン)");
+        GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${item#name} を使った (${item#duration}ターン)");
         PlayerScene.mapPlayer(playerId,
             d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
 
@@ -388,7 +480,7 @@ mod StaffCastScene {
         let consumed = Consumable.consume(item);
         let newConsumables = replaceOrDropAt(idx, consumed, PlayerScene.getConsumables(playerId, scene));
         if (Option.isEmpty(consumed))
-            GameLogger.playerLog("P${playerId} の ${item#name} を使い切った")
+            GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${item#name} を使い切った")
         else ();
         PlayerScene.mapPlayer(playerId, d -> {consumables = newConsumables | d}, scene)
 
@@ -438,19 +530,19 @@ mod StaffCastScene {
             Scene[NodeTag] \ GameLogger.GameLogger =
         match (directionalStatus(item), hit) {
             case (Some(status), RayHit.HitEnemy(enemyId, _))   =>
-                GameLogger.playerLog("P${playerId} は 敵${enemyId} に ${item#name} を当てた");
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${EnemyScene.displayName(enemyId, scene)} に ${item#name} を当てた");
                 EnemyScene.mapEnemy(enemyId,
                     d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
             case (Some(status), RayHit.HitPlayer(targetId, _)) =>
-                GameLogger.playerLog("P${playerId} は P${targetId} に ${item#name} を当てた");
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${PlayerScene.displayName(targetId, scene)} に ${item#name} を当てた");
                 PlayerScene.mapPlayer(targetId,
                     d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
             // 効果が投擲系でない（None）→ 不発。投擲系だが壁/盤外に消えた → 届かなかった。
             case (None, _)                                     =>
-                GameLogger.playerLog("P${playerId} の ${item#name} は不発に終わった");
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${item#name} は不発に終わった");
                 scene
             case (Some(_), _)                                  =>
-                GameLogger.playerLog("P${playerId} の ${item#name} は届かなかった");
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${item#name} は届かなかった");
                 scene
         }
 
@@ -463,7 +555,538 @@ mod StaffCastScene {
             case Consumable.ConsumableEffect.SpdDownHit =>
                 Some({effect = StatusSystem.StatusEffect.SpdDown,
                       magnitude = item#magnitude, remaining = item#duration})
+            case Consumable.ConsumableEffect.DefDownHit =>
+                Some({effect = StatusSystem.StatusEffect.DefDown,
+                      magnitude = item#magnitude, remaining = item#duration})
             case _                                      => None
+        }
+
+    // ────────────────────────────────────────────────────────
+    // アイテム投擲（一律「投げる」） — 武器 / 杖 / 薬 を方向投擲する
+    //   命中率は 60%（レンジャー・ローグは 80%）。当たれば:
+    //     武器 → 攻撃力の 8 割を防御無視で与える
+    //     薬   → 薬の効果が当たったキャラに出る
+    //     杖   → 杖の効果が当たったキャラに出る（発動と同じ）
+    //     指輪 → 効果なし
+    //   外れ / 空振りでもアイテムは 1 個消費し、ターンを消費する。
+    // ────────────────────────────────────────────────────────
+
+    /// 「投げる」を実行する。`StaffAim`（投擲モード）で Z 確定時に方向付きで呼ばれる。
+    /// 該当プレイヤー / アイテムは各 throw* が解決するので、ここはプレイヤー解決のみ。
+    pub def applyThrow(playerId: Int32, kind: PlayerData.ItemKind,
+                        direction: Staff.Direction, scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
+                Math.Random, CustomEffects.GameOverRequest} =
+        let cast = forM (player <- PlayerScene.get(playerId, scene))
+            yield fireThrow(playerId, kind, player, direction, scene);
+        Option.getWithDefault(scene, cast)
+
+    /// 投擲本体: レイキャスト → 命中ロール込みで効果適用 → 投擲アイテム消費 → 選択クリア → ターン進行。
+    def fireThrow(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerScene.Data,
+                   direction: Staff.Direction, scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
+                Math.Random, CustomEffects.GameOverRequest} =
+        let board = BoardQuery.board();
+        let dir   = Staff.toVec2i(direction);
+        let hit   = Board.rayCast(player#gridPos, dir, staffMaxRange(), board);
+        let afterEffect  = applyThrowHit(playerId, kind, player, dir, hit, scene);
+        let afterConsume = consumeThrownItem(playerId, kind, afterEffect);
+        let cleared      = PlayerScene.clearSelectedItem(playerId, afterConsume);
+        TurnFlow.commitWaitedAndAdvance(cleared)
+
+    /// 当たり対象（キャラ）が居れば命中ロールへ、壁・盤外なら空振りログのみ。1 段マッチ。
+    def applyThrowHit(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerScene.Data,
+                       dir: {x = Int32, y = Int32}, hit: RayHit, scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
+                Math.Random, CustomEffects.GameOverRequest, SelectedPlayer.State,
+                GameEngine.Audio} =
+        match hit {
+            case RayHit.HitEnemy(_, _)  => rolledThrow(playerId, kind, player, dir, hit, scene)
+            case RayHit.HitPlayer(_, _) => rolledThrow(playerId, kind, player, dir, hit, scene)
+            case _                      =>
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の 投げ は届かなかった");
+                scene
+        }
+
+    /// 命中ロール（60% / レンジャー・ローグは 80%）を引き、当たれば種別ごとに効果を適用する。
+    def rolledThrow(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerScene.Data,
+                     dir: {x = Int32, y = Int32}, hit: RayHit, scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
+                Math.Random, CustomEffects.GameOverRequest, SelectedPlayer.State,
+                GameEngine.Audio} =
+        let roll = throwRoll();
+        let threshold = Combat.throwHitRate(isAccurateThrower(player));
+        if (not Combat.isHit(threshold, roll)) {
+            GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の 投げ は外れた");
+            scene
+        } else
+            dispatchThrowEffect(playerId, kind, player, dir, hit, scene)
+
+    /// 命中ロール用の 0..99 一様乱数（`CombatScene.rollPercent` と同形）。
+    def throwRoll(): Int32 \ Math.Random =
+        Float64.truncateToInt32(Float64.floor(Math.Random.randomFloat64() * 100.0))
+
+    /// 投げ手が命中の高い職（レンジャー / ローグ）か。`resource#description` を職名として判定する。
+    def isAccurateThrower(player: PlayerScene.Data): Bool =
+        let cls = player#resource#description;
+        cls == "レンジャー" or cls == "ローグ"
+
+    /// 当たったキャラへ種別ごとの効果を適用する。各アイテム取得は forM、効果適用は別関数へ委譲し
+    /// match のネストを避ける。
+    def dispatchThrowEffect(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerScene.Data,
+                             dir: {x = Int32, y = Int32}, hit: RayHit, scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio} =
+        match kind {
+            case PlayerData.ItemKind.Weapon(idx) =>
+                Option.getWithDefault(scene,
+                    forM (w <- List.nth(idx, player#weapons))
+                        yield throwWeaponResolved(playerId, player, w, hit, scene))
+            case PlayerData.ItemKind.Consumable(idx) =>
+                Option.getWithDefault(scene,
+                    forM (c <- List.nth(idx, player#consumables))
+                        yield throwConsumableHit(playerId, c, hit, scene))
+            case PlayerData.ItemKind.Staff(idx) =>
+                Option.getWithDefault(scene,
+                    forM (s <- List.nth(idx, player#staves))
+                        yield applyStaffEffect(playerId, player, s, dir, hit, scene))
+            case PlayerData.ItemKind.Ring(_) =>
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の 指輪 を投げたが 効果はなかった");
+                scene
+        }
+
+    /// 武器投げの解決。攻撃力の 8 割（防御無視・最低 1）を当たったキャラへ与える。1 段マッチ。
+    def throwWeaponResolved(playerId: Int32, player: PlayerScene.Data,
+                             weapon: UnitCatalog.WeaponResource, hit: RayHit, scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
+                CustomEffects.GameOverRequest, SelectedPlayer.State} =
+        let atkPower = Combat.attackStatFor(player#resource#attack, player#resource#magicAttack,
+                                             weapon#attack, WeaponCatalog.isPhysical(weapon#weaponType));
+        let dmg = Combat.thrownWeaponDamage(atkPower);
+        match hit {
+            case RayHit.HitEnemy(enemyId, _)   =>
+                throwDamageToEnemy("${PlayerScene.displayName(playerId, scene)}", enemyId, dmg, weapon#name, scene)
+            case RayHit.HitPlayer(targetId, _) =>
+                throwDamageToPlayer("${PlayerScene.displayName(playerId, scene)}", targetId, dmg, weapon#name, scene)
+            case _                             => scene
+        }
+
+    /// 投げダメージを敵へ（防御無視）。死亡なら撃破演出、生存なら HP 反映。
+    /// `srcLabel` は投げ手の表示名（兵種名。例: "傭兵" / "ゴブリン"）。味方投擲・敵投擲で共用する。
+    def throwDamageToEnemy(srcLabel: String, enemyId: Int32, dmg: Int32, name: String,
+                            scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger} =
+        Option.getWithDefault(scene,
+            forM (enemy <- EnemyScene.get(enemyId, scene)) yield {
+                let dmgResult = Combat.damage(hp = enemy#hp, amount = dmg);
+                if (dmgResult#isDead) {
+                    GameLogger.playerLog("${srcLabel} は ${name} を投げて ${EnemyScene.displayName(enemyId, scene)} を撃破 (${dmg}ダメージ)");
+                    scene
+                        |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), 0)
+                        |> EnemyScene.startDeathAnimation(enemyId)
+                } else {
+                    GameLogger.playerLog("${srcLabel} は ${name} を投げて ${EnemyScene.displayName(enemyId, scene)} に ${dmg}ダメージ");
+                    // アイテムをぶつけられたので、かなしばり中なら完全停止を解除する。
+                    scene
+                        |> EnemyScene.mapEnemy(enemyId, d -> {hp = dmgResult#newHp | d})
+                        |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), dmgResult#newHp)
+                        |> EnemyScene.releaseBind(enemyId)
+                }
+            })
+
+    /// 投げダメージを味方へ（誤射 / 敵の投擲・防御無視）。死亡なら removeDead 経由でゲームオーバー判定。
+    def throwDamageToPlayer(srcLabel: String, targetId: Int32, dmg: Int32, name: String,
+                             scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, CustomEffects.GameOverRequest,
+                               SelectedPlayer.State} =
+        Option.getWithDefault(scene,
+            forM (target <- PlayerScene.get(targetId, scene)) yield {
+                let dmgResult = Combat.damage(hp = target#hp, amount = dmg);
+                GameLogger.playerLog("${srcLabel} の ${name} が ${PlayerScene.displayName(targetId, scene)} に当たった (${dmg}ダメージ)");
+                // アイテムをぶつけられたので、かなしばり中なら完全停止を解除する。
+                let withDamage = scene
+                    |> PlayerScene.mapPlayer(targetId, d -> {hp = dmgResult#newHp | d})
+                    |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), dmgResult#newHp)
+                    |> PlayerScene.releaseBind(targetId);
+                if (dmgResult#isDead)
+                    PlayerScene.removeDeadAndCheckGameOver(targetId :: Nil, withDamage)
+                else withDamage
+            })
+
+    /// 薬投げの種別振り分け: 火炎瓶 / 爆発瓶（固定ダメージ + 効果音）はダメージ処理へ、
+    /// それ以外は当たったキャラへ効果を出す通常処理へ。1 段マッチ。
+    def throwConsumableHit(playerId: Int32, item: Consumable.ConsumableResource,
+                            hit: RayHit, scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio} =
+        match item#effect {
+            case Consumable.ConsumableEffect.FireBottle  => throwBottleSingle("${PlayerScene.displayName(playerId, scene)}", item, hit, scene)
+            case Consumable.ConsumableEffect.BlastBottle => throwBottleBlast("${PlayerScene.displayName(playerId, scene)}", item, hit, scene)
+            case _                                       =>
+                // 効果の良し悪しで効果音を出し分ける: 回復・バフ系は "cure"、デバフ系は "damage"。
+                AudioStreamPlayer.play(consumableHitSound(item#effect));
+                throwConsumableResolved(playerId, item, hit, scene)
+        }
+
+    /// 投擲した薬が当たったときの効果音。回復・最大HP・蘇生・バフ（対象に有利）は "cure"、
+    /// 目潰し・鈍足など相手を弱らせるデバフ系は "damage"。瓶（FireBottle/BlastBottle）は
+    /// それぞれ専用音を別経路で鳴らすのでここには来ない（来ても "cure" に倒す）。
+    def consumableHitSound(effect: Consumable.ConsumableEffect): String = match effect {
+        case Consumable.ConsumableEffect.BlindHit   => "damage"
+        case Consumable.ConsumableEffect.SpdDownHit => "damage"
+        case Consumable.ConsumableEffect.DefDownHit => "damage"
+        case _                                      => "cure"
+    }
+
+    /// 火炎瓶: 当たった対象に固定ダメージ（防御無視）。効果音は魔法と同じ "magic"。味方/敵で共用。
+    pub def throwBottleSingle(srcLabel: String, item: Consumable.ConsumableResource,
+                           hit: RayHit, scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio} =
+        AudioStreamPlayer.play("magic");
+        let dmg = item#magnitude;
+        // 着弾セルに爆発エフェクトを出してからダメージを与える。
+        match hit {
+            case RayHit.HitEnemy(enemyId, cell)   =>
+                throwDamageToEnemy(srcLabel, enemyId, dmg, item#name,
+                    ExplosionScene.emitAtCell(cell, scene))
+            case RayHit.HitPlayer(targetId, cell) =>
+                throwDamageToPlayer(srcLabel, targetId, dmg, item#name,
+                    ExplosionScene.emitAtCell(cell, scene))
+            case _                                => scene
+        }
+
+    /// 爆発瓶: 当たったセルとその周囲 1 マス（チェビシェフ距離 1、味方も含む）に固定ダメージ。
+    /// 効果音は "critical"（爆発専用音が無いため流用）。当たりセルが取れなければ no-op。味方/敵で共用。
+    pub def throwBottleBlast(srcLabel: String, item: Consumable.ConsumableResource,
+                          hit: RayHit, scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio} =
+        AudioStreamPlayer.play("critical");
+        let dmg = item#magnitude;
+        match rayHitCell(hit) {
+            case None       => scene
+            case Some(cell) =>
+                GameLogger.playerLog("${srcLabel} の ${item#name} が爆発した (${dmg}ダメージ)");
+                // 爆発瓶は中心に大きい爆発を 1 つ出す（3×3 範囲を覆う見た目）。
+                let withFx = ExplosionScene.emitBigAtCell(cell, scene);
+                let afterEnemies = blastDamageEnemies(srcLabel, dmg, item#name, cell, withFx);
+                blastDamagePlayers(srcLabel, dmg, item#name, cell, afterEnemies)
+        }
+
+    /// RayHit から当たりセルを取り出す（キャラに当たったときのみ Some）。
+    def rayHitCell(hit: RayHit): Option[{x = Int32, y = Int32}] =
+        match hit {
+            case RayHit.HitEnemy(_, cell)  => Some(cell)
+            case RayHit.HitPlayer(_, cell) => Some(cell)
+            case _                         => None
+        }
+
+    /// チェビシェフ距離（周囲 1 マス判定に使う。8 近傍 + 中心が距離 ≤ 1）。
+    def chebyshev(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Int32 =
+        Int32.max(Int32.abs(a#x - b#x), Int32.abs(a#y - b#y))
+
+    /// 爆発: 中心セルの周囲 1 マス内の全敵に固定ダメージを与える。
+    def blastDamageEnemies(srcLabel: String, dmg: Int32, name: String,
+                            center: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger} =
+        let ids = EnemyScene.getAll(scene)
+                    |> List.filter(e -> chebyshev(e#gridPos, center) <= 1)
+                    |> List.map(e -> e#id);
+        List.foldLeft((sc, id) -> throwDamageToEnemy(srcLabel, id, dmg, name, sc), scene, ids)
+
+    /// 爆発: 中心セルの周囲 1 マス内の全味方に固定ダメージを与える（自分たちも巻き込む）。
+    def blastDamagePlayers(srcLabel: String, dmg: Int32, name: String,
+                            center: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, CustomEffects.GameOverRequest,
+                               SelectedPlayer.State} =
+        let ids = PlayerScene.getAll(scene)
+                    |> List.filter(p -> chebyshev(p#gridPos, center) <= 1)
+                    |> List.map(p -> p#id);
+        List.foldLeft((sc, id) -> throwDamageToPlayer(srcLabel, id, dmg, name, sc), scene, ids)
+
+    // ────────────────────────────────────────────────────────
+    // 敵の投擲（ローグ_T3=爆発瓶 / クレリック_T3=火炎瓶、敵ターンに 1 回だけ）
+    //   `description` で持つ瓶を判定し、縦横 4 方向の直線上に味方が居れば投げる。
+    //   ダメージ処理は味方投擲と同じ throwBottleSingle / throwBottleBlast を共用する。
+    // ────────────────────────────────────────────────────────
+
+    /// 敵の職名（`resource#description`）から持っている瓶を返す。持たない職は None。
+    def enemyBottleFor(description: String): Option[Consumable.ConsumableResource] =
+        if (description == "ローグ_T3")
+            Some(Consumable.bottle(Consumable.ConsumableEffect.BlastBottle, 10, 0, "爆発瓶"))
+        else if (description == "クレリック_T3")
+            Some(Consumable.bottle(Consumable.ConsumableEffect.FireBottle, 15, 0, "火炎瓶"))
+        else if (description == "レンジャー_T2" or description == "レンジャー_T3")
+            // ほころび薬: 当たった味方の守備を 5 下げる（3 ターン）。
+            Some(Consumable.bottle(Consumable.ConsumableEffect.DefDownHit, 5, 3, "ほころび薬"))
+        else None
+
+    /// 敵が瓶を投げられるか試す。`description` の瓶を持ち、縦横 4 方向のいずれかの直線上に
+    /// 味方が居れば、その方向へ投げてダメージを与えた scene を Some で返す。投げられなければ None。
+    /// 呼び出し側（EnemyTurnDriverScene）が None/Some で通常 AI と投擲を分岐する。
+    pub def enemyTryThrow(enemyId: Int32, origin: {x = Int32, y = Int32},
+                           description: String, scene: Scene[NodeTag]):
+            Option[Scene[NodeTag]]
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio} =
+        match enemyBottleFor(description) {
+            case None       => None
+            case Some(item) => enemyThrowWith(enemyId, origin, item, scene)
+        }
+
+    /// 瓶が確定した敵について、味方が居る直線方向を探して投げる。
+    def enemyThrowWith(enemyId: Int32, origin: {x = Int32, y = Int32},
+                        item: Consumable.ConsumableResource, scene: Scene[NodeTag]):
+            Option[Scene[NodeTag]]
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio} =
+        let board: Board = BoardSnapshot.fromScene(scene);
+        match enemyThrowDirection(origin, board) {
+            case None      => None
+            case Some(dir) =>
+                let hit = Board.rayCast(origin, Staff.toVec2i(dir), staffMaxRange(), board);
+                GameLogger.enemyLog("${EnemyScene.displayName(enemyId, scene)} が ${item#name} を投げた");
+                Some(enemyApplyBottle("${EnemyScene.displayName(enemyId, scene)}", item, hit, scene))
+        }
+
+    /// 縦横 4 方向で、レイの最初の当たりが味方になる方向を返す（無ければ None）。
+    def enemyThrowDirection(origin: {x = Int32, y = Int32}, board: Board): Option[Staff.Direction] =
+        let dirs = Staff.Direction.Up :: Staff.Direction.Down
+                    :: Staff.Direction.Left :: Staff.Direction.Right :: Nil;
+        List.findLeft(d -> rayHitsPlayer(origin, d, board), dirs)
+
+    /// 指定方向のレイの最初の当たりが味方か。
+    def rayHitsPlayer(origin: {x = Int32, y = Int32}, dir: Staff.Direction, board: Board): Bool =
+        match Board.rayCast(origin, Staff.toVec2i(dir), staffMaxRange(), board) {
+            case RayHit.HitPlayer(_, _) => true
+            case _                      => false
+        }
+
+    // ────────────────────────────────────────────────────────
+    // 敵クレリックの杖詠唱（クレリック_T2=かなしばり / クレリック_T3=一時しのぎ）
+    //   瓶投げ（enemyTryThrow）と同じ description 駆動。縦横直線上に「まだ停止していない味方」が
+    //   居れば詠唱する。詠唱は耐久を消費しない（瓶と同じ方針）。
+    // ────────────────────────────────────────────────────────
+
+    /// 敵の職名から詠唱する杖効果を返す（持たない職は None）。
+    pub def enemyStaffFor(description: String): Option[Staff.StaffEffect] =
+        if (description == "クレリック_T2") Some(Staff.StaffEffect.Bind)
+        else if (description == "クレリック_T3") Some(Staff.StaffEffect.Stopgap)
+        else None
+
+    /// 敵が杖を詠唱できるか試す。詠唱職で、4 方向の直線上に「まだ停止していない味方」が居れば、
+    /// その味方へ詠唱した scene を Some で返す。撃てなければ None（呼び出し側で投擲 / 通常 AI へ）。
+    pub def enemyTryStaff(enemyId: Int32, origin: {x = Int32, y = Int32},
+                           description: String, scene: Scene[NodeTag]):
+            Option[Scene[NodeTag]] \ {Tween.Scheduler, GameLogger.GameLogger} =
+        let board: Board = BoardSnapshot.fromScene(scene);
+        forM (
+            effect   <- enemyStaffFor(description);
+            dir      <- enemyThrowDirection(origin, board);
+            targetId <- castableHitPlayer(origin, dir, board, scene)
+        ) yield enemyCastStaff(enemyId, effect, targetId, scene)
+
+    /// 指定方向のレイが最初に当たる味方が「まだ停止していない」ならその id を返す。
+    /// 既に停止中なら None（無駄詠唱を避け、呼び出し側で接近 → 殴って解除する流れに任せる）。
+    def castableHitPlayer(origin: {x = Int32, y = Int32}, dir: Staff.Direction,
+                           board: Board, scene: Scene[NodeTag]): Option[Int32] =
+        match Board.rayCast(origin, Staff.toVec2i(dir), staffMaxRange(), board) {
+            case RayHit.HitPlayer(id, _) =>
+                if (playerImmobilized(id, scene)) None else Some(id)
+            case _                       => None
+        }
+
+    /// 指定味方が完全停止中か。居なければ false。
+    def playerImmobilized(id: Int32, scene: Scene[NodeTag]): Bool =
+        PlayerScene.get(id, scene)
+            |> Option.map(d -> StatusSystem.isImmobilized(d#statuses))
+            |> Option.getWithDefault(false)
+
+    /// 解決済みの「敵 → 味方 への詠唱」を適用する。src は敵の表示名。
+    def enemyCastStaff(enemyId: Int32, effect: Staff.StaffEffect, targetId: Int32,
+                        scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+        let srcLabel = EnemyScene.displayName(enemyId, scene);
+        match effect {
+            case Staff.StaffEffect.Bind    => applyBindToPlayer(srcLabel, targetId, scene)
+            case Staff.StaffEffect.Stopgap => applyStopgapToPlayer(srcLabel, targetId, scene)
+            case _                         => scene
+        }
+
+    /// 瓶の種別で固定ダメージ投擲を分岐（火炎瓶=単体 / 爆発瓶=範囲）。味方投擲と同じ処理を共用。
+    def enemyApplyBottle(srcLabel: String, item: Consumable.ConsumableResource,
+                          hit: RayHit, scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio} =
+        match item#effect {
+            case Consumable.ConsumableEffect.FireBottle  => throwBottleSingle(srcLabel, item, hit, scene)
+            case Consumable.ConsumableEffect.BlastBottle => throwBottleBlast(srcLabel, item, hit, scene)
+            // 投擲デバフ（ほころび薬=守備ダウン等）: デバフ音を鳴らし、当たった対象へ時限デバフを付与。
+            case _                                       => enemyApplyDebuff(item, hit, scene)
+        }
+
+    /// 敵が投げたデバフ薬を当たった対象へ適用する。デバフ音 + 時限ステータス付与。
+    def enemyApplyDebuff(item: Consumable.ConsumableResource, hit: RayHit,
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Audio =
+        AudioStreamPlayer.play(consumableHitSound(item#effect));
+        applyStatusToHit(directionalStatus(item), hit, scene)
+
+    /// `directionalStatus` の Option をそのまま受け、Some なら当たったキャラ（敵/味方）へ付与。
+    /// `(status, hit)` のタプル 1 段マッチでネストを避ける。
+    def applyStatusToHit(statusOpt: Option[StatusSystem.Status], hit: RayHit,
+                          scene: Scene[NodeTag]): Scene[NodeTag] =
+        // 投擲デバフが当たったら、その効果を足しつつ、かなしばり中なら完全停止を解除する。
+        match (statusOpt, hit) {
+            case (Some(status), RayHit.HitEnemy(id, _))  =>
+                EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
+                    |> EnemyScene.releaseBind(id)
+            case (Some(status), RayHit.HitPlayer(id, _)) =>
+                PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
+                    |> PlayerScene.releaseBind(id)
+            case _                                       => scene
+        }
+
+    /// 薬投げの解決: 当たったキャラ（敵/味方）へ薬の効果を出す。1 段マッチ。
+    def throwConsumableResolved(playerId: Int32, item: Consumable.ConsumableResource,
+                                 hit: RayHit, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        match hit {
+            case RayHit.HitEnemy(enemyId, _)   => throwConsumableAtEnemy(playerId, item, enemyId, scene)
+            case RayHit.HitPlayer(targetId, _) => throwConsumableAtPlayer(playerId, item, targetId, scene)
+            case _                             => scene
+        }
+
+    /// 薬の効果を敵へ。効果種別で 1 段マッチ。
+    def throwConsumableAtEnemy(playerId: Int32, item: Consumable.ConsumableResource,
+                                enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        Option.getWithDefault(scene,
+            forM (enemy <- EnemyScene.get(enemyId, scene)) yield {
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${EnemyScene.displayName(enemyId, scene)} に ${item#name} を当てた");
+                applyConsumableEffectToEnemy(item, enemy, enemyId, scene)
+            })
+
+    /// 敵 1 体への薬効果適用（HP 系は Combat.heal / 最大HP / 時限ステータス）。match ネストなし。
+    def applyConsumableEffectToEnemy(item: Consumable.ConsumableResource,
+                                      enemy: EnemyScene.Data, enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] =
+        let path = EnemyScene.enemyPath(enemyId);
+        match item#effect {
+            case Consumable.ConsumableEffect.Heal =>
+                let r = Combat.heal(enemy#hp, enemy#resource#hp, item#magnitude);
+                scene |> EnemyScene.mapEnemy(enemyId, d -> {hp = r#newHp | d})
+                      |> UnitHPBarScene.update(path, r#newHp)
+            case Consumable.ConsumableEffect.FullHeal =>
+                let m = enemy#resource#hp;
+                scene |> EnemyScene.mapEnemy(enemyId, d -> {hp = m | d})
+                      |> UnitHPBarScene.update(path, m)
+            case Consumable.ConsumableEffect.AutoRevive =>
+                let m = enemy#resource#hp;
+                scene |> EnemyScene.mapEnemy(enemyId, d -> {hp = m | d})
+                      |> UnitHPBarScene.update(path, m)
+            case Consumable.ConsumableEffect.MaxHpUp =>
+                let inc = item#magnitude;
+                let newMax = enemy#resource#hp + inc;
+                let newHp  = enemy#hp + inc;
+                scene |> EnemyScene.mapEnemy(enemyId,
+                            d -> {hp = newHp, resource = {hp = newMax | d#resource} | d})
+                      |> UnitHPBarScene.updateMaxHp(path, newHp, newMax)
+            case Consumable.ConsumableEffect.AtkUp     => addEnemyStatus(enemyId, StatusSystem.StatusEffect.AtkUp, item, scene)
+            case Consumable.ConsumableEffect.SpdUp     => addEnemyStatus(enemyId, StatusSystem.StatusEffect.SpdUp, item, scene)
+            case Consumable.ConsumableEffect.BlindHit  => addEnemyStatus(enemyId, StatusSystem.StatusEffect.HitDown, item, scene)
+            case Consumable.ConsumableEffect.SpdDownHit => addEnemyStatus(enemyId, StatusSystem.StatusEffect.SpdDown, item, scene)
+            case Consumable.ConsumableEffect.DefDownHit => addEnemyStatus(enemyId, StatusSystem.StatusEffect.DefDown, item, scene)
+            // 火炎瓶 / 爆発瓶 はダメージ系で `throwConsumableHit` が先に処理するためここには来ない（防御的 no-op）。
+            case Consumable.ConsumableEffect.FireBottle  => scene
+            case Consumable.ConsumableEffect.BlastBottle => scene
+        }
+
+    /// 敵へ時限ステータスを 1 件付与する小ヘルパ。
+    def addEnemyStatus(enemyId: Int32, kind: StatusSystem.StatusEffect,
+                        item: Consumable.ConsumableResource, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let status = {effect = kind, magnitude = item#magnitude, remaining = item#duration};
+        EnemyScene.mapEnemy(enemyId, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
+
+    /// 薬の効果を味方へ。効果種別で 1 段マッチ。
+    def throwConsumableAtPlayer(playerId: Int32, item: Consumable.ConsumableResource,
+                                 targetId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        Option.getWithDefault(scene,
+            forM (target <- PlayerScene.get(targetId, scene)) yield {
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${PlayerScene.displayName(targetId, scene)} に ${item#name} を当てた");
+                applyConsumableEffectToPlayer(item, target, targetId, scene)
+            })
+
+    /// 味方 1 体への薬効果適用。match ネストなし。
+    def applyConsumableEffectToPlayer(item: Consumable.ConsumableResource,
+                                       target: PlayerScene.Data, targetId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] =
+        let path = PlayerScene.playerPath(targetId);
+        match item#effect {
+            case Consumable.ConsumableEffect.Heal =>
+                let r = Combat.heal(target#hp, target#resource#hp, item#magnitude);
+                scene |> PlayerScene.mapPlayer(targetId, d -> {hp = r#newHp | d})
+                      |> UnitHPBarScene.update(path, r#newHp)
+            case Consumable.ConsumableEffect.FullHeal =>
+                let m = target#resource#hp;
+                scene |> PlayerScene.mapPlayer(targetId, d -> {hp = m | d})
+                      |> UnitHPBarScene.update(path, m)
+            case Consumable.ConsumableEffect.AutoRevive =>
+                let m = target#resource#hp;
+                scene |> PlayerScene.mapPlayer(targetId, d -> {hp = m | d})
+                      |> UnitHPBarScene.update(path, m)
+            case Consumable.ConsumableEffect.MaxHpUp =>
+                let inc = item#magnitude;
+                let newMax = target#resource#hp + inc;
+                let newHp  = target#hp + inc;
+                scene |> PlayerScene.mapPlayer(targetId,
+                            d -> {hp = newHp, resource = {hp = newMax | d#resource} | d})
+                      |> UnitHPBarScene.updateMaxHp(path, newHp, newMax)
+            case Consumable.ConsumableEffect.AtkUp      => addPlayerStatus(targetId, StatusSystem.StatusEffect.AtkUp, item, scene)
+            case Consumable.ConsumableEffect.SpdUp      => addPlayerStatus(targetId, StatusSystem.StatusEffect.SpdUp, item, scene)
+            case Consumable.ConsumableEffect.BlindHit   => addPlayerStatus(targetId, StatusSystem.StatusEffect.HitDown, item, scene)
+            case Consumable.ConsumableEffect.SpdDownHit => addPlayerStatus(targetId, StatusSystem.StatusEffect.SpdDown, item, scene)
+            case Consumable.ConsumableEffect.DefDownHit => addPlayerStatus(targetId, StatusSystem.StatusEffect.DefDown, item, scene)
+            // 火炎瓶 / 爆発瓶 はダメージ系で `throwConsumableHit` が先に処理するためここには来ない（防御的 no-op）。
+            case Consumable.ConsumableEffect.FireBottle  => scene
+            case Consumable.ConsumableEffect.BlastBottle => scene
+        }
+
+    /// 味方へ時限ステータスを 1 件付与する小ヘルパ。
+    def addPlayerStatus(targetId: Int32, kind: StatusSystem.StatusEffect,
+                         item: Consumable.ConsumableResource, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let status = {effect = kind, magnitude = item#magnitude, remaining = item#duration};
+        PlayerScene.mapPlayer(targetId, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
+
+    /// 投げたアイテムを 1 個（耐久 1）消費する。種別ごとに対応リストへ反映。match ネストなし。
+    def consumeThrownItem(playerId: Int32, kind: PlayerData.ItemKind, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        match kind {
+            case PlayerData.ItemKind.Consumable(idx) =>
+                Option.getWithDefault(scene,
+                    forM (c <- List.nth(idx, PlayerScene.getConsumables(playerId, scene)))
+                        yield consumeConsumable(playerId, idx, c, scene))
+            case PlayerData.ItemKind.Weapon(idx) =>
+                PlayerScene.dropWeapon(playerId, idx, scene)
+            case PlayerData.ItemKind.Staff(idx) =>
+                Option.getWithDefault(scene,
+                    forM (s <- List.nth(idx, PlayerScene.getStaves(playerId, scene)))
+                        yield consumeStaff(playerId, idx, s, scene))
+            case PlayerData.ItemKind.Ring(_) => scene
         }
 
     /// idx 番目を `updatedOpt` の中身で差し替えたリストを返す。

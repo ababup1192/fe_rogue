@@ -112,6 +112,7 @@ mod CameraScene {
             case TurnPhase.Phase.ItemSelect       => focusPos
             case TurnPhase.Phase.ItemActionSelect => focusPos
             case TurnPhase.Phase.StaffAim         => focusPos
+            case TurnPhase.Phase.ThrowAim         => focusPos
             case TurnPhase.Phase.AttackForecast   => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerAttack     => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerAttackHold => cursorWorldPos(scene)

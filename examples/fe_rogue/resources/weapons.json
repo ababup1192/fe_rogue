@@ -488,6 +488,153 @@
         "vframes": 30
       },
       "weaponType": "Magic"
+    },
+    "falchion": {
+      "name": "はやぶさの剣",
+      "attack": 3,
+      "hit": 80,
+      "crit": 0,
+      "durability": 25,
+      "range": {
+        "min": 1,
+        "max": 1
+      },
+      "weaponType": "Sword",
+      "effect": "BraveOnSpeed",
+      "effectValue": 3,
+      "description": "威力は低いが、相手より速さが3以上速いと2回攻撃する剣",
+      "sprite": {
+        "frame": 21,
+        "hframes": 20,
+        "vframes": 25,
+        "texture": "item_weapons"
+      }
+    },
+    "demon_axe": {
+      "name": "あくまの斧",
+      "attack": 13,
+      "hit": 55,
+      "crit": 10,
+      "durability": 15,
+      "range": {
+        "min": 1,
+        "max": 1
+      },
+      "weaponType": "Axe",
+      "effect": "NoEffect",
+      "effectValue": 0,
+      "description": "威力が高く必殺も出るが命中が低い、悪魔の斧",
+      "sprite": {
+        "frame": 289,
+        "hframes": 20,
+        "vframes": 25,
+        "texture": "item_weapons"
+      }
+    },
+    "gust_tome": {
+      "name": "突風の書",
+      "attack": 3,
+      "hit": 85,
+      "crit": 0,
+      "durability": 15,
+      "range": {
+        "min": 1,
+        "max": 2
+      },
+      "weaponType": "Magic",
+      "effect": "Knockback",
+      "effectValue": 0,
+      "description": "威力は低いが、当てた相手を吹き飛ばす風魔法",
+      "sprite": {
+        "frame": 40,
+        "hframes": 20,
+        "vframes": 25,
+        "texture": "item_weapons"
+      }
+    },
+    "backwater_lance": {
+      "name": "背水の槍",
+      "attack": 10,
+      "hit": 65,
+      "crit": 0,
+      "durability": 30,
+      "range": {
+        "min": 1,
+        "max": 1
+      },
+      "weaponType": "Lance",
+      "effect": "Desperation",
+      "effectValue": 30,
+      "description": "HPが3割以下のとき威力が1.5倍になる槍。回数も多い",
+      "sprite": {
+        "frame": 284,
+        "hframes": 20,
+        "vframes": 25,
+        "texture": "item_weapons"
+      }
+    },
+    "vampire_sword": {
+      "name": "血吸いの剣",
+      "attack": 5,
+      "hit": 80,
+      "crit": 0,
+      "durability": 15,
+      "range": {
+        "min": 1,
+        "max": 1
+      },
+      "weaponType": "Sword",
+      "effect": "Lifesteal",
+      "effectValue": 30,
+      "description": "与えたダメージの3割を回復する剣",
+      "sprite": {
+        "frame": 22,
+        "hframes": 20,
+        "vframes": 25,
+        "texture": "item_weapons"
+      }
+    },
+    "nyoibo": {
+      "name": "如意棒",
+      "attack": 7,
+      "hit": 75,
+      "crit": 0,
+      "durability": 15,
+      "range": {
+        "min": 1,
+        "max": 1
+      },
+      "weaponType": "Lance",
+      "effect": "Knockback",
+      "effectValue": 2,
+      "description": "当てた相手を2マス後退させる棒",
+      "sprite": {
+        "frame": 285,
+        "hframes": 20,
+        "vframes": 25,
+        "texture": "item_weapons"
+      }
+    },
+    "thief_sword": {
+      "name": "盗人の剣",
+      "attack": 3,
+      "hit": 80,
+      "crit": 0,
+      "durability": 15,
+      "range": {
+        "min": 1,
+        "max": 1
+      },
+      "weaponType": "Sword",
+      "effect": "ThiefDrop",
+      "effectValue": 20,
+      "description": "ローグが使うと、2割で敵がアイテムを落とす剣",
+      "sprite": {
+        "frame": 23,
+        "hframes": 20,
+        "vframes": 25,
+        "texture": "item_weapons"
+      }
     }
   }
 }

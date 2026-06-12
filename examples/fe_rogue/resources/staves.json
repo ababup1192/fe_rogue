@@ -1,5 +1,29 @@
 {
   "staves": {
+    "bind_staff": {
+      "description": "射線の相手を完全に止める。攻撃か投擲を受けると解ける",
+      "durability": 5,
+      "effect": "Bind",
+      "name": "かなしばりの杖",
+      "sprite": {
+        "frame": 267,
+        "hframes": 16,
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "stopgap_staff": {
+      "description": "射線の相手を止め、階段へワープさせる",
+      "durability": 3,
+      "effect": "Stopgap",
+      "name": "一時しのぎの杖",
+      "sprite": {
+        "frame": 267,
+        "hframes": 16,
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
     "blowback_staff": {
       "description": "相手が壁かキャラクターに当たるまで、吹き飛ぶ 1ダメージ与える",
       "durability": 5,

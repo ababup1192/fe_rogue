@@ -41,9 +41,11 @@ pub enum NodeTag {
     /// ItemMenuScene の Panel ルート（外枠）
     case ItemPanel
     /// ItemMenuScene の ItemList（武器+杖の一覧 + サブメニュー兼用）。
-    /// 内部の Int32 は現在表示中のページ番号（0 起点）。ロード職は 16 個 = 2 ページ持てるため、
+    /// Int32 は現在表示中のページ番号（0 起点）。ロード職は 16 個 = 2 ページ持てるため、
     /// ←/→ でページを切り替えるとここが更新され、refreshItems がそのページぶんを並べ直す。
-    case ItemMenu(Int32)
+    /// Set[ItemKind] は Shift で複数選択したアイテムの印。ページをまたいでも保持し、
+    /// 「捨てる」で一括破棄する。表示行ではなく種別+絶対 index で持つのでページ送りに強い。
+    case ItemMenu(Int32, Set[PlayerData.ItemKind])
     /// TradeMenuScene の Panel ルート（members / focus / pick / origin を抱えるセッション状態）
     case TradePanel(TradeMenuScene.PanelData)
     /// TradeMenuScene の各ペイン ItemList。内部の Int32 はペイン index (0 起点、最大 3)。
@@ -64,6 +66,10 @@ pub enum NodeTag {
     case DamagePopupsRoot(DamagePopupScene.RootData)
     /// DamagePopupScene の Label2D 子（寿命を持つ）
     case DamagePopup(DamagePopupScene.PopupData)
+    /// ExplosionScene の Marker2D 親（World 直下に永続）
+    case ExplosionsRoot(ExplosionScene.RootData)
+    /// ExplosionScene の Sprite2D 子（爆発エフェクト・寿命を持つ）
+    case Explosion(ExplosionScene.ExpData)
     /// UnitHPBarScene の Marker2D 親（戦闘表示 timer + currentHp/maxHp を持つ）
     case HPBar(UnitHPBarScene.HPBarData)
     /// UnitInfoPopupScene の CanvasLayer 親（表示中ユニット識別子を持つ）
@@ -159,6 +165,8 @@ def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
     match node {
         case EngineNode.Marker2DWithState(_, NodeTag.DamagePopupsRoot(_)) =>
             checked_ecast(DamagePopupScene.process(delta, node, path, scene))
+        case EngineNode.Marker2DWithState(_, NodeTag.ExplosionsRoot(_)) =>
+            checked_ecast(ExplosionScene.process(delta, node, path, scene))
         case EngineNode.Marker2DWithState(_, NodeTag.HPBar(_)) =>
             checked_ecast(UnitHPBarScene.process(delta, node, path, scene))
         case EngineNode.Marker2DWithState(_, NodeTag.GroundItem(_)) =>
@@ -201,7 +209,7 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
                    path: NodePath, scene: Scene[NodeTag]):
                   (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
     match node {
-        case EngineNode.ItemListWithState(_, NodeTag.ItemMenu(_)) =>
+        case EngineNode.ItemListWithState(_, NodeTag.ItemMenu(_, _)) =>
             checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
             checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
@@ -229,7 +237,9 @@ instance InputEvent.InputHandler[NodeTag] {
                  TurnPhase.State, SelectedPlayer.State,
                  PlayerData.PartyQuery, EnemyData.RosterQuery,
                  CustomEffects.FloorAdvanceRequest,
-                 GamePhaseState, PartySelection.State}
+                 GamePhaseState, PartySelection.State,
+                 // アイテム投擲の命中ロール（Math.Random）と誤射による味方脱落のゲームオーバー判定。
+                 Math.Random, CustomEffects.GameOverRequest}
     // ActionMenu / ItemMenu / ItemActionMenu / AttackForecast フェーズでは
     // FERogue のキー慣習として Z（決定）/ X（ウィンドウを閉じる）でメニュー操作する。
     // ItemMenu と ItemActionMenu は同じ ItemMenuScene が扱い、`confirmCurrentSelection`
@@ -247,7 +257,8 @@ instance InputEvent.InputHandler[NodeTag] {
                                           PlayerData.PartyQuery,
                                           EnemyData.RosterQuery,
                                           CustomEffects.FloorAdvanceRequest,
-                                          GamePhaseState, PartySelection.State} =
+                                          GamePhaseState, PartySelection.State,
+                                          Math.Random, CustomEffects.GameOverRequest} =
         // 画面が選択中（CharacterSelect）なら、キー操作は選択画面に委譲する。
         // 本編（Playing）のときだけ下の戦闘用ルーティングを走らせる。
         match GamePhaseState.get() {
@@ -262,7 +273,8 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                            Tween.Scheduler, AnimationPlayer.Scheduler,
                            GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
                            SelectedPlayer.State, PlayerData.PartyQuery,
-                           EnemyData.RosterQuery, CustomEffects.FloorAdvanceRequest} =
+                           EnemyData.RosterQuery, CustomEffects.FloorAdvanceRequest,
+                           Math.Random, CustomEffects.GameOverRequest} =
         // 物理キーを「決定 / キャンセル / それ以外 (None)」の意味論的入力に正規化する。
         // phase と独立した直交概念として扱いたいので、bool 2 個ではなく Option[Input] に畳む。
         let input: Option[TurnRules.Input] =
@@ -273,13 +285,26 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                 Some(TurnRules.Input.Cancel)
             else None;
         let phase = TurnPhase.State.get();
-        // Shift トグル: 危険範囲(紫 = 全敵に攻撃されうるマス)の表示/非表示。
-        // メニューの効果音を鳴らし、PlayerCursor / PlayerMoving の地図プランニング中のみ反応する。
+        // Shift トグル（いずれもメニュー効果音を鳴らす。対象外フェーズは無反応）:
+        //   PlayerCursor / PlayerMoving … 危険範囲(紫 = 全敵に攻撃されうるマス)の表示/非表示
+        //   ItemSelect … カーソル位置のアイテムの複数選択（まとめて捨てる用の印）
+        //   TradeInventory … カーソル位置の自分のアイテムの複数選択（まとめ渡し用の印）
         if (key == GameEngine.Key.LeftShift)
-            if (phase == TurnPhase.Phase.PlayerCursor or phase == TurnPhase.Phase.PlayerMoving) {
-                AudioStreamPlayer.play("confirm");
-                DangerZoneScene.toggle(scene)
-            } else scene
+            match phase {
+                case TurnPhase.Phase.PlayerCursor =>
+                    AudioStreamPlayer.play("confirm");
+                    DangerZoneScene.toggle(scene)
+                case TurnPhase.Phase.PlayerMoving =>
+                    AudioStreamPlayer.play("confirm");
+                    DangerZoneScene.toggle(scene)
+                case TurnPhase.Phase.ItemSelect =>
+                    AudioStreamPlayer.play("confirm");
+                    ItemMenuScene.toggleMarkAtCursor(scene)
+                case TurnPhase.Phase.TradeInventory =>
+                    AudioStreamPlayer.play("confirm");
+                    TradeMenuScene.toggleTradeMarkAtCursor(scene)
+                case _ => scene
+            }
         else {
             // プレイヤー操作のフィードバック効果音（決定 / キャンセル / メニューカーソル移動）。
             // onKeyPressed は物理キー押下ごとに 1 度だけ発火するので、ここで鳴らせば 1 押下 = 1 音。
@@ -318,7 +343,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              EnemyData.RosterQuery,
                                              CustomEffects.FloorAdvanceRequest} =
         match state {
-            case NodeTag.ItemMenu(_) =>
+            case NodeTag.ItemMenu(_, _) =>
                 // ItemSelect / ItemActionSelect いずれも同じ ItemList なので、
                 // フェーズに応じて ItemMenuScene 内部で分岐させる。
                 let phase = TurnPhase.State.get();
@@ -345,7 +370,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              EnemyData.RosterQuery,
                                              CustomEffects.FloorAdvanceRequest} =
         match state {
-            case NodeTag.ItemMenu(_) =>
+            case NodeTag.ItemMenu(_, _) =>
                 let phase = TurnPhase.State.get();
                 match phase {
                     case TurnPhase.Phase.ItemSelect       =>
@@ -407,6 +432,25 @@ def staffAimConfirm(scene: Scene[NodeTag]):
         case Some((playerId, PlayerData.ItemKind.Consumable(idx))) =>
             StaffCastScene.applyConsumableDirectional(playerId, idx, dir, scene)
         case _ => scene
+    }
+
+/// ThrowAim フェーズで Z が押されたら、矢印が指している方向で選択中アイテムを投げる。
+/// 種別（武器/杖/薬/指輪）に依らず `applyThrow` が振り分ける。
+def throwAimConfirm(scene: Scene[NodeTag]):
+        Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                           BoardQuery, GameLogger.GameLogger,
+                           EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                           GameEngine.Audio, Math.Random, CustomEffects.GameOverRequest} =
+    let dir = ArrowCursorScene.getDirection(scene);
+    let selected = forM (
+        playerId <- SelectedPlayer.State.get()#id;
+        player   <- PlayerScene.get(playerId, scene);
+        item     <- player#selectedItem
+    ) yield (playerId, item);
+    match selected {
+        case Some((playerId, kind)) =>
+            StaffCastScene.applyThrow(playerId, kind, dir, scene)
+        case None => scene
     }
 
 /// プレイヤー操作のフィードバック効果音を鳴らす。
@@ -525,7 +569,8 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                             EnemyTurn.Queue, TurnPhase.State,
                             SelectedPlayer.State,
                             PlayerData.PartyQuery,
-                            EnemyData.RosterQuery} =
+                            EnemyData.RosterQuery,
+                            Math.Random, CustomEffects.GameOverRequest} =
     match (phase, input) {
         // popup 表示中の X は popup view 切替に上書き（通常のキャンセルは走らない）
         case (_,                              Some(TurnRules.Input.Cancel)) if popupShown
@@ -541,6 +586,13 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                                               => checked_ecast(staffAimConfirm(scene))
         // StaffAim 中の方向キーは applyStaffCast へ
         case (TurnPhase.Phase.StaffAim,       None)
+                                              => checked_ecast(staffAimDirection(key, scene))
+        // ThrowAim（アイテム投擲）。StaffAim と同じ矢印 UI を共用し、Z で投げ確定。
+        case (TurnPhase.Phase.ThrowAim,       Some(TurnRules.Input.Cancel))
+                                              => checked_ecast(staffAimCancel(scene))
+        case (TurnPhase.Phase.ThrowAim,       Some(TurnRules.Input.Confirm))
+                                              => checked_ecast(throwAimConfirm(scene))
+        case (TurnPhase.Phase.ThrowAim,       None)
                                               => checked_ecast(staffAimDirection(key, scene))
         // TradeInventory 中の ←/→ は左右ペイン切替へ (↑↓ は handleMenus 側で
         // ItemList のカーソル移動に使われるので素通り)
@@ -643,7 +695,9 @@ mod Game {
             let consumableCatalog = Consumable.load();
             // 宝箱カタログをロード（種別ごとの中身プールを持つ）。
             let chestCatalog = ChestCatalog.load();
-            // 7 カタログを 1 つの record に束ねて構築 / リビルド経路へ引き回す。
+            // 指輪カタログをロード。
+            let ringCatalog = Ring.load();
+            // カタログを 1 つの record に束ねて構築 / リビルド経路へ引き回す。
             let catalogs = {
                 weapons     = weaponCatalog,
                 players     = catalog,
@@ -651,7 +705,8 @@ mod Game {
                 floors      = floors,
                 staves      = staffCatalog,
                 consumables = consumableCatalog,
-                chests      = chestCatalog
+                chests      = chestCatalog,
+                rings       = ringCatalog
             };
             run {
                 // 起動直後はキャラクター選択画面を組む。本編（ダンジョン）は出撃メンバー確定後の
@@ -703,6 +758,18 @@ mod Game {
                       let tick = Ref.get(wanderClockRef) + 1;
                       Ref.put(tick, wanderClockRef);
                       k(GameLifecycle.maybeSpawnWanderer(catalogs, tick, scene))
+              }
+              with handler CustomEffects.RingTransformRequest {
+                  // ringman の特殊行動。装備外アイテムを 1 つ指輪に変える（抽選・分布は GameLifecycle 側）。
+                  // Ring カタログをクロージャに閉じ込めて使う。
+                  def transform(enemyName, targetId, scene, k) =
+                      k(GameLifecycle.applyRingTransform(catalogs, enemyName, targetId, scene))
+              }
+              with handler CustomEffects.ThiefDropRequest {
+                  // 盗人の剣: 現在フロアの items ドロップ表から抽選してアイテムを cell に落とす。
+                  // フロア表 + 各カタログをクロージャに閉じ込めて使う。
+                  def drop(cell, scene, k) =
+                      k(GameLifecycle.dropFloorItem(catalogs, cell, scene))
               }
               with handler BoardQuery {
                   def board(k) = k(BoardSnapshot.fromScene(Ref.get(sceneRef)))
@@ -775,6 +842,8 @@ mod Game {
                          CustomEffects.GameOverRequest,
                          CustomEffects.FloorAdvanceRequest,
                          CustomEffects.WandererSpawnRequest,
+                         CustomEffects.RingTransformRequest,
+                         CustomEffects.ThiefDropRequest,
                          FloorProgress.State, InitialSpawns.State,
                          GamePhaseState, PartySelection.State,
                          Pacing.State, Math.Random, r} =

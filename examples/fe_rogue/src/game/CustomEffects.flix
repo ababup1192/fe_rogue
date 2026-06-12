@@ -37,4 +37,24 @@ mod CustomEffects {
     pub eff WandererSpawnRequest {
         def maybeSpawn(scene: Scene[NodeTag]): Scene[NodeTag]
     }
+
+    /// ringman の特殊行動「相手の持ち物を指輪に変える」を要求する。
+    /// emit 元 (EnemyTurnDriverScene の通常 AI・攻撃枝) は「ringman が隣接して 30% を引き、
+    /// 対象に装備外の持ち物がある」と判定したら `transform(敵の兵種名, 対象味方 id, scene)` を呼ぶ。
+    /// 実体 (handler) は `GameLifecycle.applyRingTransform` で、装備外アイテムを 1 つ無作為に選び
+    /// 確率分布（7割ただの・1割サビ・2割その他）で選んだ指輪に変える。
+    /// 変化先の指輪解決に Ring カタログが要るため、catalog をクロージャに閉じ込められる
+    /// `Game.start` でしか handler 注入できない（WandererSpawnRequest と同じ理由）。
+    pub eff RingTransformRequest {
+        def transform(enemyName: String, targetPlayerId: Int32, scene: Scene[NodeTag]): Scene[NodeTag]
+    }
+
+    /// 盗人の剣（ローグ装備時）の「敵がアイテムを落とす」を要求する。
+    /// emit 元 (CombatScene の攻撃解決) は「ローグが盗人の剣で命中して 20% を引いた」と判定したら
+    /// `drop(セル, scene)` を呼ぶ。実体 (handler) は現在フロアの items ドロップ表から重み付き抽選し、
+    /// `ItemScene.respawn` で指定セルにアイテムを落とす。フロア表 + 各カタログ + Math.Random が要るため、
+    /// catalog をクロージャに閉じ込められる `Game.start` でしか handler 注入できない。
+    pub eff ThiefDropRequest {
+        def drop(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag]
+    }
 }

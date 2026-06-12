@@ -289,7 +289,7 @@ mod BattlePanelScene {
             let idx      = ItemMenuScene.activeAttackWeaponIndex(scene) |> Option.getWithDefault(0);
             let equipped = PlayerScene.equipWeapon(attackerId, idx, scene);
             TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
-            GameLogger.playerLog("味方${attackerId}の攻撃");
+            GameLogger.playerLog("${PlayerScene.displayName(attackerId, scene)}の攻撃");
             CombatScene.startAttack(Faction.Player, attackerId, defenderId, enemy#gridPos, equipped)
         };
         Option.getWithDefault(scene, started)

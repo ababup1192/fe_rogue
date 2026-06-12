@@ -30,5 +30,7 @@ mod FrameAef {
                                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                                 CustomEffects.GameOverRequest,
                                 CustomEffects.WandererSpawnRequest,
+                                CustomEffects.RingTransformRequest,
+                                CustomEffects.ThiefDropRequest,
                                 Pacing.State, Math.Random}
 }

@@ -95,6 +95,7 @@ mod EnemyScene {
     /// `Math.Random` を使うのでこの effect が必要。
     pub def add(enemies: EnemyCatalog.EnemyCatalog,
                  weapons: WeaponCatalog.WeaponCatalog,
+                 ringCatalog: Ring.RingCatalog,
                  floor: FloorCatalog.FloorResource,
                  scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random} =
         let layer       = MapScene.getMapLayer(scene);
@@ -119,7 +120,7 @@ mod EnemyScene {
             initial, rooms);
         // accSpawns は逆順（cons で積んだ）なので reverse して id 昇順に揃える
         let spawns = List.reverse(accSpawns);
-        List.foldLeft(acc -> sp -> addOneEnemy(sp, acc), scene, spawns)
+        List.foldLeft(acc -> sp -> addOneEnemy(sp, ringCatalog, acc), scene, spawns)
 
     /// `initialInventory` の中で最初の `weapon` kind の id を `lookupWeapon` で解決する。
     /// 敵は杖を持たない前提なので weapon kind だけを採用する。weapon が一つも無いユニットは
@@ -192,10 +193,12 @@ mod EnemyScene {
 
     /// 1 体ぶんの Marker2D + 子 Sprite2D を scene に追加する。
     /// ステータス・テクスチャ・フレームは `sp#resource`（UnitResource）から取る。
-    def addOneEnemy(sp: Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
+    def addOneEnemy(sp: Spawn, ringCatalog: Ring.RingCatalog, scene: Scene[NodeTag]): Scene[NodeTag] =
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
+        // enemies.json の指輪 id を実体に解決する（未指定なら None）。
+        let ring   = res#ring |> Option.map(id -> Ring.lookup(id, ringCatalog));
         let data: Data = {
             id             = sp#id,
             gridPos        = sp#gridPos,
@@ -209,7 +212,10 @@ mod EnemyScene {
             weapon         = Some(sp#weapon),
             acted          = false,
             prevPos        = None,
-            statuses       = Nil
+            statuses       = Nil,
+            ring           = ring,
+            followUpUsed   = false,
+            bottleUsed     = false
         };
         let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset,
                                     res#sprite#scale)
@@ -242,6 +248,7 @@ mod EnemyScene {
     /// 視界外（フォグ内）に湧かせるので出現の瞬間はプレイヤーから見えない（シレン準拠の不意打ち）。
     pub def maybeSpawnWandererInRoom(enemies: EnemyCatalog.EnemyCatalog,
                                       weapons: WeaponCatalog.WeaponCatalog,
+                                      ringCatalog: Ring.RingCatalog,
                                       floor: FloorCatalog.FloorResource,
                                       tick: Int32,
                                       scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
@@ -250,11 +257,12 @@ mod EnemyScene {
             current |> List.count(d -> d#resource#aiType == EnemyAI.AiType.Wanderer);
         if (Int32.remainder(tick, spawnIntervalTicks()) != 0) scene
         else if (wandererCount >= maxWanderersOnFloor()) scene
-        else spawnOneWandererInRoom(enemies, weapons, floor, current, scene)
+        else spawnOneWandererInRoom(enemies, weapons, ringCatalog, floor, current, scene)
 
     /// 部屋の空き・視界外セルを 1 つ選び、フロアの Wanderer タイプ敵を重み抽選して 1 体追加する。
     def spawnOneWandererInRoom(enemies: EnemyCatalog.EnemyCatalog,
                                 weapons: WeaponCatalog.WeaponCatalog,
+                                ringCatalog: Ring.RingCatalog,
                                 floor: FloorCatalog.FloorResource,
                                 current: List[Data],
                                 scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
@@ -288,7 +296,7 @@ mod EnemyScene {
                 id = nextEnemyId(current), gridPos = cell, moduleIdx = idx,
                 resource = res, weapon = lookupFirstWeapon(res, weapons)
             };
-            addOneEnemy(entry, scene)
+            addOneEnemy(entry, ringCatalog, scene)
         };
         Option.getWithDefault(scene, spawned)
 
@@ -324,9 +332,9 @@ mod EnemyScene {
         }
 
     /// 敵 id の表示名（敵種名 = `resource#description`）。ログ文言で使う。
-    /// 見つからない場合は防御的に "敵${id}" を返す。
+    /// 見つからない場合は防御的に "敵" を返す（ログに id を出さない方針）。
     pub def displayName(id: Int32, scene: Scene[NodeTag]): String =
-        get(id, scene) |> Option.map(d -> d#resource#description) |> Option.getWithDefault("敵${id}")
+        get(id, scene) |> Option.map(d -> d#resource#description) |> Option.getWithDefault("敵")
 
     /// 敵 id の Data を `f` で更新する。Marker2D 自体には触れない。
     pub def mapEnemy(id: Int32, f: Data -> Data,
@@ -360,17 +368,53 @@ mod EnemyScene {
             |> setSpriteModulate(id, actedColor())
             |> UnitHPBarScene.setModulate(enemyPath(id), actedColor())
 
+    /// 完全停止（かなしばり）を解除する。被攻撃 or 被投擲の瞬間に呼ぶ。
+    /// 停止していなければ no-op（他の時限ステータスは残す）。
+    pub def releaseBind(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapEnemy(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, scene)
+
     /// 全敵の「行動済み」を解除し、本体スプライトと HP ゲージを通常の明るさへ戻す。
     /// 敵ターン開始時に呼ぶ（プレイヤーの clearAllWaited と対称）。
-    pub def clearActedAll(scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def clearActedAll(scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
         let ids = getAll(scene) |> List.map(d -> d#id);
-        List.foldLeft((sc, id) ->
+        let reset = List.foldLeft((sc, id) ->
             sc
-                // 敵ターン開始ごとに時限デバフ（目潰し/鈍足）を 1 ターン分減算する。
-                |> mapEnemy(id, d -> {acted = false, statuses = StatusSystem.tick(d#statuses) | d})
+                // 敵ターン開始ごとに時限デバフ（目潰し/鈍足）を 1 ターン分減算し、
+                // 追撃リングの二重発動フラグを戻す。
+                |> mapEnemy(id, d -> {acted = false, statuses = StatusSystem.tick(d#statuses),
+                                      followUpUsed = false | d})
                 |> setSpriteModulate(id, activeColor())
                 |> UnitHPBarScene.setModulate(enemyPath(id), activeColor()),
-            scene, ids)
+            scene, ids);
+        // 敵ターン開始時に、いやしのリングを装備した敵の HP を回復する。
+        applyRingRegen(reset)
+
+    /// いやしのリングを装備した敵の HP を回復する（最大 HP でクランプ）。敵ターン開始で呼ぶ。
+    /// 実際に回復した敵はログに出す。
+    pub def applyRingRegen(scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+        let ids = getAll(scene) |> List.map(d -> d#id);
+        List.foldLeft((sc, id) -> regenOneEnemy(id, sc), scene, ids)
+
+    /// 1 敵ぶんの Mend 回復。Mend 以外 / 未装備なら no-op（match は入れ子にしない）。
+    def regenOneEnemy(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+        match get(id, scene) {
+            case None    => scene
+            case Some(d) => mendOneEnemy(id, d, scene)
+        }
+
+    /// 回復量を計算して適用するヘルパー（regenOneEnemy から呼ぶ）。
+    /// 満タン等で実際に HP が増えないときはログも出さない。
+    def mendOneEnemy(id: Int32, d: Data, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        let amt = Ring.mendAmount(d#ring);
+        let newHp = Combat.heal(d#hp, d#resource#hp, amt)#newHp;
+        if (amt <= 0 or newHp <= d#hp) scene
+        else {
+            GameLogger.enemyLog("${d#resource#description} は いやしのリングで HP+${newHp - d#hp}");
+            scene
+                |> mapEnemy(id, dd -> {hp = newHp | dd})
+                |> UnitHPBarScene.update(enemyPath(id), newHp)
+        }
 
     /// 全敵の sprite / HP ゲージを通常色(active)に戻す。`acted` フラグは変えない。
     /// 味方フェーズ中に「敵の行動済み灰色」を消してアクティブに見せるために使う
@@ -518,11 +562,11 @@ mod EnemyScene {
 
     /// 既存の敵を全て scene から取り除き、`spawns` から再構築する。
     /// 各敵は `addOneEnemy` を使って HP・alerted・dying を初期値で生成する。
-    pub def respawnFromInitial(spawns: List[Spawn],
+    pub def respawnFromInitial(spawns: List[Spawn], ringCatalog: Ring.RingCatalog,
                                 scene: Scene[NodeTag]): Scene[NodeTag] =
         let cleared = List.foldLeft((sc, d) -> Scene.removeAt(enemyPath(d#id), sc),
                                      scene, getAll(scene));
-        List.foldLeft((sc, sp) -> addOneEnemy(sp, sc), cleared, spawns)
+        List.foldLeft((sc, sp) -> addOneEnemy(sp, ringCatalog, sc), cleared, spawns)
 
     // ────────────────────────────────────────────────────────
     // (G) 攻撃モーション関連のクエリとシグナル受信
@@ -545,10 +589,11 @@ mod EnemyScene {
     pub def combatView(data: Data): Combat.CombatView =
         // 投擲デバフ（目潰し=命中ダウン / 鈍足=速さダウン）を被弾していれば戦闘ビューに反映する。
         let m = StatusSystem.combatMods(data#statuses);
-        {attack = data#resource#attack + m#atkBonus, magicAttack = data#resource#magicAttack,
-         defense = data#resource#defense, magicDefense = data#resource#magicDefense,
-         skill = data#resource#skill, speed = data#resource#speed + m#spdDelta,
-         luck = data#resource#luck, hp = data#hp, hitMod = m#hitMod,
+        let rb = Ring.bonuses(data#ring);
+        {attack = data#resource#attack + m#atkBonus + rb#attack, magicAttack = data#resource#magicAttack,
+         defense = data#resource#defense + rb#defense + m#defDelta, magicDefense = data#resource#magicDefense,
+         skill = data#resource#skill + rb#skill, speed = data#resource#speed + m#spdDelta + rb#speed,
+         luck = data#resource#luck + rb#luck, hp = data#hp, maxHp = data#resource#hp, hitMod = m#hitMod,
          weapon = Combat.weaponView(data#weapon, true)}
 
     /// この敵の盤上ビュー（faction = Enemy）。`Encounter.fromScene` の join で使う。

@@ -49,6 +49,22 @@
         {
           "id": "power_potion",
           "percent": 8
+        },
+        {
+          "id": "pursuit_ring",
+          "percent": 8
+        },
+        {
+          "id": "vengeance_ring",
+          "percent": 8
+        },
+        {
+          "id": "finisher_ring",
+          "percent": 8
+        },
+        {
+          "id": "power_ring",
+          "percent": 10
         }
       ],
       "label": "金の宝箱",
@@ -100,6 +116,26 @@
         {
           "id": "power_potion",
           "percent": 8
+        },
+        {
+          "id": "guard_ring",
+          "percent": 10
+        },
+        {
+          "id": "swift_ring",
+          "percent": 8
+        },
+        {
+          "id": "mend_ring",
+          "percent": 10
+        },
+        {
+          "id": "plain_ring",
+          "percent": 6
+        },
+        {
+          "id": "rusty_ring",
+          "percent": 6
         }
       ],
       "label": "木の宝箱",

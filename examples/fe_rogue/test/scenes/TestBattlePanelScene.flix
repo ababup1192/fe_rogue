@@ -35,7 +35,10 @@ mod TestBattlePanelScene {
         level                     = 1,
         exp                       = 0,
         pendingLevelUp            = None,
-        statuses                  = Nil
+        statuses                  = Nil,
+        rings          = Nil,
+        ringEquipped          = false,
+        followUpUsed   = false
     }
 
     /// 隣接マス (3,2) に立つ生存中の敵。武器持ち（反撃可）。
@@ -52,7 +55,10 @@ mod TestBattlePanelScene {
         weapon         = Some(TestUnitFixtures.testWeapon()),
         acted          = false,
         prevPos        = None,
-        statuses       = Nil
+        statuses       = Nil,
+        ring           = None,
+        followUpUsed   = false,
+        bottleUsed     = false
     }
 
     /// 5x5 床のみの MapSnapshot（Board 構築用、本テストでは isFloor / isWall は使わない）
