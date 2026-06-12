@@ -9,6 +9,12 @@
     -fx-font-weight: bold;
 }
 
+/* ドロップ試算 (DropSimPanel) の結果表示。桁そろえのため等幅フォントにする。 */
+.dropsim-output {
+    -fx-font-family: "Menlo", "Monaco", "Consolas", monospace;
+    -fx-font-size: 11px;
+}
+
 .status-bar {
     -fx-padding: 3 8 3 8;
     -fx-background-color: #2b2b2b;

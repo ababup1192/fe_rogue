@@ -252,6 +252,9 @@ mod ResourcePanel {
                                                                   textureNames, texturePathMap,
                                                                   refOptions, mkCommit, onFramePick)
                                 }, sorted);
+                                // floors の sub-entry なら「ドロップ試算」セクションを末尾に足す
+                                // (floors 以外では no-op)。schema 駆動フィールドの後・preview の前。
+                                DropSimPanel.appendSection(children, state, record, basePath, refOptions);
                                 refreshPreview(state, record)
                             }
                         }
