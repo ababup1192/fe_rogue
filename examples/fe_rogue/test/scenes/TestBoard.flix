@@ -522,4 +522,33 @@ mod TestBoard {
                                   {x = 9, y = 9}, 2)
                     |> List.map(c -> (c#x, c#y));
         Assert.assertEq(expected = (0, 0) :: (1, 1) :: Nil, out)
+
+    // ========================================================================
+    // knockbackPathCapped — ふきとばし経路の距離上限（如意棒2マス / 突風=無制限）
+    //   {x,y} は Eq 無しなので tuple 化して比較する。
+    // ========================================================================
+
+    /// 10×1 の床で (1,0) の駒を右へ押すと、範囲端まで 8 マス分の経路が出る（無制限の基準）。
+    @Test
+    def testKnockbackPathUncapped(): Unit \ Assert =
+        let board = boardWithPlayer(emptySnapshot(10, 1), {x = 1, y = 0});
+        let out = Board.knockbackPathCapped({x = 1, y = 0}, {x = 1, y = 0}, board, None)
+                    |> List.map(c -> (c#x, c#y));
+        Assert.assertEq(expected = (2,0)::(3,0)::(4,0)::(5,0)::(6,0)::(7,0)::(8,0)::(9,0)::Nil, out)
+
+    /// Some(2)（如意棒）→ 同じ経路の先頭 2 マスだけに切り詰める。
+    @Test
+    def testKnockbackPathCappedToTwo(): Unit \ Assert =
+        let board = boardWithPlayer(emptySnapshot(10, 1), {x = 1, y = 0});
+        let out = Board.knockbackPathCapped({x = 1, y = 0}, {x = 1, y = 0}, board, Some(2))
+                    |> List.map(c -> (c#x, c#y));
+        Assert.assertEq(expected = (2, 0) :: (3, 0) :: Nil, out)
+
+    /// 壁での停止は上限より先に効く：(4,0) が壁なら cap=5 でも (2,0),(3,0) で止まる。
+    @Test
+    def testKnockbackPathStopsAtWallBeforeCap(): Unit \ Assert =
+        let board = boardWithPlayer(floorSnapshotWithWall(10, 1, {x = 4, y = 0}), {x = 1, y = 0});
+        let out = Board.knockbackPathCapped({x = 1, y = 0}, {x = 1, y = 0}, board, Some(5))
+                    |> List.map(c -> (c#x, c#y));
+        Assert.assertEq(expected = (2, 0) :: (3, 0) :: Nil, out)
 }
