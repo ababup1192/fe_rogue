@@ -405,7 +405,7 @@ mod CombatScene {
         let popupColor = DamagePopupScene.damageToEnemyColor();
         let (afterDamage, expGain) =
             if (Combat.isHit(plan#hitRate, rollPercent()))
-                (applyHit(playerId, enemyId, plan, popupPos, popupColor, scene), plan#exp)
+                (applyHit(playerId, enemyId, plan, weapon#weaponType, popupPos, popupColor, scene), plan#exp)
             else
                 (applyMiss(playerId, enemyId, popupPos, popupColor, scene), 0);
         let afterWeapon = consumeEquippedWeapon(playerId, weapon, afterDamage);
@@ -422,13 +422,26 @@ mod CombatScene {
         AudioStreamPlayer.play("miss");
         DamagePopupScene.emitText(popupPos, "miss", color, scene)
 
-    /// 命中: damage SE を鳴らしダメージを適用。撃破なら死亡演出、生存なら敵 HP を更新。
-    /// どちらでも与ダメージの数値ポップアップを浮かす。
+    /// 命中時に鳴らす SE 名を決める（純粋）。
+    ///   - ダメージ 0（防御で防がれた）→ "guard"
+    ///   - 魔法武器の命中             → "magic"
+    ///   - それ以外（物理で 1 以上）   → "damage"
+    /// ダメージ 0 判定を魔法より優先する（魔法でも 0 なら防がれた音を出す）。
+    pub def hitSoundName(damage: Int32, weaponType: WeaponCatalog.WeaponType): String =
+        if (damage <= 0) "guard"
+        else match weaponType {
+            case WeaponCatalog.WeaponType.Magic => "magic"
+            case _                              => "damage"
+        }
+
+    /// 命中: 与ダメージ/武器タイプに応じた SE を鳴らしダメージを適用。撃破なら死亡演出、
+    /// 生存なら敵 HP を更新。どちらでも与ダメージの数値ポップアップを浮かす。
     def applyHit(playerId: Int32, enemyId: Int32, plan: AttackForecast,
+                  weaponType: WeaponCatalog.WeaponType,
                   popupPos: Vec2.Vec2, color: Color, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger} =
-        AudioStreamPlayer.play("damage");
+        AudioStreamPlayer.play(hitSoundName(plan#dmg, weaponType));
         let withPopup = DamagePopupScene.emit(popupPos, plan#dmg, color, scene);
         if (plan#killed) {
             GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}を倒した");
@@ -501,8 +514,8 @@ mod CombatScene {
                 AudioStreamPlayer.play("miss");
                 (DamagePopupScene.emitText(popupPos, "miss", popupColor, scene), Nil)
             } else {
-                // 命中: SE を鳴らしダメージ適用 + 数値ポップアップ。
-                AudioStreamPlayer.play("damage");
+                // 命中: 与ダメージ/武器タイプに応じた SE を鳴らしダメージ適用 + 数値ポップアップ。
+                AudioStreamPlayer.play(hitSoundName(strike#dmg, weapon#weaponType));
                 if (strike#killed) {
                     GameLogger.enemyLog("${enemy#resource#description}は ${player#resource#description}を倒した")
                 } else {

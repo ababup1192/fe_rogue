@@ -1,0 +1,81 @@
+{
+  "decorTiles": [
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 1,
+      "y": 5
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 2,
+      "y": 5
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 3,
+      "y": 5
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 4,
+      "y": 5
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 4,
+      "y": 4
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 4,
+      "y": 3
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 4,
+      "y": 2
+    }
+  ],
+  "editorPalette": {
+    "floor": {
+      "cellH": 26,
+      "cellW": 26,
+      "marginX": 0,
+      "marginY": 0,
+      "textureName": "tileset_dungeon_green"
+    },
+    "walls": {
+      "cellH": 26,
+      "cellW": 26,
+      "marginX": 0,
+      "marginY": 0,
+      "textureName": "tileset_dungeon_green"
+    }
+  },
+  "entities": [
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 0,
+      "y": 5
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 5,
+      "y": 2
+    }
+  ],
+  "height": 14,
+  "manualTiles": [],
+  "materialId": "pathway_horizontal_1",
+  "tileSize": 26,
+  "width": 14
+}

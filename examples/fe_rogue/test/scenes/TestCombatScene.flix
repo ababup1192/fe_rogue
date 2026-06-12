@@ -295,4 +295,31 @@ mod TestCombatScene {
         Assert.assertEq(
             expected = Some((None: Option[Int32])),
             nodeAttackTarget(node))
+
+    // ════════════════════════════════════════════════════════
+    // hitSoundName: 命中時の SE 出し分け（ダメージ 0=防御 / 魔法 / 物理）
+    // ════════════════════════════════════════════════════════
+
+    /// ダメージ 0（防御で防がれた）は、物理でも魔法でも "guard"。
+    /// 0 判定は魔法より優先する（魔法で 0 ダメージでも防御音を鳴らす）。
+    @Test
+    def testHitSoundGuardWhenZeroDamage(): Unit \ Assert =
+        Assert.assertEq(
+            expected = ("guard", "guard"),
+            (CombatScene.hitSoundName(0, WeaponCatalog.WeaponType.Sword),
+             CombatScene.hitSoundName(0, WeaponCatalog.WeaponType.Magic)))
+
+    /// 魔法武器でダメージ 1 以上なら "magic"。
+    @Test
+    def testHitSoundMagicWhenMagicWeapon(): Unit \ Assert =
+        Assert.assertEq(
+            expected = "magic",
+            CombatScene.hitSoundName(5, WeaponCatalog.WeaponType.Magic))
+
+    /// 物理武器でダメージ 1 以上なら通常の "damage"。
+    @Test
+    def testHitSoundDamageWhenPhysical(): Unit \ Assert =
+        Assert.assertEq(
+            expected = "damage",
+            CombatScene.hitSoundName(5, WeaponCatalog.WeaponType.Lance))
 }

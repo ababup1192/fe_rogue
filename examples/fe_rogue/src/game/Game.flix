@@ -660,6 +660,9 @@ mod Game {
                 AudioStreamPlayer.setVolume("damage", 0.2625f32);
                 AudioStreamPlayer.setVolume("down_enemy", 0.5f32);
                 AudioStreamPlayer.setVolume("miss", 0.5f32);
+                // 命中時の SE 出し分け: ダメージ 0 を防いだ "guard"、魔法武器の "magic"
+                AudioStreamPlayer.setVolume("guard", 0.5f32);
+                AudioStreamPlayer.setVolume("magic", 0.5f32);
                 AudioStreamPlayer.setVolume("find", 0.5f32);
                 AudioStreamPlayer.setVolume("phase_change", 0.5f32);
                 AudioStreamPlayer.setVolume("get_item", 0.5f32);

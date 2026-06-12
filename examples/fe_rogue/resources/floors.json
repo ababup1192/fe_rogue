@@ -15,12 +15,30 @@
         "roomCount": 2
       },
       "roomMaps": [
-        {"id": "room_1", "percent": 10},
-        {"id": "room_2", "percent": 10},
-        {"id": "room_3", "percent": 10},
-        {"id": "room_4", "percent": 10},
-        {"id": "room_5", "percent": 10},
-        {"id": "room_6", "percent": 10}
+        {
+          "id": "room_1",
+          "percent": 10
+        },
+        {
+          "id": "room_2",
+          "percent": 10
+        },
+        {
+          "id": "room_3",
+          "percent": 10
+        },
+        {
+          "id": "room_4",
+          "percent": 10
+        },
+        {
+          "id": "room_5",
+          "percent": 10
+        },
+        {
+          "id": "room_6",
+          "percent": 10
+        }
       ],
       "items": [
         {
@@ -94,7 +112,43 @@
       "monstersPerRoom": {
         "max": 2,
         "min": 1
-      }
+      },
+      "horizontalMaps": [
+        {
+          "id": "pathway_horizontal_1",
+          "percent": 40
+        },
+        {
+          "id": "pathway_horizontal_2",
+          "percent": 25
+        },
+        {
+          "id": "pathway_horizontal_long",
+          "percent": 25
+        },
+        {
+          "id": "pathway_horizontal_l",
+          "percent": 10
+        }
+      ],
+      "verticalMaps": [
+        {
+          "id": "pathway_vertical_1",
+          "percent": 40
+        },
+        {
+          "id": "pathway_vertical_2",
+          "percent": 25
+        },
+        {
+          "id": "pathway_vertical_long",
+          "percent": 25
+        },
+        {
+          "id": "pathway_vertical_l",
+          "percent": 10
+        }
+      ]
     },
     "f02": {
       "chests": [
@@ -111,13 +165,34 @@
         "roomCount": 4
       },
       "roomMaps": [
-        {"id": "room_1", "percent": 10},
-        {"id": "room_2", "percent": 10},
-        {"id": "room_3", "percent": 10},
-        {"id": "room_4", "percent": 10},
-        {"id": "room_5", "percent": 10},
-        {"id": "room_6", "percent": 10},
-        {"id": "room_7", "percent": 10}
+        {
+          "id": "room_1",
+          "percent": 10
+        },
+        {
+          "id": "room_2",
+          "percent": 10
+        },
+        {
+          "id": "room_3",
+          "percent": 10
+        },
+        {
+          "id": "room_4",
+          "percent": 10
+        },
+        {
+          "id": "room_5",
+          "percent": 10
+        },
+        {
+          "id": "room_6",
+          "percent": 10
+        },
+        {
+          "id": "room_7",
+          "percent": 10
+        }
       ],
       "items": [
         {
@@ -195,7 +270,43 @@
       "monstersPerRoom": {
         "max": 2,
         "min": 1
-      }
+      },
+      "horizontalMaps": [
+        {
+          "id": "pathway_horizontal_1",
+          "percent": 40
+        },
+        {
+          "id": "pathway_horizontal_2",
+          "percent": 25
+        },
+        {
+          "id": "pathway_horizontal_long",
+          "percent": 25
+        },
+        {
+          "id": "pathway_horizontal_l",
+          "percent": 10
+        }
+      ],
+      "verticalMaps": [
+        {
+          "id": "pathway_vertical_1",
+          "percent": 40
+        },
+        {
+          "id": "pathway_vertical_2",
+          "percent": 25
+        },
+        {
+          "id": "pathway_vertical_long",
+          "percent": 25
+        },
+        {
+          "id": "pathway_vertical_l",
+          "percent": 10
+        }
+      ]
     },
     "f03": {
       "chests": [
@@ -212,14 +323,38 @@
         "roomCount": 5
       },
       "roomMaps": [
-        {"id": "room_1", "percent": 10},
-        {"id": "room_2", "percent": 10},
-        {"id": "room_3", "percent": 10},
-        {"id": "room_4", "percent": 10},
-        {"id": "room_5", "percent": 10},
-        {"id": "room_6", "percent": 10},
-        {"id": "room_7", "percent": 10},
-        {"id": "room_8", "percent": 10}
+        {
+          "id": "room_1",
+          "percent": 10
+        },
+        {
+          "id": "room_2",
+          "percent": 10
+        },
+        {
+          "id": "room_3",
+          "percent": 10
+        },
+        {
+          "id": "room_4",
+          "percent": 10
+        },
+        {
+          "id": "room_5",
+          "percent": 10
+        },
+        {
+          "id": "room_6",
+          "percent": 10
+        },
+        {
+          "id": "room_7",
+          "percent": 10
+        },
+        {
+          "id": "room_8",
+          "percent": 10
+        }
       ],
       "items": [
         {
@@ -297,7 +432,43 @@
       "monstersPerRoom": {
         "max": 3,
         "min": 1
-      }
+      },
+      "horizontalMaps": [
+        {
+          "id": "pathway_horizontal_1",
+          "percent": 40
+        },
+        {
+          "id": "pathway_horizontal_2",
+          "percent": 25
+        },
+        {
+          "id": "pathway_horizontal_long",
+          "percent": 25
+        },
+        {
+          "id": "pathway_horizontal_l",
+          "percent": 10
+        }
+      ],
+      "verticalMaps": [
+        {
+          "id": "pathway_vertical_1",
+          "percent": 40
+        },
+        {
+          "id": "pathway_vertical_2",
+          "percent": 25
+        },
+        {
+          "id": "pathway_vertical_long",
+          "percent": 25
+        },
+        {
+          "id": "pathway_vertical_l",
+          "percent": 10
+        }
+      ]
     },
     "f04": {
       "chests": [
@@ -318,16 +489,46 @@
         "roomCount": 6
       },
       "roomMaps": [
-        {"id": "room_1", "percent": 10},
-        {"id": "room_2", "percent": 10},
-        {"id": "room_3", "percent": 10},
-        {"id": "room_4", "percent": 10},
-        {"id": "room_5", "percent": 10},
-        {"id": "room_6", "percent": 10},
-        {"id": "room_7", "percent": 10},
-        {"id": "room_8", "percent": 10},
-        {"id": "room_9", "percent": 10},
-        {"id": "room_10", "percent": 10}
+        {
+          "id": "room_1",
+          "percent": 10
+        },
+        {
+          "id": "room_2",
+          "percent": 10
+        },
+        {
+          "id": "room_3",
+          "percent": 10
+        },
+        {
+          "id": "room_4",
+          "percent": 10
+        },
+        {
+          "id": "room_5",
+          "percent": 10
+        },
+        {
+          "id": "room_6",
+          "percent": 10
+        },
+        {
+          "id": "room_7",
+          "percent": 10
+        },
+        {
+          "id": "room_8",
+          "percent": 10
+        },
+        {
+          "id": "room_9",
+          "percent": 10
+        },
+        {
+          "id": "room_10",
+          "percent": 10
+        }
       ],
       "items": [
         {
@@ -405,7 +606,75 @@
       "monstersPerRoom": {
         "max": 3,
         "min": 2
-      }
+      },
+      "horizontalMaps": [
+        {
+          "id": "pathway_horizontal_1",
+          "percent": 14
+        },
+        {
+          "id": "pathway_horizontal_2",
+          "percent": 14
+        },
+        {
+          "id": "pathway_horizontal_long",
+          "percent": 22
+        },
+        {
+          "id": "pathway_horizontal_l",
+          "percent": 16
+        },
+        {
+          "id": "pathway_horizontal_revl",
+          "percent": 12
+        },
+        {
+          "id": "pathway_horizontal_z",
+          "percent": 10
+        },
+        {
+          "id": "pathway_horizontal_l2w",
+          "percent": 8
+        },
+        {
+          "id": "pathway_horizontal_z2w",
+          "percent": 4
+        }
+      ],
+      "verticalMaps": [
+        {
+          "id": "pathway_vertical_1",
+          "percent": 14
+        },
+        {
+          "id": "pathway_vertical_2",
+          "percent": 14
+        },
+        {
+          "id": "pathway_vertical_long",
+          "percent": 22
+        },
+        {
+          "id": "pathway_vertical_l",
+          "percent": 16
+        },
+        {
+          "id": "pathway_vertical_revl",
+          "percent": 12
+        },
+        {
+          "id": "pathway_vertical_long2w",
+          "percent": 10
+        },
+        {
+          "id": "pathway_vertical_l2w",
+          "percent": 8
+        },
+        {
+          "id": "pathway_vertical_revl2w",
+          "percent": 4
+        }
+      ]
     },
     "f05": {
       "chests": [
@@ -426,17 +695,50 @@
         "roomCount": 7
       },
       "roomMaps": [
-        {"id": "room_1", "percent": 10},
-        {"id": "room_2", "percent": 10},
-        {"id": "room_3", "percent": 10},
-        {"id": "room_4", "percent": 10},
-        {"id": "room_5", "percent": 10},
-        {"id": "room_6", "percent": 10},
-        {"id": "room_7", "percent": 10},
-        {"id": "room_8", "percent": 10},
-        {"id": "room_9", "percent": 10},
-        {"id": "room_10", "percent": 10},
-        {"id": "room_11", "percent": 10}
+        {
+          "id": "room_1",
+          "percent": 10
+        },
+        {
+          "id": "room_2",
+          "percent": 10
+        },
+        {
+          "id": "room_3",
+          "percent": 10
+        },
+        {
+          "id": "room_4",
+          "percent": 10
+        },
+        {
+          "id": "room_5",
+          "percent": 10
+        },
+        {
+          "id": "room_6",
+          "percent": 10
+        },
+        {
+          "id": "room_7",
+          "percent": 10
+        },
+        {
+          "id": "room_8",
+          "percent": 10
+        },
+        {
+          "id": "room_9",
+          "percent": 10
+        },
+        {
+          "id": "room_10",
+          "percent": 10
+        },
+        {
+          "id": "room_11",
+          "percent": 10
+        }
       ],
       "items": [
         {
@@ -514,7 +816,75 @@
       "monstersPerRoom": {
         "max": 3,
         "min": 2
-      }
+      },
+      "horizontalMaps": [
+        {
+          "id": "pathway_horizontal_1",
+          "percent": 14
+        },
+        {
+          "id": "pathway_horizontal_2",
+          "percent": 14
+        },
+        {
+          "id": "pathway_horizontal_long",
+          "percent": 22
+        },
+        {
+          "id": "pathway_horizontal_l",
+          "percent": 16
+        },
+        {
+          "id": "pathway_horizontal_revl",
+          "percent": 12
+        },
+        {
+          "id": "pathway_horizontal_z",
+          "percent": 10
+        },
+        {
+          "id": "pathway_horizontal_l2w",
+          "percent": 8
+        },
+        {
+          "id": "pathway_horizontal_z2w",
+          "percent": 4
+        }
+      ],
+      "verticalMaps": [
+        {
+          "id": "pathway_vertical_1",
+          "percent": 14
+        },
+        {
+          "id": "pathway_vertical_2",
+          "percent": 14
+        },
+        {
+          "id": "pathway_vertical_long",
+          "percent": 22
+        },
+        {
+          "id": "pathway_vertical_l",
+          "percent": 16
+        },
+        {
+          "id": "pathway_vertical_revl",
+          "percent": 12
+        },
+        {
+          "id": "pathway_vertical_long2w",
+          "percent": 10
+        },
+        {
+          "id": "pathway_vertical_l2w",
+          "percent": 8
+        },
+        {
+          "id": "pathway_vertical_revl2w",
+          "percent": 4
+        }
+      ]
     },
     "f06": {
       "chests": [
@@ -535,18 +905,54 @@
         "roomCount": 8
       },
       "roomMaps": [
-        {"id": "room_1", "percent": 10},
-        {"id": "room_2", "percent": 10},
-        {"id": "room_3", "percent": 10},
-        {"id": "room_4", "percent": 10},
-        {"id": "room_5", "percent": 10},
-        {"id": "room_6", "percent": 10},
-        {"id": "room_7", "percent": 10},
-        {"id": "room_8", "percent": 10},
-        {"id": "room_9", "percent": 10},
-        {"id": "room_10", "percent": 10},
-        {"id": "room_11", "percent": 10},
-        {"id": "room_12", "percent": 10}
+        {
+          "id": "room_1",
+          "percent": 10
+        },
+        {
+          "id": "room_2",
+          "percent": 10
+        },
+        {
+          "id": "room_3",
+          "percent": 10
+        },
+        {
+          "id": "room_4",
+          "percent": 10
+        },
+        {
+          "id": "room_5",
+          "percent": 10
+        },
+        {
+          "id": "room_6",
+          "percent": 10
+        },
+        {
+          "id": "room_7",
+          "percent": 10
+        },
+        {
+          "id": "room_8",
+          "percent": 10
+        },
+        {
+          "id": "room_9",
+          "percent": 10
+        },
+        {
+          "id": "room_10",
+          "percent": 10
+        },
+        {
+          "id": "room_11",
+          "percent": 10
+        },
+        {
+          "id": "room_12",
+          "percent": 10
+        }
       ],
       "items": [
         {
@@ -620,7 +1026,75 @@
       "monstersPerRoom": {
         "max": 4,
         "min": 2
-      }
+      },
+      "horizontalMaps": [
+        {
+          "id": "pathway_horizontal_1",
+          "percent": 14
+        },
+        {
+          "id": "pathway_horizontal_2",
+          "percent": 14
+        },
+        {
+          "id": "pathway_horizontal_long",
+          "percent": 22
+        },
+        {
+          "id": "pathway_horizontal_l",
+          "percent": 16
+        },
+        {
+          "id": "pathway_horizontal_revl",
+          "percent": 12
+        },
+        {
+          "id": "pathway_horizontal_z",
+          "percent": 10
+        },
+        {
+          "id": "pathway_horizontal_l2w",
+          "percent": 8
+        },
+        {
+          "id": "pathway_horizontal_z2w",
+          "percent": 4
+        }
+      ],
+      "verticalMaps": [
+        {
+          "id": "pathway_vertical_1",
+          "percent": 14
+        },
+        {
+          "id": "pathway_vertical_2",
+          "percent": 14
+        },
+        {
+          "id": "pathway_vertical_long",
+          "percent": 22
+        },
+        {
+          "id": "pathway_vertical_l",
+          "percent": 16
+        },
+        {
+          "id": "pathway_vertical_revl",
+          "percent": 12
+        },
+        {
+          "id": "pathway_vertical_long2w",
+          "percent": 10
+        },
+        {
+          "id": "pathway_vertical_l2w",
+          "percent": 8
+        },
+        {
+          "id": "pathway_vertical_revl2w",
+          "percent": 4
+        }
+      ]
     },
     "f07": {
       "chests": [
@@ -641,20 +1115,62 @@
         "roomCount": 9
       },
       "roomMaps": [
-        {"id": "room_1", "percent": 10},
-        {"id": "room_2", "percent": 10},
-        {"id": "room_3", "percent": 10},
-        {"id": "room_4", "percent": 10},
-        {"id": "room_5", "percent": 10},
-        {"id": "room_6", "percent": 10},
-        {"id": "room_7", "percent": 10},
-        {"id": "room_8", "percent": 10},
-        {"id": "room_9", "percent": 10},
-        {"id": "room_10", "percent": 10},
-        {"id": "room_11", "percent": 10},
-        {"id": "room_12", "percent": 10},
-        {"id": "room_13", "percent": 10},
-        {"id": "room_14", "percent": 10}
+        {
+          "id": "room_1",
+          "percent": 10
+        },
+        {
+          "id": "room_2",
+          "percent": 10
+        },
+        {
+          "id": "room_3",
+          "percent": 10
+        },
+        {
+          "id": "room_4",
+          "percent": 10
+        },
+        {
+          "id": "room_5",
+          "percent": 10
+        },
+        {
+          "id": "room_6",
+          "percent": 10
+        },
+        {
+          "id": "room_7",
+          "percent": 10
+        },
+        {
+          "id": "room_8",
+          "percent": 10
+        },
+        {
+          "id": "room_9",
+          "percent": 10
+        },
+        {
+          "id": "room_10",
+          "percent": 10
+        },
+        {
+          "id": "room_11",
+          "percent": 10
+        },
+        {
+          "id": "room_12",
+          "percent": 10
+        },
+        {
+          "id": "room_13",
+          "percent": 10
+        },
+        {
+          "id": "room_14",
+          "percent": 10
+        }
       ],
       "items": [
         {
@@ -728,7 +1244,75 @@
       "monstersPerRoom": {
         "max": 4,
         "min": 3
-      }
+      },
+      "horizontalMaps": [
+        {
+          "id": "pathway_horizontal_1",
+          "percent": 14
+        },
+        {
+          "id": "pathway_horizontal_2",
+          "percent": 14
+        },
+        {
+          "id": "pathway_horizontal_long",
+          "percent": 22
+        },
+        {
+          "id": "pathway_horizontal_l",
+          "percent": 16
+        },
+        {
+          "id": "pathway_horizontal_revl",
+          "percent": 12
+        },
+        {
+          "id": "pathway_horizontal_z",
+          "percent": 10
+        },
+        {
+          "id": "pathway_horizontal_l2w",
+          "percent": 8
+        },
+        {
+          "id": "pathway_horizontal_z2w",
+          "percent": 4
+        }
+      ],
+      "verticalMaps": [
+        {
+          "id": "pathway_vertical_1",
+          "percent": 14
+        },
+        {
+          "id": "pathway_vertical_2",
+          "percent": 14
+        },
+        {
+          "id": "pathway_vertical_long",
+          "percent": 22
+        },
+        {
+          "id": "pathway_vertical_l",
+          "percent": 16
+        },
+        {
+          "id": "pathway_vertical_revl",
+          "percent": 12
+        },
+        {
+          "id": "pathway_vertical_long2w",
+          "percent": 10
+        },
+        {
+          "id": "pathway_vertical_l2w",
+          "percent": 8
+        },
+        {
+          "id": "pathway_vertical_revl2w",
+          "percent": 4
+        }
+      ]
     },
     "f08": {
       "chests": [
@@ -749,21 +1333,66 @@
         "roomCount": 10
       },
       "roomMaps": [
-        {"id": "room_1", "percent": 10},
-        {"id": "room_2", "percent": 10},
-        {"id": "room_3", "percent": 10},
-        {"id": "room_4", "percent": 10},
-        {"id": "room_5", "percent": 10},
-        {"id": "room_6", "percent": 10},
-        {"id": "room_7", "percent": 10},
-        {"id": "room_8", "percent": 10},
-        {"id": "room_9", "percent": 10},
-        {"id": "room_10", "percent": 10},
-        {"id": "room_11", "percent": 10},
-        {"id": "room_12", "percent": 10},
-        {"id": "room_13", "percent": 10},
-        {"id": "room_14", "percent": 10},
-        {"id": "room_16", "percent": 10}
+        {
+          "id": "room_1",
+          "percent": 10
+        },
+        {
+          "id": "room_2",
+          "percent": 10
+        },
+        {
+          "id": "room_3",
+          "percent": 10
+        },
+        {
+          "id": "room_4",
+          "percent": 10
+        },
+        {
+          "id": "room_5",
+          "percent": 10
+        },
+        {
+          "id": "room_6",
+          "percent": 10
+        },
+        {
+          "id": "room_7",
+          "percent": 10
+        },
+        {
+          "id": "room_8",
+          "percent": 10
+        },
+        {
+          "id": "room_9",
+          "percent": 10
+        },
+        {
+          "id": "room_10",
+          "percent": 10
+        },
+        {
+          "id": "room_11",
+          "percent": 10
+        },
+        {
+          "id": "room_12",
+          "percent": 10
+        },
+        {
+          "id": "room_13",
+          "percent": 10
+        },
+        {
+          "id": "room_14",
+          "percent": 10
+        },
+        {
+          "id": "room_16",
+          "percent": 10
+        }
       ],
       "items": [
         {
@@ -841,7 +1470,79 @@
       "monstersPerRoom": {
         "max": 4,
         "min": 3
-      }
+      },
+      "horizontalMaps": [
+        {
+          "id": "pathway_horizontal_1",
+          "percent": 5
+        },
+        {
+          "id": "pathway_horizontal_2",
+          "percent": 8
+        },
+        {
+          "id": "pathway_horizontal_long",
+          "percent": 18
+        },
+        {
+          "id": "pathway_horizontal_l",
+          "percent": 15
+        },
+        {
+          "id": "pathway_horizontal_revl",
+          "percent": 15
+        },
+        {
+          "id": "pathway_horizontal_z",
+          "percent": 13
+        },
+        {
+          "id": "pathway_horizontal_l2w",
+          "percent": 13
+        },
+        {
+          "id": "pathway_horizontal_revl2w",
+          "percent": 8
+        },
+        {
+          "id": "pathway_horizontal_z2w",
+          "percent": 5
+        }
+      ],
+      "verticalMaps": [
+        {
+          "id": "pathway_vertical_1",
+          "percent": 5
+        },
+        {
+          "id": "pathway_vertical_2",
+          "percent": 8
+        },
+        {
+          "id": "pathway_vertical_long",
+          "percent": 18
+        },
+        {
+          "id": "pathway_vertical_l",
+          "percent": 15
+        },
+        {
+          "id": "pathway_vertical_revl",
+          "percent": 15
+        },
+        {
+          "id": "pathway_vertical_long2w",
+          "percent": 13
+        },
+        {
+          "id": "pathway_vertical_l2w",
+          "percent": 13
+        },
+        {
+          "id": "pathway_vertical_revl2w",
+          "percent": 8
+        }
+      ]
     },
     "f09": {
       "chests": [
@@ -862,22 +1563,70 @@
         "roomCount": 11
       },
       "roomMaps": [
-        {"id": "room_1", "percent": 10},
-        {"id": "room_2", "percent": 10},
-        {"id": "room_3", "percent": 10},
-        {"id": "room_4", "percent": 10},
-        {"id": "room_5", "percent": 10},
-        {"id": "room_6", "percent": 10},
-        {"id": "room_7", "percent": 10},
-        {"id": "room_8", "percent": 10},
-        {"id": "room_9", "percent": 10},
-        {"id": "room_10", "percent": 10},
-        {"id": "room_11", "percent": 10},
-        {"id": "room_12", "percent": 10},
-        {"id": "room_13", "percent": 10},
-        {"id": "room_14", "percent": 10},
-        {"id": "room_16", "percent": 10},
-        {"id": "room_17", "percent": 10}
+        {
+          "id": "room_1",
+          "percent": 10
+        },
+        {
+          "id": "room_2",
+          "percent": 10
+        },
+        {
+          "id": "room_3",
+          "percent": 10
+        },
+        {
+          "id": "room_4",
+          "percent": 10
+        },
+        {
+          "id": "room_5",
+          "percent": 10
+        },
+        {
+          "id": "room_6",
+          "percent": 10
+        },
+        {
+          "id": "room_7",
+          "percent": 10
+        },
+        {
+          "id": "room_8",
+          "percent": 10
+        },
+        {
+          "id": "room_9",
+          "percent": 10
+        },
+        {
+          "id": "room_10",
+          "percent": 10
+        },
+        {
+          "id": "room_11",
+          "percent": 10
+        },
+        {
+          "id": "room_12",
+          "percent": 10
+        },
+        {
+          "id": "room_13",
+          "percent": 10
+        },
+        {
+          "id": "room_14",
+          "percent": 10
+        },
+        {
+          "id": "room_16",
+          "percent": 10
+        },
+        {
+          "id": "room_17",
+          "percent": 10
+        }
       ],
       "items": [
         {
@@ -955,7 +1704,79 @@
       "monstersPerRoom": {
         "max": 5,
         "min": 3
-      }
+      },
+      "horizontalMaps": [
+        {
+          "id": "pathway_horizontal_1",
+          "percent": 5
+        },
+        {
+          "id": "pathway_horizontal_2",
+          "percent": 8
+        },
+        {
+          "id": "pathway_horizontal_long",
+          "percent": 18
+        },
+        {
+          "id": "pathway_horizontal_l",
+          "percent": 15
+        },
+        {
+          "id": "pathway_horizontal_revl",
+          "percent": 15
+        },
+        {
+          "id": "pathway_horizontal_z",
+          "percent": 13
+        },
+        {
+          "id": "pathway_horizontal_l2w",
+          "percent": 13
+        },
+        {
+          "id": "pathway_horizontal_revl2w",
+          "percent": 8
+        },
+        {
+          "id": "pathway_horizontal_z2w",
+          "percent": 5
+        }
+      ],
+      "verticalMaps": [
+        {
+          "id": "pathway_vertical_1",
+          "percent": 5
+        },
+        {
+          "id": "pathway_vertical_2",
+          "percent": 8
+        },
+        {
+          "id": "pathway_vertical_long",
+          "percent": 18
+        },
+        {
+          "id": "pathway_vertical_l",
+          "percent": 15
+        },
+        {
+          "id": "pathway_vertical_revl",
+          "percent": 15
+        },
+        {
+          "id": "pathway_vertical_long2w",
+          "percent": 13
+        },
+        {
+          "id": "pathway_vertical_l2w",
+          "percent": 13
+        },
+        {
+          "id": "pathway_vertical_revl2w",
+          "percent": 8
+        }
+      ]
     },
     "f10": {
       "chests": [
@@ -976,23 +1797,74 @@
         "roomCount": 12
       },
       "roomMaps": [
-        {"id": "room_1", "percent": 10},
-        {"id": "room_2", "percent": 10},
-        {"id": "room_3", "percent": 10},
-        {"id": "room_4", "percent": 10},
-        {"id": "room_5", "percent": 10},
-        {"id": "room_6", "percent": 10},
-        {"id": "room_7", "percent": 10},
-        {"id": "room_8", "percent": 10},
-        {"id": "room_9", "percent": 10},
-        {"id": "room_10", "percent": 10},
-        {"id": "room_11", "percent": 10},
-        {"id": "room_12", "percent": 10},
-        {"id": "room_13", "percent": 10},
-        {"id": "room_14", "percent": 10},
-        {"id": "room_16", "percent": 10},
-        {"id": "room_17", "percent": 10},
-        {"id": "room_18", "percent": 10}
+        {
+          "id": "room_1",
+          "percent": 10
+        },
+        {
+          "id": "room_2",
+          "percent": 10
+        },
+        {
+          "id": "room_3",
+          "percent": 10
+        },
+        {
+          "id": "room_4",
+          "percent": 10
+        },
+        {
+          "id": "room_5",
+          "percent": 10
+        },
+        {
+          "id": "room_6",
+          "percent": 10
+        },
+        {
+          "id": "room_7",
+          "percent": 10
+        },
+        {
+          "id": "room_8",
+          "percent": 10
+        },
+        {
+          "id": "room_9",
+          "percent": 10
+        },
+        {
+          "id": "room_10",
+          "percent": 10
+        },
+        {
+          "id": "room_11",
+          "percent": 10
+        },
+        {
+          "id": "room_12",
+          "percent": 10
+        },
+        {
+          "id": "room_13",
+          "percent": 10
+        },
+        {
+          "id": "room_14",
+          "percent": 10
+        },
+        {
+          "id": "room_16",
+          "percent": 10
+        },
+        {
+          "id": "room_17",
+          "percent": 10
+        },
+        {
+          "id": "room_18",
+          "percent": 10
+        }
       ],
       "items": [
         {
@@ -1066,7 +1938,79 @@
       "monstersPerRoom": {
         "max": 5,
         "min": 4
-      }
+      },
+      "horizontalMaps": [
+        {
+          "id": "pathway_horizontal_1",
+          "percent": 5
+        },
+        {
+          "id": "pathway_horizontal_2",
+          "percent": 8
+        },
+        {
+          "id": "pathway_horizontal_long",
+          "percent": 18
+        },
+        {
+          "id": "pathway_horizontal_l",
+          "percent": 15
+        },
+        {
+          "id": "pathway_horizontal_revl",
+          "percent": 15
+        },
+        {
+          "id": "pathway_horizontal_z",
+          "percent": 13
+        },
+        {
+          "id": "pathway_horizontal_l2w",
+          "percent": 13
+        },
+        {
+          "id": "pathway_horizontal_revl2w",
+          "percent": 8
+        },
+        {
+          "id": "pathway_horizontal_z2w",
+          "percent": 5
+        }
+      ],
+      "verticalMaps": [
+        {
+          "id": "pathway_vertical_1",
+          "percent": 5
+        },
+        {
+          "id": "pathway_vertical_2",
+          "percent": 8
+        },
+        {
+          "id": "pathway_vertical_long",
+          "percent": 18
+        },
+        {
+          "id": "pathway_vertical_l",
+          "percent": 15
+        },
+        {
+          "id": "pathway_vertical_revl",
+          "percent": 15
+        },
+        {
+          "id": "pathway_vertical_long2w",
+          "percent": 13
+        },
+        {
+          "id": "pathway_vertical_l2w",
+          "percent": 13
+        },
+        {
+          "id": "pathway_vertical_revl2w",
+          "percent": 8
+        }
+      ]
     }
   },
   "order": [

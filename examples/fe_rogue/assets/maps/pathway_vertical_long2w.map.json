@@ -1,0 +1,159 @@
+{
+  "decorTiles": [
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 2,
+      "y": 1
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 3,
+      "y": 1
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 2,
+      "y": 2
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 3,
+      "y": 2
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 2,
+      "y": 3
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 3,
+      "y": 3
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 2,
+      "y": 4
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 3,
+      "y": 4
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 2,
+      "y": 5
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 3,
+      "y": 5
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 2,
+      "y": 6
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 3,
+      "y": 6
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 2,
+      "y": 7
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 3,
+      "y": 7
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 2,
+      "y": 8
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 3,
+      "y": 8
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 2,
+      "y": 9
+    },
+    {
+      "srcX": 130,
+      "srcY": 156,
+      "x": 3,
+      "y": 9
+    }
+  ],
+  "editorPalette": {
+    "floor": {
+      "cellH": 26,
+      "cellW": 26,
+      "marginX": 0,
+      "marginY": 0,
+      "textureName": "tileset_dungeon_green"
+    },
+    "walls": {
+      "cellH": 26,
+      "cellW": 26,
+      "marginX": 0,
+      "marginY": 0,
+      "textureName": "tileset_dungeon_green"
+    }
+  },
+  "entities": [
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 2,
+      "y": 0
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 3,
+      "y": 0
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 2,
+      "y": 10
+    },
+    {
+      "fields": {},
+      "identifier": "Door",
+      "x": 3,
+      "y": 10
+    }
+  ],
+  "height": 14,
+  "manualTiles": [],
+  "materialId": "pathway_vertical_2",
+  "tileSize": 26,
+  "width": 14
+}
