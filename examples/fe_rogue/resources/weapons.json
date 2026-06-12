@@ -144,6 +144,44 @@
       },
       "weaponType": "Sword"
     },
+    "keen_lance": {
+      "attack": 9,
+      "crit": 7,
+      "description": "鋭い穂先の槍。急所を突く",
+      "durability": 10,
+      "hit": 70,
+      "name": "つらぬきのやり",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 343,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Lance"
+    },
+    "killing_edge": {
+      "attack": 8,
+      "crit": 10,
+      "description": "必殺率の高い剣。会心の一撃を狙う",
+      "durability": 10,
+      "hit": 75,
+      "name": "キルソード",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 60,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Sword"
+    },
     "mithril_axe": {
       "attack": 17,
       "description": "伝説の金属の斧。圧倒的な破壊力を誇る",
@@ -354,6 +392,25 @@
       },
       "sprite": {
         "frame": 41,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      },
+      "weaponType": "Sword"
+    },
+    "swift_dagger": {
+      "attack": 4,
+      "crit": 3,
+      "description": "軽く素早い短剣。たまに会心を生む",
+      "durability": 14,
+      "hit": 85,
+      "name": "しっぷうのつるぎ",
+      "range": {
+        "max": 1,
+        "min": 1
+      },
+      "sprite": {
+        "frame": 31,
         "hframes": 20,
         "texture": "item_weapons",
         "vframes": 25

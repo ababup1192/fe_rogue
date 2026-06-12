@@ -22,6 +22,7 @@ mod TestWeaponCatalog {
         name       = "くんれんやり",
         attack     = 2,
         hit        = 70,
+        crit       = 0,
         durability = 41,
         range      = ({min = 1, max = 1}: WeaponRange),
         weaponType = WeaponType.Lance,
@@ -92,6 +93,15 @@ mod TestWeaponCatalog {
         match WeaponCatalogCodec.decodeWeapon(trainingSpearJson()) {
             case Some(weapon) =>
                 Assert.assertEq(expected = "", weapon#description)
+            case None => bug!("expected weapon decode to succeed")
+        }
+
+    /// crit フィールドが無い JSON は 0 にフォールバックする（後方互換。trainingSpearJson は crit を持たない）。
+    @Test
+    def testDecodeWeaponDefaultsCritToZero(): Unit \ Assert =
+        match WeaponCatalogCodec.decodeWeapon(trainingSpearJson()) {
+            case Some(weapon) =>
+                Assert.assertEq(expected = 0, weapon#crit)
             case None => bug!("expected weapon decode to succeed")
         }
 

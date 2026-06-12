@@ -356,7 +356,8 @@ mod CombatScene {
         dmg     = Int32,   // 命中時の与ダメージ
         newHp   = Int32,   // 命中後の敵 HP（0 以上）
         killed  = Bool,    // この命中で敵を撃破するか
-        exp     = Int32    // 命中で得る経験値
+        exp     = Int32,   // 命中で得る経験値
+        crit    = Int32    // 必殺率 0..100（必殺ロールと比較する）
     }
 
     /// 攻守共通の 1 撃解決（純粋）。`Combat.estimate` で命中率・素ダメージを出し、
@@ -364,10 +365,11 @@ mod CombatScene {
     /// 味方→敵（`attackForecast`）と敵→味方（`applyDamageToPlayer`）の両方向が
     /// 必ずここを通ることで、攻守の式ドリフトを防ぐ。
     def resolveStrike(attacker: Combat.CombatView, defender: Combat.CombatView):
-            {hit = Int32, dmg = Int32, newHp = Int32, killed = Bool} =
+            {hit = Int32, dmg = Int32, newHp = Int32, killed = Bool, crit = Int32} =
         let est    = Combat.estimate(attacker, defender);
         let result = Combat.damage(hp = defender#hp, amount = est#damage);
-        {hit = est#hit, dmg = est#damage, newHp = result#newHp, killed = result#isDead}
+        {hit = est#hit, dmg = est#damage, newHp = result#newHp, killed = result#isDead,
+         crit = est#crit}
 
     /// 装備武器と敵から、命中率・与ダメージ・経験値を**純粋に**算出する（乱数・Scene 非依存）。
     /// 計算は `resolveStrike`（= `Combat.estimate`）に委譲し、武器タイプ習熟・武器相性・
@@ -377,7 +379,8 @@ mod CombatScene {
         let strike = resolveStrike(PlayerScene.combatViewWith(player, weapon),
                                    EnemyScene.combatView(enemy));
         {hitRate = strike#hit, dmg = strike#dmg, newHp = strike#newHp, killed = strike#killed,
-         exp = Combat.battleExp(enemy#resource#level, player#level, strike#killed)}
+         exp = Combat.battleExp(enemy#resource#level, player#level, strike#killed),
+         crit = strike#crit}
 
     /// 敵 id にダメージを与える。装備武器（`weapons.head`）と敵が揃っていなければ no-op。
     /// 実体は `resolveAttack`。ここは前提（武器あり・敵あり）の解決だけを担い、
@@ -403,10 +406,26 @@ mod CombatScene {
         let plan       = attackForecast(player, weapon, enemy);
         let popupPos   = MapSnapshot.cellCenter(enemy#gridPos);
         let popupColor = DamagePopupScene.damageToEnemyColor();
+        // 命中ロールと必殺ロールは別の乱数で独立に引く。
+        let hitRoll    = rollPercent();
+        let critRoll   = rollPercent();
         let (afterDamage, expGain) =
-            if (Combat.isHit(plan#hitRate, rollPercent()))
-                (applyHit(playerId, enemyId, plan, weapon#weaponType, popupPos, popupColor, scene), plan#exp)
-            else
+            if (Combat.isHit(plan#hitRate, hitRoll)) {
+                let isCrit = Combat.isCrit(plan#crit, critRoll);
+                // 必殺なら 3 倍ダメージで撃破判定をやり直し、plan を差し替える。
+                let finalPlan =
+                    if (isCrit) {
+                        let critPlan = Combat.applyCrit(plan#dmg, enemy#hp);
+                        {dmg = critPlan#dmg, newHp = critPlan#newHp, killed = critPlan#killed | plan}
+                    } else plan;
+                // 「ベースでは倒せないが必殺で倒せた」ときだけ経験値を作り直す
+                // （二重加算しないよう、それ以外は plan#exp をそのまま使う）。
+                let expGained =
+                    if (isCrit and finalPlan#killed and not plan#killed)
+                        Combat.battleExp(enemy#resource#level, player#level, true)
+                    else plan#exp;
+                (applyHit(playerId, enemyId, finalPlan, isCrit, weapon#weaponType, popupPos, popupColor, scene), expGained)
+            } else
                 (applyMiss(playerId, enemyId, popupPos, popupColor, scene), 0);
         let afterWeapon = consumeEquippedWeapon(playerId, weapon, afterDamage);
         // 自分の攻撃でも敵ターンの反撃でも同様（反撃 EXP で即レベルアップした場合は
@@ -422,13 +441,16 @@ mod CombatScene {
         AudioStreamPlayer.play("miss");
         DamagePopupScene.emitText(popupPos, "miss", color, scene)
 
-    /// 命中時に鳴らす SE 名を決める（純粋）。
+    /// 命中時に鳴らす SE 名を決める（純粋）。優先順位は上から:
     ///   - ダメージ 0（防御で防がれた）→ "guard"
+    ///   - 必殺（クリティカル）発動    → "critical"
     ///   - 魔法武器の命中             → "magic"
     ///   - それ以外（物理で 1 以上）   → "damage"
-    /// ダメージ 0 判定を魔法より優先する（魔法でも 0 なら防がれた音を出す）。
-    pub def hitSoundName(damage: Int32, weaponType: WeaponCatalog.WeaponType): String =
+    /// ダメージ 0 判定を最優先する（必殺でも魔法でも 0 なら防がれた音を出す）。
+    pub def hitSoundName(damage: Int32, isCrit: Bool,
+                          weaponType: WeaponCatalog.WeaponType): String =
         if (damage <= 0) "guard"
+        else if (isCrit) "critical"
         else match weaponType {
             case WeaponCatalog.WeaponType.Magic => "magic"
             case _                              => "damage"
@@ -436,20 +458,22 @@ mod CombatScene {
 
     /// 命中: 与ダメージ/武器タイプに応じた SE を鳴らしダメージを適用。撃破なら死亡演出、
     /// 生存なら敵 HP を更新。どちらでも与ダメージの数値ポップアップを浮かす。
-    def applyHit(playerId: Int32, enemyId: Int32, plan: AttackForecast,
+    def applyHit(playerId: Int32, enemyId: Int32, plan: AttackForecast, isCrit: Bool,
                   weaponType: WeaponCatalog.WeaponType,
                   popupPos: Vec2.Vec2, color: Color, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger} =
-        AudioStreamPlayer.play(hitSoundName(plan#dmg, weaponType));
+        AudioStreamPlayer.play(hitSoundName(plan#dmg, isCrit, weaponType));
         let withPopup = DamagePopupScene.emit(popupPos, plan#dmg, color, scene);
+        // 必殺のときはログ先頭に「必殺！」を付ける。
+        let critTag = if (isCrit) "必殺！ " else "";
         if (plan#killed) {
-            GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}を倒した");
+            GameLogger.playerLog("${critTag}${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}を倒した");
             withPopup
                 |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), plan#newHp)
                 |> EnemyScene.startDeathAnimation(enemyId)
         } else {
-            GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}に ${plan#dmg}ダメージ与えた");
+            GameLogger.playerLog("${critTag}${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}に ${plan#dmg}ダメージ与えた");
             // 攻撃を受けた敵は起動する（GuardUntilInRange を射程外から射ても動き出す）。
             // alerted は一方向フラグなので、ここで立てれば次の敵ターン以降ずっと追跡に入る。
             withPopup
@@ -514,19 +538,31 @@ mod CombatScene {
                 AudioStreamPlayer.play("miss");
                 (DamagePopupScene.emitText(popupPos, "miss", popupColor, scene), Nil)
             } else {
-                // 命中: 与ダメージ/武器タイプに応じた SE を鳴らしダメージ適用 + 数値ポップアップ。
-                AudioStreamPlayer.play(hitSoundName(strike#dmg, weapon#weaponType));
-                if (strike#killed) {
-                    GameLogger.enemyLog("${enemy#resource#description}は ${player#resource#description}を倒した")
+                // 命中: 必殺ロールを引き、必殺なら 3 倍ダメージで撃破判定をやり直す。
+                let critRoll = rollPercent();
+                let crit = Combat.isCrit(strike#crit, critRoll);
+                // ベース(非必殺)の dmg/newHp/killed を 1 レコードにまとめ、必殺ならその上を
+                // applyCrit の値で更新する（resolveAttack と同じ record-update 形）。
+                let baseOutcome = {dmg = strike#dmg, newHp = strike#newHp, killed = strike#killed};
+                let outcome =
+                    if (crit) {
+                        let critEff = Combat.applyCrit(strike#dmg, player#hp);
+                        {dmg = critEff#dmg, newHp = critEff#newHp, killed = critEff#killed | baseOutcome}
+                    } else baseOutcome;
+                // 与ダメージ/必殺/武器タイプに応じた SE を鳴らしダメージ適用 + 数値ポップアップ。
+                AudioStreamPlayer.play(hitSoundName(outcome#dmg, crit, weapon#weaponType));
+                let critTag = if (crit) "必殺！ " else "";
+                if (outcome#killed) {
+                    GameLogger.enemyLog("${critTag}${enemy#resource#description}は ${player#resource#description}を倒した")
                 } else {
-                    GameLogger.enemyLog("${enemy#resource#description}は ${player#resource#description}に ${strike#dmg}ダメージ与えた")
+                    GameLogger.enemyLog("${critTag}${enemy#resource#description}は ${player#resource#description}に ${outcome#dmg}ダメージ与えた")
                 };
-                let withPopup = DamagePopupScene.emit(popupPos, strike#dmg, popupColor, scene);
+                let withPopup = DamagePopupScene.emit(popupPos, outcome#dmg, popupColor, scene);
                 let dmgScene = withPopup
                     |> PlayerScene.mapPlayer(targetId,
-                        playerData -> {hp = strike#newHp | playerData})
-                    |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), strike#newHp);
-                if (strike#killed) (dmgScene, targetId :: Nil)
+                        playerData -> {hp = outcome#newHp | playerData})
+                    |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), outcome#newHp);
+                if (outcome#killed) (dmgScene, targetId :: Nil)
                 else (dmgScene, Nil)
             };
         // FE ルールでは攻撃を振った時点で耐久を消費する（回避されても同様）

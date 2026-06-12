@@ -80,6 +80,7 @@ mod WeaponCatalog {
         name        = String,
         attack      = Int32,
         hit         = Int32,
+        crit        = Int32,
         durability  = Int32,
         range       = WeaponRange,
         weaponType  = WeaponType,
@@ -127,7 +128,7 @@ mod WeaponCatalog {
 
     /// schema 検査用の expected key 集合（`CatalogContainer.loadWithCheck` に渡す）。
     pub def expectedFields(): Set[String] =
-        Set#{"name", "attack", "hit", "durability", "range", "weaponType", "sprite",
+        Set#{"name", "attack", "hit", "crit", "durability", "range", "weaponType", "sprite",
              "description"}
 }
 
@@ -162,6 +163,7 @@ mod WeaponCatalogCodec {
             "name"        => JString(weapon#name),
             "attack"      => JNumber(intToBd(weapon#attack)),
             "hit"         => JNumber(intToBd(weapon#hit)),
+            "crit"        => JNumber(intToBd(weapon#crit)),
             "durability"  => JNumber(intToBd(weapon#durability)),
             "range"       => encodeRange(weapon#range),
             "weaponType"  => JString(weaponTypeToString(weapon#weaponType)),
@@ -226,7 +228,11 @@ mod WeaponCatalogCodec {
             let desc = Map.get("description", obj)
                         |> Option.flatMap(expectString)
                         |> Option.getWithDefault("");
-            ({name = name, attack = atk, hit = hit, durability = dur, range = rng,
+            // crit (武器必殺率) も省略可。欠落時は 0 (後方互換)。
+            let crit = Map.get("crit", obj)
+                        |> Option.flatMap(expectInt)
+                        |> Option.getWithDefault(0);
+            ({name = name, attack = atk, hit = hit, crit = crit, durability = dur, range = rng,
               weaponType = wt, sprite = sp, description = desc}: WeaponResource)
         }
 

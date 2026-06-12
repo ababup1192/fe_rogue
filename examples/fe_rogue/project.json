@@ -43,6 +43,7 @@
     {"name": "cure",         "path": "assets/audio/cure.wav",         "looping": false},
     {"name": "change_floor", "path": "assets/audio/change_floor.wav", "looping": false},
     {"name": "guard",        "path": "assets/audio/guard.wav",        "looping": false},
-    {"name": "magic",        "path": "assets/audio/magic.wav",        "looping": false}
+    {"name": "magic",        "path": "assets/audio/magic.wav",        "looping": false},
+    {"name": "critical",     "path": "assets/audio/critical.wav",     "looping": false}
   ]
 }

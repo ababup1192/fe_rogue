@@ -80,7 +80,7 @@ mod TestWeaponProficiency {
             ({attack = 10, magicAttack = 0, defense = 0, magicDefense = 0,
               skill = 0, speed = 0, luck = 0, hp = 10,
               weapon = Some({weaponType = WeaponType.Sword, attack = 0, hit = 90,
-                             isPhysical = true, proficient = proficient})}: Combat.CombatView);
+                             crit = 0, isPhysical = true, proficient = proficient})}: Combat.CombatView);
         let good = Combat.estimate(attackerWith(true), defender);
         let weak = Combat.estimate(attackerWith(false), defender);
         Assert.assertEq(

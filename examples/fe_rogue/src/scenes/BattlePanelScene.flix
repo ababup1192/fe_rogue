@@ -29,6 +29,7 @@ mod BattlePanelScene {
     def leftHpName(): String      = "leftHp"
     def leftPowerName(): String   = "leftPower"
     def leftHitName(): String    = "leftHit"
+    def leftCritName(): String   = "leftCrit"
     def centerBgName(): String    = "centerBg"
     def centerHpName(): String    = "centerHp"
     def centerRestName(): String  = "centerRest"
@@ -46,6 +47,7 @@ mod BattlePanelScene {
     def leftHpPath(): NodePath     = rootName() :: leftHpName()     :: Nil
     def leftPowerPath(): NodePath  = rootName() :: leftPowerName()  :: Nil
     def leftHitPath(): NodePath   = rootName() :: leftHitName()   :: Nil
+    def leftCritPath(): NodePath  = rootName() :: leftCritName()  :: Nil
     def centerBgPath(): NodePath   = rootName() :: centerBgName()   :: Nil
     def centerHpPath(): NodePath   = rootName() :: centerHpName()   :: Nil
     def centerRestPath(): NodePath = rootName() :: centerRestName() :: Nil
@@ -90,6 +92,7 @@ mod BattlePanelScene {
             |> Label2D.mapAt(leftHpPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(leftPowerPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(leftHitPath(), CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(leftCritPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(centerHpPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(centerRestPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(rightHpPath(), CanvasItem.setVisible(visible))
@@ -195,6 +198,10 @@ mod BattlePanelScene {
                             if (cols#playerProficient) powerNormalColor() else powerWeakColor()))
                 |> Label2D.mapAt(leftHitPath(), lbl -> lbl
                        |> Label2D.setText(cols#leftHit)
+                       |> CanvasItem.setModulate(
+                            if (cols#playerProficient) powerNormalColor() else powerWeakColor()))
+                |> Label2D.mapAt(leftCritPath(), lbl -> lbl
+                       |> Label2D.setText(cols#leftCrit)
                        |> CanvasItem.setModulate(
                             if (cols#playerProficient) powerNormalColor() else powerWeakColor()))
                 |> Label2D.mapAt(centerHpPath(),   Label2D.setText(cols#centerHp))
@@ -312,7 +319,8 @@ mod BattlePanelScene {
         pWeapon = String, eWeapon = String,
         // leftPower = 味方の威力（独立ラベル・苦手なら青）。leftHit = 味方の命中。
         leftPower = String, playerProficient = Bool,
-        leftHit = String, centerHp = String, centerRest = String, rightRest = String,
+        leftHit = String, leftCrit = String,
+        centerHp = String, centerRest = String, rightRest = String,
         playerHpCur = Int32, playerHpPost = Int32, playerTakesDmg = Bool,
         enemyHpCur = Int32, enemyHpPost = Int32, enemyTakesDmg = Bool
     }
@@ -350,7 +358,8 @@ mod BattlePanelScene {
         {attackerId = -1, defenderId = -1,
          pWeapon = "", eWeapon = "",
          leftPower = "", playerProficient = true,
-         leftHit = "", centerHp = "", centerRest = "", rightRest = "",
+         leftHit = "", leftCrit = "",
+         centerHp = "", centerRest = "", rightRest = "",
          playerHpCur = 0, playerHpPost = 0, playerTakesDmg = false,
          enemyHpCur = 0, enemyHpPost = 0, enemyTakesDmg = false}
 
@@ -379,9 +388,11 @@ mod BattlePanelScene {
         let proficient = UnitCatalog.proficientWith(player#resource, weapon#weaponType);
         let leftPower  = padLeft("${playerForecast#damage}", numWidth());
         let leftHit   = padLeft("${playerForecast#hit}%", numWidth());
+        let leftCrit   = padLeft("${playerForecast#crit}%", numWidth());
         let centerHp   = padCenter("HP", labelWidth);
-        let centerRest = "${padCenter("威力", labelWidth)}\n${padCenter("命中", labelWidth)}";
-        let rightRest  = "${padLeft(enemyCols#atk, numWidth())}\n${padLeft(enemyCols#hit, numWidth())}";
+        // 中央ラベル / 敵カラムは 威力・命中・必殺 の 3 行に揃える。
+        let centerRest = "${padCenter("威力", labelWidth)}\n${padCenter("命中", labelWidth)}\n${padCenter("必殺", labelWidth)}";
+        let rightRest  = "${padLeft(enemyCols#atk, numWidth())}\n${padLeft(enemyCols#hit, numWidth())}\n${padLeft(enemyCols#crit, numWidth())}";
         // HP シミュレーション: 戦闘後HP と「減るか」フラグ。
         let enemyHpPost  = Int32.max(0, enemy#hp - playerForecast#damage);
         let playerHpPost = Int32.max(0, player#hp - enemyCols#counterDamage);
@@ -390,7 +401,8 @@ mod BattlePanelScene {
         {attackerId = 0, defenderId = 0,
          pWeapon = pWeapon, eWeapon = eWeapon,
          leftPower = leftPower, playerProficient = proficient,
-         leftHit = leftHit, centerHp = centerHp, centerRest = centerRest, rightRest = rightRest,
+         leftHit = leftHit, leftCrit = leftCrit,
+         centerHp = centerHp, centerRest = centerRest, rightRest = rightRest,
          playerHpCur = player#hp, playerHpPost = playerHpPost, playerTakesDmg = playerHpPost < player#hp,
          enemyHpCur = enemy#hp, enemyHpPost = enemyHpPost, enemyTakesDmg = enemyHpPost < enemy#hp}
 
@@ -400,23 +412,24 @@ mod BattlePanelScene {
     def formatEnemyColumns(player: PlayerScene.Data,
                             weapon: UnitCatalog.WeaponResource,
                             enemy: EnemyScene.Data):
-                           {name = String, atk = String, hit = String, counterDamage = Int32} =
+                           {name = String, atk = String, hit = String, crit = String, counterDamage = Int32} =
         let playerWeaponType = Some(weapon#weaponType);
         match enemy#weapon {
-            case None          => {name = "", atk = "--", hit = "--", counterDamage = 0}
+            case None          => {name = "", atk = "--", hit = "--", crit = "--", counterDamage = 0}
             case Some(eWeapon) =>
                 // 相性は射程に関係なく武器どうしで決まるので、武器名の隣のマークは常に出す。
                 let eRel    = WeaponTriangle.relationOpt(eWeapon#weaponType, playerWeaponType);
                 let nameStr = "${eWeapon#name}${relationMark(eRel)}";
                 let d = Weapon.manhattan(enemy#gridPos, player#gridPos);
                 if (not Weapon.canReach(d, eWeapon))
-                    {name = nameStr, atk = "--", hit = "--", counterDamage = 0}
+                    {name = nameStr, atk = "--", hit = "--", crit = "--", counterDamage = 0}
                 else {
                     // 反撃の威力 / 命中は敵 → 味方の `Combat.estimate`（味方の予報と同一経路）。
                     let enemyForecast = Combat.estimate(EnemyScene.combatView(enemy),
                                                          PlayerScene.combatViewWith(player, weapon));
                     {name = nameStr,
                      atk = "${enemyForecast#damage}", hit = "${enemyForecast#hit}%",
+                     crit = "${enemyForecast#crit}%",
                      counterDamage = enemyForecast#damage}
                 }
         }

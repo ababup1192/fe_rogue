@@ -126,7 +126,7 @@ mod TestCombat {
     @Test
     def testForecastKnightVsGoblin(): Unit \ Assert =
         let f = Combat.forecast(
-            {attack = 6, skill = 5, luck = 3, weaponHit = 70},
+            {attack = 6, skill = 5, luck = 3, weaponHit = 70, weaponCrit = 0},
             {hp = 3, defense = 1, speed = 4, luck = 1},
             WeaponTriangle.Relation.Neutral);
         Assert.assertEq(expected = (5, 72, true), (f#damage, f#hit, f#kill))
@@ -267,7 +267,7 @@ mod TestCombat {
     def testForecastSwordVsAxeGetsAdvantage(): Unit \ Assert =
         let rel = WeaponTriangle.relation(WeaponType.Sword, WeaponType.Axe);
         let f = Combat.forecast(
-            {attack = 6, skill = 5, luck = 3, weaponHit = 70},
+            {attack = 6, skill = 5, luck = 3, weaponHit = 70, weaponCrit = 0},
             {hp = 3, defense = 1, speed = 4, luck = 1},
             rel);
         Assert.assertEq(expected = (6, 87, true), (f#damage, f#hit, f#kill))
@@ -334,7 +334,7 @@ mod TestCombat {
         let attacker: Combat.CombatView =
             {attack = 4, magicAttack = 0, defense = 0, magicDefense = 0,
              skill = 5, speed = 0, luck = 3, hp = 10,
-             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, isPhysical = true, proficient = true})};
+             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, crit = 0, isPhysical = true, proficient = true})};
         let defender: Combat.CombatView =
             {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
              skill = 0, speed = 4, luck = 1, hp = 3, weapon = None};
@@ -360,7 +360,7 @@ mod TestCombat {
         let attacker: Combat.CombatView =
             {attack = 99, magicAttack = 6, defense = 0, magicDefense = 0,
              skill = 0, speed = 0, luck = 0, hp = 10,
-             weapon = Some({weaponType = WeaponType.Magic, attack = 0, hit = 100, isPhysical = false, proficient = true})};
+             weapon = Some({weaponType = WeaponType.Magic, attack = 0, hit = 100, crit = 0, isPhysical = false, proficient = true})};
         let defender: Combat.CombatView =
             {attack = 0, magicAttack = 0, defense = 99, magicDefense = 1,
              skill = 0, speed = 0, luck = 0, hp = 10, weapon = None};
@@ -374,11 +374,56 @@ mod TestCombat {
         let attacker: Combat.CombatView =
             {attack = 4, magicAttack = 0, defense = 0, magicDefense = 0,
              skill = 5, speed = 0, luck = 3, hp = 10,
-             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, isPhysical = true, proficient = true})};
+             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, crit = 0, isPhysical = true, proficient = true})};
         let defender: Combat.CombatView =
             {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
              skill = 0, speed = 4, luck = 1, hp = 3,
-             weapon = Some({weaponType = WeaponType.Axe, attack = 0, hit = 0, isPhysical = true, proficient = true})};
+             weapon = Some({weaponType = WeaponType.Axe, attack = 0, hit = 0, crit = 0, isPhysical = true, proficient = true})};
         let f = Combat.estimate(attacker, defender);
         Assert.assertEq(expected = (6, 87, true), (f#damage, f#hit, f#kill))
+
+    // ════════════════════════════════════════════════════════
+    // 必殺(クリティカル): 率の計算・3倍ダメージ・estimate への反映
+    // ════════════════════════════════════════════════════════
+
+    /// 必殺率 = 武器必殺10 + 技8÷2(=4) − 防御幸運4 = 10。区切りよく 10% になる入力。
+    @Test
+    def testCritRateAddsSkillHalfMinusLuck(): Unit \ Assert =
+        Assert.assertEq(expected = 10, Combat.critRate(10, 8, 4))
+
+    /// 下限: 武器必殺0・技0・防御幸運30 → 負を 0 にクランプ。
+    @Test
+    def testCritRateClampsToZero(): Unit \ Assert =
+        Assert.assertEq(expected = 0, Combat.critRate(0, 0, 30))
+
+    /// 上限: 武器必殺90 + 技40÷2(=20) − 幸運0 = 110 → 100 にクランプ。
+    @Test
+    def testCritRateClampsTo100(): Unit \ Assert =
+        Assert.assertEq(expected = 100, Combat.critRate(90, 40, 0))
+
+    /// 素ダメージ5の必殺は 15(=5×3)。HP10 に 15 で撃破。
+    /// newHp は `Combat.damage` と同じく未クランプ（10−15 = −5）。撃破ユニットは除去されるので負値で問題ない。
+    @Test
+    def testApplyCritTriplesDamageAndKills(): Unit \ Assert =
+        let r = Combat.applyCrit(5, 10);
+        Assert.assertEq(expected = (15, -5, true), (r#dmg, r#newHp, r#killed))
+
+    /// 素ダメージ4の必殺(=12)で HP20 は newHp8・未撃破。
+    @Test
+    def testApplyCritKeepsAliveWhenHpRemains(): Unit \ Assert =
+        let r = Combat.applyCrit(4, 20);
+        Assert.assertEq(expected = (12, 8, false), (r#dmg, r#newHp, r#killed))
+
+    /// estimate は必殺率を出す。武器必殺10・技8・防御幸運4 → crit = 10（ダメージ/命中は従来通り）。
+    @Test
+    def testEstimateIncludesCritRate(): Unit \ Assert =
+        let attacker: Combat.CombatView =
+            {attack = 4, magicAttack = 0, defense = 0, magicDefense = 0,
+             skill = 8, speed = 0, luck = 0, hp = 10,
+             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70,
+                            crit = 10, isPhysical = true, proficient = true})};
+        let defender: Combat.CombatView =
+            {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
+             skill = 0, speed = 0, luck = 4, hp = 99, weapon = None};
+        Assert.assertEq(expected = 10, Combat.estimate(attacker, defender)#crit)
 }

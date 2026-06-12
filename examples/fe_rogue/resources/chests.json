@@ -21,6 +21,14 @@
         {
           "id": "vulnerary",
           "percent": 20
+        },
+        {
+          "id": "killing_edge",
+          "percent": 15
+        },
+        {
+          "id": "keen_lance",
+          "percent": 10
         }
       ],
       "label": "金の宝箱",
@@ -52,6 +60,10 @@
         {
           "id": "silver_sword",
           "percent": 15
+        },
+        {
+          "id": "swift_dagger",
+          "percent": 10
         }
       ],
       "label": "木の宝箱",

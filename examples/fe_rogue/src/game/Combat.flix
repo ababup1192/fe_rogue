@@ -84,6 +84,28 @@ mod Combat {
     pub def willKill(defenderHp: Int32, dmg: Int32): Bool =
         defenderHp - dmg <= 0
 
+    /// 必殺(クリティカル)発動時のダメージ倍率（FE7 準拠で 3 倍）。
+    def critMultiplier(): Int32 = 3
+
+    /// 必殺率（百分率: 0..100）。FE7 式を簡略化（クラス補正なし）:
+    ///   必殺率 = 武器必殺 + 攻撃側技÷2 − 防御側幸運（= 必殺回避）
+    /// 命中とは独立に実戦闘でロールする（`hitRate` と同様、率を返すだけで乱数は引かない）。
+    pub def critRate(weaponCrit: Int32, attackerSkill: Int32, defenderLuck: Int32): Int32 =
+        Int32.max(0, Int32.min(100, weaponCrit + attackerSkill / 2 - defenderLuck))
+
+    /// 必殺ロールの判定。`critRate` は 0..100、`roll` は 0..99 の一様乱数。
+    /// `isHit` と同じ規約で `roll < critRate` で発動する。
+    pub def isCrit(critRate: Int32, roll: Int32): Bool =
+        roll < critRate
+
+    /// 必殺確定時のダメージ再計算（純粋）。素ダメージ `baseDmg` を 3 倍し、防御側 HP に適用した
+    /// `dmg`(=3倍値) / `newHp` / `killed` を返す。必殺でないときは呼ばない（呼び出し側で分岐）。
+    pub def applyCrit(baseDmg: Int32, defenderHp: Int32):
+            {dmg = Int32, newHp = Int32, killed = Bool} =
+        let critDmg = baseDmg * critMultiplier();
+        let result  = damage(hp = defenderHp, amount = critDmg);
+        {dmg = critDmg, newHp = result#newHp, killed = result#isDead}
+
     /// 回復計算。`currentHp` に `amount` を加算した結果を返す。
     /// `maxHp` を超える分はクランプ（過剰回復は無効）。
     /// `amount` が負なら回復量 0 に丸める（ダメージ用途と分離するため負の amount は無視）。
@@ -100,16 +122,17 @@ mod Combat {
     /// `rel` は攻撃側武器から見た防御側武器との相性（有利 / 不利 / 中立）。
     /// 攻撃 UI で命中前にプレビューするのに使う想定。
     pub def forecast(
-        attacker: {attack = Int32, skill = Int32, luck = Int32, weaponHit = Int32},
+        attacker: {attack = Int32, skill = Int32, luck = Int32, weaponHit = Int32, weaponCrit = Int32},
         defender: {hp = Int32, defense = Int32, speed = Int32, luck = Int32},
         rel: WeaponTriangle.Relation
-    ): {damage = Int32, hit = Int32, kill = Bool} =
+    ): {damage = Int32, hit = Int32, kill = Bool, crit = Int32} =
         let dmg = attackDamage(attacker#attack, defender#defense, rel);
         {
             damage = dmg,
             hit    = hitRate(attacker#skill, attacker#luck, attacker#weaponHit,
                              defender#speed, defender#luck, rel),
-            kill   = willKill(defender#hp, dmg)
+            kill   = willKill(defender#hp, dmg),
+            crit   = critRate(attacker#weaponCrit, attacker#skill, defender#luck)
         }
 
     // ────────────────────────────────────────────────────────
@@ -125,7 +148,7 @@ mod Combat {
         attack = Int32, magicAttack = Int32, defense = Int32, magicDefense = Int32,
         skill = Int32, speed = Int32, luck = Int32, hp = Int32,
         weapon = Option[{weaponType = WeaponCatalog.WeaponType, attack = Int32,
-                          hit = Int32, isPhysical = Bool, proficient = Bool}]
+                          hit = Int32, crit = Int32, isPhysical = Bool, proficient = Bool}]
     }
 
     /// 装備武器（Option）から `CombatView#weapon` を組む。`isPhysical` をここで解決する。
@@ -133,9 +156,9 @@ mod Combat {
     /// `estimate` が威力・命中を 80% に下げる。敵は常に true（得意/苦手の概念なし）を渡す。
     pub def weaponView(weapon: Option[WeaponCatalog.WeaponResource], proficient: Bool):
             Option[{weaponType = WeaponCatalog.WeaponType, attack = Int32,
-                    hit = Int32, isPhysical = Bool, proficient = Bool}] =
+                    hit = Int32, crit = Int32, isPhysical = Bool, proficient = Bool}] =
         weapon |> Option.map(w ->
-            {weaponType = w#weaponType, attack = w#attack, hit = w#hit,
+            {weaponType = w#weaponType, attack = w#attack, hit = w#hit, crit = w#crit,
              isPhysical = WeaponCatalog.isPhysical(w#weaponType), proficient = proficient})
 
     /// 武器タイプ習熟による補正。得意なら据え置き、苦手なら威力・命中を 80%（整数 ×4/5、切り捨て）に。
@@ -148,18 +171,19 @@ mod Combat {
     /// 武器相性・物理/魔法・攻防の解決は `attackStatFor`/`defenseStatFor`/`WeaponTriangle.relationOpt`/
     /// `forecast` に委譲する（式は不変）。`damage` のみ欲しい呼び出し側は `#damage` を取る。
     pub def estimate(attacker: CombatView, defender: CombatView):
-            {damage = Int32, hit = Int32, kill = Bool} =
+            {damage = Int32, hit = Int32, kill = Bool, crit = Int32} =
         match attacker#weapon {
-            case None    => {damage = 0, hit = 0, kill = false}
+            case None    => {damage = 0, hit = 0, kill = false, crit = 0}
             case Some(w) =>
                 let rel = WeaponTriangle.relationOpt(w#weaponType,
                               defender#weapon |> Option.map(dw -> dw#weaponType));
                 let atk = attackStatFor(attacker#attack, attacker#magicAttack, w#attack, w#isPhysical);
                 let dfn = defenseStatFor(defender#defense, defender#magicDefense, w#isPhysical);
-                // 苦手武器は威力・命中を 80% に下げる（得意ならそのまま）。
+                // 苦手武器は威力・命中を 80% に下げる（得意ならそのまま）。必殺率は下げない。
                 let (adjAtk, adjHit) = proficiencyAdjust(atk, w#hit, w#proficient);
                 forecast(
-                    {attack = adjAtk, skill = attacker#skill, luck = attacker#luck, weaponHit = adjHit},
+                    {attack = adjAtk, skill = attacker#skill, luck = attacker#luck,
+                     weaponHit = adjHit, weaponCrit = w#crit},
                     {hp = defender#hp, defense = dfn, speed = defender#speed, luck = defender#luck},
                     rel)
         }

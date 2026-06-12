@@ -57,7 +57,7 @@ mod TestUnitView {
         let atkCombat: Combat.CombatView =
             {attack = 4, magicAttack = 0, defense = 0, magicDefense = 0,
              skill = 0, speed = 0, luck = 0, hp = 10,
-             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, isPhysical = true, proficient = true})};
+             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, crit = 0, isPhysical = true, proficient = true})};
         let defCombat: Combat.CombatView =
             {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
              skill = 0, speed = 0, luck = 0, hp = 3, weapon = None};

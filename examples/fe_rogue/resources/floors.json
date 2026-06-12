@@ -42,6 +42,10 @@
       ],
       "items": [
         {
+          "id": "swift_dagger",
+          "percent": 6
+        },
+        {
           "id": "bronze_sword",
           "percent": 12
         },
@@ -195,6 +199,10 @@
         }
       ],
       "items": [
+        {
+          "id": "swift_dagger",
+          "percent": 6
+        },
         {
           "id": "bronze_lance",
           "percent": 10
@@ -357,6 +365,10 @@
         }
       ],
       "items": [
+        {
+          "id": "swift_dagger",
+          "percent": 6
+        },
         {
           "id": "iron_sword",
           "percent": 20
@@ -531,6 +543,10 @@
         }
       ],
       "items": [
+        {
+          "id": "swift_dagger",
+          "percent": 6
+        },
         {
           "id": "iron_lance",
           "percent": 20
@@ -734,9 +750,25 @@
         {
           "id": "room_11",
           "percent": 10
+        },
+        {
+          "id": "room_large_open",
+          "percent": 8
+        },
+        {
+          "id": "room_large_obstacles",
+          "percent": 8
         }
       ],
       "items": [
+        {
+          "id": "killing_edge",
+          "percent": 4
+        },
+        {
+          "id": "keen_lance",
+          "percent": 4
+        },
         {
           "id": "iron_sword",
           "percent": 15
@@ -944,9 +976,25 @@
         {
           "id": "room_12",
           "percent": 10
+        },
+        {
+          "id": "room_large_open",
+          "percent": 8
+        },
+        {
+          "id": "room_large_obstacles",
+          "percent": 8
         }
       ],
       "items": [
+        {
+          "id": "killing_edge",
+          "percent": 4
+        },
+        {
+          "id": "keen_lance",
+          "percent": 4
+        },
         {
           "id": "steel_sword",
           "percent": 20
@@ -1158,9 +1206,25 @@
         {
           "id": "room_14",
           "percent": 10
+        },
+        {
+          "id": "room_large_open",
+          "percent": 8
+        },
+        {
+          "id": "room_large_obstacles",
+          "percent": 8
         }
       ],
       "items": [
+        {
+          "id": "killing_edge",
+          "percent": 4
+        },
+        {
+          "id": "keen_lance",
+          "percent": 4
+        },
         {
           "id": "steel_lance",
           "percent": 20
@@ -1376,9 +1440,25 @@
         {
           "id": "room_16",
           "percent": 10
+        },
+        {
+          "id": "room_large_open",
+          "percent": 8
+        },
+        {
+          "id": "room_large_obstacles",
+          "percent": 8
         }
       ],
       "items": [
+        {
+          "id": "killing_edge",
+          "percent": 4
+        },
+        {
+          "id": "keen_lance",
+          "percent": 4
+        },
         {
           "id": "steel_axe",
           "percent": 20
@@ -1606,9 +1686,25 @@
         {
           "id": "room_17",
           "percent": 10
+        },
+        {
+          "id": "room_large_open",
+          "percent": 8
+        },
+        {
+          "id": "room_large_obstacles",
+          "percent": 8
         }
       ],
       "items": [
+        {
+          "id": "killing_edge",
+          "percent": 4
+        },
+        {
+          "id": "keen_lance",
+          "percent": 4
+        },
         {
           "id": "silver_sword",
           "percent": 20
@@ -1840,9 +1936,25 @@
         {
           "id": "room_18",
           "percent": 10
+        },
+        {
+          "id": "room_large_open",
+          "percent": 8
+        },
+        {
+          "id": "room_large_obstacles",
+          "percent": 8
         }
       ],
       "items": [
+        {
+          "id": "killing_edge",
+          "percent": 4
+        },
+        {
+          "id": "keen_lance",
+          "percent": 4
+        },
         {
           "id": "silver_lance",
           "percent": 20
