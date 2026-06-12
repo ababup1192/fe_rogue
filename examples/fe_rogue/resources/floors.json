@@ -14,6 +14,14 @@
       "generation": {
         "roomCount": 2
       },
+      "roomMaps": [
+        {"id": "room_1", "percent": 10},
+        {"id": "room_2", "percent": 10},
+        {"id": "room_3", "percent": 10},
+        {"id": "room_4", "percent": 10},
+        {"id": "room_5", "percent": 10},
+        {"id": "room_6", "percent": 10}
+      ],
       "items": [
         {
           "id": "bronze_sword",
@@ -102,6 +110,15 @@
       "generation": {
         "roomCount": 4
       },
+      "roomMaps": [
+        {"id": "room_1", "percent": 10},
+        {"id": "room_2", "percent": 10},
+        {"id": "room_3", "percent": 10},
+        {"id": "room_4", "percent": 10},
+        {"id": "room_5", "percent": 10},
+        {"id": "room_6", "percent": 10},
+        {"id": "room_7", "percent": 10}
+      ],
       "items": [
         {
           "id": "bronze_lance",
@@ -194,6 +211,16 @@
       "generation": {
         "roomCount": 5
       },
+      "roomMaps": [
+        {"id": "room_1", "percent": 10},
+        {"id": "room_2", "percent": 10},
+        {"id": "room_3", "percent": 10},
+        {"id": "room_4", "percent": 10},
+        {"id": "room_5", "percent": 10},
+        {"id": "room_6", "percent": 10},
+        {"id": "room_7", "percent": 10},
+        {"id": "room_8", "percent": 10}
+      ],
       "items": [
         {
           "id": "iron_sword",
@@ -290,6 +317,18 @@
       "generation": {
         "roomCount": 6
       },
+      "roomMaps": [
+        {"id": "room_1", "percent": 10},
+        {"id": "room_2", "percent": 10},
+        {"id": "room_3", "percent": 10},
+        {"id": "room_4", "percent": 10},
+        {"id": "room_5", "percent": 10},
+        {"id": "room_6", "percent": 10},
+        {"id": "room_7", "percent": 10},
+        {"id": "room_8", "percent": 10},
+        {"id": "room_9", "percent": 10},
+        {"id": "room_10", "percent": 10}
+      ],
       "items": [
         {
           "id": "iron_lance",
@@ -386,6 +425,19 @@
       "generation": {
         "roomCount": 7
       },
+      "roomMaps": [
+        {"id": "room_1", "percent": 10},
+        {"id": "room_2", "percent": 10},
+        {"id": "room_3", "percent": 10},
+        {"id": "room_4", "percent": 10},
+        {"id": "room_5", "percent": 10},
+        {"id": "room_6", "percent": 10},
+        {"id": "room_7", "percent": 10},
+        {"id": "room_8", "percent": 10},
+        {"id": "room_9", "percent": 10},
+        {"id": "room_10", "percent": 10},
+        {"id": "room_11", "percent": 10}
+      ],
       "items": [
         {
           "id": "iron_sword",
@@ -482,6 +534,20 @@
       "generation": {
         "roomCount": 8
       },
+      "roomMaps": [
+        {"id": "room_1", "percent": 10},
+        {"id": "room_2", "percent": 10},
+        {"id": "room_3", "percent": 10},
+        {"id": "room_4", "percent": 10},
+        {"id": "room_5", "percent": 10},
+        {"id": "room_6", "percent": 10},
+        {"id": "room_7", "percent": 10},
+        {"id": "room_8", "percent": 10},
+        {"id": "room_9", "percent": 10},
+        {"id": "room_10", "percent": 10},
+        {"id": "room_11", "percent": 10},
+        {"id": "room_12", "percent": 10}
+      ],
       "items": [
         {
           "id": "steel_sword",
@@ -574,6 +640,22 @@
       "generation": {
         "roomCount": 9
       },
+      "roomMaps": [
+        {"id": "room_1", "percent": 10},
+        {"id": "room_2", "percent": 10},
+        {"id": "room_3", "percent": 10},
+        {"id": "room_4", "percent": 10},
+        {"id": "room_5", "percent": 10},
+        {"id": "room_6", "percent": 10},
+        {"id": "room_7", "percent": 10},
+        {"id": "room_8", "percent": 10},
+        {"id": "room_9", "percent": 10},
+        {"id": "room_10", "percent": 10},
+        {"id": "room_11", "percent": 10},
+        {"id": "room_12", "percent": 10},
+        {"id": "room_13", "percent": 10},
+        {"id": "room_14", "percent": 10}
+      ],
       "items": [
         {
           "id": "steel_lance",
@@ -666,6 +748,23 @@
       "generation": {
         "roomCount": 10
       },
+      "roomMaps": [
+        {"id": "room_1", "percent": 10},
+        {"id": "room_2", "percent": 10},
+        {"id": "room_3", "percent": 10},
+        {"id": "room_4", "percent": 10},
+        {"id": "room_5", "percent": 10},
+        {"id": "room_6", "percent": 10},
+        {"id": "room_7", "percent": 10},
+        {"id": "room_8", "percent": 10},
+        {"id": "room_9", "percent": 10},
+        {"id": "room_10", "percent": 10},
+        {"id": "room_11", "percent": 10},
+        {"id": "room_12", "percent": 10},
+        {"id": "room_13", "percent": 10},
+        {"id": "room_14", "percent": 10},
+        {"id": "room_16", "percent": 10}
+      ],
       "items": [
         {
           "id": "steel_axe",
@@ -762,6 +861,24 @@
       "generation": {
         "roomCount": 11
       },
+      "roomMaps": [
+        {"id": "room_1", "percent": 10},
+        {"id": "room_2", "percent": 10},
+        {"id": "room_3", "percent": 10},
+        {"id": "room_4", "percent": 10},
+        {"id": "room_5", "percent": 10},
+        {"id": "room_6", "percent": 10},
+        {"id": "room_7", "percent": 10},
+        {"id": "room_8", "percent": 10},
+        {"id": "room_9", "percent": 10},
+        {"id": "room_10", "percent": 10},
+        {"id": "room_11", "percent": 10},
+        {"id": "room_12", "percent": 10},
+        {"id": "room_13", "percent": 10},
+        {"id": "room_14", "percent": 10},
+        {"id": "room_16", "percent": 10},
+        {"id": "room_17", "percent": 10}
+      ],
       "items": [
         {
           "id": "silver_sword",
@@ -858,6 +975,25 @@
       "generation": {
         "roomCount": 12
       },
+      "roomMaps": [
+        {"id": "room_1", "percent": 10},
+        {"id": "room_2", "percent": 10},
+        {"id": "room_3", "percent": 10},
+        {"id": "room_4", "percent": 10},
+        {"id": "room_5", "percent": 10},
+        {"id": "room_6", "percent": 10},
+        {"id": "room_7", "percent": 10},
+        {"id": "room_8", "percent": 10},
+        {"id": "room_9", "percent": 10},
+        {"id": "room_10", "percent": 10},
+        {"id": "room_11", "percent": 10},
+        {"id": "room_12", "percent": 10},
+        {"id": "room_13", "percent": 10},
+        {"id": "room_14", "percent": 10},
+        {"id": "room_16", "percent": 10},
+        {"id": "room_17", "percent": 10},
+        {"id": "room_18", "percent": 10}
+      ],
       "items": [
         {
           "id": "silver_lance",

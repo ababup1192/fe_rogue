@@ -127,6 +127,20 @@ mod UnitHPBarScene {
             case _ => scene
         }
 
+    /// 最大 HP が変わったとき（レベルアップ / フロア持ち越し）に、保存している maxHp を
+    /// 更新してから現在 HP と Fill 幅を新しい maxHp 基準で反映する。
+    /// 通常のダメージ/回復（最大 HP 不変）は従来どおり `update` を使う。
+    pub def updateMaxHp(unitPath: NodePath, currentHp: Int32, maxHp: Int32,
+                         scene: Scene[NodeTag]): Scene[NodeTag] =
+        let barPath = List.append(unitPath, childName() :: Nil);
+        let withMax = Scene.mapEngineNode(barPath, n -> match n {
+            case EngineNode.Marker2DWithState(m, NodeTag.HPBar(dd)) =>
+                EngineNode.Marker2DWithState(m, NodeTag.HPBar({maxHp = maxHp | dd}))
+            case other => other
+        }, scene);
+        // maxHp 反映済みの scene に対して update を呼ぶと、Fill は新 maxHp 基準で再計算される
+        update(unitPath, currentHp, withMax)
+
     /// Bg/Fill を個別に操作せず親 Marker2D 1 か所に設定することで一括暗転できる。
     /// 待機（プレイヤー）・行動済み（敵）の本体スプライト暗転と揃えて呼ぶ。
     pub def setModulate(unitPath: NodePath, color: Color, scene: Scene[NodeTag]): Scene[NodeTag] =

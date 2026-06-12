@@ -869,7 +869,7 @@ mod PlayerScene {
                      consumables = c#consumables,
                      level = c#level, exp = c#exp,
                      resource = LevelSystem.withStats(c#stats, d#resource) | d})
-                |> UnitHPBarScene.update(playerPath(c#id), c#hp),
+                |> UnitHPBarScene.updateMaxHp(playerPath(c#id), c#hp, c#stats#hp),
             pruned, carry)
 
     // ────────────────────────────────────────────────────────

@@ -573,5 +573,5 @@ mod CombatScene {
              resource       = LevelSystem.withStats(after, dd#resource),
              hp             = newHp,
              pendingLevelUp = Some(result) | dd}, scene)
-            |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), newHp)
+            |> UnitHPBarScene.updateMaxHp(PlayerScene.playerPath(playerId), newHp, after#hp)
 }
