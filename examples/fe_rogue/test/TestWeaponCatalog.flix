@@ -88,6 +88,38 @@ mod TestWeaponCatalog {
             case None => bug!("expected weapon decode to succeed")
         }
 
+    /// effect / effectValue が無い JSON（trainingSpearJson）は NoEffect / 0 にフォールバックする。
+    @Test
+    def testDecodeWeaponDefaultsEffectWhenMissing(): Unit \ Assert =
+        match WeaponCatalogCodec.decodeWeapon(trainingSpearJson()) {
+            case Some(weapon) =>
+                Assert.assertEq(
+                    expected = (WeaponCatalog.WeaponEffect.NoEffect, 0),
+                    (weapon#effect, weapon#effectValue))
+            case None => bug!("expected weapon decode to succeed")
+        }
+
+    /// effect / effectValue を持つ JSON は decode で保持される（round-trip 用の固定）。
+    @Test
+    def testDecodeWeaponPreservesEffect(): Unit \ Assert =
+        let withEffect = JObject(Map#{
+            "name"        => JString("血吸いの剣"),
+            "attack"      => JNumber(JsonCodec.intToBd(5)),
+            "durability"  => JNumber(JsonCodec.intToBd(15)),
+            "range"       => JObject(Map#{"min" => JNumber(JsonCodec.intToBd(1)), "max" => JNumber(JsonCodec.intToBd(1))}),
+            "weaponType"  => JString("Sword"),
+            "effect"      => JString("Lifesteal"),
+            "effectValue" => JNumber(JsonCodec.intToBd(30)),
+            "sprite"      => spriteJson()
+        });
+        match WeaponCatalogCodec.decodeWeapon(withEffect) {
+            case Some(weapon) =>
+                Assert.assertEq(
+                    expected = (WeaponCatalog.WeaponEffect.Lifesteal, 30),
+                    (weapon#effect, weapon#effectValue))
+            case None => bug!("expected weapon decode to succeed")
+        }
+
     /// description フィールドが無い JSON は空文字にフォールバックする。
     /// （旧 weapons.json / 旧セーブへの後方互換。trainingSpearJson は description を持たない）
     @Test
