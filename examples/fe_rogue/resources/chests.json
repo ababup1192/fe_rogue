@@ -4,7 +4,7 @@
       "contents": [
         {
           "id": "mithril_sword",
-          "percent": 25
+          "percent": 16
         },
         {
           "id": "mithril_bow",
@@ -12,7 +12,7 @@
         },
         {
           "id": "silver_lance",
-          "percent": 25
+          "percent": 30
         },
         {
           "id": "tome_archsage",
@@ -24,11 +24,11 @@
         },
         {
           "id": "killing_edge",
-          "percent": 15
+          "percent": 10
         },
         {
           "id": "keen_lance",
-          "percent": 10
+          "percent": 12
         },
         {
           "id": "revival_drug",
@@ -52,19 +52,19 @@
         },
         {
           "id": "pursuit_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "vengeance_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "finisher_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "power_ring",
-          "percent": 10
+          "percent": 6
         }
       ],
       "label": "金の宝箱",
@@ -87,19 +87,19 @@
         },
         {
           "id": "bronze_sword",
-          "percent": 25
+          "percent": 16
         },
         {
           "id": "iron_sword",
-          "percent": 20
+          "percent": 13
         },
         {
           "id": "silver_sword",
-          "percent": 15
+          "percent": 10
         },
         {
           "id": "swift_dagger",
-          "percent": 10
+          "percent": 7
         },
         {
           "id": "great_vulnerary",
@@ -119,23 +119,23 @@
         },
         {
           "id": "guard_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "swift_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "mend_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "plain_ring",
-          "percent": 6
+          "percent": 4
         },
         {
           "id": "rusty_ring",
-          "percent": 6
+          "percent": 4
         }
       ],
       "label": "木の宝箱",

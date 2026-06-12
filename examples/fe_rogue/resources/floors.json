@@ -43,11 +43,11 @@
       "items": [
         {
           "id": "swift_dagger",
-          "percent": 6
+          "percent": 4
         },
         {
           "id": "bronze_sword",
-          "percent": 12
+          "percent": 8
         },
         {
           "id": "bronze_bow",
@@ -55,7 +55,7 @@
         },
         {
           "id": "iron_sword",
-          "percent": 18
+          "percent": 12
         },
         {
           "id": "iron_bow",
@@ -111,35 +111,35 @@
         },
         {
           "id": "plain_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "mend_ring",
-          "percent": 15
+          "percent": 9
         },
         {
           "id": "swift_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "power_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "guard_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "pursuit_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "vengeance_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "finisher_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "fire_bottle",
@@ -151,7 +151,7 @@
         },
         {
           "id": "falchion",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "gust_tome",
@@ -163,11 +163,11 @@
         },
         {
           "id": "vampire_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "thief_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "demon_axe",
@@ -289,23 +289,23 @@
       "items": [
         {
           "id": "swift_dagger",
-          "percent": 6
+          "percent": 4
         },
         {
           "id": "bronze_lance",
-          "percent": 10
+          "percent": 12
         },
         {
           "id": "bronze_axe",
-          "percent": 10
+          "percent": 12
         },
         {
           "id": "iron_lance",
-          "percent": 18
+          "percent": 22
         },
         {
           "id": "iron_axe",
-          "percent": 18
+          "percent": 22
         },
         {
           "id": "iron_bow",
@@ -361,35 +361,35 @@
         },
         {
           "id": "plain_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "mend_ring",
-          "percent": 15
+          "percent": 9
         },
         {
           "id": "swift_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "power_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "guard_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "pursuit_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "vengeance_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "finisher_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "fire_bottle",
@@ -401,7 +401,7 @@
         },
         {
           "id": "falchion",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "gust_tome",
@@ -413,11 +413,11 @@
         },
         {
           "id": "vampire_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "thief_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "demon_axe",
@@ -543,11 +543,11 @@
       "items": [
         {
           "id": "swift_dagger",
-          "percent": 6
+          "percent": 4
         },
         {
           "id": "iron_sword",
-          "percent": 20
+          "percent": 13
         },
         {
           "id": "iron_bow",
@@ -555,11 +555,11 @@
         },
         {
           "id": "iron_axe",
-          "percent": 12
+          "percent": 14
         },
         {
           "id": "steel_sword",
-          "percent": 12
+          "percent": 8
         },
         {
           "id": "tome_apprentice",
@@ -611,35 +611,35 @@
         },
         {
           "id": "plain_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "mend_ring",
-          "percent": 15
+          "percent": 9
         },
         {
           "id": "swift_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "power_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "guard_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "pursuit_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "vengeance_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "finisher_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "fire_bottle",
@@ -651,7 +651,7 @@
         },
         {
           "id": "falchion",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "gust_tome",
@@ -663,11 +663,11 @@
         },
         {
           "id": "vampire_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "thief_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "demon_axe",
@@ -813,15 +813,15 @@
       "items": [
         {
           "id": "swift_dagger",
-          "percent": 6
+          "percent": 4
         },
         {
           "id": "iron_lance",
-          "percent": 20
+          "percent": 24
         },
         {
           "id": "iron_axe",
-          "percent": 18
+          "percent": 22
         },
         {
           "id": "iron_bow",
@@ -829,7 +829,7 @@
         },
         {
           "id": "steel_sword",
-          "percent": 12
+          "percent": 8
         },
         {
           "id": "tome_grimoire",
@@ -889,35 +889,35 @@
         },
         {
           "id": "plain_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "mend_ring",
-          "percent": 15
+          "percent": 9
         },
         {
           "id": "swift_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "power_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "guard_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "pursuit_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "vengeance_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "finisher_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "fire_bottle",
@@ -929,7 +929,7 @@
         },
         {
           "id": "falchion",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "gust_tome",
@@ -941,11 +941,11 @@
         },
         {
           "id": "vampire_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "thief_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "demon_axe",
@@ -1131,15 +1131,15 @@
       "items": [
         {
           "id": "killing_edge",
-          "percent": 4
+          "percent": 3
         },
         {
           "id": "keen_lance",
-          "percent": 4
+          "percent": 5
         },
         {
           "id": "iron_sword",
-          "percent": 15
+          "percent": 10
         },
         {
           "id": "iron_bow",
@@ -1147,7 +1147,7 @@
         },
         {
           "id": "steel_lance",
-          "percent": 15
+          "percent": 18
         },
         {
           "id": "tome_grimoire",
@@ -1211,35 +1211,35 @@
         },
         {
           "id": "plain_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "mend_ring",
-          "percent": 15
+          "percent": 9
         },
         {
           "id": "swift_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "power_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "guard_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "pursuit_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "vengeance_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "finisher_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "fire_bottle",
@@ -1255,7 +1255,7 @@
         },
         {
           "id": "falchion",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "gust_tome",
@@ -1267,11 +1267,11 @@
         },
         {
           "id": "vampire_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "thief_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "demon_axe",
@@ -1461,23 +1461,23 @@
       "items": [
         {
           "id": "killing_edge",
-          "percent": 4
+          "percent": 3
         },
         {
           "id": "keen_lance",
-          "percent": 4
+          "percent": 5
         },
         {
           "id": "steel_sword",
-          "percent": 20
+          "percent": 13
         },
         {
           "id": "steel_lance",
-          "percent": 15
+          "percent": 18
         },
         {
           "id": "iron_axe",
-          "percent": 15
+          "percent": 18
         },
         {
           "id": "tome_grimoire",
@@ -1541,35 +1541,35 @@
         },
         {
           "id": "plain_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "mend_ring",
-          "percent": 15
+          "percent": 9
         },
         {
           "id": "swift_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "power_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "guard_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "pursuit_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "vengeance_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "finisher_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "fire_bottle",
@@ -1585,7 +1585,7 @@
         },
         {
           "id": "falchion",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "gust_tome",
@@ -1597,11 +1597,11 @@
         },
         {
           "id": "vampire_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "thief_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "demon_axe",
@@ -1799,15 +1799,15 @@
       "items": [
         {
           "id": "killing_edge",
-          "percent": 4
+          "percent": 3
         },
         {
           "id": "keen_lance",
-          "percent": 4
+          "percent": 5
         },
         {
           "id": "steel_lance",
-          "percent": 20
+          "percent": 24
         },
         {
           "id": "steel_bow",
@@ -1815,7 +1815,7 @@
         },
         {
           "id": "steel_axe",
-          "percent": 15
+          "percent": 18
         },
         {
           "id": "tome_sage",
@@ -1879,35 +1879,35 @@
         },
         {
           "id": "plain_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "mend_ring",
-          "percent": 15
+          "percent": 9
         },
         {
           "id": "swift_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "power_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "guard_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "pursuit_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "vengeance_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "finisher_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "fire_bottle",
@@ -1923,7 +1923,7 @@
         },
         {
           "id": "falchion",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "gust_tome",
@@ -1935,11 +1935,11 @@
         },
         {
           "id": "vampire_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "thief_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "demon_axe",
@@ -2137,19 +2137,19 @@
       "items": [
         {
           "id": "killing_edge",
-          "percent": 4
+          "percent": 3
         },
         {
           "id": "keen_lance",
-          "percent": 4
+          "percent": 5
         },
         {
           "id": "steel_axe",
-          "percent": 20
+          "percent": 24
         },
         {
           "id": "steel_sword",
-          "percent": 18
+          "percent": 12
         },
         {
           "id": "steel_bow",
@@ -2157,7 +2157,7 @@
         },
         {
           "id": "silver_sword",
-          "percent": 12
+          "percent": 8
         },
         {
           "id": "tome_sage",
@@ -2221,35 +2221,35 @@
         },
         {
           "id": "plain_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "mend_ring",
-          "percent": 15
+          "percent": 9
         },
         {
           "id": "swift_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "power_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "guard_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "pursuit_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "vengeance_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "finisher_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "fire_bottle",
@@ -2265,7 +2265,7 @@
         },
         {
           "id": "falchion",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "gust_tome",
@@ -2277,11 +2277,11 @@
         },
         {
           "id": "vampire_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "thief_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "demon_axe",
@@ -2487,15 +2487,15 @@
       "items": [
         {
           "id": "killing_edge",
-          "percent": 4
+          "percent": 3
         },
         {
           "id": "keen_lance",
-          "percent": 4
+          "percent": 5
         },
         {
           "id": "silver_sword",
-          "percent": 20
+          "percent": 13
         },
         {
           "id": "silver_bow",
@@ -2503,11 +2503,11 @@
         },
         {
           "id": "silver_lance",
-          "percent": 15
+          "percent": 18
         },
         {
           "id": "steel_axe",
-          "percent": 12
+          "percent": 14
         },
         {
           "id": "tome_sage",
@@ -2571,35 +2571,35 @@
         },
         {
           "id": "plain_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "mend_ring",
-          "percent": 15
+          "percent": 9
         },
         {
           "id": "swift_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "power_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "guard_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "pursuit_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "vengeance_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "finisher_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "fire_bottle",
@@ -2615,7 +2615,7 @@
         },
         {
           "id": "falchion",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "gust_tome",
@@ -2627,11 +2627,11 @@
         },
         {
           "id": "vampire_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "thief_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "demon_axe",
@@ -2841,23 +2841,23 @@
       "items": [
         {
           "id": "killing_edge",
-          "percent": 4
+          "percent": 3
         },
         {
           "id": "keen_lance",
-          "percent": 4
+          "percent": 5
         },
         {
           "id": "silver_lance",
-          "percent": 20
+          "percent": 24
         },
         {
           "id": "silver_axe",
-          "percent": 15
+          "percent": 18
         },
         {
           "id": "silver_sword",
-          "percent": 15
+          "percent": 10
         },
         {
           "id": "silver_bow",
@@ -2921,35 +2921,35 @@
         },
         {
           "id": "plain_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "mend_ring",
-          "percent": 15
+          "percent": 9
         },
         {
           "id": "swift_ring",
-          "percent": 12
+          "percent": 7
         },
         {
           "id": "power_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "guard_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "pursuit_ring",
-          "percent": 10
+          "percent": 6
         },
         {
           "id": "vengeance_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "finisher_ring",
-          "percent": 8
+          "percent": 5
         },
         {
           "id": "fire_bottle",
@@ -2965,7 +2965,7 @@
         },
         {
           "id": "falchion",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "gust_tome",
@@ -2977,11 +2977,11 @@
         },
         {
           "id": "vampire_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "thief_sword",
-          "percent": 2
+          "percent": 1
         },
         {
           "id": "demon_axe",

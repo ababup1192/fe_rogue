@@ -23,9 +23,9 @@ mod StatusSystem {
     ///   - `AtkUp`   : 保有者の攻撃力を magnitude 上げる
     ///   - `SpdUp`   : 保有者の速さを magnitude 上げる（回避アップ）
     ///   - `DefDown` : 保有者の守備（物理防御）を magnitude 下げる（ほころび薬）
-    ///   - `Immobilized` : 保有者を完全停止（移動も攻撃も不可）。ターン経過では解けず、
-    ///                     被攻撃 or 被投擲（`clearImmobilized`）でのみ解除される。
-    ///                     `magnitude` / `remaining` は使わない（`immobilize()` で 0 を入れる）。
+    ///   - `Immobilized` : 保有者を完全停止（移動も攻撃も不可）。`remaining` ターンの経過で
+    ///                     自然解除され、被攻撃 or 被投擲（`clearImmobilized`）でも即時解除される。
+    ///                     `magnitude` は使わない（`immobilize()` で 0 を入れる）。
     pub enum StatusEffect with Eq, ToString {
         case HitDown
         case SpdDown
@@ -44,23 +44,24 @@ mod StatusSystem {
         remaining = Int32
     }
 
-    /// 効果を 1 件付与する（リスト先頭に積む）。同種が複数あれば `sumOf` で合算される。
+    /// 効果を 1 件付与する。重ねがけはしない: 同じ `effect` 種別が既にあれば積まず
+    /// 既存をそのまま据え置く（最初に付与した magnitude / remaining が生きる）。別種は共存する。
     pub def add(status: Status, xs: List[Status]): List[Status] =
-        status :: xs
+        if (List.exists(s -> s#effect == status#effect, xs)) xs
+        else status :: xs
 
-    /// 1 ターン経過。時限効果は `remaining` を 1 減らし 0 以下を除去する。
-    /// `Immobilized` だけはターンで解けない（被攻撃 or 被投擲でのみ解除）ので減らさず保持する。
+    /// 1 ターン経過。各効果の `remaining` を 1 減らし、0 以下になったものを除去する。
+    /// `Immobilized` も同じく減算され、`remaining` が尽きると自然解除される。
     /// ターン開始フック（味方 `clearAllWaited` / 敵 `clearActedAll`）から各ユニットに畳む。
     pub def tick(xs: List[Status]): List[Status] =
-        let (held, timed) = List.partition(s -> s#effect == StatusEffect.Immobilized, xs);
-        let ticked = timed
+        xs
             |> List.map(s -> {remaining = s#remaining - 1 | s})
-            |> List.filter(s -> s#remaining > 0);
-        List.append(held, ticked)
+            |> List.filter(s -> s#remaining > 0)
 
-    /// 完全停止（`Immobilized`）の Status を作る。magnitude / remaining は使わないので 0。
+    /// 完全停止（`Immobilized`）の Status を作る。`remaining = 5` で 5 ターン後に自然解除。
+    /// それより早く被攻撃 / 被投擲すれば `clearImmobilized` で即時解除される。magnitude は未使用。
     pub def immobilize(): Status =
-        {effect = StatusEffect.Immobilized, magnitude = 0, remaining = 0}
+        {effect = StatusEffect.Immobilized, magnitude = 0, remaining = 5}
 
     /// このユニットが完全停止中か（`Immobilized` を 1 つでも持つか）。
     pub def isImmobilized(xs: List[Status]): Bool =
@@ -70,8 +71,8 @@ mod StatusSystem {
     pub def clearImmobilized(xs: List[Status]): List[Status] =
         List.filter(s -> s#effect != StatusEffect.Immobilized, xs)
 
-    /// 指定種別の効果量の合計。同種の重ねがけを合算する。該当無しは 0。
-    /// 戦闘ビュー構築で攻撃力・速さ・命中補正へ足し込むのに使う。
+    /// 指定種別の効果量を返す。`add` が重ねがけを防ぐので通常は 0 件か 1 件だが、
+    /// 防御的に合計する（該当無しは 0）。戦闘ビュー構築で攻撃力・速さ・命中補正へ足し込む。
     pub def sumOf(effect: StatusEffect, xs: List[Status]): Int32 =
         xs
             |> List.filter(s -> s#effect == effect)

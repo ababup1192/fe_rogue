@@ -38,7 +38,7 @@ mod TestStatusSystem {
     // sumOf — 同種効果量の合計
     // ════════════════════════════════════════════════════════
 
-    /// 同種の重ねがけは合算される。
+    /// sumOf は防御的に同種を合計する（通常 add が重複を防ぐので 1 件以下だが、合算ロジック自体を確認）。
     @Test
     def testSumOfAggregates(): Unit \ Assert =
         let xs = st(StatusEffect.AtkUp, 4, 3) :: st(StatusEffect.AtkUp, 2, 1)
@@ -79,22 +79,47 @@ mod TestStatusSystem {
         let after = StatusSystem.add(st(StatusEffect.AtkUp, 4, 2), Nil);
         Assert.assertEq(expected = 1, List.length(after))
 
+    /// 重ねがけ無し: 同種が既にあれば積まず既存を据え置く（最初の magnitude=4 / remaining=2 が残る）。
+    @Test
+    def testAddIgnoresDuplicateEffect(): Unit \ Assert =
+        let xs = StatusSystem.add(st(StatusEffect.AtkUp, 4, 2), Nil);
+        let after = StatusSystem.add(st(StatusEffect.AtkUp, 9, 5), xs);
+        Assert.assertEq(
+            expected = (1, 4, 2),
+            (List.length(after),
+             after |> List.map(s -> s#magnitude) |> List.sum,
+             after |> List.map(s -> s#remaining) |> List.sum))
+
+    /// 別種の効果は共存する（重ねがけ無しは同種だけ）。
+    @Test
+    def testAddDifferentEffectsCoexist(): Unit \ Assert =
+        let xs = StatusSystem.add(st(StatusEffect.AtkUp, 4, 2), Nil);
+        let after = StatusSystem.add(st(StatusEffect.SpdUp, 5, 3), xs);
+        Assert.assertEq(expected = 2, List.length(after))
+
     // ════════════════════════════════════════════════════════
-    // Immobilized（完全停止）— ターンで解けず、被攻撃 / 被投擲でのみ解除
+    // Immobilized（完全停止）— 5 ターンで自然解除、被攻撃 / 被投擲でも即時解除
     // ════════════════════════════════════════════════════════
 
-    /// tick は完全停止を減らさず保持する（remaining=0 でも消えない）。一方、同居する
-    /// 時限効果はちゃんと減算される（停止だけ別扱いになっていることを 1 度で確認する）。
+    /// tick は完全停止も時限効果と同じく減算する。1 回の tick で停止は残り（remaining 5→4）、
+    /// 同居する AtkUp も remaining 2→1 に減る。件数 2・停止保持・AtkUp の残り 1。
     @Test
-    def testTickKeepsImmobilizedAndDecrementsOthers(): Unit \ Assert =
+    def testTickDecrementsImmobilizedAndOthers(): Unit \ Assert =
         let after = StatusSystem.tick(
             StatusSystem.immobilize() :: st(StatusEffect.AtkUp, 4, 2) :: Nil);
-        // 停止は残り、AtkUp は remaining 2→1 に減る。件数 2・停止保持・AtkUp の残り 1。
         Assert.assertEq(
             expected = (2, true, 1 :: Nil),
             (List.length(after),
              StatusSystem.isImmobilized(after),
              after |> List.filter(s -> s#effect == StatusEffect.AtkUp) |> List.map(s -> s#remaining)))
+
+    /// 完全停止は 5 ターン（5 回の tick）で自然解除される。4 回までは停止が残り、5 回目で消える。
+    @Test
+    def testImmobilizedExpiresAfterFiveTicks(): Unit \ Assert =
+        let tickN = n -> List.foldLeft((acc, _) -> StatusSystem.tick(acc), StatusSystem.immobilize() :: Nil, List.range(0, n));
+        Assert.assertEq(
+            expected = (true, false),
+            (StatusSystem.isImmobilized(tickN(4)), StatusSystem.isImmobilized(tickN(5))))
 
     /// isImmobilized は完全停止を含むかどうかを返す。
     @Test

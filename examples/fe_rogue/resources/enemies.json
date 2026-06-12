@@ -525,7 +525,7 @@
       "aiType": "RingMan",
       "attack": 6,
       "defense": 2,
-      "description": "相手の持ち物をランダムで、リングに変える",
+      "description": "リング職人",
       "hp": 18,
       "initialInventory": [
         {

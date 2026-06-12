@@ -1076,15 +1076,19 @@ mod PlayerScene {
         let weapons     = getWeapons(playerId, scene);
         let staves      = getStaves(playerId, scene);
         let consumables = getConsumables(playerId, scene);
+        let rings       = getRings(playerId, scene);
         let nw = List.length(weapons);
         let ns = List.length(staves);
+        let nc = List.length(consumables);
         let seq = List.append(
             List.map(w -> ItemData.GroundItemKind.WeaponItem(w), weapons),
             List.append(
                 List.map(s -> ItemData.GroundItemKind.StaffItem(s), staves),
-                List.map(c -> ItemData.GroundItemKind.ConsumableItem(c), consumables)));
-        let swapped = swapListAt(displaySeqIndex(kindA, nw, ns),
-                                  displaySeqIndex(kindB, nw, ns), seq);
+                List.append(
+                    List.map(c -> ItemData.GroundItemKind.ConsumableItem(c), consumables),
+                    List.map(r -> ItemData.GroundItemKind.RingItem(r), rings))));
+        let swapped = swapListAt(displaySeqIndex(kindA, nw, ns, nc),
+                                  displaySeqIndex(kindB, nw, ns, nc), seq);
         let newWeapons = List.filterMap(item -> match item {
             case ItemData.GroundItemKind.WeaponItem(w) => Some(w)
             case _                                      => None
@@ -1097,16 +1101,21 @@ mod PlayerScene {
             case ItemData.GroundItemKind.ConsumableItem(c) => Some(c)
             case _                                          => None
         }, swapped);
+        let newRings = List.filterMap(item -> match item {
+            case ItemData.GroundItemKind.RingItem(r) => Some(r)
+            case _                                    => None
+        }, swapped);
         mapPlayer(playerId, d ->
-            {weapons = newWeapons, staves = newStaves, consumables = newConsumables | d}, scene)
+            {weapons = newWeapons, staves = newStaves, consumables = newConsumables,
+             rings = newRings | d}, scene)
 
-    /// PlayerData.ItemKind を、表示順 (weapons ++ staves ++ consumables) 上の通し index に変換する。
-    def displaySeqIndex(kind: PlayerData.ItemKind, nw: Int32, ns: Int32): Int32 =
+    /// PlayerData.ItemKind を、表示順 (weapons ++ staves ++ consumables ++ rings) 上の通し index に変換する。
+    def displaySeqIndex(kind: PlayerData.ItemKind, nw: Int32, ns: Int32, nc: Int32): Int32 =
         match kind {
             case PlayerData.ItemKind.Weapon(i)     => i
             case PlayerData.ItemKind.Staff(i)      => nw + i
             case PlayerData.ItemKind.Consumable(i) => nw + ns + i
-            case PlayerData.ItemKind.Ring(i)       => nw + ns + i
+            case PlayerData.ItemKind.Ring(i)       => nw + ns + nc + i
         }
 
     /// list の index a と b の要素を入れ替える。範囲外 / a==b なら元の list。

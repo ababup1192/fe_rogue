@@ -462,6 +462,14 @@ mod TradeMenuScene {
         metadata = Some("c:${idx}")
     }
 
+    /// 指輪 1 個ぶんの ItemEntry。metadata は `"r:<idx>"` 規約。指輪は耐久を持たないので名前だけ。
+    /// 装備マークは付けない（武器同様、交換ウィンドウでは装備表示を省く方針に揃える）。
+    pub def ringEntry(idx: Int32, ring: Ring.RingResource): ItemEntry = {
+        text     = "${ring#name}",
+        disabled = false,
+        metadata = Some("r:${idx}")
+    }
+
     /// 空スロット (「ここに自分のアイテムを置ける」位置) を表す ItemEntry。
     pub def emptySlotEntry(): ItemEntry = {
         text     = emptySlotEntryText(),
@@ -481,15 +489,21 @@ mod TradeMenuScene {
     def consumablesOf(id: Int32): List[Consumable.ConsumableResource] \ PlayerData.PartyQuery =
         PlayerData.PartyQuery.get(id) |> Option.map(d -> d#consumables) |> Option.getWithDefault(Nil)
 
+    def ringsOf(id: Int32): List[Ring.RingResource] \ PlayerData.PartyQuery =
+        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#rings) |> Option.getWithDefault(Nil)
+
     def inventoryEntries(playerId: Int32, _scene: Scene[NodeTag]):
             List[ItemEntry] \ PlayerData.PartyQuery =
         let weapons     = weaponsOf(playerId);
         let staves      = stavesOf(playerId);
         let consumables = consumablesOf(playerId);
+        let rings       = ringsOf(playerId);
         let weaponEntries     = List.mapWithIndex(idx -> w -> weaponEntry(idx, w), weapons);
         let staffEntries      = List.mapWithIndex(idx -> s -> staffEntry(idx, s),  staves);
         let consumableEntries = List.mapWithIndex(idx -> c -> consumableEntry(idx, c), consumables);
-        List.append(weaponEntries, List.append(staffEntries, consumableEntries))
+        let ringEntries       = List.mapWithIndex(idx -> r -> ringEntry(idx, r), rings);
+        List.append(weaponEntries,
+            List.append(staffEntries, List.append(consumableEntries, ringEntries)))
 
     /// 1 ペインに並べる ItemEntry 列。インベントリ + (上限未満のときだけ) 末尾の空スロット行。
     /// 上限ちょうど (満杯) なら空スロットを出さない = 片方向流入をブロックする。

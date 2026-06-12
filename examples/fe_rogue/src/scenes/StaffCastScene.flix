@@ -277,10 +277,9 @@ mod StaffCastScene {
 
     // ── かなしばり / 一時しのぎ（完全停止 / 停止 + ワープ）──────────────
 
-    /// 完全停止を 1 件付与する純粋関数。既に停止中なら重複させず据え置く。
+    /// 完全停止を 1 件付与する純粋関数。`add` が重ねがけを防ぐので、既に停止中なら据え置かれる。
     def bindStatuses(xs: List[StatusSystem.Status]): List[StatusSystem.Status] =
-        if (StatusSystem.isImmobilized(xs)) xs
-        else StatusSystem.add(StatusSystem.immobilize(), xs)
+        StatusSystem.add(StatusSystem.immobilize(), xs)
 
     /// かなしばり × 味方: 対象を完全停止にする。`srcLabel` は撃った側の表示名（敵詠唱でも使う）。
     def applyBindToPlayer(srcLabel: String, targetId: Int32, scene: Scene[NodeTag]):

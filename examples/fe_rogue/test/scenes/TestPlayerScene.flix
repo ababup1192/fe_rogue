@@ -403,6 +403,32 @@ mod TestPlayerScene {
             (PlayerScene.getConsumables(0, after) |> List.map(c -> c#name),
              PlayerScene.getConsumables(1, after) |> List.map(c -> c#name)))
 
+    /// こうかんで指輪も移動できる（指輪を交換対象にした回帰確認）。
+    /// 配置: P0 rings=[ちからのゆびわ] / P1 rings=[]。
+    /// P0 の Ring(0) を P1 の空スロット(partnerKind=None)へ渡す。
+    /// 期待: P0 は空、P1 が指輪を受け取る。
+    @Test
+    def testSwapItemRingTransfersToEmptySlot(): Unit \ {Assert, Fs.FileRead} =
+        let fx = loadTestCatalogs();
+        let ring = Ring.lookup("power_ring", Ring.load());
+        let mkSpawn = (id, rings) -> ({id = id, gridPos = {x = 0, y = 0},
+                                        resource = fx#unitSample, weapons = Nil, staves = Nil,
+                                        consumables = Nil, rings = rings}: PlayerScene.Spawn);
+        let scene = Scene.empty()
+            |> MapScene.addWorldNode
+            |> PlayerScene.addOnePlayer(mkSpawn(0, ring :: Nil))
+            |> PlayerScene.addOnePlayer(mkSpawn(1, Nil));
+        let after = PlayerScene.swapItem({
+            selfId      = 0,
+            selfKind    = PlayerData.ItemKind.Ring(0),
+            partnerId   = 1,
+            partnerKind = None
+        }, scene);
+        Assert.assertEq(
+            expected = (Nil, ring#name :: Nil),
+            (PlayerScene.getRings(0, after) |> List.map(r -> r#name),
+             PlayerScene.getRings(1, after) |> List.map(r -> r#name)))
+
     // ========================================================================
     // ローグ移動モード — nearestMover(合流順) / pickRespawnCells(解散の再配置)
     // ========================================================================
