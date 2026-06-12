@@ -224,7 +224,8 @@ mod DungeonGenerator {
         forM (
             anchorIdx   <- RandomUtil.pick(anchorIdxs);
             anchorSide  <- RandomUtil.pick(freeSidesOf(entryOf(anchorIdx, state)));
-            newRoomPath <- pickWeightedPath(config#roomPaths);
+            // すでに配置した部屋を除いたプールから引く（同じ部屋が続けて出にくくする）。
+            newRoomPath <- pickWeightedPath(availableRoomPaths(config, state));
             pathwayPath <- pickWeightedPath(
                              if (DungeonComposer.isHorizontalSide(anchorSide)) config#horizontalPaths
                              else config#verticalPaths);
@@ -428,6 +429,27 @@ mod DungeonGenerator {
             case Some(x) => x
             case None    => bug!("DungeonGenerator: ${msg}")
         }
+
+    /// 部屋プールから「すでに使った部屋」を除いた残りを返す（同じ部屋が続けて出ないようにする）。
+    /// 残りが空（部屋数がプールの種類数を超えて使い切った）なら、元のプール全体に戻して
+    /// 再利用を許す（生成を破綻させないためのフォールバック）。
+    /// 例: 6 種プールから 2 部屋なら、1 部屋目で選んだ種類を除いた 5 種から 2 部屋目を引く。
+    pub def excludeUsed(pool: List[(String, Int32)], used: List[String]):
+            List[(String, Int32)] =
+        let available = List.filter(entry -> {
+            let (path, _weight) = entry;
+            not List.exists(usedPath -> usedPath == path, used)
+        }, pool);
+        if (List.isEmpty(available)) pool else available
+
+    /// 配置済みの「部屋」の LDTK パス一覧（通路は含めない）。重複なし抽選の除外集合に使う。
+    def usedRoomPaths(state: State): List[String] =
+        Map.toList(state#entries)
+        |> List.filterMap(kv -> { let (_, e) = kv; if (e#isRoom) Some(e#ldtkPath) else None })
+
+    /// このフレームで引いてよい部屋プール = 全プールから配置済みの部屋を除いたもの。
+    def availableRoomPaths(config: Config, state: State): List[(String, Int32)] =
+        excludeUsed(config#roomPaths, usedRoomPaths(state))
 
     def sideName(side: DoorSide): String = match side {
         case DoorSide.Left   => "Left"
