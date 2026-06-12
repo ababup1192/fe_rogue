@@ -48,6 +48,9 @@ mod TestConsumable {
         "  \"consumables\": {" ::
         "    \"vulnerary\": {" ::
         "      \"name\": \"きずぐすり\"," ::
+        "      \"effect\": \"Heal\"," ::
+        "      \"magnitude\": 10," ::
+        "      \"duration\": 0," ::
         "      \"healAmount\": 10," ::
         "      \"durability\": 3," ::
         "      \"sprite\": { \"texture\": \"item_icons\", \"hframes\": 16, \"vframes\": 39, \"frame\": 240 }" ::
@@ -79,10 +82,97 @@ mod TestConsumable {
     /// 回復量と耐久を指定して最小限の消費アイテムを作る。`consume` テストでだけ使う。
     def sampleConsumable(healAmount: Int32, durability: Int32): Consumable.ConsumableResource =
         {name = "テスト",
+         effect = Consumable.ConsumableEffect.Heal,
+         magnitude = healAmount,
+         duration = 0,
          healAmount = healAmount,
          durability = durability,
          sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                      offset = {x = 0.0, y = 0.0},
                      scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
          description = ""}
+
+    /// 効果と耐久を指定して最小限の消費アイテムを作る。
+    def itemWith(effect: Consumable.ConsumableEffect, durability: Int32):
+            Consumable.ConsumableResource =
+        {name = "テスト",
+         effect = effect,
+         magnitude = 0,
+         duration = 0,
+         healAmount = 0,
+         durability = durability,
+         sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
+                     offset = {x = 0.0, y = 0.0},
+                     scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+         description = ""}
+
+    // ════════════════════════════════════════════════════════
+    // deliveryFor — 効果からデリバリを 1:1 導出
+    // ════════════════════════════════════════════════════════
+
+    /// 回復・最大HP・バフ系は自己使用、投擲デバフは方向投擲、蘇生は所持中自動発動。
+    @Test
+    def testDeliveryFor(): Unit \ Assert =
+        use Consumable.ConsumableEffect.{Heal, FullHeal, MaxHpUp, AtkUp, SpdUp, BlindHit, SpdDownHit, AutoRevive};
+        let d = e -> Consumable.deliveryFor(e);
+        Assert.assertEq(
+            expected = (Consumable.Delivery.SelfUse, Consumable.Delivery.SelfUse,
+                         Consumable.Delivery.SelfUse, Consumable.Delivery.SelfUse,
+                         Consumable.Delivery.SelfUse, Consumable.Delivery.Directional,
+                         Consumable.Delivery.Directional, Consumable.Delivery.AutoOnDeath),
+            (d(Heal), d(FullHeal), d(MaxHpUp), d(AtkUp), d(SpdUp), d(BlindHit), d(SpdDownHit), d(AutoRevive)))
+
+    // ════════════════════════════════════════════════════════
+    // parseEffect / effectToString — round-trip
+    // ════════════════════════════════════════════════════════
+
+    /// 全 effect が effectToString → parseEffect で元に戻る。
+    @Test
+    def testEffectRoundTrip(): Unit \ Assert =
+        use Consumable.ConsumableEffect.{Heal, FullHeal, MaxHpUp, AutoRevive, BlindHit, SpdDownHit, AtkUp, SpdUp};
+        let all = Heal :: FullHeal :: MaxHpUp :: AutoRevive :: BlindHit :: SpdDownHit :: AtkUp :: SpdUp :: Nil;
+        let roundTripped = all
+            |> List.map(e -> Consumable.parseEffect(Consumable.effectToString(e)));
+        Assert.assertEq(expected = all |> List.map(Ok), roundTripped)
+
+    /// 未知文字列は Err（JSON 直編集の typo を起動時に発覚させる）。
+    @Test
+    def testParseEffectUnknown(): Unit \ Assert =
+        Assert.assertEq(expected = Err("Nope"), Consumable.parseEffect("Nope"))
+
+    // ════════════════════════════════════════════════════════
+    // tryReviveAll — 蘇生薬による復活判定
+    // ════════════════════════════════════════════════════════
+
+    /// AutoRevive を所持する脱落者は revived 側へ（耐久 1 減）、stillDead は空。
+    @Test
+    def testReviveWithAutoRevive(): Unit \ Assert =
+        let units = {id = 0, consumables = itemWith(Consumable.ConsumableEffect.AutoRevive, 2) :: Nil} :: Nil;
+        let r = Consumable.tryReviveAll(units);
+        let revivedIds = r#revived |> List.map(x -> x#id);
+        // 復活した味方の蘇生薬は耐久 2→1 に減って 1 個残る。
+        let remainingDur = r#revived
+            |> List.flatMap(x -> x#consumables |> List.map(c -> c#durability));
+        Assert.assertEq(
+            expected = (0 :: Nil, 1 :: Nil, Nil),
+            (revivedIds, remainingDur, r#stillDead))
+
+    /// AutoRevive 非所持の脱落者は復活せず stillDead に入る。
+    @Test
+    def testReviveWithoutAutoRevive(): Unit \ Assert =
+        let units = {id = 3, consumables = itemWith(Consumable.ConsumableEffect.Heal, 5) :: Nil} :: Nil;
+        let r = Consumable.tryReviveAll(units);
+        Assert.assertEq(
+            expected = (Nil, 3 :: Nil),
+            (r#revived |> List.map(x -> x#id), r#stillDead))
+
+    /// 耐久 1 の蘇生薬は復活と同時に使い切られ、インベントリから消える。
+    @Test
+    def testReviveExhaustsDurability(): Unit \ Assert =
+        let units = {id = 1, consumables = itemWith(Consumable.ConsumableEffect.AutoRevive, 1) :: Nil} :: Nil;
+        let r = Consumable.tryReviveAll(units);
+        let remaining = r#revived |> List.flatMap(x -> x#consumables);
+        Assert.assertEq(
+            expected = (1 :: Nil, 0, Nil),
+            (r#revived |> List.map(x -> x#id), List.length(remaining), r#stillDead))
 }

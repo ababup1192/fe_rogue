@@ -43,7 +43,8 @@ mod TestStaffCastScene {
             usedStairs        = false,
             level             = 1,
             exp               = 0,
-            pendingLevelUp    = None
+            pendingLevelUp    = None,
+            statuses          = Nil
         };
         Scene.empty()
             |> Scene.addNode(MapScene.worldName(),
@@ -61,6 +62,9 @@ mod TestStaffCastScene {
     /// テスト用の消費アイテム（回復量を指定）。
     def healItem(healAmount: Int32): Consumable.ConsumableResource =
         {name       = "きずぐすり",
+         effect     = Consumable.ConsumableEffect.Heal,
+         magnitude  = healAmount,
+         duration   = 0,
          healAmount = healAmount,
          durability = 5,
          sprite     = ({texture = "t", hframes = 1, vframes = 1, frame = 0,

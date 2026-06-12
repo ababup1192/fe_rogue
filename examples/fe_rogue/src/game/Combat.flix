@@ -144,9 +144,12 @@ mod Combat {
     /// 1 ユニットを faction 非依存で見た戦闘ステータス。攻撃側はオフェンス値 + `weapon`、
     /// 防御側はディフェンス値 + `weapon`（相性判定用）を `estimate` が参照する。
     /// `weapon#isPhysical` は構築時に解決して持つ（`Combat` を `UnitCatalog` 非依存に保つ）。
+    /// `hitMod` はこのユニット「自身の命中率」への一時補正（目潰し等のデバフは負値）。
+    /// 習熟補正後の命中に加算する（`estimate` 参照）。バフ（攻撃・速さ）は `attack`/`speed`
+    /// に反映済みの値を構築側（projection）で渡すため、ここに専用フィールドは持たない。
     pub type alias CombatView = {
         attack = Int32, magicAttack = Int32, defense = Int32, magicDefense = Int32,
-        skill = Int32, speed = Int32, luck = Int32, hp = Int32,
+        skill = Int32, speed = Int32, luck = Int32, hp = Int32, hitMod = Int32,
         weapon = Option[{weaponType = WeaponCatalog.WeaponType, attack = Int32,
                           hit = Int32, crit = Int32, isPhysical = Bool, proficient = Bool}]
     }
@@ -181,9 +184,12 @@ mod Combat {
                 let dfn = defenseStatFor(defender#defense, defender#magicDefense, w#isPhysical);
                 // 苦手武器は威力・命中を 80% に下げる（得意ならそのまま）。必殺率は下げない。
                 let (adjAtk, adjHit) = proficiencyAdjust(atk, w#hit, w#proficient);
+                // 時限デバフ（目潰し等）の命中補正を習熟補正の「後」に加算する。
+                // ×4/5 を通さないことで「-25%」がそのまま -25 として効く（0 未満は 0 に丸める）。
+                let adjHit2 = Int32.max(0, adjHit + attacker#hitMod);
                 forecast(
                     {attack = adjAtk, skill = attacker#skill, luck = attacker#luck,
-                     weaponHit = adjHit, weaponCrit = w#crit},
+                     weaponHit = adjHit2, weaponCrit = w#crit},
                     {hp = defender#hp, defense = dfn, speed = defender#speed, luck = defender#luck},
                     rel)
         }

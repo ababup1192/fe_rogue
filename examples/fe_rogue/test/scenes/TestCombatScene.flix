@@ -39,7 +39,8 @@ mod TestCombatScene {
         usedStairs        = false,
         level             = 1,
         exp               = 0,
-        pendingLevelUp    = None
+        pendingLevelUp    = None,
+        statuses          = Nil
     }
 
     /// 隣接 (3,2) の生存中の敵。HP 10・剣持ち（相性は中立）。
@@ -55,7 +56,8 @@ mod TestCombatScene {
         resource       = TestUnitFixtures.testEnemyResource(3, 10),
         weapon         = Some(TestUnitFixtures.testWeapon()),
         acted          = false,
-        prevPos        = None
+        prevPos        = None,
+        statuses       = Nil
     }
 
     /// World 配下に Player(0) と Enemy(1) を直接挿した最小シーン。

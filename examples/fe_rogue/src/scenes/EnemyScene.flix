@@ -208,7 +208,8 @@ mod EnemyScene {
             resource       = res,
             weapon         = Some(sp#weapon),
             acted          = false,
-            prevPos        = None
+            prevPos        = None,
+            statuses       = Nil
         };
         let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset,
                                     res#sprite#scale)
@@ -365,7 +366,8 @@ mod EnemyScene {
         let ids = getAll(scene) |> List.map(d -> d#id);
         List.foldLeft((sc, id) ->
             sc
-                |> mapEnemy(id, d -> {acted = false | d})
+                // 敵ターン開始ごとに時限デバフ（目潰し/鈍足）を 1 ターン分減算する。
+                |> mapEnemy(id, d -> {acted = false, statuses = StatusSystem.tick(d#statuses) | d})
                 |> setSpriteModulate(id, activeColor())
                 |> UnitHPBarScene.setModulate(enemyPath(id), activeColor()),
             scene, ids)
@@ -541,10 +543,13 @@ mod EnemyScene {
     /// この敵の戦闘ビュー（faction 非依存）。`Combat.estimate` / `Encounter` の join で使う。
     /// 敵には得意/苦手の概念が無いので、持っている武器は常に得意（proficient = true、100%）。
     pub def combatView(data: Data): Combat.CombatView =
-        {attack = data#resource#attack, magicAttack = data#resource#magicAttack,
+        // 投擲デバフ（目潰し=命中ダウン / 鈍足=速さダウン）を被弾していれば戦闘ビューに反映する。
+        let m = StatusSystem.combatMods(data#statuses);
+        {attack = data#resource#attack + m#atkBonus, magicAttack = data#resource#magicAttack,
          defense = data#resource#defense, magicDefense = data#resource#magicDefense,
-         skill = data#resource#skill, speed = data#resource#speed, luck = data#resource#luck,
-         hp = data#hp, weapon = Combat.weaponView(data#weapon, true)}
+         skill = data#resource#skill, speed = data#resource#speed + m#spdDelta,
+         luck = data#resource#luck, hp = data#hp, hitMod = m#hitMod,
+         weapon = Combat.weaponView(data#weapon, true)}
 
     /// この敵の盤上ビュー（faction = Enemy）。`Encounter.fromScene` の join で使う。
     /// `weaponRange` は装備武器の射程。敵に `hidden` は無いので常に false。

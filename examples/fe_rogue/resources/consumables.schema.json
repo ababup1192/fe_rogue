@@ -8,20 +8,36 @@
         "order": 1
       }
     },
-    "description": {
+    "effect": {
       "field": {
-        "ftype": "text",
+        "ftype": { "type": "enum", "values": ["Heal", "FullHeal", "MaxHpUp", "AutoRevive", "BlindHit", "SpdDownHit", "AtkUp", "SpdUp"] },
         "hint":  "plain",
-        "label": "説明",
-        "order": 99
+        "label": "効果",
+        "order": 2
+      }
+    },
+    "magnitude": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "slider": { "min": 0, "max": 99, "step": 1 } },
+        "label": "効果量(回復/+N/命中-N%)",
+        "order": 4
+      }
+    },
+    "duration": {
+      "field": {
+        "ftype": "int",
+        "hint":  { "slider": { "min": 0, "max": 9, "step": 1 } },
+        "label": "持続ターン(バフ/投擲系のみ)",
+        "order": 5
       }
     },
     "healAmount": {
       "field": {
         "ftype": "int",
-        "hint":  { "slider": { "min": 1, "max": 99, "step": 1 } },
-        "label": "回復量",
-        "order": 2
+        "hint":  { "slider": { "min": 0, "max": 99, "step": 1 } },
+        "label": "回復量(旧・互換用)",
+        "order": 6
       }
     },
     "durability": {
@@ -29,7 +45,15 @@
         "ftype": "int",
         "hint":  { "slider": { "min": 1, "max": 30, "step": 1 } },
         "label": "使用回数",
-        "order": 3
+        "order": 7
+      }
+    },
+    "description": {
+      "field": {
+        "ftype": "text",
+        "hint":  "plain",
+        "label": "説明",
+        "order": 99
       }
     },
     "sprite": {

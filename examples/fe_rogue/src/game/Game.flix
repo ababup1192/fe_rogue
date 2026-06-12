@@ -403,6 +403,9 @@ def staffAimConfirm(scene: Scene[NodeTag]):
     match selected {
         case Some((playerId, PlayerData.ItemKind.Staff(idx))) =>
             StaffCastScene.applyStaffCast(playerId, idx, dir, scene)
+        // 投擲系の消費アイテム（目潰し薬 / 鈍足薬）も同じ StaffAim 経路で方向投擲する。
+        case Some((playerId, PlayerData.ItemKind.Consumable(idx))) =>
+            StaffCastScene.applyConsumableDirectional(playerId, idx, dir, scene)
         case _ => scene
     }
 

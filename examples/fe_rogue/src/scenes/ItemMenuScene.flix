@@ -753,10 +753,54 @@ mod ItemMenuScene {
                 let name = staffNameOf(playerId, idx, scene);
                 GameLogger.playerLog("P${playerId} は ${name} の方向を選び Z で発射 (X で中止)");
                 PhaseTransitions.enterStaffAim(scene)
-            // 消費アイテムは方向選択不要。その場で使用者を回復しターンを消費する。
+            // 消費アイテムはデリバリ（自己 / 投擲 / 自動）で経路が分かれるため別関数へ委譲する。
             case PlayerData.ItemKind.Consumable(idx) =>
-                StaffCastScene.applyConsumableUse(playerId, idx, scene)
+                applyConsumableByDelivery(playerId, idx, scene)
             case PlayerData.ItemKind.Weapon(_) => scene
+        }
+
+    /// 消費アイテムを効果から導いたデリバリで分岐する:
+    ///   SelfUse     → その場で使用者に効果（方向選択なし）
+    ///   Directional → 杖と同じ StaffAim フェーズへ（投げる方向を選ぶ）
+    ///   AutoOnDeath → つかうメニューには本来出ない（所持中に自動発動）。来ても no-op。
+    /// `applyUse` の `match kind` に match をネストさせないために切り出している。
+    def applyConsumableByDelivery(playerId: Int32, idx: Int32, scene: Scene[NodeTag]):
+                  Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+                TurnPhase.State, SelectedPlayer.State, GameLogger.GameLogger,
+                GameEngine.Audio} =
+        match consumableDeliveryAt(playerId, idx, scene) {
+            case Consumable.Delivery.SelfUse =>
+                StaffCastScene.applyConsumableUse(playerId, idx, scene)
+            case Consumable.Delivery.Directional =>
+                let name = consumableNameOf(playerId, idx, scene);
+                GameLogger.playerLog("P${playerId} は ${name} を投げる方向を選び Z で発射 (X で中止)");
+                PhaseTransitions.enterStaffAim(scene)
+            case Consumable.Delivery.AutoOnDeath =>
+                scene
+        }
+
+    /// 指定プレイヤーの consumables[idx] を取り出す（範囲外 / 未登録なら None）。
+    def consumableAt(playerId: Int32, idx: Int32, scene: Scene[NodeTag]):
+            Option[Consumable.ConsumableResource] =
+        forM (
+            player <- PlayerScene.get(playerId, scene);
+            item   <- List.nth(idx, player#consumables)
+        ) yield item
+
+    /// consumables[idx] の効果から導かれるデリバリ。未解決なら SelfUse 扱い（防御）。
+    def consumableDeliveryAt(playerId: Int32, idx: Int32, scene: Scene[NodeTag]):
+            Consumable.Delivery =
+        match consumableAt(playerId, idx, scene) {
+            case Some(item) => Consumable.deliveryFor(item#effect)
+            case None       => Consumable.Delivery.SelfUse
+        }
+
+    /// consumables[idx] の表示名。範囲外なら "くすり" フォールバック。
+    def consumableNameOf(playerId: Int32, idx: Int32, scene: Scene[NodeTag]): String =
+        match consumableAt(playerId, idx, scene) {
+            case Some(item) => item#name
+            case None       => "くすり"
         }
 
     /// 指定プレイヤーの staves[idx] の名前を返す。範囲外なら "つえ" フォールバック。

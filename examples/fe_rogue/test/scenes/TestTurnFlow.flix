@@ -30,7 +30,8 @@ mod TestTurnFlow {
         usedStairs        = false,
         level             = 1,
         exp               = 0,
-        pendingLevelUp    = pendingLevelUp
+        pendingLevelUp    = pendingLevelUp,
+        statuses          = Nil
     }
 
     /// World 配下に味方 1 体だけの最小シーン。

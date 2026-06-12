@@ -58,7 +58,8 @@ mod TestCursorScene {
                         usedStairs            = false,
                         level                     = 1,
                         exp                       = 0,
-                        pendingLevelUp            = None
+                        pendingLevelUp            = None,
+                        statuses                  = Nil
                     })))
 
     /// `add` 後の (gridPos, lastHoveredEnemyId) を 1 タプルにまとめて取り出す
@@ -95,7 +96,8 @@ mod TestCursorScene {
                     usedStairs            = false,
                     level                     = 1,
                     exp                       = 0,
-                    pendingLevelUp            = None
+                    pendingLevelUp            = None,
+                    statuses                  = Nil
                 }));
         Scene.empty()
             |> Scene.addNode(MapScene.worldName(),
@@ -402,7 +404,8 @@ mod TestCursorScene {
         usedStairs          = false,
         level                   = 1,
         exp                     = 0,
-        pendingLevelUp          = None
+        pendingLevelUp          = None,
+        statuses                = Nil
     }
 
     /// World + 与えた party の Marker2D を直接組み立てた scene。

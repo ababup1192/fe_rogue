@@ -32,7 +32,10 @@ mod EnemyData {
         acted          = Bool,
         // 直前にいたマス（`moveTo` が更新）。徘徊(Wander)で「来た道へ戻らない」ために使い、
         // 1 幅通路を前後に揺れず直進・部屋から通路へ抜けて回遊できるようにする。None は初期 / 未移動。
-        prevPos        = Option[{x = Int32, y = Int32}]
+        prevPos        = Option[{x = Int32, y = Int32}],
+        // 付与中の時限ステータス効果（目潰し薬/鈍足薬を投げ当てられた場合）。
+        // 敵ターン開始 (`clearActedAll`) で `StatusSystem.tick` され、効果は `combatView` に反映される。
+        statuses       = List[StatusSystem.Status]
     }
 
     /// respawn 時に再生成するために必要な最小情報だけを永続保持する型。

@@ -66,7 +66,8 @@ mod TestItemMenuScene {
             usedStairs            = false,
             level                     = 1,
             exp                       = 0,
-            pendingLevelUp            = None
+            pendingLevelUp            = None,
+            statuses                  = Nil
         };
         let withWorld = Scene.empty()
             |> Scene.addNode(MapScene.worldName(),
@@ -366,7 +367,9 @@ mod TestItemMenuScene {
     /// 消費アイテムの性能表記。回復量と残り使用回数を出す。
     @Test
     def testConsumableStatLine(): Unit \ Assert =
-        let potion = ({name = "きずぐすり", healAmount = 10, durability = 3,
+        let potion = ({name = "きずぐすり",
+                        effect = Consumable.ConsumableEffect.Heal, magnitude = 10, duration = 0,
+                        healAmount = 10, durability = 3,
                         sprite = testStaff()#sprite, description = ""}:
                         Consumable.ConsumableResource);
         Assert.assertEq(

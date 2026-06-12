@@ -27,6 +27,9 @@ mod TestInventoryCapacity {
     /// テスト用の消費アイテム 1 個。容量カウントだけが目的なのでダミー値。
     def testConsumable(): Consumable.ConsumableResource = {
         name       = "きずぐすり",
+        effect     = Consumable.ConsumableEffect.Heal,
+        magnitude  = 10,
+        duration   = 0,
         healAmount = 10,
         durability = 3,
         sprite     = testSprite(),
@@ -62,7 +65,8 @@ mod TestInventoryCapacity {
         usedStairs      = false,
         level           = 1,
         exp             = 0,
-        pendingLevelUp  = None
+        pendingLevelUp  = None,
+        statuses        = Nil
     }
 
     // ════════════════════════════════════════════════════════

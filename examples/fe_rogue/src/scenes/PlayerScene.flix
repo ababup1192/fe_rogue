@@ -39,18 +39,21 @@ mod PlayerScene {
     /// `Combat.estimate` / `Encounter` の join で使う（ダメージ式は `Combat` に集約）。
     pub def combatView(data: Data): Combat.CombatView =
         let equipped = PlayerData.equippedWeapon(data#weapons);
-        {attack = data#resource#attack, magicAttack = data#resource#magicAttack,
+        let m = StatusSystem.combatMods(data#statuses);
+        {attack = data#resource#attack + m#atkBonus, magicAttack = data#resource#magicAttack,
          defense = data#resource#defense, magicDefense = data#resource#magicDefense,
-         skill = data#resource#skill, speed = data#resource#speed, luck = data#resource#luck,
-         hp = data#hp, weapon = Combat.weaponView(equipped, weaponProficient(data, equipped))}
+         skill = data#resource#skill, speed = data#resource#speed + m#spdDelta,
+         luck = data#resource#luck, hp = data#hp, hitMod = m#hitMod,
+         weapon = Combat.weaponView(equipped, weaponProficient(data, equipped))}
 
     /// `combatView` の「装備武器を明示指定する」版。攻撃中に選択した武器（装備中=先頭とは
     /// 限らない）で戦闘予測を計算するため、`BattlePanelScene` から使う。
     pub def combatViewWith(data: Data, weapon: UnitCatalog.WeaponResource): Combat.CombatView =
-        {attack = data#resource#attack, magicAttack = data#resource#magicAttack,
+        let m = StatusSystem.combatMods(data#statuses);
+        {attack = data#resource#attack + m#atkBonus, magicAttack = data#resource#magicAttack,
          defense = data#resource#defense, magicDefense = data#resource#magicDefense,
-         skill = data#resource#skill, speed = data#resource#speed, luck = data#resource#luck,
-         hp = data#hp,
+         skill = data#resource#skill, speed = data#resource#speed + m#spdDelta,
+         luck = data#resource#luck, hp = data#hp, hitMod = m#hitMod,
          weapon = Combat.weaponView(Some(weapon),
                      UnitCatalog.proficientWith(data#resource, weapon#weaponType))}
 
@@ -317,7 +320,8 @@ mod PlayerScene {
             usedStairs        = false,
             level             = res#level,
             exp               = 0,
-            pendingLevelUp    = None
+            pendingLevelUp    = None,
+            statuses          = Nil
         };
         // unit に spriteFrames があれば AnimatedSprite2D で配置、無ければ Sprite2D
         // (静止単一フレーム) で配置する。AnimatedSprite2D は engine の per-node
@@ -571,23 +575,50 @@ mod PlayerScene {
     ///   - ロード（主人公 = `lordId()`）が倒れた（他の味方が残っていても 1F やり直し）
     pub def removeDeadAndCheckGameOver(killed: List[Int32],
                                          scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {CustomEffects.GameOverRequest, SelectedPlayer.State} =
+            Scene[NodeTag] \ {CustomEffects.GameOverRequest, SelectedPlayer.State,
+                               GameLogger.GameLogger} =
         if (List.isEmpty(killed)) scene
         else {
-            let removed = List.foldLeft(
-                (sc, id) -> Scene.removeAt(playerPath(id), sc),
-                scene, killed);
-            let selectedKilled = match SelectedPlayer.State.get()#id {
-                case Some(id) => List.exists(k -> k == id, killed)
-                case None     => false
-            };
-            if (selectedKilled)
-                SelectedPlayer.State.put(SelectedPlayer.cleared())
-            else ();
-            let lordDead = List.exists(k -> k == lordId(), killed);
-            if (List.isEmpty(getAll(removed)) or lordDead)
-                CustomEffects.GameOverRequest.request(removed)
-            else removed
+            // 蘇生薬(AutoRevive)を所持している脱落者は、scene から取り除く前に全回復して復活させる。
+            // この時点ではまだ味方ノードが生きている（removeAt 前）ので consumables/最大HP を読める。
+            // 復活した分は killed から外れ、ロード戦死や全滅もそのぶん回避される。
+            let units = killed |> List.filterMap(id ->
+                get(id, scene) |> Option.map(d -> {id = id, consumables = d#consumables}));
+            let revive = Consumable.tryReviveAll(units);
+            let revivedScene = List.foldLeft(
+                (sc, r) -> reviveOne(r#id, r#consumables, sc), scene, revive#revived);
+            let stillDead = revive#stillDead;
+            if (List.isEmpty(stillDead)) revivedScene
+            else {
+                let removed = List.foldLeft(
+                    (sc, id) -> Scene.removeAt(playerPath(id), sc),
+                    revivedScene, stillDead);
+                let selectedKilled = match SelectedPlayer.State.get()#id {
+                    case Some(id) => List.exists(k -> k == id, stillDead)
+                    case None     => false
+                };
+                if (selectedKilled)
+                    SelectedPlayer.State.put(SelectedPlayer.cleared())
+                else ();
+                let lordDead = List.exists(k -> k == lordId(), stillDead);
+                if (List.isEmpty(getAll(removed)) or lordDead)
+                    CustomEffects.GameOverRequest.request(removed)
+                else removed
+            }
+        }
+
+    /// 蘇生薬で復活する味方 1 体の Scene 反映: HP を最大まで戻し、蘇生薬消費後の
+    /// インベントリへ差し替え、HPBar 更新、復活ログを出す。`removeDeadAndCheckGameOver` 専用。
+    def reviveOne(id: Int32, newConsumables: List[Consumable.ConsumableResource],
+                   scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+        match get(id, scene) {
+            case None    => scene
+            case Some(d) =>
+                let maxHp = d#resource#hp;
+                GameLogger.playerLog("${displayName(id, scene)}は 蘇生薬で復活した");
+                scene
+                    |> mapPlayer(id, dd -> {hp = maxHp, consumables = newConsumables | dd})
+                    |> UnitHPBarScene.update(playerPath(id), maxHp)
         }
 
     /// プレイヤーを「行動済み」にして sprite を灰色 modulate にする。
@@ -617,7 +648,8 @@ mod PlayerScene {
         let ids = getAll(scene) |> List.filter(d -> not d#usedStairs) |> List.map(d -> d#id);
         List.foldLeft((sc, id) ->
             sc
-                |> mapPlayer(id, d -> {waited = false | d})
+                // 味方ターン開始ごとに時限ステータス（自己バフ等）を 1 ターン分減算する。
+                |> mapPlayer(id, d -> {waited = false, statuses = StatusSystem.tick(d#statuses) | d})
                 |> setSpriteModulate(id, activeColor())
                 |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
                 |> playAnim(id, idleAnimName()),

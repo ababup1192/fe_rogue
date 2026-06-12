@@ -65,7 +65,8 @@ mod TestPlayerScene {
                         usedStairs            = false,
                         level                     = 1,
                         exp                       = 0,
-                        pendingLevelUp            = None
+                        pendingLevelUp            = None,
+                        statuses                  = Nil
                     })))
 
     /// プレイヤー id のワールド座標を取り出す
@@ -373,7 +374,9 @@ mod TestPlayerScene {
     @Test
     def testSwapItemConsumableTransfersToEmptySlot(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let potion = ({name = "きずぐすり", healAmount = 10, durability = 3,
+        let potion = ({name = "きずぐすり",
+                        effect = Consumable.ConsumableEffect.Heal, magnitude = 10, duration = 0,
+                        healAmount = 10, durability = 3,
                         sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                                     offset = {x = 0.0, y = 0.0},
                                     scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
@@ -424,7 +427,8 @@ mod TestPlayerScene {
         usedStairs          = false,
         level                   = 1,
         exp                     = 0,
-        pendingLevelUp          = None
+        pendingLevelUp          = None,
+        statuses                = Nil
     }
 
     /// origin 1 マスだけが床で、ほかは壁の MapSnapshot（再配置の不足ケース用）。
@@ -602,7 +606,8 @@ mod TestPlayerScene {
             |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}))
             |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 4, y = 3}));
         let result = TestUnitFixtures.withNoSelection(() -> withGameOverToEmpty(() ->
-            PlayerScene.removeDeadAndCheckGameOver(0 :: Nil, scene)));
+            TestUnitFixtures.withMockGameLogger(() ->
+                PlayerScene.removeDeadAndCheckGameOver(0 :: Nil, scene))));
         Assert.assertEq(expected = Nil, PlayerScene.getAll(result) |> List.map(d -> d#id))
 
     /// ロード以外の味方が倒れても、ロードが健在ならゲームオーバーにはならない。
@@ -618,7 +623,8 @@ mod TestPlayerScene {
             |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}))
             |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 4, y = 3}));
         let result = TestUnitFixtures.withNoSelection(() -> withGameOverToEmpty(() ->
-            PlayerScene.removeDeadAndCheckGameOver(1 :: Nil, scene)));
+            TestUnitFixtures.withMockGameLogger(() ->
+                PlayerScene.removeDeadAndCheckGameOver(1 :: Nil, scene))));
         Assert.assertEq(expected = 0 :: Nil, PlayerScene.getAll(result) |> List.map(d -> d#id))
 
     // ========================================================================
@@ -698,7 +704,8 @@ mod TestPlayerScene {
         usedStairs        = false,
         level             = 1,
         exp               = 0,
-        pendingLevelUp    = None
+        pendingLevelUp    = None,
+        statuses          = Nil
     }
 
     /// 距離 1 では剣 (index 0) が届く。

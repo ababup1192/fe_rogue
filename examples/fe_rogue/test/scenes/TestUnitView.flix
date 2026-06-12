@@ -57,10 +57,10 @@ mod TestUnitView {
         let atkCombat: Combat.CombatView =
             {attack = 4, magicAttack = 0, defense = 0, magicDefense = 0,
              skill = 0, speed = 0, luck = 0, hp = 10,
-             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, crit = 0, isPhysical = true, proficient = true})};
+             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, crit = 0, isPhysical = true, proficient = true}), hitMod = 0};
         let defCombat: Combat.CombatView =
             {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
-             skill = 0, speed = 0, luck = 0, hp = 3, weapon = None};
+             skill = 0, speed = 0, luck = 0, hp = 3, weapon = None, hitMod = 0};
         let attacker = {combat = atkCombat | TestUnitFixtures.mkUnit(0, Faction.Enemy, at(0, 0), 10, false, Some({min = 1, max = 1}))};
         let defender = {combat = defCombat | TestUnitFixtures.mkUnit(1, Faction.Player, at(1, 0), 3, false, None)};
         Assert.assertEq(expected = 5, UnitView.estDamage(attacker, defender))
@@ -80,14 +80,14 @@ mod TestUnitView {
          attackTargetId = None, resource = TestUnitFixtures.testResource(4, hp),
          weapons = weapons, staves = Nil, consumables = Nil, selectedItem = None,
          moveStepsTaken = 0, facing = Staff.Direction.Down, hidden = hidden,
-         usedStairs = false, level = 1, exp = 0, pendingLevelUp = None}
+         usedStairs = false, level = 1, exp = 0, pendingLevelUp = None, statuses = Nil}
 
     /// 敵 Data。装備武器は `weapon`（攻2・剣）、攻撃 3（testEnemyResource）。
     def enemyData(id: Int32, pos: {x = Int32, y = Int32}, hp: Int32, isDying: Bool,
                   weapon: Option[UnitCatalog.WeaponResource]): EnemyScene.Data =
         {id = id, gridPos = pos, alerted = false, homeModuleIdx = 0, moveTiles = 4,
          hp = hp, isDying = isDying, attackTargetId = None,
-         resource = TestUnitFixtures.testEnemyResource(4, hp), weapon = weapon, acted = false, prevPos = None}
+         resource = TestUnitFixtures.testEnemyResource(4, hp), weapon = weapon, acted = false, prevPos = None, statuses = Nil}
 
     /// 味方 projection: faction = Player、weaponRange = 装備武器(先頭)の射程、hidden を引き継ぐ。
     @Test

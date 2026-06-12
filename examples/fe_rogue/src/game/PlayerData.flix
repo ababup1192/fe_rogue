@@ -52,7 +52,10 @@ mod PlayerData {
         usedStairs         = Bool,
         level              = Int32,
         exp                = Int32,
-        pendingLevelUp     = Option[LevelSystem.Result]
+        pendingLevelUp     = Option[LevelSystem.Result],
+        // 付与中の時限ステータス効果（ちから薬/すばやさ薬の自己バフ、投擲デバフを被弾した場合等）。
+        // 味方ターン開始 (`clearAllWaited`) で `StatusSystem.tick` され、効果は `combatView` に反映される。
+        statuses           = List[StatusSystem.Status]
     }
 
     /// スポーン時の中間表現（初期 spawn のスナップショット）。ゲームオーバー復元にも使う。

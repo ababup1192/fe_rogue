@@ -75,12 +75,12 @@ mod TestWeaponProficiency {
     def testEstimateAppliesProficiencyPenalty(): Unit \ Assert =
         let defender: Combat.CombatView =
             {attack = 0, magicAttack = 0, defense = 0, magicDefense = 0,
-             skill = 0, speed = 0, luck = 0, hp = 99, weapon = None};
+             skill = 0, speed = 0, luck = 0, hp = 99, weapon = None, hitMod = 0};
         let attackerWith = proficient ->
             ({attack = 10, magicAttack = 0, defense = 0, magicDefense = 0,
               skill = 0, speed = 0, luck = 0, hp = 10,
               weapon = Some({weaponType = WeaponType.Sword, attack = 0, hit = 90,
-                             crit = 0, isPhysical = true, proficient = proficient})}: Combat.CombatView);
+                             crit = 0, isPhysical = true, proficient = proficient}), hitMod = 0}: Combat.CombatView);
         let good = Combat.estimate(attackerWith(true), defender);
         let weak = Combat.estimate(attackerWith(false), defender);
         Assert.assertEq(

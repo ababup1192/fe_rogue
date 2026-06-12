@@ -23,18 +23,97 @@ mod Consumable {
     use Util.Json.Json.{JObject, JString, JNumber}
     use Sprite.SpriteResource
 
+    /// 消費アイテムの効果の種類（杖の `Staff.StaffEffect` を手本にした enum）。
+    /// `magnitude` / `duration` の意味は種類ごとに異なる（下記コメント参照）。
+    /// 新しい薬は基本この enum に値を 1 つ足し、`parseEffect` / `deliveryFor` /
+    /// 自己効果なら `StaffCastScene.applyConsumableSelfEffect` に arm を足すだけで増やせる。
+    ///   - `Heal`       : 使用者の HP を `magnitude` 回復（自己使用）
+    ///   - `FullHeal`   : 使用者の HP を全回復（自己使用、`magnitude` 不使用）
+    ///   - `MaxHpUp`    : 使用者の最大 HP を `magnitude` 永続上昇（自己使用、`duration` 不使用）
+    ///   - `AutoRevive` : HP0 で自動発動し全回復（所持しているだけで保険になる。復活の草相当）
+    ///   - `BlindHit`   : 杖式に投げ、当たったキャラの命中を `magnitude`% を `duration` ターン下げる
+    ///   - `SpdDownHit` : 杖式に投げ、当たったキャラの速さ（回避）を `magnitude` を `duration` ターン下げる
+    ///   - `AtkUp`      : 使用者の攻撃力を `magnitude` を `duration` ターン上げる（自己使用）
+    ///   - `SpdUp`      : 使用者の速さ（回避）を `magnitude` を `duration` ターン上げる（自己使用）
+    pub enum ConsumableEffect with Eq, ToString {
+        case Heal
+        case FullHeal
+        case MaxHpUp
+        case AutoRevive
+        case BlindHit
+        case SpdDownHit
+        case AtkUp
+        case SpdUp
+    }
+
+    /// 効果から導かれる「使い方（デリバリ）」。`effect` から `deliveryFor` で 1:1 に決まるため
+    /// JSON / schema / codec には出さない（＝デザイナが投擲/自己/自動を取り違えられない安全設計）。
+    ///   - `SelfUse`     : つかうと使用者自身に効果（方向選択なし）
+    ///   - `Directional` : 杖と同じく方向を選んで投げ、最初に当たったキャラに効果
+    ///   - `AutoOnDeath` : 所持中に HP0 で自動発動（つかうメニューには出さない）
+    pub enum Delivery with Eq, ToString {
+        case SelfUse
+        case Directional
+        case AutoOnDeath
+    }
+
     /// 消費アイテム 1 種類ぶんのデータ。
-    /// `healAmount` は正の整数のみ有効（0 以下は `consume` で即 None になり実質壊れた定義になる）。
+    /// `effect` は効果の種類。`magnitude` は効果量（回復量 / +N / 命中-N% 等、種類で意味が変わる）。
+    /// `duration` はバフ・デバフの持続ターン数（回復・最大HP・蘇生では無視される死にフィールド）。
+    /// `healAmount` は後方互換のため残置（旧データ用。新コードは `magnitude` を参照する）。
     /// `durability` は JSON から読み込んだ初期値が必ず正であることを前提とする。
     ///   `consume` が durability ≤ 0 で None を返すため、JSON に 0 以下が入ると 1 度も使えない。
     /// `sprite` は ItemMenu のアイコンに使う。
     /// `description` はアイテム詳細ウィンドウに出す一言説明（フレーバーテキスト）。
     pub type alias ConsumableResource = {
         name        = String,
+        effect      = ConsumableEffect,
+        magnitude   = Int32,
+        duration    = Int32,
         healAmount  = Int32,
         durability  = Int32,
         sprite      = SpriteResource,
         description = String
+    }
+
+    /// 効果 → デリバリの 1:1 導出。`Staff` のように方向を要するもの（投擲デバフ）と、
+    /// 自己使用、所持中自動発動を振り分ける。`ItemMenuScene.applyUse` がこの結果で経路を分岐する。
+    pub def deliveryFor(effect: ConsumableEffect): Delivery = match effect {
+        case ConsumableEffect.Heal       => Delivery.SelfUse
+        case ConsumableEffect.FullHeal   => Delivery.SelfUse
+        case ConsumableEffect.MaxHpUp    => Delivery.SelfUse
+        case ConsumableEffect.AtkUp      => Delivery.SelfUse
+        case ConsumableEffect.SpdUp      => Delivery.SelfUse
+        case ConsumableEffect.BlindHit   => Delivery.Directional
+        case ConsumableEffect.SpdDownHit => Delivery.Directional
+        case ConsumableEffect.AutoRevive => Delivery.AutoOnDeath
+    }
+
+    /// 文字列 → `ConsumableEffect` のパース（`Staff.parseEffect` と同形）。
+    /// schema 側で enum を絞っているので通常は到達しないが、JSON 直編集の typo を
+    /// 起動時に発覚させるため未知文字列は `Err(その文字列)` で表現する。
+    pub def parseEffect(name: String): Result[String, ConsumableEffect] = match name {
+        case "Heal"       => Ok(ConsumableEffect.Heal)
+        case "FullHeal"   => Ok(ConsumableEffect.FullHeal)
+        case "MaxHpUp"    => Ok(ConsumableEffect.MaxHpUp)
+        case "AutoRevive" => Ok(ConsumableEffect.AutoRevive)
+        case "BlindHit"   => Ok(ConsumableEffect.BlindHit)
+        case "SpdDownHit" => Ok(ConsumableEffect.SpdDownHit)
+        case "AtkUp"      => Ok(ConsumableEffect.AtkUp)
+        case "SpdUp"      => Ok(ConsumableEffect.SpdUp)
+        case other        => Err(other)
+    }
+
+    /// `parseEffect` と round-trip する文字列表現を返す。
+    pub def effectToString(effect: ConsumableEffect): String = match effect {
+        case ConsumableEffect.Heal       => "Heal"
+        case ConsumableEffect.FullHeal   => "FullHeal"
+        case ConsumableEffect.MaxHpUp    => "MaxHpUp"
+        case ConsumableEffect.AutoRevive => "AutoRevive"
+        case ConsumableEffect.BlindHit   => "BlindHit"
+        case ConsumableEffect.SpdDownHit => "SpdDownHit"
+        case ConsumableEffect.AtkUp      => "AtkUp"
+        case ConsumableEffect.SpdUp      => "SpdUp"
     }
 
     /// 消費アイテムカタログ全体。
@@ -84,7 +163,50 @@ mod Consumable {
     /// `ConsumableResource` のフィールド名集合。
     /// Set で持つことで load 時に JSON フィールドの追加漏れ・typo を検出できる。
     pub def expectedFields(): Set[String] =
-        Set#{"name", "healAmount", "durability", "sprite", "description"}
+        Set#{"name", "effect", "magnitude", "duration",
+             "healAmount", "durability", "sprite", "description"}
+
+    // ────────────────────────────────────────────────────────
+    // 蘇生（AutoRevive）の純粋判定
+    //   HP0 になった味方が AutoRevive 効果の消費アイテムを所持していれば、
+    //   その駒を「まだ死んでいない」扱いにして全回復させる。Scene 非依存に保ち、
+    //   実際の HP 書き換え・HPBar 更新・ログは呼び出し側 (PlayerScene) が担う。
+    // ────────────────────────────────────────────────────────
+
+    /// `consumables` の中で最初に見つかった AutoRevive アイテムを 1 回消費した結果を返す。
+    /// AutoRevive を持っていなければ `None`（蘇生不可）。持っていれば `Some(消費後リスト)`
+    /// （耐久が尽きたらそのアイテムは取り除かれる）。リストの順序は保たれる。
+    pub def reviveConsume(consumables: List[ConsumableResource]):
+            Option[List[ConsumableResource]] =
+        if (List.exists(item -> item#effect == ConsumableEffect.AutoRevive, consumables))
+            Some(consumeFirstRevive(consumables))
+        else None
+
+    /// 最初の AutoRevive アイテムを 1 回だけ消費する（耐久 0 で除去）。それ以外は不変。
+    /// 呼び出し側 (`reviveConsume`) が AutoRevive の存在を保証してから呼ぶ。
+    /// `consume` の `Option`（耐久 0 なら None）は `Option.toList` で「残り 0/1 個」に畳み、
+    /// ネストした match を避ける。
+    def consumeFirstRevive(consumables: List[ConsumableResource]): List[ConsumableResource] =
+        match consumables {
+            case Nil          => Nil
+            case item :: rest =>
+                if (item#effect == ConsumableEffect.AutoRevive)
+                    List.append(Option.toList(consume(item)), rest)
+                else item :: consumeFirstRevive(rest)
+        }
+
+    /// HP0 になった味方 `units` のうち、AutoRevive 所持者を蘇生させる純粋判定。
+    /// `revived` は蘇生した味方（消費後の `consumables` 付き。HP は呼び出し側が最大値へ戻す）、
+    /// `stillDead` は蘇生できず本当に脱落する id。`removeDeadAndCheckGameOver` の手前で使う。
+    pub def tryReviveAll(units: List[{id = Int32, consumables = List[ConsumableResource]}]):
+            {revived = List[{id = Int32, consumables = List[ConsumableResource]}],
+             stillDead = List[Int32]} =
+        List.foldLeft((acc, u) -> match reviveConsume(u#consumables) {
+            case Some(newConsumables) =>
+                {revived = {id = u#id, consumables = newConsumables} :: acc#revived | acc}
+            case None =>
+                {stillDead = u#id :: acc#stillDead | acc}
+        }, {revived = Nil, stillDead = Nil}, units)
 }
 
 // container の巡回・schema 検査は CatalogContainer に委譲し、ここは wrap のみ。
@@ -110,6 +232,9 @@ mod ConsumableCatalogCodec {
     pub def encodeConsumable(item: ConsumableResource): Json =
         JObject(Map#{
             "name"        => JString(item#name),
+            "effect"      => JString(Consumable.effectToString(item#effect)),
+            "magnitude"   => JNumber(intToBd(item#magnitude)),
+            "duration"    => JNumber(intToBd(item#duration)),
             "healAmount"  => JNumber(intToBd(item#healAmount)),
             "durability"  => JNumber(intToBd(item#durability)),
             "sprite"      => encodeSprite(item#sprite),
@@ -129,19 +254,30 @@ mod ConsumableCatalogCodec {
         forM (
             obj      <- expectObject(element);
             nameJ    <- Map.get("name", obj);
-            healJ    <- Map.get("healAmount", obj);
+            effJ     <- Map.get("effect", obj);
             durJ     <- Map.get("durability", obj);
             spriteJ  <- Map.get("sprite", obj);
             name     <- expectString(nameJ);
-            heal     <- expectInt(healJ);
+            effStr   <- expectString(effJ);
+            effect   <- Result.toOption(Consumable.parseEffect(effStr));
             dur      <- expectInt(durJ);
             sprite   <- decodeSprite(spriteJ)
         ) yield {
+            // healAmount (旧フィールド) は省略可。欠落時は 0。
+            let heal = Map.get("healAmount", obj)
+                        |> Option.flatMap(expectInt) |> Option.getWithDefault(0);
+            // magnitude は省略可。欠落時は healAmount を流用 (旧きずぐすりデータの後方互換)。
+            let mag = Map.get("magnitude", obj)
+                        |> Option.flatMap(expectInt) |> Option.getWithDefault(heal);
+            // duration (バフ・デバフの持続) は省略可。回復・最大HP・蘇生では未使用。欠落時 0。
+            let dura = Map.get("duration", obj)
+                        |> Option.flatMap(expectInt) |> Option.getWithDefault(0);
             // description (一言説明) は省略可。欠落時は空文字 (後方互換)。
             let desc = Map.get("description", obj)
                         |> Option.flatMap(expectString)
                         |> Option.getWithDefault("");
-            ({name = name, healAmount = heal, durability = dur,
+            ({name = name, effect = effect, magnitude = mag, duration = dura,
+               healAmount = heal, durability = dur,
                sprite = sprite, description = desc}: ConsumableResource)
         }
 

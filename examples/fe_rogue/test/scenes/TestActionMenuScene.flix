@@ -89,7 +89,8 @@ mod TestActionMenuScene {
         usedStairs          = false,
         level                   = 1,
         exp                     = 0,
-        pendingLevelUp          = None
+        pendingLevelUp          = None,
+        statuses                = Nil
     }
 
     /// World + 2 人の Player + ActionMenu を組んだテスト scene。

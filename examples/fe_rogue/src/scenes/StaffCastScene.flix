@@ -299,26 +299,85 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio} =
-        // 消費アイテムは使う時点で効果が自己確定するため、杖の空振り判定とは異なり無条件で回復音を鳴らす
+        // 消費アイテムは使う時点で効果が自己確定するため、杖の空振り判定とは異なり無条件で使用音を鳴らす
         AudioStreamPlayer.play("cure");
-        let afterHeal    = applyConsumableHeal(playerId, player, item, scene);
-        let afterConsume = consumeConsumable(playerId, idx, item, afterHeal);
+        let afterEffect  = applyConsumableSelfEffect(playerId, player, item, scene);
+        let afterConsume = consumeConsumable(playerId, idx, item, afterEffect);
         let cleared      = PlayerScene.clearSelectedItem(playerId, afterConsume);
         TurnFlow.commitWaitedAndAdvance(cleared)
 
-    /// 消費アイテムで使用者自身の HP を `healAmount` 回復、HPBar 更新、ログ。
-    /// `applyConsumableUse` から呼ばれる内部処理だが、回復量を単体検証できるように
+    /// 自己使用（SelfUse）の効果を種類で分岐適用する。投擲（Directional）・自動（AutoOnDeath）が
+    /// 万一ここへ来たら no-op + ログで防御する（`deliveryFor` の取りこぼしでも panic させない）。
+    /// 各 arm は小さな関数に切り出し、1 関数へ多ステートを詰め込まない（Flix 推論の安定のため）。
+    def applyConsumableSelfEffect(playerId: Int32, player: PlayerScene.Data,
+                                   item: Consumable.ConsumableResource,
+                                   scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        match item#effect {
+            case Consumable.ConsumableEffect.Heal     =>
+                applyConsumableHeal(playerId, player, item, scene)
+            case Consumable.ConsumableEffect.FullHeal =>
+                applyFullHeal(playerId, player, item, scene)
+            case Consumable.ConsumableEffect.MaxHpUp  =>
+                applyMaxHpUp(playerId, player, item, scene)
+            case Consumable.ConsumableEffect.AtkUp    =>
+                applySelfStatus(playerId, item, StatusSystem.StatusEffect.AtkUp, scene)
+            case Consumable.ConsumableEffect.SpdUp    =>
+                applySelfStatus(playerId, item, StatusSystem.StatusEffect.SpdUp, scene)
+            case _                                    =>
+                GameLogger.playerLog("P${playerId} の ${item#name} は ここでは使えなかった");
+                scene
+        }
+
+    /// 消費アイテムで使用者自身の HP を `magnitude` 回復、HPBar 更新、ログ。
+    /// `applyConsumableSelfEffect` から呼ばれる内部処理だが、回復量を単体検証できるように
     /// pub にしている（`TestStaffCastScene` 参照）。
     pub def applyConsumableHeal(playerId: Int32, player: PlayerScene.Data,
                              item: Consumable.ConsumableResource,
                              scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
-        let result = Combat.heal(player#hp, player#resource#hp, item#healAmount);
+        let result = Combat.heal(player#hp, player#resource#hp, item#magnitude);
         let healed = result#newHp - player#hp;
         GameLogger.playerLog("P${playerId} は ${item#name} で ${healed}回復");
         scene
             |> PlayerScene.mapPlayer(playerId, d -> {hp = result#newHp | d})
             |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), result#newHp)
+
+    /// 全快薬: HP を最大まで戻す。`magnitude` は不使用。
+    pub def applyFullHeal(playerId: Int32, player: PlayerScene.Data,
+                           item: Consumable.ConsumableResource,
+                           scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        let maxHp  = player#resource#hp;
+        let healed = maxHp - player#hp;
+        GameLogger.playerLog("P${playerId} は ${item#name} で ${healed}回復");
+        scene
+            |> PlayerScene.mapPlayer(playerId, d -> {hp = maxHp | d})
+            |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), maxHp)
+
+    /// 命の草: 最大 HP を `magnitude` 永続上昇させ、現在 HP も同量上げる（その場で増えた分が回復）。
+    pub def applyMaxHpUp(playerId: Int32, player: PlayerScene.Data,
+                          item: Consumable.ConsumableResource,
+                          scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        let inc    = item#magnitude;
+        let newMax = player#resource#hp + inc;
+        let newHp  = player#hp + inc;
+        GameLogger.playerLog("P${playerId} は ${item#name} で 最大HP+${inc}");
+        scene
+            |> PlayerScene.mapPlayer(playerId,
+                d -> {hp = newHp, resource = {hp = newMax | d#resource} | d})
+            |> UnitHPBarScene.updateMaxHp(PlayerScene.playerPath(playerId), newHp, newMax)
+
+    /// ちから薬 / すばやさ薬: 使用者へ時限バフ（`magnitude` を `duration` ターン）を付与する。
+    /// `kind` は付与する `StatusEffect`（AtkUp / SpdUp）。効果は次の戦闘予測・実戦闘に反映される。
+    def applySelfStatus(playerId: Int32, item: Consumable.ConsumableResource,
+                         kind: StatusSystem.StatusEffect, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        let status = {effect = kind, magnitude = item#magnitude, remaining = item#duration};
+        GameLogger.playerLog("P${playerId} は ${item#name} を使った (${item#duration}ターン)");
+        PlayerScene.mapPlayer(playerId,
+            d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
 
     /// 消費アイテムの耐久（使用回数）を 1 減らし、0 なら consumables から除去 + 使い切りログ。
     /// `consumeStaff` と構造は同じだが、型が `Consumable.ConsumableResource` のため共通化できない。
@@ -332,6 +391,80 @@ mod StaffCastScene {
             GameLogger.playerLog("P${playerId} の ${item#name} を使い切った")
         else ();
         PlayerScene.mapPlayer(playerId, d -> {consumables = newConsumables | d}, scene)
+
+    // ────────────────────────────────────────────────────────
+    // 投擲系（Directional）消費アイテム — 目潰し薬 / 鈍足薬
+    //   杖と同じく方向を選んで直線に飛ばし、最初に当たったキャラへ時限デバフを付与する。
+    //   `StaffAim` フェーズを杖と共用し、`Game.staffAimConfirm` から呼ばれる。
+    // ────────────────────────────────────────────────────────
+
+    /// 投擲系消費アイテムを発動する。`StaffAim` フェーズで Z 確定時に方向付きで呼ばれる。
+    /// 該当プレイヤー / アイテムが見つからなければ防御的に no-op。
+    pub def applyConsumableDirectional(playerId: Int32, idx: Int32,
+                                        direction: Staff.Direction,
+                                        scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                BoardQuery, GameLogger.GameLogger,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+        let cast = forM (
+            player <- PlayerScene.get(playerId, scene);
+            item   <- List.nth(idx, player#consumables)
+        ) yield fireConsumable(playerId, idx, player, item, direction, scene);
+        Option.getWithDefault(scene, cast)
+
+    /// 投擲系の本体: レイキャスト → 当たり対象へデバフ付与 → 耐久消費 → 選択クリア → ターン進行。
+    /// 杖の `fireStaff` と同構造（方向投擲を間借りする）。
+    def fireConsumable(playerId: Int32, idx: Int32, player: PlayerScene.Data,
+                        item: Consumable.ConsumableResource, direction: Staff.Direction,
+                        scene: Scene[NodeTag]):
+            Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                BoardQuery, GameLogger.GameLogger,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+        let board = BoardQuery.board();
+        let dir   = Staff.toVec2i(direction);
+        let hit   = Board.rayCast(player#gridPos, dir, staffMaxRange(), board);
+        let afterEffect  = applyDirectionalEffect(playerId, item, hit, scene);
+        let afterConsume = consumeConsumable(playerId, idx, item, afterEffect);
+        let cleared      = PlayerScene.clearSelectedItem(playerId, afterConsume);
+        TurnFlow.commitWaitedAndAdvance(cleared)
+
+    /// 当たった対象（敵 / 味方）へ時限デバフを付与する。空振りはログのみ。
+    /// 効果が投擲系でない（誤用）場合も `directionalStatus` が None を返して不発ログにする。
+    /// `applyStaffEffect` と同じく `(付与する Status, hit)` のタプルで 1 段マッチに畳む。
+    def applyDirectionalEffect(playerId: Int32, item: Consumable.ConsumableResource,
+                                hit: RayHit, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        match (directionalStatus(item), hit) {
+            case (Some(status), RayHit.HitEnemy(enemyId, _))   =>
+                GameLogger.playerLog("P${playerId} は 敵${enemyId} に ${item#name} を当てた");
+                EnemyScene.mapEnemy(enemyId,
+                    d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
+            case (Some(status), RayHit.HitPlayer(targetId, _)) =>
+                GameLogger.playerLog("P${playerId} は P${targetId} に ${item#name} を当てた");
+                PlayerScene.mapPlayer(targetId,
+                    d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
+            // 効果が投擲系でない（None）→ 不発。投擲系だが壁/盤外に消えた → 届かなかった。
+            case (None, _)                                     =>
+                GameLogger.playerLog("P${playerId} の ${item#name} は不発に終わった");
+                scene
+            case (Some(_), _)                                  =>
+                GameLogger.playerLog("P${playerId} の ${item#name} は届かなかった");
+                scene
+        }
+
+    /// 投擲系アイテムが付与する時限デバフ Status を作る。投擲系でなければ None。
+    def directionalStatus(item: Consumable.ConsumableResource): Option[StatusSystem.Status] =
+        match item#effect {
+            case Consumable.ConsumableEffect.BlindHit   =>
+                Some({effect = StatusSystem.StatusEffect.HitDown,
+                      magnitude = item#magnitude, remaining = item#duration})
+            case Consumable.ConsumableEffect.SpdDownHit =>
+                Some({effect = StatusSystem.StatusEffect.SpdDown,
+                      magnitude = item#magnitude, remaining = item#duration})
+            case _                                      => None
+        }
 
     /// idx 番目を `updatedOpt` の中身で差し替えたリストを返す。
     /// `None`（耐久 0 で消滅）ならその要素を除去し、`Some` なら更新値で置換する。

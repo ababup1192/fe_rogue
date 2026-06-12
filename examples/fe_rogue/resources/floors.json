@@ -88,6 +88,26 @@
         {
           "id": "mithril_bow",
           "percent": 1
+        },
+        {
+          "id": "great_vulnerary",
+          "percent": 6
+        },
+        {
+          "id": "blind_potion",
+          "percent": 6
+        },
+        {
+          "id": "slow_potion",
+          "percent": 5
+        },
+        {
+          "id": "power_potion",
+          "percent": 4
+        },
+        {
+          "id": "speed_potion",
+          "percent": 4
         }
       ],
       "itemsPerRoom": {
@@ -250,6 +270,26 @@
         {
           "id": "mithril_bow",
           "percent": 1
+        },
+        {
+          "id": "great_vulnerary",
+          "percent": 6
+        },
+        {
+          "id": "blind_potion",
+          "percent": 6
+        },
+        {
+          "id": "slow_potion",
+          "percent": 5
+        },
+        {
+          "id": "power_potion",
+          "percent": 4
+        },
+        {
+          "id": "speed_potion",
+          "percent": 4
         }
       ],
       "itemsPerRoom": {
@@ -412,6 +452,26 @@
         {
           "id": "mithril_bow",
           "percent": 1
+        },
+        {
+          "id": "great_vulnerary",
+          "percent": 6
+        },
+        {
+          "id": "blind_potion",
+          "percent": 6
+        },
+        {
+          "id": "slow_potion",
+          "percent": 5
+        },
+        {
+          "id": "power_potion",
+          "percent": 4
+        },
+        {
+          "id": "speed_potion",
+          "percent": 4
         }
       ],
       "itemsPerRoom": {
@@ -590,6 +650,34 @@
         {
           "id": "mithril_bow",
           "percent": 1
+        },
+        {
+          "id": "great_vulnerary",
+          "percent": 6
+        },
+        {
+          "id": "blind_potion",
+          "percent": 6
+        },
+        {
+          "id": "slow_potion",
+          "percent": 5
+        },
+        {
+          "id": "power_potion",
+          "percent": 4
+        },
+        {
+          "id": "speed_potion",
+          "percent": 4
+        },
+        {
+          "id": "life_herb",
+          "percent": 2
+        },
+        {
+          "id": "elixir",
+          "percent": 2
         }
       ],
       "itemsPerRoom": {
@@ -812,6 +900,34 @@
         {
           "id": "mithril_bow",
           "percent": 1
+        },
+        {
+          "id": "great_vulnerary",
+          "percent": 6
+        },
+        {
+          "id": "blind_potion",
+          "percent": 6
+        },
+        {
+          "id": "slow_potion",
+          "percent": 5
+        },
+        {
+          "id": "power_potion",
+          "percent": 4
+        },
+        {
+          "id": "speed_potion",
+          "percent": 4
+        },
+        {
+          "id": "life_herb",
+          "percent": 2
+        },
+        {
+          "id": "elixir",
+          "percent": 2
         }
       ],
       "itemsPerRoom": {
@@ -1034,6 +1150,38 @@
         {
           "id": "mithril_bow",
           "percent": 1
+        },
+        {
+          "id": "great_vulnerary",
+          "percent": 6
+        },
+        {
+          "id": "blind_potion",
+          "percent": 6
+        },
+        {
+          "id": "slow_potion",
+          "percent": 5
+        },
+        {
+          "id": "power_potion",
+          "percent": 4
+        },
+        {
+          "id": "speed_potion",
+          "percent": 4
+        },
+        {
+          "id": "life_herb",
+          "percent": 2
+        },
+        {
+          "id": "elixir",
+          "percent": 2
+        },
+        {
+          "id": "revival_drug",
+          "percent": 2
         }
       ],
       "itemsPerRoom": {
@@ -1264,6 +1412,38 @@
         {
           "id": "mithril_bow",
           "percent": 1
+        },
+        {
+          "id": "great_vulnerary",
+          "percent": 6
+        },
+        {
+          "id": "blind_potion",
+          "percent": 6
+        },
+        {
+          "id": "slow_potion",
+          "percent": 5
+        },
+        {
+          "id": "power_potion",
+          "percent": 4
+        },
+        {
+          "id": "speed_potion",
+          "percent": 4
+        },
+        {
+          "id": "life_herb",
+          "percent": 2
+        },
+        {
+          "id": "elixir",
+          "percent": 2
+        },
+        {
+          "id": "revival_drug",
+          "percent": 2
         }
       ],
       "itemsPerRoom": {
@@ -1502,6 +1682,38 @@
         {
           "id": "mithril_bow",
           "percent": 1
+        },
+        {
+          "id": "great_vulnerary",
+          "percent": 6
+        },
+        {
+          "id": "blind_potion",
+          "percent": 6
+        },
+        {
+          "id": "slow_potion",
+          "percent": 5
+        },
+        {
+          "id": "power_potion",
+          "percent": 4
+        },
+        {
+          "id": "speed_potion",
+          "percent": 4
+        },
+        {
+          "id": "life_herb",
+          "percent": 2
+        },
+        {
+          "id": "elixir",
+          "percent": 2
+        },
+        {
+          "id": "revival_drug",
+          "percent": 2
         }
       ],
       "itemsPerRoom": {
@@ -1748,6 +1960,38 @@
         {
           "id": "mithril_bow",
           "percent": 1
+        },
+        {
+          "id": "great_vulnerary",
+          "percent": 6
+        },
+        {
+          "id": "blind_potion",
+          "percent": 6
+        },
+        {
+          "id": "slow_potion",
+          "percent": 5
+        },
+        {
+          "id": "power_potion",
+          "percent": 4
+        },
+        {
+          "id": "speed_potion",
+          "percent": 4
+        },
+        {
+          "id": "life_herb",
+          "percent": 2
+        },
+        {
+          "id": "elixir",
+          "percent": 2
+        },
+        {
+          "id": "revival_drug",
+          "percent": 2
         }
       ],
       "itemsPerRoom": {
@@ -1994,6 +2238,38 @@
         {
           "id": "mithril_bow",
           "percent": 1
+        },
+        {
+          "id": "great_vulnerary",
+          "percent": 6
+        },
+        {
+          "id": "blind_potion",
+          "percent": 6
+        },
+        {
+          "id": "slow_potion",
+          "percent": 5
+        },
+        {
+          "id": "power_potion",
+          "percent": 4
+        },
+        {
+          "id": "speed_potion",
+          "percent": 4
+        },
+        {
+          "id": "life_herb",
+          "percent": 2
+        },
+        {
+          "id": "elixir",
+          "percent": 2
+        },
+        {
+          "id": "revival_drug",
+          "percent": 2
         }
       ],
       "itemsPerRoom": {

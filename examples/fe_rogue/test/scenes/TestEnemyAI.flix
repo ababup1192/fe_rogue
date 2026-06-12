@@ -25,7 +25,7 @@ mod TestEnemyAI {
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
-          weapon = Some(TestUnitFixtures.testWeapon()), acted = false, prevPos = None }
+          weapon = Some(TestUnitFixtures.testWeapon()), acted = false, prevPos = None, statuses = Nil }
 
     /// 武器が壊れた状態（`weapon = None`）の敵 Data。武器なしで隣接プレイヤーに
     /// 攻撃しないことを確認するテストで使う。
@@ -35,7 +35,7 @@ mod TestEnemyAI {
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
-          weapon = None, acted = false, prevPos = None }
+          weapon = None, acted = false, prevPos = None, statuses = Nil }
 
     /// 射程 2-2 の弓を装備した敵 Data。アーチャーが距離 2 でのみ攻撃し、
     /// 隣接（距離 1）では体当たりしないことを検証するテストで使う。
@@ -46,7 +46,7 @@ mod TestEnemyAI {
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
-          weapon = Some(bow), acted = false, prevPos = None }
+          weapon = Some(bow), acted = false, prevPos = None, statuses = Nil }
 
     /// `aiType` を指定した敵 Data（GuardUntilInRange / Wanderer の検知分岐を検証する用）。
     /// resource の aiType フィールドだけ差し替えて、他は enemyAt と同条件にする。
@@ -56,7 +56,7 @@ mod TestEnemyAI {
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = {aiType = t | TestUnitFixtures.testEnemyResource(moveTiles, 3)},
-          weapon = Some(TestUnitFixtures.testWeapon()), acted = false, prevPos = None }
+          weapon = Some(TestUnitFixtures.testWeapon()), acted = false, prevPos = None, statuses = Nil }
 
     /// EnemyAction を tag だけのタプルに圧縮（id 付き）。Eq が無いので比較しやすくする。
     def tagOf(a: EnemyAction): String =
@@ -120,7 +120,7 @@ mod TestEnemyAI {
          resource = TestUnitFixtures.testResourceFull(4, hp, 3, defense, 3),
          weapons = weapons, staves = Nil, consumables = Nil, selectedItem = None,
          moveStepsTaken = 0, facing = Staff.Direction.Down, hidden = false,
-         usedStairs = false, level = 1, exp = 0, pendingLevelUp = None}
+         usedStairs = false, level = 1, exp = 0, pendingLevelUp = None, statuses = Nil}
 
     /// 評価軸テスト用の味方 UnitView を実 projection（`PlayerScene.unitView`）で組む。
     /// 実武器由来なので `weaponRange`(反撃) と `combat`(ダメージ) は同じ武器から一貫して埋まる。

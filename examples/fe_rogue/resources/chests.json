@@ -29,6 +29,26 @@
         {
           "id": "keen_lance",
           "percent": 10
+        },
+        {
+          "id": "revival_drug",
+          "percent": 12
+        },
+        {
+          "id": "elixir",
+          "percent": 12
+        },
+        {
+          "id": "life_herb",
+          "percent": 12
+        },
+        {
+          "id": "speed_potion",
+          "percent": 8
+        },
+        {
+          "id": "power_potion",
+          "percent": 8
         }
       ],
       "label": "金の宝箱",
@@ -64,6 +84,22 @@
         {
           "id": "swift_dagger",
           "percent": 10
+        },
+        {
+          "id": "great_vulnerary",
+          "percent": 20
+        },
+        {
+          "id": "blind_potion",
+          "percent": 12
+        },
+        {
+          "id": "slow_potion",
+          "percent": 10
+        },
+        {
+          "id": "power_potion",
+          "percent": 8
         }
       ],
       "label": "木の宝箱",

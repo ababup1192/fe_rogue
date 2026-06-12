@@ -257,7 +257,8 @@ mod TestMapIntegration {
                         usedStairs            = false,
                         level                     = 1,
                         exp                       = 0,
-                        pendingLevelUp            = None
+                        pendingLevelUp            = None,
+                        statuses                  = Nil
                     })))
 
     /// プレイヤー id=0 の world 座標

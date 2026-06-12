@@ -334,22 +334,48 @@ mod TestCombat {
         let attacker: Combat.CombatView =
             {attack = 4, magicAttack = 0, defense = 0, magicDefense = 0,
              skill = 5, speed = 0, luck = 3, hp = 10,
-             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, crit = 0, isPhysical = true, proficient = true})};
+             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, crit = 0, isPhysical = true, proficient = true}), hitMod = 0};
         let defender: Combat.CombatView =
             {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
-             skill = 0, speed = 4, luck = 1, hp = 3, weapon = None};
+             skill = 0, speed = 4, luck = 1, hp = 3, weapon = None, hitMod = 0};
         let f = Combat.estimate(attacker, defender);
         Assert.assertEq(expected = (5, 72, true), (f#damage, f#hit, f#kill))
+
+    /// 目潰し（hitMod = -25）は命中をちょうど 25 下げる（72 → 47）。
+    /// 習熟補正の後に加算するので ×4/5 で薄まらない。
+    @Test
+    def testEstimateHitModLowersHit(): Unit \ Assert =
+        let attacker: Combat.CombatView =
+            {attack = 4, magicAttack = 0, defense = 0, magicDefense = 0,
+             skill = 5, speed = 0, luck = 3, hp = 10,
+             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, crit = 0, isPhysical = true, proficient = true}), hitMod = -25};
+        let defender: Combat.CombatView =
+            {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
+             skill = 0, speed = 4, luck = 1, hp = 3, weapon = None, hitMod = 0};
+        Assert.assertEq(expected = 47, Combat.estimate(attacker, defender)#hit)
+
+    /// 命中補正は武器命中の 0 下限でクランプする（大きすぎる目潰しでも負にならない）。
+    /// weaponHit 70 に -100 → 武器命中は 0 止まり。命中 = 0 + 技10 + 幸1 - 回避9 = 2。
+    @Test
+    def testEstimateHitModClampsWeaponHit(): Unit \ Assert =
+        let attacker: Combat.CombatView =
+            {attack = 4, magicAttack = 0, defense = 0, magicDefense = 0,
+             skill = 5, speed = 0, luck = 3, hp = 10,
+             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, crit = 0, isPhysical = true, proficient = true}), hitMod = -100};
+        let defender: Combat.CombatView =
+            {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
+             skill = 0, speed = 4, luck = 1, hp = 3, weapon = None, hitMod = 0};
+        Assert.assertEq(expected = 2, Combat.estimate(attacker, defender)#hit)
 
     /// 武器なしの攻撃側は {0, 0, false}（攻撃不能）。
     @Test
     def testEstimateNoWeaponIsZero(): Unit \ Assert =
         let attacker: Combat.CombatView =
             {attack = 9, magicAttack = 9, defense = 0, magicDefense = 0,
-             skill = 9, speed = 0, luck = 0, hp = 10, weapon = None};
+             skill = 9, speed = 0, luck = 0, hp = 10, weapon = None, hitMod = 0};
         let defender: Combat.CombatView =
             {attack = 0, magicAttack = 0, defense = 0, magicDefense = 0,
-             skill = 0, speed = 0, luck = 0, hp = 5, weapon = None};
+             skill = 0, speed = 0, luck = 0, hp = 5, weapon = None, hitMod = 0};
         let f = Combat.estimate(attacker, defender);
         Assert.assertEq(expected = (0, 0, false), (f#damage, f#hit, f#kill))
 
@@ -360,10 +386,10 @@ mod TestCombat {
         let attacker: Combat.CombatView =
             {attack = 99, magicAttack = 6, defense = 0, magicDefense = 0,
              skill = 0, speed = 0, luck = 0, hp = 10,
-             weapon = Some({weaponType = WeaponType.Magic, attack = 0, hit = 100, crit = 0, isPhysical = false, proficient = true})};
+             weapon = Some({weaponType = WeaponType.Magic, attack = 0, hit = 100, crit = 0, isPhysical = false, proficient = true}), hitMod = 0};
         let defender: Combat.CombatView =
             {attack = 0, magicAttack = 0, defense = 99, magicDefense = 1,
-             skill = 0, speed = 0, luck = 0, hp = 10, weapon = None};
+             skill = 0, speed = 0, luck = 0, hp = 10, weapon = None, hitMod = 0};
         let f = Combat.estimate(attacker, defender);
         Assert.assertEq(expected = (5, 100, false), (f#damage, f#hit, f#kill))
 
@@ -374,11 +400,11 @@ mod TestCombat {
         let attacker: Combat.CombatView =
             {attack = 4, magicAttack = 0, defense = 0, magicDefense = 0,
              skill = 5, speed = 0, luck = 3, hp = 10,
-             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, crit = 0, isPhysical = true, proficient = true})};
+             weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70, crit = 0, isPhysical = true, proficient = true}), hitMod = 0};
         let defender: Combat.CombatView =
             {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
              skill = 0, speed = 4, luck = 1, hp = 3,
-             weapon = Some({weaponType = WeaponType.Axe, attack = 0, hit = 0, crit = 0, isPhysical = true, proficient = true})};
+             weapon = Some({weaponType = WeaponType.Axe, attack = 0, hit = 0, crit = 0, isPhysical = true, proficient = true}), hitMod = 0};
         let f = Combat.estimate(attacker, defender);
         Assert.assertEq(expected = (6, 87, true), (f#damage, f#hit, f#kill))
 
@@ -421,9 +447,9 @@ mod TestCombat {
             {attack = 4, magicAttack = 0, defense = 0, magicDefense = 0,
              skill = 8, speed = 0, luck = 0, hp = 10,
              weapon = Some({weaponType = WeaponType.Sword, attack = 2, hit = 70,
-                            crit = 10, isPhysical = true, proficient = true})};
+                            crit = 10, isPhysical = true, proficient = true}), hitMod = 0};
         let defender: Combat.CombatView =
             {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
-             skill = 0, speed = 0, luck = 4, hp = 99, weapon = None};
+             skill = 0, speed = 0, luck = 4, hp = 99, weapon = None, hitMod = 0};
         Assert.assertEq(expected = 10, Combat.estimate(attacker, defender)#crit)
 }

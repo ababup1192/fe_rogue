@@ -35,7 +35,8 @@ mod TestCounterAttackRules {
         usedStairs             = false,
         level                      = 1,
         exp                        = 0,
-        pendingLevelUp             = None
+        pendingLevelUp             = None,
+        statuses                   = Nil
     }
 
     /// 任意 id / 位置 / 武器 / 瀕死状態の Enemy.Data。
@@ -53,7 +54,8 @@ mod TestCounterAttackRules {
         resource       = TestUnitFixtures.testEnemyResource(3, 10),
         weapon         = weapon,
         acted          = false,
-        prevPos        = None
+        prevPos        = None,
+        statuses       = Nil
     }
 
     /// 射程 2-2 の弓 (隣接攻撃には届かない)

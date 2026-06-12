@@ -34,7 +34,8 @@ mod TestBattlePanelScene {
         usedStairs            = false,
         level                     = 1,
         exp                       = 0,
-        pendingLevelUp            = None
+        pendingLevelUp            = None,
+        statuses                  = Nil
     }
 
     /// 隣接マス (3,2) に立つ生存中の敵。武器持ち（反撃可）。
@@ -50,7 +51,8 @@ mod TestBattlePanelScene {
         resource       = TestUnitFixtures.testEnemyResource(3, 10),
         weapon         = Some(TestUnitFixtures.testWeapon()),
         acted          = false,
-        prevPos        = None
+        prevPos        = None,
+        statuses       = Nil
     }
 
     /// 5x5 床のみの MapSnapshot（Board 構築用、本テストでは isFloor / isWall は使わない）
