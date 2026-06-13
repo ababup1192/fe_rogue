@@ -45,13 +45,13 @@ mod TestStaffBridge {
     /// かなしばりの杖: 当たった相手を完全停止（ImmobilizeAt）。
     @Test
     def testBind(): Unit \ Assert =
-        Assert.assertEq(expected = PlanItem.ImmobilizeAt(3, false) :: Nil,
+        Assert.assertEq(expected = PlanItem.ImmobilizeAt(3, false, 5) :: Nil,
             planOf(StaffEffect.Bind, ctxWith(unit(3, false) :: Nil)))
 
     /// 一時しのぎの杖: 停止 → 階段へワープ（2 アクション、上から順）。
     @Test
     def testStopgap(): Unit \ Assert =
         Assert.assertEq(
-            expected = PlanItem.ImmobilizeAt(4, true) :: PlanItem.CustomAt("warpToStairs", 4, true) :: Nil,
+            expected = PlanItem.ImmobilizeAt(4, true, 5) :: PlanItem.CustomAt("warpToStairs", 4, true) :: Nil,
             planOf(StaffEffect.Stopgap, ctxWith(unit(4, true) :: Nil)))
 }

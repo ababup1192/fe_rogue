@@ -19,7 +19,7 @@ mod EffectRunner {
         damage     = (s, Int32, Bool, Int32) -> s \ ef,
         maxHpUp    = (s, Int32, Bool, Int32) -> s \ ef,
         status     = (s, Int32, Bool, StatusEffect, Int32, Int32) -> s \ ef,
-        immobilize = (s, Int32, Bool) -> s \ ef,
+        immobilize = (s, Int32, Bool, Int32) -> s \ ef,
         revive     = (s, Int32, Bool) -> s \ ef,
         custom     = (s, String, Int32, Bool) -> s \ ef,
         sfx        = (s, String) -> s \ ef,
@@ -34,7 +34,7 @@ mod EffectRunner {
         case PlanItem.DamageAt(id, ally, n)      => h#damage(acc, id, ally, n)
         case PlanItem.MaxHpUpAt(id, ally, n)     => h#maxHpUp(acc, id, ally, n)
         case PlanItem.StatusAt(id, ally, se, m, t) => h#status(acc, id, ally, se, m, t)
-        case PlanItem.ImmobilizeAt(id, ally)     => h#immobilize(acc, id, ally)
+        case PlanItem.ImmobilizeAt(id, ally, turns) => h#immobilize(acc, id, ally, turns)
         case PlanItem.ReviveAt(id, ally)         => h#revive(acc, id, ally)
         case PlanItem.CustomAt(op, id, ally)     => h#custom(acc, op, id, ally)
         case PlanItem.PlaySfx(name)              => h#sfx(acc, name)

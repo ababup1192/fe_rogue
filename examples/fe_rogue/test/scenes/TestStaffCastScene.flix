@@ -62,6 +62,24 @@ mod TestStaffCastScene {
             case None    => bug!("player 0 not found in test scene")
         }
 
+    /// 指定 id / グリッド位置の最小プレイヤー Data（swapPos など複数体テスト用）。
+    def mkData(id: Int32, gx: Int32, gy: Int32): PlayerScene.Data =
+        {id = id, gridPos = {x = gx, y = gy}, moveTiles = 5, hp = 10, waited = false,
+         attackTargetId = None, resource = TestUnitFixtures.testResourceMagic(5, 10, 3, 1, 0, 0, 3),
+         weapons = Nil, staves = Nil, consumables = Nil, selectedItem = None,
+         moveStepsTaken = 0, facing = Staff.Direction.Down, hidden = false, usedStairs = false,
+         level = 1, exp = 0, pendingLevelUp = None, statuses = Nil, rings = Nil,
+         ringEquipped = false, followUpUsed = false}
+
+    /// 味方 2 体（id0=(5,5)・id1=(5,3)）のシーン。swapPos の入れ替えを観測する。
+    def twoPlayerScene(): Scene[NodeTag] =
+        let mk = data -> EngineNode.Marker2DWithState(Marker2D.make({x = 80.0, y = 80.0}), NodeTag.Player(data));
+        let world = Marker2D.make(Vec2.zero()) |> CanvasItem.setYSortEnabled(true);
+        Scene.empty()
+            |> Scene.addNode(MapScene.worldName(), EngineNode.Marker2DWithState(world, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0), mk(mkData(0, 5, 5)))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(1), mk(mkData(1, 5, 3)))
+
     /// テスト用の消費アイテム（回復量を指定）。
     def healItem(healAmount: Int32): Consumable.ConsumableResource =
         {name       = "きずぐすり",
@@ -75,13 +93,30 @@ mod TestStaffCastScene {
                          scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
          description = "", effectRule = None}
 
-    /// テスト用のかなしばりの杖（effectRule を差し込める）。
-    def bindStaff(ruleJson: Option[Util.Json.Json]): Staff.StaffResource =
-        {name = "かなしばりの杖", effect = Staff.StaffEffect.Bind, durability = 3,
+    /// effectRule を差し込めるテスト用の杖（effect 種別は DSL 経路では使われないのでダミー）。
+    def staffWithRule(ruleJson: Option[Util.Json.Json]): Staff.StaffResource =
+        {name = "テスト杖", effect = Staff.StaffEffect.Bind, durability = 3,
          sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                      offset = {x = 0.0, y = 0.0},
                      scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
          description = "", effectRule = ruleJson}
+
+    /// JSON(簡易合成形式) を EffectRule へ decode するフィクスチャ。decode 失敗は即 bug。
+    /// （bug! は正格評価されるので getWithDefault ではなく match で None のときだけ発火させる）
+    def ruleOf(json: String): EffectRule.EffectRule =
+        match Util.Json.parse(json) |> Result.toOption |> Option.flatMap(EffectBridge.fromComposer) {
+            case Some(r) => r
+            case None    => bug!("rule decode failed: ${json}")
+        }
+
+    /// 杖 DSL 経路を 3 スケジューラ effect(Tween/AnimationPlayer/GameLogger) をスタブして発火する。
+    /// 施術者は id=0 固定。dir は knockback 用（他 op では未使用）。
+    def fireStaffDsl(staff: Staff.StaffResource, rule: EffectRule.EffectRule,
+                      hit: RayHit, dir: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
+        TestUnitFixtures.withNoopTween(() ->
+            TestUnitFixtures.withNoopAnim(() ->
+                TestUnitFixtures.withMockGameLogger(() ->
+                    StaffCastScene.applyStaffEffectDsl(0, staff, rule, hit, dir, scene))))
 
     // ════════════════════════════════════════════════════════
     // 回復杖（ライブ）— 最大 HP を超えない
@@ -132,7 +167,7 @@ mod TestStaffCastScene {
         damage     = (sc, _, _, _)       -> sc,
         maxHpUp    = (sc, _, _, _)       -> sc,
         status     = (sc, _, _, _, _, _) -> sc,
-        immobilize = (sc, _, _)          -> sc,
+        immobilize = (sc, _, _, _)       -> sc,
         revive     = (sc, _, _)          -> sc,
         custom     = (sc, _, _, _)       -> sc,
         sfx        = (sc, _)             -> sc,
@@ -236,19 +271,48 @@ mod TestStaffCastScene {
     @Test
     def testStaffEffectRuleImmobilizesTarget(): Unit \ Assert =
         let scene = playerScene(10, 0);
-        let ruleJson = Util.Json.parse("{\"when\":\"onUse\",\"to\":\"target\",\"op\":\"immobilize\",\"amount\":0,\"for\":\"untilHit\",\"forTurns\":0,\"sfx\":\"\",\"vfx\":\"\"}")
-                        |> Result.toOption;
-        let staff = bindStaff(ruleJson);
+        let staff = staffWithRule(None);
+        let rule = ruleOf("{\"when\":\"onUse\",\"to\":\"target\",\"op\":\"immobilize\",\"amount\":0,\"for\":\"untilHit\",\"forTurns\":0,\"sfx\":\"\",\"vfx\":\"\"}");
         let hit = RayHit.HitPlayer(0, {x = 5, y = 5});
-        let after = ruleJson
-                     |> Option.flatMap(EffectBridge.fromComposer)
-                     |> Option.map(rule -> TestUnitFixtures.withMockGameLogger(() ->
-                            StaffCastScene.applyStaffEffectDsl(0, staff, rule, hit, scene)))
-                     |> Option.getWithDefault(scene);
+        let after = fireStaffDsl(staff, rule, hit, {x = 0, y = 0}, scene);
         let immob = PlayerScene.get(0, after)
                      |> Option.map(p -> StatusSystem.isImmobilized(p#statuses))
                      |> Option.getWithDefault(false);
         Assert.assertEq(expected = true, immob)
+
+    /// bind の停止ターン数が effectRule の forTurns で駆動される（5 固定でなく編集が効く）。
+    /// forTurns=3 → 付与された Immobilized の remaining が 3。
+    @Test
+    def testStaffBindTurnsDrivenByEffectRule(): Unit \ Assert =
+        let scene = playerScene(10, 0);
+        let staff = staffWithRule(None);
+        let rule = ruleOf("{\"when\":\"onUse\",\"to\":\"target\",\"op\":\"immobilize\",\"amount\":0,\"for\":\"turns\",\"forTurns\":3,\"sfx\":\"\",\"vfx\":\"\"}");
+        let hit = RayHit.HitPlayer(0, {x = 5, y = 5});
+        let after = fireStaffDsl(staff, rule, hit, {x = 0, y = 0}, scene);
+        let rem = PlayerScene.get(0, after)
+                   |> Option.map(p -> p#statuses)
+                   |> Option.getWithDefault(Nil)
+                   |> List.filter(s -> s#effect == StatusSystem.StatusEffect.Immobilized)
+                   |> List.map(s -> s#remaining)
+                   |> List.head
+                   |> Option.getWithDefault(-1);
+        Assert.assertEq(expected = 3, rem)
+
+    /// custom op: 杖の effectRule(onUse, swapPos) が施術者(0)と当たった相手(1)の gridPos を入れ替える。
+    /// custom ハンドラが op 文字列で applySwapWithPlayer へ振り分け、位置を scene から逆引きすることを確認。
+    @Test
+    def testStaffEffectRuleSwapsPositions(): Unit \ Assert =
+        let scene = twoPlayerScene();
+        let staff = staffWithRule(None);
+        let rule = ruleOf("{\"when\":\"onUse\",\"to\":\"target\",\"op\":\"swapPos\",\"amount\":0,\"for\":\"instant\",\"forTurns\":0,\"sfx\":\"\",\"vfx\":\"\"}");
+        let hit = RayHit.HitPlayer(1, {x = 5, y = 3});
+        let after = fireStaffDsl(staff, rule, hit, {x = 0, y = -1}, scene);
+        let p0 = PlayerScene.get(0, after) |> Option.map(d -> (d#gridPos#x, d#gridPos#y)) |> Option.getWithDefault((-1, -1));
+        let p1 = PlayerScene.get(1, after) |> Option.map(d -> (d#gridPos#x, d#gridPos#y)) |> Option.getWithDefault((-1, -1));
+        Assert.assertEq(expected = ((5, 3), (5, 5)), (p0, p1))
+        // knockback / warpToStairs は customStaffEffect の同じ match で legacy
+        // applyBlowback*/applyStopgap* へ委譲する（BoardSnapshot.fromScene が TileMapLayer を要求するため
+        // full-scene 検証はここでは省略。dispatch 機構自体は上の swapPos で実証済み）。
 
     // ════════════════════════════════════════════════════════
     // 一時しのぎのワープ先選定（warpCellFor・純粋）

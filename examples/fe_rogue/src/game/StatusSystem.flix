@@ -58,10 +58,13 @@ mod StatusSystem {
             |> List.map(s -> {remaining = s#remaining - 1 | s})
             |> List.filter(s -> s#remaining > 0)
 
-    /// 完全停止（`Immobilized`）の Status を作る。`remaining = 5` で 5 ターン後に自然解除。
-    /// それより早く被攻撃 / 被投擲すれば `clearImmobilized` で即時解除される。magnitude は未使用。
-    pub def immobilize(): Status =
-        {effect = StatusEffect.Immobilized, magnitude = 0, remaining = 5}
+    /// 完全停止（`Immobilized`）の Status を `turns` ターンで作る。被攻撃 / 被投擲なら
+    /// `clearImmobilized` で即時解除される（被弾解除は status 型に内在）。magnitude は未使用。
+    pub def immobilizeFor(turns: Int32): Status =
+        {effect = StatusEffect.Immobilized, magnitude = 0, remaining = turns}
+
+    /// 既定 5 ターンの完全停止 Status（legacy 既定値）。
+    pub def immobilize(): Status = immobilizeFor(5)
 
     /// このユニットが完全停止中か（`Immobilized` を 1 つでも持つか）。
     pub def isImmobilized(xs: List[Status]): Bool =

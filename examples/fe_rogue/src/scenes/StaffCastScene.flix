@@ -118,7 +118,7 @@ mod StaffCastScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger} =
         match dslStaffRule(staff) {
-            case Some(rule) => applyStaffEffectDsl(playerId, staff, rule, hit, scene)
+            case Some(rule) => applyStaffEffectDsl(playerId, staff, rule, hit, dir, scene)
             case None       => applyStaffEffectLegacy(playerId, player, staff, dir, hit, scene)
         }
 
@@ -141,45 +141,85 @@ mod StaffCastScene {
 
     /// DSL 経路: 当たったユニットへ effectRule を runPlan で効かせる。
     /// 空振り（壁/盤外）は legacy と同じ「届かなかった」ログを出して scene を返す。
+    /// `dir` は cast 方向（knockback の押し出し方向に使う。CustomAt が dir を運ばないためここで渡す）。
     /// `TestStaffCastScene` から effectRule 駆動を検証するため pub。
     pub def applyStaffEffectDsl(playerId: Int32, staff: Staff.StaffResource,
-                             rule: EffectRule.EffectRule, hit: RayHit, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+                             rule: EffectRule.EffectRule, hit: RayHit,
+                             dir: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger} =
         match staffHitTarget(hit) {
             case Some((id, ally)) =>
                 let ctx = {selfId = playerId, attackerId = playerId,
                            rayUnits = ({id = id, ally = ally, immobilized = false, alive = true}: EffectRule.RayUnit) :: Nil,
                            amount = {max = 0, dealt = 0, incoming = 0, magic = 0}};
-                EffectRunner.runPlan(staffEffectHandlers(playerId),
+                EffectRunner.runPlan(staffEffectHandlers(playerId, dir),
                                      EffectPlan.planActions(rule, ctx), scene)
             case None =>
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった");
                 scene
         }
 
-    /// DSL 杖ハンドラ。当たったユニット(ally)へ pure op を適用する。
-    /// immobilize は legacy applyBindToPlayer/Enemy をそのまま使うのでログ・挙動が一致する。
-    /// heal/status は投げ経路と共用の healUnit/statusUnit を再利用。custom/damage 等は杖には現れない。
-    def staffEffectHandlers(srcId: Int32):
-            EffectRunner.PlanHandlers[Scene[NodeTag], GameLogger.GameLogger] = {
+    /// DSL 杖ハンドラ。当たったユニット(ally)へ op を適用する。
+    /// immobilize は legacy applyBindToPlayer/Enemy、custom（knockback/swapPos/warpToStairs）は
+    /// legacy applyBlowback*/applySwap*/applyStopgap* をそのまま呼ぶのでログ・挙動が一致する。
+    /// heal/status は投げ経路と共用の healUnit/statusUnit を再利用。
+    /// effect 行は legacy 委譲先（Tween / AnimationPlayer / GameLogger）に合わせ広く取る。
+    def staffEffectHandlers(srcId: Int32, dir: {x = Int32, y = Int32}):
+            EffectRunner.PlanHandlers[Scene[NodeTag],
+                {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger}] = {
         heal       = (sc, id, ally, n)        -> checked_ecast(healUnit(id, ally, n, sc)),
         fullHeal   = (sc, id, ally)           -> checked_ecast(fullHealUnit(id, ally, sc)),
         maxHpUp    = (sc, id, ally, n)        -> checked_ecast(maxHpUpUnit(id, ally, n, sc)),
         status     = (sc, id, ally, se, m, t) -> checked_ecast(statusUnit(id, ally, se, m, t, sc)),
-        immobilize = (sc, id, ally)           -> immobilizeUnit(srcId, id, ally, sc),
+        immobilize = (sc, id, ally, turns)    -> checked_ecast(immobilizeUnit(srcId, id, ally, turns, sc)),
+        custom     = (sc, op, id, ally)       -> customStaffEffect(srcId, dir, op, id, ally, sc),
         damage     = (sc, _, _, _)            -> checked_ecast(sc),
         revive     = (sc, _, _)               -> checked_ecast(sc),
-        custom     = (sc, _, _, _)            -> checked_ecast(sc),
         sfx        = (sc, _)                  -> checked_ecast(sc),
         noOp       = (sc, _)                  -> checked_ecast(sc)
     }
 
-    /// 完全停止を当たったユニットへ。legacy applyBindToPlayer/Enemy をそのまま呼ぶ（ログ込みで同一）。
-    def immobilizeUnit(srcId: Int32, id: Int32, ally: Bool, sc: Scene[NodeTag]):
+    /// 完全停止を当たったユニットへ `turns` ターン付与。legacy applyBindToPlayer/Enemy をそのまま呼ぶ
+    /// （ログ込みで同一）。turns は effectRule の for:turns から来る（被弾解除は Immobilized 型に内在）。
+    def immobilizeUnit(srcId: Int32, id: Int32, ally: Bool, turns: Int32, sc: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
         let srcLabel = PlayerScene.displayName(srcId, sc);
-        if (ally) applyBindToPlayer(srcLabel, id, sc)
-        else      applyBindToEnemy(srcLabel, id, sc)
+        if (ally) applyBindToPlayer(srcLabel, id, turns, sc)
+        else      applyBindToEnemy(srcLabel, id, turns, sc)
+
+    /// 対象の現在グリッド座標を ally で出し分けて取る（custom op の位置導出用。攻撃直後は hitCell と一致）。
+    def gridOf(id: Int32, ally: Bool, sc: Scene[NodeTag]): Option[{x = Int32, y = Int32}] =
+        if (ally) PlayerScene.get(id, sc) |> Option.map(d -> d#gridPos)
+        else      EnemyScene.get(id, sc)  |> Option.map(d -> d#gridPos)
+
+    /// custom op（盤面副作用系）を当たったユニットへ。位置は scene から id 逆引き、方向は cast の dir。
+    /// knockback/swapPos/warpToStairs を legacy 関数へ委譲（挙動・ログ一致）。未知 op / 対象不在は防御 no-op。
+    def customStaffEffect(srcId: Int32, dir: {x = Int32, y = Int32},
+                           op: String, id: Int32, ally: Bool, sc: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger} =
+        let srcLabel = PlayerScene.displayName(srcId, sc);
+        match op {
+            case "knockback" =>
+                match gridOf(id, ally, sc) {
+                    case Some(cell) =>
+                        if (ally) applyBlowbackToPlayer(srcId, id, cell, dir, sc)
+                        else      applyBlowbackToEnemy(srcId, id, cell, dir, sc)
+                    case None => sc
+                }
+            case "swapPos" =>
+                match (gridOf(srcId, true, sc), gridOf(id, ally, sc)) {
+                    case (Some(srcCell), Some(otherCell)) =>
+                        if (ally) applySwapWithPlayer(srcId, srcCell, id, otherCell, sc)
+                        else      applySwapWithEnemy(srcId, srcCell, id, otherCell, sc)
+                    case _ => sc
+                }
+            case "warpToStairs" =>
+                if (ally) applyStopgapToPlayer(srcLabel, id, sc)
+                else      applyStopgapToEnemy(srcLabel, id, sc)
+            case _ =>
+                GameLogger.playerLog("${srcLabel} の杖は 何も起きなかった");
+                sc
+        }
 
     /// legacy: `staff#effect × hit` の組み合わせで効果を適用する（effectRule 無しの杖）。
     /// ヒット種は RayHit.HitPlayer / RayHit.HitEnemy / それ以外（壁・盤外 = 空振り）の 3 種で、
@@ -205,9 +245,9 @@ mod StaffCastScene {
             case (Staff.StaffEffect.Swap, RayHit.HitEnemy(enemyId, enemyCell)) =>
                 applySwapWithEnemy(playerId, player#gridPos, enemyId, enemyCell, scene)
             case (Staff.StaffEffect.Bind, RayHit.HitPlayer(targetId, _)) =>
-                applyBindToPlayer(PlayerScene.displayName(playerId, scene), targetId, scene)
+                applyBindToPlayer(PlayerScene.displayName(playerId, scene), targetId, defaultBindTurns(), scene)
             case (Staff.StaffEffect.Bind, RayHit.HitEnemy(targetId, _)) =>
-                applyBindToEnemy(PlayerScene.displayName(playerId, scene), targetId, scene)
+                applyBindToEnemy(PlayerScene.displayName(playerId, scene), targetId, defaultBindTurns(), scene)
             case (Staff.StaffEffect.Stopgap, RayHit.HitPlayer(targetId, _)) =>
                 applyStopgapToPlayer(PlayerScene.displayName(playerId, scene), targetId, scene)
             case (Staff.StaffEffect.Stopgap, RayHit.HitEnemy(targetId, _)) =>
@@ -351,32 +391,35 @@ mod StaffCastScene {
 
     // ── かなしばり / 一時しのぎ（完全停止 / 停止 + ワープ）──────────────
 
-    /// 完全停止を 1 件付与する純粋関数。`add` が重ねがけを防ぐので、既に停止中なら据え置かれる。
-    def bindStatuses(xs: List[StatusSystem.Status]): List[StatusSystem.Status] =
-        StatusSystem.add(StatusSystem.immobilize(), xs)
+    /// 完全停止を `turns` ターンで 1 件付与する純粋関数。`add` が重ねがけを防ぐので、既に停止中なら据え置かれる。
+    def bindStatuses(turns: Int32, xs: List[StatusSystem.Status]): List[StatusSystem.Status] =
+        StatusSystem.add(StatusSystem.immobilizeFor(turns), xs)
 
-    /// かなしばり × 味方: 対象を完全停止にする。`srcLabel` は撃った側の表示名（敵詠唱でも使う）。
-    def applyBindToPlayer(srcLabel: String, targetId: Int32, scene: Scene[NodeTag]):
+    /// 完全停止の既定ターン数（legacy / stopgap 経路が使う。DSL からは effectRule の turn 数が入る）。
+    def defaultBindTurns(): Int32 = 5
+
+    /// かなしばり × 味方: 対象を `turns` ターン完全停止にする。`srcLabel` は撃った側の表示名（敵詠唱でも使う）。
+    def applyBindToPlayer(srcLabel: String, targetId: Int32, turns: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
         GameLogger.playerLog("${srcLabel} は ${PlayerScene.displayName(targetId, scene)} を かなしばりにした");
-        PlayerScene.mapPlayer(targetId, d -> {statuses = bindStatuses(d#statuses) | d}, scene)
+        PlayerScene.mapPlayer(targetId, d -> {statuses = bindStatuses(turns, d#statuses) | d}, scene)
 
-    /// かなしばり × 敵: 対象を完全停止にする。
-    def applyBindToEnemy(srcLabel: String, enemyId: Int32, scene: Scene[NodeTag]):
+    /// かなしばり × 敵: 対象を `turns` ターン完全停止にする。
+    def applyBindToEnemy(srcLabel: String, enemyId: Int32, turns: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
         GameLogger.playerLog("${srcLabel} は ${EnemyScene.displayName(enemyId, scene)} を かなしばりにした");
-        EnemyScene.mapEnemy(enemyId, d -> {statuses = bindStatuses(d#statuses) | d}, scene)
+        EnemyScene.mapEnemy(enemyId, d -> {statuses = bindStatuses(turns, d#statuses) | d}, scene)
 
     /// 一時しのぎ × 味方: 完全停止にしたうえで階段（埋まっていれば隣接の空き）へワープさせる。
     def applyStopgapToPlayer(srcLabel: String, targetId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
-        let bound = applyBindToPlayer(srcLabel, targetId, scene);
+        let bound = applyBindToPlayer(srcLabel, targetId, defaultBindTurns(), scene);
         warpPlayer(targetId, bound)
 
     /// 一時しのぎ × 敵: 同上（敵対象）。
     def applyStopgapToEnemy(srcLabel: String, enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
-        let bound = applyBindToEnemy(srcLabel, enemyId, scene);
+        let bound = applyBindToEnemy(srcLabel, enemyId, defaultBindTurns(), scene);
         warpEnemy(enemyId, bound)
 
     /// 味方をワープ先（階段 or 隣接空き）へ瞬間移動させる。行き先が無ければ停止のみ。
@@ -536,7 +579,7 @@ mod StaffCastScene {
         // self-use では発火しない handler。全 handler が同一 effect(GameLogger) を持つ必要があるため
         // 純粋な恒等を checked_ecast で GameLogger へ上げる（実際の作用は無し）。
         damage     = (sc, _, _, _)         -> checked_ecast(sc),
-        immobilize = (sc, _, _)            -> checked_ecast(sc),
+        immobilize = (sc, _, _, _)         -> checked_ecast(sc),
         revive     = (sc, _, _)            -> checked_ecast(sc),
         custom     = (sc, _, _, _)         -> checked_ecast(sc),
         sfx        = (sc, _)               -> checked_ecast(sc),
@@ -1051,7 +1094,7 @@ mod StaffCastScene {
             Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
         let srcLabel = EnemyScene.displayName(enemyId, scene);
         match effect {
-            case Staff.StaffEffect.Bind    => applyBindToPlayer(srcLabel, targetId, scene)
+            case Staff.StaffEffect.Bind    => applyBindToPlayer(srcLabel, targetId, defaultBindTurns(), scene)
             case Staff.StaffEffect.Stopgap => applyStopgapToPlayer(srcLabel, targetId, scene)
             case _                         => scene
         }
@@ -1130,7 +1173,7 @@ mod StaffCastScene {
         maxHpUp    = (sc, id, ally, n)         -> maxHpUpUnit(id, ally, n, sc),
         status     = (sc, id, ally, se, m, t)  -> statusUnit(id, ally, se, m, t, sc),
         damage     = (sc, _, _, _)             -> sc,
-        immobilize = (sc, _, _)                -> sc,
+        immobilize = (sc, _, _, _)             -> sc,
         revive     = (sc, _, _)                -> sc,
         custom     = (sc, _, _, _)             -> sc,
         sfx        = (sc, _)                   -> sc,

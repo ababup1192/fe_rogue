@@ -281,6 +281,10 @@ mod EffectBridge {
         case "healFull"     => false
         case "immobilize"   => false
         case "reviveCharge" => false
+        // 盤面副作用系は量を取らない（杖の knockback は無制限・swapPos/warpToStairs は対象のみ）
+        case "knockback"    => false
+        case "swapPos"      => false
+        case "warpToStairs" => false
         case _              => true
     }
 

@@ -6,8 +6,8 @@
       "effect": "Bind",
       "effectRule": {
         "amount": 0,
-        "for": "untilHit",
-        "forTurns": 0,
+        "for": "turns",
+        "forTurns": 5,
         "op": "immobilize",
         "sfx": "damage",
         "to": "target",
@@ -32,6 +32,16 @@
         "hframes": 16,
         "texture": "item_icons",
         "vframes": 39
+      },
+      "effectRule": {
+        "when": "onUse",
+        "to": "target",
+        "op": "knockback",
+        "amount": 0,
+        "for": "instant",
+        "forTurns": 0,
+        "sfx": "",
+        "vfx": ""
       }
     },
     "live_staff": {
@@ -56,6 +66,16 @@
         "hframes": 16,
         "texture": "item_icons",
         "vframes": 39
+      },
+      "effectRule": {
+        "when": "onUse",
+        "to": "target",
+        "op": "warpToStairs",
+        "amount": 0,
+        "for": "instant",
+        "forTurns": 0,
+        "sfx": "",
+        "vfx": ""
       }
     },
     "swap_staff": {
@@ -68,6 +88,16 @@
         "hframes": 16,
         "texture": "item_icons",
         "vframes": 39
+      },
+      "effectRule": {
+        "when": "onUse",
+        "to": "target",
+        "op": "swapPos",
+        "amount": 0,
+        "for": "instant",
+        "forTurns": 0,
+        "sfx": "",
+        "vfx": ""
       }
     }
   }

@@ -38,7 +38,10 @@ mod EffectComposerPanel {
         ("spdUp", "速さを上げる") :: ("spdDown", "速さを下げる") ::
         ("defUp", "守備を上げる") :: ("defDown", "守備を下げる") ::
         ("hitDown", "命中を下げる") :: ("immobilize", "完全に動けなくする") ::
-        ("maxHpUp", "最大HPを上げる") :: ("reviveCharge", "全回復してよみがえる") :: Nil
+        ("maxHpUp", "最大HPを上げる") :: ("reviveCharge", "全回復してよみがえる") ::
+        // 盤面副作用系（杖で結線済み = StaffCastScene.customStaffEffect）。量は使わない。
+        ("swapPos", "位置を入れ替える") :: ("knockback", "押し流す") ::
+        ("warpToStairs", "止めて階段へ飛ばす") :: Nil
 
     def forOpts(): List[(String, String)] =
         ("instant", "すぐに（1回）") :: ("turns", "Nターン続く") :: ("permanent", "永続") ::
@@ -243,9 +246,12 @@ mod EffectComposerPanel {
         case "defUp"        => "${toJa}の守備を ${amt} 上げる"
         case "defDown"      => "${toJa}の守備を ${amt} 下げる"
         case "hitDown"      => "${toJa}の命中を ${amt}% 下げる"
-        case "immobilize"   => "${toJa}を 完全に動けなくする"
+        case "immobilize"   => "${toJa}を 完全に動けなくする（攻撃を受けると解除）"
         case "maxHpUp"      => "${toJa}の 最大 HP を ${amt} 上げる"
         case "reviveCharge" => "${toJa}を 全回復してよみがえらせる"
+        case "swapPos"      => "${toJa}と 位置を入れ替える"
+        case "knockback"    => "${toJa}を 押し流す"
+        case "warpToStairs" => "${toJa}を 止めて 階段マスへ飛ばす"
         case _              => "${toJa}に 効果を与える"
     }
 

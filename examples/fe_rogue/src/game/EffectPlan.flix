@@ -22,7 +22,7 @@ mod EffectPlan {
         case DamageAt(Int32, Bool, Int32)
         case MaxHpUpAt(Int32, Bool, Int32)
         case StatusAt(Int32, Bool, StatusEffect, Int32, Int32)
-        case ImmobilizeAt(Int32, Bool)
+        case ImmobilizeAt(Int32, Bool, Int32)
         case ReviveAt(Int32, Bool)
         case CustomAt(String, Int32, Bool)
         case PlaySfx(String)
@@ -42,6 +42,13 @@ mod EffectPlan {
     def turnsOf(d: Option[Duration]): Int32 = match d {
         case Some(Duration.DurTurns(n)) => n
         case _                          => 1
+    }
+
+    /// 完全停止の継続ターン数。`for:turns` ならその値、それ以外（untilHit 等）は
+    /// Immobilized 既定の 5 ターン（StatusSystem.immobilize と同値）。被弾解除は status 型に内在。
+    def immobilizeTurns(d: Option[Duration]): Int32 = match d {
+        case Some(Duration.DurTurns(n)) => n
+        case _                          => 5
     }
 
     /// status 系 op を StatusSystem.StatusEffect へ写像（時限ステータス）。
@@ -72,7 +79,7 @@ mod EffectPlan {
         case Op.OpHealFull     => PlanItem.FullHealAt(id, ally) :: Nil
         case Op.OpDamageFlat   => PlanItem.DamageAt(id, ally, amt) :: Nil
         case Op.OpMaxHpUp      => PlanItem.MaxHpUpAt(id, ally, amt) :: Nil
-        case Op.OpImmobilize   => PlanItem.ImmobilizeAt(id, ally) :: Nil
+        case Op.OpImmobilize   => PlanItem.ImmobilizeAt(id, ally, immobilizeTurns(dur)) :: Nil
         case Op.OpReviveCharge => PlanItem.ReviveAt(id, ally) :: Nil
         case Op.OpAtkUp        => statusItem(op, id, ally, amt, dur)
         case Op.OpSpdUp        => statusItem(op, id, ally, amt, dur)

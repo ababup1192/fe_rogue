@@ -23,7 +23,7 @@ mod TestEffectRunner {
         damage     = (acc, id, _, n)        -> "damage:${id}:${n}" :: acc,
         maxHpUp    = (acc, id, _, n)        -> "maxHpUp:${id}:${n}" :: acc,
         status     = (acc, id, _, se, m, t) -> "status:${id}:${se}:${m}:${t}" :: acc,
-        immobilize = (acc, id, _)           -> "immobilize:${id}" :: acc,
+        immobilize = (acc, id, _, t)        -> "immobilize:${id}:${t}" :: acc,
         revive     = (acc, id, _)           -> "revive:${id}" :: acc,
         custom     = (acc, op, id, _)       -> "custom:${op}:${id}" :: acc,
         sfx        = (acc, name)            -> "sfx:${name}" :: acc,
@@ -68,7 +68,7 @@ mod TestEffectRunner {
     def testRunStopgapOrder(): Unit \ Assert =
         let json = "{\"when\":\"onCast\",\"deliver\":[\"throw\"],\"do\":[{\"to\":{\"role\":\"target\",\"faction\":\"ally\"},\"op\":\"immobilize\",\"for\":\"untilHit\"},{\"to\":{\"role\":\"target\",\"faction\":\"ally\"},\"op\":\"warpToStairs\"}]}";
         Assert.assertEq(
-            expected = "immobilize:4" :: "custom:warpToStairs:4" :: Nil,
+            expected = "immobilize:4:5" :: "custom:warpToStairs:4" :: Nil,
             fire(json, ctxWith(unit(4, true) :: Nil)))
 
     /// 空振り（対象なし）は noOp handler に流れ、HP 等は一切触らない。

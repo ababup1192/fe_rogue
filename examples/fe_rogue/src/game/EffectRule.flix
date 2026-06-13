@@ -190,14 +190,14 @@ mod EffectRule {
             case Op.OpDefDown      => "${tgt}の守備を ${n} 下げる"
             case Op.OpDefUp        => "${tgt}の守備を ${n} 上げる"
             case Op.OpHitDown      => "${tgt}の命中を ${n}% 下げる"
-            case Op.OpImmobilize   => "${tgt}を 完全に動けなくする"
+            case Op.OpImmobilize   => "${tgt}を 完全に動けなくする（攻撃を受けると解除）"
             case Op.OpReviveCharge => "${tgt}は 倒れても全回復してよみがえる"
             case Op.OpPowerMul     => "${tgt}の 攻撃の威力を ${n} にする"
             case Op.OpFinisher     => "${tgt}に 必ず必殺を当てる"
-            case Op.OpKnockback    => "${tgt}を ${n} 押し流す"
+            case Op.OpKnockback    => if (String.isEmpty(n)) "${tgt}を 押し流す" else "${tgt}を ${n} 押し流す"
             case Op.OpDropItem     => "${tgt}に アイテムを落とさせる"
             case Op.OpSwapPos      => "${tgt}と 位置を入れ替える"
-            case Op.OpWarpToStairs => "${tgt}を 階段マスへ飛ばす"
+            case Op.OpWarpToStairs => "${tgt}を 止めて 階段マスへ飛ばす"
             case Op.OpRingify      => "${tgt}の 持ち物を指輪に変える"
         }
 
