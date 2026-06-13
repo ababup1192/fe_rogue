@@ -113,22 +113,22 @@ mod TestStaffCastScene {
     /// PlanItem を実 Scene へ落とす handler 束。heal だけ実装し、他は恒等（このテストでは未使用）。
     /// heal は applyConsumableHeal と同じ「Combat.heal → mapPlayer → HPBar 更新」を行う（ログは省略）。
     def dslSceneHandlers(): EffectRunner.PlanHandlers[Scene[NodeTag], {}] = {
-        heal       = (sc, id, amount) -> match PlayerScene.get(id, sc) {
+        heal       = (sc, id, _, amount) -> match PlayerScene.get(id, sc) {
             case Some(p) =>
                 let r = Combat.heal(p#hp, p#resource#hp, amount);
                 sc |> PlayerScene.mapPlayer(id, d -> {hp = r#newHp | d})
                    |> UnitHPBarScene.update(PlayerScene.playerPath(id), r#newHp)
             case None    => sc
         },
-        fullHeal   = (sc, _)          -> sc,
-        damage     = (sc, _, _)       -> sc,
-        maxHpUp    = (sc, _, _)       -> sc,
-        status     = (sc, _, _, _, _) -> sc,
-        immobilize = (sc, _)          -> sc,
-        revive     = (sc, _)          -> sc,
-        custom     = (sc, _, _)       -> sc,
-        sfx        = (sc, _)          -> sc,
-        noOp       = (sc, _)          -> sc
+        fullHeal   = (sc, _, _)          -> sc,
+        damage     = (sc, _, _, _)       -> sc,
+        maxHpUp    = (sc, _, _, _)       -> sc,
+        status     = (sc, _, _, _, _, _) -> sc,
+        immobilize = (sc, _, _)          -> sc,
+        revive     = (sc, _, _)          -> sc,
+        custom     = (sc, _, _, _)       -> sc,
+        sfx        = (sc, _)             -> sc,
+        noOp       = (sc, _)             -> sc
     }
 
     /// きずぐすりを効果 JSON として宣言 → decode → plan → runPlan で実 Scene に発火 → HP 7。

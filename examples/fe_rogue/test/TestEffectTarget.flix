@@ -13,7 +13,7 @@ mod TestEffectTarget {
         {id = id, ally = ally, immobilized = immobilized, alive = alive}
 
     def resolve(t: EffectRule.Target, units: List[RayUnit]): Option[Int32] =
-        EffectRule.resolveTarget(t, 1, 9, units)
+        EffectRule.resolveTarget(t, 1, 9, units) |> Option.map(u -> u#id)
 
     // ════════════════════════════════════════════════════════
     // rayFirst（faction 省略 = Any = 陣営無視）

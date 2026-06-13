@@ -433,18 +433,19 @@ mod StaffCastScene {
     /// （＝旧 match と挙動同一）。self-use では heal/fullHeal/maxHpUp/status のみ発火する。
     def selfEffectHandlers(item: Consumable.ConsumableResource):
             EffectRunner.PlanHandlers[Scene[NodeTag], GameLogger.GameLogger] = {
-        heal       = (sc, id, _)        -> withPlayer(id, sc, p -> applyConsumableHeal(id, p, item, sc)),
-        fullHeal   = (sc, id)           -> withPlayer(id, sc, p -> applyFullHeal(id, p, item, sc)),
-        maxHpUp    = (sc, id, _)        -> withPlayer(id, sc, p -> applyMaxHpUp(id, p, item, sc)),
-        status     = (sc, id, se, _, _) -> applySelfStatus(id, item, se, sc),
+        // self-use なので対象は常に自分（ally=true）。ally は使わない。
+        heal       = (sc, id, _, _)        -> withPlayer(id, sc, p -> applyConsumableHeal(id, p, item, sc)),
+        fullHeal   = (sc, id, _)           -> withPlayer(id, sc, p -> applyFullHeal(id, p, item, sc)),
+        maxHpUp    = (sc, id, _, _)        -> withPlayer(id, sc, p -> applyMaxHpUp(id, p, item, sc)),
+        status     = (sc, id, _, se, _, _) -> applySelfStatus(id, item, se, sc),
         // self-use では発火しない handler。全 handler が同一 effect(GameLogger) を持つ必要があるため
         // 純粋な恒等を checked_ecast で GameLogger へ上げる（実際の作用は無し）。
-        damage     = (sc, _, _)         -> checked_ecast(sc),
-        immobilize = (sc, _)            -> checked_ecast(sc),
-        revive     = (sc, _)            -> checked_ecast(sc),
-        custom     = (sc, _, _)         -> checked_ecast(sc),
-        sfx        = (sc, _)            -> checked_ecast(sc),
-        noOp       = (sc, _)            -> checked_ecast(sc)
+        damage     = (sc, _, _, _)         -> checked_ecast(sc),
+        immobilize = (sc, _, _)            -> checked_ecast(sc),
+        revive     = (sc, _, _)            -> checked_ecast(sc),
+        custom     = (sc, _, _, _)         -> checked_ecast(sc),
+        sfx        = (sc, _)               -> checked_ecast(sc),
+        noOp       = (sc, _)               -> checked_ecast(sc)
     }
 
     /// id のプレイヤーが居れば f を適用、居なければ scene そのまま（防御）。

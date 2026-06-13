@@ -32,7 +32,7 @@ mod TestEffectPlan {
     def testPlanPowerPotion(): Unit \ Assert =
         let json = "{\"when\":\"onUse\",\"deliver\":[\"self\"],\"do\":[{\"to\":{\"role\":\"self\"},\"op\":\"atkUp\",\"amount\":{\"flat\":4},\"for\":{\"turns\":3},\"sfx\":\"cure\"}]}";
         Assert.assertEq(
-            expected = PlanItem.StatusAt(1, StatusEffect.AtkUp, 4, 3) :: PlanItem.PlaySfx("cure") :: Nil,
+            expected = PlanItem.StatusAt(1, true, StatusEffect.AtkUp, 4, 3) :: PlanItem.PlaySfx("cure") :: Nil,
             plan(json, ctxWith(Nil)))
 
     /// 火炎瓶: 投げて当たった敵#3 に 15 ダメージ、効果音 magic。
@@ -41,7 +41,7 @@ mod TestEffectPlan {
         let json = "{\"when\":\"onUse\",\"deliver\":[\"throw\"],\"do\":[{\"to\":{\"role\":\"target\",\"faction\":\"enemy\"},\"op\":\"damageFlat\",\"amount\":{\"flat\":15},\"sfx\":\"magic\"}]}";
         let ray = unit(3, false, false, true) :: Nil;
         Assert.assertEq(
-            expected = PlanItem.DamageAt(3, 15) :: PlanItem.PlaySfx("magic") :: Nil,
+            expected = PlanItem.DamageAt(3, false, 15) :: PlanItem.PlaySfx("magic") :: Nil,
             plan(json, ctxWith(ray)))
 
     /// 回復の杖: statPlus magic(7)+10 = 17 を、ray 最初の味方#4 に回復。
@@ -49,13 +49,13 @@ mod TestEffectPlan {
     def testPlanHealStaffStatPlus(): Unit \ Assert =
         let json = "{\"when\":\"onCast\",\"deliver\":[\"throw\"],\"do\":[{\"to\":{\"role\":\"target\"},\"op\":\"healFlat\",\"amount\":{\"statPlus\":{\"stat\":\"magic\",\"value\":10}}}]}";
         let ray = unit(4, true, false, true) :: Nil;
-        Assert.assertEq(expected = PlanItem.HealAt(4, 17) :: Nil, plan(json, ctxWith(ray)))
+        Assert.assertEq(expected = PlanItem.HealAt(4, true, 17) :: Nil, plan(json, ctxWith(ray)))
 
     /// 血吸い: 与ダメージ(dealt20)の30% = 6 を attacker#9 に回復。
     @Test
     def testPlanLifesteal(): Unit \ Assert =
         let json = "{\"when\":\"onHit\",\"do\":[{\"to\":{\"role\":\"attacker\"},\"op\":\"lifesteal\",\"amount\":{\"pct\":{\"base\":\"dealt\",\"value\":30}}}]}";
-        Assert.assertEq(expected = PlanItem.HealAt(9, 6) :: Nil, plan(json, ctxWith(Nil)))
+        Assert.assertEq(expected = PlanItem.HealAt(9, true, 6) :: Nil, plan(json, ctxWith(Nil)))
 
     // ════════════════════════════════════════════════════════
     // B custom op / estimate 介入 / 空振り
@@ -66,7 +66,7 @@ mod TestEffectPlan {
     def testPlanCustomOp(): Unit \ Assert =
         let json = "{\"when\":\"onHit\",\"do\":[{\"to\":{\"role\":\"target\",\"faction\":\"enemy\"},\"op\":\"knockback\",\"amount\":{\"tiles\":2}}]}";
         let ray = unit(3, false, false, true) :: Nil;
-        Assert.assertEq(expected = PlanItem.CustomAt("knockback", 3) :: Nil, plan(json, ctxWith(ray)))
+        Assert.assertEq(expected = PlanItem.CustomAt("knockback", 3, false) :: Nil, plan(json, ctxWith(ray)))
 
     /// powerMul は estimate 内介入なので Plan では NoOp（Phase4 で estimate へ）。
     @Test

@@ -342,19 +342,28 @@ mod EffectRule {
         case TargetState.StateAlive          => u#alive
     }
 
-    /// throw/target の対象: ray が最初に当たった、faction/state を満たすユニット id。
+    /// 解決済みの対象。`id` に加え `ally`（使用者と同陣営か）を持つ。
+    /// player/enemy のノード名前空間が別（id は衝突しうる）ため、runPlan が
+    /// player へ作用するか enemy へ作用するかを `ally` で出し分ける。
+    pub type alias UnitRef = {
+        id   = Int32,
+        ally = Bool
+    }
+
+    /// throw/target の対象: ray が最初に当たった、faction/state を満たすユニット。
     /// faction 省略（FactionAny）なら敵味方を問わず最初の1体（杖 Heal が敵にも当たる既存挙動）。
-    pub def resolveRayTarget(t: Target, rayUnits: List[RayUnit]): Option[Int32] =
+    pub def resolveRayTarget(t: Target, rayUnits: List[RayUnit]): Option[UnitRef] =
         rayUnits
             |> List.filter(u -> factionOk(t#faction, u#ally) and stateOk(t#state, u))
             |> List.head
-            |> Option.map(u -> u#id)
+            |> Option.map(u -> {id = u#id, ally = u#ally})
 
-    /// 役割に応じて対象 id を解決する。Area は単一 id ではない（runPlan が Board.cellsWithin で展開）。
+    /// 役割に応じて対象を解決する。self / attacker は使用者陣営（ally=true）。
+    /// Area は単一 id ではない（runPlan が Board.cellsWithin で展開）。
     pub def resolveTarget(t: Target, selfId: Int32, attackerId: Int32,
-                          rayUnits: List[RayUnit]): Option[Int32] = match t#role {
-        case Role.RoleSelf     => Some(selfId)
-        case Role.RoleAttacker => Some(attackerId)
+                          rayUnits: List[RayUnit]): Option[UnitRef] = match t#role {
+        case Role.RoleSelf     => Some({id = selfId, ally = true})
+        case Role.RoleAttacker => Some({id = attackerId, ally = true})
         case Role.RoleTarget   => resolveRayTarget(t, rayUnits)
         case Role.RoleArea(_)  => None
     }

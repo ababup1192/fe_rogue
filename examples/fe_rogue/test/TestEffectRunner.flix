@@ -18,16 +18,16 @@ mod TestEffectRunner {
 
     /// 各 handler が「呼び出しを表す文字列」を先頭に積むだけの記録 handler（純粋・効果なし）。
     def recordHandlers(): EffectRunner.PlanHandlers[List[String], {}] = {
-        heal       = (acc, id, n)        -> "heal:${id}:${n}" :: acc,
-        fullHeal   = (acc, id)           -> "fullHeal:${id}" :: acc,
-        damage     = (acc, id, n)        -> "damage:${id}:${n}" :: acc,
-        maxHpUp    = (acc, id, n)        -> "maxHpUp:${id}:${n}" :: acc,
-        status     = (acc, id, se, m, t) -> "status:${id}:${se}:${m}:${t}" :: acc,
-        immobilize = (acc, id)           -> "immobilize:${id}" :: acc,
-        revive     = (acc, id)           -> "revive:${id}" :: acc,
-        custom     = (acc, op, id)       -> "custom:${op}:${id}" :: acc,
-        sfx        = (acc, name)         -> "sfx:${name}" :: acc,
-        noOp       = (acc, reason)       -> "noOp:${reason}" :: acc
+        heal       = (acc, id, _, n)        -> "heal:${id}:${n}" :: acc,
+        fullHeal   = (acc, id, _)           -> "fullHeal:${id}" :: acc,
+        damage     = (acc, id, _, n)        -> "damage:${id}:${n}" :: acc,
+        maxHpUp    = (acc, id, _, n)        -> "maxHpUp:${id}:${n}" :: acc,
+        status     = (acc, id, _, se, m, t) -> "status:${id}:${se}:${m}:${t}" :: acc,
+        immobilize = (acc, id, _)           -> "immobilize:${id}" :: acc,
+        revive     = (acc, id, _)           -> "revive:${id}" :: acc,
+        custom     = (acc, op, id, _)       -> "custom:${op}:${id}" :: acc,
+        sfx        = (acc, name)            -> "sfx:${name}" :: acc,
+        noOp       = (acc, reason)          -> "noOp:${reason}" :: acc
     }
 
     // JSON → Plan → runPlan の記録（積んだ順を反転して時系列に戻す）。

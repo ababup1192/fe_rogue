@@ -11,19 +11,20 @@ mod EffectPlan {
     use EffectRule.{Action, Op, Duration, RayUnit}
     use StatusSystem.StatusEffect
 
-    /// 確定した効果 1 つ。targetId は resolveTarget 済みの実 id。
+    /// 確定した効果 1 つ。対象系は `id` と `ally`（使用者と同陣営か）を持ち、runPlan が
+    /// player/enemy ノードを出し分けられるようにする。
     ///   - 投射系の HP / status / 範囲 / 演出
-    ///   - B custom op は `CustomAt(op名, id)` で runPlan が既存 Scene handler へ委譲
+    ///   - B custom op は `CustomAt(op名, id, ally)` で runPlan が既存 Scene handler へ委譲
     ///   - estimate 内介入（powerMul / finisher）と空振りは `NoOp(理由)`
     pub enum PlanItem with Eq, ToString {
-        case HealAt(Int32, Int32)
-        case FullHealAt(Int32)
-        case DamageAt(Int32, Int32)
-        case MaxHpUpAt(Int32, Int32)
-        case StatusAt(Int32, StatusEffect, Int32, Int32)
-        case ImmobilizeAt(Int32)
-        case ReviveAt(Int32)
-        case CustomAt(String, Int32)
+        case HealAt(Int32, Bool, Int32)
+        case FullHealAt(Int32, Bool)
+        case DamageAt(Int32, Bool, Int32)
+        case MaxHpUpAt(Int32, Bool, Int32)
+        case StatusAt(Int32, Bool, StatusEffect, Int32, Int32)
+        case ImmobilizeAt(Int32, Bool)
+        case ReviveAt(Int32, Bool)
+        case CustomAt(String, Int32, Bool)
         case PlaySfx(String)
         case NoOp(String)
     }
@@ -53,32 +54,32 @@ mod EffectPlan {
         case _            => None
     }
 
-    /// op を、解決済み id・効果量・継続から PlanItem 列へ。
-    def opPlan(op: Op, id: Int32, amt: Int32, dur: Option[Duration]): List[PlanItem] = match op {
-        case Op.OpHealFlat     => PlanItem.HealAt(id, amt) :: Nil
-        case Op.OpLifesteal    => PlanItem.HealAt(id, amt) :: Nil
-        case Op.OpHealFull     => PlanItem.FullHealAt(id) :: Nil
-        case Op.OpDamageFlat   => PlanItem.DamageAt(id, amt) :: Nil
-        case Op.OpMaxHpUp      => PlanItem.MaxHpUpAt(id, amt) :: Nil
-        case Op.OpImmobilize   => PlanItem.ImmobilizeAt(id) :: Nil
-        case Op.OpReviveCharge => PlanItem.ReviveAt(id) :: Nil
-        case Op.OpAtkUp        => statusItem(op, id, amt, dur)
-        case Op.OpSpdUp        => statusItem(op, id, amt, dur)
-        case Op.OpSpdDown      => statusItem(op, id, amt, dur)
-        case Op.OpDefDown      => statusItem(op, id, amt, dur)
-        case Op.OpHitDown      => statusItem(op, id, amt, dur)
+    /// op を、解決済み対象（id, ally）・効果量・継続から PlanItem 列へ。
+    def opPlan(op: Op, id: Int32, ally: Bool, amt: Int32, dur: Option[Duration]): List[PlanItem] = match op {
+        case Op.OpHealFlat     => PlanItem.HealAt(id, ally, amt) :: Nil
+        case Op.OpLifesteal    => PlanItem.HealAt(id, ally, amt) :: Nil
+        case Op.OpHealFull     => PlanItem.FullHealAt(id, ally) :: Nil
+        case Op.OpDamageFlat   => PlanItem.DamageAt(id, ally, amt) :: Nil
+        case Op.OpMaxHpUp      => PlanItem.MaxHpUpAt(id, ally, amt) :: Nil
+        case Op.OpImmobilize   => PlanItem.ImmobilizeAt(id, ally) :: Nil
+        case Op.OpReviveCharge => PlanItem.ReviveAt(id, ally) :: Nil
+        case Op.OpAtkUp        => statusItem(op, id, ally, amt, dur)
+        case Op.OpSpdUp        => statusItem(op, id, ally, amt, dur)
+        case Op.OpSpdDown      => statusItem(op, id, ally, amt, dur)
+        case Op.OpDefDown      => statusItem(op, id, ally, amt, dur)
+        case Op.OpHitDown      => statusItem(op, id, ally, amt, dur)
         case Op.OpPowerMul     => PlanItem.NoOp("powerMul は estimate 内介入（Phase4）") :: Nil
         case Op.OpFinisher     => PlanItem.NoOp("finisher は estimate 内介入（Phase4）") :: Nil
-        case Op.OpKnockback    => PlanItem.CustomAt("knockback", id) :: Nil
-        case Op.OpDropItem     => PlanItem.CustomAt("dropItem", id) :: Nil
-        case Op.OpSwapPos      => PlanItem.CustomAt("swapPos", id) :: Nil
-        case Op.OpWarpToStairs => PlanItem.CustomAt("warpToStairs", id) :: Nil
-        case Op.OpRingify      => PlanItem.CustomAt("ringify", id) :: Nil
+        case Op.OpKnockback    => PlanItem.CustomAt("knockback", id, ally) :: Nil
+        case Op.OpDropItem     => PlanItem.CustomAt("dropItem", id, ally) :: Nil
+        case Op.OpSwapPos      => PlanItem.CustomAt("swapPos", id, ally) :: Nil
+        case Op.OpWarpToStairs => PlanItem.CustomAt("warpToStairs", id, ally) :: Nil
+        case Op.OpRingify      => PlanItem.CustomAt("ringify", id, ally) :: Nil
     }
 
-    def statusItem(op: Op, id: Int32, amt: Int32, dur: Option[Duration]): List[PlanItem] =
+    def statusItem(op: Op, id: Int32, ally: Bool, amt: Int32, dur: Option[Duration]): List[PlanItem] =
         match statusKind(op) {
-            case Some(se) => PlanItem.StatusAt(id, se, amt, turnsOf(dur)) :: Nil
+            case Some(se) => PlanItem.StatusAt(id, ally, se, amt, turnsOf(dur)) :: Nil
             case None     => PlanItem.NoOp("status 写像なし") :: Nil
         }
 
@@ -91,12 +92,12 @@ mod EffectPlan {
     /// 1 アクションを Plan へ。対象が解決できなければ NoOp（空振り）。
     pub def planAction(a: Action, ctx: PlanCtx): List[PlanItem] =
         match EffectRule.resolveTarget(a#to, ctx#selfId, ctx#attackerId, ctx#rayUnits) {
-            case None     => PlanItem.NoOp("対象なし（空振り）") :: Nil
-            case Some(id) =>
+            case None      => PlanItem.NoOp("対象なし（空振り）") :: Nil
+            case Some(ref) =>
                 let amt = a#amount
                             |> Option.map(am -> EffectDsl.resolveAmount(am, ctx#amount))
                             |> Option.getWithDefault(0);
-                appendSfx(opPlan(a#op, id, amt, a#duration), a#sfx)
+                appendSfx(opPlan(a#op, ref#id, ref#ally, amt, a#duration), a#sfx)
         }
 
     /// ルールの全 do[] アクションを Plan へ（do[] → flow 順は runFlow 側で扱う。ここは do[] のみ）。
