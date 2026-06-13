@@ -174,30 +174,31 @@ mod EffectRule {
         case Amount.StatPlus(s, v) => "${statJa(s)}+${v}"
     }
 
-    /// 数量つき op を「何をどうする」の句にする。
-    def opPhrase(op: Op, amount: Option[Amount]): String =
+    /// 対象＋助詞＋効果を 1 つの自然な句にする（「敵に 15 の固定ダメージを与える」等）。
+    /// 助詞（の／に／を／は／と）は効果ごとに変わるため、対象文字列を効果側で埋め込む。
+    def opClause(op: Op, amount: Option[Amount], tgt: String): String =
         let n = Option.map(amountJa, amount) |> Option.getWithDefault("");
         match op {
-            case Op.OpHealFlat     => "HP を ${n} 回復する"
-            case Op.OpHealFull     => "HP を全回復する"
-            case Op.OpLifesteal    => "与えたダメージの ${n} を回復する"
-            case Op.OpDamageFlat   => "${n} の固定ダメージを与える"
-            case Op.OpMaxHpUp      => "最大 HP を ${n} 上げる"
-            case Op.OpAtkUp        => "攻撃力を ${n} 上げる"
-            case Op.OpSpdUp        => "速さを ${n} 上げる"
-            case Op.OpSpdDown      => "速さを ${n} 下げる"
-            case Op.OpDefDown      => "守備を ${n} 下げる"
-            case Op.OpDefUp        => "守備を ${n} 上げる"
-            case Op.OpHitDown      => "命中を ${n}% 下げる"
-            case Op.OpImmobilize   => "完全に動けなくする"
-            case Op.OpReviveCharge => "倒れても全回復してよみがえる"
-            case Op.OpPowerMul     => "威力を ${n} にする"
-            case Op.OpFinisher     => "必ず必殺にする"
-            case Op.OpKnockback    => "${n} 押し流す"
-            case Op.OpDropItem     => "アイテムを落とさせる"
-            case Op.OpSwapPos      => "使用者と位置を入れ替える"
-            case Op.OpWarpToStairs => "階段マスへ飛ばす"
-            case Op.OpRingify      => "持ち物を指輪に変える"
+            case Op.OpHealFlat     => "${tgt}の HP を ${n} 回復する"
+            case Op.OpHealFull     => "${tgt}の HP を全回復する"
+            case Op.OpLifesteal    => "${tgt}は 与えたダメージの ${n} を回復する"
+            case Op.OpDamageFlat   => "${tgt}に ${n} の固定ダメージを与える"
+            case Op.OpMaxHpUp      => "${tgt}の 最大 HP を ${n} 上げる"
+            case Op.OpAtkUp        => "${tgt}の攻撃力を ${n} 上げる"
+            case Op.OpSpdUp        => "${tgt}の速さを ${n} 上げる"
+            case Op.OpSpdDown      => "${tgt}の速さを ${n} 下げる"
+            case Op.OpDefDown      => "${tgt}の守備を ${n} 下げる"
+            case Op.OpDefUp        => "${tgt}の守備を ${n} 上げる"
+            case Op.OpHitDown      => "${tgt}の命中を ${n}% 下げる"
+            case Op.OpImmobilize   => "${tgt}を 完全に動けなくする"
+            case Op.OpReviveCharge => "${tgt}は 倒れても全回復してよみがえる"
+            case Op.OpPowerMul     => "${tgt}の 攻撃の威力を ${n} にする"
+            case Op.OpFinisher     => "${tgt}に 必ず必殺を当てる"
+            case Op.OpKnockback    => "${tgt}を ${n} 押し流す"
+            case Op.OpDropItem     => "${tgt}に アイテムを落とさせる"
+            case Op.OpSwapPos      => "${tgt}と 位置を入れ替える"
+            case Op.OpWarpToStairs => "${tgt}を 階段マスへ飛ばす"
+            case Op.OpRingify      => "${tgt}の 持ち物を指輪に変える"
         }
 
     /// 対象を「誰に / 誰を」の句にする。
@@ -230,11 +231,11 @@ mod EffectRule {
         }
     }
 
-    /// 1 アクションの句「（継続）対象を opPhrase」。
+    /// 1 アクションの句「（継続、）対象＋助詞＋効果」。助詞は opClause が対象を埋めて決める。
     def actionJa(a: Action): String =
         let dur = durationJa(a#duration);
         let durPart = if (String.isEmpty(dur)) "" else "${dur}、";
-        "${durPart}${targetJa(a#to)}を ${opPhrase(a#op, a#amount)}"
+        "${durPart}${opClause(a#op, a#amount, targetJa(a#to))}"
 
     def deliverJa(ds: List[Deliver]): String =
         if (List.memberOf(Deliver.DeliverThrow, ds)) "投げて、"

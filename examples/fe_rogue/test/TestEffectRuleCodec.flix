@@ -39,7 +39,7 @@ mod TestEffectRuleCodec {
     @Test
     def testDecodeFinisher(): Unit \ Assert =
         let json = "{\"when\":\"onAttack\",\"if\":{\"targetHpPctAtMost\":30},\"do\":[{\"to\":{\"role\":\"target\"},\"op\":\"finisher\"}]}";
-        Assert.assertEq(expected = true, has("必ず必殺にする", prev(json)))
+        Assert.assertEq(expected = true, has("必ず必殺を当てる", prev(json)))
 
     /// 血吸い JSON（amount: pct of dealt）を decode → 「与えたダメージの 30%」。
     @Test
