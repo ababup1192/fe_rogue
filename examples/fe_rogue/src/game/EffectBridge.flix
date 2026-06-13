@@ -180,4 +180,12 @@ mod EffectBridge {
                          castAct(Op.OpImmobilize, None, Some(Duration.DurUntilHit)) ::
                          castAct(Op.OpWarpToStairs, None, None) :: Nil, None)
         }
+
+    /// RingMan（敵特殊）: 敵ターンに隣接していると 30% で通常攻撃をやめ、相手（味方）の
+    /// 持ち物を指輪化する。flow:replaceAttack（攻撃を差し替える）＋ ringify（B custom）。
+    /// 敵視点なので対象 faction は enemy（＝プレイヤー駒）。設計で replaceAttack が要る唯一の敵特殊。
+    pub def ringmanRule(): EffectRule.EffectRule =
+        let ringify = throwAct(Op.OpRingify, Faction.FactionEnemy, None, None);
+        fullRule(Trigger.OnEnemyTurn, Pred.PAtom(Atom.Adjacent), 100, Nil,
+                 Some(Flow.ReplaceAttack(30, ringify :: Nil)))
 }
