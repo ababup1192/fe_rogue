@@ -107,10 +107,84 @@ mod StaffCastScene {
         PlayerScene.getAll(scene)
             |> List.filter(a -> a#id != playerId and a#hp < a#resource#hp)
 
-    /// `staff#effect × hit` の組み合わせで効果を適用する。
+    /// 杖の効果適用。IDE 合成エディタの effectRule（onUse）があれば **DSL 経路**（runPlan）で
+    /// 効かせ、無ければ従来の `staff#effect × hit` legacy 分岐へ落とす。
+    /// DSL 経路は当たったユニット（味方/敵）へ rayFirst で効かせる（消費アイテムの投げ経路と同形）。
+    def applyStaffEffect(playerId: Int32, player: PlayerScene.Data,
+                          staff: Staff.StaffResource,
+                          dir: {x = Int32, y = Int32},
+                          hit: RayHit,
+                          scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger} =
+        match dslStaffRule(staff) {
+            case Some(rule) => applyStaffEffectDsl(playerId, staff, rule, hit, scene)
+            case None       => applyStaffEffectLegacy(playerId, player, staff, dir, hit, scene)
+        }
+
+    /// effectRule があり trigger が onUse なら EffectRule を返す（消費の `dslUseRule` と同形）。
+    def dslStaffRule(staff: Staff.StaffResource): Option[EffectRule.EffectRule] =
+        match staff#effectRule {
+            case Some(j) => match EffectBridge.fromComposer(j) {
+                case Some(rule) => if (rule#trigger == EffectRule.Trigger.OnUse) Some(rule) else None
+                case None       => None
+            }
+            case None => None
+        }
+
+    /// 当たり対象を (id, ally) で返す。壁/盤外（空振り）は None。
+    def staffHitTarget(hit: RayHit): Option[(Int32, Bool)] = match hit {
+        case RayHit.HitPlayer(id, _) => Some((id, true))
+        case RayHit.HitEnemy(id, _)  => Some((id, false))
+        case _                       => None
+    }
+
+    /// DSL 経路: 当たったユニットへ effectRule を runPlan で効かせる。
+    /// 空振り（壁/盤外）は legacy と同じ「届かなかった」ログを出して scene を返す。
+    /// `TestStaffCastScene` から effectRule 駆動を検証するため pub。
+    pub def applyStaffEffectDsl(playerId: Int32, staff: Staff.StaffResource,
+                             rule: EffectRule.EffectRule, hit: RayHit, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        match staffHitTarget(hit) {
+            case Some((id, ally)) =>
+                let ctx = {selfId = playerId, attackerId = playerId,
+                           rayUnits = ({id = id, ally = ally, immobilized = false, alive = true}: EffectRule.RayUnit) :: Nil,
+                           amount = {max = 0, dealt = 0, incoming = 0, magic = 0}};
+                EffectRunner.runPlan(staffEffectHandlers(playerId),
+                                     EffectPlan.planActions(rule, ctx), scene)
+            case None =>
+                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった");
+                scene
+        }
+
+    /// DSL 杖ハンドラ。当たったユニット(ally)へ pure op を適用する。
+    /// immobilize は legacy applyBindToPlayer/Enemy をそのまま使うのでログ・挙動が一致する。
+    /// heal/status は投げ経路と共用の healUnit/statusUnit を再利用。custom/damage 等は杖には現れない。
+    def staffEffectHandlers(srcId: Int32):
+            EffectRunner.PlanHandlers[Scene[NodeTag], GameLogger.GameLogger] = {
+        heal       = (sc, id, ally, n)        -> checked_ecast(healUnit(id, ally, n, sc)),
+        fullHeal   = (sc, id, ally)           -> checked_ecast(fullHealUnit(id, ally, sc)),
+        maxHpUp    = (sc, id, ally, n)        -> checked_ecast(maxHpUpUnit(id, ally, n, sc)),
+        status     = (sc, id, ally, se, m, t) -> checked_ecast(statusUnit(id, ally, se, m, t, sc)),
+        immobilize = (sc, id, ally)           -> immobilizeUnit(srcId, id, ally, sc),
+        damage     = (sc, _, _, _)            -> checked_ecast(sc),
+        revive     = (sc, _, _)               -> checked_ecast(sc),
+        custom     = (sc, _, _, _)            -> checked_ecast(sc),
+        sfx        = (sc, _)                  -> checked_ecast(sc),
+        noOp       = (sc, _)                  -> checked_ecast(sc)
+    }
+
+    /// 完全停止を当たったユニットへ。legacy applyBindToPlayer/Enemy をそのまま呼ぶ（ログ込みで同一）。
+    def immobilizeUnit(srcId: Int32, id: Int32, ally: Bool, sc: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        let srcLabel = PlayerScene.displayName(srcId, sc);
+        if (ally) applyBindToPlayer(srcLabel, id, sc)
+        else      applyBindToEnemy(srcLabel, id, sc)
+
+    /// legacy: `staff#effect × hit` の組み合わせで効果を適用する（effectRule 無しの杖）。
     /// ヒット種は RayHit.HitPlayer / RayHit.HitEnemy / それ以外（壁・盤外 = 空振り）の 3 種で、
     /// 3 効果 × 3 ヒット種 = 9 通り。空振り（壁/盤外）は `_` arm でまとめてログを出す。
-    def applyStaffEffect(playerId: Int32, player: PlayerScene.Data,
+    def applyStaffEffectLegacy(playerId: Int32, player: PlayerScene.Data,
                           staff: Staff.StaffResource,
                           dir: {x = Int32, y = Int32},
                           hit: RayHit,

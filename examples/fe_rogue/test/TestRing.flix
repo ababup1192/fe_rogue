@@ -17,6 +17,11 @@ mod TestRing {
          sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0,
                    offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false}, effectRule = None}
 
+    /// effectRule(amount=n) を差し込んだテスト指輪。power とは別値にして「effectRule 優先」を確認する。
+    def ringWithAmount(effect: RingEffect, power: Int32, amount: Int32): Ring.RingResource =
+        let json = Util.Json.parse("{\"amount\": ${amount}}") |> Result.toOption;
+        {effectRule = json | ring(effect, power)}
+
     // ════════════════════════════════════════════════════════
     // bonuses: 装備中指輪のステータス補正（命中・必殺は触らない）
     // ════════════════════════════════════════════════════════
@@ -37,6 +42,24 @@ mod TestRing {
     @Test
     def testBonusesGuard(): Unit \ Assert =
         Assert.assertEq(expected = 3, Ring.bonuses(Some(ring(RingEffect.Guard, 3)))#defense)
+
+    /// effectRule の amount(9) が power(2) を上書きして Power 補正(攻撃)を駆動する（IDE 編集追従）。
+    @Test
+    def testBonusesDrivenByEffectRule(): Unit \ Assert =
+        Assert.assertEq(expected = 9,
+            Ring.bonuses(Some(ringWithAmount(RingEffect.Power, 2, 9)))#attack)
+
+    /// effectRule の amount(5) が power(2) を上書きして Mend のターン開始回復量を駆動する。
+    @Test
+    def testMendAmountDrivenByEffectRule(): Unit \ Assert =
+        Assert.assertEq(expected = 5,
+            Ring.mendAmount(Some(ringWithAmount(RingEffect.Mend, 2, 5))))
+
+    /// effectRule の amount(7) が power(2) を上書きして Lifesteal の撃破回復量を駆動する。
+    @Test
+    def testLifestealAmountDrivenByEffectRule(): Unit \ Assert =
+        Assert.assertEq(expected = 7,
+            Ring.lifestealAmount(Some(ringWithAmount(RingEffect.Lifesteal, 2, 7))))
 
     /// さび(Power,-1) は攻撃 -1（むしろ弱い）。負の power も素直に効く。
     @Test

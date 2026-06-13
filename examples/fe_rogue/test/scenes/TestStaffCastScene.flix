@@ -75,6 +75,14 @@ mod TestStaffCastScene {
                          scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
          description = "", effectRule = None}
 
+    /// テスト用のかなしばりの杖（effectRule を差し込める）。
+    def bindStaff(ruleJson: Option[Util.Json.Json]): Staff.StaffResource =
+        {name = "かなしばりの杖", effect = Staff.StaffEffect.Bind, durability = 3,
+         sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
+                     offset = {x = 0.0, y = 0.0},
+                     scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+         description = "", effectRule = ruleJson}
+
     // ════════════════════════════════════════════════════════
     // 回復杖（ライブ）— 最大 HP を超えない
     // ════════════════════════════════════════════════════════
@@ -222,6 +230,25 @@ mod TestStaffCastScene {
                     |> Option.map(p -> StatusSystem.sumOf(StatusSystem.StatusEffect.AtkUp, p#statuses))
                     |> Option.getWithDefault(-1);
         Assert.assertEq(expected = 4, atk)
+
+    /// 杖の effectRule(onUse, immobilize) が当たった相手を完全停止にする。
+    /// legacy enum 分岐ではなく DSL 経路（planActions → runPlan → immobilizeUnit）が bind を駆動する。
+    @Test
+    def testStaffEffectRuleImmobilizesTarget(): Unit \ Assert =
+        let scene = playerScene(10, 0);
+        let ruleJson = Util.Json.parse("{\"when\":\"onUse\",\"to\":\"target\",\"op\":\"immobilize\",\"amount\":0,\"for\":\"untilHit\",\"forTurns\":0,\"sfx\":\"\",\"vfx\":\"\"}")
+                        |> Result.toOption;
+        let staff = bindStaff(ruleJson);
+        let hit = RayHit.HitPlayer(0, {x = 5, y = 5});
+        let after = ruleJson
+                     |> Option.flatMap(EffectBridge.fromComposer)
+                     |> Option.map(rule -> TestUnitFixtures.withMockGameLogger(() ->
+                            StaffCastScene.applyStaffEffectDsl(0, staff, rule, hit, scene)))
+                     |> Option.getWithDefault(scene);
+        let immob = PlayerScene.get(0, after)
+                     |> Option.map(p -> StatusSystem.isImmobilized(p#statuses))
+                     |> Option.getWithDefault(false);
+        Assert.assertEq(expected = true, immob)
 
     // ════════════════════════════════════════════════════════
     // 一時しのぎのワープ先選定（warpCellFor・純粋）

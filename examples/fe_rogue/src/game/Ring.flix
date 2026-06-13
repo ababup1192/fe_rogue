@@ -70,11 +70,24 @@ mod Ring {
     pub def zeroBonuses(): Bonuses =
         {attack = 0, speed = 0, defense = 0, skill = 0, luck = 0}
 
+    /// effectRule(簡易形式) の "amount" を取り出す。あれば指輪の効果量を IDE 編集に追従させる。
+    /// 無し/不正なら None（呼び出し側は従来の `power` にフォールバック）。
+    def ruleAmount(ring: RingResource): Option[Int32] =
+        ring#effectRule |> Option.flatMap(j -> match j {
+            case JObject(m) => Map.get("amount", m) |> Option.flatMap(JsonCodec.expectInt)
+            case _          => None
+        })
+
+    /// 指輪の効果量。effectRule があればその amount、無ければ `power`。
+    /// Power/Swift/Guard/Mend/Lifesteal の量はすべてここを通すので IDE 編集で挙動が変わる。
+    def amountOf(ring: RingResource): Int32 =
+        ruleAmount(ring) |> Option.getWithDefault(ring#power)
+
     /// 指輪 1 個の効果からステータス補正を出す（装備の有無判定は `bonuses` が担う。match を入れ子にしない）。
     def effectBonuses(ring: RingResource): Bonuses = match ring#effect {
-        case RingEffect.Power => {attack  = ring#power | zeroBonuses()}
-        case RingEffect.Swift => {speed   = ring#power | zeroBonuses()}
-        case RingEffect.Guard => {defense = ring#power | zeroBonuses()}
+        case RingEffect.Power => {attack  = amountOf(ring) | zeroBonuses()}
+        case RingEffect.Swift => {speed   = amountOf(ring) | zeroBonuses()}
+        case RingEffect.Guard => {defense = amountOf(ring) | zeroBonuses()}
         case _                => zeroBonuses()
     }
 
@@ -82,9 +95,9 @@ mod Ring {
     pub def bonuses(equipped: Option[RingResource]): Bonuses =
         equipped |> Option.map(effectBonuses) |> Option.getWithDefault(zeroBonuses())
 
-    /// 指輪 1 個の Mend 回復量（Mend 以外は 0）。
+    /// 指輪 1 個の Mend 回復量（Mend 以外は 0）。effectRule があればその amount に追従。
     def mendPower(ring: RingResource): Int32 = match ring#effect {
-        case RingEffect.Mend => ring#power
+        case RingEffect.Mend => amountOf(ring)
         case _               => 0
     }
 
@@ -92,9 +105,9 @@ mod Ring {
     pub def mendAmount(equipped: Option[RingResource]): Int32 =
         equipped |> Option.map(mendPower) |> Option.getWithDefault(0)
 
-    /// 指輪 1 個の Lifesteal 回復量（Lifesteal 以外は 0）。
+    /// 指輪 1 個の Lifesteal 回復量（Lifesteal 以外は 0）。effectRule があればその amount に追従。
     def lifestealPower(ring: RingResource): Int32 = match ring#effect {
-        case RingEffect.Lifesteal => ring#power
+        case RingEffect.Lifesteal => amountOf(ring)
         case _                    => 0
     }
 
