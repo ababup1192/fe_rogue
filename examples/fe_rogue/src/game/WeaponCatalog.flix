@@ -157,7 +157,8 @@ mod WeaponCatalog {
         effect      = WeaponEffect,
         effectValue = Int32,
         sprite      = WeaponSpriteResource,
-        description = String
+        description = String,
+        effectRule  = Option[Util.Json.Json]
     }
 
     // ────────────────────────────────────────────────────────
@@ -201,7 +202,7 @@ mod WeaponCatalog {
     /// schema 検査用の expected key 集合（`CatalogContainer.loadWithCheck` に渡す）。
     pub def expectedFields(): Set[String] =
         Set#{"name", "attack", "hit", "crit", "durability", "range", "weaponType",
-             "effect", "effectValue", "sprite", "description"}
+             "effect", "effectValue", "sprite", "description", "effectRule"}
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -231,7 +232,7 @@ mod WeaponCatalogCodec {
     /// `WeaponResource` を `weapons.json` エントリ形式の `JObject` に変換する。
     /// `Saveable[WeaponCatalog].toJson` 経由で `CatalogContainer.encode` に渡される。
     pub def encodeWeapon(weapon: WeaponResource): Json =
-        JObject(Map#{
+        let base = Map#{
             "name"        => JString(weapon#name),
             "attack"      => JNumber(intToBd(weapon#attack)),
             "hit"         => JNumber(intToBd(weapon#hit)),
@@ -243,7 +244,11 @@ mod WeaponCatalogCodec {
             "effectValue" => JNumber(intToBd(weapon#effectValue)),
             "sprite"      => encodeSprite(weapon#sprite),
             "description" => JString(weapon#description)
-        })
+        };
+        match weapon#effectRule {
+            case Some(j) => JObject(Map.insert("effectRule", j, base))
+            case None    => JObject(base)
+        }
 
     def encodeRange(range: WeaponRange): Json =
         JObject(Map#{
@@ -317,7 +322,8 @@ mod WeaponCatalogCodec {
                         |> Option.getWithDefault(0);
             ({name = name, attack = atk, hit = hit, crit = crit, durability = dur, range = rng,
               weaponType = wt, effect = effect, effectValue = effectValue,
-              sprite = sp, description = desc}: WeaponResource)
+              sprite = sp, description = desc,
+              effectRule = Map.get("effectRule", obj)}: WeaponResource)
         }
 
     /// case 名文字列から `WeaponType` に。旧データの `"Physical"` は剣として読み替え、

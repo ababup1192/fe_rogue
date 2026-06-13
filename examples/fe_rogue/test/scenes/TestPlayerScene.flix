@@ -779,7 +779,8 @@ mod TestPlayerScene {
         sprite      = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                         offset = {x = 0.0, y = 0.0},
                         scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
-        description = ""
+        description = "",
+        effectRule = None
     }
 
     /// 装備中の武器（先頭）と装備中の指輪（ringEquipped 時の先頭）は対象外。

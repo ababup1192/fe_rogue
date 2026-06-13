@@ -211,7 +211,7 @@ mod TestStaff {
          sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                      offset = {x = 0.0, y = 0.0},
                      scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
-         description = ""}
+         description = "", effectRule = None}
 
     /// 3 タプルの要素取り出し（Flix 標準には 3 タプル用 fst/snd/trd がないため局所定義）
     def fst3(t: (a, b, c)): a = match t { case (a, _, _) => a }

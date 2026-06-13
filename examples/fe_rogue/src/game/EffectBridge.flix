@@ -224,16 +224,10 @@ mod EffectBridge {
     pub def fromComposer(simple: Json): Option[EffectRule.EffectRule] =
         EffectRuleCodec.decodeRule(simpleToFull(simple))
 
-    /// 消費アイテムの説明文。effectRule があれば DSL から組み上げた日本語1文を返し、
-    /// 無ければ従来の description を返す（ゲームのアイテム詳細表示に使う）。
-    pub def consumableEffectText(item: ConsumableResource): String =
-        match item#effectRule {
-            case Some(j) => match fromComposer(j) {
-                case Some(rule) => EffectRule.previewRule(rule)
-                case None       => item#description
-            }
-            case None => item#description
-        }
+    /// effectRule（任意）から DSL の日本語1文を作る。無効/無しなら None。
+    /// アイテム詳細の「効果行」に使う（無ければ各 statLine にフォールバック）。全アイテム共通。
+    pub def effectSentence(effectRule: Option[Json]): Option[String] =
+        effectRule |> Option.flatMap(fromComposer) |> Option.map(EffectRule.previewRule)
 
     def simpleToFull(simple: Json): Json =
         let obj = match simple {

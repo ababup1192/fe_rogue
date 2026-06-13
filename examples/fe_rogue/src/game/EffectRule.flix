@@ -237,10 +237,23 @@ mod EffectRule {
         let durPart = if (String.isEmpty(dur)) "" else "${dur}、";
         "${durPart}${opClause(a#op, a#amount, targetJa(a#to))}"
 
-    def deliverJa(ds: List[Deliver]): String =
-        if (List.memberOf(Deliver.DeliverThrow, ds)) "投げて、"
-        else if (List.memberOf(Deliver.DeliverSelf, ds)) "使用すると、"
-        else ""
+    /// 文頭の導入句。トリガーで決まる（onUse のときだけ配送 self/throw で「使用すると/投げて」を出し分け）。
+    /// onEquip は継続句「装備しているあいだ」が時制を担うので導入句なし。
+    def leadInJa(trigger: Trigger, ds: List[Deliver]): String = match trigger {
+        case Trigger.OnUse =>
+            if (List.memberOf(Deliver.DeliverThrow, ds)) "投げて、"
+            else if (List.memberOf(Deliver.DeliverSelf, ds)) "使用すると、"
+            else ""
+        case Trigger.OnEquip     => ""
+        case Trigger.OnTurnStart => "自分のターンの始めに、"
+        case Trigger.OnKill      => "敵を倒すと、"
+        case Trigger.OnDeath     => "倒れたとき、"
+        case Trigger.OnHit       => "攻撃が当たると、"
+        case Trigger.OnAttack    => "攻撃するとき、"
+        case Trigger.OnCast      => "唱えると、"
+        case Trigger.OnDamaged   => "ダメージを受けると、"
+        case Trigger.OnEnemyTurn => "敵のターンに、"
+    }
 
     def flowJa(f: Flow): String = match f {
         case Flow.FollowUp(FollowKind.Brave)   => "速さが相手より速ければ、もう一度攻撃する"
@@ -255,7 +268,7 @@ mod EffectRule {
             let body = rule#actions
                         |> List.map(actionJa)
                         |> String.intercalate("、さらに ");
-            "${deliverJa(rule#deliver)}${body}。"
+            "${leadInJa(rule#trigger, rule#deliver)}${body}。"
     }
 
     // ════════════════════════════════════════════════════════

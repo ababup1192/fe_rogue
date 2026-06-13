@@ -168,7 +168,8 @@ mod TestUnitFixtures {
         effect      = WeaponCatalog.WeaponEffect.NoEffect,
         effectValue = 0,
         sprite     = testSprite(),
-        description = ""
+        description = "",
+        effectRule = None
     }
 
     /// 攻撃力 / 耐久度を明示したい時用のテスト用 WeaponResource。射程は 1-1 固定、剣 (物理武器) 扱い。
@@ -183,7 +184,8 @@ mod TestUnitFixtures {
         effect      = WeaponCatalog.WeaponEffect.NoEffect,
         effectValue = 0,
         sprite     = testSprite(),
-        description = ""
+        description = "",
+        effectRule = None
     }
 
     /// 物理/魔法トグルを切り替えたい時用のテスト用 WeaponResource。射程は 1-1 固定、耐久 10。
@@ -199,7 +201,8 @@ mod TestUnitFixtures {
         effect      = WeaponCatalog.WeaponEffect.NoEffect,
         effectValue = 0,
         sprite     = testSprite(),
-        description = ""
+        description = "",
+        effectRule = None
     }
 
     /// テスト用の sprite。テクスチャ名やフレームは戦闘ロジックに影響しないのでダミー値。

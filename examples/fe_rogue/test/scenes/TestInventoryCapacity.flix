@@ -21,7 +21,8 @@ mod TestInventoryCapacity {
         effect     = Staff.StaffEffect.Heal,
         durability = 3,
         sprite     = testSprite(),
-        description = ""
+        description = "",
+        effectRule = None
     }
 
     /// テスト用の消費アイテム 1 個。容量カウントだけが目的なのでダミー値。

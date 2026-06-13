@@ -67,7 +67,8 @@ mod Staff {
         effect      = StaffEffect,
         durability  = Int32,
         sprite      = SpriteResource,
-        description = String
+        description = String,
+        effectRule  = Option[Util.Json.Json]
     }
 
     /// 杖カタログ全体。`CatalogContainer[StaffResource]` を wrap して `Saveable` を持たせる。
@@ -184,7 +185,7 @@ mod Staff {
     /// schema との照合で「型定義と JSON schema の乖離」を起動時に発覚させる不変条件として機能する。
     // 実際の照合は engine の Resource.checkConsistency が担う。
     pub def expectedFields(): Set[String] =
-        Set#{"name", "effect", "durability", "sprite", "description"}
+        Set#{"name", "effect", "durability", "sprite", "description", "effectRule"}
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -211,13 +212,17 @@ mod StaffCatalogCodec {
     use Sprite.SpriteResource
 
     pub def encodeStaff(staff: StaffResource): Json =
-        JObject(Map#{
+        let base = Map#{
             "name"        => JString(staff#name),
             "effect"      => JString(Staff.effectToString(staff#effect)),
             "durability"  => JNumber(intToBd(staff#durability)),
             "sprite"      => encodeSprite(staff#sprite),
             "description" => JString(staff#description)
-        })
+        };
+        match staff#effectRule {
+            case Some(j) => JObject(Map.insert("effectRule", j, base))
+            case None    => JObject(base)
+        }
 
     def encodeSprite(sprite: SpriteResource): Json =
         JObject(Map#{
@@ -246,7 +251,8 @@ mod StaffCatalogCodec {
                         |> Option.flatMap(expectString)
                         |> Option.getWithDefault("");
             ({name = name, effect = effect, durability = dur,
-               sprite = sprite, description = desc}: StaffResource)
+               sprite = sprite, description = desc,
+               effectRule = Map.get("effectRule", obj)}: StaffResource)
         }
 
     def decodeSprite(element: Json): Option[SpriteResource] =

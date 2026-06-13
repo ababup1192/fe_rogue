@@ -29,7 +29,8 @@ mod TestWeaponCatalog {
         effect      = WeaponCatalog.WeaponEffect.NoEffect,
         effectValue = 0,
         sprite     = testSprite(),
-        description = "くんれん用の槍"
+        description = "くんれん用の槍",
+        effectRule = None
     }
 
     def testSprite(): WeaponSpriteResource = {

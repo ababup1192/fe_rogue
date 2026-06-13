@@ -255,26 +255,30 @@ mod ItemMenuScene {
                    rings: List[Ring.RingResource]):
             Option[ItemDetail] =
         match kind {
+            // 全種共通: 効果行 = effectRule から組んだ DSL 文（無ければ従来の統計行）、説明 = フレーバー。
             case PlayerData.ItemKind.Weapon(idx) =>
                 List.nth(idx, weapons) |> Option.map(weapon ->
-                    {name = weapon#name, stats = weaponStatLine(weapon),
+                    {name = weapon#name,
+                     stats = EffectBridge.effectSentence(weapon#effectRule)
+                                 |> Option.getWithDefault(weaponStatLine(weapon)),
                      desc = weapon#description, sprite = weapon#sprite})
             case PlayerData.ItemKind.Staff(idx) =>
                 List.nth(idx, staves) |> Option.map(staff ->
-                    {name = staff#name, stats = staffStatLine(staff),
+                    {name = staff#name,
+                     stats = EffectBridge.effectSentence(staff#effectRule)
+                                 |> Option.getWithDefault(staffStatLine(staff)),
                      desc = staff#description, sprite = staff#sprite})
             case PlayerData.ItemKind.Consumable(idx) =>
                 List.nth(idx, consumables) |> Option.map(item ->
-                    // 効果行 = effectRule から組んだ DSL 文（無ければ従来の攻+4 等）、説明 = フレーバー。
                     {name = item#name,
-                     stats = match item#effectRule {
-                         case Some(_) => EffectBridge.consumableEffectText(item)
-                         case None    => consumableStatLine(item)
-                     },
+                     stats = EffectBridge.effectSentence(item#effectRule)
+                                 |> Option.getWithDefault(consumableStatLine(item)),
                      desc = item#description, sprite = item#sprite})
             case PlayerData.ItemKind.Ring(idx) =>
                 List.nth(idx, rings) |> Option.map(ring ->
-                    {name = ring#name, stats = ringStatLine(ring),
+                    {name = ring#name,
+                     stats = EffectBridge.effectSentence(ring#effectRule)
+                                 |> Option.getWithDefault(ringStatLine(ring)),
                      desc = ring#description, sprite = ring#sprite})
         }
 

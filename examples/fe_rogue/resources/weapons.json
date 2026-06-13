@@ -23,7 +23,7 @@
     },
     "bronze_axe": {
       "attack": 3,
-      "description": "扱いやすい銅の斧。命中重視の入門装備",
+      "description": "銅特有の鈍い輝き。新兵が最初に握る、頼れる相棒。",
       "durability": 20,
       "hit": 70,
       "name": "どうのおの",
@@ -41,7 +41,7 @@
     },
     "bronze_bow": {
       "attack": 2,
-      "description": "軽い銅の弓。離れた敵を確実に狙える",
+      "description": "軽くしなる銅の弓。弦は遠い風の匂いを覚えている。",
       "durability": 20,
       "hit": 90,
       "name": "どうの弓",
@@ -59,7 +59,7 @@
     },
     "bronze_lance": {
       "attack": 2,
-      "description": "素直な銅の槍。剣に強い間合い武器",
+      "description": "まっすぐで素直な銅の槍。穂先に映る空がやけに青い。",
       "durability": 20,
       "hit": 80,
       "name": "どうのやり",
@@ -77,7 +77,7 @@
     },
     "bronze_sword": {
       "attack": 1,
-      "description": "命中の高い銅の剣。最初の一振りに最適",
+      "description": "手に馴染む銅の冷たさ。初陣の緊張をそっと和らげる。",
       "durability": 20,
       "hit": 90,
       "name": "どうの剣",
@@ -96,7 +96,7 @@
     "demon_axe": {
       "attack": 13,
       "crit": 10,
-      "description": "威力が高く必殺も出るが命中が低い、悪魔の斧",
+      "description": "柄を握ると、遠くで誰かが低く笑った気がする。",
       "durability": 15,
       "effect": "NoEffect",
       "effectValue": 0,
@@ -158,7 +158,7 @@
     },
     "iron_axe": {
       "attack": 7,
-      "description": "標準的な鉄の斧。力で押し込む一撃",
+      "description": "ずしりと重い鉄の塊。振り下ろすたび大地が応える。",
       "durability": 10,
       "hit": 65,
       "name": "てつのおの",
@@ -176,7 +176,7 @@
     },
     "iron_bow": {
       "attack": 6,
-      "description": "頼れる鉄の弓。安定した遠距離攻撃",
+      "description": "黒鉄の弓身。引き絞る音さえ頼もしい。",
       "durability": 10,
       "hit": 80,
       "name": "てつの弓",
@@ -194,7 +194,7 @@
     },
     "iron_lance": {
       "attack": 7,
-      "description": "扱いやすい鉄の槍。攻守の要となる",
+      "description": "飾り気はないが裏切らない。兵站係の一番人気。",
       "durability": 10,
       "hit": 70,
       "name": "てつのやり",
@@ -212,7 +212,7 @@
     },
     "iron_sword": {
       "attack": 5,
-      "description": "バランスのよい鉄の剣。万能の一本",
+      "description": "名もなき鍛冶の自信作。どんな手にも応える万能。",
       "durability": 10,
       "hit": 85,
       "name": "てつの剣",
@@ -231,7 +231,7 @@
     "keen_lance": {
       "attack": 9,
       "crit": 7,
-      "description": "鋭い穂先の槍。急所を突く",
+      "description": "穂先だけ妙に手入れされている。急所を知る槍。",
       "durability": 10,
       "hit": 70,
       "name": "つらぬきのやり",
@@ -250,7 +250,7 @@
     "killing_edge": {
       "attack": 8,
       "crit": 10,
-      "description": "必殺率の高い剣。会心の一撃を狙う",
+      "description": "刃が薄く、息を呑むほど鋭い。会心を呼ぶ一振り。",
       "durability": 10,
       "hit": 75,
       "name": "キルソード",
@@ -268,7 +268,7 @@
     },
     "mithril_axe": {
       "attack": 17,
-      "description": "伝説の金属の斧。圧倒的な破壊力を誇る",
+      "description": "月光を溶かした金属。重さを感じさせない神話の斧。",
       "durability": 8,
       "hit": 75,
       "name": "ミスリルのおの",
@@ -286,7 +286,7 @@
     },
     "mithril_bow": {
       "attack": 15,
-      "description": "神秘の金属の弓。高命中の遠距離砲",
+      "description": "弦を弾くと澄んだ音が長く尾を引く。",
       "durability": 8,
       "hit": 90,
       "name": "ミスリルの弓",
@@ -304,7 +304,7 @@
     },
     "mithril_lance": {
       "attack": 16,
-      "description": "最高峰の槍。鋭く敵を貫く一撃",
+      "description": "触れた指が冷たく痺れる、神話の穂先。",
       "durability": 8,
       "hit": 85,
       "name": "ミスリルのやり",
@@ -322,7 +322,7 @@
     },
     "mithril_sword": {
       "attack": 14,
-      "description": "究極の剣。高命中と高威力を両立する",
+      "description": "鏡のような刀身に、振るう者の覚悟が映る。",
       "durability": 8,
       "hit": 95,
       "name": "ミスリルの剣",
@@ -361,7 +361,7 @@
     },
     "silver_axe": {
       "attack": 14,
-      "description": "銀の斧。高威力だが壊れやすい",
+      "description": "惚れ惚れする銀光。美しいが、長くは保たない。",
       "durability": 5,
       "hit": 70,
       "name": "ぎんのおの",
@@ -379,7 +379,7 @@
     },
     "silver_bow": {
       "attack": 12,
-      "description": "銀の弓。強力だが寿命は短い",
+      "description": "銀の弦が放つ一矢は鋭い。ただ、すぐ音を上げる。",
       "durability": 5,
       "hit": 85,
       "name": "ぎんの弓",
@@ -397,7 +397,7 @@
     },
     "silver_lance": {
       "attack": 13,
-      "description": "銀の槍。鋭い一撃を放つが脆い",
+      "description": "月夜に映える白銀。儚くも美しい一突き。",
       "durability": 5,
       "hit": 80,
       "name": "ぎんのやり",
@@ -415,7 +415,7 @@
     },
     "silver_sword": {
       "attack": 11,
-      "description": "銀の剣。高い命中と威力を備えた名品",
+      "description": "貴族の護身刀。見栄えと切れ味、どちらも一級。",
       "durability": 5,
       "hit": 90,
       "name": "ぎんの剣",
@@ -433,7 +433,7 @@
     },
     "steel_axe": {
       "attack": 11,
-      "description": "重い鋼の斧。当てにくいが一撃が重い",
+      "description": "黒光りする鋼塊。当てれば必ず後悔させる。",
       "durability": 12,
       "hit": 60,
       "name": "はがねのおの",
@@ -451,7 +451,7 @@
     },
     "steel_bow": {
       "attack": 9,
-      "description": "頑丈な鋼の弓。威力重視の遠距離武器",
+      "description": "太い鋼の弓身。引くのに腕力が要る、本気の弓。",
       "durability": 12,
       "hit": 75,
       "name": "はがねの弓",
@@ -469,7 +469,7 @@
     },
     "steel_lance": {
       "attack": 10,
-      "description": "重厚な鋼の槍。力で押し切る一本",
+      "description": "重厚で揺るがない。壁のような安心感。",
       "durability": 12,
       "hit": 65,
       "name": "はがねのやり",
@@ -487,7 +487,7 @@
     },
     "steel_sword": {
       "attack": 8,
-      "description": "重い鋼の剣。威力を取った実戦向き",
+      "description": "武骨だが信頼できる。実戦が選んだ一本。",
       "durability": 12,
       "hit": 80,
       "name": "はがねの剣",
@@ -506,7 +506,7 @@
     "swift_dagger": {
       "attack": 4,
       "crit": 3,
-      "description": "軽く素早い短剣。たまに会心を生む",
+      "description": "羽のように軽い。風を切る音が心地よい。",
       "durability": 14,
       "hit": 85,
       "name": "しっぷうのつるぎ",
@@ -545,7 +545,7 @@
     },
     "tome_apprentice": {
       "attack": 3,
-      "description": "初歩の魔導書。魔防を突く遠近両用",
+      "description": "落書きだらけの初級書。それでも魔力は本物。",
       "durability": 20,
       "hit": 90,
       "name": "見習いの魔導書",
@@ -563,7 +563,7 @@
     },
     "tome_archsage": {
       "attack": 12,
-      "description": "大賢者の秘奥。絶大な魔力を放つ",
+      "description": "ページから知の重みが滲む。開くだけで肌が粟立つ。",
       "durability": 5,
       "hit": 85,
       "name": "大賢者の魔導書",
@@ -581,7 +581,7 @@
     },
     "tome_grimoire": {
       "attack": 6,
-      "description": "標準の魔導書。安定した魔法攻撃",
+      "description": "標準的な術式集。一冊あれば、まず困らない。",
       "durability": 8,
       "hit": 90,
       "name": "魔導書",
@@ -599,7 +599,7 @@
     },
     "tome_sage": {
       "attack": 9,
-      "description": "賢者の魔導書。高い魔力を誇る",
+      "description": "古びた革表紙の奥に、静かな力が眠る。",
       "durability": 6,
       "hit": 85,
       "name": "賢者の魔導書",

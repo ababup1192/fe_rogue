@@ -15,7 +15,7 @@ mod TestRing {
         {name = "テスト指輪", effect = effect, power = power,
          description = "",
          sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0,
-                   offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false}}
+                   offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false}, effectRule = None}
 
     // ════════════════════════════════════════════════════════
     // bonuses: 装備中指輪のステータス補正（命中・必殺は触らない）

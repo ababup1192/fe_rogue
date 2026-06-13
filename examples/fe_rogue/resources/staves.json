@@ -1,7 +1,7 @@
 {
   "staves": {
     "bind_staff": {
-      "description": "使ったとき、当たった相手を 完全に動けなくする（攻撃を受けるまで）。（演出: ダメージ音）",
+      "description": "振ると空気が固まり、相手は縫い留められたように動けない。",
       "durability": 5,
       "effect": "Bind",
       "effectRule": {
@@ -23,7 +23,7 @@
       }
     },
     "blowback_staff": {
-      "description": "相手が壁かキャラクターに当たるまで、吹き飛ぶ 1ダメージ与える",
+      "description": "ひと振りで突風。相手は壁まで一直線。",
       "durability": 5,
       "effect": "Blowback",
       "name": "ふきとばしのつえ",
@@ -35,7 +35,7 @@
       }
     },
     "live_staff": {
-      "description": "魔力+10だけHPを回復する",
+      "description": "柔らかな光がこぼれ、傷を優しく閉じていく。",
       "durability": 8,
       "effect": "Heal",
       "name": "かいふくのつえ",
@@ -47,7 +47,7 @@
       }
     },
     "stopgap_staff": {
-      "description": "射線の相手を止め、階段へワープさせる",
+      "description": "相手を止め、そっと階段へ送り出す。問題は先送り。",
       "durability": 3,
       "effect": "Stopgap",
       "name": "一時しのぎの杖",
@@ -59,7 +59,7 @@
       }
     },
     "swap_staff": {
-      "description": "当たった対象との位置を入れ替える",
+      "description": "軽く振れば、自分と相手の立ち位置がくるりと入れ替わる。",
       "durability": 5,
       "effect": "Swap",
       "name": "いれかえのつえ",

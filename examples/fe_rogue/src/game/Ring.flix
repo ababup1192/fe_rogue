@@ -51,7 +51,9 @@ mod Ring {
         effect      = RingEffect,
         power       = Int32,
         sprite      = SpriteResource,
-        description = String
+        description = String,
+        // IDE 合成エディタが書く効果ルール（簡易形式 JSON）。表示の効果文に使う。
+        effectRule  = Option[Util.Json.Json]
     }
 
     /// 装備中指輪が攻守ステータスに与える補正。Power/Swift/Guard のみ非 0。
@@ -184,7 +186,7 @@ mod Ring {
 
     /// `RingResource` のフィールド名集合。schema との照合で乖離を起動時に発覚させる。
     pub def expectedFields(): Set[String] =
-        Set#{"name", "effect", "power", "sprite", "description"}
+        Set#{"name", "effect", "power", "sprite", "description", "effectRule"}
 }
 
 // container の巡回・schema 検査は CatalogContainer に委譲し、ここは wrap のみ。
@@ -208,13 +210,17 @@ mod RingCatalogCodec {
     use Sprite.SpriteResource
 
     pub def encodeRing(ring: RingResource): Json =
-        JObject(Map#{
+        let base = Map#{
             "name"        => JString(ring#name),
             "effect"      => JString(Ring.effectToString(ring#effect)),
             "power"       => JNumber(intToBd(ring#power)),
             "sprite"      => encodeSprite(ring#sprite),
             "description" => JString(ring#description)
-        })
+        };
+        match ring#effectRule {
+            case Some(j) => JObject(Map.insert("effectRule", j, base))
+            case None    => JObject(base)
+        }
 
     def encodeSprite(sprite: SpriteResource): Json =
         JObject(Map#{
@@ -243,7 +249,8 @@ mod RingCatalogCodec {
             let desc = Map.get("description", obj)
                         |> Option.flatMap(expectString) |> Option.getWithDefault("");
             ({name = name, effect = effect, power = power,
-               sprite = sprite, description = desc}: RingResource)
+               sprite = sprite, description = desc,
+               effectRule = Map.get("effectRule", obj)}: RingResource)
         }
 
     def decodeSprite(element: Json): Option[SpriteResource] =
