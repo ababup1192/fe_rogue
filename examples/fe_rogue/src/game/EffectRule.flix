@@ -239,9 +239,10 @@ mod EffectRule {
 
     /// 文頭の導入句。トリガーで決まる（onUse のときだけ配送 self/throw で「使用すると/投げて」を出し分け）。
     /// onEquip は継続句「装備しているあいだ」が時制を担うので導入句なし。
-    def leadInJa(trigger: Trigger, ds: List[Deliver]): String = match trigger {
+    /// `throwLead` は throw 配送の動詞（消費=「投げて、」杖=「杖をふって、」とアイテム種で替える）。
+    def leadInJa(trigger: Trigger, ds: List[Deliver], throwLead: String): String = match trigger {
         case Trigger.OnUse =>
-            if (List.memberOf(Deliver.DeliverThrow, ds)) "投げて、"
+            if (List.memberOf(Deliver.DeliverThrow, ds)) throwLead
             else if (List.memberOf(Deliver.DeliverSelf, ds)) "使用すると、"
             else ""
         case Trigger.OnEquip     => ""
@@ -262,13 +263,18 @@ mod EffectRule {
     }
 
     /// 効果ルールを日本語1文にする。flow があれば flow 文、なければ deliver + actions 文。
-    pub def previewRule(rule: EffectRule): String = match rule#flow {
+    /// 既定の throw 動詞は「投げて、」。杖など別の動詞を出したいときは `previewRuleWith`。
+    pub def previewRule(rule: EffectRule): String =
+        previewRuleWith(rule, "投げて、")
+
+    /// `previewRule` の throw 配送動詞を差し替えられる版（杖＝「杖をふって、」など）。
+    pub def previewRuleWith(rule: EffectRule, throwLead: String): String = match rule#flow {
         case Some(f) => flowJa(f)
         case None =>
             let body = rule#actions
                         |> List.map(actionJa)
                         |> String.intercalate("、さらに ");
-            "${leadInJa(rule#trigger, rule#deliver)}${body}。"
+            "${leadInJa(rule#trigger, rule#deliver, throwLead)}${body}。"
     }
 
     // ════════════════════════════════════════════════════════

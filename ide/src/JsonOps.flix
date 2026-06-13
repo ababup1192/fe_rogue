@@ -223,7 +223,6 @@ mod JsonOps {
 
     /// JSON 要素の idx 番目の子を返す。
     /// - type が "Container" の JObject は layout 配下の実ノード列の idx 番目を返す
-    ///   (SceneTreeModel.jsonChildrenOf と同じ規約)
     /// - その他の JObject は "children" 配列の idx 番目
     /// - JArray は idx 番目の要素
     /// - それ以外や範囲外は None
@@ -242,17 +241,6 @@ mod JsonOps {
                 }
             case JArray(items) => List.nth(idx, Vector.toList(items))
             case _ => None
-        }
-
-    /// JSON 要素が type=="Container" の JObject か判定する
-    pub def isContainerJson(elem: Util.Json.Json): Bool =
-        match elem {
-            case JObject(map) =>
-                match Map.get("type", map) {
-                    case Some(JString("Container")) => true
-                    case _ => false
-                }
-            case _ => false
         }
 
     /// JSON 要素が engine の scene tree には現れない「透過ノード」か判定する。
@@ -278,16 +266,6 @@ mod JsonOps {
         match Map.get("layout", map) {
             case Some(JObject(layoutMap)) => layoutChildren(layoutMap)
             case _ => Nil
-        }
-
-    /// 透過 JObject の「直接の子」列を返す。
-    /// - Container: layout 配下 (containerInnerChildren と同じ)
-    /// - Panel / HBoxContainer / VBoxContainer: 自身の "children"
-    /// - MarginContainer / CenterContainer: 自身の "child" を 1 要素リストにラップ
-    pub def transparentInnerChildren(map: Map[String, Util.Json.Json]): List[Util.Json.Json] =
-        match Map.get("type", map) {
-            case Some(JString("Container")) => containerInnerChildren(map)
-            case _                             => layoutChildren(map)
         }
 
     /// Layout JSON の kind に応じた子ノード列。

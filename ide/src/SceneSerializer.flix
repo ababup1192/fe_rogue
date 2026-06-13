@@ -73,12 +73,6 @@ mod SceneSerializer {
     // 公開 API — 単一フィールド更新（Scalar）
     // ========================================================================
 
-    /// 指定ノードの "fontSize" を上書きする（Label2D のリサイズ用）
-    pub def updateFontSize(jsonPath: String, nodePath: NodePath, newFontSize: Float64):
-            Unit \ {Fs.FileRead, Fs.FileWrite} =
-        updateFields(jsonPath, nodePath,
-            {key = "fontSize", value = FieldValue.ScalarValue(newFontSize)} :: Nil)
-
     /// 指定ノードの "rotation" を上書きする（radians）。回転編集用
     pub def updateRotation(jsonPath: String, nodePath: NodePath, newRotation: Float64):
             Unit \ {Fs.FileRead, Fs.FileWrite} =

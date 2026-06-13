@@ -385,35 +385,6 @@ mod NodeInspector {
         SceneTreeNode.SNode(leaf, path, children)
     }
 
-    /// 選択 node の終端クラス名を返す。Selected: 行などで使う
-    pub def classNameOf(node: EngineNode[Unit]): String = match node {
-        case EngineNode.Sprite2DWithState(_, _)         => "Sprite2D"
-        case EngineNode.Area2DWithState(_, _)           => "Area2D"
-        case EngineNode.Body2DWithState(_, _)           => "CharacterBody2D"
-        case EngineNode.RigidBody2DWithState(_, _)      => "RigidBody2D"
-        case EngineNode.AnimSprite2DWithState(_, _)     => "AnimatedSprite2D"
-        case EngineNode.Label2DWithState(_, _)          => "Label2D"
-        case EngineNode.RichTextLabelWithState(_, _)    => "RichTextLabel"
-        case EngineNode.Marker2DWithState(_, _)         => "Marker2D"
-        case EngineNode.Path2DWithState(_, _)           => "Path2D"
-        case EngineNode.ScreenNotifier2DWithState(_, _) => "VisibleOnScreenNotifier2D"
-        case EngineNode.TimerWithState(_, _)            => "Timer"
-        case EngineNode.ColorRectWithState(_, _)        => "ColorRect"
-        case EngineNode.GPUParticles2DWithState(_, _)   => "GPUParticles2D"
-        case EngineNode.CanvasLayerWithState(_, _)      => "CanvasLayer"
-        case EngineNode.ControlWithState(_, _)          => "Control"
-        case EngineNode.ButtonWithState(_, _)           => "Button"
-        case EngineNode.TextureButtonWithState(_, _)    => "TextureButton"
-        case EngineNode.TextureRectWithState(_, _)      => "TextureRect"
-        case EngineNode.Camera2DWithState(_, _)         => "Camera2D"
-        case EngineNode.StaticBody2DWithState(_, _)     => "StaticBody2D"
-        case EngineNode.TileMapLayerWithState(_, _)     => "TileMapLayer"
-        case EngineNode.PanelWithState(_, _)            => "Panel"
-        case EngineNode.ProgressBarWithState(_, _)      => "ProgressBar"
-        case EngineNode.AudioStreamPlayerWithState(_, _) => "AudioStreamPlayer"
-        case _                                          => "Node2D"
-    }
-
     /// Node2D 共通: position / scale / rotation。
     /// 大抵の node はこれだけで間に合う
     def node2DCommon(): List[FieldDef] =

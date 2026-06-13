@@ -226,8 +226,9 @@ mod EffectBridge {
 
     /// effectRule（任意）から DSL の日本語1文を作る。無効/無しなら None。
     /// アイテム詳細の「効果行」に使う（無ければ各 statLine にフォールバック）。全アイテム共通。
-    pub def effectSentence(effectRule: Option[Json]): Option[String] =
-        effectRule |> Option.flatMap(fromComposer) |> Option.map(EffectRule.previewRule)
+    /// `throwLead` は throw 配送の動詞（消費=「投げて、」杖=「杖をふって、」）。
+    pub def effectSentence(effectRule: Option[Json], throwLead: String): Option[String] =
+        effectRule |> Option.flatMap(fromComposer) |> Option.map(r -> EffectRule.previewRuleWith(r, throwLead))
 
     def simpleToFull(simple: Json): Json =
         let obj = match simple {

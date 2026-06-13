@@ -57,9 +57,6 @@ mod ResourceState {
     pub def setDiscovered(state: ResourceState, entries: List[ResourceEntry]): Unit \ IO =
         Array.put(entries, 0, state#discoveredRef)
 
-    pub def getDiscovered(state: ResourceState): List[ResourceEntry] \ IO =
-        Array.get(0, state#discoveredRef)
-
     pub def setSelectedDataPath(state: ResourceState, path: Option[String]): Unit \ IO =
         Array.put(path, 0, state#selectedDataPathRef)
 
@@ -89,14 +86,8 @@ mod ResourceState {
     pub def setEditingSchemaJson(state: ResourceState, json: Option[Util.Json.Json]): Unit \ IO =
         Array.put(json, 0, state#editingSchemaJsonRef)
 
-    pub def getEditingSchemaJson(state: ResourceState): Option[Util.Json.Json] \ IO =
-        Array.get(0, state#editingSchemaJsonRef)
-
     pub def setDirty(state: ResourceState, dirty: Bool): Unit \ IO =
         Array.put(dirty, 0, state#dirtyRef)
-
-    pub def isDirty(state: ResourceState): Bool \ IO =
-        Array.get(0, state#dirtyRef)
 
     pub def setPreviewZoom(state: ResourceState, mode: PropertyWidgets.ZoomMode): Unit \ IO =
         Array.put(mode, 0, state#previewZoomRef)

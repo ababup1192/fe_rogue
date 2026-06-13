@@ -90,9 +90,6 @@ mod Editor {
         rootJsonIndex = rootJsonIndex
     }
 
-    /// エディタが現在 ON かどうかを返す。gameLoop からゲーム更新を止めるか判断するのに使う
-    pub def isOn(): Bool \ EditorState = (EditorState.get())#on
-
     /// scene.json ルート索引を構築する。Game.start から 1 回だけ呼ぶ
     pub def loadJsonRootIndex(): Map[NodeName, String] \ {Fs.Glob, Fs.FileRead} =
         SceneJsonIndex.load()

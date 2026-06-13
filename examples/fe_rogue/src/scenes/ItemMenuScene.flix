@@ -259,25 +259,25 @@ mod ItemMenuScene {
             case PlayerData.ItemKind.Weapon(idx) =>
                 List.nth(idx, weapons) |> Option.map(weapon ->
                     {name = weapon#name,
-                     stats = EffectBridge.effectSentence(weapon#effectRule)
+                     stats = EffectBridge.effectSentence(weapon#effectRule, "投げて、")
                                  |> Option.getWithDefault(weaponStatLine(weapon)),
                      desc = weapon#description, sprite = weapon#sprite})
             case PlayerData.ItemKind.Staff(idx) =>
                 List.nth(idx, staves) |> Option.map(staff ->
                     {name = staff#name,
-                     stats = EffectBridge.effectSentence(staff#effectRule)
+                     stats = EffectBridge.effectSentence(staff#effectRule, "杖をふって、")
                                  |> Option.getWithDefault(staffStatLine(staff)),
                      desc = staff#description, sprite = staff#sprite})
             case PlayerData.ItemKind.Consumable(idx) =>
                 List.nth(idx, consumables) |> Option.map(item ->
                     {name = item#name,
-                     stats = EffectBridge.effectSentence(item#effectRule)
+                     stats = EffectBridge.effectSentence(item#effectRule, "投げて、")
                                  |> Option.getWithDefault(consumableStatLine(item)),
                      desc = item#description, sprite = item#sprite})
             case PlayerData.ItemKind.Ring(idx) =>
                 List.nth(idx, rings) |> Option.map(ring ->
                     {name = ring#name,
-                     stats = EffectBridge.effectSentence(ring#effectRule)
+                     stats = EffectBridge.effectSentence(ring#effectRule, "投げて、")
                                  |> Option.getWithDefault(ringStatLine(ring)),
                      desc = ring#description, sprite = ring#sprite})
         }
@@ -286,11 +286,29 @@ mod ItemMenuScene {
     /// 説明文は幅で折り返す。アイコンは sprite の atlas 情報を Sprite2D に写し、表示にする。
     /// 全 item アトラスはセル 16×16 なので、Sprite2D 側の固定 scale で見た目サイズが揃う。
     def applyDetail(detail: ItemDetail, scene: Scene[NodeTag]): Scene[NodeTag] =
-        scene
+        // 効果文（stats）も説明（desc）と同じく幅で折り返す。DSL 文は長くなりがちで、
+        // 折り返さないとパネル右端を突き抜けるため。
+        let wrappedStats = wrapText(detailWrapWidth(), detail#stats);
+        let statsLines = 1 + (String.toList(wrappedStats) |> List.count(c -> c == '\n'));
+        let withStats = scene
             |> Label2D.mapAt(detailNamePath(), Label2D.setText(detail#name))
-            |> Label2D.mapAt(detailStatsPath(), Label2D.setText(detail#stats))
-            |> Label2D.mapAt(detailDescPath(),
-                Label2D.setText(wrapText(detailWrapWidth(), detail#desc)))
+            |> Label2D.mapAt(detailStatsPath(), Label2D.setText(wrappedStats));
+        // 折り返して増えた行数のぶん説明を下にずらし、効果文との重なりを防ぐ。
+        // desc 先頭 y = stats 先頭 y + stats ブロック高 + 1 行ぶんの空き。
+        // stats が 1 行なら scene.json の元配置（y=26 相当）と一致する。
+        let descTop = Label2D.getAt(detailStatsPath(), withStats)
+            |> Option.map(s -> {
+                let h     = Label2D.measure(s)#y;
+                let lineH = h / Int32.toFloat64(Int32.max(1, statsLines));
+                Node2D.getPosition(s)#y + h + lineH
+            })
+            |> Option.getWithDefault(26.0);
+        withStats
+            |> Label2D.mapAt(detailDescPath(), label ->
+                let pos = Node2D.getPosition(label);
+                label
+                    |> Label2D.setText(wrapText(detailWrapWidth(), detail#desc))
+                    |> Node2D.setPosition({x = pos#x, y = descTop}))
             |> Sprite2D.mapAt(detailIconPath(), sprite ->
                 sprite
                     |> Sprite2D.setTexture(detail#sprite#texture)
