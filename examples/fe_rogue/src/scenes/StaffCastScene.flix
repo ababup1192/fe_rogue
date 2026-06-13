@@ -397,27 +397,62 @@ mod StaffCastScene {
         let cleared      = PlayerScene.clearSelectedItem(playerId, afterConsume);
         TurnFlow.commitWaitedAndAdvance(cleared)
 
-    /// 自己使用（SelfUse）の効果を種類で分岐適用する。投擲（Directional）・自動（AutoOnDeath）が
-    /// 万一ここへ来たら no-op + ログで防御する（`deliveryFor` の取りこぼしでも panic させない）。
-    /// 各 arm は小さな関数に切り出し、1 関数へ多ステートを詰め込まない（Flix 推論の安定のため）。
-    def applyConsumableSelfEffect(playerId: Int32, player: PlayerScene.Data,
+    /// 自己使用（SelfUse）の効果を **DSL 経路** で適用する。
+    /// item を `EffectBridge.consumableRule` で効果ルールへ写し、`EffectPlan.planActions` で
+    /// 「誰に・何を・いくつ」を確定し、`EffectRunner.runPlan` が既存 primitive
+    /// （applyConsumableHeal / applyFullHeal / applyMaxHpUp / applySelfStatus）へ振り分ける。
+    /// HP/状態変更・ログは primitive をそのまま呼ぶので **旧経路と挙動同一**。
+    /// 投擲（Directional）・自動（AutoOnDeath）が万一来たら従来どおり防御ログ。
+    pub def applyConsumableSelfEffect(playerId: Int32, player: PlayerScene.Data,
                                    item: Consumable.ConsumableResource,
                                    scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
-        match item#effect {
-            case Consumable.ConsumableEffect.Heal     =>
-                applyConsumableHeal(playerId, player, item, scene)
-            case Consumable.ConsumableEffect.FullHeal =>
-                applyFullHeal(playerId, player, item, scene)
-            case Consumable.ConsumableEffect.MaxHpUp  =>
-                applyMaxHpUp(playerId, player, item, scene)
-            case Consumable.ConsumableEffect.AtkUp    =>
-                applySelfStatus(playerId, item, StatusSystem.StatusEffect.AtkUp, scene)
-            case Consumable.ConsumableEffect.SpdUp    =>
-                applySelfStatus(playerId, item, StatusSystem.StatusEffect.SpdUp, scene)
-            case _                                    =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${item#name} は ここでは使えなかった");
-                scene
+        if (isSelfUseEffect(item#effect)) {
+            let rule = EffectBridge.consumableRule(item);
+            let ctx = {selfId = playerId, attackerId = playerId,
+                       rayUnits = (Nil: List[EffectRule.RayUnit]),
+                       amount = {max = player#resource#hp, dealt = 0, incoming = 0, magic = 0}};
+            let plan = EffectPlan.planActions(rule, ctx);
+            EffectRunner.runPlan(selfEffectHandlers(item), plan, scene)
+        } else {
+            GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${item#name} は ここでは使えなかった");
+            scene
+        }
+
+    /// self-use（つかうと自分に効く）効果か。これら以外がここへ来たら防御ログへ落とす。
+    def isSelfUseEffect(effect: Consumable.ConsumableEffect): Bool = match effect {
+        case Consumable.ConsumableEffect.Heal     => true
+        case Consumable.ConsumableEffect.FullHeal => true
+        case Consumable.ConsumableEffect.MaxHpUp  => true
+        case Consumable.ConsumableEffect.AtkUp    => true
+        case Consumable.ConsumableEffect.SpdUp    => true
+        case _                                    => false
+    }
+
+    /// PlanItem を既存 primitive へ振り分ける handler。HP/status 変更・ログは primitive がそのまま行う
+    /// （＝旧 match と挙動同一）。self-use では heal/fullHeal/maxHpUp/status のみ発火する。
+    def selfEffectHandlers(item: Consumable.ConsumableResource):
+            EffectRunner.PlanHandlers[Scene[NodeTag], GameLogger.GameLogger] = {
+        heal       = (sc, id, _)        -> withPlayer(id, sc, p -> applyConsumableHeal(id, p, item, sc)),
+        fullHeal   = (sc, id)           -> withPlayer(id, sc, p -> applyFullHeal(id, p, item, sc)),
+        maxHpUp    = (sc, id, _)        -> withPlayer(id, sc, p -> applyMaxHpUp(id, p, item, sc)),
+        status     = (sc, id, se, _, _) -> applySelfStatus(id, item, se, sc),
+        // self-use では発火しない handler。全 handler が同一 effect(GameLogger) を持つ必要があるため
+        // 純粋な恒等を checked_ecast で GameLogger へ上げる（実際の作用は無し）。
+        damage     = (sc, _, _)         -> checked_ecast(sc),
+        immobilize = (sc, _)            -> checked_ecast(sc),
+        revive     = (sc, _)            -> checked_ecast(sc),
+        custom     = (sc, _, _)         -> checked_ecast(sc),
+        sfx        = (sc, _)            -> checked_ecast(sc),
+        noOp       = (sc, _)            -> checked_ecast(sc)
+    }
+
+    /// id のプレイヤーが居れば f を適用、居なければ scene そのまま（防御）。
+    def withPlayer(id: Int32, sc: Scene[NodeTag],
+                   f: PlayerScene.Data -> Scene[NodeTag] \ ef): Scene[NodeTag] \ ef =
+        match PlayerScene.get(id, sc) {
+            case Some(p) => f(p)
+            case None    => sc
         }
 
     /// 消費アイテムで使用者自身の HP を `magnitude` 回復、HPBar 更新、ログ。

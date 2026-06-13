@@ -148,6 +148,46 @@ mod TestStaffCastScene {
         Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
 
     // ════════════════════════════════════════════════════════
+    // 本番スイッチ後: applyConsumableSelfEffect が DSL 経路で旧挙動と一致する
+    //   （applyConsumableSelfEffect は EffectBridge→planActions→runPlan→既存 primitive を通る）
+    // ════════════════════════════════════════════════════════
+
+    /// きずぐすり(Heal,3): DSL 経路の applyConsumableSelfEffect で HP 4→7。
+    @Test
+    def testSelfEffectHealViaDslPath(): Unit \ Assert =
+        let scene = playerScene(4, 0);
+        let user = playerData(scene);
+        let after = TestUnitFixtures.withMockGameLogger(() ->
+            StaffCastScene.applyConsumableSelfEffect(0, user, healItem(3), scene));
+        Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
+
+    /// ちから薬(AtkUp,4,3T): DSL 経路で AtkUp+4 が付与される（→ applySelfStatus）。
+    @Test
+    def testSelfEffectAtkUpViaDslPath(): Unit \ Assert =
+        let scene = playerScene(10, 0);
+        let user = playerData(scene);
+        let item = Consumable.bottle(Consumable.ConsumableEffect.AtkUp, 4, 3, "ちから薬");
+        let after = TestUnitFixtures.withMockGameLogger(() ->
+            StaffCastScene.applyConsumableSelfEffect(0, user, item, scene));
+        let atk = PlayerScene.get(0, after)
+                    |> Option.map(p -> StatusSystem.sumOf(StatusSystem.StatusEffect.AtkUp, p#statuses))
+                    |> Option.getWithDefault(-1);
+        Assert.assertEq(expected = 4, atk)
+
+    /// 命の草(MaxHpUp,3): DSL 経路で HP と最大HP を両方 +3（4/10 → 7/13）。
+    @Test
+    def testSelfEffectMaxHpUpViaDslPath(): Unit \ Assert =
+        let scene = playerScene(4, 0);
+        let user = playerData(scene);
+        let item = Consumable.bottle(Consumable.ConsumableEffect.MaxHpUp, 3, 0, "命の草");
+        let after = TestUnitFixtures.withMockGameLogger(() ->
+            StaffCastScene.applyConsumableSelfEffect(0, user, item, scene));
+        let hpMax = PlayerScene.get(0, after)
+                    |> Option.map(p -> (p#hp, p#resource#hp))
+                    |> Option.getWithDefault((-1, -1));
+        Assert.assertEq(expected = (7, 13), hpMax)
+
+    // ════════════════════════════════════════════════════════
     // 一時しのぎのワープ先選定（warpCellFor・純粋）
     // ════════════════════════════════════════════════════════
 
