@@ -16,6 +16,9 @@ mod TestEffectBridge {
     def enemy(id: Int32): RayUnit =
         {id = id, ally = false, immobilized = false, alive = true}
 
+    def ally(id: Int32): RayUnit =
+        {id = id, ally = true, immobilized = false, alive = true}
+
     def ctxWith(rayUnits: List[RayUnit]): EffectPlan.PlanCtx =
         {selfId = 0, attackerId = 0, rayUnits = rayUnits,
          amount = {max = 10, dealt = 0, incoming = 0, magic = 0}}
@@ -99,4 +102,36 @@ mod TestEffectBridge {
     def testBlastBottleAreaPendingExpansion(): Unit \ Assert =
         Assert.assertEq(expected = PlanItem.NoOp("対象なし（空振り）") :: Nil,
             planOf(ConsumableEffect.BlastBottle, 10, 0, ctxWith(enemy(3) :: Nil)))
+
+    // ════════════════════════════════════════════════════════
+    // 投げ版（consumableThrowRule）— つかう＝自分 とは別に 投げる＝当たった相手（陣営無視）
+    // ════════════════════════════════════════════════════════
+
+    def throwPlanOf(effect: ConsumableEffect, mag: Int32, dur: Int32,
+                    ctx: EffectPlan.PlanCtx): List[PlanItem] =
+        EffectPlan.planActions(EffectBridge.consumableThrowRule(item(effect, mag, dur)), ctx)
+
+    /// きずぐすりを投げて敵#3 に当てると 敵を回復する（友軍誤射＝rayFirst・陣営無視の証拠）。
+    @Test
+    def testThrowHealHitsEnemy(): Unit \ Assert =
+        Assert.assertEq(expected = PlanItem.HealAt(3, false, 10) :: Nil,
+            throwPlanOf(ConsumableEffect.Heal, 10, 0, ctxWith(enemy(3) :: Nil)))
+
+    /// 同じきずぐすりを味方#4 に投げれば 味方を回復（遠隔回復として有用）。
+    @Test
+    def testThrowHealHitsAlly(): Unit \ Assert =
+        Assert.assertEq(expected = PlanItem.HealAt(4, true, 10) :: Nil,
+            throwPlanOf(ConsumableEffect.Heal, 10, 0, ctxWith(ally(4) :: Nil)))
+
+    /// ちから薬を敵に投げると 敵の攻撃力を上げてしまう（＝損。当たった相手に効く）。
+    @Test
+    def testThrowAtkUpBuffsEnemy(): Unit \ Assert =
+        Assert.assertEq(expected = PlanItem.StatusAt(3, false, StatusEffect.AtkUp, 4, 3) :: Nil,
+            throwPlanOf(ConsumableEffect.AtkUp, 4, 3, ctxWith(enemy(3) :: Nil)))
+
+    /// 火炎瓶を投げて敵#3 に固定ダメージ。
+    @Test
+    def testThrowFireBottle(): Unit \ Assert =
+        Assert.assertEq(expected = PlanItem.DamageAt(3, false, 15) :: Nil,
+            throwPlanOf(ConsumableEffect.FireBottle, 15, 0, ctxWith(enemy(3) :: Nil)))
 }

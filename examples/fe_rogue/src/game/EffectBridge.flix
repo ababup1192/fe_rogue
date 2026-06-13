@@ -15,6 +15,11 @@ mod EffectBridge {
     use Ring.RingEffect
     use Staff.StaffEffect
 
+    /// 投げ対象（throw・ray 最初の1体・陣営無視）の 1 アクションを作る。
+    def anyTargetAct(op: Op, amount: Option[Amount], dur: Option[Duration]): EffectRule.Action =
+        {to = {role = Role.RoleTarget, faction = Faction.FactionAny, state = TargetState.StateAny},
+         op = op, amount = amount, dir = None, duration = dur, vfx = None, sfx = None}
+
     /// 自分対象（self）の 1 アクションを作る。
     def selfAct(op: Op, amount: Option[Amount], dur: Option[Duration]): EffectRule.Action =
         {to = {role = Role.RoleSelf, faction = Faction.FactionAny, state = TargetState.StateAny},
@@ -91,6 +96,31 @@ mod EffectBridge {
             case ConsumableEffect.AutoRevive  =>
                 mkRule(Trigger.OnDeath, Deliver.DeliverAuto :: Nil,
                        selfAct(Op.OpReviveCharge, None, None) :: Nil)
+        }
+
+    /// 消費アイテムを「投げた」ときのルール（deliver:throw・対象＝ray 最初の1体・陣営無視）。
+    /// 同じ薬でも「つかう」(consumableRule＝自分) と「投げる」(これ＝当たった相手) で対象が変わる
+    /// （1 アイテム＝複数 delivery）。投げは敵味方どちらにも当たる（既存挙動。throwConsumableAtEnemy/
+    /// AtPlayer がどちらも適用する）。AutoRevive は投げると対象を全回復（敵 full heal の既存挙動）。
+    pub def consumableThrowRule(item: ConsumableResource): EffectRule.EffectRule =
+        let mag = item#magnitude;
+        let dur = item#duration;
+        let throwRule = (op, amount, d) ->
+            mkRule(Trigger.OnUse, Deliver.DeliverThrow :: Nil, anyTargetAct(op, amount, d) :: Nil);
+        match item#effect {
+            case ConsumableEffect.Heal       => throwRule(Op.OpHealFlat, Some(Amount.Flat(mag)), None)
+            case ConsumableEffect.FullHeal   => throwRule(Op.OpHealFull, None, None)
+            case ConsumableEffect.AutoRevive => throwRule(Op.OpHealFull, None, None)
+            case ConsumableEffect.MaxHpUp    => throwRule(Op.OpMaxHpUp, Some(Amount.Flat(mag)), Some(Duration.DurPermanent))
+            case ConsumableEffect.AtkUp      => throwRule(Op.OpAtkUp, Some(Amount.Flat(mag)), Some(Duration.DurTurns(dur)))
+            case ConsumableEffect.SpdUp      => throwRule(Op.OpSpdUp, Some(Amount.Flat(mag)), Some(Duration.DurTurns(dur)))
+            case ConsumableEffect.BlindHit   => throwRule(Op.OpHitDown, Some(Amount.Flat(mag)), Some(Duration.DurTurns(dur)))
+            case ConsumableEffect.SpdDownHit => throwRule(Op.OpSpdDown, Some(Amount.Flat(mag)), Some(Duration.DurTurns(dur)))
+            case ConsumableEffect.DefDownHit => throwRule(Op.OpDefDown, Some(Amount.Flat(mag)), Some(Duration.DurTurns(dur)))
+            case ConsumableEffect.FireBottle  => throwRule(Op.OpDamageFlat, Some(Amount.Flat(mag)), None)
+            case ConsumableEffect.BlastBottle =>
+                mkRule(Trigger.OnUse, Deliver.DeliverThrow :: Nil,
+                       areaAct(Op.OpDamageFlat, 1, Some(Amount.Flat(mag))) :: Nil)
         }
 
     /// 武器効果を効果 DSL ルールへ写す。`effectValue` は閾値/マス数/割合/確率として使う。
