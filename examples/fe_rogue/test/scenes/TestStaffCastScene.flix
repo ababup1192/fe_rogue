@@ -104,6 +104,50 @@ mod TestStaffCastScene {
         Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
 
     // ════════════════════════════════════════════════════════
+    // DSL 経路（EffectRule → planActions → runPlan）が旧経路と同じ HP を生むか
+    //   きずぐすりを「効果 JSON」として宣言し、実 Scene handler で発火しても
+    //   applyConsumableHeal と同じ結果（HP 4 → 7）になることを実 engine 関数で確認する。
+    //   ライブ gameplay コードは一切変えていない（handler はここで組む）。
+    // ════════════════════════════════════════════════════════
+
+    /// PlanItem を実 Scene へ落とす handler 束。heal だけ実装し、他は恒等（このテストでは未使用）。
+    /// heal は applyConsumableHeal と同じ「Combat.heal → mapPlayer → HPBar 更新」を行う（ログは省略）。
+    def dslSceneHandlers(): EffectRunner.PlanHandlers[Scene[NodeTag], {}] = {
+        heal       = (sc, id, amount) -> match PlayerScene.get(id, sc) {
+            case Some(p) =>
+                let r = Combat.heal(p#hp, p#resource#hp, amount);
+                sc |> PlayerScene.mapPlayer(id, d -> {hp = r#newHp | d})
+                   |> UnitHPBarScene.update(PlayerScene.playerPath(id), r#newHp)
+            case None    => sc
+        },
+        fullHeal   = (sc, _)          -> sc,
+        damage     = (sc, _, _)       -> sc,
+        maxHpUp    = (sc, _, _)       -> sc,
+        status     = (sc, _, _, _, _) -> sc,
+        immobilize = (sc, _)          -> sc,
+        revive     = (sc, _)          -> sc,
+        custom     = (sc, _, _)       -> sc,
+        sfx        = (sc, _)          -> sc,
+        noOp       = (sc, _)          -> sc
+    }
+
+    /// きずぐすりを効果 JSON として宣言 → decode → plan → runPlan で実 Scene に発火 → HP 7。
+    /// 旧経路 testConsumableHealRestoresHp と同じ結果になり、DSL 化が等価であることを示す。
+    @Test
+    def testConsumableHealViaDsl(): Unit \ Assert =
+        let scene = playerScene(4, 0);
+        let json = "{\"when\":\"onUse\",\"do\":[{\"to\":{\"role\":\"self\"},\"op\":\"healFlat\",\"amount\":{\"flat\":3}}]}";
+        let ctx = {selfId = 0, attackerId = 0, rayUnits = (Nil: List[EffectRule.RayUnit]),
+                   amount = {max = 10, dealt = 0, incoming = 0, magic = 0}};
+        let items = Util.Json.parse(json)
+                        |> Result.toOption
+                        |> Option.flatMap(EffectRuleCodec.decodeRule)
+                        |> Option.map(r -> EffectPlan.planActions(r, ctx))
+                        |> Option.getWithDefault(Nil);
+        let after = EffectRunner.runPlan(dslSceneHandlers(), items, scene);
+        Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
+
+    // ════════════════════════════════════════════════════════
     // 一時しのぎのワープ先選定（warpCellFor・純粋）
     // ════════════════════════════════════════════════════════
 

@@ -1,11 +1,10 @@
-/// EffectRunner.runPlan のディスパッチを recorder handler で固定する。
-/// 実 Scene を立ち上げずに「PlanItem 列がどの副作用へ・どの順で・どの引数で振り分けられるか」を
-/// 検証する。JSON → Plan → runPlan の全経路を1本で通す統合的な純粋テスト。
+/// EffectRunner.runPlan のディスパッチを記録 handler で固定する。
+/// アキュムレータに「どの副作用へ・どの順で・どの引数で」を文字列で積み、実 Scene 抜きで検証する。
+/// JSON → Plan → runPlan の全経路を1本で通す統合的な純粋テスト（s = List[String]、ef = Pure）。
 mod TestEffectRunner {
 
     use EffectPlan.PlanItem
     use EffectRule.RayUnit
-    use StatusSystem.StatusEffect
 
     def decodeStr(s: String): Option[EffectRule.EffectRule] =
         Util.Json.parse(s) |> Result.toOption |> Option.flatMap(EffectRuleCodec.decodeRule)
@@ -17,34 +16,26 @@ mod TestEffectRunner {
         {selfId = 1, attackerId = 9, rayUnits = rayUnits,
          amount = {max = 30, dealt = 20, incoming = 12, magic = 7}}
 
-    /// 与えた PlanItem 列を runPlan に流し、handler 呼び出しを文字列で記録して返す。
-    /// region で副作用が完結するため戻りは Pure。
-    def record(items: List[PlanItem]): List[String] =
-        region rc {
-            let log = Ref.fresh(rc, (Nil: List[String]));
-            let push = s -> Ref.put(s :: Ref.get(log), log);
-            let h = {
-                heal       = (id, n)       -> push("heal:${id}:${n}"),
-                fullHeal   = id            -> push("fullHeal:${id}"),
-                damage     = (id, n)       -> push("damage:${id}:${n}"),
-                maxHpUp    = (id, n)       -> push("maxHpUp:${id}:${n}"),
-                status     = (id, se, m, t) -> push("status:${id}:${se}:${m}:${t}"),
-                immobilize = id            -> push("immobilize:${id}"),
-                revive     = id            -> push("revive:${id}"),
-                custom     = (op, id)      -> push("custom:${op}:${id}"),
-                sfx        = name          -> push("sfx:${name}"),
-                noOp       = reason        -> push("noOp:${reason}")
-            };
-            EffectRunner.runPlan(h, items);
-            Ref.get(log) |> List.reverse
-        }
+    /// 各 handler が「呼び出しを表す文字列」を先頭に積むだけの記録 handler（純粋・効果なし）。
+    def recordHandlers(): EffectRunner.PlanHandlers[List[String], {}] = {
+        heal       = (acc, id, n)        -> "heal:${id}:${n}" :: acc,
+        fullHeal   = (acc, id)           -> "fullHeal:${id}" :: acc,
+        damage     = (acc, id, n)        -> "damage:${id}:${n}" :: acc,
+        maxHpUp    = (acc, id, n)        -> "maxHpUp:${id}:${n}" :: acc,
+        status     = (acc, id, se, m, t) -> "status:${id}:${se}:${m}:${t}" :: acc,
+        immobilize = (acc, id)           -> "immobilize:${id}" :: acc,
+        revive     = (acc, id)           -> "revive:${id}" :: acc,
+        custom     = (acc, op, id)       -> "custom:${op}:${id}" :: acc,
+        sfx        = (acc, name)         -> "sfx:${name}" :: acc,
+        noOp       = (acc, reason)       -> "noOp:${reason}" :: acc
+    }
 
-    // JSON → Plan → runPlan の記録。
+    // JSON → Plan → runPlan の記録（積んだ順を反転して時系列に戻す）。
     def fire(json: String, ctx: EffectPlan.PlanCtx): List[String] =
-        decodeStr(json)
-            |> Option.map(r -> EffectPlan.planActions(r, ctx))
-            |> Option.getWithDefault(Nil)
-            |> record
+        let items = decodeStr(json)
+                        |> Option.map(r -> EffectPlan.planActions(r, ctx))
+                        |> Option.getWithDefault(Nil);
+        EffectRunner.runPlan(recordHandlers(), items, Nil) |> List.reverse
 
     // ════════════════════════════════════════════════════════
 
