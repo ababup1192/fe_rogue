@@ -54,8 +54,19 @@ mod EffectPlan {
         case _            => None
     }
 
+    /// 継続が whileEquipped か（常時補正＝Ring.bonuses 経路。runPlan は発火しない）。
+    def isWhileEquipped(dur: Option[Duration]): Bool = match dur {
+        case Some(Duration.DurWhileEquipped) => true
+        case _                               => false
+    }
+
     /// op を、解決済み対象（id, ally）・効果量・継続から PlanItem 列へ。
-    def opPlan(op: Op, id: Int32, ally: Bool, amt: Int32, dur: Option[Duration]): List[PlanItem] = match op {
+    /// whileEquipped（指輪の常時補正 Power/Swift/Guard）は runPlan で発火せず Ring.bonuses が
+    /// 戦闘ビュー構築時に読むため、ここでは NoOp に短絡する（時限ステータスと混同しない）。
+    def opPlan(op: Op, id: Int32, ally: Bool, amt: Int32, dur: Option[Duration]): List[PlanItem] =
+        if (isWhileEquipped(dur))
+            PlanItem.NoOp("常時補正（装備中・Ring.bonuses が処理）") :: Nil
+        else match op {
         case Op.OpHealFlat     => PlanItem.HealAt(id, ally, amt) :: Nil
         case Op.OpLifesteal    => PlanItem.HealAt(id, ally, amt) :: Nil
         case Op.OpHealFull     => PlanItem.FullHealAt(id, ally) :: Nil
@@ -68,6 +79,8 @@ mod EffectPlan {
         case Op.OpSpdDown      => statusItem(op, id, ally, amt, dur)
         case Op.OpDefDown      => statusItem(op, id, ally, amt, dur)
         case Op.OpHitDown      => statusItem(op, id, ally, amt, dur)
+        // 守備+N は whileEquipped 常時補正専用。上の短絡に乗らない（=時限）ものはルール不正なので NoOp。
+        case Op.OpDefUp        => PlanItem.NoOp("defUp は whileEquipped 専用（常時補正）") :: Nil
         case Op.OpPowerMul     => PlanItem.NoOp("powerMul は estimate 内介入（Phase4）") :: Nil
         case Op.OpFinisher     => PlanItem.NoOp("finisher は estimate 内介入（Phase4）") :: Nil
         case Op.OpKnockback    => PlanItem.CustomAt("knockback", id, ally) :: Nil

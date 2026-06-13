@@ -7,11 +7,13 @@
 /// Scene 非依存の純粋関数。
 mod EffectBridge {
 
-    use EffectDsl.{Amount, AmountBase, Atom, Pred}
+    use EffectDsl.{Amount, AmountBase, Atom, Pred, Stat}
     use EffectRule.{Trigger, Deliver, Role, Faction, TargetState, Op, Dir, Duration, Flow, FollowKind}
     use Consumable.ConsumableEffect
     use Consumable.ConsumableResource
     use WeaponCatalog.WeaponEffect
+    use Ring.RingEffect
+    use Staff.StaffEffect
 
     /// 自分対象（self）の 1 アクションを作る。
     def selfAct(op: Op, amount: Option[Amount], dur: Option[Duration]): EffectRule.Action =
@@ -117,5 +119,65 @@ mod EffectBridge {
                     Pred.PAtom(Atom.EquippedIsRogue) :: Pred.PAtom(Atom.TargetAlive) :: Nil);
                 fullRule(Trigger.OnHit, rogueAndAlive, effectValue,
                          throwAct(Op.OpDropItem, Faction.FactionEnemy, None, None) :: Nil, None)
+        }
+
+    /// 自分対象・常時補正（whileEquipped）の 1 アクション。Power/Swift/Guard 用。
+    def equipAct(op: Op, power: Int32): EffectRule.Action =
+        selfAct(op, Some(Amount.Flat(power)), Some(Duration.DurWhileEquipped))
+
+    /// 指輪効果を効果 DSL ルールへ写す。`power` はステータス補正量/回復量/しきい値。
+    /// Power/Swift/Guard は onEquip + whileEquipped（常時補正＝Ring.bonuses が実行、runPlan は NoOp）。
+    /// Pursuit は flow:followUp。Finisher は estimate 内介入（Phase4）。全 8 種を網羅。
+    pub def ringRule(effect: RingEffect, power: Int32): EffectRule.EffectRule =
+        match effect {
+            case RingEffect.Power     =>
+                fullRule(Trigger.OnEquip, Pred.AllOf(Nil), 100, equipAct(Op.OpAtkUp, power) :: Nil, None)
+            case RingEffect.Swift     =>
+                fullRule(Trigger.OnEquip, Pred.AllOf(Nil), 100, equipAct(Op.OpSpdUp, power) :: Nil, None)
+            case RingEffect.Guard     =>
+                fullRule(Trigger.OnEquip, Pred.AllOf(Nil), 100, equipAct(Op.OpDefUp, power) :: Nil, None)
+            case RingEffect.Mend      =>
+                fullRule(Trigger.OnTurnStart, Pred.AllOf(Nil), 100,
+                         selfAct(Op.OpHealFlat, Some(Amount.Flat(power)), None) :: Nil, None)
+            case RingEffect.Lifesteal =>
+                fullRule(Trigger.OnKill, Pred.AllOf(Nil), 100,
+                         attackerAct(Op.OpHealFlat, Some(Amount.Flat(power))) :: Nil, None)
+            case RingEffect.Finisher  =>
+                fullRule(Trigger.OnAttack, Pred.PAtom(Atom.TargetHpPctAtMost(power)), 100,
+                         throwAct(Op.OpFinisher, Faction.FactionAny, None, None) :: Nil, None)
+            case RingEffect.Pursuit   =>
+                fullRule(Trigger.OnAttack, Pred.AllOf(Nil), 100, Nil,
+                         Some(Flow.FollowUp(FollowKind.Pursuit)))
+            case RingEffect.Trivial   =>
+                fullRule(Trigger.OnEquip, Pred.AllOf(Nil), 100, Nil, None)
+        }
+
+    /// 投擲対象（throw・ray 最初の1体・陣営無視）の 1 アクション。
+    def castAct(op: Op, amount: Option[Amount], dur: Option[Duration]): EffectRule.Action =
+        {to = {role = Role.RoleTarget, faction = Faction.FactionAny, state = TargetState.StateAny},
+         op = op, amount = amount, dir = None, duration = dur, vfx = None, sfx = None}
+
+    /// 杖効果を効果 DSL ルールへ写す。杖は方向を選んで撃ち、ray 最初の1体（敵味方問わず）に効く
+    /// （rayFirst = faction 省略相当）。効果量は固定（魔力+10 / 1ダメージ等）。全 5 種を網羅。
+    pub def staffRule(effect: StaffEffect): EffectRule.EffectRule =
+        match effect {
+            case StaffEffect.Heal     =>
+                fullRule(Trigger.OnCast, Pred.AllOf(Nil), 100,
+                         castAct(Op.OpHealFlat, Some(Amount.StatPlus(Stat.Magic, 10)), None) :: Nil, None)
+            case StaffEffect.Blowback =>
+                fullRule(Trigger.OnCast, Pred.AllOf(Nil), 100,
+                         castAct(Op.OpDamageFlat, Some(Amount.Flat(1)), None) ::
+                         dirAct(Op.OpKnockback, Faction.FactionAny, Dir.DirCastRay,
+                                Some(Amount.Tiles(0))) :: Nil, None)
+            case StaffEffect.Swap     =>
+                fullRule(Trigger.OnCast, Pred.AllOf(Nil), 100,
+                         castAct(Op.OpSwapPos, None, None) :: Nil, None)
+            case StaffEffect.Bind     =>
+                fullRule(Trigger.OnCast, Pred.AllOf(Nil), 100,
+                         castAct(Op.OpImmobilize, None, Some(Duration.DurUntilHit)) :: Nil, None)
+            case StaffEffect.Stopgap  =>
+                fullRule(Trigger.OnCast, Pred.AllOf(Nil), 100,
+                         castAct(Op.OpImmobilize, None, Some(Duration.DurUntilHit)) ::
+                         castAct(Op.OpWarpToStairs, None, None) :: Nil, None)
         }
 }

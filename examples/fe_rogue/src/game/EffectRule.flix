@@ -72,6 +72,9 @@ mod EffectRule {
         case OpSpdDown
         case OpDefDown
         case OpHitDown
+        // 守備+N（まもりのリング）。時限デバフ DefDown と対で、whileEquipped 常時補正専用。
+        // DefUp の時限ステータスは存在しない（Ring.bonuses が処理）ため for:whileEquipped でのみ使う。
+        case OpDefUp
         case OpImmobilize
         case OpReviveCharge
         case OpPowerMul
@@ -184,6 +187,7 @@ mod EffectRule {
             case Op.OpSpdUp        => "速さを ${n} 上げる"
             case Op.OpSpdDown      => "速さを ${n} 下げる"
             case Op.OpDefDown      => "守備を ${n} 下げる"
+            case Op.OpDefUp        => "守備を ${n} 上げる"
             case Op.OpHitDown      => "命中を ${n}% 下げる"
             case Op.OpImmobilize   => "完全に動けなくする"
             case Op.OpReviveCharge => "倒れても全回復してよみがえる"

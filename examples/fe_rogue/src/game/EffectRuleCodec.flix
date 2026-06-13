@@ -79,6 +79,7 @@ mod EffectRuleCodec {
         case "spdUp"        => Some(Op.OpSpdUp)
         case "spdDown"      => Some(Op.OpSpdDown)
         case "defDown"      => Some(Op.OpDefDown)
+        case "defUp"        => Some(Op.OpDefUp)
         case "hitDown"      => Some(Op.OpHitDown)
         case "immobilize"   => Some(Op.OpImmobilize)
         case "reviveCharge" => Some(Op.OpReviveCharge)
