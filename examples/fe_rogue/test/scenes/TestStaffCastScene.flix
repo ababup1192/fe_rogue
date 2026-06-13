@@ -188,6 +188,29 @@ mod TestStaffCastScene {
         Assert.assertEq(expected = (7, 13), hpMax)
 
     // ════════════════════════════════════════════════════════
+    // 投擲の DSL 経路（applyConsumableEffectDsl）が当たった相手に効く（ally で player/enemy 出し分け）
+    //   ここでは味方(ally=true)に当てる枝を確認。enemy 枝は同一ヘルパの else で対称。
+    // ════════════════════════════════════════════════════════
+
+    /// きずぐすりを味方#0 に投げて当てると HP 4→7（旧 applyConsumableEffectToPlayer と同一）。
+    @Test
+    def testThrowHealAtAllyViaDsl(): Unit \ Assert =
+        let scene = playerScene(4, 0);
+        let after = StaffCastScene.applyConsumableEffectDsl(healItem(3), 0, true, scene);
+        Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
+
+    /// ちから薬を味方#0 に投げて当てると AtkUp+4 が付与される（投擲で味方を強化できる）。
+    @Test
+    def testThrowAtkUpAtAllyViaDsl(): Unit \ Assert =
+        let item = Consumable.bottle(Consumable.ConsumableEffect.AtkUp, 4, 3, "ちから薬");
+        let scene = playerScene(10, 0);
+        let after = StaffCastScene.applyConsumableEffectDsl(item, 0, true, scene);
+        let atk = PlayerScene.get(0, after)
+                    |> Option.map(p -> StatusSystem.sumOf(StatusSystem.StatusEffect.AtkUp, p#statuses))
+                    |> Option.getWithDefault(-1);
+        Assert.assertEq(expected = 4, atk)
+
+    // ════════════════════════════════════════════════════════
     // 一時しのぎのワープ先選定（warpCellFor・純粋）
     // ════════════════════════════════════════════════════════
 

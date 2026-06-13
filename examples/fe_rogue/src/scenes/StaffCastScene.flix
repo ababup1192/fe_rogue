@@ -1015,46 +1015,104 @@ mod StaffCastScene {
                 applyConsumableEffectToEnemy(item, enemy, enemyId, scene)
             })
 
-    /// 敵 1 体への薬効果適用（HP 系は Combat.heal / 最大HP / 時限ステータス）。match ネストなし。
-    def applyConsumableEffectToEnemy(item: Consumable.ConsumableResource,
-                                      enemy: EnemyScene.Data, enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] =
-        let path = EnemyScene.enemyPath(enemyId);
-        match item#effect {
-            case Consumable.ConsumableEffect.Heal =>
-                let r = Combat.heal(enemy#hp, enemy#resource#hp, item#magnitude);
-                scene |> EnemyScene.mapEnemy(enemyId, d -> {hp = r#newHp | d})
-                      |> UnitHPBarScene.update(path, r#newHp)
-            case Consumable.ConsumableEffect.FullHeal =>
-                let m = enemy#resource#hp;
-                scene |> EnemyScene.mapEnemy(enemyId, d -> {hp = m | d})
-                      |> UnitHPBarScene.update(path, m)
-            case Consumable.ConsumableEffect.AutoRevive =>
-                let m = enemy#resource#hp;
-                scene |> EnemyScene.mapEnemy(enemyId, d -> {hp = m | d})
-                      |> UnitHPBarScene.update(path, m)
-            case Consumable.ConsumableEffect.MaxHpUp =>
-                let inc = item#magnitude;
-                let newMax = enemy#resource#hp + inc;
-                let newHp  = enemy#hp + inc;
-                scene |> EnemyScene.mapEnemy(enemyId,
-                            d -> {hp = newHp, resource = {hp = newMax | d#resource} | d})
-                      |> UnitHPBarScene.updateMaxHp(path, newHp, newMax)
-            case Consumable.ConsumableEffect.AtkUp     => addEnemyStatus(enemyId, StatusSystem.StatusEffect.AtkUp, item, scene)
-            case Consumable.ConsumableEffect.SpdUp     => addEnemyStatus(enemyId, StatusSystem.StatusEffect.SpdUp, item, scene)
-            case Consumable.ConsumableEffect.BlindHit  => addEnemyStatus(enemyId, StatusSystem.StatusEffect.HitDown, item, scene)
-            case Consumable.ConsumableEffect.SpdDownHit => addEnemyStatus(enemyId, StatusSystem.StatusEffect.SpdDown, item, scene)
-            case Consumable.ConsumableEffect.DefDownHit => addEnemyStatus(enemyId, StatusSystem.StatusEffect.DefDown, item, scene)
-            // 火炎瓶 / 爆発瓶 はダメージ系で `throwConsumableHit` が先に処理するためここには来ない（防御的 no-op）。
-            case Consumable.ConsumableEffect.FireBottle  => scene
-            case Consumable.ConsumableEffect.BlastBottle => scene
-        }
+    /// 投擲効果を当たったユニット (id, ally) へ **DSL 経路** で適用する。
+    /// consumableThrowRule（投げ版＝当たった相手・陣営無視）を planActions → runPlan で発火し、
+    /// 統一ハンドラが ally で player/enemy ノードを出し分ける。HP/status の数値・挙動は旧 per-effect
+    /// match と同一。火炎瓶/爆発瓶は throwConsumableHit が先に処理するためここには来ない。
+    pub def applyConsumableEffectDsl(item: Consumable.ConsumableResource,
+                                  id: Int32, ally: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let target = ({id = id, ally = ally, immobilized = false, alive = true}: EffectRule.RayUnit);
+        let ctx = {selfId = id, attackerId = id, rayUnits = target :: Nil,
+                   amount = {max = 0, dealt = 0, incoming = 0, magic = 0}};
+        let plan = EffectPlan.planActions(EffectBridge.consumableThrowRule(item), ctx);
+        EffectRunner.runPlan(throwEffectHandlers(), plan, scene)
 
-    /// 敵へ時限ステータスを 1 件付与する小ヘルパ。
-    def addEnemyStatus(enemyId: Int32, kind: StatusSystem.StatusEffect,
-                        item: Consumable.ConsumableResource, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let status = {effect = kind, magnitude = item#magnitude, remaining = item#duration};
-        EnemyScene.mapEnemy(enemyId, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
+    /// 投擲効果の統一ハンドラ。ally で player/enemy を出し分け、HP/status を適用する（ログなし）。
+    /// damage/immobilize 等は投擲薬の経路には現れないので恒等。
+    def throwEffectHandlers(): EffectRunner.PlanHandlers[Scene[NodeTag], {}] = {
+        heal       = (sc, id, ally, n)         -> healUnit(id, ally, n, sc),
+        fullHeal   = (sc, id, ally)            -> fullHealUnit(id, ally, sc),
+        maxHpUp    = (sc, id, ally, n)         -> maxHpUpUnit(id, ally, n, sc),
+        status     = (sc, id, ally, se, m, t)  -> statusUnit(id, ally, se, m, t, sc),
+        damage     = (sc, _, _, _)             -> sc,
+        immobilize = (sc, _, _)                -> sc,
+        revive     = (sc, _, _)                -> sc,
+        custom     = (sc, _, _, _)             -> sc,
+        sfx        = (sc, _)                   -> sc,
+        noOp       = (sc, _)                   -> sc
+    }
+
+    /// HP 回復を ally で出し分け（旧 Heal arm と同一）。
+    def healUnit(id: Int32, ally: Bool, n: Int32, sc: Scene[NodeTag]): Scene[NodeTag] =
+        if (ally)
+            match PlayerScene.get(id, sc) {
+                case Some(p) =>
+                    let r = Combat.heal(p#hp, p#resource#hp, n);
+                    sc |> PlayerScene.mapPlayer(id, d -> {hp = r#newHp | d})
+                       |> UnitHPBarScene.update(PlayerScene.playerPath(id), r#newHp)
+                case None => sc
+            }
+        else
+            match EnemyScene.get(id, sc) {
+                case Some(e) =>
+                    let r = Combat.heal(e#hp, e#resource#hp, n);
+                    sc |> EnemyScene.mapEnemy(id, d -> {hp = r#newHp | d})
+                       |> UnitHPBarScene.update(EnemyScene.enemyPath(id), r#newHp)
+                case None => sc
+            }
+
+    /// 全回復を ally で出し分け（旧 FullHeal / AutoRevive arm と同一）。
+    def fullHealUnit(id: Int32, ally: Bool, sc: Scene[NodeTag]): Scene[NodeTag] =
+        if (ally)
+            match PlayerScene.get(id, sc) {
+                case Some(p) =>
+                    sc |> PlayerScene.mapPlayer(id, d -> {hp = p#resource#hp | d})
+                       |> UnitHPBarScene.update(PlayerScene.playerPath(id), p#resource#hp)
+                case None => sc
+            }
+        else
+            match EnemyScene.get(id, sc) {
+                case Some(e) =>
+                    sc |> EnemyScene.mapEnemy(id, d -> {hp = e#resource#hp | d})
+                       |> UnitHPBarScene.update(EnemyScene.enemyPath(id), e#resource#hp)
+                case None => sc
+            }
+
+    /// 最大HP上昇を ally で出し分け（旧 MaxHpUp arm と同一）。
+    def maxHpUpUnit(id: Int32, ally: Bool, inc: Int32, sc: Scene[NodeTag]): Scene[NodeTag] =
+        if (ally)
+            match PlayerScene.get(id, sc) {
+                case Some(p) =>
+                    let newMax = p#resource#hp + inc;
+                    let newHp  = p#hp + inc;
+                    sc |> PlayerScene.mapPlayer(id, d -> {hp = newHp, resource = {hp = newMax | d#resource} | d})
+                       |> UnitHPBarScene.updateMaxHp(PlayerScene.playerPath(id), newHp, newMax)
+                case None => sc
+            }
+        else
+            match EnemyScene.get(id, sc) {
+                case Some(e) =>
+                    let newMax = e#resource#hp + inc;
+                    let newHp  = e#hp + inc;
+                    sc |> EnemyScene.mapEnemy(id, d -> {hp = newHp, resource = {hp = newMax | d#resource} | d})
+                       |> UnitHPBarScene.updateMaxHp(EnemyScene.enemyPath(id), newHp, newMax)
+                case None => sc
+            }
+
+    /// 時限ステータス付与を ally で出し分け（旧 addEnemyStatus / addPlayerStatus と同一）。
+    def statusUnit(id: Int32, ally: Bool, kind: StatusSystem.StatusEffect,
+                   mag: Int32, turns: Int32, sc: Scene[NodeTag]): Scene[NodeTag] =
+        let status = {effect = kind, magnitude = mag, remaining = turns};
+        if (ally)
+            PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc)
+        else
+            EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc)
+
+    /// 敵 1 体への薬効果適用 → DSL 経路へ委譲（数値・挙動は同一、ally=false）。
+    def applyConsumableEffectToEnemy(item: Consumable.ConsumableResource,
+                                      _enemy: EnemyScene.Data, enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] =
+        applyConsumableEffectDsl(item, enemyId, false, scene)
 
     /// 薬の効果を味方へ。効果種別で 1 段マッチ。
     def throwConsumableAtPlayer(playerId: Int32, item: Consumable.ConsumableResource,
@@ -1066,46 +1124,11 @@ mod StaffCastScene {
                 applyConsumableEffectToPlayer(item, target, targetId, scene)
             })
 
-    /// 味方 1 体への薬効果適用。match ネストなし。
+    /// 味方 1 体への薬効果適用 → DSL 経路へ委譲（数値・挙動は同一、ally=true）。
     def applyConsumableEffectToPlayer(item: Consumable.ConsumableResource,
-                                       target: PlayerScene.Data, targetId: Int32, scene: Scene[NodeTag]):
+                                       _target: PlayerScene.Data, targetId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] =
-        let path = PlayerScene.playerPath(targetId);
-        match item#effect {
-            case Consumable.ConsumableEffect.Heal =>
-                let r = Combat.heal(target#hp, target#resource#hp, item#magnitude);
-                scene |> PlayerScene.mapPlayer(targetId, d -> {hp = r#newHp | d})
-                      |> UnitHPBarScene.update(path, r#newHp)
-            case Consumable.ConsumableEffect.FullHeal =>
-                let m = target#resource#hp;
-                scene |> PlayerScene.mapPlayer(targetId, d -> {hp = m | d})
-                      |> UnitHPBarScene.update(path, m)
-            case Consumable.ConsumableEffect.AutoRevive =>
-                let m = target#resource#hp;
-                scene |> PlayerScene.mapPlayer(targetId, d -> {hp = m | d})
-                      |> UnitHPBarScene.update(path, m)
-            case Consumable.ConsumableEffect.MaxHpUp =>
-                let inc = item#magnitude;
-                let newMax = target#resource#hp + inc;
-                let newHp  = target#hp + inc;
-                scene |> PlayerScene.mapPlayer(targetId,
-                            d -> {hp = newHp, resource = {hp = newMax | d#resource} | d})
-                      |> UnitHPBarScene.updateMaxHp(path, newHp, newMax)
-            case Consumable.ConsumableEffect.AtkUp      => addPlayerStatus(targetId, StatusSystem.StatusEffect.AtkUp, item, scene)
-            case Consumable.ConsumableEffect.SpdUp      => addPlayerStatus(targetId, StatusSystem.StatusEffect.SpdUp, item, scene)
-            case Consumable.ConsumableEffect.BlindHit   => addPlayerStatus(targetId, StatusSystem.StatusEffect.HitDown, item, scene)
-            case Consumable.ConsumableEffect.SpdDownHit => addPlayerStatus(targetId, StatusSystem.StatusEffect.SpdDown, item, scene)
-            case Consumable.ConsumableEffect.DefDownHit => addPlayerStatus(targetId, StatusSystem.StatusEffect.DefDown, item, scene)
-            // 火炎瓶 / 爆発瓶 はダメージ系で `throwConsumableHit` が先に処理するためここには来ない（防御的 no-op）。
-            case Consumable.ConsumableEffect.FireBottle  => scene
-            case Consumable.ConsumableEffect.BlastBottle => scene
-        }
-
-    /// 味方へ時限ステータスを 1 件付与する小ヘルパ。
-    def addPlayerStatus(targetId: Int32, kind: StatusSystem.StatusEffect,
-                         item: Consumable.ConsumableResource, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let status = {effect = kind, magnitude = item#magnitude, remaining = item#duration};
-        PlayerScene.mapPlayer(targetId, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
+        applyConsumableEffectDsl(item, targetId, true, scene)
 
     /// 投げたアイテムを 1 個（耐久 1）消費する。種別ごとに対応リストへ反映。match ネストなし。
     def consumeThrownItem(playerId: Int32, kind: PlayerData.ItemKind, scene: Scene[NodeTag]):
