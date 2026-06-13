@@ -40,7 +40,7 @@ mod TestEffectRule {
     def testPreviewPowerPotion(): Unit \ Assert =
         let p = EffectRule.previewRule(powerPotion());
         Assert.assertEq(expected = (true, true, true),
-            (has("攻撃力を 4", p), has("3 ターン", p), has("つかって", p)))
+            (has("攻撃力を 4", p), has("3 ターン", p), has("使用すると", p)))
 
     // 火炎瓶: 投げて、当たった敵に15の固定ダメージ。
     def fireBottle(): EffectRule.EffectRule =

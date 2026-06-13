@@ -1,22 +1,20 @@
 {
   "staves": {
     "bind_staff": {
-      "description": "射線の相手を完全に止める。攻撃か投擲を受けると解ける",
+      "description": "使ったとき、当たった相手を 完全に動けなくする（攻撃を受けるまで）。（演出: ダメージ音）",
       "durability": 5,
       "effect": "Bind",
+      "effectRule": {
+        "amount": 0,
+        "for": "untilHit",
+        "forTurns": 0,
+        "op": "immobilize",
+        "sfx": "damage",
+        "to": "target",
+        "vfx": "",
+        "when": "onUse"
+      },
       "name": "かなしばりの杖",
-      "sprite": {
-        "frame": 267,
-        "hframes": 16,
-        "texture": "item_icons",
-        "vframes": 39
-      }
-    },
-    "stopgap_staff": {
-      "description": "射線の相手を止め、階段へワープさせる",
-      "durability": 3,
-      "effect": "Stopgap",
-      "name": "一時しのぎの杖",
       "sprite": {
         "frame": 267,
         "hframes": 16,
@@ -43,6 +41,18 @@
       "name": "かいふくのつえ",
       "sprite": {
         "frame": 242,
+        "hframes": 16,
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "stopgap_staff": {
+      "description": "射線の相手を止め、階段へワープさせる",
+      "durability": 3,
+      "effect": "Stopgap",
+      "name": "一時しのぎの杖",
+      "sprite": {
+        "frame": 267,
         "hframes": 16,
         "texture": "item_icons",
         "vframes": 39

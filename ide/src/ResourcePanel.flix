@@ -238,6 +238,10 @@ mod ResourcePanel {
                                 let mkCommit = kp -> { (json2: Util.Json.Json) ->
                                     commitToResource(state, kp, json2)
                                 };
+                                // ─── 効果 DSL 合成エディタ（日本語ドロップダウンで効果を組み立てる）───
+                                // effect を持つカタログのとき、いつ/誰に/何を/量/継続 を選んで
+                                // effectRule オブジェクトを組み立て、日本語1文プレビューを表示する。
+                                EffectComposerPanel.appendComposer(children, basePath, record, mkCommit);
                                 // sprite.frame 行の「Previewから選択」ボタン: フレーム調整モードを
                                 // ON にする (= アトラス全体表示にして preview クリックで拾える状態にする)。
                                 let onFramePick = () -> {
@@ -248,6 +252,9 @@ mod ResourcePanel {
                                 };
                                 List.forEach(p -> {
                                     let (k, e) = p;
+                                    // effectRule は専用の合成エディタ（EffectComposerPanel）が扱うので
+                                    // schema 駆動フィールドとしては描画しない。
+                                    if (k == "effectRule") () else
                                     PropertyWidgets.addFieldRow(children, k, e, record, basePath,
                                                                   textureNames, texturePathMap,
                                                                   refOptions, mkCommit, onFramePick)

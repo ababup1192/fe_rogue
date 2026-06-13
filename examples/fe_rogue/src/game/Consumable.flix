@@ -78,7 +78,10 @@ mod Consumable {
         healAmount  = Int32,
         durability  = Int32,
         sprite      = SpriteResource,
-        description = String
+        description = String,
+        // IDE の効果合成エディタが書く効果ルール（簡易形式 JSON）。あれば legacy effect より優先して
+        // ゲームが発火に使う。無ければ None（従来の effect で動く）。
+        effectRule  = Option[Json]
     }
 
     /// 効果 → デリバリの 1:1 導出。`Staff` のように方向を要するもの（投擲デバフ）と、
@@ -184,13 +187,13 @@ mod Consumable {
          sprite = ({texture = "item_icons", hframes = 16, vframes = 39, frame = 0,
                      offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0},
                      flipForFacing = false}: SpriteResource),
-         description = ""}
+         description = "", effectRule = None}
 
     /// `ConsumableResource` のフィールド名集合。
     /// Set で持つことで load 時に JSON フィールドの追加漏れ・typo を検出できる。
     pub def expectedFields(): Set[String] =
         Set#{"name", "effect", "magnitude", "duration",
-             "healAmount", "durability", "sprite", "description"}
+             "healAmount", "durability", "sprite", "description", "effectRule"}
 
     // ────────────────────────────────────────────────────────
     // 蘇生（AutoRevive）の純粋判定
@@ -256,7 +259,7 @@ mod ConsumableCatalogCodec {
     use Sprite.SpriteResource
 
     pub def encodeConsumable(item: ConsumableResource): Json =
-        JObject(Map#{
+        let base = Map#{
             "name"        => JString(item#name),
             "effect"      => JString(Consumable.effectToString(item#effect)),
             "magnitude"   => JNumber(intToBd(item#magnitude)),
@@ -265,7 +268,11 @@ mod ConsumableCatalogCodec {
             "durability"  => JNumber(intToBd(item#durability)),
             "sprite"      => encodeSprite(item#sprite),
             "description" => JString(item#description)
-        })
+        };
+        match item#effectRule {
+            case Some(j) => JObject(Map.insert("effectRule", j, base))
+            case None    => JObject(base)
+        }
 
     def encodeSprite(sprite: SpriteResource): Json =
         JObject(Map#{
@@ -302,9 +309,11 @@ mod ConsumableCatalogCodec {
             let desc = Map.get("description", obj)
                         |> Option.flatMap(expectString)
                         |> Option.getWithDefault("");
+            // effectRule（IDE 合成エディタが書く効果ルール）はあれば生 Json のまま保持。
+            let effectRule = Map.get("effectRule", obj);
             ({name = name, effect = effect, magnitude = mag, duration = dura,
                healAmount = heal, durability = dur,
-               sprite = sprite, description = desc}: ConsumableResource)
+               sprite = sprite, description = desc, effectRule = effectRule}: ConsumableResource)
         }
 
     def decodeSprite(element: Json): Option[SpriteResource] =

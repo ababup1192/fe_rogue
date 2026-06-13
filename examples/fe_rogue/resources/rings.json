@@ -19,6 +19,16 @@
     "guard_ring": {
       "description": "防御が3上がる",
       "effect": "Guard",
+      "effectRule": {
+        "amount": 3,
+        "for": "whileEquipped",
+        "forTurns": 0,
+        "op": "defUp",
+        "sfx": "",
+        "to": "self",
+        "vfx": "",
+        "when": "onEquip"
+      },
       "name": "まもりのリング",
       "power": 3,
       "sprite": {
@@ -35,6 +45,16 @@
     "mend_ring": {
       "description": "自分のターン開始時にHPが2回復",
       "effect": "Mend",
+      "effectRule": {
+        "amount": 2,
+        "for": "instant",
+        "forTurns": 0,
+        "op": "healFlat",
+        "sfx": "cure",
+        "to": "self",
+        "vfx": "",
+        "when": "onTurnStart"
+      },
       "name": "いやしのリング",
       "power": 2,
       "sprite": {
@@ -67,6 +87,16 @@
     "power_ring": {
       "description": "攻撃力が3上がる",
       "effect": "Power",
+      "effectRule": {
+        "amount": 3,
+        "for": "whileEquipped",
+        "forTurns": 0,
+        "op": "atkUp",
+        "sfx": "",
+        "to": "self",
+        "vfx": "",
+        "when": "onEquip"
+      },
       "name": "ちからのリング",
       "power": 3,
       "sprite": {
@@ -99,6 +129,16 @@
     "rusty_ring": {
       "description": "赤茶けている。むしろ弱くなった気がする",
       "effect": "Power",
+      "effectRule": {
+        "amount": -1,
+        "for": "whileEquipped",
+        "forTurns": 0,
+        "op": "atkUp",
+        "sfx": "",
+        "to": "self",
+        "vfx": "",
+        "when": "onEquip"
+      },
       "name": "さびのリング",
       "power": -1,
       "sprite": {
@@ -115,6 +155,16 @@
     "swift_ring": {
       "description": "速さが3上がる",
       "effect": "Swift",
+      "effectRule": {
+        "amount": 3,
+        "for": "whileEquipped",
+        "forTurns": 0,
+        "op": "spdUp",
+        "sfx": "",
+        "to": "self",
+        "vfx": "",
+        "when": "onEquip"
+      },
       "name": "すばやさのリング",
       "power": 3,
       "sprite": {
@@ -131,6 +181,16 @@
     "vengeance_ring": {
       "description": "敵を倒すとHPが5回復する",
       "effect": "Lifesteal",
+      "effectRule": {
+        "amount": 5,
+        "for": "instant",
+        "forTurns": 0,
+        "op": "healFlat",
+        "sfx": "cure",
+        "to": "attacker",
+        "vfx": "",
+        "when": "onKill"
+      },
       "name": "みかえりのリング",
       "power": 5,
       "sprite": {

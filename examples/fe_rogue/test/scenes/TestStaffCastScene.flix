@@ -73,7 +73,7 @@ mod TestStaffCastScene {
          sprite     = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                          offset = {x = 0.0, y = 0.0},
                          scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
-         description = ""}
+         description = "", effectRule = None}
 
     // ════════════════════════════════════════════════════════
     // 回復杖（ライブ）— 最大 HP を超えない
@@ -197,6 +197,19 @@ mod TestStaffCastScene {
     def testThrowHealAtAllyViaDsl(): Unit \ Assert =
         let scene = playerScene(4, 0);
         let after = StaffCastScene.applyConsumableEffectDsl(healItem(3), 0, true, scene);
+        Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
+
+    /// effectRule（IDE合成）が legacy effect を上書きしてゲームを駆動する。
+    /// legacy magnitude=99 だが effectRule の amount=3 なので HP 4→7（10にならない＝effectRule優先）。
+    @Test
+    def testEffectRuleDrivesSelfHeal(): Unit \ Assert =
+        let scene = playerScene(4, 0);
+        let ruleJson = Util.Json.parse("{\"when\":\"onUse\",\"to\":\"self\",\"op\":\"healFlat\",\"amount\":3,\"for\":\"instant\",\"forTurns\":0,\"sfx\":\"\",\"vfx\":\"\"}")
+                        |> Result.toOption;
+        let item = {effectRule = ruleJson | healItem(99)};
+        let user = playerData(scene);
+        let after = TestUnitFixtures.withMockGameLogger(() ->
+            StaffCastScene.applyConsumableSelfEffect(0, user, item, scene));
         Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
 
     /// ちから薬を味方#0 に投げて当てると AtkUp+4 が付与される（投擲で味方を強化できる）。

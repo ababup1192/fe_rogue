@@ -258,8 +258,13 @@ mod CombatScene {
                     |> Option.flatMap(w -> WeaponCatalog.braveThreshold(w#effect, w#effectValue));
                 let atkSpd = PlayerScene.combatView(p)#speed;
                 let defSpd = EnemyScene.combatView(e)#speed;
-                if (shouldFollowUp(atkSpd, defSpd, roll, Ring.hasPursuit(PlayerData.equippedRing(p)), p#followUpUsed)
-                    or braveFollowUp(atkSpd, defSpd, p#followUpUsed, braveT))
+                // 追撃判定を DSL の flow 層（EffectFlow.followUpDecision）へ寄せる。brave/pursuit の
+                // どちらかが成立すれば追撃（ロジックは shouldFollowUp/braveFollowUp と同一・テスト済）。
+                let fctx = {atkSpd = atkSpd, defSpd = defSpd, roll = roll,
+                            followUpUsed = p#followUpUsed, brave = braveT,
+                            pursuit = Ring.hasPursuit(PlayerData.equippedRing(p))};
+                if (EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Brave), fctx)
+                    or EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Pursuit), fctx))
                     p#attackTargetId
                 else None
             case _ => None
@@ -357,8 +362,11 @@ mod CombatScene {
                     |> Option.flatMap(w -> WeaponCatalog.braveThreshold(w#effect, w#effectValue));
                 let atkSpd = EnemyScene.combatView(e)#speed;
                 let defSpd = PlayerScene.combatView(p)#speed;
-                if (shouldFollowUp(atkSpd, defSpd, roll, Ring.hasPursuit(e#ring), e#followUpUsed)
-                    or braveFollowUp(atkSpd, defSpd, e#followUpUsed, braveT))
+                let fctx = {atkSpd = atkSpd, defSpd = defSpd, roll = roll,
+                            followUpUsed = e#followUpUsed, brave = braveT,
+                            pursuit = Ring.hasPursuit(e#ring)};
+                if (EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Brave), fctx)
+                    or EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Pursuit), fctx))
                     e#attackTargetId
                 else None
             case _ => None

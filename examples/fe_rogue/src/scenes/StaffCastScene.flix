@@ -407,16 +407,37 @@ mod StaffCastScene {
                                    item: Consumable.ConsumableResource,
                                    scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
-        if (isSelfUseEffect(item#effect)) {
-            let rule = EffectBridge.consumableRule(item);
-            let ctx = {selfId = playerId, attackerId = playerId,
-                       rayUnits = (Nil: List[EffectRule.RayUnit]),
-                       amount = {max = player#resource#hp, dealt = 0, incoming = 0, magic = 0}};
-            let plan = EffectPlan.planActions(rule, ctx);
-            EffectRunner.runPlan(selfEffectHandlers(item), plan, scene)
-        } else {
-            GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${item#name} は ここでは使えなかった");
-            scene
+        match dslUseRule(item) {
+            // IDE 合成エディタの effectRule（onUse）があればそれを優先発火。PlanItem の値（IDE で
+            // 編集した量/op/継続）で効くので、ゲーム挙動が IDE の設定に追従する。対象は自分。
+            case Some(rule) =>
+                let ctx = {selfId = playerId, attackerId = playerId,
+                           rayUnits = ({id = playerId, ally = true, immobilized = false, alive = true}: EffectRule.RayUnit) :: Nil,
+                           amount = {max = player#resource#hp, dealt = 0, incoming = 0, magic = 0}};
+                EffectRunner.runPlan(throwEffectHandlers(), EffectPlan.planActions(rule, ctx), scene)
+            // effectRule が無い（または onUse でない）→ 従来どおり legacy effect で動く。
+            case None =>
+                if (isSelfUseEffect(item#effect)) {
+                    let rule = EffectBridge.consumableRule(item);
+                    let ctx = {selfId = playerId, attackerId = playerId,
+                               rayUnits = (Nil: List[EffectRule.RayUnit]),
+                               amount = {max = player#resource#hp, dealt = 0, incoming = 0, magic = 0}};
+                    let plan = EffectPlan.planActions(rule, ctx);
+                    EffectRunner.runPlan(selfEffectHandlers(item), plan, scene)
+                } else {
+                    GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${item#name} は ここでは使えなかった");
+                    scene
+                }
+        }
+
+    /// effectRule があり trigger が onUse（つかう）なら EffectRule を返す。IDE 合成効果を優先する判定。
+    def dslUseRule(item: Consumable.ConsumableResource): Option[EffectRule.EffectRule] =
+        match item#effectRule {
+            case Some(j) => match EffectBridge.fromComposer(j) {
+                case Some(rule) => if (rule#trigger == EffectRule.Trigger.OnUse) Some(rule) else None
+                case None       => None
+            }
+            case None => None
         }
 
     /// self-use（つかうと自分に効く）効果か。これら以外がここへ来たら防御ログへ落とす。
@@ -563,15 +584,15 @@ mod StaffCastScene {
     def applyDirectionalEffect(playerId: Int32, item: Consumable.ConsumableResource,
                                 hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
+        // directionalStatus は「投擲系デバフか（Some/None）」の門番として使い、状態適用そのものは
+        // 統一 DSL 経路（applyConsumableEffectDsl）へ寄せる（当たった敵/味方を ally で出し分け）。
         match (directionalStatus(item), hit) {
-            case (Some(status), RayHit.HitEnemy(enemyId, _))   =>
+            case (Some(_), RayHit.HitEnemy(enemyId, _))   =>
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${EnemyScene.displayName(enemyId, scene)} に ${item#name} を当てた");
-                EnemyScene.mapEnemy(enemyId,
-                    d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
-            case (Some(status), RayHit.HitPlayer(targetId, _)) =>
+                applyConsumableEffectDsl(item, enemyId, false, scene)
+            case (Some(_), RayHit.HitPlayer(targetId, _)) =>
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${PlayerScene.displayName(targetId, scene)} に ${item#name} を当てた");
-                PlayerScene.mapPlayer(targetId,
-                    d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
+                applyConsumableEffectDsl(item, targetId, true, scene)
             // 効果が投擲系でない（None）→ 不発。投擲系だが壁/盤外に消えた → 届かなかった。
             case (None, _)                                     =>
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${item#name} は不発に終わった");

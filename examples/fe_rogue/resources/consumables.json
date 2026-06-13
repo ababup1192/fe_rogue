@@ -1,7 +1,7 @@
 {
   "consumables": {
     "blast_bottle": {
-      "description": "当たった対象と周囲1マス(味方含む)に10ダメージ",
+      "description": "中で何かが渦巻く危うい瓶。投げれば周囲を巻き込んで炸裂する",
       "durability": 1,
       "duration": 0,
       "effect": "BlastBottle",
@@ -16,10 +16,20 @@
       }
     },
     "blind_potion": {
-      "description": "投げて当てた相手の命中を5ターン25%下げる",
+      "description": "鼻を突く刺激臭。投げつければ相手は涙でしばらく前が見えない",
       "durability": 3,
       "duration": 5,
       "effect": "BlindHit",
+      "effectRule": {
+        "amount": 25,
+        "for": "turns",
+        "forTurns": 5,
+        "op": "hitDown",
+        "sfx": "damage",
+        "to": "target",
+        "vfx": "",
+        "when": "onUse"
+      },
       "healAmount": 0,
       "magnitude": 25,
       "name": "目潰し薬",
@@ -31,10 +41,20 @@
       }
     },
     "elixir": {
-      "description": "使用者のHPを全回復する",
+      "description": "舌に染みる薬草の苦み。だが効き目は折り紙つき、生気がよみがえる",
       "durability": 1,
       "duration": 0,
       "effect": "FullHeal",
+      "effectRule": {
+        "amount": 0,
+        "for": "instant",
+        "forTurns": 0,
+        "op": "healFull",
+        "sfx": "cure",
+        "to": "self",
+        "vfx": "",
+        "when": "onUse"
+      },
       "healAmount": 0,
       "magnitude": 0,
       "name": "特効薬",
@@ -46,10 +66,20 @@
       }
     },
     "fire_bottle": {
-      "description": "投げて当たった相手に15ダメージ",
+      "description": "ゆらめく油を詰めた瓶。砕け散れば、一瞬で火柱が立ちのぼる",
       "durability": 1,
       "duration": 0,
       "effect": "FireBottle",
+      "effectRule": {
+        "amount": 15,
+        "for": "instant",
+        "forTurns": 0,
+        "op": "damageFlat",
+        "sfx": "magic",
+        "to": "target",
+        "vfx": "explosion",
+        "when": "onUse"
+      },
       "healAmount": 0,
       "magnitude": 15,
       "name": "火炎瓶",
@@ -61,10 +91,20 @@
       }
     },
     "great_vulnerary": {
-      "description": "使用者のHPを25回復する",
+      "description": "濃厚でとろりとした飲み口。一本で深手もぐっと楽になる、頼れる一品",
       "durability": 2,
       "duration": 0,
       "effect": "Heal",
+      "effectRule": {
+        "amount": 25,
+        "for": "instant",
+        "forTurns": 0,
+        "op": "healFlat",
+        "sfx": "cure",
+        "to": "self",
+        "vfx": "",
+        "when": "onUse"
+      },
       "healAmount": 25,
       "magnitude": 25,
       "name": "大きずぐすり",
@@ -76,10 +116,20 @@
       }
     },
     "life_herb": {
-      "description": "最大HPが3上がる",
+      "description": "噛むほどに力が湧く不思議な葉。体の芯がひと回り太くなる気がする",
       "durability": 1,
       "duration": 0,
       "effect": "MaxHpUp",
+      "effectRule": {
+        "amount": 3,
+        "for": "permanent",
+        "forTurns": 0,
+        "op": "maxHpUp",
+        "sfx": "cure",
+        "to": "self",
+        "vfx": "",
+        "when": "onUse"
+      },
       "healAmount": 0,
       "magnitude": 3,
       "name": "命の草",
@@ -91,10 +141,20 @@
       }
     },
     "power_potion": {
-      "description": "3ターンの間、攻撃力が4上がる",
+      "description": "ピリッと辛い刺激が腕に走る。しばらく拳に自信がみなぎる",
       "durability": 2,
       "duration": 3,
       "effect": "AtkUp",
+      "effectRule": {
+        "amount": 4,
+        "for": "turns",
+        "forTurns": 3,
+        "op": "atkUp",
+        "sfx": "cure",
+        "to": "self",
+        "vfx": "",
+        "when": "onUse"
+      },
       "healAmount": 0,
       "magnitude": 4,
       "name": "ちから薬",
@@ -106,10 +166,20 @@
       }
     },
     "revival_drug": {
-      "description": "持っていると、HP0のとき自動で復活し全回復する",
+      "description": "禁断の香りがする赤い雫。倒れても、もう一度立ち上がれるという",
       "durability": 1,
       "duration": 0,
       "effect": "AutoRevive",
+      "effectRule": {
+        "amount": 0,
+        "for": "instant",
+        "forTurns": 0,
+        "op": "reviveCharge",
+        "sfx": "cure",
+        "to": "self",
+        "vfx": "",
+        "when": "onDeath"
+      },
       "healAmount": 0,
       "magnitude": 0,
       "name": "蘇生薬",
@@ -121,10 +191,20 @@
       }
     },
     "slow_potion": {
-      "description": "投げて当てた相手の速さ(回避)を5ターン下げる",
+      "description": "とろみのある液体。浴びた者の足は、ぬかるみのように重くなる",
       "durability": 1,
       "duration": 5,
       "effect": "SpdDownHit",
+      "effectRule": {
+        "amount": 5,
+        "for": "turns",
+        "forTurns": 5,
+        "op": "spdDown",
+        "sfx": "damage",
+        "to": "target",
+        "vfx": "",
+        "when": "onUse"
+      },
       "healAmount": 0,
       "magnitude": 5,
       "name": "鈍足薬",
@@ -136,10 +216,20 @@
       }
     },
     "speed_potion": {
-      "description": "3ターンの間、速さ(回避)が5上がる",
+      "description": "炭酸のように弾ける飲み心地。足取りがやけに軽くなる",
       "durability": 1,
       "duration": 3,
       "effect": "SpdUp",
+      "effectRule": {
+        "amount": 5,
+        "for": "turns",
+        "forTurns": 3,
+        "op": "spdUp",
+        "sfx": "cure",
+        "to": "self",
+        "vfx": "",
+        "when": "onUse"
+      },
       "healAmount": 0,
       "magnitude": 5,
       "name": "すばやさ薬",
@@ -151,10 +241,20 @@
       }
     },
     "tear_potion": {
-      "description": "投げて当てた相手の守備を3ターン5下げる",
+      "description": "金属を蝕む酸のにおい。鎧の継ぎ目をじわりと緩ませる",
       "durability": 3,
       "duration": 3,
       "effect": "DefDownHit",
+      "effectRule": {
+        "amount": 5,
+        "for": "turns",
+        "forTurns": 3,
+        "op": "defDown",
+        "sfx": "damage",
+        "to": "target",
+        "vfx": "",
+        "when": "onUse"
+      },
       "healAmount": 0,
       "magnitude": 5,
       "name": "ほころび薬",
@@ -166,10 +266,20 @@
       }
     },
     "vulnerary": {
-      "description": "使用者のHPを10回復する",
+      "description": "意外とフレッシュで果実のような味わい。傷もご機嫌も、ほどよく癒える",
       "durability": 3,
       "duration": 0,
       "effect": "Heal",
+      "effectRule": {
+        "amount": 10,
+        "for": "instant",
+        "forTurns": 0,
+        "op": "healFlat",
+        "sfx": "cure",
+        "to": "self",
+        "vfx": "",
+        "when": "onUse"
+      },
       "healAmount": 10,
       "magnitude": 10,
       "name": "きずぐすり",

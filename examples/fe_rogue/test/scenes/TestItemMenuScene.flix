@@ -397,7 +397,7 @@ mod TestItemMenuScene {
         let potion = ({name = "きずぐすり",
                         effect = Consumable.ConsumableEffect.Heal, magnitude = 10, duration = 0,
                         healAmount = 10, durability = 3,
-                        sprite = testStaff()#sprite, description = ""}:
+                        sprite = testStaff()#sprite, description = "", effectRule = None}:
                         Consumable.ConsumableResource);
         Assert.assertEq(
             expected = "HP+10 耐久3",

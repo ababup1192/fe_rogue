@@ -14,6 +14,9 @@ mod EffectBridge {
     use WeaponCatalog.WeaponEffect
     use Ring.RingEffect
     use Staff.StaffEffect
+    use Util.Json.Json
+    use Util.Json.Json.{JObject, JString, JArray, JNumber}
+    use JsonCodec.{expectString, expectInt, intToBd}
 
     /// 投げ対象（throw・ray 最初の1体・陣営無視）の 1 アクションを作る。
     def anyTargetAct(op: Op, amount: Option[Amount], dur: Option[Duration]): EffectRule.Action =
@@ -210,6 +213,81 @@ mod EffectBridge {
                          castAct(Op.OpImmobilize, None, Some(Duration.DurUntilHit)) ::
                          castAct(Op.OpWarpToStairs, None, None) :: Nil, None)
         }
+
+    // ════════════════════════════════════════════════════════
+    // IDE 合成エディタの簡易形式 JSON → EffectRule
+    //   簡易形式 {when,to,op,amount,for,forTurns,sfx,vfx} を完全な EffectRule JSON へ展開し
+    //   EffectRuleCodec.decodeRule で解釈する。これでゲームが effectRule を発火に使える。
+    // ════════════════════════════════════════════════════════
+
+    /// 簡易形式 JSON を EffectRule へ変換（不正なら None）。
+    pub def fromComposer(simple: Json): Option[EffectRule.EffectRule] =
+        EffectRuleCodec.decodeRule(simpleToFull(simple))
+
+    /// 消費アイテムの説明文。effectRule があれば DSL から組み上げた日本語1文を返し、
+    /// 無ければ従来の description を返す（ゲームのアイテム詳細表示に使う）。
+    pub def consumableEffectText(item: ConsumableResource): String =
+        match item#effectRule {
+            case Some(j) => match fromComposer(j) {
+                case Some(rule) => EffectRule.previewRule(rule)
+                case None       => item#description
+            }
+            case None => item#description
+        }
+
+    def simpleToFull(simple: Json): Json =
+        let obj = match simple {
+            case JObject(m) => m
+            case _          => Map.empty()
+        };
+        let gs = (k, d) -> Map.get(k, obj) |> Option.flatMap(expectString) |> Option.getWithDefault(d);
+        let gi = (k, d) -> Map.get(k, obj) |> Option.flatMap(expectInt) |> Option.getWithDefault(d);
+        let toV = gs("to", "self");
+        JObject(Map#{
+            "when" => JString(gs("when", "onUse")),
+            "deliver" => JArray(Vector#{JString(deliverOfComposer(toV))}),
+            "do" => JArray(Vector#{
+                actionFull(toV, gs("op", "healFlat"), gi("amount", 0),
+                           gs("for", "instant"), gi("forTurns", 0), gs("sfx", ""), gs("vfx", ""))
+            })
+        })
+
+    def deliverOfComposer(to: String): String = match to {
+        case "self"     => "self"
+        case "attacker" => "self"
+        case _          => "throw"
+    }
+
+    def actionFull(to: String, op: String, amt: Int32, forV: String, ft: Int32,
+                   sfx: String, vfx: String): Json =
+        let base0 = Map#{"to" => toFull(to), "op" => JString(op)};
+        let base1 = if (opTakesAmount(op))
+                        Map.insert("amount", JObject(Map#{"flat" => JNumber(intToBd(amt))}), base0)
+                    else base0;
+        let base2 = Map.insert("for", forFull(forV, ft), base1);
+        let base3 = if (sfx == "") base2 else Map.insert("sfx", JString(sfx), base2);
+        let base4 = if (vfx == "") base3 else Map.insert("vfx", JString(vfx), base3);
+        JObject(base4)
+
+    def toFull(to: String): Json = match to {
+        case "attacker" => JObject(Map#{"role" => JString("attacker")})
+        case "target"   => JObject(Map#{"role" => JString("target")})
+        case "enemy"    => JObject(Map#{"role" => JString("target"), "faction" => JString("enemy")})
+        case "ally"     => JObject(Map#{"role" => JString("target"), "faction" => JString("ally")})
+        case _          => JObject(Map#{"role" => JString("self")})
+    }
+
+    def forFull(forV: String, ft: Int32): Json = match forV {
+        case "turns" => JObject(Map#{"turns" => JNumber(intToBd(ft))})
+        case _       => JString(forV)
+    }
+
+    def opTakesAmount(op: String): Bool = match op {
+        case "healFull"     => false
+        case "immobilize"   => false
+        case "reviveCharge" => false
+        case _              => true
+    }
 
     /// RingMan（敵特殊）: 敵ターンに隣接していると 30% で通常攻撃をやめ、相手（味方）の
     /// 持ち物を指輪化する。flow:replaceAttack（攻撃を差し替える）＋ ringify（B custom）。

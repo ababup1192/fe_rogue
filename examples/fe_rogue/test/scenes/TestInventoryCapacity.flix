@@ -33,7 +33,8 @@ mod TestInventoryCapacity {
         healAmount = 10,
         durability = 3,
         sprite     = testSprite(),
-        description = ""
+        description = "",
+        effectRule = None
     }
 
     /// 容量カウントに影響しないダミー sprite。

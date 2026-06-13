@@ -239,7 +239,7 @@ mod EffectRule {
 
     def deliverJa(ds: List[Deliver]): String =
         if (List.memberOf(Deliver.DeliverThrow, ds)) "投げて、"
-        else if (List.memberOf(Deliver.DeliverSelf, ds)) "つかって、"
+        else if (List.memberOf(Deliver.DeliverSelf, ds)) "使用すると、"
         else ""
 
     def flowJa(f: Flow): String = match f {

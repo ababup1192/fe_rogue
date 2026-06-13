@@ -550,9 +550,13 @@ mod PropertyWidgets {
             case Some(Util.Json.Json.JString(s)) => s
             case _ => List.head(options) |> Option.getWithDefault("")
         };
-        let combo = makeStringComboBox(options, current, 140.0,
-            newVal -> commit(Util.Json.Json.JString(newVal)));
-        combo.setMaxWidth(140.0);
+        // 効果 enum 等は日本語ラベルで表示し、JSON へは内部値（英字）を書き戻す。
+        // EffectLabels.label は未知の値を素通しするので、効果以外の enum はそのまま表示される。
+        let labels = List.map(EffectLabels.label, options);
+        let currentLabel = EffectLabels.label(current);
+        let combo = makeStringComboBox(labels, currentLabel, 160.0,
+            newLabel -> commit(Util.Json.Json.JString(EffectLabels.valueOf(newLabel, options))));
+        combo.setMaxWidth(160.0);
         checked_cast(combo)
     }
 

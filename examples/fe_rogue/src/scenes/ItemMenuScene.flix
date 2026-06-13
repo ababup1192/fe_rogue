@@ -265,7 +265,12 @@ mod ItemMenuScene {
                      desc = staff#description, sprite = staff#sprite})
             case PlayerData.ItemKind.Consumable(idx) =>
                 List.nth(idx, consumables) |> Option.map(item ->
-                    {name = item#name, stats = consumableStatLine(item),
+                    // 効果行 = effectRule から組んだ DSL 文（無ければ従来の攻+4 等）、説明 = フレーバー。
+                    {name = item#name,
+                     stats = match item#effectRule {
+                         case Some(_) => EffectBridge.consumableEffectText(item)
+                         case None    => consumableStatLine(item)
+                     },
                      desc = item#description, sprite = item#sprite})
             case PlayerData.ItemKind.Ring(idx) =>
                 List.nth(idx, rings) |> Option.map(ring ->

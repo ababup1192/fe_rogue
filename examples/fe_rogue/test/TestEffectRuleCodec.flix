@@ -33,7 +33,7 @@ mod TestEffectRuleCodec {
         let json = "{\"when\":\"onUse\",\"deliver\":[\"self\"],\"do\":[{\"to\":{\"role\":\"self\"},\"op\":\"atkUp\",\"amount\":{\"flat\":4},\"for\":{\"turns\":3},\"sfx\":\"cure\"}]}";
         let p = prev(json);
         Assert.assertEq(expected = (true, true, true),
-            (has("つかって", p), has("攻撃力を 4", p), has("3 ターン", p)))
+            (has("使用すると", p), has("攻撃力を 4", p), has("3 ターン", p)))
 
     /// 死神 JSON（if + finisher）を decode → 「必ず必殺にする」。
     @Test

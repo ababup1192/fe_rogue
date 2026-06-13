@@ -1,75 +1,119 @@
 {
   "fields": {
-    "name": {
+    "description": {
       "field": {
         "ftype": "text",
-        "hint":  "plain",
-        "label": "名前",
-        "order": 1
-      }
-    },
-    "effect": {
-      "field": {
-        "ftype": { "type": "enum", "values": ["Heal", "FullHeal", "MaxHpUp", "AutoRevive", "BlindHit", "SpdDownHit", "DefDownHit", "AtkUp", "SpdUp", "FireBottle", "BlastBottle"] },
-        "hint":  "plain",
-        "label": "効果",
-        "order": 2
-      }
-    },
-    "magnitude": {
-      "field": {
-        "ftype": "int",
-        "hint":  { "slider": { "min": 0, "max": 99, "step": 1 } },
-        "label": "効果量(回復/+N/命中-N%)",
-        "order": 4
-      }
-    },
-    "duration": {
-      "field": {
-        "ftype": "int",
-        "hint":  { "slider": { "min": 0, "max": 9, "step": 1 } },
-        "label": "持続ターン(バフ/投擲系のみ)",
-        "order": 5
-      }
-    },
-    "healAmount": {
-      "field": {
-        "ftype": "int",
-        "hint":  { "slider": { "min": 0, "max": 99, "step": 1 } },
-        "label": "回復量(旧・互換用)",
-        "order": 6
+        "hint": "plain",
+        "label": "説明",
+        "order": 99
       }
     },
     "durability": {
       "field": {
         "ftype": "int",
-        "hint":  { "slider": { "min": 1, "max": 30, "step": 1 } },
+        "hint": {
+          "slider": {
+            "max": 30,
+            "min": 1,
+            "step": 1
+          }
+        },
         "label": "使用回数",
         "order": 7
       }
     },
-    "description": {
+    "duration": {
+      "field": {
+        "ftype": "int",
+        "hint": {
+          "slider": {
+            "max": 9,
+            "min": 0,
+            "step": 1
+          }
+        },
+        "label": "持続ターン(バフ/投擲系のみ)",
+        "order": 5
+      }
+    },
+    "effect": {
+      "field": {
+        "ftype": {
+          "type": "enum",
+          "values": [
+            "Heal",
+            "FullHeal",
+            "MaxHpUp",
+            "AutoRevive",
+            "BlindHit",
+            "SpdDownHit",
+            "DefDownHit",
+            "AtkUp",
+            "SpdUp",
+            "FireBottle",
+            "BlastBottle"
+          ]
+        },
+        "hint": "plain",
+        "label": "効果",
+        "order": 2
+      }
+    },
+    "effectRule": {
       "field": {
         "ftype": "text",
-        "hint":  "plain",
-        "label": "説明",
+        "hint": "plain",
+        "label": "効果ルール(IDE合成・直接編集しない)",
         "order": 99
+      }
+    },
+    "healAmount": {
+      "field": {
+        "ftype": "int",
+        "hint": {
+          "slider": {
+            "max": 99,
+            "min": 0,
+            "step": 1
+          }
+        },
+        "label": "回復量(旧・互換用)",
+        "order": 6
+      }
+    },
+    "magnitude": {
+      "field": {
+        "ftype": "int",
+        "hint": {
+          "slider": {
+            "max": 99,
+            "min": 0,
+            "step": 1
+          }
+        },
+        "label": "効果量(回復/+N/命中-N%)",
+        "order": 4
+      }
+    },
+    "name": {
+      "field": {
+        "ftype": "text",
+        "hint": "plain",
+        "label": "名前",
+        "order": 1
       }
     },
     "sprite": {
       "nested": {
-        "texture": {
-          "field": {
-            "ftype": "texturePath",
-            "hint":  "plain",
-            "label": "テクスチャ",
-            "order": 1
-          }
-        },
         "frame": {
           "field": {
             "ftype": "int",
-            "hint":  { "frameGrid": { "hframesField": "hframes", "vframesField": "vframes" } },
+            "hint": {
+              "frameGrid": {
+                "hframesField": "hframes",
+                "vframesField": "vframes"
+              }
+            },
             "label": "フレーム",
             "order": 2
           }
@@ -77,17 +121,14 @@
         "hframes": {
           "field": {
             "ftype": "int",
-            "hint":  { "spinner": { "min": 1, "max": 64 } },
+            "hint": {
+              "spinner": {
+                "max": 64,
+                "min": 1
+              }
+            },
             "label": "横分割",
             "order": 3
-          }
-        },
-        "vframes": {
-          "field": {
-            "ftype": "int",
-            "hint":  { "spinner": { "min": 1, "max": 64 } },
-            "label": "縦分割",
-            "order": 4
           }
         },
         "offset": {
@@ -95,17 +136,50 @@
             "x": {
               "field": {
                 "ftype": "float",
-                "hint":  { "slider": { "min": -16, "max": 16, "step": 0.5 } },
+                "hint": {
+                  "slider": {
+                    "max": 16,
+                    "min": -16,
+                    "step": 0.5
+                  }
+                },
                 "label": "オフセット X"
               }
             },
             "y": {
               "field": {
                 "ftype": "float",
-                "hint":  { "slider": { "min": -16, "max": 16, "step": 0.5 } },
+                "hint": {
+                  "slider": {
+                    "max": 16,
+                    "min": -16,
+                    "step": 0.5
+                  }
+                },
                 "label": "オフセット Y"
               }
             }
+          }
+        },
+        "texture": {
+          "field": {
+            "ftype": "texturePath",
+            "hint": "plain",
+            "label": "テクスチャ",
+            "order": 1
+          }
+        },
+        "vframes": {
+          "field": {
+            "ftype": "int",
+            "hint": {
+              "spinner": {
+                "max": 64,
+                "min": 1
+              }
+            },
+            "label": "縦分割",
+            "order": 4
           }
         }
       }

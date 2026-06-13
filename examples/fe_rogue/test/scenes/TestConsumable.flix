@@ -90,7 +90,7 @@ mod TestConsumable {
          sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                      offset = {x = 0.0, y = 0.0},
                      scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
-         description = ""}
+         description = "", effectRule = None}
 
     /// 効果と耐久を指定して最小限の消費アイテムを作る。
     def itemWith(effect: Consumable.ConsumableEffect, durability: Int32):
@@ -104,7 +104,7 @@ mod TestConsumable {
          sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                      offset = {x = 0.0, y = 0.0},
                      scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
-         description = ""}
+         description = "", effectRule = None}
 
     // ════════════════════════════════════════════════════════
     // deliveryFor — 効果からデリバリを 1:1 導出
