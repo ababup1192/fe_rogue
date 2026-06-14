@@ -15,6 +15,7 @@
 ///   - PlayerAttack    → カーソルのワールド座標（赤マスを動くカーソルに追従）
 ///   - PlayerAutoMove  → ロード(id 0)のワールド座標（合流先 = ロードを映す）
 ///   - RogueMove       → ロード(id 0)のワールド座標（自由歩行するロードに追従）
+///   - FollowMove      → ロード(id 0)のワールド座標（隊列の先頭=リーダーに追従）
 ///   - RogueAlert      → 発見演出の焦点（同部屋なら部屋中心 / 索敵範囲なら検知した敵）
 ///   - EnemyTurn       → **alerted な敵が行動中ならその敵を映す**（`enemyTurnTarget`）。
 ///                        attacking 中の敵 > キュー先頭の敵 > 非 alerted ならプレイヤーへフォールバック
@@ -122,6 +123,7 @@ mod CameraScene {
             case TurnPhase.Phase.TradeInventory    => focusPos
             case TurnPhase.Phase.PlayerAutoMove   => lordWorldPos(scene)
             case TurnPhase.Phase.RogueMove        => lordWorldPos(scene)
+            case TurnPhase.Phase.FollowMove       => lordWorldPos(scene)
             case TurnPhase.Phase.RogueAlert       => AutoMoveScene.alertInfo(scene)#focus
             case TurnPhase.Phase.EnemyTurn        => enemyTurnTarget(focusPos, scene)
         }

@@ -20,6 +20,7 @@
 /// | TradeTargetSelect | Clear     | Clear           | Clear             | Show       | Clear      | Show + SnapPlayer  |
 /// | PlayerAutoMove    | Clear     | Clear           | Clear             | Clear      | Clear      | Hide               |
 /// | RogueMove         | Clear     | Clear           | Clear             | Clear      | Clear      | Hide               |
+/// | FollowMove        | Clear     | Clear           | Clear             | Clear      | Clear      | Hide               |
 /// | RogueAlert        | Keep      | Keep            | Keep              | Keep       | Keep       | Keep(Hidden)       |
 /// | EnemyTurn         | Clear     | Clear           | Clear             | Clear      | Keep       | Keep               |
 ///
@@ -145,6 +146,19 @@ mod PhaseTransitions {
     pub def enterRogueMove(scene: Scene[NodeTag]):
             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.RogueMove);
+        clearAllPlayerRanges(scene)
+            |> EnemyRangeScene.clear
+            |> EnemyAttackRangeScene.clear
+            |> CursorScene.setVisible(false)
+
+    /// FollowMove フェーズに入る (味方ターン中に LeftCtrl で追従移動モードを起動)。
+    /// 動作: RogueMove と同じく味方系 range と EnemyRange を全消し → カーソルを隠す
+    ///       (リーダーは自分の physicsProcess で動き、追従者は driver が動かすのでカーソル不要)。
+    /// RogueMove と表示仕様は同一だが、敵検知で解散せず・敵ターン後に戻る点だけが異なる
+    /// (その違いは AutoMoveScene / Game.flix の駆動ロジック側が担う)。
+    pub def enterFollowMove(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.FollowMove);
         clearAllPlayerRanges(scene)
             |> EnemyRangeScene.clear
             |> EnemyAttackRangeScene.clear

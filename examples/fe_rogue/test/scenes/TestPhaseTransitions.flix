@@ -181,6 +181,24 @@ mod TestPhaseTransitions {
                 result)
         }
 
+    /// FollowMove 進入(=追従移動モード起動)で:
+    ///   - Move / MoveAttack / PlayerAttackRange / EnemyRange は全て消える
+    ///   - Cursor は隠れる
+    ///   - TurnPhase は FollowMove
+    /// (RogueMove と表示仕様は同一。敵検知で解散しない違いは駆動ロジック側の責務)
+    @Test
+    def testEnterFollowMoveClearsAllRangesAndHidesCursor(): Unit \ Assert =
+        region rc {
+            let initial = sceneWithAllRangesAndCursor();
+            let result = run {
+                let after = PhaseTransitions.enterFollowMove(initial);
+                observe(after)
+            } with TurnPhase.withState(rc);
+            Assert.assertEq(
+                expected = (false, false, false, false, false, TurnPhase.Phase.FollowMove),
+                result)
+        }
+
     // ════════════════════════════════════════════════════════
     // enterEnemyTurn — 味方 3 range をすべて消す / EnemyRange と cursor 状態は触らない
     // ════════════════════════════════════════════════════════

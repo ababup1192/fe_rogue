@@ -121,6 +121,9 @@ instance Node[NodeTag] {
                     PlayerMovementScene.physicsStep(delta, node, path, scene)
                 else if (phase == TurnPhase.Phase.RogueMove and data#id == 0)
                     PlayerMovementScene.roamStep(delta, node, path, scene)
+                // 追従移動モードでもリーダー(id 0)だけが制限なし自由歩行する（追従者は driver が動かす）。
+                else if (phase == TurnPhase.Phase.FollowMove and data#id == 0)
+                    PlayerMovementScene.roamStep(delta, node, path, scene)
                 else (node, scene)
             case EngineNode.Marker2DWithState(_, NodeTag.Cursor(_)) =>
                 // PlayerCursor / PlayerAttack の場合分けは CursorScene 内部に閉じている
@@ -305,6 +308,10 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                     TradeMenuScene.toggleTradeMarkAtCursor(scene)
                 case _ => scene
             }
+        // LeftCtrl トグル: 追従移動モード(FollowMove)の起動 / 移動確定。
+        // 味方ターン中ならいつでも（戦闘中でも）リーダー＋隊列をまとめて動かせる。
+        else if (key == GameEngine.Key.LeftCtrl)
+            handleFollowToggle(phase, scene)
         else {
             // プレイヤー操作のフィードバック効果音（決定 / キャンセル / メニューカーソル移動）。
             // onKeyPressed は物理キー押下ごとに 1 度だけ発火するので、ここで鳴らせば 1 押下 = 1 音。
@@ -323,6 +330,34 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                 case None        => dispatchNonMenuKey(phase, input, key, popupShown, scene)
             }
         }
+
+/// LeftCtrl による追従移動モードのトグル処理。
+///   - 味方が操作するフィールド系フェーズ (PlayerCursor / PlayerMoving) → FollowMove へ入る。
+///     PlayerMoving からは選択中の駒を origin へ戻して(cancelSelection)から入り、
+///     中途半端なドラフト状態を残さない。
+///   - FollowMove 中にもう一度押す → 「移動確定」で全員行動済みにして敵ターンへ
+///     (リーダーが歩行 Tween 中はガードして待つ)。
+///   - それ以外のフェーズ (メニュー中・敵ターン・演出中など) は無反応。
+def handleFollowToggle(phase: TurnPhase.Phase, scene: Scene[NodeTag]):
+        Scene[NodeTag] \ {GameEngine.Audio, Tween.Scheduler, AnimationPlayer.Scheduler,
+                           GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
+                           SelectedPlayer.State, PlayerData.PartyQuery} =
+    match phase {
+        case TurnPhase.Phase.PlayerCursor =>
+            AudioStreamPlayer.play("confirm");
+            PhaseTransitions.enterFollowMove(scene)
+        case TurnPhase.Phase.PlayerMoving =>
+            AudioStreamPlayer.play("confirm");
+            PhaseTransitions.enterFollowMove(PlayerScene.cancelSelection(scene))
+        case TurnPhase.Phase.FollowMove =>
+            // 歩行 Tween の途中で確定すると駒の着地座標が未確定なのでガードして待つ。
+            if (PlayerScene.isMoving(PlayerScene.lordId())) scene
+            else {
+                AudioStreamPlayer.play("confirm");
+                AutoMoveScene.endFollow(scene)
+            }
+        case _ => scene
+    }
 
 /// MenuHandler instance — ItemList の Enter/Escape を各 MenuScene へ流す。
 /// 入力キー固定: Up/Down=カーソル移動 / Enter=確定 / Escape=キャンセル（engine 規約）。
@@ -491,6 +526,8 @@ def confirmCancelMakesSound(phase: TurnPhase.Phase, input: TurnRules.Input): Boo
         case (TurnPhase.Phase.PlayerAutoMove, TurnRules.Input.Confirm) => false
         // ローグ自由歩行: Z でメニューを開く / X(キャンセル) は無視
         case (TurnPhase.Phase.RogueMove,      TurnRules.Input.Cancel)  => false
+        // 追従移動: 確定/解除は LeftCtrl 専用。Z/X はどちらも無反応なので音も鳴らさない
+        case (TurnPhase.Phase.FollowMove,     _)                       => false
         case _                                                          => true
     }
 

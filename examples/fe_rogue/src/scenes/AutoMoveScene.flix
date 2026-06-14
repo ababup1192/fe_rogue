@@ -69,6 +69,7 @@ mod AutoMoveScene {
         match phase {
             case TurnPhase.Phase.PlayerAutoMove => (initialPacer(), gatherStep(scene))
             case TurnPhase.Phase.RogueMove      => roamTick(pacer, scene)
+            case TurnPhase.Phase.FollowMove     => followTick(pacer, scene)
             case TurnPhase.Phase.RogueAlert     => (initialPacer(), alertStep(scene))
             case _                               => (initialPacer(), scene)
         }
@@ -183,6 +184,83 @@ mod AutoMoveScene {
         if (TurnPhase.State.get() != TurnPhase.Phase.RogueAlert) scene
         else if (Pacing.State.isHolding()) scene
         else disband("敵に見つかった", scene)
+
+    // ────────────────────────────────────────────────────────
+    // (C') 追従移動 (FollowMove)
+    // ────────────────────────────────────────────────────────
+
+    /// 追従移動(FollowMove)の 1 フレーム進行。RogueMove と同じく「リーダー(ロード)が 1 歩進むたび」
+    /// エッジで追従者を 1 歩動かすが、RogueMove と違い徘徊敵は動かさず・敵検知でも解散しない
+    /// （戦闘中の隊列移動が目的。敵が動くのは「移動確定」で敵ターンへ進めた後）。
+    ///   - 歩行 Tween 中はロードの gridPos 確定待ちで何もしない（ペーサも進めない）。
+    ///   - ロードが基準位置から動いていれば追従者を `followStep` で 1 歩ずつ寄せ、基準を更新する。
+    /// 返り値の RoamPacer は更新後の基準（呼び元 process がノードへ書き戻す）。
+    def followTick(pacer: RoamPacer, scene: Scene[NodeTag]):
+            (RoamPacer, Scene[NodeTag]) \ Tween.Scheduler =
+        if (PlayerScene.isMoving(lordId())) (pacer, scene)
+        else {
+            let lordPos   = PlayerScene.getGridPos(lordId(), scene);
+            let prev      = pacer#lastLordPos;
+            // 初回(None)は基準を置くだけ(false)。基準と異なる位置に来ていたら追従者を 1 歩動かす。
+            let lordMoved = prev |> Option.map(p -> not samePos(p, lordPos))
+                                 |> Option.getWithDefault(false);
+            let stepped   = if (lordMoved) followStep(scene) else scene;
+            ({lastLordPos = Some(lordPos)}, stepped)
+        }
+
+    /// ロード以外の表示中の味方を、それぞれロードへ 1 歩ずつ寄せる（1 リーダー歩につき各 1 歩）。
+    /// ロード始点の距離フィールド（壁のみ・ユニット透過）を 1 回作り、各追従者はその降下方向へ進む。
+    /// ロードに近い順に動かすので、前の者が詰めた跡を後続が追える（隊列がほどけて伸びる）。
+    /// 重なり回避は `followTargetFor` の occupied 判定が担い、先に動いた者の占有を毎回 board を
+    /// 取り直して反映する。
+    def followStep(scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        let board    = BoardSnapshot.fromScene(scene);
+        let lordPos  = PlayerScene.getGridPos(lordId(), scene);
+        let field    = Board.distanceField(c -> MapSnapshot.isFloor(c, board#map),
+                                            lordPos :: Nil, followFieldMax());
+        let followers = PlayerScene.mergeableAllies(scene)
+            |> List.sortBy(d -> Board.fieldDist(field, d#gridPos));
+        List.foldLeft((acc, d) -> stepFollowerToward(d#id, lordPos, field, acc), scene, followers)
+
+    /// 追従者 1 体を、距離フィールド `field` の降下先（= ロードへ近づく隣マス）へ 1 歩進める。
+    /// 先に動いた追従者の占有を反映するため board は都度取り直す。動けない（隣接済み・包囲）なら据え置き。
+    def stepFollowerToward(id: Int32, lordPos: {x = Int32, y = Int32},
+                            field: Map[(Int32, Int32), Int32],
+                            scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        let board = BoardSnapshot.fromScene(scene);
+        let pos   = PlayerScene.getGridPos(id, scene);
+        match followTargetFor(lordPos, pos, field, board) {
+            case Some(next) =>
+                PlayerScene.moveToById(id, next, board#map, PlayerScene.slideDuration(), scene)
+            case None       => scene
+        }
+
+    /// 追従者の次の 1 マスを決める純粋関数。`field`(ロード始点の距離フィールド)を降下し、
+    /// 「歩ける・他駒に占有されていない・ロードのマスではない」隣マスへ寄る。
+    /// ロードのマスを除外することで隣接で停止し（重ならない）、occupied 除外で追従者同士の
+    /// スタックも防ぐ。降下先が無ければ None（= 既に隣接 / 周囲が塞がれている）。
+    /// pub: effect を持たないため `TestAutoMoveScene` から盤面とフィールドを直接組んでテストする。
+    pub def followTargetFor(lordPos: {x = Int32, y = Int32},
+                             pos: {x = Int32, y = Int32},
+                             field: Map[(Int32, Int32), Int32],
+                             board: Board): Option[{x = Int32, y = Int32}] =
+        Board.stepDownhill(field, pos, c ->
+            Board.isWalkable(board, c)
+                and not Board.isOccupied(c, board)
+                and not samePos(c, lordPos))
+
+    /// 距離フィールドの最大ステップ数。`EnemyTurnDriverScene.beginTurn` と同様、実用上マップ全体を
+    /// 覆える大きな値（追従はロード移動エッジでのみ走るので毎フレーム負荷ではない）。
+    def followFieldMax(): Int32 = 4096
+
+    /// 追従移動の「移動確定」: 全味方を行動済みにして敵ターンへ進める。
+    /// FollowMove では誰も退避(非表示)していないので `disband` の emerge は不要で、
+    /// 「全員 waited → 敵ターン入口」だけを行う（= 隊列ごと動いた結果でターンを消費する）。
+    pub def endFollow(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State} =
+        GameLogger.playerLog("隊列で移動した");
+        PlayerScene.setAllWaited(scene)
+            |> EnemyTurnDriverScene.beginTurn
 
     // ────────────────────────────────────────────────────────
     // (D) 敵検知（純粋）と発見演出
