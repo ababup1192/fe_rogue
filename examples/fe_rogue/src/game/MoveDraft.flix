@@ -34,6 +34,9 @@ mod MoveDraft {
                       selfItem = ItemData.GroundItemKind,
                       partnerId = Int32, partnerKind = Option[PlayerData.ItemKind],
                       partnerItem = Option[ItemData.GroundItemKind] })
+        /// 集合（行軍）中に移動距離を使い切って非アクティブ(waited)化した味方 id。
+        /// キャンセルで集合をなかったことにするとき、これを巻き戻して再アクティブにする。
+        case GatherWaited(Int32)
     }
 
 }

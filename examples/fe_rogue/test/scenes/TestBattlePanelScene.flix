@@ -92,7 +92,8 @@ mod TestBattlePanelScene {
                 TurnPhase.State.put(TurnPhase.Phase.AttackForecast);
                 SelectedPlayer.State.put({
                     id     = Some(0),
-                    drafts = Nil
+                    drafts = Nil,
+                    gatherActive = false
                 });
                 let _ = BattlePanelScene.confirm(Scene.empty());
                 TurnPhase.State.get()
@@ -132,7 +133,8 @@ mod TestBattlePanelScene {
                 TurnPhase.State.put(TurnPhase.Phase.AttackForecast);
                 SelectedPlayer.State.put({
                     id     = Some(0),
-                    drafts = Nil
+                    drafts = Nil,
+                    gatherActive = false
                 });
                 let _ = BattlePanelScene.cancel(Scene.empty());
                 TurnPhase.State.get()

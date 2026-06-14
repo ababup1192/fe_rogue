@@ -235,7 +235,7 @@ mod UnitInfoPopupScene {
         match visibleEnemy {
             case Some(id) => Some(("enemy", id))
             case None     =>
-                // hidden の味方（階段で退場 = usedStairs、ローグの「しゅうごう」= 合流）は
+                // hidden の味方（階段で退場 = usedStairs）は
                 // 盤面から外れているので情報を出さない（敵のフォグ隠し と同じ扱い）。
                 PlayerScene.getAll(scene)
                     |> List.findMap(d ->

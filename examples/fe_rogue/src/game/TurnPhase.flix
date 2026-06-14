@@ -104,20 +104,11 @@ mod TurnPhase {
         /// Z / Enter で閉じると通常のターン確定（commitWaitedAndAdvance）に戻る。
         /// その間は移動・選択など他の入力を受け付けない（モーダル）。
         case LevelUpView
-        /// ローグ移動モード・合流フェーズ。「しゅうごう」確定直後、ロード(id 0)以外の味方が
-        /// ロードに向かって 1 マスずつ自動で歩き、ロードに重なると非表示になって退避する。
-        /// 全員ロードに合流したら `RogueMove` に進む。入力は受け付けない。
-        case PlayerAutoMove
-        /// ローグ移動モード・自由歩行フェーズ。合流して 1 キャラ(ロード)になった状態。
-        /// カーソルは非表示で、WASD/方向キーでロードが移動力制限なく自由に歩き回る。
-        /// 敵の移動到達範囲(赤マス)に踏み込むと自動で解散して通常ターン制に戻る。
-        /// Z でメニュー(「ひろう」/「かいさん」)を開く。敵ターンは発生しない。
-        case RogueMove
-        /// ローグ移動モード・敵発見演出フェーズ。ロードが敵に検知された瞬間に入り、
-        /// 敵の上に「！」を出し、カメラを部屋中心(同部屋の場合)/敵中心(索敵範囲の場合)へ寄せ、
-        /// find SE を鳴らす。`Pacing` の hold が抜けたら隊列を解散して通常ターン制に戻る。
-        /// 入力は受け付けない（短い見せ場）。
-        case RogueAlert
+        /// 集合（行軍）モード。「集合」確定で入る。主人公(id 0)だけを WASD で移動範囲内まで
+        /// 動かし、主人公が 1 マス進むたびに各味方が最短 1 歩で追従する。Z で移動を確定して
+        /// 隣接メニュー（交換 / 全員待機 / キャンセル）を開き、X で集合開始位置へ巻き戻す。
+        /// カーソルは非表示。敵ターンは発生しない（確定後の「全員待機」で敵ターンへ進む）。
+        case GatherMove
         /// 敵ターン。入力は無効、カーソル非表示、カメラはプレイヤーに固定。
         case EnemyTurn
     }
@@ -182,8 +173,8 @@ mod TurnRules {
         case Stay
         /// PlayerCursor 中、カーソル位置にアクティブ味方が居て選択した
         case CursorSelectPlayer(Int32)
-        /// PlayerCursor 中、カーソルが空き床マスで ActionMenu を開く（「しゅうごう」のみ）。
-        /// 「しゅうごう」確定で PlayerAutoMove へ向かい、ロードへ合流開始する。
+        /// PlayerCursor 中、カーソルが空き床マスで ActionMenu を開く（「集合 / ターンエンド」）。
+        /// 「集合」確定で GatherMove へ向かい、主人公が隊列を率いて動き始める。
         case CursorOpenGatherMenu
         /// PlayerMoving 中の Confirm: 行動選択ウィンドウ (ActionSelect) を開く。
         /// 「こうげき / たいき」を文脈に応じて並べ、ItemList の Enter/X で次フェーズを決める。
@@ -202,6 +193,11 @@ mod TurnRules {
         /// TradeTargetSelect 中の Cancel: 緑マス overlay を片付けて ActionSelect に戻す
         /// (= ActionMenu を再表示する。ターン消費しない)。
         case TradeCancel
+        /// GatherMove 中の Confirm: 主人公の移動を確定して隣接メニュー (交換 / 全員待機 /
+        /// キャンセル) を開く。主人公が味方マスと重なっている間は発火しない。
+        case GatherOpenMenu
+        /// GatherMove 中の Cancel: 主人公＋追従味方を集合開始位置へ巻き戻して PlayerCursor へ。
+        case GatherCancel
     }
 
     /// `decide` に渡すコンテキスト一式。Scene[NodeTag] / Tween / 各 effect から
@@ -291,9 +287,20 @@ mod TurnRules {
                 }
             case (TurnPhase.Phase.TradeTargetSelect, Input.Cancel) =>
                 Transition.TradeCancel
-            // EnemyTurn / PlayerAutoMove(合流) は入力無視（自動進行で抜ける）。
-            // RogueMove は移動・メニュー開閉ともに TurnRules を経由しない
-            // （各入力ハンドラが直接処理するため）。
+            case (TurnPhase.Phase.GatherMove, Input.Confirm) =>
+                // Tween 中はガード。主人公が味方マスと重なっている間は確定不可
+                // （味方マスをすり抜けられる代わりに重なり中は決定させない。PlayerMoving と対称）。
+                if (context#playerBusy) Transition.Stay
+                else match context#selected {
+                    case Some(pid) =>
+                        if (Board.isOverlappingAlly(pid, context#board)) Transition.Stay
+                        else Transition.GatherOpenMenu
+                    case None => Transition.Stay
+                }
+            case (TurnPhase.Phase.GatherMove, Input.Cancel) =>
+                if (context#playerBusy) Transition.Stay
+                else Transition.GatherCancel
+            // EnemyTurn は入力無視（自動進行で抜ける）。
             case _ => Transition.Stay
         }
 
@@ -433,5 +440,9 @@ mod TurnInputBridge {
                 PhaseTransitions.enterTradeInventory(partnerId, scene)
             case TurnRules.Transition.TradeCancel                       =>
                 PhaseTransitions.enterActionSelectFromTrade(scene)
+            case TurnRules.Transition.GatherOpenMenu                    =>
+                ActionMenuScene.openFromGather(scene)
+            case TurnRules.Transition.GatherCancel                      =>
+                PlayerScene.cancelSelection(scene)
         }
 }

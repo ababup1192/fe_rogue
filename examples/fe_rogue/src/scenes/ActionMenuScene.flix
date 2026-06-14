@@ -1,10 +1,11 @@
 /// ActionMenuScene — 行動選択ウィンドウ
 ///
-/// PlayerMoving / PlayerCursor で Z を押した瞬間に `ActionSelect` フェーズに入り、
-/// 画面に出る ItemList。文脈 (= SelectedPlayer の有無) で項目が切り替わる:
+/// PlayerMoving / PlayerCursor / GatherMove で Z を押した瞬間に `ActionSelect` フェーズに入り、
+/// 画面に出る ItemList。文脈で項目が切り替わる:
 ///   - PlayerMoving 由来 (SelectedPlayer あり) → こうげき / アイテム / ひろう / たいき
-///   - PlayerCursor 由来・空マス (SelectedPlayer なし) → しゅうごう (確定でロードへ合流開始)
-/// ↑↓ で選択、Enter/Z で確定、X/Escape で元のフェーズ (PlayerMoving / PlayerCursor) に戻る。
+///   - PlayerCursor 由来・空マス (SelectedPlayer なし) → 集合 (確定で行軍開始) / ターンエンド
+///   - GatherMove 由来 (gatherActive=true・主人公選択中) → 交換 / 全員待機 / キャンセル
+/// ↑↓ で選択、Enter/Z で確定、X/Escape で元のフェーズ (PlayerMoving / PlayerCursor / GatherMove) に戻る。
 ///
 /// ノード構造（visible のとき）:
 ///   ActionMenu (CanvasLayer, layer=2)  ← layer=2 により HUD/マップより手前に描画
@@ -15,15 +16,16 @@
 ///   - 「こうげき」: 選択中プレイヤーの装備武器の射程内に生きている敵が居る
 ///   - 「ひろう」  : 選択中プレイヤーのセルに床アイテムが落ちている
 ///   - 「たいき」  : 選択中プレイヤーのセルに別の味方が居ない
-///   - 「しゅうごう」: SelectedPlayer が None (PlayerCursor + 空マス) のとき常時表示
+///   - 「集合」  : SelectedPlayer が None (PlayerCursor + 空マス) で主人公以外の生存味方が居るとき
 /// 全条件不成立なら ItemList は空になり、Z 押下は no-op (X で戻るのみ)。
 ///
 /// 「行動継続」と「行動終了」:
 ///   - 行動終了 (確定で waited 化 → 次セレクト or 敵ターン)
-///       こうげき (PlayerAttack を経由してから commit) / たいき / ターンエンド
+///       こうげき (PlayerAttack を経由してから commit) / たいき / ターンエンド / 全員待機
 ///   - 行動継続 (確定後 ActionSelect に戻り、ActionMenu の項目が再構築される)
 ///       ひろう (拾うとセルから消えるので次フレームの `refreshItems` で項目から外れる)
-///       しゅうごう (PlayerAutoMove に移ってロードへ合流開始。これは別フローの遷移)
+///       集合 (GatherMove に移って主人公が隊列を率いる。これは別フローの遷移)
+///       交換 (集合の隣接メニュー: TradeInventory を抜けると隣接メニューに戻る)
 mod ActionMenuScene {
 
     use JsonCompat.PathTag.Root
@@ -61,11 +63,12 @@ mod ActionMenuScene {
     def openMeta(): String      = "open"
     def gatherMeta(): String    = "gather"
     def turnEndMeta(): String   = "turnEnd"
-    def disbandMeta(): String   = "disband"
     def stairsMeta(): String    = "stairs"
-    /// 集合後の N 人持ち物交換 (RogueMove メニューの「交換」)。
+    /// 集合（行軍）の隣接メニューの「交換」（主人公＋隣接味方の N 人持ち物交換）。
     /// 通常ターン隣接 2 人交換の `exchangeMeta` とは別物。
     def gatherTradeMeta(): String = "gatherTrade"
+    /// 集合（行軍）の隣接メニューの「キャンセル」: 主人公＋追従味方を開始位置へ巻き戻す。
+    def gatherCancelMeta(): String = "gatherCancel"
 
     /// scene に ActionMenu ノードツリーを追加する。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
@@ -139,136 +142,117 @@ mod ActionMenuScene {
     /// 選択中プレイヤーの状況から「こうげき / こうかん / アイテム / ひろう / たいき」の
     /// うち成立するものだけ返す。
     /// 順序は固定: ひろう → 階段 → こうげき → アイテム → こうかん → たいき。
-    /// SelectedPlayer が None のときは PlayerCursor から空マスで開かれた「集合メニュー」
-    /// として「しゅうごう」だけを返す (確定でロードへ合流開始)。
+    /// gatherActive=true のときは集合（行軍）の隣接メニュー（交換 / 全員待機 / キャンセル）、
+    /// SelectedPlayer が None のときは空マスメニュー（集合 / ターンエンド）を返す。
     def buildItems(scene: Scene[NodeTag]): List[ItemEntry]
             \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        match SelectedPlayer.State.get()#id {
-            case None     =>
-                // SelectedPlayer = None の空マスメニュー。ローグ移動モード中
-                // (合流して退避中の味方が居る) なら「ひろう / かいさん」、
-                // 通常時は「しゅうごう(条件付き) / ターンエンド」。
-                if (not List.isEmpty(PlayerScene.hiddenOf(PlayerData.PartyQuery.getAll())))
-                    rogueMenuItems(scene)
-                else
-                    gatherMenuItems(scene)
-            case Some(id) =>
-                match PlayerData.PartyQuery.get(id) {
-                    case None         => Nil
-                    case Some(player) =>
-                        // かなしばり（完全停止）中は行動不能。待機だけ出してターンを閉じられるようにする。
-                        if (StatusSystem.isImmobilized(player#statuses)) boundMenuItems()
-                        else {
-                        let attackItem =
-                            if (canAttackFrom(player))
-                                ({text     = "攻撃",
-                                  disabled = false,
-                                  metadata = Some(attackMeta())}: ItemEntry) :: Nil
-                            else Nil;
-                        let exchangeItem =
-                            if (not List.isEmpty(PlayerScene.adjacentAllies(player)))
-                                ({text     = "交換",
-                                  disabled = false,
-                                  metadata = Some(exchangeMeta())}: ItemEntry) :: Nil
-                            else Nil;
-                        let itemItem =
-                            if (not (List.isEmpty(player#weapons)
-                                       and List.isEmpty(player#staves)))
-                                ({text     = "アイテム",
-                                  disabled = false,
-                                  metadata = Some(itemMeta())}: ItemEntry) :: Nil
-                            else Nil;
-                        let pickupItem =
-                            if (Option.nonEmpty(ItemScene.findAt(player#gridPos, scene)))
-                                ({text     = "拾う",
-                                  disabled = false,
-                                  metadata = Some(pickupMeta())}: ItemEntry) :: Nil
-                            else Nil;
-                        let stairsItem =
-                            if (StairsScene.isAt(player#gridPos, scene))
-                                ({text     = "階段",
-                                  disabled = false,
-                                  metadata = Some(stairsMeta())}: ItemEntry) :: Nil
-                            else Nil;
-                        // 宝箱に乗っていれば「あける」を出す。開錠可否(ローグか)は確定時に判定し、
-                        // 非ローグは「開けることができない」と表示する（=選択は可能・無効化しない）。
-                        let openItem =
-                            if (Option.nonEmpty(ChestScene.findAt(player#gridPos, scene)))
-                                ({text     = "あける",
-                                  disabled = false,
-                                  metadata = Some(openMeta())}: ItemEntry) :: Nil
-                            else Nil;
-                        let waitItem =
-                            if (canWaitOn(player))
-                                ({text     = "待機",
-                                  disabled = false,
-                                  metadata = Some(waitMeta())}: ItemEntry) :: Nil
-                            else Nil;
-                        List.flatten(pickupItem :: openItem :: stairsItem :: attackItem ::
-                                       itemItem :: exchangeItem :: waitItem :: Nil)
-                        }
-                }
+        let sel = SelectedPlayer.State.get();
+        // 文脈をタプルで 1 段に分岐する:
+        //   (gatherActive=true, _)      → 集合（行軍）の隣接メニュー（交換 / 全員待機 / キャンセル）
+        //   (false, None=空マス)        → 空マスメニュー（集合(条件付き) / ターンエンド）
+        //   (false, Some(id)=味方選択中) → その味方の行動メニュー
+        match (sel#gatherActive, sel#id) {
+            case (true, _)         => gatherAdjacentMenuItems(scene)
+            case (false, None)     => gatherMenuItems(scene)
+            case (false, Some(id)) =>
+                PlayerData.PartyQuery.get(id)
+                    |> Option.map(player -> selectedPlayerMenuItems(player, scene))
+                    |> Option.getWithDefault(Nil)
+        }
+
+    /// 移動を終えた味方の行動メニュー項目（こうげき/アイテム/ひろう/階段/あける/こうかん/たいき）。
+    /// 成立するものだけ、固定順「ひろう → 階段 → あける → こうげき → アイテム → こうかん → たいき」で返す。
+    /// かなしばり（完全停止）中は行動不能なので「待機」だけ出してターンを閉じられるようにする。
+    def selectedPlayerMenuItems(player: PlayerScene.Data, scene: Scene[NodeTag]): List[ItemEntry]
+            \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
+        if (StatusSystem.isImmobilized(player#statuses)) boundMenuItems()
+        else {
+            let attackItem =
+                if (canAttackFrom(player))
+                    ({text = "攻撃", disabled = false, metadata = Some(attackMeta())}: ItemEntry) :: Nil
+                else Nil;
+            let exchangeItem =
+                if (not List.isEmpty(PlayerScene.adjacentAllies(player)))
+                    ({text = "交換", disabled = false, metadata = Some(exchangeMeta())}: ItemEntry) :: Nil
+                else Nil;
+            let itemItem =
+                if (not (List.isEmpty(player#weapons) and List.isEmpty(player#staves)))
+                    ({text = "アイテム", disabled = false, metadata = Some(itemMeta())}: ItemEntry) :: Nil
+                else Nil;
+            let pickupItem =
+                if (Option.nonEmpty(ItemScene.findAt(player#gridPos, scene)))
+                    ({text = "拾う", disabled = false, metadata = Some(pickupMeta())}: ItemEntry) :: Nil
+                else Nil;
+            let stairsItem =
+                if (StairsScene.isAt(player#gridPos, scene))
+                    ({text = "階段", disabled = false, metadata = Some(stairsMeta())}: ItemEntry) :: Nil
+                else Nil;
+            // 宝箱に乗っていれば「あける」を出す。開錠可否(ローグか)は確定時に判定し、
+            // 非ローグは「開けることができない」と表示する（=選択は可能・無効化しない）。
+            let openItem =
+                if (Option.nonEmpty(ChestScene.findAt(player#gridPos, scene)))
+                    ({text = "あける", disabled = false, metadata = Some(openMeta())}: ItemEntry) :: Nil
+                else Nil;
+            let waitItem =
+                if (canWaitOn(player))
+                    ({text = "待機", disabled = false, metadata = Some(waitMeta())}: ItemEntry) :: Nil
+                else Nil;
+            List.flatten(pickupItem :: openItem :: stairsItem :: attackItem ::
+                           itemItem :: exchangeItem :: waitItem :: Nil)
         }
 
     /// かなしばり中のメニュー: 行動不能なので「待機」だけ出す（ターンを閉じるため）。
     def boundMenuItems(): List[ItemEntry] =
         ({text = "待機", disabled = false, metadata = Some(waitMeta())}: ItemEntry) :: Nil
 
-    /// ローグ移動モード中(合流済み)のメニュー項目。ロード足元にアイテムがあれば「ひろう」、
-    /// ロードが階段に乗っていれば「かいだん」(パーティごと次フロアへ)、常に「かいさん」。
-    /// 拾いはロード(id 0)を対象に既存の applyPickup を転用する。
-    def rogueMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
-        let lordPos = PlayerScene.getGridPos(0, scene);
-        let pickup =
-            if (Option.nonEmpty(ItemScene.findAt(lordPos, scene)))
-                ({text = "拾う", disabled = false,
-                  metadata = Some(pickupMeta())}: ItemEntry) :: Nil
-            else Nil;
-        let stairs =
-            if (StairsScene.isAt(lordPos, scene))
-                ({text = "階段", disabled = false,
-                  metadata = Some(stairsMeta())}: ItemEntry) :: Nil
-            else Nil;
-        // ロード足元の宝箱。ロードは非ローグなので確定時に「開けることができない」になるが、
-        // 「宝箱がそこにある」ことは見せるため項目自体は出す。
-        let open =
-            if (Option.nonEmpty(ChestScene.findAt(lordPos, scene)))
-                ({text = "あける", disabled = false,
-                  metadata = Some(openMeta())}: ItemEntry) :: Nil
-            else Nil;
+    /// 集合（行軍）の交換に参加するメンバーの player id（= 主人公 + 主人公に隣接する味方）。
+    /// 主人公(id 0) を先頭に、上下左右 1 マスの生存味方（最大 3 人 = 計 4 人）を加える。
+    /// 死亡(hp<=0)は除外し id 昇順に並べる。隣接味方が居なければ主人公だけ（交換は出さない）。
+    def gatherTradeMembers(): List[Int32] \ PlayerData.PartyQuery =
+        match PlayerData.PartyQuery.get(PlayerScene.lordId()) {
+            case None       => Nil
+            case Some(lord) =>
+                let adj = PlayerScene.adjacentAllies(lord) |> List.filter(d -> d#hp > 0);
+                (lord :: adj)
+                    |> List.filter(d -> d#hp > 0)
+                    |> List.map(d -> d#id)
+                    |> List.sort
+        }
+
+    /// 集合（行軍）の隣接メニュー項目。主人公に隣接する生存味方が居れば「交換」、常に
+    /// 「全員待機」「キャンセル」。隣接味方 0 人なら交換は出さない（仕様 6）。
+    ///   - 交換   : 主人公＋隣接味方の N 人持ち物交換（`gatherTradeMeta` → openGatherTrade）
+    ///   - 全員待機: パーティ全員を行動済みにして敵ターンへ（既存 `turnEndMeta` → applyTurnEnd を流用）
+    ///   - キャンセル: 主人公＋追従味方を開始位置へ巻き戻し PlayerCursor へ（`gatherCancelMeta`）
+    def gatherAdjacentMenuItems(_scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
+        let adj = match PlayerData.PartyQuery.get(PlayerScene.lordId()) {
+            case None       => Nil
+            case Some(lord) => PlayerScene.adjacentAllies(lord) |> List.filter(d -> d#hp > 0)
+        };
         let trade =
-            if (List.length(gatherTradeMembers()) >= 2)
+            if (not List.isEmpty(adj))
                 ({text = "交換", disabled = false,
                   metadata = Some(gatherTradeMeta())}: ItemEntry) :: Nil
             else Nil;
-        let disband =
-            ({text = "解散", disabled = false,
-              metadata = Some(disbandMeta())}: ItemEntry) :: Nil;
-        List.flatten(pickup :: open :: stairs :: trade :: disband :: Nil)
+        let waitAll =
+            ({text = "全員待機", disabled = false,
+              metadata = Some(turnEndMeta())}: ItemEntry) :: Nil;
+        let cancel =
+            ({text = "キャンセル", disabled = false,
+              metadata = Some(gatherCancelMeta())}: ItemEntry) :: Nil;
+        List.flatten(trade :: waitAll :: cancel :: Nil)
 
-    /// 集合した生存メンバーの player id リスト (= 交換に参加できる面々)。
-    /// ロード(id 0) + 退避中(hidden)の味方。死亡(hp<=0)・階段退場は除外し、id 昇順に並べる。
-    /// (`hiddenAllies` が既に usedStairs を除外。`getAll` は hp<=0 を残すので hp フィルタ必須。)
-    def gatherTradeMembers(): List[Int32] \ PlayerData.PartyQuery =
-        let players = PlayerData.PartyQuery.getAll();
-        let lord    = List.filter(d -> d#id == 0, players);
-        let hidden  = PlayerScene.hiddenOf(players);
-        List.append(lord, hidden)
-            |> List.filter(d -> d#hp > 0)
-            |> List.map(d -> d#id)
-            |> List.sort
+    /// 「集合」が選べる状況か（主人公以外に生存味方が居る）。空マスメニューの項目可否と
+    /// C キー / ゲームパッド Y のショートカット可否で共有する。
+    pub def gatherAvailable(): Bool \ PlayerData.PartyQuery =
+        PlayerData.PartyQuery.getAll()
+            |> List.exists(d -> d#id != PlayerScene.lordId() and d#hp > 0)
 
-    /// 合流対象の味方を全員集めるのに必要な「周囲マス数」。これ以内に全員居ないと「しゅうごう」は出さない。
-    def gatherRange(): Int32 = 3
-
-    /// 通常の空マスメニュー項目。ロードが敵に未検知(部屋外かつ索敵範囲外)で、合流可能な味方が
-    /// 全員ロードの周囲 `gatherRange` マス以内に居れば「しゅうごう」、常に「ターンエンド」。
-    def gatherMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
-        let players = PlayerData.PartyQuery.getAll();
+    /// 通常の空マスメニュー項目。生存している味方が主人公以外に居れば「集合」、常に「ターンエンド」。
+    /// 集合は主人公が隊列を率いて動くモードなので、敵検知・合流距離の事前条件は持たない。
+    def gatherMenuItems(_scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
         let gather =
-            if (not AutoMoveScene.lordDetected(scene)
-                and not List.isEmpty(PlayerScene.mergeableOf(players))
-                and PlayerScene.allMergeableWithinOf(gatherRange(), players))
+            if (gatherAvailable())
                 ({text = "集合", disabled = false,
                   metadata = Some(gatherMeta())}: ItemEntry) :: Nil
             else Nil;
@@ -276,6 +260,14 @@ mod ActionMenuScene {
             ({text = "ターンエンド", disabled = false,
               metadata = Some(turnEndMeta())}: ItemEntry) :: Nil;
         List.append(gather, turnEnd)
+
+    /// C キー / ゲームパッド Y のショートカット: メニューを開かず「集合」を直接確定する
+    /// （`applyGather` と同じ＝リーダー行動済みガード＆ログ込み）。呼び出し側で PlayerCursor かつ
+    /// `gatherAvailable()` のときだけ呼ぶこと（空マスメニューの「集合」確定と同じ帰結）。
+    pub def gatherShortcut(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
+                              SelectedPlayer.State, PlayerData.PartyQuery} =
+        applyGather(scene)
 
     /// インベントリのいずれかの武器の射程内に生きている敵が居るか。
     /// 装備中(先頭)だけでなく全武器を見る: 射程を変えれば(= 別の武器に持ち替えれば)
@@ -309,7 +301,8 @@ mod ActionMenuScene {
     ///   - attack: 攻撃ターゲット選択フェーズへ (`PlayerScene.enterAttackPhase` に委譲)
     ///   - wait:   その場で waited 確定
     ///   - pickup: 床アイテムを拾って waited 確定 (拾うで 1 ターン使う)
-    ///   - gather: しゅうごう。PlayerAutoMove へ移ってロードへ合流開始 (`applyGather`)
+    ///   - gather: 集合。GatherMove へ移って主人公が隊列を率いて動き始める (`applyGather`)
+    ///   - gatherTrade / gatherCancel: 集合の隣接メニュー（交換 / キャンセル）
     /// 「次セレクトか敵ターンか」の判定は Scene 跨ぎなので `TurnFlow.commitWaitedAndAdvance`
     /// を呼ぶ (Scene → GameManager 方向は許容)。
     pub def onActionConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
@@ -330,17 +323,16 @@ mod ActionMenuScene {
                 else if (m == openMeta())     applyOpenChest(scene)
                 else if (m == gatherMeta())   applyGather(scene)
                 else if (m == turnEndMeta())  applyTurnEnd(scene)
-                else if (m == disbandMeta())  AutoMoveScene.disband("解散", scene)
                 else if (m == stairsMeta())   applyStairs(scene)
                 else if (m == gatherTradeMeta()) openGatherTrade(scene)
+                else if (m == gatherCancelMeta()) PlayerScene.cancelSelection(scene)
                 else                          scene
         }
 
-    /// 「かいだん」確定。文脈で 2 通り:
-    ///   - 通常（選択中の味方あり）: その味方を階段で退場させる。生存味方が全員退場したら
-    ///     `FloorAdvanceRequest` で次フロアへ、まだ動ける味方が残っていれば `commitWaitedAndAdvance`。
-    ///   - しゅうごう中（ローグ移動・選択なし）: 合流したパーティ全員で降りる → そのまま次フロアへ。
-    ///     退避中(hidden)の味方は次フロア側の FloorAdvanceRequest 処理時に snapshotCarry で引き継がれる。
+    /// 「かいだん」確定。選択中の味方を階段で退場させる。生存味方が全員退場したら
+    /// `FloorAdvanceRequest` で次フロアへ、まだ動ける味方が残っていれば `commitWaitedAndAdvance`。
+    /// 「階段」項目は選択中の味方メニューからのみ出るので選択なし(None)は来ない想定だが、
+    /// 防御的に「パーティごと次フロアへ」を残す。
     def applyStairs(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
@@ -357,7 +349,7 @@ mod ActionMenuScene {
                 else
                     TurnFlow.commitWaitedAndAdvance(exited)
             case None =>
-                // しゅうごう状態でロードが階段に乗っている → パーティごと次フロアへ。
+                // 防御的: 選択なしで階段確定が来たらパーティごと次フロアへ。
                 CustomEffects.FloorAdvanceRequest.advance(scene)
         }
 
@@ -369,25 +361,35 @@ mod ActionMenuScene {
             case Some(playerId) => ItemMenuScene.openFor(playerId, scene)
         }
 
-    /// 「交換」確定 (集合後): 集合した生存メンバー全員の N 人持ち物交換画面を開く。
-    /// TradeInventory フェーズ (origin = FromRogue) に入り、TradeMenuScene が 3 ペイン表示する。
+    /// 「交換」確定 (集合の隣接メニュー): 主人公＋隣接味方の N 人持ち物交換画面を開く。
+    /// TradeInventory フェーズ (origin = FromGather) に入り、TradeMenuScene が最大 4 ペイン表示する。
     def openGatherTrade(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {TurnPhase.State, PlayerData.PartyQuery} =
         PhaseTransitions.enterGatherTrade(gatherTradeMembers(), scene)
 
-    /// 「しゅうごう」確定: ローグ移動モードの合流を開始する (PlayerAutoMove フェーズへ)。
-    /// 以降は AutoMoveScene の driver が味方をロードへ歩かせ、重なったら退避させる。
-    /// SelectedPlayer は使わないのでクリアしておく。
+    /// 「集合」確定: 集合（行軍）モードを開始する (GatherMove フェーズへ)。
+    /// 主人公を選択駒に固定し、主人公＋生存味方の開始位置を巻き戻しドラフトに積む。
+    /// 以降は主人公を WASD で動かし、味方が 1 歩ずつ追従する（`PlayerScene.beginGather`）。
+    /// リーダー（主人公）が既に行動済み(waited)なら開始せず、ログだけ出してメニューに留まる。
     def applyGather(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
-                              SelectedPlayer.State} =
-        GameLogger.playerLog("集合");
-        SelectedPlayer.State.put(SelectedPlayer.cleared());
-        PhaseTransitions.enterPlayerAutoMove(scene)
+                              SelectedPlayer.State, PlayerData.PartyQuery} =
+        if (leaderWaited())
+            { GameLogger.playerLog("リーダーは既に行動済みです。"); scene }
+        else {
+            GameLogger.playerLog("集合");
+            PlayerScene.beginGather(scene)
+        }
 
-    /// 「ターンエンド」確定: 全アクティブ味方を行動済みにして即敵ターンへ進む。
-    /// SelectedPlayer が None（空マスメニュー）のときだけ選択肢に出るので、
-    /// 選択中プレイヤーのクリアも行う。
+    /// 主人公(リーダー)が既に行動済み(waited)か。集合確定のガードに使う。
+    def leaderWaited(): Bool \ PlayerData.PartyQuery =
+        PlayerData.PartyQuery.get(PlayerScene.lordId())
+            |> Option.map(d -> d#waited)
+            |> Option.getWithDefault(false)
+
+    /// 「ターンエンド」／集合の「全員待機」確定: 全アクティブ味方を行動済みにして即敵ターンへ進む。
+    /// `SelectedPlayer.cleared()` で選択を解除する。集合確定なので `drafts`（集合中に積んだ
+    /// MovedFrom / GatherWaited）は **巻き戻さず破棄** する（移動・非アクティブ化を確定させる）。
     def applyTurnEnd(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State, SelectedPlayer.State} =
@@ -415,16 +417,10 @@ mod ActionMenuScene {
                 // （ドラフト記録も床撤去もしないので、アイテムは床に残る）。
                 if (isPickerInventoryFull(info#playerId))
                     ItemPickupPopupScene.showFull(scene)
-                else {
-                    // 通常モード(退避中の味方が居ない)では拾得を SelectedPlayer の picked に
-                    // ドラフト記録し、選択解除キャンセル(cancelSelection)で床へ巻き戻せるようにする。
-                    // ローグ移動モードは選択が無く巻き戻し対象外なので即取得のまま。
-                    let recorded =
-                        if (List.isEmpty(PlayerScene.hiddenOf(PlayerData.PartyQuery.getAll())))
-                            recordPickupDraft(info, scene)
-                        else scene;
-                    pickupAt(info, recorded)
-                }
+                else
+                    // 拾得を SelectedPlayer の picked にドラフト記録し、選択解除キャンセル
+                    // (cancelSelection)で床へ巻き戻せるようにしてから取得する。
+                    pickupAt(info, recordPickupDraft(info, scene))
         }
 
     /// 拾う主体 (playerId) の持ち物が満杯か。PartyQuery で現フレームの Data を読む。
@@ -482,15 +478,11 @@ mod ActionMenuScene {
             chest  <- ChestScene.findAt(info#gridPos, scene)
         ) yield (info, player, chest)
 
-    /// 拾う主体(playerId)と拾う位置(gridPos)を決める。ローグ移動モード中(合流済み)は
-    /// ロード(id 0)がロード足元のアイテムを拾う。通常時は選択中の味方が足元のを拾う。
-    def pickupTarget(scene: Scene[NodeTag]):
+    /// 拾う主体(playerId)と拾う位置(gridPos)を決める。選択中の味方が足元のアイテムを拾う。
+    def pickupTarget(_scene: Scene[NodeTag]):
             Option[{playerId = Int32, gridPos = {x = Int32, y = Int32}}]
             \ {SelectedPlayer.State, PlayerData.PartyQuery} =
-        if (not List.isEmpty(PlayerScene.hiddenOf(PlayerData.PartyQuery.getAll())))
-            Some({playerId = 0, gridPos = PlayerScene.getGridPos(0, scene)})
-        else
-            selectedPlayerInfo()
+        selectedPlayerInfo()
 
     /// 選択中の味方の id と現在位置をまとめて返す。
     /// SelectedPlayer 未選択 / PartyQuery で見つからないいずれでも None。
@@ -540,7 +532,7 @@ mod ActionMenuScene {
     /// 青マス表示はそのまま維持し、ItemList を visibility 適用で表示する。
     /// 「こうげき / たいき / ひろう」の項目は `refreshItems` が毎フレーム再構築。
     ///
-    /// 3 関数 (openFromMoving / openFromCursor / openFromRogue) の実装は
+    /// 各 openFrom* (openFromMoving / openFromCursor / openFromGather) の実装は
     /// `TurnPhase.State.put(ActionSelect); scene` と同一だが、呼び出し元フェーズを
     /// コールサイトで明示してファイル内 grep を容易にするために分けている。
     pub def openFromMoving(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
@@ -555,11 +547,11 @@ mod ActionMenuScene {
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         scene
 
-    /// RogueMove (ローグ自由歩行) + Z 押下時の遷移: メニュー (ひろう / かいさん) を開く。
-    /// SelectedPlayer は None のまま。`buildItems` が「退避中の味方が居る」ことを手掛かりに
-    /// ローグ用メニューを返す。X で `onActionCancelled` が RogueMove に戻す。
-    /// (openFromMoving の doc に設計意図を記載)
-    pub def openFromRogue(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+    /// GatherMove (集合・行軍) + Z 押下時の遷移: 隣接メニュー (交換 / 全員待機 / キャンセル)
+    /// を開く。SelectedPlayer は主人公(0) のまま・`gatherActive` も true のままなので
+    /// `buildItems` が `gatherAdjacentMenuItems` を返す。X で `onActionCancelled` が GatherMove
+    /// に戻す（移動やり直し）。(openFromMoving の doc に設計意図を記載)
+    pub def openFromGather(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         scene
 
@@ -568,18 +560,17 @@ mod ActionMenuScene {
     ///   - SelectedPlayer なし (PlayerCursor からの集合メニュー) → PlayerCursor
     /// 青マス・カーソルは触らず、ユーザがもう一度操作し直せる状態に復帰する。
     pub def onActionCancelled(scene: Scene[NodeTag]):
-                              Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State,
-                                                PlayerData.PartyQuery} =
-        let target = match SelectedPlayer.State.get()#id {
-            case Some(_) => TurnPhase.Phase.PlayerMoving
-            case None    =>
-                // 退避中の味方が居る = ローグ移動モード由来のメニュー → RogueMove に戻す。
-                // それ以外は通常の空マスメニュー由来 → PlayerCursor に戻す。
-                if (not List.isEmpty(PlayerScene.hiddenOf(PlayerData.PartyQuery.getAll())))
-                    TurnPhase.Phase.RogueMove
-                else
-                    TurnPhase.Phase.PlayerCursor
-        };
+                              Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+        let sel = SelectedPlayer.State.get();
+        let target =
+            // 集合（行軍）の隣接メニューを X で閉じたら GatherMove に戻す（移動やり直し）。
+            // 巻き戻しはメニューの「キャンセル」項目が担うので、ここでは戻さない。
+            if (sel#gatherActive) TurnPhase.Phase.GatherMove
+            else match sel#id {
+                case Some(_) => TurnPhase.Phase.PlayerMoving
+                // 通常の空マスメニュー由来 → PlayerCursor に戻す。
+                case None    => TurnPhase.Phase.PlayerCursor
+            };
         TurnPhase.State.put(target);
         scene
 

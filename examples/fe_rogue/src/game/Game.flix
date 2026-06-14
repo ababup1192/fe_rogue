@@ -85,10 +85,6 @@ pub enum NodeTag {
     /// `EnemyTurnDriverScene` の常駐タグ専用ノード (Marker2D)。process redef で phase を
     /// 見て EnemyTurn 中なら stepOnce、PlayerAttackHold 中なら hold 終了判定を行う。
     case EnemyTurnDriver
-    /// `AutoMoveScene` の常駐タグ専用ノード (Marker2D)。`RoamPacer` は自由歩行(RogueMove)中に
-    /// 「ロードが 1 歩動いた」エッジを検知して徘徊敵を 1 歩ずつ動かすための直近ロード位置を持つ。
-    /// `AutoMoveScene.process` redef で phase を見て PlayerAutoMove は合流 / RogueMove は徘徊+検知を行う。
-    case AutoMoveDriver(AutoMoveScene.RoamPacer)
     /// `FogScene` の常駐タグ専用ノード (Marker2D)。process redef で毎フレーム、現在パーティの
     /// いる部屋/通路だけ明るくし、それ以外は薄暗いモヤ＋敵/アイテム/階段を非表示にする。
     case FogDriver
@@ -114,13 +110,14 @@ instance Node[NodeTag] {
         match node {
             case EngineNode.Marker2DWithState(_, NodeTag.Player(data)) =>
                 // 選択中プレイヤー & PlayerMoving フェーズだけが移動を受け付ける。
-                // ローグ移動モード(RogueMove)ではロード(id 0)が移動力制限なしで自由歩行する。
+                // 集合(GatherMove)では主人公(id 0)が移動範囲内で動き、味方が追従する。
                 let phase = TurnPhase.State.get();
                 if (phase == TurnPhase.Phase.PlayerMoving
                     and SelectedPlayer.State.get()#id == Some(data#id))
                     PlayerMovementScene.physicsStep(delta, node, path, scene)
-                else if (phase == TurnPhase.Phase.RogueMove and data#id == 0)
-                    PlayerMovementScene.roamStep(delta, node, path, scene)
+                // 集合(行軍)中は主人公(id 0)を移動範囲内で動かし、味方が 1 歩ずつ追従する。
+                else if (phase == TurnPhase.Phase.GatherMove and data#id == 0)
+                    PlayerMovementScene.gatherStep(delta, node, path, scene)
                 else (node, scene)
             case EngineNode.Marker2DWithState(_, NodeTag.Cursor(_)) =>
                 // PlayerCursor / PlayerAttack の場合分けは CursorScene 内部に閉じている
@@ -186,15 +183,13 @@ def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
         case _ => (node, scene)
     }
 
-/// フェーズ駆動の driver ノード (EnemyTurnDriver / AutoMoveDriver / ArrowCursor)
+/// フェーズ駆動の driver ノード (EnemyTurnDriver / ArrowCursor / Fog / Minimap)
 def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
     match node {
         case EngineNode.Marker2DWithState(_, NodeTag.EnemyTurnDriver) =>
             checked_ecast(EnemyTurnDriverScene.process(delta, node, path, scene))
-        case EngineNode.Marker2DWithState(_, NodeTag.AutoMoveDriver(_)) =>
-            checked_ecast(AutoMoveScene.process(delta, node, path, scene))
         case EngineNode.Marker2DWithState(_, NodeTag.ArrowCursor(_)) =>
             checked_ecast(ArrowCursorScene.process(delta, node, path, scene))
         case EngineNode.Marker2DWithState(_, NodeTag.FogDriver) =>
@@ -226,10 +221,11 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
 // 判断ロジックは `TurnRules.decide` に集約してあり、ここでは
 // 「キー → Input → 判断 → apply」という配線だけを行う（実体は `GameManager`）。
 //
-//   PlayerCursor + Z   : 味方マス → 選択 / それ以外 → しゅうごうメニュー
+//   PlayerCursor + Z   : 味方マス → 選択 / それ以外 → 集合メニュー
 //   PlayerMoving + Z/X : Tween 中はガード。Z で攻撃フェーズ、X で origin へ戻して PlayerCursor
 //   PlayerAttack + Z/X : 敵マスで Z → 攻撃モーション開始、X / 空マスで Z → 行動終了
-//   EnemyTurn / PlayerAutoMove : 入力無視（自動進行）
+//   GatherMove + Z/X   : Z で隣接メニュー（交換/全員待機/キャンセル）、X で開始位置へ巻き戻し
+//   EnemyTurn          : 入力無視（自動進行）
 instance InputEvent.InputHandler[NodeTag] {
     type Aef = {GameEngine.Game, GameEngine.Audio, BoardQuery, Tween.Scheduler,
                  AnimationPlayer.Scheduler,
@@ -305,6 +301,13 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                     TradeMenuScene.toggleTradeMarkAtCursor(scene)
                 case _ => scene
             }
+        // C キー / ゲームパッド Y: 空マスメニューを開かず「集合」を直接確定するショートカット。
+        // 味方ターンのカーソル選択中(PlayerCursor)で、集合可能(主人公以外に生存味方が居る)なときだけ。
+        else if (key == GameEngine.Key.C)
+            if (phase == TurnPhase.Phase.PlayerCursor and ActionMenuScene.gatherAvailable()) {
+                AudioStreamPlayer.play("confirm");
+                ActionMenuScene.gatherShortcut(scene)
+            } else scene
         else {
             // プレイヤー操作のフィードバック効果音（決定 / キャンセル / メニューカーソル移動）。
             // onKeyPressed は物理キー押下ごとに 1 度だけ発火するので、ここで鳴らせば 1 押下 = 1 音。
@@ -482,15 +485,11 @@ def playInputSfx(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
 /// 分岐と対応させてある。
 def confirmCancelMakesSound(phase: TurnPhase.Phase, input: TurnRules.Input): Bool =
     match (phase, input) {
-        // 全入力を無視する演出フェーズ（攻撃モーション中 / 敵ターン / 発見演出 / 旧戦闘予報）
+        // 全入力を無視する演出フェーズ（攻撃モーション中 / 敵ターン / 戦闘予報）
         case (TurnPhase.Phase.PlayerAttackHold, _) => false
         case (TurnPhase.Phase.EnemyTurn,        _) => false
-        case (TurnPhase.Phase.RogueAlert,       _) => false
         case (TurnPhase.Phase.AttackForecast,   _) => false
-        // 合流の自動歩行: X で中断できるが Z は無反応
-        case (TurnPhase.Phase.PlayerAutoMove, TurnRules.Input.Confirm) => false
-        // ローグ自由歩行: Z でメニューを開く / X(キャンセル) は無視
-        case (TurnPhase.Phase.RogueMove,      TurnRules.Input.Cancel)  => false
+        // 集合(行軍): Z=確定して隣接メニュー / X=巻き戻し。どちらも操作が成立するので音を鳴らす(case _ => true)。
         case _                                                          => true
     }
 
@@ -558,7 +557,7 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
         case _                                => None
     }
 
-/// メニュー以外のフェーズ (PlayerAutoMove / StaffAim / AttackForecast 等) の Z/X dispatch。
+/// メニュー以外のフェーズ (GatherMove / StaffAim / AttackForecast 等) の Z/X dispatch。
 /// `onKeyPressed` から `dispatchMenuKey` で処理されなかったときに呼ばれる。
 /// 方向キーなど input = None もここに来る (StaffAim 中の direction、ほかは no-op)。
 def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
@@ -575,11 +574,6 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
         // popup 表示中の X は popup view 切替に上書き（通常のキャンセルは走らない）
         case (_,                              Some(TurnRules.Input.Cancel)) if popupShown
                                               => UnitInfoPopupScene.toggleView(scene)
-        case (TurnPhase.Phase.PlayerAutoMove, Some(TurnRules.Input.Cancel))
-                                              => checked_ecast(AutoMoveScene.cancel(scene))
-        // ローグ自由歩行中の Z でメニュー(ひろう / かいさん)を開く。X は無視。
-        case (TurnPhase.Phase.RogueMove,      Some(TurnRules.Input.Confirm))
-                                              => checked_ecast(ActionMenuScene.openFromRogue(scene))
         case (TurnPhase.Phase.StaffAim,       Some(TurnRules.Input.Cancel))
                                               => checked_ecast(staffAimCancel(scene))
         case (TurnPhase.Phase.StaffAim,       Some(TurnRules.Input.Confirm))
@@ -824,7 +818,7 @@ mod Game {
     ///   handleInput → handleMenus → physicsProcess → Tween → Animation → process → epilogue
     /// 各 process / input redef 内で「自分が今動くべきか」を phase で判断する (Godot 流)。
     /// 例: `EnemyTurnDriverScene.process` は phase=EnemyTurn / PlayerAttackHold で動作、
-    ///     `AutoMoveScene.process` は phase=PlayerAutoMove で動作。
+    ///     `PlayerMovementScene.gatherStep` は phase=GatherMove で主人公(id 0)を動かす。
     /// ゲームオーバー時のフルリビルドは `CustomEffects.GameOverRequest` handler が
     /// catalog をクロージャに閉じ込めて実行するため、ここで catalog を引き回す必要はない。
     def gameLoop(catalogs: GameLifecycle.Catalogs,

@@ -13,9 +13,7 @@
 ///   - PlayerMoving    → 選択中味方のワールド座標（drag margin で「画面内なら据え置き」が
 ///                        engine の Camera2D 側で自動的に効く）
 ///   - PlayerAttack    → カーソルのワールド座標（赤マスを動くカーソルに追従）
-///   - PlayerAutoMove  → ロード(id 0)のワールド座標（合流先 = ロードを映す）
-///   - RogueMove       → ロード(id 0)のワールド座標（自由歩行するロードに追従）
-///   - RogueAlert      → 発見演出の焦点（同部屋なら部屋中心 / 索敵範囲なら検知した敵）
+///   - GatherMove      → 主人公(id 0)のワールド座標（隊列を率いて動く主人公に追従）
 ///   - EnemyTurn       → **alerted な敵が行動中ならその敵を映す**（`enemyTurnTarget`）。
 ///                        attacking 中の敵 > キュー先頭の敵 > 非 alerted ならプレイヤーへフォールバック
 ///
@@ -95,19 +93,11 @@ mod CameraScene {
             case TurnPhase.Phase.PlayerCursor     => cursorWorldPos(scene)
             case TurnPhase.Phase.PlayerMoving     => focusPos
             case TurnPhase.Phase.ActionSelect     =>
-                // SelectedPlayer = None でメニューを開くのは 2 系統あり、由来で追従先が違う:
-                //   - PlayerCursor 由来 (集合メニュー)     → カーソルにカメラを保つ
-                //   - RogueMove 由来 (ひろう / かいさん)   → ロードを映す
-                // RogueMove 中はカーソルが非表示で更新されず集合地点に置き去りなので、
-                // cursorWorldPos を使うとカメラが集合した場所へ飛んでしまう。
-                // 由来の判別は onActionCancelled と同じく hiddenAllies 非空 = ローグ由来。
+                // SelectedPlayer あり (味方メニュー / 集合の隣接メニュー=主人公) は対象を映す。
+                // None (空マスメニュー) はカーソルに保つ。
                 match selected {
                     case Some(_) => focusPos
-                    case None    =>
-                        if (not List.isEmpty(PlayerScene.hiddenOf(PlayerData.PartyQuery.getAll())))
-                            lordWorldPos(scene)
-                        else
-                            cursorWorldPos(scene)
+                    case None    => cursorWorldPos(scene)
                 }
             case TurnPhase.Phase.ItemSelect       => focusPos
             case TurnPhase.Phase.ItemActionSelect => focusPos
@@ -120,9 +110,7 @@ mod CameraScene {
             case TurnPhase.Phase.LevelUpView      => focusPos
             case TurnPhase.Phase.TradeTargetSelect => cursorWorldPos(scene)
             case TurnPhase.Phase.TradeInventory    => focusPos
-            case TurnPhase.Phase.PlayerAutoMove   => lordWorldPos(scene)
-            case TurnPhase.Phase.RogueMove        => lordWorldPos(scene)
-            case TurnPhase.Phase.RogueAlert       => AutoMoveScene.alertInfo(scene)#focus
+            case TurnPhase.Phase.GatherMove       => lordWorldPos(scene)
             case TurnPhase.Phase.EnemyTurn        => enemyTurnTarget(focusPos, scene)
         }
 
@@ -195,9 +183,8 @@ mod CameraScene {
     def cursorWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
         Scene.globalPositionAt(CursorScene.cursorPath(), scene)
 
-    /// ローグ移動モード中のカメラ target = ロード(id 0)のワールド座標。
-    /// 合流中(PlayerAutoMove)はロードに味方が集まり、自由歩行中(RogueMove)はロードが動くので、
-    /// どちらもロードを映していれば見せ場を外さない。
+    /// 集合（行軍）モード中のカメラ target = 主人公(id 0)のワールド座標。
+    /// 主人公が隊列を率いて動くので、主人公を映していれば隊列全体が画面に収まる。
     def lordWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
         focusedPlayerWorldPos(0, scene)
 }

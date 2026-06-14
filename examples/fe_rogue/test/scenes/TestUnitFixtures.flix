@@ -424,7 +424,7 @@ mod TestUnitFixtures {
     pub def withSelectedPlayer(id: Int32, thunk: Unit -> a \ ef):
             a \ (ef - SelectedPlayer.State) =
         run { thunk() } with handler SelectedPlayer.State {
-            def get(k)    = k({id = Some(id), drafts = Nil})
+            def get(k)    = k({id = Some(id), drafts = Nil, gatherActive = false})
             def put(_, k) = k()
         }
 
@@ -483,13 +483,32 @@ mod TestUnitFixtures {
                     withMockRosterQuery(scene, thunk))))
 
     /// `withMenuReadMocks` の未選択版（選択駒なし）。`withSelectedPlayer` を `withNoSelection` に
-    /// 差し替えただけ。空マスメニュー / ローグメニューの項目構築テスト用。
+    /// 差し替えただけ。空マスメニューの項目構築テスト用。
     pub def withMenuReadMocksNoSel(phase: TurnPhase.Phase,
                                     scene: Scene[NodeTag], thunk: Unit -> a \ ef):
             a \ (ef - TurnPhase.State - SelectedPlayer.State
                   - PlayerData.PartyQuery - EnemyData.RosterQuery) =
         withFixedPhase(phase, () ->
             withNoSelection(() ->
+                withMockPartyQuery(scene, () ->
+                    withMockRosterQuery(scene, thunk))))
+
+    /// `SelectedPlayer.State` を「主人公(0) 選択中・gatherActive=true」で固定するスタブ。
+    /// 集合（行軍）の隣接メニュー（交換 / 全員待機 / キャンセル）の項目構築テスト用。
+    pub def withGatherSelection(thunk: Unit -> a \ ef):
+            a \ (ef - SelectedPlayer.State) =
+        run { thunk() } with handler SelectedPlayer.State {
+            def get(k)    = k({id = Some(0), drafts = Nil, gatherActive = true})
+            def put(_, k) = k()
+        }
+
+    /// `withMenuReadMocks` の集合（行軍）隣接メニュー版。フェーズ ActionSelect 固定・
+    /// 主人公選択中・gatherActive=true で項目構築を観測する。
+    pub def withMenuReadMocksGather(scene: Scene[NodeTag], thunk: Unit -> a \ ef):
+            a \ (ef - TurnPhase.State - SelectedPlayer.State
+                  - PlayerData.PartyQuery - EnemyData.RosterQuery) =
+        withFixedPhase(TurnPhase.Phase.ActionSelect, () ->
+            withGatherSelection(() ->
                 withMockPartyQuery(scene, () ->
                     withMockRosterQuery(scene, thunk))))
 

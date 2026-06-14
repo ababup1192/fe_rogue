@@ -80,7 +80,7 @@ mod PlayerScene {
     // (B) 定数
     // ────────────────────────────────────────────────────────
 
-    /// ロード（主人公）として扱うパーティ id。合流・カメラ追従の中心であり、
+    /// ロード（主人公）として扱うパーティ id。集合での追従・カメラ追従の中心であり、
     /// このユニットが倒れると 1F からやり直し（ゲームオーバー扱い）になる。
     pub def lordId(): Int32 = 0
 
@@ -123,15 +123,9 @@ mod PlayerScene {
     /// プレイヤー Sprite の zIndex（Player は前面に立つ）。EnemyScene と同じ 10。
     def spriteZIndex(): Int32 = 10
 
-    /// 1 マス分のスライド時間（≈ 0.133 秒）。ローグ自由移動・自動移動で使う通常スピード。
-    /// pub: 打ち手層（PlayerMovementScene / AutoMoveScene）が moveToById に渡す。
-    pub def slideDuration(): Duration.Duration =
-        Duration.frames(count = 16, fps = 120)
-
-    /// キャラ選択後の手動移動（PlayerMoving）の 1 マス時間（≈ 0.167 秒）。
-    /// 通常の約 80% スピード（時間 1.25 倍 = 16→20 フレーム）にして、落ち着いて移動先を
-    /// 狙えるよう少しゆっくりにする。自動移動やローグ自由移動には影響させない。
-    /// pub: 打ち手層（PlayerMovementScene）が手動移動 step で moveToById に渡す。
+    /// 手動移動（PlayerMoving）・集合の主人公移動と味方追従（GatherMove）の 1 マス時間（≈ 0.167 秒）。
+    /// 落ち着いて移動先を狙えるよう少しゆっくり（20 フレーム = 約 0.167 秒）にする。
+    /// pub: 打ち手層（PlayerMovementScene）が手動移動 / 追従 step で moveToById に渡す。
     pub def selectedSlideDuration(): Duration.Duration =
         Duration.frames(count = 20, fps = 120)
 
@@ -361,7 +355,7 @@ mod PlayerScene {
 
     /// 目標グリッドへの移動を開始する。**壁判定は呼び出し側（Board）が済ませている前提**。
     /// gridPos を即更新し、見た目は Tween に委ねる。`slide` は 1 マス分のスライド時間で、
-    /// 呼び出し側がスピードを決める（手動移動は少しゆっくり、ローグ自由移動は通常）。
+    /// 呼び出し側がスピードを決める（手動移動・追従は少しゆっくり）。
     pub def moveTo(id: Int32, map: MapSnapshot, target: {x = Int32, y = Int32},
                     marker: Marker2D, data: Data, slide: Duration.Duration,
                     scene: Scene[NodeTag]): (Marker2D, Data)
@@ -426,9 +420,27 @@ mod PlayerScene {
         SelectedPlayer.State.put({
             id     = Some(playerId),
             // 移動開始。元位置を巻き戻しドラフトの底に積む（前の移動の残骸は drafts ごと破棄）
-            drafts = MoveDraft.DraftAction.MovedFrom(playerId, getGridPos(playerId, scene)) :: Nil
+            drafts = MoveDraft.DraftAction.MovedFrom(playerId, getGridPos(playerId, scene)) :: Nil,
+            gatherActive = false
         });
         PhaseTransitions.enterPlayerMoving(scene)
+
+    /// 「集合」確定で集合（行軍）モードに入る。主人公(id 0)を選択駒に固定し、
+    /// 主人公＋生存味方全員の現在位置を巻き戻しドラフト(MovedFrom)に **1 回だけ** 積む。
+    /// これにより GatherMove 中に主人公が動き味方が追従しても、X / メニューの「キャンセル」で
+    /// `cancelSelection` を呼べば全員が集合開始位置へ戻る（既存の巻き戻し機構を流用）。
+    /// 追従の各 1 歩は `moveToById` で動かすだけでドラフトは積まない
+    /// （積むと巻き戻しが多重適用され開始位置に戻らなくなる）。
+    /// overlay / cursor は `PhaseTransitions.enterGatherMove` が担当する。
+    pub def beginGather(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+        let origins = getAll(scene)
+            |> List.filter(d -> d#hp > 0)
+            |> List.map(d -> MoveDraft.DraftAction.MovedFrom(d#id, d#gridPos));
+        SelectedPlayer.State.put({id = Some(lordId()), drafts = origins, gatherActive = true});
+        // 追従の移動距離カウントを 0 から始める（味方は自分の moveTiles 歩まで追従して非アクティブ化）。
+        resetAllMoveStepsTaken(scene)
+            |> PhaseTransitions.enterGatherMove
 
     /// PlayerMoving + X: 選択駒を origin に瞬間移動で戻し、選択解除して PlayerCursor に戻す。
     /// 「キャンセル → 再選択の繰り返しで実質ターン制限なしの自由移動」を防ぐ。
@@ -476,6 +488,9 @@ mod PlayerScene {
                         insertInventoryItem(t#partnerId, pk, pi, s3)
                     case _                    => s2
                 }
+            case MoveDraft.DraftAction.GatherWaited(id)                =>
+                // 集合中の移動距離切れで非アクティブ化した味方を再アクティブに戻す。
+                setActive(id, scene)
         }
 
     /// ActionMenu「こうげき」確定で呼ばれる: 攻撃ターゲット選択フェーズへ。
@@ -637,18 +652,19 @@ mod PlayerScene {
             |> UnitHPBarScene.setModulate(playerPath(id), waitedColor())
             |> playAnim(id, idleAnimName())
 
+    /// プレイヤー 1 体を「行動可能(アクティブ)」に戻す。`waited` を下ろし、sprite/HP ゲージを
+    /// 通常色へ、idle アニメへ戻す（`setWaited` の逆）。集合キャンセルの巻き戻しで使う。
+    pub def setActive(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> mapPlayer(id, d -> {waited = false | d})
+            |> setSpriteModulate(id, activeColor())
+            |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
+            |> playAnim(id, idleAnimName())
+
     /// 完全停止（かなしばり）を解除する。被攻撃 or 被投擲の瞬間に呼ぶ。
     /// 停止していなければ no-op（他の時限ステータスは残す）。
     pub def releaseBind(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPlayer(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, scene)
-
-    /// 全プレイヤーを「行動済み(非アクティブ)」にする。各 id に `setWaited` を適用し、
-    /// waited を立てて灰色 modulate + idle アニメへ揃える。
-    /// 「集合 → 解散」でパーティ全員のターンを一括消費するときに使う
-    /// (この後 active な味方が居なくなるので呼び出し側は敵ターンへ進める)。
-    pub def setAllWaited(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let ids = getAll(scene) |> List.map(d -> d#id);
-        List.foldLeft((sc, id) -> setWaited(id, sc), scene, ids)
 
     /// 全プレイヤーの waited をクリアし、sprite を白に戻す。
     /// ターン開始時に呼ばれ、AnimatedSprite2D 持ち unit は idle アニメに戻す
@@ -720,11 +736,11 @@ mod PlayerScene {
                        scene, ids)
 
     // ────────────────────────────────────────────────────────
-    // (E') ローグ移動モード — 合流退避 / 再出現 / 候補選び
+    // (E') 盤面からの一時退場 — 階段退場(useStairs)の表示制御
     // ────────────────────────────────────────────────────────
 
     /// 味方 id の表示/退避を切り替える。`flag = true` で Marker2D ごと不可視にして
-    /// hidden を立てる(合流して消える)。`flag = false` で元に戻す(かいさんで再出現)。
+    /// hidden を立てる(階段で退場して消える)。`flag = false` で元に戻す。
     /// 親 Marker2D を不可視にすると子 Sprite / HPBar も連動して消える(Godot の
     /// 親子可視性 AND。CursorScene.setVisible と同手法)。
     pub def setHidden(id: Int32, flag: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -734,67 +750,6 @@ mod PlayerScene {
                                               NodeTag.Player({hidden = flag | d}))
             case other => other
         }, scene)
-
-    /// 味方 id を「正面待機」に戻す。`facing` を Down にし、AnimatedSprite2D 持ち unit は
-    /// idle アニメ(= 正面フレーム)へ切り替える。Sprite2D 静止 unit は playAnim が no-op。
-    /// 移動 Tween 完了を idle 復帰のトリガーにしない設計のため(`process` 参照)、
-    /// 「かいさん」など歩いて再出現した直後の settle 地点で明示的に呼ぶ。
-    /// これが無いと walk_<dir> のまま固まり、再出現した archer が横/後ろを向いたままになる。
-    pub def faceFrontIdle(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        scene
-            |> mapPlayer(id, d -> {facing = Staff.Direction.Down | d})
-            |> playAnim(id, idleAnimName())
-
-    /// hidden(退避中)かつ階段退場でない味方を抽出する純フィルタ（List 版）。
-    /// 述語の真理点をここ1箇所に保ち、driver は `hiddenAllies(scene)`、
-    /// 非driver は `PlayerData.PartyQuery.getAll()` に対してこれを使う（read を effect 経由にしつつ DRY）。
-    pub def hiddenOf(players: List[Data]): List[Data] =
-        List.filter(d -> d#hidden and not d#usedStairs, players)
-
-    /// 合流して退避中(hidden)の味方一覧。「かいさん」での再出現対象。
-    /// このリストが空でない = いまローグ移動モード中、の手掛かりとしても使う。
-    /// 階段で退場した味方 (usedStairs) は hidden だが再出現対象ではないので除外する。
-    pub def hiddenAllies(scene: Scene[NodeTag]): List[Data] =
-        hiddenOf(getAll(scene))
-
-    /// 合流させられる味方(= ロード(id 0)以外で、まだ表示中)を抽出する純フィルタ（List 版）。
-    pub def mergeableOf(players: List[Data]): List[Data] =
-        List.filter(d -> d#id != 0 and not d#hidden, players)
-
-    /// 合流させられる味方一覧(= ロード(id 0)以外で、まだ表示中の味方)。
-    /// 「しゅうごう」を出す条件 / 合流で歩かせる対象として使う。
-    pub def mergeableAllies(scene: Scene[NodeTag]): List[Data] =
-        mergeableOf(getAll(scene))
-
-    /// すべての座標が `center` の周囲 `range` マス以内（チェビシェフ距離 = max(|dx|,|dy|)）に
-    /// あるか。空リストは true。位置だけのピュア判定（テストしやすいよう座標で受け取る）。
-    pub def allWithinRange(range: Int32, center: {x = Int32, y = Int32},
-                            positions: List[{x = Int32, y = Int32}]): Bool =
-        List.forAll(pos ->
-            Int32.max(Int32.abs(pos#x - center#x), Int32.abs(pos#y - center#y)) <= range,
-            positions)
-
-    /// 合流対象の味方が全員、ロード(id 0)の周囲 `range` マス以内に居るかの純判定（List 版）。
-    /// ロードが居なければ vacuously true。`allMergeableWithin` と非driver の getAll 集計で共有する。
-    pub def allMergeableWithinOf(range: Int32, players: List[Data]): Bool =
-        match List.find(d -> d#id == 0, players) {
-            case None       => true
-            case Some(lord) =>
-                allWithinRange(range, lord#gridPos,
-                               mergeableOf(players) |> List.map(d -> d#gridPos))
-        }
-
-    /// 合流対象の味方（mergeableAllies）が全員、ロード(id 0)の周囲 `range` マス以内に居るか。
-    /// 「しゅうごう」をその場でできる（全員が近くに固まっている）かの判定に使う。
-    pub def allMergeableWithin(range: Int32, scene: Scene[NodeTag]): Bool =
-        allMergeableWithinOf(range, getAll(scene))
-
-    /// 合流で次に動かす 1 体を選ぶ純粋関数(= ロードに最も近い味方)。居なければ None。
-    pub def nearestMover(lordPos: {x = Int32, y = Int32},
-                          movers: List[Data]): Option[Data] =
-        movers
-            |> List.sortBy(d -> Weapon.manhattan(d#gridPos, lordPos))
-            |> List.head
 
     /// 指定 id の子 Sprite の modulate を変える内部ヘルパー。
     /// Sprite2D / AnimatedSprite2D どちらの実装でも動くように両方の inner mapper を試す。
