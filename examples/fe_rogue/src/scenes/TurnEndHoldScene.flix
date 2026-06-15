@@ -1,7 +1,7 @@
-/// TurnEndHoldScene — Shift（キーボード）/ ゲームパッド LB の長押しでターンエンドする中央ゲージ
+/// TurnEndHoldScene — Shift（キーボード）/ ゲームパッド LB の長押しでターンエンドする右下インジケータ
 ///
-/// プレイヤーターン中（PlayerCursor / GatherMove）に Shift を押し続けると、画面中央に
-/// ゲージ＋「ターンエンド」テキストが出て 2 秒で満タンになり、満タン到達で「全員待機」
+/// プレイヤーターン中（PlayerCursor / GatherMove）に Shift を押し続けると、右下のログ帯に
+/// 「⭕ ターンスキップ」が出て 2 秒で満タンになり、満タン到達で「全員待機」
 /// (= ActionMenuScene.turnEndShortcut → applyTurnEnd) を実行して敵ターンへ移る。
 /// 途中で離すとゲージは消えてターン継続。短いタップではゲージを出さない
 /// （`showDelaySeconds` 未満は非表示）ので、同じ Shift の既存「危険域トグル（タップ）」と併存する。

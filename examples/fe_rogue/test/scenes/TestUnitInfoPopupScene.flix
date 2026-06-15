@@ -94,4 +94,18 @@ mod TestUnitInfoPopupScene {
         Assert.assertEq(
             expected = ViewMode.Status,
             UnitInfoPopupScene.flipMode(ViewMode.Items))
+
+    // ════════════════════════════════════════════════════════
+    // statCell — 指輪補正の併記（基本値 (+n)）
+    // ════════════════════════════════════════════════════════
+
+    /// 補正 0 は併記なし、正は (+n)、負は符号込み (n)。
+    /// 3 ケース（0 / +3 / -1）をまとめて 1 アサートで確認する。
+    @Test
+    def testStatCellFormatsBonus(): Unit \ Assert =
+        Assert.assertEq(
+            expected = ("力　 5", "力　 5 (+3)", "力　 5 (-1)"),
+            (UnitInfoPopupScene.statCell("力　", 5, 0),
+             UnitInfoPopupScene.statCell("力　", 5, 3),
+             UnitInfoPopupScene.statCell("力　", 5, -1)))
 }

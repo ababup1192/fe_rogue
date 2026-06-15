@@ -29,6 +29,7 @@ mod FrameAef {
                                 GameLogger.GameLogger,
                                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                                 CustomEffects.GameOverRequest,
+                                CustomEffects.FloorAdvanceRequest,
                                 CustomEffects.WandererSpawnRequest,
                                 CustomEffects.RingTransformRequest,
                                 CustomEffects.ThiefDropRequest,

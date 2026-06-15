@@ -2,12 +2,12 @@
 ///
 /// 将棋でいう打ち手。盤面(Board)を読み、入力で次の手(1 マス移動)を決め、駒(PlayerScene)へ
 /// `moveToById`（座標＋見た目の適用）で反映する。**駒は Board を読まない**という分離を保つための層で、
-/// 敵の `EnemyAI`/`EnemyTurnDriverScene`、ローグ合流の `AutoMoveScene` と対称。
+/// 敵の `EnemyAI`/`EnemyTurnDriverScene` と対称。
 /// 駒(PlayerScene)が Board を直接読むと、盤面の内部表現が変わるたびに駒側の修正が波及し、
 /// テストや再利用も困難になる。打ち手を挟むことで Board 変更の影響範囲をこの層に限定する。
 ///
 /// dispatch は Game.flix の `Node[NodeTag]` redef の **physicsProcess**（入力ポーリングパス）の
-/// Player arm から呼ばれる（PlayerMoving=選択中プレイヤー / RogueMove=ロード id 0）。
+/// Player arm から呼ばれる（PlayerMoving=選択中プレイヤー / GatherMove=主人公 id 0 + 味方追従）。
 /// 常駐ノードは持たず、既存の Player ノードに対して関数として作用する（CursorScene.physicsProcess と同様）。
 /// これにより移動のフレームタイミングは従来（駒内 physicsProcess）と完全に一致する。
 mod PlayerMovementScene {
@@ -20,24 +20,88 @@ mod PlayerMovementScene {
         stepFor(selectAllowedPred(TurnPhase.Phase.PlayerMoving, scene),
                 PlayerScene.selectedSlideDuration(), node, path, scene)
 
-    /// RogueMove: ロード(id 0)を **制限なし・通常速** で自由歩行させる。
-    /// 敵検知での自動解散判定は driver(`AutoMoveScene.roamJudge`)が別途行う（従来どおりの共存）。
-    pub def roamStep(_delta: Duration.Duration, node: EngineNode[NodeTag],
-                      path: NodePath, scene: Scene[NodeTag]):
-                     (EngineNode[NodeTag], Scene[NodeTag])
-                     \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger} =
-        stepFor(selectAllowedPred(TurnPhase.Phase.RogueMove, scene),
-                PlayerScene.slideDuration(), node, path, scene)
+    /// GatherMove: 主人公(id 0)を移動範囲内・低速で 1 歩動かし、**主人公が動いたフレームだけ**
+    /// 各味方を主人公の「移動前マス」へ最短 1 歩で追従させる（行軍）。
+    /// `stepFor` は無改修で再利用し、移動成立は「移動前後の主人公グリッド座標が変わったか」で判定する
+    /// （`stepFor` が着地マスを返さなくても、scene を読み直せば差分で分かる）。
+    /// 主人公の Tween 完了待ち (`stepFor` 内の isMoving ガード) が 1 フレーム 1 歩のリズムを保つ。
+    pub def gatherStep(_delta: Duration.Duration, node: EngineNode[NodeTag],
+                        path: NodePath, scene: Scene[NodeTag]):
+                       (EngineNode[NodeTag], Scene[NodeTag])
+                       \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger,
+                          SelectedPlayer.State} =
+        let lord = PlayerScene.lordId();
+        let prev = PlayerScene.getGridPos(lord, scene);
+        let (movedNode, movedScene) =
+            stepFor(selectAllowedPred(TurnPhase.Phase.GatherMove, scene),
+                    PlayerScene.selectedSlideDuration(), node, path, scene);
+        let now = PlayerScene.getGridPos(lord, movedScene);
+        if (now#x == prev#x and now#y == prev#y) (movedNode, movedScene)
+        else (movedNode, followAllies(now, prev, movedScene))
+
+    /// 主人公の移動後マス `lordNewPos` と移動前マス `goal` を使い、主人公以外の生存味方を
+    /// 重なりなく最短 1 歩ずつ追従させる。次マスの決定は純粋関数 `Board.followStepsToward` に委ねる。
+    ///   - 自分の移動距離(`moveTiles`)を使い切った / 集合前から待機の味方は追従しない（active=false）。
+    ///   - 自発的に 1 歩追従した味方は `moveStepsTaken` を 1 消費し、上限到達で `setWaited`（非アクティブ化）。
+    ///     その非アクティブ化は `GatherWaited` ドラフトに積み、集合キャンセルで再アクティブに戻せるようにする。
+    ///   - 主人公に押し出された味方（着地マスに居た）はその場の入れ替えなので歩数を消費しない。
+    def followAllies(lordNewPos: {x = Int32, y = Int32}, goal: {x = Int32, y = Int32},
+                      scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {BoardQuery, Tween.Scheduler, SelectedPlayer.State} =
+        let board     = BoardQuery.board();
+        // 待機中(行動済み)の味方は「すれ違えない」固体障害物。すり抜け対象(allyCells)から除く。
+        let waited    = waitedAllyCells(scene);
+        let allyCells = Board.allPlayerCells(board)
+            |> List.filter(c -> not Board.containsCell(c, waited));
+        let movers    = PlayerScene.getAll(scene)
+            |> List.filter(d -> d#id != PlayerScene.lordId() and d#hp > 0)
+            |> List.map(d -> (d#id, d#gridPos,
+                              not d#waited and d#moveStepsTaken < d#moveTiles));
+        Board.followStepsToward(board, allyCells, lordNewPos, goal, movers)
+            |> List.foldLeft((acc, step) -> match step {
+                case (_id, None, _)                => acc
+                case (id, Some(target), consumes)  =>
+                    let moved = PlayerScene.moveToById(id, target, board#map,
+                                                       PlayerScene.selectedSlideDuration(), acc);
+                    // consumes=true（自発的な追従1歩）のときだけ移動距離を消費し、上限で非アクティブ化。
+                    if (consumes) consumeFollowStep(id, moved) else moved
+            }, scene)
+
+    /// 自発的追従 1 歩ぶんの後始末: `moveStepsTaken` を 1 増やし、自分の `moveTiles` に達したら
+    /// 非アクティブ化（`setWaited`）して、巻き戻し用の `GatherWaited` ドラフトを積む。
+    def consumeFollowStep(id: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ SelectedPlayer.State =
+        match PlayerScene.get(id, scene) {
+            case None    => scene
+            case Some(d) =>
+                let used      = d#moveStepsTaken + 1;
+                let withSteps = PlayerScene.setMoveStepsTaken(id, used, scene);
+                if (used >= d#moveTiles) {
+                    SelectedPlayer.pushDraft(MoveDraft.DraftAction.GatherWaited(id));
+                    PlayerScene.setWaited(id, withSteps)
+                } else withSteps
+        }
 
     /// フェーズ別の「進入可否」述語。将来の移動制限（床限定・特定敵回避 等）はここに足す。
-    /// physicsStep/roamStep は共通 stepFor に述語を渡す構造のため、フェーズ固有の制限を
+    /// physicsStep/gatherStep は共通 stepFor に述語を渡す構造のため、フェーズ固有の制限を
     /// 呼び出し元ごとに重複して書かずに済む。driver にハードコードせず関数化することで拡張にも開く。
     def selectAllowedPred(phase: TurnPhase.Phase,
                            scene: Scene[NodeTag]): {x = Int32, y = Int32} -> Bool =
         match phase {
             case TurnPhase.Phase.PlayerMoving => c -> MoveRangeScene.isInRange(c, scene)
+            // 集合: 主人公は集合開始位置を原点に固定した移動範囲(青マス)内だけ動ける。
+            // 待機中(行動済み)の味方マスへは進めない（すれ違い不可。＝押し出しも起きない）。
+            case TurnPhase.Phase.GatherMove   =>
+                let waited = waitedAllyCells(scene);
+                c -> MoveRangeScene.isInRange(c, scene) and not Board.containsCell(c, waited)
             case _                            => _ -> true
         }
+
+    /// 待機中(行動済み)かつ生存している味方のグリッドマス一覧。集合の「すれ違えない障害物」。
+    def waitedAllyCells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
+        PlayerScene.getAll(scene)
+            |> List.filter(d -> d#waited and d#hp > 0)
+            |> List.map(d -> d#gridPos)
 
     /// 手動移動の共通本体。`isMoving` ガード → 入力 → Board 判定 → 駒へ `moveToById` で適用。
     /// 移動後のノードは scene から取り直して返す（engine の physicsProcess 契約: 返した node が

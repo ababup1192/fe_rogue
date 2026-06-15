@@ -188,7 +188,8 @@ mod TestCursorScene {
             let result = run {
                 SelectedPlayer.State.put({
                     id     = Some(0),
-                    drafts = Nil
+                    drafts = Nil,
+                    gatherActive = false
                 });
                 let scene = cursorAddPure(initial);
                 let after = TurnFlow.commitWaitedAndAdvance(scene);

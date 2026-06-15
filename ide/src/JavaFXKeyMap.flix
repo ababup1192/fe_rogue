@@ -18,6 +18,7 @@ mod JavaFXKeyMap {
         case GameEngine.Key.D         => "D"
         case GameEngine.Key.Z         => "Z"
         case GameEngine.Key.X         => "X"
+        case GameEngine.Key.C         => "C"
         case GameEngine.Key.M         => "M"
         case GameEngine.Key.Up        => "UP"
         case GameEngine.Key.Down      => "DOWN"

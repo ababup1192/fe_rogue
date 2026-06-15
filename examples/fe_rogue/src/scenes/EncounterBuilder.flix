@@ -11,7 +11,7 @@ mod EncounterBuilder {
     /// 他の場所で組み立てると hidden 漏れや順序崩れが起きるのを防ぐため。
     /// 駒順は `BoardSnapshot.fromScene` と同じ players → enemies を保つ
     /// （`Board.nearestPlayer` の id 小タイブレークに効くため）。
-    /// hidden（しゅうごう退避中 / 階段退場）の味方は盤面・units の双方から除外する。
+    /// hidden（階段退場）の味方は盤面・units の双方から除外する。
     pub def fromScene(scene: Scene[NodeTag]): Encounter =
         // getAll を players/enemies 各1回だけ歩き、その結果で UnitView と Board の両方を作る。
         // `BoardSnapshot.fromParts` に hidden 除外と pieces 化を委譲することで、

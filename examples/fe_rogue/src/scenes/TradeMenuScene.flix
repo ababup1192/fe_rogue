@@ -1,8 +1,8 @@
-/// TradeMenuScene — 物交換ウィンドウ (N ペイン: 最大 3 人)
+/// TradeMenuScene — 物交換ウィンドウ (N ペイン: 最大 4 人)
 ///
-/// 通常ターンの「こうかん」(隣接 2 人) と、集合後ローグモードの「交換」(集合した
-/// 生存メンバー全員) を **同じ Scene / 同じ TradeInventory フェーズ**で扱う。
-/// 2 人交換は「ペイン数 = 2」、集合交換は「ペイン数 = 2..3」の特殊ケースにすぎない。
+/// 通常ターンの「こうかん」(隣接 2 人) と、集合（行軍）の「交換」(主人公＋隣接味方
+/// 最大 3 人 = 計 4 人) を **同じ Scene / 同じ TradeInventory フェーズ**で扱う。
+/// 2 人交換は「ペイン数 = 2」、集合交換は「ペイン数 = 2..4」の特殊ケースにすぎない。
 ///
 /// 各ペインに 1 人ぶんの weapons + staves + consumables を縦に並べる。持ち物が
 /// 上限未満のペインは末尾に空スロット "--------" を出す (上限ちょうどなら出さない)。
@@ -17,7 +17,7 @@
 ///      空スロット "--------" への place は片方向 transfer。
 ///   4. pick=Some で X → pick 解除 (focus 据置)。
 ///   5. pick=None で X → `origin` に応じてメニューを閉じる
-///      (FromTurn → ActionSelect / FromRogue → RogueMove)。
+///      (FromTurn / FromGather → ActionSelect)。
 ///
 /// ノード構造（visible のとき）:
 ///   TradeMenu (CanvasLayer, layer=2)
@@ -44,10 +44,11 @@ mod TradeMenuScene {
 
     /// 交換セッションの出口。cancel でメニューを閉じたときの戻り先フェーズを決める。
     ///   - `FromTurn`  : 通常ターンの隣接 2 人交換 (X で ActionSelect へ戻す。巻き戻しドラフトを積む)
-    ///   - `FromRogue` : 集合後の交換 (X で RogueMove へ戻す。ローグは undo 無しなのでドラフト無し)
+    ///   - `FromGather`: 集合（行軍）の隣接メニューからの交換
+    ///                   (X で集合の隣接メニュー=ActionSelect へ戻す。undo 無し)
     pub enum Origin with Eq, ToString {
         case FromTurn
-        case FromRogue
+        case FromGather
     }
 
     /// Panel ノード (`NodeTag.TradePanel(PanelData)`) に紐づくセッション状態。
@@ -116,7 +117,9 @@ mod TradeMenuScene {
     def rootName(): String = "TradeMenu"
 
     /// scene.json で宣言しているペインの最大数。
-    pub def maxPanes(): Int32 = 3
+    /// 交換ペインの最大数。通常ターンの隣接 2 人交換は 2、集合（行軍）の交換は
+    /// 主人公＋隣接味方最大 3 人 = 計 4 まで。物理ノード(menu0..3 / class0..3)もこの数だけ用意する。
+    pub def maxPanes(): Int32 = 4
 
     pub def panelName(): String         = "panel"
     pub def menuName(i: Int32): String  = "menu${i}"
@@ -136,6 +139,7 @@ mod TradeMenuScene {
             case Some("TradeMenu0")    => Ok(NodeTag.TradeMenu(0))
             case Some("TradeMenu1")    => Ok(NodeTag.TradeMenu(1))
             case Some("TradeMenu2")    => Ok(NodeTag.TradeMenu(2))
+            case Some("TradeMenu3")    => Ok(NodeTag.TradeMenu(3))
             case Some(unknown)         =>
                 Err(JsonCompat.jsonError(Root, Set#{"TradeMenuScene tag (got: ${unknown})"}))
         }
@@ -357,7 +361,9 @@ mod TradeMenuScene {
     /// (= 2 列目に達する) か。これが false のときはウィンドウ幅・ロードの列数を縮める。
     def lordNeeds2Columns(data: PanelData, scene: Scene[NodeTag]): Bool \ PlayerData.PartyQuery =
         let lid = PlayerScene.lordId();
-        if (List.exists(m -> m == lid, data#members))
+        // 4 ペイン（集合で隣接 3 人）は各ペインが狭くなるのでロードを 1 列に固定して幅を確保する。
+        if (paneCount(data) >= 4) false
+        else if (List.exists(m -> m == lid, data#members))
             needsSecondColumn(List.length(paneEntries(lid, scene)))
         else false
 
@@ -561,9 +567,9 @@ mod TradeMenuScene {
                       partnerId: Int32, partnerKindOpt: Option[PlayerData.ItemKind],
                       scene: Scene[NodeTag]): Unit \ SelectedPlayer.State =
         match origin {
-            case Origin.FromTurn  =>
+            case Origin.FromTurn   =>
                 recordTradeDraft(selfId, selfKind, partnerId, partnerKindOpt, scene)
-            case Origin.FromRogue => ()
+            case Origin.FromGather => ()
         }
 
     /// swap 実行前に、巻き戻し用 `Traded` ドラフトを SelectedPlayer に積む。
@@ -700,11 +706,11 @@ mod TradeMenuScene {
     /// pick も印も無いときの X: origin に応じて交換ウィンドウを閉じる。
     def closeTrade(origin: Origin, scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
         match origin {
-            case Origin.FromTurn  =>
+            case Origin.FromTurn   =>
                 PhaseTransitions.enterActionSelectFromTrade(scene)
-            case Origin.FromRogue =>
-                PhaseTransitions.enterRogueMove(scene)
-                    |> mapPanelData(_ -> defaultPanelData())
+            case Origin.FromGather =>
+                // 集合の隣接メニュー（ActionSelect, gatherActive のまま）に戻す。
+                PhaseTransitions.enterActionSelectFromTrade(scene)
         }
 
     /// ←/→ 押下: focus ペインを delta(±1) 動かす。

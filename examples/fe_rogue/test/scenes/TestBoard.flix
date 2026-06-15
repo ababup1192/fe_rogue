@@ -268,62 +268,6 @@ mod TestBoard {
             pathToTuples(path))
 
     // ========================================================================
-    // cellDetectedByEnemy — ローグ移動モードの敵検知 (同じ部屋 or 索敵範囲)
-    //   テスト用 moduleOf: x<5 → 部屋0 / 5..9 → 通路(None) / x>=10 → 部屋1
-    //   isFloor は全面床(= reachableCells はマンハッタン距離 ≤ moveTiles の円)。
-    // ========================================================================
-
-    /// テスト用の部屋わけ述語。
-    def testModuleOf(c: {x = Int32, y = Int32}): Option[Int32] =
-        if (c#x < 5) Some(0)
-        else if (c#x >= 10) Some(1)
-        else None
-
-    /// 同じ部屋なら、索敵範囲(移動到達)の外でも検知する。
-    /// ロード (0,0)・敵 (4,4) は共に部屋0。距離 8 > moveTiles 1 だが同部屋 → true。
-    @Test
-    def testDetectedBySameRoomBeyondRange(): Unit \ Assert =
-        let isFloor = _ -> true;
-        let enemies = {gridPos = src(4, 4), moveTiles = 1, isDying = false} :: Nil;
-        Assert.assertEq(expected = true,
-            Board.cellDetectedByEnemy(testModuleOf, isFloor, enemies, src(0, 0)))
-
-    /// 同じ部屋でなくても、索敵範囲(移動到達)に入れば検知する。
-    /// ロード (7,0)=通路、敵 (10,0)=部屋1・moveTiles 4。距離 3 ≤ 4 なので範囲内 → true。
-    @Test
-    def testDetectedByRangeAcrossRooms(): Unit \ Assert =
-        let isFloor = _ -> true;
-        let enemies = {gridPos = src(10, 0), moveTiles = 4, isDying = false} :: Nil;
-        Assert.assertEq(expected = true,
-            Board.cellDetectedByEnemy(testModuleOf, isFloor, enemies, src(7, 0)))
-
-    /// 別の部屋 かつ 索敵範囲外 なら検知しない。
-    /// ロード (0,0)=部屋0、敵 (15,0)=部屋1・moveTiles 2、距離 15 → false。
-    @Test
-    def testNotDetectedDifferentRoomOutOfRange(): Unit \ Assert =
-        let isFloor = _ -> true;
-        let enemies = {gridPos = src(15, 0), moveTiles = 2, isDying = false} :: Nil;
-        Assert.assertEq(expected = false,
-            Board.cellDetectedByEnemy(testModuleOf, isFloor, enemies, src(0, 0)))
-
-    /// 通路に居て、近くの部屋の敵の索敵範囲外なら安全(検知しない)。
-    /// ロード (7,0)=通路、敵 (3,0)=部屋0・moveTiles 1、距離 4 → false。
-    @Test
-    def testNotDetectedInCorridorOutOfRange(): Unit \ Assert =
-        let isFloor = _ -> true;
-        let enemies = {gridPos = src(3, 0), moveTiles = 1, isDying = false} :: Nil;
-        Assert.assertEq(expected = false,
-            Board.cellDetectedByEnemy(testModuleOf, isFloor, enemies, src(7, 0)))
-
-    /// 死亡演出中(isDying)の敵は部屋でも範囲でも数えない。同部屋・隣接でも false。
-    @Test
-    def testDetectedIgnoresDyingEnemy(): Unit \ Assert =
-        let isFloor = _ -> true;
-        let enemies = {gridPos = src(1, 0), moveTiles = 2, isDying = true} :: Nil;
-        Assert.assertEq(expected = false,
-            Board.cellDetectedByEnemy(testModuleOf, isFloor, enemies, src(0, 0)))
-
-    // ========================================================================
     // ダイクストラ距離フィールド: distanceField / fieldDist / stepDownhill
     // ========================================================================
 
@@ -495,6 +439,192 @@ mod TestBoard {
             (Piece.Player(0), {x = 0, y = 0}) :: Nil);
         let path = Board.bfsPathSkipAllies(board, Nil, {x = 0, y = 0}, {x = 4, y = 0});
         Assert.assertEq(expected = true, Option.isEmpty(path))
+
+    // ========================================================================
+    // followStepsToward — 集合（行軍）の味方 1 歩追従
+    //   各味方を「主人公の移動前マス」へ味方すり抜け最短で 1 歩寄せる。
+    //   {x,y} は Eq 無しなので Option を (x,y) tuple 化し、Some/None のまま比較する。
+    // ========================================================================
+
+    /// 結果の各味方の次マスを比較用に変換する（None はそのまま、Some は (x,y) tuple へ）。
+    /// consumesStep は捨てて (id, 次マス) で比較する（消費判定は別テストで確認）。
+    def followToTuples(result: List[(Int32, Option[{x = Int32, y = Int32}], Bool)]):
+            List[(Int32, Option[(Int32, Int32)])] =
+        List.map(e -> { let (id, o, _) = e; (id, Option.map(c -> (c#x, c#y), o)) }, result)
+
+    /// 結果の各味方の「移動距離を消費するか(consumesStep)」だけを (id, Bool) で取り出す。
+    def followConsumes(result: List[(Int32, Option[{x = Int32, y = Int32}], Bool)]):
+            List[(Int32, Bool)] =
+        List.map(e -> { let (id, _, consumes) = e; (id, consumes) }, result)
+
+    /// 主人公が (1,0)→(2,0) と動いた後、真後ろの味方(1)は移動前マス (1,0) へ 1 歩進む。
+    @Test
+    def testFollowStepsBehindLord(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(5, 1),
+            (Piece.Player(0), {x = 2, y = 0}) :: (Piece.Player(1), {x = 0, y = 0}) :: Nil);
+        let result = Board.followStepsToward(board,
+            {x = 2, y = 0} :: {x = 0, y = 0} :: Nil,
+            {x = 2, y = 0},
+            {x = 1, y = 0},
+            (1, {x = 0, y = 0}, true) :: Nil);
+        Assert.assertEq(expected = (1, Some((1, 0))) :: Nil, followToTuples(result))
+
+    /// 前の味方(2)が空けたマスを後続(1)がすり抜けて詰める。主人公は (3,0) に居る。
+    /// 味方2 は (1,0)→(2,0)、味方1 は (0,0)→(1,0)（(1,0) は味方2が抜けたマス）。
+    @Test
+    def testFollowStepsPassThroughAlly(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(5, 1),
+            (Piece.Player(0), {x = 3, y = 0}) ::
+            (Piece.Player(1), {x = 0, y = 0}) :: (Piece.Player(2), {x = 1, y = 0}) :: Nil);
+        let result = Board.followStepsToward(board,
+            {x = 3, y = 0} :: {x = 0, y = 0} :: {x = 1, y = 0} :: Nil,
+            {x = 3, y = 0},
+            {x = 2, y = 0},
+            (1, {x = 0, y = 0}, true) :: (2, {x = 1, y = 0}, true) :: Nil);
+        Assert.assertEq(
+            expected = (1, Some((1, 0))) :: (2, Some((2, 0))) :: Nil,
+            followToTuples(result))
+
+    /// 主人公が味方(2)のマス (2,0) に踏み込むと、味方2 は主人公の元マス (1,0) へ抜ける（入れ替え）。
+    @Test
+    def testFollowStepsSwapWhenLordEntersAllyCell(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(5, 1),
+            (Piece.Player(0), {x = 1, y = 0}) :: (Piece.Player(2), {x = 2, y = 0}) :: Nil);
+        let result = Board.followStepsToward(board,
+            {x = 1, y = 0} :: {x = 2, y = 0} :: Nil,
+            {x = 2, y = 0},
+            {x = 1, y = 0},
+            (2, {x = 2, y = 0}, true) :: Nil);
+        Assert.assertEq(expected = (2, Some((1, 0))) :: Nil, followToTuples(result))
+
+    /// 同じ goal を狙う 2 人は同じマスに重ならない: 先勝ちの(1)が (1,0) を取り、(2) は留まる。
+    @Test
+    def testFollowStepsNeverStackOnSameCell(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(3, 3),
+            (Piece.Player(0), {x = 2, y = 0}) ::
+            (Piece.Player(1), {x = 0, y = 0}) :: (Piece.Player(2), {x = 1, y = 1}) :: Nil);
+        let result = Board.followStepsToward(board,
+            {x = 0, y = 0} :: {x = 1, y = 1} :: Nil,
+            {x = 2, y = 0},
+            {x = 1, y = 0},
+            (1, {x = 0, y = 0}, true) :: (2, {x = 1, y = 1}, true) :: Nil);
+        Assert.assertEq(
+            expected = (1, Some((1, 0))) :: (2, None) :: Nil,
+            followToTuples(result))
+
+    /// 壁で分断され goal に到達できない味方は None（動かない）。(2,0) が壁。
+    @Test
+    def testFollowStepsNoPathIsNone(): Unit \ Assert =
+        let board = boardWith(floorSnapshotWithWall(5, 1, {x = 2, y = 0}),
+            (Piece.Player(0), {x = 3, y = 0}) :: (Piece.Player(1), {x = 0, y = 0}) :: Nil);
+        let result = Board.followStepsToward(board,
+            {x = 3, y = 0} :: {x = 0, y = 0} :: Nil,
+            {x = 3, y = 0},
+            {x = 4, y = 0},
+            (1, {x = 0, y = 0}, true) :: Nil);
+        Assert.assertEq(expected = (1, None) :: Nil, followToTuples(result))
+
+    /// 既に goal に居る味方は None（重ねて進ませない）。
+    @Test
+    def testFollowStepsAlreadyAtGoalIsNone(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(5, 1),
+            (Piece.Player(0), {x = 2, y = 0}) :: (Piece.Player(1), {x = 1, y = 0}) :: Nil);
+        let result = Board.followStepsToward(board,
+            {x = 2, y = 0} :: {x = 1, y = 0} :: Nil,
+            {x = 2, y = 0},
+            {x = 1, y = 0},
+            (1, {x = 1, y = 0}, true) :: Nil);
+        Assert.assertEq(expected = (1, None) :: Nil, followToTuples(result))
+
+    /// 非アクティブ(active=false)な味方は動かず、その停止マスは予約される:
+    /// 移動済みの(2)@(1,0) は留まり、(1) は (2) のマスへ停止できないので手前 (0,0) に留まる。
+    @Test
+    def testFollowStepsInactiveAllyStaysAndReserves(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(5, 1),
+            (Piece.Player(0), {x = 3, y = 0}) ::
+            (Piece.Player(1), {x = 0, y = 0}) :: (Piece.Player(2), {x = 1, y = 0}) :: Nil);
+        let result = Board.followStepsToward(board,
+            {x = 3, y = 0} :: {x = 0, y = 0} :: {x = 1, y = 0} :: Nil,
+            {x = 3, y = 0},
+            {x = 2, y = 0},
+            (1, {x = 0, y = 0}, true) :: (2, {x = 1, y = 0}, false) :: Nil);
+        Assert.assertEq(
+            expected = (1, None) :: (2, None) :: Nil,
+            followToTuples(result))
+
+    /// allyCells に含まれない味方（＝集合で待機中になった味方の想定）は通り抜けられない固体障害物。
+    /// (2,0) を allyCells から外すと、後続(1)は (2,0) を越えて goal(4,0) へ追従できず留まる。
+    @Test
+    def testFollowStepsBlockedByOpaqueAlly(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(6, 1),
+            (Piece.Player(0), {x = 5, y = 0}) ::
+            (Piece.Player(1), {x = 0, y = 0}) :: (Piece.Player(2), {x = 2, y = 0}) :: Nil);
+        let result = Board.followStepsToward(board,
+            {x = 5, y = 0} :: {x = 0, y = 0} :: Nil,   // allyCells: 主人公+味方1 のみ（味方2 を除外＝障害物）
+            {x = 5, y = 0},
+            {x = 4, y = 0},
+            (1, {x = 0, y = 0}, true) :: (2, {x = 2, y = 0}, false) :: Nil);
+        Assert.assertEq(
+            expected = (1, None) :: (2, None) :: Nil,
+            followToTuples(result))
+
+    /// 障害物(待機味方)を大回りしないと goal に近づけない味方は、移動力を浪費せずその場に留まる。
+    /// (0,1) の待機味方を避けて x=1 列へ迂回する一歩は主人公(0,3)から遠ざかるので踏まない。
+    @Test
+    def testFollowStepsStaysWhenDetourGoesAway(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(2, 4),
+            (Piece.Player(0), {x = 0, y = 3}) ::
+            (Piece.Player(1), {x = 0, y = 0}) :: (Piece.Player(2), {x = 0, y = 1}) :: Nil);
+        let result = Board.followStepsToward(board,
+            {x = 0, y = 3} :: {x = 0, y = 0} :: Nil,   // allyCells: 主人公+味方1（待機の味方2 を除外＝障害物）
+            {x = 0, y = 3},
+            {x = 0, y = 2},
+            (1, {x = 0, y = 0}, true) :: (2, {x = 0, y = 1}, false) :: Nil);
+        Assert.assertEq(
+            expected = (1, None) :: (2, None) :: Nil,
+            followToTuples(result))
+
+    /// 未行動の味方は、間に居る敵を迂回しないと goal に届かない配置でも追従する（回帰）。
+    /// 幅 2 の縦通路: 主人公は (0,1)→(0,0) と上に動き、goal=(0,1)。敵が (0,2) で直進を塞ぐ。
+    /// 味方(1)@(0,3) は唯一の迂回路 x=1 側へ 1 歩 (1,3) 進む。
+    /// 旧マンハッタンゲートはこの一歩が主人公の新位置 (0,0) から遠ざかるため None としていた（バグ）。
+    /// 敵・壁を障害物・味方を素通しで測る理想距離フィールドでは迂回が前進になるので追従する。
+    @Test
+    def testFollowStepsDetoursAroundEnemy(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(2, 4),
+            (Piece.Player(0), {x = 0, y = 0}) :: (Piece.Player(1), {x = 0, y = 3}) ::
+            (Piece.Enemy(9),  {x = 0, y = 2}) :: Nil);
+        let result = Board.followStepsToward(board,
+            {x = 0, y = 0} :: {x = 0, y = 3} :: Nil,   // allyCells: 主人公+味方1（敵は含めない）
+            {x = 0, y = 0},
+            {x = 0, y = 1},
+            (1, {x = 0, y = 3}, true) :: Nil);
+        Assert.assertEq(expected = (1, Some((1, 3))) :: Nil, followToTuples(result))
+
+    /// 自発的に追従した味方は移動距離を消費する(consumesStep=true)。
+    /// (1) は (0,0)→(1,0) と自発的に 1 歩進むので true。
+    @Test
+    def testFollowConsumesStepOnVoluntaryMove(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(5, 1),
+            (Piece.Player(0), {x = 2, y = 0}) :: (Piece.Player(1), {x = 0, y = 0}) :: Nil);
+        let result = Board.followStepsToward(board,
+            {x = 2, y = 0} :: {x = 0, y = 0} :: Nil,
+            {x = 2, y = 0},
+            {x = 1, y = 0},
+            (1, {x = 0, y = 0}, true) :: Nil);
+        Assert.assertEq(expected = (1, true) :: Nil, followConsumes(result))
+
+    /// 主人公に押し出された味方の入れ替えは強制退避なので移動距離を消費しない(consumesStep=false)。
+    @Test
+    def testFollowDoesNotConsumeOnPush(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(5, 1),
+            (Piece.Player(0), {x = 1, y = 0}) :: (Piece.Player(2), {x = 2, y = 0}) :: Nil);
+        let result = Board.followStepsToward(board,
+            {x = 1, y = 0} :: {x = 2, y = 0} :: Nil,
+            {x = 2, y = 0},
+            {x = 1, y = 0},
+            (2, {x = 2, y = 0}, true) :: Nil);
+        Assert.assertEq(expected = (2, false) :: Nil, followConsumes(result))
 
     // ========================================================================
     // dedupCells / padCells — 座標集合の整形（spawn 配置・危険域表示が共有）
