@@ -348,6 +348,7 @@ mod PlayerScene {
                                  EngineNode.Marker2DWithState(marker, NodeTag.Player(data)))
             |> Scene.addChildAt(playerPath(sp#id), "Sprite", spriteNode)
             |> UnitHPBarScene.attach(playerPath(sp#id), res#hp, UnitHPBarScene.Team.Player)
+            |> WeaponIconScene.attach(playerPath(sp#id), PlayerData.equippedWeapon(sp#weapons))
 
     // ────────────────────────────────────────────────────────
     // (D) ロジック — 移動
@@ -650,6 +651,7 @@ mod PlayerScene {
             |> mapPlayer(id, d -> {waited = true | d})
             |> setSpriteModulate(id, waitedColor())
             |> UnitHPBarScene.setModulate(playerPath(id), waitedColor())
+            |> WeaponIconScene.setModulate(playerPath(id), waitedColor())
             |> playAnim(id, idleAnimName())
 
     /// プレイヤー 1 体を「行動可能(アクティブ)」に戻す。`waited` を下ろし、sprite/HP ゲージを
@@ -659,6 +661,7 @@ mod PlayerScene {
             |> mapPlayer(id, d -> {waited = false | d})
             |> setSpriteModulate(id, activeColor())
             |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
+            |> WeaponIconScene.setModulate(playerPath(id), activeColor())
             |> playAnim(id, idleAnimName())
 
     /// 完全停止（かなしばり）を解除する。被攻撃 or 被投擲の瞬間に呼ぶ。
@@ -681,6 +684,7 @@ mod PlayerScene {
                                        followUpUsed = false | d})
                 |> setSpriteModulate(id, activeColor())
                 |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
+                |> WeaponIconScene.setModulate(playerPath(id), activeColor())
                 |> playAnim(id, idleAnimName()),
             scene, ids);
         // 味方ターン開始時に、いやしのリングを装備した味方の HP を回復する。
@@ -721,7 +725,8 @@ mod PlayerScene {
         List.foldLeft((sc, id) ->
             sc
                 |> setSpriteModulate(id, activeColor())
-                |> UnitHPBarScene.setModulate(playerPath(id), activeColor()),
+                |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
+                |> WeaponIconScene.setModulate(playerPath(id), activeColor()),
             scene, ids)
 
     /// AutoMove で消費した移動歩数を記録するための setter。

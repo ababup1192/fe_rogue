@@ -247,6 +247,7 @@ mod EnemyScene {
             |> Scene.addChildAt(enemyPath(sp#id), "Sprite",
                                  EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
             |> UnitHPBarScene.attach(enemyPath(sp#id), res#hp, UnitHPBarScene.Team.Enemy)
+            |> WeaponIconScene.attach(enemyPath(sp#id), Some(sp#weapon))
 
     // ────────────────────────────────────────────────────────
     // (C2) 試練(シレン)型・部屋湧き（Wanderer タイプの敵をフロア進行中にじわっとスポーン）
@@ -385,6 +386,7 @@ mod EnemyScene {
             |> mapEnemy(id, d -> {acted = true | d})
             |> setSpriteModulate(id, actedColor())
             |> UnitHPBarScene.setModulate(enemyPath(id), actedColor())
+            |> WeaponIconScene.setModulate(enemyPath(id), actedColor())
 
     /// 完全停止（かなしばり）を解除する。被攻撃 or 被投擲の瞬間に呼ぶ。
     /// 停止していなければ no-op（他の時限ステータスは残す）。
@@ -402,7 +404,8 @@ mod EnemyScene {
                 |> mapEnemy(id, d -> {acted = false, statuses = StatusSystem.tick(d#statuses),
                                       followUpUsed = false | d})
                 |> setSpriteModulate(id, activeColor())
-                |> UnitHPBarScene.setModulate(enemyPath(id), activeColor()),
+                |> UnitHPBarScene.setModulate(enemyPath(id), activeColor())
+                |> WeaponIconScene.setModulate(enemyPath(id), activeColor()),
             scene, ids);
         // 敵ターン開始時に、いやしのリングを装備した敵の HP を回復する。
         applyRingRegen(reset)
@@ -442,7 +445,8 @@ mod EnemyScene {
         List.foldLeft((sc, id) ->
             sc
                 |> setSpriteModulate(id, activeColor())
-                |> UnitHPBarScene.setModulate(enemyPath(id), activeColor()),
+                |> UnitHPBarScene.setModulate(enemyPath(id), activeColor())
+                |> WeaponIconScene.setModulate(enemyPath(id), activeColor()),
             scene, ids)
 
     /// フォグ適用: 各敵を「現在地が lit(=isLit) なら表示、さもなくば非表示」にする。
