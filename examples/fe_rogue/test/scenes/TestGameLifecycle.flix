@@ -34,7 +34,8 @@ mod TestGameLifecycle {
                 TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
                 SelectedPlayer.State.put({
                     id     = Some(0),
-                    drafts = Nil
+                    drafts = Nil,
+                    gatherActive = false
                 });
                 // 2) リセットを 1 呼び出しで実行
                 GameLifecycle.resetTurnState();

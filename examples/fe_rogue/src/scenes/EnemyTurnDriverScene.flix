@@ -72,8 +72,8 @@ mod EnemyTurnDriverScene {
         (node, next)
 
     /// 敵ターン開始の共通処理。死亡演出 / 攻撃モーション中の敵はキューに含めない。
-    /// `commitWaitedAndAdvance` (全味方 waited) や AutoMove の `disband` (集合→解散で
-    /// 全員 waited) の流れから呼ばれる「敵ターン入口」。
+    /// `commitWaitedAndAdvance` (全味方 waited) や集合の「全員待機」(applyTurnEnd) の
+    /// 流れから呼ばれる「敵ターン入口」。
     pub def beginTurn(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State} =

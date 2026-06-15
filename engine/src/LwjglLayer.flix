@@ -35,6 +35,7 @@ mod LwjglLayer {
         case GameEngine.Key.D         => 68
         case GameEngine.Key.Z         => 90
         case GameEngine.Key.X         => 88
+        case GameEngine.Key.C         => 67
         case GameEngine.Key.M         => 77
         case GameEngine.Key.Up        => 265
         case GameEngine.Key.Down      => 264
@@ -258,7 +259,9 @@ mod LwjglLayer {
                 case GameEngine.Key.Z         => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_A)
                 case GameEngine.Key.X         => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_B)
                 case GameEngine.Key.Enter     => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_START)
-                case GameEngine.Key.M         => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_Y)
+                // Y = 集合ショートカット(Key.C)、ミニマップ(Key.M)は X ボタンへ移動。
+                case GameEngine.Key.C         => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_Y)
+                case GameEngine.Key.M         => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_X)
                 case GameEngine.Key.LeftShift => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_LEFT_BUMPER)
                 case _                        => false
             };

@@ -1,5 +1,5 @@
 {
-  "description": "物交換ウィンドウ (TradeInventory フェーズ)\n最大3ペインで各メンバーの武器+杖+消費アイテムを並べる。位置/サイズと visible は applyVisibility が実行時に上書きする",
+  "description": "物交換ウィンドウ (TradeInventory フェーズ)\n最大4ペイン(集合=主人公+隣接3人)で各メンバーの武器+杖+消費アイテムを並べる。位置/サイズと visible は applyVisibility が実行時に上書きする",
   "type": "CanvasLayer",
   "name": "TradeMenu",
   "layer": 2,
@@ -45,6 +45,14 @@
           "visible": false
         },
         {
+          "type": "Label2D",
+          "name": "class3",
+          "pos": [119, 2],
+          "fontSize": 4,
+          "text": "",
+          "visible": false
+        },
+        {
           "type": "ItemList",
           "name": "menu0",
           "pos": [2, 8],
@@ -79,6 +87,20 @@
           "size": [37, 50],
           "fontSize": 4,
           "tag": "TradeMenu2",
+          "items": [],
+          "wrap": true,
+          "focused": false,
+          "visible": false,
+          "cursorGlyph": ">",
+          "itemHeight": 6
+        },
+        {
+          "type": "ItemList",
+          "name": "menu3",
+          "pos": [119, 8],
+          "size": [37, 50],
+          "fontSize": 4,
+          "tag": "TradeMenu3",
           "items": [],
           "wrap": true,
           "focused": false,

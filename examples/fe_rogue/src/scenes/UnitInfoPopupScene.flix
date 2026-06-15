@@ -60,11 +60,21 @@ mod UnitInfoPopupScene {
     def hpTextLocalPos(): Vec2.Vec2   = {x = 14.0, y = 14.0}
     def hpBarLocalPos(): Vec2.Vec2    = {x = 14.0, y = 20.0}
     def hpBarSize(): Vec2.Vec2        = {x = 44.0, y = 4.0}
-    // 能力値は HP ゲージの左端 (x=14) にそろえる。
-    def statsLocalPos(): Vec2.Vec2    = {x = 14.0, y = 34.0}
+    // 能力値の左列 x（HP ゲージの左端にそろえる）。
+    def statsLeftX(): Float64         = 14.0
+    // 能力値の y。指輪を装備していれば指輪行のぶん下げる。指輪は希少なので、
+    // 無いときは従来位置 (34) に詰めて余白を作らない。
+    def statsRowY(hasRing: Bool): Float64 = if (hasRing) 40.0 else 34.0
+    // 右列 (幸運/守備/魔防/移動) を左列から離す余白。右列 x = 左列の最悪幅 + この値。
+    def statsColGap(): Float64        = 4.0
+    // 右列 x を決めるために測る「左列の想定最悪幅」の基準文字列。実テキストではなく
+    // これを測ることで、指輪補正の有無で右列が左右にぶれず縦ラインが一定になる。
+    def statsLeftWidthSample(): String = "力　 99 (+9)"
 
     // HP ゲージの下に出す「装備中の武器 + 耐久」の行（アイコン + テキスト）。
     def equipRowY(): Float64          = 26.0
+    // 武器行の下に出す「装備中の指輪」の行。
+    def ringRowY(): Float64           = 32.0
     def equipIconX(): Float64         = 14.0   // HP ゲージ左端にそろえる
     def equipTextX(): Float64         = 21.0   // アイコンの右
 
@@ -235,7 +245,7 @@ mod UnitInfoPopupScene {
         match visibleEnemy {
             case Some(id) => Some(("enemy", id))
             case None     =>
-                // hidden の味方（階段で退場 = usedStairs、ローグの「しゅうごう」= 合流）は
+                // hidden の味方（階段で退場 = usedStairs）は
                 // 盤面から外れているので情報を出さない（敵のフォグ隠し と同じ扱い）。
                 PlayerScene.getAll(scene)
                     |> List.findMap(d ->
@@ -276,8 +286,8 @@ mod UnitInfoPopupScene {
             case None    => hide(scene)
             case Some(d) =>
                 let weapons = Option.toList(d#weapon);
-                // 敵はレベル / 経験値の概念が無いので None。
-                renderPanel(d#resource, d#hp, weapons, None, scene)
+                // 敵はレベル / 経験値の概念が無いので None。指輪は d#ring（装備中のみ）。
+                renderPanel(d#resource, d#hp, weapons, d#ring, None, scene)
         }
 
     def renderPlayer(id: Int32, scene: Scene[NodeTag]):
@@ -285,7 +295,7 @@ mod UnitInfoPopupScene {
         match PlayerScene.get(id, scene) {
             case None    => hide(scene)
             case Some(d) =>
-                renderPanel(d#resource, d#hp, d#weapons,
+                renderPanel(d#resource, d#hp, d#weapons, PlayerData.equippedRing(d),
                             Some({level = d#level, exp = d#exp}), scene)
         }
 
@@ -298,11 +308,12 @@ mod UnitInfoPopupScene {
                           sprite = Sprite.SpriteResource | r},
                      currentHp: Int32,
                      weapons: List[UnitCatalog.WeaponResource],
+                     ring: Option[Ring.RingResource],
                      levelExp: Option[LevelExp],
                      scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let cleared = clearContents(scene);
         let withContents = match getViewMode(cleared) {
-            case ViewMode.Status => renderStatusView(res, currentHp, weapons, levelExp, cleared)
+            case ViewMode.Status => renderStatusView(res, currentHp, weapons, ring, levelExp, cleared)
             case ViewMode.Items  => renderItemsView(res, weapons, cleared)
         };
         Panel.mapAt(panelPath(), CanvasItem.setVisible(true), withContents)
@@ -313,6 +324,7 @@ mod UnitInfoPopupScene {
                                sprite = Sprite.SpriteResource | r},
                           currentHp: Int32,
                           weapons: List[UnitCatalog.WeaponResource],
+                          ring: Option[Ring.RingResource],
                           levelExp: Option[LevelExp],
                           scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
@@ -361,14 +373,47 @@ mod UnitInfoPopupScene {
             case Some(weapon) => renderEquippedWeapon(weapon, atlas, withBar)
             case None         => withBar
         };
-        // 漢字表記・並び順。左列 力/魔力/技/速さ、右列 幸運/守備/魔防/移動。
-        // 1 文字ラベル(力/技)は全角スペースで詰めて数値列を揃える。
-        let statsText = "力　 ${res#attack}    幸運 ${res#luck}\n魔力 ${res#magicAttack}    守備 ${res#defense}\n技　 ${res#skill}    魔防 ${res#magicDefense}\n速さ ${res#speed}    移動 ${res#moveTiles}";
-        let statsLabel = Label2D.make(statsText, atlas, fontSizeSmall())
-            |> Node2D.setPosition(statsLocalPos())
+        // 武器行の下に「装備中の指輪」をアイコン付きで出す。未装備なら省略し能力値を上に詰める。
+        let withRing = match ring {
+            case Some(r) => renderEquippedRing(r, atlas, withWeapon)
+            case None    => withWeapon
+        };
+        // 能力値。漢字表記・並び順は 左列 力/魔力/技/速さ、右列 幸運/守備/魔防/移動。
+        // 指輪による補正 (Power/Swift/Guard) を持つ能力は「基本値 (+n)」で併記する
+        // （魔力/魔防/移動は指輪非対象なので補正 0）。1 文字ラベル(力/技)は全角空白で詰める。
+        // 左列に (+n) が付いても右列がずれないよう、列ごとに別ラベルにして右列 x を固定する。
+        let rb = Ring.bonuses(ring);
+        let rowY = statsRowY(Option.nonEmpty(ring));
+        let leftText =
+            statCell("力　", res#attack, rb#attack)      ++ "\n" ++
+            statCell("魔力", res#magicAttack, 0)          ++ "\n" ++
+            statCell("技　", res#skill, rb#skill)         ++ "\n" ++
+            statCell("速さ", res#speed, rb#speed);
+        let rightText =
+            statCell("幸運", res#luck, rb#luck)           ++ "\n" ++
+            statCell("守備", res#defense, rb#defense)     ++ "\n" ++
+            statCell("魔防", res#magicDefense, 0)         ++ "\n" ++
+            statCell("移動", res#moveTiles, 0);
+        let leftLabel = Label2D.make(leftText, atlas, fontSizeSmall())
+            |> Node2D.setPosition({x = statsLeftX(), y = rowY})
             |> CanvasItem.setModulate(textColor());
-        Scene.addChildAt(panelPath(), "Stats",
-            EngineNode.Label2DWithState(statsLabel, NodeTag.NoTag), withWeapon)
+        let withLeft = Scene.addChildAt(panelPath(), "StatsLeft",
+            EngineNode.Label2DWithState(leftLabel, NodeTag.NoTag), withRing);
+        let rightX = statsLeftX()
+            + Label2D.measure(Label2D.make(statsLeftWidthSample(), atlas, fontSizeSmall()))#x
+            + statsColGap();
+        let rightLabel = Label2D.make(rightText, atlas, fontSizeSmall())
+            |> Node2D.setPosition({x = rightX, y = rowY})
+            |> CanvasItem.setModulate(textColor());
+        Scene.addChildAt(panelPath(), "StatsRight",
+            EngineNode.Label2DWithState(rightLabel, NodeTag.NoTag), withLeft)
+
+    /// 能力値 1 セルの表示文字列。指輪補正があれば基本値の隣に併記する
+    /// （0 は併記しない / 正は「(+n)」/ 負は符号込みで「(n)」）。
+    pub def statCell(label: String, value: Int32, bonus: Int32): String =
+        if (bonus == 0)     "${label} ${value}"
+        else if (bonus > 0) "${label} ${value} (+${bonus})"
+        else                "${label} ${value} (${bonus})"
 
     /// 装備中の武器 1 個を HP ゲージの下にアイコン + 「名前 耐久」で描く。
     /// Items view の `addItemRow` と同じ作法（アイコンは左上基準、offset を表示スケールで加算）。
@@ -391,6 +436,28 @@ mod UnitInfoPopupScene {
             |> Node2D.setPosition({x = equipTextX(), y = equipRowY()})
             |> CanvasItem.setModulate(textColor());
         Scene.addChildAt(panelPath(), "EquipText",
+            EngineNode.Label2DWithState(label, NodeTag.NoTag), withIcon)
+
+    /// 装備中の指輪 1 個を武器行の下にアイコン + 「名前」で描く（指輪は耐久を持たない）。
+    /// renderEquippedWeapon と同じ作法。先頭の E は装備中マーク（武器行と視覚的にそろえる）。
+    def renderEquippedRing(ring: Ring.RingResource, atlas: FontAtlas,
+                            scene: Scene[NodeTag]): Scene[NodeTag] =
+        let off = ring#sprite#offset;
+        let iconPos: Vec2.Vec2 = {
+            x = equipIconX() + off#x * itemSpriteScale()#x,
+            y = ringRowY() + off#y * itemSpriteScale()#y
+        };
+        let iconSprite = Sprite2D.make(ring#sprite#texture, iconPos, itemSpriteScale())
+            |> Sprite2D.setHframes(ring#sprite#hframes)
+            |> Sprite2D.setVframes(ring#sprite#vframes)
+            |> Sprite2D.setFrame(ring#sprite#frame)
+            |> Sprite2D.setCentered(false);
+        let withIcon = Scene.addChildAt(panelPath(), "RingIcon",
+            EngineNode.Sprite2DWithState(iconSprite, NodeTag.NoTag), scene);
+        let label = Label2D.make("E ${ring#name}", atlas, fontSizeSmall())
+            |> Node2D.setPosition({x = equipTextX(), y = ringRowY()})
+            |> CanvasItem.setModulate(textColor());
+        Scene.addChildAt(panelPath(), "RingText",
             EngineNode.Label2DWithState(label, NodeTag.NoTag), withIcon)
 
     def renderItemsView(_res: {description = String, hp = Int32, attack = Int32, defense = Int32,

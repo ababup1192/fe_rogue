@@ -69,12 +69,13 @@ mod FogScene {
                      node: EngineNode[NodeTag],
                      _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag]) \ TurnPhase.State =
-        let torch = isRoguePhase(TurnPhase.State.get());
+        let torch = isTorchPhase(TurnPhase.State.get());
         (node, applyFog(torch, scene))
 
-    /// 集合モード（ロードが単独で動き回る状態）か。通路では周囲1マスだけ照らす（シレン準拠）。
-    def isRoguePhase(phase: TurnPhase.Phase): Bool =
-        phase == TurnPhase.Phase.RogueMove or phase == TurnPhase.Phase.RogueAlert
+    /// 松明照らし（通路では周囲1マスだけ照らす、シレン準拠）にするフェーズか。
+    /// 集合（行軍）モード = 主人公が隊列を率いて単独で動き回る状態のみ該当。
+    def isTorchPhase(phase: TurnPhase.Phase): Bool =
+        phase == TurnPhase.Phase.GatherMove
 
     /// 画面全体モヤ＋明るい穴の切り抜き、および敵/アイテム/階段の可視性を一括更新する（純粋）。
     /// torchCorridors=true（集合モード）のとき、通路にいるプレイヤーは通路全体ではなく

@@ -55,7 +55,7 @@ mod TestTurnFlow {
             TestUnitFixtures.withNoopTween(() ->
             TestUnitFixtures.withNoopAnim(() ->
                 run {
-                    SelectedPlayer.State.put({id = Some(0), drafts = Nil});
+                    SelectedPlayer.State.put({id = Some(0), drafts = Nil, gatherActive = false});
                     let _ = TurnFlow.commitWaitedAndAdvance(scene);
                     TurnPhase.State.get()
                 } with TurnPhase.withState(rc)

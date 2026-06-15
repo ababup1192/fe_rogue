@@ -23,14 +23,15 @@ mod SelectedPlayer {
     /// 移動開始で `MovedFrom`、拾得で `PickedUp` を積み、`cancelSelection` で先頭から
     /// 逆操作、行動確定（`cleared()`）や次の選択開始で破棄する（FE 移動の仮確定モデル）。
     pub type alias Selection = {
-        id     = Option[Int32],
-        drafts = List[MoveDraft.DraftAction]
+        id           = Option[Int32],
+        drafts       = List[MoveDraft.DraftAction],
+        gatherActive = Bool
     }
 
-    /// 未選択を表す Selection（選択なし・ドラフト空）。
+    /// 未選択を表す Selection（選択なし・ドラフト空・集合中でない）。
     /// 解除時に `put(cleared())` と書ける。行動確定後の解除では drafts の巻き戻しは不要で、
     /// このゼロ値で上書きするだけで済む。
-    pub def cleared(): Selection = {id = None, drafts = Nil}
+    pub def cleared(): Selection = {id = None, drafts = Nil, gatherActive = false}
 
     /// `withState` が提供する handler 1 つで処理し、入れ子ハンドラは想定しない。
     pub eff State {

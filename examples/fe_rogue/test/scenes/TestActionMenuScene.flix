@@ -365,7 +365,7 @@ mod TestActionMenuScene {
                                     TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ActionSelect, () ->
                                       TestUnitFixtures.withNoopFloorAdvance(() ->
                                         TestUnitFixtures.withSelectionRef(rc,
-                                            {id = Some(0), drafts = Nil}, () -> {
+                                            {id = Some(0), drafts = Nil, gatherActive = false}, () -> {
                                                 let afterPick =
                                                     ActionMenuScene.onActionConfirmed(pickupEntry, scene);
                                                 PlayerScene.cancelSelection(afterPick)
@@ -400,7 +400,7 @@ mod TestActionMenuScene {
                               drafts: List[MoveDraft.DraftAction]):
             Scene[NodeTag] \ r =
         TestUnitFixtures.withSelectionRef(rc,
-            {id = Some(0), drafts = drafts}, () ->
+            {id = Some(0), drafts = drafts, gatherActive = false}, () ->
                 TestUnitFixtures.withNoopTween(() ->
                     TestUnitFixtures.withNoopAnim(() ->
                         TestUnitFixtures.withMockPartyQuery(scene, () ->
@@ -487,18 +487,19 @@ mod TestActionMenuScene {
             List.memberOf(Some("exchange"), itemsMetadata(after)))
 
     // ════════════════════════════════════════════════════════
-    // ローグ移動モードのメニュー (SelectedPlayer = None × 退避中の味方が居る)
-    //   退避中の味方が居る = ローグ中 → 「ひろう(足元にアイテム時) / かいさん」を出す。
+    // 集合（行軍）の隣接メニュー (gatherActive=true × 主人公選択中)
+    //   主人公に隣接する味方が居れば「交換」、常に「全員待機 / キャンセル」。
+    //   隣接味方が居なければ「交換」は出さない（仕様 6）。
     // ════════════════════════════════════════════════════════
 
-    /// World + ロード(id0, 表示, (1,1)) + 退避中の味方(id1, hidden) + ActionMenu。
-    /// 「ローグ移動モード中」を表す最小フィクスチャ。
-    def loadRogueActionMenuScene(): Scene[NodeTag] =
+    /// World + 主人公(id0, (1,1)) + 味方(id1, allyPos) + ActionMenu。
+    /// allyPos を主人公の隣 ((2,1)) にすれば「隣接味方あり」、離せば「なし」を表す。
+    def loadGatherMenuScene(allyPos: {x = Int32, y = Int32}): Scene[NodeTag] =
         let world = Marker2D.make(Vec2.zero());
         let m0 = Marker2D.make(Vec2.zero());
         let m1 = Marker2D.make(Vec2.zero());
         let lord = makePlayerData(0, {x = 1, y = 1});
-        let ally = {hidden = true | makePlayerData(1, {x = 5, y = 5})};
+        let ally = makePlayerData(1, allyPos);
         let withWorld = Scene.empty()
             |> Scene.addNode(MapScene.worldName(),
                 EngineNode.Marker2DWithState(world, NodeTag.NoTag))
@@ -508,38 +509,70 @@ mod TestActionMenuScene {
                 EngineNode.Marker2DWithState(m1, NodeTag.Player(ally)));
         actionMenuAddPure(withWorld)
 
-    /// SelectedPlayer = None・ActionSelect で refreshItems を回すランナー
-    /// (空マス / ローグメニューの項目構築を観測する用)。
-    def runRefreshItemsNoSelection(scene: Scene[NodeTag]): Scene[NodeTag] =
+    /// gatherActive=true・主人公選択中・ActionSelect で refreshItems を回すランナー
+    /// (集合の隣接メニューの項目構築を観測する用)。
+    def runRefreshItemsGather(scene: Scene[NodeTag]): Scene[NodeTag] =
         let menuNode = match Scene.getEngineNode(ActionMenuScene.menuPath(), scene) {
             case Some(node) => node
             case None       => bug!("ActionMenu ItemList not found")
         };
-        let (_, after) = TestUnitFixtures.withMenuReadMocksNoSel(
-            TurnPhase.Phase.ActionSelect, scene, () ->
-                ActionMenuScene.refreshItems(
-                    Duration.seconds(0.0), menuNode,
-                    ActionMenuScene.menuPath(), scene));
+        let (_, after) = TestUnitFixtures.withMenuReadMocksGather(scene, () ->
+            ActionMenuScene.refreshItems(
+                Duration.seconds(0.0), menuNode,
+                ActionMenuScene.menuPath(), scene));
         after
 
-    /// ローグ中・ロード足元にアイテムが無ければ、メニューは「こうかん → かいさん」。
-    /// (集合した生存メンバーが 2 人以上 = ロード + 退避中の味方なので「交換」が出る)
+    /// 主人公に隣接する味方((2,1)) が居れば、隣接メニューは「交換 → 全員待機 → キャンセル」。
     @Test
-    def testRogueMenuShowsOnlyDisbandWithoutFloorItem(): Unit \ Assert =
-        let after = runRefreshItemsNoSelection(loadRogueActionMenuScene());
+    def testGatherAdjacentMenuShowsTradeWithAdjacentAlly(): Unit \ Assert =
+        let after = runRefreshItemsGather(loadGatherMenuScene({x = 2, y = 1}));
         Assert.assertEq(
-            expected = Some("gatherTrade") :: Some("disband") :: Nil,
+            expected = Some("gatherTrade") :: Some("turnEnd") :: Some("gatherCancel") :: Nil,
             itemsMetadata(after))
 
-    /// ローグ中・ロード足元((1,1))にアイテムがあれば、「ひろう → こうかん → かいさん」の順で出る。
-    /// (集合した生存メンバーが 2 人以上なので「交換」が挟まる)
+    /// 隣接する味方が居なければ((5,5))、「交換」は出さず「全員待機 → キャンセル」だけ（仕様 6）。
     @Test
-    def testRogueMenuShowsPickupThenDisbandWithFloorItem(): Unit \ Assert =
-        let scene = attachGroundItemAt({x = 1, y = 1},
-            ItemData.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon()),
-            loadRogueActionMenuScene());
-        let after = runRefreshItemsNoSelection(scene);
+    def testGatherAdjacentMenuHidesTradeWithoutAdjacentAlly(): Unit \ Assert =
+        let after = runRefreshItemsGather(loadGatherMenuScene({x = 5, y = 5}));
         Assert.assertEq(
-            expected = Some("pickup") :: Some("gatherTrade") :: Some("disband") :: Nil,
+            expected = Some("turnEnd") :: Some("gatherCancel") :: Nil,
             itemsMetadata(after))
+
+    // ════════════════════════════════════════════════════════
+    // 「集合」確定のリーダー行動済みガード（仕様3）
+    // ════════════════════════════════════════════════════════
+
+    /// World + 主人公(id0,(1,1)) + 味方(id1,(3,3))。lordWaited で主人公の waited を切り替える。
+    def loadGatherStartScene(lordWaited: Bool): Scene[NodeTag] =
+        let world = Marker2D.make(Vec2.zero());
+        let m0 = Marker2D.make(Vec2.zero());
+        let m1 = Marker2D.make(Vec2.zero());
+        let lord = {waited = lordWaited | makePlayerData(0, {x = 1, y = 1})};
+        let ally = makePlayerData(1, {x = 3, y = 3});
+        let withWorld = Scene.empty()
+            |> Scene.addNode(MapScene.worldName(),
+                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
+                EngineNode.Marker2DWithState(m0, NodeTag.Player(lord)))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(1),
+                EngineNode.Marker2DWithState(m1, NodeTag.Player(ally)));
+        actionMenuAddPure(withWorld)
+
+    /// 「集合」確定: 主人公(リーダー)が既に行動済み(waited)なら開始せず ActionSelect に留まる
+    /// （ログ「リーダーは既に行動済みです。」を出すが、ここでは遷移しないことを確認）。
+    /// （アクティブ時の GatherMove 遷移は overlay/cursor/map ノードを要する統合経路なので実機側で確認）。
+    @Test
+    def testGatherBlockedWhenLeaderWaited(): Unit \ Assert =
+        region rc {
+            let gatherEntry: ItemEntry =
+                { text = "集合", disabled = false, metadata = Some("gather") };
+            let (_, finalPhase) = runOnActionConfirm(rc, {
+                initialPhase   = TurnPhase.Phase.ActionSelect,
+                selectedId     = 0,
+                selectedOrigin = {x = 1, y = 1},
+                scene          = loadGatherStartScene(true),
+                entry          = gatherEntry
+            });
+            Assert.assertEq(expected = TurnPhase.Phase.ActionSelect, finalPhase)
+        }
 }

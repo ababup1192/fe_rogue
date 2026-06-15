@@ -73,7 +73,7 @@ mod Board {
             case _                      => None
         }, board#pieces)
 
-    /// AutoMove / MoveRange など「味方マスのリスト」だけ要る用途で使う。
+    /// 集合の追従 / MoveRange など「味方マスのリスト」だけ要る用途で使う。
     pub def allPlayerCells(board: Board): List[{x = Int32, y = Int32}] =
         playerPositions(board)
             |> List.map(pair -> { let (_, pos) = pair; pos })
@@ -230,41 +230,6 @@ mod Board {
                     bfsReachable(isFloor, maxSteps, newVisited, newQueue)
         }
 
-    /// `cell`(ロード位置) が生存敵に検知されるか（ローグ移動モードの敵検知）。
-    /// 次のいずれかなら true:
-    ///   (a) **同じ部屋**: `cell` と生存敵が同じモジュール(部屋)に居る
-    ///   (b) **索敵範囲内**: `cell` がいずれかの生存敵の移動到達範囲(赤マス = `reachableCells`)に入る
-    /// 死亡演出中(isDying)の敵は数えない。
-    /// `moduleOf`: グリッドセルの部屋IDを返す述語。通路等は None（部屋扱いしない）。
-    pub def cellDetectedByEnemy(moduleOf: {x = Int32, y = Int32} -> Option[Int32],
-                                 isFloor: {x = Int32, y = Int32} -> Bool,
-                                 enemies: List[{gridPos = {x = Int32, y = Int32},
-                                                moveTiles = Int32, isDying = Bool}],
-                                 cell: {x = Int32, y = Int32}): Bool =
-        let alive = enemies |> List.filter(e -> not e#isDying);
-        let sameRoom = match moduleOf(cell) {
-            case None    => false
-            case Some(m) => List.exists(e -> moduleOf(e#gridPos) == Some(m), alive)
-        };
-        let inRange = List.exists(e ->
-            containsCell(cell, reachableCells(isFloor, e#gridPos, e#moveTiles)), alive);
-        sameRoom or inRange
-
-    /// `source` から `goal` への最短経路を返す。経路無しなら None。
-    /// 戻り値は **source を含まない** 順序付きリスト（先頭 = 1 歩目、末尾 = goal）。
-    /// 障害物 = 壁 + 他駒（自分・goal のセルは通行可）。
-    /// 隣接判定は呼び出し側が済ませている前提（source == goal は使用想定外）。
-    /// EnemyAI の chase / AutoMove のロード合流が共通で使う。
-    pub def bfsPath(board: Board, source: {x = Int32, y = Int32},
-                     goal: {x = Int32, y = Int32}): Option[List[{x = Int32, y = Int32}]] =
-        let isOpen = c -> bfsPathIsOpen(board, c, source, goal);
-        let initVisited = source :: Nil;
-        // queue: (current, pathReversedFromSource) — source から current までの経路を
-        //   先頭 cons で逆順に積む。Flix のリスト先頭追加が O(1) のため逆順蓄積し、
-        //   goal 到達時に一度だけ reverse して返す（末尾追加を毎ステップ行うより効率的）。
-        let initQueue: List[({x = Int32, y = Int32}, List[{x = Int32, y = Int32}])] = (source, Nil) :: Nil;
-        bfsPathLoop(isOpen, goal, initVisited, initQueue)
-
     def bfsPathLoop(isOpen: {x = Int32, y = Int32} -> Bool,
                      goal: {x = Int32, y = Int32},
                      visited: List[{x = Int32, y = Int32}],
@@ -287,23 +252,11 @@ mod Board {
                     bfsPathLoop(isOpen, goal, newVisited, newQueue)
         }
 
-    /// BFS で「踏める」と判定するセルの述語。
-    /// - 床でなければ NG
-    /// - source（自分） / goal（プレイヤー）は通行可
-    /// - 他駒（他の敵 or 別の駒）が居れば NG
-    def bfsPathIsOpen(board: Board, c: {x = Int32, y = Int32},
-                       source: {x = Int32, y = Int32}, goal: {x = Int32, y = Int32}): Bool =
-        if (not isWalkable(board, c)) false
-        else if (samePosition(c, source) or samePosition(c, goal)) true
-        else not isOccupied(c, board)
-
     /// 味方マスは通過可能、敵マスは NG、壁・範囲外も NG な BFS。
-    /// `bfsPath` は敵も味方もブロックするのに対し、こちらは味方だけを透過扱いにする違いがある。
+    /// 敵だけをブロックし、味方は透過扱いにする（集合の追従が味方マスをすり抜けるため）。
     /// `allyCells` に source を含んでいても安全（source は常に通行可として扱う）。
-    /// AutoMove のロード合流（味方マスを経由しながらゴールへ向かう）に使う。
-    /// テストから経路全体を確認したい場合にも利用できる。
     /// 経路の途中マスは味方占有でも可（通過可能）。停止可否は呼び出し側が
-    /// `stoppableForUnit` 等で別途担保する。
+    /// `followStepsToward` / `stoppableForUnit` 等で別途担保する。
     pub def bfsPathSkipAllies(board: Board,
                                allyCells: List[{x = Int32, y = Int32}],
                                source: {x = Int32, y = Int32},
@@ -326,6 +279,113 @@ mod Board {
         else if (samePosition(c, source) or samePosition(c, goal)) true
         else if (isInList(c, allyCells)) true   // 味方は通過 OK
         else not isOccupied(c, board)            // 残り = 敵駒 / その他なら NG
+
+    /// 集合（行軍）の追従手を一括計算する純粋関数。各味方を `goal`（主人公の移動前マス）へ
+    /// 味方すり抜け最短経路で 1 歩寄せる手を、**重なりが生じないよう** 確定する。
+    ///   - 移動の途中は味方マスを通過できる（`bfsPathSkipAllies` の透過）。
+    ///   - ただし **停止マスは必ず空き**: 既に確定した味方／主人公の着地マスには重ねない。
+    ///   - 自発的な追従は **「実際に主人公へ近づく一歩」だけ** 踏む（候補マスが現在より主人公に
+    ///     近くなければ留まる）。障害物(待機味方)を大回りして移動力を浪費し、遠くで力尽きるのを防ぐ。
+    /// 処理順は「押し出された味方（主人公の着地マスに居た味方）→ goal に近い順 → id 昇順」。
+    /// これにより主人公が味方マスへ進んだとき、その味方が主人公の元マス(goal)へ抜ける
+    /// 「入れ替え（すれ違い）」が必ず成立し、誰も重ならない。
+    ///   - `allyCells`  : すり抜け対象とする味方マス（全味方の現在マスを渡す）
+    ///   - `lordNewPos` : 主人公の移動後マス（ここには誰も停止させない）
+    ///   - `goal`       : 追従先（主人公の移動前マス）
+    ///   - `allies`     : (id, 現在マス, active) の一覧。主人公自身は含めない。
+    ///       active=false の味方（移動距離を使い切った / 集合前から待機）は自発的には動かず、
+    ///       その停止マスを予約する。ただし主人公の着地マスに居る味方は、active に関わらず
+    ///       押し出されて goal へ抜ける（重なり回避の強制退避＝すれ違い）。
+    /// 返り値は (id, 次の1マス Option, consumesStep) の一覧。
+    ///   - 次の1マス: Some(マス)=そこへ動く / None=動かない。
+    ///   - consumesStep: true=自発的な追従1歩なので移動距離を1消費すべき /
+    ///                   false=押し出し(強制退避)または不動なので消費しない。
+    pub def followStepsToward(board: Board,
+                               allyCells: List[{x = Int32, y = Int32}],
+                               lordNewPos: {x = Int32, y = Int32},
+                               goal: {x = Int32, y = Int32},
+                               allies: List[(Int32, {x = Int32, y = Int32}, Bool)]):
+            List[(Int32, Option[{x = Int32, y = Int32}], Bool)] =
+        // 動かない味方（非アクティブかつ押し出されていない）の停止マスを先に予約する。
+        let frozenCells = allies |> List.filterMap(entry -> {
+            let (_, pos, active) = entry;
+            if (not active and not samePosition(pos, lordNewPos)) Some(pos) else None
+        });
+        let ordered = allies |> List.sortBy(entry -> {
+            let (id, pos, _) = entry;
+            // 主人公の着地マスに居る味方(=押し出される)を最優先、以後 goal に近い順、同距離は id 順。
+            let displaced = if (samePosition(pos, lordNewPos)) 0 else 1;
+            (displaced, Int32.abs(pos#x - goal#x) + Int32.abs(pos#y - goal#y), id)
+        });
+        let init = (lordNewPos :: frozenCells, Nil);
+        // goal を始点に、敵・壁だけを障害物とし味方は素通しで計算した「理想距離フィールド」。
+        // 「迂回が地形/敵で強制されたか（=進むべき）」と「待機味方の大回り（=避けたい）」を
+        // 見分ける基準に使う。全味方で 1 回だけ計算して共有する。
+        let idealField = distanceField(
+            c -> isWalkable(board, c) and not isEnemyAt(c, board),
+            goal :: Nil, followFloodSteps());
+        let (_, decided) = List.foldLeft((acc, entry) -> {
+            let (taken, results) = acc;
+            let (id, pos, active) = entry;
+            let displaced = samePosition(pos, lordNewPos);
+            if (not active and not displaced)
+                // frozen: その場（停止マスは init で予約済み）。歩数も消費しない。
+                (taken, (id, None, false) :: results)
+            else {
+                let stepOpt = bfsPathSkipAllies(board, allyCells, pos, goal) |> Option.flatMap(List.head);
+                let candidate = chooseFollowCell(board, pos, stepOpt, taken);
+                // 自発的な追従は「実際に goal へ近づく一歩」だけ踏む。判定は理想距離フィールドで行う:
+                //   - 壁/敵の迂回 → 理想経路も同じく迂回するので一歩目が前進 → 進む。
+                //   - 待機味方の大回り → 理想経路は味方を素通しして直進するので迂回は後退扱い → 留まる
+                //     （移動力を浪費し遠くで力尽きるのを防ぐ）。
+                // 押し出し(displaced)は重なり回避の強制退避なので、この距離ガードは課さない。
+                let dest =
+                    if (displaced
+                        or fieldDist(idealField, candidate) < fieldDist(idealField, pos))
+                        candidate
+                    else pos;
+                let move = if (samePosition(dest, pos)) None else Some(dest);
+                let consumes = Option.nonEmpty(move) and not displaced;
+                (dest :: taken, (id, move, consumes) :: results)
+            }
+        }, init, ordered);
+        // 結果は呼び出し側が扱いやすいよう入力 `allies` の順に並べ直す（処理順は内部都合）。
+        allies |> List.map(entry -> {
+            let (id, _, _) = entry;
+            match List.find(triple -> fst3(triple) == id, decided) {
+                case Some(triple) => triple
+                case None         => (id, None, false)
+            }
+        })
+
+    /// 3 要素タプルの第 1 要素。
+    def fst3(triple: (a, b, c)): a = let (x, _, _) = triple; x
+
+    /// 追従の理想距離フィールドのフラッド上限（マップ全域を覆えるよう十分大きく取る。
+    /// 実際は到達域で打ち切られる）。EnemyAI.floodSteps と同じ値。
+    def followFloodSteps(): Int32 = 4096
+
+    /// 追従 1 体の停止マスを決める。最短 1 歩が空いていればそこへ。塞がっていれば
+    /// その場に留まり、現在マスすら確定済み（主人公に押し出された）なら空き隣接へ退避する。
+    /// いずれも `taken`（確定済みの停止マス集合）に重ならないことを保証する。
+    def chooseFollowCell(board: Board, pos: {x = Int32, y = Int32},
+                          stepOpt: Option[{x = Int32, y = Int32}],
+                          taken: List[{x = Int32, y = Int32}]): {x = Int32, y = Int32} =
+        match stepOpt {
+            case Some(c) if not isInList(c, taken) => c
+            case _ =>
+                if (not isInList(pos, taken)) pos
+                else Option.getWithDefault(pos, firstFreeNeighbor(board, pos, taken))
+        }
+
+    /// `pos` の上下左右で、床かつ敵が居ない、`taken` に含まれない最初のマス。無ければ None。
+    def firstFreeNeighbor(board: Board, pos: {x = Int32, y = Int32},
+                           taken: List[{x = Int32, y = Int32}]): Option[{x = Int32, y = Int32}] =
+        (Vec2i.up() :: Vec2i.down() :: Vec2i.left() :: Vec2i.right() :: Nil)
+            |> List.map(d -> Vec2i.add(pos, d))
+            |> List.find(c -> isWalkable(board, c)
+                              and not isEnemyAt(c, board)
+                              and not isInList(c, taken))
 
     // ════════════════════════════════════════════════════════
     // (D') ダイクストラ距離フィールド（多始点 BFS。均一コスト = BFS）

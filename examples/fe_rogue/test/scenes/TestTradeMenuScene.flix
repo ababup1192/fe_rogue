@@ -73,14 +73,14 @@ mod TestTradeMenuScene {
             ({id = 1, weapons = partnerWeapons, staves = Nil}: PlayerSpec) :: Nil,
             TradeMenuScene.Origin.FromTurn)
 
-    /// 武器だけ持つ 3 人 (id 0,1,2) の集合交換シナリオ (origin = FromRogue)。
+    /// 武器だけ持つ 3 人 (id 0,1,2) の集合交換シナリオ (origin = FromGather)。
     def freshGatherTrade(w0: List[String], w1: List[String], w2: List[String]):
             TradeScenario \ Fs.FileRead =
         buildScenario(
             ({id = 0, weapons = w0, staves = Nil}: PlayerSpec) ::
             ({id = 1, weapons = w1, staves = Nil}: PlayerSpec) ::
             ({id = 2, weapons = w2, staves = Nil}: PlayerSpec) :: Nil,
-            TradeMenuScene.Origin.FromRogue)
+            TradeMenuScene.Origin.FromGather)
 
     /// `TradeMenuScene.add` の `{GameEngine.Game, Fs.FileRead}` 効果を discharge。
     def loadTradeMenu(scene: Scene[NodeTag]): Scene[NodeTag] \ Fs.FileRead =
@@ -302,15 +302,15 @@ mod TestTradeMenuScene {
                 (weaponNames(0, after#scene), weaponNames(1, after#scene), weaponNames(2, after#scene)))
         }
 
-    /// 集合交換 (FromRogue) で「pick 未選択で X」→ RogueMove に戻る。
+    /// 集合交換 (FromGather) で「pick 未選択で X」→ 集合の隣接メニュー(ActionSelect) に戻る。
     @Test
-    def testGatherCancelWithNoPickExitsToRogueMove(): Unit \ {Assert, Fs.FileRead} =
+    def testGatherCancelWithNoPickExitsToActionSelect(): Unit \ {Assert, Fs.FileRead} =
         region rc {
             let s0 = freshGatherTrade("iron_lance" :: Nil, "iron_bow" :: Nil, "iron_sword" :: Nil);
             let (_, finalPhase) = runScenario(rc, TurnPhase.Phase.TradeInventory, () -> {
                 s0 |> pressXAt
             });
-            Assert.assertEq(expected = TurnPhase.Phase.RogueMove, finalPhase)
+            Assert.assertEq(expected = TurnPhase.Phase.ActionSelect, finalPhase)
         }
 
     /// pick 中に X → pick 解除のみ。全員のインベントリは不変 (swap が起きていない)。
@@ -421,7 +421,7 @@ mod TestTradeMenuScene {
     @Test
     def testMoveFocusWrapsAtEnds(): Unit \ Assert =
         let data3 = {members = 0 :: 1 :: 2 :: Nil, focus = 0, pick = None,
-                     origin = TradeMenuScene.Origin.FromRogue, marks = Set#{}, markPane = None};
+                     origin = TradeMenuScene.Origin.FromGather, marks = Set#{}, markPane = None};
         let leftAt0  = TradeMenuScene.moveFocus(-1, data3);                 // 0 で左 → 2 (wrap)
         let rightMax = TradeMenuScene.moveFocus(1, {focus = 2 | data3});    // 2 で右 → 0 (wrap)
         let right    = TradeMenuScene.moveFocus(1, data3);                  // 0 で右 → 1
@@ -467,7 +467,7 @@ mod TestTradeMenuScene {
     def testDecideConfirmDifferentPaneProducesSwap(): Unit \ Assert =
         let data = {members = 10 :: 20 :: 30 :: Nil, focus = 0,
                     pick = Some({paneIndex = 0, kind = Some(PlayerData.ItemKind.Weapon(1))}),
-                    origin = TradeMenuScene.Origin.FromRogue, marks = Set#{}, markPane = None};
+                    origin = TradeMenuScene.Origin.FromGather, marks = Set#{}, markPane = None};
         let receiverKind = Some(PlayerData.ItemKind.Staff(0));
         let plan = match TradeMenuScene.decideConfirm(2, receiverKind, data) {
             case TradeMenuScene.ConfirmOutcome.DoSwap(_, p) =>
@@ -483,7 +483,7 @@ mod TestTradeMenuScene {
     def testDecideConfirmSamePaneProducesReorder(): Unit \ Assert =
         let data = {members = 10 :: 20 :: Nil, focus = 0,
                     pick = Some({paneIndex = 0, kind = Some(PlayerData.ItemKind.Weapon(0))}),
-                    origin = TradeMenuScene.Origin.FromRogue, marks = Set#{}, markPane = None};
+                    origin = TradeMenuScene.Origin.FromGather, marks = Set#{}, markPane = None};
         let plan = match TradeMenuScene.decideConfirm(0, Some(PlayerData.ItemKind.Weapon(1)), data) {
             case TradeMenuScene.ConfirmOutcome.DoReorder(_, p) => Some((p#playerId, p#kindA, p#kindB))
             case _ => None
@@ -501,7 +501,7 @@ mod TestTradeMenuScene {
         let s0 = buildScenario(
             ({id = 0, weapons = sixteen, staves = Nil}: PlayerSpec) ::
             ({id = 1, weapons = "iron_bow" :: Nil, staves = Nil}: PlayerSpec) :: Nil,
-            TradeMenuScene.Origin.FromRogue);
+            TradeMenuScene.Origin.FromGather);
         let entries = TestUnitFixtures.withMockPartyQuery(s0#scene, () ->
             TradeMenuScene.paneEntries(0, s0#scene));
         let hasEmpty = List.exists(e -> e#metadata == Some(TradeMenuScene.emptySlotMeta()), entries);

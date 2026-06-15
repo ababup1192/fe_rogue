@@ -10,7 +10,8 @@
 ///   - PlayerMoving で busy 中の Z / X は Stay（Tween 完了待ちガード）
 ///   - PlayerAttack で生きてる敵上を Z → AttackHit
 ///   - PlayerAttack で死亡演出中の敵上を Z → Stay
-///   - 入力無効フェーズ（EnemyTurn / PlayerAutoMove）はどんな入力でも Stay
+///   - 入力無効フェーズ（EnemyTurn）はどんな入力でも Stay
+///   - GatherMove は Confirm で隣接メニュー / Cancel で巻き戻し（重なり中・Tween 中は Stay）
 mod TestTurnRules {
 
     // ════════════════════════════════════════════════════════
@@ -276,12 +277,45 @@ mod TestTurnRules {
             expected = TurnRules.Transition.Stay,
             TurnRules.decide(context))
 
-    /// PlayerAutoMove 中の Confirm → Stay（ロードへ合流中は入力を受け付けない）
+    /// 味方 2 人を同じセルに置いた Board（主人公が味方マスに重なっている状態）
+    def boardWithTwoPlayersAt(pos: {x = Int32, y = Int32}): Board =
+        {
+            map    = emptySnapshot(),
+            pieces = (Piece.Player(0), pos) :: (Piece.Player(1), pos) :: Nil
+        }
+
+    /// GatherMove + Confirm（主人公選択中・味方と重なっていない）→ 隣接メニューを開く。
     @Test
-    def testAutoMoveIgnoresInput(): Unit \ Assert =
+    def testGatherConfirmOpensMenu(): Unit \ Assert =
         let context = {
-            phase = TurnPhase.Phase.PlayerAutoMove
+            phase    = TurnPhase.Phase.GatherMove,
+            selected = Some(0)
             | baseContext(boardWithPlayerOnly(cell(2, 2)), cell(2, 2))
+        };
+        Assert.assertEq(
+            expected = TurnRules.Transition.GatherOpenMenu,
+            TurnRules.decide(context))
+
+    /// GatherMove + Cancel → 集合開始位置への巻き戻し（GatherCancel）。
+    @Test
+    def testGatherCancelReverts(): Unit \ Assert =
+        let context = {
+            phase    = TurnPhase.Phase.GatherMove,
+            input    = TurnRules.Input.Cancel,
+            selected = Some(0)
+            | baseContext(boardWithPlayerOnly(cell(2, 2)), cell(2, 2))
+        };
+        Assert.assertEq(
+            expected = TurnRules.Transition.GatherCancel,
+            TurnRules.decide(context))
+
+    /// GatherMove + Confirm で主人公が味方マスに重なっている間は確定不可（Stay）。
+    @Test
+    def testGatherConfirmBlockedWhenOverlapping(): Unit \ Assert =
+        let context = {
+            phase    = TurnPhase.Phase.GatherMove,
+            selected = Some(0)
+            | baseContext(boardWithTwoPlayersAt(cell(2, 2)), cell(2, 2))
         };
         Assert.assertEq(
             expected = TurnRules.Transition.Stay,

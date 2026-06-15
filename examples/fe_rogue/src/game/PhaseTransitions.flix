@@ -18,9 +18,7 @@
 /// | PlayerMoving      | Refresh   | Refresh         | Keep              | Clear      | Clear      | Hide               |
 /// | PlayerAttack      | Clear     | Clear           | Show              | Clear      | Keep       | Show + SnapTarget  |
 /// | TradeTargetSelect | Clear     | Clear           | Clear             | Show       | Clear      | Show + SnapPlayer  |
-/// | PlayerAutoMove    | Clear     | Clear           | Clear             | Clear      | Clear      | Hide               |
-/// | RogueMove         | Clear     | Clear           | Clear             | Clear      | Clear      | Hide               |
-/// | RogueAlert        | Keep      | Keep            | Keep              | Keep       | Keep       | Keep(Hidden)       |
+/// | GatherMove        | Refresh   | Clear           | Clear             | Clear      | Clear      | Hide               |
 /// | EnemyTurn         | Clear     | Clear           | Clear             | Clear      | Keep       | Keep               |
 ///
 /// **意味**:
@@ -59,8 +57,7 @@ mod PhaseTransitions {
             |> MoveAttackRangeScene.clear
 
     /// PlayerCursor フェーズに入る。
-    /// `cancelSelection` で「移動キャンセルで戻す」分岐、`AutoMoveScene.exitToCursor` の
-    /// AutoMove 終了などから呼ぶ。
+    /// `cancelSelection` の「移動キャンセルで戻す」分岐や、集合のキャンセルなどから呼ぶ。
     ///
     /// **フレーム内で `setWaited` した直後** に呼ぶ経路では `enterPlayerCursorAt` の方を使う。
     /// `snapToPlayer` 内のフォールバックは `PartyQuery` (= `sceneRef` = フレーム冒頭の snapshot)
@@ -128,36 +125,21 @@ mod PhaseTransitions {
             |> CursorScene.setVisible(true)
             |> CursorScene.snapToFirstTargetOrPlayer
 
-    /// PlayerAutoMove フェーズに入る (「しゅうごう」確定直後 = ロードへの合流開始)。
-    /// 動作: 味方系 range と EnemyRange を全消し → カーソルを隠す。
-    /// 合流者の移動・非表示化は `AutoMoveScene` の driver が担当する。
-    pub def enterPlayerAutoMove(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TurnPhase.State =
-        TurnPhase.State.put(TurnPhase.Phase.PlayerAutoMove);
-        clearAllPlayerRanges(scene)
-            |> EnemyRangeScene.clear
-            |> EnemyAttackRangeScene.clear
-            |> CursorScene.setVisible(false)
-
-    /// RogueMove フェーズに入る (合流完了 = 1 キャラ自由歩行の開始)。
-    /// 動作: 味方系 range と EnemyRange を全消し → カーソルを隠す
-    ///       (ロードは自分の physicsProcess で動くのでカーソルは不要)。
-    pub def enterRogueMove(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TurnPhase.State =
-        TurnPhase.State.put(TurnPhase.Phase.RogueMove);
-        clearAllPlayerRanges(scene)
-            |> EnemyRangeScene.clear
-            |> EnemyAttackRangeScene.clear
-            |> CursorScene.setVisible(false)
-
-    /// RogueAlert フェーズに入る (敵に検知された瞬間の発見演出)。
-    /// overlay / cursor は RogueMove の状態(全消し・カーソル非表示)を温存し、フェーズだけ進める。
-    /// 「！」表示・カメラ寄せ・find SE・入力ロック(hold = 演出中の操作無効) は
-    /// 呼び出し側 (`AutoMoveScene.triggerAlert`) と `CameraScene` が担当する。
-    pub def enterRogueAlert(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TurnPhase.State =
-        TurnPhase.State.put(TurnPhase.Phase.RogueAlert);
+    /// GatherMove フェーズに入る（「集合」確定直後 = 主人公が隊列を率いて動き始める）。
+    /// 主人公(id 0)の移動範囲(青マス)を 1 回だけ敷く。以降は refresh しないことで
+    /// 「集合開始位置を原点とした moveTiles 範囲」を主人公が動いても固定して残す。
+    /// 敵系 range は消し、カーソルは隠す（主人公は自分の physicsProcess で動く）。
+    /// 呼ぶ前に `SelectedPlayer.State` に主人公 id(0) をセットしておくこと
+    /// （`MoveRangeScene.refresh` が選択駒 id を読むため。enterPlayerMoving と同じ契約）。
+    pub def enterGatherMove(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+        TurnPhase.State.put(TurnPhase.Phase.GatherMove);
         scene
+            |> EnemyRangeScene.clear
+            |> EnemyAttackRangeScene.clear
+            |> MoveAttackRangeScene.clear
+            |> MoveRangeScene.refresh
+            |> CursorScene.setVisible(false)
 
     /// EnemyTurn フェーズに入る (全味方 waited または 敵ターン遷移時)。
     /// 動作 (表 6 行目): 味方系 3 range 全消し (敵ターン中は赤/青マス不要)。
@@ -170,6 +152,15 @@ mod PhaseTransitions {
             // Shift の危険範囲(紫)は敵が動くと古くなるので敵ターン開始で消す（トグルは OFF に戻る）
             |> DangerZoneScene.clear
             |> PlayerScene.showAllActive       // 敵フェーズ中は味方を通常色(アクティブ)で見せる
+
+    /// StairsExit フェーズに入る (集合「階段で離脱」確定時)。
+    /// 味方系 range を片付け、危険範囲(紫)も消し、カーソルを隠す（自動進行＝入力なし）。
+    pub def enterStairsExit(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.StairsExit);
+        clearAllPlayerRanges(scene)
+            |> DangerZoneScene.clear
+            |> CursorScene.setVisible(false)
 
     /// ItemSelect フェーズに入る (ActionMenu「アイテム」確定時)。
     /// 動作: 味方系の青/赤マスを片付けて、カーソルを隠す（メニュー操作専用画面のため）。
@@ -259,10 +250,10 @@ mod PhaseTransitions {
                   marks    = Set#{},
                   markPane = None}: TradeMenuScene.PanelData))
 
-    /// TradeInventory フェーズに入る (集合後の RogueMove「交換」確定時の N 人交換)。
-    /// `members` は集合した生存メンバーの player id (ロード + 退避中の味方)。
-    /// `origin = FromRogue` なので、交換を抜けると RogueMove に戻る。
-    /// `members` の構築は RogueMove 側で行うが、集合対象が 1 人になる端ケースを
+    /// TradeInventory フェーズに入る (集合（行軍）の隣接メニュー「交換」確定時の N 人交換)。
+    /// `members` は主人公 + 主人公に隣接する生存味方の player id (最大 4 人)。
+    /// `origin = FromGather` なので、交換を抜けると集合の隣接メニュー(ActionSelect) に戻る。
+    /// `members` の構築は ActionMenuScene 側で行うが、隣接 0 人で 1 人になる端ケースを
     /// その場で排除しきれないため、ここで 2 人未満ガードを入れる (防御)。
     pub def enterGatherTrade(members: List[Int32], scene: Scene[NodeTag]):
             Scene[NodeTag] \ TurnPhase.State =
@@ -275,7 +266,7 @@ mod PhaseTransitions {
                     ({members  = members,
                       focus    = 0,
                       pick     = None,
-                      origin   = TradeMenuScene.Origin.FromRogue,
+                      origin   = TradeMenuScene.Origin.FromGather,
                       marks    = Set#{},
                       markPane = None}: TradeMenuScene.PanelData))
         }

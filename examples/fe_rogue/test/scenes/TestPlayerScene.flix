@@ -430,94 +430,6 @@ mod TestPlayerScene {
              PlayerScene.getRings(1, after) |> List.map(r -> r#name)))
 
     // ========================================================================
-    // ローグ移動モード — nearestMover(合流順) / pickRespawnCells(解散の再配置)
-    // ========================================================================
-
-    /// セル列を assertEq 用の (x, y) タプル列にする。
-    def cellsToTuples(cells: List[{x = Int32, y = Int32}]): List[(Int32, Int32)] =
-        List.map(c -> (c#x, c#y), cells)
-
-    /// nearestMover テスト用の最小 Data（位置以外はダミー）。
-    def pdata(id: Int32, gridPos: {x = Int32, y = Int32}): PlayerScene.Data = {
-        id              = id,
-        gridPos         = gridPos,
-        moveTiles       = 5,
-        hp              = 10,
-        waited          = false,
-        attackTargetId  = None,
-        resource        = TestUnitFixtures.testResource(5, 10),
-        weapons         = Nil,
-        staves          = Nil,
-        consumables     = Nil,
-        selectedItem    = None,
-        moveStepsTaken  = 0,
-        facing          = Staff.Direction.Down,
-        hidden          = false,
-        usedStairs          = false,
-        level                   = 1,
-        exp                     = 0,
-        pendingLevelUp          = None,
-        statuses                = Nil,
-        rings          = Nil,
-        ringEquipped          = false,
-        followUpUsed   = false
-    }
-
-    /// origin 1 マスだけが床で、ほかは壁の MapSnapshot（再配置の不足ケース用）。
-    def singleFloorSnapshot(origin: {x = Int32, y = Int32}): MapSnapshot =
-        {
-            tileSize     = testTileSize(),
-            usedRect     = {position = {x = 0, y = 0}, size = ({x = 13, y = 13}: {x = Int32, y = Int32})},
-            wallCells    = (List.range(0, 13) |> List.flatMap(y ->
-                                List.range(0, 13) |> List.filterMap(x ->
-                                    if (x == origin#x and y == origin#y) None else Some((x, y))))
-                            |> List.toSet),
-            mapGlobal    = {x = 0.0, y = 0.0},
-            placements   = Nil
-        }
-
-    /// 合流で次に動かす 1 体は、ロードに最も近い味方。
-    /// ロード (5,5)、味方 id1 (8,5) は距離 3、id2 (6,5) は距離 1 → id2 が選ばれる。
-    @Test
-    def testNearestMoverPicksClosest(): Unit \ Assert =
-        let lordPos: {x = Int32, y = Int32} = {x = 5, y = 5};
-        let movers = pdata(1, {x = 8, y = 5}) :: pdata(2, {x = 6, y = 5}) :: Nil;
-        match PlayerScene.nearestMover(lordPos, movers) {
-            case Some(d) => Assert.assertEq(expected = 2, d#id)
-            case None    => bug!("nearestMover: expected a mover")
-        }
-
-    /// 再配置: ロード周囲が全部空いていれば、近傍を順に n マス選ぶ（origin は含めない）。
-    /// origin (5,5)、n=2 → 上下左右の先頭 2 マス [(6,5), (4,5)]。
-    @Test
-    def testPickRespawnCellsPicksNeighbors(): Unit \ Assert =
-        let origin: {x = Int32, y = Int32} = {x = 5, y = 5};
-        let board: Board = {map = testSnapshot(), pieces = (Piece.Player(0), origin) :: Nil};
-        let cells = AutoMoveScene.pickRespawnCells(origin, 2, board);
-        Assert.assertEq(expected = (6, 5) :: (4, 5) :: Nil, cellsToTuples(cells))
-
-    /// 再配置: 駒が占有しているマスは避ける。
-    /// (6,5) に敵が居ると、その次の候補 (4,5), (5,6) が選ばれる。
-    @Test
-    def testPickRespawnCellsAvoidsOccupied(): Unit \ Assert =
-        let origin: {x = Int32, y = Int32} = {x = 5, y = 5};
-        let board: Board = {
-            map    = testSnapshot(),
-            pieces = (Piece.Player(0), origin) :: (Piece.Enemy(0), {x = 6, y = 5}) :: Nil
-        };
-        let cells = AutoMoveScene.pickRespawnCells(origin, 2, board);
-        Assert.assertEq(expected = (4, 5) :: (5, 6) :: Nil, cellsToTuples(cells))
-
-    /// 再配置: 周囲が壁で空きが足りないときは origin で埋めて長さ n を保つ。
-    /// origin だけ床 → 近傍ゼロ → [(5,5), (5,5)]（重なっても次の移動で解ける）。
-    @Test
-    def testPickRespawnCellsFallsBackToOrigin(): Unit \ Assert =
-        let origin: {x = Int32, y = Int32} = {x = 5, y = 5};
-        let board: Board = {map = singleFloorSnapshot(origin), pieces = (Piece.Player(0), origin) :: Nil};
-        let cells = AutoMoveScene.pickRespawnCells(origin, 2, board);
-        Assert.assertEq(expected = (5, 5) :: (5, 5) :: Nil, cellsToTuples(cells))
-
-    // ========================================================================
     // フロア進行 — 階段退場 (useStairs) / フロア終了判定 / 持ち越し (reconcileWithCarry)
     // ========================================================================
 
@@ -585,32 +497,6 @@ mod TestPlayerScene {
              PlayerScene.getHp(0, after),
              PlayerScene.getHp(1, after),
              PlayerScene.getWeapons(0, after) |> List.map(weapon -> weapon#name)))
-
-    // ========================================================================
-    // しゅうごう可否: 全員がロード周囲 range マス以内か（チェビシェフ距離）
-    // ========================================================================
-
-    /// center (5,5) を中心に、斜めに 3 マス (8,8)=距離3 は範囲内、横に 4 マス (9,5)=距離4 は範囲外。
-    /// チェビシェフ距離なので斜めも 1 軸の差で測る（(8,8) は max(3,3)=3）。
-    @Test
-    def testAllWithinRangeChebyshevBoundary(): Unit \ Assert =
-        let center: {x = Int32, y = Int32} = {x = 5, y = 5};
-        let inside  = ({x = 8, y = 8}: {x = Int32, y = Int32}) :: {x = 2, y = 5} :: Nil;  // 距離 3 と 3
-        let outside = ({x = 9, y = 5}: {x = Int32, y = Int32}) :: Nil;                     // 距離 4
-        Assert.assertEq(
-            expected = (true, false),
-            (PlayerScene.allWithinRange(3, center, inside),
-             PlayerScene.allWithinRange(3, center, outside)))
-
-    /// 1 人でも範囲外なら false（全員が条件を満たす必要がある）。空リストは true。
-    @Test
-    def testAllWithinRangeRequiresEveryone(): Unit \ Assert =
-        let center: {x = Int32, y = Int32} = {x = 0, y = 0};
-        let mixed = ({x = 1, y = 1}: {x = Int32, y = Int32}) :: {x = 0, y = 5} :: Nil;  // 距離 1 と 5
-        Assert.assertEq(
-            expected = (false, true),
-            (PlayerScene.allWithinRange(3, center, mixed),
-             PlayerScene.allWithinRange(3, center, Nil)))
 
     // ========================================================================
     // ゲームオーバー条件 — ロード（id 0）が倒れたら 1F やり直し
@@ -781,6 +667,32 @@ mod TestPlayerScene {
                         scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
         description = "",
         effectRule = None
+    }
+
+    /// 位置・装備以外はダミーで埋めた最小 Data 雛形（`{ ... | pdata(...)}` で部分上書きして使う）。
+    def pdata(id: Int32, gridPos: {x = Int32, y = Int32}): PlayerScene.Data = {
+        id              = id,
+        gridPos         = gridPos,
+        moveTiles       = 5,
+        hp              = 10,
+        waited          = false,
+        attackTargetId  = None,
+        resource        = TestUnitFixtures.testResource(5, 10),
+        weapons         = Nil,
+        staves          = Nil,
+        consumables     = Nil,
+        selectedItem    = None,
+        moveStepsTaken  = 0,
+        facing          = Staff.Direction.Down,
+        hidden          = false,
+        usedStairs      = false,
+        level           = 1,
+        exp             = 0,
+        pendingLevelUp  = None,
+        statuses        = Nil,
+        rings           = Nil,
+        ringEquipped    = false,
+        followUpUsed    = false
     }
 
     /// 装備中の武器（先頭）と装備中の指輪（ringEquipped 時の先頭）は対象外。

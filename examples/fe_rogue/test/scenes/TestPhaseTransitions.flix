@@ -144,40 +144,26 @@ mod TestPhaseTransitions {
         }
 
     // ════════════════════════════════════════════════════════
-    // enterPlayerAutoMove — ローグ移動モードの合流開始。全 range を消す / cursor 非表示
+    // enterGatherMove — 集合（行軍）の開始。MoveRange を refresh / 他の味方系・敵系は消す / cursor 非表示
     // ════════════════════════════════════════════════════════
 
-    /// PlayerAutoMove 進入(=「しゅうごう」確定で合流開始)で:
-    ///   - Move / MoveAttack / PlayerAttackRange / EnemyRange は全て消える
+    /// GatherMove 進入(=「集合」確定で行軍開始)で:
+    ///   - MoveRange は refresh される (SelectedPlayer = None なので「消して再構築なし」 = 消える)
+    ///   - MoveAttack / EnemyRange は消える
+    ///   - PlayerAttackRange は触らない (前 phase で消えているはずだが、ここでは残ると仮定)
     ///   - Cursor は隠れる
-    ///   - TurnPhase は PlayerAutoMove
+    ///   - TurnPhase は GatherMove
     @Test
-    def testEnterPlayerAutoMoveClearsAllRangesAndHidesCursor(): Unit \ Assert =
+    def testEnterGatherMoveRefreshesMoveRangeHidesCursor(): Unit \ Assert =
         region rc {
             let initial = sceneWithAllRangesAndCursor();
             let result = run {
-                let after = PhaseTransitions.enterPlayerAutoMove(initial);
+                let after = PhaseTransitions.enterGatherMove(initial);
                 observe(after)
-            } with TurnPhase.withState(rc);
+            } with TurnPhase.withState(rc)
+              with SelectedPlayer.withState(rc);
             Assert.assertEq(
-                expected = (false, false, false, false, false, TurnPhase.Phase.PlayerAutoMove),
-                result)
-        }
-
-    /// RogueMove 進入(=合流完了で自由歩行開始)で:
-    ///   - Move / MoveAttack / PlayerAttackRange / EnemyRange は全て消える
-    ///   - Cursor は隠れる
-    ///   - TurnPhase は RogueMove
-    @Test
-    def testEnterRogueMoveClearsAllRangesAndHidesCursor(): Unit \ Assert =
-        region rc {
-            let initial = sceneWithAllRangesAndCursor();
-            let result = run {
-                let after = PhaseTransitions.enterRogueMove(initial);
-                observe(after)
-            } with TurnPhase.withState(rc);
-            Assert.assertEq(
-                expected = (false, false, false, false, false, TurnPhase.Phase.RogueMove),
+                expected = (false, false, true, false, false, TurnPhase.Phase.GatherMove),
                 result)
         }
 
