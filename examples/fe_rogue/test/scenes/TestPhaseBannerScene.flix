@@ -5,8 +5,8 @@
 /// 進める、を担う。帯の描画・色差し替え・オフセット反映は scene 副作用なので、ここでは扱わず
 /// 実機確認に委ねる。
 ///
-/// 段階の長さ: 滑り込み 440ms / 静止 1520ms / 滑り抜け 440ms。
-/// 「段階が終わる」系のテストは、どの段階の長さ(最大 1520ms)も確実に超える 2 秒(2000ms)を
+/// 段階の長さ: 滑り込み 282ms / 静止 1064ms / 滑り抜け 282ms。
+/// 「段階が終わる」系のテストは、どの段階の長さ(最大 1064ms)も確実に超える 2 秒(2000ms)を
 /// 1 回だけ進めて、次の段階へ移ることを確認する。
 mod TestPhaseBannerScene {
 
@@ -84,7 +84,7 @@ mod TestPhaseBannerScene {
     // 段階遷移: 滑り込み → 静止 → 滑り抜け → 非表示
     // ════════════════════════════════════════════════════════
 
-    /// 滑り込み(440ms)が終わると静止段階へ移り、帯は中央(offsetX = 0)に収まる。
+    /// 滑り込み(282ms)が終わると静止段階へ移り、帯は中央(offsetX = 0)に収まる。
     @Test
     def testSlideInEndsAtCenter(): Unit \ Assert =
         let result = PhaseBannerScene.step(
@@ -95,7 +95,7 @@ mod TestPhaseBannerScene {
         Assert.assertEq(expected = (Stage.Hold, 0.0),
                         (result#data#stage, result#offsetX))
 
-    /// 静止(1520ms)が終わると滑り抜け段階へ移る。抜け始めなので帯はまだ中央(offsetX = 0)。
+    /// 静止(1064ms)が終わると滑り抜け段階へ移る。抜け始めなので帯はまだ中央(offsetX = 0)。
     @Test
     def testHoldEndsStartsSlideOut(): Unit \ Assert =
         let result = PhaseBannerScene.step(
@@ -106,7 +106,7 @@ mod TestPhaseBannerScene {
         Assert.assertEq(expected = (Stage.SlideOut, 0.0),
                         (result#data#stage, result#offsetX))
 
-    /// 滑り抜け(440ms)が終わると非表示(Idle)になり、帯は画面右外(offsetX = 200)へ退避する。
+    /// 滑り抜け(282ms)が終わると非表示(Idle)になり、帯は画面右外(offsetX = 200)へ退避する。
     /// （design 幅 170 を確実に画面外へ送り出すため offEndX は 140 → 200 に拡大済み）
     @Test
     def testSlideOutEndsParksOffScreen(): Unit \ Assert =
@@ -151,4 +151,33 @@ mod TestPhaseBannerScene {
         let result = PhaseBannerScene.step(data, isEnemy, Duration.millis(50));
         Assert.assertEq(expected = (None, Stage.Idle),
                         (result#triggered, result#data#stage))
+
+    // ════════════════════════════════════════════════════════
+    // shouldWaitForEnemyBanner: 敵 0 体で敵ターンが即閉じて帯が出ない不具合のガード
+    // （帯が「エネミーフェーズ」を観測するまで EnemyTurnDriver は endTurn を待つ）
+    // ════════════════════════════════════════════════════════
+
+    /// `wasEnemy` を持つ PhaseBanner ノード 1 つだけのシーン。
+    def bannerSceneWith(wasEnemy: Option[Bool]): Scene[NodeTag] =
+        Scene.empty()
+            |> Scene.addNode("PhaseBanner",
+                EngineNode.CanvasLayerWithState(CanvasLayer.make(0i32),
+                    NodeTag.PhaseBanner(({stage = Stage.Idle, elapsed = Duration.zero(),
+                                          wasEnemy = wasEnemy, pending = None}
+                                          : PhaseBannerScene.BannerData))))
+
+    /// 敵フェーズ未観測（None / Some(false)）なら待つ、観測済み（Some(true)）なら待たない。
+    @Test
+    def testShouldWaitUntilEnemyPhaseObserved(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (true, true, false),
+            (PhaseBannerScene.shouldWaitForEnemyBanner(bannerSceneWith(None)),
+             PhaseBannerScene.shouldWaitForEnemyBanner(bannerSceneWith(Some(false))),
+             PhaseBannerScene.shouldWaitForEnemyBanner(bannerSceneWith(Some(true)))))
+
+    /// 帯ノードが無いシーン（純粋テスト等）では待たない（endTurn を妨げない）。
+    @Test
+    def testShouldNotWaitWhenNoBannerNode(): Unit \ Assert =
+        Assert.assertEq(expected = false,
+            PhaseBannerScene.shouldWaitForEnemyBanner(Scene.empty()))
 }

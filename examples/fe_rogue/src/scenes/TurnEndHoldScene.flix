@@ -72,7 +72,7 @@ mod TurnEndHoldScene {
     def drawLayer(): Int32 = 7
 
     /// 満タンまでの長押し秒数。
-    def fillSeconds(): Float64 = 2.0
+    def fillSeconds(): Float64 = 1.28
     /// この秒数を超えてからゲージを表示する（短いタップでチラ見えさせない）。
     def showDelaySeconds(): Float64 = 0.3
 

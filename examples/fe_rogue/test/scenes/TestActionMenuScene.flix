@@ -538,6 +538,57 @@ mod TestActionMenuScene {
             expected = Some("turnEnd") :: Some("gatherCancel") :: Nil,
             itemsMetadata(after))
 
+    /// 配置済み(placed)の階段ノードを `cell` に置いたシーンを返す（JSON ロードを介さず直接構築）。
+    def withStairsAt(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> Scene.addNode("Stairs",
+                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()),
+                    NodeTag.Stairs(({gridPos = cell, placed = true}: StairsScene.Data))))
+
+    /// 主人公(1,1)の足元に床アイテムがあると、集合メニューの先頭に「拾う」が出る
+    /// （非隣接味方(5,5)なので交換は無し）。
+    @Test
+    def testGatherMenuShowsPickupWhenItemUnderLord(): Unit \ Assert =
+        let after = runRefreshItemsGather(
+            attachGroundItemAt({x = 1, y = 1},
+                ItemData.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon()),
+                loadGatherMenuScene({x = 5, y = 5})));
+        Assert.assertEq(
+            expected = Some("pickup") :: Some("turnEnd") :: Some("gatherCancel") :: Nil,
+            itemsMetadata(after))
+
+    /// 主人公(1,1)が階段マスに立っているときだけ集合メニューに「階段」が出る。
+    @Test
+    def testGatherMenuShowsStairsWhenLordOnStairs(): Unit \ Assert =
+        let after = runRefreshItemsGather(
+            withStairsAt({x = 1, y = 1}, loadGatherMenuScene({x = 5, y = 5})));
+        Assert.assertEq(
+            expected = Some("gatherStairs") :: Some("turnEnd") :: Some("gatherCancel") :: Nil,
+            itemsMetadata(after))
+
+    /// 階段が別マス(5,5)にあっても主人公(1,1)が乗っていなければ「階段」は出さない
+    /// （canExit の到達判定ではなく足元判定であることを固定する）。
+    @Test
+    def testGatherMenuHidesStairsWhenLordOffStairs(): Unit \ Assert =
+        let after = runRefreshItemsGather(
+            withStairsAt({x = 5, y = 5}, loadGatherMenuScene({x = 5, y = 5})));
+        Assert.assertEq(
+            expected = Some("turnEnd") :: Some("gatherCancel") :: Nil,
+            itemsMetadata(after))
+
+    /// 足元アイテム + 階段上 + 隣接味方が揃うと固定順「拾う → 階段 → 交換 → 全員待機 → キャンセル」。
+    @Test
+    def testGatherMenuFullOrder(): Unit \ Assert =
+        let after = runRefreshItemsGather(
+            loadGatherMenuScene({x = 2, y = 1})
+                |> attachGroundItemAt({x = 1, y = 1},
+                    ItemData.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon()))
+                |> withStairsAt({x = 1, y = 1}));
+        Assert.assertEq(
+            expected = Some("pickup") :: Some("gatherStairs") :: Some("gatherTrade")
+                        :: Some("turnEnd") :: Some("gatherCancel") :: Nil,
+            itemsMetadata(after))
+
     // ════════════════════════════════════════════════════════
     // 「集合」確定のリーダー行動済みガード（仕様3）
     // ════════════════════════════════════════════════════════

@@ -107,10 +107,10 @@ mod PhaseBannerScene {
     /// 演出開始時に鳴らすフェーズ切替音（project.json の "sounds" に登録した name と一致させる）。
     def phaseChangeSound(): String = "phase_change"
 
-    /// 滑り込み / 静止 / 滑り抜けの各時間（合計 ≈ 2.4 秒）。
-    def slideInDuration(): Duration.Duration = Duration.millis(440)
-    def holdDuration(): Duration.Duration = Duration.millis(1520)
-    def slideOutDuration(): Duration.Duration = Duration.millis(440)
+    /// 滑り込み / 静止 / 滑り抜けの各時間。出入りは 282ms（短め）、静止は約 70%（1520→1064ms）。
+    def slideInDuration(): Duration.Duration = Duration.millis(282)
+    def holdDuration(): Duration.Duration = Duration.millis(1064)
+    def slideOutDuration(): Duration.Duration = Duration.millis(282)
 
     /// 横オフセットの基準位置（論理 px）。
     ///   offStartX — 滑り込みの開始位置（画面左外）。Idle 中の待機位置でもある。
@@ -160,6 +160,18 @@ mod PhaseBannerScene {
     pub def isBusy(scene: Scene[NodeTag]): Bool =
         match Scene.getState(rootPath(), scene) {
             case Some(NodeTag.PhaseBanner(data)) => data#stage != Stage.Idle
+            case _                               => false
+        }
+
+    /// 敵 0 体のとき、敵ターンが同一フレーム内で始まって即閉じると「エネミーフェーズ」帯が
+    /// 一度も出ない（帯は毎フレーム現在フェーズを観測して出すため、observe 前に閉じると見落とす）。
+    /// これを防ぐためのガード: 帯ノードがあり、まだ敵フェーズを観測していない（wasEnemy が
+    /// Some(true) でない＝帯が出始める前）なら true を返し、EnemyTurnDriver は endTurn を 1 フレーム
+    /// 待つ。帯が観測して出始めれば false になり、以降は `isBusy` が出終わりまで待たせる。
+    /// 帯ノードが無いテスト等では false（待たない）。
+    pub def shouldWaitForEnemyBanner(scene: Scene[NodeTag]): Bool =
+        match Scene.getState(rootPath(), scene) {
+            case Some(NodeTag.PhaseBanner(data)) => data#wasEnemy != Some(true)
             case _                               => false
         }
 

@@ -221,34 +221,46 @@ mod ActionMenuScene {
                     |> List.sort
         }
 
-    /// 集合（行軍）の隣接メニュー項目。主人公に隣接する生存味方が居れば「交換」、常に
-    /// 「全員待機」「キャンセル」。隣接味方 0 人なら交換は出さない（仕様 6）。
+    /// 集合（行軍）の隣接メニュー項目。固定順「拾う → 階段 → 交換 → 全員待機 → キャンセル」で、
+    /// 成立するものだけ返す（全員待機・キャンセルは常に表示）。判定はすべて主人公(リーダー id=0)基準。
+    ///   - 拾う   : 主人公の足元に床アイテムがあれば最上段（既存 `pickupMeta` → applyPickup を流用。
+    ///              集合中は SelectedPlayer.id=Some(0) なので拾う主体＝主人公として解決される）
+    ///   - 階段   : 主人公が階段マスに立っているときだけ（`gatherStairsMeta` → StairsExitScene.begin）
     ///   - 交換   : 主人公＋隣接味方の N 人持ち物交換（`gatherTradeMeta` → openGatherTrade）
     ///   - 全員待機: パーティ全員を行動済みにして敵ターンへ（既存 `turnEndMeta` → applyTurnEnd を流用）
     ///   - キャンセル: 主人公＋追従味方を開始位置へ巻き戻し PlayerCursor へ（`gatherCancelMeta`）
     def gatherAdjacentMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
-        let adj = match PlayerData.PartyQuery.get(PlayerScene.lordId()) {
+        // 主人公を 1 度だけ引いて、足元（拾う・階段）と隣接（交換）の文脈項目を組む。
+        let lordItems = match PlayerData.PartyQuery.get(PlayerScene.lordId()) {
             case None       => Nil
-            case Some(lord) => PlayerScene.adjacentAllies(lord) |> List.filter(d -> d#hp > 0)
+            case Some(lord) =>
+                let adj = PlayerScene.adjacentAllies(lord) |> List.filter(d -> d#hp > 0);
+                // 拾う: 主人公の足元に床アイテムがあれば（applyPickup が主人公＝id 0 の足元を解決）。
+                let pickup =
+                    if (Option.nonEmpty(ItemScene.findAt(lord#gridPos, scene)))
+                        ({text = "拾う", disabled = false,
+                          metadata = Some(pickupMeta())}: ItemEntry) :: Nil
+                    else Nil;
+                // 階段: 主人公が階段マスに立っているときだけ。
+                let stairsExit =
+                    if (StairsScene.isAt(lord#gridPos, scene))
+                        ({text = "階段", disabled = false,
+                          metadata = Some(gatherStairsMeta())}: ItemEntry) :: Nil
+                    else Nil;
+                let trade =
+                    if (not List.isEmpty(adj))
+                        ({text = "交換", disabled = false,
+                          metadata = Some(gatherTradeMeta())}: ItemEntry) :: Nil
+                    else Nil;
+                List.flatten(pickup :: stairsExit :: trade :: Nil)
         };
-        let trade =
-            if (not List.isEmpty(adj))
-                ({text = "交換", disabled = false,
-                  metadata = Some(gatherTradeMeta())}: ItemEntry) :: Nil
-            else Nil;
-        // 階段があり、残り移動で届く生存味方が居れば「階段で離脱」を出す。
-        let stairsExit =
-            if (StairsExitScene.canExit(scene))
-                ({text = "階段", disabled = false,
-                  metadata = Some(gatherStairsMeta())}: ItemEntry) :: Nil
-            else Nil;
         let waitAll =
             ({text = "全員待機", disabled = false,
               metadata = Some(turnEndMeta())}: ItemEntry) :: Nil;
         let cancel =
             ({text = "キャンセル", disabled = false,
               metadata = Some(gatherCancelMeta())}: ItemEntry) :: Nil;
-        List.flatten(stairsExit :: trade :: waitAll :: cancel :: Nil)
+        List.flatten(lordItems :: waitAll :: cancel :: Nil)
 
     /// 「集合」が選べる状況か（主人公以外に生存味方が居る）。空マスメニューの項目可否と
     /// C キー / ゲームパッド Y のショートカット可否で共有する。
@@ -530,19 +542,15 @@ mod ActionMenuScene {
             case ItemData.GroundItemKind.WeaponItem(weapon) =>
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} が${weapon#name} を拾った");
                 PlayerScene.addWeapon(playerId, weapon, scene)
-                    |> ItemPickupPopupScene.show(weapon#name)
             case ItemData.GroundItemKind.StaffItem(staff) =>
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} が${staff#name} を拾った");
                 PlayerScene.addStaff(playerId, staff, scene)
-                    |> ItemPickupPopupScene.show(staff#name)
             case ItemData.GroundItemKind.ConsumableItem(item) =>
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} が${item#name} を拾った");
                 PlayerScene.addConsumable(playerId, item, scene)
-                    |> ItemPickupPopupScene.show(item#name)
             case ItemData.GroundItemKind.RingItem(ring) =>
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} が${ring#name} を拾った");
                 PlayerScene.addRing(playerId, ring, scene)
-                    |> ItemPickupPopupScene.show(ring#name)
         }
 
     /// PlayerMoving + Z 押下時の遷移: 行動選択ウィンドウを開く (フェーズ = ActionSelect)。

@@ -124,8 +124,12 @@ mod EnemyTurnDriverScene {
         else if (PlayerScene.anyAttacking(scene)) scene
         else match EnemyTurn.Queue.peekFront() {
             case None       =>
-                // キュー空 + 攻撃モーション無し → 敵ターン終了
-                endTurn(scene)
+                // キュー空 + 攻撃モーション無し → 敵ターン終了。
+                // ただし敵 0 体だと敵ターンが同フレームに始まったばかりで「エネミーフェーズ」帯が
+                // まだ出ていないことがある。帯が phase=EnemyTurn を観測して出始めるまで 1 フレーム
+                // 待ってから閉じる（待たないと帯が一度も出ずにターンが閉じる）。
+                if (PhaseBannerScene.shouldWaitForEnemyBanner(scene)) scene
+                else endTurn(scene)
             case Some(step) =>
                 if (Tween.Scheduler.isActive(EnemyScene.enemyPath(step#id))) scene
                 else

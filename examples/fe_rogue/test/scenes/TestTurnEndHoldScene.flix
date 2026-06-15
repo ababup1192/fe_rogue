@@ -3,8 +3,8 @@
 /// Shift 長押しゲージの 1 フレーム更新を、Scene / effect を使わず値だけで検証する。
 ///   - 非対象フェーズ / 離した → 即リセット（経過 0・非表示・非発火）
 ///   - 押下直後（showDelay 未満）→ まだ非表示
-///   - showDelay〜3 秒 → 表示しつつ充填（充填率 = 経過 / 3 秒）
-///   - 3 秒到達フレーム → 発火（fire=true）＋発火済み(consumed)
+///   - showDelay〜1.28 秒 → 表示しつつ充填（充填率 = 経過 / 1.28 秒）
+///   - 1.28 秒到達フレーム → 発火（fire=true）＋発火済み(consumed)
 ///   - 発火済みで押しっぱなし → 再発火しない
 ///   - 離す → リセットして再び armed
 mod TestTurnEndHoldScene {
@@ -45,21 +45,21 @@ mod TestTurnEndHoldScene {
         let r = TurnEndHoldScene.step(fresh(), true, true, Duration.seconds(0.2));
         Assert.assertEq(expected = (false, false), (r#visible, r#fire))
 
-    /// 押下 1.0 秒 → 表示し、充填率 0.5（= 1.0 / 2.0）。まだ発火しない。
+    /// 押下 0.64 秒 → 表示し、充填率 0.5（= 0.64 / 1.28）。まだ発火しない。
     @Test
     def testFillsMidway(): Unit \ Assert =
-        let r = TurnEndHoldScene.step(fresh(), true, true, Duration.seconds(1.0));
+        let r = TurnEndHoldScene.step(fresh(), true, true, Duration.seconds(0.64));
         Assert.assertEq(expected = (true, false, 0.5), (r#visible, r#fire, r#ratio))
 
     // ========================================================================
-    // 発火: 2 秒到達フレームだけ fire=true、以後は再発火しない
+    // 発火: 1.28 秒到達フレームだけ fire=true、以後は再発火しない
     // ========================================================================
 
-    /// 経過 1.5 秒から 0.5 秒進めて 2.0 秒に到達 → 発火・充填率 1.0・発火済み。
+    /// 経過 0.78 秒から 0.5 秒進めて 1.28 秒に到達 → 発火・充填率 1.0・発火済み。
     @Test
     def testFiresAtThreshold(): Unit \ Assert =
         let r = TurnEndHoldScene.step(
-            {elapsed = Duration.seconds(1.5), consumed = false}, true, true, Duration.seconds(0.5));
+            {elapsed = Duration.seconds(0.78), consumed = false}, true, true, Duration.seconds(0.5));
         Assert.assertEq(
             expected = (true, true, 1.0, true),
             (r#visible, r#fire, r#ratio, r#data#consumed))
