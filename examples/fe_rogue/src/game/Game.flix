@@ -78,6 +78,8 @@ pub enum NodeTag {
     case PhaseBanner(PhaseBannerScene.BannerData)
     /// ItemPickupPopupScene の CanvasLayer 親（アイテム取得ポップアップのフェード演出状態を持つ）
     case ItemPickupPopup(ItemPickupPopupScene.PopupData)
+    /// TurnEndHoldScene の CanvasLayer 親（Shift 長押しゲージの経過時間と発火済みフラグを持つ）
+    case HoldGauge(TurnEndHoldScene.GaugeData)
     /// ItemScene の床に落ちている武器（拾える）
     case GroundItem(ItemScene.Data)
     /// ChestScene の床に置かれた宝箱（ローグだけが開けられる。中身は配置時に確定済み）
@@ -85,6 +87,9 @@ pub enum NodeTag {
     /// `EnemyTurnDriverScene` の常駐タグ専用ノード (Marker2D)。process redef で phase を
     /// 見て EnemyTurn 中なら stepOnce、PlayerAttackHold 中なら hold 終了判定を行う。
     case EnemyTurnDriver
+    /// `StairsExitScene` の常駐タグノード (Marker2D)。phase==StairsExit のとき
+    /// 退場 id 列(queue)を 1 体ずつ階段へ歩かせて退場させる。
+    case StairsExitDriver(StairsExitScene.Data)
     /// `FogScene` の常駐タグ専用ノード (Marker2D)。process redef で毎フレーム、現在パーティの
     /// いる部屋/通路だけ明るくし、それ以外は薄暗いモヤ＋敵/アイテム/階段を非表示にする。
     case FogDriver
@@ -174,6 +179,8 @@ def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(PhaseBannerScene.process(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.ItemPickupPopup(_)) =>
             checked_ecast(ItemPickupPopupScene.process(delta, node, path, scene))
+        case EngineNode.CanvasLayerWithState(_, NodeTag.HoldGauge(_)) =>
+            checked_ecast(TurnEndHoldScene.process(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.CharacterSelect(_)) =>
             checked_ecast(CharacterSelectScene.process(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.Log(_)) =>
@@ -190,6 +197,8 @@ def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
     match node {
         case EngineNode.Marker2DWithState(_, NodeTag.EnemyTurnDriver) =>
             checked_ecast(EnemyTurnDriverScene.process(delta, node, path, scene))
+        case EngineNode.Marker2DWithState(_, NodeTag.StairsExitDriver(_)) =>
+            checked_ecast(StairsExitScene.process(delta, node, path, scene))
         case EngineNode.Marker2DWithState(_, NodeTag.ArrowCursor(_)) =>
             checked_ecast(ArrowCursorScene.process(delta, node, path, scene))
         case EngineNode.Marker2DWithState(_, NodeTag.FogDriver) =>

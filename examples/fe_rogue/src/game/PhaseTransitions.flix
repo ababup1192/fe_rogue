@@ -153,6 +153,15 @@ mod PhaseTransitions {
             |> DangerZoneScene.clear
             |> PlayerScene.showAllActive       // 敵フェーズ中は味方を通常色(アクティブ)で見せる
 
+    /// StairsExit フェーズに入る (集合「階段で離脱」確定時)。
+    /// 味方系 range を片付け、危険範囲(紫)も消し、カーソルを隠す（自動進行＝入力なし）。
+    pub def enterStairsExit(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.StairsExit);
+        clearAllPlayerRanges(scene)
+            |> DangerZoneScene.clear
+            |> CursorScene.setVisible(false)
+
     /// ItemSelect フェーズに入る (ActionMenu「アイテム」確定時)。
     /// 動作: 味方系の青/赤マスを片付けて、カーソルを隠す（メニュー操作専用画面のため）。
     /// EnemyRange は触らない。`ItemMenuScene.applyVisibility` が表示を毎フレーム反映する。

@@ -111,6 +111,8 @@ mod CameraScene {
             case TurnPhase.Phase.TradeTargetSelect => cursorWorldPos(scene)
             case TurnPhase.Phase.TradeInventory    => focusPos
             case TurnPhase.Phase.GatherMove       => lordWorldPos(scene)
+            // 階段離脱中は代表キャラ（=パーティ近辺）を映したまま据え置く。
+            case TurnPhase.Phase.StairsExit       => focusPos
             case TurnPhase.Phase.EnemyTurn        => enemyTurnTarget(focusPos, scene)
         }
 

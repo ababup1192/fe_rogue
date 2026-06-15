@@ -584,6 +584,23 @@ mod TestBoard {
             expected = (1, None) :: (2, None) :: Nil,
             followToTuples(result))
 
+    /// 未行動の味方は、間に居る敵を迂回しないと goal に届かない配置でも追従する（回帰）。
+    /// 幅 2 の縦通路: 主人公は (0,1)→(0,0) と上に動き、goal=(0,1)。敵が (0,2) で直進を塞ぐ。
+    /// 味方(1)@(0,3) は唯一の迂回路 x=1 側へ 1 歩 (1,3) 進む。
+    /// 旧マンハッタンゲートはこの一歩が主人公の新位置 (0,0) から遠ざかるため None としていた（バグ）。
+    /// 敵・壁を障害物・味方を素通しで測る理想距離フィールドでは迂回が前進になるので追従する。
+    @Test
+    def testFollowStepsDetoursAroundEnemy(): Unit \ Assert =
+        let board = boardWith(emptySnapshot(2, 4),
+            (Piece.Player(0), {x = 0, y = 0}) :: (Piece.Player(1), {x = 0, y = 3}) ::
+            (Piece.Enemy(9),  {x = 0, y = 2}) :: Nil);
+        let result = Board.followStepsToward(board,
+            {x = 0, y = 0} :: {x = 0, y = 3} :: Nil,   // allyCells: 主人公+味方1（敵は含めない）
+            {x = 0, y = 0},
+            {x = 0, y = 1},
+            (1, {x = 0, y = 3}, true) :: Nil);
+        Assert.assertEq(expected = (1, Some((1, 3))) :: Nil, followToTuples(result))
+
     /// 自発的に追従した味方は移動距離を消費する(consumesStep=true)。
     /// (1) は (0,0)→(1,0) と自発的に 1 歩進むので true。
     @Test

@@ -318,6 +318,12 @@ mod Board {
             (displaced, Int32.abs(pos#x - goal#x) + Int32.abs(pos#y - goal#y), id)
         });
         let init = (lordNewPos :: frozenCells, Nil);
+        // goal を始点に、敵・壁だけを障害物とし味方は素通しで計算した「理想距離フィールド」。
+        // 「迂回が地形/敵で強制されたか（=進むべき）」と「待機味方の大回り（=避けたい）」を
+        // 見分ける基準に使う。全味方で 1 回だけ計算して共有する。
+        let idealField = distanceField(
+            c -> isWalkable(board, c) and not isEnemyAt(c, board),
+            goal :: Nil, followFloodSteps());
         let (_, decided) = List.foldLeft((acc, entry) -> {
             let (taken, results) = acc;
             let (id, pos, active) = entry;
@@ -328,12 +334,14 @@ mod Board {
             else {
                 let stepOpt = bfsPathSkipAllies(board, allyCells, pos, goal) |> Option.flatMap(List.head);
                 let candidate = chooseFollowCell(board, pos, stepOpt, taken);
-                // 自発的な追従は「実際に主人公へ近づく一歩」だけ踏む。障害物(待機味方)を大回りして
-                // 移動力を浪費し遠くで力尽きるのを防ぐ（近づけないならその場に留まる）。
+                // 自発的な追従は「実際に goal へ近づく一歩」だけ踏む。判定は理想距離フィールドで行う:
+                //   - 壁/敵の迂回 → 理想経路も同じく迂回するので一歩目が前進 → 進む。
+                //   - 待機味方の大回り → 理想経路は味方を素通しして直進するので迂回は後退扱い → 留まる
+                //     （移動力を浪費し遠くで力尽きるのを防ぐ）。
                 // 押し出し(displaced)は重なり回避の強制退避なので、この距離ガードは課さない。
                 let dest =
                     if (displaced
-                        or manhattanDist(candidate, lordNewPos) < manhattanDist(pos, lordNewPos))
+                        or fieldDist(idealField, candidate) < fieldDist(idealField, pos))
                         candidate
                     else pos;
                 let move = if (samePosition(dest, pos)) None else Some(dest);
@@ -353,9 +361,9 @@ mod Board {
     /// 3 要素タプルの第 1 要素。
     def fst3(triple: (a, b, c)): a = let (x, _, _) = triple; x
 
-    /// 2 マス間のマンハッタン距離。追従が「実際に主人公へ近づく一歩か」の判定に使う。
-    def manhattanDist(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Int32 =
-        Int32.abs(a#x - b#x) + Int32.abs(a#y - b#y)
+    /// 追従の理想距離フィールドのフラッド上限（マップ全域を覆えるよう十分大きく取る。
+    /// 実際は到達域で打ち切られる）。EnemyAI.floodSteps と同じ値。
+    def followFloodSteps(): Int32 = 4096
 
     /// 追従 1 体の停止マスを決める。最短 1 歩が空いていればそこへ。塞がっていれば
     /// その場に留まり、現在マスすら確定済み（主人公に押し出された）なら空き隣接へ退避する。

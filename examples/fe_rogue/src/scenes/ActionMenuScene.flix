@@ -67,6 +67,8 @@ mod ActionMenuScene {
     /// 集合（行軍）の隣接メニューの「交換」（主人公＋隣接味方の N 人持ち物交換）。
     /// 通常ターン隣接 2 人交換の `exchangeMeta` とは別物。
     def gatherTradeMeta(): String = "gatherTrade"
+    /// 集合（行軍）の隣接メニューの「階段で離脱」（届く味方が順々に階段へ向かい退場）。
+    def gatherStairsMeta(): String = "gatherStairs"
     /// 集合（行軍）の隣接メニューの「キャンセル」: 主人公＋追従味方を開始位置へ巻き戻す。
     def gatherCancelMeta(): String = "gatherCancel"
 
@@ -224,7 +226,7 @@ mod ActionMenuScene {
     ///   - 交換   : 主人公＋隣接味方の N 人持ち物交換（`gatherTradeMeta` → openGatherTrade）
     ///   - 全員待機: パーティ全員を行動済みにして敵ターンへ（既存 `turnEndMeta` → applyTurnEnd を流用）
     ///   - キャンセル: 主人公＋追従味方を開始位置へ巻き戻し PlayerCursor へ（`gatherCancelMeta`）
-    def gatherAdjacentMenuItems(_scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
+    def gatherAdjacentMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
         let adj = match PlayerData.PartyQuery.get(PlayerScene.lordId()) {
             case None       => Nil
             case Some(lord) => PlayerScene.adjacentAllies(lord) |> List.filter(d -> d#hp > 0)
@@ -234,13 +236,19 @@ mod ActionMenuScene {
                 ({text = "交換", disabled = false,
                   metadata = Some(gatherTradeMeta())}: ItemEntry) :: Nil
             else Nil;
+        // 階段があり、残り移動で届く生存味方が居れば「階段で離脱」を出す。
+        let stairsExit =
+            if (StairsExitScene.canExit(scene))
+                ({text = "階段", disabled = false,
+                  metadata = Some(gatherStairsMeta())}: ItemEntry) :: Nil
+            else Nil;
         let waitAll =
             ({text = "全員待機", disabled = false,
               metadata = Some(turnEndMeta())}: ItemEntry) :: Nil;
         let cancel =
             ({text = "キャンセル", disabled = false,
               metadata = Some(gatherCancelMeta())}: ItemEntry) :: Nil;
-        List.flatten(trade :: waitAll :: cancel :: Nil)
+        List.flatten(stairsExit :: trade :: waitAll :: cancel :: Nil)
 
     /// 「集合」が選べる状況か（主人公以外に生存味方が居る）。空マスメニューの項目可否と
     /// C キー / ゲームパッド Y のショートカット可否で共有する。
@@ -268,6 +276,14 @@ mod ActionMenuScene {
             Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
                               SelectedPlayer.State, PlayerData.PartyQuery} =
         applyGather(scene)
+
+    /// Shift 長押しゲージ満了時のショートカット: メニューを開かず「全員待機」と同じ
+    /// （`applyTurnEnd` と同一＝全アクティブ味方を待機にして敵ターンへ）。
+    /// 呼び出し側（TurnEndHoldScene）で PlayerCursor / GatherMove のときだけ発火する。
+    pub def turnEndShortcut(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
+                              TurnPhase.State, SelectedPlayer.State} =
+        applyTurnEnd(scene)
 
     /// インベントリのいずれかの武器の射程内に生きている敵が居るか。
     /// 装備中(先頭)だけでなく全武器を見る: 射程を変えれば(= 別の武器に持ち替えれば)
@@ -325,6 +341,7 @@ mod ActionMenuScene {
                 else if (m == turnEndMeta())  applyTurnEnd(scene)
                 else if (m == stairsMeta())   applyStairs(scene)
                 else if (m == gatherTradeMeta()) openGatherTrade(scene)
+                else if (m == gatherStairsMeta()) StairsExitScene.begin(scene)
                 else if (m == gatherCancelMeta()) PlayerScene.cancelSelection(scene)
                 else                          scene
         }

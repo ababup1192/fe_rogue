@@ -56,6 +56,7 @@ mod GameLifecycle {
             |> StairsScene.add          // 次フロアへの階段 (初期は非表示。配置は末尾の placeRandom)
             |> CameraScene.add
             |> EnemyTurnDriverScene.add // 敵ターン進行の常駐タグノード (process で phase 判定)
+            |> StairsExitScene.add      // 集合「階段で離脱」の順次退場ドライバ (process で phase 判定)
             |> ItemMenuScene.add        // アイテム選択ウィンドウ (初期は非表示)
             |> ActionMenuScene.add      // 行動選択ウィンドウ (初期は非表示)
             |> TradeMenuScene.add       // 物交換ウィンドウ (2 ペイン、初期は非表示)
@@ -66,6 +67,7 @@ mod GameLifecycle {
             |> LogScene.add             // 右下の3行一時ログ (戦闘ログ・アイテム踏みログ。5秒で消える)
             |> PhaseBannerScene.add     // ターン切替バナー (最前面。起動直後に味方ターンを表示)
             |> ItemPickupPopupScene.add // アイテム取得ポップアップ (初期は非表示)
+            |> TurnEndHoldScene.add     // Shift 長押し(3秒)でターンエンドする中央ゲージ (初期は非表示)
             |> BgmScene.add             // BGM (AudioStreamPlayer, autoplay=true で起動時から再生)
             // 全ノード配置後に階段を床のランダムセルへ置く (駒・アイテムを避けるため最後)
             |> StairsScene.placeRandom
