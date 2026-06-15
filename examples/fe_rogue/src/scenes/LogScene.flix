@@ -133,4 +133,13 @@ mod LogScene {
                     CanvasLayer.setOffset({x = offsetX, y = 0.0}, layer), tag)
             case other => other
         }, scene)
+
+    /// 別 HUD(ターンスキップ等)がログ帯を背景として再利用するための一時オーバーライド。
+    /// ログ帯を定位置に出しつつ本文 3 行を空にする(queue は保持)。毎フレーム呼ぶ前提で、
+    /// 呼ばれなくなれば次フレームの `process`(本シーンは先に走る)が queue から復帰させる。
+    /// 同フレーム内で LogScene.process の後に適用される呼び出し元から使うこと(上書きが効くように)。
+    pub def holdForOverlay(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let shown = setOffsetX(homeOffsetX(), scene);
+        List.foldLeft((s, i) -> Label2D.mapAt(linePath(i), Label2D.setText(""), s),
+                      shown, List.range(0, maxQueue()))
 }

@@ -295,21 +295,24 @@ mod GameEngine {
                     Some(TileMapLayer.toRenderCmd(layerScreenPos, transform#scale, tm))
                 case _ => None
             }, Scene.preorderPaths(scene));
-        // Polygon2D ノードを収集（CanvasLayer 配下はカメラ非適用、zoom はワールドのみ）。
-        // 不可視（祖先含む）はスキップ。スプライトの後に最前面で塗られる。
+        // Polygon2D / Arc2D ノードを収集（CanvasLayer 配下はカメラ非適用、zoom はワールドのみ）。
+        // 不可視（自ノード or 祖先）はスキップ。スプライトの後に最前面で塗られる。Arc2D（リング）は
+        // 中空円のためセグメントごとに複数の PolygonRenderCmd を返すので flatMap で平坦化する。
+        // 描画原点 screenPos と zoom はポリゴン系ノードに限って計算する（全ノードでは走らせない）。
+        // 描画原点 screenPos と zoom（ポリゴン系ノードに限って計算する）。
+        let placement = p ->
+            ( Scene.screenPositionAt(p, transform, scene)
+            , if (Scene.isUnderCanvasLayer(p, scene)) ({x = 1.0, y = 1.0}: Vec2.Vec2)
+              else transform#scale );
         let polygons: List[PolygonRenderCmd] =
-            List.filterMap(p -> match Scene.getEngineNode(p, scene) {
+            List.flatMap(p -> match Scene.getEngineNode(p, scene) {
                 case Some(EngineNode.Polygon2DWithState(poly, _)) =>
-                    // 自ノードの visible（effectiveVisibleAt は祖先のみ検査するため別途）と
-                    // 祖先の visible の両方が真のときだけ描画する。
-                    if (not (CanvasItem.isVisible(poly) and Scene.effectiveVisibleAt(p, scene))) None
-                    else {
-                        let screenPos = Scene.screenPositionAt(p, transform, scene);
-                        let sc = if (Scene.isUnderCanvasLayer(p, scene))
-                                    ({x = 1.0, y = 1.0}: Vec2.Vec2) else transform#scale;
-                        Some(Polygon2D.toRenderCmd(screenPos, sc, poly))
-                    }
-                case _ => None
+                    if (not (CanvasItem.isVisible(poly) and Scene.effectiveVisibleAt(p, scene))) Nil
+                    else { let (sp, sc) = placement(p); Polygon2D.toRenderCmd(sp, sc, poly) :: Nil }
+                case Some(EngineNode.Arc2DWithState(arc, _)) =>
+                    if (not (CanvasItem.isVisible(arc) and Scene.effectiveVisibleAt(p, scene))) Nil
+                    else { let (sp, sc) = placement(p); Arc2D.toRenderCmds(sp, sc, arc) }
+                case _ => Nil
             }, Scene.preorderPaths(scene));
         Game.renderCommands(sprites, tileMaps, polygons)
 

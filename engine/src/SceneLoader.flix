@@ -355,6 +355,7 @@ mod SceneLoader {
             case "Camera2D"         => buildCamera2D(tagParser, map)
             case "ColorRect"        => buildColorRect(tagParser, map)
             case "Polygon2D"        => buildPolygon2D(tagParser, map)
+            case "Arc2D"            => buildArc2D(tagParser, map)
             case "RichTextLabel"    => buildRichTextLabel(tagParser, fontAtlas, map)
             case "Panel"            => buildPanel(tagParser, map)
             case "ProgressBar"      => buildProgressBar(tagParser, map)
@@ -1167,6 +1168,45 @@ mod SceneLoader {
                 |> applyOpt(rotationOpt, (rot, p) -> Node2D.setRotation(rot, p))
                 |> applyOpt(modulateOpt, (c, p) -> CanvasItem.setModulate(c, p));
             EngineNode.Polygon2DWithState(poly, tag)
+        }
+
+    /// `{ "type": "Arc2D", "pos": [x,y], "radius": r, "width": w,
+    ///    "startAngle": a0, "endAngle": a1, "segments": n, "color": {...}, "alpha": a, "zIndex": z }`
+    /// から円弧/リングノードを構築する。startAngle/endAngle はラジアン（既定 0..2π = 全周リング）。
+    /// クールダウン表示は前景 Arc2D の endAngle をシーン側で毎フレーム更新する。
+    def buildArc2D(tagParser: Option[String] -> Result[Util.Json.JsonError, t],
+                   map: Map[String, Util.Json.Json]): Result[Util.Json.JsonError, EngineNode[t]] =
+        forM (
+            tag           <- parseTagField(tagParser, map);
+            posOpt        <- parseVec2Opt("pos", map);
+            scaleOpt      <- parseVec2Opt("scale", map);
+            color         <- parseColor("color", map);
+            radiusOpt     <- (JsonCompat.getAtKeyOpt(Root, "radius", map): Result[Util.Json.JsonError, Option[Float64]]);
+            widthOpt      <- (JsonCompat.getAtKeyOpt(Root, "width", map): Result[Util.Json.JsonError, Option[Float64]]);
+            startAngleOpt <- (JsonCompat.getAtKeyOpt(Root, "startAngle", map): Result[Util.Json.JsonError, Option[Float64]]);
+            endAngleOpt   <- (JsonCompat.getAtKeyOpt(Root, "endAngle", map): Result[Util.Json.JsonError, Option[Float64]]);
+            segmentsOpt   <- (JsonCompat.getAtKeyOpt(Root, "segments", map): Result[Util.Json.JsonError, Option[Int32]]);
+            alphaOpt      <- (JsonCompat.getAtKeyOpt(Root, "alpha", map): Result[Util.Json.JsonError, Option[Float64]]);
+            visibleOpt    <- (JsonCompat.getAtKeyOpt(Root, "visible", map): Result[Util.Json.JsonError, Option[Bool]]);
+            zIndexOpt     <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[Util.Json.JsonError, Option[Int32]]);
+            rotationOpt   <- (JsonCompat.getAtKeyOpt(Root, "rotation", map): Result[Util.Json.JsonError, Option[Float64]]);
+            modulateOpt   <- parseColorOpt("modulate", map)
+        ) yield {
+            let pos = Option.getWithDefault(Vec2.zero(), posOpt);
+            let radius = Option.getWithDefault(8.0, radiusOpt);
+            let width = Option.getWithDefault(2.0, widthOpt);
+            let startAngle = Option.getWithDefault(0.0, startAngleOpt);
+            let endAngle = Option.getWithDefault(Arc2D.tau(), endAngleOpt);
+            let arc = Arc2D.make(radius, width, startAngle, endAngle, color)
+                |> Node2D.setPosition(pos)
+                |> applyOpt(segmentsOpt, (s, a) -> Arc2D.setSegments(s, a))
+                |> applyOpt(scaleOpt, (sc, a) -> Node2D.setScale(sc, a))
+                |> applyOpt(alphaOpt, (al, a) -> Arc2D.setAlpha(Float64.truncateToFloat32(al), a))
+                |> applyOpt(visibleOpt, (v, a) -> CanvasItem.setVisible(v, a))
+                |> applyOpt(zIndexOpt, (z, a) -> CanvasItem.setZIndex(z, a))
+                |> applyOpt(rotationOpt, (rot, a) -> Node2D.setRotation(rot, a))
+                |> applyOpt(modulateOpt, (c, a) -> CanvasItem.setModulate(c, a));
+            EngineNode.Arc2DWithState(arc, tag)
         }
 
     def setColorRectAlpha(alpha: Float64, rect: ColorRect): ColorRect =

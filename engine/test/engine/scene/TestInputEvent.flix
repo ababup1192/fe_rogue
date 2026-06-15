@@ -216,7 +216,7 @@ def testHandleInputEmptyPrevState(): Unit \ Assert =
 @Test
 def testAllKeysContainsAll(): Unit \ Assert =
     let keys = GameEngine.allKeys();
-    Assert.assertEq(expected = 18, List.length(keys));
+    Assert.assertEq(expected = 19, List.length(keys));
     Assert.assertTrue(List.memberOf(GameEngine.Key.W, keys));
     Assert.assertTrue(List.memberOf(GameEngine.Key.Escape, keys));
     Assert.assertTrue(List.memberOf(GameEngine.Key.F1, keys));
