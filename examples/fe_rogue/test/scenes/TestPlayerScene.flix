@@ -195,6 +195,45 @@ mod TestPlayerScene {
         Assert.assertEq(expected = Nil, List.map(d -> d#id, neighbors))
 
     // ========================================================================
+    // tradeComponent — 隣接連結成分（集合の N 人交換メンバー抽出）
+    //
+    // 集合の交換は「主人公を含む、隣接（マンハッタン 1）で連結した塊」全員が対象。
+    // 直接隣接だけでなくチェーン（0-1-2）でつながった味方も含める。
+    // ========================================================================
+
+    /// 交換メンバー抽出用の最小レコード（id + gridPos のみ）。
+    def mkMember(id: Int32, x: Int32, y: Int32): {id = Int32, gridPos = {x = Int32, y = Int32}} =
+        {id = id, gridPos = {x = x, y = y}}
+
+    /// チェーン: 0=(5,5) 1=(6,5) 2=(7,5)。2 は 0 に非隣接だが 1 経由で連結 → 全員。
+    @Test
+    def testTradeComponentIncludesChainedAllies(): Unit \ Assert =
+        let members = mkMember(0, 5, 5) :: mkMember(1, 6, 5) :: mkMember(2, 7, 5) :: Nil;
+        Assert.assertEq(expected = 0 :: 1 :: 2 :: Nil,
+            PlayerScene.tradeComponent(0, members))
+
+    /// 分断: 0=(5,5) と 1=(6,5) は隣接、2=(10,10) は遠い → 0,1 のみ（2 は除外）。
+    @Test
+    def testTradeComponentExcludesDisconnected(): Unit \ Assert =
+        let members = mkMember(0, 5, 5) :: mkMember(1, 6, 5) :: mkMember(2, 10, 10) :: Nil;
+        Assert.assertEq(expected = 0 :: 1 :: Nil,
+            PlayerScene.tradeComponent(0, members))
+
+    /// 主人公が誰とも隣接していない（斜めは隣接でない）→ 主人公だけ（< 2 で交換は開かれない）。
+    @Test
+    def testTradeComponentLordAloneWhenNoNeighbor(): Unit \ Assert =
+        let members = mkMember(0, 5, 5) :: mkMember(1, 6, 6) :: mkMember(2, 10, 10) :: Nil;
+        Assert.assertEq(expected = 0 :: Nil,
+            PlayerScene.tradeComponent(0, members))
+
+    /// start（主人公）が members に居なければ空（リーダー死亡など）。
+    @Test
+    def testTradeComponentEmptyWhenStartMissing(): Unit \ Assert =
+        let members = mkMember(1, 6, 5) :: mkMember(2, 7, 5) :: Nil;
+        Assert.assertEq(expected = (Nil: List[Int32]),
+            PlayerScene.tradeComponent(0, members))
+
+    // ========================================================================
     // swapItem — 2 プレイヤー間でアイテムを交換する
     //
     // 本体経路を使う:

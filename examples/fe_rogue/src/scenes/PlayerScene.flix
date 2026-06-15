@@ -579,6 +579,47 @@ mod PlayerScene {
                 other#id != player#id
                 and Weapon.manhattan(player#gridPos, other#gridPos) == 1)
 
+    /// `startId` を含む「隣接（マンハッタン 1）で連結した味方」の id 集合を id 昇順で返す。
+    /// 直接隣接だけでなくチェーン（A-B-C で B が A 経由でつながる）も同じ塊として拾う連結成分。
+    /// 集合(Gather)の交換で「リーダーに隣接していなくても仲間同士が隣接していれば 3 人で交換」を
+    /// 成立させるために使う。純粋（テスト対象）。`startId` が `members` に居なければ空。
+    pub def tradeComponent(startId: Int32,
+                            members: List[{id = Int32, gridPos = {x = Int32, y = Int32} | r}]):
+            List[Int32] =
+        if (not List.exists(m -> m#id == startId, members)) Nil
+        else expandComponent(startId :: Nil, Set#{startId}, members) |> Set.toList |> List.sort
+
+    /// 連結成分の BFS: frontier の各 id の「隣接かつ未訪問」メンバーを visited に足しながら畳む。
+    def expandComponent(frontier: List[Int32], visited: Set[Int32],
+                         members: List[{id = Int32, gridPos = {x = Int32, y = Int32} | r}]):
+            Set[Int32] =
+        match frontier {
+            case Nil        => visited
+            case id :: rest =>
+                let fresh    = adjacentUnvisited(id, visited, members);
+                let visited2 = List.foldLeft((s, nid) -> Set.insert(nid, s), visited, fresh);
+                expandComponent(List.append(rest, fresh), visited2, members)
+        }
+
+    /// `id` にマンハッタン 1 で隣接する、まだ visited に居ないメンバーの id。
+    def adjacentUnvisited(id: Int32, visited: Set[Int32],
+                          members: List[{id = Int32, gridPos = {x = Int32, y = Int32} | r}]):
+            List[Int32] =
+        match posOfMember(id, members) {
+            case None      => Nil
+            case Some(pos) =>
+                members
+                    |> List.filter(m -> not Set.memberOf(m#id, visited)
+                                        and Weapon.manhattan(pos, m#gridPos) == 1)
+                    |> List.map(m -> m#id)
+        }
+
+    /// メンバー id の gridPos を引く（居なければ None）。
+    def posOfMember(id: Int32,
+                    members: List[{id = Int32, gridPos = {x = Int32, y = Int32} | r}]):
+            Option[{x = Int32, y = Int32}] =
+        members |> List.findMap(m -> if (m#id == id) Some(m#gridPos) else None)
+
     /// アクティブ（waited でない）味方のうち、id 最小のものを返す。誰も居なければ None。
     /// `commitWaitedAndAdvance` の直後にカーソルを次に動ける駒へ飛ばす用途で使う
     /// (`PlayerData.PartyQuery` 経由だとフレーム冒頭 snapshot を読むため stale)。

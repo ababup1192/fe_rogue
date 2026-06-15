@@ -207,19 +207,14 @@ mod ActionMenuScene {
     def boundMenuItems(): List[ItemEntry] =
         ({text = "待機", disabled = false, metadata = Some(waitMeta())}: ItemEntry) :: Nil
 
-    /// 集合（行軍）の交換に参加するメンバーの player id（= 主人公 + 主人公に隣接する味方）。
-    /// 主人公(id 0) を先頭に、上下左右 1 マスの生存味方（最大 3 人 = 計 4 人）を加える。
-    /// 死亡(hp<=0)は除外し id 昇順に並べる。隣接味方が居なければ主人公だけ（交換は出さない）。
+    /// 集合（行軍）の交換に参加するメンバーの player id。
+    /// 主人公(id 0) を含む「隣接（マンハッタン 1）で連結した生存味方の塊」全員を id 昇順で返す。
+    /// 直接隣接だけでなくチェーン（主人公-A-B で B が A 経由でつながる）も同じ塊として拾うので、
+    /// 主人公に隣接していない味方でも仲間同士が隣接していれば 3 人で交換できる。
+    /// 主人公が誰とも隣接していなければ主人公だけ（< 2 人なので交換は開かれない）。
     def gatherTradeMembers(): List[Int32] \ PlayerData.PartyQuery =
-        match PlayerData.PartyQuery.get(PlayerScene.lordId()) {
-            case None       => Nil
-            case Some(lord) =>
-                let adj = PlayerScene.adjacentAllies(lord) |> List.filter(d -> d#hp > 0);
-                (lord :: adj)
-                    |> List.filter(d -> d#hp > 0)
-                    |> List.map(d -> d#id)
-                    |> List.sort
-        }
+        let living = PlayerData.PartyQuery.getAll() |> List.filter(d -> d#hp > 0);
+        PlayerScene.tradeComponent(PlayerScene.lordId(), living)
 
     /// 集合（行軍）の隣接メニュー項目。固定順「拾う → 階段 → 交換 → 全員待機 → キャンセル」で、
     /// 成立するものだけ返す（全員待機・キャンセルは常に表示）。判定はすべて主人公(リーダー id=0)基準。
