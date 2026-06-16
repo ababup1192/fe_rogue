@@ -240,13 +240,39 @@ mod EffectBridge {
         let toV = gs("to", "self");
         // chance は任意（欠落 → 100＝必ず発動。decodeRule の既定と同値）。確率発動の敵特殊
         // （毒30%付与など）を簡易form のままコードレスで書けるようにここで通す。
+        let action = actionFull(toV, gs("op", "healFlat"), gi("amount", 0),
+                                gs("for", "instant"), gi("forTurns", 0), gs("sfx", ""), gs("vfx", ""));
+        // kind で出し分け: do=通常（top-level do[]）/ replaceAttack=攻撃差し替え（flow + 隣接条件）。
+        fullComposer(gs("kind", "do"), gs("when", "onUse"), toV, gi("chance", 100), action)
+
+    def fullComposer(kind: String, when: String, toV: String, chance: Int32, action: Json): Json =
+        match kind {
+            case "replaceAttack" => replaceForm(when, chance, action)
+            case _               => doForm(when, toV, chance, action)
+        }
+
+    /// 通常効果: chance は top-level（発火確率）、action は do[] に撒く。
+    def doForm(when: String, toV: String, chance: Int32, action: Json): Json =
         JObject(Map#{
-            "when" => JString(gs("when", "onUse")),
+            "when" => JString(when),
             "deliver" => JArray(Vector#{JString(deliverOfComposer(toV))}),
-            "chance" => JNumber(intToBd(gi("chance", 100))),
-            "do" => JArray(Vector#{
-                actionFull(toV, gs("op", "healFlat"), gi("amount", 0),
-                           gs("for", "instant"), gi("forTurns", 0), gs("sfx", ""), gs("vfx", ""))
+            "chance" => JNumber(intToBd(chance)),
+            "do" => JArray(Vector#{action})
+        })
+
+    /// 攻撃差し替え（RingMan 等）: 隣接条件を暗黙付与し、chance は replaceAttack 内（差し替え確率）に
+    /// 載せる。top-level chance は出さない（decodeRule 既定 100＝ルール自体は常時発火）。
+    /// 隣接限定は**仕様**: 敵ターンの差し替え特殊は近接前提（RingMan の指輪化は隣接時のみ）。
+    /// cond 欄を簡易form に設けない代わりにここで if:"adjacent" を固定付与する。
+    def replaceForm(when: String, chance: Int32, action: Json): Json =
+        JObject(Map#{
+            "when" => JString(when),
+            "if" => JString("adjacent"),
+            "flow" => JObject(Map#{
+                "replaceAttack" => JObject(Map#{
+                    "chance" => JNumber(intToBd(chance)),
+                    "do" => JArray(Vector#{action})
+                })
             })
         })
 

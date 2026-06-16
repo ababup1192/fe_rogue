@@ -48,8 +48,9 @@ mod EnemyAI {
         case Aggressive          // 既定: 同室 or 移動到達範囲で起動し追跡（従来挙動）
         case GuardUntilInRange   // 同室でも待機。武器の攻撃射程+1 に相手が来る or 攻撃を受けると起動して動き出す
         case Wanderer            // 未発見のうちは徘徊（湧きは driver / spawn 側）
-        case RingMan             // Aggressive と同じ索敵/追跡。隣接時に 30% で攻撃の代わりに持ち物を指輪に変える
-                                 // （特殊行動の実体は driver = EnemyTurnDriverScene 側。policy は追跡のみ）
+        case RingMan             // Aggressive と同じ索敵/追跡。指輪化の特殊行動は enemies.json の
+                                 // effectRule(onEnemyTurn + flow:replaceAttack) へ移行済み（driver が発火）。
+                                 // policy は追跡のみ宣言（移動ラベルとして残置。aiType 自体は挙動に未関与）。
     }
 
     /// dormant → alerted に遷移する条件の種別（データ化）。
@@ -75,8 +76,8 @@ mod EnemyAI {
         case AiType.Aggressive        => { alert = AlertRule.OnSightOrReach, idle = IdleBehavior.StayDormant }
         case AiType.GuardUntilInRange => { alert = AlertRule.OnWeaponRange,  idle = IdleBehavior.StayDormant }
         case AiType.Wanderer          => { alert = AlertRule.OnSightOrReach, idle = IdleBehavior.Roam }
-        // RingMan は追跡・攻撃は Aggressive と同じ。攻撃を 30% で「持ち物を指輪に変える」に
-        // 差し替えるのは driver 側（policy には特殊行動の概念が無いのでここは追跡のみ宣言）。
+        // RingMan は追跡・攻撃は Aggressive と同じ。指輪化は effectRule(onEnemyTurn) へ移行済み
+        // （policy には特殊行動の概念が無いのでここは追跡のみ宣言）。
         case AiType.RingMan           => { alert = AlertRule.OnSightOrReach, idle = IdleBehavior.StayDormant }
     }
 

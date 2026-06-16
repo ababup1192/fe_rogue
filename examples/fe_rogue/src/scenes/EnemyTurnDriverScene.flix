@@ -238,23 +238,17 @@ mod EnemyTurnDriverScene {
                         }
                     case EnemyAI.EnemyAction.Attack(enemyId, targetId) =>
                         // 狙う相手は EnemyAI の評価軸（仕留め > 反撃不能 > 低HP > 近さ）で決定済み。
-                        // ringman は隣接時 30% で攻撃の代わりに「持ち物を指輪に変える」特殊行動を取る。
+                        // 敵が onEnemyTurn の effectRule(flow:replaceAttack) を持てば、攻撃の代わりに
+                        // 差し替え行動（リング職人の指輪化など）をデータ駆動で取る（resolveEnemyAttack）。
                         // それ以外は体当たりモーションを開始するだけ。HP 適用 / 音 / 死亡判定は
                         // attack_lunge の `attack:hit` メソッド発火時に CombatScene.process が行う。
                         // 攻撃前後の溜め: lunge (~160ms) より長い hold で「攻撃終了の余韻」を作る
-                        // Attack はその敵の最終行動 → 行動済み暗転。
+                        // Attack はその敵の最終行動 → 行動済み暗転。hold は差し替え/通常攻撃の両方の手前。
                         match PlayerScene.get(targetId, withAlert) {
                             case None    => EnemyScene.setActed(enemyId, withAlert)
                             case Some(p) =>
                                 Pacing.State.hold(450 |> Duration.millis);
-                                let resolved =
-                                    if (isRingSpecial(data, targetId, withAlert))
-                                        // 特殊行動: 攻撃せず、対象の装備外アイテムを 1 つ指輪に変える。
-                                        CustomEffects.RingTransformRequest.transform(
-                                            data#resource#description, targetId, withAlert)
-                                    else
-                                        CombatScene.startAttack(Faction.Enemy, enemyId, targetId,
-                                                                p#gridPos, withAlert);
+                                let resolved = resolveEnemyAttack(enemyId, data, targetId, p, withAlert);
                                 EnemyScene.setActed(enemyId, resolved)
                         }
                     case EnemyAI.EnemyAction.Wait(_) =>
@@ -275,17 +269,134 @@ mod EnemyTurnDriverScene {
                         }
                 }
 
-    /// ringman が「攻撃の代わりに持ち物を指輪に変える」特殊行動を取るか。
-    /// ringman（aiType = RingMan）以外は常に false（= 通常攻撃）。
-    /// 対象に装備外の持ち物が無ければ false（特殊行動はスキップして通常攻撃）。
-    /// 30% の乱数を引くのは「ringman かつ対象に持ち物がある」ときだけ（無駄に乱数を消費しない）。
-    def isRingSpecial(data: EnemyScene.Data, targetId: Int32, scene: Scene[NodeTag]):
-            Bool \ Math.Random =
-        if (data#resource#aiType == EnemyAI.AiType.RingMan
-                and not List.isEmpty(PlayerScene.transformableItems(targetId, scene)))
-            Math.Random.randomFloat64() < 0.30
+    /// 敵ターンの攻撃解決（旧 isRingSpecial のデータ駆動版）。aiType ではなく effectRule で判定する：
+    /// 敵が onEnemyTurn + flow:replaceAttack の effectRule を持てば差し替え行動（指輪化など）を、
+    /// 持たなければ通常攻撃を取る。リング職人は enemies.json の effectRule で駆動される。
+    def resolveEnemyAttack(enemyId: Int32, data: EnemyScene.Data, targetId: Int32,
+                           p: PlayerScene.Data, scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {AnimationPlayer.Scheduler, Math.Random, CustomEffects.RingTransformRequest} =
+        match enemyTurnRule(data) {
+            case Some(rule) => runEnemyTurnFlow(rule, enemyId, data, targetId, p, scene)
+            case None       => normalEnemyAttack(enemyId, targetId, p, scene)
+        }
+
+    /// 敵が持つ onEnemyTurn の effectRule を decode（無し/trigger 不一致/不正は None）。
+    /// ここでは RNG を引かない（短絡で乱数列を保つ＝effectRule を持たない敵は従来挙動）。
+    def enemyTurnRule(data: EnemyScene.Data): Option[EffectRule.EffectRule] =
+        (forM (
+            j    <- data#resource#effectRule;
+            rule <- EffectBridge.fromComposer(j)
+        ) yield rule)
+            |> Option.filter(rule -> rule#trigger == EffectRule.Trigger.OnEnemyTurn)
+
+    /// onEnemyTurn の flow:replaceAttack を実行する。隣接 ∧ 差し替え可能 ∧ 確率成立なら差し替え
+    /// action（ringify 等）を撒き、いずれか不成立なら通常攻撃。RNG は確率判定の1回だけ（隣接・
+    /// 差し替え可否は RNG 前に判定して乱数列を保つ）。flow が replaceAttack 以外なら通常攻撃。
+    ///
+    /// 確率は flow 内の chance（applyReplace の roll<chance）のみで判定し、rule#chance（top-level）は
+    /// 使わない: replaceForm が top-level chance を出さない＝常時 100＝「ルール自体は常時発火、差し替えだけ
+    /// 確率」という設計のため。隣接限定は仕様（replaceForm が if:"adjacent" を暗黙付与。RingMan は近接前提）。
+    def runEnemyTurnFlow(rule: EffectRule.EffectRule, enemyId: Int32, data: EnemyScene.Data,
+                         targetId: Int32, p: PlayerScene.Data, scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {AnimationPlayer.Scheduler, Math.Random, CustomEffects.RingTransformRequest} =
+        match replaceFlowOf(rule) {
+            case None       => normalEnemyAttack(enemyId, targetId, p, scene)
+            case Some(flow) =>
+                // cond は現状 replaceForm 経由で Adjacent のみだが、HP/alive も実値で埋めておく
+                // （将来 cond に HP 述語が増えても静かに壊れないように）。
+                let predCtx = { selfHpPct       = hpPct(data#hp, data#resource#hp),
+                                targetHpPct     = hpPct(p#hp, p#resource#hp),
+                                targetAlive     = true,
+                                equippedIsRogue = false,
+                                adjacent        = EnemyAI.isAdjacent(data#gridPos, p#gridPos) };
+                if (not EffectDsl.evalPredicate(rule#cond, predCtx)
+                        or not replaceFeasible(flow, targetId, scene))
+                    normalEnemyAttack(enemyId, targetId, p, scene)
+                else
+                    applyReplaceResult(EffectFlow.applyReplace(flow, rollPercent()),
+                                       enemyId, data, targetId, p, scene)
+        }
+
+    /// HP 割合（0..100）。最大 HP が 0 以下なら 0（ゼロ除算回避。CombatScene.hpPct と同式）。
+    def hpPct(hp: Int32, maxHp: Int32): Int32 =
+        if (maxHp <= 0) 0 else (hp * 100) / maxHp
+
+    /// rule#flow が replaceAttack のときだけ Some。flow 無し / followUp は None（敵ターン非対応）。
+    def replaceFlowOf(rule: EffectRule.EffectRule): Option[EffectRule.Flow] =
+        rule#flow |> Option.filter(isReplaceAttack)
+
+    def isReplaceAttack(flow: EffectRule.Flow): Bool = match flow {
+        case EffectRule.Flow.ReplaceAttack(_, _) => true
+        case _                                   => false
+    }
+
+    /// 差し替えが意味を持つか。ringify を含む差し替えは、対象に装備外アイテムが無ければ無意味なので
+    /// 通常攻撃へ戻す（旧 isRingSpecial と同じ＝棒立ち回避 + roll 不消費で乱数列維持）。ringify 以外は常に可。
+    def replaceFeasible(flow: EffectRule.Flow, targetId: Int32, scene: Scene[NodeTag]): Bool =
+        if (replaceHasRingify(flow))
+            not List.isEmpty(PlayerScene.transformableItems(targetId, scene))
         else
-            false
+            true
+
+    def replaceHasRingify(flow: EffectRule.Flow): Bool = match flow {
+        case EffectRule.Flow.ReplaceAttack(_, acts) => List.exists(a -> a#op == EffectRule.Op.OpRingify, acts)
+        case _                                      => false
+    }
+
+    /// applyReplace の結果を解釈。RequestReplace なら差し替え action を runPlan で撒く（通常攻撃せず）、
+    /// NoFlow（確率不発）なら通常攻撃へ。
+    def applyReplaceResult(effects: List[EffectFlow.FlowEffect], enemyId: Int32,
+                           data: EnemyScene.Data, targetId: Int32, p: PlayerScene.Data,
+                           scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {AnimationPlayer.Scheduler, CustomEffects.RingTransformRequest} =
+        match List.head(effects) {
+            case Some(EffectFlow.FlowEffect.RequestReplace(actions)) =>
+                EffectRunner.runPlan(enemyTurnEffectHandlers(data),
+                    List.flatMap(a -> EffectPlan.planAction(a, replacePlanCtx(enemyId, targetId, p)), actions),
+                    scene)
+            case _ => normalEnemyAttack(enemyId, targetId, p, scene)
+        }
+
+    /// 体当たり攻撃モーションを開始する（敵側）。
+    def normalEnemyAttack(enemyId: Int32, targetId: Int32, p: PlayerScene.Data,
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ AnimationPlayer.Scheduler =
+        CombatScene.startAttack(Faction.Enemy, enemyId, targetId, p#gridPos, scene)
+
+    /// 0..99 の一様乱数（CombatScene.rollPercent と同型。差し替え確率 roll に使う）。
+    def rollPercent(): Int32 \ Math.Random =
+        Float64.truncateToInt32(Float64.floor(Math.Random.randomFloat64() * 100.0))
+
+    /// 敵 actor 視点の PlanCtx。`to:enemy`(FactionEnemy)+actorIsPlayer=false で対象は player 駒
+    /// (is-player ⇒ ally=true) に解決される。ringify は amount を使わないので dealt=0。
+    def replacePlanCtx(enemyId: Int32, targetId: Int32, p: PlayerScene.Data): EffectPlan.PlanCtx =
+        {selfId = enemyId, attackerId = enemyId, actorIsPlayer = false,
+         rayUnits = ({id = targetId, ally = true, immobilized = false, alive = true}: EffectRule.RayUnit) :: Nil,
+         amount = {max = p#resource#hp, dealt = 0, incoming = 0, magic = 0}}
+
+    /// 敵ターン effectRule 用 PlanHandlers。custom の "ringify" だけ RingTransformRequest へ結線し、
+    /// 他は no-op（敵ターンの差し替えで使う op は現状 ringify のみ）。CombatScene.enemyEffectHandlers
+    /// とは effect row が違う（こちらは RingTransformRequest を持つ）ため別関数。
+    def enemyTurnEffectHandlers(data: EnemyScene.Data):
+            EffectRunner.PlanHandlers[Scene[NodeTag], {CustomEffects.RingTransformRequest}] = {
+        custom     = (sc, op, id, _) -> ringifyCustom(data, op, id, sc),
+        heal       = (sc, _, _, _)       -> checked_ecast(sc),
+        fullHeal   = (sc, _, _)          -> checked_ecast(sc),
+        status     = (sc, _, _, _, _, _) -> checked_ecast(sc),
+        maxHpUp    = (sc, _, _, _)       -> checked_ecast(sc),
+        damage     = (sc, _, _, _)       -> checked_ecast(sc),
+        immobilize = (sc, _, _, _)       -> checked_ecast(sc),
+        revive     = (sc, _, _)          -> checked_ecast(sc),
+        sfx        = (sc, _)             -> checked_ecast(sc),
+        noOp       = (sc, _)             -> checked_ecast(sc)
+    }
+
+    /// custom op の "ringify" を RingTransformRequest へ結線（他 op は防御 no-op）。
+    def ringifyCustom(data: EnemyScene.Data, op: String, id: Int32,
+                      sc: Scene[NodeTag]): Scene[NodeTag] \ CustomEffects.RingTransformRequest =
+        if (op == "ringify")
+            CustomEffects.RingTransformRequest.transform(data#resource#description, id, sc)
+        else
+            checked_ecast(sc)
 
     /// 敵ターンの後始末: ターン番号繰り上げ + 全プレイヤーを `waited = false` にリセット +
     /// カーソル復活 + 味方ターン宣言。

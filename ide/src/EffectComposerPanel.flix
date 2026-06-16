@@ -51,6 +51,11 @@ mod EffectComposerPanel {
         ("instant", "すぐに（1回）") :: ("turns", "Nターン続く") :: ("permanent", "永続") ::
         ("whileEquipped", "装備しているあいだ") :: ("untilHit", "攻撃を受けるまで") :: Nil
 
+    // 効果の種類。do=通常（do[] に撒く）/ replaceAttack=攻撃差し替え（敵ターンの特殊行動。隣接条件を
+    // 暗黙付与し flow:replaceAttack へ展開）。followUp は敵ターン未配線のため出さない。
+    def kindOpts(): List[(String, String)] =
+        ("do", "通常の効果") :: ("replaceAttack", "攻撃を差し替える") :: Nil
+
     // 効果音（AudioStreamPlayer の音名）。"" は鳴らさない。
     def sfxOpts(): List[(String, String)] =
         ("", "なし") :: ("cure", "回復音") :: ("damage", "ダメージ音") :: ("magic", "魔法音") ::
@@ -88,6 +93,13 @@ mod EffectComposerPanel {
         NodeInspector.jsonToInt(Map.get(key, er) |> Option.getWithDefault(Json.JNull))
             |> Option.getWithDefault(dflt)
 
+    /// 効果の種類（簡易form の `kind`。欠落は "do"＝従来の通常効果＝後方互換）。
+    def flowKindOf(er: Map[String, Json]): String = erStr(er, "kind", "do")
+
+    /// 簡易form エディタが扱えない完全form（手書きの `flow`/`if` キーを含む）か。
+    def isFullForm(er: Map[String, Json]): Bool =
+        Map.memberOf("flow", er) or Map.memberOf("if", er)
+
     /// 効果合成エディタを Property パネルに足す。effect を持つカタログのときだけ。
     /// `mkCommit` は keyPath を渡すと「その場所へ JSON を書き戻すクロージャ」を返す。
     /// 組み立て結果は `effectRule`（構造化ルール）と `description`（ゲームが表示する効果文＝
@@ -98,6 +110,10 @@ mod EffectComposerPanel {
         if (cat != Some("consumables") and cat != Some("weapons")
             and cat != Some("rings") and cat != Some("staves")
             and cat != Some("enemies")) ()
+        else if (isFullForm(effectRuleMap(record)))
+            // flow/if を含む完全form（手書き JSON）は簡易form エディタが誤読して上書き破壊するため、
+            // 編集不可にして commit させない（開いて閉じただけで healFlat に化けるのを防ぐ）。
+            appendUneditableNotice(children)
         else {
             let er = effectRuleMap(record);
             let hasRule = not Map.isEmpty(er);
@@ -117,11 +133,13 @@ mod EffectComposerPanel {
             let amountSpinner = mkSpinner(erInt(er, "amount", 10));
             let forTurnsSpinner = mkSpinner(erInt(er, "forTurns", 3));
             let chanceSpinner = mkChanceSpinner(erInt(er, "chance", 100));
+            let kindCombo = mkCombo(kindOpts(), flowKindOf(er));
 
             let initText = if (hasRule)
-                sentenceOf(erStr(er, "when", "onUse"), erStr(er, "to", "self"), erStr(er, "op", "healFlat"),
-                           erInt(er, "amount", 10), erStr(er, "for", "instant"), erInt(er, "forTurns", 3),
-                           erStr(er, "sfx", ""), erStr(er, "vfx", ""), erInt(er, "chance", 100))
+                sentenceOf(flowKindOf(er), erStr(er, "when", "onUse"), erStr(er, "to", "self"),
+                           erStr(er, "op", "healFlat"), erInt(er, "amount", 10), erStr(er, "for", "instant"),
+                           erInt(er, "forTurns", 3), erStr(er, "sfx", ""), erStr(er, "vfx", ""),
+                           erInt(er, "chance", 100))
                 else "（効果なし）";
             let preview = new Label(initText);
             preview.setWrapText(true);
@@ -132,7 +150,7 @@ mod EffectComposerPanel {
                 whenCombo.setDisable(not en); toCombo.setDisable(not en); opCombo.setDisable(not en);
                 forCombo.setDisable(not en); sfxCombo.setDisable(not en); vfxCombo.setDisable(not en);
                 amountSpinner.setDisable(not en); forTurnsSpinner.setDisable(not en);
-                chanceSpinner.setDisable(not en)
+                chanceSpinner.setDisable(not en); kindCombo.setDisable(not en)
             };
             setEnabled(hasRule);
 
@@ -151,6 +169,7 @@ mod EffectComposerPanel {
                     let a   = amountSpinner.getValue().intValue();
                     let ft  = forTurnsSpinner.getValue().intValue();
                     let c   = chanceSpinner.getValue().intValue();
+                    let k   = valueOf(kindCombo.getValue(), kindOpts());
                     let ruleJson = Json.JObject(Map#{
                         "when" => Json.JString(w),
                         "to" => Json.JString(t),
@@ -159,10 +178,11 @@ mod EffectComposerPanel {
                         "for" => Json.JString(f),
                         "forTurns" => NodeInspector.intToJson(ft),
                         "chance" => NodeInspector.intToJson(c),
+                        "kind" => Json.JString(k),
                         "sfx" => Json.JString(sfx),
                         "vfx" => Json.JString(vfx)
                     });
-                    let sentence = sentenceOf(w, t, o, a, f, ft, sfx, vfx, c);
+                    let sentence = sentenceOf(k, w, t, o, a, f, ft, sfx, vfx, c);
                     // description（フレーバーテキスト）は上書きしない。effectRule だけ保存し、
                     // 効果文は表示側が effectRule から自動生成する。
                     commitRule(ruleJson);
@@ -174,6 +194,7 @@ mod EffectComposerPanel {
             };
 
             attachCheckbox(enableChk, recompute);
+            attachCombo(kindCombo, recompute);
             attachCombo(whenCombo, recompute);
             attachCombo(toCombo, recompute);
             attachCombo(opCombo, recompute);
@@ -186,16 +207,25 @@ mod EffectComposerPanel {
 
             PropertyWidgets.addPropertyRow(children, "効果:", checked_cast(enableChk));
             PropertyWidgets.addPropertyRow(children, "▼ 効果（プレビュー）", checked_cast(preview));
+            PropertyWidgets.addPropertyRow(children, "効果の種類:", checked_cast(kindCombo));
             PropertyWidgets.addPropertyRow(children, "いつ:", checked_cast(whenCombo));
             PropertyWidgets.addPropertyRow(children, "誰に:", checked_cast(toCombo));
             PropertyWidgets.addPropertyRow(children, "何を:", checked_cast(opCombo));
-            PropertyWidgets.addPropertyRow(children, "発動確率(%):", checked_cast(chanceSpinner));
+            // do=発火確率 / replaceAttack=差し替え確率 で意味が違うため中立ラベル。
+            PropertyWidgets.addPropertyRow(children, "確率(%):", checked_cast(chanceSpinner));
             PropertyWidgets.addPropertyRow(children, "量:", checked_cast(amountSpinner));
             PropertyWidgets.addPropertyRow(children, "継続:", checked_cast(forCombo));
             PropertyWidgets.addPropertyRow(children, "ターン数:", checked_cast(forTurnsSpinner));
             PropertyWidgets.addPropertyRow(children, "効果音:", checked_cast(sfxCombo));
             PropertyWidgets.addPropertyRow(children, "エフェクト:", checked_cast(vfxCombo))
         }
+
+    /// 完全form（flow/if 入り手書き JSON）のときの編集不可表示。commit は一切させない。
+    def appendUneditableNotice(children: ObservableList[Node]): Unit \ IO =
+        let lbl = new Label("このルールは高度な形式（flow/条件付き）のため、ここでは編集できません。JSON を直接編集してください。");
+        lbl.setWrapText(true);
+        lbl.setStyle("-fx-text-fill: #999999;");
+        PropertyWidgets.addPropertyRow(children, "効果:", checked_cast(lbl))
 
     // ── widget 生成 ────────────────────────────────────────
     def mkCombo(opts: List[(String, String)], currentValue: String): ComboBox[String] \ IO = {
@@ -242,12 +272,27 @@ mod EffectComposerPanel {
         })
 
     // ── 日本語1文の組み立て ─────────────────────────────────
-    def sentenceOf(whenV: String, toV: String, opV: String, amt: Int32,
+    /// kind で文を出し分ける。do=通常効果、replaceAttack=攻撃差し替え。
+    def sentenceOf(kind: String, whenV: String, toV: String, opV: String, amt: Int32,
+                   forV: String, forTurns: Int32, sfx: String, vfx: String, chance: Int32): String =
+        match kind {
+            case "replaceAttack" => replaceSentence(whenV, toV, opV, amt, chance)
+            case _               => doSentence(whenV, toV, opV, amt, forV, forTurns, sfx, vfx, chance)
+        }
+
+    /// 通常効果の1文。chance<100 なら確率を前置。
+    def doSentence(whenV: String, toV: String, opV: String, amt: Int32,
                    forV: String, forTurns: Int32, sfx: String, vfx: String, chance: Int32): String =
         let whenJa = labelOf(whenV, whenOpts());
         let toJa = labelOf(toV, toOpts());
         let chanceJa = if (chance < 100) "${chance}% の確率で、" else "";
         "${whenJa}、${chanceJa}${opClause(opV, toJa, amt)}${forSuffix(forV, forTurns)}。${fxSuffix(sfx, vfx)}"
+
+    /// 攻撃差し替えの1文（隣接条件と差し替え確率を明示）。
+    def replaceSentence(whenV: String, toV: String, opV: String, amt: Int32, chance: Int32): String =
+        let whenJa = labelOf(whenV, whenOpts());
+        let toJa = labelOf(toV, toOpts());
+        "${whenJa}、隣接していると ${chance}% で攻撃の代わりに ${opClause(opV, toJa, amt)}。"
 
     /// 演出（エフェクト／効果音）の注記。両方なしなら空。
     def fxSuffix(sfx: String, vfx: String): String =

@@ -535,6 +535,13 @@
       "attack": 6,
       "defense": 2,
       "description": "リング職人",
+      "effectRule": {
+        "when": "onEnemyTurn",
+        "to": "enemy",
+        "op": "ringify",
+        "chance": 30,
+        "kind": "replaceAttack"
+      },
       "hp": 18,
       "initialInventory": [
         {
