@@ -24,6 +24,9 @@ mod ChestScene {
     pub type alias Data = {
         gridPos = {x = Int32, y = Int32},
         chestKey = String,
+        // 中身アイテムのカタログ id（配置時の抽選結果）。スナップショット保存で `content` を id 参照に
+        // 落とすために保持する（`content` は resource を wrap していて id を持たないため）。
+        contentId = String,
         content  = GroundItemKind
     }
 
@@ -119,12 +122,12 @@ mod ChestScene {
             ) yield {
                 let chest = ChestCatalog.lookup(chestKey, chestCatalog);
                 let content = ItemScene.lookupItem(contentId, catalog, staffCatalog, consumableCatalog, ringCatalog);
-                (cell, chestKey, chest#sprite, content)
+                (cell, chestKey, contentId, chest#sprite, content)
             };
             match chosen {
                 case None => scene
-                case Some((cell, chestKey, sprite, content)) =>
-                    let placed = addOneChest(idx, cell, chestKey, sprite, content, scene);
+                case Some((cell, chestKey, contentId, sprite, content)) =>
+                    let placed = addOneChest(idx, cell, chestKey, contentId, sprite, content, scene);
                     placeChests(remaining - 1, idx + 1, removeCell(cell, candidates),
                                  chestCatalog, catalog, staffCatalog, consumableCatalog, ringCatalog, floor, placed)
             }
@@ -136,7 +139,7 @@ mod ChestScene {
 
     /// 宝箱 1 個ぶんの Sprite2D を World/Chests 配下に追加する。
     def addOneChest(idx: Int32, cell: {x = Int32, y = Int32},
-                     chestKey: String, sprite: Sprite.SpriteResource,
+                     chestKey: String, contentId: String, sprite: Sprite.SpriteResource,
                      content: GroundItemKind, scene: Scene[NodeTag]): Scene[NodeTag] =
         let center = MapSnapshot.cellCenter(cell);
         let pos: Vec2.Vec2 = {x = center#x + sprite#offset#x, y = center#y + sprite#offset#y};
@@ -145,7 +148,7 @@ mod ChestScene {
             |> Sprite2D.setVframes(sprite#vframes)
             |> Sprite2D.setFrame(sprite#frame)
             |> CanvasItem.setZIndex(chestZIndex());
-        let data: Data = {gridPos = cell, chestKey = chestKey, content = content};
+        let data: Data = {gridPos = cell, chestKey = chestKey, contentId = contentId, content = content};
         Scene.addChildAt(parentPath(), chestName(idx),
             EngineNode.Sprite2DWithState(node, NodeTag.Chest(data)), scene)
 
@@ -195,6 +198,42 @@ mod ChestScene {
                 case _                       => acc
             }
         }, Nil, childNames)
+
+    /// 配置済み全宝箱の Data を返す（スナップショット保存用）。
+    pub def getAll(scene: Scene[NodeTag]): List[Data] =
+        Scene.getChildrenAt(parentPath(), scene)
+            |> List.filterMap(name ->
+                match Scene.getState(List.append(parentPath(), name :: Nil), scene) {
+                    case Some(NodeTag.Chest(d)) => Some(d)
+                    case _                       => None
+                })
+
+    /// 現在の宝箱を `ChestSnap` 列（セル座標 ＋ 箱種別 id ＋ 中身 id）に射影する（スナップショット保存用）。
+    /// `chestKey` / `contentId` は Data が保持するので逆引き不要。
+    pub def captureSnaps(scene: Scene[NodeTag]): List[FloorSnapshot.ChestSnap] =
+        getAll(scene) |> List.map(d ->
+            ({gridPos = d#gridPos, chestKey = d#chestKey, contentId = d#contentId}: FloorSnapshot.ChestSnap))
+
+    /// スナップショットの宝箱リストから決定論的に再配置する（乱数なし）。`chestKey` で sprite を、
+    /// `contentId` で中身を catalog から引き直して `addOneChest` で置く。
+    pub def addFromSnaps(snaps: List[FloorSnapshot.ChestSnap],
+                          chestCatalog: ChestCatalog.ChestCatalog,
+                          catalog: UnitCatalog.UnitCatalog,
+                          staffCatalog: Staff.StaffCatalog,
+                          consumableCatalog: Consumable.ConsumableCatalog,
+                          ringCatalog: Ring.RingCatalog,
+                          scene: Scene[NodeTag]): Scene[NodeTag] =
+        if (List.isEmpty(snaps)) scene
+        else {
+            let withParent = ensureParent(scene);
+            let indexed = List.zip(List.range(0, List.length(snaps)), snaps);
+            List.foldLeft((acc, pair) -> {
+                let (idx, snap) = pair;
+                let sprite  = ChestCatalog.lookup(snap#chestKey, chestCatalog)#sprite;
+                let content = ItemScene.lookupItem(snap#contentId, catalog, staffCatalog, consumableCatalog, ringCatalog);
+                addOneChest(idx, snap#gridPos, snap#chestKey, snap#contentId, sprite, content, acc)
+            }, withParent, indexed)
+        }
 
     /// フォグ適用: 各宝箱を「現在地が lit なら表示、さもなくば非表示」にする。
     /// `FogScene` から毎フレーム呼ばれる（床アイテム/階段と同じ visible トグル）。

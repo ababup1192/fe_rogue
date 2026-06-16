@@ -12,12 +12,14 @@
 /// 初期値は `None`（= 最初の build で抽選される）。
 mod PartySelection {
 
-    /// 選抜済み出撃メンバーの読み書き effect。中身は `PlayerResource` のリスト（先頭がロード）。
+    /// 選抜済み出撃メンバーの読み書き effect。中身は `(クラス id, PlayerResource)` のリスト
+    /// （先頭がロード）。id を併せ持つのは、スポーンした味方の `classId` をスナップショット保存できる
+    /// ようにするため（PlayerResource は name を持たず resource から id を逆引きできない）。
     pub eff State {
         /// 選抜済みなら `Some(party)`、未選抜なら `None` を返す。
-        def get(): Option[List[UnitCatalog.PlayerResource]]
+        def get(): Option[List[(String, UnitCatalog.PlayerResource)]]
         /// 選抜結果を保存する（以降の build はこれを再利用する）。
-        def put(sel: List[UnitCatalog.PlayerResource]): Unit
+        def put(sel: List[(String, UnitCatalog.PlayerResource)]): Unit
         /// 選抜をリセットして `None` に戻す（次の build で再抽選させる）。
         def clear(): Unit
     }
@@ -27,7 +29,7 @@ mod PartySelection {
     pub def withState(rc: Region[r]):
             (Unit -> a \ ef) -> a \ (ef - State) + r =
         thunk -> {
-            let selRef: Ref[Option[List[UnitCatalog.PlayerResource]], r] =
+            let selRef: Ref[Option[List[(String, UnitCatalog.PlayerResource)]], r] =
                 Ref.fresh(rc, None);
             run {
                 thunk()

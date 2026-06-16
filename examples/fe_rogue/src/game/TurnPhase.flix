@@ -114,6 +114,9 @@ mod TurnPhase {
         case StairsExit
         /// 敵ターン。入力は無効、カーソル非表示、カメラはプレイヤーに固定。
         case EnemyTurn
+        /// 全滅後のモーダル選択フェーズ。盤面はフリーズし、`GameOverMenuScene` の選択肢
+        /// （最初から / そのフロアの最初から）だけを受け付ける。確定で run が再構築される。
+        case GameOver
     }
 
     /// フェーズの読み書きを表す effect。

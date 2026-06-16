@@ -14,6 +14,7 @@ mod TestTurnFlow {
     def playerData(id: Int32,
                     pendingLevelUp: Option[LevelSystem.Result]): PlayerScene.Data = {
         id                = id,
+        classId           = "test_player",
         gridPos           = {x = 2, y = 2},
         moveTiles         = 4,
         hp                = 10,

@@ -14,7 +14,7 @@ mod TestChestScene {
         let chest = EngineNode.Sprite2DWithState(
             Sprite2D.make("item_icons", Vec2.zero(), Vec2.one()),
             NodeTag.Chest(({gridPos = {x = 2, y = 3}, chestKey = "wooden",
-                             content = content}: ChestScene.Data)));
+                             contentId = "test_content", content = content}: ChestScene.Data)));
         let marker = () -> EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.NoTag);
         Scene.empty()
             |> Scene.addNode(MapScene.worldName(), marker())

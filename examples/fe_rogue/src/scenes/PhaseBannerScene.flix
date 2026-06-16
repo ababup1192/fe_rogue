@@ -127,6 +127,17 @@ mod PhaseBannerScene {
     def initialData(): BannerData =
         {stage = Stage.Idle, elapsed = Duration.zero(), wasEnemy = None, pending = None}
 
+    /// 帯を休眠させる（画面外へ退避し、「味方フェーズを観測済み」状態にする）。
+    /// 全滅メニュー → 女神の加護のその場復活では、敵ターン中の被弾から味方ターンへ戻る遷移で
+    /// 「プレイヤーフェーズ」帯が出てしまうため、`freezeAndShow` 時にこれで抑止する
+    /// （`wasEnemy = Some(false)` にしておくと PlayerCursor へ戻っても変化と見なされずバナーが出ない）。
+    /// 「最初から」「フロアの最初から」は scene を作り直すので影響しない。
+    pub def suppress(scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> setOffsetX(offStartX())
+            |> setState(({stage = Stage.Idle, elapsed = Duration.zero(),
+                          wasEnemy = Some(false), pending = None}: BannerData))
+
     /// 画面 HUD の最前面にバナー一式を追加する。`GameLifecycle.buildPlayingScene` の UI 群で
     /// 1 回だけ呼ぶ。帯は初期状態では画面左外（offStartX）に置いて見えないようにする。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =

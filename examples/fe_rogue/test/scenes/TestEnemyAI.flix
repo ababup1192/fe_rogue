@@ -115,7 +115,7 @@ mod TestEnemyAI {
     /// 評価軸テスト用の味方 Data。`defense` と装備武器を指定して `testResourceFull` で組む。
     def playerData(id: Int32, pos: {x = Int32, y = Int32}, hp: Int32, defense: Int32,
                    weapons: List[UnitCatalog.WeaponResource]): PlayerScene.Data =
-        {id = id, gridPos = pos, moveTiles = 4, hp = hp, waited = false,
+        {id = id, classId = "test_player", gridPos = pos, moveTiles = 4, hp = hp, waited = false,
          attackTargetId = None,
          resource = TestUnitFixtures.testResourceFull(4, hp, 3, defense, 3),
          weapons = weapons, staves = Nil, consumables = Nil, selectedItem = None,

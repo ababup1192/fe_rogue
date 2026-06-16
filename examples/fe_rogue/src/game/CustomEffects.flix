@@ -15,7 +15,20 @@ mod CustomEffects {
     /// InitialSpawns) を一斉に書き換える。
     /// `Math.Random` / `Fs.FileRead` / `IO` が必要なので start でしか handler 注入できない。
     pub eff GameOverRequest {
+        /// 味方の死亡位置（id → グリッド座標）を記録する。`removeDeadAndCheckGameOver` が
+        /// ノード除去の**前**に呼び、女神の加護の「その場復活」で各員を最後の位置に戻すために使う。
+        /// handler 側で蓄積し、`reviveInPlace` 時に参照する。
+        def markDeaths(positions: Map[Int32, {x = Int32, y = Int32}]): Unit
+        /// 全滅検知時に呼ぶ。盤面をフリーズして選択メニュー（最初から / そのフロアの最初から）を出す。
         def request(scene: Scene[NodeTag]): Scene[NodeTag]
+        /// 「最初から」確定。新ラン（1F・パーティ再抽選）でフルリビルドする（`resetForGameOver`）。
+        def restartBeginning(scene: Scene[NodeTag]): Scene[NodeTag]
+        /// 「そのフロアの最初から」確定。進入時スナップショットから同フロアを決定論再構築する
+        /// （`restartFromFloorSnapshot`）。
+        def restartFloor(scene: Scene[NodeTag]): Scene[NodeTag]
+        /// 「女神の加護」確定。現フロアそのままに全員その場復活・HP全快・3ターン無敵にする
+        /// （`reviveWithGoddess`）。
+        def reviveInPlace(scene: Scene[NodeTag]): Scene[NodeTag]
     }
 
     /// 次フロアへの進行（または最終フロアクリア）を要求する。

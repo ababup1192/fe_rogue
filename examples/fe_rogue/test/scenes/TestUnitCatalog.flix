@@ -114,7 +114,7 @@ mod TestUnitCatalog {
             case None    => Assert.assertEq(expected = "decoded", "none")
             case Some(c) =>
                 let party = UnitCatalog.pool("players", c);
-                let knight = List.head(party);
+                let knight = List.head(party) |> Option.map(snd);
                 let (hp, weaponId) = match knight {
                     case Some(u) => (u#hp, firstWeaponId(u))
                     case None    => (-1, "")

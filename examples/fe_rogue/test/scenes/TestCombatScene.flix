@@ -23,6 +23,7 @@ mod TestCombatScene {
     /// 攻撃力は素 3 + 武器 2 = 5、敵防御 1 なので命中時ダメージは 4。
     def player(weaponHit: Int32): PlayerScene.Data = {
         id                = 0,
+        classId           = "test_player",
         gridPos           = {x = 2, y = 2},
         moveTiles         = 4,
         hp                = 10,
@@ -242,7 +243,11 @@ mod TestCombatScene {
     def withNoopGameOver(thunk: Unit -> a \ ef):
             a \ (ef - CustomEffects.GameOverRequest) =
         run { thunk() } with handler CustomEffects.GameOverRequest {
+            def markDeaths(_positions, k) = k()
             def request(scene, k) = k(scene)
+            def restartBeginning(scene, k) = k(scene)
+            def restartFloor(scene, k) = k(scene)
+            def reviveInPlace(scene, k) = k(scene)
         }
 
     /// ThiefDropRequest の no-op スタブ（盗人ドロップが飛んだら scene をそのまま返す）。

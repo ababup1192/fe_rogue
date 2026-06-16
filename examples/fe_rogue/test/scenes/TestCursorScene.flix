@@ -42,6 +42,7 @@ mod TestCursorScene {
                 EngineNode.Marker2DWithState(marker,
                     NodeTag.Player({
                         id                = 0,
+                        classId           = "test_player",
                         gridPos           = gridPos,
                         moveTiles         = 5,
                         hp                = 10,
@@ -83,6 +84,7 @@ mod TestCursorScene {
             EngineNode.Marker2DWithState(Marker2D.make(MapSnapshot.cellCenter(pos)),
                 NodeTag.Player({
                     id                = id,
+                    classId           = "test_player",
                     gridPos           = pos,
                     moveTiles         = 5,
                     hp                = 10,
@@ -395,6 +397,7 @@ mod TestCursorScene {
     def makePartyMember(id: Int32, gridPos: {x = Int32, y = Int32}):
             PlayerScene.Data = {
         id              = id,
+        classId         = "test_player",
         gridPos         = gridPos,
         moveTiles       = 5,
         hp              = 10,

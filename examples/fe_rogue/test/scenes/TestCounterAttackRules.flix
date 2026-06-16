@@ -19,6 +19,7 @@ mod TestCounterAttackRules {
     /// 任意座標の Player.Data。テストに不要なフィールドは固定値で埋める。
     def playerAt(x: Int32, y: Int32): PlayerScene.Data = {
         id                 = 0,
+        classId            = "test_player",
         gridPos            = {x = x, y = y},
         moveTiles          = 4,
         hp                 = 10,

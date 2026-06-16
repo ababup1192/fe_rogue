@@ -591,6 +591,52 @@ mod EnemyScene {
                                      scene, getAll(scene));
         List.foldLeft((sc, sp) -> addOneEnemy(sp, ringCatalog, sc), cleared, spawns)
 
+    /// 現在の全敵を scene から取り除く（女神の加護でフロアの敵を一掃する）。子スプライト / HP バーも
+    /// マーカー subtree ごと消える。
+    pub def removeAll(scene: Scene[NodeTag]): Scene[NodeTag] =
+        List.foldLeft((sc, d) -> Scene.removeAt(enemyPath(d#id), sc), scene, getAll(scene))
+
+    /// スナップショットの敵リストから決定論的に再配置する（乱数なし）。
+    /// `resourceId` で EnemyResource を、`weapon` の id で武器を catalog から引き直して `Spawn` を作り、
+    /// `respawnFromInitial` で配置する（進入時 = full HP / 既定状態。現在状態復元は中断側で別途）。
+    pub def addFromSnaps(snaps: List[FloorSnapshot.EnemySnap],
+                          enemyCatalog: EnemyCatalog.EnemyCatalog,
+                          weaponCatalog: WeaponCatalog.WeaponCatalog,
+                          ringCatalog: Ring.RingCatalog,
+                          scene: Scene[NodeTag]): Scene[NodeTag] =
+        let spawns = snaps |> List.map(snap -> snapToSpawn(snap, enemyCatalog, weaponCatalog));
+        respawnFromInitial(spawns, ringCatalog, scene)
+
+    /// `EnemySnap` を配置用 `Spawn` に解決する。武器は保存済み id ＋ 耐久で復元し、
+    /// 武器 id が無い（壊れていた）場合は resource の初期武器にフォールバックする。
+    def snapToSpawn(snap: FloorSnapshot.EnemySnap,
+                     enemyCatalog: EnemyCatalog.EnemyCatalog,
+                     weaponCatalog: WeaponCatalog.WeaponCatalog): Spawn =
+        let resource = match EnemyCatalog.get(snap#resourceId, enemyCatalog) {
+            case Some(r) => r
+            case None    => bug!("EnemyScene.addFromSnaps: enemy '${snap#resourceId}' not in catalog")
+        };
+        let weapon = match snap#weapon {
+            case Some(ref) => {durability = ref#durability | WeaponCatalog.lookup(ref#id, weaponCatalog)}
+            case None      => lookupFirstWeapon(resource, weaponCatalog)
+        };
+        ({id = snap#id, resourceId = snap#resourceId, gridPos = snap#gridPos,
+           moduleIdx = snap#moduleIdx, resource = resource, weapon = weapon}: Spawn)
+
+    /// 現在の全敵を `EnemySnap` 列に射影する（スナップショット保存用）。`resourceId` は Data が保持。
+    /// 武器は name 逆引きで id 化し耐久を併せて保持。指輪は id 化（多くは None）。
+    pub def captureSnaps(scene: Scene[NodeTag],
+                          weaponCatalog: WeaponCatalog.WeaponCatalog,
+                          ringCatalog: Ring.RingCatalog): List[FloorSnapshot.EnemySnap] =
+        getAll(scene) |> List.map(d ->
+            ({id = d#id, resourceId = d#resourceId, gridPos = d#gridPos, hp = d#hp,
+               moduleIdx = d#homeModuleIdx,
+               weapon = d#weapon |> Option.map(w ->
+                   {id = CatalogId.requireId("weapon", w#name, WeaponCatalog.idOf(w, weaponCatalog)),
+                    durability = w#durability}),
+               ring = d#ring |> Option.map(r -> CatalogId.requireId("ring", r#name, Ring.idOf(r, ringCatalog))),
+               statuses = d#statuses, alerted = d#alerted}: FloorSnapshot.EnemySnap))
+
     // ────────────────────────────────────────────────────────
     // (G) 攻撃モーション関連のクエリとシグナル受信
     //     攻撃の解決本体（startAttack / 命中適用 / 反撃判定）は CombatScene に集約。

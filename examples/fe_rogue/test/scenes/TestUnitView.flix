@@ -76,7 +76,7 @@ mod TestUnitView {
     /// 武器を持つ味方 Data。装備武器は `weapons` の先頭（剣・射程1-1・攻2）、防御 1（testResource）。
     def playerData(id: Int32, pos: {x = Int32, y = Int32}, hp: Int32, hidden: Bool,
                    weapons: List[UnitCatalog.WeaponResource]): PlayerScene.Data =
-        {id = id, gridPos = pos, moveTiles = 4, hp = hp, waited = false,
+        {id = id, classId = "test_player", gridPos = pos, moveTiles = 4, hp = hp, waited = false,
          attackTargetId = None, resource = TestUnitFixtures.testResource(4, hp),
          weapons = weapons, staves = Nil, consumables = Nil, selectedItem = None,
          moveStepsTaken = 0, facing = Staff.Direction.Down, hidden = hidden,

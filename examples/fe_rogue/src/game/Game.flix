@@ -54,6 +54,10 @@ pub enum NodeTag {
     case ActionPanel
     /// ActionMenuScene の ItemList（こうげき / たいき）
     case ActionMenu
+    /// GameOverMenuScene の Panel ルート（全滅時のモーダル選択ウィンドウ外枠）
+    case GameOverPanel
+    /// GameOverMenuScene の ItemList（最初から / そのフロアの最初から）
+    case GameOverMenu
     /// BattlePanelScene の Panel ルート（戦闘予報の外枠）。
     /// 内部の Duration は HP シミュレーション点滅のサイクル内経過時間（process で進める）。
     case BattlePanel(Duration.Duration)
@@ -217,6 +221,8 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
             checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
+        case EngineNode.ItemListWithState(_, NodeTag.GameOverMenu) =>
+            checked_ecast(GameOverMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.TradeMenu(_)) =>
             checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.PanelWithState(_, NodeTag.BattlePanel(_)) =>
@@ -540,8 +546,14 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
                                     GameLogger.GameLogger, EnemyTurn.Queue,
                                     TurnPhase.State, SelectedPlayer.State,
                                     PlayerData.PartyQuery, EnemyData.RosterQuery,
-                                    CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
+                                    CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
+                                    CustomEffects.GameOverRequest} =
     match (phase, input) {
+        // 全滅メニュー: Z/Enter で選択確定（restart を emit）、X は無反応（必ず選ばせる）。
+        case (TurnPhase.Phase.GameOver, TurnRules.Input.Confirm)
+                                              => Some(GameOverMenuScene.confirmCurrentSelection(scene))
+        case (TurnPhase.Phase.GameOver, TurnRules.Input.Cancel)
+                                              => Some(scene)
         case (TurnPhase.Phase.ActionSelect,      TurnRules.Input.Confirm)
                                               => Some(ActionMenuScene.confirmCurrentSelection(scene))
         case (TurnPhase.Phase.ActionSelect,      TurnRules.Input.Cancel)
@@ -676,6 +688,9 @@ mod Game {
             // 試練型の部屋湧きクロック。WandererSpawnRequest が来るたび +1 し、
             // EnemyScene が周期判定（tick mod N）に使う。modulo 判定ゆえフロア跨ぎのリセット不要。
             let wanderClockRef = Ref.fresh(rc, 0);
+            // 味方の死亡位置（id → セル）。GameOverRequest.markDeaths が除去前に蓄積し、女神の加護の
+            // 「その場復活」で参照する。id でキーするので過去フロアの残骸は復活対象 id にだけ読まれ無害。
+            let deathMarksRef = Ref.fresh(rc, (Map.empty(): Map[Int32, {x = Int32, y = Int32}]));
             // ユニットカタログをロード + schema 整合性検査（不正データを起動直後に検出して即終了する）。
             // 各 load() 内で失敗内容を panic に出して原因を即可視化する。
             // units.json の spriteFrames は格子インデックス形式で書かれているため、
@@ -744,9 +759,20 @@ mod Game {
             // `TurnPhase.State` / `SelectedPlayer.State` / `InitialSpawns.State` 等を
             // 使うため、これらより **内側** (= 構文上で先) に書く必要がある。
             } with handler CustomEffects.GameOverRequest {
-                  // 全味方脱落でフルリビルド: フロアを 1F に戻し turn 系 state をリセットしてから
-                  // scene を作り直し、新しい spawn 一覧を InitialSpawns に書き戻す。本体は GameLifecycle 側。
-                  def request(_scene, k) = k(GameLifecycle.resetForGameOver(catalogs))
+                  // 死亡位置を蓄積（新しい位置を優先してマージ）。女神の加護の「その場復活」で参照。
+                  def markDeaths(positions, k) = {
+                      Ref.put(Map.union(positions, Ref.get(deathMarksRef)), deathMarksRef);
+                      k()
+                  }
+                  // 全味方脱落: 即リビルドせず盤面をフリーズしてモーダル選択メニューを出す。
+                  def request(scene, k) = k(GameOverMenuScene.freezeAndShow(scene))
+                  // 「最初から」: フロアを 1F に戻し turn 系をリセットしてフルリビルド（新ラン）。
+                  def restartBeginning(_scene, k) = k(GameLifecycle.resetForGameOver(catalogs))
+                  // 「そのフロアの最初から」: 進入時スナップショットから同フロアを決定論再構築。
+                  def restartFloor(_scene, k) = k(GameLifecycle.restartFromFloorSnapshot(catalogs))
+                  // 「女神の加護」: 現フロアそのままに全員その場（死亡位置）復活・HP全快・3ターン無敵。
+                  def reviveInPlace(scene, k) =
+                      k(GameLifecycle.reviveWithGoddess(catalogs, Ref.get(deathMarksRef), scene))
               }
               with handler CustomEffects.FloorAdvanceRequest {
                   // 生存味方が全員階段を使ったら次フロアへ（最終フロアならクリア → 1F ループ）。
@@ -800,6 +826,7 @@ mod Game {
               with TurnPhase.withState(rc)        // 味方ターン内のサブフェーズ + 敵ターン
               with SelectedPlayer.withState(rc)   // 操作中プレイヤー id の保持
               with InitialSpawns.withState(rc)    // ゲームオーバー時に同じ敵 / 味方配置を復元
+              with FloorSnapshot.withState(rc)    // 進入時フロアスナップショット（全滅時の「フロア最初から」用）
               with FloorProgress.withState(rc, FloorCatalog.firstFloorId(floors))  // 現在フロア id
               with PartySelection.withState(rc)   // 出撃メンバー（開始時に1回抽選、フロア間で維持）
         }
@@ -813,7 +840,7 @@ mod Game {
                           _scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, IO, Math.Random,
                 SelectedPlayer.State, InitialSpawns.State, FloorProgress.State,
-                PartySelection.State, GameLogger.GameLogger} =
+                PartySelection.State, GameLogger.GameLogger, FloorSnapshot.State} =
         match phase {
             case GamePhase.CharacterSelect =>
                 CharacterSelectScene.add(UnitCatalog.pool("players", catalogs#players),
@@ -849,7 +876,7 @@ mod Game {
                          CustomEffects.ThiefDropRequest,
                          FloorProgress.State, InitialSpawns.State,
                          GamePhaseState, PartySelection.State,
-                         Pacing.State, Math.Random, r} =
+                         Pacing.State, Math.Random, FloorSnapshot.State, r} =
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
         if (GameEngine.Game.shouldClose()) ()
         else {

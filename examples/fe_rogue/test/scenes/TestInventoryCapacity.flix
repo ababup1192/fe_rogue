@@ -51,6 +51,7 @@ mod TestInventoryCapacity {
                   weaponCount: Int32, staffCount: Int32, consumableCount: Int32):
             PlayerScene.Data = {
         id              = 0,
+        classId         = "test_player",
         gridPos         = {x = 1, y = 1},
         moveTiles       = 4,
         hp              = 10,

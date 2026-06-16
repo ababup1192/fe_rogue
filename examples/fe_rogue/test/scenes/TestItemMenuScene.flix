@@ -51,6 +51,7 @@ mod TestItemMenuScene {
         let marker = Marker2D.make(Vec2.zero());
         let data: PlayerScene.Data = {
             id                = 0,
+            classId           = "test_player",
             gridPos           = {x = 1, y = 1},
             moveTiles         = 4,
             hp                = 10,

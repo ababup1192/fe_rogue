@@ -114,6 +114,8 @@ mod CameraScene {
             // 階段離脱中は代表キャラ（=パーティ近辺）を映したまま据え置く。
             case TurnPhase.Phase.StairsExit       => focusPos
             case TurnPhase.Phase.EnemyTurn        => enemyTurnTarget(focusPos, scene)
+            // 全滅メニュー中は盤面フリーズ。代表キャラを映したまま据え置く。
+            case TurnPhase.Phase.GameOver         => focusPos
         }
 
     /// 敵ターン中のカメラターゲットを決める。

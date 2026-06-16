@@ -17,7 +17,7 @@ mod TestCharacterSelectScene {
 
     /// 本番の units.json から候補プレイヤー一覧（8 人）を読む。
     /// 選択ロジックはこの並び（index）に対して動くので、本物の構築関数を起点にする。
-    def testPlayers(): List[UnitCatalog.PlayerResource] \ Fs.FileRead =
+    def testPlayers(): List[(String, UnitCatalog.PlayerResource)] \ Fs.FileRead =
         let weaponCatalog = WeaponCatalog.load();
         let catalog = UnitCatalog.load("resources/units.json", weaponCatalog);
         UnitCatalog.pool("players", catalog)
@@ -136,9 +136,9 @@ mod TestCharacterSelectScene {
 
     /// description でユニットを引く（本番カタログ）。
     def unitNamed(name: String): UnitCatalog.PlayerResource \ Fs.FileRead =
-        match List.find(u -> u#description == name, testPlayers()) {
-            case Some(u) => u
-            case None    => bug!("unit with description '${name}' not found")
+        match List.find(pair -> (snd(pair))#description == name, testPlayers()) {
+            case Some(pair) => snd(pair)
+            case None       => bug!("unit with description '${name}' not found")
         }
 
     /// ロード（全タイプ得意）は「得意武器:\n剣 斧 槍 弓 魔」。

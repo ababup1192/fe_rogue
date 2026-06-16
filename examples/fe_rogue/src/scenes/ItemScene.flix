@@ -324,6 +324,33 @@ mod ItemScene {
             }
         }, childNames)
 
+    /// 床に落ちている全アイテムの Data を返す（スナップショット保存用）。
+    pub def getAll(scene: Scene[NodeTag]): List[Data] =
+        Scene.getChildrenAt(parentPath(), scene)
+            |> List.filterMap(name ->
+                match Scene.getState(List.append(parentPath(), name :: Nil), scene) {
+                    case Some(NodeTag.GroundItem(d)) => Some(d)
+                    case _                            => None
+                })
+
+    /// 現在の床アイテムを `ItemSnap` 列（セル座標 ＋ 種別 id）に射影する（スナップショット保存用）。
+    /// 床アイテムは `itemKey`（id）を持つので逆引き不要。
+    pub def captureSnaps(scene: Scene[NodeTag]): List[FloorSnapshot.ItemSnap] =
+        getAll(scene) |> List.map(d -> ({gridPos = d#gridPos, itemKey = d#itemKey}: FloorSnapshot.ItemSnap))
+
+    /// スナップショットの床アイテムリストから決定論的に再配置する（乱数なし）。
+    /// `itemKey` で種別を catalog から引き直し `respawn` で置く。
+    pub def addFromSnaps(snaps: List[FloorSnapshot.ItemSnap],
+                          catalog: UnitCatalog.UnitCatalog,
+                          staffCatalog: Staff.StaffCatalog,
+                          consumableCatalog: Consumable.ConsumableCatalog,
+                          ringCatalog: Ring.RingCatalog,
+                          scene: Scene[NodeTag]): Scene[NodeTag] =
+        List.foldLeft((acc, snap) -> {
+            let kind = lookupItem(snap#itemKey, catalog, staffCatalog, consumableCatalog, ringCatalog);
+            respawn(snap#gridPos, snap#itemKey, kind, acc)
+        }, scene, snaps)
+
     /// `takeAt` の逆操作として、アイテムを `cell` に再配置する。
     /// 新しい idx を採番して本体 + 縁取りを作り直す。
     pub def respawn(cell: {x = Int32, y = Int32}, itemKey: String,

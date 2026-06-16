@@ -44,11 +44,11 @@ mod TestTradeMenuScene {
         let catalog = UnitCatalog.load("resources/units.json", weaponCatalog);
         let staffCatalog = Staff.load();
         let unitSample = match List.head(UnitCatalog.pool("players", catalog)) {
-            case Some(r) => r
-            case None    => bug!("no players in catalog")
+            case Some(pair) => snd(pair)
+            case None       => bug!("no players in catalog")
         };
         let mkSpawn = spec ->
-            ({id = spec#id, gridPos = {x = 0, y = 0}, resource = unitSample,
+            ({id = spec#id, classId = "test_player", gridPos = {x = 0, y = 0}, resource = unitSample,
               weapons = List.map(wId -> UnitCatalog.lookupWeapon(wId, catalog), spec#weapons),
               staves  = List.map(sId -> Staff.lookup(sId, staffCatalog), spec#staves),
               consumables = Nil, rings = Nil}:

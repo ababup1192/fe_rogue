@@ -53,6 +53,10 @@ mod CharacterSelectScene {
     /// `carouselX`   — カード列の横位置（注目カードが中央に来るよう process で滑らかに寄せる）。
     pub type alias Data = {
         players     = List[UnitCatalog.PlayerResource],
+        // `players` と同じ並び・同じ長さのクラス id。表示は `players` のみで行い、id は
+        // 確定時 (`orderedParty`) に PartySelection へ resource と対で渡すために保持する
+        // （スポーン後の classId 保存に必要）。
+        classIds    = List[String],
         mode        = SubMode,
         focus       = Int32,
         onButton    = Bool,
@@ -166,16 +170,16 @@ mod CharacterSelectScene {
     /// 候補一覧を受け取り、選択画面のノードツリーを scene に追加する。
     /// 初期化は 1 回のみ（`applyPhaseChange(CharacterSelect)` から呼ばれる）。
     /// 文字を出すためにフォントを引く（GameEngine.Game）。最後に初期状態の見た目を一度流し込む。
-    pub def add(players: List[UnitCatalog.PlayerResource], scene: Scene[NodeTag]):
+    pub def add(playersWithIds: List[(String, UnitCatalog.PlayerResource)], scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameEngine.Game =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
-        let data = initialState(players);
+        let data = initialState(playersWithIds);
         let layer = CanvasLayer.make(drawLayer());
         let built = scene
             |> Scene.addNode(rootName(),
                 EngineNode.CanvasLayerWithState(layer, NodeTag.CharacterSelect(data)))
             |> addBackground
-            |> addCards(players)
+            |> addCards(data#players)
             |> addDescPanel(atlas)
             |> addButton(atlas)
             |> addCounter(atlas);
@@ -278,8 +282,10 @@ mod CharacterSelectScene {
 
 
     /// 起動直後の状態。注目は先頭カード、未選択、メンバー選び段階。
-    pub def initialState(players: List[UnitCatalog.PlayerResource]): Data =
-        {players = players, mode = SubMode.PickingMembers, focus = 0, onButton = false,
+    /// `playersWithIds` を表示用 `players`（resource）とクラス id 列 `classIds` に分けて保持する。
+    pub def initialState(playersWithIds: List[(String, UnitCatalog.PlayerResource)]): Data =
+        {players = List.map(snd, playersWithIds), classIds = List.map(fst, playersWithIds),
+         mode = SubMode.PickingMembers, focus = 0, onButton = false,
          selected = Nil, leaderFocus = 0, carouselX = targetCarouselX(0)}
 
     /// 注目中のカードを選ぶ / 選択を外す。
@@ -351,8 +357,14 @@ mod CharacterSelectScene {
         leaderIndex :: others
 
     /// `orderedIndices` を実データに解決した出撃パーティ（先頭がリーダー）。
-    pub def orderedParty(data: Data): List[UnitCatalog.PlayerResource] =
-        List.filterMap(index -> List.nth(index, data#players), orderedIndices(data))
+    /// 各メンバーを `(クラス id, PlayerResource)` で返し、PartySelection へ id 付きで保存できるようにする。
+    pub def orderedParty(data: Data): List[(String, UnitCatalog.PlayerResource)] =
+        List.filterMap(index ->
+            forM (
+                classId  <- List.nth(index, data#classIds);
+                resource <- List.nth(index, data#players)
+            ) yield (classId, resource),
+            orderedIndices(data))
 
     /// 注目（拡大表示）するカードの index。メンバー選びは `focus`、
     /// リーダー選びは「選んだ 3 人のうち候補にしているカード」。

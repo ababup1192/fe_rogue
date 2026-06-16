@@ -195,13 +195,13 @@ mod PlayerScene {
         let padded       = Board.padCells(cells, spawnGrid, n);
         let spawns: List[Spawn] = padded
             |> List.mapWithIndex(id -> c ->
-                let res = match List.nth(id, selected) {
-                    case Some(r) => r
-                    case None    => bug!("PlayerScene.add: party index ${id} out of range")
+                let (classId, res) = match List.nth(id, selected) {
+                    case Some(pair) => pair
+                    case None       => bug!("PlayerScene.add: party index ${id} out of range")
                 };
                 let split = splitInventory(res#initialInventory, catalog,
                                             staffCatalog, consumableCatalog);
-                ({id = id, gridPos = c, resource = res,
+                ({id = id, classId = classId, gridPos = c, resource = res,
                    weapons = split#weapons, staves = split#staves,
                    consumables = split#consumables, rings = Nil}: Spawn));
         List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), scene, spawns)
@@ -301,6 +301,7 @@ mod PlayerScene {
         let res    = sp#resource;
         let data: Data = {
             id                = sp#id,
+            classId           = sp#classId,
             gridPos           = sp#gridPos,
             moveTiles         = res#moveTiles,
             hp                = res#hp,
@@ -642,6 +643,10 @@ mod PlayerScene {
                                GameLogger.GameLogger} =
         if (List.isEmpty(killed)) scene
         else {
+            // ノード除去の前に、現在いる全味方の位置を記録する（女神の加護の「その場復活」用）。
+            // 死亡する駒もこの時点ではまだ scene 上におり、最後の位置が取れる。handler 側で蓄積する。
+            CustomEffects.GameOverRequest.markDeaths(
+                getAll(scene) |> List.map(d -> (d#id, d#gridPos)) |> List.toMap);
             // 蘇生薬(AutoRevive)を所持している脱落者は、scene から取り除く前に全回復して復活させる。
             // この時点ではまだ味方ノードが生きている（removeAt 前）ので consumables/最大HP を読める。
             // 復活した分は killed から外れ、ロード戦死や全滅もそのぶん回避される。
@@ -868,7 +873,7 @@ mod PlayerScene {
     pub def snapshotSpawns(scene: Scene[NodeTag]): List[Spawn] =
         getAll(scene)
             |> List.map(d ->
-                ({id = d#id, gridPos = d#gridPos, resource = d#resource,
+                ({id = d#id, classId = d#classId, gridPos = d#gridPos, resource = d#resource,
                    weapons = d#weapons, staves = d#staves,
                    consumables = d#consumables, rings = d#rings}: Spawn))
 
@@ -952,6 +957,166 @@ mod PlayerScene {
                      resource = LevelSystem.withStats(c#stats, d#resource) | d})
                 |> UnitHPBarScene.updateMaxHp(playerPath(c#id), c#hp, c#stats#hp),
             pruned, carry)
+
+    /// スナップショットの味方リストから決定論的に再配置する（乱数なし）。
+    /// base resource を `classId` で引き、`addOnePlayer` で土台を置いてから `reconcileWithCarry` で
+    /// 進入時の HP / 装備 / 持ち物 / レベル / EXP / 成長後ステータスを上書きする（既存経路の再利用）。
+    /// facing / statuses は進入時の既定値（Down / Nil）で復元される（中断の現在状態復元は別途）。
+    pub def addFromSnaps(snaps: List[FloorSnapshot.PlayerSnap],
+                          catalog: UnitCatalog.UnitCatalog,
+                          staffCatalog: Staff.StaffCatalog,
+                          consumableCatalog: Consumable.ConsumableCatalog,
+                          ringCatalog: Ring.RingCatalog,
+                          scene: Scene[NodeTag]): Scene[NodeTag] =
+        List.foldLeft((acc, snap) ->
+            placeOneFromSnap(snap, catalog, staffCatalog, consumableCatalog, ringCatalog, acc),
+            scene, snaps)
+
+    /// 味方 1 体を snap から配置する。base resource を classId で引いて `addOnePlayer` で土台を置き、
+    /// 進入時の HP / レベル / EXP / 成長後ステータス / 装備中フラグを上書きする（`reconcileWithCarry`
+    /// の 1 体版）。facing / statuses は進入時の既定値（Down / Nil）で復元される。
+    def placeOneFromSnap(snap: FloorSnapshot.PlayerSnap,
+                          catalog: UnitCatalog.UnitCatalog,
+                          staffCatalog: Staff.StaffCatalog,
+                          consumableCatalog: Consumable.ConsumableCatalog,
+                          ringCatalog: Ring.RingCatalog,
+                          scene: Scene[NodeTag]): Scene[NodeTag] =
+        let sp = snapToPlayerSpawn(snap, catalog, staffCatalog, consumableCatalog, ringCatalog);
+        addOnePlayer(sp, scene)
+            |> mapPlayer(snap#id, d -> {hp = snap#hp, level = snap#level, exp = snap#exp,
+                                         ringEquipped = snap#ringEquipped,
+                                         resource = LevelSystem.withStats(snap#stats, d#resource) | d})
+            |> UnitHPBarScene.updateMaxHp(playerPath(snap#id), snap#hp, snap#stats#hp)
+
+    /// `PlayerSnap` を配置用 `Spawn`（base resource ＋ 解決済み持ち物）に変換する。
+    /// `placeOneFromSnap`（フロア最初から）と `reviveOneFromSnap`（女神の加護）が共有する。
+    def snapToPlayerSpawn(snap: FloorSnapshot.PlayerSnap,
+                           catalog: UnitCatalog.UnitCatalog,
+                           staffCatalog: Staff.StaffCatalog,
+                           consumableCatalog: Consumable.ConsumableCatalog,
+                           ringCatalog: Ring.RingCatalog): Spawn =
+        {id = snap#id, classId = snap#classId, gridPos = snap#gridPos,
+         resource = UnitCatalog.lookupUnit(snap#classId, catalog),
+         weapons = resolveWeapons(snap#weapons, catalog),
+         staves = resolveStaves(snap#staves, staffCatalog),
+         consumables = resolveConsumables(snap#consumables, consumableCatalog),
+         rings = resolveRings(snap#rings, ringCatalog)}
+
+    /// snap の武器 id ＋ 耐久を `WeaponResource` のリストに解決する。
+    def resolveWeapons(refs: List[{id = String, durability = Int32}],
+                        catalog: UnitCatalog.UnitCatalog): List[UnitCatalog.WeaponResource] =
+        List.map(ref -> {durability = ref#durability | UnitCatalog.lookupWeapon(ref#id, catalog)}, refs)
+
+    /// snap の杖 id ＋ 耐久を `StaffResource` のリストに解決する。
+    def resolveStaves(refs: List[{id = String, durability = Int32}],
+                       staffCatalog: Staff.StaffCatalog): List[Staff.StaffResource] =
+        List.map(ref -> {durability = ref#durability | Staff.lookup(ref#id, staffCatalog)}, refs)
+
+    /// snap の消費 id ＋ 耐久を `ConsumableResource` のリストに解決する。
+    def resolveConsumables(refs: List[{id = String, durability = Int32}],
+                            consumableCatalog: Consumable.ConsumableCatalog): List[Consumable.ConsumableResource] =
+        List.map(ref -> {durability = ref#durability | Consumable.lookup(ref#id, consumableCatalog)}, refs)
+
+    /// snap の指輪 id を `RingResource` のリストに解決する。
+    def resolveRings(ids: List[String], ringCatalog: Ring.RingCatalog): List[Ring.RingResource] =
+        List.map(id -> Ring.lookup(id, ringCatalog), ids)
+
+    /// 女神の加護: 既存の味方を全て取り除き、スナップショットの全メンバーを **リーダー(`lordId`)の
+    /// 周り** に再配置して全快復活させる（無敵は付与しない）。リーダーを `leaderPos`（倒れたその場）に置き、
+    /// 残りはそこから最も近い空き床セルへ順に詰める。敵は呼び出し側で一掃済み前提なので、壁と味方同士の
+    /// 重なりだけを避ければよい。マップ・アイテムは現在 scene のまま。
+    pub def reviveAroundLeader(snaps: List[FloorSnapshot.PlayerSnap],
+                                catalog: UnitCatalog.UnitCatalog,
+                                staffCatalog: Staff.StaffCatalog,
+                                consumableCatalog: Consumable.ConsumableCatalog,
+                                ringCatalog: Ring.RingCatalog,
+                                leaderPos: {x = Int32, y = Int32},
+                                scene: Scene[NodeTag]): Scene[NodeTag] =
+        let cleared = List.foldLeft((sc, d) -> Scene.removeAt(playerPath(d#id), sc), scene, getAll(scene));
+        let layer = MapScene.getMapLayer(cleared);
+        // リーダーを先頭にして、近い順に空きセルを割り当てる（先頭がちょうど leaderPos に乗る）。
+        let ordered = leaderFirst(snaps);
+        let result = List.foldLeft((acc, snap) -> {
+            let (sc, taken) = acc;
+            let cell = nearestFreeCell(leaderPos, layer, taken);
+            (reviveOneAt(snap, cell, catalog, staffCatalog, consumableCatalog, ringCatalog, sc),
+             cell :: taken)
+        }, (cleared, (Nil: List[{x = Int32, y = Int32}])), ordered);
+        fst(result)
+
+    /// `lordId` の味方を先頭に並べ替える（残りは元の順を保つ）。
+    def leaderFirst(snaps: List[FloorSnapshot.PlayerSnap]): List[FloorSnapshot.PlayerSnap] =
+        let (lead, rest) = List.partition(s -> s#id == lordId(), snaps);
+        List.append(lead, rest)
+
+    /// `origin` に最も近い空き床セルを返す。床（`isFloor`）かつ `taken`（既配置の味方）でないセルを
+    /// `origin` 周辺の箱から集め、`origin` からのマンハッタン距離が小さい順に選ぶ。候補ゼロなら `origin`。
+    def nearestFreeCell(origin: {x = Int32, y = Int32}, layer: TileMapLayer,
+                         taken: List[{x = Int32, y = Int32}]): {x = Int32, y = Int32} =
+        let r = 12;
+        let candidates = List.range(origin#x - r, origin#x + r + 1)
+            |> List.flatMap(x -> List.range(origin#y - r, origin#y + r + 1)
+                |> List.map(y -> ({x = x, y = y}: {x = Int32, y = Int32})));
+        let free = candidates
+            |> List.filter(c -> TileMapLayer.isFloor(c, layer) and not sameCellExists(c, taken))
+            |> List.sortBy(c -> Int32.abs(origin#x - c#x) + Int32.abs(origin#y - c#y));
+        match List.head(free) {
+            case Some(c) => c
+            case None    => origin
+        }
+
+    /// `c` と同じ座標がリストに含まれるか。
+    def sameCellExists(c: {x = Int32, y = Int32}, cells: List[{x = Int32, y = Int32}]): Bool =
+        List.exists(x -> x#x == c#x and x#y == c#y, cells)
+
+    /// 味方 1 体を `cell` に全快復活させる（無敵なし）。装備 / レベル / 成長後ステータスは進入時編成。
+    def reviveOneAt(snap: FloorSnapshot.PlayerSnap, cell: {x = Int32, y = Int32},
+                     catalog: UnitCatalog.UnitCatalog,
+                     staffCatalog: Staff.StaffCatalog,
+                     consumableCatalog: Consumable.ConsumableCatalog,
+                     ringCatalog: Ring.RingCatalog,
+                     scene: Scene[NodeTag]): Scene[NodeTag] =
+        let sp = {gridPos = cell | snapToPlayerSpawn(snap, catalog, staffCatalog, consumableCatalog, ringCatalog)};
+        addOnePlayer(sp, scene)
+            |> mapPlayer(snap#id, d -> {hp = snap#stats#hp, level = snap#level, exp = snap#exp,
+                                         ringEquipped = snap#ringEquipped,
+                                         resource = LevelSystem.withStats(snap#stats, d#resource) | d})
+            |> UnitHPBarScene.updateMaxHp(playerPath(snap#id), snap#stats#hp, snap#stats#hp)
+
+    /// 現在の全味方を `PlayerSnap` 列に射影する（スナップショット保存用）。持ち物 resource は
+    /// 各 catalog の `idOf`（name 逆引き）で id 化し、耐久など動的値を併せて保持する。
+    pub def captureSnaps(scene: Scene[NodeTag],
+                          weaponCatalog: WeaponCatalog.WeaponCatalog,
+                          staffCatalog: Staff.StaffCatalog,
+                          consumableCatalog: Consumable.ConsumableCatalog,
+                          ringCatalog: Ring.RingCatalog): List[FloorSnapshot.PlayerSnap] =
+        getAll(scene) |> List.map(d ->
+            ({id = d#id, classId = d#classId, gridPos = d#gridPos, hp = d#hp,
+               level = d#level, exp = d#exp, stats = LevelSystem.statsOf(d#resource),
+               facing = d#facing, statuses = d#statuses,
+               weapons = captureWeaponRefs(d#weapons, weaponCatalog),
+               staves = captureStaffRefs(d#staves, staffCatalog),
+               consumables = captureConsumableRefs(d#consumables, consumableCatalog),
+               rings = List.map(r -> CatalogId.requireId("ring", r#name, Ring.idOf(r, ringCatalog)), d#rings),
+               ringEquipped = d#ringEquipped}: FloorSnapshot.PlayerSnap))
+
+    /// 武器リストを `{id, durability}` 列に射影する（id は name 逆引き、失敗時は即 panic）。
+    def captureWeaponRefs(weapons: List[UnitCatalog.WeaponResource],
+                           weaponCatalog: WeaponCatalog.WeaponCatalog): List[{id = String, durability = Int32}] =
+        List.map(w -> {id = CatalogId.requireId("weapon", w#name, WeaponCatalog.idOf(w, weaponCatalog)),
+                       durability = w#durability}, weapons)
+
+    /// 杖リストを `{id, durability}` 列に射影する。
+    def captureStaffRefs(staves: List[Staff.StaffResource],
+                          staffCatalog: Staff.StaffCatalog): List[{id = String, durability = Int32}] =
+        List.map(s -> {id = CatalogId.requireId("staff", s#name, Staff.idOf(s, staffCatalog)),
+                       durability = s#durability}, staves)
+
+    /// 消費アイテムリストを `{id, durability}` 列に射影する。
+    def captureConsumableRefs(consumables: List[Consumable.ConsumableResource],
+                               consumableCatalog: Consumable.ConsumableCatalog): List[{id = String, durability = Int32}] =
+        List.map(c -> {id = CatalogId.requireId("consumable", c#name, Consumable.idOf(c, consumableCatalog)),
+                       durability = c#durability}, consumables)
 
     // ────────────────────────────────────────────────────────
     // (G) 個別 getter（呼び出し側の便宜）

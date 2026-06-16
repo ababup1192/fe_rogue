@@ -32,9 +32,9 @@ mod TestWeaponProficiency {
         UnitCatalog.load("resources/units.json", weaponCatalog)
 
     def unitNamed(id: String, catalog: UnitCatalog.UnitCatalog): UnitCatalog.PlayerResource =
-        match List.find(u -> u#description == id, UnitCatalog.pool("players", catalog)) {
-            case Some(u) => u
-            case None    => bug!("unit with description '${id}' not found")
+        match List.find(pair -> (snd(pair))#description == id, UnitCatalog.pool("players", catalog)) {
+            case Some(pair) => snd(pair)
+            case None       => bug!("unit with description '${id}' not found")
         }
 
     /// ロード職種（description="ロード"）は全タイプ得意。剣も魔法も true。

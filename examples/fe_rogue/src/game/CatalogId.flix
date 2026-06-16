@@ -18,6 +18,15 @@ mod CatalogId {
                 if (nameOf(resource) == targetName) Some(id) else None
             })
 
+    /// `idOf` の結果を「必ず id が取れる」前提で取り出す。`None`（逆引き失敗）なら**その場で panic** する。
+    /// スナップショット保存で使い、壊れた id（空文字など）を黙って保存して復元時に lookup で落ちる
+    /// 「時限爆弾」を防ぐ（失敗を発生源で顕在化させる）。`label`/`displayName` は panic メッセージ用。
+    pub def requireId(label: String, displayName: String, opt: Option[String]): String =
+        match opt {
+            case Some(id) => id
+            case None     => bug!("${label}: '${displayName}' のカタログ id 逆引きに失敗（name 不一致？）")
+        }
+
     /// カタログ内の name が一意であることを検査し、検査済みの container をそのまま返す
     /// （`load` で `X.X(requireUniqueNames(...))` と書いて結果を使える pass-through 形）。
     /// 重複があれば即 panic（将来の name typo / 重複を起動時に検出して `idByName` の一意逆引きを保証）。

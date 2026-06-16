@@ -18,6 +18,7 @@ mod TestBattlePanelScene {
     /// 装備中武器は `weapons.head` を自動使用するため、selectedItem は None でよい。
     def fixturePlayer(): PlayerScene.Data = {
         id                = 0,
+        classId           = "test_player",
         gridPos           = {x = 2, y = 2},
         moveTiles         = 4,
         hp                = 10,

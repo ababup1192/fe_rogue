@@ -27,6 +27,7 @@ mod TestStaffCastScene {
             |> CanvasItem.setYSortEnabled(true);
         let data: PlayerScene.Data = {
             id                = 0,
+            classId           = "test_player",
             gridPos           = {x = 5, y = 5},
             moveTiles         = 5,
             hp                = hp,
@@ -64,7 +65,7 @@ mod TestStaffCastScene {
 
     /// 指定 id / グリッド位置の最小プレイヤー Data（swapPos など複数体テスト用）。
     def mkData(id: Int32, gx: Int32, gy: Int32): PlayerScene.Data =
-        {id = id, gridPos = {x = gx, y = gy}, moveTiles = 5, hp = 10, waited = false,
+        {id = id, classId = "test_player", gridPos = {x = gx, y = gy}, moveTiles = 5, hp = 10, waited = false,
          attackTargetId = None, resource = TestUnitFixtures.testResourceMagic(5, 10, 3, 1, 0, 0, 3),
          weapons = Nil, staves = Nil, consumables = Nil, selectedItem = None,
          moveStepsTaken = 0, facing = Staff.Direction.Down, hidden = false, usedStairs = false,

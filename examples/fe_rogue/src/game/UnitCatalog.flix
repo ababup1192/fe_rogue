@@ -181,16 +181,25 @@ mod UnitCatalog {
             case Ok(content) => content
         }
 
-    /// プール名 → そのプールに属する `PlayerResource` のリスト。未定義 / id 不在は panic。
-    pub def pool(name: String, catalog: UnitCatalog): List[PlayerResource] =
+    /// プール名 → そのプールに属する `(クラス id, PlayerResource)` のリスト。未定義 / id 不在は panic。
+    /// id を併せて返すのは、スポーンした味方の `classId` をスナップショット保存できるようにするため
+    /// （PlayerResource は name を持たず resource から id を逆引きできない）。
+    pub def pool(name: String, catalog: UnitCatalog): List[(String, PlayerResource)] =
         match Map.get(name, poolsOf(catalog)) {
             case None     => bug!("UnitCatalog.pool: unknown pool name: ${name}")
             case Some(ids) =>
                 let units = unitsOf(catalog);
                 List.map(id -> match Map.get(id, units) {
-                    case Some(u) => u
+                    case Some(u) => (id, u)
                     case None    => bug!("UnitCatalog.pool: unit '${id}' not in catalog")
                 }, ids)
+        }
+
+    /// クラス id から `PlayerResource` を引く（スナップショット復元用）。未定義 id は panic。
+    pub def lookupUnit(id: String, catalog: UnitCatalog): PlayerResource =
+        match Map.get(id, unitsOf(catalog)) {
+            case Some(u) => u
+            case None    => bug!("UnitCatalog.lookupUnit: unit '${id}' not in catalog")
         }
 
     /// 武器 id を引いて `WeaponResource` を返す。未定義 id は起動時 typo として panic。

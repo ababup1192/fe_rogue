@@ -49,6 +49,7 @@ mod TestPlayerScene {
                 EngineNode.Marker2DWithState(marker,
                     NodeTag.Player({
                         id                = 0,
+                        classId           = "test_player",
                         gridPos           = initial,
                         moveTiles         = 5,
                         hp                = 10,
@@ -153,7 +154,7 @@ mod TestPlayerScene {
     @Test
     def testAdjacentAlliesReturnsOnlyOrthogonalNeighbors(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let mkSpawn = (id, pos) -> ({id = id, gridPos = pos, resource = fx#unitSample,
+        let mkSpawn = (id, pos) -> ({id = id, classId = "test_player", gridPos = pos, resource = fx#unitSample,
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
@@ -179,7 +180,7 @@ mod TestPlayerScene {
     @Test
     def testAdjacentAlliesReturnsEmptyWhenNoOrthogonalNeighbor(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let mkSpawn = (id, pos) -> ({id = id, gridPos = pos, resource = fx#unitSample,
+        let mkSpawn = (id, pos) -> ({id = id, classId = "test_player", gridPos = pos, resource = fx#unitSample,
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
@@ -258,8 +259,8 @@ mod TestPlayerScene {
         let catalog = UnitCatalog.load("resources/units.json", weaponCatalog);
         let staffCatalog = Staff.load();
         let unitSample = match List.head(UnitCatalog.pool("players", catalog)) {
-            case Some(r) => r
-            case None    => bug!("no players in catalog")
+            case Some(pair) => snd(pair)
+            case None       => bug!("no players in catalog")
         };
         {catalog = catalog, staffCatalog = staffCatalog, unitSample = unitSample}
 
@@ -276,10 +277,10 @@ mod TestPlayerScene {
         let fire  = UnitCatalog.lookupWeapon("tome_grimoire", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
+            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = spear :: fire :: Nil, staves = Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, gridPos = {x = 0, y = 0},
+            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = bow :: Nil, staves = Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
@@ -303,10 +304,10 @@ mod TestPlayerScene {
         let swap = Staff.lookup("swap_staff", fx#staffCatalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
+            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = live :: Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, gridPos = {x = 0, y = 0},
+            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = swap :: Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
@@ -332,10 +333,10 @@ mod TestPlayerScene {
         let live  = Staff.lookup("live_staff", fx#staffCatalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
+            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = spear :: Nil, staves = Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, gridPos = {x = 0, y = 0},
+            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = live :: Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
@@ -362,10 +363,10 @@ mod TestPlayerScene {
         let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
+            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = spear :: Nil, staves = Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, gridPos = {x = 0, y = 0},
+            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
@@ -392,10 +393,10 @@ mod TestPlayerScene {
         let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, gridPos = {x = 0, y = 0},
+            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, gridPos = {x = 0, y = 0},
+            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = spear :: Nil, staves = Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
@@ -424,7 +425,7 @@ mod TestPlayerScene {
                                     scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
                         description = "", effectRule = None}:
                         Consumable.ConsumableResource);
-        let mkSpawn = (id, cons) -> ({id = id, gridPos = {x = 0, y = 0},
+        let mkSpawn = (id, cons) -> ({id = id, classId = "test_player", gridPos = {x = 0, y = 0},
                                        resource = fx#unitSample, weapons = Nil, staves = Nil,
                                        consumables = cons, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
@@ -450,7 +451,7 @@ mod TestPlayerScene {
     def testSwapItemRingTransfersToEmptySlot(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
         let ring = Ring.lookup("power_ring", Ring.load());
-        let mkSpawn = (id, rings) -> ({id = id, gridPos = {x = 0, y = 0},
+        let mkSpawn = (id, rings) -> ({id = id, classId = "test_player", gridPos = {x = 0, y = 0},
                                         resource = fx#unitSample, weapons = Nil, staves = Nil,
                                         consumables = Nil, rings = rings}: PlayerScene.Spawn);
         let scene = Scene.empty()
@@ -477,7 +478,7 @@ mod TestPlayerScene {
     @Test
     def testUseStairsExitsUnitFromFloor(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let mkSpawn = (id, pos) -> ({id = id, gridPos = pos, resource = fx#unitSample,
+        let mkSpawn = (id, pos) -> ({id = id, classId = "test_player", gridPos = pos, resource = fx#unitSample,
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
@@ -495,7 +496,7 @@ mod TestPlayerScene {
     @Test
     def testAllLivingUsedStairsRequiresEveryone(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let mkSpawn = (id, pos) -> ({id = id, gridPos = pos, resource = fx#unitSample,
+        let mkSpawn = (id, pos) -> ({id = id, classId = "test_player", gridPos = pos, resource = fx#unitSample,
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
@@ -516,7 +517,7 @@ mod TestPlayerScene {
     def testReconcileWithCarryPersistsHpAndDropsDead(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
         let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
-        let mkSpawn = id -> ({id = id, gridPos = {x = 0, y = 0}, resource = fx#unitSample,
+        let mkSpawn = id -> ({id = id, classId = "test_player", gridPos = {x = 0, y = 0}, resource = fx#unitSample,
                                weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
@@ -546,7 +547,11 @@ mod TestPlayerScene {
     def withGameOverToEmpty(thunk: Unit -> a \ ef):
             a \ (ef - CustomEffects.GameOverRequest) =
         run { thunk() } with handler CustomEffects.GameOverRequest {
+            def markDeaths(_positions, k) = k()
             def request(_scene, k) = k(Scene.empty())
+            def restartBeginning(_scene, k) = k(Scene.empty())
+            def restartFloor(_scene, k) = k(Scene.empty())
+            def reviveInPlace(_scene, k) = k(Scene.empty())
         }
 
     /// ロード(id 0)が倒れると、ほかの味方が生き残っていてもゲームオーバー（1F やり直し）。
@@ -556,7 +561,7 @@ mod TestPlayerScene {
     @Test
     def testLordDeathTriggersGameOverEvenWithSurvivors(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let mkSpawn = (id, pos) -> ({id = id, gridPos = pos, resource = fx#unitSample,
+        let mkSpawn = (id, pos) -> ({id = id, classId = "test_player", gridPos = pos, resource = fx#unitSample,
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
@@ -573,7 +578,7 @@ mod TestPlayerScene {
     @Test
     def testNonLordDeathRemovesUnitWithoutGameOver(): Unit \ {Assert, Fs.FileRead} =
         let fx = loadTestCatalogs();
-        let mkSpawn = (id, pos) -> ({id = id, gridPos = pos, resource = fx#unitSample,
+        let mkSpawn = (id, pos) -> ({id = id, classId = "test_player", gridPos = pos, resource = fx#unitSample,
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
@@ -645,6 +650,7 @@ mod TestPlayerScene {
     /// 指定の武器リストを持つ Data（位置・ステータスはダミー）。
     def playerWithWeapons(weapons: List[UnitCatalog.WeaponResource]): PlayerScene.Data = {
         id                = 0,
+        classId           = "test_player",
         gridPos           = {x = 5, y = 5},
         moveTiles         = 5,
         hp                = 10,
@@ -711,6 +717,7 @@ mod TestPlayerScene {
     /// 位置・装備以外はダミーで埋めた最小 Data 雛形（`{ ... | pdata(...)}` で部分上書きして使う）。
     def pdata(id: Int32, gridPos: {x = Int32, y = Int32}): PlayerScene.Data = {
         id              = id,
+        classId         = "test_player",
         gridPos         = gridPos,
         moveTiles       = 5,
         hp              = 10,

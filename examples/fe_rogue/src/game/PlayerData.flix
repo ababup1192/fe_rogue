@@ -75,6 +75,10 @@ mod PlayerData {
     /// `pendingLevelUp` は直近レベルアップ結果。LevelUpScene が演出を終えた後に None へ戻す責務を持つ。
     pub type alias Data = {
         id                 = Int32,
+        // この味方を生成した UnitCatalog のクラス id（"lord" 等）。スナップショット保存で
+        // resource を id 参照に落とすために記録する（PlayerResource は name を持たず逆引きできない
+        // ため spawn 時に保持）。レベルアップで resource が書き換わっても `| d` 更新で温存される。
+        classId            = String,
         gridPos            = {x = Int32, y = Int32},
         moveTiles          = Int32,
         hp                 = Int32,
@@ -108,6 +112,8 @@ mod PlayerData {
     /// hp・waited・exp 等の可変フィールドは含まず、resource から再構築できる最小情報のみを保持する設計。
     pub type alias Spawn = {
         id          = Int32,
+        // 生成元 UnitCatalog のクラス id（resource の id 参照保存用、Data#classId と同じ値）。
+        classId     = String,
         gridPos     = {x = Int32, y = Int32},
         resource    = UnitCatalog.UnitResource,
         weapons     = List[UnitCatalog.WeaponResource],

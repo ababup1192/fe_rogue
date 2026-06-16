@@ -15,6 +15,7 @@ mod TestTradeRangeScene {
     def buildPartyMember(id: Int32, gridPos: {x = Int32, y = Int32}):
             PlayerScene.Data = {
         id              = id,
+        classId         = "test_player",
         gridPos         = gridPos,
         moveTiles       = 5,
         hp              = 10,

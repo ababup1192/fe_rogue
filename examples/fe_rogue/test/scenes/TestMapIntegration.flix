@@ -241,6 +241,7 @@ mod TestMapIntegration {
                 EngineNode.Marker2DWithState(marker,
                     NodeTag.Player({
                         id                = 0,
+                        classId           = "test_player",
                         gridPos           = initial,
                         moveTiles         = 5,
                         hp                = 10,

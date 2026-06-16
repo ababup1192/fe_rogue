@@ -326,4 +326,9 @@ mod MapScene {
             case Some(EngineNode.TileMapLayerWithState(_, NodeTag.Map(data))) => data
             case _ => bug!("MapScene: NodeTag.Map not found at ${mapPath()}")
         }
+
+    /// このフロアを生成した `DungeonGenerator.Plan` を返す。スナップショット保存で読み出し、
+    /// 復元時に `addFromPlan` へ渡して同一マップを決定論再構築する。
+    pub def getPlan(scene: Scene[NodeTag]): DungeonGenerator.Plan =
+        getMapData(scene)#plan
 }
