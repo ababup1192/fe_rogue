@@ -180,7 +180,13 @@ mod WeaponCatalog {
             expectedFields = expectedFields(),
             decodeEntry    = WeaponCatalogCodec.decodeWeapon
         });
-        WeaponCatalog.WeaponCatalog(container)
+        WeaponCatalog.WeaponCatalog(CatalogId.requireUniqueNames("Weapon", r -> r#name, container))
+
+    /// `WeaponResource` から catalog id を逆引きする（name 一致）。スナップショット保存で使う。
+    /// name はカタログ内で一意（load 時に検査）。見つからなければ `None`。
+    pub def idOf(weapon: WeaponResource, catalog: WeaponCatalog): Option[String] =
+        let WeaponCatalog.WeaponCatalog(container) = catalog;
+        CatalogId.idByName(r -> r#name, weapon#name, container)
 
     /// 武器 id を引いて `WeaponResource` を返す。未定義 id は起動時 typo として panic。
     pub def lookup(id: String, catalog: WeaponCatalog): WeaponResource =

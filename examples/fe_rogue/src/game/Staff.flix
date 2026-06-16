@@ -169,7 +169,13 @@ mod Staff {
             expectedFields = expectedFields(),
             decodeEntry    = StaffCatalogCodec.decodeStaff
         });
-        StaffCatalog.StaffCatalog(container)
+        StaffCatalog.StaffCatalog(CatalogId.requireUniqueNames("Staff", r -> r#name, container))
+
+    /// `StaffResource` から catalog id を逆引きする（name 一致）。スナップショット保存で使う。
+    /// name はカタログ内で一意（load 時に検査）。見つからなければ `None`。
+    pub def idOf(staff: StaffResource, catalog: StaffCatalog): Option[String] =
+        let StaffCatalog.StaffCatalog(container) = catalog;
+        CatalogId.idByName(r -> r#name, staff#name, container)
 
     /// 杖 id を引いて `StaffResource` を返す。未定義 id は起動時 typo として panic。
     /// 各ユニットの `initialInventory` の staff kind エントリから杖インスタンスを解決する用途で使う。

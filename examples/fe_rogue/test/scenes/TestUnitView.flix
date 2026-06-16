@@ -85,7 +85,7 @@ mod TestUnitView {
     /// 敵 Data。装備武器は `weapon`（攻2・剣）、攻撃 3（testEnemyResource）。
     def enemyData(id: Int32, pos: {x = Int32, y = Int32}, hp: Int32, isDying: Bool,
                   weapon: Option[UnitCatalog.WeaponResource]): EnemyScene.Data =
-        {id = id, gridPos = pos, alerted = false, homeModuleIdx = 0, moveTiles = 4,
+        {id = id, resourceId = "test_enemy", gridPos = pos, alerted = false, homeModuleIdx = 0, moveTiles = 4,
          hp = hp, isDying = isDying, attackTargetId = None,
          resource = TestUnitFixtures.testEnemyResource(4, hp), weapon = weapon, acted = false, prevPos = None, statuses = Nil, ring = None, followUpUsed = false, bottleUsed = false}
 

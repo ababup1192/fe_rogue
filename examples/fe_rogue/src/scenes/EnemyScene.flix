@@ -182,7 +182,7 @@ mod EnemyScene {
                             };
                             let weapon = maybeSwapSpecialWeapon(res, lookupFirstWeapon(res, weapons), weapons);
                             let entry: Spawn = {
-                                id = nextId, gridPos = cell, moduleIdx = p#idx,
+                                id = nextId, resourceId = id, gridPos = cell, moduleIdx = p#idx,
                                 resource = res, weapon = weapon
                             };
                             spawnInRoom(layer, p, count - 1, monsters, enemies, weapons,
@@ -219,6 +219,7 @@ mod EnemyScene {
         let ring   = res#ring |> Option.map(id -> Ring.lookup(id, ringCatalog));
         let data: Data = {
             id             = sp#id,
+            resourceId     = sp#resourceId,
             gridPos        = sp#gridPos,
             alerted        = false,
             homeModuleIdx  = sp#moduleIdx,
@@ -312,7 +313,7 @@ mod EnemyScene {
         ) yield {
             let (idx, cell) = cellPick;
             let entry: Spawn = {
-                id = nextEnemyId(current), gridPos = cell, moduleIdx = idx,
+                id = nextEnemyId(current), resourceId = id, gridPos = cell, moduleIdx = idx,
                 resource = res, weapon = maybeSwapSpecialWeapon(res, lookupFirstWeapon(res, weapons), weapons)
             };
             addOneEnemy(entry, ringCatalog, scene)
@@ -580,7 +581,7 @@ mod EnemyScene {
                     case Some(w) => w
                     case None    => bug!("EnemyScene.snapshotSpawns: weapon is None for 敵${d#id} (snapshot taken after weapon broke?)")
                 };
-                ({id = d#id, gridPos = d#gridPos, moduleIdx = d#homeModuleIdx, resource = d#resource, weapon = weapon}: Spawn))
+                ({id = d#id, resourceId = d#resourceId, gridPos = d#gridPos, moduleIdx = d#homeModuleIdx, resource = d#resource, weapon = weapon}: Spawn))
 
     /// 既存の敵を全て scene から取り除き、`spawns` から再構築する。
     /// 各敵は `addOneEnemy` を使って HP・alerted・dying を初期値で生成する。

@@ -166,7 +166,13 @@ mod Consumable {
             expectedFields = expectedFields(),
             decodeEntry    = ConsumableCatalogCodec.decodeConsumable
         });
-        ConsumableCatalog.ConsumableCatalog(container)
+        ConsumableCatalog.ConsumableCatalog(CatalogId.requireUniqueNames("Consumable", r -> r#name, container))
+
+    /// `ConsumableResource` から catalog id を逆引きする（name 一致）。スナップショット保存で使う。
+    /// name はカタログ内で一意（load 時に検査）。見つからなければ `None`。
+    pub def idOf(item: ConsumableResource, catalog: ConsumableCatalog): Option[String] =
+        let ConsumableCatalog.ConsumableCatalog(container) = catalog;
+        CatalogId.idByName(r -> r#name, item#name, container)
 
     /// 消費アイテム id を引いて `ConsumableResource` を返す。
     /// 未定義 id は起動時の typo として panic し、定義漏れを即可視化する。

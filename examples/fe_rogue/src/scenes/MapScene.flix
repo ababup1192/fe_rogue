@@ -43,7 +43,11 @@ mod MapScene {
                               interiorCells = List[{x = Int32, y = Int32}]}],
         // 部屋数。modulePaths が「部屋を先・通路を後ろ」で並ぶ前提なので
         // idx < roomCount なら「部屋」、それ以外は「通路」と判定できる。
-        roomCount    = Int32
+        roomCount    = Int32,
+        // このフロアを生成した DungeonGenerator.Plan（modulePaths + sideConnections + roomCount）。
+        // スナップショット保存で読み出し、復元時に `addFromPlan` へ渡して **乱数を使わず同一マップを
+        // 決定論再構築** する（`composeFromSideConnections` は Math.Random 非依存）。
+        plan         = DungeonGenerator.Plan
     }
 
     def name(): String = "DungeonLevel0"
@@ -113,13 +117,28 @@ mod MapScene {
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO} =
         let plan = DungeonGenerator.generate(textureName(),
                                               generatorConfig(floor));
+        addComposed(plan, scene)
+
+    /// 保存済み `DungeonGenerator.Plan` から **乱数を使わず** マップを再構築して Scene に追加する。
+    /// `generate` を飛ばして `composeFromSideConnections` だけを呼ぶため決定論的で、同一 Plan からは
+    /// 必ず同一マップになる（スナップショット復元 / 中断ロードで使う）。
+    pub def addFromPlan(plan: DungeonGenerator.Plan, scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {GameEngine.Game, Fs.FileRead} =
+        addComposed(plan, scene)
+
+    /// Plan を `composeFromSideConnections` で TileMapLayer に組み立て、Floor / Walls / World ノードを
+    /// Scene へ登録する共通処理（`addFromLdtk` と `addFromPlan` が共有）。Plan を `Data` に保持して
+    /// 後のスナップショット保存で読み出せるようにする。
+    def addComposed(plan: DungeonGenerator.Plan, scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {GameEngine.Game, Fs.FileRead} =
         let result = DungeonComposer.composeFromSideConnections(textureName(),
                                                                  plan#modulePaths,
                                                                  plan#sideConnections);
         let mapData: Data = { anchorOffset = result#anchorOffset,
                                spawnGrid    = result#spawnGrid,
                                placements   = result#placements,
-                               roomCount    = plan#roomCount };
+                               roomCount    = plan#roomCount,
+                               plan         = plan };
         // Floor 層は Walls の下（zIndex = -1）に重ねる。
         let floorLayer = CanvasItem.setZIndex(-1, result#floorLayer);
         // Player / Enemy をまとめる Y-sort root。これより前に登録することで
@@ -159,7 +178,12 @@ mod MapScene {
             // map-test では合成しないので床範囲 = gridSize 全体の単一部屋（idx=0=anchor）。
             // idx>=1 にならないので StairsScene.placeRandom の対象外。
             placements   = singleRoom(gs#x, gs#y),
-            roomCount    = 1
+            roomCount    = 1,
+            // map-test は composer を通さない debug 用なので Plan は単一モジュールの placeholder
+            // （スナップショット復元の対象外）。
+            plan         = ({ modulePaths = levelPath :: Nil,
+                              sideConnections = Nil,
+                              roomCount = 1 }: DungeonGenerator.Plan)
         };
         scene
             |> Scene.addNode(floorName(),

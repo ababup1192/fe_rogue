@@ -187,7 +187,13 @@ mod Ring {
             expectedFields = expectedFields(),
             decodeEntry    = RingCatalogCodec.decodeRing
         });
-        RingCatalog.RingCatalog(container)
+        RingCatalog.RingCatalog(CatalogId.requireUniqueNames("Ring", r -> r#name, container))
+
+    /// `RingResource` から catalog id を逆引きする（name 一致）。スナップショット保存で使う。
+    /// name はカタログ内で一意（load 時に検査）。見つからなければ `None`。
+    pub def idOf(ring: RingResource, catalog: RingCatalog): Option[String] =
+        let RingCatalog.RingCatalog(container) = catalog;
+        CatalogId.idByName(r -> r#name, ring#name, container)
 
     /// 指輪 id を引いて `RingResource` を返す。未定義 id は起動時 typo として panic。
     pub def lookup(id: String, catalog: RingCatalog): RingResource =

@@ -49,6 +49,7 @@ mod TestCombatScene {
     /// 隣接 (3,2) の生存中の敵。HP 10・剣持ち（相性は中立）。
     def enemy(): EnemyScene.Data = {
         id             = 1,
+        resourceId     = "test_enemy",
         gridPos        = {x = 3, y = 2},
         alerted        = false,
         homeModuleIdx  = 0,

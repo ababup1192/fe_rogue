@@ -21,7 +21,7 @@ mod TestEnemyAI {
     /// 武器なしの挙動を検証したいテストは別フィクスチャ `enemyAtUnarmed` を使う。
     def enemyAt(id: Int32, pos: {x = Int32, y = Int32}, alerted: Bool,
                  home: Int32, moveTiles: Int32): EnemyScene.Data =
-        { id = id, gridPos = pos, alerted = alerted,
+        { id = id, resourceId = "test_enemy", gridPos = pos, alerted = alerted,
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
@@ -31,7 +31,7 @@ mod TestEnemyAI {
     /// 攻撃しないことを確認するテストで使う。
     def enemyAtUnarmed(id: Int32, pos: {x = Int32, y = Int32}, alerted: Bool,
                        home: Int32, moveTiles: Int32): EnemyScene.Data =
-        { id = id, gridPos = pos, alerted = alerted,
+        { id = id, resourceId = "test_enemy", gridPos = pos, alerted = alerted,
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
@@ -42,7 +42,7 @@ mod TestEnemyAI {
     def enemyAtBow(id: Int32, pos: {x = Int32, y = Int32}, alerted: Bool,
                    home: Int32, moveTiles: Int32): EnemyScene.Data =
         let bow = { range = { min = 2, max = 2 } | TestUnitFixtures.testWeapon() };
-        { id = id, gridPos = pos, alerted = alerted,
+        { id = id, resourceId = "test_enemy", gridPos = pos, alerted = alerted,
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = TestUnitFixtures.testEnemyResource(moveTiles, 3),
@@ -52,7 +52,7 @@ mod TestEnemyAI {
     /// resource の aiType フィールドだけ差し替えて、他は enemyAt と同条件にする。
     def enemyAtTyped(id: Int32, pos: {x = Int32, y = Int32}, alerted: Bool,
                      home: Int32, moveTiles: Int32, t: EnemyAI.AiType): EnemyScene.Data =
-        { id = id, gridPos = pos, alerted = alerted,
+        { id = id, resourceId = "test_enemy", gridPos = pos, alerted = alerted,
           homeModuleIdx = home, moveTiles = moveTiles,
           hp = 3, isDying = false, attackTargetId = None,
           resource = {aiType = t | TestUnitFixtures.testEnemyResource(moveTiles, 3)},

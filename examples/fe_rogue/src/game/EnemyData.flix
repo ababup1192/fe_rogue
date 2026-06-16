@@ -20,6 +20,9 @@ mod EnemyData {
     /// （以降、その敵は EnemyAI 側で Attack を返さなくなる）。攻撃力は `resource#attack + weapon#attack`。
     pub type alias Data = {
         id             = Int32,
+        // この敵を生成した EnemyCatalog の id。スナップショット保存で resource を id 参照に
+        // 落とすために記録する（EnemyResource は name を持たず逆引きできないため spawn 時に保持）。
+        resourceId     = String,
         gridPos        = {x = Int32, y = Int32},
         alerted        = Bool,
         homeModuleIdx  = Int32,
@@ -49,11 +52,13 @@ mod EnemyData {
     /// Data 全体でなく resource+weapon の初期値のみを保存することで、
     /// アクティブ状態（hp/acted/isDying 等）を Spawn 側に混入させない設計上の境界を維持する。
     pub type alias Spawn = {
-        id        = Int32,
-        gridPos   = {x = Int32, y = Int32},
-        moduleIdx = Int32,
-        resource  = EnemyCatalog.EnemyResource,
-        weapon    = UnitCatalog.WeaponResource
+        id         = Int32,
+        // 生成元 EnemyCatalog の id（resource の id 参照保存用、Data#resourceId と同じ値）。
+        resourceId = String,
+        gridPos    = {x = Int32, y = Int32},
+        moduleIdx  = Int32,
+        resource   = EnemyCatalog.EnemyResource,
+        weapon     = UnitCatalog.WeaponResource
     }
 
     /// 敵駒の「現フレーム状態」を Scene を介さずに読み取る effect（PartyQuery の敵版）。

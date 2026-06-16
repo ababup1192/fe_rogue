@@ -44,6 +44,7 @@ mod TestBattlePanelScene {
     /// 隣接マス (3,2) に立つ生存中の敵。武器持ち（反撃可）。
     def fixtureEnemy(): EnemyScene.Data = {
         id             = 1,
+        resourceId     = "test_enemy",
         gridPos        = {x = 3, y = 2},
         alerted        = false,
         homeModuleIdx  = 0,

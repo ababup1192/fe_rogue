@@ -47,6 +47,7 @@ mod TestCounterAttackRules {
                  weapon: Option[UnitCatalog.WeaponResource],
                  isDying: Bool): EnemyScene.Data = {
         id             = id,
+        resourceId     = "test_enemy",
         gridPos        = {x = x, y = y},
         alerted        = false,
         homeModuleIdx  = 0,
