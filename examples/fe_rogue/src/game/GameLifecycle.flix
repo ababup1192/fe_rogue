@@ -78,6 +78,7 @@ mod GameLifecycle {
             |> ItemMenuScene.add        // アイテム選択ウィンドウ (初期は非表示)
             |> ActionMenuScene.add      // 行動選択ウィンドウ (初期は非表示)
             |> GameOverMenuScene.add    // 全滅時のモーダル選択 (初期は非表示)
+            |> SuspendConfirmScene.add  // 中断確認のモーダル (初期は非表示)
             |> TradeMenuScene.add       // 物交換ウィンドウ (2 ペイン、初期は非表示)
             |> BattlePanelScene.add     // 戦闘予報パネル (初期は非表示)
             |> LevelUpPanelScene.add    // レベルアップのステータス変化パネル (初期は非表示)
@@ -205,6 +206,66 @@ mod GameLifecycle {
                 rebuildFloorFromSnapshot(catalogs, snap)
             case None =>
                 resetForGameOver(catalogs)
+        }
+
+    // ────────────────────────────────────────────────────────
+    // 中断セーブ（suspend save / 再開で消費・1 スロット）
+    // ────────────────────────────────────────────────────────
+
+    /// 中断セーブから出撃メンバー（`PartySelection`）を復元する。snap の味方（id 昇順 = lord 先頭）の
+    /// `classId` を `UnitCatalog.lookupUnit` で resource に解決し直して `PartySelection.State.put` する。
+    /// 再開後の次フロア進行（`advanceFloor` → `PlayerScene.add`）が PartySelection を読むため必須。
+    pub def restorePartySelection(snap: FloorSnapshot.T, catalogs: Catalogs): Unit
+            \ PartySelection.State =
+        let party = snap#players
+            |> List.sortBy(p -> p#id)
+            |> List.map(p -> (p#classId, UnitCatalog.lookupUnit(p#classId, catalogs#players)));
+        PartySelection.State.put(party)
+
+    /// 中断セーブ: 現在のフロアを `SuspendSave`（未使用）として slot に書き出し、タイトル画面へ戻す。
+    /// `CustomEffects.SuspendRequest.save` の本体。次フレームで `applyPhaseChange(Title)` が
+    /// タイトルを組む。保存失敗（saves/ 不在等）はログに出して握り潰す（盤面は壊さない）。
+    pub def suspendAndQuit(catalogs: Catalogs, scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Fs.FileWrite, FloorProgress.State, GameLogger.GameLogger, GamePhaseState} =
+        let snap = captureFloorSnapshot(catalogs, scene);
+        match SaveManager.write(SuspendSave.slot(), SuspendSave.make(false, snap)) {
+            case Ok(_)   =>
+                // 保存できたときだけタイトルへ戻す。
+                GameLogger.playerLog("中断データを保存しました");
+                GamePhaseState.put(GamePhase.Title)
+            case Err(_e) =>
+                // 保存失敗（saves/ 不在等）はタイトルへ戻さずプレイ続行（進行を失わせない）。
+                GameLogger.playerLog("中断データの保存に失敗しました")
+        };
+        scene
+
+    /// 中断セーブからの再開準備: slot を読み、未使用なら フロア / パーティ / ターン系を整え、
+    /// セーブを「使用済み」で上書き（save-scum 防止）し、snapshot を `FloorSnapshot.State` へ渡してから
+    /// Playing へ遷移する。実際の scene 構築は `applyPhaseChange(Playing, from=Title)` が
+    /// `FloorSnapshot.State` の snapshot から `rebuildFloorFromSnapshot`（乱数なし）で行う。
+    /// 使用済み / 不在なら何もしない（タイトル側で disable 済みなので通常来ない）。
+    /// `CustomEffects.ResumeRequest.resume` の本体。
+    pub def resumeFromSuspend(catalogs: Catalogs, scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Fs.FileRead, Fs.FileWrite, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                FloorProgress.State, PartySelection.State, FloorSnapshot.State, GamePhaseState,
+                GameLogger.GameLogger} =
+        let saved: Option[SuspendSave.Save] = SaveManager.read(SuspendSave.slot());
+        match SuspendSave.resumable(saved) {
+            case None       => scene
+            case Some(snap) =>
+                FloorProgress.State.put(snap#floorId);
+                restorePartySelection(snap, catalogs);
+                resetTurnQueues();
+                // save-scum 防止: 読み出し直後に「使用済み」で上書きしてファイルを無効化する。
+                // 上書き失敗（読めたのに書けない稀なケース）はログだけ出して再開は続行する
+                // （握り潰すと無効化漏れ＝save-scum を見落とすため、痕跡を残す）。
+                match SaveManager.write(SuspendSave.slot(), SuspendSave.make(true, snap)) {
+                    case Ok(_)   => ()
+                    case Err(_e) => GameLogger.playerLog("中断データの無効化に失敗しました")
+                };
+                FloorSnapshot.State.put(snap);
+                GamePhaseState.put(GamePhase.Playing);
+                scene
         }
 
     /// 「女神の加護（完全復活）」。**現フロアの敵を全て一掃**し、進入時編成の全員をリーダーの周りに

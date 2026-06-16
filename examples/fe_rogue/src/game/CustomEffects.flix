@@ -70,4 +70,21 @@ mod CustomEffects {
     pub eff ThiefDropRequest {
         def drop(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag]
     }
+
+    /// 中断セーブを要求する。emit 元（ActionMenuScene の空マスメニュー「中断」項目）は
+    /// 確定時に `save(scene)` を呼ぶ。実体（handler）は `GameLifecycle.suspendAndQuit` で、
+    /// 現在フロアを `SuspendSave` として slot に書き出し、タイトル画面へ戻す。
+    /// `Fs.FileWrite` / `FloorProgress.State` / `GamePhaseState` が要るため `Game.start` でのみ注入。
+    pub eff SuspendRequest {
+        def save(scene: Scene[NodeTag]): Scene[NodeTag]
+    }
+
+    /// 中断セーブからの再開を要求する。emit 元（TitleMenuScene の「中断から再開」）は
+    /// 中断データがある（resumable）ときだけ `resume(scene)` を呼ぶ。実体（handler）は
+    /// `GameLifecycle.resumeFromSuspend` で、slot を読み・パーティ / フロア / ターン系を整え・
+    /// セーブを使用済みで上書き（save-scum 防止）してから Playing へ遷移する。
+    /// 実 scene 構築は `Game.applyPhaseChange(Playing, from=Title)` が担う。
+    pub eff ResumeRequest {
+        def resume(scene: Scene[NodeTag]): Scene[NodeTag]
+    }
 }

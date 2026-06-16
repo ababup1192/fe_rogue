@@ -959,9 +959,10 @@ mod PlayerScene {
             pruned, carry)
 
     /// スナップショットの味方リストから決定論的に再配置する（乱数なし）。
-    /// base resource を `classId` で引き、`addOnePlayer` で土台を置いてから `reconcileWithCarry` で
-    /// 進入時の HP / 装備 / 持ち物 / レベル / EXP / 成長後ステータスを上書きする（既存経路の再利用）。
-    /// facing / statuses は進入時の既定値（Down / Nil）で復元される（中断の現在状態復元は別途）。
+    /// base resource を `classId` で引き、`addOnePlayer` で土台を置いてから snap の動的値
+    /// （HP / 装備 / 持ち物 / レベル / EXP / 成長後ステータス / 向き / 時限ステータス）を上書きする。
+    /// 進入時スナップショット（フロア最初から）では向き＝既定・statuses 空なので overlay しても不変、
+    /// 中断セーブからの再開では中断時点の現在値がそのまま復元される（snapshot が単一の真実源）。
     pub def addFromSnaps(snaps: List[FloorSnapshot.PlayerSnap],
                           catalog: UnitCatalog.UnitCatalog,
                           staffCatalog: Staff.StaffCatalog,
@@ -973,8 +974,9 @@ mod PlayerScene {
             scene, snaps)
 
     /// 味方 1 体を snap から配置する。base resource を classId で引いて `addOnePlayer` で土台を置き、
-    /// 進入時の HP / レベル / EXP / 成長後ステータス / 装備中フラグを上書きする（`reconcileWithCarry`
-    /// の 1 体版）。facing / statuses は進入時の既定値（Down / Nil）で復元される。
+    /// snap の動的値（HP / レベル / EXP / 成長後ステータス / 装備中フラグ / 向き / 時限ステータス）を
+    /// 上書きする（`reconcileWithCarry` の 1 体版 ＋ 中断再開用の向き・statuses 復元）。
+    /// 進入時スナップショットでは向き＝既定・statuses 空なので overlay しても不変。
     def placeOneFromSnap(snap: FloorSnapshot.PlayerSnap,
                           catalog: UnitCatalog.UnitCatalog,
                           staffCatalog: Staff.StaffCatalog,
@@ -985,6 +987,7 @@ mod PlayerScene {
         addOnePlayer(sp, scene)
             |> mapPlayer(snap#id, d -> {hp = snap#hp, level = snap#level, exp = snap#exp,
                                          ringEquipped = snap#ringEquipped,
+                                         facing = snap#facing, statuses = snap#statuses,
                                          resource = LevelSystem.withStats(snap#stats, d#resource) | d})
             |> UnitHPBarScene.updateMaxHp(playerPath(snap#id), snap#hp, snap#stats#hp)
 

@@ -105,6 +105,24 @@ mod Staff {
         case Direction.Right => {x =  1, y =  0}
     }
 
+    /// `Direction` の文字列表現（JSON セーブ用）。`parseDirection` と round-trip する。
+    pub def directionToString(direction: Direction): String = match direction {
+        case Direction.Up    => "Up"
+        case Direction.Down  => "Down"
+        case Direction.Left  => "Left"
+        case Direction.Right => "Right"
+    }
+
+    /// 文字列 → `Direction` のパース。未知文字列は `Err(その文字列)`。
+    /// `directionToString` と round-trip する（JSON セーブ復元で使う）。
+    pub def parseDirection(name: String): Result[String, Direction] = match name {
+        case "Up"    => Ok(Direction.Up)
+        case "Down"  => Ok(Direction.Down)
+        case "Left"  => Ok(Direction.Left)
+        case "Right" => Ok(Direction.Right)
+        case other   => Err(other)
+    }
+
     /// グリッドの差分ベクトルを 4 方位に丸める。主軸(絶対値が大きい方)を採用し、
     /// 整列している(片軸が 0)場合はその軸方向になる。
     pub def deltaToDirection(dx: Int32, dy: Int32): Direction =

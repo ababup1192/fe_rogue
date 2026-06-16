@@ -689,6 +689,25 @@ mod DungeonComposer {
     pub def allSides(): List[DoorSide] =
         DoorSide.Left :: DoorSide.Right :: DoorSide.Top :: DoorSide.Bottom :: Nil
 
+    /// `DoorSide` の文字列表現（JSON セーブ用。`Plan#sideConnections` の復元で使う）。
+    /// `parseDoorSide` と round-trip する。
+    pub def doorSideToString(side: DoorSide): String = match side {
+        case DoorSide.Left   => "Left"
+        case DoorSide.Right  => "Right"
+        case DoorSide.Top    => "Top"
+        case DoorSide.Bottom => "Bottom"
+    }
+
+    /// 文字列 → `DoorSide` のパース。未知文字列は `Err(その文字列)`。
+    /// `doorSideToString` と round-trip する。
+    pub def parseDoorSide(name: String): Result[String, DoorSide] = match name {
+        case "Left"   => Ok(DoorSide.Left)
+        case "Right"  => Ok(DoorSide.Right)
+        case "Top"    => Ok(DoorSide.Top)
+        case "Bottom" => Ok(DoorSide.Bottom)
+        case other    => Err(other)
+    }
+
     /// Side 指定で Door を参照する。grid 座標は `composeFromSideConnections` が内部で解決する。
     pub type alias SideRef = {
         moduleIndex = Int32,

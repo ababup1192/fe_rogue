@@ -117,6 +117,9 @@ mod TurnPhase {
         /// 全滅後のモーダル選択フェーズ。盤面はフリーズし、`GameOverMenuScene` の選択肢
         /// （最初から / そのフロアの最初から）だけを受け付ける。確定で run が再構築される。
         case GameOver
+        /// 中断確認のモーダルフェーズ。「中断」選択で入り、`SuspendConfirmScene` の
+        /// 「本当に中断しますか？ はい / いいえ」だけを受け付ける。はいで保存しタイトルへ、いいえで PlayerCursor に戻る。
+        case SuspendConfirm
     }
 
     /// フェーズの読み書きを表す effect。

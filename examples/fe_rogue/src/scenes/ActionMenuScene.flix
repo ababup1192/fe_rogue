@@ -63,6 +63,8 @@ mod ActionMenuScene {
     def openMeta(): String      = "open"
     def gatherMeta(): String    = "gather"
     def turnEndMeta(): String   = "turnEnd"
+    /// 中断セーブ（ターンエンドの直下に置く。現フロアを保存してタイトルへ戻る）。
+    def suspendMeta(): String   = "suspend"
     def stairsMeta(): String    = "stairs"
     /// 集合（行軍）の隣接メニューの「交換」（主人公＋隣接味方の N 人持ち物交換）。
     /// 通常ターン隣接 2 人交換の `exchangeMeta` とは別物。
@@ -274,7 +276,11 @@ mod ActionMenuScene {
         let turnEnd =
             ({text = "ターンエンド", disabled = false,
               metadata = Some(turnEndMeta())}: ItemEntry) :: Nil;
-        List.append(gather, turnEnd)
+        // ターンエンドの直下に「中断」を置く（現フロアを保存してタイトルへ戻る）。
+        let suspend =
+            ({text = "中断", disabled = false,
+              metadata = Some(suspendMeta())}: ItemEntry) :: Nil;
+        List.flatten(gather :: turnEnd :: suspend :: Nil)
 
     /// C キー / ゲームパッド Y のショートカット: メニューを開かず「集合」を直接確定する
     /// （`applyGather` と同じ＝リーダー行動済みガード＆ログ込み）。呼び出し側で PlayerCursor かつ
@@ -346,6 +352,7 @@ mod ActionMenuScene {
                 else if (m == openMeta())     applyOpenChest(scene)
                 else if (m == gatherMeta())   applyGather(scene)
                 else if (m == turnEndMeta())  applyTurnEnd(scene)
+                else if (m == suspendMeta())  SuspendConfirmScene.show(scene)
                 else if (m == stairsMeta())   applyStairs(scene)
                 else if (m == gatherTradeMeta()) openGatherTrade(scene)
                 else if (m == gatherStairsMeta()) StairsExitScene.begin(scene)

@@ -598,14 +598,27 @@ mod EnemyScene {
 
     /// スナップショットの敵リストから決定論的に再配置する（乱数なし）。
     /// `resourceId` で EnemyResource を、`weapon` の id で武器を catalog から引き直して `Spawn` を作り、
-    /// `respawnFromInitial` で配置する（進入時 = full HP / 既定状態。現在状態復元は中断側で別途）。
+    /// `respawnFromInitial` で full HP・既定状態に配置したあと、snap の動的値
+    /// （HP / 時限ステータス / 検知フラグ / 指輪）を overlay で上書きする。
+    /// 進入時スナップショット（フロア最初から）では full HP・既定状態なので overlay しても不変、
+    /// 中断セーブからの再開では中断時点の現在値がそのまま復元される（snapshot が単一の真実源）。
     pub def addFromSnaps(snaps: List[FloorSnapshot.EnemySnap],
                           enemyCatalog: EnemyCatalog.EnemyCatalog,
                           weaponCatalog: WeaponCatalog.WeaponCatalog,
                           ringCatalog: Ring.RingCatalog,
                           scene: Scene[NodeTag]): Scene[NodeTag] =
         let spawns = snaps |> List.map(snap -> snapToSpawn(snap, enemyCatalog, weaponCatalog));
-        respawnFromInitial(spawns, ringCatalog, scene)
+        let placed = respawnFromInitial(spawns, ringCatalog, scene);
+        List.foldLeft((acc, snap) -> restoreEnemyState(snap, ringCatalog, acc), placed, snaps)
+
+    /// 敵 1 体の現在状態（HP / 時限ステータス / 検知フラグ / 指輪）を snap から上書きする。
+    /// HP バーの見た目も `UnitHPBarScene.update` で現在値に合わせる（最大 HP は spawn 時の resource#hp 据え置き）。
+    def restoreEnemyState(snap: FloorSnapshot.EnemySnap, ringCatalog: Ring.RingCatalog,
+                           scene: Scene[NodeTag]): Scene[NodeTag] =
+        let ring = snap#ring |> Option.map(id -> Ring.lookup(id, ringCatalog));
+        mapEnemy(snap#id, d -> {hp = snap#hp, statuses = snap#statuses,
+                                 alerted = snap#alerted, ring = ring | d}, scene)
+            |> UnitHPBarScene.update(enemyPath(snap#id), snap#hp)
 
     /// `EnemySnap` を配置用 `Spawn` に解決する。武器は保存済み id ＋ 耐久で復元し、
     /// 武器 id が無い（壊れていた）場合は resource の初期武器にフォールバックする。

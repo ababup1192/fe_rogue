@@ -5,5 +5,6 @@ def main(): Unit \ IO =
             Game.start()
         } with LwjglLayer.withProject(AssetPath.root())
           with Fs.FileRead.runWithIO
+          with Fs.FileWrite.runWithIO
           with Math.Random.runWithIO
     }

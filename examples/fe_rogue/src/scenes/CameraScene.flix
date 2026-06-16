@@ -116,6 +116,8 @@ mod CameraScene {
             case TurnPhase.Phase.EnemyTurn        => enemyTurnTarget(focusPos, scene)
             // 全滅メニュー中は盤面フリーズ。代表キャラを映したまま据え置く。
             case TurnPhase.Phase.GameOver         => focusPos
+            // 中断確認中も盤面はそのまま。カーソル位置に保つ（空マスメニューから入るため）。
+            case TurnPhase.Phase.SuspendConfirm   => cursorWorldPos(scene)
         }
 
     /// 敵ターン中のカメラターゲットを決める。

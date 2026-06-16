@@ -2,7 +2,8 @@
 ///
 /// モジュール連結で「どの辺のどのドアを重ねるか」を決める決定的選択。
 /// `betterDoorForSide` のタイブレーク（同 x なら min y 等）が 2 マス幅通路の連結の要。
-/// `DoorSide` は Eq のみ（ToString 無し）なので、involution は `==`(Bool) で検証する。
+/// `DoorSide` は Eq のみ（derive ToString 無し）なので、involution は `==`(Bool) で検証する。
+/// JSON セーブ用の `doorSideToString` / `parseDoorSide` は round-trip を `==`(Bool) で検証する。
 mod TestDungeonComposer {
 
     use DungeonComposer.DoorSide
@@ -44,6 +45,25 @@ mod TestDungeonComposer {
              DungeonComposer.isHorizontalSide(DoorSide.Right),
              DungeonComposer.isHorizontalSide(DoorSide.Top),
              DungeonComposer.isHorizontalSide(DoorSide.Bottom)))
+
+    /// `doorSideToString` → `parseDoorSide` で元の辺に戻る（全 4 辺 round-trip）。
+    /// JSON セーブの `Plan#sideConnections` 復元がこの往復に依存する。
+    @Test
+    def testDoorSideStringRoundTrip(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (true, true, true, true),
+            (DungeonComposer.parseDoorSide(DungeonComposer.doorSideToString(DoorSide.Left))   == Ok(DoorSide.Left),
+             DungeonComposer.parseDoorSide(DungeonComposer.doorSideToString(DoorSide.Right))  == Ok(DoorSide.Right),
+             DungeonComposer.parseDoorSide(DungeonComposer.doorSideToString(DoorSide.Top))    == Ok(DoorSide.Top),
+             DungeonComposer.parseDoorSide(DungeonComposer.doorSideToString(DoorSide.Bottom)) == Ok(DoorSide.Bottom)))
+
+    /// 未知文字列は `Err`（JSON 直編集 typo を検出する境界）。
+    /// `DoorSide` は ToString を持たないため `Result.isErr`（Bool）に射影して検証する。
+    @Test
+    def testParseDoorSideUnknownIsErr(): Unit \ Assert =
+        Assert.assertEq(
+            expected = true,
+            Result.isErr(DungeonComposer.parseDoorSide("Diagonal")))
 
     // ── bfsOffsets: 接続 → 各モジュールの世界座標 offset 解決 ──
 

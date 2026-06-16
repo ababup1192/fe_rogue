@@ -94,4 +94,26 @@ mod StatusSystem {
          spdDelta = sumOf(StatusEffect.SpdUp, xs) - sumOf(StatusEffect.SpdDown, xs),
          hitMod   = 0 - sumOf(StatusEffect.HitDown, xs),
          defDelta = 0 - sumOf(StatusEffect.DefDown, xs)}
+
+    /// `StatusEffect` の文字列表現（JSON セーブ用）。`parseEffect` と round-trip する。
+    pub def effectToString(effect: StatusEffect): String = match effect {
+        case StatusEffect.HitDown     => "HitDown"
+        case StatusEffect.SpdDown     => "SpdDown"
+        case StatusEffect.AtkUp       => "AtkUp"
+        case StatusEffect.SpdUp       => "SpdUp"
+        case StatusEffect.DefDown     => "DefDown"
+        case StatusEffect.Immobilized => "Immobilized"
+    }
+
+    /// 文字列 → `StatusEffect` のパース。未知文字列は `Err(その文字列)`。
+    /// `effectToString` と round-trip する（JSON セーブ復元で使う）。
+    pub def parseEffect(name: String): Result[String, StatusEffect] = match name {
+        case "HitDown"     => Ok(StatusEffect.HitDown)
+        case "SpdDown"     => Ok(StatusEffect.SpdDown)
+        case "AtkUp"       => Ok(StatusEffect.AtkUp)
+        case "SpdUp"       => Ok(StatusEffect.SpdUp)
+        case "DefDown"     => Ok(StatusEffect.DefDown)
+        case "Immobilized" => Ok(StatusEffect.Immobilized)
+        case other         => Err(other)
+    }
 }

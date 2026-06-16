@@ -3,6 +3,8 @@
 ///   CharacterSelect — 起動直後の出撃メンバー / リーダー選択画面。
 ///   Playing         — ダンジョン本編。
 pub enum GamePhase with Eq {
+    /// 起動時のタイトル画面（はじめから / 中断から再開）。
+    case Title
     case CharacterSelect
     case Playing
 }
@@ -100,6 +102,11 @@ pub enum NodeTag {
     /// `MinimapScene` の常駐タグノード (Marker2D)。process redef で毎フレーム、訪問済み
     /// module を蓄積 (Set[Int32]) し、M キーで全画面ミニマップを出し入れ・再描画する。
     case MinimapDriver(MinimapScene.DriverData)
+    /// 起動時のタイトル画面のルート（カーソル位置・再開可否を保持）。
+    case Title(TitleMenuScene.Data)
+    /// 中断確認ダイアログ（「本当に中断しますか？ はい / いいえ」）の Panel / ItemList。
+    case SuspendConfirmPanel
+    case SuspendConfirmMenu
     case NoTag
 }
 
@@ -223,6 +230,8 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.GameOverMenu) =>
             checked_ecast(GameOverMenuScene.refreshItems(delta, node, path, scene))
+        case EngineNode.ItemListWithState(_, NodeTag.SuspendConfirmMenu) =>
+            checked_ecast(SuspendConfirmScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.TradeMenu(_)) =>
             checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.PanelWithState(_, NodeTag.BattlePanel(_)) =>
@@ -247,7 +256,8 @@ instance InputEvent.InputHandler[NodeTag] {
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State,
                  PlayerData.PartyQuery, EnemyData.RosterQuery,
-                 CustomEffects.FloorAdvanceRequest,
+                 CustomEffects.FloorAdvanceRequest, CustomEffects.ResumeRequest,
+                 CustomEffects.SuspendRequest,
                  GamePhaseState, PartySelection.State,
                  // アイテム投擲の命中ロール（Math.Random）と誤射による味方脱落のゲームオーバー判定。
                  Math.Random, CustomEffects.GameOverRequest}
@@ -268,11 +278,13 @@ instance InputEvent.InputHandler[NodeTag] {
                                           PlayerData.PartyQuery,
                                           EnemyData.RosterQuery,
                                           CustomEffects.FloorAdvanceRequest,
+                                          CustomEffects.ResumeRequest,
+                                          CustomEffects.SuspendRequest,
                                           GamePhaseState, PartySelection.State,
                                           Math.Random, CustomEffects.GameOverRequest} =
-        // 画面が選択中（CharacterSelect）なら、キー操作は選択画面に委譲する。
-        // 本編（Playing）のときだけ下の戦闘用ルーティングを走らせる。
+        // 画面がタイトル / 選択中なら各画面へ委譲。本編（Playing）のときだけ戦闘用ルーティングを走らせる。
         match GamePhaseState.get() {
+            case GamePhase.Title           => TitleMenuScene.onKeyPressed(key, scene)
             case GamePhase.CharacterSelect => CharacterSelectScene.onKeyPressed(key, scene)
             case GamePhase.Playing         => onPlayingKeyPressed(key, scene)
         }
@@ -285,6 +297,7 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                            GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
                            SelectedPlayer.State, PlayerData.PartyQuery,
                            EnemyData.RosterQuery, CustomEffects.FloorAdvanceRequest,
+                           CustomEffects.SuspendRequest,
                            Math.Random, CustomEffects.GameOverRequest} =
         // 物理キーを「決定 / キャンセル / それ以外 (None)」の意味論的入力に正規化する。
         // phase と独立した直交概念として扱いたいので、bool 2 個ではなく Option[Input] に畳む。
@@ -547,13 +560,18 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
                                     TurnPhase.State, SelectedPlayer.State,
                                     PlayerData.PartyQuery, EnemyData.RosterQuery,
                                     CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
-                                    CustomEffects.GameOverRequest} =
+                                    CustomEffects.GameOverRequest, CustomEffects.SuspendRequest} =
     match (phase, input) {
         // 全滅メニュー: Z/Enter で選択確定（restart を emit）、X は無反応（必ず選ばせる）。
         case (TurnPhase.Phase.GameOver, TurnRules.Input.Confirm)
                                               => Some(GameOverMenuScene.confirmCurrentSelection(scene))
         case (TurnPhase.Phase.GameOver, TurnRules.Input.Cancel)
                                               => Some(scene)
+        // 中断確認: Z/Enter で「はい/いいえ」確定、X で中断をやめて PlayerCursor へ。
+        case (TurnPhase.Phase.SuspendConfirm, TurnRules.Input.Confirm)
+                                              => Some(SuspendConfirmScene.confirmCurrentSelection(scene))
+        case (TurnPhase.Phase.SuspendConfirm, TurnRules.Input.Cancel)
+                                              => Some(SuspendConfirmScene.cancel(scene))
         case (TurnPhase.Phase.ActionSelect,      TurnRules.Input.Confirm)
                                               => Some(ActionMenuScene.confirmCurrentSelection(scene))
         case (TurnPhase.Phase.ActionSelect,      TurnRules.Input.Cancel)
@@ -679,12 +697,12 @@ mod Game {
     /// `GameLifecycle.buildPlayingScene` で組み立てて `gameLoop` に入る。
     /// **配線役** に徹するため、ここにゲームロジックは書かない。
     pub def start(): Unit \ {GameEngine.Game, GameEngine.Audio,
-                              Fs.FileRead, IO, Math.Random} =
+                              Fs.FileRead, Fs.FileWrite, IO, Math.Random} =
         region rc {
             // BoardQuery handler が現在のシーンを読むための窓口（毎フレーム gameLoop が更新）
             let sceneRef = Ref.fresh(rc, Scene.empty());
-            // ゲーム全体の進行状態（画面）。起動直後はキャラクター選択画面から始める。
-            let phaseRef = Ref.fresh(rc, GamePhase.CharacterSelect);
+            // ゲーム全体の進行状態（画面）。起動直後はタイトル画面（はじめから / 中断から再開）から始める。
+            let phaseRef = Ref.fresh(rc, GamePhase.Title);
             // 試練型の部屋湧きクロック。WandererSpawnRequest が来るたび +1 し、
             // EnemyScene が周期判定（tick mod N）に使う。modulo 判定ゆえフロア跨ぎのリセット不要。
             let wanderClockRef = Ref.fresh(rc, 0);
@@ -727,11 +745,11 @@ mod Game {
                 rings       = ringCatalog
             };
             run {
-                // 起動直後はキャラクター選択画面を組む。本編（ダンジョン）は出撃メンバー確定後の
-                // Playing 遷移時に applyPhaseChange(Playing) が buildCurrentFloor で組む。
+                // 起動直後はタイトル画面を組む。はじめから → CharacterSelect、中断から再開 →
+                // Playing（applyPhaseChange が snapshot から再構築）と遷移する。
                 // BGM は BgmScene の AudioStreamPlayer ノード (autoplay=true, loop=true,
                 // volume=0.05) で applyAudioAttach 経由で再生される (= ここでは触らない)
-                let scene = applyPhaseChange(GamePhase.CharacterSelect, catalogs, Scene.empty());
+                let scene = applyPhaseChange(GamePhase.Title, GamePhase.Title, catalogs, Scene.empty());
                 // SE は半分で鳴らす (Inspector 対応の Scene Node にしていない通常の SE 系)
                 AudioStreamPlayer.setVolume("damage", 0.2625f32);
                 AudioStreamPlayer.setVolume("down_enemy", 0.5f32);
@@ -753,7 +771,7 @@ mod Game {
                 // 階段でフロア移動する音
                 AudioStreamPlayer.setVolume("change_floor", 0.5f32);
                 // "T1 味方のターン" のログは Playing 突入時（applyPhaseChange）に出す。
-                gameLoop(catalogs, sceneRef, GamePhase.CharacterSelect, scene)
+                gameLoop(catalogs, sceneRef, GamePhase.Title, scene)
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
             // `GameOverRequest` の handler 本体は `GameLogger` / `EnemyTurn.Queue` /
             // `TurnPhase.State` / `SelectedPlayer.State` / `InitialSpawns.State` 等を
@@ -778,6 +796,15 @@ mod Game {
                   // 生存味方が全員階段を使ったら次フロアへ（最終フロアならクリア → 1F ループ）。
                   // HP / 武器 / 持ち物の引き継ぎを含め本体は GameLifecycle.advanceFloor 側。
                   def advance(scene, k) = k(GameLifecycle.advanceFloor(catalogs, scene))
+              }
+              with handler CustomEffects.SuspendRequest {
+                  // 中断: 現フロアを slot に保存してタイトルへ戻す（本体は GameLifecycle.suspendAndQuit）。
+                  def save(scene, k) = k(GameLifecycle.suspendAndQuit(catalogs, scene))
+              }
+              with handler CustomEffects.ResumeRequest {
+                  // 中断から再開: slot を読み・状態を整え・セーブを消費して Playing へ遷移する
+                  // （scene 構築は applyPhaseChange(Playing, from=Title) が担う）。本体は resumeFromSuspend。
+                  def resume(scene, k) = k(GameLifecycle.resumeFromSuspend(catalogs, scene))
               }
               with handler CustomEffects.WandererSpawnRequest {
                   // 試練型の部屋湧き。呼ばれるたびクロックを +1 し、その tick を渡して
@@ -836,18 +863,29 @@ mod Game {
     ///   CharacterSelect — 出撃メンバー選択画面を組む。
     ///   Playing         — 現在フロアのダンジョンを組む（出撃メンバーは選択画面で確定済み）。
     /// gameLoop が前フレームとの差分を見て、画面が変わったフレームだけ呼ぶ。
-    def applyPhaseChange(phase: GamePhase, catalogs: GameLifecycle.Catalogs,
+    def applyPhaseChange(phase: GamePhase, prevPhase: GamePhase, catalogs: GameLifecycle.Catalogs,
                           _scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, IO, Math.Random,
                 SelectedPlayer.State, InitialSpawns.State, FloorProgress.State,
                 PartySelection.State, GameLogger.GameLogger, FloorSnapshot.State} =
         match phase {
+            case GamePhase.Title =>
+                TitleMenuScene.add(Scene.empty())
             case GamePhase.CharacterSelect =>
                 CharacterSelectScene.add(UnitCatalog.pool("players", catalogs#players),
                                           Scene.empty())
             case GamePhase.Playing =>
-                GameLogger.playerLog("T1 味方のターン");
-                GameLifecycle.buildCurrentFloor(catalogs)
+                // タイトル由来 ＋ スナップショット有り ＝ 中断再開。`FloorSnapshot.State` の snapshot から
+                // **乱数なし** で決定論再構築する（`buildCurrentFloor` は乱数を消費して別マップになるため通さない）。
+                // それ以外（CharacterSelect 由来 ＝ 新規ラン、または防御的に snapshot 無し）は通常生成。
+                match (prevPhase, FloorSnapshot.State.get()) {
+                    case (GamePhase.Title, Some(snap)) =>
+                        GameLogger.playerLog("中断データから再開");
+                        GameLifecycle.rebuildFloorFromSnapshot(catalogs, snap)
+                    case _ =>
+                        GameLogger.playerLog("T1 味方のターン");
+                        GameLifecycle.buildCurrentFloor(catalogs)
+                }
         }
 
     /// メインループ。phase で分岐せず、**固定パイプライン** を毎フレーム回す:
@@ -874,6 +912,7 @@ mod Game {
                          CustomEffects.WandererSpawnRequest,
                          CustomEffects.RingTransformRequest,
                          CustomEffects.ThiefDropRequest,
+                         CustomEffects.SuspendRequest, CustomEffects.ResumeRequest,
                          FloorProgress.State, InitialSpawns.State,
                          GamePhaseState, PartySelection.State,
                          Pacing.State, Math.Random, FloorSnapshot.State, r} =
@@ -899,7 +938,12 @@ mod Game {
             // 例: 選択画面でリーダー確定 → Playing に切り替わり、ここでダンジョンが組まれる。
             let currentPhase = GamePhaseState.get();
             let next = if (currentPhase != previousPhase)
-                           applyPhaseChange(currentPhase, catalogs, updated)
+                           // `applyPhaseChange` は `Scene.empty()` から組むため prevKeyState が空に戻る。
+                           // 直前 scene（handleInput 済み＝現在押下キー）の prevKeyState を引き継いで、
+                           // 遷移を起こしたキー（例: 中断確定の Z）が新画面で「押し直し」と誤検知されて
+                           // 即確定されるのを防ぐ（中断 → タイトルで「はじめから」が誤発火する事象の修正）。
+                           applyPhaseChange(currentPhase, previousPhase, catalogs, updated)
+                               |> Scene.setPrevKeyState(Scene.getPrevKeyState(updated))
                        else updated;
             GameEngine.render(next);
             gameLoop(catalogs, sceneRef, currentPhase, next)
