@@ -115,7 +115,8 @@ mod Button {
             centered = false,
             uvOffset = {x = 0.0, y = 0.0},
             uvScale = {x = 1.0, y = 1.0},
-            zIndex = b#zIndex
+            zIndex = b#zIndex,
+            style = None
         };
         // テキスト（ボタン中央配置）
         let atlas = r#fontAtlas;
@@ -165,7 +166,8 @@ mod Button {
                         centered = false,
                         uvOffset = {x = gm#s0, y = gm#t0},
                         uvScale = {x = gm#s1 - gm#s0, y = gm#t1 - gm#t0},
-                        zIndex = b#zIndex + 1
+                        zIndex = b#zIndex + 1,
+                        style = None
                     })
                 case None => None
             }

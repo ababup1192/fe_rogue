@@ -41,11 +41,18 @@ mod RenderSprite {
 
     /// 1 スプライトを描画する。
     /// rotation は center 周りのラジアン回転。useTex = false で純色矩形。
-    pub def drawSprite(shader: Int32, texture: Int32, vao: Int32,
-                       pos: Vec2.Vec2, size: Vec2.Vec2, color: Color,
-                       alpha: Float32,
-                       uvOff: Vec2.Vec2, uvSc: Vec2.Vec2, rot: Float64,
-                       useTex: Bool): Unit \ IO =
+    pub def drawSprite(shader: Int32, vao: Int32, params: RenderType.DrawSpriteParams): Unit \ IO =
+        // 1 レコードからローカルへ束ね直す（以降の描画ロジックは従来どおり）。
+        let texture = params#texture;
+        let pos     = params#position;
+        let size    = params#scale;
+        let color   = params#color;
+        let alpha   = params#alpha;
+        let uvOff   = params#uvOffset;
+        let uvSc    = params#uvScale;
+        let rot     = params#rotation;
+        let useTex  = params#useTexture;
+        let style   = params#style;
         let f32 = RenderUtil.f32;
         let cosF = RenderUtil.cosF;
         let sinF = RenderUtil.sinF;
@@ -74,6 +81,24 @@ mod RenderSprite {
         GL20.glUniform2f(uvScaleLoc, f32(uvSc#x), f32(uvSc#y));
         let useTexLoc = GL20.glGetUniformLocation(shader, "useTexture");
         GL20.glUniform1i(useTexLoc, if (useTex) 1 else 0);
+        // 角丸＋枠スタイル uniform。Some のとき styleEnabled=1（単色矩形のみシェーダ側で適用）。
+        let styleLoc = GL20.glGetUniformLocation(shader, "styleEnabled");
+        match style {
+            case Some(st) =>
+                GL20.glUniform1i(styleLoc, 1);
+                let rectSizeLoc = GL20.glGetUniformLocation(shader, "rectSize");
+                GL20.glUniform2f(rectSizeLoc, f32(size#x), f32(size#y));
+                let crLoc = GL20.glGetUniformLocation(shader, "cornerRadius");
+                GL20.glUniform1f(crLoc, f32(st#cornerRadius));
+                let bwLoc = GL20.glGetUniformLocation(shader, "borderWidth");
+                GL20.glUniform1f(bwLoc, f32(st#borderWidth));
+                let bcLoc = GL20.glGetUniformLocation(shader, "borderColor");
+                GL20.glUniform3f(bcLoc, st#borderColor#r, st#borderColor#g, st#borderColor#b);
+                let baLoc = GL20.glGetUniformLocation(shader, "borderAlpha");
+                GL20.glUniform1f(baLoc, st#borderAlpha)
+            case None =>
+                GL20.glUniform1i(styleLoc, 0)
+        };
         if (useTex) {
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture)
@@ -126,6 +151,9 @@ mod RenderSprite {
             GL20.glUniform2f(uvScaleLoc, 1.0f32, 1.0f32);
             let useTexLoc = GL20.glGetUniformLocation(spriteShader, "useTexture");
             GL20.glUniform1i(useTexLoc, 0);
+            // sprite シェーダ共有のため styleEnabled を明示 0 にして GL state 持ち越しを防ぐ。
+            let styleLoc = GL20.glGetUniformLocation(spriteShader, "styleEnabled");
+            GL20.glUniform1i(styleLoc, 0);
             let data = Array.empty(Static, n * 4);
             let _ = List.foldLeft((i, v) -> {
                 let base = i * 4;

@@ -49,6 +49,15 @@ mod GameEngine {
         maxDeltaTime = Float64
     }
 
+    /// 角丸＋枠線スタイル (Godot StyleBoxFlat 相当)。`Drawable.style = Some(..)` ＆ texture="" のとき
+    /// 単色矩形を「塗り＋枠＋角丸＋AA」で 1 フラグメント描画する。render_core の `RenderType.BoxStyle` と一致。
+    pub type alias BoxStyle = {
+        cornerRadius = Float64,
+        borderWidth  = Float64,
+        borderColor  = Color,
+        borderAlpha  = Float32
+    }
+
     /// 描画用データ: renderCommands ハンドラに渡す
     pub type alias Drawable = {
         texture = String,
@@ -60,7 +69,8 @@ mod GameEngine {
         centered = Bool,
         uvOffset = Vec2.Vec2,
         uvScale = Vec2.Vec2,
-        zIndex = Int32
+        zIndex = Int32,
+        style = Option[BoxStyle]
     }
 
     /// TileMapLayer のインスタンス描画コマンド（1 draw call）。

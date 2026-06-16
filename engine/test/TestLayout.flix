@@ -417,4 +417,111 @@ mod TestLayout {
             case None    => Assert.assertTrue(false)
         }
 
+    // ========================================================================
+    // GridContainer — 等幅セル・左→右/上→下
+    // ========================================================================
+
+    /// 2 列 × 2 行 (separation=0)。cellW=50、行高=行内最大(30)。
+    @Test
+    def testGridContainer2x2(): Unit \ Assert =
+        let mk = sz -> ColorRect.make(sz, {r = 1.0f32, g = 1.0f32, b = 1.0f32});
+        let scene = Scene.empty()
+            |> Scene.addNode("a", EngineNode.ColorRectWithState(mk({x = 10.0, y = 30.0}), ()))
+            |> Scene.addNode("b", EngineNode.ColorRectWithState(mk({x = 10.0, y = 30.0}), ()))
+            |> Scene.addNode("c", EngineNode.ColorRectWithState(mk({x = 10.0, y = 30.0}), ()))
+            |> Scene.addNode("d", EngineNode.ColorRectWithState(mk({x = 10.0, y = 30.0}), ()));
+        let layout = Layout.GridContainer({
+            columns = 2, separation = 0.0,
+            children = nodeRef("a") :: nodeRef("b") :: nodeRef("c") :: nodeRef("d") :: Nil
+        });
+        let rects = resolveRoot(layout, scene);
+        match (Map.get("a" :: Nil, rects), Map.get("b" :: Nil, rects),
+               Map.get("c" :: Nil, rects), Map.get("d" :: Nil, rects)) {
+            case (Some(ra), Some(rb), Some(rc), Some(rd)) =>
+                Assert.assertTrue(
+                    rectApprox(ra, 0.0, 0.0, 50.0, 30.0)
+                    and rectApprox(rb, 50.0, 0.0, 50.0, 30.0)
+                    and rectApprox(rc, 0.0, 30.0, 50.0, 30.0)
+                    and rectApprox(rd, 50.0, 30.0, 50.0, 30.0))
+            case _ => Assert.assertTrue(false)
+        }
+
+    /// 5 要素 / 2 列 = 3 行 (最終行は 1 個・左詰め)。separation=4、cellW=(100-4)/2=48。
+    @Test
+    def testGridContainerOddLastRow(): Unit \ Assert =
+        let mk = sz -> ColorRect.make(sz, {r = 1.0f32, g = 1.0f32, b = 1.0f32});
+        let scene = Scene.empty()
+            |> Scene.addNode("a", EngineNode.ColorRectWithState(mk({x = 10.0, y = 20.0}), ()))
+            |> Scene.addNode("b", EngineNode.ColorRectWithState(mk({x = 10.0, y = 20.0}), ()))
+            |> Scene.addNode("c", EngineNode.ColorRectWithState(mk({x = 10.0, y = 20.0}), ()))
+            |> Scene.addNode("d", EngineNode.ColorRectWithState(mk({x = 10.0, y = 20.0}), ()))
+            |> Scene.addNode("e", EngineNode.ColorRectWithState(mk({x = 10.0, y = 20.0}), ()));
+        let layout = Layout.GridContainer({
+            columns = 2, separation = 4.0,
+            children = nodeRef("a") :: nodeRef("b") :: nodeRef("c") :: nodeRef("d") :: nodeRef("e") :: Nil
+        });
+        let rects = resolveRoot(layout, scene);
+        // e (i=4) は row2 col0: x=0, y=(20+20)+4*2=48
+        match (Map.get("c" :: Nil, rects), Map.get("e" :: Nil, rects)) {
+            case (Some(rc), Some(re)) =>
+                Assert.assertTrue(
+                    rectApprox(rc, 0.0, 24.0, 48.0, 20.0)
+                    and rectApprox(re, 0.0, 48.0, 48.0, 20.0))
+            case _ => Assert.assertTrue(false)
+        }
+
+    /// measure: 列幅=全子の自然幅の最大、行高合計、separation 加味。
+    @Test
+    def testGridContainerMeasure(): Unit \ Assert =
+        let mk = sz -> ColorRect.make(sz, {r = 1.0f32, g = 1.0f32, b = 1.0f32});
+        let scene = Scene.empty()
+            |> Scene.addNode("a", EngineNode.ColorRectWithState(mk({x = 10.0, y = 30.0}), ()))
+            |> Scene.addNode("b", EngineNode.ColorRectWithState(mk({x = 10.0, y = 30.0}), ()))
+            |> Scene.addNode("c", EngineNode.ColorRectWithState(mk({x = 10.0, y = 30.0}), ()))
+            |> Scene.addNode("d", EngineNode.ColorRectWithState(mk({x = 10.0, y = 30.0}), ()));
+        let layout = Layout.GridContainer({
+            columns = 2, separation = 0.0,
+            children = nodeRef("a") :: nodeRef("b") :: nodeRef("c") :: nodeRef("d") :: Nil
+        });
+        let sz = Layout.measure((Nil: NodePath), layout, scene);
+        Assert.assertTrue(approx(sz#x, 20.0) and approx(sz#y, 60.0))
+
+    /// 1 列（縦積み）。行ごとに高さが異なるケース。separation=5。cellW=親幅=100。
+    @Test
+    def testGridContainerOneColumn(): Unit \ Assert =
+        let mk = sz -> ColorRect.make(sz, {r = 1.0f32, g = 1.0f32, b = 1.0f32});
+        let scene = Scene.empty()
+            |> Scene.addNode("a", EngineNode.ColorRectWithState(mk({x = 20.0, y = 30.0}), ()))
+            |> Scene.addNode("b", EngineNode.ColorRectWithState(mk({x = 20.0, y = 25.0}), ()))
+            |> Scene.addNode("c", EngineNode.ColorRectWithState(mk({x = 20.0, y = 35.0}), ()));
+        let layout = Layout.GridContainer({
+            columns = 1, separation = 5.0,
+            children = nodeRef("a") :: nodeRef("b") :: nodeRef("c") :: Nil
+        });
+        let rects = resolveRoot(layout, scene);
+        match (Map.get("a" :: Nil, rects), Map.get("b" :: Nil, rects), Map.get("c" :: Nil, rects)) {
+            case (Some(ra), Some(rb), Some(rc)) =>
+                Assert.assertTrue(
+                    rectApprox(ra, 0.0, 0.0, 100.0, 30.0)
+                    and rectApprox(rb, 0.0, 35.0, 100.0, 25.0)       // y = 30 + 5
+                    and rectApprox(rc, 0.0, 65.0, 100.0, 35.0))      // y = 30 + 5 + 25 + 5
+            case _ => Assert.assertTrue(false)
+        }
+
+    /// 子 0 個は measure が {0, 0}（発散しない）。
+    @Test
+    def testGridContainerEmpty(): Unit \ Assert =
+        let layout = Layout.GridContainer({columns = 2, separation = 0.0, children = Nil});
+        let sz = Layout.measure((Nil: NodePath), layout, (Scene.empty(): Scene[Unit]));
+        Assert.assertTrue(approx(sz#x, 0.0) and approx(sz#y, 0.0))
+
+    @Test
+    def testFromJsonGridContainer(): Unit \ Assert =
+        let j = parseJson("{\"kind\": \"GridContainer\", \"columns\": 2, \"separation\": 4.0, \"children\": [{\"type\": \"ColorRect\", \"name\": \"a\"}, {\"type\": \"ColorRect\", \"name\": \"b\"}]}");
+        match Layout.fromJson(j) {
+            case Ok(Layout.GridContainer({columns, separation, children})) =>
+                Assert.assertTrue(columns == 2 and approx(separation, 4.0) and List.length(children) == 2)
+            case _ => Assert.assertTrue(false)
+        }
+
 }

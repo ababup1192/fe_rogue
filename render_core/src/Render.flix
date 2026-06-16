@@ -4,7 +4,18 @@
 
 mod RenderType {
 
+    /// 角丸＋枠線スタイル (Godot StyleBoxFlat 相当)。`Drawable.style = Some(..)` のとき、
+    /// 単色矩形 (texture="") を「塗り＋枠＋角丸＋AA」で 1 フラグメント描画する。
+    /// cornerRadius/borderWidth は px。塗り色は Drawable#color/#alpha を使う。
+    pub type alias BoxStyle = {
+        cornerRadius = Float64,
+        borderWidth  = Float64,
+        borderColor  = Color,
+        borderAlpha  = Float32
+    }
+
     /// スプライト 1 つ分の描画コマンド (zIndex 順でソートして描画される)
+    /// `style = Some(..)` かつ texture="" のとき角丸スタイル矩形として描く (それ以外は従来通り)。
     pub type alias Drawable = {
         texture = String,
         position = Vec2.Vec2,
@@ -15,7 +26,26 @@ mod RenderType {
         centered = Bool,
         uvOffset = Vec2.Vec2,
         uvScale = Vec2.Vec2,
-        zIndex = Int32
+        zIndex = Int32,
+        style = Option[BoxStyle]
+    }
+
+    /// `RenderSprite.drawSprite` の描画パラメータ。同型(Vec2/Float)の位置引数が並ぶと
+    /// 取り違えやすいため 1 レコードに束ねる。shader/vao は GL コンテキストとして別引数で渡す。
+    ///   texture    : GL テクスチャ id (useTexture=false の単色矩形なら 0)
+    ///   scale      : 表示矩形サイズ (px)。style 適用時は SDF の rectSize にもなる
+    ///   style      : Some で角丸＋枠スタイル (単色矩形のみ有効)
+    pub type alias DrawSpriteParams = {
+        texture    = Int32,
+        position   = Vec2.Vec2,
+        scale      = Vec2.Vec2,
+        color      = Color,
+        alpha      = Float32,
+        uvOffset   = Vec2.Vec2,
+        uvScale    = Vec2.Vec2,
+        rotation   = Float64,
+        useTexture = Bool,
+        style      = Option[BoxStyle]
     }
 
     /// TileMapLayer の 1 タイル分の GPU インスタンスデータ

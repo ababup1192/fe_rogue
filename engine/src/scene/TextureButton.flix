@@ -130,7 +130,8 @@ mod TextureButton {
             centered = b#centered,
             uvOffset = {x = 0.0, y = 0.0},
             uvScale = {x = 1.0, y = 1.0},
-            zIndex = b#zIndex
+            zIndex = b#zIndex,
+            style = None
         };
         drawable :: Nil
 }

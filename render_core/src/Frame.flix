@@ -71,9 +71,11 @@ mod RenderFrame {
             List.forEach(drawable -> {
                 if (String.isEmpty(drawable#texture)) {
                     let displaySize: Vec2.Vec2 = drawable#scale;
-                    RenderSprite.drawSprite(spriteShader, 0, vao, drawable#position, displaySize,
-                               drawable#color, drawable#alpha, drawable#uvOffset,
-                               drawable#uvScale, drawable#rotation, false)
+                    RenderSprite.drawSprite(spriteShader, vao, {
+                        texture = 0, position = drawable#position, scale = displaySize,
+                        color = drawable#color, alpha = drawable#alpha,
+                        uvOffset = drawable#uvOffset, uvScale = drawable#uvScale,
+                        rotation = drawable#rotation, useTexture = false, style = drawable#style})
                 } else {
                     match Map.get(drawable#texture, registry) {
                         case Some(texInfo) =>
@@ -84,9 +86,11 @@ mod RenderFrame {
                                 {x = drawable#position#x - displayW / 2.0,
                                  y = drawable#position#y - displayH / 2.0}
                             else drawable#position;
-                            RenderSprite.drawSprite(spriteShader, texInfo#id, vao, pos, displaySize,
-                                       drawable#color, drawable#alpha, drawable#uvOffset,
-                                       drawable#uvScale, drawable#rotation, true)
+                            RenderSprite.drawSprite(spriteShader, vao, {
+                                texture = texInfo#id, position = pos, scale = displaySize,
+                                color = drawable#color, alpha = drawable#alpha,
+                                uvOffset = drawable#uvOffset, uvScale = drawable#uvScale,
+                                rotation = drawable#rotation, useTexture = true, style = drawable#style})
                         case None => ()
                     }
                 }

@@ -462,7 +462,8 @@ mod RichTextLabel {
                                 centered = false,
                                 uvOffset = {x = gm#s0, y = gm#t0},
                                 uvScale = {x = gm#s1 - gm#s0, y = gm#t1 - gm#t0},
-                                zIndex = r#zIndex
+                                zIndex = r#zIndex,
+                                style = None
                             })
                         case None => None
                     }

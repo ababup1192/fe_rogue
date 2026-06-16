@@ -93,7 +93,8 @@ mod GPUParticles2D {
                 centered = true,
                 uvOffset = {x = 0.0, y = 0.0},
                 uvScale = {x = 1.0, y = 1.0},
-                zIndex = r#zIndex
+                zIndex = r#zIndex,
+                style = None
             }
         }, r#particles)
 }

@@ -65,7 +65,8 @@ mod ColorRect {
             centered = false,
             uvOffset = {x = 0.0, y = 0.0},
             uvScale = {x = 1.0, y = 1.0},
-            zIndex = r#zIndex
+            zIndex = r#zIndex,
+            style = None
         }
 }
 

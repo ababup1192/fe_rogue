@@ -19,4 +19,7 @@ mod RenderUtil {
     pub def cosF(x: Float64): Float64 =
         unchecked_cast(Math.cos(x) as _ \ {})
 
+    pub def sqrtF(x: Float64): Float64 =
+        unchecked_cast(Math.sqrt(x) as _ \ {})
+
 }

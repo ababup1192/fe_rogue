@@ -35,9 +35,37 @@ mod RenderShader {
         "uniform vec3 spriteColor;\n" +
         "uniform float spriteAlpha;\n" +
         "uniform bool useTexture;\n" +
+        // styled (角丸＋枠) 単色矩形用。styleEnabled=false なら従来の単色塗り。
+        "uniform bool styleEnabled;\n" +
+        "uniform vec2 rectSize;\n" +
+        "uniform float cornerRadius;\n" +
+        "uniform float borderWidth;\n" +
+        "uniform vec3 borderColor;\n" +
+        "uniform float borderAlpha;\n" +
+        // 角丸矩形 SDF (RenderSdf.roundedBox と同式)。p=中心からのオフセット, hsz=半サイズ, r=角半径。
+        "float roundedBox(vec2 p, vec2 hsz, float r) {\n" +
+        "    vec2 q = abs(p) - hsz + r;\n" +
+        "    return min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0))) - r;\n" +
+        "}\n" +
         "void main() {\n" +
         "    if (useTexture) {\n" +
         "        color = vec4(spriteColor, spriteAlpha) * texture(image, TexCoords);\n" +
+        "    } else if (styleEnabled) {\n" +
+        "        vec2 hsz = rectSize * 0.5;\n" +
+        "        vec2 p = TexCoords * rectSize - hsz;\n" +
+        "        float aa = 1.0;\n" +                       // デザイン解像度の 1px AA
+        // 角半径は矩形の最小半辺にクランプ (Godot StyleBoxFlat と同様、巨大値での破綻防止)
+        "        float cr = clamp(cornerRadius, 0.0, min(hsz.x, hsz.y));\n" +
+        "        float dOuter = roundedBox(p, hsz, cr);\n" +
+        "        float outerCov = 1.0 - smoothstep(0.0, aa, dOuter);\n" +   // 矩形内=1 / 外=0
+        "        float ri = max(cr - borderWidth, 0.0);\n" +
+        "        vec2 hi = max(hsz - vec2(borderWidth), vec2(0.0));\n" +
+        "        float dInner = roundedBox(p, hi, ri);\n" +
+        "        float fillCov = 1.0 - smoothstep(0.0, aa, dInner);\n" +    // 塗り領域=1 / 枠+外=0
+        "        vec3 rgb = mix(borderColor, spriteColor, fillCov);\n" +
+        "        float a = mix(borderAlpha, spriteAlpha, fillCov) * outerCov;\n" +
+        "        if (a < 0.004) discard;\n" +
+        "        color = vec4(rgb, a);\n" +
         "    } else {\n" +
         "        color = vec4(spriteColor, spriteAlpha);\n" +
         "    }\n" +

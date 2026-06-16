@@ -54,6 +54,14 @@ pub enum Layout {
         crossAxis  = CrossAxisAlign,
         children   = List[Layout]
     })
+    /// 子を columns 列の格子に並べる (Godot GridContainer 準拠)。左→右、上→下に詰める。
+    /// 各列は等幅 (cellW = (W - separation*(columns-1)) / columns)、各行高はその行内の子の最大自然高。
+    /// 最終行が columns 未満 (端数) でも左詰めで配置する。子は Control/Label 系のみ (measure 制約)。
+    case GridContainer({
+        columns    = Int32,
+        separation = Float64,
+        children   = List[Layout]
+    })
     /// 親矩形を内側に margin 縮小して子を配置 (Godot MarginContainer 準拠、本実装は全方向同一値)
     case MarginContainer({ margin = Float64, child = Layout })
     /// 子レイアウトを親矩形の中央に配置 (Godot CenterContainer 準拠)
@@ -111,6 +119,13 @@ mod Layout {
                 ) yield Layout.CenterContainer(child)
             case "VBoxContainer" => buildBoxContainer(true, map)
             case "HBoxContainer" => buildBoxContainer(false, map)
+            case "GridContainer" =>
+                forM (
+                    columns      <- (JsonCompat.getAtKey(Root, "columns", map): Result[Util.Json.JsonError, Int32]);
+                    separation   <- (JsonCompat.getAtKey(Root, "separation", map): Result[Util.Json.JsonError, Float64]);
+                    childrenJson <- (JsonCompat.getAtKey(Root, "children", map): Result[Util.Json.JsonError, List[Util.Json.Json]]);
+                    children     <- traverseLayouts(childrenJson)
+                ) yield Layout.GridContainer({columns = columns, separation = separation, children = children})
             case "Panel" =>
                 forM (
                     childrenJson <- (JsonCompat.getAtKey(Root, "children", map): Result[Util.Json.JsonError, List[Util.Json.Json]]);
@@ -206,6 +221,8 @@ mod Layout {
                 resolveBoxContainer(parentPath, true, origin, separation, alignment, crossAxis, children, scene, acc)
             case Layout.HBoxContainer({separation, alignment, crossAxis, children}) =>
                 resolveBoxContainer(parentPath, false, origin, separation, alignment, crossAxis, children, scene, acc)
+            case Layout.GridContainer({columns, separation, children}) =>
+                resolveGridContainer(parentPath, origin, columns, separation, children, scene, acc)
             case Layout.Panel(children) =>
                 List.foldLeft((a, child) -> resolvePanelChild(parentPath, origin, child, scene, a), acc, children)
         }
@@ -313,6 +330,46 @@ mod Layout {
         if (vertical) {x = basePos#x + offset, y = basePos#y}
         else {x = basePos#x, y = basePos#y + offset}
 
+    /// GridContainer の子矩形を解決する。左→右・上→下に詰め、列は等幅・各行高は行内最大。
+    /// 各セル矩形 = {x = cellW, y = 行高} を子に渡す（等幅セルにするため交差軸は cellW にストレッチ）。
+    def resolveGridContainer(parentPath: NodePath, origin: Rect2.Rect2,
+                              columns: Int32, separation: Float64,
+                              children: List[Layout], scene: Scene[s],
+                              acc: Map[NodePath, Rect2.Rect2]): Map[NodePath, Rect2.Rect2] =
+        let n = List.length(children);
+        let cols = Int32.max(1, columns);
+        let rows = (n + cols - 1) / cols;   // ceil(n / cols)
+        let sizes = List.map(c -> measure(parentPath, c, scene), children);
+        let rowHeights = computeRowHeights(sizes, cols, rows);
+        let cellW = (origin#size#x - separation * Int32.toFloat64(Int32.max(0, cols - 1)))
+                    / Int32.toFloat64(cols);
+        let indexed = List.zip(List.range(0, n), children);
+        List.foldLeft((a, pair) -> {
+            let (i, child) = pair;
+            let row = i / cols;
+            let col = i - row * cols;
+            let x = origin#position#x + Int32.toFloat64(col) * (cellW + separation);
+            let y = origin#position#y + rowYOffset(rowHeights, row, separation);
+            let rh = Option.getWithDefault(0.0, List.nth(row, rowHeights));
+            let childRect: Rect2.Rect2 = {position = {x = x, y = y}, size = {x = cellW, y = rh}};
+            resolveRec(parentPath, childRect, child, scene, a)
+        }, acc, indexed)
+
+    /// 各行の高さ（行内の子の自然高の最大）を rows 個返す。
+    def computeRowHeights(sizes: List[Vec2.Vec2], cols: Int32, rows: Int32): List[Float64] =
+        let indexed = List.zip(List.range(0, List.length(sizes)), sizes);
+        List.map(r ->
+            indexed
+                |> List.filter(p -> { let (i, _) = p; i / cols == r })
+                |> List.map(p -> { let (_, s) = p; s#y })
+                |> List.foldLeft((acc, h) -> Float64.max(acc, h), 0.0),
+            List.range(0, rows))
+
+    /// row 行目の上端 y オフセット = 上の行高の合計 + separation*row。
+    def rowYOffset(rowHeights: List[Float64], row: Int32, separation: Float64): Float64 =
+        let prior = rowHeights |> List.take(row) |> List.foldLeft((acc, h) -> acc + h, 0.0);
+        prior + separation * Int32.toFloat64(row)
+
     // ========================================================================
     // 測定
     // ========================================================================
@@ -333,12 +390,29 @@ mod Layout {
                 boxContainerSize(parentPath, true, separation, children, scene)
             case Layout.HBoxContainer({separation, alignment = _, crossAxis = _, children}) =>
                 boxContainerSize(parentPath, false, separation, children, scene)
+            case Layout.GridContainer({columns, separation, children}) =>
+                gridContainerSize(parentPath, columns, separation, children, scene)
             case Layout.Panel(children) =>
                 let sizes = List.map(c -> measure(parentPath, c, scene), children);
                 let maxW = List.foldLeft((a, s) -> Float64.max(a, s#x), 0.0, sizes);
                 let maxH = List.foldLeft((a, s) -> Float64.max(a, s#y), 0.0, sizes);
                 {x = maxW, y = maxH}
         }
+
+    /// GridContainer の自然サイズ。列幅=全子の自然幅の最大（等幅）、行高=行内最大、separation を加味。
+    def gridContainerSize(parentPath: NodePath, columns: Int32, separation: Float64,
+                           children: List[Layout], scene: Scene[s]): Vec2.Vec2 =
+        let n = List.length(children);
+        let cols = Int32.max(1, columns);
+        let rows = (n + cols - 1) / cols;
+        let sizes = List.map(c -> measure(parentPath, c, scene), children);
+        let colW = sizes |> List.foldLeft((a, s) -> Float64.max(a, s#x), 0.0);
+        let rowHeights = computeRowHeights(sizes, cols, rows);
+        let totalW = colW * Int32.toFloat64(cols)
+                   + separation * Int32.toFloat64(Int32.max(0, cols - 1));
+        let totalH = (rowHeights |> List.foldLeft((a, h) -> a + h, 0.0))
+                   + separation * Int32.toFloat64(Int32.max(0, rows - 1));
+        {x = totalW, y = totalH}
 
     def boxContainerSize(parentPath: NodePath, vertical: Bool, separation: Float64,
                           children: List[Layout], scene: Scene[s]): Vec2.Vec2 =

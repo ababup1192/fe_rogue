@@ -272,6 +272,8 @@ mod SceneLoader {
                 buildLayoutChildren(parentPath, tagParser, fontAtlas, children, scene)
             case Layout.HBoxContainer({separation = _, alignment = _, crossAxis = _, children}) =>
                 buildLayoutChildren(parentPath, tagParser, fontAtlas, children, scene)
+            case Layout.GridContainer({columns = _, separation = _, children}) =>
+                buildLayoutChildren(parentPath, tagParser, fontAtlas, children, scene)
             case Layout.Panel(children) =>
                 buildLayoutChildren(parentPath, tagParser, fontAtlas, children, scene)
         }
@@ -1249,6 +1251,7 @@ mod SceneLoader {
             borderColorOpt     <- parseColorOpt("border", map);
             borderAlphaOpt     <- (JsonCompat.getAtKeyOpt(Root, "borderAlpha", map): Result[Util.Json.JsonError, Option[Float64]]);
             borderWidthOpt     <- (JsonCompat.getAtKeyOpt(Root, "borderWidth", map): Result[Util.Json.JsonError, Option[Int32]]);
+            cornerRadiusOpt    <- (JsonCompat.getAtKeyOpt(Root, "cornerRadius", map): Result[Util.Json.JsonError, Option[Float64]]);
             visibleOpt         <- (JsonCompat.getAtKeyOpt(Root, "visible", map): Result[Util.Json.JsonError, Option[Bool]]);
             zIndexOpt          <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[Util.Json.JsonError, Option[Int32]]);
             modulateOpt        <- parseColorOpt("modulate", map)
@@ -1261,6 +1264,7 @@ mod SceneLoader {
                 |> applyOpt(borderColorOpt, Panel.setBorderColor)
                 |> applyOpt(borderAlphaOpt, setPanelBorderAlpha)
                 |> applyOpt(borderWidthOpt, Panel.setBorderWidth)
+                |> applyOpt(cornerRadiusOpt, Panel.setCornerRadius)
                 |> applyOpt(visibleOpt, setPanelVisible)
                 |> applyOpt(zIndexOpt, setPanelZIndex)
                 |> applyOpt(modulateOpt, (c, p) -> CanvasItem.setModulate(c, p));

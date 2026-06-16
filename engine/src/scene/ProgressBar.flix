@@ -329,7 +329,8 @@ mod ProgressBar {
             centered = false,
             uvOffset = {x = 0.0, y = 0.0},
             uvScale = {x = 1.0, y = 1.0},
-            zIndex = zIndex
+            zIndex = zIndex,
+            style = None
         }
 
     /// 背景 + 塗り + tick + 枠線 4 辺を Drawable リストとして返す。

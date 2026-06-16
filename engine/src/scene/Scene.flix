@@ -753,7 +753,8 @@ pub mod Scene {
             centered = true,
             uvOffset = {x = 0.0, y = 0.0},
             uvScale = {x = 1.0, y = 1.0},
-            zIndex = CanvasItem.getZIndex(engineNode)
+            zIndex = CanvasItem.getZIndex(engineNode),
+            style = None
         }
 
     /// Drawable にコンテキスト（zOffset + modulate 乗算 + rotation 加算）を適用する

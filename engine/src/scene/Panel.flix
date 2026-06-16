@@ -30,7 +30,9 @@ pub enum Panel {
         backgroundAlpha = Float32,
         borderColor = Color,
         borderAlpha = Float32,
-        borderWidth = Int32
+        borderWidth = Int32,
+        // 角丸半径 (px)。0 で従来の直角 (5 矩形描画)。>0 で角丸スタイル描画 (1 Drawable)。
+        cornerRadius = Float64
     })
 }
 
@@ -50,7 +52,8 @@ mod Panel {
             backgroundAlpha = 1.0f32,
             borderColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
             borderAlpha = 1.0f32,
-            borderWidth = 0
+            borderWidth = 0,
+            cornerRadius = 0.0
         })
 
     pub def getSize(panel: Panel): Vec2.Vec2 =
@@ -98,6 +101,16 @@ mod Panel {
         let Panel.Panel(r) = panel;
         Panel.Panel({borderWidth = Int32.max(0, width) | r})
 
+    /// 角丸半径 (px) を設定する。0 で直角。
+    pub def setCornerRadius(radius: Float64, panel: Panel): Panel =
+        let Panel.Panel(r) = panel;
+        Panel.Panel({cornerRadius = Float64.max(0.0, radius) | r})
+
+    /// 角丸半径 (px) を取得する。
+    pub def getCornerRadius(panel: Panel): Float64 =
+        let Panel.Panel(r) = panel;
+        r#cornerRadius
+
     pub def getBorderWidth(panel: Panel): Int32 =
         let Panel.Panel(r) = panel;
         r#borderWidth
@@ -116,32 +129,38 @@ mod Panel {
             centered = false,
             uvOffset = {x = 0.0, y = 0.0},
             uvScale = {x = 1.0, y = 1.0},
-            zIndex = zIndex
+            zIndex = zIndex,
+            style = None
         }
 
     /// 背景 + 枠線 4 辺を Drawable リストとして返す。
-    /// borderWidth が 0 なら背景 1 枚のみ。枠線は背景の上に重ねる（z は同じ）。
+    /// cornerRadius > 0 のときは「塗り＋枠＋角丸＋AA」を 1 フラグメントで描く styled Drawable 1 枚を返す
+    /// （半透明でも枠/塗りが排他描画され二重合成しない）。cornerRadius = 0 のときは従来の最大 5 矩形。
     pub def toDrawables(panel: Panel, globalPos: Vec2.Vec2): List[GameEngine.Drawable] =
         let Panel.Panel(r) = panel;
         let w = r#size#x;
         let h = r#size#y;
-        let bg = makeRectDrawable(globalPos, r#size, r#backgroundColor,
-                                  r#backgroundAlpha, r#zIndex);
-        if (r#borderWidth <= 0) bg :: Nil
+        // 背景 Drawable は全分岐で共有（角丸時は style を載せ替えるだけ＝重複リテラルを持たない）。
+        let bg = makeRectDrawable(globalPos, r#size, r#backgroundColor, r#backgroundAlpha, r#zIndex);
+        if (r#cornerRadius > 0.0)
+            // 角丸時: 1 枚で塗り＋枠＋角丸＋AA を排他描画（半透明でも二重合成しない）。
+            ({style = Some({cornerRadius = r#cornerRadius,
+                            borderWidth = Int32.toFloat64(r#borderWidth),
+                            borderColor = r#borderColor,
+                            borderAlpha = r#borderAlpha}) | bg}: GameEngine.Drawable) :: Nil
+        else if (r#borderWidth <= 0)
+            bg :: Nil
         else {
             let bw = Int32.toFloat64(r#borderWidth);
             let bc = r#borderColor;
             let ba = r#borderAlpha;
             let zi = r#zIndex;
-            // 上辺: 全幅 × borderWidth
+            // 上辺 / 下辺 / 左辺 / 右辺（背景の上に同 z で重ねる）。
             let top = makeRectDrawable(globalPos, {x = w, y = bw}, bc, ba, zi);
-            // 下辺: 全幅 × borderWidth、y は size.y - borderWidth
             let bot = makeRectDrawable(
                 {x = globalPos#x, y = globalPos#y + h - bw},
                 {x = w, y = bw}, bc, ba, zi);
-            // 左辺: borderWidth × 全高
             let lft = makeRectDrawable(globalPos, {x = bw, y = h}, bc, ba, zi);
-            // 右辺: borderWidth × 全高、x は size.x - borderWidth
             let rgt = makeRectDrawable(
                 {x = globalPos#x + w - bw, y = globalPos#y},
                 {x = bw, y = h}, bc, ba, zi);

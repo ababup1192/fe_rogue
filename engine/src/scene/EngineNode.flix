@@ -386,7 +386,8 @@ mod EngineNode {
             centered = r#centered,
             uvOffset = uv#uvOffset,
             uvScale = uvSc,
-            zIndex = r#zIndex
+            zIndex = r#zIndex,
+            style = None
         }
 
     /// AnimatedSprite2D を Drawable に変換する。
@@ -441,7 +442,8 @@ mod EngineNode {
             centered = r#centered,
             uvOffset = uvSpec#uvOffset,
             uvScale = uvSpec#uvScale,
-            zIndex = r#zIndex
+            zIndex = r#zIndex,
+            style = None
         }
 
     /// EngineNode からフォールバック用 Drawable を組み立てる（デバッグ表示用）
@@ -456,7 +458,8 @@ mod EngineNode {
             centered = true,
             uvOffset = {x = 0.0, y = 0.0},
             uvScale = {x = 1.0, y = 1.0},
-            zIndex = CanvasItem.getZIndex(node)
+            zIndex = CanvasItem.getZIndex(node),
+            style = None
         }
 }
 
