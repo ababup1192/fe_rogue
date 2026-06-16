@@ -6,6 +6,8 @@ mod TestEnemyEffectRule {
 
     use EffectPlan.PlanItem
     use EffectRule.RayUnit
+    use EffectRule.{Op, Trigger}
+    use EffectDsl.{Amount, AmountBase}
     use StatusSystem.StatusEffect
 
     // 簡易形式 JSON → EffectRule（EffectBridge.fromComposer 経由）。
@@ -64,4 +66,52 @@ mod TestEnemyEffectRule {
     def testChanceDefaultsTo100(): Unit \ Assert =
         let json = "{\"when\":\"onHit\",\"to\":\"enemy\",\"op\":\"spdDown\",\"amount\":3,\"for\":\"turns\",\"forTurns\":3}";
         Assert.assertEq(expected = Some(100), ruleOf(json) |> Option.map(r -> r#chance))
+
+    // ════════════════════════════════════════════════════════
+    // IDE 合成エディタで足した語彙（lifesteal / dropItem / ringify / 新 trigger）
+    // ════════════════════════════════════════════════════════
+
+    // 1 action 目の op を取り出す（簡易 form は単一 action）。
+    def firstOp(s: String): Option[Op] =
+        ruleOf(s) |> Option.flatMap(r -> List.head(r#actions)) |> Option.map(a -> a#op)
+
+    def firstAmount(s: String): Option[Option[Amount]] =
+        ruleOf(s) |> Option.flatMap(r -> List.head(r#actions)) |> Option.map(a -> a#amount)
+
+    /// lifesteal は amount を flat ではなく Pct(dealt, N) で符号化する（{flat:N} に化けない）。
+    /// ★ flat に化けると「与ダメージの N%」でなく「固定 N 回復」になる致命的な意味崩れ。
+    @Test
+    def testLifestealAmountIsPctDealt(): Unit \ Assert =
+        let json = "{\"when\":\"onHit\",\"to\":\"self\",\"op\":\"lifesteal\",\"amount\":50}";
+        Assert.assertEq(expected = Some(Some(Amount.Pct(AmountBase.Dealt, 50))), firstAmount(json))
+
+    /// lifesteal は敵自身（ally=false）を、与えたダメージ分回復する PlanItem に落ちる。
+    @Test
+    def testEnemyLifestealHealsEnemySide(): Unit \ Assert =
+        let json = "{\"when\":\"onHit\",\"to\":\"self\",\"op\":\"lifesteal\",\"amount\":50}";
+        Assert.assertEq(expected = PlanItem.HealAt(100, false, 5) :: Nil,
+            planOf(json, enemyCtx(7, 10)))
+
+    /// dropItem は amount を取らず（None）、OpDropItem として decode される。
+    @Test
+    def testDropItemDecodesWithoutAmount(): Unit \ Assert =
+        let json = "{\"when\":\"onHit\",\"to\":\"enemy\",\"op\":\"dropItem\"}";
+        Assert.assertEq(expected = Some(Op.OpDropItem), firstOp(json));
+        Assert.assertEq(expected = Some(None), firstAmount(json))
+
+    /// ringify も amount を取らず、OpRingify として decode される。
+    @Test
+    def testRingifyDecodesWithoutAmount(): Unit \ Assert =
+        let json = "{\"when\":\"onEnemyTurn\",\"to\":\"enemy\",\"op\":\"ringify\"}";
+        Assert.assertEq(expected = Some(Op.OpRingify), firstOp(json));
+        Assert.assertEq(expected = Some(None), firstAmount(json))
+
+    /// 新 trigger（onCast / onDamaged / onEnemyTurn）が正しい enum に decode される。
+    @Test
+    def testNewTriggersDecode(): Unit \ Assert =
+        let triggerOf = s -> ruleOf(s) |> Option.map(r -> r#trigger);
+        let mk = w -> "{\"when\":\"${w}\",\"to\":\"self\",\"op\":\"healFlat\",\"amount\":1}";
+        Assert.assertEq(expected = Some(Trigger.OnCast), triggerOf(mk("onCast")));
+        Assert.assertEq(expected = Some(Trigger.OnDamaged), triggerOf(mk("onDamaged")));
+        Assert.assertEq(expected = Some(Trigger.OnEnemyTurn), triggerOf(mk("onEnemyTurn")))
 }

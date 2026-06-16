@@ -260,7 +260,7 @@ mod EffectBridge {
                    sfx: String, vfx: String): Json =
         let base0 = Map#{"to" => toFull(to), "op" => JString(op)};
         let base1 = if (opTakesAmount(op))
-                        Map.insert("amount", JObject(Map#{"flat" => JNumber(intToBd(amt))}), base0)
+                        Map.insert("amount", amountJsonOf(op, amt), base0)
                     else base0;
         let base2 = Map.insert("for", forFull(forV, ft), base1);
         let base3 = if (sfx == "") base2 else Map.insert("sfx", JString(sfx), base2);
@@ -280,6 +280,15 @@ mod EffectBridge {
         case _       => JString(forV)
     }
 
+    /// op ごとに amount の符号化を出し分ける。多くは flat だが、lifesteal は
+    /// 「与えたダメージの N%」＝ Pct(dealt, N) なので {pct:{base:"dealt",value:N}} を出す
+    /// （flat のままだと「固定 N 回復」に化けて意味が壊れる）。
+    def amountJsonOf(op: String, amt: Int32): Json = match op {
+        case "lifesteal" => JObject(Map#{"pct" => JObject(Map#{"base" => JString("dealt"),
+                                                               "value" => JNumber(intToBd(amt))})})
+        case _           => JObject(Map#{"flat" => JNumber(intToBd(amt))})
+    }
+
     def opTakesAmount(op: String): Bool = match op {
         case "healFull"     => false
         case "immobilize"   => false
@@ -288,6 +297,8 @@ mod EffectBridge {
         case "knockback"    => false
         case "swapPos"      => false
         case "warpToStairs" => false
+        case "dropItem"     => false
+        case "ringify"      => false
         case _              => true
     }
 

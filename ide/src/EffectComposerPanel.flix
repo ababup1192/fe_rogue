@@ -26,7 +26,9 @@ mod EffectComposerPanel {
     def whenOpts(): List[(String, String)] =
         ("onUse", "使ったとき") :: ("onAttack", "攻撃したとき") :: ("onHit", "命中したとき") ::
         ("onKill", "敵を倒したとき") :: ("onTurnStart", "ターン開始ごと") ::
-        ("onDeath", "HPが0になったとき") :: ("onEquip", "装備しているあいだ") :: Nil
+        ("onDeath", "HPが0になったとき") :: ("onEquip", "装備しているあいだ") ::
+        ("onCast", "唱えたとき") :: ("onDamaged", "ダメージを受けたとき") ::
+        ("onEnemyTurn", "敵のターンに") :: Nil
 
     def toOpts(): List[(String, String)] =
         ("self", "自分") :: ("target", "当たった相手") :: ("enemy", "敵") ::
@@ -39,9 +41,11 @@ mod EffectComposerPanel {
         ("defUp", "守備を上げる") :: ("defDown", "守備を下げる") ::
         ("hitDown", "命中を下げる") :: ("immobilize", "完全に動けなくする") ::
         ("maxHpUp", "最大HPを上げる") :: ("reviveCharge", "全回復してよみがえる") ::
+        ("lifesteal", "与えたダメージ分回復する") ::
         // 盤面副作用系（杖で結線済み = StaffCastScene.customStaffEffect）。量は使わない。
         ("swapPos", "位置を入れ替える") :: ("knockback", "押し流す") ::
-        ("warpToStairs", "止めて階段へ飛ばす") :: Nil
+        ("warpToStairs", "止めて階段へ飛ばす") :: ("dropItem", "アイテムを落とさせる") ::
+        ("ringify", "持ち物を指輪に変える") :: Nil
 
     def forOpts(): List[(String, String)] =
         ("instant", "すぐに（1回）") :: ("turns", "Nターン続く") :: ("permanent", "永続") ::
@@ -112,11 +116,12 @@ mod EffectComposerPanel {
             let vfxCombo  = mkCombo(vfxOpts(),  erStr(er, "vfx", ""));
             let amountSpinner = mkSpinner(erInt(er, "amount", 10));
             let forTurnsSpinner = mkSpinner(erInt(er, "forTurns", 3));
+            let chanceSpinner = mkChanceSpinner(erInt(er, "chance", 100));
 
             let initText = if (hasRule)
                 sentenceOf(erStr(er, "when", "onUse"), erStr(er, "to", "self"), erStr(er, "op", "healFlat"),
                            erInt(er, "amount", 10), erStr(er, "for", "instant"), erInt(er, "forTurns", 3),
-                           erStr(er, "sfx", ""), erStr(er, "vfx", ""))
+                           erStr(er, "sfx", ""), erStr(er, "vfx", ""), erInt(er, "chance", 100))
                 else "（効果なし）";
             let preview = new Label(initText);
             preview.setWrapText(true);
@@ -126,7 +131,8 @@ mod EffectComposerPanel {
             let setEnabled = en -> {
                 whenCombo.setDisable(not en); toCombo.setDisable(not en); opCombo.setDisable(not en);
                 forCombo.setDisable(not en); sfxCombo.setDisable(not en); vfxCombo.setDisable(not en);
-                amountSpinner.setDisable(not en); forTurnsSpinner.setDisable(not en)
+                amountSpinner.setDisable(not en); forTurnsSpinner.setDisable(not en);
+                chanceSpinner.setDisable(not en)
             };
             setEnabled(hasRule);
 
@@ -144,6 +150,7 @@ mod EffectComposerPanel {
                     let vfx = valueOf(vfxCombo.getValue(), vfxOpts());
                     let a   = amountSpinner.getValue().intValue();
                     let ft  = forTurnsSpinner.getValue().intValue();
+                    let c   = chanceSpinner.getValue().intValue();
                     let ruleJson = Json.JObject(Map#{
                         "when" => Json.JString(w),
                         "to" => Json.JString(t),
@@ -151,10 +158,11 @@ mod EffectComposerPanel {
                         "amount" => NodeInspector.intToJson(a),
                         "for" => Json.JString(f),
                         "forTurns" => NodeInspector.intToJson(ft),
+                        "chance" => NodeInspector.intToJson(c),
                         "sfx" => Json.JString(sfx),
                         "vfx" => Json.JString(vfx)
                     });
-                    let sentence = sentenceOf(w, t, o, a, f, ft, sfx, vfx);
+                    let sentence = sentenceOf(w, t, o, a, f, ft, sfx, vfx, c);
                     // description（フレーバーテキスト）は上書きしない。effectRule だけ保存し、
                     // 効果文は表示側が effectRule から自動生成する。
                     commitRule(ruleJson);
@@ -174,12 +182,14 @@ mod EffectComposerPanel {
             attachCombo(vfxCombo, recompute);
             attachSpinner(amountSpinner, recompute);
             attachSpinner(forTurnsSpinner, recompute);
+            attachSpinner(chanceSpinner, recompute);
 
             PropertyWidgets.addPropertyRow(children, "効果:", checked_cast(enableChk));
             PropertyWidgets.addPropertyRow(children, "▼ 効果（プレビュー）", checked_cast(preview));
             PropertyWidgets.addPropertyRow(children, "いつ:", checked_cast(whenCombo));
             PropertyWidgets.addPropertyRow(children, "誰に:", checked_cast(toCombo));
             PropertyWidgets.addPropertyRow(children, "何を:", checked_cast(opCombo));
+            PropertyWidgets.addPropertyRow(children, "発動確率(%):", checked_cast(chanceSpinner));
             PropertyWidgets.addPropertyRow(children, "量:", checked_cast(amountSpinner));
             PropertyWidgets.addPropertyRow(children, "継続:", checked_cast(forCombo));
             PropertyWidgets.addPropertyRow(children, "ターン数:", checked_cast(forTurnsSpinner));
@@ -205,6 +215,14 @@ mod EffectComposerPanel {
         spinner
     }
 
+    // 発動確率（0〜100%）。100=必ず発動。範囲が違うので mkSpinner と別に用意する。
+    def mkChanceSpinner(current: Int32): Spinner[Integer] \ IO = {
+        let spinner: Spinner[Integer] = new Spinner(0i32, 100i32, current);
+        spinner.setEditable(true);
+        spinner.setPrefWidth(90.0);
+        spinner
+    }
+
     def attachCombo(combo: ComboBox[String], recompute: Unit -> Unit \ IO): Unit \ IO =
         combo.valueProperty().addListener(new ChangeListener[String] {
             def changed(_t: ChangeListener[String], _o: ObservableValue[JObject],
@@ -225,10 +243,11 @@ mod EffectComposerPanel {
 
     // ── 日本語1文の組み立て ─────────────────────────────────
     def sentenceOf(whenV: String, toV: String, opV: String, amt: Int32,
-                   forV: String, forTurns: Int32, sfx: String, vfx: String): String =
+                   forV: String, forTurns: Int32, sfx: String, vfx: String, chance: Int32): String =
         let whenJa = labelOf(whenV, whenOpts());
         let toJa = labelOf(toV, toOpts());
-        "${whenJa}、${opClause(opV, toJa, amt)}${forSuffix(forV, forTurns)}。${fxSuffix(sfx, vfx)}"
+        let chanceJa = if (chance < 100) "${chance}% の確率で、" else "";
+        "${whenJa}、${chanceJa}${opClause(opV, toJa, amt)}${forSuffix(forV, forTurns)}。${fxSuffix(sfx, vfx)}"
 
     /// 演出（エフェクト／効果音）の注記。両方なしなら空。
     def fxSuffix(sfx: String, vfx: String): String =
@@ -250,9 +269,12 @@ mod EffectComposerPanel {
         case "immobilize"   => "${toJa}を 完全に動けなくする（攻撃を受けると解除）"
         case "maxHpUp"      => "${toJa}の 最大 HP を ${amt} 上げる"
         case "reviveCharge" => "${toJa}を 全回復してよみがえらせる"
+        case "lifesteal"    => "${toJa}は 与えたダメージの ${amt}% を回復する"
         case "swapPos"      => "${toJa}と 位置を入れ替える"
         case "knockback"    => "${toJa}を 押し流す"
         case "warpToStairs" => "${toJa}を 止めて 階段マスへ飛ばす"
+        case "dropItem"     => "${toJa}に アイテムを落とさせる"
+        case "ringify"      => "${toJa}の 持ち物を指輪に変える"
         case _              => "${toJa}に 効果を与える"
     }
 
