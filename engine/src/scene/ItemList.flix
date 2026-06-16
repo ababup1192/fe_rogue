@@ -38,12 +38,28 @@ pub type alias ItemIcon = {
     frame   = Int32
 }
 
+/// 選択行の角丸ハイライト設定（関連設定を1レコードに集約）。`fillColor = None` で無効（既定）。
+/// 描画は `Drawable.style`（BoxStyle）を行背景に敷く＝Panel と同じ角丸＋枠の仕組みを再利用する。
+/// `inset` は行矩形を全方向に縮めて「浮いた角丸枠」にするための余白（px）。
+pub type alias SelectedHighlight = {
+    fillColor    = Option[Color],
+    fillAlpha    = Float32,
+    borderColor  = Color,
+    borderAlpha  = Float32,
+    borderWidth  = Float64,
+    cornerRadius = Float64,
+    inset        = Float64
+}
+
 pub enum ItemList {
     case ItemList({
         items           = List[ItemEntry],
         // 行 index → アイコン。指定行のみアイコン表示する。
         // iconSize > 0 のときに限り toDrawables が描画する。
         itemIcons       = Map[Int32, ItemIcon],
+        // 行 index → 右寄せサブラベル（主テキストの右端に淡色で出す副説明。例「敵を選ぶ」）。
+        // 指定行のみ描画。Godot ItemList には無い拡張。
+        itemSubtexts    = Map[Int32, String],
         // アイコン表示サイズ（px、正方形）。0 ならアイコン領域を確保しない（既存挙動）。
         iconSize        = Float64,
         // アイコンとテキストの間隔（px）。iconSize > 0 のときのみ有効。
@@ -57,6 +73,10 @@ pub enum ItemList {
         // 行 index → 文字色の個別上書き。指定行は textColor/disabledColor の代わりにこの色で描く。
         // Godot の ItemList.set_item_custom_fg_color 相当（pick 中アイテムの強調などに使う）。
         itemColors      = Map[Int32, Color],
+        // 右寄せサブラベルの文字色（itemSubtexts 用）。
+        subtextColor    = Color,
+        // 選択行の角丸ハイライト（`fillColor=None` で無効＝従来どおり cursorGlyph 表示のみ）。
+        selectedHighlight = SelectedHighlight,
         itemHeight      = Float64,
         cursorOffsetX   = Float64,
         wrap            = Bool,
@@ -93,6 +113,7 @@ mod ItemList {
         ItemList.ItemList({
             items           = items,
             itemIcons       = (Map.empty(): Map[Int32, ItemIcon]),
+            itemSubtexts    = (Map.empty(): Map[Int32, String]),
             iconSize        = 0.0,
             iconTextGap     = 2.0,
             selectedIndex   = 0,
@@ -102,6 +123,11 @@ mod ItemList {
             textColor       = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
             disabledColor   = {r = 0.5f32, g = 0.5f32, b = 0.5f32},
             itemColors      = (Map.empty(): Map[Int32, Color]),
+            subtextColor    = {r = 0.5f32, g = 0.5f32, b = 0.5f32},
+            selectedHighlight = ({fillColor = None, fillAlpha = 1.0f32,
+                                   borderColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+                                   borderAlpha = 1.0f32, borderWidth = 0.0,
+                                   cornerRadius = 0.0, inset = 0.0}: SelectedHighlight),
             itemHeight      = fontSize + 4.0,
             cursorOffsetX   = fontSize,
             wrap            = true,
@@ -249,6 +275,28 @@ mod ItemList {
         let ItemList.ItemList(r) = list;
         ItemList.ItemList({disabledColor = color | r})
 
+    // ── 右寄せサブラベル ──
+
+    /// 行 index → 右寄せサブラベル文字列のマップを丸ごと差し替える（`setItems` と同頻度で呼ぶ想定）。
+    pub def setItemSubtexts(subtexts: Map[Int32, String], list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({itemSubtexts = subtexts | r})
+
+    pub def setSubtextColor(color: Color, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({subtextColor = color | r})
+
+    // ── 選択行の角丸ハイライト（BoxStyle 再利用）──
+
+    /// 選択行ハイライト設定を丸ごと設定する。`fillColor = Some(..)` で有効化、`None`（既定）で無効。
+    pub def setSelectedHighlight(highlight: SelectedHighlight, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({selectedHighlight = highlight | r})
+
+    pub def getSelectedHighlight(list: ItemList): SelectedHighlight =
+        let ItemList.ItemList(r) = list;
+        r#selectedHighlight
+
     pub def setItemHeight(h: Float64, list: ItemList): ItemList =
         let ItemList.ItemList(r) = list;
         ItemList.ItemList({itemHeight = h | r})
@@ -395,6 +443,18 @@ mod ItemList {
             |> CanvasItem.setZIndex(zIndex);
         EngineNode.spriteToDrawable(sprite, pos)
 
+    /// 選択行ハイライトの styled Drawable を作る。`rowPos`/`rowSize` は行矩形（左上＋サイズ）、
+    /// `inset` で全方向に縮めて「浮いた角丸枠」にする。塗り＋枠＋角丸は `Drawable.style`(BoxStyle) に委ねる。
+    def highlightDrawable(h: SelectedHighlight, fill: Color, rowPos: Vec2.Vec2,
+                           rowSize: Vec2.Vec2, zIndex: Int32): GameEngine.Drawable =
+        let hi = h#inset;
+        ({texture = "", position = {x = rowPos#x + hi, y = rowPos#y + hi},
+          scale = {x = rowSize#x - 2.0 * hi, y = rowSize#y - 2.0 * hi},
+          rotation = 0.0, color = fill, alpha = h#fillAlpha, centered = false,
+          uvOffset = {x = 0.0, y = 0.0}, uvScale = {x = 1.0, y = 1.0}, zIndex = zIndex,
+          style = Some({cornerRadius = h#cornerRadius, borderWidth = h#borderWidth,
+                        borderColor = h#borderColor, borderAlpha = h#borderAlpha})}: GameEngine.Drawable)
+
     /// 描画用 Drawable リストを返す。各項目を `Label2D.toDrawables` でグリフ化し、
     /// 選択中（かつ focused）の行の左に cursorGlyph を重ねる。
     /// `iconSize > 0` のときは各行のテキストの左にアイコン領域を確保する
@@ -445,7 +505,8 @@ mod ItemList {
                 }
                 else Nil;
             // カーソル glyph（選択中かつ focused のとき）。列対応で colX 基準に出す。
-            let lineDrawables = if (idx == r#selectedIndex and r#focused) {
+            // cursorGlyph="" なら Label2D がグリフ0で何も描かない（角丸ハイライトで選択を示すケース）。
+            let baseLine = if (idx == r#selectedIndex and r#focused) {
                 let cursorLabel = Label2D.make(r#cursorGlyph, r#font, r#fontSize)
                     |> CanvasItem.setModulate(r#cursorColor)
                     |> CanvasItem.setZIndex(r#zIndex);
@@ -453,6 +514,29 @@ mod ItemList {
                 List.append(cursorDrawables, List.append(iconDrawables, textDrawables))
             } else
                 List.append(iconDrawables, textDrawables);
+            // 選択行の角丸ハイライト（最初に emit ＝本文の下に敷く）。fillColor=None で無効（従来）。
+            let highlightDrawables: List[GameEngine.Drawable] =
+                if (idx == r#selectedIndex and r#focused)
+                    match r#selectedHighlight#fillColor {
+                        case Some(fill) =>
+                            highlightDrawable(r#selectedHighlight, fill, {x = colX, y = lineY},
+                                              {x = colWidth, y = r#itemHeight}, r#zIndex) :: Nil
+                        case None => Nil
+                    }
+                else Nil;
+            // 右寄せサブラベル（最後に emit ＝本文の上）。登録行のみ。右端＝列右端から測った幅ぶん戻す。
+            let subtextDrawables: List[GameEngine.Drawable] =
+                match Map.get(idx, r#itemSubtexts) {
+                    case Some(sub) =>
+                        let subLabel = Label2D.make(sub, r#font, r#fontSize)
+                            |> CanvasItem.setModulate(r#subtextColor)
+                            |> CanvasItem.setZIndex(r#zIndex);
+                        let subW = Label2D.measure(subLabel)#x;
+                        let subX = colX + colWidth - subW - r#iconTextGap;
+                        Label2D.toDrawables(subLabel, {x = subX, y = lineY})
+                    case None => Nil
+                };
+            let lineDrawables = List.append(highlightDrawables, List.append(baseLine, subtextDrawables));
             {drawables = List.append(acc#drawables, lineDrawables), idx = idx + 1}
         }, {drawables = (Nil: List[GameEngine.Drawable]), idx = 0}, r#items);
         result#drawables

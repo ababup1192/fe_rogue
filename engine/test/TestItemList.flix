@@ -240,4 +240,80 @@ mod TestItemList {
         let list = makeList(threeItems())
             |> ItemList.setIconTextGap(3.5);
         Assert.assertEq(expected = 3.5, ItemList.getIconTextGap(list))
+
+    // ── サブラベル / 選択ハイライト描画（toDrawables、Game effect は stub）──
+
+    def blue(): Color = {r = 0.18f32, g = 0.43f32, b = 0.94f32}
+
+    /// toDrawables を最小 GameEngine.Game stub 下で実行して Drawable 列を得る。
+    /// アイコン無しなので getTextureInfo は呼ばれない（全 op は形式的に埋める）。
+    def renderList(list: ItemList): List[GameEngine.Drawable] =
+        run {
+            ItemList.toDrawables(list, Vec2.zero())
+        } with handler GameEngine.Game {
+            def renderCommands(_, _, _, k) = k(())
+            def initTileBuffer(_, k) = k((0i32, 0i32))
+            def shouldClose(k) = k(false)
+            def getDeltaTime(k) = k(16 |> Duration.millis)
+            def isKeyPressed(_, k) = k(false)
+            def getMousePosition(k) = k(Vec2.zero())
+            def isMouseButtonPressed(_, k) = k(false)
+            def consumeScrollDelta(k) = k(0.0)
+            def getFontAtlas(_, _) = bug!("font not used")
+            def getViewportRect(k) = k({position = Vec2.zero(), size = {x = 480.0, y = 720.0}})
+            def getTextureInfo(_, k) = k(None)
+            def setCursor(_, k) = k(())
+        }
+
+    def styledCount(drawables: List[GameEngine.Drawable]): Int32 =
+        List.count(d -> Option.nonEmpty(d#style), drawables)
+
+    /// fillColor=Some のハイライト設定（cornerRadius 指定）。
+    def highlight(radius: Float64): SelectedHighlight =
+        {fillColor = Some(blue()), fillAlpha = 0.5f32,
+         borderColor = blue(), borderAlpha = 1.0f32, borderWidth = 1.0,
+         cornerRadius = radius, inset = 0.0}
+
+    /// styled Drawable（選択ハイライト）の cornerRadius を取り出す（無ければ -1）。
+    def styledRadius(drawables: List[GameEngine.Drawable]): Float64 =
+        match List.filter(d -> Option.nonEmpty(d#style), drawables) {
+            case d :: _ => Option.getWithDefault(-1.0, Option.map(s -> s#cornerRadius, d#style))
+            case Nil    => -1.0
+        }
+
+    /// focused かつ fillColor=Some なら選択行に style=Some の Drawable が1枚出る。
+    @Test
+    def testSelectedHighlightEmitsStyledDrawable(): Unit \ Assert =
+        let list = makeList(threeItems())
+            |> ItemList.setFocused(true)
+            |> ItemList.setSelectedHighlight(highlight(4.0));
+        Assert.assertEq(expected = 1, styledCount(renderList(list)))
+
+    /// ハイライト Drawable の cornerRadius が設定値と一致する。
+    @Test
+    def testSelectedHighlightCornerRadius(): Unit \ Assert =
+        let list = makeList(threeItems())
+            |> ItemList.setFocused(true)
+            |> ItemList.setSelectedHighlight(highlight(4.0));
+        Assert.assertEq(expected = 4.0, styledRadius(renderList(list)))
+
+    /// fillColor=None（既定）ならハイライト無し＝style付き Drawable は 0（後方互換）。
+    @Test
+    def testNoHighlightWhenFillNone(): Unit \ Assert =
+        let list = makeList(threeItems()) |> ItemList.setFocused(true);
+        Assert.assertEq(expected = 0, styledCount(renderList(list)))
+
+    /// focused=false なら fillColor=Some でもハイライトを出さない。
+    @Test
+    def testNoHighlightWhenNotFocused(): Unit \ Assert =
+        let list = makeList(threeItems()) |> ItemList.setSelectedHighlight(highlight(4.0));
+        Assert.assertEq(expected = 0, styledCount(renderList(list)))
+
+    /// itemSubtexts 登録行のぶんだけ Drawable が増える（"AB"=2 グリフ）。未登録時との差で検証。
+    @Test
+    def testSubtextEmitsExtraDrawables(): Unit \ Assert =
+        let base = makeList(threeItems());
+        let withSub = base |> ItemList.setItemSubtexts(Map.empty() |> Map.insert(0, "AB"));
+        let diff = List.length(renderList(withSub)) - List.length(renderList(base));
+        Assert.assertEq(expected = 2, diff)
 }

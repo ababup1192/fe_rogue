@@ -1240,6 +1240,34 @@ mod SceneLoader {
             }
         ) yield colorOpt
 
+    /// `"selectedHighlight": {fillColor,fillAlpha,borderColor,borderAlpha,borderWidth,cornerRadius,inset}`
+    /// を `SelectedHighlight` に。キー欠落時は `None`（＝ハイライト無効）。各サブ項目は既定値で補完。
+    def parseSelectedHighlight(map: Map[String, Util.Json.Json]):
+            Result[Util.Json.JsonError, Option[SelectedHighlight]] =
+        forM (
+            subOpt <- (JsonCompat.getAtKeyOpt(Root, "selectedHighlight", map): Result[Util.Json.JsonError, Option[Map[String, Util.Json.Json]]]);
+            result <- match subOpt {
+                case None    => (Ok(None): Result[Util.Json.JsonError, Option[SelectedHighlight]])
+                case Some(m) => forM (
+                    fillColorOpt    <- parseColorOpt("fillColor", m);
+                    fillAlphaOpt    <- (JsonCompat.getAtKeyOpt(Root, "fillAlpha", m): Result[Util.Json.JsonError, Option[Float64]]);
+                    borderColorOpt  <- parseColorOpt("borderColor", m);
+                    borderAlphaOpt  <- (JsonCompat.getAtKeyOpt(Root, "borderAlpha", m): Result[Util.Json.JsonError, Option[Float64]]);
+                    borderWidthOpt  <- (JsonCompat.getAtKeyOpt(Root, "borderWidth", m): Result[Util.Json.JsonError, Option[Float64]]);
+                    cornerRadiusOpt <- (JsonCompat.getAtKeyOpt(Root, "cornerRadius", m): Result[Util.Json.JsonError, Option[Float64]]);
+                    insetOpt        <- (JsonCompat.getAtKeyOpt(Root, "inset", m): Result[Util.Json.JsonError, Option[Float64]])
+                ) yield Some(({
+                    fillColor    = fillColorOpt,
+                    fillAlpha    = Option.getWithDefault(1.0f32, Option.map(Float64.truncateToFloat32, fillAlphaOpt)),
+                    borderColor  = Option.getWithDefault(({r = 1.0f32, g = 1.0f32, b = 1.0f32}: Color), borderColorOpt),
+                    borderAlpha  = Option.getWithDefault(1.0f32, Option.map(Float64.truncateToFloat32, borderAlphaOpt)),
+                    borderWidth  = Option.getWithDefault(0.0, borderWidthOpt),
+                    cornerRadius = Option.getWithDefault(0.0, cornerRadiusOpt),
+                    inset        = Option.getWithDefault(0.0, insetOpt)
+                }: SelectedHighlight))
+            }
+        ) yield result
+
     def buildPanel(tagParser: Option[String] -> Result[Util.Json.JsonError, t],
                    map: Map[String, Util.Json.Json]): Result[Util.Json.JsonError, EngineNode[t]] =
         forM (
@@ -1414,6 +1442,8 @@ mod SceneLoader {
                     cursorColorOpt  <- parseColorOpt("cursorColor", map);
                     textColorOpt    <- parseColorOpt("textColor", map);
                     disabledColorOpt <- parseColorOpt("disabledColor", map);
+                    subtextColorOpt  <- parseColorOpt("subtextColor", map);
+                    selHighlightOpt  <- parseSelectedHighlight(map);
                     visibleOpt      <- (JsonCompat.getAtKeyOpt(Root, "visible", map): Result[Util.Json.JsonError, Option[Bool]]);
                     zIndexOpt       <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[Util.Json.JsonError, Option[Int32]]);
                     modulateOpt     <- parseColorOpt("modulate", map)
@@ -1430,6 +1460,8 @@ mod SceneLoader {
                         |> applyOpt(cursorColorOpt, ItemList.setCursorColor)
                         |> applyOpt(textColorOpt, ItemList.setTextColor)
                         |> applyOpt(disabledColorOpt, ItemList.setDisabledColor)
+                        |> applyOpt(subtextColorOpt, ItemList.setSubtextColor)
+                        |> applyOpt(selHighlightOpt, ItemList.setSelectedHighlight)
                         |> applyOpt(visibleOpt, setItemListVisible)
                         |> applyOpt(zIndexOpt, setItemListZIndex)
                         |> applyOpt(modulateOpt, (c, l) -> CanvasItem.setModulate(c, l));
