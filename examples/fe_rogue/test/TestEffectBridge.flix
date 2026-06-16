@@ -20,7 +20,7 @@ mod TestEffectBridge {
         {id = id, ally = true, immobilized = false, alive = true}
 
     def ctxWith(rayUnits: List[RayUnit]): EffectPlan.PlanCtx =
-        {selfId = 0, attackerId = 0, rayUnits = rayUnits,
+        {selfId = 0, attackerId = 0, actorIsPlayer = true, rayUnits = rayUnits,
          amount = {max = 10, dealt = 0, incoming = 0, magic = 0}}
 
     // 消費アイテム → ルール → Plan。

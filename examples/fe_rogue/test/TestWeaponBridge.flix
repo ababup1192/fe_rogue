@@ -11,7 +11,7 @@ mod TestWeaponBridge {
         {id = id, ally = false, immobilized = false, alive = true}
 
     def ctxWith(rayUnits: List[RayUnit]): EffectPlan.PlanCtx =
-        {selfId = 0, attackerId = 9, rayUnits = rayUnits,
+        {selfId = 0, attackerId = 9, actorIsPlayer = true, rayUnits = rayUnits,
          amount = {max = 30, dealt = 20, incoming = 12, magic = 0}}
 
     def planOf(effect: WeaponEffect, v: Int32, ctx: EffectPlan.PlanCtx): List[PlanItem] =

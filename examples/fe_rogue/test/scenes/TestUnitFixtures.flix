@@ -79,7 +79,8 @@ mod TestUnitFixtures {
         },
         spriteFrames  = None,
         aiType        = EnemyAI.AiType.Aggressive,
-        ring          = None
+        ring          = None,
+        effectRule    = None
     }
 
     /// 戦闘パラメータも明示的に指定したいケース用。

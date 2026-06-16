@@ -785,7 +785,10 @@ mod CombatScene {
                 let afterWSteal = applyEnemyWeaponLifesteal(enemyId, enemy, weapon, outcome#dmg, afterRingSteal);
                 // 如意棒 / 突風の書（敵装備時）: 生存している味方をノックバック。
                 let afterKnock = applyEnemyKnockback(weapon, enemy#gridPos, player#gridPos, targetId, outcome#killed, afterWSteal);
-                if (outcome#killed) (afterKnock, targetId :: Nil) else (afterKnock, Nil)
+                // 敵固有の特殊能力（effectRule = データ駆動）: 命中後に毒/鈍足/吸血などを発火。
+                let afterEffect = applyEnemyEffectRule(enemy, enemyId, targetId, player,
+                                                       outcome#dmg, outcome#newHp, outcome#killed, afterKnock);
+                if (outcome#killed) (afterEffect, targetId :: Nil) else (afterEffect, Nil)
             };
         // FE ルールでは攻撃を振った時点で耐久を消費する（回避されても同様）
         let consumed = Weapon.consume(weapon);
@@ -795,6 +798,121 @@ mod CombatScene {
         let withWeaponUpdate = EnemyScene.mapEnemy(enemyId,
             d -> {weapon = consumed | d}, damaged);
         (withWeaponUpdate, killed)
+
+    /// 敵固有の特殊能力（effectRule = enemies.json のデータ駆動ルール）を命中後に発火する。
+    /// effectRule 無し / 不正 JSON / トリガー不一致 / 確率不発のときは scene をそのまま返す（fail-safe）。
+    /// 対象解決は敵 actor 視点（actorIsPlayer=false）。`to:enemy` は ray 上の味方駒（is-player）へ、
+    /// `to:self` は敵自身（EnemyScene 側）へ正しく流れる。毒/鈍足/命中低下（status）と吸血（heal）に対応。
+    /// 固定追加ダメージ等の撃破を伴う op は未対応（PlanHandlers が killedIds を運べないため将来課題）。
+    def applyEnemyEffectRule(enemy: EnemyScene.Data, enemyId: Int32, targetId: Int32,
+                              player: PlayerScene.Data, dmgDealt: Int32, targetNewHp: Int32,
+                              killed: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+        // None カスケード（effectRule 無し / 不正 JSON / トリガー不一致）を 1 段に畳む。
+        // ここまでは RNG を引かない＝ rule が確定し trigger が当たった敵だけが下で roll する
+        // （無い敵は短絡＝既存乱数列を保つ。roll を forM 内に入れると短絡順序が崩れるため厳禁）。
+        let fired =
+            (forM (
+                j    <- enemy#resource#effectRule;
+                rule <- EffectBridge.fromComposer(j)
+            ) yield rule)
+                |> Option.filter(rule -> triggerFiresOnHit(rule#trigger, killed));
+        match fired {
+            case None       => scene  // fail-safe no-op（effectRule 無し / 不正ルール / トリガー不一致）
+            case Some(rule) =>
+                // ここで初めて追加ロールを引く（effectRule を持ち trigger が当たった敵だけ）。
+                let roll = rollPercent();
+                let predCtx = {selfHpPct       = hpPct(enemy#hp, enemy#resource#hp),
+                               targetHpPct     = hpPct(targetNewHp, player#resource#hp),
+                               targetAlive     = targetNewHp > 0,
+                               equippedIsRogue = false,
+                               adjacent        = true};
+                if (not EffectPlan.shouldFire(rule, predCtx, roll)) scene  // 確率不発も no-op
+                else {
+                    // ray 上の対象は被弾した味方駒 1 体（is-player ⇒ ally=true）。
+                    let rayUnits = ({id = targetId, ally = true, immobilized = false,
+                                     alive = targetNewHp > 0}: EffectRule.RayUnit) :: Nil;
+                    let ctx = {selfId = enemyId, attackerId = enemyId, actorIsPlayer = false,
+                               rayUnits = rayUnits,
+                               amount = {max = player#resource#hp, dealt = dmgDealt,
+                                         incoming = 0, magic = 0}};
+                    EffectRunner.runPlan(enemyEffectHandlers(),
+                                         EffectPlan.planActions(rule, ctx), scene)
+                }
+        }
+
+    /// 戦闘ヒットパスで発火するトリガーか。命中後ブランチなので OnHit/OnAttack は常に true、
+    /// OnKill は撃破時のみ。それ以外（OnUse/OnCast/OnTurnStart 等）は戦闘では発火しない。
+    def triggerFiresOnHit(t: EffectRule.Trigger, killed: Bool): Bool = match t {
+        case EffectRule.Trigger.OnHit    => true
+        case EffectRule.Trigger.OnAttack => true
+        case EffectRule.Trigger.OnKill   => killed
+        case _                           => false
+    }
+
+    /// HP 割合（0..100）。最大 HP が 0 以下なら 0（ゼロ除算回避）。
+    def hpPct(hp: Int32, maxHp: Int32): Int32 =
+        if (maxHp <= 0) 0 else (hp * 100) / maxHp
+
+    /// 敵 actor の effectRule 用 PlanHandlers。`ally`=is-player の規約は杖と同一
+    /// （ally=true ⇒ PlayerScene、ally=false ⇒ EnemyScene）。吸血(heal)・状態異常(status)・
+    /// 全回復(fullHeal) に対応。撃破を伴う damage / 盤面副作用 custom 等は戦闘トリガーでは未対応 no-op。
+    def enemyEffectHandlers(): EffectRunner.PlanHandlers[Scene[NodeTag], {}] = {
+        heal       = (sc, id, ally, n)        -> effectHeal(id, ally, n, sc),
+        fullHeal   = (sc, id, ally)           -> effectFullHeal(id, ally, sc),
+        status     = (sc, id, ally, se, m, t) -> effectStatus(id, ally, se, m, t, sc),
+        maxHpUp    = (sc, _, _, _)            -> sc,
+        damage     = (sc, _, _, _)            -> sc,
+        immobilize = (sc, _, _, _)            -> sc,
+        revive     = (sc, _, _)               -> sc,
+        custom     = (sc, _, _, _)            -> sc,
+        sfx        = (sc, _)                  -> sc,
+        noOp       = (sc, _)                  -> sc
+    }
+
+    /// HP 回復を ally で出し分け（最大 HP でクランプ）。吸血（OpLifesteal → HealAt）の着地点。
+    def effectHeal(id: Int32, ally: Bool, n: Int32, sc: Scene[NodeTag]): Scene[NodeTag] =
+        if (ally)
+            match PlayerScene.get(id, sc) {
+                case Some(p) =>
+                    let r = Combat.heal(p#hp, p#resource#hp, n);
+                    sc |> PlayerScene.mapPlayer(id, d -> {hp = r#newHp | d})
+                       |> UnitHPBarScene.update(PlayerScene.playerPath(id), r#newHp)
+                case None => sc
+            }
+        else
+            match EnemyScene.get(id, sc) {
+                case Some(e) =>
+                    let r = Combat.heal(e#hp, e#resource#hp, n);
+                    sc |> EnemyScene.mapEnemy(id, d -> {hp = r#newHp | d})
+                       |> UnitHPBarScene.update(EnemyScene.enemyPath(id), r#newHp)
+                case None => sc
+            }
+
+    /// 全回復を ally で出し分け。
+    def effectFullHeal(id: Int32, ally: Bool, sc: Scene[NodeTag]): Scene[NodeTag] =
+        if (ally)
+            match PlayerScene.get(id, sc) {
+                case Some(p) =>
+                    sc |> PlayerScene.mapPlayer(id, d -> {hp = p#resource#hp | d})
+                       |> UnitHPBarScene.update(PlayerScene.playerPath(id), p#resource#hp)
+                case None => sc
+            }
+        else
+            match EnemyScene.get(id, sc) {
+                case Some(e) =>
+                    sc |> EnemyScene.mapEnemy(id, d -> {hp = e#resource#hp | d})
+                       |> UnitHPBarScene.update(EnemyScene.enemyPath(id), e#resource#hp)
+                case None => sc
+            }
+
+    /// 時限ステータス付与を ally で出し分け（毒/鈍足/命中低下など）。
+    def effectStatus(id: Int32, ally: Bool, kind: StatusSystem.StatusEffect,
+                     mag: Int32, turns: Int32, sc: Scene[NodeTag]): Scene[NodeTag] =
+        let status = {effect = kind, magnitude = mag, remaining = turns};
+        if (ally)
+            PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc)
+        else
+            EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc)
 
     /// みかえりのリングを装備した敵が撃破したとき、その敵の HP を回復する（最大 HP でクランプ）。
     /// リング未装備 / Lifesteal 以外なら回復量 0 で no-op。

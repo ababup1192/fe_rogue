@@ -312,6 +312,14 @@
         "label": "指輪id",
         "order": 14
       }
+    },
+    "effectRule": {
+      "field": {
+        "ftype": "text",
+        "hint": "plain",
+        "label": "効果ルール(IDE合成・直接編集しない)",
+        "order": 99
+      }
     }
   },
   "metaHints": {}

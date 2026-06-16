@@ -149,7 +149,7 @@ mod StaffCastScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger} =
         match staffHitTarget(hit) {
             case Some((id, ally)) =>
-                let ctx = {selfId = playerId, attackerId = playerId,
+                let ctx = {selfId = playerId, attackerId = playerId, actorIsPlayer = true,
                            rayUnits = ({id = id, ally = ally, immobilized = false, alive = true}: EffectRule.RayUnit) :: Nil,
                            amount = {max = 0, dealt = 0, incoming = 0, magic = 0}};
                 EffectRunner.runPlan(staffEffectHandlers(playerId, dir),
@@ -528,7 +528,7 @@ mod StaffCastScene {
             // IDE 合成エディタの effectRule（onUse）があればそれを優先発火。PlanItem の値（IDE で
             // 編集した量/op/継続）で効くので、ゲーム挙動が IDE の設定に追従する。対象は自分。
             case Some(rule) =>
-                let ctx = {selfId = playerId, attackerId = playerId,
+                let ctx = {selfId = playerId, attackerId = playerId, actorIsPlayer = true,
                            rayUnits = ({id = playerId, ally = true, immobilized = false, alive = true}: EffectRule.RayUnit) :: Nil,
                            amount = {max = player#resource#hp, dealt = 0, incoming = 0, magic = 0}};
                 EffectRunner.runPlan(throwEffectHandlers(), EffectPlan.planActions(rule, ctx), scene)
@@ -536,7 +536,7 @@ mod StaffCastScene {
             case None =>
                 if (isSelfUseEffect(item#effect)) {
                     let rule = EffectBridge.consumableRule(item);
-                    let ctx = {selfId = playerId, attackerId = playerId,
+                    let ctx = {selfId = playerId, attackerId = playerId, actorIsPlayer = true,
                                rayUnits = (Nil: List[EffectRule.RayUnit]),
                                amount = {max = player#resource#hp, dealt = 0, incoming = 0, magic = 0}};
                     let plan = EffectPlan.planActions(rule, ctx);
@@ -1160,7 +1160,7 @@ mod StaffCastScene {
     pub def applyConsumableEffectDsl(item: Consumable.ConsumableResource,
                                   id: Int32, ally: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
         let target = ({id = id, ally = ally, immobilized = false, alive = true}: EffectRule.RayUnit);
-        let ctx = {selfId = id, attackerId = id, rayUnits = target :: Nil,
+        let ctx = {selfId = id, attackerId = id, actorIsPlayer = true, rayUnits = target :: Nil,
                    amount = {max = 0, dealt = 0, incoming = 0, magic = 0}};
         let plan = EffectPlan.planActions(EffectBridge.consumableThrowRule(item), ctx);
         EffectRunner.runPlan(throwEffectHandlers(), plan, scene)

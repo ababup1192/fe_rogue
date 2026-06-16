@@ -238,9 +238,12 @@ mod EffectBridge {
         let gs = (k, d) -> Map.get(k, obj) |> Option.flatMap(expectString) |> Option.getWithDefault(d);
         let gi = (k, d) -> Map.get(k, obj) |> Option.flatMap(expectInt) |> Option.getWithDefault(d);
         let toV = gs("to", "self");
+        // chance は任意（欠落 → 100＝必ず発動。decodeRule の既定と同値）。確率発動の敵特殊
+        // （毒30%付与など）を簡易form のままコードレスで書けるようにここで通す。
         JObject(Map#{
             "when" => JString(gs("when", "onUse")),
             "deliver" => JArray(Vector#{JString(deliverOfComposer(toV))}),
+            "chance" => JNumber(intToBd(gi("chance", 100))),
             "do" => JArray(Vector#{
                 actionFull(toV, gs("op", "healFlat"), gi("amount", 0),
                            gs("for", "instant"), gi("forTurns", 0), gs("sfx", ""), gs("vfx", ""))

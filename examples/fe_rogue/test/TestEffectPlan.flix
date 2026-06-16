@@ -16,7 +16,7 @@ mod TestEffectPlan {
 
     // selfId=1, attackerId=9, amount文脈 max30/dealt20/incoming12/magic7。
     def ctxWith(rayUnits: List[RayUnit]): EffectPlan.PlanCtx =
-        {selfId = 1, attackerId = 9, rayUnits = rayUnits,
+        {selfId = 1, attackerId = 9, actorIsPlayer = true, rayUnits = rayUnits,
          amount = {max = 30, dealt = 20, incoming = 12, magic = 7}}
 
     // JSON → Plan（decode 失敗時は空リスト）。

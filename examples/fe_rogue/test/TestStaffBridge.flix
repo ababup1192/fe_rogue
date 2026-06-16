@@ -11,7 +11,7 @@ mod TestStaffBridge {
 
     // 杖回復は statPlus magic を使うので magic を 5 に。
     def ctxWith(rayUnits: List[RayUnit]): EffectPlan.PlanCtx =
-        {selfId = 0, attackerId = 0, rayUnits = rayUnits,
+        {selfId = 0, attackerId = 0, actorIsPlayer = true, rayUnits = rayUnits,
          amount = {max = 30, dealt = 0, incoming = 0, magic = 5}}
 
     def planOf(effect: StaffEffect, ctx: EffectPlan.PlanCtx): List[PlanItem] =

@@ -13,7 +13,7 @@ mod TestEffectRunner {
         {id = id, ally = ally, immobilized = false, alive = true}
 
     def ctxWith(rayUnits: List[RayUnit]): EffectPlan.PlanCtx =
-        {selfId = 1, attackerId = 9, rayUnits = rayUnits,
+        {selfId = 1, attackerId = 9, actorIsPlayer = true, rayUnits = rayUnits,
          amount = {max = 30, dealt = 20, incoming = 12, magic = 7}}
 
     /// 各 handler が「呼び出しを表す文字列」を先頭に積むだけの記録 handler（純粋・効果なし）。

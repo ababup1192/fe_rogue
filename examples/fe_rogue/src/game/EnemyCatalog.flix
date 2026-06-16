@@ -40,7 +40,10 @@ mod EnemyCatalog {
         spriteFrames     = Option[SpriteFrames],
         aiType           = EnemyAI.AiType,
         // 装備する指輪の id（rings.json）。多くの敵は持たないので Option。欠落 → None。
-        ring             = Option[String]
+        ring             = Option[String],
+        // 特殊能力（戦闘トリガー効果）。IDE 合成エディタ簡易形式の effectRule を生 Json で保持し、
+        // 発火時に EffectBridge.fromComposer でルール化する。多くの敵は持たないので Option。欠落 → None。
+        effectRule       = Option[Util.Json.Json]
     }
 
     /// 全 id を列挙・イテレートしたいとき（EnemyScene のロスター構築など）に使う。
@@ -97,7 +100,7 @@ mod EnemyCatalog {
     pub def expectedEnemyFields(): Set[String] =
         Set#{"moveTiles", "level", "hp", "attack", "defense", "magicAttack", "magicDefense",
               "speed", "skill", "luck", "sprite", "initialInventory", "description", "spriteFrames",
-              "aiType", "ring"}
+              "aiType", "ring", "effectRule"}
 }
 
 // Saveable[EnemyCatalog.EnemyCatalog] は mod 外 instance として置く。
@@ -134,12 +137,14 @@ mod EnemyCatalogCodec {
                             |> Option.getWithDefault(EnemyAI.AiType.Aggressive);
             // ring (装備指輪 id) は省略可。欠落 → None。
             let ring = Map.get("ring", obj) |> Option.flatMap(expectString);
+            // effectRule (特殊能力) は生 Json のまま保持。省略可、欠落 → None。
+            let effectRule = Map.get("effectRule", obj);
             ({moveTiles = base#moveTiles, level = base#level, hp = base#hp, attack = base#attack,
               defense = base#defense, magicAttack = base#magicAttack,
               magicDefense = base#magicDefense, speed = base#speed, skill = base#skill,
               luck = base#luck, sprite = base#sprite, initialInventory = base#initialInventory,
               description = base#description, spriteFrames = base#spriteFrames,
-              aiType = aiType, ring = ring}: EnemyResource)
+              aiType = aiType, ring = ring, effectRule = effectRule}: EnemyResource)
         }
 
     /// 敵 = 共有ベース + `aiType`。共有部の Map に `aiType` 文字列を差して
@@ -153,5 +158,10 @@ mod EnemyCatalogCodec {
             case Some(id) => Map.insert("ring", JString(id), withAi)
             case None     => withAi
         };
-        Util.Json.Json.JObject(withRing)
+        // effectRule は Some のときだけ生 Json を書き出す（None は省略 → round-trip）。
+        let withEffect = match e#effectRule {
+            case Some(j) => Map.insert("effectRule", j, withRing)
+            case None    => withRing
+        };
+        Util.Json.Json.JObject(withEffect)
 }

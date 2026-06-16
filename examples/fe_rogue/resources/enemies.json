@@ -5,6 +5,15 @@
       "attack": 7,
       "defense": 1,
       "description": "バーバリアン_T1",
+      "effectRule": {
+        "amount": 1,
+        "chance": 30,
+        "for": "turns",
+        "forTurns": 2,
+        "op": "spdDown",
+        "to": "enemy",
+        "when": "onHit"
+      },
       "hp": 22,
       "initialInventory": [
         {

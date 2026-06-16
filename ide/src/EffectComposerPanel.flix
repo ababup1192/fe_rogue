@@ -92,7 +92,8 @@ mod EffectComposerPanel {
                            record: Json, mkCommit: List[String] -> (Json -> Unit \ IO)): Unit \ IO =
         let cat = List.head(basePath);
         if (cat != Some("consumables") and cat != Some("weapons")
-            and cat != Some("rings") and cat != Some("staves")) ()
+            and cat != Some("rings") and cat != Some("staves")
+            and cat != Some("enemies")) ()
         else {
             let er = effectRuleMap(record);
             let hasRule = not Map.isEmpty(er);

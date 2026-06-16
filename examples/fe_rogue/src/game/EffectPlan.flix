@@ -29,13 +29,16 @@ mod EffectPlan {
         case NoOp(String)
     }
 
-    /// planActions に必要な文脈。対象解決（selfId/attackerId/rayUnits）と
+    /// planActions に必要な文脈。対象解決（selfId/attackerId/rayUnits/actorIsPlayer）と
     /// 効果量解決（amount）の両方を束ねる。実 Scene が PlayerData/EnemyData から組む。
+    /// `actorIsPlayer` は使用者が player 側か（陣営判定と self/attacker の is-player 出し分けに使う）。
+    /// 杖・アイテムは player 使用なので true、敵特殊（CombatScene）は false を渡す。
     pub type alias PlanCtx = {
-        selfId     = Int32,
-        attackerId = Int32,
-        rayUnits   = List[RayUnit],
-        amount     = EffectDsl.AmountCtx
+        selfId        = Int32,
+        attackerId    = Int32,
+        actorIsPlayer = Bool,
+        rayUnits      = List[RayUnit],
+        amount        = EffectDsl.AmountCtx
     }
 
     /// 時限効果の継続ターン数を取り出す（DurTurns 以外は 1 とみなす）。
@@ -111,7 +114,7 @@ mod EffectPlan {
 
     /// 1 アクションを Plan へ。対象が解決できなければ NoOp（空振り）。
     pub def planAction(a: Action, ctx: PlanCtx): List[PlanItem] =
-        match EffectRule.resolveTarget(a#to, ctx#selfId, ctx#attackerId, ctx#rayUnits) {
+        match EffectRule.resolveTarget(a#to, ctx#selfId, ctx#attackerId, ctx#rayUnits, ctx#actorIsPlayer) {
             case None      => PlanItem.NoOp("対象なし（空振り）") :: Nil
             case Some(ref) =>
                 let amt = a#amount

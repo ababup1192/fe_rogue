@@ -180,7 +180,7 @@ mod TestStaffCastScene {
     def testConsumableHealViaDsl(): Unit \ Assert =
         let scene = playerScene(4, 0);
         let json = "{\"when\":\"onUse\",\"do\":[{\"to\":{\"role\":\"self\"},\"op\":\"healFlat\",\"amount\":{\"flat\":3}}]}";
-        let ctx = {selfId = 0, attackerId = 0, rayUnits = (Nil: List[EffectRule.RayUnit]),
+        let ctx = {selfId = 0, attackerId = 0, actorIsPlayer = true, rayUnits = (Nil: List[EffectRule.RayUnit]),
                    amount = {max = 10, dealt = 0, incoming = 0, magic = 0}};
         let items = Util.Json.parse(json)
                         |> Result.toOption
