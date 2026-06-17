@@ -1,0 +1,24 @@
+{
+  "children": [
+    {
+      "background": { "b": 0.106, "g": 0.071, "r": 0.051 },
+      "backgroundAlpha": 0.95,
+      "border": { "b": 0.271, "g": 0.204, "r": 0.165 },
+      "borderWidth": 1,
+      "cornerRadius": 3,
+      "name": "panel",
+      "pos": [2, 9],
+      "size": [70, 20],
+      "type": "Panel",
+      "visible": false,
+      "zIndex": 0
+    }
+  ],
+  "description": "選択中ユニットの簡易情報カード（1F の下・コマンドメニューの上）。\nアイコン/名前/Lv/HP/装備(武器・指輪)。配色は HTML プロトタイプ準拠。children は process で動的生成。",
+  "layer": 2,
+  "name": "UnitCard",
+  "pos": [0, 0],
+  "rotation": 0,
+  "scale": [1, 1],
+  "type": "CanvasLayer"
+}

@@ -509,9 +509,49 @@ mod TestActionMenuScene {
         // 出現する（Some）かつ選択不可（true）= Some(true)。
         Assert.assertEq(expected = Some(true), entryDisabledOf("attack", after))
 
+    /// SelectedPlayer なし（空マスメニュー）で refreshItems を回すランナー。
+    def runRefreshItemsNoSel(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let menuNode = match Scene.getEngineNode(ActionMenuScene.menuPath(), scene) {
+            case Some(node) => node
+            case None       => bug!("ActionMenu ItemList not found")
+        };
+        let (_, after) = TestUnitFixtures.withMenuReadMocksNoSel(
+            TurnPhase.Phase.ActionSelect, scene, () ->
+                ActionMenuScene.refreshItems(
+                    Duration.seconds(0.0), menuNode, ActionMenuScene.menuPath(), scene));
+        after
+
+    /// loadTwoPlayerActionMenuScene と同じだが主人公(id=0)を行動済み(waited=true)にした scene。
+    def loadWaitedLordScene(): Scene[NodeTag] =
+        let world = Marker2D.make(Vec2.zero());
+        let marker0 = Marker2D.make(Vec2.zero());
+        let marker1 = Marker2D.make(Vec2.zero());
+        let lord = { waited = true | makePlayerData(0, {x = 1, y = 1}) };
+        let ally = makePlayerData(1, {x = 3, y = 3});
+        let withWorld = Scene.empty()
+            |> Scene.addNode(MapScene.worldName(),
+                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
+                EngineNode.Marker2DWithState(marker0, NodeTag.Player(lord)))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(1),
+                EngineNode.Marker2DWithState(marker1, NodeTag.Player(ally)));
+        actionMenuAddPure(withWorld)
+
+    /// 空マスメニュー: 主人公が未行動 + 別の生存味方が居れば「集合」は選択可能。
+    @Test
+    def testGatherEnabledWhenLordActiveWithAlly(): Unit \ Assert =
+        let after = runRefreshItemsNoSel(loadTwoPlayerActionMenuScene());
+        Assert.assertEq(expected = Some(false), entryDisabledOf("gather", after))
+
+    /// 空マスメニュー: 主人公が行動済み(waited)なら「集合」は出るが disabled。
+    @Test
+    def testGatherDisabledWhenLordWaited(): Unit \ Assert =
+        let after = runRefreshItemsNoSel(loadWaitedLordScene());
+        Assert.assertEq(expected = Some(true), entryDisabledOf("gather", after))
+
     // ════════════════════════════════════════════════════════
     // 集合（行軍）の隣接メニュー (gatherActive=true × 主人公選択中)
-    //   主人公に隣接する味方が居れば「交換」、常に「全員待機 / キャンセル」。
+    //   主人公に隣接する味方が居れば「交換」、常に「全員待機」。
     //   隣接味方が居なければ「交換」は出さない（仕様 6）。
     // ════════════════════════════════════════════════════════
 
@@ -545,20 +585,20 @@ mod TestActionMenuScene {
                 ActionMenuScene.menuPath(), scene));
         after
 
-    /// 主人公に隣接する味方((2,1)) が居れば、隣接メニューは「交換 → 全員待機 → キャンセル」。
+    /// 主人公に隣接する味方((2,1)) が居れば、隣接メニューは「交換 → 全員待機」。
     @Test
     def testGatherAdjacentMenuShowsTradeWithAdjacentAlly(): Unit \ Assert =
         let after = runRefreshItemsGather(loadGatherMenuScene({x = 2, y = 1}));
         Assert.assertEq(
-            expected = Some("gatherTrade") :: Some("waitAll") :: Some("gatherCancel") :: Nil,
+            expected = Some("gatherTrade") :: Some("waitAll") :: Nil,
             itemsMetadata(after))
 
-    /// 隣接する味方が居なければ((5,5))、「交換」は出さず「全員待機 → キャンセル」だけ（仕様 6）。
+    /// 隣接する味方が居なければ((5,5))、「交換」は出さず「全員待機」だけ（仕様 6）。
     @Test
     def testGatherAdjacentMenuHidesTradeWithoutAdjacentAlly(): Unit \ Assert =
         let after = runRefreshItemsGather(loadGatherMenuScene({x = 5, y = 5}));
         Assert.assertEq(
-            expected = Some("waitAll") :: Some("gatherCancel") :: Nil,
+            expected = Some("waitAll") :: Nil,
             itemsMetadata(after))
 
     /// 配置済み(placed)の階段ノードを `cell` に置いたシーンを返す（JSON ロードを介さず直接構築）。
@@ -577,7 +617,7 @@ mod TestActionMenuScene {
                 ItemData.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon()),
                 loadGatherMenuScene({x = 5, y = 5})));
         Assert.assertEq(
-            expected = Some("pickup") :: Some("waitAll") :: Some("gatherCancel") :: Nil,
+            expected = Some("pickup") :: Some("waitAll") :: Nil,
             itemsMetadata(after))
 
     /// 主人公(1,1)が階段マスに立っているときだけ集合メニューに「階段」が出る。
@@ -586,7 +626,7 @@ mod TestActionMenuScene {
         let after = runRefreshItemsGather(
             withStairsAt({x = 1, y = 1}, loadGatherMenuScene({x = 5, y = 5})));
         Assert.assertEq(
-            expected = Some("gatherStairs") :: Some("waitAll") :: Some("gatherCancel") :: Nil,
+            expected = Some("gatherStairs") :: Some("waitAll") :: Nil,
             itemsMetadata(after))
 
     /// 階段が別マス(5,5)にあっても主人公(1,1)が乗っていなければ「階段」は出さない
@@ -596,10 +636,10 @@ mod TestActionMenuScene {
         let after = runRefreshItemsGather(
             withStairsAt({x = 5, y = 5}, loadGatherMenuScene({x = 5, y = 5})));
         Assert.assertEq(
-            expected = Some("waitAll") :: Some("gatherCancel") :: Nil,
+            expected = Some("waitAll") :: Nil,
             itemsMetadata(after))
 
-    /// 足元アイテム + 階段上 + 隣接味方が揃うと固定順「拾う → 階段 → 交換 → 全員待機 → キャンセル」。
+    /// 足元アイテム + 階段上 + 隣接味方が揃うと固定順「拾う → 階段 → 交換 → 全員待機」。
     @Test
     def testGatherMenuFullOrder(): Unit \ Assert =
         let after = runRefreshItemsGather(
@@ -609,7 +649,7 @@ mod TestActionMenuScene {
                 |> withStairsAt({x = 1, y = 1}));
         Assert.assertEq(
             expected = Some("pickup") :: Some("gatherStairs") :: Some("gatherTrade")
-                        :: Some("waitAll") :: Some("gatherCancel") :: Nil,
+                        :: Some("waitAll") :: Nil,
             itemsMetadata(after))
 
     // ════════════════════════════════════════════════════════
@@ -649,38 +689,6 @@ mod TestActionMenuScene {
             });
             Assert.assertEq(expected = TurnPhase.Phase.ActionSelect, finalPhase)
         }
-
-    // ════════════════════════════════════════════════════════
-    // 再スキン: subtextFor / buildSubtexts（右寄せサブラベル）
-    // ════════════════════════════════════════════════════════
-
-    @Test
-    def testSubtextForAttack(): Unit \ Assert =
-        Assert.assertEq(expected = "敵を選ぶ", ActionMenuScene.subtextFor(Some("attack")))
-
-    /// waitAll は turnEnd と別文言（v2 の subtext 共有欠落の回帰ガード）。
-    @Test
-    def testSubtextForWaitAllIsDedicated(): Unit \ Assert =
-        Assert.assertEq(
-            expected = ("全員を待機", "敵のターンへ"),
-            (ActionMenuScene.subtextFor(Some("waitAll")),
-             ActionMenuScene.subtextFor(Some("turnEnd"))))
-
-    @Test
-    def testSubtextForNoneAndUnknownAreEmpty(): Unit \ Assert =
-        Assert.assertEq(
-            expected = ("", ""),
-            (ActionMenuScene.subtextFor(None), ActionMenuScene.subtextFor(Some("___nope___"))))
-
-    @Test
-    def testBuildSubtextsIndexesRows(): Unit \ Assert =
-        let items =
-            ({text = "攻撃", disabled = false, metadata = Some("attack")} : ItemEntry) ::
-            ({text = "アイテム", disabled = false, metadata = Some("item")} : ItemEntry) :: Nil;
-        let subtexts = ActionMenuScene.buildSubtexts(items);
-        Assert.assertEq(
-            expected = (Some("敵を選ぶ"), Some("道具を使う")),
-            (Map.get(0, subtexts), Map.get(1, subtexts)))
 
     // ════════════════════════════════════════════════════════
     // 再スキン: 幾何結合の pin（menu pos.y == menuHeaderPadding 真理値 8.0）

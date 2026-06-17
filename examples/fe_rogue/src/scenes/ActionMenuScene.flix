@@ -4,7 +4,7 @@
 /// 画面に出る ItemList。文脈で項目が切り替わる:
 ///   - PlayerMoving 由来 (SelectedPlayer あり) → こうげき / アイテム / ひろう / たいき
 ///   - PlayerCursor 由来・空マス (SelectedPlayer なし) → 集合 (確定で行軍開始) / ターンエンド
-///   - GatherMove 由来 (gatherActive=true・主人公選択中) → 交換 / 全員待機 / キャンセル
+///   - GatherMove 由来 (gatherActive=true・主人公選択中) → 交換 / 全員待機（キャンセルは X で巻き戻し）
 /// ↑↓ で選択、Enter/Z で確定、X/Escape で元のフェーズ (PlayerMoving / PlayerCursor / GatherMove) に戻る。
 ///
 /// ノード構造（visible のとき）:
@@ -76,8 +76,6 @@ mod ActionMenuScene {
     def gatherTradeMeta(): String = "gatherTrade"
     /// 集合（行軍）の隣接メニューの「階段で離脱」（届く味方が順々に階段へ向かい退場）。
     def gatherStairsMeta(): String = "gatherStairs"
-    /// 集合（行軍）の隣接メニューの「キャンセル」: 主人公＋追従味方を開始位置へ巻き戻す。
-    def gatherCancelMeta(): String = "gatherCancel"
     /// 集合（行軍）隣接メニューの「全員待機」。挙動は turnEnd と同一（applyTurnEnd）だが、
     /// turnEndMeta と別識別子にして subtextFor が専用文言「全員を待機」を返せるようにする。
     def waitAllMeta(): String = "waitAll"
@@ -133,8 +131,7 @@ mod ActionMenuScene {
                 withVisibility
                     |> ItemList.mapAt(menuPath(), l -> {
                         let withItems = l
-                            |> ItemList.setItems(items)
-                            |> ItemList.setItemSubtexts(buildSubtexts(items));
+                            |> ItemList.setItems(items);
                         // 開いた直後にカーソルが disabled 項目（例: 敵が射程外の「攻撃」）に
                         // 乗っていたら、最初の選択可能項目へ寄せる（HTML プロトタイプと同挙動）。
                         if (selectedIsDisabled(items, withItems))
@@ -178,21 +175,16 @@ mod ActionMenuScene {
 
     /// items の各行に必要な幅（左パディング + ラベル幅 + ラベル/サブラベル間隔 + サブラベル幅 + 右余白）
     /// の最大値。文脈ごとに最長行へ幅を合わせ、中央に無駄な余白が出ないようにする。
+    /// 中央寄せ項目の左右余白 (px)。最長ラベルの左右にこのぶん空ける。
+    def menuLabelSidePad(): Float64 = 9.0
+
     def contentWidth(list: ItemList, items: List[ItemEntry]): Float64 =
         let font = ItemList.getFont(list);
         let fs   = ItemList.getFontSize(list);
-        let sfs  = ItemList.getSubtextFontSize(list);
-        let cox  = ItemList.getCursorOffsetX(list);
-        let gap  = ItemList.getIconTextGap(list);
-        let labelSubGap = 4.0;
-        let rowW = e -> {
-            let labelW = Label2D.measure(Label2D.make(e#text, font, fs))#x;
-            let sub = subtextFor(e#metadata);
-            let subW = if (sub == "") 0.0
-                       else labelSubGap + Label2D.measure(Label2D.make(sub, font, sfs))#x;
-            cox + labelW + subW + gap
-        };
-        items |> List.map(rowW) |> List.foldLeft(Float64.max, 0.0)
+        let maxLabelW = items
+            |> List.map(e -> Label2D.measure(Label2D.make(e#text, font, fs))#x)
+            |> List.foldLeft(Float64.max, 0.0);
+        maxLabelW + 2.0 * menuLabelSidePad()
 
     /// メニュー項目数 `count` と内容幅 `contentW` に合わせて ItemList / Panel / headerBg を詰める。
     /// 高さは行数ぶん、幅は内容（と見出し）に合わせて自動フィットする（中央の無駄余白を出さない）。
@@ -212,41 +204,6 @@ mod ActionMenuScene {
             |> Panel.mapAt(panelPath(), p -> Panel.setSize({x = panelW, y = panelH}, p))
             |> Panel.mapAt(headerBgPath(), p ->
                 Panel.setSize({x = innerW, y = Panel.getSize(p)#y}, p))
-
-    /// 「交換」系（通常隣接 2 人交換・集合隣接の N 人交換）の共通サブラベル文言。
-    /// exchangeMeta と gatherTradeMeta は別アクションだが補助説明は同一なので 1 箇所に集約し、
-    /// 片方だけ文言を変えて取り残されることを防ぐ。
-    def tradeSubtext(): String = "隣と持物交換"
-
-    /// 各メニュー項目の右寄せサブラベル（淡色の補助説明）を metadata から導出する。
-    /// metadata は onActionConfirmed と同じアクション識別子。未知/None は空文字。
-    pub def subtextFor(meta: Option[String]): String =
-        match meta {
-            case None    => ""
-            case Some(m) =>
-                if (m == attackMeta())            "敵を選ぶ"
-                else if (m == itemMeta())         "道具を使う"
-                else if (m == exchangeMeta())     tradeSubtext()
-                else if (m == waitMeta())         "行動を終える"
-                else if (m == pickupMeta())       "足元を拾う"
-                else if (m == openMeta())         "宝箱を開ける"
-                else if (m == stairsMeta())       "次の階へ"
-                else if (m == gatherMeta())       "隊列で動く"
-                else if (m == turnEndMeta())      "敵のターンへ"
-                else if (m == waitAllMeta())      "全員を待機"
-                else if (m == suspendMeta())      "保存して中断"
-                else if (m == gatherTradeMeta())  tradeSubtext()
-                else if (m == gatherStairsMeta()) "階段で離脱"
-                else if (m == gatherCancelMeta()) "移動をやり直す"
-                else                              ""
-        }
-
-    /// items の各行 index に subtextFor を割り当てた Map を作る（setItemSubtexts 用）。
-    pub def buildSubtexts(items: List[ItemEntry]): Map[Int32, String] =
-        items
-            |> List.map(e -> subtextFor(e#metadata))
-            |> List.zipWithIndex             // List[(Int32,a)]=(index,elem)。stdlib List.flix:1142
-            |> List.toMap
 
     /// 選択中プレイヤーの状況から「こうげき / こうかん / アイテム / ひろう / たいき」の
     /// うち成立するものだけ返す。
@@ -332,7 +289,7 @@ mod ActionMenuScene {
     ///   - 階段   : 主人公が階段マスに立っているときだけ（`gatherStairsMeta` → StairsExitScene.begin）
     ///   - 交換   : 主人公＋隣接味方の N 人持ち物交換（`gatherTradeMeta` → openGatherTrade）
     ///   - 全員待機: パーティ全員を行動済みにして敵ターンへ（既存 `turnEndMeta` → applyTurnEnd を流用）
-    ///   - キャンセル: 主人公＋追従味方を開始位置へ巻き戻し PlayerCursor へ（`gatherCancelMeta`）
+    /// （「キャンセル」項目は廃止。GatherMove 中に X を押せば開始位置へ巻き戻る）
     def gatherAdjacentMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
         // 主人公を 1 度だけ引いて、足元（拾う・階段）と隣接（交換）の文脈項目を組む。
         let lordItems = match PlayerData.PartyQuery.get(PlayerScene.lordId()) {
@@ -361,10 +318,8 @@ mod ActionMenuScene {
         let waitAll =
             ({text = "全員待機", disabled = false,
               metadata = Some(waitAllMeta())}: ItemEntry) :: Nil;
-        let cancel =
-            ({text = "キャンセル", disabled = false,
-              metadata = Some(gatherCancelMeta())}: ItemEntry) :: Nil;
-        List.flatten(lordItems :: waitAll :: cancel :: Nil)
+        // 「キャンセル」項目は廃止。GatherMove 中に X を押せば開始位置へ巻き戻る（同じ挙動）。
+        List.flatten(lordItems :: waitAll :: Nil)
 
     /// 「集合」が選べる状況か（主人公以外に生存味方が居る）。空マスメニューの項目可否と
     /// C キー / ゲームパッド Y のショートカット可否で共有する。
@@ -372,14 +327,25 @@ mod ActionMenuScene {
         PlayerData.PartyQuery.getAll()
             |> List.exists(d -> d#id != PlayerScene.lordId() and d#hp > 0)
 
+    /// 主人公（リーダー）が行動済み(waited)か。
+    def lordWaited(): Bool \ PlayerData.PartyQuery =
+        PlayerData.PartyQuery.get(PlayerScene.lordId())
+            |> Option.map(d -> d#waited)
+            |> Option.getWithDefault(false)
+
+    /// 「集合（行軍）」を開始できるか。生存味方が他に居て、かつ主人公が未行動のとき。
+    /// 空マスメニューの「集合」の disabled 判定と C キーショートカット可否で共有する。
+    pub def gatherEnabled(): Bool \ PlayerData.PartyQuery =
+        gatherAvailable() and not lordWaited()
+
     /// 通常の空マスメニュー項目。生存している味方が主人公以外に居れば「集合」、常に「ターンエンド」。
     /// 集合は主人公が隊列を率いて動くモードなので、敵検知・合流距離の事前条件は持たない。
     def gatherMenuItems(_scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
+        // 「集合」は常に表示し、開始できないとき（味方が他に居ない／主人公が行動済み）は
+        // disabled=true で淡色表示・選択スキップ・確定無効にする。
         let gather =
-            if (gatherAvailable())
-                ({text = "集合", disabled = false,
-                  metadata = Some(gatherMeta())}: ItemEntry) :: Nil
-            else Nil;
+            ({text = "集合", disabled = not gatherEnabled(),
+              metadata = Some(gatherMeta())}: ItemEntry) :: Nil;
         let turnEnd =
             ({text = "ターンエンド", disabled = false,
               metadata = Some(turnEndMeta())}: ItemEntry) :: Nil;
@@ -464,7 +430,6 @@ mod ActionMenuScene {
                 else if (m == stairsMeta())   applyStairs(scene)
                 else if (m == gatherTradeMeta()) openGatherTrade(scene)
                 else if (m == gatherStairsMeta()) StairsExitScene.begin(scene)
-                else if (m == gatherCancelMeta()) PlayerScene.cancelSelection(scene)
                 else                          scene
         }
 

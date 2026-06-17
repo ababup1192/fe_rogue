@@ -76,13 +76,15 @@ mod GameLifecycle {
             |> EnemyTurnDriverScene.add // 敵ターン進行の常駐タグノード (process で phase 判定)
             |> StairsExitScene.add      // 集合「階段で離脱」の順次退場ドライバ (process で phase 判定)
             |> ItemMenuScene.add        // アイテム選択ウィンドウ (初期は非表示)
+            |> UnitCardScene.add        // 左サイドの選択ユニット簡易カード (初期は非表示)
             |> ActionMenuScene.add      // 行動選択ウィンドウ (初期は非表示)
             |> GameOverMenuScene.add    // 全滅時のモーダル選択 (初期は非表示)
             |> SuspendConfirmScene.add  // 中断確認のモーダル (初期は非表示)
             |> TradeMenuScene.add       // 物交換ウィンドウ (2 ペイン、初期は非表示)
             |> BattlePanelScene.add     // 戦闘予報パネル (初期は非表示)
             |> LevelUpPanelScene.add    // レベルアップのステータス変化パネル (初期は非表示)
-            |> UnitInfoPopupScene.add   // カーソル上のユニット情報パネル (初期は非表示)
+            // UnitInfoPopupScene は廃止し、UnitCardScene（左サイドの常設カード）に統合。
+            // カーソル下のユニット情報も UnitCardScene が PlayerCursor 中に表示する。
             |> FloorLabelScene.add(label)  // 現在フロア "○○F" を左上に常時表示
             |> LogScene.add             // 右下の3行一時ログ (5秒で消える)
             |> PhaseBannerScene.add     // ターン切替バナー (最前面)

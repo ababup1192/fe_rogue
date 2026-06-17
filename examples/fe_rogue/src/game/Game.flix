@@ -80,6 +80,8 @@ pub enum NodeTag {
     case HPBar(UnitHPBarScene.HPBarData)
     /// UnitInfoPopupScene の CanvasLayer 親（表示中ユニット識別子を持つ）
     case UnitInfoPanel(UnitInfoPopupScene.PanelState)
+    /// UnitCardScene の CanvasLayer 親（左サイドの選択ユニット簡易カード）。
+    case UnitCard
     /// PhaseBannerScene の CanvasLayer 親（ターン切替バナーのスライド演出状態を持つ）
     case PhaseBanner(PhaseBannerScene.BannerData)
     /// ItemPickupPopupScene の CanvasLayer 親（アイテム取得ポップアップのフェード演出状態を持つ）
@@ -234,6 +236,8 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(SuspendConfirmScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.TradeMenu(_)) =>
             checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
+        case EngineNode.CanvasLayerWithState(_, NodeTag.UnitCard) =>
+            checked_ecast(UnitCardScene.process(delta, node, path, scene))
         case EngineNode.PanelWithState(_, NodeTag.BattlePanel(_)) =>
             checked_ecast(BattlePanelScene.process(delta, node, path, scene))
         case EngineNode.PanelWithState(_, NodeTag.LevelUpPanel(_)) =>
@@ -330,9 +334,9 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                 case _ => scene
             }
         // C キー / ゲームパッド Y: 空マスメニューを開かず「集合」を直接確定するショートカット。
-        // 味方ターンのカーソル選択中(PlayerCursor)で、集合可能(主人公以外に生存味方が居る)なときだけ。
+        // 味方ターンのカーソル選択中(PlayerCursor)で、集合可能(他に生存味方が居て主人公が未行動)なときだけ。
         else if (key == GameEngine.Key.C)
-            if (phase == TurnPhase.Phase.PlayerCursor and ActionMenuScene.gatherAvailable()) {
+            if (phase == TurnPhase.Phase.PlayerCursor and ActionMenuScene.gatherEnabled()) {
                 AudioStreamPlayer.play("confirm");
                 ActionMenuScene.gatherShortcut(scene)
             } else scene
