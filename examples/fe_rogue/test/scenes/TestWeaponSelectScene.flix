@@ -42,6 +42,28 @@ mod TestWeaponSelectScene {
     def weaponWithRange(min: Int32, max: Int32): UnitCatalog.WeaponResource =
         {range = {min = min, max = max} | TestUnitFixtures.testWeapon()}
 
+    /// (x,y) に居るテスト用 Enemy.Data。`isDying=true` で hp=0（瀕死）扱い。
+    /// 射程到達判定 (weaponReachesAnyEnemy) の検証用に位置と生死だけ意味を持たせる。
+    def enemyAt(id: Int32, x: Int32, y: Int32, isDying: Bool): EnemyScene.Data = {
+        id             = id,
+        resourceId     = "test_enemy",
+        gridPos        = {x = x, y = y},
+        alerted        = false,
+        homeModuleIdx  = 0,
+        moveTiles      = 3,
+        hp             = if (isDying) 0 else 10,
+        isDying        = isDying,
+        attackTargetId = None,
+        resource       = TestUnitFixtures.testEnemyResource(3, 10),
+        weapon         = None,
+        acted          = false,
+        prevPos        = None,
+        statuses       = Nil,
+        ring           = None,
+        followUpUsed   = false,
+        bottleUsed     = false
+    }
+
     // ════════════════════════════════════════════════════════
     // applyVisibility
     // ════════════════════════════════════════════════════════
@@ -122,4 +144,28 @@ mod TestWeaponSelectScene {
     @Test
     def testParseWeaponIndexUnknown(): Unit \ Assert =
         Assert.assertEq(expected = None, WeaponSelectScene.parseWeaponIndex("s:1"))
+
+    // ════════════════════════════════════════════════════════
+    // weaponReachesAnyEnemy — 射程外の武器は選べない（行を disabled にする根拠）
+    // ════════════════════════════════════════════════════════
+
+    /// 弓(射程2)と剣(射程1)を持ち、距離2の敵を狙う想定。剣は届かず弓だけ届く。
+    /// → 武器選択で剣の行は disabled、弓の行は選択可能、になる根拠を pin する。
+    @Test
+    def testReachOnlyInRangeWeapon(): Unit \ Assert =
+        let pos = {x = 0, y = 0};
+        let enemies = enemyAt(5, 2, 0, false) :: Nil;   // 距離 2
+        Assert.assertEq(
+            expected = (false, true),
+            (WeaponSelectScene.weaponReachesAnyEnemy(pos, weaponWithRange(1, 1), enemies),
+             WeaponSelectScene.weaponReachesAnyEnemy(pos, weaponWithRange(2, 2), enemies)))
+
+    /// 瀕死(hp 0)の敵は射程内でも到達対象にしない。
+    @Test
+    def testReachIgnoresDyingEnemy(): Unit \ Assert =
+        let pos = {x = 0, y = 0};
+        let enemies = enemyAt(5, 1, 0, true) :: Nil;    // 距離 1 だが瀕死
+        Assert.assertEq(
+            expected = false,
+            WeaponSelectScene.weaponReachesAnyEnemy(pos, weaponWithRange(1, 1), enemies))
 }

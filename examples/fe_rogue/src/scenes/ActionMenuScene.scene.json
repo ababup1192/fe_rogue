@@ -1,7 +1,7 @@
 {
   "children": [
     {
-      "background": { "b": 0.106, "g": 0.071, "r": 0.051 },
+      "background": { "b": 0.22, "g": 0.15, "r": 0.12 },
       "backgroundAlpha": 0.95,
       "border": { "b": 0.271, "g": 0.204, "r": 0.165 },
       "borderWidth": 1,

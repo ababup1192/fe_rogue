@@ -315,22 +315,27 @@ mod GameEngine {
                 case _ => None
             }, Scene.preorderPaths(scene));
         // Polygon2D / Arc2D ノードを収集（CanvasLayer 配下はカメラ非適用、zoom はワールドのみ）。
-        // 不可視（自ノード or 祖先）はスキップ。スプライトの後に最前面で塗られる。Arc2D（リング）は
-        // 中空円のためセグメントごとに複数の PolygonRenderCmd を返すので flatMap で平坦化する。
+        // 不可視（自ノード or 祖先）はスキップ。Arc2D（リング）は中空円のためセグメントごとに複数の
+        // PolygonRenderCmd を返すので flatMap で平坦化する。
         // 描画原点 screenPos と zoom はポリゴン系ノードに限って計算する（全ノードでは走らせない）。
-        // 描画原点 screenPos と zoom（ポリゴン系ノードに限って計算する）。
         let placement = p ->
             ( Scene.screenPositionAt(p, transform, scene)
             , if (Scene.isUnderCanvasLayer(p, scene)) ({x = 1.0, y = 1.0}: Vec2.Vec2)
               else transform#scale );
+        // sprite 経路と同等にするため、各 cmd の color を祖先 modulate 乗算後の実効色に、
+        // zIndex を CanvasLayer/祖先を加味した実効 z に上書きする（toRenderCmd は node 生の値を返すため）。
+        // これで待機/行動済みの暗転がグリフに乗り、ポップアップ（高 z の CanvasLayer）が手前で覆う。
+        let withEffective = (p, cmd) ->
+            ({ color = Scene.effectiveModulateAt(p, scene), zIndex = Scene.effectiveZIndexAt(p, scene)
+             | cmd }: PolygonRenderCmd);
         let polygons: List[PolygonRenderCmd] =
             List.flatMap(p -> match Scene.getEngineNode(p, scene) {
                 case Some(EngineNode.Polygon2DWithState(poly, _)) =>
                     if (not (CanvasItem.isVisible(poly) and Scene.effectiveVisibleAt(p, scene))) Nil
-                    else { let (sp, sc) = placement(p); Polygon2D.toRenderCmd(sp, sc, poly) :: Nil }
+                    else { let (sp, sc) = placement(p); withEffective(p, Polygon2D.toRenderCmd(sp, sc, poly)) :: Nil }
                 case Some(EngineNode.Arc2DWithState(arc, _)) =>
                     if (not (CanvasItem.isVisible(arc) and Scene.effectiveVisibleAt(p, scene))) Nil
-                    else { let (sp, sc) = placement(p); Arc2D.toRenderCmds(sp, sc, arc) }
+                    else { let (sp, sc) = placement(p); Arc2D.toRenderCmds(sp, sc, arc) |> List.map(c -> withEffective(p, c)) }
                 case _ => Nil
             }, Scene.preorderPaths(scene));
         Game.renderCommands(sprites, tileMaps, polygons)

@@ -19,8 +19,9 @@ mod UITheme {
 
     // ── コマンドウィンドウ配色（HTML プロトタイプ「遺宝探索記 UI」と同値）──
 
-    /// ウィンドウ地色。panel #0d121b。scene.json の panel `background` と同期（test で pin）。
-    pub def panel(): Color = {r = 0.051f32, g = 0.071f32, b = 0.106f32}
+    /// ウィンドウ地色。panel #1f2638（near-black から一段明るく。アイコンは別途明るい敷物で見せる）。
+    /// scene.json の panel `background`（ActionMenu / WeaponSelect / UnitCard）と同期（test で pin）。
+    pub def panel(): Color = {r = 0.12f32, g = 0.15f32, b = 0.22f32}
 
     /// ウィンドウ枠の暗いスレート。panelBorder #2a3445。
     /// scene.json の panel `border` と同期（test で pin）。

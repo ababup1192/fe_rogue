@@ -63,51 +63,59 @@ mod RenderFrame {
                                          tm#color, tm#tileCount)
                 case None => ()
             }, sortedTiles);
-            // sprites: zIndex 昇順で描画（同上、stable sort 化）
-            let sortedSprites = sprites
+            // sprites と polygons を 1 本の zIndex 安定ソート列にマージして描く。
+            // sprite だけ z 順にし polygon を最後へまとめて描くと、ワールド配置のポリゴン
+            // （武器グリフ等）が CanvasLayer ポップアップを貫通してしまう。両者を同じ z 空間で
+            // 並べることで Godot の CanvasItem 順序（z_index / CanvasLayer）と一致させる。
+            // 同一 zIndex 内は入力順（sprites → polygons）を保つため stable sort（zipWithIndex）。
+            // Ok = Drawable（スプライト/ColorRect）、Err = PolygonCmd（Polygon2D/Arc2D）。
+            let merged: List[Result[RenderType.PolygonCmd, RenderType.Drawable]] =
+                List.append(
+                    sprites  |> List.map(d  -> Result.Ok(d)),
+                    polygons |> List.map(pc -> Result.Err(pc)));
+            let zOf = item -> match item {
+                case Result.Ok(d)   => d#zIndex
+                case Result.Err(pc) => pc#zIndex
+            };
+            let sortedMerged = merged
                 |> List.zipWithIndex
-                |> List.sortBy(idxD -> let (idx, d) = idxD; (d#zIndex, idx))
-                |> List.map(idxD -> let (_, d) = idxD; d);
-            List.forEach(drawable -> {
-                if (String.isEmpty(drawable#texture)) {
-                    let displaySize: Vec2.Vec2 = drawable#scale;
-                    RenderSprite.drawSprite(spriteShader, vao, {
-                        texture = 0, position = drawable#position, scale = displaySize,
-                        color = drawable#color, alpha = drawable#alpha,
-                        uvOffset = drawable#uvOffset, uvScale = drawable#uvScale,
-                        rotation = drawable#rotation, useTexture = false,
-                        style = drawable#style, sdf = false})
-                } else {
-                    match Map.get(drawable#texture, registry) {
-                        case Some(texInfo) =>
-                            let displayW = texInfo#width * drawable#scale#x;
-                            let displayH = texInfo#height * drawable#scale#y;
-                            let displaySize: Vec2.Vec2 = {x = displayW, y = displayH};
-                            let pos: Vec2.Vec2 = if (drawable#centered)
-                                {x = drawable#position#x - displayW / 2.0,
-                                 y = drawable#position#y - displayH / 2.0}
-                            else drawable#position;
-                            // フォントアトラス (font_*) は SDF テキストとして描く。
-                            let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
-                            RenderSprite.drawSprite(spriteShader, vao, {
-                                texture = texInfo#id, position = pos, scale = displaySize,
-                                color = drawable#color, alpha = drawable#alpha,
-                                uvOffset = drawable#uvOffset, uvScale = drawable#uvScale,
-                                rotation = drawable#rotation, useTexture = true,
-                                style = drawable#style, sdf = isFont})
-                        case None => ()
+                |> List.sortBy(ix -> let (idx, item) = ix; (zOf(item), idx))
+                |> List.map(ix -> let (_, item) = ix; item);
+            List.forEach(item -> match item {
+                case Result.Ok(drawable) =>
+                    if (String.isEmpty(drawable#texture)) {
+                        let displaySize: Vec2.Vec2 = drawable#scale;
+                        RenderSprite.drawSprite(spriteShader, vao, {
+                            texture = 0, position = drawable#position, scale = displaySize,
+                            color = drawable#color, alpha = drawable#alpha,
+                            uvOffset = drawable#uvOffset, uvScale = drawable#uvScale,
+                            rotation = drawable#rotation, useTexture = false,
+                            style = drawable#style, sdf = false})
+                    } else {
+                        match Map.get(drawable#texture, registry) {
+                            case Some(texInfo) =>
+                                let displayW = texInfo#width * drawable#scale#x;
+                                let displayH = texInfo#height * drawable#scale#y;
+                                let displaySize: Vec2.Vec2 = {x = displayW, y = displayH};
+                                let pos: Vec2.Vec2 = if (drawable#centered)
+                                    {x = drawable#position#x - displayW / 2.0,
+                                     y = drawable#position#y - displayH / 2.0}
+                                else drawable#position;
+                                // フォントアトラス (font_*) は SDF テキストとして描く。
+                                let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
+                                RenderSprite.drawSprite(spriteShader, vao, {
+                                    texture = texInfo#id, position = pos, scale = displaySize,
+                                    color = drawable#color, alpha = drawable#alpha,
+                                    uvOffset = drawable#uvOffset, uvScale = drawable#uvScale,
+                                    rotation = drawable#rotation, useTexture = true,
+                                    style = drawable#style, sdf = isFont})
+                            case None => ()
+                        }
                     }
-                }
-            }, sortedSprites);
-            // polygons: スプライトの後に zIndex 昇順で塗る（Polygon2D は最前面 HUD 想定）。
-            let sortedPolys = polygons
-                |> List.zipWithIndex
-                |> List.sortBy(idxP -> let (idx, pc) = idxP; (pc#zIndex, idx))
-                |> List.map(idxP -> let (_, pc) = idxP; pc);
-            List.forEach(pc ->
-                RenderSprite.drawPolygon(spriteShader, polyVao, polyVbo,
-                                          pc#vertices, pc#color, pc#alpha),
-                sortedPolys)
+                case Result.Err(pc) =>
+                    RenderSprite.drawPolygon(spriteShader, polyVao, polyVbo,
+                                              pc#vertices, pc#color, pc#alpha)
+            }, sortedMerged)
         } else ()
 
 }

@@ -56,6 +56,11 @@ mod UnitCardScene {
     def hpFillColor(): Color  = {r = 0.290f32, g = 0.749f32, b = 0.278f32}  // 緑（#3ba83a→#57d654 の中間）
     def hpTextColor(): Color  = {r = 0.804f32, g = 0.835f32, b = 0.902f32}  // #cdd5e6
     def equipColor(): Color   = {r = 0.706f32, g = 0.745f32, b = 0.820f32}  // 淡い白
+    /// 装備アイコンの背後に敷く「明るめの色紙」（枠つきプレート）。暗い武器アートを地色から浮かせる。
+    def equipMatColor(): Color  = {r = 0.42f32, g = 0.47f32, b = 0.60f32}  // 明るめスレート
+    def equipMatBorder(): Color = {r = 0.62f32, g = 0.67f32, b = 0.78f32}  // 一段明るいフチ
+    def equipMatPad(): Float64  = 1.2                       // アイコン周囲に空ける余白
+    def equipMatSize(): Vec2.Vec2 = {x = 8.0, y = 8.0}      // ~5.6px アイコン + 余白
 
     /// scene.json で外枠（CanvasLayer + Panel・初期非表示）を宣言し、CanvasLayer に
     /// NodeTag.UnitCard を差し込む。children は process が panelPath() 配下に動的生成。
@@ -229,13 +234,24 @@ mod UnitCardScene {
             x = iconX + off#x * equipScale()#x,
             y = equipY() + off#y * equipScale()#y
         };
+        // 明るめの色紙（枠つき角丸プレート）をアイコンの背後に敷く。アイコンより一回り大きく、
+        // 暗い武器アートが地色（濃紺パネル）に溶けないよう浮かせる枠にする。
+        let mat = Panel.make(equipMatSize(), equipMatColor())
+            |> Node2D.setPosition({x = iconPos#x - equipMatPad(), y = iconPos#y - equipMatPad()})
+            |> Panel.setBorderColor(equipMatBorder())
+            |> Panel.setBorderWidth(1)
+            |> Panel.setCornerRadius(1.5)
+            |> CanvasItem.setZIndex(0);
+        let withMat = Scene.addChildAt(panelPath(), "${key}Mat",
+            EngineNode.PanelWithState(mat, NodeTag.NoTag), scene);
         let icon = Sprite2D.make(spr#texture, iconPos, equipScale())
             |> Sprite2D.setHframes(spr#hframes)
             |> Sprite2D.setVframes(spr#vframes)
             |> Sprite2D.setFrame(spr#frame)
-            |> Sprite2D.setCentered(false);
+            |> Sprite2D.setCentered(false)
+            |> CanvasItem.setZIndex(1);
         let withIcon = Scene.addChildAt(panelPath(), "${key}Icon",
-            EngineNode.Sprite2DWithState(icon, NodeTag.NoTag), scene);
+            EngineNode.Sprite2DWithState(icon, NodeTag.NoTag), withMat);
         let label = Label2D.make(name, atlas, fsTiny())
             |> Node2D.setPosition({x = textX, y = equipTextY()})
             |> CanvasItem.setModulate(equipColor());

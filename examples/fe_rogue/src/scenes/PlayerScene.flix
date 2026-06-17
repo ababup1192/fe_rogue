@@ -1182,9 +1182,13 @@ mod PlayerScene {
     /// 指定 idx の武器を装備（= weapons リストの先頭に移動）。
     /// 既に先頭なら何もしない。範囲外なら no-op。
     /// 「こうげき」は常に `weapons.head` を使うため、これで装備切り替えが反映される。
+    /// 武器切り替えの単一 commit 点なので、ここで左上の武器系統アイコンも貼り直す
+    /// （WeaponSelect / ItemMenu / BattlePanel いずれの経路でも追従する）。
     pub def equipWeapon(playerId: Int32, idx: Int32,
                           scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId, d -> {weapons = moveToHead(idx, d#weapons) | d}, scene)
+        let moved = mapPlayer(playerId, d -> {weapons = moveToHead(idx, d#weapons) | d}, scene);
+        let equipped = PlayerData.equippedWeapon(getWeapons(playerId, moved));
+        WeaponIconScene.refresh(playerPath(playerId), equipped, moved)
 
     /// 指定 idx の武器をインベントリから削除（捨てる）。範囲外なら no-op。
     pub def dropWeapon(playerId: Int32, idx: Int32,

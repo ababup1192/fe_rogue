@@ -101,7 +101,8 @@ mod WeaponSelectScene {
                          _path: NodePath,
                          scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
-                        \ {SelectedPlayer.State, TurnPhase.State, PlayerData.PartyQuery} =
+                        \ {SelectedPlayer.State, TurnPhase.State, PlayerData.PartyQuery,
+                           EnemyData.RosterQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
         // UX: 閉じている間はカーソルを先頭(0)に戻し、次に開いたとき常に 1 本目の武器から始める。
@@ -117,25 +118,62 @@ mod WeaponSelectScene {
 
     /// 選択中味方の武器を ItemList に並べる（WeaponSelect 中）。
     /// 行テキスト = 武器名、subline = 性能、badge = 不得意のときだけ、icon = 武器 sprite。
-    /// 非 driver なので在庫 read は `PlayerData.PartyQuery` 経由（モジュール名直書きはしない）。
+    /// **その武器の射程内に生きている敵が居ない行は disabled**（淡色 + カーソルがスキップ + 確定不可）。
+    /// 例: 弓と剣を持ち、弓でしか届かない敵を狙うとき、剣の行は選べない。
+    /// 非 driver だが敵 read は ActionMenuScene.canAttackFrom と同じく `EnemyData.RosterQuery` 経由。
     def refreshWeaponList(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+            Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
         match selectedPlayer() {
             case None         => scene
             case Some(player) =>
-                let weapons = player#weapons;
-                let items    = List.mapWithIndex(idx -> w -> weaponEntry(idx, w), weapons);
+                let enemies  = EnemyData.RosterQuery.getAll();
+                let weapons  = player#weapons;
+                let items    = List.mapWithIndex(idx -> w ->
+                    weaponEntry(idx, w,
+                        not weaponReachesAnyEnemy(player#gridPos, w, enemies)), weapons);
                 let sublines = weaponSublines(weapons);
                 let badges   = weaponBadges(player#resource, weapons);
                 let icons    = rowIcons(List.map(w -> w#sprite, weapons));
-                scene |> ItemList.mapAt(menuPath(), list ->
-                    list
+                let firstEnabled = firstEnabledIndex(items);
+                scene |> ItemList.mapAt(menuPath(), list -> {
+                    let withItems = list
                         |> ItemList.setItems(items)
                         |> ItemList.setItemSublines(sublines)
                         |> ItemList.setItemBadges(badges)
                         |> ItemList.setItemIcons(icons)
                         |> ItemList.setIconSize(iconSize())
-                        |> ItemList.setIconTextGap(iconTextGap()))
+                        |> ItemList.setIconTextGap(iconTextGap());
+                    // カーソルが届かない武器(disabled)に乗っていたら、選択可能な先頭武器へ寄せる。
+                    if (selectedIsDisabled(items, withItems))
+                        ItemList.setSelectedIndex(firstEnabled, withItems)
+                    else withItems
+                })
+        }
+
+    /// 指定位置から `weapon` の射程内に生きている敵 (hp > 0 かつ not isDying) が居るか。
+    /// ActionMenuScene.weaponReachesAnyEnemy と同じ判定（攻撃可否＝届く武器があるか、を行単位に分解）。
+    pub def weaponReachesAnyEnemy(pos: {x = Int32, y = Int32},
+                               weapon: UnitCatalog.WeaponResource,
+                               enemies: List[EnemyScene.Data]): Bool =
+        List.exists(e -> {
+            let ev = EnemyScene.unitView(e);
+            ev#hp > 0 and not ev#isDying
+                and Weapon.inRange(Weapon.manhattan(pos, ev#pos), weapon#range)
+        }, enemies)
+
+    /// items の最初の「選択可能（not disabled）」行 index。全部 disabled なら 0。
+    def firstEnabledIndex(items: List[ItemEntry]): Int32 =
+        items
+            |> List.zipWithIndex
+            |> List.findLeft(pair -> not snd(pair)#disabled)
+            |> Option.map(fst)
+            |> Option.getWithDefault(0)
+
+    /// 現在カーソルが乗っている行が disabled か（範囲外なら false）。
+    def selectedIsDisabled(items: List[ItemEntry], list: ItemList): Bool =
+        match List.nth(ItemList.getSelectedIndex(list), items) {
+            case Some(e) => e#disabled
+            case None    => false
         }
 
     /// 選択中味方の Data（PartyQuery 経由）。未選択 / 見つからなければ None。
@@ -147,10 +185,11 @@ mod WeaponSelectScene {
         ) yield player
 
     /// 武器 1 本ぶんの ItemEntry。1 行目は武器名のみ（性能は subline、不得意は badge）。
+    /// `disabled` はその武器の射程内に敵が居ないとき true（淡色・選択不可）。
     /// metadata は `"w:<idx>"` 形式で、確定時に weapons 内 index を引くために持つ。
-    def weaponEntry(idx: Int32, weapon: UnitCatalog.WeaponResource): ItemEntry = {
+    def weaponEntry(idx: Int32, weapon: UnitCatalog.WeaponResource, disabled: Bool): ItemEntry = {
         text     = weapon#name,
-        disabled = false,
+        disabled = disabled,
         metadata = Some("w:${idx}")
     }
 

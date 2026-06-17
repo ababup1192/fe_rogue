@@ -80,6 +80,9 @@ mod CharacterSelectScene {
 
     def frameName(index: Int32): String = "frame${index}"
     def cardName(index: Int32): String = "card${index}"
+    /// 得意武器グリフ行の i 番目（親 Marker2D。配下に WeaponGlyph のピースを並べる）。
+    def profGlyphName(index: Int32): String = "profGlyph${index}"
+    def profGlyphPath(index: Int32): NodePath = rootName() :: profGlyphName(index) :: Nil
 
     def rootPath(): NodePath = rootName() :: Nil
     def counterPath(): NodePath = rootName() :: counterName() :: Nil
@@ -124,6 +127,14 @@ mod CharacterSelectScene {
     def descSize(): Vec2.Vec2 = {x = 48.0, y = 86.0}
     def descTitlePos(): Vec2.Vec2 = {x = 121.0, y = 18.0}
     def descTextPos(): Vec2.Vec2 = {x = 121.0, y = 28.0}
+    // 得意武器グリフ行（「得意武器:」の下に白いグリフを横一列）。濃い説明パネル地の上に出す。
+    def maxProfGlyphs(): Int32 = 5
+    def glyphRowStartX(): Float64 = 124.0
+    def glyphRowY(): Float64 = 37.0
+    def glyphPitch(): Float64 = 9.0
+    def glyphScale(): Float64 = 0.52
+    /// 親 Marker2D の zIndex。配下グリフ（zIndex 62〜）が説明パネル(150)より前に出るよう底上げする。
+    def glyphParentZIndex(): Int32 = 100
     def counterPos(): Vec2.Vec2 = {x = 58.0, y = 88.0}
     def buttonPos(): Vec2.Vec2 = {x = 35.0, y = 102.0}
     def buttonSize(): Vec2.Vec2 = {x = 46.0, y = 16.0}
@@ -578,33 +589,45 @@ mod CharacterSelectScene {
             |> Label2D.mapAt(buttonLabelPath(), CanvasItem.setModulate(label))
 
     /// 右側の説明（注目キャラ名 + 得意武器）を更新する。
+    /// 得意武器は「得意武器:」見出し＋下に武器系統グリフ（WeaponGlyph）を横一列で示す（文字ではなく図）。
     def writeDesc(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let (name, proficiency) = match List.nth(effectiveFocus(data), data#players) {
-            case Some(resource) => (resource#description, proficiencyText(resource))
-            case None           => ("", "")
+        let (name, profTypes) = match List.nth(effectiveFocus(data), data#players) {
+            case Some(resource) => (resource#description, resource#proficientWeaponTypes)
+            case None           => ("", Nil)
         };
         scene
             |> Label2D.mapAt(descTitlePath(), Label2D.setText(name))
-            |> Label2D.mapAt(descTextPath(), Label2D.setText(proficiency))
+            |> Label2D.mapAt(descTextPath(), Label2D.setText(proficiencyHeader(profTypes)))
+            |> writeProficiencyGlyphs(profTypes)
 
-    /// 注目キャラの得意武器を「得意武器:\n剣 斧 …」の 2 行テキストにする（狭いパネル幅に収めるため改行）。
-    /// 得意タイプが無ければ「得意武器:\nなし」。
-    pub def proficiencyText(resource: UnitCatalog.PlayerResource): String =
-        let labels = List.map(weaponTypeLabel, resource#proficientWeaponTypes);
-        match labels {
+    /// 得意武器の見出し。タイプがあれば「得意武器:」だけ（実体はグリフで示す）、無ければ「得意武器:\nなし」。
+    pub def proficiencyHeader(types: List[WeaponCatalog.WeaponType]): String =
+        match types {
             case Nil => "得意武器:\nなし"
-            case _   => "得意武器:\n${String.intercalate(" ", labels)}"
+            case _   => "得意武器:"
         }
 
-    /// 武器タイプの日本語 1 文字ラベル。
-    def weaponTypeLabel(weaponType: WeaponCatalog.WeaponType): String =
-        match weaponType {
-            case WeaponCatalog.WeaponType.Sword => "剣"
-            case WeaponCatalog.WeaponType.Axe   => "斧"
-            case WeaponCatalog.WeaponType.Lance => "槍"
-            case WeaponCatalog.WeaponType.Bow   => "弓"
-            case WeaponCatalog.WeaponType.Magic => "魔"
-        }
+    /// 得意武器グリフ行を貼り直す（注目キャラが変わるたびに呼ぶ）。既存の最大 maxProfGlyphs() 個を
+    /// 消してから、得意タイプぶんだけ横一列に縮小グリフを生やす。タイプ無し（素手系）なら消すだけ。
+    def writeProficiencyGlyphs(types: List[WeaponCatalog.WeaponType],
+                               scene: Scene[NodeTag]): Scene[NodeTag] =
+        let cleared = List.foldLeft((acc, i) -> Scene.removeAt(profGlyphPath(i), acc),
+            scene, List.range(0, maxProfGlyphs()));
+        List.foldLeft((acc, iWt) -> let (i, wt) = iWt; addProficiencyGlyph(i, wt, acc),
+            cleared, List.zipWithIndex(List.take(maxProfGlyphs(), types)))
+
+    /// i 番目の得意武器グリフを横位置 i に生やす。親 Marker2D（位置・z 底上げ）配下に
+    /// 縮小済みグリフのピースを並べる。
+    def addProficiencyGlyph(i: Int32, wt: WeaponCatalog.WeaponType,
+                            scene: Scene[NodeTag]): Scene[NodeTag] =
+        let pos = {x = glyphRowStartX() + Int32.toFloat64(i) * glyphPitch(), y = glyphRowY()};
+        let parent = Marker2D.make(pos) |> CanvasItem.setZIndex(glyphParentZIndex());
+        let withParent = Scene.addChild(rootName(), profGlyphName(i),
+            EngineNode.Marker2DWithState(parent, NodeTag.NoTag), scene);
+        List.foldLeft((acc, ne) ->
+                let (cname, node) = ne;
+                Scene.addChildAt(profGlyphPath(i), cname, node, acc),
+            withParent, WeaponGlyph.weaponGlyphScaled(wt, glyphScale()))
 
     /// ルートに紐づく選択状態を取り出す。
     def getData(scene: Scene[NodeTag]): Data =

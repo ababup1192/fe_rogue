@@ -141,17 +141,17 @@ mod TestCharacterSelectScene {
             case None       => bug!("unit with description '${name}' not found")
         }
 
-    /// ロード（全タイプ得意）は「得意武器:\n剣 斧 槍 弓 魔」。
+    /// 得意タイプがあれば見出しは「得意武器:」だけ（武器系統は文字でなくグリフで示す）。
     @Test
-    def testProficiencyTextLordAllTypes(): Unit \ {Assert, Fs.FileRead} =
+    def testProficiencyHeaderWithTypes(): Unit \ {Assert, Fs.FileRead} =
         Assert.assertEq(
-            expected = "得意武器:\n剣 斧 槍 弓 魔",
-            CharacterSelectScene.proficiencyText(unitNamed("ロード")))
+            expected = "得意武器:",
+            CharacterSelectScene.proficiencyHeader(unitNamed("ロード")#proficientWeaponTypes))
 
-    /// メイジ（魔法のみ）は「得意武器:\n魔」。
+    /// 得意タイプが無ければ「得意武器:\nなし」。
     @Test
-    def testProficiencyTextMageMagicOnly(): Unit \ {Assert, Fs.FileRead} =
+    def testProficiencyHeaderNoTypes(): Unit \ Assert =
         Assert.assertEq(
-            expected = "得意武器:\n魔",
-            CharacterSelectScene.proficiencyText(unitNamed("メイジ")))
+            expected = "得意武器:\nなし",
+            CharacterSelectScene.proficiencyHeader((Nil: List[WeaponCatalog.WeaponType])))
 }

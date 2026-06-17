@@ -713,6 +713,18 @@ pub mod Scene {
         };
         nodeZ + ctx#zOffset + ctx#layerOffset
 
+    /// パスのノードがレンダラ上で持つ有効 modulate（色）を返す。
+    /// 祖先の modulate 乗算チェーン（drawContext#modulate）に自ノードの modulate を掛けた値で、
+    /// toDrawables が Drawable に詰める色と同じ計算（mulColor(ctx#modulate, 自 modulate)）。
+    /// toDrawables を経由しない描画パス（Polygon2D / Arc2D 収集など）で祖先の暗転を尊重するために使う。
+    pub def effectiveModulateAt(path: NodePath, scene: Scene[s]): Color =
+        let ctx = drawContext(path, scene);
+        let nodeMod = match getEngineNode(path, scene) {
+            case Some(engineNode) => CanvasItem.getModulate(engineNode)
+            case None             => {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+        };
+        mulColor(ctx#modulate, nodeMod)
+
     /// パスのノードが CanvasLayer 配下かどうかを返す（toDrawables の判定と一致）。
     /// CanvasLayer 配下のノードは HUD としてカメラ変換を受けない
     pub def isUnderCanvasLayer(path: NodePath, scene: Scene[s]): Bool =
