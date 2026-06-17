@@ -513,7 +513,9 @@ mod ItemList {
           rotation = 0.0, color = fill, alpha = h#fillAlpha, centered = false,
           uvOffset = {x = 0.0, y = 0.0}, uvScale = {x = 1.0, y = 1.0}, zIndex = zIndex,
           style = Some({cornerRadius = h#cornerRadius, borderWidth = h#borderWidth,
-                        borderColor = h#borderColor, borderAlpha = h#borderAlpha})}: GameEngine.Drawable)
+                        borderColor = h#borderColor, borderAlpha = h#borderAlpha,
+                        stripeColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+                        stripeAlpha = 0.0f32, stripeWidth = 0.0, stripePeriod = 0.0})}: GameEngine.Drawable)
 
     /// 描画用 Drawable リストを返す。各項目を `Label2D.toDrawables` でグリフ化し、
     /// 選択中（かつ focused）の行の左に cursorGlyph を重ねる。

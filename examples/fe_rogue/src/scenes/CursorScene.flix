@@ -1,4 +1,4 @@
-/// CursorScene — 味方ターン中の選択カーソル（Marker2D + 子 Sprite2D）
+/// CursorScene — 味方ターン中の選択カーソル（Marker2D + 四隅の角カッコ L字）
 ///
 /// FE 風 SRPG の「カーソルでマスを選んでから操作」フローを担う。
 /// 味方ターンの開始時はこのカーソルが画面上で動き、味方マス上で Z を押せば
@@ -8,17 +8,19 @@
 ///
 /// ノード構造（Player と並列のトップレベル）:
 ///   Cursor (Marker2D, NodeTag.Cursor(Data))
-///     └─ Sprite (Sprite2D, cursor.png)
+///     ├─ tl_h / tl_v … 四隅の角カッコ (白 ColorRect、隅ごとに縦横 2 本で L字)
+///     └─ … (計 8 枚)
 ///
 /// 設計意図:
 ///   - 親 Marker2D に位置と論理状態（gridPos / lastHoveredEnemyId）を持たせ、
-///     子 Sprite2D は表示専用にする。Player と同じ構造で統一感を維持する
+///     子 ColorRect 群は表示専用にする。Player と同じ構造で統一感を維持する
+///     （カーソルの白枠は画像ではなく ColorRect の四隅 L字で FE 風に描く）
 ///   - `gridPos` は moveStep のたびに即更新し、見た目の補間は engine の Tween に委ねる
 ///     （Player.moveTo と完全に同じ機構）。Tween 中は次の方向キーをブロックする
 ///   - 敵ホバー検知は「フレーム間でカーソルが乗っている敵 id が変化したか」で判定する。
 ///     `lastHoveredEnemyId` を Data に持ち、変化したフレームだけログ + 範囲再構築を発火する。
 ///     同じ敵に乗りっぱなしの間は何もしない（ログ・再構築の無限ループ回避）
-///   - 表示/非表示は親 Marker2D の `visible` フラグで切り替える。子 Sprite は
+///   - 表示/非表示は親 Marker2D の `visible` フラグで切り替える。子 ColorRect 群は
 ///     親子可視性 AND で連動して消える（`drawContextWalk` の挙動）
 mod CursorScene {
 
@@ -51,19 +53,14 @@ mod CursorScene {
 
     def name(): String = "Cursor"
     pub def cursorPath(): NodePath = name() :: Nil
-    /// 子 Sprite ノード名 (scene.json で参照されている)。
-    /// EngineNode に Sprite2D の path ヘルパーが存在しないため構築は scene.json 経由で完結しており、
-    /// コードからは直接参照しない。将来 sprite path を組み立てる際の参照用に残す。
-    def _spriteName(): String = "Sprite"
+    /// カーソルの見た目は scene.json で四隅 L字 (白 ColorRect 8 枚) として完結しており、
+    /// コードからは子ノードを直接参照しない（表示/非表示は親 Marker2D の visible で連動）。
 
-    /// `cursor.png` テクスチャ名。scene.json の sprite ノード texture フィールドに書かれており
-    /// コードからは参照しないが、Main.flix の textureManifest との整合を示すために残す。
-    def _textureName(): String = "cursor"
-
-    /// カーソルの描画 zIndex。Player Sprite (= 10) より更に上に表示し、
-    /// 駒の上に被せても視認できるようにする。
-    /// scene.json で sprite.zIndex として記述済み。コード参照用に残す (未使用)
-    def _spriteZIndex(): Int32 = 20
+    /// カーソルの描画 zIndex。駒 (= 10) / HP バー (UnitHPBarScene = 50〜52) /
+    /// 武器アイコン (WeaponIconScene = 60〜62) より更に上に表示し、選択マスを常に
+    /// 最前面で視認できるようにする (HUD/メニューは CanvasLayer なので更に上)。
+    /// scene.json で各 ColorRect の zIndex として記述済み (未使用)。
+    def _spriteZIndex(): Int32 = 70
 
     /// 動き出し（押した直後の 1 マス目）のスライド時間。最高速より遅くして、
     /// 「ぽんと押したら一瞬の溜めの後に動く」 FE 風のフィーリングを出す。
@@ -108,7 +105,7 @@ mod CursorScene {
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
-    /// シーン定義 JSON のパス。Marker2D Cursor + 子 Sprite2D (cursor.png, zIndex=20) の
+    /// シーン定義 JSON のパス。Marker2D Cursor + 四隅 L字 (白 ColorRect 8枚, zIndex=70) の
     /// 構造を持つ。位置はパーティ先頭プレイヤーから計算するため post-load で setPosition する。
     /// Cursor(Data) は Data を含むため scene.json では復元できず post-load で setState する。
     def scenePath(): String = AssetPath.resolve("src/scenes/CursorScene.scene.json")
@@ -586,7 +583,7 @@ mod CursorScene {
     // (E) フェーズ切替に伴う見た目操作
     // ────────────────────────────────────────────────────────
 
-    /// カーソルの可視性を切り替える。Marker2D の visible を変えれば子 Sprite も
+    /// カーソルの可視性を切り替える。Marker2D の visible を変えれば子 ColorRect 群も
     /// 親子可視性 AND で同じ状態になる（`drawContextWalk` の挙動）
     pub def setVisible(visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(cursorPath(),

@@ -16,15 +16,30 @@
 
 /// 範囲表示 Scene が共有する描画プリミティブ。
 /// NodeTag variant の構築 / セル計算は呼び出し側 (各 range mod) の責任で、
-/// この mod は「親 Marker2D + Tile_<idx> Sprite2D 列を描く」ことだけを担う。
+/// この mod は「親 Marker2D + Tile_<idx> ハッチ Panel 列を描く」ことだけを担う。
+///
+/// 各セルは塗り（半透明）＋45° 斜線ハッチ＋枠線＋角丸の Panel で描く
+/// （Godot StyleBoxFlat + 斜線シェーダ相当。画像テクスチャは使わない）。
+/// 呼び出し側は「色相 color」と「強調度 alpha」だけ渡し、塗り/縞/枠の
+/// 不透明度と縞色/枠色は本 mod が color から派生させる（CSS の
+/// repeating-linear-gradient + border デザインを 26px タイルへ縮小したもの）。
 mod RangeOverlay {
-
-    /// `move_tile` テクスチャを共通に使う (`Main.flix` の textureManifest と整合)。
-    /// 色は呼び出し側が `modulate` で着色するので、テクスチャ自体は無色。
-    def textureName(): String = "move_tile"
 
     /// 全 range scene 共通の zIndex。tilemap (= 0) より上、Player Sprite (= 10) より下。
     def tileZIndex(): Int32 = 1
+
+    /// セル枠から内側に詰める余白 px（CSS の inset 相当。隣マスとの隙間になる）。
+    def inset(): Float64 = 2.0
+
+    /// 縞 1 本の幅 px と周期 px（CSS の 7px/14px を 26px タイルへ縮小）。
+    def stripeWidth(): Float64 = 3.0
+    def stripePeriod(): Float64 = 6.0
+
+    /// 色相を白方向へ `t` だけ寄せて明るくする（縞・枠用の明色を作る）。
+    def lighten(c: Color, t: Float32): Color =
+        {r = c#r + (1.0f32 - c#r) * t,
+         g = c#g + (1.0f32 - c#g) * t,
+         b = c#b + (1.0f32 - c#b) * t}
 
     /// 親 Marker2D を origin (0,0) にぶら下げる。`tag` は呼び出し側が
     /// `NodeTag.MoveRange(data)` 等の variant を構築して渡す。
@@ -34,23 +49,37 @@ mod RangeOverlay {
             EngineNode.Marker2DWithState(parent, tag),
             scene)
 
-    /// `cells` を順に列挙して半透明 Sprite2D を `Tile_<idx>` として子追加する。
-    /// `move_tile.png` (16×16) を 1.625 倍にスケールして 26×26 セル枠に揃える。
+    /// `cells` を順に列挙してハッチ Panel を `Tile_<idx>` として子追加する。
+    /// セル中心 (`MapSnapshot.cellCenter`) を基準に inset ぶん詰めた角丸 Panel を置く。
+    /// `alpha` は範囲の強調度で、塗り/縞/枠の不透明度をまとめて増減させる。
     pub def renderTiles(parentName: String,
                          cells: List[{x = Int32, y = Int32}],
                          color: Color, alpha: Float32,
                          scene: Scene[NodeTag]): Scene[NodeTag] =
         let indexed = List.zipWithIndex(cells);
-        let tileScale: Vec2.Vec2 = ({x = 1.625, y = 1.625}: Vec2.Vec2);
+        let side = MapSnapshot.tileSize() - inset() * 2.0;
+        let size: Vec2.Vec2 = {x = side, y = side};
+        let half = side / 2.0;
+        // 塗りは淡く、縞は中明色を濃いめ、枠は明色をくっきり（CSS の重み付けを踏襲）。
+        let stripeColor = lighten(color, 0.5f32);
+        let borderColor = lighten(color, 0.2f32);
         List.foldLeft(acc -> entry -> {
             let (idx, cell) = entry;
-            let sprite = Sprite2D.make(textureName(), MapSnapshot.cellCenter(cell), tileScale)
-                            |> Sprite2D.setAlpha(alpha)
-                            |> CanvasItem.setModulate(color)
+            let center = MapSnapshot.cellCenter(cell);
+            let topLeft: Vec2.Vec2 = {x = center#x - half, y = center#y - half};
+            // 縞以外（塗り）はほぼ透過させて床を見せ、色は斜線と枠で表現する。
+            let panel = Panel.make(size, color)
+                            |> Node2D.setPosition(topLeft)
+                            |> Panel.setBackgroundAlpha(alpha * 0.08f32)
+                            |> Panel.setBorderColor(borderColor)
+                            |> Panel.setBorderAlpha(alpha)
+                            |> Panel.setBorderWidth(1)
+                            |> Panel.setCornerRadius(2.0)
+                            |> Panel.setStripe(stripeColor, alpha * 0.65f32, stripeWidth(), stripePeriod())
                             |> CanvasItem.setZIndex(tileZIndex());
             Scene.addChild(parentName,
                 "Tile_${idx}",
-                EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag),
+                EngineNode.PanelWithState(panel, NodeTag.NoTag),
                 acc)
         }, scene, indexed)
 }

@@ -7,11 +7,18 @@ mod RenderType {
     /// 角丸＋枠線スタイル (Godot StyleBoxFlat 相当)。`Drawable.style = Some(..)` のとき、
     /// 単色矩形 (texture="") を「塗り＋枠＋角丸＋AA」で 1 フラグメント描画する。
     /// cornerRadius/borderWidth は px。塗り色は Drawable#color/#alpha を使う。
+    ///
+    /// stripe* は塗り領域に重ねる 45° 斜線ハッチ（CSS の repeating-linear-gradient 相当）。
+    /// `stripeWidth <= 0` または `stripeAlpha <= 0` でハッチ無効＝従来の塗りのみ。
     pub type alias BoxStyle = {
         cornerRadius = Float64,
         borderWidth  = Float64,
         borderColor  = Color,
-        borderAlpha  = Float32
+        borderAlpha  = Float32,
+        stripeColor  = Color,
+        stripeAlpha  = Float32,
+        stripeWidth  = Float64,
+        stripePeriod = Float64
     }
 
     /// スプライト 1 つ分の描画コマンド (zIndex 順でソートして描画される)

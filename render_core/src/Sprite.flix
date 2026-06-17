@@ -95,9 +95,23 @@ mod RenderSprite {
                 let bcLoc = GL20.glGetUniformLocation(shader, "borderColor");
                 GL20.glUniform3f(bcLoc, st#borderColor#r, st#borderColor#g, st#borderColor#b);
                 let baLoc = GL20.glGetUniformLocation(shader, "borderAlpha");
-                GL20.glUniform1f(baLoc, st#borderAlpha)
+                GL20.glUniform1f(baLoc, st#borderAlpha);
+                // 斜線ハッチ uniform。stripeWidth/stripeAlpha が正のときのみ有効化。
+                let hatchLoc = GL20.glGetUniformLocation(shader, "hatchEnabled");
+                let hatchOn = st#stripeWidth > 0.0 and st#stripeAlpha > 0.0f32;
+                GL20.glUniform1i(hatchLoc, if (hatchOn) 1 else 0);
+                let hcLoc = GL20.glGetUniformLocation(shader, "hatchColor");
+                GL20.glUniform3f(hcLoc, st#stripeColor#r, st#stripeColor#g, st#stripeColor#b);
+                let haLoc = GL20.glGetUniformLocation(shader, "hatchAlpha");
+                GL20.glUniform1f(haLoc, st#stripeAlpha);
+                let hwLoc = GL20.glGetUniformLocation(shader, "hatchWidth");
+                GL20.glUniform1f(hwLoc, f32(st#stripeWidth));
+                let hpLoc = GL20.glGetUniformLocation(shader, "hatchPeriod");
+                GL20.glUniform1f(hpLoc, f32(st#stripePeriod))
             case None =>
-                GL20.glUniform1i(styleLoc, 0)
+                GL20.glUniform1i(styleLoc, 0);
+                let hatchLoc = GL20.glGetUniformLocation(shader, "hatchEnabled");
+                GL20.glUniform1i(hatchLoc, 0)
         };
         if (useTex) {
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -151,9 +165,11 @@ mod RenderSprite {
             GL20.glUniform2f(uvScaleLoc, 1.0f32, 1.0f32);
             let useTexLoc = GL20.glGetUniformLocation(spriteShader, "useTexture");
             GL20.glUniform1i(useTexLoc, 0);
-            // sprite シェーダ共有のため styleEnabled を明示 0 にして GL state 持ち越しを防ぐ。
+            // sprite シェーダ共有のため styleEnabled / hatchEnabled を明示 0 にして GL state 持ち越しを防ぐ。
             let styleLoc = GL20.glGetUniformLocation(spriteShader, "styleEnabled");
             GL20.glUniform1i(styleLoc, 0);
+            let hatchLoc = GL20.glGetUniformLocation(spriteShader, "hatchEnabled");
+            GL20.glUniform1i(hatchLoc, 0);
             let data = Array.empty(Static, n * 4);
             let _ = List.foldLeft((i, v) -> {
                 let base = i * 4;

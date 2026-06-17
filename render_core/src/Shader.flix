@@ -42,6 +42,12 @@ mod RenderShader {
         "uniform float borderWidth;\n" +
         "uniform vec3 borderColor;\n" +
         "uniform float borderAlpha;\n" +
+        // 塗り領域に重ねる 45° 斜線ハッチ (CSS repeating-linear-gradient 相当)。hatchEnabled=false で従来の塗り。
+        "uniform bool hatchEnabled;\n" +
+        "uniform vec3 hatchColor;\n" +
+        "uniform float hatchAlpha;\n" +
+        "uniform float hatchWidth;\n" +
+        "uniform float hatchPeriod;\n" +
         // 角丸矩形 SDF (RenderSdf.roundedBox と同式)。p=中心からのオフセット, hsz=半サイズ, r=角半径。
         "float roundedBox(vec2 p, vec2 hsz, float r) {\n" +
         "    vec2 q = abs(p) - hsz + r;\n" +
@@ -62,8 +68,19 @@ mod RenderShader {
         "        vec2 hi = max(hsz - vec2(borderWidth), vec2(0.0));\n" +
         "        float dInner = roundedBox(p, hi, ri);\n" +
         "        float fillCov = 1.0 - smoothstep(0.0, aa, dInner);\n" +    // 塗り領域=1 / 枠+外=0
-        "        vec3 rgb = mix(borderColor, spriteColor, fillCov);\n" +
-        "        float a = mix(borderAlpha, spriteAlpha, fillCov) * outerCov;\n" +
+        // 塗りベース。hatchEnabled なら 45° 斜線を塗りの上に over 合成してから枠と混ぜる。
+        "        vec3 fillRgb = spriteColor;\n" +
+        "        float fillA = spriteAlpha;\n" +
+        "        if (hatchEnabled) {\n" +
+        "            float m = mod(p.x - p.y, hatchPeriod);\n" +           // 縞の位相 (x-y で 45°)
+        "            float sOn = smoothstep(0.0, aa, m) - smoothstep(hatchWidth, hatchWidth + aa, m);\n" +
+        "            float sa = hatchAlpha * clamp(sOn, 0.0, 1.0);\n" +
+        "            float outA = sa + fillA * (1.0 - sa);\n" +
+        "            fillRgb = (outA > 0.0001) ? (hatchColor * sa + fillRgb * fillA * (1.0 - sa)) / outA : fillRgb;\n" +
+        "            fillA = outA;\n" +
+        "        }\n" +
+        "        vec3 rgb = mix(borderColor, fillRgb, fillCov);\n" +
+        "        float a = mix(borderAlpha, fillA, fillCov) * outerCov;\n" +
         "        if (a < 0.004) discard;\n" +
         "        color = vec4(rgb, a);\n" +
         "    } else {\n" +

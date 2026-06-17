@@ -1,21 +1,15 @@
 {
   "children": [
-    {
-      "name": "Sprite",
-      "pos": [
-        0,
-        0
-      ],
-      "scale": [
-        1.625,
-        1.625
-      ],
-      "texture": "cursor",
-      "type": "Sprite2D",
-      "zIndex": 20
-    }
+    { "name": "tl_h", "type": "ColorRect", "pos": [ -15, -15 ], "size": [ 9, 2 ], "color": { "r": 1, "g": 1, "b": 1 }, "zIndex": 70 },
+    { "name": "tl_v", "type": "ColorRect", "pos": [ -15, -15 ], "size": [ 2, 9 ], "color": { "r": 1, "g": 1, "b": 1 }, "zIndex": 70 },
+    { "name": "tr_h", "type": "ColorRect", "pos": [ 6, -15 ], "size": [ 9, 2 ], "color": { "r": 1, "g": 1, "b": 1 }, "zIndex": 70 },
+    { "name": "tr_v", "type": "ColorRect", "pos": [ 13, -15 ], "size": [ 2, 9 ], "color": { "r": 1, "g": 1, "b": 1 }, "zIndex": 70 },
+    { "name": "bl_h", "type": "ColorRect", "pos": [ -15, 13 ], "size": [ 9, 2 ], "color": { "r": 1, "g": 1, "b": 1 }, "zIndex": 70 },
+    { "name": "bl_v", "type": "ColorRect", "pos": [ -15, 6 ], "size": [ 2, 9 ], "color": { "r": 1, "g": 1, "b": 1 }, "zIndex": 70 },
+    { "name": "br_h", "type": "ColorRect", "pos": [ 6, 13 ], "size": [ 9, 2 ], "color": { "r": 1, "g": 1, "b": 1 }, "zIndex": 70 },
+    { "name": "br_v", "type": "ColorRect", "pos": [ 13, 6 ], "size": [ 2, 9 ], "color": { "r": 1, "g": 1, "b": 1 }, "zIndex": 70 }
   ],
-  "description": "味方ターン中の選択カーソル (Marker2D + Sprite2D)\nZ で味方マス選択 → PlayerMoving、敵マス上は赤い移動範囲を表示",
+  "description": "味方ターン中の選択カーソル (Marker2D + 四隅の角カッコ L字を白 ColorRect 8枚で描く)\nZ で味方マス選択 → PlayerMoving、敵マス上は赤い移動範囲を表示",
   "name": "Cursor",
   "pos": [
     64,

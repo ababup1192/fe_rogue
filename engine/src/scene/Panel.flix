@@ -32,7 +32,13 @@ pub enum Panel {
         borderAlpha = Float32,
         borderWidth = Int32,
         // 角丸半径 (px)。0 で従来の直角 (5 矩形描画)。>0 で角丸スタイル描画 (1 Drawable)。
-        cornerRadius = Float64
+        cornerRadius = Float64,
+        // 塗り領域に重ねる 45° 斜線ハッチ (CSS repeating-linear-gradient 相当)。
+        // stripeWidth <= 0 または stripeAlpha <= 0 でハッチ無効。stripePeriod は縞の周期 px。
+        stripeColor = Color,
+        stripeAlpha = Float32,
+        stripeWidth = Float64,
+        stripePeriod = Float64
     })
 }
 
@@ -53,7 +59,11 @@ mod Panel {
             borderColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
             borderAlpha = 1.0f32,
             borderWidth = 0,
-            cornerRadius = 0.0
+            cornerRadius = 0.0,
+            stripeColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+            stripeAlpha = 0.0f32,
+            stripeWidth = 0.0,
+            stripePeriod = 0.0
         })
 
     pub def getSize(panel: Panel): Vec2.Vec2 =
@@ -111,6 +121,21 @@ mod Panel {
         let Panel.Panel(r) = panel;
         r#cornerRadius
 
+    /// 塗り領域に重ねる 45° 斜線ハッチを設定する。
+    /// `color`/`alpha` は縞の色と不透明度、`width` は縞 1 本の幅 px、`period` は縞の周期 px。
+    /// width<=0 または alpha<=0 でハッチ無効（従来の塗りのみ）。
+    pub def setStripe(color: Color, alpha: Float32, width: Float64, period: Float64,
+                      panel: Panel): Panel =
+        let Panel.Panel(r) = panel;
+        Panel.Panel({stripeColor = color, stripeAlpha = alpha,
+                     stripeWidth = Float64.max(0.0, width),
+                     stripePeriod = Float64.max(0.0, period) | r})
+
+    /// 斜線ハッチが有効か（width>0 かつ alpha>0）。
+    pub def hasStripe(panel: Panel): Bool =
+        let Panel.Panel(r) = panel;
+        r#stripeWidth > 0.0 and r#stripeAlpha > 0.0f32
+
     pub def getBorderWidth(panel: Panel): Int32 =
         let Panel.Panel(r) = panel;
         r#borderWidth
@@ -140,14 +165,19 @@ mod Panel {
         let Panel.Panel(r) = panel;
         let w = r#size#x;
         let h = r#size#y;
-        // 背景 Drawable は全分岐で共有（角丸時は style を載せ替えるだけ＝重複リテラルを持たない）。
+        // 背景 Drawable は全分岐で共有（角丸/ハッチ時は style を載せ替えるだけ＝重複リテラルを持たない）。
         let bg = makeRectDrawable(globalPos, r#size, r#backgroundColor, r#backgroundAlpha, r#zIndex);
-        if (r#cornerRadius > 0.0)
-            // 角丸時: 1 枚で塗り＋枠＋角丸＋AA を排他描画（半透明でも二重合成しない）。
+        // 角丸 or 斜線ハッチがあれば styled パス（1 枚で塗り＋枠＋角丸＋ハッチ＋AA を排他描画）。
+        let styled = r#cornerRadius > 0.0 or (r#stripeWidth > 0.0 and r#stripeAlpha > 0.0f32);
+        if (styled)
             ({style = Some({cornerRadius = r#cornerRadius,
                             borderWidth = Int32.toFloat64(r#borderWidth),
                             borderColor = r#borderColor,
-                            borderAlpha = r#borderAlpha}) | bg}: GameEngine.Drawable) :: Nil
+                            borderAlpha = r#borderAlpha,
+                            stripeColor = r#stripeColor,
+                            stripeAlpha = r#stripeAlpha,
+                            stripeWidth = r#stripeWidth,
+                            stripePeriod = r#stripePeriod}) | bg}: GameEngine.Drawable) :: Nil
         else if (r#borderWidth <= 0)
             bg :: Nil
         else {

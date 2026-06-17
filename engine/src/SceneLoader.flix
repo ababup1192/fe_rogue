@@ -1281,12 +1281,20 @@ mod SceneLoader {
             borderAlphaOpt     <- (JsonCompat.getAtKeyOpt(Root, "borderAlpha", map): Result[Util.Json.JsonError, Option[Float64]]);
             borderWidthOpt     <- (JsonCompat.getAtKeyOpt(Root, "borderWidth", map): Result[Util.Json.JsonError, Option[Int32]]);
             cornerRadiusOpt    <- (JsonCompat.getAtKeyOpt(Root, "cornerRadius", map): Result[Util.Json.JsonError, Option[Float64]]);
+            stripeColorOpt     <- parseColorOpt("stripeColor", map);
+            stripeAlphaOpt     <- (JsonCompat.getAtKeyOpt(Root, "stripeAlpha", map): Result[Util.Json.JsonError, Option[Float64]]);
+            stripeWidthOpt     <- (JsonCompat.getAtKeyOpt(Root, "stripeWidth", map): Result[Util.Json.JsonError, Option[Float64]]);
+            stripePeriodOpt    <- (JsonCompat.getAtKeyOpt(Root, "stripePeriod", map): Result[Util.Json.JsonError, Option[Float64]]);
             visibleOpt         <- (JsonCompat.getAtKeyOpt(Root, "visible", map): Result[Util.Json.JsonError, Option[Bool]]);
             zIndexOpt          <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[Util.Json.JsonError, Option[Int32]]);
             modulateOpt        <- parseColorOpt("modulate", map)
         ) yield {
             let pos = Option.getWithDefault(Vec2.zero(), posOpt);
             let size = Option.getWithDefault(Vec2.zero(), sizeOpt);
+            // 斜線ハッチ: stripeWidth が指定されたときのみ適用（色/alpha/period は省略時デフォルト）。
+            let stripeColor = Option.getWithDefault({r = 1.0f32, g = 1.0f32, b = 1.0f32}, stripeColorOpt);
+            let stripeAlpha = Float64.truncateToFloat32(Option.getWithDefault(1.0, stripeAlphaOpt));
+            let stripePeriod = Option.getWithDefault(0.0, stripePeriodOpt);
             let panel = Panel.make(size, background)
                 |> Node2D.setPosition(pos)
                 |> applyOpt(backgroundAlphaOpt, setPanelBackgroundAlpha)
@@ -1294,6 +1302,7 @@ mod SceneLoader {
                 |> applyOpt(borderAlphaOpt, setPanelBorderAlpha)
                 |> applyOpt(borderWidthOpt, Panel.setBorderWidth)
                 |> applyOpt(cornerRadiusOpt, Panel.setCornerRadius)
+                |> applyOpt(stripeWidthOpt, (w, p) -> Panel.setStripe(stripeColor, stripeAlpha, w, stripePeriod, p))
                 |> applyOpt(visibleOpt, setPanelVisible)
                 |> applyOpt(zIndexOpt, setPanelZIndex)
                 |> applyOpt(modulateOpt, (c, p) -> CanvasItem.setModulate(c, p));

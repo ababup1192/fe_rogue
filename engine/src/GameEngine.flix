@@ -51,11 +51,19 @@ mod GameEngine {
 
     /// 角丸＋枠線スタイル (Godot StyleBoxFlat 相当)。`Drawable.style = Some(..)` ＆ texture="" のとき
     /// 単色矩形を「塗り＋枠＋角丸＋AA」で 1 フラグメント描画する。render_core の `RenderType.BoxStyle` と一致。
+    ///
+    /// stripe* は塗り領域に重ねる 45° 斜線ハッチ（CSS の repeating-linear-gradient 相当）。
+    /// `stripeWidth <= 0` または `stripeAlpha <= 0` でハッチ無効＝従来の塗りのみ。
+    /// stripePeriod は縞の周期 px、stripeWidth は縞 1 本の幅 px（どちらもデザイン解像度 px）。
     pub type alias BoxStyle = {
         cornerRadius = Float64,
         borderWidth  = Float64,
         borderColor  = Color,
-        borderAlpha  = Float32
+        borderAlpha  = Float32,
+        stripeColor  = Color,
+        stripeAlpha  = Float32,
+        stripeWidth  = Float64,
+        stripePeriod = Float64
     }
 
     /// 描画用データ: renderCommands ハンドラに渡す
