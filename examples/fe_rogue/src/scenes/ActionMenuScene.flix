@@ -92,16 +92,25 @@ mod ActionMenuScene {
             |> Option.getWithDefault(false)
 
     /// フェーズ遷移時の visibility 適用。
-    ///   - Panel : ActionSelect フェーズだけ visible
-    ///   - Menu  : ActionSelect フェーズだけ visible + focused
+    ///   - Panel : ActionSelect / WeaponSelect フェーズで visible
+    ///   - Menu  : ActionSelect / WeaponSelect で visible。focus は ActionSelect のときだけ
+    ///             （WeaponSelect 中は focus を武器ウィンドウに譲り、ここは「攻撃」行のハイライトを
+    ///              `setHighlightWhenUnfocused(true)` で残す＝カーソル glyph は隠したまま選択枠だけ描く）。
+    /// WeaponSelect でも ActionMenu を visible に残すのは、武器選択ウィンドウが右隣に重ねて出る間も
+    /// コマンドメニューを表示し続け「攻撃」を選んでいる文脈を見せ続けるため（モックアップ準拠）。
     pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let visible = phase == TurnPhase.Phase.ActionSelect;
+        let visible = phase == TurnPhase.Phase.ActionSelect
+                    or phase == TurnPhase.Phase.WeaponSelect;
+        let focused = phase == TurnPhase.Phase.ActionSelect;
         scene
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
             |> Panel.mapAt(headerBgPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(headerPath(), CanvasItem.setVisible(visible))
             |> ItemList.mapAt(menuPath(), list ->
-                list |> CanvasItem.setVisible(visible) |> ItemList.setFocused(visible))
+                list
+                    |> CanvasItem.setVisible(visible)
+                    |> ItemList.setFocused(focused)
+                    |> ItemList.setHighlightWhenUnfocused(not focused))
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から ActionMenu の ItemList
     /// ノードに対して dispatch される (per-node、ItemList は 1 個のみなので 1 フレーム 1 回)。
@@ -115,10 +124,16 @@ mod ActionMenuScene {
                            PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
+        // ActionMenu は ActionSelect と WeaponSelect の両方で表示し続ける（WeaponSelect 中も
+        // コマンドメニューを右隣の武器ウィンドウと一緒に見せ「攻撃」行をハイライト維持する）。
+        // どちらでも項目は同じ（SelectedPlayer は不変）なので毎フレーム再構築するが、
+        // WeaponSelect 中はカーソル位置（＝直前に確定した「攻撃」行）を動かさない。
+        let menuVisible = phase == TurnPhase.Phase.ActionSelect
+                        or phase == TurnPhase.Phase.WeaponSelect;
         // UX: メニューを開き直すたびに意図しない項目を誤確定しないよう、
-        // 非表示中(ActionSelect 以外)はカーソルを先頭(0)に戻しておく。
-        // 表示中(ActionSelect)はリセットしないので ↑↓ のカーソル移動は維持される。
-        let withItems = if (phase != TurnPhase.Phase.ActionSelect)
+        // 非表示中はカーソルを先頭(0)に戻しておく。表示中はリセットしないので
+        // ↑↓ のカーソル移動は維持される。
+        let withItems = if (not menuVisible)
                 withVisibility
                     |> ItemList.mapAt(menuPath(), ItemList.setSelectedIndex(0))
             else {
@@ -128,13 +143,14 @@ mod ActionMenuScene {
                 let cw = ItemList.getAt(menuPath(), withVisibility)
                     |> Option.map(l -> contentWidth(l, items))
                     |> Option.getWithDefault(0.0);
+                // ActionSelect では disabled 項目に乗っていたら選択可能項目へ寄せるが、
+                // WeaponSelect 中はカーソルを動かさない（「攻撃」行のハイライトを固定するため）。
+                let snapCursor = phase == TurnPhase.Phase.ActionSelect;
                 withVisibility
                     |> ItemList.mapAt(menuPath(), l -> {
                         let withItems = l
                             |> ItemList.setItems(items);
-                        // 開いた直後にカーソルが disabled 項目（例: 敵が射程外の「攻撃」）に
-                        // 乗っていたら、最初の選択可能項目へ寄せる（HTML プロトタイプと同挙動）。
-                        if (selectedIsDisabled(items, withItems))
+                        if (snapCursor and selectedIsDisabled(items, withItems))
                             ItemList.setSelectedIndex(firstEnabled, withItems)
                         else withItems
                     })
@@ -412,12 +428,12 @@ mod ActionMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                PlayerData.PartyQuery, EnemyData.RosterQuery,
+                PlayerData.PartyQuery,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
         match entry#metadata {
             case None    => scene
             case Some(m) =>
-                if (m == attackMeta())        PlayerScene.enterAttackPhase(scene)
+                if (m == attackMeta())        enterWeaponSelect(scene)
                 else if (m == exchangeMeta()) PhaseTransitions.enterTradeTargetSelect(scene)
                 else if (m == itemMeta())     openItemMenu(scene)
                 else if (m == waitMeta())     TurnFlow.commitWaitedAndAdvance(scene)
@@ -628,6 +644,14 @@ mod ActionMenuScene {
                 PlayerScene.addRing(playerId, ring, scene)
         }
 
+    /// 「こうげき」確定時の遷移: 武器選択ウィンドウ (WeaponSelect) を開く。
+    /// ActionMenu はそのまま表示し続け「攻撃」行のハイライトを残す（focus だけ武器側へ移る）。
+    /// 実際の装備と攻撃フェーズ進入は武器を選んだあと `WeaponSelectScene.onConfirmed` が行う。
+    /// SelectedPlayer は「攻撃」項目が出ている時点で必ずセット済みなので、ここでは触らない。
+    def enterWeaponSelect(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.WeaponSelect);
+        scene
+
     /// PlayerMoving + Z 押下時の遷移: 行動選択ウィンドウを開く (フェーズ = ActionSelect)。
     /// 青マス表示はそのまま維持し、ItemList を visibility 適用で表示する。
     /// 「こうげき / たいき / ひろう」の項目は `refreshItems` が毎フレーム再構築。
@@ -680,7 +704,7 @@ mod ActionMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                PlayerData.PartyQuery, EnemyData.RosterQuery,
+                PlayerData.PartyQuery,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             // disabled 項目（例: 敵が射程外の「攻撃」）は確定しても何もしない。

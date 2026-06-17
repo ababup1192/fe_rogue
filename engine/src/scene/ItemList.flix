@@ -84,10 +84,22 @@ pub enum ItemList {
         subtextColor    = Color,
         // 右寄せサブラベルのフォントサイズ。既定は本文 fontSize と同じ（後方互換）。
         subtextFontSize = Float64,
+        // 行 index → 2 行目サブライン文字列（本文の下に左寄せで描く副行。例: 武器ステータス）。
+        // 指定行のみ 2 段組になり itemHeight 内で本文+サブラインを縦中央寄せする。
+        itemSublines    = Map[Int32, String],
+        sublineColor    = Color,
+        sublineFontSize = Float64,
+        // 行 index → バッジ文字（例「不得意」）。指定行のみ本文行の右端に色付き角丸チップで描く。
+        itemBadges      = Map[Int32, String],
+        badgeColor      = Color,
+        badgeTextColor  = Color,
         // 選択行の角丸ハイライト（`fillColor=None` で無効＝従来どおり cursorGlyph 表示のみ）。
         selectedHighlight = SelectedHighlight,
         // 全行に敷くチップ背景（`fillColor=None` で無効＝既定）。selectedHighlight の下に描く。
         rowHighlight    = SelectedHighlight,
+        // true なら focused=false でも選択行ハイライトを描く（カーソル glyph は出さない）。
+        // 例: コマンドメニューの「攻撃」を、フォーカスが武器選択ウィンドウに移っても強調表示し続ける。
+        highlightWhenUnfocused = Bool,
         // 各項目ラベルの横配置（Left=左固定／Center=列内中央寄せ）。既定 Left。
         itemAlignment   = ItemAlignment,
         itemHeight      = Float64,
@@ -138,6 +150,12 @@ mod ItemList {
             itemColors      = (Map.empty(): Map[Int32, Color]),
             subtextColor    = {r = 0.5f32, g = 0.5f32, b = 0.5f32},
             subtextFontSize = fontSize,
+            itemSublines    = (Map.empty(): Map[Int32, String]),
+            sublineColor    = {r = 0.5f32, g = 0.5f32, b = 0.5f32},
+            sublineFontSize = fontSize,
+            itemBadges      = (Map.empty(): Map[Int32, String]),
+            badgeColor      = {r = 0.6f32, g = 0.2f32, b = 0.2f32},
+            badgeTextColor  = {r = 1.0f32, g = 0.86f32, b = 0.86f32},
             selectedHighlight = ({fillColor = None, fillAlpha = 1.0f32,
                                    borderColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
                                    borderAlpha = 1.0f32, borderWidth = 0.0,
@@ -146,6 +164,7 @@ mod ItemList {
                                  borderColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
                                  borderAlpha = 1.0f32, borderWidth = 0.0,
                                  cornerRadius = 0.0, inset = 0.0}: SelectedHighlight),
+            highlightWhenUnfocused = false,
             itemAlignment   = ItemAlignment.Left,
             itemHeight      = fontSize + 4.0,
             cursorOffsetX   = fontSize,
@@ -326,6 +345,11 @@ mod ItemList {
         let ItemList.ItemList(r) = list;
         r#rowHighlight
 
+    /// focused=false でも選択行ハイライトを描くか（カーソル glyph は出さない）。
+    pub def setHighlightWhenUnfocused(on: Bool, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({highlightWhenUnfocused = on | r})
+
     /// 各項目ラベルの横配置を設定する（Left=左固定／Center=列内中央寄せ）。
     pub def setItemAlignment(alignment: ItemAlignment, list: ItemList): ItemList =
         let ItemList.ItemList(r) = list;
@@ -343,6 +367,34 @@ mod ItemList {
     pub def getSubtextFontSize(list: ItemList): Float64 =
         let ItemList.ItemList(r) = list;
         r#subtextFontSize
+
+    // ── 2 行目サブライン / バッジ ──
+
+    /// 行 index → 2 行目サブライン文字列のマップを丸ごと差し替える（`setItems` と同頻度）。
+    pub def setItemSublines(sublines: Map[Int32, String], list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({itemSublines = sublines | r})
+
+    pub def setSublineColor(color: Color, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({sublineColor = color | r})
+
+    pub def setSublineFontSize(size: Float64, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({sublineFontSize = size | r})
+
+    /// 行 index → バッジ文字のマップを丸ごと差し替える（指定行のみ右端にチップ描画）。
+    pub def setItemBadges(badges: Map[Int32, String], list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({itemBadges = badges | r})
+
+    pub def setBadgeColor(color: Color, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({badgeColor = color | r})
+
+    pub def setBadgeTextColor(color: Color, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({badgeTextColor = color | r})
 
     /// フォントアトラス（テキスト幅の実測などに使う）。
     pub def getFont(list: ItemList): FontAtlas =
@@ -543,7 +595,9 @@ mod ItemList {
         // itemHeight ちょうどに本文 1 行が収まるときは vCenter≈0（従来の上端揃えとほぼ同じ）。
         let mainScale = r#fontSize / r#font#fontSize;
         let mainLineHeight = (r#font#ascent + r#font#descent + r#font#lineGap) * mainScale;
-        let vCenter = (r#itemHeight - mainLineHeight) / 2.0;
+        // 2 行目サブラインの行高（指定行のみ 2 段組にして縦中央寄せに使う）。
+        let sublineScale = r#sublineFontSize / r#font#fontSize;
+        let sublineLineHeight = (r#font#ascent + r#font#descent + r#font#lineGap) * sublineScale;
         let iconVCenter = (r#itemHeight - r#iconSize) / 2.0;
         // サブラベルのベースラインを本文に揃える縦補正の係数。
         let ascentRatio = r#font#ascent / r#font#fontSize;
@@ -553,7 +607,13 @@ mod ItemList {
             let row = Int32.remainder(idx, rowsPerCol);
             let colX = globalPos#x + Int32.toFloat64(col) * colWidth;
             let lineY = globalPos#y + Int32.toFloat64(row) * r#itemHeight;
-            let textY = lineY + vCenter;
+            // サブライン有りの行は「本文＋サブライン」を 1 ブロックとして itemHeight 内に縦中央寄せ。
+            // 無しの行は本文 1 行を縦中央（従来挙動）。
+            let hasSubline = Map.memberOf(idx, r#itemSublines);
+            let blockH = if (hasSubline) mainLineHeight + sublineLineHeight else mainLineHeight;
+            let vBlock = (r#itemHeight - blockH) / 2.0;
+            let textY = lineY + vBlock;
+            let sublineY = lineY + vBlock + mainLineHeight;
             let iconY = lineY + iconVCenter;
             let iconStartX = colX + r#cursorOffsetX;
             let textOriginX =
@@ -602,8 +662,9 @@ mod ItemList {
                     case None => Nil
                 };
             // 選択行の角丸ハイライト（rowHighlight の上・本文の下に敷く）。fillColor=None で無効（従来）。
+            // focused=false でも highlightWhenUnfocused なら描く（フォーカスが別 window にある間も選択を示す）。
             let highlightDrawables: List[GameEngine.Drawable] =
-                if (idx == r#selectedIndex and r#focused)
+                if (idx == r#selectedIndex and (r#focused or r#highlightWhenUnfocused))
                     match r#selectedHighlight#fillColor {
                         case Some(fill) =>
                             highlightDrawable(r#selectedHighlight, fill, {x = colX, y = lineY},
@@ -626,10 +687,50 @@ mod ItemList {
                         Label2D.toDrawables(subLabel, {x = subX, y = subY})
                     case None => Nil
                 };
+            // 2 行目サブライン（本文の下に左寄せ。武器ステータス等）。
+            let sublineDrawables: List[GameEngine.Drawable] =
+                match Map.get(idx, r#itemSublines) {
+                    case Some(sub) =>
+                        let subLabel = Label2D.make(sub, r#font, r#sublineFontSize)
+                            |> CanvasItem.setModulate(r#sublineColor)
+                            |> CanvasItem.setZIndex(r#zIndex)
+                            |> Label2D.setHorizontalAlignment(HorizontalAlignment.Left);
+                        Label2D.toDrawables(subLabel, {x = textOriginX, y = sublineY})
+                    case None => Nil
+                };
+            // バッジ（本文行の右端に色付き角丸チップ＋文字。例「不得意」）。登録行のみ。
+            let badgeDrawables: List[GameEngine.Drawable] =
+                match Map.get(idx, r#itemBadges) {
+                    case Some(bt) =>
+                        let badgeLabel = Label2D.make(bt, r#font, r#sublineFontSize)
+                            |> CanvasItem.setModulate(r#badgeTextColor)
+                            |> CanvasItem.setZIndex(r#zIndex);
+                        let textW = Label2D.measure(badgeLabel)#x;
+                        let padX = 1.5;
+                        let padY = 0.6;
+                        let chipW = textW + padX * 2.0;
+                        let chipH = sublineLineHeight + padY * 2.0;
+                        let chipX = colX + colWidth - chipW - r#iconTextGap;
+                        let chipY = textY + (mainLineHeight - chipH) / 2.0;
+                        let chip = ({texture = "", position = {x = chipX, y = chipY},
+                            scale = {x = chipW, y = chipH}, rotation = 0.0,
+                            color = r#badgeColor, alpha = 1.0f32, centered = false,
+                            uvOffset = {x = 0.0, y = 0.0}, uvScale = {x = 1.0, y = 1.0},
+                            zIndex = r#zIndex,
+                            style = Some({cornerRadius = 1.5, borderWidth = 0.0,
+                                borderColor = r#badgeColor, borderAlpha = 1.0f32,
+                                stripeColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+                                stripeAlpha = 0.0f32, stripeWidth = 0.0, stripePeriod = 0.0})}: GameEngine.Drawable);
+                        let badgeTextDr = Label2D.toDrawables(badgeLabel, {x = chipX + padX, y = chipY + padY});
+                        chip :: badgeTextDr
+                    case None => Nil
+                };
             let lineDrawables =
                 List.append(rowHighlightDrawables,
                     List.append(highlightDrawables,
-                        List.append(baseLine, subtextDrawables)));
+                        List.append(baseLine,
+                            List.append(subtextDrawables,
+                                List.append(sublineDrawables, badgeDrawables)))));
             {drawables = List.append(acc#drawables, lineDrawables), idx = idx + 1}
         }, {drawables = (Nil: List[GameEngine.Drawable]), idx = 0}, r#items);
         result#drawables

@@ -49,6 +49,12 @@ mod TurnPhase {
         /// 上下キーで項目を選び Enter/Z で確定。X/Escape でウィンドウを閉じて `PlayerMoving`
         /// に戻る (別の場所に動かし直せる)。
         case ActionSelect
+        /// 味方ターン・武器選択フェーズ。
+        /// ActionMenu「攻撃」確定で入り、ActionMenu の右隣に武器選択ウィンドウ (WeaponSelectScene)
+        /// が出る。ActionMenu は表示したまま「攻撃」行をハイライト維持し、focus は武器側に移る。
+        /// 上下キーで武器を選び Enter/Z で確定すると、その武器を装備 (weapons 先頭へ) してから
+        /// 既存の攻撃フロア (`PlayerScene.enterAttackPhase`) に入る。X/Escape で ActionSelect に戻る。
+        case WeaponSelect
         /// 味方ターン・アイテム選択フェーズ。
         /// ActionMenu の「アイテム」確定で入り、画面に ItemMenu が出る。
         /// 武器 + 杖を 1 つの ItemList に並べ、上下キーで選び Enter/Z で確定すると
@@ -258,6 +264,8 @@ mod TurnRules {
             // ActionSelect / ItemSelect / ItemActionSelect / StaffAim / AttackForecast は
             // InputHandler が Z/X を直接処理し、TurnRules 経由では遷移しない
             case (TurnPhase.Phase.ActionSelect, _) =>
+                Transition.Stay
+            case (TurnPhase.Phase.WeaponSelect, _) =>
                 Transition.Stay
             case (TurnPhase.Phase.ItemSelect, _) =>
                 Transition.Stay

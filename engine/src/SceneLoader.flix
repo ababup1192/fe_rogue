@@ -1470,6 +1470,10 @@ mod SceneLoader {
                     disabledColorOpt <- parseColorOpt("disabledColor", map);
                     subtextColorOpt  <- parseColorOpt("subtextColor", map);
                     subtextFontSizeOpt <- (JsonCompat.getAtKeyOpt(Root, "subtextFontSize", map): Result[Util.Json.JsonError, Option[Float64]]);
+                    sublineColorOpt  <- parseColorOpt("sublineColor", map);
+                    sublineFontSizeOpt <- (JsonCompat.getAtKeyOpt(Root, "sublineFontSize", map): Result[Util.Json.JsonError, Option[Float64]]);
+                    badgeColorOpt    <- parseColorOpt("badgeColor", map);
+                    badgeTextColorOpt <- parseColorOpt("badgeTextColor", map);
                     selHighlightOpt  <- parseHighlightAt("selectedHighlight", map);
                     rowHighlightOpt  <- parseHighlightAt("rowHighlight", map);
                     itemAlignmentOpt <- parseItemAlignmentOpt("itemAlignment", map);
@@ -1491,6 +1495,10 @@ mod SceneLoader {
                         |> applyOpt(disabledColorOpt, ItemList.setDisabledColor)
                         |> applyOpt(subtextColorOpt, ItemList.setSubtextColor)
                         |> applyOpt(subtextFontSizeOpt, ItemList.setSubtextFontSize)
+                        |> applyOpt(sublineColorOpt, ItemList.setSublineColor)
+                        |> applyOpt(sublineFontSizeOpt, ItemList.setSublineFontSize)
+                        |> applyOpt(badgeColorOpt, ItemList.setBadgeColor)
+                        |> applyOpt(badgeTextColorOpt, ItemList.setBadgeTextColor)
                         |> applyOpt(selHighlightOpt, ItemList.setSelectedHighlight)
                         |> applyOpt(rowHighlightOpt, ItemList.setRowHighlight)
                         |> applyOpt(itemAlignmentOpt, ItemList.setItemAlignment)

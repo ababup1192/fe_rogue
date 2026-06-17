@@ -99,6 +99,8 @@ mod CameraScene {
                     case Some(_) => focusPos
                     case None    => cursorWorldPos(scene)
                 }
+            // 武器選択中は攻撃する味方（選択中の駒）を映したまま（ActionSelect と同じ挙動）。
+            case TurnPhase.Phase.WeaponSelect     => focusPos
             case TurnPhase.Phase.ItemSelect       => focusPos
             case TurnPhase.Phase.ItemActionSelect => focusPos
             case TurnPhase.Phase.StaffAim         => focusPos

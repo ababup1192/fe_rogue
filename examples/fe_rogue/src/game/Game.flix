@@ -56,6 +56,10 @@ pub enum NodeTag {
     case ActionPanel
     /// ActionMenuScene の ItemList（こうげき / たいき）
     case ActionMenu
+    /// WeaponSelectScene の Panel ルート（ActionMenu「攻撃」確定で右隣に出る武器選択ウィンドウ外枠）
+    case WeaponSelectPanel
+    /// WeaponSelectScene の ItemList（選択中味方の武器一覧。確定で装備→攻撃フェーズへ）
+    case WeaponSelectMenu
     /// GameOverMenuScene の Panel ルート（全滅時のモーダル選択ウィンドウ外枠）
     case GameOverPanel
     /// GameOverMenuScene の ItemList（最初から / そのフロアの最初から）
@@ -230,6 +234,8 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
             checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
+        case EngineNode.ItemListWithState(_, NodeTag.WeaponSelectMenu) =>
+            checked_ecast(WeaponSelectScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.GameOverMenu) =>
             checked_ecast(GameOverMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.ItemListWithState(_, NodeTag.SuspendConfirmMenu) =>
@@ -392,6 +398,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
             // onActionConfirmed は「かいだん」で CustomEffects.FloorAdvanceRequest を emit するため、
             // この instance の Aef にも FloorAdvanceRequest を含めてある（start で handler 注入済み）。
             case NodeTag.ActionMenu        => ActionMenuScene.onActionConfirmed(entry, scene)
+            case NodeTag.WeaponSelectMenu  => checked_ecast(WeaponSelectScene.onConfirmed(entry, scene))
             case NodeTag.TradeMenu(_)      => checked_ecast(TradeMenuScene.confirmCurrentSelection(scene))
             case _                         => scene
         }
@@ -415,6 +422,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                     case _                                 => scene
                 }
             case NodeTag.ActionMenu        => checked_ecast(ActionMenuScene.onActionCancelled(scene))
+            case NodeTag.WeaponSelectMenu  => checked_ecast(WeaponSelectScene.onCancelled(scene))
             case NodeTag.TradeMenu(_)      => checked_ecast(TradeMenuScene.cancelCurrent(scene))
             case _                         => scene
         }
@@ -580,6 +588,10 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
                                               => Some(ActionMenuScene.confirmCurrentSelection(scene))
         case (TurnPhase.Phase.ActionSelect,      TurnRules.Input.Cancel)
                                               => Some(checked_ecast(ActionMenuScene.onActionCancelled(scene)))
+        case (TurnPhase.Phase.WeaponSelect,      TurnRules.Input.Confirm)
+                                              => Some(checked_ecast(WeaponSelectScene.confirmCurrentSelection(scene)))
+        case (TurnPhase.Phase.WeaponSelect,      TurnRules.Input.Cancel)
+                                              => Some(checked_ecast(WeaponSelectScene.onCancelled(scene)))
         case (TurnPhase.Phase.ItemSelect,        TurnRules.Input.Confirm)
                                               => Some(checked_ecast(ItemMenuScene.confirmCurrentSelection(scene)))
         case (TurnPhase.Phase.ItemSelect,        TurnRules.Input.Cancel)

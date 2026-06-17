@@ -78,6 +78,7 @@ mod GameLifecycle {
             |> ItemMenuScene.add        // アイテム選択ウィンドウ (初期は非表示)
             |> UnitCardScene.add        // 左サイドの選択ユニット簡易カード (初期は非表示)
             |> ActionMenuScene.add      // 行動選択ウィンドウ (初期は非表示)
+            |> WeaponSelectScene.add    // 武器選択ウィンドウ (ActionMenu「攻撃」確定で右隣に出る。初期は非表示)
             |> GameOverMenuScene.add    // 全滅時のモーダル選択 (初期は非表示)
             |> SuspendConfirmScene.add  // 中断確認のモーダル (初期は非表示)
             |> TradeMenuScene.add       // 物交換ウィンドウ (2 ペイン、初期は非表示)
