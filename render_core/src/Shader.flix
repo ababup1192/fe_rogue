@@ -35,6 +35,9 @@ mod RenderShader {
         "uniform vec3 spriteColor;\n" +
         "uniform float spriteAlpha;\n" +
         "uniform bool useTexture;\n" +
+        // SDF テキスト用。useTexture かつ sdfText のとき、テクスチャ .a を距離場として
+        // smoothstep で輪郭を再構成する (任意サイズで縁がくっきり)。
+        "uniform bool sdfText;\n" +
         // styled (角丸＋枠) 単色矩形用。styleEnabled=false なら従来の単色塗り。
         "uniform bool styleEnabled;\n" +
         "uniform vec2 rectSize;\n" +
@@ -55,7 +58,15 @@ mod RenderShader {
         "}\n" +
         "void main() {\n" +
         "    if (useTexture) {\n" +
-        "        color = vec4(spriteColor, spriteAlpha) * texture(image, TexCoords);\n" +
+        "        if (sdfText) {\n" +
+        "            float d = texture(image, TexCoords).a;\n" +          // 距離場 (swizzle で R=alpha)
+        "            float aa = fwidth(d);\n" +                            // 画面 px 基準の AA 幅
+        "            float a = smoothstep(0.5 - aa, 0.5 + aa, d);\n" +
+        "            if (a < 0.004) discard;\n" +
+        "            color = vec4(spriteColor, spriteAlpha * a);\n" +
+        "        } else {\n" +
+        "            color = vec4(spriteColor, spriteAlpha) * texture(image, TexCoords);\n" +
+        "        }\n" +
         "    } else if (styleEnabled) {\n" +
         "        vec2 hsz = rectSize * 0.5;\n" +
         "        vec2 p = TexCoords * rectSize - hsz;\n" +

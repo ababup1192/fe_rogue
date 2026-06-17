@@ -59,7 +59,7 @@ mod TitleMenuScene {
     def normalColor(): Color = {r = 0.7f32, g = 0.7f32, b = 0.75f32}
     def disabledColor(): Color = {r = 0.35f32, g = 0.35f32, b = 0.4f32}
 
-    def titleText(): String = "FE ROGUE"
+    def titleText(): String = "遺宝探索記"
 
     /// 中断データを 1 回読んで `resumable` を確定し、タイトル画面のツリーを scene に追加する。
     /// 初期化は 1 回のみ（`applyPhaseChange(Title)` から呼ばれる）。

@@ -52,7 +52,9 @@ mod RenderType {
         uvScale    = Vec2.Vec2,
         rotation   = Float64,
         useTexture = Bool,
-        style      = Option[BoxStyle]
+        style      = Option[BoxStyle],
+        // SDF テキストとして描くか (useTexture かつ font_ アトラスのとき true)
+        sdf        = Bool
     }
 
     /// TileMapLayer の 1 タイル分の GPU インスタンスデータ

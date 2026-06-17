@@ -75,7 +75,8 @@ mod RenderFrame {
                         texture = 0, position = drawable#position, scale = displaySize,
                         color = drawable#color, alpha = drawable#alpha,
                         uvOffset = drawable#uvOffset, uvScale = drawable#uvScale,
-                        rotation = drawable#rotation, useTexture = false, style = drawable#style})
+                        rotation = drawable#rotation, useTexture = false,
+                        style = drawable#style, sdf = false})
                 } else {
                     match Map.get(drawable#texture, registry) {
                         case Some(texInfo) =>
@@ -86,11 +87,14 @@ mod RenderFrame {
                                 {x = drawable#position#x - displayW / 2.0,
                                  y = drawable#position#y - displayH / 2.0}
                             else drawable#position;
+                            // フォントアトラス (font_*) は SDF テキストとして描く。
+                            let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
                             RenderSprite.drawSprite(spriteShader, vao, {
                                 texture = texInfo#id, position = pos, scale = displaySize,
                                 color = drawable#color, alpha = drawable#alpha,
                                 uvOffset = drawable#uvOffset, uvScale = drawable#uvScale,
-                                rotation = drawable#rotation, useTexture = true, style = drawable#style})
+                                rotation = drawable#rotation, useTexture = true,
+                                style = drawable#style, sdf = isFont})
                         case None => ()
                     }
                 }

@@ -53,6 +53,7 @@ mod RenderSprite {
         let rot     = params#rotation;
         let useTex  = params#useTexture;
         let style   = params#style;
+        let sdf     = params#sdf;
         let f32 = RenderUtil.f32;
         let cosF = RenderUtil.cosF;
         let sinF = RenderUtil.sinF;
@@ -81,6 +82,9 @@ mod RenderSprite {
         GL20.glUniform2f(uvScaleLoc, f32(uvSc#x), f32(uvSc#y));
         let useTexLoc = GL20.glGetUniformLocation(shader, "useTexture");
         GL20.glUniform1i(useTexLoc, if (useTex) 1 else 0);
+        // SDF テキスト uniform。テキスト以外は 0 にして GL state 持ち越しを防ぐ。
+        let sdfLoc = GL20.glGetUniformLocation(shader, "sdfText");
+        GL20.glUniform1i(sdfLoc, if (sdf) 1 else 0);
         // 角丸＋枠スタイル uniform。Some のとき styleEnabled=1（単色矩形のみシェーダ側で適用）。
         let styleLoc = GL20.glGetUniformLocation(shader, "styleEnabled");
         match style {
@@ -170,6 +174,8 @@ mod RenderSprite {
             GL20.glUniform1i(styleLoc, 0);
             let hatchLoc = GL20.glGetUniformLocation(spriteShader, "hatchEnabled");
             GL20.glUniform1i(hatchLoc, 0);
+            let sdfLoc = GL20.glGetUniformLocation(spriteShader, "sdfText");
+            GL20.glUniform1i(sdfLoc, 0);
             let data = Array.empty(Static, n * 4);
             let _ = List.foldLeft((i, v) -> {
                 let base = i * 4;
