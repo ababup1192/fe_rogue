@@ -16,4 +16,41 @@ mod UITheme {
     /// 行動済み（待機 / acted）の駒を薄く見せる modulate 用グレー。
     /// アクティブ駒は `white()`、行動済みは `dimmed()` という対のセマンティクスで使う。
     pub def dimmed(): Color = {r = 0.5f32, g = 0.5f32, b = 0.5f32}
+
+    // ── コマンドウィンドウ配色（HTML プロトタイプ「遺宝探索記 UI」と同値）──
+
+    /// ウィンドウ地色。panel #0d121b。scene.json の panel `background` と同期（test で pin）。
+    pub def panel(): Color = {r = 0.051f32, g = 0.071f32, b = 0.106f32}
+
+    /// ウィンドウ枠の暗いスレート。panelBorder #2a3445。
+    /// scene.json の panel `border` と同期（test で pin）。
+    pub def panelBorder(): Color = {r = 0.165f32, g = 0.204f32, b = 0.271f32}
+
+    /// 見出し（● コマンド）の淡い青。headerText #9cc0ff。
+    /// scene.json の header `modulate` と同期（test で pin）。
+    pub def headerText(): Color = {r = 0.612f32, g = 0.753f32, b = 1.0f32}
+
+    /// 項目本文の白に近いオフホワイト。labelText #eef1f7。menu `textColor` の真理点。
+    /// NOTE: ItemList に textColor getter が無いため test pin は未（値は scene.json に再掲）。
+    pub def labelText(): Color = {r = 0.933f32, g = 0.945f32, b = 0.969f32}
+
+    /// 味方の青（選択枠）。allyBlue #2f6df0。
+    /// scene.json の selectedHighlight `borderColor` と同期（test で pin）。
+    pub def allyBlue(): Color = {r = 0.184f32, g = 0.427f32, b = 0.941f32}
+
+    /// 選択行の塗り（暗い藍）。selectBg #16314f。
+    /// scene.json の selectedHighlight `fillColor` と同期（test で pin）。
+    pub def selectBg(): Color = {r = 0.086f32, g = 0.192f32, b = 0.310f32}
+
+    /// 全行チップの塗り（地よりわずかに明るい紺）。rowBg #0e1626。
+    /// scene.json の rowHighlight `fillColor` と同期（test で pin）。
+    pub def rowBg(): Color = {r = 0.055f32, g = 0.086f32, b = 0.149f32}
+
+    /// 全行チップの枠（控えめなスレート）。rowBorder #1c2533。
+    /// scene.json の rowHighlight `borderColor` と同期（test で pin）。
+    pub def rowBorder(): Color = {r = 0.110f32, g = 0.145f32, b = 0.200f32}
+
+    /// サブラベルの淡色（くすんだ青灰）。faint #7d8aa3。menu `subtextColor` の真理点。
+    /// NOTE: ItemList に subtextColor getter が無いため test pin は未（値は scene.json に再掲）。
+    pub def faint(): Color = {r = 0.490f32, g = 0.541f32, b = 0.639f32}
 }

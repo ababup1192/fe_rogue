@@ -38,10 +38,15 @@ mod ActionMenuScene {
 
     pub def panelName(): String = "panel"
     pub def menuName(): String = "menu"
+    pub def headerName(): String = "header"
+    /// 見出し「コマンド」の背景帯（タイトルバー）。HTML プロトタイプの #11182a 帯に相当。
+    pub def headerBgName(): String = "headerBg"
 
     pub def rootPath(): NodePath = rootName() :: Nil
     pub def panelPath(): NodePath = rootName() :: panelName() :: Nil
     pub def menuPath(): NodePath = rootName() :: panelName() :: menuName() :: Nil
+    pub def headerPath(): NodePath = rootName() :: panelName() :: headerName() :: Nil
+    pub def headerBgPath(): NodePath = rootName() :: panelName() :: headerBgName() :: Nil
 
     /// scene.json 内の "tag" 文字列 → NodeTag への変換。
     def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
@@ -73,6 +78,9 @@ mod ActionMenuScene {
     def gatherStairsMeta(): String = "gatherStairs"
     /// 集合（行軍）の隣接メニューの「キャンセル」: 主人公＋追従味方を開始位置へ巻き戻す。
     def gatherCancelMeta(): String = "gatherCancel"
+    /// 集合（行軍）隣接メニューの「全員待機」。挙動は turnEnd と同一（applyTurnEnd）だが、
+    /// turnEndMeta と別識別子にして subtextFor が専用文言「全員を待機」を返せるようにする。
+    def waitAllMeta(): String = "waitAll"
 
     /// scene に ActionMenu ノードツリーを追加する。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
@@ -92,6 +100,8 @@ mod ActionMenuScene {
         let visible = phase == TurnPhase.Phase.ActionSelect;
         scene
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
+            |> Panel.mapAt(headerBgPath(), CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(headerPath(), CanvasItem.setVisible(visible))
             |> ItemList.mapAt(menuPath(), list ->
                 list |> CanvasItem.setVisible(visible) |> ItemList.setFocused(visible))
 
@@ -115,9 +125,23 @@ mod ActionMenuScene {
                     |> ItemList.mapAt(menuPath(), ItemList.setSelectedIndex(0))
             else {
                 let items = buildItems(withVisibility);
+                let firstEnabled = firstEnabledIndex(items);
+                // 文脈ごとに最長行へ幅を合わせる（中央に無駄な余白を出さない）。
+                let cw = ItemList.getAt(menuPath(), withVisibility)
+                    |> Option.map(l -> contentWidth(l, items))
+                    |> Option.getWithDefault(0.0);
                 withVisibility
-                    |> ItemList.mapAt(menuPath(), ItemList.setItems(items))
-                    |> fitMenuToItems(List.length(items))
+                    |> ItemList.mapAt(menuPath(), l -> {
+                        let withItems = l
+                            |> ItemList.setItems(items)
+                            |> ItemList.setItemSubtexts(buildSubtexts(items));
+                        // 開いた直後にカーソルが disabled 項目（例: 敵が射程外の「攻撃」）に
+                        // 乗っていたら、最初の選択可能項目へ寄せる（HTML プロトタイプと同挙動）。
+                        if (selectedIsDisabled(items, withItems))
+                            ItemList.setSelectedIndex(firstEnabled, withItems)
+                        else withItems
+                    })
+                    |> fitMenuToItems(List.length(items), cw)
             };
         match Scene.getEngineNode(menuPath(), withItems) {
             case Some(latest) => (latest, withItems)
@@ -125,23 +149,104 @@ mod ActionMenuScene {
         }
 
     /// ItemList 1 項目の高さ (px)。scene.json の menu `itemHeight` と一致させること。
-    def menuItemHeight(): Float64 = 6.0
-    /// panel 内での menu の上下パディング (px)。scene.json の menu `pos` の y と一致させる。
-    def menuPadding(): Float64 = 2.0
+    /// 行内でテキストは縦中央に置かれるので、fontSize より大きめにして上下 padding を作る。
+    def menuItemHeight(): Float64 = 11.0
+    /// panel 下端の余白 (px)。最終項目（待機）の下に空ける隙間。
+    def menuPadding(): Float64 = 4.0
+    /// panel 上端から menu 上端までの距離 (px)。見出し背景帯（headerBg, 高さ 6 + 上余白 2）+ 1px の隙間。
+    /// **scene.json の menu `pos` の y はこの値と一致させること**
+    /// （testMenuOriginMatchesHeaderPadding がロード後の menu pos.y と
+    ///  この値の一致を test で pin するので、片方だけ変えると赤になる）。
+    def menuHeaderPadding(): Float64 = 9.0
 
-    /// メニュー項目数 `count` に合わせて ItemList と Panel の高さを詰める。
-    /// 幅は scene.json の値を `getSize` で保持し、高さだけ `count` 行ぶんに変える。
-    /// これにより「たいき」などの項目が増減してもウィンドウがピッタリ収まる。
+    /// items の最初の「選択可能（not disabled）」項目の index。全部 disabled なら 0。
+    def firstEnabledIndex(items: List[ItemEntry]): Int32 =
+        items
+            |> List.zipWithIndex
+            |> List.findLeft(pair -> not snd(pair)#disabled)
+            |> Option.map(fst)
+            |> Option.getWithDefault(0)
+
+    /// 現在の選択 index が disabled 項目を指しているか。
+    def selectedIsDisabled(items: List[ItemEntry], list: ItemList): Bool =
+        List.nth(ItemList.getSelectedIndex(list), items)
+            |> Option.map(e -> e#disabled)
+            |> Option.getWithDefault(false)
+
+    /// menu 左右の内側余白 (px)。menu は panel 内 pos.x=2 なので左右とも 2。
+    def menuSideMargin(): Float64 = 2.0
+
+    /// items の各行に必要な幅（左パディング + ラベル幅 + ラベル/サブラベル間隔 + サブラベル幅 + 右余白）
+    /// の最大値。文脈ごとに最長行へ幅を合わせ、中央に無駄な余白が出ないようにする。
+    def contentWidth(list: ItemList, items: List[ItemEntry]): Float64 =
+        let font = ItemList.getFont(list);
+        let fs   = ItemList.getFontSize(list);
+        let sfs  = ItemList.getSubtextFontSize(list);
+        let cox  = ItemList.getCursorOffsetX(list);
+        let gap  = ItemList.getIconTextGap(list);
+        let labelSubGap = 4.0;
+        let rowW = e -> {
+            let labelW = Label2D.measure(Label2D.make(e#text, font, fs))#x;
+            let sub = subtextFor(e#metadata);
+            let subW = if (sub == "") 0.0
+                       else labelSubGap + Label2D.measure(Label2D.make(sub, font, sfs))#x;
+            cox + labelW + subW + gap
+        };
+        items |> List.map(rowW) |> List.foldLeft(Float64.max, 0.0)
+
+    /// メニュー項目数 `count` と内容幅 `contentW` に合わせて ItemList / Panel / headerBg を詰める。
+    /// 高さは行数ぶん、幅は内容（と見出し）に合わせて自動フィットする（中央の無駄余白を出さない）。
     /// 項目 0 でも最低 1 行ぶんの高さは残す (空ウィンドウが潰れて見えないように)。
-    def fitMenuToItems(count: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+    def fitMenuToItems(count: Int32, contentW: Float64, scene: Scene[NodeTag]): Scene[NodeTag] =
         let rows   = Int32.max(1, count);
         let menuH  = Int32.toFloat64(rows) * menuItemHeight();
-        let panelH = menuH + 2.0 * menuPadding();
+        let panelH = menuHeaderPadding() + menuH + menuPadding();
+        // 見出し「コマンド」の幅も考慮（header は menu より x=+2 なので +2 した幅を要求）。
+        let headerW = Label2D.getAt(headerPath(), scene)
+            |> Option.map(h -> Label2D.measure(h)#x + 2.0)
+            |> Option.getWithDefault(0.0);
+        let innerW = Float64.max(contentW, headerW);
+        let panelW = innerW + 2.0 * menuSideMargin();
         scene
-            |> ItemList.mapAt(menuPath(), l ->
-                ItemList.setSize({x = ItemList.getSize(l)#x, y = menuH}, l))
-            |> Panel.mapAt(panelPath(), p ->
-                Panel.setSize({x = Panel.getSize(p)#x, y = panelH}, p))
+            |> ItemList.mapAt(menuPath(), l -> ItemList.setSize({x = innerW, y = menuH}, l))
+            |> Panel.mapAt(panelPath(), p -> Panel.setSize({x = panelW, y = panelH}, p))
+            |> Panel.mapAt(headerBgPath(), p ->
+                Panel.setSize({x = innerW, y = Panel.getSize(p)#y}, p))
+
+    /// 「交換」系（通常隣接 2 人交換・集合隣接の N 人交換）の共通サブラベル文言。
+    /// exchangeMeta と gatherTradeMeta は別アクションだが補助説明は同一なので 1 箇所に集約し、
+    /// 片方だけ文言を変えて取り残されることを防ぐ。
+    def tradeSubtext(): String = "隣と持物交換"
+
+    /// 各メニュー項目の右寄せサブラベル（淡色の補助説明）を metadata から導出する。
+    /// metadata は onActionConfirmed と同じアクション識別子。未知/None は空文字。
+    pub def subtextFor(meta: Option[String]): String =
+        match meta {
+            case None    => ""
+            case Some(m) =>
+                if (m == attackMeta())            "敵を選ぶ"
+                else if (m == itemMeta())         "道具を使う"
+                else if (m == exchangeMeta())     tradeSubtext()
+                else if (m == waitMeta())         "行動を終える"
+                else if (m == pickupMeta())       "足元を拾う"
+                else if (m == openMeta())         "宝箱を開ける"
+                else if (m == stairsMeta())       "次の階へ"
+                else if (m == gatherMeta())       "隊列で動く"
+                else if (m == turnEndMeta())      "敵のターンへ"
+                else if (m == waitAllMeta())      "全員を待機"
+                else if (m == suspendMeta())      "保存して中断"
+                else if (m == gatherTradeMeta())  tradeSubtext()
+                else if (m == gatherStairsMeta()) "階段で離脱"
+                else if (m == gatherCancelMeta()) "移動をやり直す"
+                else                              ""
+        }
+
+    /// items の各行 index に subtextFor を割り当てた Map を作る（setItemSubtexts 用）。
+    pub def buildSubtexts(items: List[ItemEntry]): Map[Int32, String] =
+        items
+            |> List.map(e -> subtextFor(e#metadata))
+            |> List.zipWithIndex             // List[(Int32,a)]=(index,elem)。stdlib List.flix:1142
+            |> List.toMap
 
     /// 選択中プレイヤーの状況から「こうげき / こうかん / アイテム / ひろう / たいき」の
     /// うち成立するものだけ返す。
@@ -171,14 +276,16 @@ mod ActionMenuScene {
             \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
         if (StatusSystem.isImmobilized(player#statuses)) boundMenuItems()
         else {
+            // 「攻撃」は常に表示し、射程内に敵が居るときだけ選択可能（HTML プロトタイプと同じ）。
+            // 敵が居なければ disabled=true で淡色表示・カーソルスキップ・確定無効になる。
             let attackItem =
-                if (canAttackFrom(player))
-                    ({text = "攻撃", disabled = false, metadata = Some(attackMeta())}: ItemEntry) :: Nil
-                else Nil;
+                ({text = "攻撃", disabled = not canAttackFrom(player),
+                  metadata = Some(attackMeta())}: ItemEntry) :: Nil;
+            // 「交換」も常に表示し、隣接する味方が居るときだけ選択可能。
+            // 敵にだけ隣接していて味方が居ない場合は disabled=true（HTML プロトタイプと同じ）。
             let exchangeItem =
-                if (not List.isEmpty(PlayerScene.adjacentAllies(player)))
-                    ({text = "交換", disabled = false, metadata = Some(exchangeMeta())}: ItemEntry) :: Nil
-                else Nil;
+                ({text = "交換", disabled = List.isEmpty(PlayerScene.adjacentAllies(player)),
+                  metadata = Some(exchangeMeta())}: ItemEntry) :: Nil;
             let itemItem =
                 if (not (List.isEmpty(player#weapons) and List.isEmpty(player#staves)))
                     ({text = "アイテム", disabled = false, metadata = Some(itemMeta())}: ItemEntry) :: Nil
@@ -253,7 +360,7 @@ mod ActionMenuScene {
         };
         let waitAll =
             ({text = "全員待機", disabled = false,
-              metadata = Some(turnEndMeta())}: ItemEntry) :: Nil;
+              metadata = Some(waitAllMeta())}: ItemEntry) :: Nil;
         let cancel =
             ({text = "キャンセル", disabled = false,
               metadata = Some(gatherCancelMeta())}: ItemEntry) :: Nil;
@@ -352,6 +459,7 @@ mod ActionMenuScene {
                 else if (m == openMeta())     applyOpenChest(scene)
                 else if (m == gatherMeta())   applyGather(scene)
                 else if (m == turnEndMeta())  applyTurnEnd(scene)
+                else if (m == waitAllMeta())  applyTurnEnd(scene)   // 確定挙動は turnEnd と共有。subtext を分けるため識別子だけ別
                 else if (m == suspendMeta())  SuspendConfirmScene.show(scene)
                 else if (m == stairsMeta())   applyStairs(scene)
                 else if (m == gatherTradeMeta()) openGatherTrade(scene)
@@ -610,7 +718,8 @@ mod ActionMenuScene {
                 PlayerData.PartyQuery, EnemyData.RosterQuery,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
-            case Some(entry) => onActionConfirmed(entry, scene)
+            // disabled 項目（例: 敵が射程外の「攻撃」）は確定しても何もしない。
+            case Some(entry) => if (entry#disabled) scene else onActionConfirmed(entry, scene)
             case None        => scene
         }
 }

@@ -316,4 +316,70 @@ mod TestItemList {
         let withSub = base |> ItemList.setItemSubtexts(Map.empty() |> Map.insert(0, "AB"));
         let diff = List.length(renderList(withSub)) - List.length(renderList(base));
         Assert.assertEq(expected = 2, diff)
+
+    // ── S1: サブラベル別フォントサイズ ──
+
+    def minScaleX(drawables: List[GameEngine.Drawable]): Float64 =
+        List.foldLeft((acc, d) -> Float64.min(acc, d#scale#x), 999.0, drawables)
+
+    /// 既定の subtextFontSize は本文 fontSize と同じ（make 引数 16.0）。
+    @Test
+    def testSubtextFontSizeDefaultMatchesBody(): Unit \ Assert =
+        Assert.assertEq(expected = 16.0, ItemList.getSubtextFontSize(makeList(threeItems())))
+
+    /// subtextFontSize=8 にすると subtext "A" のグリフ幅が本文の半分（scale.x = 5/256）。
+    /// 本文グリフ(font16)は 10/256 なので最小 scale.x は subtext 側になる。
+    @Test
+    def testSubtextFontSizeShrinksSubtextGlyph(): Unit \ Assert =
+        let list = makeList(threeItems())
+            |> ItemList.setItemSubtexts(Map.empty() |> Map.insert(0, "A"))
+            |> ItemList.setSubtextFontSize(8.0);
+        Assert.assertEq(expected = 5.0 / 256.0, minScaleX(renderList(list)))
+
+    /// 既定（subtextFontSize=fontSize）なら subtext グリフも本文と同じ幅（10/256）＝後方互換。
+    @Test
+    def testSubtextDefaultFontSizeKeepsBodyWidth(): Unit \ Assert =
+        let list = makeList(threeItems())
+            |> ItemList.setItemSubtexts(Map.empty() |> Map.insert(0, "A"));
+        Assert.assertEq(expected = 10.0 / 256.0, minScaleX(renderList(list)))
+
+    // ── S2: ラベルの横配置 ──
+
+    def minPosX(drawables: List[GameEngine.Drawable]): Float64 =
+        List.foldLeft((acc, d) -> Float64.min(acc, d#position#x), 999.0, drawables)
+
+    /// 既定の itemAlignment は Left。
+    @Test
+    def testItemAlignmentDefaultLeft(): Unit \ Assert =
+        Assert.assertEq(expected = true, ItemAlignment.Left == ItemList.getItemAlignment(makeList(threeItems())))
+
+    /// Center にすると本文ラベルが Left より右へ寄る（列幅中央寄せ）。
+    @Test
+    def testItemAlignmentCenterShiftsLabelRight(): Unit \ Assert =
+        let left   = makeList(threeItems());
+        let center = makeList(threeItems()) |> ItemList.setItemAlignment(ItemAlignment.Center);
+        Assert.assertEq(expected = true, minPosX(renderList(center)) > minPosX(renderList(left)))
+
+    // ── S3: 全行チップ（rowHighlight）──
+
+    /// 既定の rowHighlight は無効（fillColor=None）。
+    @Test
+    def testRowHighlightDefaultNone(): Unit \ Assert =
+        Assert.assertEq(expected = true,
+            Option.isEmpty(ItemList.getRowHighlight(makeList(threeItems()))#fillColor))
+
+    /// rowHighlight 有効なら全行ぶん（3）の styled Drawable が出る（focused 不問）。
+    @Test
+    def testRowHighlightEmitsPerRow(): Unit \ Assert =
+        let list = makeList(threeItems()) |> ItemList.setRowHighlight(highlight(2.0));
+        Assert.assertEq(expected = 3, styledCount(renderList(list)))
+
+    /// rowHighlight（全行3）＋ selectedHighlight（選択1）併用で 4 枚。
+    @Test
+    def testRowHighlightPlusSelectedHighlight(): Unit \ Assert =
+        let list = makeList(threeItems())
+            |> ItemList.setFocused(true)
+            |> ItemList.setRowHighlight(highlight(2.0))
+            |> ItemList.setSelectedHighlight(highlight(4.0));
+        Assert.assertEq(expected = 4, styledCount(renderList(list)))
 }

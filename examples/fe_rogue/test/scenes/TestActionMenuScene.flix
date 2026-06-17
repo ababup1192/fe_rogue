@@ -458,9 +458,9 @@ mod TestActionMenuScene {
     // ════════════════════════════════════════════════════════
 
     /// id=0 が (1,1)、id=1 が (2,1) の隣接配置のとき、ActionSelect 中の refreshItems で
-    /// 「こうかん」エントリ (metadata = "exchange") がメニューに含まれる。
+    /// 「こうかん」エントリ (metadata = "exchange") が**選択可能**で出る。
     @Test
-    def testExchangeItemAppearsWhenAdjacentAllyExists(): Unit \ Assert =
+    def testExchangeItemEnabledWhenAdjacentAllyExists(): Unit \ Assert =
         let scene = loadAdjacentPartyActionMenuScene();
         let after = runRefreshItems({
             phase          = TurnPhase.Phase.ActionSelect,
@@ -468,14 +468,13 @@ mod TestActionMenuScene {
             selectedOrigin = {x = 1, y = 1},
             scene          = scene
         });
-        Assert.assertEq(
-            expected = true,
-            List.memberOf(Some("exchange"), itemsMetadata(after)))
+        // 出現する（Some）かつ選択可能（false）= Some(false)。
+        Assert.assertEq(expected = Some(false), entryDisabledOf("exchange", after))
 
-    /// id=0 が (1,1)、id=1 が (3,3) の非隣接配置 (manhattan=4) なら「こうかん」は出ない。
-    /// loadTwoPlayerActionMenuScene の標準フィクスチャを使う。
+    /// id=0 が (1,1)、id=1 が (3,3) の非隣接配置 (manhattan=4) でも「こうかん」は**常に出る**が、
+    /// 隣接味方が居ないので disabled=true（敵にだけ隣接していても同様）。
     @Test
-    def testExchangeItemHiddenWhenNoAdjacentAlly(): Unit \ Assert =
+    def testExchangeItemDisabledWhenNoAdjacentAlly(): Unit \ Assert =
         let scene = loadTwoPlayerActionMenuScene();
         let after = runRefreshItems({
             phase          = TurnPhase.Phase.ActionSelect,
@@ -483,9 +482,32 @@ mod TestActionMenuScene {
             selectedOrigin = {x = 1, y = 1},
             scene          = scene
         });
-        Assert.assertEq(
-            expected = false,
-            List.memberOf(Some("exchange"), itemsMetadata(after)))
+        // 出現する（Some）かつ選択不可（true）= Some(true)。
+        Assert.assertEq(expected = Some(true), entryDisabledOf("exchange", after))
+
+    /// 指定 metadata のエントリの disabled フラグを返す（見つからなければ None）。
+    def entryDisabledOf(meta: String, scene: Scene[NodeTag]): Option[Bool] =
+        match Scene.getEngineNode(ActionMenuScene.menuPath(), scene) {
+            case Some(EngineNode.ItemListWithState(list, _)) =>
+                ItemList.getItems(list)
+                    |> List.findLeft(e -> e#metadata == Some(meta))
+                    |> Option.map(e -> e#disabled)
+            case _ => None
+        }
+
+    /// 「攻撃」は敵が射程外でも常にメニューに出る。ただし射程内に敵が居ないので disabled=true。
+    /// loadTwoPlayerActionMenuScene は敵が居ない（id=0,1 のみ）ので canAttackFrom=false。
+    @Test
+    def testAttackAlwaysShownDisabledWhenNoTarget(): Unit \ Assert =
+        let scene = loadTwoPlayerActionMenuScene();
+        let after = runRefreshItems({
+            phase          = TurnPhase.Phase.ActionSelect,
+            selectedId     = 0,
+            selectedOrigin = {x = 1, y = 1},
+            scene          = scene
+        });
+        // 出現する（Some）かつ選択不可（true）= Some(true)。
+        Assert.assertEq(expected = Some(true), entryDisabledOf("attack", after))
 
     // ════════════════════════════════════════════════════════
     // 集合（行軍）の隣接メニュー (gatherActive=true × 主人公選択中)
@@ -528,7 +550,7 @@ mod TestActionMenuScene {
     def testGatherAdjacentMenuShowsTradeWithAdjacentAlly(): Unit \ Assert =
         let after = runRefreshItemsGather(loadGatherMenuScene({x = 2, y = 1}));
         Assert.assertEq(
-            expected = Some("gatherTrade") :: Some("turnEnd") :: Some("gatherCancel") :: Nil,
+            expected = Some("gatherTrade") :: Some("waitAll") :: Some("gatherCancel") :: Nil,
             itemsMetadata(after))
 
     /// 隣接する味方が居なければ((5,5))、「交換」は出さず「全員待機 → キャンセル」だけ（仕様 6）。
@@ -536,7 +558,7 @@ mod TestActionMenuScene {
     def testGatherAdjacentMenuHidesTradeWithoutAdjacentAlly(): Unit \ Assert =
         let after = runRefreshItemsGather(loadGatherMenuScene({x = 5, y = 5}));
         Assert.assertEq(
-            expected = Some("turnEnd") :: Some("gatherCancel") :: Nil,
+            expected = Some("waitAll") :: Some("gatherCancel") :: Nil,
             itemsMetadata(after))
 
     /// 配置済み(placed)の階段ノードを `cell` に置いたシーンを返す（JSON ロードを介さず直接構築）。
@@ -555,7 +577,7 @@ mod TestActionMenuScene {
                 ItemData.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon()),
                 loadGatherMenuScene({x = 5, y = 5})));
         Assert.assertEq(
-            expected = Some("pickup") :: Some("turnEnd") :: Some("gatherCancel") :: Nil,
+            expected = Some("pickup") :: Some("waitAll") :: Some("gatherCancel") :: Nil,
             itemsMetadata(after))
 
     /// 主人公(1,1)が階段マスに立っているときだけ集合メニューに「階段」が出る。
@@ -564,7 +586,7 @@ mod TestActionMenuScene {
         let after = runRefreshItemsGather(
             withStairsAt({x = 1, y = 1}, loadGatherMenuScene({x = 5, y = 5})));
         Assert.assertEq(
-            expected = Some("gatherStairs") :: Some("turnEnd") :: Some("gatherCancel") :: Nil,
+            expected = Some("gatherStairs") :: Some("waitAll") :: Some("gatherCancel") :: Nil,
             itemsMetadata(after))
 
     /// 階段が別マス(5,5)にあっても主人公(1,1)が乗っていなければ「階段」は出さない
@@ -574,7 +596,7 @@ mod TestActionMenuScene {
         let after = runRefreshItemsGather(
             withStairsAt({x = 5, y = 5}, loadGatherMenuScene({x = 5, y = 5})));
         Assert.assertEq(
-            expected = Some("turnEnd") :: Some("gatherCancel") :: Nil,
+            expected = Some("waitAll") :: Some("gatherCancel") :: Nil,
             itemsMetadata(after))
 
     /// 足元アイテム + 階段上 + 隣接味方が揃うと固定順「拾う → 階段 → 交換 → 全員待機 → キャンセル」。
@@ -587,7 +609,7 @@ mod TestActionMenuScene {
                 |> withStairsAt({x = 1, y = 1}));
         Assert.assertEq(
             expected = Some("pickup") :: Some("gatherStairs") :: Some("gatherTrade")
-                        :: Some("turnEnd") :: Some("gatherCancel") :: Nil,
+                        :: Some("waitAll") :: Some("gatherCancel") :: Nil,
             itemsMetadata(after))
 
     // ════════════════════════════════════════════════════════
@@ -627,4 +649,90 @@ mod TestActionMenuScene {
             });
             Assert.assertEq(expected = TurnPhase.Phase.ActionSelect, finalPhase)
         }
+
+    // ════════════════════════════════════════════════════════
+    // 再スキン: subtextFor / buildSubtexts（右寄せサブラベル）
+    // ════════════════════════════════════════════════════════
+
+    @Test
+    def testSubtextForAttack(): Unit \ Assert =
+        Assert.assertEq(expected = "敵を選ぶ", ActionMenuScene.subtextFor(Some("attack")))
+
+    /// waitAll は turnEnd と別文言（v2 の subtext 共有欠落の回帰ガード）。
+    @Test
+    def testSubtextForWaitAllIsDedicated(): Unit \ Assert =
+        Assert.assertEq(
+            expected = ("全員を待機", "敵のターンへ"),
+            (ActionMenuScene.subtextFor(Some("waitAll")),
+             ActionMenuScene.subtextFor(Some("turnEnd"))))
+
+    @Test
+    def testSubtextForNoneAndUnknownAreEmpty(): Unit \ Assert =
+        Assert.assertEq(
+            expected = ("", ""),
+            (ActionMenuScene.subtextFor(None), ActionMenuScene.subtextFor(Some("___nope___"))))
+
+    @Test
+    def testBuildSubtextsIndexesRows(): Unit \ Assert =
+        let items =
+            ({text = "攻撃", disabled = false, metadata = Some("attack")} : ItemEntry) ::
+            ({text = "アイテム", disabled = false, metadata = Some("item")} : ItemEntry) :: Nil;
+        let subtexts = ActionMenuScene.buildSubtexts(items);
+        Assert.assertEq(
+            expected = (Some("敵を選ぶ"), Some("道具を使う")),
+            (Map.get(0, subtexts), Map.get(1, subtexts)))
+
+    // ════════════════════════════════════════════════════════
+    // 再スキン: 幾何結合の pin（menu pos.y == menuHeaderPadding 真理値 8.0）
+    // ════════════════════════════════════════════════════════
+
+    /// scene.json をロードした後の menu pos.y が menuHeaderPadding の真理値 8.0 と一致する。
+    /// fontSize 変更でヘッダ高が変わったら scene.json の menu pos.y と menuHeaderPadding の
+    /// 両方を直す必要があり、片方だけ直すと赤になる。
+    @Test
+    def testMenuOriginMatchesHeaderPadding(): Unit \ Assert =
+        let scene = actionMenuAddPure(Scene.empty());
+        let menuPosY = ItemList.getAt(ActionMenuScene.menuPath(), scene)
+            |> Option.map(l -> Node2D.getPosition(l)#y);
+        Assert.assertEq(expected = Some(9.0), menuPosY)
+
+    // ════════════════════════════════════════════════════════
+    // 再スキン: 色二重管理の enforcement（scene.json 実ロード値 == UITheme）
+    // ════════════════════════════════════════════════════════
+
+    /// Color を比較可能な (Float32, Float32, Float32) タプルに開く（Color には ToString が無い）。
+    def rgbOf(c: {r = Float32, g = Float32, b = Float32}): (Float32, Float32, Float32) =
+        (c#r, c#g, c#b)
+
+    /// scene.json をロードし parse 後の Color を UITheme と突き合わせる。
+    /// 真理点は UITheme。片方だけ変えると赤になる。
+    @Test
+    def testSceneJsonColorsMatchTheme(): Unit \ Assert =
+        let scene = actionMenuAddPure(Scene.empty());
+        let panelBg = Panel.getAt(ActionMenuScene.panelPath(), scene)
+            |> Option.map(p -> rgbOf(Panel.getBackgroundColor(p)));
+        // パネル枠（暗いスレート）も pin。
+        let panelBorder = Panel.getAt(ActionMenuScene.panelPath(), scene)
+            |> Option.map(p -> rgbOf(Panel.getBorderColor(p)));
+        // header の見出し色（淡い青 #9cc0ff）を pin。白等へ戻ると赤になる。
+        let headerColor = Label2D.getAt(ActionMenuScene.headerPath(), scene)
+            |> Option.map(h -> rgbOf(CanvasItem.getModulate(h)));
+        // 選択ハイライトの fillColor（暗藍 #16314f）と borderColor（allyBlue）を両方 pin。
+        let selFill = ItemList.getAt(ActionMenuScene.menuPath(), scene)
+            |> Option.flatMap(l -> ItemList.getSelectedHighlight(l)#fillColor)
+            |> Option.map(rgbOf);
+        let selBorder = ItemList.getAt(ActionMenuScene.menuPath(), scene)
+            |> Option.map(l -> rgbOf(ItemList.getSelectedHighlight(l)#borderColor));
+        // 全行チップ（rowHighlight）の塗り #0e1626 と枠 #1c2533 も pin。
+        let rowFill = ItemList.getAt(ActionMenuScene.menuPath(), scene)
+            |> Option.flatMap(l -> ItemList.getRowHighlight(l)#fillColor)
+            |> Option.map(rgbOf);
+        let rowBorder = ItemList.getAt(ActionMenuScene.menuPath(), scene)
+            |> Option.map(l -> rgbOf(ItemList.getRowHighlight(l)#borderColor));
+        Assert.assertEq(
+            expected = (Some(rgbOf(UITheme.panel())), Some(rgbOf(UITheme.panelBorder())),
+                        Some(rgbOf(UITheme.headerText())),
+                        Some(rgbOf(UITheme.selectBg())), Some(rgbOf(UITheme.allyBlue())),
+                        Some(rgbOf(UITheme.rowBg())), Some(rgbOf(UITheme.rowBorder()))),
+            (panelBg, panelBorder, headerColor, selFill, selBorder, rowFill, rowBorder))
 }

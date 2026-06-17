@@ -1240,12 +1240,13 @@ mod SceneLoader {
             }
         ) yield colorOpt
 
-    /// `"selectedHighlight": {fillColor,fillAlpha,borderColor,borderAlpha,borderWidth,cornerRadius,inset}`
+    /// `key: {fillColor,fillAlpha,borderColor,borderAlpha,borderWidth,cornerRadius,inset}`
     /// を `SelectedHighlight` に。キー欠落時は `None`（＝ハイライト無効）。各サブ項目は既定値で補完。
-    def parseSelectedHighlight(map: Map[String, Util.Json.Json]):
+    /// `key` を引数化して "selectedHighlight"（選択行）と "rowHighlight"（全行チップ）の両方で使う。
+    def parseHighlightAt(key: String, map: Map[String, Util.Json.Json]):
             Result[Util.Json.JsonError, Option[SelectedHighlight]] =
         forM (
-            subOpt <- (JsonCompat.getAtKeyOpt(Root, "selectedHighlight", map): Result[Util.Json.JsonError, Option[Map[String, Util.Json.Json]]]);
+            subOpt <- (JsonCompat.getAtKeyOpt(Root, key, map): Result[Util.Json.JsonError, Option[Map[String, Util.Json.Json]]]);
             result <- match subOpt {
                 case None    => (Ok(None): Result[Util.Json.JsonError, Option[SelectedHighlight]])
                 case Some(m) => forM (
@@ -1400,6 +1401,22 @@ mod SceneLoader {
             }
         ) yield modeOpt
 
+    /// `"itemAlignment": "Left" | "Center"` を `ItemAlignment` に。キー欠落時は `None`（既定 Left のまま）。
+    def parseItemAlignmentOpt(key: String,
+                              map: Map[String, Util.Json.Json]): Result[Util.Json.JsonError, Option[ItemAlignment]] =
+        forM (
+            strOpt <- (JsonCompat.getAtKeyOpt(Root, key, map): Result[Util.Json.JsonError, Option[String]]);
+            alignOpt <- match strOpt {
+                case None      => (Ok(None): Result[Util.Json.JsonError, Option[ItemAlignment]])
+                case Some(str) => match str {
+                    case "Left"   => (Ok(Some(ItemAlignment.Left)): Result[Util.Json.JsonError, Option[ItemAlignment]])
+                    case "Center" => (Ok(Some(ItemAlignment.Center)): Result[Util.Json.JsonError, Option[ItemAlignment]])
+                    case unknown  =>
+                        (Err(JsonCompat.jsonError(Root, Set#{"itemAlignment (got: ${unknown})"})): Result[Util.Json.JsonError, Option[ItemAlignment]])
+                }
+            }
+        ) yield alignOpt
+
     /// scene.json の "items" 配列から ItemEntry のリストを組み立てる。
     /// 各要素は `{"text": "...", "disabled": false}` の形式。disabled は省略可能。
     def parseItemEntries(map: Map[String, Util.Json.Json]): Result[Util.Json.JsonError, List[ItemEntry]] =
@@ -1443,7 +1460,10 @@ mod SceneLoader {
                     textColorOpt    <- parseColorOpt("textColor", map);
                     disabledColorOpt <- parseColorOpt("disabledColor", map);
                     subtextColorOpt  <- parseColorOpt("subtextColor", map);
-                    selHighlightOpt  <- parseSelectedHighlight(map);
+                    subtextFontSizeOpt <- (JsonCompat.getAtKeyOpt(Root, "subtextFontSize", map): Result[Util.Json.JsonError, Option[Float64]]);
+                    selHighlightOpt  <- parseHighlightAt("selectedHighlight", map);
+                    rowHighlightOpt  <- parseHighlightAt("rowHighlight", map);
+                    itemAlignmentOpt <- parseItemAlignmentOpt("itemAlignment", map);
                     visibleOpt      <- (JsonCompat.getAtKeyOpt(Root, "visible", map): Result[Util.Json.JsonError, Option[Bool]]);
                     zIndexOpt       <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[Util.Json.JsonError, Option[Int32]]);
                     modulateOpt     <- parseColorOpt("modulate", map)
@@ -1461,7 +1481,10 @@ mod SceneLoader {
                         |> applyOpt(textColorOpt, ItemList.setTextColor)
                         |> applyOpt(disabledColorOpt, ItemList.setDisabledColor)
                         |> applyOpt(subtextColorOpt, ItemList.setSubtextColor)
+                        |> applyOpt(subtextFontSizeOpt, ItemList.setSubtextFontSize)
                         |> applyOpt(selHighlightOpt, ItemList.setSelectedHighlight)
+                        |> applyOpt(rowHighlightOpt, ItemList.setRowHighlight)
+                        |> applyOpt(itemAlignmentOpt, ItemList.setItemAlignment)
                         |> applyOpt(visibleOpt, setItemListVisible)
                         |> applyOpt(zIndexOpt, setItemListZIndex)
                         |> applyOpt(modulateOpt, (c, l) -> CanvasItem.setModulate(c, l));

@@ -51,6 +51,13 @@ pub type alias SelectedHighlight = {
     inset        = Float64
 }
 
+/// ItemList の各項目ラベルの横配置。Left=従来の左固定、Center=列内中央寄せ。
+/// Godot Label の HorizontalAlignment（Left/Center）に対応する2値。
+pub enum ItemAlignment with Eq {
+    case Left
+    case Center
+}
+
 pub enum ItemList {
     case ItemList({
         items           = List[ItemEntry],
@@ -75,8 +82,14 @@ pub enum ItemList {
         itemColors      = Map[Int32, Color],
         // 右寄せサブラベルの文字色（itemSubtexts 用）。
         subtextColor    = Color,
+        // 右寄せサブラベルのフォントサイズ。既定は本文 fontSize と同じ（後方互換）。
+        subtextFontSize = Float64,
         // 選択行の角丸ハイライト（`fillColor=None` で無効＝従来どおり cursorGlyph 表示のみ）。
         selectedHighlight = SelectedHighlight,
+        // 全行に敷くチップ背景（`fillColor=None` で無効＝既定）。selectedHighlight の下に描く。
+        rowHighlight    = SelectedHighlight,
+        // 各項目ラベルの横配置（Left=左固定／Center=列内中央寄せ）。既定 Left。
+        itemAlignment   = ItemAlignment,
         itemHeight      = Float64,
         cursorOffsetX   = Float64,
         wrap            = Bool,
@@ -124,10 +137,16 @@ mod ItemList {
             disabledColor   = {r = 0.5f32, g = 0.5f32, b = 0.5f32},
             itemColors      = (Map.empty(): Map[Int32, Color]),
             subtextColor    = {r = 0.5f32, g = 0.5f32, b = 0.5f32},
+            subtextFontSize = fontSize,
             selectedHighlight = ({fillColor = None, fillAlpha = 1.0f32,
                                    borderColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
                                    borderAlpha = 1.0f32, borderWidth = 0.0,
                                    cornerRadius = 0.0, inset = 0.0}: SelectedHighlight),
+            rowHighlight    = ({fillColor = None, fillAlpha = 1.0f32,
+                                 borderColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+                                 borderAlpha = 1.0f32, borderWidth = 0.0,
+                                 cornerRadius = 0.0, inset = 0.0}: SelectedHighlight),
+            itemAlignment   = ItemAlignment.Left,
             itemHeight      = fontSize + 4.0,
             cursorOffsetX   = fontSize,
             wrap            = true,
@@ -296,6 +315,47 @@ mod ItemList {
     pub def getSelectedHighlight(list: ItemList): SelectedHighlight =
         let ItemList.ItemList(r) = list;
         r#selectedHighlight
+
+    /// 全行に敷くチップ背景を設定する。`fillColor = Some(..)` で有効化、`None`（既定）で無効。
+    /// selectedHighlight の下に描かれるので「全行チップ＋選択行はより明るい枠」を2層で表現できる。
+    pub def setRowHighlight(highlight: SelectedHighlight, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({rowHighlight = highlight | r})
+
+    pub def getRowHighlight(list: ItemList): SelectedHighlight =
+        let ItemList.ItemList(r) = list;
+        r#rowHighlight
+
+    /// 各項目ラベルの横配置を設定する（Left=左固定／Center=列内中央寄せ）。
+    pub def setItemAlignment(alignment: ItemAlignment, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({itemAlignment = alignment | r})
+
+    pub def getItemAlignment(list: ItemList): ItemAlignment =
+        let ItemList.ItemList(r) = list;
+        r#itemAlignment
+
+    /// 右寄せサブラベルのフォントサイズを設定する（既定は本文 fontSize と同じ）。
+    pub def setSubtextFontSize(size: Float64, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({subtextFontSize = size | r})
+
+    pub def getSubtextFontSize(list: ItemList): Float64 =
+        let ItemList.ItemList(r) = list;
+        r#subtextFontSize
+
+    /// フォントアトラス（テキスト幅の実測などに使う）。
+    pub def getFont(list: ItemList): FontAtlas =
+        let ItemList.ItemList(r) = list;
+        r#font
+
+    pub def getFontSize(list: ItemList): Float64 =
+        let ItemList.ItemList(r) = list;
+        r#fontSize
+
+    pub def getCursorOffsetX(list: ItemList): Float64 =
+        let ItemList.ItemList(r) = list;
+        r#cursorOffsetX
 
     pub def setItemHeight(h: Float64, list: ItemList): ItemList =
         let ItemList.ItemList(r) = list;
@@ -477,12 +537,22 @@ mod ItemList {
                 Float64.tryToInt32(Float64.floor(r#size#y / r#itemHeight))
                     |> Option.getWithDefault(1));
         let colWidth = r#size#x / Int32.toFloat64(cols);
+        // 行内縦中央寄せ: テキスト行高・アイコンを itemHeight の中央に置く（Godot ItemList 準拠）。
+        // itemHeight ちょうどに本文 1 行が収まるときは vCenter≈0（従来の上端揃えとほぼ同じ）。
+        let mainScale = r#fontSize / r#font#fontSize;
+        let mainLineHeight = (r#font#ascent + r#font#descent + r#font#lineGap) * mainScale;
+        let vCenter = (r#itemHeight - mainLineHeight) / 2.0;
+        let iconVCenter = (r#itemHeight - r#iconSize) / 2.0;
+        // サブラベルのベースラインを本文に揃える縦補正の係数。
+        let ascentRatio = r#font#ascent / r#font#fontSize;
         let result = List.foldLeft((acc, entry) -> {
             let idx = acc#idx;
             let col = idx / rowsPerCol;
             let row = Int32.remainder(idx, rowsPerCol);
             let colX = globalPos#x + Int32.toFloat64(col) * colWidth;
             let lineY = globalPos#y + Int32.toFloat64(row) * r#itemHeight;
+            let textY = lineY + vCenter;
+            let iconY = lineY + iconVCenter;
             let iconStartX = colX + r#cursorOffsetX;
             let textOriginX =
                 if (hasIconArea) iconStartX + r#iconSize + r#iconTextGap
@@ -491,16 +561,23 @@ mod ItemList {
                 case Some(c) => c
                 case None    => if (entry#disabled) r#disabledColor else r#textColor
             };
-            // テキスト
+            // テキスト（itemAlignment=Center なら列幅中央に寄せる）
+            let (textX, textAlign) = match r#itemAlignment {
+                case ItemAlignment.Center =>
+                    (colX + colWidth / 2.0, HorizontalAlignment.Center)
+                case ItemAlignment.Left   =>
+                    (textOriginX, HorizontalAlignment.Left)
+            };
             let textLabel = Label2D.make(entry#text, r#font, r#fontSize)
                 |> CanvasItem.setModulate(color)
-                |> CanvasItem.setZIndex(r#zIndex);
-            let textDrawables = Label2D.toDrawables(textLabel, {x = textOriginX, y = lineY});
+                |> CanvasItem.setZIndex(r#zIndex)
+                |> Label2D.setHorizontalAlignment(textAlign);
+            let textDrawables = Label2D.toDrawables(textLabel, {x = textX, y = textY});
             // アイコン（その行に登録があり、iconSize > 0 のとき）
             let iconDrawables: List[GameEngine.Drawable] =
                 if (hasIconArea) match Map.get(idx, r#itemIcons) {
                     case Some(icon) =>
-                        renderIcon(icon, {x = iconStartX, y = lineY}, r#iconSize, r#zIndex) :: Nil
+                        renderIcon(icon, {x = iconStartX, y = iconY}, r#iconSize, r#zIndex) :: Nil
                     case None       => Nil
                 }
                 else Nil;
@@ -510,11 +587,19 @@ mod ItemList {
                 let cursorLabel = Label2D.make(r#cursorGlyph, r#font, r#fontSize)
                     |> CanvasItem.setModulate(r#cursorColor)
                     |> CanvasItem.setZIndex(r#zIndex);
-                let cursorDrawables = Label2D.toDrawables(cursorLabel, {x = colX, y = lineY});
+                let cursorDrawables = Label2D.toDrawables(cursorLabel, {x = colX, y = textY});
                 List.append(cursorDrawables, List.append(iconDrawables, textDrawables))
             } else
                 List.append(iconDrawables, textDrawables);
-            // 選択行の角丸ハイライト（最初に emit ＝本文の下に敷く）。fillColor=None で無効（従来）。
+            // 全行チップ（最背面に敷く）。rowHighlight#fillColor=None で無効（既定＝従来）。
+            let rowHighlightDrawables: List[GameEngine.Drawable] =
+                match r#rowHighlight#fillColor {
+                    case Some(fill) =>
+                        highlightDrawable(r#rowHighlight, fill, {x = colX, y = lineY},
+                                          {x = colWidth, y = r#itemHeight}, r#zIndex) :: Nil
+                    case None => Nil
+                };
+            // 選択行の角丸ハイライト（rowHighlight の上・本文の下に敷く）。fillColor=None で無効（従来）。
             let highlightDrawables: List[GameEngine.Drawable] =
                 if (idx == r#selectedIndex and r#focused)
                     match r#selectedHighlight#fillColor {
@@ -528,15 +613,21 @@ mod ItemList {
             let subtextDrawables: List[GameEngine.Drawable] =
                 match Map.get(idx, r#itemSubtexts) {
                     case Some(sub) =>
-                        let subLabel = Label2D.make(sub, r#font, r#fontSize)
+                        let subLabel = Label2D.make(sub, r#font, r#subtextFontSize)
                             |> CanvasItem.setModulate(r#subtextColor)
                             |> CanvasItem.setZIndex(r#zIndex);
                         let subW = Label2D.measure(subLabel)#x;
                         let subX = colX + colWidth - subW - r#iconTextGap;
-                        Label2D.toDrawables(subLabel, {x = subX, y = lineY})
+                        // 本文の縦中央位置(textY)に、小フォントのベースラインを合わせる。
+                        // subtextFontSize == fontSize なら本文と同じ y（後方互換）。
+                        let subY = textY + ascentRatio * (r#fontSize - r#subtextFontSize);
+                        Label2D.toDrawables(subLabel, {x = subX, y = subY})
                     case None => Nil
                 };
-            let lineDrawables = List.append(highlightDrawables, List.append(baseLine, subtextDrawables));
+            let lineDrawables =
+                List.append(rowHighlightDrawables,
+                    List.append(highlightDrawables,
+                        List.append(baseLine, subtextDrawables)));
             {drawables = List.append(acc#drawables, lineDrawables), idx = idx + 1}
         }, {drawables = (Nil: List[GameEngine.Drawable]), idx = 0}, r#items);
         result#drawables
