@@ -82,7 +82,7 @@ mod GameLifecycle {
             |> GameOverMenuScene.add    // 全滅時のモーダル選択 (初期は非表示)
             |> SuspendConfirmScene.add  // 中断確認のモーダル (初期は非表示)
             |> TradeMenuScene.add       // 物交換ウィンドウ (2 ペイン、初期は非表示)
-            |> BattlePanelScene.add     // 戦闘予報パネル (初期は非表示)
+            |> BattlePanelScene.add     // 戦闘予報ミニウィンドウ (World 配下・初期は非表示)
             |> LevelUpPanelScene.add    // レベルアップのステータス変化パネル (初期は非表示)
             // UnitInfoPopupScene は廃止し、UnitCardScene（左サイドの常設カード）に統合。
             // カーソル下のユニット情報も UnitCardScene が PlayerCursor 中に表示する。

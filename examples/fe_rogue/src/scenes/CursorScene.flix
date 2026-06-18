@@ -161,13 +161,61 @@ mod CursorScene {
                            \ {GameEngine.Game, BoardQuery,
                                Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
-                               EnemyData.RosterQuery, TurnPhase.State} =
+                               EnemyData.RosterQuery, TurnPhase.State,
+                               SelectedPlayer.State} =
         match TurnPhase.State.get() {
             case TurnPhase.Phase.PlayerCursor       => stepFreeMovement(delta, node, path, scene)
+            // 武器選択中も左右で対象の敵を選べる（フォーカス武器が届く敵を巡回）。
+            case TurnPhase.Phase.WeaponSelect       => stepWeaponSelectCycle(node, scene)
             case TurnPhase.Phase.PlayerAttack       => stepTargetCycle(delta, node, path, scene)
             case TurnPhase.Phase.TradeTargetSelect  => stepTradeCellCycle(delta, node, path, scene)
             case _                                  => (node, scene)
         }
+
+    /// `WeaponSelect` フェーズの左右ターゲットサイクル。フォーカス中の武器が届く生存敵を
+    /// reading order で巡回する（上下は武器リストへ回るので触らない）。入力ゲート・サイクル本体は
+    /// `PlayerAttack` と同じ機構（`cycleToTargetIn`）を、対象リストだけ差し替えて使う。
+    /// 選択音は入力フェーズの `playInputSfx`（WeaponSelect の ←→/↑↓）が鳴らすので、
+    /// ここでは鳴らさない（physicsProcess は GameEngine.Audio を持たない）。
+    def stepWeaponSelectCycle(node: EngineNode[NodeTag], scene: Scene[NodeTag]):
+                              (EngineNode[NodeTag], Scene[NodeTag])
+                              \ {GameEngine.Game, Tween.Scheduler, AnimationPlayer.Scheduler,
+                                 SelectedPlayer.State} =
+        match node {
+            case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
+                if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
+                else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
+                else match (data#holdDir, readHeldHorizontal()) {
+                    case (_, None) =>
+                        let nextData = {holdDir = None, holdSteps = 0 | data};
+                        (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)), scene)
+                    case (Some(_), Some(dir)) =>
+                        let nextData = {holdDir = Some(dir), holdSteps = 1 | data};
+                        (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)), scene)
+                    case (None, Some(dir)) =>
+                        cycleToTargetIn(weaponSelectTargets(scene), dir, marker, data, scene)
+                }
+            case _ => (node, scene)
+        }
+
+    /// フォーカス中の武器が届く生存敵を reading order（y→x）で返す。
+    /// 選択中味方 / フォーカス武器が取れないときは空。
+    def weaponSelectTargets(scene: Scene[NodeTag]):
+            List[EnemyScene.Data] \ SelectedPlayer.State =
+        let opt = forM (
+            pid    <- SelectedPlayer.State.get()#id;
+            player <- PlayerScene.get(pid, scene);
+            widx   <- WeaponSelectScene.hoveredWeaponIndex(scene);
+            weapon <- List.nth(widx, player#weapons)
+        ) yield
+            EnemyScene.getAll(scene)
+                |> List.filter(e -> {
+                    let ev = EnemyScene.unitView(e);
+                    ev#hp > 0 and not ev#isDying
+                        and Weapon.inRange(Weapon.manhattan(player#gridPos, ev#pos), weapon#range)
+                })
+                |> List.sortBy(e -> (e#gridPos#y, e#gridPos#x));
+        Option.getWithDefault(Nil, opt)
 
     // ────────────────────────────────────────────────────────
     // (D-1) PlayerCursor フェーズの 1 マス進行
@@ -407,7 +455,17 @@ mod CursorScene {
                       (EngineNode[NodeTag], Scene[NodeTag])
                       \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                          EnemyData.RosterQuery} =
-        let targets = PlayerAttackRangeScene.targetsInRange(scene);
+        cycleToTargetIn(PlayerAttackRangeScene.targetsInRange(scene), dir, marker, data, scene)
+
+    /// 与えられた敵リストの中で、現在カーソル位置から方向に応じて prev / next へジャンプする。
+    /// `cycleToTarget`（PlayerAttack）と `stepWeaponSelectCycle`（WeaponSelect）が対象リストだけ
+    /// 差し替えて共有する本体。敵が居なければ holdDir だけ更新して何もしない。
+    def cycleToTargetIn(targets: List[EnemyScene.Data],
+                        dir: {x = Int32, y = Int32},
+                        marker: Marker2D, data: Data,
+                        scene: Scene[NodeTag]):
+                       (EngineNode[NodeTag], Scene[NodeTag])
+                       \ {Tween.Scheduler, AnimationPlayer.Scheduler} =
         match targets {
             case Nil =>
                 let nextData = {holdDir = Some(dir), holdSteps = 1 | data};

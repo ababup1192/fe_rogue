@@ -120,25 +120,27 @@ mod ItemMenuScene {
     // ────────────────────────────────────────────────────────
 
     /// フェーズ遷移時の visibility 適用（Push モデル）。
-    /// `ItemSelect` / `ItemActionSelect` / `PlayerAttack`（攻撃中の武器選択リスト）で
-    /// visible + focused、それ以外のフェーズでは hidden。
-    /// PlayerAttack でも focused にするのは、武器リストの上下移動 (engine の ItemList ナビ)
-    /// とカーソルglyph を有効にするため。Enter/Escape は MenuHandler 側で PlayerAttack 時
-    /// no-op なので、実際の攻撃確定/取消 (Z/X) と干渉しない。
+    /// `ItemSelect` / `ItemActionSelect` では窓を visible + focused にする。
+    /// `PlayerAttack`（攻撃対象選択中の武器リスト）では **窓は出さず**（命中/必殺は盤面の
+    /// 戦闘予報ミニウィンドウ `BattlePanelScene` で見せるため、旧来の武器リスト窓は冗長で隠す）、
+    /// 武器の上下持ち替えだけ活かすため ItemList の focused は true に保つ。
+    /// `BattlePanelScene` は PlayerAttack 中 `activeAttackWeaponIndex`（= この ItemList の
+    /// 選択 index）で現在武器を読むので、不可視のままでも予報は持ち替えに追従する。
+    /// それ以外のフェーズでは hidden + unfocused。
     pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let visible = phase == TurnPhase.Phase.ItemSelect
-                    or phase == TurnPhase.Phase.ItemActionSelect
-                    or phase == TurnPhase.Phase.PlayerAttack;
-        // ページ表示は ItemSelect のときだけ意味を持つ（サブメニュー/攻撃中は隠す）。
-        // ItemSelect 中の実際の表示/文言は refreshItemList が総ページ数を見て設定する。
-        let pageLabelVisible = visible and phase == TurnPhase.Phase.ItemSelect;
-        // 詳細ウィンドウはアイテム選択中とサブメニュー中だけ出す（攻撃中の武器リストでは出さない）。
-        let detailVisible = phase == TurnPhase.Phase.ItemSelect
+        // 窓そのものを出すのはアイテム選択系の 2 フェーズだけ（PlayerAttack では出さない）。
+        let windowVisible = phase == TurnPhase.Phase.ItemSelect
                          or phase == TurnPhase.Phase.ItemActionSelect;
+        // PlayerAttack 中も武器の上下持ち替えを受けるため focused は維持する。
+        let listFocused = windowVisible or phase == TurnPhase.Phase.PlayerAttack;
+        // ページ表示は ItemSelect のときだけ意味を持つ（サブメニュー/攻撃中は隠す）。
+        let pageLabelVisible = phase == TurnPhase.Phase.ItemSelect;
+        // 詳細ウィンドウはアイテム選択中とサブメニュー中だけ出す（攻撃中の武器リストでは出さない）。
+        let detailVisible = windowVisible;
         scene
-            |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
+            |> Panel.mapAt(panelPath(), CanvasItem.setVisible(windowVisible))
             |> ItemList.mapAt(menuPath(), list ->
-                list |> CanvasItem.setVisible(visible) |> ItemList.setFocused(visible))
+                list |> CanvasItem.setVisible(windowVisible) |> ItemList.setFocused(listFocused))
             |> Label2D.mapAt(pageLabelPath(), label ->
                 if (pageLabelVisible) label else CanvasItem.setVisible(false, label))
             |> Panel.mapAt(detailPath(), CanvasItem.setVisible(detailVisible))

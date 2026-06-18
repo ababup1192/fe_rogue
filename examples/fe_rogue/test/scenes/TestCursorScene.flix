@@ -278,8 +278,11 @@ mod TestCursorScene {
         let path = CursorScene.cursorPath();
         match Scene.getEngineNode(path, scene) {
             case Some(node) =>
+                // physicsProcess は WeaponSelect 分岐用に SelectedPlayer.State を要求するので、
+                // ここで discharge する（PlayerCursor / PlayerAttack 分岐では未使用なので値は任意）。
                 let (newNode, newScene) =
-                    CursorScene.physicsProcess(Duration.seconds(0.016), node, path, scene);
+                    TestUnitFixtures.withSelectedPlayer(0, () ->
+                        CursorScene.physicsProcess(Duration.seconds(0.016), node, path, scene));
                 let updated = Scene.setEngineNode(path, newNode, newScene);
                 CursorScene.getCursorData(updated)
             case _ => bug!("Cursor not found at cursorPath()")

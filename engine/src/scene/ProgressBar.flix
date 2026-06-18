@@ -65,7 +65,9 @@ pub enum ProgressBar {
         tickWidth = Int32,
         borderColor = Color,
         borderAlpha = Float32,
-        borderWidth = Int32
+        borderWidth = Int32,
+        // 角丸半径（px、design 解像度）。0 で従来どおりの矩形、>0 で背景＋塗りを角丸描画。
+        cornerRadius = Float64
     })
 }
 
@@ -96,7 +98,8 @@ mod ProgressBar {
             tickWidth = 1,
             borderColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
             borderAlpha = 1.0f32,
-            borderWidth = 0
+            borderWidth = 0,
+            cornerRadius = 0.0
         })
 
     // ── size ──
@@ -246,6 +249,11 @@ mod ProgressBar {
         let ProgressBar.ProgressBar(r) = bar;
         ProgressBar.ProgressBar({borderWidth = Int32.max(0, width) | r})
 
+    /// 角丸半径（px）を設定する。0 で矩形、>0 で背景・塗りを角丸（BoxStyle 経由）にする。
+    pub def setCornerRadius(radius: Float64, bar: ProgressBar): ProgressBar =
+        let ProgressBar.ProgressBar(r) = bar;
+        ProgressBar.ProgressBar({cornerRadius = Float64.max(0.0, radius) | r})
+
     pub def getBorderWidth(bar: ProgressBar): Int32 =
         let ProgressBar.ProgressBar(r) = bar;
         r#borderWidth
@@ -317,8 +325,15 @@ mod ProgressBar {
 
     /// 単色矩形 1 枚分の Drawable を組み立てる。texture="" でテクスチャ無し。
     /// Panel.flix の同名ヘルパと同じ構造（互いに参照せず独立に持つ）。
+    /// 角丸のみの BoxStyle（枠・ハッチなし）。cornerRadius > 0 のときに付ける。
+    def roundedStyle(radius: Float64): GameEngine.BoxStyle =
+        {cornerRadius = radius, borderWidth = 0.0,
+         borderColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32}, borderAlpha = 0.0f32,
+         stripeColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32}, stripeAlpha = 0.0f32,
+         stripeWidth = 0.0, stripePeriod = 0.0}
+
     def makeRectDrawable(pos: Vec2.Vec2, size: Vec2.Vec2, color: Color,
-                         alpha: Float32, zIndex: Int32): GameEngine.Drawable =
+                         alpha: Float32, zIndex: Int32, cornerRadius: Float64): GameEngine.Drawable =
         {
             texture = "",
             position = pos,
@@ -330,7 +345,7 @@ mod ProgressBar {
             uvOffset = {x = 0.0, y = 0.0},
             uvScale = {x = 1.0, y = 1.0},
             zIndex = zIndex,
-            style = None
+            style = if (cornerRadius > 0.0) Some(roundedStyle(cornerRadius)) else None
         }
 
     /// 背景 + 塗り + tick + 枠線 4 辺を Drawable リストとして返す。
@@ -351,11 +366,11 @@ mod ProgressBar {
         let zi = r#zIndex;
         // 1. 背景（全 size 領域、border 含む）
         let bg = makeRectDrawable(globalPos, r#size, r#backgroundColor,
-                                  r#backgroundAlpha, zi);
+                                  r#backgroundAlpha, zi, r#cornerRadius);
         // 2. 塗り（inner 矩形を起点に value 比率で広げる）
         let (fillPos, fillSize) = fillRectPosSize(r#fillMode, innerPos, innerSize, ratio(bar));
         let fill = makeRectDrawable(fillPos, fillSize, r#fillColor,
-                                    r#fillAlpha, zi);
+                                    r#fillAlpha, zi, r#cornerRadius);
         // 3. tick（tickInterval > 0 のとき、塗りの上に乗せる）
         let span = r#maxValue - r#minValue;
         let isHorizontal = match r#fillMode {
@@ -377,7 +392,7 @@ mod ProgressBar {
                         let offsetPx = (v - r#minValue) / span * innerLong;
                         let (tPos, tSize) = tickRectPosSize(r#fillMode, innerPos, innerSize,
                                                              offsetPx, tickWidthF);
-                        makeRectDrawable(tPos, tSize, r#tickColor, r#tickAlpha, zi)
+                        makeRectDrawable(tPos, tSize, r#tickColor, r#tickAlpha, zi, 0.0)
                     })
             };
         // 4. 枠線 4 辺（borderWidth > 0 のときのみ。Panel と同形で最外周に乗る）
@@ -387,17 +402,17 @@ mod ProgressBar {
                 let bc = r#borderColor;
                 let ba = r#borderAlpha;
                 // 上辺: 全幅 × borderWidth
-                let top = makeRectDrawable(globalPos, {x = w, y = bw}, bc, ba, zi);
+                let top = makeRectDrawable(globalPos, {x = w, y = bw}, bc, ba, zi, 0.0);
                 // 下辺: 全幅 × borderWidth、y は size.y - borderWidth
                 let bot = makeRectDrawable(
                     {x = globalPos#x, y = globalPos#y + h - bw},
-                    {x = w, y = bw}, bc, ba, zi);
+                    {x = w, y = bw}, bc, ba, zi, 0.0);
                 // 左辺: borderWidth × 全高
-                let lft = makeRectDrawable(globalPos, {x = bw, y = h}, bc, ba, zi);
+                let lft = makeRectDrawable(globalPos, {x = bw, y = h}, bc, ba, zi, 0.0);
                 // 右辺: borderWidth × 全高、x は size.x - borderWidth
                 let rgt = makeRectDrawable(
                     {x = globalPos#x + w - bw, y = globalPos#y},
-                    {x = bw, y = h}, bc, ba, zi);
+                    {x = bw, y = h}, bc, ba, zi, 0.0);
                 top :: bot :: lft :: rgt :: Nil
             };
         bg :: fill :: List.append(ticks, borders)

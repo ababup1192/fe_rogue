@@ -7,7 +7,7 @@
 /// 表示内容の発生(戦闘ログ・アイテム踏みログ)は CombatScene / PlayerMovementScene が
 /// `GameLogger.playerLog`/`enemyLog` で行い、ここは「drain して 3 行に並べる」表示だけを担う。
 ///
-/// ノード構造:
+/// ノード構造（design 240x128 の右下に座標で配置）:
 ///   Log (CanvasLayer, NodeTag.Log({queue, idleSince}))   ← offset(x) を動かして帯ごと出し入れ
 ///     ├─ Bg    (ColorRect, 半透明の黒帯)
 ///     └─ Line0/1/2 (Label2D, 右寄せ。Line0=最新)
@@ -29,7 +29,7 @@ mod LogScene {
     // ─── 定数・パス ───────────────────────────────────────────
     def name(): String = "Log"
     pub def logPath(): NodePath = name() :: Nil
-    /// i = 0,1,2。CanvasLayer 直下の Label2D "Line<i>"
+    /// i = 0,1,2。CanvasLayer 直下の Label2D "Line<i>"（右下に右寄せ配置）。
     pub def linePath(i: Int32): NodePath = name() :: "Line${i}" :: Nil
 
     /// 同時に出す最大行数(= scene.json の Line0/1/2 と一致させる)

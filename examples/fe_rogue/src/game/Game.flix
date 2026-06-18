@@ -64,11 +64,10 @@ pub enum NodeTag {
     case GameOverPanel
     /// GameOverMenuScene の ItemList（最初から / そのフロアの最初から）
     case GameOverMenu
-    /// BattlePanelScene の Panel ルート（戦闘予報の外枠）。
-    /// 内部の Duration は HP シミュレーション点滅のサイクル内経過時間（process で進める）。
+    /// BattlePanelScene の CanvasLayer ルート（画面空間の戦闘予報ミニウィンドウ）。
+    /// 内部 Duration は未使用（将来の演出用に枠だけ残す）。panel とその子（丸/ラベル/三角）は
+    /// `NodeTag.NoTag` でぶら下げ、process がパス経由で更新・対象近傍へ移動する。
     case BattlePanel(Duration.Duration)
-    /// BattlePanelScene の Label2D（HP / 威力 / 命中 を 2 列で表示）
-    case BattleText
     /// LevelUpPanelScene の Panel ルート（レベルアップ時のステータス変化パネルの外枠）。
     /// 内部 state は演出の進行（bonus 再生済みか / 右側を出し終えた上昇ステータス数 / 次までの残り時間）。
     case LevelUpPanel(LevelUpPanelScene.PanelState)
@@ -142,7 +141,7 @@ instance Node[NodeTag] {
                     PlayerMovementScene.gatherStep(delta, node, path, scene)
                 else (node, scene)
             case EngineNode.Marker2DWithState(_, NodeTag.Cursor(_)) =>
-                // PlayerCursor / PlayerAttack の場合分けは CursorScene 内部に閉じている
+                // PlayerCursor / WeaponSelect / PlayerAttack の場合分けは CursorScene 内部に閉じている
                 CursorScene.physicsProcess(delta, node, path, scene)
             case _ => (node, scene)
         }
@@ -225,7 +224,10 @@ def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
         case _ => (node, scene)
     }
 
-/// メニュー系ノード (ItemMenu / ActionMenu の ItemList、BattlePanel の Panel)
+/// メニュー系ノード (ItemMenu / ActionMenu の ItemList、戦闘予報ミニウィンドウ等)。
+/// BattlePanel は World 配下の Marker2D（盤面追従の戦闘予報）だが、effect 推論の都合で
+/// tickables ではなくこの群で dispatch する（dispatchTickables に移すと FrameAef.ProcessT の
+/// 効果が未使用と判定されるため）。
 def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
                    path: NodePath, scene: Scene[NodeTag]):
                   (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
@@ -244,7 +246,7 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.UnitCard) =>
             checked_ecast(UnitCardScene.process(delta, node, path, scene))
-        case EngineNode.PanelWithState(_, NodeTag.BattlePanel(_)) =>
+        case EngineNode.CanvasLayerWithState(_, NodeTag.BattlePanel(_)) =>
             checked_ecast(BattlePanelScene.process(delta, node, path, scene))
         case EngineNode.PanelWithState(_, NodeTag.LevelUpPanel(_)) =>
             checked_ecast(LevelUpPanelScene.process(delta, node, path, scene))
@@ -557,6 +559,8 @@ def isMenuCursorMove(phase: TurnPhase.Phase, key: GameEngine.Key): Bool =
         case TurnPhase.Phase.ItemSelect       => vertical or horizontal
         case TurnPhase.Phase.ItemActionSelect => vertical
         case TurnPhase.Phase.TradeInventory   => vertical or horizontal
+        // 武器選択中: 上下=武器切り替え / 左右=ターゲットの敵選択。どちらもカーソル移動音を鳴らす。
+        case TurnPhase.Phase.WeaponSelect     => vertical or horizontal
         // 攻撃中: 上下=武器切り替え / 左右=ターゲット選択。どちらもカーソル移動音を鳴らす。
         case TurnPhase.Phase.PlayerAttack     => vertical or horizontal
         case _                                => false

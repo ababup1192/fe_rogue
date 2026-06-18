@@ -10,8 +10,9 @@
 ///
 /// 追従ルール（`TurnPhase.State.get` で分岐）:
 ///   - PlayerCursor    → カーソルのワールド座標
-///   - PlayerMoving    → 選択中味方のワールド座標（drag margin で「画面内なら据え置き」が
-///                        engine の Camera2D 側で自動的に効く）
+///   - PlayerMoving    → 選択中味方のワールド座標。**移動モード中はキャラを画面中央に固定**
+///                        したいので drag margin を切り（`isCenteredPhase`）、smoothing だけで
+///                        キャラ中心へ寄せる（drag 有効だと「画面内なら据え置き」になり中央に来ない）
 ///   - PlayerAttack    → カーソルのワールド座標（赤マスを動くカーソルに追従）
 ///   - GatherMove      → 主人公(id 0)のワールド座標（隊列を率いて動く主人公に追従）
 ///   - EnemyTurn       → **alerted な敵が行動中ならその敵を映す**（`enemyTurnTarget`）。
@@ -73,15 +74,35 @@ mod CameraScene {
         let target = computeTarget(phase, selected, scene);
         let vp = GameEngine.Game.getViewportRect();
         let viewport = {viewportWidth = vp#size#x, viewportHeight = vp#size#y};
+        let centered = isCenteredPhase(phase);
         let newNode = EngineNode.mapCamera2D(
             c -> c |> Node2D.setPosition(target)
+                   |> applyFollowMode(centered)
                    |> Camera2D.process(delta, viewport),
             node);
         (newNode, scene)
 
+    /// 「キャラを画面中央に固定する」フェーズか。移動モード (PlayerMoving) のみ true。
+    /// true の間は drag margin を切ってキャラ中心に寄せる（`applyFollowMode`）。
+    def isCenteredPhase(phase: TurnPhase.Phase): Bool =
+        match phase {
+            case TurnPhase.Phase.PlayerMoving => true
+            case _                            => false
+        }
+
+    /// 追従モードを camera に反映する。`centered = true`（移動モード）なら drag margin を
+    /// 無効化し、engine 側で logical = target になって smoothing がキャラ中心へ直接寄る。
+    /// それ以外は drag を有効に戻す（scene.json は drag 有効前提。`dragLeftMargin` 等の
+    /// マージン値はそのまま温存される）。
+    def applyFollowMode(centered: Bool, camera: Camera2D): Camera2D =
+        let dragOn = not centered;
+        camera
+            |> Camera2D.setDragHorizontalEnabled(dragOn)
+            |> Camera2D.setDragVerticalEnabled(dragOn)
+
     /// `selected` が None のときはパーティの代表（id=0、または最初のアクティブ）の位置に向く。
-    /// PlayerMoving の「画面内なら維持」は engine の drag margin が引き受けるため、
-    /// この関数は単に「選択中味方の位置」を返すだけになる。
+    /// PlayerMoving は「選択中味方の位置」を返すだけ（中央固定の drag 制御は `process` 側の
+    /// `applyFollowMode` が担当する）。
     /// EnemyTurn は `enemyTurnTarget` で「alerted な敵の動きを映す」分岐に入る。
     def computeTarget(phase: TurnPhase.Phase,
                        selected: Option[Int32],

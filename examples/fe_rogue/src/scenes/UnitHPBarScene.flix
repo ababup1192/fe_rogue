@@ -40,6 +40,12 @@ mod UnitHPBarScene {
     def dmgDarkModulate(): Color = {r = 0.3f32, g = 0.3f32, b = 0.3f32}
     /// 点滅の「明」側 modulate（通常色 = フィルと同色に見え、満タンに戻って見える）。
     def dmgNormalModulate(): Color = UITheme.white()
+    /// 「減る分」オーバーレイの 45° 斜線（赤マスと同じハッチ）。バーが小さいので細かめに。
+    def dmgStripeColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+    def dmgStripeAlpha(): Float32 = 0.6f32
+    /// バーが小さいので周期を詰めて斜線を細かく（灰色の隙間を減らす）。
+    def dmgStripeWidth(): Float64 = 0.5
+    def dmgStripePeriod(): Float64 = 1.0
 
     // ─── サイズ・位置 ─────────────────────────────────────────
     /// 全ユニット共通幅（最大 HP に依らない）。HP 量で見た目が変わると比較が難しくなるため固定。
@@ -47,8 +53,13 @@ mod UnitHPBarScene {
     def barHeightPx(): Float64 = 5.0
     /// 暗トラックの枠として機能する。Fill を 1px インセットすることで別枠ノードなしで枠線を表現。
     def borderPx(): Float64 = 1.0
-    /// スプライトが 0.8 倍スケールのため、中心基準で下方向へこの値だけずらすと足元に重なる。
-    def barFeetY(): Float64 = 13.0
+    /// 足元オフセット（中心基準・下向き）。タイルは tileSize(26)＝中心から ±13。
+    /// バー上端をこの値に置くと、バー(高さ 5)はタイル下端(13)の内側＝キャラの足元に収まる。
+    def barFeetY(): Float64 = 7.0
+    /// HP バー（トラック）の角丸半径。高さ 5px に対して丸みを付ける。
+    def barCornerRadius(): Float64 = 2.0
+    /// フィル（内側 3px）の角丸半径。半径＝高さ/2 でピル状にし、丸みが見えるようにする。
+    def fillCornerRadius(): Float64 = innerHeightPx() / 2.0
     def barZIndex(): Int32 = 50
 
     pub def childName(): String = "HPBar"
@@ -88,12 +99,14 @@ mod UnitHPBarScene {
                     EngineNode.Marker2DWithState(parent, NodeTag.HPBar(data)), scene);
             // 暗トラックを枠として兼用することでノード数を減らしている（別枠ノードは不要）
             let bg = ColorRect.make({x = barWidthPx(), y = barHeightPx()}, trackColor())
+                |> ColorRect.setCornerRadius(barCornerRadius())
                 |> CanvasItem.setZIndex(barZIndex());
             let withBg =
                 Scene.addChildAt(barPath, "Bg",
                     EngineNode.ColorRectWithState(bg, NodeTag.NoTag), withParent);
             // borderPx 分だけ内側に配置することで暗トラックを枠として見せる
             let fill = ColorRect.make({x = innerWidthPx(), y = innerHeightPx()}, fillColorFor(team))
+                |> ColorRect.setCornerRadius(fillCornerRadius())
                 |> Node2D.setPosition({x = borderPx(), y = borderPx()})
                 |> CanvasItem.setZIndex(barZIndex() + 1);
             let withFill = Scene.addChildAt(barPath, "Fill",
@@ -101,6 +114,8 @@ mod UnitHPBarScene {
             // フィルと同色にすることで、通常 modulate では Fill と一体に見え、
             // 暗 modulate に切り替えるだけで「減る分」が沈んで見える点滅演出が成立する。
             let preview = ColorRect.make({x = 0.0, y = innerHeightPx()}, fillColorFor(team))
+                |> ColorRect.setStripe(dmgStripeColor(), dmgStripeAlpha(),
+                                       dmgStripeWidth(), dmgStripePeriod())
                 |> Node2D.setPosition({x = borderPx(), y = borderPx()})
                 |> CanvasItem.setZIndex(barZIndex() + 2)
                 |> CanvasItem.setVisible(false);

@@ -70,21 +70,26 @@ mod RenderShader {
         "    } else if (styleEnabled) {\n" +
         "        vec2 hsz = rectSize * 0.5;\n" +
         "        vec2 p = TexCoords * rectSize - hsz;\n" +
-        "        float aa = 1.0;\n" +                       // デザイン解像度の 1px AA
         // 角半径は矩形の最小半辺にクランプ (Godot StyleBoxFlat と同様、巨大値での破綻防止)
         "        float cr = clamp(cornerRadius, 0.0, min(hsz.x, hsz.y));\n" +
         "        float dOuter = roundedBox(p, hsz, cr);\n" +
-        "        float outerCov = 1.0 - smoothstep(0.0, aa, dOuter);\n" +   // 矩形内=1 / 外=0
+        // AA 幅は画面 px 基準 (fwidth)。カメラ zoom で rectSize が小さくなっても角丸が潰れない
+        // （固定 1px AA だと縮小時に AA 帯が矩形全体を覆い、角丸が消えて四角に見える）。
+        "        float aaO = max(fwidth(dOuter), 0.0001);\n" +
+        "        float outerCov = 1.0 - smoothstep(0.0, aaO, dOuter);\n" +   // 矩形内=1 / 外=0
         "        float ri = max(cr - borderWidth, 0.0);\n" +
         "        vec2 hi = max(hsz - vec2(borderWidth), vec2(0.0));\n" +
         "        float dInner = roundedBox(p, hi, ri);\n" +
-        "        float fillCov = 1.0 - smoothstep(0.0, aa, dInner);\n" +    // 塗り領域=1 / 枠+外=0
+        "        float aaI = max(fwidth(dInner), 0.0001);\n" +
+        "        float fillCov = 1.0 - smoothstep(0.0, aaI, dInner);\n" +    // 塗り領域=1 / 枠+外=0
         // 塗りベース。hatchEnabled なら 45° 斜線を塗りの上に over 合成してから枠と混ぜる。
         "        vec3 fillRgb = spriteColor;\n" +
         "        float fillA = spriteAlpha;\n" +
         "        if (hatchEnabled) {\n" +
-        "            float m = mod(p.x - p.y, hatchPeriod);\n" +           // 縞の位相 (x-y で 45°)
-        "            float sOn = smoothstep(0.0, aa, m) - smoothstep(hatchWidth, hatchWidth + aa, m);\n" +
+        "            float hv = p.x - p.y;\n" +
+        "            float m = mod(hv, hatchPeriod);\n" +                    // 縞の位相 (x-y で 45°)
+        "            float haa = max(fwidth(hv), 0.0001);\n" +               // 画面 px 基準の縞 AA
+        "            float sOn = smoothstep(0.0, haa, m) - smoothstep(hatchWidth, hatchWidth + haa, m);\n" +
         "            float sa = hatchAlpha * clamp(sOn, 0.0, 1.0);\n" +
         "            float outA = sa + fillA * (1.0 - sa);\n" +
         "            fillRgb = (outA > 0.0001) ? (hatchColor * sa + fillRgb * fillA * (1.0 - sa)) / outA : fillRgb;\n" +

@@ -123,27 +123,33 @@ mod CharacterSelectScene {
     /// 通常カードの枠サイズ。
     def normalFrameSize(): Vec2.Vec2 = {x = 30.0, y = 42.0}
 
-    def descPos(): Vec2.Vec2 = {x = 118.0, y = 14.0}
     def descSize(): Vec2.Vec2 = {x = 48.0, y = 86.0}
-    def descTitlePos(): Vec2.Vec2 = {x = 121.0, y = 18.0}
-    def descTextPos(): Vec2.Vec2 = {x = 121.0, y = 28.0}
+    /// 説明パネルを画面右端から内側へどれだけ離すか（px）。右端基準で配置するための余白。
+    /// design 幅が変わっても右端からの相対位置を保つ（Anchor.BottomRight 相当）。1 値で右寄せ量を調整。
+    def descRightMargin(): Float64 = 4.0
+    /// 説明パネル左端 x。画面右端（screenWidthF）から margin + パネル幅 だけ内側＝右端基準で固定。
+    def descAnchorX(): Float64 = screenWidthF() - descRightMargin() - descSize()#x
+    def descPos(): Vec2.Vec2 = {x = descAnchorX(), y = 14.0}
+    def descTitlePos(): Vec2.Vec2 = {x = descAnchorX() + 3.0, y = 18.0}
+    def descTextPos(): Vec2.Vec2 = {x = descAnchorX() + 3.0, y = 28.0}
     // 得意武器グリフ行（「得意武器:」の下に白いグリフを横一列）。濃い説明パネル地の上に出す。
     def maxProfGlyphs(): Int32 = 5
-    def glyphRowStartX(): Float64 = 124.0
+    def glyphRowStartX(): Float64 = descAnchorX() + 6.0
     def glyphRowY(): Float64 = 37.0
     def glyphPitch(): Float64 = 9.0
     def glyphScale(): Float64 = 0.52
     /// 親 Marker2D の zIndex。配下グリフ（zIndex 62〜）が説明パネル(150)より前に出るよう底上げする。
     def glyphParentZIndex(): Int32 = 100
-    def counterPos(): Vec2.Vec2 = {x = 58.0, y = 88.0}
-    def buttonPos(): Vec2.Vec2 = {x = 35.0, y = 102.0}
+    // カウンタ/出撃ボタンは画面中央に寄せる（screenWidthF 基準＝design 幅が変わっても中央を保つ）。
+    def counterPos(): Vec2.Vec2 = {x = screenWidthF() / 2.0, y = 88.0}
+    def buttonPos(): Vec2.Vec2 = {x = (screenWidthF() - buttonSize()#x) / 2.0, y = 102.0}
     def buttonSize(): Vec2.Vec2 = {x = 46.0, y = 16.0}
     /// つや（擬似グラデ）の明るい層。ボタン上半分に少し内側で重ねる。
-    def buttonGlossPos(): Vec2.Vec2 = {x = 37.0, y = 104.0}
+    def buttonGlossPos(): Vec2.Vec2 = {x = buttonPos()#x + 2.0, y = 104.0}
     def buttonGlossSize(): Vec2.Vec2 = {x = 42.0, y = 6.0}
     def buttonGlossAlpha(): Float32 = 0.5f32
-    /// buttonPos + buttonSize/2 がラベル中心。H/V 中央そろえと合わせて文字を枠内に収める。
-    def buttonLabelPos(): Vec2.Vec2 = {x = 58.0, y = 110.0}
+    /// buttonPos + buttonSize/2 がラベル中心 = 画面中央。H/V 中央そろえと合わせて文字を枠内に収める。
+    def buttonLabelPos(): Vec2.Vec2 = {x = screenWidthF() / 2.0, y = 110.0}
 
     def counterFontSize(): Float64 = 7.5
     def descTitleFontSize(): Float64 = 4.5

@@ -198,7 +198,8 @@ mod UnitCardScene {
             |> Node2D.setPosition(hpBarPos())
             |> ProgressBar.setValue(Int32.toFloat64(currentHp))
             |> ProgressBar.setBackgroundColor(hpTrackColor())
-            |> ProgressBar.setBorderWidth(0);
+            |> ProgressBar.setBorderWidth(0)
+            |> ProgressBar.setCornerRadius(0.75);  // 高さ 1.5px → 半径 0.75 でピル状に丸める
         let withBar = Scene.addChildAt(panelPath(), "HpBar",
             EngineNode.ProgressBarWithState(hpBar, NodeTag.NoTag), withHpLabel);
         // HP 数値はカード右端に右寄せ（バー右に少し余白）。幅を実測して右端そろえ。

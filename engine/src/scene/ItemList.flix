@@ -71,6 +71,12 @@ pub enum ItemList {
         iconSize        = Float64,
         // アイコンとテキストの間隔（px）。iconSize > 0 のときのみ有効。
         iconTextGap     = Float64,
+        // アイコン背後に敷く「色紙」チップ（`fillColor=None` で無効＝既定）。
+        // UnitCard の装備アイコン色紙と同じく、暗いアートを地色から浮かせる枠つき角丸プレート。
+        // 行にアイコンがあり iconSize > 0 のときのみ、アイコンの背後（下）に描く。
+        iconBg          = SelectedHighlight,
+        // 色紙チップをアイコンより外側に広げる余白（px、全方向）。チップ = iconSize + 2*pad。
+        iconBgPad       = Float64,
         selectedIndex   = Int32,
         focused         = Bool,
         cursorGlyph     = String,
@@ -145,6 +151,11 @@ mod ItemList {
             itemSubtexts    = (Map.empty(): Map[Int32, String]),
             iconSize        = 0.0,
             iconTextGap     = 2.0,
+            iconBg          = ({fillColor = None, fillAlpha = 1.0f32,
+                                 borderColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+                                 borderAlpha = 1.0f32, borderWidth = 0.0,
+                                 cornerRadius = 0.0, inset = 0.0}: SelectedHighlight),
+            iconBgPad       = 0.0,
             selectedIndex   = 0,
             focused         = false,
             cursorGlyph     = "▶",
@@ -251,6 +262,24 @@ mod ItemList {
     pub def setIconTextGap(gap: Float64, list: ItemList): ItemList =
         let ItemList.ItemList(r) = list;
         ItemList.ItemList({iconTextGap = gap | r})
+
+    pub def getIconBg(list: ItemList): SelectedHighlight =
+        let ItemList.ItemList(r) = list;
+        r#iconBg
+
+    /// アイコン背後の色紙チップを設定する（`fillColor=None` で無効）。
+    pub def setIconBg(bg: SelectedHighlight, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({iconBg = bg | r})
+
+    pub def getIconBgPad(list: ItemList): Float64 =
+        let ItemList.ItemList(r) = list;
+        r#iconBgPad
+
+    /// 色紙チップをアイコンより外側へ広げる余白（px、全方向）。
+    pub def setIconBgPad(pad: Float64, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({iconBgPad = pad | r})
 
     // ── items ──
 
@@ -578,6 +607,20 @@ mod ItemList {
             |> CanvasItem.setZIndex(zIndex);
         EngineNode.spriteToDrawable(sprite, pos)
 
+    /// アイコン背後の「色紙」チップ Drawable（無効＝`bg#fillColor=None` のときは空）。
+    /// アイコン矩形を `pad` だけ全方向に広げた角丸プレートを `highlightDrawable` で組む。
+    /// 呼び出し側でアイコンより前に積めば、チップが背後・アイコンが手前になる。
+    def iconChipDrawables(bg: SelectedHighlight, pad: Float64, iconStartX: Float64,
+                          iconY: Float64, iconSize: Float64, zIndex: Int32):
+            List[GameEngine.Drawable] =
+        match bg#fillColor {
+            case None       => Nil
+            case Some(fill) =>
+                highlightDrawable(bg, fill,
+                    {x = iconStartX - pad, y = iconY - pad},
+                    {x = iconSize + 2.0 * pad, y = iconSize + 2.0 * pad}, zIndex) :: Nil
+        }
+
     /// 選択行ハイライトの styled Drawable を作る。`rowPos`/`rowSize` は行矩形（左上＋サイズ）、
     /// `inset` で全方向に縮めて「浮いた角丸枠」にする。塗り＋枠＋角丸は `Drawable.style`(BoxStyle) に委ねる。
     def highlightDrawable(h: SelectedHighlight, fill: Color, rowPos: Vec2.Vec2,
@@ -673,7 +716,11 @@ mod ItemList {
             let iconDrawables: List[GameEngine.Drawable] =
                 if (hasIconArea) match Map.get(idx, r#itemIcons) {
                     case Some(icon) =>
-                        renderIcon(icon, {x = iconStartX, y = iconY}, r#iconSize, r#zIndex) :: Nil
+                        let chip = iconChipDrawables(r#iconBg, r#iconBgPad, iconStartX,
+                                                     iconY, r#iconSize, r#zIndex);
+                        let dr   = renderIcon(icon, {x = iconStartX, y = iconY},
+                                              r#iconSize, r#zIndex);
+                        List.append(chip, dr :: Nil)
                     case None       => Nil
                 }
                 else Nil;
@@ -740,15 +787,18 @@ mod ItemList {
                             |> CanvasItem.setModulate(r#badgeTextColor)
                             |> CanvasItem.setZIndex(r#zIndex);
                         let textW = Label2D.measure(badgeLabel)#x;
-                        let padX = 1.5;
-                        let padY = 0.6;
+                        // バッジ背景は控えめに（文字サイズは sublineFontSize のまま変えない）。
+                        // padding を小さめに、塗りを半透明にして地に少し沈ませる。
+                        let padX = 1.0;
+                        let padY = 0.35;
+                        let badgeFillAlpha = 0.75f32;
                         let chipW = textW + padX * 2.0;
                         let chipH = sublineLineHeight + padY * 2.0;
                         let chipX = colX + colWidth - chipW - r#iconTextGap;
                         let chipY = textY + (mainLineHeight - chipH) / 2.0;
                         let chip = ({texture = "", position = {x = chipX, y = chipY},
                             scale = {x = chipW, y = chipH}, rotation = 0.0,
-                            color = r#badgeColor, alpha = 1.0f32, centered = false,
+                            color = r#badgeColor, alpha = badgeFillAlpha, centered = false,
                             uvOffset = {x = 0.0, y = 0.0}, uvScale = {x = 1.0, y = 1.0},
                             zIndex = r#zIndex,
                             style = Some({cornerRadius = 1.5, borderWidth = 0.0,

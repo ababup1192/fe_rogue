@@ -37,17 +37,20 @@ mod WeaponSelectScene {
     pub def menuName(): String = "menu"
     def headerName(): String = "header"
     def headerBgName(): String = "headerBg"
+    def hintName(): String = "hint"
 
     pub def rootPath(): NodePath = rootName() :: Nil
     pub def panelPath(): NodePath = rootName() :: panelName() :: Nil
     pub def menuPath(): NodePath = rootName() :: panelName() :: menuName() :: Nil
     def headerPath(): NodePath = rootName() :: panelName() :: headerName() :: Nil
     def headerBgPath(): NodePath = rootName() :: panelName() :: headerBgName() :: Nil
+    def hintPath(): NodePath = rootName() :: panelName() :: hintName() :: Nil
 
     /// 武器アイコンの表示サイズ（px）。ItemMenuScene と揃える。
     def iconSize(): Float64 = 5.0
-    /// アイコンと名前テキストの間の余白（px）。
-    def iconTextGap(): Float64 = 1.0
+    /// アイコンと名前テキストの間の余白（px）。色紙チップ（iconBgPad ぶん外側に出る）に
+    /// テキストが被らないよう、pad より広めに取る。
+    def iconTextGap(): Float64 = 3.0
 
     /// 不得意（苦手）な武器の行に出すバッジ文字。得意な武器には付けない。
     def weakBadge(): String = "不得意"
@@ -83,16 +86,26 @@ mod WeaponSelectScene {
     // ────────────────────────────────────────────────────────
 
     /// フェーズ遷移時の visibility 適用。
-    ///   - Panel / header : WeaponSelect フェーズだけ visible
+    ///   - Panel / header : WeaponSelect フェーズだけ visible（コマンドメニュー横の武器リスト窓）
     ///   - Menu           : WeaponSelect フェーズだけ visible + focused
+    /// 命中/必殺/すくみは盤面の戦闘予報ミニウィンドウ `BattlePanelScene` が併せて出す。
     pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = phase == TurnPhase.Phase.WeaponSelect;
         scene
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
             |> Panel.mapAt(headerBgPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(headerPath(), CanvasItem.setVisible(visible))
+            |> Label2D.mapAt(hintPath(), CanvasItem.setVisible(visible))  // ↔ 敵選択 ヒント
             |> ItemList.mapAt(menuPath(), list ->
                 list |> CanvasItem.setVisible(visible) |> ItemList.setFocused(visible))
+
+    /// WeaponSelect 中、カーソルが乗っている武器の weapons 内 index（`BattlePanelScene` が読む）。
+    /// 選択行の metadata `"w:<idx>"` をパースして返す。未登録 / 無選択なら None。
+    pub def hoveredWeaponIndex(scene: Scene[NodeTag]): Option[Int32] =
+        ItemList.getAt(menuPath(), scene)
+            |> Option.flatMap(ItemList.getSelected)
+            |> Option.flatMap(e -> e#metadata)
+            |> Option.flatMap(parseWeaponIndex)
 
     /// Game.flix の process dispatch から WeaponSelectMenu の ItemList に対して毎フレーム呼ばれる。
     /// visibility 更新と items 再計算を同一フレームで行う（ActionMenuScene と同じ理由）。
@@ -101,7 +114,8 @@ mod WeaponSelectScene {
                          _path: NodePath,
                          scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
-                        \ {SelectedPlayer.State, TurnPhase.State, PlayerData.PartyQuery,
+                        \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                           SelectedPlayer.State, TurnPhase.State, PlayerData.PartyQuery,
                            EnemyData.RosterQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
@@ -110,10 +124,83 @@ mod WeaponSelectScene {
                 withVisibility
                     |> ItemList.mapAt(menuPath(), ItemList.setSelectedIndex(0))
             else
-                refreshWeaponList(withVisibility);
+                refreshWeaponList(withVisibility)
+                    |> positionBesideActionMenu
+                    |> snapCursorToTarget;   // 武器フォーカス中、対象の敵へカーソルを寄せる
         match Scene.getEngineNode(menuPath(), withItems) {
             case Some(latest) => (latest, withItems)
             case None         => (node, withItems)
+        }
+
+    /// WeaponSelect 中、カーソルを「フォーカス武器が届く敵」の上に置いてカーソルを表示する。
+    /// 既に届く敵に乗っているならその位置を保つ（左右での敵選択を維持。`CursorScene` が巡回する）。
+    /// 乗っていない（初回 / 武器を切り替えて今の対象が届かなくなった）ときだけ最寄りの敵へスナップ。
+    /// 届く敵が居なければカーソルは触らない。戦闘予報はこのカーソル上の敵で出る。
+    def snapCursorToTarget(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+        match focusedPlayerWeapon(scene) {
+            case None                  => scene
+            case Some((player, weapon)) =>
+                if (isReachableEnemyCell(CursorScene.getGridPos(scene), player#gridPos, weapon, scene))
+                    CursorScene.setVisible(true, scene)   // 既に対象上 → 位置は保持（左右選択を維持）
+                else match nearestReachableEnemy(player#gridPos, weapon) {
+                    case Some(e) => scene |> CursorScene.setVisible(true) |> CursorScene.snapToCell(e#gridPos)
+                    case None    => scene
+                }
+        }
+
+    /// 選択中味方とフォーカス中の武器。揃わなければ None。
+    def focusedPlayerWeapon(scene: Scene[NodeTag]):
+            Option[(PlayerScene.Data, UnitCatalog.WeaponResource)]
+            \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+        forM (
+            player <- selectedPlayer();
+            widx   <- hoveredWeaponIndex(scene);
+            weapon <- List.nth(widx, player#weapons)
+        ) yield (player, weapon)
+
+    /// `cell` に居る敵が `weapon` の射程内の生存敵か（カーソルが有効な対象に乗っているかの判定）。
+    def isReachableEnemyCell(cell: {x = Int32, y = Int32}, pos: {x = Int32, y = Int32},
+                             weapon: UnitCatalog.WeaponResource, scene: Scene[NodeTag]): Bool =
+        EnemyScene.findIdAt(cell, scene)
+            |> Option.flatMap(id -> EnemyScene.get(id, scene))
+            |> Option.map(e -> {
+                let ev = EnemyScene.unitView(e);
+                ev#hp > 0 and not ev#isDying
+                    and Weapon.inRange(Weapon.manhattan(pos, ev#pos), weapon#range)
+            })
+            |> Option.getWithDefault(false)
+
+    /// `pos` から `weapon` の射程内に居る生存敵のうち、最も近い 1 体（マンハッタン最小）。
+    /// 届く敵が居なければ None。`weaponReachesAnyEnemy` と同じ到達判定で個体を選ぶ版。
+    def nearestReachableEnemy(pos: {x = Int32, y = Int32},
+                              weapon: UnitCatalog.WeaponResource):
+            Option[EnemyScene.Data] \ EnemyData.RosterQuery =
+        EnemyData.RosterQuery.getAll()
+            |> List.filter(e -> {
+                let ev = EnemyScene.unitView(e);
+                ev#hp > 0 and not ev#isDying
+                    and Weapon.inRange(Weapon.manhattan(pos, ev#pos), weapon#range)
+            })
+            |> List.sortBy(e -> Weapon.manhattan(pos, e#gridPos))
+            |> List.head
+
+    /// コマンドメニュー (ActionMenu) に重ねる px 量。右端から少しだけ食い込ませて
+    /// 「攻撃」を選んでいる文脈を見せつつ、深く被って読みづらくならないようにする。
+    def panelOverlapPx(): Float64 = 5.0
+
+    /// 武器ウィンドウを ActionMenu（コマンドメニュー）の右端基準で配置する。
+    /// ActionMenu の幅は項目に合わせて毎フレーム可変なので、その右端を読んで追従し、
+    /// `panelOverlapPx()` だけ左に食い込ませる（y は scene.json の値を保つ）。
+    def positionBesideActionMenu(scene: Scene[NodeTag]): Scene[NodeTag] =
+        match Panel.getAt(ActionMenuScene.panelPath(), scene) {
+            case None         => scene
+            case Some(action) =>
+                let actionRight = Node2D.getPosition(action)#x + Panel.getSize(action)#x;
+                let newX = actionRight - panelOverlapPx();
+                scene |> Panel.mapAt(panelPath(), p ->
+                    Node2D.setPosition({x = newX, y = Node2D.getPosition(p)#y}, p))
         }
 
     /// 選択中味方の武器を ItemList に並べる（WeaponSelect 中）。
@@ -200,9 +287,10 @@ mod WeaponSelectScene {
         else "射程 ${range#min}-${range#max}"
 
     /// 武器 1 本ぶんの 2 行目（性能）。残り使用回数を含む。
-    /// 例: "威力 2 命中 80 射程 1 耐久 10"
+    /// 命中は戦闘予報ミニウィンドウで見せるのでここでは省く（窓を狭めるため）。
+    /// 例: "威力 2 射程 1 耐久 10"
     pub def weaponSubline(weapon: UnitCatalog.WeaponResource): String =
-        "威力 ${weapon#attack} 命中 ${weapon#hit} ${rangeText(weapon#range)} 耐久 ${weapon#durability}"
+        "威力 ${weapon#attack} ${rangeText(weapon#range)} 耐久 ${weapon#durability}"
 
     /// 行 index → subline 文字列の Map（全行ぶん）。
     def weaponSublines(weapons: List[UnitCatalog.WeaponResource]): Map[Int32, String] =
@@ -246,35 +334,40 @@ mod WeaponSelectScene {
     // (D) 入力ハンドラ
     // ────────────────────────────────────────────────────────
 
-    /// 武器を Enter/Z で確定したとき。選んだ武器を装備 (weapons 先頭へ移動) してから
-    /// 既存の攻撃フェーズ (`PlayerScene.enterAttackPhase`) に入る。
-    /// `enterAttackPhase` はカーソル上の敵に届く武器へさらに持ち替えうるが、ここで先頭に置いた
-    /// 武器が届くならそのまま使われる（届かなければ届く武器に正規化される＝既存仕様どおり）。
+    /// 武器を Enter/Z で確定したとき。**選んだ武器を装備して、カーソルが指している敵に
+    /// そのまま攻撃を開始する**（武器フォーカスで対象も選べるので、ここから別の対象選択
+    /// フェーズには進まず直接バトルへ）。遷移先は入力ロックの `PlayerAttackHold`。
+    /// カーソルが敵に乗っていない（届く敵が無い）ときは何もしない。
     pub def onConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                         Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                TurnPhase.State, SelectedPlayer.State,
-                PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        let equipped = forM (
-            playerId <- SelectedPlayer.State.get()#id;
-            idx      <- entry#metadata |> Option.flatMap(parseWeaponIndex)
-        ) yield PlayerScene.equipWeapon(playerId, idx, scene);
-        let withEquip = Option.getWithDefault(scene, equipped);
-        PlayerScene.enterAttackPhase(withEquip)
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
+                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery} =
+        let started = forM (
+            pid   <- SelectedPlayer.State.get()#id;
+            idx   <- entry#metadata |> Option.flatMap(parseWeaponIndex);
+            eid   <- EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene);
+            enemy <- EnemyData.RosterQuery.get(eid)
+        ) yield {
+            let equipped = PlayerScene.equipWeapon(pid, idx, scene);
+            TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
+            GameLogger.playerLog("${PlayerScene.displayName(pid, equipped)}の攻撃");
+            CombatScene.startAttack(Faction.Player, pid, eid, enemy#gridPos, equipped)
+        };
+        Option.getWithDefault(scene, started)
 
     /// X / Escape 押下で呼ばれる。武器ウィンドウを閉じて ActionSelect（コマンドメニュー）に戻る。
-    /// SelectedPlayer はそのまま（同じ味方の行動選択に戻る）。
+    /// SelectedPlayer はそのまま（同じ味方の行動選択に戻る）。WeaponSelect 中に対象の敵へ出して
+    /// いたカーソルは隠す（ActionSelect / PlayerMoving はカーソル非表示が既定）。
     pub def onCancelled(scene: Scene[NodeTag]):
                         Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
-        scene
+        CursorScene.setVisible(false, scene)
 
     /// InputHandler の Z 押下から呼ばれる。現在カーソルがある武器を確定する。
     pub def confirmCurrentSelection(scene: Scene[NodeTag]):
                                     Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                TurnPhase.State, SelectedPlayer.State,
-                PlayerData.PartyQuery, EnemyData.RosterQuery} =
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
+                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             case None        => scene
             case Some(entry) => if (entry#disabled) scene else onConfirmed(entry, scene)

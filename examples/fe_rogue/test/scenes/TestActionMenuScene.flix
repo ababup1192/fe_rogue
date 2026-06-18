@@ -702,7 +702,7 @@ mod TestActionMenuScene {
         let scene = actionMenuAddPure(Scene.empty());
         let menuPosY = ItemList.getAt(ActionMenuScene.menuPath(), scene)
             |> Option.map(l -> Node2D.getPosition(l)#y);
-        Assert.assertEq(expected = Some(9.0), menuPosY)
+        Assert.assertEq(expected = Some(8.0), menuPosY)
 
     // ════════════════════════════════════════════════════════
     // 再スキン: 色二重管理の enforcement（scene.json 実ロード値 == UITheme）

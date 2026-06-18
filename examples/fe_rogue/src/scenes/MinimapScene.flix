@@ -46,12 +46,17 @@ mod MinimapScene {
 
     def roomChildName(i: Int32): String = "Room_${i}"
     def roomChildPath(i: Int32): NodePath = List.append(contentPath(), roomChildName(i) :: Nil)
+    /// 歩ける床（黒くり抜き）プール。壁プール（Room_i）と 1:1 対応。
+    def floorChildName(i: Int32): String = "Floor_${i}"
+    def floorChildPath(i: Int32): NodePath = List.append(contentPath(), floorChildName(i) :: Nil)
     def markerChildName(i: Int32): String = "Marker_${i}"
     def markerChildPath(i: Int32): NodePath = List.append(contentPath(), markerChildName(i) :: Nil)
 
     /// 部屋/通路矩形プール。1 フロアの module 数（部屋数 + 通路数）に十分な固定数。
     /// union 分割は module 数より矩形が増えうるので余裕を持たせる。
     def roomPoolSize(): Int32 = 64
+    /// 歩ける床の黒くり抜きプール。床セルを行ごとの横ランで描くので部屋プールより多め。
+    def floorPoolSize(): Int32 = 384
     /// マーカープール（プレイヤー≤3 + 階段1 + アイテム数）に十分な固定数。
     def markerPoolSize(): Int32 = 24
 
@@ -80,14 +85,19 @@ mod MinimapScene {
         let d = markerCellFraction() * scale;
         if (d < markerMaxPx()) d else markerMaxPx()
 
-    /// zIndex（同一 CanvasLayer 内の描画順）。部屋/通路 < マーカー。
-    def roomZIndex(): Int32 = 1
-    def markerZIndex(): Int32 = 2
+    /// zIndex（同一 CanvasLayer 内の描画順）。壁(下) < 歩ける床の黒(中) < マーカー(上)。
+    /// 探索済みエリアを壁色ブロックで塗り、その上に黒で歩ける床を「くり抜く」2 層構成。
+    def roomZIndex(): Int32 = 1     // 壁/構造（拡張した外枠ブロック）
+    def floorZIndex(): Int32 = 2    // 歩ける床（黒。壁ブロックから碁盤目をくり抜く）
+    def markerZIndex(): Int32 = 3
 
     // 色（半透明で操作の邪魔にならないよう alpha を抑える）
-    /// 部屋・通路は同色（区別しない）。
+    /// 壁/構造の色（歩ける床を囲む外枠ブロック）。旧「部屋色」を流用。
     def moduleColor(): Color = {r = 0.62f32, g = 0.68f32, b = 0.85f32}
     def moduleAlpha(): Float32 = 0.50f32
+    /// 歩ける床は黒（何もなし）でくり抜いて表現する。壁の上に重ねるので不透明寄りに。
+    def floorColor(): Color = {r = 0.0f32, g = 0.0f32, b = 0.0f32}
+    def floorAlpha(): Float32 = 0.92f32
     def leaderColor(): Color = {r = 0.95f32, g = 0.85f32, b = 0.20f32}
     def playerColor(): Color = {r = 0.30f32, g = 0.70f32, b = 0.95f32}
     def stairsColor(): Color = {r = 0.90f32, g = 0.30f32, b = 0.85f32}
@@ -125,12 +135,20 @@ mod MinimapScene {
                         newPoolRect(moduleColor(), roomZIndex(), moduleAlpha()), NodeTag.NoTag),
                     acc),
                 withContent, List.range(0, roomPoolSize()));
+        // 歩ける床の黒くり抜きプール（壁プールの上に重ねる。床セルを横ランで描くので多め）。
+        let withFloors =
+            List.foldLeft((acc, i) ->
+                Scene.addChildAt(contentPath(), floorChildName(i),
+                    EngineNode.ColorRectWithState(
+                        newPoolRect(floorColor(), floorZIndex(), floorAlpha()), NodeTag.NoTag),
+                    acc),
+                withRooms, List.range(0, floorPoolSize()));
         let withMarkers =
             List.foldLeft((acc, i) ->
                 Scene.addChildAt(contentPath(), markerChildName(i),
                     EngineNode.Polygon2DWithState(newMarkerCircle(), NodeTag.NoTag),
                     acc),
-                withRooms, List.range(0, markerPoolSize()));
+                withFloors, List.range(0, markerPoolSize()));
         Scene.addChild(MapScene.worldName(), driverName(),
             EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()),
                 NodeTag.MinimapDriver(initialData())),
@@ -214,11 +232,54 @@ mod MinimapScene {
             let scale      = minF(referenceScale(), fitScale);
             let t          = anchorBLWithScale(scale, boundsOf(rawRects), targetRect());
             let disjoint   = unionBands(rawRects);
+            // 壁/構造を青のベタ塗り（モジュール床 bbox。内壁・柱もここに含まれて青く残る）、
+            // その上に「歩ける床セルだけ」を黒くくり抜く（壁セルは MapSnapshot で除外）。
+            let snapshot   = mapSnapshot(scene);
+            let floorRuns  = floorRunsIn(disjoint, snapshot);
             let markers    = collectMarkers(data, placements, roomCount, scene);
             scene
                 |> drawRoomPool(disjoint, t)
+                |> drawFloorPool(floorRuns, t)
                 |> drawMarkerPool(markers, t)
         }
+
+    /// 描画用の MapSnapshot（壁セル判定に使う）。BoardSnapshot.fromScene と同じ射影。
+    def mapSnapshot(scene: Scene[NodeTag]): MapSnapshot =
+        let layer     = MapScene.getMapLayer(scene);
+        let mapGlobal = Scene.globalPositionAt(MapScene.mapPath(), scene);
+        let placements = MapScene.getPlacements(scene);
+        MapScene.snapshotOf(layer, mapGlobal, placements)
+
+    /// 青ベタ塗りバンド群の中から「歩ける床セル」だけを行ごとの横ラン（1 セル高の矩形）に
+    /// まとめて返す。これを黒で重ね描きすると、壁セル（内壁・柱・外周）が青のまま残る。
+    def floorRunsIn(bands: List[GridRect], m: MapSnapshot): List[GridRect] =
+        List.flatMap(b -> bandFloorRuns(b, m), bands)
+
+    def bandFloorRuns(band: GridRect, m: MapSnapshot): List[GridRect] =
+        List.flatMap(y -> rowFloorRuns(band#x0, band#x1, y, m), List.range(band#y0, band#y1))
+
+    /// 行 y の x0..x1（排他）を走査し、連続する床セルを 1 本の横ランにまとめる。
+    def rowFloorRuns(x0: Int32, x1: Int32, y: Int32, m: MapSnapshot): List[GridRect] =
+        let step = (acc, x) -> {
+            let (runs, cur) = acc;
+            let isF = MapSnapshot.isFloor(({x = x, y = y}: {x = Int32, y = Int32}), m);
+            match (cur, isF) {
+                case (None,    true)  => (runs, Some(x))
+                case (Some(_), true)  => (runs, cur)
+                case (Some(s), false) => (closeRun(s, x, y) :: runs, None)
+                case (None,    false) => (runs, None)
+            }
+        };
+        let (runs, cur) = List.foldLeft(step, ((Nil, None): (List[GridRect], Option[Int32])),
+                                        List.range(x0, x1));
+        match cur {
+            case Some(s) => closeRun(s, x1, y) :: runs
+            case None    => runs
+        }
+
+    /// 床ラン [s, e)（行 y, 高さ 1）を GridRect 化する。
+    def closeRun(s: Int32, e: Int32, y: Int32): GridRect =
+        ({x0 = s, y0 = y, x1 = e, y1 = y + 1}: GridRect)
 
     /// 表示すべきマーカー（セル + 色）一覧。プレイヤー（非 hidden、リーダーは別色）+ 発見済み
     /// 階段 + 訪問済み部屋内のアイテム。
@@ -265,6 +326,8 @@ mod MinimapScene {
             if (i >= used) hideRoom(i, acc) else acc,
             withActive, List.range(0, roomPoolSize()))
 
+    /// 壁/構造の青ベタ塗り（モジュール床 bbox。内壁・柱もここに含まれて青く残る）。
+    /// 歩ける床はこの上に黒で重ねてくり抜く（`drawFloorPool`）。
     def setRoomRect(i: Int32, r: GridRect, t: Fit, scene: Scene[NodeTag]): Scene[NodeTag] =
         let pr = mapRect(r, t);
         Scene.mapEngineNode(roomChildPath(i),
@@ -277,6 +340,32 @@ mod MinimapScene {
 
     def hideRoom(i: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(roomChildPath(i),
+            n -> EngineNode.mapColorRect(c -> CanvasItem.setVisible(false, c), n), scene)
+
+    /// 歩ける床ランを黒くり抜きプール（Floor_i）に割り当てる。先頭 used 個を配置、残りは非表示。
+    def drawFloorPool(runs: List[GridRect], t: Fit, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let used = List.length(runs);
+        let withActive =
+            List.foldLeft((acc, entry) -> {
+                let (i, r) = entry;
+                if (i < floorPoolSize()) setFloorRect(i, r, t, acc) else acc
+            }, scene, List.zipWithIndex(runs));
+        List.foldLeft((acc, i) ->
+            if (i >= used) hideFloor(i, acc) else acc,
+            withActive, List.range(0, floorPoolSize()))
+
+    def setFloorRect(i: Int32, r: GridRect, t: Fit, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let pr = mapRect(r, t);
+        Scene.mapEngineNode(floorChildPath(i),
+            n -> EngineNode.mapColorRect(c ->
+                c |> ColorRect.setSize(pr#size)
+                  |> Node2D.setPosition(pr#pos)
+                  |> CanvasItem.setModulate(floorColor())
+                  |> CanvasItem.setVisible(true), n),
+            scene)
+
+    def hideFloor(i: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(floorChildPath(i),
             n -> EngineNode.mapColorRect(c -> CanvasItem.setVisible(false, c), n), scene)
 
     /// マーカーをマーカープールに割り当てる（先頭 used 個を配置・表示、残りは非表示）。
@@ -316,7 +405,9 @@ mod MinimapScene {
     def hideAll(scene: Scene[NodeTag]): Scene[NodeTag] =
         let withRooms =
             List.foldLeft((acc, i) -> hideRoom(i, acc), scene, List.range(0, roomPoolSize()));
-        List.foldLeft((acc, i) -> hideMarker(i, acc), withRooms, List.range(0, markerPoolSize()))
+        let withFloors =
+            List.foldLeft((acc, i) -> hideFloor(i, acc), withRooms, List.range(0, floorPoolSize()));
+        List.foldLeft((acc, i) -> hideMarker(i, acc), withFloors, List.range(0, markerPoolSize()))
 
     /// 今フレームに非 hidden ユニットが居る module idx の集合（module 外セルは無視）。
     /// 引数は開いた行多相なので `PlayerScene.Data`（gridPos/hidden を含む）をそのまま渡せる。
@@ -437,13 +528,16 @@ mod MinimapScene {
         aMinX < bMaxX and aMaxX > bMinX and aMinY < bMaxY and aMaxY > bMinY
 
     /// 描画対象 module（訪問済み ＋ 出口ヒント通路）の moduleRect リスト（壁リング込み）。
+    /// 青ベタ塗りは壁リング込みの bbox（`FogScene.moduleRect`）を使う。床だけの bbox では
+    /// 通路（1 幅の床）に脇壁が無く全部黒く抜けてしまうため、壁リングまで青で覆ってから
+    /// 歩ける床セルを黒くくり抜く（通路にも青い脇壁が残る）。
     pub def displayedModuleRects(visited: Set[Int32],
                                   placements: List[DungeonComposer.ModulePlacement],
                                   roomCount: Int32): List[GridRect] =
         let display = Set.union(visited, corridorHints(visited, placements, roomCount));
         placements
             |> List.filter(p -> Set.memberOf(p#idx, display))
-            |> List.map(floorRect)
+            |> List.map(FogScene.moduleRect)
 
     /// モジュールの「床のみ」矩形（壁リング edgePad を含めない）。
     /// 通路・部屋の床は doorway で接するので、これでもおおむね繋がって見える。

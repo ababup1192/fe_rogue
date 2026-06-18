@@ -238,8 +238,14 @@ mod SceneLoader {
                          map: Map[String, Util.Json.Json],
                          scene: Scene[t]):
                          Result[Util.Json.JsonError, Scene[t]] \ {GameEngine.Game, Fs.FileRead} =
+        // rect 省略時は画面 viewport (design rect) を基準にする＝CanvasLayer 直下などで
+        // 「画面の右下からの相対位置」を anchor で表現できるようにする。
+        let viewport = GameEngine.Game.getViewportRect();
         let parsed = forM (
-            rect       <- parseRect(map);
+            rect       <- (match Map.get("rect", map) {
+                              case Some(_) => parseRect(map)
+                              case None    => Ok(viewport)
+                          });
             layoutJson <- (JsonCompat.getAtKey(Root, "layout", map): Result[Util.Json.JsonError, Util.Json.Json]);
             layout     <- Layout.fromJson(layoutJson)
         ) yield (rect, layout);
@@ -1477,6 +1483,8 @@ mod SceneLoader {
                     badgeTextColorOpt <- parseColorOpt("badgeTextColor", map);
                     selHighlightOpt  <- parseHighlightAt("selectedHighlight", map);
                     rowHighlightOpt  <- parseHighlightAt("rowHighlight", map);
+                    iconBgOpt        <- parseHighlightAt("iconBackground", map);
+                    iconBgPadOpt     <- (JsonCompat.getAtKeyOpt(Root, "iconBgPad", map): Result[Util.Json.JsonError, Option[Float64]]);
                     itemAlignmentOpt <- parseItemAlignmentOpt("itemAlignment", map);
                     visibleOpt      <- (JsonCompat.getAtKeyOpt(Root, "visible", map): Result[Util.Json.JsonError, Option[Bool]]);
                     zIndexOpt       <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[Util.Json.JsonError, Option[Int32]]);
@@ -1503,6 +1511,8 @@ mod SceneLoader {
                         |> applyOpt(badgeTextColorOpt, ItemList.setBadgeTextColor)
                         |> applyOpt(selHighlightOpt, ItemList.setSelectedHighlight)
                         |> applyOpt(rowHighlightOpt, ItemList.setRowHighlight)
+                        |> applyOpt(iconBgOpt, ItemList.setIconBg)
+                        |> applyOpt(iconBgPadOpt, ItemList.setIconBgPad)
                         |> applyOpt(itemAlignmentOpt, ItemList.setItemAlignment)
                         |> applyOpt(visibleOpt, setItemListVisible)
                         |> applyOpt(zIndexOpt, setItemListZIndex)

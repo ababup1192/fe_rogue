@@ -40,6 +40,7 @@ mod RenderFont {
         List.range(0xFF01, 0xFF01 + 94) :::  // 全角 ASCII
         List.range(0x3000, 0x3000 + 160) ::: // CJK 記号 + ひらがな
         List.range(0x30A0, 0x30A0 + 96) :::  // カタカナ
+        (0x25B2 :: 0x25BC :: 0x25C0 :: 0x25B6 :: Nil) ::: // ▲▼◀▶（UI 矢印/三角。MPLUSU は ←→ 等の矢印グリフを持たないため幾何学三角で代用）
         kanjiCodepoints()                    // 漢字 + UI 記号
 
     /// シェルフパッキングの進行状態。

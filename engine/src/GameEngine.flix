@@ -32,6 +32,8 @@ mod GameEngine {
     /// windowWidth / windowHeight:
     ///   起動時の OS ウィンドウサイズ（ピクセル）。design とは独立して指定でき、
     ///   `Stretch Mode = canvas_items` 風に design 側がウィンドウいっぱいに描画される。
+    ///   project.json に任意キー `windowScale`(>0) があると、ProjectLoader が
+    ///   window = design × scale を計算してこの値を上書きする（アスペクト維持で拡大）。
     /// maxDeltaTime:
     ///   getDeltaTime が返す値の上限（秒）。初回フレームのウィンドウ初期化遅延や
     ///   フォーカス復帰時の巨大 dt による物理破綻（tunneling 等）を防ぐ。

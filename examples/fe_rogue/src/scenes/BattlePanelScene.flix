@@ -1,167 +1,291 @@
-/// BattlePanelScene — 攻撃前の戦闘予報パネル
+/// BattlePanelScene — 攻撃前の戦闘予報ミニウィンドウ
 ///
-/// `AttackForecast` フェーズで右上に表示される。武器を選んだ瞬間に
-/// 「攻撃側（味方）」と「防御側（敵）」の HP / 威力 / 命中 を Combat.forecast から
-/// 算出して並べて見せる。Z で攻撃を実行、X/Escape で武器選択に戻る。
+/// `WeaponSelect`（武器選択）/ `PlayerAttack`（ターゲット選択）フェーズで、
+/// 「命中 / 必殺 / 武器相性（すくみ）の矢印」だけを並べた小さなウィンドウを出す。
+/// 攻撃側（味方・青）と反撃側（敵・赤）の 2 行構成で、丸（●）と三角（▲▼）は文字でなく
+/// Polygon2D ノードで描く（色は HTML プロトタイプ準拠）。
 ///
-/// ノード構造（visible のとき）:
-///   BattlePanel (CanvasLayer, layer=3)
-///     └─ panel (Panel, NodeTag.BattlePanel)
-///           └─ text (Label2D, NodeTag.BattleText)
+/// **画面空間（CanvasLayer）** に置く。World 空間に置くと camera zoom 下で engine の
+/// Label2D が字送り（位置）をズームせず文字が散らばって枠から溢れるため。
+/// 「攻撃側・対象に被らない」配置は、対象ユニットのワールド座標を `Camera2D` の
+/// ViewTransform で画面座標へ写し（`reposition`）、対象から見て攻撃側と反対側へ panel を
+/// 毎フレーム移動して実現する（盤面追従だが描画は画面空間）。
+///
+/// 各行は「命中/必殺ラベル・数値・%」を別ラベルに分けて、HTML プロトタイプ同様に
+/// **ラベル/%は小さく薄く、数値は大きく、必殺系は黄色**で描く（1 ラベルだと色/サイズを
+/// 出し分けられないため）。配置は実測幅で左から詰める。
+///
+/// ノード構造（CanvasLayer・永続。可視性は process がフェーズで切り替える）:
+///   BattleForecast (CanvasLayer, layer=3, NodeTag.BattlePanel)   ← scene.json
+///     └─ panel (Panel)        … 角丸の枠（bg 兼 子の親。毎フレーム対象近傍へ移動）
+///          ├─ aDot (Polygon2D)             攻撃側マーカー（青丸）
+///          ├─ aHitLbl/aHitNum/aHitPct      "命中" + 数値 + "%"
+///          ├─ aCritLbl/aCritNum/aCritPct   "必殺" + 数値 + "%"（黄）
+///          ├─ aTri (Polygon2D)             攻撃側の相性矢印（▲緑 / ▼桃 / 中立は非表示）
+///          ├─ dDot (Polygon2D)             反撃側マーカー（赤丸）
+///          ├─ dHitLbl/dHitNum/dHitPct      "反撃" + 数値 + "%"（反撃不可は "反撃 --"）
+///          ├─ dCritLbl/dCritNum/dCritPct   "必殺" + 数値 + "%"（黄）
+///          └─ dTri (Polygon2D)             反撃側の相性矢印
 mod BattlePanelScene {
 
-    use JsonCompat.PathTag.Root
+    // ────────────────────────────────────────────────────────
+    // (B) 定数 — ノード名 / パス
+    // ────────────────────────────────────────────────────────
 
     def sceneJsonPath(): String = AssetPath.resolve("src/scenes/BattlePanelScene.scene.json")
 
     /// fontManifest で登録した name と一致させる（LogScene / WeaponMenuScene と同じ "ui"）
     def fontName(): String = "ui"
 
-    def rootName(): String = "BattlePanel"
-    pub def panelName(): String = "panel"
-    // Container はロード時 directive なので、子ノードは論理的な VBox を構成しても
-    // 実際は CanvasLayer 直下 (root::名前) にフラットに並ぶ。
-    // 各カラムは HP 行だけ独立ラベル（点滅・グレー用）。味方側は威力(leftPower)と命中(leftHit)を
-    // 別ラベルに分け（苦手なら両方を青字にするため）、敵側 rightRest は威力/命中の 2 行をまとめて持つ。
-    def topBgName(): String       = "topBg"
-    def pWeaponName(): String     = "playerWeaponText"
-    def leftBgName(): String      = "leftBg"
-    def leftHpName(): String      = "leftHp"
-    def leftPowerName(): String   = "leftPower"
-    def leftHitName(): String    = "leftHit"
-    def leftCritName(): String   = "leftCrit"
-    def centerBgName(): String    = "centerBg"
-    def centerHpName(): String    = "centerHp"
-    def centerRestName(): String  = "centerRest"
-    def rightBgName(): String     = "rightBg"
-    def rightHpName(): String     = "rightHp"
-    def rightRestName(): String   = "rightRest"
-    def botBgName(): String       = "botBg"
-    def eWeaponName(): String     = "enemyWeaponText"
+    def rootName(): String  = "BattleForecast"
+    def panelName(): String = "panel"
+    def aDotName(): String     = "aDot"
+    def aHitLblName(): String  = "aHitLbl"
+    def aHitNumName(): String  = "aHitNum"
+    def aHitPctName(): String  = "aHitPct"
+    def aCritLblName(): String = "aCritLbl"
+    def aCritNumName(): String = "aCritNum"
+    def aCritPctName(): String = "aCritPct"
+    def aTriName(): String     = "aTri"
+    def dDotName(): String     = "dDot"
+    def dHitLblName(): String  = "dHitLbl"
+    def dHitNumName(): String  = "dHitNum"
+    def dHitPctName(): String  = "dHitPct"
+    def dCritLblName(): String = "dCritLbl"
+    def dCritNumName(): String = "dCritNum"
+    def dCritPctName(): String = "dCritPct"
+    def dTriName(): String     = "dTri"
 
-    pub def rootPath(): NodePath  = rootName() :: Nil
-    pub def panelPath(): NodePath = rootName() :: panelName() :: Nil
-    def topBgPath(): NodePath      = rootName() :: topBgName()      :: Nil
-    def pWeaponPath(): NodePath    = rootName() :: pWeaponName()    :: Nil
-    def leftBgPath(): NodePath     = rootName() :: leftBgName()     :: Nil
-    def leftHpPath(): NodePath     = rootName() :: leftHpName()     :: Nil
-    def leftPowerPath(): NodePath  = rootName() :: leftPowerName()  :: Nil
-    def leftHitPath(): NodePath   = rootName() :: leftHitName()   :: Nil
-    def leftCritPath(): NodePath  = rootName() :: leftCritName()  :: Nil
-    def centerBgPath(): NodePath   = rootName() :: centerBgName()   :: Nil
-    def centerHpPath(): NodePath   = rootName() :: centerHpName()   :: Nil
-    def centerRestPath(): NodePath = rootName() :: centerRestName() :: Nil
-    def rightBgPath(): NodePath    = rootName() :: rightBgName()    :: Nil
-    def rightHpPath(): NodePath    = rootName() :: rightHpName()    :: Nil
-    def rightRestPath(): NodePath  = rootName() :: rightRestName()  :: Nil
-    def botBgPath(): NodePath      = rootName() :: botBgName()      :: Nil
-    def eWeaponPath(): NodePath    = rootName() :: eWeaponName()    :: Nil
+    /// CanvasLayer ルートの NodePath（dispatch 対象 / 状態タグの置き場）。
+    pub def rootPath(): NodePath = rootName() :: Nil
+    /// 枠 Panel（bg 兼 子の親）。毎フレーム移動・リサイズする対象。
+    def panelPath(): NodePath = rootName() :: panelName() :: Nil
+    /// 丸/ラベル/三角は panel の子。panel を動かせば一緒に動く。
+    def childPath(name: String): NodePath = rootName() :: panelName() :: name :: Nil
 
-    /// scene.json 内の "tag" 文字列 → NodeTag への変換
-    def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
-        match opt {
-            case None                  => Ok(NodeTag.NoTag)
-            case Some("NoTag")         => Ok(NodeTag.NoTag)
-            case Some("BattlePanel") => Ok(NodeTag.BattlePanel(Duration.zero()))
-            case Some("BattleText")  => Ok(NodeTag.BattleText)
-            case Some(unknown)         =>
-                Err(JsonCompat.jsonError(Root, Set#{"BattlePanelScene tag (got: ${unknown})"}))
-        }
+    // ────────────────────────────────────────────────────────
+    // (B') 定数 — レイアウト（design px。CanvasLayer なのでズーム非適用＝そのまま画面 px）
+    // ────────────────────────────────────────────────────────
 
-    /// `GameEngine.Game`（フォントアトラス取得）と `Fs.FileRead`（scene.json ロード）の
-    /// 両 effect を要求する。フォントは `fontManifest` の `fontName()` で登録済みの atlas を使う。
+    def winH(): Float64 = 12.0
+    /// 命中/反撃/必殺ラベル・% の小さめフォント（薄色）。一回り小さめ。
+    def labelFont(): Float64 = 2.3
+    /// 数値（命中値・必殺値）の大きめフォント。
+    def numFont(): Float64 = 3.6
+    /// 行マーカー（丸）の半径（直径 ≈ 4px 相当の小さめ）。
+    def dotRadius(): Float64 = 0.4
+    /// 相性三角の半幅 / 半高。
+    def triHalfW(): Float64 = 1.5
+    def triHalfH(): Float64 = 1.3
+    /// 列のすき間（ラベル↔数値 / 数値↔% / グループ↔グループ / 三角前）。
+    def segGap(): Float64 = 0.5
+    def pctGap(): Float64 = 0.3
+    def groupGap(): Float64 = 2.2
+    def triGap(): Float64 = 2.0
+    /// ウィンドウ右端の余白。
+    def padRight(): Float64 = 3.0
+    /// 文字の縦オフセット（design px）。正で丸中心より上、負で下。
+    /// 以前は 0.6（上寄り）だったが、参考に合わせて少し下げる。
+    def textNudge(): Float64 = 0.25
+
+    /// 各要素の x（左基準）/ 行中心 y。x とウィンドウ幅は毎フレーム process が実測で決める。
+    def dotX(): Float64  = 3.5
+    def hitX(): Float64  = 6.0
+    def triXInit(): Float64 = 40.0
+    def row1CenterY(): Float64 = 3.6
+    def row2CenterY(): Float64 = 8.4
+
+    /// 子（丸・ラベル・三角）の zIndex。枠 Panel（scene.json で 0）より前面に出す。
+    def contentZIndex(): Int32 = 1
+
+    // ────────────────────────────────────────────────────────
+    // (B'') 定数 — 配色（HTML プロトタイプ準拠。bg/枠色は scene.json 側）
+    // ────────────────────────────────────────────────────────
+
+    /// 反撃側マーカーの赤 #e0463f。
+    def enemyDotColor(): Color = {r = 0.878f32, g = 0.275f32, b = 0.247f32}
+    /// 命中/反撃ラベル・% の薄い青灰（#7d8aa3 ＝ UITheme.faint）。
+    def faintColor(): Color = UITheme.faint()
+    /// 命中値・反撃値（数値）= 白。
+    def numColor(): Color = UITheme.white()
+    /// 必殺系（ラベル・数値・%）の黄 #f5c542。
+    def critColor(): Color = {r = 0.961f32, g = 0.773f32, b = 0.259f32}
+    /// 有利（▲）の緑 #7fe08a。
+    def advantageColor(): Color = {r = 0.498f32, g = 0.878f32, b = 0.541f32}
+    /// 不利（▼）の桃赤 #ff9a90。
+    def disadvantageColor(): Color = {r = 1.0f32, g = 0.604f32, b = 0.565f32}
+
+    // ────────────────────────────────────────────────────────
+    // (C) 構築 — add
+    // ────────────────────────────────────────────────────────
+
+    /// CanvasLayer + panel（枠）を scene.json から読み、panel 配下に丸・ラベル・三角を生やす。
+    /// 初期は全子ノードを非表示にし、`process` がフェーズと対象に応じて表示・更新する。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
-        SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas, tagParser, scene)
+        SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas,
+                                      SceneLoader.constTagParser(NodeTag.NoTag), scene)
+            |> Scene.setState(rootPath(), NodeTag.BattlePanel(Duration.zero()))
+            |> addDot(aDotName(), row1CenterY(), UITheme.allyBlue())
+            |> addDot(dDotName(), row2CenterY(), enemyDotColor())
+            // 攻撃側の行（命中ラベル/値/% ＋ 必殺ラベル/値/%）
+            // 攻撃側の行（ラベル/% は薄色、数値は白）
+            |> addLabel(aHitLblName(),  atlas, labelFont(), faintColor(), row1CenterY())
+            |> addLabel(aHitNumName(),  atlas, numFont(),   numColor(),   row1CenterY())
+            |> addLabel(aHitPctName(),  atlas, labelFont(), faintColor(), row1CenterY())
+            // 必殺は「命中」ラベルと同じ font / 色（薄色）に揃える。数値だけ黄で目立たせる。
+            |> addLabel(aCritLblName(), atlas, labelFont(), faintColor(), row1CenterY())
+            |> addLabel(aCritNumName(), atlas, numFont(),   critColor(),  row1CenterY())
+            |> addLabel(aCritPctName(), atlas, labelFont(), faintColor(), row1CenterY())
+            // 反撃側の行
+            |> addLabel(dHitLblName(),  atlas, labelFont(), faintColor(), row2CenterY())
+            |> addLabel(dHitNumName(),  atlas, numFont(),   numColor(),   row2CenterY())
+            |> addLabel(dHitPctName(),  atlas, labelFont(), faintColor(), row2CenterY())
+            |> addLabel(dCritLblName(), atlas, labelFont(), faintColor(), row2CenterY())
+            |> addLabel(dCritNumName(), atlas, numFont(),   critColor(),  row2CenterY())
+            |> addLabel(dCritPctName(), atlas, labelFont(), faintColor(), row2CenterY())
+            |> addTri(aTriName(), row1CenterY())
+            |> addTri(dTriName(), row2CenterY())
+            |> setAllVisible(false)
 
-    /// 現フェーズに応じて Panel と Label2D の visible を切り替える（Push モデル）。
-    /// Label2D の visible も Panel と一緒に切り替えるのは、Label2D 自体は描画パス上
-    /// 親の可視性を見ない実装で、`visible=true` のまま放置すると非表示中もテキストが
-    /// 描画されてしまうため。
-    pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
-        // 戦闘予測 = ターゲット選択フェーズ(PlayerAttack)。カーソルで敵を選ぶ間ずっと表示する。
-        let visible = phase == TurnPhase.Phase.PlayerAttack;
-        scene
-            |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
-            |> setBgVisible(topBgPath(), visible)
-            |> setBgVisible(leftBgPath(), visible)
-            |> setBgVisible(centerBgPath(), visible)
-            |> setBgVisible(rightBgPath(), visible)
-            |> setBgVisible(botBgPath(), visible)
-            |> Label2D.mapAt(pWeaponPath(), CanvasItem.setVisible(visible))
-            |> Label2D.mapAt(leftHpPath(), CanvasItem.setVisible(visible))
-            |> Label2D.mapAt(leftPowerPath(), CanvasItem.setVisible(visible))
-            |> Label2D.mapAt(leftHitPath(), CanvasItem.setVisible(visible))
-            |> Label2D.mapAt(leftCritPath(), CanvasItem.setVisible(visible))
-            |> Label2D.mapAt(centerHpPath(), CanvasItem.setVisible(visible))
-            |> Label2D.mapAt(centerRestPath(), CanvasItem.setVisible(visible))
-            |> Label2D.mapAt(rightHpPath(), CanvasItem.setVisible(visible))
-            |> Label2D.mapAt(rightRestPath(), CanvasItem.setVisible(visible))
-            |> Label2D.mapAt(eWeaponPath(), CanvasItem.setVisible(visible))
+    /// 行マーカー（丸）を Polygon2D で panel の子に追加する。
+    def addDot(name: String, centerY: Float64, color: Color,
+               scene: Scene[NodeTag]): Scene[NodeTag] =
+        let dot = Polygon2D.circle(dotRadius(), color)
+            |> Node2D.setPosition(({x = dotX(), y = centerY}: Vec2.Vec2))
+            |> CanvasItem.setZIndex(contentZIndex());
+        Scene.addChildAt(panelPath(), name,
+            EngineNode.Polygon2DWithState(dot, NodeTag.NoTag), scene)
 
-    /// ColorRect には型付き `mapAt` が無いため、`Scene.mapEngineNode` + `EngineNode.mapColorRect`
-    /// を経由して可視性を変える。
-    def setBgVisible(path: NodePath, visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(path,
-            en -> EngineNode.mapColorRect(rect -> CanvasItem.setVisible(visible, rect), en), scene)
+    /// ラベル（1 セグメント）を panel の子に追加する。テキストは空で生成し、process で `setText`。
+    /// 縦は丸の中心に合わせるため VerticalAlignment.Center（フォントが違っても同じ行に揃う）。
+    def addLabel(name: String, atlas: FontAtlas, font: Float64, color: Color, centerY: Float64,
+                 scene: Scene[NodeTag]): Scene[NodeTag] =
+        let label = Label2D.make("", atlas, font)
+            |> Node2D.setPosition(({x = hitX(), y = centerY - textNudge()}: Vec2.Vec2))
+            |> Label2D.setHorizontalAlignment(HorizontalAlignment.Left)
+            |> Label2D.setVerticalAlignment(VerticalAlignment.Center)
+            |> CanvasItem.setModulate(color)
+            |> CanvasItem.setZIndex(contentZIndex());
+        Scene.addChildAt(panelPath(), name,
+            EngineNode.Label2DWithState(label, NodeTag.NoTag), scene)
 
-    /// `Game.flix` の `Node[NodeTag] instance` の `process` redef から dispatch される。
-    /// BattlePanel ノードはシーン内に 1 個だけなので 1 フレームにつき 1 回だけ呼ばれる。
-    /// 自走モデルなので外部 (WeaponMenu 等) からテキスト更新を push する必要はない。
-    /// phase に応じて Panel + Label2D の visible を再評価し、AttackForecast フェーズ中は
-    /// 選択中プレイヤー / 武器 / 攻撃対象から予報テキストを毎フレーム再構築する。
+    /// 相性三角を Polygon2D で panel の子に追加する（頂点・色・可視・x は process で確定）。
+    def addTri(name: String, centerY: Float64, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let tri = Polygon2D.make(triUpPoints(), advantageColor())
+            |> Node2D.setPosition(({x = triXInit(), y = centerY}: Vec2.Vec2))
+            |> CanvasItem.setZIndex(contentZIndex());
+        Scene.addChildAt(panelPath(), name,
+            EngineNode.Polygon2DWithState(tri, NodeTag.NoTag), scene)
+
+    /// 上向き三角（▲ = 有利）の頂点列（局所座標）。
+    def triUpPoints(): List[Vec2.Vec2] =
+        ({x = 0.0,              y = 0.0 - triHalfH()}: Vec2.Vec2) ::
+        ({x = 0.0 - triHalfW(), y = triHalfH()}: Vec2.Vec2) ::
+        ({x = triHalfW(),       y = triHalfH()}: Vec2.Vec2) :: Nil
+
+    /// 下向き三角（▼ = 不利）の頂点列（局所座標）。
+    def triDownPoints(): List[Vec2.Vec2] =
+        ({x = 0.0,              y = triHalfH()}: Vec2.Vec2) ::
+        ({x = 0.0 - triHalfW(), y = 0.0 - triHalfH()}: Vec2.Vec2) ::
+        ({x = triHalfW(),       y = 0.0 - triHalfH()}: Vec2.Vec2) :: Nil
+
+    // ────────────────────────────────────────────────────────
+    // (D) ロジック — process
+    // ────────────────────────────────────────────────────────
+
+    /// `Game.flix` の `process` redef から `BattlePanel` タグの CanvasLayer に dispatch される。
+    /// 予報を出すのは 2 フェーズ:
+    ///   - WeaponSelect : 武器選択中。カーソルが乗っている対象の敵 × カーソル中の武器で予報
+    ///                    （WeaponSelectScene がカーソルを対象の敵へスナップする）
+    ///   - PlayerAttack : 赤マスで敵を選択中。カーソル上の敵 × 装備武器で予報
+    /// それ以外のフェーズや対象が居ないときはウィンドウを隠し、足元 HP バー予測も消す。
+    /// `GameEngine.Game` は viewport / カメラ ViewTransform 取得（対象ワールド座標→画面座標）に使う。
     pub def process(delta: Duration.Duration,
                      node: EngineNode[NodeTag],
                      _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {TurnPhase.State, SelectedPlayer.State,
+                    \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
                        PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        let phase = TurnPhase.State.get();
-        // 点滅タイマーを BattlePanel タグから取り出して進める（タグへの書き戻しは writeElapsed）。
-        let elapsed = match Scene.getState(panelPath(), scene) {
-            case Some(NodeTag.BattlePanel(e)) => e
-            case _                            => Duration.zero()
+        let phase  = TurnPhase.State.get();
+        let synced = syncTargetToCursor(phase, scene);
+        // 「減る分」の暗⇄明点滅サイクルを進める。state の Duration を delta で進め、
+        // dark フラグ（前半=暗 / 後半=明）を足元 HP バー予測に渡す。
+        let prevElapsed = match node {
+            case EngineNode.CanvasLayerWithState(_, NodeTag.BattlePanel(d)) => d
+            case _                                                          => Duration.zero()
         };
-        let newElapsed = advanceBlink(Duration.add(elapsed, delta));
-        let synced     = syncTargetToCursor(phase, scene);
-        let visible    = applyVisibility(phase, synced);
-        // 予測に使う武器は「攻撃中の武器選択リストでアクティブな武器」(= カーソル上の敵に
-        // 届く選択武器)。武器を上下で切り替えるたびに予測も切り替わる。
-        let selWeapon  = selectedAttackWeapon(synced);
-        let forecasted = applyForecast(phase, newElapsed, selWeapon, visible);
-        let next       = writeElapsed(newElapsed, forecasted);
-        match Scene.getEngineNode(panelPath(), next) {
-            case Some(latest) => (latest, next)
-            case None         => (node, next)
+        let elapsed = Duration.add(prevElapsed, delta);
+        let dark    = blinkDark(elapsed);
+        let node2   = match node {
+            case EngineNode.CanvasLayerWithState(layer, NodeTag.BattlePanel(_)) =>
+                EngineNode.CanvasLayerWithState(layer, NodeTag.BattlePanel(elapsed))
+            case other => other
+        };
+        match buildForecast(phase, synced) {
+            case Some(view) =>
+                let textd = synced |> setAllVisible(true) |> updateContent(view);
+                // 各行を実測幅で左から詰め、三角は広い方の行末に合わせて同じ x に置く。
+                let (aEnd, sA) = layoutRow(aHitLblName(), aHitNumName(), aHitPctName(),
+                                           aCritLblName(), aCritNumName(), aCritPctName(),
+                                           true, row1CenterY(), textd);
+                let (dEnd, sD) = layoutRow(dHitLblName(), dHitNumName(), dHitPctName(),
+                                           dCritLblName(), dCritNumName(), dCritPctName(),
+                                           view#counter, row2CenterY(), sA);
+                let triCx    = Float64.max(aEnd, dEnd) + triGap() + triHalfW();
+                let contentW = triCx + triHalfW() + padRight();
+                let shown = sD
+                    |> setNodeX(childPath(aTriName()), triCx, row1CenterY())
+                    |> setNodeX(childPath(dTriName()), triCx, row2CenterY())
+                    |> resizeBg(contentW)
+                    |> reposition(view, contentW)
+                    |> applyHpBarForecast(view, dark);
+                (node2, shown)
+            case None =>
+                let hidden = synced
+                    |> setAllVisible(false)
+                    |> clearAllHpForecasts;
+                (node2, hidden)
         }
 
-    /// 点滅サイクル長。前半は戦闘後HP(灰)、後半は現在HP(白) を見せる。
-    def blinkCycle(): Duration.Duration = Duration.seconds(1.6)
+    /// 「減る分」点滅の暗フレーム判定。周期 `blinkPeriodSec()` 秒の前半を暗（dark=true）、
+    /// 後半を明（dark=false）にする。`elapsed` は process が delta で進めるサイクル累積時間。
+    def blinkPeriodSec(): Float64 = 1.0
+    def blinkDark(elapsed: Duration.Duration): Bool =
+        let s = Duration.toSeconds(elapsed);
+        let p = blinkPeriodSec();
+        let inCycle = s - p * Float64.floor(s / p);
+        inCycle < p / 2.0
 
-    /// `elapsed` をサイクル長で巻き戻す（dt はサイクル未満前提で 1 回引き算）。
-    def advanceBlink(e: Duration.Duration): Duration.Duration =
-        if (Duration.toSeconds(e) >= Duration.toSeconds(blinkCycle()))
-            Duration.sub(e, blinkCycle())
-        else e
+    /// 1 行（命中/必殺グループ）を実測幅で左から詰め、行末 x を返す。
+    /// 反撃なし（hasCrit=false）の行は命中グループだけ置く（"反撃 --"）。
+    def layoutRow(hitLbl: String, hitNum: String, hitPct: String,
+                  critLbl: String, critNum: String, critPct: String,
+                  hasCrit: Bool, centerY: Float64,
+                  scene: Scene[NodeTag]): (Float64, Scene[NodeTag]) =
+        let y = centerY - textNudge();
+        let (x1, s1) = placeSeg(hitLbl, hitX(), y, scene);
+        let (x2, s2) = placeSeg(hitNum, x1 + segGap(), y, s1);
+        let (x3, s3) = placeSeg(hitPct, x2 + pctGap(), y, s2);
+        if (hasCrit) {
+            let (x4, s4) = placeSeg(critLbl, x3 + groupGap(), y, s3);
+            let (x5, s5) = placeSeg(critNum, x4 + segGap(), y, s4);
+            placeSeg(critPct, x5 + pctGap(), y, s5)
+        } else (x3, s3)
 
-    /// サイクル前半なら戦闘後HP(灰)を見せる。
-    def blinkShowsDamaged(elapsed: Duration.Duration): Bool =
-        Duration.toSeconds(elapsed) < Duration.toSeconds(blinkCycle()) / 2.0
+    /// セグメントを x（左）/ y に置き、実測幅を足した右端 x を返す。
+    def placeSeg(name: String, x: Float64, y: Float64,
+                 scene: Scene[NodeTag]): (Float64, Scene[NodeTag]) =
+        let w = measureWidthAt(childPath(name), scene);
+        (x + w, setNodeX(childPath(name), x, y, scene))
 
-    /// 点滅経過時間を `BattlePanel` タグに埋め込んで panel ノードへ書き戻す。
-    /// Scene ツリー内に状態を持つことで、外部の Ref や effect を増やさずに
-    /// 点滅タイマーを自走させられる。
-    def writeElapsed(newElapsed: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(panelPath(), n -> match n {
-            case EngineNode.PanelWithState(p, NodeTag.BattlePanel(_)) =>
-                EngineNode.PanelWithState(p, NodeTag.BattlePanel(newElapsed))
-            case other => other
-        }, scene)
+    /// 枠 Panel を内容幅に合わせてリサイズする（% のはみ出し防止）。
+    def resizeBg(contentW: Float64, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Panel.mapAt(panelPath(),
+            Panel.setSize(({x = contentW, y = winH()}: Vec2.Vec2)), scene)
 
     /// PlayerAttack 中、攻撃対象をカーソル位置の敵に毎フレーム同期する。
-    /// カーソルは `CursorScene.stepTargetCycle` で射程内の敵の上を巡回するので、
-    /// 「今カーソルが乗っている敵」が攻撃対象になり、予報も Z の確定もそれを使う。
-    /// カーソルが敵に乗っていなければ対象をクリアする（予報は空・確定は no-op）。
+    /// カーソルが敵に乗っていなければ対象をクリアする（予報は出ない）。
     def syncTargetToCursor(phase: TurnPhase.Phase, scene: Scene[NodeTag]):
             Scene[NodeTag] \ SelectedPlayer.State =
         if (phase != TurnPhase.Phase.PlayerAttack) scene
@@ -174,59 +298,173 @@ mod BattlePanelScene {
                 }
         }
 
-    /// PlayerAttack(= ターゲット選択 + 戦闘予測)中だけ各 Label2D に予報を書き込む。
-    /// 静的なラベル（武器名・威力/命中・中央ラベル）はそのまま、HP 行は点滅で
-    /// 現在HP(白) ⇄ 戦闘後HP(灰) を切り替える。同フェーズ中は毎フレーム呼ばれる。
-    def applyForecast(phase: TurnPhase.Phase, elapsed: Duration.Duration,
-                       selWeapon: Option[UnitCatalog.WeaponResource], scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State,
-                              PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        if (phase != TurnPhase.Phase.PlayerAttack)
-            // 予報を抜けたら足元 HP バーの予測オーバーレイを消す（パネルは applyVisibility が隠す）。
-            clearAllHpForecasts(scene)
-        else
-            let cols = buildColumns(selWeapon);
-            let showDamaged = blinkShowsDamaged(elapsed);
-            scene
-                |> Label2D.mapAt(pWeaponPath(),    Label2D.setText(cols#pWeapon))
-                |> Label2D.mapAt(eWeaponPath(),    Label2D.setText(cols#eWeapon))
-                // 威力・命中はどちらも苦手武器で 80% に下がる（proficiencyAdjust）。
-                // 苦手のときだけ青字にして「下がっている」と両方で知らせる。
-                |> Label2D.mapAt(leftPowerPath(), lbl -> lbl
-                       |> Label2D.setText(cols#leftPower)
-                       |> CanvasItem.setModulate(
-                            if (cols#playerProficient) powerNormalColor() else powerWeakColor()))
-                |> Label2D.mapAt(leftHitPath(), lbl -> lbl
-                       |> Label2D.setText(cols#leftHit)
-                       |> CanvasItem.setModulate(
-                            if (cols#playerProficient) powerNormalColor() else powerWeakColor()))
-                |> Label2D.mapAt(leftCritPath(), lbl -> lbl
-                       |> Label2D.setText(cols#leftCrit)
-                       |> CanvasItem.setModulate(
-                            if (cols#playerProficient) powerNormalColor() else powerWeakColor()))
-                |> Label2D.mapAt(centerHpPath(),   Label2D.setText(cols#centerHp))
-                |> Label2D.mapAt(centerRestPath(), Label2D.setText(cols#centerRest))
-                |> Label2D.mapAt(rightRestPath(),  Label2D.setText(cols#rightRest))
-                |> applyHpLabel(leftHpPath(),  cols#playerHpCur, cols#playerHpPost, cols#playerTakesDmg, showDamaged)
-                |> applyHpLabel(rightHpPath(), cols#enemyHpCur,  cols#enemyHpPost,  cols#enemyTakesDmg,  showDamaged)
-                // パネルの HP 点滅と同位相で、足元 HP バーの「減る分」を暗色点滅させる。
-                |> applyHpBarForecast(cols, showDamaged)
+    /// 枠 panel を、対象ユニットの**画面座標**の近傍へ移動する。
+    /// 対象 / 攻撃側のワールド座標を camera ViewTransform で画面 px に写し、対象の
+    /// 右 → 上 → 下 の順で「画面内に収まり、かつ攻撃側に被らない」最初の位置を選ぶ。
+    /// 左は常設 UI（コマンド / 武器ウィンドウ）と被るので候補に入れない。
+    /// カメラ未登録時（テスト等）は移動しない。
+    def reposition(view: ForecastView, contentW: Float64,
+                   scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
+        match viewTransform(scene) {
+            case None                 => scene
+            case Some((vt, vpW, vpH)) =>
+                let st   = Camera2D.applyToWorldPos(vt, MapSnapshot.cellCenter(view#targetCell));
+                let sa   = Camera2D.applyToWorldPos(vt, MapSnapshot.cellCenter(view#attackerCell));
+                let half = MapSnapshot.tileSize() / 2.0 * vt#scale#x;  // 半タイルを画面 px に換算
+                let pos  = anchorPos(st, sa, half, contentW, vpW, vpH);
+                Panel.mapAt(panelPath(), Node2D.setPosition(pos), scene)
+        }
 
-    /// 攻撃予報中、攻撃側（味方）と対象（敵）の足元 HP バーに「減る分」の暗色点滅を反映する。
-    /// 毎フレーム全ユニットの予測を一旦消してから対象 2 体へ出し直すので、カーソルが別の敵へ
-    /// 移っても古い予測が残らない。`showDamaged` は BattlePanel の HP 点滅と同位相。
-    def applyHpBarForecast(cols: Forecast, showDamaged: Bool, scene: Scene[NodeTag]):
+    /// アクティブカメラの ViewTransform と viewport(design px) を取る。未登録なら None。
+    def viewTransform(scene: Scene[NodeTag]):
+            Option[(Camera2D.ViewTransform, Float64, Float64)] \ GameEngine.Game =
+        match Scene.getEngineNode(CameraScene.cameraPath(), scene) {
+            case Some(EngineNode.Camera2DWithState(cam, _)) =>
+                let camPos = Scene.globalPositionAt(CameraScene.cameraPath(), scene);
+                let vp = GameEngine.Game.getViewportRect();
+                let vt = Camera2D.getViewTransform(cam, camPos,
+                            {viewportWidth = vp#size#x, viewportHeight = vp#size#y});
+                Some((vt, vp#size#x, vp#size#y))
+            case _ => None
+        }
+
+    /// panel の左上画面座標を決める。対象 `st` の 右 → 上 → 下 を候補にし、
+    /// 「画面内に収まり、攻撃側 `sa` に被らない」最初の候補を採用する（左は常設 UI と
+    /// 被るので候補にしない）。どれも不適なら右候補を画面内へクランプして使う。
+    def anchorPos(st: Vec2.Vec2, sa: Vec2.Vec2, half: Float64, contentW: Float64,
+                  vpW: Float64, vpH: Float64): Vec2.Vec2 =
+        let gap = 4.0;
+        let right = ({x = st#x + half + gap,     y = st#y - winH() / 2.0}: Vec2.Vec2);
+        let above = ({x = st#x - contentW / 2.0, y = st#y - half - gap - winH()}: Vec2.Vec2);
+        let below = ({x = st#x - contentW / 2.0, y = st#y + half + gap}: Vec2.Vec2);
+        let good = c -> fitsOnScreen(c, contentW, vpW, vpH) and not coversPoint(c, contentW, sa);
+        match List.findLeft(good, right :: above :: below :: Nil) {
+            case Some(c) => c
+            case None    => clampToScreen(right, contentW, vpW, vpH)
+        }
+
+    /// panel 矩形（左上 c, サイズ contentW×winH）が画面（design 矩形）内に収まるか。
+    def fitsOnScreen(c: Vec2.Vec2, contentW: Float64, vpW: Float64, vpH: Float64): Bool =
+        let m = 2.0;
+        c#x >= m and c#x + contentW <= vpW - m and c#y >= m and c#y + winH() <= vpH - m
+
+    /// 点 p が panel 矩形（左上 c, サイズ contentW×winH）に含まれるか（攻撃側被り判定）。
+    def coversPoint(c: Vec2.Vec2, contentW: Float64, p: Vec2.Vec2): Bool =
+        p#x >= c#x and p#x <= c#x + contentW and p#y >= c#y and p#y <= c#y + winH()
+
+    /// 画面（design 矩形）からはみ出さないよう左上座標をクランプする。
+    def clampToScreen(p: Vec2.Vec2, contentW: Float64, vpW: Float64, vpH: Float64): Vec2.Vec2 =
+        let m = 2.0;
+        let maxX = Float64.max(m, vpW - contentW - m);
+        let maxY = Float64.max(m, vpH - winH() - m);
+        {x = p#x |> Float64.max(m) |> Float64.min(maxX),
+         y = p#y |> Float64.max(m) |> Float64.min(maxY)}
+
+    /// 各ラベルのテキストと三角（相性矢印）を予報から確定する。色・フォントは add で固定済み。
+    /// 反撃が無いときは反撃数値を "--"、% と必殺グループを空にして矢印も消す。
+    def updateContent(view: ForecastView, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> setLabelText(aHitLblName(),  "命中")
+            |> setLabelText(aHitNumName(),  "${view#aHit}")
+            |> setLabelText(aHitPctName(),  "%")
+            |> setLabelText(aCritLblName(), "必殺")
+            |> setLabelText(aCritNumName(), "${view#aCrit}")
+            |> setLabelText(aCritPctName(), "%")
+            |> setLabelText(dHitLblName(),  "反撃")
+            |> setLabelText(dHitNumName(),  if (view#counter) "${view#dHit}" else "--")
+            |> setLabelText(dHitPctName(),  if (view#counter) "%" else "")
+            |> setLabelText(dCritLblName(), if (view#counter) "必殺" else "")
+            |> setLabelText(dCritNumName(), if (view#counter) "${view#dCrit}" else "")
+            |> setLabelText(dCritPctName(), if (view#counter) "%" else "")
+            |> updateTriangle(childPath(aTriName()), Some(view#aRel))
+            |> updateTriangle(childPath(dTriName()), if (view#counter) Some(view#dRel) else None)
+
+    def setLabelText(name: String, text: String, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Label2D.mapAt(childPath(name), Label2D.setText(text), scene)
+
+    /// 相性 Relation に応じて三角の頂点・色・可視を切り替える。中立 / 反撃なし（None）は非表示。
+    def updateTriangle(path: NodePath, rel: Option[WeaponTriangle.Relation],
+                       scene: Scene[NodeTag]): Scene[NodeTag] =
+        match rel {
+            case Some(WeaponTriangle.Relation.Advantage) =>
+                setTriangle(path, triUpPoints(), advantageColor(), scene)
+            case Some(WeaponTriangle.Relation.Disadvantage) =>
+                setTriangle(path, triDownPoints(), disadvantageColor(), scene)
+            case _ =>
+                setPolyVisible(path, false, scene)
+        }
+
+    /// 三角ノードに頂点・色をセットして表示する。
+    def setTriangle(path: NodePath, points: List[Vec2.Vec2], color: Color,
+                    scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(path, en -> EngineNode.mapPolygon2D(p -> p
+            |> Polygon2D.setPoints(points)
+            |> CanvasItem.setModulate(color)
+            |> CanvasItem.setVisible(true), en), scene)
+
+    // ────────────────────────────────────────────────────────
+    // (D-layout) ノード位置 / 計測ヘルパー
+    // ────────────────────────────────────────────────────────
+
+    /// Label2D / Polygon2D ノードの位置を (x, y) にセットする（型ごとに分岐）。
+    def setNodeX(path: NodePath, x: Float64, y: Float64, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(path, en -> match en {
+            case EngineNode.Label2DWithState(l, t) =>
+                EngineNode.Label2DWithState(Node2D.setPosition(({x = x, y = y}: Vec2.Vec2), l), t)
+            case EngineNode.Polygon2DWithState(p, t) =>
+                EngineNode.Polygon2DWithState(Node2D.setPosition(({x = x, y = y}: Vec2.Vec2), p), t)
+            case other => other
+        }, scene)
+
+    /// 指定 Label2D の描画幅（design px）。未登録 / 空文字なら 0。
+    def measureWidthAt(path: NodePath, scene: Scene[NodeTag]): Float64 =
+        match Scene.getEngineNode(path, scene) {
+            case Some(EngineNode.Label2DWithState(l, _)) => Label2D.measure(l)#x
+            case _                                       => 0.0
+        }
+
+    // ────────────────────────────────────────────────────────
+    // (D') 可視性ヘルパー — 子ノードは親可視性を見ない実装なので個別に切り替える
+    // ────────────────────────────────────────────────────────
+
+    /// 枠・丸・ラベル・三角すべての visible をまとめて切り替える。
+    /// （Label2D / Polygon2D / Panel は描画パス上で親の visible を参照しないため、
+    ///  CursorScene.setVisible と同様に各子へ個別に setVisible する）
+    def setAllVisible(visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let labels = aHitLblName() :: aHitNumName() :: aHitPctName()
+                  :: aCritLblName() :: aCritNumName() :: aCritPctName()
+                  :: dHitLblName() :: dHitNumName() :: dHitPctName()
+                  :: dCritLblName() :: dCritNumName() :: dCritPctName() :: Nil;
+        let withLabels = List.foldLeft((acc, name) ->
+            Label2D.mapAt(childPath(name), CanvasItem.setVisible(visible), acc), scene, labels);
+        withLabels
+            |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
+            |> setPolyVisible(childPath(aDotName()), visible)
+            |> setPolyVisible(childPath(dDotName()), visible)
+            |> setPolyVisible(childPath(aTriName()), visible)
+            |> setPolyVisible(childPath(dTriName()), visible)
+
+    /// Polygon2D ノードの可視性を変える（型付き `mapAt` が無いため mapEngineNode 経由）。
+    def setPolyVisible(path: NodePath, visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(path,
+            en -> EngineNode.mapPolygon2D(p -> CanvasItem.setVisible(visible, p), en), scene)
+
+    // ────────────────────────────────────────────────────────
+    // (D'') 足元 HP バーのダメージ予測（パネルとは独立した盤面フィードバック）
+    // ────────────────────────────────────────────────────────
+
+    /// 攻撃側（味方）と対象（敵）の足元 HP バーに「減る分」の暗色オーバーレイを出す。
+    /// 毎フレーム一旦全消ししてから対象 2 体へ出し直すので、カーソルが別の敵へ移っても残らない。
+    def applyHpBarForecast(view: ForecastView, dark: Bool, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let cleared = clearAllHpForecasts(scene);
-        if (cols#attackerId < 0 or cols#defenderId < 0) cleared
-        else cleared
-            |> UnitHPBarScene.showDamageForecast(EnemyScene.enemyPath(cols#defenderId),
-                    cols#enemyHpCur, cols#enemyHpPost, showDamaged)
-            |> UnitHPBarScene.showDamageForecast(PlayerScene.playerPath(cols#attackerId),
-                    cols#playerHpCur, cols#playerHpPost, showDamaged)
+        cleared
+            |> UnitHPBarScene.showDamageForecast(EnemyScene.enemyPath(view#defenderId),
+                    view#enemyHpCur, view#enemyHpPost, dark)
+            |> UnitHPBarScene.showDamageForecast(PlayerScene.playerPath(view#attackerId),
+                    view#playerHpCur, view#playerHpPost, dark)
 
     /// 全ユニット（味方・敵）の足元 HP バー予測オーバーレイを消す。
-    /// 予報フェーズを抜けたフレームや、対象が変わったフレームの取りこぼし防止に使う。
     def clearAllHpForecasts(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let hidePlayer = (acc, p) -> UnitHPBarScene.hideDamageForecast(PlayerScene.playerPath(p#id), acc);
@@ -234,58 +472,126 @@ mod BattlePanelScene {
         let withPlayers = List.foldLeft(hidePlayer, scene, PlayerData.PartyQuery.getAll());
         List.foldLeft(hideEnemy, withPlayers, EnemyData.RosterQuery.getAll())
 
-    /// HP ラベル 1 つを点滅で更新する。ダメージを受ける側でサイクル前半のときだけ
-    /// 戦闘後HP(灰)、それ以外は現在HP(白)。数値は他の数値列と同じ幅で右寄せ。
-    def applyHpLabel(path: NodePath, current: Int32, postDamage: Int32,
-                      takesDamage: Bool, showDamaged: Bool,
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
-        let (value, color) =
-            if (takesDamage and showDamaged) (postDamage, hpDamagedColor())
-            else                             (current,    hpNormalColor());
-        Label2D.mapAt(path,
-            label -> label
-                |> Label2D.setText(padLeft("${value}", numWidth()))
-                |> CanvasItem.setModulate(color),
-            scene)
+    // ────────────────────────────────────────────────────────
+    // (D''') 予報の組み立て（純計算 + クエリ）
+    // ────────────────────────────────────────────────────────
 
-    /// 威力・命中ラベルの通常色（白）。得意武器のときはこれ。
-    def powerNormalColor(): Color = UITheme.white()
-    /// 苦手武器のときの威力・命中ラベル色（青）。80% に下がっていることを示す。
-    def powerWeakColor(): Color = {r = 0.45f32, g = 0.65f32, b = 1.0f32}
+    /// 予報ビュー。ウィンドウ表示と HP バー予測に必要な値だけを持つ。
+    type alias ForecastView = {
+        attackerCell = {x = Int32, y = Int32}, targetCell = {x = Int32, y = Int32},
+        attackerId = Int32, defenderId = Int32,
+        aHit = Int32, aCrit = Int32, aRel = WeaponTriangle.Relation,
+        counter = Bool, dHit = Int32, dCrit = Int32, dRel = WeaponTriangle.Relation,
+        playerHpCur = Int32, playerHpPost = Int32,
+        enemyHpCur = Int32, enemyHpPost = Int32
+    }
 
-    /// 現在HP（通常）の文字色 = 白。
-    def hpNormalColor(): Color = UITheme.white()
-    /// 戦闘後HP（減少予測）の文字色 = グレー。
-    def hpDamagedColor(): Color = {r = 0.55f32, g = 0.55f32, b = 0.55f32}
+    /// 攻撃中の武器選択リストでアクティブな武器（カーソル上の敵に届く選択武器）。
+    /// 敵が居ない / 届く武器が無いなら None（予報は出ない）。
+    def selectedAttackWeapon(scene: Scene[NodeTag]):
+            Option[UnitCatalog.WeaponResource]
+            \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+        forM (
+            idx      <- ItemMenuScene.activeAttackWeaponIndex(scene);
+            playerId <- SelectedPlayer.State.get()#id;
+            player   <- PlayerData.PartyQuery.get(playerId);
+            w        <- List.nth(idx, player#weapons)
+        ) yield w
 
-    /// 数値カラムの文字幅（右寄せ用）。HP / 威力 / 命中 で共通。
-    def numWidth(): Int32 = 5
+    /// フェーズに応じて予報ビューを組み立てる。
+    ///   - WeaponSelect : カーソル中の武器 × カーソルが乗っている敵
+    ///   - PlayerAttack : 選択中の敵 × 装備武器
+    /// 揃わない / 別フェーズなら None。
+    def buildForecast(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Option[ForecastView]
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+        match phase {
+            case TurnPhase.Phase.WeaponSelect => buildWeaponSelectForecast(scene)
+            case TurnPhase.Phase.PlayerAttack => buildAttackForecast(scene)
+            case _                            => None
+        }
 
-    /// `AttackForecast` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
-    /// 攻撃モーションのアニメーション名は `"attack_lunge"`（`CombatScene.startAttack` が再生）。
-    /// そのアニメーション完了時に `CombatScene.onLungeDone` が呼ばれ、反撃 / kill 演出 / commit に流す。
-    ///
-    /// 遷移先は `PlayerAttack` ではなく **`PlayerAttackHold`**。`PlayerAttack` は
-    /// 「赤マスでターゲット選択中」のフェーズで Z で WeaponMenu を再オープンできてしまうため、
-    /// 攻撃モーション中もここに居ると Z 連打で `PlayerAttack → WeaponSelect → AttackForecast
-    /// → PlayerAttack ...` のループが回って `startAttack` が再起動される（連打バグ）。
-    /// `PlayerAttackHold` は `TurnRules.decide` の catch-all で全入力を `Stay` 扱いに
-    /// するため、`attack_lunge` 完了 (`onLungeDone`) までキー入力をブロックできる。
+    /// PlayerAttack: 選択中味方 / カーソル上の敵 / 装備（活性）武器が揃ったら予報。
+    def buildAttackForecast(scene: Scene[NodeTag]): Option[ForecastView]
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+        forM (
+            pid    <- SelectedPlayer.State.get()#id;
+            player <- PlayerData.PartyQuery.get(pid);
+            eid    <- player#attackTargetId;
+            enemy  <- EnemyData.RosterQuery.get(eid);
+            weapon <- selectedAttackWeapon(scene)
+        ) yield computeView(pid, player, eid, enemy, weapon)
+
+    /// WeaponSelect: 選択中味方 / カーソル中の武器 / カーソルが乗っている敵が揃ったら予報。
+    /// カーソルは `WeaponSelectScene` が「その武器が届く最寄りの敵」へスナップ済み。
+    def buildWeaponSelectForecast(scene: Scene[NodeTag]): Option[ForecastView]
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+        forM (
+            pid    <- SelectedPlayer.State.get()#id;
+            player <- PlayerData.PartyQuery.get(pid);
+            widx   <- WeaponSelectScene.hoveredWeaponIndex(scene);
+            weapon <- List.nth(widx, player#weapons);
+            eid    <- EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene);
+            enemy  <- EnemyData.RosterQuery.get(eid)
+        ) yield computeView(pid, player, eid, enemy, weapon)
+
+    /// 予報ビューを純計算で組み立てる。命中 / 必殺は `Combat.estimate`（faction 非依存）、
+    /// すくみは `WeaponTriangle.relationOpt`。HP は攻撃 / 反撃ダメージから戦闘後 HP を逆算する。
+    def computeView(pid: Int32, player: PlayerScene.Data,
+                    eid: Int32, enemy: EnemyScene.Data,
+                    weapon: UnitCatalog.WeaponResource): ForecastView =
+        let aRel = WeaponTriangle.relationOpt(weapon#weaponType,
+                       enemy#weapon |> Option.map(w -> w#weaponType));
+        let aForecast = Combat.estimate(PlayerScene.combatViewWith(player, weapon),
+                                        EnemyScene.combatView(enemy));
+        let counter = formatCounter(player, weapon, enemy);
+        let enemyHpPost  = Int32.max(0, enemy#hp - aForecast#damage);
+        let playerHpPost = Int32.max(0, player#hp - counter#damage);
+        {attackerCell = player#gridPos, targetCell = enemy#gridPos,
+         attackerId = pid, defenderId = eid,
+         aHit = aForecast#hit, aCrit = aForecast#crit, aRel = aRel,
+         counter = counter#canCounter, dHit = counter#hit, dCrit = counter#crit, dRel = counter#rel,
+         playerHpCur = player#hp, playerHpPost = playerHpPost,
+         enemyHpCur = enemy#hp, enemyHpPost = enemyHpPost}
+
+    /// 反撃側（敵 → 味方）の命中 / 必殺 / 相性 / 反撃ダメージ。
+    /// 武器なし or 射程外なら反撃不可（canCounter=false、数値 0）。相性は射程に依らず武器で決まる。
+    def formatCounter(player: PlayerScene.Data, weapon: UnitCatalog.WeaponResource,
+                      enemy: EnemyScene.Data):
+            {canCounter = Bool, hit = Int32, crit = Int32,
+             rel = WeaponTriangle.Relation, damage = Int32} =
+        match enemy#weapon {
+            case None     =>
+                {canCounter = false, hit = 0, crit = 0,
+                 rel = WeaponTriangle.Relation.Neutral, damage = 0}
+            case Some(ew) =>
+                let rel = WeaponTriangle.relationOpt(ew#weaponType, Some(weapon#weaponType));
+                let d = Weapon.manhattan(enemy#gridPos, player#gridPos);
+                if (not Weapon.canReach(d, ew))
+                    {canCounter = false, hit = 0, crit = 0, rel = rel, damage = 0}
+                else {
+                    let ef = Combat.estimate(EnemyScene.combatView(enemy),
+                                             PlayerScene.combatViewWith(player, weapon));
+                    {canCounter = true, hit = ef#hit, crit = ef#crit, rel = rel, damage = ef#damage}
+                }
+        }
+
+    // ────────────────────────────────────────────────────────
+    // (D'''') 確定 / キャンセル（フェーズ遷移。ウィンドウ自体は process が追従）
+    // ────────────────────────────────────────────────────────
+
+    /// `PlayerAttack` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
+    /// 遷移先は入力をロックする `PlayerAttackHold`（Z 連打での再起動を防ぐ）。
     pub def confirm(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               TurnPhase.State, SelectedPlayer.State,
                               PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        // 選択中の味方 → 攻撃対象 → 対象の敵 が揃ったら攻撃を開始。欠けていれば何もしない。
-        // Option を forM でたどってネストを浅くする（揃ったときだけ yield 本体の副作用が走る）。
         let started = forM (
             attackerId <- SelectedPlayer.State.get()#id;
             player     <- PlayerData.PartyQuery.get(attackerId);
             defenderId <- player#attackTargetId;
             enemy      <- EnemyData.RosterQuery.get(defenderId)
         ) yield {
-            // 選択中の武器を先頭に装備してから攻撃する（startAttack は weapons.head を使う）。
-            // activeAttackWeaponIndex は予報に出ていた武器と同じ index を返す。
             let idx      = ItemMenuScene.activeAttackWeaponIndex(scene) |> Option.getWithDefault(0);
             let equipped = PlayerScene.equipWeapon(attackerId, idx, scene);
             TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
@@ -294,9 +600,8 @@ mod BattlePanelScene {
         };
         Option.getWithDefault(scene, started)
 
-    /// `AttackForecast` + X: 攻撃をやめて行動メニュー (ActionSelect) に戻る。
-    /// 待機にはせず（ターン消費しない）、`attackTargetId` をクリアしてカーソルを選択中
-    /// 味方に戻す。次フレームの `ActionMenuScene.refreshItems` がメニューを再表示する。
+    /// `PlayerAttack` + X: 攻撃をやめて行動メニュー (ActionSelect) に戻る。
+    /// 待機にはせず、`attackTargetId` をクリアしてカーソルを選択中味方に戻す。
     pub def cancel(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
@@ -308,165 +613,4 @@ mod BattlePanelScene {
                 CombatScene.clearAttackTargetId(attackerId, scene)
                     |> CursorScene.snapToPlayer
         }
-
-    /// 予報セルの組（点滅 HP 用の数値を含む）。テキスト系は整形済み文字列、HP 系は数値。
-    /// playerHpCur/Post は味方の現在/戦闘後HP、enemyHpCur/Post は敵の現在/戦闘後HP。
-    /// takesDmg はそのユニットがダメージを受けるか（点滅させるかの判定）。
-    /// `attackerId` / `defenderId` は足元 HP バーへ予測を反映するための対象 id
-    /// （味方 = 攻撃側 / 敵 = 防御側）。予報が出せないときは -1（= 対象なし）。
-    type alias Forecast = {
-        attackerId = Int32, defenderId = Int32,
-        pWeapon = String, eWeapon = String,
-        // leftPower = 味方の威力（独立ラベル・苦手なら青）。leftHit = 味方の命中。
-        leftPower = String, playerProficient = Bool,
-        leftHit = String, leftCrit = String,
-        centerHp = String, centerRest = String, rightRest = String,
-        playerHpCur = Int32, playerHpPost = Int32, playerTakesDmg = Bool,
-        enemyHpCur = Int32, enemyHpPost = Int32, enemyTakesDmg = Bool
-    }
-
-    /// 攻撃中の武器選択リストでアクティブな武器を返す（カーソル上の敵に届く選択武器）。
-    /// `buildColumns` を純計算に保つために effect（SelectedPlayer / PlayerData）をここで吸収し、
-    /// 取得済みの値を引数として渡す分離を実現している。
-    /// 敵が居ない / 届く武器が無いなら None（予報は空になる）。
-    def selectedAttackWeapon(scene: Scene[NodeTag]):
-            Option[UnitCatalog.WeaponResource]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery} =
-        forM (
-            idx      <- ItemMenuScene.activeAttackWeaponIndex(scene);
-            playerId <- SelectedPlayer.State.get()#id;
-            player   <- PlayerData.PartyQuery.get(playerId);
-            w        <- List.nth(idx, player#weapons)
-        ) yield w
-
-    /// 選択中プレイヤー / 攻撃対象敵 / 選択武器が揃ったら予報を組み立てる。
-    /// 揃わなければ全カラム空・HP 0 を返す（visible でないフェーズで描画されない想定）。
-    def buildColumns(selWeapon: Option[UnitCatalog.WeaponResource]): Forecast
-            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        // 選択中の味方 → 攻撃対象の敵 → 選択武器まで Option を forM でたどる。
-        let columns = forM (
-            pid    <- SelectedPlayer.State.get()#id;
-            player <- PlayerData.PartyQuery.get(pid);
-            eid    <- player#attackTargetId;
-            enemy  <- EnemyData.RosterQuery.get(eid);
-            weapon <- selWeapon
-        ) yield {attackerId = pid, defenderId = eid | formatColumns(player, weapon, enemy)};
-        Option.getWithDefault(emptyForecast(), columns)
-
-    /// 予報が出せないときの空 Forecast。
-    def emptyForecast(): Forecast =
-        {attackerId = -1, defenderId = -1,
-         pWeapon = "", eWeapon = "",
-         leftPower = "", playerProficient = true,
-         leftHit = "", leftCrit = "",
-         centerHp = "", centerRest = "", rightRest = "",
-         playerHpCur = 0, playerHpPost = 0, playerTakesDmg = false,
-         enemyHpCur = 0, enemyHpPost = 0, enemyTakesDmg = false}
-
-    /// 予報を Forecast に整形する。
-    ///   pWeapon / eWeapon … 味方 / 敵の武器名（＋相性マーク）。上下の帯に中央寄せ。
-    ///   leftPower … 味方の威力（独立ラベル。苦手武器なら applyForecast が青字にする）。
-    ///   leftHit … 味方の命中。rightRest … 敵の威力 / 命中 の 2 行。HP は別ラベルなので含めない。
-    ///   centerHp / centerRest … 中央ラベル "HP" と "威力 / 命中"。
-    ///   *HpCur / *HpPost … HP 点滅シミュレーション用の現在 / 戦闘後HP。
-    /// 戦闘後HP = 現在HP − 受けるダメージ（下限 0）。敵は味方の攻撃で、味方は敵の反撃で減る。
-    /// 敵が反撃できない（武器なし / 射程外）場合は敵側の威力 / 命中を "--"・反撃ダメージ 0。
-    def formatColumns(player: PlayerScene.Data, weapon: UnitCatalog.WeaponResource,
-                       enemy: EnemyScene.Data): Forecast =
-        // 武器相性マーク表示用（味方の武器 vs 敵の装備武器。敵が未装備なら中立）。
-        // 威力 / 命中の数値計算は `Combat.estimate`（faction 非依存）に集約済み。
-        let rel  = WeaponTriangle.relationOpt(weapon#weaponType,
-                                              enemy#weapon |> Option.map(w -> w#weaponType));
-        let playerForecast = Combat.estimate(PlayerScene.combatViewWith(player, weapon),
-                                             EnemyScene.combatView(enemy));
-        let enemyCols = formatEnemyColumns(player, weapon, enemy);
-        let bandWidth  = 16;  // 上下の帯の文字幅（武器名の中央寄せ用）
-        let labelWidth = 5;   // 中央ラベルの文字幅（左マージン込みで中央へ寄せる）
-        let pWeapon    = padCenter("${weapon#name}${relationMark(rel)}", bandWidth);
-        let eWeapon    = padCenter(enemyCols#name, bandWidth);
-        // 威力は独立ラベル（苦手なら青字）、命中は leftHit。中央/敵カラムは 2 行のまま。
-        let proficient = UnitCatalog.proficientWith(player#resource, weapon#weaponType);
-        let leftPower  = padLeft("${playerForecast#damage}", numWidth());
-        let leftHit   = padLeft("${playerForecast#hit}%", numWidth());
-        let leftCrit   = padLeft("${playerForecast#crit}%", numWidth());
-        let centerHp   = padCenter("HP", labelWidth);
-        // 中央ラベル / 敵カラムは 威力・命中・必殺 の 3 行に揃える。
-        let centerRest = "${padCenter("威力", labelWidth)}\n${padCenter("命中", labelWidth)}\n${padCenter("必殺", labelWidth)}";
-        let rightRest  = "${padLeft(enemyCols#atk, numWidth())}\n${padLeft(enemyCols#hit, numWidth())}\n${padLeft(enemyCols#crit, numWidth())}";
-        // HP シミュレーション: 戦闘後HP と「減るか」フラグ。
-        let enemyHpPost  = Int32.max(0, enemy#hp - playerForecast#damage);
-        let playerHpPost = Int32.max(0, player#hp - enemyCols#counterDamage);
-        // attackerId/defenderId はここでは仮置き 0。buildColumns の yield { attackerId = pid, defenderId = eid | ... }
-        // という record update 構文で実 id に置き換えられる。
-        {attackerId = 0, defenderId = 0,
-         pWeapon = pWeapon, eWeapon = eWeapon,
-         leftPower = leftPower, playerProficient = proficient,
-         leftHit = leftHit, leftCrit = leftCrit,
-         centerHp = centerHp, centerRest = centerRest, rightRest = rightRest,
-         playerHpCur = player#hp, playerHpPost = playerHpPost, playerTakesDmg = playerHpPost < player#hp,
-         enemyHpCur = enemy#hp, enemyHpPost = enemyHpPost, enemyTakesDmg = enemyHpPost < enemy#hp}
-
-    /// 敵側の威力 / 命中 / 反撃ダメージ。武器を装備し かつ 射程が「敵 → 味方」に届くときだけ
-    /// 反撃成立で数値を出す。武器なし or 射程外なら "--"・反撃ダメージ 0。
-    /// name は敵の武器名（＋相性マーク）。counterDamage は味方が受ける反撃ダメージ（点滅 HP 用）。
-    def formatEnemyColumns(player: PlayerScene.Data,
-                            weapon: UnitCatalog.WeaponResource,
-                            enemy: EnemyScene.Data):
-                           {name = String, atk = String, hit = String, crit = String, counterDamage = Int32} =
-        let playerWeaponType = Some(weapon#weaponType);
-        match enemy#weapon {
-            case None          => {name = "", atk = "--", hit = "--", crit = "--", counterDamage = 0}
-            case Some(eWeapon) =>
-                // 相性は射程に関係なく武器どうしで決まるので、武器名の隣のマークは常に出す。
-                let eRel    = WeaponTriangle.relationOpt(eWeapon#weaponType, playerWeaponType);
-                let nameStr = "${eWeapon#name}${relationMark(eRel)}";
-                let d = Weapon.manhattan(enemy#gridPos, player#gridPos);
-                if (not Weapon.canReach(d, eWeapon))
-                    {name = nameStr, atk = "--", hit = "--", crit = "--", counterDamage = 0}
-                else {
-                    // 反撃の威力 / 命中は敵 → 味方の `Combat.estimate`（味方の予報と同一経路）。
-                    let enemyForecast = Combat.estimate(EnemyScene.combatView(enemy),
-                                                         PlayerScene.combatViewWith(player, weapon));
-                    {name = nameStr,
-                     atk = "${enemyForecast#damage}", hit = "${enemyForecast#hit}%",
-                     crit = "${enemyForecast#crit}%",
-                     counterDamage = enemyForecast#damage}
-                }
-        }
-
-    /// 武器相性マーク。有利は ▲、不利は ▼、中立は空文字。
-    /// 数値の直後に置くため、マークがあるときだけ先頭に半角スペースを 1 つ含める。
-    /// ▲▼（塗りつぶし三角）を使うのは、現在の UI フォント(MPLUSU-Medium)が
-    /// △▽（白抜き三角 U+25B3/U+25BD）のグリフを持たず別字に化けるため。
-    def relationMark(rel: WeaponTriangle.Relation): String = match rel {
-        case WeaponTriangle.Relation.Advantage    => " ▲"
-        case WeaponTriangle.Relation.Disadvantage => " ▼"
-        case WeaponTriangle.Relation.Neutral      => ""
-    }
-
-    /// 左側をスペースで埋めて指定幅にする（右寄せ。全角は 1 文字 2 幅で扱う）。
-    /// HP / 威力 / 命中などの数値列を幅合わせするために使う。
-    def padLeft(text: String, width: Int32): String =
-        let len = visualWidth(text);
-        if (len >= width) text
-        else String.repeat(width - len, " ") ++ text
-
-    /// 中央寄せで指定幅にそろえる（全角は 1 文字 2 幅で扱う。余り 1 は左側に寄せる）。
-    /// 余りを左に寄せるのは、中央帯のラベルにわずかな左マージンを持たせて中央に寄せるため。
-    def padCenter(text: String, width: Int32): String =
-        let len = visualWidth(text);
-        if (len >= width) text
-        else {
-            let pad      = width - len;
-            let rightPad = pad / 2;
-            String.repeat(pad - rightPad, " ") ++ text ++ String.repeat(rightPad, " ")
-        }
-
-    /// 表示幅の概算: ASCII は 1、それ以外は 2 として数える。完全ではないが
-    /// CJK と半角の混在で列を概ね揃えるための簡易計算。
-    def visualWidth(s: String): Int32 =
-        String.toList(s)
-            |> List.foldLeft(acc -> ch ->
-                if (Char.toBmpCodePoint(ch) < 0x80) acc + 1 else acc + 2,
-                0)
 }

@@ -415,6 +415,14 @@ mod EnemyTurnDriverScene {
             |> PlayerScene.clearAllWaited        // 全員アクティブに戻す
             |> PlayerScene.resetAllMoveStepsTaken;
         GameLogger.playerLog("味方のターン");
-        PhaseTransitions.enterPlayerCursor(reset)
+        // カーソル/カメラの初期スナップ先は `reset`(=clearAllWaited 後)から直接求める。
+        // `enterPlayerCursor` の PartyQuery フォールバックはフレーム冒頭 snapshot を読むため、
+        // 同フレームの clearAllWaited が反映されず active が空 → id=0 へフォールバックする。
+        // リーダーが階段で退場(usedStairs=hidden)済みだと毎ターン階段にカーソルが飛ぶので、
+        // フロアに残るアクティブな駒(`firstActive`)へ明示スナップする。
+        match PlayerScene.firstActive(reset) {
+            case Some(next) => PhaseTransitions.enterPlayerCursorAt(next#gridPos, reset)
+            case None       => PhaseTransitions.enterPlayerCursor(reset)
+        }
 
 }

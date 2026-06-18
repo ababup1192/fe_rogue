@@ -29,6 +29,8 @@ mod ProjectLoader {
     /// project.json から組み立てた、engine 起動に渡すための設定。
     /// shape は engine の `GameEngine.EngineConfig` と完全一致させてあり、
     /// Flix の structural record により `LwjglLayer.withLwjgl` 等にそのまま渡せる。
+    /// project.json に任意キー `windowScale`(>0) があれば、windowWidth/windowHeight より
+    /// 優先して window = design × scale をロード時に解決する（buildProject 参照）。
     pub type alias ProjectConfig = {
         designWidth     = Int32,
         designHeight    = Int32,
@@ -70,8 +72,19 @@ mod ProjectLoader {
         let title       = getString(root, "title");
         let designW     = getInt(root, "designWidth");
         let designH     = getInt(root, "designHeight");
-        let windowW     = getInt(root, "windowWidth");
-        let windowH     = getInt(root, "windowHeight");
+        // windowScale（任意）: あれば window = design × scale をロード時に解決し、
+        // windowWidth/windowHeight より優先する。アスペクト比を design に合わせたまま
+        // ウィンドウだけ拡大したいとき用（見た目そのままで画面を大きくする）。
+        let scaleOpt = match Map.get("windowScale", root) {
+            case Some(JNumber(n)) => Some(n.doubleValue())
+            case _                => None
+        };
+        let (windowW, windowH) = match scaleOpt {
+            case Some(s) if s > 0.0 =>
+                (Float64.tryToInt32(Float64.round(Int32.toFloat64(designW) * s)) |> Option.getWithDefault(designW),
+                 Float64.tryToInt32(Float64.round(Int32.toFloat64(designH) * s)) |> Option.getWithDefault(designH))
+            case _ => (getInt(root, "windowWidth"), getInt(root, "windowHeight"))
+        };
         let clearColor  = readColor(getField(root, "clearColor"));
         let maxDelta    = getFloat(root, "maxDeltaTime");
         let textures    = readTextures(rootDir, getField(root, "textures"));

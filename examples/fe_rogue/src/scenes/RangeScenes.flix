@@ -31,9 +31,9 @@ mod RangeOverlay {
     /// セル枠から内側に詰める余白 px（CSS の inset 相当。隣マスとの隙間になる）。
     def inset(): Float64 = 2.0
 
-    /// 縞 1 本の幅 px と周期 px（CSS の 7px/14px を 26px タイルへ縮小）。
-    def stripeWidth(): Float64 = 3.0
-    def stripePeriod(): Float64 = 6.0
+    /// 縞 1 本の幅 px と周期 px。周期を詰めて斜線の本数を増やす（細かいハッチ）。
+    def stripeWidth(): Float64 = 1.0
+    def stripePeriod(): Float64 = 2.0
 
     /// 色相を白方向へ `t` だけ寄せて明るくする（縞・枠用の明色を作る）。
     def lighten(c: Color, t: Float32): Color =

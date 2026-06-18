@@ -18,19 +18,18 @@ mod TestWeaponSelectScene {
             } with Fs.FileRead.runWithIO)
             as _ \ {})
 
-    /// Panel と ItemList の (visible, focused) を 1 タプルで観測する。
+    /// Panel の visible と ItemList の focused を (visible, focused) で観測する。
     def visibilityState(scene: Scene[NodeTag]): (Bool, Bool) =
         let panelVisible = match Scene.getEngineNode(WeaponSelectScene.panelPath(), scene) {
             case Some(EngineNode.PanelWithState(p, _)) => CanvasItem.isVisible(p)
             case _                                       => bug!("WeaponSelect panel not found")
         };
-        let menuVisible =
+        let menuFocused =
             match Scene.getEngineNode(WeaponSelectScene.menuPath(), scene) {
-                case Some(EngineNode.ItemListWithState(l, _)) =>
-                    (CanvasItem.isVisible(l), ItemList.isFocused(l))
+                case Some(EngineNode.ItemListWithState(l, _)) => ItemList.isFocused(l)
                 case _ => bug!("WeaponSelect ItemList not found")
             };
-        (panelVisible, fst(menuVisible) and snd(menuVisible))
+        (panelVisible, menuFocused)
 
     /// 剣だけを得意とするテスト用 UnitResource（不得意バッジ検証用）。
     /// `testResource` は全タイプ得意なので、`proficientWeaponTypes` を剣のみに絞った版を作る。
@@ -68,14 +67,15 @@ mod TestWeaponSelectScene {
     // applyVisibility
     // ════════════════════════════════════════════════════════
 
-    /// `WeaponSelect` 以外のフェーズでは Panel = hidden / ItemList = hidden。
+    /// `WeaponSelect` 以外のフェーズでは Panel = hidden / ItemList = not focused。
     @Test
     def testApplyVisibilityHidesOutsideWeaponSelect(): Unit \ Assert =
         let scene = weaponSelectAddPure(Scene.empty());
         let after = WeaponSelectScene.applyVisibility(TurnPhase.Phase.ActionSelect, scene);
         Assert.assertEq(expected = (false, false), visibilityState(after))
 
-    /// `WeaponSelect` フェーズでは Panel = visible / ItemList = visible + focused。
+    /// `WeaponSelect` フェーズでは Panel = visible / ItemList = focused（コマンドメニュー横の
+    /// 武器リスト窓を出す。命中/必殺は盤面の戦闘予報ミニウィンドウが併せて出す）。
     @Test
     def testApplyVisibilityShowsAndFocusesInWeaponSelect(): Unit \ Assert =
         let scene = weaponSelectAddPure(Scene.empty());
@@ -86,12 +86,12 @@ mod TestWeaponSelectScene {
     // weaponSubline / rangeText — 性能 2 行目
     // ════════════════════════════════════════════════════════
 
-    /// 単射程 (min == max) は「射程 N」。残り使用回数を末尾に出す。
+    /// 単射程 (min == max) は「射程 N」。命中は省く（戦闘予報側で表示）。
     @Test
     def testWeaponSublineSingleRange(): Unit \ Assert =
-        // testWeapon: 攻2 命80 射1-1 耐久10
+        // testWeapon: 攻2 射1-1 耐久10（命中はサブラインに出さない）
         Assert.assertEq(
-            expected = "威力 2 命中 80 射程 1 耐久 10",
+            expected = "威力 2 射程 1 耐久 10",
             WeaponSelectScene.weaponSubline(TestUnitFixtures.testWeapon()))
 
     /// 範囲射程 (min != max) は「射程 min-max」。

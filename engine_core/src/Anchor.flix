@@ -52,7 +52,8 @@ mod Anchor {
 
     /// anchor preset と親 rect (+ 子の natural size + margin) から子の rect を計算する。
     ///   - `FullRect`: 親 rect 全面、margin で内側 inset (子 size は無視)
-    ///   - その他 (位置系): 子 size を保持、anchor 位置に基づいて配置 (margin は無視)
+    ///   - その他 (位置系): 子 size を保持、anchor 位置に配置。margin はアンカー辺から
+    ///     内側へのインセット (例: BottomRight なら右・下の端から margin だけ内側)。
     pub def applyAnchor(anchor: Anchor,
                           parentRect: Rect2.Rect2,
                           childSize: Vec2.Vec2,
@@ -61,29 +62,32 @@ mod Anchor {
             case Anchor.FullRect =>
                 Rect2.grow(-margin, parentRect)
             case _ =>
-                let pos = anchorPosition(anchor, parentRect, childSize);
+                let pos = anchorPosition(anchor, parentRect, childSize, margin);
                 ({position = pos, size = childSize}: Rect2.Rect2)
         }
 
     /// 位置系 anchor (FullRect 以外) で子の top-left position を計算する。
-    /// 子の size を考慮して anchor 位置 (中央寄せ等) を決める。
-    def anchorPosition(anchor: Anchor, parent: Rect2.Rect2, childSize: Vec2.Vec2): Vec2.Vec2 =
+    /// 子の size を考慮して anchor 位置 (中央寄せ等) を決め、`margin` はアンカー辺から
+    /// 内側へインセットする (左/上端は +margin、右/下端は -margin、中央軸は不変)。
+    def anchorPosition(anchor: Anchor, parent: Rect2.Rect2, childSize: Vec2.Vec2,
+                        margin: Float64): Vec2.Vec2 =
         let px = parent#position#x;
         let py = parent#position#y;
         let pw = parent#size#x;
         let ph = parent#size#y;
         let cw = childSize#x;
         let ch = childSize#y;
+        let m  = margin;
         match anchor {
-            case Anchor.TopLeft      => {x = px,                  y = py}
-            case Anchor.TopCenter    => {x = px + (pw - cw) / 2.0, y = py}
-            case Anchor.TopRight     => {x = px + pw - cw,         y = py}
-            case Anchor.LeftCenter   => {x = px,                  y = py + (ph - ch) / 2.0}
-            case Anchor.Center       => {x = px + (pw - cw) / 2.0, y = py + (ph - ch) / 2.0}
-            case Anchor.RightCenter  => {x = px + pw - cw,         y = py + (ph - ch) / 2.0}
-            case Anchor.BottomLeft   => {x = px,                  y = py + ph - ch}
-            case Anchor.BottomCenter => {x = px + (pw - cw) / 2.0, y = py + ph - ch}
-            case Anchor.BottomRight  => {x = px + pw - cw,         y = py + ph - ch}
+            case Anchor.TopLeft      => {x = px + m,                y = py + m}
+            case Anchor.TopCenter    => {x = px + (pw - cw) / 2.0,  y = py + m}
+            case Anchor.TopRight     => {x = px + pw - cw - m,      y = py + m}
+            case Anchor.LeftCenter   => {x = px + m,                y = py + (ph - ch) / 2.0}
+            case Anchor.Center       => {x = px + (pw - cw) / 2.0,  y = py + (ph - ch) / 2.0}
+            case Anchor.RightCenter  => {x = px + pw - cw - m,      y = py + (ph - ch) / 2.0}
+            case Anchor.BottomLeft   => {x = px + m,                y = py + ph - ch - m}
+            case Anchor.BottomCenter => {x = px + (pw - cw) / 2.0,  y = py + ph - ch - m}
+            case Anchor.BottomRight  => {x = px + pw - cw - m,      y = py + ph - ch - m}
             case Anchor.FullRect     => parent#position  // unreachable, handled above
         }
 }
