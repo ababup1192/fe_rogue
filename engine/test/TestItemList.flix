@@ -382,4 +382,49 @@ mod TestItemList {
             |> ItemList.setRowHighlight(highlight(2.0))
             |> ItemList.setSelectedHighlight(highlight(4.0));
         Assert.assertEq(expected = 4, styledCount(renderList(list)))
+
+    // ── maxVisibleRows スクロール ──
+
+    def fiveItems(): List[ItemEntry] =
+        entry("A") :: entry("B") :: entry("C") :: entry("A") :: entry("B") :: Nil
+
+    /// maxVisibleRows=0（既定）はスクロール無し＝先頭 0。
+    @Test
+    def testScrollFirstVisibleDisabled(): Unit \ Assert =
+        Assert.assertEq(expected = 0, ItemList.scrollFirstVisible(4, 5, 0))
+
+    /// 項目数が maxVisibleRows 以下ならスクロール不要＝先頭 0。
+    @Test
+    def testScrollFirstVisibleFits(): Unit \ Assert =
+        Assert.assertEq(expected = 0, ItemList.scrollFirstVisible(2, 3, 3))
+
+    /// 先頭付近の選択は窓を動かさない（0）。count=5, max=3。
+    @Test
+    def testScrollFirstVisibleNearTop(): Unit \ Assert =
+        Assert.assertEq(expected = 0, ItemList.scrollFirstVisible(1, 5, 3))
+
+    /// 中ほどの選択は選択行を中央寄りに保つ（sel=2 → first=1）。
+    @Test
+    def testScrollFirstVisibleMiddle(): Unit \ Assert =
+        Assert.assertEq(expected = 1, ItemList.scrollFirstVisible(2, 5, 3))
+
+    /// 末尾の選択は下端でクランプ＝maxFirst(=2) で停止（wrap せず下で止まる）。
+    @Test
+    def testScrollFirstVisibleClampsAtBottom(): Unit \ Assert =
+        Assert.assertEq(expected = 2, ItemList.scrollFirstVisible(4, 5, 3))
+
+    /// rowHighlight 有効で 5 項目・maxVisibleRows=3 なら、描画される行は窓内の 3 行だけ。
+    @Test
+    def testScrollRendersOnlyVisibleRows(): Unit \ Assert =
+        let list = makeList(fiveItems())
+            |> ItemList.setMaxVisibleRows(3)
+            |> ItemList.setRowHighlight(highlight(2.0));
+        Assert.assertEq(expected = 3, styledCount(renderList(list)))
+
+    /// maxVisibleRows=0（既定）は従来どおり 5 項目すべて描画（後方互換）。
+    @Test
+    def testNoScrollRendersAllRows(): Unit \ Assert =
+        let list = makeList(fiveItems())
+            |> ItemList.setRowHighlight(highlight(2.0));
+        Assert.assertEq(expected = 5, styledCount(renderList(list)))
 }

@@ -105,6 +105,10 @@ pub enum ItemList {
         itemHeight      = Float64,
         cursorOffsetX   = Float64,
         wrap            = Bool,
+        // スクロール表示する最大行数（0 = 無制限＝全項目を従来どおり描画）。
+        // >0 かつ項目数がこれを超えるとき、選択行が見えるよう縦スクロールし、表示窓外の行は
+        // 描画しない（Godot ItemList のスクロール相当）。単一列（maxColumns<=1）のときのみ有効。
+        maxVisibleRows  = Int32,
         // 列数（Godot の ItemList.max_columns 相当）。1 で従来どおりの単一縦リスト。
         // 2 以上のとき toDrawables は「縦詰め（左列に上から、あふれたら次の列）」で並べる。
         // カーソル移動は列に関係なく selectedIndex を上下する 1 次元のまま（描画位置だけ列対応）。
@@ -169,6 +173,7 @@ mod ItemList {
             itemHeight      = fontSize + 4.0,
             cursorOffsetX   = fontSize,
             wrap            = true,
+            maxVisibleRows  = 0,
             maxColumns      = 1,
             font            = font,
             fontSize        = fontSize,
@@ -421,6 +426,24 @@ mod ItemList {
         let ItemList.ItemList(r) = list;
         ItemList.ItemList({wrap = wrap | r})
 
+    /// スクロール表示する最大行数を設定する（0 = 無制限＝全項目を従来どおり描画）。
+    /// >0 にすると単一列リストが「最大 n 行だけ表示し、選択行が見えるよう縦スクロール」になる。
+    pub def setMaxVisibleRows(n: Int32, list: ItemList): ItemList =
+        let ItemList.ItemList(r) = list;
+        ItemList.ItemList({maxVisibleRows = Int32.max(0, n) | r})
+
+    /// 単一列スクロール時の先頭表示行 index（純粋・テスト可能）。
+    /// `maxVisibleRows <= 0` または `count <= maxVisibleRows` のときはスクロール不要で 0。
+    /// それ以外は選択行を中央寄りに保ちつつ `[0, count - maxVisibleRows]` にクランプする
+    /// （末尾に達したら下で停止、先頭で 0 に停止＝wrap しない）。
+    pub def scrollFirstVisible(selectedIndex: Int32, count: Int32, maxVisibleRows: Int32): Int32 =
+        if (maxVisibleRows <= 0 or count <= maxVisibleRows) 0
+        else {
+            let maxFirst = count - maxVisibleRows;
+            let centerOff = (maxVisibleRows - 1) / 2;
+            Int32.min(maxFirst, Int32.max(0, selectedIndex - centerOff))
+        }
+
     pub def getMaxColumns(list: ItemList): Int32 =
         let ItemList.ItemList(r) = list;
         r#maxColumns
@@ -591,6 +614,11 @@ mod ItemList {
                 Float64.tryToInt32(Float64.floor(r#size#y / r#itemHeight))
                     |> Option.getWithDefault(1));
         let colWidth = r#size#x / Int32.toFloat64(cols);
+        // 単一列スクロール: maxVisibleRows>0 かつ項目数がそれを超えるときだけ有効。
+        // firstVisible = 選択行が窓内に来るようクランプした先頭行（選択行を中央寄りに保ち、
+        // 端では下/上で止まる）。窓外の行は描画しない。複数列や maxVisibleRows=0 は従来どおり。
+        let scrollOn = cols <= 1 and r#maxVisibleRows > 0 and count > r#maxVisibleRows;
+        let firstVisible = scrollFirstVisible(r#selectedIndex, count, r#maxVisibleRows);
         // 行内縦中央寄せ: テキスト行高・アイコンを itemHeight の中央に置く（Godot ItemList 準拠）。
         // itemHeight ちょうどに本文 1 行が収まるときは vCenter≈0（従来の上端揃えとほぼ同じ）。
         let mainScale = r#fontSize / r#font#fontSize;
@@ -603,8 +631,14 @@ mod ItemList {
         let ascentRatio = r#font#ascent / r#font#fontSize;
         let result = List.foldLeft((acc, entry) -> {
             let idx = acc#idx;
-            let col = idx / rowsPerCol;
-            let row = Int32.remainder(idx, rowsPerCol);
+            // scrollOn のときは表示窓 [firstVisible, firstVisible+maxVisibleRows) に
+            // 収まる行だけを上から並べ、窓外は skipRow=true で描画しない。
+            let (col, row, skipRow) =
+                if (scrollOn) {
+                    let vrow = idx - firstVisible;
+                    (0, vrow, vrow < 0 or vrow >= r#maxVisibleRows)
+                } else
+                    (idx / rowsPerCol, Int32.remainder(idx, rowsPerCol), false);
             let colX = globalPos#x + Int32.toFloat64(col) * colWidth;
             let lineY = globalPos#y + Int32.toFloat64(row) * r#itemHeight;
             // サブライン有りの行は「本文＋サブライン」を 1 ブロックとして itemHeight 内に縦中央寄せ。
@@ -726,7 +760,8 @@ mod ItemList {
                     case None => Nil
                 };
             let lineDrawables =
-                List.append(rowHighlightDrawables,
+                if (skipRow) (Nil: List[GameEngine.Drawable])
+                else List.append(rowHighlightDrawables,
                     List.append(highlightDrawables,
                         List.append(baseLine,
                             List.append(subtextDrawables,

@@ -13,7 +13,7 @@
 ///
 /// ノード構造（drawLayer = 6。独立画面）:
 ///   Title (CanvasLayer, NodeTag.Title(Data))
-///     ├─ bg      (Panel 170x128, NoTag)   ← 背景
+///     ├─ bg      (Panel designWi×designHi, NoTag)   ← 背景（画面全体を覆う）
 ///     ├─ title   (Label2D, NoTag)         ← タイトル文字
 ///     ├─ newGame (Label2D, NoTag)         ← 「はじめから」
 ///     └─ resume  (Label2D, NoTag)         ← 「中断から再開」（不可なら淡色）

@@ -8,7 +8,7 @@
 ///   - 左          : 武器タイプのアイコン（武器 sprite。ItemMenuScene の rowIcons と同方式）
 ///   - 1 行目       : 武器名。右端のバッジ「不得意」は、その武器タイプを **苦手** とするときだけ出す
 ///                    （得意なら何も出さない＝「得意」バッジは出さない）。
-///   - 2 行目(subline): 性能「威${攻} 中${命} 射${range} 残${耐久}」
+///   - 2 行目(subline): 性能「威力 ${攻} 命中 ${命} 射程 ${range} 耐久 ${耐久}」
 ///
 /// 操作:
 ///   - ↑↓ で武器を選び Enter/Z で確定 → 選んだ武器を装備 (weapons 先頭へ移動) してから
@@ -193,16 +193,16 @@ mod WeaponSelectScene {
         metadata = Some("w:${idx}")
     }
 
-    /// 武器の射程表記。min == max なら「射${min}」、違えば「射${min}-${max}」。
+    /// 武器の射程表記。min == max なら「射程 ${min}」、違えば「射程 ${min}-${max}」。
     /// ItemMenuScene.weaponStatLine の rangeText ロジックを 2 行目用に流用する。
     pub def rangeText(range: WeaponCatalog.WeaponRange): String =
-        if (range#min == range#max) "射${range#min}"
-        else "射${range#min}-${range#max}"
+        if (range#min == range#max) "射程 ${range#min}"
+        else "射程 ${range#min}-${range#max}"
 
     /// 武器 1 本ぶんの 2 行目（性能）。残り使用回数を含む。
-    /// 例: "威2  中80  射1  残10"
+    /// 例: "威力 2 命中 80 射程 1 耐久 10"
     pub def weaponSubline(weapon: UnitCatalog.WeaponResource): String =
-        "威${weapon#attack}  中${weapon#hit}  ${rangeText(weapon#range)}  残${weapon#durability}"
+        "威力 ${weapon#attack} 命中 ${weapon#hit} ${rangeText(weapon#range)} 耐久 ${weapon#durability}"
 
     /// 行 index → subline 文字列の Map（全行ぶん）。
     def weaponSublines(weapons: List[UnitCatalog.WeaponResource]): Map[Int32, String] =

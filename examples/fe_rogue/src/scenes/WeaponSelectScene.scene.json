@@ -39,6 +39,7 @@
           "itemAlignment": "Left",
           "itemHeight": 12,
           "items": [],
+          "maxVisibleRows": 3,
           "name": "menu",
           "pos": [2, 9],
           "rowHighlight": {
@@ -59,20 +60,20 @@
             "fillColor": { "b": 0.310, "g": 0.192, "r": 0.086 },
             "inset": 0.5
           },
-          "size": [60, 24],
+          "size": [60, 36],
           "sublineColor": { "b": 0.722, "g": 0.690, "r": 0.667 },
           "sublineFontSize": 2.6,
           "tag": "WeaponSelectMenu",
           "textColor": { "b": 0.969, "g": 0.945, "r": 0.933 },
           "type": "ItemList",
           "visible": false,
-          "wrap": true
+          "wrap": false
         }
       ],
       "cornerRadius": 3,
       "name": "panel",
-      "pos": [50, 31],
-      "size": [64, 28],
+      "pos": [28, 40],
+      "size": [64, 40],
       "tag": "WeaponSelectPanel",
       "type": "Panel",
       "visible": false,

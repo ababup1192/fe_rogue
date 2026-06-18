@@ -106,8 +106,8 @@ mod TestPhaseBannerScene {
         Assert.assertEq(expected = (Stage.SlideOut, 0.0),
                         (result#data#stage, result#offsetX))
 
-    /// 滑り抜け(282ms)が終わると非表示(Idle)になり、帯は画面右外(offsetX = 200)へ退避する。
-    /// （design 幅 170 を確実に画面外へ送り出すため offEndX は 140 → 200 に拡大済み）
+    /// 滑り抜け(282ms)が終わると非表示(Idle)になり、帯は画面右外(offsetX = designWi + 30)へ退避する。
+    /// （offEndX は designWi に追従。design 幅 240 なら 270 で確実に画面外へ送り出す）
     @Test
     def testSlideOutEndsParksOffScreen(): Unit \ Assert =
         let result = PhaseBannerScene.step(
@@ -115,7 +115,7 @@ mod TestPhaseBannerScene {
              wasEnemy = Some(false), pending = None},
             false,
             Duration.millis(2000));
-        Assert.assertEq(expected = (Stage.Idle, 200.0),
+        Assert.assertEq(expected = (Stage.Idle, Int32.toFloat64(Game.designWi()) + 30.0),
                         (result#data#stage, result#offsetX))
 
     // ════════════════════════════════════════════════════════

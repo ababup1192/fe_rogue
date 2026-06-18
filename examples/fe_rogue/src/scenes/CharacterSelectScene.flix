@@ -26,7 +26,7 @@
 ///
 /// ノード構造（drawLayer=6。ゲーム HUD より前面の独立画面）:
 ///   CharacterSelect (CanvasLayer, NodeTag.CharacterSelect(Data))
-///     ├─ bg        (Panel 170x128, NoTag)            ← 背景
+///     ├─ bg        (Panel designWi×designHi, NoTag)   ← 背景（画面全体を覆う）
 ///     ├─ counter   (Label2D, NoTag)                  ← 「残り N 人」/ リーダー選びの案内
 ///     ├─ frame0..7 (Panel, NoTag)                    ← 各カードの枠（注目=白枠 / 選択中=金枠）
 ///     ├─ card0..7  (Sprite2D, NoTag)                 ← 各ユニットの絵（毎フレーム位置/拡大を更新）
@@ -100,7 +100,7 @@ mod CharacterSelectScene {
     /// 描画レイヤー（ゲーム HUD の最前面より更に前。独立画面なので上書きで良い）。
     def drawLayer(): Int32 = 6
 
-    // レイアウト（論理解像度 170x128 内）。右側 ~50px を説明パネルに割き、左側でカードを送る。
+    // レイアウト（論理解像度 designWi×designHi 内）。右側 ~50px を説明パネルに割き、左側でカードを送る。
     def screenWidthF(): Float64 = Int32.toFloat64(Game.designWi())
     def screenHeightF(): Float64 = Int32.toFloat64(Game.designHi())
     /// カルーセルの中央 x（カード領域 0..116 の中央）。

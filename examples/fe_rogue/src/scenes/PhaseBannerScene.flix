@@ -116,12 +116,14 @@ mod PhaseBannerScene {
     ///   offStartX — 滑り込みの開始位置（画面左外）。Idle 中の待機位置でもある。
     ///   homeX     — 中央（帯が画面いっぱいに収まる位置）。
     ///   offEndX   — 滑り抜けの終了位置（画面右外）。
-    /// 帯は画面幅（designWidth=170）ぶんの横幅なので、Idle/SlideOut で確実に画面外へ
+    /// 帯は画面幅（designWidth）ぶんの横幅なので、Idle/SlideOut で確実に画面外へ
     /// 消えるよう画面幅より大きく振る。ここが画面幅より小さいと、待機中の帯が左端に
-    /// 数 px はみ出して「変な位置に半透明帯が残る」不具合になる（128→170 に合わせ ±200 へ）。
-    def offStartX(): Float64 = -200.0
+    /// 数 px はみ出して「変な位置に半透明帯が残る」不具合になる。
+    /// designWi に追従させ +30px のマージンを足す（designWi=170 なら ±200、240 なら ±270）。
+    def offMargin(): Float64 = 30.0
+    def offStartX(): Float64 = -(Int32.toFloat64(Game.designWi()) + offMargin())
     def homeX(): Float64 = 0.0
-    def offEndX(): Float64 = 200.0
+    def offEndX(): Float64 = Int32.toFloat64(Game.designWi()) + offMargin()
 
     /// 起動直後の状態。`wasEnemy = None` なので最初のフレームで味方バナーが出る。
     def initialData(): BannerData =

@@ -696,17 +696,20 @@ def staffAimCancel(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
 mod Game {
 
     /// デザイン解像度。プレイヤーをズームインで見せるため、マップ全体（208×208）より
-    /// 小さく切り出す。Camera2D 追従でビューが動く。横は左右余白も使うため 170 に拡張。
+    /// 小さく切り出す。Camera2D 追従でビューが動く。横は左右余白も使うため 240 に拡張
+    /// （行動メニュー＋武器ウィンドウを左に並べても、カメラ中心の戦闘キャラに被らないだけの幅）。
     /// この値はカメラのビューポートと投影行列の基準で、ウィンドウサイズに合わせて
     /// 引き伸ばし表示される（Godot の Stretch Mode = canvas_items 相当）。
     /// **project.json の "designWidth"/"designHeight" と必ず一致させること**（HUD の中央寄せ
     /// 計算がこの値を使うため、ずれると PhaseBanner 等の帯が画面幅とずれる）。
-    pub def designWi(): Int32 = 170
+    /// 縦横比は windowWi/windowHi と一致させる（240:128 = 1170:624）。ずらすと引き伸ばし歪みになる。
+    pub def designWi(): Int32 = 240
     pub def designHi(): Int32 = 128
 
     /// 初期ウィンドウサイズ（OS ピクセル単位）。design とは独立して指定でき、
-    /// design 側がウィンドウいっぱいに引き伸ばし描画される
-    pub def windowWi(): Int32 = 832
+    /// design 側がウィンドウいっぱいに引き伸ばし描画される。
+    /// design と同じ縦横比（240:128）にしてピクセル等倍・歪みなしで表示する。
+    pub def windowWi(): Int32 = 1170
     pub def windowHi(): Int32 = 624
 
     /// ゲーム起動エントリ。Region と各 effect handler を立ち上げ、初回シーンを

@@ -1,8 +1,8 @@
 {
   "title": "fe_rogue",
-  "designWidth": 170,
+  "designWidth": 240,
   "designHeight": 128,
-  "windowWidth": 832,
+  "windowWidth": 1170,
   "windowHeight": 624,
   "clearColor": {"r": 0.098, "g": 0.125, "b": 0.102},
   "maxDeltaTime": 0.05,

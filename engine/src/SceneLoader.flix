@@ -1463,6 +1463,7 @@ mod SceneLoader {
                     focusedOpt      <- (JsonCompat.getAtKeyOpt(Root, "focused", map): Result[Util.Json.JsonError, Option[Bool]]);
                     cursorGlyphOpt  <- (JsonCompat.getAtKeyOpt(Root, "cursorGlyph", map): Result[Util.Json.JsonError, Option[String]]);
                     wrapOpt         <- (JsonCompat.getAtKeyOpt(Root, "wrap", map): Result[Util.Json.JsonError, Option[Bool]]);
+                    maxVisibleRowsOpt <- (JsonCompat.getAtKeyOpt(Root, "maxVisibleRows", map): Result[Util.Json.JsonError, Option[Int32]]);
                     itemHeightOpt   <- (JsonCompat.getAtKeyOpt(Root, "itemHeight", map): Result[Util.Json.JsonError, Option[Float64]]);
                     cursorOffsetOpt <- (JsonCompat.getAtKeyOpt(Root, "cursorOffsetX", map): Result[Util.Json.JsonError, Option[Float64]]);
                     cursorColorOpt  <- parseColorOpt("cursorColor", map);
@@ -1488,6 +1489,7 @@ mod SceneLoader {
                         |> applyOpt(focusedOpt, ItemList.setFocused)
                         |> applyOpt(cursorGlyphOpt, ItemList.setCursorGlyph)
                         |> applyOpt(wrapOpt, ItemList.setWrap)
+                        |> applyOpt(maxVisibleRowsOpt, ItemList.setMaxVisibleRows)
                         |> applyOpt(itemHeightOpt, ItemList.setItemHeight)
                         |> applyOpt(cursorOffsetOpt, ItemList.setCursorOffsetX)
                         |> applyOpt(cursorColorOpt, ItemList.setCursorColor)

@@ -86,26 +86,26 @@ mod TestWeaponSelectScene {
     // weaponSubline / rangeText — 性能 2 行目
     // ════════════════════════════════════════════════════════
 
-    /// 単射程 (min == max) は「射N」。残り使用回数を末尾に出す。
+    /// 単射程 (min == max) は「射程 N」。残り使用回数を末尾に出す。
     @Test
     def testWeaponSublineSingleRange(): Unit \ Assert =
         // testWeapon: 攻2 命80 射1-1 耐久10
         Assert.assertEq(
-            expected = "威2  中80  射1  残10",
+            expected = "威力 2 命中 80 射程 1 耐久 10",
             WeaponSelectScene.weaponSubline(TestUnitFixtures.testWeapon()))
 
-    /// 範囲射程 (min != max) は「射min-max」。
+    /// 範囲射程 (min != max) は「射程 min-max」。
     @Test
     def testRangeTextSpan(): Unit \ Assert =
         Assert.assertEq(
-            expected = "射1-2",
+            expected = "射程 1-2",
             WeaponSelectScene.rangeText((weaponWithRange(1, 2))#range))
 
-    /// 単射程は範囲なしの「射N」表記。
+    /// 単射程は範囲なしの「射程 N」表記。
     @Test
     def testRangeTextSingle(): Unit \ Assert =
         Assert.assertEq(
-            expected = "射1",
+            expected = "射程 1",
             WeaponSelectScene.rangeText((TestUnitFixtures.testWeapon())#range))
 
     // ════════════════════════════════════════════════════════
