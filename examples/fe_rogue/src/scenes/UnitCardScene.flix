@@ -21,9 +21,12 @@ mod UnitCardScene {
     def panelChildName(): String = "panel"
     def panelPath(): NodePath = rootName() :: panelChildName() :: Nil
     def fontName(): String = "ui"
-    def sceneJsonPath(): String = AssetPath.resolve("src/scenes/UnitCardScene.scene.json")
+    /// EnemyCardScene も同じテンプレートを PackedScene で別名インスタンス化するため pub。
+    pub def sceneJsonPath(): String = AssetPath.resolve("src/scenes/UnitCardScene.scene.json")
 
     // ── レイアウト（panel ローカル座標、設計解像度 170×128）──
+    /// panel の幅（scene.json と一致）。敵カードを画面右端へ寄せる計算に使う（EnemyCardScene）。
+    pub def panelW(): Float64 = 70.0
     def iconCenter(): Vec2.Vec2 = {x = 10.0, y = 9.5}
     def iconScale(): Vec2.Vec2  = {x = 0.27, y = 0.27}   // 元の約 1/3
     def nameX(): Float64 = 21.0
@@ -33,15 +36,16 @@ mod UnitCardScene {
     def hpLabelPos(): Vec2.Vec2 = {x = 21.0, y = 7.5}
     def hpBarPos(): Vec2.Vec2   = {x = 29.0, y = 8.0}
     def hpBarSize(): Vec2.Vec2  = {x = 26.0, y = 1.5}
-    def hpTextY(): Float64 = 7.5
+    /// HP ラベル / 数値はバーの縦中心に合わせる（VerticalAlignment.Center の基準 y）。
+    def hpRowCenterY(): Float64 = hpBarPos()#y + hpBarSize()#y / 2.0
     /// panel 右内側（右余白ぶん内側）。HP 数値はここを右端に右寄せする。
     def panelInnerRight(): Float64 = 67.0
     def equipY(): Float64 = 12.0       // 装備アイコンの上端（枠から離して上へ）
     def equipTextY(): Float64 = 13.5   // 装備名（アイコン中心に縦合わせ）
     def weaponIconX(): Float64 = 21.0
-    def weaponTextX(): Float64 = 29.0  // アイコンの右に少し余白を空ける
-    def ringIconX(): Float64 = 41.0
-    def ringTextX(): Float64 = 49.0
+    def weaponTextX(): Float64 = 28.0  // 色紙の右に少し余白を空ける（色紙を小さくしたぶん左へ寄せた）
+    def ringIconX(): Float64 = 44.0    // 色紙を小さくしたぶん右へ寄せ、武器名との間を広げる
+    def ringTextX(): Float64 = 51.0
     def equipScale(): Vec2.Vec2 = {x = 0.35, y = 0.35}
 
     def fsName(): Float64 = 3.2
@@ -53,14 +57,20 @@ mod UnitCardScene {
     def lvColor(): Color      = {r = 0.961f32, g = 0.773f32, b = 0.259f32}  // #f5c542
     def hpLabelColor(): Color = {r = 0.604f32, g = 0.651f32, b = 0.741f32}  // #9aa6bd
     def hpTrackColor(): Color = {r = 0.031f32, g = 0.043f32, b = 0.063f32}  // #080b10
-    def hpFillColor(): Color  = {r = 0.290f32, g = 0.749f32, b = 0.278f32}  // 緑（#3ba83a→#57d654 の中間）
     def hpTextColor(): Color  = {r = 0.804f32, g = 0.835f32, b = 0.902f32}  // #cdd5e6
+    // カードのアクセント色（枠線 + HP バー）。味方=青 / 敵=赤（スクショ準拠）。
+    def allyBorderColor(): Color      = {r = 0.231f32, g = 0.451f32, b = 0.788f32}  // 青枠 #3b73c9
+    def allyBarColor(): Color         = {r = 0.314f32, g = 0.580f32, b = 0.902f32}  // 青バー #5094e6
+    pub def enemyBorderColor(): Color = {r = 0.812f32, g = 0.306f32, b = 0.267f32}  // 赤枠 #cf4e44
+    pub def enemyBarColor(): Color    = {r = 0.871f32, g = 0.337f32, b = 0.282f32}  // 赤バー #de5648
+    /// カード枠線の太さ（design px）。少し細めにする。
+    def cardBorderWidth(): Float64 = 0.5
     def equipColor(): Color   = {r = 0.706f32, g = 0.745f32, b = 0.820f32}  // 淡い白
     /// 装備アイコンの背後に敷く「明るめの色紙」（枠つきプレート）。暗い武器アートを地色から浮かせる。
     def equipMatColor(): Color  = {r = 0.42f32, g = 0.47f32, b = 0.60f32}  // 明るめスレート
     def equipMatBorder(): Color = {r = 0.62f32, g = 0.67f32, b = 0.78f32}  // 一段明るいフチ
-    def equipMatPad(): Float64  = 1.2                       // アイコン周囲に空ける余白
-    def equipMatSize(): Vec2.Vec2 = {x = 8.0, y = 8.0}      // ~5.6px アイコン + 余白
+    def equipMatPad(): Float64  = 0.6                       // アイコン周囲に空ける余白（色紙を小さくし詰めた）
+    def equipMatSize(): Vec2.Vec2 = {x = 6.8, y = 6.8}      // ~5.6px アイコン + 余白（アイコンは据え置きで色紙だけ縮小）
 
     /// scene.json で外枠（CanvasLayer + Panel・初期非表示）を宣言し、CanvasLayer に
     /// NodeTag.UnitCard を差し込む。children は process が panelPath() 配下に動的生成。
@@ -94,9 +104,9 @@ mod UnitCardScene {
         match idOpt {
             case Some(id) => match PlayerScene.get(id, scene) {
                 case Some(d) => renderPlayer(d, scene)
-                case None    => hide(scene)
+                case None    => hidePanel(panelPath(), scene)
             }
-            case None => hide(scene)
+            case None => hidePanel(panelPath(), scene)
         }
 
     /// カーソル上のユニット（敵優先 / フォグ隠れは除外）を表示。空マスなら隠す。
@@ -106,14 +116,14 @@ mod UnitCardScene {
                 if (kind == "enemy")
                     match EnemyScene.get(id, scene) {
                         case Some(d) => renderEnemy(d, scene)
-                        case None    => hide(scene)
+                        case None    => hidePanel(panelPath(), scene)
                     }
                 else
                     match PlayerScene.get(id, scene) {
                         case Some(d) => renderPlayer(d, scene)
-                        case None    => hide(scene)
+                        case None    => hidePanel(panelPath(), scene)
                     }
-            case None => hide(scene)
+            case None => hidePanel(panelPath(), scene)
         }
 
     /// カーソル位置のユニット種別と id（敵優先）。空マスなら None。
@@ -134,32 +144,38 @@ mod UnitCardScene {
 
     def renderPlayer(d: PlayerScene.Data, scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameEngine.Game =
-        renderUnit(d#resource, d#hp, d#weapons, PlayerData.equippedRing(d), Some(d#level), scene)
+        renderUnitInto(panelPath(), allyBorderColor(), allyBarColor(), d#resource, d#hp, d#weapons,
+                       PlayerData.equippedRing(d), Some(d#level), scene)
 
     def renderEnemy(d: EnemyScene.Data, scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameEngine.Game =
-        renderUnit(d#resource, d#hp, Option.toList(d#weapon), d#ring, None, scene)
+        renderUnitInto(panelPath(), enemyBorderColor(), enemyBarColor(), d#resource, d#hp,
+                       Option.toList(d#weapon), d#ring, None, scene)
 
-    /// panel 配下の動的 children を全消し。
-    def clearContents(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let names = Scene.getChildrenAt(panelPath(), scene);
+    /// panel 配下の動的 children を全消し（panelPath を引数化して敵カードと共用）。
+    def clearContents(panelPath: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let names = Scene.getChildrenAt(panelPath, scene);
         List.foldLeft(acc -> name ->
-            Scene.removeAt(List.append(panelPath(), name :: Nil), acc), scene, names)
+            Scene.removeAt(List.append(panelPath, name :: Nil), acc), scene, names)
 
-    def hide(scene: Scene[NodeTag]): Scene[NodeTag] =
-        scene |> clearContents |> Panel.mapAt(panelPath(), CanvasItem.setVisible(false))
+    /// 指定 panel のカードを隠す（children を消して panel を非表示）。敵カードと共用。
+    pub def hidePanel(panelPath: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene |> clearContents(panelPath) |> Panel.mapAt(panelPath, CanvasItem.setVisible(false))
 
-    /// ユニット（味方/敵で共通の開きレコード）のカードを描画する。
-    /// `levelOpt` は味方のみ Some（敵は None で Lv 非表示）。
-    def renderUnit(res: {description = String, hp = Int32,
-                         sprite = Sprite.SpriteResource | r},
-                    currentHp: Int32,
-                    weapons: List[UnitCatalog.WeaponResource],
-                    ring: Option[Ring.RingResource],
-                    levelOpt: Option[Int32],
-                    scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
+    /// ユニット（味方/敵で共通の開きレコード）のカードを `panelPath` 配下に描画する。
+    /// `levelOpt` は味方のみ Some（敵は None で Lv 非表示）。味方カード（左）と敵カード（右）で
+    /// 同じレイアウトを共有する（敵カードは内容を反転せず、panel 位置だけ右に寄せる）。
+    /// `borderColor` / `barColor` で味方=青 / 敵=赤 を出し分ける（枠線と HP バー）。
+    pub def renderUnitInto(panelPath: NodePath, borderColor: Color, barColor: Color,
+                           res: {description = String, hp = Int32,
+                                 sprite = Sprite.SpriteResource | r},
+                           currentHp: Int32,
+                           weapons: List[UnitCatalog.WeaponResource],
+                           ring: Option[Ring.RingResource],
+                           levelOpt: Option[Int32],
+                           scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
-        let cleared = clearContents(scene);
+        let cleared = clearContents(panelPath, scene);
         // アイコン（中央基準・元の約 1/3）
         let off = res#sprite#offset;
         let spritePos: Vec2.Vec2 = {
@@ -170,13 +186,13 @@ mod UnitCardScene {
             |> Sprite2D.setHframes(res#sprite#hframes)
             |> Sprite2D.setVframes(res#sprite#vframes)
             |> Sprite2D.setFrame(res#sprite#frame);
-        let withIcon = Scene.addChildAt(panelPath(), "Icon",
+        let withIcon = Scene.addChildAt(panelPath, "Icon",
             EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag), cleared);
         // 名前（+ Lv は味方のみ、名前幅を測って隣に金色で）
         let nameLabel = Label2D.make(res#description, atlas, fsName())
             |> Node2D.setPosition({x = nameX(), y = nameY()})
             |> CanvasItem.setModulate(nameColor());
-        let withName = Scene.addChildAt(panelPath(), "Name",
+        let withName = Scene.addChildAt(panelPath, "Name",
             EngineNode.Label2DWithState(nameLabel, NodeTag.NoTag), withIcon);
         let withLv = match levelOpt {
             case Some(lv) =>
@@ -184,52 +200,62 @@ mod UnitCardScene {
                 let lvLabel = Label2D.make("Lv ${lv}", atlas, fsSmall())
                     |> Node2D.setPosition({x = nameX() + nameW + lvGap(), y = nameY() + 0.6})
                     |> CanvasItem.setModulate(lvColor());
-                Scene.addChildAt(panelPath(), "Lv",
+                Scene.addChildAt(panelPath, "Lv",
                     EngineNode.Label2DWithState(lvLabel, NodeTag.NoTag), withName)
             case None => withName
         };
-        // HP ラベル + バー + 数値
+        // HP ラベル + バー + 数値（ラベル/数値はバー中心に縦合わせ）
         let hpLabel = Label2D.make("HP", atlas, fsTiny())
-            |> Node2D.setPosition(hpLabelPos())
+            |> Node2D.setPosition({x = hpLabelPos()#x, y = hpRowCenterY()})
+            |> Label2D.setVerticalAlignment(VerticalAlignment.Center)
             |> CanvasItem.setModulate(hpLabelColor());
-        let withHpLabel = Scene.addChildAt(panelPath(), "HpLabel",
+        let withHpLabel = Scene.addChildAt(panelPath, "HpLabel",
             EngineNode.Label2DWithState(hpLabel, NodeTag.NoTag), withLv);
-        let hpBar = ProgressBar.make(hpBarSize(), Int32.toFloat64(res#hp), hpFillColor())
+        let hpBar = ProgressBar.make(hpBarSize(), Int32.toFloat64(res#hp), barColor)
             |> Node2D.setPosition(hpBarPos())
             |> ProgressBar.setValue(Int32.toFloat64(currentHp))
             |> ProgressBar.setBackgroundColor(hpTrackColor())
             |> ProgressBar.setBorderWidth(0)
             |> ProgressBar.setCornerRadius(0.75);  // 高さ 1.5px → 半径 0.75 でピル状に丸める
-        let withBar = Scene.addChildAt(panelPath(), "HpBar",
+        let withBar = Scene.addChildAt(panelPath, "HpBar",
             EngineNode.ProgressBarWithState(hpBar, NodeTag.NoTag), withHpLabel);
         // HP 数値はカード右端に右寄せ（バー右に少し余白）。幅を実測して右端そろえ。
         let hpTextBase = Label2D.make("${currentHp}/${res#hp}", atlas, fsTiny())
+            |> Label2D.setVerticalAlignment(VerticalAlignment.Center)
             |> CanvasItem.setModulate(hpTextColor());
         let hpTextW = Label2D.measure(hpTextBase)#x;
         let hpText = hpTextBase
-            |> Node2D.setPosition({x = panelInnerRight() - hpTextW, y = hpTextY()});
-        let withHpText = Scene.addChildAt(panelPath(), "HpText",
+            |> Node2D.setPosition({x = panelInnerRight() - hpTextW, y = hpRowCenterY()});
+        let withHpText = Scene.addChildAt(panelPath, "HpText",
             EngineNode.Label2DWithState(hpText, NodeTag.NoTag), withBar);
         // 装備（武器・指輪を横並び）。未装備はその項目を省略。
+        // 名前が隣の項目へ被らないよう、各名前に使える横幅を渡す（収まらなければ "…" で省略）。
+        // 武器名は隣の指輪の色紙左端まで、指輪名は panel 右内側まで（小さな安全余白を引く）。
+        let weaponMaxW = (ringIconX() - equipMatPad()) - weaponTextX() - 1.0;
+        let ringMaxW = panelInnerRight() - ringTextX() - 0.5;
         let withWeapon = match PlayerData.equippedWeapon(weapons) {
-            case Some(w) => renderEquip("Weapon", w#sprite, w#name,
-                                         weaponIconX(), weaponTextX(), atlas, withHpText)
+            case Some(w) => renderEquipInto(panelPath, "Weapon", w#sprite, w#name,
+                                            weaponIconX(), weaponTextX(), weaponMaxW, atlas, withHpText)
             case None    => withHpText
         };
         let withRing = match ring {
-            case Some(rr) => renderEquip("Ring", rr#sprite, rr#name,
-                                          ringIconX(), ringTextX(), atlas, withWeapon)
+            case Some(rr) => renderEquipInto(panelPath, "Ring", rr#sprite, rr#name,
+                                             ringIconX(), ringTextX(), ringMaxW, atlas, withWeapon)
             case None     => withWeapon
         };
-        Panel.mapAt(panelPath(), CanvasItem.setVisible(true), withRing)
+        // 枠線を味方=青 / 敵=赤 に塗り、少し細める（表示も同時に on）。
+        Panel.mapAt(panelPath, p -> p
+            |> CanvasItem.setVisible(true)
+            |> Panel.setBorderColor(borderColor)
+            |> Panel.setBorderWidth(cardBorderWidth()), withRing)
 
     /// 装備 1 個（アイコン + 名前）を equipY() 行に描く。武器・指輪で共用（sprite は開きレコード）。
     /// アイコンと名前のベースラインがそろうよう、テキストはアイコン中心に縦合わせする。
-    def renderEquip(key: String,
-                     spr: {texture = String, hframes = Int32, vframes = Int32,
-                           frame = Int32, offset = Vec2.Vec2 | s},
-                     name: String, iconX: Float64, textX: Float64, atlas: FontAtlas,
-                     scene: Scene[NodeTag]): Scene[NodeTag] =
+    def renderEquipInto(panelPath: NodePath, key: String,
+                        spr: {texture = String, hframes = Int32, vframes = Int32,
+                              frame = Int32, offset = Vec2.Vec2 | s},
+                        name: String, iconX: Float64, textX: Float64, maxTextWidth: Float64,
+                        atlas: FontAtlas, scene: Scene[NodeTag]): Scene[NodeTag] =
         let off = spr#offset;
         let iconPos: Vec2.Vec2 = {
             x = iconX + off#x * equipScale()#x,
@@ -243,7 +269,7 @@ mod UnitCardScene {
             |> Panel.setBorderWidth(0.5)
             |> Panel.setCornerRadius(1.5)
             |> CanvasItem.setZIndex(0);
-        let withMat = Scene.addChildAt(panelPath(), "${key}Mat",
+        let withMat = Scene.addChildAt(panelPath, "${key}Mat",
             EngineNode.PanelWithState(mat, NodeTag.NoTag), scene);
         let icon = Sprite2D.make(spr#texture, iconPos, equipScale())
             |> Sprite2D.setHframes(spr#hframes)
@@ -251,11 +277,26 @@ mod UnitCardScene {
             |> Sprite2D.setFrame(spr#frame)
             |> Sprite2D.setCentered(false)
             |> CanvasItem.setZIndex(1);
-        let withIcon = Scene.addChildAt(panelPath(), "${key}Icon",
+        let withIcon = Scene.addChildAt(panelPath, "${key}Icon",
             EngineNode.Sprite2DWithState(icon, NodeTag.NoTag), withMat);
-        let label = Label2D.make(name, atlas, fsTiny())
+        // 隣の項目へ被らないよう、maxTextWidth に収まるところまで詰める（あふれたら "…" で省略）。
+        let label = Label2D.make(fitText(name, atlas, fsTiny(), maxTextWidth), atlas, fsTiny())
             |> Node2D.setPosition({x = textX, y = equipTextY()})
             |> CanvasItem.setModulate(equipColor());
-        Scene.addChildAt(panelPath(), "${key}Text",
+        Scene.addChildAt(panelPath, "${key}Text",
             EngineNode.Label2DWithState(label, NodeTag.NoTag), withIcon)
+
+    /// `text` を `fsTiny` で描いて `maxWidth`（panel ローカル px）に収めた文字列を返す。
+    /// そのまま収まれば原文。あふれる場合は末尾を削り "…" を付け、収まる最大の prefix を返す。
+    def fitText(text: String, atlas: FontAtlas, fontSize: Float64, maxWidth: Float64): String =
+        let widthOf = s -> Label2D.measure(Label2D.make(s, atlas, fontSize))#x;
+        if (widthOf(text) <= maxWidth) text
+        else
+            let ell = "…";
+            // n-1, n-2, … 1 文字で試し、"…" を足しても収まる最大の prefix を採る。
+            List.range(1, String.length(text))
+                |> List.reverse
+                |> List.findLeft(k -> widthOf(String.take(k, text) + ell) <= maxWidth)
+                |> Option.map(k -> String.take(k, text) + ell)
+                |> Option.getWithDefault(ell)
 }

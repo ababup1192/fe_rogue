@@ -85,6 +85,8 @@ pub enum NodeTag {
     case UnitInfoPanel(UnitInfoPopupScene.PanelState)
     /// UnitCardScene の CanvasLayer 親（左サイドの選択ユニット簡易カード）。
     case UnitCard
+    /// EnemyCardScene の CanvasLayer 親（右サイドの攻撃対象敵カード。UnitCard と左右対称）。
+    case EnemyCard
     /// PhaseBannerScene の CanvasLayer 親（ターン切替バナーのスライド演出状態を持つ）
     case PhaseBanner(PhaseBannerScene.BannerData)
     /// ItemPickupPopupScene の CanvasLayer 親（アイテム取得ポップアップのフェード演出状態を持つ）
@@ -246,6 +248,8 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.UnitCard) =>
             checked_ecast(UnitCardScene.process(delta, node, path, scene))
+        case EngineNode.CanvasLayerWithState(_, NodeTag.EnemyCard) =>
+            checked_ecast(EnemyCardScene.process(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.BattlePanel(_)) =>
             checked_ecast(BattlePanelScene.process(delta, node, path, scene))
         case EngineNode.PanelWithState(_, NodeTag.LevelUpPanel(_)) =>

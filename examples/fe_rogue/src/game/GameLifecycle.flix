@@ -77,6 +77,7 @@ mod GameLifecycle {
             |> StairsExitScene.add      // 集合「階段で離脱」の順次退場ドライバ (process で phase 判定)
             |> ItemMenuScene.add        // アイテム選択ウィンドウ (初期は非表示)
             |> UnitCardScene.add        // 左サイドの選択ユニット簡易カード (初期は非表示)
+            |> EnemyCardScene.add       // 右サイドの攻撃対象敵カード (UnitCard と左右対称・初期は非表示)
             |> ActionMenuScene.add      // 行動選択ウィンドウ (初期は非表示)
             |> WeaponSelectScene.add    // 武器選択ウィンドウ (ActionMenu「攻撃」確定で右隣に出る。初期は非表示)
             |> GameOverMenuScene.add    // 全滅時のモーダル選択 (初期は非表示)
