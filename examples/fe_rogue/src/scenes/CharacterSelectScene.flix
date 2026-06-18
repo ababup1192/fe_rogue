@@ -232,7 +232,7 @@ mod CharacterSelectScene {
                     scene: Scene[NodeTag]): Scene[NodeTag] =
         let frame = Panel.make(normalFrameSize(), frameColor())
             |> Panel.setBorderColor(frameDimBorder())
-            |> Panel.setBorderWidth(1)
+            |> Panel.setBorderWidth(1.0)
             |> CanvasItem.setZIndex(1);
         let sprite = Sprite2D.make(resource#sprite#texture, {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0})
             |> Sprite2D.setCentered(true)
@@ -252,7 +252,7 @@ mod CharacterSelectScene {
         let panel = Panel.make(descSize(), descBgColor())
             |> Node2D.setPosition(descPos())
             |> Panel.setBorderColor(borderColor())
-            |> Panel.setBorderWidth(1)
+            |> Panel.setBorderWidth(1.0)
             |> CanvasItem.setZIndex(150);
         let descTitle = Label2D.make("", atlas, descTitleFontSize())
             |> Node2D.setPosition(descTitlePos())
@@ -275,7 +275,7 @@ mod CharacterSelectScene {
         let bg = Panel.make(buttonSize(), buttonDisabledBg())
             |> Node2D.setPosition(buttonPos())
             |> Panel.setBorderColor(buttonDisabledBorder())
-            |> Panel.setBorderWidth(1)
+            |> Panel.setBorderWidth(1.0)
             |> CanvasItem.setZIndex(5);
         // 上側に重ねる明るい層。これで「上が明るく下が濃い」グラデ風の見た目にする。
         let gloss = Panel.make(buttonGlossSize(), buttonActiveGloss())
@@ -545,12 +545,12 @@ mod CharacterSelectScene {
     /// 未選択で注目中=白で太く、それ以外=控えめで細い。
     /// 注目は枠サイズ（`cardFrameSize` で少し大きい）でも示すので、選択中かつ注目でも
     /// 「大きい金枠」で選択と注目の両方が分かる。
-    def cardFrameBorder(data: Data, index: Int32): (Color, Int32) =
+    def cardFrameBorder(data: Data, index: Int32): (Color, Float64) =
         let focused = index == effectiveFocus(data);
         let selected = List.memberOf(index, data#selected);
-        if (selected) (selectedColor(), 2)
-        else if (focused) (focusBorderColor(), 2)
-        else (frameDimBorder(), 1)
+        if (selected) (selectedColor(), 2.0)
+        else if (focused) (focusBorderColor(), 2.0)
+        else (frameDimBorder(), 1.0)
 
     /// カードの色味。リーダー選び中は選んだ 3 人以外を暗くして候補を目立たせる。
     def cardModulate(data: Data, index: Int32): Color =
@@ -583,7 +583,7 @@ mod CharacterSelectScene {
             else
                 (buttonActiveBg(), buttonActiveGloss(), textColor());
         // 枠は注目中だけ出す（通常は太さ 0 = 枠なし）。
-        let borderWidth = if (data#onButton) 2 else 0;
+        let borderWidth = if (data#onButton) 2.0 else 0.0;
         scene
             |> Panel.mapAt(buttonBgPath(), panel -> panel
                 |> Panel.setBackgroundColor(background)

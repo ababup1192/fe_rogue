@@ -1285,7 +1285,7 @@ mod SceneLoader {
             backgroundAlphaOpt <- (JsonCompat.getAtKeyOpt(Root, "backgroundAlpha", map): Result[Util.Json.JsonError, Option[Float64]]);
             borderColorOpt     <- parseColorOpt("border", map);
             borderAlphaOpt     <- (JsonCompat.getAtKeyOpt(Root, "borderAlpha", map): Result[Util.Json.JsonError, Option[Float64]]);
-            borderWidthOpt     <- (JsonCompat.getAtKeyOpt(Root, "borderWidth", map): Result[Util.Json.JsonError, Option[Int32]]);
+            borderWidthOpt     <- (JsonCompat.getAtKeyOpt(Root, "borderWidth", map): Result[Util.Json.JsonError, Option[Float64]]);
             cornerRadiusOpt    <- (JsonCompat.getAtKeyOpt(Root, "cornerRadius", map): Result[Util.Json.JsonError, Option[Float64]]);
             stripeColorOpt     <- parseColorOpt("stripeColor", map);
             stripeAlphaOpt     <- (JsonCompat.getAtKeyOpt(Root, "stripeAlpha", map): Result[Util.Json.JsonError, Option[Float64]]);

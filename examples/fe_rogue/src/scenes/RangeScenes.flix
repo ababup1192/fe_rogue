@@ -73,7 +73,7 @@ mod RangeOverlay {
                             |> Panel.setBackgroundAlpha(alpha * 0.08f32)
                             |> Panel.setBorderColor(borderColor)
                             |> Panel.setBorderAlpha(alpha)
-                            |> Panel.setBorderWidth(1)
+                            |> Panel.setBorderWidth(0.5)
                             |> Panel.setCornerRadius(2.0)
                             |> Panel.setStripe(stripeColor, alpha * 0.65f32, stripeWidth(), stripePeriod())
                             |> CanvasItem.setZIndex(tileZIndex());

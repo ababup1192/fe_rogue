@@ -17,7 +17,7 @@ mod TestPanel {
     def testToDrawablesWithBorder(): Unit \ Assert =
         let panel = Panel.make({x = 100.0, y = 50.0}, black())
             |> Panel.setBorderColor(white())
-            |> Panel.setBorderWidth(2);
+            |> Panel.setBorderWidth(2.0);
         let drawables = Panel.toDrawables(panel, {x = 0.0, y = 0.0});
         Assert.assertEq(expected = 5, List.length(drawables))
 
@@ -25,8 +25,8 @@ mod TestPanel {
     @Test
     def testSetBorderWidthClampsNegative(): Unit \ Assert =
         let panel = Panel.make({x = 100.0, y = 50.0}, black())
-            |> Panel.setBorderWidth(-5);
-        Assert.assertEq(expected = 0, Panel.getBorderWidth(panel))
+            |> Panel.setBorderWidth(-5.0);
+        Assert.assertEq(expected = 0.0, Panel.getBorderWidth(panel))
 
     /// 背景色の round-trip
     @Test
@@ -39,8 +39,8 @@ mod TestPanel {
     @Test
     def testBorderWidthRoundtrip(): Unit \ Assert =
         let panel = Panel.make({x = 10.0, y = 10.0}, black())
-            |> Panel.setBorderWidth(4);
-        Assert.assertEq(expected = 4, Panel.getBorderWidth(panel))
+            |> Panel.setBorderWidth(4.0);
+        Assert.assertEq(expected = 4.0, Panel.getBorderWidth(panel))
 
     /// size round-trip
     @Test
@@ -62,7 +62,7 @@ mod TestPanel {
     def testCornerRadiusZeroUsesLegacyRects(): Unit \ Assert =
         let p0 = Panel.make({x = 100.0, y = 50.0}, black());
         let p5 = Panel.make({x = 100.0, y = 50.0}, black())
-            |> Panel.setBorderColor(white()) |> Panel.setBorderWidth(2);
+            |> Panel.setBorderColor(white()) |> Panel.setBorderWidth(2.0);
         let d0 = Panel.toDrawables(p0, {x = 0.0, y = 0.0});
         let d5 = Panel.toDrawables(p5, {x = 0.0, y = 0.0});
         let firstStyleNone = match List.head(d0) {
@@ -77,7 +77,7 @@ mod TestPanel {
     @Test
     def testCornerRadiusEmitsStyledDrawable(): Unit \ Assert =
         let panel = Panel.make({x = 100.0, y = 50.0}, black())
-            |> Panel.setBorderColor(white()) |> Panel.setBorderWidth(2)
+            |> Panel.setBorderColor(white()) |> Panel.setBorderWidth(2.0)
             |> Panel.setCornerRadius(6.0);
         let drawables = Panel.toDrawables(panel, {x = 0.0, y = 0.0});
         let info = match List.head(drawables) {
@@ -99,7 +99,7 @@ mod TestPanel {
             |> Panel.setBackgroundAlpha(0.8f32)
             |> Panel.setBorderColor(border)
             |> Panel.setBorderAlpha(0.5f32)
-            |> Panel.setBorderWidth(2)
+            |> Panel.setBorderWidth(2.0)
             |> Panel.setCornerRadius(6.0);
         let info = match List.head(Panel.toDrawables(panel, {x = 0.0, y = 0.0})) {
             case Some(d) => match d#style {

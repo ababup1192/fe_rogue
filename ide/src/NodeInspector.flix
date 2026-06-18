@@ -867,8 +867,8 @@ mod NodeInspector {
             scalarFloat32Field("backgroundAlpha", "Background α",
                                n -> Option.map(r -> r#backgroundAlpha, pick(n))) ::
             borderField ::
-            intField("borderWidth", "Border width",
-                     n -> Option.map(r -> r#borderWidth, pick(n))) :: Nil;
+            scalarFloatField("borderWidth", "Border width",
+                             n -> Option.map(r -> r#borderWidth, pick(n))) :: Nil;
         let advanced =
             scalarFloat32Field("borderAlpha", "Border α",
                                n -> Option.map(r -> r#borderAlpha, pick(n))) :: Nil;

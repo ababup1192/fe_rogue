@@ -30,7 +30,8 @@ pub enum Panel {
         backgroundAlpha = Float32,
         borderColor = Color,
         borderAlpha = Float32,
-        borderWidth = Int32,
+        // 枠線の太さ（design px）。設計解像度を拡大表示するため小数（例 0.5）も許す。
+        borderWidth = Float64,
         // 角丸半径 (px)。0 で従来の直角 (5 矩形描画)。>0 で角丸スタイル描画 (1 Drawable)。
         cornerRadius = Float64,
         // 塗り領域に重ねる 45° 斜線ハッチ (CSS repeating-linear-gradient 相当)。
@@ -58,7 +59,7 @@ mod Panel {
             backgroundAlpha = 1.0f32,
             borderColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
             borderAlpha = 1.0f32,
-            borderWidth = 0,
+            borderWidth = 0.0,
             cornerRadius = 0.0,
             stripeColor = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
             stripeAlpha = 0.0f32,
@@ -106,10 +107,10 @@ mod Panel {
         let Panel.Panel(r) = panel;
         r#borderAlpha
 
-    /// 枠線の太さ（px）。0 なら枠線描画なし。
-    pub def setBorderWidth(width: Int32, panel: Panel): Panel =
+    /// 枠線の太さ（design px）。0 なら枠線描画なし。小数（例 0.5）も指定できる。
+    pub def setBorderWidth(width: Float64, panel: Panel): Panel =
         let Panel.Panel(r) = panel;
-        Panel.Panel({borderWidth = Int32.max(0, width) | r})
+        Panel.Panel({borderWidth = Float64.max(0.0, width) | r})
 
     /// 角丸半径 (px) を設定する。0 で直角。
     pub def setCornerRadius(radius: Float64, panel: Panel): Panel =
@@ -136,7 +137,7 @@ mod Panel {
         let Panel.Panel(r) = panel;
         r#stripeWidth > 0.0 and r#stripeAlpha > 0.0f32
 
-    pub def getBorderWidth(panel: Panel): Int32 =
+    pub def getBorderWidth(panel: Panel): Float64 =
         let Panel.Panel(r) = panel;
         r#borderWidth
 
@@ -171,17 +172,17 @@ mod Panel {
         let styled = r#cornerRadius > 0.0 or (r#stripeWidth > 0.0 and r#stripeAlpha > 0.0f32);
         if (styled)
             ({style = Some({cornerRadius = r#cornerRadius,
-                            borderWidth = Int32.toFloat64(r#borderWidth),
+                            borderWidth = r#borderWidth,
                             borderColor = r#borderColor,
                             borderAlpha = r#borderAlpha,
                             stripeColor = r#stripeColor,
                             stripeAlpha = r#stripeAlpha,
                             stripeWidth = r#stripeWidth,
                             stripePeriod = r#stripePeriod}) | bg}: GameEngine.Drawable) :: Nil
-        else if (r#borderWidth <= 0)
+        else if (r#borderWidth <= 0.0)
             bg :: Nil
         else {
-            let bw = Int32.toFloat64(r#borderWidth);
+            let bw = r#borderWidth;
             let bc = r#borderColor;
             let ba = r#borderAlpha;
             let zi = r#zIndex;

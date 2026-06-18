@@ -13,7 +13,8 @@
 ///
 /// 各行は「命中/必殺ラベル・数値・%」を別ラベルに分けて、HTML プロトタイプ同様に
 /// **ラベル/%は小さく薄く、数値は大きく、必殺系は黄色**で描く（1 ラベルだと色/サイズを
-/// 出し分けられないため）。配置は実測幅で左から詰める。
+/// 出し分けられないため）。配置は 2 行共通の固定列（`computeColumns`）で揃え、数値は
+/// 3 桁ぶんを確保した列の右端へ右詰めする（命中値/反撃値/必殺値の縦ラインが桁数に依らず揃う）。
 ///
 /// ノード構造（CanvasLayer・永続。可視性は process がフェーズで切り替える）:
 ///   BattleForecast (CanvasLayer, layer=3, NodeTag.BattlePanel)   ← scene.json
@@ -128,22 +129,21 @@ mod BattlePanelScene {
             |> Scene.setState(rootPath(), NodeTag.BattlePanel(Duration.zero()))
             |> addDot(aDotName(), row1CenterY(), UITheme.allyBlue())
             |> addDot(dDotName(), row2CenterY(), enemyDotColor())
-            // 攻撃側の行（命中ラベル/値/% ＋ 必殺ラベル/値/%）
-            // 攻撃側の行（ラベル/% は薄色、数値は白）
-            |> addLabel(aHitLblName(),  atlas, labelFont(), faintColor(), row1CenterY())
-            |> addLabel(aHitNumName(),  atlas, numFont(),   numColor(),   row1CenterY())
-            |> addLabel(aHitPctName(),  atlas, labelFont(), faintColor(), row1CenterY())
+            // 攻撃側の行（ラベル/% は薄色で左寄せ、数値は白で右詰め＝3 桁列の右端基準）
+            |> addLabel(aHitLblName(),  atlas, labelFont(), faintColor(), HorizontalAlignment.Left,  row1CenterY())
+            |> addLabel(aHitNumName(),  atlas, numFont(),   numColor(),   HorizontalAlignment.Right, row1CenterY())
+            |> addLabel(aHitPctName(),  atlas, labelFont(), faintColor(), HorizontalAlignment.Left,  row1CenterY())
             // 必殺は「命中」ラベルと同じ font / 色（薄色）に揃える。数値だけ黄で目立たせる。
-            |> addLabel(aCritLblName(), atlas, labelFont(), faintColor(), row1CenterY())
-            |> addLabel(aCritNumName(), atlas, numFont(),   critColor(),  row1CenterY())
-            |> addLabel(aCritPctName(), atlas, labelFont(), faintColor(), row1CenterY())
+            |> addLabel(aCritLblName(), atlas, labelFont(), faintColor(), HorizontalAlignment.Left,  row1CenterY())
+            |> addLabel(aCritNumName(), atlas, numFont(),   critColor(),  HorizontalAlignment.Right, row1CenterY())
+            |> addLabel(aCritPctName(), atlas, labelFont(), faintColor(), HorizontalAlignment.Left,  row1CenterY())
             // 反撃側の行
-            |> addLabel(dHitLblName(),  atlas, labelFont(), faintColor(), row2CenterY())
-            |> addLabel(dHitNumName(),  atlas, numFont(),   numColor(),   row2CenterY())
-            |> addLabel(dHitPctName(),  atlas, labelFont(), faintColor(), row2CenterY())
-            |> addLabel(dCritLblName(), atlas, labelFont(), faintColor(), row2CenterY())
-            |> addLabel(dCritNumName(), atlas, numFont(),   critColor(),  row2CenterY())
-            |> addLabel(dCritPctName(), atlas, labelFont(), faintColor(), row2CenterY())
+            |> addLabel(dHitLblName(),  atlas, labelFont(), faintColor(), HorizontalAlignment.Left,  row2CenterY())
+            |> addLabel(dHitNumName(),  atlas, numFont(),   numColor(),   HorizontalAlignment.Right, row2CenterY())
+            |> addLabel(dHitPctName(),  atlas, labelFont(), faintColor(), HorizontalAlignment.Left,  row2CenterY())
+            |> addLabel(dCritLblName(), atlas, labelFont(), faintColor(), HorizontalAlignment.Left,  row2CenterY())
+            |> addLabel(dCritNumName(), atlas, numFont(),   critColor(),  HorizontalAlignment.Right, row2CenterY())
+            |> addLabel(dCritPctName(), atlas, labelFont(), faintColor(), HorizontalAlignment.Left,  row2CenterY())
             |> addTri(aTriName(), row1CenterY())
             |> addTri(dTriName(), row2CenterY())
             |> setAllVisible(false)
@@ -159,11 +159,13 @@ mod BattlePanelScene {
 
     /// ラベル（1 セグメント）を panel の子に追加する。テキストは空で生成し、process で `setText`。
     /// 縦は丸の中心に合わせるため VerticalAlignment.Center（フォントが違っても同じ行に揃う）。
-    def addLabel(name: String, atlas: FontAtlas, font: Float64, color: Color, centerY: Float64,
+    /// `align` は横揃え: ラベル・% は Left、数値は Right（3 桁ぶんの列右端へ右詰め）。
+    def addLabel(name: String, atlas: FontAtlas, font: Float64, color: Color,
+                 align: HorizontalAlignment, centerY: Float64,
                  scene: Scene[NodeTag]): Scene[NodeTag] =
         let label = Label2D.make("", atlas, font)
             |> Node2D.setPosition(({x = hitX(), y = centerY - textNudge()}: Vec2.Vec2))
-            |> Label2D.setHorizontalAlignment(HorizontalAlignment.Left)
+            |> Label2D.setHorizontalAlignment(align)
             |> Label2D.setVerticalAlignment(VerticalAlignment.Center)
             |> CanvasItem.setModulate(color)
             |> CanvasItem.setZIndex(contentZIndex());
@@ -225,13 +227,18 @@ mod BattlePanelScene {
         match buildForecast(phase, synced) {
             case Some(view) =>
                 let textd = synced |> setAllVisible(true) |> updateContent(view);
-                // 各行を実測幅で左から詰め、三角は広い方の行末に合わせて同じ x に置く。
-                let (aEnd, sA) = layoutRow(aHitLblName(), aHitNumName(), aHitPctName(),
-                                           aCritLblName(), aCritNumName(), aCritPctName(),
-                                           true, row1CenterY(), textd);
-                let (dEnd, sD) = layoutRow(dHitLblName(), dHitNumName(), dHitPctName(),
-                                           dCritLblName(), dCritNumName(), dCritPctName(),
-                                           view#counter, row2CenterY(), sA);
+                // 2 行で縦ラインを揃えるため固定列を一度だけ算出し、両行へ同じ列を使う。
+                // 数値は 3 桁ぶんを確保した列の右端へ右詰め（命中・反撃・必殺の数値が桁数に依らず揃う）。
+                let atlas = GameEngine.Game.getFontAtlas(fontName());
+                let cols  = computeColumns(atlas, textd);
+                let aEnd  = cols#groupEndX;   // 攻撃側は必殺まで常に出る
+                let dEnd  = if (view#counter) cols#groupEndX else cols#hitNumRight;  // 反撃なしは "反撃 --" まで
+                let sA = layoutRow(aHitLblName(), aHitNumName(), aHitPctName(),
+                                   aCritLblName(), aCritNumName(), aCritPctName(),
+                                   true, cols, row1CenterY(), textd);
+                let sD = layoutRow(dHitLblName(), dHitNumName(), dHitPctName(),
+                                   dCritLblName(), dCritNumName(), dCritPctName(),
+                                   view#counter, cols, row2CenterY(), sA);
                 let triCx    = Float64.max(aEnd, dEnd) + triGap() + triHalfW();
                 let contentW = triCx + triHalfW() + padRight();
                 let shown = sD
@@ -257,27 +264,45 @@ mod BattlePanelScene {
         let inCycle = s - p * Float64.floor(s / p);
         inCycle < p / 2.0
 
-    /// 1 行（命中/必殺グループ）を実測幅で左から詰め、行末 x を返す。
-    /// 反撃なし（hasCrit=false）の行は命中グループだけ置く（"反撃 --"）。
+    /// 2 行で縦ラインを揃えるための固定列 x（design px・左基準。数値列は右端）。
+    type alias Columns = {
+        hitNumRight = Float64, hitPctX = Float64,
+        critLblX = Float64, critNumRight = Float64, critPctX = Float64,
+        groupEndX = Float64
+    }
+
+    /// 固定列を算出する。命中/反撃ラベル幅・% 幅は実ノードから、数値列は "000"（3 桁）の
+    /// 実測幅を確保する。これで命中値/反撃値/必殺値が桁数に依らず同じ縦ラインに揃う。
+    def computeColumns(atlas: FontAtlas, scene: Scene[NodeTag]): Columns =
+        let labelW = measureWidthAt(childPath(aHitLblName()), scene);
+        let pctW   = measureWidthAt(childPath(aHitPctName()), scene);
+        let num3W  = Label2D.measure(Label2D.make("000", atlas, numFont()))#x;
+        let hitNumRight  = hitX() + labelW + segGap() + num3W;
+        let hitPctX      = hitNumRight + pctGap();
+        let critLblX     = hitPctX + pctW + groupGap();
+        let critNumRight = critLblX + labelW + segGap() + num3W;
+        let critPctX     = critNumRight + pctGap();
+        {hitNumRight = hitNumRight, hitPctX = hitPctX,
+         critLblX = critLblX, critNumRight = critNumRight, critPctX = critPctX,
+         groupEndX = critPctX + pctW}
+
+    /// 1 行（命中/必殺グループ）を固定列に配置する。ラベル・% は左寄せ、数値は列右端へ右詰め。
+    /// 反撃なし（hasCrit=false）の行は命中グループだけ置く（"反撃 --"。必殺列は空文字で不可視）。
     def layoutRow(hitLbl: String, hitNum: String, hitPct: String,
                   critLbl: String, critNum: String, critPct: String,
-                  hasCrit: Bool, centerY: Float64,
-                  scene: Scene[NodeTag]): (Float64, Scene[NodeTag]) =
+                  hasCrit: Bool, cols: Columns, centerY: Float64,
+                  scene: Scene[NodeTag]): Scene[NodeTag] =
         let y = centerY - textNudge();
-        let (x1, s1) = placeSeg(hitLbl, hitX(), y, scene);
-        let (x2, s2) = placeSeg(hitNum, x1 + segGap(), y, s1);
-        let (x3, s3) = placeSeg(hitPct, x2 + pctGap(), y, s2);
-        if (hasCrit) {
-            let (x4, s4) = placeSeg(critLbl, x3 + groupGap(), y, s3);
-            let (x5, s5) = placeSeg(critNum, x4 + segGap(), y, s4);
-            placeSeg(critPct, x5 + pctGap(), y, s5)
-        } else (x3, s3)
-
-    /// セグメントを x（左）/ y に置き、実測幅を足した右端 x を返す。
-    def placeSeg(name: String, x: Float64, y: Float64,
-                 scene: Scene[NodeTag]): (Float64, Scene[NodeTag]) =
-        let w = measureWidthAt(childPath(name), scene);
-        (x + w, setNodeX(childPath(name), x, y, scene))
+        let base = scene
+            |> setNodeX(childPath(hitLbl), hitX(),          y)
+            |> setNodeX(childPath(hitNum), cols#hitNumRight, y)
+            |> setNodeX(childPath(hitPct), cols#hitPctX,     y);
+        if (hasCrit)
+            base
+                |> setNodeX(childPath(critLbl), cols#critLblX,     y)
+                |> setNodeX(childPath(critNum), cols#critNumRight, y)
+                |> setNodeX(childPath(critPct), cols#critPctX,     y)
+        else base
 
     /// 枠 Panel を内容幅に合わせてリサイズする（% のはみ出し防止）。
     def resizeBg(contentW: Float64, scene: Scene[NodeTag]): Scene[NodeTag] =

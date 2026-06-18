@@ -20,6 +20,7 @@
         },
         {
           "fontSize": 2.8,
+          "horizontalAlignment": "center",
           "modulate": { "b": 1.0, "g": 0.753, "r": 0.612 },
           "name": "header",
           "pos": [4, 3],
@@ -35,7 +36,7 @@
           "focused": false,
           "fontSize": 2.56,
           "itemAlignment": "Center",
-          "itemHeight": 9,
+          "itemHeight": 8,
           "items": [],
           "name": "menu",
           "pos": [2, 8],
@@ -51,7 +52,7 @@
           "selectedHighlight": {
             "borderAlpha": 1.0,
             "borderColor": { "b": 0.941, "g": 0.427, "r": 0.184 },
-            "borderWidth": 1,
+            "borderWidth": 0.5,
             "cornerRadius": 2,
             "fillAlpha": 1.0,
             "fillColor": { "b": 0.310, "g": 0.192, "r": 0.086 },

@@ -93,7 +93,7 @@ mod ItemPickupPopupScene {
     /// 窓の背景色（濃紺）／枠色（白）／枠幅。
     def windowBgColor(): Color = {r = 0.05f32, g = 0.07f32, b = 0.12f32}
     def borderColor(): Color = UITheme.white()
-    def borderWidth(): Int32 = 1
+    def borderWidth(): Float64 = 1.0
 
     /// 文字色（はっきり表示時 = 白）。
     def textColor(): Color = UITheme.white()

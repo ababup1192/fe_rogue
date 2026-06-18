@@ -86,12 +86,12 @@ mod TestWeaponSelectScene {
     // weaponSubline / rangeText — 性能 2 行目
     // ════════════════════════════════════════════════════════
 
-    /// 単射程 (min == max) は「射程 N」。命中は省く（戦闘予報側で表示）。
+    /// サブラインは威力・耐久のみ（命中・射程は戦闘予報ミニ窓で見せるので省く）。
     @Test
     def testWeaponSublineSingleRange(): Unit \ Assert =
-        // testWeapon: 攻2 射1-1 耐久10（命中はサブラインに出さない）
+        // testWeapon: 攻2 耐久10（命中・射程はサブラインに出さない）
         Assert.assertEq(
-            expected = "威力 2 射程 1 耐久 10",
+            expected = "威力 2 耐久 10",
             WeaponSelectScene.weaponSubline(TestUnitFixtures.testWeapon()))
 
     /// 範囲射程 (min != max) は「射程 min-max」。

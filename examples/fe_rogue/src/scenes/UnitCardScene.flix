@@ -240,7 +240,7 @@ mod UnitCardScene {
         let mat = Panel.make(equipMatSize(), equipMatColor())
             |> Node2D.setPosition({x = iconPos#x - equipMatPad(), y = iconPos#y - equipMatPad()})
             |> Panel.setBorderColor(equipMatBorder())
-            |> Panel.setBorderWidth(1)
+            |> Panel.setBorderWidth(0.5)
             |> Panel.setCornerRadius(1.5)
             |> CanvasItem.setZIndex(0);
         let withMat = Scene.addChildAt(panelPath(), "${key}Mat",

@@ -8,7 +8,7 @@
 ///   - 左          : 武器タイプのアイコン（武器 sprite。ItemMenuScene の rowIcons と同方式）
 ///   - 1 行目       : 武器名。右端のバッジ「不得意」は、その武器タイプを **苦手** とするときだけ出す
 ///                    （得意なら何も出さない＝「得意」バッジは出さない）。
-///   - 2 行目(subline): 性能「威力 ${攻} 命中 ${命} 射程 ${range} 耐久 ${耐久}」
+///   - 2 行目(subline): 性能「威力 ${攻} 耐久 ${耐久}」（命中・射程は戦闘予報ミニ窓で見せる）
 ///
 /// 操作:
 ///   - ↑↓ で武器を選び Enter/Z で確定 → 選んだ武器を装備 (weapons 先頭へ移動) してから
@@ -287,10 +287,10 @@ mod WeaponSelectScene {
         else "射程 ${range#min}-${range#max}"
 
     /// 武器 1 本ぶんの 2 行目（性能）。残り使用回数を含む。
-    /// 命中は戦闘予報ミニウィンドウで見せるのでここでは省く（窓を狭めるため）。
-    /// 例: "威力 2 射程 1 耐久 10"
+    /// 命中・射程は戦闘予報ミニウィンドウで見せるのでここでは省く（窓を狭めるため）。
+    /// 例: "威力 2 耐久 10"
     pub def weaponSubline(weapon: UnitCatalog.WeaponResource): String =
-        "威力 ${weapon#attack} ${rangeText(weapon#range)} 耐久 ${weapon#durability}"
+        "威力 ${weapon#attack} 耐久 ${weapon#durability}"
 
     /// 行 index → subline 文字列の Map（全行ぶん）。
     def weaponSublines(weapons: List[UnitCatalog.WeaponResource]): Map[Int32, String] =

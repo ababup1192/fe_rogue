@@ -163,7 +163,7 @@ mod ActionMenuScene {
 
     /// ItemList 1 項目の高さ (px)。scene.json の menu `itemHeight` と一致させること。
     /// 行内でテキストは縦中央に置かれるので、fontSize より大きめにして上下 padding を作る。
-    def menuItemHeight(): Float64 = 11.0
+    def menuItemHeight(): Float64 = 8.0
     /// panel 下端の余白 (px)。最終項目（待機）の下に空ける隙間。
     def menuPadding(): Float64 = 4.0
     /// panel 上端から menu 上端までの距離 (px)。見出し背景帯（headerBg, 高さ 6 + 上余白 2）+ 1px の隙間。
@@ -192,7 +192,9 @@ mod ActionMenuScene {
     /// items の各行に必要な幅（左パディング + ラベル幅 + ラベル/サブラベル間隔 + サブラベル幅 + 右余白）
     /// の最大値。文脈ごとに最長行へ幅を合わせ、中央に無駄な余白が出ないようにする。
     /// 中央寄せ項目の左右余白 (px)。最長ラベルの左右にこのぶん空ける。
-    def menuLabelSidePad(): Float64 = 9.0
+    /// 文字の左右が空きすぎないよう詰める（窓も内容幅に合わせて狭まり、武器ウィンドウは
+    /// `WeaponSelectScene.positionBesideActionMenu` が右端基準で追従＝左に寄る）。
+    def menuLabelSidePad(): Float64 = 4.0
 
     def contentWidth(list: ItemList, items: List[ItemEntry]): Float64 =
         let font = ItemList.getFont(list);
@@ -220,6 +222,11 @@ mod ActionMenuScene {
             |> Panel.mapAt(panelPath(), p -> Panel.setSize({x = panelW, y = panelH}, p))
             |> Panel.mapAt(headerBgPath(), p ->
                 Panel.setSize({x = innerW, y = Panel.getSize(p)#y}, p))
+            // 見出し「コマンド」を headerBg の横中央に置く（幅は項目数で毎フレーム可変なので追従が要る）。
+            // ラベルは scene.json で horizontalAlignment=center なので、x に headerBg の中心を渡す。
+            |> Label2D.mapAt(headerPath(), l ->
+                Node2D.setPosition({x = menuSideMargin() + innerW / 2.0,
+                                    y = Node2D.getPosition(l)#y}, l))
 
     /// 選択中プレイヤーの状況から「こうげき / こうかん / アイテム / ひろう / たいき」の
     /// うち成立するものだけ返す。
