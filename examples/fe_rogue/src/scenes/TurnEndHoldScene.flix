@@ -183,10 +183,9 @@ mod TurnEndHoldScene {
         match node {
             case EngineNode.CanvasLayerWithState(_, NodeTag.HoldGauge(data)) =>
                 let phase = TurnPhase.State.get();
-                // 対象は素のカーソル中と集合移動中のみ。ターン切替バナー表示中は無効。
-                let inPhase = phase == TurnPhase.Phase.PlayerCursor
+                // 対象は素のカーソル中と集合移動中のみ。
+                let active = phase == TurnPhase.Phase.PlayerCursor
                                 or phase == TurnPhase.Phase.GatherMove;
-                let active = inPhase and not PhaseBannerScene.isBusy(scene);
                 let held = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
                 let result = step(data, active, held, delta);
                 let shown = scene

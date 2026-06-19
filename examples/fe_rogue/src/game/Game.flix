@@ -87,8 +87,8 @@ pub enum NodeTag {
     case UnitCard
     /// EnemyCardScene の CanvasLayer 親（右サイドの攻撃対象敵カード。UnitCard と左右対称）。
     case EnemyCard
-    /// PhaseBannerScene の CanvasLayer 親（ターン切替バナーのスライド演出状態を持つ）
-    case PhaseBanner(PhaseBannerScene.BannerData)
+    /// TopBarScene の CanvasLayer 親（上部フェイズバー。陣営・敵ターンの「間」を持つ）
+    case TopBar(TopBarScene.Data)
     /// ItemPickupPopupScene の CanvasLayer 親（アイテム取得ポップアップのフェード演出状態を持つ）
     case ItemPickupPopup(ItemPickupPopupScene.PopupData)
     /// TurnEndHoldScene の CanvasLayer 親（Shift 長押しゲージの経過時間と発火済みフラグを持つ）
@@ -193,8 +193,8 @@ def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(ItemScene.process(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.UnitInfoPanel(_)) =>
             checked_ecast(UnitInfoPopupScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.PhaseBanner(_)) =>
-            checked_ecast(PhaseBannerScene.process(delta, node, path, scene))
+        case EngineNode.CanvasLayerWithState(_, NodeTag.TopBar(_)) =>
+            checked_ecast(TopBarScene.process(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.ItemPickupPopup(_)) =>
             checked_ecast(ItemPickupPopupScene.process(delta, node, path, scene))
         case EngineNode.CanvasLayerWithState(_, NodeTag.HoldGauge(_)) =>
@@ -685,15 +685,15 @@ def tradeInventoryDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[N
     }
 
 /// ItemSelect 中の方向キーをアイテム window のページ切替に変換する。
-/// Left / A → 前ページ、Right / D → 次ページ。Up / Down は handleMenus が ItemList の
-/// カーソル移動に使うので、ここでは素通し（ロード職以外は 1 ページなのでページ送りは効かない）。
+/// Left / A → 前カテゴリ、Right / D → 次カテゴリ（武器/消費/杖/指輪。空はスキップ）。
+/// Up / Down は handleMenus が ItemList のスクロール（カーソル移動）に使うので素通し。
 def itemSelectDirection(key: GameEngine.Key, scene: Scene[NodeTag]):
         Scene[NodeTag] \ SelectedPlayer.State =
     match key {
-        case GameEngine.Key.Left  => ItemMenuScene.pageLeft(scene)
-        case GameEngine.Key.A     => ItemMenuScene.pageLeft(scene)
-        case GameEngine.Key.Right => ItemMenuScene.pageRight(scene)
-        case GameEngine.Key.D     => ItemMenuScene.pageRight(scene)
+        case GameEngine.Key.Left  => ItemMenuScene.categoryPrev(scene)
+        case GameEngine.Key.A     => ItemMenuScene.categoryPrev(scene)
+        case GameEngine.Key.Right => ItemMenuScene.categoryNext(scene)
+        case GameEngine.Key.D     => ItemMenuScene.categoryNext(scene)
         case _                    => scene
     }
 

@@ -16,6 +16,7 @@ mod TestFloorCatalog {
     /// 1 フロア (f01) 分のサンプル。monsters / items / マッププールを 1〜2 件持つ最小構成。
     def sampleFloor(): FloorResource = {
         label           = "1F",
+        name            = "始まりの洞窟",
         generation      = ({roomCount = 5}: GenerationConfig),
         monsters        = ({id = "goblin", percent = 70}: SpawnEntry) :: Nil,
         items           = ({id = "noviceStaff", percent = 50}: SpawnEntry) :: Nil,

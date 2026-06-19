@@ -52,42 +52,46 @@ mod ItemMenuScene {
     /// ItemList 子ノード名
     pub def menuName(): String = "menu"
 
-    /// ページ表示ラベル（"1/2" など）の子ノード名。1 ページしか無いときは非表示。
-    def pageLabelName(): String = "pageLabel"
+    /// 見出し帯 / 見出し「アイテム」/ カテゴリヒント「◀ 武器 ▶」の子ノード名（武器メニュー準拠）。
+    def headerBgName(): String = "headerBg"
+    /// 見出し帯の底面の角丸を塗りつぶす重ね板（ActionMenuScene と同作法・「上だけ丸／底面四角」）。
+    def headerBgFillName(): String = "headerBgFill"
+    def headerName(): String = "header"
+    def hintName(): String = "hint"
 
     pub def rootPath():  NodePath = rootName() :: Nil
     pub def panelPath(): NodePath = rootName() :: panelName() :: Nil
     pub def menuPath():  NodePath = rootName() :: panelName() :: menuName() :: Nil
-    def pageLabelPath(): NodePath = rootName() :: panelName() :: pageLabelName() :: Nil
+    def headerBgPath(): NodePath = rootName() :: panelName() :: headerBgName() :: Nil
+    def headerBgFillPath(): NodePath = rootName() :: panelName() :: headerBgFillName() :: Nil
+    def headerPath():   NodePath = rootName() :: panelName() :: headerName() :: Nil
+    def hintPath():     NodePath = rootName() :: panelName() :: hintName() :: Nil
 
-    /// 詳細ウィンドウ（アイテムパネルの右隣）。選択中アイテムの性能と一言説明を出す。
-    /// Panel "detail" の直下に「名前 / 性能 / 説明」の 3 ラベルを置く構造。
-    def detailName():       String = "detail"
-    def detailIconNode():   String = "detailIcon"
-    def detailNameLabel():  String = "detailName"
-    def detailStatsLabel(): String = "detailStats"
-    def detailDescLabel():  String = "detailDesc"
-    def detailPath():      NodePath = rootName() :: detailName() :: Nil
-    def detailIconPath():  NodePath = rootName() :: detailName() :: detailIconNode() :: Nil
-    def detailNamePath():  NodePath = rootName() :: detailName() :: detailNameLabel() :: Nil
-    def detailStatsPath(): NodePath = rootName() :: detailName() :: detailStatsLabel() :: Nil
-    def detailDescPath():  NodePath = rootName() :: detailName() :: detailDescLabel() :: Nil
-
-    /// 説明文をこの文字数で折り返す（Label2D は自動折返ししないため `\n` を手で挿入する）。
-    /// 詳細パネル幅 82px・fontSize 4 におよそ収まる文字数。
-    def detailWrapWidth(): Int32 = 16
-
-    /// 1 ページに並べる持ち物の最大数（アイテム window の表示行数と一致）。
-    /// ロード職は 16 個持てるので 2 ページに分かれる。それ以外は 8 個＝1 ページに収まる。
-    def itemsPerPage(): Int32 = 8
-
-    /// 武器アイコンの表示サイズ（px）。fontSize 4 / itemHeight 6 の中に収まるよう 5px。
+    /// アイコンの表示サイズ / アイコンと名前の間の余白（武器メニューと揃える）。
     def iconSize(): Float64 = 5.0
+    def iconTextGap(): Float64 = 3.0
 
-    /// アイコンとテキスト名の間の余白（px）
-    def iconTextGap(): Float64 = 1.0
+    /// アイテム窓を ActionMenu の右端基準に重ねる量（武器メニューと同じ）。
+    def panelOverlapPx(): Float64 = 5.0
 
-    /// scene.json 内の "tag" 文字列 → NodeTag への変換。
+    // ── カテゴリ（左右で切替。順序 = 武器 → 消費 → 杖 → 指輪）──
+    def catWeapon(): Int32 = 0
+    def catConsumable(): Int32 = 1
+    def catStaff(): Int32 = 2
+    def catRing(): Int32 = 3
+    /// 全カテゴリ index を表示順で。
+    def allCategories(): List[Int32] =
+        catWeapon() :: catConsumable() :: catStaff() :: catRing() :: Nil
+    /// カテゴリの和名（ヒント表示用）。
+    def categoryLabel(c: Int32): String =
+        if (c == catWeapon()) "武器"
+        else if (c == catConsumable()) "消費"
+        else if (c == catStaff()) "杖"
+        else "指輪"
+    /// 装備中（武器/指輪の先頭）に出すバッジ文字。
+    def equippedBadge(): String = "装備"
+
+    /// scene.json 内の "tag" 文字列 → NodeTag への変換。ItemMenu の Int32 は現在カテゴリ index。
     def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None                  => Ok(NodeTag.NoTag)
@@ -133,34 +137,20 @@ mod ItemMenuScene {
                          or phase == TurnPhase.Phase.ItemActionSelect;
         // PlayerAttack 中も武器の上下持ち替えを受けるため focused は維持する。
         let listFocused = windowVisible or phase == TurnPhase.Phase.PlayerAttack;
-        // ページ表示は ItemSelect のときだけ意味を持つ（サブメニュー/攻撃中は隠す）。
-        let pageLabelVisible = phase == TurnPhase.Phase.ItemSelect;
-        // 詳細ウィンドウはアイテム選択中とサブメニュー中だけ出す（攻撃中の武器リストでは出さない）。
-        let detailVisible = windowVisible;
+        // カテゴリ切替ヒントは ItemSelect のときだけ（サブメニュー中は出さない）。
+        let hintVisible = phase == TurnPhase.Phase.ItemSelect;
         scene
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(windowVisible))
+            |> Panel.mapAt(headerBgPath(), CanvasItem.setVisible(windowVisible))
+            |> Panel.mapAt(headerBgFillPath(), CanvasItem.setVisible(windowVisible))
+            |> Label2D.mapAt(headerPath(), CanvasItem.setVisible(windowVisible))
+            |> Label2D.mapAt(hintPath(), CanvasItem.setVisible(hintVisible))
             |> ItemList.mapAt(menuPath(), list ->
                 list |> CanvasItem.setVisible(windowVisible) |> ItemList.setFocused(listFocused))
-            |> Label2D.mapAt(pageLabelPath(), label ->
-                if (pageLabelVisible) label else CanvasItem.setVisible(false, label))
-            |> Panel.mapAt(detailPath(), CanvasItem.setVisible(detailVisible))
-            |> Sprite2D.mapAt(detailIconPath(), CanvasItem.setVisible(detailVisible))
-            |> Label2D.mapAt(detailNamePath(), CanvasItem.setVisible(detailVisible))
-            |> Label2D.mapAt(detailStatsPath(), CanvasItem.setVisible(detailVisible))
-            |> Label2D.mapAt(detailDescPath(), CanvasItem.setVisible(detailVisible))
 
-    // ── 詳細ウィンドウ（性能 + 一言説明）──────────────────────
+    // ── カテゴリ別サブライン（旧・右詳細パネルの代替。各行の 2 行目に出す）──────
 
-    /// 武器タイプの和名。詳細ウィンドウの性能表記に使う（JSON は英字なので別途用意）。
-    def weaponTypeJp(weaponType: WeaponCatalog.WeaponType): String = match weaponType {
-        case WeaponCatalog.WeaponType.Sword => "剣"
-        case WeaponCatalog.WeaponType.Axe   => "斧"
-        case WeaponCatalog.WeaponType.Lance => "槍"
-        case WeaponCatalog.WeaponType.Bow   => "弓"
-        case WeaponCatalog.WeaponType.Magic => "魔法"
-    }
-
-    /// 杖の効果の和名。詳細ウィンドウの性能表記に使う。
+    /// 杖の効果の和名（サブライン表記に使う）。
     def staffEffectJp(effect: Staff.StaffEffect): String = match effect {
         case Staff.StaffEffect.Heal     => "回復"
         case Staff.StaffEffect.Blowback => "ふきとばし"
@@ -169,27 +159,18 @@ mod ItemMenuScene {
         case Staff.StaffEffect.Stopgap  => "一時しのぎ"
     }
 
-    /// 武器の性能 1 行（攻撃 / 命中 / 射程 / 種別）。stats から自動生成する。
-    pub def weaponStatLine(weapon: UnitCatalog.WeaponResource): String =
-        let range = weapon#range;
-        let rangeText =
-            if (range#min == range#max) "射${range#min}"
-            else "射${range#min}-${range#max}";
-        "攻${weapon#attack} 命${weapon#hit} ${rangeText} ${weaponTypeJp(weapon#weaponType)}"
-
-    /// 杖の性能 1 行（効果 / 残り耐久）。
-    pub def staffStatLine(staff: Staff.StaffResource): String =
-        "効果:${staffEffectJp(staff#effect)} 耐久${staff#durability}"
-
-    /// 消費アイテムの性能 1 行（効果の要約 + 残り使用回数）。
-    /// 回復系以外は「HP+0」のような無意味表記を出さず、効果に応じた要約を出す。
-    pub def consumableStatLine(item: Consumable.ConsumableResource): String =
-        "${consumableEffectSummary(item)} 耐久${item#durability}"
-
     /// 符号つき数値表記（+3 / -1）。
     def signed(n: Int32): String = if (n >= 0) "+${n}" else "${n}"
 
-    /// 指輪の効果 1 行（詳細ウィンドウ用）。
+    /// 消費アイテムのサブライン（効果要約 + 残り使用回数）。例「HP+10 ・残 3」。
+    pub def consumableSubline(item: Consumable.ConsumableResource): String =
+        "${consumableEffectSummary(item)} ・残 ${item#durability}"
+
+    /// 杖のサブライン（効果 + 残り使用回数）。例「回復 ・残 5」。
+    pub def staffSubline(staff: Staff.StaffResource): String =
+        "${staffEffectJp(staff#effect)} ・残 ${staff#durability}"
+
+    /// 指輪の効果 1 行（サブライン）。
     pub def ringStatLine(ring: Ring.RingResource): String = match ring#effect {
         case Ring.RingEffect.Pursuit   => "速+3で追撃15%"
         case Ring.RingEffect.Power     => "攻撃${signed(ring#power)}"
@@ -220,120 +201,6 @@ mod ItemMenuScene {
             case Consumable.ConsumableEffect.DefDownHit  => "防-${n} ${t}T"
         }
 
-    /// 文字のリストを先頭から `width` 文字ずつのまとまりに分ける。
-    def chunkChars(width: Int32, chars: List[Char]): List[List[Char]] =
-        if (List.isEmpty(chars)) Nil
-        else List.take(width, chars) :: chunkChars(width, List.drop(width, chars))
-
-    /// 文字のリストを 1 つの文字列に戻す。
-    def charsToString(chars: List[Char]): String =
-        List.foldLeft((acc, ch) -> "${acc}${ch}", "", chars)
-
-    /// 改行のないテキストを `width` 文字ごとに `\n` で折り返す。
-    /// Label2D は自動折返ししないので、説明文がパネル幅を超えないよう手で改行を入れる。
-    pub def wrapText(width: Int32, text: String): String =
-        if (width <= 0) text
-        else
-            chunkChars(width, String.toList(text))
-                |> List.map(charsToString)
-                |> List.foldRight((line, acc) ->
-                    if (acc == "") line else "${line}\n${acc}", "")
-
-    /// 詳細ウィンドウに出す 1 アイテムぶんの内容（名前 / 性能 1 行 / 一言説明 / アイコン sprite）。
-    /// 名前の前にアイコンを出すため sprite も持ち回る。
-    type alias ItemDetail = {
-        name = String,
-        stats = String,
-        desc = String,
-        sprite = Sprite.SpriteResource
-    }
-
-    /// 選択中アイテム種別から詳細内容を組む。
-    /// index がリスト範囲外なら None（持ち物が無い・ずれた瞬間など）。
-    def itemDetail(kind: PlayerData.ItemKind,
-                   weapons: List[UnitCatalog.WeaponResource],
-                   staves: List[Staff.StaffResource],
-                   consumables: List[Consumable.ConsumableResource],
-                   rings: List[Ring.RingResource]):
-            Option[ItemDetail] =
-        match kind {
-            // 全種共通: 効果行 = effectRule から組んだ DSL 文（無ければ従来の統計行）、説明 = フレーバー。
-            case PlayerData.ItemKind.Weapon(idx) =>
-                List.nth(idx, weapons) |> Option.map(weapon ->
-                    {name = weapon#name,
-                     stats = EffectBridge.effectSentence(weapon#effectRule, "投げて、")
-                                 |> Option.getWithDefault(weaponStatLine(weapon)),
-                     desc = weapon#description, sprite = weapon#sprite})
-            case PlayerData.ItemKind.Staff(idx) =>
-                List.nth(idx, staves) |> Option.map(staff ->
-                    {name = staff#name,
-                     stats = EffectBridge.effectSentence(staff#effectRule, "杖をふって、")
-                                 |> Option.getWithDefault(staffStatLine(staff)),
-                     desc = staff#description, sprite = staff#sprite})
-            case PlayerData.ItemKind.Consumable(idx) =>
-                List.nth(idx, consumables) |> Option.map(item ->
-                    {name = item#name,
-                     stats = EffectBridge.effectSentence(item#effectRule, "投げて、")
-                                 |> Option.getWithDefault(consumableStatLine(item)),
-                     desc = item#description, sprite = item#sprite})
-            case PlayerData.ItemKind.Ring(idx) =>
-                List.nth(idx, rings) |> Option.map(ring ->
-                    {name = ring#name,
-                     stats = EffectBridge.effectSentence(ring#effectRule, "投げて、")
-                                 |> Option.getWithDefault(ringStatLine(ring)),
-                     desc = ring#description, sprite = ring#sprite})
-        }
-
-    /// 詳細ウィンドウの 3 ラベル + アイコンに内容を流し込む（表示/非表示は applyVisibility が担う）。
-    /// 説明文は幅で折り返す。アイコンは sprite の atlas 情報を Sprite2D に写し、表示にする。
-    /// 全 item アトラスはセル 16×16 なので、Sprite2D 側の固定 scale で見た目サイズが揃う。
-    def applyDetail(detail: ItemDetail, scene: Scene[NodeTag]): Scene[NodeTag] =
-        // 効果文（stats）も説明（desc）と同じく幅で折り返す。DSL 文は長くなりがちで、
-        // 折り返さないとパネル右端を突き抜けるため。
-        let wrappedStats = wrapText(detailWrapWidth(), detail#stats);
-        let statsLines = 1 + (String.toList(wrappedStats) |> List.count(c -> c == '\n'));
-        let withStats = scene
-            |> Label2D.mapAt(detailNamePath(), Label2D.setText(detail#name))
-            |> Label2D.mapAt(detailStatsPath(), Label2D.setText(wrappedStats));
-        // 折り返して増えた行数のぶん説明を下にずらし、効果文との重なりを防ぐ。
-        // desc 先頭 y = stats 先頭 y + stats ブロック高 + 1 行ぶんの空き。
-        // stats が 1 行なら scene.json の元配置（y=26 相当）と一致する。
-        let descTop = Label2D.getAt(detailStatsPath(), withStats)
-            |> Option.map(s -> {
-                let h     = Label2D.measure(s)#y;
-                let lineH = h / Int32.toFloat64(Int32.max(1, statsLines));
-                Node2D.getPosition(s)#y + h + lineH
-            })
-            |> Option.getWithDefault(26.0);
-        withStats
-            |> Label2D.mapAt(detailDescPath(), label ->
-                let pos = Node2D.getPosition(label);
-                label
-                    |> Label2D.setText(wrapText(detailWrapWidth(), detail#desc))
-                    |> Node2D.setPosition({x = pos#x, y = descTop}))
-            |> Sprite2D.mapAt(detailIconPath(), sprite ->
-                sprite
-                    |> Sprite2D.setTexture(detail#sprite#texture)
-                    |> Sprite2D.setHframes(detail#sprite#hframes)
-                    |> Sprite2D.setVframes(detail#sprite#vframes)
-                    |> Sprite2D.setFrame(detail#sprite#frame)
-                    |> CanvasItem.setVisible(true))
-
-    /// 選択が無いときは 3 ラベルを空にしアイコンを隠す。
-    def blankDetail(scene: Scene[NodeTag]): Scene[NodeTag] =
-        scene
-            |> Label2D.mapAt(detailNamePath(), Label2D.setText(""))
-            |> Label2D.mapAt(detailStatsPath(), Label2D.setText(""))
-            |> Label2D.mapAt(detailDescPath(), Label2D.setText(""))
-            |> Sprite2D.mapAt(detailIconPath(), CanvasItem.setVisible(false))
-
-    /// 詳細を組めたら流し込み、組めなければ blank にする共通処理。
-    def applyDetailOpt(detail: Option[ItemDetail], scene: Scene[NodeTag]): Scene[NodeTag] =
-        match detail {
-            case Some(itemDetail) => applyDetail(itemDetail, scene)
-            case None             => blankDetail(scene)
-        }
-
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から ItemMenu の ItemList
     /// ノードに対して dispatch される（1 ノード 1 呼び出し。ItemList は 1 個のみなので 1 フレーム 1 回）。
     pub def refreshItems(_delta: Duration.Duration, node: EngineNode[NodeTag],
@@ -350,33 +217,30 @@ mod ItemMenuScene {
                 refreshActionList(withVisibility)
             case TurnPhase.Phase.PlayerAttack =>
                 refreshAttackWeaponList(withVisibility)
-            // メニューが閉じている間はカーソルとページを先頭(0)に戻しておく。これで次に
-            // ItemSelect を開いたときは記憶位置ではなく常に 1 ページ目の最初の項目から始まる。
-            // 表示中のフェーズではリセットしないので ↑↓ のカーソル移動・←→ のページ送りは維持される。
-            case _ => setMenuPage(0, withVisibility)
+            // メニューが閉じている間はカーソルとカテゴリを先頭に戻しておく。これで次に
+            // ItemSelect を開いたときは記憶位置ではなく常に先頭カテゴリ・先頭項目から始まる。
+            // 表示中のフェーズではリセットしないので ↑↓ の移動・←→ のカテゴリ切替は維持される。
+            case _ => setCategoryIdx(catWeapon(), withVisibility)
         };
         match Scene.getEngineNode(menuPath(), withItems) {
             case Some(latest) => (latest, withItems)
             case None         => (node, withItems)
         }
 
-    // ── ページング（ロード職は 16 個 = 2 ページ持てる）──
+    // ── 状態（現在カテゴリ index + 複数選択マーク）──
 
-    /// アイテム total 個を 1 ページ itemsPerPage 件で割ったときの総ページ数（最低 1）。
-    pub def totalPages(count: Int32): Int32 =
-        if (count <= 0) 1
-        else (count + itemsPerPage() - 1) / itemsPerPage()
-
-    /// ページ番号を有効範囲 [0, 総ページ数 - 1] に収める。
-    def clampPage(page: Int32, count: Int32): Int32 =
-        Int32.max(0, Int32.min(page, totalPages(count) - 1))
-
-    /// ItemMenu ノードに積んである現在ページ番号。未設定なら 0。
-    def getMenuPage(scene: Scene[NodeTag]): Int32 =
+    /// ItemMenu ノードに積んである現在カテゴリ index。未設定なら 0（武器）。
+    def getCategoryIdx(scene: Scene[NodeTag]): Int32 =
         match Scene.getState(menuPath(), scene) {
-            case Some(NodeTag.ItemMenu(page, _)) => page
-            case _                               => 0
+            case Some(NodeTag.ItemMenu(c, _)) => c
+            case _                            => 0
         }
+
+    /// 現在カテゴリを書き戻し、選択カーソルを先頭(0)に戻す。印は保持する。
+    def setCategoryIdx(c: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> Scene.setState(menuPath(), NodeTag.ItemMenu(c, getMarks(scene)))
+            |> ItemList.mapAt(menuPath(), ItemList.setSelectedIndex(0))
 
     /// ItemMenu ノードに積んである複数選択の印。未設定なら空集合。
     def getMarks(scene: Scene[NodeTag]): Set[PlayerData.ItemKind] =
@@ -385,174 +249,162 @@ mod ItemMenuScene {
             case _                                => Set#{}
         }
 
-    /// 印だけ差し替える（ページ番号は保持する）。
+    /// 印だけ差し替える（カテゴリは保持する）。
     def setMarks(marks: Set[PlayerData.ItemKind], scene: Scene[NodeTag]): Scene[NodeTag] =
-        scene |> Scene.setState(menuPath(), NodeTag.ItemMenu(getMenuPage(scene), marks))
-
-    /// 現在ページ番号を ItemMenu ノードに書き戻し、選択カーソルを先頭(0)に戻す。
-    /// 印はページをまたいでも残すため、ここでは消さず保持する。
-    def setMenuPage(page: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        scene
-            |> Scene.setState(menuPath(), NodeTag.ItemMenu(page, getMarks(scene)))
-            |> ItemList.mapAt(menuPath(), ItemList.setSelectedIndex(0))
+        scene |> Scene.setState(menuPath(), NodeTag.ItemMenu(getCategoryIdx(scene), marks))
 
     /// 複数選択した行の強調色（黄系）。交換メニューの pick 色と見た目を揃える。
     def markColor(): Color = {r = 1.0f32, g = 0.85f32, b = 0.2f32}
 
-    /// 全持ち物（武器 → 杖 → 消費アイテム）の「表示エントリ」と「アイコン用 sprite」を
-    /// 並び順を保ったまま組にして返す。metadata は各リスト内の絶対 index（`w:idx` など）の
-    /// ままなので、ページで切り出しても確定・装備・破棄ロジックはそのまま動く。
-    def itemSpritePairs(weapons: List[UnitCatalog.WeaponResource],
-                         staves: List[Staff.StaffResource],
-                         consumables: List[Consumable.ConsumableResource],
-                         rings: List[Ring.RingResource],
-                         ringEquipped: Bool):
-            List[(ItemEntry, Sprite.SpriteResource)] =
-        let weaponPairs = List.mapWithIndex(idx -> w ->
-            (weaponEntry(idx, w), w#sprite), weapons);
-        let staffPairs = List.mapWithIndex(idx -> s ->
-            (staffEntry(idx, s), s#sprite), staves);
-        let consumablePairs = List.mapWithIndex(idx -> c ->
-            (consumableEntry(idx, c), c#sprite), consumables);
-        let ringPairs = List.mapWithIndex(idx -> r ->
-            (ringEntry(idx, r, ringEquipped), r#sprite), rings);
-        List.append(weaponPairs,
-            List.append(staffPairs, List.append(consumablePairs, ringPairs)))
+    // ── カテゴリ（左右で切替・空はスキップ）──
 
-    /// 全アイテムの組から指定ページ（0 起点）の最大 itemsPerPage 件を取り出し、
-    /// ItemList 用の (items, アイコン Map) に変換する。アイコン Map のキーは
-    /// 切り出したページ内で 0..件数-1 に振り直す（ItemList は表示行 index でアイコンを引くため）。
-    pub def pageSlice(pairs: List[(ItemEntry, Sprite.SpriteResource)], page: Int32):
-            (List[ItemEntry], Map[Int32, ItemIcon]) =
-        let pageItems = pairs
-            |> List.drop(page * itemsPerPage())
-            |> List.take(itemsPerPage());
-        let items   = List.map(fst, pageItems);
-        let sprites = List.map(snd, pageItems);
-        (items, rowIcons(sprites))
+    /// 指定カテゴリの所持数（プレイヤーの在庫を scene から読む）。
+    def categoryCount(cat: Int32, player: PlayerScene.Data): Int32 =
+        if (cat == catWeapon()) List.length(player#weapons)
+        else if (cat == catConsumable()) List.length(player#consumables)
+        else if (cat == catStaff()) List.length(player#staves)
+        else List.length(player#rings)
 
-    /// 選択中プレイヤーの weapons + staves + consumables を ItemList に並べる（ItemSelect 中）。
-    /// 順序は「武器（先頭が装備中）→ 杖 → 消費アイテム」。ロード職など 8 個を超える持ち物は
-    /// 現在ページぶん（最大 8 件）だけを表示し、`pageLabel` に "現在/総数" を出す。
-    ///
-    /// 以下の薄ラッパ (`weaponsOf` / `stavesOf` / `consumablesOf`) は非 driver の在庫 read を
-    /// effect 経由（PartyQuery）に寄せる設計上の境界線。
-    /// `applyEquip` / `applyDrop` / `applyUse` 内部の「同フレーム write 直後 read」では
-    /// scene 引数の最新値を直接読む必要があるため、これらは使わず scene-arg のまま据え置く
-    /// （PartyQuery snapshot だと stale になる）。
-    def weaponsOf(id: Int32): List[UnitCatalog.WeaponResource] \ PlayerData.PartyQuery =
-        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#weapons) |> Option.getWithDefault(Nil)
-
-    def stavesOf(id: Int32): List[Staff.StaffResource] \ PlayerData.PartyQuery =
-        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#staves) |> Option.getWithDefault(Nil)
-
-    def consumablesOf(id: Int32): List[Consumable.ConsumableResource] \ PlayerData.PartyQuery =
-        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#consumables) |> Option.getWithDefault(Nil)
-
-    def ringsOf(id: Int32): List[Ring.RingResource] \ PlayerData.PartyQuery =
-        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#rings) |> Option.getWithDefault(Nil)
-
-    def ringEquippedOf(id: Int32): Bool \ PlayerData.PartyQuery =
-        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#ringEquipped) |> Option.getWithDefault(false)
-
-    def refreshItemList(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
-        match SelectedPlayer.State.get()#id {
-            case None => scene
-            case Some(playerId) =>
-                let weapons     = weaponsOf(playerId);
-                let staves      = stavesOf(playerId);
-                let consumables = consumablesOf(playerId);
-                let rings       = ringsOf(playerId);
-                let ringEquipped = ringEquippedOf(playerId);
-                let pairs = itemSpritePairs(weapons, staves, consumables, rings, ringEquipped);
-                let count = List.length(pairs);
-                let page  = clampPage(getMenuPage(scene), count);
-                let marks = getMarks(scene);
-                let (items, icons) = pageSlice(pairs, page);
-                let built = scene
-                    |> Scene.setState(menuPath(), NodeTag.ItemMenu(page, marks))
-                    |> ItemList.mapAt(menuPath(), list ->
-                        list
-                            |> ItemList.setItems(items)
-                            |> ItemList.setItemIcons(icons)
-                            |> ItemList.setIconSize(iconSize())
-                            |> ItemList.setIconTextGap(iconTextGap()))
-                    |> applyPageLabel(page, count);
-                // カーソルが乗っている行のアイテムを詳細ウィンドウに表示する。
-                // 行の metadata（"w:idx" 等）から実体を引いて性能 + 説明を組む。
-                let detail = List.nth(currentSelectedIndex(scene), items)
-                    |> Option.flatMap(entry -> entry#metadata)
-                    |> Option.flatMap(parseItemKind)
-                    |> Option.flatMap(kind -> itemDetail(kind, weapons, staves, consumables, rings));
-                applyDetailOpt(detail, built)
-                    |> applyMarkColors(marks, page, pairs)
+    /// アイテムが 1 つ以上あるカテゴリだけを表示順で返す。
+    def nonEmptyCategories(playerId: Int32, scene: Scene[NodeTag]): List[Int32] =
+        match PlayerScene.get(playerId, scene) {
+            case None         => Nil
+            case Some(player) => List.filter(c -> categoryCount(c, player) > 0, allCategories())
         }
 
-    /// 印の付いたアイテムを、現在ページに表示されている該当行だけ強調色で塗る。
-    /// 印は種別+絶対 index で持つので、全件 `pairs` の中の位置からページ内の行 index を求める。
-    /// 行の色付けは ItemList の itemColors を使い回す（一度全消ししてから印の行だけ塗る）。
-    def applyMarkColors(marks: Set[PlayerData.ItemKind], page: Int32,
-                         pairs: List[(ItemEntry, Sprite.SpriteResource)],
-                         scene: Scene[NodeTag]): Scene[NodeTag] =
-        let rows = markedRowsOnPage(marks, page * itemsPerPage(), pairs);
-        scene |> ItemList.mapAt(menuPath(), list ->
-            List.foldLeft((acc, row) -> ItemList.setItemColor(row, markColor(), acc),
-                ItemList.clearItemColors(list), rows))
+    /// `cats` の中で `cur` から `dir`(-1/+1) 隣のカテゴリへ（端はループ）。
+    /// `cur` が `cats` に無ければ先頭を返す。空なら `cur` のまま。
+    pub def nextCategoryIn(cats: List[Int32], cur: Int32, dir: Int32): Int32 =
+        let len = List.length(cats);
+        if (len == 0) cur
+        else {
+            let curPos = List.zipWithIndex(cats)
+                |> List.findLeft(p -> snd(p) == cur)
+                |> Option.map(fst)
+                |> Option.getWithDefault(0);
+            let nextPos = Int32.modulo(curPos + dir + len, len);
+            List.nth(nextPos, cats) |> Option.getWithDefault(cur)
+        }
 
-    /// 現在ページに表示される行のうち、印の付いた行の index（ページ内 0 起点）を集める純粋関数。
-    /// `pageStart` は現在ページ先頭の全件 index。`absIdx - pageStart` がページ内の行 index になる。
-    pub def markedRowsOnPage(marks: Set[PlayerData.ItemKind], pageStart: Int32,
-                              pairs: List[(ItemEntry, Sprite.SpriteResource)]): List[Int32] =
-        List.zipWithIndex(pairs)
-            |> List.filterMap(indexed ->
-                let (absIdx, pair) = indexed;
-                markedRow(marks, pageStart, absIdx, fst(pair)))
-
-    /// 1 行が印付きで現在ページ内に入るなら、そのページ内行 index を返す。それ以外は None。
-    def markedRow(marks: Set[PlayerData.ItemKind], pageStart: Int32, absIdx: Int32,
-                   entry: ItemEntry): Option[Int32] =
-        let row = absIdx - pageStart;
-        let marked = entry#metadata
-            |> Option.flatMap(parseItemKind)
-            |> Option.map(kind -> Set.memberOf(kind, marks))
-            |> Option.getWithDefault(false);
-        if (marked and row >= 0 and row < itemsPerPage()) Some(row) else None
-
-    /// `pageLabel` に "現在ページ/総ページ" を表示する。総ページが 1 のときは隠す。
-    def applyPageLabel(page: Int32, count: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let pages = totalPages(count);
-        let visible = pages > 1;
-        scene |> Label2D.mapAt(pageLabelPath(), label ->
-            label
-                |> Label2D.setText("${page + 1}/${pages}")
-                |> CanvasItem.setVisible(visible))
-
-    /// ←（前ページ）。ItemSelect 中の Left / A から呼ばれる。
-    pub def pageLeft(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
-        changePage(-1, scene)
-
-    /// →（次ページ）。ItemSelect 中の Right / D から呼ばれる。
-    pub def pageRight(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
-        changePage(1, scene)
-
-    /// 現在ページを `direction`（-1 / +1）ぶん動かす。対象プレイヤーの持ち物総数から
-    /// 総ページ数を出して範囲内にクランプするので、端では頭打ち（ループしない）。
-    def changePage(direction: Int32, scene: Scene[NodeTag]):
+    /// ←（前カテゴリ）/ →（次カテゴリ）。ItemSelect 中の Left/A・Right/D から呼ばれる。
+    /// 在庫のあるカテゴリだけを巡回する（空はスキップ）。
+    pub def categoryPrev(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
+        cycleCategory(-1, scene)
+    pub def categoryNext(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
+        cycleCategory(1, scene)
+    def cycleCategory(dir: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ SelectedPlayer.State =
         match SelectedPlayer.State.get()#id {
             case None           => scene
             case Some(playerId) =>
-                let count = inventoryCount(playerId, scene);
-                let next  = clampPage(getMenuPage(scene) + direction, count);
-                setMenuPage(next, scene)
+                let cats = nonEmptyCategories(playerId, scene);
+                let next = nextCategoryIn(cats, getCategoryIdx(scene), dir);
+                setCategoryIdx(next, scene)
         }
 
-    /// 指定プレイヤーの持ち物総数（武器 + 杖 + 消費アイテムの合計）。見つからなければ 0。
-    def inventoryCount(playerId: Int32, scene: Scene[NodeTag]): Int32 =
-        match PlayerScene.get(playerId, scene) {
-            case Some(data) => PlayerScene.itemCount(data)
-            case None       => 0
+    // ── 行（アイコン色紙 + 名前 + サブライン + 装備バッジ）──
+
+    /// 1 カテゴリの行を汎用に組む。`equipHead` が true なら先頭行に「装備」バッジを付ける。
+    /// metadata は `"${prefix}:${idx}"` 形式で、確定・装備・捨て・マークの解決に使う。
+    def buildRows(prefix: String, xs: List[a],
+                  nameOf: a -> String, sublineOf: a -> String,
+                  spriteOf: a -> Sprite.SpriteResource, equipHead: Bool):
+            (List[ItemEntry], Map[Int32, String], Map[Int32, String], Map[Int32, ItemIcon]) =
+        let indexed = List.zipWithIndex(xs);
+        let items = List.map(p -> {
+            let (idx, x) = p;
+            ({text = nameOf(x), disabled = false, metadata = Some("${prefix}:${idx}")}: ItemEntry)
+        }, indexed);
+        let sublines = List.foldLeft((acc, p) ->
+            let (idx, x) = p; Map.insert(idx, sublineOf(x), acc), Map.empty(), indexed);
+        let icons = List.foldLeft((acc, p) ->
+            let (idx, x) = p; Map.insert(idx, spriteIcon(spriteOf(x)), acc), Map.empty(), indexed);
+        let badges = if (equipHead and not List.isEmpty(xs))
+                Map.insert(0, equippedBadge(), Map.empty())
+            else Map.empty();
+        (items, sublines, badges, icons)
+
+    /// 現在カテゴリの (items, sublines, badges, icons) を組む。サブラインは種別ごとに出し分ける。
+    def categoryRows(cat: Int32, player: PlayerScene.Data):
+            (List[ItemEntry], Map[Int32, String], Map[Int32, String], Map[Int32, ItemIcon]) =
+        if (cat == catWeapon())
+            buildRows("w", player#weapons,
+                w -> w#name, w -> WeaponSelectScene.weaponSubline(w), w -> w#sprite, true)
+        else if (cat == catConsumable())
+            buildRows("c", player#consumables,
+                c -> c#name, consumableSubline, c -> c#sprite, false)
+        else if (cat == catStaff())
+            buildRows("s", player#staves,
+                s -> s#name, staffSubline, s -> s#sprite, false)
+        else
+            buildRows("r", player#rings,
+                r -> r#name, ringStatLine, r -> r#sprite, player#ringEquipped)
+
+    /// 現在カテゴリの行のうち、印付き行を強調色で塗る（毎回全消ししてから塗る）。
+    def applyMarkColors(marks: Set[PlayerData.ItemKind], items: List[ItemEntry],
+                        scene: Scene[NodeTag]): Scene[NodeTag] =
+        let rows = List.zipWithIndex(items)
+            |> List.filterMap(p -> {
+                let (row, entry) = p;
+                let marked = entry#metadata
+                    |> Option.flatMap(parseItemKind)
+                    |> Option.map(k -> Set.memberOf(k, marks))
+                    |> Option.getWithDefault(false);
+                if (marked) Some(row) else None
+            });
+        scene |> ItemList.mapAt(menuPath(), list ->
+            List.foldLeft((acc, row) -> ItemList.setItemColor(row, markColor(), acc),
+                ItemList.clearItemColors(list), rows))
+
+    /// ヒントラベルを現在カテゴリ名にする。切替先が複数あるときだけ ◀ ▶ を付ける。
+    def setHintLabel(cat: Int32, multi: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let txt = if (multi) "◀ ${categoryLabel(cat)} ▶" else categoryLabel(cat);
+        scene |> Label2D.mapAt(hintPath(), Label2D.setText(txt))
+
+    /// アイテム窓を ActionMenu の右端基準に重ねて配置する（武器メニューと同じ）。
+    def positionBesideActionMenu(scene: Scene[NodeTag]): Scene[NodeTag] =
+        match Panel.getAt(ActionMenuScene.panelPath(), scene) {
+            case None         => scene
+            case Some(action) =>
+                let actionRight = Node2D.getPosition(action)#x + Panel.getSize(action)#x;
+                let newX = actionRight - panelOverlapPx();
+                scene |> Panel.mapAt(panelPath(), p ->
+                    Node2D.setPosition({x = newX, y = Node2D.getPosition(p)#y}, p))
+        }
+
+    /// 攻撃中 (PlayerAttack) の武器リスト用に在庫を読む薄ラッパ（PartyQuery 経由）。
+    def weaponsOf(id: Int32): List[UnitCatalog.WeaponResource] \ PlayerData.PartyQuery =
+        PlayerData.PartyQuery.get(id) |> Option.map(d -> d#weapons) |> Option.getWithDefault(Nil)
+
+    /// 選択中プレイヤーの「現在カテゴリ」を ItemList に並べる（ItemSelect 中）。
+    /// 現在カテゴリが空ならアイテムのある先頭カテゴリへスナップする。窓は ActionMenu の右隣へ。
+    def refreshItemList(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ SelectedPlayer.State =
+        match SelectedPlayer.State.get()#id {
+            case None => scene
+            case Some(playerId) => match PlayerScene.get(playerId, scene) {
+                case None         => scene
+                case Some(player) =>
+                    let cats = nonEmptyCategories(playerId, scene);
+                    let cur0 = getCategoryIdx(scene);
+                    let cur  = if (List.memberOf(cur0, cats)) cur0
+                               else List.head(cats) |> Option.getWithDefault(catWeapon());
+                    let marks = getMarks(scene);
+                    let (items, sublines, badges, icons) = categoryRows(cur, player);
+                    scene
+                        |> Scene.setState(menuPath(), NodeTag.ItemMenu(cur, marks))
+                        |> ItemList.mapAt(menuPath(), list ->
+                            list
+                                |> ItemList.setItems(items)
+                                |> ItemList.setItemSublines(sublines)
+                                |> ItemList.setItemBadges(badges)
+                                |> ItemList.setItemIcons(icons)
+                                |> ItemList.setIconSize(iconSize())
+                                |> ItemList.setIconTextGap(iconTextGap()))
+                        |> setHintLabel(cur, List.length(cats) > 1)
+                        |> positionBesideActionMenu
+                        |> applyMarkColors(marks, items)
+            }
         }
 
     /// 攻撃中 (PlayerAttack) の武器選択リストを組む。攻撃は武器でしか行えないため
@@ -576,6 +428,9 @@ mod ItemMenuScene {
                 scene |> ItemList.mapAt(menuPath(), list ->
                     list
                         |> ItemList.setItems(items)
+                        // 直前の ItemSelect で付いたサブライン/バッジを消す（攻撃中は名前のみ）。
+                        |> ItemList.setItemSublines(Map.empty())
+                        |> ItemList.setItemBadges(Map.empty())
                         |> ItemList.setItemIcons(icons)
                         |> ItemList.setIconSize(iconSize())
                         |> ItemList.setIconTextGap(iconTextGap())
@@ -662,22 +517,33 @@ mod ItemMenuScene {
     /// 武器なら `[そうび, すてる]`、杖・消費アイテムなら `[つかう, すてる]`。
     def refreshActionList(scene: Scene[NodeTag]):
             Scene[NodeTag] \ SelectedPlayer.State =
+        let bulkMode = not Set.isEmpty(getMarks(scene));
         let result = forM (
             playerId <- SelectedPlayer.State.get()#id;
             player   <- PlayerScene.get(playerId, scene)
         ) yield {
-            let items = actionItemsFor(player#selectedItem, player#ringEquipped);
-            let built = scene |> ItemList.mapAt(menuPath(), list ->
-                list
+            let items = actionItemsFor(player#selectedItem, player#ringEquipped, bulkMode);
+            // 複数選択中は唯一有効な「捨てる」へカーソルを寄せる。
+            let dropRow = List.zipWithIndex(items)
+                |> List.findLeft(p -> snd(p)#metadata == Some(dropMeta()))
+                |> Option.map(fst);
+            // サブメニューはテキスト行のみ（アイコン/サブライン/バッジは消す）。
+            // ItemSelect で付いた複数選択マークの黄色（itemColors）も消す。これで無効な
+            // 「使う/投げる」は黄色でなく disabledColor（コマンドの射程外「攻撃」と同じ灰）で出る。
+            scene |> ItemList.mapAt(menuPath(), list -> {
+                let withItems = list
                     |> ItemList.setItems(items)
+                    |> ItemList.clearItemColors
+                    |> ItemList.setItemSublines(Map.empty())
+                    |> ItemList.setItemBadges(Map.empty())
                     |> ItemList.setItemIcons(Map.empty())
                     |> ItemList.setIconSize(iconSize())
-                    |> ItemList.setIconTextGap(iconTextGap()));
-            // サブメニュー中も、確定したアイテムの性能 + 説明を出し続ける。
-            let detail = player#selectedItem
-                |> Option.flatMap(kind ->
-                    itemDetail(kind, player#weapons, player#staves, player#consumables, player#rings));
-            applyDetailOpt(detail, built)
+                    |> ItemList.setIconTextGap(iconTextGap());
+                match (bulkMode, dropRow) {
+                    case (true, Some(r)) => ItemList.setSelectedIndex(r, withItems)
+                    case _               => withItems
+                }
+            })
         };
         Option.getWithDefault(scene, result)
 
@@ -688,10 +554,14 @@ mod ItemMenuScene {
     ///   指輪(装備中)    → [はずす, なげる, すてる]
     ///   未選択          → []
     /// `ringEquipped` は選択中味方の指輪装備フラグ。装備中の指輪（先頭 = index 0）を選んだときだけ
-    /// 「外す」に差し替える。`refreshActionList` の判定本体を effect なしで切り出したもの（テスト容易化）。
-    pub def actionItemsFor(sel: Option[PlayerData.ItemKind], ringEquipped: Bool): List[ItemEntry] =
+    /// 「外す」に差し替える。
+    /// `bulkMode`（Shift 複数選択中）が true のときは「捨てる」だけ有効にし、他は disabled（淡色・
+    /// カーソルスキップ・確定不可）にする＝複数選択でできるのは一括「捨てる」だけ。
+    /// `refreshActionList` の判定本体を effect なしで切り出したもの（テスト容易化）。
+    pub def actionItemsFor(sel: Option[PlayerData.ItemKind], ringEquipped: Bool,
+                           bulkMode: Bool): List[ItemEntry] =
         // 並び順は「使う/装備 → 投げる → 捨てる」。投げるは全種別で出す（一律投擲可）。
-        match sel {
+        let base = match sel {
             case Some(PlayerData.ItemKind.Weapon(_)) =>
                 equipEntry() :: throwEntry() :: dropEntry() :: Nil
             case Some(PlayerData.ItemKind.Staff(_))      =>
@@ -704,39 +574,11 @@ mod ItemMenuScene {
                     if (ringEquipped and idx == 0) unequipEntry() else equipEntry();
                 equipOrUnequip :: throwEntry() :: dropEntry() :: Nil
             case None => Nil
-        }
-
-    /// 装備中（リスト先頭 = index 0）なら "E " を前置するマーク。武器・指輪に付ける。
-    def equipMark(idx: Int32): String = if (idx == 0) "E " else ""
-
-    /// 武器 1 本ぶんの ItemEntry。metadata は `"w:<idx>"` 形式で種別と index を持つ。
-    /// 装備中（先頭）は "E " マークを付ける。
-    def weaponEntry(idx: Int32, weapon: UnitCatalog.WeaponResource): ItemEntry = {
-        text     = "${equipMark(idx)}${weapon#name} ${weapon#durability}",
-        disabled = false,
-        metadata = Some("w:${idx}")
-    }
-
-    /// 指輪 1 個ぶんの ItemEntry。metadata は `"r:<idx>"` 形式。
-    /// 装備中（先頭 かつ `ringEquipped`）のときだけ "E " を付ける。拾っただけでは付かない。
-    /// 指輪は耐久を持たないので名前だけ（+ E マーク）を出す。
-    def ringEntry(idx: Int32, ring: Ring.RingResource, ringEquipped: Bool): ItemEntry =
-        let mark = if (ringEquipped and idx == 0) "E " else "";
-        {text = "${mark}${ring#name}", disabled = false, metadata = Some("r:${idx}")}
-
-    /// 杖 1 本ぶんの ItemEntry。metadata は `"s:<idx>"` 形式。
-    def staffEntry(idx: Int32, staff: Staff.StaffResource): ItemEntry = {
-        text     = "${staff#name} ${staff#durability}",
-        disabled = false,
-        metadata = Some("s:${idx}")
-    }
-
-    /// 消費アイテム 1 個ぶんの ItemEntry。metadata は `"c:<idx>"` 形式。残り使用回数を表示する。
-    def consumableEntry(idx: Int32, item: Consumable.ConsumableResource): ItemEntry = {
-        text     = "${item#name} ${item#durability}",
-        disabled = false,
-        metadata = Some("c:${idx}")
-    }
+        };
+        // 複数選択中は「捨てる」以外を無効化する（できるのは一括「捨てる」だけ）。
+        if (bulkMode)
+            List.map(e -> if (e#metadata == Some(dropMeta())) e else {disabled = true | e}, base)
+        else base
 
     /// SpriteResource から ItemList 用の ItemIcon を作る。
     def spriteIcon(sprite: Sprite.SpriteResource): ItemIcon = {
@@ -777,10 +619,14 @@ mod ItemMenuScene {
 
     /// ActionMenu「アイテム」確定で呼ばれる。`ItemSelect` フェーズに遷移する。
     /// PhaseTransitions が overlay 片付け + カーソル非表示も合わせて行う。
-    pub def openFor(_playerId: Int32, scene: Scene[NodeTag]):
+    pub def openFor(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ TurnPhase.State =
-        // 常に 1 ページ目・印なしの状態から開く。
-        setMenuPage(0, setMarks(Set#{}, PhaseTransitions.enterItemSelect(scene)))
+        // 常に「アイテムのある先頭カテゴリ」・印なし・カーソル先頭から開く。
+        let entered = setMarks(Set#{}, PhaseTransitions.enterItemSelect(scene));
+        let firstCat = nonEmptyCategories(playerId, entered)
+            |> List.head
+            |> Option.getWithDefault(catWeapon());
+        setCategoryIdx(firstCat, entered)
 
     /// ItemSelect 中に Shift が押されたとき、カーソル位置のアイテムの印を付け外しする。
     /// カーソル行の metadata（"w:idx" 等）から種別+index を取り、マーク集合をトグルして書き戻す。
@@ -815,8 +661,8 @@ mod ItemMenuScene {
     pub def onItemCancelled(scene: Scene[NodeTag]):
                             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
-        // 閉じる時にページを 1 ページ目へ戻し、複数選択の印も消す（次に開いたとき先頭・印なし）。
-        setMenuPage(0, setMarks(Set#{}, scene))
+        // 閉じる時に先頭カテゴリへ戻し、複数選択の印も消す（次に開いたとき先頭・印なし）。
+        setCategoryIdx(catWeapon(), setMarks(Set#{}, scene))
 
     /// ItemActionSelect でサブメニュー項目を Enter 確定したとき。
     ///   - 装備: weapons リスト先頭に移動、ItemSelect に戻る（ターン消費なし）

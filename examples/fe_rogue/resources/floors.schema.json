@@ -8,6 +8,14 @@
         "order": 1
       }
     },
+    "name": {
+      "field": {
+        "ftype": "text",
+        "hint":  "plain",
+        "label": "フロア名",
+        "order": 2
+      }
+    },
     "generation": {
       "nested": {
         "roomCount": {

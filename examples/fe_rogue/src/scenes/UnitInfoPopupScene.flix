@@ -146,10 +146,7 @@ mod UnitInfoPopupScene {
         let phase = TurnPhase.State.get();
         // ユニット情報ポップアップは PlayerCursor の下見専用。
         // PlayerAttack(ターゲット選択)中は戦闘予測パネルだけ出すので、ここでは表示しない。
-        // さらにターン切替バナー（プレイヤー/エネミーフェーズの帯）が出ている間も隠す。
-        // バナーが滑り抜けて Idle に戻れば、次フレームから通常どおり表示される。
-        let cursorActive = phase == TurnPhase.Phase.PlayerCursor
-                            and not PhaseBannerScene.isBusy(scene);
+        let cursorActive = phase == TurnPhase.Phase.PlayerCursor;
         // scene 直読みの純粋な値（effect なし）を集め、判定本体は decideProcess に委譲する。
         let unitIdent = lookupUnitAtScene(CursorScene.getGridPos(scene), scene);
         let curHp = match unitIdent {

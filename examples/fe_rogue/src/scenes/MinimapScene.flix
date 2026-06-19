@@ -57,8 +57,8 @@ mod MinimapScene {
     def roomPoolSize(): Int32 = 64
     /// 歩ける床の黒くり抜きプール。床セルを行ごとの横ランで描くので部屋プールより多め。
     def floorPoolSize(): Int32 = 384
-    /// マーカープール（プレイヤー≤3 + 階段1 + アイテム数）に十分な固定数。
-    def markerPoolSize(): Int32 = 24
+    /// マーカープール（プレイヤー≤3 + 階段1 + アイテム数 + 同室の敵）に十分な固定数。
+    def markerPoolSize(): Int32 = 40
 
     /// 探索マップを収める「左下のボックス」（design 解像度 170×128 のピクセル座標、y は下向き）。
     /// シレン風に左下隅へ半透明で置く。背景枠は描かず、フロア/通路の矩形だけを描く（29×42 を 2 倍 ≈ 58×84）。
@@ -102,6 +102,8 @@ mod MinimapScene {
     def playerColor(): Color = {r = 0.30f32, g = 0.70f32, b = 0.95f32}
     def stairsColor(): Color = {r = 0.90f32, g = 0.30f32, b = 0.85f32}
     def itemColor(): Color = {r = 0.95f32, g = 0.60f32, b = 0.20f32}
+    /// 今プレイヤーと同じ部屋に居る敵を示す赤丸。
+    def enemyColor(): Color = {r = 0.92f32, g = 0.25f32, b = 0.22f32}
     def markerAlpha(): Float32 = 0.85f32
 
     /// 起動時から左下に表示（非侵襲な常設 HUD）。M で出し入れする。
@@ -303,7 +305,30 @@ mod MinimapScene {
             ItemScene.getAllPositions(scene)
                 |> List.filter(cell -> inVisitedRoom(cell, placements, roomCount, data#visited))
                 |> List.map(cell -> {cell = cell, color = itemColor()});
-        List.append(players, List.append(stairsM, itemsM))
+        // 今プレイヤーと同じ部屋に居る敵を赤丸で（アイテムより手前＝後ろに連結して上に描く）。
+        let enemiesM = enemiesSharingPlayerRoom(placements, roomCount, scene);
+        List.append(players, List.append(stairsM, List.append(itemsM, enemiesM)))
+
+    /// 「今プレイヤーと同じ部屋に居る敵」マーカー（赤丸）。非 hidden プレイヤーが居る部屋
+    /// （module idx < roomCount。通路は部屋ではないので対象外）を集め、その部屋に居る生存敵
+    /// （hp>0 かつ not isDying）を拾う。同室なら霧で部屋が照らされ既に見えているので
+    /// 別途の可視判定は省く。プレイヤーが部屋に居なければ playerRooms は空で結果も空になる。
+    def enemiesSharingPlayerRoom(placements: List[DungeonComposer.ModulePlacement],
+                                  roomCount: Int32, scene: Scene[NodeTag]):
+                                 List[{cell = {x = Int32, y = Int32}, color = Color}] =
+        let playerRooms =
+            PlayerScene.getAll(scene)
+                |> List.filter(d -> not d#hidden)
+                |> List.filterMap(d -> MapSnapshot.moduleOfCellIn(d#gridPos, placements))
+                |> List.filter(idx -> idx < roomCount)
+                |> List.toSet;
+        EnemyScene.getAll(scene)
+            |> List.filter(e -> e#hp > 0 and not e#isDying)
+            |> List.filter(e -> match MapSnapshot.moduleOfCellIn(e#gridPos, placements) {
+                                    case Some(idx) => Set.memberOf(idx, playerRooms)
+                                    case None      => false
+                                })
+            |> List.map(e -> {cell = e#gridPos, color = enemyColor()})
 
     def inVisitedRoom(cell: {x = Int32, y = Int32},
                        placements: List[DungeonComposer.ModulePlacement],

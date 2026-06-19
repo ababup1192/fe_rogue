@@ -112,7 +112,7 @@ mod TestTradeMenuScene {
         let entry = entryForInventoryItem(itemName, pid, s#scene);
         {scene = TradeMenuScene.confirmAt(paneIndex, entry, s#scene) | s}
 
-    /// ペイン `paneIndex` の「空スロット (--------)」に Z を押す。
+    /// ペイン `paneIndex` の「空スロット (空きスロット)」に Z を押す。
     pub def pressZOnPaneEmpty(paneIndex: Int32, s: TradeScenario):
             TradeScenario \ {GameLogger.GameLogger, SelectedPlayer.State} =
         {scene = TradeMenuScene.confirmAt(paneIndex, TradeMenuScene.emptySlotEntry(), s#scene) | s}
@@ -427,15 +427,15 @@ mod TestTradeMenuScene {
         let right    = TradeMenuScene.moveFocus(1, data3);                  // 0 で右 → 1
         Assert.assertEq(expected = (2, 0, 1), (leftAt0#focus, rightMax#focus, right#focus))
 
-    /// needsSecondColumn: 1 列に収まる行数 (paneHeight 70 / itemHeight 6 = 11) までは false、
-    /// 12 以上で 2 列目に達して true。
+    /// needsSecondColumn: 1 列に収まる行数 (paneHeight 80 / itemHeight 9 = 8) までは false、
+    /// 9 以上で 2 列目に達して true。
     @Test
     def testNeedsSecondColumnThreshold(): Unit \ Assert =
         Assert.assertEq(
-            expected = (false, false, true),
+            expected = (false, true, true),
             (TradeMenuScene.needsSecondColumn(8),
-             TradeMenuScene.needsSecondColumn(11),
-             TradeMenuScene.needsSecondColumn(12)))
+             TradeMenuScene.needsSecondColumn(9),
+             TradeMenuScene.needsSecondColumn(16)))
 
     /// panelWidthFor: ロードが 1 列で足りるとき (false) はウィンドウ幅を ~112.7 に縮め、
     /// 2 列必要なとき (true) はフル幅 166 に張る。
@@ -492,7 +492,7 @@ mod TestTradeMenuScene {
             expected = Some((10, PlayerData.ItemKind.Weapon(0), PlayerData.ItemKind.Weapon(1))),
             plan)
 
-    /// 満杯メンバーのペインには空スロット "--------" が出ない (片方向流入をブロック)。
+    /// 満杯メンバーのペインには空スロット "空きスロット" が出ない (片方向流入をブロック)。
     /// テストの player は catalog 先頭 (knight = ロード職) なので上限は 16。
     /// 16 個ちょうど持たせて、paneEntries の末尾が空スロットでないことを確認する。
     @Test

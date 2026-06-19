@@ -116,8 +116,8 @@ mod EnemyTurnDriverScene {
                 CustomEffects.WandererSpawnRequest,
                 CustomEffects.RingTransformRequest,
                 CustomEffects.GameOverRequest, GameEngine.Audio} =
-        // 「エネミーフェーズ」の帯が出ている間は敵を動かさない（帯が出終わってから行動開始）。
-        if (PhaseBannerScene.isBusy(scene)) scene
+        // 敵ターン開始の「間」(TopBar の hold) 中は敵を動かさない（フェイズ切替が読めてから行動開始）。
+        if (TopBarScene.isBusy(scene)) scene
         else if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
         else if (EnemyScene.anyAttacking(scene)) scene
@@ -125,10 +125,10 @@ mod EnemyTurnDriverScene {
         else match EnemyTurn.Queue.peekFront() {
             case None       =>
                 // キュー空 + 攻撃モーション無し → 敵ターン終了。
-                // ただし敵 0 体だと敵ターンが同フレームに始まったばかりで「エネミーフェーズ」帯が
-                // まだ出ていないことがある。帯が phase=EnemyTurn を観測して出始めるまで 1 フレーム
-                // 待ってから閉じる（待たないと帯が一度も出ずにターンが閉じる）。
-                if (PhaseBannerScene.shouldWaitForEnemyBanner(scene)) scene
+                // ただし敵 0 体だと敵ターンが同フレームに始まったばかりで、上部バーがまだ「敵ターン」を
+                // 観測（赤へ切替＋hold 開始）していないことがある。観測するまで 1 フレーム待ってから
+                // 閉じる（待たないとフェイズ表示が一度も赤にならずターンが閉じる）。
+                if (not TopBarScene.hasObservedEnemy(scene)) scene
                 else endTurn(scene)
             case Some(step) =>
                 if (Tween.Scheduler.isActive(EnemyScene.enemyPath(step#id))) scene

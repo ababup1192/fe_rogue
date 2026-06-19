@@ -41,12 +41,17 @@ mod ActionMenuScene {
     pub def headerName(): String = "header"
     /// 見出し「コマンド」の背景帯（タイトルバー）。HTML プロトタイプの #11182a 帯に相当。
     pub def headerBgName(): String = "headerBg"
+    /// 見出し帯の下半分を四角く塗りつぶす重ね板。Panel は 4 隅一律の角丸しか持てないので、
+    /// 角丸の headerBg（上を panel に合わせて丸める）の上に、角丸なしのこの板を底面側へ重ねて
+    /// 下辺の角丸を塗りつぶし「上だけ丸・底面は四角」のタイトルバーにする。
+    pub def headerBgFillName(): String = "headerBgFill"
 
     pub def rootPath(): NodePath = rootName() :: Nil
     pub def panelPath(): NodePath = rootName() :: panelName() :: Nil
     pub def menuPath(): NodePath = rootName() :: panelName() :: menuName() :: Nil
     pub def headerPath(): NodePath = rootName() :: panelName() :: headerName() :: Nil
     pub def headerBgPath(): NodePath = rootName() :: panelName() :: headerBgName() :: Nil
+    pub def headerBgFillPath(): NodePath = rootName() :: panelName() :: headerBgFillName() :: Nil
 
     /// scene.json 内の "tag" 文字列 → NodeTag への変換。
     def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
@@ -99,12 +104,21 @@ mod ActionMenuScene {
     /// WeaponSelect でも ActionMenu を visible に残すのは、武器選択ウィンドウが右隣に重ねて出る間も
     /// コマンドメニューを表示し続け「攻撃」を選んでいる文脈を見せ続けるため（モックアップ準拠）。
     pub def applyVisibility(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Scene[NodeTag] =
+        // WeaponSelect と同様、アイテム窓を開いている間（ItemSelect / ItemActionSelect）も
+        // コマンドメニューは表示したまま「アイテム」行のハイライトを残す（focus だけ譲る）。
+        // 交換（相手選択 / 持物交換）中もコマンドメニューを表示したまま「交換」行のハイライトを
+        // 残す（focus は相手選択カーソル／交換ウィンドウに譲る）。武器・アイテム窓と同じ作法。
         let visible = phase == TurnPhase.Phase.ActionSelect
-                    or phase == TurnPhase.Phase.WeaponSelect;
+                    or phase == TurnPhase.Phase.WeaponSelect
+                    or phase == TurnPhase.Phase.ItemSelect
+                    or phase == TurnPhase.Phase.ItemActionSelect
+                    or phase == TurnPhase.Phase.TradeTargetSelect
+                    or phase == TurnPhase.Phase.TradeInventory;
         let focused = phase == TurnPhase.Phase.ActionSelect;
         scene
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
             |> Panel.mapAt(headerBgPath(), CanvasItem.setVisible(visible))
+            |> Panel.mapAt(headerBgFillPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(headerPath(), CanvasItem.setVisible(visible))
             |> ItemList.mapAt(menuPath(), list ->
                 list
@@ -129,7 +143,11 @@ mod ActionMenuScene {
         // どちらでも項目は同じ（SelectedPlayer は不変）なので毎フレーム再構築するが、
         // WeaponSelect 中はカーソル位置（＝直前に確定した「攻撃」行）を動かさない。
         let menuVisible = phase == TurnPhase.Phase.ActionSelect
-                        or phase == TurnPhase.Phase.WeaponSelect;
+                        or phase == TurnPhase.Phase.WeaponSelect
+                        or phase == TurnPhase.Phase.ItemSelect
+                        or phase == TurnPhase.Phase.ItemActionSelect
+                        or phase == TurnPhase.Phase.TradeTargetSelect
+                        or phase == TurnPhase.Phase.TradeInventory;
         // UX: メニューを開き直すたびに意図しない項目を誤確定しないよう、
         // 非表示中はカーソルを先頭(0)に戻しておく。表示中はリセットしないので
         // ↑↓ のカーソル移動は維持される。
@@ -166,11 +184,16 @@ mod ActionMenuScene {
     def menuItemHeight(): Float64 = 8.0
     /// panel 下端の余白 (px)。最終項目（待機）の下に空ける隙間。
     def menuPadding(): Float64 = 4.0
-    /// panel 上端から menu 上端までの距離 (px)。見出し背景帯（headerBg, 高さ 6 + 上余白 2）+ 1px の隙間。
+    /// panel 上端から menu 上端までの距離 (px)。見出し帯（headerBg, 上余白 1 + 高さ 6）+ 2px の隙間。
     /// **scene.json の menu `pos` の y はこの値と一致させること**
     /// （testMenuOriginMatchesHeaderPadding がロード後の menu pos.y と
     ///  この値の一致を test で pin するので、片方だけ変えると赤になる）。
     def menuHeaderPadding(): Float64 = 9.0
+
+    /// 見出し帯（headerBg）を panel 枠の内側に詰めるための左右インセット (px)。
+    /// panel の borderWidth (scene.json で 1) と一致させ、帯の角丸が枠と同心に収まるようにする。
+    /// scene.json の headerBg `pos.x` もこの値と一致させること。
+    def headerBgInset(): Float64 = 1.0
 
     /// items の最初の「選択可能（not disabled）」項目の index。全部 disabled なら 0。
     def firstEnabledIndex(items: List[ItemEntry]): Int32 =
@@ -220,8 +243,14 @@ mod ActionMenuScene {
         scene
             |> ItemList.mapAt(menuPath(), l -> ItemList.setSize({x = innerW, y = menuH}, l))
             |> Panel.mapAt(panelPath(), p -> Panel.setSize({x = panelW, y = panelH}, p))
+            // 見出し帯は内容幅ではなく panel 全幅に広げた「塗りつぶしのタイトルバー」。
+            // panel の枠(1px)ぶん左右を内側に詰め、scene.json の pos.x=1 と合わせて
+            // 角丸(半径2)が panel の角丸枠(半径3)と同心に収まるようにする。
+            // 底面側の角丸を消す重ね板（headerBgFill）も同じ幅にそろえる。
             |> Panel.mapAt(headerBgPath(), p ->
-                Panel.setSize({x = innerW, y = Panel.getSize(p)#y}, p))
+                Panel.setSize({x = panelW - 2.0 * headerBgInset(), y = Panel.getSize(p)#y}, p))
+            |> Panel.mapAt(headerBgFillPath(), p ->
+                Panel.setSize({x = panelW - 2.0 * headerBgInset(), y = Panel.getSize(p)#y}, p))
             // 見出し「コマンド」を headerBg の横中央に置く（幅は項目数で毎フレーム可変なので追従が要る）。
             // ラベルは scene.json で horizontalAlignment=center なので、x に headerBg の中心を渡す。
             |> Label2D.mapAt(headerPath(), l ->

@@ -56,6 +56,8 @@ mod FloorCatalog {
     /// 空リストのフロアは MapScene 側で従来のハードコード既定プールにフォールバックする。
     pub type alias FloorResource = {
         label           = String,
+        // フロアの呼び名（上部バー左に label と並べて出す。例「始まりの洞窟」）。省略可（欠落時 ""）。
+        name            = String,
         generation      = GenerationConfig,
         monsters        = List[SpawnEntry],
         items           = List[SpawnEntry],
@@ -169,7 +171,7 @@ mod FloorCatalog {
     /// floors.json の各フロアエントリが持つべき必須キー集合。
     /// `CatalogContainer.loadWithCheck` に渡し、余剰フィールドがある場合に警告を出すために使用する。
     pub def expectedFloorFields(): Set[String] =
-        Set#{"label", "generation", "monsters", "items", "monstersPerRoom", "itemsPerRoom",
+        Set#{"label", "name", "generation", "monsters", "items", "monstersPerRoom", "itemsPerRoom",
              "roomMaps", "horizontalMaps", "verticalMaps", "chests", "chestsPerFloor"}
 
 }
@@ -204,6 +206,7 @@ mod FloorCatalogCodec {
     pub def encodeFloor(floor: FloorResource): Json =
         JObject(Map#{
             "label"           => JString(floor#label),
+            "name"            => JString(floor#name),
             "generation"      => encodeGeneration(floor#generation),
             "monsters"        => encodeList(encodeSpawnEntry, floor#monsters),
             "items"           => encodeList(encodeSpawnEntry, floor#items),
@@ -251,7 +254,10 @@ mod FloorCatalogCodec {
             monstersPerRoom  <- decodeSpawnRange(monstersPerRoomJ);
             itemsPerRoom     <- decodeSpawnRange(itemsPerRoomJ)
         ) yield ({
-            label = label, generation = generation,
+            label = label,
+            // name は省略可（欠落時 ""）。後方互換のため必須バインドに入れない。
+            name = Map.get("name", obj) |> Option.flatMap(expectString) |> Option.getWithDefault(""),
+            generation = generation,
             monsters = monsters, items = items,
             monstersPerRoom = monstersPerRoom, itemsPerRoom = itemsPerRoom,
             // マッププールは省略可能（未移行 floors.json でも起動できるよう欠落時は Nil）。

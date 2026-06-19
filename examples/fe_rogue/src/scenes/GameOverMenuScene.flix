@@ -65,8 +65,6 @@ mod GameOverMenuScene {
         TurnPhase.State.put(TurnPhase.Phase.GameOver);
         AnimationPlayer.Scheduler.cancelAll();
         scene
-            // ターン切替バナーを休眠させ、メニュー中＆その場復活時に「フェーズ」帯が出ないようにする。
-            |> PhaseBannerScene.suppress
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(true))
             |> ItemList.mapAt(menuPath(), list ->
                 list

@@ -120,12 +120,12 @@ mod TestItemMenuScene {
         Assert.assertEq(expected = (false, false), visibilityOf(after))
 
     // ════════════════════════════════════════════════════════
-    // ItemSelect: refreshItems が weapons + staves を 1 リストに並べる
+    // ItemSelect: refreshItems は「現在カテゴリ」だけを並べる
     // ════════════════════════════════════════════════════════
 
-    /// プレイヤー (weapons 1 + staves 1) → ItemList の項目数は 2
+    /// プレイヤー (weapons 1 + staves 1)。先頭カテゴリ=武器なので武器カテゴリの 1 件だけ並ぶ。
     @Test
-    def testItemSelectListsWeaponsAndStaves(): Unit \ {Assert, Fs.FileRead} =
+    def testItemSelectListsCurrentCategory(): Unit \ {Assert, Fs.FileRead} =
         let scene = sceneWithPlayer();
         let menuPath = ItemMenuScene.menuPath();
         let updated = TestUnitFixtures.withSelectedPlayer(0, () ->
@@ -138,7 +138,7 @@ mod TestItemMenuScene {
                         scnAfter
                     case None       => bug!("menu node not found at ${menuPath}")
                 })));
-        Assert.assertEq(expected = Some(2),
+        Assert.assertEq(expected = Some(1),
             itemListAt(menuPath, updated) |> Option.map(list -> List.length(ItemList.getItems(list))))
 
     // ════════════════════════════════════════════════════════
@@ -216,67 +216,27 @@ mod TestItemMenuScene {
             itemListAt(menuPath, after) |> Option.map(ItemList.getSelectedIndex))
 
     // ════════════════════════════════════════════════════════
-    // ページング: ロード職など 8 個超の持ち物を 8 件ずつページ分けする
+    // カテゴリ巡回: 左右で在庫のあるカテゴリだけを循環する（純粋）
     // ════════════════════════════════════════════════════════
 
-    /// 容量カウントに影響しないダミー sprite。
-    def pageDummySprite(): Sprite.SpriteResource = {
-        texture = "t", hframes = 1, vframes = 1, frame = 0,
-        offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false
-    }
-
-    /// 連番テキスト "0".."n-1" を持つ (表示エントリ, ダミー sprite) の組を n 個ぶん作る。
-    /// スライス後に「どの組が並んだか」をテキストで追えるよう、入力データだけを用意する
-    /// ヘルパー（期待値の計算はしない）。
-    def numberedPairs(n: Int32): List[(ItemEntry, Sprite.SpriteResource)] =
-        List.map(i ->
-            (({text = "${i}", disabled = false, metadata = Some("${i}")}: ItemEntry),
-             pageDummySprite()),
-            List.range(0, n))
-
-    /// 総ページ数: 8 個 = 1 ページ、9 個 = 2 ページ、16 個 = 2 ページ、0 個 = 1 ページ（最低 1）。
+    /// nextCategoryIn: 在庫のあるカテゴリ [武器(0), 杖(2), 指輪(3)] を循環する。
+    ///   武器→次=杖、指輪→次=武器（ループ）、武器→前=指輪（ループ）。空カテゴリ(消費=1)はスキップ。
     @Test
-    def testTotalPages(): Unit \ Assert =
+    def testNextCategoryInCyclesNonEmpty(): Unit \ Assert =
+        let cats = 0 :: 2 :: 3 :: Nil;
         Assert.assertEq(
-            expected = (1, 2, 2, 1),
-            (ItemMenuScene.totalPages(8), ItemMenuScene.totalPages(9),
-             ItemMenuScene.totalPages(16), ItemMenuScene.totalPages(0)))
+            expected = (2, 0, 3),
+            (ItemMenuScene.nextCategoryIn(cats, 0, 1),
+             ItemMenuScene.nextCategoryIn(cats, 3, 1),
+             ItemMenuScene.nextCategoryIn(cats, 0, -1)))
 
-    /// 持ち物 16 個・1 ページ目: 先頭 8 件が並び、先頭エントリは入力の 0 番、
-    /// アイコンも 8 件ぶん（行 index 0..7 に振り直されている）。
+    /// 在庫が 1 カテゴリだけなら左右で動かない（その 1 つのまま）。
     @Test
-    def testPageSliceFirstPage(): Unit \ Assert =
-        let (items, icons) = ItemMenuScene.pageSlice(numberedPairs(16), 0);
-        match List.head(items) {
-            case Some(entry) =>
-                Assert.assertEq(
-                    expected = (8, "0", 8),
-                    (List.length(items), entry#text, Map.size(icons)))
-            case None => bug!("1 ページ目には 8 件並ぶはず")
-        }
-
-    /// 持ち物 16 個・2 ページ目: 後半 8 件が並び、先頭エントリは入力の 8 番
-    /// （ページ内は 0 起点にスライスされている）。
-    @Test
-    def testPageSliceSecondPage(): Unit \ Assert =
-        let (items, _) = ItemMenuScene.pageSlice(numberedPairs(16), 1);
-        match List.head(items) {
-            case Some(entry) =>
-                Assert.assertEq(expected = (8, "8"), (List.length(items), entry#text))
-            case None => bug!("2 ページ目には 8 件並ぶはず")
-        }
-
-    /// 1 ページぶん（持ち物 2 個）のプレイヤーで → を押してもページは 0 のまま頭打ち
-    /// （ループしないこと）。`sceneWithPlayer` は武器 1 + 杖 1 = 2 個 = 1 ページ。
-    @Test
-    def testPageRightClampsWhenSinglePage(): Unit \ {Assert, Fs.FileRead} =
-        let scene = sceneWithPlayer();
-        let after = TestUnitFixtures.withSelectedPlayer(0, () -> ItemMenuScene.pageRight(scene));
-        let page = match Scene.getState(ItemMenuScene.menuPath(), after) {
-            case Some(NodeTag.ItemMenu(currentPage, _)) => currentPage
-            case _                                      => bug!("ItemMenu タグが無い")
-        };
-        Assert.assertEq(expected = 0, page)
+    def testNextCategoryInSingleStays(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (1, 1),
+            (ItemMenuScene.nextCategoryIn(1 :: Nil, 1, 1),
+             ItemMenuScene.nextCategoryIn(1 :: Nil, 1, -1)))
 
     // ════════════════════════════════════════════════════════
     // actionItemsFor: 選択中アイテム種別 → サブメニュー項目（純粋）
@@ -285,7 +245,7 @@ mod TestItemMenuScene {
     /// 武器選択中 → 「装備 / 捨てる」
     @Test
     def testActionItemsForWeapon(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Weapon(0)), false);
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Weapon(0)), false, false);
         Assert.assertEq(
             expected = "装備" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -293,7 +253,7 @@ mod TestItemMenuScene {
     /// 杖選択中 → 「使う / 捨てる」
     @Test
     def testActionItemsForStaff(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Staff(1)), false);
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Staff(1)), false, false);
         Assert.assertEq(
             expected = "使う" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -301,7 +261,7 @@ mod TestItemMenuScene {
     /// 消費アイテム選択中 → 「使う / 捨てる」（杖と同じ）
     @Test
     def testActionItemsForConsumable(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Consumable(2)), false);
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Consumable(2)), false, false);
         Assert.assertEq(
             expected = "使う" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -309,7 +269,7 @@ mod TestItemMenuScene {
     /// 未装備の指輪を選択中 → 「装備 / 投げる / 捨てる」（拾っただけは装備されない）
     @Test
     def testActionItemsForRingUnequipped(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(0)), false);
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(0)), false, false);
         Assert.assertEq(
             expected = "装備" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -317,7 +277,7 @@ mod TestItemMenuScene {
     /// 装備中の指輪（先頭 + ringEquipped=true）を選択中 → 「外す」に変わる
     @Test
     def testActionItemsForRingEquipped(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(0)), true);
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(0)), true, false);
         Assert.assertEq(
             expected = "外す" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -325,7 +285,7 @@ mod TestItemMenuScene {
     /// ringEquipped=true でも先頭以外の指輪（idx=1）は装備中ではない → 「装備」のまま
     @Test
     def testActionItemsForRingNonHeadStillEquip(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(1)), true);
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(1)), true, false);
         Assert.assertEq(
             expected = "装備" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -333,8 +293,17 @@ mod TestItemMenuScene {
     /// 未選択 → 空（サブメニューを出さない）
     @Test
     def testActionItemsForNone(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(None, false);
+        let items = ItemMenuScene.actionItemsFor(None, false, false);
         Assert.assertEq(expected = 0, List.length(items))
+
+    /// 複数選択（bulkMode=true）中は「捨てる」だけ有効、他は disabled。
+    @Test
+    def testActionItemsForBulkOnlyDropEnabled(): Unit \ Assert =
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Weapon(0)), false, true);
+        let states = List.map(e -> (e#text, e#disabled), items);
+        Assert.assertEq(
+            expected = ("装備", true) :: ("投げる", true) :: ("捨てる", false) :: Nil,
+            states)
 
     // ════════════════════════════════════════════════════════
     // parseItemKind: metadata 文字列 → ItemKind（純粋）
@@ -366,62 +335,27 @@ mod TestItemMenuScene {
             ItemMenuScene.parseItemKind("x:9"))
 
     // ════════════════════════════════════════════════════════
-    // 詳細ウィンドウの性能 1 行（stats から自動生成・純粋）
+    // カテゴリ別サブライン（各行の 2 行目・純粋）
     // ════════════════════════════════════════════════════════
 
-    /// 武器の性能表記。攻撃 2 / 命中 80 / 射程 1-1（同値なので「射1」）/ 剣。
-    /// テスト武器は attack 2・hit 80・range 1-1・Sword なのでこの 1 行になる。
+    /// 杖のサブライン。効果（回復）と残り使用回数。テスト杖は Heal・残 3。
     @Test
-    def testWeaponStatLineSingleRange(): Unit \ Assert =
+    def testStaffSubline(): Unit \ Assert =
         Assert.assertEq(
-            expected = "攻2 命80 射1 剣",
-            ItemMenuScene.weaponStatLine(TestUnitFixtures.testWeapon()))
+            expected = "回復 ・残 3",
+            ItemMenuScene.staffSubline(testStaff()))
 
-    /// 射程が min≠max のときは「射1-2」のように範囲表記になる。
-    /// テスト武器の射程だけを 1-2 に差し替えて確認する。
+    /// 消費アイテムのサブライン。効果要約 + 残り使用回数。
     @Test
-    def testWeaponStatLineRangeSpan(): Unit \ Assert =
-        let javelin = {range = {min = 1, max = 2} | TestUnitFixtures.testWeapon()};
-        Assert.assertEq(
-            expected = "攻2 命80 射1-2 剣",
-            ItemMenuScene.weaponStatLine(javelin))
-
-    /// 杖の性能表記。効果（回復）と残り耐久を出す。テスト杖は Heal・耐久 3。
-    @Test
-    def testStaffStatLine(): Unit \ Assert =
-        Assert.assertEq(
-            expected = "効果:回復 耐久3",
-            ItemMenuScene.staffStatLine(testStaff()))
-
-    /// 消費アイテムの性能表記。回復量と残り使用回数を出す。
-    @Test
-    def testConsumableStatLine(): Unit \ Assert =
+    def testConsumableSubline(): Unit \ Assert =
         let potion = ({name = "きずぐすり",
                         effect = Consumable.ConsumableEffect.Heal, magnitude = 10, duration = 0,
                         healAmount = 10, durability = 3,
                         sprite = testStaff()#sprite, description = "", effectRule = None}:
                         Consumable.ConsumableResource);
         Assert.assertEq(
-            expected = "HP+10 耐久3",
-            ItemMenuScene.consumableStatLine(potion))
-
-    // ════════════════════════════════════════════════════════
-    // wrapText: 説明文の手動折り返し（純粋）
-    // ════════════════════════════════════════════════════════
-
-    /// 幅 4 で 7 文字を折ると、先頭 4 文字と残り 3 文字が `\n` で 2 行に分かれる。
-    @Test
-    def testWrapTextSplitsAtWidth(): Unit \ Assert =
-        Assert.assertEq(
-            expected = "ABCD\nEFG",
-            ItemMenuScene.wrapText(4, "ABCDEFG"))
-
-    /// 幅より短いテキストはそのまま（改行を入れない）。
-    @Test
-    def testWrapTextShortStaysOneLine(): Unit \ Assert =
-        Assert.assertEq(
-            expected = "あいう",
-            ItemMenuScene.wrapText(12, "あいう"))
+            expected = "HP+10 ・残 3",
+            ItemMenuScene.consumableSubline(potion))
 
     // ════════════════════════════════════════════════════════
     // 複数選択（マーク）の純粋ヘルパー
@@ -464,17 +398,4 @@ mod TestItemMenuScene {
              (List.length(t0), List.length(l0)),
              (List.length(t2), List.length(l2))))
 
-    /// markedRowsOnPage: 印は種別+絶対 index なので、現在ページに表示される行だけを
-    /// ページ内 0 起点の行 index に直す。10 個並びで w:0 と w:8 に印を付けると、
-    /// 1 ページ目(先頭0)では w:0 が行0(w:8 は範囲外)、2 ページ目(先頭8)では w:8 が行0。
-    @Test
-    def testMarkedRowsOnPageMapsToCurrentPage(): Unit \ Assert =
-        let pairs = List.map(i ->
-            (({text = "${i}", disabled = false, metadata = Some("w:${i}")}: ItemEntry),
-             pageDummySprite()), List.range(0, 10));
-        let marks = Set#{PlayerData.ItemKind.Weapon(0), PlayerData.ItemKind.Weapon(8)};
-        Assert.assertEq(
-            expected = (0 :: Nil, 0 :: Nil),
-            (ItemMenuScene.markedRowsOnPage(marks, 0, pairs),
-             ItemMenuScene.markedRowsOnPage(marks, 8, pairs)))
 }

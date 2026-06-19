@@ -37,6 +37,8 @@ mod WeaponSelectScene {
     pub def menuName(): String = "menu"
     def headerName(): String = "header"
     def headerBgName(): String = "headerBg"
+    /// 見出し帯の底面の角丸を塗りつぶす重ね板（ActionMenuScene と同作法・「上だけ丸／底面四角」）。
+    def headerBgFillName(): String = "headerBgFill"
     def hintName(): String = "hint"
 
     pub def rootPath(): NodePath = rootName() :: Nil
@@ -44,6 +46,7 @@ mod WeaponSelectScene {
     pub def menuPath(): NodePath = rootName() :: panelName() :: menuName() :: Nil
     def headerPath(): NodePath = rootName() :: panelName() :: headerName() :: Nil
     def headerBgPath(): NodePath = rootName() :: panelName() :: headerBgName() :: Nil
+    def headerBgFillPath(): NodePath = rootName() :: panelName() :: headerBgFillName() :: Nil
     def hintPath(): NodePath = rootName() :: panelName() :: hintName() :: Nil
 
     /// 武器アイコンの表示サイズ（px）。ItemMenuScene と揃える。
@@ -94,6 +97,7 @@ mod WeaponSelectScene {
         scene
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
             |> Panel.mapAt(headerBgPath(), CanvasItem.setVisible(visible))
+            |> Panel.mapAt(headerBgFillPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(headerPath(), CanvasItem.setVisible(visible))
             |> Label2D.mapAt(hintPath(), CanvasItem.setVisible(visible))  // ↔ 敵選択 ヒント
             |> ItemList.mapAt(menuPath(), list ->

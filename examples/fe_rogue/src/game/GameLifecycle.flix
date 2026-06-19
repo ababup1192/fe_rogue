@@ -50,7 +50,7 @@ mod GameLifecycle {
             |> PlayerScene.add(catalogs#players, catalogs#staves, catalogs#consumables)
             |> EnemyScene.add(catalogs#enemies, catalogs#weapons, catalogs#rings, floor)
             |> ItemScene.add(catalogs#players, catalogs#staves, catalogs#consumables, catalogs#rings, floor)   // 部屋の床に武器/杖/消耗品/指輪をランダムドロップ
-            |> addHudAndDrivers(floor#label)  // 駒非依存の HUD / 常駐ドライバ / メニュー群（rebuild と共有）
+            |> addHudAndDrivers(floor#label, floor#name)  // 駒非依存の HUD / 常駐ドライバ / メニュー群（rebuild と共有）
             // 全ノード配置後に階段を床のランダムセルへ置く (駒・アイテムを避けるため最後)
             |> StairsScene.placeRandom
             // 階段確定後に宝箱を配置 (駒・アイテム・階段を避けるため階段の後)
@@ -64,8 +64,9 @@ mod GameLifecycle {
     /// 駒（味方 / 敵 / アイテム / 宝箱 / 階段）に依存しない HUD・常駐ドライバ・メニュー群をまとめて追加する。
     /// `buildPlayingScene`（通常生成）と `rebuildFloorFromSnapshot`（スナップショット復元）が共有し、
     /// **ノード追加順序とメンバーを 1 か所に固定**する（追加漏れ・順序ズレ・二重追加を防ぐ）。
-    /// MapScene / Fog / DamagePopup / Explosion の後、駒配置の後に呼ぶ前提。`label` はフロア表示名。
-    def addHudAndDrivers(label: String, scene: Scene[NodeTag]): Scene[NodeTag]
+    /// MapScene / Fog / DamagePopup / Explosion の後、駒配置の後に呼ぶ前提。
+    /// `label` はフロア番号表示（"1F" 等）、`name` はフロア名（"始まりの洞窟" 等。空可）。
+    def addHudAndDrivers(label: String, name: String, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, SelectedPlayer.State} =
         scene
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
@@ -87,9 +88,8 @@ mod GameLifecycle {
             |> LevelUpPanelScene.add    // レベルアップのステータス変化パネル (初期は非表示)
             // UnitInfoPopupScene は廃止し、UnitCardScene（左サイドの常設カード）に統合。
             // カーソル下のユニット情報も UnitCardScene が PlayerCursor 中に表示する。
-            |> FloorLabelScene.add(label)  // 現在フロア "○○F" を左上に常時表示
+            |> TopBarScene.add(label, name)  // 上部フェイズバー（フロア番号+名前 / フェイズ / 下線）
             |> LogScene.add             // 右下の3行一時ログ (5秒で消える)
-            |> PhaseBannerScene.add     // ターン切替バナー (最前面)
             |> ItemPickupPopupScene.add // アイテム取得ポップアップ (初期は非表示)
             |> TurnEndHoldScene.add     // Shift 長押しでターンエンドする中央ゲージ (初期は非表示)
             |> BgmScene.add             // BGM (AudioStreamPlayer, autoplay=true)
@@ -180,7 +180,7 @@ mod GameLifecycle {
             |> EnemyScene.addFromSnaps(snap#enemies, catalogs#enemies, catalogs#weapons, catalogs#rings)
             |> ItemScene.addFromSnaps(snap#items, catalogs#players, catalogs#staves,
                                        catalogs#consumables, catalogs#rings)
-            |> addHudAndDrivers(floor#label)  // buildPlayingScene と同じ HUD/driver 群を共有
+            |> addHudAndDrivers(floor#label, floor#name)  // buildPlayingScene と同じ HUD/driver 群を共有
             |> placeStairsFromSnap(snap#stairs)
             |> ChestScene.addFromSnaps(snap#chests, catalogs#chests, catalogs#players,
                                         catalogs#staves, catalogs#consumables, catalogs#rings)

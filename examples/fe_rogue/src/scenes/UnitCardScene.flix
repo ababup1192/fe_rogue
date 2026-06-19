@@ -87,9 +87,8 @@ mod UnitCardScene {
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, SelectedPlayer.State, TurnPhase.State} =
         let phase = TurnPhase.State.get();
-        // 下見（PlayerCursor）中はカーソル上のユニットを出す。ターン切替バナー中は隠す。
-        let cursorActive = phase == TurnPhase.Phase.PlayerCursor
-                            and not PhaseBannerScene.isBusy(scene);
+        // 下見（PlayerCursor）中はカーソル上のユニットを出す。
+        let cursorActive = phase == TurnPhase.Phase.PlayerCursor;
         let next =
             if (cursorActive) renderHovered(scene)
             else renderSelected(SelectedPlayer.State.get()#id, scene);

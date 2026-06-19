@@ -183,6 +183,7 @@
         "min": 2
       },
       "label": "1F",
+      "name": "始まりの洞窟",
       "monsters": [
         {
           "id": "fighter_t1",
@@ -433,6 +434,7 @@
         "min": 2
       },
       "label": "2F",
+      "name": "始まりの洞窟",
       "monsters": [
         {
           "id": "fighter_t1",
@@ -683,6 +685,7 @@
         "min": 2
       },
       "label": "3F",
+      "name": "始まりの洞窟",
       "monsters": [
         {
           "id": "barbarian_t1",
@@ -961,6 +964,7 @@
         "min": 2
       },
       "label": "4F",
+      "name": "始まりの洞窟",
       "monsters": [
         {
           "id": "fighter_t2",
@@ -1287,6 +1291,7 @@
         "min": 2
       },
       "label": "5F",
+      "name": "始まりの洞窟",
       "monsters": [
         {
           "id": "barbarian_t2",
@@ -1617,6 +1622,7 @@
         "min": 2
       },
       "label": "6F",
+      "name": "始まりの洞窟",
       "monsters": [
         {
           "id": "fighter_t2",
@@ -1955,6 +1961,7 @@
         "min": 3
       },
       "label": "7F",
+      "name": "始まりの洞窟",
       "monsters": [
         {
           "id": "paladin_t2",
@@ -2297,6 +2304,7 @@
         "min": 3
       },
       "label": "8F",
+      "name": "始まりの洞窟",
       "monsters": [
         {
           "id": "fighter_t3",
@@ -2647,6 +2655,7 @@
         "min": 3
       },
       "label": "9F",
+      "name": "始まりの洞窟",
       "monsters": [
         {
           "id": "barbarian_t3",
@@ -2997,6 +3006,7 @@
         "min": 3
       },
       "label": "10F",
+      "name": "始まりの洞窟",
       "monsters": [
         {
           "id": "paladin_t3",

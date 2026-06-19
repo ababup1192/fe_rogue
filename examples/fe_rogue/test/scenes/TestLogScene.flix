@@ -1,8 +1,8 @@
 /// LogScene の純粋ロジックテスト。
 ///
-/// `enqueue`: 新着を「上=最新」で積み、最大 3 行に切り詰めるキュー操作。
+/// `enqueue`: 新着を「上=最新」で積み、最大 5 行に切り詰めるキュー操作。
 /// `tickIdle`: 最後のログから 5 秒で消えるタイマー。
-/// 守る仕様: 4 件目が来たら最古が落ちる / ちょうど 5 秒で消える / 空のときは消えるも進めもしない /
+/// 守る仕様: 6 件目が来たら最古が落ちる / ちょうど 5 秒で消える / 空のときは消えるも進めもしない /
 ///          新着で 0 に戻した直後のフレームでは消えない。
 mod TestLogScene {
 
@@ -15,7 +15,7 @@ mod TestLogScene {
         List.map(e -> e#text, queue)
 
     // ========================================================================
-    // enqueue: 上=最新で積み、最大 3 件に切り詰める
+    // enqueue: 上=最新で積み、最大 5 件に切り詰める
     // ========================================================================
 
     /// 空キューに 1 件積むとその 1 件だけになる。
@@ -33,22 +33,24 @@ mod TestLogScene {
             texts(LogScene.enqueue(entry("A") :: Nil,
                                     entry("B") :: entry("C") :: Nil)))
 
-    /// 4 件目が来たら最古(末尾)が落ちて 3 件に収まる。drain([A]) + [B,C,D] → [A,B,C](D 脱落)。
+    /// 6 件目が来たら最古(末尾)が落ちて 5 件に収まる。
+    /// drain([A]) + [B,C,D,E,F] → [A,B,C,D,E](F 脱落)。
     @Test
     def testEnqueueDropsOldestAtCap(): Unit \ Assert =
         Assert.assertEq(
-            expected = "A" :: "B" :: "C" :: Nil,
+            expected = "A" :: "B" :: "C" :: "D" :: "E" :: Nil,
             texts(LogScene.enqueue(entry("A") :: Nil,
-                                    entry("B") :: entry("C") :: entry("D") :: Nil)))
+                                    entry("B") :: entry("C") :: entry("D")
+                                        :: entry("E") :: entry("F") :: Nil)))
 
-    /// drain は古→新順。drain([B,A]) は A が最新なので [A,B,...] になり、cap で D が落ちる。
-    /// drain([B,A]) + [C,D] → reverse して [A,B] を前に積み [A,B,C,D] → 3 件で [A,B,C]。
+    /// drain は古→新順。drain([B,A]) は A が最新なので [A,B,...] になり、cap で F が落ちる。
+    /// drain([B,A]) + [C,D,E,F] → reverse して [A,B] を前に積み [A,B,C,D,E,F] → 5 件で [A,B,C,D,E]。
     @Test
     def testEnqueueDrainOrderNewestOnTop(): Unit \ Assert =
         Assert.assertEq(
-            expected = "A" :: "B" :: "C" :: Nil,
+            expected = "A" :: "B" :: "C" :: "D" :: "E" :: Nil,
             texts(LogScene.enqueue(entry("B") :: entry("A") :: Nil,
-                                    entry("C") :: entry("D") :: Nil)))
+                                    entry("C") :: entry("D") :: entry("E") :: entry("F") :: Nil)))
 
     // ========================================================================
     // tickIdle: 最後のログから 5 秒で消える

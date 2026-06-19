@@ -107,7 +107,7 @@ mod TradeMenuScene {
     }
 
     /// 空スロットを表す ItemEntry のテキスト / metadata。
-    pub def emptySlotEntryText(): String = "--------"
+    pub def emptySlotEntryText(): String = "空きスロット"
     pub def emptySlotMeta(): String      = "empty"
 
     def sceneJsonPath(): String = AssetPath.resolve("src/scenes/TradeMenuScene.scene.json")
@@ -124,11 +124,20 @@ mod TradeMenuScene {
     pub def panelName(): String         = "panel"
     pub def menuName(i: Int32): String  = "menu${i}"
     pub def className(i: Int32): String = "class${i}"
+    /// 見出し帯 / 見出し「持物の交換」/ 下部操作ヒントの子ノード名（アイテムメニュー準拠）。
+    def headerBgName(): String     = "headerBg"
+    def headerBgFillName(): String = "headerBgFill"
+    def headerName(): String       = "header"
+    def hintName(): String         = "hint"
 
     pub def rootPath():  NodePath = rootName() :: Nil
     pub def panelPath(): NodePath = rootName() :: panelName() :: Nil
     pub def menuPath(i: Int32):  NodePath = rootName() :: panelName() :: menuName(i) :: Nil
     pub def classPath(i: Int32): NodePath = rootName() :: panelName() :: className(i) :: Nil
+    def headerBgPath():     NodePath = rootName() :: panelName() :: headerBgName() :: Nil
+    def headerBgFillPath(): NodePath = rootName() :: panelName() :: headerBgFillName() :: Nil
+    def headerPath():       NodePath = rootName() :: panelName() :: headerName() :: Nil
+    def hintPath():         NodePath = rootName() :: panelName() :: hintName() :: Nil
 
     /// scene.json 内の "tag" 文字列 → NodeTag への変換。
     def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
@@ -236,13 +245,20 @@ mod TradeMenuScene {
     // 重み 2.0 で他ペインの倍幅を取り、他ペインはその右へ押し出される（= 全体が少し右寄り）。
     // ただしロードのアイテムが 2 列目に達していないときは重み 1.0 (1 列) に落とし、
     // ウィンドウ幅もそのぶん縮める (panelWidthFor 参照)。
+    /// 設計解像度の横幅（project.json の designWidth）。横方向の中央寄せ計算に使う。
+    def designWidth(): Float64  = 240.0
+
+    /// ウィンドウ上端。ペイン数に依らず横は画面中央に置き、縦は中央よりやや下げる
+    /// （カードに被らない範囲で下寄り。下端 = windowTop + panelHeight ≤ 128）。
+    def windowTop(): Float64 = 33.0
+
     def panelFullWidth(): Float64  = 166.0  // 2 列フル表示時の最大幅 (scene.json と一致)
-    def panelHeight(): Float64     = 84.0   // ウィンドウ高さは固定 (scene.json と一致)
+    def panelHeight(): Float64     = 94.0   // ウィンドウ高さ ≈ 画面縦の 70%（中央寄せ）
     def paneLeftMargin(): Float64  = 4.0   // 左にわずかな余白（右寄せ感）
     def paneRightMargin(): Float64 = 2.0
     def paneGap(): Float64         = 2.0
-    def paneTop(): Float64         = 10.0
-    def paneHeight(): Float64      = 70.0
+    def paneTop(): Float64         = 16.0  // 見出し帯(y1-7)＋列見出し(y10)の下からペイン開始
+    def paneHeight(): Float64      = 72.0  // = 8 行 × itemHeight 9（通常職の満杯=8を1列で収める）
 
     // 重み 1 ぶんの「快適幅」。基準は「2 人交換でロード 2 列 = 合計重み 3 のときちょうど 166」。
     // ウィンドウ幅は max=166 を上限に、合計重み × この単位幅で自然に縮める。
@@ -251,7 +267,11 @@ mod TradeMenuScene {
 
     // 1 列に収まる行数 = floor(paneHeight / itemHeight)。itemHeight は scene.json の ItemList と
     // 一致させる (engine に getItemHeight が無いためここでローカル定数として同期)。
-    def slotHeight(): Float64 = 6.0  // = TradeMenuScene.scene.json の ItemList itemHeight
+    def slotHeight(): Float64 = 9.0  // = TradeMenuScene.scene.json の ItemList itemHeight
+
+    /// 行頭アイコンの表示サイズ / アイコンと名前の間の余白（武器・アイテムメニューと揃える）。
+    def iconSize(): Float64 = 5.0
+    def iconTextGap(): Float64 = 3.0
     def maxRowsPerColumn(): Int32 =
         Float64.tryToInt32(Float64.floor(paneHeight() / slotHeight())) |> Option.getWithDefault(1)
 
@@ -288,10 +308,10 @@ mod TradeMenuScene {
         {pos  = {x = paneLeftMargin() + before * unitW, y = paneTop()},
          size = {x = w - paneGap(), y = paneHeight()}}
 
-    /// 兵種ラベルの位置 (ペインの左上、y=2)。
+    /// 列見出し（名前 数/上限）の位置 (ペインの左上、見出し帯の下 y=10)。
     def classPosFor(members: List[Int32], lordNeeds2Cols: Bool, i: Int32): Vec2.Vec2 =
         let layout = paneLayoutFor(members, lordNeeds2Cols, i);
-        {x = layout#pos#x, y = 2.0}
+        {x = layout#pos#x, y = 10.0}
 
     /// フェーズ遷移時の visibility 適用 (Push モデル)。
     /// `TradeInventory` のとき paneCount 個のペイン (+兵種ラベル) を visible にし、
@@ -302,13 +322,30 @@ mod TradeMenuScene {
         let data = getPanelData(scene);
         let count = paneCount(data);
         let focus = data#focus;
-        // 可視時はウィンドウ幅も内容に合わせて縮める (pos は左上固定なので右端が左へ寄る)。
+        let width = panelWidthFor(data#members, lordNeeds2Cols);
+        // 可視時はウィンドウ幅を内容に合わせて決め、毎フレーム pos を上書きする。
+        // 横はペイン数に依らずウィンドウ中心が画面中心(120)に来るよう真の中央寄せ
+        // （広い 3〜4 人交換ではコマンドウィンドウ側に寄って一部重なるのを許容する）。縦はやや下寄り。
+        let posX = (designWidth() - width) / 2.0;
+        let posY = windowTop();
         let withPanel = Panel.mapAt(panelPath(), p ->
             let visP = CanvasItem.setVisible(open, p);
-            if (open) Panel.setSize({x = panelWidthFor(data#members, lordNeeds2Cols),
-                                     y = panelHeight()}, visP)
+            if (open)
+                visP
+                    |> Panel.setSize({x = width, y = panelHeight()})
+                    |> Node2D.setPosition({x = posX, y = posY})
             else visP,
             scene);
+        // 見出し帯はパネル幅に追従させる（panel 幅はペイン数で変わるため固定幅だとはみ出す）。
+        let withHeader = withPanel
+            |> Panel.mapAt(headerBgPath(), pp ->
+                let visP = CanvasItem.setVisible(open, pp);
+                if (open) Panel.setSize({x = width - 2.0, y = Panel.getSize(visP)#y}, visP) else visP)
+            |> Panel.mapAt(headerBgFillPath(), pp ->
+                let visP = CanvasItem.setVisible(open, pp);
+                if (open) Panel.setSize({x = width - 2.0, y = Panel.getSize(visP)#y}, visP) else visP)
+            |> Label2D.mapAt(headerPath(), CanvasItem.setVisible(open))
+            |> Label2D.mapAt(hintPath(), CanvasItem.setVisible(open));
         List.foldLeft((acc, i) -> {
             let paneVisible = open and i < count;
             let paneFocused = paneVisible and i == focus;
@@ -328,7 +365,7 @@ mod TradeMenuScene {
                     label
                         |> CanvasItem.setVisible(paneVisible)
                         |> Node2D.setPosition(classPosFor(data#members, lordNeeds2Cols, i)))
-        }, withPanel, List.range(0, maxPanes()))
+        }, withHeader, List.range(0, maxPanes()))
 
     /// 毎フレーム呼ばれる ItemList の process コールバック。
     ///   1. visibility/focus/layout を毎フレーム再評価
@@ -367,8 +404,9 @@ mod TradeMenuScene {
             needsSecondColumn(List.length(paneEntries(lid, scene)))
         else false
 
-    /// 各ペインに対応 player のインベントリ (満杯でなければ末尾に空スロット) と兵種名を反映し、
-    /// pick 中のアイテムは強調色 (黄) で描く。
+    /// 各ペインに対応 player のインベントリ (満杯でなければ末尾に空スロット) を反映する。
+    /// 各行は アイコン色紙＋名前＋サブライン（性能）で武器/アイテムメニューと見た目を揃える。
+    /// 列見出しは「名前 数/上限」。pick / まとめ渡し中のアイテムは強調色 (黄) で描く。
     def refreshPanes(scene: Scene[NodeTag]): Scene[NodeTag] \ PlayerData.PartyQuery =
         let data = getPanelData(scene);
         let count = paneCount(data);
@@ -376,17 +414,22 @@ mod TradeMenuScene {
             match playerIdAt(i, data) {
                 case None      => acc
                 case Some(pid) =>
-                    let cls = classNameOf(pid, acc);
+                    let header = paneHeaderText(pid, acc);
                     let items = paneEntries(pid, acc);
+                    let (sublines, icons) = paneDecorations(pid, acc);
                     let highlightIdx = pickHighlightIndex(i, pid, data, acc);
                     let markRows = markHighlightRows(i, pid, data, acc);
                     acc
                         |> ItemList.mapAt(menuPath(i), list ->
                             list
                                 |> ItemList.setItems(items)
+                                |> ItemList.setItemSublines(sublines)
+                                |> ItemList.setItemIcons(icons)
+                                |> ItemList.setIconSize(iconSize())
+                                |> ItemList.setIconTextGap(iconTextGap())
                                 |> applyHighlight(highlightIdx)
                                 |> applyMarkHighlight(markRows))
-                        |> Label2D.mapAt(classPath(i), Label2D.setText(cls))
+                        |> Label2D.mapAt(classPath(i), Label2D.setText(header))
             },
             scene, List.range(0, count))
 
@@ -440,30 +483,33 @@ mod TradeMenuScene {
             case PlayerData.ItemKind.Ring(i)       => nw + ns + nc + i
         }
 
-    /// 指定 player id の兵種名 (`UnitResource#description`)。居なければ空文字。
-    def classNameOf(id: Int32, _scene: Scene[NodeTag]): String \ PlayerData.PartyQuery =
+    /// 列見出しの文字列「名前 数/上限」。名前は兵種名 (`UnitResource#description`)、
+    /// 数/上限は現在の所持数と持ち物上限 (通常 8 / ロード 16)。居なければ空文字。
+    def paneHeaderText(id: Int32, _scene: Scene[NodeTag]): String \ PlayerData.PartyQuery =
         match PlayerData.PartyQuery.get(id) {
-            case Some(d) => d#resource#description
+            case Some(d) =>
+                "${d#resource#description} ${PlayerScene.itemCount(d)}/${PlayerScene.itemCapacity(d)}"
             case None    => ""
         }
 
-    /// 武器 1 本ぶんの ItemEntry。metadata は ItemMenuScene と同じ `"w:<idx>"` 規約。
+    /// 武器 1 本ぶんの ItemEntry。本文は名前のみ（耐久・性能はサブラインへ）。
+    /// metadata は ItemMenuScene と同じ `"w:<idx>"` 規約。
     pub def weaponEntry(idx: Int32, weapon: UnitCatalog.WeaponResource): ItemEntry = {
-        text     = "${weapon#name} ${weapon#durability}",
+        text     = weapon#name,
         disabled = false,
         metadata = Some("w:${idx}")
     }
 
-    /// 杖 1 本ぶんの ItemEntry。metadata は `"s:<idx>"` 規約。
+    /// 杖 1 本ぶんの ItemEntry。本文は名前のみ。metadata は `"s:<idx>"` 規約。
     pub def staffEntry(idx: Int32, staff: Staff.StaffResource): ItemEntry = {
-        text     = "${staff#name} ${staff#durability}",
+        text     = staff#name,
         disabled = false,
         metadata = Some("s:${idx}")
     }
 
-    /// 消費アイテム 1 個ぶんの ItemEntry。metadata は `"c:<idx>"` 規約。
+    /// 消費アイテム 1 個ぶんの ItemEntry。本文は名前のみ。metadata は `"c:<idx>"` 規約。
     pub def consumableEntry(idx: Int32, item: Consumable.ConsumableResource): ItemEntry = {
-        text     = "${item#name} ${item#durability}",
+        text     = item#name,
         disabled = false,
         metadata = Some("c:${idx}")
     }
@@ -510,6 +556,38 @@ mod TradeMenuScene {
         let ringEntries       = List.mapWithIndex(idx -> r -> ringEntry(idx, r), rings);
         List.append(weaponEntries,
             List.append(staffEntries, List.append(consumableEntries, ringEntries)))
+
+    /// SpriteResource から ItemList 用の ItemIcon を作る（ItemMenuScene と同形）。
+    def spriteIcon(sprite: Sprite.SpriteResource): ItemIcon = {
+        texture = sprite#texture,
+        hframes = sprite#hframes,
+        vframes = sprite#vframes,
+        frame   = sprite#frame
+    }
+
+    /// 1 ペインの各行（武器→杖→消費→指輪の順）に対応する「2 行目サブライン」と
+    /// 「行頭アイコン」を、表示行 index をキーにした Map で返す。末尾の空スロット行は
+    /// どちらの Map にも入れない（プレーンな行として描かれる）。サブライン文字列は
+    /// 武器/アイテムメニューと同じ pub ヘルパーを再利用して表記を揃える。
+    def paneDecorations(playerId: Int32, _scene: Scene[NodeTag]):
+            (Map[Int32, String], Map[Int32, ItemIcon]) \ PlayerData.PartyQuery =
+        let weapons     = weaponsOf(playerId);
+        let staves      = stavesOf(playerId);
+        let consumables = consumablesOf(playerId);
+        let rings       = ringsOf(playerId);
+        let wD = List.map(w -> (WeaponSelectScene.weaponSubline(w), spriteIcon(w#sprite)), weapons);
+        let sD = List.map(s -> (ItemMenuScene.staffSubline(s),       spriteIcon(s#sprite)), staves);
+        let cD = List.map(c -> (ItemMenuScene.consumableSubline(c),  spriteIcon(c#sprite)), consumables);
+        let rD = List.map(r -> (ItemMenuScene.ringStatLine(r),       spriteIcon(r#sprite)), rings);
+        let indexed = List.zipWithIndex(
+            List.append(wD, List.append(sD, List.append(cD, rD))));
+        let sublines = List.foldLeft((acc, p) ->
+            let (idx, pair) = p; let (sub, _) = pair; Map.insert(idx, sub, acc),
+            (Map.empty(): Map[Int32, String]), indexed);
+        let icons = List.foldLeft((acc, p) ->
+            let (idx, pair) = p; let (_, ic) = pair; Map.insert(idx, ic, acc),
+            (Map.empty(): Map[Int32, ItemIcon]), indexed);
+        (sublines, icons)
 
     /// 1 ペインに並べる ItemEntry 列。インベントリ + (上限未満のときだけ) 末尾の空スロット行。
     /// 上限ちょうど (満杯) なら空スロットを出さない = 片方向流入をブロックする。

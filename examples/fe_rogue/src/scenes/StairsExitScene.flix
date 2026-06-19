@@ -159,8 +159,7 @@ mod StairsExitScene {
             \ {GameEngine.Game, Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                CustomEffects.FloorAdvanceRequest} =
-        if (PhaseBannerScene.isBusy(scene)) scene
-        else if (Pacing.State.isHolding()) scene
+        if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
         else if (EnemyScene.anyAttacking(scene)) scene
         else if (PlayerScene.anyAttacking(scene)) scene
