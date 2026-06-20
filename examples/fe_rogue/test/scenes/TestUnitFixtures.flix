@@ -30,6 +30,7 @@ mod TestUnitFixtures {
         speed         = 3,
         skill         = 2,
         luck          = 2,
+        constitution  = 6,
         initialInventory =
             ({kind = UnitBase.ItemKind.Weapon, id = "test-weapon"}:
                UnitBase.InventoryEntry) :: Nil,
@@ -99,6 +100,7 @@ mod TestUnitFixtures {
         speed         = speed,
         skill         = 2,
         luck          = 2,
+        constitution  = 6,
         initialInventory =
             ({kind = UnitBase.ItemKind.Weapon, id = "test-weapon"}:
                UnitBase.InventoryEntry) :: Nil,
@@ -134,6 +136,7 @@ mod TestUnitFixtures {
         speed         = speed,
         skill         = 2,
         luck          = 2,
+        constitution  = 6,
         initialInventory =
             ({kind = UnitBase.ItemKind.Weapon, id = "test-weapon"}:
                UnitBase.InventoryEntry) :: Nil,

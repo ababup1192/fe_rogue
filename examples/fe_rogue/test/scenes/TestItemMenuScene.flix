@@ -338,11 +338,11 @@ mod TestItemMenuScene {
     // カテゴリ別サブライン（各行の 2 行目・純粋）
     // ════════════════════════════════════════════════════════
 
-    /// 杖のサブライン。効果（回復）と残り使用回数。テスト杖は Heal・残 3。
+    /// 杖のサブライン。効果（回復）と残り使用回数 + 重さ。テスト杖は Heal・残 3・重 0.8。
     @Test
     def testStaffSubline(): Unit \ Assert =
         Assert.assertEq(
-            expected = "回復 ・残 3",
+            expected = "回復 ・残 3 ・重 0.8",
             ItemMenuScene.staffSubline(testStaff()))
 
     /// 消費アイテムのサブライン。効果要約 + 残り使用回数。
@@ -354,7 +354,7 @@ mod TestItemMenuScene {
                         sprite = testStaff()#sprite, description = "", effectRule = None}:
                         Consumable.ConsumableResource);
         Assert.assertEq(
-            expected = "HP+10 ・残 3",
+            expected = "HP+10 ・残 3 ・重 0.5",
             ItemMenuScene.consumableSubline(potion))
 
     // ════════════════════════════════════════════════════════

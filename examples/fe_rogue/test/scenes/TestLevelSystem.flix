@@ -13,10 +13,10 @@ mod TestLevelSystem {
     /// テスト用の成長率。各ステータスに別々の値を入れて成長判定の境界を確認できるようにする。
     def rates(hp: Int32, attack: Int32, defense: Int32,
               magicAttack: Int32, magicDefense: Int32, speed: Int32,
-              skill: Int32, luck: Int32): UnitCatalog.GrowthRates =
+              skill: Int32, luck: Int32, constitution: Int32): UnitCatalog.GrowthRates =
         {hp = hp, attack = attack, defense = defense,
          magicAttack = magicAttack, magicDefense = magicDefense, speed = speed,
-         skill = skill, luck = luck}
+         skill = skill, luck = luck, constitution = constitution}
 
     // EXP の「獲得量」(レベル差ベース) は Combat.battleExp が持ち、テストは TestCombat 側にある。
     // ここは「蓄積（gainExp）」「成長（applyGrowth）」「パネル結果（buildResult）」を確認する。
@@ -56,20 +56,21 @@ mod TestLevelSystem {
     ///   speed        : rate 50, roll 49 → 成長 → 11
     ///   skill        : rate 50, roll 49 → 成長 → 11
     ///   luck         : rate 0,  roll 0  → 据え置き → 10
+    ///   constitution : rate 50, roll 49 → 成長 → 11
     @Test
     def testApplyGrowthBumpsOnlyWhenRollBelowRate(): Unit \ Assert =
         let before: Stats =
             {hp = 10, attack = 10, defense = 10, magicAttack = 10, magicDefense = 10,
-             speed = 10, skill = 10, luck = 10};
+             speed = 10, skill = 10, luck = 10, constitution = 10};
         let rollValues: Rolls =
             {hp = 49, attack = 50, defense = 0, magicAttack = 99, magicDefense = 50,
-             speed = 49, skill = 49, luck = 0};
+             speed = 49, skill = 49, luck = 0, constitution = 49};
         let after = LevelSystem.applyGrowth(before,
-            rates(50, 50, 0, 100, 50, 50, 50, 0), rollValues);
+            rates(50, 50, 0, 100, 50, 50, 50, 0, 50), rollValues);
         Assert.assertEq(
-            expected = (11, 10, 10, 11, 10, 11, 11, 10),
+            expected = (11, 10, 10, 11, 10, 11, 11, 10, 11),
             (after#hp, after#attack, after#defense, after#magicAttack,
-             after#magicDefense, after#speed, after#skill, after#luck))
+             after#magicDefense, after#speed, after#skill, after#luck, after#constitution))
 
     // ========================================================================
     // パネル用の結果組み立て: 8 行の前後差分と (+1) フラグ
@@ -81,12 +82,12 @@ mod TestLevelSystem {
     def testBuildResultMarksRaisedStats(): Unit \ Assert =
         let before: Stats =
             {hp = 14, attack = 5, defense = 3, magicAttack = 2, magicDefense = 1,
-             speed = 4, skill = 6, luck = 7};
+             speed = 4, skill = 6, luck = 7, constitution = 8};
         let after: Stats =
             {hp = 15, attack = 5, defense = 3, magicAttack = 3, magicDefense = 1,
-             speed = 4, skill = 7, luck = 7};
+             speed = 4, skill = 7, luck = 7, constitution = 9};
         let result = LevelSystem.buildResult("ナイト", 3, before, after);
-        // ヘッダ情報（名前・前後レベル）と 8 行ぶんの (ラベル, 前, 後, 上昇したか) を一括比較。
+        // ヘッダ情報（名前・前後レベル）と 9 行ぶんの (ラベル, 前, 後, 上昇したか) を一括比較。
         let expectedRows =
             ("HP",   14, 15, true)  ::
             ("力",   5,  5,  false) ::
@@ -95,7 +96,8 @@ mod TestLevelSystem {
             ("速さ", 4,  4,  false) ::
             ("幸運", 7,  7,  false) ::
             ("守備", 3,  3,  false) ::
-            ("魔防", 1,  1,  false) :: Nil;
+            ("魔防", 1,  1,  false) ::
+            ("体格", 8,  9,  true)  :: Nil;
         Assert.assertEq(
             expected = ("ナイト", 3, 4, expectedRows),
             (result#unitName, result#fromLevel, result#toLevel,

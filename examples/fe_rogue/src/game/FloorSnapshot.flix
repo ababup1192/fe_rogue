@@ -143,7 +143,8 @@ mod FloorSnapshotCodec {
             "magicDefense" => JNumber(intToBd(s#magicDefense)),
             "speed"        => JNumber(intToBd(s#speed)),
             "skill"        => JNumber(intToBd(s#skill)),
-            "luck"         => JNumber(intToBd(s#luck))
+            "luck"         => JNumber(intToBd(s#luck)),
+            "constitution" => JNumber(intToBd(s#constitution))
         })
 
     def decodeStats(element: Json): Option[Stats] =
@@ -165,8 +166,14 @@ mod FloorSnapshotCodec {
             sp   <- expectInt(spJ);
             sk   <- expectInt(skJ);
             lk   <- expectInt(lkJ)
-        ) yield ({hp = hp, attack = at, defense = df, magicAttack = ma,
-                   magicDefense = md, speed = sp, skill = sk, luck = lk}: Stats)
+        ) yield {
+            // constitution は旧セーブ後方互換のため省略可（欠落時は 0）。
+            let con = Map.get("constitution", obj) |> Option.flatMap(expectInt)
+                            |> Option.getWithDefault(0);
+            ({hp = hp, attack = at, defense = df, magicAttack = ma,
+              magicDefense = md, speed = sp, skill = sk, luck = lk,
+              constitution = con}: Stats)
+        }
 
     // ── StatusSystem.Status ──
     def encodeStatus(s: Status): Json =

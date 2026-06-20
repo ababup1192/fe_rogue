@@ -37,6 +37,9 @@ mod UnitCatalog {
         speed            = Int32,
         skill            = Int32,
         luck             = Int32,
+        // 体格。最大積載量（Encumbrance.capacityOf）の主軸。レベルアップで成長する。
+        // 味方専用ステータスなので PlayerResource にのみ持たせる（敵は積載概念を持たない）。
+        constitution     = Int32,
         sprite           = Sprite.SpriteResource,
         initialInventory = List[InventoryEntry],
         description      = String,
@@ -65,13 +68,14 @@ mod UnitCatalog {
         magicDefense = Int32,
         speed        = Int32,
         skill        = Int32,
-        luck         = Int32
+        luck         = Int32,
+        constitution = Int32
     }
 
     /// 成長率が全て 0 のデフォルト値（= 一切成長しない）。JSON に `growthRates` が無いときに使う。
     pub def zeroGrowthRates(): GrowthRates =
         {hp = 0, attack = 0, defense = 0, magicAttack = 0, magicDefense = 0,
-         speed = 0, skill = 0, luck = 0}
+         speed = 0, skill = 0, luck = 0, constitution = 0}
 
     /// 以下 WeaponType / WeaponResource / WeaponRange / isPhysical は WeaponCatalog 分離前の
     /// 呼び出し元を壊さないための後方互換 shim。新規コードは WeaponCatalog を直接参照すること。
@@ -216,7 +220,7 @@ mod UnitCatalog {
     /// 共有 14 フィールド + growthRates + proficientWeaponTypes の全フィールド名集合。
     pub def expectedUnitFields(): Set[String] =
         Set#{"moveTiles", "level", "hp", "attack", "defense", "magicAttack", "magicDefense",
-              "speed", "skill", "luck", "sprite", "initialInventory",
+              "speed", "skill", "luck", "constitution", "sprite", "initialInventory",
               "description", "spriteFrames", "growthRates", "proficientWeaponTypes",
               "canOpenChests"}
 
@@ -260,7 +264,9 @@ mod UnitCatalogCodec {
     /// 味方 = 共有ベース（`UnitBaseCodec.encodeBase`）+ `growthRates` + `proficientWeaponTypes`。
     def encodePlayer(u: PlayerResource): Json =
         let base = UnitBaseCodec.encodeBase(u);
-        let withGrowth = Map.insert("growthRates", encodeGrowthRates(u#growthRates), base);
+        // constitution は味方専用なので共有 encodeBase ではなくここで書き出す。
+        let withCon = Map.insert("constitution", JNumber(JsonCodec.intToBd(u#constitution)), base);
+        let withGrowth = Map.insert("growthRates", encodeGrowthRates(u#growthRates), withCon);
         let profArray = JsonCodec.encodeList(
             weaponType -> JString(WeaponCatalogCodec.weaponTypeToString(weaponType)),
             u#proficientWeaponTypes);
@@ -276,7 +282,8 @@ mod UnitCatalogCodec {
             "magicDefense" => JNumber(JsonCodec.intToBd(g#magicDefense)),
             "speed"        => JNumber(JsonCodec.intToBd(g#speed)),
             "skill"        => JNumber(JsonCodec.intToBd(g#skill)),
-            "luck"         => JNumber(JsonCodec.intToBd(g#luck))
+            "luck"         => JNumber(JsonCodec.intToBd(g#luck)),
+            "constitution" => JNumber(JsonCodec.intToBd(g#constitution))
         })
 
     // ── デコード（weapons は常に空で返す。load 側で別途 WeaponCatalog を差し込む）──
@@ -310,10 +317,15 @@ mod UnitCatalogCodec {
             let canOpen = Map.get("canOpenChests", obj)
                             |> Option.flatMap(JsonCodec.expectBool)
                             |> Option.getWithDefault(false);
+            // 体格（省略時は 0）。味方専用なので共有 decodeBase ではなくここで読む。
+            let con = Map.get("constitution", obj)
+                            |> Option.flatMap(expectInt)
+                            |> Option.getWithDefault(0);
             ({moveTiles = base#moveTiles, level = base#level, hp = base#hp, attack = base#attack,
               defense = base#defense, magicAttack = base#magicAttack,
               magicDefense = base#magicDefense, speed = base#speed, skill = base#skill,
-              luck = base#luck, sprite = base#sprite, initialInventory = base#initialInventory,
+              luck = base#luck, constitution = con,
+              sprite = base#sprite, initialInventory = base#initialInventory,
               description = base#description, spriteFrames = base#spriteFrames,
               growthRates = growth, proficientWeaponTypes = proficient,
               canOpenChests = canOpen}: PlayerResource)
@@ -331,7 +343,8 @@ mod UnitCatalogCodec {
             let rate = key -> Map.get(key, obj) |> Option.flatMap(expectInt) |> Option.getWithDefault(0);
             ({hp = rate("hp"), attack = rate("attack"), defense = rate("defense"),
               magicAttack = rate("magicAttack"), magicDefense = rate("magicDefense"),
-              speed = rate("speed"), skill = rate("skill"), luck = rate("luck")}: GrowthRates))
+              speed = rate("speed"), skill = rate("skill"), luck = rate("luck"),
+              constitution = rate("constitution")}: GrowthRates))
 
     /// meta の各キーのうち JArray of JString のみを pool として採用する。
     /// それ以外の型（JObject 等）はスキップするため、pools 以外の meta キーを汚染しない設計。

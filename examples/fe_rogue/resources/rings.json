@@ -203,6 +203,63 @@
         "texture": "item_icons",
         "vframes": 39
       }
+    },
+    "float_cloud_small": {
+      "name": "浮雲・小",
+      "effect": "Trivial",
+      "power": 0,
+      "description": "ふわりと荷を軽くする小さな雲。",
+      "sprite": {
+        "frame": 337,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      },
+      "effectRule": {
+        "weight": -1.0
+      }
+    },
+    "float_cloud_medium": {
+      "name": "浮雲・中",
+      "effect": "Trivial",
+      "power": 0,
+      "description": "持つほどに身軽になる不思議な雲。",
+      "sprite": {
+        "frame": 338,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      },
+      "effectRule": {
+        "weight": -2.5
+      }
+    },
+    "float_cloud_large": {
+      "name": "浮雲・大",
+      "effect": "Trivial",
+      "power": 0,
+      "description": "大荷物もなんのその、巨大な浮雲。",
+      "sprite": {
+        "frame": 339,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      },
+      "effectRule": {
+        "weight": -4.5
+      }
     }
   }
 }

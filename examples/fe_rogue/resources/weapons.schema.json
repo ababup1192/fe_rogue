@@ -232,7 +232,8 @@
             "Axe",
             "Lance",
             "Bow",
-            "Magic"
+            "Magic",
+            "Dagger"
           ]
         },
         "hint": "plain",

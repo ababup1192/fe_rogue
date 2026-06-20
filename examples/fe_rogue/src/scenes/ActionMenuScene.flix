@@ -563,9 +563,10 @@ mod ActionMenuScene {
         match pickupTarget(scene) {
             case None       => scene
             case Some(info) =>
-                // 拾う主体の持ち物が満杯なら、床アイテムを取らずにポップアップだけ出す
-                // （ドラフト記録も床撤去もしないので、アイテムは床に残る）。
-                if (isPickerInventoryFull(info#playerId))
+                // 拾うと重量過多（積載 110%+ ＝ 移動不可）になるなら、床アイテムを取らずに
+                // ポップアップだけ出す（ドラフト記録も床撤去もしないので、アイテムは床に残る）。
+                // 重さで詰むのを防ぐため、拾う前に「拾ったら動けなくなるか」を判定する。
+                if (wouldPickupOverload(info, scene))
                     ItemPickupPopupScene.showFull(scene)
                 else
                     // 拾得を SelectedPlayer の picked にドラフト記録し、選択解除キャンセル
@@ -573,12 +574,14 @@ mod ActionMenuScene {
                     pickupAt(info, recordPickupDraft(info, scene))
         }
 
-    /// 拾う主体 (playerId) の持ち物が満杯か。PartyQuery で現フレームの Data を読む。
-    /// 見つからなければ満杯ではない扱い（防御的）。
-    def isPickerInventoryFull(playerId: Int32): Bool \ PlayerData.PartyQuery =
-        match PlayerData.PartyQuery.get(playerId) {
-            case Some(player) => PlayerScene.isInventoryFull(player)
-            case None         => false
+    /// 拾う主体が足元の床アイテムを拾うと重量過多になるか。PartyQuery で現フレームの Data を、
+    /// `ItemScene.dataAt` で床アイテムを読む。どちらか欠ければ「過多ではない」扱い（防御的）。
+    def wouldPickupOverload(info: {playerId = Int32, gridPos = {x = Int32, y = Int32}},
+                             scene: Scene[NodeTag]): Bool \ PlayerData.PartyQuery =
+        match (PlayerData.PartyQuery.get(info#playerId), ItemScene.dataAt(info#gridPos, scene)) {
+            case (Some(player), Some(floor)) =>
+                PlayerScene.wouldOverloadByPicking(player, floor#item)
+            case _ => false
         }
 
     /// `info` のセルにある床アイテムを SelectedPlayer の巻き戻しドラフトに積む。
@@ -609,7 +612,7 @@ mod ActionMenuScene {
             case Some((info, player, chest)) =>
                 if (not PlayerScene.canOpenChests(player))
                     ItemPickupPopupScene.showMessage("開けることができない", scene)
-                else if (PlayerScene.isInventoryFull(player))
+                else if (PlayerScene.wouldOverloadByPicking(player, chest#content))
                     ItemPickupPopupScene.showFull(scene)
                 else
                     addPickedItem(info#playerId, chest#content, scene)

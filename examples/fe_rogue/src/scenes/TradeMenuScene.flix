@@ -415,6 +415,7 @@ mod TradeMenuScene {
                 case None      => acc
                 case Some(pid) =>
                     let header = paneHeaderText(pid, acc);
+                    let headerColor = paneHeaderColor(pid);
                     let items = paneEntries(pid, acc);
                     let (sublines, icons) = paneDecorations(pid, acc);
                     let highlightIdx = pickHighlightIndex(i, pid, data, acc);
@@ -430,6 +431,7 @@ mod TradeMenuScene {
                                 |> applyHighlight(highlightIdx)
                                 |> applyMarkHighlight(markRows))
                         |> Label2D.mapAt(classPath(i), Label2D.setText(header))
+                        |> Label2D.mapAt(classPath(i), CanvasItem.setModulate(headerColor))
             },
             scene, List.range(0, count))
 
@@ -483,13 +485,27 @@ mod TradeMenuScene {
             case PlayerData.ItemKind.Ring(i)       => nw + ns + nc + i
         }
 
-    /// 列見出しの文字列「名前 数/上限」。名前は兵種名 (`UnitResource#description`)、
-    /// 数/上限は現在の所持数と持ち物上限 (通常 8 / ロード 16)。居なければ空文字。
+    /// 列見出しの文字列「名前 重量/最大」。名前は兵種名 (`UnitResource#description`)、
+    /// 重量/最大は現在の総重量と最大積載量（重量制）。居なければ空文字。
     def paneHeaderText(id: Int32, _scene: Scene[NodeTag]): String \ PlayerData.PartyQuery =
         match PlayerData.PartyQuery.get(id) {
             case Some(d) =>
-                "${d#resource#description} ${PlayerScene.itemCount(d)}/${PlayerScene.itemCapacity(d)}"
+                let load = PlayerScene.loadOf(d);
+                "${d#resource#description} ${Encumbrance.weightText(load#total)}/${Encumbrance.weightText(load#capacity)}"
             case None    => ""
+        }
+
+    /// 列見出しの色。積載段階で変える（通常=ヘッダ色 / 80%+=黄 / 100%+=橙 / 110%+=赤）。
+    /// 居なければ通常色。ItemMenu の重量ゲージと同じ配色で統一する。
+    def paneHeaderColor(id: Int32): Color \ PlayerData.PartyQuery =
+        match PlayerData.PartyQuery.get(id) {
+            case Some(d) => match PlayerScene.loadOf(d)#tier {
+                case Encumbrance.Tier.Normal     => UITheme.headerText()
+                case Encumbrance.Tier.Heavy      => {r = 1.0f32, g = 0.85f32, b = 0.3f32}
+                case Encumbrance.Tier.Overloaded => {r = 1.0f32, g = 0.6f32,  b = 0.2f32}
+                case Encumbrance.Tier.Immobile   => {r = 1.0f32, g = 0.3f32,  b = 0.3f32}
+            }
+            case None    => UITheme.headerText()
         }
 
     /// 武器 1 本ぶんの ItemEntry。本文は名前のみ（耐久・性能はサブラインへ）。

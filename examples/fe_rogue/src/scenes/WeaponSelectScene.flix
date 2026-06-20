@@ -292,9 +292,9 @@ mod WeaponSelectScene {
 
     /// 武器 1 本ぶんの 2 行目（性能）。残り使用回数を含む。
     /// 命中・射程は戦闘予報ミニウィンドウで見せるのでここでは省く（窓を狭めるため）。
-    /// 例: "威力 2 耐久 10"
+    /// 例: "威力 2 耐久 10 重さ 1.8"
     pub def weaponSubline(weapon: UnitCatalog.WeaponResource): String =
-        "威力 ${weapon#attack} 耐久 ${weapon#durability}"
+        "威力 ${weapon#attack} 耐久 ${weapon#durability} 重さ ${Encumbrance.weightText(Encumbrance.weaponWeight(weapon))}"
 
     /// 行 index → subline 文字列の Map（全行ぶん）。
     def weaponSublines(weapons: List[UnitCatalog.WeaponResource]): Map[Int32, String] =

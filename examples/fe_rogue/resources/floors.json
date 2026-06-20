@@ -176,6 +176,38 @@
         {
           "id": "nyoibo",
           "percent": 1
+        },
+        {
+          "id": "kunai",
+          "percent": 5
+        },
+        {
+          "id": "shuriken",
+          "percent": 5
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 5
+        },
+        {
+          "id": "makibishi",
+          "percent": 4
+        },
+        {
+          "id": "poison_needle",
+          "percent": 4
+        },
+        {
+          "id": "float_cloud_small",
+          "percent": 2
+        },
+        {
+          "id": "float_cloud_medium",
+          "percent": 1
+        },
+        {
+          "id": "float_cloud_large",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -427,6 +459,38 @@
         {
           "id": "nyoibo",
           "percent": 1
+        },
+        {
+          "id": "kunai",
+          "percent": 5
+        },
+        {
+          "id": "shuriken",
+          "percent": 5
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 5
+        },
+        {
+          "id": "makibishi",
+          "percent": 4
+        },
+        {
+          "id": "poison_needle",
+          "percent": 4
+        },
+        {
+          "id": "float_cloud_small",
+          "percent": 2
+        },
+        {
+          "id": "float_cloud_medium",
+          "percent": 1
+        },
+        {
+          "id": "float_cloud_large",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -677,6 +741,38 @@
         },
         {
           "id": "nyoibo",
+          "percent": 1
+        },
+        {
+          "id": "kunai",
+          "percent": 5
+        },
+        {
+          "id": "shuriken",
+          "percent": 5
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 5
+        },
+        {
+          "id": "makibishi",
+          "percent": 4
+        },
+        {
+          "id": "poison_needle",
+          "percent": 4
+        },
+        {
+          "id": "float_cloud_small",
+          "percent": 2
+        },
+        {
+          "id": "float_cloud_medium",
+          "percent": 1
+        },
+        {
+          "id": "float_cloud_large",
           "percent": 1
         }
       ],
@@ -956,6 +1052,38 @@
         },
         {
           "id": "nyoibo",
+          "percent": 1
+        },
+        {
+          "id": "kunai",
+          "percent": 5
+        },
+        {
+          "id": "shuriken",
+          "percent": 5
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 5
+        },
+        {
+          "id": "makibishi",
+          "percent": 4
+        },
+        {
+          "id": "poison_needle",
+          "percent": 4
+        },
+        {
+          "id": "float_cloud_small",
+          "percent": 2
+        },
+        {
+          "id": "float_cloud_medium",
+          "percent": 1
+        },
+        {
+          "id": "float_cloud_large",
           "percent": 1
         }
       ],
@@ -1283,6 +1411,38 @@
         },
         {
           "id": "nyoibo",
+          "percent": 1
+        },
+        {
+          "id": "kunai",
+          "percent": 5
+        },
+        {
+          "id": "shuriken",
+          "percent": 5
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 5
+        },
+        {
+          "id": "makibishi",
+          "percent": 4
+        },
+        {
+          "id": "poison_needle",
+          "percent": 4
+        },
+        {
+          "id": "float_cloud_small",
+          "percent": 2
+        },
+        {
+          "id": "float_cloud_medium",
+          "percent": 1
+        },
+        {
+          "id": "float_cloud_large",
           "percent": 1
         }
       ],
@@ -1614,6 +1774,38 @@
         },
         {
           "id": "nyoibo",
+          "percent": 1
+        },
+        {
+          "id": "kunai",
+          "percent": 5
+        },
+        {
+          "id": "shuriken",
+          "percent": 5
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 5
+        },
+        {
+          "id": "makibishi",
+          "percent": 4
+        },
+        {
+          "id": "poison_needle",
+          "percent": 4
+        },
+        {
+          "id": "float_cloud_small",
+          "percent": 2
+        },
+        {
+          "id": "float_cloud_medium",
+          "percent": 1
+        },
+        {
+          "id": "float_cloud_large",
           "percent": 1
         }
       ],
@@ -1953,6 +2145,38 @@
         },
         {
           "id": "nyoibo",
+          "percent": 1
+        },
+        {
+          "id": "kunai",
+          "percent": 5
+        },
+        {
+          "id": "shuriken",
+          "percent": 5
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 5
+        },
+        {
+          "id": "makibishi",
+          "percent": 4
+        },
+        {
+          "id": "poison_needle",
+          "percent": 4
+        },
+        {
+          "id": "float_cloud_small",
+          "percent": 2
+        },
+        {
+          "id": "float_cloud_medium",
+          "percent": 1
+        },
+        {
+          "id": "float_cloud_large",
           "percent": 1
         }
       ],
@@ -2296,6 +2520,38 @@
         },
         {
           "id": "nyoibo",
+          "percent": 1
+        },
+        {
+          "id": "kunai",
+          "percent": 5
+        },
+        {
+          "id": "shuriken",
+          "percent": 5
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 5
+        },
+        {
+          "id": "makibishi",
+          "percent": 4
+        },
+        {
+          "id": "poison_needle",
+          "percent": 4
+        },
+        {
+          "id": "float_cloud_small",
+          "percent": 2
+        },
+        {
+          "id": "float_cloud_medium",
+          "percent": 1
+        },
+        {
+          "id": "float_cloud_large",
           "percent": 1
         }
       ],
@@ -2648,6 +2904,38 @@
         {
           "id": "nyoibo",
           "percent": 1
+        },
+        {
+          "id": "kunai",
+          "percent": 5
+        },
+        {
+          "id": "shuriken",
+          "percent": 5
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 5
+        },
+        {
+          "id": "makibishi",
+          "percent": 4
+        },
+        {
+          "id": "poison_needle",
+          "percent": 4
+        },
+        {
+          "id": "float_cloud_small",
+          "percent": 2
+        },
+        {
+          "id": "float_cloud_medium",
+          "percent": 1
+        },
+        {
+          "id": "float_cloud_large",
+          "percent": 1
         }
       ],
       "itemsPerRoom": {
@@ -2998,6 +3286,38 @@
         },
         {
           "id": "nyoibo",
+          "percent": 1
+        },
+        {
+          "id": "kunai",
+          "percent": 5
+        },
+        {
+          "id": "shuriken",
+          "percent": 5
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 5
+        },
+        {
+          "id": "makibishi",
+          "percent": 4
+        },
+        {
+          "id": "poison_needle",
+          "percent": 4
+        },
+        {
+          "id": "float_cloud_small",
+          "percent": 2
+        },
+        {
+          "id": "float_cloud_medium",
+          "percent": 1
+        },
+        {
+          "id": "float_cloud_large",
           "percent": 1
         }
       ],

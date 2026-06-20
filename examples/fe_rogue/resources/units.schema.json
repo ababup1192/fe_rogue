@@ -22,6 +22,20 @@
         "order": 14
       }
     },
+    "constitution": {
+      "field": {
+        "ftype": "int",
+        "hint": {
+          "slider": {
+            "max": 30,
+            "min": 0,
+            "step": 1
+          }
+        },
+        "label": "体格",
+        "order": 11
+      }
+    },
     "defense": {
       "field": {
         "ftype": "int",
@@ -100,6 +114,20 @@
             },
             "label": "幸運成長",
             "order": 8
+          }
+        },
+        "constitution": {
+          "field": {
+            "ftype": "int",
+            "hint": {
+              "slider": {
+                "max": 100,
+                "min": 0,
+                "step": 5
+              }
+            },
+            "label": "体格成長",
+            "order": 9
           }
         },
         "magicAttack": {

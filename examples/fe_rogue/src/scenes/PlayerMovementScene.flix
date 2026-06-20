@@ -56,7 +56,7 @@ mod PlayerMovementScene {
         let movers    = PlayerScene.getAll(scene)
             |> List.filter(d -> d#id != PlayerScene.lordId() and d#hp > 0)
             |> List.map(d -> (d#id, d#gridPos,
-                              not d#waited and d#moveStepsTaken < d#moveTiles));
+                              not d#waited and d#moveStepsTaken < PlayerScene.effectiveMoveTilesOf(d)));
         Board.followStepsToward(board, allyCells, lordNewPos, goal, movers)
             |> List.foldLeft((acc, step) -> match step {
                 case (_id, None, _)                => acc
@@ -76,7 +76,7 @@ mod PlayerMovementScene {
             case Some(d) =>
                 let used      = d#moveStepsTaken + 1;
                 let withSteps = PlayerScene.setMoveStepsTaken(id, used, scene);
-                if (used >= d#moveTiles) {
+                if (used >= PlayerScene.effectiveMoveTilesOf(d)) {
                     SelectedPlayer.pushDraft(MoveDraft.DraftAction.GatherWaited(id));
                     PlayerScene.setWaited(id, withSteps)
                 } else withSteps

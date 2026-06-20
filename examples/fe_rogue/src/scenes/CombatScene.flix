@@ -974,7 +974,8 @@ mod CombatScene {
          magicDefense = rollPercent(),
          speed        = rollPercent(),
          skill        = rollPercent(),
-         luck         = rollPercent()}
+         luck         = rollPercent(),
+         constitution = rollPercent()}
 
     /// 味方 id に EXP を加算し、100 到達ならレベルアップを解決する。
     ///   - レベルアップしない → `exp` だけ更新。
@@ -1005,7 +1006,7 @@ mod CombatScene {
         let result = LevelSystem.buildResult(d#resource#description, d#level,
                                              before, after);
         let newHp  = d#hp + hpGain;
-        GameLogger.playerLog("${d#resource#description}が Lv${d#level} → Lv${d#level + 1}");
+        GameLogger.playerLog("${d#resource#description}が Lv${d#level} ▶ Lv${d#level + 1}");
         PlayerScene.mapPlayer(playerId, dd ->
             {exp            = newExp,
              level          = dd#level + 1,

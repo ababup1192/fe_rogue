@@ -62,7 +62,7 @@
           "pos": [4, 89],
           "fontSize": 2.0,
           "verticalAlignment": "center",
-          "text": "↑↓ 選択 ・ ←→ 相手 ・ Z 持つ/置く ・ X 戻る",
+          "text": "▲▼ 選択 ・ ◀▶ 相手 ・ Z 持つ/置く ・ X 戻る",
           "modulate": {"r": 0.49, "g": 0.541, "b": 0.639},
           "zIndex": 1,
           "visible": false

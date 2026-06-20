@@ -46,13 +46,14 @@ mod WeaponCatalog {
         case Lance   // 槍（剣に有利）
         case Bow     // 弓（三竦みの外・常に中立）
         case Magic   // 魔法（中立・魔防を参照）
+        case Dagger  // 暗器（三竦みの外・常に中立。低威力・軽量で耐久分だけ投げられる）
     }
 
     /// 全武器タイプの列挙。得意武器トグル UI の選択肢生成や、
     /// 初期ロード時にすべての武器タイプを得意とするユニットを生成する際に使う。
     pub def allWeaponTypes(): List[WeaponType] =
         WeaponType.Sword :: WeaponType.Axe :: WeaponType.Lance ::
-        WeaponType.Bow :: WeaponType.Magic :: Nil
+        WeaponType.Bow :: WeaponType.Magic :: WeaponType.Dagger :: Nil
 
     /// `WeaponType` が物理武器か。Combat 系の分岐で使う薄いヘルパ。
     /// 魔法だけが魔力 vs 魔防で、剣・斧・槍・弓はすべて力 vs 防御の物理武器。
@@ -265,11 +266,12 @@ mod WeaponCatalogCodec {
     /// `WeaponType` を JSON / 設定で使う case 名文字列に。`parseWeaponType` と対。
     /// 武器タイプ習熟（得意/苦手）の units.json 配列でも使うため pub。
     pub def weaponTypeToString(weaponType: WeaponType): String = match weaponType {
-        case WeaponType.Sword => "Sword"
-        case WeaponType.Axe   => "Axe"
-        case WeaponType.Lance => "Lance"
-        case WeaponType.Bow   => "Bow"
-        case WeaponType.Magic => "Magic"
+        case WeaponType.Sword  => "Sword"
+        case WeaponType.Axe    => "Axe"
+        case WeaponType.Lance  => "Lance"
+        case WeaponType.Bow    => "Bow"
+        case WeaponType.Magic  => "Magic"
+        case WeaponType.Dagger => "Dagger"
     }
 
     def encodeSprite(sprite: WeaponSpriteResource): Json =
@@ -340,6 +342,7 @@ mod WeaponCatalogCodec {
         case "Lance"    => WeaponType.Lance
         case "Bow"      => WeaponType.Bow
         case "Magic"    => WeaponType.Magic
+        case "Dagger"   => WeaponType.Dagger
         case "Physical" => WeaponType.Sword
         case _          => WeaponType.Sword
     }

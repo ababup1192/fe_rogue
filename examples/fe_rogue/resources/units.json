@@ -22,7 +22,8 @@
         "magicAttack": 0,
         "magicDefense": 10,
         "skill": 30,
-        "speed": 35
+        "speed": 35,
+        "constitution": 40
       },
       "hp": 26,
       "initialInventory": [
@@ -60,7 +61,8 @@
         },
         "texture": "rogues",
         "vframes": 7
-      }
+      },
+      "constitution": 9
     },
     "cleric": {
       "attack": 3,
@@ -74,7 +76,8 @@
         "magicAttack": 35,
         "magicDefense": 35,
         "skill": 35,
-        "speed": 40
+        "speed": 40,
+        "constitution": 20
       },
       "hp": 16,
       "initialInventory": [
@@ -111,7 +114,8 @@
         },
         "texture": "rogues",
         "vframes": 7
-      }
+      },
+      "constitution": 5
     },
     "fighter": {
       "attack": 6,
@@ -125,7 +129,8 @@
         "magicAttack": 5,
         "magicDefense": 15,
         "skill": 45,
-        "speed": 40
+        "speed": 40,
+        "constitution": 30
       },
       "hp": 20,
       "initialInventory": [
@@ -163,7 +168,8 @@
         },
         "texture": "rogues",
         "vframes": 7
-      }
+      },
+      "constitution": 7
     },
     "knight": {
       "attack": 5,
@@ -177,7 +183,8 @@
         "magicAttack": 10,
         "magicDefense": 30,
         "skill": 35,
-        "speed": 40
+        "speed": 40,
+        "constitution": 30
       },
       "hp": 18,
       "initialInventory": [
@@ -200,7 +207,8 @@
         "Axe",
         "Lance",
         "Bow",
-        "Magic"
+        "Magic",
+        "Dagger"
       ],
       "skill": 5,
       "speed": 7,
@@ -214,7 +222,8 @@
         },
         "texture": "rogues",
         "vframes": 7
-      }
+      },
+      "constitution": 7
     },
     "mage": {
       "attack": 0,
@@ -228,7 +237,8 @@
         "magicAttack": 40,
         "magicDefense": 30,
         "skill": 40,
-        "speed": 50
+        "speed": 50,
+        "constitution": 15
       },
       "hp": 16,
       "initialInventory": [
@@ -273,7 +283,8 @@
         },
         "texture": "rogues",
         "vframes": 7
-      }
+      },
+      "constitution": 5
     },
     "paladin": {
       "attack": 5,
@@ -287,7 +298,8 @@
         "magicAttack": 5,
         "magicDefense": 25,
         "skill": 30,
-        "speed": 20
+        "speed": 20,
+        "constitution": 40
       },
       "hp": 24,
       "initialInventory": [
@@ -320,7 +332,8 @@
         },
         "texture": "rogues",
         "vframes": 7
-      }
+      },
+      "constitution": 8
     },
     "ranger": {
       "attack": 6,
@@ -334,7 +347,8 @@
         "magicAttack": 10,
         "magicDefense": 15,
         "skill": 50,
-        "speed": 40
+        "speed": 40,
+        "constitution": 25
       },
       "hp": 18,
       "initialInventory": [
@@ -372,7 +386,8 @@
         },
         "texture": "rogues",
         "vframes": 7
-      }
+      },
+      "constitution": 7
     },
     "rogue": {
       "attack": 4,
@@ -387,7 +402,8 @@
         "magicAttack": 10,
         "magicDefense": 20,
         "skill": 55,
-        "speed": 60
+        "speed": 60,
+        "constitution": 20
       },
       "hp": 16,
       "initialInventory": [
@@ -411,7 +427,8 @@
       "moveTiles": 6,
       "proficientWeaponTypes": [
         "Sword",
-        "Bow"
+        "Bow",
+        "Dagger"
       ],
       "skill": 7,
       "speed": 9,
@@ -425,7 +442,8 @@
         },
         "texture": "rogues",
         "vframes": 7
-      }
+      },
+      "constitution": 6
     }
   }
 }

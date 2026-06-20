@@ -635,6 +635,96 @@
         "vframes": 25
       },
       "weaponType": "Sword"
+    },
+    "kunai": {
+      "name": "くない",
+      "attack": 2,
+      "hit": 90,
+      "durability": 12,
+      "range": {
+        "min": 1,
+        "max": 2
+      },
+      "weaponType": "Dagger",
+      "description": "投げて良し、刺して良し。忍びの定番。",
+      "sprite": {
+        "frame": 60,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      }
+    },
+    "shuriken": {
+      "name": "しゅりけん",
+      "attack": 3,
+      "hit": 85,
+      "durability": 15,
+      "range": {
+        "min": 1,
+        "max": 2
+      },
+      "weaponType": "Dagger",
+      "description": "風を切って飛ぶ四つ星。手数で押す。",
+      "sprite": {
+        "frame": 61,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      }
+    },
+    "throwing_knife": {
+      "name": "ナイフ",
+      "attack": 3,
+      "hit": 90,
+      "durability": 10,
+      "range": {
+        "min": 1,
+        "max": 2
+      },
+      "weaponType": "Dagger",
+      "description": "軽く小ぶりな投げ刃。懐に忍ばせて。",
+      "sprite": {
+        "frame": 62,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      }
+    },
+    "makibishi": {
+      "name": "まきびし",
+      "attack": 1,
+      "hit": 95,
+      "durability": 20,
+      "range": {
+        "min": 1,
+        "max": 1
+      },
+      "weaponType": "Dagger",
+      "description": "足元に撒く小さな棘。数で削る。",
+      "sprite": {
+        "frame": 63,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      }
+    },
+    "poison_needle": {
+      "name": "どくばり",
+      "attack": 2,
+      "hit": 80,
+      "durability": 8,
+      "range": {
+        "min": 1,
+        "max": 2
+      },
+      "weaponType": "Dagger",
+      "description": "細く鋭い毒の針。一撃の重みは軽い。",
+      "sprite": {
+        "frame": 64,
+        "hframes": 20,
+        "texture": "item_weapons",
+        "vframes": 25
+      }
     }
   }
 }

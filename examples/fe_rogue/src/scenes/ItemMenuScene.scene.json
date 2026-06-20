@@ -59,9 +59,10 @@
         {
           "type": "Label2D",
           "name": "hint",
-          "pos": [20, 4],
+          "pos": [40, 4],
           "fontSize": 2.2,
           "verticalAlignment": "center",
+          "horizontalAlignment": "right",
           "text": "◀ 武器 ▶",
           "modulate": { "r": 0.62, "g": 0.64, "b": 0.70 },
           "zIndex": 1,

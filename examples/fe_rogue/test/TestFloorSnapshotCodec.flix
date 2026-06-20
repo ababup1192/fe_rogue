@@ -14,7 +14,8 @@ mod TestFloorSnapshotCodec {
     /// 検証用の小さなフロアスナップショット（区切りの良い数値で組む）。
     def sample(): T =
         let stats = ({hp = 24, attack = 12, defense = 9, magicAttack = 4,
-                      magicDefense = 5, speed = 14, skill = 10, luck = 8}: Stats);
+                      magicDefense = 5, speed = 14, skill = 10, luck = 8,
+                      constitution = 7}: Stats);
         let pStatuses = ({effect = StatusEffect.SpdDown, magnitude = 3, remaining = 2}: Status) :: Nil;
         let player = ({id = 0, classId = "lord", gridPos = {x = 10, y = 15},
                        hp = 22, level = 3, exp = 45, stats = stats,

@@ -282,7 +282,7 @@ mod StaffCastScene {
             case Some(target) =>
                 let result = Combat.heal(target#hp, target#resource#hp, amount);
                 let healed = result#newHp - target#hp;
-                GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} → ${PlayerScene.displayName(targetId, scene)} を ${healed}回復");
+                GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} ▶ ${PlayerScene.displayName(targetId, scene)} を ${healed}回復");
                 scene
                     |> PlayerScene.mapPlayer(targetId, d -> {hp = result#newHp | d})
                     |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), result#newHp)
@@ -298,7 +298,7 @@ mod StaffCastScene {
             case Some(enemy) =>
                 let result = Combat.heal(enemy#hp, enemy#resource#hp, amount);
                 let healed = result#newHp - enemy#hp;
-                GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} → ${EnemyScene.displayName(enemyId, scene)} を ${healed}回復");
+                GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} ▶ ${EnemyScene.displayName(enemyId, scene)} を ${healed}回復");
                 scene
                     |> EnemyScene.mapEnemy(enemyId, d -> {hp = result#newHp | d})
                     |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), result#newHp)
@@ -319,7 +319,7 @@ mod StaffCastScene {
                     |> PlayerScene.mapPlayer(targetId, d -> {hp = dmgResult#newHp | d})
                     |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), dmgResult#newHp);
                 GameLogger.playerLog(
-                    "${PlayerScene.displayName(srcId, scene)} → ${PlayerScene.displayName(targetId, scene)} を ふきとばし (1ダメージ)");
+                    "${PlayerScene.displayName(srcId, scene)} ▶ ${PlayerScene.displayName(targetId, scene)} を ふきとばし (1ダメージ)");
                 if (dmgResult#isDead) withDamage
                 else applyBlowbackMove(targetId, hitCell, dir, withDamage,
                                         cell -> PlayerScene.snapTo(targetId, cell, withDamage))
@@ -337,7 +337,7 @@ mod StaffCastScene {
             case Some(enemy) =>
                 let dmgResult = Combat.damage(hp = enemy#hp, amount = 1);
                 if (dmgResult#isDead) {
-                    GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} → ${EnemyScene.displayName(enemyId, scene)} を ふきとばし撃破");
+                    GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} ▶ ${EnemyScene.displayName(enemyId, scene)} を ふきとばし撃破");
                     scene
                         |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), 0)
                         |> EnemyScene.startDeathAnimation(enemyId)
@@ -346,7 +346,7 @@ mod StaffCastScene {
                         |> EnemyScene.mapEnemy(enemyId, d -> {hp = dmgResult#newHp | d})
                         |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), dmgResult#newHp);
                     GameLogger.playerLog(
-                        "${PlayerScene.displayName(srcId, scene)} → ${EnemyScene.displayName(enemyId, scene)} を ふきとばし (1ダメージ)");
+                        "${PlayerScene.displayName(srcId, scene)} ▶ ${EnemyScene.displayName(enemyId, scene)} を ふきとばし (1ダメージ)");
                     applyBlowbackMove(enemyId, hitCell, dir, withDamage,
                                        cell -> EnemyScene.snapTo(enemyId, cell, withDamage))
                 }

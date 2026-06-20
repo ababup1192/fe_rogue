@@ -162,16 +162,20 @@ mod ItemMenuScene {
     /// 符号つき数値表記（+3 / -1）。
     def signed(n: Int32): String = if (n >= 0) "+${n}" else "${n}"
 
-    /// 消費アイテムのサブライン（効果要約 + 残り使用回数）。例「HP+10 ・残 3」。
+    /// 消費アイテムのサブライン（効果要約 + 残り使用回数 + 重さ）。例「HP+10 ・残 3 ・重 0.5」。
     pub def consumableSubline(item: Consumable.ConsumableResource): String =
-        "${consumableEffectSummary(item)} ・残 ${item#durability}"
+        "${consumableEffectSummary(item)} ・残 ${item#durability} ・重 ${Encumbrance.weightText(Encumbrance.consumableWeight(item))}"
 
-    /// 杖のサブライン（効果 + 残り使用回数）。例「回復 ・残 5」。
+    /// 杖のサブライン（効果 + 残り使用回数 + 重さ）。例「回復 ・残 5 ・重 0.8」。
     pub def staffSubline(staff: Staff.StaffResource): String =
-        "${staffEffectJp(staff#effect)} ・残 ${staff#durability}"
+        "${staffEffectJp(staff#effect)} ・残 ${staff#durability} ・重 ${Encumbrance.weightText(Encumbrance.staffWeight(staff))}"
 
-    /// 指輪の効果 1 行（サブライン）。
-    pub def ringStatLine(ring: Ring.RingResource): String = match ring#effect {
+    /// 指輪の効果 1 行（サブライン）に重さを添える。
+    pub def ringStatLine(ring: Ring.RingResource): String =
+        "${ringEffectLine(ring)} ・重 ${Encumbrance.weightText(Encumbrance.ringWeight(ring))}"
+
+    /// 指輪の効果文（重さを除く本体）。
+    def ringEffectLine(ring: Ring.RingResource): String = match ring#effect {
         case Ring.RingEffect.Pursuit   => "速+3で追撃15%"
         case Ring.RingEffect.Power     => "攻撃${signed(ring#power)}"
         case Ring.RingEffect.Swift     => "速さ${signed(ring#power)}"
@@ -361,6 +365,23 @@ mod ItemMenuScene {
         let txt = if (multi) "◀ ${categoryLabel(cat)} ▶" else categoryLabel(cat);
         scene |> Label2D.mapAt(hintPath(), Label2D.setText(txt))
 
+    /// ヘッダを「重さ X.X/Y.Y」の重量ゲージにし、積載段階で色を変える
+    /// （通常=ヘッダ色 / 80%+=黄 / 100%+=橙 / 110%+=赤）。角括弧を含まないので Label2D で安全。
+    def setWeightHeader(player: PlayerScene.Data, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let load = PlayerScene.loadOf(player);
+        let txt = "重 ${Encumbrance.weightText(load#total)}/${Encumbrance.weightText(load#capacity)}";
+        scene
+            |> Label2D.mapAt(headerPath(), Label2D.setText(txt))
+            |> Label2D.mapAt(headerPath(), CanvasItem.setModulate(weightColor(load#tier)))
+
+    /// 積載段階ごとのヘッダ色。重くなるほど黄→橙→赤で警告する。
+    def weightColor(tier: Encumbrance.Tier): Color = match tier {
+        case Encumbrance.Tier.Normal     => UITheme.headerText()
+        case Encumbrance.Tier.Heavy      => {r = 1.0f32, g = 0.85f32, b = 0.3f32}
+        case Encumbrance.Tier.Overloaded => {r = 1.0f32, g = 0.6f32,  b = 0.2f32}
+        case Encumbrance.Tier.Immobile   => {r = 1.0f32, g = 0.3f32,  b = 0.3f32}
+    }
+
     /// アイテム窓を ActionMenu の右端基準に重ねて配置する（武器メニューと同じ）。
     def positionBesideActionMenu(scene: Scene[NodeTag]): Scene[NodeTag] =
         match Panel.getAt(ActionMenuScene.panelPath(), scene) {
@@ -402,6 +423,7 @@ mod ItemMenuScene {
                                 |> ItemList.setIconSize(iconSize())
                                 |> ItemList.setIconTextGap(iconTextGap()))
                         |> setHintLabel(cur, List.length(cats) > 1)
+                        |> setWeightHeader(player)
                         |> positionBesideActionMenu
                         |> applyMarkColors(marks, items)
             }

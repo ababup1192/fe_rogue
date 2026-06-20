@@ -70,11 +70,22 @@ mod PlayerScene {
     /// `weaponRange` は装備武器(先頭)の射程。味方に `isDying` は無いので常に false。
     pub def unitView(data: Data): UnitView =
         {id = data#id, faction = Faction.Player, pos = data#gridPos,
-         hp = data#hp, moveTiles = data#moveTiles,
+         hp = data#hp, moveTiles = effectiveMoveTilesOf(data),
          weaponRange = PlayerData.equippedWeapon(data#weapons) |> Option.map(w -> w#range),
          combat = combatView(data), isDying = false, hidden = data#hidden,
          // 味方は EnemyAI に渡らないので無害な固定値（型を埋めるためだけ）。
          aiType = EnemyAI.AiType.Aggressive}
+
+    /// この味方の積載状態（重量制）。重量ゲージ UI・実効移動力・拾得判定が共用する単一の入口。
+    /// 力は素の `resource#attack`（バフ・指輪を含まない物理特性）、体格は `resource#constitution`。
+    pub def loadOf(data: Data): Encumbrance.Load =
+        Encumbrance.loadOf(data#resource#constitution, data#resource#attack, data)
+
+    /// 積載ペナルティ込みの実効移動力。素の `moveTiles` に積載率ペナルティ（80%/100%/110%）を掛けた値。
+    /// getMoveTiles / unitView / PlayerMovementScene はすべてこの 1 関数を通すこと
+    /// （範囲計算と歩数判定の不整合を防ぐため）。
+    pub def effectiveMoveTilesOf(data: Data): Int32 =
+        Encumbrance.effectiveMoveTiles(data#moveTiles, loadOf(data))
 
     // ────────────────────────────────────────────────────────
     // (B) 定数
@@ -84,23 +95,8 @@ mod PlayerScene {
     /// このユニットが倒れると 1F からやり直し（ゲームオーバー扱い）になる。
     pub def lordId(): Int32 = 0
 
-    /// 持ち物（武器 + 杖 + 消費アイテム）を判定する職種名。`units.json` の "description" と一致させる。
-    /// この職種だけ持ち物上限が広い（2 ページぶん持てる）。
-    def lordClass(): String = "ロード"
-
-    /// ロード職以外の持ち物上限（合計個数）。
-    def normalItemCapacity(): Int32 = 8
-
-    /// ロード職の持ち物上限（合計個数）。8 個 × 2 ページぶん。
-    def lordItemCapacity(): Int32 = 16
-
-    /// この味方が持てる持ち物の合計上限。職種が「ロード」なら 16、それ以外は 8。
-    pub def itemCapacity(data: Data): Int32 =
-        if (data#resource#description == lordClass()) lordItemCapacity()
-        else normalItemCapacity()
-
     /// この味方が床の宝箱を開けられるか。UnitResource の `canOpenChests`（ローグのみ true）を読む。
-    /// `itemCapacity` と同じく「駒の Data からクラス能力を引く」流儀に揃える。
+    /// 「駒の Data からクラス能力を引く」流儀。
     pub def canOpenChests(data: Data): Bool =
         data#resource#canOpenChests
 
@@ -109,16 +105,15 @@ mod PlayerScene {
     pub def displayName(id: Int32, scene: Scene[NodeTag]): String =
         get(id, scene) |> Option.map(d -> d#resource#description) |> Option.getWithDefault("味方")
 
-    /// いま持っている持ち物の合計個数（武器 + 杖 + 消費アイテムを合算する）。
-    pub def itemCount(data: Data): Int32 =
-        List.length(data#weapons)
-            + List.length(data#staves)
-            + List.length(data#consumables)
-            + List.length(data#rings)
-
-    /// 持ち物が上限に達しているか（これ以上拾えないか）。
+    /// 持ち物が「もうこれ以上持てない」状態か（重量制）。個数上限は撤廃したので、
+    /// 既に重量過多（積載 110%+ ＝ 移動不可）かどうかで判定する。
+    /// 拾う対象が分かる場面では、より精密な `wouldOverloadByPicking` を使うこと。
     pub def isInventoryFull(data: Data): Bool =
-        itemCount(data) >= itemCapacity(data)
+        loadOf(data)#tier == Encumbrance.Tier.Immobile
+
+    /// この床アイテムを拾うと重量過多（積載 110%+）になるか。なるなら拾わせない（詰み防止）。
+    pub def wouldOverloadByPicking(data: Data, item: ItemData.GroundItemKind): Bool =
+        Encumbrance.wouldExceedImmobile(loadOf(data), Encumbrance.groundItemWeight(item))
 
     /// プレイヤー Sprite の zIndex（Player は前面に立つ）。EnemyScene と同じ 10。
     def spriteZIndex(): Int32 = 10
@@ -1133,9 +1128,10 @@ mod PlayerScene {
         }
 
     /// 指定 id のプレイヤーの移動力（マス数）を返す。未登録なら panic。
+    /// 積載ペナルティ込みの実効値を返す（MoveRangeScene の青マスもこの値で縮む）。
     pub def getMoveTiles(id: Int32, scene: Scene[NodeTag]): Int32 =
         match get(id, scene) {
-            case Some(d) => d#moveTiles
+            case Some(d) => effectiveMoveTilesOf(d)
             case None    => bug!("PlayerScene: player ${id} not found")
         }
 

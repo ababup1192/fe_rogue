@@ -1,31 +1,19 @@
-/// PlayerScene の持ち物上限ロジックを 3 観点で固定する:
-///   1. ロード職以外は 8 個目でいっぱいになる（7 個ならまだ拾える）
-///   2. ロード職（resource#description == "ロード"）は 16 個まで持てる（8 個ではまだ余裕）
-///   3. 「個数」は武器 + 杖 + 消費アイテムの 3 リストを合算して数える
+/// PlayerScene の持ち物制限ロジック（重量制）を固定する。
 ///
-/// 持ち物上限は「床アイテムを拾えるか」を決めるゲーム仕様で、職種によって 8 / 16 と
-/// 分岐するため、境界（7→8, 8→16）を直値で押さえておく。
+/// 個数上限は撤廃され、唯一の制約は重量（最大積載量 = 体格×1.3 + 力×0.2 + 6.0）。
+///   1. 軽い持ち物なら「いっぱい」ではない（まだ拾える）
+///   2. 重量過多（積載 110%+ ＝ 移動不可）に達すると `isInventoryFull` が true
+///   3. `wouldOverloadByPicking`: 重い物を拾うと過多になる／軽い物なら大丈夫、を直値で押さえる
+///
+/// テスト用 resource（`testResource`）は 体格 6・力 3 → 最大積載量 8.6（=6×1.0+3×0.2+2.0）。
+/// テスト用武器（`testWeapon`）は 剣・力 2 → 重量 1.8（=1.5+2×0.15）。
 mod TestInventoryCapacity {
 
     // ════════════════════════════════════════════════════════
     // フィクスチャ
     // ════════════════════════════════════════════════════════
 
-    /// ロード職の UnitResource（description だけ "ロード" に上書き）。
-    def lordResource(): UnitCatalog.UnitResource =
-        {description = "ロード" | TestUnitFixtures.testResource(4, 10)}
-
-    /// テスト用の杖 1 本（耐久 3）。中身は容量カウントに影響しないダミー値。
-    def testStaff(): Staff.StaffResource = {
-        name       = "テスト杖",
-        effect     = Staff.StaffEffect.Heal,
-        durability = 3,
-        sprite     = testSprite(),
-        description = "",
-        effectRule = None
-    }
-
-    /// テスト用の消費アイテム 1 個。容量カウントだけが目的なのでダミー値。
+    /// テスト用の消費アイテム 1 個（きずぐすり = 自己使用 → 重量 0.5）。
     def testConsumable(): Consumable.ConsumableResource = {
         name       = "きずぐすり",
         effect     = Consumable.ConsumableEffect.Heal,
@@ -44,11 +32,10 @@ mod TestInventoryCapacity {
         offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false
     }
 
-    /// 指定 resource と各リストの所持数から PlayerScene.Data を 1 体組む。
-    /// 容量判定に効くのは resource#description と 3 リストの長さだけなので、
+    /// 指定 resource と武器の所持数から PlayerScene.Data を 1 体組む。
+    /// 重量判定に効くのは resource（体格・力）と各リストの中身だけなので、
     /// それ以外は意味を持たないデフォルト値で埋める。
-    def makeData(resource: UnitCatalog.UnitResource,
-                  weaponCount: Int32, staffCount: Int32, consumableCount: Int32):
+    def makeData(resource: UnitCatalog.UnitResource, weaponCount: Int32):
             PlayerScene.Data = {
         id              = 0,
         classId         = "test_player",
@@ -59,8 +46,8 @@ mod TestInventoryCapacity {
         attackTargetId  = None,
         resource        = resource,
         weapons         = List.repeat(weaponCount, TestUnitFixtures.testWeapon()),
-        staves          = List.repeat(staffCount, testStaff()),
-        consumables     = List.repeat(consumableCount, testConsumable()),
+        staves          = Nil,
+        consumables     = Nil,
         selectedItem    = None,
         moveStepsTaken  = 0,
         facing          = Staff.Direction.Down,
@@ -76,43 +63,35 @@ mod TestInventoryCapacity {
     }
 
     // ════════════════════════════════════════════════════════
-    // ロード職以外: 上限 8 個
+    // isInventoryFull: 重量過多(110%+)でのみ true
     // ════════════════════════════════════════════════════════
 
-    /// 武器 7 本ではまだ満杯でない、武器 8 本でちょうど満杯になる（境界 = 8）。
+    /// 最大積載量 8.6 に対し、剣 5 本 = 9.0（積載 105% = 重量オーバーだが移動可）では
+    /// まだ「いっぱい」ではなく、剣 6 本 = 10.8（積載 126% = 重量過多）で「いっぱい」になる。
     @Test
-    def testNormalUnitFullAtEight(): Unit \ Assert =
-        let sevenItems = makeData(TestUnitFixtures.testResource(4, 10), 7, 0, 0);
-        let eightItems = makeData(TestUnitFixtures.testResource(4, 10), 8, 0, 0);
+    def testFullOnlyWhenImmobile(): Unit \ Assert =
+        let fiveWeapons = makeData(TestUnitFixtures.testResource(4, 10), 5);
+        let sixWeapons  = makeData(TestUnitFixtures.testResource(4, 10), 6);
         Assert.assertEq(
             expected = (false, true),
-            (PlayerScene.isInventoryFull(sevenItems),
-             PlayerScene.isInventoryFull(eightItems)))
+            (PlayerScene.isInventoryFull(fiveWeapons),
+             PlayerScene.isInventoryFull(sixWeapons)))
 
     // ════════════════════════════════════════════════════════
-    // ロード職: 上限 16 個
+    // wouldOverloadByPicking: 拾うと過多になるか（詰み防止ゲート）
     // ════════════════════════════════════════════════════════
 
-    /// ロード職は 8 個ではまだ満杯でなく、16 個でちょうど満杯になる（境界 = 16）。
+    /// 剣 3 本 = 5.4（積載 63%、最大 8.6）の状態で、
+    ///   - 斧(力13)=4.45 を拾うと 9.85 / 8.6 = 115% → 過多になる(true)
+    ///   - きずぐすり=0.5 を拾うと 5.9 / 8.6 = 69% → 過多にならない(false)
     @Test
-    def testLordUnitFullAtSixteen(): Unit \ Assert =
-        let eightItems   = makeData(lordResource(), 8, 0, 0);
-        let sixteenItems = makeData(lordResource(), 16, 0, 0);
+    def testWouldOverloadByPicking(): Unit \ Assert =
+        let player = makeData(TestUnitFixtures.testResource(4, 10), 3);
+        let heavyAxe = ItemData.GroundItemKind.WeaponItem(
+            TestUnitFixtures.testWeaponWithType(13, WeaponCatalog.WeaponType.Axe));
+        let lightPotion = ItemData.GroundItemKind.ConsumableItem(testConsumable());
         Assert.assertEq(
-            expected = (false, true),
-            (PlayerScene.isInventoryFull(eightItems),
-             PlayerScene.isInventoryFull(sixteenItems)))
-
-    // ════════════════════════════════════════════════════════
-    // 個数は 3 リストの合算
-    // ════════════════════════════════════════════════════════
-
-    /// 武器 3 + 杖 3 + 消費 2 = 合計 8 個。3 リストを足し合わせて数えていることを、
-    /// itemCount = 8 と「8 個でいっぱい(通常職)」の両方で確認する。
-    @Test
-    def testItemCountSumsAllThreeLists(): Unit \ Assert =
-        let mixed = makeData(TestUnitFixtures.testResource(4, 10), 3, 3, 2);
-        Assert.assertEq(
-            expected = (8, true),
-            (PlayerScene.itemCount(mixed), PlayerScene.isInventoryFull(mixed)))
+            expected = (true, false),
+            (PlayerScene.wouldOverloadByPicking(player, heavyAxe),
+             PlayerScene.wouldOverloadByPicking(player, lightPotion)))
 }

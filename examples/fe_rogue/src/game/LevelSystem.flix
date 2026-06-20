@@ -13,7 +13,8 @@ mod LevelSystem {
 
     use UnitCatalog.{UnitResource, GrowthRates}
 
-    /// 成長対象の 8 ステータス。`hp` は最大 HP を指す。`moveTiles` は成長対象外なので含めない。
+    /// 成長対象の 9 ステータス。`hp` は最大 HP を指す。`moveTiles` は成長対象外なので含めない。
+    /// `constitution`（体格）は最大積載量に効く成長ステータス。
     pub type alias Stats = {
         hp           = Int32,
         attack       = Int32,
@@ -22,7 +23,8 @@ mod LevelSystem {
         magicDefense = Int32,
         speed        = Int32,
         skill        = Int32,
-        luck         = Int32
+        luck         = Int32,
+        constitution = Int32
     }
 
     /// 成長判定に使う各ステータスの乱数（いずれも 0..99）。呼び出し側が振って渡す。
@@ -34,7 +36,8 @@ mod LevelSystem {
         magicDefense = Int32,
         speed        = Int32,
         skill        = Int32,
-        luck         = Int32
+        luck         = Int32,
+        constitution = Int32
     }
 
     /// パネル 1 行ぶんのステータス変化。`gained` が true なら上昇（パネルで (+1) を出す）。
@@ -83,7 +86,8 @@ mod LevelSystem {
          magicDefense = bump(stats#magicDefense, rolls#magicDefense, rates#magicDefense),
          speed        = bump(stats#speed,        rolls#speed,        rates#speed),
          skill        = bump(stats#skill,        rolls#skill,        rates#skill),
-         luck         = bump(stats#luck,         rolls#luck,         rates#luck)}
+         luck         = bump(stats#luck,         rolls#luck,         rates#luck),
+         constitution = bump(stats#constitution, rolls#constitution, rates#constitution)}
 
     /// UnitResource から成長対象の 8 ステータスだけを抜き出す（hp は最大 HP）。
     /// UnitResource は成長対象外のフィールド（moveTiles 等）も持つため、
@@ -96,7 +100,8 @@ mod LevelSystem {
          magicDefense = res#magicDefense,
          speed        = res#speed,
          skill        = res#skill,
-         luck         = res#luck}
+         luck         = res#luck,
+         constitution = res#constitution}
 
     /// 成長後の 8 ステータスを UnitResource に書き戻す（他フィールドは保つ）。
     /// `statsOf` の逆演算として設計されており、`statsOf` → `applyGrowth` → `withStats` で
@@ -109,7 +114,8 @@ mod LevelSystem {
          magicDefense = stats#magicDefense,
          speed        = stats#speed,
          skill        = stats#skill,
-         luck         = stats#luck | res}
+         luck         = stats#luck,
+         constitution = stats#constitution | res}
 
     // 漢字表記はパネルの表示文字列と 1 対 1 で対応させる。変更時は UI 側と合わせること。
     def label1Hp(): String           = "HP"
@@ -120,6 +126,7 @@ mod LevelSystem {
     def labelSpeed(): String         = "速さ"
     def labelSkill(): String         = "技"
     def labelLuck(): String          = "幸運"
+    def labelConstitution(): String  = "体格"
 
     /// 1 行ぶんの変化を作る。`after > before` のときのみ `gained = true`（同値なら false）。
     def change(label: String, before: Int32, after: Int32): StatChange =
@@ -141,6 +148,7 @@ mod LevelSystem {
              change(labelSpeed(),        before#speed,        after#speed)        ::
              change(labelLuck(),         before#luck,         after#luck)         ::
              change(labelDefense(),      before#defense,      after#defense)      ::
-             change(labelMagicDefense(), before#magicDefense, after#magicDefense) :: Nil}
+             change(labelMagicDefense(), before#magicDefense, after#magicDefense) ::
+             change(labelConstitution(), before#constitution, after#constitution) :: Nil}
 
 }
