@@ -1,10 +1,15 @@
 /// TurnEndHoldScene — Shift（キーボード）/ ゲームパッド LB の長押しでターンエンドする右下インジケータ
 ///
 /// プレイヤーターン中（PlayerCursor / GatherMove）に Shift を押し続けると、右下のログ帯に
-/// 「⭕ ターンスキップ」が出て 2 秒で満タンになり、満タン到達で「全員待機」
+/// 「⭕ ターンスキップ」が出て約 0.64 秒で満タンになり、満タン到達で「全員待機」
 /// (= ActionMenuScene.turnEndShortcut → applyTurnEnd) を実行して敵ターンへ移る。
 /// 途中で離すとゲージは消えてターン継続。短いタップではゲージを出さない
 /// （`showDelaySeconds` 未満は非表示）ので、同じ Shift の既存「危険域トグル（タップ）」と併存する。
+///
+/// 充填は **Shift の新規押下エッジ（離した状態 → 押した状態）** でのみ arm（開始）する。
+/// macOS の cmd+shift+4 等で OS が Shift の key-up を食って `isKeyPressed` が押下のまま
+/// 固着しても、固着中は新規押下エッジが立たないため arm されず、入力なしの毎ターン自動発火を防ぐ
+/// （固着していても「押しっぱなし」とは区別され、再度ちゃんと押し直すまでゲージは出ない）。
 ///
 /// 自走モデル（PhaseBannerScene / ItemPickupPopupScene と同型）:
 ///   - 起動時に CanvasLayer を 1 つ常駐させる（`add`、初期は非表示）。
@@ -29,11 +34,13 @@ mod TurnEndHoldScene {
     // ────────────────────────────────────────────────────────
 
     /// CanvasLayer に紐づくゲージの状態。
-    /// `elapsed`  — 連続して押している経過時間（離すと 0 に戻す）。
-    /// `consumed` — 満タンで一度発火したら true。離すまで再発火させない（押しっぱなしの連発防止）。
+    /// `elapsed`  — 連続して arm 中の経過時間（離す / 未 arm の間は 0）。`> 0` が「充填中(armed)」を表す。
+    /// `prevHeld` — 前フレームの held。`held` が false→true に変わったフレーム（新規押下エッジ）だけ
+    ///              arm を許す判定（`justPressed`）に使う。固着した Shift は held=true が続いても
+    ///              prevHeld も true に収束するためエッジが立たず、arm されない（暴発防止の要）。
     pub type alias GaugeData = {
         elapsed  = Duration.Duration,
-        consumed = Bool
+        prevHeld = Bool
     }
 
     /// `step` の結果。
@@ -72,9 +79,9 @@ mod TurnEndHoldScene {
     def drawLayer(): Int32 = 7
 
     /// 満タンまでの長押し秒数。
-    def fillSeconds(): Float64 = 1.28
+    def fillSeconds(): Float64 = 0.64
     /// この秒数を超えてからゲージを表示する（短いタップでチラ見えさせない）。
-    def showDelaySeconds(): Float64 = 0.3
+    def showDelaySeconds(): Float64 = 0.15
 
     /// 行テキスト。ログ 1 行と同じフォントサイズで「⭕ ターンスキップ」風に出す。
     def labelText(): String = "ターンスキップ"
@@ -99,9 +106,9 @@ mod TurnEndHoldScene {
     def ringTrackAlpha(): Float32 = 0.85f32
     def ringFillColor(): Color = {r = 0.95f32, g = 0.7f32, b = 0.2f32}
 
-    /// 起動直後の状態（経過 0・未発火）。
+    /// 起動直後の状態（経過 0・前フレーム未押下）。
     def initialData(): GaugeData =
-        {elapsed = Duration.zero(), consumed = false}
+        {elapsed = Duration.zero(), prevHeld = false}
 
     // ────────────────────────────────────────────────────────
     // (C) 構築
@@ -147,24 +154,33 @@ mod TurnEndHoldScene {
 
     /// 1 フレーム分の状態更新（副作用なし）。
     ///   - `active`（対象フェーズ）かつ `held`（Shift 押下）でなければ即リセット（経過 0・非表示）。
-    ///   - 発火済み(`consumed`)なら満タン表示のまま再発火しない。
-    ///   - 経過が `fillSeconds` に達したフレームだけ `fire=true`・`consumed=true`。
-    ///   - 途中は充填率を返し、`showDelaySeconds` を超えてから表示する。
+    ///   - `held` の新規押下エッジ（`justPressed` = 前フレーム未押下→今フレーム押下）または
+    ///     既に充填中（`elapsed > 0`）でなければ arm せず、held でも経過を進めない。
+    ///     → 固着した Shift（離しても押下扱いのまま）はエッジが立たないので arm されず暴発しない。
+    ///   - 経過が `fillSeconds` を初めて跨いだフレームだけ `fire=true`（到達フレームのみ）。
+    ///     満タン後も `held` の間は経過を積み増すだけで再発火しない。
+    ///   - 途中は充填率（1.0 でクランプ）を返し、`showDelaySeconds` を超えてから表示する。
+    ///   - `prevHeld` は全枝で必ず今フレームの `held` に更新する（敵ターン中=active false でも更新し続け、
+    ///     プレイヤーターン復帰フレームで固着 Shift が誤って arm されないようにする不変条件）。
     pub def step(data: GaugeData, active: Bool, held: Bool, dt: Duration.Duration): StepResult =
+        let justPressed = held and not data#prevHeld;
         if (not (active and held))
-            {data = initialData(), ratio = 0.0, visible = false, fire = false}
+            {data = {elapsed = Duration.zero(), prevHeld = held},
+             ratio = 0.0, visible = false, fire = false}
         else {
-            let e = Duration.add(data#elapsed, dt);
-            let secs = Duration.toSeconds(e);
-            if (data#consumed)
-                {data = {elapsed = e, consumed = true}, ratio = 1.0, visible = true, fire = false}
-            else if (secs >= fillSeconds())
-                {data = {elapsed = e, consumed = true}, ratio = 1.0, visible = true, fire = true}
-            else
-                {data = {elapsed = e, consumed = false},
-                 ratio = secs / fillSeconds(),
+            let armed = Duration.toSeconds(data#elapsed) > 0.0 or justPressed;
+            if (not armed)
+                {data = {elapsed = Duration.zero(), prevHeld = held},
+                 ratio = 0.0, visible = false, fire = false}
+            else {
+                let e = Duration.add(data#elapsed, dt);
+                let secs = Duration.toSeconds(e);
+                let prevSecs = Duration.toSeconds(data#elapsed);
+                {data = {elapsed = e, prevHeld = held},
+                 ratio = Float64.min(1.0, secs / fillSeconds()),
                  visible = secs >= showDelaySeconds(),
-                 fire = false}
+                 fire = prevSecs < fillSeconds() and secs >= fillSeconds()}
+            }
         }
 
     // ────────────────────────────────────────────────────────

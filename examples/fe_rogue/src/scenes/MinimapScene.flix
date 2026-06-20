@@ -176,7 +176,8 @@ mod MinimapScene {
     pub def process(_delta: Duration.Duration,
                      node: EngineNode[NodeTag],
                      _path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) \ {GameEngine.Game, TurnPhase.State} =
+                    (EngineNode[NodeTag], Scene[NodeTag])
+                    \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State} =
         match node {
             case EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(data)) =>
                 let phase = TurnPhase.State.get();
@@ -188,7 +189,16 @@ mod MinimapScene {
                     if (mDown and not data#mPrev and acceptsToggle) not data#visible
                     else data#visible;
                 let placements = MapScene.getPlacements(scene);
-                let frame = visitedThisFrame(PlayerScene.getAll(scene), placements);
+                let roomCount  = MapScene.getRoomCount(scene);
+                // 部屋の記憶（visited）と敵赤丸（litRooms）は fog と同じく origin 基準にする。
+                // 移動ドラフト中に新しく踏み込んだ部屋は確定（drafts クリア）まで地図に出さない。
+                let drafts = SelectedPlayer.State.get()#drafts;
+                let units  = PlayerScene.getAll(scene)
+                    |> List.map(d -> {id = d#id, gridPos = d#gridPos, hidden = d#hidden,
+                                      origin = MoveDraft.originOf(d#id, drafts)
+                                               |> Option.getWithDefault(d#gridPos)});
+                let frame    = visitedThisFrameDrafted(units, placements, roomCount);
+                let litRooms = litRoomsDrafted(units, placements, roomCount);
                 let visited2 = accumulate(data#visited, frame);
                 let stairs2 = data#stairsSeen or stairsDiscovered(visited2, placements, scene);
                 let nextData = {visited = visited2, stairsSeen = stairs2,
@@ -198,7 +208,7 @@ mod MinimapScene {
                               or phase == TurnPhase.Phase.EnemyTurn;
                 let show = visible2 and not hidden;
                 (EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(nextData)),
-                 renderMinimap(show, nextData, scene))
+                 renderMinimap(show, nextData, litRooms, scene))
             case _ => (node, scene)
         }
 
@@ -219,7 +229,8 @@ mod MinimapScene {
     /// フレームは「フロア全体の bbox」基準にして、探索しても配置が動かないようにする。
     /// 描画対象は「訪問済み module」＋「訪問済みに隣接する未訪問の通路（出口ヒント）」を
     /// union 分割して一体化（重なり部分を二重描画しない）。
-    def renderMinimap(show: Bool, data: DriverData, scene: Scene[NodeTag]): Scene[NodeTag] =
+    def renderMinimap(show: Bool, data: DriverData, litRooms: Set[Int32],
+                       scene: Scene[NodeTag]): Scene[NodeTag] =
         if (not show)
             hideAll(scene)
         else {
@@ -238,7 +249,7 @@ mod MinimapScene {
             // その上に「歩ける床セルだけ」を黒くくり抜く（壁セルは MapSnapshot で除外）。
             let snapshot   = mapSnapshot(scene);
             let floorRuns  = floorRunsIn(disjoint, snapshot);
-            let markers    = collectMarkers(data, placements, roomCount, scene);
+            let markers    = collectMarkers(data, placements, roomCount, litRooms, scene);
             scene
                 |> drawRoomPool(disjoint, t)
                 |> drawFloorPool(floorRuns, t)
@@ -287,7 +298,7 @@ mod MinimapScene {
     /// 階段 + 訪問済み部屋内のアイテム。
     def collectMarkers(data: DriverData,
                         placements: List[DungeonComposer.ModulePlacement],
-                        roomCount: Int32, scene: Scene[NodeTag]):
+                        roomCount: Int32, litRooms: Set[Int32], scene: Scene[NodeTag]):
                        List[{cell = {x = Int32, y = Int32}, color = Color}] =
         let players =
             PlayerScene.getAll(scene)
@@ -305,27 +316,22 @@ mod MinimapScene {
             ItemScene.getAllPositions(scene)
                 |> List.filter(cell -> inVisitedRoom(cell, placements, roomCount, data#visited))
                 |> List.map(cell -> {cell = cell, color = itemColor()});
-        // 今プレイヤーと同じ部屋に居る敵を赤丸で（アイテムより手前＝後ろに連結して上に描く）。
-        let enemiesM = enemiesSharingPlayerRoom(placements, roomCount, scene);
+        // いま点灯している部屋(litRooms)に居る敵を赤丸で（アイテムより手前＝後ろに連結して上に描く）。
+        let enemiesM = enemiesSharingPlayerRoom(litRooms, placements, scene);
         List.append(players, List.append(stairsM, List.append(itemsM, enemiesM)))
 
-    /// 「今プレイヤーと同じ部屋に居る敵」マーカー（赤丸）。非 hidden プレイヤーが居る部屋
-    /// （module idx < roomCount。通路は部屋ではないので対象外）を集め、その部屋に居る生存敵
-    /// （hp>0 かつ not isDying）を拾う。同室なら霧で部屋が照らされ既に見えているので
-    /// 別途の可視判定は省く。プレイヤーが部屋に居なければ playerRooms は空で結果も空になる。
-    def enemiesSharingPlayerRoom(placements: List[DungeonComposer.ModulePlacement],
-                                  roomCount: Int32, scene: Scene[NodeTag]):
+    /// 「いま点灯している部屋に居る敵」マーカー（赤丸）。点灯部屋集合 `litRooms`（origin 基準で
+    /// 求めた room module。`litRoomsDrafted` が算出）に居る生存敵（hp>0 かつ not isDying）を拾う。
+    /// 点灯している部屋＝霧で照らされ既に見えているので別途の可視判定は省く。移動中に踏み込んだ
+    /// だけの暗い新規部屋は litRooms に含まれないため、その敵は地図にも出ない（fog と一貫）。
+    def enemiesSharingPlayerRoom(litRooms: Set[Int32],
+                                  placements: List[DungeonComposer.ModulePlacement],
+                                  scene: Scene[NodeTag]):
                                  List[{cell = {x = Int32, y = Int32}, color = Color}] =
-        let playerRooms =
-            PlayerScene.getAll(scene)
-                |> List.filter(d -> not d#hidden)
-                |> List.filterMap(d -> MapSnapshot.moduleOfCellIn(d#gridPos, placements))
-                |> List.filter(idx -> idx < roomCount)
-                |> List.toSet;
         EnemyScene.getAll(scene)
             |> List.filter(e -> e#hp > 0 and not e#isDying)
             |> List.filter(e -> match MapSnapshot.moduleOfCellIn(e#gridPos, placements) {
-                                    case Some(idx) => Set.memberOf(idx, playerRooms)
+                                    case Some(idx) => Set.memberOf(idx, litRooms)
                                     case None      => false
                                 })
             |> List.map(e -> {cell = e#gridPos, color = enemyColor()})
@@ -442,6 +448,43 @@ mod MinimapScene {
             |> List.filter(d -> not d#hidden)
             |> List.filterMap(d -> MapSnapshot.moduleOfCellIn(d#gridPos, placements))
             |> List.toSet
+
+    /// `visitedThisFrame` の draft 対応版。room module は origin（ターン開始位置）が同じ部屋に
+    /// あるときだけ訪問済みに数え、corridor module はライブ位置で数える。移動中に新しく踏み込んだ
+    /// 部屋を確定（drafts クリア）まで地図に記録しない（fog の `holesForDraft` と一貫）。
+    pub def visitedThisFrameDrafted(units: List[{gridPos = {x = Int32, y = Int32},
+                                                  origin = {x = Int32, y = Int32}, hidden = Bool | r}],
+                                     placements: List[DungeonComposer.ModulePlacement],
+                                     roomCount: Int32): Set[Int32] =
+        units
+            |> List.filter(d -> not d#hidden)
+            |> List.filterMap(d -> revealedModuleOf(d#gridPos, d#origin, placements, roomCount))
+            |> List.toSet
+
+    /// いま点灯している room module の集合（origin 基準）。ミニマップの敵赤丸を「明るい部屋に
+    /// 居る敵」だけに絞るために使う（暗い新規部屋の敵は地図にも出さない＝fog と一貫）。
+    pub def litRoomsDrafted(units: List[{gridPos = {x = Int32, y = Int32},
+                                          origin = {x = Int32, y = Int32}, hidden = Bool | r}],
+                             placements: List[DungeonComposer.ModulePlacement],
+                             roomCount: Int32): Set[Int32] =
+        units
+            |> List.filter(d -> not d#hidden)
+            |> List.filterMap(d -> revealedModuleOf(d#gridPos, d#origin, placements, roomCount))
+            |> List.filter(idx -> idx < roomCount)
+            |> List.toSet
+
+    /// このユニットが現フレームに reveal する module idx（fog の `holeFor` と同じ部屋デファー規則）。
+    /// 通路 module はライブ採用、room module は origin が同じ部屋にあるときだけ採用、新規部屋は None。
+    def revealedModuleOf(live: {x = Int32, y = Int32}, origin: {x = Int32, y = Int32},
+                          placements: List[DungeonComposer.ModulePlacement],
+                          roomCount: Int32): Option[Int32] =
+        match MapSnapshot.moduleOfCellIn(live, placements) {
+            case None    => None
+            case Some(m) =>
+                if (m >= roomCount) Some(m)
+                else if (MapSnapshot.moduleOfCellIn(origin, placements) == Some(m)) Some(m)
+                else None
+        }
 
     /// 既存の訪問記憶に今フレーム分を足す（= 記憶。部屋を離れても残る）。
     pub def accumulate(prev: Set[Int32], frame: Set[Int32]): Set[Int32] =

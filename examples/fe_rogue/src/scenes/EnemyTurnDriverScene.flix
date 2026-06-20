@@ -67,9 +67,57 @@ mod EnemyTurnDriverScene {
                     or PlayerScene.anyAttacking(scene)
                     or EnemyScene.anyAttacking(scene)) scene
                 else TurnFlow.commitWaitedAndAdvance(scene)
+            // 移動中に「暗い新規部屋の未起動敵に接敵(隣接)」したら強制たいき。個別はその味方だけ、
+            // 集合は全員。Tween（1マス滑走）中は着地を待ってから検出する。
+            case TurnPhase.Phase.PlayerMoving =>
+                if (selectedSliding()) scene
+                else if (bumpedDarkRoomEnemy(scene)) TurnFlow.commitWaitedAndAdvance(scene)
+                else scene
+            case TurnPhase.Phase.GatherMove =>
+                if (anyPlayerSliding(scene)) scene
+                else if (bumpedDarkRoomEnemy(scene)) TurnFlow.commitAllWaitedAndAdvance(scene)
+                else scene
             case _                                 => scene
         };
         (node, next)
+
+    /// 選択中の味方が Tween（1マス滑走）中か。移動の着地を待ってから検出判定するためのガード。
+    def selectedSliding(): Bool \ {Tween.Scheduler, SelectedPlayer.State} =
+        match SelectedPlayer.State.get()#id {
+            case Some(id) => PlayerScene.isMoving(id)
+            case None     => false
+        }
+
+    /// いずれかの味方が Tween 中か（集合移動の着地待ちガード）。
+    def anyPlayerSliding(scene: Scene[NodeTag]): Bool \ Tween.Scheduler =
+        PlayerScene.getAll(scene) |> List.exists(d -> PlayerScene.isMoving(d#id))
+
+    /// 「この移動ドラフトで誰かが origin から動いた」かつ「未起動の生存敵が、いま暗い新規部屋に
+    /// 居てプレイヤーに隣接(接敵)している」瞬間だけ true。`anyMovedFromOrigin` ガードがターン頭
+    /// （0歩）の暴発を防ぐ（1歩動いて初めて発火）。発火条件は「敵の視界」ではなく「接敵した
+    /// キャラの隣接」なので、接敵していない他キャラの視界では発火しない。暗い判定は fog と同じ
+    /// origin 基準（origin 同室の部屋は点灯済み＝対象外）。`not alerted` で既に起動済みの敵の傍
+    /// では再発火しない。検出自体は純粋で effect は `SelectedPlayer.State`（drafts 読み）だけ。
+    def bumpedDarkRoomEnemy(scene: Scene[NodeTag]): Bool \ SelectedPlayer.State =
+        let drafts  = SelectedPlayer.State.get()#drafts;
+        let players = PlayerScene.getAll(scene);
+        if (not MoveDraft.anyMovedFromOrigin(players, drafts)) false
+        else {
+            let placements = MapScene.getPlacements(scene);
+            let roomCount  = MapScene.getRoomCount(scene);
+            // いま点灯している room の集合 = origin 基準の点灯部屋（fog と一貫）。キャラのいない
+            // 訪問済み部屋は暗い＝非永続なので litRooms に含めない。暗い部屋＝この集合外の room。
+            let units = players
+                |> List.map(d -> {gridPos = d#gridPos, hidden = d#hidden,
+                                  origin = MoveDraft.originOf(d#id, drafts)
+                                           |> Option.getWithDefault(d#gridPos)});
+            let litRooms = MinimapScene.litRoomsDrafted(units, placements, roomCount);
+            let enc = EncounterBuilder.fromScene(scene);
+            EnemyScene.getAll(scene)
+                |> List.filter(e -> not e#isDying and not e#alerted)
+                |> List.exists(e ->
+                    EnemyAI.adjacentInDarkRoom(enc#board, EnemyScene.unitView(e), litRooms, roomCount))
+        }
 
     /// 敵ターン開始の共通処理。死亡演出 / 攻撃モーション中の敵はキューに含めない。
     /// `commitWaitedAndAdvance` (全味方 waited) や集合の「全員待機」(applyTurnEnd) の

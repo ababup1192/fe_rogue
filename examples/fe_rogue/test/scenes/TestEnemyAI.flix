@@ -714,4 +714,55 @@ mod TestEnemyAI {
              EnemyAI.lexGreater(0 :: 1 :: Nil, 1 :: 9 :: Nil),   // 先頭 0<1
              EnemyAI.lexGreater(1 :: 5 :: Nil, 1 :: 3 :: Nil),   // 先頭同点・次 5>3
              EnemyAI.lexGreater(1 :: 3 :: Nil, 1 :: 3 :: Nil)))  // 完全同点
+
+    // ════════════════════════════════════════════════════════
+    // adjacentInDarkRoom（接敵=暗い部屋の敵に隣接したら強制たいきの発火条件）
+    //   twoRoom(10,5): module0 = x 0..4 / module1 = x 5..9。
+    //   暗い = 敵の部屋 idx が litRooms（origin 基準の点灯部屋）に含まれない。
+    // ════════════════════════════════════════════════════════
+
+    /// 暗い部屋(litRooms に無い)の敵に隣接 → true（接敵で点灯すべき局面）。
+    @Test
+    def testAdjacentInDarkRoomTrue(): Unit \ Assert =
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(10, 5)};
+        let player  = ({x = 3, y = 2}: {x = Int32, y = Int32});   // module0、敵に隣接
+        let enemyP  = ({x = 2, y = 2}: {x = Int32, y = Int32});   // module0
+        let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
+        let enemy   = enemyAt(0, enemyP, false, 0, 3);
+        Assert.assertEq(expected = true,
+            EnemyAI.adjacentInDarkRoom(board, EnemyScene.unitView(enemy), (Set#{}: Set[Int32]), 2))
+
+    /// 明るい部屋(litRooms=同室を含む＝点灯済み)の敵に隣接 → false（既に見えているので発火しない）。
+    @Test
+    def testAdjacentInLitRoomFalse(): Unit \ Assert =
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(10, 5)};
+        let player  = ({x = 3, y = 2}: {x = Int32, y = Int32});   // module0、敵に隣接
+        let enemyP  = ({x = 2, y = 2}: {x = Int32, y = Int32});   // module0
+        let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
+        let enemy   = enemyAt(0, enemyP, false, 0, 3);
+        Assert.assertEq(expected = false,
+            EnemyAI.adjacentInDarkRoom(board, EnemyScene.unitView(enemy), Set#{0}, 2))
+
+    /// 暗い部屋だが非隣接(距離2) → false（接敵していないので発火しない）。
+    @Test
+    def testAdjacentInDarkRoomNotAdjacentFalse(): Unit \ Assert =
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(10, 5)};
+        let player  = ({x = 4, y = 2}: {x = Int32, y = Int32});   // module0、敵から距離2
+        let enemyP  = ({x = 2, y = 2}: {x = Int32, y = Int32});   // module0
+        let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
+        let enemy   = enemyAt(0, enemyP, false, 0, 3);
+        Assert.assertEq(expected = false,
+            EnemyAI.adjacentInDarkRoom(board, EnemyScene.unitView(enemy), (Set#{}: Set[Int32]), 2))
+
+    /// 通路(idx>=roomCount)の敵に隣接 → false（通路は常時 torch＝部屋ではない）。
+    /// roomCount=1 とすることで module1 を通路扱いにする（TestFogScene と同手法）。
+    @Test
+    def testAdjacentInCorridorFalse(): Unit \ Assert =
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(10, 5)};
+        let player  = ({x = 6, y = 2}: {x = Int32, y = Int32});   // module1(通路)、敵に隣接
+        let enemyP  = ({x = 7, y = 2}: {x = Int32, y = Int32});   // module1(通路)
+        let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
+        let enemy   = enemyAt(0, enemyP, false, 1, 3);
+        Assert.assertEq(expected = false,
+            EnemyAI.adjacentInDarkRoom(board, EnemyScene.unitView(enemy), (Set#{}: Set[Int32]), 1))
 }

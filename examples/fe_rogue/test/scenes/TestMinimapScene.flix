@@ -33,6 +33,45 @@ mod TestMinimapScene {
         Assert.assertEq(expected = Set#{0, 1},
             MinimapScene.visitedThisFrame(units, p0 :: p1 :: Nil))
 
+    // ── visitedThisFrameDrafted / litRoomsDrafted（新規部屋は確定まで記録しない） ──
+
+    def unitO(x: Int32, y: Int32, ox: Int32, oy: Int32, hidden: Bool):
+            {gridPos = {x = Int32, y = Int32}, origin = {x = Int32, y = Int32}, hidden = Bool} =
+        {gridPos = ({x = x, y = y}: {x = Int32, y = Int32}),
+         origin  = ({x = ox, y = oy}: {x = Int32, y = Int32}), hidden = hidden}
+
+    /// origin=部屋A(idx0)・live=新部屋B(idx1) → B は訪問記録しない（A も live に居ないので空）。
+    @Test
+    def testVisitedDraftNewRoomExcluded(): Unit \ Assert =
+        let p0 = MapScene.placement(0, 0,  0, 8, 8);
+        let p1 = MapScene.placement(1, 20, 0, 8, 8);   // 部屋（roomCount=2）
+        Assert.assertEq(expected = (Set.empty(): Set[Int32]),
+            MinimapScene.visitedThisFrameDrafted(unitO(24, 4, 3, 4, false) :: Nil, p0 :: p1 :: Nil, 2))
+
+    /// 通路(idx1>=roomCount)はライブで記録、origin 一致の部屋A(idx0)も記録。
+    @Test
+    def testVisitedDraftCorridorAndOriginRoom(): Unit \ Assert =
+        let p0 = MapScene.placement(0, 0,  0, 8, 8);   // 部屋
+        let p1 = MapScene.placement(1, 10, 0, 8, 8);   // 通路（roomCount=1）
+        let units = unitO(3, 4, 3, 4, false)      // 部屋A: origin==live → 記録
+                 :: unitO(12, 4, 12, 4, false)    // 通路: ライブ記録
+                 :: Nil;
+        Assert.assertEq(expected = Set#{0, 1},
+            MinimapScene.visitedThisFrameDrafted(units, p0 :: p1 :: Nil, 1))
+
+    /// 点灯部屋集合: origin 一致の部屋A(idx0)だけ。新部屋B(idx1)と通路(idx2)は入らない。
+    @Test
+    def testLitRoomsDrafted(): Unit \ Assert =
+        let p0 = MapScene.placement(0, 0,  0, 8, 8);   // 部屋 idx0
+        let p1 = MapScene.placement(1, 20, 0, 8, 8);   // 部屋 idx1
+        let p2 = MapScene.placement(2, 40, 0, 8, 8);   // 通路 idx2 (roomCount=2)
+        let units = unitO(3, 4, 3, 4, false)       // 部屋A origin一致 → lit
+                 :: unitO(24, 4, 3, 4, false)      // 新部屋B origin不一致 → 暗い
+                 :: unitO(44, 4, 44, 4, false)     // 通路 → room ではないので除外
+                 :: Nil;
+        Assert.assertEq(expected = Set#{0},
+            MinimapScene.litRoomsDrafted(units, p0 :: p1 :: p2 :: Nil, 2))
+
     // ── accumulate（記憶の核） ───────────────────────────────
 
     /// 新フレーム分を足す。

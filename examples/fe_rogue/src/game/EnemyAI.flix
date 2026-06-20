@@ -136,6 +136,23 @@ mod EnemyAI {
             };
             (action, {alerted = alertedNow})
 
+    /// `self`（敵）が「暗い room module に居て、かつプレイヤーが隣接している」か。
+    /// 移動中に「暗い新規部屋で敵に接敵したら強制たいき（部屋点灯）」を判定するために
+    /// `EnemyTurnDriverScene` から呼ぶ。暗い = 敵の部屋 idx が `litRooms`（いま点灯している
+    /// room の集合 = origin 基準の点灯部屋 ∪ 訪問済み部屋）に含まれない。これにより訪問済みの
+    /// 明るい部屋や origin と同室の部屋では発火しない（fog の点灯規則と一貫）。
+    /// 通路(idx>=roomCount)は対象外＝常時 torch なので発火しない。隣接は敵 pos 起点の
+    /// `Board.adjacentPlayer`（距離1）で見る。
+    pub def adjacentInDarkRoom(board: Board, self: UnitView,
+                                litRooms: Set[Int32], roomCount: Int32): Bool =
+        match MapSnapshot.moduleOfCell(self#pos, board#map) {
+            case Some(m) =>
+                m < roomCount
+                    and not Set.memberOf(m, litRooms)
+                    and not Option.isEmpty(Board.adjacentPlayer(self#pos, board))
+            case None => false
+        }
+
     /// 起動条件を AlertRule でディスパッチする。本体は既存の検知ヘルパーを再利用する。
     ///   - OnSightOrReach: 同室 OR 移動到達範囲（従来の Aggressive 起動）。
     ///   - OnWeaponRange : 武器の攻撃射程+1 に相手が入ったとき（GuardUntilInRange）。

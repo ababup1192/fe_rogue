@@ -543,18 +543,12 @@ mod ActionMenuScene {
             |> Option.map(d -> d#waited)
             |> Option.getWithDefault(false)
 
-    /// 「ターンエンド」／集合の「全員待機」確定: 全アクティブ味方を行動済みにして即敵ターンへ進む。
-    /// `SelectedPlayer.cleared()` で選択を解除する。集合確定なので `drafts`（集合中に積んだ
-    /// MovedFrom / GatherWaited）は **巻き戻さず破棄** する（移動・非アクティブ化を確定させる）。
+    /// 「ターンエンド」／集合の「全員待機」確定。実体は `TurnFlow.commitAllWaitedAndAdvance`
+    /// （ターン確定の単一所有者）に委譲する。`EnemyTurnDriverScene` の強制全員待機と共通の入口。
     def applyTurnEnd(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State, SelectedPlayer.State} =
-        let ids = PlayerScene.getAll(scene)
-                    |> List.filter(d -> not d#waited)
-                    |> List.map(d -> d#id);
-        let afterWait = List.foldLeft((sc, id) -> PlayerScene.setWaited(id, sc), scene, ids);
-        SelectedPlayer.State.put(SelectedPlayer.cleared());
-        EnemyTurnDriverScene.beginTurn(afterWait)
+        TurnFlow.commitAllWaitedAndAdvance(scene)
 
     /// 「ひろう」確定の本体。床アイテムを取得してインベントリに加え、
     /// ログを出して ActionSelect フェーズに留まる。

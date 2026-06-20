@@ -39,4 +39,24 @@ mod MoveDraft {
         case GatherWaited(Int32)
     }
 
+    /// drafts から id 一致の `MovedFrom` 起点（このターンの移動開始位置）を返す。無ければ None。
+    /// drafts は新しい順スタック。個別移動は 1 件、集合移動は全味方ぶん積まれるため id で絞る
+    /// （`findMap` は先頭一致＝最新を返すが、1 ターンに id あたり 1 件しか積まれない）。
+    /// フォグ／ミニマップが「移動中も部屋点灯を origin 基準に保つ」ために参照する。
+    pub def originOf(id: Int32, drafts: List[DraftAction]): Option[{x = Int32, y = Int32}] =
+        List.findMap(a -> match a {
+            case DraftAction.MovedFrom(i, c) => if (i == id) Some(c) else None
+            case _                           => None
+        }, drafts)
+
+    /// この移動ドラフトで「いずれかのユニットが開始位置(origin)から動いたか」。
+    /// `MovedFrom` を持たないユニット（このターン未選択）は寄与しない。ターン頭（0歩）の
+    /// 「敵に見つかったら強制たいき」誤発火を防ぐガードとして `EnemyTurnDriverScene` が使う。
+    pub def anyMovedFromOrigin(units: List[{id = Int32, gridPos = {x = Int32, y = Int32} | r}],
+                                drafts: List[DraftAction]): Bool =
+        List.exists(d -> match originOf(d#id, drafts) {
+            case Some(o) => o#x != d#gridPos#x or o#y != d#gridPos#y
+            case None    => false
+        }, units)
+
 }

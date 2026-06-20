@@ -86,6 +86,45 @@ mod TestFogScene {
         Assert.assertEq(expected = (Nil: List[(Int32, Int32, Int32, Int32)]),
             holesT(FogScene.holesFor(unit(3, 4, true) :: Nil, p0 :: Nil, 1, false)))
 
+    // ── holesForDraft（移動中は新規部屋だけ暗い） ───────────────
+
+    /// holesForDraft 用ユニット（gridPos=現在位置 / origin=ターン開始位置）。
+    def unitO(x: Int32, y: Int32, ox: Int32, oy: Int32, hidden: Bool):
+            {gridPos = {x = Int32, y = Int32}, origin = {x = Int32, y = Int32}, hidden = Bool} =
+        {gridPos = ({x = x, y = y}: {x = Int32, y = Int32}),
+         origin  = ({x = ox, y = oy}: {x = Int32, y = Int32}), hidden = hidden}
+
+    /// origin と live が同じ部屋(idx0) → 部屋全体が点灯（部屋内移動は従来どおり明るい）。
+    @Test
+    def testHolesDraftSameRoom(): Unit \ Assert =
+        let p0 = MapScene.placement(0, 0, 0, 8, 8);
+        Assert.assertEq(expected = (-1, -1, 9, 9) :: Nil,
+            holesT(FogScene.holesForDraft(unitO(5, 5, 3, 4, false) :: Nil, p0 :: Nil, 1, false)))
+
+    /// origin=部屋A(idx0)・live=新部屋B(idx1) → B は点灯せず holes 空（確定まで暗い）。
+    @Test
+    def testHolesDraftNewRoomDark(): Unit \ Assert =
+        let p0 = MapScene.placement(0, 0,  0, 8, 8);
+        let p1 = MapScene.placement(1, 20, 0, 8, 8);   // 部屋（roomCount=2）
+        Assert.assertEq(expected = (Nil: List[(Int32, Int32, Int32, Int32)]),
+            holesT(FogScene.holesForDraft(unitO(24, 4, 3, 4, false) :: Nil, p0 :: p1 :: Nil, 2, false)))
+
+    /// live=通路(idx1>=roomCount)・torch=false → origin 無関係に通路全体が点灯（ライブ）。
+    @Test
+    def testHolesDraftCorridorLive(): Unit \ Assert =
+        let p0 = MapScene.placement(0, 0,  0, 8, 8);
+        let p1 = MapScene.placement(1, 10, 0, 8, 8);   // 通路（roomCount=1）
+        Assert.assertEq(expected = (9, -1, 19, 9) :: Nil,
+            holesT(FogScene.holesForDraft(unitO(12, 4, 3, 4, false) :: Nil, p0 :: p1 :: Nil, 1, false)))
+
+    /// live=通路・torch=true → 周囲1マス（松明）。新規部屋デファーは通路には掛からない。
+    @Test
+    def testHolesDraftCorridorTorch(): Unit \ Assert =
+        let p0 = MapScene.placement(0, 0,  0, 8, 8);
+        let p1 = MapScene.placement(1, 10, 0, 8, 8);
+        Assert.assertEq(expected = (11, 3, 14, 6) :: Nil,
+            holesT(FogScene.holesForDraft(unitO(12, 4, 3, 4, false) :: Nil, p0 :: p1 :: Nil, 1, true)))
+
     // ── cursorRangeRects ─────────────────────────────────────
 
     /// 明るい部屋だけ（visited 空）→ moduleRect(p0)=(-1,-1,9,9) を radius=5 拡張した

@@ -56,8 +56,7 @@ mod GameLifecycle {
             // 階段確定後に宝箱を配置 (駒・アイテム・階段を避けるため階段の後)
             |> ChestScene.add(catalogs#chests, catalogs#players, catalogs#staves, catalogs#consumables, catalogs#rings, floor)
             // players/stairs 確定後に初回フォグ適用 (スポーン部屋を点灯。以降は FogScene.process が毎フレーム更新)
-            // 起動時は通常モード (集合モードではない) なので torchCorridors=false
-            |> FogScene.applyFog(false)
+            |> FogScene.applyFog
             // ミニマップ (最終 placements / 階段を読むため末尾)。訪問記憶はフロア再構築で自動リセット。
             |> MinimapScene.add
 
@@ -184,7 +183,7 @@ mod GameLifecycle {
             |> placeStairsFromSnap(snap#stairs)
             |> ChestScene.addFromSnaps(snap#chests, catalogs#chests, catalogs#players,
                                         catalogs#staves, catalogs#consumables, catalogs#rings)
-            |> FogScene.applyFog(false)
+            |> FogScene.applyFog
             |> MinimapScene.add;
         SceneLoader.applyAudioAttach(scene);
         scene

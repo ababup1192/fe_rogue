@@ -1,8 +1,10 @@
 /// FogScene — フォグ・オブ・ウォー（画面全体モヤ＋現在部屋を矩形で切り抜き）
 ///
-/// 画面全体を薄暗いモヤで覆い、「`hidden` でないパーティメンバーがいる部屋/通路(module)」
-/// だけをモヤから矩形に切り抜いて明るくする。毎フレーム再計算するので、部屋を出れば
-/// その部屋は再びモヤに沈む（非永続）。敵・アイテム・階段は明るい部屋以外では非表示。
+/// 画面全体を薄暗いモヤで覆い、明るい穴を矩形で切り抜く。点灯ルールは部屋と通路で異なる:
+///   - 部屋(room module): origin(ターン開始位置)基準で部屋全体を点灯。キャラがいない部屋は
+///     訪問済みでも暗いまま（非永続。部屋を出れば再びモヤに沈む）。
+///   - 通路(corridor): 常に味方キャラの周囲1マス(松明)だけを点灯する（部屋とは別仕様）。
+/// 敵・アイテム・階段は明るい所以外では非表示。
 ///
 /// モヤは加算（暗くする）合成なので「穴」を直接は空けられない。そこで
 /// 「マップ全体を覆う領域(area) から 明るい部屋矩形(holes) を除いた補集合」を
@@ -64,26 +66,40 @@ mod FogScene {
             withPool)
 
     /// Game.flix の `Node[NodeTag] instance` の `process` redef から `NodeTag.FogDriver`
-    /// ノードに対して dispatch される per-frame entry。集合モード中は通路を松明照らしにする。
+    /// ノードに対して dispatch される per-frame entry。
     pub def process(_delta: Duration.Duration,
                      node: EngineNode[NodeTag],
                      _path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) \ TurnPhase.State =
-        let torch = isTorchPhase(TurnPhase.State.get());
-        (node, applyFog(torch, scene))
+                    (EngineNode[NodeTag], Scene[NodeTag]) \ SelectedPlayer.State =
+        let drafts = SelectedPlayer.State.get()#drafts;
+        // 移動ドラフト中も「部屋点灯」はターン開始位置(origin)基準に固定する。コミットで
+        // drafts が消えれば origin==live に戻り点灯する（＝待機/接敵まで新規部屋を暗いまま）。
+        // キャラのいない部屋は訪問済みでも暗いまま（非永続）。通路は常に周囲1マス(松明)だけ。
+        let units  = PlayerScene.getAll(scene)
+            |> List.map(d -> {
+                 id = d#id, gridPos = d#gridPos, hidden = d#hidden,
+                 origin = MoveDraft.originOf(d#id, drafts) |> Option.getWithDefault(d#gridPos)
+               });
+        (node, applyFogWith(units, scene))
 
-    /// 松明照らし（通路では周囲1マスだけ照らす、シレン準拠）にするフェーズか。
-    /// 集合（行軍）モード = 主人公が隊列を率いて単独で動き回る状態のみ該当。
-    def isTorchPhase(phase: TurnPhase.Phase): Bool =
-        phase == TurnPhase.Phase.GatherMove
+    /// 画面全体モヤ＋明るい穴の切り抜き、および敵/アイテム/階段の可視性を一括更新する。
+    /// init（drafts 無し・GameLifecycle のスポーン部屋点灯）から呼ぶ入口。
+    /// 各ユニットの origin=live としてライブ挙動になる。
+    pub def applyFog(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let units = PlayerScene.getAll(scene)
+            |> List.map(d -> {id = d#id, gridPos = d#gridPos, hidden = d#hidden, origin = d#gridPos});
+        applyFogWith(units, scene)
 
-    /// 画面全体モヤ＋明るい穴の切り抜き、および敵/アイテム/階段の可視性を一括更新する（純粋）。
-    /// torchCorridors=true（集合モード）のとき、通路にいるプレイヤーは通路全体ではなく
-    /// 周囲1マス（松明）だけを明るい穴にする（シレン準拠）。
-    pub def applyFog(torchCorridors: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+    /// origin 付きユニット列から画面全体モヤ＋穴を再構築する本体（純粋）。
+    /// 穴 = per-unit（部屋は origin 基準点灯・通路は常に周囲1マス torch）。キャラのいない部屋は
+    /// 暗い＝非永続（訪問済みでも点灯しない）。
+    def applyFogWith(units: List[{gridPos = {x = Int32, y = Int32},
+                                  origin = {x = Int32, y = Int32}, hidden = Bool | r}],
+                      scene: Scene[NodeTag]): Scene[NodeTag] =
         let placements = MapScene.getPlacements(scene);
         let roomCount  = MapScene.getRoomCount(scene);
-        let holes      = holesFor(PlayerScene.getAll(scene), placements, roomCount, torchCorridors);
+        // 通路は常に torch（torchCorridors=true）。部屋は origin 基準で点灯（非永続）。
+        let holes      = holesForDraft(units, placements, roomCount, true);
         let area       = mapRegion(placements);
         let hazeRects  = bandDecompose(area, holes);
         // isLit クロージャは「let 束縛の最後」に置く（Flix 0.71.0 以降、lambda を let で
@@ -99,23 +115,41 @@ mod FogScene {
     /// 非 hidden プレイヤーごとの「明るい穴」矩形リスト（純粋・テスト対象）。
     /// 部屋なら部屋全体、通路は torchCorridors のとき周囲1マスだけ。
     /// 行多相シグネチャにより PlayerScene.Data 以外（CursorScene 等）からも呼べる汎用 API。
+    /// 各ユニットの origin=live としてライブ挙動になる（移動デファー無し）。CursorScene の
+    /// 可動域計算など「いまどの部屋が明るいか」をライブで欲しい用途はこちらを使う。
     pub def holesFor(units: List[{gridPos = {x = Int32, y = Int32}, hidden = Bool | r}],
                       placements: List[DungeonComposer.ModulePlacement],
                       roomCount: Int32, torchCorridors: Bool): List[GridRect] =
         units
             |> List.filter(d -> not d#hidden)
-            |> List.filterMap(d -> holeFor(d#gridPos, placements, roomCount, torchCorridors))
+            |> List.filterMap(d -> holeFor(d#gridPos, d#gridPos, placements, roomCount, torchCorridors))
 
-    /// 1 プレイヤーの明るい穴。通路では module 矩形ではなく周囲1マスに絞るのは、
-    /// 通路全体が一気に見えないシレン準拠のサプライズ感を保つため。
-    def holeFor(cell: {x = Int32, y = Int32},
+    /// `holesFor` の draft 対応版。部屋(room module)点灯は origin（ターン開始位置）基準で、
+    /// 通路・松明はライブ位置。移動中に新しく踏み込んだ部屋を確定まで暗いままにするために
+    /// FogScene の per-frame 経路から使う。
+    pub def holesForDraft(units: List[{gridPos = {x = Int32, y = Int32},
+                                       origin = {x = Int32, y = Int32}, hidden = Bool | r}],
+                           placements: List[DungeonComposer.ModulePlacement],
+                           roomCount: Int32, torchCorridors: Bool): List[GridRect] =
+        units
+            |> List.filter(d -> not d#hidden)
+            |> List.filterMap(d -> holeFor(d#gridPos, d#origin, placements, roomCount, torchCorridors))
+
+    /// 1 プレイヤーの明るい穴。`live`=現在位置、`origin`=ターン開始位置（draft 外は origin==live）。
+    /// 通路では module 矩形ではなく周囲1マスに絞るのは、通路全体が一気に見えないシレン準拠の
+    /// サプライズ感を保つため。**部屋(room module)は origin が同じ部屋にあるときだけ点灯**させ、
+    /// 移動中に新しく踏み込んだ部屋は確定（origin 更新）まで暗いままにする。通路・松明はライブ位置。
+    def holeFor(live: {x = Int32, y = Int32}, origin: {x = Int32, y = Int32},
                  placements: List[DungeonComposer.ModulePlacement],
                  roomCount: Int32, torch: Bool): Option[GridRect] =
-        match MapSnapshot.moduleOfCellIn(cell, placements) {
-            case None    => if (torch) Some(torchRect(cell)) else None
+        match MapSnapshot.moduleOfCellIn(live, placements) {
+            case None    => if (torch) Some(torchRect(live)) else None
             case Some(m) =>
-                if (torch and m >= roomCount) Some(torchRect(cell))
-                else moduleRectByIdx(m, placements)
+                if (m >= roomCount)
+                    (if (torch) Some(torchRect(live)) else moduleRectByIdx(m, placements))
+                else if (MapSnapshot.moduleOfCellIn(origin, placements) == Some(m))
+                    moduleRectByIdx(m, placements)
+                else None
         }
 
     /// module idx → moduleRect。未配置 idx は None（DungeonComposer が idx を連番で振るため通常起きない）。
