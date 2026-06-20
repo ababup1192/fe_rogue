@@ -49,7 +49,7 @@ mod LevelSystem {
     }
 
     /// レベルアップ結果。ステータス変化パネルが表示にそのまま使う。
-    /// `changes` は HP / 力 / 魔力 / 技 / 速さ / 幸運 / 守備 / 魔防 の固定 8 行（`buildResult` の並び順と一致）。
+    /// `changes` は HP / 力 / 魔力 / 技 / 速さ / 幸運 / 守備 / 魔防 / 体格 の固定 9 行（`buildResult` の並び順と一致）。
     pub type alias Result = {
         unitName  = String,
         fromLevel = Int32,
@@ -89,7 +89,7 @@ mod LevelSystem {
          luck         = bump(stats#luck,         rolls#luck,         rates#luck),
          constitution = bump(stats#constitution, rolls#constitution, rates#constitution)}
 
-    /// UnitResource から成長対象の 8 ステータスだけを抜き出す（hp は最大 HP）。
+    /// UnitResource から成長対象の 9 ステータスだけを抜き出す（hp は最大 HP）。
     /// UnitResource は成長対象外のフィールド（moveTiles 等）も持つため、
     /// このプロジェクションで成長ロジックが余分なフィールドを誤って触らないようにしている。
     pub def statsOf(res: UnitResource): Stats =
@@ -103,7 +103,7 @@ mod LevelSystem {
          luck         = res#luck,
          constitution = res#constitution}
 
-    /// 成長後の 8 ステータスを UnitResource に書き戻す（他フィールドは保つ）。
+    /// 成長後の 9 ステータスを UnitResource に書き戻す（他フィールドは保つ）。
     /// `statsOf` の逆演算として設計されており、`statsOf` → `applyGrowth` → `withStats` で
     /// UnitResource のラウンドトリップが成立する。
     pub def withStats(stats: Stats, res: UnitResource): UnitResource =
@@ -133,7 +133,7 @@ mod LevelSystem {
         {label = label, before = before, after = after, gained = after > before}
 
     /// レベルアップ前後のステータスから、パネル表示用の `Result` を組み立てる。
-    /// `toLevel` は `fromLevel + 1`。`changes` は固定 8 行（HP→力→魔力→技→速さ→幸運→守備→魔防）。
+    /// `toLevel` は `fromLevel + 1`。`changes` は固定 9 行（HP→力→魔力→技→速さ→幸運→守備→魔防→体格）。
     /// この並び順はパネルのレイアウト（行の上から下）に対応しており、UI 側と合わせる必要がある（line 108 参照）。
     pub def buildResult(unitName: String, fromLevel: Int32,
                         before: Stats, after: Stats): Result =

@@ -372,15 +372,7 @@ mod ItemMenuScene {
         let txt = "重 ${Encumbrance.weightText(load#total)}/${Encumbrance.weightText(load#capacity)}";
         scene
             |> Label2D.mapAt(headerPath(), Label2D.setText(txt))
-            |> Label2D.mapAt(headerPath(), CanvasItem.setModulate(weightColor(load#tier)))
-
-    /// 積載段階ごとのヘッダ色。重くなるほど黄→橙→赤で警告する。
-    def weightColor(tier: Encumbrance.Tier): Color = match tier {
-        case Encumbrance.Tier.Normal     => UITheme.headerText()
-        case Encumbrance.Tier.Heavy      => {r = 1.0f32, g = 0.85f32, b = 0.3f32}
-        case Encumbrance.Tier.Overloaded => {r = 1.0f32, g = 0.6f32,  b = 0.2f32}
-        case Encumbrance.Tier.Immobile   => {r = 1.0f32, g = 0.3f32,  b = 0.3f32}
-    }
+            |> Label2D.mapAt(headerPath(), CanvasItem.setModulate(UITheme.encumbranceTierColor(load#tier)))
 
     /// アイテム窓を ActionMenu の右端基準に重ねて配置する（武器メニューと同じ）。
     def positionBesideActionMenu(scene: Scene[NodeTag]): Scene[NodeTag] =

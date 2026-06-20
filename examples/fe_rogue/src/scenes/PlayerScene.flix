@@ -82,10 +82,23 @@ mod PlayerScene {
         Encumbrance.loadOf(data#resource#constitution, data#resource#attack, data)
 
     /// 積載ペナルティ込みの実効移動力。素の `moveTiles` に積載率ペナルティ（80%/100%/110%）を掛けた値。
-    /// getMoveTiles / unitView / PlayerMovementScene はすべてこの 1 関数を通すこと
+    /// getMoveTiles / unitView / PlayerMovementScene / StairsExitScene はすべてこの 1 関数を通すこと
     /// （範囲計算と歩数判定の不整合を防ぐため）。
     pub def effectiveMoveTilesOf(data: Data): Int32 =
         Encumbrance.effectiveMoveTiles(data#moveTiles, loadOf(data))
+
+    /// 持ち物の指定スロット（`ItemKind`）にあるアイテム 1 個の重量。範囲外なら None。
+    /// 交換のまとめ渡しが「この 1 個を渡すと受け手が重量過多になるか」を測るのに使う。
+    pub def heldItemWeight(data: Data, kind: PlayerData.ItemKind): Option[Float64] = match kind {
+        case PlayerData.ItemKind.Weapon(i)     =>
+            List.nth(i, data#weapons)     |> Option.map(Encumbrance.weaponWeight)
+        case PlayerData.ItemKind.Staff(i)      =>
+            List.nth(i, data#staves)      |> Option.map(Encumbrance.staffWeight)
+        case PlayerData.ItemKind.Consumable(i) =>
+            List.nth(i, data#consumables) |> Option.map(Encumbrance.consumableWeight)
+        case PlayerData.ItemKind.Ring(i)       =>
+            List.nth(i, data#rings)       |> Option.map(Encumbrance.ringWeight)
+    }
 
     // ────────────────────────────────────────────────────────
     // (B) 定数
@@ -899,7 +912,7 @@ mod PlayerScene {
         ringEquipped = Bool,
         level       = Int32,
         exp         = Int32,
-        // 成長後の 6 ステータス（最大 HP 含む）。次フロアの新規 resource に上書きして引き継ぐ。
+        // 成長後の 9 ステータス（最大 HP 含む）。次フロアの新規 resource に上書きして引き継ぐ。
         stats   = LevelSystem.Stats
     }
 

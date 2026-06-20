@@ -84,13 +84,12 @@ mod Encumbrance {
 
     /// 武器の重量。effectRule の "weight" があればそれ、無ければ「タイプ基準 + 攻撃力×係数」。
     pub def weaponWeight(weapon: WeaponResource): Float64 =
-        match weightOverride(weapon#effectRule) {
-            case Some(w) => w
-            case None    =>
-                let base = typeBaseWeight(weapon#weaponType);
-                let scaled = Int32.toFloat64(weapon#attack) * attackCoef(weapon#weaponType);
-                base + scaled
-        }
+        weightOverride(weapon#effectRule) |> Option.getWithDefault(computedWeaponWeight(weapon))
+
+    /// 計算式による武器重量（effectRule 上書きが無いとき）。タイプ基準 + 攻撃力×係数。
+    def computedWeaponWeight(weapon: WeaponResource): Float64 =
+        typeBaseWeight(weapon#weaponType)
+            + Int32.toFloat64(weapon#attack) * attackCoef(weapon#weaponType)
 
     /// 杖の重量。一律 0.75（effectRule で個体上書き可）。
     pub def staffWeight(staff: Staff.StaffResource): Float64 =
@@ -98,12 +97,13 @@ mod Encumbrance {
 
     /// 消費アイテムの重量。投擲する瓶系（Directional）は 1.0、自己使用の薬は 0.5。
     pub def consumableWeight(item: Consumable.ConsumableResource): Float64 =
-        match weightOverride(item#effectRule) {
-            case Some(w) => w
-            case None    => match Consumable.deliveryFor(item#effect) {
-                case Consumable.Delivery.Directional => 1.0
-                case _                               => 0.5
-            }
+        weightOverride(item#effectRule) |> Option.getWithDefault(defaultConsumableWeight(item))
+
+    /// effectRule 上書きが無いときの消費アイテム重量。投擲瓶(Directional)=1.0 / 自己使用の薬=0.5。
+    def defaultConsumableWeight(item: Consumable.ConsumableResource): Float64 =
+        match Consumable.deliveryFor(item#effect) {
+            case Consumable.Delivery.Directional => 1.0
+            case _                               => 0.5
         }
 
     /// 指輪の重量。通常 0.4。浮雲は effectRule の "weight" に負値を入れて表現する。
@@ -122,13 +122,16 @@ mod Encumbrance {
     def sumF(xs: List[Float64]): Float64 =
         List.foldLeft((acc, x) -> acc + x, 0.0, xs)
 
-    /// インベントリ全体の総重量。
+    /// インベントリ全体の総重量。0 で下限クランプする。
+    /// 浮雲（負の重量の指輪）を積むと素の合計は負になりうるが、負を許すと
+    /// 積載率が負＝常時 Normal かつ拾得ゲートが無効化して「実質無限積載」に退化する。
+    /// 0 下限なら、浮雲は「他アイテムの重さを打ち消して実質容量を底上げする」効果に収まる。
     pub def totalWeight(inv: Inventory[r]): Float64 =
         let weaponTotal = sumF(List.map(weaponWeight, inv#weapons));
         let staffTotal = sumF(List.map(staffWeight, inv#staves));
         let consumableTotal = sumF(List.map(consumableWeight, inv#consumables));
         let ringTotal = sumF(List.map(ringWeight, inv#rings));
-        weaponTotal + staffTotal + consumableTotal + ringTotal
+        Float64.max(0.0, weaponTotal + staffTotal + consumableTotal + ringTotal)
 
     // ────────────────────────────────────────────────────────
     // (C) 積載量・段階・移動力
@@ -154,11 +157,18 @@ mod Encumbrance {
         case Tier.Immobile   => 0.0
     }
 
-    /// 積載ペナルティ込みの実移動マス = floor(素の移動力 × 係数)。最低 0 で clamp。
+    /// 積載ペナルティ込みの実移動マス = floor(素の移動力 × 係数)。
+    /// 重量過多(Immobile)だけは 0（移動不可）。それ以外の段階は floor で 0 に落ちても
+    /// 最低 1 マスは保証する（「重量オーバー＝移動 30%」表記どおり、這ってでも動けるようにする。
+    /// 移動力 3 のユニットが Overloaded で floor(0.9)=0 になって動けなくなるのを防ぐ）。
+    /// 素の移動力を上限とするので、ペナルティで増えることはない。
     pub def effectiveMoveTiles(baseMoveTiles: Int32, load: Load): Int32 =
         let scaled = Int32.toFloat64(baseMoveTiles) * tierFactor(load#tier);
         let floored = Float64.floor(scaled) |> Float64.tryToInt32 |> Option.getWithDefault(0);
-        Int32.max(0, floored)
+        match load#tier {
+            case Tier.Immobile => 0
+            case _             => Int32.min(baseMoveTiles, Int32.max(1, floored))
+        }
 
     /// インベントリ + 体格/力 から積載状態 Load を組む（UI・移動が共用する入口）。
     pub def loadOf(constitution: Int32, attack: Int32, inv: Inventory[r]): Load =

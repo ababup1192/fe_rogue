@@ -16,8 +16,8 @@
 ///   LevelUpPanel (CanvasLayer, layer=5)
 ///     ├─ panel      (Panel, NodeTag.LevelUpPanel(PanelState))
 ///     ├─ header     (Label2D, NoTag) — 「{兵種名} Lv 前 -> 後」
-///     ├─ bodyLabels (Label2D, 左揃え) — ステータス名 8 行
-///     ├─ bodyBefore (Label2D, 右揃え) — 現在値 8 行
+///     ├─ bodyLabels (Label2D, 左揃え) — ステータス名 9 行
+///     ├─ bodyBefore (Label2D, 右揃え) — 現在値 9 行
 ///     ├─ bodyArrow  (Label2D, 左揃え) — "->"（上昇を出した行だけ）
 ///     ├─ bodyAfter  (Label2D, 右揃え) — 新値（同上）
 ///     ├─ bodyPlus   (Label2D, 左揃え・金色) — "+1"（同上）
@@ -148,7 +148,7 @@ mod LevelUpPanelScene {
 
     /// 演出を 1 フレーム進める。bonus → 各ステータス行を上から 1 行ずつ出す。
     /// 上昇した行は status_up を鳴らしてゆっくり、上昇しなかった行は無音で一瞬で送る。
-    /// `revealed` は「出し終えた行数」(0 .. List.length(result#changes)、例: 8 ステータスなら 0..8)。
+    /// `revealed` は「出し終えた行数」(0 .. List.length(result#changes)、例: 9 ステータスなら 0..9)。
     def stepReveal(delta: Duration.Duration, result: LevelSystem.Result,
                     scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Audio =
         let st   = currentState(scene);

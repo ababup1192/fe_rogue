@@ -258,7 +258,7 @@ mod TradeMenuScene {
     def paneRightMargin(): Float64 = 2.0
     def paneGap(): Float64         = 2.0
     def paneTop(): Float64         = 16.0  // 見出し帯(y1-7)＋列見出し(y10)の下からペイン開始
-    def paneHeight(): Float64      = 72.0  // = 8 行 × itemHeight 9（通常職の満杯=8を1列で収める）
+    def paneHeight(): Float64      = 72.0  // = 8 行 × itemHeight 9（1 列に 8 行ぶん表示。超過分はスクロール）
 
     // 重み 1 ぶんの「快適幅」。基準は「2 人交換でロード 2 列 = 合計重み 3 のときちょうど 166」。
     // ウィンドウ幅は max=166 を上限に、合計重み × この単位幅で自然に縮める。
@@ -496,15 +496,10 @@ mod TradeMenuScene {
         }
 
     /// 列見出しの色。積載段階で変える（通常=ヘッダ色 / 80%+=黄 / 100%+=橙 / 110%+=赤）。
-    /// 居なければ通常色。ItemMenu の重量ゲージと同じ配色で統一する。
+    /// 居なければ通常色。配色は `UITheme.encumbranceTierColor` に集約（ItemMenu の重量ゲージと共通）。
     def paneHeaderColor(id: Int32): Color \ PlayerData.PartyQuery =
         match PlayerData.PartyQuery.get(id) {
-            case Some(d) => match PlayerScene.loadOf(d)#tier {
-                case Encumbrance.Tier.Normal     => UITheme.headerText()
-                case Encumbrance.Tier.Heavy      => {r = 1.0f32, g = 0.85f32, b = 0.3f32}
-                case Encumbrance.Tier.Overloaded => {r = 1.0f32, g = 0.6f32,  b = 0.2f32}
-                case Encumbrance.Tier.Immobile   => {r = 1.0f32, g = 0.3f32,  b = 0.3f32}
-            }
+            case Some(d) => UITheme.encumbranceTierColor(PlayerScene.loadOf(d)#tier)
             case None    => UITheme.headerText()
         }
 
@@ -733,22 +728,31 @@ mod TradeMenuScene {
                 scene, kinds);
         Option.getWithDefault(scene, resolved)
 
-    /// 1 個を giver → receiver に片方向で渡す。受け取り側が満杯なら何もしない（部分転送の停止）。
-    /// 容量は scene-arg から最新値を読む（連続して渡す途中で在庫数が変わるため snapshot に頼らない）。
+    /// 1 個を giver → receiver に片方向で渡す。受け取ると重量過多になるなら何もしない（部分転送の停止）。
+    /// 容量は scene-arg から最新値を読む（連続して渡す途中で総重量が変わるため snapshot に頼らない）。
     /// 渡せるときは既存の `applyTradeSwap`（片方向 transfer 経路）に流し、ログとドラフトを揃える。
     def transferOne(giverId: Int32, receiverId: Int32, origin: Origin,
                      kind: PlayerData.ItemKind, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
-        if (receiverHasRoom(receiverId, scene))
+        if (receiverCanAccept(giverId, receiverId, kind, scene))
             applyTradeSwap({pickerId = giverId, pickerKind = Some(kind),
                             receiverId = receiverId, receiverKind = None}, origin, scene)
         else scene
 
-    /// 受け取り側にまだ空き枠があるか。scene から最新の持ち物数を読む。居なければ渡せない扱い。
-    def receiverHasRoom(receiverId: Int32, scene: Scene[NodeTag]): Bool =
-        match PlayerScene.get(receiverId, scene) {
-            case Some(d) => not PlayerScene.isInventoryFull(d)
-            case None    => false
+    /// 受け取り側がこの 1 個を受け取っても重量過多(110%+ ＝ 移動不可)にならないか。
+    /// 拾得ゲート（`PlayerScene.wouldOverloadByPicking`）と同じ基準で、まとめ渡しが受け手を
+    /// 移動不可まで積み込むのを防ぐ（アイテム単位で判定し、超える 1 個目の手前で止める）。
+    /// giver / receiver / 対象スロットのいずれかが解決できなければ渡さない扱い。
+    def receiverCanAccept(giverId: Int32, receiverId: Int32,
+                           kind: PlayerData.ItemKind, scene: Scene[NodeTag]): Bool =
+        match (PlayerScene.get(giverId, scene), PlayerScene.get(receiverId, scene)) {
+            case (Some(giver), Some(receiver)) =>
+                match PlayerScene.heldItemWeight(giver, kind) {
+                    case Some(weight) =>
+                        not Encumbrance.wouldExceedImmobile(PlayerScene.loadOf(receiver), weight)
+                    case None => false
+                }
+            case _ => false
         }
 
     /// 指定ペインの指定 entry に対する Z 確定処理。`decideConfirm` の結果を scene に適用する。

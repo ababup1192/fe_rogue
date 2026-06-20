@@ -1,7 +1,7 @@
 /// Encumbrance（重量制）の純粋ロジックのテスト。
 ///
 /// 検証する責務:
-///   - 最大積載量の式（体格×1.3 + 力×0.2 + 6.0）
+///   - 最大積載量の式（体格×1.0 + 力×0.2 + 2.0）
 ///   - 積載率 → 段階（Tier）の境界（0.8 / 1.0 / 1.1 をちょうどで上の帯に含める）
 ///   - 段階 → 実効移動力（floor で整数化、Immobile=0）
 ///   - 武器タイプ別の重量（暗器は最軽量、強武器ほど重い）
@@ -110,4 +110,48 @@ mod TestEncumbrance {
             expected = true :: false :: Nil,
             Encumbrance.wouldExceedImmobile(load, 0.6) ::
             Encumbrance.wouldExceedImmobile(load, 0.4) :: Nil)
+
+    // ──────────────────────────────────────────────
+    // 最低 1 マス保証（Overloaded で floor 0 でも動ける）
+    // ──────────────────────────────────────────────
+
+    /// 移動力 3 のユニットが Overloaded(×0.3) だと floor(0.9)=0 だが、最低 1 マス保証で 1。
+    /// 重量過多(Immobile) だけは 0（移動不可）。素の移動力を超えないこともあわせて確認。
+    @Test
+    def testEffectiveMoveMinOneExceptImmobile(): Unit \ Assert =
+        Assert.assertEq(
+            expected = 1 :: 0 :: 3 :: Nil,
+            Encumbrance.effectiveMoveTiles(3, loadWithTier(Tier.Overloaded)) ::  // floor(0.9)=0 → 最低1
+            Encumbrance.effectiveMoveTiles(3, loadWithTier(Tier.Immobile)) ::    // 移動不可=0
+            Encumbrance.effectiveMoveTiles(3, loadWithTier(Tier.Normal)) :: Nil) // 等倍=3（上限）
+
+    // ──────────────────────────────────────────────
+    // 負の重量（浮雲）— 0 下限クランプと符号付き表記
+    // ──────────────────────────────────────────────
+
+    /// weightText は負の重量も符号付きで出す（浮雲の効果量表示など）。
+    @Test
+    def testWeightTextSigned(): Unit \ Assert =
+        Assert.assertEq(
+            expected = "-4.5" :: "0.0" :: "12.5" :: Nil,
+            Encumbrance.weightText(-4.5) :: Encumbrance.weightText(0.0) ::
+            Encumbrance.weightText(12.5) :: Nil)
+
+    /// 浮雲（負の重量の指輪）だけを持つと素の合計は負になるが、totalWeight は 0 下限クランプ。
+    /// これにより「浮雲ガン積みで積載率が負→常時 Normal＋ゲート無効」の退化を防ぐ。
+    /// 浮雲・大(-4.5) は rings.json の effectRule "weight" で表現（実カタログから引く）。
+    @Test
+    def testFloatCloudClampsTotalToZero(): Unit \ {Assert, Fs.FileRead} =
+        let cloud = Ring.lookup("float_cloud_large", Ring.load());
+        let inv = {
+            weapons     = (Nil : List[WeaponCatalog.WeaponResource]),
+            staves      = (Nil : List[Staff.StaffResource]),
+            consumables = (Nil : List[Consumable.ConsumableResource]),
+            rings       = cloud :: Nil
+        };
+        // 浮雲単体の重量は -4.5 だが、総重量は 0 にクランプされ、段階は Normal。
+        Assert.assertEq(
+            expected = (-4.5, 0.0, Tier.Normal),
+            (Encumbrance.ringWeight(cloud), Encumbrance.totalWeight(inv),
+             Encumbrance.loadOf(5, 0, inv)#tier))
 }

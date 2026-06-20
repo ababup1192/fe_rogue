@@ -378,27 +378,27 @@ mod TestTradeMenuScene {
                 (weaponNames(0, after#scene), weaponNames(1, after#scene)))
         }
 
-    /// 受け取り側が重量過多寸前のとき、印 2 個でも 1 個だけ渡って残りは手元に残る (部分転送)。
+    /// まとめ渡しはアイテム単位で「受け取ると重量過多になるか」を判定し、超える手前で止める。
     /// 受け取り役は knight（体格7・力5 → 最大積載量 10.0、過多しきい値 110% = 11.0）。
-    /// P1 は てつの剣(2.25) × 4 = 9.0 を持つ（あと 1 個で過多）。
-    /// P0 が槍(3.05) と弓(2.4) に印を付けてまとめ渡しすると、1 個渡った時点で P1 が
-    /// 重量過多(移動不可)になり 2 個目は止まる → P0 に 1 個残り、P1 は 5 個になる。
+    /// P1 は てつの剣(2.25) × 3 = 6.75 を持つ。P0 が槍(3.05) と弓(2.4) に印を付けて渡すと、
+    /// 1 個目（6.75+2.4=9.15 or 6.75+3.05=9.8 ＜11.0）は渡るが、2 個目（合計 12.2 ≧11.0）は
+    /// 過多になるため止まる → P0 に 1 個残り、P1 は 4 個になる。
     @Test
     def testBulkTransferStopsWhenReceiverFull(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let four = List.repeat(4, "iron_sword");
+            let three = List.repeat(3, "iron_sword");
             let s0 = buildScenario(
                 ({id = 0, weapons = "iron_lance" :: "iron_bow" :: Nil, staves = Nil}: PlayerSpec) ::
-                ({id = 1, weapons = four, staves = Nil}: PlayerSpec) :: Nil,
+                ({id = 1, weapons = three, staves = Nil}: PlayerSpec) :: Nil,
                 TradeMenuScene.Origin.FromTurn);
             let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, () -> {
                 s0 |> markOnPane(0, "てつのやり")
                    |> markOnPane(0, "てつの弓")
                    |> pressZBulkOnPane(1)
             });
-            // 渡ったのは 1 個だけ（P0 に 1 個残り、P1 は 4 → 5 個）。
+            // 渡ったのは 1 個だけ（P0 に 1 個残り、P1 は 3 → 4 個）。
             Assert.assertEq(
-                expected = (1, 5),
+                expected = (1, 4),
                 (List.length(weaponNames(0, after#scene)),
                  List.length(weaponNames(1, after#scene))))
         }

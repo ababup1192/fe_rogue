@@ -54,4 +54,25 @@ mod UITheme {
     /// サブラベルの淡色（くすんだ青灰）。faint #7d8aa3。menu `subtextColor` の真理点。
     /// NOTE: ItemList に subtextColor getter が無いため test pin は未（値は scene.json に再掲）。
     pub def faint(): Color = {r = 0.490f32, g = 0.541f32, b = 0.639f32}
+
+    // ── 重量（積載段階）の警告色 ──────────────────────────────────────
+    // 重くなるほど黄→橙→赤で警告する。アイテム窓の重量ゲージと交換窓のヘッダで共用する。
+
+    /// 軽量超過（積載 80%+）の黄。
+    pub def encumbranceHeavy(): Color = {r = 1.0f32, g = 0.85f32, b = 0.3f32}
+
+    /// 重量オーバー（積載 100%+）の橙。
+    pub def encumbranceOverloaded(): Color = {r = 1.0f32, g = 0.6f32, b = 0.2f32}
+
+    /// 重量過多（積載 110%+・移動不可）の赤。
+    pub def encumbranceImmobile(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
+
+    /// 積載段階 → ゲージ色。通常はヘッダ色、超過するほど黄→橙→赤。
+    /// 重量ゲージ（ItemMenu）と交換ヘッダ（Trade）が同じ配色を共有する単一の真理点。
+    pub def encumbranceTierColor(tier: Encumbrance.Tier): Color = match tier {
+        case Encumbrance.Tier.Normal     => headerText()
+        case Encumbrance.Tier.Heavy      => encumbranceHeavy()
+        case Encumbrance.Tier.Overloaded => encumbranceOverloaded()
+        case Encumbrance.Tier.Immobile   => encumbranceImmobile()
+    }
 }

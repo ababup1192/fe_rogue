@@ -964,7 +964,7 @@ mod CombatScene {
             case Some(last) => PlayerScene.snapTo(targetId, last, scene)
         }
 
-    /// 6 ステータスぶんの成長判定用乱数 (各 0..99) をまとめて振る。
+    /// 9 ステータスぶんの成長判定用乱数 (各 0..99) をまとめて振る。
     /// 値の意味づけ・成長判定は LevelSystem 側のピュア関数が行う。
     def rollGrowth(): LevelSystem.Rolls \ Math.Random =
         {hp           = rollPercent(),
