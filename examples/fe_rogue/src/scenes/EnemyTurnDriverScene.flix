@@ -54,7 +54,8 @@ mod EnemyTurnDriverScene {
                         Pacing.State, PlayerData.PartyQuery, Math.Random,
                         CustomEffects.WandererSpawnRequest,
                         CustomEffects.RingTransformRequest,
-                        CustomEffects.GameOverRequest, GameEngine.Audio} =
+                        CustomEffects.GameOverRequest,
+                        CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
         let next = match TurnPhase.State.get() {
             case TurnPhase.Phase.EnemyTurn        => stepOnce(scene)
             case TurnPhase.Phase.PlayerAttackHold =>
@@ -165,7 +166,8 @@ mod EnemyTurnDriverScene {
                 Pacing.State, PlayerData.PartyQuery, Math.Random,
                 CustomEffects.WandererSpawnRequest,
                 CustomEffects.RingTransformRequest,
-                CustomEffects.GameOverRequest, GameEngine.Audio} =
+                CustomEffects.GameOverRequest,
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
         // 敵ターン開始の「間」(TopBar の hold) 中は敵を動かさない（フェイズ切替が読めてから行動開始）。
         if (TopBarScene.isBusy(scene)) scene
         else if (Pacing.State.isHolding()) scene
@@ -456,7 +458,8 @@ mod EnemyTurnDriverScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, TurnPhase.State,
                 SelectedPlayer.State, GatherResume.State, PlayerData.PartyQuery,
-                CustomEffects.WandererSpawnRequest} =
+                CustomEffects.WandererSpawnRequest,
+                CustomEffects.FloorAdvanceRequest} =
         GameLogger.endTurn();
         // 敵ターンが 1 巡終わった節目に湧きクロックを進める（試練型の部屋湧きを試みる）。
         // 発生判断（周期 tick mod N・フロア上限・視界外の空き部屋セルの有無）は handler / EnemyScene 側。
@@ -483,7 +486,15 @@ mod EnemyTurnDriverScene {
             // フロアに残るアクティブな駒(`firstActive`)へ明示スナップする。
             match PlayerScene.firstActive(lit) {
                 case Some(next) => PhaseTransitions.enterPlayerCursorAt(next#gridPos, lit)
-                case None       => PhaseTransitions.enterPlayerCursor(lit)
+                case None       =>
+                    // フロアに残っていた味方が敵ターン中に全滅し、生存者が階段退場済み
+                    // (usedStairs=hidden) だけになると操作できる駒が 0 になり詰む。
+                    // この場合は allLivingUsedStairs が true（= フロア終了条件）なので、
+                    // ロストした味方を置いて通常の階段退場と同じく次フロアへ進む。
+                    if (PlayerScene.allLivingUsedStairs(lit))
+                        CustomEffects.FloorAdvanceRequest.advance(lit)
+                    else
+                        PhaseTransitions.enterPlayerCursor(lit)
             }
         }
 
