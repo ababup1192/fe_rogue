@@ -167,6 +167,7 @@ mod TestUnitFixtures {
         hit        = 80,
         crit       = 0,
         durability = 10,
+        weight     = 1.9,
         range      = { min = 1, max = 1 },
         weaponType = WeaponCatalog.WeaponType.Sword,
         effect      = WeaponCatalog.WeaponEffect.NoEffect,
@@ -183,6 +184,7 @@ mod TestUnitFixtures {
         hit        = 80,
         crit       = 0,
         durability = durability,
+        weight     = 2.0,
         range      = { min = 1, max = 1 },
         weaponType = WeaponCatalog.WeaponType.Sword,
         effect      = WeaponCatalog.WeaponEffect.NoEffect,
@@ -200,6 +202,7 @@ mod TestUnitFixtures {
         hit        = 80,
         crit       = 0,
         durability = 10,
+        weight     = 2.0,
         range      = { min = 1, max = 1 },
         weaponType = weaponType,
         effect      = WeaponCatalog.WeaponEffect.NoEffect,
@@ -395,6 +398,15 @@ mod TestUnitFixtures {
             def replace(_, k)   = k()
             def peekFront(k)    = k(None)
             def isEmpty(k)      = k(true)
+        }
+
+    /// `GatherResume.State` のスタブ。get は false 固定、put は捨てる。
+    /// 集合自動継続フラグを観測しないメニュー確定・ターン確定系テストで使う。
+    pub def withMockGatherResume(thunk: Unit -> a \ ef):
+            a \ (ef - GatherResume.State) =
+        run { thunk() } with handler GatherResume.State {
+            def get(k)    = k(false)
+            def put(_, k) = k()
         }
 
     /// Math.Random の決定的スタブ。`randomFloat64` を 0.5 固定で返す。

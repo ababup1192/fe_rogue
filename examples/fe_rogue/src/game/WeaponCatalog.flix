@@ -153,6 +153,9 @@ mod WeaponCatalog {
         hit         = Int32,
         crit        = Int32,
         durability  = Int32,
+        // 重量（積載に効く。重いほど多く持てない）。各武器が JSON で直接指定する設計値。
+        // 省略時は decoder が 1.0 を埋める（旧 weapons.json への後方互換）。
+        weight      = Float64,
         range       = WeaponRange,
         weaponType  = WeaponType,
         effect      = WeaponEffect,
@@ -208,7 +211,7 @@ mod WeaponCatalog {
 
     /// schema 検査用の expected key 集合（`CatalogContainer.loadWithCheck` に渡す）。
     pub def expectedFields(): Set[String] =
-        Set#{"name", "attack", "hit", "crit", "durability", "range", "weaponType",
+        Set#{"name", "attack", "hit", "crit", "durability", "weight", "range", "weaponType",
              "effect", "effectValue", "sprite", "description", "effectRule"}
 }
 
@@ -245,6 +248,7 @@ mod WeaponCatalogCodec {
             "hit"         => JNumber(intToBd(weapon#hit)),
             "crit"        => JNumber(intToBd(weapon#crit)),
             "durability"  => JNumber(intToBd(weapon#durability)),
+            "weight"      => JNumber(floatToBd(weapon#weight)),
             "range"       => encodeRange(weapon#range),
             "weaponType"  => JString(weaponTypeToString(weapon#weaponType)),
             "effect"      => JString(WeaponCatalog.effectToString(weapon#effect)),
@@ -328,8 +332,12 @@ mod WeaponCatalogCodec {
             let effectValue = Map.get("effectValue", obj)
                         |> Option.flatMap(expectInt)
                         |> Option.getWithDefault(0);
-            ({name = name, attack = atk, hit = hit, crit = crit, durability = dur, range = rng,
-              weaponType = wt, effect = effect, effectValue = effectValue,
+            // weight (重量) も省略可。欠落時は 1.0 (旧 weapons.json / 旧セーブ後方互換)。
+            let weight = Map.get("weight", obj)
+                        |> Option.flatMap(expectFloat)
+                        |> Option.getWithDefault(1.0);
+            ({name = name, attack = atk, hit = hit, crit = crit, durability = dur, weight = weight,
+              range = rng, weaponType = wt, effect = effect, effectValue = effectValue,
               sprite = sp, description = desc,
               effectRule = Map.get("effectRule", obj)}: WeaponResource)
         }

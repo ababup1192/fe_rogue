@@ -89,6 +89,7 @@ mod TestStaffCastScene {
          duration   = 0,
          healAmount = healAmount,
          durability = 5,
+         weight     = 0.5,
          sprite     = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                          offset = {x = 0.0, y = 0.0},
                          scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
@@ -96,7 +97,7 @@ mod TestStaffCastScene {
 
     /// effectRule を差し込めるテスト用の杖（effect 種別は DSL 経路では使われないのでダミー）。
     def staffWithRule(ruleJson: Option[Util.Json.Json]): Staff.StaffResource =
-        {name = "テスト杖", effect = Staff.StaffEffect.Bind, durability = 3,
+        {name = "テスト杖", effect = Staff.StaffEffect.Bind, durability = 3, weight = 0.75,
          sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                      offset = {x = 0.0, y = 0.0},
                      scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),

@@ -66,6 +66,8 @@ mod Staff {
         name        = String,
         effect      = StaffEffect,
         durability  = Int32,
+        // 重量（積載に効く）。JSON で直接指定する設計値。省略時は decoder が 0.75 を埋める。
+        weight      = Float64,
         sprite      = SpriteResource,
         description = String,
         effectRule  = Option[Util.Json.Json]
@@ -209,7 +211,7 @@ mod Staff {
     /// schema との照合で「型定義と JSON schema の乖離」を起動時に発覚させる不変条件として機能する。
     // 実際の照合は engine の Resource.checkConsistency が担う。
     pub def expectedFields(): Set[String] =
-        Set#{"name", "effect", "durability", "sprite", "description", "effectRule"}
+        Set#{"name", "effect", "durability", "weight", "sprite", "description", "effectRule"}
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -240,6 +242,7 @@ mod StaffCatalogCodec {
             "name"        => JString(staff#name),
             "effect"      => JString(Staff.effectToString(staff#effect)),
             "durability"  => JNumber(intToBd(staff#durability)),
+            "weight"      => JNumber(floatToBd(staff#weight)),
             "sprite"      => encodeSprite(staff#sprite),
             "description" => JString(staff#description)
         };
@@ -274,7 +277,11 @@ mod StaffCatalogCodec {
             let desc = Map.get("description", obj)
                         |> Option.flatMap(expectString)
                         |> Option.getWithDefault("");
-            ({name = name, effect = effect, durability = dur,
+            // weight (重量) も省略可。欠落時は 0.75 (後方互換)。
+            let weight = Map.get("weight", obj)
+                        |> Option.flatMap(expectFloat)
+                        |> Option.getWithDefault(0.75);
+            ({name = name, effect = effect, durability = dur, weight = weight,
                sprite = sprite, description = desc,
                effectRule = Map.get("effectRule", obj)}: StaffResource)
         }

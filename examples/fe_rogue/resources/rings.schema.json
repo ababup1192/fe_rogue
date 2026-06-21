@@ -20,7 +20,8 @@
             "Mend",
             "Lifesteal",
             "Finisher",
-            "Trivial"
+            "Trivial",
+            "Levitate"
           ]
         },
         "hint": "plain",
@@ -137,6 +138,20 @@
             "order": 4
           }
         }
+      }
+    },
+    "weight": {
+      "field": {
+        "ftype": "float",
+        "hint": {
+          "slider": {
+            "max": 10,
+            "min": -10,
+            "step": 0.1
+          }
+        },
+        "label": "重量",
+        "order": 6
       }
     }
   }

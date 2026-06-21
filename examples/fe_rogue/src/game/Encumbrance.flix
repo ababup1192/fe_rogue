@@ -2,23 +2,18 @@
 ///
 /// 各アイテムの重量・ユニットの最大積載量・積載率・移動力ペナルティを計算する。
 /// `Combat` / `LevelSystem` と同列の純粋モジュールで、Scene[NodeTag] / effect に依存しない
-/// （テストが純粋値で完結する）。重量の全定数はこのモジュールに集約し、
-/// バランス調整が 1 ファイルで済むようにする。
+/// （テストが純粋値で完結する）。積載量の式・段階しきい値はこのモジュールに集約する。
 ///
 /// 設計方針:
-///   - アイテムに weight フィールドを持たせず、種別・タイプ・効果から純粋関数で算出する
-///     （resources/*.json / schema / codec を触らない）。
-///   - 個体ごとの例外（ミスリル=強くて軽い / 軽量銘 / 浮雲=負の重量）は、既存の
-///     `*Resource#effectRule`（Option[Json] 自由欄）の `"weight"` キーで明示し、
-///     無ければ計算式へフォールバックする（schema 非改変で個体調整が効く）。
+///   - 各アイテムの重量は resource の `weight` フィールド（Float64）で**直接指定**する。
+///     武器/杖/消費/指輪すべてが weight を持ち、各 *.json / IDE で 1 個ずつ調整できる。
+///     浮雲（指輪）は weight に負値を入れて積載を稼ぐ。
 ///
 /// 積載率による移動力ペナルティ（floor で整数化）:
 ///   <80%: ×1.0(通常) / 80%+: ×0.8(軽量超過) / 100%+: ×0.3(重量オーバー) / 110%+: 0(重量過多)
 mod Encumbrance {
 
-    use Util.Json.Json
-    use Util.Json.Json.{JObject}
-    use WeaponCatalog.{WeaponResource, WeaponType}
+    use WeaponCatalog.{WeaponResource}
 
     // ────────────────────────────────────────────────────────
     // (A) 型定義
@@ -58,57 +53,24 @@ mod Encumbrance {
     // (B) アイテム重量
     // ────────────────────────────────────────────────────────
 
-    /// effectRule(簡易形式 JSON) の "weight" を取り出す。個体ごとの重量上書き用。
-    /// あれば計算式より優先する（ミスリル=軽い / 軽量銘 / 浮雲=負 などを JSON で表現）。
-    def weightOverride(rule: Option[Json]): Option[Float64] =
-        rule |> Option.flatMap(j -> match j {
-            case JObject(m) => Map.get("weight", m) |> Option.flatMap(JsonCodec.expectFloat)
-            case _          => None
-        })
+    // 重量はどのアイテムも JSON の `weight` フィールドで直接指定する（計算式は使わない）。
+    // デザイナが各 *.json / IDE で 1 個ずつ調整できる。浮雲(指輪)は負値で積載を稼ぐ。
 
-    /// 武器タイプ別の基準重量。物理武器ほど重く、暗器は最軽量。
-    def typeBaseWeight(weaponType: WeaponType): Float64 = match weaponType {
-        case WeaponType.Sword  => 1.5
-        case WeaponType.Lance  => 2.0
-        case WeaponType.Axe    => 2.5
-        case WeaponType.Bow    => 1.5
-        case WeaponType.Magic  => 1.0
-        case WeaponType.Dagger => 0.8
-    }
-
-    /// 攻撃力 1 あたりの重量増分。暗器は緩やか、それ以外は強武器ほど重い。
-    def attackCoef(weaponType: WeaponType): Float64 = match weaponType {
-        case WeaponType.Dagger => 0.1
-        case _                 => 0.15
-    }
-
-    /// 武器の重量。effectRule の "weight" があればそれ、無ければ「タイプ基準 + 攻撃力×係数」。
+    /// 武器の重量。
     pub def weaponWeight(weapon: WeaponResource): Float64 =
-        weightOverride(weapon#effectRule) |> Option.getWithDefault(computedWeaponWeight(weapon))
+        weapon#weight
 
-    /// 計算式による武器重量（effectRule 上書きが無いとき）。タイプ基準 + 攻撃力×係数。
-    def computedWeaponWeight(weapon: WeaponResource): Float64 =
-        typeBaseWeight(weapon#weaponType)
-            + Int32.toFloat64(weapon#attack) * attackCoef(weapon#weaponType)
-
-    /// 杖の重量。一律 0.75（effectRule で個体上書き可）。
+    /// 杖の重量。
     pub def staffWeight(staff: Staff.StaffResource): Float64 =
-        weightOverride(staff#effectRule) |> Option.getWithDefault(0.75)
+        staff#weight
 
-    /// 消費アイテムの重量。投擲する瓶系（Directional）は 1.0、自己使用の薬は 0.5。
+    /// 消費アイテムの重量。
     pub def consumableWeight(item: Consumable.ConsumableResource): Float64 =
-        weightOverride(item#effectRule) |> Option.getWithDefault(defaultConsumableWeight(item))
+        item#weight
 
-    /// effectRule 上書きが無いときの消費アイテム重量。投擲瓶(Directional)=1.0 / 自己使用の薬=0.5。
-    def defaultConsumableWeight(item: Consumable.ConsumableResource): Float64 =
-        match Consumable.deliveryFor(item#effect) {
-            case Consumable.Delivery.Directional => 1.0
-            case _                               => 0.5
-        }
-
-    /// 指輪の重量。通常 0.4。浮雲は effectRule の "weight" に負値を入れて表現する。
+    /// 指輪の重量（浮雲は負値）。
     pub def ringWeight(ring: Ring.RingResource): Float64 =
-        weightOverride(ring#effectRule) |> Option.getWithDefault(0.4)
+        ring#weight
 
     /// 床アイテム（種別タグ付き）1 個の重量。拾得ゲートが「拾うと重くなる量」を測るのに使う。
     pub def groundItemWeight(kind: ItemData.GroundItemKind): Float64 = match kind {

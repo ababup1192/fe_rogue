@@ -270,7 +270,7 @@ instance InputEvent.InputHandler[NodeTag] {
     type Aef = {GameEngine.Game, GameEngine.Audio, BoardQuery, Tween.Scheduler,
                  AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, EnemyTurn.Queue,
-                 TurnPhase.State, SelectedPlayer.State,
+                 TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                  PlayerData.PartyQuery, EnemyData.RosterQuery,
                  CustomEffects.FloorAdvanceRequest, CustomEffects.ResumeRequest,
                  CustomEffects.SuspendRequest,
@@ -290,7 +290,7 @@ instance InputEvent.InputHandler[NodeTag] {
                                           AnimationPlayer.Scheduler,
                                           GameLogger.GameLogger,
                                           EnemyTurn.Queue, TurnPhase.State,
-                                          SelectedPlayer.State,
+                                          SelectedPlayer.State, GatherResume.State,
                                           PlayerData.PartyQuery,
                                           EnemyData.RosterQuery,
                                           CustomEffects.FloorAdvanceRequest,
@@ -311,7 +311,7 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
         Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, BoardQuery,
                            Tween.Scheduler, AnimationPlayer.Scheduler,
                            GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-                           SelectedPlayer.State, PlayerData.PartyQuery,
+                           SelectedPlayer.State, GatherResume.State, PlayerData.PartyQuery,
                            EnemyData.RosterQuery, CustomEffects.FloorAdvanceRequest,
                            CustomEffects.SuspendRequest,
                            Math.Random, CustomEffects.GameOverRequest} =
@@ -376,7 +376,7 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
 instance MenuEvent.MenuHandler[NodeTag] {
     type Aef = {Tween.Scheduler, AnimationPlayer.Scheduler, GameEngine.Audio,
                  GameLogger.GameLogger, EnemyTurn.Queue,
-                 TurnPhase.State, SelectedPlayer.State,
+                 TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                  PlayerData.PartyQuery, EnemyData.RosterQuery,
                  CustomEffects.FloorAdvanceRequest}
     redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
@@ -386,6 +386,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              GameEngine.Audio,
                                              GameLogger.GameLogger, EnemyTurn.Queue,
                                              TurnPhase.State, SelectedPlayer.State,
+                                             GatherResume.State,
                                              PlayerData.PartyQuery,
                                              EnemyData.RosterQuery,
                                              CustomEffects.FloorAdvanceRequest} =
@@ -414,6 +415,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              GameEngine.Audio,
                                              GameLogger.GameLogger, EnemyTurn.Queue,
                                              TurnPhase.State, SelectedPlayer.State,
+                                             GatherResume.State,
                                              PlayerData.PartyQuery,
                                              EnemyData.RosterQuery,
                                              CustomEffects.FloorAdvanceRequest} =
@@ -577,7 +579,7 @@ def isMenuCursorMove(phase: TurnPhase.Phase, key: GameEngine.Key): Bool =
 def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene[NodeTag]):
         Option[Scene[NodeTag]] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                                     GameLogger.GameLogger, EnemyTurn.Queue,
-                                    TurnPhase.State, SelectedPlayer.State,
+                                    TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                                     PlayerData.PartyQuery, EnemyData.RosterQuery,
                                     CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
                                     CustomEffects.GameOverRequest, CustomEffects.SuspendRequest} =
@@ -879,6 +881,7 @@ mod Game {
               with EnemyTurn.withQueue(rc)        // 敵ターンキュー（1 step / 1 frame 駆動）
               with TurnPhase.withState(rc)        // 味方ターン内のサブフェーズ + 敵ターン
               with SelectedPlayer.withState(rc)   // 操作中プレイヤー id の保持
+              with GatherResume.withState(rc)     // 集合モードのターン跨ぎ自動継続フラグ
               with InitialSpawns.withState(rc)    // ゲームオーバー時に同じ敵 / 味方配置を復元
               with FloorSnapshot.withState(rc)    // 進入時フロアスナップショット（全滅時の「フロア最初から」用）
               with FloorProgress.withState(rc, FloorCatalog.firstFloorId(floors))  // 現在フロア id
@@ -933,7 +936,7 @@ mod Game {
                          Tween.Scheduler, AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
                          EnemyTurn.Queue, TurnPhase.State,
-                         SelectedPlayer.State,
+                         SelectedPlayer.State, GatherResume.State,
                          CustomEffects.GameOverRequest,
                          CustomEffects.FloorAdvanceRequest,
                          CustomEffects.WandererSpawnRequest,

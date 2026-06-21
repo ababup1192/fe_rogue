@@ -4,14 +4,14 @@
 ///   - 最大積載量の式（体格×1.0 + 力×0.2 + 2.0）
 ///   - 積載率 → 段階（Tier）の境界（0.8 / 1.0 / 1.1 をちょうどで上の帯に含める）
 ///   - 段階 → 実効移動力（floor で整数化、Immobile=0）
-///   - 武器タイプ別の重量（暗器は最軽量、強武器ほど重い）
+///   - 重量は各アイテムの weight フィールドをそのまま読む（暗器は軽い／浮雲は負）
 ///   - 拾得ゲート（拾うと重量過多になるか）
 mod TestEncumbrance {
 
     use Encumbrance.Tier
     use Encumbrance.Load
 
-    /// Float64 の近似比較（積載量は 1.3 等の二進非正確な係数を含むため厳密一致は使わない）。
+    /// Float64 の近似比較（積載量は 0.2 等の二進非正確な係数を含むため厳密一致は使わない）。
     def approxEq(actual: Float64, expected: Float64): Bool =
         Float64.abs(actual - expected) < 0.0001
 
@@ -62,30 +62,30 @@ mod TestEncumbrance {
             Encumbrance.effectiveMoveTiles(5, loadWithTier(Tier.Immobile)) :: Nil)
 
     // ──────────────────────────────────────────────
-    // 武器タイプ別の重量
+    // 武器の重量（weight フィールドの読み出し）
     // ──────────────────────────────────────────────
 
-    /// weaponWeight = タイプ基準 + 攻撃力×係数:
-    ///   暗器(atk3)=0.8+0.3=1.1 / 剣(atk5)=1.5+0.75=2.25 / 斧(atk13)=2.5+1.95=4.45。
+    /// weaponWeight は武器の `weight` フィールドをそのまま返す（計算式は使わず JSON 直接指定）。
+    /// 各武器に異なる weight を入れて、その値がそのまま読まれることを確認する。
     @Test
-    def testWeaponWeightByType(): Unit \ Assert =
-        let dagger = TestUnitFixtures.testWeaponWithType(3, WeaponCatalog.WeaponType.Dagger);
-        let sword  = TestUnitFixtures.testWeaponWithType(5, WeaponCatalog.WeaponType.Sword);
-        let axe    = TestUnitFixtures.testWeaponWithType(13, WeaponCatalog.WeaponType.Axe);
+    def testWeaponWeightReadsField(): Unit \ Assert =
+        let light = {weight = 1.3 | TestUnitFixtures.testWeaponWithType(2, WeaponCatalog.WeaponType.Dagger)};
+        let mid   = {weight = 2.5 | TestUnitFixtures.testWeaponWithType(5, WeaponCatalog.WeaponType.Sword)};
+        let heavy = {weight = 5.1 | TestUnitFixtures.testWeaponWithType(13, WeaponCatalog.WeaponType.Axe)};
         let checks =
-            approxEq(Encumbrance.weaponWeight(dagger), 1.1) ::
-            approxEq(Encumbrance.weaponWeight(sword), 2.25) ::
-            approxEq(Encumbrance.weaponWeight(axe), 4.45) :: Nil;
+            approxEq(Encumbrance.weaponWeight(light), 1.3) ::
+            approxEq(Encumbrance.weaponWeight(mid), 2.5) ::
+            approxEq(Encumbrance.weaponWeight(heavy), 5.1) :: Nil;
         Assert.assertEq(expected = true :: true :: true :: Nil, checks)
 
     // ──────────────────────────────────────────────
     // 統合: loadOf（武器2本のみのインベントリ）
     // ──────────────────────────────────────────────
 
-    /// loadOf: 剣(atk5)×2=4.5、体格7力6で capacity 10.2 → ratio<0.8 で Normal。
+    /// loadOf: 剣(weight 2.5)×2=5.0、体格7力6で capacity 10.2 → ratio<0.8 で Normal。
     @Test
     def testLoadOfWeaponsOnly(): Unit \ Assert =
-        let sword = TestUnitFixtures.testWeaponWithType(5, WeaponCatalog.WeaponType.Sword);
+        let sword = {weight = 2.5 | TestUnitFixtures.testWeaponWithType(5, WeaponCatalog.WeaponType.Sword)};
         let inv = {
             weapons     = sword :: sword :: Nil,
             staves      = (Nil : List[Staff.StaffResource]),
@@ -95,7 +95,7 @@ mod TestEncumbrance {
         let load = Encumbrance.loadOf(7, 6, inv);
         Assert.assertEq(
             expected = (true, Tier.Normal),
-            (approxEq(load#total, 4.5), load#tier))
+            (approxEq(load#total, 5.0), load#tier))
 
     // ──────────────────────────────────────────────
     // 拾得ゲート（詰み防止）
@@ -139,7 +139,7 @@ mod TestEncumbrance {
 
     /// 浮雲（負の重量の指輪）だけを持つと素の合計は負になるが、totalWeight は 0 下限クランプ。
     /// これにより「浮雲ガン積みで積載率が負→常時 Normal＋ゲート無効」の退化を防ぐ。
-    /// 浮雲・大(-4.5) は rings.json の effectRule "weight" で表現（実カタログから引く）。
+    /// 浮雲・大(-4.5) は rings.json の `weight` フィールドで表現（実カタログから引く）。
     @Test
     def testFloatCloudClampsTotalToZero(): Unit \ {Assert, Fs.FileRead} =
         let cloud = Ring.lookup("float_cloud_large", Ring.load());

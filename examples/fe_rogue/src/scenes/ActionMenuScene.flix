@@ -420,7 +420,7 @@ mod ActionMenuScene {
     /// 呼び出し側（TurnEndHoldScene）で PlayerCursor / GatherMove のときだけ発火する。
     pub def turnEndShortcut(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State} =
+                              TurnPhase.State, SelectedPlayer.State, GatherResume.State} =
         applyTurnEnd(scene)
 
     /// インベントリのいずれかの武器の射程内に生きている敵が居るか。
@@ -464,7 +464,7 @@ mod ActionMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                PlayerData.PartyQuery,
+                GatherResume.State, PlayerData.PartyQuery,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
         match entry#metadata {
             case None    => scene
@@ -547,8 +547,10 @@ mod ActionMenuScene {
     /// （ターン確定の単一所有者）に委譲する。`EnemyTurnDriverScene` の強制全員待機と共通の入口。
     def applyTurnEnd(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State} =
-        TurnFlow.commitAllWaitedAndAdvance(scene)
+                              TurnPhase.State, SelectedPlayer.State, GatherResume.State} =
+        // 自発確定（メニュー「全員待機/ターンエンド」・shift スキップ・階段離脱の残存待機）は allowResume=true。
+        // 集合中(gatherActive=true)のときだけ実際に resume が立つ（commitAllWaitedAndAdvance 側で AND）。
+        TurnFlow.commitAllWaitedAndAdvance(true, scene)
 
     /// 「ひろう」確定の本体。床アイテムを取得してインベントリに加え、
     /// ログを出して ActionSelect フェーズに留まる。
@@ -737,7 +739,7 @@ mod ActionMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                PlayerData.PartyQuery,
+                GatherResume.State, PlayerData.PartyQuery,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             // disabled 項目（例: 敵が射程外の「攻撃」）は確定しても何もしない。

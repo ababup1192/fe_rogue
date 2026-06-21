@@ -24,6 +24,7 @@ mod TestWeaponCatalog {
         hit        = 70,
         crit       = 0,
         durability = 41,
+        weight     = 3.4,
         range      = ({min = 1, max = 1}: WeaponRange),
         weaponType = WeaponType.Lance,
         effect      = WeaponCatalog.WeaponEffect.NoEffect,

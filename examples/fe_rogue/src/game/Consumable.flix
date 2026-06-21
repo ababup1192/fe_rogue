@@ -77,6 +77,8 @@ mod Consumable {
         duration    = Int32,
         healAmount  = Int32,
         durability  = Int32,
+        // 重量（積載に効く）。JSON で直接指定する設計値。省略時は decoder が 0.5 を埋める。
+        weight      = Float64,
         sprite      = SpriteResource,
         description = String,
         // IDE の効果合成エディタが書く効果ルール（簡易形式 JSON）。あれば legacy effect より優先して
@@ -189,7 +191,7 @@ mod Consumable {
     pub def bottle(effect: ConsumableEffect, magnitude: Int32, duration: Int32,
                     name: String): ConsumableResource =
         {name = name, effect = effect, magnitude = magnitude, duration = duration,
-         healAmount = 0, durability = 1,
+         healAmount = 0, durability = 1, weight = 1.0,
          sprite = ({texture = "item_icons", hframes = 16, vframes = 39, frame = 0,
                      offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0},
                      flipForFacing = false}: SpriteResource),
@@ -199,7 +201,7 @@ mod Consumable {
     /// Set で持つことで load 時に JSON フィールドの追加漏れ・typo を検出できる。
     pub def expectedFields(): Set[String] =
         Set#{"name", "effect", "magnitude", "duration",
-             "healAmount", "durability", "sprite", "description", "effectRule"}
+             "healAmount", "durability", "weight", "sprite", "description", "effectRule"}
 
     // ────────────────────────────────────────────────────────
     // 蘇生（AutoRevive）の純粋判定
@@ -260,7 +262,7 @@ mod ConsumableCatalogCodec {
 
     use Util.Json.Json
     use Util.Json.Json.{JObject, JString, JNumber}
-    use JsonCodec.{expectObject, expectString, expectInt, intToBd}
+    use JsonCodec.{expectObject, expectString, expectInt, expectFloat, floatToBd, intToBd}
     use Consumable.ConsumableResource
     use Sprite.SpriteResource
 
@@ -272,6 +274,7 @@ mod ConsumableCatalogCodec {
             "duration"    => JNumber(intToBd(item#duration)),
             "healAmount"  => JNumber(intToBd(item#healAmount)),
             "durability"  => JNumber(intToBd(item#durability)),
+            "weight"      => JNumber(floatToBd(item#weight)),
             "sprite"      => encodeSprite(item#sprite),
             "description" => JString(item#description)
         };
@@ -317,8 +320,11 @@ mod ConsumableCatalogCodec {
                         |> Option.getWithDefault("");
             // effectRule（IDE 合成エディタが書く効果ルール）はあれば生 Json のまま保持。
             let effectRule = Map.get("effectRule", obj);
+            // weight (重量) は省略可。欠落時は 0.5 (後方互換)。
+            let weight = Map.get("weight", obj)
+                        |> Option.flatMap(expectFloat) |> Option.getWithDefault(0.5);
             ({name = name, effect = effect, magnitude = mag, duration = dura,
-               healAmount = heal, durability = dur,
+               healAmount = heal, durability = dur, weight = weight,
                sprite = sprite, description = desc, effectRule = effectRule}: ConsumableResource)
         }
 

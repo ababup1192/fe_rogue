@@ -195,7 +195,8 @@ mod TurnEndHoldScene {
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, GameEngine.Audio, GameLogger.GameLogger,
-                       EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
+                       EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                       GatherResume.State} =
         match node {
             case EngineNode.CanvasLayerWithState(_, NodeTag.HoldGauge(data)) =>
                 let phase = TurnPhase.State.get();

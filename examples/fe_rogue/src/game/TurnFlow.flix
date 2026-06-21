@@ -53,13 +53,19 @@ mod TurnFlow {
     /// 強制全員待機（敵に見つかったとき）の共通入口。`commitWaitedAndAdvance` と違い `anyPendingLevelUp`
     /// 割り込みは持たない（全員待機が走る局面では戦闘起因のレベルアップ保留が存在しないため。
     /// 個別経路 `commitWaitedAndAdvance` は割り込みを保持する非対称だが、いずれも実害なし＝意図的）。
-    pub def commitAllWaitedAndAdvance(scene: Scene[NodeTag]):
+    /// `allowResume`: 集合中の **自発的** な全員待機（メニュー「全員待機」/ shift スキップ / ターンエンド）
+    /// なら true。集合移動中に敵へ接敵して起きる **強制** 全員待機は false を渡し、次ターンの集合自動継続
+    /// （`GatherResume`）を立てない（接敵直後に集合再突入→即強制待機のループを構造的に断つ）。
+    /// 自発でも `gatherActive=false`（集合外の shift スキップ等）なら resume は立たない。
+    pub def commitAllWaitedAndAdvance(allowResume: Bool, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State} =
+                              TurnPhase.State, SelectedPlayer.State, GatherResume.State} =
+        let resume = allowResume and SelectedPlayer.State.get()#gatherActive;
         let ids = PlayerScene.getAll(scene)
                     |> List.filter(d -> not d#waited)
                     |> List.map(d -> d#id);
         let afterWait = List.foldLeft((sc, id) -> PlayerScene.setWaited(id, sc), scene, ids);
+        GatherResume.State.put(resume);
         SelectedPlayer.State.put(SelectedPlayer.cleared());
         EnemyTurnDriverScene.beginTurn(afterWait)
 }

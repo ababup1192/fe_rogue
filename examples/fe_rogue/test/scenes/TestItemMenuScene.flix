@@ -37,6 +37,7 @@ mod TestItemMenuScene {
         name       = "テスト杖",
         effect     = Staff.StaffEffect.Heal,
         durability = 3,
+        weight     = 0.75,
         sprite     = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                         offset = {x = 0.0, y = 0.0},
                         scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
@@ -245,7 +246,7 @@ mod TestItemMenuScene {
     /// 武器選択中 → 「装備 / 捨てる」
     @Test
     def testActionItemsForWeapon(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Weapon(0)), false, false);
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Weapon(0)), false, false, false);
         Assert.assertEq(
             expected = "装備" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -253,7 +254,7 @@ mod TestItemMenuScene {
     /// 杖選択中 → 「使う / 捨てる」
     @Test
     def testActionItemsForStaff(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Staff(1)), false, false);
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Staff(1)), false, false, false);
         Assert.assertEq(
             expected = "使う" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -261,7 +262,7 @@ mod TestItemMenuScene {
     /// 消費アイテム選択中 → 「使う / 捨てる」（杖と同じ）
     @Test
     def testActionItemsForConsumable(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Consumable(2)), false, false);
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Consumable(2)), false, false, false);
         Assert.assertEq(
             expected = "使う" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -269,7 +270,7 @@ mod TestItemMenuScene {
     /// 未装備の指輪を選択中 → 「装備 / 投げる / 捨てる」（拾っただけは装備されない）
     @Test
     def testActionItemsForRingUnequipped(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(0)), false, false);
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(0)), false, false, false);
         Assert.assertEq(
             expected = "装備" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -277,7 +278,7 @@ mod TestItemMenuScene {
     /// 装備中の指輪（先頭 + ringEquipped=true）を選択中 → 「外す」に変わる
     @Test
     def testActionItemsForRingEquipped(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(0)), true, false);
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(0)), true, false, false);
         Assert.assertEq(
             expected = "外す" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -285,7 +286,7 @@ mod TestItemMenuScene {
     /// ringEquipped=true でも先頭以外の指輪（idx=1）は装備中ではない → 「装備」のまま
     @Test
     def testActionItemsForRingNonHeadStillEquip(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(1)), true, false);
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(1)), true, false, false);
         Assert.assertEq(
             expected = "装備" :: "投げる" :: "捨てる" :: Nil,
             List.map(e -> e#text, items))
@@ -293,17 +294,25 @@ mod TestItemMenuScene {
     /// 未選択 → 空（サブメニューを出さない）
     @Test
     def testActionItemsForNone(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(None, false, false);
+        let items = ItemMenuScene.actionItemsFor(None, false, false, false);
         Assert.assertEq(expected = 0, List.length(items))
 
     /// 複数選択（bulkMode=true）中は「捨てる」だけ有効、他は disabled。
     @Test
     def testActionItemsForBulkOnlyDropEnabled(): Unit \ Assert =
-        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Weapon(0)), false, true);
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Weapon(0)), false, true, false);
         let states = List.map(e -> (e#text, e#disabled), items);
         Assert.assertEq(
             expected = ("装備", true) :: ("投げる", true) :: ("捨てる", false) :: Nil,
             states)
+
+    /// 「持つだけ」系（浮雲 = holdOnly）の指輪は装備も投げるも出ず「捨てる」だけ。
+    @Test
+    def testActionItemsForHoldOnly(): Unit \ Assert =
+        let items = ItemMenuScene.actionItemsFor(Some(PlayerData.ItemKind.Ring(0)), false, false, true);
+        Assert.assertEq(
+            expected = "捨てる" :: Nil,
+            List.map(e -> e#text, items))
 
     // ════════════════════════════════════════════════════════
     // parseItemKind: metadata 文字列 → ItemKind（純粋）
@@ -350,7 +359,7 @@ mod TestItemMenuScene {
     def testConsumableSubline(): Unit \ Assert =
         let potion = ({name = "きずぐすり",
                         effect = Consumable.ConsumableEffect.Heal, magnitude = 10, duration = 0,
-                        healAmount = 10, durability = 3,
+                        healAmount = 10, durability = 3, weight = 0.5,
                         sprite = testStaff()#sprite, description = "", effectRule = None}:
                         Consumable.ConsumableResource);
         Assert.assertEq(

@@ -178,26 +178,6 @@
           "percent": 1
         },
         {
-          "id": "kunai",
-          "percent": 5
-        },
-        {
-          "id": "shuriken",
-          "percent": 5
-        },
-        {
-          "id": "throwing_knife",
-          "percent": 5
-        },
-        {
-          "id": "makibishi",
-          "percent": 4
-        },
-        {
-          "id": "poison_needle",
-          "percent": 4
-        },
-        {
           "id": "float_cloud_small",
           "percent": 2
         },
@@ -208,6 +188,14 @@
         {
           "id": "float_cloud_large",
           "percent": 1
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 9
+        },
+        {
+          "id": "knife",
+          "percent": 3
         }
       ],
       "itemsPerRoom": {
@@ -461,26 +449,6 @@
           "percent": 1
         },
         {
-          "id": "kunai",
-          "percent": 5
-        },
-        {
-          "id": "shuriken",
-          "percent": 5
-        },
-        {
-          "id": "throwing_knife",
-          "percent": 5
-        },
-        {
-          "id": "makibishi",
-          "percent": 4
-        },
-        {
-          "id": "poison_needle",
-          "percent": 4
-        },
-        {
           "id": "float_cloud_small",
           "percent": 2
         },
@@ -491,6 +459,14 @@
         {
           "id": "float_cloud_large",
           "percent": 1
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 9
+        },
+        {
+          "id": "knife",
+          "percent": 4
         }
       ],
       "itemsPerRoom": {
@@ -744,26 +720,6 @@
           "percent": 1
         },
         {
-          "id": "kunai",
-          "percent": 5
-        },
-        {
-          "id": "shuriken",
-          "percent": 5
-        },
-        {
-          "id": "throwing_knife",
-          "percent": 5
-        },
-        {
-          "id": "makibishi",
-          "percent": 4
-        },
-        {
-          "id": "poison_needle",
-          "percent": 4
-        },
-        {
           "id": "float_cloud_small",
           "percent": 2
         },
@@ -774,6 +730,14 @@
         {
           "id": "float_cloud_large",
           "percent": 1
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 7
+        },
+        {
+          "id": "knife",
+          "percent": 6
         }
       ],
       "itemsPerRoom": {
@@ -1055,26 +1019,6 @@
           "percent": 1
         },
         {
-          "id": "kunai",
-          "percent": 5
-        },
-        {
-          "id": "shuriken",
-          "percent": 5
-        },
-        {
-          "id": "throwing_knife",
-          "percent": 5
-        },
-        {
-          "id": "makibishi",
-          "percent": 4
-        },
-        {
-          "id": "poison_needle",
-          "percent": 4
-        },
-        {
           "id": "float_cloud_small",
           "percent": 2
         },
@@ -1085,6 +1029,14 @@
         {
           "id": "float_cloud_large",
           "percent": 1
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 6
+        },
+        {
+          "id": "knife",
+          "percent": 7
         }
       ],
       "itemsPerRoom": {
@@ -1414,26 +1366,6 @@
           "percent": 1
         },
         {
-          "id": "kunai",
-          "percent": 5
-        },
-        {
-          "id": "shuriken",
-          "percent": 5
-        },
-        {
-          "id": "throwing_knife",
-          "percent": 5
-        },
-        {
-          "id": "makibishi",
-          "percent": 4
-        },
-        {
-          "id": "poison_needle",
-          "percent": 4
-        },
-        {
           "id": "float_cloud_small",
           "percent": 2
         },
@@ -1444,6 +1376,18 @@
         {
           "id": "float_cloud_large",
           "percent": 1
+        },
+        {
+          "id": "throwing_knife",
+          "percent": 4
+        },
+        {
+          "id": "knife",
+          "percent": 8
+        },
+        {
+          "id": "steel_knife",
+          "percent": 3
         }
       ],
       "itemsPerRoom": {
@@ -1777,26 +1721,6 @@
           "percent": 1
         },
         {
-          "id": "kunai",
-          "percent": 5
-        },
-        {
-          "id": "shuriken",
-          "percent": 5
-        },
-        {
-          "id": "throwing_knife",
-          "percent": 5
-        },
-        {
-          "id": "makibishi",
-          "percent": 4
-        },
-        {
-          "id": "poison_needle",
-          "percent": 4
-        },
-        {
           "id": "float_cloud_small",
           "percent": 2
         },
@@ -1807,6 +1731,14 @@
         {
           "id": "float_cloud_large",
           "percent": 1
+        },
+        {
+          "id": "knife",
+          "percent": 8
+        },
+        {
+          "id": "steel_knife",
+          "percent": 5
         }
       ],
       "itemsPerRoom": {
@@ -2148,26 +2080,6 @@
           "percent": 1
         },
         {
-          "id": "kunai",
-          "percent": 5
-        },
-        {
-          "id": "shuriken",
-          "percent": 5
-        },
-        {
-          "id": "throwing_knife",
-          "percent": 5
-        },
-        {
-          "id": "makibishi",
-          "percent": 4
-        },
-        {
-          "id": "poison_needle",
-          "percent": 4
-        },
-        {
           "id": "float_cloud_small",
           "percent": 2
         },
@@ -2178,6 +2090,14 @@
         {
           "id": "float_cloud_large",
           "percent": 1
+        },
+        {
+          "id": "knife",
+          "percent": 7
+        },
+        {
+          "id": "steel_knife",
+          "percent": 6
         }
       ],
       "itemsPerRoom": {
@@ -2523,26 +2443,6 @@
           "percent": 1
         },
         {
-          "id": "kunai",
-          "percent": 5
-        },
-        {
-          "id": "shuriken",
-          "percent": 5
-        },
-        {
-          "id": "throwing_knife",
-          "percent": 5
-        },
-        {
-          "id": "makibishi",
-          "percent": 4
-        },
-        {
-          "id": "poison_needle",
-          "percent": 4
-        },
-        {
           "id": "float_cloud_small",
           "percent": 2
         },
@@ -2553,6 +2453,14 @@
         {
           "id": "float_cloud_large",
           "percent": 1
+        },
+        {
+          "id": "knife",
+          "percent": 5
+        },
+        {
+          "id": "steel_knife",
+          "percent": 8
         }
       ],
       "itemsPerRoom": {
@@ -2906,26 +2814,6 @@
           "percent": 1
         },
         {
-          "id": "kunai",
-          "percent": 5
-        },
-        {
-          "id": "shuriken",
-          "percent": 5
-        },
-        {
-          "id": "throwing_knife",
-          "percent": 5
-        },
-        {
-          "id": "makibishi",
-          "percent": 4
-        },
-        {
-          "id": "poison_needle",
-          "percent": 4
-        },
-        {
           "id": "float_cloud_small",
           "percent": 2
         },
@@ -2936,6 +2824,14 @@
         {
           "id": "float_cloud_large",
           "percent": 1
+        },
+        {
+          "id": "knife",
+          "percent": 4
+        },
+        {
+          "id": "steel_knife",
+          "percent": 9
         }
       ],
       "itemsPerRoom": {
@@ -3289,26 +3185,6 @@
           "percent": 1
         },
         {
-          "id": "kunai",
-          "percent": 5
-        },
-        {
-          "id": "shuriken",
-          "percent": 5
-        },
-        {
-          "id": "throwing_knife",
-          "percent": 5
-        },
-        {
-          "id": "makibishi",
-          "percent": 4
-        },
-        {
-          "id": "poison_needle",
-          "percent": 4
-        },
-        {
           "id": "float_cloud_small",
           "percent": 2
         },
@@ -3319,6 +3195,14 @@
         {
           "id": "float_cloud_large",
           "percent": 1
+        },
+        {
+          "id": "knife",
+          "percent": 3
+        },
+        {
+          "id": "steel_knife",
+          "percent": 10
         }
       ],
       "itemsPerRoom": {

@@ -6,7 +6,7 @@
 ///   3. `wouldOverloadByPicking`: 重い物を拾うと過多になる／軽い物なら大丈夫、を直値で押さえる
 ///
 /// テスト用 resource（`testResource`）は 体格 6・力 3 → 最大積載量 8.6（=6×1.0+3×0.2+2.0）。
-/// テスト用武器（`testWeapon`）は 剣・力 2 → 重量 1.8（=1.5+2×0.15）。
+/// テスト用武器（`testWeapon`）は 剣・力 2 → 重量 1.9（=1.5+2×0.2）。
 mod TestInventoryCapacity {
 
     // ════════════════════════════════════════════════════════
@@ -21,6 +21,7 @@ mod TestInventoryCapacity {
         duration   = 0,
         healAmount = 10,
         durability = 3,
+        weight     = 0.5,
         sprite     = testSprite(),
         description = "",
         effectRule = None
@@ -66,29 +67,29 @@ mod TestInventoryCapacity {
     // isInventoryFull: 重量過多(110%+)でのみ true
     // ════════════════════════════════════════════════════════
 
-    /// 最大積載量 8.6 に対し、剣 5 本 = 9.0（積載 105% = 重量オーバーだが移動可）では
-    /// まだ「いっぱい」ではなく、剣 6 本 = 10.8（積載 126% = 重量過多）で「いっぱい」になる。
+    /// 最大積載量 8.6 に対し、剣 4 本 = 7.6（積載 88% = 軽量超過だが移動可）では
+    /// まだ「いっぱい」ではなく、剣 5 本 = 9.5（積載 110%超 = 重量過多）で「いっぱい」になる。
     @Test
     def testFullOnlyWhenImmobile(): Unit \ Assert =
+        let fourWeapons = makeData(TestUnitFixtures.testResource(4, 10), 4);
         let fiveWeapons = makeData(TestUnitFixtures.testResource(4, 10), 5);
-        let sixWeapons  = makeData(TestUnitFixtures.testResource(4, 10), 6);
         Assert.assertEq(
             expected = (false, true),
-            (PlayerScene.isInventoryFull(fiveWeapons),
-             PlayerScene.isInventoryFull(sixWeapons)))
+            (PlayerScene.isInventoryFull(fourWeapons),
+             PlayerScene.isInventoryFull(fiveWeapons)))
 
     // ════════════════════════════════════════════════════════
     // wouldOverloadByPicking: 拾うと過多になるか（詰み防止ゲート）
     // ════════════════════════════════════════════════════════
 
-    /// 剣 3 本 = 5.4（積載 63%、最大 8.6）の状態で、
-    ///   - 斧(力13)=4.45 を拾うと 9.85 / 8.6 = 115% → 過多になる(true)
-    ///   - きずぐすり=0.5 を拾うと 5.9 / 8.6 = 69% → 過多にならない(false)
+    /// 剣(weight 1.9) 3 本 = 5.7（積載 66%、最大 8.6）の状態で、
+    ///   - 重い斧(weight 5.1)を拾うと 10.8 / 8.6 = 126% → 過多になる(true)
+    ///   - きずぐすり=0.5 を拾うと 6.2 / 8.6 = 72% → 過多にならない(false)
     @Test
     def testWouldOverloadByPicking(): Unit \ Assert =
         let player = makeData(TestUnitFixtures.testResource(4, 10), 3);
         let heavyAxe = ItemData.GroundItemKind.WeaponItem(
-            TestUnitFixtures.testWeaponWithType(13, WeaponCatalog.WeaponType.Axe));
+            {weight = 5.1 | TestUnitFixtures.testWeaponWithType(13, WeaponCatalog.WeaponType.Axe)});
         let lightPotion = ItemData.GroundItemKind.ConsumableItem(testConsumable());
         Assert.assertEq(
             expected = (true, false),

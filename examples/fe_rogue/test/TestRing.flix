@@ -12,7 +12,7 @@ mod TestRing {
 
     /// effect と power だけ変えたテスト用指輪。sprite/name/description は固定ダミー。
     def ring(effect: RingEffect, power: Int32): Ring.RingResource =
-        {name = "テスト指輪", effect = effect, power = power,
+        {name = "テスト指輪", effect = effect, power = power, weight = 0.4,
          description = "",
          sprite = {texture = "t", hframes = 1, vframes = 1, frame = 0,
                    offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false}, effectRule = None}

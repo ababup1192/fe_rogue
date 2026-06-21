@@ -419,7 +419,7 @@ mod TestPlayerScene {
         let fx = loadTestCatalogs();
         let potion = ({name = "きずぐすり",
                         effect = Consumable.ConsumableEffect.Heal, magnitude = 10, duration = 0,
-                        healAmount = 10, durability = 3,
+                        healAmount = 10, durability = 3, weight = 0.5,
                         sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                                     offset = {x = 0.0, y = 0.0},
                                     scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
@@ -707,6 +707,7 @@ mod TestPlayerScene {
         name        = name,
         effect      = Ring.RingEffect.Trivial,
         power       = 0,
+        weight      = 0.4,
         sprite      = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                         offset = {x = 0.0, y = 0.0},
                         scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),

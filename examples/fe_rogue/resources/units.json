@@ -408,11 +408,11 @@
       "hp": 16,
       "initialInventory": [
         {
-          "id": "bronze_sword",
+          "id": "throwing_knife",
           "kind": "weapon"
         },
         {
-          "id": "bronze_bow",
+          "id": "bronze_sword",
           "kind": "weapon"
         },
         {
@@ -427,7 +427,6 @@
       "moveTiles": 6,
       "proficientWeaponTypes": [
         "Sword",
-        "Bow",
         "Dagger"
       ],
       "skill": 7,

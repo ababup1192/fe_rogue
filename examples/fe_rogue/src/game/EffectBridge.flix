@@ -183,6 +183,9 @@ mod EffectBridge {
                          Some(Flow.FollowUp(FollowKind.Pursuit)))
             case RingEffect.Trivial   =>
                 fullRule(Trigger.OnEquip, Pred.AllOf(Nil), 100, Nil, None)
+            // 浮雲。装備されない「持つだけ」系なので効果ルールは無し（Trivial と同じ no-op）。
+            case RingEffect.Levitate  =>
+                fullRule(Trigger.OnEquip, Pred.AllOf(Nil), 100, Nil, None)
         }
 
     /// 投擲対象（throw・ray 最初の1体・陣営無視）の 1 アクション。

@@ -68,6 +68,17 @@
       "zIndex": 3
     },
     {
+      "type": "Label2D",
+      "name": "gatherLabel",
+      "pos": [120, 3.75],
+      "fontSize": 2.8,
+      "horizontalAlignment": "center",
+      "verticalAlignment": "center",
+      "text": "集合中",
+      "modulate": { "r": 1.0, "g": 0.85, "b": 0.4 },
+      "zIndex": 3
+    },
+    {
       "type": "Panel",
       "name": "phaseDot",
       "pos": [180, 3.0],

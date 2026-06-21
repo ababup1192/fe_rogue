@@ -45,6 +45,10 @@ mod GameLifecycle {
         Scene.empty()
             |> MapScene.add(floor)
             |> FogScene.add             // 各 module の薄暗いモヤ矩形 + 常駐 FogDriver
+            // ↑ FogDriver は EnemyTurnDriver より先に追加する（preorder で同フレーム先に process される）。
+            //   EnemyTurnDriverScene.endTurn の集合自動継続判定 anyVisibleEnemy が「同フレーム最新の
+            //   フォグ可視（applyFog 適用後）」を読めるのはこの add 順前提。順序を入れ替えると 1 フレーム
+            //   古い可視値で判定してしまうので注意。
             |> DamagePopupScene.add     // World 配下に空の Marker2D 親を 1 つ生やす
             |> ExplosionScene.add       // 爆発エフェクト用の空 Marker2D 親（火炎瓶/爆発瓶/魔法着弾）
             |> PlayerScene.add(catalogs#players, catalogs#staves, catalogs#consumables)

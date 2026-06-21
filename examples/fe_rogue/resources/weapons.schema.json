@@ -240,6 +240,20 @@
         "label": "属性",
         "order": 2
       }
+    },
+    "weight": {
+      "field": {
+        "ftype": "float",
+        "hint": {
+          "slider": {
+            "max": 10,
+            "min": 0,
+            "step": 0.1
+          }
+        },
+        "label": "重量",
+        "order": 5
+      }
     }
   }
 }

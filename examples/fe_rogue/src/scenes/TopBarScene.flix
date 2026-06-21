@@ -44,6 +44,7 @@ mod TopBarScene {
     def phaseDotName(): String = "phaseDot"
     def phaseJpName(): String = "phaseJp"
     def phaseEnName(): String = "phaseEn"
+    def gatherLabelName(): String = "gatherLabel"
 
     def rootPath(): NodePath = rootName() :: Nil
     def bandPath(): NodePath = rootName() :: bandName() :: Nil
@@ -55,6 +56,7 @@ mod TopBarScene {
     def phaseDotPath(): NodePath = rootName() :: phaseDotName() :: Nil
     def phaseJpPath(): NodePath = rootName() :: phaseJpName() :: Nil
     def phaseEnPath(): NodePath = rootName() :: phaseEnName() :: Nil
+    def gatherLabelPath(): NodePath = rootName() :: gatherLabelName() :: Nil
 
     def fontName(): String = "ui"
     def sceneJsonPath(): String = AssetPath.resolve("src/scenes/TopBarScene.scene.json")
@@ -96,6 +98,7 @@ mod TopBarScene {
                                        SceneLoader.constTagParser(NodeTag.NoTag), scene)
             |> Label2D.mapAt(floorNumPath(), Label2D.setText(floorLabel))
             |> Label2D.mapAt(floorNamePath(), Label2D.setText(floorName))
+            |> Label2D.mapAt(gatherLabelPath(), CanvasItem.setVisible(false))  // 集合中のみ process で表示
             |> Scene.setState(rootPath(),
                 NodeTag.TopBar(({shown = None, animTarget = None,
                                  anim = Duration.zero(), hold = Duration.zero()}: Data)))
@@ -175,12 +178,21 @@ mod TopBarScene {
                             }
                         }
                 };
-                match Scene.getEngineNode(path, next) {
-                    case Some(latest) => (latest, next)
-                    case None         => (node, next)
+                // 集合(GatherMove)中だけ中央に「集合中」を表示。viewport 実幅の中央へ毎フレーム再配置。
+                let next2 = next |> applyGatherLabel(phase == TurnPhase.Phase.GatherMove, w);
+                match Scene.getEngineNode(path, next2) {
+                    case Some(latest) => (latest, next2)
+                    case None         => (node, next2)
                 }
             case _ => (node, scene)
         }
+
+    /// 中央「集合中」ラベルを viewport 実幅の中央へ置き、集合中のみ可視にする。
+    def applyGatherLabel(visible: Bool, w: Float64, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> Label2D.mapAt(gatherLabelPath(), l ->
+                l |> Node2D.setPosition({x = w / 2.0, y = rowCenterY()})
+                  |> CanvasItem.setVisible(visible))
 
     /// 帯/下線/ドット/文字を `baseEnemy` 色に、sweep を `sweepTarget`（あれば）色で幅 w*progress に。
     def applyAll(w: Float64, baseEnemy: Bool, sweepTarget: Option[Bool], progress: Float64,

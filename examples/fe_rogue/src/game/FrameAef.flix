@@ -28,6 +28,7 @@ mod FrameAef {
                                 Tween.Scheduler, AnimationPlayer.Scheduler,
                                 GameLogger.GameLogger,
                                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                                GatherResume.State,
                                 CustomEffects.GameOverRequest,
                                 CustomEffects.FloorAdvanceRequest,
                                 CustomEffects.WandererSpawnRequest,

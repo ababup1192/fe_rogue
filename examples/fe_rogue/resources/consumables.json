@@ -3,6 +3,7 @@
     "blast_bottle": {
       "description": "中で何かが渦巻く危うい瓶。投げれば周囲を巻き込んで炸裂する",
       "durability": 1,
+      "weight": 1.0,
       "duration": 0,
       "effect": "BlastBottle",
       "healAmount": 0,
@@ -18,6 +19,7 @@
     "blind_potion": {
       "description": "鼻を突く刺激臭。投げつければ相手は涙でしばらく前が見えない",
       "durability": 3,
+      "weight": 1.0,
       "duration": 5,
       "effect": "BlindHit",
       "effectRule": {
@@ -43,6 +45,7 @@
     "elixir": {
       "description": "舌に染みる薬草の苦み。だが効き目は折り紙つき、生気がよみがえる",
       "durability": 1,
+      "weight": 0.5,
       "duration": 0,
       "effect": "FullHeal",
       "effectRule": {
@@ -68,6 +71,7 @@
     "fire_bottle": {
       "description": "ゆらめく油を詰めた瓶。砕け散れば、一瞬で火柱が立ちのぼる",
       "durability": 1,
+      "weight": 1.0,
       "duration": 0,
       "effect": "FireBottle",
       "effectRule": {
@@ -93,6 +97,7 @@
     "great_vulnerary": {
       "description": "濃厚でとろりとした飲み口。一本で深手もぐっと楽になる、頼れる一品",
       "durability": 2,
+      "weight": 0.5,
       "duration": 0,
       "effect": "Heal",
       "effectRule": {
@@ -118,6 +123,7 @@
     "life_herb": {
       "description": "噛むほどに力が湧く不思議な葉。体の芯がひと回り太くなる気がする",
       "durability": 1,
+      "weight": 0.5,
       "duration": 0,
       "effect": "MaxHpUp",
       "effectRule": {
@@ -143,6 +149,7 @@
     "power_potion": {
       "description": "ピリッと辛い刺激が腕に走る。しばらく拳に自信がみなぎる",
       "durability": 2,
+      "weight": 0.5,
       "duration": 3,
       "effect": "AtkUp",
       "effectRule": {
@@ -168,6 +175,7 @@
     "revival_drug": {
       "description": "禁断の香りがする赤い雫。倒れても、もう一度立ち上がれるという",
       "durability": 1,
+      "weight": 0.5,
       "duration": 0,
       "effect": "AutoRevive",
       "effectRule": {
@@ -193,6 +201,7 @@
     "slow_potion": {
       "description": "とろみのある液体。浴びた者の足は、ぬかるみのように重くなる",
       "durability": 1,
+      "weight": 1.0,
       "duration": 5,
       "effect": "SpdDownHit",
       "effectRule": {
@@ -218,6 +227,7 @@
     "speed_potion": {
       "description": "炭酸のように弾ける飲み心地。足取りがやけに軽くなる",
       "durability": 1,
+      "weight": 0.5,
       "duration": 3,
       "effect": "SpdUp",
       "effectRule": {
@@ -243,6 +253,7 @@
     "tear_potion": {
       "description": "金属を蝕む酸のにおい。鎧の継ぎ目をじわりと緩ませる",
       "durability": 3,
+      "weight": 1.0,
       "duration": 3,
       "effect": "DefDownHit",
       "effectRule": {
@@ -268,6 +279,7 @@
     "vulnerary": {
       "description": "意外とフレッシュで果実のような味わい。傷もご機嫌も、ほどよく癒える",
       "durability": 3,
+      "weight": 0.5,
       "duration": 0,
       "effect": "Heal",
       "effectRule": {

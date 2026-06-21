@@ -141,7 +141,7 @@ mod StairsExitScene {
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                       CustomEffects.FloorAdvanceRequest} =
+                       GatherResume.State, CustomEffects.FloorAdvanceRequest} =
         match node {
             case EngineNode.Marker2DWithState(_, NodeTag.StairsExitDriver(data)) =>
                 let next = match TurnPhase.State.get() {
@@ -160,7 +160,7 @@ mod StairsExitScene {
     def stepOnce(data: Data, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-               CustomEffects.FloorAdvanceRequest} =
+               GatherResume.State, CustomEffects.FloorAdvanceRequest} =
         if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
         else if (EnemyScene.anyAttacking(scene)) scene
@@ -180,7 +180,7 @@ mod StairsExitScene {
                       scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-               CustomEffects.FloorAdvanceRequest} =
+               GatherResume.State, CustomEffects.FloorAdvanceRequest} =
         match data#queue {
             case Nil              => finalize(scene)
             case (u, rem) :: rest =>
@@ -216,7 +216,7 @@ mod StairsExitScene {
     /// 全員退場できたら次フロア、残れば敵ターンへ。driver の queue は空に戻す。
     def finalize(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-               SelectedPlayer.State, CustomEffects.FloorAdvanceRequest} =
+               SelectedPlayer.State, GatherResume.State, CustomEffects.FloorAdvanceRequest} =
         let cleared = setState(initialData(), scene);
         if (PlayerScene.allLivingUsedStairs(cleared))
             CustomEffects.FloorAdvanceRequest.advance(cleared)

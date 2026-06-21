@@ -50,7 +50,7 @@ mod EnemyTurnDriverScene {
                     \ {GameEngine.Game,
                         Tween.Scheduler, AnimationPlayer.Scheduler,
                         GameLogger.GameLogger, EnemyTurn.Queue,
-                        TurnPhase.State, SelectedPlayer.State,
+                        TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                         Pacing.State, PlayerData.PartyQuery, Math.Random,
                         CustomEffects.WandererSpawnRequest,
                         CustomEffects.RingTransformRequest,
@@ -75,7 +75,9 @@ mod EnemyTurnDriverScene {
                 else scene
             case TurnPhase.Phase.GatherMove =>
                 if (anyPlayerSliding(scene)) scene
-                else if (bumpedDarkRoomEnemy(scene)) TurnFlow.commitAllWaitedAndAdvance(scene)
+                // 強制全員待機（接敵）は allowResume=false: 次ターンの集合自動継続を立てない
+                // （接敵直後に集合再突入→即強制待機のループを断つ）。
+                else if (bumpedDarkRoomEnemy(scene)) TurnFlow.commitAllWaitedAndAdvance(false, scene)
                 else scene
             case _                                 => scene
         };
@@ -159,7 +161,7 @@ mod EnemyTurnDriverScene {
             \ {GameEngine.Game,
                 Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State,
+                TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                 Pacing.State, PlayerData.PartyQuery, Math.Random,
                 CustomEffects.WandererSpawnRequest,
                 CustomEffects.RingTransformRequest,
@@ -453,7 +455,7 @@ mod EnemyTurnDriverScene {
     def endTurn(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, TurnPhase.State,
-                SelectedPlayer.State, PlayerData.PartyQuery,
+                SelectedPlayer.State, GatherResume.State, PlayerData.PartyQuery,
                 CustomEffects.WandererSpawnRequest} =
         GameLogger.endTurn();
         // 敵ターンが 1 巡終わった節目に湧きクロックを進める（試練型の部屋湧きを試みる）。
@@ -463,6 +465,14 @@ mod EnemyTurnDriverScene {
             |> PlayerScene.clearAllWaited        // 全員アクティブに戻す
             |> PlayerScene.resetAllMoveStepsTaken;
         GameLogger.playerLog("味方のターン");
+        // 集合モードのターン跨ぎ自動継続: 前ターンに集合中の全員待機で閉じ(resume)、主人公が
+        // 健在で、フォグで見えている敵が 1 体もいなければ、カーソルを出さず集合へ自動再突入する。
+        // resume は必ず消費（毎ターン再評価）。
+        let resume = GatherResume.State.get();
+        GatherResume.State.put(false);
+        if (shouldResumeGather(resume, lordReadyToGather(reset), anyVisibleEnemy(reset)))
+            PlayerScene.beginGather(reset)
+        else
         // カーソル/カメラの初期スナップ先は `reset`(=clearAllWaited 後)から直接求める。
         // `enterPlayerCursor` の PartyQuery フォールバックはフレーム冒頭 snapshot を読むため、
         // 同フレームの clearAllWaited が反映されず active が空 → id=0 へフォールバックする。
@@ -472,5 +482,24 @@ mod EnemyTurnDriverScene {
             case Some(next) => PhaseTransitions.enterPlayerCursorAt(next#gridPos, reset)
             case None       => PhaseTransitions.enterPlayerCursor(reset)
         }
+
+    /// 集合自動継続の判定（純粋）。前ターンが集合の自発全員待機(resume)で、主人公が健在(lordReady)で、
+    /// フォグで見えている敵が 1 体もいない(not anyVisibleEnemy)とき true。
+    pub def shouldResumeGather(resume: Bool, lordReady: Bool, anyVisibleEnemy: Bool): Bool =
+        resume and lordReady and not anyVisibleEnemy
+
+    /// 主人公(lordId=0)が集合を率いられる状態か。`beginGather` は id=0 を選択駒に固定するため、
+    /// 主人公が戦闘不能(hp<=0)や階段退場(hidden)済みなら集合継続しない。
+    def lordReadyToGather(scene: Scene[NodeTag]): Bool =
+        match PlayerScene.get(PlayerScene.lordId(), scene) {
+            case Some(d) => d#hp > 0 and not d#hidden
+            case None    => false
+        }
+
+    /// フォグで見えている生存敵が 1 体でもいるか（要望どおり「画面内に敵がいる」= isVisible 基準）。
+    /// isDying（死亡演出中）は除外。endTurn 到達フレームでは敵移動が完了し applyFog で可視が更新済み。
+    def anyVisibleEnemy(scene: Scene[NodeTag]): Bool =
+        EnemyScene.getAll(scene)
+            |> List.exists(e -> not e#isDying and EnemyScene.isVisible(e#id, scene))
 
 }

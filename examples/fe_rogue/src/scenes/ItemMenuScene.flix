@@ -184,6 +184,7 @@ mod ItemMenuScene {
         case Ring.RingEffect.Lifesteal => "撃破でHP+${ring#power}"
         case Ring.RingEffect.Finisher  => "瀕死(${ring#power}%以下)に必殺"
         case Ring.RingEffect.Trivial   => "効果なし"
+        case Ring.RingEffect.Levitate  => "持つだけで荷が軽い"
     }
 
     /// 効果ごとの要約表記（耐久を除く本体）。`magnitude` / `duration` を効果の意味に沿って出す。
@@ -529,6 +530,17 @@ mod ItemMenuScene {
 
     /// サブメニュー項目を組む（ItemActionSelect 中）。
     /// 武器なら `[そうび, すてる]`、杖・消費アイテムなら `[つかう, すてる]`。
+    /// 選択中アイテムが「持つだけ」系（浮雲など装備も使用もできず捨てるのみ）か。
+    /// 現状は指輪カテゴリの Levitate（浮雲）のみ。サブメニュー出し分けに使う。
+    def isSelectedPassiveHold(player: PlayerScene.Data): Bool =
+        match player#selectedItem {
+            case Some(PlayerData.ItemKind.Ring(idx)) =>
+                List.nth(idx, player#rings)
+                    |> Option.map(Ring.isPassiveHold)
+                    |> Option.getWithDefault(false)
+            case _ => false
+        }
+
     def refreshActionList(scene: Scene[NodeTag]):
             Scene[NodeTag] \ SelectedPlayer.State =
         let bulkMode = not Set.isEmpty(getMarks(scene));
@@ -536,7 +548,8 @@ mod ItemMenuScene {
             playerId <- SelectedPlayer.State.get()#id;
             player   <- PlayerScene.get(playerId, scene)
         ) yield {
-            let items = actionItemsFor(player#selectedItem, player#ringEquipped, bulkMode);
+            let holdOnly = isSelectedPassiveHold(player);
+            let items = actionItemsFor(player#selectedItem, player#ringEquipped, bulkMode, holdOnly);
             // 複数選択中は唯一有効な「捨てる」へカーソルを寄せる。
             let dropRow = List.zipWithIndex(items)
                 |> List.findLeft(p -> snd(p)#metadata == Some(dropMeta()))
@@ -572,10 +585,12 @@ mod ItemMenuScene {
     /// `bulkMode`（Shift 複数選択中）が true のときは「捨てる」だけ有効にし、他は disabled（淡色・
     /// カーソルスキップ・確定不可）にする＝複数選択でできるのは一括「捨てる」だけ。
     /// `refreshActionList` の判定本体を effect なしで切り出したもの（テスト容易化）。
+    /// `holdOnly` が true（浮雲など「持つだけ」系）のときは装備も使用も投擲もできず「捨てる」だけ。
     pub def actionItemsFor(sel: Option[PlayerData.ItemKind], ringEquipped: Bool,
-                           bulkMode: Bool): List[ItemEntry] =
+                           bulkMode: Bool, holdOnly: Bool): List[ItemEntry] =
         // 並び順は「使う/装備 → 投げる → 捨てる」。投げるは全種別で出す（一律投擲可）。
-        let base = match sel {
+        // ただし holdOnly のアイテムは所持効果のみ＝「捨てる」だけ出す。
+        let base = if (holdOnly) dropEntry() :: Nil else match sel {
             case Some(PlayerData.ItemKind.Weapon(_)) =>
                 equipEntry() :: throwEntry() :: dropEntry() :: Nil
             case Some(PlayerData.ItemKind.Staff(_))      =>

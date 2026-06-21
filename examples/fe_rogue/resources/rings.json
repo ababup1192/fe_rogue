@@ -5,8 +5,60 @@
       "effect": "Finisher",
       "name": "死神のネックレス",
       "power": 30,
+      "weight": 0.4,
       "sprite": {
         "frame": 355,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "float_cloud_large": {
+      "description": "大荷物もなんのその、巨大な浮雲。",
+      "effect": "Levitate",
+      "name": "浮雲・大",
+      "power": 0,
+      "weight": -4.5,
+      "sprite": {
+        "frame": 603,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "float_cloud_medium": {
+      "description": "持つほどに身軽になる不思議な雲。",
+      "effect": "Levitate",
+      "name": "浮雲・中",
+      "power": 0,
+      "weight": -2.5,
+      "sprite": {
+        "frame": 603,
+        "hframes": 16,
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "texture": "item_icons",
+        "vframes": 39
+      }
+    },
+    "float_cloud_small": {
+      "description": "ふわりと荷を軽くする小さな雲。",
+      "effect": "Levitate",
+      "name": "浮雲・小",
+      "power": 0,
+      "weight": -1.0,
+      "sprite": {
+        "frame": 603,
         "hframes": 16,
         "offset": {
           "x": 0.0,
@@ -31,6 +83,7 @@
       },
       "name": "まもりのリング",
       "power": 3,
+      "weight": 0.4,
       "sprite": {
         "frame": 341,
         "hframes": 16,
@@ -57,6 +110,7 @@
       },
       "name": "いやしのリング",
       "power": 2,
+      "weight": 0.4,
       "sprite": {
         "frame": 349,
         "hframes": 16,
@@ -73,6 +127,7 @@
       "effect": "Trivial",
       "name": "ただのリング",
       "power": 0,
+      "weight": 0.4,
       "sprite": {
         "frame": 336,
         "hframes": 16,
@@ -99,6 +154,7 @@
       },
       "name": "ちからのリング",
       "power": 3,
+      "weight": 0.4,
       "sprite": {
         "frame": 337,
         "hframes": 16,
@@ -115,6 +171,7 @@
       "effect": "Pursuit",
       "name": "追撃のリング",
       "power": 0,
+      "weight": 0.4,
       "sprite": {
         "frame": 344,
         "hframes": 16,
@@ -141,6 +198,7 @@
       },
       "name": "さびのリング",
       "power": -1,
+      "weight": 0.4,
       "sprite": {
         "frame": 336,
         "hframes": 16,
@@ -167,6 +225,7 @@
       },
       "name": "すばやさのリング",
       "power": 3,
+      "weight": 0.4,
       "sprite": {
         "frame": 346,
         "hframes": 16,
@@ -193,6 +252,7 @@
       },
       "name": "みかえりのリング",
       "power": 5,
+      "weight": 0.4,
       "sprite": {
         "frame": 342,
         "hframes": 16,
@@ -202,63 +262,6 @@
         },
         "texture": "item_icons",
         "vframes": 39
-      }
-    },
-    "float_cloud_small": {
-      "name": "浮雲・小",
-      "effect": "Trivial",
-      "power": 0,
-      "description": "ふわりと荷を軽くする小さな雲。",
-      "sprite": {
-        "frame": 337,
-        "hframes": 16,
-        "offset": {
-          "x": 0.0,
-          "y": 0.0
-        },
-        "texture": "item_icons",
-        "vframes": 39
-      },
-      "effectRule": {
-        "weight": -1.0
-      }
-    },
-    "float_cloud_medium": {
-      "name": "浮雲・中",
-      "effect": "Trivial",
-      "power": 0,
-      "description": "持つほどに身軽になる不思議な雲。",
-      "sprite": {
-        "frame": 338,
-        "hframes": 16,
-        "offset": {
-          "x": 0.0,
-          "y": 0.0
-        },
-        "texture": "item_icons",
-        "vframes": 39
-      },
-      "effectRule": {
-        "weight": -2.5
-      }
-    },
-    "float_cloud_large": {
-      "name": "浮雲・大",
-      "effect": "Trivial",
-      "power": 0,
-      "description": "大荷物もなんのその、巨大な浮雲。",
-      "sprite": {
-        "frame": 339,
-        "hframes": 16,
-        "offset": {
-          "x": 0.0,
-          "y": 0.0
-        },
-        "texture": "item_icons",
-        "vframes": 39
-      },
-      "effectRule": {
-        "weight": -4.5
       }
     }
   }

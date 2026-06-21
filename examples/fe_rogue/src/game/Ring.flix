@@ -32,6 +32,9 @@ mod Ring {
     ///   - `Lifesteal`: 敵を撃破したとき攻撃側の HP を `power` 回復する
     ///   - `Finisher` : 攻撃対象の残 HP が最大の `power`% 以下なら必中の必殺になる
     ///   - `Trivial`  : 何の効果もない（ネタ指輪）
+    ///   - `Levitate` : 浮雲。装備も使用もできず「持っているだけ」で効果を持つ特殊アイテム。
+    ///                  `weight` フィールドに負値を入れて積載を稼ぐ（例 -1.0 / -2.5 / -4.5）。
+    ///                  装備枠を占有しないよう、サブメニューでは「捨てる」だけを出す（`isPassiveHold`）。
     pub enum RingEffect with Eq, ToString {
         case Pursuit
         case Power
@@ -41,7 +44,13 @@ mod Ring {
         case Lifesteal
         case Finisher
         case Trivial
+        case Levitate
     }
+
+    /// 「持っているだけ」系（装備も使用もできず、所持で効果・捨てるのみ）か。
+    /// 現状は浮雲（Levitate）のみ。ItemMenu のサブメニュー出し分けに使う。
+    pub def isPassiveHold(ring: RingResource): Bool =
+        ring#effect == RingEffect.Levitate
 
     /// 指輪 1 種類ぶんのデータ。
     /// `effect` は効果の種類。`power` は効果量（種類で意味が変わる。Pursuit/Trivial では未使用）。
@@ -50,6 +59,9 @@ mod Ring {
         name        = String,
         effect      = RingEffect,
         power       = Int32,
+        // 重量（積載に効く）。JSON で直接指定する設計値。省略時は decoder が 0.4 を埋める。
+        // 浮雲(Levitate)は負値を入れて積載を稼ぐ（例 -1.0 / -2.5 / -4.5）。
+        weight      = Float64,
         sprite      = SpriteResource,
         description = String,
         // IDE 合成エディタが書く効果ルール（簡易形式 JSON）。表示の効果文に使う。
@@ -162,6 +174,7 @@ mod Ring {
         case "Lifesteal" => Ok(RingEffect.Lifesteal)
         case "Finisher"  => Ok(RingEffect.Finisher)
         case "Trivial"   => Ok(RingEffect.Trivial)
+        case "Levitate"  => Ok(RingEffect.Levitate)
         case other       => Err(other)
     }
 
@@ -175,6 +188,7 @@ mod Ring {
         case RingEffect.Lifesteal => "Lifesteal"
         case RingEffect.Finisher  => "Finisher"
         case RingEffect.Trivial   => "Trivial"
+        case RingEffect.Levitate  => "Levitate"
     }
 
     /// `resources/rings.json` をロードし、`resources/rings.schema.json` で整合検査する。
@@ -205,7 +219,7 @@ mod Ring {
 
     /// `RingResource` のフィールド名集合。schema との照合で乖離を起動時に発覚させる。
     pub def expectedFields(): Set[String] =
-        Set#{"name", "effect", "power", "sprite", "description", "effectRule"}
+        Set#{"name", "effect", "power", "weight", "sprite", "description", "effectRule"}
 }
 
 // container の巡回・schema 検査は CatalogContainer に委譲し、ここは wrap のみ。
@@ -224,7 +238,7 @@ mod RingCatalogCodec {
 
     use Util.Json.Json
     use Util.Json.Json.{JObject, JString, JNumber}
-    use JsonCodec.{expectObject, expectString, expectInt, intToBd}
+    use JsonCodec.{expectObject, expectString, expectInt, expectFloat, floatToBd, intToBd}
     use Ring.RingResource
     use Sprite.SpriteResource
 
@@ -233,6 +247,7 @@ mod RingCatalogCodec {
             "name"        => JString(ring#name),
             "effect"      => JString(Ring.effectToString(ring#effect)),
             "power"       => JNumber(intToBd(ring#power)),
+            "weight"      => JNumber(floatToBd(ring#weight)),
             "sprite"      => encodeSprite(ring#sprite),
             "description" => JString(ring#description)
         };
@@ -267,7 +282,10 @@ mod RingCatalogCodec {
             // description は省略可。欠落時は空文字。
             let desc = Map.get("description", obj)
                         |> Option.flatMap(expectString) |> Option.getWithDefault("");
-            ({name = name, effect = effect, power = power,
+            // weight (重量) は省略可。欠落時は 0.4 (後方互換)。
+            let weight = Map.get("weight", obj)
+                        |> Option.flatMap(expectFloat) |> Option.getWithDefault(0.4);
+            ({name = name, effect = effect, power = power, weight = weight,
                sprite = sprite, description = desc,
                effectRule = Map.get("effectRule", obj)}: RingResource)
         }
