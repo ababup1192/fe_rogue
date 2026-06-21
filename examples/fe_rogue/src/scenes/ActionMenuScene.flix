@@ -571,9 +571,11 @@ mod ActionMenuScene {
                 if (wouldPickupOverload(info, scene))
                     ItemPickupPopupScene.showFull(scene)
                 else
-                    // 拾得を SelectedPlayer の picked にドラフト記録し、選択解除キャンセル
-                    // (cancelSelection)で床へ巻き戻せるようにしてから取得する。
-                    pickupAt(info, recordPickupDraft(info, scene))
+                    // 取得・ドラフト記録・ログは PlayerScene.pickupFloorItem に集約
+                    // （移動着地の自動取得と共有する）。cancelSelection で床へ巻き戻せる。
+                    // 取得音(get_item)を予約（process が次フレームに鳴らす）。
+                    PlayerScene.pickupFloorItem(info#playerId, info#gridPos, scene)
+                        |> ItemPickupPopupScene.reserveGetItemSound
         }
 
     /// 拾う主体が足元の床アイテムを拾うと重量過多になるか。PartyQuery で現フレームの Data を、
@@ -584,20 +586,6 @@ mod ActionMenuScene {
             case (Some(player), Some(floor)) =>
                 PlayerScene.wouldOverloadByPicking(player, floor#item)
             case _ => false
-        }
-
-    /// `info` のセルにある床アイテムを SelectedPlayer の巻き戻しドラフトに積む。
-    /// 床に何も無ければ no-op。実際の在庫追加 / 床撤去は後続の `pickupAt` が行う。
-    def recordPickupDraft(info: {playerId = Int32, gridPos = {x = Int32, y = Int32}},
-                            scene: Scene[NodeTag]):
-            Scene[NodeTag] \ SelectedPlayer.State =
-        match ItemScene.dataAt(info#gridPos, scene) {
-            case None    => scene
-            case Some(d) =>
-                SelectedPlayer.pushDraft(
-                    MoveDraft.DraftAction.PickedUp(info#playerId, d#gridPos,
-                                                    d#itemKey, d#item));
-                scene
         }
 
     /// 「あける」確定。宝箱に乗った駒で開錠を試みる。`applyPickup` と同じ取得経路を再用するが、
@@ -617,8 +605,9 @@ mod ActionMenuScene {
                 else if (PlayerScene.wouldOverloadByPicking(player, chest#content))
                     ItemPickupPopupScene.showFull(scene)
                 else
-                    addPickedItem(info#playerId, chest#content, scene)
+                    PlayerScene.addPickedItem(info#playerId, chest#content, scene)
                         |> ChestScene.takeAt(info#gridPos)
+                        |> ItemPickupPopupScene.reserveGetItemSound
         }
 
     /// 開錠対象を 1 本の Option 連鎖で解決する: 取得主体(`pickupTarget`) → その Data → 足元の宝箱。
@@ -648,36 +637,6 @@ mod ActionMenuScene {
             playerId <- SelectedPlayer.State.get()#id;
             player   <- PlayerData.PartyQuery.get(playerId)
         ) yield {playerId = playerId, gridPos = player#gridPos}
-
-    /// 指定セルで床アイテムを 1 個取って selectedPlayer のインベントリに追加する。
-    /// アイテムがなければ takeAt 後の scene をそのまま返す（防御的）。
-    def pickupAt(info: {playerId = Int32, gridPos = {x = Int32, y = Int32}},
-                  scene: Scene[NodeTag]):
-                  Scene[NodeTag] \ GameLogger.GameLogger =
-        let (afterTake, taken) = ItemScene.takeAt(info#gridPos, scene);
-        taken
-            |> Option.map(kind -> addPickedItem(info#playerId, kind, afterTake))
-            |> Option.getWithDefault(afterTake)
-
-    /// 拾ったアイテムをプレイヤーのインベントリに追加し、ログも出す。
-    /// 武器は weapons の末尾（= 装備中の後ろ）、杖は staves の末尾に積む。
-    def addPickedItem(playerId: Int32, kind: ItemData.GroundItemKind,
-                        scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
-        match kind {
-            case ItemData.GroundItemKind.WeaponItem(weapon) =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} が${weapon#name} を拾った");
-                PlayerScene.addWeapon(playerId, weapon, scene)
-            case ItemData.GroundItemKind.StaffItem(staff) =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} が${staff#name} を拾った");
-                PlayerScene.addStaff(playerId, staff, scene)
-            case ItemData.GroundItemKind.ConsumableItem(item) =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} が${item#name} を拾った");
-                PlayerScene.addConsumable(playerId, item, scene)
-            case ItemData.GroundItemKind.RingItem(ring) =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} が${ring#name} を拾った");
-                PlayerScene.addRing(playerId, ring, scene)
-        }
 
     /// 「こうげき」確定時の遷移: 武器選択ウィンドウ (WeaponSelect) を開く。
     /// ActionMenu はそのまま表示し続け「攻撃」行のハイライトを残す（focus だけ武器側へ移る）。

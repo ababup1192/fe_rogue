@@ -13,10 +13,13 @@
 mod PlayerMovementScene {
 
     /// PlayerMoving: 選択中プレイヤーを **移動力(MoveRange)範囲内・低速** で 1 歩動かす。
+    /// 着地マスの床アイテムは重量が許す限り自動取得する（`stepFor` の着地フックが担う）ため
+    /// `SelectedPlayer.State`（取得の巻き戻しドラフト）も要求する。
     pub def physicsStep(_delta: Duration.Duration, node: EngineNode[NodeTag],
                          path: NodePath, scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
-                        \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger} =
+                        \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger,
+                           SelectedPlayer.State} =
         stepFor(selectAllowedPred(TurnPhase.Phase.PlayerMoving, scene),
                 PlayerScene.selectedSlideDuration(), node, path, scene)
 
@@ -110,7 +113,8 @@ mod PlayerMovementScene {
                  slide: Duration.Duration, node: EngineNode[NodeTag],
                  path: NodePath, scene: Scene[NodeTag]):
                 (EngineNode[NodeTag], Scene[NodeTag])
-                \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger} =
+                \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger,
+                   SelectedPlayer.State} =
         match node {
             case EngineNode.Marker2DWithState(_, NodeTag.Player(data)) =>
                 // かなしばり（完全停止）中は移動入力を捨てる。攻撃も ActionMenu 側で封じる。
@@ -130,21 +134,33 @@ mod PlayerMovementScene {
                     match moved {
                         case None                 => (node, scene)
                         case Some((target, next)) =>
-                            returnNode(node, path, logStepOnItem(data, target, next))
+                            returnNode(node, path, autoPickupOrLog(data, target, next))
                     }
             case _ => (node, scene)
         }
 
-    /// 着地したマスに床アイテムがあれば「○○の上に乗った」を 1 回だけ記録する（移動成立ごとに 1 回）。
-    /// アイテムが無ければ scene を素通し。`data#resource#description` は乗った味方の表示名。
-    def logStepOnItem(data: PlayerScene.Data, target: {x = Int32, y = Int32},
-                       scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+    /// 着地したマスに床アイテムがあれば、**重量が許す限り自動で拾う**（基本拾う仕様）。
+    /// 取得は移動キャンセル(`cancelSelection`)で巻き戻せるよう `PickedUp` ドラフトに積む
+    /// （`PlayerScene.pickupFloorItem` に集約。手動「ひろう」と同じ取得経路）。
+    /// 拾うと積載過多（Immobile=移動不可）になるアイテムは拾わず、「○○の上に乗った」だけ
+    /// 記録して床に残す（重さで詰むのを防ぐ。降ろすか軽くしてから手動「ひろう」で取れる）。
+    /// 重量判定は移動前スナップショット `data`（在庫は移動では変わらない）で行う。
+    /// pub: 着地時の自動取得/非取得の判定を `TestActionMenuScene` から直接観測するため。
+    pub def autoPickupOrLog(data: PlayerScene.Data, target: {x = Int32, y = Int32},
+                             scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger} =
         match ItemScene.findAt(target, scene) {
+            case None            => scene
             case Some((_, kind)) =>
-                GameLogger.playerLog(
-                    "${data#resource#description}は ${ItemScene.kindDisplayName(kind)}の上に乗った");
-                scene
-            case None => scene
+                if (PlayerScene.wouldOverloadByPicking(data, kind)) {
+                    GameLogger.playerLog(
+                        "${data#resource#description}は ${ItemScene.kindDisplayName(kind)}の上に乗った");
+                    scene
+                } else
+                    // 取得音(get_item)を予約（process が次フレームに鳴らす。physicsProcess に
+                    // GameEngine.Audio は無いため、純粋な予約で process 側へ委ねる）。
+                    PlayerScene.pickupFloorItem(data#id, target, scene)
+                        |> ItemPickupPopupScene.reserveGetItemSound
         }
 
     /// engine の physicsProcess 契約に合わせ、scene を更新したあとの最新ノードを取り直して返す。

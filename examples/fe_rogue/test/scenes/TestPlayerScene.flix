@@ -196,6 +196,55 @@ mod TestPlayerScene {
         Assert.assertEq(expected = Nil, List.map(d -> d#id, neighbors))
 
     // ========================================================================
+    // gatherNotMovedYet — 集合直後（誰も origin から動いていない）か
+    //   true のときだけ C で集合 → 個別行動モードへ戻せる。
+    // ========================================================================
+
+    /// 主人公(id 0, lordPos) + 味方(id 1, 常に (5,4)) の 2 人 scene を組み、
+    /// `sel` を SelectedPlayer に固定して `gatherNotMovedYet` を評価する。region は内部で閉じる。
+    def gatherNotMovedFor(lordPos: {x = Int32, y = Int32},
+                           sel: SelectedPlayer.Selection): Bool \ Fs.FileRead =
+        region rc {
+            let fx = loadTestCatalogs();
+            let mkSpawn = (id, pos) -> ({id = id, classId = "test_player", gridPos = pos,
+                                          resource = fx#unitSample, weapons = Nil, staves = Nil,
+                                          consumables = Nil, rings = Nil}: PlayerScene.Spawn);
+            let scene = Scene.empty()
+                |> MapScene.addWorldNode
+                |> PlayerScene.addOnePlayer(mkSpawn(0, lordPos))
+                |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 5, y = 4}));
+            TestUnitFixtures.withSelectionRef(rc, sel, () ->
+                PlayerScene.gatherNotMovedYet(scene))
+        }
+
+    /// 集合中で全員が draft の origin に居る（一歩も動いていない）→ true（C で切替可能）。
+    @Test
+    def testGatherNotMovedYetTrueWhenNobodyMoved(): Unit \ {Assert, Fs.FileRead} =
+        let sel: SelectedPlayer.Selection =
+            {id = Some(0),
+             drafts = MoveDraft.DraftAction.MovedFrom(0, {x = 5, y = 5})
+                   :: MoveDraft.DraftAction.MovedFrom(1, {x = 5, y = 4}) :: Nil,
+             gatherActive = true};
+        Assert.assertEq(expected = true, gatherNotMovedFor({x = 5, y = 5}, sel))
+
+    /// 主人公が origin (5,5) から (6,5) へ動いている → false（移動開始後は切替不可）。
+    @Test
+    def testGatherNotMovedYetFalseWhenLordMoved(): Unit \ {Assert, Fs.FileRead} =
+        let sel: SelectedPlayer.Selection =
+            {id = Some(0),
+             drafts = MoveDraft.DraftAction.MovedFrom(0, {x = 5, y = 5})
+                   :: MoveDraft.DraftAction.MovedFrom(1, {x = 5, y = 4}) :: Nil,
+             gatherActive = true};
+        Assert.assertEq(expected = false, gatherNotMovedFor({x = 6, y = 5}, sel))
+
+    /// そもそも集合中でない（gatherActive=false）→ false。
+    @Test
+    def testGatherNotMovedYetFalseWhenNotGather(): Unit \ {Assert, Fs.FileRead} =
+        let sel: SelectedPlayer.Selection =
+            {id = Some(0), drafts = Nil, gatherActive = false};
+        Assert.assertEq(expected = false, gatherNotMovedFor({x = 5, y = 5}, sel))
+
+    // ========================================================================
     // tradeComponent — 隣接連結成分（集合の N 人交換メンバー抽出）
     //
     // 集合の交換は「主人公を含む、隣接（マンハッタン 1）で連結した塊」全員が対象。

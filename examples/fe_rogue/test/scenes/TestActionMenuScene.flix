@@ -382,6 +382,54 @@ mod TestActionMenuScene {
         }
 
     // ════════════════════════════════════════════════════════
+    // 移動着地の自動取得（PlayerMovementScene.autoPickupOrLog）
+    //   「乗るだけ」でなく重量が許す限り基本拾う。過多になるなら拾わず床に残す。
+    //   ここの床アイテム/武器数フィクスチャ（loadActionMenuSceneWithFloorWeapon 他）を再利用。
+    // ════════════════════════════════════════════════════════
+
+    /// scene から id のプレイヤー Data を取り出す（居なければテストを潰す）。
+    def playerDataOf(id: Int32, scene: Scene[NodeTag]): PlayerScene.Data =
+        match PlayerScene.get(id, scene) {
+            case Some(d) => d
+            case None    => bug!("player ${id} not found")
+        }
+
+    /// 着地マス (1,1) の床武器を、重量が許すので **自動で拾う**:
+    ///   - 床アイテムが消える
+    ///   - id=0 の所持武器が 1 → 2 本（積載 8.6 に対し剣 2 本=3.8 で余裕）
+    /// 「乗っただけで拾わない」旧仕様からの変更点を固定する。
+    @Test
+    def testAutoPickupPicksUpWhenWeightAllows(): Unit \ Assert =
+        let scene = loadActionMenuSceneWithFloorWeapon();
+        let data  = playerDataOf(0, scene);
+        let after = TestUnitFixtures.withMockGameLogger(() ->
+            TestUnitFixtures.withSelectedPlayer(0, () ->
+                PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, scene)));
+        let floorEmpty = Option.isEmpty(ItemScene.findAt({x = 1, y = 1}, after));
+        Assert.assertEq(
+            expected = (true, 2),
+            (floorEmpty, weaponCountOf(0, after)))
+
+    /// 拾うと積載過多（移動不可）になるなら、着地しても **拾わず床に残す**:
+    ///   id=0 に剣を 3 本足して計 4 本（積載 7.6 / 容量 8.6）。床の 5 本目(1.9)を拾うと
+    ///   9.5 = 110%+ で Immobile になるため自動取得しない。床アイテムは残り、武器は 4 本のまま。
+    @Test
+    def testAutoPickupSkipsWhenWouldOverload(): Unit \ Assert =
+        let w    = TestUnitFixtures.testWeapon();
+        let heavy = loadActionMenuSceneWithFloorWeapon()
+            |> PlayerScene.addWeapon(0, w)
+            |> PlayerScene.addWeapon(0, w)
+            |> PlayerScene.addWeapon(0, w);
+        let data  = playerDataOf(0, heavy);
+        let after = TestUnitFixtures.withMockGameLogger(() ->
+            TestUnitFixtures.withSelectedPlayer(0, () ->
+                PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, heavy)));
+        let floorStillThere = Option.nonEmpty(ItemScene.findAt({x = 1, y = 1}, after));
+        Assert.assertEq(
+            expected = (true, 4),
+            (floorStillThere, weaponCountOf(0, after)))
+
+    // ════════════════════════════════════════════════════════
     // 装備 / 捨てる の巻き戻し（移動中の仮アクションを逆順 revert）
     //   各アクションを積み、cancelSelection が新しい順に逆操作することを検証する。
     // ════════════════════════════════════════════════════════

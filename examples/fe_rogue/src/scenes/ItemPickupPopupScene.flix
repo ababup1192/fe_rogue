@@ -168,6 +168,19 @@ mod ItemPickupPopupScene {
     pub def showFull(scene: Scene[NodeTag]): Scene[NodeTag] =
         showMessage("持ち物がいっぱいです", scene)
 
+    /// 取得音だけを次フレームに予約する（中央ポップアップは出さない）。`show` と違い
+    /// stage / text を触らないので、`process` が `get_item` を 1 回鳴らすだけ
+    /// （`step` は stage に関わらず先頭で `soundPending` を消費して playSound を返す）。
+    /// 移動着地の自動取得など「大きな通知は不要だが取得音は鳴らしたい」経路で使う。
+    /// 純粋（音は process が鳴らす）。ポップアップ未登録の scene では no-op。
+    pub def reserveGetItemSound(scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(rootPath(), node -> match node {
+            case EngineNode.CanvasLayerWithState(layer, NodeTag.ItemPickupPopup(d)) =>
+                EngineNode.CanvasLayerWithState(layer,
+                    NodeTag.ItemPickupPopup({soundPending = true | d}))
+            case other => other
+        }, scene)
+
     /// 文言と「取得音を鳴らすか」を受け取り、フェードを先頭から開始する共通処理。
     /// `playSound = true` のときだけ `process` が取得音を 1 回鳴らす。
     def showWith(text: String, playSound: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =

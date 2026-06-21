@@ -466,6 +466,18 @@ mod PlayerScene {
         SelectedPlayer.State.put(SelectedPlayer.cleared());
         PhaseTransitions.enterPlayerCursor(restored)
 
+    /// 集合（行軍）モードで「まだ誰も開始位置から動いていない」か。
+    /// 集合直後（手動確定 / ターン継続での自動再突入）に C で個別行動モードへ戻せるかの判定。
+    /// `gatherActive` でなければ false。`beginGather` が積んだ各 `MovedFrom` 起点と現在位置を
+    /// 比べ、1 体でも origin から動いていれば false（移動を始めたら切替不可）。
+    pub def gatherNotMovedYet(scene: Scene[NodeTag]): Bool \ SelectedPlayer.State =
+        let sel = SelectedPlayer.State.get();
+        if (not sel#gatherActive) false
+        else {
+            let living = getAll(scene) |> List.filter(d -> d#hp > 0);
+            not MoveDraft.anyMovedFromOrigin(living, sel#drafts)
+        }
+
     /// 移動ドラフト 1 件を巻き戻す。巻き戻しの実体はここに集約する
     /// （新しい可逆操作を足すときはこの match に 1 分岐追加するだけ）。
     ///   - `MovedFrom`: origin に snapTo で戻し、walk 表示を idle に戻す
@@ -1455,6 +1467,45 @@ mod PlayerScene {
             case ItemData.GroundItemKind.ConsumableItem(consumable) =>
                 addConsumable(playerId, consumable, scene)
             case ItemData.GroundItemKind.RingItem(ring)            =>
+                addRing(playerId, ring, scene)
+        }
+
+    /// 床アイテム（`gridPos`）を playerId の在庫へ取得する共通処理。重量ゲートは呼び出し側が
+    /// 行う前提（手動「ひろう」も、移動着地の自動取得も、拾えると判断してからここを呼ぶ）。
+    /// 取得は `cancelSelection` で巻き戻せるよう `PickedUp` ドラフトに積んでから、
+    /// 床撤去 → 在庫末尾へ追加 → ログ、の順で行う。床にアイテムが無ければ素通し（防御的）。
+    pub def pickupFloorItem(playerId: Int32, gridPos: {x = Int32, y = Int32},
+                             scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger} =
+        match ItemScene.dataAt(gridPos, scene) {
+            case None    => scene
+            case Some(d) =>
+                SelectedPlayer.pushDraft(
+                    MoveDraft.DraftAction.PickedUp(playerId, d#gridPos, d#itemKey, d#item));
+                let (afterTake, taken) = ItemScene.takeAt(d#gridPos, scene);
+                taken
+                    |> Option.map(kind -> addPickedItem(playerId, kind, afterTake))
+                    |> Option.getWithDefault(afterTake)
+        }
+
+    /// 拾ったアイテムを在庫末尾に追加し「拾った」ログを出す（ログを出さない
+    /// `addInventoryItem` のログ付き版）。手動「ひろう」/ 移動着地の自動取得 / 宝箱開錠の
+    /// 取得経路が共有する。武器は weapons 末尾、杖は staves 末尾に積む。
+    pub def addPickedItem(playerId: Int32, kind: ItemData.GroundItemKind,
+                           scene: Scene[NodeTag]):
+            Scene[NodeTag] \ GameLogger.GameLogger =
+        match kind {
+            case ItemData.GroundItemKind.WeaponItem(weapon) =>
+                GameLogger.playerLog("${displayName(playerId, scene)} が${weapon#name} を拾った");
+                addWeapon(playerId, weapon, scene)
+            case ItemData.GroundItemKind.StaffItem(staff) =>
+                GameLogger.playerLog("${displayName(playerId, scene)} が${staff#name} を拾った");
+                addStaff(playerId, staff, scene)
+            case ItemData.GroundItemKind.ConsumableItem(item) =>
+                GameLogger.playerLog("${displayName(playerId, scene)} が${item#name} を拾った");
+                addConsumable(playerId, item, scene)
+            case ItemData.GroundItemKind.RingItem(ring) =>
+                GameLogger.playerLog("${displayName(playerId, scene)} が${ring#name} を拾った");
                 addRing(playerId, ring, scene)
         }
 

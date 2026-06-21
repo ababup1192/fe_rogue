@@ -345,12 +345,19 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                     TradeMenuScene.toggleTradeMarkAtCursor(scene)
                 case _ => scene
             }
-        // C キー / ゲームパッド Y: 空マスメニューを開かず「集合」を直接確定するショートカット。
-        // 味方ターンのカーソル選択中(PlayerCursor)で、集合可能(他に生存味方が居て主人公が未行動)なときだけ。
+        // C キー / ゲームパッド Y: 集合モードのトグル。
+        //   PlayerCursor … 集合可能(他に生存味方が居て主人公が未行動)なら「集合」を直接確定。
+        //   GatherMove   … 一歩も動いていない（手動確定直後 / 継続でターン開始した状態）なら
+        //                  集合を解いて個別行動モード(PlayerCursor)へ戻す。移動を始めたら不可。
         else if (key == GameEngine.Key.C)
             if (phase == TurnPhase.Phase.PlayerCursor and ActionMenuScene.gatherEnabled()) {
                 AudioStreamPlayer.play("confirm");
                 ActionMenuScene.gatherShortcut(scene)
+            } else if (phase == TurnPhase.Phase.GatherMove and PlayerScene.gatherNotMovedYet(scene)) {
+                // 何も動いていないので cancelSelection の巻き戻しは実質 no-op。gatherActive を
+                // 解いてカーソル選択（個別行動）へ復帰する。
+                AudioStreamPlayer.play("cancel");
+                PlayerScene.cancelSelection(scene)
             } else scene
         else {
             // プレイヤー操作のフィードバック効果音（決定 / キャンセル / メニューカーソル移動）。
