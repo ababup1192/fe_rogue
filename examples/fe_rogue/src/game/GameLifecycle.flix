@@ -115,13 +115,17 @@ mod GameLifecycle {
         scene
 
     /// ターン進行系の effect だけを初期化する（ログは出さない）。
-    /// 敵キューを空に / フェーズを PlayerCursor に / 選択中味方を解除。
+    /// 敵キューを空に / フェーズを PlayerCursor に / 選択中味方を解除 / 集合自動継続フラグを落とす。
     /// ゲームオーバー・フロア遷移・クリアで共通して使う「巻き戻し」の中身。
+    /// `GatherResume` は通常 `endTurn` で毎ターン消費されるが、ゲームオーバー（敵ターン中に全滅して
+    /// endTurn を経ない）やフロア遷移ではそこを通らないため、ここで明示クリアして前フロアの
+    /// resume が新フロア初手で誤発火するのを防ぐ。
     pub def resetTurnQueues(): Unit \ {EnemyTurn.Queue, TurnPhase.State,
-                                        SelectedPlayer.State} =
+                                        SelectedPlayer.State, GatherResume.State} =
         EnemyTurn.Queue.replace(Nil);
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
-        SelectedPlayer.State.put(SelectedPlayer.cleared())
+        SelectedPlayer.State.put(SelectedPlayer.cleared());
+        GatherResume.State.put(false)
 
     /// ゲームオーバー時のターン進行系 state を初期化する。
     /// ゲームオーバーログを出してから `resetTurnQueues` を呼ぶ。
@@ -130,7 +134,8 @@ mod GameLifecycle {
     /// この関数を切り出すことで、テストが scene 構築 (LDTK / LWJGL 要求) を経由せずに
     /// 「リセットセマンティクス」だけを観測できるようになる。
     pub def resetTurnState(): Unit \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                                       TurnPhase.State, SelectedPlayer.State} =
+                                       TurnPhase.State, SelectedPlayer.State,
+                                       GatherResume.State} =
         GameLogger.gameOverLog("ゲームオーバー");
         resetTurnQueues()
 
@@ -206,6 +211,7 @@ mod GameLifecycle {
     pub def restartFromFloorSnapshot(catalogs: Catalogs): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State, FloorSnapshot.State} =
         match FloorSnapshot.State.get() {
             case Some(snap) =>
@@ -254,6 +260,7 @@ mod GameLifecycle {
     /// `CustomEffects.ResumeRequest.resume` の本体。
     pub def resumeFromSuspend(catalogs: Catalogs, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Fs.FileRead, Fs.FileWrite, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                GatherResume.State,
                 FloorProgress.State, PartySelection.State, FloorSnapshot.State, GamePhaseState,
                 GameLogger.GameLogger} =
         let saved: Option[SuspendSave.Save] = SaveManager.read(SuspendSave.slot());
@@ -284,6 +291,7 @@ mod GameLifecycle {
                                scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State, FloorSnapshot.State} =
         match FloorSnapshot.State.get() {
             case Some(snap) =>
@@ -366,7 +374,7 @@ mod GameLifecycle {
     pub def resetForGameOver(catalogs: Catalogs): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State,
+                TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State,
                 FloorSnapshot.State} =
         resetTurnState();
@@ -383,7 +391,7 @@ mod GameLifecycle {
                           scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State,
+                TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State,
                 FloorSnapshot.State} =
         // 引き継ぐステータスを「現フロア退場前」に確保しておく。

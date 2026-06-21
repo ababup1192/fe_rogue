@@ -638,6 +638,15 @@ mod PlayerScene {
             |> List.sortBy(d -> d#id)
             |> List.head
 
+    /// 主人公(lordId=0)が集合（行軍）を率いられる状態か。集合は `beginGather` が主人公を
+    /// 選択駒に固定するので、主人公が戦闘不能(hp<=0) / 階段退場(hidden) / かなしばり(immobilized)
+    /// のいずれかなら率いられない。集合のターン跨ぎ自動継続の前提チェックに使う。
+    pub def lordReadyToGather(scene: Scene[NodeTag]): Bool =
+        match get(lordId(), scene) {
+            case Some(d) => d#hp > 0 and not d#hidden and not StatusSystem.isImmobilized(d#statuses)
+            case None    => false
+        }
+
     /// 敵攻撃で HP=0 になったプレイヤーを scene から取り除く。`killed` は
     /// `CombatScene.applyEnemyAttackHit` が返した死亡 id のリスト (通常 1 要素)。
     /// 選択中プレイヤーが含まれていれば (反撃で死亡したケース) 選択も解除する。

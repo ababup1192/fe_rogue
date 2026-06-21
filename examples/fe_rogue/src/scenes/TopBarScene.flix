@@ -98,7 +98,7 @@ mod TopBarScene {
                                        SceneLoader.constTagParser(NodeTag.NoTag), scene)
             |> Label2D.mapAt(floorNumPath(), Label2D.setText(floorLabel))
             |> Label2D.mapAt(floorNamePath(), Label2D.setText(floorName))
-            |> Label2D.mapAt(gatherLabelPath(), CanvasItem.setVisible(false))  // 集合中のみ process で表示
+            // gatherLabel は scene.json で visible:false。集合(GatherMove)中のみ process で表示する。
             |> Scene.setState(rootPath(),
                 NodeTag.TopBar(({shown = None, animTarget = None,
                                  anim = Duration.zero(), hold = Duration.zero()}: Data)))

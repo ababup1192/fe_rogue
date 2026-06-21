@@ -75,6 +75,7 @@
       "horizontalAlignment": "center",
       "verticalAlignment": "center",
       "text": "集合中",
+      "visible": false,
       "modulate": { "r": 1.0, "g": 0.85, "b": 0.4 },
       "zIndex": 3
     },

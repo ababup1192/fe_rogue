@@ -660,6 +660,12 @@ mod EnemyScene {
     pub def anyAttacking(scene: Scene[NodeTag]): Bool =
         List.exists(d -> Option.nonEmpty(d#attackTargetId), getAll(scene))
 
+    /// フォグで見えている生存敵が 1 体以上いれば true（死亡演出中 `isDying` は除外）。
+    /// `isVisible` は applyFog が毎フレーム設定する marker 可視を読むので、呼び出し前に
+    /// フォグが当該フレームで適用済みであることを前提とする（集合自動継続の「画面内に敵がいるか」判定に使う）。
+    pub def anyVisible(scene: Scene[NodeTag]): Bool =
+        List.exists(d -> not d#isDying and isVisible(d#id, scene), getAll(scene))
+
     /// `death_blink` finished イベントのエントリポイント。
     /// SE 再生とノード削除を completeDeath に委譲する。
     pub def onDeathBlinkDone(enemyId: Int32, scene: Scene[NodeTag]):

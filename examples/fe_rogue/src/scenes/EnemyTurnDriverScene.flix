@@ -464,42 +464,32 @@ mod EnemyTurnDriverScene {
         let reset = spawned
             |> PlayerScene.clearAllWaited        // 全員アクティブに戻す
             |> PlayerScene.resetAllMoveStepsTaken;
+        // 湧き(maybeSpawn)・敵移動を反映した最新フォグをこのフレームで当てて敵可視を確定させる。
+        // add 順（FogDriver が先）に頼らず、集合自動継続の「画面内に敵がいるか」判定を正確にする。
+        let lit = FogScene.applyFog(reset);
         GameLogger.playerLog("味方のターン");
         // 集合モードのターン跨ぎ自動継続: 前ターンに集合中の全員待機で閉じ(resume)、主人公が
-        // 健在で、フォグで見えている敵が 1 体もいなければ、カーソルを出さず集合へ自動再突入する。
+        // 率いられる状態で、フォグで見えている敵が 1 体もいなければ、カーソルを出さず集合へ自動再突入する。
         // resume は必ず消費（毎ターン再評価）。
         let resume = GatherResume.State.get();
         GatherResume.State.put(false);
-        if (shouldResumeGather(resume, lordReadyToGather(reset), anyVisibleEnemy(reset)))
-            PlayerScene.beginGather(reset)
-        else
-        // カーソル/カメラの初期スナップ先は `reset`(=clearAllWaited 後)から直接求める。
-        // `enterPlayerCursor` の PartyQuery フォールバックはフレーム冒頭 snapshot を読むため、
-        // 同フレームの clearAllWaited が反映されず active が空 → id=0 へフォールバックする。
-        // リーダーが階段で退場(usedStairs=hidden)済みだと毎ターン階段にカーソルが飛ぶので、
-        // フロアに残るアクティブな駒(`firstActive`)へ明示スナップする。
-        match PlayerScene.firstActive(reset) {
-            case Some(next) => PhaseTransitions.enterPlayerCursorAt(next#gridPos, reset)
-            case None       => PhaseTransitions.enterPlayerCursor(reset)
+        if (shouldResumeGather(resume, PlayerScene.lordReadyToGather(lit), EnemyScene.anyVisible(lit)))
+            PlayerScene.beginGather(lit)
+        else {
+            // カーソル/カメラの初期スナップ先は `lit`(=clearAllWaited 後)から直接求める。
+            // `enterPlayerCursor` の PartyQuery フォールバックはフレーム冒頭 snapshot を読むため、
+            // 同フレームの clearAllWaited が反映されず active が空 → id=0 へフォールバックする。
+            // リーダーが階段で退場(usedStairs=hidden)済みだと毎ターン階段にカーソルが飛ぶので、
+            // フロアに残るアクティブな駒(`firstActive`)へ明示スナップする。
+            match PlayerScene.firstActive(lit) {
+                case Some(next) => PhaseTransitions.enterPlayerCursorAt(next#gridPos, lit)
+                case None       => PhaseTransitions.enterPlayerCursor(lit)
+            }
         }
 
-    /// 集合自動継続の判定（純粋）。前ターンが集合の自発全員待機(resume)で、主人公が健在(lordReady)で、
-    /// フォグで見えている敵が 1 体もいない(not anyVisibleEnemy)とき true。
-    pub def shouldResumeGather(resume: Bool, lordReady: Bool, anyVisibleEnemy: Bool): Bool =
-        resume and lordReady and not anyVisibleEnemy
-
-    /// 主人公(lordId=0)が集合を率いられる状態か。`beginGather` は id=0 を選択駒に固定するため、
-    /// 主人公が戦闘不能(hp<=0)や階段退場(hidden)済みなら集合継続しない。
-    def lordReadyToGather(scene: Scene[NodeTag]): Bool =
-        match PlayerScene.get(PlayerScene.lordId(), scene) {
-            case Some(d) => d#hp > 0 and not d#hidden
-            case None    => false
-        }
-
-    /// フォグで見えている生存敵が 1 体でもいるか（要望どおり「画面内に敵がいる」= isVisible 基準）。
-    /// isDying（死亡演出中）は除外。endTurn 到達フレームでは敵移動が完了し applyFog で可視が更新済み。
-    def anyVisibleEnemy(scene: Scene[NodeTag]): Bool =
-        EnemyScene.getAll(scene)
-            |> List.exists(e -> not e#isDying and EnemyScene.isVisible(e#id, scene))
+    /// 集合自動継続の判定（純粋）。前ターンが集合の自発全員待機(resume)で、主人公が率いられる状態
+    /// (lordReady)で、フォグで見えている敵が 1 体もいない(not hasVisibleEnemy)とき true。
+    pub def shouldResumeGather(resume: Bool, lordReady: Bool, hasVisibleEnemy: Bool): Bool =
+        resume and lordReady and not hasVisibleEnemy
 
 }
