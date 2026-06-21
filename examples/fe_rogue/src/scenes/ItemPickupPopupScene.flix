@@ -9,7 +9,7 @@
 ///     先頭から開始し、「取得音を鳴らす予約」を立てる。
 ///   - 毎フレームの `process`（`dispatchTickables` 経由で `GameEngine.Audio` が使える）が、
 ///     予約があれば1回だけ取得音を鳴らし、フェード（窓 alpha・文字色・可視）を進める。
-/// この分担により、取得処理（ActionMenuScene.addPickedItem）の effect 行を増やさずに済む。
+/// この分担により、取得処理（PlayerScene.addPickedItem）の effect 行を増やさずに済む。
 ///
 /// 文字のフェードについて:
 ///   エンジンは Label2D の alpha を持たない（glyph は常に不透明。`DamagePopupScene` 参照）。

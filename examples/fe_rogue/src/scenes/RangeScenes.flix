@@ -130,15 +130,25 @@ mod MoveRangeScene {
                 }
         }
 
+    /// このターンの移動範囲の原点を選ぶ純粋関数。`MovedFrom` ドラフト（ターン開始位置）が
+    /// あればそれを、無ければ現在位置を使う。これにより `refresh`（= removeAt + add + buildFor）が
+    /// **冪等**になり、移動→メニュー→キャンセルでの無限移動を防ぐ（初回選択では origin == current
+    /// なので従来と一致。移動後に再 refresh されても範囲はターン開始位置に固定される）。
+    pub def chooseMoveOrigin(id: Int32, currentPos: {x = Int32, y = Int32},
+                              drafts: List[MoveDraft.DraftAction]): {x = Int32, y = Int32} =
+        MoveDraft.originOf(id, drafts) |> Option.getWithDefault(currentPos)
+
     /// 指定 id を起点に MoveRange を組み立てる本体 (既存ノードは事前に取り除いてから呼ぶ)。
     /// **通行不可**: 壁 / 敵駒。
     /// **味方駒は通過可能** (1 マスとしてカウント)。「味方は素通り、ただし停止はできない」
     /// 表現。`Board.reachableForUnit` で到達範囲を出し、`stoppableForUnit` で味方マス
     /// (自分 + 他味方) を除いたものを青マスとして描画する。AutoMove も同じプリミティブで
     /// 動くため、ここで仕様が一致していれば自動で挙動が揃う。
-    def buildFor(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+    /// 原点は **現在位置でなくターン開始位置**（`chooseMoveOrigin` 経由）に固定する。
+    def buildFor(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
         let board     = BoardSnapshot.fromScene(scene);
-        let origin    = PlayerScene.getGridPos(id, scene);
+        let drafts    = SelectedPlayer.State.get()#drafts;
+        let origin    = chooseMoveOrigin(id, PlayerScene.getGridPos(id, scene), drafts);
         let steps     = PlayerScene.getMoveTiles(id, scene);
         let cells     = Board.reachableForUnit(board, origin, steps);
         let drawCells = Board.stoppableForUnit(board, origin, steps);

@@ -144,7 +144,9 @@ mod PlayerMovementScene {
     /// （`PlayerScene.pickupFloorItem` に集約。手動「ひろう」と同じ取得経路）。
     /// 拾うと積載過多（Immobile=移動不可）になるアイテムは拾わず、「○○の上に乗った」だけ
     /// 記録して床に残す（重さで詰むのを防ぐ。降ろすか軽くしてから手動「ひろう」で取れる）。
-    /// 重量判定は移動前スナップショット `data`（在庫は移動では変わらない）で行う。
+    /// 重量判定は移動前スナップショット `data` で行う。取得で在庫は増えるが、`stepFor` が
+    /// フレーム毎に Player ノードを読み直し 1 フレーム 1 歩（isMoving/Tween ガード）なので、
+    /// 取得後の積載は必ず次の歩に反映される＝同一マスでの二重取得や過多の取りこぼしは起きない。
     /// pub: 着地時の自動取得/非取得の判定を `TestActionMenuScene` から直接観測するため。
     pub def autoPickupOrLog(data: PlayerScene.Data, target: {x = Int32, y = Int32},
                              scene: Scene[NodeTag]):

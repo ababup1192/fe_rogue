@@ -1456,7 +1456,7 @@ mod PlayerScene {
         addRing(playerId, ring, removeInventoryItem(playerId, kind, scene))
 
     /// 指定 player のインベントリに `item` を追加（種別ごとに上記 writer へ委譲）。
-    /// `ActionMenuScene.addPickedItem` と同じ追加ルール (ログを出さない版)。
+    /// `addPickedItem`（ログ付き版）と同じ追加ルールの、ログを出さない版。
     def addInventoryItem(playerId: Int32, item: ItemData.GroundItemKind,
                           scene: Scene[NodeTag]): Scene[NodeTag] =
         match item {

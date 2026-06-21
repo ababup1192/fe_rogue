@@ -429,6 +429,33 @@ mod TestActionMenuScene {
             expected = (true, 4),
             (floorStillThere, weaponCountOf(0, after)))
 
+    /// 着地の自動取得は移動キャンセルで巻き戻せる（`pickupFloorItem` が `PickedUp` ドラフトを
+    /// 積むこと）を pin する。**Ref-backed の `withSelectionRef`** で drafts を保持し、
+    /// autoPickupOrLog → `cancelSelection` 後に床アイテムが (1,1) に戻り武器が 2 → 1 本に戻る。
+    /// （put を捨てる `withSelectedPlayer` だと pushDraft が消えてこの巻き戻しを検証できない＝
+    ///  pushDraft 行を消してもグリーンになってしまうので、ここは Ref で本経路を再現する。）
+    @Test
+    def testAutoPickupThenCancelSelectionRevertsPickup(): Unit \ Assert =
+        region rc {
+            let scene = loadActionMenuSceneWithFloorWeapon();
+            let data  = playerDataOf(0, scene);
+            let after = TestUnitFixtures.withNoopTween(() ->
+                TestUnitFixtures.withNoopAnim(() ->
+                    TestUnitFixtures.withMockGameLogger(() ->
+                        TestUnitFixtures.withMockPartyQuery(scene, () ->
+                            TestUnitFixtures.withFixedPhase(TurnPhase.Phase.PlayerMoving, () ->
+                                TestUnitFixtures.withSelectionRef(rc,
+                                    {id = Some(0), drafts = Nil, gatherActive = false}, () -> {
+                                        let picked =
+                                            PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, scene);
+                                        PlayerScene.cancelSelection(picked)
+                                    }))))));
+            let groundItemBack = Option.nonEmpty(ItemScene.findAt({x = 1, y = 1}, after));
+            Assert.assertEq(
+                expected = (true, 1),
+                (groundItemBack, weaponCountOf(0, after)))
+        }
+
     // ════════════════════════════════════════════════════════
     // 装備 / 捨てる の巻き戻し（移動中の仮アクションを逆順 revert）
     //   各アクションを積み、cancelSelection が新しい順に逆操作することを検証する。

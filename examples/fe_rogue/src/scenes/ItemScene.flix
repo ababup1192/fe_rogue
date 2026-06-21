@@ -2,8 +2,8 @@
 ///
 /// `buildPlayingScene` の流れで `add` を呼ぶと、各部屋の床セルからランダムに `dropsPerRoom`
 /// 個まで選んで、`weapons` カタログからランダム抽選した武器をそのセルに落とす。
-/// プレイヤーが同じセルに乗ったあと ActionMenu で「ひろう」を選ぶと
-/// `pickupAt` で取り出してインベントリに加える。
+/// プレイヤーが同じセルに乗ると（重量が許せば自動で）、または ActionMenu で「ひろう」を選ぶと
+/// `PlayerScene.pickupFloorItem` で取り出してインベントリに加える。
 ///
 /// ノード構造:
 ///   World/Items (Marker2D, 永続的な親)
