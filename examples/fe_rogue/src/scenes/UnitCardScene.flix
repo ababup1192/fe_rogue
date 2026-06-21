@@ -38,6 +38,10 @@ mod UnitCardScene {
     def hpBarSize(): Vec2.Vec2  = {x = 26.0, y = 1.5}
     /// HP ラベル / 数値はバーの縦中心に合わせる（VerticalAlignment.Center の基準 y）。
     def hpRowCenterY(): Float64 = hpBarPos()#y + hpBarSize()#y / 2.0
+    // EXP ゲージ: HP バー(26×1.5)より細く短く。Lv テキストのすぐ右、Lv 行の縦中心付近に置く。
+    def expBarSize(): Vec2.Vec2 = {x = 16.0, y = 1.0}
+    def expGap(): Float64       = 2.0           // Lv テキストとゲージの間隔
+    def expBarY(): Float64      = nameY() + 1.5  // Lv 行(y≈3.1, fs2.4)の縦中心付近
     /// panel 右内側（右余白ぶん内側）。HP 数値はここを右端に右寄せする。
     def panelInnerRight(): Float64 = 67.0
     def equipY(): Float64 = 12.0       // 装備アイコンの上端（枠から離して上へ）
@@ -58,6 +62,9 @@ mod UnitCardScene {
     def hpLabelColor(): Color = {r = 0.604f32, g = 0.651f32, b = 0.741f32}  // #9aa6bd
     def hpTrackColor(): Color = {r = 0.031f32, g = 0.043f32, b = 0.063f32}  // #080b10
     def hpTextColor(): Color  = {r = 0.804f32, g = 0.835f32, b = 0.902f32}  // #cdd5e6
+    // EXP ゲージ: 薄めの黄色ベース（塗り=淡い黄 / トラック=暗い黄寄り）。
+    def expBarColor(): Color   = {r = 0.949f32, g = 0.871f32, b = 0.451f32}  // 淡い黄 ~#f2de73
+    def expTrackColor(): Color = {r = 0.063f32, g = 0.059f32, b = 0.031f32}  // 暗い黄寄り
     // カードのアクセント色（枠線 + HP バー）。味方=青 / 敵=赤（スクショ準拠）。
     def allyBorderColor(): Color      = {r = 0.231f32, g = 0.451f32, b = 0.788f32}  // 青枠 #3b73c9
     def allyBarColor(): Color         = {r = 0.314f32, g = 0.580f32, b = 0.902f32}  // 青バー #5094e6
@@ -144,7 +151,7 @@ mod UnitCardScene {
     def renderPlayer(d: PlayerScene.Data, scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameEngine.Game =
         renderUnitInto(panelPath(), allyBorderColor(), allyBarColor(), d#resource, d#hp, d#weapons,
-                       PlayerData.equippedRing(d), Some(d#level), scene)
+                       PlayerData.equippedRing(d), Some({level = d#level, exp = d#exp}), scene)
 
     def renderEnemy(d: EnemyScene.Data, scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameEngine.Game =
@@ -171,7 +178,7 @@ mod UnitCardScene {
                            currentHp: Int32,
                            weapons: List[UnitCatalog.WeaponResource],
                            ring: Option[Ring.RingResource],
-                           levelOpt: Option[Int32],
+                           levelInfoOpt: Option[{level = Int32, exp = Int32}],
                            scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         let cleared = clearContents(panelPath, scene);
@@ -193,14 +200,26 @@ mod UnitCardScene {
             |> CanvasItem.setModulate(nameColor());
         let withName = Scene.addChildAt(panelPath, "Name",
             EngineNode.Label2DWithState(nameLabel, NodeTag.NoTag), withIcon);
-        let withLv = match levelOpt {
-            case Some(lv) =>
+        let withLv = match levelInfoOpt {
+            case Some(info) =>
                 let nameW = Label2D.measure(nameLabel)#x;
-                let lvLabel = Label2D.make("Lv ${lv}", atlas, fsSmall())
-                    |> Node2D.setPosition({x = nameX() + nameW + lvGap(), y = nameY() + 0.6})
+                let lvX = nameX() + nameW + lvGap();
+                let lvLabel = Label2D.make("Lv ${info#level}", atlas, fsSmall())
+                    |> Node2D.setPosition({x = lvX, y = nameY() + 0.6})
                     |> CanvasItem.setModulate(lvColor());
-                Scene.addChildAt(panelPath, "Lv",
-                    EngineNode.Label2DWithState(lvLabel, NodeTag.NoTag), withName)
+                let lvW = Label2D.measure(lvLabel)#x;
+                let withLvLabel = Scene.addChildAt(panelPath, "Lv",
+                    EngineNode.Label2DWithState(lvLabel, NodeTag.NoTag), withName);
+                // Lv の右に EXP ゲージ（HP より細く短く・薄黄）
+                let expBar = ProgressBar.make(expBarSize(),
+                                Int32.toFloat64(LevelSystem.levelThreshold()), expBarColor())
+                    |> Node2D.setPosition({x = lvX + lvW + expGap(), y = expBarY()})
+                    |> ProgressBar.setValue(Int32.toFloat64(info#exp))
+                    |> ProgressBar.setBackgroundColor(expTrackColor())
+                    |> ProgressBar.setBorderWidth(0)
+                    |> ProgressBar.setCornerRadius(0.5);
+                Scene.addChildAt(panelPath, "ExpBar",
+                    EngineNode.ProgressBarWithState(expBar, NodeTag.NoTag), withLvLabel)
             case None => withName
         };
         // HP ラベル + バー + 数値（ラベル/数値はバー中心に縦合わせ）

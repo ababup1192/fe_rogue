@@ -70,7 +70,7 @@ mod PhaseTransitions {
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         clearAllPlayerRanges(scene)
             |> EnemyScene.showAllActive        // 味方フェーズ中は敵を通常色(アクティブ)で見せる
-            |> CursorScene.setVisible(true)
+            |> CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.PlayerCursor))
             |> CursorScene.snapToPlayer
 
     /// PlayerCursor フェーズに入り、カーソルを **明示的に指定された座標** にスナップする。
@@ -95,7 +95,7 @@ mod PhaseTransitions {
             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.LevelUpView);
         clearAllPlayerRanges(scene)
-            |> CursorScene.setVisible(false)
+            |> CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.LevelUpView))
 
     /// PlayerMoving フェーズに入る (味方マスで Z 押下時)。
     /// EnemyRange を先に消してから Move/MoveAttack を refresh する順序を守る必要がある。
@@ -110,7 +110,7 @@ mod PhaseTransitions {
             |> EnemyAttackRangeScene.clear
             |> MoveRangeScene.refresh
             |> MoveAttackRangeScene.refresh
-            |> CursorScene.setVisible(false)
+            |> CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.PlayerMoving))
 
     /// PlayerAttack フェーズに入る (ActionMenu「こうげき」確定時)。
     /// 動作 (表 4 行目): Move/MoveAttack 消去 → 武器射程の赤マスを show → カーソル表示し、
@@ -122,7 +122,7 @@ mod PhaseTransitions {
         TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
         clearMoveOnlyRanges(scene)
             |> PlayerAttackRangeScene.show
-            |> CursorScene.setVisible(true)
+            |> CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.PlayerAttack))
             |> CursorScene.snapToFirstTargetOrPlayer
 
     /// GatherMove フェーズに入る（「集合」確定直後 = 主人公が隊列を率いて動き始める）。
@@ -139,7 +139,7 @@ mod PhaseTransitions {
             |> EnemyAttackRangeScene.clear
             |> MoveAttackRangeScene.clear
             |> MoveRangeScene.refresh
-            |> CursorScene.setVisible(false)
+            |> CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.GatherMove))
 
     /// EnemyTurn フェーズに入る (全味方 waited または 敵ターン遷移時)。
     /// 動作 (表 6 行目): 味方系 3 range 全消し (敵ターン中は赤/青マス不要)。
@@ -160,7 +160,7 @@ mod PhaseTransitions {
         TurnPhase.State.put(TurnPhase.Phase.StairsExit);
         clearAllPlayerRanges(scene)
             |> DangerZoneScene.clear
-            |> CursorScene.setVisible(false)
+            |> CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.StairsExit))
 
     /// ItemSelect フェーズに入る (ActionMenu「アイテム」確定時)。
     /// 動作: 味方系の青/赤マスを片付けて、カーソルを隠す（メニュー操作専用画面のため）。
@@ -169,7 +169,7 @@ mod PhaseTransitions {
             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
         clearAllPlayerRanges(scene)
-            |> CursorScene.setVisible(false)
+            |> CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.ItemSelect))
 
     /// StaffAim フェーズに入る (杖「使う」確定時)。
     /// 動作: メニュー / overlay は触らず、通常カーソルを隠し、選択中プレイヤーの

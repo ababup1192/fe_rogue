@@ -987,6 +987,7 @@ mod CombatScene {
         let gained = forM (
             d <- PlayerScene.get(playerId, scene)
         ) yield {
+            GameLogger.playerLog("${d#resource#description}は ${expGain} の経験値を得た");
             let outcome = LevelSystem.gainExp(d#exp, expGain);
             if (not outcome#levelUp)
                 PlayerScene.mapPlayer(playerId, dd -> {exp = outcome#exp | dd}, scene)

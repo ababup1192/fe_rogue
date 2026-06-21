@@ -714,24 +714,28 @@ mod ActionMenuScene {
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         scene
 
-    /// X / Escape 押下で呼ばれる。メニューを閉じて元のフェーズに戻る:
-    ///   - SelectedPlayer あり (PlayerMoving からの ActionMenu) → PlayerMoving
-    ///   - SelectedPlayer なし (PlayerCursor からの集合メニュー) → PlayerCursor
-    /// 青マス・カーソルは触らず、ユーザがもう一度操作し直せる状態に復帰する。
+    /// X / Escape 押下で呼ばれる。メニューを閉じて元のフェーズに戻る。戻り先フェーズの
+    /// overlay / cursor 状態は **`PhaseTransitions.enter*` に委譲**して確立する。ここで
+    /// `put` だけして scene を素通しすると、空マスメニュー由来（SelectedPlayer = None）で
+    /// 武器 / アイテム / 交換がカーソルを隠したまま PlayerCursor に戻り「カーソル消失・
+    /// 操作不能」状態に陥る（既知バグ）。`enter*` がカーソル再表示・snap（None 経路）/
+    /// 青マス再構築（Some 経路）まで一手に確立する。
+    /// 不変条件: Input.Cancel → ゲームプレイ復帰フェーズの経路は **必ず `enter*` を経由**
+    /// する（bare `put` 禁止）。TestActionMenuScene の各分岐テストがこれを封じる。
+    ///   - gatherActive          → enterGatherMove   （集合・行軍へ。移動やり直し）
+    ///   - SelectedPlayer = Some → enterPlayerMoving （駒操作中。カーソルは設計上非表示）
+    ///   - SelectedPlayer = None → enterPlayerCursor （空マス由来。カーソル再表示＋snap）
     pub def onActionCancelled(scene: Scene[NodeTag]):
-                              Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+                              Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                                                TurnPhase.State, SelectedPlayer.State,
+                                                PlayerData.PartyQuery} =
         let sel = SelectedPlayer.State.get();
-        let target =
-            // 集合（行軍）の隣接メニューを X で閉じたら GatherMove に戻す（移動やり直し）。
-            // 巻き戻しはメニューの「キャンセル」項目が担うので、ここでは戻さない。
-            if (sel#gatherActive) TurnPhase.Phase.GatherMove
-            else match sel#id {
-                case Some(_) => TurnPhase.Phase.PlayerMoving
-                // 通常の空マスメニュー由来 → PlayerCursor に戻す。
-                case None    => TurnPhase.Phase.PlayerCursor
-            };
-        TurnPhase.State.put(target);
-        scene
+        if (sel#gatherActive)
+            PhaseTransitions.enterGatherMove(scene)
+        else match sel#id {
+            case Some(_) => PhaseTransitions.enterPlayerMoving(scene)
+            case None    => PhaseTransitions.enterPlayerCursor(scene)
+        }
 
     /// InputHandler の Z 押下から呼ばれる。現在カーソルがある項目を確定する。
     pub def confirmCurrentSelection(scene: Scene[NodeTag]):

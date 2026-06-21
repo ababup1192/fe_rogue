@@ -647,6 +647,36 @@ mod CursorScene {
         Scene.mapEngineNode(cursorPath(),
             n -> CanvasItem.setVisible(visible, n), scene)
 
+    /// フェーズごとに通常カーソル（Marker2D）が表示されるべきかの**単一の真理点**。
+    /// 下表の「ゲームプレイ復帰フェーズ」の `enter*` は
+    /// `setVisible(cursorVisibleForPhase(<自フェーズ>), …)` でこの値を直接使う。
+    /// 「カーソルを出し忘れて操作不能な半端状態に陥る」バグの種を表に集約してテストで
+    /// 封じるための **テスタビリティ／ロック**。実行時チョークポイントではなく
+    /// （各 `enter*` は自分の定数フェーズを渡す）、バグ・クラスを断つのは
+    /// `onActionCancelled` を `enter*` 経由にする側（ActionMenuScene）の変更。
+    ///
+    /// 対象（gameplay-return / input・`enter*` が通常カーソルの setVisible を書く）:
+    ///   PlayerCursor / PlayerAttack（表示）, PlayerMoving / GatherMove / ItemSelect /
+    ///   LevelUpView / StairsExit（非表示）。
+    /// 非対象: PlayerCursorAt（snap 専用・同値）, StaffAim / ThrowAim（矢印カーソル）,
+    ///   TradeInventory / GatherTrade / TradeTargetSelect（交換メニュー）, AttackForecast /
+    ///   EnemyTurn（カーソル Keep）。これらは自前 setVisible リテラルを持ち
+    ///   onActionCancelled の戻り先ではないためこの関数を呼ばない。
+    /// `case _` は **到達不能**。新フェーズの `enter*` がこの関数を呼ぶのに表へ
+    /// 追加し忘れたら **bug! で大声で落ちる**よう全域化する。将来 per-frame など
+    /// 動的に呼ぶ箇所を増やすなら、まず表へ対象フェーズを足すこと。
+    pub def cursorVisibleForPhase(phase: TurnPhase.Phase): Bool =
+        match phase {
+            case TurnPhase.Phase.PlayerCursor => true
+            case TurnPhase.Phase.PlayerAttack => true
+            case TurnPhase.Phase.PlayerMoving => false
+            case TurnPhase.Phase.GatherMove   => false
+            case TurnPhase.Phase.ItemSelect   => false
+            case TurnPhase.Phase.LevelUpView  => false
+            case TurnPhase.Phase.StairsExit   => false
+            case other => bug!("cursorVisibleForPhase: 非対象フェーズ ${other} で呼ばれた（表に未登録）")
+        }
+
     /// カーソルを「選択中プレイヤー」または最初のアクティブプレイヤーの位置にスナップさせ、
     /// ホバー状態をリセットする。
     /// 敵ターン突入時 / キャンセル復帰時 / プレイヤー移動完了時に呼んで、

@@ -493,4 +493,26 @@ mod TestCursorScene {
             CursorScene.snapToFirstTradeCellOrPlayer(withRange)
         });
         Assert.assertEq(expected = (6, 5), cursorPosOf(after))
+
+    // ════════════════════════════════════════════════════════
+    // cursorVisibleForPhase — フェーズ→カーソル可視の単一の真理表
+    // ════════════════════════════════════════════════════════
+
+    /// 「ゲームプレイ復帰フェーズ」の通常カーソル可視を 1 タプルで pin する純粋テスト。
+    /// この表は各 `enter*` の `setVisible` が直接参照する単一の真理点なので、表が
+    /// 崩れると「カーソルが出ない／消えない」半端状態に直結する。表示=PlayerCursor /
+    /// PlayerAttack、非表示=PlayerMoving / GatherMove / ItemSelect / LevelUpView /
+    /// StairsExit。非対象フェーズ（矢印カーソル・交換メニュー・Keep 系）はこの関数を
+    /// 呼ばないので対象外（呼べば bug! で落ちる）。
+    @Test
+    def testCursorVisibleForPhaseMatrix(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (true, true, false, false, false, false, false),
+            (CursorScene.cursorVisibleForPhase(TurnPhase.Phase.PlayerCursor),
+             CursorScene.cursorVisibleForPhase(TurnPhase.Phase.PlayerAttack),
+             CursorScene.cursorVisibleForPhase(TurnPhase.Phase.PlayerMoving),
+             CursorScene.cursorVisibleForPhase(TurnPhase.Phase.GatherMove),
+             CursorScene.cursorVisibleForPhase(TurnPhase.Phase.ItemSelect),
+             CursorScene.cursorVisibleForPhase(TurnPhase.Phase.LevelUpView),
+             CursorScene.cursorVisibleForPhase(TurnPhase.Phase.StairsExit)))
 }

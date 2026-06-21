@@ -80,6 +80,16 @@
       "zIndex": 3
     },
     {
+      "type": "Polygon2D",
+      "name": "gatherIcon",
+      "comment": "集合中ラベルの左に出す再生(▶)マーク。pos/visible は process が毎フレーム調整。",
+      "pos": [0, 3.75],
+      "points": [[0, -1.3], [0, 1.3], [2.3, 0]],
+      "color": { "r": 1.0, "g": 0.85, "b": 0.4 },
+      "visible": false,
+      "zIndex": 3
+    },
+    {
       "type": "Panel",
       "name": "phaseDot",
       "pos": [180, 3.0],

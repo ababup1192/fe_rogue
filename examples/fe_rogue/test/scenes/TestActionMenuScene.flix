@@ -745,4 +745,68 @@ mod TestActionMenuScene {
                         Some(rgbOf(UITheme.selectBg())), Some(rgbOf(UITheme.allyBlue())),
                         Some(rgbOf(UITheme.rowBg())), Some(rgbOf(UITheme.rowBorder()))),
             (panelBg, panelBorder, headerColor, selFill, selBorder, rowFill, rowBorder))
+
+    // ════════════════════════════════════════════════════════
+    // onActionCancelled — メニューを閉じる X が戻り先フェーズの cursor を必ず確立する
+    //   （武器/アイテム/交換でカーソルを隠したまま戻ると操作不能になる既知バグの回帰防止）
+    // ════════════════════════════════════════════════════════
+
+    /// Cursor ノード 1 個だけを持つ最小 scene（visible を指定）。
+    /// `onActionCancelled` が委譲する `enter*` はレンジ消去・showAllActive・snap など
+    /// 不在ノードに対しては no-op なので、cursor の visible 観測にはこれで十分。
+    def sceneWithCursor(visible: Bool): Scene[NodeTag] =
+        let cursorData: CursorScene.Data = {
+            gridPos            = {x = 1, y = 1},
+            lastHoveredEnemyId = None,
+            holdDir            = None,
+            holdSteps          = 0
+        };
+        Scene.empty()
+            |> Scene.addNode("Cursor",
+                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Cursor(cursorData)))
+            |> CursorScene.setVisible(visible)
+
+    /// 空マスメニュー由来（SelectedPlayer = None）でメニューに入り、武器/アイテム/交換が
+    /// カーソルを隠した状態（initial = hidden）で X を押す回帰テスト。
+    /// 修正前は `onActionCancelled` が `put(PlayerCursor)` だけして scene を素通しするため
+    /// カーソルが隠れたまま＝「カーソル消失・操作不能」状態になった（このテストは失敗する）。
+    /// 修正後は `enterPlayerCursor` へ委譲し、PlayerCursor かつカーソル **再表示** になる。
+    @Test
+    def testActionCancelFromEmptyCellRestoresCursor(): Unit \ Assert =
+        let initial = sceneWithCursor(false);   // 交換/アイテムでカーソルが隠れた状態を再現
+        let (after, finalPhase) =
+            TestUnitFixtures.withCancelTransitionMocks(SelectedPlayer.cleared(), () ->
+                ActionMenuScene.onActionCancelled(initial));
+        Assert.assertEq(
+            expected = (TurnPhase.Phase.PlayerCursor, true),
+            (finalPhase, TestUnitFixtures.readCursorVisible(after)))
+
+    /// 駒選択中（SelectedPlayer = Some(0)）でメニューに入って X を押すと PlayerMoving へ
+    /// 戻る。PlayerMoving のカーソルは設計上 **非表示**（駒を WASD で動かす＝青マスが操作面）
+    /// なので、これは半端状態ではない。`enterPlayerMoving` 経由で visible=false に確立される
+    /// ことを pin する（put 素通しなら initial の true が残って崩れる）。
+    @Test
+    def testActionCancelWithSelectionReturnsToMovingHidden(): Unit \ Assert =
+        let initial = sceneWithCursor(true);
+        let (after, finalPhase) =
+            TestUnitFixtures.withCancelTransitionMocks(
+                {id = Some(0), drafts = Nil, gatherActive = false}, () ->
+                ActionMenuScene.onActionCancelled(initial));
+        Assert.assertEq(
+            expected = (TurnPhase.Phase.PlayerMoving, false),
+            (finalPhase, TestUnitFixtures.readCursorVisible(after)))
+
+    /// 集合（行軍）の隣接メニュー（gatherActive=true）で X を押すと GatherMove へ戻る。
+    /// GatherMove のカーソルも設計上 **非表示**（主人公は自分の physicsProcess で動く）。
+    /// `enterGatherMove` 経由で phase=GatherMove / cursor=false に確立されることを pin。
+    @Test
+    def testActionCancelGatherReturnsToGatherMoveHidden(): Unit \ Assert =
+        let initial = sceneWithCursor(true);
+        let (after, finalPhase) =
+            TestUnitFixtures.withCancelTransitionMocks(
+                {id = Some(0), drafts = Nil, gatherActive = true}, () ->
+                ActionMenuScene.onActionCancelled(initial));
+        Assert.assertEq(
+            expected = (TurnPhase.Phase.GatherMove, false),
+            (finalPhase, TestUnitFixtures.readCursorVisible(after)))
 }

@@ -45,6 +45,7 @@ mod TopBarScene {
     def phaseJpName(): String = "phaseJp"
     def phaseEnName(): String = "phaseEn"
     def gatherLabelName(): String = "gatherLabel"
+    def gatherIconName(): String = "gatherIcon"
 
     def rootPath(): NodePath = rootName() :: Nil
     def bandPath(): NodePath = rootName() :: bandName() :: Nil
@@ -57,6 +58,7 @@ mod TopBarScene {
     def phaseJpPath(): NodePath = rootName() :: phaseJpName() :: Nil
     def phaseEnPath(): NodePath = rootName() :: phaseEnName() :: Nil
     def gatherLabelPath(): NodePath = rootName() :: gatherLabelName() :: Nil
+    def gatherIconPath(): NodePath = rootName() :: gatherIconName() :: Nil
 
     def fontName(): String = "ui"
     def sceneJsonPath(): String = AssetPath.resolve("src/scenes/TopBarScene.scene.json")
@@ -69,6 +71,9 @@ mod TopBarScene {
     def groupGap(): Float64 = 2.0
     def dotGap(): Float64 = 1.5
     def dotSize(): Float64 = 1.5
+    /// 「集合中」左の再生(▶)マークの幅と、マーク先端と文字の間隔（scene.json の points と一致させる）。
+    def gatherIconW(): Float64 = 2.3
+    def gatherIconGap(): Float64 = 1.5
 
     /// 左→右ワイプの所要時間。
     def animDuration(): Duration.Duration = Duration.millis(500)
@@ -188,11 +193,19 @@ mod TopBarScene {
         }
 
     /// 中央「集合中」ラベルを viewport 実幅の中央へ置き、集合中のみ可視にする。
+    /// ラベル左には再生(▶)マークを置く。テキスト幅を実測し、左端から少し離して配置する。
     def applyGatherLabel(visible: Bool, w: Float64, scene: Scene[NodeTag]): Scene[NodeTag] =
-        scene
+        let labeled = scene
             |> Label2D.mapAt(gatherLabelPath(), l ->
                 l |> Node2D.setPosition({x = w / 2.0, y = rowCenterY()})
-                  |> CanvasItem.setVisible(visible))
+                  |> CanvasItem.setVisible(visible));
+        let textW = measureLabelW(gatherLabelPath(), labeled);
+        let iconX = w / 2.0 - textW / 2.0 - gatherIconGap() - gatherIconW();
+        labeled
+            |> Scene.mapEngineNode(gatherIconPath(), n ->
+                EngineNode.mapPolygon2D(p ->
+                    p |> Node2D.setPosition({x = iconX, y = rowCenterY()})
+                      |> CanvasItem.setVisible(visible), n))
 
     /// 帯/下線/ドット/文字を `baseEnemy` 色に、sweep を `sweepTarget`（あれば）色で幅 w*progress に。
     def applyAll(w: Float64, baseEnemy: Bool, sweepTarget: Option[Bool], progress: Float64,

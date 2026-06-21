@@ -528,6 +528,35 @@ mod TestUnitFixtures {
                 withMockPartyQuery(scene, () ->
                     withMockRosterQuery(scene, thunk))))
 
+    /// `ActionMenuScene.onActionCancelled` の遷移テスト用に、必要な 5 effect
+    /// (Tween / Anim / PartyQuery / TurnPhase / SelectedPlayer) を **1 呼び出し**で剥がす束ね。
+    /// `withMenuReadMocks` と同じ発想で、深いネストを 1 段に畳む。
+    /// TurnPhase は Ref-backed (`withPhaseRef`) で観測し `(thunk の結果, 最終フェーズ)` を返す。
+    /// SelectedPlayer は `initialSel` で初期化（None=`SelectedPlayer.cleared()` / Some / gather を
+    /// 呼び出し側が渡す）。region は内部で開いて閉じるので呼び出し側に `rc` は不要。
+    /// put 観測のため `withPhaseRef` を State 系の最外に置く。
+    pub def withCancelTransitionMocks(initialSel: SelectedPlayer.Selection,
+                                       thunk: Unit -> a \ ef):
+            (a, TurnPhase.Phase) \
+                (ef - Tween.Scheduler - AnimationPlayer.Scheduler - PlayerData.PartyQuery
+                    - TurnPhase.State - SelectedPlayer.State) =
+        region rc {
+            withNoopTween(() ->
+                withNoopAnim(() ->
+                    withMockPartyQuery(Scene.empty(), () ->
+                        withPhaseRef(rc, TurnPhase.Phase.ActionSelect, () ->
+                            withSelectionRef(rc, initialSel, thunk)))))
+        }
+
+    /// scene 内の Cursor(Marker2D) の visible を読む。フェーズ遷移／キャンセル後に
+    /// 「カーソルが出ているか」を観測するテスト共通ヘルパー
+    /// （TestPhaseTransitions.observe のカーソル読みと同型）。
+    pub def readCursorVisible(scene: Scene[NodeTag]): Bool =
+        match Scene.getEngineNode(CursorScene.cursorPath(), scene) {
+            case Some(EngineNode.Marker2DWithState(m, _)) => CanvasItem.isVisible(m)
+            case _                                          => bug!("Cursor node not found")
+        }
+
     // ════════════════════════════════════════════════════════
     // 純粋値フィクスチャ / タプル変換（複数ファイルで重複していたものを集約）
     // ════════════════════════════════════════════════════════
