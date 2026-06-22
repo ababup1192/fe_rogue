@@ -154,106 +154,80 @@ instance Node[NodeTag] {
     redef process(delta: Duration.Duration, node: EngineNode[NodeTag],
                    path: NodePath, scene: Scene[NodeTag]):
                   (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
-        // dispatch を 4 群に分割して呼ぶ。それぞれの本体は match で自分の担当
-        // ノードタイプ以外は (node, scene) を返す (pass-through) ので、合計 1 回の
-        // 巡回で各ノードが該当 1 関数に振り分けられる。
-        // 分割理由: Flix の型推論で 1 つの match arm 数が増えすぎると複雑度上限を
-        // 超えるため、各群を独立した signature で推論させる。
-        let (n1, s1) = dispatchEntities(delta, node, path, scene);
-        let (n2, s2) = dispatchTickables(delta, n1, path, s1);
-        let (n3, s3) = dispatchDrivers(delta, n2, path, s2);
-        dispatchMenus(delta, n3, path, s3)
+        processMatch(delta, node, path, scene)
 }
 
-/// Player / Enemy ノード (AnimationPlayer signal drain を持つエンティティ系)。
-/// 戦闘シグナルの解決は CombatScene.process が攻守共通で受ける。
-def dispatchEntities(delta: Duration.Duration, node: EngineNode[NodeTag],
-                      path: NodePath, scene: Scene[NodeTag]):
-                     (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
+/// 全ノードの毎フレーム process を 1 つの match で各 Scene 関数へ振り分ける。
+///
+/// 全 Scene を 1 関数にまとめてあるのは Flix の効果検査の都合: match は各 arm の effect を
+/// 自然に union するため、arm 群が集合的に `FrameAef.ProcessT` 全体を使えば、宣言した effect が
+/// 過不足なく満たされ（E6217「未使用 effect」が出ず）、arm ごとの効果合わせの cast も要らない。
+/// Scene を別関数に分割すると各関数の arm 集合が ProcessT の部分集合になり、この性質が崩れる。
+def processMatch(delta: Duration.Duration, node: EngineNode[NodeTag],
+                  path: NodePath, scene: Scene[NodeTag]):
+                 (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
     match node {
+        // ── エンティティ（戦闘 signal drain）──
         case EngineNode.Marker2DWithState(_, NodeTag.Player(_)) =>
-            checked_ecast(CombatScene.process(delta, node, path, scene))
+            CombatScene.process(delta, node, path, scene)
         case EngineNode.Marker2DWithState(_, NodeTag.Enemy(_)) =>
-            checked_ecast(CombatScene.process(delta, node, path, scene))
-        case _ => (node, scene)
-    }
-
-/// 毎フレーム tick が必要な表示系ノード (Popup / HPBar / Item / UnitInfoPanel / Camera / Log)
-def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
-                       path: NodePath, scene: Scene[NodeTag]):
-                      (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
-    match node {
-        case EngineNode.Marker2DWithState(_, NodeTag.DamagePopupsRoot(_)) =>
-            checked_ecast(DamagePopupScene.process(delta, node, path, scene))
-        case EngineNode.Marker2DWithState(_, NodeTag.ExplosionsRoot(_)) =>
-            checked_ecast(ExplosionScene.process(delta, node, path, scene))
-        case EngineNode.Marker2DWithState(_, NodeTag.HPBar(_)) =>
-            checked_ecast(UnitHPBarScene.process(delta, node, path, scene))
-        case EngineNode.Marker2DWithState(_, NodeTag.GroundItem(_)) =>
-            checked_ecast(ItemScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.UnitInfoPanel(_)) =>
-            checked_ecast(UnitInfoPopupScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.TopBar(_)) =>
-            checked_ecast(TopBarScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.ItemPickupPopup(_)) =>
-            checked_ecast(ItemPickupPopupScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.HoldGauge(_)) =>
-            checked_ecast(TurnEndHoldScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.CharacterSelect(_)) =>
-            checked_ecast(CharacterSelectScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.Log(_)) =>
-            checked_ecast(LogScene.process(delta, node, path, scene))
-        case EngineNode.Camera2DWithState(_, _) =>
-            checked_ecast(CameraScene.process(delta, node, path, scene))
-        case _ => (node, scene)
-    }
-
-/// フェーズ駆動の driver ノード (EnemyTurnDriver / ArrowCursor / Fog / Minimap)
-def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
-    match node {
+            CombatScene.process(delta, node, path, scene)
+        // ── フェーズ駆動 driver ──
         case EngineNode.Marker2DWithState(_, NodeTag.EnemyTurnDriver) =>
-            checked_ecast(EnemyTurnDriverScene.process(delta, node, path, scene))
+            EnemyTurnDriverScene.process(delta, node, path, scene)
         case EngineNode.Marker2DWithState(_, NodeTag.StairsExitDriver(_)) =>
-            checked_ecast(StairsExitScene.process(delta, node, path, scene))
+            StairsExitScene.process(delta, node, path, scene)
         case EngineNode.Marker2DWithState(_, NodeTag.ArrowCursor(_)) =>
-            checked_ecast(ArrowCursorScene.process(delta, node, path, scene))
+            ArrowCursorScene.process(delta, node, path, scene)
         case EngineNode.Marker2DWithState(_, NodeTag.FogDriver) =>
-            checked_ecast(FogScene.process(delta, node, path, scene))
+            FogScene.process(delta, node, path, scene)
         case EngineNode.Marker2DWithState(_, NodeTag.MinimapDriver(_)) =>
-            checked_ecast(MinimapScene.process(delta, node, path, scene))
-        case _ => (node, scene)
-    }
-
-/// メニュー系ノード (ItemMenu / ActionMenu の ItemList、戦闘予報ミニウィンドウ等)。
-/// BattlePanel は World 配下の Marker2D（盤面追従の戦闘予報）だが、effect 推論の都合で
-/// tickables ではなくこの群で dispatch する（dispatchTickables に移すと FrameAef.ProcessT の
-/// 効果が未使用と判定されるため）。
-def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
-                   path: NodePath, scene: Scene[NodeTag]):
-                  (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
-    match node {
-        case EngineNode.ItemListWithState(_, NodeTag.ItemMenu(_, _)) =>
-            checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
-        case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
-            checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
-        case EngineNode.ItemListWithState(_, NodeTag.WeaponSelectMenu) =>
-            checked_ecast(WeaponSelectScene.refreshItems(delta, node, path, scene))
-        case EngineNode.ItemListWithState(_, NodeTag.GameOverMenu) =>
-            checked_ecast(GameOverMenuScene.refreshItems(delta, node, path, scene))
-        case EngineNode.ItemListWithState(_, NodeTag.SuspendConfirmMenu) =>
-            checked_ecast(SuspendConfirmScene.refreshItems(delta, node, path, scene))
-        case EngineNode.ItemListWithState(_, NodeTag.TradeMenu(_)) =>
-            checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
+            MinimapScene.process(delta, node, path, scene)
+        // ── 表示系 tick（Marker2D 親）──
+        case EngineNode.Marker2DWithState(_, NodeTag.DamagePopupsRoot(_)) =>
+            DamagePopupScene.process(delta, node, path, scene)
+        case EngineNode.Marker2DWithState(_, NodeTag.ExplosionsRoot(_)) =>
+            ExplosionScene.process(delta, node, path, scene)
+        case EngineNode.Marker2DWithState(_, NodeTag.HPBar(_)) =>
+            UnitHPBarScene.process(delta, node, path, scene)
+        case EngineNode.Marker2DWithState(_, NodeTag.GroundItem(_)) =>
+            ItemScene.process(delta, node, path, scene)
+        // ── 表示系 tick（CanvasLayer 親）──
+        case EngineNode.CanvasLayerWithState(_, NodeTag.UnitInfoPanel(_)) =>
+            UnitInfoPopupScene.process(delta, node, path, scene)
+        case EngineNode.CanvasLayerWithState(_, NodeTag.TopBar(_)) =>
+            TopBarScene.process(delta, node, path, scene)
+        case EngineNode.CanvasLayerWithState(_, NodeTag.ItemPickupPopup(_)) =>
+            ItemPickupPopupScene.process(delta, node, path, scene)
+        case EngineNode.CanvasLayerWithState(_, NodeTag.HoldGauge(_)) =>
+            TurnEndHoldScene.process(delta, node, path, scene)
+        case EngineNode.CanvasLayerWithState(_, NodeTag.CharacterSelect(_)) =>
+            CharacterSelectScene.process(delta, node, path, scene)
+        case EngineNode.CanvasLayerWithState(_, NodeTag.Log(_)) =>
+            LogScene.process(delta, node, path, scene)
         case EngineNode.CanvasLayerWithState(_, NodeTag.UnitCard) =>
-            checked_ecast(UnitCardScene.process(delta, node, path, scene))
+            UnitCardScene.process(delta, node, path, scene)
         case EngineNode.CanvasLayerWithState(_, NodeTag.EnemyCard) =>
-            checked_ecast(EnemyCardScene.process(delta, node, path, scene))
+            EnemyCardScene.process(delta, node, path, scene)
         case EngineNode.CanvasLayerWithState(_, NodeTag.BattlePanel(_)) =>
-            checked_ecast(BattlePanelScene.process(delta, node, path, scene))
+            BattlePanelScene.process(delta, node, path, scene)
+        case EngineNode.Camera2DWithState(_, _) =>
+            CameraScene.process(delta, node, path, scene)
         case EngineNode.PanelWithState(_, NodeTag.LevelUpPanel(_)) =>
-            checked_ecast(LevelUpPanelScene.process(delta, node, path, scene))
+            LevelUpPanelScene.process(delta, node, path, scene)
+        // ── メニュー系（ItemList）──
+        case EngineNode.ItemListWithState(_, NodeTag.ItemMenu(_, _)) =>
+            ItemMenuScene.refreshItems(delta, node, path, scene)
+        case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
+            ActionMenuScene.refreshItems(delta, node, path, scene)
+        case EngineNode.ItemListWithState(_, NodeTag.WeaponSelectMenu) =>
+            WeaponSelectScene.refreshItems(delta, node, path, scene)
+        case EngineNode.ItemListWithState(_, NodeTag.GameOverMenu) =>
+            GameOverMenuScene.refreshItems(delta, node, path, scene)
+        case EngineNode.ItemListWithState(_, NodeTag.SuspendConfirmMenu) =>
+            SuspendConfirmScene.refreshItems(delta, node, path, scene)
+        case EngineNode.ItemListWithState(_, NodeTag.TradeMenu(_)) =>
+            TradeMenuScene.refreshItems(delta, node, path, scene)
         case _ => (node, scene)
     }
 
@@ -372,7 +346,7 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
             // Some が返ってくれば dispatcher が処理済みなのでその scene をそのまま返す。
             // 入力があればメニュー dispatcher に渡す。処理済み(Some)ならその scene、
             // 未処理(None)・入力なしは非メニュー処理へ。2 段の match を flatMap + 1 match に畳む。
-            match input |> Option.flatMap(inp -> checked_ecast(dispatchMenuKey(phase, inp, scene))) {
+            match input |> Option.flatMap(inp -> dispatchMenuKey(phase, inp, scene)) {
                 case Some(after) => after
                 case None        => dispatchNonMenuKey(phase, input, key, popupShown, scene)
             }
@@ -381,11 +355,16 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
 /// MenuHandler instance — ItemList の Enter/Escape を各 MenuScene へ流す。
 /// 入力キー固定: Up/Down=カーソル移動 / Enter=確定 / Escape=キャンセル（engine 規約）。
 instance MenuEvent.MenuHandler[NodeTag] {
-    type Aef = {Tween.Scheduler, AnimationPlayer.Scheduler, GameEngine.Audio,
+    // 確定は「かいだん」確定で FloorAdvanceRequest を emit する等、広い effect を使う。
+    type ConfirmAef = {Tween.Scheduler, AnimationPlayer.Scheduler, GameEngine.Audio,
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                  PlayerData.PartyQuery, EnemyData.RosterQuery,
                  CustomEffects.FloorAdvanceRequest}
+    // キャンセルはサブメニューを閉じる/巻き戻すだけで、request 系・RNG・ログ等は使わない。
+    // ConfirmAef より狭く宣言し、cancel が誤って FloorAdvanceRequest 等を発火することを型で禁じる。
+    type CancelAef = {Tween.Scheduler, AnimationPlayer.Scheduler,
+                 TurnPhase.State, SelectedPlayer.State, PlayerData.PartyQuery}
     redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
                            state: NodeTag,
                            scene: Scene[NodeTag]):
@@ -404,41 +383,36 @@ instance MenuEvent.MenuHandler[NodeTag] {
                 let phase = TurnPhase.State.get();
                 match phase {
                     case TurnPhase.Phase.ItemSelect       =>
-                        checked_ecast(ItemMenuScene.onItemConfirmed(entry, scene))
+                        ItemMenuScene.onItemConfirmed(entry, scene)
                     case TurnPhase.Phase.ItemActionSelect =>
-                        checked_ecast(ItemMenuScene.onActionConfirmed(entry, scene))
+                        ItemMenuScene.onActionConfirmed(entry, scene)
                     case _                                 => scene
                 }
             // onActionConfirmed は「かいだん」で CustomEffects.FloorAdvanceRequest を emit するため、
             // この instance の Aef にも FloorAdvanceRequest を含めてある（start で handler 注入済み）。
             case NodeTag.ActionMenu        => ActionMenuScene.onActionConfirmed(entry, scene)
-            case NodeTag.WeaponSelectMenu  => checked_ecast(WeaponSelectScene.onConfirmed(entry, scene))
-            case NodeTag.TradeMenu(_)      => checked_ecast(TradeMenuScene.confirmCurrentSelection(scene))
+            case NodeTag.WeaponSelectMenu  => WeaponSelectScene.onConfirmed(entry, scene)
+            case NodeTag.TradeMenu(_)      => TradeMenuScene.confirmCurrentSelection(scene)
             case _                         => scene
         }
     redef onItemCancelled(_menuPath: NodePath, state: NodeTag,
                            scene: Scene[NodeTag]):
                           Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                                             GameEngine.Audio,
-                                             GameLogger.GameLogger, EnemyTurn.Queue,
                                              TurnPhase.State, SelectedPlayer.State,
-                                             GatherResume.State,
-                                             PlayerData.PartyQuery,
-                                             EnemyData.RosterQuery,
-                                             CustomEffects.FloorAdvanceRequest} =
+                                             PlayerData.PartyQuery} =
         match state {
             case NodeTag.ItemMenu(_, _) =>
                 let phase = TurnPhase.State.get();
                 match phase {
                     case TurnPhase.Phase.ItemSelect       =>
-                        checked_ecast(ItemMenuScene.onItemCancelled(scene))
+                        ItemMenuScene.onItemCancelled(scene)
                     case TurnPhase.Phase.ItemActionSelect =>
-                        checked_ecast(ItemMenuScene.onActionCancelled(scene))
+                        ItemMenuScene.onActionCancelled(scene)
                     case _                                 => scene
                 }
-            case NodeTag.ActionMenu        => checked_ecast(ActionMenuScene.onActionCancelled(scene))
-            case NodeTag.WeaponSelectMenu  => checked_ecast(WeaponSelectScene.onCancelled(scene))
-            case NodeTag.TradeMenu(_)      => checked_ecast(TradeMenuScene.cancelCurrent(scene))
+            case NodeTag.ActionMenu        => ActionMenuScene.onActionCancelled(scene)
+            case NodeTag.WeaponSelectMenu  => WeaponSelectScene.onCancelled(scene)
+            case NodeTag.TradeMenu(_)      => TradeMenuScene.cancelCurrent(scene)
             case _                         => scene
         }
 }
@@ -604,28 +578,28 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
         case (TurnPhase.Phase.ActionSelect,      TurnRules.Input.Confirm)
                                               => Some(ActionMenuScene.confirmCurrentSelection(scene))
         case (TurnPhase.Phase.ActionSelect,      TurnRules.Input.Cancel)
-                                              => Some(checked_ecast(ActionMenuScene.onActionCancelled(scene)))
+                                              => Some(ActionMenuScene.onActionCancelled(scene))
         case (TurnPhase.Phase.WeaponSelect,      TurnRules.Input.Confirm)
-                                              => Some(checked_ecast(WeaponSelectScene.confirmCurrentSelection(scene)))
+                                              => Some(WeaponSelectScene.confirmCurrentSelection(scene))
         case (TurnPhase.Phase.WeaponSelect,      TurnRules.Input.Cancel)
-                                              => Some(checked_ecast(WeaponSelectScene.onCancelled(scene)))
+                                              => Some(WeaponSelectScene.onCancelled(scene))
         case (TurnPhase.Phase.ItemSelect,        TurnRules.Input.Confirm)
-                                              => Some(checked_ecast(ItemMenuScene.confirmCurrentSelection(scene)))
+                                              => Some(ItemMenuScene.confirmCurrentSelection(scene))
         case (TurnPhase.Phase.ItemSelect,        TurnRules.Input.Cancel)
-                                              => Some(checked_ecast(ItemMenuScene.onItemCancelled(scene)))
+                                              => Some(ItemMenuScene.onItemCancelled(scene))
         case (TurnPhase.Phase.ItemActionSelect,  TurnRules.Input.Confirm)
-                                              => Some(checked_ecast(ItemMenuScene.confirmCurrentSelection(scene)))
+                                              => Some(ItemMenuScene.confirmCurrentSelection(scene))
         case (TurnPhase.Phase.ItemActionSelect,  TurnRules.Input.Cancel)
-                                              => Some(checked_ecast(ItemMenuScene.onActionCancelled(scene)))
+                                              => Some(ItemMenuScene.onActionCancelled(scene))
         case (TurnPhase.Phase.TradeInventory,    TurnRules.Input.Confirm)
-                                              => Some(checked_ecast(TradeMenuScene.confirmCurrentSelection(scene)))
+                                              => Some(TradeMenuScene.confirmCurrentSelection(scene))
         case (TurnPhase.Phase.TradeInventory,    TurnRules.Input.Cancel)
-                                              => Some(checked_ecast(TradeMenuScene.cancelCurrent(scene)))
+                                              => Some(TradeMenuScene.cancelCurrent(scene))
         // レベルアップのステータス変化パネルは Z / Enter / X いずれでも閉じる（確認するだけ）。
         case (TurnPhase.Phase.LevelUpView,       TurnRules.Input.Confirm)
-                                              => Some(checked_ecast(LevelUpPanelScene.confirm(scene)))
+                                              => Some(LevelUpPanelScene.confirm(scene))
         case (TurnPhase.Phase.LevelUpView,       TurnRules.Input.Cancel)
-                                              => Some(checked_ecast(LevelUpPanelScene.confirm(scene)))
+                                              => Some(LevelUpPanelScene.confirm(scene))
         case _                                => None
     }
 
@@ -647,33 +621,33 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
         case (_,                              Some(TurnRules.Input.Cancel)) if popupShown
                                               => UnitInfoPopupScene.toggleView(scene)
         case (TurnPhase.Phase.StaffAim,       Some(TurnRules.Input.Cancel))
-                                              => checked_ecast(staffAimCancel(scene))
+                                              => staffAimCancel(scene)
         case (TurnPhase.Phase.StaffAim,       Some(TurnRules.Input.Confirm))
-                                              => checked_ecast(staffAimConfirm(scene))
+                                              => staffAimConfirm(scene)
         // StaffAim 中の方向キーは applyStaffCast へ
         case (TurnPhase.Phase.StaffAim,       None)
-                                              => checked_ecast(staffAimDirection(key, scene))
+                                              => staffAimDirection(key, scene)
         // ThrowAim（アイテム投擲）。StaffAim と同じ矢印 UI を共用し、Z で投げ確定。
         case (TurnPhase.Phase.ThrowAim,       Some(TurnRules.Input.Cancel))
-                                              => checked_ecast(staffAimCancel(scene))
+                                              => staffAimCancel(scene)
         case (TurnPhase.Phase.ThrowAim,       Some(TurnRules.Input.Confirm))
-                                              => checked_ecast(throwAimConfirm(scene))
+                                              => throwAimConfirm(scene)
         case (TurnPhase.Phase.ThrowAim,       None)
-                                              => checked_ecast(staffAimDirection(key, scene))
+                                              => staffAimDirection(key, scene)
         // TradeInventory 中の ←/→ は左右ペイン切替へ (↑↓ は handleMenus 側で
         // ItemList のカーソル移動に使われるので素通り)
         case (TurnPhase.Phase.TradeInventory, None)
-                                              => checked_ecast(tradeInventoryDirection(key, scene))
+                                              => tradeInventoryDirection(key, scene)
         // ItemSelect 中の ←/→ はアイテム window のページ切替へ (↑↓ は handleMenus 側で
         // ItemList のカーソル移動に使われるので素通り)
         case (TurnPhase.Phase.ItemSelect,     None)
-                                              => checked_ecast(itemSelectDirection(key, scene))
+                                              => itemSelectDirection(key, scene)
         // PlayerAttack = ターゲット選択 + 戦闘予測。Z で(カーソル上の敵に)攻撃確定、
         // X でメニューに戻る。BattlePanelScene が予報表示と対象同期を担う。
         case (TurnPhase.Phase.PlayerAttack,   Some(TurnRules.Input.Confirm))
                                               => BattlePanelScene.confirm(scene)
         case (TurnPhase.Phase.PlayerAttack,   Some(TurnRules.Input.Cancel))
-                                              => checked_ecast(BattlePanelScene.cancel(scene))
+                                              => BattlePanelScene.cancel(scene)
         // 明示 case が無いフェーズの Z/X は TurnRules.decide にそのまま渡す
         case (_,                              Some(inp))
                                               => TurnInputBridge.handle(inp, scene)

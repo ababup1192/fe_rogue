@@ -23,8 +23,14 @@ pub mod MenuEvent {
     /// 関連エフェクト Aef でインスタンスごとに必要な副作用を宣言する。
     pub trait MenuHandler[s] {
 
-        /// メニュー応答で発生するエフェクト
-        type Aef: Eff
+        /// 確定（onItemConfirmed）で発生するエフェクト。
+        /// キャンセルは別画面遷移を伴わないことが多く必要 effect が狭いため、`Node` の
+        /// `Aef`/`ProcessAef` と同様にメソッドごとに分離する（共有 1 本だと、片方しか使わない
+        /// effect をもう片方が `checked_ecast` で埋める必要が生じるため）。
+        type ConfirmAef: Eff
+
+        /// キャンセル（onItemCancelled）で発生するエフェクト。通常は ConfirmAef より狭い。
+        type CancelAef: Eff
 
         /// 項目が確定された（Enter 押下）瞬間に呼ばれる。
         /// menuPath: ItemList ノードのパス
@@ -33,12 +39,12 @@ pub mod MenuEvent {
         /// state   : ItemList ノードのゲーム状態
         /// scene   : 現在のシーン
         pub def onItemConfirmed(_menuPath: NodePath, _idx: Int32, _entry: ItemEntry,
-                                _state: s, scene: Scene[s]): Scene[s] \ MenuHandler.Aef[s] =
+                                _state: s, scene: Scene[s]): Scene[s] \ MenuHandler.ConfirmAef[s] =
             checked_ecast(scene)
 
         /// キャンセル（Escape 押下）瞬間に呼ばれる。サブメニューを閉じる等。
         pub def onItemCancelled(_menuPath: NodePath, _state: s,
-                                scene: Scene[s]): Scene[s] \ MenuHandler.Aef[s] =
+                                scene: Scene[s]): Scene[s] \ MenuHandler.CancelAef[s] =
             checked_ecast(scene)
     }
 
@@ -94,7 +100,7 @@ pub mod MenuEvent {
     ///   2. detectPendingMenus で pending を収集
     ///   3. onItemConfirmed / onItemCancelled を発火
     ///   4. pending フラグをクリア
-    pub def handleMenus(scene: Scene[s]): Scene[s] \ {GameEngine.Game, MenuHandler.Aef[s]}
+    pub def handleMenus(scene: Scene[s]): Scene[s] \ {GameEngine.Game, MenuHandler.ConfirmAef[s], MenuHandler.CancelAef[s]}
             with MenuHandler[s] =
         let afterUpdate = updateMenus(scene);
         let pending = detectPendingMenus(afterUpdate);

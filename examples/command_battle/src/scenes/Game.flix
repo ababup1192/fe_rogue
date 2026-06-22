@@ -136,24 +136,25 @@ instance InputEvent.InputHandler[NodeTag] {
 // ========================================================================
 
 instance MenuEvent.MenuHandler[NodeTag] {
-    type Aef = { GamePhaseState, Math.Random, GameEngine.Audio }
+    type ConfirmAef = { GamePhaseState, Math.Random, GameEngine.Audio }
+    type CancelAef = { GamePhaseState }
     // dispatch のみ。 各 menu のロジックは Scene の関数に委譲する。
     redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
                           state: NodeTag,
                           scene: Scene[NodeTag]):
-                          Scene[NodeTag] \ {GamePhaseState, Math.Random, GameEngine.Audio} =
+                          Scene[NodeTag] \ { GamePhaseState, Math.Random, GameEngine.Audio } =
         match state {
             case NodeTag.CommandMenu => CommandScene.onCommandConfirmed(entry, scene)
             case NodeTag.SpellMenu   => SpellMenuScene.onSpellConfirmed(entry, scene)
-            case NodeTag.ItemMenu    => checked_ecast(ItemMenuScene.onItemConfirmed(entry, scene))
+            case NodeTag.ItemMenu    => ItemMenuScene.onItemConfirmed(entry, scene)
             case _                   => scene
         }
     redef onItemCancelled(_menuPath: NodePath, state: NodeTag,
                           scene: Scene[NodeTag]):
-                          Scene[NodeTag] \ {GamePhaseState, Math.Random, GameEngine.Audio} =
+                          Scene[NodeTag] \ { GamePhaseState } =
         match state {
-            case NodeTag.SpellMenu => checked_ecast(SpellMenuScene.onSpellCancelled(scene))
-            case NodeTag.ItemMenu  => checked_ecast(ItemMenuScene.onItemCancelled(scene))
+            case NodeTag.SpellMenu => SpellMenuScene.onSpellCancelled(scene)
+            case NodeTag.ItemMenu  => ItemMenuScene.onItemCancelled(scene)
             case _                 => scene
         }
 }
