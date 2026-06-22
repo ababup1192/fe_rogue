@@ -1,0 +1,14 @@
+{
+  "title": "Shape Survivors",
+  "designWidth": 480,
+  "designHeight": 270,
+  "windowWidth": 960,
+  "windowHeight": 540,
+  "clearColor": {"r": 0.07, "g": 0.08, "b": 0.12},
+  "maxDeltaTime": 0.05,
+  "textures": [],
+  "fonts": [
+    {"name": "default", "path": "textures/Xolonium-Regular.ttf", "fontSize": 60.0}
+  ],
+  "sounds": []
+}
