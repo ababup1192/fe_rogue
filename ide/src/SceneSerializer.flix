@@ -156,6 +156,169 @@ mod SceneSerializer {
         }
 
     // ========================================================================
+    // 子ノードの追加（構造変更）— Add Child Node 用
+    // ========================================================================
+
+    /// jsonPath のシーンの parentPath にあるノードの "children" 配列に、childType の
+    /// 子ノードを「型名で一意に自動命名」して追加し、書き戻す。成功時は付与した名前を Ok。
+    /// 初期スコープは素の `children` 配列を持つ通常ノードのみ（Container/layout は対象外）。
+    pub def addChild(jsonPath: String, parentPath: NodePath, childType: String):
+            Result[String, String] \ {Fs.FileRead, Fs.FileWrite} =
+        let readResult = run { Fs.ReadFile.read(jsonPath) } with Fs.ReadFile.runWithFileRead;
+        let parsed = readResult
+            |> Result.mapErr(e -> "read failed: ${e}")
+            |> Result.flatMap(text -> JsonOrdered.parse(String.trim(text)));
+        match parsed {
+            case Err(msg) => Err(msg)
+            case Ok(json) =>
+                match insertChildAtRoot(parentPath, childType, json) {
+                    case None                  => Err("parent node not found: ${parentPath}")
+                    case Some((newJson, name)) => writeAddChild(jsonPath, newJson, name)
+                }
+        }
+
+    def writeAddChild(jsonPath: String, newJson: JsonOrdered.OrderedJson, childName: String):
+            Result[String, String] \ Fs.FileWrite =
+        let pretty = JsonOrdered.writePretty(2, newJson);
+        let writeResult = run { Fs.WriteFile.write({str = pretty}, jsonPath) }
+            with Fs.WriteFile.runWithFileWrite;
+        writeResult |> Result.mapErr(e -> "write failed: ${e}") |> Result.map(_ -> childName)
+
+    def insertChildAtRoot(parentPath: NodePath, childType: String,
+                          json: JsonOrdered.OrderedJson):
+                         Option[(JsonOrdered.OrderedJson, String)] =
+        match parentPath {
+            case Nil => None
+            case rootName :: rest =>
+                match json {
+                    case JsonOrdered.OrderedJson.OObject(_, _) =>
+                        insertChildInNode(rootName, rest, childType, json)
+                    case JsonOrdered.OrderedJson.OArray(items, style) =>
+                        insertChildInArray(rootName, rest, childType, items)
+                            |> Option.map(pair -> {
+                                let (newItems, nm) = pair;
+                                (JsonOrdered.OrderedJson.OArray(newItems, style), nm)
+                            })
+                    case _ => None
+                }
+        }
+
+    def insertChildInNode(targetName: String, restPath: NodePath, childType: String,
+                          element: JsonOrdered.OrderedJson):
+                         Option[(JsonOrdered.OrderedJson, String)] =
+        match element {
+            case JsonOrdered.OrderedJson.OObject(entries, style) =>
+                match nodeNameOf(entries) {
+                    case Some(name) if name == targetName =>
+                        match restPath {
+                            case Nil =>
+                                let (newEntries, childName) = appendChildEntry(entries, childType);
+                                Some((JsonOrdered.OrderedJson.OObject(newEntries, style), childName))
+                            case next :: deeper =>
+                                descendForInsert(entries, style, next, deeper, childType)
+                        }
+                    case _ => None
+                }
+            case _ => None
+        }
+
+    def descendForInsert(entries: List[(String, JsonOrdered.OrderedJson)],
+                         style: JsonOrdered.ObjectStyle, next: String, deeper: NodePath,
+                         childType: String): Option[(JsonOrdered.OrderedJson, String)] =
+        match findEntryValue("children", entries) {
+            case Some(JsonOrdered.OrderedJson.OArray(items, arrStyle)) =>
+                insertChildInArray(next, deeper, childType, items)
+                    |> Option.map(pair -> {
+                        let (newItems, nm) = pair;
+                        let newChildren = JsonOrdered.OrderedJson.OArray(newItems, arrStyle);
+                        (JsonOrdered.OrderedJson.OObject(
+                            replaceEntryValue("children", newChildren, entries), style), nm)
+                    })
+            case _ => None
+        }
+
+    def insertChildInArray(targetName: String, restPath: NodePath, childType: String,
+                           items: List[JsonOrdered.OrderedJson]):
+                          Option[(List[JsonOrdered.OrderedJson], String)] =
+        match items {
+            case Nil => None
+            case head :: tail =>
+                match insertChildInNode(targetName, restPath, childType, head) {
+                    case Some((newHead, nm)) => Some((newHead :: tail, nm))
+                    case None =>
+                        insertChildInArray(targetName, restPath, childType, tail)
+                            |> Option.map(pair -> {
+                                let (newTail, nm) = pair;
+                                (head :: newTail, nm)
+                            })
+                }
+        }
+
+    /// 対象ノードの entries に子を 1 つ追加する。"children" が無ければ新設する。
+    def appendChildEntry(entries: List[(String, JsonOrdered.OrderedJson)], childType: String):
+            (List[(String, JsonOrdered.OrderedJson)], String) =
+        let (childItems, arrStyle) = match findEntryValue("children", entries) {
+            case Some(JsonOrdered.OrderedJson.OArray(items, st)) => (items, st)
+            case _ => (Nil, JsonOrdered.ArrayStyle.Block)
+        };
+        let existing = List.filterMap(it -> match it {
+            case JsonOrdered.OrderedJson.OObject(es, _) => nodeNameOf(es)
+            case _                                      => None
+        }, childItems);
+        let childName = uniqueChildName(childType, existing, 2);
+        let childJson = match JsonOrdered.parse(defaultChildJson(childType, childName)) {
+            case Ok(j)  => j
+            case Err(_) => JsonOrdered.OrderedJson.OObject(Nil, JsonOrdered.ObjectStyle.ObjBlock)
+        };
+        let newItems = List.append(childItems, childJson :: Nil);
+        let newChildren = JsonOrdered.OrderedJson.OArray(newItems, arrStyle);
+        let newEntries =
+            if (hasEntry("children", entries))
+                replaceEntryValue("children", newChildren, entries)
+            else
+                List.append(entries, ("children", newChildren) :: Nil);
+        (newEntries, childName)
+
+    def nodeNameOf(entries: List[(String, JsonOrdered.OrderedJson)]): Option[String] =
+        findEntryValue("name", entries) |> Option.flatMap(v -> match v {
+            case JsonOrdered.OrderedJson.OString(s) => Some(s)
+            case _                                  => None
+        })
+
+    def hasEntry(key: String, entries: List[(String, JsonOrdered.OrderedJson)]): Bool =
+        match findEntryValue(key, entries) {
+            case Some(_) => true
+            case None    => false
+        }
+
+    /// 型名ベースで兄弟内一意の名前を作る。base が空いていれば base、無ければ base2, base3...
+    def uniqueChildName(base: String, existing: List[String], n: Int32): String =
+        if (not List.memberOf(base, existing)) base
+        else {
+            let candidate = "${base}${n}";
+            if (not List.memberOf(candidate, existing)) candidate
+            else uniqueChildName(base, existing, n + 1)
+        }
+
+    /// 型ごとの最小デフォルト JSON（基盤c の defaults テーブル）。テクスチャ不要な型に限定。
+    /// 子ノードは IDE で配置後に Inspector で寸法・色を調整していく。
+    def defaultChildJson(childType: String, name: String): String =
+        match childType {
+            case "StaticBody2D" =>
+                "{\"type\": \"StaticBody2D\", \"name\": \"${name}\", \"pos\": [0, 0], \"shape\": {\"kind\": \"RectShape2D\", \"width\": 32, \"height\": 32}}"
+            case "RigidBody2D" =>
+                "{\"type\": \"RigidBody2D\", \"name\": \"${name}\", \"pos\": [0, 0], \"shape\": {\"kind\": \"CircleShape2D\", \"radius\": 8}}"
+            case "CharacterBody2D" =>
+                "{\"type\": \"CharacterBody2D\", \"name\": \"${name}\", \"pos\": [0, 0], \"shape\": {\"kind\": \"RectShape2D\", \"width\": 48, \"height\": 8}}"
+            case "Area2D" =>
+                "{\"type\": \"Area2D\", \"name\": \"${name}\", \"pos\": [0, 0], \"shape\": {\"kind\": \"RectShape2D\", \"width\": 32, \"height\": 16}}"
+            case "ColorRect" =>
+                "{\"type\": \"ColorRect\", \"name\": \"${name}\", \"pos\": [0, 0], \"size\": [32, 16], \"color\": {\"r\": 1, \"g\": 1, \"b\": 1}}"
+            case _ =>
+                "{\"type\": \"Marker2D\", \"name\": \"${name}\", \"pos\": [0, 0]}"
+        }
+
+    // ========================================================================
     // JSON 走査と書き換え（OrderedJson ベース、キー順を保持）
     // ========================================================================
 

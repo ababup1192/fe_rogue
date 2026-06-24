@@ -219,6 +219,14 @@ mod IdeState {
         pendingNewSceneRef         = Array[Option[(String, String)], Static],
         // Scenes ツリーのコンテキストメニューで予約されたシーン削除/改名操作。
         pendingSceneOpRef          = Array[Option[SceneOp], Static],
+        // Add Child Node で予約された (シーン絶対パス, 親 NodePath, 子ノード型)。
+        pendingAddChildRef         = Array[Option[(String, List[String], String)], Static],
+        // 編集ツールモード: 0=選択ツール, 1=手のひら(パン)ツール。ツールバーが書き、Editor が読む。
+        toolModeRef                = Array[Int32, Static],
+        // 現在のプロジェクトの design 解像度 (Project Settings ダイアログの初期値用)。
+        currentDesignRef           = Array[(Int32, Int32), Static],
+        // Project Settings で予約された新しい design 解像度 (w, h)。
+        pendingProjectSettingsRef  = Array[Option[(Int32, Int32)], Static],
         sceneFilesRef              = Array[List[(String, String)], Static],
         currentScenePathRef        = Array[Option[String], Static],
         // 現在ロード中のプロジェクトルート絶対パス (新規ファイル作成等で必要)
@@ -244,6 +252,10 @@ mod IdeState {
             pendingSceneRef            = Array#{(None: Option[String])} @ Static,
             pendingNewSceneRef         = Array#{(None: Option[(String, String)])} @ Static,
             pendingSceneOpRef          = Array#{(None: Option[SceneOp])} @ Static,
+            pendingAddChildRef         = Array#{(None: Option[(String, List[String], String)])} @ Static,
+            toolModeRef                = Array#{0i32} @ Static,
+            currentDesignRef           = Array#{((0i32, 0i32))} @ Static,
+            pendingProjectSettingsRef  = Array#{(None: Option[(Int32, Int32)])} @ Static,
             sceneFilesRef              = Array#{(Nil: List[(String, String)])} @ Static,
             currentScenePathRef        = Array#{(None: Option[String])} @ Static,
             currentProjectRootRef      = Array#{(None: Option[String])} @ Static,
@@ -386,6 +398,26 @@ mod IdeState {
     pub def takePendingSceneOp(state: IdeState): Option[SceneOp] \ IO =
         let pending = Array.get(0, state#pendingSceneOpRef);
         Array.put(None, 0, state#pendingSceneOpRef);
+        pending
+
+    /// Add Child Node で予約された (シーン絶対パス, 親 NodePath, 子型) を取り出し、Ref をクリアする
+    pub def takePendingAddChild(state: IdeState): Option[(String, List[String], String)] \ IO =
+        let pending = Array.get(0, state#pendingAddChildRef);
+        Array.put(None, 0, state#pendingAddChildRef);
+        pending
+
+    /// 現在の design 解像度を記録する (reloadProject から)。
+    pub def setCurrentDesign(state: IdeState, w: Int32, h: Int32): Unit \ IO =
+        Array.put((w, h), 0, state#currentDesignRef)
+
+    /// 現在の design 解像度を返す (Project Settings ダイアログの初期値用)。
+    pub def getCurrentDesign(state: IdeState): (Int32, Int32) \ IO =
+        Array.get(0, state#currentDesignRef)
+
+    /// Project Settings で予約された新 design 解像度を取り出し、Ref をクリアする
+    pub def takePendingProjectSettings(state: IdeState): Option[(Int32, Int32)] \ IO =
+        let pending = Array.get(0, state#pendingProjectSettingsRef);
+        Array.put(None, 0, state#pendingProjectSettingsRef);
         pending
 
     /// 現プロジェクトの scene.json 群 (絶対パス, 表示用相対パス) を登録する

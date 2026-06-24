@@ -307,6 +307,12 @@ mod GameEngine {
                     {viewportWidth = vp#size#x, viewportHeight = vp#size#y})
             case None => Camera2D.identityTransform()
         };
+        renderWith(transform, scene)
+
+    /// 指定した ViewTransform でシーンを描画する。`render` はアクティブカメラから transform を
+    /// 求めてこれを呼ぶ薄いラッパ。エディタの自由カメラ (pan/zoom) のように、シーン内カメラに
+    /// 依らない任意の transform で描きたいホストはこちらを直接呼ぶ。
+    pub def renderWith(transform: Camera2D.ViewTransform, scene: Scene[s]): Unit \ Game =
         let sprites = Scene.toDrawables(transform, scene);
         let tileMaps: List[TileMapRenderCmd] =
             List.filterMap(p -> match Scene.getEngineNode(p, scene) {

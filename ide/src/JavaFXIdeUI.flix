@@ -29,6 +29,8 @@ mod JavaFXIdeUI {
     import java.lang.Integer
     import javafx.scene.control.Button
     import javafx.scene.control.ToggleButton
+    import javafx.scene.control.ToggleGroup
+    import javafx.scene.control.Tooltip
     import javafx.scene.control.CheckBox
     import javafx.scene.control.ComboBox
     import javafx.scene.control.Spinner
@@ -294,6 +296,24 @@ mod JavaFXIdeUI {
         ScenePanel.wireSceneContextMenu(state, scenesTree);
         ScenePanel.startStatusBarTimer(state, canvasView);
 
+        // 編集ツールバー: 選択ツール / 手のひら(パン)ツールの切替。toolModeRef に書き、Editor が読む。
+        let toolSelect: ToggleButton = unchecked_cast(ns.get("toolSelect") as ToggleButton);
+        let toolHand:   ToggleButton = unchecked_cast(ns.get("toolHand") as ToggleButton);
+        let toolGroup = new ToggleGroup();
+        toolSelect.setToggleGroup(toolGroup);
+        toolHand.setToggleGroup(toolGroup);
+        toolSelect.setSelected(true);
+        toolSelect.setTooltip(new Tooltip("選択ツール: ドラッグでノード選択・移動"));
+        toolHand.setTooltip(new Tooltip("手のひらツール: ドラッグでビューをパン (中ボタンdrag/ホイールズームは常時)"));
+        toolSelect.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                Array.put(0i32, 0, state#toolModeRef)
+        });
+        toolHand.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                Array.put(1i32, 0, state#toolModeRef)
+        });
+
         // メニュー項目を wire
         // New Scene はプロジェクト未オープン時は無効 (グレーアウト)。Open Project で
         // ディレクトリが選ばれた時点で有効化する (Godot/Unity と同じ contextual enable)。
@@ -304,10 +324,22 @@ mod JavaFXIdeUI {
                 ScenePanel.showNewSceneDialog(state)
         });
 
+        // Project メニュー: プロジェクトを開くまで無効。Open Project で有効化する。
+        let projectSettingsItem: MenuItem =
+            unchecked_cast(ns.get("menuProjectSettings") as MenuItem);
+        projectSettingsItem.setDisable(true);
+        projectSettingsItem.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                ScenePanel.showProjectSettingsDialog(state)
+        });
+
         let openItem: MenuItem = unchecked_cast(ns.get("menuOpenProject") as MenuItem);
         openItem.setOnAction(new EventHandler[ActionEvent] {
             def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
-                if (showOpenProjectChooser(state, stage)) newSceneItem.setDisable(false) else ()
+                if (showOpenProjectChooser(state, stage)) {
+                    newSceneItem.setDisable(false);
+                    projectSettingsItem.setDisable(false)
+                } else ()
         });
 
         let quitItem: MenuItem = unchecked_cast(ns.get("menuQuit") as MenuItem);

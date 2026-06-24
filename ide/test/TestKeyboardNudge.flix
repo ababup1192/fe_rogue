@@ -109,7 +109,8 @@ mod TestKeyboardNudge {
         prevMouseLeft = false,
         prevArrowKeys = KeyboardNudge.initialPrev(),
         prevZ = false,
-        rootJsonIndex = Map.empty()
+        rootJsonIndex = Map.empty(),
+        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None
     }
 
     /// 押下キーなし＆ prev も無し → エッジは立たない → 書き込みも発生しない
@@ -142,7 +143,8 @@ mod TestKeyboardNudge {
             prevMouseLeft = false,
             prevArrowKeys = KeyboardNudge.initialPrev(),
             prevZ = false,
-            rootJsonIndex = Map.empty()
+            rootJsonIndex = Map.empty(),
+        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None
         };
         let curArrows = {up = false, down = false, left = false, right = true};
         let next = KeyboardNudge.applyNudge(state, curArrows, scene);
@@ -169,7 +171,8 @@ mod TestKeyboardNudge {
             prevMouseLeft = false,
             prevArrowKeys = {up = false, down = false, left = false, right = true},
             prevZ = false,
-            rootJsonIndex = Map.empty()
+            rootJsonIndex = Map.empty(),
+        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None
         };
         let curArrows = {up = false, down = false, left = false, right = true};
         let next = KeyboardNudge.applyNudge(state, curArrows, scene);

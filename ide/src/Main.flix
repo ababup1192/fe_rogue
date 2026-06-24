@@ -163,6 +163,10 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         consumePendingNewScene(state);
         // Scenes ツリーのコンテキストメニューで積まれた Delete / Rename を適用する
         consumePendingSceneOp(state);
+        // Add Child Node で積まれた子ノード追加を適用する
+        consumePendingAddChild(state);
+        // Project Settings で積まれた design 解像度変更を適用する (project.json 更新 → 再ロード)
+        consumePendingProjectSettings(state);
         // Deferred auto-load: AWT EDT が config swap を完了 (runtime#pendingConfig == None)
         // したフレームで初めて先頭シーンを pendingSceneRef に積む。font/texture が揃った
         // 後にロードされるので getFontAtlas が安全に解決できる
@@ -217,7 +221,8 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         Array.put(editorSelText, 0, state#runtime#editorSelDisplay);
         // editor がマウス入力を取り込み、選択 / ドラッグ / リサイズ / Undo まで処理して
         // 必要に応じて scene を更新する
-        let edited = Editor.handleInput(nextScene);
+        let toolMode = Array.get(0, state#toolModeRef);
+        let edited = Editor.handleInput(toolMode, nextScene);
         // Inspector の pending edits (schema 駆動 widget が積んだ commit) を消費し、
         // SceneSerializer 経由で JSON 書き戻し。HotReload watcher が次フレームで scene を再 load
         consumeInspectorEdits(state);
@@ -228,7 +233,7 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         // Inspector schema + currentValues snapshot を生成し、ScenePanel AnimationTimer に渡す
         snapshotInspectorState(state, edited);
         let preview = composePreview(edited);
-        GameEngine.render(preview);
+        GameEngine.renderWith(Editor.currentViewTransform(), preview);
         renderLoop(state, newFontName, edited)
     }
 
@@ -319,6 +324,7 @@ def reloadProject(state: IdeState.IdeState, oldFontName: Option[String], path: S
             // S13: tileset PNG を Image としてキャッシュ
             MapEditorPanel.loadTilesetImages(state);
             IdeState.setCurrentProjectRoot(state, Some(path));
+            IdeState.setCurrentDesign(state, proj#config#designWidth, proj#config#designHeight);
             IdeGui.Gui.setLoadingProgress("リソースを検索中...", 0.50f64);
             let newFontName = List.head(proj#config#fontManifest) |> Option.map(f -> f#name);
             // Editor の scene.json 索引を新プロジェクトのものに差し替える。
@@ -390,7 +396,15 @@ def loadPendingSceneOrKeep(state: IdeState.IdeState, fontName: Option[String],
 /// プレビュー描画の合成。editor の選択枠 + ハンドル + コリジョン形状を重ねる
 def composePreview(scene: Scene[Unit]):
         Scene[Unit] \ {GameEngine.Game, Editor.EditorState} =
-    Editor.applyOverlay((), scene)
+    // デザイン解像度（ゲーム画面）の枠を最初に敷き、その上にエディタ overlay を重ねる。
+    // これで「黒い領域のどこが実ゲーム画面か」が一目で分かり、その枠内に配置できる。
+    // 灰色ワークスペース上に、ゲーム画面枠(藍)＋原点の赤X/緑Y線を重ねる (Godot の Viewport/Origin)。
+    // editor の pan/zoom transform を枠/軸/オーバーレイ全てに共有してパン・ズームに追従させる。
+    let vp = GameEngine.Game.getViewportRect();
+    let transform = Editor.currentViewTransform();
+    let framed = Overlay.addDesignFrame(vp#size, transform, (), scene);
+    let withOrigin = Overlay.addOriginLines(vp#size, transform, (), framed);
+    Editor.applyOverlay((), withOrigin)
 
 /// Inspector schema widget が積んだ pending edits をすべて消費して書き戻す。
 /// 各 PendingEdit は SceneSerializer 呼出までを closure に閉じ込めているので、
@@ -464,6 +478,77 @@ def refreshSceneListAndIndex(state: IdeState.IdeState, root: String):
     let curEditor = Editor.EditorState.get();
     Editor.EditorState.put({rootJsonIndex = newIndex | curEditor})
 }
+
+/// Project Settings で積まれた design 解像度変更を適用する。
+/// project.json の designWidth/Height を書き換え、プロジェクトを再ロードして config swap を起こす
+/// (既存の reloadProject 経路を再利用 → design サイズ・projection・ビューポートが live 反映)。
+def consumePendingProjectSettings(state: IdeState.IdeState):
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite} =
+    match IdeState.takePendingProjectSettings(state) {
+        case None => ()
+        case Some((w, h)) =>
+            match IdeState.getCurrentProjectRoot(state) {
+                case None       => println("[Main] Project Settings: プロジェクト未ロード")
+                case Some(root) =>
+                    let jsonPath = joinPath(root, "project.json");
+                    match setProjectDesignSize(jsonPath, w, h) {
+                        case Err(msg) => println("[Main] Project Settings 保存失敗: ${msg}")
+                        case Ok(_)    => {
+                            println("[Main] Project design size -> ${w}x${h}; reloading project");
+                            Array.put(Some(root), 0, state#pendingProjectRef)
+                        }
+                    }
+            }
+    }
+
+/// project.json の designWidth / designHeight を書き換える。キー順・スタイルは保持。
+def setProjectDesignSize(jsonPath: String, w: Int32, h: Int32):
+        Result[String, Unit] \ {Fs.FileRead, Fs.FileWrite} =
+    let readResult = run { Fs.ReadFile.read(jsonPath) } with Fs.ReadFile.runWithFileRead;
+    let parsed = readResult
+        |> Result.mapErr(e -> "read failed: ${e}")
+        |> Result.flatMap(t -> JsonOrdered.parse(String.trim(t)));
+    match parsed {
+        case Err(msg) => Err(msg)
+        case Ok(json) =>
+            let updated = setTopLevelNumber("designHeight", h,
+                            setTopLevelNumber("designWidth", w, json));
+            let pretty = JsonOrdered.writePretty(2, updated);
+            let writeResult = run { Fs.WriteFile.write({str = pretty}, jsonPath) }
+                with Fs.WriteFile.runWithFileWrite;
+            writeResult |> Result.mapErr(e -> "write failed: ${e}") |> Result.map(_ -> ())
+    }
+
+/// ルート OObject の top-level 数値キーを差し替える (存在するキーのみ。順序は保持)。
+def setTopLevelNumber(key: String, value: Int32, json: JsonOrdered.OrderedJson):
+        JsonOrdered.OrderedJson =
+    match json {
+        case JsonOrdered.OrderedJson.OObject(entries, style) =>
+            let newEntries = List.map(e -> {
+                let (k, v) = e;
+                if (k == key)
+                    (k, JsonOrdered.OrderedJson.ONumber(Int32.toString(value)))
+                else (k, v)
+            }, entries);
+            JsonOrdered.OrderedJson.OObject(newEntries, style)
+        case other => other
+    }
+
+/// Add Child Node で積まれた子ノード追加を main thread で適用する。
+/// 追加後はそのシーンを再ロード予約 → sceneChanged 経路で preview と TreeView に反映。
+def consumePendingAddChild(state: IdeState.IdeState):
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite} =
+    match IdeState.takePendingAddChild(state) {
+        case None => ()
+        case Some((abs, parentPath, childType)) =>
+            match SceneSerializer.addChild(abs, parentPath, childType) {
+                case Ok(childName) => {
+                    println("[Main] Add child: ${childType} as '${childName}' under ${parentPath}");
+                    Array.put(Some(abs), 0, state#pendingSceneRef)
+                }
+                case Err(msg) => println("[Main] Add child failed: ${msg}")
+            }
+    }
 
 /// Scenes ツリーのコンテキストメニューで積まれた削除/改名を main thread で適用する。
 def consumePendingSceneOp(state: IdeState.IdeState):

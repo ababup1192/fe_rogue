@@ -284,9 +284,29 @@ mod JavaFXLayer {
                     let curScreenH = Int32.toFloat64(curConfig#designHeight);
                     // Polygon2D はエディタ描画では未対応。空リストを渡す（polyVao/polyVbo は
                     // リストが空なら未使用なので sprite VAO を流用する）。
+                    // エディタのキャンバスは Godot 風に灰色ワークスペースで描く。ゲーム本来の
+                    // clearColor は実行時の見た目であり、編集時は中立な灰色にして配置に集中する。
+                    let editorBg = {r = 0.22f32, g = 0.22f32, b = 0.24f32};
                     RenderFrame.renderFrameMixed(spriteShader, tileShader, vao, registry,
-                        curConfig#clearColor, curScreenW, curScreenH, w, h, sprites, tileMaps,
+                        editorBg, curScreenW, curScreenH, w, h, sprites, tileMaps,
                         (Nil: List[GameEngine.PolygonRenderCmd]), vao, vao);
+
+                    // renderFrameMixed は FBO 全体を黒クリアし、内側ビューポートだけを editorBg に
+                    // するため、アスペクト維持のレターボックス帯が黒く残る。Godot 風の一様な灰色
+                    // ワークスペースにするため、帯部分だけを scissor で editorBg に塗り直す。
+                    let (vpX, vpY, vpW, vpH) = RenderFrame.calcViewport(w, h, curScreenW, curScreenH);
+                    GL11.glViewport(0i32, 0i32, w, h);
+                    GL11.glClearColor(0.22f32, 0.22f32, 0.24f32, 1.0f32);
+                    GL11.glEnable(GL11.GL_SCISSOR_TEST);
+                    GL11.glScissor(0i32, vpY + vpH, w, h - (vpY + vpH));
+                    GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+                    GL11.glScissor(0i32, 0i32, w, vpY);
+                    GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+                    GL11.glScissor(0i32, vpY, vpX, vpH);
+                    GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+                    GL11.glScissor(vpX + vpW, vpY, w - (vpX + vpW), vpH);
+                    GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+                    GL11.glDisable(GL11.GL_SCISSOR_TEST);
 
                     pixels.position(0i32);
                     GL11.glReadPixels(0i32, 0i32, w, h,

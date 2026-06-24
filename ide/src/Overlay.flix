@@ -312,6 +312,125 @@ mod Overlay {
         thickness = 1.0
     }
 
+    /// デザイン解像度（実ゲーム画面）の枠を **細い淡色の実線** でうっすら描く。配置の基準＝画面の大きさ。
+    /// transform (editor の pan/zoom) を適用するので、枠は world 上の矩形としてパン・ズームに追従する。
+    /// 線の太さは画面上一定 (zoom に依らず 1px)。
+    pub def addDesignFrame(viewportSize: Vec2.Vec2, transform: Camera2D.ViewTransform,
+                           defaultTag: t, scene: Scene[t]): Scene[t] =
+        let w = viewportSize#x;
+        let h = viewportSize#y;
+        let tl = Camera2D.applyToWorldPos(transform, {x = 0.0, y = 0.0});
+        let br = Camera2D.applyToWorldPos(transform, {x = w, y = h});
+        let sw = br#x - tl#x;
+        let sh = br#y - tl#y;
+        let th = 1.0;
+        let edges =
+            {pos = tl,                              size = {x = sw, y = th}} ::
+            {pos = {x = tl#x, y = tl#y + sh - th},  size = {x = sw, y = th}} ::
+            {pos = tl,                              size = {x = th, y = sh}} ::
+            {pos = {x = tl#x + sw - th, y = tl#y},  size = {x = th, y = sh}} :: Nil;
+        let layerName = "_design_frame_layer";
+        let layer = CanvasLayer.make(overlayLayerIndex());
+        let withLayer = Scene.addNode(layerName,
+            EngineNode.CanvasLayerWithState(layer, defaultTag), scene);
+        // Godot の "Show Viewport" 同様、ゲーム既定解像度を **藍色(indigo)** の矩形で示す。
+        let color = {r = 0.45f32, g = 0.45f32, b = 0.85f32};
+        let (result, _) = List.foldLeft((acc, r) -> {
+            let (sc, i) = acc;
+            let edge = ColorRect.make(r#size, color)
+                |> ColorRect.setAlpha(0.6f32)
+                |> Node2D.setPosition(r#pos);
+            let sc2 = Scene.addChildAt(layerName :: Nil, "edge_${i}",
+                EngineNode.ColorRectWithState(edge, defaultTag), sc);
+            (sc2, i + 1)
+        }, (withLayer, 0), edges);
+        result
+
+    /// Godot の "Show Origin" 同様、原点 (0,0) で交わる **赤=X軸・緑=Y軸** の線を引く。
+    /// transform 後の原点位置を通り、ビューポート全幅/全高に伸びる（負方向も突き抜ける）。
+    /// frame(藍) より前面に置き、原点が赤緑で分かるようにする。
+    pub def addOriginLines(viewportSize: Vec2.Vec2, transform: Camera2D.ViewTransform,
+                           defaultTag: t, scene: Scene[t]): Scene[t] =
+        let w = viewportSize#x;
+        let h = viewportSize#y;
+        let th = 1.0;
+        let originScreen = Camera2D.applyToWorldPos(transform, {x = 0.0, y = 0.0});
+        let layerName = "_origin_layer";
+        let layer = CanvasLayer.make(originLayerIndex());
+        let base = Scene.addNode(layerName,
+            EngineNode.CanvasLayerWithState(layer, defaultTag), scene);
+        let xAxis = ColorRect.make({x = w, y = th}, {r = 0.9f32, g = 0.3f32, b = 0.32f32})
+            |> ColorRect.setAlpha(0.7f32)
+            |> Node2D.setPosition({x = 0.0, y = originScreen#y});
+        let yAxis = ColorRect.make({x = th, y = h}, {r = 0.35f32, g = 0.85f32, b = 0.4f32})
+            |> ColorRect.setAlpha(0.7f32)
+            |> Node2D.setPosition({x = originScreen#x, y = 0.0});
+        base
+            |> Scene.addChildAt(layerName :: Nil, "origin_x",
+                EngineNode.ColorRectWithState(xAxis, defaultTag))
+            |> Scene.addChildAt(layerName :: Nil, "origin_y",
+                EngineNode.ColorRectWithState(yAxis, defaultTag))
+
+    def originLayerIndex(): Int32 = 1000
+
+    /// デザイン領域内に薄いグリッドを敷く。細線(fine)＋一定間隔の太線(coarse)で大きさを掴みやすく。
+    /// さらに原点(0,0=画面左上)に短い赤(X)・緑(Y)の軸を置く(Godot 流の原点表示)。
+    /// グリッドの矩形＝ゲーム画面、というもう一つの視覚手掛かりにもなる。
+    pub def addDesignGrid(viewportSize: Vec2.Vec2, defaultTag: t, scene: Scene[t]): Scene[t] =
+        let w = viewportSize#x;
+        let h = viewportSize#y;
+        let fine = gridFine();
+        let layerName = "_design_grid_layer";
+        let layer = CanvasLayer.make(gridLayerIndex());
+        let base = Scene.addNode(layerName,
+            EngineNode.CanvasLayerWithState(layer, defaultTag), scene);
+        let vPos = dashStarts(0.0, w + 0.5, fine);
+        let hPos = dashStarts(0.0, h + 0.5, fine);
+        let (afterV, _) = List.foldLeft((acc, x) -> {
+            let (sc, i) = acc;
+            let line = ColorRect.make({x = 1.0, y = h}, gridColor())
+                |> ColorRect.setAlpha(gridAlpha(i))
+                |> Node2D.setPosition({x = x, y = 0.0});
+            (Scene.addChildAt(layerName :: Nil, "v_${i}",
+                EngineNode.ColorRectWithState(line, defaultTag), sc), i + 1)
+        }, (base, 0), vPos);
+        let (afterH, _) = List.foldLeft((acc, y) -> {
+            let (sc, i) = acc;
+            let line = ColorRect.make({x = w, y = 1.0}, gridColor())
+                |> ColorRect.setAlpha(gridAlpha(i))
+                |> Node2D.setPosition({x = 0.0, y = y});
+            (Scene.addChildAt(layerName :: Nil, "h_${i}",
+                EngineNode.ColorRectWithState(line, defaultTag), sc), i + 1)
+        }, (afterV, 0), hPos);
+        addOriginAxes(layerName, defaultTag, afterH)
+
+    def gridFine(): Float64 = 16.0
+    def gridCoarseEvery(): Int32 = 5
+    def gridColor(): {r = Float32, g = Float32, b = Float32} =
+        {r = 0.6f32, g = 0.6f32, b = 0.72f32}
+    def gridAlpha(i: Int32): Float32 =
+        if (Int32.modulo(i, gridCoarseEvery()) == 0) 0.16f32 else 0.06f32
+    def gridLayerIndex(): Int32 = 998
+
+    /// 原点 (0,0)=画面左上に短い赤(X右向き)・緑(Y下向き)の軸を置く。
+    def addOriginAxes(layerName: String, defaultTag: t, scene: Scene[t]): Scene[t] =
+        let len = 16.0;
+        let th = 2.0;
+        let xAxis = ColorRect.make({x = len, y = th}, {r = 1.0f32, g = 0.35f32, b = 0.35f32})
+            |> Node2D.setPosition({x = 0.0, y = 0.0});
+        let yAxis = ColorRect.make({x = th, y = len}, {r = 0.35f32, g = 0.9f32, b = 0.45f32})
+            |> Node2D.setPosition({x = 0.0, y = 0.0});
+        scene
+            |> Scene.addChildAt(layerName :: Nil, "axis_x",
+                EngineNode.ColorRectWithState(xAxis, defaultTag))
+            |> Scene.addChildAt(layerName :: Nil, "axis_y",
+                EngineNode.ColorRectWithState(yAxis, defaultTag))
+
+    /// start から step 間隔で end 未満の位置リストを返す（グリッド線の位置生成に使う）。
+    def dashStarts(start: Float64, end: Float64, step: Float64): List[Float64] =
+        if (start >= end) Nil
+        else start :: dashStarts(start + step, end, step)
+
     def addOutline(box: {topLeft = Vec2.Vec2, size = Vec2.Vec2},
                    style: OutlineStyle,
                    defaultTag: t, scene: Scene[t]): Scene[t] =

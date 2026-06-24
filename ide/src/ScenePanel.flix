@@ -36,6 +36,7 @@ mod ScenePanel {
     import javafx.scene.control.TreeCell
     import javafx.scene.control.MultipleSelectionModel
     import javafx.scene.control.ContextMenu
+    import javafx.scene.control.Menu
     import javafx.scene.control.MenuItem
     import javafx.scene.control.Dialog
     import javafx.scene.control.DialogPane
@@ -124,8 +125,8 @@ mod ScenePanel {
         // (クリック時に cell.getTreeItem() を読むと、セル仮想化で再利用され null になることが
         //  あるため。選択モデル経由だと右クリック選択が scene 再ロード→ツリー再生成を誘発して
         //  メニューが消えるため、いずれも使わない)
-        let ctxRef: Array[Option[(String, String)], Static] =
-            Array#{(None: Option[(String, String)])} @ Static;
+        let ctxRef: Array[Option[(String, String, List[String])], Static] =
+            Array#{(None: Option[(String, String, List[String])])} @ Static;
         tree.setCellFactory(new Callback[TreeView[String], TreeCell[String]] {
             def call(_cThis: Callback[TreeView[String], TreeCell[String]],
                       _tv: TreeView[String]): TreeCell[String] \ IO =
@@ -138,7 +139,7 @@ mod ScenePanel {
     /// (Flix では updateItem を直接 override できず、emptyProperty の ChangeListener[Bool]
     ///  は VerifyError になるため、itemProperty の null 判定で代替する)
     def makeSceneTreeCell(state: IdeState.IdeState,
-                          ctxRef: Array[Option[(String, String)], Static]):
+                          ctxRef: Array[Option[(String, String, List[String])], Static]):
             TreeCell[String] \ IO = {
         let cell: TreeCell[String] = new TreeCell();
         let rowMenu = buildRowMenu(state, ctxRef);
@@ -166,8 +167,10 @@ mod ScenePanel {
     }
 
     def buildRowMenu(state: IdeState.IdeState,
-                     ctxRef: Array[Option[(String, String)], Static]): ContextMenu \ IO = {
+                     ctxRef: Array[Option[(String, String, List[String])], Static]):
+            ContextMenu \ IO = {
         let menu = new ContextMenu();
+        let addChildMenu = buildAddChildMenu(state, ctxRef);
         let renameItem = new MenuItem("Rename Scene...");
         renameItem.setOnAction(new EventHandler[ActionEvent] {
             def handle(_t: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
@@ -178,10 +181,44 @@ mod ScenePanel {
             def handle(_t: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
                 onDeleteTarget(state, ctxRef)
         });
+        discard menu.getItems().add(unchecked_cast(addChildMenu as MenuItem));
         discard menu.getItems().add(renameItem);
         discard menu.getItems().add(deleteItem);
         menu
     }
+
+    /// "Add Child Node" サブメニュー。型ごとに MenuItem を並べ、クリックで pendingAddChildRef に
+    /// 積む (型名で自動命名。名前入力なし)。テクスチャ不要な型に限定。
+    def buildAddChildMenu(state: IdeState.IdeState,
+                          ctxRef: Array[Option[(String, String, List[String])], Static]):
+            Menu \ IO = {
+        let sub = new Menu("Add Child Node");
+        let types = "StaticBody2D" :: "RigidBody2D" :: "CharacterBody2D" ::
+                    "Area2D" :: "ColorRect" :: "Marker2D" :: Nil;
+        List.forEach(t -> {
+            let item = new MenuItem(t);
+            item.setOnAction(new EventHandler[ActionEvent] {
+                def handle(_th: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                    onAddChild(state, ctxRef, t)
+            });
+            discard sub.getItems().add(item)
+        }, types);
+        sub
+    }
+
+    def onAddChild(state: IdeState.IdeState,
+                   ctxRef: Array[Option[(String, String, List[String])], Static],
+                   childType: String): Unit \ IO =
+        match Array.get(0, ctxRef) {
+            case None => ()
+            case Some((abs, _rel, nodePath)) =>
+                if (List.isEmpty(nodePath))
+                    println("[Scenes] Add Child: ノード行で実行してください (ファイル行ではなく)")
+                else {
+                    println("[Scenes] Add child queued: ${childType} under ${nodePath}");
+                    Array.put(Some((abs, nodePath, childType)), 0, state#pendingAddChildRef)
+                }
+        }
 
     def buildEmptyMenu(state: IdeState.IdeState): ContextMenu \ IO = {
         let menu = new ContextMenu();
@@ -194,19 +231,23 @@ mod ScenePanel {
         menu
     }
 
-    /// セルが保持する TreeItem から、その所属シーンの (絶対パス, 表示用相対パス) を返す。
-    /// onContextMenuRequested 内で呼ぶ (このときセルは行にバインドされている)。
+    /// セルが保持する TreeItem から、(シーン絶対パス, 表示用相対パス, ノード NodePath) を返す。
+    /// nodePath は chain の rest (= シーン内のノードパス)。ファイル行なら空、root ノード行なら
+    /// [rootName]。onContextMenuRequested 内で呼ぶ (このときセルは行にバインドされている)。
     def sceneOfCell(state: IdeState.IdeState, cell: TreeCell[String]):
-            Option[(String, String)] \ IO = {
+            Option[(String, String, List[String])] \ IO = {
         let item = cell.getTreeItem();
         if (Object.isNull(item)) None
         else {
             let chain = collectFromTopLevel(item);
             match chain {
-                case Nil            => None
-                case sceneRel :: _  =>
+                case Nil                => None
+                case sceneRel :: rest   =>
                     let pairs = Array.get(0, state#sceneFilesRef);
-                    List.find(p -> snd(p) == sceneRel, pairs)
+                    match List.find(p -> snd(p) == sceneRel, pairs) {
+                        case Some((abs, rel)) => Some((abs, rel, rest))
+                        case None             => None
+                    }
             }
         }
     }
@@ -222,10 +263,10 @@ mod ScenePanel {
         else afterSlash
 
     def onRenameTarget(state: IdeState.IdeState,
-                       ctxRef: Array[Option[(String, String)], Static]): Unit \ IO =
+                       ctxRef: Array[Option[(String, String, List[String])], Static]): Unit \ IO =
         match Array.get(0, ctxRef) {
-            case None             => println("[Scenes] Rename: 対象シーンを特定できませんでした")
-            case Some((abs, rel)) => promptRenameScene(state, abs, sceneBaseName(rel))
+            case None                  => println("[Scenes] Rename: 対象シーンを特定できませんでした")
+            case Some((abs, rel, _np)) => promptRenameScene(state, abs, sceneBaseName(rel))
         }
 
     def promptRenameScene(state: IdeState.IdeState, abs: String, currentName: String): Unit \ IO = {
@@ -257,10 +298,10 @@ mod ScenePanel {
     }
 
     def onDeleteTarget(state: IdeState.IdeState,
-                       ctxRef: Array[Option[(String, String)], Static]): Unit \ IO =
+                       ctxRef: Array[Option[(String, String, List[String])], Static]): Unit \ IO =
         match Array.get(0, ctxRef) {
-            case None             => println("[Scenes] Delete: 対象シーンを特定できませんでした")
-            case Some((abs, rel)) => confirmDeleteScene(state, abs, rel)
+            case None                  => println("[Scenes] Delete: 対象シーンを特定できませんでした")
+            case Some((abs, rel, _np)) => confirmDeleteScene(state, abs, rel)
         }
 
     def confirmDeleteScene(state: IdeState.IdeState, abs: String, rel: String): Unit \ IO = {
@@ -321,6 +362,41 @@ mod ScenePanel {
                 Array.put(Some((name, rootType)), 0, state#pendingNewSceneRef)
             }
         } else ()
+    }
+
+    /// Project メニューの Project Settings... ダイアログ。design 解像度を編集して
+    /// pendingProjectSettingsRef に積む (project.json 書き戻し + 再ロードは main thread)。
+    pub def showProjectSettingsDialog(state: IdeState.IdeState): Unit \ IO = {
+        let (curW, curH) = IdeState.getCurrentDesign(state);
+        let dialog: Dialog[ButtonType] = new Dialog();
+        dialog.setTitle("Project Settings");
+        dialog.setHeaderText("デザイン解像度 (ゲーム画面サイズ)");
+        let pane: DialogPane = dialog.getDialogPane();
+        let buttonTypes = pane.getButtonTypes();
+        discard buttonTypes.add(ButtonType.OK);
+        discard buttonTypes.add(ButtonType.CANCEL);
+        let wField = new TextField("${curW}");
+        let hField = new TextField("${curH}");
+        let grid = new GridPane();
+        grid.setHgap(8.0);
+        grid.setVgap(8.0);
+        grid.add(unchecked_cast(new Label("幅 (px):") as Node),   0i32, 0i32);
+        grid.add(unchecked_cast(wField as Node),                 1i32, 0i32);
+        grid.add(unchecked_cast(new Label("高さ (px):") as Node), 0i32, 1i32);
+        grid.add(unchecked_cast(hField as Node),                 1i32, 1i32);
+        pane.setContent(unchecked_cast(grid as Node));
+        let result = dialog.showAndWait();
+        let okBt = ButtonType.OK;
+        if (result.isPresent() and okBt.equals(result.get()))
+            match (Int32.fromString(wField.getText()), Int32.fromString(hField.getText())) {
+                case (Some(w), Some(h)) =>
+                    if (w > 0i32 and h > 0i32) {
+                        println("[Project] design size queued: ${w}x${h}");
+                        Array.put(Some((w, h)), 0, state#pendingProjectSettingsRef)
+                    } else println("[Project] サイズは正の数で入力してください")
+                case _ => println("[Project] 数値を入力してください")
+            }
+        else ()
     }
 
     /// Scenes TreeView を sceneFilesRef + 現シーンの SceneTree から populate する。

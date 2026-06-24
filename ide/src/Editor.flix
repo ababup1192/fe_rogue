@@ -72,7 +72,13 @@ mod Editor {
         prevMouseLeft = Bool,
         prevArrowKeys = KeyboardNudge.ArrowKeys,
         prevZ = Bool,
-        rootJsonIndex = Map[NodeName, String]
+        rootJsonIndex = Map[NodeName, String],
+        // ビュー変換 (pan/zoom)。ViewTransform { offset, scale } に対応:
+        //   screen = world * editorZoom - editorOffset
+        editorOffset = Vec2.Vec2,
+        editorZoom = Float64,
+        // パンドラッグ中の (開始マウス, 開始 offset)。非ドラッグ時 None
+        panOrigin = Option[(Vec2.Vec2, Vec2.Vec2)]
     }
 
     /// エディタ状態の初期値。
@@ -87,7 +93,10 @@ mod Editor {
         prevMouseLeft = false,
         prevArrowKeys = KeyboardNudge.initialPrev(),
         prevZ = false,
-        rootJsonIndex = rootJsonIndex
+        rootJsonIndex = rootJsonIndex,
+        editorOffset = Vec2.zero(),
+        editorZoom = 1.0,
+        panOrigin = None
     }
 
     /// scene.json ルート索引を構築する。Game.start から 1 回だけ呼ぶ
@@ -146,8 +155,10 @@ mod Editor {
             }
         }
 
-    /// 入力処理を行いシーンを更新する。Game.flix の gameLoop から毎フレーム呼ぶ。
-    pub def handleInput(scene: Scene[t]):
+    /// 入力処理を行いシーンを更新する。Game.flix / IDE の gameLoop から毎フレーム呼ぶ。
+    /// toolMode: 0=選択ツール（左ドラッグでノード選択/移動）, 1=手のひらツール（左ドラッグでパン）。
+    /// ズーム（ホイール）と中ボタンドラッグのパンはツールに依らず常に効く（Godot 準拠）。
+    pub def handleInput(toolMode: Int32, scene: Scene[t]):
             Scene[t] \ {EditorState, EditHistory.Rewind, GameEngine.Game,
                               Fs.FileRead, Fs.FileWrite} =
         let stateData = EditorState.get();
@@ -172,24 +183,51 @@ mod Editor {
                              prevZ = zNow | stateAfterToggle});
             scene
         } else {
-            let transform = activeViewTransform(scene);
-            let mouse = {pos = mousePos, leftDown = mouseLeft};
-            let (afterMouseState, afterMouseScene) =
-                DragInput.handleMouse(mouse, transform, stateAfterToggle, scene);
-            let nudgedScene = if (Option.isEmpty(afterMouseState#dragOrigin))
-                KeyboardNudge.applyNudge(afterMouseState, curArrows, afterMouseScene)
+            // ビュー操作（ズーム＝ホイール / パン＝中ボタン or 手のひらツールの左ドラッグ）
+            let scroll = GameEngine.Game.consumeScrollDelta();
+            let middle = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Middle);
+            let panning = middle or ((toolMode == 1i32) and mouseLeft);
+            let zoomedState = applyZoom(stateAfterToggle, scroll, mousePos);
+            let pannedState = applyPan(zoomedState, panning, mousePos);
+            if (panning)
+                handlePanFrame(pannedState, mouseLeft, curArrows, zNow, scene)
             else
-                afterMouseScene;
-            let finalScene = if (undoTriggered and Option.isEmpty(afterMouseState#dragOrigin))
-                applyUndo(nudgedScene)
-            else
-                nudgedScene;
-            updateCursor(mousePos, transform, afterMouseState, finalScene);
-            EditorState.put({prevMouseLeft = mouseLeft,
-                             prevArrowKeys = curArrows,
-                             prevZ = zNow | afterMouseState});
-            finalScene
+                handleEditFrame(pannedState, mousePos, mouseLeft, curArrows, zNow,
+                                undoTriggered, scene)
         }
+
+    /// パン中フレーム: ビューだけ更新し、ノード操作はしない。掴みカーソルを出す。
+    def handlePanFrame(stateData: EditorStateData, mouseLeft: Bool,
+                       curArrows: KeyboardNudge.ArrowKeys, zNow: Bool,
+                       scene: Scene[t]): Scene[t] \ {EditorState, GameEngine.Game} =
+        GameEngine.Game.setCursor(GameEngine.Cursor.Rotate);
+        EditorState.put({prevMouseLeft = mouseLeft,
+                         prevArrowKeys = curArrows, prevZ = zNow | stateData});
+        scene
+
+    /// 通常編集フレーム: 選択/移動/リサイズ/nudge/undo を従来どおり処理する。
+    def handleEditFrame(stateData: EditorStateData, mousePos: Vec2.Vec2, mouseLeft: Bool,
+                        curArrows: KeyboardNudge.ArrowKeys, zNow: Bool, undoTriggered: Bool,
+                        scene: Scene[t]):
+            Scene[t] \ {EditorState, EditHistory.Rewind, GameEngine.Game,
+                              Fs.FileRead, Fs.FileWrite} =
+        let transform = viewTransformOf(stateData);
+        let mouse = {pos = mousePos, leftDown = mouseLeft};
+        let (afterMouseState, afterMouseScene) =
+            DragInput.handleMouse(mouse, transform, stateData, scene);
+        let nudgedScene = if (Option.isEmpty(afterMouseState#dragOrigin))
+            KeyboardNudge.applyNudge(afterMouseState, curArrows, afterMouseScene)
+        else
+            afterMouseScene;
+        let finalScene = if (undoTriggered and Option.isEmpty(afterMouseState#dragOrigin))
+            applyUndo(nudgedScene)
+        else
+            nudgedScene;
+        updateCursor(mousePos, transform, afterMouseState, finalScene);
+        EditorState.put({prevMouseLeft = mouseLeft,
+                         prevArrowKeys = curArrows,
+                         prevZ = zNow | afterMouseState});
+        finalScene
 
     /// 現在のリサイズ状態またはマウス hover に応じてカーソル形状を更新する。
     def updateCursor(mousePos: Vec2.Vec2, transform: Camera2D.ViewTransform,
@@ -297,13 +335,46 @@ mod Editor {
 
     /// 現在のシーンの有効カメラから ViewTransform を計算する。
     /// カメラがなければ identity（CanvasLayer のみのシーン等）
-    def activeViewTransform(scene: Scene[t]): Camera2D.ViewTransform \ GameEngine.Game =
-        match Scene.findActiveCamera(scene) {
-            case Some((cam, globalPos)) =>
-                let vp = GameEngine.Game.getViewportRect();
-                Camera2D.getViewTransform(cam, globalPos,
-                    {viewportWidth = vp#size#x, viewportHeight = vp#size#y})
-            case None => Camera2D.identityTransform()
+    /// エディタの自由カメラ (pan/zoom) を ViewTransform に変換する。シーン内カメラには依らず、
+    /// editor の offset/zoom だけで決まる (Godot のエディタビューと同じく独立)。
+    def viewTransformOf(stateData: EditorStateData): Camera2D.ViewTransform =
+        {offset = stateData#editorOffset, scale = {x = stateData#editorZoom, y = stateData#editorZoom}}
+
+    /// 現在のエディタビュー変換。Main の renderWith / overlay / 入力で共有する。
+    pub def currentViewTransform(): Camera2D.ViewTransform \ EditorState =
+        viewTransformOf(EditorState.get())
+
+    def activeViewTransform(_scene: Scene[t]): Camera2D.ViewTransform \ EditorState =
+        viewTransformOf(EditorState.get())
+
+    def zoomStep(): Float64 = 1.1
+
+    /// マウスホイールでカーソル中心にズーム。world_c を固定したまま zoom を変え offset を補正する。
+    def applyZoom(stateData: EditorStateData, scroll: Float64, cursor: Vec2.Vec2):
+            EditorStateData =
+        if (scroll == 0.0) stateData
+        else {
+            let factor = if (scroll > 0.0) zoomStep() else 1.0 / zoomStep();
+            let newZoom = clampZoom(stateData#editorZoom * factor);
+            // world_c = (cursor + offset) / oldZoom ; offset' = world_c * newZoom - cursor
+            let worldC = Vec2.div(Vec2.add(cursor, stateData#editorOffset), stateData#editorZoom);
+            let newOffset = Vec2.sub(Vec2.mul(worldC, newZoom), cursor);
+            {editorZoom = newZoom, editorOffset = newOffset | stateData}
+        }
+
+    def clampZoom(z: Float64): Float64 =
+        if (z < 0.1) 0.1 else if (z > 8.0) 8.0 else z
+
+    /// ドラッグでパン。offset' = startOffset - (mouse - startMouse) で掴んだ world 点が追従する。
+    def applyPan(stateData: EditorStateData, panning: Bool, mouse: Vec2.Vec2): EditorStateData =
+        match (panning, stateData#panOrigin) {
+            case (true, None) =>
+                {panOrigin = Some((mouse, stateData#editorOffset)) | stateData}
+            case (true, Some((startMouse, startOffset))) =>
+                let delta = Vec2.sub(mouse, startMouse);
+                {editorOffset = Vec2.sub(startOffset, delta) | stateData}
+            case (false, _) =>
+                {panOrigin = None | stateData}
         }
 
     /// HotReload watcher の通知をノンブロッキングで消費する。

@@ -34,7 +34,8 @@ mod TestDragInput {
         prevMouseLeft = true,
         prevArrowKeys = KeyboardNudge.initialPrev(),
         prevZ = false,
-        rootJsonIndex = Map.empty()
+        rootJsonIndex = Map.empty(),
+        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None
     }
 
     // ====================================================================
@@ -78,7 +79,8 @@ mod TestDragInput {
             prevMouseLeft = true,
             prevArrowKeys = KeyboardNudge.initialPrev(),
             prevZ = false,
-            rootJsonIndex = Map.empty()
+            rootJsonIndex = Map.empty(),
+        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None
         };
         let next = DragInput.applyDrag({x = 150.0, y = 150.0}, state, scene);
         let pos = Scene.globalPositionAt("hero" :: Nil, next);
