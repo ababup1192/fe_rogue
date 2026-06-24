@@ -544,13 +544,17 @@ def setTopLevelNumber(key: String, value: Int32, json: JsonOrdered.OrderedJson):
 /// Add Child Node で積まれた子ノード追加を main thread で適用する。
 /// 追加後はそのシーンを再ロード予約 → sceneChanged 経路で preview と TreeView に反映。
 def consumePendingAddChild(state: IdeState.IdeState):
-        Unit \ {IO, Fs.FileRead, Fs.FileWrite} =
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, EditHistory.Rewind} =
     match IdeState.takePendingAddChild(state) {
         case None => ()
         case Some((abs, parentPath, childType)) =>
             match SceneSerializer.addChild(abs, parentPath, childType) {
                 case Ok(childName) => {
                     println("[Main] Add child: ${childType} as '${childName}' under ${parentPath}");
+                    // 追加ノードも Undo 可能に（Cmd+Z で removeChild）
+                    EditHistory.Rewind.save(EditHistory.Entry.AddedNodeEntry({
+                        jsonPath = abs,
+                        nodePath = List.append(parentPath, childName :: Nil)}));
                     Array.put(Some(abs), 0, state#pendingSceneRef)
                 }
                 case Err(msg) => println("[Main] Add child failed: ${msg}")
@@ -577,6 +581,20 @@ def applySceneOp(state: IdeState.IdeState, root: String, op: IdeState.SceneOp):
         case IdeState.SceneOp.DeleteScene(abs)       => deleteSceneFile(state, root, abs)
         case IdeState.SceneOp.RenameScene(abs, name) => renameSceneFile(state, root, abs, name)
         case IdeState.SceneOp.DeleteNode(abs, np)    => deleteNodeFromScene(state, abs, np)
+        case IdeState.SceneOp.DuplicateNode(abs, np) => duplicateNodeInScene(state, abs, np)
+    }
+
+/// ノード複製: 同じ親に clone を挿入。追加分は AddedNodeEntry で Undo（Cmd+Z で除去）。
+def duplicateNodeInScene(state: IdeState.IdeState, abs: String, nodePath: List[String]):
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, EditHistory.Rewind} =
+    match SceneSerializer.duplicateNode(abs, nodePath) {
+        case Err(msg)  => println("[Main] Duplicate node failed: ${msg}")
+        case Ok(info)  => {
+            EditHistory.Rewind.save(EditHistory.Entry.AddedNodeEntry({
+                jsonPath = abs, nodePath = info#newNodePath}));
+            println("[Main] Node duplicated: ${nodePath} -> '${info#newName}'");
+            Array.put(Some(abs), 0, state#pendingSceneRef)
+        }
     }
 
 /// ノード削除: 親 children から除去→Undo 用に断片を保存→選択クリア→再 load。

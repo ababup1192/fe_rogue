@@ -364,6 +364,23 @@ mod PropertyWidgets {
             }
         }
 
+    /// Spinner[Integer] 用 StringConverter。数字以外を入力して確定しても例外を投げず
+    /// 0 にフォールバックする（JavaFX 既定の IntegerStringConverter は NumberFormatException で
+    /// FX スレッドを落とすため）。
+    pub def safeIntConverter(): StringConverter[Integer] \ IO =
+        new StringConverter[Integer] {
+            def toString(_this: StringConverter[Integer], value: Integer): String =
+                if (Object.isNull(value)) "" else Int32.toString(value.intValue())
+            def fromString(_this: StringConverter[Integer], s: String): Integer = {
+                let trimmed = String.trim(s);
+                if (String.length(trimmed) == 0) Integer.valueOf(0)
+                else match Int32.fromString(trimmed) {
+                    case Some(v) => Integer.valueOf(v)
+                    case None    => Integer.valueOf(0)
+                }
+            }
+        }
+
     /// String 値の ComboBox を生成する具体型固定ヘルパ。
     /// options を getItems().add で追加し、editable=false / setValue(initial) / setPrefWidth を設定。
     /// valueProperty().addListener の ChangeListener[String] は inline で定義し、
@@ -395,6 +412,7 @@ mod PropertyWidgets {
         let spinner: Spinner[Integer] = new Spinner(range#min, range#max, initial);
         spinner.setEditable(true);
         spinner.setPrefWidth(prefWidth);
+        spinner.getValueFactory().setConverter(safeIntConverter());
         spinner.valueProperty().addListener(new ChangeListener[Integer] {
             def changed(_cThis: ChangeListener[Integer], _obs: ObservableValue[JObject],
                          _old: Integer, newVal: Integer): Unit \ IO = {
@@ -616,6 +634,8 @@ mod PropertyWidgets {
             let ys: Spinner[Integer] = new Spinner(-999999i32, 999999i32, iy);
             xs.setEditable(true); ys.setEditable(true);
             xs.setPrefWidth(140.0); ys.setPrefWidth(140.0);
+            xs.getValueFactory().setConverter(safeIntConverter());
+            ys.getValueFactory().setConverter(safeIntConverter());
             let commitBoth = () -> {
                 let x: Float64 = Int32.toFloat64(xs.getValue().intValue());
                 let y: Float64 = Int32.toFloat64(ys.getValue().intValue());

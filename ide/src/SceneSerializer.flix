@@ -420,6 +420,140 @@ mod SceneSerializer {
         let i = if (index < 0) 0 else if (index > n) n else index;
         List.append(List.take(i, items), item :: List.drop(i, items))
 
+    // ========================================================================
+    // ノード複製 — 対象サブツリーを clone（root 名を兄弟内一意にリネーム＋pos を少しオフセット）し、
+    // 同じ親の元ノード直後に挿入する。insertSubtree を再利用。
+    // ========================================================================
+
+    /// 複製時の位置オフセット（重なって見えないように少しずらす）
+    def dupOffset(): Float64 = 16.0
+
+    /// nodePath のノードを複製して同じ親に挿入する。成功時 {newName, newNodePath}。
+    pub def duplicateNode(jsonPath: String, nodePath: NodePath):
+            Result[String, {newName = String, newNodePath = NodePath}]
+            \ {Fs.FileRead, Fs.FileWrite} =
+        let readResult = run { Fs.ReadFile.read(jsonPath) } with Fs.ReadFile.runWithFileRead;
+        let parsed = readResult
+            |> Result.mapErr(e -> "read failed: ${e}")
+            |> Result.flatMap(text -> JsonOrdered.parse(String.trim(text)));
+        match parsed {
+            case Err(msg) => Err(msg)
+            case Ok(json) =>
+                let parentPath = List.take(List.length(nodePath) - 1, nodePath);
+                match List.last(nodePath) {
+                    case None             => Err("invalid nodePath: ${nodePath}")
+                    case Some(targetName) =>
+                        match findNodeEntries(parentPath, json) {
+                            case None => Err("parent not found: ${parentPath}")
+                            case Some(parentEntries) =>
+                                match findEntryValue("children", parentEntries) {
+                                    case Some(JsonOrdered.OrderedJson.OArray(items, _)) =>
+                                        duplicateInItems(jsonPath, parentPath, targetName, items)
+                                    case _ => Err("parent has no children array")
+                                }
+                        }
+                }
+        }
+
+    def duplicateInItems(jsonPath: String, parentPath: NodePath, targetName: String,
+                         items: List[JsonOrdered.OrderedJson]):
+            Result[String, {newName = String, newNodePath = NodePath}] \ {Fs.FileRead, Fs.FileWrite} =
+        match locateNamed(targetName, items, 0) {
+            case None => Err("node not found: ${targetName}")
+            case Some((frag, idx)) =>
+                let siblings = List.filterMap(itemName, items);
+                let newName = uniqueChildName(targetName, siblings, 2);
+                let clone = cloneFragment(frag, newName, dupOffset(), dupOffset());
+                insertSubtree(jsonPath, parentPath, idx + 1, clone)
+                    |> Result.map(_ ->
+                        {newName = newName,
+                         newNodePath = List.append(parentPath, newName :: Nil)})
+        }
+
+    /// items から name 一致のノードと index を返す
+    def locateNamed(name: String, items: List[JsonOrdered.OrderedJson], idx: Int32):
+            Option[(JsonOrdered.OrderedJson, Int32)] =
+        match items {
+            case Nil          => None
+            case head :: tail =>
+                if (itemName(head) == Some(name)) Some((head, idx))
+                else locateNamed(name, tail, idx + 1)
+        }
+
+    def itemName(item: JsonOrdered.OrderedJson): Option[String] =
+        match item {
+            case JsonOrdered.OrderedJson.OObject(es, _) => nodeNameOf(es)
+            case _                                      => None
+        }
+
+    /// フラグメントの root を newName にリネームし、"pos" を (dx, dy) ずらす（子は相対なので不変）
+    def cloneFragment(frag: JsonOrdered.OrderedJson, newName: String,
+                      dx: Float64, dy: Float64): JsonOrdered.OrderedJson =
+        match frag {
+            case JsonOrdered.OrderedJson.OObject(entries, style) =>
+                let renamed = replaceEntryValue("name",
+                    JsonOrdered.OrderedJson.OString(newName), entries);
+                JsonOrdered.OrderedJson.OObject(offsetPosEntries(renamed, dx, dy), style)
+            case other => other
+        }
+
+    def offsetPosEntries(entries: List[(String, JsonOrdered.OrderedJson)],
+                         dx: Float64, dy: Float64): List[(String, JsonOrdered.OrderedJson)] =
+        match findEntryValue("pos", entries) {
+            case Some(JsonOrdered.OrderedJson.OArray(
+                        JsonOrdered.OrderedJson.ONumber(xs) ::
+                        JsonOrdered.OrderedJson.ONumber(ys) :: rest, arrStyle)) =>
+                let nx = JsonOrdered.OrderedJson.ONumber(offsetNumberText(xs, dx));
+                let ny = JsonOrdered.OrderedJson.ONumber(offsetNumberText(ys, dy));
+                replaceEntryValue("pos",
+                    JsonOrdered.OrderedJson.OArray(nx :: ny :: rest, arrStyle), entries)
+            case _ => entries
+        }
+
+    def offsetNumberText(text: String, delta: Float64): String =
+        match Float64.fromString(String.trim(text)) {
+            case Some(v) => formatFloat(v + delta)
+            case None    => text
+        }
+
+    /// path のノードの entries を返す（複製の対象探索に使う読み取り専用ナビゲーション）
+    def findNodeEntries(path: NodePath, json: JsonOrdered.OrderedJson):
+            Option[List[(String, JsonOrdered.OrderedJson)]] =
+        match path {
+            case Nil          => None
+            case name :: rest =>
+                match json {
+                    case JsonOrdered.OrderedJson.OObject(entries, _) =>
+                        match nodeNameOf(entries) {
+                            case Some(n) if n == name =>
+                                match rest {
+                                    case Nil => Some(entries)
+                                    case _   =>
+                                        match findEntryValue("children", entries) {
+                                            case Some(JsonOrdered.OrderedJson.OArray(items, _)) =>
+                                                findNodeEntriesInArray(rest, items)
+                                            case _ => None
+                                        }
+                                }
+                            case _ => None
+                        }
+                    case JsonOrdered.OrderedJson.OArray(items, _) =>
+                        findNodeEntriesInArray(path, items)
+                    case _ => None
+                }
+        }
+
+    def findNodeEntriesInArray(path: NodePath, items: List[JsonOrdered.OrderedJson]):
+            Option[List[(String, JsonOrdered.OrderedJson)]] =
+        match items {
+            case Nil          => None
+            case head :: tail =>
+                match findNodeEntries(path, head) {
+                    case Some(e) => Some(e)
+                    case None    => findNodeEntriesInArray(path, tail)
+                }
+        }
+
     def insertChildAtRoot(parentPath: NodePath, childType: String,
                           json: JsonOrdered.OrderedJson):
                          Option[(JsonOrdered.OrderedJson, String)] =

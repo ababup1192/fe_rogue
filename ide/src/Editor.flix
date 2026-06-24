@@ -340,6 +340,10 @@ mod Editor {
                 discard SceneSerializer.insertSubtree(entry#jsonPath, entry#parentPath,
                                                        entry#index, entry#fragment);
                 scene
+            case Some(EditHistory.Entry.AddedNodeEntry(entry)) =>
+                // 追加/複製したノードを取り除く（追加の逆操作）。同じく HotReload で反映。
+                discard SceneSerializer.removeChild(entry#jsonPath, entry#nodePath);
+                scene
         }
 
     /// 現在のシーンの有効カメラから ViewTransform を計算する。

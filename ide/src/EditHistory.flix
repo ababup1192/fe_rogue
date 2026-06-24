@@ -37,6 +37,9 @@ mod EditHistory {
         case RemoveSubtreeEntry({jsonPath = String, parentPath = NodePath,
                                  index = Int32,
                                  fragment = JsonOrdered.OrderedJson})
+        /// ノード追加/複製の巻き戻し情報。追加したノードの path を保持し、
+        /// Undo 時に removeChild で取り除く。
+        case AddedNodeEntry({jsonPath = String, nodePath = NodePath})
     }
 
     /// 編集履歴 stack を扱うエフェクト。

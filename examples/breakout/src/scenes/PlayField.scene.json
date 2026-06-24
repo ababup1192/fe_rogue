@@ -8,7 +8,7 @@
   "children": [
     {
       "type": "StaticBody2D",
-      "name": "StaticBody2D",
+      "name": "StaticBody2D2",
       "pos": [0, 0],
       "shape": {"kind": "RectShape2D", "width": 32, "height": 32},
       "children": []

@@ -205,15 +205,36 @@ mod ScenePanel {
             ContextMenu \ IO = {
         let menu = new ContextMenu();
         let addChildMenu = buildAddChildMenu(state, ctxRef);
+        let duplicateItem = new MenuItem("Duplicate Node");
+        duplicateItem.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_t: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                onDuplicateNode(state, ctxRef)
+        });
         let deleteNodeItem = new MenuItem("Delete Node");
         deleteNodeItem.setOnAction(new EventHandler[ActionEvent] {
             def handle(_t: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
                 onDeleteNode(state, ctxRef)
         });
         discard menu.getItems().add(unchecked_cast(addChildMenu as MenuItem));
+        discard menu.getItems().add(duplicateItem);
         discard menu.getItems().add(deleteNodeItem);
         menu
     }
+
+    /// ノード行で「Duplicate Node」: 非ルートノード (nodePath 長 >= 2) のみ。
+    def onDuplicateNode(state: IdeState.IdeState,
+                        ctxRef: Array[Option[(String, String, List[String])], Static]): Unit \ IO =
+        match Array.get(0, ctxRef) {
+            case None => ()
+            case Some((abs, _rel, nodePath)) =>
+                if (List.length(nodePath) < 2)
+                    println("[Scenes] Duplicate Node: 子ノード行で実行してください")
+                else {
+                    println("[Scenes] Duplicate node queued: ${nodePath}");
+                    Array.put(Some(IdeState.SceneOp.DuplicateNode(abs, nodePath)), 0,
+                              state#pendingSceneOpRef)
+                }
+        }
 
     /// ノード行で「Delete Node」: 非ルートノード (nodePath 長 >= 2) のみ、
     /// SceneOp.DeleteNode を積む。ルート/ファイル行は no-op (Delete Scene を使う)。
