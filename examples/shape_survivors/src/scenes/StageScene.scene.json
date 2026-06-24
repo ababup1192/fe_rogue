@@ -1,0 +1,23 @@
+{
+  "type": "CanvasLayer",
+  "name": "stage",
+  "layer": 0,
+  "children": [
+    {
+      "type": "ColorRect",
+      "name": "background",
+      "pos": [0, 0],
+      "size": [480, 270],
+      "color": {"r": 0.07, "g": 0.08, "b": 0.12},
+      "zIndex": -100
+    },
+    {
+      "type": "Label2D",
+      "name": "hud",
+      "pos": [10, 8],
+      "text": "",
+      "fontSize": 14,
+      "tag": "Hud"
+    }
+  ]
+}
