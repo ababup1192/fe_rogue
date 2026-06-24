@@ -179,10 +179,246 @@ mod SceneSerializer {
 
     def writeAddChild(jsonPath: String, newJson: JsonOrdered.OrderedJson, childName: String):
             Result[String, String] \ Fs.FileWrite =
+        writeOrderedJson(jsonPath, newJson) |> Result.map(_ -> childName)
+
+    /// OrderedJson をファイルに pretty 書き戻す（成功時 Unit）
+    def writeOrderedJson(jsonPath: String, newJson: JsonOrdered.OrderedJson):
+            Result[String, Unit] \ Fs.FileWrite =
         let pretty = JsonOrdered.writePretty(2, newJson);
         let writeResult = run { Fs.WriteFile.write({str = pretty}, jsonPath) }
             with Fs.WriteFile.runWithFileWrite;
-        writeResult |> Result.mapErr(e -> "write failed: ${e}") |> Result.map(_ -> childName)
+        writeResult |> Result.mapErr(e -> "write failed: ${e}")
+
+    // ========================================================================
+    // 構造変更 — ノード除去 / サブツリー挿入（素の `children` 配列のみ対象）
+    // addChild / insertChildInArray / descendForInsert の mirror。
+    // 除去は Undo 用に「除去断片 + 親 path + index」を返す。挿入はその逆操作。
+    // ========================================================================
+
+    /// nodePath のノードを親の "children" から除去して書き戻す。
+    /// 成功時 {parentPath, index, fragment}（Undo で insertSubtree に渡せる）。
+    pub def removeChild(jsonPath: String, nodePath: NodePath):
+            Result[String, {parentPath = NodePath, index = Int32, fragment = JsonOrdered.OrderedJson}]
+            \ {Fs.FileRead, Fs.FileWrite} =
+        let readResult = run { Fs.ReadFile.read(jsonPath) } with Fs.ReadFile.runWithFileRead;
+        let parsed = readResult
+            |> Result.mapErr(e -> "read failed: ${e}")
+            |> Result.flatMap(text -> JsonOrdered.parse(String.trim(text)));
+        match parsed {
+            case Err(msg) => Err(msg)
+            case Ok(json) =>
+                match removeAtRoot(nodePath, json) {
+                    case None => Err("node not found: ${nodePath}")
+                    case Some((newJson, frag, index)) =>
+                        let parentPath = List.take(List.length(nodePath) - 1, nodePath);
+                        writeOrderedJson(jsonPath, newJson)
+                            |> Result.map(_ ->
+                                {parentPath = parentPath, index = index, fragment = frag})
+                }
+        }
+
+    /// parentPath の "children" の index 位置に fragment を挿入して書き戻す（範囲はクランプ）。
+    pub def insertSubtree(jsonPath: String, parentPath: NodePath, index: Int32,
+                          fragment: JsonOrdered.OrderedJson):
+            Result[String, Unit] \ {Fs.FileRead, Fs.FileWrite} =
+        let readResult = run { Fs.ReadFile.read(jsonPath) } with Fs.ReadFile.runWithFileRead;
+        let parsed = readResult
+            |> Result.mapErr(e -> "read failed: ${e}")
+            |> Result.flatMap(text -> JsonOrdered.parse(String.trim(text)));
+        match parsed {
+            case Err(msg) => Err(msg)
+            case Ok(json) =>
+                match insertSubtreeAtRoot(parentPath, index, fragment, json) {
+                    case None          => Err("parent node not found: ${parentPath}")
+                    case Some(newJson) => writeOrderedJson(jsonPath, newJson)
+                }
+        }
+
+    // ---- removeChild ナビゲーション ----
+
+    def removeAtRoot(nodePath: NodePath, json: JsonOrdered.OrderedJson):
+            Option[(JsonOrdered.OrderedJson, JsonOrdered.OrderedJson, Int32)] =
+        match nodePath {
+            case Nil          => None
+            case rootName :: rest =>
+                match json {
+                    case JsonOrdered.OrderedJson.OObject(_, _) =>
+                        removeInNode(rootName, rest, json)
+                    case JsonOrdered.OrderedJson.OArray(items, style) =>
+                        removeInArray(rootName, rest, items)
+                            |> Option.map(t -> {
+                                let (newItems, frag, idx) = t;
+                                (JsonOrdered.OrderedJson.OArray(newItems, style), frag, idx)
+                            })
+                    case _ => None
+                }
+        }
+
+    def removeInNode(targetName: String, restPath: NodePath, element: JsonOrdered.OrderedJson):
+            Option[(JsonOrdered.OrderedJson, JsonOrdered.OrderedJson, Int32)] =
+        match element {
+            case JsonOrdered.OrderedJson.OObject(entries, style) =>
+                match nodeNameOf(entries) {
+                    case Some(name) if name == targetName =>
+                        match restPath {
+                            case last :: Nil    => removeFromChildren(entries, style, last)
+                            case next :: deeper  => descendForRemove(entries, style, next, deeper)
+                            case Nil             => None
+                        }
+                    case _ => None
+                }
+            case _ => None
+        }
+
+    def removeFromChildren(entries: List[(String, JsonOrdered.OrderedJson)],
+                           style: JsonOrdered.ObjectStyle, childName: String):
+            Option[(JsonOrdered.OrderedJson, JsonOrdered.OrderedJson, Int32)] =
+        match findEntryValue("children", entries) {
+            case Some(JsonOrdered.OrderedJson.OArray(items, arrStyle)) =>
+                removeNamedFromItems(childName, items, 0)
+                    |> Option.map(t -> {
+                        let (newItems, frag, idx) = t;
+                        let newChildren = JsonOrdered.OrderedJson.OArray(newItems, arrStyle);
+                        (JsonOrdered.OrderedJson.OObject(
+                            replaceEntryValue("children", newChildren, entries), style), frag, idx)
+                    })
+            case _ => None
+        }
+
+    def removeNamedFromItems(childName: String, items: List[JsonOrdered.OrderedJson], idx: Int32):
+            Option[(List[JsonOrdered.OrderedJson], JsonOrdered.OrderedJson, Int32)] =
+        match items {
+            case Nil          => None
+            case head :: tail =>
+                let headName = match head {
+                    case JsonOrdered.OrderedJson.OObject(es, _) => nodeNameOf(es)
+                    case _                                      => None
+                };
+                if (headName == Some(childName)) Some((tail, head, idx))
+                else removeNamedFromItems(childName, tail, idx + 1)
+                    |> Option.map(t -> {
+                        let (rest, frag, i) = t;
+                        (head :: rest, frag, i)
+                    })
+        }
+
+    def descendForRemove(entries: List[(String, JsonOrdered.OrderedJson)],
+                         style: JsonOrdered.ObjectStyle, next: String, deeper: NodePath):
+            Option[(JsonOrdered.OrderedJson, JsonOrdered.OrderedJson, Int32)] =
+        match findEntryValue("children", entries) {
+            case Some(JsonOrdered.OrderedJson.OArray(items, arrStyle)) =>
+                removeInArray(next, deeper, items)
+                    |> Option.map(t -> {
+                        let (newItems, frag, idx) = t;
+                        let newChildren = JsonOrdered.OrderedJson.OArray(newItems, arrStyle);
+                        (JsonOrdered.OrderedJson.OObject(
+                            replaceEntryValue("children", newChildren, entries), style), frag, idx)
+                    })
+            case _ => None
+        }
+
+    def removeInArray(targetName: String, restPath: NodePath, items: List[JsonOrdered.OrderedJson]):
+            Option[(List[JsonOrdered.OrderedJson], JsonOrdered.OrderedJson, Int32)] =
+        match items {
+            case Nil          => None
+            case head :: tail =>
+                match removeInNode(targetName, restPath, head) {
+                    case Some((newHead, frag, idx)) => Some((newHead :: tail, frag, idx))
+                    case None =>
+                        removeInArray(targetName, restPath, tail)
+                            |> Option.map(t -> {
+                                let (newTail, frag, idx) = t;
+                                (head :: newTail, frag, idx)
+                            })
+                }
+        }
+
+    // ---- insertSubtree ナビゲーション ----
+
+    def insertSubtreeAtRoot(parentPath: NodePath, index: Int32, fragment: JsonOrdered.OrderedJson,
+                            json: JsonOrdered.OrderedJson): Option[JsonOrdered.OrderedJson] =
+        match parentPath {
+            case Nil              => None
+            case rootName :: rest =>
+                match json {
+                    case JsonOrdered.OrderedJson.OObject(_, _) =>
+                        insertSubtreeInNode(rootName, rest, index, fragment, json)
+                    case JsonOrdered.OrderedJson.OArray(items, style) =>
+                        insertSubtreeInArray(rootName, rest, index, fragment, items)
+                            |> Option.map(newItems ->
+                                JsonOrdered.OrderedJson.OArray(newItems, style))
+                    case _ => None
+                }
+        }
+
+    def insertSubtreeInNode(targetName: String, restPath: NodePath, index: Int32,
+                            fragment: JsonOrdered.OrderedJson, element: JsonOrdered.OrderedJson):
+            Option[JsonOrdered.OrderedJson] =
+        match element {
+            case JsonOrdered.OrderedJson.OObject(entries, style) =>
+                match nodeNameOf(entries) {
+                    case Some(name) if name == targetName =>
+                        match restPath {
+                            case Nil            => Some(insertFragmentAt(entries, style, index, fragment))
+                            case next :: deeper => descendForInsertSubtree(entries, style, next, deeper, index, fragment)
+                        }
+                    case _ => None
+                }
+            case _ => None
+        }
+
+    def descendForInsertSubtree(entries: List[(String, JsonOrdered.OrderedJson)],
+                                style: JsonOrdered.ObjectStyle, next: String, deeper: NodePath,
+                                index: Int32, fragment: JsonOrdered.OrderedJson):
+            Option[JsonOrdered.OrderedJson] =
+        match findEntryValue("children", entries) {
+            case Some(JsonOrdered.OrderedJson.OArray(items, arrStyle)) =>
+                insertSubtreeInArray(next, deeper, index, fragment, items)
+                    |> Option.map(newItems -> {
+                        let newChildren = JsonOrdered.OrderedJson.OArray(newItems, arrStyle);
+                        JsonOrdered.OrderedJson.OObject(
+                            replaceEntryValue("children", newChildren, entries), style)
+                    })
+            case _ => None
+        }
+
+    def insertSubtreeInArray(targetName: String, restPath: NodePath, index: Int32,
+                             fragment: JsonOrdered.OrderedJson, items: List[JsonOrdered.OrderedJson]):
+            Option[List[JsonOrdered.OrderedJson]] =
+        match items {
+            case Nil          => None
+            case head :: tail =>
+                match insertSubtreeInNode(targetName, restPath, index, fragment, head) {
+                    case Some(newHead) => Some(newHead :: tail)
+                    case None =>
+                        insertSubtreeInArray(targetName, restPath, index, fragment, tail)
+                            |> Option.map(newTail -> head :: newTail)
+                }
+        }
+
+    /// 対象ノードの "children" の index 位置に fragment を挿入する（無ければ新設）。
+    def insertFragmentAt(entries: List[(String, JsonOrdered.OrderedJson)],
+                         style: JsonOrdered.ObjectStyle, index: Int32,
+                         fragment: JsonOrdered.OrderedJson): JsonOrdered.OrderedJson =
+        let (childItems, arrStyle) = match findEntryValue("children", entries) {
+            case Some(JsonOrdered.OrderedJson.OArray(items, st)) => (items, st)
+            case _ => (Nil, JsonOrdered.ArrayStyle.Block)
+        };
+        let newItems = insertItemAt(index, fragment, childItems);
+        let newChildren = JsonOrdered.OrderedJson.OArray(newItems, arrStyle);
+        let newEntries =
+            if (hasEntry("children", entries))
+                replaceEntryValue("children", newChildren, entries)
+            else
+                List.append(entries, ("children", newChildren) :: Nil);
+        JsonOrdered.OrderedJson.OObject(newEntries, style)
+
+    /// index 位置に item を挿入（範囲外はクランプ）
+    def insertItemAt(index: Int32, item: JsonOrdered.OrderedJson,
+                     items: List[JsonOrdered.OrderedJson]): List[JsonOrdered.OrderedJson] =
+        let n = List.length(items);
+        let i = if (index < 0) 0 else if (index > n) n else index;
+        List.append(List.take(i, items), item :: List.drop(i, items))
 
     def insertChildAtRoot(parentPath: NodePath, childType: String,
                           json: JsonOrdered.OrderedJson):

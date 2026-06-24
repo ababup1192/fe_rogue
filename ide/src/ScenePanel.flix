@@ -142,7 +142,8 @@ mod ScenePanel {
                           ctxRef: Array[Option[(String, String, List[String])], Static]):
             TreeCell[String] \ IO = {
         let cell: TreeCell[String] = new TreeCell();
-        let rowMenu = buildRowMenu(state, ctxRef);
+        let fileMenu = buildFileMenu(state, ctxRef);
+        let nodeMenu = buildNodeMenu(state, ctxRef);
         let emptyMenu = buildEmptyMenu(state);
         // 既定は空セル扱い (空白右クリックで New Scene)
         cell.setContextMenu(emptyMenu);
@@ -155,22 +156,33 @@ mod ScenePanel {
                     cell.setContextMenu(emptyMenu)
                 } else {
                     cell.setText(newVal);
-                    cell.setContextMenu(rowMenu)
+                    // 実際のメニューは onContextMenuRequested で行種別に応じて確定する
+                    cell.setContextMenu(nodeMenu)
                 }
         });
-        // メニュー要求の瞬間 = このセルが行にバインドされている。ここで対象を確定して保存する。
+        // メニュー要求の瞬間 = このセルが行にバインドされている。対象を確定し、
+        // 行種別（ファイル=nodePath 空 / ノード=非空）に応じてメニューを差し替える。
         cell.setOnContextMenuRequested(new EventHandler[ContextMenuEvent] {
-            def handle(_t: EventHandler[ContextMenuEvent], _e: ContextMenuEvent): Unit \ IO =
-                Array.put(sceneOfCell(state, cell), 0, ctxRef)
+            def handle(_t: EventHandler[ContextMenuEvent], _e: ContextMenuEvent): Unit \ IO = {
+                let target = sceneOfCell(state, cell);
+                Array.put(target, 0, ctxRef);
+                match target {
+                    case None                 => cell.setContextMenu(emptyMenu)
+                    case Some((_, _, np)) =>
+                        if (List.isEmpty(np)) cell.setContextMenu(fileMenu)
+                        else cell.setContextMenu(nodeMenu)
+                }
+            }
         });
         cell
     }
 
-    def buildRowMenu(state: IdeState.IdeState,
-                     ctxRef: Array[Option[(String, String, List[String])], Static]):
+    /// シーンファイル行（nodePath が空）用メニュー: シーン単位の操作のみ。
+    /// ノードを消すつもりで Delete Scene を押す事故を防ぐため、ノード行とは項目を分ける。
+    def buildFileMenu(state: IdeState.IdeState,
+                      ctxRef: Array[Option[(String, String, List[String])], Static]):
             ContextMenu \ IO = {
         let menu = new ContextMenu();
-        let addChildMenu = buildAddChildMenu(state, ctxRef);
         let renameItem = new MenuItem("Rename Scene...");
         renameItem.setOnAction(new EventHandler[ActionEvent] {
             def handle(_t: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
@@ -181,11 +193,43 @@ mod ScenePanel {
             def handle(_t: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
                 onDeleteTarget(state, ctxRef)
         });
-        discard menu.getItems().add(unchecked_cast(addChildMenu as MenuItem));
         discard menu.getItems().add(renameItem);
         discard menu.getItems().add(deleteItem);
         menu
     }
+
+    /// ノード行（nodePath 非空）用メニュー: ノード単位の操作のみ（Add Child / Delete Node）。
+    /// Delete Scene / Rename Scene は出さない。
+    def buildNodeMenu(state: IdeState.IdeState,
+                      ctxRef: Array[Option[(String, String, List[String])], Static]):
+            ContextMenu \ IO = {
+        let menu = new ContextMenu();
+        let addChildMenu = buildAddChildMenu(state, ctxRef);
+        let deleteNodeItem = new MenuItem("Delete Node");
+        deleteNodeItem.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_t: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                onDeleteNode(state, ctxRef)
+        });
+        discard menu.getItems().add(unchecked_cast(addChildMenu as MenuItem));
+        discard menu.getItems().add(deleteNodeItem);
+        menu
+    }
+
+    /// ノード行で「Delete Node」: 非ルートノード (nodePath 長 >= 2) のみ、
+    /// SceneOp.DeleteNode を積む。ルート/ファイル行は no-op (Delete Scene を使う)。
+    def onDeleteNode(state: IdeState.IdeState,
+                     ctxRef: Array[Option[(String, String, List[String])], Static]): Unit \ IO =
+        match Array.get(0, ctxRef) {
+            case None => ()
+            case Some((abs, _rel, nodePath)) =>
+                if (List.length(nodePath) < 2)
+                    println("[Scenes] Delete Node: 子ノード行で実行してください (ルート/ファイルは Delete Scene)")
+                else {
+                    println("[Scenes] Delete node queued: ${nodePath}");
+                    Array.put(Some(IdeState.SceneOp.DeleteNode(abs, nodePath)), 0,
+                              state#pendingSceneOpRef)
+                }
+        }
 
     /// "Add Child Node" サブメニュー。型ごとに MenuItem を並べ、クリックで pendingAddChildRef に
     /// 積む (型名で自動命名。名前入力なし)。テクスチャ不要な型に限定。

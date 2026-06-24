@@ -32,6 +32,11 @@ mod EditHistory {
         case RotateEntry({jsonPath = String, nodePath = NodePath,
                           jsonNodePath = NodePath,
                           prevRotation = Float64})
+        /// ノード削除の巻き戻し情報。除去したサブツリーの JSON 断片と、
+        /// 親 path・配列 index を保持し、Undo 時に insertSubtree で同位置へ戻す。
+        case RemoveSubtreeEntry({jsonPath = String, parentPath = NodePath,
+                                 index = Int32,
+                                 fragment = JsonOrdered.OrderedJson})
     }
 
     /// 編集履歴 stack を扱うエフェクト。

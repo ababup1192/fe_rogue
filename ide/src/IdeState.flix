@@ -209,6 +209,7 @@ mod IdeState {
     pub enum SceneOp with Eq {
         case DeleteScene(String)          // 対象シーンの絶対パス
         case RenameScene(String, String)  // (対象シーンの絶対パス, 新しいベース名)
+        case DeleteNode(String, List[String]) // (シーン絶対パス, 削除するノードの nodePath)
     }
 
     pub type alias IdeState = {

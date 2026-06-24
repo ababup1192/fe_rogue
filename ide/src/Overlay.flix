@@ -339,7 +339,7 @@ mod Overlay {
         let (result, _) = List.foldLeft((acc, r) -> {
             let (sc, i) = acc;
             let edge = ColorRect.make(r#size, color)
-                |> ColorRect.setAlpha(0.4f32)
+                |> ColorRect.setAlpha(0.6f32)
                 |> Node2D.setPosition(r#pos);
             let sc2 = Scene.addChildAt(layerName :: Nil, "edge_${i}",
                 EngineNode.ColorRectWithState(edge, defaultTag), sc);
@@ -361,10 +361,10 @@ mod Overlay {
         let base = Scene.addNode(layerName,
             EngineNode.CanvasLayerWithState(layer, defaultTag), scene);
         let xAxis = ColorRect.make({x = 2.0 * big, y = th}, {r = 0.85f32, g = 0.35f32, b = 0.37f32})
-            |> ColorRect.setAlpha(0.4f32)
+            |> ColorRect.setAlpha(0.6f32)
             |> Node2D.setPosition({x = 0.0 - big, y = originScreen#y});
         let yAxis = ColorRect.make({x = th, y = 2.0 * big}, {r = 0.4f32, g = 0.8f32, b = 0.45f32})
-            |> ColorRect.setAlpha(0.4f32)
+            |> ColorRect.setAlpha(0.6f32)
             |> Node2D.setPosition({x = originScreen#x, y = 0.0 - big});
         base
             |> Scene.addChildAt(layerName :: Nil, "origin_x",
@@ -475,5 +475,5 @@ mod Overlay {
     /// zoom 縮小で線が 1px 未満になって消える/ちらつくのを防ぐ。画面上 ≈1.5px に揃える。
     def overlayLineThickness(zoom: Float64): Float64 =
         let z = if (zoom <= 0.0) 1.0 else zoom;
-        1.5 / z
+        2.0 / z
 }

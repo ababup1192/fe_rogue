@@ -450,7 +450,7 @@ mod NodeInspector {
             ({typeName = "Label2D", common = c, advanced = a}: FieldSection) :: Nil
         case EngineNode.Area2DWithState(_, _) =>
             let (c, a) = area2DFields();
-            ({typeName = "Area2D", common = c, advanced = a}: FieldSection) :: Nil
+            ({typeName = "Area2D", common = c, advanced = a}: FieldSection) :: shapeSectionFor(node)
         case EngineNode.ColorRectWithState(_, _) =>
             let (c, a) = colorRectFields();
             ({typeName = "ColorRect", common = c, advanced = a}: FieldSection) :: Nil
@@ -459,13 +459,13 @@ mod NodeInspector {
             ({typeName = "Camera2D", common = c, advanced = a}: FieldSection) :: Nil
         case EngineNode.Body2DWithState(_, _) =>
             let (c, a) = characterBody2DFields();
-            ({typeName = "CharacterBody2D", common = c, advanced = a}: FieldSection) :: Nil
+            ({typeName = "CharacterBody2D", common = c, advanced = a}: FieldSection) :: shapeSectionFor(node)
         case EngineNode.RigidBody2DWithState(_, _) =>
             let (c, a) = rigidBody2DFields();
-            ({typeName = "RigidBody2D", common = c, advanced = a}: FieldSection) :: Nil
+            ({typeName = "RigidBody2D", common = c, advanced = a}: FieldSection) :: shapeSectionFor(node)
         case EngineNode.StaticBody2DWithState(_, _) =>
             let (c, a) = staticBody2DFields();
-            ({typeName = "StaticBody2D", common = c, advanced = a}: FieldSection) :: Nil
+            ({typeName = "StaticBody2D", common = c, advanced = a}: FieldSection) :: shapeSectionFor(node)
         case EngineNode.TextureRectWithState(_, _) =>
             let (c, a) = textureRectFields();
             ({typeName = "TextureRect", common = c, advanced = a}: FieldSection) :: Nil
@@ -476,6 +476,154 @@ mod NodeInspector {
             let (c, a) = audioStreamPlayerFields();
             ({typeName = "AudioStreamPlayer", common = c, advanced = a}: FieldSection) :: Nil
         case _ => Nil
+    }
+
+    // ─────────────────── CollisionShape2D (inline shape) の編集 ───────────────────
+    // Body/Area の inline `shape` プロパティ（Rect width/height・Circle radius・Capsule）を
+    // Inspector で編集する。schema は毎フレーム live node から再構築されるので、現在の kind に
+    // 応じた寸法フィールドだけを出す（kind を切り替えると次フレームでフィールドが入れ替わる）。
+    // 書き戻しは既存の ShapeValue（shape オブジェクト全体を書く）を使う。
+
+    /// 選択ノードに collisionShape があれば "CollisionShape2D" セクションを返す
+    def shapeSectionFor(node: EngineNode[Unit]): List[FieldSection] =
+        match CollisionObject2D.getCollisionShape(node) {
+            case None        => Nil
+            case Some(shape) =>
+                ({typeName = "CollisionShape2D", common = shapeFields(shape),
+                  advanced = (Nil: List[FieldDef])}: FieldSection) :: Nil
+        }
+
+    /// 現在の shape の kind に応じた FieldDef 群（kind セレクタ + 寸法）
+    def shapeFields(current: CollisionShape2D): List[FieldDef] =
+        let kindField = shapeKindField(current);
+        let dims = match current {
+            case CollisionShape2D.RectShape2D(_) =>
+                shapeDimField("shapeWidth", "Width", current, shapeWidthOf,
+                              (s, v) -> shapeWithDim(s, v, shapeHeightRaw(s), v / 2.0)) ::
+                shapeDimField("shapeHeight", "Height", current, shapeHeightOf,
+                              (s, v) -> shapeWithDim(s, shapeWidthRaw(s), v, v / 2.0)) :: Nil
+            case CollisionShape2D.CircleShape2D(_) =>
+                shapeDimField("shapeRadius", "Radius", current, shapeRadiusOf,
+                              (_s, v) -> CollisionShape2D.CircleShape2D({radius = v})) :: Nil
+            case CollisionShape2D.CapsuleShape2D(_) =>
+                shapeDimField("shapeRadius", "Radius", current, shapeRadiusOf,
+                              (s, v) -> capsuleWith(v, shapeHeightRaw(s), capVerticalOf(s))) ::
+                shapeDimField("shapeCapHeight", "Height", current, shapeHeightOf,
+                              (s, v) -> capsuleWith(shapeRadiusOf(s), v, capVerticalOf(s))) ::
+                shapeCapVerticalField(current) :: Nil
+        };
+        kindField :: dims
+
+    /// shape の kind を切り替える enum フィールド。互換する寸法は引き継ぐ。
+    def shapeKindField(current: CollisionShape2D): FieldDef =
+        let options = "RectShape2D" :: "CircleShape2D" :: "CapsuleShape2D" :: Nil;
+        {
+            name     = "shapeKind",
+            label    = "Shape",
+            kind     = FieldKind.EnumT(options),
+            snapshot = n -> Option.map(s -> stringToJson(shapeKindName(s)),
+                                       CollisionObject2D.getCollisionShape(n)),
+            apply    = (sel, j) -> match jsonToString(j) {
+                case Some(kindName) => writeShape(sel, shapeWithKind(current, kindName))
+                case None           => ()
+            }
+        }
+
+    /// Capsule の vertical（縦長/横長）切替
+    def shapeCapVerticalField(current: CollisionShape2D): FieldDef =
+        {
+            name     = "shapeVertical",
+            label    = "Vertical",
+            kind     = FieldKind.BoolT,
+            snapshot = n -> Option.flatMap(s -> match s {
+                                case CollisionShape2D.CapsuleShape2D(c) => Some(boolToJson(c#vertical))
+                                case _                                  => None
+                            }, CollisionObject2D.getCollisionShape(n)),
+            apply    = (sel, j) -> match jsonToBool(j) {
+                case Some(b) => writeShape(sel,
+                    capsuleWith(shapeRadiusOf(current), shapeHeightRaw(current), b))
+                case None    => ()
+            }
+        }
+
+    /// shape の 1 寸法を編集する Float フィールド。snapshot は live node から読み、
+    /// apply は build 時の shape (current) を起点に 1 次元だけ変えて shape 全体を書き戻す。
+    def shapeDimField(fieldName: String, label: String, current: CollisionShape2D,
+                      readDim: CollisionShape2D -> Float64,
+                      writeDim: (CollisionShape2D, Float64) -> CollisionShape2D): FieldDef =
+        {
+            name     = fieldName,
+            label    = label,
+            kind     = FieldKind.FloatT,
+            snapshot = n -> Option.map(s -> floatToJson(readDim(s)),
+                                       CollisionObject2D.getCollisionShape(n)),
+            apply    = (sel, j) -> match jsonToFloat(j) {
+                case Some(v) => writeShape(sel, writeDim(current, v))
+                case None    => ()
+            }
+        }
+
+    /// shape オブジェクト全体を JSON に書き戻す（ShapeValue 経由）
+    def writeShape(sel: Editor.Selection, shape: CollisionShape2D):
+            Unit \ {Fs.FileRead, Fs.FileWrite} =
+        SceneSerializer.updateFields(sel#jsonPath, sel#jsonNodePath,
+            ({key = "shape",
+              value = SceneSerializer.FieldValue.ShapeValue(shape)}: SceneSerializer.FieldUpdate) :: Nil)
+
+    def shapeKindName(s: CollisionShape2D): String = match s {
+        case CollisionShape2D.RectShape2D(_)    => "RectShape2D"
+        case CollisionShape2D.CircleShape2D(_)  => "CircleShape2D"
+        case CollisionShape2D.CapsuleShape2D(_) => "CapsuleShape2D"
+    }
+
+    /// kind 切替時、代表寸法 (width/height/radius) を引き継いで新しい kind の shape を作る
+    def shapeWithKind(current: CollisionShape2D, kindName: String): CollisionShape2D =
+        let w = shapeWidthOf(current);
+        let h = shapeHeightOf(current);
+        let r = shapeRadiusOf(current);
+        match kindName {
+            case "RectShape2D"    => CollisionShape2D.RectShape2D({width = w, height = h})
+            case "CircleShape2D"  => CollisionShape2D.CircleShape2D({radius = r})
+            case "CapsuleShape2D" => capsuleWith(r, h, true)
+            case _                => current
+        }
+
+    // 代表寸法の取り出し（kind 横断で width/height/radius を意味のある値に正規化）
+    def shapeWidthOf(s: CollisionShape2D): Float64 = match s {
+        case CollisionShape2D.RectShape2D(r)    => r#width
+        case CollisionShape2D.CircleShape2D(c)  => c#radius * 2.0
+        case CollisionShape2D.CapsuleShape2D(c) => c#radius * 2.0
+    }
+    def shapeHeightOf(s: CollisionShape2D): Float64 = match s {
+        case CollisionShape2D.RectShape2D(r)    => r#height
+        case CollisionShape2D.CircleShape2D(c)  => c#radius * 2.0
+        case CollisionShape2D.CapsuleShape2D(c) => c#height
+    }
+    def shapeRadiusOf(s: CollisionShape2D): Float64 = match s {
+        case CollisionShape2D.RectShape2D(r)    => Float64.min(r#width, r#height) / 2.0
+        case CollisionShape2D.CircleShape2D(c)  => c#radius
+        case CollisionShape2D.CapsuleShape2D(c) => c#radius
+    }
+    // Rect の生の width/height（Rect 以外なら代表値で代用）
+    def shapeWidthRaw(s: CollisionShape2D): Float64 = match s {
+        case CollisionShape2D.RectShape2D(r) => r#width
+        case _                               => shapeWidthOf(s)
+    }
+    def shapeHeightRaw(s: CollisionShape2D): Float64 = match s {
+        case CollisionShape2D.RectShape2D(r)    => r#height
+        case CollisionShape2D.CapsuleShape2D(c) => c#height
+        case _                                  => shapeHeightOf(s)
+    }
+    def capVerticalOf(s: CollisionShape2D): Bool = match s {
+        case CollisionShape2D.CapsuleShape2D(c) => c#vertical
+        case _                                  => true
+    }
+    def capsuleWith(radius: Float64, height: Float64, vertical: Bool): CollisionShape2D =
+        CollisionShape2D.CapsuleShape2D({radius = radius, height = height, vertical = vertical})
+    def shapeWithDim(s: CollisionShape2D, w: Float64, h: Float64, r: Float64): CollisionShape2D = match s {
+        case CollisionShape2D.RectShape2D(_)    => CollisionShape2D.RectShape2D({width = w, height = h})
+        case CollisionShape2D.CircleShape2D(_)  => CollisionShape2D.CircleShape2D({radius = r})
+        case CollisionShape2D.CapsuleShape2D(c) => CollisionShape2D.CapsuleShape2D({radius = r, height = h, vertical = c#vertical})
     }
 
     // ─────────────────── 汎用 FieldDef ビルダー (boilerplate 削減) ───────────────────

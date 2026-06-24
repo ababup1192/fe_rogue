@@ -334,6 +334,12 @@ mod Editor {
                 SceneSerializer.updateRotation(entry#jsonPath, entry#jsonNodePath,
                                                 entry#prevRotation);
                 restored
+            case Some(EditHistory.Entry.RemoveSubtreeEntry(entry)) =>
+                // 除去したサブツリーを同位置へ戻す。live scene は JSON 書き戻し→
+                // HotReload の再 load で復元される（構造復元を live Scene へ直接行わない）。
+                discard SceneSerializer.insertSubtree(entry#jsonPath, entry#parentPath,
+                                                       entry#index, entry#fragment);
+                scene
         }
 
     /// 現在のシーンの有効カメラから ViewTransform を計算する。

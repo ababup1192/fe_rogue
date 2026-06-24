@@ -559,7 +559,8 @@ def consumePendingAddChild(state: IdeState.IdeState):
 
 /// Scenes ツリーのコンテキストメニューで積まれた削除/改名を main thread で適用する。
 def consumePendingSceneOp(state: IdeState.IdeState):
-        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Fs.Glob, Editor.EditorState, IdeGui.Gui} =
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Fs.Glob, Editor.EditorState,
+                EditHistory.Rewind, IdeGui.Gui} =
     match IdeState.takePendingSceneOp(state) {
         case None     => ()
         case Some(op) =>
@@ -570,10 +571,33 @@ def consumePendingSceneOp(state: IdeState.IdeState):
     }
 
 def applySceneOp(state: IdeState.IdeState, root: String, op: IdeState.SceneOp):
-        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Fs.Glob, Editor.EditorState, IdeGui.Gui} =
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Fs.Glob, Editor.EditorState,
+                EditHistory.Rewind, IdeGui.Gui} =
     match op {
         case IdeState.SceneOp.DeleteScene(abs)       => deleteSceneFile(state, root, abs)
         case IdeState.SceneOp.RenameScene(abs, name) => renameSceneFile(state, root, abs, name)
+        case IdeState.SceneOp.DeleteNode(abs, np)    => deleteNodeFromScene(state, abs, np)
+    }
+
+/// ノード削除: 親 children から除去→Undo 用に断片を保存→選択クリア→再 load。
+/// 構造復元(Undo)は EditHistory の RemoveSubtreeEntry に断片を積んでおき、
+/// Cmd+Z で SceneSerializer.insertSubtree により同位置へ戻す。
+def deleteNodeFromScene(state: IdeState.IdeState, abs: String, nodePath: List[String]):
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Editor.EditorState, EditHistory.Rewind} =
+    match SceneSerializer.removeChild(abs, nodePath) {
+        case Err(msg)  => println("[Main] Delete node failed: ${msg}")
+        case Ok(info)  => {
+            EditHistory.Rewind.save(EditHistory.Entry.RemoveSubtreeEntry({
+                jsonPath = abs, parentPath = info#parentPath,
+                index = info#index, fragment = info#fragment}));
+            println("[Main] Node deleted: ${nodePath}");
+            // 選択を解除（削除済みノードへの stale 参照を避ける。reload race 対策）
+            let st = Editor.EditorState.get();
+            Editor.EditorState.put({selected = None, dragOrigin = None, nodeOrigin = None,
+                                    resizeOrigin = None, rotateOrigin = None | st});
+            // 再 load してツリー/ビューポートを更新（addChild と同じ経路）
+            Array.put(Some(abs), 0, state#pendingSceneRef)
+        }
     }
 
 def deleteSceneFile(state: IdeState.IdeState, root: String, abs: String):
