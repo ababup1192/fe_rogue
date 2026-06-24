@@ -87,20 +87,20 @@ instance Node[NodeTag] {
     redef process(delta: Duration.Duration, node: EngineNode[NodeTag],
                   path: NodePath,
                   scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ GamePhaseState =
-        match node {
-            case EngineNode.CanvasLayerWithState(_, NodeTag.BattleLayer) =>
+        match EngineNode.getState(node) {
+            case NodeTag.BattleLayer =>
                 checked_ecast(BattleScene.processBattleLayer(delta, node, path, scene))
-            case EngineNode.Label2DWithState(_, NodeTag.StatusLabel) =>
+            case NodeTag.StatusLabel =>
                 checked_ecast(BattleScene.processStatusLabel(delta, node, path, scene))
-            case EngineNode.Sprite2DWithState(_, NodeTag.EnemySprite(idx)) =>
+            case NodeTag.EnemySprite(idx) =>
                 checked_ecast(BattleScene.processEnemySprite(idx, delta, node, path, scene))
-            case EngineNode.ColorRectWithState(_, NodeTag.FlashOverlay) =>
+            case NodeTag.FlashOverlay =>
                 checked_ecast(BattleScene.processFlashOverlay(delta, node, path, scene))
-            case EngineNode.RichTextLabelWithState(_, NodeTag.MessageBox) =>
+            case NodeTag.MessageBox =>
                 MessageScene.processBox(delta, node, path, scene)
-            case EngineNode.ItemListWithState(_, NodeTag.ItemMenu) =>
+            case NodeTag.ItemMenu =>
                 checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
-            case EngineNode.Label2DWithState(_, NodeTag.TargetCursor) =>
+            case NodeTag.TargetCursor =>
                 checked_ecast(BattleScene.processTargetCursor(delta, node, path, scene))
             case _ => (node, scene)
         }

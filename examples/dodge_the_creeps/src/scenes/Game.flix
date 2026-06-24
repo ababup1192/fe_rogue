@@ -82,8 +82,8 @@ instance Node[NodeTag] {
     redef ready(node: EngineNode[NodeTag], path: NodePath,
                 scene: Scene[NodeTag]):
                 (EngineNode[NodeTag], Scene[NodeTag]) \ GameEngine.Game =
-        match node {
-            case EngineNode.AnimSprite2DWithState(_, NodeTag.Player(_)) =>
+        match EngineNode.getState(node) {
+            case NodeTag.Player(_) =>
                 checked_ecast(PlayerScene.ready(node, path, scene))
             case _ => (node, scene)
         }
@@ -91,8 +91,8 @@ instance Node[NodeTag] {
     redef physicsProcess(delta: Duration.Duration, node: EngineNode[NodeTag],
                           path: NodePath, scene: Scene[NodeTag]):
                          (EngineNode[NodeTag], Scene[NodeTag]) \ GameEngine.Game =
-        match node {
-            case EngineNode.AnimSprite2DWithState(_, NodeTag.Player(_)) =>
+        match EngineNode.getState(node) {
+            case NodeTag.Player(_) =>
                 PlayerScene.physicsProcess(delta, node, path, scene)
             case _ => (node, scene)
         }

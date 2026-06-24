@@ -125,20 +125,31 @@ pub enum NodeTag {
 
 ## trait instance はディスパッチだけ
 
-各 instance は二重 match で **XxxScene の関数に委譲するだけ**。Game.flix にロジックを書かない。
+各 instance は **NodeTag 単位の単一 match で XxxScene の関数に委譲するだけ**。Game.flix にロジックを書かない。
+scrutinee は `EngineNode.getState(node)`（全 variant total）を使い、`NodeTag` だけで分岐する。
+inner node（RigidBody2D 等）が要る Scene 関数は委譲先で `node` を再 destructure する。
 
 ```flix
-// Node: EngineNode + NodeTag の組で各 Scene のライフサイクルへ
+// Node: EngineNode.getState で NodeTag を取り、タグだけで各 Scene のライフサイクルへ
 instance Node[NodeTag] {
     type Aef = { SpawnRequest }
-    redef ready(node, path, scene) = match node {
-        case EngineNode.RigidBody2DWithState(_, NodeTag.Xxx(_)) =>
+    redef ready(node, path, scene) = match EngineNode.getState(node) {
+        case NodeTag.Xxx(_) =>
             checked_ecast(XxxScene.ready(node, path, scene))
         case _ => (node, scene)
     }
     redef process(...) = ...
     redef physicsProcess(...) = ...
 }
+
+// 例外: タグを問わず「エンジン型」で捕まえたい arm（例: 全 Camera2D を一括処理し
+// NodeTag に固有タグを持たせていない場合）だけは `match node` の二重 match で残す。
+//   case EngineNode.Camera2DWithState(_, _) => checked_ecast(CameraScene.process(...))
+// 固有タグ（NodeTag.Camera 等）を与えればこの例外も単一 match に畳める。
+
+// fe_rogue のように arm 数が型推論の複雑度上限（~40-50）を超える場合は、
+// dispatch を複数のヘルパー関数（dispatchEntities/Tickables/Drivers/Menus 等）に分割し
+// 各々を独立 signature で推論させる。単一 match 化後も分割構造は維持してよい。
 
 // Area: NodeTag ペアで分岐。衝突は対称なので左右両方向書く
 match (selfState, otherState) {
