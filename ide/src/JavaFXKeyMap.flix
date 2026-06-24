@@ -28,6 +28,8 @@ mod JavaFXKeyMap {
         case GameEngine.Key.Space     => "SPACE"
         case GameEngine.Key.Escape    => "ESCAPE"
         case GameEngine.Key.F1        => "F1"
+        case GameEngine.Key.Delete    => "DELETE"
+        case GameEngine.Key.Backspace => "BACK_SPACE"
         case GameEngine.Key.LeftShift => "SHIFT"
         case GameEngine.Key.LeftCtrl  => "CONTROL"
         // macOS の Cmd キー

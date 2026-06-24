@@ -142,6 +142,8 @@ mod GameEngine {
         case Space
         case Escape
         case F1
+        case Delete
+        case Backspace
         case LeftShift
         case LeftCtrl
         case LeftSuper
@@ -153,6 +155,7 @@ mod GameEngine {
         Key.W :: Key.A :: Key.S :: Key.D :: Key.Z :: Key.X :: Key.C :: Key.M ::
         Key.Up :: Key.Down :: Key.Left :: Key.Right ::
         Key.Enter :: Key.Space :: Key.Escape :: Key.F1 ::
+        Key.Delete :: Key.Backspace ::
         Key.LeftShift :: Key.LeftCtrl :: Key.LeftSuper :: Nil
 
     /// マウスボタン

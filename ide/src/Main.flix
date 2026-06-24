@@ -225,6 +225,8 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         let zoomCmd = Array.get(0, state#zoomCommandRef);
         Array.put(0i32, 0, state#zoomCommandRef);
         let edited = Editor.handleInput({toolMode = toolMode, zoomCommand = zoomCmd}, nextScene);
+        // Delete / Backspace キーで選択ノードを削除（テキスト入力中は TextField が消費するため発火しない）
+        handleDeleteKey(state);
         // エディタ自由カメラ (pan/zoom) を投影へ渡す。これで描画は design-px のまま見た目だけ拡大縮小・移動。
         let editorView = Editor.currentEditorView();
         GameEngine.Game.setEditorView(editorView#panX, editorView#panY, editorView#zoom);
@@ -559,6 +561,22 @@ def consumePendingAddChild(state: IdeState.IdeState):
                 }
                 case Err(msg) => println("[Main] Add child failed: ${msg}")
             }
+    }
+
+/// Delete / Backspace 押下で、選択中ノード（非ルート）を削除キューに積む。
+/// テキスト入力中は TextField がキーを消費して scene まで届かないので、ここは発火しない。
+/// 削除すると選択が解除されるため、キー長押しでも 1 回だけ削除される（連打防止のフラグ不要）。
+def handleDeleteKey(state: IdeState.IdeState): Unit \ {IO, GameEngine.Game, Editor.EditorState} =
+    let pressed = GameEngine.Game.isKeyPressed(GameEngine.Key.Delete)
+               or GameEngine.Game.isKeyPressed(GameEngine.Key.Backspace);
+    if (not pressed) ()
+    else match Editor.EditorState.get()#selected {
+        case None      => ()
+        case Some(sel) =>
+            if (List.length(sel#jsonNodePath) >= 2)
+                Array.put(Some(IdeState.SceneOp.DeleteNode(sel#jsonPath, sel#jsonNodePath)),
+                          0, state#pendingSceneOpRef)
+            else ()
     }
 
 /// Scenes ツリーのコンテキストメニューで積まれた削除/改名を main thread で適用する。

@@ -452,7 +452,19 @@ mod EditableNode {
             case EngineNode.RichTextLabelWithState(label, _) => Some(richTextLabelRectInfo(label))
             case EngineNode.CanvasLayerWithState(_, _) => canvasLayerRectInfo(path, scene)
             case EngineNode.Area2DWithState(area, _) => area2dRectInfo(area)
+            // Body 系（Static/Rigid/Character）も衝突形状の bbox でクリック・移動できるようにする
+            case EngineNode.StaticBody2DWithState(_, _)    => collisionRectInfoOf(engineNode)
+            case EngineNode.RigidBody2DWithState(_, _)     => collisionRectInfoOf(engineNode)
+            case EngineNode.Body2DWithState(_, _)          => collisionRectInfoOf(engineNode)
             case _ => None
+        }
+
+    /// CollisionObject2D（Body/Area）の衝突形状から bbox を返す（EngineNode trait 経由）。
+    def collisionRectInfoOf(node: EngineNode[t]):
+            Option[{size = Vec2.Vec2, topLeftOffset = Vec2.Vec2}] =
+        match CollisionObject2D.getCollisionShape(node) {
+            case None        => None
+            case Some(shape) => collisionShapeRectInfo(shape)
         }
 
     /// Area2D の表示矩形は `collisionShape` の bbox。
@@ -529,6 +541,9 @@ mod EditableNode {
             case EngineNode.ColorRectWithState(rect, _) => Some(colorRectRectInfo(rect))
             case EngineNode.RichTextLabelWithState(label, _) => Some(richTextLabelRectInfo(label))
             case EngineNode.Area2DWithState(area, _) => area2dRectInfo(area)
+            case EngineNode.StaticBody2DWithState(_, _)    => collisionRectInfoOf(engineNode)
+            case EngineNode.RigidBody2DWithState(_, _)     => collisionRectInfoOf(engineNode)
+            case EngineNode.Body2DWithState(_, _)          => collisionRectInfoOf(engineNode)
             case _ => None
         }
 

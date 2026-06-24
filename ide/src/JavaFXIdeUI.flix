@@ -295,6 +295,7 @@ mod JavaFXIdeUI {
         // Scene tree 配線 + 60Hz status bar + Inspector AnimationTimer
         ScenePanel.wireTreeSelection(state, scenesTree);
         ScenePanel.wireSceneContextMenu(state, scenesTree);
+        ScenePanel.wireTreeDeleteKey(state, scenesTree);
         ScenePanel.startStatusBarTimer(state, canvasView);
 
         // 編集ツールバー: 選択ツール / 手のひら(パン)ツールの切替。toolModeRef に書き、Editor が読む。

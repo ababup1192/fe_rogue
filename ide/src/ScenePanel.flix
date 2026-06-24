@@ -46,6 +46,8 @@ mod ScenePanel {
     import javafx.scene.image.ImageView
     import javafx.scene.input.MouseEvent
     import javafx.scene.input.ContextMenuEvent
+    import javafx.scene.input.KeyEvent
+    import javafx.scene.input.KeyCode
     import javafx.scene.layout.HBox
     import javafx.scene.layout.VBox
     import javafx.event.EventHandler
@@ -94,6 +96,41 @@ mod ScenePanel {
             }
         };
         prop.addListener(listener)
+    }
+
+    /// TreeView にフォーカスがあるときの Delete / Backspace で選択ノードを削除する。
+    /// ツリー focus 時はキーが scene まで bubble せず Main.handleDeleteKey が拾えないため、
+    /// TreeView 自身にハンドラを付けて確実に拾う。consume してキャンバス側の二重発火も防ぐ。
+    pub def wireTreeDeleteKey(state: IdeState.IdeState, tree: TreeView[String]): Unit \ IO = {
+        tree.setOnKeyPressed(new EventHandler[KeyEvent] {
+            def handle(_this: EventHandler[KeyEvent], e: KeyEvent): Unit \ IO = {
+                let code = e.getCode();
+                if (code.equals(KeyCode.DELETE) or code.equals(KeyCode.BACK_SPACE)) {
+                    deleteSelectedTreeNode(state, tree);
+                    e.consume()
+                } else ()
+            }
+        })
+    }
+
+    /// ツリーで選択中のノード（非ルート）を削除キューに積む。ルート/ファイル行は no-op。
+    def deleteSelectedTreeNode(state: IdeState.IdeState, tree: TreeView[String]): Unit \ IO = {
+        let sel = tree.getSelectionModel().getSelectedItem();
+        if (Object.isNull(sel)) ()
+        else match collectFromTopLevel(sel) {
+            case Nil              => ()
+            case sceneRel :: rest =>
+                if (List.length(rest) < 2)
+                    println("[Scenes] Delete: ルート/ファイル行は Delete Scene を使ってください")
+                else match List.find(p -> snd(p) == sceneRel, Array.get(0, state#sceneFilesRef)) {
+                    case Some((abs, _)) => {
+                        println("[Scenes] Delete node (tree) queued: ${rest}");
+                        Array.put(Some(IdeState.SceneOp.DeleteNode(abs, rest)), 0,
+                                  state#pendingSceneOpRef)
+                    }
+                    case None => ()
+                }
+        }
     }
 
     /// 選択 TreeItem から top-level (シーンファイル) までを root→leaf 順で値リスト化する。
