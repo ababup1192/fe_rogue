@@ -83,8 +83,8 @@ instance Node[NodeTag] {
     // Bird: bird.gd `FlappingState._init → flap()` 相当の初期 flap を発火
     redef ready(node: EngineNode[NodeTag], path: NodePath,
                 scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ Recycle =
-        match node {
-            case EngineNode.RigidBody2DWithState(_, NodeTag.Bird(_)) =>
+        match EngineNode.getState(node) {
+            case NodeTag.Bird(_) =>
                 checked_ecast(BirdScene.ready(node, path, scene))
             case _ => (node, scene)
         }
@@ -93,14 +93,14 @@ instance Node[NodeTag] {
     // Bird は bird.gd に倣い _process を使わない（physicsProcess のみ）
     redef process(delta: Duration.Duration, node: EngineNode[NodeTag],
                   path: NodePath, scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ Recycle =
-        match node {
-            case EngineNode.Camera2DWithState(_, NodeTag.Camera(_)) =>
+        match EngineNode.getState(node) {
+            case NodeTag.Camera(_) =>
                 checked_ecast(CameraScene.process(delta, node, scene))
-            case EngineNode.CanvasLayerWithState(_, NodeTag.GameOverAnim(_)) =>
+            case NodeTag.GameOverAnim(_) =>
                 checked_ecast(GameOverScene.process(delta, node, scene))
-            case EngineNode.StaticBody2DWithState(_, NodeTag.Ground) =>
+            case NodeTag.Ground =>
                 GroundScene.process(node, path, scene)
-            case EngineNode.Marker2DWithState(_, NodeTag.Pipe) =>
+            case NodeTag.Pipe =>
                 PipeScene.process(node, path, scene)
             case _ => (node, scene)
         }
@@ -108,8 +108,8 @@ instance Node[NodeTag] {
     // Bird: 回転 -30° クランプ + 落下時 angVel = 1.5（bird.gd FlappingState.update 準拠）
     redef physicsProcess(delta: Duration.Duration, node: EngineNode[NodeTag],
                          path: NodePath, scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ Recycle =
-        match node {
-            case EngineNode.RigidBody2DWithState(_, NodeTag.Bird(_)) =>
+        match EngineNode.getState(node) {
+            case NodeTag.Bird(_) =>
                 checked_ecast(BirdScene.physicsProcess(delta, node, path, scene))
             case _ => (node, scene)
         }

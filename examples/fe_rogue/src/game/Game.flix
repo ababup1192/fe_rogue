@@ -130,8 +130,8 @@ instance Node[NodeTag] {
                           path: NodePath,
                           scene: Scene[NodeTag]):
                          (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.T =
-        match node {
-            case EngineNode.Marker2DWithState(_, NodeTag.Player(data)) =>
+        match EngineNode.getState(node) {
+            case NodeTag.Player(data) =>
                 // 選択中プレイヤー & PlayerMoving フェーズだけが移動を受け付ける。
                 // 集合(GatherMove)では主人公(id 0)が移動範囲内で動き、味方が追従する。
                 let phase = TurnPhase.State.get();
@@ -142,7 +142,7 @@ instance Node[NodeTag] {
                 else if (phase == TurnPhase.Phase.GatherMove and data#id == 0)
                     PlayerMovementScene.gatherStep(delta, node, path, scene)
                 else (node, scene)
-            case EngineNode.Marker2DWithState(_, NodeTag.Cursor(_)) =>
+            case NodeTag.Cursor(_) =>
                 // PlayerCursor / WeaponSelect / PlayerAttack の場合分けは CursorScene 内部に閉じている
                 CursorScene.physicsProcess(delta, node, path, scene)
             case _ => (node, scene)
@@ -170,10 +170,10 @@ instance Node[NodeTag] {
 def dispatchEntities(delta: Duration.Duration, node: EngineNode[NodeTag],
                       path: NodePath, scene: Scene[NodeTag]):
                      (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
-    match node {
-        case EngineNode.Marker2DWithState(_, NodeTag.Player(_)) =>
+    match EngineNode.getState(node) {
+        case NodeTag.Player(_) =>
             checked_ecast(CombatScene.process(delta, node, path, scene))
-        case EngineNode.Marker2DWithState(_, NodeTag.Enemy(_)) =>
+        case NodeTag.Enemy(_) =>
             checked_ecast(CombatScene.process(delta, node, path, scene))
         case _ => (node, scene)
     }
@@ -212,16 +212,16 @@ def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
 def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
-    match node {
-        case EngineNode.Marker2DWithState(_, NodeTag.EnemyTurnDriver) =>
+    match EngineNode.getState(node) {
+        case NodeTag.EnemyTurnDriver =>
             checked_ecast(EnemyTurnDriverScene.process(delta, node, path, scene))
-        case EngineNode.Marker2DWithState(_, NodeTag.StairsExitDriver(_)) =>
+        case NodeTag.StairsExitDriver(_) =>
             checked_ecast(StairsExitScene.process(delta, node, path, scene))
-        case EngineNode.Marker2DWithState(_, NodeTag.ArrowCursor(_)) =>
+        case NodeTag.ArrowCursor(_) =>
             checked_ecast(ArrowCursorScene.process(delta, node, path, scene))
-        case EngineNode.Marker2DWithState(_, NodeTag.FogDriver) =>
+        case NodeTag.FogDriver =>
             checked_ecast(FogScene.process(delta, node, path, scene))
-        case EngineNode.Marker2DWithState(_, NodeTag.MinimapDriver(_)) =>
+        case NodeTag.MinimapDriver(_) =>
             checked_ecast(MinimapScene.process(delta, node, path, scene))
         case _ => (node, scene)
     }
@@ -233,26 +233,26 @@ def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
 def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
                    path: NodePath, scene: Scene[NodeTag]):
                   (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
-    match node {
-        case EngineNode.ItemListWithState(_, NodeTag.ItemMenu(_, _)) =>
+    match EngineNode.getState(node) {
+        case NodeTag.ItemMenu(_, _) =>
             checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
-        case EngineNode.ItemListWithState(_, NodeTag.ActionMenu) =>
+        case NodeTag.ActionMenu =>
             checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
-        case EngineNode.ItemListWithState(_, NodeTag.WeaponSelectMenu) =>
+        case NodeTag.WeaponSelectMenu =>
             checked_ecast(WeaponSelectScene.refreshItems(delta, node, path, scene))
-        case EngineNode.ItemListWithState(_, NodeTag.GameOverMenu) =>
+        case NodeTag.GameOverMenu =>
             checked_ecast(GameOverMenuScene.refreshItems(delta, node, path, scene))
-        case EngineNode.ItemListWithState(_, NodeTag.SuspendConfirmMenu) =>
+        case NodeTag.SuspendConfirmMenu =>
             checked_ecast(SuspendConfirmScene.refreshItems(delta, node, path, scene))
-        case EngineNode.ItemListWithState(_, NodeTag.TradeMenu(_)) =>
+        case NodeTag.TradeMenu(_) =>
             checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.UnitCard) =>
+        case NodeTag.UnitCard =>
             checked_ecast(UnitCardScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.EnemyCard) =>
+        case NodeTag.EnemyCard =>
             checked_ecast(EnemyCardScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.BattlePanel(_)) =>
+        case NodeTag.BattlePanel(_) =>
             checked_ecast(BattlePanelScene.process(delta, node, path, scene))
-        case EngineNode.PanelWithState(_, NodeTag.LevelUpPanel(_)) =>
+        case NodeTag.LevelUpPanel(_) =>
             checked_ecast(LevelUpPanelScene.process(delta, node, path, scene))
         case _ => (node, scene)
     }
