@@ -114,6 +114,8 @@ pub enum NodeTag {
     /// 中断確認ダイアログ（「本当に中断しますか？ はい / いいえ」）の Panel / ItemList。
     case SuspendConfirmPanel
     case SuspendConfirmMenu
+    /// 追従カメラ（Camera2D）。process でフェーズに応じた追従先へ動かす。
+    case Camera
     case NoTag
 }
 
@@ -182,28 +184,28 @@ def dispatchEntities(delta: Duration.Duration, node: EngineNode[NodeTag],
 def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
                        path: NodePath, scene: Scene[NodeTag]):
                       (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
-    match node {
-        case EngineNode.Marker2DWithState(_, NodeTag.DamagePopupsRoot(_)) =>
+    match EngineNode.getState(node) {
+        case NodeTag.DamagePopupsRoot(_) =>
             checked_ecast(DamagePopupScene.process(delta, node, path, scene))
-        case EngineNode.Marker2DWithState(_, NodeTag.ExplosionsRoot(_)) =>
+        case NodeTag.ExplosionsRoot(_) =>
             checked_ecast(ExplosionScene.process(delta, node, path, scene))
-        case EngineNode.Marker2DWithState(_, NodeTag.HPBar(_)) =>
+        case NodeTag.HPBar(_) =>
             checked_ecast(UnitHPBarScene.process(delta, node, path, scene))
-        case EngineNode.Marker2DWithState(_, NodeTag.GroundItem(_)) =>
+        case NodeTag.GroundItem(_) =>
             checked_ecast(ItemScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.UnitInfoPanel(_)) =>
+        case NodeTag.UnitInfoPanel(_) =>
             checked_ecast(UnitInfoPopupScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.TopBar(_)) =>
+        case NodeTag.TopBar(_) =>
             checked_ecast(TopBarScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.ItemPickupPopup(_)) =>
+        case NodeTag.ItemPickupPopup(_) =>
             checked_ecast(ItemPickupPopupScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.HoldGauge(_)) =>
+        case NodeTag.HoldGauge(_) =>
             checked_ecast(TurnEndHoldScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.CharacterSelect(_)) =>
+        case NodeTag.CharacterSelect(_) =>
             checked_ecast(CharacterSelectScene.process(delta, node, path, scene))
-        case EngineNode.CanvasLayerWithState(_, NodeTag.Log(_)) =>
+        case NodeTag.Log(_) =>
             checked_ecast(LogScene.process(delta, node, path, scene))
-        case EngineNode.Camera2DWithState(_, _) =>
+        case NodeTag.Camera =>
             checked_ecast(CameraScene.process(delta, node, path, scene))
         case _ => (node, scene)
     }

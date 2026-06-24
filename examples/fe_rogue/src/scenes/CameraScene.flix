@@ -6,7 +6,7 @@
 /// 親子関係を断ち切ってトップレベルに置き、毎フレーム `update` で位置を計算する形に変える。
 ///
 /// ノード構造（トップレベル）:
-///   Camera (Camera2D, NodeTag.NoTag)
+///   Camera (Camera2D, NodeTag.Camera)
 ///
 /// 追従ルール（`TurnPhase.State.get` で分岐）:
 ///   - PlayerCursor    → カーソルのワールド座標
@@ -42,7 +42,7 @@ mod CameraScene {
             \ {GameEngine.Game, Fs.FileRead} =
         let initial = focusedPlayerWorldPos(0, scene);
         SceneLoader.loadScene(scenePath(),
-                               SceneLoader.constTagParser(NodeTag.NoTag),
+                               SceneLoader.constTagParser(NodeTag.Camera),
                                scene)
             // パーティ先頭の位置で position と smoothPosition を初期化して、
             // ゲーム開始時点のスナップ違和感を消す
