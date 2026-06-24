@@ -41,6 +41,7 @@
                 <Menu text="File">
                     <items>
                         <MenuItem fx:id="menuOpenProject" text="Open Project..."/>
+                        <MenuItem fx:id="menuNewScene" text="New Scene..."/>
                         <MenuItem fx:id="menuQuit" text="Quit"/>
                     </items>
                 </Menu>

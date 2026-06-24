@@ -157,6 +157,12 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
             case None       => (fontName, currentScene)
             case Some(path) => reloadProject(state, fontName, path)
         };
+        // File → New Scene... で積まれた新規シーン生成要求を消費する。
+        // .scene.json 生成 → sceneFiles 再列挙 → rootJsonIndex 更新 → pendingSceneRef 予約。
+        // 以降の sceneChanged 経路が TreeView 反映と auto-load/選択を担う
+        consumePendingNewScene(state);
+        // Scenes ツリーのコンテキストメニューで積まれた Delete / Rename を適用する
+        consumePendingSceneOp(state);
         // Deferred auto-load: AWT EDT が config swap を完了 (runtime#pendingConfig == None)
         // したフレームで初めて先頭シーンを pendingSceneRef に積む。font/texture が揃った
         // 後にロードされるので getFontAtlas が安全に解決できる
@@ -168,7 +174,16 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
                     IdeGui.Gui.setLoadingProgress("シーンを読み込み中...", 0.95f64);
                     Array.put(Some(abs), 0, state#pendingSceneRef)
                 }
-                case None => ()
+                // シーンが 1 つも無いプロジェクト (新規/空。breakout 等) は auto-load
+                // する先頭シーンが無いので、ここで overlay を畳まないと「初期化中」のまま
+                // 止まって見える。File → New Scene でシーンを作れる状態にして待機する
+                case None => {
+                    println("[Main] Project has no scenes; ready for New Scene");
+                    if (Array.get(0, state#loadingActiveRef)) {
+                        Array.put(false, 0, state#loadingActiveRef);
+                        IdeGui.Gui.hideLoading()
+                    } else ()
+                }
             };
             Array.put(false, 0, state#wantsAutoLoadFirstSceneRef)
         } else ();
@@ -402,6 +417,163 @@ def consumePendingAudioCommand(state: IdeState.IdeState):
         case Some(IdeState.AudioCommand.Stop(name)) => AudioStreamPlayer.stop(name)
     }
 
+/// File → New Scene... で積まれた (name, rootType) を消費して .scene.json を生成する。
+/// main thread でのみ呼ぶ (Fs.* と Editor.EditorState handler がここにしか無い)。
+/// 生成後は sceneFiles 再列挙 + rootJsonIndex 更新 + pendingSceneRef 予約まで行い、
+/// renderLoop の sceneChanged 経路が TreeView 反映と auto-load を担う。
+def consumePendingNewScene(state: IdeState.IdeState):
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Fs.Glob, Editor.EditorState} =
+    match IdeState.takePendingNewScene(state) {
+        case None                   => ()
+        case Some((name, rootType)) =>
+            match IdeState.getCurrentProjectRoot(state) {
+                case None       => println("[Main] New Scene: プロジェクト未ロード")
+                case Some(root) => createNewSceneFile(state, root, name, rootType)
+            }
+    }
+
+def createNewSceneFile(state: IdeState.IdeState, root: String, name: String, rootType: String):
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Fs.Glob, Editor.EditorState} =
+    let scenePath = joinPath(root, "src/scenes/${name}.scene.json");
+    if (pathExists(scenePath))
+        println("[Main] New Scene: 既に存在します: ${name}.scene.json")
+    else
+        match writeSceneFile(scenePath, newSceneJson(name, rootType)) {
+            case Err(msg) => println("[Main] New Scene 保存失敗: ${msg}")
+            case Ok(_)    => registerNewScene(state, root, scenePath, rootType)
+        }
+
+/// 生成済みファイルを scene 一覧・editor 索引・auto-load 予約に反映する。
+def registerNewScene(state: IdeState.IdeState, root: String, scenePath: String, rootType: String):
+        Unit \ {IO, Fs.FileRead, Fs.Glob, Editor.EditorState} = {
+    println("[Main] New Scene created: ${scenePath} (root=${rootType})");
+    refreshSceneListAndIndex(state, root);
+    // 生成したシーンを次フレームで auto-load + 選択
+    Array.put(Some(scenePath), 0, state#pendingSceneRef)
+}
+
+/// src/scenes を再列挙して TreeView 用 Ref を更新し、editor の click-hit 索引も差し替える。
+/// New Scene / Delete / Rename いずれの後にも呼ぶ共通リフレッシュ。
+def refreshSceneListAndIndex(state: IdeState.IdeState, root: String):
+        Unit \ {IO, Fs.FileRead, Fs.Glob, Editor.EditorState} = {
+    let sceneFiles = ProjectLoader.findSceneFiles(root)
+        |> List.map(rel -> (joinPath(root, rel), rel))
+        |> List.sortBy(p -> snd(p));
+    IdeState.setSceneFiles(state, sceneFiles);
+    let newIndex = SceneJsonIndex.loadAt(root);
+    let curEditor = Editor.EditorState.get();
+    Editor.EditorState.put({rootJsonIndex = newIndex | curEditor})
+}
+
+/// Scenes ツリーのコンテキストメニューで積まれた削除/改名を main thread で適用する。
+def consumePendingSceneOp(state: IdeState.IdeState):
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Fs.Glob, Editor.EditorState, IdeGui.Gui} =
+    match IdeState.takePendingSceneOp(state) {
+        case None     => ()
+        case Some(op) =>
+            match IdeState.getCurrentProjectRoot(state) {
+                case None       => println("[Main] SceneOp: プロジェクト未ロード")
+                case Some(root) => applySceneOp(state, root, op)
+            }
+    }
+
+def applySceneOp(state: IdeState.IdeState, root: String, op: IdeState.SceneOp):
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Fs.Glob, Editor.EditorState, IdeGui.Gui} =
+    match op {
+        case IdeState.SceneOp.DeleteScene(abs)       => deleteSceneFile(state, root, abs)
+        case IdeState.SceneOp.RenameScene(abs, name) => renameSceneFile(state, root, abs, name)
+    }
+
+def deleteSceneFile(state: IdeState.IdeState, root: String, abs: String):
+        Unit \ {IO, Fs.FileRead, Fs.Glob, Editor.EditorState, IdeGui.Gui} =
+    if (not SceneFileOps.delete(abs))
+        println("[Main] Delete 失敗: ${abs}")
+    else {
+        println("[Main] Scene deleted: ${abs}");
+        let wasCurrent = IdeState.getCurrentScenePath(state) == Some(abs);
+        refreshSceneListAndIndex(state, root);
+        // 削除したのが現在表示中のシーンなら、残りの先頭シーンへ切替 (無ければ表示クリア)
+        if (wasCurrent) {
+            match List.head(Array.get(0, state#sceneFilesRef)) {
+                case Some((nextAbs, _)) => Array.put(Some(nextAbs), 0, state#pendingSceneRef)
+                case None               => Array.put((None: Option[String]), 0, state#currentScenePathRef)
+            }
+        } else ();
+        // 非現在シーン削除では sceneChanged が立たないのでツリーを明示更新
+        IdeGui.Gui.populateProjectTree()
+    }
+
+def renameSceneFile(state: IdeState.IdeState, root: String, abs: String, newName: String):
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Fs.Glob, Editor.EditorState, IdeGui.Gui} =
+    let newAbs = joinPath(root, "src/scenes/${newName}.scene.json");
+    if (pathExists(newAbs))
+        println("[Main] Rename: 既に存在します: ${newName}.scene.json")
+    else
+        match readFileContent(abs) {
+            case None          => println("[Main] Rename: 読み込み失敗 ${abs}")
+            case Some(content) => writeRenamedScene(state, root, abs, newAbs, content, newName)
+        }
+
+def writeRenamedScene(state: IdeState.IdeState, root: String, abs: String, newAbs: String,
+                      content: String, newName: String):
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Fs.Glob, Editor.EditorState, IdeGui.Gui} =
+    match writeSceneFile(newAbs, renameRootInJson(content, newName)) {
+        case Err(msg) => println("[Main] Rename 保存失敗: ${msg}")
+        case Ok(_)    => {
+            discard SceneFileOps.delete(abs);
+            println("[Main] Scene renamed: ${abs} -> ${newAbs}");
+            let wasCurrent = IdeState.getCurrentScenePath(state) == Some(abs);
+            refreshSceneListAndIndex(state, root);
+            if (wasCurrent) Array.put(Some(newAbs), 0, state#pendingSceneRef) else ();
+            IdeGui.Gui.populateProjectTree()
+        }
+    }
+
+def readFileContent(path: String): Option[String] \ Fs.FileRead =
+    run {
+        match Fs.ReadFile.read(path) {
+            case Ok(content) => Some(content)
+            case Err(_)      => None
+        }
+    } with Fs.ReadFile.runWithFileRead
+
+/// シーン JSON のルート "name" を newName に差し替える。パース不能ならそのまま。
+def renameRootInJson(content: String, newName: String): String =
+    match JsonCompat.parse(String.trim(content)) {
+        case None       => content
+        case Some(json) =>
+            let updated = JsonOps.setAtKeyPath(json, "name" :: Nil,
+                Util.Json.Json.JString(newName));
+            Util.Json.toPrettyString(2i32, updated)
+    }
+
+def pathExists(path: String): Bool \ Fs.FileRead =
+    run {
+        match Fs.ReadFile.read(path) {
+            case Ok(_)  => true
+            case Err(_) => false
+        }
+    } with Fs.ReadFile.runWithFileRead
+
+def writeSceneFile(path: String, content: String): Result[String, Unit] \ Fs.FileWrite =
+    let result = run {
+        Fs.WriteFile.write({str = content}, path)
+    } with Fs.WriteFile.runWithFileWrite;
+    match result {
+        case Ok(_)      => Ok(())
+        case Err(error) => Err("write failed: ${error}")
+    }
+
+/// 新規シーンの最小 .scene.json を組み立てる。ルート型ごとに必須フィールドだけ埋める
+/// (Marker2D: pos / CanvasLayer: layer)。子ノードは IDE の Add Child Node で足していく。
+def newSceneJson(name: String, rootType: String): String =
+    match rootType {
+        case "CanvasLayer" =>
+            "{\n  \"type\": \"CanvasLayer\",\n  \"name\": \"${name}\",\n  \"layer\": 0\n}\n"
+        case _ =>
+            "{\n  \"type\": \"Marker2D\",\n  \"name\": \"${name}\",\n  \"pos\": [0, 0]\n}\n"
+    }
+
 /// SceneTree からの node 選択要求 (FX EDT が積む) を消費して Editor#selected に反映
 def consumePendingNodeSelection(state: IdeState.IdeState):
         Unit \ {IO, Editor.EditorState} =
@@ -460,3 +632,14 @@ def joinPath(dir: String, rel: String): String =
         "${dir}${rel}"
     else
         "${dir}/${rel}"
+
+/// シーンファイルの物理削除だけを担う小さなラッパ。Main.flix は mod 無しのフラット
+/// ファイルなので、Java import を局所化するためにここだけ mod に閉じる。
+mod SceneFileOps {
+    import java.io.File
+    /// path のファイルを削除する。存在して削除できたら true。
+    pub def delete(path: String): Bool \ IO = {
+        let f = new File(path);
+        if (f.exists()) f.delete() else false
+    }
+}

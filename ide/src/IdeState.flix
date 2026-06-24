@@ -204,9 +204,21 @@ mod IdeState {
         case Stop(String)
     }
 
+    /// Scenes ツリーのコンテキストメニューから予約されるシーンファイル操作。
+    /// FX スレッドが積み、main thread の renderLoop が消費する (Fs / Editor.EditorState 都合)。
+    pub enum SceneOp with Eq {
+        case DeleteScene(String)          // 対象シーンの絶対パス
+        case RenameScene(String, String)  // (対象シーンの絶対パス, 新しいベース名)
+    }
+
     pub type alias IdeState = {
         pendingProjectRef          = Array[Option[String], Static],
         pendingSceneRef            = Array[Option[String], Static],
+        // File → New Scene... で予約された (新規シーン名, ルートノード型)。
+        // main thread が消費して .scene.json を生成する。
+        pendingNewSceneRef         = Array[Option[(String, String)], Static],
+        // Scenes ツリーのコンテキストメニューで予約されたシーン削除/改名操作。
+        pendingSceneOpRef          = Array[Option[SceneOp], Static],
         sceneFilesRef              = Array[List[(String, String)], Static],
         currentScenePathRef        = Array[Option[String], Static],
         // 現在ロード中のプロジェクトルート絶対パス (新規ファイル作成等で必要)
@@ -230,6 +242,8 @@ mod IdeState {
         {
             pendingProjectRef          = Array#{(None: Option[String])} @ Static,
             pendingSceneRef            = Array#{(None: Option[String])} @ Static,
+            pendingNewSceneRef         = Array#{(None: Option[(String, String)])} @ Static,
+            pendingSceneOpRef          = Array#{(None: Option[SceneOp])} @ Static,
             sceneFilesRef              = Array#{(Nil: List[(String, String)])} @ Static,
             currentScenePathRef        = Array#{(None: Option[String])} @ Static,
             currentProjectRootRef      = Array#{(None: Option[String])} @ Static,
@@ -359,6 +373,19 @@ mod IdeState {
     pub def takePendingScene(state: IdeState): Option[String] \ IO =
         let pending = Array.get(0, state#pendingSceneRef);
         Array.put(None, 0, state#pendingSceneRef);
+        pending
+
+    /// File → New Scene... で予約された (新規シーン名, ルート型) を取り出し、Ref をクリアする。
+    /// main thread の renderLoop が消費して .scene.json を生成する。
+    pub def takePendingNewScene(state: IdeState): Option[(String, String)] \ IO =
+        let pending = Array.get(0, state#pendingNewSceneRef);
+        Array.put(None, 0, state#pendingNewSceneRef);
+        pending
+
+    /// Scenes ツリーのコンテキストメニューで予約されたシーン操作を取り出し、Ref をクリアする
+    pub def takePendingSceneOp(state: IdeState): Option[SceneOp] \ IO =
+        let pending = Array.get(0, state#pendingSceneOpRef);
+        Array.put(None, 0, state#pendingSceneOpRef);
         pending
 
     /// 現プロジェクトの scene.json 群 (絶対パス, 表示用相対パス) を登録する

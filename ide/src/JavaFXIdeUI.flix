@@ -291,13 +291,23 @@ mod JavaFXIdeUI {
 
         // Scene tree 配線 + 60Hz status bar + Inspector AnimationTimer
         ScenePanel.wireTreeSelection(state, scenesTree);
+        ScenePanel.wireSceneContextMenu(state, scenesTree);
         ScenePanel.startStatusBarTimer(state, canvasView);
 
         // メニュー項目を wire
+        // New Scene はプロジェクト未オープン時は無効 (グレーアウト)。Open Project で
+        // ディレクトリが選ばれた時点で有効化する (Godot/Unity と同じ contextual enable)。
+        let newSceneItem: MenuItem = unchecked_cast(ns.get("menuNewScene") as MenuItem);
+        newSceneItem.setDisable(true);
+        newSceneItem.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                ScenePanel.showNewSceneDialog(state)
+        });
+
         let openItem: MenuItem = unchecked_cast(ns.get("menuOpenProject") as MenuItem);
         openItem.setOnAction(new EventHandler[ActionEvent] {
             def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
-                showOpenProjectChooser(state, stage)
+                if (showOpenProjectChooser(state, stage)) newSceneItem.setDisable(false) else ()
         });
 
         let quitItem: MenuItem = unchecked_cast(ns.get("menuQuit") as MenuItem);
@@ -316,11 +326,13 @@ mod JavaFXIdeUI {
     /// DirectoryChooser を出し、選ばれたパスを pendingProjectRef に積む。
     /// 実際の ProjectLoader.loadProject は main thread の renderLoop が消費する
     /// (FX thread には Fs.FileRead effect handler が無いため)
-    def showOpenProjectChooser(state: IdeState.IdeState, stage: Stage): Unit \ IO = {
+    /// ディレクトリが選ばれて project ロードを予約したら true、キャンセルなら false。
+    /// 呼び出し側は true のとき New Scene メニューを有効化する。
+    def showOpenProjectChooser(state: IdeState.IdeState, stage: Stage): Bool \ IO = {
         let chooser = new DirectoryChooser();
         chooser.setTitle("Open Project");
         let chosen = chooser.showDialog(stage);
-        if (Object.isNull(chosen)) ()
+        if (Object.isNull(chosen)) false
         else {
             let path = chosen.getAbsolutePath();
             println("[IdeUI] Open Project selected: ${path}");
@@ -328,7 +340,8 @@ mod JavaFXIdeUI {
             // overlay を 0% で先に出しておく
             Array.put(true, 0, state#loadingActiveRef);
             showLoadingOverlay(state, "プロジェクトを読み込み中...", 0.05f64);
-            Array.put(Some(path), 0, state#pendingProjectRef)
+            Array.put(Some(path), 0, state#pendingProjectRef);
+            true
         }
     }
 

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
+  "packages": ["jdk@21"],
+  "shell": {
+    "init_hook": [
+      "export PATH=\"$PWD/bin:$PATH\""
+    ],
+    "scripts": {
+      "flix": "java -jar $PWD/bin/flix.jar",
+      "test": "java -jar $PWD/bin/flix.jar test",
+      "run": "java -jar $PWD/bin/flix.jar run",
+      "build": "java -jar $PWD/bin/flix.jar build"
+    }
+  }
+}
