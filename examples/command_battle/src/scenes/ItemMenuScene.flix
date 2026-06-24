@@ -33,16 +33,10 @@ mod ItemMenuScene {
     pub def applyVisibility(phase: GamePhase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = phase == GamePhase.ItemSelect;
         scene
-            |> Scene.mapEngineNode(panelPath(), node -> match node {
-                case EngineNode.PanelWithState(panel, tag) =>
-                    EngineNode.PanelWithState(CanvasItem.setVisible(visible, panel), tag)
-                case other => other
-            })
-            |> Scene.mapEngineNode(menuPath(), node -> match node {
-                case EngineNode.ItemListWithState(list, tag) =>
-                    EngineNode.ItemListWithState(ItemList.setFocused(visible, list), tag)
-                case other => other
-            })
+            |> Panel.mapAt(panelPath(), panel ->
+                CanvasItem.setVisible(visible, panel))
+            |> ItemList.mapAt(menuPath(), list ->
+                ItemList.setFocused(visible, list))
 
     /// 毎フレーム呼ばれる process。 inventory → items の追従だけ担当（visibility / focused
     /// は applyVisibility が担当）。 アイテム使用で quantity が変わったら即表示反映。

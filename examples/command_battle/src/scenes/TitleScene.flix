@@ -22,9 +22,6 @@ mod TitleScene {
     /// `GamePhase.Title` のときだけ Title CanvasLayer を visible にする。
     pub def applyVisibility(phase: GamePhase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = phase == GamePhase.Title;
-        Scene.mapEngineNode("title" :: Nil, node -> match node {
-            case EngineNode.CanvasLayerWithState(cl, tag) =>
-                EngineNode.CanvasLayerWithState(CanvasItem.setVisible(visible, cl), tag)
-            case other => other
-        }, scene)
+        CanvasLayer.mapAt("title" :: Nil, cl ->
+            CanvasItem.setVisible(visible, cl), scene)
 }

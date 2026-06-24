@@ -35,6 +35,27 @@ mod Marker2D {
             modulate = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
             ySortEnabled = false
         })
+
+    /// path 位置の Marker2D に f を適用。state タグは保持される。
+    /// path に Marker2D が居なければ no-op。（Sprite2D.mapAt と同形の typed accessor）
+    pub def mapAt(path: NodePath, f: Marker2D -> Marker2D,
+                   scene: Scene[s]): Scene[s] =
+        Scene.mapEngineNode(path, node -> match node {
+            case EngineNode.Marker2DWithState(marker, tag) =>
+                EngineNode.Marker2DWithState(f(marker), tag)
+            case other => other
+        }, scene)
+
+    /// path 位置の Marker2D に対し、内部ノードと state を同時に更新する f を適用。
+    /// path に Marker2D が居なければ no-op。（内部だけなら mapAt を使う）
+    pub def mapAtWithState(path: NodePath, f: (Marker2D, s) -> (Marker2D, s),
+                            scene: Scene[s]): Scene[s] =
+        Scene.mapEngineNode(path, node -> match node {
+            case EngineNode.Marker2DWithState(marker, tag) =>
+                let (newMarker, newTag) = f(marker, tag);
+                EngineNode.Marker2DWithState(newMarker, newTag)
+            case other => other
+        }, scene)
 }
 
 // -- CanvasItem 実装 --

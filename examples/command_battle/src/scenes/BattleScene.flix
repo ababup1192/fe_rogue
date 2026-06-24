@@ -180,16 +180,12 @@ mod BattleScene {
             |> List.foldLeft((acc, pair) -> {
                 let (idx, e) = pair;
                 let spec = e#sprite;
-                Scene.mapEngineNode(layerName() :: "enemy${idx}" :: Nil, n -> match n {
-                    case EngineNode.Sprite2DWithState(sp, tag) =>
-                        let updated = sp
-                            |> Sprite2D.setTexture(spec#texture)
-                            |> Sprite2D.setHframes(spec#hframes)
-                            |> Sprite2D.setVframes(spec#vframes)
-                            |> Sprite2D.setFrame(spec#frame);
-                        EngineNode.Sprite2DWithState(updated, tag)
-                    case other => other
-                }, acc)
+                Sprite2D.mapAt(layerName() :: "enemy${idx}" :: Nil, sp ->
+                    sp
+                        |> Sprite2D.setTexture(spec#texture)
+                        |> Sprite2D.setHframes(spec#hframes)
+                        |> Sprite2D.setVframes(spec#vframes)
+                        |> Sprite2D.setFrame(spec#frame), acc)
             }, scene)
 
     // ── 攻撃適用 (純粋関数 Battle.computeAttack を呼ぶ) ──
@@ -644,11 +640,8 @@ mod BattleScene {
     /// Title 以外で battle CanvasLayer を visible にする。
     pub def applyVisibility(phase: GamePhase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = phase != GamePhase.Title;
-        Scene.mapEngineNode(layerName() :: Nil, node -> match node {
-            case EngineNode.CanvasLayerWithState(cl, tag) =>
-                EngineNode.CanvasLayerWithState(CanvasItem.setVisible(visible, cl), tag)
-            case other => other
-        }, scene)
+        CanvasLayer.mapAt(layerName() :: Nil, cl ->
+            CanvasItem.setVisible(visible, cl), scene)
 
     // ── process: StatusLabel を BattleState から更新 ──
 

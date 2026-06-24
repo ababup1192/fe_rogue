@@ -241,13 +241,8 @@ mod DialogueScene {
     /// 再構築直後の scene は JSON のデフォルト visible=true で立ち上がっているので、
     /// 進行中の対話状態に合わせて修正する必要がある
     def syncLayerVisibility(state: UIState, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(layerPath(), engineNode ->
-            match engineNode {
-                case EngineNode.CanvasLayerWithState(layer, tag) =>
-                    EngineNode.CanvasLayerWithState(
-                        CanvasItem.setVisible(state#visible, layer), tag)
-                case other => other
-            }, scene)
+        CanvasLayer.mapAt(layerPath(), layer ->
+            CanvasItem.setVisible(state#visible, layer), scene)
 
     /// 本文 RichTextLabel のテキストを最新状態から同期する。
     /// `formatBody` で typewriter slice したあとに `Yarn.Markup.toBBCode` を当てる
@@ -267,9 +262,7 @@ mod DialogueScene {
         let visible =
             Dialogue.shouldShowNextIndicator(state) and Dialogue.isBlinkOn(state);
         let text = if (visible) state#profile#nextIndicatorGlyph else "";
-        Scene.mapEngineNode(indicatorPath(), engineNode ->
-            EngineNode.mapLabel2D(label -> Label2D.setText(text, label), engineNode),
-            scene)
+        Label2D.mapAt(indicatorPath(), label -> Label2D.setText(text, label), scene)
 
     /// transition RichTextLabel を「上にスクロール → 上辺に当たった行は消える」流儀で同期する。
     ///   - ラベル position.y を `bodyOrigin.y - progress * scrollPx` で連続的に上へ動かす

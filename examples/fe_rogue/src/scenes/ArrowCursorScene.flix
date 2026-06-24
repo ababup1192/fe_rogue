@@ -81,12 +81,7 @@ mod ArrowCursorScene {
                               scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = phase == TurnPhase.Phase.StaffAim or phase == TurnPhase.Phase.ThrowAim;
         scene
-            |> Scene.mapEngineNode(arrowPath(), n -> match n {
-                case EngineNode.Marker2DWithState(marker, st) =>
-                    EngineNode.Marker2DWithState(
-                        CanvasItem.setVisible(visible, marker), st)
-                case other => other
-            })
+            |> Marker2D.mapAt(arrowPath(), CanvasItem.setVisible(visible))
             |> Sprite2D.mapAt(spritePath(), CanvasItem.setVisible(visible))
 
     /// `StaffAim` に入った瞬間に呼ぶ。`anchor` をプレイヤー位置に、`direction` を Up に
@@ -126,12 +121,7 @@ mod ArrowCursorScene {
         let rotation = rotationOf(direction);
         let nextData: Data = {anchor = anchor, direction = direction, gridPos = cell};
         scene
-            |> Scene.mapEngineNode(arrowPath(), n -> match n {
-                case EngineNode.Marker2DWithState(marker, _) =>
-                    EngineNode.Marker2DWithState(
-                        Node2D.setPosition(world, marker),
-                        NodeTag.ArrowCursor(nextData))
-                case other => other
-            })
+            |> Marker2D.mapAtWithState(arrowPath(), (marker, _st) ->
+                (Node2D.setPosition(world, marker), NodeTag.ArrowCursor(nextData)))
             |> Sprite2D.mapAt(spritePath(), Node2D.setRotation(rotation))
 }

@@ -460,11 +460,7 @@ mod EnemyScene {
 
     /// 敵 id の親 Marker2D の visible を設定する（Data は素通し）。
     def setEnemyVisible(id: Int32, vis: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(enemyPath(id), engineNode -> match engineNode {
-            case EngineNode.Marker2DWithState(marker, NodeTag.Enemy(data)) =>
-                EngineNode.Marker2DWithState(CanvasItem.setVisible(vis, marker), NodeTag.Enemy(data))
-            case other => other
-        }, scene)
+        Marker2D.mapAt(enemyPath(id), CanvasItem.setVisible(vis), scene)
 
     /// 敵 id の親 Marker2D が現在 visible か（フォグで隠れていないか）を返す。
     /// フォグは `applyFog` で毎フレーム visible を設定するため、これが「いま見えているか」の

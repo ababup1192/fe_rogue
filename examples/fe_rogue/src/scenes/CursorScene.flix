@@ -126,12 +126,7 @@ mod CursorScene {
                               SceneLoader.constTagParser(NodeTag.NoTag),
                               scene)
             |> Scene.setState(cursorPath(), NodeTag.Cursor(data))
-            // Marker2D は EngineNode に mapMarker2D ヘルパーが無いので直接 match で position 更新
-            |> Scene.mapEngineNode(cursorPath(), n -> match n {
-                case EngineNode.Marker2DWithState(marker, st) =>
-                    EngineNode.Marker2DWithState(Node2D.setPosition(pos, marker), st)
-                case other => other
-            })
+            |> Marker2D.mapAt(cursorPath(), Node2D.setPosition(pos))
 
     /// パーティ先頭プレイヤー（id=0）の grid 位置。`add` 初期化用。
     /// `buildPlayingScene` で `sceneRef` 更新前に呼ばれるため、PartyQuery effect 経由ではなく

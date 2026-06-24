@@ -127,12 +127,7 @@ mod LogScene {
 
     /// CanvasLayer の offset(x) を書き換えて帯ごと出し入れする(PhaseBannerScene と同じ手法)。
     def setOffsetX(offsetX: Float64, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(logPath(), node -> match node {
-            case EngineNode.CanvasLayerWithState(layer, tag) =>
-                EngineNode.CanvasLayerWithState(
-                    CanvasLayer.setOffset({x = offsetX, y = 0.0}, layer), tag)
-            case other => other
-        }, scene)
+        CanvasLayer.mapAt(logPath(), CanvasLayer.setOffset({x = offsetX, y = 0.0}), scene)
 
     /// 別 HUD(ターンスキップ等)がログ帯を背景として再利用するための一時オーバーライド。
     /// ログ帯を定位置に出しつつ本文 5 行を空にする(queue は保持)。毎フレーム呼ぶ前提で、

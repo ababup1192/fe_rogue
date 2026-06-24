@@ -35,11 +35,8 @@ mod SpellMenuScene {
             disabled = false,
             metadata = Some(spell#id)
         }: ItemEntry), SpellCatalog.knownSpells(catalog));
-        Scene.mapEngineNode(menuPath(), node -> match node {
-            case EngineNode.ItemListWithState(list, tag) =>
-                EngineNode.ItemListWithState(ItemList.setItems(items, list), tag)
-            case other => other
-        }, loaded)
+        ItemList.mapAt(menuPath(), list ->
+            ItemList.setItems(items, list), loaded)
 
     /// フェーズ遷移時の visibility 適用 (Push モデル)。
     ///   - Panel: SpellSelect フェーズだけ visible
@@ -47,16 +44,10 @@ mod SpellMenuScene {
     pub def applyVisibility(phase: GamePhase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible = phase == GamePhase.SpellSelect;
         scene
-            |> Scene.mapEngineNode(panelPath(), node -> match node {
-                case EngineNode.PanelWithState(panel, tag) =>
-                    EngineNode.PanelWithState(CanvasItem.setVisible(visible, panel), tag)
-                case other => other
-            })
-            |> Scene.mapEngineNode(menuPath(), node -> match node {
-                case EngineNode.ItemListWithState(list, tag) =>
-                    EngineNode.ItemListWithState(ItemList.setFocused(visible, list), tag)
-                case other => other
-            })
+            |> Panel.mapAt(panelPath(), panel ->
+                CanvasItem.setVisible(visible, panel))
+            |> ItemList.mapAt(menuPath(), list ->
+                ItemList.setFocused(visible, list))
 
     /// じゅもん項目が確定された (Enter) ときの処理。 Game.flix の MenuHandler から呼ばれる。
     /// entry の metadata から spell_id を取り出し、 BattleScene.beginSpell に委譲（Heal なら

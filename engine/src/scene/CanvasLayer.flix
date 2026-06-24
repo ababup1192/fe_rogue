@@ -77,6 +77,27 @@ mod CanvasLayer {
     pub def setFollowViewport(followViewport: Bool, canvasLayer: CanvasLayer): CanvasLayer =
         let CanvasLayer.CanvasLayer(r) = canvasLayer;
         CanvasLayer.CanvasLayer({ followViewport = followViewport | r })
+
+    /// path 位置の CanvasLayer に f を適用。state タグは保持される。
+    /// path に CanvasLayer が居なければ no-op。（Sprite2D.mapAt と同形の typed accessor）
+    pub def mapAt(path: NodePath, f: CanvasLayer -> CanvasLayer,
+                   scene: Scene[s]): Scene[s] =
+        Scene.mapEngineNode(path, node -> match node {
+            case EngineNode.CanvasLayerWithState(layer, tag) =>
+                EngineNode.CanvasLayerWithState(f(layer), tag)
+            case other => other
+        }, scene)
+
+    /// path 位置の CanvasLayer に対し、内部ノードと state を同時に更新する f を適用。
+    /// path に CanvasLayer が居なければ no-op。（内部だけなら mapAt を使う）
+    pub def mapAtWithState(path: NodePath, f: (CanvasLayer, s) -> (CanvasLayer, s),
+                            scene: Scene[s]): Scene[s] =
+        Scene.mapEngineNode(path, node -> match node {
+            case EngineNode.CanvasLayerWithState(layer, tag) =>
+                let (newLayer, newTag) = f(layer, tag);
+                EngineNode.CanvasLayerWithState(newLayer, newTag)
+            case other => other
+        }, scene)
 }
 
 // -- CanvasItem 実装 --

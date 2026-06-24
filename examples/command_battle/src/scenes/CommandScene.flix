@@ -35,11 +35,8 @@ mod CommandScene {
     /// （Enter 連鎖防止）。
     pub def applyVisibility(phase: GamePhase, scene: Scene[NodeTag]): Scene[NodeTag] =
         let focused = phase == GamePhase.CommandSelect;
-        Scene.mapEngineNode(menuPath(), node -> match node {
-            case EngineNode.ItemListWithState(list, tag) =>
-                EngineNode.ItemListWithState(ItemList.setFocused(focused, list), tag)
-            case other => other
-        }, scene)
+        ItemList.mapAt(menuPath(), list ->
+            ItemList.setFocused(focused, list), scene)
 
     /// コマンド項目が確定された (Enter) ときの処理。 Game.flix の MenuHandler から呼ばれる。
     /// 「たたかう」 は BattleScene.beginAttack に委譲（敵が複数なら TargetSelect、 1 体なら

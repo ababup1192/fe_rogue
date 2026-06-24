@@ -102,9 +102,5 @@ mod WeaponIconScene {
     /// 同じ箇所で呼ぶことで本体スプライト・HPBar・アイコンの暗転を揃える。
     pub def setModulate(unitPath: NodePath, color: Color, scene: Scene[NodeTag]): Scene[NodeTag] =
         let iconPath = List.append(unitPath, childName() :: Nil);
-        Scene.mapEngineNode(iconPath, n -> match n {
-            case EngineNode.Marker2DWithState(m, tag) =>
-                EngineNode.Marker2DWithState(CanvasItem.setModulate(color, m), tag)
-            case other => other
-        }, scene)
+        Marker2D.mapAt(iconPath, CanvasItem.setModulate(color), scene)
 }

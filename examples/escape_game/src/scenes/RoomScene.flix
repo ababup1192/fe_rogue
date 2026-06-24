@@ -156,9 +156,7 @@ mod RoomScene {
 
     /// 背景 Sprite2D を変換するボイラプレート。
     def mapBackgroundSprite(f: Sprite2D -> Sprite2D, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(bgPath(), engineNode ->
-            EngineNode.mapSprite2D(f, engineNode),
-            scene)
+        Sprite2D.mapAt(bgPath(), f, scene)
 
     /// クリック解決の命名規約。`Hotspot_<roomId>_<hotspotId>`。
     /// `AreaHandler.onAreaClicked` が `HotspotData` から組み立てて `Session.start` に渡す。

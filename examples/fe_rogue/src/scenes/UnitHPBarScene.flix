@@ -160,11 +160,7 @@ mod UnitHPBarScene {
     /// 待機（プレイヤー）・行動済み（敵）の本体スプライト暗転と揃えて呼ぶ。
     pub def setModulate(unitPath: NodePath, color: Color, scene: Scene[NodeTag]): Scene[NodeTag] =
         let barPath = List.append(unitPath, childName() :: Nil);
-        Scene.mapEngineNode(barPath, n -> match n {
-            case EngineNode.Marker2DWithState(m, tag) =>
-                EngineNode.Marker2DWithState(CanvasItem.setModulate(color, m), tag)
-            case other => other
-        }, scene)
+        Marker2D.mapAt(barPath, CanvasItem.setModulate(color), scene)
 
     /// 攻撃予報中、対象ユニットの HP バーで「これから減る分」(postHp..currentHp) を
     /// 暗色オーバーレイで示す。`dark=true` のフレームは暗 modulate（= 減少分が暗く沈む）、

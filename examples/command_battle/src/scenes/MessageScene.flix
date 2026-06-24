@@ -113,11 +113,8 @@ mod MessageScene {
             case GamePhase.TargetSelect => true
             case _                      => false
         };
-        Scene.mapEngineNode(panelPath(), node -> match node {
-            case EngineNode.PanelWithState(panel, tag) =>
-                EngineNode.PanelWithState(CanvasItem.setVisible(visible, panel), tag)
-            case other => other
-        }, scene)
+        Panel.mapAt(panelPath(), panel ->
+            CanvasItem.setVisible(visible, panel), scene)
 
     /// RichTextLabel (MessageBox) に対する process。
     /// 期待メッセージと現在の text を比較し、差分があれば setText + visibleCharacters=0、

@@ -57,41 +57,33 @@ mod WorldScene {
 
     /// 背景テクスチャを `bg_<name>` に切り替え、レイヤを表示状態にする。
     /// 例: `setBackground("dungeon", scene)` → `bg_dungeon` テクスチャを表示。
-    /// 未登録の名前を渡しても Scene.mapEngineNode が no-op になり story は止まらない。
+    /// 未登録の名前を渡しても Sprite2D.mapAt が no-op になり story は止まらない。
     pub def setBackground(name: String, scene: Scene[NodeTag]): Scene[NodeTag] =
         let textureName = "bg_${name}";
-        Scene.mapEngineNode(backgroundPath(), engineNode ->
-            engineNode
-                |> EngineNode.mapSprite2D(sprite ->
-                    sprite
-                        |> Sprite2D.setTexture(textureName)
-                        |> CanvasItem.setVisible(true)),
+        Sprite2D.mapAt(backgroundPath(), sprite ->
+            sprite
+                |> Sprite2D.setTexture(textureName)
+                |> CanvasItem.setVisible(true),
             scene)
 
     /// 指定キャラ Sprite2D を visible=true にする。
     /// 知らない name は path が見つからず no-op になる。
     pub def showCharacter(name: String, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(characterPath(name), engineNode ->
-            EngineNode.mapSprite2D(sprite -> CanvasItem.setVisible(true, sprite),
-                engineNode),
-            scene)
+        Sprite2D.mapAt(characterPath(name),
+            sprite -> CanvasItem.setVisible(true, sprite), scene)
 
     /// 指定キャラ Sprite2D を visible=false にする。
     pub def hideCharacter(name: String, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(characterPath(name), engineNode ->
-            EngineNode.mapSprite2D(sprite -> CanvasItem.setVisible(false, sprite),
-                engineNode),
-            scene)
+        Sprite2D.mapAt(characterPath(name),
+            sprite -> CanvasItem.setVisible(false, sprite), scene)
 
     /// 背景／キャラレイヤの CanvasLayer position に shake オフセットを書き込む。
     /// `<<shake>>` の毎フレーム適用用で、対話レイヤ（drawLayer=10）には影響させない
     /// （UI は安定したまま、ワールドだけが揺れる流儀）。
     pub def setShakeOffset(offset: Vec2.Vec2, scene: Scene[NodeTag]): Scene[NodeTag] =
         scene
-            |> Scene.mapEngineNode(backgroundLayerName() :: Nil, layer ->
-                EngineNode.mapCanvasLayer(cl -> CanvasLayer.setOffset(offset, cl),
-                    layer))
-            |> Scene.mapEngineNode(charactersLayerName() :: Nil, layer ->
-                EngineNode.mapCanvasLayer(cl -> CanvasLayer.setOffset(offset, cl),
-                    layer))
+            |> CanvasLayer.mapAt(backgroundLayerName() :: Nil,
+                cl -> CanvasLayer.setOffset(offset, cl))
+            |> CanvasLayer.mapAt(charactersLayerName() :: Nil,
+                cl -> CanvasLayer.setOffset(offset, cl))
 }

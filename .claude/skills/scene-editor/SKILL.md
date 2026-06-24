@@ -221,6 +221,17 @@ pub def mapPlayerBody(f: (RigidBody2D, PlayerData) -> (RigidBody2D, PlayerData),
     }, scene)
 ```
 
+ただし **内部ノードだけを変える（state は保持）** なら、上の `Scene.mapEngineNode + match` を
+手書きせず typed accessor `Xxx.mapAt(path, f)` を使う（f: inner -> inner）。
+対応型: Sprite2D / Label2D / Panel / ItemList / Marker2D / CanvasLayer。
+内部と state を同時に変えるなら `Xxx.mapAtWithState(path, (inner, state) -> (inner, state))`（Marker2D / CanvasLayer）。
+手書きの `mapXxxBody` は「state の Data を取り出して加工する」場合に限って用意する。
+
+```
+// 内部だけ（visibility 等）→ typed accessor 1 行
+scene |> Marker2D.mapAt(playerPath(), CanvasItem.setVisible(false))
+```
+
 同様に、NodeTagに紐づけられた、データも取り出すための関数も用意すると、便利だ。
 
 ```
@@ -238,7 +249,9 @@ pub def mapPlayerBody(f: (RigidBody2D, PlayerData) -> (RigidBody2D, PlayerData),
 | sprite + data を変換 | `mapXxxSprite` |
 | 子ノード（Area2D 等）を変換 | `mapXxxArea` |
 | sprite + data + 子ノードを一括変換 | `mapXxx`（合成） |
-| 単一ノードの見た目変更 | `Scene.mapEngineNode(path, f)` |
+| 単一ノードの内部だけ変更（state保持） | `Xxx.mapAt(path, f)`（Sprite2D/Label2D/Panel/ItemList/Marker2D/CanvasLayer） |
+| 内部＋state を同時変更 | `Xxx.mapAtWithState(path, f)`（Marker2D/CanvasLayer） |
+| （helper の無い型のみ）単一ノード変更 | `Scene.mapEngineNode(path, f)` |
 | 状態のみ変更 | `Scene.setState(path, newState)` / `Scene.mapState(path, f)` |
 | ノード追加 | `Scene.addNode` / `Scene.addChild` |
 | ノード削除 | `Scene.removeAt(path)` / `Scene.removeGroup(group)` |
