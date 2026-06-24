@@ -87,17 +87,6 @@ mod CanvasLayer {
                 EngineNode.CanvasLayerWithState(f(layer), tag)
             case other => other
         }, scene)
-
-    /// path 位置の CanvasLayer に対し、内部ノードと state を同時に更新する f を適用。
-    /// path に CanvasLayer が居なければ no-op。（内部だけなら mapAt を使う）
-    pub def mapAtWithState(path: NodePath, f: (CanvasLayer, s) -> (CanvasLayer, s),
-                            scene: Scene[s]): Scene[s] =
-        Scene.mapEngineNode(path, node -> match node {
-            case EngineNode.CanvasLayerWithState(layer, tag) =>
-                let (newLayer, newTag) = f(layer, tag);
-                EngineNode.CanvasLayerWithState(newLayer, newTag)
-            case other => other
-        }, scene)
 }
 
 // -- CanvasItem 実装 --
