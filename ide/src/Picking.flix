@@ -48,7 +48,7 @@ mod Picking {
     /// マウスが entry の bbox 内なら HitInfo を返す
     def hitInfo(mousePos: Vec2.Vec2, entry: EditableNode.EditableEntry,
                 transform: Camera2D.ViewTransform, scene: Scene[t]): Option[HitInfo] =
-        let screenPos = Scene.screenPositionAt(entry#nodePath, transform, scene);
+        let screenPos = Scene.screenPositionAtWith(entry#nodePath, transform, editor = true, scene);
         if (Rect2.hasPoint(mousePos, makeBBox(screenPos, entry)))
             Some({z = Scene.effectiveZIndexAt(entry#nodePath, scene),
                   entry = entry, screenPos = screenPos})

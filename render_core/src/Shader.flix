@@ -175,11 +175,14 @@ mod RenderShader {
     // ========================================================================
 
     pub def setProjectionMatrix(shader: Int32, width: Float64, height: Float64): Unit \ IO =
+        setProjectionMatrixRect(shader, 0.0, width, 0.0, height)
+
+    /// 任意の正射影範囲 (left/right/top/bottom, design-px) を指定して projection を設定する。
+    /// IDE エディタの pan/zoom 自由カメラはこれに範囲を渡して投影に焼き込む
+    /// （ノード座標は design-px のまま、見た目だけ拡大縮小・移動する）。
+    pub def setProjectionMatrixRect(shader: Int32, left: Float64, right: Float64,
+                                     top: Float64, bottom: Float64): Unit \ IO =
         GL20.glUseProgram(shader);
-        let left = 0.0;
-        let right = width;
-        let bottom = height;
-        let top = 0.0;
         let proj = Array#{
             RenderUtil.f32(2.0 / (right - left)), 0.0f32, 0.0f32, 0.0f32,
             0.0f32, RenderUtil.f32(2.0 / (top - bottom)), 0.0f32, 0.0f32,

@@ -223,6 +223,11 @@ mod IdeState {
         pendingAddChildRef         = Array[Option[(String, List[String], String)], Static],
         // 編集ツールモード: 0=選択ツール, 1=手のひら(パン)ツール。ツールバーが書き、Editor が読む。
         toolModeRef                = Array[Int32, Static],
+        // ズームボタンのコマンド: 0=なし, 1=ズームイン, -1=ズームアウト, 2=リセット(100%)。
+        // ツールバーが書き、Editor が 1 フレームで消費する。
+        zoomCommandRef             = Array[Int32, Static],
+        // 現在のズーム倍率 (main thread が毎フレーム書き、FX 側 HUD ラベルが読む)。
+        zoomDisplayRef             = Array[Float64, Static],
         // 現在のプロジェクトの design 解像度 (Project Settings ダイアログの初期値用)。
         currentDesignRef           = Array[(Int32, Int32), Static],
         // Project Settings で予約された新しい design 解像度 (w, h)。
@@ -254,6 +259,8 @@ mod IdeState {
             pendingSceneOpRef          = Array#{(None: Option[SceneOp])} @ Static,
             pendingAddChildRef         = Array#{(None: Option[(String, List[String], String)])} @ Static,
             toolModeRef                = Array#{0i32} @ Static,
+            zoomCommandRef             = Array#{0i32} @ Static,
+            zoomDisplayRef             = Array#{1.0} @ Static,
             currentDesignRef           = Array#{((0i32, 0i32))} @ Static,
             pendingProjectSettingsRef  = Array#{(None: Option[(Int32, Int32)])} @ Static,
             sceneFilesRef              = Array#{(Nil: List[(String, String)])} @ Static,

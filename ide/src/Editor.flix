@@ -158,9 +158,11 @@ mod Editor {
     /// 入力処理を行いシーンを更新する。Game.flix / IDE の gameLoop から毎フレーム呼ぶ。
     /// toolMode: 0=選択ツール（左ドラッグでノード選択/移動）, 1=手のひらツール（左ドラッグでパン）。
     /// ズーム（ホイール）と中ボタンドラッグのパンはツールに依らず常に効く（Godot 準拠）。
-    pub def handleInput(toolMode: Int32, scene: Scene[t]):
+    pub def handleInput(view: {toolMode = Int32, zoomCommand = Int32}, scene: Scene[t]):
             Scene[t] \ {EditorState, EditHistory.Rewind, GameEngine.Game,
                               Fs.FileRead, Fs.FileWrite} =
+        let toolMode = view#toolMode;
+        let zoomCmd = view#zoomCommand;
         let stateData = EditorState.get();
         let f1 = GameEngine.Game.isKeyPressed(GameEngine.Key.F1);
         let mouseLeft = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left);
@@ -183,11 +185,12 @@ mod Editor {
                              prevZ = zNow | stateAfterToggle});
             scene
         } else {
-            // ビュー操作（ズーム＝ホイール / パン＝中ボタン or 手のひらツールの左ドラッグ）
+            // ビュー操作（ズーム＝ホイール/ボタン / パン＝中ボタン or 手のひらツールの左ドラッグ）
             let scroll = GameEngine.Game.consumeScrollDelta();
             let middle = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Middle);
             let panning = middle or ((toolMode == 1i32) and mouseLeft);
-            let zoomedState = applyZoom(stateAfterToggle, scroll, mousePos);
+            let wheelState = applyWheelZoom(stateAfterToggle, scroll, mousePos);
+            let zoomedState = applyButtonZoom(wheelState, zoomCmd, mousePos);
             let pannedState = applyPan(zoomedState, panning, mousePos);
             if (panning)
                 handlePanFrame(pannedState, mouseLeft, curArrows, zNow, scene)
@@ -255,7 +258,7 @@ mod Editor {
                 match EditableNode.findByNodePath(ctx, nodePath) {
                     case None => GameEngine.Cursor.Default
                     case Some(entry) =>
-                        let refPos = Scene.screenPositionAt(nodePath, transform, scene);
+                        let refPos = Scene.screenPositionAtWith(nodePath, transform, editor = true, scene);
                         let topLeft = Vec2.add(refPos, entry#topLeftOffset);
                         let box = {topLeft = topLeft,
                                    size = {x = entry#width, y = entry#height}};
@@ -337,42 +340,74 @@ mod Editor {
     /// カメラがなければ identity（CanvasLayer のみのシーン等）
     /// エディタの自由カメラ (pan/zoom) を ViewTransform に変換する。シーン内カメラには依らず、
     /// editor の offset/zoom だけで決まる (Godot のエディタビューと同じく独立)。
-    def viewTransformOf(stateData: EditorStateData): Camera2D.ViewTransform =
-        {offset = stateData#editorOffset, scale = {x = stateData#editorZoom, y = stateData#editorZoom}}
+    /// エディタの操作・描画・オーバーレイはすべて design-px (zoom=1) 空間で行う。
+    /// pan/zoom は投影 (setEditorView 経由) とマウス逆変換だけで効かせるので、
+    /// ここで返す変換は常に identity。これで move/resize/picking の計算が zoom に依らず一定になる。
+    def viewTransformOf(_stateData: EditorStateData): Camera2D.ViewTransform =
+        Camera2D.identityTransform()
 
-    /// 現在のエディタビュー変換。Main の renderWith / overlay / 入力で共有する。
-    pub def currentViewTransform(): Camera2D.ViewTransform \ EditorState =
-        viewTransformOf(EditorState.get())
+    /// 現在のエディタビュー変換 = identity（pan/zoom は投影側）。
+    /// Main の renderWith / overlay / 入力で共有する。
+    pub def currentViewTransform(): Camera2D.ViewTransform =
+        Camera2D.identityTransform()
 
-    def activeViewTransform(_scene: Scene[t]): Camera2D.ViewTransform \ EditorState =
-        viewTransformOf(EditorState.get())
+    /// 投影に焼き込む自由カメラ。panX/panY は FBO 原点に表示する design-px 座標、zoom は拡大率。
+    /// Main が毎フレーム GameEngine.Game.setEditorView へ渡す。
+    pub def currentEditorView(): {panX = Float64, panY = Float64, zoom = Float64} \ EditorState =
+        let s = EditorState.get();
+        {panX = s#editorOffset#x, panY = s#editorOffset#y, zoom = s#editorZoom}
 
-    def zoomStep(): Float64 = 1.1
+    def activeViewTransform(_scene: Scene[t]): Camera2D.ViewTransform =
+        Camera2D.identityTransform()
 
-    /// マウスホイールでカーソル中心にズーム。world_c を固定したまま zoom を変え offset を補正する。
-    def applyZoom(stateData: EditorStateData, scroll: Float64, cursor: Vec2.Vec2):
+    def zoomStepButton(): Float64 = 1.25
+
+    /// scroll（ホイール / ピンチの 1 フレーム蓄積量）を倍率に変換する。大きさに比例するので
+    /// ピンチの微調整も効く。1 フレームの急変を避けるため [0.4, 2.5] にクランプ。
+    def zoomFactorFromScroll(scroll: Float64): Float64 =
+        let f = 1.0 + scroll * 0.05;
+        if (f < 0.4) 0.4 else if (f > 2.5) 2.5 else f
+
+    /// center（カーソル下の design-px 点）を画面上で固定したまま zoom を factor 倍する。
+    /// 投影は fbo = (design - pan) * zoom。center を同じ fbo に保つ pan:
+    ///   pan' = center - (center - pan) * (zoom / newZoom)
+    def applyZoomFactor(stateData: EditorStateData, factor: Float64, center: Vec2.Vec2):
+            EditorStateData =
+        let newZoom = clampZoom(stateData#editorZoom * factor);
+        let ratio = stateData#editorZoom / newZoom;
+        let pan = stateData#editorOffset;
+        let newPan = {x = center#x - (center#x - pan#x) * ratio,
+                      y = center#y - (center#y - pan#y) * ratio};
+        {editorZoom = newZoom, editorOffset = newPan | stateData}
+
+    /// マウスホイール / ピンチでカーソル中心にズーム。scroll は scrollDelta（ピンチも合算済み）。
+    def applyWheelZoom(stateData: EditorStateData, scroll: Float64, cursor: Vec2.Vec2):
             EditorStateData =
         if (scroll == 0.0) stateData
-        else {
-            let factor = if (scroll > 0.0) zoomStep() else 1.0 / zoomStep();
-            let newZoom = clampZoom(stateData#editorZoom * factor);
-            // world_c = (cursor + offset) / oldZoom ; offset' = world_c * newZoom - cursor
-            let worldC = Vec2.div(Vec2.add(cursor, stateData#editorOffset), stateData#editorZoom);
-            let newOffset = Vec2.sub(Vec2.mul(worldC, newZoom), cursor);
-            {editorZoom = newZoom, editorOffset = newOffset | stateData}
-        }
+        else applyZoomFactor(stateData, zoomFactorFromScroll(scroll), cursor)
+
+    /// ツールバーのズームボタン。1=イン, -1=アウト（ともにビュー中心基準）, 2=リセット(100%)。
+    def applyButtonZoom(stateData: EditorStateData, cmd: Int32, center: Vec2.Vec2):
+            EditorStateData =
+        if (cmd == 1i32) applyZoomFactor(stateData, zoomStepButton(), center)
+        else if (cmd == -1i32) applyZoomFactor(stateData, 1.0 / zoomStepButton(), center)
+        else if (cmd == 2i32) {editorZoom = 1.0, editorOffset = Vec2.zero() | stateData}
+        else stateData
 
     def clampZoom(z: Float64): Float64 =
         if (z < 0.1) 0.1 else if (z > 8.0) 8.0 else z
 
-    /// ドラッグでパン。offset' = startOffset - (mouse - startMouse) で掴んだ world 点が追従する。
+    /// ドラッグでパン。掴んだ design 点 (designStart) を物理カーソルに追従させる。
+    /// mouse は getMousePosition の逆変換済み design-px（現在の pan に依存）。
+    /// pan' = pan + (designStart - mouse) と置くと、毎フレーム pan = designStart - fboCur/zoom に
+    /// 収束し、掴んだ点がカーソル直下に留まる（pan への依存が打ち消される）。
     def applyPan(stateData: EditorStateData, panning: Bool, mouse: Vec2.Vec2): EditorStateData =
         match (panning, stateData#panOrigin) {
             case (true, None) =>
-                {panOrigin = Some((mouse, stateData#editorOffset)) | stateData}
-            case (true, Some((startMouse, startOffset))) =>
-                let delta = Vec2.sub(mouse, startMouse);
-                {editorOffset = Vec2.sub(startOffset, delta) | stateData}
+                {panOrigin = Some((mouse, Vec2.zero())) | stateData}
+            case (true, Some((designStart, _))) =>
+                let adjust = Vec2.sub(designStart, mouse);
+                {editorOffset = Vec2.add(stateData#editorOffset, adjust) | stateData}
             case (false, _) =>
                 {panOrigin = None | stateData}
         }

@@ -95,6 +95,11 @@ mod JavaFXLayer {
         let curW = Array#{initialW} @ Static;
         let curH = Array#{initialH} @ Static;
 
+        // エディタ自由カメラ (panX, panY, zoom)。setEditorView で main thread から書き込み、
+        // paintGL (AWT EDT) の投影と getMousePosition の逆変換が読む。
+        // fbo_px = (design_px - pan) * zoom。
+        let editorViewRef = Array#{(0.0, 0.0, 1.0)} @ Static;
+
         // FBO + 色テクスチャ
         let fboArr = Array#{0i32} @ Static;
         let texArr = Array#{0i32} @ Static;
@@ -279,34 +284,25 @@ mod JavaFXLayer {
                     let vao          = Array.get(0, vaoArr);
                     let registry     = Array.get(0, registryArr);
                     let (sprites, tileMaps) = Array.get(0, renderStateArr);
-                    let curConfig = Array.get(0, currentConfigRef);
-                    let curScreenW = Int32.toFloat64(curConfig#designWidth);
-                    let curScreenH = Int32.toFloat64(curConfig#designHeight);
-                    // Polygon2D はエディタ描画では未対応。空リストを渡す（polyVao/polyVbo は
-                    // リストが空なら未使用なので sprite VAO を流用する）。
-                    // エディタのキャンバスは Godot 風に灰色ワークスペースで描く。ゲーム本来の
-                    // clearColor は実行時の見た目であり、編集時は中立な灰色にして配置に集中する。
-                    let editorBg = {r = 0.22f32, g = 0.22f32, b = 0.24f32};
+                    // エディタは FBO 全面を使う自由カメラビュー (Godot 風の無限グレーキャンバス)。
+                    // ノード座標は design-px のまま、pan/zoom を投影に焼き込む。
+                    // calcViewport には FBO サイズを渡して全面 (レターボックス無し) にする。
+                    // 投影範囲 design-px = [pan, pan + fbSize/zoom]: fbo_px = (design - pan) * zoom。
+                    let fbWf = Int32.toFloat64(w);
+                    let fbHf = Int32.toFloat64(h);
+                    let (evPanX, evPanY, evZoomRaw) = Array.get(0, editorViewRef);
+                    let evZoom = if (evZoomRaw <= 0.0) 1.0 else evZoomRaw;
+                    let projLeft = evPanX;
+                    let projRight = evPanX + fbWf / evZoom;
+                    let projTop = evPanY;
+                    let projBottom = evPanY + fbHf / evZoom;
+                    RenderShader.setProjectionMatrixRect(spriteShader, projLeft, projRight, projTop, projBottom);
+                    RenderShader.setProjectionMatrixRect(tileShader, projLeft, projRight, projTop, projBottom);
+                    // 一様な灰色 (#4D4D4D)。内側・外側(帯)とも同色。
+                    let editorBg = {r = 0.302f32, g = 0.302f32, b = 0.302f32};
                     RenderFrame.renderFrameMixed(spriteShader, tileShader, vao, registry,
-                        editorBg, curScreenW, curScreenH, w, h, sprites, tileMaps,
+                        editorBg, editorBg, fbWf, fbHf, w, h, sprites, tileMaps,
                         (Nil: List[GameEngine.PolygonRenderCmd]), vao, vao);
-
-                    // renderFrameMixed は FBO 全体を黒クリアし、内側ビューポートだけを editorBg に
-                    // するため、アスペクト維持のレターボックス帯が黒く残る。Godot 風の一様な灰色
-                    // ワークスペースにするため、帯部分だけを scissor で editorBg に塗り直す。
-                    let (vpX, vpY, vpW, vpH) = RenderFrame.calcViewport(w, h, curScreenW, curScreenH);
-                    GL11.glViewport(0i32, 0i32, w, h);
-                    GL11.glClearColor(0.22f32, 0.22f32, 0.24f32, 1.0f32);
-                    GL11.glEnable(GL11.GL_SCISSOR_TEST);
-                    GL11.glScissor(0i32, vpY + vpH, w, h - (vpY + vpH));
-                    GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-                    GL11.glScissor(0i32, 0i32, w, vpY);
-                    GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-                    GL11.glScissor(0i32, vpY, vpX, vpH);
-                    GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-                    GL11.glScissor(vpX + vpW, vpY, w - (vpX + vpW), vpH);
-                    GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-                    GL11.glDisable(GL11.GL_SCISSOR_TEST);
 
                     pixels.position(0i32);
                     GL11.glReadPixels(0i32, 0i32, w, h,
@@ -468,10 +464,15 @@ mod JavaFXLayer {
             }
             def isKeyPressed(key, k) = k(JavaFXInput.readKeyPressed(inputRefs, key))
             def getMousePosition(k) = {
-                let curCfg = Array.get(0, currentConfigRef);
-                let ds = {width = Int32.toFloat64(curCfg#designWidth),
-                          height = Int32.toFloat64(curCfg#designHeight)};
-                k(JavaFXInput.readMousePosition(inputRefs, ds))
+                // canvas px → FBO px (preserveRatio=false の線形写像) → design-px へ逆変換。
+                // design = pan + fbo_px / zoom。投影 (fbo = (design-pan)*zoom) の逆。
+                // エディタ操作計算は design-px で行うので、ここで pan/zoom を打ち消して返す。
+                let ds = {width = Int32.toFloat64(Array.get(0, curW)),
+                          height = Int32.toFloat64(Array.get(0, curH))};
+                let fboPos = JavaFXInput.readMousePosition(inputRefs, ds);
+                let (evPanX, evPanY, evZoomRaw) = Array.get(0, editorViewRef);
+                let evZoom = if (evZoomRaw <= 0.0) 1.0 else evZoomRaw;
+                k({x = evPanX + fboPos#x / evZoom, y = evPanY + fboPos#y / evZoom})
             }
             def isMouseButtonPressed(button, k) = k(JavaFXInput.readMouseButtonPressed(inputRefs, button))
             def consumeScrollDelta(k) = k(JavaFXInput.consumeScrollDelta(inputRefs))
@@ -493,6 +494,10 @@ mod JavaFXLayer {
             }
             def setCursor(cursor, k) = {
                 JavaFXInput.applyCursor(inputRefs, cursor);
+                k(())
+            }
+            def setEditorView(panX, panY, zoom, k) = {
+                Array.put((panX, panY, zoom), 0, editorViewRef);
                 k(())
             }
         };

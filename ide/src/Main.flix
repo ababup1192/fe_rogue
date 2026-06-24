@@ -222,7 +222,14 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         // editor がマウス入力を取り込み、選択 / ドラッグ / リサイズ / Undo まで処理して
         // 必要に応じて scene を更新する
         let toolMode = Array.get(0, state#toolModeRef);
-        let edited = Editor.handleInput(toolMode, nextScene);
+        let zoomCmd = Array.get(0, state#zoomCommandRef);
+        Array.put(0i32, 0, state#zoomCommandRef);
+        let edited = Editor.handleInput({toolMode = toolMode, zoomCommand = zoomCmd}, nextScene);
+        // エディタ自由カメラ (pan/zoom) を投影へ渡す。これで描画は design-px のまま見た目だけ拡大縮小・移動。
+        let editorView = Editor.currentEditorView();
+        GameEngine.Game.setEditorView(editorView#panX, editorView#panY, editorView#zoom);
+        // 現在ズーム倍率を HUD 表示用に公開する (FX 側 AnimationTimer が読む)
+        Array.put(editorView#zoom, 0, state#zoomDisplayRef);
         // Inspector の pending edits (schema 駆動 widget が積んだ commit) を消費し、
         // SceneSerializer 経由で JSON 書き戻し。HotReload watcher が次フレームで scene を再 load
         consumeInspectorEdits(state);
@@ -233,7 +240,7 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         // Inspector schema + currentValues snapshot を生成し、ScenePanel AnimationTimer に渡す
         snapshotInspectorState(state, edited);
         let preview = composePreview(edited);
-        GameEngine.renderWith(Editor.currentViewTransform(), preview);
+        GameEngine.renderWith(Editor.currentViewTransform(), editor = true, preview);
         renderLoop(state, newFontName, edited)
     }
 
@@ -401,9 +408,9 @@ def composePreview(scene: Scene[Unit]):
     // 灰色ワークスペース上に、ゲーム画面枠(藍)＋原点の赤X/緑Y線を重ねる (Godot の Viewport/Origin)。
     // editor の pan/zoom transform を枠/軸/オーバーレイ全てに共有してパン・ズームに追従させる。
     let vp = GameEngine.Game.getViewportRect();
-    let transform = Editor.currentViewTransform();
-    let framed = Overlay.addDesignFrame(vp#size, transform, (), scene);
-    let withOrigin = Overlay.addOriginLines(vp#size, transform, (), framed);
+    let zoom = Editor.currentEditorView()#zoom;
+    let framed = Overlay.addDesignFrame(vp#size, zoom, (), scene);
+    let withOrigin = Overlay.addOriginLines(vp#size, zoom, (), framed);
     Editor.applyOverlay((), withOrigin)
 
 /// Inspector schema widget が積んだ pending edits をすべて消費して書き戻す。

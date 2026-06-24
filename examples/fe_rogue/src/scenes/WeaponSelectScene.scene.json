@@ -1,13 +1,13 @@
 {
   "children": [
     {
-      "background": { "b": 0.22, "g": 0.15, "r": 0.12 },
+      "background": {"b": 0.22, "g": 0.15, "r": 0.12},
       "backgroundAlpha": 0.95,
-      "border": { "b": 0.271, "g": 0.204, "r": 0.165 },
+      "border": {"b": 0.271, "g": 0.204, "r": 0.165},
       "borderWidth": 1,
       "children": [
         {
-          "background": { "b": 0.165, "g": 0.094, "r": 0.067 },
+          "background": {"b": 0.165, "g": 0.094, "r": 0.067},
           "backgroundAlpha": 1.0,
           "borderWidth": 0,
           "cornerRadius": 2,
@@ -19,7 +19,7 @@
           "zIndex": 0
         },
         {
-          "background": { "b": 0.165, "g": 0.094, "r": 0.067 },
+          "background": {"b": 0.165, "g": 0.094, "r": 0.067},
           "backgroundAlpha": 1.0,
           "borderWidth": 0,
           "cornerRadius": 0,
@@ -33,7 +33,7 @@
         {
           "fontSize": 2.4,
           "verticalAlignment": "center",
-          "modulate": { "b": 1.0, "g": 0.753, "r": 0.612 },
+          "modulate": {"b": 1.0, "g": 0.753, "r": 0.612},
           "name": "header",
           "pos": [4, 4],
           "text": "武器",
@@ -44,7 +44,7 @@
         {
           "fontSize": 2.2,
           "verticalAlignment": "center",
-          "modulate": { "b": 0.70, "g": 0.64, "r": 0.62 },
+          "modulate": {"b": 0.70, "g": 0.64, "r": 0.62},
           "name": "hint",
           "pos": [17, 4],
           "text": "◀ 敵選択 ▶",
@@ -53,19 +53,19 @@
           "zIndex": 1
         },
         {
-          "badgeColor": { "b": 0.196, "g": 0.180, "r": 0.776 },
-          "badgeTextColor": { "b": 0.969, "g": 0.945, "r": 0.933 },
+          "badgeColor": {"b": 0.196, "g": 0.180, "r": 0.776},
+          "badgeTextColor": {"b": 0.969, "g": 0.945, "r": 0.933},
           "cursorGlyph": "",
           "cursorOffsetX": 3,
-          "disabledColor": { "b": 0.47, "g": 0.40, "r": 0.36 },
+          "disabledColor": {"b": 0.47, "g": 0.40, "r": 0.36},
           "focused": false,
           "iconBackground": {
             "borderAlpha": 1.0,
-            "borderColor": { "b": 0.78, "g": 0.67, "r": 0.62 },
+            "borderColor": {"b": 0.78, "g": 0.67, "r": 0.62},
             "borderWidth": 0.5,
             "cornerRadius": 1.5,
             "fillAlpha": 1.0,
-            "fillColor": { "b": 0.60, "g": 0.47, "r": 0.42 },
+            "fillColor": {"b": 0.60, "g": 0.47, "r": 0.42},
             "inset": 0
           },
           "iconBgPad": 1.0,
@@ -78,27 +78,27 @@
           "pos": [2, 9],
           "rowHighlight": {
             "borderAlpha": 1.0,
-            "borderColor": { "b": 0.200, "g": 0.145, "r": 0.110 },
+            "borderColor": {"b": 0.200, "g": 0.145, "r": 0.110},
             "borderWidth": 1,
             "cornerRadius": 2,
             "fillAlpha": 1.0,
-            "fillColor": { "b": 0.149, "g": 0.086, "r": 0.055 },
+            "fillColor": {"b": 0.149, "g": 0.086, "r": 0.055},
             "inset": 0.5
           },
           "selectedHighlight": {
             "borderAlpha": 1.0,
-            "borderColor": { "b": 0.941, "g": 0.427, "r": 0.184 },
+            "borderColor": {"b": 0.941, "g": 0.427, "r": 0.184},
             "borderWidth": 0.5,
             "cornerRadius": 2,
             "fillAlpha": 1.0,
-            "fillColor": { "b": 0.310, "g": 0.192, "r": 0.086 },
+            "fillColor": {"b": 0.310, "g": 0.192, "r": 0.086},
             "inset": 0.5
           },
           "size": [48, 36],
-          "sublineColor": { "b": 0.722, "g": 0.690, "r": 0.667 },
+          "sublineColor": {"b": 0.722, "g": 0.690, "r": 0.667},
           "sublineFontSize": 2.2,
           "tag": "WeaponSelectMenu",
-          "textColor": { "b": 0.969, "g": 0.945, "r": 0.933 },
+          "textColor": {"b": 0.969, "g": 0.945, "r": 0.933},
           "type": "ItemList",
           "visible": false,
           "wrap": false

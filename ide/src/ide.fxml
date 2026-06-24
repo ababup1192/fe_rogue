@@ -93,6 +93,22 @@
                                                            scaleY="-1.0"
                                                            fitWidth="${canvasContainer.width}"
                                                            fitHeight="${canvasContainer.height}"/>
+                                                <!-- Godot 風のズーム HUD。canvas 左上にフロート表示 -->
+                                                <HBox fx:id="zoomHud"
+                                                      StackPane.alignment="TOP_LEFT"
+                                                      alignment="CENTER_LEFT" spacing="6.0"
+                                                      translateX="8.0" translateY="8.0"
+                                                      maxWidth="-Infinity" maxHeight="-Infinity"
+                                                      style="-fx-background-color: rgba(40,40,40,0.72); -fx-background-radius: 6; -fx-padding: 3 8 3 8;">
+                                                    <children>
+                                                        <Button fx:id="zoomOutHud" text="−"
+                                                                style="-fx-background-radius: 50%; -fx-min-width: 18; -fx-min-height: 18; -fx-max-width: 18; -fx-max-height: 18; -fx-padding: 0; -fx-font-size: 16; -fx-font-weight: bold;"/>
+                                                        <Label fx:id="zoomLabel" text="100.0 %"
+                                                               style="-fx-text-fill: #e6e6e6; -fx-min-width: 56; -fx-alignment: center;"/>
+                                                        <Button fx:id="zoomInHud" text="＋"
+                                                                style="-fx-background-radius: 50%; -fx-min-width: 18; -fx-min-height: 18; -fx-max-width: 18; -fx-max-height: 18; -fx-padding: 0; -fx-font-size: 15; -fx-font-weight: bold;"/>
+                                                    </children>
+                                                </HBox>
                                             </children>
                                         </StackPane>
                                     </children>

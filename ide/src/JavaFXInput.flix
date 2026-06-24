@@ -20,6 +20,7 @@ mod JavaFXInput {
     import javafx.scene.input.MouseEvent
     import javafx.scene.input.MouseButton
     import javafx.scene.input.ScrollEvent
+    import javafx.scene.input.ZoomEvent
     import javafx.scene.input.KeyEvent
     import javafx.scene.input.KeyCode
     import javafx.event.EventHandler
@@ -83,6 +84,14 @@ mod JavaFXInput {
                 // JavaFX の deltaY は下スクロールで負。GameEngine 側は「上スクロールで正」
                 // 想定なのでそのまま加算する（getDeltaY 自体が上=正）
                 Array.put(prev + e.getDeltaY() / 40.0, 0, refs#scrollDeltaRef)
+            }
+        });
+        // トラックパッドのピンチ。incremental な zoomFactor(≈1.0±) を scrollDelta に合算する。
+        // (zoomFactor-1)*20 で zoomFactorFromScroll(係数0.05) を通すと実ピンチ倍率になる。
+        imageView.setOnZoom(new EventHandler[ZoomEvent] {
+            def handle(_this: EventHandler[ZoomEvent], e: ZoomEvent): Unit \ IO = {
+                let prev = Array.get(0, refs#scrollDeltaRef);
+                Array.put(prev + (e.getZoomFactor() - 1.0) * 20.0, 0, refs#scrollDeltaRef)
             }
         });
 

@@ -219,6 +219,11 @@ mod GameEngine {
         def getTextureInfo(name: String): Option[TextureInfo]
         /// マウスカーソル形状を切り替える。連続して同じ Cursor を渡しても問題ない（冪等）
         def setCursor(cursor: Cursor): Unit
+        /// IDE エディタの自由カメラ（pan/zoom）をレンダラへ渡す。
+        /// panX/panY は FBO 原点に表示する design-px 座標、zoom は拡大率。
+        /// レンダラはこれを投影に焼き込み、マウス入力を design-px へ逆変換する。
+        /// ゲーム実機（LwjglLayer）では no-op。
+        def setEditorView(panX: Float64, panY: Float64, zoom: Float64): Unit
     }
 
     /// オーディオエフェクト: サウンドの再生・停止・音量・ループ
@@ -307,13 +312,16 @@ mod GameEngine {
                     {viewportWidth = vp#size#x, viewportHeight = vp#size#y})
             case None => Camera2D.identityTransform()
         };
-        renderWith(transform, scene)
+        renderWith(transform, editor = false, scene)
 
     /// 指定した ViewTransform でシーンを描画する。`render` はアクティブカメラから transform を
-    /// 求めてこれを呼ぶ薄いラッパ。エディタの自由カメラ (pan/zoom) のように、シーン内カメラに
-    /// 依らない任意の transform で描きたいホストはこちらを直接呼ぶ。
-    pub def renderWith(transform: Camera2D.ViewTransform, scene: Scene[s]): Unit \ Game =
-        let sprites = Scene.toDrawables(transform, scene);
+    /// 求めて editor = false で呼ぶ。エディタの自由カメラ (pan/zoom) のように任意の transform で
+    /// 描きたいホストはこれを直接呼ぶ。editor = true で CanvasLayer 配下にも ViewTransform を適用し、
+    /// HUD/メニューも含め全ノードが pan/zoom に追従する（ゲーム実行時は false で従来どおり免除）。
+    pub def renderWith(transform: Camera2D.ViewTransform, editor: {editor = Bool},
+                       scene: Scene[s]): Unit \ Game =
+        let ed = editor#editor;
+        let sprites = Scene.toDrawablesWith(transform, editor = ed, scene);
         let tileMaps: List[TileMapRenderCmd] =
             List.filterMap(p -> match Scene.getEngineNode(p, scene) {
                 case Some(EngineNode.TileMapLayerWithState(tm, _)) =>
@@ -327,8 +335,8 @@ mod GameEngine {
         // PolygonRenderCmd を返すので flatMap で平坦化する。
         // 描画原点 screenPos と zoom はポリゴン系ノードに限って計算する（全ノードでは走らせない）。
         let placement = p ->
-            ( Scene.screenPositionAt(p, transform, scene)
-            , if (Scene.isUnderCanvasLayer(p, scene)) ({x = 1.0, y = 1.0}: Vec2.Vec2)
+            ( Scene.screenPositionAtWith(p, transform, editor = ed, scene)
+            , if (Scene.isUnderCanvasLayer(p, scene) and not ed) ({x = 1.0, y = 1.0}: Vec2.Vec2)
               else transform#scale );
         // sprite 経路と同等にするため、各 cmd の color を祖先 modulate 乗算後の実効色に、
         // zIndex を CanvasLayer/祖先を加味した実効 z に上書きする（toRenderCmd は node 生の値を返すため）。

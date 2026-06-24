@@ -272,7 +272,8 @@ mod LwjglLayer {
             def invoke(_this: GLFWFramebufferSizeCallbackI, cbWindow: Int64, width: Int32, height: Int32): Unit \ IO = {
                 let (sprites, tileMaps, polygons) = Array.get(0, renderStateHolder);
                 RenderFrame.renderFrameMixed(spriteShader, tileShader, vao, registry,
-                                 config#clearColor, screenW, screenH,
+                                 config#clearColor, {r = 0.0f32, g = 0.0f32, b = 0.0f32},
+                                 screenW, screenH,
                                  width, height, sprites, tileMaps, polygons, polyVao, polyVbo);
                 GLFW.glfwSwapBuffers(cbWindow)
             }
@@ -322,7 +323,8 @@ mod LwjglLayer {
                 let fbH = hBuf.get(0);
                 discard MemoryStack.stackPop();
                 RenderFrame.renderFrameMixed(spriteShader, tileShader, vao, registry,
-                                 config#clearColor, screenW, screenH, fbW, fbH,
+                                 config#clearColor, {r = 0.0f32, g = 0.0f32, b = 0.0f32},
+                                 screenW, screenH, fbW, fbH,
                                  sprites, tileMaps, polygons, polyVao, polyVbo);
                 GLFW.glfwSwapBuffers(window);
                 k(())
@@ -415,6 +417,7 @@ mod LwjglLayer {
                 } else ();
                 k(())
             }
+            def setEditorView(_panX, _panY, _zoom, k) = k(())
         };
 
         // セッション終了時にカーソルハンドルを開放

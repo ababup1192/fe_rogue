@@ -744,9 +744,14 @@ pub mod Scene {
     /// 選択枠描画位置がレンダラと一致する
     pub def screenPositionAt(path: NodePath, transform: Camera2D.ViewTransform,
                              scene: Scene[s]): Vec2.Vec2 =
+        screenPositionAtWith(path, transform, editor = false, scene)
+
+    /// editor = true で CanvasLayer 配下にも ViewTransform を適用する版（IDE の overlay/picking 用）。
+    pub def screenPositionAtWith(path: NodePath, transform: Camera2D.ViewTransform,
+                                 editor: {editor = Bool}, scene: Scene[s]): Vec2.Vec2 =
         let worldPos = globalPositionAt(path, scene);
         let ctx = drawContext(path, scene);
-        if (ctx#underCanvasLayer) worldPos
+        if (ctx#underCanvasLayer and not editor#editor) worldPos
         else Camera2D.applyToWorldPos(transform, worldPos)
 
     // ========================================================================
@@ -786,9 +791,20 @@ pub mod Scene {
     /// 1 パス分の Drawable を組み立てる（toDrawables の per-node 部分を切り出したもの）。
     /// 祖先の不可視・自身の不可視で空リストを返す。
     /// CanvasLayer 配下はカメラ ViewTransform を受けず、それ以外は applyToWorldPos + zoom スケール
-    def pathToDrawables(transform: Camera2D.ViewTransform, path: NodePath,
+    /// editor=true のときは CanvasLayer 配下にも ViewTransform を適用する（IDE エディタの
+    /// 自由カメラで HUD/メニューも pan/zoom させるため）。ゲーム実行時は false で従来どおり免除。
+    /// 非常に高い layer index の CanvasLayer は IDE エディタのオーバーレイ（選択枠・ガイド・
+    /// デザイン枠・軸など）。これらは既に screen 座標で配置されているので、editor モードでも
+    /// ビュー変換を再適用しない（二重変換を防ぐ）。ゲームの CanvasLayer は小さい index なので影響なし。
+    pub def isEditorOverlayLayer(layerOffset: Int32): Bool =
+        layerOffset >= 500 * CanvasLayer.layerStride()
+
+    def pathToDrawables(transform: Camera2D.ViewTransform, editor: Bool, path: NodePath,
                          scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
         let ctx = drawContext(path, scene);
+        // editor モードではゲームの CanvasLayer にも変換を適用するが、エディタ自身の
+        // オーバーレイ層（高 index）は既に screen 配置済みなので免除する。
+        let exempt = ctx#underCanvasLayer and (not editor or isEditorOverlayLayer(ctx#layerOffset));
         if (not ctx#visible) Nil
         else match getEngineNode(path, scene) {
             case None => Nil
@@ -796,12 +812,12 @@ pub mod Scene {
                 if (not CanvasItem.isVisible(engineNode)) Nil
                 else {
                     let worldPos = globalPositionAt(path, scene);
-                    let screenPos = if (ctx#underCanvasLayer) worldPos
+                    let screenPos = if (exempt) worldPos
                                     else Camera2D.applyToWorldPos(transform, worldPos);
                     let drawables = GameEngine.Renderable.toDrawables(engineNode, screenPos);
                     let zOff = ctx#zOffset + ctx#layerOffset;
                     let withCtx = List.map(applyDrawContext(zOff, ctx#modulate, ctx#rotation), drawables);
-                    if (ctx#underCanvasLayer) withCtx
+                    if (exempt) withCtx
                     else List.map(applyZoomScale(transform#scale), withCtx)
                 }
         }
@@ -818,8 +834,13 @@ pub mod Scene {
     /// transform: カメラ ViewTransform。CanvasLayer 配下のノードには適用しない
     pub def toDrawables(transform: Camera2D.ViewTransform,
                          scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
+        toDrawablesWith(transform, editor = false, scene)
+
+    /// editor = true で CanvasLayer 配下にも ViewTransform を適用する版（IDE エディタ用）。
+    pub def toDrawablesWith(transform: Camera2D.ViewTransform, editor: {editor = Bool},
+                            scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
         renderOrderPaths(scene)
-            |> List.flatMap(path -> pathToDrawables(transform, path, scene))
+            |> List.flatMap(path -> pathToDrawables(transform, editor#editor, path, scene))
             |> List.zipWithIndex             // (drawIndex, drawable)
             |> List.sortBy(idxD ->
                 let (idx, d) = idxD;

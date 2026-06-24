@@ -47,6 +47,7 @@ mod JavaFXIdeUI {
     import javafx.scene.control.TabPane
     import javafx.scene.layout.GridPane
     import javafx.application.Platform
+    import javafx.animation.AnimationTimer
     import javafx.event.ActionEvent
     import javafx.event.EventHandler
     import javafx.stage.DirectoryChooser
@@ -314,6 +315,25 @@ mod JavaFXIdeUI {
                 Array.put(1i32, 0, state#toolModeRef)
         });
 
+        // canvas 左上のズーム HUD (Godot 風)。− / ＋ で zoomCommandRef に積み、
+        // % 表示は AnimationTimer が zoomDisplayRef を読んで毎フレーム更新する。
+        let zoomOutHud: Button = unchecked_cast(ns.get("zoomOutHud") as Button);
+        let zoomInHud:  Button = unchecked_cast(ns.get("zoomInHud") as Button);
+        let zoomLabel:  Label  = unchecked_cast(ns.get("zoomLabel") as Label);
+        zoomOutHud.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                Array.put(-1i32, 0, state#zoomCommandRef)
+        });
+        zoomInHud.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                Array.put(1i32, 0, state#zoomCommandRef)
+        });
+        let zoomTimer = new AnimationTimer {
+            def handle(_this: AnimationTimer, _now: Int64): Unit \ IO =
+                zoomLabel.setText(formatZoomPct(Array.get(0, state#zoomDisplayRef)))
+        };
+        zoomTimer.start();
+
         // メニュー項目を wire
         // New Scene はプロジェクト未オープン時は無効 (グレーアウト)。Open Project で
         // ディレクトリが選ばれた時点で有効化する (Godot/Unity と同じ contextual enable)。
@@ -401,6 +421,13 @@ mod JavaFXIdeUI {
         if (f < 0.0f64) 0.0f64
         else if (f > 1.0f64) 1.0f64
         else f
+
+    /// ズーム倍率を "84.4 %" のように小数 1 桁のパーセント文字列にする。
+    def formatZoomPct(z: Float64): String =
+        let tenths = Float64.truncateToInt32(Float64.round(z * 1000.0));
+        let whole = tenths / 10i32;
+        let frac = Int32.modulo(tenths, 10i32);
+        "${whole}.${frac} %"
 
     /// Main thread の renderLoop からプロジェクト切替後に呼ぶ。
     /// FX thread で TreeView の root を差し替える。sceneFilesRef は既に新値が入っている前提

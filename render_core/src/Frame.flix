@@ -28,9 +28,13 @@ mod RenderFrame {
 
     /// 1 フレーム描画: tileMaps を先に zIndex 順で描き、続いて sprites を zIndex 順で描く。
     /// 黒帯部分は scissor で clear する。
+    /// outerClearColor: ビューポート外（レターボックス帯）のクリア色。ゲームは黒、IDE エディタは
+    /// 灰色ワークスペースを渡す。描画は scissor を切らないので、帯にもオブジェクト/ガイドを
+    /// 描ける（エディタの無限グレーキャンバス用）。
     pub def renderFrameMixed(spriteShader: Int32, tileShader: Int32, vao: Int32,
                               registry: RenderAsset.TextureRegistry,
-                              clearColor: Color, designW: Float64, designH: Float64,
+                              clearColor: Color, outerClearColor: Color,
+                              designW: Float64, designH: Float64,
                               fbW: Int32, fbH: Int32,
                               sprites: List[RenderType.Drawable],
                               tileMaps: List[RenderType.TileMapRenderCmd],
@@ -39,7 +43,7 @@ mod RenderFrame {
         if (fbW > 0 and fbH > 0) {
             let (vpX, vpY, vpW, vpH) = calcViewport(fbW, fbH, designW, designH);
             GL11.glViewport(0, 0, fbW, fbH);
-            GL11.glClearColor(0.0f32, 0.0f32, 0.0f32, 1.0f32);
+            GL11.glClearColor(outerClearColor#r, outerClearColor#g, outerClearColor#b, 1.0f32);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
             GL11.glViewport(vpX, vpY, vpW, vpH);
             GL11.glEnable(GL11.GL_SCISSOR_TEST);

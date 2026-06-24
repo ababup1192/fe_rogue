@@ -27,7 +27,7 @@ mod Overlay {
                 match EditableNode.findByNodePath(ctx, nodePath) {
                     case None => scene
                     case Some(entry) =>
-                        let refPos = Scene.screenPositionAt(nodePath, transform, scene);
+                        let refPos = Scene.screenPositionAtWith(nodePath, transform, editor = true, scene);
                         let topLeft = Vec2.add(refPos, entry#topLeftOffset);
                         let box = {topLeft = topLeft,
                                    size = {x = entry#width, y = entry#height}};
@@ -97,7 +97,7 @@ mod Overlay {
             case Some((entry, _)) =>
                 if (isSelectedPath(entry#nodePath, selected)) scene
                 else {
-                    let refPos = Scene.screenPositionAt(entry#nodePath, transform, scene);
+                    let refPos = Scene.screenPositionAtWith(entry#nodePath, transform, editor = true, scene);
                     let topLeft = Vec2.add(refPos, entry#topLeftOffset);
                     let box = {topLeft = topLeft,
                                size = {x = entry#width, y = entry#height}};
@@ -134,7 +134,7 @@ mod Overlay {
             case Some(node) => match CollisionObject2D.getCollisionShape(node) {
                 case None => acc
                 case Some(shape) =>
-                    let center = Scene.screenPositionAt(path, transform, sourceScene);
+                    let center = Scene.screenPositionAtWith(path, transform, editor = true, sourceScene);
                     let style = collisionStyle();
                     let rects = collisionShapeToFillRects(center, shape, style);
                     let pathTag = pathToTag(path);
@@ -315,15 +315,16 @@ mod Overlay {
     /// デザイン解像度（実ゲーム画面）の枠を **細い淡色の実線** でうっすら描く。配置の基準＝画面の大きさ。
     /// transform (editor の pan/zoom) を適用するので、枠は world 上の矩形としてパン・ズームに追従する。
     /// 線の太さは画面上一定 (zoom に依らず 1px)。
-    pub def addDesignFrame(viewportSize: Vec2.Vec2, transform: Camera2D.ViewTransform,
+    /// ゲーム既定解像度の枠。座標は design-px（投影で pan/zoom）。線の厚みだけ 1/zoom にして
+    /// 画面上で常に一定 px に保つ（zoom 縮小で 1px 未満になり消える/ちらつくのを防ぐ）。
+    pub def addDesignFrame(viewportSize: Vec2.Vec2, zoom: Float64,
                            defaultTag: t, scene: Scene[t]): Scene[t] =
         let w = viewportSize#x;
         let h = viewportSize#y;
-        let tl = Camera2D.applyToWorldPos(transform, {x = 0.0, y = 0.0});
-        let br = Camera2D.applyToWorldPos(transform, {x = w, y = h});
-        let sw = br#x - tl#x;
-        let sh = br#y - tl#y;
-        let th = 1.0;
+        let tl = {x = 0.0, y = 0.0};
+        let sw = w;
+        let sh = h;
+        let th = overlayLineThickness(zoom);
         let edges =
             {pos = tl,                              size = {x = sw, y = th}} ::
             {pos = {x = tl#x, y = tl#y + sh - th},  size = {x = sw, y = th}} ::
@@ -334,11 +335,11 @@ mod Overlay {
         let withLayer = Scene.addNode(layerName,
             EngineNode.CanvasLayerWithState(layer, defaultTag), scene);
         // Godot の "Show Viewport" 同様、ゲーム既定解像度を **藍色(indigo)** の矩形で示す。
-        let color = {r = 0.45f32, g = 0.45f32, b = 0.85f32};
+        let color = {r = 0.5f32, g = 0.5f32, b = 0.85f32};
         let (result, _) = List.foldLeft((acc, r) -> {
             let (sc, i) = acc;
             let edge = ColorRect.make(r#size, color)
-                |> ColorRect.setAlpha(0.6f32)
+                |> ColorRect.setAlpha(0.4f32)
                 |> Node2D.setPosition(r#pos);
             let sc2 = Scene.addChildAt(layerName :: Nil, "edge_${i}",
                 EngineNode.ColorRectWithState(edge, defaultTag), sc);
@@ -349,22 +350,22 @@ mod Overlay {
     /// Godot の "Show Origin" 同様、原点 (0,0) で交わる **赤=X軸・緑=Y軸** の線を引く。
     /// transform 後の原点位置を通り、ビューポート全幅/全高に伸びる（負方向も突き抜ける）。
     /// frame(藍) より前面に置き、原点が赤緑で分かるようにする。
-    pub def addOriginLines(viewportSize: Vec2.Vec2, transform: Camera2D.ViewTransform,
+    pub def addOriginLines(_viewportSize: Vec2.Vec2, zoom: Float64,
                            defaultTag: t, scene: Scene[t]): Scene[t] =
-        let w = viewportSize#x;
-        let h = viewportSize#y;
-        let th = 1.0;
-        let originScreen = Camera2D.applyToWorldPos(transform, {x = 0.0, y = 0.0});
+        let th = overlayLineThickness(zoom);
+        // 無限に伸びる軸: 巨大スパンの線を原点(design-px)に置く（描画は scissor 無しで帯にも描かれる）。
+        let big = 100000.0;
+        let originScreen = {x = 0.0, y = 0.0};
         let layerName = "_origin_layer";
         let layer = CanvasLayer.make(originLayerIndex());
         let base = Scene.addNode(layerName,
             EngineNode.CanvasLayerWithState(layer, defaultTag), scene);
-        let xAxis = ColorRect.make({x = w, y = th}, {r = 0.9f32, g = 0.3f32, b = 0.32f32})
-            |> ColorRect.setAlpha(0.7f32)
-            |> Node2D.setPosition({x = 0.0, y = originScreen#y});
-        let yAxis = ColorRect.make({x = th, y = h}, {r = 0.35f32, g = 0.85f32, b = 0.4f32})
-            |> ColorRect.setAlpha(0.7f32)
-            |> Node2D.setPosition({x = originScreen#x, y = 0.0});
+        let xAxis = ColorRect.make({x = 2.0 * big, y = th}, {r = 0.85f32, g = 0.35f32, b = 0.37f32})
+            |> ColorRect.setAlpha(0.4f32)
+            |> Node2D.setPosition({x = 0.0 - big, y = originScreen#y});
+        let yAxis = ColorRect.make({x = th, y = 2.0 * big}, {r = 0.4f32, g = 0.8f32, b = 0.45f32})
+            |> ColorRect.setAlpha(0.4f32)
+            |> Node2D.setPosition({x = originScreen#x, y = 0.0 - big});
         base
             |> Scene.addChildAt(layerName :: Nil, "origin_x",
                 EngineNode.ColorRectWithState(xAxis, defaultTag))
@@ -469,4 +470,10 @@ mod Overlay {
             |> Node2D.setPosition(line#pos)
 
     def overlayLayerIndex(): Int32 = 999
+
+    /// design-px の線厚を返す。投影が zoom 倍するので 1/zoom にしておくと画面上で常に一定 px になり、
+    /// zoom 縮小で線が 1px 未満になって消える/ちらつくのを防ぐ。画面上 ≈1.5px に揃える。
+    def overlayLineThickness(zoom: Float64): Float64 =
+        let z = if (zoom <= 0.0) 1.0 else zoom;
+        1.5 / z
 }

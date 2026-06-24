@@ -195,7 +195,7 @@ mod DragInput {
                 match EditableNode.findByNodePath(ctx, nodePath) {
                     case None => None
                     case Some(entry) =>
-                        let refPos = Scene.screenPositionAt(nodePath, transform, scene);
+                        let refPos = Scene.screenPositionAtWith(nodePath, transform, editor = true, scene);
                         let topLeft = Vec2.add(refPos, entry#topLeftOffset);
                         let box = {topLeft = topLeft,
                                    size = {x = entry#width, y = entry#height}};
@@ -264,7 +264,7 @@ mod DragInput {
                 match EditableNode.findByNodePath(ctx, nodePath) {
                     case None => None
                     case Some(entry) =>
-                        let refPos = Scene.screenPositionAt(nodePath, transform, scene);
+                        let refPos = Scene.screenPositionAtWith(nodePath, transform, editor = true, scene);
                         let topLeft = Vec2.add(refPos, entry#topLeftOffset);
                         let box = {topLeft = topLeft,
                                    size = {x = entry#width, y = entry#height}};

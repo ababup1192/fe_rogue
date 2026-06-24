@@ -31,6 +31,7 @@ mod TestEditableNode {
             def getViewportRect(k) = k({position = {x = 0.0, y = 0.0}, size = {x = 480.0, y = 720.0}})
             def getTextureInfo(_, k) = k(Some({id = 0i32, width = width, height = height}))
             def setCursor(_, k) = k(())
+            def setEditorView(_, _, _, k) = k(())
         }
 
     // ====================================================================
