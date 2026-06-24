@@ -204,7 +204,9 @@ mod Game {
                 case "MessageLabel"  => Ok(NodeTag.MessageLabel)
                 case "StartButton"   => Ok(NodeTag.StartButton)
                 case "NoTag"         => Ok(NodeTag.NoTag)
-                case _               => Ok(NodeTag.NoTag)
+                case unknown         =>
+                    Err(JsonCompat.jsonError(JsonCompat.PathTag.Root,
+                        Set#{"unknown NodeTag (got: ${unknown})"}))
             }
         }
 
