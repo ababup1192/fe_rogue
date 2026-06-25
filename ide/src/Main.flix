@@ -212,11 +212,13 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         } else ();
         // FX 側から積まれた node 選択要求を消費して Editor#selected に反映
         consumePendingNodeSelection(state);
-        // Editor の真の選択状態を status bar に出すため、毎フレーム書き出す
-        let editorSel = Editor.EditorState.get()#selected;
-        let editorSelText = match editorSel {
-            case None      => "-"
-            case Some(sel) => "${sel#nodePath}"
+        // Editor の真の選択状態を status bar に出すため、毎フレーム書き出す。
+        // 複数選択時は件数表示（rebuild 鍵が集合変化で変わるよう Inspector 側にも効く）。
+        let editorSels = Editor.EditorState.get()#selections;
+        let editorSelText = match editorSels {
+            case Nil          => "-"
+            case sel :: Nil   => "${sel#nodePath}"
+            case _            => "${List.length(editorSels)} nodes"
         };
         Array.put(editorSelText, 0, state#runtime#editorSelDisplay);
         // editor がマウス入力を取り込み、選択 / ドラッグ / リサイズ / Undo まで処理して
@@ -226,8 +228,14 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         Array.put(0i32, 0, state#zoomCommandRef);
         // グリッドスナップ: ON なら間隔、OFF なら 0.0（=従来の 1px 丸め）を Editor へ渡す
         let snapStep = if (Array.get(0, state#snapEnabledRef)) Array.get(0, state#snapStepRef) else 0.0;
+        // handleInput 前後で選択集合の差分を見る。consume(tree由来) は既に反映済みなので、
+        // ここで変われば「キャンバス由来」。その時だけ tree へ反映するフラグを立てる
+        // （tree クリックと毎フレーム sync の競合を断つ）。
+        let selSigBefore = selectionsSig(Editor.EditorState.get()#selections);
         let edited = Editor.handleInput(
             {toolMode = toolMode, zoomCommand = zoomCmd, snapStep = snapStep}, nextScene);
+        let selSigAfter = selectionsSig(Editor.EditorState.get()#selections);
+        if (selSigAfter != selSigBefore) Array.put(true, 0, state#runtime#treeNeedsSync) else ();
         // Delete / Backspace キーで選択ノードを削除（テキスト入力中は TextField が消費するため発火しない）
         handleDeleteKey(state);
         // エディタ自由カメラ (pan/zoom) を投影へ渡す。これで描画は design-px のまま見た目だけ拡大縮小・移動。
@@ -254,42 +262,43 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
     /// AnimationTimer が currentValues を読んで widget を更新する
     def snapshotInspectorState(state: IdeState.IdeState, scene: Scene[Unit]):
             Unit \ {IO, Editor.EditorState} =
-        match Editor.EditorState.get()#selected {
-            case None => {
-                Array.put((Nil: List[NodeInspector.FieldSection]), 0, state#inspector#schema);
-                Array.put((None: Option[Editor.Selection]), 0, state#inspector#currentSelection);
-                Array.put((Map.empty(): Map[String, Util.Json.Json]), 0,
-                          state#inspector#currentValues);
-                Array.put(None, 0, state#inspector#worldPos)
-            }
-            case Some(sel) => {
-                let wp = Scene.globalPositionAt(sel#nodePath, scene);
+        let selections = Editor.EditorState.get()#selections;
+        Array.put(selections, 0, state#inspector#currentSelections);
+        match selections {
+            case Nil => clearInspectorSnapshot(state)
+            case primary :: _ => {
+                let wp = Scene.globalPositionAt(primary#nodePath, scene);
                 Array.put(Some((wp#x, wp#y)), 0, state#inspector#worldPos);
-                Array.put(Some(sel), 0, state#inspector#currentSelection);
-                match Scene.getEngineNode(sel#nodePath, scene) {
+                Array.put(Some(primary), 0, state#inspector#currentSelection);
+                match Scene.getEngineNode(primary#nodePath, scene) {
                     case None => {
                         Array.put((Nil: List[NodeInspector.FieldSection]), 0,
                                   state#inspector#schema);
                         Array.put((Map.empty(): Map[String, Util.Json.Json]), 0,
                                   state#inspector#currentValues)
                     }
-                    case Some(engineNode) => {
-                        let baseSections = NodeInspector.sectionsFor(engineNode);
-                        // 選択 node の JSON 子に Container があれば、その layout の編集セクションを追加
+                    case Some(primaryNode) => {
+                        // 全選択ノードの engine node（存在するものだけ）
+                        let nodes = List.filterMap(s -> Scene.getEngineNode(s#nodePath, scene),
+                                                   selections);
+                        let baseSections = NodeInspector.sectionsFor(primaryNode);
                         let sceneJson = Array.get(0, state#runtime#currentSceneJson);
                         let layoutSections =
-                            NodeInspector.extraLayoutSectionsFor(sceneJson, sel#nodePath);
+                            NodeInspector.extraLayoutSectionsFor(sceneJson, primary#nodePath);
                         let propsSections =
-                            NodeInspector.propertiesSectionFor(sceneJson, sel#nodePath);
-                        // 表示順: Properties (上) → 継承階層 (派生→基底) → Container layout (下)
-                        let sections = List.append(propsSections,
+                            NodeInspector.propertiesSectionFor(sceneJson, primary#nodePath);
+                        let rawSections = List.append(propsSections,
                                                     List.append(baseSections, layoutSections));
+                        // 複数選択時は「全ノードで snapshot が Some を返す共通フィールド」だけに絞る
+                        let sections = if (List.length(nodes) > 1)
+                                           filterCommonSections(rawSections, nodes)
+                                       else rawSections;
                         Array.put(sections, 0, state#inspector#schema);
-                        // 全 section の common + advanced を平坦化して name → JSON map を作る
+                        // 各フィールドの値: 全ノードで一致ならその値、不一致なら mixed＝map から省略
                         let foldFields = (acc, section) -> {
                             let fields = List.append(section#common, section#advanced);
                             List.foldLeft((acc2, fd) ->
-                                match fd#snapshot(engineNode) {
+                                match uniformFieldValue(fd, nodes) {
                                     case Some(j) => Map.insert(fd#name, j, acc2)
                                     case None    => acc2
                                 }, acc, fields)
@@ -301,6 +310,38 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
                 }
             }
         }
+
+    /// 選択なし時に Inspector スナップショットを空にする
+    def clearInspectorSnapshot(state: IdeState.IdeState): Unit \ IO = {
+        Array.put((Nil: List[NodeInspector.FieldSection]), 0, state#inspector#schema);
+        Array.put((None: Option[Editor.Selection]), 0, state#inspector#currentSelection);
+        Array.put((Map.empty(): Map[String, Util.Json.Json]), 0,
+                  state#inspector#currentValues);
+        Array.put(None, 0, state#inspector#worldPos)
+    }
+
+    /// FieldDef を「全ノードで snapshot が Some を返す」もの（＝全ノード共通プロパティ）だけ残す。
+    def filterCommonSections(sections: List[NodeInspector.FieldSection],
+                             nodes: List[EngineNode[Unit]]): List[NodeInspector.FieldSection] =
+        let keep = fd -> List.forAll(n -> not Option.isEmpty(fd#snapshot(n)), nodes);
+        List.map(sec -> {typeName = sec#typeName,
+                         common = List.filter(keep, sec#common),
+                         advanced = List.filter(keep, sec#advanced)}, sections)
+            |> List.filter(sec -> not (List.isEmpty(sec#common) and List.isEmpty(sec#advanced)))
+
+    /// 全ノードで snapshot 値が一致すればその値、欠落 or 不一致なら None（= mixed）。
+    def uniformFieldValue(fd: NodeInspector.FieldDef,
+                          nodes: List[EngineNode[Unit]]): Option[Util.Json.Json] =
+        let vals = List.map(n -> fd#snapshot(n), nodes);
+        if (List.forAll(v -> not Option.isEmpty(v), vals)) {
+            let strs = List.map(v -> "${v}", vals);
+            match strs {
+                case Nil      => None
+                case s0 :: rest =>
+                    if (List.forAll(s -> s == s0, rest)) List.head(vals) |> Option.flatMap(x -> x)
+                    else None
+            }
+        } else None
 
 /// Open Project... 経由で積まれた project を消費して in-place 再ロードする。
 /// 戻り値: (新しい fontName, 描画リセット用の空 Scene)
@@ -578,13 +619,16 @@ def handleDeleteKey(state: IdeState.IdeState): Unit \ {IO, GameEngine.Game, Edit
     let pressed = GameEngine.Game.isKeyPressed(GameEngine.Key.Delete)
                or GameEngine.Game.isKeyPressed(GameEngine.Key.Backspace);
     if (not pressed) ()
-    else match Editor.EditorState.get()#selected {
-        case None      => ()
-        case Some(sel) =>
-            if (List.length(sel#jsonNodePath) >= 2)
-                Array.put(Some(IdeState.SceneOp.DeleteNode(sel#jsonPath, sel#jsonNodePath)),
-                          0, state#pendingSceneOpRef)
-            else ()
+    else match Editor.EditorState.get()#selections {
+        case Nil          => ()
+        case primary :: _ =>
+            // 全選択ノードのうち非ルート（jsonNodePath 長 >= 2）を一括削除キューへ。
+            let paths = Editor.EditorState.get()#selections
+                |> List.filter(s -> List.length(s#jsonNodePath) >= 2)
+                |> List.map(s -> s#jsonNodePath);
+            if (List.isEmpty(paths)) ()
+            else Array.put(Some(IdeState.SceneOp.DeleteNodes(primary#jsonPath, paths)),
+                           0, state#pendingSceneOpRef)
     }
 
 /// Scenes ツリーのコンテキストメニューで積まれた削除/改名を main thread で適用する。
@@ -607,6 +651,7 @@ def applySceneOp(state: IdeState.IdeState, root: String, op: IdeState.SceneOp):
         case IdeState.SceneOp.DeleteScene(abs)       => deleteSceneFile(state, root, abs)
         case IdeState.SceneOp.RenameScene(abs, name) => renameSceneFile(state, root, abs, name)
         case IdeState.SceneOp.DeleteNode(abs, np)    => deleteNodeFromScene(state, abs, np)
+        case IdeState.SceneOp.DeleteNodes(abs, nps)  => deleteNodesFromScene(state, abs, nps)
         case IdeState.SceneOp.DuplicateNode(abs, np) => duplicateNodeInScene(state, abs, np)
     }
 
@@ -643,6 +688,29 @@ def deleteNodeFromScene(state: IdeState.IdeState, abs: String, nodePath: List[St
             Array.put(Some(abs), 0, state#pendingSceneRef)
         }
     }
+
+/// 複数ノード削除: 各ノードを順に removeChild し、Undo 用断片を積む。
+/// 親と子孫が同時選択されていると親削除で子孫も消えるため、子孫側は Err になるが握りつぶす。
+def deleteNodesFromScene(state: IdeState.IdeState, abs: String, paths: List[List[String]]):
+        Unit \ {IO, Fs.FileRead, Fs.FileWrite, Editor.EditorState, EditHistory.Rewind} =
+    let savedAny = List.foldLeft((acc, np) ->
+        match SceneSerializer.removeChild(abs, np) {
+            case Err(msg) => { println("[Main] Delete node skipped (${np}): ${msg}"); acc }
+            case Ok(info) => {
+                EditHistory.Rewind.save(EditHistory.Entry.RemoveSubtreeEntry({
+                    jsonPath = abs, parentPath = info#parentPath,
+                    index = info#index, fragment = info#fragment}));
+                println("[Main] Node deleted: ${np}");
+                true
+            }
+        }, false, paths);
+    if (savedAny) {
+        // 選択を解除（削除済みノードへの stale 参照を避ける）して再 load。
+        let st = Editor.EditorState.get();
+        Editor.EditorState.put({selected = None, selections = Nil, dragOrigin = None,
+                                nodeOrigin = None, resizeOrigin = None, rotateOrigin = None | st});
+        Array.put(Some(abs), 0, state#pendingSceneRef)
+    } else ()
 
 def deleteSceneFile(state: IdeState.IdeState, root: String, abs: String):
         Unit \ {IO, Fs.FileRead, Fs.Glob, Editor.EditorState, IdeGui.Gui} =
@@ -734,15 +802,20 @@ def newSceneJson(name: String, rootType: String): String =
             "{\n  \"type\": \"Marker2D\",\n  \"name\": \"${name}\",\n  \"pos\": [0, 0]\n}\n"
     }
 
+/// 選択集合の同一性シグネチャ（jsonPath + nodePath を連結）。差分検出に使う。
+def selectionsSig(sels: List[Editor.Selection]): String =
+    List.map(s -> "${s#jsonPath}|${s#nodePath}", sels) |> String.intercalate(";")
+
 /// SceneTree からの node 選択要求 (FX EDT が積む) を消費して Editor#selected に反映
 def consumePendingNodeSelection(state: IdeState.IdeState):
         Unit \ {IO, Editor.EditorState} =
     match Array.get(0, state#runtime#pendingNodeSelection) {
-        case None      => ()
-        case Some(sel) => {
-            Array.put((None: Option[Editor.Selection]), 0, state#runtime#pendingNodeSelection);
+        case None       => ()
+        case Some(sels) => {
+            Array.put((None: Option[List[Editor.Selection]]), 0, state#runtime#pendingNodeSelection);
             let cur = Editor.EditorState.get();
-            Editor.EditorState.put({selected = Some(sel) | cur})
+            // 先頭を primary（キャンバス操作/オーバーレイ主対象）、全体を selections に。
+            Editor.EditorState.put({selected = List.head(sels), selections = sels | cur})
         }
     }
 

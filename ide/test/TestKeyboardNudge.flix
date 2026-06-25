@@ -101,6 +101,7 @@ mod TestKeyboardNudge {
     def quietState(jsonPath: String, nodePath: NodePath): Editor.EditorStateData = {
         on = true,
         selected = Some({jsonPath = jsonPath, nodePath = nodePath, jsonNodePath = nodePath}),
+        selections = {jsonPath = jsonPath, nodePath = nodePath, jsonNodePath = nodePath} :: Nil,
         dragOrigin = None,
         nodeOrigin = None,
         resizeOrigin = None,
@@ -135,6 +136,7 @@ mod TestKeyboardNudge {
         let state: Editor.EditorStateData = {
             on = true,
             selected = None,
+            selections = Nil,
             dragOrigin = None,
             nodeOrigin = None,
             resizeOrigin = None,
@@ -163,6 +165,8 @@ mod TestKeyboardNudge {
             on = true,
             selected = Some({jsonPath = "hero.json", nodePath = "hero" :: Nil,
                              jsonNodePath = "hero" :: Nil}),
+            selections = {jsonPath = "hero.json", nodePath = "hero" :: Nil,
+                          jsonNodePath = "hero" :: Nil} :: Nil,
             dragOrigin = None,
             nodeOrigin = None,
             resizeOrigin = None,

@@ -5,5 +5,5 @@
     0
   ],
   "type": "Marker2D",
-  "children": [{"type": "StaticBody2D", "name": "StaticBody2D", "pos": [24, -5], "shape": {"kind": "RectShape2D", "width": 49.924, "height": 51.924}}]
+  "children": [{"type": "StaticBody2D", "name": "StaticBody2D3", "pos": [82, 62], "shape": {"kind": "RectShape2D", "width": 17, "height": 14}}, {"type": "StaticBody2D", "name": "StaticBody2D2", "pos": [28, 43], "shape": {"kind": "RectShape2D", "width": 17, "height": 14}}, {"type": "StaticBody2D", "name": "StaticBody2D22", "pos": [62, 87], "shape": {"kind": "RectShape2D", "width": 17, "height": 14}}]
 }

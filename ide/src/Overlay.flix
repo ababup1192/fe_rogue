@@ -42,6 +42,78 @@ mod Overlay {
                 }
         }
 
+    /// Godot 流の型依存な選択ハイライト。
+    /// - 衝突ノード（Body/Area, inline shape）= CollisionShape2D 相当 → 図形中心に**赤十字**。
+    /// - ビジュアルノード（Sprite2D/ColorRect/Label2D 等）→ **バウンディング矩形**。
+    /// ハンドル（リサイズ）は単一選択時のみ別途 addSelectionBox が描く。
+    pub def addSelectionMarkers(rootJsonIndex: Map[NodeName, String],
+                                selections: List[Editor.Selection],
+                                transform: Camera2D.ViewTransform, zoom: Float64,
+                                defaultTag: t, scene: Scene[t]): Scene[t] \ GameEngine.Game =
+        if (List.isEmpty(selections)) scene
+        else {
+            let layerName = "_editor_selection_layer";
+            let layer = CanvasLayer.make(overlayLayerIndex());
+            let base = Scene.addNode(layerName,
+                EngineNode.CanvasLayerWithState(layer, defaultTag), scene);
+            let th = 1.0 / (if (zoom <= 0.0) 1.0 else zoom);
+            let markHalf = 7.0 / (if (zoom <= 0.0) 1.0 else zoom);
+            List.foldLeft((acc, sel) -> {
+                let nodePath = sel#nodePath;
+                let pathTag = pathToTag(nodePath);
+                match Scene.getEngineNode(nodePath, acc) {
+                    case None => acc
+                    case Some(node) => match CollisionObject2D.getCollisionShape(node) {
+                        case Some(_) =>
+                            // 衝突ノード → 図形中心に赤十字
+                            let center = Scene.screenPositionAtWith(nodePath, transform, editor = true, acc);
+                            addCenterCross(layerName, pathTag, center, markHalf, th, defaultTag, acc)
+                        case None =>
+                            // ビジュアルノード → バウンディング矩形
+                            let ctx = {rootJsonIndex = rootJsonIndex, scene = acc};
+                            match EditableNode.findByNodePath(ctx, nodePath) {
+                                case None => acc
+                                case Some(entry) =>
+                                    let refPos = Scene.screenPositionAtWith(nodePath, transform, editor = true, acc);
+                                    let topLeft = Vec2.add(refPos, entry#topLeftOffset);
+                                    let box = {topLeft = topLeft,
+                                               size = {x = entry#width, y = entry#height}};
+                                    addBoxOutline(layerName, pathTag, box, selectionRectColor(),
+                                                  overlayLineThickness(zoom), defaultTag, acc)
+                            }
+                    }
+                }
+            }, base, selections)
+        }
+
+    def selectionRectColor(): {r = Float32, g = Float32, b = Float32} =
+        {r = 0.95f32, g = 0.85f32, b = 0.2f32}
+
+    /// pathTag 接頭の一意名で bbox の 4 辺を描く（addOutline は固定名 top/bottom… で
+    /// 複数ノードを同一レイヤに描くと衝突するため、選択ハイライト用に一意名版を使う）。
+    def addBoxOutline(layerName: String, pathTag: String,
+                      box: {topLeft = Vec2.Vec2, size = Vec2.Vec2},
+                      color: {r = Float32, g = Float32, b = Float32}, th: Float64,
+                      defaultTag: t, scene: Scene[t]): Scene[t] =
+        let tl = box#topLeft;
+        let w = box#size#x;
+        let h = box#size#y;
+        let top = ColorRect.make({x = w, y = th}, color) |> Node2D.setPosition(tl);
+        let bottom = ColorRect.make({x = w, y = th}, color)
+            |> Node2D.setPosition({x = tl#x, y = tl#y + h - th});
+        let left = ColorRect.make({x = th, y = h}, color) |> Node2D.setPosition(tl);
+        let right = ColorRect.make({x = th, y = h}, color)
+            |> Node2D.setPosition({x = tl#x + w - th, y = tl#y});
+        scene
+            |> Scene.addChildAt(layerName :: Nil, "${pathTag}_o_top",
+                EngineNode.ColorRectWithState(top, defaultTag))
+            |> Scene.addChildAt(layerName :: Nil, "${pathTag}_o_bottom",
+                EngineNode.ColorRectWithState(bottom, defaultTag))
+            |> Scene.addChildAt(layerName :: Nil, "${pathTag}_o_left",
+                EngineNode.ColorRectWithState(left, defaultTag))
+            |> Scene.addChildAt(layerName :: Nil, "${pathTag}_o_right",
+                EngineNode.ColorRectWithState(right, defaultTag))
+
     /// 選択ノードのハンドル（小さな赤丸）を最前面に置く。円は半径ハンドル 1 個。
     /// ハンドルは zoom 補正で画面上一定サイズ（投影で ×zoom されるため /zoom）。
     pub def addResizeHandles(box: {topLeft = Vec2.Vec2, size = Vec2.Vec2},
@@ -90,7 +162,8 @@ mod Overlay {
                         defaultTag: t, scene: Scene[t]): Scene[t] \ GameEngine.Game =
         let ctx = {rootJsonIndex = rootJsonIndex, scene = scene};
         let entries = EditableNode.collectAll(ctx);
-        let preferDescendant = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
+        // Cmd で子要素優先ピック（Shift は複数選択に割当てたため移設）。
+        let preferDescendant = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftSuper);
         match Picking.pickTopAt(mousePos, entries, transform, preferDescendant, scene) {
             case None => scene
             case Some((entry, _)) =>
@@ -138,20 +211,18 @@ mod Overlay {
                     let center = Scene.screenPositionAtWith(path, transform, editor = true, sourceScene);
                     // 輪郭は画面上 1px（投影で ×zoom されるので 1/zoom）。
                     let th = 1.0 / (if (zoom <= 0.0) 1.0 else zoom);
-                    let markHalf = 7.0 / (if (zoom <= 0.0) 1.0 else zoom);
                     let pathTag = pathToTag(path);
                     // Rect は ColorRect の塗り＋辺、Circle/Capsule は Panel(cornerRadius) で
                     // なめらかに描く（スキャンラインだと zoom 拡大でジャギになるため）。
-                    let withShape = match shape {
+                    // 赤中心十字は「選択時のみ」addSelectionMarkers が描く（Godot の CollisionShape2D 流儀）。
+                    match shape {
                         case CollisionShape2D.RectShape2D(r) =>
                             appendFillRects(layerName, pathTag,
                                 rectFillAndOutlineRects(center, r#width, r#height, th),
                                 collisionStyle(), defaultTag, acc)
                         case _ =>
                             addShapePanel(layerName, pathTag, center, shape, th, defaultTag, acc)
-                    };
-                    // 中心十字は塗りに埋もれないよう赤橙で別描画
-                    addCenterCross(layerName, pathTag, center, markHalf, th, defaultTag, withShape)
+                    }
             }
         }
 

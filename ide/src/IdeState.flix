@@ -138,7 +138,15 @@ mod IdeState {
         reloadFlag           = Array[Bool, Static],
         pendingConfig        = Array[Option[GameEngine.EngineConfig], Static],
         sceneTree            = Array[List[NodeInspector.SceneTreeNode], Static],
-        pendingNodeSelection = Array[Option[Editor.Selection], Static],
+        // ツリー選択要求（複数選択対応：先頭が primary。空 None＝要求なし）
+        pendingNodeSelection = Array[Option[List[Editor.Selection]], Static],
+        // editor→tree の同期中フラグ。true の間 tree 選択リスナは writeback を抑止しループを防ぐ
+        treeSelSyncGuard     = Array[Bool, Static],
+        // キャンバスで選択が変わった時だけ true。tree への反映を「カンバス由来時のみ」に限定し、
+        // tree クリックと毎フレーム sync が競合してクリックが効きにくくなるのを防ぐ
+        treeNeedsSync        = Array[Bool, Static],
+        // 直近に処理した tree 選択集合の署名。同一集合の重複発火（1クリックで複数回発火）を弾く
+        lastTreeSelSig       = Array[String, Static],
         currentSceneJson     = Array[Option[Util.Json.Json], Static]
     }
 
@@ -166,6 +174,8 @@ mod IdeState {
         lastSel          = Array[String, Static],
         schema           = Array[List[NodeInspector.FieldSection], Static],
         currentSelection = Array[Option[Editor.Selection], Static],
+        // multi-edit: 全選択ノード（commit を全ノードへ fan-out する。currentSelection=先頭）
+        currentSelections = Array[List[Editor.Selection], Static],
         currentValues    = Array[Map[String, Util.Json.Json], Static],
         pendingEdits     = Array[List[NodeInspector.PendingEdit], Static],
         widgetUpdaters   = Array[Map[String, Util.Json.Json -> Unit \ IO], Static],
@@ -210,6 +220,7 @@ mod IdeState {
         case DeleteScene(String)          // 対象シーンの絶対パス
         case RenameScene(String, String)  // (対象シーンの絶対パス, 新しいベース名)
         case DeleteNode(String, List[String]) // (シーン絶対パス, 削除するノードの nodePath)
+        case DeleteNodes(String, List[List[String]]) // (シーン絶対パス, 複数ノードの nodePath 群)
         case DuplicateNode(String, List[String]) // (シーン絶対パス, 複製するノードの nodePath)
     }
 
@@ -364,7 +375,10 @@ mod IdeState {
             reloadFlag           = Array#{false} @ Static,
             pendingConfig        = Array#{(None: Option[GameEngine.EngineConfig])} @ Static,
             sceneTree            = Array#{(Nil: List[NodeInspector.SceneTreeNode])} @ Static,
-            pendingNodeSelection = Array#{(None: Option[Editor.Selection])} @ Static,
+            pendingNodeSelection = Array#{(None: Option[List[Editor.Selection]])} @ Static,
+            treeSelSyncGuard     = Array#{false} @ Static,
+            treeNeedsSync        = Array#{false} @ Static,
+            lastTreeSelSig       = Array#{""} @ Static,
             currentSceneJson     = Array#{(None: Option[Util.Json.Json])} @ Static
         }
 
@@ -382,6 +396,7 @@ mod IdeState {
             lastSel          = Array#{""} @ Static,
             schema           = Array#{(Nil: List[NodeInspector.FieldSection])} @ Static,
             currentSelection = Array#{(None: Option[Editor.Selection])} @ Static,
+            currentSelections = Array#{(Nil: List[Editor.Selection])} @ Static,
             currentValues    = Array#{(Map.empty(): Map[String, Util.Json.Json])} @ Static,
             pendingEdits     = Array#{(Nil: List[NodeInspector.PendingEdit])} @ Static,
             widgetUpdaters   = Array#{(Map.empty(): Map[String, Util.Json.Json -> Unit \ IO])} @ Static,

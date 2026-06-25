@@ -26,6 +26,7 @@ mod TestDragInput {
                       mouseDown: Vec2.Vec2, nodeGlobal: Vec2.Vec2): Editor.EditorStateData = {
         on = true,
         selected = Some({jsonPath = jsonPath, nodePath = nodePath, jsonNodePath = nodePath}),
+        selections = {jsonPath = jsonPath, nodePath = nodePath, jsonNodePath = nodePath} :: Nil,
         dragOrigin = Some(mouseDown),
         nodeOrigin = Some(nodeGlobal),
         resizeOrigin = None,
@@ -71,6 +72,7 @@ mod TestDragInput {
         let state: Editor.EditorStateData = {
             on = true,
             selected = None,
+            selections = Nil,
             dragOrigin = None,
             nodeOrigin = None,
             resizeOrigin = None,

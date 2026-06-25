@@ -64,6 +64,9 @@ mod Editor {
     pub type alias EditorStateData = {
         on = Bool,
         selected = Option[Selection],
+        // 複数選択の全集合（multi-edit 用）。`selected` はその primary(先頭)。
+        // キャンバスのドラッグ/リサイズ/nudge/オーバーレイの主対象は従来どおり `selected`。
+        selections = List[Selection],
         dragOrigin = Option[Vec2.Vec2],
         nodeOrigin = Option[Vec2.Vec2],
         resizeOrigin = Option[ResizeOrigin],
@@ -87,6 +90,7 @@ mod Editor {
     pub def initialState(rootJsonIndex: Map[NodeName, String]): EditorStateData = {
         on = false,
         selected = None,
+        selections = Nil,
         dragOrigin = None,
         nodeOrigin = None,
         resizeOrigin = None,
@@ -484,11 +488,18 @@ mod Editor {
             let mousePos = GameEngine.Game.getMousePosition();
             let transform = activeViewTransform(scene);
             let zoom = stateData#editorZoom;
-            scene
+            let single = List.length(stateData#selections) == 1;
+            // 型依存の選択ハイライト（衝突=赤中心 / ビジュアル=矩形）。
+            // ハンドルは単一選択時のみ primary に足す（複数選択中はリサイズが primary 限定で紛らわしい）。
+            let withMarkers = scene
                 |> Overlay.addCollisionShapes(transform, zoom, defaultTag)
-                |> Overlay.addSelectionBox(stateData#rootJsonIndex, stateData#selected,
-                                           transform, zoom, defaultTag)
-                |> Overlay.addHoverBox(stateData#rootJsonIndex, mousePos, stateData#selected,
-                                       transform, zoom, defaultTag)
+                |> Overlay.addSelectionMarkers(stateData#rootJsonIndex, stateData#selections,
+                                               transform, zoom, defaultTag);
+            let withHandles = if (single)
+                                  Overlay.addSelectionBox(stateData#rootJsonIndex,
+                                      stateData#selected, transform, zoom, defaultTag, withMarkers)
+                              else withMarkers;
+            Overlay.addHoverBox(stateData#rootJsonIndex, mousePos, stateData#selected,
+                                transform, zoom, defaultTag, withHandles)
         }
 }

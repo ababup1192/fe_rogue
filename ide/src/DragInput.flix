@@ -212,32 +212,48 @@ mod DragInput {
                 case None =>
                     let ctx = {rootJsonIndex = stateData#rootJsonIndex, scene = scene};
                     let entries = EditableNode.collectAll(ctx);
-                    let preferDescendant = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
+                    // Shift = 複数選択トグル、Cmd = 子要素優先ピック。
+                    let shiftDown = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
+                    let preferDescendant = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftSuper);
                     let hit = Picking.pickTopAt(mousePos, entries, transform,
                                                  preferDescendant, scene);
                     match hit {
                         case None =>
-                            ({selected = None, dragOrigin = None, nodeOrigin = None,
-                              resizeOrigin = None, rotateOrigin = None | stateData}, scene)
+                            // Shift+空クリックは選択を維持。通常の空クリックはクリア。
+                            if (shiftDown) (stateData, scene)
+                            else ({selected = None, selections = Nil,
+                                   dragOrigin = None, nodeOrigin = None,
+                                   resizeOrigin = None, rotateOrigin = None | stateData}, scene)
                         case Some((entry, _)) =>
-                            let nodeWorld = Scene.globalPositionAt(entry#nodePath, scene);
                             let sel: Editor.Selection = {
                                 jsonPath = entry#jsonPath,
                                 nodePath = entry#nodePath,
                                 jsonNodePath = entry#jsonNodePath
                             };
-                            let newState = {
-                                selected = Some(sel),
-                                dragOrigin = Some(mousePos),
-                                nodeOrigin = Some(nodeWorld),
-                                resizeOrigin = None,
-                                rotateOrigin = None
-                                | stateData
-                            };
-                            (newState, scene)
+                            if (shiftDown) {
+                                // トグル選択（ドラッグは開始しない）
+                                let exists = List.exists(s -> sameSel(s, sel), stateData#selections);
+                                let newSels = if (exists)
+                                                  List.filter(s -> not sameSel(s, sel), stateData#selections)
+                                              else List.append(stateData#selections, sel :: Nil);
+                                let newPrimary = if (exists) List.head(newSels) else Some(sel);
+                                ({selected = newPrimary, selections = newSels,
+                                  dragOrigin = None, nodeOrigin = None,
+                                  resizeOrigin = None, rotateOrigin = None | stateData}, scene)
+                            } else {
+                                // 通常クリック: 単一選択にしてドラッグ開始
+                                let nodeWorld = Scene.globalPositionAt(entry#nodePath, scene);
+                                ({selected = Some(sel), selections = sel :: Nil,
+                                  dragOrigin = Some(mousePos), nodeOrigin = Some(nodeWorld),
+                                  resizeOrigin = None, rotateOrigin = None | stateData}, scene)
+                            }
                     }
             }
         }
+
+    /// Selection の同一判定（jsonPath + nodePath）。Selection は Eq 未導出のため手書き。
+    def sameSel(a: Editor.Selection, b: Editor.Selection): Bool =
+        a#jsonPath == b#jsonPath and a#nodePath == b#nodePath
 
     /// 選択中ノードがあり、マウスがそのリサイズハンドル領域内にあるかを判定する。
     /// CanvasLayer の場合は子ノードのスナップショットも収集（cascade 用）

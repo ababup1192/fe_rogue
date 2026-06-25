@@ -205,8 +205,8 @@ mod TestOverlay {
             EngineNode.Area2DWithState(area, Tag.NoTag));
         let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), 1.0, Tag.NoTag, scene);
         let children = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result);
-        // 塗り 1 枚 + 上下左右の outline 4 枚 + 中心マーク 2 枚 = 7 枚
-        Assert.assertEq(expected = 7, List.length(children))
+        // 塗り 1 枚 + 上下左右の outline 4 枚 = 5 枚（中心マークは選択時のみ別レイヤ）
+        Assert.assertEq(expected = 5, List.length(children))
 
     /// CircleShape2D（半径 5）: 内部塗り 9 行 + リング outline 20 枚 + 中心十字 2 枚 = 31 枚。
     /// （塗り: |y|<=4 の 9 行を全幅 fill。リング: 上下キャップ 2 + 内側 9 行 × 2 = 20。中心マーク 2）
@@ -220,8 +220,8 @@ mod TestOverlay {
         let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), 1.0, Tag.NoTag, scene);
         let count = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result)
             |> List.length;
-        // 円は Panel(cornerRadius) 1 枚 + 中心マーク 2 ColorRect = 3 子（シェーダ AA でなめらかに描く）
-        Assert.assertEq(expected = 3, count)
+        // 円は Panel(cornerRadius) 1 枚のみ（中心マークは選択時のみ別レイヤに描くため常時0）
+        Assert.assertEq(expected = 1, count)
 
     /// すべての ColorRect が不透明な outline（alpha = 1.0）であること。
     /// fill が削除されたため、translucent な要素（alpha < 1.0）は存在しない
@@ -241,6 +241,6 @@ mod TestOverlay {
                 });
         let translucentCount = List.count(a -> a < 1.0f32, alphas);
         let opaqueCount = List.count(a -> a >= 1.0f32, alphas);
-        // 塗り 1 枚は半透明、outline 4 枚 + 中心マーク 2 枚 = 6 枚は不透明
-        Assert.assertEq(expected = (1, 6), (translucentCount, opaqueCount))
+        // 塗り 1 枚は半透明、outline 4 枚は不透明（中心マークは選択時のみ別レイヤなので常時オーバーレイには無い）
+        Assert.assertEq(expected = (1, 4), (translucentCount, opaqueCount))
 }

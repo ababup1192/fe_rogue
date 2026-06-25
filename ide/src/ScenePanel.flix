@@ -35,6 +35,7 @@ mod ScenePanel {
     import javafx.scene.control.TreeItem
     import javafx.scene.control.TreeCell
     import javafx.scene.control.MultipleSelectionModel
+    import javafx.scene.control.SelectionMode
     import javafx.scene.control.ContextMenu
     import javafx.scene.control.Menu
     import javafx.scene.control.MenuItem
@@ -54,6 +55,8 @@ mod ScenePanel {
     import javafx.event.ActionEvent
     import javafx.beans.value.ChangeListener
     import javafx.beans.value.ObservableValue
+    import javafx.beans.InvalidationListener
+    import javafx.beans.Observable
     import java.lang.Double
     import java.lang.Integer
 
@@ -62,41 +65,77 @@ mod ScenePanel {
     /// シーン内 node を選んだ場合は pendingNodeSelection に積み、Main が Editor#selected に反映
     pub def wireTreeSelection(state: IdeState.IdeState, tree: TreeView[String]): Unit \ IO = {
         let selectionModel = tree.getSelectionModel();
-        let prop = selectionModel.selectedItemProperty();
-        let listener = new ChangeListener[TreeItem[String]] {
-            def changed(_cThis: ChangeListener[TreeItem[String]],
-                         _obs: ObservableValue[JObject],
-                         _old: TreeItem[String], newSel: TreeItem[String]): Unit \ IO = {
-                if (Object.isNull(newSel)) ()
-                else {
-                    let pairs = Array.get(0, state#sceneFilesRef);
-                    let chain = collectFromTopLevel(newSel);
-                    match chain {
-                        case Nil => ()
-                        case sceneRel :: rest =>
-                            match List.find(p -> { let r = snd(p); r == sceneRel }, pairs) {
-                                case None => ()
-                                case Some((abs, _)) =>
-                                    if (List.isEmpty(rest)) {
-                                        // scene file クリック → 読み込み要求
-                                        println("[IdeUI] Scene selected: ${sceneRel}");
-                                        Array.put(Some(abs), 0, state#pendingSceneRef)
-                                    } else {
-                                        // scene 内 node クリック → 選択要求
-                                        let sel: Editor.Selection = {
-                                            jsonPath = abs,
-                                            nodePath = rest,
-                                            jsonNodePath = rest
-                                        };
-                                        Array.put(Some(sel), 0, state#runtime#pendingNodeSelection)
-                                    }
-                            }
-                    }
-                }
-            }
+        // 複数選択（Cmd/Shift+クリック）を許可。選択変化は selectedItems の InvalidationListener で拾う。
+        selectionModel.setSelectionMode(SelectionMode.MULTIPLE);
+        let selectedItems = selectionModel.getSelectedItems();
+        let listener = new InvalidationListener {
+            def invalidated(_this: InvalidationListener, _obs: Observable): Unit \ IO =
+                // プログラムによる editor→tree 同期中（clearSelection+select）は writeback しない。
+                // これをしないと sync の clearSelection が空選択を書き戻し、ドラッグ中に解除される。
+                if (Array.get(0, state#runtime#treeSelSyncGuard)) ()
+                else onTreeSelectionChanged(state, selectionModel)
         };
-        prop.addListener(listener)
+        selectedItems.addListener(listener)
     }
+
+    /// tree の現在の選択集合を解釈し、ノード選択要求 or シーン読込要求を積む。
+    /// lead に依存せず getSelectedItems から集合全体を作る（deselect で lead が消えても追従する）。
+    /// - ノード行（複数可・同一シーン）→ Selection リストを積む。
+    /// - 単一のシーンファイル行のみ → そのシーンを読込。
+    /// - 何も選択されていない → 選択クリア（空リスト）。
+    def onTreeSelectionChanged(state: IdeState.IdeState,
+                               model: MultipleSelectionModel[TreeItem[String]]): Unit \ IO = {
+        let pairs = Array.get(0, state#sceneFilesRef);
+        let items = model.getSelectedItems();
+        // 選択中の各行の chain = [sceneRel, name, ...]。collectChains は逆順なので戻して安定化。
+        let chains = List.reverse(collectChains(items, items.size(), 0i32, Nil));
+        // 同一選択集合の重複発火（1クリックで InvalidationListener が複数回鳴る）を弾く。
+        let sig = treeSelSig(chains);
+        if (sig == Array.get(0, state#runtime#lastTreeSelSig)) ()
+        else {
+        Array.put(sig, 0, state#runtime#lastTreeSelSig);
+        let nodeChains = List.filter(c -> List.length(c) >= 2, chains);
+        match nodeChains {
+            case Nil =>
+                // ノード行なし。単一シーンファイル行なら読込、それ以外（空＝全解除）はクリア。
+                match chains {
+                    case (sceneRel :: Nil) :: Nil =>
+                        match List.find(p -> snd(p) == sceneRel, pairs) {
+                            case Some((abs, _)) => {
+                                println("[IdeUI] Scene selected: ${sceneRel}");
+                                Array.put(Some(abs), 0, state#pendingSceneRef)
+                            }
+                            case None => ()
+                        }
+                    case _ =>
+                        Array.put(Some((Nil: List[Editor.Selection])), 0,
+                                  state#runtime#pendingNodeSelection)
+                }
+            case (firstSceneRel :: _) :: _ =>
+                match List.find(p -> snd(p) == firstSceneRel, pairs) {
+                    case None => ()
+                    case Some((abs, _)) =>
+                        // firstSceneRel のノード行だけを Selection 化（複数シーン混在は先頭シーンに限定）。
+                        let sels = List.filterMap(c -> match c {
+                            case rel :: rest =>
+                                if (rel == firstSceneRel and not List.isEmpty(rest))
+                                    Some(({jsonPath = abs, nodePath = rest,
+                                           jsonNodePath = rest}: Editor.Selection))
+                                else None
+                            case Nil => None
+                        }, nodeChains);
+                        Array.put(Some(sels), 0, state#runtime#pendingNodeSelection)
+                }
+            case Nil :: _ => ()
+        }
+        }
+    }
+
+    /// 選択集合の署名（順不同で安定）。重複発火の判定に使う。
+    def treeSelSig(chains: List[List[String]]): String =
+        List.map(c -> String.intercalate("/", c), chains)
+            |> List.sort
+            |> String.intercalate(";")
 
     /// TreeView にフォーカスがあるときの Delete / Backspace で選択ノードを削除する。
     /// ツリー focus 時はキーが scene まで bubble せず Main.handleDeleteKey が拾えないため、
@@ -113,23 +152,33 @@ mod ScenePanel {
         })
     }
 
-    /// ツリーで選択中のノード（非ルート）を削除キューに積む。ルート/ファイル行は no-op。
-    def deleteSelectedTreeNode(state: IdeState.IdeState, tree: TreeView[String]): Unit \ IO = {
-        let sel = tree.getSelectionModel().getSelectedItem();
-        if (Object.isNull(sel)) ()
-        else match collectFromTopLevel(sel) {
-            case Nil              => ()
-            case sceneRel :: rest =>
-                if (List.length(rest) < 2)
-                    println("[Scenes] Delete: ルート/ファイル行は Delete Scene を使ってください")
-                else match List.find(p -> snd(p) == sceneRel, Array.get(0, state#sceneFilesRef)) {
-                    case Some((abs, _)) => {
-                        println("[Scenes] Delete node (tree) queued: ${rest}");
-                        Array.put(Some(IdeState.SceneOp.DeleteNode(abs, rest)), 0,
-                                  state#pendingSceneOpRef)
-                    }
+    /// ツリーで選択中のノード（複数可・非ルート）を一括削除キューに積む。ルート/ファイル行は除外。
+    def deleteSelectedTreeNode(state: IdeState.IdeState, tree: TreeView[String]): Unit \ IO =
+        queueDeleteSelectedTreeNodes(state, tree.getSelectionModel())
+
+    /// 現在のツリー複数選択から、非ルートのノード行（同一シーン）を集めて DeleteNodes を積む。
+    def queueDeleteSelectedTreeNodes(state: IdeState.IdeState,
+                                     model: MultipleSelectionModel[TreeItem[String]]): Unit \ IO = {
+        let pairs = Array.get(0, state#sceneFilesRef);
+        let items = model.getSelectedItems();
+        let chains = List.reverse(collectChains(items, items.size(), 0i32, Nil));
+        // 非ルートのノード行（[sceneRel, name, ...] で長さ >= 3）だけ対象。
+        let nodeChains = List.filter(c -> List.length(c) >= 3, chains);
+        match nodeChains {
+            case Nil => println("[Scenes] Delete: ノードが選択されていません（ルート/ファイル行は Delete Scene）")
+            case (sceneRel :: _) :: _ =>
+                match List.find(p -> snd(p) == sceneRel, pairs) {
                     case None => ()
+                    case Some((abs, _)) =>
+                        let paths = List.filterMap(c -> match c {
+                            case rel :: rest => if (rel == sceneRel) Some(rest) else None
+                            case Nil         => None
+                        }, nodeChains);
+                        println("[Scenes] Delete nodes (tree) queued: ${List.length(paths)}");
+                        Array.put(Some(IdeState.SceneOp.DeleteNodes(abs, paths)), 0,
+                                  state#pendingSceneOpRef)
                 }
+            case Nil :: _ => ()
         }
     }
 
@@ -273,8 +322,8 @@ mod ScenePanel {
                 }
         }
 
-    /// ノード行で「Delete Node」: 非ルートノード (nodePath 長 >= 2) のみ、
-    /// SceneOp.DeleteNode を積む。ルート/ファイル行は no-op (Delete Scene を使う)。
+    /// ノード行で「Delete Node」: 右クリックしたノードが複数選択の一部なら選択全体を、
+    /// そうでなければそのノード1個だけを削除する。ルート/ファイル行は no-op (Delete Scene)。
     def onDeleteNode(state: IdeState.IdeState,
                      ctxRef: Array[Option[(String, String, List[String])], Static]): Unit \ IO =
         match Array.get(0, ctxRef) {
@@ -282,12 +331,32 @@ mod ScenePanel {
             case Some((abs, _rel, nodePath)) =>
                 if (List.length(nodePath) < 2)
                     println("[Scenes] Delete Node: 子ノード行で実行してください (ルート/ファイルは Delete Scene)")
-                else {
-                    println("[Scenes] Delete node queued: ${nodePath}");
-                    Array.put(Some(IdeState.SceneOp.DeleteNode(abs, nodePath)), 0,
-                              state#pendingSceneOpRef)
+                else match Array.get(0, state#widgets#sceneTree) {
+                    case None => queueSingleDelete(state, abs, nodePath)
+                    case Some(tree) => {
+                        let model = tree.getSelectionModel();
+                        let selPaths = selectedNodePaths(model);
+                        // 右クリック対象が複数選択に含まれる → 選択全体を削除。そうでなければ単体。
+                        if (List.memberOf(nodePath, selPaths) and List.length(selPaths) > 1)
+                            queueDeleteSelectedTreeNodes(state, model)
+                        else queueSingleDelete(state, abs, nodePath)
+                    }
                 }
         }
+
+    def queueSingleDelete(state: IdeState.IdeState, abs: String, nodePath: List[String]): Unit \ IO = {
+        println("[Scenes] Delete node queued: ${nodePath}");
+        Array.put(Some(IdeState.SceneOp.DeleteNode(abs, nodePath)), 0, state#pendingSceneOpRef)
+    }
+
+    /// 現在のツリー選択から非ルートのノード行 nodePath（[root, ...] 形）を集める。
+    def selectedNodePaths(model: MultipleSelectionModel[TreeItem[String]]): List[List[String]] \ IO =
+        let items = model.getSelectedItems();
+        let chains = collectChains(items, items.size(), 0i32, Nil);
+        List.filterMap(c -> match c {
+            case _rel :: rest => if (List.length(rest) >= 2) Some(rest) else None
+            case Nil          => None
+        }, chains)
 
     /// "Add Child Node" サブメニュー。型ごとに MenuItem を並べ、クリックで pendingAddChildRef に
     /// 積む (型名で自動命名。名前入力なし)。テクスチャ不要な型に限定。
@@ -639,34 +708,43 @@ mod ScenePanel {
     /// editor#selected がリセットされる前のフレームに、user の tree 選択を消してしまう
     /// race condition を避けるため)
     def syncTreeSelectionFromEditor(state: IdeState.IdeState): Unit \ IO = {
+        // キャンバス由来で選択が変わった時だけ tree へ反映する（tree クリックでは sync しない
+        // ＝毎フレーム再選択と Cmd+クリックの競合を断つ）。
+        if (not Array.get(0, state#runtime#treeNeedsSync)) ()
+        else {
+            Array.put(false, 0, state#runtime#treeNeedsSync);
         match Array.get(0, state#widgets#sceneTree) {
             case None       => ()
             case Some(tree) => {
                 let model: MultipleSelectionModel[TreeItem[String]] = tree.getSelectionModel();
-                let selOpt = Array.get(0, state#inspector#currentSelection);
-                match selOpt {
-                    case None => ()
-                    case Some(sel) => {
+                let sels = Array.get(0, state#inspector#currentSelections);
+                match sels {
+                    case Nil => ()
+                    case primary :: _ => {
                         let sceneFiles = Array.get(0, state#sceneFilesRef);
-                        let target = sel#jsonPath;
-                        let matched = List.find(p -> fst(p) == target, sceneFiles);
-                        match matched {
+                        match List.find(p -> fst(p) == primary#jsonPath, sceneFiles) {
                             case None    => ()
                             case Some(p) => {
                                 let rel = snd(p);
                                 let root: TreeItem[String] = tree.getRoot();
                                 if (Object.isNull(root)) ()
                                 else {
-                                    let targetChain = rel :: sel#nodePath;
-                                    let cur: TreeItem[String] = model.getSelectedItem();
-                                    let curChain = if (Object.isNull(cur)) Nil
-                                                   else collectFromTopLevel(cur);
-                                    if (curChain == targetChain) ()
+                                    // 目標集合（全選択ノードの chain）と現ツリー選択集合を比較。
+                                    // 集合一致なら無操作（ツリー由来の複数選択を温存・ループ防止）。
+                                    let targetChains = List.map(s -> rel :: s#nodePath, sels);
+                                    let curItems = model.getSelectedItems();
+                                    let curChains = collectChains(curItems, curItems.size(), 0i32, Nil);
+                                    if (sameChainSet(curChains, targetChains)) ()
                                     else {
-                                        match findTreeItem(root, rel, sel#nodePath) {
-                                            case None         => ()
-                                            case Some(item)   => model.$select(item)
-                                        }
+                                        // canvas 由来の選択をツリーへ反映。clearSelection+select の間は
+                                        // guard を立ててリスナの writeback を抑止（空選択の混入を防ぐ）。
+                                        Array.put(true, 0, state#runtime#treeSelSyncGuard);
+                                        model.clearSelection();
+                                        List.forEach(s -> match findTreeItem(root, rel, s#nodePath) {
+                                            case None       => ()
+                                            case Some(item) => model.$select(item)
+                                        }, sels);
+                                        Array.put(false, 0, state#runtime#treeSelSyncGuard)
                                     }
                                 }
                             }
@@ -675,7 +753,23 @@ mod ScenePanel {
                 }
             }
         }
+        }
     }
+
+    /// ObservableList の各 TreeItem を collectFromTopLevel した chain のリストを集める。
+    def collectChains(items: ObservableList[TreeItem[String]], n: Int32, i: Int32,
+                      acc: List[List[String]]): List[List[String]] \ IO =
+        if (i >= n) acc
+        else {
+            let it = items.get(i);
+            let chain = if (Object.isNull(it)) Nil else collectFromTopLevel(it);
+            collectChains(items, n, i + 1i32, chain :: acc)
+        }
+
+    /// 2 つの chain リストが集合として等しいか（順序無視・重複は想定しない）。
+    def sameChainSet(a: List[List[String]], b: List[List[String]]): Bool =
+        List.length(a) == List.length(b) and
+        List.forAll(x -> List.memberOf(x, b), a)
 
     /// root の children から scene file 行を見つけ、そこから node path で深く辿る
     def findTreeItem(root: TreeItem[String], sceneRel: String, nodePath: List[String]):
@@ -773,18 +867,17 @@ mod ScenePanel {
                     // header label + common fields + Advanced disclosure (advanced fields) を描画
                     let sections = Array.get(0, state#inspector#schema);
                     let values = Array.get(0, state#inspector#currentValues);
-                    let selOpt = Array.get(0, state#inspector#currentSelection);
+                    // multi-edit: commit は全選択ノードへ fan-out するため list を渡す
+                    let sels = Array.get(0, state#inspector#currentSelections);
                     List.forEach(section -> {
                         addSectionHeader(children, section#typeName);
-                        match selOpt {
-                            case None      => ()
-                            case Some(sel) => {
-                                List.forEach(fd -> addSchemaRow(state, children, fd, values, sel),
-                                             section#common);
-                                if (not List.isEmpty(section#advanced))
-                                    addAdvancedDisclosure(state, children, section#advanced, values, sel)
-                                else ()
-                            }
+                        if (List.isEmpty(sels)) ()
+                        else {
+                            List.forEach(fd -> addSchemaRow(state, children, fd, values, sels),
+                                         section#common);
+                            if (not List.isEmpty(section#advanced))
+                                addAdvancedDisclosure(state, children, section#advanced, values, sels)
+                            else ()
                         };
                         // AudioStreamPlayer セクションには preview 用 Play/Stop ボタンを足す。
                         // (autoplay は runtime のみで反応するため、preview で聴くにはこのボタンが必要)
@@ -810,10 +903,10 @@ mod ScenePanel {
     def addAdvancedDisclosure(state: IdeState.IdeState, children: ObservableList[Node],
                                advancedFields: List[NodeInspector.FieldDef],
                                currentValues: Map[String, Util.Json.Json],
-                               sel: Editor.Selection): Unit \ IO = {
+                               sels: List[Editor.Selection]): Unit \ IO = {
         let inner = new VBox(4.0);
         let innerKids = inner.getChildren();
-        List.forEach(fd -> addSchemaRow(state, innerKids, fd, currentValues, sel), advancedFields);
+        List.forEach(fd -> addSchemaRow(state, innerKids, fd, currentValues, sels), advancedFields);
         let innerNode: Node = checked_cast(inner);
         let pane = new TitledPane();
         pane.setText("Advanced");
@@ -872,11 +965,14 @@ mod ScenePanel {
     def addSchemaRow(state: IdeState.IdeState, children: ObservableList[Node],
                       fd: NodeInspector.FieldDef,
                       currentValues: Map[String, Util.Json.Json],
-                      sel: Editor.Selection): Unit \ IO = {
+                      sels: List[Editor.Selection]): Unit \ IO = {
         let currentJson = Map.get(fd#name, currentValues);
         let applyFn = fd#apply;
+        // multi-edit: 1 つの編集を全選択ノードへ適用（v1 はループ適用）
         let commit: PropertyWidgets.Commit = json -> {
-            let pe: NodeInspector.PendingEdit = { perform = () -> applyFn(sel, json) };
+            let pe: NodeInspector.PendingEdit = {
+                perform = () -> List.forEach(sel -> applyFn(sel, json), sels)
+            };
             let existing = Array.get(0, state#inspector#pendingEdits);
             Array.put(List.append(existing, pe :: Nil), 0, state#inspector#pendingEdits)
         };

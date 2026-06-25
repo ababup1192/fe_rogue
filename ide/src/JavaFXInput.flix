@@ -70,6 +70,9 @@ mod JavaFXInput {
         imageView.setOnMousePressed(new EventHandler[MouseEvent] {
             def handle(_this: EventHandler[MouseEvent], e: MouseEvent): Unit \ IO = {
                 Array.put((e.getX(), e.getY()), 0, refs#mousePxRef);
+                // クリック時の修飾キーを MouseEvent から確定値で同期する（keysDown 経由は
+                // フォーカス/タイミング依存で取りこぼすため、Shift 複数選択・Cmd 子ピックを確実にする）。
+                syncModifiers(refs, e.isShiftDown(), e.isControlDown(), e.isMetaDown());
                 setButtonDown(refs, e.getButton(), true);
                 // キーボード入力を受け取れるよう Scene にフォーカス
                 imageView.requestFocus()
@@ -136,6 +139,19 @@ mod JavaFXInput {
     /// 矢印キーの KeyCode 名か判定する。
     def isArrowCode(code: String): Bool =
         code == "UP" or code == "DOWN" or code == "LEFT" or code == "RIGHT"
+
+    /// マウスイベントの修飾キー状態を keysDown に確定反映する（押下=insert / 非押下=remove）。
+    /// JavaFXKeyMap と同じ名前（SHIFT/CONTROL/META）で記録するので isKeyPressed と整合する。
+    def syncModifiers(refs: InputRefs, shift: Bool, ctrl: Bool, meta: Bool): Unit \ IO = {
+        setKey(refs, "SHIFT", shift);
+        setKey(refs, "CONTROL", ctrl);
+        setKey(refs, "META", meta)
+    }
+
+    def setKey(refs: InputRefs, name: String, down: Bool): Unit \ IO =
+        let cur = Array.get(0, refs#keysDownRef);
+        let next = if (down) Set.insert(name, cur) else Set.remove(name, cur);
+        Array.put(next, 0, refs#keysDownRef)
 
     def setButtonDown(refs: InputRefs, btn: MouseButton, isDown: Bool): Unit \ IO =
         // Java enum は Flix の `==` (Eq typeclass) では比較できないので toString 経由で比較。
