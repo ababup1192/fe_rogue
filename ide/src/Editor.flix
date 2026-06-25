@@ -425,7 +425,7 @@ mod Editor {
         else stateData
 
     def clampZoom(z: Float64): Float64 =
-        if (z < 0.1) 0.1 else if (z > 8.0) 8.0 else z
+        if (z < 0.1) 0.1 else if (z > 60.0) 60.0 else z
 
     /// 二本指ドラッグ(スクロール)でキャンバスをパン。dx/dy は screen px の移動量。
     /// editorOffset は panDesign（FBO 原点に映す design-px）なので screen 量を /zoom で換算する。

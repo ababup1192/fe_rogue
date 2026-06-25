@@ -498,18 +498,13 @@ mod NodeInspector {
         let kindField = shapeKindField(current);
         let dims = match current {
             case CollisionShape2D.RectShape2D(_) =>
-                shapeDimField("shapeWidth", "Width", current, shapeWidthOf,
-                              (s, v) -> shapeWithDim(s, v, shapeHeightRaw(s), v / 2.0)) ::
-                shapeDimField("shapeHeight", "Height", current, shapeHeightOf,
-                              (s, v) -> shapeWithDim(s, shapeWidthRaw(s), v, v / 2.0)) :: Nil
+                shapeDimField("shapeWidth", "Width", "width", shapeWidthRaw) ::
+                shapeDimField("shapeHeight", "Height", "height", shapeHeightRaw) :: Nil
             case CollisionShape2D.CircleShape2D(_) =>
-                shapeDimField("shapeRadius", "Radius", current, shapeRadiusOf,
-                              (_s, v) -> CollisionShape2D.CircleShape2D({radius = v})) :: Nil
+                shapeDimField("shapeRadius", "Radius", "radius", shapeRadiusOf) :: Nil
             case CollisionShape2D.CapsuleShape2D(_) =>
-                shapeDimField("shapeRadius", "Radius", current, shapeRadiusOf,
-                              (s, v) -> capsuleWith(v, shapeHeightRaw(s), capVerticalOf(s))) ::
-                shapeDimField("shapeCapHeight", "Height", current, shapeHeightOf,
-                              (s, v) -> capsuleWith(shapeRadiusOf(s), v, capVerticalOf(s))) ::
+                shapeDimField("shapeRadius", "Radius", "radius", shapeRadiusOf) ::
+                shapeDimField("shapeCapHeight", "Height", "height", shapeHeightRaw) ::
                 shapeCapVerticalField(current) :: Nil
         };
         kindField :: dims
@@ -529,8 +524,9 @@ mod NodeInspector {
             }
         }
 
-    /// Capsule の vertical（縦長/横長）切替
-    def shapeCapVerticalField(current: CollisionShape2D): FieldDef =
+    /// Capsule の vertical（縦長/横長）切替。shape の "vertical" キーだけをマージ更新する
+    /// （半径/高さを巻き込まないため、build 時 current に依存しない）。
+    def shapeCapVerticalField(_current: CollisionShape2D): FieldDef =
         {
             name     = "shapeVertical",
             label    = "Vertical",
@@ -540,17 +536,17 @@ mod NodeInspector {
                                 case _                                  => None
                             }, CollisionObject2D.getCollisionShape(n)),
             apply    = (sel, j) -> match jsonToBool(j) {
-                case Some(b) => writeShape(sel,
-                    capsuleWith(shapeRadiusOf(current), shapeHeightRaw(current), b))
+                case Some(b) => writeShapeKey(sel, "vertical",
+                    SceneSerializer.FieldValue.BoolValue(b))
                 case None    => ()
             }
         }
 
     /// shape の 1 寸法を編集する Float フィールド。snapshot は live node から読み、
-    /// apply は build 時の shape (current) を起点に 1 次元だけ変えて shape 全体を書き戻す。
-    def shapeDimField(fieldName: String, label: String, current: CollisionShape2D,
-                      readDim: CollisionShape2D -> Float64,
-                      writeDim: (CollisionShape2D, Float64) -> CollisionShape2D): FieldDef =
+    /// apply は shape オブジェクトの 1 キー (jsonKey) だけをマージ更新する。
+    /// 他の寸法は disk 上の値を保持するので、Width 編集が Height 編集を巻き戻さない。
+    def shapeDimField(fieldName: String, label: String, jsonKey: String,
+                      readDim: CollisionShape2D -> Float64): FieldDef =
         {
             name     = fieldName,
             label    = label,
@@ -558,10 +554,20 @@ mod NodeInspector {
             snapshot = n -> Option.map(s -> floatToJson(readDim(s)),
                                        CollisionObject2D.getCollisionShape(n)),
             apply    = (sel, j) -> match jsonToFloat(j) {
-                case Some(v) => writeShape(sel, writeDim(current, v))
+                case Some(v) => writeShapeKey(sel, jsonKey,
+                    SceneSerializer.FieldValue.ScalarValue(v))
                 case None    => ()
             }
         }
+
+    /// shape オブジェクトの 1 キーだけをマージ更新する（kind や他寸法は disk 上の値を保持）。
+    def writeShapeKey(sel: Editor.Selection, jsonKey: String,
+                      value: SceneSerializer.FieldValue):
+            Unit \ {Fs.FileRead, Fs.FileWrite} =
+        SceneSerializer.updateFields(sel#jsonPath, sel#jsonNodePath,
+            ({key = "shape",
+              value = SceneSerializer.FieldValue.ShapeMergeValue(jsonKey, value)}
+              : SceneSerializer.FieldUpdate) :: Nil)
 
     /// shape オブジェクト全体を JSON に書き戻す（ShapeValue 経由）
     def writeShape(sel: Editor.Selection, shape: CollisionShape2D):
@@ -614,17 +620,8 @@ mod NodeInspector {
         case CollisionShape2D.CapsuleShape2D(c) => c#height
         case _                                  => shapeHeightOf(s)
     }
-    def capVerticalOf(s: CollisionShape2D): Bool = match s {
-        case CollisionShape2D.CapsuleShape2D(c) => c#vertical
-        case _                                  => true
-    }
     def capsuleWith(radius: Float64, height: Float64, vertical: Bool): CollisionShape2D =
         CollisionShape2D.CapsuleShape2D({radius = radius, height = height, vertical = vertical})
-    def shapeWithDim(s: CollisionShape2D, w: Float64, h: Float64, r: Float64): CollisionShape2D = match s {
-        case CollisionShape2D.RectShape2D(_)    => CollisionShape2D.RectShape2D({width = w, height = h})
-        case CollisionShape2D.CircleShape2D(_)  => CollisionShape2D.CircleShape2D({radius = r})
-        case CollisionShape2D.CapsuleShape2D(c) => CollisionShape2D.CapsuleShape2D({radius = r, height = h, vertical = c#vertical})
-    }
 
     // ─────────────────── 汎用 FieldDef ビルダー (boilerplate 削減) ───────────────────
 

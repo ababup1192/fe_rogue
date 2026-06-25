@@ -100,10 +100,15 @@ mod JavaFXInput {
         // keyboard は Scene 全体で拾う
         if (Object.isNull(scene)) ()
         else {
+            // 矢印キー以外を記録（矢印は下の capturing filter で focus 条件付きに扱う）。
             scene.setOnKeyPressed(new EventHandler[KeyEvent] {
                 def handle(_this: EventHandler[KeyEvent], e: KeyEvent): Unit \ IO = {
-                    let cur = Array.get(0, refs#keysDownRef);
-                    Array.put(Set.insert(e.getCode().toString(), cur), 0, refs#keysDownRef)
+                    let code = e.getCode().toString();
+                    if (isArrowCode(code)) ()
+                    else {
+                        let cur = Array.get(0, refs#keysDownRef);
+                        Array.put(Set.insert(code, cur), 0, refs#keysDownRef)
+                    }
                 }
             });
             scene.setOnKeyReleased(new EventHandler[KeyEvent] {
@@ -111,9 +116,26 @@ mod JavaFXInput {
                     let cur = Array.get(0, refs#keysDownRef);
                     Array.put(Set.remove(e.getCode().toString(), cur), 0, refs#keysDownRef)
                 }
+            });
+            // 矢印キーはキャンバス(imageView)が focus を持つときだけ nudge 用に記録し、
+            // capturing 段階で consume して JavaFX の focus traversal（タブ移動）を抑止する。
+            // Spinner/TextField 編集中は imageView 非 focus なので consume せず通常動作を妨げない。
+            scene.addEventFilter(KeyEvent.KEY_PRESSED, new EventHandler[KeyEvent] {
+                def handle(_this: EventHandler[KeyEvent], e: KeyEvent): Unit \ IO = {
+                    let code = e.getCode().toString();
+                    if (isArrowCode(code) and imageView.isFocused()) {
+                        let cur = Array.get(0, refs#keysDownRef);
+                        Array.put(Set.insert(code, cur), 0, refs#keysDownRef);
+                        e.consume()
+                    } else ()
+                }
             })
         }
     }
+
+    /// 矢印キーの KeyCode 名か判定する。
+    def isArrowCode(code: String): Bool =
+        code == "UP" or code == "DOWN" or code == "LEFT" or code == "RIGHT"
 
     def setButtonDown(refs: InputRefs, btn: MouseButton, isDown: Bool): Unit \ IO =
         // Java enum は Flix の `==` (Eq typeclass) では比較できないので toString 経由で比較。

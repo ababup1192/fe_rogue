@@ -30,6 +30,9 @@ mod SceneSerializer {
         case BoolValue(Bool)
         case ColorValue(Color)
         case ShapeValue(CollisionShape2D)
+        // 既存のオブジェクト値（例: "shape"）の中の 1 キーだけを差し替える（他キーは保持）。
+        // 形状の width/height/radius/vertical を個別に編集しても互いを上書きしないために使う。
+        case ShapeMergeValue(String, FieldValue)
     }
 
     /// 書き換え対象 1 件: フィールド名 + 上書きする値
@@ -931,7 +934,20 @@ mod SceneSerializer {
                      entries: List[(String, JsonOrdered.OrderedJson)]):
                     List[(String, JsonOrdered.OrderedJson)] =
         List.foldLeft((acc, update) ->
-            upsertEntry(update#key, valueToOrderedJson(update#value), acc),
+            match update#value {
+                // 既存オブジェクト（"shape" 等）の 1 キーだけマージ（他キーは保持）。
+                case FieldValue.ShapeMergeValue(innerKey, innerVal) =>
+                    match findEntryValue(update#key, acc) {
+                        case Some(JsonOrdered.OrderedJson.OObject(objEntries, objStyle)) =>
+                            let merged = upsertEntry(innerKey,
+                                valueToOrderedJson(innerVal), objEntries);
+                            upsertEntry(update#key,
+                                JsonOrdered.OrderedJson.OObject(merged, objStyle), acc)
+                        // 対象オブジェクトが無ければ何もしない（形状が無い等の異常時）
+                        case _ => acc
+                    }
+                case _ => upsertEntry(update#key, valueToOrderedJson(update#value), acc)
+            },
             entries, updates)
 
     /// (key, value) リストを順序を保ったまま走査し、key 一致なら value を置き換える。
@@ -993,6 +1009,9 @@ mod SceneSerializer {
                     JsonOrdered.ObjectStyle.ObjInline)
             case FieldValue.ShapeValue(shape) =>
                 shapeToOrderedJson(shape)
+            // マージ用ラッパ: 内側の値を JSON 化（applyUpdates が key マージで使う。単独では内側値のみ）。
+            case FieldValue.ShapeMergeValue(_, innerVal) =>
+                valueToOrderedJson(innerVal)
         }
 
     /// CollisionShape2D を `{"kind": ..., "width": ..., ...}` の OObject に変換する。
