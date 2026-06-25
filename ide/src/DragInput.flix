@@ -394,13 +394,16 @@ mod DragInput {
                     case None => false
                 };
                 if (moved) {
+                    // 統一 Edit Command 化：undo 用に「移動前の位置へ戻す」命令を積む
+                    // （適用前状態＝移動前 origin を捕捉した逆命令）。JSON 書込は従来どおり。
                     match stateData#nodeOrigin {
                         case Some(origin) =>
-                            EditHistory.Rewind.save(EditHistory.Entry.MoveEntry({
-                                jsonPath = jsonPath,
-                                nodePath = nodePath,
-                                jsonNodePath = jsonNodePath,
-                                prevWorldPos = origin}))
+                            EditHistory.Rewind.save(EditHistory.Entry.CommandEntry(
+                                EditCmd.Command.SetGlobalPos({
+                                    jsonPath = jsonPath,
+                                    nodePath = nodePath,
+                                    jsonNodePath = jsonNodePath,
+                                    pos = origin})))
                         case None => ()
                     };
                     let localPos = match Scene.getEngineNode(nodePath, scene) {
@@ -419,7 +422,7 @@ mod DragInput {
         }
 
     /// リサイズドロップ: 自ノード（と CanvasLayer なら子も）の更新を 1 回の書込で永続化。
-    /// undo 用に snapshots を ResizeEntry に積む。
+    /// undo 用に pre 状態 snapshots を CommandEntry(EditCmd.Command.Resize) に積む。
     def saveResizedNode(stateData: Editor.EditorStateData,
                         scene: Scene[t]):
             (Editor.EditorStateData, Scene[t]) \
@@ -430,10 +433,11 @@ mod DragInput {
                 let allSnapshots = origin#nodeSnapshot :: origin#childSnapshots;
                 let changed = anyNodeChanged(allSnapshots, scene);
                 if (changed) {
-                    EditHistory.Rewind.save(EditHistory.Entry.ResizeEntry({
-                        jsonPath = jsonPath,
-                        snapshots = allSnapshots
-                    }));
+                    // undo は「リサイズ前 snapshot へ戻す」Resize 命令（pre 状態を保持）。
+                    EditHistory.Rewind.save(EditHistory.Entry.CommandEntry(
+                        EditCmd.Command.Resize({
+                            jsonPath = jsonPath,
+                            snapshots = allSnapshots})));
                     let nodeUpdates = List.filterMap(snap ->
                         buildNodeUpdateAfterResize(snap, scene), allSnapshots);
                     SceneSerializer.updateMany(jsonPath, nodeUpdates)
@@ -538,12 +542,13 @@ mod DragInput {
                     case None             => origin#startRotation
                 };
                 if (curRot != origin#startRotation) {
-                    EditHistory.Rewind.save(EditHistory.Entry.RotateEntry({
-                        jsonPath = origin#jsonPath,
-                        nodePath = origin#nodePath,
-                        jsonNodePath = origin#jsonNodePath,
-                        prevRotation = origin#startRotation
-                    }));
+                    // undo は「回転前へ戻す」SetRotation 命令。
+                    EditHistory.Rewind.save(EditHistory.Entry.CommandEntry(
+                        EditCmd.Command.SetRotation({
+                            jsonPath = origin#jsonPath,
+                            nodePath = origin#nodePath,
+                            jsonNodePath = origin#jsonNodePath,
+                            rotation = origin#startRotation})));
                     SceneSerializer.updateRotation(origin#jsonPath, origin#jsonNodePath, curRot)
                 } else ();
                 let cleared = {

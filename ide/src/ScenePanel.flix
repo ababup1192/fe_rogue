@@ -364,8 +364,8 @@ mod ScenePanel {
                           ctxRef: Array[Option[(String, String, List[String])], Static]):
             Menu \ IO = {
         let sub = new Menu("Add Child Node");
-        let types = "StaticBody2D" :: "RigidBody2D" :: "CharacterBody2D" ::
-                    "Area2D" :: "ColorRect" :: "Marker2D" :: Nil;
+        // 型一覧は NodeRegistry（カタログの単一ソース）から取得。
+        let types = NodeRegistry.addableTypeNames();
         List.forEach(t -> {
             let item = new MenuItem(t);
             item.setOnAction(new EventHandler[ActionEvent] {

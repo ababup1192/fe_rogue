@@ -313,15 +313,10 @@ mod Editor {
             Scene[t] \ {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
         match EditHistory.Rewind.rewind() {
             case None => scene
-            case Some(EditHistory.Entry.MoveEntry(entry)) =>
-                let restored = Scene.setGlobalPositionAt(
-                    entry#nodePath, entry#prevWorldPos, scene);
-                let localPos = match Scene.getEngineNode(entry#nodePath, restored) {
-                    case Some(engineNode) => Node2D.getPosition(engineNode)
-                    case None             => Vec2.zero()
-                };
-                SceneSerializer.updatePos(entry#jsonPath, entry#jsonNodePath, localPos);
-                restored
+            case Some(EditHistory.Entry.CommandEntry(cmd)) =>
+                // 統一 Edit Command の undo＝保持命令（適用前状態を捕捉済み）を applyTo するだけ。
+                // Move/Resize/Rotate はすべてこの経路（旧 *Entry は撤去済み）。
+                EditCmd.applyTo(cmd, scene)
             case Some(EditHistory.Entry.ScaleEntry(entry)) =>
                 // 後方互換: 旧 scale ベースの編集（現在は実質使われていない）
                 let scaled = Scene.mapEngineNode(entry#nodePath,
@@ -334,25 +329,6 @@ mod Editor {
                 };
                 SceneSerializer.updatePosAndScale(entry#jsonPath, entry#jsonNodePath,
                                                    localPos, entry#prevScale);
-                restored
-            case Some(EditHistory.Entry.ResizeEntry(entry)) =>
-                // 各 snapshot のノードを開始時状態に戻し、まとめて 1 ファイル書込で永続化。
-                // snapshot は live path を持つため、書き戻し時に toJsonNodePath で翻訳する
-                let restoredScene = List.foldLeft((acc, snap) ->
-                    Scene.mapEngineNode(snap#nodePath,
-                        n -> EditableNode.restoreFromSnapshot(snap, n), acc),
-                    scene, entry#snapshots);
-                let nodeUpdates = List.map(snap -> ({
-                    nodePath = EditableNode.toJsonNodePath(snap#nodePath, restoredScene),
-                    updates = EditableNode.snapshotToFieldUpdates(snap)
-                }: SceneSerializer.NodeUpdate), entry#snapshots);
-                SceneSerializer.updateMany(entry#jsonPath, nodeUpdates);
-                restoredScene
-            case Some(EditHistory.Entry.RotateEntry(entry)) =>
-                let restored = Scene.mapEngineNode(entry#nodePath,
-                    Node2D.setRotation(entry#prevRotation), scene);
-                SceneSerializer.updateRotation(entry#jsonPath, entry#jsonNodePath,
-                                                entry#prevRotation);
                 restored
             case Some(EditHistory.Entry.RemoveSubtreeEntry(entry)) =>
                 // 除去したサブツリーを同位置へ戻す。live scene は JSON 書き戻し→

@@ -6,32 +6,14 @@
 
 mod EditHistory {
 
-    /// 1 編集の巻き戻し情報。位置 / スケール / リサイズ / 回転 で分岐する。
-    /// nodePath は live scene 内の path（Scene.setGlobalPositionAt 等の操作用）、
-    /// jsonNodePath は JSON 内の path（SceneSerializer.updateXxx に渡す書き戻し用）。
-    /// 静的シーンでは両者は等しい。プレハブ由来ノードでは先頭名が違う。
-    /// ResizeEntry の snapshots 内の path は live path で、書き戻し時に
-    /// EditableNode.toJsonNodePath で都度翻訳する
+    /// 1 編集の巻き戻し情報。位置/リサイズ/回転は CommandEntry（EditCmd.Command）へ移行済み。
+    /// 残る個別 Entry は scale-nudge（ScaleEntry）と構造変更（RemoveSubtree/AddedNode）のみ。
+    /// nodePath は live scene 内の path、jsonNodePath は JSON 内の path（プレハブ由来で先頭名が違う）。
     pub enum Entry {
-        /// 位置のみ変更されたときの巻き戻し情報
-        case MoveEntry({jsonPath = String, nodePath = NodePath,
-                        jsonNodePath = NodePath,
-                        prevWorldPos = Vec2.Vec2})
-        /// 旧 ScaleEntry（Sprite2D 等の `scale` フィールド単独編集用、後方互換）
+        /// scale nudge（Ctrl+Shift+矢印）専用。Phase B でまだ CommandEntry 未移行。
         case ScaleEntry({jsonPath = String, nodePath = NodePath,
                          jsonNodePath = NodePath,
                          prevWorldPos = Vec2.Vec2, prevScale = Vec2.Vec2})
-        /// リサイズの巻き戻し情報。
-        /// ノード型ごとに更新する field が異なるため、複数ノード分の
-        /// snapshot を持てるようにしてある（CanvasLayer の cascade で複数子を
-        /// 一度に巻き戻すケースに対応）。
-        /// snapshots は EditableNode.NodeResizeSnapshot のリスト
-        case ResizeEntry({jsonPath = String,
-                          snapshots = List[EditableNode.NodeResizeSnapshot]})
-        /// 回転の巻き戻し情報（radians）
-        case RotateEntry({jsonPath = String, nodePath = NodePath,
-                          jsonNodePath = NodePath,
-                          prevRotation = Float64})
         /// ノード削除の巻き戻し情報。除去したサブツリーの JSON 断片と、
         /// 親 path・配列 index を保持し、Undo 時に insertSubtree で同位置へ戻す。
         case RemoveSubtreeEntry({jsonPath = String, parentPath = NodePath,
@@ -40,6 +22,9 @@ mod EditHistory {
         /// ノード追加/複製の巻き戻し情報。追加したノードの path を保持し、
         /// Undo 時に removeChild で取り除く。
         case AddedNodeEntry({jsonPath = String, nodePath = NodePath})
+        /// 統一 Edit Command（Phase B）。保持する命令を applyTo すれば undo になる。
+        /// 命令自体が逆操作（適用前状態を捕捉済み）なので、種別ごとの巻き戻し分岐が不要。
+        case CommandEntry(EditCmd.Command)
     }
 
     /// 編集履歴 stack を扱うエフェクト。

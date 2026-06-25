@@ -76,22 +76,15 @@ mod KeyboardNudge {
             Scene[t] \ {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
         let nodePath = sel#nodePath;
         let curGlobal = Scene.globalPositionAt(nodePath, scene);
-        EditHistory.Rewind.save(EditHistory.Entry.MoveEntry({
-            jsonPath = sel#jsonPath, nodePath = nodePath,
-            jsonNodePath = sel#jsonNodePath,
-            prevWorldPos = curGlobal}));
         let newGlobal = Vec2.round(Vec2.add(curGlobal, delta));
-        let newScene = scene
-            |> Scene.setGlobalPositionAt(nodePath, newGlobal)
-            |> Scene.mapEngineNode(nodePath, engineNode ->
-                Node2D.setPosition(Vec2.round(Node2D.getPosition(engineNode)),
-                                   engineNode));
-        let localPos = match Scene.getEngineNode(nodePath, newScene) {
-            case Some(engineNode) => Node2D.getPosition(engineNode)
-            case None             => Vec2.zero()
-        };
-        SceneSerializer.updatePos(sel#jsonPath, sel#jsonNodePath, localPos);
-        newScene
+        // 統一 Edit Command 化：undo は「移動前へ戻す」命令、前方は applyTo（live+JSON）で適用。
+        EditHistory.Rewind.save(EditHistory.Entry.CommandEntry(
+            EditCmd.Command.SetGlobalPos({
+                jsonPath = sel#jsonPath, nodePath = nodePath,
+                jsonNodePath = sel#jsonNodePath, pos = curGlobal})));
+        EditCmd.applyTo(EditCmd.Command.SetGlobalPos({
+            jsonPath = sel#jsonPath, nodePath = nodePath,
+            jsonNodePath = sel#jsonNodePath, pos = newGlobal}), scene)
 
     def applyScaleAndSave(sel: Editor.Selection, deltaScale: Vec2.Vec2,
                           scene: Scene[t]):

@@ -349,7 +349,7 @@ mod EditableNode {
         }
 
     /// リサイズ巻き戻しに必要な「元の値」を 1 ノード分まとめて記録する。
-    /// undo 用の EditHistory.ResizeEntry に詰める前に呼ぶ
+    /// undo 用の EditCmd.Command.Resize（CommandEntry）に詰める前に呼ぶ
     pub type alias NodeResizeSnapshot = {
         nodePath = NodePath,
         prevPosition = Vec2.Vec2,

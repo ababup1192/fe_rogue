@@ -675,21 +675,9 @@ mod SceneSerializer {
 
     /// 型ごとの最小デフォルト JSON（基盤c の defaults テーブル）。テクスチャ不要な型に限定。
     /// 子ノードは IDE で配置後に Inspector で寸法・色を調整していく。
+    // 既定 JSON 断片は NodeRegistry に集約（カタログの単一ソース）。
     def defaultChildJson(childType: String, name: String): String =
-        match childType {
-            case "StaticBody2D" =>
-                "{\"type\": \"StaticBody2D\", \"name\": \"${name}\", \"pos\": [0, 0], \"shape\": {\"kind\": \"RectShape2D\", \"width\": 32, \"height\": 32}}"
-            case "RigidBody2D" =>
-                "{\"type\": \"RigidBody2D\", \"name\": \"${name}\", \"pos\": [0, 0], \"shape\": {\"kind\": \"CircleShape2D\", \"radius\": 8}}"
-            case "CharacterBody2D" =>
-                "{\"type\": \"CharacterBody2D\", \"name\": \"${name}\", \"pos\": [0, 0], \"shape\": {\"kind\": \"RectShape2D\", \"width\": 48, \"height\": 8}}"
-            case "Area2D" =>
-                "{\"type\": \"Area2D\", \"name\": \"${name}\", \"pos\": [0, 0], \"shape\": {\"kind\": \"RectShape2D\", \"width\": 32, \"height\": 16}}"
-            case "ColorRect" =>
-                "{\"type\": \"ColorRect\", \"name\": \"${name}\", \"pos\": [0, 0], \"size\": [32, 16], \"color\": {\"r\": 1, \"g\": 1, \"b\": 1}}"
-            case _ =>
-                "{\"type\": \"Marker2D\", \"name\": \"${name}\", \"pos\": [0, 0]}"
-        }
+        NodeRegistry.defaultJsonFor(childType, name)
 
     // ========================================================================
     // JSON 走査と書き換え（OrderedJson ベース、キー順を保持）
