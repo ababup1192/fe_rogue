@@ -601,11 +601,14 @@ mod ScenePanel {
                 PropertyWidgets.withRef(state#statusBar#selectionLabel, lbl ->
                     lbl.setText("sel: ${curSel}"));
 
-                // Inspector: selection 文字列が変わったら rebuild
+                // Inspector: selection 文字列 or スキーマ（フィールド構成）が変わったら rebuild。
+                // shape kind 切替で Width/Height ↔ Radius と項目が変わるため、スキーマ署名も鍵に含める。
+                let schemaSig = schemaSignature(Array.get(0, state#inspector#schema));
+                let rebuildKey = "${curSel}##${schemaSig}";
                 let prevSel = Array.get(0, state#inspector#lastSel);
-                if (curSel != prevSel) {
+                if (rebuildKey != prevSel) {
                     rebuildInspector(state, curSel);
-                    Array.put(curSel, 0, state#inspector#lastSel)
+                    Array.put(rebuildKey, 0, state#inspector#lastSel)
                 } else ();
 
                 // Inspector の各 widget を currentValues から最新化
@@ -728,6 +731,16 @@ mod ScenePanel {
         })
 
     /// Inspector pane の中身を再構築する。selection が変わったときだけ呼ばれる。
+    /// 現在のスキーマ（セクション型名＋各フィールド名）の署名。フィールド構成が変わったら
+    /// 文字列が変わり、rebuildInspector の再構築トリガに使う（shape kind 切替の項目入替に対応）。
+    def schemaSignature(sections: List[NodeInspector.FieldSection]): String =
+        List.map(sec -> {
+            let names = List.append(sec#common, sec#advanced)
+                |> List.map(fd -> fd#name)
+                |> String.intercalate(",");
+            "${sec#typeName}:${names}"
+        }, sections) |> String.intercalate("|")
+
     /// schema (state#inspector#schema) を辿って widget を生成し、widgetUpdaters に
     /// 値更新クロージャを登録する。commit listener は state#inspector#pendingEdits に積む
     def rebuildInspector(state: IdeState.IdeState, selDisplay: String): Unit \ IO = {
@@ -1027,12 +1040,12 @@ mod ScenePanel {
         }
     }
 
-    def updateEnumCombo(widget: Node, json: Util.Json.Json): Unit \ IO = {
-        let cb: ComboBox[String] = unchecked_cast(widget as ComboBox[String]);
-        match NodeInspector.jsonToString(json) {
-            case None    => ()
-            case Some(s) => cb.setValue(s)
-        }
+    /// enum combo は per-frame で setValue しない。setValue は ChangeListener を再発火し、
+    /// reload ラグ中の古い snapshot 値で再コミットして選択が戻ってしまうため
+    /// （ColorPicker と同じ方針）。値は rebuildInspector（選択 or スキーマ変化時）で同期する。
+    def updateEnumCombo(_widget: Node, _json: Util.Json.Json): Unit \ IO = {
+        let _: Array[Int32, Static] = Array#{0i32} @ Static;
+        ()
     }
 
     // ─── シーン description (画面下部のメモ欄) ─────────────────────

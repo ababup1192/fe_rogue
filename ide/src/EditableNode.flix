@@ -205,7 +205,78 @@ mod EditableNode {
                             Area2D.setCollisionShape(Some(newShape), area), st)
                     case None => engineNode
                 }
+            case EngineNode.Body2DWithState(body, st) =>
+                match snapshot#prevShape {
+                    case Some(prev) =>
+                        let newShape = scaleCollisionShape(prev, ratio);
+                        EngineNode.Body2DWithState(
+                            CharacterBody2D.setCollisionShape(Some(newShape), body), st)
+                    case None => engineNode
+                }
+            case EngineNode.RigidBody2DWithState(body, st) =>
+                match snapshot#prevShape {
+                    case Some(prev) =>
+                        let newShape = scaleCollisionShape(prev, ratio);
+                        EngineNode.RigidBody2DWithState(
+                            RigidBody2D.setCollisionShape(Some(newShape), body), st)
+                    case None => engineNode
+                }
+            case EngineNode.StaticBody2DWithState(body, st) =>
+                match snapshot#prevShape {
+                    case Some(prev) =>
+                        let newShape = scaleCollisionShape(prev, ratio);
+                        EngineNode.StaticBody2DWithState(
+                            StaticBody2D.setCollisionShape(Some(newShape), body), st)
+                    case None => engineNode
+                }
             case _ => engineNode
+        }
+
+    /// ノードの衝突形状に応じた Godot 風ハンドル構成を返す。
+    /// 円=半径1個、カプセル=半径+高さ、それ以外=8ハンドル。
+    pub def shapeHandlesOf(node: EngineNode[t]): ResizeHandle.ShapeHandles =
+        match CollisionObject2D.getCollisionShape(node) {
+            case Some(CollisionShape2D.CircleShape2D(_))  => ResizeHandle.ShapeHandles.CircleHandles
+            case Some(CollisionShape2D.CapsuleShape2D(_)) => ResizeHandle.ShapeHandles.CapsuleHandles
+            case _                                        => ResizeHandle.ShapeHandles.RectHandles
+        }
+
+    /// ノードに対して掴ませてよいハンドル一覧（shapeHandlesOf を ResizeHandle に橋渡し）。
+    pub def allowedHandles(node: EngineNode[t]): List[ResizeHandle.Handle] =
+        ResizeHandle.handlesForShape(shapeHandlesOf(node))
+
+    /// 円の現在半径（snapshot の prevShape などから）。円でなければ None
+    pub def circleRadiusOfShape(shape: Option[CollisionShape2D]): Option[Float64] =
+        match shape {
+            case Some(CollisionShape2D.CircleShape2D(c)) => Some(c#radius)
+            case _                                       => None
+        }
+
+    /// ノードの衝突形状を直接差し替える（ratio スケールではなく値そのものを設定）。
+    /// カプセルの半径/高さを独立にいじる resize で使う。衝突を持たない型はそのまま。
+    pub def setNodeCollisionShape(shape: CollisionShape2D, node: EngineNode[t]): EngineNode[t] =
+        match node {
+            case EngineNode.Area2DWithState(area, st) =>
+                EngineNode.Area2DWithState(Area2D.setCollisionShape(Some(shape), area), st)
+            case EngineNode.Body2DWithState(body, st) =>
+                EngineNode.Body2DWithState(CharacterBody2D.setCollisionShape(Some(shape), body), st)
+            case EngineNode.RigidBody2DWithState(body, st) =>
+                EngineNode.RigidBody2DWithState(RigidBody2D.setCollisionShape(Some(shape), body), st)
+            case EngineNode.StaticBody2DWithState(body, st) =>
+                EngineNode.StaticBody2DWithState(StaticBody2D.setCollisionShape(Some(shape), body), st)
+            case _ => node
+        }
+
+    /// CollisionShape2D の等価判定（CollisionShape2D は Eq を導出していないため手書き）。
+    pub def shapeEq(a: CollisionShape2D, b: CollisionShape2D): Bool =
+        match (a, b) {
+            case (CollisionShape2D.RectShape2D(ra), CollisionShape2D.RectShape2D(rb)) =>
+                ra#width == rb#width and ra#height == rb#height
+            case (CollisionShape2D.CircleShape2D(ca), CollisionShape2D.CircleShape2D(cb)) =>
+                ca#radius == cb#radius
+            case (CollisionShape2D.CapsuleShape2D(ca), CollisionShape2D.CapsuleShape2D(cb)) =>
+                ca#radius == cb#radius and ca#height == cb#height and ca#vertical == cb#vertical
+            case _ => false
         }
 
     /// CollisionShape2D を `ratio` で拡縮する。
@@ -261,14 +332,20 @@ mod EditableNode {
             case EngineNode.RichTextLabelWithState(label, _) =>
                 {key = "size",
                  value = SceneSerializer.FieldValue.VecValue(RichTextLabel.getSize(label))} :: Nil
-            case EngineNode.Area2DWithState(area, _) =>
-                match CollisionObject2D.getCollisionShape(area) {
-                    case Some(shape) =>
-                        {key = "shape",
-                         value = SceneSerializer.FieldValue.ShapeValue(shape)} :: Nil
-                    case None => Nil
-                }
+            case EngineNode.Area2DWithState(_, _)      => shapeFieldUpdate(engineNode)
+            case EngineNode.Body2DWithState(_, _)      => shapeFieldUpdate(engineNode)
+            case EngineNode.RigidBody2DWithState(_, _) => shapeFieldUpdate(engineNode)
+            case EngineNode.StaticBody2DWithState(_, _) => shapeFieldUpdate(engineNode)
             case _ => Nil
+        }
+
+    /// 衝突ノードの shape を 1 件の FieldUpdate に（無ければ空）。
+    def shapeFieldUpdate(engineNode: EngineNode[t]): List[SceneSerializer.FieldUpdate] =
+        match CollisionObject2D.getCollisionShape(engineNode) {
+            case Some(shape) =>
+                {key = "shape",
+                 value = SceneSerializer.FieldValue.ShapeValue(shape)} :: Nil
+            case None => Nil
         }
 
     /// リサイズ巻き戻しに必要な「元の値」を 1 ノード分まとめて記録する。
@@ -329,6 +406,21 @@ mod EditableNode {
                 nodePath = nodePath, prevPosition = prevPos,
                 prevSize = None, prevFontSize = None, prevScale = None,
                 prevShape = CollisionObject2D.getCollisionShape(area)
+            }
+            case EngineNode.Body2DWithState(body, _) => {
+                nodePath = nodePath, prevPosition = prevPos,
+                prevSize = None, prevFontSize = None, prevScale = None,
+                prevShape = CollisionObject2D.getCollisionShape(body)
+            }
+            case EngineNode.RigidBody2DWithState(body, _) => {
+                nodePath = nodePath, prevPosition = prevPos,
+                prevSize = None, prevFontSize = None, prevScale = None,
+                prevShape = CollisionObject2D.getCollisionShape(body)
+            }
+            case EngineNode.StaticBody2DWithState(body, _) => {
+                nodePath = nodePath, prevPosition = prevPos,
+                prevSize = None, prevFontSize = None, prevScale = None,
+                prevShape = CollisionObject2D.getCollisionShape(body)
             }
             case _ => {
                 nodePath = nodePath, prevPosition = prevPos,
@@ -398,6 +490,30 @@ mod EditableNode {
                     case Some(shape) =>
                         EngineNode.Area2DWithState(
                             Area2D.setCollisionShape(Some(shape), area)
+                                |> Node2D.setPosition(snapshot#prevPosition), st)
+                    case None => withPos
+                }
+            case EngineNode.Body2DWithState(body, st) =>
+                match snapshot#prevShape {
+                    case Some(shape) =>
+                        EngineNode.Body2DWithState(
+                            CharacterBody2D.setCollisionShape(Some(shape), body)
+                                |> Node2D.setPosition(snapshot#prevPosition), st)
+                    case None => withPos
+                }
+            case EngineNode.RigidBody2DWithState(body, st) =>
+                match snapshot#prevShape {
+                    case Some(shape) =>
+                        EngineNode.RigidBody2DWithState(
+                            RigidBody2D.setCollisionShape(Some(shape), body)
+                                |> Node2D.setPosition(snapshot#prevPosition), st)
+                    case None => withPos
+                }
+            case EngineNode.StaticBody2DWithState(body, st) =>
+                match snapshot#prevShape {
+                    case Some(shape) =>
+                        EngineNode.StaticBody2DWithState(
+                            StaticBody2D.setCollisionShape(Some(shape), body)
                                 |> Node2D.setPosition(snapshot#prevPosition), st)
                     case None => withPos
                 }

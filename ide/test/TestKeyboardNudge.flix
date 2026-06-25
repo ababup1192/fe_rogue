@@ -110,7 +110,7 @@ mod TestKeyboardNudge {
         prevArrowKeys = KeyboardNudge.initialPrev(),
         prevZ = false,
         rootJsonIndex = Map.empty(),
-        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None
+        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None, snapStep = 0.0
     }
 
     /// 押下キーなし＆ prev も無し → エッジは立たない → 書き込みも発生しない
@@ -144,7 +144,7 @@ mod TestKeyboardNudge {
             prevArrowKeys = KeyboardNudge.initialPrev(),
             prevZ = false,
             rootJsonIndex = Map.empty(),
-        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None
+        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None, snapStep = 0.0
         };
         let curArrows = {up = false, down = false, left = false, right = true};
         let next = KeyboardNudge.applyNudge(state, curArrows, scene);
@@ -172,7 +172,7 @@ mod TestKeyboardNudge {
             prevArrowKeys = {up = false, down = false, left = false, right = true},
             prevZ = false,
             rootJsonIndex = Map.empty(),
-        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None
+        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None, snapStep = 0.0
         };
         let curArrows = {up = false, down = false, left = false, right = true};
         let next = KeyboardNudge.applyNudge(state, curArrows, scene);
@@ -221,6 +221,7 @@ mod TestKeyboardNudge {
             def getMousePosition(k) = k({x = 0.0, y = 0.0})
             def isMouseButtonPressed(_, k) = k(false)
             def consumeScrollDelta(k) = k(0.0)
+            def consumeScrollPan(k) = k((0.0, 0.0))
             def getFontAtlas(_, _) = bug!("font not used")
             def getViewportRect(k) = k({position = {x = 0.0, y = 0.0}, size = {x = 480.0, y = 720.0}})
             def getTextureInfo(_, k) = k(Some({id = 0i32, width = 32.0, height = 32.0}))

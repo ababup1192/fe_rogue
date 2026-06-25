@@ -78,7 +78,9 @@ mod Editor {
         editorOffset = Vec2.Vec2,
         editorZoom = Float64,
         // パンドラッグ中の (開始マウス, 開始 offset)。非ドラッグ時 None
-        panOrigin = Option[(Vec2.Vec2, Vec2.Vec2)]
+        panOrigin = Option[(Vec2.Vec2, Vec2.Vec2)],
+        // グリッドスナップの間隔(px)。0.0 = OFF（従来の 1px 丸め）。ドラッグ移動の確定値に効く
+        snapStep = Float64
     }
 
     /// エディタ状態の初期値。
@@ -96,7 +98,8 @@ mod Editor {
         rootJsonIndex = rootJsonIndex,
         editorOffset = Vec2.zero(),
         editorZoom = 1.0,
-        panOrigin = None
+        panOrigin = None,
+        snapStep = 0.0
     }
 
     /// scene.json ルート索引を構築する。Game.start から 1 回だけ呼ぶ
@@ -158,12 +161,14 @@ mod Editor {
     /// 入力処理を行いシーンを更新する。Game.flix / IDE の gameLoop から毎フレーム呼ぶ。
     /// toolMode: 0=選択ツール（左ドラッグでノード選択/移動）, 1=手のひらツール（左ドラッグでパン）。
     /// ズーム（ホイール）と中ボタンドラッグのパンはツールに依らず常に効く（Godot 準拠）。
-    pub def handleInput(view: {toolMode = Int32, zoomCommand = Int32}, scene: Scene[t]):
+    pub def handleInput(view: {toolMode = Int32, zoomCommand = Int32, snapStep = Float64},
+                        scene: Scene[t]):
             Scene[t] \ {EditorState, EditHistory.Rewind, GameEngine.Game,
                               Fs.FileRead, Fs.FileWrite} =
         let toolMode = view#toolMode;
         let zoomCmd = view#zoomCommand;
-        let stateData = EditorState.get();
+        // グリッドスナップ間隔を毎フレーム state に取り込む（DragInput が stateData 経由で読む）
+        let stateData = {snapStep = view#snapStep | EditorState.get()};
         let f1 = GameEngine.Game.isKeyPressed(GameEngine.Key.F1);
         let mouseLeft = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left);
         let mousePos = GameEngine.Game.getMousePosition();
@@ -185,13 +190,15 @@ mod Editor {
                              prevZ = zNow | stateAfterToggle});
             scene
         } else {
-            // ビュー操作（ズーム＝ホイール/ボタン / パン＝中ボタン or 手のひらツールの左ドラッグ）
+            // ビュー操作（ズーム＝ピンチ/ボタン / パン＝二本指ドラッグ・中ボタン・手のひらツール）
             let scroll = GameEngine.Game.consumeScrollDelta();
+            let (scrollPanX, scrollPanY) = GameEngine.Game.consumeScrollPan();
             let middle = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Middle);
             let panning = middle or ((toolMode == 1i32) and mouseLeft);
             let wheelState = applyWheelZoom(stateAfterToggle, scroll, mousePos);
             let zoomedState = applyButtonZoom(wheelState, zoomCmd, mousePos);
-            let pannedState = applyPan(zoomedState, panning, mousePos);
+            let scrolledState = applyScrollPan(zoomedState, scrollPanX, scrollPanY);
+            let pannedState = applyPan(scrolledState, panning, mousePos);
             if (panning)
                 handlePanFrame(pannedState, mouseLeft, curArrows, zNow, scene)
             else
@@ -264,11 +271,20 @@ mod Editor {
                                    size = {x = entry#width, y = entry#height}};
                         // 回転ノブを先に判定。ノブはリサイズハンドルより外側に出るので
                         // 重なることは無いが、優先順を明示しておく
-                        if (ResizeHandle.rotateKnobHit(mousePos, box))
+                        let z = stateData#editorZoom;
+                        if (ResizeHandle.rotateKnobHit(mousePos, box,
+                                ResizeHandle.knobOffsetFor(z), ResizeHandle.hitHalfFor(z)))
                             GameEngine.Cursor.Rotate
-                        else match ResizeHandle.hitTest(mousePos, box) {
-                            case None         => GameEngine.Cursor.Default
-                            case Some(handle) => cursorForHandle(handle)
+                        else {
+                            let allowed = match Scene.getEngineNode(nodePath, scene) {
+                                case Some(n) => EditableNode.allowedHandles(n)
+                                case None    => ResizeHandle.all()
+                            };
+                            match ResizeHandle.hitTest(mousePos, box, ResizeHandle.hitHalfFor(z)) {
+                                case Some(handle) if List.memberOf(handle, allowed) =>
+                                    cursorForHandle(handle)
+                                case _ => GameEngine.Cursor.Default
+                            }
                         }
                 }
         }
@@ -367,6 +383,10 @@ mod Editor {
         let s = EditorState.get();
         {panX = s#editorOffset#x, panY = s#editorOffset#y, zoom = s#editorZoom}
 
+    /// 現在のスナップ間隔(px)。0.0 = スナップ OFF。グリッド表示判定に使う。
+    pub def currentSnapStep(): Float64 \ EditorState =
+        EditorState.get()#snapStep
+
     def activeViewTransform(_scene: Scene[t]): Camera2D.ViewTransform =
         Camera2D.identityTransform()
 
@@ -406,6 +426,16 @@ mod Editor {
 
     def clampZoom(z: Float64): Float64 =
         if (z < 0.1) 0.1 else if (z > 8.0) 8.0 else z
+
+    /// 二本指ドラッグ(スクロール)でキャンバスをパン。dx/dy は screen px の移動量。
+    /// editorOffset は panDesign（FBO 原点に映す design-px）なので screen 量を /zoom で換算する。
+    def applyScrollPan(stateData: EditorStateData, dx: Float64, dy: Float64): EditorStateData =
+        if (dx == 0.0 and dy == 0.0) stateData
+        else {
+            let z = if (stateData#editorZoom <= 0.0) 1.0 else stateData#editorZoom;
+            let pan = stateData#editorOffset;
+            {editorOffset = {x = pan#x - dx / z, y = pan#y - dy / z} | stateData}
+        }
 
     /// ドラッグでパン。掴んだ design 点 (designStart) を物理カーソルに追従させる。
     /// mouse は getMousePosition の逆変換済み design-px（現在の pan に依存）。
@@ -453,11 +483,12 @@ mod Editor {
         else {
             let mousePos = GameEngine.Game.getMousePosition();
             let transform = activeViewTransform(scene);
+            let zoom = stateData#editorZoom;
             scene
-                |> Overlay.addCollisionShapes(transform, defaultTag)
+                |> Overlay.addCollisionShapes(transform, zoom, defaultTag)
                 |> Overlay.addSelectionBox(stateData#rootJsonIndex, stateData#selected,
-                                           transform, defaultTag)
+                                           transform, zoom, defaultTag)
                 |> Overlay.addHoverBox(stateData#rootJsonIndex, mousePos, stateData#selected,
-                                       transform, defaultTag)
+                                       transform, zoom, defaultTag)
         }
 }

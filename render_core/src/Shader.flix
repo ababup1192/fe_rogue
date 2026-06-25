@@ -75,12 +75,12 @@ mod RenderShader {
         "        float dOuter = roundedBox(p, hsz, cr);\n" +
         // AA 幅は画面 px 基準 (fwidth)。カメラ zoom で rectSize が小さくなっても角丸が潰れない
         // （固定 1px AA だと縮小時に AA 帯が矩形全体を覆い、角丸が消えて四角に見える）。
-        "        float aaO = max(fwidth(dOuter), 0.0001);\n" +
+        "        float aaO = max(fwidth(dOuter) * 0.6, 0.0001);\n" +
         "        float outerCov = 1.0 - smoothstep(0.0, aaO, dOuter);\n" +   // 矩形内=1 / 外=0
         "        float ri = max(cr - borderWidth, 0.0);\n" +
         "        vec2 hi = max(hsz - vec2(borderWidth), vec2(0.0));\n" +
         "        float dInner = roundedBox(p, hi, ri);\n" +
-        "        float aaI = max(fwidth(dInner), 0.0001);\n" +
+        "        float aaI = max(fwidth(dInner) * 0.6, 0.0001);\n" +
         "        float fillCov = 1.0 - smoothstep(0.0, aaI, dInner);\n" +    // 塗り領域=1 / 枠+外=0
         // 塗りベース。hatchEnabled なら 45° 斜線を塗りの上に over 合成してから枠と混ぜる。
         "        vec3 fillRgb = spriteColor;\n" +

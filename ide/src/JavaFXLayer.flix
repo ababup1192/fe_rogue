@@ -28,6 +28,7 @@ mod JavaFXLayer {
     import javafx.application.Platform
     import javafx.stage.Stage
     import javafx.stage.WindowEvent
+    import javafx.stage.Screen
     import javafx.scene.Scene
     import javafx.scene.image.ImageView
     import javafx.scene.image.WritableImage
@@ -97,8 +98,11 @@ mod JavaFXLayer {
 
         // エディタ自由カメラ (panX, panY, zoom)。setEditorView で main thread から書き込み、
         // paintGL (AWT EDT) の投影と getMousePosition の逆変換が読む。
-        // fbo_px = (design_px - pan) * zoom。
+        // fbo_px = (design_px - pan) * zoom * renderScale。
         let editorViewRef = Array#{(0.0, 0.0, 1.0)} @ Static;
+        // ディスプレイの出力スケール（Retina で 2.0 等）。FBO を物理解像度でレンダして
+        // 拡大ボケを防ぐ。sizeListener が更新、投影 / マウス逆変換が読む。
+        let renderScaleRef = Array#{1.0} @ Static;
 
         // FBO + 色テクスチャ
         let fboArr = Array#{0i32} @ Static;
@@ -292,10 +296,14 @@ mod JavaFXLayer {
                     let fbHf = Int32.toFloat64(h);
                     let (evPanX, evPanY, evZoomRaw) = Array.get(0, editorViewRef);
                     let evZoom = if (evZoomRaw <= 0.0) 1.0 else evZoomRaw;
+                    // FBO は物理解像度。design→物理 = (design-pan)*zoom*renderScale。
+                    // 「画面 px」定数（ハンドル/線）が論理 px を意味するよう renderScale を掛ける。
+                    let evScale = Array.get(0, renderScaleRef);
+                    let projZoom = evZoom * (if (evScale <= 0.0) 1.0 else evScale);
                     let projLeft = evPanX;
-                    let projRight = evPanX + fbWf / evZoom;
+                    let projRight = evPanX + fbWf / projZoom;
                     let projTop = evPanY;
-                    let projBottom = evPanY + fbHf / evZoom;
+                    let projBottom = evPanY + fbHf / projZoom;
                     RenderShader.setProjectionMatrixRect(spriteShader, projLeft, projRight, projTop, projBottom);
                     RenderShader.setProjectionMatrixRect(tileShader, projLeft, projRight, projTop, projBottom);
                     // 一様な灰色 (#4D4D4D)。内側・外側(帯)とも同色。
@@ -353,10 +361,14 @@ mod JavaFXLayer {
                     def changed(_cThis: ChangeListener[Number],
                                  _obs: ObservableValue[Object],
                                  _old: Number, _new: Number): Unit \ IO = {
-                        let nw = Float64.tryToInt32(imageView.getFitWidth())
+                        // 物理解像度でレンダ（Retina で 2x）。ImageView は論理サイズで表示するので
+                        // 高解像度画像が等倍デバイス px に乗ってくっきりする。
+                        let scale = Screen.getPrimary().getOutputScaleX();
+                        Array.put(scale, 0, renderScaleRef);
+                        let nw = Float64.tryToInt32(imageView.getFitWidth() * scale)
                                   |> Option.getWithDefault(initialW)
                                   |> Int32.max(1i32);
-                        let nh = Float64.tryToInt32(imageView.getFitHeight())
+                        let nh = Float64.tryToInt32(imageView.getFitHeight() * scale)
                                   |> Option.getWithDefault(initialH)
                                   |> Int32.max(1i32);
                         if (nw == Array.get(0, curW) and nh == Array.get(0, curH)) ()
@@ -472,10 +484,13 @@ mod JavaFXLayer {
                 let fboPos = JavaFXInput.readMousePosition(inputRefs, ds);
                 let (evPanX, evPanY, evZoomRaw) = Array.get(0, editorViewRef);
                 let evZoom = if (evZoomRaw <= 0.0) 1.0 else evZoomRaw;
-                k({x = evPanX + fboPos#x / evZoom, y = evPanY + fboPos#y / evZoom})
+                let evScale = Array.get(0, renderScaleRef);
+                let projZoom = evZoom * (if (evScale <= 0.0) 1.0 else evScale);
+                k({x = evPanX + fboPos#x / projZoom, y = evPanY + fboPos#y / projZoom})
             }
             def isMouseButtonPressed(button, k) = k(JavaFXInput.readMouseButtonPressed(inputRefs, button))
             def consumeScrollDelta(k) = k(JavaFXInput.consumeScrollDelta(inputRefs))
+            def consumeScrollPan(k) = k(JavaFXInput.consumeScrollPan(inputRefs))
             def getFontAtlas(name, k) = {
                 let atlases = Array.get(0, fontAtlasesArr);
                 match Map.get(name, atlases) {

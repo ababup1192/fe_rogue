@@ -35,7 +35,7 @@ mod TestDragInput {
         prevArrowKeys = KeyboardNudge.initialPrev(),
         prevZ = false,
         rootJsonIndex = Map.empty(),
-        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None
+        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None, snapStep = 0.0
     }
 
     // ====================================================================
@@ -80,7 +80,7 @@ mod TestDragInput {
             prevArrowKeys = KeyboardNudge.initialPrev(),
             prevZ = false,
             rootJsonIndex = Map.empty(),
-        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None
+        editorOffset = {x = 0.0, y = 0.0}, editorZoom = 1.0, panOrigin = None, snapStep = 0.0
         };
         let next = DragInput.applyDrag({x = 150.0, y = 150.0}, state, scene);
         let pos = Scene.globalPositionAt("hero" :: Nil, next);
@@ -162,6 +162,7 @@ mod TestDragInput {
             def getMousePosition(k) = k({x = 0.0, y = 0.0})
             def isMouseButtonPressed(_, k) = k(false)
             def consumeScrollDelta(k) = k(0.0)
+            def consumeScrollPan(k) = k((0.0, 0.0))
             def getFontAtlas(_, _) = bug!("font not used")
             def getViewportRect(k) = k({position = {x = 0.0, y = 0.0}, size = {x = 480.0, y = 720.0}})
             def getTextureInfo(_, k) = k(Some({id = 0i32, width = 32.0, height = 32.0}))

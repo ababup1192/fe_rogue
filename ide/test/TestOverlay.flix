@@ -21,6 +21,7 @@ mod TestOverlay {
             def getMousePosition(k) = k({x = 0.0, y = 0.0})
             def isMouseButtonPressed(_, k) = k(false)
             def consumeScrollDelta(k) = k(0.0)
+            def consumeScrollPan(k) = k((0.0, 0.0))
             def getFontAtlas(_, _) = bug!("font not used")
             def getViewportRect(k) = k({position = {x = 0.0, y = 0.0}, size = {x = 480.0, y = 720.0}})
             def getTextureInfo(_, k) = k(Some({id = 0i32, width = 32.0, height = 32.0}))
@@ -38,7 +39,7 @@ mod TestOverlay {
         let s: Scene[Tag] = Scene.empty();
         let scene = s;
         let result = withMockTexture32(() ->
-            Overlay.addSelectionBox(Map.empty(), None, Camera2D.identityTransform(), Tag.NoTag, scene));
+            Overlay.addSelectionBox(Map.empty(), None, Camera2D.identityTransform(), 1.0, Tag.NoTag, scene));
         let boxLayerAbsent = Option.isEmpty(
             Scene.getEngineNode("_editor_box_layer" :: Nil, result));
         Assert.assertEq(expected = true, boxLayerAbsent)
@@ -53,7 +54,7 @@ mod TestOverlay {
         let result = Overlay.addSelectionBox(
             Map.empty(),
             Some({jsonPath = "hero.json", nodePath = "hero" :: Nil, jsonNodePath = "hero" :: Nil}),
-            Camera2D.identityTransform(),
+            Camera2D.identityTransform(), 1.0,
             Tag.NoTag,
             scene);
         let boxLayerAbsent = Option.isEmpty(
@@ -77,7 +78,7 @@ mod TestOverlay {
         let index = Map#{"hero" => "hero.json"};
         // マウスはスプライト矩形の遥か外
         let result = Overlay.addHoverBox(index, {x = 500.0, y = 500.0}, None,
-                                         Camera2D.identityTransform(),
+                                         Camera2D.identityTransform(), 1.0,
                                          Tag.NoTag,
                                          scene);
         let hoverLayerAbsent = Option.isEmpty(
@@ -101,7 +102,7 @@ mod TestOverlay {
             index,
             {x = 100.0, y = 100.0},
             Some({jsonPath = "hero.json", nodePath = "hero" :: Nil, jsonNodePath = "hero" :: Nil}),
-            Camera2D.identityTransform(),
+            Camera2D.identityTransform(), 1.0,
             Tag.NoTag,
             scene);
         let hoverLayerAbsent = Option.isEmpty(
@@ -126,7 +127,7 @@ mod TestOverlay {
             index,
             {x = 200.0, y = 200.0},
             Some({jsonPath = "hero.json", nodePath = "hero" :: Nil, jsonNodePath = "hero" :: Nil}),
-            Camera2D.identityTransform(),
+            Camera2D.identityTransform(), 1.0,
             Tag.NoTag,
             scene);
         let isCanvasLayer = node -> match node {
@@ -142,8 +143,9 @@ mod TestOverlay {
     def testAddHoverBoxAddsLayerWhenDifferentRunner(): Unit \ Assert =
         withMockTexture32(testAddHoverBoxAddsLayerWhenDifferent)
 
-    /// 選択中ノードがあれば 4 辺の ColorRect が追加される（top/bottom/left/right）
-    def testAddSelectionBoxAddsFourEdges(): Unit \ {Assert, GameEngine.Game} =
+    /// 選択中ノードがあれば、赤丸＋白フチのハンドル（隅ハンドルは外側白 _o + 内側赤 _i）が
+    /// _editor_handle_layer に追加される（黄色の選択枠は出さない）
+    def testAddSelectionBoxAddsHandles(): Unit \ {Assert, GameEngine.Game} =
         let sprite = Sprite2D.make("dummy.png", {x = 100.0, y = 100.0}, {x = 1.0, y = 1.0});
         let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("hero",
@@ -152,27 +154,27 @@ mod TestOverlay {
         let result = Overlay.addSelectionBox(
             index,
             Some({jsonPath = "hero.json", nodePath = "hero" :: Nil, jsonNodePath = "hero" :: Nil}),
-            Camera2D.identityTransform(),
+            Camera2D.identityTransform(), 1.0,
             Tag.NoTag,
             scene);
-        let isColorRect = node -> match node {
-            case EngineNode.ColorRectWithState(_, _) => true
-            case _                                   => false
+        let isPanel = node -> match node {
+            case EngineNode.PanelWithState(_, _) => true
+            case _                               => false
         };
-        let layerName = "_editor_box_layer";
-        let top = Scene.getEngineNode(layerName :: "top" :: Nil, result)
-            |> Option.exists(isColorRect);
-        let bottom = Scene.getEngineNode(layerName :: "bottom" :: Nil, result)
-            |> Option.exists(isColorRect);
-        let left = Scene.getEngineNode(layerName :: "left" :: Nil, result)
-            |> Option.exists(isColorRect);
-        let right = Scene.getEngineNode(layerName :: "right" :: Nil, result)
-            |> Option.exists(isColorRect);
-        Assert.assertEq(expected = (true, true, true, true), (top, bottom, left, right))
+        let layerName = "_editor_handle_layer";
+        // 各ハンドルは Panel 1 枚（bg=赤・border=白・cornerRadius で丸）
+        let corner = Scene.getEngineNode(layerName :: "TopLeft" :: Nil, result)
+            |> Option.exists(isPanel);
+        let edgeMid = Scene.getEngineNode(layerName :: "Top" :: Nil, result)
+            |> Option.exists(isPanel);
+        // 黄色の選択枠 (_editor_box_layer) は作られない
+        let boxLayerAbsent = Option.isEmpty(
+            Scene.getEngineNode("_editor_box_layer" :: Nil, result));
+        Assert.assertEq(expected = (true, true, true), (corner, edgeMid, boxLayerAbsent))
 
     @Test
-    def testAddSelectionBoxAddsFourEdgesRunner(): Unit \ Assert =
-        withMockTexture32(testAddSelectionBoxAddsFourEdges)
+    def testAddSelectionBoxAddsHandlesRunner(): Unit \ Assert =
+        withMockTexture32(testAddSelectionBoxAddsHandles)
 
     // ====================================================================
     // addCollisionShapes — 衝突形状を半透明 ColorRect 群で塗りつぶす
@@ -186,7 +188,7 @@ mod TestOverlay {
         let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("hero",
             EngineNode.Sprite2DWithState(sprite, Tag.NoTag));
-        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), Tag.NoTag, scene);
+        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), 1.0, Tag.NoTag, scene);
         let children = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result);
         Assert.assertEq(expected = (true, 0), (Option.nonEmpty(
             Scene.getEngineNode("_editor_collision_layer" :: Nil, result)),
@@ -201,17 +203,13 @@ mod TestOverlay {
         let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("trigger",
             EngineNode.Area2DWithState(area, Tag.NoTag));
-        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), Tag.NoTag, scene);
+        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), 1.0, Tag.NoTag, scene);
         let children = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result);
-        // 上下左右の outline 4 枚（fill は描画しない）
-        Assert.assertEq(expected = 4, List.length(children))
+        // 塗り 1 枚 + 上下左右の outline 4 枚 + 中心マーク 2 枚 = 7 枚
+        Assert.assertEq(expected = 7, List.length(children))
 
-    /// CircleShape2D（半径 5、フチ太さ 1）はリング outline をスキャンラインで描く。
-    /// 上下キャップ行（内側がない）2 枚 + 内側がある 9 行 × 2 枚（左右 edge のみ） = 20 枚
-    ///
-    ///   y=-5: outerHalf>0, innerHalf=0    -> 全幅 outline 1 枚
-    ///   y=-4..4 (9 行): innerHalf>0       -> 左 outline + 右 outline 2 枚（fill 削除）
-    ///   y=+5: outerHalf>0, innerHalf=0    -> 全幅 outline 1 枚
+    /// CircleShape2D（半径 5）: 内部塗り 9 行 + リング outline 20 枚 + 中心十字 2 枚 = 31 枚。
+    /// （塗り: |y|<=4 の 9 行を全幅 fill。リング: 上下キャップ 2 + 内側 9 行 × 2 = 20。中心マーク 2）
     @Test
     def testAddCollisionShapesCircleAddsRingOutlineOnly(): Unit \ Assert =
         let area = Area2D.make({x = 100.0, y = 100.0},
@@ -219,10 +217,11 @@ mod TestOverlay {
         let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("ball",
             EngineNode.Area2DWithState(area, Tag.NoTag));
-        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), Tag.NoTag, scene);
+        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), 1.0, Tag.NoTag, scene);
         let count = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result)
             |> List.length;
-        Assert.assertEq(expected = 20, count)
+        // 円は Panel(cornerRadius) 1 枚 + 中心マーク 2 ColorRect = 3 子（シェーダ AA でなめらかに描く）
+        Assert.assertEq(expected = 3, count)
 
     /// すべての ColorRect が不透明な outline（alpha = 1.0）であること。
     /// fill が削除されたため、translucent な要素（alpha < 1.0）は存在しない
@@ -233,7 +232,7 @@ mod TestOverlay {
         let s: Scene[Tag] = Scene.empty();
         let scene = s |> Scene.addNode("box",
             EngineNode.Area2DWithState(area, Tag.NoTag));
-        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), Tag.NoTag, scene);
+        let result = Overlay.addCollisionShapes(Camera2D.identityTransform(), 1.0, Tag.NoTag, scene);
         let alphas = Scene.getChildrenAt("_editor_collision_layer" :: Nil, result)
             |> List.map(childName ->
                 match Scene.getEngineNode("_editor_collision_layer" :: childName :: Nil, result) {
@@ -242,6 +241,6 @@ mod TestOverlay {
                 });
         let translucentCount = List.count(a -> a < 1.0f32, alphas);
         let opaqueCount = List.count(a -> a >= 1.0f32, alphas);
-        // fill は無いので translucent は 0 枚、outline 4 枚すべて不透明
-        Assert.assertEq(expected = (0, 4), (translucentCount, opaqueCount))
+        // 塗り 1 枚は半透明、outline 4 枚 + 中心マーク 2 枚 = 6 枚は不透明
+        Assert.assertEq(expected = (1, 6), (translucentCount, opaqueCount))
 }

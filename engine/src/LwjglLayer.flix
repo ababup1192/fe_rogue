@@ -399,6 +399,7 @@ mod LwjglLayer {
                 Array.put(0.0, 0, scrollDeltaHolder);
                 k(v)
             }
+            def consumeScrollPan(k) = k((0.0, 0.0))
             def getFontAtlas(name, k) = {
                 match Map.get(name, fontAtlases) {
                     case Some(atlas) => k(atlas)

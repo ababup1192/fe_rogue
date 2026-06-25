@@ -5,11 +5,5 @@
     0
   ],
   "type": "Marker2D",
-  "children": [{
-    "type": "StaticBody2D",
-    "name": "StaticBody2D2",
-    "pos": [0, 0],
-    "shape": {"kind": "RectShape2D", "width": 32, "height": 32},
-    "children": []
-  }]
+  "children": [{"type": "StaticBody2D", "name": "StaticBody2D", "pos": [24, -5], "shape": {"kind": "RectShape2D", "width": 49.924, "height": 51.924}}]
 }

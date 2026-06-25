@@ -27,6 +27,7 @@ mod TestEditableNode {
             def getMousePosition(k) = k({x = 0.0, y = 0.0})
             def isMouseButtonPressed(_, k) = k(false)
             def consumeScrollDelta(k) = k(0.0)
+            def consumeScrollPan(k) = k((0.0, 0.0))
             def getFontAtlas(_, _) = bug!("font not used")
             def getViewportRect(k) = k({position = {x = 0.0, y = 0.0}, size = {x = 480.0, y = 720.0}})
             def getTextureInfo(_, k) = k(Some({id = 0i32, width = width, height = height}))
@@ -389,9 +390,10 @@ mod TestEditableNode {
     /// Godot のエディタと同じく、下の sprite が完全に見えるよう fill は除いている
     @Test
     def testCollisionOverlayIsOutlineOnly(): Unit \ Assert =
+        // Rect 形状で検証（円/カプセルは Panel で描かれ ColorRect ではないため）。
         let bird = RigidBody2D.make({x = 144.0, y = 256.0},
-            CollisionShape2D.CircleShape2D({radius = 13.0}));
-        let areaShape = CollisionShape2D.CircleShape2D({radius = 13.0});
+            CollisionShape2D.RectShape2D({width = 26.0, height = 26.0}));
+        let areaShape = CollisionShape2D.RectShape2D({width = 26.0, height = 26.0});
         let area = Area2D.make({x = 0.0, y = 0.0}, areaShape);
         let s: Scene[Tag] = Scene.empty();
         let scene = s
@@ -399,7 +401,7 @@ mod TestEditableNode {
             |> Scene.addChild("bird", "area",
                 EngineNode.Area2DWithState(area, Tag.NoTag));
         let transform = Camera2D.identityTransform();
-        let withOverlay = Overlay.addCollisionShapes(transform, Tag.NoTag, scene);
+        let withOverlay = Overlay.addCollisionShapes(transform, 1.0, Tag.NoTag, scene);
         // _editor_collision_layer の中の "bird_0", "bird_1" … と "bird/area_0", "bird/area_1" …
         // を順に見て、ColorRect の alpha が 0.4 / 1.0 のいずれかであることを確認する
         let layerChildren = Scene.getChildrenAt("_editor_collision_layer" :: Nil, withOverlay);
@@ -411,10 +413,10 @@ mod TestEditableNode {
                 case _ => None
             }
         }, layerChildren);
-        // outline only — すべての alpha が 1.0 で、fill alpha 0.4 のものが含まれないこと
-        let allOpaqueOutline = List.forAll(a -> a == 1.0f32, alphas);
-        let count = List.length(alphas);
-        Assert.assertEq(expected = (true, true), (allOpaqueOutline, count > 0))
+        // Godot 風に塗り＋輪郭を描く: 半透明 fill (alpha < 1.0) と不透明 outline (alpha 1.0) が両方含まれる
+        let hasFill = List.exists(a -> a < 1.0f32, alphas);
+        let hasOutline = List.exists(a -> a == 1.0f32, alphas);
+        Assert.assertEq(expected = (true, true), (hasFill, hasOutline))
 
     /// area の position を動かす → bird/sprite の global position が変わらない、
     /// かつ toDrawables 経由で sprite drawable が生成されること

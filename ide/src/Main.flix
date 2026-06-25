@@ -224,7 +224,10 @@ def renderLoop(state: IdeState.IdeState, fontName: Option[String], currentScene:
         let toolMode = Array.get(0, state#toolModeRef);
         let zoomCmd = Array.get(0, state#zoomCommandRef);
         Array.put(0i32, 0, state#zoomCommandRef);
-        let edited = Editor.handleInput({toolMode = toolMode, zoomCommand = zoomCmd}, nextScene);
+        // グリッドスナップ: ON なら間隔、OFF なら 0.0（=従来の 1px 丸め）を Editor へ渡す
+        let snapStep = if (Array.get(0, state#snapEnabledRef)) Array.get(0, state#snapStepRef) else 0.0;
+        let edited = Editor.handleInput(
+            {toolMode = toolMode, zoomCommand = zoomCmd, snapStep = snapStep}, nextScene);
         // Delete / Backspace キーで選択ノードを削除（テキスト入力中は TextField が消費するため発火しない）
         handleDeleteKey(state);
         // エディタ自由カメラ (pan/zoom) を投影へ渡す。これで描画は design-px のまま見た目だけ拡大縮小・移動。
@@ -410,9 +413,14 @@ def composePreview(scene: Scene[Unit]):
     // 灰色ワークスペース上に、ゲーム画面枠(藍)＋原点の赤X/緑Y線を重ねる (Godot の Viewport/Origin)。
     // editor の pan/zoom transform を枠/軸/オーバーレイ全てに共有してパン・ズームに追従させる。
     let vp = GameEngine.Game.getViewportRect();
-    let zoom = Editor.currentEditorView()#zoom;
+    let view = Editor.currentEditorView();
+    let zoom = view#zoom;
     let framed = Overlay.addDesignFrame(vp#size, zoom, (), scene);
-    let withOrigin = Overlay.addOriginLines(vp#size, zoom, (), framed);
+    // スナップ ON 時は吸着の区切り単位で白いグリッドを敷く（OFF=0.0 なら addSnapGrid が無描画）。
+    // 画面左上の design 座標 = editor pan。そこから見える範囲を覆う（画面外も）。
+    let visibleTopLeft = {x = view#panX, y = view#panY};
+    let withGrid = Overlay.addSnapGrid(visibleTopLeft, Editor.currentSnapStep(), zoom, (), framed);
+    let withOrigin = Overlay.addOriginLines(vp#size, zoom, (), withGrid);
     Editor.applyOverlay((), withOrigin)
 
 /// Inspector schema widget が積んだ pending edits をすべて消費して書き戻す。

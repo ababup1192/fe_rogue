@@ -58,7 +58,8 @@ mod DragInput {
             case (Some(sel), Some(dragOrigin), Some(nodeOrigin)) =>
                 let nodePath = sel#nodePath;
                 let delta = Vec2.sub(mousePos, dragOrigin);
-                let newGlobalPos = Vec2.round(Vec2.add(nodeOrigin, delta));
+                // グリッドスナップ ON ならグローバル位置を step 格子へ吸着、OFF なら従来の 1px 丸め
+                let newGlobalPos = snapVec(Vec2.add(nodeOrigin, delta), stateData#snapStep);
                 scene
                     |> Scene.setGlobalPositionAt(nodePath, newGlobalPos)
                     |> Scene.mapEngineNode(nodePath, engineNode ->
@@ -66,6 +67,11 @@ mod DragInput {
                                            engineNode))
             case _ => scene
         }
+
+    /// step > 0 なら各成分を最寄りの step 倍へ丸める（グリッドスナップ）。step <= 0 は 1px 丸め。
+    def snapVec(v: Vec2.Vec2, step: Float64): Vec2.Vec2 =
+        if (step <= 0.0) Vec2.round(v)
+        else {x = Float64.round(v#x / step) * step, y = Float64.round(v#y / step) * step}
 
     /// リサイズ中: マウス移動量から新しい bbox を計算し、ノード型に応じて size/fontSize/scale と
     /// position を更新する。CanvasLayer なら子ノードに cascade。
@@ -76,9 +82,36 @@ mod DragInput {
         match (stateData#selected, stateData#dragOrigin, stateData#resizeOrigin) {
             case (Some(sel), Some(dragOrigin), Some(origin)) =>
                 let nodePath = sel#nodePath;
-                let delta = Vec2.sub(mousePos, dragOrigin);
+                // Snap トグル ON(step>0) なら掴んだ点のワールド座標を原点起点グリッドへ吸着。
+                // OFF(step<=0) は snapVec が 1px 丸め（ノード移動と同じ流儀）。
+                let snapStep = stateData#snapStep;
+                let snappedMouse = snapVec(mousePos, snapStep);
+                match origin#nodeSnapshot#prevShape {
+                    case Some(CollisionShape2D.CircleShape2D(c)) =>
+                        // 円は中心固定で半径 = 中心から（吸着後）カーソルまでの距離。ノードは動かさない。
+                        let center = Scene.globalPositionAt(nodePath, scene);
+                        let ddx = snappedMouse#x - center#x;
+                        let ddy = snappedMouse#y - center#y;
+                        let newRadius = Float64.max(minDisplaySize()#x,
+                            Vec2.sqrt(ddx * ddx + ddy * ddy));
+                        let ratio = safeRatio(newRadius, c#radius);
+                        Scene.mapEngineNode(nodePath,
+                            EditableNode.applyResizeFromSnapshot(origin#nodeSnapshot,
+                                {x = ratio, y = ratio}), scene)
+                    case Some(CollisionShape2D.CapsuleShape2D(c)) =>
+                        // カプセルは中心固定。半径ハンドルは radius、高さハンドルは height を独立に変える。
+                        let center = Scene.globalPositionAt(nodePath, scene);
+                        let newShape = resizeCapsule(c, origin#handle, snappedMouse, center);
+                        Scene.mapEngineNode(nodePath,
+                            EditableNode.setNodeCollisionShape(newShape), scene)
+                    case _ =>
                 let originalBox = {topLeft = origin#boxTopLeftScreen,
                                    size = origin#boxSize};
+                // 掴んだハンドルのワールド座標を吸着して delta を作り直す（辺ハンドルは
+                // applyDrag が該当軸のみ使うので他軸の吸着は無害）。
+                let handle0 = ResizeHandle.centerOf(origin#handle, originalBox);
+                let targetHandle = Vec2.add(handle0, Vec2.sub(mousePos, dragOrigin));
+                let delta = Vec2.sub(snapVec(targetHandle, snapStep), handle0);
                 let newBox = ResizeHandle.applyDrag(origin#handle,
                     originalBox, delta, minDisplaySize());
                 let ratio = {x = safeRatio(newBox#size#x, origin#boxSize#x),
@@ -110,6 +143,7 @@ mod DragInput {
                                 Node2D.setPosition(Vec2.round(newChildLocal)))
                     }, scene1, origin#childSnapshots)
                 }
+                }
             case _ => scene
         }
 
@@ -128,6 +162,30 @@ mod DragInput {
                 Scene.mapEngineNode(origin#nodePath,
                     Node2D.setRotation(newRotation), scene)
         }
+
+    /// カプセルを中心固定で resize する。半径ハンドル(radius 軸)と高さハンドル(height 軸)は
+    /// vertical で軸が入れ替わる。height はカプセル全高なので 2*radius を下限にクランプする。
+    def resizeCapsule(c: {radius = Float64, height = Float64, vertical = Bool},
+                      handle: ResizeHandle.Handle,
+                      mousePos: Vec2.Vec2, center: Vec2.Vec2): CollisionShape2D =
+        let ddx = Float64.abs(mousePos#x - center#x);
+        let ddy = Float64.abs(mousePos#y - center#y);
+        let minR = minDisplaySize()#x;
+        // vertical: Right=半径(横), Bottom=高さ(縦)。horizontal: Bottom=半径(縦), Right=高さ(横)。
+        let isRadiusHandle = if (c#vertical) handle == ResizeHandle.Handle.Right
+                             else            handle == ResizeHandle.Handle.Bottom;
+        let (newRadius, newHeight) =
+            if (isRadiusHandle) {
+                let r = Float64.max(minR, if (c#vertical) ddx else ddy);
+                (r, c#height)
+            } else {
+                let h = 2.0 * (if (c#vertical) ddy else ddx);
+                (c#radius, h)
+            };
+        let clampedHeight = Float64.max(newHeight, 2.0 * newRadius);
+        CollisionShape2D.CapsuleShape2D({radius = newRadius,
+                                          height = clampedHeight,
+                                          vertical = c#vertical})
 
     def minDisplaySize(): Vec2.Vec2 = {x = 1.0, y = 1.0}
 
@@ -199,12 +257,17 @@ mod DragInput {
                         let topLeft = Vec2.add(refPos, entry#topLeftOffset);
                         let box = {topLeft = topLeft,
                                    size = {x = entry#width, y = entry#height}};
-                        match ResizeHandle.hitTest(mousePos, box) {
+                        match ResizeHandle.hitTest(mousePos, box,
+                                ResizeHandle.hitHalfFor(stateData#editorZoom)) {
                             case None => None
                             case Some(handle) =>
                                 match Scene.getEngineNode(nodePath, scene) {
                                     case None => None
                                     case Some(engineNode) =>
+                                        // 形状ごとに掴めるハンドルを制限（円=半径, カプセル=半径+高さ）
+                                        let allowed = EditableNode.allowedHandles(engineNode);
+                                        if (not List.memberOf(handle, allowed)) None
+                                        else {
                                         let nodeSnap = EditableNode.snapshotForResize(
                                             nodePath, engineNode);
                                         let childSnaps = collectChildSnapshots(
@@ -225,6 +288,7 @@ mod DragInput {
                                             rotateOrigin = None
                                             | stateData
                                         })
+                                        }
                                 }
                         }
                 }
@@ -268,7 +332,9 @@ mod DragInput {
                         let topLeft = Vec2.add(refPos, entry#topLeftOffset);
                         let box = {topLeft = topLeft,
                                    size = {x = entry#width, y = entry#height}};
-                        if (not ResizeHandle.rotateKnobHit(mousePos, box)) None
+                        if (not ResizeHandle.rotateKnobHit(mousePos, box,
+                                ResizeHandle.knobOffsetFor(stateData#editorZoom),
+                                ResizeHandle.hitHalfFor(stateData#editorZoom))) None
                         else {
                             let center = ResizeHandle.boxCenter(box);
                             let startAngle = Vec2.atan2(
@@ -430,7 +496,16 @@ mod DragInput {
                             cur#x != prev#x or cur#y != prev#y
                         case None => false
                     };
-                    posChanged or sizeChanged or fontSizeChanged or scaleChanged
+                    // 衝突形状の resize（円・カプセルの中心固定リサイズ含む）は位置が動かないので
+                    // shape 自体の差分も見ないと「変化なし」と判定され保存されない。
+                    let shapeChanged = match snap#prevShape {
+                        case Some(prev) => match CollisionObject2D.getCollisionShape(engineNode) {
+                            case Some(cur) => not EditableNode.shapeEq(cur, prev)
+                            case None      => false
+                        }
+                        case None => false
+                    };
+                    posChanged or sizeChanged or fontSizeChanged or scaleChanged or shapeChanged
             }
         }, snapshots)
 

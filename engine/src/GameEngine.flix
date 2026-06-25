@@ -215,6 +215,9 @@ mod GameEngine {
         /// 内部アキュムレータを 0 にリセットする。1 ティックぶんの値が +1.0 / -1.0 程度
         /// （プラットフォーム依存）。スクロールアップで正、ダウンで負。
         def consumeScrollDelta(): Float64
+        /// 二本指ドラッグ(スクロール)の累積移動量 (dx, dy) を返しリセットする。
+        /// IDE エディタのキャンバスパンに使う。LwjglLayer では (0, 0)。
+        def consumeScrollPan(): (Float64, Float64)
         def getFontAtlas(name: String): FontAtlas
         def getViewportRect(): Rect2.Rect2
         /// 指定したテクスチャ名の元画像サイズ等を取得する。

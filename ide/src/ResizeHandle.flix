@@ -27,12 +27,36 @@ mod ResizeHandle {
         Handle.Right :: Handle.BottomRight :: Handle.Bottom ::
         Handle.BottomLeft :: Handle.Left :: Nil
 
-    /// ハンドル 1 個の見た目サイズ（正方形の 1 辺、ピクセル）
-    pub def handleSize(): Float64 = 8.0
+    /// 形状ごとのハンドル構成（Godot 準拠）。
+    /// - Circle: 右端の半径ハンドル 1 個
+    /// - Capsule: 半径ハンドル + 高さハンドル（Right + Bottom。軸の割当は vertical で入替）
+    /// - Rect/その他: 8 ハンドル
+    pub enum ShapeHandles with Eq {
+        case CircleHandles
+        case CapsuleHandles
+        case RectHandles
+    }
 
-    /// ハンドルの hit 判定で「中心からどれだけ外れても掴めるか」（ピクセル）。
-    /// 描画サイズより少し大きめにしておくと細い handle でも掴みやすい
-    pub def hitRadius(): Float64 = 6.0
+    /// 形状種別に対応するハンドル集合を返す。
+    pub def handlesForShape(kind: ShapeHandles): List[Handle] =
+        match kind {
+            case ShapeHandles.CircleHandles  => Handle.Right :: Nil
+            case ShapeHandles.CapsuleHandles => Handle.Right :: Handle.Bottom :: Nil
+            case ShapeHandles.RectHandles    => all()
+        }
+
+    // ハンドル/ノブの「画面上」サイズ（px）。投影ズームで膨張しないよう、描画・hit 判定とも
+    // design-px へは /zoom して使う（*For(zoom) ヘルパ）。Godot のように小さな点で表示する。
+    pub def handleScreenSize(): Float64 = 8.0
+    pub def hitScreenHalf(): Float64 = 9.0
+    pub def knobScreenOffset(): Float64 = 18.0
+
+    def safeZoom(zoom: Float64): Float64 = if (zoom <= 0.0) 1.0 else zoom
+
+    /// ズームに依らず画面上一定サイズになる design-px 値（投影が ×zoom するので /zoom しておく）
+    pub def handleSizeFor(zoom: Float64): Float64 = handleScreenSize() / safeZoom(zoom)
+    pub def hitHalfFor(zoom: Float64): Float64 = hitScreenHalf() / safeZoom(zoom)
+    pub def knobOffsetFor(zoom: Float64): Float64 = knobScreenOffset() / safeZoom(zoom)
 
     /// bbox の左上 + サイズ から、指定ハンドルの中心 screen 座標を返す
     pub def centerOf(handle: Handle, box: {topLeft = Vec2.Vec2, size = Vec2.Vec2}):
@@ -54,29 +78,28 @@ mod ResizeHandle {
             case Handle.Left        => {x = x0,   y = yMid}
         }
 
-    /// ハンドル中心から ±handleSize/2 の正方形 Rect2 を返す（描画用）
+    /// ハンドル中心から ±hs/2 の正方形 Rect2 を返す（hs = design-px サイズ、描画用）
     pub def overlayRect(handle: Handle,
-                        box: {topLeft = Vec2.Vec2, size = Vec2.Vec2}): Rect2.Rect2 =
+                        box: {topLeft = Vec2.Vec2, size = Vec2.Vec2}, hs: Float64): Rect2.Rect2 =
         let center = centerOf(handle, box);
-        let half = handleSize() / 2.0;
+        let half = hs / 2.0;
         {position = {x = center#x - half, y = center#y - half},
-         size = {x = handleSize(), y = handleSize()}}
+         size = {x = hs, y = hs}}
 
-    /// 8 個のハンドルすべてについて (Handle, Rect2) を返す（Overlay 描画用）
-    pub def overlayRects(box: {topLeft = Vec2.Vec2, size = Vec2.Vec2}):
+    /// 8 個のハンドルすべてについて (Handle, Rect2) を返す（hs = design-px サイズ、Overlay 描画用）
+    pub def overlayRects(box: {topLeft = Vec2.Vec2, size = Vec2.Vec2}, hs: Float64):
             List[(Handle, Rect2.Rect2)] =
-        all() |> List.map(handle -> (handle, overlayRect(handle, box)))
+        all() |> List.map(handle -> (handle, overlayRect(handle, box, hs)))
 
-    /// マウス位置にヒットするハンドルを 1 個返す。複数候補があれば優先順は all() の順
-    /// （TopLeft → Top → ... → Left）。hit 判定は handleSize/2 + hitRadius の余裕をもつ
+    /// マウス位置にヒットするハンドルを 1 個返す（hitHalf = design-px のヒット半径）。
+    /// 複数候補があれば優先順は all() の順（TopLeft → Top → ... → Left）
     pub def hitTest(mousePos: Vec2.Vec2,
-                    box: {topLeft = Vec2.Vec2, size = Vec2.Vec2}): Option[Handle] =
+                    box: {topLeft = Vec2.Vec2, size = Vec2.Vec2}, hitHalf: Float64): Option[Handle] =
         all() |> List.findLeft(handle -> {
             let center = centerOf(handle, box);
             let dx = Float64.abs(mousePos#x - center#x);
             let dy = Float64.abs(mousePos#y - center#y);
-            let radius = handleSize() / 2.0 + hitRadius();
-            dx <= radius and dy <= radius
+            dx <= hitHalf and dy <= hitHalf
         })
 
     /// 選択枠の中心 (screen 座標) を返す。回転中心の計算に使う
@@ -84,24 +107,19 @@ mod ResizeHandle {
         {x = box#topLeft#x + box#size#x / 2.0,
          y = box#topLeft#y + box#size#y / 2.0}
 
-    /// 回転ノブの中心位置（選択枠の上辺中央から rotateKnobOffset px 上）
-    pub def rotateKnobCenter(box: {topLeft = Vec2.Vec2, size = Vec2.Vec2}): Vec2.Vec2 =
+    /// 回転ノブの中心位置（選択枠の上辺中央から ko px 上、ko = design-px オフセット）
+    pub def rotateKnobCenter(box: {topLeft = Vec2.Vec2, size = Vec2.Vec2}, ko: Float64): Vec2.Vec2 =
         {x = box#topLeft#x + box#size#x / 2.0,
-         y = box#topLeft#y - rotateKnobOffset()}
+         y = box#topLeft#y - ko}
 
-    /// 回転ノブ中心と選択枠上辺中央を結ぶリンク線の長さ（描画用）
-    pub def rotateKnobOffset(): Float64 = 16.0
-
-    /// 回転ノブのヒット半径（handleSize と同じ余裕）
-    pub def rotateKnobHitRadius(): Float64 = handleSize() / 2.0 + hitRadius()
-
-    /// マウス位置が回転ノブ領域内かを判定する
+    /// マウス位置が回転ノブ領域内かを判定する（ko=ノブオフセット, hitHalf=ヒット半径, ともに design-px）
     pub def rotateKnobHit(mousePos: Vec2.Vec2,
-                          box: {topLeft = Vec2.Vec2, size = Vec2.Vec2}): Bool =
-        let center = rotateKnobCenter(box);
+                          box: {topLeft = Vec2.Vec2, size = Vec2.Vec2},
+                          ko: Float64, hitHalf: Float64): Bool =
+        let center = rotateKnobCenter(box, ko);
         let dx = Float64.abs(mousePos#x - center#x);
         let dy = Float64.abs(mousePos#y - center#y);
-        dx <= rotateKnobHitRadius() and dy <= rotateKnobHitRadius()
+        dx <= hitHalf and dy <= hitHalf
 
     /// ハンドルがリサイズで動かす方向。
     /// movesLeft=true なら左辺が動く（= 右辺がアンカー）。

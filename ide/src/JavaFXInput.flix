@@ -38,6 +38,8 @@ mod JavaFXInput {
         // GameEngine.Key → JavaFX KeyCode のマッピングは JavaFXKeyMap で行う
         keysDownRef    = Array[Set[String], Static],
         scrollDeltaRef = Array[Float64, Static],
+        // 二本指ドラッグ(スクロール)の累積 (dx, dy)。パン用。ピンチ(zoom)は scrollDeltaRef。
+        scrollPanRef   = Array[(Float64, Float64), Static],
         lastCursorRef  = Array[GameEngine.Cursor, Static]
     }
 
@@ -50,6 +52,7 @@ mod JavaFXInput {
             middleDownRef  = Array#{false} @ Static,
             keysDownRef    = Array#{(Set.empty(): Set[String])} @ Static,
             scrollDeltaRef = Array#{0.0} @ Static,
+            scrollPanRef   = Array#{(0.0, 0.0)} @ Static,
             lastCursorRef  = Array#{GameEngine.Cursor.Default} @ Static
         }
 
@@ -78,12 +81,11 @@ mod JavaFXInput {
                 setButtonDown(refs, e.getButton(), false)
             }
         });
+        // 二本指ドラッグ(スクロール)はキャンバスのパンに使う（ズームはピンチ/HUDボタン）。
         imageView.setOnScroll(new EventHandler[ScrollEvent] {
             def handle(_this: EventHandler[ScrollEvent], e: ScrollEvent): Unit \ IO = {
-                let prev = Array.get(0, refs#scrollDeltaRef);
-                // JavaFX の deltaY は下スクロールで負。GameEngine 側は「上スクロールで正」
-                // 想定なのでそのまま加算する（getDeltaY 自体が上=正）
-                Array.put(prev + e.getDeltaY() / 40.0, 0, refs#scrollDeltaRef)
+                let (px, py) = Array.get(0, refs#scrollPanRef);
+                Array.put((px + e.getDeltaX(), py + e.getDeltaY()), 0, refs#scrollPanRef)
             }
         });
         // トラックパッドのピンチ。incremental な zoomFactor(≈1.0±) を scrollDelta に合算する。
@@ -175,6 +177,12 @@ mod JavaFXInput {
     pub def consumeScrollDelta(refs: InputRefs): Float64 \ IO =
         let value = Array.get(0, refs#scrollDeltaRef);
         Array.put(0.0, 0, refs#scrollDeltaRef);
+        value
+
+    /// 二本指ドラッグ(スクロール)の累積 (dx, dy) を返してリセットする。パン用。
+    pub def consumeScrollPan(refs: InputRefs): (Float64, Float64) \ IO =
+        let value = Array.get(0, refs#scrollPanRef);
+        Array.put((0.0, 0.0), 0, refs#scrollPanRef);
         value
 
     /// JavaFX Cursor を ImageView に反映。前回と同じ形状なら省略。

@@ -230,6 +230,9 @@ mod IdeState {
         zoomCommandRef             = Array[Int32, Static],
         // 現在のズーム倍率 (main thread が毎フレーム書き、FX 側 HUD ラベルが読む)。
         zoomDisplayRef             = Array[Float64, Static],
+        // グリッドスナップ ON/OFF と間隔(px)。ツールバーが書き、Editor が読む。
+        snapEnabledRef             = Array[Bool, Static],
+        snapStepRef                = Array[Float64, Static],
         // 現在のプロジェクトの design 解像度 (Project Settings ダイアログの初期値用)。
         currentDesignRef           = Array[(Int32, Int32), Static],
         // Project Settings で予約された新しい design 解像度 (w, h)。
@@ -263,6 +266,8 @@ mod IdeState {
             toolModeRef                = Array#{0i32} @ Static,
             zoomCommandRef             = Array#{0i32} @ Static,
             zoomDisplayRef             = Array#{1.0} @ Static,
+            snapEnabledRef             = Array#{false} @ Static,
+            snapStepRef                = Array#{16.0} @ Static,
             currentDesignRef           = Array#{((0i32, 0i32))} @ Static,
             pendingProjectSettingsRef  = Array#{(None: Option[(Int32, Int32)])} @ Static,
             sceneFilesRef              = Array#{(Nil: List[(String, String)])} @ Static,

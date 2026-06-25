@@ -316,6 +316,33 @@ mod JavaFXIdeUI {
                 Array.put(1i32, 0, state#toolModeRef)
         });
 
+        // グリッドスナップ: トグルで ON/OFF (snapEnabledRef)、コンボで間隔 (snapStepRef)。
+        // Editor がこれらを読み、ドラッグ移動の確定値を格子へ吸着する。
+        let toolSnap: ToggleButton = unchecked_cast(ns.get("toolSnap") as ToggleButton);
+        toolSnap.setTooltip(new Tooltip("グリッドスナップ: ドラッグ移動を間隔の格子点へ吸着"));
+        toolSnap.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO =
+                Array.put(toolSnap.isSelected(), 0, state#snapEnabledRef)
+        });
+        let snapCombo: ComboBox[String] = unchecked_cast(ns.get("snapStepCombo") as ComboBox[String]);
+        let snapItems = snapCombo.getItems();
+        discard snapItems.add("4");
+        discard snapItems.add("8");
+        discard snapItems.add("16");
+        discard snapItems.add("32");
+        snapCombo.setValue("16");
+        snapCombo.setTooltip(new Tooltip("スナップ間隔 (px)"));
+        snapCombo.setOnAction(new EventHandler[ActionEvent] {
+            def handle(_this: EventHandler[ActionEvent], _e: ActionEvent): Unit \ IO = {
+                let v = snapCombo.getValue();
+                if (Object.isNull(v)) ()
+                else match Float64.fromString(v) {
+                    case Some(f) => Array.put(f, 0, state#snapStepRef)
+                    case None    => ()
+                }
+            }
+        });
+
         // canvas 左上のズーム HUD (Godot 風)。− / ＋ で zoomCommandRef に積み、
         // % 表示は AnimationTimer が zoomDisplayRef を読んで毎フレーム更新する。
         let zoomOutHud: Button = unchecked_cast(ns.get("zoomOutHud") as Button);
