@@ -20,18 +20,10 @@ mod Game {
     pub def start(atlas: FontAtlas): Unit \ {GameEngine.Game, GameEngine.Audio, Math.Random} =
         gameLoop(atlas, GamePhase.Menu, buildMenuWorld(), Nil)
 
-    /// Menu の初期 World: HUD entity（score/message/start）のみ。player/mob は無し。
+    /// Menu の初期 World: 標準 HUD entity のみ。player/mob は無し。
     pub def buildMenuWorld(): World =
         let World.World(w) = World.empty();
-        World.World({
-            huds = Map#{
-                100 => {kind = HudKind.Score, text = "0",
-                        pos = {x = 220.0, y = 20.0}, size = {x = 40.0, y = 30.0}, visible = true},
-                101 => {kind = HudKind.Message, text = "Dodge the\nCreeps",
-                        pos = {x = 120.0, y = 280.0}, size = {x = 240.0, y = 80.0}, visible = true},
-                102 => {kind = HudKind.StartButton, text = "Start",
-                        pos = {x = 200.0, y = 420.0}, size = {x = 80.0, y = 36.0}, visible = true} }
-            | w})
+        World.World({ huds = World.standardHuds() | w })
 
     // ── メインループ ──
 

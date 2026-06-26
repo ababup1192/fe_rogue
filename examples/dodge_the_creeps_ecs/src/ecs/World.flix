@@ -86,6 +86,17 @@ mod World {
 
     // ── 構築 ──
 
+    /// 標準 HUD entity（score/message/start ボタン）。Menu 構築とロード復元で共有する。
+    /// 値は hudSyncSystem が phase/score から毎フレーム上書きするので、ここでは器を置くだけ。
+    pub def standardHuds(): Map[EntityId, HudComp] =
+        Map#{
+            100 => {kind = HudKind.Score, text = "0",
+                    pos = {x = 220.0, y = 20.0}, size = {x = 40.0, y = 30.0}, visible = true},
+            101 => {kind = HudKind.Message, text = "Dodge the\nCreeps",
+                    pos = {x = 120.0, y = 280.0}, size = {x = 240.0, y = 80.0}, visible = true},
+            102 => {kind = HudKind.StartButton, text = "Start",
+                    pos = {x = 200.0, y = 420.0}, size = {x = 80.0, y = 36.0}, visible = true} }
+
     /// 何もない World（phase=Menu）。
     pub def empty(): World =
         World.World({
