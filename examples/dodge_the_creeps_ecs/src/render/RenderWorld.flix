@@ -1,22 +1,19 @@
-// RenderWorld — World を List[GameEngine.Drawable] に射影する（描画ブリッジ）
+// RenderWorld — World を描画する「extract」（World → render component の draw list → 描画）
 //
-// scene-tree を介さず、World の component から直接 Drawable を組み立てて
-// GameEngine.Game.renderCommands に渡す。これがエンジン改修ゼロで ECS を描く要。
-//   - スプライト: positions + sprites（centered=true、flip は scale 符号）
-//   - テキスト  : HUD entity を Label2D.toDrawables（純粋）で
-//   - ボタン枠  : Drawable.style=Some(box)（texture="" の単色矩形）
-// FontAtlas は Label2D.make が要求するので引数で受け取る（World には持たせない）。
+// 生の GameEngine.Drawable はここでは一切組まない。共有 lib の Render（RenderItem＋射影）に
+// 渡すだけ＝Bevy の extract 相当（component を埋めて lib/plugin が Drawable 化）。
+//   - スプライト: positions + sprites（currentTexture＋flip）→ Render.sprite
+//   - テキスト  : HUD entity → Render.text（lib が Label2D.toDrawables に委譲）
+//   - 矩形/背景 : Render.solidBox
+// 静的型の Flix では Bevy の汎用 extract が書けないので、この関数が毎フレームの extract として残る
+// （生 Drawable を触らない点が本質的改善。RenderItem を component 保存する完全形は将来拡張）。
 
 mod RenderWorld {
 
-    // ── 色 ──
+    def bgColor(): Color = {r = 0.219608f32, g = 0.372549f32, b = 0.380392f32}   // project.json clearColor
+    def buttonColor(): Color = {r = 0.15f32, g = 0.15f32, b = 0.18f32}
 
-    def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
-
-    /// project.json の clearColor と同じ teal（背景塗り）
-    def bgColor(): Color = {r = 0.219608f32, g = 0.372549f32, b = 0.380392f32}
-
-    // ── zIndex 帯（決定的な重なり順）──
+    // zIndex 帯（決定的な重なり順。render_core が stable sort する）
     def zBg(): Int32     = -100
     def zMob(): Int32    = 0
     def zPlayer(): Int32 = 10
@@ -24,85 +21,44 @@ mod RenderWorld {
 
     def hudFontSize(): Float64 = 24.0
 
-    // ── エントリ ──
+    // ── エントリ: World → draw list → Drawable（lib に委譲）──
 
     pub def renderWorld(world: World, atlas: FontAtlas): List[GameEngine.Drawable] =
         let World.World(w) = world;
-        let bg = bgDrawable();
-        let sprites = spriteDrawables(w#positions, w#sprites, w#player);
-        let huds = hudDrawables(w#huds, atlas);
-        bg :: List.append(sprites, huds)
+        let bg      = ({x = 0.0, y = 0.0}, bgItem());
+        let sprites = spriteItems(w#positions, w#sprites, w#player);
+        let huds    = hudItems(w#huds, atlas);
+        Render.draw(bg :: List.append(sprites, huds))
 
-    // ── 背景 ──
+    def bgItem(): Render.RenderItem =
+        Render.solidBox({x = Int32.toFloat64(World.designWi()), y = Int32.toFloat64(World.designHi())},
+                        bgColor(), zBg())
 
-    def bgDrawable(): GameEngine.Drawable =
-        boxDrawable({x = 0.0, y = 0.0},
-                    {x = Int32.toFloat64(World.designWi()), y = Int32.toFloat64(World.designHi())},
-                    bgColor(), zBg())
+    // ── スプライト（position を持つ entity）──
 
-    // ── スプライト ──
-
-    def spriteDrawables(positions: Map[EntityId, Vec2.Vec2],
-                        sprites: Map[EntityId, SpriteComp],
-                        playerOpt: Option[EntityId]): List[GameEngine.Drawable] =
+    def spriteItems(positions: Map[EntityId, Vec2.Vec2],
+                    sprites: Map[EntityId, SpriteComp],
+                    playerOpt: Option[EntityId]): List[(Vec2.Vec2, Render.RenderItem)] =
         Map.foldLeftWithKey((acc, id, sc) -> match Map.get(id, positions) {
             case None      => acc
             case Some(pos) =>
                 let z = if (playerOpt == Some(id)) zPlayer() else zMob();
-                spriteDrawable(World.currentTexture(sc), pos, z, sc#flipH, sc#flipV) :: acc
+                (pos, Render.sprite(World.currentTexture(sc), z, sc#flipH, sc#flipV)) :: acc
         }, Nil, sprites)
 
-    def spriteDrawable(tex: String, pos: Vec2.Vec2, z: Int32,
-                       flipH: Bool, flipV: Bool): GameEngine.Drawable =
-        { texture  = tex,
-          position = pos,
-          scale    = {x = if (flipH) -1.0 else 1.0, y = if (flipV) -1.0 else 1.0},
-          rotation = 0.0,
-          color    = white(),
-          alpha    = 1.0f32,
-          centered = true,
-          uvOffset = {x = 0.0, y = 0.0},
-          uvScale  = {x = 1.0, y = 1.0},
-          zIndex   = z,
-          style    = None }
+    // ── HUD（テキスト／ボタン＝Box＋Text の2アイテム）──
 
-    // ── HUD ──
-
-    def hudDrawables(huds: Map[EntityId, HudComp], atlas: FontAtlas): List[GameEngine.Drawable] =
+    def hudItems(huds: Map[EntityId, HudComp], atlas: FontAtlas): List[(Vec2.Vec2, Render.RenderItem)] =
         Map.foldLeftWithKey((acc, _id, h) ->
             if (not h#visible) acc
             else List.append(acc, hudOne(h, atlas)), Nil, huds)
 
-    def hudOne(h: HudComp, atlas: FontAtlas): List[GameEngine.Drawable] =
+    def hudOne(h: HudComp, atlas: FontAtlas): List[(Vec2.Vec2, Render.RenderItem)] =
         match h#kind {
             case HudKind.StartButton =>
-                let box = boxDrawable(h#pos, h#size, {r = 0.15f32, g = 0.15f32, b = 0.18f32}, zHud());
-                box :: textDrawables(h#text, {x = h#pos#x + 12.0, y = h#pos#y + 4.0}, atlas)
+                (h#pos, Render.solidBox(h#size, buttonColor(), zHud())) ::
+                ({x = h#pos#x + 12.0, y = h#pos#y + 4.0}, Render.text(h#text, atlas, hudFontSize(), zHud())) :: Nil
             case _ =>
-                textDrawables(h#text, h#pos, atlas)
+                (h#pos, Render.text(h#text, atlas, hudFontSize(), zHud())) :: Nil
         }
-
-    def textDrawables(text: String, pos: Vec2.Vec2, atlas: FontAtlas): List[GameEngine.Drawable] =
-        // zIndex は Drawable を後処理で上書き（Label2D.setZIndex の有無に依存しない）
-        Label2D.toDrawables(Label2D.make(text, atlas, hudFontSize()), pos)
-            |> List.map(d -> {zIndex = zHud() | d})
-
-    // ── 単色矩形（背景・ボタン枠）──
-    // Drawable.style=Some + texture="" で単色塗り。position=左上、scale=ピクセルサイズ、centered=false。
-
-    def boxDrawable(pos: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): GameEngine.Drawable =
-        { texture  = "",
-          position = pos,
-          scale    = size,
-          rotation = 0.0,
-          color    = color,
-          alpha    = 1.0f32,
-          centered = false,
-          uvOffset = {x = 0.0, y = 0.0},
-          uvScale  = {x = 1.0, y = 1.0},
-          zIndex   = z,
-          style    = Some({ cornerRadius = 0.0, borderWidth = 0.0,
-                            borderColor = white(), borderAlpha = 0.0f32,
-                            stripeColor = white(), stripeAlpha = 0.0f32,
-                            stripeWidth = 0.0, stripePeriod = 0.0 }) }
 }
