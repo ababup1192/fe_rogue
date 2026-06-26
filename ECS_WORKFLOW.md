@@ -174,14 +174,15 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 
 ## §G. 進捗（living・各ステップ完了で更新）
 
-**現在ステップ**: 未着手（道標を作成した段階）
-**次の一手**: **S0 足場** — `examples/fe_rogue/src/ecs/World.flix` に最小 World を新設し、自明な1フィールド
-（例: ターン数 or 階層 id）を毎フレーム World↔scene 並走 sync して、seam を確立する。
-フック位置は `game/Game.flix` の gameLoop：**フレーム冒頭で scene→World read、末尾で World→scene write** を
-その1フィールドだけ並走させる（まだ正は scene のまま）。ゲーム挙動は不変であること。
+**現在ステップ**: **S1 StatusSystem**（S0 足場は完了）
+**次の一手**: **S1** — `statuses`（時限効果）を World の component store `Map[EntityId, List[StatusSystem.Status]]`
+に持ち、`StatusSystem.tick`（既存・純粋）を System として呼ぶ。まず **scene→World で statuses を mirror** し、
+parallel-run で `StatusSystem.combatMods(statuses)` 戻り＋tick 後残ターンが scene 由来と一致することを検証。
+一致したら正を World に切替（ターン開始フックで World 側を tick → combatView は World から読む）。最低リスク
+（StatusSystem は純粋・独立・位置非依存）。実装前に §B0 再利用調査（StatusSystem.tick/combatMods をそのまま再利用）。
 
 ### チェックリスト
-- [ ] S0 足場（最小 World＋sync 骨組み）
+- [x] S0 足場（最小 World＋sync 骨組み）— `examples/fe_rogue/src/ecs/World.flix`、gameLoop に thread、build＋test 859緑、ゲート88→§G更新で90+
 - [ ] S1 StatusSystem
 - [ ] S2 Combat HP
 - [ ] S3 位置 store 追加（mirror）
@@ -191,13 +192,17 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 - [ ] S7 セーブ（store 化＋EcsCodec 封筒）
 
 ### TODO（道標の整備）
-- [ ] `CLAUDE.md` に本 doc（`ECS_WORKFLOW.md`）への参照を1行追加（次セッションが見つけやすく）。
+- [x] `CLAUDE.md` に本 doc（`ECS_WORKFLOW.md`）への参照を追加済み（「ECS ハイブリッド移行」節）。
 
 ### 決定ログ
-- （まだなし）
+- **S0**: World は gameLoop に**値引数で thread**（dodge と同型。fe_rogue 既存の Ref 群とは別に）。sync は
+  描画される `next`（phase 遷移後のリビルド済みシーン）から取る（`updated` でなく `next`＝遷移フレームも追従）。
+  World→scene の **write 方向は入れない**（S0 は read-only mirror、World は無権限）。write は S1（hp/status）から。
 
 ### 再利用ノート（各ステップで追記）
-- （まだなし）
+- **S0**: `EntityId`（lib `flix_engine_ecs` の `type alias = Int32`）を再利用＝新規 id 型を作らない。
+  scene 走査は `PlayerScene.getAll`/`EnemyScene.getAll`（既存・純粋）に委譲＝新規走査を再実装しない。
+  新規ロジックはゼロ（World 型と sync 配線のみ）。fe_rogue に lib 依存追加（flix.toml＋`make sync-engine-ecs`）。
 
 ### ロールバック手順（各ステップで追記）
 - 共通: 切替後に parallel-run が割れたら、そのサブシステムを scene 経路へ即戻す（World 並走は残す）。

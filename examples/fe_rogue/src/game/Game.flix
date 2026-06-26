@@ -809,7 +809,7 @@ mod Game {
                 // 階段でフロア移動する音
                 AudioStreamPlayer.setVolume("change_floor", 0.5f32);
                 // "T1 味方のターン" のログは Playing 突入時（applyPhaseChange）に出す。
-                gameLoop(catalogs, sceneRef, GamePhase.Title, scene)
+                gameLoop(catalogs, sceneRef, GamePhase.Title, scene, World.empty())
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
             // `GameOverRequest` の handler 本体は `GameLogger` / `EnemyTurn.Queue` /
             // `TurnPhase.State` / `SelectedPlayer.State` / `InitialSpawns.State` 等を
@@ -937,7 +937,8 @@ mod Game {
     def gameLoop(catalogs: GameLifecycle.Catalogs,
                   sceneRef: Ref[Scene[NodeTag], r],
                   previousPhase: GamePhase,
-                  scene: Scene[NodeTag]):
+                  scene: Scene[NodeTag],
+                  world: World):           // S0: ハイブリッド ECS 足場。scene→World 並走 sync。描画に無影響。
                  Unit \ {GameEngine.Game, GameEngine.Audio,
                          Fs.FileRead, IO,
                          BoardQuery,
@@ -985,6 +986,9 @@ mod Game {
                                |> Scene.setPrevKeyState(Scene.getPrevKeyState(updated))
                        else updated;
             GameEngine.render(next);
-            gameLoop(catalogs, sceneRef, currentPhase, next)
+            // S0: scene→World 一方向 sync（読み取りのみ・純粋）。world1 は末尾再帰にだけ渡し、
+            // next/render/Ref には一切流さない＝描画・ロジックに無影響（非破壊）。
+            let world1 = World.syncFromScene(next, world);
+            gameLoop(catalogs, sceneRef, currentPhase, next, world1)
         }
 }
