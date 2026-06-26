@@ -875,6 +875,15 @@ mod Game {
                   // frame-head で world は scene の faithful mirror ゆえ fromScene と同値（順序非依存・id 自己同定）。
                   def board(k) = k(World.toBoard(Ref.get(worldRef), Ref.get(sceneRef)))
               }
+              with handler World.Command {
+                  // statuses 書き込み（Bevy Commands）。深い scene コードの emit を worldRef へ即時適用。
+                  def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(worldRef)), worldRef); k() }
+              }
+              with handler World.Query {
+                  // statusEffects 読み込み（Bevy Query）。reader への引数注入の供給元（worldRef を読む）。
+                  def playerStatusEffects(id, k) = k(World.playerStatusEffectsOf(id, Ref.get(worldRef)))
+                  def enemyStatusEffects(id, k)  = k(World.enemyStatusEffectsOf(id, Ref.get(worldRef)))
+              }
               with handler PlayerData.PartyQuery {
                   def get(id, k)           = k(PlayerScene.get(id, Ref.get(sceneRef)))
                   def getAll(k)            = k(PlayerScene.getAll(Ref.get(sceneRef)))
@@ -963,7 +972,8 @@ mod Game {
                          CustomEffects.SuspendRequest, CustomEffects.ResumeRequest,
                          FloorProgress.State, InitialSpawns.State,
                          GamePhaseState, PartySelection.State,
-                         Pacing.State, Math.Random, FloorSnapshot.State, r} =
+                         Pacing.State, Math.Random, FloorSnapshot.State,
+                         World.Command, World.Query, r} =
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
         if (GameEngine.Game.shouldClose()) ()
         else {
@@ -998,6 +1008,8 @@ mod Game {
             GameEngine.render(next);
             // S0: scene→World 一方向 sync（読み取りのみ・純粋）。world1 は末尾再帰にだけ渡し、
             // next/render/Ref には一切流さない＝描画・ロジックに無影響（非破壊）。
+            // ⚠ emit-flip 時はこの行が statuses 権威の seam: syncFromScene の statuses 上書きを止め、
+            // base を `world` でなく `Ref.get(worldRef)` にする（詳細は World.flix `eff Command` の doc）。
             let world1 = World.syncFromScene(next, world);
             gameLoop(catalogs, sceneRef, worldRef, currentPhase, next, world1)
         }

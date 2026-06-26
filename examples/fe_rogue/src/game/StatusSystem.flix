@@ -44,6 +44,10 @@ mod StatusSystem {
         remaining = Int32
     }
 
+    /// 1 ユニットが現在持つステータス効果（バフ／デバフ）の集合。`Status` のリスト。
+    /// 一般用語は「ステータス効果（status effect）」＝AtkUp/SpdUp 等のバフと HitDown/Immobilized 等のデバフの総称。
+    pub type alias StatusEffects = List[Status]
+
     /// 効果を 1 件付与する。重ねがけはしない: 同じ `effect` 種別が既にあれば積まず
     /// 既存をそのまま据え置く（最初に付与した magnitude / remaining が生きる）。別種は共存する。
     pub def add(status: Status, xs: List[Status]): List[Status] =

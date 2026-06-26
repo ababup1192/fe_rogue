@@ -34,5 +34,6 @@ mod FrameAef {
                                 CustomEffects.WandererSpawnRequest,
                                 CustomEffects.RingTransformRequest,
                                 CustomEffects.ThiefDropRequest,
-                                Pacing.State, Math.Random}
+                                Pacing.State, Math.Random,
+                                World.Command, World.Query}
 }

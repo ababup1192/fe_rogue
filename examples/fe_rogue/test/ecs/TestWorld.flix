@@ -105,14 +105,14 @@ mod TestWorld {
     @Test
     def testSyncMirrorsStatuses(): Unit \ Assert =
         let World.World(w) = World.syncFromScene(sceneWithStatus(), World.empty());
-        Assert.assertEq(expected = 3, firstRemaining(w#playerStatuses, 0))
+        Assert.assertEq(expected = 3, firstRemaining(w#playerStatusEffects, 0))
 
     /// tickStatuses（StatusSystem.tick 再利用）で残ターンが 1 減る（残3→2）。
     @Test
     def testTickStatuses(): Unit \ Assert =
         let synced = World.syncFromScene(sceneWithStatus(), World.empty());
         let World.World(w) = World.tickStatuses(synced);
-        Assert.assertEq(expected = 2, firstRemaining(w#playerStatuses, 0))
+        Assert.assertEq(expected = 2, firstRemaining(w#playerStatusEffects, 0))
 
     // ── S1b: World→scene write-back（逆向き矢印）と parallel-run 同値実証 ──
 
@@ -230,4 +230,72 @@ mod TestWorld {
         Assert.assertEq(
             expected = (Map#{0 => (2, 2)}, Map#{5 => (3, 2)}),
             (playerPosMapOf(pieces), enemyPosMapOf(pieces)))
+
+    // ── S1: World.Cmd applier（statuses 権威化の System/command。StatusSystem 再利用）──
+
+    def spdUp(mag: Int32, rem: Int32): StatusSystem.Status =
+        {effect = StatusSystem.StatusEffect.SpdUp, magnitude = mag, remaining = rem}
+
+    /// List[Status] 先頭の残ターン（無ければ -1）。
+    def firstRem(xs: List[StatusSystem.Status]): Int32 =
+        List.head(xs) |> Option.map(s -> s#remaining) |> Option.getWithDefault(-1)
+
+    /// AddPlayer は付与する。同 effect 種別の再付与は増えず、**元の値が据え置かれる**（skip であって置換でない）。
+    @Test
+    def testApplyAddPlayerDedup(): Unit \ Assert =
+        let w1 = World.applyCmd(World.Cmd.AddPlayer(0, spdUp(2, 3)), World.empty());
+        let w2 = World.applyCmd(World.Cmd.AddPlayer(0, spdUp(9, 9)), w1);  // 同 effect 再付与（skip される）
+        let xs = World.playerStatusEffectsOf(0, w2);
+        let mag = List.head(xs) |> Option.map(s -> s#magnitude) |> Option.getWithDefault(-1);
+        Assert.assertEq(expected = (1, 2), (List.length(xs), mag))  // 1 件・残ったのは元の magnitude=2
+
+    /// TickPlayers(ids) はリスト内 id のみ remaining を減らし、リスト外 id（usedStairs 相当）は不変。
+    @Test
+    def testApplyTickPlayersFilters(): Unit \ Assert =
+        let w0 = World.applyCmd(World.Cmd.AddPlayer(1, spdUp(2, 5)),
+                   World.applyCmd(World.Cmd.AddPlayer(0, spdUp(2, 5)), World.empty()));
+        let w1 = World.applyCmd(World.Cmd.TickPlayers(0 :: Nil), w0);
+        Assert.assertEq(
+            expected = (4, 5),  // id0 は tick(5→4)、id1 はリスト外で不変(5)
+            (firstRem(World.playerStatusEffectsOf(0, w1)), firstRem(World.playerStatusEffectsOf(1, w1))))
+
+    /// TickEnemies は全敵を tick する（残4→3）。
+    @Test
+    def testApplyTickEnemies(): Unit \ Assert =
+        let w0 = World.applyCmd(World.Cmd.AddEnemy(5, spdUp(2, 4)), World.empty());
+        let w1 = World.applyCmd(World.Cmd.TickEnemies, w0);
+        Assert.assertEq(expected = 3, firstRem(World.enemyStatusEffectsOf(5, w1)))
+
+    /// SeedPlayer は既存を完全置換する（replace 意味論）。immobilize を捨て spdUp だけになる。
+    @Test
+    def testApplySeedPlayerReplaces(): Unit \ Assert =
+        let w0 = World.applyCmd(World.Cmd.AddPlayer(0, StatusSystem.immobilizeFor(3)), World.empty());
+        let w1 = World.applyCmd(World.Cmd.SeedPlayer(0, spdUp(2, 7) :: Nil), w0);
+        Assert.assertEq(
+            expected = (1, false),  // 1 件・immobilize は消えている
+            (List.length(World.playerStatusEffectsOf(0, w1)),
+             StatusSystem.isImmobilized(World.playerStatusEffectsOf(0, w1))))
+
+    /// ClearEnemyImmobilized は完全停止だけ解除する（clearImmobilized 再利用）。
+    @Test
+    def testApplyClearEnemyImmobilized(): Unit \ Assert =
+        let w0 = World.applyCmd(World.Cmd.AddEnemy(5, StatusSystem.immobilizeFor(3)), World.empty());
+        let w1 = World.applyCmd(World.Cmd.ClearEnemyImmobilized(5), w0);
+        Assert.assertEq(expected = false, StatusSystem.isImmobilized(World.enemyStatusEffectsOf(5, w1)))
+
+    /// faction 隔離: AddPlayer は enemyStatuses を変えない。
+    @Test
+    def testApplyFactionIsolation(): Unit \ Assert =
+        let w = World.applyCmd(World.Cmd.AddPlayer(0, spdUp(2, 3)), World.empty());
+        Assert.assertEq(
+            expected = (1, 0),
+            (List.length(World.playerStatusEffectsOf(0, w)), List.length(World.enemyStatusEffectsOf(0, w))))
+
+    /// アクセサ既定は Nil（未登録 id＝mid-game spawn は seed 不要の根拠）。
+    @Test
+    def testStatusesOfDefaultNil(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (true, true),
+            (List.isEmpty(World.playerStatusEffectsOf(99, World.empty())),
+             List.isEmpty(World.enemyStatusEffectsOf(99, World.empty()))))
 }

@@ -13,8 +13,8 @@
 pub enum World {
     case World({ tick = Int32,
                  playerIds = Set[EntityId], enemyIds  = Set[EntityId],
-                 playerStatuses = Map[EntityId, List[StatusSystem.Status]],
-                 enemyStatuses  = Map[EntityId, List[StatusSystem.Status]],
+                 playerStatusEffects = Map[EntityId, StatusSystem.StatusEffects],
+                 enemyStatusEffects  = Map[EntityId, StatusSystem.StatusEffects],
                  // S2: hp の read-model mirror（権威は scene のまま。query/セーブ/決定論テスト用）。
                  playerHp = Map[EntityId, Int32], enemyHp = Map[EntityId, Int32],
                  // S3: gridPos の read-model mirror。型は Vec2i の structural record（engine_core.Vec2i の演算 API 対象）。
@@ -29,7 +29,7 @@ mod World {
 
     pub def empty(): World =
         World.World({tick = 0, playerIds = Set.empty(), enemyIds = Set.empty(),
-                     playerStatuses = Map.empty(), enemyStatuses = Map.empty(),
+                     playerStatusEffects = Map.empty(), enemyStatusEffects = Map.empty(),
                      playerHp = Map.empty(), enemyHp = Map.empty(),
                      playerPos = Map.empty(), enemyPos = Map.empty(),
                      playerHidden = Set.empty()})
@@ -44,8 +44,8 @@ mod World {
             tick           = w#tick + 1,
             playerIds      = players |> List.map(d -> d#id) |> List.toSet,
             enemyIds       = enemies |> List.map(d -> d#id) |> List.toSet,
-            playerStatuses = players |> List.foldLeft((m, d) -> Map.insert(d#id, d#statuses, m), Map.empty()),
-            enemyStatuses  = enemies |> List.foldLeft((m, d) -> Map.insert(d#id, d#statuses, m), Map.empty()),
+            playerStatusEffects = players |> List.foldLeft((m, d) -> Map.insert(d#id, d#statuses, m), Map.empty()),
+            enemyStatusEffects  = enemies |> List.foldLeft((m, d) -> Map.insert(d#id, d#statuses, m), Map.empty()),
             playerHp       = players |> List.foldLeft((m, d) -> Map.insert(d#id, d#hp, m), Map.empty()),
             enemyHp        = enemies |> List.foldLeft((m, d) -> Map.insert(d#id, d#hp, m), Map.empty()),
             playerPos      = players |> List.foldLeft((m, d) -> Map.insert(d#id, d#gridPos, m), Map.empty()),
@@ -57,10 +57,110 @@ mod World {
     pub def tickStatuses(world: World): World =
         let World.World(w) = world;
         World.World({
-            playerStatuses = Map.map(StatusSystem.tick, w#playerStatuses),
-            enemyStatuses  = Map.map(StatusSystem.tick, w#enemyStatuses)
+            playerStatusEffects = Map.map(StatusSystem.tick, w#playerStatusEffects),
+            enemyStatusEffects  = Map.map(StatusSystem.tick, w#enemyStatusEffects)
             | w
         })
+
+    // ════════════════════════════════════════════════════════════════════
+    // statusEffects（時限ステータス効果＝バフ/デバフ）を World 権威にする ECS 層
+    // Bevy 正対: Command 書き込み / Query 読み込み。System ロジックは StatusSystem を再利用（再実装ゼロ）。
+    // 道標: plan gemini-ecs-sunny-curry.md。
+    //
+    // ── entity モデルの理想と現状（TODO: Option A への seam）──────────────────
+    // 【理想（純 ECS / Bevy）】単一の opaque な EntityId 空間 ＋ faction を component に:
+    //   `statusEffects: Map[EntityId, StatusEffects]` 1 本 ＋ `faction: Map[EntityId, Faction]`。
+    //   「敵らしさ」は AI/Faction component の合成で表す（味方型/敵型の継承を作らない）。
+    // 【現状】scene-tree が PlayerScene/EnemyScene の **2 つの id 名前空間**（味方 id 0 と敵 id 0 が衝突）と
+    //   別レコード型（PlayerData/EnemyData）を持つため、World も faction 別ストアに割っている（暫定 mirror）。
+    // 【seam】ゲームロジックは下記 `Cmd`（faction タグ付き命令）と `EntityRef`/`Query` 経由でのみ statusEffects を
+    //   触り、**split か single かを知らない**。よって将来 Option A（単一ストア＋Faction component）へ寄せる時は
+    //   **この World.flix 内部だけ**を直せばよい（呼び出し側は不変）。id 名前空間/セーブ形式の統合は別スコープ
+    //   （セーブ互換リスクが大きいため）。`EntityRef` をキー抽象として用意してあるのがその足場。
+    // ════════════════════════════════════════════════════════════════════
+
+    /// entity の参照（faction タグ付き）。Board.Piece と同型。statusEffects アクセスのキー抽象＝
+    /// 内部ストアが split（現状）でも single（Option A）でも、呼び出し側はこの ref で触れる。
+    pub enum EntityRef {
+        case Player(EntityId)
+        case Enemy(EntityId)
+    }
+
+    /// statuses への変更命令（Bevy の Commands 相当）。深い scene コードが emit し、
+    /// Game.start の handler が worldRef へ即時適用する（純粋 applier 経由）。
+    /// Seed は **replace 意味論**（clear-then-set）＝StatusSystem.add のスキップ型を使わない。
+    pub enum Cmd {
+        case AddPlayer(EntityId, StatusSystem.Status)
+        case AddEnemy(EntityId, StatusSystem.Status)
+        case ClearPlayerImmobilized(EntityId)
+        case ClearEnemyImmobilized(EntityId)
+        case TickPlayers(List[EntityId])    // 味方ターン開始（非 usedStairs の id のみ）
+        case TickEnemies                    // 敵ターン開始（全敵）
+        case SeedPlayer(EntityId, StatusSystem.StatusEffects)  // 再構築/復元の全置換
+        case SeedEnemy(EntityId, StatusSystem.StatusEffects)
+    }
+
+    /// statuses 書き込み effect（Bevy Commands）。handler は Game.start（worldRef へ即時適用）。
+    ///
+    /// ⚠ write-back seam（emit-flip まで未配線）: handler は **worldRef** を書くが、gameLoop は末尾再帰で
+    /// **threaded `world`** を使い `world1 = syncFromScene(next, world)` で statuses を毎フレーム scene から
+    /// 上書きし、frame 頭 `Ref.put(world, worldRef)` で worldRef を threaded world で潰す（Game.flix）。
+    /// よって現状 emit された Cmd は **同一フレーム内の Query にしか見えず次フレーム頭で消える**。
+    /// 今は誰も emit せず reader も scene 由来なので無害。**emit-flip スライスでは reader を Query へ差し替えるだけでは
+    /// 不可**で、同時に (a) syncFromScene の statuses 上書きを止める（refreshMirror 化）＋ (b) frame 末の threading 基点を
+    /// `Ref.get(worldRef)` にする、の両方が必須（さもないとフレーム境界で statuses が黙って消える）。
+    pub eff Command {
+        def emit(c: Cmd): Unit
+    }
+
+    /// statuses 読み込み effect（Bevy Query）。handler は Game.start（worldRef を読む）。
+    pub eff Query {
+        def playerStatusEffects(id: EntityId): StatusSystem.StatusEffects
+        def enemyStatusEffects(id: EntityId): StatusSystem.StatusEffects
+    }
+
+    /// statusEffects を引く（既定 Nil＝mid-game spawn は seed 不要）。Query handler から呼ぶ。
+    pub def playerStatusEffectsOf(id: EntityId, world: World): StatusSystem.StatusEffects =
+        let World.World(w) = world; Map.getWithDefault(id, Nil, w#playerStatusEffects)
+    pub def enemyStatusEffectsOf(id: EntityId, world: World): StatusSystem.StatusEffects =
+        let World.World(w) = world; Map.getWithDefault(id, Nil, w#enemyStatusEffects)
+
+    /// faction 非依存の統一アクセサ（前方互換 seam）。`EntityRef` で引くので、内部ストアが split→single へ
+    /// 変わっても呼び出し側は不変。Option A 移行時はこの実装だけ差し替える。
+    pub def statusEffectsOf(ref: EntityRef, world: World): StatusSystem.StatusEffects =
+        match ref {
+            case EntityRef.Player(id) => playerStatusEffectsOf(id, world)
+            case EntityRef.Enemy(id)  => enemyStatusEffectsOf(id, world)
+        }
+
+    /// 1 命令を World へ適用する純粋 applier（Command handler の本体）。
+    pub def applyCmd(cmd: Cmd, world: World): World =
+        let World.World(w) = world;
+        match cmd {
+            case Cmd.AddPlayer(id, s) =>
+                let cur = Map.getWithDefault(id, Nil, w#playerStatusEffects);
+                World.World({playerStatusEffects = Map.insert(id, StatusSystem.add(s, cur), w#playerStatusEffects) | w})
+            case Cmd.AddEnemy(id, s) =>
+                let cur = Map.getWithDefault(id, Nil, w#enemyStatusEffects);
+                World.World({enemyStatusEffects = Map.insert(id, StatusSystem.add(s, cur), w#enemyStatusEffects) | w})
+            case Cmd.ClearPlayerImmobilized(id) =>
+                let cur = Map.getWithDefault(id, Nil, w#playerStatusEffects);
+                World.World({playerStatusEffects = Map.insert(id, StatusSystem.clearImmobilized(cur), w#playerStatusEffects) | w})
+            case Cmd.ClearEnemyImmobilized(id) =>
+                let cur = Map.getWithDefault(id, Nil, w#enemyStatusEffects);
+                World.World({enemyStatusEffects = Map.insert(id, StatusSystem.clearImmobilized(cur), w#enemyStatusEffects) | w})
+            case Cmd.TickPlayers(ids) =>
+                let idSet = List.toSet(ids);
+                let next = Map.mapWithKey((id, xs) ->
+                    if (Set.memberOf(id, idSet)) StatusSystem.tick(xs) else xs, w#playerStatusEffects);
+                World.World({playerStatusEffects = next | w})
+            case Cmd.TickEnemies =>
+                World.World({enemyStatusEffects = Map.map(StatusSystem.tick, w#enemyStatusEffects) | w})
+            case Cmd.SeedPlayer(id, xs) =>
+                World.World({playerStatusEffects = Map.insert(id, xs, w#playerStatusEffects) | w})
+            case Cmd.SeedEnemy(id, xs) =>
+                World.World({enemyStatusEffects = Map.insert(id, xs, w#enemyStatusEffects) | w})
+        }
 
     /// World（位置の read-model mirror）から Board を組み立てる S4 の経路（World クエリ＝ecs/ 層）。
     /// 地形（map）は静的なので scene から（`BoardSnapshot.mapSnapshotOf` を借用）、駒（pieces）は World から。
@@ -91,7 +191,7 @@ mod World {
     pub def syncStatusesToScene(world: World, scene: Scene[NodeTag]): Scene[NodeTag] =
         let World.World(w) = world;
         let withPlayers = Map.foldLeftWithKey((sc, id, statuses) ->
-            PlayerScene.mapPlayer(id, d -> {statuses = statuses | d}, sc), scene, w#playerStatuses);
+            PlayerScene.mapPlayer(id, d -> {statuses = statuses | d}, sc), scene, w#playerStatusEffects);
         Map.foldLeftWithKey((sc, id, statuses) ->
-            EnemyScene.mapEnemy(id, d -> {statuses = statuses | d}, sc), withPlayers, w#enemyStatuses)
+            EnemyScene.mapEnemy(id, d -> {statuses = statuses | d}, sc), withPlayers, w#enemyStatusEffects)
 }
