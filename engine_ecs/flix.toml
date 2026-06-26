@@ -1,0 +1,14 @@
+[package]
+name        = "flix_engine_ecs"
+description = "Reusable immutable-ECS modules (EntityId, Query combinators, Collision broadphase) for games built on flix_game_engine"
+version     = "0.1.0"
+flix        = "0.73.0"
+authors     = ["ababup1192 <ababup1192@gmail.com>"]
+repository  = "github:ababup1192/flix_engine_ecs"
+
+# 不変 World の ECS を組むための汎用部品。World 本体や各 component 型はゲーム側が持ち、
+# ここは Map[EntityId, _] 上で動く純粋な仕組み（query / collision broadphase）だけを提供する。
+# narrowphase 等は engine の純粋関数を再利用するため flix_game_engine に依存する。
+
+[dependencies]
+"github:ababup1192/flix_game_engine" = { version = "0.1.0", security = "unrestricted" }
