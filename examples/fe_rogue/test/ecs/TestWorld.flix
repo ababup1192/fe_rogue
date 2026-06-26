@@ -3,8 +3,11 @@
 
 mod TestWorld {
 
-    def playerData(id: Int32): PlayerScene.Data = {
+    def playerData(id: Int32): PlayerScene.Data = playerDataS(id, Nil)
+
+    def playerDataS(id: Int32, statuses: List[StatusSystem.Status]): PlayerScene.Data = {
         id                = id,
+        statuses          = statuses,
         classId           = "test_player",
         gridPos           = {x = 2, y = 2},
         moveTiles         = 4,
@@ -23,7 +26,6 @@ mod TestWorld {
         level             = 1,
         exp               = 0,
         pendingLevelUp    = None,
-        statuses          = Nil,
         rings             = Nil,
         ringEquipped      = false,
         followUpUsed      = false
@@ -84,4 +86,65 @@ mod TestWorld {
         Assert.assertEq(
             expected = (0, 0, 1),
             (Set.size(w#playerIds), Set.size(w#enemyIds), w#tick))
+
+    // ── S1a: statuses store ──
+
+    /// player 0 に immobilize(残3) を持たせた scene を World に mirror する。
+    def sceneWithStatus(): Scene[NodeTag] =
+        let worldM = Marker2D.make(Vec2.zero()) |> CanvasItem.setYSortEnabled(true);
+        Scene.empty()
+            |> Scene.addNode(MapScene.worldName(), EngineNode.Marker2DWithState(worldM, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
+                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()),
+                    NodeTag.Player(playerDataS(0, StatusSystem.immobilizeFor(3) :: Nil))))
+
+    def firstRemaining(m: Map[EntityId, List[StatusSystem.Status]], id: EntityId): Int32 =
+        Map.get(id, m) |> Option.flatMap(List.head) |> Option.map(s -> s#remaining) |> Option.getWithDefault(-1)
+
+    /// syncFromScene が statuses を player store に写す（残3 がそのまま）。
+    @Test
+    def testSyncMirrorsStatuses(): Unit \ Assert =
+        let World.World(w) = World.syncFromScene(sceneWithStatus(), World.empty());
+        Assert.assertEq(expected = 3, firstRemaining(w#playerStatuses, 0))
+
+    /// tickStatuses（StatusSystem.tick 再利用）で残ターンが 1 減る（残3→2）。
+    @Test
+    def testTickStatuses(): Unit \ Assert =
+        let synced = World.syncFromScene(sceneWithStatus(), World.empty());
+        let World.World(w) = World.tickStatuses(synced);
+        Assert.assertEq(expected = 2, firstRemaining(w#playerStatuses, 0))
+
+    // ── S1b: World→scene write-back（逆向き矢印）と parallel-run 同値実証 ──
+
+    /// scene の player 0 の Data#statuses を読む（write-back の検証用）。
+    def sceneFirstRemaining(scene: Scene[NodeTag], id: Int32): Int32 =
+        PlayerScene.getAll(scene)
+            |> List.find(d -> d#id == id)
+            |> Option.flatMap(d -> List.head(d#statuses))
+            |> Option.map(s -> s#remaining)
+            |> Option.getWithDefault(-1)
+
+    /// syncStatusesToScene が World の statuses を scene の Data#statuses へ書き戻す（残3 が往復で保たれる）。
+    @Test
+    def testSyncStatusesToSceneRoundTrip(): Unit \ Assert =
+        let scene  = sceneWithStatus();
+        let synced = World.syncFromScene(scene, World.empty());
+        let back   = World.syncStatusesToScene(synced, scene);
+        Assert.assertEq(expected = 3, sceneFirstRemaining(back, 0))
+
+    /// parallel-run 同値実証: 「World 経路（tickStatuses→write-back で scene を更新）」と
+    /// 「現行 scene 経路（StatusSystem.tick を直接 Data#statuses に畳む）」が同じ残ターンを与える。
+    /// これが一致する限り、turn 開始 tick を World へ flip しても挙動は不変（S1b 後段の前提）。
+    @Test
+    def testTickParallelRunMatchesScenePath(): Unit \ Assert =
+        let scene = sceneWithStatus();
+        // World 経路: sync → tickStatuses → scene へ write-back → scene から読む。
+        let worldPath =
+            World.syncStatusesToScene(World.tickStatuses(World.syncFromScene(scene, World.empty())), scene)
+                |> (s -> sceneFirstRemaining(s, 0));
+        // scene 経路: 既存と同じく Data#statuses に StatusSystem.tick を直接畳む。
+        let scenePath =
+            PlayerScene.mapPlayer(0, d -> {statuses = StatusSystem.tick(d#statuses) | d}, scene)
+                |> (s -> sceneFirstRemaining(s, 0));
+        Assert.assertEq(expected = scenePath, worldPath)
 }

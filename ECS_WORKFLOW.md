@@ -174,16 +174,18 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 
 ## §G. 進捗（living・各ステップ完了で更新）
 
-**現在ステップ**: **S1 StatusSystem**（S0 足場は完了）
-**次の一手**: **S1** — `statuses`（時限効果）を World の component store `Map[EntityId, List[StatusSystem.Status]]`
-に持ち、`StatusSystem.tick`（既存・純粋）を System として呼ぶ。まず **scene→World で statuses を mirror** し、
-parallel-run で `StatusSystem.combatMods(statuses)` 戻り＋tick 後残ターンが scene 由来と一致することを検証。
-一致したら正を World に切替（ターン開始フックで World 側を tick → combatView は World から読む）。最低リスク
-（StatusSystem は純粋・独立・位置非依存）。実装前に §B0 再利用調査（StatusSystem.tick/combatMods をそのまま再利用）。
+**現在ステップ**: **S1b StatusSystem 権限切替**（S1a store＋mirror＋System は完了・非破壊）
+**次の一手**: **S1b** — statuses の **読み書きを 1 箇所ずつ World 由来に切替**。書き込み: ターン開始 tick
+（PlayerScene:758 / EnemyScene:405）を `World.tickStatuses` に寄せ、scene の Data#statuses はその結果を mirror。
+読み取り: `combatView` の `StatusSystem.combatMods`（PlayerScene:42/53 ほか）と `isImmobilized` 系を、各 call-point で
+**parallel-run（scene 由来＝World 由来を assert）→ 一致したら World 由来に flip → mirror 撤去** の順で。
+S1a で `World.tickStatuses`（`StatusSystem.tick` 再利用）と store は用意済み。flip は site 単位でロールバック可能。
 
 ### チェックリスト
 - [x] S0 足場（最小 World＋sync 骨組み）— `examples/fe_rogue/src/ecs/World.flix`、gameLoop に thread、build＋test 859緑、ゲート88→§G更新で90+
-- [ ] S1 StatusSystem
+- [x] **S1a** StatusSystem store＋mirror＋System（**非破壊**）— `World.flix` に `playerStatuses`/`enemyStatuses`（faction 別＝id 衝突回避）、`syncFromScene` で mirror、`tickStatuses`（`StatusSystem.tick` 再利用）。build＋test **862緑**（`TestWorld.testSyncMirrorsStatuses`/`testTickStatuses` 追加）。World は依然 render/scene 無影響
+- [ ] **S1b** StatusSystem 権限切替（読み書きを site 単位で World 由来に flip・parallel-run 検証）
+- [ ] S2 Combat HP
 - [ ] S2 Combat HP
 - [ ] S3 位置 store 追加（mirror）
 - [ ] S4 Board/Encounter fromWorld 化（15 点）
@@ -203,6 +205,9 @@ parallel-run で `StatusSystem.combatMods(statuses)` 戻り＋tick 後残ター�
 - **S0**: `EntityId`（lib `flix_engine_ecs` の `type alias = Int32`）を再利用＝新規 id 型を作らない。
   scene 走査は `PlayerScene.getAll`/`EnemyScene.getAll`（既存・純粋）に委譲＝新規走査を再実装しない。
   新規ロジックはゼロ（World 型と sync 配線のみ）。fe_rogue に lib 依存追加（flix.toml＋`make sync-engine-ecs`）。
+- **S1a**: 時限効果ロジックは `StatusSystem.tick`（`src/game/StatusSystem.flix:56`・純粋）を `Map.map` で
+  store 全体に適用＝**再実装ゼロ**。Status 型も `StatusSystem.Status`（既存 type alias）をそのまま store の値型に。
+  combatMods/isImmobilized も S1b で既存関数をそのまま呼ぶ前提（再実装しない）。新規は store の器と mirror 配線のみ。
 
 ### ロールバック手順（各ステップで追記）
 - 共通: 切替後に parallel-run が割れたら、そのサブシステムを scene 経路へ即戻す（World 並走は残す）。
