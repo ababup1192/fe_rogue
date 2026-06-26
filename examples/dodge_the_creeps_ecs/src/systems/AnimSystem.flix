@@ -36,15 +36,16 @@ mod AnimSystem {
         else
             {current = "up", flipV = vel#y > 0.0, flipH = false | sc}
 
-    /// frameTimer を dt 進め、1/fps を超えたら次フレームへ（ループ）。
+    /// frameTimer を dt 進め、1/fps に達したら次フレームへ（ループ）。
+    /// フレーム送りも「dt を貯めて間隔で発火」なので lib の Clock.tick に揃える。
     def advance(dt: Float64, sc: SpriteComp): SpriteComp =
         let len = clipLen(sc);
         if (len <= 1) sc
         else {
             let interval = if (sc#fps > 0.0) 1.0 / sc#fps else 1.0;
-            let t = sc#frameTimer + dt;
-            if (t < interval) {frameTimer = t | sc}
-            else {frame = Int32.remainder(sc#frame + 1, len), frameTimer = t - interval | sc}
+            let r = Clock.tick(sc#frameTimer, dt, interval);
+            if (r#fired) {frame = Int32.remainder(sc#frame + 1, len), frameTimer = r#rest | sc}
+            else {frameTimer = r#rest | sc}
         }
 
     def clipLen(sc: SpriteComp): Int32 =

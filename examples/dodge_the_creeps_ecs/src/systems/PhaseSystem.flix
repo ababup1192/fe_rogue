@@ -29,13 +29,13 @@ mod PhaseSystem {
         let World.World(w) = world;
         let t = w#timers;
         if (t#startDelay > 0.0)
-            World.World({timers = {startDelay = Float64.max(0.0, t#startDelay - dt) | t} | w})
+            World.World({timers = {startDelay = Clock.countdown(t#startDelay, dt) | t} | w})
         else {
-            let acc = t#score + dt;
-            if (acc < scoreInterval())
-                World.World({timers = {score = acc | t} | w})
+            let r = Clock.tick(t#score, dt, scoreInterval());
+            if (r#fired)
+                World.World({score = w#score + 1, timers = {score = r#rest | t} | w})
             else
-                World.World({score = w#score + 1, timers = {score = acc - scoreInterval() | t} | w})
+                World.World({timers = {score = r#rest | t} | w})
         }
 
     /// GameOver: "Game Over" 表示 → タイトル表示 → Menu へ。
@@ -43,9 +43,9 @@ mod PhaseSystem {
         let World.World(w) = world;
         let t = w#timers;
         if (t#gameOverMsg > 0.0)
-            World.World({timers = {gameOverMsg = Float64.max(0.0, t#gameOverMsg - dt) | t} | w})
+            World.World({timers = {gameOverMsg = Clock.countdown(t#gameOverMsg, dt) | t} | w})
         else if (t#title > 0.0)
-            World.World({timers = {title = Float64.max(0.0, t#title - dt) | t} | w})
+            World.World({timers = {title = Clock.countdown(t#title, dt) | t} | w})
         else
             World.World({phase = GamePhase.Menu | w})
 

@@ -79,11 +79,9 @@ mod MobSystem {
         if (w#phase != GamePhase.Playing or w#timers#startDelay > 0.0)
             world
         else {
-            let acc = w#timers#mobSpawn + dt;
-            if (acc < spawnInterval())
-                World.World({timers = {mobSpawn = acc | w#timers} | w})
-            else
-                doSpawn(acc - spawnInterval(), world)
+            let r = Clock.tick(w#timers#mobSpawn, dt, spawnInterval());
+            if (r#fired) doSpawn(r#rest, world)
+            else World.World({timers = {mobSpawn = r#rest | w#timers} | w})
         }
 
     def doSpawn(accLeft: Float64, world: World): World \ Math.Random =
