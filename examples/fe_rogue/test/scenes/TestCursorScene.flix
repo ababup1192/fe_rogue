@@ -187,7 +187,7 @@ mod TestCursorScene {
             let p0Pos: {x = Int32, y = Int32} = {x = 2, y = 2};
             let p1Pos: {x = Int32, y = Int32} = {x = 5, y = 5};
             let initial = sceneWithTwoPlayers((p0Pos, false), (p1Pos, false));
-            let result = run {
+            let result = TestUnitFixtures.withWorldCommand(rc, () -> run {
                 SelectedPlayer.State.put({
                     id     = Some(0),
                     drafts = Nil,
@@ -206,7 +206,7 @@ mod TestCursorScene {
               with GameLogger.withLogger(rc)
               with EnemyTurn.withQueue(rc)
               with TurnPhase.withState(rc)
-              with SelectedPlayer.withState(rc);
+              with SelectedPlayer.withState(rc));
             Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
         }
 

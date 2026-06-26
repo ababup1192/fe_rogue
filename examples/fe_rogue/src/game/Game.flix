@@ -278,7 +278,7 @@ instance InputEvent.InputHandler[NodeTag] {
                  CustomEffects.SuspendRequest,
                  GamePhaseState, PartySelection.State,
                  // アイテム投擲の命中ロール（Math.Random）と誤射による味方脱落のゲームオーバー判定。
-                 Math.Random, CustomEffects.GameOverRequest}
+                 Math.Random, CustomEffects.GameOverRequest, World.Command}
     // ActionMenu / ItemMenu / ItemActionMenu / AttackForecast フェーズでは
     // FERogue のキー慣習として Z（決定）/ X（ウィンドウを閉じる）でメニュー操作する。
     // ItemMenu と ItemActionMenu は同じ ItemMenuScene が扱い、`confirmCurrentSelection`
@@ -299,8 +299,7 @@ instance InputEvent.InputHandler[NodeTag] {
                                           CustomEffects.ResumeRequest,
                                           CustomEffects.SuspendRequest,
                                           GamePhaseState, PartySelection.State,
-                                          Math.Random, CustomEffects.GameOverRequest} =
-        // 画面がタイトル / 選択中なら各画面へ委譲。本編（Playing）のときだけ戦闘用ルーティングを走らせる。
+                                          Math.Random, CustomEffects.GameOverRequest, World.Command} =        // 画面がタイトル / 選択中なら各画面へ委譲。本編（Playing）のときだけ戦闘用ルーティングを走らせる。
         match GamePhaseState.get() {
             case GamePhase.Title           => TitleMenuScene.onKeyPressed(key, scene)
             case GamePhase.CharacterSelect => CharacterSelectScene.onKeyPressed(key, scene)
@@ -316,8 +315,7 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                            SelectedPlayer.State, GatherResume.State, PlayerData.PartyQuery,
                            EnemyData.RosterQuery, CustomEffects.FloorAdvanceRequest,
                            CustomEffects.SuspendRequest,
-                           Math.Random, CustomEffects.GameOverRequest} =
-        // 物理キーを「決定 / キャンセル / それ以外 (None)」の意味論的入力に正規化する。
+                           Math.Random, CustomEffects.GameOverRequest, World.Command} =        // 物理キーを「決定 / キャンセル / それ以外 (None)」の意味論的入力に正規化する。
         // phase と独立した直交概念として扱いたいので、bool 2 個ではなく Option[Input] に畳む。
         let input: Option[TurnRules.Input] =
             if (key == GameEngine.Key.Z or key == GameEngine.Key.Space
@@ -387,7 +385,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                  PlayerData.PartyQuery, EnemyData.RosterQuery,
-                 CustomEffects.FloorAdvanceRequest}
+                 CustomEffects.FloorAdvanceRequest, World.Command}
     redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
                            state: NodeTag,
                            scene: Scene[NodeTag]):
@@ -398,8 +396,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              GatherResume.State,
                                              PlayerData.PartyQuery,
                                              EnemyData.RosterQuery,
-                                             CustomEffects.FloorAdvanceRequest} =
-        match state {
+                                             CustomEffects.FloorAdvanceRequest, World.Command} =        match state {
             case NodeTag.ItemMenu(_, _) =>
                 // ItemSelect / ItemActionSelect いずれも同じ ItemList なので、
                 // フェーズに応じて ItemMenuScene 内部で分岐させる。
@@ -427,8 +424,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              GatherResume.State,
                                              PlayerData.PartyQuery,
                                              EnemyData.RosterQuery,
-                                             CustomEffects.FloorAdvanceRequest} =
-        match state {
+                                             CustomEffects.FloorAdvanceRequest, World.Command} =        match state {
             case NodeTag.ItemMenu(_, _) =>
                 let phase = TurnPhase.State.get();
                 match phase {
@@ -476,8 +472,7 @@ def staffAimConfirm(scene: Scene[NodeTag]):
         Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                            BoardQuery, GameLogger.GameLogger,
                            EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                           GameEngine.Audio} =
-    let dir = ArrowCursorScene.getDirection(scene);
+                           GameEngine.Audio, World.Command} =    let dir = ArrowCursorScene.getDirection(scene);
     // 選択中プレイヤー → その Data → selectedItem を forM で 1 本に畳み、
     // 杖(Staff)を選んでいるときだけ発射する（3 段の match ネストを解消）。
     let selected = forM (
@@ -500,8 +495,7 @@ def throwAimConfirm(scene: Scene[NodeTag]):
         Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                            BoardQuery, GameLogger.GameLogger,
                            EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                           GameEngine.Audio, Math.Random, CustomEffects.GameOverRequest} =
-    let dir = ArrowCursorScene.getDirection(scene);
+                           GameEngine.Audio, Math.Random, CustomEffects.GameOverRequest, World.Command} =    let dir = ArrowCursorScene.getDirection(scene);
     let selected = forM (
         playerId <- SelectedPlayer.State.get()#id;
         player   <- PlayerScene.get(playerId, scene);
@@ -591,8 +585,7 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
                                     TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                                     PlayerData.PartyQuery, EnemyData.RosterQuery,
                                     CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
-                                    CustomEffects.GameOverRequest, CustomEffects.SuspendRequest} =
-    match (phase, input) {
+                                    CustomEffects.GameOverRequest, CustomEffects.SuspendRequest, World.Command} =    match (phase, input) {
         // 全滅メニュー: Z/Enter で選択確定（restart を emit）、X は無反応（必ず選ばせる）。
         case (TurnPhase.Phase.GameOver, TurnRules.Input.Confirm)
                                               => Some(GameOverMenuScene.confirmCurrentSelection(scene))
@@ -643,8 +636,7 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                             SelectedPlayer.State,
                             PlayerData.PartyQuery,
                             EnemyData.RosterQuery,
-                            Math.Random, CustomEffects.GameOverRequest} =
-    match (phase, input) {
+                            Math.Random, CustomEffects.GameOverRequest, World.Command} =    match (phase, input) {
         // popup 表示中の X は popup view 切替に上書き（通常のキャンセルは走らない）
         case (_,                              Some(TurnRules.Input.Cancel)) if popupShown
                                               => UnitInfoPopupScene.toggleView(scene)

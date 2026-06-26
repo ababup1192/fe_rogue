@@ -387,8 +387,7 @@ mod TurnInputBridge {
             Scene[NodeTag] \ {BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        let context = buildContext(input, BoardQuery.board(), scene);
+                              PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command} =        let context = buildContext(input, BoardQuery.board(), scene);
         apply(TurnRules.decide(context), scene)
 
     /// 現フレームの scene と各 effect から `TurnRules.Context` を組み立てる。
@@ -435,8 +434,7 @@ mod TurnInputBridge {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery} =
-        match transition {
+                              PlayerData.PartyQuery, World.Command} =        match transition {
             case TurnRules.Transition.Stay                              => scene
             case TurnRules.Transition.CursorSelectPlayer(playerId)      =>
                 PlayerScene.beginSelection(playerId, scene)

@@ -485,6 +485,15 @@ mod TestUnitFixtures {
             def put(s, k) = { Ref.put(s, selRef); k() }
         }
 
+    /// `World.Command`（statusEffects 書込）を region Ref[World] で受け流す。Game.start の handler と同型。
+    /// ターン確定・戦闘解決を呼ぶテストが emit する Cmd を discharge する（World 状態は観測しないテスト向け）。
+    pub def withWorldCommand(rc: Region[r], thunk: Unit -> a \ ef):
+            a \ (ef - World.Command) + r =
+        let wref: Ref[World, r] = Ref.fresh(rc, World.empty());
+        run { thunk() } with handler World.Command {
+            def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
+        }
+
     /// メニュー系テストで頻出する read-only effect 4 種を 1 呼び出しで剥がす束ね。
     ///   TurnPhase(固定) + SelectedPlayer(固定 id) + PartyQuery + RosterQuery。
     /// refreshItems / 項目可視性など「フェーズ遷移を観測しない」テストの定型。

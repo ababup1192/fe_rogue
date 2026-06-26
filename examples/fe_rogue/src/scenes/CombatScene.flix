@@ -193,8 +193,7 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, Math.Random} =
-        match side {
+                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =        match side {
             case Faction.Player => playerLungeDone(id, scene)
             case Faction.Enemy  => enemyLungeDone(id, scene)
         }
@@ -209,8 +208,7 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, Math.Random} =
-        if (TurnPhase.State.get() == TurnPhase.Phase.EnemyTurn) {
+                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =        if (TurnPhase.State.get() == TurnPhase.Phase.EnemyTurn) {
             // 敵ターン中の味方反撃が完了した。反撃でレベルアップしていれば、その場で
             // （反撃ごとに）ステータス変化パネルへ割り込む。閉じると敵ターンに戻って続行する。
             let cleared = clearAttackTargetId(playerId, scene);
@@ -274,8 +272,7 @@ mod CombatScene {
     def startPlayerFollowUp(playerId: Int32, enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State} =
-        match EnemyScene.get(enemyId, scene) {
+                              SelectedPlayer.State, Pacing.State, World.Command} =        match EnemyScene.get(enemyId, scene) {
             case Some(e) =>
                 GameLogger.playerLog("追撃！");
                 startAttack(Faction.Player, playerId, enemyId, e#gridPos, scene)
@@ -287,8 +284,7 @@ mod CombatScene {
     def resolvePlayerMainAttack(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State} =
-        let outcome = PlayerScene.get(playerId, scene)
+                              SelectedPlayer.State, Pacing.State, World.Command} =        let outcome = PlayerScene.get(playerId, scene)
             |> Option.map(player -> CounterAttackRules.decide(player,
                    player#attackTargetId
                        |> Option.flatMap(eid -> EnemyScene.get(eid, scene))));
@@ -311,8 +307,7 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State} =
-        let countered = forM (
+                              SelectedPlayer.State, World.Command} =        let countered = forM (
             p <- PlayerScene.get(playerId, scene)
         ) yield {
             GameLogger.enemyLog("${EnemyScene.displayName(enemyId, scene)}の反撃");
@@ -335,8 +330,7 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Math.Random} =
-        if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttackHold) {
+                              SelectedPlayer.State, Math.Random, World.Command} =        if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttackHold) {
             let cleared = clearEnemyAttackTarget(enemyId, scene);
             TurnFlow.commitWaitedAndAdvance(cleared)
         } else {
@@ -415,8 +409,7 @@ mod CombatScene {
                         CustomEffects.GameOverRequest,
                         CustomEffects.ThiefDropRequest,
                         EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State, Pacing.State, Math.Random} =
-        match (PlayerScene.idFromPath(path), EnemyScene.idFromPath(path)) {
+                        SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =        match (PlayerScene.idFromPath(path), EnemyScene.idFromPath(path)) {
             case (Some(playerId), _) => drainAndDispatch(Faction.Player, playerId, node, path, scene)
             case (_, Some(enemyId))  => drainAndDispatch(Faction.Enemy, enemyId, node, path, scene)
             case _                   => (node, scene)
@@ -436,8 +429,7 @@ mod CombatScene {
                              CustomEffects.GameOverRequest,
                              CustomEffects.ThiefDropRequest,
                              EnemyTurn.Queue, TurnPhase.State,
-                             SelectedPlayer.State, Pacing.State, Math.Random} =
-        let ownerPath = match side {
+                             SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =        let ownerPath = match side {
             case Faction.Player => PlayerScene.playerPath(id)
             case Faction.Enemy  => EnemyScene.enemyPath(id)
         };

@@ -55,7 +55,8 @@ mod EnemyTurnDriverScene {
                         CustomEffects.WandererSpawnRequest,
                         CustomEffects.RingTransformRequest,
                         CustomEffects.GameOverRequest,
-                        CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
+                        CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
+                        World.Command} =
         let next = match TurnPhase.State.get() {
             case TurnPhase.Phase.EnemyTurn        => stepOnce(scene)
             case TurnPhase.Phase.PlayerAttackHold =>
@@ -127,7 +128,7 @@ mod EnemyTurnDriverScene {
     /// 流れから呼ばれる「敵ターン入口」。
     pub def beginTurn(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State} =
+                              TurnPhase.State, World.Command} =
         let actives = EnemyScene.getAll(scene)
             |> List.filter(e -> not e#isDying and Option.isEmpty(e#attackTargetId));
         // プレイヤー始点の距離フィールド（壁のみ）で「経路最寄り」の敵から動かす。
@@ -167,8 +168,7 @@ mod EnemyTurnDriverScene {
                 CustomEffects.WandererSpawnRequest,
                 CustomEffects.RingTransformRequest,
                 CustomEffects.GameOverRequest,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
-        // 敵ターン開始の「間」(TopBar の hold) 中は敵を動かさない（フェイズ切替が読めてから行動開始）。
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command} =        // 敵ターン開始の「間」(TopBar の hold) 中は敵を動かさない（フェイズ切替が読めてから行動開始）。
         if (TopBarScene.isBusy(scene)) scene
         else if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
@@ -459,7 +459,7 @@ mod EnemyTurnDriverScene {
                 GameLogger.GameLogger, TurnPhase.State,
                 SelectedPlayer.State, GatherResume.State, PlayerData.PartyQuery,
                 CustomEffects.WandererSpawnRequest,
-                CustomEffects.FloorAdvanceRequest} =
+                CustomEffects.FloorAdvanceRequest, World.Command} =
         GameLogger.endTurn();
         // 敵ターンが 1 巡終わった節目に湧きクロックを進める（試練型の部屋湧きを試みる）。
         // 発生判断（周期 tick mod N・フロア上限・視界外の空き部屋セルの有無）は handler / EnemyScene 側。

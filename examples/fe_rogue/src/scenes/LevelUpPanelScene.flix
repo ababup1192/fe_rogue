@@ -283,8 +283,7 @@ mod LevelUpPanelScene {
     pub def confirm(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State} =
-        let st    = currentState(scene);
+                              TurnPhase.State, SelectedPlayer.State, World.Command} =        let st    = currentState(scene);
         let total = pendingResult(scene) |> Option.map(totalRows) |> Option.getWithDefault(0);
         if (st#revealed < total)
             // まだ出し切っていない → 全行を即座に表示して止める（閉じない）。
@@ -308,8 +307,7 @@ mod LevelUpPanelScene {
     def resume(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State} =
-        match SelectedPlayer.State.get()#id {
+                              TurnPhase.State, SelectedPlayer.State, World.Command} =        match SelectedPlayer.State.get()#id {
             case Some(_) => TurnFlow.commitWaitedAndAdvance(scene)
             case None    => PhaseTransitions.enterEnemyTurn(scene)
         }

@@ -420,8 +420,7 @@ mod ActionMenuScene {
     /// 呼び出し側（TurnEndHoldScene）で PlayerCursor / GatherMove のときだけ発火する。
     pub def turnEndShortcut(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, GatherResume.State} =
-        applyTurnEnd(scene)
+                              TurnPhase.State, SelectedPlayer.State, GatherResume.State, World.Command} =        applyTurnEnd(scene)
 
     /// インベントリのいずれかの武器の射程内に生きている敵が居るか。
     /// 装備中(先頭)だけでなく全武器を見る: 射程を変えれば(= 別の武器に持ち替えれば)
@@ -465,8 +464,7 @@ mod ActionMenuScene {
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 GatherResume.State, PlayerData.PartyQuery,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
-        match entry#metadata {
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command} =        match entry#metadata {
             case None    => scene
             case Some(m) =>
                 if (m == attackMeta())        enterWeaponSelect(scene)
@@ -493,8 +491,7 @@ mod ActionMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
-        // 階段を決定した瞬間にフロア移動音を鳴らす
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command} =        // 階段を決定した瞬間にフロア移動音を鳴らす
         AudioStreamPlayer.play("change_floor");
         GameLogger.playerLog("階段を降りた");
         match SelectedPlayer.State.get()#id {
@@ -547,8 +544,7 @@ mod ActionMenuScene {
     /// （ターン確定の単一所有者）に委譲する。`EnemyTurnDriverScene` の強制全員待機と共通の入口。
     def applyTurnEnd(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, GatherResume.State} =
-        // 自発確定（メニュー「全員待機/ターンエンド」・shift スキップ・階段離脱の残存待機）は allowResume=true。
+                              TurnPhase.State, SelectedPlayer.State, GatherResume.State, World.Command} =        // 自発確定（メニュー「全員待機/ターンエンド」・shift スキップ・階段離脱の残存待機）は allowResume=true。
         // 集合中(gatherActive=true)のときだけ実際に resume が立つ（commitAllWaitedAndAdvance 側で AND）。
         TurnFlow.commitAllWaitedAndAdvance(true, scene)
 
@@ -703,8 +699,7 @@ mod ActionMenuScene {
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 GatherResume.State, PlayerData.PartyQuery,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
-        match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command} =        match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             // disabled 項目（例: 敵が射程外の「攻撃」）は確定しても何もしない。
             case Some(entry) => if (entry#disabled) scene else onActionConfirmed(entry, scene)
             case None        => scene

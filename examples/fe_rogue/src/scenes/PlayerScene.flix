@@ -748,9 +748,11 @@ mod PlayerScene {
     /// ターン開始時に呼ばれ、AnimatedSprite2D 持ち unit は idle アニメに戻す
     /// (= 新ターン開始時の待機モーション)。
     /// 敵ターン終了後に呼ぶ（次の味方ターン開始）。
-    pub def clearAllWaited(scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+    pub def clearAllWaited(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         // 階段で退場した味方 (usedStairs) は「行動済み」を維持し、敵ターン後も再行動させない。
         let ids = getAll(scene) |> List.filter(d -> not d#usedStairs) |> List.map(d -> d#id);
+        // emit-flip(E1, dual-write): 味方ターン開始 tick を World へ発行（scene の inline tick も当面維持）。
+        World.Command.emit(World.Cmd.TickPlayers(ids));
         let reset = List.foldLeft((sc, id) ->
             sc
                 // 味方ターン開始ごとに時限ステータス（自己バフ等）を 1 ターン分減算し、

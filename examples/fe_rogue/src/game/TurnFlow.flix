@@ -22,7 +22,7 @@ mod TurnFlow {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State} =
+                              SelectedPlayer.State, World.Command} =
         // レベルアップ表示待ちの味方が居れば、ターンを進めずステータス変化パネル (LevelUpView) へ割り込む。
         // パネルを閉じると LevelUpPanelScene.confirm が pendingLevelUp を消して再度ここを呼ぶので、
         // そのとき保留が無くなって通常の確定・前進に進む。Kill / Counter / Commit の 3 経路すべてが
@@ -59,7 +59,8 @@ mod TurnFlow {
     /// 自発でも `gatherActive=false`（集合外の shift スキップ等）なら resume は立たない。
     pub def commitAllWaitedAndAdvance(allowResume: Bool, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, GatherResume.State} =
+                              TurnPhase.State, SelectedPlayer.State, GatherResume.State,
+                              World.Command} =
         let resume = allowResume and SelectedPlayer.State.get()#gatherActive;
         let ids = PlayerScene.getAll(scene)
                     |> List.filter(d -> not d#waited)

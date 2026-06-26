@@ -141,8 +141,7 @@ mod StairsExitScene {
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                       GatherResume.State, CustomEffects.FloorAdvanceRequest} =
-        match node {
+                       GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command} =        match node {
             case EngineNode.Marker2DWithState(_, NodeTag.StairsExitDriver(data)) =>
                 let next = match TurnPhase.State.get() {
                     case TurnPhase.Phase.StairsExit => stepOnce(data, scene)
@@ -160,8 +159,7 @@ mod StairsExitScene {
     def stepOnce(data: Data, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-               GatherResume.State, CustomEffects.FloorAdvanceRequest} =
-        if (Pacing.State.isHolding()) scene
+               GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command} =        if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
         else if (EnemyScene.anyAttacking(scene)) scene
         else if (PlayerScene.anyAttacking(scene)) scene
@@ -180,8 +178,7 @@ mod StairsExitScene {
                       scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-               GatherResume.State, CustomEffects.FloorAdvanceRequest} =
-        match data#queue {
+               GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command} =        match data#queue {
             case Nil              => finalize(scene)
             case (u, rem) :: rest =>
                 let board    = BoardSnapshot.fromScene(scene);
@@ -216,8 +213,7 @@ mod StairsExitScene {
     /// 全員退場できたら次フロア、残れば敵ターンへ。driver の queue は空に戻す。
     def finalize(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-               SelectedPlayer.State, GatherResume.State, CustomEffects.FloorAdvanceRequest} =
-        let cleared = setState(initialData(), scene);
+               SelectedPlayer.State, GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command} =        let cleared = setState(initialData(), scene);
         if (PlayerScene.allLivingUsedStairs(cleared))
             CustomEffects.FloorAdvanceRequest.advance(cleared)
         else

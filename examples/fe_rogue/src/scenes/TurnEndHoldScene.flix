@@ -196,8 +196,7 @@ mod TurnEndHoldScene {
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, GameEngine.Audio, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                       GatherResume.State} =
-        match node {
+                       GatherResume.State, World.Command} =        match node {
             case EngineNode.CanvasLayerWithState(_, NodeTag.HoldGauge(data)) =>
                 let phase = TurnPhase.State.get();
                 // 対象は素のカーソル中と集合移動中のみ。

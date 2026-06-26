@@ -29,8 +29,7 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio} =
-        // プレイヤーと杖の両方が解決できたときだけ発動。どちらか欠ければ scene のまま。
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =        // プレイヤーと杖の両方が解決できたときだけ発動。どちらか欠ければ scene のまま。
         // ネストした match を避けるため Option を forM で短絡的に畳む。
         let cast = forM (
             player <- PlayerScene.get(playerId, scene);
@@ -46,8 +45,7 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio} =
-        let board = BoardQuery.board();
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =        let board = BoardQuery.board();
         let dir   = Staff.toVec2i(direction);
         // 杖は射程を持たない: 盤面外は壁扱いなので、十分大きい上限を渡せば
         // 必ず壁または駒で止まる（無限射程と等価）。
@@ -491,8 +489,7 @@ mod StaffCastScene {
     pub def applyConsumableUse(playerId: Int32, idx: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio} =
-        // プレイヤーと消費アイテムの両方が解決できたときだけ使用。欠ければ scene のまま。
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =        // プレイヤーと消費アイテムの両方が解決できたときだけ使用。欠ければ scene のまま。
         // forM による短絡は applyStaffCast と同様。
         let used = forM (
             player <- PlayerScene.get(playerId, scene);
@@ -506,8 +503,7 @@ mod StaffCastScene {
                        item: Consumable.ConsumableResource, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio} =
-        // 消費アイテムは使う時点で効果が自己確定するため、杖の空振り判定とは異なり無条件で使用音を鳴らす
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =        // 消費アイテムは使う時点で効果が自己確定するため、杖の空振り判定とは異なり無条件で使用音を鳴らす
         AudioStreamPlayer.play("cure");
         let afterEffect  = applyConsumableSelfEffect(playerId, player, item, scene);
         let afterConsume = consumeConsumable(playerId, idx, item, afterEffect);
@@ -671,8 +667,7 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
-        let cast = forM (
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, World.Command} =        let cast = forM (
             player <- PlayerScene.get(playerId, scene);
             item   <- List.nth(idx, player#consumables)
         ) yield fireConsumable(playerId, idx, player, item, direction, scene);
@@ -686,8 +681,7 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State} =
-        let board = BoardQuery.board();
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, World.Command} =        let board = BoardQuery.board();
         let dir   = Staff.toVec2i(direction);
         let hit   = Board.rayCast(player#gridPos, dir, staffMaxRange(), board);
         let afterEffect  = applyDirectionalEffect(playerId, item, hit, scene);
@@ -751,8 +745,7 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
-                Math.Random, CustomEffects.GameOverRequest} =
-        let cast = forM (player <- PlayerScene.get(playerId, scene))
+                Math.Random, CustomEffects.GameOverRequest, World.Command} =        let cast = forM (player <- PlayerScene.get(playerId, scene))
             yield fireThrow(playerId, kind, player, direction, scene);
         Option.getWithDefault(scene, cast)
 
@@ -762,8 +755,7 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
-                Math.Random, CustomEffects.GameOverRequest} =
-        let board = BoardQuery.board();
+                Math.Random, CustomEffects.GameOverRequest, World.Command} =        let board = BoardQuery.board();
         let dir   = Staff.toVec2i(direction);
         let hit   = Board.rayCast(player#gridPos, dir, staffMaxRange(), board);
         let afterEffect  = applyThrowHit(playerId, kind, player, dir, hit, scene);

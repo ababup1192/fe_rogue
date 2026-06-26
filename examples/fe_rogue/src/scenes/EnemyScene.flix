@@ -396,8 +396,10 @@ mod EnemyScene {
 
     /// 全敵の「行動済み」を解除し、本体スプライトと HP ゲージを通常の明るさへ戻す。
     /// 敵ターン開始時に呼ぶ（プレイヤーの clearAllWaited と対称）。
-    pub def clearActedAll(scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+    pub def clearActedAll(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         let ids = getAll(scene) |> List.map(d -> d#id);
+        // emit-flip(E1, dual-write): 敵ターン開始 tick を World へ発行（scene の inline tick も当面維持）。
+        World.Command.emit(World.Cmd.TickEnemies);
         let reset = List.foldLeft((sc, id) ->
             sc
                 // 敵ターン開始ごとに時限デバフ（目潰し/鈍足）を 1 ターン分減算し、
