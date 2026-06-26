@@ -16,7 +16,11 @@ pub enum World {
                  playerStatuses = Map[EntityId, List[StatusSystem.Status]],
                  enemyStatuses  = Map[EntityId, List[StatusSystem.Status]],
                  // S2: hp の read-model mirror（権威は scene のまま。query/セーブ/決定論テスト用）。
-                 playerHp = Map[EntityId, Int32], enemyHp = Map[EntityId, Int32] })
+                 playerHp = Map[EntityId, Int32], enemyHp = Map[EntityId, Int32],
+                 // S3: gridPos の read-model mirror。型は Vec2i の structural record（engine_core.Vec2i の演算 API 対象）。
+                 // 権威は scene のまま。S4 で Board を fromWorld 化する時の World 側位置ソース候補（mirror）。
+                 playerPos = Map[EntityId, {x = Int32, y = Int32}],
+                 enemyPos  = Map[EntityId, {x = Int32, y = Int32}] })
 }
 
 mod World {
@@ -24,7 +28,8 @@ mod World {
     pub def empty(): World =
         World.World({tick = 0, playerIds = Set.empty(), enemyIds = Set.empty(),
                      playerStatuses = Map.empty(), enemyStatuses = Map.empty(),
-                     playerHp = Map.empty(), enemyHp = Map.empty()})
+                     playerHp = Map.empty(), enemyHp = Map.empty(),
+                     playerPos = Map.empty(), enemyPos = Map.empty()})
 
     /// scene→World の一方向 sync（純粋・読み取りのみ）。tick を 1 進め、id 集合と statuses を scene から写す。
     /// PlayerScene.getAll / EnemyScene.getAll（既存・純粋）を再利用（新規走査は書かない）。
@@ -39,7 +44,9 @@ mod World {
             playerStatuses = players |> List.foldLeft((m, d) -> Map.insert(d#id, d#statuses, m), Map.empty()),
             enemyStatuses  = enemies |> List.foldLeft((m, d) -> Map.insert(d#id, d#statuses, m), Map.empty()),
             playerHp       = players |> List.foldLeft((m, d) -> Map.insert(d#id, d#hp, m), Map.empty()),
-            enemyHp        = enemies |> List.foldLeft((m, d) -> Map.insert(d#id, d#hp, m), Map.empty())
+            enemyHp        = enemies |> List.foldLeft((m, d) -> Map.insert(d#id, d#hp, m), Map.empty()),
+            playerPos      = players |> List.foldLeft((m, d) -> Map.insert(d#id, d#gridPos, m), Map.empty()),
+            enemyPos       = enemies |> List.foldLeft((m, d) -> Map.insert(d#id, d#gridPos, m), Map.empty())
         })
 
     /// statuses を 1 ターン進める System（StatusSystem.tick を再利用）。S1b でターン開始フックに繋ぐ。

@@ -168,4 +168,28 @@ mod TestWorld {
         let scenePlayerHp = PlayerScene.getAll(scene)
             |> List.foldLeft((m, d) -> Map.insert(d#id, d#hp, m), Map.empty());
         Assert.assertEq(expected = scenePlayerHp, w#playerHp)
+
+    // ── S3: gridPos の read-model mirror ──
+
+    /// syncFromScene が gridPos を World store へ mirror する（fixture: player {2,2}／enemy {3,2}）。
+    /// record の == は使えないので x/y スカラに展開して比較。
+    @Test
+    def testSyncMirrorsPos(): Unit \ Assert =
+        let World.World(w) = World.syncFromScene(sampleScene(), World.empty());
+        let xy = (id, m) -> Map.get(id, m) |> Option.map(v -> (v#x, v#y));
+        Assert.assertEq(
+            expected = (Some((2, 2)), Some((2, 2)), Some((3, 2))),
+            (xy(0, w#playerPos), xy(1, w#playerPos), xy(5, w#enemyPos)))
+
+    /// pos mirror が scene の各 Data#gridPos と一致（parallel-run 同値：World pos == scene gridPos・Vec2i.eq）。
+    @Test
+    def testPosMirrorEqualsScene(): Unit \ Assert =
+        let scene = sampleScene();
+        let World.World(w) = World.syncFromScene(scene, World.empty());
+        let allMatch = PlayerScene.getAll(scene)
+            |> List.forAll(d ->
+                Map.get(d#id, w#playerPos)
+                    |> Option.map(v -> Vec2i.eq(v, d#gridPos))
+                    |> Option.getWithDefault(false));
+        Assert.assertEq(expected = true, allMatch)
 }
