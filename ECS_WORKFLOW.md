@@ -186,13 +186,20 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 
 ## §G. 進捗（living・各ステップ完了で更新）
 
-**現在ステップ**: **S4 Board fromWorld 化 — 射影は構築済み（非破壊）。次は call-point flip**（A 方針で着手）
-**次の一手**: **S4-flip**。World→Board 射影 `World.toBoard(world, scene)` / `World.boardPieces(world)` は構築・テスト済み（非破壊・未配線）。
-次は call-point を `BoardSnapshot.fromScene(scene)` → `World.toBoard(world, scene)` に **1点ずつ flip**。**最初は `BoardQuery` handler**
-（Game.flix:869 `def board(k) = k(BoardSnapshot.fromScene(Ref.get(sceneRef)))`）が最強 seam（1行・frame-head で World 正確）。
-ただし handler に World を渡す配線が要る（gameLoop の world を handler スコープへ）。**肝**（§D）: `EnemyTurnDriver` の mid-frame
-mutate 系 call-point（:118/:141/:268）は frame-head World が stale なので、それらは **mid-frame sync を入れるまで flip しない**
-（frame-head 消費者＝StaffCast/Combat/Range/Stairs/handler から先に）。**flip は挙動に触れるので実機 run 検証必須**。
+> **方針転換（2026-06-27）**: read-model 路線では「本物の ECS でない」とのユーザー指摘を受け、**statusEffects を
+> 真に World 権威化する Bevy 正対の移行**に舵を切った（plan `gemini-ecs-sunny-curry.md`、複数視点設計＋レビュー）。
+> 詳細プランはそちら。以下の §G は **statusEffects 縦断 ECS 化**の進捗（位置/HP の read-model 項目は据え置き）。
+
+**現在ステップ**: **emit-flip（S1 本体）— gameplay の status 変更を Command emit に。ECS 層は完成・検証済み**
+**次の一手**: **emit-flip**。下記の「広く浅い」propagation を tick→add→clear の順に dual-write で刻む:
+- 書込サイト（~12）を `World.Command.emit(...)` に: tick=`clearAllWaited`(PlayerScene)/`clearActedAll`(EnemyScene)、
+  add=`effectStatus`(Combat)/`statusUnit`/`applySelfStatus`/`applyBind*`/`applyStatusToHit`(StaffCast)、clear=`releaseBind`×2。
+- `World.Command` を経路上の **狭い row の中継関数のみ**に追加（compiler 誘導。`FrameAef.ProcessT` は追加済＝dispatch 層は無改修）。
+  実測の fan-out: `beginTurn`/`endTurn`/`process`(EnemyTurnDriver)→`TurnFlow.commit*`→ActionMenu/TurnPhase/Combat/StaffCast/LevelUpPanel ≈ 30-45 関数。
+- **write-back seam（必須・⚠最大リスク）**: `syncFromScene` の statusEffects 上書きを止め（refreshMirror 化）、
+  gameLoop 末尾の base を `world` でなく `Ref.get(worldRef)` に。さもないとフレーム境界で emit が消える（World.flix `eff Command` doc 参照）。
+- **reader flip**: `combatView(data)`→`combatView(data, statusEffects)` の引数注入、~26 call-point が `World.Query.statusEffects(EntityRef)` で供給。
+- **reseed seam**: 床移動/リスタート/復活/中断再開で `Cmd.Seed`（replace）。**実機 `flix run` 検証必須**（初の挙動変化）。
 
 ### チェックリスト
 - [x] S0 足場（最小 World＋sync 骨組み）— `examples/fe_rogue/src/ecs/World.flix`、gameLoop に thread、build＋test 859緑、ゲート88→§G更新で90+
@@ -205,10 +212,12 @@ mutate 系 call-point（:118/:141/:268）は frame-head World が stale なの�
   - [x] **flip①: `BoardQuery` handler**（Game.flix:869）→ `World.toBoard(worldRef, sceneRef)`。`worldRef`（sceneRef 対称・毎フレーム頭更新）配線。初回 world は `syncFromScene(scene)`（frame-1 faithful）。**順序リスク静的解消**（全 BoardQuery 消費者は位置キー lookup/集合 membership＝順序非依存。かつ `nextEnemyId=1+max` で敵は昇順 id append＝preorder==Map順）。build＋test 869緑。**実機 run 検証 待ち**
   - [ ] flip②: frame-head 直接 call（StaffCast/Combat/Range/Stairs）
   - [ ] flip保留: `EnemyTurnDriver` mid-frame（:118/:141/:268）は mid-frame sync 後
-- [ ] ~~S1b-flip~~（不採用）
-- [ ] S2 Combat HP
-- [ ] S3 位置 store 追加（mirror）
-- [ ] S4 Board/Encounter fromWorld 化（15 点）
+- [x] **statusEffects ECS 層 完成・検証済み（2026-06-27・レビュー91）** — Bevy 正対の `World.Command`/`World.Query` effect、
+  `EntityRef` キー抽象（faction 非依存 seam・将来 Option A は World.flix 内部だけで）、`applyCmd`/`overEntity` applier（`StatusSystem`
+  再利用）、Game.start handler 配線。`statuses`→`statusEffects` rename＋`StatusEffects` 型 alias。**878緑**（applyCmd 8 ケース＋
+  faction ルーティング＋**effect 経由 end-to-end** テスト）。**まだ gameplay から emit せず＝挙動不変**。次は emit-flip（上記「次の一手」）
+- [ ] **emit-flip（S1 本体）** — gameplay の status 変更を Command 化＋write-back seam＋reader flip＋reseed（実機 run 必須）
+- [ ] ~~S1b-flip~~（read-model 時代の不採用判断・上書き）
 - [ ] S5 位置の正を World に切替（mirror 撤去）
 - [ ] S6 EnemyAI World 駆動
 - [ ] S7 セーブ（store 化＋EcsCodec 封筒）
