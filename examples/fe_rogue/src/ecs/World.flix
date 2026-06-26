@@ -14,14 +14,17 @@ pub enum World {
     case World({ tick = Int32,
                  playerIds = Set[EntityId], enemyIds  = Set[EntityId],
                  playerStatuses = Map[EntityId, List[StatusSystem.Status]],
-                 enemyStatuses  = Map[EntityId, List[StatusSystem.Status]] })
+                 enemyStatuses  = Map[EntityId, List[StatusSystem.Status]],
+                 // S2: hp の read-model mirror（権威は scene のまま。query/セーブ/決定論テスト用）。
+                 playerHp = Map[EntityId, Int32], enemyHp = Map[EntityId, Int32] })
 }
 
 mod World {
 
     pub def empty(): World =
         World.World({tick = 0, playerIds = Set.empty(), enemyIds = Set.empty(),
-                     playerStatuses = Map.empty(), enemyStatuses = Map.empty()})
+                     playerStatuses = Map.empty(), enemyStatuses = Map.empty(),
+                     playerHp = Map.empty(), enemyHp = Map.empty()})
 
     /// scene→World の一方向 sync（純粋・読み取りのみ）。tick を 1 進め、id 集合と statuses を scene から写す。
     /// PlayerScene.getAll / EnemyScene.getAll（既存・純粋）を再利用（新規走査は書かない）。
@@ -34,7 +37,9 @@ mod World {
             playerIds      = players |> List.map(d -> d#id) |> List.toSet,
             enemyIds       = enemies |> List.map(d -> d#id) |> List.toSet,
             playerStatuses = players |> List.foldLeft((m, d) -> Map.insert(d#id, d#statuses, m), Map.empty()),
-            enemyStatuses  = enemies |> List.foldLeft((m, d) -> Map.insert(d#id, d#statuses, m), Map.empty())
+            enemyStatuses  = enemies |> List.foldLeft((m, d) -> Map.insert(d#id, d#statuses, m), Map.empty()),
+            playerHp       = players |> List.foldLeft((m, d) -> Map.insert(d#id, d#hp, m), Map.empty()),
+            enemyHp        = enemies |> List.foldLeft((m, d) -> Map.insert(d#id, d#hp, m), Map.empty())
         })
 
     /// statuses を 1 ターン進める System（StatusSystem.tick を再利用）。S1b でターン開始フックに繋ぐ。

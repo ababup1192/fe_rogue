@@ -147,4 +147,25 @@ mod TestWorld {
             PlayerScene.mapPlayer(0, d -> {statuses = StatusSystem.tick(d#statuses) | d}, scene)
                 |> (s -> sceneFirstRemaining(s, 0));
         Assert.assertEq(expected = scenePath, worldPath)
+
+    // ── S2: hp の read-model mirror ──
+
+    /// syncFromScene が hp を World store へ mirror する（player 0,1／enemy 5 とも scene の hp と一致）。
+    /// 権威は scene のまま＝この mirror は query/セーブ用の read-model。
+    @Test
+    def testSyncMirrorsHp(): Unit \ Assert =
+        let World.World(w) = World.syncFromScene(sampleScene(), World.empty());
+        // sampleScene の fixture は player/enemy とも hp=10。
+        Assert.assertEq(
+            expected = (Some(10), Some(10), Some(10)),
+            (Map.get(0, w#playerHp), Map.get(1, w#playerHp), Map.get(5, w#enemyHp)))
+
+    /// hp mirror が scene の各 Data#hp と完全一致する（parallel-run 同値：World hp == scene hp）。
+    @Test
+    def testHpMirrorEqualsScene(): Unit \ Assert =
+        let scene = sampleScene();
+        let World.World(w) = World.syncFromScene(scene, World.empty());
+        let scenePlayerHp = PlayerScene.getAll(scene)
+            |> List.foldLeft((m, d) -> Map.insert(d#id, d#hp, m), Map.empty());
+        Assert.assertEq(expected = scenePlayerHp, w#playerHp)
 }

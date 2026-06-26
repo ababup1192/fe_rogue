@@ -34,6 +34,18 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 - UI 入力は **コマンド**として World に返す（確定時だけ・逆方向）。連続同期は World→scene の一方向のみ。
 - **dodge との違い**: dodge は scene-tree を捨て即時 Drawable で描画（`Render`）。fe_rogue は **scene-tree 描画を残す**ので、`Render` は使わず **World→scene-tree の sync 層**でつなぐ。
 
+### fe_rogue の採用戦略：**read-model 先行**（決定 2026-06-26）
+
+上の §A は理想の最終形。fe_rogue は **いきなり「World を唯一の正」にせず、read-model 先行**で進める:
+
+- **World は scene から mirror した派生 read-model**（`syncFromScene` で scene→World・毎フレーム）。**query / セーブ / 決定論テスト**に使う。
+- **権威 flip は ECS の旨味が出るサブシステムだけ**に限定し、サブシステム単位で都度判断する。旨味が大きいのは
+  **位置（Board/Encounter）・EnemyAI・セーブ**（S3〜S7）。**statuses / hp のように scene 側の純粋ロジックで既に綺麗な物は
+  flip しない**（read-model として mirror するだけ）。
+- 理由: statuses tick の検証で判明 — 既に綺麗な subsystem の権威 flip は **挙動ゼロ変化なのにドライバ大改修コストだけ乗る**割の
+  合わないスライス（`syncFromScene` の毎フレーム再 mirror で World は翌フレーム上書きされ、権威は見かけだけになる）。
+- read-model でも `World.tickStatuses` / `syncStatusesToScene`（逆向き write-back）は **保持**（セーブ復元・将来の flip 余地）。
+
 ---
 
 ## §B0. 最重要原則：既存ロジックは再実装せず「昇華」して再利用する
@@ -131,10 +143,10 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > **役割を分離**する。S3 の間は scene→World の **一時 mirror（足場・S5 で撤去）** で World gridPos を scene と一致させる。
 
 - **S0 足場**: 最小 World＋World↔scene sync の骨組み（自明な1フィールドを並走 sync）。ゲーム不変。seam を確立。
-- **S1 StatusSystem**: statuses を World store に、`tick` を System に。最低リスク（純粋・独立・位置非依存）。
-  比較=`StatusSystem.combatMods` 戻り＋tick 後残ターン。
-- **S2 Combat HP**: hp を World 正に、`damage` を System に、hp→HPBar sync。Tween/anim は tree のまま。位置非依存。
-  比較=`Combat.estimate`・`willKill`・HP 遷移（roll 非依存）。
+- **S1 StatusSystem（✅ read-model で完了）**: statuses を World store に mirror、`tick` を System 化（`tickStatuses`）、
+  逆向き write-back（`syncStatusesToScene`）まで。**権威は scene のまま（read-model 据え置き決定）**。flip はしない。
+- **S2 Combat HP（read-model mirror）**: hp を World store に mirror（statuses と同型）。**権威は scene のまま**＝
+  scene の `Combat`/HPBar 経路は無改修。World hp は query/セーブ/決定論テスト用。比較=World hp == scene hp。位置非依存・最低リスク。
 - **S3 位置 store を World に追加（ノードは依然 writer）**: gridPos を World store に持ち **scene→World mirror** で同期。
   **mirror は frame-head＋各 mid-frame mutation 直後にも発火**（EnemyTurnDriver が敵 step 内で位置を mutate するため。
   さもないと S4 の fromWorld が stale を読み割れる）。比較=World gridPos == scene gridPos。挙動不変。
@@ -174,18 +186,20 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 
 ## §G. 進捗（living・各ステップ完了で更新）
 
-**現在ステップ**: **S1b StatusSystem 権限切替**（S1a store＋mirror＋System は完了・非破壊）
-**次の一手**: **S1b** — statuses の **読み書きを 1 箇所ずつ World 由来に切替**。書き込み: ターン開始 tick
-（PlayerScene:758 / EnemyScene:405）を `World.tickStatuses` に寄せ、scene の Data#statuses はその結果を mirror。
-読み取り: `combatView` の `StatusSystem.combatMods`（PlayerScene:42/53 ほか）と `isImmobilized` 系を、各 call-point で
-**parallel-run（scene 由来＝World 由来を assert）→ 一致したら World 由来に flip → mirror 撤去** の順で。
-S1a で `World.tickStatuses`（`StatusSystem.tick` 再利用）と store は用意済み。flip は site 単位でロールバック可能。
+**現在ステップ**: **S3 位置 store（gridPos）を World に mirror 追加**（S1・S2 は read-model で完了・非破壊）
+**次の一手**: **S3** — `gridPos`（`Vec2i`）を World store `Map[EntityId, Vec2i]` に **mirror で追加**（statuses/hp と同型）。
+`syncFromScene` に gridPos mirror を足し、test で `World gridPos == scene gridPos`（player/enemy）を assert。
+**S3 の肝**（§D）: 位置は `EnemyTurnDriver` が敵 step 内で mid-frame mutate するため、後で fromWorld（S4）化する時に
+stale を読まないよう **mirror の発火タイミング（frame-head＋mid-frame）に注意**。ただし S3 自体は read-model mirror なので非破壊。
+**read-model 戦略の射程**: 位置は S4（Board fromWorld 化）で初めて「旨味のための flip 候補」になる。S3 はあくまで store 追加。
 
 ### チェックリスト
 - [x] S0 足場（最小 World＋sync 骨組み）— `examples/fe_rogue/src/ecs/World.flix`、gameLoop に thread、build＋test 859緑、ゲート88→§G更新で90+
 - [x] **S1a** StatusSystem store＋mirror＋System（**非破壊**）— `World.flix` に `playerStatuses`/`enemyStatuses`（faction 別＝id 衝突回避）、`syncFromScene` で mirror、`tickStatuses`（`StatusSystem.tick` 再利用）。build＋test **862緑**（`TestWorld.testSyncMirrorsStatuses`/`testTickStatuses` 追加）。World は依然 render/scene 無影響
-- [ ] **S1b** StatusSystem 権限切替（読み書きを site 単位で World 由来に flip・parallel-run 検証）
-- [ ] S2 Combat HP
+- [x] **S1b write-back＋parallel-run 実証**（**非破壊**）— `World.syncStatusesToScene`（逆向き矢印・`PlayerScene.mapPlayer`/`EnemyScene.mapEnemy` 再利用）追加。test **864緑**（`testSyncStatusesToSceneRoundTrip`／**`testTickParallelRunMatchesScenePath`**＝World 経路と scene 経路が同残ターン）
+- [x] **S1 完了（read-model 据え置き）** — statuses は scene 権威のまま、World は mirror＋System＋write-back を保持。**tick の権威 flip は不採用**（決定 2026-06-26・§A 採用戦略）
+- [x] **S2 Combat HP（read-model mirror・非破壊）** — `World.flix` に `playerHp`/`enemyHp = Map[EntityId, Int32]`、`syncFromScene` で hp mirror。**権威は scene のまま**＝`Combat`/HPBar 無改修。test **866緑**（`testSyncMirrorsHp`／`testHpMirrorEqualsScene`＝World hp == scene hp）
+- [ ] ~~S1b-flip~~（不採用）
 - [ ] S2 Combat HP
 - [ ] S3 位置 store 追加（mirror）
 - [ ] S4 Board/Encounter fromWorld 化（15 点）
@@ -197,6 +211,10 @@ S1a で `World.tickStatuses`（`StatusSystem.tick` 再利用）と store は用�
 - [x] `CLAUDE.md` に本 doc（`ECS_WORKFLOW.md`）への参照を追加済み（「ECS ハイブリッド移行」節）。
 
 ### 決定ログ
+- **S1 read-model 据え置き（2026-06-26）**: statuses の権威を World に flip しない。理由＝tick 発火点が
+  `EnemyTurnDriverScene`（Tween/AnimationPlayer/TurnPhase effect 内）深部で World 不在→flip は driver 大改修が必要なのに、
+  `syncFromScene` の毎フレーム再 mirror で挙動ゼロ変化（権威は見かけだけ）。**read-model 先行**戦略に変更（§A 参照）。
+  以後 statuses/hp 等の「scene 側が既に綺麗」な subsystem は mirror のみ、flip は位置/AI/セーブ（旨味大）だけ都度判断。
 - **S0**: World は gameLoop に**値引数で thread**（dodge と同型。fe_rogue 既存の Ref 群とは別に）。sync は
   描画される `next`（phase 遷移後のリビルド済みシーン）から取る（`updated` でなく `next`＝遷移フレームも追従）。
   World→scene の **write 方向は入れない**（S0 は read-only mirror、World は無権限）。write は S1（hp/status）から。
@@ -208,6 +226,11 @@ S1a で `World.tickStatuses`（`StatusSystem.tick` 再利用）と store は用�
 - **S1a**: 時限効果ロジックは `StatusSystem.tick`（`src/game/StatusSystem.flix:56`・純粋）を `Map.map` で
   store 全体に適用＝**再実装ゼロ**。Status 型も `StatusSystem.Status`（既存 type alias）をそのまま store の値型に。
   combatMods/isImmobilized も S1b で既存関数をそのまま呼ぶ前提（再実装しない）。新規は store の器と mirror 配線のみ。
+- **S1b（write-back）**: World→scene の書き戻しは既存純粋 writer `PlayerScene.mapPlayer`（:585）/`EnemyScene.mapEnemy`（:360）を
+  `Map.foldLeftWithKey` で畳むだけ＝**走査も書込も再実装ゼロ**。scene 不在 id は mapPlayer/mapEnemy が no-op で読み飛ばす。
+  読み側（combatMods/isImmobilized 計 7 site）は scene Data#statuses を読むまま＝write-back が faithful mirror である限り**無改修**。
+- **S2（hp mirror）**: `getAll`（既存・純粋）の `Data#hp`（PlayerData:84/EnemyData:30・既存 Int32 フィールド）を `Map.insert` で
+  畳むだけ＝**新規走査・新規 hp ロジックなし**。damage 計算は scene の `Combat`（既存）が引き続き担い、World は読むだけ。再実装ゼロ。
 
 ### ロールバック手順（各ステップで追記）
 - 共通: 切替後に parallel-run が割れたら、そのサブシステムを scene 経路へ即戻す（World 並走は残す）。

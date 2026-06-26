@@ -2,7 +2,7 @@
 name        = "flix_engine_core"
 description = "Foundational types and utilities for flix_game_engine (math, color, asset/render type aliases, font/audio data utilities, project.json loader)"
 version     = "0.1.0"
-flix        = "0.74.0"
+flix        = "0.73.0"
 authors     = ["ababup1192 <ababup1192@gmail.com>"]
 repository  = "github:ababup1192/flix_engine_core"
 
