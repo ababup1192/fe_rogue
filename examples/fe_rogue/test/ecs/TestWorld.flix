@@ -309,4 +309,21 @@ mod TestWorld {
             expected = (1, 0),
             (List.length(World.statusEffectsOf(World.EntityRef.Player(0), w)),
              List.length(World.statusEffectsOf(World.EntityRef.Enemy(0), w))))
+
+    /// Command/Query を **effect 経由で** end-to-end 検証（Game.start と同じ handler 配線）。
+    /// emit した Cmd が worldRef へ即時適用され、Query で読み戻せる＝live な seam を守るテスト。
+    @Test
+    def testCommandQueryHandlersRoundTrip(): Unit \ Assert =
+        let len = region rc {
+            let worldRef = Ref.fresh(rc, World.empty());
+            run {
+                World.Command.emit(World.Cmd.Add(World.EntityRef.Player(0), spdUp(2, 4)));
+                List.length(World.Query.statusEffects(World.EntityRef.Player(0)))
+            } with handler World.Command {
+                def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(worldRef)), worldRef); k() }
+            } with handler World.Query {
+                def statusEffects(ref, k) = k(World.statusEffectsOf(ref, Ref.get(worldRef)))
+            }
+        };
+        Assert.assertEq(expected = 1, len)
 }
