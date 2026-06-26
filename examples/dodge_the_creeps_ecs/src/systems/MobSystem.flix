@@ -1,8 +1,10 @@
 // MobSystem — モブの spawn / move / despawn
 //
-// 旧 node 版の RigidBody2D 物理積分・Timer ノード・VisibleOnScreenNotifier2D を
-// 3 つの小さな System に畳む。spawn の幾何（端サンプリング＋速度）は純粋関数
-// mobFromRandom に切り出してテスト可能にし、乱数は spawnSystem 側で引いて渡す。
+// 旧 node 版がエンジンに任せていた処理は共有 lib flix_engine_ecs に寄せた:
+//   移動（RigidBody2D 積分）        → Motion.integrate
+//   画面外検出（VisibleOnScreenNotifier2D）→ Viewport.offscreenEntities
+// この System 群は「lib のクエリを呼んでゲーム固有の応答（mob を despawn 等）をする」だけ。
+// spawn の幾何（端サンプリング＋速度）は純粋関数 mobFromRandom に切り出してテスト可能にする。
 
 mod MobSystem {
 
@@ -16,36 +18,27 @@ mod MobSystem {
     def toF(i: Int32): Float64 = Int32.toFloat64(i)
     def halfPi(): Float64 = Vec2.pi() / 2.0
 
-    // ── 移動（純粋）: position を持つ全 entity（mob＋player）を velocity で一律に積分する ──
-    // positions には mob と player しか入らない（HUD は huds 側で position 無し）ので、
-    // 「両方持つものを更新する」Query.updateWith2 がそのまま正しい。player の velocity は
-    // 直前の playerInputSystem が入力から設定済み。画面端クランプは clampPlayerSystem が担う。
-    // 不変条件: phase ガードを持たないが、GameOver 時は collisionSystem が player を despawn
-    // 済み（positions から除去）なので、死後に player が積分でドリフトすることはない。
+    def screenBounds(): Viewport.Bounds =
+        Viewport.bounds(toF(World.designWi()), toF(World.designHi()))
+
+    // ── 移動: position を velocity で積分（lib の Motion に委譲）──
+    // player の velocity は直前の playerInputSystem が設定済み。画面端クランプは clampPlayerSystem。
+    // 不変条件: GameOver 時は collisionSystem が player を despawn 済みなのでドリフトしない。
 
     pub def moveSystem(dt: Float64, world: World): World =
         let World.World(w) = world;
-        let newPos = Query.updateWith2(w#positions, w#velocities,
-            (p, v) -> Vec2.add(p, Vec2.mul(v, dt)));
-        World.World({positions = newPos | w})
+        World.World({positions = Motion.integrate(w#positions, w#velocities, dt) | w})
 
-    // ── 画面外破棄（純粋）──
+    // ── 画面外破棄: lib の Viewport で画面外 id を取り、mob だけ despawn する ──
+    // （player は clampPlayerSystem で画面内に留まるので実際には対象にならないが、念のため絞る）
 
     pub def despawnOffscreenSystem(world: World): World =
         let World.World(w) = world;
-        let dead = Set.toList(w#mobs)
-            |> List.filter(id -> isOffscreen(Map.get(id, w#positions)));
+        // 旧 isOffscreen の「positions に居ない mob も画面外扱い」防御は外した。
+        // addMob/removeEntity が positions と mobs を同時更新し mobs ⊆ keys(positions) が常に成立するため。
+        let dead = Viewport.offscreenEntities(w#positions, screenBounds(), despawnMargin())
+            |> List.filter(id -> Set.memberOf(id, w#mobs));
         List.foldLeft((acc, id) -> World.removeEntity(id, acc), world, dead)
-
-    def isOffscreen(posOpt: Option[Vec2.Vec2]): Bool =
-        let m = despawnMargin();
-        let w = toF(World.designWi());
-        let h = toF(World.designHi());
-        match posOpt {
-            case None    => true
-            case Some(p) => p#x < (0.0 - m) or p#x > (w + m) or
-                            p#y < (0.0 - m) or p#y > (h + m)
-        }
 
     // ── spawn の幾何（純粋）: 4 つの乱数 [0,1) から 1 体分のデータを作る ──
 
