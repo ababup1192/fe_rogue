@@ -186,12 +186,13 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 
 ## §G. 進捗（living・各ステップ完了で更新）
 
-**現在ステップ**: **S4 Board/Encounter fromWorld 化の検討**（S1・S2・S3 は read-model mirror で完了・非破壊）
-**次の一手**: **S4 はまず判断から**。位置は S3 で World に mirror 済み。ここで初めて「読み込み経路（`BoardSnapshot.fromScene`→
-`fromWorld`）を World 由来に切替える」＝ECS の旨味（query/決定論/巻き戻し）が出る**最初の権威 flip 候補**。ただし read-model 戦略では
-**旨味とコストを call-point 単位で都度判断**する。**肝**（§D）: 位置は `EnemyTurnDriver` が敵 step 内で mid-frame mutate するので、
-fromWorld 化するなら **mirror の発火を frame-head だけでなく mid-frame mutation 直後にも**入れて stale を防ぐ（さもないと割れる）。
-**着手前にユーザーと旨味/リスクを確認**（read-model のまま query だけ World で享受する手もある）。
+**現在ステップ**: **S4 Board fromWorld 化 — 射影は構築済み（非破壊）。次は call-point flip**（A 方針で着手）
+**次の一手**: **S4-flip**。World→Board 射影 `World.toBoard(world, scene)` / `World.boardPieces(world)` は構築・テスト済み（非破壊・未配線）。
+次は call-point を `BoardSnapshot.fromScene(scene)` → `World.toBoard(world, scene)` に **1点ずつ flip**。**最初は `BoardQuery` handler**
+（Game.flix:869 `def board(k) = k(BoardSnapshot.fromScene(Ref.get(sceneRef)))`）が最強 seam（1行・frame-head で World 正確）。
+ただし handler に World を渡す配線が要る（gameLoop の world を handler スコープへ）。**肝**（§D）: `EnemyTurnDriver` の mid-frame
+mutate 系 call-point（:118/:141/:268）は frame-head World が stale なので、それらは **mid-frame sync を入れるまで flip しない**
+（frame-head 消費者＝StaffCast/Combat/Range/Stairs/handler から先に）。**flip は挙動に触れるので実機 run 検証必須**。
 
 ### チェックリスト
 - [x] S0 足場（最小 World＋sync 骨組み）— `examples/fe_rogue/src/ecs/World.flix`、gameLoop に thread、build＋test 859緑、ゲート88→§G更新で90+
@@ -200,7 +201,10 @@ fromWorld 化するなら **mirror の発火を frame-head だけでなく mid-f
 - [x] **S1 完了（read-model 据え置き）** — statuses は scene 権威のまま、World は mirror＋System＋write-back を保持。**tick の権威 flip は不採用**（決定 2026-06-26・§A 採用戦略）
 - [x] **S2 Combat HP（read-model mirror・非破壊）** — `World.flix` に `playerHp`/`enemyHp = Map[EntityId, Int32]`、`syncFromScene` で hp mirror。**権威は scene のまま**＝`Combat`/HPBar 無改修。test **866緑**（`testSyncMirrorsHp`／`testHpMirrorEqualsScene`＝World hp == scene hp）
 - [x] **S3 位置 store（read-model mirror・非破壊）** — `World.flix` に `playerPos`/`enemyPos = Map[EntityId, {x=Int32,y=Int32}]`（Vec2i structural record）、`syncFromScene` で gridPos mirror。**権威は scene のまま**。test **868緑**（`testSyncMirrorsPos`／`testPosMirrorEqualsScene`＝World pos == scene gridPos・Vec2i.eq）
-- [ ] **S4 Board/Encounter fromWorld 化**（位置を World 由来に。初の権威 flip 候補・約15 call-point。読み込みは此処で初めて旨味が出る）
+- [~] **S4 Board fromWorld 化（進行中）** — 射影 `World.toBoard`/`World.boardPieces`（ecs/ 層・World クエリ）と `BoardSnapshot.mapSnapshotOf`（scenes/ に抽出）構築。hidden は `World.playerHidden` に mirror 追加。test **869緑**（`testPiecesFromWorldFiltersHidden`）
+  - [x] **flip①: `BoardQuery` handler**（Game.flix:869）→ `World.toBoard(worldRef, sceneRef)`。`worldRef`（sceneRef 対称・毎フレーム頭更新）配線。初回 world は `syncFromScene(scene)`（frame-1 faithful）。**順序リスク静的解消**（全 BoardQuery 消費者は位置キー lookup/集合 membership＝順序非依存。かつ `nextEnemyId=1+max` で敵は昇順 id append＝preorder==Map順）。build＋test 869緑。**実機 run 検証 待ち**
+  - [ ] flip②: frame-head 直接 call（StaffCast/Combat/Range/Stairs）
+  - [ ] flip保留: `EnemyTurnDriver` mid-frame（:118/:141/:268）は mid-frame sync 後
 - [ ] ~~S1b-flip~~（不採用）
 - [ ] S2 Combat HP
 - [ ] S3 位置 store 追加（mirror）
@@ -235,6 +239,10 @@ fromWorld 化するなら **mirror の発火を frame-head だけでなく mid-f
   畳むだけ＝**新規走査・新規 hp ロジックなし**。damage 計算は scene の `Combat`（既存）が引き続き担い、World は読むだけ。再実装ゼロ。
 - **S3（pos mirror）**: `Data#gridPos`（既存 `{x=Int32,y=Int32}` structural record）を mirror。新規座標型は作らず、比較は
   既存 `Vec2i.eq`（engine_core）を再利用（record の == 不可のため）。新規走査・新規位置ロジックなし＝再実装ゼロ。
+- **S4（toBoard/boardPieces）**: 地形射影は既存 `BoardSnapshot.fromParts` 内の map 構築を `mapSnapshotOf` に**抽出して共有**（再実装せず
+  fromScene/fromParts も同一関数を経由）。`Board`/`Piece` 型・hidden フィルタ規約も既存を踏襲。新規は World→pieces の組み立てのみ。
+  **配置**: World だけ読む射影は **ecs/ 層（World.toBoard/boardPieces）**へ。scene 読み取りの `mapSnapshotOf` は scenes/ に残す
+  （層を逆にしない＝ecs/→scenes/ の一方向。BoardSnapshot は World を参照しない）。
 
 ### ロールバック手順（各ステップで追記）
 - 共通: 切替後に parallel-run が割れたら、そのサブシステムを scene 経路へ即戻す（World 並走は残す）。
