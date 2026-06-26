@@ -739,6 +739,9 @@ mod Game {
         region rc {
             // BoardQuery handler が現在のシーンを読むための窓口（毎フレーム gameLoop が更新）
             let sceneRef = Ref.fresh(rc, Scene.empty());
+            // S4: BoardQuery handler が読む World の窓口（sceneRef と対称・毎フレーム頭で gameLoop が更新）。
+            // frame-head の world は scene の faithful mirror なので toBoard は fromScene と同値（挙動不変）。
+            let worldRef = Ref.fresh(rc, World.empty());
             // ゲーム全体の進行状態（画面）。起動直後はタイトル画面（はじめから / 中断から再開）から始める。
             let phaseRef = Ref.fresh(rc, GamePhase.Title);
             // 試練型の部屋湧きクロック。WandererSpawnRequest が来るたび +1 し、
@@ -809,7 +812,9 @@ mod Game {
                 // 階段でフロア移動する音
                 AudioStreamPlayer.setVolume("change_floor", 0.5f32);
                 // "T1 味方のターン" のログは Playing 突入時（applyPhaseChange）に出す。
-                gameLoop(catalogs, sceneRef, GamePhase.Title, scene, World.empty())
+                // 初回 world は scene の mirror（frame-1 で handler が呼ばれても faithful＝空 pieces を返さない）。
+                gameLoop(catalogs, sceneRef, worldRef, GamePhase.Title, scene,
+                         World.syncFromScene(scene, World.empty()))
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
             // `GameOverRequest` の handler 本体は `GameLogger` / `EnemyTurn.Queue` /
             // `TurnPhase.State` / `SelectedPlayer.State` / `InitialSpawns.State` 等を
@@ -866,7 +871,9 @@ mod Game {
                       k(GameLifecycle.dropFloorItem(catalogs, cell, scene))
               }
               with handler BoardQuery {
-                  def board(k) = k(BoardSnapshot.fromScene(Ref.get(sceneRef)))
+                  // S4-flip: 盤面読み取りを World 由来に。pieces は worldRef（位置 mirror）、map は sceneRef（地形）から。
+                  // frame-head で world は scene の faithful mirror ゆえ fromScene と同値（順序非依存・id 自己同定）。
+                  def board(k) = k(World.toBoard(Ref.get(worldRef), Ref.get(sceneRef)))
               }
               with handler PlayerData.PartyQuery {
                   def get(id, k)           = k(PlayerScene.get(id, Ref.get(sceneRef)))
@@ -936,6 +943,7 @@ mod Game {
     /// catalog をクロージャに閉じ込めて実行するため、ここで catalog を引き回す必要はない。
     def gameLoop(catalogs: GameLifecycle.Catalogs,
                   sceneRef: Ref[Scene[NodeTag], r],
+                  worldRef: Ref[World, r],   // S4: BoardQuery handler が読む World の窓口（毎フレーム頭で更新）。
                   previousPhase: GamePhase,
                   scene: Scene[NodeTag],
                   world: World):           // S0: ハイブリッド ECS 足場。scene→World 並走 sync。描画に無影響。
@@ -959,8 +967,10 @@ mod Game {
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
         if (GameEngine.Game.shouldClose()) ()
         else {
-            // BoardQuery handler が読む窓口を毎フレーム最新の scene に更新する。
+            // BoardQuery handler が読む窓口を毎フレーム最新の scene / world に更新する。
+            // world は前フレーム末の syncFromScene(next) ＝ この scene の faithful mirror（整合ペア）。
             Ref.put(scene, sceneRef);
+            Ref.put(world, worldRef);
             let dt = GameEngine.Game.getDeltaTime();
             // Pacing カウンタを 1 フレーム進める (各 Scene の process が gating で参照する)。
             // フレーム頭で進めるので「前フレーム末で hold した値を今フレームの判定で使う」
@@ -989,6 +999,6 @@ mod Game {
             // S0: scene→World 一方向 sync（読み取りのみ・純粋）。world1 は末尾再帰にだけ渡し、
             // next/render/Ref には一切流さない＝描画・ロジックに無影響（非破壊）。
             let world1 = World.syncFromScene(next, world);
-            gameLoop(catalogs, sceneRef, currentPhase, next, world1)
+            gameLoop(catalogs, sceneRef, worldRef, currentPhase, next, world1)
         }
 }

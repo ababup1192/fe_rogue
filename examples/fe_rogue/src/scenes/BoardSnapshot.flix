@@ -28,20 +28,22 @@ mod BoardSnapshot {
     pub def fromParts(scene: Scene[NodeTag],
                        players: List[PlayerScene.Data],
                        enemies: List[EnemyScene.Data]): Board =
-        let layer       = MapScene.getMapLayer(scene);
-        let mapGlobal   = Scene.globalPositionAt(MapScene.mapPath(), scene);
-        let placements  = MapScene.getPlacements(scene);
-        // engine 値 → 純粋データの MapSnapshot へ射影（唯一の変換点）。
-        // ここ以外で snapshotOf を呼ぶと重複生成によるコストと「同一フレームで2つの盤面が存在する」
-        // 不整合が生じるため、全クエリがこの1点を経由する設計にしている。
-        let map = MapScene.snapshotOf(layer, mapGlobal, placements);
         let playerPieces = players
             |> List.filter(d -> not d#hidden)
             |> List.map(d -> (Piece.Player(d#id), d#gridPos));
         let enemyPieces = enemies
             |> List.map(e -> (Piece.Enemy(e#id), e#gridPos));
         {
-            map    = map,
+            map    = mapSnapshotOf(scene),
             pieces = List.append(playerPieces, enemyPieces)
         }
+
+    /// scene の地形（壁・配置）を純粋な MapSnapshot へ射影する**唯一の変換点**。
+    /// ここ以外で snapshotOf を呼ぶと重複生成のコストと「同一フレームで2つの盤面」不整合が生じるため、
+    /// fromScene / fromParts / `World.toBoard`（ecs/）すべてがこの1点を経由する。
+    pub def mapSnapshotOf(scene: Scene[NodeTag]): MapSnapshot =
+        let layer      = MapScene.getMapLayer(scene);
+        let mapGlobal  = Scene.globalPositionAt(MapScene.mapPath(), scene);
+        let placements = MapScene.getPlacements(scene);
+        MapScene.snapshotOf(layer, mapGlobal, placements)
 }

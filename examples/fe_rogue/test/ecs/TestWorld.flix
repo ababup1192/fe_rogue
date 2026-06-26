@@ -192,4 +192,42 @@ mod TestWorld {
                     |> Option.map(v -> Vec2i.eq(v, d#gridPos))
                     |> Option.getWithDefault(false));
         Assert.assertEq(expected = true, allMatch)
+
+    // ── S4: BoardSnapshot.piecesFromWorld（位置 read-model から Board.pieces を組む）──
+
+    /// World 配下に player 0（可視・{2,2}）／player 3（hidden）／enemy 5（{3,2}）を挿した scene。
+    def sceneWithHidden(): Scene[NodeTag] =
+        let worldM = Marker2D.make(Vec2.zero()) |> CanvasItem.setYSortEnabled(true);
+        let mk = () -> Marker2D.make(Vec2.zero());
+        Scene.empty()
+            |> Scene.addNode(MapScene.worldName(), EngineNode.Marker2DWithState(worldM, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
+                EngineNode.Marker2DWithState(mk(), NodeTag.Player(playerData(0))))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(3),
+                EngineNode.Marker2DWithState(mk(), NodeTag.Player({hidden = true | playerData(3)})))
+            |> Scene.addChildAt(MapScene.worldPath(), EnemyScene.enemyName(5),
+                EngineNode.Marker2DWithState(mk(), NodeTag.Enemy(enemyData(5))))
+
+    /// pieces を faction 別に id→(x,y) の Map へ畳む（record の == 不可のため tuple 化、順序非依存比較）。
+    def playerPosMapOf(pieces: List[(Piece, {x = Int32, y = Int32})]): Map[Int32, (Int32, Int32)] =
+        List.foldLeft((m, pair) -> { let (pc, p) = pair; match pc {
+            case Piece.Player(id) => Map.insert(id, (p#x, p#y), m)
+            case _                => m
+        }}, Map.empty(), pieces)
+
+    def enemyPosMapOf(pieces: List[(Piece, {x = Int32, y = Int32})]): Map[Int32, (Int32, Int32)] =
+        List.foldLeft((m, pair) -> { let (pc, p) = pair; match pc {
+            case Piece.Enemy(id) => Map.insert(id, (p#x, p#y), m)
+            case _               => m
+        }}, Map.empty(), pieces)
+
+    /// piecesFromWorld が World 位置から正しい駒を組む：hidden 味方 3 を除外、player 0／enemy 5 が残る。
+    /// fromScene の hidden フィルタ・(Piece,pos) 生成と同義であることを id→pos 同値で検証（順序非依存）。
+    @Test
+    def testPiecesFromWorldFiltersHidden(): Unit \ Assert =
+        let world  = World.syncFromScene(sceneWithHidden(), World.empty());
+        let pieces = World.boardPieces(world);
+        Assert.assertEq(
+            expected = (Map#{0 => (2, 2)}, Map#{5 => (3, 2)}),
+            (playerPosMapOf(pieces), enemyPosMapOf(pieces)))
 }
