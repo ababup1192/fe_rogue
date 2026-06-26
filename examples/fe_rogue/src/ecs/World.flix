@@ -7,7 +7,7 @@
 // S1a は **非破壊**: statuses も scene から mirror するだけで、既存の読み書き（combatView/tick）は
 // scene の Data#statuses のまま。World は描画にもロジックにも影響しない（gameLoop の末尾再帰に thread）。
 // S1b で読み書きを 1 箇所ずつ World 由来に切替（parallel-run で一致検証してから）。
-// tickStatuses は S1b で使う System（StatusSystem.tick を再利用）。S1a では定義＋テストのみ。
+// tickStatusEffects は S1b で使う System（StatusSystem.tick を再利用）。S1a では定義＋テストのみ。
 // 道標: ルート ECS_WORKFLOW.md（§D S1）。
 
 pub enum World {
@@ -54,7 +54,7 @@ mod World {
         })
 
     /// statuses を 1 ターン進める System（StatusSystem.tick を再利用）。S1b でターン開始フックに繋ぐ。
-    pub def tickStatuses(world: World): World =
+    pub def tickStatusEffects(world: World): World =
         let World.World(w) = world;
         World.World({
             playerStatusEffects = Map.map(StatusSystem.tick, w#playerStatusEffects),
@@ -73,10 +73,12 @@ mod World {
     //   「敵らしさ」は AI/Faction component の合成で表す（味方型/敵型の継承を作らない）。
     // 【現状】scene-tree が PlayerScene/EnemyScene の **2 つの id 名前空間**（味方 id 0 と敵 id 0 が衝突）と
     //   別レコード型（PlayerData/EnemyData）を持つため、World も faction 別ストアに割っている（暫定 mirror）。
-    // 【seam】ゲームロジックは下記 `Cmd`（faction タグ付き命令）と `EntityRef`/`Query` 経由でのみ statusEffects を
-    //   触り、**split か single かを知らない**。よって将来 Option A（単一ストア＋Faction component）へ寄せる時は
-    //   **この World.flix 内部だけ**を直せばよい（呼び出し側は不変）。id 名前空間/セーブ形式の統合は別スコープ
-    //   （セーブ互換リスクが大きいため）。`EntityRef` をキー抽象として用意してあるのがその足場。
+    // 【seam（配線済み）】read = `Query.statusEffects(EntityRef)`、write の単体操作 = `Cmd.Add/ClearImmobilized/Seed(EntityRef, …)`
+    //   はいずれも **EntityRef キーで faction 非依存**。内部で split ストアに触れるのは `overEntity`（単体）と
+    //   `Cmd.TickPlayers/TickEnemies`（faction 一括 = ターン構造上 faction 別が本質）と `syncFromScene` の mirror だけ。
+    //   よって将来 Option A（単一 `Map[EntityId,_]` ストア＋Faction component）へ寄せる時は **この World.flix 内部
+    //   （overEntity・Tick・syncFromScene・enum フィールド）だけ**を直せばよく、Cmd/Query の呼び出し側は不変。
+    //   id 名前空間/セーブ形式の統合は別スコープ（セーブ互換リスクが大きいため defer）。
     // ════════════════════════════════════════════════════════════════════
 
     /// entity の参照（faction タグ付き）。Board.Piece と同型。statusEffects アクセスのキー抽象＝
@@ -86,18 +88,18 @@ mod World {
         case Enemy(EntityId)
     }
 
-    /// statuses への変更命令（Bevy の Commands 相当）。深い scene コードが emit し、
+    /// statusEffects への変更命令（Bevy の Commands 相当）。深い scene コードが emit し、
     /// Game.start の handler が worldRef へ即時適用する（純粋 applier 経由）。
+    /// 単体操作（Add/ClearImmobilized/Seed）は **EntityRef でキー化＝faction 非依存の write seam**
+    /// （内部ストアが split→single へ変わっても命令は不変）。Tick は「そのターンの faction を一括」操作
+    /// なので faction 別（TickPlayers は非 usedStairs id のみ／TickEnemies は全敵）。
     /// Seed は **replace 意味論**（clear-then-set）＝StatusSystem.add のスキップ型を使わない。
     pub enum Cmd {
-        case AddPlayer(EntityId, StatusSystem.Status)
-        case AddEnemy(EntityId, StatusSystem.Status)
-        case ClearPlayerImmobilized(EntityId)
-        case ClearEnemyImmobilized(EntityId)
+        case Add(EntityRef, StatusSystem.Status)
+        case ClearImmobilized(EntityRef)
+        case Seed(EntityRef, StatusSystem.StatusEffects)  // 再構築/復元の全置換
         case TickPlayers(List[EntityId])    // 味方ターン開始（非 usedStairs の id のみ）
         case TickEnemies                    // 敵ターン開始（全敵）
-        case SeedPlayer(EntityId, StatusSystem.StatusEffects)  // 再構築/復元の全置換
-        case SeedEnemy(EntityId, StatusSystem.StatusEffects)
     }
 
     /// statuses 書き込み effect（Bevy Commands）。handler は Game.start（worldRef へ即時適用）。
@@ -113,10 +115,10 @@ mod World {
         def emit(c: Cmd): Unit
     }
 
-    /// statuses 読み込み effect（Bevy Query）。handler は Game.start（worldRef を読む）。
+    /// statusEffects 読み込み effect（Bevy Query）。**EntityRef で引く＝faction 非依存の read seam**。
+    /// handler は Game.start（worldRef を読む）。reader への引数注入の供給元。
     pub eff Query {
-        def playerStatusEffects(id: EntityId): StatusSystem.StatusEffects
-        def enemyStatusEffects(id: EntityId): StatusSystem.StatusEffects
+        def statusEffects(ref: EntityRef): StatusSystem.StatusEffects
     }
 
     /// statusEffects を引く（既定 Nil＝mid-game spawn は seed 不要）。Query handler から呼ぶ。
@@ -133,33 +135,34 @@ mod World {
             case EntityRef.Enemy(id)  => enemyStatusEffectsOf(id, world)
         }
 
+    /// EntityRef の statusEffects に純粋変換 f を適用する。**内部ストアが faction を知る唯一の点**
+    /// （split→single への Option A 移行はここだけ直せばよい）。Seed は `f = _ -> xs`（全置換）。
+    def overEntity(ref: EntityRef, f: StatusSystem.StatusEffects -> StatusSystem.StatusEffects, world: World): World =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) =>
+                let cur = Map.getWithDefault(id, Nil, w#playerStatusEffects);
+                World.World({playerStatusEffects = Map.insert(id, f(cur), w#playerStatusEffects) | w})
+            case EntityRef.Enemy(id) =>
+                let cur = Map.getWithDefault(id, Nil, w#enemyStatusEffects);
+                World.World({enemyStatusEffects = Map.insert(id, f(cur), w#enemyStatusEffects) | w})
+        }
+
     /// 1 命令を World へ適用する純粋 applier（Command handler の本体）。
     pub def applyCmd(cmd: Cmd, world: World): World =
-        let World.World(w) = world;
         match cmd {
-            case Cmd.AddPlayer(id, s) =>
-                let cur = Map.getWithDefault(id, Nil, w#playerStatusEffects);
-                World.World({playerStatusEffects = Map.insert(id, StatusSystem.add(s, cur), w#playerStatusEffects) | w})
-            case Cmd.AddEnemy(id, s) =>
-                let cur = Map.getWithDefault(id, Nil, w#enemyStatusEffects);
-                World.World({enemyStatusEffects = Map.insert(id, StatusSystem.add(s, cur), w#enemyStatusEffects) | w})
-            case Cmd.ClearPlayerImmobilized(id) =>
-                let cur = Map.getWithDefault(id, Nil, w#playerStatusEffects);
-                World.World({playerStatusEffects = Map.insert(id, StatusSystem.clearImmobilized(cur), w#playerStatusEffects) | w})
-            case Cmd.ClearEnemyImmobilized(id) =>
-                let cur = Map.getWithDefault(id, Nil, w#enemyStatusEffects);
-                World.World({enemyStatusEffects = Map.insert(id, StatusSystem.clearImmobilized(cur), w#enemyStatusEffects) | w})
+            case Cmd.Add(ref, s)           => overEntity(ref, xs -> StatusSystem.add(s, xs), world)
+            case Cmd.ClearImmobilized(ref) => overEntity(ref, StatusSystem.clearImmobilized, world)
+            case Cmd.Seed(ref, xs)         => overEntity(ref, _ -> xs, world)
             case Cmd.TickPlayers(ids) =>
+                let World.World(w) = world;
                 let idSet = List.toSet(ids);
                 let next = Map.mapWithKey((id, xs) ->
                     if (Set.memberOf(id, idSet)) StatusSystem.tick(xs) else xs, w#playerStatusEffects);
                 World.World({playerStatusEffects = next | w})
             case Cmd.TickEnemies =>
+                let World.World(w) = world;
                 World.World({enemyStatusEffects = Map.map(StatusSystem.tick, w#enemyStatusEffects) | w})
-            case Cmd.SeedPlayer(id, xs) =>
-                World.World({playerStatusEffects = Map.insert(id, xs, w#playerStatusEffects) | w})
-            case Cmd.SeedEnemy(id, xs) =>
-                World.World({enemyStatusEffects = Map.insert(id, xs, w#enemyStatusEffects) | w})
         }
 
     /// World（位置の read-model mirror）から Board を組み立てる S4 の経路（World クエリ＝ecs/ 層）。

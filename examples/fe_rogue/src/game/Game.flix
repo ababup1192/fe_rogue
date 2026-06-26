@@ -880,9 +880,8 @@ mod Game {
                   def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(worldRef)), worldRef); k() }
               }
               with handler World.Query {
-                  // statusEffects 読み込み（Bevy Query）。reader への引数注入の供給元（worldRef を読む）。
-                  def playerStatusEffects(id, k) = k(World.playerStatusEffectsOf(id, Ref.get(worldRef)))
-                  def enemyStatusEffects(id, k)  = k(World.enemyStatusEffectsOf(id, Ref.get(worldRef)))
+                  // statusEffects 読み込み（Bevy Query）。EntityRef で引く faction 非依存の read seam。
+                  def statusEffects(ref, k) = k(World.statusEffectsOf(ref, Ref.get(worldRef)))
               }
               with handler PlayerData.PartyQuery {
                   def get(id, k)           = k(PlayerScene.get(id, Ref.get(sceneRef)))

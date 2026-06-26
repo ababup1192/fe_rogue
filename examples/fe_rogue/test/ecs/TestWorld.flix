@@ -107,11 +107,11 @@ mod TestWorld {
         let World.World(w) = World.syncFromScene(sceneWithStatus(), World.empty());
         Assert.assertEq(expected = 3, firstRemaining(w#playerStatusEffects, 0))
 
-    /// tickStatuses（StatusSystem.tick 再利用）で残ターンが 1 減る（残3→2）。
+    /// tickStatusEffects（StatusSystem.tick 再利用）で残ターンが 1 減る（残3→2）。
     @Test
     def testTickStatuses(): Unit \ Assert =
         let synced = World.syncFromScene(sceneWithStatus(), World.empty());
-        let World.World(w) = World.tickStatuses(synced);
+        let World.World(w) = World.tickStatusEffects(synced);
         Assert.assertEq(expected = 2, firstRemaining(w#playerStatusEffects, 0))
 
     // ── S1b: World→scene write-back（逆向き矢印）と parallel-run 同値実証 ──
@@ -132,15 +132,15 @@ mod TestWorld {
         let back   = World.syncStatusesToScene(synced, scene);
         Assert.assertEq(expected = 3, sceneFirstRemaining(back, 0))
 
-    /// parallel-run 同値実証: 「World 経路（tickStatuses→write-back で scene を更新）」と
+    /// parallel-run 同値実証: 「World 経路（tickStatusEffects→write-back で scene を更新）」と
     /// 「現行 scene 経路（StatusSystem.tick を直接 Data#statuses に畳む）」が同じ残ターンを与える。
     /// これが一致する限り、turn 開始 tick を World へ flip しても挙動は不変（S1b 後段の前提）。
     @Test
     def testTickParallelRunMatchesScenePath(): Unit \ Assert =
         let scene = sceneWithStatus();
-        // World 経路: sync → tickStatuses → scene へ write-back → scene から読む。
+        // World 経路: sync → tickStatusEffects → scene へ write-back → scene から読む。
         let worldPath =
-            World.syncStatusesToScene(World.tickStatuses(World.syncFromScene(scene, World.empty())), scene)
+            World.syncStatusesToScene(World.tickStatusEffects(World.syncFromScene(scene, World.empty())), scene)
                 |> (s -> sceneFirstRemaining(s, 0));
         // scene 経路: 既存と同じく Data#statuses に StatusSystem.tick を直接畳む。
         let scenePath =
@@ -243,8 +243,8 @@ mod TestWorld {
     /// AddPlayer は付与する。同 effect 種別の再付与は増えず、**元の値が据え置かれる**（skip であって置換でない）。
     @Test
     def testApplyAddPlayerDedup(): Unit \ Assert =
-        let w1 = World.applyCmd(World.Cmd.AddPlayer(0, spdUp(2, 3)), World.empty());
-        let w2 = World.applyCmd(World.Cmd.AddPlayer(0, spdUp(9, 9)), w1);  // 同 effect 再付与（skip される）
+        let w1 = World.applyCmd(World.Cmd.Add(World.EntityRef.Player(0), spdUp(2, 3)), World.empty());
+        let w2 = World.applyCmd(World.Cmd.Add(World.EntityRef.Player(0), spdUp(9, 9)), w1);  // 同 effect 再付与（skip される）
         let xs = World.playerStatusEffectsOf(0, w2);
         let mag = List.head(xs) |> Option.map(s -> s#magnitude) |> Option.getWithDefault(-1);
         Assert.assertEq(expected = (1, 2), (List.length(xs), mag))  // 1 件・残ったのは元の magnitude=2
@@ -252,8 +252,8 @@ mod TestWorld {
     /// TickPlayers(ids) はリスト内 id のみ remaining を減らし、リスト外 id（usedStairs 相当）は不変。
     @Test
     def testApplyTickPlayersFilters(): Unit \ Assert =
-        let w0 = World.applyCmd(World.Cmd.AddPlayer(1, spdUp(2, 5)),
-                   World.applyCmd(World.Cmd.AddPlayer(0, spdUp(2, 5)), World.empty()));
+        let w0 = World.applyCmd(World.Cmd.Add(World.EntityRef.Player(1), spdUp(2, 5)),
+                   World.applyCmd(World.Cmd.Add(World.EntityRef.Player(0), spdUp(2, 5)), World.empty()));
         let w1 = World.applyCmd(World.Cmd.TickPlayers(0 :: Nil), w0);
         Assert.assertEq(
             expected = (4, 5),  // id0 は tick(5→4)、id1 はリスト外で不変(5)
@@ -262,15 +262,15 @@ mod TestWorld {
     /// TickEnemies は全敵を tick する（残4→3）。
     @Test
     def testApplyTickEnemies(): Unit \ Assert =
-        let w0 = World.applyCmd(World.Cmd.AddEnemy(5, spdUp(2, 4)), World.empty());
+        let w0 = World.applyCmd(World.Cmd.Add(World.EntityRef.Enemy(5), spdUp(2, 4)), World.empty());
         let w1 = World.applyCmd(World.Cmd.TickEnemies, w0);
         Assert.assertEq(expected = 3, firstRem(World.enemyStatusEffectsOf(5, w1)))
 
     /// SeedPlayer は既存を完全置換する（replace 意味論）。immobilize を捨て spdUp だけになる。
     @Test
     def testApplySeedPlayerReplaces(): Unit \ Assert =
-        let w0 = World.applyCmd(World.Cmd.AddPlayer(0, StatusSystem.immobilizeFor(3)), World.empty());
-        let w1 = World.applyCmd(World.Cmd.SeedPlayer(0, spdUp(2, 7) :: Nil), w0);
+        let w0 = World.applyCmd(World.Cmd.Add(World.EntityRef.Player(0), StatusSystem.immobilizeFor(3)), World.empty());
+        let w1 = World.applyCmd(World.Cmd.Seed(World.EntityRef.Player(0), spdUp(2, 7) :: Nil), w0);
         Assert.assertEq(
             expected = (1, false),  // 1 件・immobilize は消えている
             (List.length(World.playerStatusEffectsOf(0, w1)),
@@ -279,14 +279,14 @@ mod TestWorld {
     /// ClearEnemyImmobilized は完全停止だけ解除する（clearImmobilized 再利用）。
     @Test
     def testApplyClearEnemyImmobilized(): Unit \ Assert =
-        let w0 = World.applyCmd(World.Cmd.AddEnemy(5, StatusSystem.immobilizeFor(3)), World.empty());
-        let w1 = World.applyCmd(World.Cmd.ClearEnemyImmobilized(5), w0);
+        let w0 = World.applyCmd(World.Cmd.Add(World.EntityRef.Enemy(5), StatusSystem.immobilizeFor(3)), World.empty());
+        let w1 = World.applyCmd(World.Cmd.ClearImmobilized(World.EntityRef.Enemy(5)), w0);
         Assert.assertEq(expected = false, StatusSystem.isImmobilized(World.enemyStatusEffectsOf(5, w1)))
 
     /// faction 隔離: AddPlayer は enemyStatuses を変えない。
     @Test
     def testApplyFactionIsolation(): Unit \ Assert =
-        let w = World.applyCmd(World.Cmd.AddPlayer(0, spdUp(2, 3)), World.empty());
+        let w = World.applyCmd(World.Cmd.Add(World.EntityRef.Player(0), spdUp(2, 3)), World.empty());
         Assert.assertEq(
             expected = (1, 0),
             (List.length(World.playerStatusEffectsOf(0, w)), List.length(World.enemyStatusEffectsOf(0, w))))
@@ -298,4 +298,15 @@ mod TestWorld {
             expected = (true, true),
             (List.isEmpty(World.playerStatusEffectsOf(99, World.empty())),
              List.isEmpty(World.enemyStatusEffectsOf(99, World.empty()))))
+
+    /// 統一アクセサ `statusEffectsOf(EntityRef)` が faction を判別する＝**味方 id0 と敵 id0 が衝突しない**
+    /// （read seam が live＝Query handler が呼ぶ実体）。
+    @Test
+    def testStatusEffectsOfRoutesByFaction(): Unit \ Assert =
+        let w = World.applyCmd(World.Cmd.Add(World.EntityRef.Player(0), spdUp(2, 3)), World.empty());
+        // Player(0) には付与済み、同 id でも Enemy(0) は別エンティティで空。
+        Assert.assertEq(
+            expected = (1, 0),
+            (List.length(World.statusEffectsOf(World.EntityRef.Player(0), w)),
+             List.length(World.statusEffectsOf(World.EntityRef.Enemy(0), w))))
 }
