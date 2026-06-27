@@ -571,20 +571,20 @@ mod CombatScene {
     /// みかえりのリングを装備した味方が撃破したとき、その味方の HP を回復する（最大 HP でクランプ）。
     /// リング未装備 / Lifesteal 以外なら回復量 0 で no-op。
     def applyPlayerLifesteal(playerId: Int32, player: PlayerScene.Data,
-                              scene: Scene[NodeTag]): Scene[NodeTag] =
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let amt = Ring.lifestealAmount(PlayerData.equippedRing(player));
         if (amt <= 0) scene
         else
             let newHp = Combat.heal(player#hp, player#resource#hp, amt)#newHp;
             scene
-                |> PlayerScene.mapPlayer(playerId, d -> {hp = newHp | d})
+                |> PlayerScene.setHp(playerId, newHp)
                 |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), newHp)
 
     /// 血吸いの剣: 与えたダメージの `effectValue`% を攻撃側へ回復（毎ヒット・撃破非依存）。
     /// 攻撃側の HP は自分の攻撃では変わらないので `player#hp` をそのまま基準にしてよい。
     def applyPlayerWeaponLifesteal(playerId: Int32, player: PlayerScene.Data,
                                     weapon: UnitCatalog.WeaponResource, dmgDealt: Int32,
-                                    scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+                                    scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         let pct = WeaponCatalog.lifestealPercent(weapon#effect, weapon#effectValue);
         if (pct <= 0 or dmgDealt <= 0) scene
         else
@@ -592,7 +592,7 @@ mod CombatScene {
             let newHp = Combat.heal(player#hp, player#resource#hp, amt)#newHp;
             GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}は 血を吸って HP+${newHp - player#hp}");
             scene
-                |> PlayerScene.mapPlayer(playerId, d -> {hp = newHp | d})
+                |> PlayerScene.setHp(playerId, newHp)
                 |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), newHp)
 
     /// 如意棒 / 突風の書: ノックバック武器なら、生存している敵を攻撃方向へ押し流す。
@@ -877,6 +877,8 @@ mod CombatScene {
     }
 
     /// HP 回復を ally で出し分け（最大 HP でクランプ）。吸血（OpLifesteal → HealAt）の着地点。
+    // F6a 保留: PlanHandlers は全 handler の effect 統一を要求し、pure handler を World.Command へ widen 不可。
+    // ゆえに effect-runner 経由の heal はまだ scene-only（refreshMirror re-mirror で invariant）。後続スライスで対応。
     def effectHeal(id: Int32, ally: Bool, n: Int32, sc: Scene[NodeTag]): Scene[NodeTag] =
         if (ally)
             match PlayerScene.get(id, sc) {
@@ -924,19 +926,19 @@ mod CombatScene {
     /// みかえりのリングを装備した敵が撃破したとき、その敵の HP を回復する（最大 HP でクランプ）。
     /// リング未装備 / Lifesteal 以外なら回復量 0 で no-op。
     def applyEnemyLifesteal(enemyId: Int32, enemy: EnemyScene.Data,
-                             scene: Scene[NodeTag]): Scene[NodeTag] =
+                             scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let amt = Ring.lifestealAmount(enemy#ring);
         if (amt <= 0) scene
         else
             let newHp = Combat.heal(enemy#hp, enemy#resource#hp, amt)#newHp;
             scene
-                |> EnemyScene.mapEnemy(enemyId, d -> {hp = newHp | d})
+                |> EnemyScene.setHp(enemyId, newHp)
                 |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), newHp)
 
     /// 血吸いの剣を敵が装備していたとき: 与ダメージの `effectValue`% を敵へ回復（毎ヒット）。
     def applyEnemyWeaponLifesteal(enemyId: Int32, enemy: EnemyScene.Data,
                                    weapon: UnitCatalog.WeaponResource, dmgDealt: Int32,
-                                   scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+                                   scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         let pct = WeaponCatalog.lifestealPercent(weapon#effect, weapon#effectValue);
         if (pct <= 0 or dmgDealt <= 0) scene
         else
@@ -944,7 +946,7 @@ mod CombatScene {
             let newHp = Combat.heal(enemy#hp, enemy#resource#hp, amt)#newHp;
             GameLogger.enemyLog("${enemy#resource#description}は 血を吸って HP+${newHp - enemy#hp}");
             scene
-                |> EnemyScene.mapEnemy(enemyId, d -> {hp = newHp | d})
+                |> EnemyScene.setHp(enemyId, newHp)
                 |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), newHp)
 
     /// 敵の如意棒 / 突風の書: ノックバック武器なら、生存している味方を攻撃方向へ押し流す。

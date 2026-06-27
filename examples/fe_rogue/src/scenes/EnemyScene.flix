@@ -368,6 +368,12 @@ mod EnemyScene {
             case other => other
         }, scene)
 
+    /// F6a: hp 書込 funnel。scene の hp を更新しつつ World にも `Cmd.SetHp` で dual-write する。
+    /// 純 hp 書込（回復/吸血など）の置換先。複合書込（hp＋他 field）は呼び出し側で単独 emit する。
+    pub def setHp(id: Int32, newHp: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(id), newHp));
+        mapEnemy(id, d -> {hp = newHp | d}, scene)
+
     // 行動済み時に sprite / HP ゲージを暗転し、プレイヤーの waitedColor と外観を揃えるグループ。
 
     /// 行動済みの sprite / HP ゲージ modulate（薄い灰色）。プレイヤーの waitedColor と揃える。

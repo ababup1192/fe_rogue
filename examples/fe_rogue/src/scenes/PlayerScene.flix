@@ -628,6 +628,12 @@ mod PlayerScene {
             case other => other
         }, scene)
 
+    /// F6a: hp 書込 funnel。scene の hp を更新しつつ World にも `Cmd.SetHp` で dual-write する。
+    /// 純 hp 書込（回復/吸血/効果回復など）の置換先。複合書込（hp＋他 field）は呼び出し側で単独 emit する。
+    pub def setHp(id: Int32, newHp: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(id), newHp));
+        mapPlayer(id, d -> {hp = newHp | d}, scene)
+
     /// 指定プレイヤーの上下左右 1 マスに居る他味方を返す（自分は含まない）。
     /// 「こうかん」コマンドや将来の隣接判定 (例: 助太刀) の出現条件として使う。
     /// 斜め (例: (4,4) と (5,5)) は含まない。waited フィルタはここではせず、
