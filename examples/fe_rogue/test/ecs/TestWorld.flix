@@ -318,10 +318,10 @@ mod TestWorld {
             let worldRef = Ref.fresh(rc, World.empty());
             run {
                 World.Command.emit(World.Cmd.Add(World.EntityRef.Player(0), spdUp(2, 4)));
-                List.length(World.Query.statusEffects(World.EntityRef.Player(0)))
+                List.length(World.StatusQuery.statusEffects(World.EntityRef.Player(0)))
             } with handler World.Command {
                 def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(worldRef)), worldRef); k() }
-            } with handler World.Query {
+            } with handler World.StatusQuery {
                 def statusEffects(ref, k) = k(World.statusEffectsOf(ref, Ref.get(worldRef)))
             }
         };

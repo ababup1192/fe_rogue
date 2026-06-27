@@ -25,4 +25,27 @@ mod Query {
                 case Some(ov) => Map.insert(id, update(tv, ov), acc)
                 case None     => Map.insert(id, tv, acc)
             }, Map.empty())
+
+    /// entity レコードのリストから component store を作る（scene→World read-model mirror の核）。
+    /// keyOf で id を、valOf で値を取り出して Map に畳む。
+    pub def indexBy(keyOf: a -> EntityId, valOf: a -> v, xs: List[a]): Map[EntityId, v] =
+        List.foldLeft((m, x) -> Map.insert(keyOf(x), valOf(x), m), Map.empty(), xs)
+
+    /// entity レコードのリストから id 集合（tag）を作る。
+    pub def tagOf(keyOf: a -> EntityId, xs: List[a]): Set[EntityId] =
+        xs |> List.map(keyOf) |> List.toSet
+
+    /// tag に属する entity の値だけ f を適用する（Bevy の `With<T>` フィルタ付き System 相当）。
+    /// tag 外の entity は値そのまま・keyset 不変。
+    pub def updateTagged(tag: Set[EntityId], f: v -> v, store: Map[EntityId, v]): Map[EntityId, v] =
+        Map.mapWithKey((id, v) -> if (Set.memberOf(id, tag)) f(v) else v, store)
+
+    /// 2 store を join し、両方持つ entity だけを f で射影して list 化する（with2 の list 版）。
+    /// 注: foldLeft の prepend ゆえ結果は id 降順。順序非依存（後段で安定ソート等）の用途向け。
+    pub def with2List(a: Map[EntityId, x], b: Map[EntityId, y], f: EntityId -> x -> y -> r): List[r] =
+        a |> Map.foldLeftWithKey((acc, id, va) ->
+            match Map.get(id, b) {
+                case Some(vb) => f(id, va, vb) :: acc
+                case None     => acc
+            }, Nil)
 }

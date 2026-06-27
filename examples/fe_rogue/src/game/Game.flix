@@ -889,7 +889,7 @@ mod Game {
                   // statuses 書き込み（Bevy Commands）。深い scene コードの emit を worldRef へ即時適用。
                   def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(worldRef)), worldRef); k() }
               }
-              with handler World.Query {
+              with handler World.StatusQuery {
                   // statusEffects 読み込み（Bevy Query）。EntityRef で引く faction 非依存の read seam。
                   def statusEffects(ref, k) = k(World.statusEffectsOf(ref, Ref.get(worldRef)))
               }
@@ -982,7 +982,7 @@ mod Game {
                          FloorProgress.State, InitialSpawns.State,
                          GamePhaseState, PartySelection.State,
                          Pacing.State, Math.Random, FloorSnapshot.State,
-                         World.Command, World.Query, r} =
+                         World.Command, World.StatusQuery, r} =
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
         if (GameEngine.Game.shouldClose()) ()
         else {

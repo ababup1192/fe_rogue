@@ -42,15 +42,15 @@ mod World {
         let enemies = EnemyScene.getAll(scene);
         World.World({
             tick           = w#tick + 1,
-            playerIds      = players |> List.map(d -> d#id) |> List.toSet,
-            enemyIds       = enemies |> List.map(d -> d#id) |> List.toSet,
-            playerStatusEffects = players |> List.foldLeft((m, d) -> Map.insert(d#id, d#statuses, m), Map.empty()),
-            enemyStatusEffects  = enemies |> List.foldLeft((m, d) -> Map.insert(d#id, d#statuses, m), Map.empty()),
-            playerHp       = players |> List.foldLeft((m, d) -> Map.insert(d#id, d#hp, m), Map.empty()),
-            enemyHp        = enemies |> List.foldLeft((m, d) -> Map.insert(d#id, d#hp, m), Map.empty()),
-            playerPos      = players |> List.foldLeft((m, d) -> Map.insert(d#id, d#gridPos, m), Map.empty()),
-            enemyPos       = enemies |> List.foldLeft((m, d) -> Map.insert(d#id, d#gridPos, m), Map.empty()),
-            playerHidden   = players |> List.filter(d -> d#hidden) |> List.map(d -> d#id) |> List.toSet
+            playerIds      = Query.tagOf(d -> d#id, players),
+            enemyIds       = Query.tagOf(d -> d#id, enemies),
+            playerStatusEffects = Query.indexBy(d -> d#id, d -> d#statuses, players),
+            enemyStatusEffects  = Query.indexBy(d -> d#id, d -> d#statuses, enemies),
+            playerHp       = Query.indexBy(d -> d#id, d -> d#hp, players),
+            enemyHp        = Query.indexBy(d -> d#id, d -> d#hp, enemies),
+            playerPos      = Query.indexBy(d -> d#id, d -> d#gridPos, players),
+            enemyPos       = Query.indexBy(d -> d#id, d -> d#gridPos, enemies),
+            playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players))
         })
 
     /// statuses を 1 ターン進める System（StatusSystem.tick を再利用）。S1b でターン開始フックに繋ぐ。
@@ -73,7 +73,7 @@ mod World {
     //   「敵らしさ」は AI/Faction component の合成で表す（味方型/敵型の継承を作らない）。
     // 【現状】scene-tree が PlayerScene/EnemyScene の **2 つの id 名前空間**（味方 id 0 と敵 id 0 が衝突）と
     //   別レコード型（PlayerData/EnemyData）を持つため、World も faction 別ストアに割っている（暫定 mirror）。
-    // 【seam（配線済み）】read = `Query.statusEffects(EntityRef)`、write の単体操作 = `Cmd.Add/ClearImmobilized/Seed(EntityRef, …)`
+    // 【seam（配線済み）】read = `StatusQuery.statusEffects(EntityRef)`、write の単体操作 = `Cmd.Add/ClearImmobilized/Seed(EntityRef, …)`
     //   はいずれも **EntityRef キーで faction 非依存**。内部で split ストアに触れるのは `overEntity`（単体）と
     //   `Cmd.TickPlayers/TickEnemies`（faction 一括 = ターン構造上 faction 別が本質）と `syncFromScene` の mirror だけ。
     //   よって将来 Option A（単一 `Map[EntityId,_]` ストア＋Faction component）へ寄せる時は **この World.flix 内部
@@ -116,9 +116,10 @@ mod World {
         def emit(c: Cmd): Unit
     }
 
-    /// statusEffects 読み込み effect（Bevy Query）。**EntityRef で引く＝faction 非依存の read seam**。
+    /// statusEffects 読み込み effect（Bevy Query 相当）。**EntityRef で引く＝faction 非依存の read seam**。
     /// handler は Game.start（worldRef を読む）。reader への引数注入の供給元。
-    pub eff Query {
+    /// 名前は `StatusQuery`（engine_ecs の汎用 `Query` モジュールを mod World 内で使えるよう、衝突回避）。
+    pub eff StatusQuery {
         def statusEffects(ref: EntityRef): StatusSystem.StatusEffects
     }
 
@@ -157,9 +158,7 @@ mod World {
             case Cmd.Seed(ref, xs)         => overEntity(ref, _ -> xs, world)
             case Cmd.TickPlayers(ids) =>
                 let World.World(w) = world;
-                let idSet = List.toSet(ids);
-                let next = Map.mapWithKey((id, xs) ->
-                    if (Set.memberOf(id, idSet)) StatusSystem.tick(xs) else xs, w#playerStatusEffects);
+                let next = Query.updateTagged(List.toSet(ids), StatusSystem.tick, w#playerStatusEffects);
                 World.World({playerStatusEffects = next | w})
             case Cmd.TickEnemies =>
                 let World.World(w) = world;

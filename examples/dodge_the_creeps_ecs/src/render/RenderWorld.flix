@@ -39,12 +39,10 @@ mod RenderWorld {
     def spriteItems(positions: Map[EntityId, Vec2.Vec2],
                     sprites: Map[EntityId, SpriteComp],
                     playerOpt: Option[EntityId]): List[(Vec2.Vec2, Render.RenderItem)] =
-        Map.foldLeftWithKey((acc, id, sc) -> match Map.get(id, positions) {
-            case None      => acc
-            case Some(pos) =>
-                let z = if (playerOpt == Some(id)) zPlayer() else zMob();
-                (pos, Render.sprite(World.currentTexture(sc), z, sc#flipH, sc#flipV)) :: acc
-        }, Nil, sprites)
+        // sprites × positions の join → (pos, RenderItem) 射影（position を持たない entity は除外）。
+        Query.with2List(sprites, positions, (id, sc, pos) ->
+            let z = if (playerOpt == Some(id)) zPlayer() else zMob();
+            (pos, Render.sprite(World.currentTexture(sc), z, sc#flipH, sc#flipV)))
 
     // ── HUD（テキスト／ボタン＝Box＋Text の2アイテム）──
 
