@@ -465,7 +465,7 @@ mod ActionMenuScene {
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 GatherResume.State, PlayerData.PartyQuery,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, BoardQuery} =
         match entry#metadata {
             case None    => scene
             case Some(m) =>
@@ -703,7 +703,7 @@ mod ActionMenuScene {
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 GatherResume.State, PlayerData.PartyQuery,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, BoardQuery} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             // disabled 項目（例: 敵が射程外の「攻撃」）は確定しても何もしない。
             case Some(entry) => if (entry#disabled) scene else onActionConfirmed(entry, scene)

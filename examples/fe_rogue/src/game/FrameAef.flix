@@ -21,9 +21,10 @@ mod FrameAef {
     /// `process` 用の広い Aef 集合 (`FrameAef.ProcessT`)。Player/Enemy の `process` が drainSignals 経由で
     /// attack:hit / death_blink / attack_lunge を捌き、EnemyTurnDriverScene が phase 判定で
     /// `stepOnce` や `commitWaitedAndAdvance` を起動するため、Audio / EnemyTurn / GameOverRequest /
-    /// Pacing が追加される。`BoardQuery` を使わない — board snapshot は呼び出し元が渡す規約。
-    /// `Math.Random` は attack:hit 時の命中ロール（Combat.isHit 用の乱数）に使う。
-    pub type alias ProcessT = {GameEngine.Game, GameEngine.Audio,
+    /// Pacing が追加される。`Math.Random` は attack:hit 時の命中ロール（Combat.isHit 用の乱数）に使う。
+    /// `BoardQuery`: P1a 以降、StairsExit の per-frame 進行（`stepOnce`/`advanceFront`）が frame-head の
+    /// 盤面を World 由来で読むため許可（move 前ゆえ World==scene・挙動不変）。
+    pub type alias ProcessT = {GameEngine.Game, GameEngine.Audio, BoardQuery,
                                 PlayerData.PartyQuery, EnemyData.RosterQuery,
                                 Tween.Scheduler, AnimationPlayer.Scheduler,
                                 GameLogger.GameLogger,

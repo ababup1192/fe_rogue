@@ -221,12 +221,16 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > - **tripwire 追加**: `TestWorld.testAddOnePlayerSeedsPositionToWorld`（addOnePlayer の emit を capture→`boardPieces` に id7@(3,4) を確認・emit 行削除で赤）。
 > - 毎フレーム `syncFromScene` mirror に上書きされる **dual-write ＝挙動不変**（mirror は P3 まで生存）。run 不要（P0a と同論法）。
 >
-> ### 次の一手 = **P1a**（frame-head reader flip・挙動不変・run 不要）
-> move 前に board を読む frame-head 経路を `BoardSnapshot.fromScene`→`BoardQuery.board()` に。対象: StairsExit(begin/advanceFront)・StaffCast player warp/blowback。
-> pure reader(canExit/buildFor/reachability)は対象外。各 flip 後 handler assert 差ゼロ。その後 **P1b**(mid-frame reader flip)→**P2**(Encounter/AI)→**P3**(mirror 撤去・§A payoff)。各 plan 参照。
+> ### P1a 進行中（frame-head reader flip・挙動不変・run 不要）
+> move 前に board を読む frame-head 経路を `BoardSnapshot.fromScene`→`BoardQuery.board()` に。pure reader(canExit/buildFor/reachability)は対象外（scene gridPos は P3 でも dual-write 継続ゆえ fromScene のまま可）。
+> - **✅ StairsExit group 完了（880緑）**: `begin`／`advanceFront` を `BoardQuery.board()` に。cascade で `stepOnce`/`process`＋menu trait tier
+>   （`MenuHandler.Aef[NodeTag]`＝Game.flix:386・`onItemConfirmed`/`onItemCancelled` は arm が既に `checked_ecast` 済で宣言行に `BoardQuery` 追加のみ）
+>   ＋`dispatchMenuKey`/`onItemConfirmed` dispatch＋**`FrameAef.ProcessT` に `BoardQuery` を許可**（旧「process は BoardQuery 不使用」規約を更新）。test は `withMockBoard(BoardSnapshot.fromScene(scene))` を2スタックに追加。
+> - **残: StaffCast player group**: `StaffCastScene` の `BoardSnapshot.fromScene` 直読み（:364/429/442/1033/1072）のうち **player warp/blowback の frame-head 読み**を flip。enemy cast(:1033/1072?)は mid-frame ゆえ P1b。pure(forecast/computeView)は対象外。
+> - 各 flip 後 handler assert 差ゼロ（frame-head ゆえ World==scene）。その後 **P1b**(mid-frame reader flip: EnemyTurnDriver/Combat knockback/StaffCast enemy)→**P2**(Encounter/AI)→**P3**(mirror 撤去・§A payoff)。
 >
 > ### 注意（resumption）
-> - **P0a/P0b はコード実装済・要コミット**（作業ツリーに未コミットの変更: `PlayerScene`/`EnemyScene`/`GameLifecycle`/`Game.flix`＋`TestPlayerScene`/`TestMoveRangeScene`/`TestTradeMenuScene`/`TestWorld`）。P0a 分は `4f14204` にコミット済、tripwire＋P0b は未コミット。HEAD+作業ツリーで `flix test` 880緑・`flix check` 緑。
+> - **P0a/P0b/P1a-StairsExit はコード実装済・要コミット**（作業ツリー未コミット: `PlayerScene`/`EnemyScene`/`GameLifecycle`/`Game.flix`/`StairsExitScene`/`ActionMenuScene`/`FrameAef`＋test `TestPlayerScene`/`TestMoveRangeScene`/`TestTradeMenuScene`/`TestWorld`/`TestActionMenuScene`）。P0a 分のみ `4f14204` にコミット済。HEAD+作業ツリーで `flix test` 880緑・`flix check` 緑。
 > - **WIP は再適用済み**: 旧注記の「`World.Query`→`World.StatusQuery` リネーム＋engine_ecs 汎用 `Query`/`exclude` は HEAD に戻した」は古い。`0d01322 "world強化"` で**再適用＆コミット済み**（engine_ecs `Query`＋`TestQuery`＋fe_rogue の rename）。もう WIP ではない。
 > - fpkg は git 管理外。エンジン側変更後/新規 checkout 後は `GITHUB_TOKEN=$(gh auth token) make sync`（無認証は GitHub API レート制限で fpkg 配布が 404/失敗）。
 > - perl で effect row へ `World.Command` を撒くのは**多行 sig で誤爆**するので、複数行シグネチャは Edit 推奨。

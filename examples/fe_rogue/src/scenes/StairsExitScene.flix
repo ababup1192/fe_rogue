@@ -112,11 +112,12 @@ mod StairsExitScene {
     /// 届かない味方も含めてキューに入れる（近づけるところまで近づいて止まる）。
     pub def begin(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, GameEngine.Audio,
-                              TurnPhase.State, SelectedPlayer.State} =
+                              TurnPhase.State, SelectedPlayer.State, BoardQuery} =
         match StairsScene.getPos(scene) {
             case None         => scene
             case Some(stairs) =>
-                let board = BoardSnapshot.fromScene(scene);
+                // P1a: frame-head の board 読みを World 由来へ（move 前ゆえ World==scene・挙動不変）。
+                let board = BoardQuery.board();
                 let units = livingUnits(scene);
                 // 誰も階段に届かないなら何もしない（メニューは canExit のときだけ出すので通常来ない）。
                 if (List.isEmpty(eligibleExiters(board, stairs, units))) scene
@@ -141,7 +142,7 @@ mod StairsExitScene {
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                       GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command} =
+                       GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery} =
         match node {
             case EngineNode.Marker2DWithState(_, NodeTag.StairsExitDriver(data)) =>
                 let next = match TurnPhase.State.get() {
@@ -160,7 +161,7 @@ mod StairsExitScene {
     def stepOnce(data: Data, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-               GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command} =
+               GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery} =
         if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
         else if (EnemyScene.anyAttacking(scene)) scene
@@ -180,11 +181,12 @@ mod StairsExitScene {
                       scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-               GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command} =
+               GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery} =
         match data#queue {
             case Nil              => finalize(scene)
             case (u, rem) :: rest =>
-                let board    = BoardSnapshot.fromScene(scene);
+                // P1a: frame-head の board 読みを World 由来へ（この frame の move 前ゆえ World==scene・挙動不変）。
+                let board    = BoardQuery.board();
                 let frontPos = PlayerScene.getGridPos(u, scene);
                 let field    = stairsField(board, stairs);
                 // 階段へ近づく「空きマス」へ 1 歩（占有/壁は ok で除外＝停止できないマスを避ける）。
