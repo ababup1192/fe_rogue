@@ -38,7 +38,12 @@ mod PlayerMovementScene {
         let (movedNode, movedScene) =
             stepFor(selectAllowedPred(TurnPhase.Phase.GatherMove, scene),
                     PlayerScene.selectedSlideDuration(), node, path, scene);
-        let now = PlayerScene.getGridPos(lord, movedScene);
+        // S5b: move 関数は scene gridPos を直書きしなくなった（frame-end の syncTreeFromWorld で derive）。
+        // よって移動後の主人公位置は scene でなく **World 由来の board**（`Cmd.Move` 反映済み）から読む。
+        let now = Board.playerPositions(BoardQuery.board())
+            |> List.find(p -> { let (pid, _) = p; pid == lord })
+            |> Option.map(p -> { let (_, pos) = p; pos })
+            |> Option.getWithDefault(prev);
         if (now#x == prev#x and now#y == prev#y) (movedNode, movedScene)
         else (movedNode, followAllies(now, prev, movedScene))
 

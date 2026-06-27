@@ -1005,22 +1005,16 @@ mod Game {
                            applyPhaseChange(currentPhase, previousPhase, catalogs, updated)
                                |> Scene.setPrevKeyState(Scene.getPrevKeyState(updated))
                        else updated;
-            GameEngine.render(next);
             // P3（位置 mirror 撤去・§A payoff）: 位置の権威を World に一本化。base を frame-head の `world`
             // でなく **`Ref.get(worldRef)`（mid-frame の Cmd.Move 適用済み）** にし、`refreshMirror` で位置を
             // command 由来のまま保持（gridPos 再構築なし＋prune）。hp/status/hidden は read-model 継続。
-            // これで World.pos は scene gridPos から独立し、`[P0a BOARD DIFF]` が write 漏れを検出する。
             let world1 = World.refreshMirror(next, Ref.get(worldRef));
-            // P3 write-miss 検出器（ノイズ無し）: フレーム末で「command 由来の World 位置」と
-            // 「next scene の gridPos」を**同一時点**で突合する。`[P0a BOARD DIFF]`（mid-frame・移動中は
-            // world が1歩先の transient で常時鳴る）と違い、ここは両方フレーム末ゆえ通常は差ゼロ。
-            // 差が出る＝どこかの move/spawn が Cmd.Move を emit し損ねている（mirror 撤去後は自己回復しない）。
-            // ※ map 未構築フレーム（Title 等）は `toBoard`→`mapSnapshotOf` が TileMapLayer を要求して
-            //   panic するので、盤面が組めるフレーム（placements あり）に限定する。
-            if (not List.isEmpty(MapScene.tryGetPlacements(next))
-                and World.boardKey(World.toBoard(world1, next)) != World.boardKey(BoardSnapshot.fromScene(next)))
-                println("[P3 WRITE-MISS] world=${World.boardKey(World.toBoard(world1, next))} scene=${World.boardKey(BoardSnapshot.fromScene(next))}")
-            else ();
-            gameLoop(catalogs, sceneRef, worldRef, currentPhase, next, world1)
+            // S5b（§A 完成・World→scene 一方向 sync）: scene の gridPos を **World の位置で derive** する
+            // （move 関数は gridPos を直書きしなくなった＝`Cmd.Move` が唯一の位置 source）。これで
+            // scene は World の純粋な派生ビューになり、dual-write は解消。write 漏れは「ユニットが動かない」
+            // 可視バグとして現れるので、旧 `[P3 WRITE-MISS]` 検出器（独立 dual-write 前提）は撤去した。
+            let synced = World.syncTreeFromWorld(world1, next);
+            GameEngine.render(synced);
+            gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world1)
         }
 }

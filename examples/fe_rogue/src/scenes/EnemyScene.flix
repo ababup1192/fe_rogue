@@ -499,9 +499,11 @@ mod EnemyScene {
                 else scene
             case None => scene
         };
-        // 直前位置を記録（徘徊の「来た道へ戻らない」判定に使う）。論理位置を進める。
+        // 直前位置を記録（徘徊の「来た道へ戻らない」判定に使う）。論理位置(gridPos)は World へ。
         World.Command.emit(World.Cmd.Move(World.EntityRef.Enemy(id), target));
-        mapEnemy(id, d -> {gridPos = target, prevPos = Some(d#gridPos) | d}, flipped)
+        // S5b: gridPos は frame-end の syncTreeFromWorld で World 由来に derive。prevPos（移動前の論理位置）
+        // はここで記録する（`d#gridPos` は frame-head の現在位置＝移動前なので正しい）。
+        mapEnemy(id, d -> {prevPos = Some(d#gridPos) | d}, flipped)
 
     /// 子 Sprite2D に flipH を設定する内部ヘルパー (敵スプライトは常に Sprite2D)。
     def setSpriteFlipH(id: Int32, h: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -525,9 +527,9 @@ mod EnemyScene {
         let world = MapSnapshot.cellCenter(target);
         Tween.Scheduler.cancel(enemyPath(id));
         World.Command.emit(World.Cmd.Move(World.EntityRef.Enemy(id), target));
+        // S5b: gridPos は frame-end の syncTreeFromWorld で derive。瞬間移動の Marker2D world 座標だけ即合わせる。
         scene
             |> Scene.setGlobalPositionAt(enemyPath(id), world)
-            |> mapEnemy(id, d -> {gridPos = target | d})
 
     /// 指定セルに居る（生きている）敵の id を返す。死亡演出中の敵は対象外。
     /// PlayerAttack フェーズで「カーソルが赤マス上の敵に乗っているか」の判定に使う。

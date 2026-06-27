@@ -259,7 +259,20 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > - **検証器整理**: 役目を終えた mid-frame `[P0a BOARD DIFF]`（移動中に毎フレーム鳴る transient ノイズ）を撤去。サイレントな `[P3 WRITE-MISS]`（フレーム末・real run 専用の恒久 write-miss ガード）だけ残置。
 >
 > ### 到達点 = **§A payoff 達成**（World が位置の論理的権威・scene は派生ビュー・determinism/save の素地）
-> 残る発展（任意）: **S5**(World→scene sync を `Tween.tweenPosition` の NodePath 結合を `moveUnit` eff facade で切り、scene を World の純粋な派生に)・**S7**(セーブ＝store の component-map 化＋EcsCodec 封筒で World シリアライズ)。
+>
+> ### S5 実装済・**⚠要 run 検証**（scene を位置の純粋な派生ビューに＝dual-write 撤去・883緑）
+> §A 完成へ。move 関数の scene gridPos 直書きを撤去し、gridPos を **World→scene 一方向 sync（`syncTreeFromWorld`）で derive** する。
+> - **新 `World.syncTreeFromWorld(world, scene)`**: 各ユニットの scene gridPos を World 位置で上書き（`mapPlayer`/`mapEnemy` 再利用・`syncStatusesToScene` と同型）。gameLoop の frame-end（render 直前）で実行。
+> - **S5a（additive・no-op）**: 上記 sync を配線（dual-write 継続中は World==scene ゆえ no-op）。
+> - **S5b（本番）**: `PlayerScene.{moveToById,snapTo}`／`EnemyScene.{moveTo,snapTo}` の `gridPos=target` 直書きを撤去（Tween/anim/facing/prevPos の視覚状態は残す）。
+>   唯一の mid-move logic reader `PlayerMovementScene.gatherStep` の `now`（移動後の主人公位置）を scene でなく **World 由来（`BoardQuery.board()`）** から読むよう flip。
+>   `PlayerScene.moveTo`(marker版)は呼び出しゼロの dead ゆえ非対象。
+> - **検証器整理**: scene gridPos が derive になり「独立 dual-write」前提が消えたため `[P3 WRITE-MISS]` を撤去（write 漏れは「ユニットが動かない」可視バグに変わる）。
+> - **test**: 落ちた `TestStaffCastScene.testStaffEffectRuleSwapsPositions`（swap杖の gridPos 入替を scene で検証）は、harness `fireStaffDsl` を gameLoop 同型（worldRef seed→Cmd 蓄積→`syncTreeFromWorld` で gridPos derive）に修正。
+> - **⚠ run 検証必須**: gridPos が frame-end derive ゆえ、move 直後・同フレームに gridPos を読む経路があれば 1 フレーム遅延 or バグ。
+>   **特に: ① gather（隊列追従が乱れない）② fog/minimap が移動に追従（1 フレーム遅延が許容範囲か）③ 杖いれかえ/ふきとばし/一時しのぎ・敵移動・階段集合・床移動・全滅復活・中断復帰** を目視。挙動が崩れたら該当経路の gridPos reader を World へ flip するか S5b を revert。
+>
+> ### 次の一手 = **S5 を実機 run 検証**（上記チェックリスト）→ OK ならコミット。残: **S7**(セーブ＝World シリアライズ・store の component-map 化＋EcsCodec 封筒)。
 >
 > ### 注意（resumption）
 > - **P0a/P0b/P1a/P1b はコード実装済**。P0a は `4f14204`、P0a-tripwire+P0b は `5467cd3`、P1a-StairsExit はユーザーがコミット済。

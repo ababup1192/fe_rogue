@@ -402,8 +402,9 @@ mod PlayerScene {
         let prev      = getGridPos(id, scene);
         let dirOpt    = directionOfStep(prev, target);
         World.Command.emit(World.Cmd.Move(World.EntityRef.Player(id), target));
+        // S5b: gridPos は scene に直書きせず frame-end の `World.syncTreeFromWorld` で World 由来に derive
+        // （`Cmd.Move` が唯一の位置 source）。facing（向き＝視覚状態）だけここで更新する。
         let withState = mapPlayer(id, d -> {
-            gridPos = target,
             facing  = Option.getWithDefault(d#facing, dirOpt) | d
         }, scene);
         // AnimatedSprite2D を持つ unit なら walk_<dir> アニメに切り替える。
@@ -423,9 +424,10 @@ mod PlayerScene {
         let world = MapSnapshot.cellCenter(target);
         Tween.Scheduler.cancel(playerPath(id));
         World.Command.emit(World.Cmd.Move(World.EntityRef.Player(id), target));
+        // S5b: gridPos は frame-end の syncTreeFromWorld で World 由来に derive。ここは Tween 実体（描画位置）の
+        // 即時スナップだけ行う（snapTo は瞬間移動ゆえ Marker2D の world 座標も即合わせる）。
         scene
             |> Scene.setGlobalPositionAt(playerPath(id), world)
-            |> mapPlayer(id, d -> {gridPos = target | d})
 
     /// PlayerCursor + Z で味方マスを選択した瞬間の遷移: 選択中味方を SelectedPlayer に
     /// 記録し、PlayerMoving に進む。

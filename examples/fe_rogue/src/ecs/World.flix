@@ -260,4 +260,15 @@ mod World {
             PlayerScene.mapPlayer(id, d -> {statuses = statuses | d}, sc), scene, w#playerStatusEffects);
         Map.foldLeftWithKey((sc, id, statuses) ->
             EnemyScene.mapEnemy(id, d -> {statuses = statuses | d}, sc), withPlayers, w#enemyStatusEffects)
+
+    /// S5（§A 完成へ・World→scene 一方向 sync）: 各ユニットの scene `gridPos` を **World の位置で上書き**する。
+    /// `syncStatusesToScene` と同型（`mapPlayer`/`mapEnemy` を再利用・scene 不在 id は no-op）。
+    /// S5a（dual-write 継続中）は World==scene ゆえ **no-op＝挙動不変**で seam を確立。S5b で move 関数の
+    /// scene gridPos 直書きを撤去し、gridPos を**この sync 由来（World の派生）**に一本化する。
+    pub def syncTreeFromWorld(world: World, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let World.World(w) = world;
+        let withPlayers = Map.foldLeftWithKey((sc, id, pos) ->
+            PlayerScene.mapPlayer(id, d -> {gridPos = pos | d}, sc), scene, w#playerPos);
+        Map.foldLeftWithKey((sc, id, pos) ->
+            EnemyScene.mapEnemy(id, d -> {gridPos = pos | d}, sc), withPlayers, w#enemyPos)
 }
