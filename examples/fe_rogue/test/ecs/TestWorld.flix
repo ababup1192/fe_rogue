@@ -370,4 +370,36 @@ mod TestWorld {
             Ref.get(ref)
         };
         Assert.assertEq(expected = Some((3, 4)), Map.get(7, playerPosMapOf(World.boardPieces(world))))
+
+    // ── P3: refreshMirror（位置 mirror 撤去・World が位置権威）──
+
+    /// P3 の要: `refreshMirror` は **scene gridPos を読まず** command 由来の位置を保持する。
+    /// command で player 0 を {5,5} に置き、gridPos が {2,2} の scene を渡しても pos は {5,5} のまま。
+    /// もし refreshMirror が gridPos を再構築（＝mirror 復活）すると {2,2} になり赤くなる回帰ガード。
+    @Test
+    def testRefreshMirrorKeepsCommandPosNotGridPos(): Unit \ Assert =
+        let seeded = World.applyCmd(World.Cmd.Move(World.EntityRef.Player(0), {x = 5, y = 5}), World.empty());
+        // sampleScene の player 0 の gridPos は {2,2}。refreshMirror は command の {5,5} を保持する。
+        let refreshed = World.refreshMirror(sampleScene(), seeded);
+        let World.World(w) = refreshed;
+        Assert.assertEq(expected = Some((5, 5)), Map.get(0, w#playerPos) |> Option.map(p -> (p#x, p#y)))
+
+    /// P3: scene に居なくなった id（死亡/退場で scene から除去）は pos から prune される（ghost piece 防止）。
+    /// command で enemy 99 を置くが sampleScene に 99 は居ない → prune される。scene に居る player 0 は残る。
+    @Test
+    def testRefreshMirrorPrunesAbsentIds(): Unit \ Assert =
+        let s1 = World.applyCmd(World.Cmd.Move(World.EntityRef.Enemy(99), {x = 9, y = 9}),
+                 World.applyCmd(World.Cmd.Move(World.EntityRef.Player(0), {x = 5, y = 5}), World.empty()));
+        let World.World(w) = World.refreshMirror(sampleScene(), s1);
+        Assert.assertEq(
+            expected = (Some((5, 5)), None),
+            (Map.get(0, w#playerPos) |> Option.map(p -> (p#x, p#y)),
+             Map.get(99, w#enemyPos) |> Option.map(p -> (p#x, p#y))))
+
+    /// P3: 位置以外（hp/status/hidden/ids）は read-model のまま scene から mirror 継続（§A：位置だけ World 権威）。
+    @Test
+    def testRefreshMirrorStillMirrorsHpAndIds(): Unit \ Assert =
+        let World.World(w) = World.refreshMirror(sampleScene(), World.empty());
+        // fixture: player 0/1 hp=10、player ids = {0,1}。位置 mirror を止めても hp/ids は scene 由来で更新される。
+        Assert.assertEq(expected = (Some(10), Set#{0, 1}), (Map.get(0, w#playerHp), w#playerIds))
 }

@@ -871,19 +871,10 @@ mod Game {
                       k(GameLifecycle.dropFloorItem(catalogs, cell, scene))
               }
               with handler BoardQuery {
-                  // S4-flip: 盤面読み取りを World 由来に。pieces は worldRef（位置 mirror）、map は sceneRef（地形）から。
-                  // frame-head で world は scene の faithful mirror ゆえ fromScene と同値（順序非依存・id 自己同定）。
-                  // P0a 検証器: 各 board() で World 由来盤面 vs scene 由来盤面を mid-frame 突合し差を log
-                  //（real run 専用＝tests は mock handler でここを通らない。tuple-set 比較で順序差を吸収）。
-                  // 既知 transient（次フレーム頭の mirror で解消）= hidden 遷移 / spawn フレーム。
-                  def board(k) = {
-                      let sc = Ref.get(sceneRef);
-                      let wb = World.toBoard(Ref.get(worldRef), sc);
-                      if (World.boardKey(wb) != World.boardKey(BoardSnapshot.fromScene(sc)))
-                          println("[P0a BOARD DIFF] world=${World.boardKey(wb)} scene=${World.boardKey(BoardSnapshot.fromScene(sc))}")
-                      else ();
-                      k(wb)
-                  }
+                  // 盤面読み取りを World 由来に（位置権威＝World）。pieces は worldRef（`Cmd.Move` のみ由来・
+                  // mid-frame 最新）、map（地形）は sceneRef から。P3 で位置 mirror を撤去済みゆえ pieces は
+                  // command 由来。write 漏れの恒久ガードは gameLoop 末尾の `[P3 WRITE-MISS]`（フレーム末・通常無音）。
+                  def board(k) = k(World.toBoard(Ref.get(worldRef), Ref.get(sceneRef)))
               }
               with handler World.Command {
                   // statuses 書き込み（Bevy Commands）。深い scene コードの emit を worldRef へ即時適用。
@@ -1020,6 +1011,16 @@ mod Game {
             // command 由来のまま保持（gridPos 再構築なし＋prune）。hp/status/hidden は read-model 継続。
             // これで World.pos は scene gridPos から独立し、`[P0a BOARD DIFF]` が write 漏れを検出する。
             let world1 = World.refreshMirror(next, Ref.get(worldRef));
+            // P3 write-miss 検出器（ノイズ無し）: フレーム末で「command 由来の World 位置」と
+            // 「next scene の gridPos」を**同一時点**で突合する。`[P0a BOARD DIFF]`（mid-frame・移動中は
+            // world が1歩先の transient で常時鳴る）と違い、ここは両方フレーム末ゆえ通常は差ゼロ。
+            // 差が出る＝どこかの move/spawn が Cmd.Move を emit し損ねている（mirror 撤去後は自己回復しない）。
+            // ※ map 未構築フレーム（Title 等）は `toBoard`→`mapSnapshotOf` が TileMapLayer を要求して
+            //   panic するので、盤面が組めるフレーム（placements あり）に限定する。
+            if (not List.isEmpty(MapScene.tryGetPlacements(next))
+                and World.boardKey(World.toBoard(world1, next)) != World.boardKey(BoardSnapshot.fromScene(next)))
+                println("[P3 WRITE-MISS] world=${World.boardKey(World.toBoard(world1, next))} scene=${World.boardKey(BoardSnapshot.fromScene(next))}")
+            else ();
             gameLoop(catalogs, sceneRef, worldRef, currentPhase, next, world1)
         }
 }

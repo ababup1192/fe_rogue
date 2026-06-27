@@ -249,16 +249,17 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > - flip した effectful EnemyAI 消費者: `applyNormalStep`（敵通常移動 AI＝核）・`bumpedDarkRoomEnemy`（接敵 visibility）。呼び元は P1b で BoardQuery 保持済ゆえ cascade ほぼ無し。
 > - **据え置き**: `beginTurn` の step 順序付け board 読み(:143)は flip すると共有 `TurnFlow.commitWaitedAndAdvance`→8 src への wide cascade を生み低価値ゆえ fromScene 維持（後日まとめて検討）。pure(`canExit`/`RangeScenes`)・検証器(`Game.flix:882`)も据え置き。
 >
-> ### P3 実装済・**⚠要 run 検証**（mirror 撤去・§A payoff・880緑だが run 未）
-> 位置の権威を World に一本化。`syncFromScene` の pos mirror（scene gridPos→World 上書き）を per-frame で停止し、World.pos を **`Cmd.Move` のみ由来**にした。
+> ### ✅ P3 完了・**実機 run 検証済**（mirror 撤去・§A payoff 達成・883緑）
+> **位置の権威を World に一本化**。`syncFromScene` の pos mirror（scene gridPos→World 上書き）を per-frame で停止し、World.pos を **`Cmd.Move` のみ由来**にした。
 > - **新 `World.refreshMirror(scene, world)`**: 位置は `world` の値を保持（gridPos 再構築なし）＋scene に居ない id を prune（ghost 防止）。hp/status/hidden/ids は read-model のまま scene から mirror 継続（§A：位置だけ World 権威）。
-> - **gameLoop frame-end（Game.flix:1022）**: `syncFromScene(next, world)` → `refreshMirror(next, Ref.get(worldRef))`（mid-frame の Cmd.Move 適用済み worldRef を base に）。
-> - **seed**: 初期 world は `syncFromScene`（gridPos 読み）を Game.start:817 に残す。床移動/復活/中断再開の reseed は spawn funnel の `Cmd.Move` emit が担う（全て World.Command handler スコープ内で走る）。
-> - **静的監査済**: 全 unit 位置 write（move5＋spawn/restore funnel）が `Cmd.Move` を emit（grep 全数確認・他の `gridPos=` は cursor/item/chest/stairs=非 unit）。
-> - **⚠ 挙動不変が自明でない初の変更**: write-miss があれば flip 済み全 reader が scene と乖離して実バグ。**実機 run で `[P0a BOARD DIFF]` が全フレーム差ゼロ継続を確認必須**
->   （通常/敵移動・gather・杖warp/blowback/一時しのぎ・階段集合退場・床移動・全滅復活・中断再開を一通り）。**run OK まではコミットしない**こと。
+> - **gameLoop frame-end**: `syncFromScene(next, world)` → `refreshMirror(next, Ref.get(worldRef))`（mid-frame の Cmd.Move 適用済み worldRef を base に）。
+> - **seed**: 初期 world は `syncFromScene`（gridPos 読み）を Game.start:817 に残す。床移動/復活/中断再開の reseed は spawn funnel の `Cmd.Move` emit が担う（全て World.Command handler スコープ内）。
+> - **単体テスト（`TestWorld`）**: `testRefreshMirrorKeepsCommandPosNotGridPos`（mirror OFF を証明）・`testRefreshMirrorPrunesAbsentIds`・`testRefreshMirrorStillMirrorsHpAndIds`。
+> - **実機 run 検証済**: 通常/敵移動・gather・杖・戦闘ノックバック・階段退場・**床移動・全滅復活・中断復帰**を通し、新設 `[P3 WRITE-MISS]`（フレーム末で command World vs scene gridPos を同一時点突合・通常無音）が**一度も発火せず**＝write 漏れゼロを確認（2026-06-27）。
+> - **検証器整理**: 役目を終えた mid-frame `[P0a BOARD DIFF]`（移動中に毎フレーム鳴る transient ノイズ）を撤去。サイレントな `[P3 WRITE-MISS]`（フレーム末・real run 専用の恒久 write-miss ガード）だけ残置。
 >
-> ### 次の一手 = **P3 を実機 run 検証**（DIFF 差ゼロ確認）→ OK ならコミット。その後の発展: S5(World→scene sync を Tween facade 化)・S7(セーブ=World シリアライズ)。
+> ### 到達点 = **§A payoff 達成**（World が位置の論理的権威・scene は派生ビュー・determinism/save の素地）
+> 残る発展（任意）: **S5**(World→scene sync を `Tween.tweenPosition` の NodePath 結合を `moveUnit` eff facade で切り、scene を World の純粋な派生に)・**S7**(セーブ＝store の component-map 化＋EcsCodec 封筒で World シリアライズ)。
 >
 > ### 注意（resumption）
 > - **P0a/P0b/P1a/P1b はコード実装済**。P0a は `4f14204`、P0a-tripwire+P0b は `5467cd3`、P1a-StairsExit はユーザーがコミット済。
