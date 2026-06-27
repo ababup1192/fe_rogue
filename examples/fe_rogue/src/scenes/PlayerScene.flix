@@ -394,6 +394,20 @@ mod PlayerScene {
     pub def moveToById(id: Int32, target: {x = Int32, y = Int32},
                         map: MapSnapshot, slide: Duration.Duration,
                         scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
+        // F3a: 1 歩移動を sim 書き込みと view 再生に分離。
+        // ── SYSTEM(sim): 位置の唯一権威。`Cmd.Move` が World に書く（gridPos は frame-end の
+        //    `World.syncTreeFromWorld` で World 由来に derive＝scene へ直書きしない）。
+        World.Command.emit(World.Cmd.Move(World.EntityRef.Player(id), target));
+        // ── VIEW(replay): Tween/facing/walk-anim はこの move から導出する純粋な見た目再生。
+        //    F3b でこの関数を `SimEvent.Moved` の消費側から呼ぶ（イベント駆動の再生）。
+        replayMoveView(id, target, map, slide, scene)
+
+    /// 1 歩移動の **view 再生**（Tween 滑走 + facing + walk アニメ + 左右反転）。
+    /// 位置の権威は World（`Cmd.Move`）にあり、ここは「move が起きた」結果から導く見た目だけを担う。
+    /// sim 書き込みを含まない（`World.Command` を要求しない）＝イベント再生の純 view エントリ。
+    def replayMoveView(id: Int32, target: {x = Int32, y = Int32},
+                        map: MapSnapshot, slide: Duration.Duration,
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
         let targetWorld = MapSnapshot.gridToWorld(target, map);
         Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slide);
@@ -401,9 +415,7 @@ mod PlayerScene {
         // 0 ベクトル (= 同じセル) の場合は既存の facing を保つ。
         let prev      = getGridPos(id, scene);
         let dirOpt    = directionOfStep(prev, target);
-        World.Command.emit(World.Cmd.Move(World.EntityRef.Player(id), target));
-        // S5b: gridPos は scene に直書きせず frame-end の `World.syncTreeFromWorld` で World 由来に derive
-        // （`Cmd.Move` が唯一の位置 source）。facing（向き＝視覚状態）だけここで更新する。
+        // facing（向き＝視覚状態）だけここで更新する。
         let withState = mapPlayer(id, d -> {
             facing  = Option.getWithDefault(d#facing, dirOpt) | d
         }, scene);
