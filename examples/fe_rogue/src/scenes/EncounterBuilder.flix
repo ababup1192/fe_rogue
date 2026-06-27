@@ -25,4 +25,17 @@ mod EncounterBuilder {
         let enemies = allEnemies
             |> List.map(EnemyScene.unitView);
         {board = board, units = List.append(players, enemies)}
+
+    /// P2: EnemyAI 入力の Encounter を **board(位置幾何)は World 由来(`BoardQuery`)・units(stats)は scene の
+    /// read-model** で組むハイブリッド版。§A 採用戦略（位置は World 権威・combat/weapon 等の stats は read-model）に沿う。
+    /// dual-write で World pos == scene gridPos ゆえ board と units の位置は一致（挙動不変）。
+    /// units の hidden 除外・駒順は `fromScene` と同じ。EnemyAI 駆動の mid-frame 消費者がこれを使う。
+    pub def fromBoardQuery(scene: Scene[NodeTag]): Encounter \ BoardQuery =
+        let board   = BoardQuery.board();
+        let players = PlayerScene.getAll(scene)
+            |> List.filter(d -> not d#hidden)
+            |> List.map(PlayerScene.unitView);
+        let enemies = EnemyScene.getAll(scene)
+            |> List.map(EnemyScene.unitView);
+        {board = board, units = List.append(players, enemies)}
 }

@@ -56,7 +56,7 @@ mod EnemyTurnDriverScene {
                         CustomEffects.RingTransformRequest,
                         CustomEffects.GameOverRequest,
                         CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
-                        World.Command} =
+                        World.Command, BoardQuery} =
         let next = match TurnPhase.State.get() {
             case TurnPhase.Phase.EnemyTurn        => stepOnce(scene)
             case TurnPhase.Phase.PlayerAttackHold =>
@@ -102,7 +102,7 @@ mod EnemyTurnDriverScene {
     /// キャラの隣接」なので、接敵していない他キャラの視界では発火しない。暗い判定は fog と同じ
     /// origin 基準（origin 同室の部屋は点灯済み＝対象外）。`not alerted` で既に起動済みの敵の傍
     /// では再発火しない。検出自体は純粋で effect は `SelectedPlayer.State`（drafts 読み）だけ。
-    def bumpedDarkRoomEnemy(scene: Scene[NodeTag]): Bool \ SelectedPlayer.State =
+    def bumpedDarkRoomEnemy(scene: Scene[NodeTag]): Bool \ {SelectedPlayer.State, BoardQuery} =
         let drafts  = SelectedPlayer.State.get()#drafts;
         let players = PlayerScene.getAll(scene);
         if (not MoveDraft.anyMovedFromOrigin(players, drafts)) false
@@ -116,7 +116,8 @@ mod EnemyTurnDriverScene {
                                   origin = MoveDraft.originOf(d#id, drafts)
                                            |> Option.getWithDefault(d#gridPos)});
             let litRooms = MinimapScene.litRoomsDrafted(units, placements, roomCount);
-            let enc = EncounterBuilder.fromScene(scene);
+            // P2: 接敵判定の board を World 由来へ（units stats は scene read-model・挙動不変）。
+            let enc = EncounterBuilder.fromBoardQuery(scene);
             EnemyScene.getAll(scene)
                 |> List.filter(e -> not e#isDying and not e#alerted)
                 |> List.exists(e ->
@@ -139,6 +140,8 @@ mod EnemyTurnDriverScene {
             if (List.isEmpty(MapScene.tryGetPlacements(scene)))
                 List.sortBy(e -> e#id, actives)
             else {
+                // 据え置き: 敵 step 順序付けの board 読み。flip は共有 TurnFlow.commitWaitedAndAdvance への
+                // 広い cascade を生み低価値ゆえ fromScene のまま（dual-write で World==scene・後日まとめて検討）。
                 let board0 = BoardSnapshot.fromScene(scene);
                 let field0 = Board.distanceField(c -> Board.isWalkable(board0, c),
                                                   Board.allPlayerCells(board0), 4096);
@@ -168,7 +171,7 @@ mod EnemyTurnDriverScene {
                 CustomEffects.WandererSpawnRequest,
                 CustomEffects.RingTransformRequest,
                 CustomEffects.GameOverRequest,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, BoardQuery} =
         // 敵ターン開始の「間」(TopBar の hold) 中は敵を動かさない（フェイズ切替が読めてから行動開始）。
         if (TopBarScene.isBusy(scene)) scene
         else if (Pacing.State.isHolding()) scene
@@ -202,7 +205,7 @@ mod EnemyTurnDriverScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio, World.Command} =
+                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery} =
         match EnemyScene.get(step#id, scene) {
             case None       => scene   // 既に除外済み (死亡演出完了など)
             case Some(data) => applyStepForEnemy(step, data, scene)
@@ -219,7 +222,7 @@ mod EnemyTurnDriverScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio, World.Command} =
+                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery} =
         if (StatusSystem.isImmobilized(data#statuses))
             bindSkip(step, data, scene)
         else match StaffCastScene.enemyTryStaff(step#id, data#gridPos,
@@ -246,7 +249,7 @@ mod EnemyTurnDriverScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio, World.Command} =
+                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery} =
         if (data#bottleUsed)
             applyNormalStep(step, data, scene)
         else match StaffCastScene.enemyTryThrow(step#id, data#gridPos,
@@ -263,10 +266,10 @@ mod EnemyTurnDriverScene {
     def applyNormalStep(step: EnemyTurn.Step, data: EnemyScene.Data,
                          scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                Pacing.State, Math.Random, CustomEffects.RingTransformRequest, World.Command} =
+                Pacing.State, Math.Random, CustomEffects.RingTransformRequest, World.Command, BoardQuery} =
                 // 盤面 + 盤上ユニットを 1 箇所で結合 (位置×ステータスの join は Encounter に集約)。
-                // driver は手元の (mid-frame mutation 済み) scene に live で適用する。
-                let enc = EncounterBuilder.fromScene(scene);
+                // P2: EnemyAI 入力の board を World 由来へ（units stats は scene read-model・dual-write で位置一致・挙動不変）。
+                let enc = EncounterBuilder.fromBoardQuery(scene);
                 let board = enc#board;
                 let self = EnemyScene.unitView(data);
                 let (action, updated) = EnemyAI.decideAction(enc, self, data#alerted);

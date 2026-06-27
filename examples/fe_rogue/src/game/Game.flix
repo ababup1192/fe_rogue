@@ -1015,11 +1015,11 @@ mod Game {
                                |> Scene.setPrevKeyState(Scene.getPrevKeyState(updated))
                        else updated;
             GameEngine.render(next);
-            // S0: scene→World 一方向 sync（読み取りのみ・純粋）。world1 は末尾再帰にだけ渡し、
-            // next/render/Ref には一切流さない＝描画・ロジックに無影響（非破壊）。
-            // ⚠ emit-flip 時はこの行が statuses 権威の seam: syncFromScene の statuses 上書きを止め、
-            // base を `world` でなく `Ref.get(worldRef)` にする（詳細は World.flix `eff Command` の doc）。
-            let world1 = World.syncFromScene(next, world);
+            // P3（位置 mirror 撤去・§A payoff）: 位置の権威を World に一本化。base を frame-head の `world`
+            // でなく **`Ref.get(worldRef)`（mid-frame の Cmd.Move 適用済み）** にし、`refreshMirror` で位置を
+            // command 由来のまま保持（gridPos 再構築なし＋prune）。hp/status/hidden は read-model 継続。
+            // これで World.pos は scene gridPos から独立し、`[P0a BOARD DIFF]` が write 漏れを検出する。
+            let world1 = World.refreshMirror(next, Ref.get(worldRef));
             gameLoop(catalogs, sceneRef, worldRef, currentPhase, next, world1)
         }
 }

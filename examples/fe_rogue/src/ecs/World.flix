@@ -53,6 +53,33 @@ mod World {
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players))
         })
 
+    /// P3（mirror 撤去・§A payoff）: per-frame の World 更新。**位置(playerPos/enemyPos)は
+    /// `Cmd.Move` のみ由来**＝scene gridPos から再構築せず `world` の値を保持し、scene に居なくなった
+    /// id（死亡/階段退場で scene から除去）だけ prune する（ghost piece 防止）。
+    /// hp/statusEffects/hidden/ids は read-model のまま scene から毎フレーム mirror（§A 採用戦略：位置だけ World 権威）。
+    /// 初期 seed と床移動/復活/中断再開の reseed は spawn funnel（addOnePlayer/addOneEnemy）の `Cmd.Move` emit が担う
+    /// （いずれも World.Command handler スコープ内で走るため worldRef が seed される）。
+    /// `syncFromScene`（gridPos を読む版）は frame-1 初期 world（Game.start）専用に残す。
+    pub def refreshMirror(scene: Scene[NodeTag], world: World): World =
+        let World.World(w) = world;
+        let players = PlayerScene.getAll(scene);
+        let enemies = EnemyScene.getAll(scene);
+        let pIds = Query.tagOf(d -> d#id, players);
+        let eIds = Query.tagOf(d -> d#id, enemies);
+        World.World({
+            tick           = w#tick + 1,
+            playerIds      = pIds,
+            enemyIds       = eIds,
+            playerStatusEffects = Query.indexBy(d -> d#id, d -> d#statuses, players),
+            enemyStatusEffects  = Query.indexBy(d -> d#id, d -> d#statuses, enemies),
+            playerHp       = Query.indexBy(d -> d#id, d -> d#hp, players),
+            enemyHp        = Query.indexBy(d -> d#id, d -> d#hp, enemies),
+            // 位置は command 由来を保持＋scene に居ない id を prune（gridPos からの再構築はしない）。
+            playerPos      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerPos),
+            enemyPos       = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyPos),
+            playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players))
+        })
+
     /// statuses を 1 ターン進める System（StatusSystem.tick を再利用）。S1b でターン開始フックに繋ぐ。
     pub def tickStatusEffects(world: World): World =
         let World.World(w) = world;

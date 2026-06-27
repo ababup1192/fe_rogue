@@ -150,7 +150,7 @@ mod CombatScene {
                               GameEngine.Game, GameLogger.GameLogger,
                               CustomEffects.GameOverRequest,
                               SelectedPlayer.State, Math.Random,
-                              CustomEffects.ThiefDropRequest, World.Command} =
+                              CustomEffects.ThiefDropRequest, World.Command, BoardQuery} =
         match side {
             case Faction.Player => applyAttackHit(id, scene)
             case Faction.Enemy  =>
@@ -166,7 +166,7 @@ mod CombatScene {
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                               GameEngine.Game,
                               GameLogger.GameLogger, Math.Random,
-                              CustomEffects.ThiefDropRequest, World.Command} =
+                              CustomEffects.ThiefDropRequest, World.Command, BoardQuery} =
         let resolved = forM (
             d       <- PlayerScene.get(playerId, scene);
             enemyId <- d#attackTargetId
@@ -179,7 +179,7 @@ mod CombatScene {
     pub def applyEnemyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
-             Tween.Scheduler, World.Command} =
+             Tween.Scheduler, World.Command, BoardQuery} =
         let resolved = forM (
             d              <- EnemyScene.get(enemyId, scene);
             targetPlayerId <- d#attackTargetId
@@ -415,7 +415,7 @@ mod CombatScene {
                         CustomEffects.GameOverRequest,
                         CustomEffects.ThiefDropRequest,
                         EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =
+                        SelectedPlayer.State, Pacing.State, Math.Random, World.Command, BoardQuery} =
         match (PlayerScene.idFromPath(path), EnemyScene.idFromPath(path)) {
             case (Some(playerId), _) => drainAndDispatch(Faction.Player, playerId, node, path, scene)
             case (_, Some(enemyId))  => drainAndDispatch(Faction.Enemy, enemyId, node, path, scene)
@@ -436,7 +436,7 @@ mod CombatScene {
                              CustomEffects.GameOverRequest,
                              CustomEffects.ThiefDropRequest,
                              EnemyTurn.Queue, TurnPhase.State,
-                             SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =
+                             SelectedPlayer.State, Pacing.State, Math.Random, World.Command, BoardQuery} =
         let ownerPath = match side {
             case Faction.Player => PlayerScene.playerPath(id)
             case Faction.Enemy  => EnemyScene.enemyPath(id)
@@ -504,7 +504,7 @@ mod CombatScene {
                             scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger, Math.Random,
-                               CustomEffects.ThiefDropRequest, World.Command} =
+                               CustomEffects.ThiefDropRequest, World.Command, BoardQuery} =
         let resolved = forM (
             weapon <- PlayerData.equippedWeapon(player#weapons);
             enemy  <- EnemyScene.get(enemyId, scene)
@@ -519,7 +519,7 @@ mod CombatScene {
                        enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger, Math.Random,
-                               CustomEffects.ThiefDropRequest, World.Command} =
+                               CustomEffects.ThiefDropRequest, World.Command, BoardQuery} =
         let plan       = attackForecast(player, weapon, enemy);
         let popupPos   = MapSnapshot.cellCenter(enemy#gridPos);
         let popupColor = DamagePopupScene.damageToEnemyColor();
@@ -600,7 +600,7 @@ mod CombatScene {
                               attackerPos: {x = Int32, y = Int32},
                               defenderPos: {x = Int32, y = Int32},
                               enemyId: Int32, killed: Bool,
-                              scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command, BoardQuery} =
         match WeaponCatalog.knockbackTiles(weapon#effect, weapon#effectValue) {
             case None        => scene
             case Some(tiles) => if (killed) scene else pushEnemyBack(tiles, attackerPos, defenderPos, enemyId, scene)
@@ -609,10 +609,11 @@ mod CombatScene {
     /// ノックバック本体: 方向算出 → `knockbackPathCapped` の最終着地へ `snapTo`。
     def pushEnemyBack(tiles: Int32, attackerPos: {x = Int32, y = Int32},
                        defenderPos: {x = Int32, y = Int32}, enemyId: Int32,
-                       scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
+                       scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command, BoardQuery} =
         let dir = Staff.toVec2i(Staff.deltaToDirection(
                     defenderPos#x - attackerPos#x, defenderPos#y - attackerPos#y));
-        let board: Board = BoardSnapshot.fromScene(scene);
+        // P1b: 敵ノックバック（mid-frame）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
+        let board: Board = BoardQuery.board();
         let cap = if (tiles <= 0) None else Some(tiles);
         match List.last(Board.knockbackPathCapped(defenderPos, dir, board, cap)) {
             case None       => scene
@@ -719,7 +720,7 @@ mod CombatScene {
                              scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
-             Tween.Scheduler, World.Command} =
+             Tween.Scheduler, World.Command, BoardQuery} =
         // 前提（武器あり・対象あり）の解決だけを担う。実体は resolveEnemyAttack に委譲。
         let resolved = forM (
             weapon <- enemy#weapon;
@@ -735,7 +736,7 @@ mod CombatScene {
                             targetId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
-             Tween.Scheduler, World.Command} =
+             Tween.Scheduler, World.Command, BoardQuery} =
         let strike = resolveStrike(EnemyScene.combatView(enemy),
                                    PlayerScene.combatView(player));
         let roll = rollPercent();
@@ -946,7 +947,7 @@ mod CombatScene {
                              attackerPos: {x = Int32, y = Int32},
                              defenderPos: {x = Int32, y = Int32},
                              targetId: Int32, killed: Bool,
-                             scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
+                             scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command, BoardQuery} =
         match WeaponCatalog.knockbackTiles(weapon#effect, weapon#effectValue) {
             case None        => scene
             case Some(tiles) => if (killed) scene else pushPlayerBack(tiles, attackerPos, defenderPos, targetId, scene)
@@ -955,10 +956,11 @@ mod CombatScene {
     /// 味方ノックバック本体: 方向算出 → `knockbackPathCapped` の最終着地へ `snapTo`。
     def pushPlayerBack(tiles: Int32, attackerPos: {x = Int32, y = Int32},
                         defenderPos: {x = Int32, y = Int32}, targetId: Int32,
-                        scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command, BoardQuery} =
         let dir = Staff.toVec2i(Staff.deltaToDirection(
                     defenderPos#x - attackerPos#x, defenderPos#y - attackerPos#y));
-        let board: Board = BoardSnapshot.fromScene(scene);
+        // P1b: 味方ノックバック（mid-frame）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
+        let board: Board = BoardQuery.board();
         let cap = if (tiles <= 0) None else Some(tiles);
         match List.last(Board.knockbackPathCapped(defenderPos, dir, board, cap)) {
             case None       => scene

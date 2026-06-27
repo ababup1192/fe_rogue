@@ -221,16 +221,49 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > - **tripwire 追加**: `TestWorld.testAddOnePlayerSeedsPositionToWorld`（addOnePlayer の emit を capture→`boardPieces` に id7@(3,4) を確認・emit 行削除で赤）。
 > - 毎フレーム `syncFromScene` mirror に上書きされる **dual-write ＝挙動不変**（mirror は P3 まで生存）。run 不要（P0a と同論法）。
 >
-> ### P1a 進行中（frame-head reader flip・挙動不変・run 不要）
+> ### P1a 完了（frame-head reader flip・挙動不変・run 不要・880緑）
 > move 前に board を読む frame-head 経路を `BoardSnapshot.fromScene`→`BoardQuery.board()` に。pure reader(canExit/buildFor/reachability)は対象外（scene gridPos は P3 でも dual-write 継続ゆえ fromScene のまま可）。
-> - **✅ StairsExit group 完了（880緑）**: `begin`／`advanceFront` を `BoardQuery.board()` に。cascade で `stepOnce`/`process`＋menu trait tier
+> **重要**: P0a+P0b 完了で dual-write が全 move/spawn を被覆＝**World==scene が frame-head/mid-frame とも常時成立**。よって flip は frame timing に依らず挙動不変。
+> - **✅ StairsExit group**: `begin`／`advanceFront` を `BoardQuery.board()` に。cascade で `stepOnce`/`process`＋menu trait tier
 >   （`MenuHandler.Aef[NodeTag]`＝Game.flix:386・`onItemConfirmed`/`onItemCancelled` は arm が既に `checked_ecast` 済で宣言行に `BoardQuery` 追加のみ）
->   ＋`dispatchMenuKey`/`onItemConfirmed` dispatch＋**`FrameAef.ProcessT` に `BoardQuery` を許可**（旧「process は BoardQuery 不使用」規約を更新）。test は `withMockBoard(BoardSnapshot.fromScene(scene))` を2スタックに追加。
-> - **残: StaffCast player group**: `StaffCastScene` の `BoardSnapshot.fromScene` 直読み（:364/429/442/1033/1072）のうち **player warp/blowback の frame-head 読み**を flip。enemy cast(:1033/1072?)は mid-frame ゆえ P1b。pure(forecast/computeView)は対象外。
-> - 各 flip 後 handler assert 差ゼロ（frame-head ゆえ World==scene）。その後 **P1b**(mid-frame reader flip: EnemyTurnDriver/Combat knockback/StaffCast enemy)→**P2**(Encounter/AI)→**P3**(mirror 撤去・§A payoff)。
+>   ＋`dispatchMenuKey`/`onItemConfirmed` dispatch＋**`FrameAef.ProcessT` に `BoardQuery` を許可**（旧「process は BoardQuery 不使用」規約を更新）。test は `withMockBoard` を2スタックに追加。
+> - **✅ StaffCast player group**: player の blowback 一式（`applyBlowbackMove`/`applyBlowbackToPlayer`/`applyBlowbackToEnemy`）・`warpEnemy`・`applyStopgapToEnemy`・
+>   `customStaffEffect`・`applyStaffEffect`/`applyStaffEffectDsl`/`applyStaffEffectLegacy`・throw chain（`applyThrowHit`/`rolledThrow`/`dispatchThrowEffect`）を flip。
+>   **`staffEffectHandlers` の `PlanHandlers` ef 注釈に `BoardQuery` 追加**（custom op が BoardQuery を拾う・P0a の World.Command と同型）。fireStaff/fireThrow は :50/:770 で既に `BoardQuery.board()` 保持ゆえ収束。test は `TestStaffCastScene` に `withMockBoard` 追加。
+>   - **延期（P1b）**: `warpPlayer`/`applyStopgapToPlayer` は **enemy cast(`enemyCastStaff`)と共有**ゆえ flip すると cascade が敵turn driver(P1b)へ波及する。enemy staff 経路（`enemyCastStaff`/`enemyTryStaff`/`enemyThrowWith` :1033/1072）と一緒に P1b で flip。
+> - 各 flip 後 handler assert 差ゼロ（World==scene）。
+>
+> ### P1b 完了（mid-frame reader flip・挙動不変・run 不要・880緑）
+> dual-write で World==scene が mid-frame でも常時成立するので、mid-frame readers も挙動不変で flip 可。
+> - **✅ StaffCast enemy cast group**: 延期分 `warpPlayer`/`applyStopgapToPlayer`＋enemy 経路 `enemyCastStaff`/`enemyTryStaff`/`enemyThrowWith`/`enemyTryThrow` を flip。
+>   cascade は**敵turn driver全体**（`EnemyTurnDriverScene.process`/`stepOnce`/`applyStep`/`applyStepForEnemy`/`tryThrowOrNormal`）へ伝播し、`Game.process` redef（ProcessT＝BoardQuery 保持）で収束。
+> - **✅ Combat knockback group**: `pushEnemyBack`/`pushPlayerBack` を flip。cascade は combat resolution chain 全体
+>   （`applyAttackKnockback`/`applyEnemyKnockback`→`resolveAttack`/`resolveEnemyAttack`→`applyDamageTo*`→`applyAttackHit`/`applyEnemyAttackHit`→`onAttackHit`→`drainAndDispatch`→`CombatScene.process`）へ伝播し ProcessT で収束。test は `TestCombatScene` の3スタックに `withMockBoard` 追加。
+> - **P2 へ送り**: `EnemyTurnDriverScene` の `EncounterBuilder.fromScene`（:119/:270＝EnemyAI 入力）と `beginTurn` の board 順序付け読み（:143）は **Encounter/EnemyAI の World 化（P2）**で一緒に flip（`beginTurn` 単独 flip は `TurnFlow.commitWaitedAndAdvance` 共有関数への広い cascade を生むため）。
+> - **据え置き（pure・恒久 fromScene 可）**: `StairsExit.canExit`(:108)・`RangeScenes`(:149)。`Game.flix:882` は P0a 検証器の参照系ゆえ fromScene 固定。
+>
+> ### P2 完了（Encounter を World へ・EnemyAI 入力・挙動不変・run 不要・880緑）
+> **設計判断**: `UnitView` は pos/hp 以外に combat/weaponRange/moveTiles/aiType（resource/weapon 由来）を持ち World 未保有。§A 採用戦略
+> （位置は World 権威・stats は read-model）に沿い、**Encounter は board(位置幾何)=World 由来・units(stats)=scene read-model のハイブリッド**にする。
+> - 新 `EncounterBuilder.fromBoardQuery(scene): Encounter \ BoardQuery`（board=`BoardQuery.board()`、units は `fromScene` と同じ scene 由来）。dual-write で board と units の位置一致。
+> - flip した effectful EnemyAI 消費者: `applyNormalStep`（敵通常移動 AI＝核）・`bumpedDarkRoomEnemy`（接敵 visibility）。呼び元は P1b で BoardQuery 保持済ゆえ cascade ほぼ無し。
+> - **据え置き**: `beginTurn` の step 順序付け board 読み(:143)は flip すると共有 `TurnFlow.commitWaitedAndAdvance`→8 src への wide cascade を生み低価値ゆえ fromScene 維持（後日まとめて検討）。pure(`canExit`/`RangeScenes`)・検証器(`Game.flix:882`)も据え置き。
+>
+> ### P3 実装済・**⚠要 run 検証**（mirror 撤去・§A payoff・880緑だが run 未）
+> 位置の権威を World に一本化。`syncFromScene` の pos mirror（scene gridPos→World 上書き）を per-frame で停止し、World.pos を **`Cmd.Move` のみ由来**にした。
+> - **新 `World.refreshMirror(scene, world)`**: 位置は `world` の値を保持（gridPos 再構築なし）＋scene に居ない id を prune（ghost 防止）。hp/status/hidden/ids は read-model のまま scene から mirror 継続（§A：位置だけ World 権威）。
+> - **gameLoop frame-end（Game.flix:1022）**: `syncFromScene(next, world)` → `refreshMirror(next, Ref.get(worldRef))`（mid-frame の Cmd.Move 適用済み worldRef を base に）。
+> - **seed**: 初期 world は `syncFromScene`（gridPos 読み）を Game.start:817 に残す。床移動/復活/中断再開の reseed は spawn funnel の `Cmd.Move` emit が担う（全て World.Command handler スコープ内で走る）。
+> - **静的監査済**: 全 unit 位置 write（move5＋spawn/restore funnel）が `Cmd.Move` を emit（grep 全数確認・他の `gridPos=` は cursor/item/chest/stairs=非 unit）。
+> - **⚠ 挙動不変が自明でない初の変更**: write-miss があれば flip 済み全 reader が scene と乖離して実バグ。**実機 run で `[P0a BOARD DIFF]` が全フレーム差ゼロ継続を確認必須**
+>   （通常/敵移動・gather・杖warp/blowback/一時しのぎ・階段集合退場・床移動・全滅復活・中断再開を一通り）。**run OK まではコミットしない**こと。
+>
+> ### 次の一手 = **P3 を実機 run 検証**（DIFF 差ゼロ確認）→ OK ならコミット。その後の発展: S5(World→scene sync を Tween facade 化)・S7(セーブ=World シリアライズ)。
 >
 > ### 注意（resumption）
-> - **P0a/P0b/P1a-StairsExit はコード実装済・要コミット**（作業ツリー未コミット: `PlayerScene`/`EnemyScene`/`GameLifecycle`/`Game.flix`/`StairsExitScene`/`ActionMenuScene`/`FrameAef`＋test `TestPlayerScene`/`TestMoveRangeScene`/`TestTradeMenuScene`/`TestWorld`/`TestActionMenuScene`）。P0a 分のみ `4f14204` にコミット済。HEAD+作業ツリーで `flix test` 880緑・`flix check` 緑。
+> - **P0a/P0b/P1a/P1b はコード実装済**。P0a は `4f14204`、P0a-tripwire+P0b は `5467cd3`、P1a-StairsExit はユーザーがコミット済。
+>   **未コミット（P1a-StaffCast＋P1b）**: `StaffCastScene`/`CombatScene`/`EnemyTurnDriverScene`＋test `TestStaffCastScene`/`TestCombatScene`＋`ECS_WORKFLOW.md`。HEAD+作業ツリーで `flix test` 880緑・`flix check` 緑。
+> - **flip パターン（P1a/P1b 共通）**: `BoardSnapshot.fromScene(scene)`→`BoardQuery.board()`＋関数の effect 行に `BoardQuery` 追加。cascade は compiler 誘導で frame tier（`FrameAef.ProcessT`／menu `MenuHandler.Aef`／combat・enemy driver の `process` redef）に収束。trait redef が tier を超える時は **arm を `checked_ecast` 済みにして宣言行に効果追加のみ**（onItemCancelled で実践）。test は該当スタックに `withMockBoard(BoardSnapshot.fromScene(scene))` を1層足す（flip 前と同値）。
 > - **WIP は再適用済み**: 旧注記の「`World.Query`→`World.StatusQuery` リネーム＋engine_ecs 汎用 `Query`/`exclude` は HEAD に戻した」は古い。`0d01322 "world強化"` で**再適用＆コミット済み**（engine_ecs `Query`＋`TestQuery`＋fe_rogue の rename）。もう WIP ではない。
 > - fpkg は git 管理外。エンジン側変更後/新規 checkout 後は `GITHUB_TOKEN=$(gh auth token) make sync`（無認証は GitHub API レート制限で fpkg 配布が 404/失敗）。
 > - perl で effect row へ `World.Command` を撒くのは**多行 sig で誤爆**するので、複数行シグネチャは Edit 推奨。

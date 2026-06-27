@@ -117,10 +117,12 @@ mod TestStaffCastScene {
                       hit: RayHit, dir: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
         region rc {
             TestUnitFixtures.withWorldCommand(rc, () ->
+            // P1a: custom op(knockback等)が BoardQuery を読むので mock board を供給（flip 前の fromScene と同値）。
+            TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
             TestUnitFixtures.withNoopTween(() ->
             TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withMockGameLogger(() ->
-                    StaffCastScene.applyStaffEffectDsl(0, staff, rule, hit, dir, scene)))))
+                    StaffCastScene.applyStaffEffectDsl(0, staff, rule, hit, dir, scene))))))
         }
 
     // ════════════════════════════════════════════════════════

@@ -86,6 +86,7 @@ mod TestCombatScene {
     /// applyAttackHit を 5 つの副作用モックで包んで実行する。
     def runAttack(scene: Scene[NodeTag]): Scene[NodeTag] =
         TestUnitFixtures.dischargeWorldCommand(() ->
+        TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
         withNoopThiefDrop(() ->
         TestUnitFixtures.withMockRandom(() ->
         TestUnitFixtures.withMockGame(() ->
@@ -93,7 +94,7 @@ mod TestCombatScene {
         TestUnitFixtures.withMockGameLogger(() ->
         TestUnitFixtures.withNoopAnim(() ->
         TestUnitFixtures.withNoopTween(() ->
-            CombatScene.applyAttackHit(0, scene)))))))))
+            CombatScene.applyAttackHit(0, scene))))))))))
 
     // ════════════════════════════════════════════════════════
     // attackLungeAnimation — 中点で attack:hit を 1 つ発火（純粋）
@@ -171,12 +172,13 @@ mod TestCombatScene {
     /// applyEnemyAttackHit を副作用モックで包んで実行する（アニメは介在しない）。
     def runEnemyAttack(scene: Scene[NodeTag]): (Scene[NodeTag], List[Int32]) =
         TestUnitFixtures.dischargeWorldCommand(() ->
+        TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
         TestUnitFixtures.withMockRandom(() ->
         TestUnitFixtures.withMockGame(() ->
         TestUnitFixtures.withMockAudio(() ->
         TestUnitFixtures.withMockGameLogger(() ->
         TestUnitFixtures.withNoopTween(() ->
-            CombatScene.applyEnemyAttackHit(1, scene)))))))
+            CombatScene.applyEnemyAttackHit(1, scene))))))))
 
     /// 敵→味方の鏡像数値: 敵(素3+武器2) vs 味方防御 1 → 4 ダメージ、
     /// 命中率 = 80 + 技2×2 + 幸運2÷2 − (速さ3×2 + 幸運2) = 77 > 50 で命中。
@@ -277,6 +279,7 @@ mod TestCombatScene {
         }: AnimationPlayer.EventBundle);
         region rc {
             TestUnitFixtures.withWorldCommand(rc, () ->
+            TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
             TestUnitFixtures.withMockRandom(() ->
             TestUnitFixtures.withMockGame(() ->
             TestUnitFixtures.withMockAudio(() ->
@@ -291,7 +294,7 @@ mod TestCombatScene {
                 } with Tween.withScheduler(rc)
                   with TurnPhase.withState(rc)
                   with SelectedPlayer.withState(rc)
-                  with Pacing.withState(rc))))))))))         }
+                  with Pacing.withState(rc)))))))))))         }
 
     /// 他ユニット宛の signal は食わない: Player(0) 宛の attack_lunge finished があるとき、
     /// Enemy(1) ノードの process では Player(0) の attackTargetId は残り（敵の drain は空）、
