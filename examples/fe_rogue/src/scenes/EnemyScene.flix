@@ -488,21 +488,43 @@ mod EnemyScene {
     pub def moveTo(id: Int32, target: {x = Int32, y = Int32},
                     map: MapSnapshot,
                     scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
+        // F4a: プレイヤー移動（PlayerScene）と同じ `SimEvent.Moved` seam に統一。
+        //   moveTo = SYSTEM(stepEnemyMove: Cmd.Move emit + Moved 返却) → VIEW(replayMovedEvent 再生)。
+        //   歩行可否は呼び出し側（EnemyAI.decideAction）が済ませている前提＝System は判定せず書くだけ。
+        replayMovedEvent(stepEnemyMove(id, target), map, scene)
+
+    /// SYSTEM(sim): 敵 1 体を target へ動かす位置 write。`Cmd.Move` を emit し `Moved` を返す。
+    /// 合法性は EnemyAI が決定済み（プレイヤーの `stepPlayerMove` と違い board 再判定はしない）。
+    /// gridPos は frame-end の `syncTreeFromWorld` で World 由来に derive＝ここでは scene を触らない。
+    pub def stepEnemyMove(id: Int32, target: {x = Int32, y = Int32}):
+            World.SimEvent \ World.Command =
+        World.Command.emit(World.Cmd.Move(World.EntityRef.Enemy(id), target));
+        World.SimEvent.Moved(World.EntityRef.Enemy(id), target)
+
+    /// VIEW(replay): `SimEvent.Moved` の敵分を再生する。プレイヤー分は対象外
+    /// （`PlayerScene.replayMovedEvent` が担当）＝faction ごとに自分の event を再生。
+    /// faction 分岐は 1 段の match に留め、敵の見た目再生は `replayEnemyMoveView` に委譲（ネスト回避）。
+    pub def replayMovedEvent(event: World.SimEvent, map: MapSnapshot,
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+        match event {
+            case World.SimEvent.Moved(World.EntityRef.Enemy(id), target)  => replayEnemyMoveView(id, target, map, scene)
+            case World.SimEvent.Moved(World.EntityRef.Player(_), _)        => scene
+        }
+
+    /// 敵 1 体の move 見た目再生（Tween 滑走 + 左右反転 + prevPos 記録）。
+    def replayEnemyMoveView(id: Int32, target: {x = Int32, y = Int32},
+                             map: MapSnapshot, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ Tween.Scheduler =
         let startWorld  = Scene.globalPositionAt(enemyPath(id), scene);
         let targetWorld = MapSnapshot.gridToWorld(target, map);
         Tween.tweenPosition(enemyPath(id), startWorld, targetWorld, slideDuration());
-        // flipForFacing 付き (= 左向き絵) の敵は左右移動で水平反転する。
-        let flipped = match get(id, scene) {
-            case Some(d) =>
-                if (d#resource#sprite#flipForFacing)
-                    applyFacingFlip(id, d#gridPos#x, target#x, scene)
-                else scene
-            case None => scene
-        };
-        // 直前位置を記録（徘徊の「来た道へ戻らない」判定に使う）。論理位置(gridPos)は World へ。
-        World.Command.emit(World.Cmd.Move(World.EntityRef.Enemy(id), target));
-        // S5b: gridPos は frame-end の syncTreeFromWorld で World 由来に derive。prevPos（移動前の論理位置）
-        // はここで記録する（`d#gridPos` は frame-head の現在位置＝移動前なので正しい）。
+        // flipForFacing 付き (= 左向き絵) の敵だけ左右反転する。match でなく Option パイプで畳む。
+        let flipped = get(id, scene)
+            |> Option.filter(d -> d#resource#sprite#flipForFacing)
+            |> Option.map(d -> applyFacingFlip(id, d#gridPos#x, target#x, scene))
+            |> Option.getWithDefault(scene);
+        // 直前位置を記録（徘徊の「来た道へ戻らない」判定に使う）。`d#gridPos` は frame-head の
+        // 移動前位置なので正しい（gridPos 自体は frame-end の syncTreeFromWorld で World 由来に derive）。
         mapEnemy(id, d -> {prevPos = Some(d#gridPos) | d}, flipped)
 
     /// 子 Sprite2D に flipH を設定する内部ヘルパー (敵スプライトは常に Sprite2D)。
