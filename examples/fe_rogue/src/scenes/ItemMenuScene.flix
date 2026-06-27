@@ -701,7 +701,8 @@ mod ItemMenuScene {
                               Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State,
-                GameEngine.Audio, World.Command} =        let result = forM (
+                GameEngine.Audio, World.Command} =
+        let result = forM (
             m        <- entry#metadata;
             playerId <- SelectedPlayer.State.get()#id;
             player   <- PlayerScene.get(playerId, scene);
@@ -716,7 +717,8 @@ mod ItemMenuScene {
                        Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State,
-                GameEngine.Audio, World.Command} =        if (meta == equipMeta())
+                GameEngine.Audio, World.Command} =
+        if (meta == equipMeta())
             applyEquip(playerId, kind, scene)
         else if (meta == unequipMeta())
             applyUnequip(playerId, scene)
@@ -839,7 +841,8 @@ mod ItemMenuScene {
                   Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State, GameLogger.GameLogger,
-                GameEngine.Audio, World.Command} =        match kind {
+                GameEngine.Audio, World.Command} =
+        match kind {
             case PlayerData.ItemKind.Staff(idx) =>
                 let name = staffNameOf(playerId, idx, scene);
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${name} の方向を選び Z で発射 (X で中止)");
@@ -860,7 +863,8 @@ mod ItemMenuScene {
                   Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State, GameLogger.GameLogger,
-                GameEngine.Audio, World.Command} =        match consumableDeliveryAt(playerId, idx, scene) {
+                GameEngine.Audio, World.Command} =
+        match consumableDeliveryAt(playerId, idx, scene) {
             case Consumable.Delivery.SelfUse =>
                 StaffCastScene.applyConsumableUse(playerId, idx, scene)
             case Consumable.Delivery.Directional =>
