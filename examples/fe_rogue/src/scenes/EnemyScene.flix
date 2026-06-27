@@ -97,7 +97,7 @@ mod EnemyScene {
                  weapons: WeaponCatalog.WeaponCatalog,
                  ringCatalog: Ring.RingCatalog,
                  floor: FloorCatalog.FloorResource,
-                 scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random} =
+                 scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command} =
         let layer       = MapScene.getMapLayer(scene);
         let placements  = MapScene.getPlacements(scene);
         let roomCount   = MapScene.getRoomCount(scene);
@@ -211,7 +211,10 @@ mod EnemyScene {
 
     /// 1 体ぶんの Marker2D + 子 Sprite2D を scene に追加する。
     /// ステータス・テクスチャ・フレームは `sp#resource`（UnitResource）から取る。
-    def addOneEnemy(sp: Spawn, ringCatalog: Ring.RingCatalog, scene: Scene[NodeTag]): Scene[NodeTag] =
+    def addOneEnemy(sp: Spawn, ringCatalog: Ring.RingCatalog, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        // P0b: spawn/restore の funnel。新規敵の初期位置を World へ seed（Cmd.Move=位置 insert）。
+        // dual-write 維持＝挙動不変（mirror が P2 まで生きる）。
+        World.Command.emit(World.Cmd.Move(World.refOf(false, sp#id), sp#gridPos));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
@@ -271,7 +274,7 @@ mod EnemyScene {
                                       ringCatalog: Ring.RingCatalog,
                                       floor: FloorCatalog.FloorResource,
                                       tick: Int32,
-                                      scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+                                      scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command} =
         let current = getAll(scene);
         let wandererCount =
             current |> List.count(d -> d#resource#aiType == EnemyAI.AiType.Wanderer);
@@ -285,7 +288,7 @@ mod EnemyScene {
                                 ringCatalog: Ring.RingCatalog,
                                 floor: FloorCatalog.FloorResource,
                                 current: List[Data],
-                                scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+                                scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command} =
         let layer      = MapScene.getMapLayer(scene);
         let placements = MapScene.getPlacements(scene);
         let roomCount  = MapScene.getRoomCount(scene);
@@ -588,7 +591,7 @@ mod EnemyScene {
     /// 既存の敵を全て scene から取り除き、`spawns` から再構築する。
     /// 各敵は `addOneEnemy` を使って HP・alerted・dying を初期値で生成する。
     pub def respawnFromInitial(spawns: List[Spawn], ringCatalog: Ring.RingCatalog,
-                                scene: Scene[NodeTag]): Scene[NodeTag] =
+                                scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let cleared = List.foldLeft((sc, d) -> Scene.removeAt(enemyPath(d#id), sc),
                                      scene, getAll(scene));
         List.foldLeft((sc, sp) -> addOneEnemy(sp, ringCatalog, sc), cleared, spawns)
@@ -608,7 +611,7 @@ mod EnemyScene {
                           enemyCatalog: EnemyCatalog.EnemyCatalog,
                           weaponCatalog: WeaponCatalog.WeaponCatalog,
                           ringCatalog: Ring.RingCatalog,
-                          scene: Scene[NodeTag]): Scene[NodeTag] =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let spawns = snaps |> List.map(snap -> snapToSpawn(snap, enemyCatalog, weaponCatalog));
         let placed = respawnFromInitial(spawns, ringCatalog, scene);
         List.foldLeft((acc, snap) -> restoreEnemyState(snap, ringCatalog, acc), placed, snaps)

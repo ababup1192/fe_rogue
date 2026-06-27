@@ -187,7 +187,7 @@ mod PlayerScene {
     pub def add(catalog: UnitCatalog.UnitCatalog,
                   staffCatalog: Staff.StaffCatalog,
                   consumableCatalog: Consumable.ConsumableCatalog,
-                  scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, PartySelection.State} =
+                  scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, PartySelection.State, World.Command} =
         let selected     = match PartySelection.State.get() {
             case Some(party) => party
             case None        =>
@@ -303,7 +303,10 @@ mod PlayerScene {
     /// プレイヤー 1 体ぶんの Marker2D + 子 Sprite2D を scene に追加する。
     /// ステータス・テクスチャ・フレームは `sp#resource`（UnitResource）から取る。
     /// pub: テストから catalog 経由の Spawn 構築 → 配置経路を直接検証するため公開する。
-    pub def addOnePlayer(sp: Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def addOnePlayer(sp: Spawn, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        // P0b: spawn/restore の funnel。新規ユニットの初期位置を World へ seed（Cmd.Move=位置 insert）。
+        // dual-write 維持（mirror が P2 まで生きるので無害）＝挙動不変。
+        World.Command.emit(World.Cmd.Move(World.refOf(true, sp#id), sp#gridPos));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
@@ -916,7 +919,7 @@ mod PlayerScene {
     /// 既存のプレイヤーを全て scene から取り除き、`spawns` から再構築する。
     /// HP / waited / gridPos を初期値で生成する。
     pub def respawnFromInitial(spawns: List[Spawn],
-                                scene: Scene[NodeTag]): Scene[NodeTag] =
+                                scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let cleared = List.foldLeft((sc, d) ->
             Scene.removeAt(playerPath(d#id), sc), scene, getAll(scene));
         List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), cleared, spawns)
@@ -1004,7 +1007,7 @@ mod PlayerScene {
                           staffCatalog: Staff.StaffCatalog,
                           consumableCatalog: Consumable.ConsumableCatalog,
                           ringCatalog: Ring.RingCatalog,
-                          scene: Scene[NodeTag]): Scene[NodeTag] =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         List.foldLeft((acc, snap) ->
             placeOneFromSnap(snap, catalog, staffCatalog, consumableCatalog, ringCatalog, acc),
             scene, snaps)
@@ -1018,7 +1021,7 @@ mod PlayerScene {
                           staffCatalog: Staff.StaffCatalog,
                           consumableCatalog: Consumable.ConsumableCatalog,
                           ringCatalog: Ring.RingCatalog,
-                          scene: Scene[NodeTag]): Scene[NodeTag] =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let sp = snapToPlayerSpawn(snap, catalog, staffCatalog, consumableCatalog, ringCatalog);
         addOnePlayer(sp, scene)
             |> mapPlayer(snap#id, d -> {hp = snap#hp, level = snap#level, exp = snap#exp,
@@ -1070,7 +1073,7 @@ mod PlayerScene {
                                 consumableCatalog: Consumable.ConsumableCatalog,
                                 ringCatalog: Ring.RingCatalog,
                                 leaderPos: {x = Int32, y = Int32},
-                                scene: Scene[NodeTag]): Scene[NodeTag] =
+                                scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let cleared = List.foldLeft((sc, d) -> Scene.removeAt(playerPath(d#id), sc), scene, getAll(scene));
         let layer = MapScene.getMapLayer(cleared);
         // リーダーを先頭にして、近い順に空きセルを割り当てる（先頭がちょうど leaderPos に乗る）。
@@ -1114,7 +1117,7 @@ mod PlayerScene {
                      staffCatalog: Staff.StaffCatalog,
                      consumableCatalog: Consumable.ConsumableCatalog,
                      ringCatalog: Ring.RingCatalog,
-                     scene: Scene[NodeTag]): Scene[NodeTag] =
+                     scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let sp = {gridPos = cell | snapToPlayerSpawn(snap, catalog, staffCatalog, consumableCatalog, ringCatalog)};
         addOnePlayer(sp, scene)
             |> mapPlayer(snap#id, d -> {hp = snap#stats#hp, level = snap#level, exp = snap#exp,

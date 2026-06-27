@@ -931,7 +931,7 @@ mod Game {
                           _scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, IO, Math.Random,
                 SelectedPlayer.State, InitialSpawns.State, FloorProgress.State,
-                PartySelection.State, GameLogger.GameLogger, FloorSnapshot.State} =
+                PartySelection.State, GameLogger.GameLogger, FloorSnapshot.State, World.Command} =
         match phase {
             case GamePhase.Title =>
                 TitleMenuScene.add(Scene.empty())

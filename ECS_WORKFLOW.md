@@ -189,7 +189,7 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > ## ★最前線（2026-06-27）= 位置(Board/Encounter)を World 権威化（write-first）
 > **詳細プラン**: `examples/fe_rogue/_plan_position_ecs.md`（v3・レビュー壁打ち 68→84→90 で確定）。statusEffects は下記の通り read-model 確定済み。
 >
-> ### P0a 実装完了・**コミット済み(`4f14204` "Add command")・実機 run 検証はまだ**（878緑・full build green）
+> ### P0a 完了（**コミット済み(`4f14204`)＋tripwire test 追加・879緑・挙動不変と確定**）
 > 位置 write-seam を実装した。要点:
 > - `World.Cmd.Move(EntityRef, {x,y})` ＋ `applyCmd`（worldRef を mid-frame 即時更新）。
 > - 移動5関数（`PlayerScene.{moveTo,moveToById,snapTo}` / `EnemyScene.{moveTo,snapTo}`）から `World.Command.emit(Cmd.Move)`。
@@ -199,16 +199,36 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > - World.Command を ~20 関数へ compiler 誘導で伝播。test 5件を `TestUnitFixtures.dischargeWorldCommand` で discharge。
 > - **検証器**: `Game.flix` の `BoardQuery.board` handler 1箇所で `World.toBoard(worldRef)` vs `BoardSnapshot.fromScene(scene)` を
 >   `World.boardKey`（(tag,id,x,y) 順序非依存 tuple 比較）で突合し、差を `println("[P0a BOARD DIFF] ...")`（**real run 専用**＝test は mock handler で通らない）。
+> - **tripwire test 追加**: `TestWorld.testMoveReflectsNewPosInBoardMidFrame`（`Cmd.Move`→`boardPieces` が prev→now を mid-frame 反映する currency を pin・879緑）。
 >
-> ### 次の一手 = **P0a を実機 run 検証 → 確認の上コミット**
-> P0a は gather の mid-frame 観測を `prev`(flip① の古い値)→`now`(正) に**意図的に是正**するため挙動不変ではなく run 必須。
-> 起動して `[P0a BOARD DIFF]` を見つつ: ①集合追従が乱れない ②通常/敵移動・杖いれかえ/ふきとばし/一時しのぎ・階段集合退場が従来通り
-> ③DIFF が gather と「hidden 遷移／spawn フレーム」以外で頻発しない（頻発＝write 漏れ）。OK なら確認の上コミット。
-> その後: **P0b**(spawn3/restore2 の Cmd.Move emit・lifecycle 木の伝播を別計測)→**P1a**(frame-head reader flip)→**P1b**(mid-frame reader flip)→**P2**(Encounter/AI)→**P3**(mirror 撤去・§A payoff)。各 plan 参照。
+> ### ★重要な再判断 = **P0a は挙動不変＝実機 run は不要**（2026-06-27 後段）
+> 当初 §G は「gather が mid-frame 観測を prev→now に是正するため挙動不変でない＝run 必須」としていたが、**これは誤り**と判明:
+> - `BoardQuery.board()` 消費者は7箇所。うち **Cmd.Move より後(mid-frame)に読むのは gather の `followAllies` 1箇所だけ**。
+>   他6箇所（StaffCast×3・Cursor・stepFor・TurnPhase context）は全て **move より前(frame-head)** の読みで、そこは World==scene(faithful mirror)＝currency 無関係。
+> - 唯一の mid-frame 読みである gather の `Board.followStepsToward` は **主人公の board 位置に非依存**
+>   （味方は全プレイヤーセルを通過可・goal は強制 open・lordNewPos は予約）。よって prev でも now でも追従結果は同一。
+> - ∴ **P0a が currency を是正しても観測者(gather)が結果を変えないので、ゲーム挙動は不変**。run の残存価値は「write 漏れ監査(DIFF ログ)」のみだが、
+>   移動5関数の emit は grep 確認済・applyCmd 機構は tripwire で緑＝**緑のテスト＋静的論証で P0a 完了**。run は cheap insurance（任意）。
+> - 検証器 `[P0a BOARD DIFF]` は **P1a/P1b/P3 の flip・mirror 撤去で挙動不変を機械実証する将来資産**として保持。
+>
+> ### P0b 完了（**spawn/restore funnel の seed emit・880緑・dual-write で挙動不変**・要コミット）
+> spawn/restore の funnel `PlayerScene.addOnePlayer`／`EnemyScene.addOneEnemy` から `Cmd.Move`(=位置 seed) を emit。
+> - **lifecycle 木への伝播 = ~17 production 関数**（compiler 誘導・計測 envelope 内）: funnel 2 → leaf(add/respawnFromInitial/addFromSnaps/
+>   placeOneFromSnap/reviveOneAt/spawnInRoom/maybeSpawnWandererInRoom) → lifecycle ルート(buildPlayingScene/buildCurrentFloor/buildAndRecord/
+>   rebuildFloorFromSnapshot/restartFromFloorSnapshot/advanceFloor/resetForGameOver/reviveWithGoddess/maybeSpawnWanderer) → `Game.applyPhaseChange`。
+>   上流(gameLoop/dispatch)は P0a move5 伝播で `World.Command` 既保持＝そこで収束。
+> - **test discharge**: `TestPlayerScene` は薄ラッパ `addOnePlayerT`(=`dischargeWorldCommand`∘`addOnePlayer`)へ一括置換、`TestMoveRange`/`TestTradeMenu` は scene 構築を `dischargeWorldCommand` で wrap。
+> - **tripwire 追加**: `TestWorld.testAddOnePlayerSeedsPositionToWorld`（addOnePlayer の emit を capture→`boardPieces` に id7@(3,4) を確認・emit 行削除で赤）。
+> - 毎フレーム `syncFromScene` mirror に上書きされる **dual-write ＝挙動不変**（mirror は P3 まで生存）。run 不要（P0a と同論法）。
+>
+> ### 次の一手 = **P1a**（frame-head reader flip・挙動不変・run 不要）
+> move 前に board を読む frame-head 経路を `BoardSnapshot.fromScene`→`BoardQuery.board()` に。対象: StairsExit(begin/advanceFront)・StaffCast player warp/blowback。
+> pure reader(canExit/buildFor/reachability)は対象外。各 flip 後 handler assert 差ゼロ。その後 **P1b**(mid-frame reader flip)→**P2**(Encounter/AI)→**P3**(mirror 撤去・§A payoff)。各 plan 参照。
 >
 > ### 注意（resumption）
-> - **P0a はコミット済み**（`4f14204` に 12 ファイル＋`_plan_position_ecs.md`）。HEAD で `flix test` 緑・`flix check` 緑。run 検証だけが未。
-> - ユーザーの並行 WIP（`World.Query`→`World.StatusQuery` リネーム＋engine_ecs に汎用 `Query`/`exclude` 追加）は**一旦 HEAD に戻した**（ユーザーが「止める」と判断）。`engine_ecs/test/TestQuery.flix` は untracked で残存。再開時に競合しうるので注意（私の `FrameAef.T += World.Command` は additive で両立可）。
+> - **P0a/P0b はコード実装済・要コミット**（作業ツリーに未コミットの変更: `PlayerScene`/`EnemyScene`/`GameLifecycle`/`Game.flix`＋`TestPlayerScene`/`TestMoveRangeScene`/`TestTradeMenuScene`/`TestWorld`）。P0a 分は `4f14204` にコミット済、tripwire＋P0b は未コミット。HEAD+作業ツリーで `flix test` 880緑・`flix check` 緑。
+> - **WIP は再適用済み**: 旧注記の「`World.Query`→`World.StatusQuery` リネーム＋engine_ecs 汎用 `Query`/`exclude` は HEAD に戻した」は古い。`0d01322 "world強化"` で**再適用＆コミット済み**（engine_ecs `Query`＋`TestQuery`＋fe_rogue の rename）。もう WIP ではない。
+> - fpkg は git 管理外。エンジン側変更後/新規 checkout 後は `GITHUB_TOKEN=$(gh auth token) make sync`（無認証は GitHub API レート制限で fpkg 配布が 404/失敗）。
 > - perl で effect row へ `World.Command` を撒くのは**多行 sig で誤爆**するので、複数行シグネチャは Edit 推奨。
 
 > **方針転換（2026-06-27）**: read-model 路線では「本物の ECS でない」とのユーザー指摘を受け、**statusEffects を
@@ -242,7 +262,7 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 - [x] **S2 Combat HP（read-model mirror・非破壊）** — `World.flix` に `playerHp`/`enemyHp = Map[EntityId, Int32]`、`syncFromScene` で hp mirror。**権威は scene のまま**＝`Combat`/HPBar 無改修。test **866緑**（`testSyncMirrorsHp`／`testHpMirrorEqualsScene`＝World hp == scene hp）
 - [x] **S3 位置 store（read-model mirror・非破壊）** — `World.flix` に `playerPos`/`enemyPos = Map[EntityId, {x=Int32,y=Int32}]`（Vec2i structural record）、`syncFromScene` で gridPos mirror。**権威は scene のまま**。test **868緑**（`testSyncMirrorsPos`／`testPosMirrorEqualsScene`＝World pos == scene gridPos・Vec2i.eq）
 - [~] **S4 Board fromWorld 化（進行中）** — 射影 `World.toBoard`/`World.boardPieces`（ecs/ 層・World クエリ）と `BoardSnapshot.mapSnapshotOf`（scenes/ に抽出）構築。hidden は `World.playerHidden` に mirror 追加。test **869緑**（`testPiecesFromWorldFiltersHidden`）
-  - [x] **flip①: `BoardQuery` handler**（Game.flix:869）→ `World.toBoard(worldRef, sceneRef)`。`worldRef`（sceneRef 対称・毎フレーム頭更新）配線。初回 world は `syncFromScene(scene)`（frame-1 faithful）。**順序リスク静的解消**（全 BoardQuery 消費者は位置キー lookup/集合 membership＝順序非依存。かつ `nextEnemyId=1+max` で敵は昇順 id append＝preorder==Map順）。build＋test 869緑。**実機 run 検証 待ち**
+  - [x] **flip①: `BoardQuery` handler**（Game.flix:869）→ `World.toBoard(worldRef, sceneRef)`。`worldRef`（sceneRef 対称・毎フレーム頭更新）配線。初回 world は `syncFromScene(scene)`（frame-1 faithful）。**順序リスク静的解消**（全 BoardQuery 消費者は位置キー lookup/集合 membership＝順序非依存。かつ `nextEnemyId=1+max` で敵は昇順 id append＝preorder==Map順）。build＋test 879緑。**挙動不変と確定（run 不要）＝唯一の mid-frame 消費者 gather の followStepsToward が board 位置非依存**（上記★再判断）
   - [ ] flip②: frame-head 直接 call（StaffCast/Combat/Range/Stairs）
   - [ ] flip保留: `EnemyTurnDriver` mid-frame（:118/:141/:268）は mid-frame sync 後
 - [x] **statusEffects ECS 層 完成・検証済み（2026-06-27・レビュー91）** — Bevy 正対の `World.Command`/`World.Query` effect、

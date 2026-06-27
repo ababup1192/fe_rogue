@@ -48,11 +48,12 @@ mod TestMoveRangeScene {
             resource = TestUnitFixtures.testResource(4, 10),
             weapons = Nil, staves = Nil, consumables = Nil, rings = Nil
         }: PlayerScene.Spawn);
-        Scene.empty()
+        // addOnePlayer は P0b で World.Command を emit する。位置 World は検証外なので discharge で剥がす。
+        TestUnitFixtures.dischargeWorldCommand(() -> Scene.empty()
             |> MapScene.addWorldNode
             |> Scene.addNode("DungeonLevel0",
                 EngineNode.TileMapLayerWithState(floorMapLayer(), NodeTag.Map(floorMapData())))
-            |> PlayerScene.addOnePlayer(sp)
+            |> PlayerScene.addOnePlayer(sp))
 
     // ════════════════════════════════════════════════════════
     // (A) 結線テスト — refresh は origin 基準で範囲を組む（無限移動の回帰ピン）

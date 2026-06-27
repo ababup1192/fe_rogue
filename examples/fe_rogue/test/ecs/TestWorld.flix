@@ -326,4 +326,48 @@ mod TestWorld {
             }
         };
         Assert.assertEq(expected = 1, len)
+
+    // ── P0a: Cmd.Move の mid-frame currency（位置権威化・gather 是正の前提）──
+
+    /// P0a tripwire: 主人公が **mid-frame に prev→now と動いた**直後、`Cmd.Move` を適用すると
+    /// BoardQuery が返す盤面（= `World.toBoard` → `boardPieces`）は **now を反映**し、stale な prev を返さない。
+    ///
+    /// これは検証器 `[P0a BOARD DIFF]`（Game.flix）が gather で「主人公位置を prev→now に是正する」根拠そのもの。
+    /// `Cmd.Move` を `applyCmd`／`playerPos` ストアに配線し損ねる（または `boardPieces` が別ストアを読む）と、
+    /// `before==after==prev` になりこのテストが赤くなる＝手動 run 前に回帰を機械検出できる。
+    ///
+    /// 補足: gather の追従計算 `Board.followStepsToward` 自体は board の主人公セル位置に**非依存**
+    /// （味方は全プレイヤーセルを通過可・goal は強制 open・lordNewPos は予約）。よって tripwire は
+    /// followStepsToward でなく、P0a が実際に変える「World 盤面の currency」を対象に置く。
+    @Test
+    def testMoveReflectsNewPosInBoardMidFrame(): Unit \ Assert =
+        let now = ({x = 5, y = 5}: {x = Int32, y = Int32});
+        // frame-head: scene を mirror（sampleScene の player 0 は {2,2}）。
+        let w0 = World.syncFromScene(sampleScene(), World.empty());
+        // mid-frame: 主人公(player 0)が now へ移動 → Cmd.Move を World に即時適用。
+        let w1 = World.applyCmd(World.Cmd.Move(World.EntityRef.Player(0), now), w0);
+        let posOf0 = w -> Map.get(0, playerPosMapOf(World.boardPieces(w)));
+        // before は frame-head の prev {2,2}、after は now {5,5}（prev のままなら配線漏れ）。
+        Assert.assertEq(expected = (Some((2, 2)), Some((5, 5))), (posOf0(w0), posOf0(w1)))
+
+    // ── P0b: spawn/restore funnel が新規ユニットの位置を World へ seed ──
+
+    /// P0b tripwire: `addOnePlayer`（spawn/restore の funnel）が新規ユニットの初期位置を
+    /// World へ seed する（`Cmd.Move` を emit）。emit を applyCmd で worldRef に積み、
+    /// `boardPieces` に id 7 @ (3,4) が現れることを確認する。funnel の emit 行を消す回帰で赤になる。
+    @Test
+    def testAddOnePlayerSeedsPositionToWorld(): Unit \ Assert =
+        let sp = ({id = 7, classId = "test_player", gridPos = {x = 3, y = 4},
+                    resource = TestUnitFixtures.testResource(4, 10),
+                    weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
+        let world = region rc {
+            let ref = Ref.fresh(rc, World.empty());
+            run {
+                discard PlayerScene.addOnePlayer(sp, MapScene.addWorldNode(Scene.empty())); ()
+            } with handler World.Command {
+                def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(ref)), ref); k() }
+            };
+            Ref.get(ref)
+        };
+        Assert.assertEq(expected = Some((3, 4)), Map.get(7, playerPosMapOf(World.boardPieces(world))))
 }

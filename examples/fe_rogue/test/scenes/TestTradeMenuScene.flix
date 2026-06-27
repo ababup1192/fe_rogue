@@ -53,9 +53,10 @@ mod TestTradeMenuScene {
               staves  = List.map(sId -> Staff.lookup(sId, staffCatalog), spec#staves),
               consumables = Nil, rings = Nil}:
                 PlayerScene.Spawn);
-        let withParty = List.foldLeft((acc, spec) ->
+        // addOnePlayer は P0b で World.Command を emit する。位置 World は検証外なので discharge で剥がす。
+        let withParty = TestUnitFixtures.dischargeWorldCommand(() -> List.foldLeft((acc, spec) ->
             PlayerScene.addOnePlayer(mkSpawn(spec), acc),
-            MapScene.addWorldNode(Scene.empty()), specs);
+            MapScene.addWorldNode(Scene.empty()), specs));
         let withMenu = loadTradeMenu(withParty);
         let members = List.map(s -> s#id, specs);
         let withPanel = TradeMenuScene.mapPanelData(_ ->

@@ -93,6 +93,12 @@ mod TestPlayerScene {
             case _ => bug!("applyMove: expected Player at playerPath(${id})")
         }
 
+    /// addOnePlayer は P0b で位置を World へ seed する `World.Command` を emit する。本テスト群は
+    /// 位置 World を検証しないので、scene 構築の各 spawn を discharge で包む薄いラッパ。
+    /// pipe で chain できるよう scene を最後の引数に取る（`|> addOnePlayerT(sp)`）。
+    def addOnePlayerT(sp: PlayerScene.Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
+        TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.addOnePlayer(sp, scene))
+
     // ========================================================================
     // moveTo — gridPos を即更新、tween は engine に委譲
     // ========================================================================
@@ -160,13 +166,13 @@ mod TestPlayerScene {
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 5, y = 5}))
-            |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 5, y = 4}))
-            |> PlayerScene.addOnePlayer(mkSpawn(2, {x = 4, y = 5}))
-            |> PlayerScene.addOnePlayer(mkSpawn(3, {x = 6, y = 5}))
-            |> PlayerScene.addOnePlayer(mkSpawn(4, {x = 5, y = 6}))
-            |> PlayerScene.addOnePlayer(mkSpawn(5, {x = 4, y = 4}))
-            |> PlayerScene.addOnePlayer(mkSpawn(6, {x = 6, y = 6}));
+            |> addOnePlayerT(mkSpawn(0, {x = 5, y = 5}))
+            |> addOnePlayerT(mkSpawn(1, {x = 5, y = 4}))
+            |> addOnePlayerT(mkSpawn(2, {x = 4, y = 5}))
+            |> addOnePlayerT(mkSpawn(3, {x = 6, y = 5}))
+            |> addOnePlayerT(mkSpawn(4, {x = 5, y = 6}))
+            |> addOnePlayerT(mkSpawn(5, {x = 4, y = 4}))
+            |> addOnePlayerT(mkSpawn(6, {x = 6, y = 6}));
         let self = match PlayerScene.get(0, scene) {
             case Some(d) => d
             case None    => bug!("player 0 not found")
@@ -186,9 +192,9 @@ mod TestPlayerScene {
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 5, y = 5}))
-            |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 4, y = 4}))
-            |> PlayerScene.addOnePlayer(mkSpawn(2, {x = 6, y = 6}));
+            |> addOnePlayerT(mkSpawn(0, {x = 5, y = 5}))
+            |> addOnePlayerT(mkSpawn(1, {x = 4, y = 4}))
+            |> addOnePlayerT(mkSpawn(2, {x = 6, y = 6}));
         let self = match PlayerScene.get(0, scene) {
             case Some(d) => d
             case None    => bug!("player 0 not found")
@@ -213,8 +219,8 @@ mod TestPlayerScene {
                                           consumables = Nil, rings = Nil}: PlayerScene.Spawn);
             let scene = Scene.empty()
                 |> MapScene.addWorldNode
-                |> PlayerScene.addOnePlayer(mkSpawn(0, lordPos))
-                |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 5, y = 4}));
+                |> addOnePlayerT(mkSpawn(0, lordPos))
+                |> addOnePlayerT(mkSpawn(1, {x = 5, y = 4}));
             TestUnitFixtures.withSelectionRef(rc, sel, () ->
                 PlayerScene.gatherNotMovedYet(scene))
         }
@@ -292,7 +298,7 @@ mod TestPlayerScene {
     //   - `UnitCatalog.load` で本番 resources の catalog を読む
     //   - `UnitCatalog.lookupWeapon(id, catalog)` / `Staff.lookup(id, staffCatalog)`
     //     で本物の resource を取得
-    //   - `MapScene.addWorldNode` + `PlayerScene.addOnePlayer(spawn, scene)` で scene 構築
+    //   - `MapScene.addWorldNode` + `addOnePlayerT(spawn, scene)` で scene 構築
     //   - `PlayerScene.swapItem(args, scene)` を record-style 引数で呼ぶ
     //   - インベントリ確認は `PlayerScene.getWeapons` / `getStaves` の戻り値を直接 map
     //
@@ -328,10 +334,10 @@ mod TestPlayerScene {
         let fire  = UnitCatalog.lookupWeapon("tome_grimoire", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = spear :: fire :: Nil, staves = Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = bow :: Nil, staves = Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
@@ -355,10 +361,10 @@ mod TestPlayerScene {
         let swap = Staff.lookup("swap_staff", fx#staffCatalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = live :: Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = swap :: Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
@@ -384,10 +390,10 @@ mod TestPlayerScene {
         let live  = Staff.lookup("live_staff", fx#staffCatalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = spear :: Nil, staves = Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = live :: Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
@@ -414,10 +420,10 @@ mod TestPlayerScene {
         let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = spear :: Nil, staves = Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
@@ -444,10 +450,10 @@ mod TestPlayerScene {
         let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = spear :: Nil, staves = Nil, consumables = Nil, rings = Nil});
         let after = PlayerScene.swapItem({
@@ -481,8 +487,8 @@ mod TestPlayerScene {
                                        consumables = cons, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, potion :: Nil))
-            |> PlayerScene.addOnePlayer(mkSpawn(1, Nil));
+            |> addOnePlayerT(mkSpawn(0, potion :: Nil))
+            |> addOnePlayerT(mkSpawn(1, Nil));
         let after = PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Consumable(0),
@@ -507,8 +513,8 @@ mod TestPlayerScene {
                                         consumables = Nil, rings = rings}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, ring :: Nil))
-            |> PlayerScene.addOnePlayer(mkSpawn(1, Nil));
+            |> addOnePlayerT(mkSpawn(0, ring :: Nil))
+            |> addOnePlayerT(mkSpawn(1, Nil));
         let after = PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Ring(0),
@@ -533,7 +539,7 @@ mod TestPlayerScene {
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}));
+            |> addOnePlayerT(mkSpawn(0, {x = 3, y = 3}));
         let after = PlayerScene.useStairs(0, scene);
         match PlayerScene.get(0, after) {
             case Some(d) =>
@@ -551,8 +557,8 @@ mod TestPlayerScene {
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}))
-            |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 4, y = 3}));
+            |> addOnePlayerT(mkSpawn(0, {x = 3, y = 3}))
+            |> addOnePlayerT(mkSpawn(1, {x = 4, y = 3}));
         let oneUsed  = PlayerScene.useStairs(0, scene);
         let bothUsed = PlayerScene.useStairs(1, oneUsed);
         Assert.assertEq(
@@ -572,9 +578,9 @@ mod TestPlayerScene {
                                weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0))
-            |> PlayerScene.addOnePlayer(mkSpawn(1))
-            |> PlayerScene.addOnePlayer(mkSpawn(2));
+            |> addOnePlayerT(mkSpawn(0))
+            |> addOnePlayerT(mkSpawn(1))
+            |> addOnePlayerT(mkSpawn(2));
         let baseStats = LevelSystem.statsOf(fx#unitSample);
         let carry =
             ({id = 0, hp = 3, weapons = spear :: Nil, staves = Nil, consumables = Nil,
@@ -616,8 +622,8 @@ mod TestPlayerScene {
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}))
-            |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 4, y = 3}));
+            |> addOnePlayerT(mkSpawn(0, {x = 3, y = 3}))
+            |> addOnePlayerT(mkSpawn(1, {x = 4, y = 3}));
         let result = TestUnitFixtures.withNoSelection(() -> withGameOverToEmpty(() ->
             TestUnitFixtures.withMockGameLogger(() ->
                 PlayerScene.removeDeadAndCheckGameOver(0 :: Nil, scene))));
@@ -633,8 +639,8 @@ mod TestPlayerScene {
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}))
-            |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 4, y = 3}));
+            |> addOnePlayerT(mkSpawn(0, {x = 3, y = 3}))
+            |> addOnePlayerT(mkSpawn(1, {x = 4, y = 3}));
         let result = TestUnitFixtures.withNoSelection(() -> withGameOverToEmpty(() ->
             TestUnitFixtures.withMockGameLogger(() ->
                 PlayerScene.removeDeadAndCheckGameOver(1 :: Nil, scene))));
