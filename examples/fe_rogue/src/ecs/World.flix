@@ -165,6 +165,14 @@ mod World {
         case SetPhase(SimPhase)             // turn phase write（F2b・TurnPhase.State handler が dual-write で emit）
     }
 
+    /// System が出力する sim-event（F-clock の最小骨組み・F3b 導入）。
+    /// System は World→World を即時に解き、「何が起きたか」を SimEvent として返す。
+    /// VIEW はこれを再生（Tween/anim）する＝「即時 System ＋ event 再生」型の seam。
+    /// 現状は move 1 系統のみ。同 dispatch 内で emit→replay（timing 不変）＝pipeline 段移設（F3c）は別段。
+    pub enum SimEvent {
+        case Moved(EntityRef, {x = Int32, y = Int32})  // entity が target へ 1 歩進んだ（from は view が現位置で持つ）
+    }
+
     /// statuses 書き込み effect（Bevy Commands）。handler は Game.start（worldRef へ即時適用）。
     ///
     /// ⚠ write-back seam（emit-flip まで未配線）: handler は **worldRef** を書くが、gameLoop は末尾再帰で

@@ -402,10 +402,28 @@ mod PlayerScene {
         //    F3b でこの関数を `SimEvent.Moved` の消費側から呼ぶ（イベント駆動の再生）。
         replayMoveView(id, target, map, slide, scene)
 
+    /// `SimEvent.Moved` を view 再生する（F3b: イベント駆動の再生エントリ）。
+    /// System が返した Moved を受けて Tween/facing/anim を再生する。位置の権威は World 側。
+    /// 敵の move 再生は F4（敵ターン System 化）で別途扱うため現状は no-op。
+    pub def replayMovedEvent(event: World.SimEvent, map: MapSnapshot,
+                              slide: Duration.Duration, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ Tween.Scheduler =
+        match event {
+            case World.SimEvent.Moved(World.EntityRef.Player(id), target) =>
+                replayMoveView(id, target, map, slide, scene)
+            case World.SimEvent.Moved(World.EntityRef.Enemy(_), _) => scene
+        }
+
+    /// `SimEvent.Moved` の着地マス。着地時の自動取得など view 側が座標を要する箇所で使う。
+    pub def movedTarget(event: World.SimEvent): {x = Int32, y = Int32} =
+        match event {
+            case World.SimEvent.Moved(_, target) => target
+        }
+
     /// 1 歩移動の **view 再生**（Tween 滑走 + facing + walk アニメ + 左右反転）。
     /// 位置の権威は World（`Cmd.Move`）にあり、ここは「move が起きた」結果から導く見た目だけを担う。
     /// sim 書き込みを含まない（`World.Command` を要求しない）＝イベント再生の純 view エントリ。
-    def replayMoveView(id: Int32, target: {x = Int32, y = Int32},
+    pub def replayMoveView(id: Int32, target: {x = Int32, y = Int32},
                         map: MapSnapshot, slide: Duration.Duration,
                         scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);

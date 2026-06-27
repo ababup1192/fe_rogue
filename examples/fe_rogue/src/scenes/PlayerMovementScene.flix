@@ -128,21 +128,39 @@ mod PlayerMovementScene {
                 else if (PlayerScene.isMoving(data#id)) (node, scene)
                 else
                     let board = BoardQuery.board();
-                    // 方向キー押下で 1 セルだけ進む。
-                    // Board.tryMoveWithRange が壁・敵セルをブロック; allowedPred が MoveRange 制限を追加する。
-                    // 味方セルへは進入可能（重なる）、敵セルはブロック（Board.tryMoveWithRange の責務）。
-                    // 着地マス判定のため target を yield に同梱する（forM のラムダ外で参照したいため）。
-                    let moved = forM (
-                        dir    <- readHeldDirection();
-                        target <- Board.tryMoveWithRange(board, data#gridPos, dir, allowedPred)
-                    ) yield (target, PlayerScene.moveToById(data#id, target, board#map, slide, scene));
-                    match moved {
-                        case None                 => (node, scene)
-                        case Some((target, next)) =>
-                            returnNode(node, path, autoPickupOrLog(data, target, next))
+                    // F3b: 入力(view)→System(sim)→event→replay(view) の seam。
+                    //   VIEW: 押下方向を MoveIntent(dir) に写す（readHeldDirection）。
+                    //   SYSTEM: stepPlayerMove が合法判定（壁/範囲/敵占有）→World に Cmd.Move→Moved を返す。
+                    //   VIEW: replayMovedEvent が Moved を Tween/anim 再生し、着地マスを自動取得。
+                    // 同 dispatch 内で emit→replay ゆえ timing 不変（pipeline 段移設は F3c）。
+                    let outcome = forM (
+                        dir   <- readHeldDirection();
+                        event <- stepPlayerMove(data#id, data#gridPos, dir, board, allowedPred)
+                    ) yield event;
+                    match outcome {
+                        case None        => (node, scene)
+                        case Some(event) =>
+                            let target   = PlayerScene.movedTarget(event);
+                            let replayed = PlayerScene.replayMovedEvent(event, board#map, slide, scene);
+                            returnNode(node, path, autoPickupOrLog(data, target, replayed))
                     }
             case _ => (node, scene)
         }
+
+    /// SYSTEM(sim): 選択中プレイヤーの 1 歩を判定し、合法なら World に位置を書いて `Moved` を返す。
+    /// 合法性は board（壁/MoveRange/敵占有）の純粋判定（`Board.tryMoveWithRange`）。`allowed` は
+    /// フェーズ固有の範囲制限（physicsStep は MoveRange、gatherStep は集合範囲）。
+    /// gridPos は frame-end の `World.syncTreeFromWorld` で World 由来に derive＝ここでは scene を触らない。
+    /// 返り値 `Moved` を VIEW（`PlayerScene.replayMovedEvent`）が Tween/anim 再生する。
+    pub def stepPlayerMove(id: Int32, fromPos: {x = Int32, y = Int32},
+                            dir: {x = Int32, y = Int32}, board: Board,
+                            allowed: {x = Int32, y = Int32} -> Bool):
+            Option[World.SimEvent] \ World.Command =
+        forM (target <- Board.tryMoveWithRange(board, fromPos, dir, allowed))
+            yield {
+                World.Command.emit(World.Cmd.Move(World.EntityRef.Player(id), target));
+                World.SimEvent.Moved(World.EntityRef.Player(id), target)
+            }
 
     /// 着地したマスに床アイテムがあれば、**重量が許す限り自動で拾う**（基本拾う仕様）。
     /// 取得は移動キャンセル(`cancelSelection`)で巻き戻せるよう `PickedUp` ドラフトに積む
