@@ -190,19 +190,24 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > 真に World 権威化する Bevy 正対の移行**に舵を切った（plan `gemini-ecs-sunny-curry.md`、複数視点設計＋レビュー）。
 > 詳細プランはそちら。以下の §G は **statusEffects 縦断 ECS 化**の進捗（位置/HP の read-model 項目は据え置き）。
 
-**現在ステップ**: **emit-flip（S1 本体）— E1(tick)/E2(add)/E3(clear) 完了。次は E4(権威 flip・実機 run 必須)**。詳細手順は plan `gemini-ecs-sunny-curry.md`。
-**E1 ✅ コミット済**（`e0bf38c`・878緑・挙動不変）: `clearAllWaited`→`Cmd.TickPlayers`/`clearActedAll`→`Cmd.TickEnemies` emit＋`World.Command` を ~30関数へ伝播。
-**E2 ✅ コミット済**（`4eadeb5`・878緑・挙動不変）: add を **`EffectRunner.runPlan` の境界で `World.emitStatusAdds(plan)` 発行**（handler テーブルは pure のまま＝`checked_ecast` 不要・責務分割）。
-**E3 ✅ 完了**（878緑・挙動不変）: `PlayerScene.releaseBind`/`EnemyScene.releaseBind` 内部で `Cmd.ClearImmobilized(EntityRef)` emit（scene inline clear は dual-write 維持）。`World.Command` を player/enemy attack chain へ伝播。
-**次の一手**: **E4 権威 flip**（挙動変化・実機 `flix run` 必須）。① `syncFromScene`→`refreshMirror`（statusEffects 再計算停止＋prune）② gameLoop 末尾 sync 基点を `Ref.get(worldRef)` に ③ reseed seam ④ reader flip（`combatView(data, statusEffects)` 注入・~26点が `World.Query` 供給）⑤ dual-write 撤去 ⑥ `statuses` フィールド削除。以下は旧 inside-handler 方式の記述（plan の改良版を優先）:
-- 書込サイト（~12）を `World.Command.emit(...)` に: tick=`clearAllWaited`(PlayerScene)/`clearActedAll`(EnemyScene)、
-  add=`effectStatus`(Combat)/`statusUnit`/`applySelfStatus`/`applyBind*`/`applyStatusToHit`(StaffCast)、clear=`releaseBind`×2。
-- `World.Command` を経路上の **狭い row の中継関数のみ**に追加（compiler 誘導。`FrameAef.ProcessT` は追加済＝dispatch 層は無改修）。
-  実測の fan-out: `beginTurn`/`endTurn`/`process`(EnemyTurnDriver)→`TurnFlow.commit*`→ActionMenu/TurnPhase/Combat/StaffCast/LevelUpPanel ≈ 30-45 関数。
-- **write-back seam（必須・⚠最大リスク）**: `syncFromScene` の statusEffects 上書きを止め（refreshMirror 化）、
-  gameLoop 末尾の base を `world` でなく `Ref.get(worldRef)` に。さもないとフレーム境界で emit が消える（World.flix `eff Command` doc 参照）。
-- **reader flip**: `combatView(data)`→`combatView(data, statusEffects)` の引数注入、~26 call-point が `World.Query.statusEffects(EntityRef)` で供給。
-- **reseed seam**: 床移動/リスタート/復活/中断再開で `Cmd.Seed`（replace）。**実機 `flix run` 検証必須**（初の挙動変化）。
+**現在ステップ**: **statusEffects は read-model 確定（§A 整合）。emit-flip は E3 まで実装し、E4(権威 flip)は defer**。
+
+> **再判断（2026-06-27 後段）**: emit-flip の reader flip 前段調査で、forecast/AI/盤面ビルダーの reader が **pure**（attackForecast/
+> computeView/EncounterBuilder.fromScene 等）と判明。`World.Query` 注入は pure サブグラフへ effect を伝播させ（前回 22点頓挫と同型）、
+> 回避には data-threading の中規模配線が要る。さらに reader を scene に残す妥当案（World=snapshot 源）は **§A が「やるな」と明記した
+> "挙動ゼロ変化なのにドライバ大改修コストだけ乗る割の合わない flip"** そのもの。よって **statusEffects は §A 通り read-model に確定**し、
+> ECS 化の労力は旨味の大きい **位置(Board/Encounter)・EnemyAI・セーブ**(S4〜S7)へ回す。statusEffects の完全 flip は決定論/replay の
+> 具体 payoff が出た時に再開する（その時 E1〜E3 の Command/Query seam をそのまま使える）。
+
+**E1〜E3（✅ コミット済・878緑・挙動不変・dual-write）= 将来 flip 用の実証済みインフラとして保持**:
+- E1(`e0bf38c`): `clearAllWaited`→`Cmd.TickPlayers`/`clearActedAll`→`Cmd.TickEnemies` emit＋`World.Command` を ~30関数へ伝播。
+- E2(`4eadeb5`): add を `EffectRunner.runPlan` の境界で `World.emitStatusAdds(plan)` 発行（handler テーブルは pure のまま＝`checked_ecast` 不要・責務分割）。
+- E3(`c22b2d1`): `releaseBind`×2 内部で `Cmd.ClearImmobilized(EntityRef)` emit（scene inline clear は dual-write 維持）。
+- これらの emit は毎フレーム `syncFromScene` の mirror に上書きされ **現状は無害な dual-write**（World は scene の faithful mirror）。
+
+**E4 を再開する時の未了点（参考・defer 中）**: ① `syncFromScene`→`refreshMirror`（statusEffects 再計算停止＋prune）② gameLoop base を `Ref.get(worldRef)` に
+③ reseed seam（床移動/リスタート/復活/中断再開で `Cmd.Seed`）④ reader flip（pure reader は **data-threading** で `statusEffects` を引数注入、`World.Query` は effect 境界で1回読む）⑤ dual-write 撤去 ⑥ `statuses` フィールド削除。**dual-write gap**（非DSL の直接杖Bind/一時しのぎ/敵詠唱/投擲 directional は境界 emit 未被覆）を塞ぐこと。**実機 `flix run` 必須**。
+**次の一手**: ECS 本線へ — **S4 Board fromWorld 化の flip②**（frame-head 直接 call）／S5 位置の正を World に。
 
 ### チェックリスト
 - [x] S0 足場（最小 World＋sync 骨組み）— `examples/fe_rogue/src/ecs/World.flix`、gameLoop に thread、build＋test 859緑、ゲート88→§G更新で90+
@@ -219,7 +224,8 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
   `EntityRef` キー抽象（faction 非依存 seam・将来 Option A は World.flix 内部だけで）、`applyCmd`/`overEntity` applier（`StatusSystem`
   再利用）、Game.start handler 配線。`statuses`→`statusEffects` rename＋`StatusEffects` 型 alias。**878緑**（applyCmd 8 ケース＋
   faction ルーティング＋**effect 経由 end-to-end** テスト）。**まだ gameplay から emit せず＝挙動不変**。次は emit-flip（上記「次の一手」）
-- [ ] **emit-flip（S1 本体）** — gameplay の status 変更を Command 化＋write-back seam＋reader flip＋reseed（実機 run 必須）
+- [x] **emit-flip E1〜E3（Command 書込 seam・dual-write・878緑）** — gameplay の status 変更を Command emit（tick/add/clear）。**毎フレーム mirror に上書きされる無害な dual-write ＝将来 flip 用インフラ**
+- [ ] ~~emit-flip E4（権威 flip）~~ — **defer 確定（§A 整合・read-model 維持）**。reader が pure で Query 注入が伝播／reader を scene に残す案は「割の合わない flip」。決定論/replay の payoff 時に再開
 - [ ] ~~S1b-flip~~（read-model 時代の不採用判断・上書き）
 - [ ] S5 位置の正を World に切替（mirror 撤去）
 - [ ] S6 EnemyAI World 駆動
