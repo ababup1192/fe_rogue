@@ -467,4 +467,22 @@ mod TestWorld {
         Assert.assertEq(
             expected = (Some((5, 5)), Some((3, 3))),
             (tup(World.EntityRef.Player(0)), tup(World.EntityRef.Enemy(5))))
+
+    // ── F2a: turn FSM の World mirror（SimPhase）──
+
+    /// F2a: 既定は PlayerTurn・`mirrorTurnPhase`/`turnPhaseOf` が round-trip する。
+    @Test
+    def testTurnPhaseMirrorRoundTrips(): Unit \ Assert =
+        let after = World.mirrorTurnPhase(SimPhase.EnemyTurn, World.empty());
+        Assert.assertEq(
+            expected = (SimPhase.PlayerTurn, SimPhase.EnemyTurn),
+            (World.turnPhaseOf(World.empty()), World.turnPhaseOf(after)))
+
+    /// F2a 不変条件: `refreshMirror`（毎フレーム）は turnPhase を**保持**する（書き手は gameLoop の mirror だけ）。
+    /// status/pos と違い turnPhase は scene 由来でないので、refreshMirror が勝手に上書きしないことを pin。
+    @Test
+    def testRefreshMirrorPreservesTurnPhase(): Unit \ Assert =
+        let seeded = World.mirrorTurnPhase(SimPhase.EnemyTurn, World.empty());
+        let refreshed = World.refreshMirror(sampleScene(), seeded);
+        Assert.assertEq(expected = SimPhase.EnemyTurn, World.turnPhaseOf(refreshed))
 }

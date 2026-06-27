@@ -107,7 +107,7 @@ gameLoop(world, uiState, scene):
 - **✅ F0 足場（実装済・886緑・挙動不変）**: `World.stepWorld(world)`（System パイプライン段）を追加し gameLoop の `refreshMirror`→`syncTreeFromWorld` 間に `world2=stepWorld(world1)` 配線。現状 System は inert な `tickStatusEffects`（pos 不変＝`testStepWorldPreservesPositions` で pin・live StatusQuery reader 無し＋次フレーム refreshMirror が上書き＝観測されず）。以後の System はここに足す。
 - **✅ F1 入力→intent seam（実装済・886緑・挙動不変）**: `ActionMenuScene` に `ActionIntent`（純データ）＋`actionIntentOf`（決定＝純関数）＋`applyActionIntent`（適用＝単一 dispatcher）を追加し、"wait" を `onActionConfirmed` の直接ロジック呼びから **decide→apply の seam** に通した（残アクションは既存 if-else にフォールバック＝strangler-fig）。既存テスト「waitMeta 確定で waited=true」が新経路を通って緑＝挙動不変。現状は dispatcher を確定点で inline 適用＝**decide/apply 分離の seed**。「入力が `List[Intent]` を返し System が pipeline で消費」の完全形は MenuHandler 署名変更/intent queue が要るので F2(UiState) 以降で成熟させる。
 - **F2 turn FSM を World に（a/b/c 分割・最高 cascade）**:
-  - **F2a**: `turnPhase` を World component に mirror（dual・no-op）。並走 assert `World.turnPhase == TurnPhase.State.get()` を毎フレーム（boardKey 相当の falsifiable gate）。
+  - **✅ F2a（実装済・888緑・挙動不変）**: World に `SimPhase`(3-case)＋`turnPhase` field、境界 `simPhaseOf`(19→3 写像)、gameLoop で毎フレーム mirror＋並走 assert `[F2 PHASE DIFF]`（mirror ゆえ F2a は無音・F2b の write 漏れ検出 seam）。turnPhase は read-model（読み手は assert のみ）・refreshMirror が保持。循環依存(TurnPhase→World)回避のため World は中立な 3-case を持ち 19→3 は境界で写像。
   - **F2b**: 非入力の `TurnPhase.State.put`（endTurn/PhaseTransitions/TurnFlow/Combat の ~6 site）を Cmd 経由に。
   - **F2c**: read を World に flip ＋ `UiState.modalMode` 分離。
 - **F-clock（heavy 着手前・反転の確立）**: sim-event-log と animation-queue の骨組みを入れ、**最小例＝移動**で実証（`Cmd.Move` は既存・`Moved` event を VIEW が Tween 再生）。これで以後の heavy subsystem が「即時 System＋event 再生」型を踏める。

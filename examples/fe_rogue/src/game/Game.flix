@@ -945,6 +945,14 @@ mod Game {
 
     /// メインループ。phase で分岐せず、**固定パイプライン** を毎フレーム回す:
     ///   handleInput → handleMenus → physicsProcess → Tween → Animation → process → epilogue
+    /// F2a: 19-case `TurnPhase.Phase` を World の 3-case `SimPhase` に写す（境界の写像）。
+    /// メニュー遷移・演出待ち系は全て「味方ターン」配下＝`PlayerTurn`（細分は UiState.modalMode / anim-queue）。
+    def simPhaseOf(phase: TurnPhase.Phase): SimPhase = match phase {
+        case TurnPhase.Phase.EnemyTurn => SimPhase.EnemyTurn
+        case TurnPhase.Phase.GameOver  => SimPhase.GameOver
+        case _                          => SimPhase.PlayerTurn
+    }
+
     /// 各 process / input redef 内で「自分が今動くべきか」を phase で判断する (Godot 流)。
     /// 例: `EnemyTurnDriverScene.process` は phase=EnemyTurn / PlayerAttackHold で動作、
     ///     `PlayerMovementScene.gatherStep` は phase=GatherMove で主人公(id 0)を動かす。
@@ -1014,12 +1022,20 @@ mod Game {
             // のみ（pos 不変ゆえ下の syncTreeFromWorld に無影響・status は次フレーム refreshMirror で上書き
             // ＝挙動不変）。以後の System（移動/AI/戦闘）はここに足していく。
             let world2 = World.stepWorld(world1);
+            // F2a（turn FSM を World へ・mirror 段・dual/no-op）: 19-case TurnPhase.Phase を 3-case SimPhase へ
+            // 写して World に mirror。**並走 assert** は F2b（phase 書込を Cmd 化）後に command 由来 phase の
+            // write 漏れを検出する seam。F2a は mirror ゆえ常に一致（diff は出ない）。phase は read-model のまま。
+            let curSim = simPhaseOf(TurnPhase.State.get());
+            let world3 = World.mirrorTurnPhase(curSim, world2);
+            if (World.turnPhaseOf(world3) != curSim)
+                println("[F2 PHASE DIFF] world=${World.turnPhaseOf(world3)} state=${curSim}")
+            else ();
             // S5b（§A 完成・World→scene 一方向 sync）: scene の gridPos を **World の位置で derive** する
             // （move 関数は gridPos を直書きしなくなった＝`Cmd.Move` が唯一の位置 source）。これで
             // scene は World の純粋な派生ビューになり、dual-write は解消。write 漏れは「ユニットが動かない」
             // 可視バグとして現れるので、旧 `[P3 WRITE-MISS]` 検出器（独立 dual-write 前提）は撤去した。
-            let synced = World.syncTreeFromWorld(world2, next);
+            let synced = World.syncTreeFromWorld(world3, next);
             GameEngine.render(synced);
-            gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world2)
+            gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world3)
         }
 }

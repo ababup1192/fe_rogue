@@ -10,8 +10,20 @@
 // tickStatusEffects は S1b で使う System（StatusSystem.tick を再利用）。S1a では定義＋テストのみ。
 // 道標: ルート ECS_WORKFLOW.md（§D S1）。
 
+/// F2（turn FSM を World へ）: sim としての「誰のターンか」を表す 3-case の phase。
+/// 現 19-case `TurnPhase.Phase`（メニュー遷移・演出待ち混在）は **sim-phase(これ) ＋ UiState.modalMode** に分解する。
+/// World が TurnPhase.Phase を直接持つと循環依存（TurnPhase→World.Command）になるので、World 側はこの中立な
+/// 3-case を持ち、19→3 の写像は境界（Game.flix `simPhaseOf`）で行う。
+pub enum SimPhase with Eq, ToString {
+    case PlayerTurn   // 味方ターン（カーソル/移動/メニュー/演出待ち = UiState.modalMode と anim-queue で細分）
+    case EnemyTurn    // 敵ターン
+    case GameOver     // 全滅モーダル
+}
+
 pub enum World {
     case World({ tick = Int32,
+                 // F2a: turn FSM の World mirror（dual・read-model）。権威は当面 TurnPhase.State。
+                 turnPhase = SimPhase,
                  playerIds = Set[EntityId], enemyIds  = Set[EntityId],
                  playerStatusEffects = Map[EntityId, StatusSystem.StatusEffects],
                  enemyStatusEffects  = Map[EntityId, StatusSystem.StatusEffects],
@@ -28,11 +40,20 @@ pub enum World {
 mod World {
 
     pub def empty(): World =
-        World.World({tick = 0, playerIds = Set.empty(), enemyIds = Set.empty(),
+        World.World({tick = 0, turnPhase = SimPhase.PlayerTurn,
+                     playerIds = Set.empty(), enemyIds = Set.empty(),
                      playerStatusEffects = Map.empty(), enemyStatusEffects = Map.empty(),
                      playerHp = Map.empty(), enemyHp = Map.empty(),
                      playerPos = Map.empty(), enemyPos = Map.empty(),
                      playerHidden = Set.empty()})
+
+    /// F2a: World の turnPhase を読む（read-model アクセサ）。
+    pub def turnPhaseOf(world: World): SimPhase =
+        let World.World(w) = world; w#turnPhase
+
+    /// F2a: turnPhase を World へ mirror（dual・no-op）。gameLoop が TurnPhase.State → SimPhase 写像後に呼ぶ。
+    pub def mirrorTurnPhase(phase: SimPhase, world: World): World =
+        let World.World(w) = world; World.World({turnPhase = phase | w})
 
     /// scene→World の一方向 sync（純粋・読み取りのみ）。tick を 1 進め、id 集合と statuses を scene から写す。
     /// PlayerScene.getAll / EnemyScene.getAll（既存・純粋）を再利用（新規走査は書かない）。
@@ -42,6 +63,7 @@ mod World {
         let enemies = EnemyScene.getAll(scene);
         World.World({
             tick           = w#tick + 1,
+            turnPhase      = w#turnPhase,   // F2a: mirror は gameLoop が行う・ここは保持
             playerIds      = Query.tagOf(d -> d#id, players),
             enemyIds       = Query.tagOf(d -> d#id, enemies),
             playerStatusEffects = Query.indexBy(d -> d#id, d -> d#statuses, players),
@@ -68,6 +90,7 @@ mod World {
         let eIds = Query.tagOf(d -> d#id, enemies);
         World.World({
             tick           = w#tick + 1,
+            turnPhase      = w#turnPhase,   // F2a: mirror は gameLoop が行う・ここは保持
             playerIds      = pIds,
             enemyIds       = eIds,
             playerStatusEffects = Query.indexBy(d -> d#id, d -> d#statuses, players),
