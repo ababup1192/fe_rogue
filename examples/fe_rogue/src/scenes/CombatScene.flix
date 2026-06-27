@@ -675,6 +675,8 @@ mod CombatScene {
         let withPopup = DamagePopupScene.emit(popupPos, plan#dmg, color, withFx);
         // 必殺のときはログ先頭に「必殺！」を付ける。
         let critTag = if (isCrit) "必殺！ " else "";
+        // F6a: 敵 hp を World にも dual-write（両分岐とも newHp）。scene 直書きは下の mapEnemy / 死亡演出で継続。
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(enemyId), plan#newHp));
         if (plan#killed) {
             GameLogger.playerLog("${critTag}${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}を倒した");
             withPopup
@@ -775,6 +777,8 @@ mod CombatScene {
                     GameLogger.enemyLog("${critTag}${enemy#resource#description}は ${player#resource#description}に ${outcome#dmg}ダメージ与えた")
                 };
                 let withPopup = DamagePopupScene.emit(popupPos, outcome#dmg, popupColor, scene);
+                // F6a: 被弾した味方 hp を World にも dual-write（scene 直書きは下の mapPlayer で継続）。
+                World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(targetId), outcome#newHp));
                 // 殴られたので、かなしばり中なら完全停止を解除する。
                 let dmgScene = withPopup
                     |> PlayerScene.mapPlayer(targetId,

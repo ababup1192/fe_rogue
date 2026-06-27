@@ -507,4 +507,14 @@ mod TestWorld {
     def testSetPhaseCommandUpdatesTurnPhase(): Unit \ Assert =
         let after = World.applyCmd(World.Cmd.SetPhase(SimPhase.EnemyTurn), World.empty());
         Assert.assertEq(expected = SimPhase.EnemyTurn, World.turnPhaseOf(after))
+
+    /// F6a: `Cmd.SetHp` が World の hp store を faction 別に更新し、`hpOf` で読める（hp→World 権威化の土台）。
+    /// 後段（F6b）で reader を World へ flip・refreshMirror を preserve 化する前提のコマンドシーム。
+    @Test
+    def testSetHpCommandUpdatesWorldHp(): Unit \ Assert =
+        let w = World.applyCmd(World.Cmd.SetHp(World.EntityRef.Player(0), 7),
+                World.applyCmd(World.Cmd.SetHp(World.EntityRef.Enemy(5), 3), World.empty()));
+        Assert.assertEq(
+            expected = (Some(7), Some(3)),
+            (World.hpOf(World.EntityRef.Player(0), w), World.hpOf(World.EntityRef.Enemy(5), w)))
 }
