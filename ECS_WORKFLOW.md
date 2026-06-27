@@ -189,7 +189,7 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > ## ★最前線（2026-06-27）= 位置(Board/Encounter)を World 権威化（write-first）
 > **詳細プラン**: `examples/fe_rogue/_plan_position_ecs.md`（v3・レビュー壁打ち 68→84→90 で確定）。statusEffects は下記の通り read-model 確定済み。
 >
-> ### P0a 実装完了・**未コミット・実機 run 検証待ち**（878緑・full build green）
+> ### P0a 実装完了・**コミット済み(`4f14204` "Add command")・実機 run 検証はまだ**（878緑・full build green）
 > 位置 write-seam を実装した。要点:
 > - `World.Cmd.Move(EntityRef, {x,y})` ＋ `applyCmd`（worldRef を mid-frame 即時更新）。
 > - 移動5関数（`PlayerScene.{moveTo,moveToById,snapTo}` / `EnemyScene.{moveTo,snapTo}`）から `World.Command.emit(Cmd.Move)`。
@@ -207,7 +207,7 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > その後: **P0b**(spawn3/restore2 の Cmd.Move emit・lifecycle 木の伝播を別計測)→**P1a**(frame-head reader flip)→**P1b**(mid-frame reader flip)→**P2**(Encounter/AI)→**P3**(mirror 撤去・§A payoff)。各 plan 参照。
 >
 > ### 注意（resumption）
-> - **P0a は未コミット**（`git diff --stat` で 12 ファイル）。`flix test` 緑・`flix check` 緑。
+> - **P0a はコミット済み**（`4f14204` に 12 ファイル＋`_plan_position_ecs.md`）。HEAD で `flix test` 緑・`flix check` 緑。run 検証だけが未。
 > - ユーザーの並行 WIP（`World.Query`→`World.StatusQuery` リネーム＋engine_ecs に汎用 `Query`/`exclude` 追加）は**一旦 HEAD に戻した**（ユーザーが「止める」と判断）。`engine_ecs/test/TestQuery.flix` は untracked で残存。再開時に競合しうるので注意（私の `FrameAef.T += World.Command` は additive で両立可）。
 > - perl で effect row へ `World.Command` を撒くのは**多行 sig で誤爆**するので、複数行シグネチャは Edit 推奨。
 
