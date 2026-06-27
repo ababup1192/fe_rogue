@@ -124,6 +124,21 @@ mod EnemyTurnDriverScene {
                     EnemyAI.adjacentInDarkRoom(enc#board, EnemyScene.unitView(e), litRooms, roomCount))
         }
 
+    /// 敵ターンの行動順を決める（**純粋**）。プレイヤー始点の距離場（壁のみ）で「経路最寄り」の敵から
+    /// 動かす＝列の先頭（近い敵）が先に動いて前を空け、後続が同ターンに詰められる（1 マス幅通路の渋滞凍結を
+    /// 減らす）。到達不能（∞）は id 順で末尾側へ。`boardOpt = None`（placements 空＝マップ未構築の
+    /// テスト/初期化シーン）は盤面を組めないので **id 順フォールバック**。各 Step の remaining は moveTiles。
+    pub def orderedSteps(boardOpt: Option[Board],
+                          actives: List[EnemyScene.Data]): List[EnemyTurn.Step] =
+        let ordered = match boardOpt {
+            case None        => List.sortBy(e -> e#id, actives)
+            case Some(board) =>
+                let field0 = Board.distanceField(c -> Board.isWalkable(board, c),
+                                                  Board.allPlayerCells(board), 4096);
+                List.sortBy(e -> (Board.fieldDist(field0, e#gridPos), e#id), actives)
+        };
+        ordered |> List.map(e -> ({id = e#id, remaining = e#moveTiles}: EnemyTurn.Step))
+
     /// 敵ターン開始の共通処理。死亡演出 / 攻撃モーション中の敵はキューに含めない。
     /// `commitWaitedAndAdvance` (全味方 waited) や集合の「全員待機」(applyTurnEnd) の
     /// 流れから呼ばれる「敵ターン入口」。
@@ -132,23 +147,12 @@ mod EnemyTurnDriverScene {
                               TurnPhase.State, World.Command} =
         let actives = EnemyScene.getAll(scene)
             |> List.filter(e -> not e#isDying and Option.isEmpty(e#attackTargetId));
-        // プレイヤー始点の距離フィールド（壁のみ）で「経路最寄り」の敵から動かす。
-        // 列の先頭（プレイヤーに近い敵）が先に動いて前を空けるので、後続が同ターンに詰められ、
-        // 1 マス幅通路の渋滞凍結が減る。到達不能（∞）は id 順で末尾側に回る。
-        // マップ未構築のテスト/初期化シーン（placements 空）では盤面を組めないので id 順へフォールバック。
-        let ordered =
-            if (List.isEmpty(MapScene.tryGetPlacements(scene)))
-                List.sortBy(e -> e#id, actives)
-            else {
-                // 据え置き: 敵 step 順序付けの board 読み。flip は共有 TurnFlow.commitWaitedAndAdvance への
-                // 広い cascade を生み低価値ゆえ fromScene のまま（dual-write で World==scene・後日まとめて検討）。
-                let board0 = BoardSnapshot.fromScene(scene);
-                let field0 = Board.distanceField(c -> Board.isWalkable(board0, c),
-                                                  Board.allPlayerCells(board0), 4096);
-                List.sortBy(e -> (Board.fieldDist(field0, e#gridPos), e#id), actives)
-            };
-        let steps = ordered
-            |> List.map(e -> ({id = e#id, remaining = e#moveTiles}: EnemyTurn.Step));
+        // 行動順は純粋関数 `orderedSteps` で決める（下記）。board を組めるときだけ Some で渡す。
+        // 据え置き: board は `BoardSnapshot.fromScene`（dual-write で World==scene・後日まとめて検討）。
+        let boardOpt =
+            if (List.isEmpty(MapScene.tryGetPlacements(scene))) None
+            else Some(BoardSnapshot.fromScene(scene));
+        let steps = orderedSteps(boardOpt, actives);
         // 敵ターン開始時に全敵の「行動済み」暗転を解除（プレイヤーの clearAllWaited と対称）。
         let cleared = EnemyScene.clearActedAll(scene);
         EnemyTurn.Queue.replace(steps);

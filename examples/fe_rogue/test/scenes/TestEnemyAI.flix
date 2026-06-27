@@ -765,4 +765,34 @@ mod TestEnemyAI {
         let enemy   = enemyAt(0, enemyP, false, 1, 3);
         Assert.assertEq(expected = false,
             EnemyAI.adjacentInDarkRoom(board, EnemyScene.unitView(enemy), (Set#{}: Set[Int32]), 1))
+
+    // ════════════════════════════════════════════════════════
+    // orderedSteps — 敵ターンの行動順（純粋・距離場ソート）
+    // ════════════════════════════════════════════════════════
+
+    /// マップ未構築（boardOpt=None）は id 昇順フォールバック。入力順に依らず id 順になる。
+    @Test
+    def testOrderedStepsNoMapSortsById(): Unit \ Assert =
+        let actives = enemyAt(2, {x = 1, y = 1}, false, 0, 3)
+                   :: enemyAt(0, {x = 2, y = 2}, false, 0, 4)
+                   :: enemyAt(1, {x = 3, y = 3}, false, 0, 5) :: Nil;
+        let steps = EnemyTurnDriverScene.orderedSteps(None, actives);
+        // id 昇順＋各 remaining は moveTiles（id0=4, id1=5, id2=3）。
+        Assert.assertEq(
+            expected = (0, 4) :: (1, 5) :: (2, 3) :: Nil,
+            steps |> List.map(s -> (s#id, s#remaining)))
+
+    /// boardOpt=Some: プレイヤー始点の距離場で近い敵が先。id 順を距離が上書きすることを固定。
+    /// player@(1,2)・近敵 id1@(3,2)(dist2)・遠敵 id0@(8,2)(dist7)。入力は遠敵先だが出力は近敵(id1)先。
+    @Test
+    def testOrderedStepsByDistanceOverridesId(): Unit \ Assert =
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(10, 5)};
+        let far  = enemyAt(0, {x = 8, y = 2}, false, 0, 3);   // dist 7
+        let near = enemyAt(1, {x = 3, y = 2}, false, 0, 3);   // dist 2
+        let board: Board = {map = map,
+            pieces = (Piece.Player(0), {x = 1, y = 2})
+                  :: (Piece.Enemy(0), {x = 8, y = 2})
+                  :: (Piece.Enemy(1), {x = 3, y = 2}) :: Nil};
+        let steps = EnemyTurnDriverScene.orderedSteps(Some(board), far :: near :: Nil);
+        Assert.assertEq(expected = 1 :: 0 :: Nil, steps |> List.map(s -> s#id))
 }
