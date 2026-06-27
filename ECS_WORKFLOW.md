@@ -186,6 +186,31 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 
 ## §G. 進捗（living・各ステップ完了で更新）
 
+> ## ★最前線（2026-06-27）= 位置(Board/Encounter)を World 権威化（write-first）
+> **詳細プラン**: `examples/fe_rogue/_plan_position_ecs.md`（v3・レビュー壁打ち 68→84→90 で確定）。statusEffects は下記の通り read-model 確定済み。
+>
+> ### P0a 実装完了・**未コミット・実機 run 検証待ち**（878緑・full build green）
+> 位置 write-seam を実装した。要点:
+> - `World.Cmd.Move(EntityRef, {x,y})` ＋ `applyCmd`（worldRef を mid-frame 即時更新）。
+> - 移動5関数（`PlayerScene.{moveTo,moveToById,snapTo}` / `EnemyScene.{moveTo,snapTo}`）から `World.Command.emit(Cmd.Move)`。
+> - **壁を2つ解決（早期の悲観は誤りだった＝スパイク伝播が未完だっただけ）**:
+>   ① `FrameAef.T` に `World.Command` を1行追加（physics 経路解禁・E6217 カスケード無し）。
+>   ② `StaffCastScene.staffEffectHandlers` の `PlanHandlers` ef 注釈に `World.Command` 追加（custom-op が Command を拾うため）。
+> - World.Command を ~20 関数へ compiler 誘導で伝播。test 5件を `TestUnitFixtures.dischargeWorldCommand` で discharge。
+> - **検証器**: `Game.flix` の `BoardQuery.board` handler 1箇所で `World.toBoard(worldRef)` vs `BoardSnapshot.fromScene(scene)` を
+>   `World.boardKey`（(tag,id,x,y) 順序非依存 tuple 比較）で突合し、差を `println("[P0a BOARD DIFF] ...")`（**real run 専用**＝test は mock handler で通らない）。
+>
+> ### 次の一手 = **P0a を実機 run 検証 → 確認の上コミット**
+> P0a は gather の mid-frame 観測を `prev`(flip① の古い値)→`now`(正) に**意図的に是正**するため挙動不変ではなく run 必須。
+> 起動して `[P0a BOARD DIFF]` を見つつ: ①集合追従が乱れない ②通常/敵移動・杖いれかえ/ふきとばし/一時しのぎ・階段集合退場が従来通り
+> ③DIFF が gather と「hidden 遷移／spawn フレーム」以外で頻発しない（頻発＝write 漏れ）。OK なら確認の上コミット。
+> その後: **P0b**(spawn3/restore2 の Cmd.Move emit・lifecycle 木の伝播を別計測)→**P1a**(frame-head reader flip)→**P1b**(mid-frame reader flip)→**P2**(Encounter/AI)→**P3**(mirror 撤去・§A payoff)。各 plan 参照。
+>
+> ### 注意（resumption）
+> - **P0a は未コミット**（`git diff --stat` で 12 ファイル）。`flix test` 緑・`flix check` 緑。
+> - ユーザーの並行 WIP（`World.Query`→`World.StatusQuery` リネーム＋engine_ecs に汎用 `Query`/`exclude` 追加）は**一旦 HEAD に戻した**（ユーザーが「止める」と判断）。`engine_ecs/test/TestQuery.flix` は untracked で残存。再開時に競合しうるので注意（私の `FrameAef.T += World.Command` は additive で両立可）。
+> - perl で effect row へ `World.Command` を撒くのは**多行 sig で誤爆**するので、複数行シグネチャは Edit 推奨。
+
 > **方針転換（2026-06-27）**: read-model 路線では「本物の ECS でない」とのユーザー指摘を受け、**statusEffects を
 > 真に World 権威化する Bevy 正対の移行**に舵を切った（plan `gemini-ecs-sunny-curry.md`、複数視点設計＋レビュー）。
 > 詳細プランはそちら。以下の §G は **statusEffects 縦断 ECS 化**の進捗（位置/HP の read-model 項目は据え置き）。
