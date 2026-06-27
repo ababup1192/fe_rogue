@@ -485,4 +485,10 @@ mod TestWorld {
         let seeded = World.mirrorTurnPhase(SimPhase.EnemyTurn, World.empty());
         let refreshed = World.refreshMirror(sampleScene(), seeded);
         Assert.assertEq(expected = SimPhase.EnemyTurn, World.turnPhaseOf(refreshed))
+
+    /// F2b: `Cmd.SetPhase` が World.turnPhase を command で更新する（TurnPhase.State handler が put 時に emit）。
+    @Test
+    def testSetPhaseCommandUpdatesTurnPhase(): Unit \ Assert =
+        let after = World.applyCmd(World.Cmd.SetPhase(SimPhase.EnemyTurn), World.empty());
+        Assert.assertEq(expected = SimPhase.EnemyTurn, World.turnPhaseOf(after))
 }

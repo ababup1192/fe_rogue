@@ -162,6 +162,7 @@ mod World {
         case TickPlayers(List[EntityId])    // 味方ターン開始（非 usedStairs の id のみ）
         case TickEnemies                    // 敵ターン開始（全敵）
         case Move(EntityRef, {x = Int32, y = Int32})  // 位置 write（P0a・mid-frame currency）
+        case SetPhase(SimPhase)             // turn phase write（F2b・TurnPhase.State handler が dual-write で emit）
     }
 
     /// statuses 書き込み effect（Bevy Commands）。handler は Game.start（worldRef へ即時適用）。
@@ -230,6 +231,8 @@ mod World {
                     case EntityRef.Player(id) => World.World({playerPos = Map.insert(id, pos, w#playerPos) | w})
                     case EntityRef.Enemy(id)  => World.World({enemyPos = Map.insert(id, pos, w#enemyPos) | w})
                 }
+            case Cmd.SetPhase(phase) =>
+                let World.World(w) = world; World.World({turnPhase = phase | w})
         }
 
     /// ally フラグ＋id から EntityRef を作る（境界 emit / call-site の共通化）。

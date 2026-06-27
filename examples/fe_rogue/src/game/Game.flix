@@ -742,6 +742,9 @@ mod Game {
             // S4: BoardQuery handler が読む World の窓口（sceneRef と対称・毎フレーム頭で gameLoop が更新）。
             // frame-head の world は scene の faithful mirror なので toBoard は fromScene と同値（挙動不変）。
             let worldRef = Ref.fresh(rc, World.empty());
+            // F2b: turn phase の Ref。TurnPhase.State handler を inline 化し、`put` でこの Ref と worldRef.turnPhase を
+            // **同時更新（dual-write）**する＝全 put サイト（41 箇所）が自動で World へ command 反映される（per-site 改修ゼロ）。
+            let turnPhaseRef = Ref.fresh(rc, TurnPhase.Phase.PlayerCursor);
             // ゲーム全体の進行状態（画面）。起動直後はタイトル画面（はじめから / 中断から再開）から始める。
             let phaseRef = Ref.fresh(rc, GamePhase.Title);
             // 試練型の部屋湧きクロック。WandererSpawnRequest が来るたび +1 し、
@@ -904,7 +907,14 @@ mod Game {
               with Pacing.withState(rc)           // 演出の溜め (hold)
               with GameLogger.withLogger(rc)      // ログエントリは内部に隠蔽
               with EnemyTurn.withQueue(rc)        // 敵ターンキュー（1 step / 1 frame 駆動）
-              with TurnPhase.withState(rc)        // 味方ターン内のサブフェーズ + 敵ターン
+              with handler TurnPhase.State {       // F2b: inline 化し put を World へ dual-write（全 put が World.turnPhase 反映）
+                  def get(k) = k(Ref.get(turnPhaseRef))
+                  def put(target, k) = {
+                      Ref.put(target, turnPhaseRef);
+                      Ref.put(World.applyCmd(World.Cmd.SetPhase(simPhaseOf(target)), Ref.get(worldRef)), worldRef);
+                      k()
+                  }
+              }
               with SelectedPlayer.withState(rc)   // 操作中プレイヤー id の保持
               with GatherResume.withState(rc)     // 集合モードのターン跨ぎ自動継続フラグ
               with InitialSpawns.withState(rc)    // ゲームオーバー時に同じ敵 / 味方配置を復元
@@ -1022,20 +1032,19 @@ mod Game {
             // のみ（pos 不変ゆえ下の syncTreeFromWorld に無影響・status は次フレーム refreshMirror で上書き
             // ＝挙動不変）。以後の System（移動/AI/戦闘）はここに足していく。
             let world2 = World.stepWorld(world1);
-            // F2a（turn FSM を World へ・mirror 段・dual/no-op）: 19-case TurnPhase.Phase を 3-case SimPhase へ
-            // 写して World に mirror。**並走 assert** は F2b（phase 書込を Cmd 化）後に command 由来 phase の
-            // write 漏れを検出する seam。F2a は mirror ゆえ常に一致（diff は出ない）。phase は read-model のまま。
-            let curSim = simPhaseOf(TurnPhase.State.get());
-            let world3 = World.mirrorTurnPhase(curSim, world2);
-            if (World.turnPhaseOf(world3) != curSim)
-                println("[F2 PHASE DIFF] world=${World.turnPhaseOf(world3)} state=${curSim}")
+            // F2b（turn phase 書込を Cmd 化）: phase は `TurnPhase.State` handler が `put` のたび `Cmd.SetPhase` で
+            // worldRef へ dual-write 済み＝**World.turnPhase は command 由来**（全 41 put サイトを handler 1 箇所で被覆）。
+            // よって frame-end の mirror は不要。並走 assert は command 由来 phase と State の乖離（write 漏れ）を検出する
+            // ＝dual-write ゆえ無音だが、将来 dual-write を割る時のガード。phase 権威は当面 TurnPhase.State（read は未 flip）。
+            if (World.turnPhaseOf(world2) != simPhaseOf(TurnPhase.State.get()))
+                println("[F2 PHASE DIFF] world=${World.turnPhaseOf(world2)} state=${simPhaseOf(TurnPhase.State.get())}")
             else ();
             // S5b（§A 完成・World→scene 一方向 sync）: scene の gridPos を **World の位置で derive** する
             // （move 関数は gridPos を直書きしなくなった＝`Cmd.Move` が唯一の位置 source）。これで
             // scene は World の純粋な派生ビューになり、dual-write は解消。write 漏れは「ユニットが動かない」
             // 可視バグとして現れるので、旧 `[P3 WRITE-MISS]` 検出器（独立 dual-write 前提）は撤去した。
-            let synced = World.syncTreeFromWorld(world3, next);
+            let synced = World.syncTreeFromWorld(world2, next);
             GameEngine.render(synced);
-            gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world3)
+            gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world2)
         }
 }
