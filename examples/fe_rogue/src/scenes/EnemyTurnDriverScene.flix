@@ -202,7 +202,7 @@ mod EnemyTurnDriverScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio} =
+                SelectedPlayer.State, GameEngine.Audio, World.Command} =
         match EnemyScene.get(step#id, scene) {
             case None       => scene   // 既に除外済み (死亡演出完了など)
             case Some(data) => applyStepForEnemy(step, data, scene)
@@ -219,7 +219,7 @@ mod EnemyTurnDriverScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio} =
+                SelectedPlayer.State, GameEngine.Audio, World.Command} =
         if (StatusSystem.isImmobilized(data#statuses))
             bindSkip(step, data, scene)
         else match StaffCastScene.enemyTryStaff(step#id, data#gridPos,
@@ -246,7 +246,7 @@ mod EnemyTurnDriverScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio} =
+                SelectedPlayer.State, GameEngine.Audio, World.Command} =
         if (data#bottleUsed)
             applyNormalStep(step, data, scene)
         else match StaffCastScene.enemyTryThrow(step#id, data#gridPos,

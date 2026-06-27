@@ -85,6 +85,7 @@ mod TestCombatScene {
 
     /// applyAttackHit を 5 つの副作用モックで包んで実行する。
     def runAttack(scene: Scene[NodeTag]): Scene[NodeTag] =
+        TestUnitFixtures.dischargeWorldCommand(() ->
         withNoopThiefDrop(() ->
         TestUnitFixtures.withMockRandom(() ->
         TestUnitFixtures.withMockGame(() ->
@@ -92,7 +93,7 @@ mod TestCombatScene {
         TestUnitFixtures.withMockGameLogger(() ->
         TestUnitFixtures.withNoopAnim(() ->
         TestUnitFixtures.withNoopTween(() ->
-            CombatScene.applyAttackHit(0, scene))))))))
+            CombatScene.applyAttackHit(0, scene)))))))))
 
     // ════════════════════════════════════════════════════════
     // attackLungeAnimation — 中点で attack:hit を 1 つ発火（純粋）

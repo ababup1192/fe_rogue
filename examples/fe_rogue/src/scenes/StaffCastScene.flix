@@ -844,7 +844,7 @@ mod StaffCastScene {
                              weapon: UnitCatalog.WeaponResource, hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, World.Command} =
         let atkPower = Combat.attackStatFor(player#resource#attack, player#resource#magicAttack,
                                              weapon#attack, WeaponCatalog.isPhysical(weapon#weaponType));
         let dmg = Combat.thrownWeaponDamage(atkPower);
@@ -861,7 +861,7 @@ mod StaffCastScene {
     def throwDamageToEnemy(srcLabel: String, enemyId: Int32, dmg: Int32, name: String,
                             scene: Scene[NodeTag]):
             Scene[NodeTag]
-            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger} =
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command} =
         Option.getWithDefault(scene,
             forM (enemy <- EnemyScene.get(enemyId, scene)) yield {
                 let dmgResult = Combat.damage(hp = enemy#hp, amount = dmg);
@@ -884,7 +884,7 @@ mod StaffCastScene {
     def throwDamageToPlayer(srcLabel: String, targetId: Int32, dmg: Int32, name: String,
                              scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, CustomEffects.GameOverRequest,
-                               SelectedPlayer.State} =
+                               SelectedPlayer.State, World.Command} =
         Option.getWithDefault(scene,
             forM (target <- PlayerScene.get(targetId, scene)) yield {
                 let dmgResult = Combat.damage(hp = target#hp, amount = dmg);
@@ -930,7 +930,7 @@ mod StaffCastScene {
                            hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
         AudioStreamPlayer.play("magic");
         let dmg = item#magnitude;
         // 着弾セルに爆発エフェクトを出してからダメージを与える。
@@ -950,7 +950,7 @@ mod StaffCastScene {
                           hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
         AudioStreamPlayer.play("critical");
         let dmg = item#magnitude;
         match rayHitCell(hit) {
@@ -978,7 +978,7 @@ mod StaffCastScene {
     /// 爆発: 中心セルの周囲 1 マス内の全敵に固定ダメージを与える。
     def blastDamageEnemies(srcLabel: String, dmg: Int32, name: String,
                             center: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command} =
         let ids = EnemyScene.getAll(scene)
                     |> List.filter(e -> chebyshev(e#gridPos, center) <= 1)
                     |> List.map(e -> e#id);
@@ -988,7 +988,7 @@ mod StaffCastScene {
     def blastDamagePlayers(srcLabel: String, dmg: Int32, name: String,
                             center: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, CustomEffects.GameOverRequest,
-                               SelectedPlayer.State} =
+                               SelectedPlayer.State, World.Command} =
         let ids = PlayerScene.getAll(scene)
                     |> List.filter(p -> chebyshev(p#gridPos, center) <= 1)
                     |> List.map(p -> p#id);
@@ -1018,7 +1018,7 @@ mod StaffCastScene {
                            description: String, scene: Scene[NodeTag]):
             Option[Scene[NodeTag]]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
         match enemyBottleFor(description) {
             case None       => None
             case Some(item) => enemyThrowWith(enemyId, origin, item, scene)
@@ -1029,7 +1029,7 @@ mod StaffCastScene {
                         item: Consumable.ConsumableResource, scene: Scene[NodeTag]):
             Option[Scene[NodeTag]]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
         let board: Board = BoardSnapshot.fromScene(scene);
         match enemyThrowDirection(origin, board) {
             case None      => None
@@ -1108,7 +1108,7 @@ mod StaffCastScene {
                           hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
         match item#effect {
             case Consumable.ConsumableEffect.FireBottle  => throwBottleSingle(srcLabel, item, hit, scene)
             case Consumable.ConsumableEffect.BlastBottle => throwBottleBlast(srcLabel, item, hit, scene)
@@ -1118,14 +1118,14 @@ mod StaffCastScene {
 
     /// 敵が投げたデバフ薬を当たった対象へ適用する。デバフ音 + 時限ステータス付与。
     def enemyApplyDebuff(item: Consumable.ConsumableResource, hit: RayHit,
-                          scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Audio =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Audio, World.Command} =
         AudioStreamPlayer.play(consumableHitSound(item#effect));
         applyStatusToHit(directionalStatus(item), hit, scene)
 
     /// `directionalStatus` の Option をそのまま受け、Some なら当たったキャラ（敵/味方）へ付与。
     /// `(status, hit)` のタプル 1 段マッチでネストを避ける。
     def applyStatusToHit(statusOpt: Option[StatusSystem.Status], hit: RayHit,
-                          scene: Scene[NodeTag]): Scene[NodeTag] =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         // 投擲デバフが当たったら、その効果を足しつつ、かなしばり中なら完全停止を解除する。
         match (statusOpt, hit) {
             case (Some(status), RayHit.HitEnemy(id, _))  =>

@@ -166,7 +166,7 @@ mod CombatScene {
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                               GameEngine.Game,
                               GameLogger.GameLogger, Math.Random,
-                              CustomEffects.ThiefDropRequest} =
+                              CustomEffects.ThiefDropRequest, World.Command} =
         let resolved = forM (
             d       <- PlayerScene.get(playerId, scene);
             enemyId <- d#attackTargetId
@@ -504,7 +504,7 @@ mod CombatScene {
                             scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger, Math.Random,
-                               CustomEffects.ThiefDropRequest} =
+                               CustomEffects.ThiefDropRequest, World.Command} =
         let resolved = forM (
             weapon <- PlayerData.equippedWeapon(player#weapons);
             enemy  <- EnemyScene.get(enemyId, scene)
@@ -519,7 +519,7 @@ mod CombatScene {
                        enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger, Math.Random,
-                               CustomEffects.ThiefDropRequest} =
+                               CustomEffects.ThiefDropRequest, World.Command} =
         let plan       = attackForecast(player, weapon, enemy);
         let popupPos   = MapSnapshot.cellCenter(enemy#gridPos);
         let popupColor = DamagePopupScene.damageToEnemyColor();
@@ -663,7 +663,7 @@ mod CombatScene {
                   weaponType: WeaponCatalog.WeaponType,
                   popupPos: Vec2.Vec2, color: Color, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                               GameEngine.Game, GameLogger.GameLogger} =
+                               GameEngine.Game, GameLogger.GameLogger, World.Command} =
         AudioStreamPlayer.play(hitSoundName(plan#dmg, isCrit, weaponType));
         // 魔法攻撃（マージ等）の着弾時は敵中心に爆発エフェクトを出す。
         let withFx = match weaponType {

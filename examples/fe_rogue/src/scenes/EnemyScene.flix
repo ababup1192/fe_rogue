@@ -391,7 +391,9 @@ mod EnemyScene {
 
     /// 完全停止（かなしばり）を解除する。被攻撃 or 被投擲の瞬間に呼ぶ。
     /// 停止していなければ no-op（他の時限ステータスは残す）。
-    pub def releaseBind(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def releaseBind(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        // emit-flip(E3, dual-write): かなしばり解除を World へ発行（scene の inline clear も当面維持）。
+        World.Command.emit(World.Cmd.ClearImmobilized(World.EntityRef.Enemy(id)));
         mapEnemy(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, scene)
 
     /// 全敵の「行動済み」を解除し、本体スプライトと HP ゲージを通常の明るさへ戻す。
