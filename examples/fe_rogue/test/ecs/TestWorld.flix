@@ -402,4 +402,54 @@ mod TestWorld {
         let World.World(w) = World.refreshMirror(sampleScene(), World.empty());
         // fixture: player 0/1 hp=10、player ids = {0,1}。位置 mirror を止めても hp/ids は scene 由来で更新される。
         Assert.assertEq(expected = (Some(10), Set#{0, 1}), (Map.get(0, w#playerHp), w#playerIds))
+
+    // ── §A payoff デモ: 位置の決定論（World は Cmd.Move ログの純粋関数）──
+    // P0a→S5 で World が位置の権威・scene はその派生になった。位置の唯一の source は `Cmd.Move` のログ。
+    // ゆえに「同じログ → 同じ位置」が成り立ち、save/replay の素地（World さえ持てば位置を再構築できる）になる。
+
+    /// 共通のサンプル command ログ（移動の履歴）。
+    def sampleMoveLog(): List[World.Cmd] =
+        World.Cmd.Move(World.EntityRef.Player(0), {x = 1, y = 1})
+            :: World.Cmd.Move(World.EntityRef.Enemy(5), {x = 3, y = 3})
+            :: World.Cmd.Move(World.EntityRef.Player(0), {x = 2, y = 2}) :: Nil
+
+    /// ログを空 World に畳んで replay する。
+    def replayLog(log: List[World.Cmd]): World =
+        List.foldLeft((w, c) -> World.applyCmd(c, w), World.empty(), log)
+
+    /// テスト用: World から EntityRef の位置を引く（単体 pos アクセサは prod では使わない＝BoardQuery 経由
+    /// で読むため、ここに test-local で置く）。
+    def worldPosOf(ref: World.EntityRef, world: World): Option[{x = Int32, y = Int32}] =
+        let World.World(w) = world;
+        match ref {
+            case World.EntityRef.Player(id) => Map.get(id, w#playerPos)
+            case World.EntityRef.Enemy(id)  => Map.get(id, w#enemyPos)
+        }
+
+    /// determinism: World 位置は `Cmd.Move` ログの**純粋関数**。最終位置は「最後の Move 勝ち」
+    /// （player 0 は {1,1}→{2,2}）。**同じログを独立に2回 replay すると同一**＝決定論リプレイの素地。
+    @Test
+    def testCommandLogReplayIsDeterministic(): Unit \ Assert =
+        let log = sampleMoveLog();
+        let tup = (ref, w) -> worldPosOf(ref, w) |> Option.map(p -> (p#x, p#y));
+        let w1 = replayLog(log);
+        let w2 = replayLog(log);
+        Assert.assertEq(
+            expected = (Some((2, 2)), Some((3, 3)), Some((2, 2)), Some((3, 3))),
+            (tup(World.EntityRef.Player(0), w1), tup(World.EntityRef.Enemy(5), w1),
+             tup(World.EntityRef.Player(0), w2), tup(World.EntityRef.Enemy(5), w2)))
+
+    /// save/load の素地: ログから replay した World 位置を **`(id, x, y)` 列にシリアライズ→復元**しても
+    /// 位置が round-trip する（World.pos は単純な component-map ＝そのまま保存可能）。
+    /// EcsCodec の store 封筒（Map[EntityId, c]）にそのまま載る形であることをデモする。
+    @Test
+    def testWorldPosRoundTripsThroughSerialization(): Unit \ Assert =
+        let World.World(w) = replayLog(sampleMoveLog());
+        // "save": playerPos を (id, x, y) のフラット列へ。
+        let saved = Map.foldRightWithKey((id, c, acc) -> (id, c#x, c#y) :: acc, Nil, w#playerPos);
+        // "load": 列から playerPos を復元。
+        let loaded = List.foldLeft((m, t) -> { let (id, x, y) = t;
+            Map.insert(id, ({x = x, y = y}: {x = Int32, y = Int32}), m) }, Map.empty(), saved);
+        let toTuples = m -> Map.foldRightWithKey((id, c, acc) -> (id, c#x, c#y) :: acc, Nil, m);
+        Assert.assertEq(expected = toTuples(w#playerPos), toTuples(loaded))
 }
