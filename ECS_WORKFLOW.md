@@ -190,8 +190,10 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > 真に World 権威化する Bevy 正対の移行**に舵を切った（plan `gemini-ecs-sunny-curry.md`、複数視点設計＋レビュー）。
 > 詳細プランはそちら。以下の §G は **statusEffects 縦断 ECS 化**の進捗（位置/HP の read-model 項目は据え置き）。
 
-**現在ステップ**: **emit-flip（S1 本体）— gameplay の status 変更を Command emit に。ECS 層は完成・検証済み**
-**次の一手**: **emit-flip**。下記の「広く浅い」propagation を tick→add→clear の順に dual-write で刻む:
+**現在ステップ**: **emit-flip（S1 本体）— E1(tick) 完了。次は E2(add)**。詳細手順は plan `gemini-ecs-sunny-curry.md`。
+**E1 ✅ コミット済**（`e0bf38c`・878緑・挙動不変）: `clearAllWaited`→`Cmd.TickPlayers`/`clearActedAll`→`Cmd.TickEnemies` emit＋`World.Command` を ~30関数へ伝播。
+**E2 再設計（重要）**: add は **inside-handler emit を避け、`EffectRunner.runPlan` の境界で rule データを走査して emit**（handler テーブルは pure のまま＝`checked_ecast` 不要・責務分割）。詳細は plan の E2 項。
+**次の一手**: **E2 add（境界 emit 方式）**。以下は旧 inside-handler 方式の記述（plan の改良版を優先）:
 - 書込サイト（~12）を `World.Command.emit(...)` に: tick=`clearAllWaited`(PlayerScene)/`clearActedAll`(EnemyScene)、
   add=`effectStatus`(Combat)/`statusUnit`/`applySelfStatus`/`applyBind*`/`applyStatusToHit`(StaffCast)、clear=`releaseBind`×2。
 - `World.Command` を経路上の **狭い row の中継関数のみ**に追加（compiler 誘導。`FrameAef.ProcessT` は追加済＝dispatch 層は無改修）。

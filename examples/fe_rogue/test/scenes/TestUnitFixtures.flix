@@ -494,6 +494,11 @@ mod TestUnitFixtures {
             def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
         }
 
+    /// `withWorldCommand` の region 自前版（`rc` 不要）。`let after = dischargeWorldCommand(() -> ...)` で
+    /// World.Command を discharge できる（DSL 経路を呼ぶ単発テスト向け）。
+    pub def dischargeWorldCommand(thunk: Unit -> a \ ef): a \ (ef - World.Command) =
+        region rc { withWorldCommand(rc, thunk) }
+
     /// メニュー系テストで頻出する read-only effect 4 種を 1 呼び出しで剥がす束ね。
     ///   TurnPhase(固定) + SelectedPlayer(固定 id) + PartyQuery + RosterQuery。
     /// refreshItems / 項目可視性など「フェーズ遷移を観測しない」テストの定型。

@@ -168,7 +168,8 @@ mod EnemyTurnDriverScene {
                 CustomEffects.WandererSpawnRequest,
                 CustomEffects.RingTransformRequest,
                 CustomEffects.GameOverRequest,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command} =        // 敵ターン開始の「間」(TopBar の hold) 中は敵を動かさない（フェイズ切替が読めてから行動開始）。
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command} =
+        // 敵ターン開始の「間」(TopBar の hold) 中は敵を動かさない（フェイズ切替が読めてから行動開始）。
         if (TopBarScene.isBusy(scene)) scene
         else if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene

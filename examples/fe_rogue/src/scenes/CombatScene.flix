@@ -150,7 +150,7 @@ mod CombatScene {
                               GameEngine.Game, GameLogger.GameLogger,
                               CustomEffects.GameOverRequest,
                               SelectedPlayer.State, Math.Random,
-                              CustomEffects.ThiefDropRequest} =
+                              CustomEffects.ThiefDropRequest, World.Command} =
         match side {
             case Faction.Player => applyAttackHit(id, scene)
             case Faction.Enemy  =>
@@ -179,7 +179,7 @@ mod CombatScene {
     pub def applyEnemyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
-             Tween.Scheduler} =
+             Tween.Scheduler, World.Command} =
         let resolved = forM (
             d              <- EnemyScene.get(enemyId, scene);
             targetPlayerId <- d#attackTargetId
@@ -193,7 +193,8 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =        match side {
+                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =
+        match side {
             case Faction.Player => playerLungeDone(id, scene)
             case Faction.Enemy  => enemyLungeDone(id, scene)
         }
@@ -208,7 +209,8 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =        if (TurnPhase.State.get() == TurnPhase.Phase.EnemyTurn) {
+                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =
+        if (TurnPhase.State.get() == TurnPhase.Phase.EnemyTurn) {
             // 敵ターン中の味方反撃が完了した。反撃でレベルアップしていれば、その場で
             // （反撃ごとに）ステータス変化パネルへ割り込む。閉じると敵ターンに戻って続行する。
             let cleared = clearAttackTargetId(playerId, scene);
@@ -272,7 +274,8 @@ mod CombatScene {
     def startPlayerFollowUp(playerId: Int32, enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, World.Command} =        match EnemyScene.get(enemyId, scene) {
+                              SelectedPlayer.State, Pacing.State, World.Command} =
+        match EnemyScene.get(enemyId, scene) {
             case Some(e) =>
                 GameLogger.playerLog("追撃！");
                 startAttack(Faction.Player, playerId, enemyId, e#gridPos, scene)
@@ -284,7 +287,8 @@ mod CombatScene {
     def resolvePlayerMainAttack(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, World.Command} =        let outcome = PlayerScene.get(playerId, scene)
+                              SelectedPlayer.State, Pacing.State, World.Command} =
+        let outcome = PlayerScene.get(playerId, scene)
             |> Option.map(player -> CounterAttackRules.decide(player,
                    player#attackTargetId
                        |> Option.flatMap(eid -> EnemyScene.get(eid, scene))));
@@ -307,7 +311,8 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, World.Command} =        let countered = forM (
+                              SelectedPlayer.State, World.Command} =
+        let countered = forM (
             p <- PlayerScene.get(playerId, scene)
         ) yield {
             GameLogger.enemyLog("${EnemyScene.displayName(enemyId, scene)}の反撃");
@@ -330,7 +335,8 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Math.Random, World.Command} =        if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttackHold) {
+                              SelectedPlayer.State, Math.Random, World.Command} =
+        if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttackHold) {
             let cleared = clearEnemyAttackTarget(enemyId, scene);
             TurnFlow.commitWaitedAndAdvance(cleared)
         } else {
@@ -409,7 +415,8 @@ mod CombatScene {
                         CustomEffects.GameOverRequest,
                         CustomEffects.ThiefDropRequest,
                         EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =        match (PlayerScene.idFromPath(path), EnemyScene.idFromPath(path)) {
+                        SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =
+        match (PlayerScene.idFromPath(path), EnemyScene.idFromPath(path)) {
             case (Some(playerId), _) => drainAndDispatch(Faction.Player, playerId, node, path, scene)
             case (_, Some(enemyId))  => drainAndDispatch(Faction.Enemy, enemyId, node, path, scene)
             case _                   => (node, scene)
@@ -429,7 +436,8 @@ mod CombatScene {
                              CustomEffects.GameOverRequest,
                              CustomEffects.ThiefDropRequest,
                              EnemyTurn.Queue, TurnPhase.State,
-                             SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =        let ownerPath = match side {
+                             SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =
+        let ownerPath = match side {
             case Faction.Player => PlayerScene.playerPath(id)
             case Faction.Enemy  => EnemyScene.enemyPath(id)
         };
@@ -711,7 +719,7 @@ mod CombatScene {
                              scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
-             Tween.Scheduler} =
+             Tween.Scheduler, World.Command} =
         // 前提（武器あり・対象あり）の解決だけを担う。実体は resolveEnemyAttack に委譲。
         let resolved = forM (
             weapon <- enemy#weapon;
@@ -727,7 +735,7 @@ mod CombatScene {
                             targetId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
-             Tween.Scheduler} =
+             Tween.Scheduler, World.Command} =
         let strike = resolveStrike(EnemyScene.combatView(enemy),
                                    PlayerScene.combatView(player));
         let roll = rollPercent();
@@ -798,7 +806,7 @@ mod CombatScene {
     /// 固定追加ダメージ等の撃破を伴う op は未対応（PlanHandlers が killedIds を運べないため将来課題）。
     def applyEnemyEffectRule(enemy: EnemyScene.Data, enemyId: Int32, targetId: Int32,
                               player: PlayerScene.Data, dmgDealt: Int32, targetNewHp: Int32,
-                              killed: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+                              killed: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command} =
         // None カスケード（effectRule 無し / 不正 JSON / トリガー不一致）を 1 段に畳む。
         // ここまでは RNG を引かない＝ rule が確定し trigger が当たった敵だけが下で roll する
         // （無い敵は短絡＝既存乱数列を保つ。roll を forM 内に入れると短絡順序が崩れるため厳禁）。
@@ -827,8 +835,9 @@ mod CombatScene {
                                rayUnits = rayUnits,
                                amount = {max = player#resource#hp, dealt = dmgDealt,
                                          incoming = 0, magic = 0}};
-                    EffectRunner.runPlan(enemyEffectHandlers(),
-                                         EffectPlan.planActions(rule, ctx), scene)
+                    let plan = EffectPlan.planActions(rule, ctx);
+                    World.emitStatusAdds(plan);  // emit-flip(E2, dual-write): 境界で World へ status を発行
+                    EffectRunner.runPlan(enemyEffectHandlers(), plan, scene)
                 }
         }
 

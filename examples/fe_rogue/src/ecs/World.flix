@@ -165,6 +165,22 @@ mod World {
                 World.World({enemyStatusEffects = Map.map(StatusSystem.tick, w#enemyStatusEffects) | w})
         }
 
+    /// ally フラグ＋id から EntityRef を作る（境界 emit / call-site の共通化）。
+    pub def refOf(ally: Bool, id: EntityId): EntityRef =
+        if (ally) EntityRef.Player(id) else EntityRef.Enemy(id)
+
+    /// EffectPlan の status/immobilize 項目を **runPlan の境界で** World.Command として emit する。
+    /// これにより handler テーブルは pure のまま（`checked_ecast` 不要）＝「scene 効果適用(pure handler)」と
+    /// 「World command 発行(境界)」を責務分離。各 `EffectRunner.runPlan` 呼出点で plan を渡して呼ぶ。
+    pub def emitStatusAdds(items: List[EffectPlan.PlanItem]): Unit \ Command =
+        items |> List.forEach(item -> match item {
+            case EffectPlan.PlanItem.StatusAt(id, ally, se, m, t) =>
+                Command.emit(Cmd.Add(refOf(ally, id), {effect = se, magnitude = m, remaining = t}))
+            case EffectPlan.PlanItem.ImmobilizeAt(id, ally, turns) =>
+                Command.emit(Cmd.Add(refOf(ally, id), StatusSystem.immobilizeFor(turns)))
+            case _ => ()
+        })
+
     /// World（位置の read-model mirror）から Board を組み立てる S4 の経路（World クエリ＝ecs/ 層）。
     /// 地形（map）は静的なので scene から（`BoardSnapshot.mapSnapshotOf` を借用）、駒（pieces）は World から。
     /// flip 時は call-point 単位で `BoardSnapshot.fromScene(scene)` をこれに差し替える。

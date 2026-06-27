@@ -29,7 +29,8 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =        // プレイヤーと杖の両方が解決できたときだけ発動。どちらか欠ければ scene のまま。
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =
+        // プレイヤーと杖の両方が解決できたときだけ発動。どちらか欠ければ scene のまま。
         // ネストした match を避けるため Option を forM で短絡的に畳む。
         let cast = forM (
             player <- PlayerScene.get(playerId, scene);
@@ -45,7 +46,8 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =        let board = BoardQuery.board();
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =
+        let board = BoardQuery.board();
         let dir   = Staff.toVec2i(direction);
         // 杖は射程を持たない: 盤面外は壁扱いなので、十分大きい上限を渡せば
         // 必ず壁または駒で止まる（無限射程と等価）。
@@ -114,7 +116,7 @@ mod StaffCastScene {
                           hit: RayHit,
                           scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger} =
+                              GameLogger.GameLogger, World.Command} =
         match dslStaffRule(staff) {
             case Some(rule) => applyStaffEffectDsl(playerId, staff, rule, hit, dir, scene)
             case None       => applyStaffEffectLegacy(playerId, player, staff, dir, hit, scene)
@@ -144,14 +146,15 @@ mod StaffCastScene {
     pub def applyStaffEffectDsl(playerId: Int32, staff: Staff.StaffResource,
                              rule: EffectRule.EffectRule, hit: RayHit,
                              dir: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command} =
         match staffHitTarget(hit) {
             case Some((id, ally)) =>
                 let ctx = {selfId = playerId, attackerId = playerId, actorIsPlayer = true,
                            rayUnits = ({id = id, ally = ally, immobilized = false, alive = true}: EffectRule.RayUnit) :: Nil,
                            amount = {max = 0, dealt = 0, incoming = 0, magic = 0}};
-                EffectRunner.runPlan(staffEffectHandlers(playerId, dir),
-                                     EffectPlan.planActions(rule, ctx), scene)
+                let plan = EffectPlan.planActions(rule, ctx);
+                World.emitStatusAdds(plan);  // emit-flip(E2): 境界で World へ status を発行
+                EffectRunner.runPlan(staffEffectHandlers(playerId, dir), plan, scene)
             case None =>
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった");
                 scene
@@ -489,7 +492,8 @@ mod StaffCastScene {
     pub def applyConsumableUse(playerId: Int32, idx: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =        // プレイヤーと消費アイテムの両方が解決できたときだけ使用。欠ければ scene のまま。
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =
+        // プレイヤーと消費アイテムの両方が解決できたときだけ使用。欠ければ scene のまま。
         // forM による短絡は applyStaffCast と同様。
         let used = forM (
             player <- PlayerScene.get(playerId, scene);
@@ -503,7 +507,8 @@ mod StaffCastScene {
                        item: Consumable.ConsumableResource, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =        // 消費アイテムは使う時点で効果が自己確定するため、杖の空振り判定とは異なり無条件で使用音を鳴らす
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =
+        // 消費アイテムは使う時点で効果が自己確定するため、杖の空振り判定とは異なり無条件で使用音を鳴らす
         AudioStreamPlayer.play("cure");
         let afterEffect  = applyConsumableSelfEffect(playerId, player, item, scene);
         let afterConsume = consumeConsumable(playerId, idx, item, afterEffect);
@@ -519,7 +524,7 @@ mod StaffCastScene {
     pub def applyConsumableSelfEffect(playerId: Int32, player: PlayerScene.Data,
                                    item: Consumable.ConsumableResource,
                                    scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         match dslUseRule(item) {
             // IDE 合成エディタの effectRule（onUse）があればそれを優先発火。PlanItem の値（IDE で
             // 編集した量/op/継続）で効くので、ゲーム挙動が IDE の設定に追従する。対象は自分。
@@ -527,7 +532,9 @@ mod StaffCastScene {
                 let ctx = {selfId = playerId, attackerId = playerId, actorIsPlayer = true,
                            rayUnits = ({id = playerId, ally = true, immobilized = false, alive = true}: EffectRule.RayUnit) :: Nil,
                            amount = {max = player#resource#hp, dealt = 0, incoming = 0, magic = 0}};
-                EffectRunner.runPlan(throwEffectHandlers(), EffectPlan.planActions(rule, ctx), scene)
+                let plan = EffectPlan.planActions(rule, ctx);
+                World.emitStatusAdds(plan);  // emit-flip(E2): 境界で World へ status を発行
+                EffectRunner.runPlan(throwEffectHandlers(), plan, scene)
             // effectRule が無い（または onUse でない）→ 従来どおり legacy effect で動く。
             case None =>
                 if (isSelfUseEffect(item#effect)) {
@@ -536,6 +543,7 @@ mod StaffCastScene {
                                rayUnits = (Nil: List[EffectRule.RayUnit]),
                                amount = {max = player#resource#hp, dealt = 0, incoming = 0, magic = 0}};
                     let plan = EffectPlan.planActions(rule, ctx);
+                    World.emitStatusAdds(plan);  // emit-flip(E2): 境界で World へ status を発行
                     EffectRunner.runPlan(selfEffectHandlers(item), plan, scene)
                 } else {
                     GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${item#name} は ここでは使えなかった");
@@ -667,7 +675,8 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, World.Command} =        let cast = forM (
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, World.Command} =
+        let cast = forM (
             player <- PlayerScene.get(playerId, scene);
             item   <- List.nth(idx, player#consumables)
         ) yield fireConsumable(playerId, idx, player, item, direction, scene);
@@ -681,7 +690,8 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, World.Command} =        let board = BoardQuery.board();
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, World.Command} =
+        let board = BoardQuery.board();
         let dir   = Staff.toVec2i(direction);
         let hit   = Board.rayCast(player#gridPos, dir, staffMaxRange(), board);
         let afterEffect  = applyDirectionalEffect(playerId, item, hit, scene);
@@ -694,7 +704,7 @@ mod StaffCastScene {
     /// `applyStaffEffect` と同じく `(付与する Status, hit)` のタプルで 1 段マッチに畳む。
     def applyDirectionalEffect(playerId: Int32, item: Consumable.ConsumableResource,
                                 hit: RayHit, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         // directionalStatus は「投擲系デバフか（Some/None）」の門番として使い、状態適用そのものは
         // 統一 DSL 経路（applyConsumableEffectDsl）へ寄せる（当たった敵/味方を ally で出し分け）。
         match (directionalStatus(item), hit) {
@@ -745,7 +755,8 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
-                Math.Random, CustomEffects.GameOverRequest, World.Command} =        let cast = forM (player <- PlayerScene.get(playerId, scene))
+                Math.Random, CustomEffects.GameOverRequest, World.Command} =
+        let cast = forM (player <- PlayerScene.get(playerId, scene))
             yield fireThrow(playerId, kind, player, direction, scene);
         Option.getWithDefault(scene, cast)
 
@@ -755,7 +766,8 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
-                Math.Random, CustomEffects.GameOverRequest, World.Command} =        let board = BoardQuery.board();
+                Math.Random, CustomEffects.GameOverRequest, World.Command} =
+        let board = BoardQuery.board();
         let dir   = Staff.toVec2i(direction);
         let hit   = Board.rayCast(player#gridPos, dir, staffMaxRange(), board);
         let afterEffect  = applyThrowHit(playerId, kind, player, dir, hit, scene);
@@ -769,7 +781,7 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
                 Math.Random, CustomEffects.GameOverRequest, SelectedPlayer.State,
-                GameEngine.Audio} =
+                GameEngine.Audio, World.Command} =
         match hit {
             case RayHit.HitEnemy(_, _)  => rolledThrow(playerId, kind, player, dir, hit, scene)
             case RayHit.HitPlayer(_, _) => rolledThrow(playerId, kind, player, dir, hit, scene)
@@ -784,7 +796,7 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
                 Math.Random, CustomEffects.GameOverRequest, SelectedPlayer.State,
-                GameEngine.Audio} =
+                GameEngine.Audio, World.Command} =
         let roll = throwRoll();
         let threshold = Combat.throwHitRate(isAccurateThrower(player));
         if (not Combat.isHit(threshold, roll)) {
@@ -808,7 +820,7 @@ mod StaffCastScene {
                              dir: {x = Int32, y = Int32}, hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
         match kind {
             case PlayerData.ItemKind.Weapon(idx) =>
                 Option.getWithDefault(scene,
@@ -893,7 +905,7 @@ mod StaffCastScene {
                             hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
         match item#effect {
             case Consumable.ConsumableEffect.FireBottle  => throwBottleSingle("${PlayerScene.displayName(playerId, scene)}", item, hit, scene)
             case Consumable.ConsumableEffect.BlastBottle => throwBottleBlast("${PlayerScene.displayName(playerId, scene)}", item, hit, scene)
@@ -1128,7 +1140,7 @@ mod StaffCastScene {
     /// 薬投げの解決: 当たったキャラ（敵/味方）へ薬の効果を出す。1 段マッチ。
     def throwConsumableResolved(playerId: Int32, item: Consumable.ConsumableResource,
                                  hit: RayHit, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         match hit {
             case RayHit.HitEnemy(enemyId, _)   => throwConsumableAtEnemy(playerId, item, enemyId, scene)
             case RayHit.HitPlayer(targetId, _) => throwConsumableAtPlayer(playerId, item, targetId, scene)
@@ -1138,7 +1150,7 @@ mod StaffCastScene {
     /// 薬の効果を敵へ。効果種別で 1 段マッチ。
     def throwConsumableAtEnemy(playerId: Int32, item: Consumable.ConsumableResource,
                                 enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         Option.getWithDefault(scene,
             forM (enemy <- EnemyScene.get(enemyId, scene)) yield {
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${EnemyScene.displayName(enemyId, scene)} に ${item#name} を当てた");
@@ -1150,11 +1162,12 @@ mod StaffCastScene {
     /// 統一ハンドラが ally で player/enemy ノードを出し分ける。HP/status の数値・挙動は旧 per-effect
     /// match と同一。火炎瓶/爆発瓶は throwConsumableHit が先に処理するためここには来ない。
     pub def applyConsumableEffectDsl(item: Consumable.ConsumableResource,
-                                  id: Int32, ally: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+                                  id: Int32, ally: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let target = ({id = id, ally = ally, immobilized = false, alive = true}: EffectRule.RayUnit);
         let ctx = {selfId = id, attackerId = id, actorIsPlayer = true, rayUnits = target :: Nil,
                    amount = {max = 0, dealt = 0, incoming = 0, magic = 0}};
         let plan = EffectPlan.planActions(EffectBridge.consumableThrowRule(item), ctx);
+        World.emitStatusAdds(plan);  // emit-flip(E2): 境界で World へ status を発行
         EffectRunner.runPlan(throwEffectHandlers(), plan, scene)
 
     /// 投擲効果の統一ハンドラ。ally で player/enemy を出し分け、HP/status を適用する（ログなし）。
@@ -1241,13 +1254,13 @@ mod StaffCastScene {
     /// 敵 1 体への薬効果適用 → DSL 経路へ委譲（数値・挙動は同一、ally=false）。
     def applyConsumableEffectToEnemy(item: Consumable.ConsumableResource,
                                       _enemy: EnemyScene.Data, enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] =
+            Scene[NodeTag] \ World.Command =
         applyConsumableEffectDsl(item, enemyId, false, scene)
 
     /// 薬の効果を味方へ。効果種別で 1 段マッチ。
     def throwConsumableAtPlayer(playerId: Int32, item: Consumable.ConsumableResource,
                                  targetId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         Option.getWithDefault(scene,
             forM (target <- PlayerScene.get(targetId, scene)) yield {
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${PlayerScene.displayName(targetId, scene)} に ${item#name} を当てた");
@@ -1257,7 +1270,7 @@ mod StaffCastScene {
     /// 味方 1 体への薬効果適用 → DSL 経路へ委譲（数値・挙動は同一、ally=true）。
     def applyConsumableEffectToPlayer(item: Consumable.ConsumableResource,
                                        _target: PlayerScene.Data, targetId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] =
+            Scene[NodeTag] \ World.Command =
         applyConsumableEffectDsl(item, targetId, true, scene)
 
     /// 投げたアイテムを 1 個（耐久 1）消費する。種別ごとに対応リストへ反映。match ネストなし。

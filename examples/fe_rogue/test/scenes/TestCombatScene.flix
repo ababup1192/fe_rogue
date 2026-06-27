@@ -169,12 +169,13 @@ mod TestCombatScene {
 
     /// applyEnemyAttackHit を副作用モックで包んで実行する（アニメは介在しない）。
     def runEnemyAttack(scene: Scene[NodeTag]): (Scene[NodeTag], List[Int32]) =
+        TestUnitFixtures.dischargeWorldCommand(() ->
         TestUnitFixtures.withMockRandom(() ->
         TestUnitFixtures.withMockGame(() ->
         TestUnitFixtures.withMockAudio(() ->
         TestUnitFixtures.withMockGameLogger(() ->
         TestUnitFixtures.withNoopTween(() ->
-            CombatScene.applyEnemyAttackHit(1, scene))))))
+            CombatScene.applyEnemyAttackHit(1, scene)))))))
 
     /// 敵→味方の鏡像数値: 敵(素3+武器2) vs 味方防御 1 → 4 ダメージ、
     /// 命中率 = 80 + 技2×2 + 幸運2÷2 − (速さ3×2 + 幸運2) = 77 > 50 で命中。
