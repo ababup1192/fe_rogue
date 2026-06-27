@@ -452,4 +452,19 @@ mod TestWorld {
             Map.insert(id, ({x = x, y = y}: {x = Int32, y = Int32}), m) }, Map.empty(), saved);
         let toTuples = m -> Map.foldRightWithKey((id, c, acc) -> (id, c#x, c#y) :: acc, Nil, m);
         Assert.assertEq(expected = toTuples(w#playerPos), toTuples(loaded))
+
+    // ── F0: System パイプライン段 stepWorld（OOP→ECS 移行の足場）──
+
+    /// F0 不変条件: `stepWorld`（現状 inert な `tickStatusEffects` のみ）は **位置を変えない**。
+    /// gameLoop は `syncTreeFromWorld(stepWorld(world1))` で scene gridPos を derive するので、
+    /// stepWorld が pos を保つ限り render は不変＝F0 は挙動不変。System を足して pos を壊す回帰で赤になる。
+    @Test
+    def testStepWorldPreservesPositions(): Unit \ Assert =
+        let seeded = World.applyCmd(World.Cmd.Move(World.EntityRef.Enemy(5), {x = 3, y = 3}),
+                     World.applyCmd(World.Cmd.Move(World.EntityRef.Player(0), {x = 5, y = 5}), World.empty()));
+        let stepped = World.stepWorld(seeded);
+        let tup = ref -> worldPosOf(ref, stepped) |> Option.map(p -> (p#x, p#y));
+        Assert.assertEq(
+            expected = (Some((5, 5)), Some((3, 3))),
+            (tup(World.EntityRef.Player(0)), tup(World.EntityRef.Enemy(5))))
 }

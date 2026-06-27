@@ -1009,12 +1009,17 @@ mod Game {
             // でなく **`Ref.get(worldRef)`（mid-frame の Cmd.Move 適用済み）** にし、`refreshMirror` で位置を
             // command 由来のまま保持（gridPos 再構築なし＋prune）。hp/status/hidden は read-model 継続。
             let world1 = World.refreshMirror(next, Ref.get(worldRef));
+            // F0（OOP→ECS 移行の足場）: **System パイプライン段**。ロジックを OOP callback でなく
+            // `World -> World` の System で回す将来形の seam。現状の System は inert な `tickStatusEffects`
+            // のみ（pos 不変ゆえ下の syncTreeFromWorld に無影響・status は次フレーム refreshMirror で上書き
+            // ＝挙動不変）。以後の System（移動/AI/戦闘）はここに足していく。
+            let world2 = World.stepWorld(world1);
             // S5b（§A 完成・World→scene 一方向 sync）: scene の gridPos を **World の位置で derive** する
             // （move 関数は gridPos を直書きしなくなった＝`Cmd.Move` が唯一の位置 source）。これで
             // scene は World の純粋な派生ビューになり、dual-write は解消。write 漏れは「ユニットが動かない」
             // 可視バグとして現れるので、旧 `[P3 WRITE-MISS]` 検出器（独立 dual-write 前提）は撤去した。
-            let synced = World.syncTreeFromWorld(world1, next);
+            let synced = World.syncTreeFromWorld(world2, next);
             GameEngine.render(synced);
-            gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world1)
+            gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world2)
         }
 }

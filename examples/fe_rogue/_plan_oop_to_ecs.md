@@ -104,8 +104,8 @@ gameLoop(world, uiState, scene):
 - **UI node-callback → `(World,UiState)` の純 render**。
 
 ## 移行順序（strangler-fig・各 F は緑/run/挙動不変/レビュー90+/§G 更新）
-- **F0 足場（実 System・no-op）**: `stepWorld` ステージを gameLoop に追加し、最初の System を **`World.tickStatusEffects`** にする（純粋・World-backed・statuses は read-model ゆえ次フレーム mirror で上書き＝**挙動不変だが effect tier/System 署名を実証**）。identity stage は禁止（effect-row drift を検出できないため・レビュー1）。
-- **F1 入力→intent seam**: 1アクション（"wait"/turnEnd）を `onKeyPressed`/menu 確定が scene mutate でなく **`List[Intent]` を返す**形に。`stepIntents` System が消費。型を1箇所で実証。
+- **✅ F0 足場（実装済・886緑・挙動不変）**: `World.stepWorld(world)`（System パイプライン段）を追加し gameLoop の `refreshMirror`→`syncTreeFromWorld` 間に `world2=stepWorld(world1)` 配線。現状 System は inert な `tickStatusEffects`（pos 不変＝`testStepWorldPreservesPositions` で pin・live StatusQuery reader 無し＋次フレーム refreshMirror が上書き＝観測されず）。以後の System はここに足す。
+- **✅ F1 入力→intent seam（実装済・886緑・挙動不変）**: `ActionMenuScene` に `ActionIntent`（純データ）＋`actionIntentOf`（決定＝純関数）＋`applyActionIntent`（適用＝単一 dispatcher）を追加し、"wait" を `onActionConfirmed` の直接ロジック呼びから **decide→apply の seam** に通した（残アクションは既存 if-else にフォールバック＝strangler-fig）。既存テスト「waitMeta 確定で waited=true」が新経路を通って緑＝挙動不変。現状は dispatcher を確定点で inline 適用＝**decide/apply 分離の seed**。「入力が `List[Intent]` を返し System が pipeline で消費」の完全形は MenuHandler 署名変更/intent queue が要るので F2(UiState) 以降で成熟させる。
 - **F2 turn FSM を World に（a/b/c 分割・最高 cascade）**:
   - **F2a**: `turnPhase` を World component に mirror（dual・no-op）。並走 assert `World.turnPhase == TurnPhase.State.get()` を毎フレーム（boardKey 相当の falsifiable gate）。
   - **F2b**: 非入力の `TurnPhase.State.put`（endTurn/PhaseTransitions/TurnFlow/Combat の ~6 site）を Cmd 経由に。

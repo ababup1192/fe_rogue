@@ -89,6 +89,17 @@ mod World {
             | w
         })
 
+    /// F0（OOP→ECS 移行の足場）: **System パイプラインの段**。gameLoop の frame-end でここに
+    /// Systems（`World -> World`）を畳む。以後の System（移動 / 敵AI / 戦闘 …）はこの関数に追加していく。
+    /// 現状の唯一の System は `tickStatusEffects`（純粋）。これは:
+    ///   - pos を触らない（syncTreeFromWorld に無影響）、
+    ///   - statuses は read-model で次フレーム `refreshMirror` が scene から上書きする、
+    ///   - live な `StatusQuery` reader がゲームに無い、
+    /// ため **挙動不変な scaffold**＝「System が段に乗る型/データ流」を実証するだけ（status の正規 tick は
+    /// ターン境界に置くので F2 でここへ移す）。identity 段にしないのは、実 System を1つ通して seam を生かすため。
+    pub def stepWorld(world: World): World =
+        world |> tickStatusEffects
+
     // ════════════════════════════════════════════════════════════════════
     // statusEffects（時限ステータス効果＝バフ/デバフ）を World 権威にする ECS 層
     // Bevy 正対: Command 書き込み / Query 読み込み。System ロジックは StatusSystem を再利用（再実装ゼロ）。

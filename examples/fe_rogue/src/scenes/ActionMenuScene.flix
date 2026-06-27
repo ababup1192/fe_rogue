@@ -450,6 +450,28 @@ mod ActionMenuScene {
             and d#gridPos#y == player#gridPos#y,
             PlayerData.PartyQuery.getAll())
 
+    /// F1（OOP→ECS 移行・入力→intent seam）: メニュー確定アクションを **「決定(data)」と「適用(effect)」に分離**する。
+    /// `ActionIntent` は「何をするか」を表す**純粋なデータ**で、入力分岐は scene を直接 mutate せず intent を返すだけ。
+    /// 適用は単一 dispatcher `applyActionIntent` に集約する。これが OOP（分岐が直接ロジック呼び）からの脱却の seam。
+    /// 現状は "wait" のみ変換（最小スライス）。他アクションは以後の F で順次 intent 化し、適用先は World System へ寄せていく。
+    pub enum ActionIntent {
+        case Wait   // その場で waited 確定（ターン進行）
+    }
+
+    /// 決定: metadata から `ActionIntent` を引く**純粋関数**（副作用なし＝入力は「データを選ぶ」だけ）。
+    /// まだ intent 化していないアクションは None（呼び出し側の既存 if-else にフォールバック）。
+    def actionIntentOf(metadata: String): Option[ActionIntent] =
+        if (metadata == waitMeta()) Some(ActionIntent.Wait) else None
+
+    /// 適用: `ActionIntent` を scene へ適用する**単一 dispatcher**（intent が effect になる唯一の点）。
+    /// 将来はここから World System へ寄せる。現状 Wait は既存 `TurnFlow.commitWaitedAndAdvance` をそのまま呼ぶ（挙動不変）。
+    def applyActionIntent(intent: ActionIntent, scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
+               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, World.Command} =
+        match intent {
+            case ActionIntent.Wait => TurnFlow.commitWaitedAndAdvance(scene)
+        }
+
     /// ItemList 項目が確定された (Enter) 瞬間に呼ばれる。metadata から
     /// 「attack」/「wait」/「pickup」/「gather」を分岐して、それぞれの帰結を直接適用する。
     ///   - attack: 攻撃ターゲット選択フェーズへ (`PlayerScene.enterAttackPhase` に委譲)
@@ -469,10 +491,14 @@ mod ActionMenuScene {
         match entry#metadata {
             case None    => scene
             case Some(m) =>
+                // F1: intent 化済みのアクション（現状 "wait"）は decide→apply の seam を通す。
+                // 未変換アクションは None で下の既存 if-else にフォールバック（strangler-fig）。
+                match actionIntentOf(m) {
+                    case Some(intent) => applyActionIntent(intent, scene)
+                    case None         =>
                 if (m == attackMeta())        enterWeaponSelect(scene)
                 else if (m == exchangeMeta()) PhaseTransitions.enterTradeTargetSelect(scene)
                 else if (m == itemMeta())     openItemMenu(scene)
-                else if (m == waitMeta())     TurnFlow.commitWaitedAndAdvance(scene)
                 else if (m == pickupMeta())   applyPickup(scene)
                 else if (m == openMeta())     applyOpenChest(scene)
                 else if (m == gatherMeta())   applyGather(scene)
@@ -483,6 +509,7 @@ mod ActionMenuScene {
                 else if (m == gatherTradeMeta()) openGatherTrade(scene)
                 else if (m == gatherStairsMeta()) StairsExitScene.begin(scene)
                 else                          scene
+                }
         }
 
     /// 「かいだん」確定。選択中の味方を階段で退場させる。生存味方が全員退場したら
