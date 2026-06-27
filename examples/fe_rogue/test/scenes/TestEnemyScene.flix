@@ -34,28 +34,11 @@ mod TestEnemyScene {
             expected = (None: Option[Int32]),
             EnemyScene.idFromPath(MapScene.worldName() :: Nil))
 
-    /// `World.Command` を記録するディスチャージャ。emit された `Cmd.Move` の着地マスを集める。
-    def recordMoves(thunk: Unit -> a \ ef):
-            (a, List[{x = Int32, y = Int32}]) \ (ef - World.Command) =
-        region rc {
-            let rec = Ref.fresh(rc, (Nil: List[{x = Int32, y = Int32}]));
-            let out = run { thunk() } with handler World.Command {
-                def emit(c, k) = {
-                    match c {
-                        case World.Cmd.Move(_, t) => Ref.put(t :: Ref.get(rec), rec)
-                        case _                    => ()
-                    };
-                    k()
-                }
-            };
-            (out, Ref.get(rec))
-        }
-
     /// F4a: stepEnemyMove（敵移動 System）は target へ `Cmd.Move` を 1 回 emit し、同じ target の
     /// `Moved` を返す（合法性は EnemyAI 決定済みゆえ board 再判定なし＝常に書く）。
     @Test
     def testStepEnemyMoveEmitsAndReturnsMoved(): Unit \ Assert =
-        let (event, moves) = recordMoves(() -> EnemyScene.stepEnemyMove(3, {x = 6, y = 2}));
+        let (event, moves) = TestUnitFixtures.withRecordedMoves(() -> EnemyScene.stepEnemyMove(3, {x = 6, y = 2}));
         let t       = PlayerScene.movedTarget(event);
         let emitted = moves |> List.map(c -> (c#x, c#y));
         Assert.assertEq(expected = ((6, 2), (6, 2) :: Nil), ((t#x, t#y), emitted))

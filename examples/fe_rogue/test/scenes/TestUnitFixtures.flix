@@ -499,6 +499,25 @@ mod TestUnitFixtures {
     pub def dischargeWorldCommand(thunk: Unit -> a \ ef): a \ (ef - World.Command) =
         region rc { withWorldCommand(rc, thunk) }
 
+    /// `World.Command` を記録するディスチャージャ。emit された `Cmd.Move` の着地マスを順に集める。
+    /// 戻り値は (thunk の結果, emit された Move target のリスト)。System（stepPlayerMove/stepEnemyMove）が
+    /// 「位置を 1 回だけ書く / 書かない」を観測する移動 System テスト向け。
+    pub def withRecordedMoves(thunk: Unit -> a \ ef):
+            (a, List[{x = Int32, y = Int32}]) \ (ef - World.Command) =
+        region rc {
+            let rec = Ref.fresh(rc, (Nil: List[{x = Int32, y = Int32}]));
+            let out = run { thunk() } with handler World.Command {
+                def emit(c, k) = {
+                    match c {
+                        case World.Cmd.Move(_, t) => Ref.put(t :: Ref.get(rec), rec)
+                        case _                    => ()
+                    };
+                    k()
+                }
+            };
+            (out, Ref.get(rec))
+        }
+
     /// `World.PhaseQuery`（turn phase 読み）を固定 sim-phase で discharge する。
     /// F2c の reader flip 後、onLungeDone 等が World 由来で phase を読むテスト向け。
     pub def withWorldPhase(phase: SimPhase, thunk: Unit -> a \ ef):

@@ -14,29 +14,11 @@ mod TestPlayerMovementScene {
          wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0},
          placements = MapScene.twoRoom(10, 5)}
 
-    /// `World.Command` を記録するディスチャージャ。emit された `Cmd.Move` の着地マスを集める。
-    /// 戻り値は (thunk の結果, emit された Move target のリスト)。
-    def recordMoves(thunk: Unit -> a \ ef):
-            (a, List[{x = Int32, y = Int32}]) \ (ef - World.Command) =
-        region rc {
-            let rec = Ref.fresh(rc, (Nil: List[{x = Int32, y = Int32}]));
-            let out = run { thunk() } with handler World.Command {
-                def emit(c, k) = {
-                    match c {
-                        case World.Cmd.Move(_, t) => Ref.put(t :: Ref.get(rec), rec)
-                        case _                    => ()
-                    };
-                    k()
-                }
-            };
-            (out, Ref.get(rec))
-        }
-
     /// 合法な 1 歩（右）: target (5,2) を返し、同じ target へ Cmd.Move を 1 回 emit する。
     @Test
     def testStepPlayerMoveLegalEmitsAndReturnsMoved(): Unit \ Assert =
         let board: Board = {map = tenByFive(), pieces = (Piece.Player(0), {x = 4, y = 2}) :: Nil};
-        let (evOpt, moves) = recordMoves(() ->
+        let (evOpt, moves) = TestUnitFixtures.withRecordedMoves(() ->
             PlayerMovementScene.stepPlayerMove(0, {x = 4, y = 2}, Vec2i.right(), board, _ -> true));
         let target  = evOpt |> Option.map(PlayerScene.movedTarget) |> Option.map(t -> (t#x, t#y));
         let emitted = moves |> List.map(t -> (t#x, t#y));
@@ -47,7 +29,7 @@ mod TestPlayerMovementScene {
     def testStepPlayerMoveBlockedByEnemyReturnsNoneNoEmit(): Unit \ Assert =
         let board: Board = {map = tenByFive(),
             pieces = (Piece.Player(0), {x = 4, y = 2}) :: (Piece.Enemy(0), {x = 5, y = 2}) :: Nil};
-        let (evOpt, moves) = recordMoves(() ->
+        let (evOpt, moves) = TestUnitFixtures.withRecordedMoves(() ->
             PlayerMovementScene.stepPlayerMove(0, {x = 4, y = 2}, Vec2i.right(), board, _ -> true));
         let target = evOpt |> Option.map(PlayerScene.movedTarget) |> Option.map(t -> (t#x, t#y));
         Assert.assertEq(expected = (None, 0), (target, List.length(moves)))
@@ -56,7 +38,7 @@ mod TestPlayerMovementScene {
     @Test
     def testStepPlayerMoveBlockedByRangePredReturnsNoneNoEmit(): Unit \ Assert =
         let board: Board = {map = tenByFive(), pieces = (Piece.Player(0), {x = 4, y = 2}) :: Nil};
-        let (evOpt, moves) = recordMoves(() ->
+        let (evOpt, moves) = TestUnitFixtures.withRecordedMoves(() ->
             PlayerMovementScene.stepPlayerMove(0, {x = 4, y = 2}, Vec2i.right(), board, _ -> false));
         let target = evOpt |> Option.map(PlayerScene.movedTarget) |> Option.map(t -> (t#x, t#y));
         Assert.assertEq(expected = (None, 0), (target, List.length(moves)))

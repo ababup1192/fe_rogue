@@ -468,6 +468,22 @@ mod TestWorld {
             expected = (Some((5, 5)), Some((3, 3))),
             (tup(World.EntityRef.Player(0)), tup(World.EntityRef.Enemy(5))))
 
+    /// F3 基盤: `syncTreeFromWorld` が World の位置を scene の `gridPos` に **derive** する。
+    /// F3 の sim/view 分離（位置の権威は World・scene はその派生／`replayMoveView` は見た目のみ）の前提。
+    /// `Cmd.Move` で World 位置を動かし、syncTreeFromWorld 後に scene Player gridPos が World 由来に
+    /// なる（元 scene は不変）ことを pin。既存テストは World 側（`worldPosOf`）のみで、この
+    /// World→scene 書き戻しは未カバーだった＝F3 の土台を直接固定する。
+    @Test
+    def testSyncTreeFromWorldDerivesScenePos(): Unit \ Assert =
+        let scene  = sampleScene();                       // player 0 @ (2,2)
+        let seeded = World.syncFromScene(scene, World.empty());
+        let moved  = World.applyCmd(World.Cmd.Move(World.EntityRef.Player(0), {x = 7, y = 1}), seeded);
+        let before = PlayerScene.getGridPos(0, scene);    // 元 scene は派生前ゆえ不変（2,2）
+        let after  = PlayerScene.getGridPos(0, World.syncTreeFromWorld(moved, scene));
+        Assert.assertEq(
+            expected = ((2, 2), (7, 1)),
+            ((before#x, before#y), (after#x, after#y)))
+
     // ── F2a: turn FSM の World mirror（SimPhase）──
 
     /// F2a: 既定は PlayerTurn・`mirrorTurnPhase`/`turnPhaseOf` が round-trip する。

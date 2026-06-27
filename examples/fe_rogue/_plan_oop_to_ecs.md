@@ -134,6 +134,8 @@ callback が process に残ってよいのは **`(World, UiState)` の純関数�
 inversion は state の**着地タイミング**を意図的に変える（敵ターン System は1ターン分の World 変更を1フレームで完了、旧コードは多フレームに分散）。ゆえに per-frame byte-equal は **F4/F6 で成立しない**。oracle を timing 依存性で2分割する:
 
 - **O1 per-frame byte-equal（F0〜F3・timing 保存される段階のみ）**: `Math.Random` seed・`dt` 固定・スクリプト入力を再生し、各フレームの `(tick, turnPhase, queue, positions, hp, events)` を移行前後で byte 等価比較。
+  - **🔍 O1 harness 足場コスト（2026-06-28 スコープ調査）**: 完全な physicsStep 駆動 O1 harness は **(1) Player ノード scene（battleScene 流・~25 field の Data）+ (2) MoveRange overlay（physicsStep は `selectAllowedPred`→`MoveRangeScene.isInRange` で gating＝overlay 無いと全 block）+ (3) board（`withMockBoard` で手組み可・scene TileMapLayer 不要）+ (4) Tween 進行ループ + frame-end `syncTreeFromWorld`** が要る＝Spike A の productionize（多段・rushed だと fragile）。**deliberate build 案件**。System ロジックは単体テスト（stepPlayerMove×3/stepEnemyMove×1）で既に被覆ゆえ、当面は単体＋下記の土台 pin で代替し、physicsStep 統合 harness は F3c 着手と同時に腰を据えて作る。
+  - **✅ F3 土台 pin（895緑）**: `TestWorld.testSyncTreeFromWorldDerivesScenePos`＝`Cmd.Move`→World→`syncTreeFromWorld`→scene gridPos の World→scene 派生（位置権威=World・scene=派生）を直接固定。既存テストは World 側（`worldPosOf`）のみで未カバーだった F3 の前提を pin。
 - **O2 sim 決定論 + view 忠実度（F4 以降・timing が変わる段階）**:
   - **(a) sim 決定論**: 同一 seed・同一入力スクリプトで、**ターン境界での World 状態 ＋ 順序付き sim-event-log** を等価比較（per-frame でなく「ターン末」）。sim が即時化したので比較点はターン末。
   - **(b) view 忠実度**: render snapshot / 実機 run で演出が正しく再生されることを確認（**per-frame byte-equal は要求しない**＝anim の分散はわざと view 駆動に変えたため）。
