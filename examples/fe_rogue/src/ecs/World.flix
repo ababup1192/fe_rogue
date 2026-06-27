@@ -185,6 +185,13 @@ mod World {
         def statusEffects(ref: EntityRef): StatusSystem.StatusEffects
     }
 
+    /// F2c: turn phase 読み込み effect。handler は Game.start（worldRef.turnPhase を返す）。
+    /// sim-phase（3-case）を読む reader を `TurnPhase.State.get()` からこれに flip する read seam。
+    /// メニュー細分（19-case）を要する reader は対象外（UiState.modalMode が要る）。
+    pub eff PhaseQuery {
+        def phase(): SimPhase
+    }
+
     /// statusEffects を引く（既定 Nil＝mid-game spawn は seed 不要）。Query handler から呼ぶ。
     pub def playerStatusEffectsOf(id: EntityId, world: World): StatusSystem.StatusEffects =
         let World.World(w) = world; Map.getWithDefault(id, Nil, w#playerStatusEffects)

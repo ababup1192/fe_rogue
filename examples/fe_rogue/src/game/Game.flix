@@ -887,6 +887,10 @@ mod Game {
                   // statusEffects 読み込み（Bevy Query）。EntityRef で引く faction 非依存の read seam。
                   def statusEffects(ref, k) = k(World.statusEffectsOf(ref, Ref.get(worldRef)))
               }
+              with handler World.PhaseQuery {
+                  // F2c: turn phase（sim-phase 3-case）を worldRef から読む read seam。
+                  def phase(k) = k(World.turnPhaseOf(Ref.get(worldRef)))
+              }
               with handler PlayerData.PartyQuery {
                   def get(id, k)           = k(PlayerScene.get(id, Ref.get(sceneRef)))
                   def getAll(k)            = k(PlayerScene.getAll(Ref.get(sceneRef)))
@@ -991,7 +995,7 @@ mod Game {
                          FloorProgress.State, InitialSpawns.State,
                          GamePhaseState, PartySelection.State,
                          Pacing.State, Math.Random, FloorSnapshot.State,
-                         World.Command, World.StatusQuery, r} =
+                         World.Command, World.StatusQuery, World.PhaseQuery, r} =
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
         if (GameEngine.Game.shouldClose()) ()
         else {

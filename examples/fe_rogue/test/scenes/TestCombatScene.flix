@@ -223,6 +223,7 @@ mod TestCombatScene {
             let scene = battleScene(80)
                 |> EnemyScene.mapEnemy(1, d -> {isDying = true | d});
             let result =
+                TestUnitFixtures.withWorldPhase(SimPhase.PlayerTurn, () ->
                 TestUnitFixtures.withWorldCommand(rc, () ->
                 TestUnitFixtures.withMockGameLogger(() ->
                 TestUnitFixtures.withMockEnemyTurnQueue(() ->
@@ -235,9 +236,38 @@ mod TestCombatScene {
                     } with Tween.withScheduler(rc)
                       with TurnPhase.withState(rc)
                       with SelectedPlayer.withState(rc)
-                      with Pacing.withState(rc))))));
+                      with Pacing.withState(rc)))))));
             Assert.assertEq(
                 expected = (TurnPhase.Phase.PlayerAttackHold, true), result)
+        }
+
+    /// F2c pin: 「敵ターンか」の判定が **World 由来**（TurnPhase.State でない）ことを固定する。
+    /// TurnPhase.State をわざと非敵ターン（PlayerAttackHold）にしつつ World phase を EnemyTurn にすると、
+    /// onLungeDone は敵ターン分岐（attackTargetId クリアのみ・Pacing.hold なし）を取る。
+    /// もし読みが TurnPhase.State 由来に退行すれば kill-hold 分岐へ落ち isHolding=true となり赤になる。
+    @Test
+    def testLungeDoneBranchesOnWorldPhaseNotTurnState(): Unit \ Assert =
+        region rc {
+            let scene = battleScene(80)
+                |> EnemyScene.mapEnemy(1, d -> {isDying = true | d});
+            let result =
+                TestUnitFixtures.withWorldPhase(SimPhase.EnemyTurn, () ->
+                TestUnitFixtures.withWorldCommand(rc, () ->
+                TestUnitFixtures.withMockGameLogger(() ->
+                TestUnitFixtures.withMockEnemyTurnQueue(() ->
+                TestUnitFixtures.withNoopAnim(() ->
+                TestUnitFixtures.withMockRandom(() ->
+                    run {
+                        TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
+                        let _ = CombatScene.onLungeDone(Faction.Player, 0, scene);
+                        (TurnPhase.State.get(), Pacing.State.isHolding())
+                    } with Tween.withScheduler(rc)
+                      with TurnPhase.withState(rc)
+                      with SelectedPlayer.withState(rc)
+                      with Pacing.withState(rc)))))));
+            // TurnPhase は分岐で触らないので PlayerAttackHold のまま。World=EnemyTurn ゆえ hold は積まれない。
+            Assert.assertEq(
+                expected = (TurnPhase.Phase.PlayerAttackHold, false), result)
         }
 
     // ════════════════════════════════════════════════════════
@@ -278,6 +308,7 @@ mod TestCombatScene {
                          name = AnimEvent.tagToString(AnimEvent.Tag.AttackLunge)}: AnimationPlayer.Event) :: Nil
         }: AnimationPlayer.EventBundle);
         region rc {
+            TestUnitFixtures.withWorldPhase(SimPhase.EnemyTurn, () ->
             TestUnitFixtures.withWorldCommand(rc, () ->
             TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
             TestUnitFixtures.withMockRandom(() ->
@@ -294,7 +325,7 @@ mod TestCombatScene {
                 } with Tween.withScheduler(rc)
                   with TurnPhase.withState(rc)
                   with SelectedPlayer.withState(rc)
-                  with Pacing.withState(rc)))))))))))         }
+                  with Pacing.withState(rc))))))))))))         }
 
     /// 他ユニット宛の signal は食わない: Player(0) 宛の attack_lunge finished があるとき、
     /// Enemy(1) ノードの process では Player(0) の attackTargetId は残り（敵の drain は空）、

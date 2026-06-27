@@ -36,5 +36,5 @@ mod FrameAef {
                                 CustomEffects.RingTransformRequest,
                                 CustomEffects.ThiefDropRequest,
                                 Pacing.State, Math.Random,
-                                World.Command, World.StatusQuery}
+                                World.Command, World.StatusQuery, World.PhaseQuery}
 }

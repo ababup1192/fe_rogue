@@ -193,7 +193,7 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =
+                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command, World.PhaseQuery} =
         match side {
             case Faction.Player => playerLungeDone(id, scene)
             case Faction.Enemy  => enemyLungeDone(id, scene)
@@ -209,8 +209,9 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command} =
-        if (TurnPhase.State.get() == TurnPhase.Phase.EnemyTurn) {
+                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command, World.PhaseQuery} =
+        // F2c: 「敵ターンか」の sim-phase 判定を World 由来へ flip（19-case 詳細は不要ゆえ 3-case で足りる）。
+        if (World.PhaseQuery.phase() == SimPhase.EnemyTurn) {
             // 敵ターン中の味方反撃が完了した。反撃でレベルアップしていれば、その場で
             // （反撃ごとに）ステータス変化パネルへ割り込む。閉じると敵ターンに戻って続行する。
             let cleared = clearAttackTargetId(playerId, scene);
@@ -415,7 +416,7 @@ mod CombatScene {
                         CustomEffects.GameOverRequest,
                         CustomEffects.ThiefDropRequest,
                         EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State, Pacing.State, Math.Random, World.Command, BoardQuery} =
+                        SelectedPlayer.State, Pacing.State, Math.Random, World.Command, BoardQuery, World.PhaseQuery} =
         match (PlayerScene.idFromPath(path), EnemyScene.idFromPath(path)) {
             case (Some(playerId), _) => drainAndDispatch(Faction.Player, playerId, node, path, scene)
             case (_, Some(enemyId))  => drainAndDispatch(Faction.Enemy, enemyId, node, path, scene)
@@ -436,7 +437,7 @@ mod CombatScene {
                              CustomEffects.GameOverRequest,
                              CustomEffects.ThiefDropRequest,
                              EnemyTurn.Queue, TurnPhase.State,
-                             SelectedPlayer.State, Pacing.State, Math.Random, World.Command, BoardQuery} =
+                             SelectedPlayer.State, Pacing.State, Math.Random, World.Command, BoardQuery, World.PhaseQuery} =
         let ownerPath = match side {
             case Faction.Player => PlayerScene.playerPath(id)
             case Faction.Enemy  => EnemyScene.enemyPath(id)
