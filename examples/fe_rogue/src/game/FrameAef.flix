@@ -16,7 +16,7 @@ mod FrameAef {
                          EnemyData.RosterQuery,
                          Tween.Scheduler, AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
-                         TurnPhase.State, SelectedPlayer.State}
+                         TurnPhase.State, SelectedPlayer.State, World.Command}
 
     /// `process` 用の広い Aef 集合 (`FrameAef.ProcessT`)。Player/Enemy の `process` が drainSignals 経由で
     /// attack:hit / death_blink / attack_lunge を捌き、EnemyTurnDriverScene が phase 判定で

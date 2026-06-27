@@ -369,7 +369,7 @@ mod PlayerScene {
     pub def moveTo(id: Int32, map: MapSnapshot, target: {x = Int32, y = Int32},
                     marker: Marker2D, data: Data, slide: Duration.Duration,
                     scene: Scene[NodeTag]): (Marker2D, Data)
-                    \ Tween.Scheduler =
+                    \ {Tween.Scheduler, World.Command} =
         let targetWorld = MapSnapshot.gridToWorld(target, map);
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
         Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slide);
@@ -377,6 +377,7 @@ mod PlayerScene {
         // sprite ノード書き換えは moveToById 側でやる (moveTo は state を返すだけ)。
         let nextFacing = directionOfStep(data#gridPos, target)
                             |> Option.getWithDefault(data#facing);
+        World.Command.emit(World.Cmd.Move(World.EntityRef.Player(id), target));
         (marker, {gridPos = target, facing = nextFacing | data})
 
     /// 指定 id のプレイヤーが現在 tween 中（次の入力を受け付けない状態）か。
@@ -389,7 +390,7 @@ mod PlayerScene {
     /// `EnemyScene.moveTo` と同じインターフェース。**歩行可否は呼び出し側が確認済み前提**。
     pub def moveToById(id: Int32, target: {x = Int32, y = Int32},
                         map: MapSnapshot, slide: Duration.Duration,
-                        scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
         let targetWorld = MapSnapshot.gridToWorld(target, map);
         Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slide);
@@ -397,6 +398,7 @@ mod PlayerScene {
         // 0 ベクトル (= 同じセル) の場合は既存の facing を保つ。
         let prev      = getGridPos(id, scene);
         let dirOpt    = directionOfStep(prev, target);
+        World.Command.emit(World.Cmd.Move(World.EntityRef.Player(id), target));
         let withState = mapPlayer(id, d -> {
             gridPos = target,
             facing  = Option.getWithDefault(d#facing, dirOpt) | d
@@ -414,9 +416,10 @@ mod PlayerScene {
     /// 進行中の Tween があればキャンセルし、Marker2D の world 位置と Data#gridPos を
     /// 同時に target に揃える。PlayerMoving 中のキャンセルで「選択時の位置」に戻すのに使う。
     pub def snapTo(id: Int32, target: {x = Int32, y = Int32},
-                    scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                    scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
         let world = MapSnapshot.cellCenter(target);
         Tween.Scheduler.cancel(playerPath(id));
+        World.Command.emit(World.Cmd.Move(World.EntityRef.Player(id), target));
         scene
             |> Scene.setGlobalPositionAt(playerPath(id), world)
             |> mapPlayer(id, d -> {gridPos = target | d})
@@ -458,7 +461,7 @@ mod PlayerScene {
     pub def cancelSelection(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery} =
+                              PlayerData.PartyQuery, World.Command} =
         // この移動で積んだ可逆ドラフトを新しい順に巻き戻す（拾得→元位置への復帰など）。
         // 「拾ってからキャンセルしたら拾っていないことにする」もこの一括巻き戻しで実現。
         let drafts   = SelectedPlayer.State.get()#drafts;
@@ -485,7 +488,7 @@ mod PlayerScene {
     ///   - `PickedUp` : 床へ戻し（`ItemScene.respawn`）+ 在庫末尾の仮取得分を取り消す
     def revertDraftAction(action: MoveDraft.DraftAction,
                             scene: Scene[NodeTag]):
-            Scene[NodeTag] \ Tween.Scheduler =
+            Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
         match action {
             case MoveDraft.DraftAction.MovedFrom(id, cell)              =>
                 snapTo(id, cell, scene) |> playAnim(id, idleAnimName())

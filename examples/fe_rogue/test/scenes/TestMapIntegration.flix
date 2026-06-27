@@ -274,9 +274,11 @@ mod TestMapIntegration {
             Scene[NodeTag] \ Tween.Scheduler =
         match Scene.getEngineNode(PlayerScene.playerPath(0), scene) {
             case Some(EngineNode.Marker2DWithState(marker, NodeTag.Player(data))) =>
+                // P0a: moveTo の World.Command を discharge（位置 World は検証外）。
                 let (newMarker, newData) =
-                    PlayerScene.moveTo(0, map, target, marker, data,
-                                       Duration.frames(count = 16, fps = 120), scene);
+                    TestUnitFixtures.dischargeWorldCommand(() ->
+                        PlayerScene.moveTo(0, map, target, marker, data,
+                                           Duration.frames(count = 16, fps = 120), scene));
                 Scene.setEngineNode(PlayerScene.playerPath(0),
                     EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
                     scene)

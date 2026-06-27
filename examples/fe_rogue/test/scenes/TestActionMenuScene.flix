@@ -447,11 +447,12 @@ mod TestActionMenuScene {
                         TestUnitFixtures.withMockPartyQuery(scene, () ->
                             TestUnitFixtures.withFixedPhase(TurnPhase.Phase.PlayerMoving, () ->
                                 TestUnitFixtures.withSelectionRef(rc,
-                                    {id = Some(0), drafts = Nil, gatherActive = false}, () -> {
-                                        let picked =
-                                            PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, scene);
-                                        PlayerScene.cancelSelection(picked)
-                                    }))))));
+                                    {id = Some(0), drafts = Nil, gatherActive = false}, () ->
+                                        TestUnitFixtures.dischargeWorldCommand(() -> {
+                                            let picked =
+                                                PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, scene);
+                                            PlayerScene.cancelSelection(picked)
+                                        })))))));
             let groundItemBack = Option.nonEmpty(ItemScene.findAt({x = 1, y = 1}, after));
             Assert.assertEq(
                 expected = (true, 1),
@@ -485,7 +486,8 @@ mod TestActionMenuScene {
                     TestUnitFixtures.withNoopAnim(() ->
                         TestUnitFixtures.withMockPartyQuery(scene, () ->
                             TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ActionSelect, () ->
-                                PlayerScene.cancelSelection(scene))))))
+                                TestUnitFixtures.dischargeWorldCommand(() ->
+                                    PlayerScene.cancelSelection(scene)))))))
 
     /// 報告バグの回帰: 拾得 → 装備 → 選択解除キャンセル で、装備の並び替えも拾得も
     /// 正しく巻き戻る（元の武器 A が残り、拾った B は床へ復活）。逆順 revert により

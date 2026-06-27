@@ -484,7 +484,7 @@ mod EnemyScene {
     /// EnemyScene 自身は衝突判定を持たない。
     pub def moveTo(id: Int32, target: {x = Int32, y = Int32},
                     map: MapSnapshot,
-                    scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                    scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
         let startWorld  = Scene.globalPositionAt(enemyPath(id), scene);
         let targetWorld = MapSnapshot.gridToWorld(target, map);
         Tween.tweenPosition(enemyPath(id), startWorld, targetWorld, slideDuration());
@@ -497,6 +497,7 @@ mod EnemyScene {
             case None => scene
         };
         // 直前位置を記録（徘徊の「来た道へ戻らない」判定に使う）。論理位置を進める。
+        World.Command.emit(World.Cmd.Move(World.EntityRef.Enemy(id), target));
         mapEnemy(id, d -> {gridPos = target, prevPos = Some(d#gridPos) | d}, flipped)
 
     /// 子 Sprite2D に flipH を設定する内部ヘルパー (敵スプライトは常に Sprite2D)。
@@ -517,9 +518,10 @@ mod EnemyScene {
     /// 進行中の Tween があればキャンセルし、ノードの world 位置と Data#gridPos を
     /// 同時に target に揃える。`PlayerScene.snapTo` と同じ流儀。
     pub def snapTo(id: Int32, target: {x = Int32, y = Int32},
-                    scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                    scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
         let world = MapSnapshot.cellCenter(target);
         Tween.Scheduler.cancel(enemyPath(id));
+        World.Command.emit(World.Cmd.Move(World.EntityRef.Enemy(id), target));
         scene
             |> Scene.setGlobalPositionAt(enemyPath(id), world)
             |> mapEnemy(id, d -> {gridPos = target | d})

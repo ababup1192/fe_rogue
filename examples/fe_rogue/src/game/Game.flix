@@ -873,7 +873,17 @@ mod Game {
               with handler BoardQuery {
                   // S4-flip: 盤面読み取りを World 由来に。pieces は worldRef（位置 mirror）、map は sceneRef（地形）から。
                   // frame-head で world は scene の faithful mirror ゆえ fromScene と同値（順序非依存・id 自己同定）。
-                  def board(k) = k(World.toBoard(Ref.get(worldRef), Ref.get(sceneRef)))
+                  // P0a 検証器: 各 board() で World 由来盤面 vs scene 由来盤面を mid-frame 突合し差を log
+                  //（real run 専用＝tests は mock handler でここを通らない。tuple-set 比較で順序差を吸収）。
+                  // 既知 transient（次フレーム頭の mirror で解消）= hidden 遷移 / spawn フレーム。
+                  def board(k) = {
+                      let sc = Ref.get(sceneRef);
+                      let wb = World.toBoard(Ref.get(worldRef), sc);
+                      if (World.boardKey(wb) != World.boardKey(BoardSnapshot.fromScene(sc)))
+                          println("[P0a BOARD DIFF] world=${World.boardKey(wb)} scene=${World.boardKey(BoardSnapshot.fromScene(sc))}")
+                      else ();
+                      k(wb)
+                  }
               }
               with handler World.Command {
                   // statuses 書き込み（Bevy Commands）。深い scene コードの emit を worldRef へ即時適用。

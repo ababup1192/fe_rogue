@@ -263,7 +263,7 @@ mod EnemyTurnDriverScene {
     def applyNormalStep(step: EnemyTurn.Step, data: EnemyScene.Data,
                          scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                Pacing.State, Math.Random, CustomEffects.RingTransformRequest} =
+                Pacing.State, Math.Random, CustomEffects.RingTransformRequest, World.Command} =
                 // 盤面 + 盤上ユニットを 1 箇所で結合 (位置×ステータスの join は Encounter に集約)。
                 // driver は手元の (mid-frame mutation 済み) scene に live で適用する。
                 let enc = EncounterBuilder.fromScene(scene);

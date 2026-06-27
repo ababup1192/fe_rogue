@@ -167,7 +167,7 @@ mod StaffCastScene {
     /// effect 行は legacy 委譲先（Tween / AnimationPlayer / GameLogger）に合わせ広く取る。
     def staffEffectHandlers(srcId: Int32, dir: {x = Int32, y = Int32}):
             EffectRunner.PlanHandlers[Scene[NodeTag],
-                {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger}] = {
+                {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command}] = {
         heal       = (sc, id, ally, n)        -> checked_ecast(healUnit(id, ally, n, sc)),
         fullHeal   = (sc, id, ally)           -> checked_ecast(fullHealUnit(id, ally, sc)),
         maxHpUp    = (sc, id, ally, n)        -> checked_ecast(maxHpUpUnit(id, ally, n, sc)),
@@ -197,7 +197,7 @@ mod StaffCastScene {
     /// knockback/swapPos/warpToStairs を legacy 関数へ委譲（挙動・ログ一致）。未知 op / 対象不在は防御 no-op。
     def customStaffEffect(srcId: Int32, dir: {x = Int32, y = Int32},
                            op: String, id: Int32, ally: Bool, sc: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command} =
         let srcLabel = PlayerScene.displayName(srcId, sc);
         match op {
             case "knockback" =>
@@ -231,7 +231,7 @@ mod StaffCastScene {
                           hit: RayHit,
                           scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger} =
+                              GameLogger.GameLogger, World.Command} =
         match (staff#effect, hit) {
             case (Staff.StaffEffect.Heal, RayHit.HitPlayer(targetId, _)) =>
                 applyHealToPlayer(playerId, player, targetId, scene)
@@ -311,7 +311,7 @@ mod StaffCastScene {
                                 hitCell: {x = Int32, y = Int32},
                                 dir: {x = Int32, y = Int32},
                                 scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command} =
         match PlayerScene.get(targetId, scene) {
             case None         => scene
             case Some(target) =>
@@ -332,7 +332,7 @@ mod StaffCastScene {
                                dir: {x = Int32, y = Int32},
                                scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                                GameLogger.GameLogger} =
+                                GameLogger.GameLogger, World.Command} =
         match EnemyScene.get(enemyId, scene) {
             case None        => scene
             case Some(enemy) =>
@@ -359,8 +359,8 @@ mod StaffCastScene {
                            hitCell: {x = Int32, y = Int32},
                            dir: {x = Int32, y = Int32},
                            scene: Scene[NodeTag],
-                           moveFn: {x = Int32, y = Int32} -> Scene[NodeTag] \ Tween.Scheduler):
-            Scene[NodeTag] \ Tween.Scheduler =
+                           moveFn: {x = Int32, y = Int32} -> Scene[NodeTag] \ {Tween.Scheduler, World.Command}):
+            Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
         let board: Board = BoardSnapshot.fromScene(scene);
         let path = Board.knockbackPath(hitCell, dir, board);
         match List.last(path) {
@@ -373,7 +373,7 @@ mod StaffCastScene {
     def applySwapWithPlayer(srcId: Int32, srcCell: {x = Int32, y = Int32},
                               otherId: Int32, otherCell: {x = Int32, y = Int32},
                               scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command} =
         GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} と ${PlayerScene.displayName(otherId, scene)} がいれかわった");
         scene
             |> PlayerScene.snapTo(srcId, otherCell)
@@ -384,7 +384,7 @@ mod StaffCastScene {
     def applySwapWithEnemy(srcId: Int32, srcCell: {x = Int32, y = Int32},
                              enemyId: Int32, enemyCell: {x = Int32, y = Int32},
                              scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command} =
         GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} と ${EnemyScene.displayName(enemyId, scene)} がいれかわった");
         scene
             |> PlayerScene.snapTo(srcId, enemyCell)
@@ -413,19 +413,19 @@ mod StaffCastScene {
 
     /// 一時しのぎ × 味方: 完全停止にしたうえで階段（埋まっていれば隣接の空き）へワープさせる。
     def applyStopgapToPlayer(srcLabel: String, targetId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command} =
         let bound = applyBindToPlayer(srcLabel, targetId, defaultBindTurns(), scene);
         warpPlayer(targetId, bound)
 
     /// 一時しのぎ × 敵: 同上（敵対象）。
     def applyStopgapToEnemy(srcLabel: String, enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command} =
         let bound = applyBindToEnemy(srcLabel, enemyId, defaultBindTurns(), scene);
         warpEnemy(enemyId, bound)
 
     /// 味方をワープ先（階段 or 隣接空き）へ瞬間移動させる。行き先が無ければ停止のみ。
     def warpPlayer(targetId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command} =
         let board = BoardSnapshot.fromScene(scene);
         match warpCellFor(StairsScene.getPos(scene), board) {
             case Some(cell) =>
@@ -438,7 +438,7 @@ mod StaffCastScene {
 
     /// 敵をワープ先（階段 or 隣接空き）へ瞬間移動させる。行き先が無ければ停止のみ。
     def warpEnemy(enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command} =
         let board = BoardSnapshot.fromScene(scene);
         match warpCellFor(StairsScene.getPos(scene), board) {
             case Some(cell) =>
@@ -1068,7 +1068,7 @@ mod StaffCastScene {
     /// その味方へ詠唱した scene を Some で返す。撃てなければ None（呼び出し側で投擲 / 通常 AI へ）。
     pub def enemyTryStaff(enemyId: Int32, origin: {x = Int32, y = Int32},
                            description: String, scene: Scene[NodeTag]):
-            Option[Scene[NodeTag]] \ {Tween.Scheduler, GameLogger.GameLogger} =
+            Option[Scene[NodeTag]] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command} =
         let board: Board = BoardSnapshot.fromScene(scene);
         forM (
             effect   <- enemyStaffFor(description);
@@ -1095,7 +1095,7 @@ mod StaffCastScene {
     /// 解決済みの「敵 → 味方 への詠唱」を適用する。src は敵の表示名。
     def enemyCastStaff(enemyId: Int32, effect: Staff.StaffEffect, targetId: Int32,
                         scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command} =
         let srcLabel = EnemyScene.displayName(enemyId, scene);
         match effect {
             case Staff.StaffEffect.Bind    => applyBindToPlayer(srcLabel, targetId, defaultBindTurns(), scene)

@@ -100,6 +100,7 @@ mod World {
         case Seed(EntityRef, StatusSystem.StatusEffects)  // 再構築/復元の全置換
         case TickPlayers(List[EntityId])    // 味方ターン開始（非 usedStairs の id のみ）
         case TickEnemies                    // 敵ターン開始（全敵）
+        case Move(EntityRef, {x = Int32, y = Int32})  // 位置 write（P0a・mid-frame currency）
     }
 
     /// statuses 書き込み effect（Bevy Commands）。handler は Game.start（worldRef へ即時適用）。
@@ -163,6 +164,12 @@ mod World {
             case Cmd.TickEnemies =>
                 let World.World(w) = world;
                 World.World({enemyStatusEffects = Map.map(StatusSystem.tick, w#enemyStatusEffects) | w})
+            case Cmd.Move(ref, pos) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(id) => World.World({playerPos = Map.insert(id, pos, w#playerPos) | w})
+                    case EntityRef.Enemy(id)  => World.World({enemyPos = Map.insert(id, pos, w#enemyPos) | w})
+                }
         }
 
     /// ally フラグ＋id から EntityRef を作る（境界 emit / call-site の共通化）。
@@ -189,6 +196,20 @@ mod World {
             map    = BoardSnapshot.mapSnapshotOf(scene),
             pieces = boardPieces(world)
         }
+
+    /// Board の駒を**順序非依存**で突合する正規形（(faction, id, x, y) 昇順）。
+    /// `Board` は型エイリアスで Eq derive 不可・pieces 順が World(id昇順) と fromScene(preorder) で違うため、
+    /// P0a 検証器（World 由来盤面 vs scene 由来盤面の mid-frame 突合）はこのキーで比較する。
+    pub def boardKey(board: Board): List[(Int32, Int32, Int32, Int32)] =
+        board#pieces
+            |> List.map(pair -> {
+                let (piece, pos) = pair;
+                match piece {
+                    case Piece.Player(i) => (0, i, pos#x, pos#y)
+                    case Piece.Enemy(i)  => (1, i, pos#x, pos#y)
+                }
+            })
+            |> List.sort
 
     /// World の位置 store から駒一覧を組む（map 非依存・純粋）。順序は id 昇順（Map.toList）で決定的。
     /// hidden 味方（集合・階段退場）は除外＝`BoardSnapshot.fromScene` の hidden フィルタと同義。

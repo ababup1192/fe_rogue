@@ -600,7 +600,7 @@ mod CombatScene {
                               attackerPos: {x = Int32, y = Int32},
                               defenderPos: {x = Int32, y = Int32},
                               enemyId: Int32, killed: Bool,
-                              scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
         match WeaponCatalog.knockbackTiles(weapon#effect, weapon#effectValue) {
             case None        => scene
             case Some(tiles) => if (killed) scene else pushEnemyBack(tiles, attackerPos, defenderPos, enemyId, scene)
@@ -609,7 +609,7 @@ mod CombatScene {
     /// ノックバック本体: 方向算出 → `knockbackPathCapped` の最終着地へ `snapTo`。
     def pushEnemyBack(tiles: Int32, attackerPos: {x = Int32, y = Int32},
                        defenderPos: {x = Int32, y = Int32}, enemyId: Int32,
-                       scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                       scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
         let dir = Staff.toVec2i(Staff.deltaToDirection(
                     defenderPos#x - attackerPos#x, defenderPos#y - attackerPos#y));
         let board: Board = BoardSnapshot.fromScene(scene);
@@ -946,7 +946,7 @@ mod CombatScene {
                              attackerPos: {x = Int32, y = Int32},
                              defenderPos: {x = Int32, y = Int32},
                              targetId: Int32, killed: Bool,
-                             scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                             scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
         match WeaponCatalog.knockbackTiles(weapon#effect, weapon#effectValue) {
             case None        => scene
             case Some(tiles) => if (killed) scene else pushPlayerBack(tiles, attackerPos, defenderPos, targetId, scene)
@@ -955,7 +955,7 @@ mod CombatScene {
     /// 味方ノックバック本体: 方向算出 → `knockbackPathCapped` の最終着地へ `snapTo`。
     def pushPlayerBack(tiles: Int32, attackerPos: {x = Int32, y = Int32},
                         defenderPos: {x = Int32, y = Int32}, targetId: Int32,
-                        scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
         let dir = Staff.toVec2i(Staff.deltaToDirection(
                     defenderPos#x - attackerPos#x, defenderPos#y - attackerPos#y));
         let board: Board = BoardSnapshot.fromScene(scene);

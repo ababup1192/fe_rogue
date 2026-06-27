@@ -19,7 +19,7 @@ mod PlayerMovementScene {
                          path: NodePath, scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
                         \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger,
-                           SelectedPlayer.State} =
+                           SelectedPlayer.State, World.Command} =
         stepFor(selectAllowedPred(TurnPhase.Phase.PlayerMoving, scene),
                 PlayerScene.selectedSlideDuration(), node, path, scene)
 
@@ -32,7 +32,7 @@ mod PlayerMovementScene {
                         path: NodePath, scene: Scene[NodeTag]):
                        (EngineNode[NodeTag], Scene[NodeTag])
                        \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger,
-                          SelectedPlayer.State} =
+                          SelectedPlayer.State, World.Command} =
         let lord = PlayerScene.lordId();
         let prev = PlayerScene.getGridPos(lord, scene);
         let (movedNode, movedScene) =
@@ -50,7 +50,7 @@ mod PlayerMovementScene {
     ///   - 主人公に押し出された味方（着地マスに居た）はその場の入れ替えなので歩数を消費しない。
     def followAllies(lordNewPos: {x = Int32, y = Int32}, goal: {x = Int32, y = Int32},
                       scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {BoardQuery, Tween.Scheduler, SelectedPlayer.State} =
+            Scene[NodeTag] \ {BoardQuery, Tween.Scheduler, SelectedPlayer.State, World.Command} =
         let board     = BoardQuery.board();
         // 待機中(行動済み)の味方は「すれ違えない」固体障害物。すり抜け対象(allyCells)から除く。
         let waited    = waitedAllyCells(scene);
@@ -114,7 +114,7 @@ mod PlayerMovementScene {
                  path: NodePath, scene: Scene[NodeTag]):
                 (EngineNode[NodeTag], Scene[NodeTag])
                 \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger,
-                   SelectedPlayer.State} =
+                   SelectedPlayer.State, World.Command} =
         match node {
             case EngineNode.Marker2DWithState(_, NodeTag.Player(data)) =>
                 // かなしばり（完全停止）中は移動入力を捨てる。攻撃も ActionMenu 側で封じる。

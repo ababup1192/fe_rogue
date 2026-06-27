@@ -82,9 +82,11 @@ mod TestPlayerScene {
                    scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
         match Scene.getEngineNode(PlayerScene.playerPath(id), scene) {
             case Some(EngineNode.Marker2DWithState(marker, NodeTag.Player(data))) =>
+                // P0a: moveTo は World.Command を emit するので test では discharge（位置 World は検証外）。
                 let (newMarker, newData) =
-                    PlayerScene.moveTo(id, map, target, marker, data,
-                                       Duration.frames(count = 16, fps = 120), scene);
+                    TestUnitFixtures.dischargeWorldCommand(() ->
+                        PlayerScene.moveTo(id, map, target, marker, data,
+                                           Duration.frames(count = 16, fps = 120), scene));
                 Scene.setEngineNode(PlayerScene.playerPath(id),
                     EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
                     scene)
