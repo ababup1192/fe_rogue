@@ -78,7 +78,7 @@ mod PlayerMovementScene {
     /// 自発的追従 1 歩ぶんの後始末: `moveStepsTaken` を 1 増やし、自分の `moveTiles` に達したら
     /// 非アクティブ化（`setWaited`）して、巻き戻し用の `GatherWaited` ドラフトを積む。
     def consumeFollowStep(id: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ SelectedPlayer.State =
+            Scene[NodeTag] \ {SelectedPlayer.State, World.Command} =
         match PlayerScene.get(id, scene) {
             case None    => scene
             case Some(d) =>

@@ -1058,6 +1058,10 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[FOLLOWUP DIFF] ${ms}")
             };
+            match World.waitedMismatches(Ref.get(worldRef), next) {
+                case Nil => ()
+                case ms  => println("[WAITED DIFF] ${ms}")
+            };
             let world1 = World.refreshMirror(next, Ref.get(worldRef));
             // F0（OOP→ECS 移行の足場）: **System パイプライン段**。ロジックを OOP callback でなく
             // `World -> World` の System で回す将来形の seam。現状の System は inert な `tickStatusEffects`

@@ -540,7 +540,7 @@ mod TestPlayerScene {
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> addOnePlayerT(mkSpawn(0, {x = 3, y = 3}));
-        let after = PlayerScene.useStairs(0, scene);
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.useStairs(0, scene));
         match PlayerScene.get(0, after) {
             case Some(d) =>
                 Assert.assertEq(expected = (true, true, true),
@@ -559,8 +559,8 @@ mod TestPlayerScene {
             |> MapScene.addWorldNode
             |> addOnePlayerT(mkSpawn(0, {x = 3, y = 3}))
             |> addOnePlayerT(mkSpawn(1, {x = 4, y = 3}));
-        let oneUsed  = PlayerScene.useStairs(0, scene);
-        let bothUsed = PlayerScene.useStairs(1, oneUsed);
+        let oneUsed  = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.useStairs(0, scene));
+        let bothUsed = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.useStairs(1, oneUsed));
         Assert.assertEq(
             expected = (false, true),
             (PlayerScene.allLivingUsedStairs(oneUsed),

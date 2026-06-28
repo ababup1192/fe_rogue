@@ -311,6 +311,8 @@ mod PlayerScene {
         World.Command.emit(World.Cmd.SetHp(World.refOf(true, sp#id), sp#resource#hp));
         // F7-slice4: 初期 followUpUsed=false も seed。
         World.Command.emit(World.Cmd.SetFollowUpUsed(World.refOf(true, sp#id), false));
+        // F7-slice5: 初期 waited=false も seed。
+        World.Command.emit(World.Cmd.SetWaited(World.refOf(true, sp#id), false));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
@@ -770,7 +772,8 @@ mod PlayerScene {
     /// プレイヤーを「行動済み」にして sprite を灰色 modulate にする。
     /// AnimatedSprite2D 持ち unit はここで idle アニメに戻す (= 待機モーション表示)。
     /// PlayerAttack 確定 / スキップ時に呼ばれる。
-    pub def setWaited(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def setWaited(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), true));  // F7-slice5
         scene
             |> mapPlayer(id, d -> {waited = true | d})
             |> setSpriteModulate(id, waitedColor())
@@ -780,7 +783,8 @@ mod PlayerScene {
 
     /// プレイヤー 1 体を「行動可能(アクティブ)」に戻す。`waited` を下ろし、sprite/HP ゲージを
     /// 通常色へ、idle アニメへ戻す（`setWaited` の逆）。集合キャンセルの巻き戻しで使う。
-    pub def setActive(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def setActive(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), false));  // F7-slice5
         scene
             |> mapPlayer(id, d -> {waited = false | d})
             |> setSpriteModulate(id, activeColor())
@@ -806,6 +810,7 @@ mod PlayerScene {
         World.Command.emit(World.Cmd.TickPlayers(ids));
         let reset = List.foldLeft((sc, id) -> {
             World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Player(id), false));  // F7-slice4: reset を World へ
+            World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), false));  // F7-slice5: ターン開始で waited 解除
             sc
                 // 味方ターン開始ごとに時限ステータス（自己バフ等）を 1 ターン分減算し、
                 // 追撃リングの二重発動フラグを戻す。
@@ -996,7 +1001,8 @@ mod PlayerScene {
     /// `waited` も立てるので「行動済み」扱いになり、`firstActive` の対象から
     /// 外れて以後このフロアでは動けない。`clearAllWaited` は usedStairs を維持するため
     /// 敵ターンを跨いでも退場状態のままになる。次フロア構築 (addOnePlayer) で全て false に戻る。
-    pub def useStairs(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def useStairs(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), true));  // F7-slice5: 階段退場で waited を World へ
         scene
             |> setHidden(id, true)
             |> mapPlayer(id, d -> {usedStairs = true, waited = true | d})

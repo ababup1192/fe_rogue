@@ -520,6 +520,16 @@ mod TestWorld {
         let w = World.applyCmd(World.Cmd.SetAlerted(World.EntityRef.Enemy(5), true), World.empty());
         Assert.assertEq(expected = Some(true), World.alertedOf(World.EntityRef.Enemy(5), w))
 
+    /// F7-slice5: `Cmd.SetWaited` が World を更新し `waitedOf` で読める＋preserve（command が scene 上書きされない）。
+    @Test
+    def testSetWaitedCommandAndPreserve(): Unit \ Assert =
+        let seeded = World.syncFromScene(sampleScene(), World.empty());   // player 0 waited=false
+        let acted  = World.applyCmd(World.Cmd.SetWaited(World.EntityRef.Player(0), true), seeded);
+        let World.World(w) = World.refreshMirror(sampleScene(), acted);
+        Assert.assertEq(
+            expected = (Some(true), Some(true)),
+            (World.waitedOf(World.EntityRef.Player(0), acted), Map.get(0, w#playerWaited)))
+
     /// F7-slice4: `Cmd.SetFollowUpUsed` が両 faction を更新し `followUpUsedOf` で読める＋preserve。
     @Test
     def testSetFollowUpUsedCommandAndPreserve(): Unit \ Assert =
