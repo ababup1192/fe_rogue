@@ -224,6 +224,75 @@ mod TestGoldenTrace {
             expected = (true, golden, (Some(0), Some(10), Some((1, 35)))),
             (not List.isEmpty(keys), keys, proj))
 
+    // ── Phase C 等価: resolveCombat 本体 が legacy と final-World 等価か ───────────
+
+    /// ②検証: `CombatSystem.resolveAttack`（新 sim・(World,[SimEvent]) を返す）を A2 と同じ fixture・同 seed で
+    /// 駆動し、legacy `runAttack`（applyAttackHit）の最終 World と **直接一致**するか（enemy hp/player hp/progress）。
+    /// no-level-up path は draw 順（crit/thief は crit率0・noopThief で outcome 不変）の影響を受けないので、
+    /// hit ロール 1 本で legacy と等価になる。これが cutover の final-World 安全網の最小単位。
+    @Test
+    def testResolveCombatEqualsLegacyNoLevelUp(): Unit \ Assert =
+        let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, _, legacyW) = runAttack(sc);
+        let w0 = World.syncFromScene(sc, World.empty());
+        let (sysW, evCount) = region rc {
+            let (w, evs) = TestUnitFixtures.withSeededRng(rc, seed(), () ->
+                CombatSystem.resolveAttack(w0, {ref = EntityRef.Player(0), level = 1}, {ref = EntityRef.Enemy(1), level = 1}));
+            (w, List.length(evs))
+        };
+        // B4: anti-vacuity — combatViewOf-Some pre-guard（scene-fallback でなく World 由来）+ 非空 stream。
+        Assert.assertEq(
+            expected = (true, true,
+                        (World.hpOf(EntityRef.Enemy(1), legacyW),
+                         World.hpOf(EntityRef.Player(0), legacyW),
+                         World.progressOf(EntityRef.Player(0), legacyW))),
+            (viewSome(EntityRef.Player(0), sc) and viewSome(EntityRef.Enemy(1), sc),
+             evCount > 0,
+             (World.hpOf(EntityRef.Enemy(1), sysW),
+              World.hpOf(EntityRef.Player(0), sysW),
+              World.progressOf(EntityRef.Player(0), sysW))))
+
+    /// B5: level-up path も legacy 等価か。A fixture（player exp=99 → 撃破で 100 跨ぎ→ Lv2/exp34）。
+    /// growthRates=0 ゆえ hit→growth(spike) と hit→crit→thief→growth(legacy) の draw 順差は最終 World に効かない
+    /// 範囲（成長が起きない）で legacy 凍結 World に一致する（その制約は CombatSystem header の ☐ に明記）。
+    @Test
+    def testResolveCombatEqualsLegacyLevelUp(): Unit \ Assert =
+        let sc = sceneOf(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, _, legacyW) = runAttack(sc);
+        let w0 = World.syncFromScene(sc, World.empty());
+        let (sysW, evCount) = region rc {
+            let (w, evs) = TestUnitFixtures.withSeededRng(rc, seed(), () ->
+                CombatSystem.resolveAttack(w0, {ref = EntityRef.Player(0), level = 1}, {ref = EntityRef.Enemy(1), level = 1}));
+            (w, List.length(evs))
+        };
+        Assert.assertEq(
+            expected = (true, true,
+                        (World.hpOf(EntityRef.Enemy(1), legacyW),
+                         World.hpOf(EntityRef.Player(0), legacyW),
+                         World.progressOf(EntityRef.Player(0), legacyW))),
+            (viewSome(EntityRef.Player(0), sc) and viewSome(EntityRef.Enemy(1), sc),
+             evCount > 0,
+             (World.hpOf(EntityRef.Enemy(1), sysW),
+              World.hpOf(EntityRef.Player(0), sysW),
+              World.progressOf(EntityRef.Player(0), sysW))))
+
+    /// B1 を pin: **overkill**（enemy hp=3 を dmg=4 で撃破→ strike#newHp=-1）でも、CombatSystem の clamp で
+    /// 最終 enemy hp=0 になり legacy（startDeathAnimation の hard 0）と一致する。clamp が無ければ resolveAttack は
+    /// -1 を残し legacy の 0 と乖離してこのテストが落ちる＝clamp の divergence 防止価値を回帰固定する。
+    @Test
+    def testResolveCombatEqualsLegacyOverkill(): Unit \ Assert =
+        let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 3, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, _, legacyW) = runAttack(sc);
+        let w0 = World.syncFromScene(sc, World.empty());
+        let (sysW, evCount) = region rc {
+            let (w, evs) = TestUnitFixtures.withSeededRng(rc, seed(), () ->
+                CombatSystem.resolveAttack(w0, {ref = EntityRef.Player(0), level = 1}, {ref = EntityRef.Enemy(1), level = 1}));
+            (w, List.length(evs))
+        };
+        Assert.assertEq(
+            expected = (true, Some(0), World.hpOf(EntityRef.Enemy(1), legacyW)),  // legacy も 0
+            (evCount > 0, World.hpOf(EntityRef.Enemy(1), sysW), World.hpOf(EntityRef.Enemy(1), sysW)))
+
     // ── (E) ROLL-DEPENDENT fixture（定数生成器では再現不能）─────────────────────
 
     /// 既存 fixture は weaponHit=200・crit=0 で「常時命中・必殺なし」＝outcome が draw 値に依存せず、
