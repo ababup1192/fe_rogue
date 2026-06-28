@@ -1,0 +1,1 @@
+../../engine/src/scene/AnimatedSprite2D.flix

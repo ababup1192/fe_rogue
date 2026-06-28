@@ -1,13 +1,22 @@
 [package]
 name        = "flix_game_engine_monorepo"
-description = "Repository-root package for the Flix community build. Inlines engine_core sources via ./src symlinks so `flix build` works at the repo root."
+description = "Repository-root package for the Flix community build. Inlines the engine library stack (engine_core + render_core + engine) via ./src symlinks and builds it through a dummy window app (src/Main.flix)."
 version     = "0.1.0"
 flix        = "0.73.0"
 authors     = ["ababup1192 <ababup1192@gmail.com>"]
 
-# community-build はリポジトリルートで `flix build` する。ルートに単一パッケージを置き、
-# 依存ゼロの土台 engine_core のソースを ./src へ相対 symlink で同梱する (make sync-root)。
-# engine_core は Flix 標準ライブラリのみに依存し、mvn / native / github 依存を持たないため
-# 外部ダウンロード無しで最速・確実にグリーンになる。
-# 既存のモノレポ構成 (engine_core/ render_core/ engine/ ide/ examples/) と make sync は無変更。
+# community-build はリポジトリルートで `flix build` する。engine ライブラリ3層のソースを
+# ./src へ symlink 同梱 (make sync-root) し、src/Main.flix の window 構築ダミーアプリで
+# コンパイル/codegen させる。examples/ide は別アプリ (複数 main) のため対象外。
+# モノレポ構成と make sync は無変更。
 [dependencies]
+
+# LWJGL は engine/render_core が Java interop で参照するためコンパイルに必要。
+# native ランタイム jar (jar-dependencies) は実行時のみ必要で、community-build は
+# `flix build` (コンパイルのみ) なので宣言しない＝CI を軽く・壊れにくくする。
+[mvn-dependencies]
+"org.lwjgl:lwjgl"        = "3.4.1"
+"org.lwjgl:lwjgl-opengl" = "3.4.1"
+"org.lwjgl:lwjgl-stb"    = "3.4.1"
+"org.lwjgl:lwjgl-openal" = "3.4.1"
+"org.lwjgl:lwjgl-glfw"   = "3.4.1"

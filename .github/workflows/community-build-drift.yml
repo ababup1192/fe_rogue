@@ -1,12 +1,14 @@
 name: community-build root drift guard
 
 # community-build はリポジトリルートで `flix build` する。ルートの単一パッケージは
-# ./src を symlink で同梱した engine_core のソースをコンパイルする。
-# engine_core/src にファイルが増減したのに ./src を再生成し忘れると、
+# ./src を symlink で同梱した engine ライブラリ3層 (engine_core + render_core + engine) の
+# ソースを、src/Main.flix の window 構築ダミーアプリでコンパイルする。
+# いずれかの src にファイルが増減したのに ./src を再生成し忘れると、
 # regression ビルドから黙ってファイルが漏れる/壊れる。
 # このガードは `make sync-root` を実行し、./src に差分が出たら fail させることで
-# ./src が常に engine_core/src と一致していることを保証する。
-# (Makefile と同じ生成ロジックを使うので、ガードとターゲットが食い違うことはない。)
+# ./src が常に 3層の src と一致していることを保証する。
+# (Makefile と同じ生成ロジックを使うので、ガードとターゲットが食い違うことはない。
+#  src/Main.flix は実ファイルで sync-root が温存するため差分には出ない。)
 
 on:
   pull_request:
@@ -24,10 +26,10 @@ jobs:
           make sync-root
           CHANGES="$(git status --porcelain -- src)"
           if [ -n "$CHANGES" ]; then
-            echo "::error::./src is out of sync with engine_core/src. Run 'make sync-root' and commit the result."
+            echo "::error::./src is out of sync with the engine library sources. Run 'make sync-root' and commit the result."
             echo "--- drift (git status --porcelain -- src) ---"
             echo "$CHANGES"
             git diff -- src || true
             exit 1
           fi
-          echo "./src is in sync with engine_core/src ($(ls src/*.flix | wc -l | tr -d ' ') files)."
+          echo "./src is in sync ($(find src -type l -name '*.flix' | wc -l | tr -d ' ') symlinks + Main.flix)."

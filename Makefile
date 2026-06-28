@@ -53,7 +53,7 @@ SUBPATH_DEPTH := 5
 help:
 	@echo "Targets:"
 	@echo "  make sync                 engine_core / render_core / engine を build-pkg し、各依存先に配布"
-	@echo "  make sync-root            community-build 用: ./src へ engine_core/src を symlink 同梱"
+	@echo "  make sync-root            community-build 用: ./src へ engine 3層を symlink 同梱"
 	@echo "  make sync-engine-core     engine_core だけ build-pkg & 配布 (render_core / engine / ide / examples へ)"
 	@echo "  make sync-render-core     render_core だけ build-pkg & 配布 (engine / ide / examples へ)"
 	@echo "  make sync-engine          engine だけ build-pkg & 配布 (ide / examples へ)"
@@ -83,20 +83,33 @@ clean-example-builds:
 
 sync: clean-locks sync-engine-core sync-render-core sync-engine
 
-# community-build はリポジトリルートで `flix build` する。ルートの単一パッケージ (flix.toml) が
-# コンパイルするのは ./src だけなので、依存ゼロの土台 engine_core のソースを ./src へ
-# 相対 symlink で同梱する。これでルートビルドが engine_core を型検査し、Flix community-build に
-# 1 リポ・1 エントリで載せられる。既存の sync-* (fpkg 配布) とは独立で、モノレポ構成は無変更。
-# 冪等: 既存の *.flix symlink を一度消してから engine_core/src/*.flix を貼り直す
-# (engine_core 側でファイルが増減しても ./src が追従する)。
+# community-build はリポジトリルートで `flix build` する。ルートの単一パッケージ (flix.toml) は
+# engine ライブラリ3層 (engine_core + render_core + engine) のソースを ./src へ
+# ディレクトリ構造を保ったまま相対 symlink で同梱し、src/Main.flix の window 構築
+# ダミーアプリ (main は 1 つだけ) でそれらをコンパイル/codegen させる。これでルート
+# ビルドがエンジン全体を型検査し、Flix community-build に 1 リポ・1 エントリで載る。
+# examples/ide は別アプリ (複数 main) のため対象外。LWJGL は flix.toml に mvn のみ宣言
+# (コンパイルに必要・native は実行時のみなので不要)。既存の sync-* (fpkg 配布) とは
+# 独立で、モノレポ構成は無変更。
+# 冪等: 既存 symlink と空ディレクトリを消してから貼り直す。src/Main.flix(実ファイル)は温存。
+ROOT_LIB_LAYERS := $(ENGINE_CORE_DIR) $(RENDER_CORE_DIR) $(ENGINE_DIR)
 sync-root:
 	@mkdir -p src
-	@find src -maxdepth 1 -type l -name '*.flix' -delete
-	@for f in $(ENGINE_CORE_DIR)/src/*.flix; do \
-		base=$$(basename "$$f"); \
-		ln -sfn "../$(ENGINE_CORE_DIR)/src/$$base" "src/$$base"; \
+	@find src -type l -delete
+	@find src -mindepth 1 -type d -empty -delete 2>/dev/null || true
+	@for layer in $(ROOT_LIB_LAYERS); do \
+		find "$$layer/src" -name '*.flix' | while read -r f; do \
+			rel=$${f#$$layer/src/}; \
+			dir=$$(dirname "$$rel"); \
+			if [ "$$dir" = "." ]; then d=src; else d="src/$$dir"; fi; \
+			mkdir -p "$$d"; \
+			up=$$(printf '%s' "$$d" | tr -cd '/' | wc -c | tr -d ' '); \
+			up=$$((up + 1)); \
+			prefix=$$(printf '../%.0s' $$(seq 1 $$up)); \
+			ln -sfn "$${prefix}$$layer/src/$$rel" "$$d/$$(basename "$$rel")"; \
+		done; \
 	done
-	@echo "[sync-root] ./src <- $(ENGINE_CORE_DIR)/src/*.flix ($$(ls src/*.flix | wc -l | tr -d ' ') files)"
+	@echo "[sync-root] ./src <- $(ROOT_LIB_LAYERS) ($$(find src -type l -name '*.flix' | wc -l | tr -d ' ') symlinks + Main.flix)"
 
 # engine_core は engine / render_core / ide / examples すべてが（直接または推移的に）依存する。
 # 最も土台のパッケージなので sync チェーンの先頭に置く。

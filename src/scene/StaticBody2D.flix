@@ -1,0 +1,1 @@
+../../engine/src/scene/StaticBody2D.flix
