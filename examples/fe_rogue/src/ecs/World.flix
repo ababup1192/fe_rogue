@@ -20,14 +20,8 @@ pub enum SimPhase with Eq, ToString {
     case GameOver     // 全滅モーダル
 }
 
-/// S-A0（Phase B 土台）: `combatView` が読む base 戦闘値（resource 由来・status/ring 補正**前**）。
-/// stats（攻/魔攻/防/魔防/技/速/運）+ maxHp を 1 component に束ねた **read-model**。
-/// resource 由来ゆえ scene から純粋導出でき、refreshMirror で毎フレーム再 mirror（statusEffects と同型・
-/// 構築上常に scene と一致＝emit/DIFF 不要）。B1 で combatView の reader をここへ flip する。
-pub type alias BaseStats = {
-    attack = Int32, magicAttack = Int32, defense = Int32, magicDefense = Int32,
-    skill = Int32, speed = Int32, luck = Int32, maxHp = Int32
-}
+// S-A0: combatView の base 戦闘値型 `BaseStats` と組立 `assembleView` は `Combat`（ecs/rules）に集約。
+// World はそれを read-model として格納し（`baseStats`）、`combatViewOf` で `Combat.assembleView` を呼ぶ。
 
 pub enum World {
     case World({ tick = Int32,
@@ -70,7 +64,7 @@ pub enum World {
                  playerLevel = Map[EntityId, Int32], playerExp = Map[EntityId, Int32],
                  // S-A0: base 戦闘値 + maxHp の read-model（unified-id・両 faction）。resource 由来ゆえ
                  // refreshMirror で毎フレーム scene から再 mirror（statusEffects と同型）。combatView flip 用。
-                 baseStats = Map[EntityId, BaseStats],
+                 baseStats = Map[EntityId, Combat.BaseStats],
                  // S-A0b: 装備武器の戦闘投影 read-model（unified-id・両 faction）。内側 Option=武器なし。
                  // PlayerScene/EnemyScene.equippedWeaponView 由来ゆえ毎フレーム再 mirror。combatView flip 用。
                  weaponView = Map[EntityId, Option[Combat.WeaponView]],
@@ -114,15 +108,6 @@ mod World {
     /// PlayerScene.getAll / EnemyScene.getAll（既存・純粋）を再利用（新規走査は書かない）。
     /// F8-slice1: attackTargetId(Option) を持つ unit list を `Map[id, target]`（None は非在）に畳む。
     /// row-poly で Player/Enemy Data 両対応。
-    /// S-A0: resource record（UnitResource / EnemyResource 両対応・row-poly）から base 戦闘値を抽出する。
-    /// status/ring 補正は載せない（combatView が読み取り時に加える）。maxHp は resource#hp。
-    pub def baseStatsFrom(r: {attack = Int32, magicAttack = Int32, defense = Int32,
-                             magicDefense = Int32, skill = Int32, speed = Int32,
-                             luck = Int32, hp = Int32 | rest}): BaseStats =
-        {attack = r#attack, magicAttack = r#magicAttack, defense = r#defense,
-         magicDefense = r#magicDefense, skill = r#skill, speed = r#speed,
-         luck = r#luck, maxHp = r#hp}
-
     def attackTargetMap(uidOf: Int32 -> EntityId, units: List[{id = Int32, attackTargetId = Option[Int32] | r}]): Map[EntityId, Int32] =
         List.foldLeft((m, d) -> match d#attackTargetId {
             case Some(t) => Map.insert(uidOf(d#id), t, m)
@@ -158,8 +143,8 @@ mod World {
             playerWaited   = Query.indexBy(d -> d#id, d -> d#waited, players),
             playerLevel    = Query.indexBy(d -> d#id, d -> d#level, players),
             playerExp      = Query.indexBy(d -> d#id, d -> d#exp, players),
-            baseStats = Map.union(Query.indexBy(d -> d#id, d -> baseStatsFrom(d#resource), players),
-                                  Query.indexBy(d -> enemyUid(d#id), d -> baseStatsFrom(d#resource), enemies)),
+            baseStats = Map.union(Query.indexBy(d -> d#id, d -> Combat.baseStatsFrom(d#resource), players),
+                                  Query.indexBy(d -> enemyUid(d#id), d -> Combat.baseStatsFrom(d#resource), enemies)),
             weaponView = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedWeaponView(d), players),
                                    Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedWeaponView(d), enemies)),
             ringBonus = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedRingBonus(d), players),
@@ -212,8 +197,8 @@ mod World {
             playerLevel    = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerLevel),
             playerExp      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerExp),
             // S-A0: baseStats は resource 由来の read-model ＝ scene から毎フレーム再 mirror（statusEffects と同型・command 由来でない）。
-            baseStats = Map.union(Query.indexBy(d -> d#id, d -> baseStatsFrom(d#resource), players),
-                                  Query.indexBy(d -> enemyUid(d#id), d -> baseStatsFrom(d#resource), enemies)),
+            baseStats = Map.union(Query.indexBy(d -> d#id, d -> Combat.baseStatsFrom(d#resource), players),
+                                  Query.indexBy(d -> enemyUid(d#id), d -> Combat.baseStatsFrom(d#resource), enemies)),
             // S-A0b: weaponView も装備武器由来の read-model ＝ 毎フレーム再 mirror。
             weaponView = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedWeaponView(d), players),
                                    Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedWeaponView(d), enemies)),
@@ -535,7 +520,7 @@ mod World {
 
     /// S-A0: base 戦闘値 + maxHp を World から読む（unified-id・両 faction）。未登録は None。
     /// B1 で combatView がここを読み、status/ring 補正を加えて CombatView を組む（reader flip）。
-    pub def baseStatsOf(ref: EntityRef, world: World): Option[BaseStats] =
+    pub def baseStatsOf(ref: EntityRef, world: World): Option[Combat.BaseStats] =
         let World.World(w) = world; Map.get(toUid(ref), w#baseStats)
 
     /// S-A0b: 装備武器の戦闘投影を World から読む（unified-id・両 faction）。
@@ -556,16 +541,13 @@ mod World {
     pub def combatViewOf(ref: EntityRef, world: World): Option[Combat.CombatView] =
         match (baseStatsOf(ref, world), hpOf(ref, world), ringBonusOf(ref, world)) {
             case (Some(bs), Some(hp), Some(rb)) =>
-                let m = StatusSystem.combatMods(statusEffectsOf(ref, world));
-                Some({attack = bs#attack + m#atkBonus + rb#attack,
-                      magicAttack = bs#magicAttack,
-                      defense = bs#defense + rb#defense + m#defDelta,
-                      magicDefense = bs#magicDefense,
-                      skill = bs#skill + rb#skill,
-                      speed = bs#speed + m#spdDelta + rb#speed,
-                      luck = bs#luck + rb#luck,
-                      hp = hp, maxHp = bs#maxHp, hitMod = m#hitMod,
-                      weapon = weaponViewOf(ref, world)})
+                // scene combatView と同一の組立（`Combat.assembleView` 単一源泉）を使う＝formula drift 不能。
+                Some(Combat.assembleView({
+                    base   = bs,
+                    mods   = StatusSystem.combatMods(statusEffectsOf(ref, world)),
+                    ring   = rb,
+                    hp     = hp,
+                    weapon = weaponViewOf(ref, world)}))
             case _ => None
         }
 

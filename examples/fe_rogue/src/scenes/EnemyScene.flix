@@ -729,13 +729,12 @@ mod EnemyScene {
     /// 敵には得意/苦手の概念が無いので、持っている武器は常に得意（proficient = true、100%）。
     pub def combatView(data: Data): Combat.CombatView =
         // 投擲デバフ（目潰し=命中ダウン / 鈍足=速さダウン）を被弾していれば戦闘ビューに反映する。
-        let m = StatusSystem.combatMods(data#statuses);
-        let rb = equippedRingBonus(data);
-        {attack = data#resource#attack + m#atkBonus + rb#attack, magicAttack = data#resource#magicAttack,
-         defense = data#resource#defense + rb#defense + m#defDelta, magicDefense = data#resource#magicDefense,
-         skill = data#resource#skill + rb#skill, speed = data#resource#speed + m#spdDelta + rb#speed,
-         luck = data#resource#luck + rb#luck, hp = data#hp, maxHp = data#resource#hp, hitMod = m#hitMod,
-         weapon = equippedWeaponView(data)}
+        Combat.assembleView({
+            base   = Combat.baseStatsFrom(data#resource),
+            mods   = StatusSystem.combatMods(data#statuses),
+            ring   = equippedRingBonus(data),
+            hp     = data#hp,
+            weapon = equippedWeaponView(data)})
 
     /// S-A0: この敵の装備武器の戦闘投影。`combatView` と World read-model 構築が共有する。
     /// 敵は得意/苦手の概念がないので proficient は常に true。武器なしは None。

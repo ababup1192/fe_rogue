@@ -520,7 +520,7 @@ mod CombatScene {
                 // 血吸いの剣: 与ダメージの一定%を毎ヒット回復（撃破非依存）。
                 let afterWSteal = applyPlayerWeaponLifesteal(playerId, player, weapon, finalPlan#dmg, afterSteal);
                 // 如意棒 / 突風の書: 生存している敵をノックバック。
-                let afterKnock = applyAttackKnockback(weapon, player#gridPos, enemy#gridPos, enemyId, finalPlan#killed, afterWSteal);
+                let afterKnock = applyAttackKnockback(weapon, {attacker = player#gridPos, defender = enemy#gridPos}, enemyId, finalPlan#killed, afterWSteal);
                 // 盗人の剣: ローグ装備時、命中・生存時に確率でフロア表からアイテムを落とす。
                 let afterThief = maybeThiefDrop(playerId, player, weapon, enemyId, enemy#gridPos, finalPlan#killed, rollPercent(), afterKnock);
                 (afterThief, expGained)
@@ -559,28 +559,28 @@ mod CombatScene {
                 |> PlayerScene.setHp(playerId, newHp)
                 |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), newHp)
 
+    /// ノックバックの攻撃側・被攻撃側セル（同型 {x,y} が 2 つで誤順しやすいので名前渡し）。
+    type alias KnockbackPos = {attacker = {x = Int32, y = Int32}, defender = {x = Int32, y = Int32}}
+
     /// 如意棒 / 突風の書: ノックバック武器なら、生存している敵を攻撃方向へ押し流す。
     /// 上限マス数は `effectValue`（0=無制限）。`Staff.deltaToDirection` で 4 方位に丸める。
-    def applyAttackKnockback(weapon: UnitCatalog.WeaponResource,
-                              attackerPos: {x = Int32, y = Int32},
-                              defenderPos: {x = Int32, y = Int32},
+    def applyAttackKnockback(weapon: UnitCatalog.WeaponResource, pos: KnockbackPos,
                               enemyId: Int32, killed: Bool,
                               scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command, BoardQuery} =
         match WeaponCatalog.knockbackTiles(weapon#effect, weapon#effectValue) {
             case None        => scene
-            case Some(tiles) => if (killed) scene else pushEnemyBack(tiles, attackerPos, defenderPos, enemyId, scene)
+            case Some(tiles) => if (killed) scene else pushEnemyBack(tiles, pos, enemyId, scene)
         }
 
     /// ノックバック本体: 方向算出 → `knockbackPathCapped` の最終着地へ `snapTo`。
-    def pushEnemyBack(tiles: Int32, attackerPos: {x = Int32, y = Int32},
-                       defenderPos: {x = Int32, y = Int32}, enemyId: Int32,
+    def pushEnemyBack(tiles: Int32, pos: KnockbackPos, enemyId: Int32,
                        scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command, BoardQuery} =
         let dir = Staff.toVec2i(Staff.deltaToDirection(
-                    defenderPos#x - attackerPos#x, defenderPos#y - attackerPos#y));
+                    pos#defender#x - pos#attacker#x, pos#defender#y - pos#attacker#y));
         // P1b: 敵ノックバック（mid-frame）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
         let board: Board = BoardQuery.board();
         let cap = if (tiles <= 0) None else Some(tiles);
-        match List.last(Board.knockbackPathCapped(defenderPos, dir, board, cap)) {
+        match List.last(Board.knockbackPathCapped(pos#defender, dir, board, cap)) {
             case None       => scene
             case Some(last) => EnemyScene.snapTo(enemyId, last, scene)
         }
@@ -736,7 +736,7 @@ mod CombatScene {
                 // 血吸いの剣（敵装備時）: 与ダメージの一定%を回復（撃破非依存）。
                 let afterWSteal = applyEnemyWeaponLifesteal(enemyId, enemy, weapon, outcome#dmg, afterRingSteal);
                 // 如意棒 / 突風の書（敵装備時）: 生存している味方をノックバック。
-                let afterKnock = applyEnemyKnockback(weapon, enemy#gridPos, player#gridPos, targetId, outcome#killed, afterWSteal);
+                let afterKnock = applyEnemyKnockback(weapon, {attacker = enemy#gridPos, defender = player#gridPos}, targetId, outcome#killed, afterWSteal);
                 // 敵固有の特殊能力（effectRule = データ駆動）: 命中後に毒/鈍足/吸血などを発火。
                 let afterEffect = applyEnemyEffectRule(enemy, enemyId, targetId, player,
                                                        outcome#dmg, outcome#newHp, outcome#killed, afterKnock);
@@ -898,26 +898,23 @@ mod CombatScene {
                 |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), newHp)
 
     /// 敵の如意棒 / 突風の書: ノックバック武器なら、生存している味方を攻撃方向へ押し流す。
-    def applyEnemyKnockback(weapon: UnitCatalog.WeaponResource,
-                             attackerPos: {x = Int32, y = Int32},
-                             defenderPos: {x = Int32, y = Int32},
+    def applyEnemyKnockback(weapon: UnitCatalog.WeaponResource, pos: KnockbackPos,
                              targetId: Int32, killed: Bool,
                              scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command, BoardQuery} =
         match WeaponCatalog.knockbackTiles(weapon#effect, weapon#effectValue) {
             case None        => scene
-            case Some(tiles) => if (killed) scene else pushPlayerBack(tiles, attackerPos, defenderPos, targetId, scene)
+            case Some(tiles) => if (killed) scene else pushPlayerBack(tiles, pos, targetId, scene)
         }
 
     /// 味方ノックバック本体: 方向算出 → `knockbackPathCapped` の最終着地へ `snapTo`。
-    def pushPlayerBack(tiles: Int32, attackerPos: {x = Int32, y = Int32},
-                        defenderPos: {x = Int32, y = Int32}, targetId: Int32,
+    def pushPlayerBack(tiles: Int32, pos: KnockbackPos, targetId: Int32,
                         scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command, BoardQuery} =
         let dir = Staff.toVec2i(Staff.deltaToDirection(
-                    defenderPos#x - attackerPos#x, defenderPos#y - attackerPos#y));
+                    pos#defender#x - pos#attacker#x, pos#defender#y - pos#attacker#y));
         // P1b: 味方ノックバック（mid-frame）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
         let board: Board = BoardQuery.board();
         let cap = if (tiles <= 0) None else Some(tiles);
-        match List.last(Board.knockbackPathCapped(defenderPos, dir, board, cap)) {
+        match List.last(Board.knockbackPathCapped(pos#defender, dir, board, cap)) {
             case None       => scene
             case Some(last) => PlayerScene.snapTo(targetId, last, scene)
         }

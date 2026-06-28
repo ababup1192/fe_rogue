@@ -211,8 +211,8 @@ mod StaffCastScene {
             case "swapPos" =>
                 match (gridOf(srcId, true, sc), gridOf(id, ally, sc)) {
                     case (Some(srcCell), Some(otherCell)) =>
-                        if (ally) applySwapWithPlayer(srcId, srcCell, id, otherCell, sc)
-                        else      applySwapWithEnemy(srcId, srcCell, id, otherCell, sc)
+                        if (ally) applySwapWithPlayer({id = srcId, cell = srcCell}, {id = id, cell = otherCell}, sc)
+                        else      applySwapWithEnemy({id = srcId, cell = srcCell}, {id = id, cell = otherCell}, sc)
                     case _ => sc
                 }
             case "warpToStairs" =>
@@ -243,9 +243,9 @@ mod StaffCastScene {
             case (Staff.StaffEffect.Blowback, RayHit.HitEnemy(targetId, hitCell)) =>
                 applyBlowbackToEnemy(playerId, targetId, hitCell, dir, scene)
             case (Staff.StaffEffect.Swap, RayHit.HitPlayer(otherId, otherCell)) =>
-                applySwapWithPlayer(playerId, player#gridPos, otherId, otherCell, scene)
+                applySwapWithPlayer({id = playerId, cell = player#gridPos}, {id = otherId, cell = otherCell}, scene)
             case (Staff.StaffEffect.Swap, RayHit.HitEnemy(enemyId, enemyCell)) =>
-                applySwapWithEnemy(playerId, player#gridPos, enemyId, enemyCell, scene)
+                applySwapWithEnemy({id = playerId, cell = player#gridPos}, {id = enemyId, cell = enemyCell}, scene)
             case (Staff.StaffEffect.Bind, RayHit.HitPlayer(targetId, _)) =>
                 applyBindToPlayer(PlayerScene.displayName(playerId, scene), targetId, defaultBindTurns(), scene)
             case (Staff.StaffEffect.Bind, RayHit.HitEnemy(targetId, _)) =>
@@ -323,7 +323,7 @@ mod StaffCastScene {
                 GameLogger.playerLog(
                     "${PlayerScene.displayName(srcId, scene)} ▶ ${PlayerScene.displayName(targetId, scene)} を ふきとばし (1ダメージ)");
                 if (dmgResult#isDead) withDamage
-                else applyBlowbackMove(targetId, hitCell, dir, withDamage,
+                else applyBlowbackMove({hit = hitCell, dir = dir}, withDamage,
                                         cell -> PlayerScene.snapTo(targetId, cell, withDamage))
         }
 
@@ -349,22 +349,20 @@ mod StaffCastScene {
                         |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), dmgResult#newHp);
                     GameLogger.playerLog(
                         "${PlayerScene.displayName(srcId, scene)} ▶ ${EnemyScene.displayName(enemyId, scene)} を ふきとばし (1ダメージ)");
-                    applyBlowbackMove(enemyId, hitCell, dir, withDamage,
+                    applyBlowbackMove({hit = hitCell, dir = dir}, withDamage,
                                        cell -> EnemyScene.snapTo(enemyId, cell, withDamage))
                 }
         }
 
     /// 押される対象の最終位置を `Board.knockbackPath` で計算し、`moveFn` で動かす。
     /// 経路が空（押される先がない）なら何もしない。
-    def applyBlowbackMove(_targetId: Int32,
-                           hitCell: {x = Int32, y = Int32},
-                           dir: {x = Int32, y = Int32},
+    def applyBlowbackMove(geom: {hit = {x = Int32, y = Int32}, dir = {x = Int32, y = Int32}},
                            scene: Scene[NodeTag],
                            moveFn: {x = Int32, y = Int32} -> Scene[NodeTag] \ {Tween.Scheduler, World.Command}):
             Scene[NodeTag] \ {Tween.Scheduler, World.Command, BoardQuery} =
         // P1a: player cast の blowback 経路。board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
         let board: Board = BoardQuery.board();
-        let path = Board.knockbackPath(hitCell, dir, board);
+        let path = Board.knockbackPath(geom#hit, geom#dir, board);
         match List.last(path) {
             case None       => scene
             case Some(last) => moveFn(last)
@@ -372,25 +370,26 @@ mod StaffCastScene {
 
     /// いれかえ × 味方: 自分と相手の gridPos を瞬間 swap する。
     /// 将来: sequence engine が揃えば交差するアニメーションに置換できる（現在は瞬間移動）。
-    def applySwapWithPlayer(srcId: Int32, srcCell: {x = Int32, y = Int32},
-                              otherId: Int32, otherCell: {x = Int32, y = Int32},
+    /// いれかえ対象の (id, 盤面セル)。id と cell の組を 2 つ取る関数で誤順しやすいので束ねる。
+    type alias UnitCell = {id = Int32, cell = {x = Int32, y = Int32}}
+
+    def applySwapWithPlayer(src: UnitCell, other: UnitCell,
                               scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command} =
-        GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} と ${PlayerScene.displayName(otherId, scene)} がいれかわった");
+        GameLogger.playerLog("${PlayerScene.displayName(src#id, scene)} と ${PlayerScene.displayName(other#id, scene)} がいれかわった");
         scene
-            |> PlayerScene.snapTo(srcId, otherCell)
-            |> PlayerScene.snapTo(otherId, srcCell)
+            |> PlayerScene.snapTo(src#id, other#cell)
+            |> PlayerScene.snapTo(other#id, src#cell)
 
     /// いれかえ × 敵: 自分（Player）と敵を交換する。
     /// 将来: sequence engine が揃えば交差するアニメーションに置換できる（現在は瞬間移動）。
-    def applySwapWithEnemy(srcId: Int32, srcCell: {x = Int32, y = Int32},
-                             enemyId: Int32, enemyCell: {x = Int32, y = Int32},
+    def applySwapWithEnemy(src: UnitCell, enemy: UnitCell,
                              scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command} =
-        GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} と ${EnemyScene.displayName(enemyId, scene)} がいれかわった");
+        GameLogger.playerLog("${PlayerScene.displayName(src#id, scene)} と ${EnemyScene.displayName(enemy#id, scene)} がいれかわった");
         scene
-            |> PlayerScene.snapTo(srcId, enemyCell)
-            |> EnemyScene.snapTo(enemyId, srcCell)
+            |> PlayerScene.snapTo(src#id, enemy#cell)
+            |> EnemyScene.snapTo(enemy#id, src#cell)
 
     // ── かなしばり / 一時しのぎ（完全停止 / 停止 + ワープ）──────────────
 

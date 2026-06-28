@@ -179,6 +179,46 @@ mod Combat {
         weapon = Option[WeaponView]
     }
 
+    /// S-A0: `combatView` が読む base 戦闘値（resource 由来・status/ring 補正**前**）+ maxHp。
+    /// World read-model（`baseStats`）の格納型もこれ。combatView の組立 source。
+    pub type alias BaseStats = {
+        attack = Int32, magicAttack = Int32, defense = Int32, magicDefense = Int32,
+        skill = Int32, speed = Int32, luck = Int32, maxHp = Int32
+    }
+
+    /// resource record（UnitResource / EnemyResource 両対応・row-poly）から base 戦闘値を抽出する。
+    /// status/ring 補正は載せない（`assembleView` が加える）。maxHp は resource#hp。
+    pub def baseStatsFrom(r: {attack = Int32, magicAttack = Int32, defense = Int32,
+                             magicDefense = Int32, skill = Int32, speed = Int32,
+                             luck = Int32, hp = Int32 | rest}): BaseStats =
+        {attack = r#attack, magicAttack = r#magicAttack, defense = r#defense,
+         magicDefense = r#magicDefense, skill = r#skill, speed = r#speed,
+         luck = r#luck, maxHp = r#hp}
+
+    /// `assembleView` の入力（名前渡しレコード）。位置引数が多くて読みづらいので 1 レコードに束ねる。
+    /// `mods` は `StatusSystem.combatMods` の戻り、`ring` は `Ring.Bonuses` と構造一致（nominal 依存なし）。
+    pub type alias ViewParts = {
+        base   = BaseStats,
+        mods   = {atkBonus = Int32, spdDelta = Int32, hitMod = Int32, defDelta = Int32},
+        ring   = {attack = Int32, speed = Int32, defense = Int32, skill = Int32, luck = Int32},
+        hp     = Int32,
+        weapon = Option[WeaponView]
+    }
+
+    /// **combatView の組立を 1 箇所に集約**（formula の単一源泉）。base 戦闘値 + status mods + 指輪ボーナス
+    /// + 現 hp + 装備武器投影 を合成して `CombatView` を返す。引数は `ViewParts` レコードで名前渡し。
+    /// scene combatView も World combatViewOf もこれを呼ぶ＝formula drift 不能。
+    pub def assembleView(p: ViewParts): CombatView =
+        {attack = p#base#attack + p#mods#atkBonus + p#ring#attack,
+         magicAttack = p#base#magicAttack,
+         defense = p#base#defense + p#ring#defense + p#mods#defDelta,
+         magicDefense = p#base#magicDefense,
+         skill = p#base#skill + p#ring#skill,
+         speed = p#base#speed + p#mods#spdDelta + p#ring#speed,
+         luck = p#base#luck + p#ring#luck,
+         hp = p#hp, maxHp = p#base#maxHp, hitMod = p#mods#hitMod,
+         weapon = p#weapon}
+
     /// 装備武器（Option）から `CombatView#weapon` を組む。`isPhysical` をここで解決する。
     /// `proficient` は「この攻撃側がこの武器タイプを得意とするか」。苦手（false）なら
     /// `estimate` が威力・命中を 80% に下げる。敵は常に true（得意/苦手の概念なし）を渡す。

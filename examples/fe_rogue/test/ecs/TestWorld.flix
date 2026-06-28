@@ -675,8 +675,8 @@ mod TestWorld {
         // record は Eq を持たないので 8-tuple に射影して比較する（Int32 tuple は Eq）。
         let toTup = bs -> (bs#attack, bs#magicAttack, bs#defense, bs#magicDefense,
                            bs#skill, bs#speed, bs#luck, bs#maxHp);
-        let p0 = Option.map(d -> toTup(World.baseStatsFrom(d#resource)), PlayerScene.get(0, scene));
-        let e5 = Option.map(d -> toTup(World.baseStatsFrom(d#resource)), EnemyScene.get(5, scene));
+        let p0 = Option.map(d -> toTup(Combat.baseStatsFrom(d#resource)), PlayerScene.get(0, scene));
+        let e5 = Option.map(d -> toTup(Combat.baseStatsFrom(d#resource)), EnemyScene.get(5, scene));
         Assert.assertEq(
             expected = (p0, e5),
             (Option.map(toTup, World.baseStatsOf(World.EntityRef.Player(0), w)),
