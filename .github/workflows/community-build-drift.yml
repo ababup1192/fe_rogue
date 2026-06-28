@@ -1,0 +1,33 @@
+name: community-build root drift guard
+
+# community-build はリポジトリルートで `flix build` する。ルートの単一パッケージは
+# ./src を symlink で同梱した engine_core のソースをコンパイルする。
+# engine_core/src にファイルが増減したのに ./src を再生成し忘れると、
+# regression ビルドから黙ってファイルが漏れる/壊れる。
+# このガードは `make sync-root` を実行し、./src に差分が出たら fail させることで
+# ./src が常に engine_core/src と一致していることを保証する。
+# (Makefile と同じ生成ロジックを使うので、ガードとターゲットが食い違うことはない。)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  sync-root-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Regenerate ./src and fail on drift
+        run: |
+          make sync-root
+          CHANGES="$(git status --porcelain -- src)"
+          if [ -n "$CHANGES" ]; then
+            echo "::error::./src is out of sync with engine_core/src. Run 'make sync-root' and commit the result."
+            echo "--- drift (git status --porcelain -- src) ---"
+            echo "$CHANGES"
+            git diff -- src || true
+            exit 1
+          fi
+          echo "./src is in sync with engine_core/src ($(ls src/*.flix | wc -l | tr -d ' ') files)."
