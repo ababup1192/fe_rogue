@@ -361,7 +361,7 @@ mod TestStaffCastScene {
         let board = mkBoard(Set#{}, Nil);
         Assert.assertEq(
             expected = Some((5, 5)),
-            cellTuple(StaffCastScene.warpCellFor(Some({x = 5, y = 5}), board)))
+            cellTuple(StaffRules.warpCellFor(Some({x = 5, y = 5}), board)))
 
     /// 階段が埋まっていれば、隣接する歩ける空きマス（最初に試す上 = y-1）へ。
     @Test
@@ -369,7 +369,7 @@ mod TestStaffCastScene {
         let board = mkBoard(Set#{}, (Piece.Enemy(9), {x = 5, y = 5}) :: Nil);
         Assert.assertEq(
             expected = Some((5, 4)),
-            cellTuple(StaffCastScene.warpCellFor(Some({x = 5, y = 5}), board)))
+            cellTuple(StaffRules.warpCellFor(Some({x = 5, y = 5}), board)))
 
     /// 階段が埋まり隣接 4 マスがすべて壁なら、ワープ先なし（None → 停止だけ）。
     @Test
@@ -378,13 +378,13 @@ mod TestStaffCastScene {
         let board = mkBoard(walls, (Piece.Enemy(9), {x = 5, y = 5}) :: Nil);
         Assert.assertEq(
             expected = None,
-            cellTuple(StaffCastScene.warpCellFor(Some({x = 5, y = 5}), board)))
+            cellTuple(StaffRules.warpCellFor(Some({x = 5, y = 5}), board)))
 
     /// 階段が未配置（None）ならワープ先なし。
     @Test
     def testWarpCellNoStairs(): Unit \ Assert =
         let board = mkBoard(Set#{}, Nil);
-        Assert.assertEq(expected = None, cellTuple(StaffCastScene.warpCellFor(None, board)))
+        Assert.assertEq(expected = None, cellTuple(StaffRules.warpCellFor(None, board)))
 
     // ════════════════════════════════════════════════════════
     // 敵クレリックが詠唱する杖（enemyStaffFor・純粋）

@@ -394,9 +394,7 @@ mod StaffCastScene {
 
     // ── かなしばり / 一時しのぎ（完全停止 / 停止 + ワープ）──────────────
 
-    /// 完全停止を `turns` ターンで 1 件付与する純粋関数。`add` が重ねがけを防ぐので、既に停止中なら据え置かれる。
-    def bindStatuses(turns: Int32, xs: List[StatusSystem.Status]): List[StatusSystem.Status] =
-        StatusSystem.add(StatusSystem.immobilizeFor(turns), xs)
+    // 完全停止 Status 付与 bindStatuses は純 leaf として StaffRules.flix へ移動（A6）。
 
     /// 完全停止の既定ターン数（legacy / stopgap 経路が使う。DSL からは effectRule の turn 数が入る）。
     def defaultBindTurns(): Int32 = 5
@@ -405,13 +403,13 @@ mod StaffCastScene {
     def applyBindToPlayer(srcLabel: String, targetId: Int32, turns: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
         GameLogger.playerLog("${srcLabel} は ${PlayerScene.displayName(targetId, scene)} を かなしばりにした");
-        PlayerScene.mapPlayer(targetId, d -> {statuses = bindStatuses(turns, d#statuses) | d}, scene)
+        PlayerScene.mapPlayer(targetId, d -> {statuses = StaffRules.bindStatuses(turns, d#statuses) | d}, scene)
 
     /// かなしばり × 敵: 対象を `turns` ターン完全停止にする。
     def applyBindToEnemy(srcLabel: String, enemyId: Int32, turns: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ GameLogger.GameLogger =
         GameLogger.playerLog("${srcLabel} は ${EnemyScene.displayName(enemyId, scene)} を かなしばりにした");
-        EnemyScene.mapEnemy(enemyId, d -> {statuses = bindStatuses(turns, d#statuses) | d}, scene)
+        EnemyScene.mapEnemy(enemyId, d -> {statuses = StaffRules.bindStatuses(turns, d#statuses) | d}, scene)
 
     /// 一時しのぎ × 味方: 完全停止にしたうえで階段（埋まっていれば隣接の空き）へワープさせる。
     def applyStopgapToPlayer(srcLabel: String, targetId: Int32, scene: Scene[NodeTag]):
@@ -430,7 +428,7 @@ mod StaffCastScene {
             Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
         // P1b: warp（player/enemy cast 共有）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
         let board = BoardQuery.board();
-        match warpCellFor(StairsScene.getPos(scene), board) {
+        match StaffRules.warpCellFor(StairsScene.getPos(scene), board) {
             case Some(cell) =>
                 GameLogger.playerLog("${PlayerScene.displayName(targetId, scene)} は 階段の方へ とばされた");
                 PlayerScene.snapTo(targetId, cell, scene)
@@ -444,7 +442,7 @@ mod StaffCastScene {
             Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
         // P1a: player cast が敵に当てた warp 経路。board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
         let board = BoardQuery.board();
-        match warpCellFor(StairsScene.getPos(scene), board) {
+        match StaffRules.warpCellFor(StairsScene.getPos(scene), board) {
             case Some(cell) =>
                 GameLogger.playerLog("${EnemyScene.displayName(enemyId, scene)} は 階段の方へ とばされた");
                 EnemyScene.snapTo(enemyId, cell, scene)
@@ -453,26 +451,7 @@ mod StaffCastScene {
                 scene
         }
 
-    /// ワープ先セルを選ぶ純粋関数。階段が空いていれば階段、埋まっていれば階段に隣接する
-    /// 歩ける空きマス、どちらも無ければ None（停止だけ適用してワープしない）。
-    pub def warpCellFor(stairs: Option[{x = Int32, y = Int32}], board: Board):
-            Option[{x = Int32, y = Int32}] =
-        match stairs {
-            case None     => None
-            case Some(st) =>
-                if (not Board.isOccupied(st, board)) Some(st)
-                else adjacentFreeCell(st, board)
-        }
-
-    /// 中心セルに隣接する 4 マスのうち、歩けて空いているマスを 1 つ返す（無ければ None）。
-    def adjacentFreeCell(center: {x = Int32, y = Int32}, board: Board):
-            Option[{x = Int32, y = Int32}] =
-        let dirs = Staff.Direction.Up :: Staff.Direction.Down
-                    :: Staff.Direction.Left :: Staff.Direction.Right :: Nil;
-        dirs
-            |> List.map(d -> Board.stepTarget(center, Staff.toVec2i(d)))
-            |> List.filter(c -> Board.isWalkable(board, c) and not Board.isOccupied(c, board))
-            |> List.head
+    // ワープ先セル選定 warpCellFor / adjacentFreeCell は純 leaf として StaffRules.flix へ移動（A6）。
 
     /// 杖の耐久を 1 減らし、0 なら staves から除去 + 破損ログ。
     def consumeStaff(playerId: Int32, staffIdx: Int32, staff: Staff.StaffResource,
@@ -713,7 +692,7 @@ mod StaffCastScene {
             Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         // directionalStatus は「投擲系デバフか（Some/None）」の門番として使い、状態適用そのものは
         // 統一 DSL 経路（applyConsumableEffectDsl）へ寄せる（当たった敵/味方を ally で出し分け）。
-        match (directionalStatus(item), hit) {
+        match (StaffRules.directionalStatus(item), hit) {
             case (Some(_), RayHit.HitEnemy(enemyId, _))   =>
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${EnemyScene.displayName(enemyId, scene)} に ${item#name} を当てた");
                 applyConsumableEffectDsl(item, enemyId, false, scene)
@@ -729,20 +708,7 @@ mod StaffCastScene {
                 scene
         }
 
-    /// 投擲系アイテムが付与する時限デバフ Status を作る。投擲系でなければ None。
-    def directionalStatus(item: Consumable.ConsumableResource): Option[StatusSystem.Status] =
-        match item#effect {
-            case Consumable.ConsumableEffect.BlindHit   =>
-                Some({effect = StatusSystem.StatusEffect.HitDown,
-                      magnitude = item#magnitude, remaining = item#duration})
-            case Consumable.ConsumableEffect.SpdDownHit =>
-                Some({effect = StatusSystem.StatusEffect.SpdDown,
-                      magnitude = item#magnitude, remaining = item#duration})
-            case Consumable.ConsumableEffect.DefDownHit =>
-                Some({effect = StatusSystem.StatusEffect.DefDown,
-                      magnitude = item#magnitude, remaining = item#duration})
-            case _                                      => None
-        }
+    // 投擲デバフ Status 生成 directionalStatus は純 leaf として StaffRules.flix へ移動（A6）。
 
     // ────────────────────────────────────────────────────────
     // アイテム投擲（一律「投げる」） — 武器 / 杖 / 薬 を方向投擲する
@@ -1128,7 +1094,7 @@ mod StaffCastScene {
     def enemyApplyDebuff(item: Consumable.ConsumableResource, hit: RayHit,
                           scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Audio, World.Command} =
         AudioStreamPlayer.play(consumableHitSound(item#effect));
-        applyStatusToHit(directionalStatus(item), hit, scene)
+        applyStatusToHit(StaffRules.directionalStatus(item), hit, scene)
 
     /// `directionalStatus` の Option をそのまま受け、Some なら当たったキャラ（敵/味方）へ付与。
     /// `(status, hit)` のタプル 1 段マッチでネストを避ける。

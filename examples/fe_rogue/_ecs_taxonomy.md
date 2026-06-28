@@ -25,12 +25,13 @@
 TopBar / ActionMenu / WeaponSelect / ItemMenu / TradeMenu / GameOverMenu / SuspendConfirm / TitleMenu / BattlePanel / UnitCard / EnemyCard / UnitInfoPopup / LevelUpPanel / UnitHPBar / DamagePopup / Explosion / ItemPickupPopup / Log / Minimap / Fog(view) / TurnEndHold / Cursor / ArrowCursor / RangeScenes / Camera / Bgm / WeaponIcon / WeaponGlyph / Stairs(node) / CharacterSelect。
 → これらは input/event/render 反応（Plan B gate で残置可と確定済）。**Scene のまま。**
 
-### System（→ `src/ecs/systems/`・純粋ロジック）— **単一 home 確定（A0-1）**
-新規 System/rule は `src/ecs/systems/` に置く。`src/sim/` は deprecated（drain 中）。
-- **relocate 済（A0-2 batch1・code-Scene=0 を検証して移送）**: `Combat`・`EnemyAI`・`CounterAttackRules`・`LevelSystem`・`StatusSystem`・`Board`・`Encounter`・`MoveDraft`・`Encumbrance` → `src/ecs/systems/`。`UnitView`（派生 component）→ `src/ecs/`。910 tests green 維持。
+### Rule（→ `src/ecs/rules/`・純ロジック 値→値）と System（→ `src/ecs/systems/`・`World→World`）— **2層に分離確定（A0-1 改）**
+**重要な区別**: ECS の **System = `World → World`**（component を読み書きし状態を進める）。`Combat.estimate` / `resolveStrike` / `warpCellFor` のような **値→値の純関数は System ではなく Rule**（System が呼ぶ側）。
+- **`src/ecs/rules/`（純ロジック・World 非依存）**: `Combat`・`CombatRules`・`StaffRules`・`EnemyAI`・`CounterAttackRules`・`LevelSystem`・`StatusSystem`・`Board`・`Encounter`・`MoveDraft`・`Encumbrance`（全て World 参照 0 を検証して移送・910 green）。`UnitView`（派生 component）→ `src/ecs/`。
+- **`src/ecs/systems/`（`World→World` のみ・現状ほぼ空）**: 真の System だけを置く。今 World→World なのは `World.refreshMirror`/`applyCmd` と step() ドライバ程度。本命は **Phase C の `resolveCombat(world): (World, [SimEvent])`**。step ドライバ（下記）を `*Scene` rename して移す先。
 - **⚠ 純粋ラベル誤り（据置）**: `TurnFlow`(実コード Scene 参照 11)・`PhaseTransitions`(同 90) は **scene 結合ありで純粋でない**。relocate せず split 対象に再分類。
-- **未分類で sim/ 残置**: `Weapon`(catalog 寄り)・`AnimEvent`(catalog)・`BoardSnapshot`(lib)・`EncounterBuilder`(bridge)・`effects/*`(system/catalog 混在) は別カテゴリ移送で対応。
-- **Scene 内にロジックが埋まっている（System へ抽出が必要＝split 対象）**: `CombatScene`(戦闘解決)・`EnemyTurnDriverScene`(敵ターン driver・既に step() System)・`StairsExitScene`(階段順次・既に step())・`PlayerMovementScene`(移動)・`StaffCastScene`/`ItemScene`(アイテム使用ロジック部分)。
+- **未分類で sim/ 残置**: `Weapon`(catalog 寄り)・`AnimEvent`(catalog)・`BoardSnapshot`(lib)・`EncounterBuilder`(bridge)・`effects/*`(rule/catalog 混在) は別カテゴリ移送で対応。
+- **Scene 内にロジックが埋まっている（System へ抽出が必要＝split 対象）**: `CombatScene`(戦闘解決)・`EnemyTurnDriverScene`(敵ターン driver・既に step()=真の System)・`StairsExitScene`(階段順次・既に step())・`PlayerMovementScene`(移動)・`StaffCastScene`/`ItemScene`(アイテム使用ロジック部分)。
 
 ### Component（→ `src/ecs/`）
 - `World.flix`（統一 component ストア＝ECS コア・**完成済**）。
