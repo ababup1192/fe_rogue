@@ -1009,7 +1009,7 @@ mod CombatScene {
     ///     増えた分だけ現在 HP も増やし、`pendingLevelUp` に結果を積む（パネル表示の合図）。
     /// `pendingLevelUp` が立つと commitWaitedAndAdvance がターンを進めずパネルへ割り込む。
     def applyExpGain(playerId: Int32, expGain: Int32,
-                      scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, GameLogger.GameLogger} =
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, GameLogger.GameLogger, World.Command} =
         let gained = forM (
             d <- PlayerScene.get(playerId, scene)
         ) yield {
@@ -1025,7 +1025,7 @@ mod CombatScene {
     /// レベルアップの解決: 成長ロールを振って各ステータスを成長させ、最大 HP が増えた分だけ
     /// 現在 HP も増やし、`pendingLevelUp` に結果を積む（パネル表示の合図）。
     def applyLevelUp(playerId: Int32, d: PlayerScene.Data, newExp: Int32,
-                      scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, GameLogger.GameLogger} =
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, GameLogger.GameLogger, World.Command} =
         let rolls  = rollGrowth();
         let before = LevelSystem.statsOf(d#resource);
         let after  = LevelSystem.applyGrowth(before, d#resource#growthRates, rolls);
@@ -1034,6 +1034,8 @@ mod CombatScene {
                                              before, after);
         let newHp  = d#hp + hpGain;
         GameLogger.playerLog("${d#resource#description}が Lv${d#level} ▶ Lv${d#level + 1}");
+        // F6a: レベルアップで増えた現在 HP も World へ dual-write（これが漏れていて [F6 HP DIFF] の原因だった）。
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(playerId), newHp));
         PlayerScene.mapPlayer(playerId, dd ->
             {exp            = newExp,
              level          = dd#level + 1,

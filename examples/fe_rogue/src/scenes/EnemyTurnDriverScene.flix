@@ -41,12 +41,14 @@ mod EnemyTurnDriverScene {
         Scene.addChild(MapScene.worldName(), driverName(),
             EngineNode.Marker2DWithState(marker, NodeTag.EnemyTurnDriver), scene)
 
-    /// per-frame entry。Game.flix の Node[NodeTag] instance の process redef から呼ばれる。
+    /// F8: 敵ターン System（`Scene → Scene`）。**Node lifecycle callback ではなく**
+    /// gameLoop のフレームパイプラインが明示的に 1 回呼ぶ frame-paced System。
+    /// 旧 `process(delta,node,path,scene)` は node/path/delta を一切使わない pass-through だった
+    /// （driver は payload-less stateless）ため、node 不要の純 `Scene→Scene` に昇格。
     /// phase 別に動作を分岐 (EnemyTurn → stepOnce / PlayerAttackHold → hold 終了判定 / 他 → no-op)。
-    pub def process(_delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     _path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag])
+    /// 前後順序依存（combat の anyAttacking・TopBar の busy/observed）は F8-slice1/2 で World 経由＝順序非依存。
+    pub def step(scene: Scene[NodeTag]):
+                    Scene[NodeTag]
                     \ {GameEngine.Game,
                         Tween.Scheduler, AnimationPlayer.Scheduler,
                         GameLogger.GameLogger, EnemyTurn.Queue,
@@ -57,7 +59,7 @@ mod EnemyTurnDriverScene {
                         CustomEffects.GameOverRequest,
                         CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
                         World.Command, BoardQuery, World.WorldQuery} =
-        let next = match TurnPhase.State.get() {
+        match TurnPhase.State.get() {
             case TurnPhase.Phase.EnemyTurn        => stepOnce(scene)
             case TurnPhase.Phase.PlayerAttackHold =>
                 // PlayerAttackHold は (a) BattlePanelScene.confirm が攻撃モーション
@@ -82,8 +84,7 @@ mod EnemyTurnDriverScene {
                 else if (bumpedDarkRoomEnemy(scene)) TurnFlow.commitAllWaitedAndAdvance(false, scene)
                 else scene
             case _                                 => scene
-        };
-        (node, next)
+        }
 
     /// 選択中の味方が Tween（1マス滑走）中か。移動の着地を待ってから検出判定するためのガード。
     def selectedSliding(): Bool \ {Tween.Scheduler, SelectedPlayer.State} =
