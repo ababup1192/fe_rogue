@@ -1,7 +1,7 @@
 // 武器特殊効果（WeaponEffect）の純粋ロジック検証。
 //
 // アクセサ（braveThreshold 等）・背水の威力倍率（Combat.estimate 内）・
-// はやぶさの 2 回攻撃条件（CombatScene.braveFollowUp）を数値だけで固定する。
+// はやぶさの 2 回攻撃条件（CombatRules.braveFollowUp）を数値だけで固定する。
 
 mod TestWeaponEffect {
 
@@ -64,25 +64,25 @@ mod TestWeaponEffect {
     @Test
     def testBraveTriggersAtThreshold(): Unit \ Assert =
         Assert.assertEq(expected = true,
-            CombatScene.braveFollowUp(10, 7, false, Some(3)))
+            CombatRules.braveFollowUp(10, 7, false, Some(3)))
 
     /// 速さ差が +2 → 追撃しない。
     @Test
     def testBraveNotBelowThreshold(): Unit \ Assert =
         Assert.assertEq(expected = false,
-            CombatScene.braveFollowUp(9, 7, false, Some(3)))
+            CombatRules.braveFollowUp(9, 7, false, Some(3)))
 
     /// すでにこの攻撃で追撃済み → 追撃しない（指輪追撃と併用しても二重追撃しない不変条件）。
     @Test
     def testBraveBlockedWhenAlreadyFollowedUp(): Unit \ Assert =
         Assert.assertEq(expected = false,
-            CombatScene.braveFollowUp(10, 7, true, Some(3)))
+            CombatRules.braveFollowUp(10, 7, true, Some(3)))
 
     /// ブレイブ武器でない（None）→ 追撃しない。
     @Test
     def testBraveNoneNeverTriggers(): Unit \ Assert =
         Assert.assertEq(expected = false,
-            CombatScene.braveFollowUp(99, 0, false, None))
+            CombatRules.braveFollowUp(99, 0, false, None))
 
     // ════════════════════════════════════════════════════════
     // 背水 — Combat.estimate 内の HP%しきい値で威力 1.5 倍（境界）

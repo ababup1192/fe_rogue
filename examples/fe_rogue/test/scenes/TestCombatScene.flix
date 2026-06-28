@@ -408,27 +408,27 @@ mod TestCombatScene {
     def testHitSoundGuardWhenZeroDamage(): Unit \ Assert =
         Assert.assertEq(
             expected = ("guard", "guard"),
-            (CombatScene.hitSoundName(0, false, WeaponCatalog.WeaponType.Sword),
-             CombatScene.hitSoundName(0, true, WeaponCatalog.WeaponType.Magic)))
+            (CombatRules.hitSoundName(0, false, WeaponCatalog.WeaponType.Sword),
+             CombatRules.hitSoundName(0, true, WeaponCatalog.WeaponType.Magic)))
 
     /// 必殺（クリティカル）が発動し、ダメージ 1 以上なら "critical"。
     @Test
     def testHitSoundCriticalWhenCrit(): Unit \ Assert =
         Assert.assertEq(
             expected = "critical",
-            CombatScene.hitSoundName(15, true, WeaponCatalog.WeaponType.Sword))
+            CombatRules.hitSoundName(15, true, WeaponCatalog.WeaponType.Sword))
 
     /// 魔法武器で必殺なしダメージ 1 以上なら "magic"。
     @Test
     def testHitSoundMagicWhenMagicWeapon(): Unit \ Assert =
         Assert.assertEq(
             expected = "magic",
-            CombatScene.hitSoundName(5, false, WeaponCatalog.WeaponType.Magic))
+            CombatRules.hitSoundName(5, false, WeaponCatalog.WeaponType.Magic))
 
     /// 物理武器で必殺なしダメージ 1 以上なら通常の "damage"。
     @Test
     def testHitSoundDamageWhenPhysical(): Unit \ Assert =
         Assert.assertEq(
             expected = "damage",
-            CombatScene.hitSoundName(5, false, WeaponCatalog.WeaponType.Lance))
+            CombatRules.hitSoundName(5, false, WeaponCatalog.WeaponType.Lance))
 }

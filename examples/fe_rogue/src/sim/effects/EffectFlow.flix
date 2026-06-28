@@ -6,7 +6,7 @@
 ///
 /// ここは「撃つか／差し替えるか」の純粋判定と、2 撃目の効果量文脈の純粋導出だけを持つ。
 /// 実際の攻撃再入・状態書き換えは Scene 側（runFlow）が担い、ここは Scene 非依存でテストできる。
-/// 既存の `CombatScene.braveFollowUp` / `shouldFollowUp` と同一ロジックだが、循環依存を避けるため
+/// 既存の `CombatRules.braveFollowUp` / `CombatRules.shouldFollowUp` と同一ロジックだが、循環依存を避けるため
 /// DSL 文脈（FollowUpCtx）で独立に持つ（移行完了後に単一化する）。
 mod EffectFlow {
 
@@ -26,7 +26,7 @@ mod EffectFlow {
         pursuit      = Bool
     }
 
-    /// 追撃するか。`braveFollowUp` / `shouldFollowUp` と同一:
+    /// 追撃するか。`braveFollowUp` / `CombatRules.shouldFollowUp` と同一:
     ///   brave   = 未追撃 かつ 速さ差 >= 閾値
     ///   pursuit = 追撃リング所持 かつ 未追撃 かつ 速さ差 >= 3 かつ roll < 15
     pub def followUpDecision(flow: Flow, ctx: FollowUpCtx): Bool = match flow {

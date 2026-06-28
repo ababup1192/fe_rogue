@@ -210,21 +210,7 @@ mod CombatScene {
             }
         }
 
-    /// 追撃するか（純粋）。攻撃側 speed が防御側 speed +3 以上、追撃リング所持、15% 抽選命中、
-    /// かつまだこの攻撃で追撃していない。`roll` は 0..99。
-    pub def shouldFollowUp(atkSpeed: Int32, defSpeed: Int32, roll: Int32,
-                            hasPursuit: Bool, alreadyFollowedUp: Bool): Bool =
-        hasPursuit and not alreadyFollowedUp and atkSpeed >= defSpeed + 3 and roll < 15
-
-    /// はやぶさの剣などブレイブ武器による 2 回攻撃判定（純粋）。攻撃側 speed が防御側 speed +d
-    /// 以上なら**確定**で追撃（指輪 Pursuit の 15% 抽選とは別。乱数なし）。`braveThreshold` は
-    /// 装備武器から導く（None=ブレイブ武器でない）。`alreadyFollowedUp` で 1 攻撃 1 回に制限。
-    pub def braveFollowUp(atkSpeed: Int32, defSpeed: Int32, alreadyFollowedUp: Bool,
-                           braveThreshold: Option[Int32]): Bool =
-        not alreadyFollowedUp and (match braveThreshold {
-            case Some(d) => atkSpeed >= defSpeed + d
-            case None    => false
-        })
+    // 追撃判定 shouldFollowUp / braveFollowUp は純 leaf として CombatRules.flix へ移動（A1）。
 
     /// 味方が追撃すべきなら対象の敵 id を返す（しないなら None）。speed は combatView の補正後値。
     /// 攻撃者・対象の敵が揃ったときだけ判定する（match は入れ子にしない）。
@@ -463,23 +449,14 @@ mod CombatScene {
         crit    = Int32    // 必殺率 0..100（必殺ロールと比較する）
     }
 
-    /// 攻守共通の 1 撃解決（純粋）。`Combat.estimate` で命中率・素ダメージを出し、
-    /// `Combat.damage` で防御側 HP に適用した結果を 1 レコードで返す。
-    /// 味方→敵（`attackForecast`）と敵→味方（`applyDamageToPlayer`）の両方向が
-    /// 必ずここを通ることで、攻守の式ドリフトを防ぐ。
-    def resolveStrike(attacker: Combat.CombatView, defender: Combat.CombatView):
-            {hit = Int32, dmg = Int32, newHp = Int32, killed = Bool, crit = Int32} =
-        let est    = Combat.estimate(attacker, defender);
-        let result = Combat.damage(hp = defender#hp, amount = est#damage);
-        {hit = est#hit, dmg = est#damage, newHp = result#newHp, killed = result#isDead,
-         crit = est#crit}
+    // 1 撃解決 resolveStrike は純 leaf として CombatRules.flix へ移動（A1）。
 
     /// 装備武器と敵から、命中率・与ダメージ・経験値を**純粋に**算出する（乱数・Scene 非依存）。
-    /// 計算は `resolveStrike`（= `Combat.estimate`）に委譲し、武器タイプ習熟・武器相性・
+    /// 計算は `CombatRules.resolveStrike`（= `Combat.estimate`）に委譲し、武器タイプ習熟・武器相性・
     /// 物理/魔法の解決を戦闘予報と実ダメージで一致させる。テストしやすいよう pub。
     pub def attackForecast(player: PlayerScene.Data, weapon: UnitCatalog.WeaponResource,
                             enemy: EnemyScene.Data): AttackForecast =
-        let strike = resolveStrike(PlayerScene.combatViewWith(player, weapon),
+        let strike = CombatRules.resolveStrike(PlayerScene.combatViewWith(player, weapon),
                                    EnemyScene.combatView(enemy));
         {hitRate = strike#hit, dmg = strike#dmg, newHp = strike#newHp, killed = strike#killed,
          exp = Combat.battleExp(enemy#resource#level, player#level, strike#killed),
@@ -631,20 +608,7 @@ mod CombatScene {
         AudioStreamPlayer.play("miss");
         DamagePopupScene.emitText(popupPos, "miss", color, scene)
 
-    /// 命中時に鳴らす SE 名を決める（純粋）。優先順位は上から:
-    ///   - ダメージ 0（防御で防がれた）→ "guard"
-    ///   - 必殺（クリティカル）発動    → "critical"
-    ///   - 魔法武器の命中             → "magic"
-    ///   - それ以外（物理で 1 以上）   → "damage"
-    /// ダメージ 0 判定を最優先する（必殺でも魔法でも 0 なら防がれた音を出す）。
-    pub def hitSoundName(damage: Int32, isCrit: Bool,
-                          weaponType: WeaponCatalog.WeaponType): String =
-        if (damage <= 0) "guard"
-        else if (isCrit) "critical"
-        else match weaponType {
-            case WeaponCatalog.WeaponType.Magic => "magic"
-            case _                              => "damage"
-        }
+    // 命中 SE 名 hitSoundName は純 leaf として CombatRules.flix へ移動（A1）。
 
     /// 命中: 与ダメージ/武器タイプに応じた SE を鳴らしダメージを適用。撃破なら死亡演出、
     /// 生存なら敵 HP を更新。どちらでも与ダメージの数値ポップアップを浮かす。
@@ -653,7 +617,7 @@ mod CombatScene {
                   popupPos: Vec2.Vec2, color: Color, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger, World.Command} =
-        AudioStreamPlayer.play(hitSoundName(plan#dmg, isCrit, weaponType));
+        AudioStreamPlayer.play(CombatRules.hitSoundName(plan#dmg, isCrit, weaponType));
         // 魔法攻撃（マージ等）の着弾時は敵中心に爆発エフェクトを出す。
         let withFx = match weaponType {
             case WeaponCatalog.WeaponType.Magic => ExplosionScene.emitNormal(popupPos, scene)
@@ -690,17 +654,11 @@ mod CombatScene {
             GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}の ${weapon#name}がこわれた")
         else ();
         PlayerScene.mapPlayer(playerId,
-            d -> {weapons = replaceOrDropHead(consumed, d#weapons) | d}, scene)
+            d -> {weapons = CombatRules.replaceOrDropHead(consumed, d#weapons) | d}, scene)
 
-    /// 先頭要素を `updated` の中身で差し替える。`None`（耐久 0 で破損）なら先頭を取り除く。
-    def replaceOrDropHead(updated: Option[a], list: List[a]): List[a] =
-        match (updated, list) {
-            case (Some(w), _ :: rest) => w :: rest
-            case (None,    _ :: rest) => rest
-            case (_,       Nil)       => list
-        }
+    // 武器リスト先頭差し替え replaceOrDropHead は純 leaf として CombatRules.flix へ移動（A1）。
 
-    /// プレイヤー targetId にダメージを与える。命中率・素ダメージは `resolveStrike`
+    /// プレイヤー targetId にダメージを与える。命中率・素ダメージは `CombatRules.resolveStrike`
     /// （= `Combat.estimate`、武器相性・物理/魔法込み）で算出し、`Combat.damage` 適用後の
     /// HP に更新する。攻撃成立後は武器の `durability` を 1 減らし、
     /// 0 になったら `weapon = None` に切り替え、ログに「敵N の {武器名} がこわれた」を出す。
@@ -728,7 +686,7 @@ mod CombatScene {
             (Scene[NodeTag], List[Int32]) \
             {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
              Tween.Scheduler, World.Command, BoardQuery} =
-        let strike = resolveStrike(EnemyScene.combatView(enemy),
+        let strike = CombatRules.resolveStrike(EnemyScene.combatView(enemy),
                                    PlayerScene.combatView(player));
         let roll = rollPercent();
         let popupPos = MapSnapshot.cellCenter(player#gridPos);
@@ -757,7 +715,7 @@ mod CombatScene {
                         {dmg = critEff#dmg, newHp = critEff#newHp, killed = critEff#killed | baseOutcome}
                     } else baseOutcome;
                 // 与ダメージ/必殺/武器タイプに応じた SE を鳴らしダメージ適用 + 数値ポップアップ。
-                AudioStreamPlayer.play(hitSoundName(outcome#dmg, crit, weapon#weaponType));
+                AudioStreamPlayer.play(CombatRules.hitSoundName(outcome#dmg, crit, weapon#weaponType));
                 let critTag = if (crit) "必殺！ " else "";
                 if (outcome#killed) {
                     GameLogger.enemyLog("${critTag}${enemy#resource#description}は ${player#resource#description}を倒した")
