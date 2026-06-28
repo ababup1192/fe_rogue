@@ -25,12 +25,17 @@
 TopBar / ActionMenu / WeaponSelect / ItemMenu / TradeMenu / GameOverMenu / SuspendConfirm / TitleMenu / BattlePanel / UnitCard / EnemyCard / UnitInfoPopup / LevelUpPanel / UnitHPBar / DamagePopup / Explosion / ItemPickupPopup / Log / Minimap / Fog(view) / TurnEndHold / Cursor / ArrowCursor / RangeScenes / Camera / Bgm / WeaponIcon / WeaponGlyph / Stairs(node) / CharacterSelect。
 → これらは input/event/render 反応（Plan B gate で残置可と確定済）。**Scene のまま。**
 
+#### A7 audit 結果（World-touch scene の read/write 監査・2026-06 実測）
+**全6 scene（BattlePanel / ActionMenu / LevelUpPanel / ItemMenu / TradeMenu / Chest）の `World.Cmd` 書込 = 0** → World desync リスク無し・全て **View 据置**で正。World アクセスは Query 読のみ（read-only 派生 view）。
+- 過去レビューの「ChestScene は World 4×」は誤り（実測 0）。
+- inventory 変異（ItemMenu/Trade）・chest 配置抽選（Chest の `Math.Random`）は **sim ロジックだが World 非モデル(out-of-scope)** ＝ scene 側変異が正・mirror 撤去対象外。clean な純 loot table も無く（node 生成と密結合）、**投機的抽出は不要**と判断。
+
 ### Rule（→ `src/ecs/rules/`・純ロジック 値→値）と System（→ `src/ecs/systems/`・`World→World`）— **2層に分離確定（A0-1 改）**
 **重要な区別**: ECS の **System = `World → World`**（component を読み書きし状態を進める）。`Combat.estimate` / `resolveStrike` / `warpCellFor` のような **値→値の純関数は System ではなく Rule**（System が呼ぶ側）。
-- **`src/ecs/rules/`（純ロジック・World 非依存）**: `Combat`・`CombatRules`・`StaffRules`・`EnemyAI`・`CounterAttackRules`・`LevelSystem`・`StatusSystem`・`Board`・`Encounter`・`MoveDraft`・`Encumbrance`（全て World 参照 0 を検証して移送・910 green）。`UnitView`（派生 component）→ `src/ecs/`。
+- **`src/ecs/rules/`（純ロジック・World 非依存）**: `Combat`・`CombatRules`・`StaffRules`・`EnemyAI`・`CounterAttackRules`・`LevelSystem`・`StatusSystem`・`Board`・`Encounter`・`MoveDraft`・`Encumbrance`・`Weapon`・`effects/*`（EffectPlan/Runner/Flow/Rule/Bridge/Dsl/RuleCodec の特殊効果 DSL 純サブシステム一括）。全て World 参照 0 を検証して移送・910 green。`UnitView`（派生 component）→ `src/ecs/`。`placement`/`singleRoom`/`twoRoom`/`moduleCenter`（配置 util）は sim 非依存ゆえ `lib/dungeon/RoomLayout.flix` へ。
 - **`src/ecs/systems/`（`World→World` のみ・現状ほぼ空）**: 真の System だけを置く。今 World→World なのは `World.refreshMirror`/`applyCmd` と step() ドライバ程度。本命は **Phase C の `resolveCombat(world): (World, [SimEvent])`**。step ドライバ（下記）を `*Scene` rename して移す先。
 - **⚠ 純粋ラベル誤り（据置）**: `TurnFlow`(実コード Scene 参照 11)・`PhaseTransitions`(同 90) は **scene 結合ありで純粋でない**。relocate せず split 対象に再分類。
-- **未分類で sim/ 残置**: `Weapon`(catalog 寄り)・`AnimEvent`(catalog)・`BoardSnapshot`(lib)・`EncounterBuilder`(bridge)・`effects/*`(rule/catalog 混在) は別カテゴリ移送で対応。
+- **sim/ 残置（正当な据置）**: `AnimEvent`(catalog/語彙・catalog/ 確立時に移送)・`BoardSnapshot`(code-Scene=10・scene 結合)・`EncounterBuilder`(bridge・scene→UnitView)・`TurnFlow`(code-Scene=11)・`PhaseTransitions`(code-Scene=90)。後二者は scene 結合の split 対象。
 - **Scene 内にロジックが埋まっている（System へ抽出が必要＝split 対象）**: `CombatScene`(戦闘解決)・`EnemyTurnDriverScene`(敵ターン driver・既に step()=真の System)・`StairsExitScene`(階段順次・既に step())・`PlayerMovementScene`(移動)・`StaffCastScene`/`ItemScene`(アイテム使用ロジック部分)。
 
 ### Component（→ `src/ecs/`）
