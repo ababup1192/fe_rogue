@@ -1024,7 +1024,9 @@ mod CombatScene {
 
     /// レベルアップの解決: 成長ロールを振って各ステータスを成長させ、最大 HP が増えた分だけ
     /// 現在 HP も増やし、`pendingLevelUp` に結果を積む（パネル表示の合図）。
-    def applyLevelUp(playerId: Int32, d: PlayerScene.Data, newExp: Int32,
+    /// `pub`: HP 増分の World dual-write（過去に漏れて [F6 HP DIFF] を出した不変条件）を
+    /// `TestCombatScene` が単体検証できるように公開している。
+    pub def applyLevelUp(playerId: Int32, d: PlayerScene.Data, newExp: Int32,
                       scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, GameLogger.GameLogger, World.Command} =
         let rolls  = rollGrowth();
         let before = LevelSystem.statsOf(d#resource);

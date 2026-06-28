@@ -143,6 +143,36 @@ mod TestCombatScene {
             (PlayerScene.anyAttacking(attacking),
              PlayerScene.anyAttacking(idle)))
 
+    /// レベルアップで増えた現在 HP が World にも dual-write されること（過去に漏れて [F6 HP DIFF] を
+    /// 永続発生させた不変条件のリグレッション固定）。growthRates#hp=100＋roll=50 で HP は決定的に +1。
+    /// World を pre-levelup の 10 で seed しておき、applyLevelUp 後に World hp == scene hp(==11) を要求する
+    /// （emit 漏れだと World は 10 のまま＝不一致でテスト失敗）。
+    @Test
+    def testLevelUpDualWritesHpToWorld(): Unit \ Assert =
+        region rc {
+            let growRes = {growthRates = {hp = 100 | UnitCatalog.zeroGrowthRates()}
+                            | TestUnitFixtures.testResource(4, 10)};
+            let p       = {resource = growRes | player(80)};   // hp=10, level=1, exp=0
+            let worldMk = Marker2D.make(Vec2.zero());
+            let pMarker = Marker2D.make(Vec2.zero());
+            let scene = Scene.empty()
+                |> Scene.addNode(MapScene.worldName(),
+                    EngineNode.Marker2DWithState(worldMk, NodeTag.NoTag))
+                |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
+                    EngineNode.Marker2DWithState(pMarker, NodeTag.Player(p)));
+            let wref = Ref.fresh(rc,
+                World.applyCmd(World.Cmd.SetHp(World.EntityRef.Player(0), 10), World.empty()));
+            let result = TestUnitFixtures.withMockRandom(() ->
+                TestUnitFixtures.withMockGameLogger(() ->
+                    run { CombatScene.applyLevelUp(0, p, 0, scene) }
+                    with handler World.Command {
+                        def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
+                    }));
+            let sceneHp = PlayerScene.get(0, result) |> Option.map(d -> d#hp);
+            let worldHp = World.hpOf(World.EntityRef.Player(0), Ref.get(wref));
+            Assert.assertEq(expected = (Some(11), Some(11)), (sceneHp, worldHp))
+        }
+
     // ════════════════════════════════════════════════════════
     // applyAttackHit — 命中で HP 減 + 経験値、回避で不変
     // ════════════════════════════════════════════════════════
