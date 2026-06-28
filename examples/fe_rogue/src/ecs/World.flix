@@ -71,6 +71,9 @@ pub enum World {
                  // S-A0: base 戦闘値 + maxHp の read-model（unified-id・両 faction）。resource 由来ゆえ
                  // refreshMirror で毎フレーム scene から再 mirror（statusEffects と同型）。combatView flip 用。
                  baseStats = Map[EntityId, BaseStats],
+                 // S-A0b: 装備武器の戦闘投影 read-model（unified-id・両 faction）。内側 Option=武器なし。
+                 // PlayerScene/EnemyScene.equippedWeaponView 由来ゆえ毎フレーム再 mirror。combatView flip 用。
+                 weaponView = Map[EntityId, Option[Combat.WeaponView]],
                  // F8-slice2: 敵ターン driver が読む phase-banner 同期 bool（TopBar が毎フレーム dual-write）。
                  //   enemyTurnBusy      — 敵ターン開始 intro の hold 中（>0）＝敵の行動開始待ち。
                  //   phaseObservedEnemy — 上部バーが「敵ターン」を観測済み（0 体ターンの取りこぼし防止）。
@@ -93,7 +96,7 @@ mod World {
                      playerWaited = Map.empty(),
                      attackTarget = Map.empty(),
                      playerLevel = Map.empty(), playerExp = Map.empty(),
-                     baseStats = Map.empty(),
+                     baseStats = Map.empty(), weaponView = Map.empty(),
                      enemyTurnBusy = false, phaseObservedEnemy = false})
 
     /// F2a: World の turnPhase を読む（read-model アクセサ）。
@@ -154,6 +157,8 @@ mod World {
             playerExp      = Query.indexBy(d -> d#id, d -> d#exp, players),
             baseStats = Map.union(Query.indexBy(d -> d#id, d -> baseStatsFrom(d#resource), players),
                                   Query.indexBy(d -> enemyUid(d#id), d -> baseStatsFrom(d#resource), enemies)),
+            weaponView = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedWeaponView(d), players),
+                                   Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedWeaponView(d), enemies)),
             attackTarget = Map.union(attackTargetMap(id -> id, players),
                                      attackTargetMap(enemyUid, enemies)),
             // F8-slice2: scene に mirror 元がない scalar bool は前 world の値を保持（command 由来）。
@@ -204,6 +209,9 @@ mod World {
             // S-A0: baseStats は resource 由来の read-model ＝ scene から毎フレーム再 mirror（statusEffects と同型・command 由来でない）。
             baseStats = Map.union(Query.indexBy(d -> d#id, d -> baseStatsFrom(d#resource), players),
                                   Query.indexBy(d -> enemyUid(d#id), d -> baseStatsFrom(d#resource), enemies)),
+            // S-A0b: weaponView も装備武器由来の read-model ＝ 毎フレーム再 mirror。
+            weaponView = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedWeaponView(d), players),
+                                   Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedWeaponView(d), enemies)),
             attackTarget = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#attackTarget),
             // F8-slice2: scalar bool は command 由来を保持（scene mirror 元なし・TopBar が毎フレーム dual-write）。
             enemyTurnBusy      = w#enemyTurnBusy,
@@ -521,6 +529,12 @@ mod World {
     /// B1 で combatView がここを読み、status/ring 補正を加えて CombatView を組む（reader flip）。
     pub def baseStatsOf(ref: EntityRef, world: World): Option[BaseStats] =
         let World.World(w) = world; Map.get(toUid(ref), w#baseStats)
+
+    /// S-A0b: 装備武器の戦闘投影を World から読む（unified-id・両 faction）。
+    /// 外側 Option（entity 未登録）と内側 Option（武器なし）を flatten し、武器なし＝None で返す
+    /// （combatView#weapon の型と一致）。B1 で combatView がここを読む。
+    pub def weaponViewOf(ref: EntityRef, world: World): Option[Combat.WeaponView] =
+        let World.World(w) = world; Map.get(toUid(ref), w#weaponView) |> Option.flatten
 
     /// World 拡張: 味方の (level, exp) を World から読む。未登録は None。Enemy は常に None。
     pub def progressOf(ref: EntityRef, world: World): Option[(Int32, Int32)] =

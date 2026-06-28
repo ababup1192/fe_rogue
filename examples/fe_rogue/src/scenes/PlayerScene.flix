@@ -38,14 +38,19 @@ mod PlayerScene {
     /// この味方の戦闘ビュー（faction 非依存）。装備武器は `weapons` の先頭。
     /// `Combat.estimate` / `Encounter` の join で使う（ダメージ式は `Combat` に集約）。
     pub def combatView(data: Data): Combat.CombatView =
-        let equipped = PlayerData.equippedWeapon(data#weapons);
         let m = StatusSystem.combatMods(data#statuses);
         let rb = Ring.bonuses(PlayerData.equippedRing(data));
         {attack = data#resource#attack + m#atkBonus + rb#attack, magicAttack = data#resource#magicAttack,
          defense = data#resource#defense + rb#defense + m#defDelta, magicDefense = data#resource#magicDefense,
          skill = data#resource#skill + rb#skill, speed = data#resource#speed + m#spdDelta + rb#speed,
          luck = data#resource#luck + rb#luck, hp = data#hp, maxHp = data#resource#hp, hitMod = m#hitMod,
-         weapon = Combat.weaponView(equipped, weaponProficient(data, equipped))}
+         weapon = equippedWeaponView(data)}
+
+    /// S-A0: この味方の装備武器（先頭 = 装備中）の戦闘投影。`combatView` と World read-model 構築
+    /// （`World.syncFromScene`）が共有し、proficiency 解決の二重実装を避ける。武器なしは None。
+    pub def equippedWeaponView(data: Data): Option[Combat.WeaponView] =
+        let equipped = PlayerData.equippedWeapon(data#weapons);
+        Combat.weaponView(equipped, weaponProficient(data, equipped))
 
     /// `combatView` の「装備武器を明示指定する」版。攻撃中に選択した武器（装備中=先頭とは
     /// 限らない）で戦闘予測を計算するため、`BattlePanelScene` から使う。

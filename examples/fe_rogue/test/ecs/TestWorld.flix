@@ -692,4 +692,23 @@ mod TestWorld {
         Assert.assertEq(
             expected = expectedMaxHp,
             Option.map(bs -> bs#maxHp, World.baseStatsOf(World.EntityRef.Player(0), w)))
+
+    // ── S-A0b: weaponView（装備武器の戦闘投影）の read-model mirror ──
+
+    /// syncFromScene が weaponView を World へ mirror する。scene 由来の equippedWeaponView と一致する
+    /// （player 0 / enemy 5）。record/enum は Eq 非自動ゆえスカラ tuple に射影して比較する。
+    @Test
+    def testWeaponViewMirrorsEquipped(): Unit \ Assert =
+        let scene = sampleScene();
+        let w = World.syncFromScene(scene, World.empty());
+        let proj = ov -> Option.map(wv -> (wv#attack, wv#hit, wv#crit, wv#isPhysical,
+                                            wv#proficient, wv#effectValue), ov);
+        let expP0 = PlayerScene.get(0, scene)
+            |> Option.map(d -> proj(PlayerScene.equippedWeaponView(d))) |> Option.getWithDefault(None);
+        let expE5 = EnemyScene.get(5, scene)
+            |> Option.map(d -> proj(EnemyScene.equippedWeaponView(d))) |> Option.getWithDefault(None);
+        Assert.assertEq(
+            expected = (expP0, expE5),
+            (proj(World.weaponViewOf(World.EntityRef.Player(0), w)),
+             proj(World.weaponViewOf(World.EntityRef.Enemy(5), w))))
 }

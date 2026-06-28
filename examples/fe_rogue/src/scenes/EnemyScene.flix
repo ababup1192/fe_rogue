@@ -735,7 +735,12 @@ mod EnemyScene {
          defense = data#resource#defense + rb#defense + m#defDelta, magicDefense = data#resource#magicDefense,
          skill = data#resource#skill + rb#skill, speed = data#resource#speed + m#spdDelta + rb#speed,
          luck = data#resource#luck + rb#luck, hp = data#hp, maxHp = data#resource#hp, hitMod = m#hitMod,
-         weapon = Combat.weaponView(data#weapon, true)}
+         weapon = equippedWeaponView(data)}
+
+    /// S-A0: この敵の装備武器の戦闘投影。`combatView` と World read-model 構築が共有する。
+    /// 敵は得意/苦手の概念がないので proficient は常に true。武器なしは None。
+    pub def equippedWeaponView(data: Data): Option[Combat.WeaponView] =
+        Combat.weaponView(data#weapon, true)
 
     /// この敵の盤上ビュー（faction = Enemy）。`Encounter.fromScene` の join で使う。
     /// `weaponRange` は装備武器の射程。敵に `hidden` は無いので常に false。

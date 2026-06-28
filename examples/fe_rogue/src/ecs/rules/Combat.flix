@@ -168,21 +168,22 @@ mod Combat {
     /// に反映済みの値を構築側（projection）で渡すため、ここに専用フィールドは持たない。
     /// `maxHp` は背水（Desperation）の「HP%」判定用に持つ（hp は現在値）。
     /// 武器サブレコードの `effect`/`effectValue` は背水の威力倍率判定に使う（他効果は CombatScene 側）。
+    /// 装備武器の戦闘投影（`CombatView#weapon` の中身）。S-A0 で World read-model に格納するため named alias 化。
+    pub type alias WeaponView = {weaponType = WeaponCatalog.WeaponType, attack = Int32,
+                                 hit = Int32, crit = Int32, isPhysical = Bool, proficient = Bool,
+                                 effect = WeaponCatalog.WeaponEffect, effectValue = Int32}
+
     pub type alias CombatView = {
         attack = Int32, magicAttack = Int32, defense = Int32, magicDefense = Int32,
         skill = Int32, speed = Int32, luck = Int32, hp = Int32, maxHp = Int32, hitMod = Int32,
-        weapon = Option[{weaponType = WeaponCatalog.WeaponType, attack = Int32,
-                          hit = Int32, crit = Int32, isPhysical = Bool, proficient = Bool,
-                          effect = WeaponCatalog.WeaponEffect, effectValue = Int32}]
+        weapon = Option[WeaponView]
     }
 
     /// 装備武器（Option）から `CombatView#weapon` を組む。`isPhysical` をここで解決する。
     /// `proficient` は「この攻撃側がこの武器タイプを得意とするか」。苦手（false）なら
     /// `estimate` が威力・命中を 80% に下げる。敵は常に true（得意/苦手の概念なし）を渡す。
     pub def weaponView(weapon: Option[WeaponCatalog.WeaponResource], proficient: Bool):
-            Option[{weaponType = WeaponCatalog.WeaponType, attack = Int32,
-                    hit = Int32, crit = Int32, isPhysical = Bool, proficient = Bool,
-                    effect = WeaponCatalog.WeaponEffect, effectValue = Int32}] =
+            Option[WeaponView] =
         weapon |> Option.map(w ->
             {weaponType = w#weaponType, attack = w#attack, hit = w#hit, crit = w#crit,
              isPhysical = WeaponCatalog.isPhysical(w#weaponType), proficient = proficient,
