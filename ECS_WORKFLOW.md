@@ -201,6 +201,13 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > ### World 拡張（Plan B 後）= level/exp を World 権威化（913緑・✅run 検証クリア「大丈夫だった」）
 > out-of-scope だった進行度を proven dual-write パターンで合流。`World.playerLevel`/`playerExp: Map[id,Int32]`＋`Cmd.SetProgress(ref, level, exp)`＋applyCmd＋syncFromScene/refreshMirror preserve＋`progressOf`/`progressMismatches`。dual-write 6 サイト全網羅（spawn / applyExpGain(no-levelup) / applyLevelUp / reviveOneAt / placeOneFromSnap / reconcileWithCarry）。gameLoop に `[PROGRESS DIFF]`。TestWorld + level-up リグレッションテストに progress assertion 追加（level-up で (level+1,exp) も dual-write を CI 固定）。run 検証 = 撃破→exp→レベルアップで `[PROGRESS DIFF]` 無音。
 >
+> ### 後続（2026-06-28・917緑）= OOP→ECS ディレクトリ再編 + S-A0 combatView の World read-model 化
+> 計画は `examples/fe_rogue/_split_plan.md`（壁打ち 90+）／`_ecs_taxonomy.md`（役割分類）が authoritative。
+> - **ディレクトリ再編（A0/A1/A4/A6/A7）**: **Rule(値→値純ロジック)=`src/ecs/rules/`** と **System(`World→World`)=`src/ecs/systems/`** を分離（ユーザー指摘で確定）。`Combat`/`EnemyAI`/`StatusSystem`/`LevelSystem`/`CounterAttackRules`/`Board`/`Encounter`/`MoveDraft`/`Encumbrance`/`Weapon`/`effects/*` を `ecs/rules/` へ、`UnitView` を `ecs/`、配置 util を `lib/dungeon/RoomLayout`。CombatScene/StaffCast の純 leaf を `ecs/rules/CombatRules`/`StaffRules` へ抽出。`TurnFlow`(11)/`PhaseTransitions`(90) は scene 結合で据置（純粋ラベル誤りを実測訂正）。A7 audit: 6 World-touch scene は全て `Cmd` 書込 0＝View 据置で正。**真の `World→World` System はまだほぼ無く、本命は Phase C の `resolveCombat`**。
+> - **S-A0（combatView を World から再構築可能に）**: `Combat.BaseStats`/`assembleView`（組立の単一源泉・式 drift 不能）、World read-model 3 本 `baseStats`/`weaponView`/`ringBonus`（resource/装備由来ゆえ毎フレーム再 mirror＝statusEffects 同型・emit 不要）、`World.combatViewOf(ref): Option[CombatView]`（baseStats+weaponView+ringBonus+statusEffects+hp を合成）。**parity test**（fixture + status-active）+ **`[COMBATVIEW DIFF]` 検証器**（Game.flix・refreshMirror 後・実機全構成で combatViewOf==scene combatView を監視）。✅run 検証 = `[COMBATVIEW DIFF]` 無音「OK だった」。
+> - **多引数のレコード名前渡し化**（ユーザー方針 [[feedback_record_named_args]]）: `assembleView` を `ViewParts` レコードに。誤順リスク実在の geometry helper（knockback/push の `KnockbackPos{attacker,defender}`・blowback の `{hit,dir}`・swap の `UnitCell{id,cell}`）を束ね。型混在&Phase C 書換予定の大型 orchestrator（applyHit 等）は据置。
+> - **次の一手（Phase B 本体・重・実機 run ペア必須）**: read-model（baseStats/weaponView/ringBonus）を **command-derive 化**（mutation 毎に Cmd emit→mid-combat でも current）→ combatView reader を `combatViewOf` へ **flip** 安全化。現状の再 mirror read-model のままだと **mid-combat で 1 フレーム stale** になり得るため naive flip は不可（frame-end DIFF 無音はそこを保証しない）。
+>
 > ### 残 logic callback 監査表（全件ゲート pass・912緑）
 > | callback | (1)駆動/順序 | (2)in-scope dual-write | (3)純判定 |
 > |---|---|---|---|
@@ -347,7 +354,8 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 
 **E4 を再開する時の未了点（参考・defer 中）**: ① `syncFromScene`→`refreshMirror`（statusEffects 再計算停止＋prune）② gameLoop base を `Ref.get(worldRef)` に
 ③ reseed seam（床移動/リスタート/復活/中断再開で `Cmd.Seed`）④ reader flip（pure reader は **data-threading** で `statusEffects` を引数注入、`World.Query` は effect 境界で1回読む）⑤ dual-write 撤去 ⑥ `statuses` フィールド削除。**dual-write gap**（非DSL の直接杖Bind/一時しのぎ/敵詠唱/投擲 directional は境界 emit 未被覆）を塞ぐこと。**実機 `flix run` 必須**。
-**次の一手**: ECS 本線へ — **S4 Board fromWorld 化の flip②**（frame-head 直接 call）／S5 位置の正を World に。
+**次の一手**: ★最前線（§G 冒頭・2026-06-28）参照 — **Phase B 本体**: S-A0 read-model（baseStats/weaponView/ringBonus）を command-derive 化 → combatView reader を `World.combatViewOf` へ flip 安全化（**重・実機 run ペア必須**）。計画 = `examples/fe_rogue/_split_plan.md`。
+（旧 S4 Board fromWorld flip②/S5 は Plan B 監査の一部として据置・out-of-scope 整理済み）
 
 ### チェックリスト
 - [x] S0 足場（最小 World＋sync 骨組み）— `examples/fe_rogue/src/ecs/World.flix`、gameLoop に thread、build＋test 859緑、ゲート88→§G更新で90+

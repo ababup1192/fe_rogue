@@ -476,4 +476,23 @@ mod TestCombat {
             {attack = 0, magicAttack = 0, defense = 1, magicDefense = 9,
              skill = 0, speed = 0, luck = 4, hp = 99, maxHp = 99, weapon = None, hitMod = 0};
         Assert.assertEq(expected = 10, Combat.estimate(attacker, defender)#crit)
+
+    /// assembleView は base 戦闘値に status mods と指輪ボーナスを規定どおり合成する（formula の直接固定）。
+    /// combatView / combatViewOf が共にこれを呼ぶため、両者比較の parity ではこの式バグを捕えられない
+    /// （両方同じく誤る）。手計算値で式そのものを固定する。
+    ///   attack = base+atkBonus+ring / defense = base+ring+defDelta / speed = base+spdDelta+ring /
+    ///   skill,luck = base+ring / hitMod = mods#hitMod / magic*,maxHp = base のまま。
+    @Test
+    def testAssembleViewCombinesBaseModsRing(): Unit \ Assert =
+        let cv = Combat.assembleView({
+            base   = {attack = 5, magicAttack = 3, defense = 4, magicDefense = 2,
+                      skill = 6, speed = 7, luck = 1, maxHp = 20},
+            mods   = {atkBonus = 2, spdDelta = -1, hitMod = -3, defDelta = -2},
+            ring   = {attack = 1, speed = 2, defense = 1, skill = 1, luck = 1},
+            hp     = 15,
+            weapon = None});
+        Assert.assertEq(
+            expected = (8, 3, 3, 2, 7, 8, 2, 15, 20, -3),
+            (cv#attack, cv#magicAttack, cv#defense, cv#magicDefense, cv#skill,
+             cv#speed, cv#luck, cv#hp, cv#maxHp, cv#hitMod))
 }
