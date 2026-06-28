@@ -11,14 +11,15 @@
 //   - SimEvent（Damaged/Dying/ExpGained/LeveledUp/ViewFx）… 戻り値の event 代数
 //
 // 実装状況（正直なスコープ）:
-//   ✓ player 攻撃の **撃破 path**（damage→hp 0 clamp / exp / level-up）を World 完結で解ける。final-World は
-//     legacy と等価 — ただし **crit=0・growthRates=0・命中固定の golden fixture 範囲**での等価。
-//     検証: TestGoldenTrace の A2(no-levelup)/A(levelup) 凍結 World に resolveAttack が一致（下記 ☐ がその制約を外す）。
+//   ✓ player 攻撃の **撃破 path**（damage→hp 0 clamp / **crit damage(applyCrit)** / exp / level-up）を World 完結で
+//     解き、final-World は legacy と等価。**hit→crit→thief→growth の draw 順を legacy に一致**させたので、
+//     crit 武器・growthRates>0 でも等価（crit=0/growthRates=0 の制約は外れた）。
+//     検証: TestGoldenTrace A2(no-levelup)/A(levelup)/overkill + **growthRates>0 roll-sensitive level-up**（draw 順整合を pin）。
 //   ☐ 残（legacy 厳密一致への反復・golden gate）:
-//      - **crit/finisher の damage・撃破・exp 再計算**（現状は base ダメージのみ＝crit 武器で乖離・CombatScene.flix:521-537）
+//      - finisher（死神のネックレス）・weapon 効果（knockback / thief drop / lifesteal / status afflict）＝ring/weapon 効果
+//        （thief は draw 順整合のため roll だけ引いている・効果は未適用）
 //      - **非撃破 path の SetAlerted + releaseBind**（`SimEvent.Alerted` 変種の追加が要・現状 Damaged のみ＝enemyAlerted/immob が乖離）
-//      - hit→crit→thief→growth の **draw 順厳密一致**（現状 hit 1 draw のみ＝counter/follow-up 連鎖で seeded stream desync）
-//      - weapon 効果（knockback/thief/status）・counter チェーン（反撃）・enemy 攻撃 path・ViewReplay 配線・cutover。
+//      - counter チェーン（反撃）・enemy 攻撃 path・ViewReplay 配線・cutover。
 mod CombatSystem {
 
     /// 9 stat 成長ロール（legacy CombatScene.rollGrowth と同義）。draw 順の厳密一致は spike では要求しない
@@ -67,19 +68,32 @@ mod CombatSystem {
             (World, List[World.SimEvent]) \ World.RngDraw =
         match (World.combatViewOf(attacker#ref, world), World.combatViewOf(defender#ref, world)) {
             case (Some(atk), Some(defView)) =>
-                let hitRoll = World.RngDraw.nextPercent();
-                let strike  = CombatRules.resolveStrike(atk, defView);
-                let events  =
-                    if (hitRoll >= strike#hit)
+                // draw 順は legacy 厳守: hit(1) → crit(2) → [命中時のみ] thief(3) → growth(4-12, expEvents)。
+                // hit/crit は命中前に両方引く（legacy CombatScene.flix:515-516）＝miss でも crit を消費する。
+                let hitRoll  = World.RngDraw.nextPercent();
+                let critRoll = World.RngDraw.nextPercent();
+                let strike   = CombatRules.resolveStrike(atk, defView);
+                let events =
+                    if (not Combat.isHit(strike#hit, hitRoll))
                         World.SimEvent.ViewFx(World.ViewFxKind.Sound("miss")) :: Nil
-                    else if (strike#killed)
-                        // B1: 撃破時の最終 hp は legacy（startDeathAnimation が hard 0 を emit）に合わせ 0 に clamp。
-                        // strike#newHp は overkill で負値になり得るが、legacy/golden oracle は常に 0。
-                        World.SimEvent.Damaged(defender#ref, {newHp = 0, dmg = strike#dmg})
-                            :: World.SimEvent.Dying(defender#ref)
-                            :: expEvents(world, attacker, defender)
-                    else
-                        World.SimEvent.Damaged(defender#ref, {newHp = strike#newHp, dmg = strike#dmg}) :: Nil;
+                    else {
+                        // crit: applyCrit で 3 倍ダメージ・撃破再判定（finisher=ring 効果は deferred）。
+                        let fin =
+                            if (Combat.isCrit(strike#crit, critRoll))
+                                Combat.applyCrit(strike#dmg, defView#hp)
+                            else
+                                {dmg = strike#dmg, newHp = strike#newHp, killed = strike#killed};
+                        // thief roll: 効果（盗人の剣）は deferred だが legacy は命中時に必ず 1 draw 消費する
+                        // （CombatScene.flix:548 の引数評価）。draw 順を揃えるため引くだけ。
+                        let _thiefRoll = World.RngDraw.nextPercent();
+                        if (fin#killed)
+                            // B1: 撃破時 hp は legacy（startDeathAnimation の hard 0）に合わせ 0 に clamp。
+                            World.SimEvent.Damaged(defender#ref, {newHp = 0, dmg = fin#dmg})
+                                :: World.SimEvent.Dying(defender#ref)
+                                :: expEvents(world, attacker, defender)
+                        else
+                            World.SimEvent.Damaged(defender#ref, {newHp = fin#newHp, dmg = fin#dmg}) :: Nil
+                    };
                 let world1 = List.foldLeft((w, e) -> World.applyEventToWorld(e, w), world, events);
                 (world1, events)
             case (_, _) => (world, Nil)

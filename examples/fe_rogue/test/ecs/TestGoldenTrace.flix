@@ -293,6 +293,26 @@ mod TestGoldenTrace {
             expected = (true, Some(0), World.hpOf(EntityRef.Enemy(1), legacyW)),  // legacy も 0
             (evCount > 0, World.hpOf(EntityRef.Enemy(1), sysW), World.hpOf(EntityRef.Enemy(1), sysW)))
 
+    /// draw 順整合の証明: **growthRates>0（roll-sensitive な hp=50）** の level-up で resolveAttack の最終 hp が
+    /// legacy と一致する。crit/thief draw を入れたことで growth draw が legacy と同位置（position 4+）に揃い、
+    /// 同 seed で同じ成長ロールを引く＝同じ hp 成長になる。旧実装（hit のみ 1 draw）なら growth が position 2 で
+    /// 引かれ legacy(position 4) とロールがずれ、この roll-sensitive fixture で乖離していた（＝本テストが整合を pin）。
+    @Test
+    def testResolveCombatEqualsLegacyLevelUpRollSensitive(): Unit \ Assert =
+        let bp = player(99, 10, Some(1), 200);
+        let gp = {resource = {growthRates = {hp = 50 | UnitCatalog.zeroGrowthRates()} | bp#resource} | bp};
+        let sc = sceneOf(gp, enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, _, legacyW) = runAttack(sc);
+        let w0 = World.syncFromScene(sc, World.empty());
+        let (sysW, evCount) = region rc {
+            let (w, evs) = TestUnitFixtures.withSeededRng(rc, seed(), () ->
+                CombatSystem.resolveAttack(w0, {ref = EntityRef.Player(0), level = 1}, {ref = EntityRef.Enemy(1), level = 1}));
+            (w, List.length(evs))
+        };
+        Assert.assertEq(
+            expected = (true, World.hpOf(EntityRef.Player(0), legacyW), World.progressOf(EntityRef.Player(0), legacyW)),
+            (evCount > 0, World.hpOf(EntityRef.Player(0), sysW), World.progressOf(EntityRef.Player(0), sysW)))
+
     // ── (E) ROLL-DEPENDENT fixture（定数生成器では再現不能）─────────────────────
 
     /// 既存 fixture は weaponHit=200・crit=0 で「常時命中・必殺なし」＝outcome が draw 値に依存せず、
