@@ -851,4 +851,19 @@ mod TestWorld {
         Assert.assertEq(
             expected = Some(cvProj(PlayerScene.combatView(pdata))),
             Option.map(cvProj, World.combatViewOf(World.EntityRef.Player(0), w)))
+
+    // ── S-A0d: growth（level-up 用 base Stats + 成長率 + 名前）の read-model（player-only） ──
+
+    /// growth は player の resource から base#hp/rates#hp/name を mirror し、enemy は None（player-only）。
+    /// これで resolveCombat の level-up を resource threading 無しで World 完結に解ける（spike の gap close）。
+    @Test
+    def testGrowthMirrorsResourcePlayerOnly(): Unit \ Assert =
+        let scene = sampleScene();
+        let w = World.syncFromScene(scene, World.empty());
+        let p0 = PlayerScene.get(0, scene)
+            |> Option.map(d -> (LevelSystem.statsOf(d#resource)#hp, d#resource#growthRates#hp, d#resource#description));
+        Assert.assertEq(
+            expected = (p0, true),
+            (World.growthOf(World.EntityRef.Player(0), w) |> Option.map(g -> (g#base#hp, g#rates#hp, g#name)),
+             Option.isEmpty(World.growthOf(World.EntityRef.Enemy(5), w))))
 }

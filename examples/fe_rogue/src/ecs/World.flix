@@ -23,6 +23,12 @@ pub enum SimPhase with Eq, ToString {
 // S-A0: combatView の base 戦闘値型 `BaseStats` と組立 `assembleView` は `Combat`（ecs/rules）に集約。
 // World はそれを read-model として格納し（`baseStats`）、`combatViewOf` で `Combat.assembleView` を呼ぶ。
 
+/// S-A0d: level-up 成長を World だけで解くための read-model（player-only・resource 由来）。
+/// `base` = 現 resource の基準 9 ステータス（`LevelSystem.statsOf`）、`rates` = 成長率、`name` = 表示名
+/// （LeveledUp の view パネル Result 用）。spike が「level-up は resource を要する」gap を露出したのを埋める
+/// ＝resolveCombat の level-up を World 完結に（resource threading 不要）。
+pub type alias Growth = {base = LevelSystem.Stats, rates = UnitCatalog.GrowthRates, name = String}
+
 pub enum World {
     case World({ tick = Int32,
                  // F2a: turn FSM の World mirror（dual・read-model）。権威は当面 TurnPhase.State。
@@ -71,6 +77,9 @@ pub enum World {
                  // S-A0c: 装備指輪ボーナス read-model（unified-id・両 faction）。未装備は zeroBonuses。
                  // equippedRingBonus 由来ゆえ毎フレーム再 mirror。combatView flip 用。
                  ringBonus = Map[EntityId, Ring.Bonuses],
+                 // S-A0d（spike が露出した gap）: level-up 成長に要る resource 由来データ（基準 Stats + 成長率）。
+                 // player-only・resource 由来ゆえ毎フレーム再 mirror。resolveCombat の level-up を World 完結に。
+                 growth = Map[EntityId, Growth],
                  // F8-slice2: 敵ターン driver が読む phase-banner 同期 bool（TopBar が毎フレーム dual-write）。
                  //   enemyTurnBusy      — 敵ターン開始 intro の hold 中（>0）＝敵の行動開始待ち。
                  //   phaseObservedEnemy — 上部バーが「敵ターン」を観測済み（0 体ターンの取りこぼし防止）。
@@ -98,6 +107,7 @@ mod World {
                      attackTarget = Map.empty(),
                      playerLevel = Map.empty(), playerExp = Map.empty(),
                      baseStats = Map.empty(), weaponView = Map.empty(), ringBonus = Map.empty(),
+                     growth = Map.empty(),
                      enemyTurnBusy = false, phaseObservedEnemy = false,
                      rng = Prng.seed(0i64)})
 
@@ -154,6 +164,9 @@ mod World {
                                    Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedWeaponView(d), enemies)),
             ringBonus = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedRingBonus(d), players),
                                   Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedRingBonus(d), enemies)),
+            // S-A0d: growth は player-only・resource 由来 read-model（毎フレーム再 mirror）。
+            growth = Query.indexBy(d -> d#id,
+                        d -> ({base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}: Growth), players),
             attackTarget = Map.union(attackTargetMap(id -> id, players),
                                      attackTargetMap(enemyUid, enemies)),
             // F8-slice2: scene に mirror 元がない scalar bool は前 world の値を保持（command 由来）。
@@ -213,6 +226,9 @@ mod World {
             // S-A0c: ringBonus も装備指輪由来の read-model ＝ 毎フレーム再 mirror。
             ringBonus = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedRingBonus(d), players),
                                   Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedRingBonus(d), enemies)),
+            // S-A0d: growth も player-only・resource 由来 read-model ＝ 毎フレーム再 mirror。
+            growth = Query.indexBy(d -> d#id,
+                        d -> ({base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}: Growth), players),
             attackTarget = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#attackTarget),
             // F8-slice2: scalar bool は command 由来を保持（scene mirror 元なし・TopBar が毎フレーム dual-write）。
             enemyTurnBusy      = w#enemyTurnBusy,
@@ -720,6 +736,15 @@ mod World {
     /// B1 で combatView がここを読み、status/ring 補正を加えて CombatView を組む（reader flip）。
     pub def baseStatsOf(ref: EntityRef, world: World): Option[Combat.BaseStats] =
         let World.World(w) = world; Map.get(toUid(ref), w#baseStats)
+
+    /// S-A0d: level-up 成長に要る基準 Stats + 成長率を World から読む（player-only。Enemy は常に None）。
+    /// resolveCombat の level-up が resource を threading せず World 完結で成長を解くための seam。
+    pub def growthOf(ref: EntityRef, world: World): Option[Growth] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) => Map.get(id, w#growth)
+            case EntityRef.Enemy(_)   => None
+        }
 
     /// S-A0b: 装備武器の戦闘投影を World から読む（unified-id・両 faction）。
     /// 外側 Option（entity 未登録）と内側 Option（武器なし）を flatten し、武器なし＝None で返す
