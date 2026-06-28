@@ -392,6 +392,7 @@ mod World {
         case Afflicted(EntityRef, StatusSystem.Status)  // 状態異常付与（StatusSystem.add 意味論＝Cmd.Add と同一）
         case Dying(EntityRef)     // 撃破された敵を死亡演出中(enemyDying)へ＝world 状態変化（Cmd.SetDying）。view 演出は ViewFx(Died)
         case Released(EntityRef)  // かなしばり(Immobilized)解除＝statusEffects から除去（Cmd.ClearImmobilized）
+        case Alerted(EntityRef, Bool)  // 敵の検知フラグ切替（被弾で起動）＝enemyAlerted（Cmd.SetAlerted）
         // view-only（World 不変）
         case ViewFx(ViewFxKind)
     }
@@ -583,6 +584,7 @@ mod World {
             case SimEvent.Afflicted(ref, s) => applyCmd(Cmd.Add(ref, s), world)
             case SimEvent.Dying(ref)        => applyCmd(Cmd.SetDying(ref), world)
             case SimEvent.Released(ref)     => applyCmd(Cmd.ClearImmobilized(ref), world)
+            case SimEvent.Alerted(ref, b)   => applyCmd(Cmd.SetAlerted(ref, b), world)
             case SimEvent.ViewFx(_)         => world
         }
 
@@ -600,6 +602,7 @@ mod World {
             case SimEvent.Afflicted(ref, s) => Cmd.Add(ref, s) :: Nil
             case SimEvent.Dying(ref)        => Cmd.SetDying(ref) :: Nil
             case SimEvent.Released(ref)     => Cmd.ClearImmobilized(ref) :: Nil
+            case SimEvent.Alerted(ref, b)   => Cmd.SetAlerted(ref, b) :: Nil
             case SimEvent.ViewFx(_)         => Nil
         }
 
@@ -616,6 +619,7 @@ mod World {
             case SimEvent.Afflicted(ref, _) => Some(ref)
             case SimEvent.Dying(ref)        => Some(ref)
             case SimEvent.Released(ref)     => Some(ref)
+            case SimEvent.Alerted(ref, _)   => Some(ref)
             case SimEvent.ViewFx(vk)        => match vk {
                 case ViewFxKind.Knockback(ref, _) => Some(ref)
                 case ViewFxKind.Died(ref)         => Some(ref)

@@ -313,6 +313,66 @@ mod TestGoldenTrace {
             expected = (true, World.hpOf(EntityRef.Player(0), legacyW), World.progressOf(EntityRef.Player(0), legacyW)),
             (evCount > 0, World.hpOf(EntityRef.Player(0), sysW), World.progressOf(EntityRef.Player(0), sysW)))
 
+    /// 非撃破 path 等価: enemy hp=20 を dmg4 で攻撃→生存。hp 更新 + **SetAlerted(true)** + releaseBind が
+    /// legacy と一致する（resolveAttack の非撃破分岐が Alerted/Released を emit する。emit 漏れなら alerted が
+    /// false のままで legacy(true) と乖離して落ちる）。
+    @Test
+    def testResolveCombatEqualsLegacyNonKill(): Unit \ Assert =
+        let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, _, legacyW) = runAttack(sc);
+        let w0 = World.syncFromScene(sc, World.empty());
+        let (sysW, evCount) = region rc {
+            let (w, evs) = TestUnitFixtures.withSeededRng(rc, seed(), () ->
+                CombatSystem.resolveAttack(w0, {ref = EntityRef.Player(0), level = 1}, {ref = EntityRef.Enemy(1), level = 1}));
+            (w, List.length(evs))
+        };
+        // hp + alerted + **progress**（命中 EXP）を比較。progress 抜けが B1（hit-exp 漏れ）を隠していた。
+        Assert.assertEq(
+            expected = (true, World.hpOf(EntityRef.Enemy(1), legacyW), World.alertedOf(EntityRef.Enemy(1), legacyW),
+                        World.progressOf(EntityRef.Player(0), legacyW)),
+            (evCount > 0, World.hpOf(EntityRef.Enemy(1), sysW), World.alertedOf(EntityRef.Enemy(1), sysW),
+             World.progressOf(EntityRef.Player(0), sysW)))
+
+    /// crit path 等価: crit=100 武器で必ず必殺。base ダメージ4 では enemy hp=10 を撃破できないが、必殺3倍=12 で
+    /// 撃破する＝crit が「非撃破→撃破」「hit exp→kill exp」を変える。resolveAttack の applyCrit + crit-kill exp 再計算が
+    /// legacy と一致するか（applyCrit を実際に通す唯一のテスト）。
+    @Test
+    def testResolveCombatEqualsLegacyCrit(): Unit \ Assert =
+        let critWeapon = ({hit = 200, crit = 100 | testWeapon()}: UnitCatalog.WeaponResource);
+        let bp = player(0, 10, Some(1), 200);
+        let critP = {weapons = critWeapon :: Nil | bp};
+        let sc = sceneOf(critP, enemy(1, 10, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, _, legacyW) = runAttack(sc);
+        let w0 = World.syncFromScene(sc, World.empty());
+        let (sysW, evCount) = region rc {
+            let (w, evs) = TestUnitFixtures.withSeededRng(rc, seed(), () ->
+                CombatSystem.resolveAttack(w0, {ref = EntityRef.Player(0), level = 1}, {ref = EntityRef.Enemy(1), level = 1}));
+            (w, List.length(evs))
+        };
+        Assert.assertEq(
+            expected = (true, World.hpOf(EntityRef.Enemy(1), legacyW), World.progressOf(EntityRef.Player(0), legacyW)),
+            (evCount > 0, World.hpOf(EntityRef.Enemy(1), sysW), World.progressOf(EntityRef.Player(0), sysW)))
+
+    /// Released(=releaseBind/ClearImmobilized) を pin: かなしばり中の enemy を非撃破で攻撃すると immobilize が
+    /// 解除される。w0 は immobilize あり（非空）、攻撃後は sysW/legacyW とも空＝resolveAttack の Released emit を固定。
+    @Test
+    def testResolveCombatEqualsLegacyReleasesImmobilize(): Unit \ Assert =
+        let e  = {statuses = StatusSystem.immobilizeFor(3) :: Nil
+                   | enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80)};
+        let sc = sceneOf(player(0, 10, Some(1), 200), e :: Nil);
+        let (_, _, legacyW) = runAttack(sc);
+        let w0 = World.syncFromScene(sc, World.empty());
+        let sysW = region rc {
+            let (w, _) = TestUnitFixtures.withSeededRng(rc, seed(), () ->
+                CombatSystem.resolveAttack(w0, {ref = EntityRef.Player(0), level = 1}, {ref = EntityRef.Enemy(1), level = 1}));
+            w
+        };
+        Assert.assertEq(
+            expected = (false, true, true),  // w0=かなしばり中(非空) / 攻撃後 sysW・legacyW とも解除(空)
+            (List.isEmpty(World.statusEffectsOf(EntityRef.Enemy(1), w0)),
+             List.isEmpty(World.statusEffectsOf(EntityRef.Enemy(1), sysW)),
+             List.isEmpty(World.statusEffectsOf(EntityRef.Enemy(1), legacyW))))
+
     // ── (E) ROLL-DEPENDENT fixture（定数生成器では再現不能）─────────────────────
 
     /// 既存 fixture は weaponHit=200・crit=0 で「常時命中・必殺なし」＝outcome が draw 値に依存せず、

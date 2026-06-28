@@ -11,15 +11,16 @@
 //   - SimEvent（Damaged/Dying/ExpGained/LeveledUp/ViewFx）… 戻り値の event 代数
 //
 // 実装状況（正直なスコープ）:
-//   ✓ player 攻撃の **撃破 path**（damage→hp 0 clamp / **crit damage(applyCrit)** / exp / level-up）を World 完結で
-//     解き、final-World は legacy と等価。**hit→crit→thief→growth の draw 順を legacy に一致**させたので、
+//   ✓ player 攻撃の **撃破 path**（damage→hp 0 clamp / **crit damage(applyCrit)＋crit-kill exp 再計算** / exp / level-up）を
+//     World 完結で解き、final-World は legacy と等価。**hit→crit→thief→growth の draw 順を legacy に一致**させたので、
 //     crit 武器・growthRates>0 でも等価（crit=0/growthRates=0 の制約は外れた）。
-//     検証: TestGoldenTrace A2(no-levelup)/A(levelup)/overkill + **growthRates>0 roll-sensitive level-up**（draw 順整合を pin）。
+//   ✓ **非撃破 path**（hp 更新 + SetAlerted(true) + releaseBind + **hit-exp 付与**）も legacy 等価（`SimEvent.Alerted` 変種を追加）。
+//     ※ legacy は**命中したら撃破でなくても EXP を付与**する（battleExp(.., killed)）＝expEvents を両分岐で呼ぶ。
+//     検証: TestGoldenTrace A2/A/overkill/roll-sensitive-levelup/**non-kill(alerted+progress)**/**crit(applyCrit)** が legacy に一致。
 //   ☐ 残（legacy 厳密一致への反復・golden gate）:
 //      - finisher（死神のネックレス）・weapon 効果（knockback / thief drop / lifesteal / status afflict）＝ring/weapon 効果
 //        （thief は draw 順整合のため roll だけ引いている・効果は未適用）
-//      - **非撃破 path の SetAlerted + releaseBind**（`SimEvent.Alerted` 変種の追加が要・現状 Damaged のみ＝enemyAlerted/immob が乖離）
-//      - counter チェーン（反撃）・enemy 攻撃 path・ViewReplay 配線・cutover。
+//      - counter チェーン（反撃）・enemy 攻撃 path（applyEnemyAttackHit の鏡像）・ViewReplay 配線・cutover。
 mod CombatSystem {
 
     /// 9 stat 成長ロール（legacy CombatScene.rollGrowth と同義）。draw 順の厳密一致は spike では要求しない
@@ -35,10 +36,11 @@ mod CombatSystem {
     /// 各陣営を 1 レコードに束ねて名前渡しする（`attacker#ref`/`attacker#level`）。
     pub type alias Combatant = {ref = World.EntityRef, level = Int32}
 
-    /// 撃破時の attacker 側 exp/level イベントを解く。exp 据置なら ExpGained、レベルアップなら LeveledUp。
+    /// 命中時の attacker 側 exp/level イベントを解く。legacy は**撃破でなくても命中なら EXP を付与**する
+    /// （`battleExp(.., killed)`＝撃破なら kill exp・非撃破なら hit exp≥1）。exp 据置なら ExpGained、跨ぎなら LeveledUp。
     /// ★gap CLOSED: level-up 成長は `World.growthOf`（S-A0d）から読む＝resource threading 不要・World 完結。
-    def expEvents(world: World, attacker: Combatant, defender: Combatant): List[World.SimEvent] \ World.RngDraw =
-        let expGain = Combat.battleExp(defender#level, attacker#level, true);
+    def expEvents(world: World, attacker: Combatant, defender: Combatant, killed: Bool): List[World.SimEvent] \ World.RngDraw =
+        let expGain = Combat.battleExp(defender#level, attacker#level, killed);
         let curExp  = match World.progressOf(attacker#ref, world) {
                         case Some((_, xp)) => xp
                         case None          => 0
@@ -87,12 +89,18 @@ mod CombatSystem {
                         // （CombatScene.flix:548 の引数評価）。draw 順を揃えるため引くだけ。
                         let _thiefRoll = World.RngDraw.nextPercent();
                         if (fin#killed)
-                            // B1: 撃破時 hp は legacy（startDeathAnimation の hard 0）に合わせ 0 に clamp。
+                            // 撃破: hp は legacy（startDeathAnimation の hard 0）に合わせ 0 に clamp。kill exp。
                             World.SimEvent.Damaged(defender#ref, {newHp = 0, dmg = fin#dmg})
                                 :: World.SimEvent.Dying(defender#ref)
-                                :: expEvents(world, attacker, defender)
+                                :: expEvents(world, attacker, defender, true)
                         else
-                            World.SimEvent.Damaged(defender#ref, {newHp = fin#newHp, dmg = fin#dmg}) :: Nil
+                            // 非撃破: legacy applyHit の else（CombatScene.flix:659-668→applyExpGain:975）に一致 —
+                            // hp 更新 + 検知起動(SetAlerted true) + かなしばり解除(releaseBind) + **hit exp**（SetProgress）。
+                            // 順序は legacy: SetHp → SetAlerted → ClearImmobilized → SetProgress。
+                            World.SimEvent.Damaged(defender#ref, {newHp = fin#newHp, dmg = fin#dmg})
+                                :: World.SimEvent.Alerted(defender#ref, true)
+                                :: World.SimEvent.Released(defender#ref)
+                                :: expEvents(world, attacker, defender, false)
                     };
                 let world1 = List.foldLeft((w, e) -> World.applyEventToWorld(e, w), world, events);
                 (world1, events)
