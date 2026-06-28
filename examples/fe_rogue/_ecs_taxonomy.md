@@ -25,8 +25,11 @@
 TopBar / ActionMenu / WeaponSelect / ItemMenu / TradeMenu / GameOverMenu / SuspendConfirm / TitleMenu / BattlePanel / UnitCard / EnemyCard / UnitInfoPopup / LevelUpPanel / UnitHPBar / DamagePopup / Explosion / ItemPickupPopup / Log / Minimap / Fog(view) / TurnEndHold / Cursor / ArrowCursor / RangeScenes / Camera / Bgm / WeaponIcon / WeaponGlyph / Stairs(node) / CharacterSelect。
 → これらは input/event/render 反応（Plan B gate で残置可と確定済）。**Scene のまま。**
 
-### System（→ `src/ecs/systems/`・純粋ロジック）
-- **既に純粋（src/game/・ほぼそのまま System body 化可）**: `Combat`・`EnemyAI`・`CounterAttackRules`・`LevelSystem`・`StatusSystem`・`Board`・`Encounter`・`TurnRules`(in?)・`TurnFlow`・`EffectPlan`/`EffectRunner`/`EffectFlow`・`Weapon`・`Encumbrance`・`MoveDraft`・`PhaseTransitions`。
+### System（→ `src/ecs/systems/`・純粋ロジック）— **単一 home 確定（A0-1）**
+新規 System/rule は `src/ecs/systems/` に置く。`src/sim/` は deprecated（drain 中）。
+- **relocate 済（A0-2 batch1・code-Scene=0 を検証して移送）**: `Combat`・`EnemyAI`・`CounterAttackRules`・`LevelSystem`・`StatusSystem`・`Board`・`Encounter`・`MoveDraft`・`Encumbrance` → `src/ecs/systems/`。`UnitView`（派生 component）→ `src/ecs/`。910 tests green 維持。
+- **⚠ 純粋ラベル誤り（据置）**: `TurnFlow`(実コード Scene 参照 11)・`PhaseTransitions`(同 90) は **scene 結合ありで純粋でない**。relocate せず split 対象に再分類。
+- **未分類で sim/ 残置**: `Weapon`(catalog 寄り)・`AnimEvent`(catalog)・`BoardSnapshot`(lib)・`EncounterBuilder`(bridge)・`effects/*`(system/catalog 混在) は別カテゴリ移送で対応。
 - **Scene 内にロジックが埋まっている（System へ抽出が必要＝split 対象）**: `CombatScene`(戦闘解決)・`EnemyTurnDriverScene`(敵ターン driver・既に step() System)・`StairsExitScene`(階段順次・既に step())・`PlayerMovementScene`(移動)・`StaffCastScene`/`ItemScene`(アイテム使用ロジック部分)。
 
 ### Component（→ `src/ecs/`）
