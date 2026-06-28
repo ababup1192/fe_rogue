@@ -747,4 +747,36 @@ mod TestWorld {
             expected = (expP0, expE5),
             (Option.map(cvProj, World.combatViewOf(World.EntityRef.Player(0), w)),
              Option.map(cvProj, World.combatViewOf(World.EntityRef.Enemy(5), w))))
+
+    /// B1 安全網: synced な World では combatViewMismatches が空（read-model ＝ scene と一致）。
+    /// 実機 [COMBATVIEW DIFF] が無音であることの単体版。
+    @Test
+    def testCombatViewMismatchesEmptyWhenSynced(): Unit \ Assert =
+        let scene = sampleScene();
+        let w = World.refreshMirror(scene, World.syncFromScene(scene, World.empty()));
+        Assert.assertEq(expected = true, List.isEmpty(World.combatViewMismatches(w, scene)))
+
+    /// B1 強化 parity: **状態異常 active** な player でも combatViewOf == combatView（status mods 経路）。
+    /// 既定 fixture は statuses=Nil・ring 未装備で `m`/`rb` がゼロのため、SpdDown を 1 件付けて
+    /// `StatusSystem.combatMods` の spdDelta が両 combatView 実装で同一に載ることを確認する。
+    @Test
+    def testCombatViewOfParityWithStatus(): Unit \ Assert =
+        let worldM = Marker2D.make(Vec2.zero()) |> CanvasItem.setYSortEnabled(true);
+        let mk = () -> Marker2D.make(Vec2.zero());
+        let status = ({effect = StatusSystem.StatusEffect.SpdDown, magnitude = 2,
+                       remaining = 3}: StatusSystem.Status);
+        let pdata = playerDataS(0, status :: Nil);
+        let scene = Scene.empty()
+            |> Scene.addNode(MapScene.worldName(),
+                EngineNode.Marker2DWithState(worldM, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
+                EngineNode.Marker2DWithState(mk(), NodeTag.Player(pdata)));
+        let w = World.syncFromScene(scene, World.empty());
+        let wvProj = wv -> (wv#attack, wv#hit, wv#crit, wv#isPhysical, wv#proficient, wv#effectValue);
+        let cvProj = cv -> (cv#attack, cv#magicAttack, cv#defense, cv#magicDefense, cv#skill,
+                            cv#speed, cv#luck, cv#hp, cv#maxHp, cv#hitMod,
+                            Option.map(wvProj, cv#weapon));
+        Assert.assertEq(
+            expected = Some(cvProj(PlayerScene.combatView(pdata))),
+            Option.map(cvProj, World.combatViewOf(World.EntityRef.Player(0), w)))
 }

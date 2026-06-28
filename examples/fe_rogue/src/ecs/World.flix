@@ -569,6 +569,25 @@ mod World {
             case _ => None
         }
 
+    /// B1 安全網: `combatViewOf`（World 再構築）と scene の `combatView` が食い違う entity を列挙する。
+    /// parallel-run DIFF（hp 等と同型）。read-model ゆえ frame-end では常に一致するはずで、
+    /// 食い違いは「combatView と combatViewOf の合成式 drift」を意味する（移行中の回帰検出）。
+    /// record/enum は Eq 非自動ゆえ全数値 + 武器投影を tuple 射影して比較する。
+    pub def combatViewMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
+        let wvProj = wv -> (wv#attack, wv#hit, wv#crit, wv#isPhysical, wv#proficient, wv#effectValue);
+        let cvProj = cv -> (cv#attack, cv#magicAttack, cv#defense, cv#magicDefense, cv#skill,
+                            cv#speed, cv#luck, cv#hp, cv#maxHp, cv#hitMod,
+                            Option.map(wvProj, cv#weapon));
+        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
+            if (Option.map(cvProj, combatViewOf(EntityRef.Player(d#id), world))
+                != Some(cvProj(PlayerScene.combatView(d))))
+                Some(EntityRef.Player(d#id)) else None);
+        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
+            if (Option.map(cvProj, combatViewOf(EntityRef.Enemy(d#id), world))
+                != Some(cvProj(EnemyScene.combatView(d))))
+                Some(EntityRef.Enemy(d#id)) else None);
+        List.append(pms, ems)
+
     /// World 拡張: 味方の (level, exp) を World から読む。未登録は None。Enemy は常に None。
     pub def progressOf(ref: EntityRef, world: World): Option[(Int32, Int32)] =
         let World.World(w) = world;

@@ -1084,6 +1084,12 @@ mod Game {
                     + " obs w=${World.phaseObservedEnemyOf(Ref.get(worldRef))} s=${TopBarScene.hasObservedEnemy(next)}")
             else ();
             let world1 = World.refreshMirror(next, Ref.get(worldRef));
+            // B1 安全網: refreshMirror 後の read-model（baseStats/weaponView/ringBonus）で combatViewOf を
+            // 組み、scene combatView と一致するかを実機全構成で確認する（食い違い＝合成式 drift）。
+            match World.combatViewMismatches(world1, next) {
+                case Nil => ()
+                case ms  => println("[COMBATVIEW DIFF] ${ms}")
+            };
             // F0（OOP→ECS 移行の足場）: **System パイプライン段**。ロジックを OOP callback でなく
             // `World -> World` の System で回す将来形の seam。現状の System は inert な `tickStatusEffects`
             // のみ（pos 不変ゆえ下の syncTreeFromWorld に無影響・status は次フレーム refreshMirror で上書き
