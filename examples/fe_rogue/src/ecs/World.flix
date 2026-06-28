@@ -243,6 +243,12 @@ mod World {
         case EntityRef.Enemy(id)  => enemyUid(id)
     }
 
+    /// Faction + id → EntityRef（faction→ref の唯一の構築点・分岐を散らさない）。
+    pub def refOfSide(faction: Faction, id: EntityId): EntityRef = match faction {
+        case Faction.Player => EntityRef.Player(id)
+        case Faction.Enemy  => EntityRef.Enemy(id)
+    }
+
     /// unified EntityId → EntityRef（offset の純粋な逆写像・store↔view plumbing 用）。
     /// **game logic の faction 判断は `teamOf`（enum タグ）を使う**。これは store のキー復元専用 plumbing。
     pub def uidToRef(uid: EntityId): EntityRef =

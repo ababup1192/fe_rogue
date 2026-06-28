@@ -101,48 +101,21 @@ mod CombatScene {
     /// `onAttackHit` / `onLungeDone` が解決する。
     /// 武器を持たないユニットは攻撃に到達してはいけない設計で、防御的に no-op する
     /// （味方: PlayerAttackRangeScene/TurnRules、敵: EnemyAI が禁止する）。
+    /// 攻撃開始（faction-blind）。武器なし（`weaponRange = None`）は filter で弾いて no-op。
+    /// 旧 startPlayerAttack/startEnemyAttack（path/Data/scene-write だけ違う near-duplicate）を統合。
+    /// faction dispatch は **`EntityScene`（scene 集約点）／`World.refOfSide`** に閉じ込め、ここは faction-blind。
     pub def startAttack(side: Faction, attackerId: Int32, defenderId: Int32,
                          targetGrid: {x = Int32, y = Int32},
                          scene: Scene[NodeTag]): Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, World.Command} =
-        match side {
-            case Faction.Player => startPlayerAttack(attackerId, defenderId, targetGrid, scene)
-            case Faction.Enemy  => startEnemyAttack(attackerId, defenderId, targetGrid, scene)
-        }
-
-    /// 味方側の攻撃開始。武器を持たない（`weapons = Nil`）味方は filter で弾いて no-op。
-    def startPlayerAttack(attackerId: Int32, defenderId: Int32,
-                           targetGrid: {x = Int32, y = Int32},
-                           scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {AnimationPlayer.Scheduler, World.Command} =
+        let attacker = World.refOfSide(side, attackerId);
+        let path     = EntityScene.path(attacker);
         let started = forM (
-            d <- PlayerScene.get(attackerId, scene)
-                     |> Option.filter(dd -> not List.isEmpty(dd#weapons))
+            uv <- EntityScene.unitView(attacker, scene) |> Option.filter(u -> Option.nonEmpty(u#weaponRange))
         ) yield {
-            AnimationPlayer.play(PlayerScene.playerPath(attackerId),
-                attackLungeAnimation(PlayerScene.playerPath(attackerId),
-                                     d#gridPos, targetGrid));
-            World.Command.emit(World.Cmd.SetAttackTarget(World.EntityRef.Player(attackerId), defenderId));  // F8-slice1
-            PlayerScene.mapPlayer(attackerId,
-                dd -> {attackTargetId = Some(defenderId) | dd}, scene)
-        };
-        Option.getWithDefault(scene, started)
-
-    /// 敵側の攻撃開始。武器が壊れている（`weapon = None`）敵は filter で弾いて no-op。
-    def startEnemyAttack(attackerId: Int32, defenderId: Int32,
-                          targetGrid: {x = Int32, y = Int32},
-                          scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {AnimationPlayer.Scheduler, World.Command} =
-        let started = forM (
-            d <- EnemyScene.get(attackerId, scene)
-                     |> Option.filter(dd -> Option.nonEmpty(dd#weapon))
-        ) yield {
-            AnimationPlayer.play(EnemyScene.enemyPath(attackerId),
-                attackLungeAnimation(EnemyScene.enemyPath(attackerId),
-                                     d#gridPos, targetGrid));
-            World.Command.emit(World.Cmd.SetAttackTarget(World.EntityRef.Enemy(attackerId), defenderId));  // F8-slice1
-            EnemyScene.mapEnemy(attackerId,
-                dd -> {attackTargetId = Some(defenderId) | dd}, scene)
+            AnimationPlayer.play(path, attackLungeAnimation(path, uv#pos, targetGrid));
+            World.Command.emit(World.Cmd.SetAttackTarget(attacker, defenderId));  // F8-slice1
+            EntityScene.setAttackTargetId(attacker, defenderId, scene)
         };
         Option.getWithDefault(scene, started)
 
@@ -455,10 +428,7 @@ mod CombatScene {
                              CustomEffects.ThiefDropRequest,
                              EnemyTurn.Queue, TurnPhase.State,
                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command, BoardQuery, World.PhaseQuery, World.WorldQuery} =
-        let ownerPath = match side {
-            case Faction.Player => PlayerScene.playerPath(id)
-            case Faction.Enemy  => EnemyScene.enemyPath(id)
-        };
+        let ownerPath = EntityScene.path(World.refOfSide(side, id));  // faction dispatch は EntityScene/World に集約
         let bundle = AnimationPlayer.Scheduler.drainSignals(ownerPath);
         let afterMethods = List.foldLeft(
             (sc, ev) -> match AnimEvent.parseTag(ev#name) {

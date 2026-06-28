@@ -44,7 +44,9 @@
 - **🎉 both-faction doubled store 全統合（hp/followUpUsed/attackTarget/pos/statusEffects）**＝applyCmd の主要 `match ref` arm が全て `toUid`/`overEntity` 1 本に。Entity=Component 合成の核心達成。
 - ✅ **A'-slice7（enemy-only store uid 化・910緑）= World 全 component が統一 uid-keyed に 🎯**: enemyAlerted/bottleUsed/prevPos/dying を `enemyUid` key へ（player-only は player uid=id で既に uid-keyed）。accessor は EntityRef signature 維持＝呼び出し側不変。**∴ World は「全 component を unified-id で keying・faction は team enum タグ」の clean Bevy 流表現に到達。A'（World 側 store 統合）完了。**
 - ⏭ **残（A' の外＝scene 側 / authoritative 化）**:
-  - **`match side` 4箇所（CombatScene view dispatch）**: startPlayerAttack/startEnemyAttack・playerPath/enemyPath は **split な PlayerScene/EnemyScene に結合**＝World 統合では消えない。scene-side 統合が要る。
+  - ✅ **A''-slice1（startAttack/ownerPath 統合・910緑）= scene 側 faction-blind accessor 層導入**: 重複 `startPlayerAttack`/`startEnemyAttack` を統合・`ownerPath` も path accessor 化。**`match side` 4→2 に削減**。
+  - ✅ **A''-slice2（faction dispatch 集約・910緑）= ユーザー要望対応**: faction 分岐を散らさないため、**`World.refOfSide(Faction→EntityRef)`** ＋ **新規 `EntityScene` モジュール**（`EntityRef→PlayerScene/EnemyScene` dispatch の唯一の集約点: `path`/`unitView`/`setAttackTargetId`）に閉じ込め。World 側 `toUid`/`teamOf` の scene 版 seam。今後の faction-blind scene code は EntityScene を使い各 scene に分岐を散らさない。faction 表現の変更は EntityScene＋World だけで済む。
+  - ⏭ **残 `match side` 2箇所（onAttackHit/onLungeDone）= 真に非対称な LOGIC**（player攻撃→敵被弾+exp / 敵攻撃→味方被弾+gameover、counter 方向）。path/accessor でなく **reaction/SimEvent モデル（Track B の resolveSystem・capability-query exp/death）が要る**＝ここから先は Track B 領域。
   - **single-faction Cmd の no-op arm**（SetAlerted Player→no-op 等）は**意味論的**（敵のみ alert・味方のみ wait）で除去対象でない。
   - **真の authoritative 化（PlayerData/EnemyData 並行型撤去・scene 撤去）= Track B 領域**（大）。
 - ⏭ 残 `match side` 4箇所（CombatScene view dispatch）は store 統合後に startAttack/path を uid ベース faction-blind 化。
