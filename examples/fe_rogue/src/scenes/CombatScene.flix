@@ -127,7 +127,7 @@ mod CombatScene {
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                               GameEngine.Game, GameLogger.GameLogger,
                               CustomEffects.GameOverRequest,
-                              SelectedPlayer.State, Math.Random,
+                              SelectedPlayer.State, World.RngDraw,
                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         match side {
             case Faction.Player => applyAttackHit(id, scene)
@@ -143,7 +143,7 @@ mod CombatScene {
     pub def applyAttackHit(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                               GameEngine.Game,
-                              GameLogger.GameLogger, Math.Random,
+                              GameLogger.GameLogger, World.RngDraw,
                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         let resolved = forM (
             d       <- PlayerScene.get(playerId, scene);
@@ -156,7 +156,7 @@ mod CombatScene {
     /// killedIds が空でないとき呼び出し側は死亡処理（removeDeadAndCheckGameOver）を発火する。
     pub def applyEnemyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
+            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
              Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
         let resolved = forM (
             d              <- EnemyScene.get(enemyId, scene);
@@ -171,7 +171,7 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command, World.PhaseQuery, World.WorldQuery} =
+                              SelectedPlayer.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
         match side {
             case Faction.Player => playerLungeDone(id, scene)
             case Faction.Enemy  => enemyLungeDone(id, scene)
@@ -187,7 +187,7 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command, World.PhaseQuery, World.WorldQuery} =
+                              SelectedPlayer.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
         // F2c: 「敵ターンか」の sim-phase 判定を World 由来へ flip（19-case 詳細は不要ゆえ 3-case で足りる）。
         if (World.PhaseQuery.phase() == SimPhase.EnemyTurn) {
             // 敵ターン中の味方反撃が完了した。反撃でレベルアップしていれば、その場で
@@ -312,7 +312,7 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Math.Random, World.Command, World.WorldQuery} =
+                              SelectedPlayer.State, World.RngDraw, World.Command, World.WorldQuery} =
         if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttackHold) {
             let cleared = clearEnemyAttackTarget(enemyId, scene);
             TurnFlow.commitWaitedAndAdvance(cleared)
@@ -403,7 +403,7 @@ mod CombatScene {
                         CustomEffects.GameOverRequest,
                         CustomEffects.ThiefDropRequest,
                         EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State, Pacing.State, Math.Random, World.Command, BoardQuery, World.PhaseQuery, World.WorldQuery} =
+                        SelectedPlayer.State, Pacing.State, World.RngDraw, World.Command, BoardQuery, World.PhaseQuery, World.WorldQuery} =
         match (PlayerScene.idFromPath(path), EnemyScene.idFromPath(path)) {
             case (Some(playerId), _) => drainAndDispatch(Faction.Player, playerId, node, path, scene)
             case (_, Some(enemyId))  => drainAndDispatch(Faction.Enemy, enemyId, node, path, scene)
@@ -424,7 +424,7 @@ mod CombatScene {
                              CustomEffects.GameOverRequest,
                              CustomEffects.ThiefDropRequest,
                              EnemyTurn.Queue, TurnPhase.State,
-                             SelectedPlayer.State, Pacing.State, Math.Random, World.Command, BoardQuery, World.PhaseQuery, World.WorldQuery} =
+                             SelectedPlayer.State, Pacing.State, World.RngDraw, World.Command, BoardQuery, World.PhaseQuery, World.WorldQuery} =
         let ownerPath = EntityScene.path(World.refOfSide(side, id));  // faction dispatch は EntityScene/World に集約
         let bundle = AnimationPlayer.Scheduler.drainSignals(ownerPath);
         let afterMethods = List.foldLeft(
@@ -446,8 +446,8 @@ mod CombatScene {
         (latest, afterFinished)
 
     /// 命中ロール用の 0..99 の一様乱数。`Combat.isHit(hitRate, roll)` に渡す。
-    def rollPercent(): Int32 \ Math.Random =
-        Float64.truncateToInt32(Float64.floor(Math.Random.randomFloat64() * 100.0))
+    def rollPercent(): Int32 \ World.RngDraw =
+        World.RngDraw.nextPercent()
 
     /// 攻撃 1 回の純粋な算出結果（命中率・与ダメージ・撃破後 HP・撃破か・経験値）。
     /// 乱数も Scene も使わないので、これ単体で命中率やダメージ式をテストできる。
@@ -484,7 +484,7 @@ mod CombatScene {
     def applyDamageToEnemy(playerId: Int32, player: PlayerScene.Data, enemyId: Int32,
                             scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
-                               GameEngine.Game, GameLogger.GameLogger, Math.Random,
+                               GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
                                CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         let resolved = forM (
             weapon <- PlayerData.equippedWeapon(player#weapons);
@@ -499,7 +499,7 @@ mod CombatScene {
                        weapon: UnitCatalog.WeaponResource, enemy: EnemyScene.Data,
                        enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
-                               GameEngine.Game, GameLogger.GameLogger, Math.Random,
+                               GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
                                CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         // S-A0/B1: 攻撃の combat view を World 由来へ flip（weapon=equipped ゆえ combatViewOf と一致・
         // WorldQuery=read-after-write 正・None は scene fallback）。レベルは scene（progress と dual-write 同値）。
@@ -691,7 +691,7 @@ mod CombatScene {
     def applyDamageToPlayer(enemyId: Int32, enemy: EnemyScene.Data, targetId: Int32,
                              scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
+            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
              Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
         // 前提（武器あり・対象あり）の解決だけを担う。実体は resolveEnemyAttack に委譲。
         let resolved = forM (
@@ -707,7 +707,7 @@ mod CombatScene {
                             weapon: UnitCatalog.WeaponResource, player: PlayerScene.Data,
                             targetId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
+            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
              Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
         // S-A0/B1: ダメージ計算の combat view を World 由来へ flip（WorldQuery=read-after-write 正・parity 同値）。
         let world = World.WorldQuery.get();
@@ -784,7 +784,7 @@ mod CombatScene {
     /// 固定追加ダメージ等の撃破を伴う op は未対応（PlanHandlers が killedIds を運べないため将来課題）。
     def applyEnemyEffectRule(enemy: EnemyScene.Data, enemyId: Int32, targetId: Int32,
                               player: PlayerScene.Data, dmgDealt: Int32, targetNewHp: Int32,
-                              killed: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command} =
+                              killed: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ {World.RngDraw, World.Command} =
         // None カスケード（effectRule 無し / 不正 JSON / トリガー不一致）を 1 段に畳む。
         // ここまでは RNG を引かない＝ rule が確定し trigger が当たった敵だけが下で roll する
         // （無い敵は短絡＝既存乱数列を保つ。roll を forM 内に入れると短絡順序が崩れるため厳禁）。
@@ -947,7 +947,7 @@ mod CombatScene {
 
     /// 9 ステータスぶんの成長判定用乱数 (各 0..99) をまとめて振る。
     /// 値の意味づけ・成長判定は LevelSystem 側のピュア関数が行う。
-    def rollGrowth(): LevelSystem.Rolls \ Math.Random =
+    def rollGrowth(): LevelSystem.Rolls \ World.RngDraw =
         {hp           = rollPercent(),
          attack       = rollPercent(),
          defense      = rollPercent(),
@@ -964,7 +964,7 @@ mod CombatScene {
     ///     増えた分だけ現在 HP も増やし、`pendingLevelUp` に結果を積む（パネル表示の合図）。
     /// `pendingLevelUp` が立つと commitWaitedAndAdvance がターンを進めずパネルへ割り込む。
     def applyExpGain(playerId: Int32, expGain: Int32,
-                      scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, GameLogger.GameLogger, World.Command} =
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ {World.RngDraw, GameLogger.GameLogger, World.Command} =
         let gained = forM (
             d <- PlayerScene.get(playerId, scene)
         ) yield {
@@ -984,7 +984,7 @@ mod CombatScene {
     /// `pub`: HP 増分の World dual-write（過去に漏れて [F6 HP DIFF] を出した不変条件）を
     /// `TestCombatScene` が単体検証できるように公開している。
     pub def applyLevelUp(playerId: Int32, d: PlayerScene.Data, newExp: Int32,
-                      scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, GameLogger.GameLogger, World.Command} =
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ {World.RngDraw, GameLogger.GameLogger, World.Command} =
         let rolls  = rollGrowth();
         let before = LevelSystem.statsOf(d#resource);
         let after  = LevelSystem.applyGrowth(before, d#resource#growthRates, rolls);

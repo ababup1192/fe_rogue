@@ -894,6 +894,13 @@ mod Game {
                   // F7: 現 World スナップショット（worldRef）を返す汎用 read seam。フラグ reader 共通窓口。
                   def get(k) = k(Ref.get(worldRef))
               }
+              with handler World.RngDraw {
+                  // slice `rng-world`: live combat ロールの chokepoint。0..99 reduction は
+                  // `Prng.unitToPercent` 一本に集約（live も Prng/oracle も同一本体＝数値 bit-identical を
+                  // 型で保証。式が複製されると live と golden が無言で乖離する）。source だけ live=Math.Random。
+                  // worldRef の seeded PRNG は進めない（PRNG は test/trace 専用）。
+                  def nextPercent(k) = k(Prng.unitToPercent(Math.Random.randomFloat64()))
+              }
               with handler PlayerData.PartyQuery {
                   def get(id, k)           = k(PlayerScene.get(id, Ref.get(sceneRef)))
                   def getAll(k)            = k(PlayerScene.getAll(Ref.get(sceneRef)))
@@ -998,7 +1005,8 @@ mod Game {
                          FloorProgress.State, InitialSpawns.State,
                          GamePhaseState, PartySelection.State,
                          Pacing.State, Math.Random, FloorSnapshot.State,
-                         World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery, r} =
+                         World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
+                         World.RngDraw, r} =
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
         if (GameEngine.Game.shouldClose()) ()
         else {

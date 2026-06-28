@@ -90,7 +90,7 @@ mod TestCombatScene {
         TestUnitFixtures.withWorldQuery(World.syncFromScene(scene, World.empty()), () ->
         TestUnitFixtures.dischargeWorldCommand(() ->
         TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
-        withNoopThiefDrop(() ->
+        TestUnitFixtures.withNoopThiefDrop(() ->
         TestUnitFixtures.withMockRandom(() ->
         TestUnitFixtures.withMockGame(() ->
         TestUnitFixtures.withMockAudio(() ->
@@ -328,13 +328,6 @@ mod TestCombatScene {
             def reviveInPlace(scene, k) = k(scene)
         }
 
-    /// ThiefDropRequest の no-op スタブ（盗人ドロップが飛んだら scene をそのまま返す）。
-    def withNoopThiefDrop(thunk: Unit -> a \ ef):
-            a \ (ef - CustomEffects.ThiefDropRequest) =
-        run { thunk() } with handler CustomEffects.ThiefDropRequest {
-            def drop(_cell, scene, k) = k(scene)
-        }
-
     /// `path` のノードに対して CombatScene.process を全副作用モックで 1 回回す。
     /// AnimationPlayer は `ownerPath` 宛にだけ attack_lunge finished を返す
     /// （他 owner 宛の drain は空 = 実物 Scheduler と同じ per-owner pull）。
@@ -361,7 +354,7 @@ mod TestCombatScene {
             TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withMockEnemyTurnQueue(() ->
             TestUnitFixtures.withSignalsFor(ownerPath, lungeDone, () ->
-            withNoopThiefDrop(() ->
+            TestUnitFixtures.withNoopThiefDrop(() ->
             withNoopGameOver(() ->
                 run {
                     TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);

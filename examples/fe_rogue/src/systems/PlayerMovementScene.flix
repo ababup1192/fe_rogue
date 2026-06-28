@@ -140,6 +140,9 @@ mod PlayerMovementScene {
                     match outcome {
                         case None        => (node, scene)
                         case Some(event) =>
+                            // INVARIANT: movedTarget / replayMovedEvent は move-seam 専用＝Moved 以外を渡すと
+                            // bug! で落ちる（no-op ではない）。ここは stepPlayerMove が常に Moved を返すので安全。
+                            // Phase C で combat SimEvent を配線したら、その event は必ず Moved に pre-filter してから渡すこと。
                             let target   = PlayerScene.movedTarget(event);
                             let replayed = PlayerScene.replayMovedEvent(event, board#map, slide, scene);
                             returnNode(node, path, autoPickupOrLog(data, target, replayed))

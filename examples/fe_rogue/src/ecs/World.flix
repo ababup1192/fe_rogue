@@ -75,7 +75,11 @@ pub enum World {
                  //   enemyTurnBusy      — 敵ターン開始 intro の hold 中（>0）＝敵の行動開始待ち。
                  //   phaseObservedEnemy — 上部バーが「敵ターン」を観測済み（0 体ターンの取りこぼし防止）。
                  // どちらも view-timing 由来だが driver の順序非依存化のため World 経由で読む（生アニメ Data は TopBar 残置）。
-                 enemyTurnBusy = Bool, phaseObservedEnemy = Bool })
+                 enemyTurnBusy = Bool, phaseObservedEnemy = Bool,
+                 // slice `rng-world`: 決定論的 PRNG 状態。live パスでは DORMANT（live ハンドラは
+                 // Math.Random に delegate し w#rng を進めない）。両 sync パスで verbatim carry し、
+                 // seeded PRNG を行使するのは test / trace ハーネスのみ。
+                 rng = Prng.State })
 }
 
 mod World {
@@ -94,7 +98,8 @@ mod World {
                      attackTarget = Map.empty(),
                      playerLevel = Map.empty(), playerExp = Map.empty(),
                      baseStats = Map.empty(), weaponView = Map.empty(), ringBonus = Map.empty(),
-                     enemyTurnBusy = false, phaseObservedEnemy = false})
+                     enemyTurnBusy = false, phaseObservedEnemy = false,
+                     rng = Prng.seed(0i64)})
 
     /// F2a: World の turnPhase を読む（read-model アクセサ）。
     pub def turnPhaseOf(world: World): SimPhase =
@@ -153,7 +158,10 @@ mod World {
                                      attackTargetMap(enemyUid, enemies)),
             // F8-slice2: scene に mirror 元がない scalar bool は前 world の値を保持（command 由来）。
             enemyTurnBusy      = w#enemyTurnBusy,
-            phaseObservedEnemy = w#phaseObservedEnemy
+            phaseObservedEnemy = w#phaseObservedEnemy,
+            // slice `rng-world`: PRNG 状態は scene mirror 元なし＝前 world を verbatim carry
+            // （さもないと毎フレーム seed が silently reset される）。
+            rng                = w#rng
         })
 
     /// P3（mirror 撤去・§A payoff）: per-frame の World 更新。**位置(playerPos/enemyPos)は
@@ -208,7 +216,9 @@ mod World {
             attackTarget = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#attackTarget),
             // F8-slice2: scalar bool は command 由来を保持（scene mirror 元なし・TopBar が毎フレーム dual-write）。
             enemyTurnBusy      = w#enemyTurnBusy,
-            phaseObservedEnemy = w#phaseObservedEnemy
+            phaseObservedEnemy = w#phaseObservedEnemy,
+            // slice `rng-world`: PRNG 状態を verbatim carry（refreshMirror も sync パス）。
+            rng                = w#rng
         })
 
     /// statuses を 1 ターン進める System（StatusSystem.tick を再利用）。S1b でターン開始フックに繋ぐ。
@@ -320,12 +330,65 @@ mod World {
         case SetPhaseObservedEnemy(Bool)       // F8-slice2: バーが敵ターン観測済み bool write（TopBar dual-write）
     }
 
-    /// System が出力する sim-event（F-clock の最小骨組み・F3b 導入）。
+    /// System が出力する sim-event（F-clock の最小骨組み・F3b 導入 → slice `simevent-algebra` で拡張）。
     /// System は World→World を即時に解き、「何が起きたか」を SimEvent として返す。
     /// VIEW はこれを再生（Tween/anim）する＝「即時 System ＋ event 再生」型の seam。
-    /// 現状は move 1 系統のみ。同 dispatch 内で emit→replay（timing 不変）＝pipeline 段移設（F3c）は別段。
+    ///
+    /// ── CLOSED / EXPLICITLY-PARTITIONED event set（DESIGN SPIKE。production emitter はまだ無い）──
+    /// 【sim-affecting】World 状態を動かす純粋イベント。`applyEventToWorld`（reducer）と
+    ///   `eventToCmds`（adapter）が `Cmd` へ写す:
+    ///   - `Moved`      → `Cmd.Move`（既出荷の move seam。唯一 production で emit されている）
+    ///   - `Damaged`/`Healed`/`Lifesteal` → `Cmd.SetHp(newHp)`（newHp は absolute。差分ではない）
+    ///   - `ExpGained`  → `Cmd.SetProgress(newLevel, newExp)` のみ（kill-без-levelup の bare emission 用）
+    ///   - `LeveledUp`  → `Cmd.SetHp(newHp)` THEN `Cmd.SetProgress(newLevel, newExp)`
+    ///                    （legacy の applyLevelUp が SetHp→SetProgress の順で emit する順序に一致）
+    ///   - `Afflicted`  → `Cmd.Add(status)`（状態異常付与。StatusSystem.add 意味論で statusEffects に積む。
+    ///                    enemy effectRule の spdDown 等を combat が emit する＝golden-trace fixture B が凍結する Cmd）
+    ///   - `Dying`      → `Cmd.SetDying`（撃破された敵を死亡演出中(enemyDying)へ＝**world 状態変化**。
+    ///                    view 演出 `ViewFx(Died)` とは別物で、こちらは sim 状態を動かす side ＝閉包に必要）
+    ///   - `Released`   → `Cmd.ClearImmobilized`（かなしばり解除＝statusEffects から Immobilized 除去。
+    ///                    敵の被弾/反撃で releaseBind が emit する Cmd＝golden-trace fixture B/D が凍結する）
+    /// 【view-only】`ViewFx(ViewFxKind)` 1 本に集約。World 不変（reducer は identity）。
+    ///   Popup/Sound/Explosion/Knockback/Thief/Died を包む。`Died` はここに居る＝**死亡演出**は VIEW 専用で、
+    ///   exp 反映は `ExpGained`/`LeveledUp` の absolute 値が既に持つので double-count しない。
+    ///   dying 状態への world 遷移は別途 sim-affecting な `Dying` が担う（演出と状態遷移を分離）。
+    /// 【fold の OUT（イベントにしない）】control/lifecycle な Cmd（SetAttackTarget/ClearAttackTarget/
+    ///   SetFollowUpUsed/SetAlerted …）は Phase C で resolveCombat が `[SimEvent]` と並べて
+    ///   DIRECTLY emit する。reducer のスコープ外。**SetDying / ClearImmobilized は world を動かす**ため
+    ///   ここには居ない＝上の sim-affecting（`Dying` / `Released`）に閉じている（event set は combat の
+    ///   全 world-mutation を被覆＝CLOSED）。
+    ///
+    /// 【1 攻撃あたり複数 SetHp の順序（documented）】Damaged(enemy)→Lifesteal(player)→
+    ///   WeaponLifesteal(player)。adapter は各イベントを単一 SetHp に写すので、emit 順は
+    ///   イベント列の順がそのまま担保する。
+    ///
+    /// ⚠ これは settled な equivalence contract ではなく DESIGN SPIKE。combat の interleaving 再構成は
+    ///   Phase C の仕事で golden-trace の LEGACY Cmd-stream に対して validate される（ここでは証明しない）。
     pub enum SimEvent {
+        // sim-affecting
         case Moved(EntityRef, {x = Int32, y = Int32})  // entity が target へ 1 歩進んだ（from は view が現位置で持つ）
+        case Damaged(EntityRef, {newHp = Int32, dmg = Int32})    // 被ダメージ後の絶対 hp（dmg は view 用の差分）
+        case Healed(EntityRef, {newHp = Int32, amt = Int32})     // 回復後の絶対 hp
+        case Lifesteal(EntityRef, {newHp = Int32, amt = Int32})  // 吸収後の絶対 hp（攻撃側）
+        case ExpGained({entity = EntityRef, newLevel = Int32, newExp = Int32})  // 撃破のみ（レベルアップ無し）
+        case LeveledUp({entity = EntityRef, newLevel = Int32, newExp = Int32,
+                        newHp = Int32, result = LevelSystem.Result})  // result は view パネル専用
+        case Afflicted(EntityRef, StatusSystem.Status)  // 状態異常付与（StatusSystem.add 意味論＝Cmd.Add と同一）
+        case Dying(EntityRef)     // 撃破された敵を死亡演出中(enemyDying)へ＝world 状態変化（Cmd.SetDying）。view 演出は ViewFx(Died)
+        case Released(EntityRef)  // かなしばり(Immobilized)解除＝statusEffects から除去（Cmd.ClearImmobilized）
+        // view-only（World 不変）
+        case ViewFx(ViewFxKind)
+    }
+
+    /// VIEW 専用エフェクトの種類（`SimEvent.ViewFx` の payload）。World 状態を変えない演出のみ。
+    /// `Died` も view-only＝撃破演出。exp 反映は `ExpGained`/`LeveledUp` の absolute 値が担う。
+    pub enum ViewFxKind {
+        case Popup({x = Int32, y = Int32, text = String})
+        case Sound(String)
+        case Explosion({x = Int32, y = Int32})
+        case Knockback(EntityRef, {x = Int32, y = Int32})
+        case Thief({x = Int32, y = Int32})
+        case Died(EntityRef)
     }
 
     /// statuses 書き込み effect（Bevy Commands）。handler は Game.start（worldRef へ即時適用）。
@@ -362,6 +425,28 @@ mod World {
     pub eff WorldQuery {
         def get(): World
     }
+
+    /// slice `rng-world`: 全 combat roll の単一 chokepoint。0..99 の一様乱数を 1 つ引く。
+    /// live ハンドラ（Game.start）は `Math.Random` に delegate し旧 rollPercent と BODY-IDENTITY、
+    /// test/trace ハーネスは `World.drawPercent`（worldRef 上の seeded Prng）で discharge する。
+    /// CombatScene の `rollPercent` がこの op だけを呼ぶ＝draw 順序は呼び出し位置がそのまま決める。
+    pub eff RngDraw {
+        def nextPercent(): Int32
+    }
+
+    /// world 上の seeded PRNG から 0..99 を 1 つ引き、state を進めた world を返す（test/trace 用）。
+    pub def drawPercent(world: World): (Int32, World) =
+        let World.World(w) = world;
+        let (p, st1) = Prng.nextPercent(w#rng);
+        (p, World.World({rng = st1 | w}))
+
+    /// world の PRNG を seed し直す（trace ハーネスが固定 seed で開始するため）。
+    pub def seedRng(s: Int64, world: World): World =
+        let World.World(w) = world; World.World({rng = Prng.seed(s) | w})
+
+    /// world の現在の PRNG 状態を読む（multi-frame carry テスト用）。
+    pub def rngOf(world: World): Prng.State =
+        let World.World(w) = world; w#rng
 
     /// statusEffects を引く（既定 Nil＝mid-game spawn は seed 不要）。Query handler から呼ぶ。
     /// A': 単一 store。player uid=id ゆえ get(id) のまま、enemy は enemyUid(id) へ写す。
@@ -458,6 +543,119 @@ mod World {
                 let World.World(w) = world; World.World({enemyTurnBusy = b | w})
             case Cmd.SetPhaseObservedEnemy(b) =>
                 let World.World(w) = world; World.World({phaseObservedEnemy = b | w})
+        }
+
+    // ── slice `simevent-algebra`: SimEvent reducer / adapter / cmdKey ────────────────
+    //
+    // PURE な value→value 層。production emitter はまだ無い（DESIGN SPIKE）。
+    // `cmdKey` は golden-trace スライスが消費する比較通貨（Cmd に Eq が無いため必須）で、
+    // simevent-algebra のテスト自身が `eventToCmds(...).map(cmdKey)` を assert するためここに lives。
+
+    /// SimEvent を World へ適用する純粋 reducer（sim-affecting のみ実効・ViewFx は identity）。
+    /// `applyCmd` 経由＝Cmd 適用と bit-identical。LeveledUp は SetHp→SetProgress の順で 2 段適用。
+    pub def applyEventToWorld(ev: SimEvent, world: World): World =
+        match ev {
+            case SimEvent.Moved(ref, t)     => applyCmd(Cmd.Move(ref, t), world)
+            case SimEvent.Damaged(ref, r)   => applyCmd(Cmd.SetHp(ref, r#newHp), world)
+            case SimEvent.Healed(ref, r)    => applyCmd(Cmd.SetHp(ref, r#newHp), world)
+            case SimEvent.Lifesteal(ref, r) => applyCmd(Cmd.SetHp(ref, r#newHp), world)
+            case SimEvent.ExpGained(r)      => applyCmd(Cmd.SetProgress(r#entity, r#newLevel, r#newExp), world)
+            case SimEvent.LeveledUp(r)      =>
+                // legacy applyLevelUp の emit 順（SetHp@997 → SetProgress@999）に一致させる。
+                applyCmd(Cmd.SetProgress(r#entity, r#newLevel, r#newExp),
+                         applyCmd(Cmd.SetHp(r#entity, r#newHp), world))
+            case SimEvent.Afflicted(ref, s) => applyCmd(Cmd.Add(ref, s), world)
+            case SimEvent.Dying(ref)        => applyCmd(Cmd.SetDying(ref), world)
+            case SimEvent.Released(ref)     => applyCmd(Cmd.ClearImmobilized(ref), world)
+            case SimEvent.ViewFx(_)         => world
+        }
+
+    /// SimEvent → emit される Cmd 列（adapter）。`applyEventToWorld` と同じ写像を Cmd 列として返す。
+    /// LeveledUp は [SetHp, SetProgress] の順。ViewFx は空。golden-trace の Cmd-stream 比較に使う。
+    pub def eventToCmds(ev: SimEvent): List[Cmd] =
+        match ev {
+            case SimEvent.Moved(ref, t)     => Cmd.Move(ref, t) :: Nil
+            case SimEvent.Damaged(ref, r)   => Cmd.SetHp(ref, r#newHp) :: Nil
+            case SimEvent.Healed(ref, r)    => Cmd.SetHp(ref, r#newHp) :: Nil
+            case SimEvent.Lifesteal(ref, r) => Cmd.SetHp(ref, r#newHp) :: Nil
+            case SimEvent.ExpGained(r)      => Cmd.SetProgress(r#entity, r#newLevel, r#newExp) :: Nil
+            case SimEvent.LeveledUp(r)      =>
+                Cmd.SetHp(r#entity, r#newHp) :: Cmd.SetProgress(r#entity, r#newLevel, r#newExp) :: Nil
+            case SimEvent.Afflicted(ref, s) => Cmd.Add(ref, s) :: Nil
+            case SimEvent.Dying(ref)        => Cmd.SetDying(ref) :: Nil
+            case SimEvent.Released(ref)     => Cmd.ClearImmobilized(ref) :: Nil
+            case SimEvent.ViewFx(_)         => Nil
+        }
+
+    /// SimEvent の主体 entity（SYNTACTIC な closure・semantic な Phase-C completeness ではない）。
+    /// ViewFx は entity を持つもの（Knockback/Died）だけ Some。
+    pub def eventEntity(ev: SimEvent): Option[EntityRef] =
+        match ev {
+            case SimEvent.Moved(ref, _)     => Some(ref)
+            case SimEvent.Damaged(ref, _)   => Some(ref)
+            case SimEvent.Healed(ref, _)    => Some(ref)
+            case SimEvent.Lifesteal(ref, _) => Some(ref)
+            case SimEvent.ExpGained(r)      => Some(r#entity)
+            case SimEvent.LeveledUp(r)      => Some(r#entity)
+            case SimEvent.Afflicted(ref, _) => Some(ref)
+            case SimEvent.Dying(ref)        => Some(ref)
+            case SimEvent.Released(ref)     => Some(ref)
+            case SimEvent.ViewFx(vk)        => match vk {
+                case ViewFxKind.Knockback(ref, _) => Some(ref)
+                case ViewFxKind.Died(ref)         => Some(ref)
+                case ViewFxKind.Popup(_)          => None
+                case ViewFxKind.Sound(_)          => None
+                case ViewFxKind.Explosion(_)      => None
+                case ViewFxKind.Thief(_)          => None
+            }
+        }
+
+    /// Bool → 0/1（cmdKey の payload 正規化）。
+    def bool01(b: Bool): Int32 = if (b) 1 else 0
+
+    /// StatusEffect の IDENTITY ordinal（cmdKey が Add を効果種別で区別するため）。magnitude/remaining は無視。
+    def statusKindToInt(e: StatusSystem.StatusEffect): Int32 = match e {
+        case StatusSystem.StatusEffect.HitDown     => 0
+        case StatusSystem.StatusEffect.SpdDown     => 1
+        case StatusSystem.StatusEffect.AtkUp       => 2
+        case StatusSystem.StatusEffect.SpdUp       => 3
+        case StatusSystem.StatusEffect.DefDown     => 4
+        case StatusSystem.StatusEffect.Immobilized => 5
+    }
+
+    /// SimPhase の ordinal（cmdKey の SetPhase 用）。
+    def phaseToInt(p: SimPhase): Int32 = match p {
+        case SimPhase.PlayerTurn => 0
+        case SimPhase.EnemyTurn  => 1
+        case SimPhase.GameOver   => 2
+    }
+
+    /// TOTAL な Cmd → 比較キー (tag, uid, a, b)。`Cmd` に Eq が無いため golden-trace/simevent-algebra の
+    /// 唯一の比較通貨。全 19 variant 上で網羅（exhaustiveness は `flix check` が強制）。
+    /// faction 非依存に `toUid` で uid 化。control/lifecycle と payload-less は tag のみで discriminating。
+    pub def cmdKey(c: Cmd): (String, Int32, Int32, Int32) =
+        match c {
+            case Cmd.SetHp(ref, hp)           => ("SetHp", toUid(ref), hp, 0)
+            case Cmd.Move(ref, p)             => ("Move", toUid(ref), p#x, p#y)
+            case Cmd.SetProgress(ref, lv, xp) => ("Progress", toUid(ref), lv, xp)
+            case Cmd.SetAttackTarget(ref, t)  => ("AtkTgt", toUid(ref), t, 0)
+            case Cmd.ClearAttackTarget(ref)   => ("ClrTgt", toUid(ref), 0, 0)
+            case Cmd.SetFollowUpUsed(ref, b)  => ("FollowUp", toUid(ref), bool01(b), 0)
+            case Cmd.SetAlerted(ref, b)       => ("Alerted", toUid(ref), bool01(b), 0)
+            case Cmd.SetDying(ref)            => ("Dying", toUid(ref), 0, 0)
+            case Cmd.SetBottleUsed(ref, b)    => ("Bottle", toUid(ref), bool01(b), 0)
+            case Cmd.SetWaited(ref, b)        => ("Waited", toUid(ref), bool01(b), 0)
+            case Cmd.SetPrevPos(ref, p)       => ("PrevPos", toUid(ref), p#x, p#y)
+            case Cmd.ClearImmobilized(ref)    => ("ClrImmob", toUid(ref), 0, 0)
+            // magnitude を 4th slot に載せて oracle に可視化する（kind だけだと量違いを golden が見逃す）。
+            // remaining はここに載らないが golden-trace の最終 World 射影が turn-count を捕捉する。
+            case Cmd.Add(ref, s)              => ("Add", toUid(ref), statusKindToInt(s#effect), s#magnitude)
+            case Cmd.Seed(ref, _)             => ("Seed", toUid(ref), 0, 0)
+            case Cmd.SetPhase(p)              => ("Phase", phaseToInt(p), 0, 0)
+            case Cmd.TickPlayers(_)           => ("TickP", 0, 0, 0)
+            case Cmd.TickEnemies              => ("TickE", 0, 0, 0)
+            case Cmd.SetEnemyTurnBusy(b)      => ("ETBusy", bool01(b), 0, 0)
+            case Cmd.SetPhaseObservedEnemy(b) => ("PhObs", bool01(b), 0, 0)
         }
 
     /// F7-spike: 敵の alerted を World から読む（reader flip の供給元・hpOf 同型）。Player は常に None。
@@ -724,7 +922,10 @@ mod World {
         }
 
     /// World（位置の read-model mirror）から Board を組み立てる S4 の経路（World クエリ＝ecs/ 層）。
-    /// 地形（map）は静的なので scene から（`BoardSnapshot.mapSnapshotOf` を借用）、駒（pieces）は World から。
+    /// pieces は World の pos-store（`Cmd.Move` 権威・hidden 味方除外）、map は scene の静的地形
+    /// （`BoardSnapshot.mapSnapshotOf` を借用）。すなわち「駒は World・地形は scene」の合成。
+    /// 通常フレームでは dual-write により `BoardSnapshot.fromScene` と `boardKey` 上で一致する
+    /// （`boardMatchesScene` が Phase C の凍結契約としてこれを pin する）。
     /// flip 時は call-point 単位で `BoardSnapshot.fromScene(scene)` をこれに差し替える。
     pub def toBoard(world: World, scene: Scene[NodeTag]): Board =
         {
@@ -761,6 +962,24 @@ mod World {
                 case EntityRef.Enemy(eid)  => Some((Piece.Enemy(eid), pos))
             }
         })
+
+    /// board-lock（Phase C 契約）: 「World 由来の盤面 == scene 由来の盤面」を **順序非依存キー**で突合する。
+    /// `toBoard`（pieces=World pos-store・Cmd.Move 権威・hidden 除外／map=scene 静的）と
+    /// `BoardSnapshot.fromScene`（pieces=scene gridPos・hidden 除外）を同じ `boardKey` 正規形で比較。
+    /// dual-write が整合する通常フレームでは true。これが、将来の `resolveCombat` の board 入力が
+    /// 満たすべき凍結契約（World-derived board が legacy scene-derived board と一致する）。
+    /// 非対称ガード: `boardKey` が各 source を独立に walk する＝id 集合の **和** 上で symmetric ゆえ、
+    /// 片側にしか居ない可視 entity（prune/pre-sync ずれ）も mismatch として検出する。
+    pub def boardMatchesScene(world: World, scene: Scene[NodeTag]): Bool =
+        boardKey(toBoard(world, scene)) == boardKey(BoardSnapshot.fromScene(scene))
+
+    /// `boardMatchesScene` の diff 版。一致なら None、不一致なら正規化済みの 2 キー
+    /// `(World 由来, scene 由来)` を返す（[BOARD DIFF] 検証器・デバッグ出力の供給元）。
+    pub def boardKeyMismatch(world: World, scene: Scene[NodeTag]):
+            Option[(List[(Int32, Int32, Int32, Int32)], List[(Int32, Int32, Int32, Int32)])] =
+        let wk = boardKey(toBoard(world, scene));
+        let sk = boardKey(BoardSnapshot.fromScene(scene));
+        if (wk == sk) None else Some((wk, sk))
 
     /// World→scene の逆向き write-back（S1b）。World が持つ statuses を scene の Data#statuses へ書き戻す。
     /// 既存の純粋 writer `PlayerScene.mapPlayer` / `EnemyScene.mapEnemy` を再利用（走査・書込を再実装しない）。

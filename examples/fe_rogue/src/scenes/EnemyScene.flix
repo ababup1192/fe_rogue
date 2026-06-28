@@ -506,6 +506,9 @@ mod EnemyScene {
         // F4a: プレイヤー移動（PlayerScene）と同じ `SimEvent.Moved` seam に統一。
         //   moveTo = SYSTEM(stepEnemyMove: Cmd.Move emit + Moved 返却) → VIEW(replayMovedEvent 再生)。
         //   歩行可否は呼び出し側（EnemyAI.decideAction）が済ませている前提＝System は判定せず書くだけ。
+        // INVARIANT: replayMovedEvent は move-seam 専用＝Moved 以外は bug! で落ちる（no-op ではない）。
+        // ここは stepEnemyMove が常に Moved を返すので安全。Phase C で combat SimEvent を配線したら
+        // この seam に渡す event は必ず Moved に pre-filter すること。
         replayMovedEvent(stepEnemyMove(id, target), map, scene)
 
     /// SYSTEM(sim): 敵 1 体を target へ動かす位置 write。`Cmd.Move` を emit し `Moved` を返す。
@@ -524,6 +527,9 @@ mod EnemyScene {
         match event {
             case World.SimEvent.Moved(World.EntityRef.Enemy(id), target)  => replayEnemyMoveView(id, target, map, scene)
             case World.SimEvent.Moved(World.EntityRef.Player(_), _)        => scene
+            // simevent-algebra: 拡張された非 Moved variant は move seam に来ない（production emitter 無し）。
+            // 黙って no-op せず、move seam 専用 invariant 違反として loud に落とす。
+            case _ => bug!("EnemyScene.replayMovedEvent: non-Moved event on move seam")
         }
 
     /// 敵 1 体の move 見た目再生（Tween 滑走 + 左右反転 + prevPos 記録）。

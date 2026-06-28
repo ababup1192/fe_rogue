@@ -246,6 +246,78 @@ mod TestWorld {
             expected = (Map#{0 => (2, 2)}, Map#{5 => (3, 2)}),
             (playerPosMapOf(pieces), enemyPosMapOf(pieces)))
 
+    // ── board-lock: boardMatchesScene（Phase C 盤面契約の pin）──
+
+    // `toBoard`/`BoardSnapshot.fromScene` は `mapSnapshotOf` 経由で TileMapLayer を要求するため、
+    // board-lock テストの scene には Map ノードが要る（boardPieces だけの上の S4 テストと違う点）。
+    // 壁なし 13×13 床マップ（駒位置 {2,2}/{3,2}/{9,9} を全て内包）。boardKey は pieces のみ使うので
+    // map は両 source で同一＝差分に効かない。TestMoveRangeScene の floorMap パターンを踏襲。
+    def floorMapLayer(): TileMapLayer =
+        let atlas: TileSetAtlasSource = {
+            textureName = "test", texWidth = 0.0, texHeight = 0.0,
+            tileSize = 16.0, marginX = 0.0, marginY = 0.0, spacingX = 0.0, spacingY = 0.0
+        };
+        TileMapLayer.make({
+            tileSet        = TileSet.make(atlas),
+            tiles          = Nil,
+            collisionCells = Nil,
+            gridSize       = ({x = 13, y = 13}: {x = Int32, y = Int32})
+        })
+
+    def floorMapData(): MapScene.Data = {
+        anchorOffset = {x = 0, y = 0},
+        spawnGrid    = {x = 5, y = 5},
+        placements   = RoomLayout.singleRoom(13, 13),
+        roomCount    = 1,
+        plan         = ({modulePaths = Nil, sideConnections = Nil, roomCount = 1}: DungeonGenerator.Plan)
+    }
+
+    /// 既存 scene に "DungeonLevel0" の Map ノードを足す（mapSnapshotOf の bug! を回避）。
+    def addMap(scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.addNode("DungeonLevel0",
+            EngineNode.TileMapLayerWithState(floorMapLayer(), NodeTag.Map(floorMapData())), scene)
+
+    /// World 配下に player 0 のみ（可視・{2,2}）を挿した最小 scene。one-sided guard 用に
+    /// 「scene に居る可視 entity が World pos に居ない」状態を作るための片肺 World を syncFromScene する元。
+    def sceneOnlyPlayer0(): Scene[NodeTag] =
+        let worldM = Marker2D.make(Vec2.zero()) |> CanvasItem.setYSortEnabled(true);
+        Scene.empty()
+            |> Scene.addNode(MapScene.worldName(), EngineNode.Marker2DWithState(worldM, NodeTag.NoTag))
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
+                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Player(playerData(0))))
+
+    /// (1) positive: syncFromScene 直後は World 由来盤面 == scene 由来盤面。hidden 味方 3 は両側で除外され、
+    /// boardMatchesScene true かつ boardKey(toBoard) == boardKey(fromScene)（順序非依存・明示等価）。
+    @Test
+    def testToBoardEqualsFromScene(): Unit \ Assert =
+        let scene = addMap(sceneWithHidden());
+        let world = World.syncFromScene(scene, World.empty());
+        Assert.assertEq(
+            expected = (true, true),
+            (World.boardMatchesScene(world, scene),
+             World.boardKey(World.toBoard(world, scene)) == World.boardKey(BoardSnapshot.fromScene(scene))))
+
+    /// (2) negative（World 権威）: World のみに Cmd.Move を適用し scene を stale に保つと、その mid-frame で
+    /// World 由来盤面が先行し boardMatchesScene false。boardKeyMismatch も Some（2 キーが食い違う）。
+    @Test
+    def testBoardMismatchWhenWorldMovesAhead(): Unit \ Assert =
+        let scene = addMap(sceneWithHidden());
+        let world = World.syncFromScene(scene, World.empty());
+        let moved = World.applyCmd(World.Cmd.Move(World.EntityRef.Player(0), {x = 9, y = 9}), world);
+        Assert.assertEq(
+            expected = (false, true),
+            (World.boardMatchesScene(moved, scene),
+             Option.isEmpty(World.boardKeyMismatch(moved, scene)) == false))
+
+    /// (3) one-sided guard（非 vacuous・id 和上で symmetric）: scene に **可視** entity（player 1・enemy 5）が
+    /// 居るのに World pos に居ない（prune/pre-sync を模擬＝player 0 だけ sync した片肺 World）→ false。
+    /// hidden ではなく可視を使うのが要点（hidden は両側で除外されガードを誤って pass させるため）。
+    @Test
+    def testBoardMismatchWhenSceneEntityMissingFromWorld(): Unit \ Assert =
+        let scene = addMap(sampleScene());                                  // 可視 player 0,1 + enemy 5
+        let world = World.syncFromScene(sceneOnlyPlayer0(), World.empty());  // World pos は player 0 のみ
+        Assert.assertEq(expected = false, World.boardMatchesScene(world, scene))
+
     // ── S1: World.Cmd applier（statuses 権威化の System/command。StatusSystem 再利用）──
 
     def spdUp(mag: Int32, rem: Int32): StatusSystem.Status =

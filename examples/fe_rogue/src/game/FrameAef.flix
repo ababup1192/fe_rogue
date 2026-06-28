@@ -36,5 +36,9 @@ mod FrameAef {
                                 CustomEffects.RingTransformRequest,
                                 CustomEffects.ThiefDropRequest,
                                 Pacing.State, Math.Random,
-                                World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery}
+                                World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
+                                // slice `rng-world`: combat 命中ロールは World.RngDraw chokepoint 経由
+                                // （CombatScene.process が要求）。Game.flix:177/179 の checked_ecast widening が
+                                // この追加なしでは失敗する。Math.Random は他経路用に残置。
+                                World.RngDraw}
 }

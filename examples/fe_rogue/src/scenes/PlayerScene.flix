@@ -428,12 +428,19 @@ mod PlayerScene {
             case World.SimEvent.Moved(World.EntityRef.Player(id), target) =>
                 replayMoveView(id, target, map, slide, scene)
             case World.SimEvent.Moved(World.EntityRef.Enemy(_), _) => scene
+            // simevent-algebra: 拡張された非 Moved variant は move seam に来ない（production emitter 無し）。
+            // 黙って no-op せず、move seam 専用 invariant 違反として loud に落とす。
+            case _ => bug!("PlayerScene.replayMovedEvent: non-Moved event on move seam")
         }
 
     /// `SimEvent.Moved` の着地マス。着地時の自動取得など view 側が座標を要する箇所で使う。
+    /// move seam 専用＝Moved 以外は渡らない（非 Moved は到達不能ガード）。
     pub def movedTarget(event: World.SimEvent): {x = Int32, y = Int32} =
         match event {
             case World.SimEvent.Moved(_, target) => target
+            // move-seam only invariant: 非 Moved は到達不能。原点 {0,0} を捏造すると
+            // (0,0) で誤って自動取得が走るため、座標を作らず loud に落とす。
+            case _                               => bug!("PlayerScene.movedTarget: non-Moved event on move seam")
         }
 
     /// 1 歩移動の **view 再生**（Tween 滑走 + facing + walk アニメ + 左右反転）。
