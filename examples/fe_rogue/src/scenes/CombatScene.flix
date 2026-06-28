@@ -193,7 +193,7 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command, World.PhaseQuery} =
+                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command, World.PhaseQuery, World.WorldQuery} =
         match side {
             case Faction.Player => playerLungeDone(id, scene)
             case Faction.Enemy  => enemyLungeDone(id, scene)
@@ -209,7 +209,7 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command, World.PhaseQuery} =
+                              SelectedPlayer.State, Pacing.State, Math.Random, World.Command, World.PhaseQuery, World.WorldQuery} =
         // F2c: 「敵ターンか」の sim-phase 判定を World 由来へ flip（19-case 詳細は不要ゆえ 3-case で足りる）。
         if (World.PhaseQuery.phase() == SimPhase.EnemyTurn) {
             // 敵ターン中の味方反撃が完了した。反撃でレベルアップしていれば、その場で
@@ -222,8 +222,9 @@ mod CombatScene {
         } else {
             // 味方主攻撃の完了。まず追撃リング判定（補正後speed差+3 & 15% & 未追撃 & 敵生存）。
             // 追撃するなら decide（反撃/確定）より前に同じ敵へもう一度攻撃する（追撃→反撃の直列）。
-            match playerFollowUpEnemy(playerId, scene, rollPercent()) {
+            match playerFollowUpEnemy(playerId, scene, rollPercent(), World.WorldQuery.get()) {
                 case Some(enemyId) =>
+                    World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Player(playerId), true));  // F7-slice4
                     let marked = PlayerScene.mapPlayer(playerId, d -> {followUpUsed = true | d}, scene);
                     startPlayerFollowUp(playerId, enemyId, marked)
                 case None =>
@@ -249,7 +250,7 @@ mod CombatScene {
 
     /// 味方が追撃すべきなら対象の敵 id を返す（しないなら None）。speed は combatView の補正後値。
     /// 攻撃者・対象の敵が揃ったときだけ判定する（match は入れ子にしない）。
-    def playerFollowUpEnemy(playerId: Int32, scene: Scene[NodeTag], roll: Int32): Option[Int32] =
+    def playerFollowUpEnemy(playerId: Int32, scene: Scene[NodeTag], roll: Int32, world: World): Option[Int32] =
         let pOpt = PlayerScene.get(playerId, scene);
         let eOpt = pOpt |> Option.flatMap(p -> p#attackTargetId)
                         |> Option.flatMap(eid -> EnemyScene.get(eid, scene));
@@ -262,7 +263,10 @@ mod CombatScene {
                 // 追撃判定を DSL の flow 層（EffectFlow.followUpDecision）へ寄せる。brave/pursuit の
                 // どちらかが成立すれば追撃（ロジックは shouldFollowUp/braveFollowUp と同一・テスト済）。
                 let fctx = {atkSpd = atkSpd, defSpd = defSpd, roll = roll,
-                            followUpUsed = p#followUpUsed, brave = braveT,
+                            // F7-slice4: followUpUsed を World 由来で読む（world は caller の WorldQuery snapshot）。
+                            followUpUsed = World.followUpUsedOf(World.EntityRef.Player(playerId), world)
+                                              |> Option.getWithDefault(p#followUpUsed),
+                            brave = braveT,
                             pursuit = Ring.hasPursuit(PlayerData.equippedRing(p))};
                 if (EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Brave), fctx)
                     or EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Pursuit), fctx))
@@ -336,15 +340,16 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Math.Random, World.Command} =
+                              SelectedPlayer.State, Math.Random, World.Command, World.WorldQuery} =
         if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttackHold) {
             let cleared = clearEnemyAttackTarget(enemyId, scene);
             TurnFlow.commitWaitedAndAdvance(cleared)
         } else {
             // EnemyTurn 中の敵主攻撃完了。先に追撃リング判定（敵 speed 差+3 & 15% & 未追撃 & 味方生存）。
             // 追撃するなら反撃判定より前に同じ味方へもう一度攻撃する。
-            match enemyFollowUpPlayer(enemyId, scene, rollPercent()) {
+            match enemyFollowUpPlayer(enemyId, scene, rollPercent(), World.WorldQuery.get()) {
                 case Some(playerId) =>
+                    World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Enemy(enemyId), true));  // F7-slice4
                     let marked = EnemyScene.mapEnemy(enemyId, d -> {followUpUsed = true | d}, scene);
                     startEnemyFollowUp(enemyId, playerId, marked)
                 case None =>
@@ -353,7 +358,7 @@ mod CombatScene {
         }
 
     /// 敵が追撃すべきなら対象の味方 id を返す（しないなら None）。speed は combatView の補正後値。
-    def enemyFollowUpPlayer(enemyId: Int32, scene: Scene[NodeTag], roll: Int32): Option[Int32] =
+    def enemyFollowUpPlayer(enemyId: Int32, scene: Scene[NodeTag], roll: Int32, world: World): Option[Int32] =
         let eOpt = EnemyScene.get(enemyId, scene);
         let pOpt = eOpt |> Option.flatMap(e -> e#attackTargetId)
                         |> Option.flatMap(pid -> PlayerScene.get(pid, scene));
@@ -364,7 +369,10 @@ mod CombatScene {
                 let atkSpd = EnemyScene.combatView(e)#speed;
                 let defSpd = PlayerScene.combatView(p)#speed;
                 let fctx = {atkSpd = atkSpd, defSpd = defSpd, roll = roll,
-                            followUpUsed = e#followUpUsed, brave = braveT,
+                            // F7-slice4: followUpUsed を World 由来で読む。
+                            followUpUsed = World.followUpUsedOf(World.EntityRef.Enemy(enemyId), world)
+                                              |> Option.getWithDefault(e#followUpUsed),
+                            brave = braveT,
                             pursuit = Ring.hasPursuit(e#ring)};
                 if (EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Brave), fctx)
                     or EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Pursuit), fctx))
@@ -416,7 +424,7 @@ mod CombatScene {
                         CustomEffects.GameOverRequest,
                         CustomEffects.ThiefDropRequest,
                         EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State, Pacing.State, Math.Random, World.Command, BoardQuery, World.PhaseQuery} =
+                        SelectedPlayer.State, Pacing.State, Math.Random, World.Command, BoardQuery, World.PhaseQuery, World.WorldQuery} =
         match (PlayerScene.idFromPath(path), EnemyScene.idFromPath(path)) {
             case (Some(playerId), _) => drainAndDispatch(Faction.Player, playerId, node, path, scene)
             case (_, Some(enemyId))  => drainAndDispatch(Faction.Enemy, enemyId, node, path, scene)
@@ -437,7 +445,7 @@ mod CombatScene {
                              CustomEffects.GameOverRequest,
                              CustomEffects.ThiefDropRequest,
                              EnemyTurn.Queue, TurnPhase.State,
-                             SelectedPlayer.State, Pacing.State, Math.Random, World.Command, BoardQuery, World.PhaseQuery} =
+                             SelectedPlayer.State, Pacing.State, Math.Random, World.Command, BoardQuery, World.PhaseQuery, World.WorldQuery} =
         let ownerPath = match side {
             case Faction.Player => PlayerScene.playerPath(id)
             case Faction.Enemy  => EnemyScene.enemyPath(id)

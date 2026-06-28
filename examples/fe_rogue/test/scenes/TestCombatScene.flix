@@ -223,6 +223,7 @@ mod TestCombatScene {
             let scene = battleScene(80)
                 |> EnemyScene.mapEnemy(1, d -> {isDying = true | d});
             let result =
+                TestUnitFixtures.withWorldQuery(World.empty(), () ->
                 TestUnitFixtures.withWorldPhase(SimPhase.PlayerTurn, () ->
                 TestUnitFixtures.withWorldCommand(rc, () ->
                 TestUnitFixtures.withMockGameLogger(() ->
@@ -236,7 +237,7 @@ mod TestCombatScene {
                     } with Tween.withScheduler(rc)
                       with TurnPhase.withState(rc)
                       with SelectedPlayer.withState(rc)
-                      with Pacing.withState(rc)))))));
+                      with Pacing.withState(rc))))))));
             Assert.assertEq(
                 expected = (TurnPhase.Phase.PlayerAttackHold, true), result)
         }
@@ -251,6 +252,7 @@ mod TestCombatScene {
             let scene = battleScene(80)
                 |> EnemyScene.mapEnemy(1, d -> {isDying = true | d});
             let result =
+                TestUnitFixtures.withWorldQuery(World.empty(), () ->
                 TestUnitFixtures.withWorldPhase(SimPhase.EnemyTurn, () ->
                 TestUnitFixtures.withWorldCommand(rc, () ->
                 TestUnitFixtures.withMockGameLogger(() ->
@@ -264,7 +266,7 @@ mod TestCombatScene {
                     } with Tween.withScheduler(rc)
                       with TurnPhase.withState(rc)
                       with SelectedPlayer.withState(rc)
-                      with Pacing.withState(rc)))))));
+                      with Pacing.withState(rc))))))));
             // TurnPhase は分岐で触らないので PlayerAttackHold のまま。World=EnemyTurn ゆえ hold は積まれない。
             Assert.assertEq(
                 expected = (TurnPhase.Phase.PlayerAttackHold, false), result)
@@ -308,6 +310,7 @@ mod TestCombatScene {
                          name = AnimEvent.tagToString(AnimEvent.Tag.AttackLunge)}: AnimationPlayer.Event) :: Nil
         }: AnimationPlayer.EventBundle);
         region rc {
+            TestUnitFixtures.withWorldQuery(World.empty(), () ->
             TestUnitFixtures.withWorldPhase(SimPhase.EnemyTurn, () ->
             TestUnitFixtures.withWorldCommand(rc, () ->
             TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
@@ -325,7 +328,7 @@ mod TestCombatScene {
                 } with Tween.withScheduler(rc)
                   with TurnPhase.withState(rc)
                   with SelectedPlayer.withState(rc)
-                  with Pacing.withState(rc))))))))))))         }
+                  with Pacing.withState(rc)))))))))))))         }
 
     /// 他ユニット宛の signal は食わない: Player(0) 宛の attack_lunge finished があるとき、
     /// Enemy(1) ノードの process では Player(0) の attackTargetId は残り（敵の drain は空）、

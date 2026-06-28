@@ -186,6 +186,11 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 
 ## §G. 進捗（living・各ステップ完了で更新）
 
+> ## ★最前線（2026-06-28）= OOP→ECS 移行 F-phase。**詳細・現在地は `examples/fe_rogue/_plan_oop_to_ecs.md`**（このファイルが authoritative）
+> **現在地サマリ**: position・phase(3-case)・**hp**・**alerted/bottleUsed/prevPos** が World 権威化済（dual-write＋refreshMirror preserve＋`[XXX DIFF]` 検証器＋reader flip、各 run 無音確認）。汎用 read seam `World.WorldQuery { def get(): World }` 確立（フラグ reader は `WorldQuery.get() |> World.xxxOf(ref)`・新 cascade ゼロ）。**敵ターン driver の sim 決定読みは全て World 由来**。
+> **次の一手**: combat クラスタの残 sim flag（`attackTargetId`/`followUpUsed`/`waited`）を同手順（spike→検証器→dual-write 網羅→reader flip）で World 化。`acted` は view 状態＝World 化不要、`isDying` は hp<=0 代替検討。**フル F4（敵ターン1フレーム反転）は実現可能性 35/100 で見送り確定**（_plan の F4 検証結論参照）＝軸2 control-inversion は defer、軸1 state-authority 完遂を end-state とする。
+> 以下は旧 ★最前線（P0a 位置移行・2026-06-27・完了済の歴史記録）:
+>
 > ## ★最前線（2026-06-27）= 位置(Board/Encounter)を World 権威化（write-first）
 > **詳細プラン**: `examples/fe_rogue/_plan_position_ecs.md`（v3・レビュー壁打ち 68→84→90 で確定）。statusEffects は下記の通り read-model 確定済み。
 >

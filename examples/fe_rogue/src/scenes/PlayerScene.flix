@@ -309,6 +309,8 @@ mod PlayerScene {
         World.Command.emit(World.Cmd.Move(World.refOf(true, sp#id), sp#gridPos));
         // F6a: 初期 hp も World へ seed（spawn フレームの [F6 HP DIFF] を塞ぐ＝F6b preserve の前提）。
         World.Command.emit(World.Cmd.SetHp(World.refOf(true, sp#id), sp#resource#hp));
+        // F7-slice4: 初期 followUpUsed=false も seed。
+        World.Command.emit(World.Cmd.SetFollowUpUsed(World.refOf(true, sp#id), false));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
@@ -802,7 +804,8 @@ mod PlayerScene {
         let ids = getAll(scene) |> List.filter(d -> not d#usedStairs) |> List.map(d -> d#id);
         // emit-flip(E1, dual-write): 味方ターン開始 tick を World へ発行（scene の inline tick も当面維持）。
         World.Command.emit(World.Cmd.TickPlayers(ids));
-        let reset = List.foldLeft((sc, id) ->
+        let reset = List.foldLeft((sc, id) -> {
+            World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Player(id), false));  // F7-slice4: reset を World へ
             sc
                 // 味方ターン開始ごとに時限ステータス（自己バフ等）を 1 ターン分減算し、
                 // 追撃リングの二重発動フラグを戻す。
@@ -811,7 +814,7 @@ mod PlayerScene {
                 |> setSpriteModulate(id, activeColor())
                 |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
                 |> WeaponIconScene.setModulate(playerPath(id), activeColor())
-                |> playAnim(id, idleAnimName()),
+                |> playAnim(id, idleAnimName()) },
             scene, ids);
         // 味方ターン開始時に、いやしのリングを装備した味方の HP を回復する。
         applyRingRegen(reset)

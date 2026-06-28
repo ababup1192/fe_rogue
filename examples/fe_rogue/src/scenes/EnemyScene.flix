@@ -221,6 +221,8 @@ mod EnemyScene {
         World.Command.emit(World.Cmd.SetAlerted(World.refOf(false, sp#id), false));
         // F7-slice2: 初期 bottleUsed=false も seed。
         World.Command.emit(World.Cmd.SetBottleUsed(World.refOf(false, sp#id), false));
+        // F7-slice4: 初期 followUpUsed=false も seed。
+        World.Command.emit(World.Cmd.SetFollowUpUsed(World.refOf(false, sp#id), false));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
@@ -417,7 +419,8 @@ mod EnemyScene {
         let ids = getAll(scene) |> List.map(d -> d#id);
         // emit-flip(E1, dual-write): 敵ターン開始 tick を World へ発行（scene の inline tick も当面維持）。
         World.Command.emit(World.Cmd.TickEnemies);
-        let reset = List.foldLeft((sc, id) ->
+        let reset = List.foldLeft((sc, id) -> {
+            World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Enemy(id), false));  // F7-slice4: reset を World へ
             sc
                 // 敵ターン開始ごとに時限デバフ（目潰し/鈍足）を 1 ターン分減算し、
                 // 追撃リングの二重発動フラグを戻す。
@@ -425,7 +428,7 @@ mod EnemyScene {
                                       followUpUsed = false | d})
                 |> setSpriteModulate(id, activeColor())
                 |> UnitHPBarScene.setModulate(enemyPath(id), activeColor())
-                |> WeaponIconScene.setModulate(enemyPath(id), activeColor()),
+                |> WeaponIconScene.setModulate(enemyPath(id), activeColor()) },
             scene, ids);
         // 敵ターン開始時に、いやしのリングを装備した敵の HP を回復する。
         applyRingRegen(reset)

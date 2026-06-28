@@ -526,6 +526,14 @@ mod TestUnitFixtures {
             def phase(k) = k(phase)
         }
 
+    /// F7: `World.WorldQuery`（汎用 World snapshot 読み）を固定 World で discharge。フラグ reader が
+    /// World 由来で読むテスト向け。`World.empty()` を渡せば全フラグ未登録＝reader は scene fallback。
+    pub def withWorldQuery(world: World, thunk: Unit -> a \ ef):
+            a \ (ef - World.WorldQuery) =
+        run { thunk() } with handler World.WorldQuery {
+            def get(k) = k(world)
+        }
+
     /// メニュー系テストで頻出する read-only effect 4 種を 1 呼び出しで剥がす束ね。
     ///   TurnPhase(固定) + SelectedPlayer(固定 id) + PartyQuery + RosterQuery。
     /// refreshItems / 項目可視性など「フェーズ遷移を観測しない」テストの定型。

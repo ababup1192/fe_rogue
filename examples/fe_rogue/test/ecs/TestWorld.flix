@@ -520,6 +520,18 @@ mod TestWorld {
         let w = World.applyCmd(World.Cmd.SetAlerted(World.EntityRef.Enemy(5), true), World.empty());
         Assert.assertEq(expected = Some(true), World.alertedOf(World.EntityRef.Enemy(5), w))
 
+    /// F7-slice4: `Cmd.SetFollowUpUsed` が両 faction を更新し `followUpUsedOf` で読める＋preserve。
+    @Test
+    def testSetFollowUpUsedCommandAndPreserve(): Unit \ Assert =
+        let seeded = World.syncFromScene(sampleScene(), World.empty());
+        let used   = seeded
+            |> World.applyCmd(World.Cmd.SetFollowUpUsed(World.EntityRef.Player(0), true))
+            |> World.applyCmd(World.Cmd.SetFollowUpUsed(World.EntityRef.Enemy(5), true));
+        let World.World(w) = World.refreshMirror(sampleScene(), used);
+        Assert.assertEq(
+            expected = (Some(true), Some(true)),
+            (Map.get(0, w#playerFollowUpUsed), Map.get(5, w#enemyFollowUpUsed)))
+
     /// F7-slice3: `Cmd.SetPrevPos` が World を更新し `prevPosOf` で読める＋preserve（command が scene 上書きされない）。
     @Test
     def testSetPrevPosCommandAndPreserve(): Unit \ Assert =
