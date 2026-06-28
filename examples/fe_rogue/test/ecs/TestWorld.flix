@@ -396,12 +396,18 @@ mod TestWorld {
             (Map.get(0, w#playerPos) |> Option.map(p -> (p#x, p#y)),
              Map.get(99, w#enemyPos) |> Option.map(p -> (p#x, p#y))))
 
-    /// P3: 位置以外（hp/status/hidden/ids）は read-model のまま scene から mirror 継続（§A：位置だけ World 権威）。
+    /// F6b: hp は **command 由来で保持**（scene から re-mirror しない＝hp 権威は World）。`Cmd.SetHp` で
+    /// player 0 を 3 に下げ、refreshMirror 後も scene の 10 でなく command の 3 が残ることを pin。
+    /// status/ids は引き続き scene 由来。位置と同じく prune（scene に居ない id は落ちる）。
     @Test
-    def testRefreshMirrorStillMirrorsHpAndIds(): Unit \ Assert =
-        let World.World(w) = World.refreshMirror(sampleScene(), World.empty());
-        // fixture: player 0/1 hp=10、player ids = {0,1}。位置 mirror を止めても hp/ids は scene 由来で更新される。
-        Assert.assertEq(expected = (Some(10), Set#{0, 1}), (Map.get(0, w#playerHp), w#playerIds))
+    def testRefreshMirrorPreservesCommandHp(): Unit \ Assert =
+        let seeded  = World.syncFromScene(sampleScene(), World.empty());      // hp 0/1 = 10
+        let damaged = World.applyCmd(World.Cmd.SetHp(World.EntityRef.Player(0), 3), seeded);
+        let World.World(w) = World.refreshMirror(sampleScene(), damaged);
+        // player 0 は command の 3（scene の 10 で上書きされない）、player 1 は 10 のまま、ids は scene 由来。
+        Assert.assertEq(
+            expected = (Some(3), Some(10), Set#{0, 1}),
+            (Map.get(0, w#playerHp), Map.get(1, w#playerHp), w#playerIds))
 
     // ── §A payoff デモ: 位置の決定論（World は Cmd.Move ログの純粋関数）──
     // P0a→S5 で World が位置の権威・scene はその派生になった。位置の唯一の source は `Cmd.Move` のログ。

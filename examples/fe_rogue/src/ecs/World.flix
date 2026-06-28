@@ -95,8 +95,10 @@ mod World {
             enemyIds       = eIds,
             playerStatusEffects = Query.indexBy(d -> d#id, d -> d#statuses, players),
             enemyStatusEffects  = Query.indexBy(d -> d#id, d -> d#statuses, enemies),
-            playerHp       = Query.indexBy(d -> d#id, d -> d#hp, players),
-            enemyHp        = Query.indexBy(d -> d#id, d -> d#hp, enemies),
+            // F6b: hp も command 由来を保持＋prune（位置と同様）。全 hp 書込が `Cmd.SetHp` を dual-write
+            // 済み（`[F6 HP DIFF]` 無音で確認）ゆえ World hp == scene hp で挙動不変。これで **hp は World 権威**。
+            playerHp       = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerHp),
+            enemyHp        = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyHp),
             // 位置は command 由来を保持＋scene に居ない id を prune（gridPos からの再構築はしない）。
             playerPos      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerPos),
             enemyPos       = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyPos),
