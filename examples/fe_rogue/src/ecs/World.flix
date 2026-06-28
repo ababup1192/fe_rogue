@@ -20,6 +20,15 @@ pub enum SimPhase with Eq, ToString {
     case GameOver     // 全滅モーダル
 }
 
+/// S-A0（Phase B 土台）: `combatView` が読む base 戦闘値（resource 由来・status/ring 補正**前**）。
+/// stats（攻/魔攻/防/魔防/技/速/運）+ maxHp を 1 component に束ねた **read-model**。
+/// resource 由来ゆえ scene から純粋導出でき、refreshMirror で毎フレーム再 mirror（statusEffects と同型・
+/// 構築上常に scene と一致＝emit/DIFF 不要）。B1 で combatView の reader をここへ flip する。
+pub type alias BaseStats = {
+    attack = Int32, magicAttack = Int32, defense = Int32, magicDefense = Int32,
+    skill = Int32, speed = Int32, luck = Int32, maxHp = Int32
+}
+
 pub enum World {
     case World({ tick = Int32,
                  // F2a: turn FSM の World mirror（dual・read-model）。権威は当面 TurnPhase.State。
@@ -59,6 +68,9 @@ pub enum World {
                  // World 拡張: 味方の進行度（level/exp）。combat の撃破→exp→level-up が動かす sim 状態。
                  // 過去に level-up の hp 増分 dual-write が漏れた領域＝検証器で同種漏れを捕える。player-only。
                  playerLevel = Map[EntityId, Int32], playerExp = Map[EntityId, Int32],
+                 // S-A0: base 戦闘値 + maxHp の read-model（unified-id・両 faction）。resource 由来ゆえ
+                 // refreshMirror で毎フレーム scene から再 mirror（statusEffects と同型）。combatView flip 用。
+                 baseStats = Map[EntityId, BaseStats],
                  // F8-slice2: 敵ターン driver が読む phase-banner 同期 bool（TopBar が毎フレーム dual-write）。
                  //   enemyTurnBusy      — 敵ターン開始 intro の hold 中（>0）＝敵の行動開始待ち。
                  //   phaseObservedEnemy — 上部バーが「敵ターン」を観測済み（0 体ターンの取りこぼし防止）。
@@ -81,6 +93,7 @@ mod World {
                      playerWaited = Map.empty(),
                      attackTarget = Map.empty(),
                      playerLevel = Map.empty(), playerExp = Map.empty(),
+                     baseStats = Map.empty(),
                      enemyTurnBusy = false, phaseObservedEnemy = false})
 
     /// F2a: World の turnPhase を読む（read-model アクセサ）。
@@ -95,6 +108,15 @@ mod World {
     /// PlayerScene.getAll / EnemyScene.getAll（既存・純粋）を再利用（新規走査は書かない）。
     /// F8-slice1: attackTargetId(Option) を持つ unit list を `Map[id, target]`（None は非在）に畳む。
     /// row-poly で Player/Enemy Data 両対応。
+    /// S-A0: resource record（UnitResource / EnemyResource 両対応・row-poly）から base 戦闘値を抽出する。
+    /// status/ring 補正は載せない（combatView が読み取り時に加える）。maxHp は resource#hp。
+    pub def baseStatsFrom(r: {attack = Int32, magicAttack = Int32, defense = Int32,
+                             magicDefense = Int32, skill = Int32, speed = Int32,
+                             luck = Int32, hp = Int32 | rest}): BaseStats =
+        {attack = r#attack, magicAttack = r#magicAttack, defense = r#defense,
+         magicDefense = r#magicDefense, skill = r#skill, speed = r#speed,
+         luck = r#luck, maxHp = r#hp}
+
     def attackTargetMap(uidOf: Int32 -> EntityId, units: List[{id = Int32, attackTargetId = Option[Int32] | r}]): Map[EntityId, Int32] =
         List.foldLeft((m, d) -> match d#attackTargetId {
             case Some(t) => Map.insert(uidOf(d#id), t, m)
@@ -130,6 +152,8 @@ mod World {
             playerWaited   = Query.indexBy(d -> d#id, d -> d#waited, players),
             playerLevel    = Query.indexBy(d -> d#id, d -> d#level, players),
             playerExp      = Query.indexBy(d -> d#id, d -> d#exp, players),
+            baseStats = Map.union(Query.indexBy(d -> d#id, d -> baseStatsFrom(d#resource), players),
+                                  Query.indexBy(d -> enemyUid(d#id), d -> baseStatsFrom(d#resource), enemies)),
             attackTarget = Map.union(attackTargetMap(id -> id, players),
                                      attackTargetMap(enemyUid, enemies)),
             // F8-slice2: scene に mirror 元がない scalar bool は前 world の値を保持（command 由来）。
@@ -177,6 +201,9 @@ mod World {
             // World 拡張: level/exp も command 由来を保持＋prune（hp と同型）。
             playerLevel    = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerLevel),
             playerExp      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerExp),
+            // S-A0: baseStats は resource 由来の read-model ＝ scene から毎フレーム再 mirror（statusEffects と同型・command 由来でない）。
+            baseStats = Map.union(Query.indexBy(d -> d#id, d -> baseStatsFrom(d#resource), players),
+                                  Query.indexBy(d -> enemyUid(d#id), d -> baseStatsFrom(d#resource), enemies)),
             attackTarget = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#attackTarget),
             // F8-slice2: scalar bool は command 由来を保持（scene mirror 元なし・TopBar が毎フレーム dual-write）。
             enemyTurnBusy      = w#enemyTurnBusy,
@@ -489,6 +516,11 @@ mod World {
     pub def anyEnemyAttacking(world: World): Bool =
         let World.World(w) = world;
         Map.exists((uid, _) -> uidIsEnemy(uid), w#attackTarget)
+
+    /// S-A0: base 戦闘値 + maxHp を World から読む（unified-id・両 faction）。未登録は None。
+    /// B1 で combatView がここを読み、status/ring 補正を加えて CombatView を組む（reader flip）。
+    pub def baseStatsOf(ref: EntityRef, world: World): Option[BaseStats] =
+        let World.World(w) = world; Map.get(toUid(ref), w#baseStats)
 
     /// World 拡張: 味方の (level, exp) を World から読む。未登録は None。Enemy は常に None。
     pub def progressOf(ref: EntityRef, world: World): Option[(Int32, Int32)] =

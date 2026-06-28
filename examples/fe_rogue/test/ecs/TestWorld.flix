@@ -662,4 +662,34 @@ mod TestWorld {
         Assert.assertEq(
             expected = (Some(7), Some(3)),
             (World.hpOf(World.EntityRef.Player(0), w), World.hpOf(World.EntityRef.Enemy(5), w)))
+
+    // ── S-A0: baseStats（stats + maxHp）の read-model mirror ──
+
+    /// syncFromScene が baseStats（resource 由来の base 戦闘値 + maxHp）を World へ mirror する。
+    /// status/ring 補正前の生値で、scene の resource から `baseStatsFrom` で導いた値と一致する
+    /// （player 0 / enemy 5）。fixture 値に依存せず parallel-derivation で同値を確認する。
+    @Test
+    def testBaseStatsMirrorsResource(): Unit \ Assert =
+        let scene = sampleScene();
+        let w = World.syncFromScene(scene, World.empty());
+        // record は Eq を持たないので 8-tuple に射影して比較する（Int32 tuple は Eq）。
+        let toTup = bs -> (bs#attack, bs#magicAttack, bs#defense, bs#magicDefense,
+                           bs#skill, bs#speed, bs#luck, bs#maxHp);
+        let p0 = Option.map(d -> toTup(World.baseStatsFrom(d#resource)), PlayerScene.get(0, scene));
+        let e5 = Option.map(d -> toTup(World.baseStatsFrom(d#resource)), EnemyScene.get(5, scene));
+        Assert.assertEq(
+            expected = (p0, e5),
+            (Option.map(toTup, World.baseStatsOf(World.EntityRef.Player(0), w)),
+             Option.map(toTup, World.baseStatsOf(World.EntityRef.Enemy(5), w))))
+
+    /// refreshMirror も baseStats を毎フレーム再 mirror する（read-model ＝ command 由来でない）。
+    /// maxHp = resource#hp が player 0 で読めることを確認する。
+    @Test
+    def testRefreshMirrorRebuildsBaseStats(): Unit \ Assert =
+        let scene = sampleScene();
+        let w = World.refreshMirror(scene, World.syncFromScene(scene, World.empty()));
+        let expectedMaxHp = Option.map(d -> d#resource#hp, PlayerScene.get(0, scene));
+        Assert.assertEq(
+            expected = expectedMaxHp,
+            Option.map(bs -> bs#maxHp, World.baseStatsOf(World.EntityRef.Player(0), w)))
 }
