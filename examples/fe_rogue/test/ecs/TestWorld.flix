@@ -557,6 +557,19 @@ mod TestWorld {
             (World.attackTargetOf(World.EntityRef.Player(0), cleared),
              World.anyPlayerAttacking(cleared)))
 
+    /// F8-slice2: `Cmd.SetEnemyTurnBusy`/`SetPhaseObservedEnemy` が scalar bool を更新し読める＋
+    /// refreshMirror で保持（scene mirror 元なし＝command 由来を持ち越す）。
+    @Test
+    def testSetTopBarBoolsCommandAndPreserve(): Unit \ Assert =
+        let set = World.empty()
+            |> World.applyCmd(World.Cmd.SetEnemyTurnBusy(true))
+            |> World.applyCmd(World.Cmd.SetPhaseObservedEnemy(true));
+        let kept = World.refreshMirror(sampleScene(), set);   // scene に mirror 元なし＝保持されるはず
+        Assert.assertEq(
+            expected = (true, true, true, true),
+            (World.enemyTurnBusyOf(set), World.phaseObservedEnemyOf(set),
+             World.enemyTurnBusyOf(kept), World.phaseObservedEnemyOf(kept)))
+
     /// F7-slice4: `Cmd.SetFollowUpUsed` が両 faction を更新し `followUpUsedOf` で読める＋preserve。
     @Test
     def testSetFollowUpUsedCommandAndPreserve(): Unit \ Assert =

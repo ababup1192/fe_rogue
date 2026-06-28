@@ -46,7 +46,12 @@ pub enum World {
                  // F7-slice5: 味方の行動済み（ターン flow の権威）。player-only。reader flip は F8 で。
                  playerWaited = Map[EntityId, Bool],
                  // F8-slice1: 攻撃対象 id（攻撃モーション中＝anyAttacking の権威）。None=非攻撃はマップ非在。両 faction。
-                 playerAttackTarget = Map[EntityId, Int32], enemyAttackTarget = Map[EntityId, Int32] })
+                 playerAttackTarget = Map[EntityId, Int32], enemyAttackTarget = Map[EntityId, Int32],
+                 // F8-slice2: 敵ターン driver が読む phase-banner 同期 bool（TopBar が毎フレーム dual-write）。
+                 //   enemyTurnBusy      — 敵ターン開始 intro の hold 中（>0）＝敵の行動開始待ち。
+                 //   phaseObservedEnemy — 上部バーが「敵ターン」を観測済み（0 体ターンの取りこぼし防止）。
+                 // どちらも view-timing 由来だが driver の順序非依存化のため World 経由で読む（生アニメ Data は TopBar 残置）。
+                 enemyTurnBusy = Bool, phaseObservedEnemy = Bool })
 }
 
 mod World {
@@ -61,7 +66,8 @@ mod World {
                      enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
                      playerFollowUpUsed = Map.empty(), enemyFollowUpUsed = Map.empty(),
                      playerWaited = Map.empty(),
-                     playerAttackTarget = Map.empty(), enemyAttackTarget = Map.empty()})
+                     playerAttackTarget = Map.empty(), enemyAttackTarget = Map.empty(),
+                     enemyTurnBusy = false, phaseObservedEnemy = false})
 
     /// F2a: World の turnPhase を読む（read-model アクセサ）。
     pub def turnPhaseOf(world: World): SimPhase =
@@ -107,7 +113,10 @@ mod World {
             enemyFollowUpUsed  = Query.indexBy(d -> d#id, d -> d#followUpUsed, enemies),
             playerWaited   = Query.indexBy(d -> d#id, d -> d#waited, players),
             playerAttackTarget = attackTargetMap(players),
-            enemyAttackTarget  = attackTargetMap(enemies)
+            enemyAttackTarget  = attackTargetMap(enemies),
+            // F8-slice2: scene に mirror 元がない scalar bool は前 world の値を保持（command 由来）。
+            enemyTurnBusy      = w#enemyTurnBusy,
+            phaseObservedEnemy = w#phaseObservedEnemy
         })
 
     /// P3（mirror 撤去・§A payoff）: per-frame の World 更新。**位置(playerPos/enemyPos)は
@@ -146,7 +155,10 @@ mod World {
             enemyFollowUpUsed  = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyFollowUpUsed),
             playerWaited   = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerWaited),
             playerAttackTarget = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerAttackTarget),
-            enemyAttackTarget  = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyAttackTarget)
+            enemyAttackTarget  = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyAttackTarget),
+            // F8-slice2: scalar bool は command 由来を保持（scene mirror 元なし・TopBar が毎フレーム dual-write）。
+            enemyTurnBusy      = w#enemyTurnBusy,
+            phaseObservedEnemy = w#phaseObservedEnemy
         })
 
     /// statuses を 1 ターン進める System（StatusSystem.tick を再利用）。S1b でターン開始フックに繋ぐ。
@@ -217,6 +229,8 @@ mod World {
         case SetWaited(EntityRef, Bool)        // F7-slice5: 味方行動済み write（Enemy は no-op）
         case SetAttackTarget(EntityRef, Int32) // F8-slice1: 攻撃対象 id をセット（攻撃開始）
         case ClearAttackTarget(EntityRef)      // F8-slice1: 攻撃対象をクリア（攻撃終了）
+        case SetEnemyTurnBusy(Bool)            // F8-slice2: 敵ターン intro hold 中 bool write（TopBar dual-write）
+        case SetPhaseObservedEnemy(Bool)       // F8-slice2: バーが敵ターン観測済み bool write（TopBar dual-write）
     }
 
     /// System が出力する sim-event（F-clock の最小骨組み・F3b 導入）。
@@ -358,6 +372,10 @@ mod World {
                     case EntityRef.Player(id) => World.World({playerAttackTarget = Map.remove(id, w#playerAttackTarget) | w})
                     case EntityRef.Enemy(id)  => World.World({enemyAttackTarget = Map.remove(id, w#enemyAttackTarget) | w})
                 }
+            case Cmd.SetEnemyTurnBusy(b) =>
+                let World.World(w) = world; World.World({enemyTurnBusy = b | w})
+            case Cmd.SetPhaseObservedEnemy(b) =>
+                let World.World(w) = world; World.World({phaseObservedEnemy = b | w})
         }
 
     /// F7-spike: 敵の alerted を World から読む（reader flip の供給元・hpOf 同型）。Player は常に None。
@@ -415,6 +433,14 @@ mod World {
     /// F8-slice1: いずれかの敵が攻撃中か（`EnemyScene.anyAttacking` の World 版・順序非依存）。
     pub def anyEnemyAttacking(world: World): Bool =
         let World.World(w) = world; not Map.isEmpty(w#enemyAttackTarget)
+
+    /// F8-slice2: 敵ターン intro hold 中か（`TopBarScene.isBusy` の World 版・順序非依存）。
+    pub def enemyTurnBusyOf(world: World): Bool =
+        let World.World(w) = world; w#enemyTurnBusy
+
+    /// F8-slice2: バーが敵ターン観測済みか（`TopBarScene.hasObservedEnemy` の World 版・順序非依存）。
+    pub def phaseObservedEnemyOf(world: World): Bool =
+        let World.World(w) = world; w#phaseObservedEnemy
 
     /// F8-slice1 検証器: attackTargetId の World/scene 不一致（両 faction）。
     pub def attackTargetMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Int32], Option[Int32])] =

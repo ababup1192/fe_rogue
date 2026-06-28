@@ -1066,6 +1066,11 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[ATTACKTARGET DIFF] ${ms}")
             };
+            if (World.enemyTurnBusyOf(Ref.get(worldRef)) != TopBarScene.isBusy(next)  // F8-slice2
+                or World.phaseObservedEnemyOf(Ref.get(worldRef)) != TopBarScene.hasObservedEnemy(next))
+                println("[TOPBAR DIFF] busy w=${World.enemyTurnBusyOf(Ref.get(worldRef))} s=${TopBarScene.isBusy(next)}"
+                    + " obs w=${World.phaseObservedEnemyOf(Ref.get(worldRef))} s=${TopBarScene.hasObservedEnemy(next)}")
+            else ();
             let world1 = World.refreshMirror(next, Ref.get(worldRef));
             // F0（OOP→ECS 移行の足場）: **System パイプライン段**。ロジックを OOP callback でなく
             // `World -> World` の System で回す将来形の seam。現状の System は inert な `tickStatusEffects`

@@ -141,7 +141,7 @@ mod TopBarScene {
     pub def process(delta: Duration.Duration, node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {GameEngine.Game, TurnPhase.State, GameEngine.Audio} =
+                    \ {GameEngine.Game, TurnPhase.State, GameEngine.Audio, World.Command} =
         match node {
             case EngineNode.CanvasLayerWithState(_, NodeTag.TopBar(data)) =>
                 let phase  = TurnPhase.State.get();
@@ -185,6 +185,10 @@ mod TopBarScene {
                 };
                 // 集合(GatherMove)中だけ中央に「集合中」を表示。viewport 実幅の中央へ毎フレーム再配置。
                 let next2 = next |> applyGatherLabel(phase == TurnPhase.Phase.GatherMove, w);
+                // F8-slice2: 敵ターン driver が読む 2 bool を World に dual-write（next2 の確定状態から）。
+                // driver はこれを World 経由で読む＝per-node 順序非依存（pipeline 移設の前提）。
+                World.Command.emit(World.Cmd.SetEnemyTurnBusy(isBusy(next2)));
+                World.Command.emit(World.Cmd.SetPhaseObservedEnemy(hasObservedEnemy(next2)));
                 match Scene.getEngineNode(path, next2) {
                     case Some(latest) => (latest, next2)
                     case None         => (node, next2)

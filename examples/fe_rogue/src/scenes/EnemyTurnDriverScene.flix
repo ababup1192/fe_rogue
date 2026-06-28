@@ -177,7 +177,7 @@ mod EnemyTurnDriverScene {
                 CustomEffects.GameOverRequest,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery} =
         // 敵ターン開始の「間」(TopBar の hold) 中は敵を動かさない（フェイズ切替が読めてから行動開始）。
-        if (TopBarScene.isBusy(scene)) scene
+        if (World.enemyTurnBusyOf(World.WorldQuery.get())) scene             // F8-slice2: 順序非依存に
         else if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
         else if (World.anyEnemyAttacking(World.WorldQuery.get())) scene      // F8-slice1
@@ -188,7 +188,7 @@ mod EnemyTurnDriverScene {
                 // ただし敵 0 体だと敵ターンが同フレームに始まったばかりで、上部バーがまだ「敵ターン」を
                 // 観測（赤へ切替＋hold 開始）していないことがある。観測するまで 1 フレーム待ってから
                 // 閉じる（待たないとフェイズ表示が一度も赤にならずターンが閉じる）。
-                if (not TopBarScene.hasObservedEnemy(scene)) scene
+                if (not World.phaseObservedEnemyOf(World.WorldQuery.get())) scene  // F8-slice2: 順序非依存に
                 else endTurn(scene)
             case Some(step) =>
                 if (Tween.Scheduler.isActive(EnemyScene.enemyPath(step#id))) scene
