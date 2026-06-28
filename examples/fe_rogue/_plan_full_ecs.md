@@ -35,7 +35,13 @@
 - ⏭ 次: CombatScene 残 `match side` 4箇所（108/159/202/454）は **startPlayerAttack/startEnemyAttack・playerPath/enemyPath への view dispatch**＝split PlayerScene/EnemyScene に結合。**A'（store/scene 統合）と一体**。純ロジックの faction-blind 化は decideView で達成済。
 - ✅ **A'-slice1（hp store 統合・909緑）= テンプレート確立**: `playerHp`/`enemyHp` → 単一 `hp`（unified-id: player=id / enemy=id+`enemyUidBase()`=1,000,000）。`toUid` helper。**applyCmd SetHp と hpOf の `match ref` arm を `toUid` 1 本に畳んだ**。syncFromScene/refreshMirror は unified-id で build/preserve（mirror 側 remap＝**save 不変**）。`[F6 HP DIFF]` 検証器は hpOf 経由で有効＝behavior 不変。**この 6-site パターン（field/empty/sync/refresh/applyCmd/accessor）が残 store の雛形**。
 - ✅ **A'-slice1ب（faction タグ component・910緑）= ユーザー要望反映**: faction を id 演算(`uid>=base`)でなく **`team: Map[EntityId, Faction]` enum component** で表す。`teamOf(uid)`/`isPlayerUid`/`isEnemyUid`/`refFromUid` で読む。offset は store key 一意性の内部 plumbing に降格・faction の真実源は team タグ（Bevy Team component 相当）。`Faction` に ToString derive。
-- ⏭ **A' 残り（同テンプレートで反復）**: pos・statusEffects・followUpUsed・attackTarget（both-faction の doubled store）を unified-id に統合 → 各 `match ref` arm 除去。single-faction store（alerted/bottleUsed/prevPos/waited/dying/level/exp）は uid 化で key 統一。完了で applyCmd の全 `match ref` arm・~20 doubled field が消える＝**Entity=Component 合成 完成**。
+- ✅ **A'-slice2/3/4（910緑）= both-faction store 統合 3 本＋基盤整備**:
+  - **基盤**: `enemyUid(id)` 集約 helper（offset を 1 箇所に＝将来の脱却が 1 箇所差替）／refreshMirror の prune を `validUids` 集合方式に（id 演算でなく membership）。
+  - **followUpUsed** 統合（単一 store・`match ref` arm 除去）。
+  - **attackTarget** 統合（単一 store・Set/Clear/accessor の `match ref` 除去・`anyPlayerAttacking`/`anyEnemyAttacking` は **team タグ**で faction filter）。
+- ⏭ **A' 残り both-faction**: **pos**（consumer: boardPieces/syncTreeFromWorld を refFromUid で faction 分け）・**statusEffects**（consumer: Tick・syncStatusesToScene）。← 追加 consumer ありで pos は高リスク（位置権威）。
+- ⏭ **A' single-faction store**（waited/alerted/bottleUsed/prevPos/dying/level/exp/hidden）: uid 化で key 統一（doubled field は無いが uid 一貫化）。
+- ⏭ 残 `match side` 4箇所（CombatScene view dispatch）。
 - ⏭ 残 `match side` 4箇所（CombatScene view dispatch）は store 統合後に startAttack/path を uid ベース faction-blind 化。
 
 ---

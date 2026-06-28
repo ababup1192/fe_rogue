@@ -1077,16 +1077,18 @@ mod PlayerScene {
                           ringCatalog: Ring.RingCatalog,
                           scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let sp = snapToPlayerSpawn(snap, catalog, staffCatalog, consumableCatalog, ringCatalog);
-        // F6a: 復元 hp も World へ dual-write（複合書込ゆえ単独 emit・F6b preserve の網羅前提）。
-        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#hp));
-        // World 拡張: 復元 (level, exp) も World へ（addOnePlayer の base を上書き）。
-        World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(snap#id), snap#level, snap#exp));
-        addOnePlayer(sp, scene)
+        let placed = addOnePlayer(sp, scene)
             |> mapPlayer(snap#id, d -> {hp = snap#hp, level = snap#level, exp = snap#exp,
                                          ringEquipped = snap#ringEquipped,
                                          facing = snap#facing, statuses = snap#statuses,
                                          resource = LevelSystem.withStats(snap#stats, d#resource) | d})
-            |> UnitHPBarScene.updateMaxHp(playerPath(snap#id), snap#hp, snap#stats#hp)
+            |> UnitHPBarScene.updateMaxHp(playerPath(snap#id), snap#hp, snap#stats#hp);
+        // 🐛fix: 復元 hp/progress の World dual-write は **addOnePlayer の後**に emit する。
+        // addOnePlayer が spawn 値(SetHp(maxHp)/SetProgress(level,0)) を emit するので、先に出すと
+        // worldRef で spawn 値に上書きされてしまう（scene は mapPlayer 上書きで snap 値・World だけ spawn ＝[DIFF]）。
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#hp));
+        World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(snap#id), snap#level, snap#exp));
+        placed
 
     /// `PlayerSnap` を配置用 `Spawn`（base resource ＋ 解決済み持ち物）に変換する。
     /// `placeOneFromSnap`（フロア最初から）と `reviveOneFromSnap`（女神の加護）が共有する。
@@ -1177,15 +1179,15 @@ mod PlayerScene {
                      ringCatalog: Ring.RingCatalog,
                      scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let sp = {gridPos = cell | snapToPlayerSpawn(snap, catalog, staffCatalog, consumableCatalog, ringCatalog)};
-        // F6a: 復元 hp も World へ dual-write（複合書込ゆえ単独 emit・F6b preserve の網羅前提）。
-        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#stats#hp));
-        // World 拡張: 復元 (level, exp) も World へ（addOnePlayer の base を上書き）。
-        World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(snap#id), snap#level, snap#exp));
-        addOnePlayer(sp, scene)
+        let placed = addOnePlayer(sp, scene)
             |> mapPlayer(snap#id, d -> {hp = snap#stats#hp, level = snap#level, exp = snap#exp,
                                          ringEquipped = snap#ringEquipped,
                                          resource = LevelSystem.withStats(snap#stats, d#resource) | d})
-            |> UnitHPBarScene.updateMaxHp(playerPath(snap#id), snap#stats#hp, snap#stats#hp)
+            |> UnitHPBarScene.updateMaxHp(playerPath(snap#id), snap#stats#hp, snap#stats#hp);
+        // 🐛fix: 復元 hp/progress の World emit は addOnePlayer の後（spawn 値上書き回避・placeOneFromSnap と同じ）。
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#stats#hp));
+        World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(snap#id), snap#level, snap#exp));
+        placed
 
     /// 現在の全味方を `PlayerSnap` 列に射影する（スナップショット保存用）。持ち物 resource は
     /// 各 catalog の `idOf`（name 逆引き）で id 化し、耐久など動的値を併せて保持する。

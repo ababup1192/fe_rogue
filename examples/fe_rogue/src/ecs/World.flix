@@ -49,11 +49,13 @@ pub enum World {
                  // F7-slice3: 敵の直前位置（wander の戻り防止）。None=未移動はマップ非在で表現。
                  enemyPrevPos = Map[EntityId, {x = Int32, y = Int32}],
                  // F7-slice4: followUp 使用済み（1 攻撃 1 追撃の per-turn transient）。両 faction。
-                 playerFollowUpUsed = Map[EntityId, Bool], enemyFollowUpUsed = Map[EntityId, Bool],
+                 // A': followUpUsed は単一 store（unified-id）。両 faction の split を撤廃。
+                 followUpUsed = Map[EntityId, Bool],
                  // F7-slice5: 味方の行動済み（ターン flow の権威）。player-only。reader flip は F8 で。
                  playerWaited = Map[EntityId, Bool],
                  // F8-slice1: 攻撃対象 id（攻撃モーション中＝anyAttacking の権威）。None=非攻撃はマップ非在。両 faction。
-                 playerAttackTarget = Map[EntityId, Int32], enemyAttackTarget = Map[EntityId, Int32],
+                 // A': attackTarget は単一 store（unified-id）。両 faction の split を撤廃。
+                 attackTarget = Map[EntityId, Int32],
                  // World 拡張: 味方の進行度（level/exp）。combat の撃破→exp→level-up が動かす sim 状態。
                  // 過去に level-up の hp 増分 dual-write が漏れた領域＝検証器で同種漏れを捕える。player-only。
                  playerLevel = Map[EntityId, Int32], playerExp = Map[EntityId, Int32],
@@ -75,9 +77,9 @@ mod World {
                      playerHidden = Set.empty(), enemyAlerted = Map.empty(),
                      enemyDying = Set.empty(),
                      enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
-                     playerFollowUpUsed = Map.empty(), enemyFollowUpUsed = Map.empty(),
+                     followUpUsed = Map.empty(),
                      playerWaited = Map.empty(),
-                     playerAttackTarget = Map.empty(), enemyAttackTarget = Map.empty(),
+                     attackTarget = Map.empty(),
                      playerLevel = Map.empty(), playerExp = Map.empty(),
                      enemyTurnBusy = false, phaseObservedEnemy = false})
 
@@ -93,9 +95,9 @@ mod World {
     /// PlayerScene.getAll / EnemyScene.getAll（既存・純粋）を再利用（新規走査は書かない）。
     /// F8-slice1: attackTargetId(Option) を持つ unit list を `Map[id, target]`（None は非在）に畳む。
     /// row-poly で Player/Enemy Data 両対応。
-    def attackTargetMap(units: List[{id = Int32, attackTargetId = Option[Int32] | r}]): Map[EntityId, Int32] =
+    def attackTargetMap(uidOf: Int32 -> EntityId, units: List[{id = Int32, attackTargetId = Option[Int32] | r}]): Map[EntityId, Int32] =
         List.foldLeft((m, d) -> match d#attackTargetId {
-            case Some(t) => Map.insert(d#id, t, m)
+            case Some(t) => Map.insert(uidOf(d#id), t, m)
             case None    => m
         }, Map.empty(), units)
 
@@ -123,13 +125,13 @@ mod World {
                                  case Some(p) => Map.insert(d#id, p, m)
                                  case None    => m
                              }, Map.empty(), enemies),
-            playerFollowUpUsed = Query.indexBy(d -> d#id, d -> d#followUpUsed, players),
-            enemyFollowUpUsed  = Query.indexBy(d -> d#id, d -> d#followUpUsed, enemies),
+            followUpUsed = Map.union(Query.indexBy(d -> d#id, d -> d#followUpUsed, players),
+                                     Query.indexBy(d -> enemyUid(d#id), d -> d#followUpUsed, enemies)),
             playerWaited   = Query.indexBy(d -> d#id, d -> d#waited, players),
             playerLevel    = Query.indexBy(d -> d#id, d -> d#level, players),
             playerExp      = Query.indexBy(d -> d#id, d -> d#exp, players),
-            playerAttackTarget = attackTargetMap(players),
-            enemyAttackTarget  = attackTargetMap(enemies),
+            attackTarget = Map.union(attackTargetMap(id -> id, players),
+                                     attackTargetMap(enemyUid, enemies)),
             // F8-slice2: scene に mirror 元がない scalar bool は前 world の値を保持（command 由来）。
             enemyTurnBusy      = w#enemyTurnBusy,
             phaseObservedEnemy = w#phaseObservedEnemy
@@ -148,6 +150,8 @@ mod World {
         let enemies = EnemyScene.getAll(scene);
         let pIds = Query.tagOf(d -> d#id, players);
         let eIds = Query.tagOf(d -> d#id, enemies);
+        // A': unified-id 全体の生存集合。store prune は id 演算でなくこの集合で行う（faction 判断不要）。
+        let validUids = Set.union(pIds, Set.map(id -> enemyUid(id), eIds));
         World.World({
             tick           = w#tick + 1,
             turnPhase      = w#turnPhase,   // F2a: mirror は gameLoop が行う・ここは保持
@@ -158,9 +162,7 @@ mod World {
             enemyStatusEffects  = Query.indexBy(d -> d#id, d -> d#statuses, enemies),
             // F6b: hp も command 由来を保持＋prune（位置と同様）。全 hp 書込が `Cmd.SetHp` を dual-write
             // 済み（`[F6 HP DIFF]` 無音で確認）ゆえ World hp == scene hp で挙動不変。これで **hp は World 権威**。
-            hp = Map.filterWithKey((uid, _) ->
-                     if (uid >= enemyUidBase()) Set.memberOf(uid - enemyUidBase(), eIds)
-                     else Set.memberOf(uid, pIds), w#hp),
+            hp = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#hp),
             // 位置は command 由来を保持＋scene に居ない id を prune（gridPos からの再構築はしない）。
             playerPos      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerPos),
             enemyPos       = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyPos),
@@ -171,14 +173,12 @@ mod World {
             enemyAlerted   = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyAlerted),
             enemyBottleUsed = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyBottleUsed),
             enemyPrevPos   = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyPrevPos),
-            playerFollowUpUsed = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerFollowUpUsed),
-            enemyFollowUpUsed  = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyFollowUpUsed),
+            followUpUsed = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#followUpUsed),
             playerWaited   = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerWaited),
             // World 拡張: level/exp も command 由来を保持＋prune（hp と同型）。
             playerLevel    = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerLevel),
             playerExp      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerExp),
-            playerAttackTarget = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerAttackTarget),
-            enemyAttackTarget  = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyAttackTarget),
+            attackTarget = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#attackTarget),
             // F8-slice2: scalar bool は command 由来を保持（scene mirror 元なし・TopBar が毎フレーム dual-write）。
             enemyTurnBusy      = w#enemyTurnBusy,
             phaseObservedEnemy = w#phaseObservedEnemy
@@ -236,10 +236,13 @@ mod World {
     /// applyCmd/accessor の `match ref` per-store 分岐が `toUid` 1 本に畳まれる（= faction 構造の除去）。
     pub def enemyUidBase(): EntityId = 1000000
 
-    /// EntityRef → unified EntityId（Player=id, Enemy=id+base）。
+    /// enemy original id → unified id（offset 集約・将来の脱却はここ 1 箇所）。
+    pub def enemyUid(id: EntityId): EntityId = id + enemyUidBase()
+
+    /// EntityRef → unified EntityId（Player=id, Enemy=enemyUid）。
     pub def toUid(ref: EntityRef): EntityId = match ref {
         case EntityRef.Player(id) => id
-        case EntityRef.Enemy(id)  => id + enemyUidBase()
+        case EntityRef.Enemy(id)  => enemyUid(id)
     }
 
     /// unified EntityId → EntityRef。faction は `team` タグから読み、original id は uid 演算で復元。
@@ -403,11 +406,9 @@ mod World {
                     case EntityRef.Enemy(id)  => World.World({enemyPrevPos = Map.insert(id, p, w#enemyPrevPos) | w})
                 }
             case Cmd.SetFollowUpUsed(ref, f) =>
+                // A': 単一 store＋toUid（match ref arm 消失）。
                 let World.World(w) = world;
-                match ref {
-                    case EntityRef.Player(id) => World.World({playerFollowUpUsed = Map.insert(id, f, w#playerFollowUpUsed) | w})
-                    case EntityRef.Enemy(id)  => World.World({enemyFollowUpUsed = Map.insert(id, f, w#enemyFollowUpUsed) | w})
-                }
+                World.World({followUpUsed = Map.insert(toUid(ref), f, w#followUpUsed) | w})
             case Cmd.SetWaited(ref, wd) =>
                 let World.World(w) = world;
                 match ref {
@@ -415,17 +416,12 @@ mod World {
                     case EntityRef.Enemy(_)   => world   // 敵に waited は無い＝no-op
                 }
             case Cmd.SetAttackTarget(ref, t) =>
+                // A': 単一 store＋toUid（match ref arm 消失）。
                 let World.World(w) = world;
-                match ref {
-                    case EntityRef.Player(id) => World.World({playerAttackTarget = Map.insert(id, t, w#playerAttackTarget) | w})
-                    case EntityRef.Enemy(id)  => World.World({enemyAttackTarget = Map.insert(id, t, w#enemyAttackTarget) | w})
-                }
+                World.World({attackTarget = Map.insert(toUid(ref), t, w#attackTarget) | w})
             case Cmd.ClearAttackTarget(ref) =>
                 let World.World(w) = world;
-                match ref {
-                    case EntityRef.Player(id) => World.World({playerAttackTarget = Map.remove(id, w#playerAttackTarget) | w})
-                    case EntityRef.Enemy(id)  => World.World({enemyAttackTarget = Map.remove(id, w#enemyAttackTarget) | w})
-                }
+                World.World({attackTarget = Map.remove(toUid(ref), w#attackTarget) | w})
             case Cmd.SetProgress(ref, lv, xp) =>
                 let World.World(w) = world;
                 match ref {
@@ -472,13 +468,9 @@ mod World {
             case EntityRef.Enemy(id)  => Map.get(id, w#enemyPrevPos)
         }
 
-    /// F7-slice4: followUpUsed を World から読む（両 faction）。
+    /// F7-slice4: followUpUsed を World から読む（両 faction）。A': 単一 store＋toUid。
     pub def followUpUsedOf(ref: EntityRef, world: World): Option[Bool] =
-        let World.World(w) = world;
-        match ref {
-            case EntityRef.Player(id) => Map.get(id, w#playerFollowUpUsed)
-            case EntityRef.Enemy(id)  => Map.get(id, w#enemyFollowUpUsed)
-        }
+        let World.World(w) = world; Map.get(toUid(ref), w#followUpUsed)
 
     /// F7-slice5: 味方 waited を World から読む（reader flip は F8）。Enemy は常に None。
     pub def waitedOf(ref: EntityRef, world: World): Option[Bool] =
@@ -488,21 +480,19 @@ mod World {
             case EntityRef.Enemy(_)   => None
         }
 
-    /// F8-slice1: attackTargetId を World から読む（None=非攻撃）。両 faction。
+    /// F8-slice1: attackTargetId を World から読む（None=非攻撃）。両 faction。A': 単一 store＋toUid。
     pub def attackTargetOf(ref: EntityRef, world: World): Option[Int32] =
-        let World.World(w) = world;
-        match ref {
-            case EntityRef.Player(id) => Map.get(id, w#playerAttackTarget)
-            case EntityRef.Enemy(id)  => Map.get(id, w#enemyAttackTarget)
-        }
+        let World.World(w) = world; Map.get(toUid(ref), w#attackTarget)
 
-    /// F8-slice1: いずれかの味方が攻撃中か（`PlayerScene.anyAttacking` の World 版・順序非依存）。
+    /// F8-slice1: いずれかの味方が攻撃中か。A': 単一 store を **team タグ**で faction filter（id 演算でなく）。
     pub def anyPlayerAttacking(world: World): Bool =
-        let World.World(w) = world; not Map.isEmpty(w#playerAttackTarget)
+        let World.World(w) = world;
+        Map.exists((uid, _) -> Map.get(uid, w#team) == Some(Faction.Player), w#attackTarget)
 
-    /// F8-slice1: いずれかの敵が攻撃中か（`EnemyScene.anyAttacking` の World 版・順序非依存）。
+    /// F8-slice1: いずれかの敵が攻撃中か。A': team タグで faction filter。
     pub def anyEnemyAttacking(world: World): Bool =
-        let World.World(w) = world; not Map.isEmpty(w#enemyAttackTarget)
+        let World.World(w) = world;
+        Map.exists((uid, _) -> Map.get(uid, w#team) == Some(Faction.Enemy), w#attackTarget)
 
     /// World 拡張: 味方の (level, exp) を World から読む。未登録は None。Enemy は常に None。
     pub def progressOf(ref: EntityRef, world: World): Option[(Int32, Int32)] =

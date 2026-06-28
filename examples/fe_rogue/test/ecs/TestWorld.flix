@@ -557,7 +557,7 @@ mod TestWorld {
         Assert.assertEq(
             expected = (Some(5), Some(0), true, true),
             (World.attackTargetOf(World.EntityRef.Player(0), set),
-             Map.get(5, w#enemyAttackTarget),
+             Map.get(5 + World.enemyUidBase(), w#attackTarget),
              World.anyPlayerAttacking(set),
              World.anyEnemyAttacking(set)))
 
@@ -625,7 +625,7 @@ mod TestWorld {
         let World.World(w) = World.refreshMirror(sampleScene(), used);
         Assert.assertEq(
             expected = (Some(true), Some(true)),
-            (Map.get(0, w#playerFollowUpUsed), Map.get(5, w#enemyFollowUpUsed)))
+            (Map.get(0, w#followUpUsed), Map.get(5 + World.enemyUidBase(), w#followUpUsed)))
 
     /// F7-slice3: `Cmd.SetPrevPos` が World を更新し `prevPosOf` で読める＋preserve（command が scene 上書きされない）。
     @Test
