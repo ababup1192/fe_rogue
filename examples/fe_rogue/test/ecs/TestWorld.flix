@@ -711,4 +711,20 @@ mod TestWorld {
             expected = (expP0, expE5),
             (proj(World.weaponViewOf(World.EntityRef.Player(0), w)),
              proj(World.weaponViewOf(World.EntityRef.Enemy(5), w))))
+
+    // ── S-A0c: ringBonus（装備指輪ボーナス）の read-model mirror ──
+
+    /// syncFromScene が ringBonus を World へ mirror する。scene 由来の equippedRingBonus と一致する
+    /// （player 0 / enemy 5）。record は Eq 非自動ゆえ 5-tuple に射影して比較する。
+    @Test
+    def testRingBonusMirrorsEquipped(): Unit \ Assert =
+        let scene = sampleScene();
+        let w = World.syncFromScene(scene, World.empty());
+        let proj = b -> (b#attack, b#speed, b#defense, b#skill, b#luck);
+        let expP0 = Option.map(d -> proj(PlayerScene.equippedRingBonus(d)), PlayerScene.get(0, scene));
+        let expE5 = Option.map(d -> proj(EnemyScene.equippedRingBonus(d)), EnemyScene.get(5, scene));
+        Assert.assertEq(
+            expected = (expP0, expE5),
+            (Option.map(proj, World.ringBonusOf(World.EntityRef.Player(0), w)),
+             Option.map(proj, World.ringBonusOf(World.EntityRef.Enemy(5), w))))
 }

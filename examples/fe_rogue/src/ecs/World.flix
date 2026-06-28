@@ -74,6 +74,9 @@ pub enum World {
                  // S-A0b: 装備武器の戦闘投影 read-model（unified-id・両 faction）。内側 Option=武器なし。
                  // PlayerScene/EnemyScene.equippedWeaponView 由来ゆえ毎フレーム再 mirror。combatView flip 用。
                  weaponView = Map[EntityId, Option[Combat.WeaponView]],
+                 // S-A0c: 装備指輪ボーナス read-model（unified-id・両 faction）。未装備は zeroBonuses。
+                 // equippedRingBonus 由来ゆえ毎フレーム再 mirror。combatView flip 用。
+                 ringBonus = Map[EntityId, Ring.Bonuses],
                  // F8-slice2: 敵ターン driver が読む phase-banner 同期 bool（TopBar が毎フレーム dual-write）。
                  //   enemyTurnBusy      — 敵ターン開始 intro の hold 中（>0）＝敵の行動開始待ち。
                  //   phaseObservedEnemy — 上部バーが「敵ターン」を観測済み（0 体ターンの取りこぼし防止）。
@@ -96,7 +99,7 @@ mod World {
                      playerWaited = Map.empty(),
                      attackTarget = Map.empty(),
                      playerLevel = Map.empty(), playerExp = Map.empty(),
-                     baseStats = Map.empty(), weaponView = Map.empty(),
+                     baseStats = Map.empty(), weaponView = Map.empty(), ringBonus = Map.empty(),
                      enemyTurnBusy = false, phaseObservedEnemy = false})
 
     /// F2a: World の turnPhase を読む（read-model アクセサ）。
@@ -159,6 +162,8 @@ mod World {
                                   Query.indexBy(d -> enemyUid(d#id), d -> baseStatsFrom(d#resource), enemies)),
             weaponView = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedWeaponView(d), players),
                                    Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedWeaponView(d), enemies)),
+            ringBonus = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedRingBonus(d), players),
+                                  Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedRingBonus(d), enemies)),
             attackTarget = Map.union(attackTargetMap(id -> id, players),
                                      attackTargetMap(enemyUid, enemies)),
             // F8-slice2: scene に mirror 元がない scalar bool は前 world の値を保持（command 由来）。
@@ -212,6 +217,9 @@ mod World {
             // S-A0b: weaponView も装備武器由来の read-model ＝ 毎フレーム再 mirror。
             weaponView = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedWeaponView(d), players),
                                    Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedWeaponView(d), enemies)),
+            // S-A0c: ringBonus も装備指輪由来の read-model ＝ 毎フレーム再 mirror。
+            ringBonus = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedRingBonus(d), players),
+                                  Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedRingBonus(d), enemies)),
             attackTarget = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#attackTarget),
             // F8-slice2: scalar bool は command 由来を保持（scene mirror 元なし・TopBar が毎フレーム dual-write）。
             enemyTurnBusy      = w#enemyTurnBusy,
@@ -535,6 +543,11 @@ mod World {
     /// （combatView#weapon の型と一致）。B1 で combatView がここを読む。
     pub def weaponViewOf(ref: EntityRef, world: World): Option[Combat.WeaponView] =
         let World.World(w) = world; Map.get(toUid(ref), w#weaponView) |> Option.flatten
+
+    /// S-A0c: 装備指輪ボーナスを World から読む（unified-id・両 faction）。未登録は None。
+    /// B1 で combatView がここを読み、base + ring + status を合成する。
+    pub def ringBonusOf(ref: EntityRef, world: World): Option[Ring.Bonuses] =
+        let World.World(w) = world; Map.get(toUid(ref), w#ringBonus)
 
     /// World 拡張: 味方の (level, exp) を World から読む。未登録は None。Enemy は常に None。
     pub def progressOf(ref: EntityRef, world: World): Option[(Int32, Int32)] =

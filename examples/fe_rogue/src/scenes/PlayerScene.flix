@@ -39,7 +39,7 @@ mod PlayerScene {
     /// `Combat.estimate` / `Encounter` の join で使う（ダメージ式は `Combat` に集約）。
     pub def combatView(data: Data): Combat.CombatView =
         let m = StatusSystem.combatMods(data#statuses);
-        let rb = Ring.bonuses(PlayerData.equippedRing(data));
+        let rb = equippedRingBonus(data);
         {attack = data#resource#attack + m#atkBonus + rb#attack, magicAttack = data#resource#magicAttack,
          defense = data#resource#defense + rb#defense + m#defDelta, magicDefense = data#resource#magicDefense,
          skill = data#resource#skill + rb#skill, speed = data#resource#speed + m#spdDelta + rb#speed,
@@ -51,6 +51,11 @@ mod PlayerScene {
     pub def equippedWeaponView(data: Data): Option[Combat.WeaponView] =
         let equipped = PlayerData.equippedWeapon(data#weapons);
         Combat.weaponView(equipped, weaponProficient(data, equipped))
+
+    /// S-A0c: この味方の装備指輪ボーナス。`combatView` と World read-model 構築が共有する。
+    /// `ringEquipped` が false なら zeroBonuses（`PlayerData.equippedRing` が None を返す）。
+    pub def equippedRingBonus(data: Data): Ring.Bonuses =
+        Ring.bonuses(PlayerData.equippedRing(data))
 
     /// `combatView` の「装備武器を明示指定する」版。攻撃中に選択した武器（装備中=先頭とは
     /// 限らない）で戦闘予測を計算するため、`BattlePanelScene` から使う。

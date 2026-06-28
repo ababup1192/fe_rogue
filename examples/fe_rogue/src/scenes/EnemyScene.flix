@@ -730,7 +730,7 @@ mod EnemyScene {
     pub def combatView(data: Data): Combat.CombatView =
         // 投擲デバフ（目潰し=命中ダウン / 鈍足=速さダウン）を被弾していれば戦闘ビューに反映する。
         let m = StatusSystem.combatMods(data#statuses);
-        let rb = Ring.bonuses(data#ring);
+        let rb = equippedRingBonus(data);
         {attack = data#resource#attack + m#atkBonus + rb#attack, magicAttack = data#resource#magicAttack,
          defense = data#resource#defense + rb#defense + m#defDelta, magicDefense = data#resource#magicDefense,
          skill = data#resource#skill + rb#skill, speed = data#resource#speed + m#spdDelta + rb#speed,
@@ -741,6 +741,10 @@ mod EnemyScene {
     /// 敵は得意/苦手の概念がないので proficient は常に true。武器なしは None。
     pub def equippedWeaponView(data: Data): Option[Combat.WeaponView] =
         Combat.weaponView(data#weapon, true)
+
+    /// S-A0c: この敵の装備指輪ボーナス。`combatView` と World read-model 構築が共有する。
+    pub def equippedRingBonus(data: Data): Ring.Bonuses =
+        Ring.bonuses(data#ring)
 
     /// この敵の盤上ビュー（faction = Enemy）。`Encounter.fromScene` の join で使う。
     /// `weaponRange` は装備武器の射程。敵に `hidden` は無いので常に false。
