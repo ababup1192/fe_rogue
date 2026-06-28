@@ -281,6 +281,29 @@ mod World {
             case _ => ()
         })
 
+    /// F6a: hp を変える PlanItem（heal/fullHeal/damage/maxHpUp/revive）について、**runPlan 適用後の scene**
+    /// から各対象の hp を読み戻して `Cmd.SetHp` を境界で emit する。これで effect-runner 経由の hp も
+    /// World に dual-write されつつ、PlanHandlers は **pure のまま**（pure-handler-widen 不可の壁を回避）。
+    /// `emitStatusAdds` と同じ責務分離（pure handler / 境界 emit）。runPlan の **後**に渡す（適用後 hp を読むため）。
+    pub def emitHpSets(items: List[EffectPlan.PlanItem], scene: Scene[NodeTag]): Unit \ Command =
+        items |> List.forEach(item -> match item {
+            case EffectPlan.PlanItem.HealAt(id, ally, _)    => emitHpAt(id, ally, scene)
+            case EffectPlan.PlanItem.FullHealAt(id, ally)   => emitHpAt(id, ally, scene)
+            case EffectPlan.PlanItem.DamageAt(id, ally, _)  => emitHpAt(id, ally, scene)
+            case EffectPlan.PlanItem.MaxHpUpAt(id, ally, _) => emitHpAt(id, ally, scene)
+            case EffectPlan.PlanItem.ReviveAt(id, ally)     => emitHpAt(id, ally, scene)
+            case _ => ()
+        })
+
+    /// 対象の現 hp を scene から読み（居なければ no-op）、`Cmd.SetHp` を emit する内部ヘルパー。
+    def emitHpAt(id: EntityId, ally: Bool, scene: Scene[NodeTag]): Unit \ Command =
+        let hpOpt = if (ally) PlayerScene.get(id, scene) |> Option.map(d -> d#hp)
+                    else EnemyScene.get(id, scene) |> Option.map(d -> d#hp);
+        match hpOpt {
+            case Some(hp) => Command.emit(Cmd.SetHp(refOf(ally, id), hp))
+            case None     => ()
+        }
+
     /// World（位置の read-model mirror）から Board を組み立てる S4 の経路（World クエリ＝ecs/ 層）。
     /// 地形（map）は静的なので scene から（`BoardSnapshot.mapSnapshotOf` を借用）、駒（pieces）は World から。
     /// flip 時は call-point 単位で `BoardSnapshot.fromScene(scene)` をこれに差し替える。

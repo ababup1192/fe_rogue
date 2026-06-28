@@ -155,6 +155,7 @@ mod StaffCastScene {
                 let plan = EffectPlan.planActions(rule, ctx);
                 World.emitStatusAdds(plan);  // emit-flip(E2): 境界で World へ status を発行
                 EffectRunner.runPlan(staffEffectHandlers(playerId, dir), plan, scene)
+                    !> (s -> World.emitHpSets(plan, s))  // F6a: hp も境界で World へ dual-write（tap）
             case None =>
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった");
                 scene
@@ -538,6 +539,7 @@ mod StaffCastScene {
                 let plan = EffectPlan.planActions(rule, ctx);
                 World.emitStatusAdds(plan);  // emit-flip(E2): 境界で World へ status を発行
                 EffectRunner.runPlan(throwEffectHandlers(), plan, scene)
+                    !> (s -> World.emitHpSets(plan, s))  // F6a: hp も境界で World へ dual-write（tap）
             // effectRule が無い（または onUse でない）→ 従来どおり legacy effect で動く。
             case None =>
                 if (isSelfUseEffect(item#effect)) {
@@ -548,6 +550,7 @@ mod StaffCastScene {
                     let plan = EffectPlan.planActions(rule, ctx);
                     World.emitStatusAdds(plan);  // emit-flip(E2): 境界で World へ status を発行
                     EffectRunner.runPlan(selfEffectHandlers(item), plan, scene)
+                        !> (s -> World.emitHpSets(plan, s))  // F6a: hp も境界で World へ dual-write（tap）
                 } else {
                     GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${item#name} は ここでは使えなかった");
                     scene
@@ -1174,6 +1177,7 @@ mod StaffCastScene {
         let plan = EffectPlan.planActions(EffectBridge.consumableThrowRule(item), ctx);
         World.emitStatusAdds(plan);  // emit-flip(E2): 境界で World へ status を発行
         EffectRunner.runPlan(throwEffectHandlers(), plan, scene)
+            !> (s -> World.emitHpSets(plan, s))  // F6a: hp も境界で World へ dual-write（tap）
 
     /// 投擲効果の統一ハンドラ。ally で player/enemy を出し分け、HP/status を適用する（ログなし）。
     /// damage/immobilize 等は投擲薬の経路には現れないので恒等。

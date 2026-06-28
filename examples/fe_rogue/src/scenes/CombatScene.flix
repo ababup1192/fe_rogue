@@ -843,7 +843,9 @@ mod CombatScene {
                                          incoming = 0, magic = 0}};
                     let plan = EffectPlan.planActions(rule, ctx);
                     World.emitStatusAdds(plan);  // emit-flip(E2, dual-write): 境界で World へ status を発行
+                    // F6a: hp も境界で World へ dual-write（handler は pure）。`!>` は tap（副作用後に左辺を返す）。
                     EffectRunner.runPlan(enemyEffectHandlers(), plan, scene)
+                        !> (s -> World.emitHpSets(plan, s))
                 }
         }
 

@@ -334,7 +334,7 @@ mod EnemyTurnDriverScene {
     /// 持たなければ通常攻撃を取る。リング職人は enemies.json の effectRule で駆動される。
     def resolveEnemyAttack(enemyId: Int32, data: EnemyScene.Data, targetId: Int32,
                            p: PlayerScene.Data, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {AnimationPlayer.Scheduler, Math.Random, CustomEffects.RingTransformRequest} =
+            \ {AnimationPlayer.Scheduler, Math.Random, CustomEffects.RingTransformRequest, World.Command} =
         match enemyTurnRule(data) {
             case Some(rule) => runEnemyTurnFlow(rule, enemyId, data, targetId, p, scene)
             case None       => normalEnemyAttack(enemyId, targetId, p, scene)
@@ -358,7 +358,7 @@ mod EnemyTurnDriverScene {
     /// 確率」という設計のため。隣接限定は仕様（replaceForm が if:"adjacent" を暗黙付与。RingMan は近接前提）。
     def runEnemyTurnFlow(rule: EffectRule.EffectRule, enemyId: Int32, data: EnemyScene.Data,
                          targetId: Int32, p: PlayerScene.Data, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {AnimationPlayer.Scheduler, Math.Random, CustomEffects.RingTransformRequest} =
+            \ {AnimationPlayer.Scheduler, Math.Random, CustomEffects.RingTransformRequest, World.Command} =
         match replaceFlowOf(rule) {
             case None       => normalEnemyAttack(enemyId, targetId, p, scene)
             case Some(flow) =>
@@ -408,12 +408,12 @@ mod EnemyTurnDriverScene {
     def applyReplaceResult(effects: List[EffectFlow.FlowEffect], enemyId: Int32,
                            data: EnemyScene.Data, targetId: Int32, p: PlayerScene.Data,
                            scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {AnimationPlayer.Scheduler, CustomEffects.RingTransformRequest} =
+            \ {AnimationPlayer.Scheduler, CustomEffects.RingTransformRequest, World.Command} =
         match List.head(effects) {
             case Some(EffectFlow.FlowEffect.RequestReplace(actions)) =>
-                EffectRunner.runPlan(enemyTurnEffectHandlers(data),
-                    List.flatMap(a -> EffectPlan.planAction(a, replacePlanCtx(enemyId, targetId, p)), actions),
-                    scene)
+                let plan = List.flatMap(a -> EffectPlan.planAction(a, replacePlanCtx(enemyId, targetId, p)), actions);
+                EffectRunner.runPlan(enemyTurnEffectHandlers(data), plan, scene)
+                    !> (s -> World.emitHpSets(plan, s))  // F6a: hp も境界で World へ dual-write（tap）
             case _ => normalEnemyAttack(enemyId, targetId, p, scene)
         }
 
