@@ -105,14 +105,14 @@ mod TestWorld {
     @Test
     def testSyncMirrorsStatuses(): Unit \ Assert =
         let World.World(w) = World.syncFromScene(sceneWithStatus(), World.empty());
-        Assert.assertEq(expected = 3, firstRemaining(w#playerStatusEffects, 0))
+        Assert.assertEq(expected = 3, firstRemaining(w#statusEffects, 0))
 
     /// tickStatusEffects（StatusSystem.tick 再利用）で残ターンが 1 減る（残3→2）。
     @Test
     def testTickStatuses(): Unit \ Assert =
         let synced = World.syncFromScene(sceneWithStatus(), World.empty());
         let World.World(w) = World.tickStatusEffects(synced);
-        Assert.assertEq(expected = 2, firstRemaining(w#playerStatusEffects, 0))
+        Assert.assertEq(expected = 2, firstRemaining(w#statusEffects, 0))
 
     // ── S1b: World→scene write-back（逆向き矢印）と parallel-run 同値実証 ──
 

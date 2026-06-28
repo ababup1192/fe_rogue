@@ -28,8 +28,8 @@ pub enum World {
                  // A'（faction タグ component）: unified-id → `Faction` enum。faction 判定は id 演算（uid>=base）
                  // でなく **この enum タグ `teamOf` で読む**（Bevy の Team component 相当）。
                  team = Map[EntityId, Faction],
-                 playerStatusEffects = Map[EntityId, StatusSystem.StatusEffects],
-                 enemyStatusEffects  = Map[EntityId, StatusSystem.StatusEffects],
+                 // A': statusEffects も単一 store（unified-id）。read-model（refreshMirror で scene 再 mirror）。
+                 statusEffects = Map[EntityId, StatusSystem.StatusEffects],
                  // S2: hp の read-model mirror（権威は scene のまま。query/セーブ/決定論テスト用）。
                  // A'（store 統合）: hp は単一 store（player uid=id / enemy uid=id+base）。faction 別 split を撤廃。
                  hp = Map[EntityId, Int32],
@@ -71,7 +71,7 @@ mod World {
     pub def empty(): World =
         World.World({tick = 0, turnPhase = SimPhase.PlayerTurn,
                      playerIds = Set.empty(), enemyIds = Set.empty(),
-                     playerStatusEffects = Map.empty(), enemyStatusEffects = Map.empty(),
+                     statusEffects = Map.empty(),
                      hp = Map.empty(), team = Map.empty(),
                      pos = Map.empty(),
                      playerHidden = Set.empty(), enemyAlerted = Map.empty(),
@@ -111,8 +111,8 @@ mod World {
             playerIds      = Query.tagOf(d -> d#id, players),
             enemyIds       = Query.tagOf(d -> d#id, enemies),
             team           = teamTags(players, enemies),
-            playerStatusEffects = Query.indexBy(d -> d#id, d -> d#statuses, players),
-            enemyStatusEffects  = Query.indexBy(d -> d#id, d -> d#statuses, enemies),
+            statusEffects = Map.union(Query.indexBy(d -> d#id, d -> d#statuses, players),
+                                      Query.indexBy(d -> enemyUid(d#id), d -> d#statuses, enemies)),
             hp = Map.union(Query.indexBy(d -> d#id, d -> d#hp, players),
                            Query.indexBy(d -> d#id + enemyUidBase(), d -> d#hp, enemies)),
             pos = Map.union(Query.indexBy(d -> d#id, d -> d#gridPos, players),
@@ -158,8 +158,8 @@ mod World {
             playerIds      = pIds,
             enemyIds       = eIds,
             team           = teamTags(players, enemies),  // A': faction タグを毎フレーム再導出
-            playerStatusEffects = Query.indexBy(d -> d#id, d -> d#statuses, players),
-            enemyStatusEffects  = Query.indexBy(d -> d#id, d -> d#statuses, enemies),
+            statusEffects = Map.union(Query.indexBy(d -> d#id, d -> d#statuses, players),
+                                      Query.indexBy(d -> enemyUid(d#id), d -> d#statuses, enemies)),
             // F6b: hp も command 由来を保持＋prune（位置と同様）。全 hp 書込が `Cmd.SetHp` を dual-write
             // 済み（`[F6 HP DIFF]` 無音で確認）ゆえ World hp == scene hp で挙動不変。これで **hp は World 権威**。
             hp = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#hp),
@@ -187,8 +187,7 @@ mod World {
     pub def tickStatusEffects(world: World): World =
         let World.World(w) = world;
         World.World({
-            playerStatusEffects = Map.map(StatusSystem.tick, w#playerStatusEffects),
-            enemyStatusEffects  = Map.map(StatusSystem.tick, w#enemyStatusEffects)
+            statusEffects = Map.map(StatusSystem.tick, w#statusEffects)
             | w
         })
 
@@ -331,31 +330,22 @@ mod World {
     }
 
     /// statusEffects を引く（既定 Nil＝mid-game spawn は seed 不要）。Query handler から呼ぶ。
+    /// A': 単一 store。player uid=id ゆえ get(id) のまま、enemy は enemyUid(id) へ写す。
     pub def playerStatusEffectsOf(id: EntityId, world: World): StatusSystem.StatusEffects =
-        let World.World(w) = world; Map.getWithDefault(id, Nil, w#playerStatusEffects)
+        let World.World(w) = world; Map.getWithDefault(id, Nil, w#statusEffects)
     pub def enemyStatusEffectsOf(id: EntityId, world: World): StatusSystem.StatusEffects =
-        let World.World(w) = world; Map.getWithDefault(id, Nil, w#enemyStatusEffects)
+        let World.World(w) = world; Map.getWithDefault(enemyUid(id), Nil, w#statusEffects)
 
-    /// faction 非依存の統一アクセサ（前方互換 seam）。`EntityRef` で引くので、内部ストアが split→single へ
-    /// 変わっても呼び出し側は不変。Option A 移行時はこの実装だけ差し替える。
+    /// faction 非依存の統一アクセサ。A': 単一 store＋toUid（match arm 消失）。
     pub def statusEffectsOf(ref: EntityRef, world: World): StatusSystem.StatusEffects =
-        match ref {
-            case EntityRef.Player(id) => playerStatusEffectsOf(id, world)
-            case EntityRef.Enemy(id)  => enemyStatusEffectsOf(id, world)
-        }
+        let World.World(w) = world; Map.getWithDefault(toUid(ref), Nil, w#statusEffects)
 
-    /// EntityRef の statusEffects に純粋変換 f を適用する。**内部ストアが faction を知る唯一の点**
-    /// （split→single への Option A 移行はここだけ直せばよい）。Seed は `f = _ -> xs`（全置換）。
+    /// EntityRef の statusEffects に純粋変換 f を適用する。A': 単一 store＋toUid＝**faction 別 arm 消失**。
     def overEntity(ref: EntityRef, f: StatusSystem.StatusEffects -> StatusSystem.StatusEffects, world: World): World =
         let World.World(w) = world;
-        match ref {
-            case EntityRef.Player(id) =>
-                let cur = Map.getWithDefault(id, Nil, w#playerStatusEffects);
-                World.World({playerStatusEffects = Map.insert(id, f(cur), w#playerStatusEffects) | w})
-            case EntityRef.Enemy(id) =>
-                let cur = Map.getWithDefault(id, Nil, w#enemyStatusEffects);
-                World.World({enemyStatusEffects = Map.insert(id, f(cur), w#enemyStatusEffects) | w})
-        }
+        let uid = toUid(ref);
+        let cur = Map.getWithDefault(uid, Nil, w#statusEffects);
+        World.World({statusEffects = Map.insert(uid, f(cur), w#statusEffects) | w})
 
     /// 1 命令を World へ適用する純粋 applier（Command handler の本体）。
     pub def applyCmd(cmd: Cmd, world: World): World =
@@ -364,12 +354,13 @@ mod World {
             case Cmd.ClearImmobilized(ref) => overEntity(ref, StatusSystem.clearImmobilized, world)
             case Cmd.Seed(ref, xs)         => overEntity(ref, _ -> xs, world)
             case Cmd.TickPlayers(ids) =>
+                // A': 単一 store。player uid=id ゆえ id 集合をそのまま updateTagged（敵 uid は集合外で不変）。
                 let World.World(w) = world;
-                let next = Query.updateTagged(List.toSet(ids), StatusSystem.tick, w#playerStatusEffects);
-                World.World({playerStatusEffects = next | w})
+                World.World({statusEffects = Query.updateTagged(List.toSet(ids), StatusSystem.tick, w#statusEffects) | w})
             case Cmd.TickEnemies =>
+                // A': 敵 uid のエントリだけ tick（uidIsEnemy で plumbing 判定）。
                 let World.World(w) = world;
-                World.World({enemyStatusEffects = Map.map(StatusSystem.tick, w#enemyStatusEffects) | w})
+                World.World({statusEffects = Map.mapWithKey((uid, s) -> if (uidIsEnemy(uid)) StatusSystem.tick(s) else s, w#statusEffects) | w})
             case Cmd.Move(ref, pos) =>
                 // A': 単一 store＋toUid（match ref arm 消失）。
                 let World.World(w) = world;
@@ -691,10 +682,12 @@ mod World {
     /// 依然 scene の Data#statuses を読むので、この sync が World を唯一の真とする seam になる（flip は S1b 後段）。
     pub def syncStatusesToScene(world: World, scene: Scene[NodeTag]): Scene[NodeTag] =
         let World.World(w) = world;
-        let withPlayers = Map.foldLeftWithKey((sc, id, statuses) ->
-            PlayerScene.mapPlayer(id, d -> {statuses = statuses | d}, sc), scene, w#playerStatusEffects);
-        Map.foldLeftWithKey((sc, id, statuses) ->
-            EnemyScene.mapEnemy(id, d -> {statuses = statuses | d}, sc), withPlayers, w#enemyStatusEffects)
+        // A': 単一 statusEffects を uidToRef で faction 分けし、original id で mapPlayer/mapEnemy。
+        Map.foldLeftWithKey((sc, uid, statuses) ->
+            match uidToRef(uid) {
+                case EntityRef.Player(pid) => PlayerScene.mapPlayer(pid, d -> {statuses = statuses | d}, sc)
+                case EntityRef.Enemy(eid)  => EnemyScene.mapEnemy(eid, d -> {statuses = statuses | d}, sc)
+            }, scene, w#statusEffects)
 
     /// S5（§A 完成へ・World→scene 一方向 sync）: 各ユニットの scene `gridPos` を **World の位置で上書き**する。
     /// `syncStatusesToScene` と同型（`mapPlayer`/`mapEnemy` を再利用・scene 不在 id は no-op）。
