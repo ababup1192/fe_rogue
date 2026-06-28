@@ -22,60 +22,8 @@ mod CounterAttackRules {
         case Commit
     }
 
-    /// 攻撃側プレイヤーと、その attackTargetId が指している敵 (居なければ None) から
-    /// 次の挙動を決める。
-    ///   target = None        → Commit (対象消失)
-    ///   target#isDying       → Kill
-    ///   target に武器 + 射程内 → Counter(target#id)
-    ///   それ以外              → Commit
-    pub def decide(player: PlayerData.Data, target: Option[EnemyData.Data]): Outcome =
-        match target {
-            case None      => Outcome.Commit
-            case Some(eid) =>
-                if (eid#isDying) Outcome.Kill
-                else match eid#weapon {
-                    case None    => Outcome.Commit
-                    case Some(w) =>
-                        let d = Weapon.manhattan(eid#gridPos, player#gridPos);
-                        if (Weapon.canReach(d, w)) Outcome.Counter(eid#id)
-                        else Outcome.Commit
-                }
-        }
-
-    /// `decide` の Counter ケースだけを Option に射影する薄いアダプタ。
-    /// 反撃が起きない場合も呼び元が分岐を書かずに済む。
-    pub def attackerForPlayer(player: PlayerData.Data,
-                               target: Option[EnemyData.Data]): Option[Int32] =
-        match decide(player, target) {
-            case Outcome.Counter(eid) => Some(eid)
-            case _                    => None
-        }
-
-    /// `decide` の鏡像（主体と対象を敵→プレイヤー視点へ反転）。敵の攻撃完了後に「味方が反撃するか」を決める。
-    /// PlayerData.Data は isDying を持たない (HP <= 0 で即 scene から除去される) ため、
-    /// hp <= 0 を kill 判定として扱う。武器は先頭 (weapons.head) を反撃武器として使う想定。
-    ///   target = None        → Commit
-    ///   target#hp <= 0       → Kill (実際は次フレームで scene から消える)
-    ///   weapons 空           → Commit
-    ///   先頭武器が射程内      → Counter(target#id)
-    ///   それ以外              → Commit
-    pub def decidePlayerCounter(enemy: EnemyData.Data,
-                                 target: Option[PlayerData.Data]): Outcome =
-        match target {
-            case None    => Outcome.Commit
-            case Some(p) =>
-                if (p#hp <= 0) Outcome.Kill
-                else match PlayerData.equippedWeapon(p#weapons) {
-                    case None    => Outcome.Commit
-                    case Some(w) =>
-                        let d = Weapon.manhattan(p#gridPos, enemy#gridPos);
-                        if (Weapon.canReach(d, w)) Outcome.Counter(p#id)
-                        else Outcome.Commit
-                }
-        }
-
-    /// **Track A（faction 分岐除去）: `decide`(味方→敵) と `decidePlayerCounter`(敵→味方) の
-    /// mirror pair を faction-blind な UnitView ベースの 1 関数に統合する。**
+    /// **Track A（faction 分岐除去）: 旧 `decide`(味方→敵) と `decidePlayerCounter`(敵→味方) の
+    /// faction-split mirror pair を faction-blind な UnitView ベースの 1 関数に統合した置換。**
     /// `UnitView` は既に所属非依存（pos/hp/isDying/weaponRange を id 結合済み）ゆえ、攻撃側/防御側の
     /// faction を `match` せずに判定できる。Kill 条件は敵の `isDying` と味方の `hp<=0` を一律に畳む
     /// （死亡モデルの非対称を view 判定側で吸収）。反撃可否は既存の faction-blind 述語 `UnitView.canAttack`。

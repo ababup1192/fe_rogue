@@ -293,15 +293,17 @@ mod CombatScene {
                 resolvePlayerMainAttack(playerId, scene)
         }
 
-    /// 味方主攻撃完了の従来分岐（追撃なし）。CounterAttackRules.decide で Kill/Counter/Commit。
+    /// 味方主攻撃完了の従来分岐（追撃なし）。CounterAttackRules.decideView（faction-blind）で Kill/Counter/Commit。
     def resolvePlayerMainAttack(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, Pacing.State, World.Command} =
+        // Track A: faction-blind な decideView（UnitView ベース）へ移行。旧 decide(味方→敵) と等価。
         let outcome = PlayerScene.get(playerId, scene)
-            |> Option.map(player -> CounterAttackRules.decide(player,
+            |> Option.map(player -> CounterAttackRules.decideView(PlayerScene.unitView(player),
                    player#attackTargetId
-                       |> Option.flatMap(eid -> EnemyScene.get(eid, scene))));
+                       |> Option.flatMap(eid -> EnemyScene.get(eid, scene))
+                       |> Option.map(EnemyScene.unitView)));
         match outcome {
             case None => scene
             case Some(CounterAttackRules.Outcome.Kill) =>
@@ -336,7 +338,7 @@ mod CombatScene {
     /// 敵の `attack_lunge` finished。2 通りある:
     ///   - `PlayerAttackHold` (= 味方攻撃に対する敵反撃の完了) → commit
     ///   - `EnemyTurn` (= 敵ターン中の主攻撃完了) → 味方反撃判定。
-    ///       CounterAttackRules.decidePlayerCounter を回し、Counter(playerId) なら
+    ///       CounterAttackRules.decideView（faction-blind）を回し、Counter(playerId) なら
     ///       `startAttack(Faction.Player, ...)` で反撃モーション開始。
     ///       それ以外は単純に attackTargetId クリアして EnemyTurnDriver に制御を戻す。
     /// `PlayerAttackHold` は「攻撃を振った側が先に attack_lunge を開始する瞬間から
@@ -400,11 +402,13 @@ mod CombatScene {
     /// 敵主攻撃完了の従来分岐（追撃なし）。味方反撃の対象を決め、反撃なら startAttack。
     def resolveEnemyMainAttack(enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command} =
+        // Track A: faction-blind な decideView へ移行。旧 decidePlayerCounter(敵→味方) と等価。
         let decision = forM (
             e <- EnemyScene.get(enemyId, scene)
-        ) yield (e, CounterAttackRules.decidePlayerCounter(e,
+        ) yield (e, CounterAttackRules.decideView(EnemyScene.unitView(e),
                      e#attackTargetId
-                         |> Option.flatMap(pid -> PlayerScene.get(pid, scene))));
+                         |> Option.flatMap(pid -> PlayerScene.get(pid, scene))
+                         |> Option.map(PlayerScene.unitView)));
         match decision {
             case Some((e, CounterAttackRules.Outcome.Counter(playerId))) =>
                 let cleared = clearEnemyAttackTarget(enemyId, scene);

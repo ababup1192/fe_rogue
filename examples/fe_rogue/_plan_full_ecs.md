@@ -29,7 +29,11 @@
 
 **★ユーザー決定**: **「true composition(A')をやるか」**。A だけでも call-site 分岐は減るが、**ゴール（Entity=Component 合成）には A' が必要**。A' は save 安全・additive・中リスク。B(headless/serialize)は別問題で任意。
 
-**進捗**: ✅ A-slice1 着地（CounterAttackRules `decideView` で mirror pair を faction-blind 統合・914緑）。
+**進捗**:
+- ✅ A-slice1（CounterAttackRules `decideView` で mirror pair を faction-blind 統合・914緑）。
+- ✅ A-slice2（CombatScene の call-site 2箇所を `decideView` へ移行＋**faction-split mirror pair `decide`/`decidePlayerCounter`/`attackerForPlayer` を削除**＋テスト/fixture 整理・909緑）。＝戦闘の反撃判定が完全に faction-blind に。
+- ⏭ 次: CombatScene 残 `match side` 4箇所（108/159/202/454）は **startPlayerAttack/startEnemyAttack・playerPath/enemyPath への view dispatch**＝split PlayerScene/EnemyScene に結合。**A'（store/scene 統合）と一体**。純ロジックの faction-blind 化は decideView で達成済。
+- ⏭ **A'（本体）**: World mirror を unified-id 単一 store＋`team` component に統合。これで残 `match ref`・doubled field・並行型が消える＝Entity=Component 合成 完成。
 
 ---
 
