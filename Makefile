@@ -48,11 +48,12 @@ ENGINE_TOML_NAME := flix_game_engine-0.1.0.toml
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine-core sync-render-core sync-engine clean-locks clean-example-builds
+.PHONY: help sync sync-root sync-engine-core sync-render-core sync-engine clean-locks clean-example-builds
 
 help:
 	@echo "Targets:"
 	@echo "  make sync                 engine_core / render_core / engine を build-pkg し、各依存先に配布"
+	@echo "  make sync-root            community-build 用: ./src へ engine_core/src を symlink 同梱"
 	@echo "  make sync-engine-core     engine_core だけ build-pkg & 配布 (render_core / engine / ide / examples へ)"
 	@echo "  make sync-render-core     render_core だけ build-pkg & 配布 (engine / ide / examples へ)"
 	@echo "  make sync-engine          engine だけ build-pkg & 配布 (ide / examples へ)"
@@ -81,6 +82,21 @@ clean-example-builds:
 	echo "[clean-example-builds] $$removed build dir(s) removed"
 
 sync: clean-locks sync-engine-core sync-render-core sync-engine
+
+# community-build はリポジトリルートで `flix build` する。ルートの単一パッケージ (flix.toml) が
+# コンパイルするのは ./src だけなので、依存ゼロの土台 engine_core のソースを ./src へ
+# 相対 symlink で同梱する。これでルートビルドが engine_core を型検査し、Flix community-build に
+# 1 リポ・1 エントリで載せられる。既存の sync-* (fpkg 配布) とは独立で、モノレポ構成は無変更。
+# 冪等: 既存の *.flix symlink を一度消してから engine_core/src/*.flix を貼り直す
+# (engine_core 側でファイルが増減しても ./src が追従する)。
+sync-root:
+	@mkdir -p src
+	@find src -maxdepth 1 -type l -name '*.flix' -delete
+	@for f in $(ENGINE_CORE_DIR)/src/*.flix; do \
+		base=$$(basename "$$f"); \
+		ln -sfn "../$(ENGINE_CORE_DIR)/src/$$base" "src/$$base"; \
+	done
+	@echo "[sync-root] ./src <- $(ENGINE_CORE_DIR)/src/*.flix ($$(ls src/*.flix | wc -l | tr -d ' ') files)"
 
 # engine_core は engine / render_core / ide / examples すべてが（直接または推移的に）依存する。
 # 最も土台のパッケージなので sync チェーンの先頭に置く。
