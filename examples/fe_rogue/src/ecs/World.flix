@@ -118,11 +118,11 @@ mod World {
             pos = Map.union(Query.indexBy(d -> d#id, d -> d#gridPos, players),
                             Query.indexBy(d -> enemyUid(d#id), d -> d#gridPos, enemies)),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
-            enemyDying     = Query.tagOf(d -> d#id, List.filter(d -> d#isDying, enemies)),
-            enemyAlerted   = Query.indexBy(d -> d#id, d -> d#alerted, enemies),
-            enemyBottleUsed = Query.indexBy(d -> d#id, d -> d#bottleUsed, enemies),
+            enemyDying     = Query.tagOf(d -> enemyUid(d#id), List.filter(d -> d#isDying, enemies)),
+            enemyAlerted   = Query.indexBy(d -> enemyUid(d#id), d -> d#alerted, enemies),
+            enemyBottleUsed = Query.indexBy(d -> enemyUid(d#id), d -> d#bottleUsed, enemies),
             enemyPrevPos   = List.foldLeft((m, d) -> match d#prevPos {
-                                 case Some(p) => Map.insert(d#id, p, m)
+                                 case Some(p) => Map.insert(enemyUid(d#id), p, m)
                                  case None    => m
                              }, Map.empty(), enemies),
             followUpUsed = Map.union(Query.indexBy(d -> d#id, d -> d#followUpUsed, players),
@@ -167,11 +167,11 @@ mod World {
             pos = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#pos),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
             // 軸1 仕上げ: isDying も command 由来を保持＋prune（death 完了でノード除去→自動 prune）。
-            enemyDying     = Set.filter(id -> Set.memberOf(id, eIds), w#enemyDying),
-            // F7-spike: alerted も command 由来を保持＋prune（hp と同型）。
-            enemyAlerted   = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyAlerted),
-            enemyBottleUsed = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyBottleUsed),
-            enemyPrevPos   = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyPrevPos),
+            // A': enemy-only store も unified-id key＝prune は validUids で統一。
+            enemyDying     = Set.filter(uid -> Set.memberOf(uid, validUids), w#enemyDying),
+            enemyAlerted   = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#enemyAlerted),
+            enemyBottleUsed = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#enemyBottleUsed),
+            enemyPrevPos   = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#enemyPrevPos),
             followUpUsed = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#followUpUsed),
             playerWaited   = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerWaited),
             // World 拡張: level/exp も command 由来を保持＋prune（hp と同型）。
@@ -375,25 +375,25 @@ mod World {
                 let World.World(w) = world;
                 match ref {
                     case EntityRef.Player(_)  => world   // F7-spike: 味方に alerted は無い＝no-op
-                    case EntityRef.Enemy(id)  => World.World({enemyAlerted = Map.insert(id, a, w#enemyAlerted) | w})
+                    case EntityRef.Enemy(id)  => World.World({enemyAlerted = Map.insert(enemyUid(id), a, w#enemyAlerted) | w})
                 }
             case Cmd.SetDying(ref) =>
                 let World.World(w) = world;
                 match ref {
                     case EntityRef.Player(_)  => world   // 味方は hp<=0 で即除去＝isDying 無し
-                    case EntityRef.Enemy(id)  => World.World({enemyDying = Set.insert(id, w#enemyDying) | w})
+                    case EntityRef.Enemy(id)  => World.World({enemyDying = Set.insert(enemyUid(id), w#enemyDying) | w})
                 }
             case Cmd.SetBottleUsed(ref, b) =>
                 let World.World(w) = world;
                 match ref {
                     case EntityRef.Player(_)  => world
-                    case EntityRef.Enemy(id)  => World.World({enemyBottleUsed = Map.insert(id, b, w#enemyBottleUsed) | w})
+                    case EntityRef.Enemy(id)  => World.World({enemyBottleUsed = Map.insert(enemyUid(id), b, w#enemyBottleUsed) | w})
                 }
             case Cmd.SetPrevPos(ref, p) =>
                 let World.World(w) = world;
                 match ref {
                     case EntityRef.Player(_)  => world
-                    case EntityRef.Enemy(id)  => World.World({enemyPrevPos = Map.insert(id, p, w#enemyPrevPos) | w})
+                    case EntityRef.Enemy(id)  => World.World({enemyPrevPos = Map.insert(enemyUid(id), p, w#enemyPrevPos) | w})
                 }
             case Cmd.SetFollowUpUsed(ref, f) =>
                 // A': 単一 store＋toUid（match ref arm 消失）。
@@ -431,7 +431,7 @@ mod World {
         let World.World(w) = world;
         match ref {
             case EntityRef.Player(_)  => None
-            case EntityRef.Enemy(id)  => Map.get(id, w#enemyAlerted)
+            case EntityRef.Enemy(id)  => Map.get(enemyUid(id), w#enemyAlerted)
         }
 
     /// 軸1 仕上げ: 敵が死亡演出中か（reader flip の供給元）。Player は常に false。
@@ -439,7 +439,7 @@ mod World {
         let World.World(w) = world;
         match ref {
             case EntityRef.Player(_)  => false
-            case EntityRef.Enemy(id)  => Set.memberOf(id, w#enemyDying)
+            case EntityRef.Enemy(id)  => Set.memberOf(enemyUid(id), w#enemyDying)
         }
 
     /// F7-slice2: 敵の bottleUsed を World から読む。Player は常に None。
@@ -447,7 +447,7 @@ mod World {
         let World.World(w) = world;
         match ref {
             case EntityRef.Player(_)  => None
-            case EntityRef.Enemy(id)  => Map.get(id, w#enemyBottleUsed)
+            case EntityRef.Enemy(id)  => Map.get(enemyUid(id), w#enemyBottleUsed)
         }
 
     /// F7-slice3: 敵の prevPos を World から読む（None=未移動＝マップ非在）。Player は常に None。
@@ -455,7 +455,7 @@ mod World {
         let World.World(w) = world;
         match ref {
             case EntityRef.Player(_)  => None
-            case EntityRef.Enemy(id)  => Map.get(id, w#enemyPrevPos)
+            case EntityRef.Enemy(id)  => Map.get(enemyUid(id), w#enemyPrevPos)
         }
 
     /// F7-slice4: followUpUsed を World から読む（両 faction）。A': 単一 store＋toUid。

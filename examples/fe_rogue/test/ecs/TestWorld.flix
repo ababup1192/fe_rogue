@@ -632,7 +632,7 @@ mod TestWorld {
         let toT = op -> Option.map(p -> (p#x, p#y), op);
         Assert.assertEq(
             expected = (Some((7, 1)), Some((7, 1))),
-            (toT(World.prevPosOf(World.EntityRef.Enemy(5), moved)), toT(Map.get(5, w#enemyPrevPos))))
+            (toT(World.prevPosOf(World.EntityRef.Enemy(5), moved)), toT(Map.get(5 + World.enemyUidBase(), w#enemyPrevPos))))
 
     /// F7-slice2: `Cmd.SetBottleUsed` が World を更新し `bottleUsedOf` で読める＋preserve。
     @Test
@@ -642,7 +642,7 @@ mod TestWorld {
         let World.World(w) = World.refreshMirror(sampleScene(), used);
         Assert.assertEq(
             expected = (Some(true), Some(true)),
-            (World.bottleUsedOf(World.EntityRef.Enemy(5), used), Map.get(5, w#enemyBottleUsed)))
+            (World.bottleUsedOf(World.EntityRef.Enemy(5), used), Map.get(5 + World.enemyUidBase(), w#enemyBottleUsed)))
 
     /// F7-spike: alerted は command 由来で **保持**（scene から re-mirror しない）。`Cmd.SetAlerted(5,true)` 後、
     /// refreshMirror しても scene fixture（enemy 5 alerted=false）でなく command の true が残る＝flag も World 権威化可。
@@ -651,7 +651,7 @@ mod TestWorld {
         let seeded  = World.syncFromScene(sampleScene(), World.empty());
         let alerted = World.applyCmd(World.Cmd.SetAlerted(World.EntityRef.Enemy(5), true), seeded);
         let World.World(w) = World.refreshMirror(sampleScene(), alerted);
-        Assert.assertEq(expected = Some(true), Map.get(5, w#enemyAlerted))
+        Assert.assertEq(expected = Some(true), Map.get(5 + World.enemyUidBase(), w#enemyAlerted))
 
     /// F6a: `Cmd.SetHp` が World の hp store を faction 別に更新し、`hpOf` で読める（hp→World 権威化の土台）。
     /// 後段（F6b）で reader を World へ flip・refreshMirror を preserve 化する前提のコマンドシーム。

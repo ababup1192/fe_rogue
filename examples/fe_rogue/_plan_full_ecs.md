@@ -42,8 +42,11 @@
 - ✅ **A'-slice5（pos 統合・910緑）= 最高リスク（位置権威）着地**: `playerPos`/`enemyPos` → 単一 `pos`。consumer の `boardPieces`/`syncTreeFromWorld` は **`uidToRef`（純粋 plumbing）**で faction 分け。**設計整理**: store 走査の plumbing は uid 復元（`uidToRef`/`uidIsPlayer`・team populate 非依存）、game logic の entity faction は `team` enum タグ（`teamOf`）。← 実機で移動/描画 run 検証推奨。
 - ✅ **A'-slice6（statusEffects 統合・910緑）= both-faction store 全 5 完了 🎯**: `playerStatusEffects`/`enemyStatusEffects` → 単一 `statusEffects`。`overEntity`（status の faction 唯一知点）の match arm 消失。TickPlayers=id 集合 updateTagged・TickEnemies=`uidIsEnemy` で tick・syncStatusesToScene=`uidToRef` 分け。accessor は signature 維持（playerStatusEffectsOf(id)/enemyStatusEffectsOf(id)）で内部 uid 写像＝呼び出し側不変。
 - **🎉 both-faction doubled store 全統合（hp/followUpUsed/attackTarget/pos/statusEffects）**＝applyCmd の主要 `match ref` arm が全て `toUid`/`overEntity` 1 本に。Entity=Component 合成の核心達成。
-- ⏭ **A' single-faction store**（waited/alerted/bottleUsed/prevPos/dying/level/exp/hidden）: uid 化で key 統一（doubled field は無いが uid 一貫化）。
-- ⏭ 残 `match side` 4箇所（CombatScene view dispatch）。
+- ✅ **A'-slice7（enemy-only store uid 化・910緑）= World 全 component が統一 uid-keyed に 🎯**: enemyAlerted/bottleUsed/prevPos/dying を `enemyUid` key へ（player-only は player uid=id で既に uid-keyed）。accessor は EntityRef signature 維持＝呼び出し側不変。**∴ World は「全 component を unified-id で keying・faction は team enum タグ」の clean Bevy 流表現に到達。A'（World 側 store 統合）完了。**
+- ⏭ **残（A' の外＝scene 側 / authoritative 化）**:
+  - **`match side` 4箇所（CombatScene view dispatch）**: startPlayerAttack/startEnemyAttack・playerPath/enemyPath は **split な PlayerScene/EnemyScene に結合**＝World 統合では消えない。scene-side 統合が要る。
+  - **single-faction Cmd の no-op arm**（SetAlerted Player→no-op 等）は**意味論的**（敵のみ alert・味方のみ wait）で除去対象でない。
+  - **真の authoritative 化（PlayerData/EnemyData 並行型撤去・scene 撤去）= Track B 領域**（大）。
 - ⏭ 残 `match side` 4箇所（CombatScene view dispatch）は store 統合後に startAttack/path を uid ベース faction-blind 化。
 
 ---
