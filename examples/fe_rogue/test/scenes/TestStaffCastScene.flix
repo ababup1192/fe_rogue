@@ -142,8 +142,9 @@ mod TestStaffCastScene {
     def testHealStaffClampsAtMaxHp(): Unit \ Assert =
         let scene = playerScene(5, 0);
         let caster = playerData(scene);
-        let after = TestUnitFixtures.withMockGameLogger(() ->
-            StaffCastScene.applyHealToPlayer(0, caster, 0, scene));
+        let after = TestUnitFixtures.dischargeWorldCommand(() ->
+            TestUnitFixtures.withMockGameLogger(() ->
+            StaffCastScene.applyHealToPlayer(0, caster, 0, scene)));
         Assert.assertEq(expected = 10, PlayerScene.getHp(0, after))
 
     // ════════════════════════════════════════════════════════

@@ -426,12 +426,12 @@ mod EnemyScene {
 
     /// いやしのリングを装備した敵の HP を回復する（最大 HP でクランプ）。敵ターン開始で呼ぶ。
     /// 実際に回復した敵はログに出す。
-    pub def applyRingRegen(scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+    pub def applyRingRegen(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         let ids = getAll(scene) |> List.map(d -> d#id);
         List.foldLeft((sc, id) -> regenOneEnemy(id, sc), scene, ids)
 
     /// 1 敵ぶんの Mend 回復。Mend 以外 / 未装備なら no-op（match は入れ子にしない）。
-    def regenOneEnemy(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+    def regenOneEnemy(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         match get(id, scene) {
             case None    => scene
             case Some(d) => mendOneEnemy(id, d, scene)
@@ -440,14 +440,14 @@ mod EnemyScene {
     /// 回復量を計算して適用するヘルパー（regenOneEnemy から呼ぶ）。
     /// 満タン等で実際に HP が増えないときはログも出さない。
     def mendOneEnemy(id: Int32, d: Data, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         let amt = Ring.mendAmount(d#ring);
         let newHp = Combat.heal(d#hp, d#resource#hp, amt)#newHp;
         if (amt <= 0 or newHp <= d#hp) scene
         else {
             GameLogger.enemyLog("${d#resource#description} は いやしのリングで HP+${newHp - d#hp}");
             scene
-                |> mapEnemy(id, dd -> {hp = newHp | dd})
+                |> setHp(id, newHp)
                 |> UnitHPBarScene.update(enemyPath(id), newHp)
         }
 

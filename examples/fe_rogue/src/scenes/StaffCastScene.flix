@@ -276,7 +276,7 @@ mod StaffCastScene {
     /// ように pub にしている（`TestStaffCastScene` 参照）。
     pub def applyHealToPlayer(srcId: Int32, player: PlayerScene.Data, targetId: Int32,
                            scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         let amount = player#resource#magicAttack + 10;
         match PlayerScene.get(targetId, scene) {
             case None         => scene
@@ -285,14 +285,14 @@ mod StaffCastScene {
                 let healed = result#newHp - target#hp;
                 GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} ▶ ${PlayerScene.displayName(targetId, scene)} を ${healed}回復");
                 scene
-                    |> PlayerScene.mapPlayer(targetId, d -> {hp = result#newHp | d})
+                    |> PlayerScene.setHp(targetId, result#newHp)
                     |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), result#newHp)
         }
 
     /// Heal × 敵: 敵の HP を「魔力 + 10」回復（敵にも効く仕様）。
     def applyHealToEnemy(srcId: Int32, player: PlayerScene.Data, enemyId: Int32,
                           scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         let amount = player#resource#magicAttack + 10;
         match EnemyScene.get(enemyId, scene) {
             case None        => scene
@@ -301,7 +301,7 @@ mod StaffCastScene {
                 let healed = result#newHp - enemy#hp;
                 GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} ▶ ${EnemyScene.displayName(enemyId, scene)} を ${healed}回復");
                 scene
-                    |> EnemyScene.mapEnemy(enemyId, d -> {hp = result#newHp | d})
+                    |> EnemyScene.setHp(enemyId, result#newHp)
                     |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), result#newHp)
         }
 
@@ -317,7 +317,7 @@ mod StaffCastScene {
             case Some(target) =>
                 let dmgResult = Combat.damage(hp = target#hp, amount = 1);
                 let withDamage = scene
-                    |> PlayerScene.mapPlayer(targetId, d -> {hp = dmgResult#newHp | d})
+                    |> PlayerScene.setHp(targetId, dmgResult#newHp)
                     |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), dmgResult#newHp);
                 GameLogger.playerLog(
                     "${PlayerScene.displayName(srcId, scene)} ▶ ${PlayerScene.displayName(targetId, scene)} を ふきとばし (1ダメージ)");
@@ -344,7 +344,7 @@ mod StaffCastScene {
                         |> EnemyScene.startDeathAnimation(enemyId)
                 } else {
                     let withDamage = scene
-                        |> EnemyScene.mapEnemy(enemyId, d -> {hp = dmgResult#newHp | d})
+                        |> EnemyScene.setHp(enemyId, dmgResult#newHp)
                         |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), dmgResult#newHp);
                     GameLogger.playerLog(
                         "${PlayerScene.displayName(srcId, scene)} ▶ ${EnemyScene.displayName(enemyId, scene)} を ふきとばし (1ダメージ)");
@@ -877,7 +877,7 @@ mod StaffCastScene {
                     GameLogger.playerLog("${srcLabel} は ${name} を投げて ${EnemyScene.displayName(enemyId, scene)} に ${dmg}ダメージ");
                     // アイテムをぶつけられたので、かなしばり中なら完全停止を解除する。
                     scene
-                        |> EnemyScene.mapEnemy(enemyId, d -> {hp = dmgResult#newHp | d})
+                        |> EnemyScene.setHp(enemyId, dmgResult#newHp)
                         |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), dmgResult#newHp)
                         |> EnemyScene.releaseBind(enemyId)
                 }
@@ -894,7 +894,7 @@ mod StaffCastScene {
                 GameLogger.playerLog("${srcLabel} の ${name} が ${PlayerScene.displayName(targetId, scene)} に当たった (${dmg}ダメージ)");
                 // アイテムをぶつけられたので、かなしばり中なら完全停止を解除する。
                 let withDamage = scene
-                    |> PlayerScene.mapPlayer(targetId, d -> {hp = dmgResult#newHp | d})
+                    |> PlayerScene.setHp(targetId, dmgResult#newHp)
                     |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), dmgResult#newHp)
                     |> PlayerScene.releaseBind(targetId);
                 if (dmgResult#isDead)
