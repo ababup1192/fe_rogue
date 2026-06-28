@@ -4,26 +4,26 @@
 /// 部屋優先（先勝ち）と、bbox の包含判定（offset + gridSize の半開区間）を検証する。
 mod TestMapScene {
 
-    // ModulePlacement 生成は本番の MapScene.placement を使う（テスト間の重複定義を廃止）。
+    // ModulePlacement 生成は本番の RoomLayout.placement を使う（テスト間の重複定義を廃止）。
 
     /// 単一モジュールの内部セル → そのモジュールの idx
     @Test
     def testModuleOfCellSingleInside(): Unit \ Assert =
-        let p0 = MapScene.placement(0, 0, 0, 8, 8);
+        let p0 = RoomLayout.placement(0, 0, 0, 8, 8);
         let result = MapSnapshot.moduleOfCellIn(({x = 3, y = 4}: {x = Int32, y = Int32}), p0 :: Nil);
         Assert.assertEq(expected = Some(0), result)
 
     /// 範囲外セル → None
     @Test
     def testModuleOfCellOutsideAllModules(): Unit \ Assert =
-        let p0 = MapScene.placement(0, 0, 0, 8, 8);
+        let p0 = RoomLayout.placement(0, 0, 0, 8, 8);
         let result = MapSnapshot.moduleOfCellIn(({x = 20, y = 20}: {x = Int32, y = Int32}), p0 :: Nil);
         Assert.assertEq(expected = None, result)
 
     /// bbox の右下端は半開区間（exclusive）。 (8,8) は p0 (0..8, 0..8) に含まれない
     @Test
     def testModuleOfCellExclusiveMax(): Unit \ Assert =
-        let p0 = MapScene.placement(0, 0, 0, 8, 8);
+        let p0 = RoomLayout.placement(0, 0, 0, 8, 8);
         let inside  = MapSnapshot.moduleOfCellIn(({x = 7, y = 7}: {x = Int32, y = Int32}), p0 :: Nil);
         let outside = MapSnapshot.moduleOfCellIn(({x = 8, y = 8}: {x = Int32, y = Int32}), p0 :: Nil);
         Assert.assertEq(expected = (Some(0), None), (inside, outside))
@@ -33,9 +33,9 @@ mod TestMapScene {
     /// p0 と p2 が重なる (7,3) は p0 を返すべき。
     @Test
     def testModuleOfCellRoomWinsOverPathway(): Unit \ Assert =
-        let p0 = MapScene.placement(0, 0, 0, 8, 8);
-        let p1 = MapScene.placement(1, 10, 0, 8, 8);
-        let p2 = MapScene.placement(2, 6, 2, 6, 4);   // 部屋 0 と通路が overlap
+        let p0 = RoomLayout.placement(0, 0, 0, 8, 8);
+        let p1 = RoomLayout.placement(1, 10, 0, 8, 8);
+        let p2 = RoomLayout.placement(2, 6, 2, 6, 4);   // 部屋 0 と通路が overlap
         let placements = p0 :: p1 :: p2 :: Nil;
         let result = MapSnapshot.moduleOfCellIn(({x = 7, y = 3}: {x = Int32, y = Int32}), placements);
         Assert.assertEq(expected = Some(0), result)
@@ -43,9 +43,9 @@ mod TestMapScene {
     /// 通路だけが含むセルは通路の idx を返す（部屋に入っていない）。
     @Test
     def testModuleOfCellPathwayOnly(): Unit \ Assert =
-        let p0 = MapScene.placement(0, 0, 0, 8, 8);
-        let p1 = MapScene.placement(1, 10, 0, 8, 8);
-        let p2 = MapScene.placement(2, 6, 2, 6, 4);   // (8..10, 2..6) は p2 のみ
+        let p0 = RoomLayout.placement(0, 0, 0, 8, 8);
+        let p1 = RoomLayout.placement(1, 10, 0, 8, 8);
+        let p2 = RoomLayout.placement(2, 6, 2, 6, 4);   // (8..10, 2..6) は p2 のみ
         let placements = p0 :: p1 :: p2 :: Nil;
         let result = MapSnapshot.moduleOfCellIn(({x = 9, y = 4}: {x = Int32, y = Int32}), placements);
         Assert.assertEq(expected = Some(2), result)
@@ -71,24 +71,24 @@ mod TestMapScene {
     /// floorBoundsMaxEx は排他なので最終床セルは 7、中心 = (0+7)/2 = 3。
     @Test
     def testModuleCenterAtOrigin(): Unit \ Assert =
-        let p0 = MapScene.placement(0, 0, 0, 8, 8);
+        let p0 = RoomLayout.placement(0, 0, 0, 8, 8);
         Assert.assertEq(expected = (true, 3, 3),
-            centerToTuple(MapScene.moduleCenter(0, p0 :: Nil)))
+            centerToTuple(RoomLayout.moduleCenter(0, p0 :: Nil)))
 
     /// offset(10,20)・床 5×3 の部屋2 の中心は (12,21)。
     /// x: (10 + 14)/2 = 12（14 = 10+5-1）、y: (20 + 22)/2 = 21（22 = 20+3-1）。
     @Test
     def testModuleCenterWithOffset(): Unit \ Assert =
-        let p2 = MapScene.placement(2, 10, 20, 5, 3);
+        let p2 = RoomLayout.placement(2, 10, 20, 5, 3);
         Assert.assertEq(expected = (true, 12, 21),
-            centerToTuple(MapScene.moduleCenter(2, p2 :: Nil)))
+            centerToTuple(RoomLayout.moduleCenter(2, p2 :: Nil)))
 
     /// 未配置の idx は None。
     @Test
     def testModuleCenterUnknownIdx(): Unit \ Assert =
-        let p0 = MapScene.placement(0, 0, 0, 8, 8);
+        let p0 = RoomLayout.placement(0, 0, 0, 8, 8);
         Assert.assertEq(expected = (false, 0, 0),
-            centerToTuple(MapScene.moduleCenter(9, p0 :: Nil)))
+            centerToTuple(RoomLayout.moduleCenter(9, p0 :: Nil)))
 
     // ════════════════════════════════════════════════════════
     // MapSnapshot の純関数層（旧クロージャフィールドの置換）
@@ -130,7 +130,7 @@ mod TestMapScene {
     /// singleRoom: 全床 5×3 が単一モジュール 0。範囲外は None。
     @Test
     def testSingleRoomModuleOfCell(): Unit \ Assert =
-        let ps = MapScene.singleRoom(5, 3);
+        let ps = RoomLayout.singleRoom(5, 3);
         Assert.assertEq(
             expected = (Some(0), Some(0), None),
             (MapSnapshot.moduleOfCellIn({x = 0, y = 0}, ps),
@@ -140,7 +140,7 @@ mod TestMapScene {
     /// twoRoom: 10×5 を縦半分。左 (x<5)=module0、右 (x>=5)=module1（half=5 の境界）。
     @Test
     def testTwoRoomModuleBoundary(): Unit \ Assert =
-        let ps = MapScene.twoRoom(10, 5);
+        let ps = RoomLayout.twoRoom(10, 5);
         Assert.assertEq(
             expected = (Some(0), Some(1)),
             (MapSnapshot.moduleOfCellIn({x = 4, y = 2}, ps),    // 左半分

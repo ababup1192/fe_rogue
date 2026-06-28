@@ -34,7 +34,7 @@ mod TestMoveRangeScene {
     def floorMapData(): MapScene.Data = {
         anchorOffset = cell(0, 0),
         spawnGrid    = cell(5, 5),
-        placements   = MapScene.singleRoom(13, 13),
+        placements   = RoomLayout.singleRoom(13, 13),
         roomCount    = 1,
         plan         = ({modulePaths = Nil, sideConnections = Nil,
                           roomCount = 1}: DungeonGenerator.Plan)

@@ -12,7 +12,7 @@ mod TestPlayerMovementScene {
     def tenByFive(): MapSnapshot =
         {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}},
          wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0},
-         placements = MapScene.twoRoom(10, 5)}
+         placements = RoomLayout.twoRoom(10, 5)}
 
     /// 合法な 1 歩（右）: target (5,2) を返し、同じ target へ Cmd.Move を 1 回 emit する。
     @Test
