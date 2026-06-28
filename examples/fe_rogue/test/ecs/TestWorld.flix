@@ -194,7 +194,7 @@ mod TestWorld {
         let xy = (id, m) -> Map.get(id, m) |> Option.map(v -> (v#x, v#y));
         Assert.assertEq(
             expected = (Some((2, 2)), Some((2, 2)), Some((3, 2))),
-            (xy(0, w#playerPos), xy(1, w#playerPos), xy(5, w#enemyPos)))
+            (xy(0, w#pos), xy(1, w#pos), xy(5 + World.enemyUidBase(), w#pos)))
 
     /// pos mirror が scene の各 Data#gridPos と一致（parallel-run 同値：World pos == scene gridPos・Vec2i.eq）。
     @Test
@@ -203,7 +203,7 @@ mod TestWorld {
         let World.World(w) = World.syncFromScene(scene, World.empty());
         let allMatch = PlayerScene.getAll(scene)
             |> List.forAll(d ->
-                Map.get(d#id, w#playerPos)
+                Map.get(d#id, w#pos)
                     |> Option.map(v -> Vec2i.eq(v, d#gridPos))
                     |> Option.getWithDefault(false));
         Assert.assertEq(expected = true, allMatch)
@@ -397,7 +397,7 @@ mod TestWorld {
         // sampleScene の player 0 の gridPos は {2,2}。refreshMirror は command の {5,5} を保持する。
         let refreshed = World.refreshMirror(sampleScene(), seeded);
         let World.World(w) = refreshed;
-        Assert.assertEq(expected = Some((5, 5)), Map.get(0, w#playerPos) |> Option.map(p -> (p#x, p#y)))
+        Assert.assertEq(expected = Some((5, 5)), Map.get(0, w#pos) |> Option.map(p -> (p#x, p#y)))
 
     /// P3: scene に居なくなった id（死亡/退場で scene から除去）は pos から prune される（ghost piece 防止）。
     /// command で enemy 99 を置くが sampleScene に 99 は居ない → prune される。scene に居る player 0 は残る。
@@ -408,8 +408,8 @@ mod TestWorld {
         let World.World(w) = World.refreshMirror(sampleScene(), s1);
         Assert.assertEq(
             expected = (Some((5, 5)), None),
-            (Map.get(0, w#playerPos) |> Option.map(p -> (p#x, p#y)),
-             Map.get(99, w#enemyPos) |> Option.map(p -> (p#x, p#y))))
+            (Map.get(0, w#pos) |> Option.map(p -> (p#x, p#y)),
+             Map.get(99 + World.enemyUidBase(), w#pos) |> Option.map(p -> (p#x, p#y))))
 
     /// F6b: hp は **command 由来で保持**（scene から re-mirror しない＝hp 権威は World）。`Cmd.SetHp` で
     /// player 0 を 3 に下げ、refreshMirror 後も scene の 10 でなく command の 3 が残ることを pin。
@@ -441,11 +441,7 @@ mod TestWorld {
     /// テスト用: World から EntityRef の位置を引く（単体 pos アクセサは prod では使わない＝BoardQuery 経由
     /// で読むため、ここに test-local で置く）。
     def worldPosOf(ref: World.EntityRef, world: World): Option[{x = Int32, y = Int32}] =
-        let World.World(w) = world;
-        match ref {
-            case World.EntityRef.Player(id) => Map.get(id, w#playerPos)
-            case World.EntityRef.Enemy(id)  => Map.get(id, w#enemyPos)
-        }
+        let World.World(w) = world; Map.get(World.toUid(ref), w#pos)
 
     /// determinism: World 位置は `Cmd.Move` ログの**純粋関数**。最終位置は「最後の Move 勝ち」
     /// （player 0 は {1,1}→{2,2}）。**同じログを独立に2回 replay すると同一**＝決定論リプレイの素地。
@@ -466,13 +462,13 @@ mod TestWorld {
     @Test
     def testWorldPosRoundTripsThroughSerialization(): Unit \ Assert =
         let World.World(w) = replayLog(sampleMoveLog());
-        // "save": playerPos を (id, x, y) のフラット列へ。
-        let saved = Map.foldRightWithKey((id, c, acc) -> (id, c#x, c#y) :: acc, Nil, w#playerPos);
-        // "load": 列から playerPos を復元。
+        // "save": pos（単一 store）を (id, x, y) のフラット列へ。
+        let saved = Map.foldRightWithKey((id, c, acc) -> (id, c#x, c#y) :: acc, Nil, w#pos);
+        // "load": 列から pos を復元。
         let loaded = List.foldLeft((m, t) -> { let (id, x, y) = t;
             Map.insert(id, ({x = x, y = y}: {x = Int32, y = Int32}), m) }, Map.empty(), saved);
         let toTuples = m -> Map.foldRightWithKey((id, c, acc) -> (id, c#x, c#y) :: acc, Nil, m);
-        Assert.assertEq(expected = toTuples(w#playerPos), toTuples(loaded))
+        Assert.assertEq(expected = toTuples(w#pos), toTuples(loaded))
 
     // ── F0: System パイプライン段 stepWorld（OOP→ECS 移行の足場）──
 

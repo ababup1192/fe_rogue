@@ -35,8 +35,8 @@ pub enum World {
                  hp = Map[EntityId, Int32],
                  // S3: gridPos の read-model mirror。型は Vec2i の structural record（engine_core.Vec2i の演算 API 対象）。
                  // 権威は scene のまま。S4 で Board を fromWorld 化する時の World 側位置ソース候補（mirror）。
-                 playerPos = Map[EntityId, {x = Int32, y = Int32}],
-                 enemyPos  = Map[EntityId, {x = Int32, y = Int32}],
+                 // A': pos は単一 store（unified-id）。両 faction の split を撤廃。
+                 pos = Map[EntityId, {x = Int32, y = Int32}],
                  // S4: 盤面除外（集合・階段退場）中の味方 id。Board.pieces は hidden 味方を除くので fromWorld に必要。
                  playerHidden = Set[EntityId],
                  // F7-spike: 敵の検知フラグ（dormant→chase）。flag→World の最初のプローブ。
@@ -73,7 +73,7 @@ mod World {
                      playerIds = Set.empty(), enemyIds = Set.empty(),
                      playerStatusEffects = Map.empty(), enemyStatusEffects = Map.empty(),
                      hp = Map.empty(), team = Map.empty(),
-                     playerPos = Map.empty(), enemyPos = Map.empty(),
+                     pos = Map.empty(),
                      playerHidden = Set.empty(), enemyAlerted = Map.empty(),
                      enemyDying = Set.empty(),
                      enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
@@ -115,8 +115,8 @@ mod World {
             enemyStatusEffects  = Query.indexBy(d -> d#id, d -> d#statuses, enemies),
             hp = Map.union(Query.indexBy(d -> d#id, d -> d#hp, players),
                            Query.indexBy(d -> d#id + enemyUidBase(), d -> d#hp, enemies)),
-            playerPos      = Query.indexBy(d -> d#id, d -> d#gridPos, players),
-            enemyPos       = Query.indexBy(d -> d#id, d -> d#gridPos, enemies),
+            pos = Map.union(Query.indexBy(d -> d#id, d -> d#gridPos, players),
+                            Query.indexBy(d -> enemyUid(d#id), d -> d#gridPos, enemies)),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
             enemyDying     = Query.tagOf(d -> d#id, List.filter(d -> d#isDying, enemies)),
             enemyAlerted   = Query.indexBy(d -> d#id, d -> d#alerted, enemies),
@@ -164,8 +164,7 @@ mod World {
             // 済み（`[F6 HP DIFF]` 無音で確認）ゆえ World hp == scene hp で挙動不変。これで **hp は World 権威**。
             hp = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#hp),
             // 位置は command 由来を保持＋scene に居ない id を prune（gridPos からの再構築はしない）。
-            playerPos      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerPos),
-            enemyPos       = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyPos),
+            pos = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#pos),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
             // 軸1 仕上げ: isDying も command 由来を保持＋prune（death 完了でノード除去→自動 prune）。
             enemyDying     = Set.filter(id -> Set.memberOf(id, eIds), w#enemyDying),
@@ -245,12 +244,14 @@ mod World {
         case EntityRef.Enemy(id)  => enemyUid(id)
     }
 
-    /// unified EntityId → EntityRef。faction は `team` タグから読み、original id は uid 演算で復元。
-    pub def refFromUid(uid: EntityId, world: World): Option[EntityRef] =
-        teamOf(uid, world) |> Option.map(t -> match t {
-            case Faction.Player => EntityRef.Player(uid)
-            case Faction.Enemy  => EntityRef.Enemy(uid - enemyUidBase())
-        })
+    /// unified EntityId → EntityRef（offset の純粋な逆写像・store↔view plumbing 用）。
+    /// **game logic の faction 判断は `teamOf`（enum タグ）を使う**。これは store のキー復元専用 plumbing。
+    pub def uidToRef(uid: EntityId): EntityRef =
+        if (uid >= enemyUidBase()) EntityRef.Enemy(uid - enemyUidBase()) else EntityRef.Player(uid)
+
+    /// store プラミング用の純粋 faction 述語（uid のキー域から判定）。
+    pub def uidIsPlayer(uid: EntityId): Bool = uid < enemyUidBase()
+    pub def uidIsEnemy(uid: EntityId): Bool = uid >= enemyUidBase()
 
     /// A'（faction タグ）: player/enemy の unit list から `Map[uid, Faction]` を組む。
     /// player uid=id→Player, enemy uid=id+base→Enemy。syncFromScene/refreshMirror で毎フレーム再導出。
@@ -370,11 +371,9 @@ mod World {
                 let World.World(w) = world;
                 World.World({enemyStatusEffects = Map.map(StatusSystem.tick, w#enemyStatusEffects) | w})
             case Cmd.Move(ref, pos) =>
+                // A': 単一 store＋toUid（match ref arm 消失）。
                 let World.World(w) = world;
-                match ref {
-                    case EntityRef.Player(id) => World.World({playerPos = Map.insert(id, pos, w#playerPos) | w})
-                    case EntityRef.Enemy(id)  => World.World({enemyPos = Map.insert(id, pos, w#enemyPos) | w})
-                }
+                World.World({pos = Map.insert(toUid(ref), pos, w#pos) | w})
             case Cmd.SetPhase(phase) =>
                 let World.World(w) = world; World.World({turnPhase = phase | w})
             case Cmd.SetHp(ref, hpVal) =>
@@ -484,15 +483,15 @@ mod World {
     pub def attackTargetOf(ref: EntityRef, world: World): Option[Int32] =
         let World.World(w) = world; Map.get(toUid(ref), w#attackTarget)
 
-    /// F8-slice1: いずれかの味方が攻撃中か。A': 単一 store を **team タグ**で faction filter（id 演算でなく）。
+    /// F8-slice1: いずれかの味方が攻撃中か。A': 単一 store を uid 復元（plumbing）で faction filter。
     pub def anyPlayerAttacking(world: World): Bool =
         let World.World(w) = world;
-        Map.exists((uid, _) -> Map.get(uid, w#team) == Some(Faction.Player), w#attackTarget)
+        Map.exists((uid, _) -> uidIsPlayer(uid), w#attackTarget)
 
-    /// F8-slice1: いずれかの敵が攻撃中か。A': team タグで faction filter。
+    /// F8-slice1: いずれかの敵が攻撃中か。
     pub def anyEnemyAttacking(world: World): Bool =
         let World.World(w) = world;
-        Map.exists((uid, _) -> Map.get(uid, w#team) == Some(Faction.Enemy), w#attackTarget)
+        Map.exists((uid, _) -> uidIsEnemy(uid), w#attackTarget)
 
     /// World 拡張: 味方の (level, exp) を World から読む。未登録は None。Enemy は常に None。
     pub def progressOf(ref: EntityRef, world: World): Option[(Int32, Int32)] =
@@ -675,13 +674,16 @@ mod World {
     /// 順序が fromScene（敵 preorder）と食い違っても、occupancy/セル集合/距離場の多源 BFS・AI（id タイブレーク
     /// 再ソート）は順序非依存で、各 piece が id を自己同定するため安全。
     pub def boardPieces(world: World): List[(Piece, {x = Int32, y = Int32})] =
+        // A': 単一 `pos` store を **team タグ**で faction 分けして Piece 化（hidden 味方は除外）。
         let World.World(w) = world;
-        let playerPieces = Map.toList(w#playerPos)
-            |> List.filter(pair -> { let (id, _) = pair; not Set.memberOf(id, w#playerHidden) })
-            |> List.map(pair -> { let (id, pos) = pair; (Piece.Player(id), pos) });
-        let enemyPieces = Map.toList(w#enemyPos)
-            |> List.map(pair -> { let (id, pos) = pair; (Piece.Enemy(id), pos) });
-        List.append(playerPieces, enemyPieces)
+        Map.toList(w#pos) |> List.filterMap(pair -> {
+            let (uid, pos) = pair;
+            match uidToRef(uid) {
+                case EntityRef.Player(pid) =>
+                    if (Set.memberOf(pid, w#playerHidden)) None else Some((Piece.Player(pid), pos))
+                case EntityRef.Enemy(eid)  => Some((Piece.Enemy(eid), pos))
+            }
+        })
 
     /// World→scene の逆向き write-back（S1b）。World が持つ statuses を scene の Data#statuses へ書き戻す。
     /// 既存の純粋 writer `PlayerScene.mapPlayer` / `EnemyScene.mapEnemy` を再利用（走査・書込を再実装しない）。
@@ -699,9 +701,11 @@ mod World {
     /// S5a（dual-write 継続中）は World==scene ゆえ **no-op＝挙動不変**で seam を確立。S5b で move 関数の
     /// scene gridPos 直書きを撤去し、gridPos を**この sync 由来（World の派生）**に一本化する。
     pub def syncTreeFromWorld(world: World, scene: Scene[NodeTag]): Scene[NodeTag] =
+        // A': 単一 `pos` store を team タグで faction 分けし、original id で mapPlayer/mapEnemy。
         let World.World(w) = world;
-        let withPlayers = Map.foldLeftWithKey((sc, id, pos) ->
-            PlayerScene.mapPlayer(id, d -> {gridPos = pos | d}, sc), scene, w#playerPos);
-        Map.foldLeftWithKey((sc, id, pos) ->
-            EnemyScene.mapEnemy(id, d -> {gridPos = pos | d}, sc), withPlayers, w#enemyPos)
+        Map.foldLeftWithKey((sc, uid, pos) ->
+            match uidToRef(uid) {
+                case EntityRef.Player(pid) => PlayerScene.mapPlayer(pid, d -> {gridPos = pos | d}, sc)
+                case EntityRef.Enemy(eid)  => EnemyScene.mapEnemy(eid, d -> {gridPos = pos | d}, sc)
+            }, scene, w#pos)
 }

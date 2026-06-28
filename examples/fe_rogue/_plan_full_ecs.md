@@ -39,7 +39,8 @@
   - **基盤**: `enemyUid(id)` 集約 helper（offset を 1 箇所に＝将来の脱却が 1 箇所差替）／refreshMirror の prune を `validUids` 集合方式に（id 演算でなく membership）。
   - **followUpUsed** 統合（単一 store・`match ref` arm 除去）。
   - **attackTarget** 統合（単一 store・Set/Clear/accessor の `match ref` 除去・`anyPlayerAttacking`/`anyEnemyAttacking` は **team タグ**で faction filter）。
-- ⏭ **A' 残り both-faction**: **pos**（consumer: boardPieces/syncTreeFromWorld を refFromUid で faction 分け）・**statusEffects**（consumer: Tick・syncStatusesToScene）。← 追加 consumer ありで pos は高リスク（位置権威）。
+- ✅ **A'-slice5（pos 統合・910緑）= 最高リスク（位置権威）着地**: `playerPos`/`enemyPos` → 単一 `pos`。consumer の `boardPieces`/`syncTreeFromWorld` は **`uidToRef`（純粋 plumbing）**で faction 分け。**設計整理**: store 走査の plumbing は uid 復元（`uidToRef`/`uidIsPlayer`・team populate 非依存）、game logic の entity faction は `team` enum タグ（`teamOf`）。← 実機で移動/描画 run 検証推奨。
+- ⏭ **A' 残り both-faction**: **statusEffects**（consumer: Tick(TickPlayers/TickEnemies)・syncStatusesToScene）。
 - ⏭ **A' single-faction store**（waited/alerted/bottleUsed/prevPos/dying/level/exp/hidden）: uid 化で key 統一（doubled field は無いが uid 一貫化）。
 - ⏭ 残 `match side` 4箇所（CombatScene view dispatch）。
 - ⏭ 残 `match side` 4箇所（CombatScene view dispatch）は store 統合後に startAttack/path を uid ベース faction-blind 化。
