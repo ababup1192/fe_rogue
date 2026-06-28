@@ -135,27 +135,23 @@ mod StairsExitScene {
     // 毎フレーム進行
     // ────────────────────────────────────────────────────────
 
-    /// `dispatchDrivers` から per-frame で呼ばれる。phase==StairsExit のとき 1 step 進める。
-    pub def process(_delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag])
+    /// F8: 階段退場 System（`Scene → Scene`）。EnemyTurnDriver と同様、OOP node callback でなく
+    /// gameLoop パイプラインが明示的に呼ぶ frame-paced System。driver の `Data`（queue/idleRounds）は
+    /// `driverPath()` のノード state から取り出し、`stepOnce` が `setState` で同ノードへ書き戻す
+    /// （node 引数不要＝`Scene.getState` で読み、戻りは scene のみ）。phase==StairsExit のとき 1 step 進める。
+    pub def step(scene: Scene[NodeTag]):
+                    Scene[NodeTag]
                     \ {GameEngine.Game, Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                        GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery,
                        World.WorldQuery} =
-        match node {
-            case EngineNode.Marker2DWithState(_, NodeTag.StairsExitDriver(data)) =>
-                let next = match TurnPhase.State.get() {
+        match Scene.getState(driverPath(), scene) {
+            case Some(NodeTag.StairsExitDriver(data)) =>
+                match TurnPhase.State.get() {
                     case TurnPhase.Phase.StairsExit => stepOnce(data, scene)
                     case _                          => scene
-                };
-                // queue を setState で書き換えるので最新ノードを取り直して返す（driver 規約）。
-                match Scene.getEngineNode(path, next) {
-                    case Some(latest) => (latest, next)
-                    case None         => (node, next)
                 }
-            case _ => (node, scene)
+            case _ => scene
         }
 
     /// 先頭 1 体を 1 マス進める / 退場させる / その場に残す。敵ターンと同じ 4 段 gating。

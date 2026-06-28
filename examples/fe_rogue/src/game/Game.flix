@@ -215,10 +215,9 @@ def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
     match EngineNode.getState(node) {
-        // F8: EnemyTurnDriver は per-node callback から外し、gameLoop が明示的に呼ぶ frame-paced
-        // System（EnemyTurnDriverScene.step）へ移設。前後順序依存は slice1/2 で World 経由＝順序非依存。
-        case NodeTag.StairsExitDriver(_) =>
-            checked_ecast(StairsExitScene.process(delta, node, path, scene))
+        // F8: EnemyTurnDriver / StairsExitDriver（=ターン進行 LOGIC driver）は per-node callback から
+        // 外し、gameLoop が明示的に呼ぶ frame-paced System（`step`）へ移設。前後順序依存は slice1/2 で
+        // World 経由＝順序非依存。Fog/Minimap/ArrowCursor は view 描画ゆえ per-node 残置（gate 許容）。
         case NodeTag.ArrowCursor(_) =>
             checked_ecast(ArrowCursorScene.process(delta, node, path, scene))
         case NodeTag.FogDriver =>
@@ -1020,10 +1019,11 @@ mod Game {
                 |> Tween.tickAll(dt)
                 |> AnimationPlayer.tickAll(dt)
                 |> GameEngine.process(delta = dt, paused = false)
-                // F8: 敵ターン driver を OOP node callback から外し、明示的な frame-paced System として
-                // パイプライン段で 1 回呼ぶ（per-node 巡回ではなく gameLoop が駆動）。process の後＝combat
+                // F8: ターン進行 LOGIC driver を OOP node callback から外し、明示的な frame-paced System
+                // としてパイプライン段で 1 回呼ぶ（per-node 巡回でなく gameLoop が駆動）。process の後＝combat
                 // drain と TopBar 更新が確定した post-process scene を読む（前後依存は World 経由で順序非依存）。
-                |> EnemyTurnDriverScene.step;
+                |> EnemyTurnDriverScene.step
+                |> StairsExitScene.step;
             // 画面（GamePhase）が変わったフレームだけ、新しい画面を組み立て直す。
             // 例: 選択画面でリーダー確定 → Playing に切り替わり、ここでダンジョンが組まれる。
             let currentPhase = GamePhaseState.get();
