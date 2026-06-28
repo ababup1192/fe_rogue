@@ -33,7 +33,10 @@
 - ✅ A-slice1（CounterAttackRules `decideView` で mirror pair を faction-blind 統合・914緑）。
 - ✅ A-slice2（CombatScene の call-site 2箇所を `decideView` へ移行＋**faction-split mirror pair `decide`/`decidePlayerCounter`/`attackerForPlayer` を削除**＋テスト/fixture 整理・909緑）。＝戦闘の反撃判定が完全に faction-blind に。
 - ⏭ 次: CombatScene 残 `match side` 4箇所（108/159/202/454）は **startPlayerAttack/startEnemyAttack・playerPath/enemyPath への view dispatch**＝split PlayerScene/EnemyScene に結合。**A'（store/scene 統合）と一体**。純ロジックの faction-blind 化は decideView で達成済。
-- ⏭ **A'（本体）**: World mirror を unified-id 単一 store＋`team` component に統合。これで残 `match ref`・doubled field・並行型が消える＝Entity=Component 合成 完成。
+- ✅ **A'-slice1（hp store 統合・909緑）= テンプレート確立**: `playerHp`/`enemyHp` → 単一 `hp`（unified-id: player=id / enemy=id+`enemyUidBase()`=1,000,000）。`toUid` helper。**applyCmd SetHp と hpOf の `match ref` arm を `toUid` 1 本に畳んだ**。syncFromScene/refreshMirror は unified-id で build/preserve（mirror 側 remap＝**save 不変**）。`[F6 HP DIFF]` 検証器は hpOf 経由で有効＝behavior 不変。**この 6-site パターン（field/empty/sync/refresh/applyCmd/accessor）が残 store の雛形**。
+- ✅ **A'-slice1ب（faction タグ component・910緑）= ユーザー要望反映**: faction を id 演算(`uid>=base`)でなく **`team: Map[EntityId, Faction]` enum component** で表す。`teamOf(uid)`/`isPlayerUid`/`isEnemyUid`/`refFromUid` で読む。offset は store key 一意性の内部 plumbing に降格・faction の真実源は team タグ（Bevy Team component 相当）。`Faction` に ToString derive。
+- ⏭ **A' 残り（同テンプレートで反復）**: pos・statusEffects・followUpUsed・attackTarget（both-faction の doubled store）を unified-id に統合 → 各 `match ref` arm 除去。single-faction store（alerted/bottleUsed/prevPos/waited/dying/level/exp）は uid 化で key 統一。完了で applyCmd の全 `match ref` arm・~20 doubled field が消える＝**Entity=Component 合成 完成**。
+- ⏭ 残 `match side` 4箇所（CombatScene view dispatch）は store 統合後に startAttack/path を uid ベース faction-blind 化。
 
 ---
 

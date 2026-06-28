@@ -25,10 +25,14 @@ pub enum World {
                  // F2a: turn FSM の World mirror（dual・read-model）。権威は当面 TurnPhase.State。
                  turnPhase = SimPhase,
                  playerIds = Set[EntityId], enemyIds  = Set[EntityId],
+                 // A'（faction タグ component）: unified-id → `Faction` enum。faction 判定は id 演算（uid>=base）
+                 // でなく **この enum タグ `teamOf` で読む**（Bevy の Team component 相当）。
+                 team = Map[EntityId, Faction],
                  playerStatusEffects = Map[EntityId, StatusSystem.StatusEffects],
                  enemyStatusEffects  = Map[EntityId, StatusSystem.StatusEffects],
                  // S2: hp の read-model mirror（権威は scene のまま。query/セーブ/決定論テスト用）。
-                 playerHp = Map[EntityId, Int32], enemyHp = Map[EntityId, Int32],
+                 // A'（store 統合）: hp は単一 store（player uid=id / enemy uid=id+base）。faction 別 split を撤廃。
+                 hp = Map[EntityId, Int32],
                  // S3: gridPos の read-model mirror。型は Vec2i の structural record（engine_core.Vec2i の演算 API 対象）。
                  // 権威は scene のまま。S4 で Board を fromWorld 化する時の World 側位置ソース候補（mirror）。
                  playerPos = Map[EntityId, {x = Int32, y = Int32}],
@@ -66,7 +70,7 @@ mod World {
         World.World({tick = 0, turnPhase = SimPhase.PlayerTurn,
                      playerIds = Set.empty(), enemyIds = Set.empty(),
                      playerStatusEffects = Map.empty(), enemyStatusEffects = Map.empty(),
-                     playerHp = Map.empty(), enemyHp = Map.empty(),
+                     hp = Map.empty(), team = Map.empty(),
                      playerPos = Map.empty(), enemyPos = Map.empty(),
                      playerHidden = Set.empty(), enemyAlerted = Map.empty(),
                      enemyDying = Set.empty(),
@@ -104,10 +108,11 @@ mod World {
             turnPhase      = w#turnPhase,   // F2a: mirror は gameLoop が行う・ここは保持
             playerIds      = Query.tagOf(d -> d#id, players),
             enemyIds       = Query.tagOf(d -> d#id, enemies),
+            team           = teamTags(players, enemies),
             playerStatusEffects = Query.indexBy(d -> d#id, d -> d#statuses, players),
             enemyStatusEffects  = Query.indexBy(d -> d#id, d -> d#statuses, enemies),
-            playerHp       = Query.indexBy(d -> d#id, d -> d#hp, players),
-            enemyHp        = Query.indexBy(d -> d#id, d -> d#hp, enemies),
+            hp = Map.union(Query.indexBy(d -> d#id, d -> d#hp, players),
+                           Query.indexBy(d -> d#id + enemyUidBase(), d -> d#hp, enemies)),
             playerPos      = Query.indexBy(d -> d#id, d -> d#gridPos, players),
             enemyPos       = Query.indexBy(d -> d#id, d -> d#gridPos, enemies),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
@@ -148,12 +153,14 @@ mod World {
             turnPhase      = w#turnPhase,   // F2a: mirror は gameLoop が行う・ここは保持
             playerIds      = pIds,
             enemyIds       = eIds,
+            team           = teamTags(players, enemies),  // A': faction タグを毎フレーム再導出
             playerStatusEffects = Query.indexBy(d -> d#id, d -> d#statuses, players),
             enemyStatusEffects  = Query.indexBy(d -> d#id, d -> d#statuses, enemies),
             // F6b: hp も command 由来を保持＋prune（位置と同様）。全 hp 書込が `Cmd.SetHp` を dual-write
             // 済み（`[F6 HP DIFF]` 無音で確認）ゆえ World hp == scene hp で挙動不変。これで **hp は World 権威**。
-            playerHp       = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerHp),
-            enemyHp        = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyHp),
+            hp = Map.filterWithKey((uid, _) ->
+                     if (uid >= enemyUidBase()) Set.memberOf(uid - enemyUidBase(), eIds)
+                     else Set.memberOf(uid, pIds), w#hp),
             // 位置は command 由来を保持＋scene に居ない id を prune（gridPos からの再構築はしない）。
             playerPos      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerPos),
             enemyPos       = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyPos),
@@ -222,6 +229,31 @@ mod World {
         case Player(EntityId)
         case Enemy(EntityId)
     }
+
+    /// A'（store 統合）: faction 別 id 空間を **単一 unified-id 空間**へ決定論写像する固定オフセット。
+    /// Player id 0..* はそのまま、Enemy id は `+ENEMY_UID_BASE`。World は scene の mirror ゆえ毎フレーム
+    /// 再導出され、save は scene 由来（faction 別 id）で不変。これで `hp/pos/...` を **単一 store**に統合でき、
+    /// applyCmd/accessor の `match ref` per-store 分岐が `toUid` 1 本に畳まれる（= faction 構造の除去）。
+    pub def enemyUidBase(): EntityId = 1000000
+
+    /// EntityRef → unified EntityId（Player=id, Enemy=id+base）。
+    pub def toUid(ref: EntityRef): EntityId = match ref {
+        case EntityRef.Player(id) => id
+        case EntityRef.Enemy(id)  => id + enemyUidBase()
+    }
+
+    /// unified EntityId → EntityRef。faction は `team` タグから読み、original id は uid 演算で復元。
+    pub def refFromUid(uid: EntityId, world: World): Option[EntityRef] =
+        teamOf(uid, world) |> Option.map(t -> match t {
+            case Faction.Player => EntityRef.Player(uid)
+            case Faction.Enemy  => EntityRef.Enemy(uid - enemyUidBase())
+        })
+
+    /// A'（faction タグ）: player/enemy の unit list から `Map[uid, Faction]` を組む。
+    /// player uid=id→Player, enemy uid=id+base→Enemy。syncFromScene/refreshMirror で毎フレーム再導出。
+    def teamTags(players: List[{id = Int32 | p}], enemies: List[{id = Int32 | e}]): Map[EntityId, Faction] =
+        let ps = List.foldLeft((m, d) -> Map.insert(d#id, Faction.Player, m), Map.empty(), players);
+        List.foldLeft((m, d) -> Map.insert(d#id + enemyUidBase(), Faction.Enemy, m), ps, enemies)
 
     /// statusEffects への変更命令（Bevy の Commands 相当）。深い scene コードが emit し、
     /// Game.start の handler が worldRef へ即時適用する（純粋 applier 経由）。
@@ -342,12 +374,10 @@ mod World {
                 }
             case Cmd.SetPhase(phase) =>
                 let World.World(w) = world; World.World({turnPhase = phase | w})
-            case Cmd.SetHp(ref, hp) =>
+            case Cmd.SetHp(ref, hpVal) =>
+                // A': 単一 store＋toUid。faction 別 match arm 消失。
                 let World.World(w) = world;
-                match ref {
-                    case EntityRef.Player(id) => World.World({playerHp = Map.insert(id, hp, w#playerHp) | w})
-                    case EntityRef.Enemy(id)  => World.World({enemyHp = Map.insert(id, hp, w#enemyHp) | w})
-                }
+                World.World({hp = Map.insert(toUid(ref), hpVal, w#hp) | w})
             case Cmd.SetAlerted(ref, a) =>
                 let World.World(w) = world;
                 match ref {
@@ -575,12 +605,18 @@ mod World {
         List.append(ps, es)
 
     /// hp を World から読む（read-model アクセサ）。F6 の reader flip / 検証器の供給元。
+    /// A': 単一 store＋toUid（faction 別 match arm 消失）。
     pub def hpOf(ref: EntityRef, world: World): Option[Int32] =
-        let World.World(w) = world;
-        match ref {
-            case EntityRef.Player(id) => Map.get(id, w#playerHp)
-            case EntityRef.Enemy(id)  => Map.get(id, w#enemyHp)
-        }
+        let World.World(w) = world; Map.get(toUid(ref), w#hp)
+
+    /// A'（faction タグ）: unified-id の faction を **enum タグ component** から読む。
+    /// 「player/enemy を id で判断」せず、この明示タグで faction を得る（Bevy Team component 相当）。
+    pub def teamOf(uid: EntityId, world: World): Option[Faction] =
+        let World.World(w) = world; Map.get(uid, w#team)
+
+    /// faction タグの便宜述語。
+    pub def isPlayerUid(uid: EntityId, world: World): Bool = teamOf(uid, world) == Some(Faction.Player)
+    pub def isEnemyUid(uid: EntityId, world: World): Bool = teamOf(uid, world) == Some(Faction.Enemy)
 
     /// ally フラグ＋id から EntityRef を作る（境界 emit / call-site の共通化）。
     pub def refOf(ally: Bool, id: EntityId): EntityRef =

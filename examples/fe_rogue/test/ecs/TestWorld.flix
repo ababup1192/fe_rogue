@@ -158,7 +158,20 @@ mod TestWorld {
         // sampleScene の fixture は player/enemy とも hp=10。
         Assert.assertEq(
             expected = (Some(10), Some(10), Some(10)),
-            (Map.get(0, w#playerHp), Map.get(1, w#playerHp), Map.get(5, w#enemyHp)))
+            (Map.get(0, w#hp), Map.get(1, w#hp), Map.get(5 + World.enemyUidBase(), w#hp)))
+
+    /// A'（faction タグ）: `team` enum component が unified-id ごとに Player/Enemy を返す。
+    /// faction は id 演算でなくこの enum タグで読む。sampleScene = player 0,1 / enemy 5。
+    @Test
+    def testTeamTagComponent(): Unit \ Assert =
+        let w = World.syncFromScene(sampleScene(), World.empty());
+        Assert.assertEq(
+            expected = (Some(Faction.Player), Some(Faction.Player),
+                        Some(Faction.Enemy), true, true, None),
+            (World.teamOf(0, w), World.teamOf(1, w),
+             World.teamOf(5 + World.enemyUidBase(), w),
+             World.isPlayerUid(0, w), World.isEnemyUid(5 + World.enemyUidBase(), w),
+             World.teamOf(999, w)))
 
     /// hp mirror が scene の各 Data#hp と完全一致する（parallel-run 同値：World hp == scene hp）。
     @Test
@@ -167,7 +180,9 @@ mod TestWorld {
         let World.World(w) = World.syncFromScene(scene, World.empty());
         let scenePlayerHp = PlayerScene.getAll(scene)
             |> List.foldLeft((m, d) -> Map.insert(d#id, d#hp, m), Map.empty());
-        Assert.assertEq(expected = scenePlayerHp, w#playerHp)
+        // A': hp は単一 store。player 部分（uid < base）を取り出して比較。
+        Assert.assertEq(expected = scenePlayerHp,
+            Map.filterWithKey((uid, _) -> uid < World.enemyUidBase(), w#hp))
 
     // ── S3: gridPos の read-model mirror ──
 
@@ -407,7 +422,7 @@ mod TestWorld {
         // player 0 は command の 3（scene の 10 で上書きされない）、player 1 は 10 のまま、ids は scene 由来。
         Assert.assertEq(
             expected = (Some(3), Some(10), Set#{0, 1}),
-            (Map.get(0, w#playerHp), Map.get(1, w#playerHp), w#playerIds))
+            (Map.get(0, w#hp), Map.get(1, w#hp), w#playerIds))
 
     // ── §A payoff デモ: 位置の決定論（World は Cmd.Move ログの純粋関数）──
     // P0a→S5 で World が位置の権威・scene はその派生になった。位置の唯一の source は `Cmd.Move` のログ。

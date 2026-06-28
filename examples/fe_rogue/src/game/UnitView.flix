@@ -9,7 +9,7 @@
 /// 戦闘数式は `Combat`(`combat: Combat.CombatView`) に、射程判定は `Weapon.inRange` に委譲する。
 
 /// ユニットの所属。攻撃可否は「異なる faction か」で判断する。
-pub enum Faction with Eq {
+pub enum Faction with Eq, ToString {
     case Player
     case Enemy
 }
