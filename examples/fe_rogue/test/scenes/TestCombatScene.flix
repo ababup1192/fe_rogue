@@ -85,6 +85,9 @@ mod TestCombatScene {
 
     /// applyAttackHit を 5 つの副作用モックで包んで実行する。
     def runAttack(scene: Scene[NodeTag]): Scene[NodeTag] =
+        // WorldQuery には scene を mirror した World を渡す＝combatViewOf を実際に通し、World 由来の
+        // ダメージ/EXP が scene 同値（期待値）になることを live で検証する（B1 player flip）。
+        TestUnitFixtures.withWorldQuery(World.syncFromScene(scene, World.empty()), () ->
         TestUnitFixtures.dischargeWorldCommand(() ->
         TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
         withNoopThiefDrop(() ->
@@ -94,7 +97,7 @@ mod TestCombatScene {
         TestUnitFixtures.withMockGameLogger(() ->
         TestUnitFixtures.withNoopAnim(() ->
         TestUnitFixtures.withNoopTween(() ->
-            CombatScene.applyAttackHit(0, scene))))))))))
+            CombatScene.applyAttackHit(0, scene)))))))))))
 
     // ════════════════════════════════════════════════════════
     // attackLungeAnimation — 中点で attack:hit を 1 つ発火（純粋）

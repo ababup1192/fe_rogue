@@ -144,7 +144,7 @@ mod CombatScene {
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                               GameEngine.Game,
                               GameLogger.GameLogger, Math.Random,
-                              CustomEffects.ThiefDropRequest, World.Command, BoardQuery} =
+                              CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         let resolved = forM (
             d       <- PlayerScene.get(playerId, scene);
             enemyId <- d#attackTargetId
@@ -465,13 +465,18 @@ mod CombatScene {
     /// 装備武器と敵から、命中率・与ダメージ・経験値を**純粋に**算出する（乱数・Scene 非依存）。
     /// 計算は `CombatRules.resolveStrike`（= `Combat.estimate`）に委譲し、武器タイプ習熟・武器相性・
     /// 物理/魔法の解決を戦闘予報と実ダメージで一致させる。テストしやすいよう pub。
+    /// 攻撃側・防御側の `CombatView`（+ レベル）から forecast を組む（faction/source 非依存・純粋）。
+    /// scene 由来（`attackForecast`）も World 由来（`resolveAttack` の flip）も共有＝式の単一源泉。
+    pub def forecastFromViews(attacker: Combat.CombatView, defender: Combat.CombatView,
+                              atkLevel: Int32, defLevel: Int32): AttackForecast =
+        let strike = CombatRules.resolveStrike(attacker, defender);
+        {hitRate = strike#hit, dmg = strike#dmg, newHp = strike#newHp, killed = strike#killed,
+         exp = Combat.battleExp(defLevel, atkLevel, strike#killed), crit = strike#crit}
+
     pub def attackForecast(player: PlayerScene.Data, weapon: UnitCatalog.WeaponResource,
                             enemy: EnemyScene.Data): AttackForecast =
-        let strike = CombatRules.resolveStrike(PlayerScene.combatViewWith(player, weapon),
-                                   EnemyScene.combatView(enemy));
-        {hitRate = strike#hit, dmg = strike#dmg, newHp = strike#newHp, killed = strike#killed,
-         exp = Combat.battleExp(enemy#resource#level, player#level, strike#killed),
-         crit = strike#crit}
+        forecastFromViews(PlayerScene.combatViewWith(player, weapon), EnemyScene.combatView(enemy),
+                          player#level, enemy#resource#level)
 
     /// 敵 id にダメージを与える。装備武器（`weapons.head`）と敵が揃っていなければ no-op。
     /// 実体は `resolveAttack`。ここは前提（武器あり・敵あり）の解決だけを担い、
@@ -480,7 +485,7 @@ mod CombatScene {
                             scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger, Math.Random,
-                               CustomEffects.ThiefDropRequest, World.Command, BoardQuery} =
+                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         let resolved = forM (
             weapon <- PlayerData.equippedWeapon(player#weapons);
             enemy  <- EnemyScene.get(enemyId, scene)
@@ -495,8 +500,15 @@ mod CombatScene {
                        enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger, Math.Random,
-                               CustomEffects.ThiefDropRequest, World.Command, BoardQuery} =
-        let plan       = attackForecast(player, weapon, enemy);
+                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
+        // S-A0/B1: 攻撃の combat view を World 由来へ flip（weapon=equipped ゆえ combatViewOf と一致・
+        // WorldQuery=read-after-write 正・None は scene fallback）。レベルは scene（progress と dual-write 同値）。
+        let world      = World.WorldQuery.get();
+        let atkView    = World.combatViewOf(World.EntityRef.Player(playerId), world)
+                             |> Option.getWithDefault(PlayerScene.combatViewWith(player, weapon));
+        let defView    = World.combatViewOf(World.EntityRef.Enemy(enemyId), world)
+                             |> Option.getWithDefault(EnemyScene.combatView(enemy));
+        let plan       = forecastFromViews(atkView, defView, player#level, enemy#resource#level);
         let popupPos   = MapSnapshot.cellCenter(enemy#gridPos);
         let popupColor = DamagePopupScene.damageToEnemyColor();
         // 命中ロールと必殺ロールは別の乱数で独立に引く。
