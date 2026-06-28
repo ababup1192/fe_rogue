@@ -137,7 +137,7 @@ mod TestCombatScene {
     @Test
     def testAnyAttackingReflectsAttackTarget(): Unit \ Assert =
         let attacking = battleScene(80);
-        let idle      = CombatScene.clearAttackTargetId(0, attacking);
+        let idle      = TestUnitFixtures.dischargeWorldCommand(() -> CombatScene.clearAttackTargetId(0, attacking));
         Assert.assertEq(
             expected = (true, false),
             (PlayerScene.anyAttacking(attacking),

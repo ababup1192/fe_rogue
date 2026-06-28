@@ -44,7 +44,9 @@ pub enum World {
                  // F7-slice4: followUp 使用済み（1 攻撃 1 追撃の per-turn transient）。両 faction。
                  playerFollowUpUsed = Map[EntityId, Bool], enemyFollowUpUsed = Map[EntityId, Bool],
                  // F7-slice5: 味方の行動済み（ターン flow の権威）。player-only。reader flip は F8 で。
-                 playerWaited = Map[EntityId, Bool] })
+                 playerWaited = Map[EntityId, Bool],
+                 // F8-slice1: 攻撃対象 id（攻撃モーション中＝anyAttacking の権威）。None=非攻撃はマップ非在。両 faction。
+                 playerAttackTarget = Map[EntityId, Int32], enemyAttackTarget = Map[EntityId, Int32] })
 }
 
 mod World {
@@ -58,7 +60,8 @@ mod World {
                      playerHidden = Set.empty(), enemyAlerted = Map.empty(),
                      enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
                      playerFollowUpUsed = Map.empty(), enemyFollowUpUsed = Map.empty(),
-                     playerWaited = Map.empty()})
+                     playerWaited = Map.empty(),
+                     playerAttackTarget = Map.empty(), enemyAttackTarget = Map.empty()})
 
     /// F2a: World の turnPhase を読む（read-model アクセサ）。
     pub def turnPhaseOf(world: World): SimPhase =
@@ -70,6 +73,14 @@ mod World {
 
     /// scene→World の一方向 sync（純粋・読み取りのみ）。tick を 1 進め、id 集合と statuses を scene から写す。
     /// PlayerScene.getAll / EnemyScene.getAll（既存・純粋）を再利用（新規走査は書かない）。
+    /// F8-slice1: attackTargetId(Option) を持つ unit list を `Map[id, target]`（None は非在）に畳む。
+    /// row-poly で Player/Enemy Data 両対応。
+    def attackTargetMap(units: List[{id = Int32, attackTargetId = Option[Int32] | r}]): Map[EntityId, Int32] =
+        List.foldLeft((m, d) -> match d#attackTargetId {
+            case Some(t) => Map.insert(d#id, t, m)
+            case None    => m
+        }, Map.empty(), units)
+
     pub def syncFromScene(scene: Scene[NodeTag], world: World): World =
         let World.World(w) = world;
         let players = PlayerScene.getAll(scene);
@@ -94,7 +105,9 @@ mod World {
                              }, Map.empty(), enemies),
             playerFollowUpUsed = Query.indexBy(d -> d#id, d -> d#followUpUsed, players),
             enemyFollowUpUsed  = Query.indexBy(d -> d#id, d -> d#followUpUsed, enemies),
-            playerWaited   = Query.indexBy(d -> d#id, d -> d#waited, players)
+            playerWaited   = Query.indexBy(d -> d#id, d -> d#waited, players),
+            playerAttackTarget = attackTargetMap(players),
+            enemyAttackTarget  = attackTargetMap(enemies)
         })
 
     /// P3（mirror 撤去・§A payoff）: per-frame の World 更新。**位置(playerPos/enemyPos)は
@@ -131,7 +144,9 @@ mod World {
             enemyPrevPos   = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyPrevPos),
             playerFollowUpUsed = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerFollowUpUsed),
             enemyFollowUpUsed  = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyFollowUpUsed),
-            playerWaited   = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerWaited)
+            playerWaited   = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerWaited),
+            playerAttackTarget = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerAttackTarget),
+            enemyAttackTarget  = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyAttackTarget)
         })
 
     /// statuses を 1 ターン進める System（StatusSystem.tick を再利用）。S1b でターン開始フックに繋ぐ。
@@ -200,6 +215,8 @@ mod World {
         case SetPrevPos(EntityRef, {x = Int32, y = Int32})  // F7-slice3: 敵直前位置 write（Player は no-op）
         case SetFollowUpUsed(EntityRef, Bool)  // F7-slice4: followUp 使用済み write（両 faction）
         case SetWaited(EntityRef, Bool)        // F7-slice5: 味方行動済み write（Enemy は no-op）
+        case SetAttackTarget(EntityRef, Int32) // F8-slice1: 攻撃対象 id をセット（攻撃開始）
+        case ClearAttackTarget(EntityRef)      // F8-slice1: 攻撃対象をクリア（攻撃終了）
     }
 
     /// System が出力する sim-event（F-clock の最小骨組み・F3b 導入）。
@@ -329,6 +346,18 @@ mod World {
                     case EntityRef.Player(id) => World.World({playerWaited = Map.insert(id, wd, w#playerWaited) | w})
                     case EntityRef.Enemy(_)   => world   // 敵に waited は無い＝no-op
                 }
+            case Cmd.SetAttackTarget(ref, t) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(id) => World.World({playerAttackTarget = Map.insert(id, t, w#playerAttackTarget) | w})
+                    case EntityRef.Enemy(id)  => World.World({enemyAttackTarget = Map.insert(id, t, w#enemyAttackTarget) | w})
+                }
+            case Cmd.ClearAttackTarget(ref) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(id) => World.World({playerAttackTarget = Map.remove(id, w#playerAttackTarget) | w})
+                    case EntityRef.Enemy(id)  => World.World({enemyAttackTarget = Map.remove(id, w#enemyAttackTarget) | w})
+                }
         }
 
     /// F7-spike: 敵の alerted を World から読む（reader flip の供給元・hpOf 同型）。Player は常に None。
@@ -370,6 +399,34 @@ mod World {
             case EntityRef.Player(id) => Map.get(id, w#playerWaited)
             case EntityRef.Enemy(_)   => None
         }
+
+    /// F8-slice1: attackTargetId を World から読む（None=非攻撃）。両 faction。
+    pub def attackTargetOf(ref: EntityRef, world: World): Option[Int32] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) => Map.get(id, w#playerAttackTarget)
+            case EntityRef.Enemy(id)  => Map.get(id, w#enemyAttackTarget)
+        }
+
+    /// F8-slice1: いずれかの味方が攻撃中か（`PlayerScene.anyAttacking` の World 版・順序非依存）。
+    pub def anyPlayerAttacking(world: World): Bool =
+        let World.World(w) = world; not Map.isEmpty(w#playerAttackTarget)
+
+    /// F8-slice1: いずれかの敵が攻撃中か（`EnemyScene.anyAttacking` の World 版・順序非依存）。
+    pub def anyEnemyAttacking(world: World): Bool =
+        let World.World(w) = world; not Map.isEmpty(w#enemyAttackTarget)
+
+    /// F8-slice1 検証器: attackTargetId の World/scene 不一致（両 faction）。
+    pub def attackTargetMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Int32], Option[Int32])] =
+        let ps = PlayerScene.getAll(scene) |> List.filterMap(d -> {
+            let wt = attackTargetOf(EntityRef.Player(d#id), world);
+            if (wt != d#attackTargetId) Some((EntityRef.Player(d#id), wt, d#attackTargetId)) else None
+        });
+        let es = EnemyScene.getAll(scene) |> List.filterMap(d -> {
+            let wt = attackTargetOf(EntityRef.Enemy(d#id), world);
+            if (wt != d#attackTargetId) Some((EntityRef.Enemy(d#id), wt, d#attackTargetId)) else None
+        });
+        List.append(ps, es)
 
     /// F7-slice5 検証器: 味方 waited の World/scene 不一致。
     pub def waitedMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =

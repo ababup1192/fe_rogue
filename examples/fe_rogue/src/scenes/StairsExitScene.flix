@@ -142,7 +142,8 @@ mod StairsExitScene {
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                       GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery} =
+                       GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery,
+                       World.WorldQuery} =
         match node {
             case EngineNode.Marker2DWithState(_, NodeTag.StairsExitDriver(data)) =>
                 let next = match TurnPhase.State.get() {
@@ -161,11 +162,12 @@ mod StairsExitScene {
     def stepOnce(data: Data, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-               GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery} =
+               GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery,
+               World.WorldQuery} =
         if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
-        else if (EnemyScene.anyAttacking(scene)) scene
-        else if (PlayerScene.anyAttacking(scene)) scene
+        else if (World.anyEnemyAttacking(World.WorldQuery.get())) scene      // F8-slice1
+        else if (World.anyPlayerAttacking(World.WorldQuery.get())) scene     // F8-slice1
         else match data#queue {
             case Nil         => finalize(scene)
             case (u, _) :: _ =>

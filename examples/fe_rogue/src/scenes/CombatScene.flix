@@ -38,17 +38,20 @@ mod CombatScene {
     /// フェーズが AttackForecast に進み、`BattlePanelScene.confirm` がこの値を読んで
     /// 実際の攻撃モーションを開始する。
     pub def setAttackTargetId(playerId: Int32, targetEnemyId: Int32,
-                                scene: Scene[NodeTag]): Scene[NodeTag] =
+                                scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetAttackTarget(World.EntityRef.Player(playerId), targetEnemyId));  // F8-slice1
         PlayerScene.mapPlayer(playerId, d -> {attackTargetId = Some(targetEnemyId) | d}, scene)
 
     /// `attackTargetId` をクリアする（武器選択のキャンセル時や `attack_lunge` finished 時）。
     pub def clearAttackTargetId(playerId: Int32,
-                                  scene: Scene[NodeTag]): Scene[NodeTag] =
+                                  scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.ClearAttackTarget(World.EntityRef.Player(playerId)));  // F8-slice1
         PlayerScene.mapPlayer(playerId, d -> {attackTargetId = None | d}, scene)
 
     /// 敵側の attackTargetId をクリアする（clearAttackTargetId と対称）。
     def clearEnemyAttackTarget(enemyId: Int32,
-                                scene: Scene[NodeTag]): Scene[NodeTag] =
+                                scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.ClearAttackTarget(World.EntityRef.Enemy(enemyId)));  // F8-slice1
         EnemyScene.mapEnemy(enemyId, d -> {attackTargetId = None | d}, scene)
 
     /// 体当たりの片道（origin → target）所要時間。Forward + Returning の合計が
@@ -101,7 +104,7 @@ mod CombatScene {
     pub def startAttack(side: Faction, attackerId: Int32, defenderId: Int32,
                          targetGrid: {x = Int32, y = Int32},
                          scene: Scene[NodeTag]): Scene[NodeTag]
-            \ AnimationPlayer.Scheduler =
+            \ {AnimationPlayer.Scheduler, World.Command} =
         match side {
             case Faction.Player => startPlayerAttack(attackerId, defenderId, targetGrid, scene)
             case Faction.Enemy  => startEnemyAttack(attackerId, defenderId, targetGrid, scene)
@@ -111,7 +114,7 @@ mod CombatScene {
     def startPlayerAttack(attackerId: Int32, defenderId: Int32,
                            targetGrid: {x = Int32, y = Int32},
                            scene: Scene[NodeTag]): Scene[NodeTag]
-            \ AnimationPlayer.Scheduler =
+            \ {AnimationPlayer.Scheduler, World.Command} =
         let started = forM (
             d <- PlayerScene.get(attackerId, scene)
                      |> Option.filter(dd -> not List.isEmpty(dd#weapons))
@@ -119,6 +122,7 @@ mod CombatScene {
             AnimationPlayer.play(PlayerScene.playerPath(attackerId),
                 attackLungeAnimation(PlayerScene.playerPath(attackerId),
                                      d#gridPos, targetGrid));
+            World.Command.emit(World.Cmd.SetAttackTarget(World.EntityRef.Player(attackerId), defenderId));  // F8-slice1
             PlayerScene.mapPlayer(attackerId,
                 dd -> {attackTargetId = Some(defenderId) | dd}, scene)
         };
@@ -128,7 +132,7 @@ mod CombatScene {
     def startEnemyAttack(attackerId: Int32, defenderId: Int32,
                           targetGrid: {x = Int32, y = Int32},
                           scene: Scene[NodeTag]): Scene[NodeTag]
-            \ AnimationPlayer.Scheduler =
+            \ {AnimationPlayer.Scheduler, World.Command} =
         let started = forM (
             d <- EnemyScene.get(attackerId, scene)
                      |> Option.filter(dd -> Option.nonEmpty(dd#weapon))
@@ -136,6 +140,7 @@ mod CombatScene {
             AnimationPlayer.play(EnemyScene.enemyPath(attackerId),
                 attackLungeAnimation(EnemyScene.enemyPath(attackerId),
                                      d#gridPos, targetGrid));
+            World.Command.emit(World.Cmd.SetAttackTarget(World.EntityRef.Enemy(attackerId), defenderId));  // F8-slice1
             EnemyScene.mapEnemy(attackerId,
                 dd -> {attackTargetId = Some(defenderId) | dd}, scene)
         };
@@ -383,7 +388,7 @@ mod CombatScene {
 
     /// 敵の追撃モーションを開始する（同じ味方へ再突進）。味方が消えていれば反撃判定に落とす。
     def startEnemyFollowUp(enemyId: Int32, playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command} =
         match PlayerScene.get(playerId, scene) {
             case Some(p) =>
                 GameLogger.enemyLog("追撃！");
@@ -394,7 +399,7 @@ mod CombatScene {
 
     /// 敵主攻撃完了の従来分岐（追撃なし）。味方反撃の対象を決め、反撃なら startAttack。
     def resolveEnemyMainAttack(enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command} =
         let decision = forM (
             e <- EnemyScene.get(enemyId, scene)
         ) yield (e, CounterAttackRules.decidePlayerCounter(e,

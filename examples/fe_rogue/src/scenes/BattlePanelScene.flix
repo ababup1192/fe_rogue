@@ -208,7 +208,7 @@ mod BattlePanelScene {
                      _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
-                       PlayerData.PartyQuery, EnemyData.RosterQuery} =
+                       PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command} =
         let phase  = TurnPhase.State.get();
         let synced = syncTargetToCursor(phase, scene);
         // 「減る分」の暗⇄明点滅サイクルを進める。state の Duration を delta で進め、
@@ -312,7 +312,7 @@ mod BattlePanelScene {
     /// PlayerAttack 中、攻撃対象をカーソル位置の敵に毎フレーム同期する。
     /// カーソルが敵に乗っていなければ対象をクリアする（予報は出ない）。
     def syncTargetToCursor(phase: TurnPhase.Phase, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ SelectedPlayer.State =
+            Scene[NodeTag] \ {SelectedPlayer.State, World.Command} =
         if (phase != TurnPhase.Phase.PlayerAttack) scene
         else match SelectedPlayer.State.get()#id {
             case None             => scene
@@ -610,7 +610,7 @@ mod BattlePanelScene {
             Scene[NodeTag] \ {AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery, EnemyData.RosterQuery} =
+                              PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command} =
         let started = forM (
             attackerId <- SelectedPlayer.State.get()#id;
             player     <- PlayerData.PartyQuery.get(attackerId);
@@ -630,7 +630,7 @@ mod BattlePanelScene {
     pub def cancel(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery} =
+                              PlayerData.PartyQuery, World.Command} =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         match SelectedPlayer.State.get()#id {
             case None             => scene

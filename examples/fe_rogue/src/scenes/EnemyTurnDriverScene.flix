@@ -66,8 +66,8 @@ mod EnemyTurnDriverScene {
                 // gating する: 演出ホールド中 / 味方 attack_lunge 中 / 敵反撃 attack_lunge 中。
                 // どれも抜けた瞬間に commitWaitedAndAdvance で味方を waited にして次フェーズへ。
                 if (Pacing.State.isHolding()
-                    or PlayerScene.anyAttacking(scene)
-                    or EnemyScene.anyAttacking(scene)) scene
+                    or World.anyPlayerAttacking(World.WorldQuery.get())     // F8-slice1: 順序非依存に
+                    or World.anyEnemyAttacking(World.WorldQuery.get())) scene
                 else TurnFlow.commitWaitedAndAdvance(scene)
             // 移動中に「暗い新規部屋の未起動敵に接敵(隣接)」したら強制たいき。個別はその味方だけ、
             // 集合は全員。Tween（1マス滑走）中は着地を待ってから検出する。
@@ -180,8 +180,8 @@ mod EnemyTurnDriverScene {
         if (TopBarScene.isBusy(scene)) scene
         else if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
-        else if (EnemyScene.anyAttacking(scene)) scene
-        else if (PlayerScene.anyAttacking(scene)) scene
+        else if (World.anyEnemyAttacking(World.WorldQuery.get())) scene      // F8-slice1
+        else if (World.anyPlayerAttacking(World.WorldQuery.get())) scene     // F8-slice1
         else match EnemyTurn.Queue.peekFront() {
             case None       =>
                 // キュー空 + 攻撃モーション無し → 敵ターン終了。
@@ -431,7 +431,7 @@ mod EnemyTurnDriverScene {
 
     /// 体当たり攻撃モーションを開始する（敵側）。
     def normalEnemyAttack(enemyId: Int32, targetId: Int32, p: PlayerScene.Data,
-                          scene: Scene[NodeTag]): Scene[NodeTag] \ AnimationPlayer.Scheduler =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ {AnimationPlayer.Scheduler, World.Command} =
         CombatScene.startAttack(Faction.Enemy, enemyId, targetId, p#gridPos, scene)
 
     /// 0..99 の一様乱数（CombatScene.rollPercent と同型。差し替え確率 roll に使う）。

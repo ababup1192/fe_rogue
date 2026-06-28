@@ -345,7 +345,7 @@ mod WeaponSelectScene {
     pub def onConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                         Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery} =
+                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery, World.Command} =
         let started = forM (
             pid   <- SelectedPlayer.State.get()#id;
             idx   <- entry#metadata |> Option.flatMap(parseWeaponIndex);
@@ -371,7 +371,7 @@ mod WeaponSelectScene {
     pub def confirmCurrentSelection(scene: Scene[NodeTag]):
                                     Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery} =
+                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery, World.Command} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             case None        => scene
             case Some(entry) => if (entry#disabled) scene else onConfirmed(entry, scene)

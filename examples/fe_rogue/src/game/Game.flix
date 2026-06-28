@@ -1062,6 +1062,10 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[WAITED DIFF] ${ms}")
             };
+            match World.attackTargetMismatches(Ref.get(worldRef), next) {  // F8-slice1
+                case Nil => ()
+                case ms  => println("[ATTACKTARGET DIFF] ${ms}")
+            };
             let world1 = World.refreshMirror(next, Ref.get(worldRef));
             // F0（OOP→ECS 移行の足場）: **System パイプライン段**。ロジックを OOP callback でなく
             // `World -> World` の System で回す将来形の seam。現状の System は inert な `tickStatusEffects`

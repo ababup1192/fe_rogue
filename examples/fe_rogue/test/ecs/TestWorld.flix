@@ -530,6 +530,33 @@ mod TestWorld {
             expected = (Some(true), Some(true)),
             (World.waitedOf(World.EntityRef.Player(0), acted), Map.get(0, w#playerWaited)))
 
+    /// F8-slice1: `Cmd.SetAttackTarget`/`ClearAttackTarget` が World を更新し `attackTargetOf` で読める＋preserve。
+    /// `anyPlayerAttacking`/`anyEnemyAttacking`（driver の順序非依存判定の本体）も同時に検証。
+    @Test
+    def testSetAttackTargetCommandAndPreserve(): Unit \ Assert =
+        let seeded  = World.syncFromScene(sampleScene(), World.empty());     // 誰も攻撃中でない
+        let set     = seeded
+            |> World.applyCmd(World.Cmd.SetAttackTarget(World.EntityRef.Player(0), 5))
+            |> World.applyCmd(World.Cmd.SetAttackTarget(World.EntityRef.Enemy(5), 0));
+        let World.World(w) = World.refreshMirror(sampleScene(), set);        // scene は None だが command 由来は保持
+        Assert.assertEq(
+            expected = (Some(5), Some(0), true, true),
+            (World.attackTargetOf(World.EntityRef.Player(0), set),
+             Map.get(5, w#enemyAttackTarget),
+             World.anyPlayerAttacking(set),
+             World.anyEnemyAttacking(set)))
+
+    /// F8-slice1: `ClearAttackTarget` で対象が消え、`anyXAttacking` が false に戻る。
+    @Test
+    def testClearAttackTargetRemovesAndPredicateFalse(): Unit \ Assert =
+        let cleared = World.empty()
+            |> World.applyCmd(World.Cmd.SetAttackTarget(World.EntityRef.Player(0), 5))
+            |> World.applyCmd(World.Cmd.ClearAttackTarget(World.EntityRef.Player(0)));
+        Assert.assertEq(
+            expected = (None, false),
+            (World.attackTargetOf(World.EntityRef.Player(0), cleared),
+             World.anyPlayerAttacking(cleared)))
+
     /// F7-slice4: `Cmd.SetFollowUpUsed` が両 faction を更新し `followUpUsedOf` で読める＋preserve。
     @Test
     def testSetFollowUpUsedCommandAndPreserve(): Unit \ Assert =

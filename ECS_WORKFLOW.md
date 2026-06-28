@@ -186,9 +186,10 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 
 ## §G. 進捗（living・各ステップ完了で更新）
 
-> ## ★最前線（2026-06-28）= OOP→ECS 移行 F-phase。**詳細・現在地は `examples/fe_rogue/_plan_oop_to_ecs.md`**（このファイルが authoritative）
-> **現在地サマリ**: position・phase(3-case)・**hp**・**alerted/bottleUsed/prevPos** が World 権威化済（dual-write＋refreshMirror preserve＋`[XXX DIFF]` 検証器＋reader flip、各 run 無音確認）。汎用 read seam `World.WorldQuery { def get(): World }` 確立（フラグ reader は `WorldQuery.get() |> World.xxxOf(ref)`・新 cascade ゼロ）。**敵ターン driver の sim 決定読みは全て World 由来**。
-> **次の一手**: combat クラスタの残 sim flag（`attackTargetId`/`followUpUsed`/`waited`）を同手順（spike→検証器→dual-write 網羅→reader flip）で World 化。`acted` は view 状態＝World 化不要、`isDying` は hp<=0 代替検討。**フル F4（敵ターン1フレーム反転）は実現可能性 35/100 で見送り確定**（_plan の F4 検証結論参照）＝軸2 control-inversion は defer、軸1 state-authority 完遂を end-state とする。
+> ## ★最前線（2026-06-28）= OOP→ECS 移行 F-phase。**詳細・現在地は `examples/fe_rogue/_plan_oop_to_ecs.md`**（authoritative）
+> **🎉 軸1（authoritative sim state→World）完遂**: position・phase(3-case)・hp・**alerted/bottleUsed/prevPos/followUpUsed/waited** が全て World 権威（dual-write＋refreshMirror preserve＋`[XXX DIFF]` 検証器・各テスト/run 確認）。汎用 read seam `World.WorldQuery { def get(): World }` 確立。**World が sim の唯一の真実源に。** 909緑（F8-slice1 で `attackTargetId` も合流）。残 `acted`/`isDying` は view-tracking flag（行動済/死亡アニメ）＝F8 で component or AnimationPlayer effect 読みとして整理。
+> **F8-slice1 着地（2026-06-28・909緑）= `attackTargetId` を World 権威化**: 攻撃対象 id（`anyAttacking` の元）を `World.playerAttackTarget`/`enemyAttackTarget: Map[id,target]` に dual-write（`Cmd.SetAttackTarget`/`ClearAttackTarget`＋applyCmd＋refreshMirror preserve＋`attackTargetMismatches` 検証器）。**敵ターン driver の `anyAttacking` reader 6 箇所（EnemyTurnDriverScene×4・StairsExitScene×2）を `World.anyPlayerAttacking/anyEnemyAttacking(WorldQuery.get())` に flip**＝driver の「攻撃モーション中か」判定が scene tree でなく World 由来＝**順序非依存（F8 の ordering ブロッカー＝driver が combat-drain と TopBar に挟まれる問題の本体を解消）**。gameLoop に `[ATTACKTARGET DIFF]` 追加。set 全サイト網羅・clear は funnel 経由・spawn は None=absence で Cmd 不要。**残 run 検証 = `[ATTACKTARGET DIFF]` 無音確認のみ**。
+> **次の一手 = F8 続き（軸2・Bevy 流 frame-paced System）**: 敵ターン driver 等の per-node OOP callback → フレームパイプラインが呼ぶ frame-paced System に。**1フレーム化しない**（Bevy も多フレーム pacing を Timer/state component＋毎フレーム System＋Events で保つ・フル F4 1フレーム反転は実現可能性 35 で見送り確定）。slice1 で ordering ブロッカーは解けたので、次は TopBar state→World（after-ordering 依存）→ dispatch 移設（F3c 同型のフレーム順序リスク）。到達で完全 ECS（Bevy 流）。
 > 以下は旧 ★最前線（P0a 位置移行・2026-06-27・完了済の歴史記録）:
 >
 > ## ★最前線（2026-06-27）= 位置(Board/Encounter)を World 権威化（write-first）

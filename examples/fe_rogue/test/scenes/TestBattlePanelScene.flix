@@ -110,6 +110,8 @@ mod TestBattlePanelScene {
                 def findIdAt(coord, k) =
                     k(if (coord#x == 3 and coord#y == 2) Some(1) else None)
                 def anyAttacking(k) = k(false)
+            } with handler World.Command {
+                def emit(_, k) = k()
             }
               with AnimationPlayer.withScheduler(rc)
               with GameLogger.withLogger(rc)
@@ -144,6 +146,8 @@ mod TestBattlePanelScene {
                 def get(id, k) =
                     k(if (id == 0) Some(fixturePlayer()) else None)
                 def getAll(k) = k(fixturePlayer() :: Nil)
+            } with handler World.Command {
+                def emit(_, k) = k()
             } with Tween.withScheduler(rc)
               with AnimationPlayer.withScheduler(rc)
               with SelectedPlayer.withState(rc)
