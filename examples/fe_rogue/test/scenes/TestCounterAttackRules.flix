@@ -139,4 +139,33 @@ mod TestCounterAttackRules {
         let target = Some(enemyAt(7, 3, 2, Some(TestUnitFixtures.testWeapon()), false));
         let result = CounterAttackRules.killedTargetEnemyId(target);
         Assert.assertEq(expected = None, result)
+
+    // ════════════════════════════════════════════════════════
+    // Track A: decideView（faction-blind 統合版）= 旧 decide / decidePlayerCounter の全分類を 1 関数で
+    // ════════════════════════════════════════════════════════
+
+    /// `decideView` が所属を見ずに 5 分類を返す。隣接(距離1)・剣 range{1,1} を基準に、
+    /// target None→Commit / 瀕死→Kill / hp<=0(味方視点の死亡統一)→Kill / 武器なし→Commit /
+    /// 射程内→Counter / 射程外(距離3)→Commit。旧 decide(味方→敵) と decidePlayerCounter(敵→味方) の
+    /// 両分類表を 1 つの faction-blind 述語で被覆することを固定する。
+    @Test
+    def testDecideViewUnifiesFactionBranches(): Unit \ Assert =
+        let sword     = Some({min = 1, max = 1});
+        let attacker  = TestUnitFixtures.mkUnit(0, Faction.Player, {x = 2, y = 2}, 10, false, sword);
+        let mk        = (id, x, y, hp, dying, range) ->
+                            TestUnitFixtures.mkUnit(id, Faction.Enemy, {x = x, y = y}, hp, dying, range);
+        let d         = CounterAttackRules.decideView;
+        Assert.assertEq(
+            expected = ( CounterAttackRules.Outcome.Commit,        // target なし
+                         CounterAttackRules.Outcome.Kill,          // 瀕死(isDying)
+                         CounterAttackRules.Outcome.Kill,          // hp<=0（味方死亡の統一）
+                         CounterAttackRules.Outcome.Commit,        // 武器なし
+                         CounterAttackRules.Outcome.Counter(5),    // 隣接・射程内
+                         CounterAttackRules.Outcome.Commit ),      // 射程外(距離3)
+            ( d(attacker, None),
+              d(attacker, Some(mk(5, 2, 3, 4, true,  sword))),
+              d(attacker, Some(mk(5, 2, 3, 0, false, sword))),
+              d(attacker, Some(mk(5, 2, 3, 6, false, None))),
+              d(attacker, Some(mk(5, 2, 3, 6, false, sword))),
+              d(attacker, Some(mk(5, 2, 5, 6, false, sword))) ))
 }

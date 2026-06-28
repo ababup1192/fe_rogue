@@ -10,18 +10,26 @@
 
 **現状の faction 分岐は 12 箇所・全て `CombatScene.flix` に集中**（grep 実測）＝対象は bounded。cross-faction target は bare Int32（`EnemyAction.Attack(self#id, t#id)`・`attackTargetId: Option[Int32]`）。
 
-## 1. 2トラック構成と「最大の決断」
-| | Track A（推奨・コア） | Track B（任意・深掘り） |
-|---|---|---|
-| 何を達成 | **faction 分岐除去・component 合成（ユーザー言明ゴール）** | headless 決定論・World 単独 serialize（save/replay/netcode/balance-test） |
-| 手法 | **additive strangler**（live CombatScene 維持・DIFF oracle 生存） | **並行再構築**（`fe_rogue_ecs` 別 entrypoint・golden-trace） |
-| save 形式 | **不変** | 単一 id 化なら versioned 移行（first-class 段） |
-| stats→World | **不要**（scene 読みのまま EntityRef dispatch） | **必要**（S-A0） |
-| 戦闘 callback | **消さない** | 消す＝**second battle engine**（revert=branch-swap） |
-| リスク | 低（既存 F-series と同型） | 高（F4 で combat フル反転=実現可能性35・隠れ big-bang） |
-| 既存判定との整合 | Plan B(§G) の正統延長 | Plan B が valid end-state と宣言済の上での追加投資 |
+## 1. 3トラック構成（v3 レビューで 2→3 に是正）
+> v3 レビューの最重要指摘: 旧「Track A」(faction-blind 呼び出し seam・split store 維持) は **faction を消さず EntityRef＋applyCmd の ~16 `match ref` arm に *移すだけ*** で composition を達成しない。真の composition は **構造的統合(A')**＝unified id・単一 store・Team component・EntityRef→EntityId 収束。これは additive・**save 安全**（World は mirror＝scene 由来の save は不変・unified-id は runtime 側 remap）で、battle 再構築(B)は不要。
 
-**★ユーザーが決める唯一の点 = 「Track B をやるか」**（§6 で詳述）。やらなくてもゴール（分岐除去・合成）は Track A で達成。**Track B は「2 つ目の戦闘エンジンを建てる」覚悟が要る**（per-screen cutover 不能・golden-trace は timing/feel のズレを捕えない・revert は branch 一括差替）。
+| | **A: faction-blind 呼び出し層** | **A': 構造的統合（推奨・ゴール本体）** | B: headless/serialize |
+|---|---|---|---|
+| 何を達成 | CombatScene の `match side` 4箇所撤去・CounterAttackRules 統合 | **unified id・単一 store・Team component・EntityRef 収束＝Entity=Component 合成** | World 単独 serialize（save/replay/netcode/balance-test） |
+| 手法 | additive・UnitView は既に faction-blind | **additive**（World mirror の表現を統合・syncFromScene で remap） | 並行再構築・golden-trace |
+| save | 不変 | **不変**（mirror 側 remap・save は scene 由来） | 単一 id を disk に出すなら versioned 移行 |
+| 戦闘 callback | 消さない | 消さない | 消す＝second battle engine（revert=branch） |
+| リスク | 低 | 中（store 統合の churn・F-series 同型 DIFF で緩和） | 高（F4=35・隠れ big-bang） |
+| 除去する faction 構造 | 4 `match side`（call-site） | ~16 `match ref` arm・~20 doubled World field・mirror pair の型・no-op-per-faction Cmd | （上記の authoritative 化＝scene撤去） |
+
+**正直な faction 構造インベントリ**（旧「12箇所・全 CombatScene」は誤り。実測=`match side` は CombatScene に 4箇所のみ）:
+- **A が消す**: CombatScene `match side` 4箇所（108/159/202/454）・CounterAttackRules mirror pair。
+- **A' が消す**: applyCmd の ~16 `match ref` arm・~20 doubled World field（playerHp/enemyHp 等）・PlayerData/EnemyData 並行型 ・`Player は no-op`/`Enemy は no-op` Cmd 意味論。
+- **本計画で消さない（scene 権威維持）**: PlayerMovementScene/EnemyTurnDriver/MapScene/Fog/Minimap/menu（placements/move-drafts/lit-rooms/terrain 依存・A5）。
+
+**★ユーザー決定**: **「true composition(A')をやるか」**。A だけでも call-site 分岐は減るが、**ゴール（Entity=Component 合成）には A' が必要**。A' は save 安全・additive・中リスク。B(headless/serialize)は別問題で任意。
+
+**進捗**: ✅ A-slice1 着地（CounterAttackRules `decideView` で mirror pair を faction-blind 統合・914緑）。
 
 ---
 
