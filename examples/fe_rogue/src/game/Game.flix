@@ -1050,6 +1050,10 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[ALERTED DIFF] ${ms}")
             };
+            match World.dyingMismatches(Ref.get(worldRef), next) {  // 軸1 仕上げ: isDying dual-write 網羅確認
+                case Nil => ()
+                case ms  => println("[DYING DIFF] ${ms}")
+            };
             match World.bottleUsedMismatches(Ref.get(worldRef), next) {
                 case Nil => ()
                 case ms  => println("[BOTTLE DIFF] ${ms}")

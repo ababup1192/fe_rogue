@@ -557,6 +557,21 @@ mod TestWorld {
             (World.attackTargetOf(World.EntityRef.Player(0), cleared),
              World.anyPlayerAttacking(cleared)))
 
+    /// 軸1 仕上げ: `Cmd.SetDying` が敵を World の dying set に入れ `isDyingOf` で読める＋preserve。
+    /// Player は no-op（常に false）。
+    @Test
+    def testSetDyingCommandAndPreserve(): Unit \ Assert =
+        let seeded = World.syncFromScene(sampleScene(), World.empty());   // enemy 5 isDying=false
+        let dying  = seeded
+            |> World.applyCmd(World.Cmd.SetDying(World.EntityRef.Enemy(5)))
+            |> World.applyCmd(World.Cmd.SetDying(World.EntityRef.Player(0)));  // no-op
+        let kept = World.refreshMirror(sampleScene(), dying);
+        Assert.assertEq(
+            expected = (true, false, true),
+            (World.isDyingOf(World.EntityRef.Enemy(5), dying),
+             World.isDyingOf(World.EntityRef.Player(0), dying),
+             World.isDyingOf(World.EntityRef.Enemy(5), kept)))
+
     /// F8-slice2: `Cmd.SetEnemyTurnBusy`/`SetPhaseObservedEnemy` が scalar bool を更新し読める＋
     /// refreshMirror で保持（scene mirror 元なし＝command 由来を持ち越す）。
     @Test

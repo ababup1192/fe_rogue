@@ -37,6 +37,9 @@ pub enum World {
                  playerHidden = Set[EntityId],
                  // F7-spike: 敵の検知フラグ（dormant→chase）。flag→World の最初のプローブ。
                  enemyAlerted = Map[EntityId, Bool],
+                 // 軸1 仕上げ: 死亡演出中の敵 id（death_blink 中＝全 LOGIC から除外される sim フラグ）。
+                 // present=isDying。death 完了でノード除去→refreshMirror が prune（absence=非 dying）。
+                 enemyDying = Set[EntityId],
                  // F7-slice2: 敵の瓶使用済みフラグ（1ターン1投の sticky）。
                  enemyBottleUsed = Map[EntityId, Bool],
                  // F7-slice3: 敵の直前位置（wander の戻り防止）。None=未移動はマップ非在で表現。
@@ -63,6 +66,7 @@ mod World {
                      playerHp = Map.empty(), enemyHp = Map.empty(),
                      playerPos = Map.empty(), enemyPos = Map.empty(),
                      playerHidden = Set.empty(), enemyAlerted = Map.empty(),
+                     enemyDying = Set.empty(),
                      enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
                      playerFollowUpUsed = Map.empty(), enemyFollowUpUsed = Map.empty(),
                      playerWaited = Map.empty(),
@@ -103,6 +107,7 @@ mod World {
             playerPos      = Query.indexBy(d -> d#id, d -> d#gridPos, players),
             enemyPos       = Query.indexBy(d -> d#id, d -> d#gridPos, enemies),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
+            enemyDying     = Query.tagOf(d -> d#id, List.filter(d -> d#isDying, enemies)),
             enemyAlerted   = Query.indexBy(d -> d#id, d -> d#alerted, enemies),
             enemyBottleUsed = Query.indexBy(d -> d#id, d -> d#bottleUsed, enemies),
             enemyPrevPos   = List.foldLeft((m, d) -> match d#prevPos {
@@ -147,6 +152,8 @@ mod World {
             playerPos      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerPos),
             enemyPos       = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyPos),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
+            // 軸1 仕上げ: isDying も command 由来を保持＋prune（death 完了でノード除去→自動 prune）。
+            enemyDying     = Set.filter(id -> Set.memberOf(id, eIds), w#enemyDying),
             // F7-spike: alerted も command 由来を保持＋prune（hp と同型）。
             enemyAlerted   = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyAlerted),
             enemyBottleUsed = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyBottleUsed),
@@ -223,6 +230,7 @@ mod World {
         case SetPhase(SimPhase)             // turn phase write（F2b・TurnPhase.State handler が dual-write で emit）
         case SetHp(EntityRef, Int32)        // hp write（F6a・dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
         case SetAlerted(EntityRef, Bool)    // F7-spike: 敵検知フラグ write（Player は no-op）
+        case SetDying(EntityRef)            // 軸1 仕上げ: 敵を死亡演出中に（Player は no-op・clear は removal+prune）
         case SetBottleUsed(EntityRef, Bool) // F7-slice2: 敵瓶使用フラグ write（Player は no-op）
         case SetPrevPos(EntityRef, {x = Int32, y = Int32})  // F7-slice3: 敵直前位置 write（Player は no-op）
         case SetFollowUpUsed(EntityRef, Bool)  // F7-slice4: followUp 使用済み write（両 faction）
@@ -336,6 +344,12 @@ mod World {
                     case EntityRef.Player(_)  => world   // F7-spike: 味方に alerted は無い＝no-op
                     case EntityRef.Enemy(id)  => World.World({enemyAlerted = Map.insert(id, a, w#enemyAlerted) | w})
                 }
+            case Cmd.SetDying(ref) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(_)  => world   // 味方は hp<=0 で即除去＝isDying 無し
+                    case EntityRef.Enemy(id)  => World.World({enemyDying = Set.insert(id, w#enemyDying) | w})
+                }
             case Cmd.SetBottleUsed(ref, b) =>
                 let World.World(w) = world;
                 match ref {
@@ -384,6 +398,14 @@ mod World {
         match ref {
             case EntityRef.Player(_)  => None
             case EntityRef.Enemy(id)  => Map.get(id, w#enemyAlerted)
+        }
+
+    /// 軸1 仕上げ: 敵が死亡演出中か（reader flip の供給元）。Player は常に false。
+    pub def isDyingOf(ref: EntityRef, world: World): Bool =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(_)  => false
+            case EntityRef.Enemy(id)  => Set.memberOf(id, w#enemyDying)
         }
 
     /// F7-slice2: 敵の bottleUsed を World から読む。Player は常に None。
@@ -459,6 +481,13 @@ mod World {
         PlayerScene.getAll(scene) |> List.filterMap(d -> {
             let ww = waitedOf(EntityRef.Player(d#id), world);
             if (ww != Some(d#waited)) Some((EntityRef.Player(d#id), ww, d#waited)) else None
+        })
+
+    /// 軸1 仕上げ 検証器: 敵の World isDying（command 由来）と scene isDying の不一致を返す。
+    pub def dyingMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Bool, Bool)] =
+        EnemyScene.getAll(scene) |> List.filterMap(d -> {
+            let wd = isDyingOf(EntityRef.Enemy(d#id), world);
+            if (wd != d#isDying) Some((EntityRef.Enemy(d#id), wd, d#isDying)) else None
         })
 
     /// F7-spike 検証器: 敵の World alerted（command 由来）と scene alerted の不一致を返す（`hpMismatches` 同型）。

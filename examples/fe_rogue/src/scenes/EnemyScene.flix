@@ -595,6 +595,7 @@ mod EnemyScene {
             \ {AnimationPlayer.Scheduler, World.Command} =
         AnimationPlayer.play(enemyPath(id), deathBlinkAnimation(spritePath(id)));
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(id), 0));  // F6a: 死亡で hp=0 を World へ
+        World.Command.emit(World.Cmd.SetDying(World.EntityRef.Enemy(id)));  // 軸1 仕上げ: isDying を World へ
         mapEnemy(id, d -> {hp = 0, isDying = true | d}, scene)
 
     /// `death_blink` 完了時に GameManager が呼ぶ後始末。
