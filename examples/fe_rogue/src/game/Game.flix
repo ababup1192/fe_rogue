@@ -1030,6 +1030,13 @@ mod Game {
             // P3（位置 mirror 撤去・§A payoff）: 位置の権威を World に一本化。base を frame-head の `world`
             // でなく **`Ref.get(worldRef)`（mid-frame の Cmd.Move 適用済み）** にし、`refreshMirror` で位置を
             // command 由来のまま保持（gridPos 再構築なし＋prune）。hp/status/hidden は read-model 継続。
+            // F6b 検証器: refreshMirror が hp を re-mirror する**前**に、command 由来 World hp と scene hp の
+            // 不一致を検出する（全 hp 書込が Cmd.SetHp を dual-write していれば空）。spawn 直後等は transient。
+            // 無音を確認できたら refreshMirror を hp preserve 化＝hp を World 権威に切替える（要 run）。
+            match World.hpMismatches(Ref.get(worldRef), next) {
+                case Nil => ()
+                case ms  => println("[F6 HP DIFF] ${ms}")
+            };
             let world1 = World.refreshMirror(next, Ref.get(worldRef));
             // F0（OOP→ECS 移行の足場）: **System パイプライン段**。ロジックを OOP callback でなく
             // `World -> World` の System で回す将来形の seam。現状の System は inert な `tickStatusEffects`

@@ -144,7 +144,7 @@ mod World {
 
     /// entity の参照（faction タグ付き）。Board.Piece と同型。statusEffects アクセスのキー抽象＝
     /// 内部ストアが split（現状）でも single（Option A）でも、呼び出し側はこの ref で触れる。
-    pub enum EntityRef {
+    pub enum EntityRef with ToString {
         case Player(EntityId)
         case Enemy(EntityId)
     }
@@ -256,6 +256,19 @@ mod World {
                     case EntityRef.Enemy(id)  => World.World({enemyHp = Map.insert(id, hp, w#enemyHp) | w})
                 }
         }
+
+    /// F6b 検証器: scene の各ユニットについて **World hp（command 由来）と scene hp の不一致**を返す。
+    /// gameLoop が refreshMirror（hp re-mirror）の **前**に呼ぶ＝全 hp 書込が `Cmd.SetHp` を dual-write して
+    /// いれば空。書き漏れがあると `(ref, worldHp, sceneHp)` が出る（`[F6 HP DIFF]`）。spawn 直後など World 未登録は
+    /// transient（次フレーム refreshMirror で解消）。preserve 化（refreshMirror が hp を保持）の前提を pin する。
+    pub def hpMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Int32], Int32)] =
+        let mism = (ref, sceneHp) -> {
+            let wHp = hpOf(ref, world);
+            if (wHp != Some(sceneHp)) Some((ref, wHp, sceneHp)) else None
+        };
+        let ps = PlayerScene.getAll(scene) |> List.filterMap(d -> mism(EntityRef.Player(d#id), d#hp));
+        let es = EnemyScene.getAll(scene)  |> List.filterMap(d -> mism(EntityRef.Enemy(d#id), d#hp));
+        List.append(ps, es)
 
     /// hp を World から読む（read-model アクセサ）。F6 の reader flip / 検証器の供給元。
     pub def hpOf(ref: EntityRef, world: World): Option[Int32] =

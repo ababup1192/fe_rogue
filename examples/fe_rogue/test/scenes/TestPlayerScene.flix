@@ -587,7 +587,7 @@ mod TestPlayerScene {
               rings = Nil, ringEquipped = false, level = 1, exp = 0, stats = baseStats}: PlayerScene.CarryData) ::
             ({id = 1, hp = 7, weapons = Nil,          staves = Nil, consumables = Nil,
               rings = Nil, ringEquipped = false, level = 1, exp = 0, stats = baseStats}: PlayerScene.CarryData) :: Nil;
-        let after = PlayerScene.reconcileWithCarry(carry, scene);
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.reconcileWithCarry(carry, scene));
         Assert.assertEq(
             expected = (0 :: 1 :: Nil, 3, 7, "てつのやり" :: Nil),
             (PlayerScene.getAll(after) |> List.map(d -> d#id),
@@ -624,9 +624,9 @@ mod TestPlayerScene {
             |> MapScene.addWorldNode
             |> addOnePlayerT(mkSpawn(0, {x = 3, y = 3}))
             |> addOnePlayerT(mkSpawn(1, {x = 4, y = 3}));
-        let result = TestUnitFixtures.withNoSelection(() -> withGameOverToEmpty(() ->
+        let result = TestUnitFixtures.dischargeWorldCommand(() -> TestUnitFixtures.withNoSelection(() -> withGameOverToEmpty(() ->
             TestUnitFixtures.withMockGameLogger(() ->
-                PlayerScene.removeDeadAndCheckGameOver(0 :: Nil, scene))));
+                PlayerScene.removeDeadAndCheckGameOver(0 :: Nil, scene)))));
         Assert.assertEq(expected = Nil, PlayerScene.getAll(result) |> List.map(d -> d#id))
 
     /// ロード以外の味方が倒れても、ロードが健在ならゲームオーバーにはならない。
@@ -641,9 +641,9 @@ mod TestPlayerScene {
             |> MapScene.addWorldNode
             |> addOnePlayerT(mkSpawn(0, {x = 3, y = 3}))
             |> addOnePlayerT(mkSpawn(1, {x = 4, y = 3}));
-        let result = TestUnitFixtures.withNoSelection(() -> withGameOverToEmpty(() ->
+        let result = TestUnitFixtures.dischargeWorldCommand(() -> TestUnitFixtures.withNoSelection(() -> withGameOverToEmpty(() ->
             TestUnitFixtures.withMockGameLogger(() ->
-                PlayerScene.removeDeadAndCheckGameOver(1 :: Nil, scene))));
+                PlayerScene.removeDeadAndCheckGameOver(1 :: Nil, scene)))));
         Assert.assertEq(expected = 0 :: Nil, PlayerScene.getAll(result) |> List.map(d -> d#id))
 
     // ========================================================================

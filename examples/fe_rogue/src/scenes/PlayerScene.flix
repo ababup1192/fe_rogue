@@ -713,7 +713,7 @@ mod PlayerScene {
     pub def removeDeadAndCheckGameOver(killed: List[Int32],
                                          scene: Scene[NodeTag]):
             Scene[NodeTag] \ {CustomEffects.GameOverRequest, SelectedPlayer.State,
-                               GameLogger.GameLogger} =
+                               GameLogger.GameLogger, World.Command} =
         if (List.isEmpty(killed)) scene
         else {
             // ノード除去の前に、現在いる全味方の位置を記録する（女神の加護の「その場復活」用）。
@@ -751,11 +751,12 @@ mod PlayerScene {
     /// 蘇生薬で復活する味方 1 体の Scene 反映: HP を最大まで戻し、蘇生薬消費後の
     /// インベントリへ差し替え、HPBar 更新、復活ログを出す。`removeDeadAndCheckGameOver` 専用。
     def reviveOne(id: Int32, newConsumables: List[Consumable.ConsumableResource],
-                   scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+                   scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         match get(id, scene) {
             case None    => scene
             case Some(d) =>
                 let maxHp = d#resource#hp;
+                World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(id), maxHp));  // F6a: 復活 hp を World へ
                 GameLogger.playerLog("${displayName(id, scene)}は 蘇生薬で復活した");
                 scene
                     |> mapPlayer(id, dd -> {hp = maxHp, consumables = newConsumables | dd})
@@ -1019,12 +1020,13 @@ mod PlayerScene {
     ///     HP バーも更新する
     /// `waited` / `usedStairs` / `hidden` / `moveStepsTaken` は addOnePlayer が false / 0 で
     /// 作り直しているのでリセット不要（= フロア開始時に全員再行動可・たいきリセット）。
-    pub def reconcileWithCarry(carry: List[CarryData], scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def reconcileWithCarry(carry: List[CarryData], scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let carryIds = carry |> List.map(c -> c#id);
         let pruned = getAll(scene)
             |> List.filter(d -> not List.exists(id -> id == d#id, carryIds))
             |> List.foldLeft((sc, d) -> Scene.removeAt(playerPath(d#id), sc), scene);
-        List.foldLeft((sc, c) ->
+        List.foldLeft((sc, c) -> {
+            World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(c#id), c#hp));  // F6a: carry hp を World へ
             sc
                 |> mapPlayer(c#id, d ->
                     {hp = c#hp, weapons = c#weapons, staves = c#staves,
@@ -1032,7 +1034,7 @@ mod PlayerScene {
                      ringEquipped = c#ringEquipped,
                      level = c#level, exp = c#exp,
                      resource = LevelSystem.withStats(c#stats, d#resource) | d})
-                |> UnitHPBarScene.updateMaxHp(playerPath(c#id), c#hp, c#stats#hp),
+                |> UnitHPBarScene.updateMaxHp(playerPath(c#id), c#hp, c#stats#hp) },
             pruned, carry)
 
     /// スナップショットの味方リストから決定論的に再配置する（乱数なし）。
@@ -1061,6 +1063,8 @@ mod PlayerScene {
                           ringCatalog: Ring.RingCatalog,
                           scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let sp = snapToPlayerSpawn(snap, catalog, staffCatalog, consumableCatalog, ringCatalog);
+        // F6a: 復元 hp も World へ dual-write（複合書込ゆえ単独 emit・F6b preserve の網羅前提）。
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#hp));
         addOnePlayer(sp, scene)
             |> mapPlayer(snap#id, d -> {hp = snap#hp, level = snap#level, exp = snap#exp,
                                          ringEquipped = snap#ringEquipped,
@@ -1157,6 +1161,8 @@ mod PlayerScene {
                      ringCatalog: Ring.RingCatalog,
                      scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let sp = {gridPos = cell | snapToPlayerSpawn(snap, catalog, staffCatalog, consumableCatalog, ringCatalog)};
+        // F6a: 復元 hp も World へ dual-write（複合書込ゆえ単独 emit・F6b preserve の網羅前提）。
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#stats#hp));
         addOnePlayer(sp, scene)
             |> mapPlayer(snap#id, d -> {hp = snap#stats#hp, level = snap#level, exp = snap#exp,
                                          ringEquipped = snap#ringEquipped,

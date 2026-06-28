@@ -578,8 +578,9 @@ mod EnemyScene {
     /// アニメ完了で GameManager が `completeDeath` を呼んでノード削除と bonus 再生を行う。
     pub def startDeathAnimation(id: Int32,
                                  scene: Scene[NodeTag]): Scene[NodeTag]
-            \ AnimationPlayer.Scheduler =
+            \ {AnimationPlayer.Scheduler, World.Command} =
         AnimationPlayer.play(enemyPath(id), deathBlinkAnimation(spritePath(id)));
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(id), 0));  // F6a: 死亡で hp=0 を World へ
         mapEnemy(id, d -> {hp = 0, isDying = true | d}, scene)
 
     /// `death_blink` 完了時に GameManager が呼ぶ後始末。
@@ -649,8 +650,9 @@ mod EnemyScene {
     /// 敵 1 体の現在状態（HP / 時限ステータス / 検知フラグ / 指輪）を snap から上書きする。
     /// HP バーの見た目も `UnitHPBarScene.update` で現在値に合わせる（最大 HP は spawn 時の resource#hp 据え置き）。
     def restoreEnemyState(snap: FloorSnapshot.EnemySnap, ringCatalog: Ring.RingCatalog,
-                           scene: Scene[NodeTag]): Scene[NodeTag] =
+                           scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let ring = snap#ring |> Option.map(id -> Ring.lookup(id, ringCatalog));
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(snap#id), snap#hp));  // F6a: 復元 hp を World へ
         mapEnemy(snap#id, d -> {hp = snap#hp, statuses = snap#statuses,
                                  alerted = snap#alerted, ring = ring | d}, scene)
             |> UnitHPBarScene.update(enemyPath(snap#id), snap#hp)
