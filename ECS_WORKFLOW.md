@@ -198,7 +198,7 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > - **in（dual-write 必須・全て被覆済）**: position・current hp・turnPhase(3)・statusEffects(read-model)・hidden(read-model)・alerted・bottleUsed・prevPos・followUpUsed・waited・attackTarget・enemyTurnBusy・phaseObservedEnemy・enemyDying・**level/exp（進行度・World 拡張で合流）**。
 > - **out（World 非モデル＝B では callback/scene 権威を**明示許容**・「未達」でなく「移行スコープ外」）**: 成長後 stats・max hp・inventory・weapon 耐久・床アイテム/宝箱・EnemyTurn.Queue・カーソル位置(UI)・演出 timer。将来 World 拡張の候補。
 >
-> ### World 拡張（Plan B 後）= level/exp を World 権威化（913緑・run 検証待ち）
+> ### World 拡張（Plan B 後）= level/exp を World 権威化（913緑・✅run 検証クリア「大丈夫だった」）
 > out-of-scope だった進行度を proven dual-write パターンで合流。`World.playerLevel`/`playerExp: Map[id,Int32]`＋`Cmd.SetProgress(ref, level, exp)`＋applyCmd＋syncFromScene/refreshMirror preserve＋`progressOf`/`progressMismatches`。dual-write 6 サイト全網羅（spawn / applyExpGain(no-levelup) / applyLevelUp / reviveOneAt / placeOneFromSnap / reconcileWithCarry）。gameLoop に `[PROGRESS DIFF]`。TestWorld + level-up リグレッションテストに progress assertion 追加（level-up で (level+1,exp) も dual-write を CI 固定）。run 検証 = 撃破→exp→レベルアップで `[PROGRESS DIFF]` 無音。
 >
 > ### 残 logic callback 監査表（全件ゲート pass・912緑）
