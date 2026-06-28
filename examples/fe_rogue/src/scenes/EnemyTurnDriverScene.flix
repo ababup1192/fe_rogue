@@ -56,7 +56,7 @@ mod EnemyTurnDriverScene {
                         CustomEffects.RingTransformRequest,
                         CustomEffects.GameOverRequest,
                         CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
-                        World.Command, BoardQuery, World.AlertedQuery} =
+                        World.Command, BoardQuery, World.WorldQuery} =
         let next = match TurnPhase.State.get() {
             case TurnPhase.Phase.EnemyTurn        => stepOnce(scene)
             case TurnPhase.Phase.PlayerAttackHold =>
@@ -175,7 +175,7 @@ mod EnemyTurnDriverScene {
                 CustomEffects.WandererSpawnRequest,
                 CustomEffects.RingTransformRequest,
                 CustomEffects.GameOverRequest,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, BoardQuery, World.AlertedQuery} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery} =
         // 敵ターン開始の「間」(TopBar の hold) 中は敵を動かさない（フェイズ切替が読めてから行動開始）。
         if (TopBarScene.isBusy(scene)) scene
         else if (Pacing.State.isHolding()) scene
@@ -209,7 +209,7 @@ mod EnemyTurnDriverScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.AlertedQuery} =
+                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery} =
         match EnemyScene.get(step#id, scene) {
             case None       => scene   // 既に除外済み (死亡演出完了など)
             case Some(data) => applyStepForEnemy(step, data, scene)
@@ -226,7 +226,7 @@ mod EnemyTurnDriverScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.AlertedQuery} =
+                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery} =
         if (StatusSystem.isImmobilized(data#statuses))
             bindSkip(step, data, scene)
         else match StaffCastScene.enemyTryStaff(step#id, data#gridPos,
@@ -253,14 +253,18 @@ mod EnemyTurnDriverScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.AlertedQuery} =
-        if (data#bottleUsed)
+                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery} =
+        // F7-slice2: bottleUsed を World 由来で読む（reader flip・WorldQuery 経由）。未登録は scene fallback。
+        let curBottleUsed = World.bottleUsedOf(World.EntityRef.Enemy(step#id), World.WorldQuery.get())
+                                |> Option.getWithDefault(data#bottleUsed);
+        if (curBottleUsed)
             applyNormalStep(step, data, scene)
         else match StaffCastScene.enemyTryThrow(step#id, data#gridPos,
                                                  data#resource#description, scene) {
             case Some(afterThrow) =>
                 // 投げた → このターンは投擲で終了。瓶を使用済みにして行動済み暗転。
                 Pacing.State.hold(450 |> Duration.millis);
+                World.Command.emit(World.Cmd.SetBottleUsed(World.EntityRef.Enemy(step#id), true));  // F7-slice2: World へ
                 EnemyScene.setActed(step#id,
                     EnemyScene.mapEnemy(step#id, d -> {bottleUsed = true | d}, afterThrow))
             case None => applyNormalStep(step, data, scene)
@@ -271,14 +275,15 @@ mod EnemyTurnDriverScene {
                          scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, CustomEffects.RingTransformRequest, World.Command, BoardQuery,
-                World.AlertedQuery} =
+                World.WorldQuery} =
                 // 盤面 + 盤上ユニットを 1 箇所で結合 (位置×ステータスの join は Encounter に集約)。
                 // P2: EnemyAI 入力の board を World 由来へ（units stats は scene read-model・dual-write で位置一致・挙動不変）。
                 let enc = EncounterBuilder.fromBoardQuery(scene);
                 let board = enc#board;
                 let self = EnemyScene.unitView(data);
-                // F7-spike: alerted を **World 由来**で読む（reader flip）。World 未登録なら scene fallback（spawn transient）。
-                let curAlerted = World.AlertedQuery.alerted(World.EntityRef.Enemy(step#id))
+                // F7: alerted を **World 由来**で読む（reader flip・汎用 WorldQuery 経由）。未登録は scene fallback。
+                let w0 = World.WorldQuery.get();
+                let curAlerted = World.alertedOf(World.EntityRef.Enemy(step#id), w0)
                                     |> Option.getWithDefault(data#alerted);
                 let (action, updated) = EnemyAI.decideAction(enc, self, curAlerted);
                 // F7-spike: alerted を World にも dual-write（scene 直書きと併発）。
@@ -326,7 +331,8 @@ mod EnemyTurnDriverScene {
                         // 未起動の徘徊型: 同モジュール内の歩ける 1 マスへ乱数で動く（1 ターン 1 マス）。
                         // 行先選択にだけ乱数が要るため decideAction でなくここで選ぶ（decideAction は pure）。
                         // 候補なし（袋小路・包囲）なら静止。徘徊しても remaining は使わず即行動済み。
-                        match RandomUtil.pick(EnemyAI.wanderCandidates(board, data#gridPos, data#prevPos)) {
+                        // F7-slice3: prevPos を World 由来で読む（reader flip・w0 は applyNormalStep 冒頭の WorldQuery snapshot）。
+                        match RandomUtil.pick(EnemyAI.wanderCandidates(board, data#gridPos, World.prevPosOf(World.EntityRef.Enemy(step#id), w0))) {
                             case None         => EnemyScene.setActed(id, withAlert)
                             case Some(target) =>
                                 let moved = EnemyScene.moveTo(id, target, board#map, withAlert);

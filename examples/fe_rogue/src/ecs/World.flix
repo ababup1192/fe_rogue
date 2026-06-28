@@ -36,7 +36,11 @@ pub enum World {
                  // S4: 盤面除外（集合・階段退場）中の味方 id。Board.pieces は hidden 味方を除くので fromWorld に必要。
                  playerHidden = Set[EntityId],
                  // F7-spike: 敵の検知フラグ（dormant→chase）。flag→World の最初のプローブ。
-                 enemyAlerted = Map[EntityId, Bool] })
+                 enemyAlerted = Map[EntityId, Bool],
+                 // F7-slice2: 敵の瓶使用済みフラグ（1ターン1投の sticky）。
+                 enemyBottleUsed = Map[EntityId, Bool],
+                 // F7-slice3: 敵の直前位置（wander の戻り防止）。None=未移動はマップ非在で表現。
+                 enemyPrevPos = Map[EntityId, {x = Int32, y = Int32}] })
 }
 
 mod World {
@@ -47,7 +51,8 @@ mod World {
                      playerStatusEffects = Map.empty(), enemyStatusEffects = Map.empty(),
                      playerHp = Map.empty(), enemyHp = Map.empty(),
                      playerPos = Map.empty(), enemyPos = Map.empty(),
-                     playerHidden = Set.empty(), enemyAlerted = Map.empty()})
+                     playerHidden = Set.empty(), enemyAlerted = Map.empty(),
+                     enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty()})
 
     /// F2a: World の turnPhase を読む（read-model アクセサ）。
     pub def turnPhaseOf(world: World): SimPhase =
@@ -75,7 +80,12 @@ mod World {
             playerPos      = Query.indexBy(d -> d#id, d -> d#gridPos, players),
             enemyPos       = Query.indexBy(d -> d#id, d -> d#gridPos, enemies),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
-            enemyAlerted   = Query.indexBy(d -> d#id, d -> d#alerted, enemies)
+            enemyAlerted   = Query.indexBy(d -> d#id, d -> d#alerted, enemies),
+            enemyBottleUsed = Query.indexBy(d -> d#id, d -> d#bottleUsed, enemies),
+            enemyPrevPos   = List.foldLeft((m, d) -> match d#prevPos {
+                                 case Some(p) => Map.insert(d#id, p, m)
+                                 case None    => m
+                             }, Map.empty(), enemies)
         })
 
     /// P3（mirror 撤去・§A payoff）: per-frame の World 更新。**位置(playerPos/enemyPos)は
@@ -107,7 +117,9 @@ mod World {
             enemyPos       = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyPos),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
             // F7-spike: alerted も command 由来を保持＋prune（hp と同型）。
-            enemyAlerted   = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyAlerted)
+            enemyAlerted   = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyAlerted),
+            enemyBottleUsed = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyBottleUsed),
+            enemyPrevPos   = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyPrevPos)
         })
 
     /// statuses を 1 ターン進める System（StatusSystem.tick を再利用）。S1b でターン開始フックに繋ぐ。
@@ -172,6 +184,8 @@ mod World {
         case SetPhase(SimPhase)             // turn phase write（F2b・TurnPhase.State handler が dual-write で emit）
         case SetHp(EntityRef, Int32)        // hp write（F6a・dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
         case SetAlerted(EntityRef, Bool)    // F7-spike: 敵検知フラグ write（Player は no-op）
+        case SetBottleUsed(EntityRef, Bool) // F7-slice2: 敵瓶使用フラグ write（Player は no-op）
+        case SetPrevPos(EntityRef, {x = Int32, y = Int32})  // F7-slice3: 敵直前位置 write（Player は no-op）
     }
 
     /// System が出力する sim-event（F-clock の最小骨組み・F3b 導入）。
@@ -209,10 +223,12 @@ mod World {
         def phase(): SimPhase
     }
 
-    /// F7-spike: 敵 alerted 読み込み effect。handler は Game.start（worldRef.enemyAlerted を返す）。
-    /// `decideAction`/`bumpedDarkRoomEnemy` の alerted 読みを scene→World に flip する read seam。
-    pub eff AlertedQuery {
-        def alerted(ref: EntityRef): Option[Bool]
+    /// F7: 現フレームの World スナップショットを読む汎用 read seam（worldRef を返す）。handler は Game.start。
+    /// フラグ reader（alerted/bottleUsed/…）を scene→World に flip する共通窓口＝フラグごとに effect を増やさない。
+    /// 読み手は `World.WorldQuery.get() |> World.alertedOf(ref)` の形で任意の accessor を使う。mid-frame currency
+    /// あり（その frame の Cmd が反映済み worldRef を返す）＝同ターン read-after-write が正しい。
+    pub eff WorldQuery {
+        def get(): World
     }
 
     /// statusEffects を引く（既定 Nil＝mid-game spawn は seed 不要）。Query handler から呼ぶ。
@@ -275,6 +291,18 @@ mod World {
                     case EntityRef.Player(_)  => world   // F7-spike: 味方に alerted は無い＝no-op
                     case EntityRef.Enemy(id)  => World.World({enemyAlerted = Map.insert(id, a, w#enemyAlerted) | w})
                 }
+            case Cmd.SetBottleUsed(ref, b) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(_)  => world
+                    case EntityRef.Enemy(id)  => World.World({enemyBottleUsed = Map.insert(id, b, w#enemyBottleUsed) | w})
+                }
+            case Cmd.SetPrevPos(ref, p) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(_)  => world
+                    case EntityRef.Enemy(id)  => World.World({enemyPrevPos = Map.insert(id, p, w#enemyPrevPos) | w})
+                }
         }
 
     /// F7-spike: 敵の alerted を World から読む（reader flip の供給元・hpOf 同型）。Player は常に None。
@@ -285,11 +313,43 @@ mod World {
             case EntityRef.Enemy(id)  => Map.get(id, w#enemyAlerted)
         }
 
+    /// F7-slice2: 敵の bottleUsed を World から読む。Player は常に None。
+    pub def bottleUsedOf(ref: EntityRef, world: World): Option[Bool] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(_)  => None
+            case EntityRef.Enemy(id)  => Map.get(id, w#enemyBottleUsed)
+        }
+
+    /// F7-slice3: 敵の prevPos を World から読む（None=未移動＝マップ非在）。Player は常に None。
+    pub def prevPosOf(ref: EntityRef, world: World): Option[{x = Int32, y = Int32}] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(_)  => None
+            case EntityRef.Enemy(id)  => Map.get(id, w#enemyPrevPos)
+        }
+
     /// F7-spike 検証器: 敵の World alerted（command 由来）と scene alerted の不一致を返す（`hpMismatches` 同型）。
     pub def alertedMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
         EnemyScene.getAll(scene) |> List.filterMap(d -> {
             let wa = alertedOf(EntityRef.Enemy(d#id), world);
             if (wa != Some(d#alerted)) Some((EntityRef.Enemy(d#id), wa, d#alerted)) else None
+        })
+
+    /// F7-slice2 検証器: 敵 bottleUsed の World/scene 不一致（`alertedMismatches` 同型）。
+    pub def bottleUsedMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
+        EnemyScene.getAll(scene) |> List.filterMap(d -> {
+            let wb = bottleUsedOf(EntityRef.Enemy(d#id), world);
+            if (wb != Some(d#bottleUsed)) Some((EntityRef.Enemy(d#id), wb, d#bottleUsed)) else None
+        })
+
+    /// F7-slice3 検証器: 敵 prevPos の World/scene 不一致。record は ToString 不可ゆえ (x,y) タプルに畳む。
+    pub def prevPosMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[(Int32, Int32)], Option[(Int32, Int32)])] =
+        let toT = op -> Option.map(p -> (p#x, p#y), op);
+        EnemyScene.getAll(scene) |> List.filterMap(d -> {
+            let wp = toT(prevPosOf(EntityRef.Enemy(d#id), world));
+            let sp = toT(d#prevPos);
+            if (wp != sp) Some((EntityRef.Enemy(d#id), wp, sp)) else None
         })
 
     /// F6b 検証器: scene の各ユニットについて **World hp（command 由来）と scene hp の不一致**を返す。

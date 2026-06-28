@@ -520,6 +520,27 @@ mod TestWorld {
         let w = World.applyCmd(World.Cmd.SetAlerted(World.EntityRef.Enemy(5), true), World.empty());
         Assert.assertEq(expected = Some(true), World.alertedOf(World.EntityRef.Enemy(5), w))
 
+    /// F7-slice3: `Cmd.SetPrevPos` が World を更新し `prevPosOf` で読める＋preserve（command が scene 上書きされない）。
+    @Test
+    def testSetPrevPosCommandAndPreserve(): Unit \ Assert =
+        let seeded = World.syncFromScene(sampleScene(), World.empty());
+        let moved  = World.applyCmd(World.Cmd.SetPrevPos(World.EntityRef.Enemy(5), {x = 7, y = 1}), seeded);
+        let World.World(w) = World.refreshMirror(sampleScene(), moved);
+        let toT = op -> Option.map(p -> (p#x, p#y), op);
+        Assert.assertEq(
+            expected = (Some((7, 1)), Some((7, 1))),
+            (toT(World.prevPosOf(World.EntityRef.Enemy(5), moved)), toT(Map.get(5, w#enemyPrevPos))))
+
+    /// F7-slice2: `Cmd.SetBottleUsed` が World を更新し `bottleUsedOf` で読める＋preserve。
+    @Test
+    def testSetBottleUsedCommandAndPreserve(): Unit \ Assert =
+        let seeded = World.syncFromScene(sampleScene(), World.empty());   // enemy 5 bottleUsed=false
+        let used   = World.applyCmd(World.Cmd.SetBottleUsed(World.EntityRef.Enemy(5), true), seeded);
+        let World.World(w) = World.refreshMirror(sampleScene(), used);
+        Assert.assertEq(
+            expected = (Some(true), Some(true)),
+            (World.bottleUsedOf(World.EntityRef.Enemy(5), used), Map.get(5, w#enemyBottleUsed)))
+
     /// F7-spike: alerted は command 由来で **保持**（scene から re-mirror しない）。`Cmd.SetAlerted(5,true)` 後、
     /// refreshMirror しても scene fixture（enemy 5 alerted=false）でなく command の true が残る＝flag も World 権威化可。
     @Test

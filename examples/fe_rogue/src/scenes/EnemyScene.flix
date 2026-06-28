@@ -219,6 +219,8 @@ mod EnemyScene {
         World.Command.emit(World.Cmd.SetHp(World.refOf(false, sp#id), sp#resource#hp));
         // F7-spike: 初期 alerted=false も seed（spawn の [ALERTED DIFF] transient を塞ぐ）。
         World.Command.emit(World.Cmd.SetAlerted(World.refOf(false, sp#id), false));
+        // F7-slice2: 初期 bottleUsed=false も seed。
+        World.Command.emit(World.Cmd.SetBottleUsed(World.refOf(false, sp#id), false));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
@@ -515,7 +517,7 @@ mod EnemyScene {
     /// （`PlayerScene.replayMovedEvent` が担当）＝faction ごとに自分の event を再生。
     /// faction 分岐は 1 段の match に留め、敵の見た目再生は `replayEnemyMoveView` に委譲（ネスト回避）。
     pub def replayMovedEvent(event: World.SimEvent, map: MapSnapshot,
-                              scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
         match event {
             case World.SimEvent.Moved(World.EntityRef.Enemy(id), target)  => replayEnemyMoveView(id, target, map, scene)
             case World.SimEvent.Moved(World.EntityRef.Player(_), _)        => scene
@@ -524,7 +526,7 @@ mod EnemyScene {
     /// 敵 1 体の move 見た目再生（Tween 滑走 + 左右反転 + prevPos 記録）。
     def replayEnemyMoveView(id: Int32, target: {x = Int32, y = Int32},
                              map: MapSnapshot, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ Tween.Scheduler =
+            Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
         let startWorld  = Scene.globalPositionAt(enemyPath(id), scene);
         let targetWorld = MapSnapshot.gridToWorld(target, map);
         Tween.tweenPosition(enemyPath(id), startWorld, targetWorld, slideDuration());
@@ -535,6 +537,11 @@ mod EnemyScene {
             |> Option.getWithDefault(scene);
         // 直前位置を記録（徘徊の「来た道へ戻らない」判定に使う）。`d#gridPos` は frame-head の
         // 移動前位置なので正しい（gridPos 自体は frame-end の syncTreeFromWorld で World 由来に derive）。
+        // F7-slice3: prevPos も World へ dual-write（移動前 gridPos）。
+        match get(id, scene) |> Option.map(d -> d#gridPos) {
+            case Some(p) => World.Command.emit(World.Cmd.SetPrevPos(World.EntityRef.Enemy(id), p))
+            case None    => ()
+        };
         mapEnemy(id, d -> {prevPos = Some(d#gridPos) | d}, flipped)
 
     /// 子 Sprite2D に flipH を設定する内部ヘルパー (敵スプライトは常に Sprite2D)。

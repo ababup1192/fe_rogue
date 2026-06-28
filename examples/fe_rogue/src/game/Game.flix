@@ -891,9 +891,9 @@ mod Game {
                   // F2c: turn phase（sim-phase 3-case）を worldRef から読む read seam。
                   def phase(k) = k(World.turnPhaseOf(Ref.get(worldRef)))
               }
-              with handler World.AlertedQuery {
-                  // F7-spike: 敵 alerted を worldRef から読む read seam。
-                  def alerted(ref, k) = k(World.alertedOf(ref, Ref.get(worldRef)))
+              with handler World.WorldQuery {
+                  // F7: 現 World スナップショット（worldRef）を返す汎用 read seam。フラグ reader 共通窓口。
+                  def get(k) = k(Ref.get(worldRef))
               }
               with handler PlayerData.PartyQuery {
                   def get(id, k)           = k(PlayerScene.get(id, Ref.get(sceneRef)))
@@ -999,7 +999,7 @@ mod Game {
                          FloorProgress.State, InitialSpawns.State,
                          GamePhaseState, PartySelection.State,
                          Pacing.State, Math.Random, FloorSnapshot.State,
-                         World.Command, World.StatusQuery, World.PhaseQuery, World.AlertedQuery, r} =
+                         World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery, r} =
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
         if (GameEngine.Game.shouldClose()) ()
         else {
@@ -1045,6 +1045,14 @@ mod Game {
             match World.alertedMismatches(Ref.get(worldRef), next) {
                 case Nil => ()
                 case ms  => println("[ALERTED DIFF] ${ms}")
+            };
+            match World.bottleUsedMismatches(Ref.get(worldRef), next) {
+                case Nil => ()
+                case ms  => println("[BOTTLE DIFF] ${ms}")
+            };
+            match World.prevPosMismatches(Ref.get(worldRef), next) {
+                case Nil => ()
+                case ms  => println("[PREVPOS DIFF] ${ms}")
             };
             let world1 = World.refreshMirror(next, Ref.get(worldRef));
             // F0（OOP→ECS 移行の足場）: **System パイプライン段**。ロジックを OOP callback でなく
