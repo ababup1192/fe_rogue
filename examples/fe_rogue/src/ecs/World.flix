@@ -50,6 +50,9 @@ pub enum World {
                  playerWaited = Map[EntityId, Bool],
                  // F8-slice1: 攻撃対象 id（攻撃モーション中＝anyAttacking の権威）。None=非攻撃はマップ非在。両 faction。
                  playerAttackTarget = Map[EntityId, Int32], enemyAttackTarget = Map[EntityId, Int32],
+                 // World 拡張: 味方の進行度（level/exp）。combat の撃破→exp→level-up が動かす sim 状態。
+                 // 過去に level-up の hp 増分 dual-write が漏れた領域＝検証器で同種漏れを捕える。player-only。
+                 playerLevel = Map[EntityId, Int32], playerExp = Map[EntityId, Int32],
                  // F8-slice2: 敵ターン driver が読む phase-banner 同期 bool（TopBar が毎フレーム dual-write）。
                  //   enemyTurnBusy      — 敵ターン開始 intro の hold 中（>0）＝敵の行動開始待ち。
                  //   phaseObservedEnemy — 上部バーが「敵ターン」を観測済み（0 体ターンの取りこぼし防止）。
@@ -71,6 +74,7 @@ mod World {
                      playerFollowUpUsed = Map.empty(), enemyFollowUpUsed = Map.empty(),
                      playerWaited = Map.empty(),
                      playerAttackTarget = Map.empty(), enemyAttackTarget = Map.empty(),
+                     playerLevel = Map.empty(), playerExp = Map.empty(),
                      enemyTurnBusy = false, phaseObservedEnemy = false})
 
     /// F2a: World の turnPhase を読む（read-model アクセサ）。
@@ -117,6 +121,8 @@ mod World {
             playerFollowUpUsed = Query.indexBy(d -> d#id, d -> d#followUpUsed, players),
             enemyFollowUpUsed  = Query.indexBy(d -> d#id, d -> d#followUpUsed, enemies),
             playerWaited   = Query.indexBy(d -> d#id, d -> d#waited, players),
+            playerLevel    = Query.indexBy(d -> d#id, d -> d#level, players),
+            playerExp      = Query.indexBy(d -> d#id, d -> d#exp, players),
             playerAttackTarget = attackTargetMap(players),
             enemyAttackTarget  = attackTargetMap(enemies),
             // F8-slice2: scene に mirror 元がない scalar bool は前 world の値を保持（command 由来）。
@@ -161,6 +167,9 @@ mod World {
             playerFollowUpUsed = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerFollowUpUsed),
             enemyFollowUpUsed  = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyFollowUpUsed),
             playerWaited   = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerWaited),
+            // World 拡張: level/exp も command 由来を保持＋prune（hp と同型）。
+            playerLevel    = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerLevel),
+            playerExp      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerExp),
             playerAttackTarget = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerAttackTarget),
             enemyAttackTarget  = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyAttackTarget),
             // F8-slice2: scalar bool は command 由来を保持（scene mirror 元なし・TopBar が毎フレーム dual-write）。
@@ -237,6 +246,7 @@ mod World {
         case SetWaited(EntityRef, Bool)        // F7-slice5: 味方行動済み write（Enemy は no-op）
         case SetAttackTarget(EntityRef, Int32) // F8-slice1: 攻撃対象 id をセット（攻撃開始）
         case ClearAttackTarget(EntityRef)      // F8-slice1: 攻撃対象をクリア（攻撃終了）
+        case SetProgress(EntityRef, Int32, Int32) // World 拡張: 味方の (level, exp) write（撃破/レベルアップ/復元で）
         case SetEnemyTurnBusy(Bool)            // F8-slice2: 敵ターン intro hold 中 bool write（TopBar dual-write）
         case SetPhaseObservedEnemy(Bool)       // F8-slice2: バーが敵ターン観測済み bool write（TopBar dual-write）
     }
@@ -386,6 +396,14 @@ mod World {
                     case EntityRef.Player(id) => World.World({playerAttackTarget = Map.remove(id, w#playerAttackTarget) | w})
                     case EntityRef.Enemy(id)  => World.World({enemyAttackTarget = Map.remove(id, w#enemyAttackTarget) | w})
                 }
+            case Cmd.SetProgress(ref, lv, xp) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(id) =>
+                        World.World({playerLevel = Map.insert(id, lv, w#playerLevel),
+                                     playerExp   = Map.insert(id, xp, w#playerExp) | w})
+                    case EntityRef.Enemy(_)   => world   // 敵は level/exp 無し＝no-op
+                }
             case Cmd.SetEnemyTurnBusy(b) =>
                 let World.World(w) = world; World.World({enemyTurnBusy = b | w})
             case Cmd.SetPhaseObservedEnemy(b) =>
@@ -455,6 +473,24 @@ mod World {
     /// F8-slice1: いずれかの敵が攻撃中か（`EnemyScene.anyAttacking` の World 版・順序非依存）。
     pub def anyEnemyAttacking(world: World): Bool =
         let World.World(w) = world; not Map.isEmpty(w#enemyAttackTarget)
+
+    /// World 拡張: 味方の (level, exp) を World から読む。未登録は None。Enemy は常に None。
+    pub def progressOf(ref: EntityRef, world: World): Option[(Int32, Int32)] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) =>
+                Option.flatMap(lv -> Option.map(xp -> (lv, xp), Map.get(id, w#playerExp)),
+                               Map.get(id, w#playerLevel))
+            case EntityRef.Enemy(_)   => None
+        }
+
+    /// World 拡張 検証器: 味方 (level, exp) の World/scene 不一致。
+    pub def progressMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[(Int32, Int32)], (Int32, Int32))] =
+        PlayerScene.getAll(scene) |> List.filterMap(d -> {
+            let wp = progressOf(EntityRef.Player(d#id), world);
+            let sp = (d#level, d#exp);
+            if (wp != Some(sp)) Some((EntityRef.Player(d#id), wp, sp)) else None
+        })
 
     /// F8-slice2: 敵ターン intro hold 中か（`TopBarScene.isBusy` の World 版・順序非依存）。
     pub def enemyTurnBusyOf(world: World): Bool =

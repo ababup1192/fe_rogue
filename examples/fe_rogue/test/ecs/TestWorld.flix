@@ -557,6 +557,21 @@ mod TestWorld {
             (World.attackTargetOf(World.EntityRef.Player(0), cleared),
              World.anyPlayerAttacking(cleared)))
 
+    /// World 拡張: `Cmd.SetProgress` が味方の (level, exp) を更新し `progressOf` で読める＋preserve。
+    /// Enemy は no-op（常に None）。
+    @Test
+    def testSetProgressCommandAndPreserve(): Unit \ Assert =
+        let seeded = World.syncFromScene(sampleScene(), World.empty());
+        let leveled = seeded
+            |> World.applyCmd(World.Cmd.SetProgress(World.EntityRef.Player(0), 3, 40))
+            |> World.applyCmd(World.Cmd.SetProgress(World.EntityRef.Enemy(5), 9, 99));  // no-op
+        let kept = World.refreshMirror(sampleScene(), leveled);
+        Assert.assertEq(
+            expected = (Some((3, 40)), None, Some((3, 40))),
+            (World.progressOf(World.EntityRef.Player(0), leveled),
+             World.progressOf(World.EntityRef.Enemy(5), leveled),
+             World.progressOf(World.EntityRef.Player(0), kept)))
+
     /// 軸1 仕上げ: `Cmd.SetDying` が敵を World の dying set に入れ `isDyingOf` で読める＋preserve。
     /// Player は no-op（常に false）。
     @Test

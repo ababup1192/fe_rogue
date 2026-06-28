@@ -1074,6 +1074,10 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[ATTACKTARGET DIFF] ${ms}")
             };
+            match World.progressMismatches(Ref.get(worldRef), next) {  // World 拡張: level/exp dual-write 網羅確認
+                case Nil => ()
+                case ms  => println("[PROGRESS DIFF] ${ms}")
+            };
             if (World.enemyTurnBusyOf(Ref.get(worldRef)) != TopBarScene.isBusy(next)  // F8-slice2
                 or World.phaseObservedEnemyOf(Ref.get(worldRef)) != TopBarScene.hasObservedEnemy(next))
                 println("[TOPBAR DIFF] busy w=${World.enemyTurnBusyOf(Ref.get(worldRef))} s=${TopBarScene.isBusy(next)}"

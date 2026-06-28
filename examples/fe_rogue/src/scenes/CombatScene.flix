@@ -1015,9 +1015,11 @@ mod CombatScene {
         ) yield {
             GameLogger.playerLog("${d#resource#description}は ${expGain} の経験値を得た");
             let outcome = LevelSystem.gainExp(d#exp, expGain);
-            if (not outcome#levelUp)
+            if (not outcome#levelUp) {
+                // World 拡張: exp 増（レベル据置）も World へ dual-write。
+                World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(playerId), d#level, outcome#exp));
                 PlayerScene.mapPlayer(playerId, dd -> {exp = outcome#exp | dd}, scene)
-            else
+            } else
                 applyLevelUp(playerId, d, outcome#exp, scene)
         };
         Option.getWithDefault(scene, gained)
@@ -1038,6 +1040,8 @@ mod CombatScene {
         GameLogger.playerLog("${d#resource#description}が Lv${d#level} ▶ Lv${d#level + 1}");
         // F6a: レベルアップで増えた現在 HP も World へ dual-write（これが漏れていて [F6 HP DIFF] の原因だった）。
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(playerId), newHp));
+        // World 拡張: level+1・exp も World へ dual-write。
+        World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(playerId), d#level + 1, newExp));
         PlayerScene.mapPlayer(playerId, dd ->
             {exp            = newExp,
              level          = dd#level + 1,

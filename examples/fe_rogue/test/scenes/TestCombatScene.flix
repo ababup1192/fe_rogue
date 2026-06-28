@@ -170,7 +170,12 @@ mod TestCombatScene {
                     }));
             let sceneHp = PlayerScene.get(0, result) |> Option.map(d -> d#hp);
             let worldHp = World.hpOf(World.EntityRef.Player(0), Ref.get(wref));
-            Assert.assertEq(expected = (Some(11), Some(11)), (sceneHp, worldHp))
+            // World 拡張: level+1・exp も dual-write されること（scene=(2,0)・World=(2,0)）。
+            let sceneProg = PlayerScene.get(0, result) |> Option.map(d -> (d#level, d#exp));
+            let worldProg = World.progressOf(World.EntityRef.Player(0), Ref.get(wref));
+            Assert.assertEq(
+                expected = (Some(11), Some(11), Some((2, 0)), Some((2, 0))),
+                (sceneHp, worldHp, sceneProg, worldProg))
         }
 
     // ════════════════════════════════════════════════════════

@@ -313,6 +313,8 @@ mod PlayerScene {
         World.Command.emit(World.Cmd.SetFollowUpUsed(World.refOf(true, sp#id), false));
         // F7-slice5: 初期 waited=false も seed。
         World.Command.emit(World.Cmd.SetWaited(World.refOf(true, sp#id), false));
+        // World 拡張: 初期 (level, exp=0) を seed（spawn フレームの [PROGRESS DIFF] を塞ぐ）。
+        World.Command.emit(World.Cmd.SetProgress(World.refOf(true, sp#id), sp#resource#level, 0));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
@@ -1038,6 +1040,7 @@ mod PlayerScene {
             |> List.foldLeft((sc, d) -> Scene.removeAt(playerPath(d#id), sc), scene);
         List.foldLeft((sc, c) -> {
             World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(c#id), c#hp));  // F6a: carry hp を World へ
+            World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(c#id), c#level, c#exp));  // World 拡張: carry 進行度
             sc
                 |> mapPlayer(c#id, d ->
                     {hp = c#hp, weapons = c#weapons, staves = c#staves,
@@ -1076,6 +1079,8 @@ mod PlayerScene {
         let sp = snapToPlayerSpawn(snap, catalog, staffCatalog, consumableCatalog, ringCatalog);
         // F6a: 復元 hp も World へ dual-write（複合書込ゆえ単独 emit・F6b preserve の網羅前提）。
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#hp));
+        // World 拡張: 復元 (level, exp) も World へ（addOnePlayer の base を上書き）。
+        World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(snap#id), snap#level, snap#exp));
         addOnePlayer(sp, scene)
             |> mapPlayer(snap#id, d -> {hp = snap#hp, level = snap#level, exp = snap#exp,
                                          ringEquipped = snap#ringEquipped,
@@ -1174,6 +1179,8 @@ mod PlayerScene {
         let sp = {gridPos = cell | snapToPlayerSpawn(snap, catalog, staffCatalog, consumableCatalog, ringCatalog)};
         // F6a: 復元 hp も World へ dual-write（複合書込ゆえ単独 emit・F6b preserve の網羅前提）。
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#stats#hp));
+        // World 拡張: 復元 (level, exp) も World へ（addOnePlayer の base を上書き）。
+        World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(snap#id), snap#level, snap#exp));
         addOnePlayer(sp, scene)
             |> mapPlayer(snap#id, d -> {hp = snap#stats#hp, level = snap#level, exp = snap#exp,
                                          ringEquipped = snap#ringEquipped,
