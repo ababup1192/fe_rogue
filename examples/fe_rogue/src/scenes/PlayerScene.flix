@@ -307,6 +307,8 @@ mod PlayerScene {
         // P0b: spawn/restore の funnel。新規ユニットの初期位置を World へ seed（Cmd.Move=位置 insert）。
         // dual-write 維持（mirror が P2 まで生きるので無害）＝挙動不変。
         World.Command.emit(World.Cmd.Move(World.refOf(true, sp#id), sp#gridPos));
+        // F6a: 初期 hp も World へ seed（spawn フレームの [F6 HP DIFF] を塞ぐ＝F6b preserve の前提）。
+        World.Command.emit(World.Cmd.SetHp(World.refOf(true, sp#id), sp#resource#hp));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;

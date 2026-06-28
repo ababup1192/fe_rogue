@@ -215,6 +215,8 @@ mod EnemyScene {
         // P0b: spawn/restore の funnel。新規敵の初期位置を World へ seed（Cmd.Move=位置 insert）。
         // dual-write 維持＝挙動不変（mirror が P2 まで生きる）。
         World.Command.emit(World.Cmd.Move(World.refOf(false, sp#id), sp#gridPos));
+        // F6a: 初期 hp も World へ seed（spawn フレームの [F6 HP DIFF] を塞ぐ＝F6b preserve の前提）。
+        World.Command.emit(World.Cmd.SetHp(World.refOf(false, sp#id), sp#resource#hp));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
