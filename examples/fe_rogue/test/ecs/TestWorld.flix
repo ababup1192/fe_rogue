@@ -727,4 +727,24 @@ mod TestWorld {
             expected = (expP0, expE5),
             (Option.map(proj, World.ringBonusOf(World.EntityRef.Player(0), w)),
              Option.map(proj, World.ringBonusOf(World.EntityRef.Enemy(5), w))))
+
+    // ── B1: combatViewOf が scene combatView を World だけから完全再構築する（parity） ──
+
+    /// `World.combatViewOf(ref)` が `PlayerScene.combatView` / `EnemyScene.combatView` と同一の
+    /// CombatView を返すことを固定 fixture で証明する（S-A0 の end-to-end 検証）。record/enum は Eq
+    /// 非自動ゆえ全数値 + 武器投影を tuple に射影して比較する。これが緑なら reader を World へ flip できる。
+    @Test
+    def testCombatViewOfReconstructsSceneView(): Unit \ Assert =
+        let scene = sampleScene();
+        let w = World.syncFromScene(scene, World.empty());
+        let wvProj = wv -> (wv#attack, wv#hit, wv#crit, wv#isPhysical, wv#proficient, wv#effectValue);
+        let cvProj = cv -> (cv#attack, cv#magicAttack, cv#defense, cv#magicDefense, cv#skill,
+                            cv#speed, cv#luck, cv#hp, cv#maxHp, cv#hitMod,
+                            Option.map(wvProj, cv#weapon));
+        let expP0 = Option.map(d -> cvProj(PlayerScene.combatView(d)), PlayerScene.get(0, scene));
+        let expE5 = Option.map(d -> cvProj(EnemyScene.combatView(d)), EnemyScene.get(5, scene));
+        Assert.assertEq(
+            expected = (expP0, expE5),
+            (Option.map(cvProj, World.combatViewOf(World.EntityRef.Player(0), w)),
+             Option.map(cvProj, World.combatViewOf(World.EntityRef.Enemy(5), w))))
 }

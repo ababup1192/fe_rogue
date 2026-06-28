@@ -549,6 +549,26 @@ mod World {
     pub def ringBonusOf(ref: EntityRef, world: World): Option[Ring.Bonuses] =
         let World.World(w) = world; Map.get(toUid(ref), w#ringBonus)
 
+    /// B1: `combatView` を **World だけから再構築**する（faction 非依存）。base 戦闘値 + 指輪 + status mods
+    /// + hp + 装備武器投影を合成し、`PlayerScene.combatView` / `EnemyScene.combatView` と同一の `Combat.CombatView`
+    /// を返す。式は両 scene の combatView と一致（status/ring 補正の載せ方を含む）。baseStats/hp/ringBonus が
+    /// 揃わない（未登録）entity は None。これで scene-authority な combatView の reader を World へ flip できる。
+    pub def combatViewOf(ref: EntityRef, world: World): Option[Combat.CombatView] =
+        match (baseStatsOf(ref, world), hpOf(ref, world), ringBonusOf(ref, world)) {
+            case (Some(bs), Some(hp), Some(rb)) =>
+                let m = StatusSystem.combatMods(statusEffectsOf(ref, world));
+                Some({attack = bs#attack + m#atkBonus + rb#attack,
+                      magicAttack = bs#magicAttack,
+                      defense = bs#defense + rb#defense + m#defDelta,
+                      magicDefense = bs#magicDefense,
+                      skill = bs#skill + rb#skill,
+                      speed = bs#speed + m#spdDelta + rb#speed,
+                      luck = bs#luck + rb#luck,
+                      hp = hp, maxHp = bs#maxHp, hitMod = m#hitMod,
+                      weapon = weaponViewOf(ref, world)})
+            case _ => None
+        }
+
     /// World 拡張: 味方の (level, exp) を World から読む。未登録は None。Enemy は常に None。
     pub def progressOf(ref: EntityRef, world: World): Option[(Int32, Int32)] =
         let World.World(w) = world;
