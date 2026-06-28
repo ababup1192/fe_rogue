@@ -128,7 +128,7 @@ mod CombatScene {
                               GameEngine.Game, GameLogger.GameLogger,
                               CustomEffects.GameOverRequest,
                               SelectedPlayer.State, Math.Random,
-                              CustomEffects.ThiefDropRequest, World.Command, BoardQuery} =
+                              CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         match side {
             case Faction.Player => applyAttackHit(id, scene)
             case Faction.Enemy  =>
@@ -157,7 +157,7 @@ mod CombatScene {
     pub def applyEnemyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
-             Tween.Scheduler, World.Command, BoardQuery} =
+             Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
         let resolved = forM (
             d              <- EnemyScene.get(enemyId, scene);
             targetPlayerId <- d#attackTargetId
@@ -222,8 +222,14 @@ mod CombatScene {
             case (Some(p), Some(e)) =>
                 let braveT = PlayerData.equippedWeapon(p#weapons)
                     |> Option.flatMap(w -> WeaponCatalog.braveThreshold(w#effect, w#effectValue));
-                let atkSpd = PlayerScene.combatView(p)#speed;
-                let defSpd = EnemyScene.combatView(e)#speed;
+                // S-A0/B1: 速度判定を World の combatViewOf 由来へ flip（followUpUsed と同じ dual-read。
+                // world は WorldQuery snapshot=read-after-write 正。parity 証明済みゆえ同値・None は scene fallback）。
+                let atkSpd = World.combatViewOf(World.EntityRef.Player(playerId), world)
+                                 |> Option.map(cv -> cv#speed)
+                                 |> Option.getWithDefault(PlayerScene.combatView(p)#speed);
+                let defSpd = World.combatViewOf(World.EntityRef.Enemy(e#id), world)
+                                 |> Option.map(cv -> cv#speed)
+                                 |> Option.getWithDefault(EnemyScene.combatView(e)#speed);
                 // 追撃判定を DSL の flow 層（EffectFlow.followUpDecision）へ寄せる。brave/pursuit の
                 // どちらかが成立すれば追撃（ロジックは shouldFollowUp/braveFollowUp と同一・テスト済）。
                 let fctx = {atkSpd = atkSpd, defSpd = defSpd, roll = roll,
@@ -332,8 +338,13 @@ mod CombatScene {
             case (Some(e), Some(p)) =>
                 let braveT = e#weapon
                     |> Option.flatMap(w -> WeaponCatalog.braveThreshold(w#effect, w#effectValue));
-                let atkSpd = EnemyScene.combatView(e)#speed;
-                let defSpd = PlayerScene.combatView(p)#speed;
+                // S-A0/B1: 速度判定を World の combatViewOf 由来へ flip（followUpUsed と同じ dual-read・fallback 安全）。
+                let atkSpd = World.combatViewOf(World.EntityRef.Enemy(enemyId), world)
+                                 |> Option.map(cv -> cv#speed)
+                                 |> Option.getWithDefault(EnemyScene.combatView(e)#speed);
+                let defSpd = World.combatViewOf(World.EntityRef.Player(p#id), world)
+                                 |> Option.map(cv -> cv#speed)
+                                 |> Option.getWithDefault(PlayerScene.combatView(p)#speed);
                 let fctx = {atkSpd = atkSpd, defSpd = defSpd, roll = roll,
                             // F7-slice4: followUpUsed を World 由来で読む。
                             followUpUsed = World.followUpUsedOf(World.EntityRef.Enemy(enemyId), world)
@@ -669,7 +680,7 @@ mod CombatScene {
                              scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
-             Tween.Scheduler, World.Command, BoardQuery} =
+             Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
         // 前提（武器あり・対象あり）の解決だけを担う。実体は resolveEnemyAttack に委譲。
         let resolved = forM (
             weapon <- enemy#weapon;
@@ -685,9 +696,12 @@ mod CombatScene {
                             targetId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, Math.Random,
-             Tween.Scheduler, World.Command, BoardQuery} =
-        let strike = CombatRules.resolveStrike(EnemyScene.combatView(enemy),
-                                   PlayerScene.combatView(player));
+             Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
+        // S-A0/B1: ダメージ計算の combat view を World 由来へ flip（WorldQuery=read-after-write 正・parity 同値）。
+        let world = World.WorldQuery.get();
+        let strike = CombatRules.resolveStrike(
+            World.combatViewOf(World.EntityRef.Enemy(enemyId), world) |> Option.getWithDefault(EnemyScene.combatView(enemy)),
+            World.combatViewOf(World.EntityRef.Player(targetId), world) |> Option.getWithDefault(PlayerScene.combatView(player)));
         let roll = rollPercent();
         let popupPos = MapSnapshot.cellCenter(player#gridPos);
         let popupColor = DamagePopupScene.damageToPlayerColor();

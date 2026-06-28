@@ -206,6 +206,9 @@ mod TestCombatScene {
 
     /// applyEnemyAttackHit を副作用モックで包んで実行する（アニメは介在しない）。
     def runEnemyAttack(scene: Scene[NodeTag]): (Scene[NodeTag], List[Int32]) =
+        // WorldQuery には scene を mirror した World を渡す＝combatViewOf を実際に通し、
+        // World 由来のダメージが scene 同値（期待値）になることを live で検証する（B1 flip）。
+        TestUnitFixtures.withWorldQuery(World.syncFromScene(scene, World.empty()), () ->
         TestUnitFixtures.dischargeWorldCommand(() ->
         TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
         TestUnitFixtures.withMockRandom(() ->
@@ -213,7 +216,7 @@ mod TestCombatScene {
         TestUnitFixtures.withMockAudio(() ->
         TestUnitFixtures.withMockGameLogger(() ->
         TestUnitFixtures.withNoopTween(() ->
-            CombatScene.applyEnemyAttackHit(1, scene))))))))
+            CombatScene.applyEnemyAttackHit(1, scene)))))))))
 
     /// 敵→味方の鏡像数値: 敵(素3+武器2) vs 味方防御 1 → 4 ダメージ、
     /// 命中率 = 80 + 技2×2 + 幸運2÷2 − (速さ3×2 + 幸運2) = 77 > 50 で命中。
