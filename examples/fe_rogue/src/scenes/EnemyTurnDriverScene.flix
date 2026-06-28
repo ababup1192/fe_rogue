@@ -56,7 +56,7 @@ mod EnemyTurnDriverScene {
                         CustomEffects.RingTransformRequest,
                         CustomEffects.GameOverRequest,
                         CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
-                        World.Command, BoardQuery} =
+                        World.Command, BoardQuery, World.AlertedQuery} =
         let next = match TurnPhase.State.get() {
             case TurnPhase.Phase.EnemyTurn        => stepOnce(scene)
             case TurnPhase.Phase.PlayerAttackHold =>
@@ -175,7 +175,7 @@ mod EnemyTurnDriverScene {
                 CustomEffects.WandererSpawnRequest,
                 CustomEffects.RingTransformRequest,
                 CustomEffects.GameOverRequest,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, BoardQuery} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, BoardQuery, World.AlertedQuery} =
         // 敵ターン開始の「間」(TopBar の hold) 中は敵を動かさない（フェイズ切替が読めてから行動開始）。
         if (TopBarScene.isBusy(scene)) scene
         else if (Pacing.State.isHolding()) scene
@@ -209,7 +209,7 @@ mod EnemyTurnDriverScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery} =
+                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.AlertedQuery} =
         match EnemyScene.get(step#id, scene) {
             case None       => scene   // 既に除外済み (死亡演出完了など)
             case Some(data) => applyStepForEnemy(step, data, scene)
@@ -226,7 +226,7 @@ mod EnemyTurnDriverScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery} =
+                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.AlertedQuery} =
         if (StatusSystem.isImmobilized(data#statuses))
             bindSkip(step, data, scene)
         else match StaffCastScene.enemyTryStaff(step#id, data#gridPos,
@@ -253,7 +253,7 @@ mod EnemyTurnDriverScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery} =
+                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.AlertedQuery} =
         if (data#bottleUsed)
             applyNormalStep(step, data, scene)
         else match StaffCastScene.enemyTryThrow(step#id, data#gridPos,
@@ -270,13 +270,19 @@ mod EnemyTurnDriverScene {
     def applyNormalStep(step: EnemyTurn.Step, data: EnemyScene.Data,
                          scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                Pacing.State, Math.Random, CustomEffects.RingTransformRequest, World.Command, BoardQuery} =
+                Pacing.State, Math.Random, CustomEffects.RingTransformRequest, World.Command, BoardQuery,
+                World.AlertedQuery} =
                 // 盤面 + 盤上ユニットを 1 箇所で結合 (位置×ステータスの join は Encounter に集約)。
                 // P2: EnemyAI 入力の board を World 由来へ（units stats は scene read-model・dual-write で位置一致・挙動不変）。
                 let enc = EncounterBuilder.fromBoardQuery(scene);
                 let board = enc#board;
                 let self = EnemyScene.unitView(data);
-                let (action, updated) = EnemyAI.decideAction(enc, self, data#alerted);
+                // F7-spike: alerted を **World 由来**で読む（reader flip）。World 未登録なら scene fallback（spawn transient）。
+                let curAlerted = World.AlertedQuery.alerted(World.EntityRef.Enemy(step#id))
+                                    |> Option.getWithDefault(data#alerted);
+                let (action, updated) = EnemyAI.decideAction(enc, self, curAlerted);
+                // F7-spike: alerted を World にも dual-write（scene 直書きと併発）。
+                World.Command.emit(World.Cmd.SetAlerted(World.EntityRef.Enemy(step#id), updated#alerted));
                 let withAlert = EnemyScene.mapEnemy(step#id,
                     d -> {alerted = updated#alerted | d}, scene);
                 match action {

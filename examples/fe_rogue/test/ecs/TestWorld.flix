@@ -514,6 +514,21 @@ mod TestWorld {
         let after = World.applyCmd(World.Cmd.SetPhase(SimPhase.EnemyTurn), World.empty());
         Assert.assertEq(expected = SimPhase.EnemyTurn, World.turnPhaseOf(after))
 
+    /// F7-spike: `Cmd.SetAlerted` が World の enemyAlerted を更新し `alertedOf` で読める（flag→World の土台）。
+    @Test
+    def testSetAlertedCommandUpdatesWorld(): Unit \ Assert =
+        let w = World.applyCmd(World.Cmd.SetAlerted(World.EntityRef.Enemy(5), true), World.empty());
+        Assert.assertEq(expected = Some(true), World.alertedOf(World.EntityRef.Enemy(5), w))
+
+    /// F7-spike: alerted は command 由来で **保持**（scene から re-mirror しない）。`Cmd.SetAlerted(5,true)` 後、
+    /// refreshMirror しても scene fixture（enemy 5 alerted=false）でなく command の true が残る＝flag も World 権威化可。
+    @Test
+    def testRefreshMirrorPreservesCommandAlerted(): Unit \ Assert =
+        let seeded  = World.syncFromScene(sampleScene(), World.empty());
+        let alerted = World.applyCmd(World.Cmd.SetAlerted(World.EntityRef.Enemy(5), true), seeded);
+        let World.World(w) = World.refreshMirror(sampleScene(), alerted);
+        Assert.assertEq(expected = Some(true), Map.get(5, w#enemyAlerted))
+
     /// F6a: `Cmd.SetHp` が World の hp store を faction 別に更新し、`hpOf` で読める（hp→World 権威化の土台）。
     /// 後段（F6b）で reader を World へ flip・refreshMirror を preserve 化する前提のコマンドシーム。
     @Test

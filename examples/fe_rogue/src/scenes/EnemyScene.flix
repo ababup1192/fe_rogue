@@ -217,6 +217,8 @@ mod EnemyScene {
         World.Command.emit(World.Cmd.Move(World.refOf(false, sp#id), sp#gridPos));
         // F6a: 初期 hp も World へ seed（spawn フレームの [F6 HP DIFF] を塞ぐ＝F6b preserve の前提）。
         World.Command.emit(World.Cmd.SetHp(World.refOf(false, sp#id), sp#resource#hp));
+        // F7-spike: 初期 alerted=false も seed（spawn の [ALERTED DIFF] transient を塞ぐ）。
+        World.Command.emit(World.Cmd.SetAlerted(World.refOf(false, sp#id), false));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
@@ -655,6 +657,7 @@ mod EnemyScene {
                            scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let ring = snap#ring |> Option.map(id -> Ring.lookup(id, ringCatalog));
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(snap#id), snap#hp));  // F6a: 復元 hp を World へ
+        World.Command.emit(World.Cmd.SetAlerted(World.EntityRef.Enemy(snap#id), snap#alerted));  // F7-spike: 復元 alerted を World へ
         mapEnemy(snap#id, d -> {hp = snap#hp, statuses = snap#statuses,
                                  alerted = snap#alerted, ring = ring | d}, scene)
             |> UnitHPBarScene.update(enemyPath(snap#id), snap#hp)

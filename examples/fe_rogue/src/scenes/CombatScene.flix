@@ -687,6 +687,7 @@ mod CombatScene {
             // 攻撃を受けた敵は起動する（GuardUntilInRange を射程外から射ても動き出す）。
             // alerted は一方向フラグなので、ここで立てれば次の敵ターン以降ずっと追跡に入る。
             // 殴られたので、かなしばり中なら完全停止を解除する。
+            World.Command.emit(World.Cmd.SetAlerted(World.EntityRef.Enemy(enemyId), true));  // F7-spike: 被弾で起動を World へ
             withPopup
                 |> EnemyScene.mapEnemy(enemyId, enemyData -> {hp = plan#newHp, alerted = true | enemyData})
                 |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), plan#newHp)

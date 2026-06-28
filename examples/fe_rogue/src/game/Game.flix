@@ -891,6 +891,10 @@ mod Game {
                   // F2c: turn phase（sim-phase 3-case）を worldRef から読む read seam。
                   def phase(k) = k(World.turnPhaseOf(Ref.get(worldRef)))
               }
+              with handler World.AlertedQuery {
+                  // F7-spike: 敵 alerted を worldRef から読む read seam。
+                  def alerted(ref, k) = k(World.alertedOf(ref, Ref.get(worldRef)))
+              }
               with handler PlayerData.PartyQuery {
                   def get(id, k)           = k(PlayerScene.get(id, Ref.get(sceneRef)))
                   def getAll(k)            = k(PlayerScene.getAll(Ref.get(sceneRef)))
@@ -995,7 +999,7 @@ mod Game {
                          FloorProgress.State, InitialSpawns.State,
                          GamePhaseState, PartySelection.State,
                          Pacing.State, Math.Random, FloorSnapshot.State,
-                         World.Command, World.StatusQuery, World.PhaseQuery, r} =
+                         World.Command, World.StatusQuery, World.PhaseQuery, World.AlertedQuery, r} =
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
         if (GameEngine.Game.shouldClose()) ()
         else {
@@ -1036,6 +1040,11 @@ mod Game {
             match World.hpMismatches(Ref.get(worldRef), next) {
                 case Nil => ()
                 case ms  => println("[F6 HP DIFF] ${ms}")
+            };
+            // F7-spike 検証器: alerted の dual-write 網羅を確認（無音なら preserve 化＋reader flip が安全）。
+            match World.alertedMismatches(Ref.get(worldRef), next) {
+                case Nil => ()
+                case ms  => println("[ALERTED DIFF] ${ms}")
             };
             let world1 = World.refreshMirror(next, Ref.get(worldRef));
             // F0（OOP→ECS 移行の足場）: **System パイプライン段**。ロジックを OOP callback でなく

@@ -34,7 +34,9 @@ pub enum World {
                  playerPos = Map[EntityId, {x = Int32, y = Int32}],
                  enemyPos  = Map[EntityId, {x = Int32, y = Int32}],
                  // S4: 盤面除外（集合・階段退場）中の味方 id。Board.pieces は hidden 味方を除くので fromWorld に必要。
-                 playerHidden = Set[EntityId] })
+                 playerHidden = Set[EntityId],
+                 // F7-spike: 敵の検知フラグ（dormant→chase）。flag→World の最初のプローブ。
+                 enemyAlerted = Map[EntityId, Bool] })
 }
 
 mod World {
@@ -45,7 +47,7 @@ mod World {
                      playerStatusEffects = Map.empty(), enemyStatusEffects = Map.empty(),
                      playerHp = Map.empty(), enemyHp = Map.empty(),
                      playerPos = Map.empty(), enemyPos = Map.empty(),
-                     playerHidden = Set.empty()})
+                     playerHidden = Set.empty(), enemyAlerted = Map.empty()})
 
     /// F2a: World の turnPhase を読む（read-model アクセサ）。
     pub def turnPhaseOf(world: World): SimPhase =
@@ -72,7 +74,8 @@ mod World {
             enemyHp        = Query.indexBy(d -> d#id, d -> d#hp, enemies),
             playerPos      = Query.indexBy(d -> d#id, d -> d#gridPos, players),
             enemyPos       = Query.indexBy(d -> d#id, d -> d#gridPos, enemies),
-            playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players))
+            playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
+            enemyAlerted   = Query.indexBy(d -> d#id, d -> d#alerted, enemies)
         })
 
     /// P3（mirror 撤去・§A payoff）: per-frame の World 更新。**位置(playerPos/enemyPos)は
@@ -102,7 +105,9 @@ mod World {
             // 位置は command 由来を保持＋scene に居ない id を prune（gridPos からの再構築はしない）。
             playerPos      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerPos),
             enemyPos       = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyPos),
-            playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players))
+            playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
+            // F7-spike: alerted も command 由来を保持＋prune（hp と同型）。
+            enemyAlerted   = Map.filterWithKey((id, _) -> Set.memberOf(id, eIds), w#enemyAlerted)
         })
 
     /// statuses を 1 ターン進める System（StatusSystem.tick を再利用）。S1b でターン開始フックに繋ぐ。
@@ -166,6 +171,7 @@ mod World {
         case Move(EntityRef, {x = Int32, y = Int32})  // 位置 write（P0a・mid-frame currency）
         case SetPhase(SimPhase)             // turn phase write（F2b・TurnPhase.State handler が dual-write で emit）
         case SetHp(EntityRef, Int32)        // hp write（F6a・dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
+        case SetAlerted(EntityRef, Bool)    // F7-spike: 敵検知フラグ write（Player は no-op）
     }
 
     /// System が出力する sim-event（F-clock の最小骨組み・F3b 導入）。
@@ -201,6 +207,12 @@ mod World {
     /// メニュー細分（19-case）を要する reader は対象外（UiState.modalMode が要る）。
     pub eff PhaseQuery {
         def phase(): SimPhase
+    }
+
+    /// F7-spike: 敵 alerted 読み込み effect。handler は Game.start（worldRef.enemyAlerted を返す）。
+    /// `decideAction`/`bumpedDarkRoomEnemy` の alerted 読みを scene→World に flip する read seam。
+    pub eff AlertedQuery {
+        def alerted(ref: EntityRef): Option[Bool]
     }
 
     /// statusEffects を引く（既定 Nil＝mid-game spawn は seed 不要）。Query handler から呼ぶ。
@@ -257,7 +269,28 @@ mod World {
                     case EntityRef.Player(id) => World.World({playerHp = Map.insert(id, hp, w#playerHp) | w})
                     case EntityRef.Enemy(id)  => World.World({enemyHp = Map.insert(id, hp, w#enemyHp) | w})
                 }
+            case Cmd.SetAlerted(ref, a) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(_)  => world   // F7-spike: 味方に alerted は無い＝no-op
+                    case EntityRef.Enemy(id)  => World.World({enemyAlerted = Map.insert(id, a, w#enemyAlerted) | w})
+                }
         }
+
+    /// F7-spike: 敵の alerted を World から読む（reader flip の供給元・hpOf 同型）。Player は常に None。
+    pub def alertedOf(ref: EntityRef, world: World): Option[Bool] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(_)  => None
+            case EntityRef.Enemy(id)  => Map.get(id, w#enemyAlerted)
+        }
+
+    /// F7-spike 検証器: 敵の World alerted（command 由来）と scene alerted の不一致を返す（`hpMismatches` 同型）。
+    pub def alertedMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
+        EnemyScene.getAll(scene) |> List.filterMap(d -> {
+            let wa = alertedOf(EntityRef.Enemy(d#id), world);
+            if (wa != Some(d#alerted)) Some((EntityRef.Enemy(d#id), wa, d#alerted)) else None
+        })
 
     /// F6b 検証器: scene の各ユニットについて **World hp（command 由来）と scene hp の不一致**を返す。
     /// gameLoop が refreshMirror（hp re-mirror）の **前**に呼ぶ＝全 hp 書込が `Cmd.SetHp` を dual-write して
