@@ -126,7 +126,7 @@ mod TestSimEvent {
     def testReducerLeveledUp(): Unit \ Assert =
         let w = World.applyEventToWorld(
             World.SimEvent.LeveledUp({entity = World.EntityRef.Player(0),
-                newLevel = 3, newExp = 20, newHp = 15, result = dummyResult()}), World.empty());
+                newLevel = 3, newExp = 20, newHp = 15, grownStats = LevelSystem.zeroStats(), result = dummyResult()}), World.empty());
         Assert.assertEq(
             expected = (Some((3, 20)), Some(15)),
             (World.progressOf(World.EntityRef.Player(0), w), World.hpOf(World.EntityRef.Player(0), w)))
@@ -194,7 +194,7 @@ mod TestSimEvent {
     @Test
     def testAdapterLeveledUpOrder(): Unit \ Assert =
         let ev = World.SimEvent.LeveledUp({entity = World.EntityRef.Player(0),
-            newLevel = 3, newExp = 20, newHp = 15, result = dummyResult()});
+            newLevel = 3, newExp = 20, newHp = 15, grownStats = LevelSystem.zeroStats(), result = dummyResult()});
         let expectedKeys =
             World.cmdKey(World.Cmd.SetHp(World.EntityRef.Player(0), 15)) ::
             World.cmdKey(World.Cmd.SetProgress(World.EntityRef.Player(0), 3, 20)) :: Nil;

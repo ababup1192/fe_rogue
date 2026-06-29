@@ -572,7 +572,7 @@ mod TestGoldenTrace {
             World.SimEvent.ViewFx(World.ViewFxKind.Died(EntityRef.Enemy(1))) ::
             World.SimEvent.Dying(EntityRef.Enemy(1)) ::
             World.SimEvent.LeveledUp({entity = EntityRef.Player(0),
-                newLevel = 2, newExp = 34, newHp = 10, result = dummyResult()}) :: Nil;
+                newLevel = 2, newExp = 34, newHp = 10, grownStats = LevelSystem.zeroStats(), result = dummyResult()}) :: Nil;
         // (a) [SimEvent]→cmdKey が CLEAN golden（敵 SetHp は 1 回＝legacy の startDeathAnimation 二重書きを畳む）に一致。
         let cmdKeys = events |> List.flatMap(World.eventToCmds) |> List.map(World.cmdKey);
         let cmdGolden =

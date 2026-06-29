@@ -156,7 +156,7 @@ mod CombatScene {
     /// killedIds が空でないとき呼び出し側は死亡処理（removeDeadAndCheckGameOver）を発火する。
     pub def applyEnemyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
+            {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
              Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
         let resolved = forM (
             d              <- EnemyScene.get(enemyId, scene);
@@ -482,7 +482,7 @@ mod CombatScene {
     /// `true`=ECS 経路（`CombatSystem.resolveAttack` で sim を解き events→Cmds で World 反映・`ViewReplay.replay`
     /// で演出）。**flip して再ビルドすると味方→敵攻撃の演出が ViewReplay 経由になる**（敵攻撃は当面 legacy のまま）。
     /// `true` 時の既知ギャップ（後続スライス）: level-up モーダル未発火（modal-gate 未配線）・thief/status view 未配線。
-    def useEcsCombat(): Bool = false
+    def useEcsCombat(): Bool = true
 
     /// 敵 id にダメージを与える。装備武器（`weapons.head`）と敵が揃っていなければ no-op。
     /// 実体は legacy `resolveAttack` または（トグル時）ECS 経路。前提（武器あり・敵あり）の解決だけを担い、
@@ -497,25 +497,58 @@ mod CombatScene {
             enemy  <- EnemyScene.get(enemyId, scene)
         ) yield
             if (useEcsCombat())
-                ecsResolvePlayerAttack(playerId, player, enemyId, enemy, scene)
+                ecsResolvePlayerAttack(playerId, player, weapon, enemyId, enemy, scene)
             else
                 resolveAttack(playerId, player, weapon, enemy, enemyId, scene);
         Option.getWithDefault(scene, resolved)
 
+    /// ECS 経路の **scene-authoritative 反映**: World に Cmd を流すだけでは反映しきれない scene 権威の状態を
+    /// SimEvent から scene へ適用する。対象:
+    ///   - `statusEffects`（scene 権威・refreshMirror が scene #statuses から re-mirror・tick も scene 側）:
+    ///     Afflicted=`StatusSystem.add` / Released=`clearImmobilized`。Cmd だけだと次フレームに上書きされ消える。
+    ///   - `pendingLevelUp`（scene-only・level-up モーダルの trigger）: LeveledUp で `Some(result)` を立てる。
+    ///     これで `onLungeDone` の `anyPendingLevelUp` → `enterLevelUpView`（signal 駆動・既存）が発火する＝modal-gate。
+    /// level/exp/hp 自体は eventToCmds（Cmd.Progress/SetHp→World）→ syncTreeFromWorld で scene へ derive される。純粋 scene 変換。
+    def applyEcsSceneEffects(events: List[World.SimEvent], scene: Scene[NodeTag]): Scene[NodeTag] =
+        List.foldLeft((sc, ev) -> match ev {
+            case World.SimEvent.Afflicted(World.EntityRef.Player(id), s) =>
+                PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc)
+            case World.SimEvent.Afflicted(World.EntityRef.Enemy(id), s) =>
+                EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc)
+            case World.SimEvent.Released(World.EntityRef.Player(id)) =>
+                PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, sc)
+            case World.SimEvent.Released(World.EntityRef.Enemy(id)) =>
+                EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, sc)
+            case World.SimEvent.LeveledUp(p) =>
+                // pendingLevelUp（panel trigger）＋ resource の成長後 stat 反映（legacy applyLevelUp の withStats 相当）。
+                // level/exp/hp は eventToCmds→World→derive 済み。resource は scene 権威（baseStats の source）ゆえここで。
+                match p#entity {
+                    case World.EntityRef.Player(id) =>
+                        PlayerScene.mapPlayer(id, d ->
+                            {pendingLevelUp = Some(p#result),
+                             resource = LevelSystem.withStats(p#grownStats, d#resource) | d}, sc)
+                    case World.EntityRef.Enemy(_)   => sc
+                }
+            case _ => sc
+        }, scene, events)
+
     /// ECS cutover 経路（味方攻撃）: `CombatSystem.resolveAttack` で 1 撃の sim を解いて [SimEvent] を得、
     /// `eventToCmds` で World へ反映（live mirror と同じ Cmd 経路＝golden で final-World 等価を証明済み）し、
-    /// `ViewReplay.replay` で演出を再生する。演出進行（lunge/counter/follow-up）は従来どおり signal が引く（C5）。
-    /// 武器は World combatView 由来ゆえ引数に取らない（forM が装備の存在だけ保証する）。
-    def ecsResolvePlayerAttack(playerId: Int32, player: PlayerScene.Data, enemyId: Int32,
+    /// `ViewReplay.replay` で演出を再生する。`applyEcsSceneEffects` で scene 権威（statuses/pendingLevelUp）も反映。
+    /// 最後に `consumeEquippedWeapon` で武器耐久を消費（legacy は命中/回避とも毎攻撃で消費＝sim 非依存の scene 副作用）。
+    /// 演出進行（lunge/counter/follow-up）は従来どおり signal が引く（C5）。
+    def ecsResolvePlayerAttack(playerId: Int32, player: PlayerScene.Data,
+                                weapon: UnitCatalog.WeaponResource, enemyId: Int32,
                                 enemy: EnemyScene.Data, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
-                               GameEngine.Game, World.RngDraw, World.Command, World.WorldQuery} =
+                               GameEngine.Game, GameLogger.GameLogger, World.RngDraw, World.Command, World.WorldQuery} =
         let world = World.WorldQuery.get();
         let (_, events) = CombatSystem.resolveAttack(world,
             {ref = World.EntityRef.Player(playerId), level = player#level},
             {ref = World.EntityRef.Enemy(enemyId), level = enemy#resource#level});
         List.forEach(c -> World.Command.emit(c), events |> List.flatMap(World.eventToCmds));
-        ViewReplay.replay(events, scene)
+        let withFx = applyEcsSceneEffects(events, ViewReplay.replay(events, scene));
+        consumeEquippedWeapon(playerId, weapon, withFx)
 
     /// 装備武器と敵が揃ったときの攻撃解決の流れ:
     ///   命中率を算出 → 乱数ロール → 命中なら `applyHit` / 回避なら `applyMiss`
@@ -716,14 +749,37 @@ mod CombatScene {
     def applyDamageToPlayer(enemyId: Int32, enemy: EnemyScene.Data, targetId: Int32,
                              scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
+            {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
              Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
-        // 前提（武器あり・対象あり）の解決だけを担う。実体は resolveEnemyAttack に委譲。
+        // 前提（武器あり・対象あり）の解決だけを担う。実体は legacy resolveEnemyAttack または（トグル時）ECS 経路。
         let resolved = forM (
             weapon <- enemy#weapon;
             player <- PlayerScene.get(targetId, scene)
-        ) yield resolveEnemyAttack(enemyId, enemy, weapon, player, targetId, scene);
+        ) yield
+            if (useEcsCombat())
+                ecsResolveEnemyAttack(enemyId, enemy, targetId, player, scene)
+            else
+                resolveEnemyAttack(enemyId, enemy, weapon, player, targetId, scene);
         Option.getWithDefault((scene, Nil), resolved)
+
+    /// ECS cutover 経路（敵攻撃）: `CombatSystem.resolveEnemyAttack` で 1 撃を解き events→Cmds で World 反映・
+    /// `ViewReplay.replay` で演出。味方死亡は **deferred**（`ViewFx(Died(Player))`）ゆえ killedIds をそこから導出して
+    /// 返す（呼び出し側の `removeDeadAndCheckGameOver` ＝ game-over 経路へ。execution model は不変）。
+    def ecsResolveEnemyAttack(enemyId: Int32, enemy: EnemyScene.Data, targetId: Int32,
+                               player: PlayerScene.Data, scene: Scene[NodeTag]):
+            (Scene[NodeTag], List[Int32]) \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
+                               GameEngine.Game, World.RngDraw, World.Command, World.WorldQuery} =
+        let world = World.WorldQuery.get();
+        let (_, events) = CombatSystem.resolveEnemyAttack(world,
+            {ref = World.EntityRef.Enemy(enemyId), level = enemy#resource#level},
+            {ref = World.EntityRef.Player(targetId), level = player#level});
+        List.forEach(c -> World.Command.emit(c), events |> List.flatMap(World.eventToCmds));
+        let next = applyEcsSceneEffects(events, ViewReplay.replay(events, scene));
+        let killed = List.filterMap(ev -> match ev {
+            case World.SimEvent.ViewFx(World.ViewFxKind.Died(World.EntityRef.Player(pid))) => Some(pid)
+            case _                                                                          => None
+        }, events);
+        (next, killed)
 
     /// 武器と対象が揃ったときの敵攻撃解決の流れ:
     ///   resolveStrike で命中率・ダメージを算出 → 乱数ロール → 命中/回避を適用

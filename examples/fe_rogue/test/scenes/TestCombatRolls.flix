@@ -140,8 +140,9 @@ mod TestCombatRolls {
                 TestUnitFixtures.withMockAudio(() ->
                 TestUnitFixtures.withMockGameLogger(() ->
                 TestUnitFixtures.withNoopTween(() ->
+                TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withRecordedRolls(rc, 0i64, () ->
-                    CombatScene.applyEnemyAttackHit(1, scene)))))))));
+                    CombatScene.applyEnemyAttackHit(1, scene))))))))));
             Assert.assertEq(
                 expected = (3, prngSeq(0i64, 3)),
                 (List.length(rolls), rolls))

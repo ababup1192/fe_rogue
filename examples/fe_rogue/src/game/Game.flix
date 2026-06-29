@@ -1043,25 +1043,10 @@ mod Game {
                            applyPhaseChange(currentPhase, previousPhase, catalogs, updated)
                                |> Scene.setPrevKeyState(Scene.getPrevKeyState(updated))
                        else updated;
-            // P3（位置 mirror 撤去・§A payoff）: 位置の権威を World に一本化。base を frame-head の `world`
-            // でなく **`Ref.get(worldRef)`（mid-frame の Cmd.Move 適用済み）** にし、`refreshMirror` で位置を
-            // command 由来のまま保持（gridPos 再構築なし＋prune）。hp/status/hidden は read-model 継続。
-            // F6b 検証器: refreshMirror が hp を re-mirror する**前**に、command 由来 World hp と scene hp の
-            // 不一致を検出する（全 hp 書込が Cmd.SetHp を dual-write していれば空）。spawn 直後等は transient。
-            // 無音を確認できたら refreshMirror を hp preserve 化＝hp を World 権威に切替える（要 run）。
-            match World.hpMismatches(Ref.get(worldRef), next) {
-                case Nil => ()
-                case ms  => println("[F6 HP DIFF] ${ms}")
-            };
-            // F7-spike 検証器: alerted の dual-write 網羅を確認（無音なら preserve 化＋reader flip が安全）。
-            match World.alertedMismatches(Ref.get(worldRef), next) {
-                case Nil => ()
-                case ms  => println("[ALERTED DIFF] ${ms}")
-            };
-            match World.dyingMismatches(Ref.get(worldRef), next) {  // 軸1 仕上げ: isDying dual-write 網羅確認
-                case Nil => ()
-                case ms  => println("[DYING DIFF] ${ms}")
-            };
+            // P3/Phase B（位置・hp・isDying・alerted・progress を World 権威化・scene 派生）: これらは refreshMirror が
+            // command 由来を preserve し、frame-end の `syncTreeFromWorld` が scene へ一方向 derive する（dual-write 解消）。
+            // legacy 無音を run 確認済みゆえ旧 DIFF 検出器（F6 HP / ALERTED / DYING / PROGRESS / COMBATVIEW）は撤去した
+            // （write 漏れは「hp が動かない / 敵が死なない / exp が増えない」可視バグとして現れる＝位置 P3 WRITE-MISS 撤去と同じ）。
             match World.bottleUsedMismatches(Ref.get(worldRef), next) {
                 case Nil => ()
                 case ms  => println("[BOTTLE DIFF] ${ms}")
@@ -1082,22 +1067,12 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[ATTACKTARGET DIFF] ${ms}")
             };
-            match World.progressMismatches(Ref.get(worldRef), next) {  // World 拡張: level/exp dual-write 網羅確認
-                case Nil => ()
-                case ms  => println("[PROGRESS DIFF] ${ms}")
-            };
             if (World.enemyTurnBusyOf(Ref.get(worldRef)) != TopBarScene.isBusy(next)  // F8-slice2
                 or World.phaseObservedEnemyOf(Ref.get(worldRef)) != TopBarScene.hasObservedEnemy(next))
                 println("[TOPBAR DIFF] busy w=${World.enemyTurnBusyOf(Ref.get(worldRef))} s=${TopBarScene.isBusy(next)}"
                     + " obs w=${World.phaseObservedEnemyOf(Ref.get(worldRef))} s=${TopBarScene.hasObservedEnemy(next)}")
             else ();
             let world1 = World.refreshMirror(next, Ref.get(worldRef));
-            // B1 安全網: refreshMirror 後の read-model（baseStats/weaponView/ringBonus）で combatViewOf を
-            // 組み、scene combatView と一致するかを実機全構成で確認する（食い違い＝合成式 drift）。
-            match World.combatViewMismatches(world1, next) {
-                case Nil => ()
-                case ms  => println("[COMBATVIEW DIFF] ${ms}")
-            };
             // F0（OOP→ECS 移行の足場）: **System パイプライン段**。ロジックを OOP callback でなく
             // `World -> World` の System で回す将来形の seam。現状の System は inert な `tickStatusEffects`
             // のみ（pos 不変ゆえ下の syncTreeFromWorld に無影響・status は次フレーム refreshMirror で上書き

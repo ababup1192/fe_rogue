@@ -31,8 +31,12 @@
 //     miss テキストポップアップを `ViewFx(Sound/Explosion/Popup)` としてログに載せた＝ログが「完全な view-script」。
 //     これらは World identity（reducer no-op・eventToCmds=Nil）ゆえ golden/final-World 等価は不変。ダメージ数字
 //     ポップアップ・HPバー・death 演出は既存 `Damaged`/`Dying`/`ViewFx(Died)` から ViewReplay が引ける。
+//   ✓ **ViewReplay dispatcher ＋ cutover 配線済み**（`CombatScene.useEcsCombat` トグル・branch 温存）。scene 権威の
+//     副作用は cutover wrapper（`applyEcsSceneEffects`）が反映: statuses（Afflicted/Released）・level-up（pendingLevelUp
+//     panel ＋ resource stat 成長 via `grownStats`）・武器耐久（`consumeEquippedWeapon`）。World 権威 field（hp/dying/
+//     progress/alerted/pos）は eventToCmds→World→`syncTreeFromWorld` derive（Phase B）。
 //   ☐ 残: thief view-fx（`ViewFx(Thief)`＝isRogue/職が World read-model に無く未載・P2c）・敵 heal effectRule
-//     （HealAt/FullHealAt→`Healed`・P2b）・**ViewReplay dispatcher（effectful・要 run 検証）**・live combat の cutover。
+//     （HealAt/FullHealAt→`Healed`・P2b）・cutover の ECS 既定化（legacy 挙動 pin の unit テスト書き換え＋分岐撤去）。
 mod CombatSystem {
 
     /// 9 stat 成長ロール（legacy CombatScene.rollGrowth と同義）。draw 順の厳密一致は spike では要求しない
@@ -155,7 +159,8 @@ mod CombatSystem {
                     let newHp  = curHp + (after#hp - g#base#hp);
                     let result = LevelSystem.buildResult(g#name, attacker#level, g#base, after);
                     World.SimEvent.LeveledUp({entity = attacker#ref, newLevel = attacker#level + 1,
-                                              newExp = outcome#exp, newHp = newHp, result = result}) :: Nil
+                                              newExp = outcome#exp, newHp = newHp,
+                                              grownStats = after, result = result}) :: Nil
                 case None =>
                     // growth 未登録（enemy 等は level-up しない）＝防御的に exp 据置イベントに落とす。
                     World.SimEvent.ExpGained({entity = attacker#ref, newLevel = attacker#level, newExp = outcome#exp}) :: Nil
@@ -197,8 +202,12 @@ mod CombatSystem {
                         // 撃破分岐の hard-0 clamp（legacy startDeathAnimation）を維持＝newHp=0 をベタ書き。
                         let coreEvents =
                             if (fin#killed)
+                                // 撃破: hp=0（World）+ Dying（World 状態 SetDying）+ ViewFx(Died)（死亡演出＝ViewReplay が
+                                // startDeathAnimation を引く）。ViewFx(Died) が無いと World は dying でも death_blink/撤去が
+                                // 発火せず「HP 0 でも残存」になる（legacy startDeathAnimation は両者を兼ねていた）。
                                 World.SimEvent.Damaged(defender#ref, {newHp = 0, dmg = fin#dmg})
-                                    :: World.SimEvent.Dying(defender#ref) :: Nil
+                                    :: World.SimEvent.Dying(defender#ref)
+                                    :: World.SimEvent.ViewFx(World.ViewFxKind.Died(defender#ref)) :: Nil
                             else
                                 World.SimEvent.Damaged(defender#ref, {newHp = fin#newHp, dmg = fin#dmg})
                                     :: World.SimEvent.Alerted(defender#ref, true)

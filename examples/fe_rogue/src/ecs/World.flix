@@ -425,7 +425,8 @@ mod World {
         case Lifesteal(EntityRef, {newHp = Int32, amt = Int32})  // 吸収後の絶対 hp（攻撃側）
         case ExpGained({entity = EntityRef, newLevel = Int32, newExp = Int32})  // 撃破のみ（レベルアップ無し）
         case LeveledUp({entity = EntityRef, newLevel = Int32, newExp = Int32,
-                        newHp = Int32, result = LevelSystem.Result})  // result は view パネル専用
+                        newHp = Int32, grownStats = LevelSystem.Stats, result = LevelSystem.Result})
+                                            // grownStats=成長後 9 stat（resource 反映用）・result は view パネル専用
         case Afflicted(EntityRef, StatusSystem.Status)  // 状態異常付与（StatusSystem.add 意味論＝Cmd.Add と同一）
         case Dying(EntityRef)     // 撃破された敵を死亡演出中(enemyDying)へ＝world 状態変化（Cmd.SetDying）。view 演出は ViewFx(Died)
         case Released(EntityRef)  // かなしばり(Immobilized)解除＝statusEffects から除去（Cmd.ClearImmobilized）
@@ -1116,9 +1117,34 @@ mod World {
     pub def syncTreeFromWorld(world: World, scene: Scene[NodeTag]): Scene[NodeTag] =
         // A': 単一 `pos` store を team タグで faction 分けし、original id で mapPlayer/mapEnemy。
         let World.World(w) = world;
-        Map.foldLeftWithKey((sc, uid, pos) ->
+        // 位置（S5b・既存）。store に居る entity だけ derive＝spawn-transient（store 未登録）は scene を保持。
+        let withPos = Map.foldLeftWithKey((sc, uid, pos) ->
             match uidToRef(uid) {
                 case EntityRef.Player(pid) => PlayerScene.mapPlayer(pid, d -> {gridPos = pos | d}, sc)
                 case EntityRef.Enemy(eid)  => EnemyScene.mapEnemy(eid, d -> {gridPos = pos | d}, sc)
-            }, scene, w#pos)
+            }, scene, w#pos);
+        // Phase B（hp/dying/progress も World 権威・scene 派生化）: refreshMirror が command 由来をすでに preserve
+        // しているこれらを scene へ一方向 derive する。legacy（dual-write 済み）では idempotent＝scene==World で
+        // 挙動不変。ECS 経路（World のみ書く cutover）では scene の stale を解消する。write 漏れは「hp が動かない /
+        // 敵が死なない / exp が増えない」可視バグとして現れる（位置と同じ＝独立 DIFF 検出器に依存しない）。
+        let withHp = Map.foldLeftWithKey((sc, uid, hp) ->
+            match uidToRef(uid) {
+                case EntityRef.Player(pid) => PlayerScene.mapPlayer(pid, d -> {hp = hp | d}, sc)
+                case EntityRef.Enemy(eid)  => EnemyScene.mapEnemy(eid, d -> {hp = hp | d}, sc)
+            }, withPos, w#hp);
+        // isDying は enemyDying(Set) の membership で全敵に derive（true/false 両方・敵のみ）。
+        let withDying = List.foldLeft((sc, d) ->
+            EnemyScene.mapEnemy(d#id, e -> {isDying = Set.memberOf(enemyUid(d#id), w#enemyDying) | e}, sc),
+            withHp, EnemyScene.getAll(scene));
+        // alerted も World(enemyAlerted) 由来に derive（敵のみ）。
+        let withAlerted = Map.foldLeftWithKey((sc, uid, b) ->
+            match uidToRef(uid) {
+                case EntityRef.Enemy(eid) => EnemyScene.mapEnemy(eid, e -> {alerted = b | e}, sc)
+                case EntityRef.Player(_)  => sc
+            }, withDying, w#enemyAlerted);
+        // progress（level/exp）は player のみ。store key は player id。
+        let withLevel = Map.foldLeftWithKey((sc, pid, lvl) ->
+            PlayerScene.mapPlayer(pid, d -> {level = lvl | d}, sc), withAlerted, w#playerLevel);
+        Map.foldLeftWithKey((sc, pid, xp) ->
+            PlayerScene.mapPlayer(pid, d -> {exp = xp | d}, sc), withLevel, w#playerExp)
 }

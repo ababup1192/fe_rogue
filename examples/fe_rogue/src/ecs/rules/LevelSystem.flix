@@ -103,6 +103,11 @@ mod LevelSystem {
          luck         = res#luck,
          constitution = res#constitution}
 
+    /// 全 0 の `Stats`（テスト/プレースホルダ用。`SimEvent.LeveledUp` の `grownStats` ダミー等）。
+    pub def zeroStats(): Stats =
+        {hp = 0, attack = 0, defense = 0, magicAttack = 0, magicDefense = 0,
+         speed = 0, skill = 0, luck = 0, constitution = 0}
+
     /// 成長後の 9 ステータスを UnitResource に書き戻す（他フィールドは保つ）。
     /// `statsOf` の逆演算として設計されており、`statsOf` → `applyGrowth` → `withStats` で
     /// UnitResource のラウンドトリップが成立する。
