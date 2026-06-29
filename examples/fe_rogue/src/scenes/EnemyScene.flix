@@ -223,6 +223,8 @@ mod EnemyScene {
         World.Command.emit(World.Cmd.SetBottleUsed(World.refOf(false, sp#id), false));
         // F7-slice4: 初期 followUpUsed=false も seed。
         World.Command.emit(World.Cmd.SetFollowUpUsed(World.refOf(false, sp#id), false));
+        // D3: 初期 weapon も World へ seed（単数→0/1 List 射影・[WEAPONS DIFF] を塞ぐ）。
+        World.Command.emit(World.Cmd.SetWeapons(World.refOf(false, sp#id), sp#weapon :: Nil));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;

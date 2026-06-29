@@ -42,6 +42,11 @@ pub enum World {
                  // S2: hp の read-model mirror（権威は scene のまま。query/セーブ/決定論テスト用）。
                  // A'（store 統合）: hp は単一 store（player uid=id / enemy uid=id+base）。faction 別 split を撤廃。
                  hp = Map[EntityId, Int32],
+                 // D3: weapons の command-derive store（hp 同型・preserve+prune）。player は weapons(List)
+                 // をそのまま、enemy は単数 weapon(Option) を 0/1 要素 List に射影。reader flip はしない
+                 // （combatView/unitView は scene #weapons を読む）＝挙動不変。全 weapon 書込が `Cmd.SetWeapons`
+                 // を dual-write し `[WEAPONS DIFF]` で完備性を検証可能にする。
+                 weapons = Map[EntityId, List[UnitCatalog.WeaponResource]],
                  // S3: gridPos の read-model mirror。型は Vec2i の structural record（engine_core.Vec2i の演算 API 対象）。
                  // 権威は scene のまま。S4 で Board を fromWorld 化する時の World 側位置ソース候補（mirror）。
                  // A': pos は単一 store（unified-id）。両 faction の split を撤廃。
@@ -109,7 +114,7 @@ mod World {
         World.World({tick = 0, turnPhase = SimPhase.PlayerTurn,
                      playerIds = Set.empty(), enemyIds = Set.empty(),
                      statusEffects = Map.empty(),
-                     hp = Map.empty(), team = Map.empty(),
+                     hp = Map.empty(), weapons = Map.empty(), team = Map.empty(),
                      pos = Map.empty(),
                      playerHidden = Set.empty(), enemyAlerted = Map.empty(),
                      enemyDying = Set.empty(),
@@ -166,6 +171,10 @@ mod World {
                                       Query.indexBy(d -> enemyUid(d#id), d -> d#statuses, enemies)),
             hp = Map.union(Query.indexBy(d -> d#id, d -> d#hp, players),
                            Query.indexBy(d -> d#id + enemyUidBase(), d -> d#hp, enemies)),
+            // D3: weapons は frame-1 初期 world のみ scene から mirror（以後は command 由来を保持）。
+            // player は weapons(List) をそのまま、enemy は単数 weapon(Option) を Option.toList で 0/1 List に射影。
+            weapons = Map.union(Query.indexBy(d -> d#id, d -> d#weapons, players),
+                                Query.indexBy(d -> enemyUid(d#id), d -> Option.toList(d#weapon), enemies)),
             pos = Map.union(Query.indexBy(d -> d#id, d -> d#gridPos, players),
                             Query.indexBy(d -> enemyUid(d#id), d -> d#gridPos, enemies)),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
@@ -233,6 +242,9 @@ mod World {
             // F6b: hp も command 由来を保持＋prune（位置と同様）。全 hp 書込が `Cmd.SetHp` を dual-write
             // 済み（`[F6 HP DIFF]` 無音で確認）ゆえ World hp == scene hp で挙動不変。これで **hp は World 権威**。
             hp = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#hp),
+            // D3: weapons も command 由来を保持＋prune（hp と同型・再 mirror しない）。全 weapon 書込が
+            // `Cmd.SetWeapons` を dual-write 済みなら World weapons == scene weapons（[WEAPONS DIFF] 無音）。
+            weapons = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#weapons),
             // 位置は command 由来を保持＋scene に居ない id を prune（gridPos からの再構築はしない）。
             pos = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#pos),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
@@ -370,6 +382,7 @@ mod World {
         case Move(EntityRef, {x = Int32, y = Int32})  // 位置 write（P0a・mid-frame currency）
         case SetPhase(SimPhase)             // turn phase write（F2b・TurnPhase.State handler が dual-write で emit）
         case SetHp(EntityRef, Int32)        // hp write（F6a・dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
+        case SetWeapons(EntityRef, List[UnitCatalog.WeaponResource])  // D3: weapons write（dual-write seam。player は List・enemy は 0/1 List 射影）
         case SetAlerted(EntityRef, Bool)    // F7-spike: 敵検知フラグ write（Player は no-op）
         case SetDying(EntityRef)            // 軸1 仕上げ: 敵を死亡演出中に（Player は no-op・clear は removal+prune）
         case SetBottleUsed(EntityRef, Bool) // F7-slice2: 敵瓶使用フラグ write（Player は no-op）
@@ -545,6 +558,10 @@ mod World {
                 // A': 単一 store＋toUid。faction 別 match arm 消失。
                 let World.World(w) = world;
                 World.World({hp = Map.insert(toUid(ref), hpVal, w#hp) | w})
+            case Cmd.SetWeapons(ref, ws) =>
+                // D3: 単一 store＋toUid（SetHp と同型）。
+                let World.World(w) = world;
+                World.World({weapons = Map.insert(toUid(ref), ws, w#weapons) | w})
             case Cmd.SetAlerted(ref, a) =>
                 let World.World(w) = world;
                 match ref {
@@ -694,6 +711,7 @@ mod World {
     pub def cmdKey(c: Cmd): (String, Int32, Int32, Int32) =
         match c {
             case Cmd.SetHp(ref, hp)           => ("SetHp", toUid(ref), hp, 0)
+            case Cmd.SetWeapons(ref, ws)      => ("SetWeapons", toUid(ref), List.length(ws), 0)
             case Cmd.Move(ref, p)             => ("Move", toUid(ref), p#x, p#y)
             case Cmd.SetProgress(ref, lv, xp) => ("Progress", toUid(ref), lv, xp)
             case Cmd.SetAttackTarget(ref, t)  => ("AtkTgt", toUid(ref), t, 0)
@@ -974,6 +992,28 @@ mod World {
     /// A': 単一 store＋toUid（faction 別 match arm 消失）。
     pub def hpOf(ref: EntityRef, world: World): Option[Int32] =
         let World.World(w) = world; Map.get(toUid(ref), w#hp)
+
+    /// D3: weapons を World から読む（read-model アクセサ・hpOf 同型）。未登録は None。
+    /// 内側 List は player の weapons / enemy の 0/1 List 射影。reader flip はまだしない（供給元のみ）。
+    pub def weaponsOf(ref: EntityRef, world: World): Option[List[UnitCatalog.WeaponResource]] =
+        let World.World(w) = world; Map.get(toUid(ref), w#weapons)
+
+    /// D3 検証器（hpMismatches 同型）: World weapons（command 由来）と scene #weapons の不一致を返す。
+    /// WeaponResource は Eq 非自動ゆえ **長さ＋先頭武器の (name, durability)** へ射影して比較する
+    /// （[WEAPONS DIFF]）。enemy は単数 #weapon を Option.toList で 0/1 List 化して突合。
+    /// gameLoop が refreshMirror（weapons preserve+prune）の **前**に呼ぶ＝全 weapon 書込が
+    /// `Cmd.SetWeapons` を dual-write していれば空。書き漏れがあると `(ref, worldLen, sceneLen)` が出る。
+    pub def weaponsMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Int32, Int32)] =
+        let proj = ws -> (List.length(ws), List.head(ws) |> Option.map(w -> (w#name, w#durability)));
+        let mism = (ref, sceneWs) -> {
+            let wWs = weaponsOf(ref, world) |> Option.map(proj);
+            if (wWs != Some(proj(sceneWs)))
+                Some((ref, Option.getWithDefault(-1, Option.map(p -> fst(p), wWs)), List.length(sceneWs)))
+            else None
+        };
+        let ps = PlayerScene.getAll(scene) |> List.filterMap(d -> mism(EntityRef.Player(d#id), d#weapons));
+        let es = EnemyScene.getAll(scene)  |> List.filterMap(d -> mism(EntityRef.Enemy(d#id), Option.toList(d#weapon)));
+        List.append(ps, es)
 
     /// A'（faction タグ）: unified-id の faction を **enum タグ component** から読む。
     /// 「player/enemy を id で判断」せず、この明示タグで faction を得る（Bevy Team component 相当）。

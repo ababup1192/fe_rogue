@@ -111,12 +111,12 @@ mod TestTradeMenuScene {
             TradeScenario \ {GameLogger.GameLogger, SelectedPlayer.State} =
         let pid = memberId(paneIndex, s);
         let entry = entryForInventoryItem(itemName, pid, s#scene);
-        {scene = TradeMenuScene.confirmAt(paneIndex, entry, s#scene) | s}
+        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuScene.confirmAt(paneIndex, entry, s#scene)) | s}
 
     /// ペイン `paneIndex` の「空スロット (空きスロット)」に Z を押す。
     pub def pressZOnPaneEmpty(paneIndex: Int32, s: TradeScenario):
             TradeScenario \ {GameLogger.GameLogger, SelectedPlayer.State} =
-        {scene = TradeMenuScene.confirmAt(paneIndex, TradeMenuScene.emptySlotEntry(), s#scene) | s}
+        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuScene.confirmAt(paneIndex, TradeMenuScene.emptySlotEntry(), s#scene)) | s}
 
     /// X を押す (キャンセル / pick 解除)。
     pub def pressXAt(s: TradeScenario): TradeScenario \ TurnPhase.State =
@@ -146,7 +146,7 @@ mod TestTradeMenuScene {
     /// 受け取り側の entry は bulk 時は使われないので空スロット entry を渡す。
     pub def pressZBulkOnPane(receiverPane: Int32, s: TradeScenario):
             TradeScenario \ {GameLogger.GameLogger, SelectedPlayer.State} =
-        {scene = TradeMenuScene.confirmAt(receiverPane, TradeMenuScene.emptySlotEntry(), s#scene) | s}
+        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuScene.confirmAt(receiverPane, TradeMenuScene.emptySlotEntry(), s#scene)) | s}
 
     // ────────────────────────────────────────────────────────
     // (D) 内部ヘルパー

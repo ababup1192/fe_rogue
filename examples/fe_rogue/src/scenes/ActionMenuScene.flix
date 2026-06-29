@@ -588,7 +588,7 @@ mod ActionMenuScene {
     /// 何らかの理由で item が無い場合は no-op（防御的）。
     def applyPickup(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger,
-                              SelectedPlayer.State, PlayerData.PartyQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery, World.Command} =
         match pickupTarget(scene) {
             case None       => scene
             case Some(info) =>
@@ -623,7 +623,7 @@ mod ActionMenuScene {
     /// 中身は配置時に抽選済みなので開錠側は Math.Random も catalogs も要さない（決定論的）。
     def applyOpenChest(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger,
-                              SelectedPlayer.State, PlayerData.PartyQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery, World.Command} =
         match openTarget(scene) {
             case None                      => scene
             case Some((info, player, chest)) =>

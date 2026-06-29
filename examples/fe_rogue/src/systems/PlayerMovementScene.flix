@@ -176,7 +176,7 @@ mod PlayerMovementScene {
     /// pub: 着地時の自動取得/非取得の判定を `TestActionMenuScene` から直接観測するため。
     pub def autoPickupOrLog(data: PlayerScene.Data, target: {x = Int32, y = Int32},
                              scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger, World.Command} =
         match ItemScene.findAt(target, scene) {
             case None            => scene
             case Some((_, kind)) =>

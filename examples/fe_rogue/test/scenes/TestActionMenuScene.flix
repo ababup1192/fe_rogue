@@ -409,7 +409,8 @@ mod TestActionMenuScene {
         let data  = playerDataOf(0, scene);
         let after = TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withSelectedPlayer(0, () ->
-                PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, scene)));
+                TestUnitFixtures.dischargeWorldCommand(() ->
+                    PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, scene))));
         let floorEmpty = Option.isEmpty(ItemScene.findAt({x = 1, y = 1}, after));
         Assert.assertEq(
             expected = (true, 2),
@@ -421,14 +422,16 @@ mod TestActionMenuScene {
     @Test
     def testAutoPickupSkipsWhenWouldOverload(): Unit \ Assert =
         let w    = TestUnitFixtures.testWeapon();
-        let heavy = loadActionMenuSceneWithFloorWeapon()
-            |> PlayerScene.addWeapon(0, w)
-            |> PlayerScene.addWeapon(0, w)
-            |> PlayerScene.addWeapon(0, w);
+        let heavy = TestUnitFixtures.dischargeWorldCommand(() ->
+            loadActionMenuSceneWithFloorWeapon()
+                |> PlayerScene.addWeapon(0, w)
+                |> PlayerScene.addWeapon(0, w)
+                |> PlayerScene.addWeapon(0, w));
         let data  = playerDataOf(0, heavy);
         let after = TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withSelectedPlayer(0, () ->
-                PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, heavy)));
+                TestUnitFixtures.dischargeWorldCommand(() ->
+                    PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, heavy))));
         let floorStillThere = Option.nonEmpty(ItemScene.findAt({x = 1, y = 1}, after));
         Assert.assertEq(
             expected = (true, 4),

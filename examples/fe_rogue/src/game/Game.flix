@@ -1068,6 +1068,10 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[ATTACKTARGET DIFF] ${ms}")
             };
+            match World.weaponsMismatches(Ref.get(worldRef), next) {  // D3: command 由来 World weapons vs scene #weapons
+                case Nil => ()
+                case ms  => println("[WEAPONS DIFF] ${ms}")
+            };
             if (World.enemyTurnBusyOf(Ref.get(worldRef)) != TopBarScene.isBusy(next)  // F8-slice2
                 or World.phaseObservedEnemyOf(Ref.get(worldRef)) != TopBarScene.hasObservedEnemy(next))
                 println("[TOPBAR DIFF] busy w=${World.enemyTurnBusyOf(Ref.get(worldRef))} s=${TopBarScene.isBusy(next)}"

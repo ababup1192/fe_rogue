@@ -340,12 +340,12 @@ mod TestPlayerScene {
             |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = bow :: Nil, staves = Nil, consumables = Nil, rings = Nil});
-        let after = PlayerScene.swapItem({
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Weapon(0),
             partnerId   = 1,
             partnerKind = Some(PlayerData.ItemKind.Weapon(0))
-        }, scene);
+        }, scene));
         Assert.assertEq(
             expected = ("魔導書" :: "てつの弓" :: Nil, "てつのやり" :: Nil),
             (PlayerScene.getWeapons(0, after) |> List.map(w -> w#name),
@@ -367,12 +367,12 @@ mod TestPlayerScene {
             |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = swap :: Nil, consumables = Nil, rings = Nil});
-        let after = PlayerScene.swapItem({
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Staff(0),
             partnerId   = 1,
             partnerKind = Some(PlayerData.ItemKind.Staff(0))
-        }, scene);
+        }, scene));
         Assert.assertEq(
             expected = ("いれかえのつえ" :: Nil, "かいふくのつえ" :: Nil),
             (PlayerScene.getStaves(0, after) |> List.map(s -> s#name),
@@ -396,12 +396,12 @@ mod TestPlayerScene {
             |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = live :: Nil, consumables = Nil, rings = Nil});
-        let after = PlayerScene.swapItem({
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Weapon(0),
             partnerId   = 1,
             partnerKind = Some(PlayerData.ItemKind.Staff(0))
-        }, scene);
+        }, scene));
         Assert.assertEq(
             expected = ((Nil, "かいふくのつえ" :: Nil), ("てつのやり" :: Nil, Nil)),
             ((PlayerScene.getWeapons(0, after) |> List.map(w -> w#name),
@@ -426,12 +426,12 @@ mod TestPlayerScene {
             |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = Nil, consumables = Nil, rings = Nil});
-        let after = PlayerScene.swapItem({
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Weapon(0),
             partnerId   = 1,
             partnerKind = None
-        }, scene);
+        }, scene));
         Assert.assertEq(
             expected = (Nil, "てつのやり" :: Nil),
             (PlayerScene.getWeapons(0, after) |> List.map(w -> w#name),
@@ -456,12 +456,12 @@ mod TestPlayerScene {
             |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = spear :: Nil, staves = Nil, consumables = Nil, rings = Nil});
-        let after = PlayerScene.swapItem({
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.swapItem({
             selfId      = 1,
             selfKind    = PlayerData.ItemKind.Weapon(0),
             partnerId   = 0,
             partnerKind = None
-        }, scene);
+        }, scene));
         Assert.assertEq(
             expected = ("てつのやり" :: Nil, Nil),
             (PlayerScene.getWeapons(0, after) |> List.map(w -> w#name),
@@ -489,12 +489,12 @@ mod TestPlayerScene {
             |> MapScene.addWorldNode
             |> addOnePlayerT(mkSpawn(0, potion :: Nil))
             |> addOnePlayerT(mkSpawn(1, Nil));
-        let after = PlayerScene.swapItem({
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Consumable(0),
             partnerId   = 1,
             partnerKind = None
-        }, scene);
+        }, scene));
         Assert.assertEq(
             expected = (Nil, "きずぐすり" :: Nil),
             (PlayerScene.getConsumables(0, after) |> List.map(c -> c#name),
@@ -515,12 +515,12 @@ mod TestPlayerScene {
             |> MapScene.addWorldNode
             |> addOnePlayerT(mkSpawn(0, ring :: Nil))
             |> addOnePlayerT(mkSpawn(1, Nil));
-        let after = PlayerScene.swapItem({
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Ring(0),
             partnerId   = 1,
             partnerKind = None
-        }, scene);
+        }, scene));
         Assert.assertEq(
             expected = (Nil, ring#name :: Nil),
             (PlayerScene.getRings(0, after) |> List.map(r -> r#name),

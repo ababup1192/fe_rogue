@@ -323,6 +323,8 @@ mod PlayerScene {
         World.Command.emit(World.Cmd.SetWaited(World.refOf(true, sp#id), false));
         // World 拡張: 初期 (level, exp=0) を seed（spawn フレームの [PROGRESS DIFF] を塞ぐ）。
         World.Command.emit(World.Cmd.SetProgress(World.refOf(true, sp#id), sp#resource#level, 0));
+        // D3: 初期 weapons も World へ seed（spawn フレームの [WEAPONS DIFF] を塞ぐ＝preserve の前提）。
+        World.Command.emit(World.Cmd.SetWeapons(World.refOf(true, sp#id), sp#weapons));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
@@ -556,7 +558,12 @@ mod PlayerScene {
                     |> removeLastInventoryItem(pid, kind)
             case MoveDraft.DraftAction.Equipped(pid, idx)               =>
                 // 装備 = moveToHead(idx) の逆。先頭を idx 位置へ戻す。
-                mapPlayer(pid, d -> {weapons = moveHeadTo(idx, d#weapons) | d}, scene)
+                // D3: scene #weapons を巻き戻したら World にも SetWeapons を dual-write する。
+                // これを欠くと mid-move equip(idx>0)+cancel で World が装備後の並びを保持し
+                // scene が元並びへ戻り [WEAPONS DIFF] が実機で発火する（equipWeapon と対称）。
+                let reverted = mapPlayer(pid, d -> {weapons = moveHeadTo(idx, d#weapons) | d}, scene);
+                emitWeaponsFromScene(pid, reverted);
+                reverted
             case MoveDraft.DraftAction.Dropped(pid, kind, item)        =>
                 // 捨てる = removeAt(idx) の逆。元 idx に挿入し直す。
                 insertInventoryItem(pid, kind, item, scene)
@@ -584,7 +591,7 @@ mod PlayerScene {
     pub def enterAttackPhase(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery, EnemyData.RosterQuery} =
+                              PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command} =
         let withPhase = PhaseTransitions.enterPlayerAttack(scene);
         equipReachingWeaponForCursor(withPhase)
 
@@ -593,7 +600,7 @@ mod PlayerScene {
     /// 意図的な EnemyScene 直接 read: `RosterQuery` handler はフレーム冒頭の snapshot
     /// (sceneRef) を読むため、mid-frame で更新済みの `scene` を見るにはモジュール直読みが必要。
     def equipReachingWeaponForCursor(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ SelectedPlayer.State =
+            Scene[NodeTag] \ {SelectedPlayer.State, World.Command} =
         match SelectedPlayer.State.get()#id {
             case None     => scene
             case Some(id) =>
@@ -656,6 +663,12 @@ mod PlayerScene {
     pub def setHp(id: Int32, newHp: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(id), newHp));
         mapPlayer(id, d -> {hp = newHp | d}, scene)
+
+    /// D3: weapons 書込 funnel。`scene`（mutation 適用後）から該当 player の weapons を読み戻して
+    /// `Cmd.SetWeapons` を World へ dual-write する（`emitHpAt` と同じ「適用後 scene を読んで emit」流儀）。
+    /// 装備並べ替え/捨てる/拾う/並び替え/こうかん など全 weapons mutation funnel の末尾で呼ぶ。
+    def emitWeaponsFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Player(playerId), getWeapons(playerId, scene)))
 
     /// 指定プレイヤーの上下左右 1 マスに居る他味方を返す（自分は含まない）。
     /// 「こうかん」コマンドや将来の隣接判定 (例: 助太刀) の出現条件として使う。
@@ -1056,6 +1069,7 @@ mod PlayerScene {
         List.foldLeft((sc, c) -> {
             World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(c#id), c#hp));  // F6a: carry hp を World へ
             World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(c#id), c#level, c#exp));  // World 拡張: carry 進行度
+            World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Player(c#id), c#weapons));  // D3: carry weapons を World へ
             sc
                 |> mapPlayer(c#id, d ->
                     {hp = c#hp, weapons = c#weapons, staves = c#staves,
@@ -1304,15 +1318,18 @@ mod PlayerScene {
     /// 武器切り替えの単一 commit 点なので、ここで左上の武器系統アイコンも貼り直す
     /// （WeaponSelect / ItemMenu / BattlePanel いずれの経路でも追従する）。
     pub def equipWeapon(playerId: Int32, idx: Int32,
-                          scene: Scene[NodeTag]): Scene[NodeTag] =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let moved = mapPlayer(playerId, d -> {weapons = moveToHead(idx, d#weapons) | d}, scene);
+        emitWeaponsFromScene(playerId, moved);  // D3: 装備並べ替え後の weapons を World へ
         let equipped = PlayerData.equippedWeapon(getWeapons(playerId, moved));
         WeaponIconScene.refresh(playerPath(playerId), equipped, moved)
 
     /// 指定 idx の武器をインベントリから削除（捨てる）。範囲外なら no-op。
     pub def dropWeapon(playerId: Int32, idx: Int32,
-                         scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId, d -> {weapons = removeAt(idx, d#weapons) | d}, scene)
+                         scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let dropped = mapPlayer(playerId, d -> {weapons = removeAt(idx, d#weapons) | d}, scene);
+        emitWeaponsFromScene(playerId, dropped);  // D3: 捨てた後の weapons を World へ
+        dropped
 
     /// 指定 idx の杖をインベントリから削除（捨てる）。範囲外なら no-op。
     pub def dropStaff(playerId: Int32, idx: Int32,
@@ -1340,7 +1357,7 @@ mod PlayerScene {
     pub def swapItem(args: {selfId = Int32, selfKind = PlayerData.ItemKind,
                               partnerId = Int32,
                               partnerKind = Option[PlayerData.ItemKind]},
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let selfId      = args#selfId;
         let selfKind    = args#selfKind;
         let partnerId   = args#partnerId;
@@ -1364,7 +1381,7 @@ mod PlayerScene {
     /// ときは各リスト内での相対順だけが変わる。weapons[0] が装備なので武器の並び替えは
     /// 装備変更も兼ねる。
     pub def reorderItem(playerId: Int32, kindA: PlayerData.ItemKind, kindB: PlayerData.ItemKind,
-                         scene: Scene[NodeTag]): Scene[NodeTag] =
+                         scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let weapons     = getWeapons(playerId, scene);
         let staves      = getStaves(playerId, scene);
         let consumables = getConsumables(playerId, scene);
@@ -1397,9 +1414,11 @@ mod PlayerScene {
             case ItemData.GroundItemKind.RingItem(r) => Some(r)
             case _                                    => None
         }, swapped);
-        mapPlayer(playerId, d ->
+        let reordered = mapPlayer(playerId, d ->
             {weapons = newWeapons, staves = newStaves, consumables = newConsumables,
-             rings = newRings | d}, scene)
+             rings = newRings | d}, scene);
+        emitWeaponsFromScene(playerId, reordered);  // D3: 並び替え後の weapons を World へ
+        reordered
 
     /// PlayerData.ItemKind を、表示順 (weapons ++ staves ++ consumables ++ rings) 上の通し index に変換する。
     def displaySeqIndex(kind: PlayerData.ItemKind, nw: Int32, ns: Int32, nc: Int32): Int32 =
@@ -1443,7 +1462,7 @@ mod PlayerScene {
     /// 指定 player の `kind` のアイテムをインベントリから取り除く。
     /// `dropWeapon` / `dropStaff` のディスパッチ統合版。
     def removeInventoryItem(playerId: Int32, kind: PlayerData.ItemKind,
-                              scene: Scene[NodeTag]): Scene[NodeTag] =
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         match kind {
             case PlayerData.ItemKind.Weapon(idx)     => dropWeapon(playerId, idx, scene)
             case PlayerData.ItemKind.Staff(idx)      => dropStaff(playerId, idx, scene)
@@ -1453,7 +1472,7 @@ mod PlayerScene {
 
     /// `partnerKind = None` (= 空スロット相手) の場合は no-op、Some なら removeInventoryItem。
     def removeOptInventoryItem(playerId: Int32, kindOpt: Option[PlayerData.ItemKind],
-                                 scene: Scene[NodeTag]): Scene[NodeTag] =
+                                 scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         kindOpt
             |> Option.map(k -> removeInventoryItem(playerId, k, scene))
             |> Option.getWithDefault(scene)
@@ -1462,9 +1481,11 @@ mod PlayerScene {
     /// 「ひろう」「こうかん」「キャンセル undo」など複数の追加経路がここに集約されるため、
     /// 追加ルール（末尾 = 装備中の後ろ）の変更は 1 箇所で完結する。
     pub def addWeapon(playerId: Int32, weapon: UnitCatalog.WeaponResource,
-                       scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId,
-            d -> {weapons = List.append(d#weapons, weapon :: Nil) | d}, scene)
+                       scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let added = mapPlayer(playerId,
+            d -> {weapons = List.append(d#weapons, weapon :: Nil) | d}, scene);
+        emitWeaponsFromScene(playerId, added);  // D3: 拾う/こうかん/undo の追加後 weapons を World へ
+        added
 
     /// 杖インベントリの末尾に 1 個追加する。追加ルールは `addWeapon` と同じ（末尾追加）。
     pub def addStaff(playerId: Int32, staff: Staff.StaffResource,
@@ -1541,13 +1562,13 @@ mod PlayerScene {
     /// 指定 player の `kind` の持ち物を 1 つ取り除き、代わりに `ring` を持ち物末尾に加える。
     /// ringman の特殊行動の scene 変換部（どの指輪にするかの抽選は catalog を持つ呼び出し側）。
     pub def replaceItemWithRing(playerId: Int32, kind: PlayerData.ItemKind,
-                                 ring: Ring.RingResource, scene: Scene[NodeTag]): Scene[NodeTag] =
+                                 ring: Ring.RingResource, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         addRing(playerId, ring, removeInventoryItem(playerId, kind, scene))
 
     /// 指定 player のインベントリに `item` を追加（種別ごとに上記 writer へ委譲）。
     /// `addPickedItem`（ログ付き版）と同じ追加ルールの、ログを出さない版。
     def addInventoryItem(playerId: Int32, item: ItemData.GroundItemKind,
-                          scene: Scene[NodeTag]): Scene[NodeTag] =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         match item {
             case ItemData.GroundItemKind.WeaponItem(weapon)        =>
                 addWeapon(playerId, weapon, scene)
@@ -1565,7 +1586,7 @@ mod PlayerScene {
     /// 床撤去 → 在庫末尾へ追加 → ログ、の順で行う。床にアイテムが無ければ素通し（防御的）。
     pub def pickupFloorItem(playerId: Int32, gridPos: {x = Int32, y = Int32},
                              scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger, World.Command} =
         match ItemScene.dataAt(gridPos, scene) {
             case None    => scene
             case Some(d) =>
@@ -1582,7 +1603,7 @@ mod PlayerScene {
     /// 取得経路が共有する。武器は weapons 末尾、杖は staves 末尾に積む。
     pub def addPickedItem(playerId: Int32, kind: ItemData.GroundItemKind,
                            scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         match kind {
             case ItemData.GroundItemKind.WeaponItem(weapon) =>
                 GameLogger.playerLog("${displayName(playerId, scene)} が${weapon#name} を拾った");
@@ -1600,7 +1621,7 @@ mod PlayerScene {
 
     /// `optItem = None` のときは no-op、Some なら addInventoryItem。
     def addOptInventoryItem(playerId: Int32, optItem: Option[ItemData.GroundItemKind],
-                              scene: Scene[NodeTag]): Scene[NodeTag] =
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         optItem
             |> Option.map(item -> addInventoryItem(playerId, item, scene))
             |> Option.getWithDefault(scene)
@@ -1609,7 +1630,7 @@ mod PlayerScene {
     /// 「ひろう」をキャンセルしたときに、末尾追加した仮取得アイテムを取り消すのに使う。
     /// 該当リストが空なら no-op。
     def removeLastInventoryItem(playerId: Int32, kind: ItemData.GroundItemKind,
-                                  scene: Scene[NodeTag]): Scene[NodeTag] =
+                                  scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         match kind {
             case ItemData.GroundItemKind.WeaponItem(_)     =>
                 let n = List.length(getWeapons(playerId, scene));
@@ -1662,10 +1683,12 @@ mod PlayerScene {
     /// kind と item の種別が食い違う場合は防御的に no-op。
     def insertInventoryItem(playerId: Int32, kind: PlayerData.ItemKind,
                               item: ItemData.GroundItemKind,
-                              scene: Scene[NodeTag]): Scene[NodeTag] =
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         match (kind, item) {
             case (PlayerData.ItemKind.Weapon(idx), ItemData.GroundItemKind.WeaponItem(w))         =>
-                mapPlayer(playerId, d -> {weapons = insertAt(idx, w, d#weapons) | d}, scene)
+                let inserted = mapPlayer(playerId, d -> {weapons = insertAt(idx, w, d#weapons) | d}, scene);
+                emitWeaponsFromScene(playerId, inserted);  // D3: 挿入巻き戻し後の weapons を World へ
+                inserted
             case (PlayerData.ItemKind.Staff(idx), ItemData.GroundItemKind.StaffItem(s))           =>
                 mapPlayer(playerId, d -> {staves = insertAt(idx, s, d#staves) | d}, scene)
             case (PlayerData.ItemKind.Consumable(idx), ItemData.GroundItemKind.ConsumableItem(c)) =>

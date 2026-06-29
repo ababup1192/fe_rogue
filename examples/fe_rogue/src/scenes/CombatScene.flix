@@ -758,13 +758,15 @@ mod CombatScene {
     /// FE ルールに従い、攻撃を振った時点で装備武器（先頭）の耐久を 1 減らす（回避されても同様）。
     /// 耐久が 0 になったら先頭を取り除き破損ログを出す。
     def consumeEquippedWeapon(playerId: Int32, weapon: UnitCatalog.WeaponResource,
-                               scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+                               scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         let consumed = Weapon.consume(weapon);
         if (Option.isEmpty(consumed))
             GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}の ${weapon#name}がこわれた")
         else ();
-        PlayerScene.mapPlayer(playerId,
-            d -> {weapons = CombatRules.replaceOrDropHead(consumed, d#weapons) | d}, scene)
+        let newWeapons = CombatRules.replaceOrDropHead(consumed, PlayerScene.getWeapons(playerId, scene));
+        // D3: 耐久消費後の weapons を World へ dual-write（[WEAPONS DIFF] を塞ぐ）。
+        World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Player(playerId), newWeapons));
+        PlayerScene.mapPlayer(playerId, d -> {weapons = newWeapons | d}, scene)
 
     // 武器リスト先頭差し替え replaceOrDropHead は純 leaf として CombatRules.flix へ移動（A1）。
 
@@ -883,6 +885,8 @@ mod CombatScene {
         if (Option.isEmpty(consumed))
             GameLogger.enemyLog("${enemy#resource#description}の ${weapon#name}がこわれた")
         else ();
+        // D3: 敵の耐久消費後 weapon を World へ dual-write（単数→0/1 List 射影）。
+        World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Enemy(enemyId), Option.toList(consumed)));
         let withWeaponUpdate = EnemyScene.mapEnemy(enemyId,
             d -> {weapon = consumed | d}, damaged);
         (withWeaponUpdate, killed)

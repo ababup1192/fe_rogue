@@ -1370,7 +1370,7 @@ mod StaffCastScene {
 
     /// 投げたアイテムを 1 個（耐久 1）消費する。種別ごとに対応リストへ反映。match ネストなし。
     def consumeThrownItem(playerId: Int32, kind: PlayerData.ItemKind, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         match kind {
             case PlayerData.ItemKind.Consumable(idx) =>
                 Option.getWithDefault(scene,

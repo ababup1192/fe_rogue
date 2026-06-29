@@ -241,6 +241,7 @@ mod TestGoldenTrace {
             ("SetHp", 1000001, 0, 0) ::
             ("SetHp", 1000001, 0, 0) ::
             ("Dying", 1000001, 0, 0) ::
+            ("SetWeapons", 0, 1, 0) ::
             ("SetHp", 0, 10, 0) ::
             ("Progress", 0, 2, 34) :: Nil;
         Assert.assertEq(expected = golden, keys);
@@ -266,6 +267,7 @@ mod TestGoldenTrace {
             ("SetHp", 1000001, 0, 0) ::
             ("SetHp", 1000001, 0, 0) ::
             ("Dying", 1000001, 0, 0) ::
+            ("SetWeapons", 0, 1, 0) ::
             ("Progress", 0, 1, 35) :: Nil;
         Assert.assertEq(expected = golden, keys);
         // 最終 World: enemy hp=0 / player hp=10（被弾なし）/ progress=(Lv1, exp35)。
@@ -409,10 +411,12 @@ mod TestGoldenTrace {
             ("SetHp", 1000001, 0, 0) ::
             ("SetHp", 1000001, 0, 0) ::
             ("Dying", 1000001, 0, 0) ::
+            ("SetWeapons", 0, 1, 0) ::
             ("Progress", 0, 1, 35) :: Nil;
         Assert.assertEq(expected = golden, seededKeys);
-        // CONSTANT-50（50<30=false ⇒ 回避）は world mutation 無し＝空 stream。
-        Assert.assertEq(expected = true, List.isEmpty(constKeys));
+        // CONSTANT-50（50<30=false ⇒ 回避）でも D3 で武器耐久は消費される（命中/回避とも毎攻撃で消費＝
+        // sim 非依存の scene 副作用）ので SetWeapons だけが出る（hp/dying/progress は不変＝撃破しない）。
+        Assert.assertEq(expected = ("SetWeapons", 0, 1, 0) :: Nil, constKeys);
         // ∴ 定数生成器では golden を再現できない＝この fixture の cmd-stream は draw 列に依存する。
         Assert.assertEq(expected = true, seededKeys != constKeys)
 
@@ -431,7 +435,8 @@ mod TestGoldenTrace {
         let golden =
             ("SetHp", 0, 6, 0) ::
             ("ClrImmob", 0, 0, 0) ::
-            ("Add", 0, 1, 3) :: Nil;
+            ("Add", 0, 1, 3) ::
+            ("SetWeapons", 1000001, 1, 0) :: Nil;
         Assert.assertEq(expected = golden, keys);
         // 撃破せず（killed 戻り値が空）。
         Assert.assertEq(expected = true, List.isEmpty(killed));
@@ -515,7 +520,8 @@ mod TestGoldenTrace {
                 ("ClrTgt", 0, 0, 0) ::
                 ("AtkTgt", 1000001, 0, 0) ::
                 ("SetHp", 0, 0, 0) ::
-                ("ClrImmob", 0, 0, 0) :: Nil;
+                ("ClrImmob", 0, 0, 0) ::
+                ("SetWeapons", 1000001, 1, 0) :: Nil;
             Assert.assertEq(expected = golden, keys);
             // 最終 World: 敵反撃が味方(hp4)を撃破→ player hp=0・killed=[0]。
             Assert.assertEq(

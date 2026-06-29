@@ -745,7 +745,7 @@ mod ItemMenuScene {
     /// `equipWeapon` で対象武器を weapons の先頭に移動 → `ItemSelect` フェーズに戻る。
     def applyEquip(playerId: Int32, kind: PlayerData.ItemKind,
                      scene: Scene[NodeTag]):
-                    Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+                    Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.Command} =
         let equipped = match kind {
             case PlayerData.ItemKind.Weapon(idx)   =>
                 // 実際に並びが変わるとき (0 < idx < 本数) だけ巻き戻しドラフトを積む。
@@ -787,7 +787,7 @@ mod ItemMenuScene {
     def applyDrop(playerId: Int32, kind: PlayerData.ItemKind,
                     scene: Scene[NodeTag]):
                    Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
-                                     SelectedPlayer.State} =
+                                     SelectedPlayer.State, World.Command} =
         // 削除前に実体を取得してから Dropped ドラフトを積む（誤巻き戻し防止）。
         // 該当アイテムが無ければ no-op。
         let dropped = match kind {
@@ -827,7 +827,7 @@ mod ItemMenuScene {
     def applyBulkDrop(playerId: Int32, marks: Set[PlayerData.ItemKind],
                        scene: Scene[NodeTag]):
                       Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
-                                        SelectedPlayer.State} =
+                                        SelectedPlayer.State, World.Command} =
         let dropped = List.foldLeft((acc, kind) -> applyDrop(playerId, kind, acc),
             scene, PlayerData.marksDescendingPerList(marks));
         setMarks(Set#{}, dropped)

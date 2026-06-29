@@ -346,7 +346,7 @@ mod GameLifecycle {
     /// 変化先の指輪解決に `Ring.lookup` が要るため、catalog を持つ handler からのみ呼ばれる。
     pub def applyRingTransform(catalogs: Catalogs, enemyName: String, targetId: Int32,
                                 scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Math.Random, GameLogger.GameLogger} =
+            \ {Math.Random, GameLogger.GameLogger, World.Command} =
         match RandomUtil.pick(PlayerScene.transformableItems(targetId, scene)) {
             case None               => scene
             case Some((kind, name)) =>

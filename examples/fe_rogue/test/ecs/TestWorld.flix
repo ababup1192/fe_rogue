@@ -784,6 +784,46 @@ mod TestWorld {
             (proj(World.weaponViewOf(World.EntityRef.Player(0), w)),
              proj(World.weaponViewOf(World.EntityRef.Enemy(5), w))))
 
+    // ── D3: weapons store（command-derive・preserve+prune）──
+
+    /// applyCmd(SetWeapons) が weapons store を更新する。weaponsOf で読み戻し、record Eq 非自動ゆえ
+    /// (長さ, 先頭耐久) に射影して比較する（具体値 pin・test 本体に match を書かない）。
+    @Test
+    def testApplySetWeaponsUpdatesStore(): Unit \ Assert =
+        let ws = TestUnitFixtures.testWeaponFull(2, 5) :: TestUnitFixtures.testWeaponFull(3, 9) :: Nil;
+        let w  = World.applyCmd(World.Cmd.SetWeapons(World.EntityRef.Player(0), ws), World.empty());
+        let proj = World.weaponsOf(World.EntityRef.Player(0), w)
+            |> Option.map(xs -> (List.length(xs), List.head(xs) |> Option.map(x -> x#durability)));
+        Assert.assertEq(expected = Some((2, Some(5))), proj)
+
+    /// syncFromScene 直後は World weapons == scene #weapons ＝ weaponsMismatches 空（dual-write 整合の基準）。
+    /// sampleScene は player 0 が weapons=[testWeapon] / enemy 5 が weapon=Some(testWeapon)。
+    @Test
+    def testWeaponsMismatchesEmptyWhenSynced(): Unit \ Assert =
+        let scene = sampleScene();
+        let world = World.syncFromScene(scene, World.empty());
+        Assert.assertEq(expected = true, List.isEmpty(World.weaponsMismatches(world, scene)))
+
+    /// 非 vacuous ガード: World 側だけ player0 weapons を空に drift させると weaponsMismatches が検出する
+    /// （dual-write 漏れ＝[WEAPONS DIFF] が鳴るべき状況を pin）。
+    @Test
+    def testWeaponsMismatchesDetectsDrift(): Unit \ Assert =
+        let scene   = sampleScene();
+        let world   = World.syncFromScene(scene, World.empty());
+        let drifted = World.applyCmd(World.Cmd.SetWeapons(World.EntityRef.Player(0), Nil), world);
+        Assert.assertEq(expected = false, List.isEmpty(World.weaponsMismatches(drifted, scene)))
+
+    /// 代表 mutation の dual-write 整合: scene の player0 武器耐久を 1 本目だけ削り、同じ新 list を
+    /// SetWeapons で World へ併置すると weaponsMismatches は空のまま（consumeEquippedWeapon の縮図）。
+    @Test
+    def testWeaponsMismatchesEmptyAfterConsumeStyleDualWrite(): Unit \ Assert =
+        let scene    = sampleScene();
+        let world    = World.syncFromScene(scene, World.empty());
+        let newWs    = TestUnitFixtures.testWeaponFull(2, 9) :: Nil;  // 耐久 10→9 に消費した先頭差し替え
+        let scene2   = PlayerScene.mapPlayer(0, d -> {weapons = newWs | d}, scene);
+        let world2   = World.applyCmd(World.Cmd.SetWeapons(World.EntityRef.Player(0), newWs), world);
+        Assert.assertEq(expected = true, List.isEmpty(World.weaponsMismatches(world2, scene2)))
+
     // ── S-A0c: ringBonus（装備指輪ボーナス）の read-model mirror ──
 
     /// syncFromScene が ringBonus を World へ mirror する。scene 由来の equippedRingBonus と一致する
