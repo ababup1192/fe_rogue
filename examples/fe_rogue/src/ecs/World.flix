@@ -47,6 +47,16 @@ pub enum World {
                  // （combatView/unitView は scene #weapons を読む）＝挙動不変。全 weapon 書込が `Cmd.SetWeapons`
                  // を dual-write し `[WEAPONS DIFF]` で完備性を検証可能にする。
                  weapons = Map[EntityId, List[UnitCatalog.WeaponResource]],
+                 // D4: staves/consumables/rings の command-derive store（weapons 同型・player-only・preserve+prune）。
+                 // 敵は杖/薬/指輪インベントリを持たない（EnemyData に該当 field なし）ので store も player id keyed。
+                 // reader flip はしない（各メニューは scene #staves/#consumables/#rings を読む）＝挙動不変。
+                 // 全 staves/consumables/rings 書込が `Cmd.SetStaves/SetConsumables/SetRings` を dual-write し
+                 // `[STAVES/CONSUMABLES/RINGS DIFF]` で完備性を検証可能にする。
+                 staves = Map[EntityId, List[Staff.StaffResource]],
+                 consumables = Map[EntityId, List[Consumable.ConsumableResource]],
+                 rings = Map[EntityId, List[Ring.RingResource]],
+                 // D4: ringEquipped の command-derive Bool store（waited 同型・player-only）。装備指輪の効果発動フラグ。
+                 ringEquipped = Map[EntityId, Bool],
                  // S3: gridPos の read-model mirror。型は Vec2i の structural record（engine_core.Vec2i の演算 API 対象）。
                  // 権威は scene のまま。S4 で Board を fromWorld 化する時の World 側位置ソース候補（mirror）。
                  // A': pos は単一 store（unified-id）。両 faction の split を撤廃。
@@ -115,6 +125,8 @@ mod World {
                      playerIds = Set.empty(), enemyIds = Set.empty(),
                      statusEffects = Map.empty(),
                      hp = Map.empty(), weapons = Map.empty(), team = Map.empty(),
+                     staves = Map.empty(), consumables = Map.empty(), rings = Map.empty(),
+                     ringEquipped = Map.empty(),
                      pos = Map.empty(),
                      playerHidden = Set.empty(), enemyAlerted = Map.empty(),
                      enemyDying = Set.empty(),
@@ -175,6 +187,11 @@ mod World {
             // player は weapons(List) をそのまま、enemy は単数 weapon(Option) を Option.toList で 0/1 List に射影。
             weapons = Map.union(Query.indexBy(d -> d#id, d -> d#weapons, players),
                                 Query.indexBy(d -> enemyUid(d#id), d -> Option.toList(d#weapon), enemies)),
+            // D4: staves/consumables/rings/ringEquipped は frame-1 初期 world のみ scene から mirror（player-only）。
+            staves      = Query.indexBy(d -> d#id, d -> d#staves, players),
+            consumables = Query.indexBy(d -> d#id, d -> d#consumables, players),
+            rings       = Query.indexBy(d -> d#id, d -> d#rings, players),
+            ringEquipped = Query.indexBy(d -> d#id, d -> d#ringEquipped, players),
             pos = Map.union(Query.indexBy(d -> d#id, d -> d#gridPos, players),
                             Query.indexBy(d -> enemyUid(d#id), d -> d#gridPos, enemies)),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
@@ -245,6 +262,11 @@ mod World {
             // D3: weapons も command 由来を保持＋prune（hp と同型・再 mirror しない）。全 weapon 書込が
             // `Cmd.SetWeapons` を dual-write 済みなら World weapons == scene weapons（[WEAPONS DIFF] 無音）。
             weapons = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#weapons),
+            // D4: staves/consumables/rings/ringEquipped も command 由来を保持＋prune（player-only ＝ pIds で）。
+            staves      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#staves),
+            consumables = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#consumables),
+            rings       = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#rings),
+            ringEquipped = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#ringEquipped),
             // 位置は command 由来を保持＋scene に居ない id を prune（gridPos からの再構築はしない）。
             pos = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#pos),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
@@ -383,6 +405,10 @@ mod World {
         case SetPhase(SimPhase)             // turn phase write（F2b・TurnPhase.State handler が dual-write で emit）
         case SetHp(EntityRef, Int32)        // hp write（F6a・dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
         case SetWeapons(EntityRef, List[UnitCatalog.WeaponResource])  // D3: weapons write（dual-write seam。player は List・enemy は 0/1 List 射影）
+        case SetStaves(EntityRef, List[Staff.StaffResource])               // D4: staves write（player-only・Enemy no-op）
+        case SetConsumables(EntityRef, List[Consumable.ConsumableResource]) // D4: consumables write（player-only）
+        case SetRings(EntityRef, List[Ring.RingResource])                  // D4: rings write（player-only）
+        case SetRingEquipped(EntityRef, Bool)                              // D4: ringEquipped write（player-only・Bool）
         case SetAlerted(EntityRef, Bool)    // F7-spike: 敵検知フラグ write（Player は no-op）
         case SetDying(EntityRef)            // 軸1 仕上げ: 敵を死亡演出中に（Player は no-op・clear は removal+prune）
         case SetBottleUsed(EntityRef, Bool) // F7-slice2: 敵瓶使用フラグ write（Player は no-op）
@@ -562,6 +588,31 @@ mod World {
                 // D3: 単一 store＋toUid（SetHp と同型）。
                 let World.World(w) = world;
                 World.World({weapons = Map.insert(toUid(ref), ws, w#weapons) | w})
+            case Cmd.SetStaves(ref, xs) =>
+                // D4: player-only store（SetWaited 流儀・Enemy は no-op）。
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(id) => World.World({staves = Map.insert(id, xs, w#staves) | w})
+                    case EntityRef.Enemy(_)   => world
+                }
+            case Cmd.SetConsumables(ref, xs) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(id) => World.World({consumables = Map.insert(id, xs, w#consumables) | w})
+                    case EntityRef.Enemy(_)   => world
+                }
+            case Cmd.SetRings(ref, xs) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(id) => World.World({rings = Map.insert(id, xs, w#rings) | w})
+                    case EntityRef.Enemy(_)   => world
+                }
+            case Cmd.SetRingEquipped(ref, b) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(id) => World.World({ringEquipped = Map.insert(id, b, w#ringEquipped) | w})
+                    case EntityRef.Enemy(_)   => world
+                }
             case Cmd.SetAlerted(ref, a) =>
                 let World.World(w) = world;
                 match ref {
@@ -712,6 +763,10 @@ mod World {
         match c {
             case Cmd.SetHp(ref, hp)           => ("SetHp", toUid(ref), hp, 0)
             case Cmd.SetWeapons(ref, ws)      => ("SetWeapons", toUid(ref), List.length(ws), 0)
+            case Cmd.SetStaves(ref, xs)       => ("SetStaves", toUid(ref), List.length(xs), 0)
+            case Cmd.SetConsumables(ref, xs)  => ("SetConsumables", toUid(ref), List.length(xs), 0)
+            case Cmd.SetRings(ref, xs)        => ("SetRings", toUid(ref), List.length(xs), 0)
+            case Cmd.SetRingEquipped(ref, b)  => ("SetRingEquipped", toUid(ref), bool01(b), 0)
             case Cmd.Move(ref, p)             => ("Move", toUid(ref), p#x, p#y)
             case Cmd.SetProgress(ref, lv, xp) => ("Progress", toUid(ref), lv, xp)
             case Cmd.SetAttackTarget(ref, t)  => ("AtkTgt", toUid(ref), t, 0)
@@ -1014,6 +1069,76 @@ mod World {
         let ps = PlayerScene.getAll(scene) |> List.filterMap(d -> mism(EntityRef.Player(d#id), d#weapons));
         let es = EnemyScene.getAll(scene)  |> List.filterMap(d -> mism(EntityRef.Enemy(d#id), Option.toList(d#weapon)));
         List.append(ps, es)
+
+    /// D4: staves を World から読む（read-model アクセサ・player-only・waitedOf 流儀）。Enemy は常に None。
+    pub def stavesOf(ref: EntityRef, world: World): Option[List[Staff.StaffResource]] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) => Map.get(id, w#staves)
+            case EntityRef.Enemy(_)   => None
+        }
+
+    /// D4: consumables を World から読む（player-only）。Enemy は常に None。
+    pub def consumablesOf(ref: EntityRef, world: World): Option[List[Consumable.ConsumableResource]] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) => Map.get(id, w#consumables)
+            case EntityRef.Enemy(_)   => None
+        }
+
+    /// D4: rings を World から読む（player-only）。Enemy は常に None。
+    pub def ringsOf(ref: EntityRef, world: World): Option[List[Ring.RingResource]] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) => Map.get(id, w#rings)
+            case EntityRef.Enemy(_)   => None
+        }
+
+    /// D4: ringEquipped を World から読む（player-only・Bool）。Enemy は常に None。
+    pub def ringEquippedOf(ref: EntityRef, world: World): Option[Bool] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) => Map.get(id, w#ringEquipped)
+            case EntityRef.Enemy(_)   => None
+        }
+
+    /// D4 検証器（weaponsMismatches 同型・players のみ）: World staves と scene #staves の不一致。
+    /// StaffResource は Eq 非自動ゆえ **長さ＋先頭 (name, durability)** へ射影して比較する（[STAVES DIFF]）。
+    pub def stavesMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Int32, Int32)] =
+        let proj = xs -> (List.length(xs), List.head(xs) |> Option.map(s -> (s#name, s#durability)));
+        PlayerScene.getAll(scene) |> List.filterMap(d -> {
+            let ww = stavesOf(EntityRef.Player(d#id), world) |> Option.map(proj);
+            if (ww != Some(proj(d#staves)))
+                Some((EntityRef.Player(d#id), Option.getWithDefault(-1, Option.map(p -> fst(p), ww)), List.length(d#staves)))
+            else None
+        })
+
+    /// D4 検証器: World consumables と scene #consumables の不一致（先頭 (name, durability) 射影）。
+    pub def consumablesMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Int32, Int32)] =
+        let proj = xs -> (List.length(xs), List.head(xs) |> Option.map(c -> (c#name, c#durability)));
+        PlayerScene.getAll(scene) |> List.filterMap(d -> {
+            let ww = consumablesOf(EntityRef.Player(d#id), world) |> Option.map(proj);
+            if (ww != Some(proj(d#consumables)))
+                Some((EntityRef.Player(d#id), Option.getWithDefault(-1, Option.map(p -> fst(p), ww)), List.length(d#consumables)))
+            else None
+        })
+
+    /// D4 検証器: World rings と scene #rings の不一致。RingResource に durability が無いので先頭 (name, power) 射影。
+    pub def ringsMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Int32, Int32)] =
+        let proj = xs -> (List.length(xs), List.head(xs) |> Option.map(r -> (r#name, r#power)));
+        PlayerScene.getAll(scene) |> List.filterMap(d -> {
+            let ww = ringsOf(EntityRef.Player(d#id), world) |> Option.map(proj);
+            if (ww != Some(proj(d#rings)))
+                Some((EntityRef.Player(d#id), Option.getWithDefault(-1, Option.map(p -> fst(p), ww)), List.length(d#rings)))
+            else None
+        })
+
+    /// D4 検証器: World ringEquipped と scene #ringEquipped の不一致（Bool 直接比較・waitedMismatches 同型）。
+    pub def ringEquippedMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
+        PlayerScene.getAll(scene) |> List.filterMap(d -> {
+            let ww = ringEquippedOf(EntityRef.Player(d#id), world);
+            if (ww != Some(d#ringEquipped)) Some((EntityRef.Player(d#id), ww, d#ringEquipped)) else None
+        })
 
     /// A'（faction タグ）: unified-id の faction を **enum タグ component** から読む。
     /// 「player/enemy を id で判断」せず、この明示タグで faction を得る（Bevy Team component 相当）。

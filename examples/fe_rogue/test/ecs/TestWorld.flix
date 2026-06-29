@@ -824,6 +824,118 @@ mod TestWorld {
         let world2   = World.applyCmd(World.Cmd.SetWeapons(World.EntityRef.Player(0), newWs), world);
         Assert.assertEq(expected = true, List.isEmpty(World.weaponsMismatches(world2, scene2)))
 
+    // ── D4: staves/consumables/rings/ringEquipped store（command-derive・player-only・preserve+prune）──
+
+    def d4Staff(): Staff.StaffResource = {
+        name       = "テスト杖", effect = Staff.StaffEffect.Heal, durability = 3, weight = 0.75,
+        sprite     = ({texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0},
+                        scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+        description = "", effectRule = None
+    }
+    def d4Consumable(): Consumable.ConsumableResource = {
+        name = "きずぐすり", effect = Consumable.ConsumableEffect.Heal, magnitude = 10, duration = 0,
+        healAmount = 10, durability = 5, weight = 0.5,
+        sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0},
+                    scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+        description = "", effectRule = None
+    }
+    def d4Ring(): Ring.RingResource = {
+        name = "ちからの指輪", effect = Ring.RingEffect.Power, power = 3, weight = 0.4,
+        sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0},
+                    scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+        description = "", effectRule = None
+    }
+
+    /// applyCmd(SetStaves) が staves store を更新する。stavesOf で読み戻し、(長さ, 先頭耐久) に射影。
+    @Test
+    def testApplySetStavesUpdatesStore(): Unit \ Assert =
+        let xs = d4Staff() :: d4Staff() :: Nil;
+        let w  = World.applyCmd(World.Cmd.SetStaves(World.EntityRef.Player(0), xs), World.empty());
+        let proj = World.stavesOf(World.EntityRef.Player(0), w)
+            |> Option.map(ys -> (List.length(ys), List.head(ys) |> Option.map(x -> x#durability)));
+        Assert.assertEq(expected = Some((2, Some(3))), proj)
+
+    /// SetStaves は player-only（Enemy は no-op）＝stavesOf(Enemy) は None。
+    @Test
+    def testStavesEnemyIsNone(): Unit \ Assert =
+        let w = World.applyCmd(World.Cmd.SetStaves(World.EntityRef.Enemy(5), d4Staff() :: Nil), World.empty());
+        Assert.assertEq(expected = None, World.stavesOf(World.EntityRef.Enemy(5), w) |> Option.map(List.length))
+
+    /// synced 直後は World staves == scene #staves（共に Nil）＝stavesMismatches 空。
+    @Test
+    def testStavesMismatchesEmptyWhenSynced(): Unit \ Assert =
+        let scene = sampleScene();
+        let world = World.syncFromScene(scene, World.empty());
+        Assert.assertEq(expected = true, List.isEmpty(World.stavesMismatches(world, scene)))
+
+    /// 非 vacuous: World 側だけ player0 staves を増やすと stavesMismatches が検出する（[STAVES DIFF]）。
+    @Test
+    def testStavesMismatchesDetectsDrift(): Unit \ Assert =
+        let scene   = sampleScene();
+        let world   = World.syncFromScene(scene, World.empty());
+        let drifted = World.applyCmd(World.Cmd.SetStaves(World.EntityRef.Player(0), d4Staff() :: Nil), world);
+        Assert.assertEq(expected = false, List.isEmpty(World.stavesMismatches(drifted, scene)))
+
+    /// applyCmd(SetConsumables) が consumables store を更新する。
+    @Test
+    def testApplySetConsumablesUpdatesStore(): Unit \ Assert =
+        let xs = d4Consumable() :: Nil;
+        let w  = World.applyCmd(World.Cmd.SetConsumables(World.EntityRef.Player(0), xs), World.empty());
+        let proj = World.consumablesOf(World.EntityRef.Player(0), w)
+            |> Option.map(ys -> (List.length(ys), List.head(ys) |> Option.map(x -> x#durability)));
+        Assert.assertEq(expected = Some((1, Some(5))), proj)
+
+    /// 非 vacuous: World 側だけ consumables drift で consumablesMismatches 検出（[CONSUMABLES DIFF]）。
+    @Test
+    def testConsumablesMismatchesDetectsDrift(): Unit \ Assert =
+        let scene   = sampleScene();
+        let world   = World.syncFromScene(scene, World.empty());
+        let drifted = World.applyCmd(World.Cmd.SetConsumables(World.EntityRef.Player(0), d4Consumable() :: Nil), world);
+        Assert.assertEq(expected = false, List.isEmpty(World.consumablesMismatches(drifted, scene)))
+
+    /// applyCmd(SetRings) が rings store を更新する。(長さ, 先頭 power) 射影で pin。
+    @Test
+    def testApplySetRingsUpdatesStore(): Unit \ Assert =
+        let xs = d4Ring() :: Nil;
+        let w  = World.applyCmd(World.Cmd.SetRings(World.EntityRef.Player(0), xs), World.empty());
+        let proj = World.ringsOf(World.EntityRef.Player(0), w)
+            |> Option.map(ys -> (List.length(ys), List.head(ys) |> Option.map(x -> x#power)));
+        Assert.assertEq(expected = Some((1, Some(3))), proj)
+
+    /// 非 vacuous: World 側だけ rings drift で ringsMismatches 検出（[RINGS DIFF]）。
+    @Test
+    def testRingsMismatchesDetectsDrift(): Unit \ Assert =
+        let scene   = sampleScene();
+        let world   = World.syncFromScene(scene, World.empty());
+        let drifted = World.applyCmd(World.Cmd.SetRings(World.EntityRef.Player(0), d4Ring() :: Nil), world);
+        Assert.assertEq(expected = false, List.isEmpty(World.ringsMismatches(drifted, scene)))
+
+    /// applyCmd(SetRingEquipped) が ringEquipped store を更新する（Bool・player-only）。
+    @Test
+    def testApplySetRingEquippedUpdatesStore(): Unit \ Assert =
+        let w = World.applyCmd(World.Cmd.SetRingEquipped(World.EntityRef.Player(0), true), World.empty());
+        Assert.assertEq(expected = Some(true), World.ringEquippedOf(World.EntityRef.Player(0), w))
+
+    /// 非 vacuous: synced(false) から World 側だけ true に drift で ringEquippedMismatches 検出。
+    @Test
+    def testRingEquippedMismatchesDetectsDrift(): Unit \ Assert =
+        let scene   = sampleScene();
+        let world   = World.syncFromScene(scene, World.empty());
+        let drifted = World.applyCmd(World.Cmd.SetRingEquipped(World.EntityRef.Player(0), true), world);
+        Assert.assertEq(expected = false, List.isEmpty(World.ringEquippedMismatches(drifted, scene)))
+
+    /// refreshMirror が command 由来の inventory store を preserve しつつ scene 不在 id を prune する。
+    /// player0 に SetStaves で 1 本積み、refreshMirror 後も保持される（再 mirror で消えない）。
+    @Test
+    def testRefreshMirrorPreservesCommandStaves(): Unit \ Assert =
+        let scene = sampleScene();
+        let world = World.syncFromScene(scene, World.empty());
+        let withStaff = World.applyCmd(World.Cmd.SetStaves(World.EntityRef.Player(0), d4Staff() :: Nil), world);
+        let refreshed = World.refreshMirror(scene, withStaff);
+        Assert.assertEq(
+            expected = Some(1),
+            World.stavesOf(World.EntityRef.Player(0), refreshed) |> Option.map(List.length))
+
     // ── S-A0c: ringBonus（装備指輪ボーナス）の read-model mirror ──
 
     /// syncFromScene が ringBonus を World へ mirror する。scene 由来の equippedRingBonus と一致する

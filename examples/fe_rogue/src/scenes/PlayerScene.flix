@@ -325,6 +325,11 @@ mod PlayerScene {
         World.Command.emit(World.Cmd.SetProgress(World.refOf(true, sp#id), sp#resource#level, 0));
         // D3: 初期 weapons も World へ seed（spawn フレームの [WEAPONS DIFF] を塞ぐ＝preserve の前提）。
         World.Command.emit(World.Cmd.SetWeapons(World.refOf(true, sp#id), sp#weapons));
+        // D4: 初期 staves/consumables/rings/ringEquipped も seed（spawn フレームの各 DIFF を塞ぐ）。ringEquipped は spawn 時 false。
+        World.Command.emit(World.Cmd.SetStaves(World.refOf(true, sp#id), sp#staves));
+        World.Command.emit(World.Cmd.SetConsumables(World.refOf(true, sp#id), sp#consumables));
+        World.Command.emit(World.Cmd.SetRings(World.refOf(true, sp#id), sp#rings));
+        World.Command.emit(World.Cmd.SetRingEquipped(World.refOf(true, sp#id), false));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
@@ -670,6 +675,19 @@ mod PlayerScene {
     def emitWeaponsFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
         World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Player(playerId), getWeapons(playerId, scene)))
 
+    /// D4: staves/consumables/rings/ringEquipped 書込 funnel（`emitWeaponsFromScene` 同型）。
+    /// mutation 適用後の `scene` から該当 player の各インベントリを読み戻して Cmd を World へ dual-write する。
+    /// `pub`（StaffCastScene の杖/瓶消費からも呼ぶ）。
+    pub def emitStavesFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        World.Command.emit(World.Cmd.SetStaves(World.EntityRef.Player(playerId), getStaves(playerId, scene)))
+    pub def emitConsumablesFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        World.Command.emit(World.Cmd.SetConsumables(World.EntityRef.Player(playerId), getConsumables(playerId, scene)))
+    pub def emitRingsFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        World.Command.emit(World.Cmd.SetRings(World.EntityRef.Player(playerId), getRings(playerId, scene)))
+    pub def emitRingEquippedFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        let eq = get(playerId, scene) |> Option.map(d -> d#ringEquipped) |> Option.getWithDefault(false);
+        World.Command.emit(World.Cmd.SetRingEquipped(World.EntityRef.Player(playerId), eq))
+
     /// 指定プレイヤーの上下左右 1 マスに居る他味方を返す（自分は含まない）。
     /// 「こうかん」コマンドや将来の隣接判定 (例: 助太刀) の出現条件として使う。
     /// 斜め (例: (4,4) と (5,5)) は含まない。waited フィルタはここではせず、
@@ -794,9 +812,12 @@ mod PlayerScene {
                 let maxHp = d#resource#hp;
                 World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(id), maxHp));  // F6a: 復活 hp を World へ
                 GameLogger.playerLog("${displayName(id, scene)}は 蘇生薬で復活した");
-                scene
+                let revived = scene
                     |> mapPlayer(id, dd -> {hp = maxHp, consumables = newConsumables | dd})
-                    |> UnitHPBarScene.update(playerPath(id), maxHp)
+                    |> UnitHPBarScene.update(playerPath(id), maxHp);
+                // D4: hp と consumables を束ねた書込（蘇生薬消費）＝F6 教訓の束ね書込。consumables も World へ dual-write。
+                emitConsumablesFromScene(id, revived);
+                revived
         }
 
     /// プレイヤーを「行動済み」にして sprite を灰色 modulate にする。
@@ -1070,6 +1091,10 @@ mod PlayerScene {
             World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(c#id), c#hp));  // F6a: carry hp を World へ
             World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(c#id), c#level, c#exp));  // World 拡張: carry 進行度
             World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Player(c#id), c#weapons));  // D3: carry weapons を World へ
+            World.Command.emit(World.Cmd.SetStaves(World.EntityRef.Player(c#id), c#staves));  // D4: carry inventory を World へ
+            World.Command.emit(World.Cmd.SetConsumables(World.EntityRef.Player(c#id), c#consumables));
+            World.Command.emit(World.Cmd.SetRings(World.EntityRef.Player(c#id), c#rings));
+            World.Command.emit(World.Cmd.SetRingEquipped(World.EntityRef.Player(c#id), c#ringEquipped));
             sc
                 |> mapPlayer(c#id, d ->
                     {hp = c#hp, weapons = c#weapons, staves = c#staves,
@@ -1117,6 +1142,8 @@ mod PlayerScene {
         // worldRef で spawn 値に上書きされてしまう（scene は mapPlayer 上書きで snap 値・World だけ spawn ＝[DIFF]）。
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#hp));
         World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(snap#id), snap#level, snap#exp));
+        // D4: mapPlayer が ringEquipped=snap#ringEquipped で上書き（addOnePlayer は false を seed）＝束ね書込の片割れ。
+        emitRingEquippedFromScene(snap#id, placed);
         placed
 
     /// `PlayerSnap` を配置用 `Spawn`（base resource ＋ 解決済み持ち物）に変換する。
@@ -1216,6 +1243,8 @@ mod PlayerScene {
         // 🐛fix: 復元 hp/progress の World emit は addOnePlayer の後（spawn 値上書き回避・placeOneFromSnap と同じ）。
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#stats#hp));
         World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(snap#id), snap#level, snap#exp));
+        // D4: mapPlayer が ringEquipped=snap#ringEquipped で上書き（addOnePlayer は false を seed）＝束ね書込の片割れ。
+        emitRingEquippedFromScene(snap#id, placed);
         placed
 
     /// 現在の全味方を `PlayerSnap` 列に射影する（スナップショット保存用）。持ち物 resource は
@@ -1333,13 +1362,17 @@ mod PlayerScene {
 
     /// 指定 idx の杖をインベントリから削除（捨てる）。範囲外なら no-op。
     pub def dropStaff(playerId: Int32, idx: Int32,
-                        scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId, d -> {staves = removeAt(idx, d#staves) | d}, scene)
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let dropped = mapPlayer(playerId, d -> {staves = removeAt(idx, d#staves) | d}, scene);
+        emitStavesFromScene(playerId, dropped);  // D4: 捨てた後の staves を World へ
+        dropped
 
     /// 指定 idx の消費アイテムをインベントリから削除（捨てる）。範囲外なら no-op。
     pub def dropConsumable(playerId: Int32, idx: Int32,
-                             scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId, d -> {consumables = removeAt(idx, d#consumables) | d}, scene)
+                             scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let dropped = mapPlayer(playerId, d -> {consumables = removeAt(idx, d#consumables) | d}, scene);
+        emitConsumablesFromScene(playerId, dropped);  // D4: 捨てた後の consumables を World へ
+        dropped
 
     /// 2 プレイヤー間でインベントリのアイテム 1 個ずつを交換する純粋関数。
     ///   - 双方が実体アイテム持ちなら相互スワップ（ともに元の場所から消え、相手の末尾に追加）
@@ -1418,6 +1451,10 @@ mod PlayerScene {
             {weapons = newWeapons, staves = newStaves, consumables = newConsumables,
              rings = newRings | d}, scene);
         emitWeaponsFromScene(playerId, reordered);  // D3: 並び替え後の weapons を World へ
+        // D4: 並び替えは staves/consumables/rings も書き換える束ね書込＝3 つとも World へ dual-write。
+        emitStavesFromScene(playerId, reordered);
+        emitConsumablesFromScene(playerId, reordered);
+        emitRingsFromScene(playerId, reordered);
         reordered
 
     /// PlayerData.ItemKind を、表示順 (weapons ++ staves ++ consumables ++ rings) 上の通し index に変換する。
@@ -1489,15 +1526,19 @@ mod PlayerScene {
 
     /// 杖インベントリの末尾に 1 個追加する。追加ルールは `addWeapon` と同じ（末尾追加）。
     pub def addStaff(playerId: Int32, staff: Staff.StaffResource,
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId,
-            d -> {staves = List.append(d#staves, staff :: Nil) | d}, scene)
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let added = mapPlayer(playerId,
+            d -> {staves = List.append(d#staves, staff :: Nil) | d}, scene);
+        emitStavesFromScene(playerId, added);  // D4: 追加後の staves を World へ
+        added
 
     /// 消費アイテムインベントリの末尾に 1 個追加する。追加ルールは `addWeapon` と同じ（末尾追加）。
     pub def addConsumable(playerId: Int32, item: Consumable.ConsumableResource,
-                            scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId,
-            d -> {consumables = List.append(d#consumables, item :: Nil) | d}, scene)
+                            scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let added = mapPlayer(playerId,
+            d -> {consumables = List.append(d#consumables, item :: Nil) | d}, scene);
+        emitConsumablesFromScene(playerId, added);  // D4: 追加後の consumables を World へ
+        added
 
     /// 指輪インベントリ（先頭が装備中）。居ない player は Nil。
     pub def getRings(id: Int32, scene: Scene[NodeTag]): List[Ring.RingResource] =
@@ -1508,28 +1549,40 @@ mod PlayerScene {
 
     /// 指輪インベントリの末尾に 1 個追加する（末尾追加 = 装備中の後ろ）。
     pub def addRing(playerId: Int32, ring: Ring.RingResource,
-                     scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId,
-            d -> {rings = List.append(d#rings, ring :: Nil) | d}, scene)
+                     scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let added = mapPlayer(playerId,
+            d -> {rings = List.append(d#rings, ring :: Nil) | d}, scene);
+        emitRingsFromScene(playerId, added);  // D4: 追加後の rings を World へ
+        added
 
     /// 指定 idx の指輪を先頭へ移動し、装備状態にする（`ringEquipped = true`）。範囲外なら no-op。
     /// 拾っただけでは装備されないので、ここを通って初めて効果が出る。
     pub def equipRing(playerId: Int32, idx: Int32,
-                       scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId,
-            d -> {rings = moveToHead(idx, d#rings), ringEquipped = true | d}, scene)
+                       scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let equipped = mapPlayer(playerId,
+            d -> {rings = moveToHead(idx, d#rings), ringEquipped = true | d}, scene);
+        // D4: rings と ringEquipped 両方の束ね書込（装備）＝両方 emit する。
+        emitRingsFromScene(playerId, equipped);
+        emitRingEquippedFromScene(playerId, equipped);
+        equipped
 
     /// 装備中の指輪を外す（所持は維持し、効果だけ止める）。並びは変えない。
-    pub def unequipRing(playerId: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId, d -> {ringEquipped = false | d}, scene)
+    pub def unequipRing(playerId: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let unequipped = mapPlayer(playerId, d -> {ringEquipped = false | d}, scene);
+        emitRingEquippedFromScene(playerId, unequipped);  // D4: 解除後の ringEquipped を World へ
+        unequipped
 
     /// 指定 idx の指輪をインベントリから削除（捨てる）。範囲外なら no-op。
     /// 装備中の指輪（先頭）を捨てたら装備状態も解除する（残った先頭が勝手に装備されないように）。
     pub def dropRing(playerId: Int32, idx: Int32,
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId,
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let dropped = mapPlayer(playerId,
             d -> {rings = removeAt(idx, d#rings),
-                  ringEquipped = if (idx == 0) false else d#ringEquipped | d}, scene)
+                  ringEquipped = if (idx == 0) false else d#ringEquipped | d}, scene);
+        // D4: rings と ringEquipped 両方の束ね書込（捨てる・先頭なら解除）＝両方 emit する。
+        emitRingsFromScene(playerId, dropped);
+        emitRingEquippedFromScene(playerId, dropped);
+        dropped
 
     /// ringman の特殊行動で「指輪に変えられる」持ち物 = 装備外のアイテムを (種別 index, 表示名) で列挙する。
     /// 装備中の武器（weapons 先頭）と装備中の指輪（ringEquipped のときの rings 先頭）は守り、
@@ -1690,11 +1743,17 @@ mod PlayerScene {
                 emitWeaponsFromScene(playerId, inserted);  // D3: 挿入巻き戻し後の weapons を World へ
                 inserted
             case (PlayerData.ItemKind.Staff(idx), ItemData.GroundItemKind.StaffItem(s))           =>
-                mapPlayer(playerId, d -> {staves = insertAt(idx, s, d#staves) | d}, scene)
+                let inserted = mapPlayer(playerId, d -> {staves = insertAt(idx, s, d#staves) | d}, scene);
+                emitStavesFromScene(playerId, inserted);  // D4: 挿入巻き戻し後の staves を World へ
+                inserted
             case (PlayerData.ItemKind.Consumable(idx), ItemData.GroundItemKind.ConsumableItem(c)) =>
-                mapPlayer(playerId, d -> {consumables = insertAt(idx, c, d#consumables) | d}, scene)
+                let inserted = mapPlayer(playerId, d -> {consumables = insertAt(idx, c, d#consumables) | d}, scene);
+                emitConsumablesFromScene(playerId, inserted);  // D4: 挿入巻き戻し後の consumables を World へ
+                inserted
             case (PlayerData.ItemKind.Ring(idx), ItemData.GroundItemKind.RingItem(r)) =>
-                mapPlayer(playerId, d -> {rings = insertAt(idx, r, d#rings) | d}, scene)
+                let inserted = mapPlayer(playerId, d -> {rings = insertAt(idx, r, d#rings) | d}, scene);
+                emitRingsFromScene(playerId, inserted);  // D4: 挿入巻き戻し後の rings を World へ
+                inserted
             case _ => scene
         }
 

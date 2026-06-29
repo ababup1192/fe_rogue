@@ -186,6 +186,75 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 
 ## §G. 進捗（living・各ステップ完了で更新）
 
+> ## ★★ 全体ワークフロー（S0-S10 連番・並列レーン付き・2026-06-29 再採番）★★
+> 旧 D0-D15 採番の枝番/ギャップを解消し、**依存順に並べ直した単一スパイン**。新セッションはまずこの地図で現在地（下の状態マーカー）と「同時に走らせてよいレーン」を確認する。
+>
+> **凡例**: `═` 主クリティカルパス(厳密順) ／ `→` データ依存(後続必須) ／ `∥` 並列レーン(独立・同時可) ／
+> `⚠FC` 論理独立だが**同一ファイル編集→マージ衝突**ゆえ worktree 隔離 or 直列 ／ 状態 `✅`完了 `🟡`実行中 `⬜`未着手
+>
+> ```
+> 【主レーン ＝ A 完成までのクリティカルパス】
+> S0✅═S1✅═ S2 ═ S3 ═ S4 ═ S5 ═ S6 ═ S7   ★★A完成（§E DoD・「ECS化達成(A)」宣言）★★
+>            store status flip  faction menu  bridge
+>                        /compose /turn /sync teardown
+>
+>   ├ S2 ズーム（store 化・⚠FC: 全部 World.flix store 機構を触る → 直列 or worktree 隔離）
+>   │   S2.0✅ dead-code/design pin (旧D0/D1)
+>   │   S2.1✅ weapons          (旧D3・コミット済)              ┐
+>   │   S2.2🟡 inventory staves/consumables/rings/ringEquipped (旧D4) ┤ S2.1/2/3/5 は
+>   │   S2.3⬜ stats baseStats  (旧D5)                          ┤ 互いに論理独立(並列可)
+>   │   S2.5⬜ moveTiles micro  (旧D6.5)                        ┘ ただし⚠FC
+>   │   S2.4⬜ projection currency (旧D6) ──→ (S2.1 & S2.2 に依存=weaponView/ringBonus 投影)
+>   │
+>   ├ S3⬜ statuses 権威移送(atomic) (旧D12) ← reader-flip の前提ゆえ前倒し(cascade map で確定)
+>   │
+>   ├ S4 ズーム（reader-flip + compose・データ依存で半順序・全 store(S2+S3) 完了が前提）
+>   │   S4.1⬜ unitView World twin (旧D7) ─┬→ S4.2⬜ combatView flip (旧D8) ─┐
+>   │                                      └→ S4.3⬜ Encounter flip★hub (旧D9)┴→ S4.4⬜ dataFromWorld compose★最高リスク (旧D10)
+>   │                                          (S4.2 ∥ S4.3 同時可)
+>   │
+>   ├ S5⬜ faction-blind + turn-state (旧D13a-e): acted/usedStairs micro-store・spawn funnel・move/tick 統合・attack policy merge
+>   ├ S6⬜ menu/render flip + syncTreeFromWorld teardown (旧D11a-c)
+>   └ S7⬜ bridge teardown + DIFF検証器 teardown (旧D14/D15) = EntityScene/EncounterBuilder/refreshMirror read枝/syncTree 物理撤去
+>
+> 【並列レーン（主レーンと同時に走れる＝本物の並列益）】
+>   ∥ R: 調査レーン(read-only・いつでも・編集ゼロ＝競合なし)
+>        cascade map✅ → ~/.claude/plans/phase-d9-d10-cascade-map.md
+>        B評価✅      → ~/.claude/plans/phase-b-eval-node-tree-removal.md
+>        └ S9⬜ B評価ゲート(ActionMenu 1個を試験実装し規模実測) ※A完成前でも資料化は可
+>   ∥ SAVE: S8⬜ Save の ECS 化(World 直列化) ── S3 完了後に分岐し S4〜S7 と並列可
+>            (reader-flip 非依存＝store さえ揃えば独立。旧「S7 セーブ」)
+>
+> 【A 完成後・条件分岐】
+>   S7(★A) ─→ S10⬜ B 実行(node tree 撤廃・render-from-World・engine 改修要相談) ─→ ★★B完成(純ECS・重複②撲滅)★★
+>              ↑ S9(評価OK) が前提
+> ```
+>
+> ### 並列で「本当に得する」ペア（実務指針）
+> | 並列ペア | 種別 | 実行方法 |
+> |----------|------|----------|
+> | **S8(Save) ∥ S4〜S7** | 論理独立（Save は reader-flip 非依存）| store(S2+S3) 完了後にいつでも分岐＝**真の並列益** |
+> | **R レーン(調査) ∥ 全工程** | read-only | Explore agent で随時（cascade/B評価は実施済） |
+> | **S2.1/2.2/2.3/2.5 同士** | 論理独立だが ⚠FC | worktree 隔離で物理並列可だが World.flix store 節で**衝突ほぼ確実**→**直列が無難**（1つずつ run 検証の discipline とも整合） |
+> | **S4.2 ∥ S4.3** | 半順序(S4.1 後) | 同時可 |
+>
+> ### A / B の位置（要点）
+> - **A = S7 終点**: scene-tree は render 層として残すが **sim 権威は完全に World**（重複①消滅）。ここで「ECS 化達成」宣言。
+> - **B = S9(評価)＋S10(実行)**: scene tree 自体を撤廃し render-from-World 化（重複②撲滅）。engine 改修 9〜13 週・IDE scene 編集喪失ゆえ **A 完成後にゲート判断**（B評価リサーチ済）。
+> - **S8(Save) は A 完成後の独立スライス**だが store 完成後なら前倒し並列も可。
+>
+> ### 旧→新 採番対応（取りこぼし防止）
+> D0/D1→S2.0 ／ D3→S2.1 ／ D4→S2.2 ／ D5→S2.3 ／ D6→S2.4 ／ D6.5→S2.5 ／ **D12→S3(前倒し)** ／ D7/D8/D9→S4.1/4.2/4.3 ／ D10→S4.4 ／ D13a-e→S5 ／ D11a-c→S6 ／ D14/D15→S7 ／ 旧S7(save)→S8 ／ Phase B→S9/S10。
+> **主な是正**: ① statuses(旧D12) を reader-flip の**前(S3)**へ（cascade map で「S4 は statuses store が要る」と判明）。② 枝番(6.5/a-c/a-e)を単一ステージへ畳む。
+>
+> ### 現在地（2026-06-29）
+> S0✅ S1✅ S2.0✅ S2.1✅(コミット済) **S2.2✅(D4 実装+独立検証 1029緑+run検証済・コミット待ち)** S2.3⬜ S2.4⬜ S2.5⬜ S3⬜ S4⬜ S5⬜ S6⬜ S7⬜ S8⬜ S9(調査一部✅) S10⬜。
+> - **S2.2(D4) = staves/consumables/rings/ringEquipped を World command-derive store 化**（player-only store＝`waited` 流儀・key=player id 直・Enemy arm no-op）。review 93/93/92・dual-write 17 サイト漏れなし（束ね書込 reviveOne hp+consumables / equipRing rings+ringEquipped 含む）。mismatch 検証器は (length, head) 比較ゆえ**非先頭 drift は `[...DIFF]` に出ない**（D3 weapons テンプレ継承・emit は full list ゆえ World は忠実）。
+> - **D4 run 検証中の付随修正（元仕様バグ・D4 回帰ではない）**: 「投げた杖が消えない」を発見・修正。`StaffCastScene.consumeThrownItem` の Staff arm を `consumeStaff`(回数-1)→`PlayerScene.dropStaff`(完全除去) に変更＝投げ武器(`dropWeapon`)と対称。投擲は物理的に手放すので残り回数に関わらず消失。通常詠唱(L59 consumeStaff)は耐久-1 のまま据え置き。`dropStaff` が `SetStaves` dual-write ゆえ `[STAVES DIFF]` 無音維持・1029緑・ユーザー spec OK。
+> **次の一手**: S2.2＋杖投げ修正をコミット → **S2.3(stats baseStats command 化)** へ。詳細スライス = `~/.claude/plans/phase-d-implementation.md`。
+>
+> ---
+>
 > ## ★最前線（2026-06-29）= 🎉 **戦闘＋杖の 2 大 orchestration cutover 完了・ECS が既定エンジンに**（1009緑・legacy branch 温存）
 >
 > プランで「**最重**」と位置づけた CombatScene 戦闘 orchestration とその双子 **StaffCast（杖）** の SimEvent 化＋cutover を

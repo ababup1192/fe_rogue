@@ -530,12 +530,14 @@ mod StaffCastScene {
     /// 杖の耐久を 1 減らし、0 なら staves から除去 + 破損ログ。
     def consumeStaff(playerId: Int32, staffIdx: Int32, staff: Staff.StaffResource,
                        scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         let consumed = Staff.consume(staff);
         let newStaves = replaceOrDropAt(staffIdx, consumed, PlayerScene.getStaves(playerId, scene));
         if (Option.isEmpty(consumed))
             GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} がこわれた")
         else ();
+        // D4: 耐久消費後の staves を World へ dual-write（[STAVES DIFF] を塞ぐ・CombatScene.consumeEquippedWeapon と同型）。
+        World.Command.emit(World.Cmd.SetStaves(World.EntityRef.Player(playerId), newStaves));
         PlayerScene.mapPlayer(playerId, d -> {staves = newStaves | d}, scene)
 
     // ────────────────────────────────────────────────────────
@@ -712,12 +714,14 @@ mod StaffCastScene {
     def consumeConsumable(playerId: Int32, idx: Int32,
                            item: Consumable.ConsumableResource,
                            scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         let consumed = Consumable.consume(item);
         let newConsumables = replaceOrDropAt(idx, consumed, PlayerScene.getConsumables(playerId, scene));
         if (Option.isEmpty(consumed))
             GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${item#name} を使い切った")
         else ();
+        // D4: 耐久消費後の consumables を World へ dual-write（[CONSUMABLES DIFF] を塞ぐ）。
+        World.Command.emit(World.Cmd.SetConsumables(World.EntityRef.Player(playerId), newConsumables));
         PlayerScene.mapPlayer(playerId, d -> {consumables = newConsumables | d}, scene)
 
     // ────────────────────────────────────────────────────────
@@ -1379,9 +1383,10 @@ mod StaffCastScene {
             case PlayerData.ItemKind.Weapon(idx) =>
                 PlayerScene.dropWeapon(playerId, idx, scene)
             case PlayerData.ItemKind.Staff(idx) =>
-                Option.getWithDefault(scene,
-                    forM (s <- List.nth(idx, PlayerScene.getStaves(playerId, scene)))
-                        yield consumeStaff(playerId, idx, s, scene))
+                // 投げた杖は残り回数に関わらず消失する（武器投げ＝dropWeapon と対称）。
+                // 詠唱(consumeStaff)は耐久 -1 だが、投擲は物理的に手放すので完全除去。
+                // dropStaff が staves を World へ dual-write する（[STAVES DIFF] 無音維持）。
+                PlayerScene.dropStaff(playerId, idx, scene)
             case PlayerData.ItemKind.Ring(_) => scene
         }
 

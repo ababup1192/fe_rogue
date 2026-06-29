@@ -1072,6 +1072,22 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[WEAPONS DIFF] ${ms}")
             };
+            match World.stavesMismatches(Ref.get(worldRef), next) {  // D4: command 由来 World staves vs scene #staves
+                case Nil => ()
+                case ms  => println("[STAVES DIFF] ${ms}")
+            };
+            match World.consumablesMismatches(Ref.get(worldRef), next) {  // D4
+                case Nil => ()
+                case ms  => println("[CONSUMABLES DIFF] ${ms}")
+            };
+            match World.ringsMismatches(Ref.get(worldRef), next) {  // D4
+                case Nil => ()
+                case ms  => println("[RINGS DIFF] ${ms}")
+            };
+            match World.ringEquippedMismatches(Ref.get(worldRef), next) {  // D4
+                case Nil => ()
+                case ms  => println("[RINGEQUIPPED DIFF] ${ms}")
+            };
             if (World.enemyTurnBusyOf(Ref.get(worldRef)) != TopBarScene.isBusy(next)  // F8-slice2
                 or World.phaseObservedEnemyOf(Ref.get(worldRef)) != TopBarScene.hasObservedEnemy(next))
                 println("[TOPBAR DIFF] busy w=${World.enemyTurnBusyOf(Ref.get(worldRef))} s=${TopBarScene.isBusy(next)}"

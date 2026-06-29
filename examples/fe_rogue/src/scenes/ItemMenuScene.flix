@@ -767,7 +767,7 @@ mod ItemMenuScene {
     /// 「はずす」: 装備中の指輪を外す（所持は維持・効果だけ止める）。ターン消費なし。
     /// `ItemSelect` フェーズに戻り、続けて操作できる。
     def applyUnequip(playerId: Int32, scene: Scene[NodeTag]):
-                    Scene[NodeTag] \ {TurnPhase.State, GameLogger.GameLogger} =
+                    Scene[NodeTag] \ {TurnPhase.State, GameLogger.GameLogger, World.Command} =
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は 指輪を外した");
         let cleared = PlayerScene.clearSelectedItem(playerId,
             PlayerScene.unequipRing(playerId, scene));
