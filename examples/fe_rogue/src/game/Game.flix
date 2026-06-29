@@ -1142,12 +1142,7 @@ mod Game {
             };
             match World.playerDataMismatches(world2, synced) {  // S4.4
                 case Nil => ()
-                case ms  =>
-                    let fld = match List.head(ms) {
-                        case Some(World.EntityRef.Player(pid)) => "P${pid}=[${World.playerDataFieldDiff(pid, world2, synced)}]"
-                        case _ => "?"
-                    };
-                    println("[PLAYERDATA DIFF] ${ms} first ${fld}")
+                case ms  => println("[PLAYERDATA DIFF] ${ms}")
             };
             match World.enemyDataMismatches(world2, synced) {  // S4.4b
                 case Nil => ()

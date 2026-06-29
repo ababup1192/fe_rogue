@@ -1311,31 +1311,6 @@ mod World {
     /// ネスト射影: gridPos={x,y}／weapons/staves/consumables/rings は (長さ, 先頭の name)／resource は数値 stat 群で代表／
     /// statuses は (effect,magnitude,remaining) list／selectedItem(ItemKind Eq)／facing(Direction Eq)／
     /// pendingLevelUp は Option を (unitName,fromLevel,toLevel,変化数) へ射影／他スカラはそのまま。
-    /// 【一時診断】player の dataFromWorld twin と scene Data でどの W 由来 field が食い違うか field 名で返す。
-    /// R 残置/S→W は twin が scene を読む＝恒等ゆえ差が出ず対象外。原因特定後に撤去する。
-    pub def playerDataFieldDiff(id: Int32, world: World, scene: Scene[NodeTag]): String =
-        match (dataFromWorld(id, world, scene), PlayerScene.get(id, scene)) {
-            case (Some(t), Some(s)) =>
-                let names =
-                    (if (posKey(t#gridPos) != posKey(s#gridPos)) "gridPos(W=(${t#gridPos#x},${t#gridPos#y})/S=(${s#gridPos#x},${s#gridPos#y}))" :: Nil else Nil) :::
-                    (if (t#hp != s#hp) "hp" :: Nil else Nil) :::
-                    (if (t#moveTiles != s#moveTiles) "moveTiles" :: Nil else Nil) :::
-                    (if (t#hidden != s#hidden) "hidden" :: Nil else Nil) :::
-                    (if (t#waited != s#waited) "waited" :: Nil else Nil) :::
-                    (if (t#attackTargetId != s#attackTargetId) "attackTargetId" :: Nil else Nil) :::
-                    (if (headKey(t#weapons, weaponKey) != headKey(s#weapons, weaponKey)) "weapons" :: Nil else Nil) :::
-                    (if (headKey(t#staves, staffKey) != headKey(s#staves, staffKey)) "staves" :: Nil else Nil) :::
-                    (if (headKey(t#consumables, consumableKey) != headKey(s#consumables, consumableKey)) "consumables" :: Nil else Nil) :::
-                    (if (headKey(t#rings, ringKey) != headKey(s#rings, ringKey)) "rings" :: Nil else Nil) :::
-                    (if (t#ringEquipped != s#ringEquipped) "ringEquipped" :: Nil else Nil) :::
-                    (if (statusListKey(t#statuses) != statusListKey(s#statuses)) "statuses" :: Nil else Nil) :::
-                    (if (t#level != s#level) "level" :: Nil else Nil) :::
-                    (if (t#exp != s#exp) "exp" :: Nil else Nil) :::
-                    (if (t#followUpUsed != s#followUpUsed) "followUpUsed" :: Nil else Nil);
-                List.foldLeft((acc, x) -> if (acc == "") x else "${acc},${x}", "", names)
-            case _ => "MISSING"
-        }
-
     pub def playerDataMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
         // 全 23 field の射影は playerDataKey へ集約（2段ネスト ((13),(10))・在庫は weaponsMismatches 等と
         // 同一 weaponKey/staffKey/consumableKey/ringKey を共有＝S4.4 級 drift 不能）。
