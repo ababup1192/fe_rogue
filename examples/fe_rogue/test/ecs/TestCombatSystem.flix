@@ -69,7 +69,9 @@ mod TestCombatSystem {
                 EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Enemy(enemyData())))
 
     /// (1) 撃破→exp（レベルアップ無し）: resolveAttack が World だけから解き、enemy hp=0・player exp 増・
-    /// events 3 件（Damaged/Dying/ExpGained）を返す。命中ロール=50 < 命中率77 で命中。
+    /// **World 変更イベント 3 件**（Damaged/Dying/ExpGained）を返す。命中ロール=50 < 命中率77 で命中。
+    /// ※件数は `eventToCmds` 射影（cmd-affecting）で数える＝命中 SE 等の view-fx（World 不変・ViewReplay の前段で
+    ///   ログに載る）を除外するため、view-script の充実で壊れない。
     /// 期待値は具体値で固定（self-derivation しない）: exp = battleExp(1,1,kill)=35（99 未満ゆえ Lv 据置 (1,35)）。
     /// 35 は golden oracle（TestGoldenTrace の `("Progress",0,1,35)`）が独立に凍結する値。
     @Test
@@ -78,11 +80,12 @@ mod TestCombatSystem {
         let w0  = World.syncFromScene(scene(playerData(80, 0, res)), World.empty());
         let (w1, events) = TestUnitFixtures.withMockRandom(() ->
             CombatSystem.resolveAttack(w0, {ref = World.EntityRef.Player(0), level = 1}, {ref = World.EntityRef.Enemy(1), level = 1}));
+        let cmdCount = events |> List.flatMap(World.eventToCmds) |> List.length;
         Assert.assertEq(
             expected = (Some(0), Some((1, 35)), 3),
             (World.hpOf(World.EntityRef.Enemy(1), w1),
              World.progressOf(World.EntityRef.Player(0), w1),
-             List.length(events)))
+             cmdCount))
 
     /// (2) 撃破→level-up: player exp=99 で撃破すると 100 到達でレベルアップ（Lv1→2）。
     /// 期待値は**具体値で直接固定**する（self-derivation や match を使わない）:

@@ -27,7 +27,12 @@
 //     knockback=Moved、status=Afflicted、敵死=ViewFx(Died)）。thief（盗人の剣）は World 不変＝draw 整合の roll だけ消費。
 //     検証: TestGoldenTrace の Finisher / Ring・WeaponLifesteal(+emit順/level-up) / Knockback(+crit) /
 //           Enemy(EffectRule/Immobilize/Overkill/NoHpOps) / **CounterChain（resolveAttack→resolveEnemyAttack 合成）** が legacy に一致。
-//   ☐ 残: 敵 heal effectRule（HealAt/FullHealAt→`Healed`・P2b）・ViewReplay 配線・live combat の cutover。
+//   ✓ **view-script 化**（ViewReplay の前段）: 命中 SE（`hitSoundName`）・魔法武器の着弾爆発（player 攻撃のみ）・
+//     miss テキストポップアップを `ViewFx(Sound/Explosion/Popup)` としてログに載せた＝ログが「完全な view-script」。
+//     これらは World identity（reducer no-op・eventToCmds=Nil）ゆえ golden/final-World 等価は不変。ダメージ数字
+//     ポップアップ・HPバー・death 演出は既存 `Damaged`/`Dying`/`ViewFx(Died)` から ViewReplay が引ける。
+//   ☐ 残: thief view-fx（`ViewFx(Thief)`＝isRogue/職が World read-model に無く未載・P2c）・敵 heal effectRule
+//     （HealAt/FullHealAt→`Healed`・P2b）・**ViewReplay dispatcher（effectful・要 run 検証）**・live combat の cutover。
 mod CombatSystem {
 
     /// 9 stat 成長ロール（legacy CombatScene.rollGrowth と同義）。draw 順の厳密一致は spike では要求しない
@@ -43,17 +48,48 @@ mod CombatSystem {
     /// 各陣営を 1 レコードに束ねて名前渡しする（`attacker#ref`/`attacker#level`）。
     pub type alias Combatant = {ref = World.EntityRef, level = Int32}
 
-    /// 1 撃の解決結果（被弾ダメージ / 被弾後 hp / 撃破フラグ）。`Combat.applyCrit`/`applyFinisher` と同形で、
-    /// finisher>crit>base のどれを選んでもこの型に落ちる。lifesteal/effectRule など後段がこれを読む。
-    type alias Outcome = {dmg = Int32, newHp = Int32, killed = Bool}
+    /// 1 撃の解決結果（被弾ダメージ / 被弾後 hp / 撃破フラグ / 必殺フラグ）。finisher>crit>base のどれを選んでも
+    /// この型に落ちる。`isCrit` は **finisher も含む**（legacy resolveAttack:524 `isCrit or finisherFired`）で、
+    /// view の命中 SE / 必殺タグ判定に使う。lifesteal/effectRule など後段は dmg/newHp/killed を読む。
+    type alias Outcome = {dmg = Int32, newHp = Int32, killed = Bool, isCrit = Bool}
 
     /// SimEvent 列を World へ畳む（`applyEventToWorld` の foldLeft）。resolve 各所（二相 fold の中間 / 最終）で再利用。
     def applyAll(events: List[World.SimEvent], world: World): World =
         List.foldLeft((w, e) -> World.applyEventToWorld(e, w), world, events)
 
-    /// miss 時の唯一の event（SE のみ・World 不変）。player/enemy 両パス共通。
-    def missEvents(): List[World.SimEvent] =
-        World.SimEvent.ViewFx(World.ViewFxKind.Sound("miss")) :: Nil
+    /// miss 時の view-fx（SE "miss" ＋ "miss" テキストポップアップ）。legacy applyMiss を踏襲。
+    /// いずれも World 不変＝ViewFx。防御側 pos が World 未登録（empty()-world 等）なら popup を省く（SE のみ）。
+    /// player/enemy 両パス共通。
+    def missFxEvents(world: World, defenderRef: World.EntityRef): List[World.SimEvent] =
+        let popup =
+            World.posOf(defenderRef, world)
+                |> Option.map(c -> World.SimEvent.ViewFx(World.ViewFxKind.Popup({x = c#x, y = c#y, text = "miss"})))
+                |> Option.toList;
+        World.SimEvent.ViewFx(World.ViewFxKind.Sound("miss")) :: popup
+
+    /// 命中時の view-fx（命中 SE ＋ 魔法武器の着弾爆発）。legacy applyHit:643-647 を踏襲＝SE→explosion の順で、
+    /// その後に Damaged（数字ポップアップ／SetHp 相当）が続く。命中 SE 名は dmg/isCrit/weaponType 由来
+    /// （`hitSoundName`：0 ダメ=guard / 必殺=critical / 魔法=magic / 通常=damage）。爆発は `allowExplosion`
+    /// （player 攻撃のみ true。legacy 敵攻撃は爆発を出さない）かつ Magic 武器のとき防御側セルへ（dmg 非依存）。
+    /// pos 未登録なら爆発を省く。武器なしは非魔法扱い。いずれも World 不変＝ViewFx。
+    def hitFxEvents(world: World, defenderRef: World.EntityRef, atk: Combat.CombatView,
+                    dmg: Int32, isCrit: Bool, allowExplosion: Bool): List[World.SimEvent] =
+        let weaponType = atk#weapon |> Option.map(w -> w#weaponType);
+        let sound = match weaponType {
+            case Some(wt) => CombatRules.hitSoundName(dmg, isCrit, wt)
+            case None     => if (dmg <= 0) "guard" else if (isCrit) "critical" else "damage"
+        };
+        let isMagic = match weaponType {
+            case Some(WeaponCatalog.WeaponType.Magic) => true
+            case _                                    => false
+        };
+        let explosion =
+            if (allowExplosion and isMagic)
+                World.posOf(defenderRef, world)
+                    |> Option.map(c -> World.SimEvent.ViewFx(World.ViewFxKind.Explosion({x = c#x, y = c#y})))
+                    |> Option.toList
+            else Nil;
+        World.SimEvent.ViewFx(World.ViewFxKind.Sound(sound)) :: explosion
 
     /// 結果優先順位 **finisher > crit > base** の選択（legacy CombatScene:519-531 / :735-742 共通）。
     /// finisher（攻撃側 ring 装備＋防御側瀕死）は draw なしで確殺、crit は `critRoll` 判定、いずれも外れれば base strike。
@@ -64,12 +100,15 @@ mod CombatSystem {
         let finisherFired =
             Ring.finisherTriggers(defView#hp, defView#maxHp,
                 Ring.finisherThreshold(World.equippedRingOf(attacker#ref, world)));
-        if (finisherFired)
-            Combat.applyFinisher(strike#dmg, defView#hp)
-        else if (Combat.isCrit(strike#crit, critRoll))
-            Combat.applyCrit(strike#dmg, defView#hp)
-        else
-            {dmg = strike#dmg, newHp = strike#newHp, killed = strike#killed}
+        let crit = Combat.isCrit(strike#crit, critRoll);
+        let base =
+            if (finisherFired)
+                Combat.applyFinisher(strike#dmg, defView#hp)
+            else if (crit)
+                Combat.applyCrit(strike#dmg, defView#hp)
+            else
+                {dmg = strike#dmg, newHp = strike#newHp, killed = strike#killed};
+        {dmg = base#dmg, newHp = base#newHp, killed = base#killed, isCrit = finisherFired or crit}
 
     /// ring-lifesteal（撃破時のみ・CombatScene:560-567/761）＋ weapon-lifesteal（毎ヒット・:572-583/763）を
     /// **攻撃側 hp 基準（resolve 開始時の `atk#hp/maxHp`・自攻撃で不変）**で解く。emit 順は ring → weapon
@@ -145,12 +184,15 @@ mod CombatSystem {
                 let strike   = CombatRules.resolveStrike(atk, defView);
                 let events =
                     if (not Combat.isHit(strike#hit, hitRoll))
-                        missEvents()
+                        missFxEvents(world, defender#ref)
                     else {
                         let fin = combatOutcome(world, attacker, defView, strike, critRoll);
                         // thief roll: 効果（盗人の剣）は World 不変だが legacy は命中時に必ず 1 draw 消費する
                         // （CombatScene.flix:548 の引数評価）。draw 順を揃えるため引くだけ。
+                        // ※thief の view-fx（ViewFx(Thief)）は isRogue（職）が World read-model に無いため未載＝P2c で defer。
                         let _thiefRoll = World.RngDraw.nextPercent();
+                        // view-fx（命中 SE ＋ 魔法爆発）を先頭に置く（legacy applyHit:643-647 の SE→explosion→popup 順）。
+                        let fx = hitFxEvents(world, defender#ref, atk, fin#dmg, fin#isCrit, true);
                         // core（敵への被弾）: 撃破=Damaged(hard 0)::Dying / 非撃破=Damaged::Alerted::Released。
                         // 撃破分岐の hard-0 clamp（legacy startDeathAnimation）を維持＝newHp=0 をベタ書き。
                         let coreEvents =
@@ -163,9 +205,11 @@ mod CombatSystem {
                                     :: World.SimEvent.Released(defender#ref) :: Nil;
                         // knockback（如意棒/突風の書・敵生存時のみ・CombatScene:590-609）。draw なし。
                         let knock = knockbackEvents(world, attacker, defender, fin#killed);
-                        // 二相 fold: core+lifesteal+knockback を先に畳み、その worldMid から exp/level-up を解く。
-                        let coreAll  = List.append(coreEvents,
-                                          List.append(lifestealEvents(world, attacker, atk, fin), knock));
+                        // 二相 fold: fx+core+lifesteal+knockback を先に畳み、その worldMid から exp/level-up を解く
+                        // （fx は World identity ゆえ fold には無影響・順序のためログ先頭に積むだけ）。
+                        let coreAll  = List.append(fx,
+                                          List.append(coreEvents,
+                                          List.append(lifestealEvents(world, attacker, atk, fin), knock)));
                         let worldMid = applyAll(coreAll, world);
                         let exps     = expEvents(worldMid, attacker, defender, fin#killed);
                         List.append(coreAll, exps)
@@ -213,11 +257,13 @@ mod CombatSystem {
                 let strike  = CombatRules.resolveStrike(atk, defView);
                 let events =
                     if (not Combat.isHit(strike#hit, hitRoll))
-                        missEvents()
+                        missFxEvents(world, defender#ref)
                     else {
                         // crit は命中時のみ引く（プレイヤーパスと違い miss では引かない＝legacy:728）。
                         let critRoll = World.RngDraw.nextPercent();
                         let outcome  = combatOutcome(world, attacker, defView, strike, critRoll);
+                        // view-fx（命中 SE のみ・爆発なし＝legacy 敵攻撃は ExplosionScene を出さない＝allowExplosion=false）。
+                        let fx = hitFxEvents(world, defender#ref, atk, outcome#dmg, outcome#isCrit, false);
                         // core（味方への被弾）: RAW newHp（clamp なし）。撃破は deferred ＝ ViewFx(Died) のみ（Dying なし）。
                         // Released は UNCONDITIONAL（撃破でもかなしばり解除）。Alerted なし（敵は攻撃で alerted されない）。
                         let deathFx =
@@ -231,7 +277,7 @@ mod CombatSystem {
                         let coreEvents = List.append(coreBase, lifestealEvents(world, attacker, atk, outcome));
                         // effectRule tail（legacy applyEnemyEffectRule:785-822）: status を Afflicted で出荷。
                         let effectTail = enemyEffectRuleEvents(world, attacker, defender, atk, defView, outcome);
-                        List.append(coreEvents, effectTail)
+                        List.append(fx, List.append(coreEvents, effectTail))
                     };
                 (applyAll(events, world), events)
             case (_, _) => (world, Nil)

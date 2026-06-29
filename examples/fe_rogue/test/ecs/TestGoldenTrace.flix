@@ -963,4 +963,88 @@ mod TestGoldenTrace {
                          World.alertedOf(EntityRef.Enemy(1), w), statusT(EntityRef.Player(0), w),
                          World.progressOf(EntityRef.Player(0), w));
         Assert.assertEq(expected = proj(legacyW), proj(w2))
+
+    // ── view-script 充実（ViewReplay 前段）: resolveCombat のログが view-fx を載せるか ──────────
+    //
+    // resolveCombat は命中 SE / 魔法着弾爆発 / miss ポップアップを `ViewFx(...)` として emit し、ログを
+    // 「完全な view-script」にする（World identity ＝ golden/最終 World 等価は不変）。ここでは ViewFx の内容
+    // （SE 名・爆発セル・popup テキスト）を射影ヘルパーで抽出して固定する。ViewFxKind は Eq 非派生なので
+    // tag/scalar 射影で比較する（test 本体に直接 match を書かない＝既存方針）。
+
+    /// resolveAttack(player0→enemy1) を seed() で駆動し **event 列**を返す（view-script 検証用）。
+    def driveResolveEvs(sc: Scene[NodeTag]): List[World.SimEvent] =
+        let w0 = World.syncFromScene(sc, World.empty());
+        region rc {
+            let (_, evs) = TestUnitFixtures.withSeededRng(rc, seed(), () ->
+                CombatSystem.resolveAttack(w0, {ref = EntityRef.Player(0), level = 1}, {ref = EntityRef.Enemy(1), level = 1}));
+            evs
+        }
+
+    /// ViewFx(Sound) の SE 名を出現順に抽出。
+    def soundsOf(events: List[World.SimEvent]): List[String] =
+        List.filterMap(ev -> match ev {
+            case World.SimEvent.ViewFx(World.ViewFxKind.Sound(n)) => Some(n)
+            case _                                                => None
+        }, events)
+
+    /// ViewFx(Explosion) のセル座標を抽出。
+    def explosionCellsOf(events: List[World.SimEvent]): List[(Int32, Int32)] =
+        List.filterMap(ev -> match ev {
+            case World.SimEvent.ViewFx(World.ViewFxKind.Explosion(c)) => Some((c#x, c#y))
+            case _                                                    => None
+        }, events)
+
+    /// ViewFx(Popup) の (text, x, y) を抽出。
+    def popupsOf(events: List[World.SimEvent]): List[(String, Int32, Int32)] =
+        List.filterMap(ev -> match ev {
+            case World.SimEvent.ViewFx(World.ViewFxKind.Popup(p)) => Some((p#text, p#x, p#y))
+            case _                                                => None
+        }, events)
+
+    /// 通常物理命中 → 命中 SE は "damage"（必殺でなく・魔法でなく・dmg>0）。
+    @Test
+    def testViewScriptNormalHitSound(): Unit \ Assert =
+        let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        Assert.assertEq(expected = "damage" :: Nil, soundsOf(driveResolveEvs(sc)))
+
+    /// 必殺命中（crit=100 武器）→ 命中 SE は "critical"。
+    @Test
+    def testViewScriptCritHitSound(): Unit \ Assert =
+        let critWeapon = ({hit = 200, crit = 100 | testWeapon()}: UnitCatalog.WeaponResource);
+        let cp = {weapons = critWeapon :: Nil | player(0, 10, Some(1), 200)};
+        let sc = sceneOf(cp, enemy(1, 10, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        Assert.assertEq(expected = "critical" :: Nil, soundsOf(driveResolveEvs(sc)))
+
+    /// 0 ダメージ命中（硬い敵・defense=8・ring なし）→ 命中 SE は "guard"。
+    @Test
+    def testViewScriptGuardHitSound(): Unit \ Assert =
+        let sc = sceneOf(player(0, 10, Some(1), 200), finisherEnemy() :: Nil);
+        Assert.assertEq(expected = "guard" :: Nil, soundsOf(driveResolveEvs(sc)))
+
+    /// 魔法武器命中 → 敵セル {3,2} に着弾爆発（ViewFx(Explosion)）。爆発は命中で発火し dmg 非依存。
+    @Test
+    def testViewScriptMagicHitExplosion(): Unit \ Assert =
+        let magicWeapon = ({weaponType = WeaponCatalog.WeaponType.Magic, hit = 200, crit = 0 | testWeapon()}: UnitCatalog.WeaponResource);
+        let mp = {weapons = magicWeapon :: Nil | player(0, 10, Some(1), 200)};
+        let sc = sceneOf(mp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        Assert.assertEq(expected = (3, 2) :: Nil, explosionCellsOf(driveResolveEvs(sc)))
+
+    /// 回避 → 命中 SE は鳴らず（"miss" SE のみ）＋ "miss" テキストポップアップを敵セル {3,2} に浮かす。
+    @Test
+    def testViewScriptMissFx(): Unit \ Assert =
+        let sc = sceneOf(player(0, 10, Some(1), 0), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let evs = driveResolveEvs(sc);
+        Assert.assertEq(expected = "miss" :: Nil, soundsOf(evs));
+        Assert.assertEq(expected = ("miss", 3, 2) :: Nil, popupsOf(evs))
+
+    /// 敵攻撃は魔法武器でも **爆発を出さない**（legacy 敵攻撃は ExplosionScene を発火しない＝allowExplosion=false）。
+    /// 命中 SE は出す（必ず 1 件・名前は dmg 依存ゆえ件数で固定）。
+    @Test
+    def testViewScriptEnemyHitNoExplosion(): Unit \ Assert =
+        let magicWeapon = ({weaponType = WeaponCatalog.WeaponType.Magic, hit = 200, crit = 0 | testWeapon()}: UnitCatalog.WeaponResource);
+        let e  = {weapon = Some(magicWeapon) | enemy(1, 10, {x = 3, y = 2}, false, Some(0), ruleJson(""), 200)};
+        let sc = sceneOf(player(0, 10, None, 80), e :: Nil);
+        let (_, evs) = driveEnemyResolve(sc);
+        Assert.assertEq(expected = true, List.isEmpty(explosionCellsOf(evs)));
+        Assert.assertEq(expected = 1, List.length(soundsOf(evs)))
 }
