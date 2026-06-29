@@ -1112,6 +1112,10 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[UNITVIEW DIFF] ${ms}")
             };
+            match World.playerDataMismatches(Ref.get(worldRef), next) {  // S4.4: World 由来 PlayerData twin vs scene Data（全 23 field parity）
+                case Nil => ()
+                case ms  => println("[PLAYERDATA DIFF] ${ms}")
+            };
             if (World.enemyTurnBusyOf(Ref.get(worldRef)) != TopBarScene.isBusy(next)  // F8-slice2
                 or World.phaseObservedEnemyOf(Ref.get(worldRef)) != TopBarScene.hasObservedEnemy(next))
                 println("[TOPBAR DIFF] busy w=${World.enemyTurnBusyOf(Ref.get(worldRef))} s=${TopBarScene.isBusy(next)}"

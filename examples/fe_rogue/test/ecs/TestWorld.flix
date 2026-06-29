@@ -1201,4 +1201,195 @@ mod TestWorld {
         Assert.assertEq(
             expected = (sceneP, sceneE, false, false),
             (worldP, worldE, Option.isEmpty(worldP), Option.isEmpty(worldE)))
+
+    // ── S4.4: dataFromWorld（World 由来 PlayerData twin）/ playerDataMismatches（全 23 field parity）──
+
+    /// syncFromScene 直後は World 由来 dataFromWorld == scene PlayerScene.get Data ＝ playerDataMismatches 空
+    /// （全 23 field の parity 基準。W14 accessor + R残置5 + S→W未昇格2 の stitch が scene と bit 一致）。
+    @Test
+    def testPlayerDataMismatchesEmptyWhenSynced(): Unit \ Assert =
+        let scene = sampleScene();
+        let world = World.syncFromScene(scene, World.empty());
+        Assert.assertEq(expected = true, List.isEmpty(World.playerDataMismatches(world, scene)))
+
+    /// 非 vacuous ガード: World 側だけ player0 hp を drift させると playerDataMismatches が検出する
+    /// （[PLAYERDATA DIFF] が鳴るべき状況を pin。射影に hp が含まれていることの実証も兼ねる）。
+    @Test
+    def testPlayerDataMismatchesDetectsDrift(): Unit \ Assert =
+        let scene   = sampleScene();
+        let world   = World.syncFromScene(scene, World.empty());
+        let drifted = World.applyCmd(World.Cmd.SetHp(World.EntityRef.Player(0), 99), world);
+        Assert.assertEq(expected = false, List.isEmpty(World.playerDataMismatches(drifted, scene)))
+
+    /// フィールド単位 pin: dataFromWorld(0) の代表 field（gridPos/hp/moveTiles/level/classId）が
+    /// sampleScene fixture 値と一致し、かつ twin が Some（None 同士の vacuous でない）ことを併せて検証する。
+    @Test
+    def testDataFromWorldRepresentativeFields(): Unit \ Assert =
+        let scene = sampleScene();
+        let world = World.syncFromScene(scene, World.empty());
+        let field = d -> ((d#gridPos#x, d#gridPos#y), d#hp, d#moveTiles, d#level, d#classId);
+        let twin  = World.dataFromWorld(0, world, scene) |> Option.map(field);
+        Assert.assertEq(
+            expected = (Some(((2, 2), 10, 4, 1, "test_player")), false),
+            (twin, Option.isEmpty(twin)))
+
+    // ── 正準キー集約 refactor: near-duplicate 分離維持 & composite field-coverage pin ──
+    // 軸B（call-site key selection・誤 sibling 配線）の唯一の防壁。コンパイラも mismatch テストも
+    // 捕えられない「強→弱」（field 落ち・誤 key）を、各キーが正しい field を見ていることで pin する。
+
+    /// 戦闘 8 field を埋めた代表 WeaponView。record 部分上書きで 1 field だけ違える基点。
+    def wvSample(): Combat.WeaponView =
+        {weaponType = WeaponCatalog.WeaponType.Sword, attack = 5, hit = 80, crit = 0,
+         isPhysical = true, proficient = true,
+         effect = WeaponCatalog.WeaponEffect.NoEffect, effectValue = 0}
+
+    /// ★MANDATORY (§5.2): weaponViewKey(8) ≠ weaponViewCombatKey(6)。weaponType だけ違える 2 値で
+    /// 8-key は検出（!=）・6-key は検出しない（==・weaponType を含めない設計の pin）。誤統合の防壁。
+    @Test
+    def testWeaponViewKeysSeparateOnWeaponType(): Unit \ Assert =
+        let a = wvSample();
+        let b = {weaponType = WeaponCatalog.WeaponType.Axe | wvSample()};
+        Assert.assertEq(
+            expected = (true, true),
+            (World.weaponViewKey(a) != World.weaponViewKey(b),
+             World.weaponViewCombatKey(a) == World.weaponViewCombatKey(b)))
+
+    /// ★MANDATORY (§5.2): weaponViewKey は effect も見る／weaponViewCombatKey は見ない。effect だけ
+    /// 違える 2 値で 8-key 検出・6-key 非検出を pin（weaponType と並ぶ single-site silent field）。
+    @Test
+    def testWeaponViewKeysSeparateOnEffect(): Unit \ Assert =
+        let a = wvSample();
+        let c = {effect = WeaponCatalog.WeaponEffect.Lifesteal | wvSample()};
+        Assert.assertEq(
+            expected = (true, true),
+            (World.weaponViewKey(a) != World.weaponViewKey(c),
+             World.weaponViewCombatKey(a) == World.weaponViewCombatKey(c)))
+
+    /// ★MANDATORY (§5.2): equippedRingKey(name,effect,power) ≠ ringKey(name,power)。effect だけ違える
+    /// 指輪で 3-key は検出・2-key は検出しない（装備=effect 必須 / 在庫=power 代表）。誤統合の防壁。
+    @Test
+    def testRingKeysSeparateOnEffect(): Unit \ Assert =
+        let r1 = d4Ring();                                     // effect = Power
+        let r2 = {effect = Ring.RingEffect.Guard | d4Ring()};  // name+power 同一・effect のみ Guard
+        Assert.assertEq(
+            expected = (true, true),
+            (World.equippedRingKey(r1) != World.equippedRingKey(r2),
+             World.ringKey(r1) == World.ringKey(r2)))
+
+    /// ★MANDATORY (§5.3): baseStatsKey が 8 field を漏れなく見る pin（各 1 field drift で検出）。
+    @Test
+    def testBaseStatsKeyCoversAllFields(): Unit \ Assert =
+        let b = ({attack = 1, magicAttack = 2, defense = 3, magicDefense = 4,
+                  skill = 5, speed = 6, luck = 7, maxHp = 8}: Combat.BaseStats);
+        Assert.assertEq(
+            expected = (true, true, true, true, true, true, true, true),
+            (World.baseStatsKey({attack = 99 | b})       != World.baseStatsKey(b),
+             World.baseStatsKey({magicAttack = 99 | b})  != World.baseStatsKey(b),
+             World.baseStatsKey({defense = 99 | b})      != World.baseStatsKey(b),
+             World.baseStatsKey({magicDefense = 99 | b}) != World.baseStatsKey(b),
+             World.baseStatsKey({skill = 99 | b})        != World.baseStatsKey(b),
+             World.baseStatsKey({speed = 99 | b})        != World.baseStatsKey(b),
+             World.baseStatsKey({luck = 99 | b})         != World.baseStatsKey(b),
+             World.baseStatsKey({maxHp = 99 | b})        != World.baseStatsKey(b)))
+
+    /// ★MANDATORY (§5.3): resourceStatKey が 11 stat field を漏れなく見る pin。
+    @Test
+    def testResourceStatKeyCoversAllFields(): Unit \ Assert =
+        let r = TestUnitFixtures.testResource(4, 10);
+        Assert.assertEq(
+            expected = (true, true, true, true, true, true, true, true, true, true, true),
+            (World.resourceStatKey({moveTiles = 99 | r})    != World.resourceStatKey(r),
+             World.resourceStatKey({level = 99 | r})        != World.resourceStatKey(r),
+             World.resourceStatKey({hp = 99 | r})           != World.resourceStatKey(r),
+             World.resourceStatKey({attack = 99 | r})       != World.resourceStatKey(r),
+             World.resourceStatKey({defense = 99 | r})      != World.resourceStatKey(r),
+             World.resourceStatKey({magicAttack = 99 | r})  != World.resourceStatKey(r),
+             World.resourceStatKey({magicDefense = 99 | r}) != World.resourceStatKey(r),
+             World.resourceStatKey({speed = 99 | r})        != World.resourceStatKey(r),
+             World.resourceStatKey({skill = 99 | r})        != World.resourceStatKey(r),
+             World.resourceStatKey({luck = 99 | r})         != World.resourceStatKey(r),
+             World.resourceStatKey({constitution = 99 | r}) != World.resourceStatKey(r)))
+
+    /// ★MANDATORY (§5.3): combatViewKey が 10 数値 field + 内蔵 weapon を見る pin。最後の項は
+    /// 戦闘 field を違える weapon を載せると検出する＝weaponViewCombatKey 配線の pin（combat sub-key 落ち防止）。
+    @Test
+    def testCombatViewKeyCoversAllFields(): Unit \ Assert =
+        let cv = ({attack = 1, magicAttack = 2, defense = 3, magicDefense = 4, skill = 5,
+                   speed = 6, luck = 7, hp = 8, maxHp = 9, hitMod = 10, weapon = None}: Combat.CombatView);
+        let cvW1 = {weapon = Some(wvSample()) | cv};
+        let cvW2 = {weapon = Some({attack = 999 | wvSample()}) | cv};
+        Assert.assertEq(
+            expected = (true, true, true, true, true, true, true, true, true, true, true),
+            (World.combatViewKey({attack = 99 | cv})       != World.combatViewKey(cv),
+             World.combatViewKey({magicAttack = 99 | cv})  != World.combatViewKey(cv),
+             World.combatViewKey({defense = 99 | cv})      != World.combatViewKey(cv),
+             World.combatViewKey({magicDefense = 99 | cv}) != World.combatViewKey(cv),
+             World.combatViewKey({skill = 99 | cv})        != World.combatViewKey(cv),
+             World.combatViewKey({speed = 99 | cv})        != World.combatViewKey(cv),
+             World.combatViewKey({luck = 99 | cv})         != World.combatViewKey(cv),
+             World.combatViewKey({hp = 99 | cv})           != World.combatViewKey(cv),
+             World.combatViewKey({maxHp = 99 | cv})        != World.combatViewKey(cv),
+             World.combatViewKey({hitMod = 99 | cv})       != World.combatViewKey(cv),
+             World.combatViewKey(cvW1)                      != World.combatViewKey(cvW2)))
+
+    /// ★MANDATORY (§5.3・§1.1): unitViewKey が 10 field を見る pin。pos（posKey）・weaponRange
+    /// （weaponRangeKey の (min,max) ネスト）・combat（combatViewKey 内包）の sub-key 落ちまで検出する。
+    @Test
+    def testUnitViewKeyCoversAllFields(): Unit \ Assert =
+        let uv = PlayerScene.unitView(playerData(0));
+        Assert.assertEq(
+            expected = (true, true, true, true, true, true, true, true, true, true),
+            (World.unitViewKey({id = 99 | uv})                             != World.unitViewKey(uv),
+             World.unitViewKey({faction = Faction.Enemy | uv})             != World.unitViewKey(uv),
+             World.unitViewKey({pos = {x = 99, y = 99} | uv})              != World.unitViewKey(uv),
+             World.unitViewKey({hp = 99 | uv})                             != World.unitViewKey(uv),
+             World.unitViewKey({moveTiles = 99 | uv})                      != World.unitViewKey(uv),
+             World.unitViewKey({weaponRange = Some({min = 99, max = 99}) | uv}) != World.unitViewKey(uv),
+             World.unitViewKey({combat = {attack = 999 | uv#combat} | uv}) != World.unitViewKey(uv),
+             World.unitViewKey({isDying = true | uv})                      != World.unitViewKey(uv),
+             World.unitViewKey({hidden = true | uv})                       != World.unitViewKey(uv),
+             World.unitViewKey({aiType = EnemyAI.AiType.Wanderer | uv})    != World.unitViewKey(uv)))
+
+    /// ★MANDATORY (§5.3・§1.3): playerDataKey 第1 group（13 field）を漏れなく見る pin。在庫4種の
+    /// headKey・posKey・resourceStatKey の sub-key 落ち（S4.4 再発）まで検出する。
+    @Test
+    def testPlayerDataKeyCoversGroup1Fields(): Unit \ Assert =
+        let d = playerData(0);
+        let k = World.playerDataKey;
+        Assert.assertEq(
+            expected = (true, true, true, true, true, true, true, true, true, true, true, true, true),
+            (k({id = 99 | d})                              != k(d),
+             k({classId = "other" | d})                    != k(d),
+             k({gridPos = {x = 99, y = 99} | d})           != k(d),
+             k({moveTiles = 99 | d})                       != k(d),
+             k({hp = 99 | d})                              != k(d),
+             k({waited = true | d})                        != k(d),
+             k({attackTargetId = Some(7) | d})             != k(d),
+             k({resource = TestUnitFixtures.testResource(99, 10) | d}) != k(d),
+             k({weapons = Nil | d})                        != k(d),
+             k({staves = d4Staff() :: Nil | d})            != k(d),
+             k({consumables = d4Consumable() :: Nil | d})  != k(d),
+             k({rings = d4Ring() :: Nil | d})              != k(d),
+             k({ringEquipped = true | d})                  != k(d)))
+
+    /// ★MANDATORY (§5.3・§1.3): playerDataKey 第2 group（10 field）を漏れなく見る pin。
+    /// pendingLevelUpKey・statusListKey の内包まで検出する。
+    @Test
+    def testPlayerDataKeyCoversGroup2Fields(): Unit \ Assert =
+        let d = playerData(0);
+        let k = World.playerDataKey;
+        let plu = ({unitName = "x", fromLevel = 1, toLevel = 2, changes = Nil}: LevelSystem.Result);
+        let st  = ({effect = StatusSystem.StatusEffect.AtkUp, magnitude = 1, remaining = 1}: StatusSystem.Status);
+        Assert.assertEq(
+            expected = (true, true, true, true, true, true, true, true, true, true),
+            (k({selectedItem = Some(PlayerData.ItemKind.Weapon(0)) | d}) != k(d),
+             k({moveStepsTaken = 99 | d})                  != k(d),
+             k({facing = Staff.Direction.Up | d})          != k(d),
+             k({hidden = true | d})                        != k(d),
+             k({usedStairs = true | d})                    != k(d),
+             k({level = 99 | d})                           != k(d),
+             k({exp = 99 | d})                             != k(d),
+             k({pendingLevelUp = Some(plu) | d})           != k(d),
+             k({statuses = st :: Nil | d})                 != k(d),
+             k({followUpUsed = true | d})                  != k(d)))
 }

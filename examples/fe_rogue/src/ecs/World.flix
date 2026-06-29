@@ -902,16 +902,160 @@ mod World {
     pub def baseStatsOf(ref: EntityRef, world: World): Option[Combat.BaseStats] =
         let World.World(w) = world; Map.get(toUid(ref), w#baseStats)
 
+    // ── slice: canonical comparison keys（proj 集約・drift 防止）──────────────
+    // 各検証器の inline 射影を型ごと monomorphic な named key へ集約する。複数 call site が単一 def を
+    // 共有すると「片方だけ弱体化」が構造的に不能になり S2.4/S4.4 級 drift を封じる（cmdKey/boardKey 慣習の横展開）。
+    // ★E7574 回避: 在庫4種は別 record 型ゆえ共有 `let`-lambda は単相化で衝突する。型ごと top-level def は
+    //   generalize されるので安全。将来 `let` 共有へ戻すと value restriction で E7574 を再誘発するため戻すな。
+    // ★near-duplicate 2ペアは絶対に統合しない（§1.4）:
+    //   weaponViewKey(8) ≠ weaponViewCombatKey(6) / ringKey(name,power) ≠ equippedRingKey(name,effect,power)。
+
+    /// 在庫リストの代表射影: (長さ, 先頭要素の key)。多相 HOF（各 call site で a,b を fresh instantiate）。
+    /// row には触れず引数の monomorphic keyFn 内でのみ field access する＝E7574-safe（attackTargetMap 前例）。
+    /// fst が常に length＝weaponsMismatches 等の (ref, worldLen, sceneLen) 診断 payload の load-bearing 要素。
+    pub def headKey(xs: List[a], keyFn: a -> b \ ef): (Int32, Option[b]) \ ef =
+        (List.length(xs), List.head(xs) |> Option.map(keyFn))
+
+    /// 在庫武器の代表キー (name, durability)。weaponsMismatches / playerDataKey で共有＝drift 不能。
+    /// 元 lambda: w -> (w#name, w#durability)
+    pub def weaponKey(w: UnitCatalog.WeaponResource): (String, Int32) = (w#name, w#durability)
+
+    /// 杖の代表キー (name, durability)。stavesMismatches / playerDataKey で共有。
+    /// 元 lambda: s -> (s#name, s#durability)
+    pub def staffKey(s: Staff.StaffResource): (String, Int32) = (s#name, s#durability)
+
+    /// 消耗品の代表キー (name, durability)。consumablesMismatches / playerDataKey で共有。
+    /// 元 lambda: c -> (c#name, c#durability)
+    pub def consumableKey(c: Consumable.ConsumableResource): (String, Int32) = (c#name, c#durability)
+
+    /// 在庫指輪の代表キー (name, power)。ringsMismatches / playerDataKey で共有。
+    /// ★equippedRingKey(name,effect,power) とは別物（在庫=power 代表 / 装備=RingEffect 必須）。
+    /// 元 lambda: r -> (r#name, r#power)
+    pub def ringKey(r: Ring.RingResource): (String, Int32) = (r#name, r#power)
+
+    /// BaseStats の全 8 数値 field キー（baseStatsMismatches）。
+    /// 元 lambda: bs -> (bs#attack, bs#magicAttack, bs#defense, bs#magicDefense, bs#skill, bs#speed, bs#luck, bs#maxHp)
+    pub def baseStatsKey(bs: Combat.BaseStats): (Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32) =
+        (bs#attack, bs#magicAttack, bs#defense, bs#magicDefense, bs#skill, bs#speed, bs#luck, bs#maxHp)
+
+    /// status list の順序込みキー [(effect, magnitude, remaining)]（statusEffectsMismatches / playerDataKey 共有）。
+    /// 元 lambda: xs -> List.map(s -> (s#effect, s#magnitude, s#remaining), xs)
+    pub def statusListKey(xs: List[StatusSystem.Status]): List[(StatusSystem.StatusEffect, Int32, Int32)] =
+        List.map(s -> (s#effect, s#magnitude, s#remaining), xs)
+
+    /// Ring.Bonuses の 5 数値 field キー（ringBonusMismatches）。
+    /// 元 lambda: rb -> (rb#attack, rb#speed, rb#defense, rb#skill, rb#luck)
+    pub def ringBonusKey(rb: Ring.Bonuses): (Int32, Int32, Int32, Int32, Int32) =
+        (rb#attack, rb#speed, rb#defense, rb#skill, rb#luck)
+
+    /// ★武器ミラー全体検証用 WeaponView 8 field キー（weaponViewMismatches・weaponType/effect 込み）。
+    /// ★weaponViewCombatKey(6) とは別物。統合すると combatView/unitView DIFF が weaponType/effect で新たに鳴る＝意味変化。
+    /// 元 lambda: v -> (v#weaponType, v#attack, v#hit, v#crit, v#isPhysical, v#proficient, v#effect, v#effectValue)
+    pub def weaponViewKey(v: Combat.WeaponView):
+            (WeaponCatalog.WeaponType, Int32, Int32, Int32, Bool, Bool, WeaponCatalog.WeaponEffect, Int32) =
+        (v#weaponType, v#attack, v#hit, v#crit, v#isPhysical, v#proficient, v#effect, v#effectValue)
+
+    /// ★CombatView 内蔵 weapon の戦闘 6 field キー（combatViewKey 内包・combatView/unitView 共有）。
+    /// ★weaponViewKey(8) とは別物（weaponType/effect は含めない）。
+    /// 元 lambda: wv -> (wv#attack, wv#hit, wv#crit, wv#isPhysical, wv#proficient, wv#effectValue)
+    pub def weaponViewCombatKey(wv: Combat.WeaponView): (Int32, Int32, Int32, Bool, Bool, Int32) =
+        (wv#attack, wv#hit, wv#crit, wv#isPhysical, wv#proficient, wv#effectValue)
+
+    /// CombatView の全数値 + 内蔵 weapon 射影キー（combatViewMismatches / unitViewKey 共有）。
+    /// 内蔵 weapon は weaponViewCombatKey を再利用（second source of truth を作らない）。
+    /// 元 lambda: cv -> (cv#attack, cv#magicAttack, cv#defense, cv#magicDefense, cv#skill,
+    ///                   cv#speed, cv#luck, cv#hp, cv#maxHp, cv#hitMod, Option.map(wvProj, cv#weapon))
+    pub def combatViewKey(cv: Combat.CombatView):
+            (Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32,
+             Option[(Int32, Int32, Int32, Bool, Bool, Int32)]) =
+        (cv#attack, cv#magicAttack, cv#defense, cv#magicDefense, cv#skill,
+         cv#speed, cv#luck, cv#hp, cv#maxHp, cv#hitMod,
+         Option.map(weaponViewCombatKey, cv#weapon))
+
+    /// ★装備指輪キー (name, RingEffect, power)（equippedRingMismatches）。
+    /// ★ringKey(name,power) とは別物（装備指輪は finisher/lifesteal が effect を読むため effect 必須）。
+    /// 元 lambda: r -> (r#name, r#effect, r#power)
+    pub def equippedRingKey(r: Ring.RingResource): (String, Ring.RingEffect, Int32) =
+        (r#name, r#effect, r#power)
+
+    /// 敵 effectRule（生 Json）の ToString キー（effectRuleMismatches）。
+    /// 元 lambda: j -> "${j}"
+    pub def effectRuleKey(j: Util.Json.Json): String = "${j}"
+
+    /// 位置 {x,y} のキー (x, y)。prevPosMismatches / unitViewKey / playerDataKey の 3 source 共有
+    /// （3 source とも closed row {x=Int32,y=Int32} ゆえ monomorphic 安全・§1.2）。
+    /// 元 lambda: p -> (p#x, p#y)
+    pub def posKey(p: {x = Int32, y = Int32}): (Int32, Int32) = (p#x, p#y)
+
+    /// 武器射程 {min,max} のキー (min, max)（unitViewKey）。
+    /// 元 lambda: r -> (r#min, r#max)
+    pub def weaponRangeKey(r: {min = Int32, max = Int32}): (Int32, Int32) = (r#min, r#max)
+
+    /// UnitView の全 10 field キー（unitViewMismatches）。pos/weaponRange/combat は sub-key を再利用。
+    /// 元 proj: uv -> (uv#id, uv#faction, (uv#pos#x, uv#pos#y), uv#hp, uv#moveTiles,
+    ///                 Option.map(r -> (r#min, r#max), uv#weaponRange),
+    ///                 cvProj(uv#combat), uv#isDying, uv#hidden, uv#aiType)
+    pub def unitViewKey(uv: UnitView):
+            (Int32, Faction, (Int32, Int32), Int32, Int32, Option[(Int32, Int32)],
+             (Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32,
+              Option[(Int32, Int32, Int32, Bool, Bool, Int32)]),
+             Bool, Bool, EnemyAI.AiType) =
+        (uv#id, uv#faction, posKey(uv#pos), uv#hp, uv#moveTiles,
+         Option.map(weaponRangeKey, uv#weaponRange),
+         combatViewKey(uv#combat), uv#isDying, uv#hidden, uv#aiType)
+
+    /// resource 由来 stat 11 field キー（playerDataKey 内包・resProj）。
+    /// 元 lambda: r -> (r#moveTiles, r#level, r#hp, r#attack, r#defense, r#magicAttack,
+    ///                  r#magicDefense, r#speed, r#skill, r#luck, r#constitution)
+    pub def resourceStatKey(r: UnitCatalog.UnitResource):
+            (Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32) =
+        (r#moveTiles, r#level, r#hp, r#attack, r#defense, r#magicAttack,
+         r#magicDefense, r#speed, r#skill, r#luck, r#constitution)
+
+    /// pendingLevelUp の Option キー (unitName, fromLevel, toLevel, 変化数)（playerDataKey 内包・pluProj）。
+    /// 元 lambda: Option.map(r -> (r#unitName, r#fromLevel, r#toLevel, List.length(r#changes)))
+    pub def pendingLevelUpKey(o: Option[LevelSystem.Result]): Option[(String, Int32, Int32, Int32)] =
+        Option.map(r -> (r#unitName, r#fromLevel, r#toLevel, List.length(r#changes)), o)
+
+    /// ★PlayerData.Data の全 23 field キー（playerDataMismatches）。flat でなく 2段ネスト ((13),(10))
+    /// （tuple arity/Eq 上限回避・§1.3）。sub-key（posKey/resourceStatKey/headKey/statusListKey/
+    /// pendingLevelUpKey）を再利用＝leaf drift 不能を継承。13/10 のネスト境界は逐語複製。
+    pub def playerDataKey(d: PlayerData.Data):
+            ((Int32, String, (Int32, Int32), Int32, Int32, Bool, Option[Int32],
+              (Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32),
+              (Int32, Option[(String, Int32)]),
+              (Int32, Option[(String, Int32)]),
+              (Int32, Option[(String, Int32)]),
+              (Int32, Option[(String, Int32)]),
+              Bool),
+             (Option[PlayerData.ItemKind], Int32, Staff.Direction, Bool, Bool,
+              Int32, Int32, Option[(String, Int32, Int32, Int32)],
+              List[(StatusSystem.StatusEffect, Int32, Int32)], Bool)) =
+        ((d#id, d#classId, posKey(d#gridPos), d#moveTiles, d#hp, d#waited,
+          d#attackTargetId, resourceStatKey(d#resource),
+          headKey(d#weapons, weaponKey),
+          headKey(d#staves, staffKey),
+          headKey(d#consumables, consumableKey),
+          headKey(d#rings, ringKey),
+          d#ringEquipped),
+         (d#selectedItem, d#moveStepsTaken, d#facing, d#hidden, d#usedStairs,
+          d#level, d#exp, pendingLevelUpKey(d#pendingLevelUp),
+          statusListKey(d#statuses), d#followUpUsed))
+
+    /// 地形 snapshot キー (tileSize, wallCells)（mapSnapshotMatchesScene）。
+    /// 元 lambda: m -> (m#tileSize, m#wallCells)
+    pub def mapSnapshotKey(m: MapSnapshot): (Float64, Set[(Int32, Int32)]) =
+        (m#tileSize, m#wallCells)
+
     /// S2.3 安全網: World baseStats（command 由来）と scene resource 由来 baseStats が食い違う entity を列挙する（両 faction）。
     /// BaseStats は Eq 非自動ゆえ全 8 数値 field を tuple へ射影して比較（combatViewMismatches 同型）。
     /// preserve 化後 frame-end では常に一致するはずで、食い違いは dual-write の漏れ（[BASESTATS DIFF]）を意味する。
     pub def baseStatsMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let proj = bs -> (bs#attack, bs#magicAttack, bs#defense, bs#magicDefense, bs#skill, bs#speed, bs#luck, bs#maxHp);
         let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(proj, baseStatsOf(EntityRef.Player(d#id), world)) != Some(proj(Combat.baseStatsFrom(d#resource))))
+            if (Option.map(baseStatsKey, baseStatsOf(EntityRef.Player(d#id), world)) != Some(baseStatsKey(Combat.baseStatsFrom(d#resource))))
                 Some(EntityRef.Player(d#id)) else None);
         let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(proj, baseStatsOf(EntityRef.Enemy(d#id), world)) != Some(proj(Combat.baseStatsFrom(d#resource))))
+            if (Option.map(baseStatsKey, baseStatsOf(EntityRef.Enemy(d#id), world)) != Some(baseStatsKey(Combat.baseStatsFrom(d#resource))))
                 Some(EntityRef.Enemy(d#id)) else None);
         List.append(pms, ems)
 
@@ -920,12 +1064,11 @@ mod World {
     /// 射影して比較（baseStatsMismatches 同型）。preserve 化後 frame-end では常に一致するはずで、食い違いは
     /// emitStatusesFromScene(Seed) の dual-write 漏れ（[STATUSEFFECTS DIFF]）を意味する。
     pub def statusEffectsMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let proj = xs -> List.map(s -> (s#effect, s#magnitude, s#remaining), xs);
         let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (proj(statusEffectsOf(EntityRef.Player(d#id), world)) != proj(d#statuses))
+            if (statusListKey(statusEffectsOf(EntityRef.Player(d#id), world)) != statusListKey(d#statuses))
                 Some(EntityRef.Player(d#id)) else None);
         let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (proj(statusEffectsOf(EntityRef.Enemy(d#id), world)) != proj(d#statuses))
+            if (statusListKey(statusEffectsOf(EntityRef.Enemy(d#id), world)) != statusListKey(d#statuses))
                 Some(EntityRef.Enemy(d#id)) else None);
         List.append(pms, ems)
 
@@ -947,12 +1090,11 @@ mod World {
     /// WeaponView は Eq 非自動・Option ゆえ全 8 field tuple を Option へ射影して比較（equippedRingMismatches 同型）。
     /// preserve 化後 frame-end では常に一致するはずで、食い違いは dual-write の漏れ（[WEAPONVIEW DIFF]）を意味する。
     pub def weaponViewMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let proj = wvo -> Option.map(v -> (v#weaponType, v#attack, v#hit, v#crit, v#isPhysical, v#proficient, v#effect, v#effectValue), wvo);
         let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (proj(weaponViewOf(EntityRef.Player(d#id), world)) != proj(PlayerScene.equippedWeaponView(d)))
+            if (Option.map(weaponViewKey, weaponViewOf(EntityRef.Player(d#id), world)) != Option.map(weaponViewKey, PlayerScene.equippedWeaponView(d)))
                 Some(EntityRef.Player(d#id)) else None);
         let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (proj(weaponViewOf(EntityRef.Enemy(d#id), world)) != proj(EnemyScene.equippedWeaponView(d)))
+            if (Option.map(weaponViewKey, weaponViewOf(EntityRef.Enemy(d#id), world)) != Option.map(weaponViewKey, EnemyScene.equippedWeaponView(d)))
                 Some(EntityRef.Enemy(d#id)) else None);
         List.append(pms, ems)
 
@@ -960,12 +1102,11 @@ mod World {
     /// Bonuses は Eq 非自動ゆえ 5 数値 field tuple へ射影して比較（baseStatsMismatches 同型）。
     /// 食い違いは dual-write の漏れ（[RINGBONUS DIFF]）を意味する。
     pub def ringBonusMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let proj = rb -> (rb#attack, rb#speed, rb#defense, rb#skill, rb#luck);
         let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(proj, ringBonusOf(EntityRef.Player(d#id), world)) != Some(proj(PlayerScene.equippedRingBonus(d))))
+            if (Option.map(ringBonusKey, ringBonusOf(EntityRef.Player(d#id), world)) != Some(ringBonusKey(PlayerScene.equippedRingBonus(d))))
                 Some(EntityRef.Player(d#id)) else None);
         let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(proj, ringBonusOf(EntityRef.Enemy(d#id), world)) != Some(proj(EnemyScene.equippedRingBonus(d))))
+            if (Option.map(ringBonusKey, ringBonusOf(EntityRef.Enemy(d#id), world)) != Some(ringBonusKey(EnemyScene.equippedRingBonus(d))))
                 Some(EntityRef.Enemy(d#id)) else None);
         List.append(pms, ems)
 
@@ -997,12 +1138,11 @@ mod World {
     /// P1a 安全網: World の equippedRing（read-model）と scene の装備指輪が食い違う entity を列挙する。
     /// RingResource は Eq 非自動ゆえ (name, effect, power) タプルへ射影して比較（combatViewMismatches 同型）。
     pub def equippedRingMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let proj = ro -> Option.map(r -> (r#name, r#effect, r#power), ro);
         let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (proj(equippedRingOf(EntityRef.Player(d#id), world)) != proj(PlayerData.equippedRing(d)))
+            if (Option.map(equippedRingKey, equippedRingOf(EntityRef.Player(d#id), world)) != Option.map(equippedRingKey, PlayerData.equippedRing(d)))
                 Some(EntityRef.Player(d#id)) else None);
         let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (proj(equippedRingOf(EntityRef.Enemy(d#id), world)) != proj(d#ring))
+            if (Option.map(equippedRingKey, equippedRingOf(EntityRef.Enemy(d#id), world)) != Option.map(equippedRingKey, d#ring))
                 Some(EntityRef.Enemy(d#id)) else None);
         List.append(pms, ems)
 
@@ -1014,9 +1154,8 @@ mod World {
     /// P2 安全網: World の effectRule（read-model）と scene の敵 effectRule が食い違う敵を列挙する。
     /// Json は Eq 非自動ゆえ ToString へ射影して比較（equippedRingMismatches 同型）。
     pub def effectRuleMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let proj = jo -> Option.map(j -> "${j}", jo);
         EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (proj(effectRuleOf(EntityRef.Enemy(d#id), world)) != proj(d#resource#effectRule))
+            if (Option.map(effectRuleKey, effectRuleOf(EntityRef.Enemy(d#id), world)) != Option.map(effectRuleKey, d#resource#effectRule))
                 Some(EntityRef.Enemy(d#id)) else None)
 
     /// B1: `combatView` を **World だけから再構築**する（faction 非依存）。base 戦闘値 + 指輪 + status mods
@@ -1041,17 +1180,13 @@ mod World {
     /// 食い違いは「combatView と combatViewOf の合成式 drift」を意味する（移行中の回帰検出）。
     /// record/enum は Eq 非自動ゆえ全数値 + 武器投影を tuple 射影して比較する。
     pub def combatViewMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let wvProj = wv -> (wv#attack, wv#hit, wv#crit, wv#isPhysical, wv#proficient, wv#effectValue);
-        let cvProj = cv -> (cv#attack, cv#magicAttack, cv#defense, cv#magicDefense, cv#skill,
-                            cv#speed, cv#luck, cv#hp, cv#maxHp, cv#hitMod,
-                            Option.map(wvProj, cv#weapon));
         let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(cvProj, combatViewOf(EntityRef.Player(d#id), world))
-                != Some(cvProj(PlayerScene.combatView(d))))
+            if (Option.map(combatViewKey, combatViewOf(EntityRef.Player(d#id), world))
+                != Some(combatViewKey(PlayerScene.combatView(d))))
                 Some(EntityRef.Player(d#id)) else None);
         let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(cvProj, combatViewOf(EntityRef.Enemy(d#id), world))
-                != Some(cvProj(EnemyScene.combatView(d))))
+            if (Option.map(combatViewKey, combatViewOf(EntityRef.Enemy(d#id), world))
+                != Some(combatViewKey(EnemyScene.combatView(d))))
                 Some(EntityRef.Enemy(d#id)) else None);
         List.append(pms, ems)
 
@@ -1112,22 +1247,61 @@ mod World {
     /// UnitView は Eq 非自動ゆえ全 10 field を tuple へ射影（pos/weaponRange/combat は更にネスト射影）して比較する。
     /// parity（消費者 flip の前提＝挙動不変の担保）が命で、食い違いは load 式 / head 規約 / combat 合成の drift を意味する（[UNITVIEW DIFF]）。
     pub def unitViewMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let wvProj = wv -> (wv#attack, wv#hit, wv#crit, wv#isPhysical, wv#proficient, wv#effectValue);
-        let cvProj = cv -> (cv#attack, cv#magicAttack, cv#defense, cv#magicDefense, cv#skill,
-                            cv#speed, cv#luck, cv#hp, cv#maxHp, cv#hitMod,
-                            Option.map(wvProj, cv#weapon));
-        let proj = uv -> (uv#id, uv#faction, (uv#pos#x, uv#pos#y), uv#hp, uv#moveTiles,
-                          Option.map(r -> (r#min, r#max), uv#weaponRange),
-                          cvProj(uv#combat), uv#isDying, uv#hidden, uv#aiType);
         let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(proj, unitViewFromWorld(EntityRef.Player(d#id), world, scene))
-                != Some(proj(PlayerScene.unitView(d))))
+            if (Option.map(unitViewKey, unitViewFromWorld(EntityRef.Player(d#id), world, scene))
+                != Some(unitViewKey(PlayerScene.unitView(d))))
                 Some(EntityRef.Player(d#id)) else None);
         let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(proj, unitViewFromWorld(EntityRef.Enemy(d#id), world, scene))
-                != Some(proj(EnemyScene.unitView(d))))
+            if (Option.map(unitViewKey, unitViewFromWorld(EntityRef.Enemy(d#id), world, scene))
+                != Some(unitViewKey(EnemyScene.unitView(d))))
                 Some(EntityRef.Enemy(d#id)) else None);
         List.append(pms, ems)
+
+    /// S4.4: scene の `PlayerScene.get` Data と **bit 一致**する `PlayerData.Data` を **World 由来**で再構築する
+    /// （S6 で scene を World から派生する／S7 で bridge 撤去する土台。additive twin ＝消費者 flip はまだしない）。
+    /// 23 field の供給源（PlayerData.flix:80-89 の分類）:
+    ///   W ストア由来 14 accessor（15 field）: gridPos=posOf／hp=hpOf／waited=waitedOf／moveTiles=moveTilesOf／
+    ///     attackTargetId=attackTargetOf／weapons=weaponsOf／staves=stavesOf／consumables=consumablesOf／rings=ringsOf／
+    ///     ringEquipped=ringEquippedOf／followUpUsed=followUpUsedOf／(level,exp)=progressOf（タプル分解）／
+    ///     hidden=playerHiddenOf／statuses=statusEffectsOf。
+    ///   R 残置 5（scene Data から）: classId／resource／selectedItem／facing／pendingLevelUp（hybrid-A resource 系残置）。
+    ///   S→W 未昇格 2（scene Data から・S5/D13a で将来昇格）: moveStepsTaken／usedStairs（World にまだ store 無し）。
+    ///   id = 引数。
+    /// core な W field（posOf/hpOf/moveTiles/在庫/progress 等）が一つでも None なら全体 None（unitViewFromWorld と同じ gate 流儀）。
+    pub def dataFromWorld(id: Int32, world: World, scene: Scene[NodeTag]): Option[PlayerData.Data] =
+        let ref = EntityRef.Player(id);
+        match (posOf(ref, world), hpOf(ref, world), waitedOf(ref, world), moveTilesOf(ref, world),
+               weaponsOf(ref, world), stavesOf(ref, world), consumablesOf(ref, world), ringsOf(ref, world),
+               ringEquippedOf(ref, world), followUpUsedOf(ref, world), progressOf(ref, world),
+               PlayerScene.get(id, scene)) {
+            case (Some(pos), Some(hp), Some(waited), Some(moveTiles),
+                  Some(weapons), Some(staves), Some(consumables), Some(rings),
+                  Some(ringEquipped), Some(followUpUsed), Some((level, exp)),
+                  Some(d)) =>
+                // record リテラルは `Some(` 直後（`(` の後）に置く＝block/named-tuple 誤パース回避（S4.1 gotcha）。
+                Some({id = id, classId = d#classId, gridPos = pos, moveTiles = moveTiles, hp = hp,
+                      waited = waited, attackTargetId = attackTargetOf(ref, world),
+                      resource = d#resource, weapons = weapons, staves = staves,
+                      consumables = consumables, rings = rings, ringEquipped = ringEquipped,
+                      selectedItem = d#selectedItem, moveStepsTaken = d#moveStepsTaken,
+                      facing = d#facing, hidden = playerHiddenOf(ref, world), usedStairs = d#usedStairs,
+                      level = level, exp = exp, pendingLevelUp = d#pendingLevelUp,
+                      statuses = statusEffectsOf(ref, world), followUpUsed = followUpUsed})
+            case _ => None
+        }
+
+    /// S4.4 安全網: World 由来 `dataFromWorld` と scene `PlayerScene.get` Data が食い違う味方を列挙する（[PLAYERDATA DIFF]）。
+    /// Data は Eq 非自動ゆえ **全 23 field を tuple へ射影**して比較する。射影が 1 field でも漏れると、その field が
+    /// ズレても DIFF が鳴らず「parity 成立」と誤認する（S2.4 の length+head 見逃しの拡大版）ため **全 field 完備が命**。
+    /// ネスト射影: gridPos={x,y}／weapons/staves/consumables/rings は (長さ, 先頭の name)／resource は数値 stat 群で代表／
+    /// statuses は (effect,magnitude,remaining) list／selectedItem(ItemKind Eq)／facing(Direction Eq)／
+    /// pendingLevelUp は Option を (unitName,fromLevel,toLevel,変化数) へ射影／他スカラはそのまま。
+    pub def playerDataMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
+        // 全 23 field の射影は playerDataKey へ集約（2段ネスト ((13),(10))・在庫は weaponsMismatches 等と
+        // 同一 weaponKey/staffKey/consumableKey/ringKey を共有＝S4.4 級 drift 不能）。
+        PlayerScene.getAll(scene) |> List.filterMap(d ->
+            if (Option.map(playerDataKey, dataFromWorld(d#id, world, scene)) != Some(playerDataKey(d)))
+                Some(EntityRef.Player(d#id)) else None)
 
     /// World 拡張: 味方の (level, exp) を World から読む。未登録は None。Enemy は常に None。
     pub def progressOf(ref: EntityRef, world: World): Option[(Int32, Int32)] =
@@ -1209,10 +1383,9 @@ mod World {
 
     /// F7-slice3 検証器: 敵 prevPos の World/scene 不一致。record は ToString 不可ゆえ (x,y) タプルに畳む。
     pub def prevPosMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[(Int32, Int32)], Option[(Int32, Int32)])] =
-        let toT = op -> Option.map(p -> (p#x, p#y), op);
         EnemyScene.getAll(scene) |> List.filterMap(d -> {
-            let wp = toT(prevPosOf(EntityRef.Enemy(d#id), world));
-            let sp = toT(d#prevPos);
+            let wp = Option.map(posKey, prevPosOf(EntityRef.Enemy(d#id), world));
+            let sp = Option.map(posKey, d#prevPos);
             if (wp != sp) Some((EntityRef.Enemy(d#id), wp, sp)) else None
         })
 
@@ -1245,10 +1418,9 @@ mod World {
     /// gameLoop が refreshMirror（weapons preserve+prune）の **前**に呼ぶ＝全 weapon 書込が
     /// `Cmd.SetWeapons` を dual-write していれば空。書き漏れがあると `(ref, worldLen, sceneLen)` が出る。
     pub def weaponsMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Int32, Int32)] =
-        let proj = ws -> (List.length(ws), List.head(ws) |> Option.map(w -> (w#name, w#durability)));
         let mism = (ref, sceneWs) -> {
-            let wWs = weaponsOf(ref, world) |> Option.map(proj);
-            if (wWs != Some(proj(sceneWs)))
+            let wWs = weaponsOf(ref, world) |> Option.map(ws -> headKey(ws, weaponKey));
+            if (wWs != Some(headKey(sceneWs, weaponKey)))
                 Some((ref, Option.getWithDefault(-1, Option.map(p -> fst(p), wWs)), List.length(sceneWs)))
             else None
         };
@@ -1291,30 +1463,27 @@ mod World {
     /// D4 検証器（weaponsMismatches 同型・players のみ）: World staves と scene #staves の不一致。
     /// StaffResource は Eq 非自動ゆえ **長さ＋先頭 (name, durability)** へ射影して比較する（[STAVES DIFF]）。
     pub def stavesMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Int32, Int32)] =
-        let proj = xs -> (List.length(xs), List.head(xs) |> Option.map(s -> (s#name, s#durability)));
         PlayerScene.getAll(scene) |> List.filterMap(d -> {
-            let ww = stavesOf(EntityRef.Player(d#id), world) |> Option.map(proj);
-            if (ww != Some(proj(d#staves)))
+            let ww = stavesOf(EntityRef.Player(d#id), world) |> Option.map(xs -> headKey(xs, staffKey));
+            if (ww != Some(headKey(d#staves, staffKey)))
                 Some((EntityRef.Player(d#id), Option.getWithDefault(-1, Option.map(p -> fst(p), ww)), List.length(d#staves)))
             else None
         })
 
     /// D4 検証器: World consumables と scene #consumables の不一致（先頭 (name, durability) 射影）。
     pub def consumablesMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Int32, Int32)] =
-        let proj = xs -> (List.length(xs), List.head(xs) |> Option.map(c -> (c#name, c#durability)));
         PlayerScene.getAll(scene) |> List.filterMap(d -> {
-            let ww = consumablesOf(EntityRef.Player(d#id), world) |> Option.map(proj);
-            if (ww != Some(proj(d#consumables)))
+            let ww = consumablesOf(EntityRef.Player(d#id), world) |> Option.map(xs -> headKey(xs, consumableKey));
+            if (ww != Some(headKey(d#consumables, consumableKey)))
                 Some((EntityRef.Player(d#id), Option.getWithDefault(-1, Option.map(p -> fst(p), ww)), List.length(d#consumables)))
             else None
         })
 
     /// D4 検証器: World rings と scene #rings の不一致。RingResource に durability が無いので先頭 (name, power) 射影。
     pub def ringsMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Int32, Int32)] =
-        let proj = xs -> (List.length(xs), List.head(xs) |> Option.map(r -> (r#name, r#power)));
         PlayerScene.getAll(scene) |> List.filterMap(d -> {
-            let ww = ringsOf(EntityRef.Player(d#id), world) |> Option.map(proj);
-            if (ww != Some(proj(d#rings)))
+            let ww = ringsOf(EntityRef.Player(d#id), world) |> Option.map(xs -> headKey(xs, ringKey));
+            if (ww != Some(headKey(d#rings, ringKey)))
                 Some((EntityRef.Player(d#id), Option.getWithDefault(-1, Option.map(p -> fst(p), ww)), List.length(d#rings)))
             else None
         })
@@ -1411,8 +1580,7 @@ mod World {
     /// MapSnapshot は Eq 非自動ゆえ (tileSize, wallCells) へ射影して比較（壁レイアウトの drift 検出）。
     pub def mapSnapshotMatchesScene(world: World, scene: Scene[NodeTag]): Bool =
         let World.World(w) = world;
-        let proj = m -> (m#tileSize, m#wallCells);
-        Option.map(proj, w#mapSnapshot) == Some(proj(BoardSnapshot.mapSnapshotOf(scene)))
+        Option.map(mapSnapshotKey, w#mapSnapshot) == Some(mapSnapshotKey(BoardSnapshot.mapSnapshotOf(scene)))
 
     /// Board の駒を**順序非依存**で突合する正規形（(faction, id, x, y) 昇順）。
     /// `Board` は型エイリアスで Eq derive 不可・pieces 順が World(id昇順) と fromScene(preorder) で違うため、
