@@ -77,9 +77,21 @@ pub enum World {
                  // S-A0c: 装備指輪ボーナス read-model（unified-id・両 faction）。未装備は zeroBonuses。
                  // equippedRingBonus 由来ゆえ毎フレーム再 mirror。combatView flip 用。
                  ringBonus = Map[EntityId, Ring.Bonuses],
+                 // P1a（resolveCombat sim）: 装備指輪リソース本体の read-model（unified-id・両 faction）。
+                 // ringBonus はステ補正だけを持つが、finisher/lifesteal は RingResource（effect/power）を要する。
+                 // weaponView と同じ Option-store パターン（内側 Option=未装備）＝毎フレーム再 mirror。
+                 equippedRing = Map[EntityId, Option[Ring.RingResource]],
                  // S-A0d（spike が露出した gap）: level-up 成長に要る resource 由来データ（基準 Stats + 成長率）。
                  // player-only・resource 由来ゆえ毎フレーム再 mirror。resolveCombat の level-up を World 完結に。
                  growth = Map[EntityId, Growth],
+                 // P1c（resolveCombat sim）: 静的地形スナップショット（プレーンな type-alias＝storable）。
+                 // ノックバックの着地計算が要する `boardOf` の地形ソース。empty()=None（シーン未確定）。
+                 // syncFromScene/refreshMirror で `BoardSnapshot.mapSnapshotOf(scene)` を再 mirror（toBoard と同源）。
+                 mapSnapshot = Option[MapSnapshot],
+                 // P2（resolveCombat sim・敵のみ）: 敵特殊能力 effectRule の生 Json read-model（unified-id）。
+                 // 内側 Option=ルールなし。enemy `#resource#effectRule`（Option[Json]）由来＝weaponView と同じ
+                 // Option-store パターン（accessor が flatten）＝毎フレーム再 mirror。敵パスの sim 発火判定が読む。
+                 effectRule = Map[EntityId, Option[Util.Json.Json]],
                  // F8-slice2: 敵ターン driver が読む phase-banner 同期 bool（TopBar が毎フレーム dual-write）。
                  //   enemyTurnBusy      — 敵ターン開始 intro の hold 中（>0）＝敵の行動開始待ち。
                  //   phaseObservedEnemy — 上部バーが「敵ターン」を観測済み（0 体ターンの取りこぼし防止）。
@@ -107,7 +119,10 @@ mod World {
                      attackTarget = Map.empty(),
                      playerLevel = Map.empty(), playerExp = Map.empty(),
                      baseStats = Map.empty(), weaponView = Map.empty(), ringBonus = Map.empty(),
+                     equippedRing = Map.empty(),
                      growth = Map.empty(),
+                     mapSnapshot = None,
+                     effectRule = Map.empty(),
                      enemyTurnBusy = false, phaseObservedEnemy = false,
                      rng = Prng.seed(0i64)})
 
@@ -128,6 +143,14 @@ mod World {
             case Some(t) => Map.insert(uidOf(d#id), t, m)
             case None    => m
         }, Map.empty(), units)
+
+    /// P1c: scene に Map ノードがあれば地形 snapshot を取り、無ければ None（`BoardSnapshot.mapSnapshotOf` /
+    /// `MapScene.getMapLayer` は Map 不在で `bug!` する＝map-less な最小 scene でも安全に sync するためのガード）。
+    def mapSnapshotOpt(scene: Scene[NodeTag]): Option[MapSnapshot] =
+        match Scene.getEngineNode(MapScene.mapPath(), scene) {
+            case Some(_) => Some(BoardSnapshot.mapSnapshotOf(scene))
+            case None    => None
+        }
 
     pub def syncFromScene(scene: Scene[NodeTag], world: World): World =
         let World.World(w) = world;
@@ -164,9 +187,16 @@ mod World {
                                    Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedWeaponView(d), enemies)),
             ringBonus = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedRingBonus(d), players),
                                   Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedRingBonus(d), enemies)),
+            // P1a: equippedRing も装備指輪由来の read-model（内側 Option=未装備）＝ringBonus と同源で再 mirror。
+            equippedRing = Map.union(Query.indexBy(d -> d#id, d -> PlayerData.equippedRing(d), players),
+                                     Query.indexBy(d -> enemyUid(d#id), d -> d#ring, enemies)),
             // S-A0d: growth は player-only・resource 由来 read-model（毎フレーム再 mirror）。
             growth = Query.indexBy(d -> d#id,
                         d -> ({base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}: Growth), players),
+            // P1c: mapSnapshot は scene 静的地形（toBoard が借りるのと同源）を毎フレーム再 mirror。
+            mapSnapshot = mapSnapshotOpt(scene),
+            // P2: effectRule は敵 resource 由来の read-model（敵のみ・内側 Option=ルールなし）＝毎フレーム再 mirror。
+            effectRule = Query.indexBy(d -> enemyUid(d#id), d -> d#resource#effectRule, enemies),
             attackTarget = Map.union(attackTargetMap(id -> id, players),
                                      attackTargetMap(enemyUid, enemies)),
             // F8-slice2: scene に mirror 元がない scalar bool は前 world の値を保持（command 由来）。
@@ -226,9 +256,16 @@ mod World {
             // S-A0c: ringBonus も装備指輪由来の read-model ＝ 毎フレーム再 mirror。
             ringBonus = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedRingBonus(d), players),
                                   Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedRingBonus(d), enemies)),
+            // P1a: equippedRing も装備指輪由来の read-model ＝ ringBonus と同源で毎フレーム再 mirror。
+            equippedRing = Map.union(Query.indexBy(d -> d#id, d -> PlayerData.equippedRing(d), players),
+                                     Query.indexBy(d -> enemyUid(d#id), d -> d#ring, enemies)),
             // S-A0d: growth も player-only・resource 由来 read-model ＝ 毎フレーム再 mirror。
             growth = Query.indexBy(d -> d#id,
                         d -> ({base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}: Growth), players),
+            // P1c: mapSnapshot も scene 静的地形を毎フレーム再 mirror（toBoard と同源）。
+            mapSnapshot = mapSnapshotOpt(scene),
+            // P2: effectRule も敵 resource 由来 read-model（敵のみ）＝毎フレーム再 mirror。
+            effectRule = Query.indexBy(d -> enemyUid(d#id), d -> d#resource#effectRule, enemies),
             attackTarget = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#attackTarget),
             // F8-slice2: scalar bool は command 由来を保持（scene mirror 元なし・TopBar が毎フレーム dual-write）。
             enemyTurnBusy      = w#enemyTurnBusy,
@@ -710,6 +747,11 @@ mod World {
             case EntityRef.Enemy(id)  => Map.get(enemyUid(id), w#enemyPrevPos)
         }
 
+    /// P1c: 現在位置を World の pos-store（`Cmd.Move` 権威）から読む（両 faction・unified-id）。
+    /// `prevPosOf`（敵直前位置）とは別物＝現在セル。ノックバック着地計算が攻撃側/防御側セルを引くのに要る。
+    pub def posOf(ref: EntityRef, world: World): Option[{x = Int32, y = Int32}] =
+        let World.World(w) = world; Map.get(toUid(ref), w#pos)
+
     /// F7-slice4: followUpUsed を World から読む（両 faction）。A': 単一 store＋toUid。
     pub def followUpUsedOf(ref: EntityRef, world: World): Option[Bool] =
         let World.World(w) = world; Map.get(toUid(ref), w#followUpUsed)
@@ -760,6 +802,36 @@ mod World {
     /// B1 で combatView がここを読み、base + ring + status を合成する。
     pub def ringBonusOf(ref: EntityRef, world: World): Option[Ring.Bonuses] =
         let World.World(w) = world; Map.get(toUid(ref), w#ringBonus)
+
+    /// P1a: 装備指輪リソース本体を World から読む（unified-id・両 faction）。外側 Option（entity 未登録）と
+    /// 内側 Option（未装備）を flatten ＝未装備で None（`weaponViewOf` を逐語踏襲）。finisher/lifesteal が読む。
+    pub def equippedRingOf(ref: EntityRef, world: World): Option[Ring.RingResource] =
+        let World.World(w) = world; Map.get(toUid(ref), w#equippedRing) |> Option.flatten
+
+    /// P1a 安全網: World の equippedRing（read-model）と scene の装備指輪が食い違う entity を列挙する。
+    /// RingResource は Eq 非自動ゆえ (name, effect, power) タプルへ射影して比較（combatViewMismatches 同型）。
+    pub def equippedRingMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
+        let proj = ro -> Option.map(r -> (r#name, r#effect, r#power), ro);
+        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
+            if (proj(equippedRingOf(EntityRef.Player(d#id), world)) != proj(PlayerData.equippedRing(d)))
+                Some(EntityRef.Player(d#id)) else None);
+        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
+            if (proj(equippedRingOf(EntityRef.Enemy(d#id), world)) != proj(d#ring))
+                Some(EntityRef.Enemy(d#id)) else None);
+        List.append(pms, ems)
+
+    /// P2: 敵特殊能力 effectRule（生 Json）を World から読む（敵のみ・unified-id）。外側 Option（未登録）と
+    /// 内側 Option（ルールなし）を flatten ＝ルールなしで None（`weaponViewOf` を逐語踏襲）。敵パスの sim 発火判定が読む。
+    pub def effectRuleOf(ref: EntityRef, world: World): Option[Util.Json.Json] =
+        let World.World(w) = world; Map.get(toUid(ref), w#effectRule) |> Option.flatten
+
+    /// P2 安全網: World の effectRule（read-model）と scene の敵 effectRule が食い違う敵を列挙する。
+    /// Json は Eq 非自動ゆえ ToString へ射影して比較（equippedRingMismatches 同型）。
+    pub def effectRuleMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
+        let proj = jo -> Option.map(j -> "${j}", jo);
+        EnemyScene.getAll(scene) |> List.filterMap(d ->
+            if (proj(effectRuleOf(EntityRef.Enemy(d#id), world)) != proj(d#resource#effectRule))
+                Some(EntityRef.Enemy(d#id)) else None)
 
     /// B1: `combatView` を **World だけから再構築**する（faction 非依存）。base 戦闘値 + 指輪 + status mods
     /// + hp + 装備武器投影を合成し、`PlayerScene.combatView` / `EnemyScene.combatView` と同一の `Combat.CombatView`
@@ -961,6 +1033,20 @@ mod World {
             map    = BoardSnapshot.mapSnapshotOf(scene),
             pieces = boardPieces(world)
         }
+
+    /// P1c: World だけから Board を組む（scene 非依存）。地形は store した `mapSnapshot`（未確定なら None）、
+    /// 駒は既存の pure-World `boardPieces`（`Cmd.Move` 権威・hidden 除外）を VERBATIM 再利用＝`toBoard` の
+    /// scene 地形を World store に差し替えた版。ノックバックの sim 着地計算が読む。
+    pub def boardOf(world: World): Option[Board] =
+        let World.World(w) = world;
+        Option.map(m -> ({map = m, pieces = boardPieces(world)}: Board), w#mapSnapshot)
+
+    /// P1c 安全網: store した mapSnapshot（地形）が scene 由来と食い違うか（boardKey は駒のみ見るため別建て）。
+    /// MapSnapshot は Eq 非自動ゆえ (tileSize, wallCells) へ射影して比較（壁レイアウトの drift 検出）。
+    pub def mapSnapshotMatchesScene(world: World, scene: Scene[NodeTag]): Bool =
+        let World.World(w) = world;
+        let proj = m -> (m#tileSize, m#wallCells);
+        Option.map(proj, w#mapSnapshot) == Some(proj(BoardSnapshot.mapSnapshotOf(scene)))
 
     /// Board の駒を**順序非依存**で突合する正規形（(faction, id, x, y) 昇順）。
     /// `Board` は型エイリアスで Eq derive 不可・pieces 順が World(id昇順) と fromScene(preorder) で違うため、
