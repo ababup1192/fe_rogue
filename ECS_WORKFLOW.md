@@ -218,11 +218,11 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 >
 > ### ロードマップ（A 完成 → B 評価・体感 4〜5 割残）
 > **方針決定（2026-06-29・ユーザー）**: まず **A（scene-tree を render 層として残す現 §A 形）を Phase D まで完成** → その後 **B（Node/NodeTree 撤廃 / render-from-World）を別途評価**。
-> 1. **enemy-action cutover 🟡 進行中**（敵杖詠唱 `enemyCastStaff`・投擲を ECS 化・dynamic workflow `w89m9bmr2`・StaffSystem 流用・`useEcsEnemyStaff` 既定 false・golden-trace・`*Legacy` seam）。
-> 2. **S7 セーブの ECS 化**（中規模・独立クリーン・reader-flip cascade なし。World store 直列化＋`EcsCodec`）。
-> 3. **Phase D（終端・最重・= A 完成宣言）**: PlayerData/EnemyData の component 分解／**HUD・menu の Query 一本化**（`ItemMenu`/`TradeMenu`/`CursorScene`/`UnitInfoPopup` の scene Data 二重読み→`PartyQuery/RosterQuery` 由来に統一・`BattlePanel`/`ActionMenu`/`Camera` が見本）／faction-blind System 統合／bridge（mirror dual-write・EntityScene・EncounterBuilder）撤去＝§E 完成定義の到達点。**着手前に専用プラン（壁打ち 90点・workflow）必須**。
-> 4. **（A 完成後）B 評価**: 下記アーキ判断②の構造重複を撤廃するか。Explore で engine `Render`/`Drawable` 経路の欠落・UI/menu 作り直し規模・IDE scene 編集との競合を資料化してから判断。**今はやらない**。
-> - **defer 継続（低 ROI・Plan B 整合）**: statuses 完全 World 権威化（高コスト・byte 同一 churn・reader-flip cascade と判明）／inventory 等 scene 権威（Plan B が明示許容）。Phase D に吸収するか据置。
+> - ✅ **cutover 完了**: combat（ECS 既定・コミット済）／player staff（ECS）／**enemy Bind 詠唱**（`useEcsEnemyStaff` 既定 false・branch 温存・`StaffSystem` を caster=Enemy 流用・1014緑・golden 5本=直接クロス比較 legacy==ECS 含む・`TestEnemyStaffGolden`・コミット済）。敵 Stopgap/投擲は legacy 温存（defer）。**sim ロジックは概ね ECS 化済み**。
+> - **★次の一手 = Phase D（終端・最重・= A 完成宣言）**: PlayerData/EnemyData の **component 分解**（stats/inventory/weapons/rings もここで World/component 化）／**HUD・menu の Query 一本化**（`ItemMenu`/`TradeMenu`/`CursorScene`/`UnitInfoPopup` の scene Data 二重読み→`PartyQuery/RosterQuery` に統一・`BattlePanel`/`ActionMenu`/`Camera` が見本）／faction-blind System 統合／bridge（mirror dual-write・EntityScene・EncounterBuilder）撤去＝§E DoD 到達。**最大かつ最難・着手前に専用プラン（壁打ち 90点・dynamic workflow）必須**。
+> - **S7 セーブの ECS 化は Phase D の後**（訂正・2026-06-29）: 当初「独立クリーン」と誤判断したが、`FloorSnapshot.PlayerSnap` は **成長後 stats/weapons/staves/consumables/rings/statuses（scene 権威・World 非保持）** も直列化＝World store 直列化は **Phase D まで不完全**。現 scene ベース save は全捕捉で正常動作。∴ Phase D で全部 World/component 化してから World 直列化が自然。
+> - **（A 完成後）B 評価**: アーキ判断②の構造重複を撤廃するか。Explore で engine `Render`/`Drawable` 経路の欠落・UI/menu 作り直し規模・IDE scene 編集との競合を資料化してから判断。**今はやらない**。
+> - **defer 継続（低 ROI・Plan B 整合）**: statuses 完全 World 権威化（高コスト・byte 同一 churn・reader-flip cascade と判明）／inventory 等 scene 権威（Plan B が明示許容・Phase D の component 分解で吸収）。
 >
 > ### アーキ判断: Node/NodeTree 再考（ECS との重複・2026-06-29 ユーザー指摘）
 > 「ECS 化達成後、Node/NodeTree は OOP 残滓で ECS と機能重複では？」への分析。**重複は部分的・3 層に分解**:
