@@ -115,7 +115,7 @@ mod TestCombatRolls {
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withRecordedRolls(rc, 0i64, () ->
-                    CombatScene.applyAttackHit(0, scene)))))))))));
+                    CombatScene.applyAttackHitLegacy(0, scene)))))))))));
             Assert.assertEq(
                 expected = (12, prngSeq(0i64, 12)),
                 (List.length(rolls), rolls))
@@ -142,7 +142,7 @@ mod TestCombatRolls {
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withRecordedRolls(rc, 0i64, () ->
-                    CombatScene.applyEnemyAttackHit(1, scene))))))))));
+                    CombatScene.applyEnemyAttackHitLegacy(1, scene))))))))));
             Assert.assertEq(
                 expected = (3, prngSeq(0i64, 3)),
                 (List.length(rolls), rolls))

@@ -140,7 +140,23 @@ mod CombatScene {
     /// 当該 player の `attackTargetId` を読み、対応する敵への攻撃を解決する。
     /// 命中ロールは `applyDamageToEnemy` 側で行い、命中なら SE + ダメージ + ログ、
     /// 回避なら SE を鳴らさず "miss" 表示のみ。HP <= 0 なら death_blink を開始する。
+    /// ゲーム本体の味方攻撃適用（`useEcsCombat()` で ECS/legacy を選ぶ＝既定 ECS）。
     pub def applyAttackHit(playerId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
+                              GameEngine.Game,
+                              GameLogger.GameLogger, World.RngDraw,
+                              CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
+        applyAttackHitWith(useEcsCombat(), playerId, scene)
+
+    /// **legacy 直叩き**（トグル非依存）。golden-trace 等が legacy 経路を oracle として pin するため。
+    pub def applyAttackHitLegacy(playerId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
+                              GameEngine.Game,
+                              GameLogger.GameLogger, World.RngDraw,
+                              CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
+        applyAttackHitWith(false, playerId, scene)
+
+    def applyAttackHitWith(useEcs: Bool, playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                               GameEngine.Game,
                               GameLogger.GameLogger, World.RngDraw,
@@ -148,20 +164,33 @@ mod CombatScene {
         let resolved = forM (
             d       <- PlayerScene.get(playerId, scene);
             enemyId <- d#attackTargetId
-        ) yield applyDamageToEnemy(playerId, d, enemyId, scene);
+        ) yield applyDamageToEnemy(useEcs, playerId, d, enemyId, scene);
         Option.getWithDefault(scene, resolved)
 
-    /// 敵の `attack:hit` のダメージ適用。
+    /// 敵の `attack:hit` のダメージ適用（`useEcsCombat()` で ECS/legacy を選ぶ＝既定 ECS）。
     /// 戻り値は (新 scene, HP=0 になったプレイヤー id のリスト)。
     /// killedIds が空でないとき呼び出し側は死亡処理（removeDeadAndCheckGameOver）を発火する。
     pub def applyEnemyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
              Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
+        applyEnemyAttackHitWith(useEcsCombat(), enemyId, scene)
+
+    /// **legacy 直叩き**（トグル非依存・テスト oracle 用）。
+    pub def applyEnemyAttackHitLegacy(enemyId: Int32, scene: Scene[NodeTag]):
+            (Scene[NodeTag], List[Int32]) \
+            {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
+             Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
+        applyEnemyAttackHitWith(false, enemyId, scene)
+
+    def applyEnemyAttackHitWith(useEcs: Bool, enemyId: Int32, scene: Scene[NodeTag]):
+            (Scene[NodeTag], List[Int32]) \
+            {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
+             Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
         let resolved = forM (
             d              <- EnemyScene.get(enemyId, scene);
             targetPlayerId <- d#attackTargetId
-        ) yield applyDamageToPlayer(enemyId, d, targetPlayerId, scene);
+        ) yield applyDamageToPlayer(useEcs, enemyId, d, targetPlayerId, scene);
         Option.getWithDefault((scene, Nil), resolved)
 
     /// AnimationPlayer の `attack_lunge` finished イベント受信時の処理（攻守共通の入口）。
@@ -487,7 +516,7 @@ mod CombatScene {
     /// 敵 id にダメージを与える。装備武器（`weapons.head`）と敵が揃っていなければ no-op。
     /// 実体は legacy `resolveAttack` または（トグル時）ECS 経路。前提（武器あり・敵あり）の解決だけを担い、
     /// ネストを避けるため Option を `forM` で短絡的に畳む。
-    def applyDamageToEnemy(playerId: Int32, player: PlayerScene.Data, enemyId: Int32,
+    def applyDamageToEnemy(useEcs: Bool, playerId: Int32, player: PlayerScene.Data, enemyId: Int32,
                             scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
@@ -496,7 +525,7 @@ mod CombatScene {
             weapon <- PlayerData.equippedWeapon(player#weapons);
             enemy  <- EnemyScene.get(enemyId, scene)
         ) yield
-            if (useEcsCombat())
+            if (useEcs)
                 ecsResolvePlayerAttack(playerId, player, weapon, enemyId, enemy, scene)
             else
                 resolveAttack(playerId, player, weapon, enemy, enemyId, scene);
@@ -746,17 +775,17 @@ mod CombatScene {
     /// ログはスペック準拠で「敵{N} → P{M} に Xダメージ」、撃破時「敵{N} → P{M} を撃破」。
     /// HP=0 なら killedIds に追加して返す（呼び出し側が死亡処理を発火する）。
     /// 武器なし（None）でここに到達した場合は防御的に何もしない。
-    def applyDamageToPlayer(enemyId: Int32, enemy: EnemyScene.Data, targetId: Int32,
+    def applyDamageToPlayer(useEcs: Bool, enemyId: Int32, enemy: EnemyScene.Data, targetId: Int32,
                              scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
              Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
-        // 前提（武器あり・対象あり）の解決だけを担う。実体は legacy resolveEnemyAttack または（トグル時）ECS 経路。
+        // 前提（武器あり・対象あり）の解決だけを担う。実体は legacy resolveEnemyAttack または（useEcs 時）ECS 経路。
         let resolved = forM (
             weapon <- enemy#weapon;
             player <- PlayerScene.get(targetId, scene)
         ) yield
-            if (useEcsCombat())
+            if (useEcs)
                 ecsResolveEnemyAttack(enemyId, enemy, targetId, player, scene)
             else
                 resolveEnemyAttack(enemyId, enemy, weapon, player, targetId, scene);

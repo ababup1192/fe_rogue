@@ -170,7 +170,7 @@ mod TestGoldenTrace {
             TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withNoopAnim(() ->
             TestUnitFixtures.withNoopTween(() ->
-                CombatScene.applyAttackHit(0, sc)))))))))
+                CombatScene.applyAttackHitLegacy(0, sc)))))))))
         }
 
     /// applyAttackHit を CONSTANT-RNG harness で駆動（draw を全て `rngVal` 固定にする）。
@@ -185,7 +185,7 @@ mod TestGoldenTrace {
             TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withNoopAnim(() ->
             TestUnitFixtures.withNoopTween(() ->
-                CombatScene.applyAttackHit(0, sc)))))))))
+                CombatScene.applyAttackHitLegacy(0, sc)))))))))
         }
 
     /// applyEnemyAttackHit を traced harness + 副作用モックで駆動。((後 scene, killed), cmdKey 列, World)。
@@ -200,7 +200,7 @@ mod TestGoldenTrace {
             TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withNoopAnim(() ->
             TestUnitFixtures.withNoopTween(() ->
-                CombatScene.applyEnemyAttackHit(enemyId, sc)))))))))
+                CombatScene.applyEnemyAttackHitLegacy(enemyId, sc)))))))))
         }
 
     // combatViewOf が attacker/defender 両方で Some か（vacuous scene-fallback の pre-guard）。
@@ -505,7 +505,7 @@ mod TestGoldenTrace {
                     run {
                         TestUnitFixtures.withPhaseRef(rc, TurnPhase.Phase.PlayerAttackHold, () -> {
                             let s1 = CombatScene.onLungeDone(Faction.Player, 0, sc);
-                            CombatScene.applyEnemyAttackHit(1, s1)
+                            CombatScene.applyEnemyAttackHitLegacy(1, s1)
                         })
                     } with Pacing.withState(rc))))))))))));
             let (_, killed) = result;
@@ -937,9 +937,9 @@ mod TestGoldenTrace {
                 TestUnitFixtures.withNoSelection(() ->
                     run {
                         TestUnitFixtures.withPhaseRef(rc, TurnPhase.Phase.PlayerAttackHold, () -> {
-                            let s1 = CombatScene.applyAttackHit(0, sc);
+                            let s1 = CombatScene.applyAttackHitLegacy(0, sc);
                             let s2 = CombatScene.onLungeDone(Faction.Player, 0, s1);
-                            CombatScene.applyEnemyAttackHit(1, s2)
+                            CombatScene.applyEnemyAttackHitLegacy(1, s2)
                         })
                     } with Pacing.withState(rc))))))))))));
             w

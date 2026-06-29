@@ -97,7 +97,7 @@ mod TestCombatScene {
         TestUnitFixtures.withMockGameLogger(() ->
         TestUnitFixtures.withNoopAnim(() ->
         TestUnitFixtures.withNoopTween(() ->
-            CombatScene.applyAttackHit(0, scene)))))))))))
+            CombatScene.applyAttackHitLegacy(0, scene)))))))))))
 
     // ════════════════════════════════════════════════════════
     // attackLungeAnimation — 中点で attack:hit を 1 つ発火（純粋）
@@ -220,7 +220,7 @@ mod TestCombatScene {
         TestUnitFixtures.withMockGameLogger(() ->
         TestUnitFixtures.withNoopTween(() ->
         TestUnitFixtures.withNoopAnim(() ->
-            CombatScene.applyEnemyAttackHit(1, scene))))))))))
+            CombatScene.applyEnemyAttackHitLegacy(1, scene))))))))))
 
     /// 敵→味方の鏡像数値: 敵(素3+武器2) vs 味方防御 1 → 4 ダメージ、
     /// 命中率 = 80 + 技2×2 + 幸運2÷2 − (速さ3×2 + 幸運2) = 77 > 50 で命中。
