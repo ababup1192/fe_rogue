@@ -1084,6 +1084,10 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[RINGBONUS DIFF] ${ms}")
             };
+            match World.moveTilesMismatches(Ref.get(worldRef), next) {  // S2.5: command 由来 World moveTiles vs scene base moveTiles
+                case Nil => ()
+                case ms  => println("[MOVETILES DIFF] ${ms}")
+            };
             match World.stavesMismatches(Ref.get(worldRef), next) {  // D4: command 由来 World staves vs scene #staves
                 case Nil => ()
                 case ms  => println("[STAVES DIFF] ${ms}")

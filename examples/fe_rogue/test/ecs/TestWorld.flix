@@ -935,6 +935,41 @@ mod TestWorld {
         let drifted = World.applyCmd(World.Cmd.SetRingBonus(World.EntityRef.Player(0), drift), world);
         Assert.assertEq(expected = false, List.isEmpty(World.ringBonusMismatches(drifted, scene)))
 
+    // ── S2.5: moveTiles store（command-derive・両 faction・spawn 後不変・preserve+prune）──
+
+    /// applyCmd(SetMoveTiles) が moveTiles store を更新する（Int32 ゆえ直接比較）。
+    @Test
+    def testApplySetMoveTilesUpdatesStore(): Unit \ Assert =
+        let w = World.applyCmd(World.Cmd.SetMoveTiles(World.EntityRef.Player(0), 7), World.empty());
+        Assert.assertEq(expected = Some(7), World.moveTilesOf(World.EntityRef.Player(0), w))
+
+    /// S2.5: refreshMirror は command-derived moveTiles を上書きしない（preserve）。SetMoveTiles で
+    /// player 0 へ scene base と無関係な値(99)を書いても refreshMirror 後も残る（再 mirror なら
+    /// scene の d#moveTiles に戻るはず＝preserve の証明）。
+    @Test
+    def testRefreshMirrorPreservesCommandMoveTiles(): Unit \ Assert =
+        let scene     = sampleScene();
+        let seeded    = World.syncFromScene(scene, World.empty());
+        let withCmd   = World.applyCmd(World.Cmd.SetMoveTiles(World.EntityRef.Player(0), 99), seeded);
+        let refreshed = World.refreshMirror(scene, withCmd);
+        Assert.assertEq(expected = Some(99), World.moveTilesOf(World.EntityRef.Player(0), refreshed))
+
+    /// syncFromScene 直後は World moveTiles == scene base moveTiles ＝ moveTilesMismatches 空（dual-write 整合の基準）。
+    @Test
+    def testMoveTilesMismatchesEmptyWhenSynced(): Unit \ Assert =
+        let scene = sampleScene();
+        let world = World.syncFromScene(scene, World.empty());
+        Assert.assertEq(expected = true, List.isEmpty(World.moveTilesMismatches(world, scene)))
+
+    /// 非 vacuous ガード: World 側だけ player0 moveTiles を別値(99)へ drift させると moveTilesMismatches が検出する
+    /// （dual-write 漏れ＝[MOVETILES DIFF] が鳴るべき状況を pin）。
+    @Test
+    def testMoveTilesMismatchesDetectsDrift(): Unit \ Assert =
+        let scene   = sampleScene();
+        let world   = World.syncFromScene(scene, World.empty());
+        let drifted = World.applyCmd(World.Cmd.SetMoveTiles(World.EntityRef.Player(0), 99), world);
+        Assert.assertEq(expected = false, List.isEmpty(World.moveTilesMismatches(drifted, scene)))
+
     // ── D4: staves/consumables/rings/ringEquipped store（command-derive・player-only・preserve+prune）──
 
     def d4Staff(): Staff.StaffResource = {

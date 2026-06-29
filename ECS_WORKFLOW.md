@@ -248,7 +248,9 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > **主な是正**: ① statuses(旧D12) を reader-flip の**前(S3)**へ（cascade map で「S4 は statuses store が要る」と判明）。② 枝番(6.5/a-c/a-e)を単一ステージへ畳む。
 >
 > ### 現在地（2026-06-29）
-> S0✅ S1✅ S2.0✅ S2.1✅(コミット済) S2.2✅(コミット済) S2.3✅(baseStats・1033緑) **S2.4✅(weaponView/ringBonus command-derive・1039緑・コミット待ち)** S2.5⬜ S3⬜ S4⬜ S5⬜ S6⬜ S7⬜ S8⬜ S9(調査一部✅) S10⬜。
+> S0✅ S1✅ S2.0✅ S2.1✅(コミット済) S2.2✅(コミット済) S2.3✅(baseStats) S2.4✅(weaponView/ringBonus) **S2.5✅(moveTiles・1043緑・コミット待ち)＝🎉S2 store フェーズ全完了** S3⬜ S4⬜ S5⬜ S6⬜ S7⬜ S8⬜ S9(調査一部✅) S10⬜。
+> - **S2.5(moveTiles) = base 移動力 micro-store**（両 faction）。moveTiles は resource 由来で **spawn 後不変＝mutation サイトゼロ**（実効移動力は effectiveMoveTilesOf が encumbrance を読み時計算）→ dual-write は spawn seed のみ（player addOnePlayer:331 / enemy addOneEnemy:231）＝F6 級の網羅リスク無し。refreshMirror preserve・`SetMoveTiles`/`moveTilesOf`/`moveTilesMismatches`/`[MOVETILES DIFF]`・TestWorld に 4 テスト（preserve/empty/drift/apply）。**workflow でなく直接実装＋自己検証**（最小スライスゆえ）。
+> - **🎉 S2 store フェーズ完了**: scene 権威だった全 combat-relevant field（weapons/staves/consumables/rings/ringEquipped/baseStats/weaponView/ringBonus/moveTiles）が World command-derive store に。combatViewOf の全 projection が command-derive＝**S4.2(combatView flip)の前提が完全に整った**。残 re-mirror read-model は equippedRing/growth/effectRule/mapSnapshot（combatViewOf 非経由 or 静的）。
 > - **S2.4(weaponView/ringBonus) = projection read-model→command-derive store**（両 faction）。**既存 emit helper にピギーバック**（SetWeapons の所に SetWeaponView・SetRings/SetRingEquipped の所に SetRingBonus を 1:1 co-locate）でサイト網羅を構造的に保証。refreshMirror 再mirror→preserve(Map.filterWithKey)。review 93/90/72。golden cmd-stream に SetWeaponView 6 箇所追記（SimEvent オラクル不変）。**baseStats(S2.3)＋weaponView/ringBonus(S2.4) で combatViewOf の全 projection が command-derive＝S4.2(combatView flip)の前提が完成**。
 > - **⚠ blocking(テスト規律後退)を私が独立検証で修正**: workflow が S2.3 で確立した「preserve 不変条件 pin＋verifier drift テスト」の双子を付け忘れ（World.flix:291/294 を Map.union に戻しても緑で通る穴）。TestWorld に 6 本追加（testRefreshMirrorPreservesCommandWeaponView/RingBonus＋weaponView/ringBonusMismatches の EmptyWhenSynced/DetectsDrift）→ 1039緑。
 > - **未了**: equippedRing/growth は再mirror read-model のまま（combatViewOf 非経由ゆえ S2.4 対象外・後続の小スライスで preserve 化候補）。
@@ -257,8 +259,8 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > - dual-write 全 6 resource-write サイト被覆確認: PlayerScene reconcileWithCarry/placeOneFromSnap/reviveOneAt・CombatScene ECS+legacy level-up・EnemyScene spawn。snapToPlayerSpawn の resource=lookupUnit は Spawn 構築ゆえ addOnePlayer spawn-seed(:329)で transitively 被覆。
 > - **S2.2(D4) = staves/consumables/rings/ringEquipped を World command-derive store 化**（player-only store＝`waited` 流儀・key=player id 直・Enemy arm no-op）。review 93/93/92・dual-write 17 サイト漏れなし（束ね書込 reviveOne hp+consumables / equipRing rings+ringEquipped 含む）。mismatch 検証器は (length, head) 比較ゆえ**非先頭 drift は `[...DIFF]` に出ない**（D3 weapons テンプレ継承・emit は full list ゆえ World は忠実）。
 > - **D4 run 検証中の付随修正（元仕様バグ・D4 回帰ではない）**: 「投げた杖が消えない」を発見・修正。`StaffCastScene.consumeThrownItem` の Staff arm を `consumeStaff`(回数-1)→`PlayerScene.dropStaff`(完全除去) に変更＝投げ武器(`dropWeapon`)と対称。投擲は物理的に手放すので残り回数に関わらず消失。通常詠唱(L59 consumeStaff)は耐久-1 のまま据え置き。`dropStaff` が `SetStaves` dual-write ゆえ `[STAVES DIFF]` 無音維持・1029緑・ユーザー spec OK。
-> **次の一手**: S2.3/S2.4 をまとめて run 検証（戦闘 level-up・復活・拾得・武器/指輪 装備後に `[BASESTATS/WEAPONVIEW/RINGBONUS DIFF]` 無音）→ コミット → **S2.5(moveTiles micro-store)** へ。S2 store フェーズはこれで weapons/inventory/baseStats/projection 完了・残り moveTiles のみ。詳細スライス = `~/.claude/plans/phase-d-implementation.md`。
-> - **ビジュアルスクリプティング Tier1 計画**（ユーザー将来相談）: `~/.claude/plans/visual-scripting-tier1.md`（90点ループ・別系統）。SimEvent 代数＝IR ゆえ「オフライン sim＋タイムライン＋ステップ＋巻き戻し」は既存純粋層の薄い orchestration で実現可能・演出の完全巻き戻しは A 完成待ち。
+> **次の一手**: S2.3/S2.4/S2.5 をまとめて run 検証（戦闘 level-up・復活・拾得・武器/指輪 装備・移動後に `[BASESTATS/WEAPONVIEW/RINGBONUS/MOVETILES DIFF]` 無音）→ コミット → **S3(statuses 権威移送・atomic)** へ。S2 store 完了ゆえ次は statuses（S4 reader-flip の最後の前提）。詳細スライス = `~/.claude/plans/phase-d-implementation.md`。
+> - **ビジュアルスクリプティング Tier1 計画**（ユーザー将来相談・v5 採用）: ルート `VISUAL_SCRIPTING_TIER1.md`（別系統・実装は後日）。レビュー4lens 最終 [grounding90/completeness90/scope-honesty82/user-value87]＝90 未達だが実体は完成度高い。82/87 は行アンカー freshness（移行コミットで陳腐化）＋golden 1誤引用が主因＝構造的ゆえ周回打切り。**:NNN は二次・def 名一次**。SimEvent 代数＝IR ゆえ既存純粋層の薄い orchestration で実現可能・演出の完全巻き戻しは A 完成待ち。
 >
 > ---
 >

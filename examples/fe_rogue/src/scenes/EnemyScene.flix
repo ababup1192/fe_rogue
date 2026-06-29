@@ -227,6 +227,8 @@ mod EnemyScene {
         World.Command.emit(World.Cmd.SetWeapons(World.refOf(false, sp#id), sp#weapon :: Nil));
         // S2.3: 初期 baseStats も World へ seed（敵 resource は spawn で確定し以後不変＝[BASESTATS DIFF] を塞ぐ・preserve の前提）。
         World.Command.emit(World.Cmd.SetBaseStats(World.refOf(false, sp#id), Combat.baseStatsFrom(sp#resource)));
+        // S2.5: 初期 moveTiles も seed（resource 由来で以後不変＝[MOVETILES DIFF] を塞ぐ＝preserve の前提）。
+        World.Command.emit(World.Cmd.SetMoveTiles(World.refOf(false, sp#id), sp#resource#moveTiles));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;

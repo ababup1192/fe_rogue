@@ -327,6 +327,8 @@ mod PlayerScene {
         World.Command.emit(World.Cmd.SetWeapons(World.refOf(true, sp#id), sp#weapons));
         // S2.3: 初期 baseStats も World へ seed（spawn フレームの [BASESTATS DIFF] を塞ぐ＝preserve の前提）。
         World.Command.emit(World.Cmd.SetBaseStats(World.refOf(true, sp#id), Combat.baseStatsFrom(sp#resource)));
+        // S2.5: 初期 moveTiles も seed（base＝resource 由来で以後不変＝[MOVETILES DIFF] を塞ぐ＝preserve の前提）。
+        World.Command.emit(World.Cmd.SetMoveTiles(World.refOf(true, sp#id), sp#resource#moveTiles));
         // D4: 初期 staves/consumables/rings/ringEquipped も seed（spawn フレームの各 DIFF を塞ぐ）。ringEquipped は spawn 時 false。
         World.Command.emit(World.Cmd.SetStaves(World.refOf(true, sp#id), sp#staves));
         World.Command.emit(World.Cmd.SetConsumables(World.refOf(true, sp#id), sp#consumables));

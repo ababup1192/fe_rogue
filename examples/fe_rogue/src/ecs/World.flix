@@ -92,6 +92,9 @@ pub enum World {
                  // S-A0c: 装備指輪ボーナス read-model（unified-id・両 faction）。未装備は zeroBonuses。
                  // equippedRingBonus 由来ゆえ毎フレーム再 mirror。combatView flip 用。
                  ringBonus = Map[EntityId, Ring.Bonuses],
+                 // S2.5: 基礎移動力 moveTiles の store（unified-id・両 faction）。resource 由来で spawn 後不変＝
+                 // 実効移動力は effectiveMoveTilesOf が encumbrance を読み時計算（base のみ保持）。
+                 moveTiles = Map[EntityId, Int32],
                  // P1a（resolveCombat sim）: 装備指輪リソース本体の read-model（unified-id・両 faction）。
                  // ringBonus はステ補正だけを持つが、finisher/lifesteal は RingResource（effect/power）を要する。
                  // weaponView と同じ Option-store パターン（内側 Option=未装備）＝毎フレーム再 mirror。
@@ -136,6 +139,7 @@ mod World {
                      attackTarget = Map.empty(),
                      playerLevel = Map.empty(), playerExp = Map.empty(),
                      baseStats = Map.empty(), weaponView = Map.empty(), ringBonus = Map.empty(),
+                     moveTiles = Map.empty(),
                      equippedRing = Map.empty(),
                      growth = Map.empty(),
                      mapSnapshot = None,
@@ -213,6 +217,9 @@ mod World {
                                    Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedWeaponView(d), enemies)),
             ringBonus = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedRingBonus(d), players),
                                   Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedRingBonus(d), enemies)),
+            // S2.5: moveTiles も scene Data から frame-1 seed（base のみ・両 faction）。
+            moveTiles = Map.union(Query.indexBy(d -> d#id, d -> d#moveTiles, players),
+                                  Query.indexBy(d -> enemyUid(d#id), d -> d#moveTiles, enemies)),
             // P1a: equippedRing も装備指輪由来の read-model（内側 Option=未装備）＝ringBonus と同源で再 mirror。
             equippedRing = Map.union(Query.indexBy(d -> d#id, d -> PlayerData.equippedRing(d), players),
                                      Query.indexBy(d -> enemyUid(d#id), d -> d#ring, enemies)),
@@ -292,6 +299,8 @@ mod World {
             // S2.4: ringBonus も command 由来を保持＋prune（baseStats と同型）。rings/ringEquipped が変わる全サイトが
             // `Cmd.SetRingBonus` を dual-write 済みゆえ World ringBonus == scene equippedRingBonus（[RINGBONUS DIFF] 無音）。
             ringBonus = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#ringBonus),
+            // S2.5: moveTiles も command 由来を保持＋prune（base は spawn 後不変ゆえ stale 化しないが store 規約に合わせ preserve）。
+            moveTiles = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#moveTiles),
             // P1a: equippedRing も装備指輪由来の read-model ＝ ringBonus と同源で毎フレーム再 mirror。
             equippedRing = Map.union(Query.indexBy(d -> d#id, d -> PlayerData.equippedRing(d), players),
                                      Query.indexBy(d -> enemyUid(d#id), d -> d#ring, enemies)),
@@ -410,6 +419,7 @@ mod World {
         case SetBaseStats(EntityRef, Combat.BaseStats)  // S2.3: base 戦闘値 write（hp/weapons 同型・両 faction・resource 書換ごとに dual-write）
         case SetWeaponView(EntityRef, Option[Combat.WeaponView])  // S2.4: 装備武器の戦闘投影 write（両 faction・武器なし=None・weapons 書換ごとに dual-write）
         case SetRingBonus(EntityRef, Ring.Bonuses)  // S2.4: 装備指輪ボーナス write（両 faction・rings/ringEquipped 書換ごとに dual-write）
+        case SetMoveTiles(EntityRef, Int32)  // S2.5: 基礎移動力 write（両 faction・spawn で seed・以後不変）
         case SetStaves(EntityRef, List[Staff.StaffResource])               // D4: staves write（player-only・Enemy no-op）
         case SetConsumables(EntityRef, List[Consumable.ConsumableResource]) // D4: consumables write（player-only）
         case SetRings(EntityRef, List[Ring.RingResource])                  // D4: rings write（player-only）
@@ -605,6 +615,10 @@ mod World {
                 // S2.4: 単一 store＋toUid（SetBaseStats と同型・両 faction）。
                 let World.World(w) = world;
                 World.World({ringBonus = Map.insert(toUid(ref), rb, w#ringBonus) | w})
+            case Cmd.SetMoveTiles(ref, n) =>
+                // S2.5: 単一 store＋toUid（SetBaseStats と同型・両 faction）。
+                let World.World(w) = world;
+                World.World({moveTiles = Map.insert(toUid(ref), n, w#moveTiles) | w})
             case Cmd.SetStaves(ref, xs) =>
                 // D4: player-only store（SetWaited 流儀・Enemy は no-op）。
                 let World.World(w) = world;
@@ -790,6 +804,7 @@ mod World {
             // S2.4: Bonuses は Eq 非自動ゆえ 5 数値 field の和を digest に載せて oracle 可視化。
             case Cmd.SetRingBonus(ref, rb)    => ("SetRingBonus", toUid(ref),
                                                   rb#attack + rb#speed + rb#defense + rb#skill + rb#luck, 0)
+            case Cmd.SetMoveTiles(ref, n)     => ("SetMoveTiles", toUid(ref), n, 0)
             case Cmd.SetStaves(ref, xs)       => ("SetStaves", toUid(ref), List.length(xs), 0)
             case Cmd.SetConsumables(ref, xs)  => ("SetConsumables", toUid(ref), List.length(xs), 0)
             case Cmd.SetRings(ref, xs)        => ("SetRings", toUid(ref), List.length(xs), 0)
@@ -894,6 +909,20 @@ mod World {
                 Some(EntityRef.Player(d#id)) else None);
         let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
             if (Option.map(proj, baseStatsOf(EntityRef.Enemy(d#id), world)) != Some(proj(Combat.baseStatsFrom(d#resource))))
+                Some(EntityRef.Enemy(d#id)) else None);
+        List.append(pms, ems)
+
+    pub def moveTilesOf(ref: EntityRef, world: World): Option[Int32] =
+        let World.World(w) = world; Map.get(toUid(ref), w#moveTiles)
+
+    /// S2.5 安全網: World moveTiles（command 由来）と scene Data の base moveTiles が食い違う entity を列挙する（両 faction）。
+    /// Int32 は Eq 自動ゆえ直接比較。spawn 後不変だが dual-write 漏れ（[MOVETILES DIFF]）を検出する。
+    pub def moveTilesMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
+        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
+            if (moveTilesOf(EntityRef.Player(d#id), world) != Some(d#moveTiles))
+                Some(EntityRef.Player(d#id)) else None);
+        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
+            if (moveTilesOf(EntityRef.Enemy(d#id), world) != Some(d#moveTiles))
                 Some(EntityRef.Enemy(d#id)) else None);
         List.append(pms, ems)
 
