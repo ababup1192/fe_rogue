@@ -29,7 +29,8 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                GameEngine.Audio, GameEngine.Game, World.Command, World.WorldQuery} =
         // プレイヤーと杖の両方が解決できたときだけ発動。どちらか欠ければ scene のまま。
         // ネストした match を避けるため Option を forM で短絡的に畳む。
         let cast = forM (
@@ -46,7 +47,8 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                GameEngine.Audio, GameEngine.Game, World.Command, World.WorldQuery} =
         let board = BoardQuery.board();
         let dir   = Staff.toVec2i(direction);
         // 杖は射程を持たない: 盤面外は壁扱いなので、十分大きい上限を渡せば
@@ -116,11 +118,79 @@ mod StaffCastScene {
                           hit: RayHit,
                           scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger, World.Command, BoardQuery} =
+                              GameLogger.GameLogger, World.Command, BoardQuery,
+                              GameEngine.Game, GameEngine.Audio, World.WorldQuery} =
         match dslStaffRule(staff) {
             case Some(rule) => applyStaffEffectDsl(playerId, staff, rule, hit, dir, scene)
-            case None       => applyStaffEffectLegacy(playerId, player, staff, dir, hit, scene)
+            // effectRule 無しの legacy 4 enum 杖。cutover toggle（既定 false・branch 温存）が ON かつ
+            // ECS が World 純粋に解ける effect（Heal/Blowback/Swap/Bind）のときだけ sim 経路へ。
+            // Stopgap（warp 階段依存・World read-model 未載）は `ecsHandlesStaff`=false で legacy へ落とす。
+            case None       =>
+                if (useEcsStaff() and ecsHandlesStaff(staff#effect))
+                    ecsResolveStaffCast(playerId, player, staff, dir, hit, scene)
+                else
+                    applyStaffEffectLegacy(playerId, player, staff, dir, hit, scene)
         }
+
+    /// ViewReplay/sim cutover の **A/B トグル**（run 検証用・branch 温存）。`false`=legacy 杖（既定・出荷）／
+    /// `true`=ECS 経路（`StaffSystem.resolveStaffCast` で sim を解き events→Cmds で World 反映・`ViewReplay.replay`
+    /// で演出）。combat の `useEcsCombat` と同流儀。ECS 既定化（true）＋ effectful 実機 run 検証はユーザーが後で実施。
+    def useEcsStaff(): Bool = false
+
+    /// この effect が ECS sim（`resolveStaffCast`）で World 純粋に解けるか（純 leaf）。
+    /// Heal/Blowback/Swap/Bind=true。Stopgap=false（warp が階段位置依存で World read-model 未載＝legacy へ落とす）。
+    def ecsHandlesStaff(effect: Staff.StaffEffect): Bool = match effect {
+        case Staff.StaffEffect.Heal     => true
+        case Staff.StaffEffect.Blowback => true
+        case Staff.StaffEffect.Swap     => true
+        case Staff.StaffEffect.Bind     => true
+        case Staff.StaffEffect.Stopgap  => false
+    }
+
+    /// ECS cutover 経路（杖）: `StaffSystem.resolveStaffCast` で 1 発の sim を解いて [SimEvent] を得、
+    /// `eventToCmds` で World へ反映し、`ViewReplay.replay` で演出を再生する。`applyEcsStaffSceneEffects` で
+    /// scene 権威（statuses）も反映する。events が `Nil`（壁=空振り）なら legacy へ fallback して
+    /// 『届かなかった/消えた』ログを温存する（emit/replay は走らせない・whiff 退行防止）。
+    /// 演出進行（耐久消費/選択クリア/turn 進行）は従来どおり `fireStaff` 後段が担う。
+    /// 出荷される cutover seam そのものを traced harness で踏むため pub（`TestStaffGolden`:
+    /// whiff→legacy fallback の log 等価／hit 時 emit ループが eventToCmds と一致 を固定）。
+    pub def ecsResolveStaffCast(playerId: Int32, player: PlayerScene.Data,
+                             staff: Staff.StaffResource,
+                             dir: {x = Int32, y = Int32}, hit: RayHit,
+                             scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger, World.Command, BoardQuery,
+                              GameEngine.Game, GameEngine.Audio, World.WorldQuery} =
+        let world = World.WorldQuery.get();
+        let (_, events) = StaffSystem.resolveStaffCast(world,
+            World.EntityRef.Player(playerId), staff#effect, dir, hit);
+        if (List.isEmpty(events))
+            // 空振り（壁/盤外）: legacy の feedback ログを温存。emit/replay はしない。
+            applyStaffEffectLegacy(playerId, player, staff, dir, hit, scene)
+        else {
+            List.forEach(c -> World.Command.emit(c), events |> List.flatMap(World.eventToCmds));
+            applyEcsStaffSceneEffects(events, ViewReplay.replay(events, scene))
+        }
+
+    /// ECS 経路の **scene-authoritative 反映**（`CombatScene.applyEcsSceneEffects` を縮約）。
+    /// statuses は scene 権威（refreshMirror が scene #statuses から re-mirror・tick も scene 側）ゆえ
+    /// Cmd.Add だけだと次フレームの syncFromScene で上書きされ消える。よって `Afflicted`→`StatusSystem.add`、
+    /// `Released`→`clearImmobilized` を scene #statuses へ反映する。hp(Healed/Damaged)・pos(Moved)・dying(Dying) は
+    /// eventToCmds→World→syncTreeFromWorld で derive されるため scene 権威反映は不要。
+    /// 今周は Bind のみ Afflicted を発火（Released は将来 throw/敵詠唱用に同型コピーだけ用意）。純粋 scene 変換。
+    /// Bind の scene-statuses 等価オラクル（`TestStaffGolden`）が legacy #statuses と突き合わせるため pub。
+    pub def applyEcsStaffSceneEffects(events: List[World.SimEvent], scene: Scene[NodeTag]): Scene[NodeTag] =
+        List.foldLeft((sc, ev) -> match ev {
+            case World.SimEvent.Afflicted(World.EntityRef.Player(id), s) =>
+                PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc)
+            case World.SimEvent.Afflicted(World.EntityRef.Enemy(id), s) =>
+                EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc)
+            case World.SimEvent.Released(World.EntityRef.Player(id)) =>
+                PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, sc)
+            case World.SimEvent.Released(World.EntityRef.Enemy(id)) =>
+                EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, sc)
+            case _ => sc
+        }, scene, events)
 
     /// effectRule があり trigger が onUse なら EffectRule を返す（消費の `dslUseRule` と同形）。
     def dslStaffRule(staff: Staff.StaffResource): Option[EffectRule.EffectRule] =
@@ -226,7 +296,7 @@ mod StaffCastScene {
     /// legacy: `staff#effect × hit` の組み合わせで効果を適用する（effectRule 無しの杖）。
     /// ヒット種は RayHit.HitPlayer / RayHit.HitEnemy / それ以外（壁・盤外 = 空振り）の 3 種で、
     /// 3 効果 × 3 ヒット種 = 9 通り。空振り（壁/盤外）は `_` arm でまとめてログを出す。
-    def applyStaffEffectLegacy(playerId: Int32, player: PlayerScene.Data,
+    pub def applyStaffEffectLegacy(playerId: Int32, player: PlayerScene.Data,
                           staff: Staff.StaffResource,
                           dir: {x = Int32, y = Int32},
                           hit: RayHit,
@@ -725,8 +795,8 @@ mod StaffCastScene {
                         direction: Staff.Direction, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
-                Math.Random, CustomEffects.GameOverRequest, World.Command} =
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, GameEngine.Game,
+                Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
         let cast = forM (player <- PlayerScene.get(playerId, scene))
             yield fireThrow(playerId, kind, player, direction, scene);
         Option.getWithDefault(scene, cast)
@@ -736,8 +806,8 @@ mod StaffCastScene {
                    direction: Staff.Direction, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
-                Math.Random, CustomEffects.GameOverRequest, World.Command} =
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, GameEngine.Game,
+                Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
         let board = BoardQuery.board();
         let dir   = Staff.toVec2i(direction);
         let hit   = Board.rayCast(player#gridPos, dir, staffMaxRange(), board);
@@ -752,7 +822,7 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
                 Math.Random, CustomEffects.GameOverRequest, SelectedPlayer.State,
-                GameEngine.Audio, World.Command, BoardQuery} =
+                GameEngine.Audio, GameEngine.Game, World.Command, World.WorldQuery, BoardQuery} =
         match hit {
             case RayHit.HitEnemy(_, _)  => rolledThrow(playerId, kind, player, dir, hit, scene)
             case RayHit.HitPlayer(_, _) => rolledThrow(playerId, kind, player, dir, hit, scene)
@@ -767,7 +837,7 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
                 Math.Random, CustomEffects.GameOverRequest, SelectedPlayer.State,
-                GameEngine.Audio, World.Command, BoardQuery} =
+                GameEngine.Audio, GameEngine.Game, World.Command, World.WorldQuery, BoardQuery} =
         let roll = throwRoll();
         let threshold = Combat.throwHitRate(isAccurateThrower(player));
         if (not Combat.isHit(threshold, roll)) {
@@ -791,7 +861,8 @@ mod StaffCastScene {
                              dir: {x = Int32, y = Int32}, hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, GameEngine.Game,
+                World.Command, World.WorldQuery, BoardQuery} =
         match kind {
             case PlayerData.ItemKind.Weapon(idx) =>
                 Option.getWithDefault(scene,

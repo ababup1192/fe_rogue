@@ -186,6 +186,33 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 
 ## §G. 進捗（living・各ステップ完了で更新）
 
+> ## ★最前線（2026-06-29）= 🎉 **Phase C 戦闘 cutover 完了・ECS が戦闘の既定エンジンに**（999緑・legacy branch 温存）
+>
+> プランで「**最重**」と位置づけた CombatScene 戦闘 orchestration の SimEvent 化＋cutover を完遂。OOP `applyAttackHit` の
+> 実体が **ECS パイプライン**（既定 `useEcsCombat()=true`）になった。残る最重は Phase D（終端）と、双子の **杖（StaffCast）cutover**。
+>
+> ### 完成した ECS 戦闘パイプライン
+> ```
+> applyAttackHit ──useEcsCombat()──► CombatSystem.resolveAttack/resolveEnemyAttack（純 sim・World→(World,[SimEvent])）
+> （legacy=applyAttackHitLegacy で温存）  ├ eventToCmds → World（Phase B 権威 field を Cmd 反映）
+>                                        ├ syncTreeFromWorld（World→scene 一方向 derive）
+>                                        ├ ViewReplay.replay（[SimEvent]→演出: SE/popup/explosion/HPバー/knockback/death）
+>                                        └ applyEcsSceneEffects（scene 権威の副作用: statuses/level-up panel+stat成長/武器耐久）
+> ```
+> - **sim**: `CombatSystem`（`src/ecs/systems/`）= finisher/crit/lifesteal/knockback/thief/effectRule/counter まで legacy 等価。`combatViewOf` を World から読み、`World.RngDraw` で draw、`SimEvent` を産んで `applyEventToWorld` で畳む。
+> - **golden-trace 等価**（`TestGoldenTrace`）= legacy `runAttack`（`applyAttackHitLegacy`）の最終 World/cmd-stream を凍結し、ECS `resolveAttack` と直接照合。`ViewFx`(Sound/Popup/Explosion/Died) で log を「完全な view-script」化（World identity＝golden 不変）。
+> - **ViewReplay**（`src/scenes/ViewReplay.flix`）= 純粋 `plan: [SimEvent]→[ViewAction]`（テスト固定）＋ effectful `replay`（既存 Scene API へ薄く dispatch）。
+> - **Phase B（戦闘が触る field の World 権威化）**: `refreshMirror` が hp/pos/dying/progress/alerted を command 由来 preserve、`syncTreeFromWorld` が scene へ derive（位置 S5b と同型に拡張）。旧 DIFF 検出器（F6 HP/ALERTED/DYING/PROGRESS/COMBATVIEW）撤去（書き漏れは可視バグで現れる＝P3 WRITE-MISS 撤去と同じ）。
+> - **statuses は scene 権威のまま**（tick も scene 側）＝ECS 経路は `applyEcsSceneEffects` で scene #statuses に Afflicted/Released を適用（完全 World 権威化＝tick 移行は別スライス・E4 系）。
+> - **cutover の test 両立**: `applyAttackHit`(toggle・既定ECS) と `applyAttackHitLegacy`(常に legacy) を分離。golden/equivalence/scene-record テストは `*Legacy` 経由＝**ECS 既定でも legacy oracle 維持・999緑**。equivalence テストは legacy vs ECS を比較し続ける。
+> - **run 検証クリア**（ユーザー実機）: 通常戦闘・反撃・撃破・死亡演出・状態異常付与・レベルアップ（パネル＋強化）・武器消耗。「集合で階段」報告は占有のたまたま＝ECS 無関係と切り分け。
+> - **deferred（軽微）**: thief view-fx（`ViewFx(Thief)`＝isRogue 未 read-model 化・P2c）・敵 heal effectRule（HealAt/FullHealAt→Healed・P2b）。
+>
+> ### 残（移行全体・正直な見積り＝体感 5〜6 割）
+> - **杖（StaffCast）cutover**（大・戦闘の双子）← **次ターゲット**。CombatSystem/ViewReplay/applyEcsSceneEffects/golden-trace/`*Legacy` の型をそのまま流用できる 2 周目。
+> - **statuses 完全 World 権威化**（tick 移行・E4）／**EnemyAI World 駆動**（S6）／**セーブ ECS 化**（S7）／**全 scene の World 書込ゼロ化**。
+> - **Phase D（終端・最重）**: PlayerData/EnemyData の component 分解・faction-blind System 統合・bridge（mirror/EntityScene/EncounterBuilder）撤去＝§E 完成定義の到達点。
+
 > ## ★最前線（2026-06-28）= ✅ OOP→ECS 移行 **Plan B end-state を証跡付きで確定**。**詳細・現在地は `examples/fe_rogue/_plan_oop_to_ecs.md`**（authoritative）
 >
 > ### ⚠ 過大表現の訂正（重要）
