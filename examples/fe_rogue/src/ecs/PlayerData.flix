@@ -73,6 +73,20 @@ mod PlayerData {
     /// `level` は現レベル（フロア跨ぎで継承）。
     /// `exp` は経験値（0..99）。
     /// `pendingLevelUp` は直近レベルアップ結果。LevelUpScene が演出を終えた後に None へ戻す責務を持つ。
+    /// ── Phase D field×source 分類（D1 design pin・2026-06-29・後段 slice を gate する先決成果物）─────
+    /// **昇格基準**: (W)World-store 権威 = System が authoritative I/O に要る／既昇格と対称な sim turn-state／
+    /// sim 解決を駆動する mutable state。(R)scene-backed 残置 = pure view/render/modal-trigger/UI-cursor/
+    /// template で UI のみ消費・sim 非駆動（= hybrid-A 正規形・DoD#2 が許容＝「物理消去」でなく「分類された残置のみ」）。
+    /// **PlayerData.Data 23 field**:
+    ///   (W 済): id・gridPos・hp・waited・attackTargetId・hidden・level・exp・followUpUsed
+    ///   (W 予定): weapons/staves/consumables/rings/ringEquipped(D3-4)・baseStats←resource 投影(D5)・moveTiles(D6.5)・statuses(D12)
+    ///   (S→W micro-store D13a): moveStepsTaken・usedStairs（System 駆動 turn-state ゆえ enemy acted と同型に昇格）
+    ///   (R 残置): classId(snapshot id)・resource(sprite/stat template・baseStats だけ store 投影)・
+    ///             selectedItem(UI 選択)・facing(render 向き)・pendingLevelUp(LevelUpPanel modal trigger・sim 非駆動)
+    /// **EnemyData.Data 17 field**: (W) id/gridPos/hp/alerted/isDying/attackTargetId/prevPos/followUpUsed/bottleUsed/
+    ///   weapon/ring(単数射影)/baseStats/moveTiles/statuses(D12)・(S→W) acted(D13a)・(R) resource/resourceId/homeModuleIdx。
+    /// 各 slice は **store dual-write → `[XXX DIFF]` 無音実証(実機 run) → reader-flip** の discipline。
+    /// 詳細プラン = `~/.claude/plans/phase-d-implementation.md`（25 slice）。
     pub type alias Data = {
         id                 = Int32,
         // この味方を生成した UnitCatalog のクラス id（"lord" 等）。スナップショット保存で
