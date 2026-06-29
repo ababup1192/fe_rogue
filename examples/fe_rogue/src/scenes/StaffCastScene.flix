@@ -137,6 +137,11 @@ mod StaffCastScene {
     /// で演出）。combat の `useEcsCombat` と同流儀。ECS 既定化（true）＋ effectful 実機 run 検証はユーザーが後で実施。
     def useEcsStaff(): Bool = true
 
+    /// 敵杖 cutover の A/B トグル（敵クレリックの Bind 詠唱のみ ECS 化・既定 false で legacy 温存）。
+    /// player の `useEcsStaff` とは独立。`true` で `ecsResolveEnemyStaff`（`StaffSystem.resolveStaffCast`
+    /// に caster=Enemy を渡す）経路、`false` で `enemyCastStaffLegacy`。Stopgap は `ecsHandlesStaff`=false で常に legacy。
+    def useEcsEnemyStaff(): Bool = false
+
     /// この effect が ECS sim（`resolveStaffCast`）で World 純粋に解けるか（純 leaf）。
     /// Heal/Blowback/Swap/Bind=true。Stopgap=false（warp が階段位置依存で World read-model 未載＝legacy へ落とす）。
     def ecsHandlesStaff(effect: Staff.StaffEffect): Bool = match effect {
@@ -1111,23 +1116,28 @@ mod StaffCastScene {
     /// その味方へ詠唱した scene を Some で返す。撃てなければ None（呼び出し側で投擲 / 通常 AI へ）。
     pub def enemyTryStaff(enemyId: Int32, origin: {x = Int32, y = Int32},
                            description: String, scene: Scene[NodeTag]):
-            Option[Scene[NodeTag]] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
+            Option[Scene[NodeTag]] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery, World.WorldQuery} =
         // P1b: 敵詠唱（mid-frame）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
         let board: Board = BoardQuery.board();
         forM (
-            effect   <- enemyStaffFor(description);
-            dir      <- enemyThrowDirection(origin, board);
-            targetId <- castableHitPlayer(origin, dir, board, scene)
-        ) yield enemyCastStaff(enemyId, effect, targetId, scene)
+            effect <- enemyStaffFor(description);
+            dir    <- enemyThrowDirection(origin, board);
+            target <- castableHitPlayer(origin, dir, board, scene)
+        ) yield {
+            let (targetId, hit) = target;
+            enemyCastStaff(enemyId, effect, targetId, Staff.toVec2i(dir), hit, scene)
+        }
 
-    /// 指定方向のレイが最初に当たる味方が「まだ停止していない」ならその id を返す。
+    /// 指定方向のレイが最初に当たる味方が「まだ停止していない」なら (id, その RayHit) を返す。
     /// 既に停止中なら None（無駄詠唱を避け、呼び出し側で接近 → 殴って解除する流れに任せる）。
-    def castableHitPlayer(origin: {x = Int32, y = Int32}, dir: Staff.Direction,
-                           board: Board, scene: Scene[NodeTag]): Option[Int32] =
+    /// RayHit を id と一緒に透過するのは ECS 経路（`resolveStaffCast`）が hit cell を必要とするため
+    /// （targeting golden が cell 透過を pin する）。`pub` は targeting golden の直叩き用。
+    pub def castableHitPlayer(origin: {x = Int32, y = Int32}, dir: Staff.Direction,
+                           board: Board, scene: Scene[NodeTag]): Option[(Int32, RayHit)] =
         match Board.rayCast(origin, Staff.toVec2i(dir), staffMaxRange(), board) {
-            case RayHit.HitPlayer(id, _) =>
-                if (playerImmobilized(id, scene)) None else Some(id)
-            case _                       => None
+            case RayHit.HitPlayer(id, cell) =>
+                if (playerImmobilized(id, scene)) None else Some((id, RayHit.HitPlayer(id, cell)))
+            case _                           => None
         }
 
     /// 指定味方が完全停止中か。居なければ false。
@@ -1136,8 +1146,21 @@ mod StaffCastScene {
             |> Option.map(d -> StatusSystem.isImmobilized(d#statuses))
             |> Option.getWithDefault(false)
 
-    /// 解決済みの「敵 → 味方 への詠唱」を適用する。src は敵の表示名。
+    /// 解決済みの「敵 → 味方 への詠唱」を適用する dispatcher。敵 Bind 詠唱の cutover toggle
+    /// （`useEcsEnemyStaff`・既定 false）が ON かつ ECS が解ける effect（Bind）なら ECS 経路へ、
+    /// それ以外（Stopgap / toggle off）は legacy へ。dir/hit は ECS sim（`resolveStaffCast`）へ thread する。
     def enemyCastStaff(enemyId: Int32, effect: Staff.StaffEffect, targetId: Int32,
+                        dir: {x = Int32, y = Int32}, hit: RayHit,
+                        scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery, World.WorldQuery} =
+        if (useEcsEnemyStaff() and ecsHandlesStaff(effect))
+            ecsResolveEnemyStaff(enemyId, effect, dir, hit, scene)
+        else
+            enemyCastStaffLegacy(enemyId, effect, targetId, scene)
+
+    /// 敵詠唱の legacy 本体（Bind=mapPlayer 直書き / Stopgap=warp）。src は敵の表示名。
+    /// golden oracle（`TestEnemyStaffGolden`）が直叩きして ECS 経路と #statuses を突き合わせるため pub。
+    pub def enemyCastStaffLegacy(enemyId: Int32, effect: Staff.StaffEffect, targetId: Int32,
                         scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
         let srcLabel = EnemyScene.displayName(enemyId, scene);
@@ -1146,6 +1169,33 @@ mod StaffCastScene {
             case Staff.StaffEffect.Stopgap => applyStopgapToPlayer(srcLabel, targetId, scene)
             case _                         => scene
         }
+
+    /// 敵 Bind 詠唱の ECS cutover 経路: `StaffSystem.resolveStaffCast` に caster=Enemy を渡して sim を
+    /// 解き、events→Cmds で World 反映 + `applyEcsStaffSceneEffects` で scene 権威（味方 #statuses）反映。
+    /// Bind は view fx 0・Moved 無＝World/scene 不変ゆえ `ViewReplay.replay` は呼ばない（provably equivalent）。
+    /// events が空（壁=空振り。castableHitPlayer ゲートで通常到達しない防御）なら legacy へ fallback し
+    /// 『かなしばりにした』ログを温存する。`applyEcsStaffSceneEffects` の Afflicted(Player) arm を共用する
+    /// （敵 Bind の target は味方）。seam/cross-compare golden（`TestEnemyStaffGolden`）が直駆動するため pub。
+    pub def ecsResolveEnemyStaff(enemyId: Int32, effect: Staff.StaffEffect,
+                             dir: {x = Int32, y = Int32}, hit: RayHit,
+                             scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery, World.WorldQuery} =
+        let world = World.WorldQuery.get();
+        let (_, events) = StaffSystem.resolveStaffCast(world,
+            World.EntityRef.Enemy(enemyId), effect, dir, hit);
+        if (List.isEmpty(events))
+            enemyCastStaffLegacy(enemyId, effect, hitTargetId(hit), scene)
+        else {
+            List.forEach(c -> World.Command.emit(c), events |> List.flatMap(World.eventToCmds));
+            applyEcsStaffSceneEffects(events, scene)
+        }
+
+    /// hit が味方/敵ならその id、壁/盤外なら -1（空振り fallback の targetId 用・存在しない id は legacy が no-op）。
+    def hitTargetId(hit: RayHit): Int32 = match hit {
+        case RayHit.HitPlayer(id, _) => id
+        case RayHit.HitEnemy(id, _)  => id
+        case _                       => -1
+    }
 
     /// 瓶の種別で固定ダメージ投擲を分岐（火炎瓶=単体 / 爆発瓶=範囲）。味方投擲と同じ処理を共用。
     def enemyApplyBottle(srcLabel: String, item: Consumable.ConsumableResource,
