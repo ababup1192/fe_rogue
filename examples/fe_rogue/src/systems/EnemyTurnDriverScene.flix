@@ -103,7 +103,7 @@ mod EnemyTurnDriverScene {
     /// キャラの隣接」なので、接敵していない他キャラの視界では発火しない。暗い判定は fog と同じ
     /// origin 基準（origin 同室の部屋は点灯済み＝対象外）。`not alerted` で既に起動済みの敵の傍
     /// では再発火しない。検出自体は純粋で effect は `SelectedPlayer.State`（drafts 読み）だけ。
-    def bumpedDarkRoomEnemy(scene: Scene[NodeTag]): Bool \ {SelectedPlayer.State, BoardQuery} =
+    def bumpedDarkRoomEnemy(scene: Scene[NodeTag]): Bool \ {SelectedPlayer.State, BoardQuery, World.WorldQuery} =
         let drafts  = SelectedPlayer.State.get()#drafts;
         let players = PlayerScene.getAll(scene);
         if (not MoveDraft.anyMovedFromOrigin(players, drafts)) false
