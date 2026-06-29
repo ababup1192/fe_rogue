@@ -478,8 +478,14 @@ mod CombatScene {
         forecastFromViews(PlayerScene.combatViewWith(player, weapon), EnemyScene.combatView(enemy),
                           player#level, enemy#resource#level)
 
+    /// ViewReplay cutover の **A/B トグル**（run 検証用・branch 温存）。`false`=legacy 演出（既定・出荷）／
+    /// `true`=ECS 経路（`CombatSystem.resolveAttack` で sim を解き events→Cmds で World 反映・`ViewReplay.replay`
+    /// で演出）。**flip して再ビルドすると味方→敵攻撃の演出が ViewReplay 経由になる**（敵攻撃は当面 legacy のまま）。
+    /// `true` 時の既知ギャップ（後続スライス）: level-up モーダル未発火（modal-gate 未配線）・thief/status view 未配線。
+    def useEcsCombat(): Bool = false
+
     /// 敵 id にダメージを与える。装備武器（`weapons.head`）と敵が揃っていなければ no-op。
-    /// 実体は `resolveAttack`。ここは前提（武器あり・敵あり）の解決だけを担い、
+    /// 実体は legacy `resolveAttack` または（トグル時）ECS 経路。前提（武器あり・敵あり）の解決だけを担い、
     /// ネストを避けるため Option を `forM` で短絡的に畳む。
     def applyDamageToEnemy(playerId: Int32, player: PlayerScene.Data, enemyId: Int32,
                             scene: Scene[NodeTag]):
@@ -489,8 +495,27 @@ mod CombatScene {
         let resolved = forM (
             weapon <- PlayerData.equippedWeapon(player#weapons);
             enemy  <- EnemyScene.get(enemyId, scene)
-        ) yield resolveAttack(playerId, player, weapon, enemy, enemyId, scene);
+        ) yield
+            if (useEcsCombat())
+                ecsResolvePlayerAttack(playerId, player, enemyId, enemy, scene)
+            else
+                resolveAttack(playerId, player, weapon, enemy, enemyId, scene);
         Option.getWithDefault(scene, resolved)
+
+    /// ECS cutover 経路（味方攻撃）: `CombatSystem.resolveAttack` で 1 撃の sim を解いて [SimEvent] を得、
+    /// `eventToCmds` で World へ反映（live mirror と同じ Cmd 経路＝golden で final-World 等価を証明済み）し、
+    /// `ViewReplay.replay` で演出を再生する。演出進行（lunge/counter/follow-up）は従来どおり signal が引く（C5）。
+    /// 武器は World combatView 由来ゆえ引数に取らない（forM が装備の存在だけ保証する）。
+    def ecsResolvePlayerAttack(playerId: Int32, player: PlayerScene.Data, enemyId: Int32,
+                                enemy: EnemyScene.Data, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
+                               GameEngine.Game, World.RngDraw, World.Command, World.WorldQuery} =
+        let world = World.WorldQuery.get();
+        let (_, events) = CombatSystem.resolveAttack(world,
+            {ref = World.EntityRef.Player(playerId), level = player#level},
+            {ref = World.EntityRef.Enemy(enemyId), level = enemy#resource#level});
+        List.forEach(c -> World.Command.emit(c), events |> List.flatMap(World.eventToCmds));
+        ViewReplay.replay(events, scene)
 
     /// 装備武器と敵が揃ったときの攻撃解決の流れ:
     ///   命中率を算出 → 乱数ロール → 命中なら `applyHit` / 回避なら `applyMiss`
