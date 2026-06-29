@@ -135,7 +135,7 @@ mod StaffCastScene {
     /// ViewReplay/sim cutover の **A/B トグル**（run 検証用・branch 温存）。`false`=legacy 杖（既定・出荷）／
     /// `true`=ECS 経路（`StaffSystem.resolveStaffCast` で sim を解き events→Cmds で World 反映・`ViewReplay.replay`
     /// で演出）。combat の `useEcsCombat` と同流儀。ECS 既定化（true）＋ effectful 実機 run 検証はユーザーが後で実施。
-    def useEcsStaff(): Bool = false
+    def useEcsStaff(): Bool = true
 
     /// この effect が ECS sim（`resolveStaffCast`）で World 純粋に解けるか（純 leaf）。
     /// Heal/Blowback/Swap/Bind=true。Stopgap=false（warp が階段位置依存で World read-model 未載＝legacy へ落とす）。

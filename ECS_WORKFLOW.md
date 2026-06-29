@@ -186,10 +186,18 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 
 ## §G. 進捗（living・各ステップ完了で更新）
 
-> ## ★最前線（2026-06-29）= 🎉 **Phase C 戦闘 cutover 完了・ECS が戦闘の既定エンジンに**（999緑・legacy branch 温存）
+> ## ★最前線（2026-06-29）= 🎉 **戦闘＋杖の 2 大 orchestration cutover 完了・ECS が既定エンジンに**（1009緑・legacy branch 温存）
 >
-> プランで「**最重**」と位置づけた CombatScene 戦闘 orchestration の SimEvent 化＋cutover を完遂。OOP `applyAttackHit` の
-> 実体が **ECS パイプライン**（既定 `useEcsCombat()=true`）になった。残る最重は Phase D（終端）と、双子の **杖（StaffCast）cutover**。
+> プランで「**最重**」と位置づけた CombatScene 戦闘 orchestration とその双子 **StaffCast（杖）** の SimEvent 化＋cutover を
+> 同じ型で完遂。OOP `applyAttackHit`/`applyStaffEffect` の実体が **ECS パイプライン**（`useEcsCombat()`/`useEcsStaff()`）に。
+> 残る最重は Phase D（終端）。
+>
+> ### 杖（StaffCast）cutover ✅（dynamic workflow・plan→implement→review 91/91/91・1009緑・run 検証済）
+> `StaffSystem.resolveStaffCast`（**純粋・draw 無し**＝rayCast 結果=hit を引数で受ける）が Heal/Blowback/Swap/Bind を
+> **既存 SimEvent 代数へ写す**（新変種ゼロ）: Heal→Healed / Blowback→Damaged(+Dying+ViewFx(Died) or +Moved) / Swap→Moved×2 /
+> Bind→Afflicted(immobilize5)。golden-trace 10 テストで legacy 等価（seeded RNG 不要＝決定論）。`useEcsStaff()` トグル＋
+> `applyStaffEffectLegacy`(pub・oracle)＋`applyEcsStaffSceneEffects`(statuses 反映)＋空振り legacy fallback。Stopgap/effectRule/DSL 杖は
+> legacy seam に fallback（deferred）。戦闘の CombatSystem/ViewReplay/applyEcsSceneEffects/golden-trace/`*Legacy` を 2 周目流用。
 >
 > ### 完成した ECS 戦闘パイプライン
 > ```
@@ -208,10 +216,20 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > - **run 検証クリア**（ユーザー実機）: 通常戦闘・反撃・撃破・死亡演出・状態異常付与・レベルアップ（パネル＋強化）・武器消耗。「集合で階段」報告は占有のたまたま＝ECS 無関係と切り分け。
 > - **deferred（軽微）**: thief view-fx（`ViewFx(Thief)`＝isRogue 未 read-model 化・P2c）・敵 heal effectRule（HealAt/FullHealAt→Healed・P2b）。
 >
-> ### 残（移行全体・正直な見積り＝体感 5〜6 割）
-> - **杖（StaffCast）cutover**（大・戦闘の双子）← **次ターゲット**。CombatSystem/ViewReplay/applyEcsSceneEffects/golden-trace/`*Legacy` の型をそのまま流用できる 2 周目。
-> - **statuses 完全 World 権威化**（tick 移行・E4）／**EnemyAI World 駆動**（S6）／**セーブ ECS 化**（S7）／**全 scene の World 書込ゼロ化**。
-> - **Phase D（終端・最重）**: PlayerData/EnemyData の component 分解・faction-blind System 統合・bridge（mirror/EntityScene/EncounterBuilder）撤去＝§E 完成定義の到達点。
+> ### ロードマップ（A 完成 → B 評価・体感 4〜5 割残）
+> **方針決定（2026-06-29・ユーザー）**: まず **A（scene-tree を render 層として残す現 §A 形）を Phase D まで完成** → その後 **B（Node/NodeTree 撤廃 / render-from-World）を別途評価**。
+> 1. **enemy-action cutover 🟡 進行中**（敵杖詠唱 `enemyCastStaff`・投擲を ECS 化・dynamic workflow `w89m9bmr2`・StaffSystem 流用・`useEcsEnemyStaff` 既定 false・golden-trace・`*Legacy` seam）。
+> 2. **S7 セーブの ECS 化**（中規模・独立クリーン・reader-flip cascade なし。World store 直列化＋`EcsCodec`）。
+> 3. **Phase D（終端・最重・= A 完成宣言）**: PlayerData/EnemyData の component 分解／**HUD・menu の Query 一本化**（`ItemMenu`/`TradeMenu`/`CursorScene`/`UnitInfoPopup` の scene Data 二重読み→`PartyQuery/RosterQuery` 由来に統一・`BattlePanel`/`ActionMenu`/`Camera` が見本）／faction-blind System 統合／bridge（mirror dual-write・EntityScene・EncounterBuilder）撤去＝§E 完成定義の到達点。**着手前に専用プラン（壁打ち 90点・workflow）必須**。
+> 4. **（A 完成後）B 評価**: 下記アーキ判断②の構造重複を撤廃するか。Explore で engine `Render`/`Drawable` 経路の欠落・UI/menu 作り直し規模・IDE scene 編集との競合を資料化してから判断。**今はやらない**。
+> - **defer 継続（低 ROI・Plan B 整合）**: statuses 完全 World 権威化（高コスト・byte 同一 churn・reader-flip cascade と判明）／inventory 等 scene 権威（Plan B が明示許容）。Phase D に吸収するか据置。
+>
+> ### アーキ判断: Node/NodeTree 再考（ECS との重複・2026-06-29 ユーザー指摘）
+> 「ECS 化達成後、Node/NodeTree は OOP 残滓で ECS と機能重複では？」への分析。**重複は部分的・3 層に分解**:
+> - **① sim STATE の二重持ち**（hp/pos/status を scene Data record と World が両方）→ **移行が消す**（Phase D で scene Data=World 派生・sim 権威ゼロ。HUD/view 調査で大半が既に pure UI＝World 書込 0・sim 権威 0）。
+> - **② entity 同一性＋node-per-entity＋sync 層**（EntityId↔NodePath・Sprite2D node・`syncTreeFromWorld`）→ **A では原理的に残る構造重複**＝ユーザーの違和感の本体。撤廃は B。
+> - **③ render 階層(parent-child/y-sort)＋UI/menu(scene node)**→ **重複でなく node の正当な役割**（ECS が native に持たない）。
+> - **A vs B**: A=現 §A（scene-tree 残す・World→scene sync）。B=dodge_the_creeps_ecs 流（node tree 捨て World component を render System が即時 `Drawable` 化）。B が②を消すが UI/menu/IDE scene 編集が全部 node 前提＋engine `Render`/`spriteToDrawable` 経路が fe_rogue 描画要件を未吸収（effect 除去 refactor 未了＝engine 改修要相談）ゆえ大工事。**∴ A 完成 → B 評価の二段が現実的**（「ECS 化達成=①解消=A 完成」と「node tree 撤廃=②解消=B」は別レベルの目標）。
 
 > ## ★最前線（2026-06-28）= ✅ OOP→ECS 移行 **Plan B end-state を証跡付きで確定**。**詳細・現在地は `examples/fe_rogue/_plan_oop_to_ecs.md`**（authoritative）
 >
