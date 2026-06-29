@@ -1047,4 +1047,12 @@ mod TestGoldenTrace {
         let (_, evs) = driveEnemyResolve(sc);
         Assert.assertEq(expected = true, List.isEmpty(explosionCellsOf(evs)));
         Assert.assertEq(expected = 1, List.length(soundsOf(evs)))
+
+    /// 統合: 実 sim ログ（通常命中・敵 hp20 生存）を `ViewReplay.plan` で view-action 化すると 3 件
+    /// （Play "damage" → Damage(enemy,4) → HpBar(enemy,16)）になる。sim enrichment と ViewReplay 純粋 dispatch の
+    /// 結線を end-to-end で固定（非撃破ゆえ Death なし・Alerted/Released は view なし＝plan で空に落ちる）。
+    @Test
+    def testViewScriptPlansToActions(): Unit \ Assert =
+        let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        Assert.assertEq(expected = 3, List.length(ViewReplay.plan(driveResolveEvs(sc))))
 }
