@@ -265,7 +265,8 @@ mod TestStaffGolden {
         Assert.assertEq(expected = ("Add", 1, 5, 0) :: Nil, cmdKeys);
         // ② scene-statuses: legacy #statuses == ECS（applyEcsStaffSceneEffects 駆動）#statuses。
         let (legacyScene, _) = runStaffLegacy({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
-        let ecsScene = StaffCastScene.applyEcsStaffSceneEffects(evs, sc);
+        // S3: applyEcsStaffSceneEffects は Seed emit で World.Command を持つ＝ディスチャージャで wrap。
+        let ecsScene = TestUnitFixtures.dischargeWorldCommand(() -> StaffCastScene.applyEcsStaffSceneEffects(evs, sc));
         Assert.assertEq(expected = sceneStatusT(1, legacyScene), sceneStatusT(1, ecsScene));
         // ③ remaining=5 を tuple リテラルで pin（immobilizeFor(5) を self-derive しない）。
         Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil, sceneStatusT(1, ecsScene));

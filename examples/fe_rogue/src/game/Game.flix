@@ -1076,6 +1076,10 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[BASESTATS DIFF] ${ms}")
             };
+            match World.statusEffectsMismatches(Ref.get(worldRef), next) {  // S3: command 由来 World statusEffects vs scene #statuses
+                case Nil => ()
+                case ms  => println("[STATUSEFFECTS DIFF] ${ms}")
+            };
             match World.weaponViewMismatches(Ref.get(worldRef), next) {  // S2.4: command 由来 World weaponView vs scene 装備武器投影
                 case Nil => ()
                 case ms  => println("[WEAPONVIEW DIFF] ${ms}")
@@ -1111,9 +1115,9 @@ mod Game {
             else ();
             let world1 = World.refreshMirror(next, Ref.get(worldRef));
             // F0（OOP→ECS 移行の足場）: **System パイプライン段**。ロジックを OOP callback でなく
-            // `World -> World` の System で回す将来形の seam。現状の System は inert な `tickStatusEffects`
-            // のみ（pos 不変ゆえ下の syncTreeFromWorld に無影響・status は次フレーム refreshMirror で上書き
-            // ＝挙動不変）。以後の System（移動/AI/戦闘）はここに足していく。
+            // `World -> World` の System で回す将来形の seam。S3 以後 stepWorld は identity（statusEffects は
+            // command-authoritative ＝ターン境界の Seed で tick 反映・frame-paced tick は二重 tick になるため撤去）。
+            // 以後の World→World System はここに足していく。
             let world2 = World.stepWorld(world1);
             // F2b（turn phase 書込を Cmd 化）: phase は `TurnPhase.State` handler が `put` のたび `Cmd.SetPhase` で
             // worldRef へ dual-write 済み＝**World.turnPhase は command 由来**（全 41 put サイトを handler 1 箇所で被覆）。

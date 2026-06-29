@@ -541,13 +541,17 @@ mod CombatScene {
     def applyEcsSceneEffects(events: List[World.SimEvent], scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         List.foldLeft((sc, ev) -> match ev {
             case World.SimEvent.Afflicted(World.EntityRef.Player(id), s) =>
-                PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc)
+                let sc1 = PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc);
+                PlayerScene.emitStatusesFromScene(id, sc1); sc1  // S3: 付与後 statuses を World へ Seed
             case World.SimEvent.Afflicted(World.EntityRef.Enemy(id), s) =>
-                EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc)
+                let sc1 = EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc);
+                EnemyScene.emitStatusesFromScene(id, sc1); sc1
             case World.SimEvent.Released(World.EntityRef.Player(id)) =>
-                PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, sc)
+                let sc1 = PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, sc);
+                PlayerScene.emitStatusesFromScene(id, sc1); sc1
             case World.SimEvent.Released(World.EntityRef.Enemy(id)) =>
-                EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, sc)
+                let sc1 = EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, sc);
+                EnemyScene.emitStatusesFromScene(id, sc1); sc1
             case World.SimEvent.LeveledUp(p) =>
                 // pendingLevelUp（panel trigger）＋ resource の成長後 stat 反映（legacy applyLevelUp の withStats 相当）。
                 // level/exp/hp は eventToCmds→World→derive 済み。resource は scene 権威（baseStats の source）ゆえここで。
@@ -960,17 +964,17 @@ mod CombatScene {
     /// 敵 actor の effectRule 用 PlanHandlers。`ally`=is-player の規約は杖と同一
     /// （ally=true ⇒ PlayerScene、ally=false ⇒ EnemyScene）。吸血(heal)・状態異常(status)・
     /// 全回復(fullHeal) に対応。撃破を伴う damage / 盤面副作用 custom 等は戦闘トリガーでは未対応 no-op。
-    def enemyEffectHandlers(): EffectRunner.PlanHandlers[Scene[NodeTag], {}] = {
-        heal       = (sc, id, ally, n)        -> effectHeal(id, ally, n, sc),
-        fullHeal   = (sc, id, ally)           -> effectFullHeal(id, ally, sc),
-        status     = (sc, id, ally, se, m, t) -> effectStatus(id, ally, se, m, t, sc),
-        maxHpUp    = (sc, _, _, _)            -> sc,
-        damage     = (sc, _, _, _)            -> sc,
-        immobilize = (sc, _, _, _)            -> sc,
-        revive     = (sc, _, _)               -> sc,
-        custom     = (sc, _, _, _)            -> sc,
-        sfx        = (sc, _)                  -> sc,
-        noOp       = (sc, _)                  -> sc
+    def enemyEffectHandlers(): EffectRunner.PlanHandlers[Scene[NodeTag], {World.Command}] = {
+        heal       = (sc, id, ally, n)        -> checked_ecast(effectHeal(id, ally, n, sc)),
+        fullHeal   = (sc, id, ally)           -> checked_ecast(effectFullHeal(id, ally, sc)),
+        status     = (sc, id, ally, se, m, t) -> effectStatus(id, ally, se, m, t, sc),  // S3: World.Command（Seed）
+        maxHpUp    = (sc, _, _, _)            -> checked_ecast(sc),
+        damage     = (sc, _, _, _)            -> checked_ecast(sc),
+        immobilize = (sc, _, _, _)            -> checked_ecast(sc),
+        revive     = (sc, _, _)               -> checked_ecast(sc),
+        custom     = (sc, _, _, _)            -> checked_ecast(sc),
+        sfx        = (sc, _)                  -> checked_ecast(sc),
+        noOp       = (sc, _)                  -> checked_ecast(sc)
     }
 
     /// HP 回復を ally で出し分け（最大 HP でクランプ）。吸血（OpLifesteal → HealAt）の着地点。
@@ -1013,12 +1017,14 @@ mod CombatScene {
 
     /// 時限ステータス付与を ally で出し分け（毒/鈍足/命中低下など）。
     def effectStatus(id: Int32, ally: Bool, kind: StatusSystem.StatusEffect,
-                     mag: Int32, turns: Int32, sc: Scene[NodeTag]): Scene[NodeTag] =
+                     mag: Int32, turns: Int32, sc: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let status = {effect = kind, magnitude = mag, remaining = turns};
         if (ally)
-            PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc)
+            let sc1 = PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc);
+            PlayerScene.emitStatusesFromScene(id, sc1); sc1  // S3: 付与後 statuses を World へ Seed
         else
-            EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc)
+            let sc1 = EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc);
+            EnemyScene.emitStatusesFromScene(id, sc1); sc1
 
     /// みかえりのリングを装備した敵が撃破したとき、その敵の HP を回復する（最大 HP でクランプ）。
     /// リング未装備 / Lifesteal 以外なら回復量 0 で no-op。

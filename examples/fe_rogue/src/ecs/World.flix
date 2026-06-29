@@ -261,8 +261,11 @@ mod World {
             playerIds      = pIds,
             enemyIds       = eIds,
             team           = teamTags(players, enemies),  // A': faction タグを毎フレーム再導出
-            statusEffects = Map.union(Query.indexBy(d -> d#id, d -> d#statuses, players),
-                                      Query.indexBy(d -> enemyUid(d#id), d -> d#statuses, enemies)),
+            // S3: statusEffects も command 由来を保持＋prune（hp/baseStats と同型・再 mirror しない）。全 statuses 書込
+            // （add/clearImmobilized/bind/tick）が `Cmd.Seed`（emitStatusesFromScene・全置換）を dual-write 済みゆえ
+            // World statusEffects == scene #statuses（[STATUSEFFECTS DIFF] 無音）。これで combatViewOf が読む
+            // statusEffectsOf は非 stale（S4.2 の前提）。syncFromScene(frame-1) は seed として残す。
+            statusEffects = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#statusEffects),
             // F6b: hp も command 由来を保持＋prune（位置と同様）。全 hp 書込が `Cmd.SetHp` を dual-write
             // 済み（`[F6 HP DIFF]` 無音で確認）ゆえ World hp == scene hp で挙動不変。これで **hp は World 権威**。
             hp = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#hp),
@@ -329,14 +332,14 @@ mod World {
 
     /// F0（OOP→ECS 移行の足場）: **System パイプラインの段**。gameLoop の frame-end でここに
     /// Systems（`World -> World`）を畳む。以後の System（移動 / 敵AI / 戦闘 …）はこの関数に追加していく。
-    /// 現状の唯一の System は `tickStatusEffects`（純粋）。これは:
-    ///   - pos を触らない（syncTreeFromWorld に無影響）、
-    ///   - statuses は read-model で次フレーム `refreshMirror` が scene から上書きする、
-    ///   - live な `StatusQuery` reader がゲームに無い、
-    /// ため **挙動不変な scaffold**＝「System が段に乗る型/データ流」を実証するだけ（status の正規 tick は
-    /// ターン境界に置くので F2 でここへ移す）。identity 段にしないのは、実 System を1つ通して seam を生かすため。
+    /// **S3 以後 identity**: かつてここで `tickStatusEffects` を回していたが、S3 で statusEffects が
+    /// command-authoritative になり（ターン境界の `clearAllWaited`/`clearActedAll` が `StatusSystem.tick`→`Cmd.Seed`
+    /// で World へ反映）、`refreshMirror` も preserve＝再 mirror しなくなった。frame-paced にここで tick すると
+    /// **二重 tick**（remaining が 60/sec で減り status が数フレームで消える・combatViewOf が buff/debuff を落とす）に
+    /// なるため本段は identity にする。（`tickStatusEffects` def は単体テスト用に残置。実 System はここへ足すが
+    /// statusEffects は触らない＝ターン境界の Seed が唯一の権威 tick。）
     pub def stepWorld(world: World): World =
-        world |> tickStatusEffects
+        world
 
     // ════════════════════════════════════════════════════════════════════
     // statusEffects（時限ステータス効果＝バフ/デバフ）を World 権威にする ECS 層
@@ -909,6 +912,20 @@ mod World {
                 Some(EntityRef.Player(d#id)) else None);
         let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
             if (Option.map(proj, baseStatsOf(EntityRef.Enemy(d#id), world)) != Some(proj(Combat.baseStatsFrom(d#resource))))
+                Some(EntityRef.Enemy(d#id)) else None);
+        List.append(pms, ems)
+
+    /// S3 安全網: World statusEffects（command 由来）と scene の `#statuses` が食い違う entity を列挙する（両 faction）。
+    /// Status は record（StatusEffect は Eq 持ち）だが順序込みの安定比較のため (effect, magnitude, remaining) tuple list へ
+    /// 射影して比較（baseStatsMismatches 同型）。preserve 化後 frame-end では常に一致するはずで、食い違いは
+    /// emitStatusesFromScene(Seed) の dual-write 漏れ（[STATUSEFFECTS DIFF]）を意味する。
+    pub def statusEffectsMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
+        let proj = xs -> List.map(s -> (s#effect, s#magnitude, s#remaining), xs);
+        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
+            if (proj(statusEffectsOf(EntityRef.Player(d#id), world)) != proj(d#statuses))
+                Some(EntityRef.Player(d#id)) else None);
+        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
+            if (proj(statusEffectsOf(EntityRef.Enemy(d#id), world)) != proj(d#statuses))
                 Some(EntityRef.Enemy(d#id)) else None);
         List.append(pms, ems)
 

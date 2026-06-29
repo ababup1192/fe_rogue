@@ -372,6 +372,16 @@ mod EnemyScene {
             case _                          => None
         }
 
+    /// S3: statusEffects 書込 funnel（`PlayerScene.emitStatusesFromScene` の Enemy 版）。mutation
+    /// （add/clearImmobilized/bind/tick）適用後の `scene` から該当敵の `#statuses` を読み戻して `Cmd.Seed`
+    /// （全置換 replace 意味論）で World へ dual-write する。変更後の全リストを Seed で置換＝網羅が単純。
+    /// statuses を書く全サイトの末尾で呼ぶ（特に敵ターン開始 tick）。pub（StaffCastScene/CombatScene 起点から）。
+    pub def emitStatusesFromScene(id: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        match get(id, scene) {
+            case Some(d) => World.Command.emit(World.Cmd.Seed(World.EntityRef.Enemy(id), d#statuses))
+            case None    => ()
+        }
+
     /// 敵 id の表示名（敵種名 = `resource#description`）。ログ文言で使う。
     /// 見つからない場合は防御的に "敵" を返す（ログに id を出さない方針）。
     pub def displayName(id: Int32, scene: Scene[NodeTag]): String =
@@ -419,9 +429,10 @@ mod EnemyScene {
     /// 完全停止（かなしばり）を解除する。被攻撃 or 被投擲の瞬間に呼ぶ。
     /// 停止していなければ no-op（他の時限ステータスは残す）。
     pub def releaseBind(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        // emit-flip(E3, dual-write): かなしばり解除を World へ発行（scene の inline clear も当面維持）。
-        World.Command.emit(World.Cmd.ClearImmobilized(World.EntityRef.Enemy(id)));
-        mapEnemy(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, scene)
+        // S3: mutation 後に読んで Seed で全置換（read-after-mutate の正しい流儀）。
+        let cleared = mapEnemy(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, scene);
+        emitStatusesFromScene(id, cleared);
+        cleared
 
     /// 全敵の「行動済み」を解除し、本体スプライトと HP ゲージを通常の明るさへ戻す。
     /// 敵ターン開始時に呼ぶ（プレイヤーの clearAllWaited と対称）。
@@ -431,14 +442,17 @@ mod EnemyScene {
         World.Command.emit(World.Cmd.TickEnemies);
         let reset = List.foldLeft((sc, id) -> {
             World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Enemy(id), false));  // F7-slice4: reset を World へ
-            sc
+            let sc1 = sc
                 // 敵ターン開始ごとに時限デバフ（目潰し/鈍足）を 1 ターン分減算し、
                 // 追撃リングの二重発動フラグを戻す。
                 |> mapEnemy(id, d -> {acted = false, statuses = StatusSystem.tick(d#statuses),
                                       followUpUsed = false | d})
                 |> setSpriteModulate(id, activeColor())
                 |> UnitHPBarScene.setModulate(enemyPath(id), activeColor())
-                |> WeaponIconScene.setModulate(enemyPath(id), activeColor()) },
+                |> WeaponIconScene.setModulate(enemyPath(id), activeColor());
+            // S3: 敵ターン開始 tick 後の statuses を per-entity で World へ Seed（tick 網羅の核心）。
+            emitStatusesFromScene(id, sc1);
+            sc1 },
             scene, ids);
         // 敵ターン開始時に、いやしのリングを装備した敵の HP を回復する。
         applyRingRegen(reset)
@@ -685,9 +699,13 @@ mod EnemyScene {
         let ring = snap#ring |> Option.map(id -> Ring.lookup(id, ringCatalog));
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(snap#id), snap#hp));  // F6a: 復元 hp を World へ
         World.Command.emit(World.Cmd.SetAlerted(World.EntityRef.Enemy(snap#id), snap#alerted));  // F7-spike: 復元 alerted を World へ
-        mapEnemy(snap#id, d -> {hp = snap#hp, statuses = snap#statuses,
+        let restored = mapEnemy(snap#id, d -> {hp = snap#hp, statuses = snap#statuses,
                                  alerted = snap#alerted, ring = ring | d}, scene)
-            |> UnitHPBarScene.update(enemyPath(snap#id), snap#hp)
+            |> UnitHPBarScene.update(enemyPath(snap#id), snap#hp);
+        // S3: 復元 statuses も World へ Seed（中断再開は in-loop phase change で fresh syncFromScene が無く
+        // refreshMirror も preserve ゆえ、Seed しないと scene の復元 statuses が World に届かない＝[STATUSEFFECTS DIFF]）。
+        emitStatusesFromScene(snap#id, restored);
+        restored
 
     /// `EnemySnap` を配置用 `Spawn` に解決する。武器は保存済み id ＋ 耐久で復元し、
     /// 武器 id が無い（壊れていた）場合は resource の初期武器にフォールバックする。

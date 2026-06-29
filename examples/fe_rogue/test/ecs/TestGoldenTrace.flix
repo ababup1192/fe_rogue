@@ -430,18 +430,20 @@ mod TestGoldenTrace {
 
     /// effectRule(spdDown を player へ・chance 既定100=必発) を持つ敵が applyEnemyAttackHit を駆動。
     /// roll [hit, crit, effect] を引き、命中で味方 HP を 4 削り（10→6・撃破せず）spdDown を付与。
-    /// cmd-stream: SetHp(player,6) → ClrImmob(player)[releaseBind:759] → Cmd.Add(player, SpdDown ordinal=1)。
+    /// cmd-stream: SetHp(player,6) → Seed(player)[releaseBind の post-mutation 全置換] → Cmd.Add(player, SpdDown ordinal=1)
+    /// → Seed(player)[effectStatus leaf の post-mutation 全置換]。S3 で releaseBind の ClrImmob と status leaf が Seed 化。
     @Test
     def testGoldenEnemyEffectRule(): Unit \ Assert =
         let rule = ruleJson("{\"when\":\"onHit\",\"to\":\"enemy\",\"op\":\"spdDown\",\"amount\":3,\"for\":\"turns\",\"forTurns\":3}");
         let sc = sceneOf(player(0, 10, None, 80), enemy(1, 10, {x = 3, y = 2}, false, Some(0), rule, 200) :: Nil);
         let ((_, killed), keys, w) = runEnemyAttack(sc, 1);
         assertGoldenPremise(sc, keys);
-        // golden: SetHp(player,6)→ClrImmob→Add（4th slot に magnitude=3・kind=1=SpdDown）。
+        // golden: SetHp(player,6)→Seed(releaseBind)→Add（magnitude=3・kind=1=SpdDown）→Seed(status leaf)。
         let golden =
             ("SetHp", 0, 6, 0) ::
-            ("ClrImmob", 0, 0, 0) ::
+            ("Seed", 0, 0, 0) ::
             ("Add", 0, 1, 3) ::
+            ("Seed", 0, 0, 0) ::
             ("SetWeapons", 1000001, 1, 0) ::
             ("SetWeaponView", 1000001, 2, 0) :: Nil;  // S2.4: 敵武器耐久消費に 1:1 co-emit（attack=2）
         Assert.assertEq(expected = golden, keys);
@@ -522,12 +524,13 @@ mod TestGoldenTrace {
                     } with Pacing.withState(rc))))))))))));
             let (_, killed) = result;
             assertGoldenPremise(sc, keys);
-            // golden: ClrTgt(player)→AtkTgt(enemy1,player0)→SetHp(player,0)→ClrImmob(player)。
+            // golden: ClrTgt(player)→AtkTgt(enemy1,player0)→SetHp(player,0)→Seed(player)。
+            // S3: releaseBind が post-mutation の全置換 Seed を emit（旧 ClrImmob を統合）。
             let golden =
                 ("ClrTgt", 0, 0, 0) ::
                 ("AtkTgt", 1000001, 0, 0) ::
                 ("SetHp", 0, 0, 0) ::
-                ("ClrImmob", 0, 0, 0) ::
+                ("Seed", 0, 0, 0) ::
                 ("SetWeapons", 1000001, 1, 0) ::
                 ("SetWeaponView", 1000001, 2, 0) :: Nil;  // S2.4: 敵武器耐久消費に 1:1 co-emit（attack=2）
             Assert.assertEq(expected = golden, keys);

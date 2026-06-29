@@ -188,8 +188,9 @@ mod TestEnemyStaffGolden {
         let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
         let (ecsScene, ecsKeys, _) = runEnemyStaffEcs({scene = sc, eid = 0, dir = dir, hit = hit});
-        // ① emit ループの cmdKey 列リテラル（Afflicted→eventToCmds→Cmd.Add の実踏）。
-        Assert.assertEq(expected = ("Add", 1, 5, 0) :: Nil, ecsKeys);
+        // ① emit ループの cmdKey 列リテラル（Afflicted→eventToCmds→Cmd.Add の実踏）＋
+        //    S3: applyEcsStaffSceneEffects の post-mutation 全置換 Seed（uid=1）。
+        Assert.assertEq(expected = ("Add", 1, 5, 0) :: ("Seed", 1, 0, 0) :: Nil, ecsKeys);
         // ② scene 反映後の味方 #statuses リテラル（applyEcsStaffSceneEffects Afflicted(Player) arm 共用）。
         Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil,
                         sceneStatusT(1, ecsScene))

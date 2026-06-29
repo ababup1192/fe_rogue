@@ -184,16 +184,20 @@ mod StaffCastScene {
     /// eventToCmds→World→syncTreeFromWorld で derive されるため scene 権威反映は不要。
     /// 今周は Bind のみ Afflicted を発火（Released は将来 throw/敵詠唱用に同型コピーだけ用意）。純粋 scene 変換。
     /// Bind の scene-statuses 等価オラクル（`TestStaffGolden`）が legacy #statuses と突き合わせるため pub。
-    pub def applyEcsStaffSceneEffects(events: List[World.SimEvent], scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def applyEcsStaffSceneEffects(events: List[World.SimEvent], scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         List.foldLeft((sc, ev) -> match ev {
             case World.SimEvent.Afflicted(World.EntityRef.Player(id), s) =>
-                PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc)
+                let sc1 = PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc);
+                PlayerScene.emitStatusesFromScene(id, sc1); sc1  // S3: 付与後 statuses を World へ Seed
             case World.SimEvent.Afflicted(World.EntityRef.Enemy(id), s) =>
-                EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc)
+                let sc1 = EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc);
+                EnemyScene.emitStatusesFromScene(id, sc1); sc1
             case World.SimEvent.Released(World.EntityRef.Player(id)) =>
-                PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, sc)
+                let sc1 = PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, sc);
+                PlayerScene.emitStatusesFromScene(id, sc1); sc1
             case World.SimEvent.Released(World.EntityRef.Enemy(id)) =>
-                EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, sc)
+                let sc1 = EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, sc);
+                EnemyScene.emitStatusesFromScene(id, sc1); sc1
             case _ => sc
         }, scene, events)
 
@@ -259,7 +263,7 @@ mod StaffCastScene {
     /// 完全停止を当たったユニットへ `turns` ターン付与。legacy applyBindToPlayer/Enemy をそのまま呼ぶ
     /// （ログ込みで同一）。turns は effectRule の for:turns から来る（被弾解除は Immobilized 型に内在）。
     def immobilizeUnit(srcId: Int32, id: Int32, ally: Bool, turns: Int32, sc: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         let srcLabel = PlayerScene.displayName(srcId, sc);
         if (ally) applyBindToPlayer(srcLabel, id, turns, sc)
         else      applyBindToEnemy(srcLabel, id, turns, sc)
@@ -475,15 +479,17 @@ mod StaffCastScene {
 
     /// かなしばり × 味方: 対象を `turns` ターン完全停止にする。`srcLabel` は撃った側の表示名（敵詠唱でも使う）。
     def applyBindToPlayer(srcLabel: String, targetId: Int32, turns: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         GameLogger.playerLog("${srcLabel} は ${PlayerScene.displayName(targetId, scene)} を かなしばりにした");
-        PlayerScene.mapPlayer(targetId, d -> {statuses = StaffRules.bindStatuses(turns, d#statuses) | d}, scene)
+        let sc1 = PlayerScene.mapPlayer(targetId, d -> {statuses = StaffRules.bindStatuses(turns, d#statuses) | d}, scene);
+        PlayerScene.emitStatusesFromScene(targetId, sc1); sc1  // S3: bind 後 statuses を World へ Seed
 
     /// かなしばり × 敵: 対象を `turns` ターン完全停止にする。
     def applyBindToEnemy(srcLabel: String, enemyId: Int32, turns: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         GameLogger.playerLog("${srcLabel} は ${EnemyScene.displayName(enemyId, scene)} を かなしばりにした");
-        EnemyScene.mapEnemy(enemyId, d -> {statuses = StaffRules.bindStatuses(turns, d#statuses) | d}, scene)
+        let sc1 = EnemyScene.mapEnemy(enemyId, d -> {statuses = StaffRules.bindStatuses(turns, d#statuses) | d}, scene);
+        EnemyScene.emitStatusesFromScene(enemyId, sc1); sc1
 
     /// 一時しのぎ × 味方: 完全停止にしたうえで階段（埋まっていれば隣接の空き）へワープさせる。
     def applyStopgapToPlayer(srcLabel: String, targetId: Int32, scene: Scene[NodeTag]):
@@ -635,12 +641,12 @@ mod StaffCastScene {
     /// PlanItem を既存 primitive へ振り分ける handler。HP/status 変更・ログは primitive がそのまま行う
     /// （＝旧 match と挙動同一）。self-use では heal/fullHeal/maxHpUp/status のみ発火する。
     def selfEffectHandlers(item: Consumable.ConsumableResource):
-            EffectRunner.PlanHandlers[Scene[NodeTag], GameLogger.GameLogger] = {
+            EffectRunner.PlanHandlers[Scene[NodeTag], {GameLogger.GameLogger, World.Command}] = {
         // self-use なので対象は常に自分（ally=true）。ally は使わない。
-        heal       = (sc, id, _, _)        -> withPlayer(id, sc, p -> applyConsumableHeal(id, p, item, sc)),
-        fullHeal   = (sc, id, _)           -> withPlayer(id, sc, p -> applyFullHeal(id, p, item, sc)),
-        maxHpUp    = (sc, id, _, _)        -> withPlayer(id, sc, p -> applyMaxHpUp(id, p, item, sc)),
-        status     = (sc, id, _, se, _, _) -> applySelfStatus(id, item, se, sc),
+        heal       = (sc, id, _, _)        -> checked_ecast(withPlayer(id, sc, p -> applyConsumableHeal(id, p, item, sc))),
+        fullHeal   = (sc, id, _)           -> checked_ecast(withPlayer(id, sc, p -> applyFullHeal(id, p, item, sc))),
+        maxHpUp    = (sc, id, _, _)        -> checked_ecast(withPlayer(id, sc, p -> applyMaxHpUp(id, p, item, sc))),
+        status     = (sc, id, _, se, _, _) -> applySelfStatus(id, item, se, sc),  // S3: {GameLogger, World.Command}（Seed）
         // self-use では発火しない handler。全 handler が同一 effect(GameLogger) を持つ必要があるため
         // 純粋な恒等を checked_ecast で GameLogger へ上げる（実際の作用は無し）。
         damage     = (sc, _, _, _)         -> checked_ecast(sc),
@@ -705,11 +711,12 @@ mod StaffCastScene {
     /// `kind` は付与する `StatusEffect`（AtkUp / SpdUp）。効果は次の戦闘予測・実戦闘に反映される。
     def applySelfStatus(playerId: Int32, item: Consumable.ConsumableResource,
                          kind: StatusSystem.StatusEffect, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         let status = {effect = kind, magnitude = item#magnitude, remaining = item#duration};
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${item#name} を使った (${item#duration}ターン)");
-        PlayerScene.mapPlayer(playerId,
-            d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene)
+        let sc1 = PlayerScene.mapPlayer(playerId,
+            d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene);
+        PlayerScene.emitStatusesFromScene(playerId, sc1); sc1  // S3: 自己バフ後 statuses を World へ Seed
 
     /// 消費アイテムの耐久（使用回数）を 1 減らし、0 なら consumables から除去 + 使い切りログ。
     /// `consumeStaff` と構造は同じだが、型が `Consumable.ConsumableResource` のため共通化できない。
@@ -1273,17 +1280,17 @@ mod StaffCastScene {
 
     /// 投擲効果の統一ハンドラ。ally で player/enemy を出し分け、HP/status を適用する（ログなし）。
     /// damage/immobilize 等は投擲薬の経路には現れないので恒等。
-    def throwEffectHandlers(): EffectRunner.PlanHandlers[Scene[NodeTag], {}] = {
-        heal       = (sc, id, ally, n)         -> healUnit(id, ally, n, sc),
-        fullHeal   = (sc, id, ally)            -> fullHealUnit(id, ally, sc),
-        maxHpUp    = (sc, id, ally, n)         -> maxHpUpUnit(id, ally, n, sc),
-        status     = (sc, id, ally, se, m, t)  -> statusUnit(id, ally, se, m, t, sc),
-        damage     = (sc, _, _, _)             -> sc,
-        immobilize = (sc, _, _, _)             -> sc,
-        revive     = (sc, _, _)                -> sc,
-        custom     = (sc, _, _, _)             -> sc,
-        sfx        = (sc, _)                   -> sc,
-        noOp       = (sc, _)                   -> sc
+    def throwEffectHandlers(): EffectRunner.PlanHandlers[Scene[NodeTag], {World.Command}] = {
+        heal       = (sc, id, ally, n)         -> checked_ecast(healUnit(id, ally, n, sc)),
+        fullHeal   = (sc, id, ally)            -> checked_ecast(fullHealUnit(id, ally, sc)),
+        maxHpUp    = (sc, id, ally, n)         -> checked_ecast(maxHpUpUnit(id, ally, n, sc)),
+        status     = (sc, id, ally, se, m, t)  -> statusUnit(id, ally, se, m, t, sc),  // S3: World.Command（Seed）
+        damage     = (sc, _, _, _)             -> checked_ecast(sc),
+        immobilize = (sc, _, _, _)             -> checked_ecast(sc),
+        revive     = (sc, _, _)                -> checked_ecast(sc),
+        custom     = (sc, _, _, _)             -> checked_ecast(sc),
+        sfx        = (sc, _)                   -> checked_ecast(sc),
+        noOp       = (sc, _)                   -> checked_ecast(sc)
     }
 
     /// HP 回復を ally で出し分け（旧 Heal arm と同一）。
@@ -1347,12 +1354,14 @@ mod StaffCastScene {
 
     /// 時限ステータス付与を ally で出し分け（旧 addEnemyStatus / addPlayerStatus と同一）。
     def statusUnit(id: Int32, ally: Bool, kind: StatusSystem.StatusEffect,
-                   mag: Int32, turns: Int32, sc: Scene[NodeTag]): Scene[NodeTag] =
+                   mag: Int32, turns: Int32, sc: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let status = {effect = kind, magnitude = mag, remaining = turns};
         if (ally)
-            PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc)
+            let sc1 = PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc);
+            PlayerScene.emitStatusesFromScene(id, sc1); sc1  // S3: 付与後 statuses を World へ Seed
         else
-            EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc)
+            let sc1 = EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc);
+            EnemyScene.emitStatusesFromScene(id, sc1); sc1
 
     /// 敵 1 体への薬効果適用 → DSL 経路へ委譲（数値・挙動は同一、ally=false）。
     def applyConsumableEffectToEnemy(item: Consumable.ConsumableResource,

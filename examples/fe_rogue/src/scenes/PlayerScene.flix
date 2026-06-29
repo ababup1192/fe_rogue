@@ -711,6 +711,16 @@ mod PlayerScene {
             case None    => ()
         }
 
+    /// S3: statusEffects 書込 funnel（`emitBaseStatsFromScene` 同型）。mutation（add/clearImmobilized/bind/tick）
+    /// 適用後の `scene` から該当 player の `#statuses` を読み戻して `Cmd.Seed`（全置換 replace 意味論）で World へ
+    /// dual-write する。各操作を個別 Cmd に写さず変更後の全リストを Seed で置換＝網羅が単純化し漏れにくい。
+    /// statuses を書く全サイトの末尾で呼ぶ（特にターン開始 tick）。pub（StaffCastScene/CombatScene/EnemyScene 起点から）。
+    pub def emitStatusesFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        match get(playerId, scene) {
+            case Some(d) => World.Command.emit(World.Cmd.Seed(World.EntityRef.Player(playerId), d#statuses))
+            case None    => ()
+        }
+
     /// D4: staves/consumables/rings/ringEquipped 書込 funnel（`emitWeaponsFromScene` 同型）。
     /// mutation 適用後の `scene` から該当 player の各インベントリを読み戻して Cmd を World へ dual-write する。
     /// `pub`（StaffCastScene の杖/瓶消費からも呼ぶ）。
@@ -886,9 +896,10 @@ mod PlayerScene {
     /// 完全停止（かなしばり）を解除する。被攻撃 or 被投擲の瞬間に呼ぶ。
     /// 停止していなければ no-op（他の時限ステータスは残す）。
     pub def releaseBind(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        // emit-flip(E3, dual-write): かなしばり解除を World へ発行（scene の inline clear も当面維持）。
-        World.Command.emit(World.Cmd.ClearImmobilized(World.EntityRef.Player(id)));
-        mapPlayer(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, scene)
+        // S3: mutation 後に読んで Seed で全置換（read-after-mutate の正しい流儀）。
+        let cleared = mapPlayer(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, scene);
+        emitStatusesFromScene(id, cleared);
+        cleared
 
     /// 全プレイヤーの waited をクリアし、sprite を白に戻す。
     /// ターン開始時に呼ばれ、AnimatedSprite2D 持ち unit は idle アニメに戻す
@@ -902,7 +913,7 @@ mod PlayerScene {
         let reset = List.foldLeft((sc, id) -> {
             World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Player(id), false));  // F7-slice4: reset を World へ
             World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), false));  // F7-slice5: ターン開始で waited 解除
-            sc
+            let sc1 = sc
                 // 味方ターン開始ごとに時限ステータス（自己バフ等）を 1 ターン分減算し、
                 // 追撃リングの二重発動フラグを戻す。
                 |> mapPlayer(id, d -> {waited = false, statuses = StatusSystem.tick(d#statuses),
@@ -910,7 +921,10 @@ mod PlayerScene {
                 |> setSpriteModulate(id, activeColor())
                 |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
                 |> WeaponIconScene.setModulate(playerPath(id), activeColor())
-                |> playAnim(id, idleAnimName()) },
+                |> playAnim(id, idleAnimName());
+            // S3: 味方ターン開始 tick 後の statuses を per-entity で World へ Seed（tick 網羅の核心）。
+            emitStatusesFromScene(id, sc1);
+            sc1 },
             scene, ids);
         // 味方ターン開始時に、いやしのリングを装備した味方の HP を回復する。
         applyRingRegen(reset)
@@ -1193,6 +1207,10 @@ mod PlayerScene {
         emitBaseStatsFromScene(snap#id, placed);
         // D4: mapPlayer が ringEquipped=snap#ringEquipped で上書き（addOnePlayer は false を seed）＝束ね書込の片割れ。
         emitRingEquippedFromScene(snap#id, placed);
+        // S3: mapPlayer が statuses=snap#statuses で上書き（addOnePlayer は Nil を seed）。中断再開は in-loop phase
+        // change で fresh syncFromScene が無く refreshMirror も preserve ゆえ、ここで Seed しないと scene の復元
+        // statuses（非空のとき）が World へ届かず [STATUSEFFECTS DIFF]＋combatViewOf が buff/debuff を落とす。
+        emitStatusesFromScene(snap#id, placed);
         placed
 
     /// `PlayerSnap` を配置用 `Spawn`（base resource ＋ 解決済み持ち物）に変換する。
