@@ -1072,6 +1072,10 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[WEAPONS DIFF] ${ms}")
             };
+            match World.baseStatsMismatches(Ref.get(worldRef), next) {  // S2.3: command 由来 World baseStats vs scene resource 由来
+                case Nil => ()
+                case ms  => println("[BASESTATS DIFF] ${ms}")
+            };
             match World.stavesMismatches(Ref.get(worldRef), next) {  // D4: command 由来 World staves vs scene #staves
                 case Nil => ()
                 case ms  => println("[STAVES DIFF] ${ms}")

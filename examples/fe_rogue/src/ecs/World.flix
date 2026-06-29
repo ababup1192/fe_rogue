@@ -281,9 +281,10 @@ mod World {
             // World 拡張: level/exp も command 由来を保持＋prune（hp と同型）。
             playerLevel    = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerLevel),
             playerExp      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerExp),
-            // S-A0: baseStats は resource 由来の read-model ＝ scene から毎フレーム再 mirror（statusEffects と同型・command 由来でない）。
-            baseStats = Map.union(Query.indexBy(d -> d#id, d -> Combat.baseStatsFrom(d#resource), players),
-                                  Query.indexBy(d -> enemyUid(d#id), d -> Combat.baseStatsFrom(d#resource), enemies)),
+            // S2.3: baseStats も command 由来を保持＋prune（hp/weapons と同型・再 mirror しない）。全 resource 書込
+            // （spawn/復元/carry/level-up/maxHp）が `Cmd.SetBaseStats` を dual-write 済みゆえ World baseStats == scene
+            // baseStatsFrom(resource)（[BASESTATS DIFF] 無音）。combatViewOf flip(S4.2) で mid-combat の 1 フレーム stale を解消。
+            baseStats = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#baseStats),
             // S-A0b: weaponView も装備武器由来の read-model ＝ 毎フレーム再 mirror。
             weaponView = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedWeaponView(d), players),
                                    Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedWeaponView(d), enemies)),
@@ -405,6 +406,7 @@ mod World {
         case SetPhase(SimPhase)             // turn phase write（F2b・TurnPhase.State handler が dual-write で emit）
         case SetHp(EntityRef, Int32)        // hp write（F6a・dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
         case SetWeapons(EntityRef, List[UnitCatalog.WeaponResource])  // D3: weapons write（dual-write seam。player は List・enemy は 0/1 List 射影）
+        case SetBaseStats(EntityRef, Combat.BaseStats)  // S2.3: base 戦闘値 write（hp/weapons 同型・両 faction・resource 書換ごとに dual-write）
         case SetStaves(EntityRef, List[Staff.StaffResource])               // D4: staves write（player-only・Enemy no-op）
         case SetConsumables(EntityRef, List[Consumable.ConsumableResource]) // D4: consumables write（player-only）
         case SetRings(EntityRef, List[Ring.RingResource])                  // D4: rings write（player-only）
@@ -588,6 +590,10 @@ mod World {
                 // D3: 単一 store＋toUid（SetHp と同型）。
                 let World.World(w) = world;
                 World.World({weapons = Map.insert(toUid(ref), ws, w#weapons) | w})
+            case Cmd.SetBaseStats(ref, bs) =>
+                // S2.3: 単一 store＋toUid（SetHp/SetWeapons と同型・両 faction）。
+                let World.World(w) = world;
+                World.World({baseStats = Map.insert(toUid(ref), bs, w#baseStats) | w})
             case Cmd.SetStaves(ref, xs) =>
                 // D4: player-only store（SetWaited 流儀・Enemy は no-op）。
                 let World.World(w) = world;
@@ -763,6 +769,10 @@ mod World {
         match c {
             case Cmd.SetHp(ref, hp)           => ("SetHp", toUid(ref), hp, 0)
             case Cmd.SetWeapons(ref, ws)      => ("SetWeapons", toUid(ref), List.length(ws), 0)
+            // S2.3: BaseStats は Eq 非自動ゆえ全 8 数値 field の和を digest に、maxHp を 4th に載せて oracle 可視化。
+            case Cmd.SetBaseStats(ref, bs)    => ("SetBaseStats", toUid(ref),
+                                                  bs#attack + bs#magicAttack + bs#defense + bs#magicDefense
+                                                  + bs#skill + bs#speed + bs#luck + bs#maxHp, bs#maxHp)
             case Cmd.SetStaves(ref, xs)       => ("SetStaves", toUid(ref), List.length(xs), 0)
             case Cmd.SetConsumables(ref, xs)  => ("SetConsumables", toUid(ref), List.length(xs), 0)
             case Cmd.SetRings(ref, xs)        => ("SetRings", toUid(ref), List.length(xs), 0)
@@ -856,6 +866,19 @@ mod World {
     /// B1 で combatView がここを読み、status/ring 補正を加えて CombatView を組む（reader flip）。
     pub def baseStatsOf(ref: EntityRef, world: World): Option[Combat.BaseStats] =
         let World.World(w) = world; Map.get(toUid(ref), w#baseStats)
+
+    /// S2.3 安全網: World baseStats（command 由来）と scene resource 由来 baseStats が食い違う entity を列挙する（両 faction）。
+    /// BaseStats は Eq 非自動ゆえ全 8 数値 field を tuple へ射影して比較（combatViewMismatches 同型）。
+    /// preserve 化後 frame-end では常に一致するはずで、食い違いは dual-write の漏れ（[BASESTATS DIFF]）を意味する。
+    pub def baseStatsMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
+        let proj = bs -> (bs#attack, bs#magicAttack, bs#defense, bs#magicDefense, bs#skill, bs#speed, bs#luck, bs#maxHp);
+        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
+            if (Option.map(proj, baseStatsOf(EntityRef.Player(d#id), world)) != Some(proj(Combat.baseStatsFrom(d#resource))))
+                Some(EntityRef.Player(d#id)) else None);
+        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
+            if (Option.map(proj, baseStatsOf(EntityRef.Enemy(d#id), world)) != Some(proj(Combat.baseStatsFrom(d#resource))))
+                Some(EntityRef.Enemy(d#id)) else None);
+        List.append(pms, ems)
 
     /// S-A0d: level-up 成長に要る基準 Stats + 成長率を World から読む（player-only。Enemy は常に None）。
     /// resolveCombat の level-up が resource を threading せず World 完結で成長を解くための seam。
@@ -1174,7 +1197,11 @@ mod World {
             case EffectPlan.PlanItem.HealAt(id, ally, _)    => emitHpAt(id, ally, scene)
             case EffectPlan.PlanItem.FullHealAt(id, ally)   => emitHpAt(id, ally, scene)
             case EffectPlan.PlanItem.DamageAt(id, ally, _)  => emitHpAt(id, ally, scene)
-            case EffectPlan.PlanItem.MaxHpUpAt(id, ally, _) => emitHpAt(id, ally, scene)
+            case EffectPlan.PlanItem.MaxHpUpAt(id, ally, _) =>
+                emitHpAt(id, ally, scene);
+                // S2.3: 命の草で resource#hp（=baseStats#maxHp）が変わる＝唯一 baseStats を動かす effect-plan。
+                // hp と同 funnel で SetBaseStats を境界 dual-write（StaffCast の maxHpUpUnit/applyMaxHpUp の World 側）。
+                emitBaseStatsAt(id, ally, scene)
             case EffectPlan.PlanItem.ReviveAt(id, ally)     => emitHpAt(id, ally, scene)
             case _ => ()
         })
@@ -1185,6 +1212,16 @@ mod World {
                     else EnemyScene.get(id, scene) |> Option.map(d -> d#hp);
         match hpOpt {
             case Some(hp) => Command.emit(Cmd.SetHp(refOf(ally, id), hp))
+            case None     => ()
+        }
+
+    /// S2.3: 対象の現 resource から baseStats を導いて `Cmd.SetBaseStats` を emit する内部ヘルパー（emitHpAt 同型）。
+    /// maxHp 変更 effect で baseStats#maxHp が動くため runPlan 後の scene を読んで境界 dual-write する。
+    def emitBaseStatsAt(id: EntityId, ally: Bool, scene: Scene[NodeTag]): Unit \ Command =
+        let bsOpt = if (ally) PlayerScene.get(id, scene) |> Option.map(d -> Combat.baseStatsFrom(d#resource))
+                    else EnemyScene.get(id, scene) |> Option.map(d -> Combat.baseStatsFrom(d#resource));
+        match bsOpt {
+            case Some(bs) => Command.emit(Cmd.SetBaseStats(refOf(ally, id), bs))
             case None     => ()
         }
 

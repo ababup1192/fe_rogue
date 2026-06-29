@@ -248,10 +248,13 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > **主な是正**: ① statuses(旧D12) を reader-flip の**前(S3)**へ（cascade map で「S4 は statuses store が要る」と判明）。② 枝番(6.5/a-c/a-e)を単一ステージへ畳む。
 >
 > ### 現在地（2026-06-29）
-> S0✅ S1✅ S2.0✅ S2.1✅(コミット済) **S2.2✅(D4 実装+独立検証 1029緑+run検証済・コミット待ち)** S2.3⬜ S2.4⬜ S2.5⬜ S3⬜ S4⬜ S5⬜ S6⬜ S7⬜ S8⬜ S9(調査一部✅) S10⬜。
+> S0✅ S1✅ S2.0✅ S2.1✅(コミット済) S2.2✅(コミット済) **S2.3✅(baseStats command-derive・実装+独立検証 1033緑+blocking修正済・コミット待ち)** S2.4⬜ S2.5⬜ S3⬜ S4⬜ S5⬜ S6⬜ S7⬜ S8⬜ S9(調査一部✅) S10⬜。
+> - **S2.3(baseStats) = read-model→command-derive store**。核心 = refreshMirror を再mirror(Map.union baseStatsFrom)→preserve(Map.filterWithKey)。これで combatViewOf が mid-combat stale でなくなり **S4.2(combatView flip)の前提が整う**。両 faction(toUid)・`Cmd.SetBaseStats`・`baseStatsMismatches`(BaseStats は Eq 無し→8-tuple 射影)・Game.flix `[BASESTATS DIFF]`・maxHp は emitHpSets/MaxHpUpAt funnel で併置。review 72/88/92。
+> - **⚠ blocking 1 件を私が独立検証で発見・修正**: workflow は ECS 経路 level-up(CombatScene:558→561)だけ emit し、**legacy applyLevelUp(CombatScene:1121)が resource 成長後 `SetBaseStats` を emit していなかった**（hp/progress は :1115/:1117 で emit 済みだが baseStats だけ欠落＝F6 と同型の latent drift・useEcsCombat()=false に戻すと level-up で `[BASESTATS DIFF]`）。workflow の自己 audit grep が single-space `resource = ` で multi-space を取り零したのが原因。修正 = applyLevelUp 末尾に `emitBaseStatsFromScene`（:1126・ECS :561 と対称）。これに伴い legacy cmd-stream golden(`TestGoldenTrace.testGoldenLevelUp`)に `("SetBaseStats",0,21,10)` を追記（growthRates=0 で値不変だが emit は無条件＝SetWeapons が miss でも出るのと同型・SimEvent オラクル不変）。1033緑。
+> - dual-write 全 6 resource-write サイト被覆確認: PlayerScene reconcileWithCarry/placeOneFromSnap/reviveOneAt・CombatScene ECS+legacy level-up・EnemyScene spawn。snapToPlayerSpawn の resource=lookupUnit は Spawn 構築ゆえ addOnePlayer spawn-seed(:329)で transitively 被覆。
 > - **S2.2(D4) = staves/consumables/rings/ringEquipped を World command-derive store 化**（player-only store＝`waited` 流儀・key=player id 直・Enemy arm no-op）。review 93/93/92・dual-write 17 サイト漏れなし（束ね書込 reviveOne hp+consumables / equipRing rings+ringEquipped 含む）。mismatch 検証器は (length, head) 比較ゆえ**非先頭 drift は `[...DIFF]` に出ない**（D3 weapons テンプレ継承・emit は full list ゆえ World は忠実）。
 > - **D4 run 検証中の付随修正（元仕様バグ・D4 回帰ではない）**: 「投げた杖が消えない」を発見・修正。`StaffCastScene.consumeThrownItem` の Staff arm を `consumeStaff`(回数-1)→`PlayerScene.dropStaff`(完全除去) に変更＝投げ武器(`dropWeapon`)と対称。投擲は物理的に手放すので残り回数に関わらず消失。通常詠唱(L59 consumeStaff)は耐久-1 のまま据え置き。`dropStaff` が `SetStaves` dual-write ゆえ `[STAVES DIFF]` 無音維持・1029緑・ユーザー spec OK。
-> **次の一手**: S2.2＋杖投げ修正をコミット → **S2.3(stats baseStats command 化)** へ。詳細スライス = `~/.claude/plans/phase-d-implementation.md`。
+> **次の一手**: S2.3 を run 検証（戦闘 level-up・復活・拾得後に `[BASESTATS DIFF]` 無音）→ コミット → **S2.4(projection currency: weaponView/ringBonus を store 由来へ)** へ。S2.4 は S2.1(weapons)＋S2.2(rings) store に依存＝前提充足済み。詳細スライス = `~/.claude/plans/phase-d-implementation.md`。
 >
 > ---
 >

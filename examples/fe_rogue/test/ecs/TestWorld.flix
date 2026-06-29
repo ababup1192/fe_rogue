@@ -754,16 +754,31 @@ mod TestWorld {
             (Option.map(toTup, World.baseStatsOf(World.EntityRef.Player(0), w)),
              Option.map(toTup, World.baseStatsOf(World.EntityRef.Enemy(5), w))))
 
-    /// refreshMirror も baseStats を毎フレーム再 mirror する（read-model ＝ command 由来でない）。
-    /// maxHp = resource#hp が player 0 で読めることを確認する。
+    /// S2.3: refreshMirror は baseStats を **command 由来で保持**（preserve）＝再 mirror しない。
+    /// syncFromScene が seed した baseStats が refreshMirror 後も残り、maxHp = resource#hp が player 0 で読める。
     @Test
-    def testRefreshMirrorRebuildsBaseStats(): Unit \ Assert =
+    def testRefreshMirrorPreservesBaseStats(): Unit \ Assert =
         let scene = sampleScene();
         let w = World.refreshMirror(scene, World.syncFromScene(scene, World.empty()));
         let expectedMaxHp = Option.map(d -> d#resource#hp, PlayerScene.get(0, scene));
         Assert.assertEq(
             expected = expectedMaxHp,
             Option.map(bs -> bs#maxHp, World.baseStatsOf(World.EntityRef.Player(0), w)))
+
+    /// S2.3: refreshMirror は command-derived baseStats を上書きしない（preserve）。SetBaseStats で
+    /// player 0 の maxHp を scene resource と無関係な値（999）へ書いても refreshMirror 後も残る
+    /// （再 mirror なら scene の resource#hp で上書きされるはず＝preserve であることの証明）。
+    @Test
+    def testRefreshMirrorPreservesCommandBaseStats(): Unit \ Assert =
+        let scene  = sampleScene();
+        let seeded = World.syncFromScene(scene, World.empty());
+        let custom = ({attack = 1, magicAttack = 2, defense = 3, magicDefense = 4,
+                       skill = 5, speed = 6, luck = 7, maxHp = 999}: Combat.BaseStats);
+        let withCmd = World.applyCmd(World.Cmd.SetBaseStats(World.EntityRef.Player(0), custom), seeded);
+        let refreshed = World.refreshMirror(scene, withCmd);
+        Assert.assertEq(
+            expected = Some(999),
+            Option.map(bs -> bs#maxHp, World.baseStatsOf(World.EntityRef.Player(0), refreshed)))
 
     // ── S-A0b: weaponView（装備武器の戦闘投影）の read-model mirror ──
 
@@ -823,6 +838,40 @@ mod TestWorld {
         let scene2   = PlayerScene.mapPlayer(0, d -> {weapons = newWs | d}, scene);
         let world2   = World.applyCmd(World.Cmd.SetWeapons(World.EntityRef.Player(0), newWs), world);
         Assert.assertEq(expected = true, List.isEmpty(World.weaponsMismatches(world2, scene2)))
+
+    // ── S2.3: baseStats store（command-derive・両 faction・preserve+prune）──
+
+    /// applyCmd(SetBaseStats) が baseStats store を更新する（両 faction）。baseStatsOf で読み戻し、
+    /// record Eq 非自動ゆえ 8-tuple に射影して比較する。
+    @Test
+    def testApplySetBaseStatsUpdatesStore(): Unit \ Assert =
+        let bs = ({attack = 1, magicAttack = 2, defense = 3, magicDefense = 4,
+                   skill = 5, speed = 6, luck = 7, maxHp = 99}: Combat.BaseStats);
+        let toTup = b -> (b#attack, b#magicAttack, b#defense, b#magicDefense, b#skill, b#speed, b#luck, b#maxHp);
+        let wP = World.applyCmd(World.Cmd.SetBaseStats(World.EntityRef.Player(0), bs), World.empty());
+        let wE = World.applyCmd(World.Cmd.SetBaseStats(World.EntityRef.Enemy(5), bs), World.empty());
+        Assert.assertEq(
+            expected = (Some((1, 2, 3, 4, 5, 6, 7, 99)), Some((1, 2, 3, 4, 5, 6, 7, 99))),
+            (Option.map(toTup, World.baseStatsOf(World.EntityRef.Player(0), wP)),
+             Option.map(toTup, World.baseStatsOf(World.EntityRef.Enemy(5), wE))))
+
+    /// syncFromScene 直後は World baseStats == scene resource 由来 ＝ baseStatsMismatches 空（dual-write 整合の基準）。
+    @Test
+    def testBaseStatsMismatchesEmptyWhenSynced(): Unit \ Assert =
+        let scene = sampleScene();
+        let world = World.syncFromScene(scene, World.empty());
+        Assert.assertEq(expected = true, List.isEmpty(World.baseStatsMismatches(world, scene)))
+
+    /// 非 vacuous ガード: World 側だけ player0 baseStats を別値へ drift させると baseStatsMismatches が検出する
+    /// （dual-write 漏れ＝[BASESTATS DIFF] が鳴るべき状況を pin）。
+    @Test
+    def testBaseStatsMismatchesDetectsDrift(): Unit \ Assert =
+        let scene   = sampleScene();
+        let world   = World.syncFromScene(scene, World.empty());
+        let drift   = ({attack = 999, magicAttack = 0, defense = 0, magicDefense = 0,
+                        skill = 0, speed = 0, luck = 0, maxHp = 0}: Combat.BaseStats);
+        let drifted = World.applyCmd(World.Cmd.SetBaseStats(World.EntityRef.Player(0), drift), world);
+        Assert.assertEq(expected = false, List.isEmpty(World.baseStatsMismatches(drifted, scene)))
 
     // ── D4: staves/consumables/rings/ringEquipped store（command-derive・player-only・preserve+prune）──
 

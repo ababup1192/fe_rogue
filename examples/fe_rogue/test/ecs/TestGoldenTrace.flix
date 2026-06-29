@@ -236,14 +236,17 @@ mod TestGoldenTrace {
         let sc = sceneOf(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
         let (_, keys, w) = runAttack(sc);
         assertGoldenPremise(sc, keys);
-        // golden: 凍結した legacy cmd-stream（SetHp×2→Dying→SetHp(player)→Progress）に一致。
+        // golden: 凍結した legacy cmd-stream（SetHp×2→Dying→SetHp(player)→Progress→SetBaseStats）に一致。
+        // S2.3: applyLevelUp は resource 成長後に SetBaseStats を dual-write する（ECS 経路 :561 と対称）。
+        // growthRates=0 ゆえ値は不変だが emit は無条件（SetWeapons が miss でも出るのと同型）。
         let golden =
             ("SetHp", 1000001, 0, 0) ::
             ("SetHp", 1000001, 0, 0) ::
             ("Dying", 1000001, 0, 0) ::
             ("SetWeapons", 0, 1, 0) ::
             ("SetHp", 0, 10, 0) ::
-            ("Progress", 0, 2, 34) :: Nil;
+            ("Progress", 0, 2, 34) ::
+            ("SetBaseStats", 0, 21, 10) :: Nil;
         Assert.assertEq(expected = golden, keys);
         // 最終 World: enemy hp=0 / player hp=10（growthRates=0 ゆえ増分なし）/ progress=(Lv2, exp34)。
         Assert.assertEq(

@@ -538,7 +538,7 @@ mod CombatScene {
     ///   - `pendingLevelUp`（scene-only・level-up モーダルの trigger）: LeveledUp で `Some(result)` を立てる。
     ///     これで `onLungeDone` の `anyPendingLevelUp` → `enterLevelUpView`（signal 駆動・既存）が発火する＝modal-gate。
     /// level/exp/hp 自体は eventToCmds（Cmd.Progress/SetHp→World）→ syncTreeFromWorld で scene へ derive される。純粋 scene 変換。
-    def applyEcsSceneEffects(events: List[World.SimEvent], scene: Scene[NodeTag]): Scene[NodeTag] =
+    def applyEcsSceneEffects(events: List[World.SimEvent], scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         List.foldLeft((sc, ev) -> match ev {
             case World.SimEvent.Afflicted(World.EntityRef.Player(id), s) =>
                 PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc)
@@ -553,9 +553,13 @@ mod CombatScene {
                 // level/exp/hp は eventToCmds→World→derive 済み。resource は scene 権威（baseStats の source）ゆえここで。
                 match p#entity {
                     case World.EntityRef.Player(id) =>
-                        PlayerScene.mapPlayer(id, d ->
+                        let updated = PlayerScene.mapPlayer(id, d ->
                             {pendingLevelUp = Some(p#result),
-                             resource = LevelSystem.withStats(p#grownStats, d#resource) | d}, sc)
+                             resource = LevelSystem.withStats(p#grownStats, d#resource) | d}, sc);
+                        // S2.3: level-up で resource が成長＝baseStats の source が変わる。command-derive store へ dual-write
+                        // （F6 で hp を emit し忘れた震源ゆえ最優先で漏らさない・read-after-mutate で適用後 resource を読む）。
+                        PlayerScene.emitBaseStatsFromScene(id, updated);
+                        updated
                     case World.EntityRef.Enemy(_)   => sc
                 }
             case _ => sc
@@ -1111,11 +1115,17 @@ mod CombatScene {
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(playerId), newHp));
         // World 拡張: level+1・exp も World へ dual-write。
         World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(playerId), d#level + 1, newExp));
-        PlayerScene.mapPlayer(playerId, dd ->
+        let grown = PlayerScene.mapPlayer(playerId, dd ->
             {exp            = newExp,
              level          = dd#level + 1,
              resource       = LevelSystem.withStats(after, dd#resource),
              hp             = newHp,
              pendingLevelUp = Some(result) | dd}, scene)
-            |> UnitHPBarScene.updateMaxHp(PlayerScene.playerPath(playerId), newHp, after#hp)
+            |> UnitHPBarScene.updateMaxHp(PlayerScene.playerPath(playerId), newHp, after#hp);
+        // S2.3: legacy 経路でも level-up で resource（baseStats の source）が成長する。ECS 経路
+        // （applyEcsSceneEffects の emitBaseStatsFromScene）と対称に command-derive store へ dual-write する。
+        // 漏らすと useEcsCombat()=false に戻したとき level-up で [BASESTATS DIFF]（hp/progress は :1115/:1117 で
+        // emit 済みだが baseStats だけ欠けていた＝F6 と同型の latent drift）。read-after-mutate で成長後 resource を読む。
+        PlayerScene.emitBaseStatsFromScene(playerId, grown);
+        grown
 }

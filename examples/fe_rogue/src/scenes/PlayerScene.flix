@@ -325,6 +325,8 @@ mod PlayerScene {
         World.Command.emit(World.Cmd.SetProgress(World.refOf(true, sp#id), sp#resource#level, 0));
         // D3: 初期 weapons も World へ seed（spawn フレームの [WEAPONS DIFF] を塞ぐ＝preserve の前提）。
         World.Command.emit(World.Cmd.SetWeapons(World.refOf(true, sp#id), sp#weapons));
+        // S2.3: 初期 baseStats も World へ seed（spawn フレームの [BASESTATS DIFF] を塞ぐ＝preserve の前提）。
+        World.Command.emit(World.Cmd.SetBaseStats(World.refOf(true, sp#id), Combat.baseStatsFrom(sp#resource)));
         // D4: 初期 staves/consumables/rings/ringEquipped も seed（spawn フレームの各 DIFF を塞ぐ）。ringEquipped は spawn 時 false。
         World.Command.emit(World.Cmd.SetStaves(World.refOf(true, sp#id), sp#staves));
         World.Command.emit(World.Cmd.SetConsumables(World.refOf(true, sp#id), sp#consumables));
@@ -674,6 +676,15 @@ mod PlayerScene {
     /// 装備並べ替え/捨てる/拾う/並び替え/こうかん など全 weapons mutation funnel の末尾で呼ぶ。
     def emitWeaponsFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
         World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Player(playerId), getWeapons(playerId, scene)))
+
+    /// S2.3: baseStats 書込 funnel。`scene`（resource mutation 適用後）から該当 player の resource を読み戻して
+    /// `Cmd.SetBaseStats` を World へ dual-write する（`emitWeaponsFromScene` と同じ read-after-mutate 流儀）。
+    /// level-up（CombatScene）/carry 復元/snapshot 復元/復活など resource を書き換えた直後に呼ぶ。pub（CombatScene から）。
+    pub def emitBaseStatsFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        match get(playerId, scene) {
+            case Some(d) => World.Command.emit(World.Cmd.SetBaseStats(World.EntityRef.Player(playerId), Combat.baseStatsFrom(d#resource)))
+            case None    => ()
+        }
 
     /// D4: staves/consumables/rings/ringEquipped 書込 funnel（`emitWeaponsFromScene` 同型）。
     /// mutation 適用後の `scene` から該当 player の各インベントリを読み戻して Cmd を World へ dual-write する。
@@ -1095,14 +1106,17 @@ mod PlayerScene {
             World.Command.emit(World.Cmd.SetConsumables(World.EntityRef.Player(c#id), c#consumables));
             World.Command.emit(World.Cmd.SetRings(World.EntityRef.Player(c#id), c#rings));
             World.Command.emit(World.Cmd.SetRingEquipped(World.EntityRef.Player(c#id), c#ringEquipped));
-            sc
+            let next = sc
                 |> mapPlayer(c#id, d ->
                     {hp = c#hp, weapons = c#weapons, staves = c#staves,
                      consumables = c#consumables, rings = c#rings,
                      ringEquipped = c#ringEquipped,
                      level = c#level, exp = c#exp,
                      resource = LevelSystem.withStats(c#stats, d#resource) | d})
-                |> UnitHPBarScene.updateMaxHp(playerPath(c#id), c#hp, c#stats#hp) },
+                |> UnitHPBarScene.updateMaxHp(playerPath(c#id), c#hp, c#stats#hp);
+            // S2.3: carry の成長後 stats を resource へ書いた＝baseStats の source が変わったので World へ dual-write。
+            emitBaseStatsFromScene(c#id, next);
+            next },
             pruned, carry)
 
     /// スナップショットの味方リストから決定論的に再配置する（乱数なし）。
@@ -1142,6 +1156,9 @@ mod PlayerScene {
         // worldRef で spawn 値に上書きされてしまう（scene は mapPlayer 上書きで snap 値・World だけ spawn ＝[DIFF]）。
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#hp));
         World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(snap#id), snap#level, snap#exp));
+        // S2.3: mapPlayer が resource=withStats(snap#stats,..) で成長後 stats に上書き（addOnePlayer は base resource を seed）。
+        // hp/progress 同様 addOnePlayer の後に emit（spawn 値上書き回避）＝[BASESTATS DIFF] を塞ぐ。
+        emitBaseStatsFromScene(snap#id, placed);
         // D4: mapPlayer が ringEquipped=snap#ringEquipped で上書き（addOnePlayer は false を seed）＝束ね書込の片割れ。
         emitRingEquippedFromScene(snap#id, placed);
         placed
@@ -1243,6 +1260,8 @@ mod PlayerScene {
         // 🐛fix: 復元 hp/progress の World emit は addOnePlayer の後（spawn 値上書き回避・placeOneFromSnap と同じ）。
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#stats#hp));
         World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(snap#id), snap#level, snap#exp));
+        // S2.3: mapPlayer が resource=withStats(snap#stats,..) で成長後 stats に上書き＝baseStats source 変化（placeOneFromSnap と同型）。
+        emitBaseStatsFromScene(snap#id, placed);
         // D4: mapPlayer が ringEquipped=snap#ringEquipped で上書き（addOnePlayer は false を seed）＝束ね書込の片割れ。
         emitRingEquippedFromScene(snap#id, placed);
         placed

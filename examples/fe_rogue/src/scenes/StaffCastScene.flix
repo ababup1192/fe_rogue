@@ -694,6 +694,8 @@ mod StaffCastScene {
         let newMax = player#resource#hp + inc;
         let newHp  = player#hp + inc;
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${item#name} で 最大HP+${inc}");
+        // S2.3: resource#hp=maxHp 変更で baseStats#maxHp が動く。World 側は hp と同 funnel（runPlan 後の
+        // World.emitHpSets/MaxHpUpAt 境界で SetBaseStats を dual-write）＝pure handler はここで World を触らない。
         scene
             |> PlayerScene.mapPlayer(playerId,
                 d -> {hp = newHp, resource = {hp = newMax | d#resource} | d})
@@ -1321,6 +1323,8 @@ mod StaffCastScene {
             }
 
     /// 最大HP上昇を ally で出し分け（旧 MaxHpUp arm と同一）。
+    /// S2.3: resource#hp=maxHp 変更で baseStats#maxHp が動くが、World 側は hp と同 funnel
+    /// （runPlan 後の World.emitHpSets/MaxHpUpAt 境界で SetBaseStats を両 faction dual-write）＝pure handler は World 不可触。
     def maxHpUpUnit(id: Int32, ally: Bool, inc: Int32, sc: Scene[NodeTag]): Scene[NodeTag] =
         if (ally)
             match PlayerScene.get(id, sc) {
