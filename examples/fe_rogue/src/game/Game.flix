@@ -1108,6 +1108,10 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[RINGEQUIPPED DIFF] ${ms}")
             };
+            match World.unitViewMismatches(Ref.get(worldRef), next) {  // S4.1: World 由来 unitView twin vs scene unitView（parity）
+                case Nil => ()
+                case ms  => println("[UNITVIEW DIFF] ${ms}")
+            };
             if (World.enemyTurnBusyOf(Ref.get(worldRef)) != TopBarScene.isBusy(next)  // F8-slice2
                 or World.phaseObservedEnemyOf(Ref.get(worldRef)) != TopBarScene.hasObservedEnemy(next))
                 println("[TOPBAR DIFF] busy w=${World.enemyTurnBusyOf(Ref.get(worldRef))} s=${TopBarScene.isBusy(next)}"

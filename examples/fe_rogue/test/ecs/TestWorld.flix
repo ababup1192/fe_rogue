@@ -1164,4 +1164,41 @@ mod TestWorld {
             expected = (p0, true),
             (World.growthOf(World.EntityRef.Player(0), w) |> Option.map(g -> (g#base#hp, g#rates#hp, g#name)),
              Option.isEmpty(World.growthOf(World.EntityRef.Enemy(5), w))))
+
+    // ── S4.1: World 由来 unitView twin（scene unitView と bit 一致・additive parity）──
+
+    /// syncFromScene 直後は World 由来 `unitViewFromWorld` == scene `unitView` ＝ unitViewMismatches 空（parity の基準）。
+    /// sampleScene は player 0,1（base move 4・weapons=[testWeapon]）／enemy 5（base move 3・weapon=Some）。
+    @Test
+    def testUnitViewMismatchesEmptyWhenSynced(): Unit \ Assert =
+        let scene = sampleScene();
+        let world = World.syncFromScene(scene, World.empty());
+        Assert.assertEq(expected = true, List.isEmpty(World.unitViewMismatches(world, scene)))
+
+    /// 非 vacuous ガード: World 側だけ player0 の位置を drift させると unitViewMismatches が検出する
+    /// （twin の pos が scene unitView と乖離＝[UNITVIEW DIFF] が鳴るべき状況を pin）。
+    @Test
+    def testUnitViewMismatchesDetectsDrift(): Unit \ Assert =
+        let scene   = sampleScene();
+        let world   = World.syncFromScene(scene, World.empty());
+        let drifted = World.applyCmd(World.Cmd.Move(World.EntityRef.Player(0), {x = 9, y = 9}), world);
+        Assert.assertEq(expected = false, List.isEmpty(World.unitViewMismatches(drifted, scene)))
+
+    /// フィールド単位 pin: effective-move / weaponRange / combat / aiType / isDying / hidden が
+    /// faction 別に scene unitView と一致し、かつ twin が Some（None 同士の vacuous でない）ことを併せて検証する。
+    @Test
+    def testUnitViewFromWorldFieldsMatchScene(): Unit \ Assert =
+        let scene = sampleScene();
+        let world = World.syncFromScene(scene, World.empty());
+        let cvProj = cv -> (cv#attack, cv#magicAttack, cv#defense, cv#magicDefense, cv#skill,
+                            cv#speed, cv#luck, cv#hp, cv#maxHp);
+        let field = uv -> (uv#moveTiles, Option.map(r -> (r#min, r#max), uv#weaponRange),
+                           cvProj(uv#combat), uv#aiType, uv#isDying, uv#hidden);
+        let worldP = World.unitViewFromWorld(World.EntityRef.Player(0), world, scene) |> Option.map(field);
+        let sceneP = PlayerScene.get(0, scene) |> Option.map(d -> field(PlayerScene.unitView(d)));
+        let worldE = World.unitViewFromWorld(World.EntityRef.Enemy(5), world, scene) |> Option.map(field);
+        let sceneE = EnemyScene.get(5, scene) |> Option.map(d -> field(EnemyScene.unitView(d)));
+        Assert.assertEq(
+            expected = (sceneP, sceneE, false, false),
+            (worldP, worldE, Option.isEmpty(worldP), Option.isEmpty(worldE)))
 }

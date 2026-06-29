@@ -1055,6 +1055,80 @@ mod World {
                 Some(EntityRef.Enemy(d#id)) else None);
         List.append(pms, ems)
 
+    /// S4.1: いずれかの味方が潜伏中か（World の `playerHidden` set 由来）。Enemy は常に false。
+    /// scene `unitView` の `hidden = data#hidden` と一致（playerHidden は `d#hidden` の味方を集めた set）。
+    pub def playerHiddenOf(ref: EntityRef, world: World): Bool =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) => Set.memberOf(id, w#playerHidden)
+            case EntityRef.Enemy(_)   => false
+        }
+
+    /// S4.1: scene の `PlayerScene.unitView` / `EnemyScene.unitView` と **bit 一致**する `UnitView` を
+    /// **World 由来**で再構築する（消費者 flip の土台）。pos/hp/moveTiles/weaponRange/combat/isDying/hidden は
+    /// World store から、`aiType`（+ player の load 容量に要る constitution/attack）だけ resource 由来ゆえ
+    /// scene Data から読む（hybrid-A 批准の resource 残置）。`combatViewOf` が None（base/hp/ring 未登録）なら全体 None。
+    /// 味方の `moveTiles` は scene と同じく `Encumbrance.effectiveMoveTiles(base, load)`（load は **World 在庫**の重量合計）、
+    /// 敵は base そのまま。`weaponRange` は先頭武器の range（player=weapons 先頭・enemy=0/1 List 射影の先頭）。
+    pub def unitViewFromWorld(ref: EntityRef, world: World, scene: Scene[NodeTag]): Option[UnitView] =
+        match (posOf(ref, world), hpOf(ref, world), combatViewOf(ref, world), moveTilesOf(ref, world)) {
+            case (Some(pos), Some(hp), Some(combat), Some(base)) =>
+                let weaponRange = weaponsOf(ref, world)
+                    |> Option.flatMap(List.head) |> Option.map(w -> w#range);
+                match ref {
+                    case EntityRef.Player(id) =>
+                        // 味方の実効移動力: 素の moveTiles に積載ペナルティ（load）を掛けた値。
+                        // load の重量合計は World 在庫（weapons/staves/consumables/rings）から、
+                        // 容量に要る constitution/attack は resource 由来ゆえ scene Data から（aiType と同じ残置）。
+                        match PlayerScene.get(id, scene) {
+                            case None    => None
+                            case Some(d) =>
+                                // 在庫レコードは関数引数位置（カンマ後）に直接書く＝record リテラル明確化（先頭 `let = {` は block 誤認される）。
+                                let load = Encumbrance.loadOf(d#resource#constitution, d#resource#attack,
+                                    {weapons     = Option.getWithDefault(Nil, weaponsOf(ref, world)),
+                                     staves      = Option.getWithDefault(Nil, stavesOf(ref, world)),
+                                     consumables = Option.getWithDefault(Nil, consumablesOf(ref, world)),
+                                     rings       = Option.getWithDefault(Nil, ringsOf(ref, world))});
+                                Some({id = id, faction = Faction.Player, pos = pos, hp = hp,
+                                      moveTiles = Encumbrance.effectiveMoveTiles(base, load),
+                                      weaponRange = weaponRange, combat = combat,
+                                      isDying = false, hidden = playerHiddenOf(ref, world),
+                                      aiType = EnemyAI.AiType.Aggressive})
+                        }
+                    case EntityRef.Enemy(id) =>
+                        match EnemyScene.get(id, scene) {
+                            case None    => None
+                            case Some(d) =>
+                                Some({id = id, faction = Faction.Enemy, pos = pos, hp = hp,
+                                      moveTiles = base, weaponRange = weaponRange, combat = combat,
+                                      isDying = isDyingOf(ref, world), hidden = false,
+                                      aiType = d#resource#aiType})
+                        }
+                }
+            case _ => None
+        }
+
+    /// S4.1 安全網: World 由来 `unitViewFromWorld` と scene `unitView` が食い違う entity を列挙する（両 faction）。
+    /// UnitView は Eq 非自動ゆえ全 10 field を tuple へ射影（pos/weaponRange/combat は更にネスト射影）して比較する。
+    /// parity（消費者 flip の前提＝挙動不変の担保）が命で、食い違いは load 式 / head 規約 / combat 合成の drift を意味する（[UNITVIEW DIFF]）。
+    pub def unitViewMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
+        let wvProj = wv -> (wv#attack, wv#hit, wv#crit, wv#isPhysical, wv#proficient, wv#effectValue);
+        let cvProj = cv -> (cv#attack, cv#magicAttack, cv#defense, cv#magicDefense, cv#skill,
+                            cv#speed, cv#luck, cv#hp, cv#maxHp, cv#hitMod,
+                            Option.map(wvProj, cv#weapon));
+        let proj = uv -> (uv#id, uv#faction, (uv#pos#x, uv#pos#y), uv#hp, uv#moveTiles,
+                          Option.map(r -> (r#min, r#max), uv#weaponRange),
+                          cvProj(uv#combat), uv#isDying, uv#hidden, uv#aiType);
+        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
+            if (Option.map(proj, unitViewFromWorld(EntityRef.Player(d#id), world, scene))
+                != Some(proj(PlayerScene.unitView(d))))
+                Some(EntityRef.Player(d#id)) else None);
+        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
+            if (Option.map(proj, unitViewFromWorld(EntityRef.Enemy(d#id), world, scene))
+                != Some(proj(EnemyScene.unitView(d))))
+                Some(EntityRef.Enemy(d#id)) else None);
+        List.append(pms, ems)
+
     /// World 拡張: 味方の (level, exp) を World から読む。未登録は None。Enemy は常に None。
     pub def progressOf(ref: EntityRef, world: World): Option[(Int32, Int32)] =
         let World.World(w) = world;
