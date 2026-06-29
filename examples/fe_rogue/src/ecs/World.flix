@@ -285,12 +285,13 @@ mod World {
             // （spawn/復元/carry/level-up/maxHp）が `Cmd.SetBaseStats` を dual-write 済みゆえ World baseStats == scene
             // baseStatsFrom(resource)（[BASESTATS DIFF] 無音）。combatViewOf flip(S4.2) で mid-combat の 1 フレーム stale を解消。
             baseStats = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#baseStats),
-            // S-A0b: weaponView も装備武器由来の read-model ＝ 毎フレーム再 mirror。
-            weaponView = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedWeaponView(d), players),
-                                   Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedWeaponView(d), enemies)),
-            // S-A0c: ringBonus も装備指輪由来の read-model ＝ 毎フレーム再 mirror。
-            ringBonus = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedRingBonus(d), players),
-                                  Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedRingBonus(d), enemies)),
+            // S2.4: weaponView も command 由来を保持＋prune（baseStats と同型・再 mirror しない）。weapons が変わる全
+            // サイト（spawn/carry/復元/装備並べ替え/拾得/耐久消費）が `Cmd.SetWeaponView` を dual-write 済みゆえ World
+            // weaponView == scene equippedWeaponView（[WEAPONVIEW DIFF] 無音）。
+            weaponView = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#weaponView),
+            // S2.4: ringBonus も command 由来を保持＋prune（baseStats と同型）。rings/ringEquipped が変わる全サイトが
+            // `Cmd.SetRingBonus` を dual-write 済みゆえ World ringBonus == scene equippedRingBonus（[RINGBONUS DIFF] 無音）。
+            ringBonus = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#ringBonus),
             // P1a: equippedRing も装備指輪由来の read-model ＝ ringBonus と同源で毎フレーム再 mirror。
             equippedRing = Map.union(Query.indexBy(d -> d#id, d -> PlayerData.equippedRing(d), players),
                                      Query.indexBy(d -> enemyUid(d#id), d -> d#ring, enemies)),
@@ -407,6 +408,8 @@ mod World {
         case SetHp(EntityRef, Int32)        // hp write（F6a・dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
         case SetWeapons(EntityRef, List[UnitCatalog.WeaponResource])  // D3: weapons write（dual-write seam。player は List・enemy は 0/1 List 射影）
         case SetBaseStats(EntityRef, Combat.BaseStats)  // S2.3: base 戦闘値 write（hp/weapons 同型・両 faction・resource 書換ごとに dual-write）
+        case SetWeaponView(EntityRef, Option[Combat.WeaponView])  // S2.4: 装備武器の戦闘投影 write（両 faction・武器なし=None・weapons 書換ごとに dual-write）
+        case SetRingBonus(EntityRef, Ring.Bonuses)  // S2.4: 装備指輪ボーナス write（両 faction・rings/ringEquipped 書換ごとに dual-write）
         case SetStaves(EntityRef, List[Staff.StaffResource])               // D4: staves write（player-only・Enemy no-op）
         case SetConsumables(EntityRef, List[Consumable.ConsumableResource]) // D4: consumables write（player-only）
         case SetRings(EntityRef, List[Ring.RingResource])                  // D4: rings write（player-only）
@@ -594,6 +597,14 @@ mod World {
                 // S2.3: 単一 store＋toUid（SetHp/SetWeapons と同型・両 faction）。
                 let World.World(w) = world;
                 World.World({baseStats = Map.insert(toUid(ref), bs, w#baseStats) | w})
+            case Cmd.SetWeaponView(ref, wv) =>
+                // S2.4: 単一 store＋toUid（SetBaseStats と同型・両 faction・内側 Option=武器なし）。
+                let World.World(w) = world;
+                World.World({weaponView = Map.insert(toUid(ref), wv, w#weaponView) | w})
+            case Cmd.SetRingBonus(ref, rb) =>
+                // S2.4: 単一 store＋toUid（SetBaseStats と同型・両 faction）。
+                let World.World(w) = world;
+                World.World({ringBonus = Map.insert(toUid(ref), rb, w#ringBonus) | w})
             case Cmd.SetStaves(ref, xs) =>
                 // D4: player-only store（SetWaited 流儀・Enemy は no-op）。
                 let World.World(w) = world;
@@ -773,6 +784,12 @@ mod World {
             case Cmd.SetBaseStats(ref, bs)    => ("SetBaseStats", toUid(ref),
                                                   bs#attack + bs#magicAttack + bs#defense + bs#magicDefense
                                                   + bs#skill + bs#speed + bs#luck + bs#maxHp, bs#maxHp)
+            // S2.4: WeaponView は Eq 非自動・Option ゆえ attack を digest に、武器なし(None)=-1 で discriminating。
+            case Cmd.SetWeaponView(ref, wv)   => ("SetWeaponView", toUid(ref),
+                                                  Option.map(v -> v#attack, wv) |> Option.getWithDefault(-1), 0)
+            // S2.4: Bonuses は Eq 非自動ゆえ 5 数値 field の和を digest に載せて oracle 可視化。
+            case Cmd.SetRingBonus(ref, rb)    => ("SetRingBonus", toUid(ref),
+                                                  rb#attack + rb#speed + rb#defense + rb#skill + rb#luck, 0)
             case Cmd.SetStaves(ref, xs)       => ("SetStaves", toUid(ref), List.length(xs), 0)
             case Cmd.SetConsumables(ref, xs)  => ("SetConsumables", toUid(ref), List.length(xs), 0)
             case Cmd.SetRings(ref, xs)        => ("SetRings", toUid(ref), List.length(xs), 0)
@@ -877,6 +894,32 @@ mod World {
                 Some(EntityRef.Player(d#id)) else None);
         let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
             if (Option.map(proj, baseStatsOf(EntityRef.Enemy(d#id), world)) != Some(proj(Combat.baseStatsFrom(d#resource))))
+                Some(EntityRef.Enemy(d#id)) else None);
+        List.append(pms, ems)
+
+    /// S2.4 安全網: World weaponView（command 由来）と scene の装備武器投影が食い違う entity を列挙する（両 faction）。
+    /// WeaponView は Eq 非自動・Option ゆえ全 8 field tuple を Option へ射影して比較（equippedRingMismatches 同型）。
+    /// preserve 化後 frame-end では常に一致するはずで、食い違いは dual-write の漏れ（[WEAPONVIEW DIFF]）を意味する。
+    pub def weaponViewMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
+        let proj = wvo -> Option.map(v -> (v#weaponType, v#attack, v#hit, v#crit, v#isPhysical, v#proficient, v#effect, v#effectValue), wvo);
+        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
+            if (proj(weaponViewOf(EntityRef.Player(d#id), world)) != proj(PlayerScene.equippedWeaponView(d)))
+                Some(EntityRef.Player(d#id)) else None);
+        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
+            if (proj(weaponViewOf(EntityRef.Enemy(d#id), world)) != proj(EnemyScene.equippedWeaponView(d)))
+                Some(EntityRef.Enemy(d#id)) else None);
+        List.append(pms, ems)
+
+    /// S2.4 安全網: World ringBonus（command 由来）と scene の装備指輪ボーナスが食い違う entity を列挙する（両 faction）。
+    /// Bonuses は Eq 非自動ゆえ 5 数値 field tuple へ射影して比較（baseStatsMismatches 同型）。
+    /// 食い違いは dual-write の漏れ（[RINGBONUS DIFF]）を意味する。
+    pub def ringBonusMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
+        let proj = rb -> (rb#attack, rb#speed, rb#defense, rb#skill, rb#luck);
+        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
+            if (Option.map(proj, ringBonusOf(EntityRef.Player(d#id), world)) != Some(proj(PlayerScene.equippedRingBonus(d))))
+                Some(EntityRef.Player(d#id)) else None);
+        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
+            if (Option.map(proj, ringBonusOf(EntityRef.Enemy(d#id), world)) != Some(proj(EnemyScene.equippedRingBonus(d))))
                 Some(EntityRef.Enemy(d#id)) else None);
         List.append(pms, ems)
 

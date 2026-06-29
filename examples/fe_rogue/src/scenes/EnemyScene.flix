@@ -251,6 +251,10 @@ mod EnemyScene {
             followUpUsed   = false,
             bottleUsed     = false
         };
+        // S2.4: 初期 weaponView/ringBonus も World へ seed（weapons/ring と 1:1・敵は spawn 後不変＝各 DIFF を塞ぐ・preserve の前提）。
+        // data 構築後に emit（equippedWeaponView/equippedRingBonus は full Data を要する）。
+        World.Command.emit(World.Cmd.SetWeaponView(World.refOf(false, sp#id), equippedWeaponView(data)));
+        World.Command.emit(World.Cmd.SetRingBonus(World.refOf(false, sp#id), equippedRingBonus(data)));
         let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset,
                                     res#sprite#scale)
                         |> Sprite2D.setHframes(res#sprite#hframes)

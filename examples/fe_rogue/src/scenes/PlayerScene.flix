@@ -360,6 +360,10 @@ mod PlayerScene {
             ringEquipped      = false,
             followUpUsed      = false
         };
+        // S2.4: 初期 weaponView/ringBonus も World へ seed（weapons/rings と同源・spawn フレームの各 DIFF を塞ぐ＝preserve の前提）。
+        // data 構築後に emit（equippedWeaponView/equippedRingBonus は full Data を要する）。ringEquipped=false ゆえ ringBonus=zeroBonuses。
+        World.Command.emit(World.Cmd.SetWeaponView(World.refOf(true, sp#id), equippedWeaponView(data)));
+        World.Command.emit(World.Cmd.SetRingBonus(World.refOf(true, sp#id), equippedRingBonus(data)));
         // unit に spriteFrames があれば AnimatedSprite2D で配置、無ければ Sprite2D
         // (静止単一フレーム) で配置する。AnimatedSprite2D は engine の per-node
         // process が advanceFrame を毎フレーム呼ぶので、こちらでチクチク回す必要は無い。
@@ -674,8 +678,27 @@ mod PlayerScene {
     /// D3: weapons 書込 funnel。`scene`（mutation 適用後）から該当 player の weapons を読み戻して
     /// `Cmd.SetWeapons` を World へ dual-write する（`emitHpAt` と同じ「適用後 scene を読んで emit」流儀）。
     /// 装備並べ替え/捨てる/拾う/並び替え/こうかん など全 weapons mutation funnel の末尾で呼ぶ。
-    def emitWeaponsFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
-        World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Player(playerId), getWeapons(playerId, scene)))
+    pub def emitWeaponsFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Player(playerId), getWeapons(playerId, scene)));
+        // S2.4: weaponView は装備武器由来＝weapons funnel と 1:1 で SetWeaponView も co-emit（網羅を構造保証）。
+        emitWeaponViewFromScene(playerId, scene)
+
+    /// S2.4: weaponView 書込 funnel（`emitBaseStatsFromScene` 同型）。mutation 適用後の `scene` から該当 player の
+    /// 装備武器投影を読み戻して `Cmd.SetWeaponView` を World へ dual-write する。`emitWeaponsFromScene` が内部で呼ぶほか、
+    /// emitWeaponsFromScene を経由しない weapons 書込サイト（carry/CombatScene 耐久消費）からも直接呼ぶ。pub。
+    pub def emitWeaponViewFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        match get(playerId, scene) {
+            case Some(d) => World.Command.emit(World.Cmd.SetWeaponView(World.EntityRef.Player(playerId), equippedWeaponView(d)))
+            case None    => ()
+        }
+
+    /// S2.4: ringBonus 書込 funnel（`emitWeaponViewFromScene` 同型）。mutation 適用後の `scene` から該当 player の
+    /// 装備指輪ボーナスを読み戻して `Cmd.SetRingBonus` を World へ dual-write する。rings/ringEquipped funnel が内部で呼ぶ。pub。
+    pub def emitRingBonusFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        match get(playerId, scene) {
+            case Some(d) => World.Command.emit(World.Cmd.SetRingBonus(World.EntityRef.Player(playerId), equippedRingBonus(d)))
+            case None    => ()
+        }
 
     /// S2.3: baseStats 書込 funnel。`scene`（resource mutation 適用後）から該当 player の resource を読み戻して
     /// `Cmd.SetBaseStats` を World へ dual-write する（`emitWeaponsFromScene` と同じ read-after-mutate 流儀）。
@@ -694,10 +717,14 @@ mod PlayerScene {
     pub def emitConsumablesFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
         World.Command.emit(World.Cmd.SetConsumables(World.EntityRef.Player(playerId), getConsumables(playerId, scene)))
     pub def emitRingsFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
-        World.Command.emit(World.Cmd.SetRings(World.EntityRef.Player(playerId), getRings(playerId, scene)))
+        World.Command.emit(World.Cmd.SetRings(World.EntityRef.Player(playerId), getRings(playerId, scene)));
+        // S2.4: ringBonus は装備指輪由来＝rings funnel と 1:1 で SetRingBonus も co-emit。
+        emitRingBonusFromScene(playerId, scene)
     pub def emitRingEquippedFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
         let eq = get(playerId, scene) |> Option.map(d -> d#ringEquipped) |> Option.getWithDefault(false);
-        World.Command.emit(World.Cmd.SetRingEquipped(World.EntityRef.Player(playerId), eq))
+        World.Command.emit(World.Cmd.SetRingEquipped(World.EntityRef.Player(playerId), eq));
+        // S2.4: ringBonus は ringEquipped 切替でも変わる＝ringEquipped funnel とも 1:1 で SetRingBonus を co-emit。
+        emitRingBonusFromScene(playerId, scene)
 
     /// 指定プレイヤーの上下左右 1 マスに居る他味方を返す（自分は含まない）。
     /// 「こうかん」コマンドや将来の隣接判定 (例: 助太刀) の出現条件として使う。
@@ -1116,6 +1143,9 @@ mod PlayerScene {
                 |> UnitHPBarScene.updateMaxHp(playerPath(c#id), c#hp, c#stats#hp);
             // S2.3: carry の成長後 stats を resource へ書いた＝baseStats の source が変わったので World へ dual-write。
             emitBaseStatsFromScene(c#id, next);
+            // S2.4: carry の weapons/rings/ringEquipped 復元に 1:1 で weaponView/ringBonus も World へ dual-write。
+            emitWeaponViewFromScene(c#id, next);
+            emitRingBonusFromScene(c#id, next);
             next },
             pruned, carry)
 

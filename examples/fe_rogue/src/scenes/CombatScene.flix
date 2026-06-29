@@ -770,7 +770,10 @@ mod CombatScene {
         let newWeapons = CombatRules.replaceOrDropHead(consumed, PlayerScene.getWeapons(playerId, scene));
         // D3: 耐久消費後の weapons を World へ dual-write（[WEAPONS DIFF] を塞ぐ）。
         World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Player(playerId), newWeapons));
-        PlayerScene.mapPlayer(playerId, d -> {weapons = newWeapons | d}, scene)
+        let updated = PlayerScene.mapPlayer(playerId, d -> {weapons = newWeapons | d}, scene);
+        // S2.4: 耐久消費で装備武器（先頭）が変わり得る＝SetWeapons と 1:1 で weaponView も dual-write（[WEAPONVIEW DIFF] を塞ぐ）。
+        PlayerScene.emitWeaponViewFromScene(playerId, updated);
+        updated
 
     // 武器リスト先頭差し替え replaceOrDropHead は純 leaf として CombatRules.flix へ移動（A1）。
 
@@ -891,6 +894,8 @@ mod CombatScene {
         else ();
         // D3: 敵の耐久消費後 weapon を World へ dual-write（単数→0/1 List 射影）。
         World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Enemy(enemyId), Option.toList(consumed)));
+        // S2.4: 敵の装備武器投影も SetWeapons と 1:1 で dual-write（敵 proficient は常に true）＝[WEAPONVIEW DIFF] を塞ぐ。
+        World.Command.emit(World.Cmd.SetWeaponView(World.EntityRef.Enemy(enemyId), Combat.weaponView(consumed, true)));
         let withWeaponUpdate = EnemyScene.mapEnemy(enemyId,
             d -> {weapon = consumed | d}, damaged);
         (withWeaponUpdate, killed)

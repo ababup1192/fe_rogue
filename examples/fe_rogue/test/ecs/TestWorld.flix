@@ -873,6 +873,68 @@ mod TestWorld {
         let drifted = World.applyCmd(World.Cmd.SetBaseStats(World.EntityRef.Player(0), drift), world);
         Assert.assertEq(expected = false, List.isEmpty(World.baseStatsMismatches(drifted, scene)))
 
+    // ── S2.4: weaponView / ringBonus store（command-derive・両 faction・preserve+prune）──
+
+    /// S2.4: refreshMirror は command-derived weaponView を上書きしない（preserve）。sampleScene の
+    /// player 0 は武器装備＝synced weaponView は Some。SetWeaponView で None を書いても refreshMirror 後も
+    /// None のまま（再 mirror なら装備武器で Some に戻るはず＝preserve の証明）。
+    @Test
+    def testRefreshMirrorPreservesCommandWeaponView(): Unit \ Assert =
+        let scene     = sampleScene();
+        let seeded    = World.syncFromScene(scene, World.empty());
+        let cleared   = World.applyCmd(World.Cmd.SetWeaponView(World.EntityRef.Player(0), None), seeded);
+        let refreshed = World.refreshMirror(scene, cleared);
+        Assert.assertEq(
+            expected = None,
+            Option.map(wv -> wv#attack, World.weaponViewOf(World.EntityRef.Player(0), refreshed)))
+
+    /// S2.4: refreshMirror は command-derived ringBonus を上書きしない（preserve）。SetRingBonus で
+    /// player 0 へ scene 無関係な attack 補正(77)を書いても refreshMirror 後も残る（再 mirror なら
+    /// 装備指輪由来＝未装備で 0 に戻るはず＝preserve の証明）。
+    @Test
+    def testRefreshMirrorPreservesCommandRingBonus(): Unit \ Assert =
+        let scene     = sampleScene();
+        let seeded    = World.syncFromScene(scene, World.empty());
+        let custom    = ({attack = 77 | Ring.zeroBonuses()}: Ring.Bonuses);
+        let withCmd   = World.applyCmd(World.Cmd.SetRingBonus(World.EntityRef.Player(0), custom), seeded);
+        let refreshed = World.refreshMirror(scene, withCmd);
+        Assert.assertEq(
+            expected = Some(77),
+            Option.map(rb -> rb#attack, World.ringBonusOf(World.EntityRef.Player(0), refreshed)))
+
+    /// syncFromScene 直後は World weaponView == scene 装備武器投影 ＝ weaponViewMismatches 空（dual-write 整合の基準）。
+    @Test
+    def testWeaponViewMismatchesEmptyWhenSynced(): Unit \ Assert =
+        let scene = sampleScene();
+        let world = World.syncFromScene(scene, World.empty());
+        Assert.assertEq(expected = true, List.isEmpty(World.weaponViewMismatches(world, scene)))
+
+    /// 非 vacuous ガード: World 側だけ player0 weaponView を None に drift させると weaponViewMismatches が検出する
+    /// （dual-write 漏れ＝[WEAPONVIEW DIFF] が鳴るべき状況を pin。player0 は装備武器ありゆえ scene は Some）。
+    @Test
+    def testWeaponViewMismatchesDetectsDrift(): Unit \ Assert =
+        let scene   = sampleScene();
+        let world   = World.syncFromScene(scene, World.empty());
+        let drifted = World.applyCmd(World.Cmd.SetWeaponView(World.EntityRef.Player(0), None), world);
+        Assert.assertEq(expected = false, List.isEmpty(World.weaponViewMismatches(drifted, scene)))
+
+    /// syncFromScene 直後は World ringBonus == scene 装備指輪投影 ＝ ringBonusMismatches 空（dual-write 整合の基準）。
+    @Test
+    def testRingBonusMismatchesEmptyWhenSynced(): Unit \ Assert =
+        let scene = sampleScene();
+        let world = World.syncFromScene(scene, World.empty());
+        Assert.assertEq(expected = true, List.isEmpty(World.ringBonusMismatches(world, scene)))
+
+    /// 非 vacuous ガード: World 側だけ player0 ringBonus を別値へ drift させると ringBonusMismatches が検出する
+    /// （dual-write 漏れ＝[RINGBONUS DIFF] が鳴るべき状況を pin）。
+    @Test
+    def testRingBonusMismatchesDetectsDrift(): Unit \ Assert =
+        let scene   = sampleScene();
+        let world   = World.syncFromScene(scene, World.empty());
+        let drift   = ({attack = 999 | Ring.zeroBonuses()}: Ring.Bonuses);
+        let drifted = World.applyCmd(World.Cmd.SetRingBonus(World.EntityRef.Player(0), drift), world);
+        Assert.assertEq(expected = false, List.isEmpty(World.ringBonusMismatches(drifted, scene)))
+
     // ── D4: staves/consumables/rings/ringEquipped store（command-derive・player-only・preserve+prune）──
 
     def d4Staff(): Staff.StaffResource = {

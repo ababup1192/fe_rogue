@@ -1076,6 +1076,14 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[BASESTATS DIFF] ${ms}")
             };
+            match World.weaponViewMismatches(Ref.get(worldRef), next) {  // S2.4: command 由来 World weaponView vs scene 装備武器投影
+                case Nil => ()
+                case ms  => println("[WEAPONVIEW DIFF] ${ms}")
+            };
+            match World.ringBonusMismatches(Ref.get(worldRef), next) {  // S2.4: command 由来 World ringBonus vs scene 装備指輪ボーナス
+                case Nil => ()
+                case ms  => println("[RINGBONUS DIFF] ${ms}")
+            };
             match World.stavesMismatches(Ref.get(worldRef), next) {  // D4: command 由来 World staves vs scene #staves
                 case Nil => ()
                 case ms  => println("[STAVES DIFF] ${ms}")
