@@ -1392,4 +1392,71 @@ mod TestWorld {
              k({pendingLevelUp = Some(plu) | d})           != k(d),
              k({statuses = st :: Nil | d})                 != k(d),
              k({followUpUsed = true | d})                  != k(d)))
+
+    // ── S4.4b: dataFromWorldEnemy（World 由来 EnemyData twin）/ enemyDataMismatches（全 17 field parity）──
+
+    /// syncFromScene 直後は World 由来 dataFromWorldEnemy == scene EnemyScene.get Data ＝ enemyDataMismatches 空
+    /// （全 17 field の parity 基準。W12 accessor + R残置3 + S→W未昇格1 の stitch が scene と bit 一致）。
+    @Test
+    def testEnemyDataMismatchesEmptyWhenSynced(): Unit \ Assert =
+        let scene = sampleScene();
+        let world = World.syncFromScene(scene, World.empty());
+        Assert.assertEq(expected = true, List.isEmpty(World.enemyDataMismatches(world, scene)))
+
+    /// 非 vacuous ガード: World 側だけ enemy5 hp を drift させると enemyDataMismatches が検出する
+    /// （[ENEMYDATA DIFF] が鳴るべき状況を pin。射影に hp が含まれていることの実証も兼ねる）。
+    @Test
+    def testEnemyDataMismatchesDetectsDrift(): Unit \ Assert =
+        let scene   = sampleScene();
+        let world   = World.syncFromScene(scene, World.empty());
+        let drifted = World.applyCmd(World.Cmd.SetHp(World.EntityRef.Enemy(5), 99), world);
+        Assert.assertEq(expected = false, List.isEmpty(World.enemyDataMismatches(drifted, scene)))
+
+    /// フィールド単位 pin: dataFromWorldEnemy(5) の代表 field（gridPos/hp/moveTiles/alerted/resourceId）が
+    /// sampleScene fixture 値と一致し、かつ twin が Some（None 同士の vacuous でない）ことを併せて検証する。
+    @Test
+    def testDataFromWorldEnemyRepresentativeFields(): Unit \ Assert =
+        let scene = sampleScene();
+        let world = World.syncFromScene(scene, World.empty());
+        let field = d -> ((d#gridPos#x, d#gridPos#y), d#hp, d#moveTiles, d#alerted, d#resourceId);
+        let twin  = World.dataFromWorldEnemy(5, world, scene) |> Option.map(field);
+        Assert.assertEq(
+            expected = (Some(((3, 2), 10, 3, false, "test_enemy")), false),
+            (twin, Option.isEmpty(twin)))
+
+    /// ★MANDATORY (§5.3・§1.3): enemyDataKey 第1 group（9 field）を漏れなく見る pin。posKey の sub-key
+    /// 落ちまで検出する。
+    @Test
+    def testEnemyDataKeyCoversGroup1Fields(): Unit \ Assert =
+        let d = enemyData(5);
+        let k = World.enemyDataKey;
+        Assert.assertEq(
+            expected = (true, true, true, true, true, true, true, true, true),
+            (k({id = 99 | d})                     != k(d),
+             k({resourceId = "other" | d})        != k(d),
+             k({gridPos = {x = 99, y = 99} | d})  != k(d),
+             k({alerted = true | d})              != k(d),
+             k({homeModuleIdx = 99 | d})          != k(d),
+             k({moveTiles = 99 | d})              != k(d),
+             k({hp = 99 | d})                     != k(d),
+             k({isDying = true | d})              != k(d),
+             k({attackTargetId = Some(7) | d})    != k(d)))
+
+    /// ★MANDATORY (§5.3・§1.3): enemyDataKey 第2 group（8 field）を漏れなく見る pin。weaponKey/
+    /// equippedRingKey/statusListKey/posKey の sub-key 落ちまで検出する。resource(R 残置)は resourceId
+    /// 代表ゆえ group1 の resourceId pin が兼ねる（両辺 scene 由来＝drift 不能）。
+    @Test
+    def testEnemyDataKeyCoversGroup2Fields(): Unit \ Assert =
+        let d = enemyData(5);
+        let k = World.enemyDataKey;
+        let st = ({effect = StatusSystem.StatusEffect.AtkUp, magnitude = 1, remaining = 1}: StatusSystem.Status);
+        Assert.assertEq(
+            expected = (true, true, true, true, true, true, true),
+            (k({weapon = None | d})                       != k(d),
+             k({acted = true | d})                        != k(d),
+             k({prevPos = Some({x = 1, y = 1}) | d})      != k(d),
+             k({statuses = st :: Nil | d})                != k(d),
+             k({ring = Some(d4Ring()) | d})               != k(d),
+             k({followUpUsed = true | d})                 != k(d),
+             k({bottleUsed = true | d})                   != k(d)))
 }

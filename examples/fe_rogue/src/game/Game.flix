@@ -1108,14 +1108,6 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[RINGEQUIPPED DIFF] ${ms}")
             };
-            match World.unitViewMismatches(Ref.get(worldRef), next) {  // S4.1: World 由来 unitView twin vs scene unitView（parity）
-                case Nil => ()
-                case ms  => println("[UNITVIEW DIFF] ${ms}")
-            };
-            match World.playerDataMismatches(Ref.get(worldRef), next) {  // S4.4: World 由来 PlayerData twin vs scene Data（全 23 field parity）
-                case Nil => ()
-                case ms  => println("[PLAYERDATA DIFF] ${ms}")
-            };
             if (World.enemyTurnBusyOf(Ref.get(worldRef)) != TopBarScene.isBusy(next)  // F8-slice2
                 or World.phaseObservedEnemyOf(Ref.get(worldRef)) != TopBarScene.hasObservedEnemy(next))
                 println("[TOPBAR DIFF] busy w=${World.enemyTurnBusyOf(Ref.get(worldRef))} s=${TopBarScene.isBusy(next)}"
@@ -1139,6 +1131,28 @@ mod Game {
             // scene は World の純粋な派生ビューになり、dual-write は解消。write 漏れは「ユニットが動かない」
             // 可視バグとして現れるので、旧 `[P3 WRITE-MISS]` 検出器（独立 dual-write 前提）は撤去した。
             let synced = World.syncTreeFromWorld(world2, next);
+            // S4 twin parity 検査は **syncTreeFromWorld の後**に置く（scene が World から派生し終えた点）。
+            // pre-sync だと gridPos が 1 フレーム遅延（World pos=当フレーム / scene gridPos=前フレームの派生）、
+            // hidden/equippedRing が re-mirror stale で false-positive を出していた。post-sync では gridPos=World 派生・
+            // read-model も refreshMirror 済みで揃う。dual-write 系(weapons/staves/statuses 等・syncTree 非派生)は
+            // scene が process 値のままゆえ「World store == scene」の coverage を維持する。
+            match World.unitViewMismatches(world2, synced) {  // S4.1
+                case Nil => ()
+                case ms  => println("[UNITVIEW DIFF] ${ms}")
+            };
+            match World.playerDataMismatches(world2, synced) {  // S4.4
+                case Nil => ()
+                case ms  =>
+                    let fld = match List.head(ms) {
+                        case Some(World.EntityRef.Player(pid)) => "P${pid}=[${World.playerDataFieldDiff(pid, world2, synced)}]"
+                        case _ => "?"
+                    };
+                    println("[PLAYERDATA DIFF] ${ms} first ${fld}")
+            };
+            match World.enemyDataMismatches(world2, synced) {  // S4.4b
+                case Nil => ()
+                case ms  => println("[ENEMYDATA DIFF] ${ms}")
+            };
             GameEngine.render(synced);
             gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world2)
         }

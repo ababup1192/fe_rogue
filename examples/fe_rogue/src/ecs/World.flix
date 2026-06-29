@@ -1042,6 +1042,21 @@ mod World {
           d#level, d#exp, pendingLevelUpKey(d#pendingLevelUp),
           statusListKey(d#statuses), d#followUpUsed))
 
+    /// ★EnemyData.Data の全 17 field キー（enemyDataMismatches）。playerDataKey と同流儀の 2段ネスト
+    /// ((9),(8))（tuple arity/Eq 上限回避・§1.3）。sub-key（posKey/weaponKey/equippedRingKey/statusListKey）を
+    /// 既存正準キーから再利用＝leaf drift 不能を継承（S2.4/S4.4 級の重複射影 drift バグを再導入しない）。
+    /// resource(R 残置)は両辺 scene 由来＝恒等一致ゆえ resourceId(String) を代表値とする。
+    pub def enemyDataKey(d: EnemyData.Data):
+            ((Int32, String, (Int32, Int32), Bool, Int32, Int32, Int32, Bool, Option[Int32]),
+             (String, Option[(String, Int32)], Bool, Option[(Int32, Int32)],
+              List[(StatusSystem.StatusEffect, Int32, Int32)],
+              Option[(String, Ring.RingEffect, Int32)], Bool, Bool)) =
+        ((d#id, d#resourceId, posKey(d#gridPos), d#alerted, d#homeModuleIdx,
+          d#moveTiles, d#hp, d#isDying, d#attackTargetId),
+         (d#resourceId, Option.map(weaponKey, d#weapon), d#acted,
+          Option.map(posKey, d#prevPos), statusListKey(d#statuses),
+          Option.map(equippedRingKey, d#ring), d#followUpUsed, d#bottleUsed))
+
     /// 地形 snapshot キー (tileSize, wallCells)（mapSnapshotMatchesScene）。
     /// 元 lambda: m -> (m#tileSize, m#wallCells)
     pub def mapSnapshotKey(m: MapSnapshot): (Float64, Set[(Int32, Int32)]) =
@@ -1296,12 +1311,76 @@ mod World {
     /// ネスト射影: gridPos={x,y}／weapons/staves/consumables/rings は (長さ, 先頭の name)／resource は数値 stat 群で代表／
     /// statuses は (effect,magnitude,remaining) list／selectedItem(ItemKind Eq)／facing(Direction Eq)／
     /// pendingLevelUp は Option を (unitName,fromLevel,toLevel,変化数) へ射影／他スカラはそのまま。
+    /// 【一時診断】player の dataFromWorld twin と scene Data でどの W 由来 field が食い違うか field 名で返す。
+    /// R 残置/S→W は twin が scene を読む＝恒等ゆえ差が出ず対象外。原因特定後に撤去する。
+    pub def playerDataFieldDiff(id: Int32, world: World, scene: Scene[NodeTag]): String =
+        match (dataFromWorld(id, world, scene), PlayerScene.get(id, scene)) {
+            case (Some(t), Some(s)) =>
+                let names =
+                    (if (posKey(t#gridPos) != posKey(s#gridPos)) "gridPos(W=(${t#gridPos#x},${t#gridPos#y})/S=(${s#gridPos#x},${s#gridPos#y}))" :: Nil else Nil) :::
+                    (if (t#hp != s#hp) "hp" :: Nil else Nil) :::
+                    (if (t#moveTiles != s#moveTiles) "moveTiles" :: Nil else Nil) :::
+                    (if (t#hidden != s#hidden) "hidden" :: Nil else Nil) :::
+                    (if (t#waited != s#waited) "waited" :: Nil else Nil) :::
+                    (if (t#attackTargetId != s#attackTargetId) "attackTargetId" :: Nil else Nil) :::
+                    (if (headKey(t#weapons, weaponKey) != headKey(s#weapons, weaponKey)) "weapons" :: Nil else Nil) :::
+                    (if (headKey(t#staves, staffKey) != headKey(s#staves, staffKey)) "staves" :: Nil else Nil) :::
+                    (if (headKey(t#consumables, consumableKey) != headKey(s#consumables, consumableKey)) "consumables" :: Nil else Nil) :::
+                    (if (headKey(t#rings, ringKey) != headKey(s#rings, ringKey)) "rings" :: Nil else Nil) :::
+                    (if (t#ringEquipped != s#ringEquipped) "ringEquipped" :: Nil else Nil) :::
+                    (if (statusListKey(t#statuses) != statusListKey(s#statuses)) "statuses" :: Nil else Nil) :::
+                    (if (t#level != s#level) "level" :: Nil else Nil) :::
+                    (if (t#exp != s#exp) "exp" :: Nil else Nil) :::
+                    (if (t#followUpUsed != s#followUpUsed) "followUpUsed" :: Nil else Nil);
+                List.foldLeft((acc, x) -> if (acc == "") x else "${acc},${x}", "", names)
+            case _ => "MISSING"
+        }
+
     pub def playerDataMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
         // 全 23 field の射影は playerDataKey へ集約（2段ネスト ((13),(10))・在庫は weaponsMismatches 等と
         // 同一 weaponKey/staffKey/consumableKey/ringKey を共有＝S4.4 級 drift 不能）。
         PlayerScene.getAll(scene) |> List.filterMap(d ->
             if (Option.map(playerDataKey, dataFromWorld(d#id, world, scene)) != Some(playerDataKey(d)))
                 Some(EntityRef.Player(d#id)) else None)
+
+    /// S4.4b: scene の `EnemyScene.get` Data と **bit 一致**する `EnemyData.Data` を **World 由来**で再構築する
+    /// （S4.4 の dataFromWorld〔player版〕の enemy 版。S6 で両 faction scene を World 派生／S7 で bridge 撤去する土台。
+    /// additive twin ＝消費者 flip はまだしない）。17 field の供給源（EnemyData.flix:21-49 の分類）:
+    ///   W ストア由来 12 accessor: gridPos=posOf／alerted=alertedOf／moveTiles=moveTilesOf／hp=hpOf／
+    ///     isDying=isDyingOf／attackTargetId=attackTargetOf／weapon=weaponsOf(Enemy id) の head／prevPos=prevPosOf／
+    ///     statuses=statusEffectsOf／ring=equippedRingOf（敵 ring は P1a の equippedRing store・both faction）／
+    ///     followUpUsed=followUpUsedOf／bottleUsed=bottleUsedOf。
+    ///   R 残置 3（scene Data から）: resourceId／resource／homeModuleIdx。
+    ///   S→W 未昇格 1（scene Data から・D13a で将来昇格）: acted。
+    ///   id = 引数。
+    /// core な W field（posOf/hpOf/moveTiles/alerted/weapons/followUpUsed/bottleUsed）が一つでも None なら全体 None
+    /// （dataFromWorld と同じ gate 流儀）。isDying は Bool 直 / attackTargetId・prevPos・ring は Option 直 / statuses は default-Nil。
+    pub def dataFromWorldEnemy(id: Int32, world: World, scene: Scene[NodeTag]): Option[EnemyData.Data] =
+        let ref = EntityRef.Enemy(id);
+        match (posOf(ref, world), alertedOf(ref, world), moveTilesOf(ref, world), hpOf(ref, world),
+               weaponsOf(ref, world), followUpUsedOf(ref, world), bottleUsedOf(ref, world),
+               EnemyScene.get(id, scene)) {
+            case (Some(pos), Some(alerted), Some(moveTiles), Some(hp),
+                  Some(weapons), Some(followUpUsed), Some(bottleUsed),
+                  Some(d)) =>
+                // record リテラルは `Some(` 直後（`(` の後）に置く＝block/named-tuple 誤パース回避（S4.1 gotcha）。
+                Some({id = id, resourceId = d#resourceId, gridPos = pos, alerted = alerted,
+                      homeModuleIdx = d#homeModuleIdx, moveTiles = moveTiles, hp = hp,
+                      isDying = isDyingOf(ref, world), attackTargetId = attackTargetOf(ref, world),
+                      resource = d#resource, weapon = List.head(weapons), acted = d#acted,
+                      prevPos = prevPosOf(ref, world), statuses = statusEffectsOf(ref, world),
+                      ring = equippedRingOf(ref, world), followUpUsed = followUpUsed,
+                      bottleUsed = bottleUsed})
+            case _ => None
+        }
+
+    /// S4.4b 安全網: World 由来 `dataFromWorldEnemy` と scene `EnemyScene.get` Data が食い違う敵を列挙する（[ENEMYDATA DIFF]）。
+    /// 全 17 field の射影は enemyDataKey へ集約（2段ネスト ((9),(8))・weapon/ring/statuses/pos は weaponKey/
+    /// equippedRingKey/statusListKey/posKey を共有＝S4.4 級 drift 不能）。1 field でも漏れると検出穴になるため全 field 完備が命。
+    pub def enemyDataMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
+        EnemyScene.getAll(scene) |> List.filterMap(d ->
+            if (Option.map(enemyDataKey, dataFromWorldEnemy(d#id, world, scene)) != Some(enemyDataKey(d)))
+                Some(EntityRef.Enemy(d#id)) else None)
 
     /// World 拡張: 味方の (level, exp) を World から読む。未登録は None。Enemy は常に None。
     pub def progressOf(ref: EntityRef, world: World): Option[(Int32, Int32)] =
