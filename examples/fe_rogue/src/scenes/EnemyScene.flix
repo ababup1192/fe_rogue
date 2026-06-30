@@ -219,6 +219,8 @@ mod EnemyScene {
         World.Command.emit(World.Cmd.SetHp(World.refOf(false, sp#id), sp#resource#hp));
         // F7-spike: 初期 alerted=false も seed（spawn の [ALERTED DIFF] transient を塞ぐ）。
         World.Command.emit(World.Cmd.SetAlerted(World.refOf(false, sp#id), false));
+        // S5: 初期 acted=false も seed（command-derive ゆえ mid-floor spawn の [ACTED DIFF] absence-mismatch を塞ぐ）。
+        World.Command.emit(World.Cmd.SetActed(World.refOf(false, sp#id), false));
         // F7-slice2: 初期 bottleUsed=false も seed。
         World.Command.emit(World.Cmd.SetBottleUsed(World.refOf(false, sp#id), false));
         // F7-slice4: 初期 followUpUsed=false も seed。

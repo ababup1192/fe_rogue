@@ -321,6 +321,9 @@ mod PlayerScene {
         World.Command.emit(World.Cmd.SetFollowUpUsed(World.refOf(true, sp#id), false));
         // F7-slice5: 初期 waited=false も seed。
         World.Command.emit(World.Cmd.SetWaited(World.refOf(true, sp#id), false));
+        // S5: 初期 usedStairs=false も seed（command-derive ゆえ floor 遷移で scene reset しても World が
+        // stale true を保持する gap を塞ぐ＝[USEDSTAIRS DIFF] の根本原因）。
+        World.Command.emit(World.Cmd.SetUsedStairs(World.refOf(true, sp#id), false));
         // World 拡張: 初期 (level, exp=0) を seed（spawn フレームの [PROGRESS DIFF] を塞ぐ）。
         World.Command.emit(World.Cmd.SetProgress(World.refOf(true, sp#id), sp#resource#level, 0));
         // D3: 初期 weapons も World へ seed（spawn フレームの [WEAPONS DIFF] を塞ぐ＝preserve の前提）。
