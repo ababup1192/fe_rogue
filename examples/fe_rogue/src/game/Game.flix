@@ -1048,10 +1048,7 @@ mod Game {
             // command 由来を preserve し、frame-end の `syncTreeFromWorld` が scene へ一方向 derive する（dual-write 解消）。
             // legacy 無音を run 確認済みゆえ旧 DIFF 検出器（F6 HP / ALERTED / DYING / PROGRESS / COMBATVIEW）は撤去した
             // （write 漏れは「hp が動かない / 敵が死なない / exp が増えない」可視バグとして現れる＝位置 P3 WRITE-MISS 撤去と同じ）。
-            match World.bottleUsedMismatches(Ref.get(worldRef), next) {
-                case Nil => ()
-                case ms  => println("[BOTTLE DIFF] ${ms}")
-            };
+            // S6: bottleUsed を World 権威化（scene 直書き撤去・syncTree derive）したため [BOTTLE DIFF] は撤去。
             match World.prevPosMismatches(Ref.get(worldRef), next) {
                 case Nil => ()
                 case ms  => println("[PREVPOS DIFF] ${ms}")

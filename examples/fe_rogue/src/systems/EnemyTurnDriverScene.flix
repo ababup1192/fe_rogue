@@ -265,9 +265,9 @@ mod EnemyTurnDriverScene {
             case Some(afterThrow) =>
                 // 投げた → このターンは投擲で終了。瓶を使用済みにして行動済み暗転。
                 Pacing.State.hold(450 |> Duration.millis);
-                World.Command.emit(World.Cmd.SetBottleUsed(World.EntityRef.Enemy(step#id), true));  // F7-slice2: World へ
-                EnemyScene.setActed(step#id,
-                    EnemyScene.mapEnemy(step#id, d -> {bottleUsed = true | d}, afterThrow))
+                // S6: bottleUsed は World 権威。Cmd emit のみ・scene 直書きは撤去（syncTree が World 由来で derive）。
+                World.Command.emit(World.Cmd.SetBottleUsed(World.EntityRef.Enemy(step#id), true));
+                EnemyScene.setActed(step#id, afterThrow)
             case None => applyNormalStep(step, data, scene)
         }
 

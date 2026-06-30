@@ -1733,9 +1733,15 @@ mod World {
                 case EntityRef.Enemy(eid) => EnemyScene.mapEnemy(eid, e -> {alerted = b | e}, sc)
                 case EntityRef.Player(_)  => sc
             }, withDying, w#enemyAlerted);
+        // S6: bottleUsed も World(enemyBottleUsed) 由来に derive（敵のみ・alerted と同型）。
+        let withBottle = Map.foldLeftWithKey((sc, uid, b) ->
+            match uidToRef(uid) {
+                case EntityRef.Enemy(eid) => EnemyScene.mapEnemy(eid, e -> {bottleUsed = b | e}, sc)
+                case EntityRef.Player(_)  => sc
+            }, withAlerted, w#enemyBottleUsed);
         // progress（level/exp）は player のみ。store key は player id。
         let withLevel = Map.foldLeftWithKey((sc, pid, lvl) ->
-            PlayerScene.mapPlayer(pid, d -> {level = lvl | d}, sc), withAlerted, w#playerLevel);
+            PlayerScene.mapPlayer(pid, d -> {level = lvl | d}, sc), withBottle, w#playerLevel);
         Map.foldLeftWithKey((sc, pid, xp) ->
             PlayerScene.mapPlayer(pid, d -> {exp = xp | d}, sc), withLevel, w#playerExp)
 }
