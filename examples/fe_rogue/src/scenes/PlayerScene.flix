@@ -1119,10 +1119,11 @@ mod PlayerScene {
     /// 敵ターンを跨いでも退場状態のままになる。次フロア構築 (addOnePlayer) で全て false に戻る。
     pub def useStairs(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), true));  // F7-slice5: 階段退場で waited を World へ
+        World.Command.emit(World.Cmd.SetUsedStairs(World.EntityRef.Player(id), true));  // S5: usedStairs を World へ dual-write
         scene
             |> setHidden(id, true)
             // S6: waited は World 権威（上の Cmd.SetWaited が source・syncTreeFromWorld で derive）。
-            // usedStairs は別途 scene 権威のまま残す。
+            // S5: usedStairs は store 化（additive・dual-write）。reader flip は後続ゆえ scene も維持。
             |> mapPlayer(id, d -> {usedStairs = true | d})
 
     /// 生存している味方が「全員」階段を使ったか（= このフロアの終了条件）。

@@ -77,6 +77,8 @@ pub enum World {
                  followUpUsed = Map[EntityId, Bool],
                  // F7-slice5: 味方の行動済み（ターン flow の権威）。player-only。reader flip は F8 で。
                  playerWaited = Map[EntityId, Bool],
+                 // S5: 味方の階段退場フラグ（フロア終了条件・tick gating の権威）。player-only。reader flip は後続。
+                 playerUsedStairs = Map[EntityId, Bool],
                  // F8-slice1: 攻撃対象 id（攻撃モーション中＝anyAttacking の権威）。None=非攻撃はマップ非在。両 faction。
                  // A': attackTarget は単一 store（unified-id）。両 faction の split を撤廃。
                  attackTarget = Map[EntityId, Int32],
@@ -136,6 +138,7 @@ mod World {
                      enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
                      followUpUsed = Map.empty(),
                      playerWaited = Map.empty(),
+                     playerUsedStairs = Map.empty(),
                      attackTarget = Map.empty(),
                      playerLevel = Map.empty(), playerExp = Map.empty(),
                      baseStats = Map.empty(), weaponView = Map.empty(), ringBonus = Map.empty(),
@@ -209,6 +212,7 @@ mod World {
             followUpUsed = Map.union(Query.indexBy(d -> d#id, d -> d#followUpUsed, players),
                                      Query.indexBy(d -> enemyUid(d#id), d -> d#followUpUsed, enemies)),
             playerWaited   = Query.indexBy(d -> d#id, d -> d#waited, players),
+            playerUsedStairs = Query.indexBy(d -> d#id, d -> d#usedStairs, players),
             playerLevel    = Query.indexBy(d -> d#id, d -> d#level, players),
             playerExp      = Query.indexBy(d -> d#id, d -> d#exp, players),
             baseStats = Map.union(Query.indexBy(d -> d#id, d -> Combat.baseStatsFrom(d#resource), players),
@@ -288,6 +292,7 @@ mod World {
             enemyPrevPos   = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#enemyPrevPos),
             followUpUsed = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#followUpUsed),
             playerWaited   = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerWaited),
+            playerUsedStairs = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerUsedStairs),
             // World 拡張: level/exp も command 由来を保持＋prune（hp と同型）。
             playerLevel    = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerLevel),
             playerExp      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerExp),
@@ -433,6 +438,7 @@ mod World {
         case SetPrevPos(EntityRef, {x = Int32, y = Int32})  // F7-slice3: 敵直前位置 write（Player は no-op）
         case SetFollowUpUsed(EntityRef, Bool)  // F7-slice4: followUp 使用済み write（両 faction）
         case SetWaited(EntityRef, Bool)        // F7-slice5: 味方行動済み write（Enemy は no-op）
+        case SetUsedStairs(EntityRef, Bool)    // S5: 味方階段退場 write（Enemy は no-op）
         case SetAttackTarget(EntityRef, Int32) // F8-slice1: 攻撃対象 id をセット（攻撃開始）
         case ClearAttackTarget(EntityRef)      // F8-slice1: 攻撃対象をクリア（攻撃終了）
         case SetProgress(EntityRef, Int32, Int32) // World 拡張: 味方の (level, exp) write（撃破/レベルアップ/復元で）
@@ -681,6 +687,12 @@ mod World {
                     case EntityRef.Player(id) => World.World({playerWaited = Map.insert(id, wd, w#playerWaited) | w})
                     case EntityRef.Enemy(_)   => world   // 敵に waited は無い＝no-op
                 }
+            case Cmd.SetUsedStairs(ref, b) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(id) => World.World({playerUsedStairs = Map.insert(id, b, w#playerUsedStairs) | w})
+                    case EntityRef.Enemy(_)   => world   // 敵に usedStairs は無い＝no-op
+                }
             case Cmd.SetAttackTarget(ref, t) =>
                 // A': 単一 store＋toUid（match ref arm 消失）。
                 let World.World(w) = world;
@@ -821,6 +833,7 @@ mod World {
             case Cmd.SetDying(ref)            => ("Dying", toUid(ref), 0, 0)
             case Cmd.SetBottleUsed(ref, b)    => ("Bottle", toUid(ref), bool01(b), 0)
             case Cmd.SetWaited(ref, b)        => ("Waited", toUid(ref), bool01(b), 0)
+            case Cmd.SetUsedStairs(ref, b)    => ("UsedStairs", toUid(ref), bool01(b), 0)
             case Cmd.SetPrevPos(ref, p)       => ("PrevPos", toUid(ref), p#x, p#y)
             case Cmd.ClearImmobilized(ref)    => ("ClrImmob", toUid(ref), 0, 0)
             // magnitude を 4th slot に載せて oracle に可視化する（kind だけだと量違いを golden が見逃す）。
@@ -880,6 +893,14 @@ mod World {
         let World.World(w) = world;
         match ref {
             case EntityRef.Player(id) => Map.get(id, w#playerWaited)
+            case EntityRef.Enemy(_)   => None
+        }
+
+    /// S5: 味方の usedStairs を World から読む。Enemy は常に None。
+    pub def usedStairsOf(ref: EntityRef, world: World): Option[Bool] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) => Map.get(id, w#playerUsedStairs)
             case EntityRef.Enemy(_)   => None
         }
 
@@ -1400,6 +1421,13 @@ mod World {
         PlayerScene.getAll(scene) |> List.filterMap(d -> {
             let ww = waitedOf(EntityRef.Player(d#id), world);
             if (ww != Some(d#waited)) Some((EntityRef.Player(d#id), ww, d#waited)) else None
+        })
+
+    /// S5 検証器: 味方 usedStairs の World/scene 不一致（`waitedMismatches` 同型）。
+    pub def usedStairsMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
+        PlayerScene.getAll(scene) |> List.filterMap(d -> {
+            let wu = usedStairsOf(EntityRef.Player(d#id), world);
+            if (wu != Some(d#usedStairs)) Some((EntityRef.Player(d#id), wu, d#usedStairs)) else None
         })
 
     /// 軸1 仕上げ 検証器: 敵の World isDying（command 由来）と scene isDying の不一致を返す。
