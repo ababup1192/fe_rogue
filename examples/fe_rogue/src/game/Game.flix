@@ -1098,7 +1098,14 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[ENEMYDATA DIFF] ${ms}")
             };
-            GameEngine.render(synced);
+            // B1-m1a: render-from-World overlay。on で scene-tree drawable に World 由来 box を重ねて
+            // 1 回の renderCommands で描く（renderCommands は毎回 clear ゆえ 2 回呼びは不可＝合成する）。
+            // これで通常ゲーム（メニュー/マップ/ユニット）は見えたまま World box が重なる＝位置一致を実証。
+            if (RenderWorld.useRenderFromWorld()) {
+                let (sprites, tileMaps, polygons) = GameEngine.renderArgs(synced);
+                GameEngine.Game.renderCommands(List.append(sprites, RenderWorld.renderUnits(world2, synced)), tileMaps, polygons)
+            } else
+                GameEngine.render(synced);
             gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world2)
         }
 }

@@ -299,7 +299,10 @@ mod GameEngine {
     /// アクティブな Camera2D があれば、ビューポートオフセットを計算して描画に適用する
     /// CanvasLayer 配下のノード（HUD 等）にはカメラオフセットを適用しない
     /// TileMapLayer はインスタンシング経由で描画する（1 draw call）
-    pub def render(scene: Scene[s]): Unit \ Game =
+    /// B: render() の drawable 抽出を返す版（renderCommands は呼ばない）。
+    /// scene-tree 描画に World 由来 drawable を overlay する transition 期に、呼び側が
+    /// `renderCommands(sprites ++ extra, tileMaps, polygons)` を 1 回で組めるよう公開する。
+    pub def renderArgs(scene: Scene[s]): (List[Drawable], List[TileMapRenderCmd], List[PolygonRenderCmd]) \ Game =
         let transform = match Scene.findActiveCamera(scene) {
             case Some((cam, globalPos)) =>
                 let vp = Game.getViewportRect();
@@ -340,6 +343,10 @@ mod GameEngine {
                     else { let (sp, sc) = placement(p); Arc2D.toRenderCmds(sp, sc, arc) |> List.map(c -> withEffective(p, c)) }
                 case _ => Nil
             }, Scene.preorderPaths(scene));
+        (sprites, tileMaps, polygons)
+
+    pub def render(scene: Scene[s]): Unit \ Game =
+        let (sprites, tileMaps, polygons) = renderArgs(scene);
         Game.renderCommands(sprites, tileMaps, polygons)
 
     // ========================================================================

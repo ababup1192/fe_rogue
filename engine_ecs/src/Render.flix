@@ -16,7 +16,7 @@ mod Render {
         case Sprite({ texture = String, tint = Color, alpha = Float32,
                       scale = Vec2.Vec2, rotation = Float64, centered = Bool,
                       flipH = Bool, flipV = Bool, regionRect = Option[Rect2.Rect2], zIndex = Int32 })
-        case Text({ text = String, fontAtlas = FontAtlas, fontSize = Float64, zIndex = Int32 })
+        case Text({ text = String, fontAtlas = FontAtlas, fontSize = Float64, tint = Color, zIndex = Int32 })
         case Box({ size = Vec2.Vec2, color = Color, alpha = Float32,
                    style = Option[GameEngine.BoxStyle], zIndex = Int32 })
     }
@@ -32,7 +32,11 @@ mod Render {
                             flipH = flipH, flipV = flipV, regionRect = None, zIndex = zIndex })
 
     pub def text(content: String, fontAtlas: FontAtlas, fontSize: Float64, zIndex: Int32): RenderItem =
-        RenderItem.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, zIndex = zIndex })
+        RenderItem.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = white(), zIndex = zIndex })
+
+    /// B0b: 着色テキスト（Label2D.setModulate を適用）。menu の disabled グレー / cursor 色 / ヘッダ accent 等に必要。
+    pub def textTinted(content: String, fontAtlas: FontAtlas, fontSize: Float64, tint: Color, zIndex: Int32): RenderItem =
+        RenderItem.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = tint, zIndex = zIndex })
 
     /// 単色塗りの矩形（左上原点・サイズ指定）。style は内部で solid に固定。
     pub def solidBox(size: Vec2.Vec2, color: Color, zIndex: Int32): RenderItem =
@@ -56,9 +60,34 @@ mod Render {
                 spriteDrawable(s#texture, s#tint, s#alpha, s#scale, s#rotation,
                                s#centered, s#flipH, s#flipV, s#regionRect, s#zIndex, pos) :: Nil
             case RenderItem.Text(t) =>
-                textDrawables(t#text, t#fontAtlas, t#fontSize, t#zIndex, pos)
+                textDrawables(t#text, t#fontAtlas, t#fontSize, t#tint, t#zIndex, pos)
             case RenderItem.Box(b) =>
                 boxDrawable(b#size, b#color, b#alpha, b#style, b#zIndex, pos) :: Nil
+        }
+
+    /// B0b: region atlas 対応の effectful 射影。textureSize を Game registry から引いて UV を計算する
+    /// （Sprite2D.computeUv 相当の正規化: uvOffset = regionPos/texSize, uvScale = regionSize/texSize）。
+    /// 非 region スプライト・text・box は pure 経路と同一。fe_rogue 等の atlas 主体ゲームの render-from-World に必要。
+    /// ⚠ region は textureSize 参照ゆえ extract が `\ GameEngine.Game` 化する（dodge の pure renderWorld と非互換＝B のコスト）。
+    pub def drawAtlas(items: List[(Vec2.Vec2, RenderItem)]): List[GameEngine.Drawable] \ GameEngine.Game =
+        List.flatMap(pair -> let (pos, item) = pair; toDrawablesAtlas(item, pos), items)
+
+    def toDrawablesAtlas(item: RenderItem, pos: Vec2.Vec2): List[GameEngine.Drawable] \ GameEngine.Game =
+        match item {
+            case RenderItem.Sprite(s) =>
+                let (uvOff, uvScl) = match s#regionRect {
+                    case None       => ({x = 0.0, y = 0.0}, {x = 1.0, y = 1.0})
+                    case Some(rect) => match GameEngine.Game.getTextureInfo(s#texture) {
+                        case Some(ti) => ({x = rect#position#x / ti#width, y = rect#position#y / ti#height},
+                                          {x = rect#size#x / ti#width, y = rect#size#y / ti#height})
+                        case None     => ({x = 0.0, y = 0.0}, {x = 1.0, y = 1.0})
+                    }
+                };
+                ({ texture = s#texture, position = pos,
+                   scale = {x = s#scale#x * flipSign(s#flipH), y = s#scale#y * flipSign(s#flipV)},
+                   rotation = s#rotation, color = s#tint, alpha = s#alpha, centered = s#centered,
+                   uvOffset = uvOff, uvScale = uvScl, zIndex = s#zIndex, style = None }: GameEngine.Drawable) :: Nil
+            case other => toDrawables(other, pos)
         }
 
     // flip は base scale に符号を“乗算”（engine spriteToDrawable と同じ）。centered は素通し。
@@ -85,10 +114,11 @@ mod Render {
     def flipSign(b: Bool): Float64 = if (b) -1.0 else 1.0
 
     def textDrawables(content: String, fontAtlas: FontAtlas, fontSize: Float64,
-                      zIndex: Int32, pos: Vec2.Vec2): List[GameEngine.Drawable] =
-        // engine の public 純粋射影に委譲。zIndex は後置きで上書き（現 RenderWorld と同手法）。
+                      tint: Color, zIndex: Int32, pos: Vec2.Vec2): List[GameEngine.Drawable] =
+        // engine の public 純粋射影に委譲。B0b: Drawable の color を tint で上書き＝文字色
+        // （SDF 描画では color が modulate＝文字色。ItemList の per-item 色相当）。
         Label2D.toDrawables(Label2D.make(content, fontAtlas, fontSize), pos)
-            |> List.map(d -> {zIndex = zIndex | d})
+            |> List.map(d -> {color = tint, zIndex = zIndex | d})
 
     def boxDrawable(size: Vec2.Vec2, color: Color, alpha: Float32,
                     style: Option[GameEngine.BoxStyle], zIndex: Int32,
