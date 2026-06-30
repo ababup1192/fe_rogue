@@ -203,6 +203,24 @@ mod TestPlayerScene {
             PlayerScene.adjacentAllies(self));
         Assert.assertEq(expected = Nil, List.map(d -> d#id, neighbors))
 
+    /// spawn-seed gap 回帰（2026-06-30）: command-derive store は refreshMirror が preserve する（毎フレ
+    /// scene から再構築しない）ため、floor 跨ぎで scene が reset されても World は前 floor の stale 値を保持する。
+    /// よって spawn funnel(addOnePlayer)が各 command-derive store を Cmd で seed しないと stale drift が起きる
+    /// （usedStairs で実発生＝[USEDSTAIRS DIFF]・unit test では出ず run 検証でのみ発覚）。addOnePlayer 後の World に
+    /// usedStairs が Some(false) で seed されていること（None=未 seed でない）を pin して再発を防ぐ。
+    /// 敵 acted（addOneEnemy の SetActed seed）も同型ゆえこのパターンで守られる。
+    @Test
+    def testAddOnePlayerSeedsUsedStairs(): Unit \ {Assert, Fs.FileRead} =
+        let fx = loadTestCatalogs();
+        let sp = ({id = 0, classId = "test_player", gridPos = {x = 5, y = 5}, resource = fx#unitSample,
+                   weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
+        let base = Scene.empty() |> MapScene.addWorldNode;
+        region rc {
+            let (_, _, w) = TestUnitFixtures.withTracedWorld(rc, 0i64, base, () ->
+                PlayerScene.addOnePlayer(sp, base));
+            Assert.assertEq(expected = Some(false), World.usedStairsOf(World.EntityRef.Player(0), w))
+        }
+
     // ========================================================================
     // gatherNotMovedYet — 集合直後（誰も origin から動いていない）か
     //   true のときだけ C で集合 → 個別行動モードへ戻せる。

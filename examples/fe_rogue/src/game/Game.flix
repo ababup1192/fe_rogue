@@ -1067,46 +1067,11 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[ACTED DIFF] ${ms}")
             };
-            match World.weaponsMismatches(Ref.get(worldRef), next) {  // D3: command 由来 World weapons vs scene #weapons
-                case Nil => ()
-                case ms  => println("[WEAPONS DIFF] ${ms}")
-            };
-            match World.baseStatsMismatches(Ref.get(worldRef), next) {  // S2.3: command 由来 World baseStats vs scene resource 由来
-                case Nil => ()
-                case ms  => println("[BASESTATS DIFF] ${ms}")
-            };
-            match World.statusEffectsMismatches(Ref.get(worldRef), next) {  // S3: command 由来 World statusEffects vs scene #statuses
-                case Nil => ()
-                case ms  => println("[STATUSEFFECTS DIFF] ${ms}")
-            };
-            match World.weaponViewMismatches(Ref.get(worldRef), next) {  // S2.4: command 由来 World weaponView vs scene 装備武器投影
-                case Nil => ()
-                case ms  => println("[WEAPONVIEW DIFF] ${ms}")
-            };
-            match World.ringBonusMismatches(Ref.get(worldRef), next) {  // S2.4: command 由来 World ringBonus vs scene 装備指輪ボーナス
-                case Nil => ()
-                case ms  => println("[RINGBONUS DIFF] ${ms}")
-            };
-            match World.moveTilesMismatches(Ref.get(worldRef), next) {  // S2.5: command 由来 World moveTiles vs scene base moveTiles
-                case Nil => ()
-                case ms  => println("[MOVETILES DIFF] ${ms}")
-            };
-            match World.stavesMismatches(Ref.get(worldRef), next) {  // D4: command 由来 World staves vs scene #staves
-                case Nil => ()
-                case ms  => println("[STAVES DIFF] ${ms}")
-            };
-            match World.consumablesMismatches(Ref.get(worldRef), next) {  // D4
-                case Nil => ()
-                case ms  => println("[CONSUMABLES DIFF] ${ms}")
-            };
-            match World.ringsMismatches(Ref.get(worldRef), next) {  // D4
-                case Nil => ()
-                case ms  => println("[RINGS DIFF] ${ms}")
-            };
-            match World.ringEquippedMismatches(Ref.get(worldRef), next) {  // D4
-                case Nil => ()
-                case ms  => println("[RINGEQUIPPED DIFF] ${ms}")
-            };
+            // S7 teardown: 安定 store の runtime DIFF 検出器を撤去（WEAPONS/BASESTATS/STATUSEFFECTS/WEAPONVIEW/
+            // RINGBONUS/MOVETILES/STAVES/CONSUMABLES/RINGS/RINGEQUIPPED）。§G の S2.3〜S4.4b run 検証バッチで
+            // 全て無音確認済＋addOnePlayer/addOneEnemy の seed battery 完備（spawn-gap 無し）＋unit test
+            // (testXxxMismatchesEmptyWhenSynced/DetectsDrift) で invariant 継続検証。verifier def は温存。
+            // 残置の runtime guard: ATTACKTARGET(恒久 dual-write)・USEDSTAIRS/ACTED(新規・run 検証完了まで)・TOPBAR。
             if (World.enemyTurnBusyOf(Ref.get(worldRef)) != TopBarScene.isBusy(next)  // F8-slice2
                 or World.phaseObservedEnemyOf(Ref.get(worldRef)) != TopBarScene.hasObservedEnemy(next))
                 println("[TOPBAR DIFF] busy w=${World.enemyTurnBusyOf(Ref.get(worldRef))} s=${TopBarScene.isBusy(next)}"
