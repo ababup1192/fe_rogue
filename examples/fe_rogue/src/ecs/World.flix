@@ -1023,7 +1023,7 @@ mod World {
     /// 元 lambda: j -> "${j}"
     pub def effectRuleKey(j: Util.Json.Json): String = "${j}"
 
-    /// 位置 {x,y} のキー (x, y)。prevPosMismatches / unitViewKey / playerDataKey の 3 source 共有
+    /// 位置 {x,y} のキー (x, y)。unitViewKey / playerDataKey 等の source 共有
     /// （3 source とも closed row {x=Int32,y=Int32} ゆえ monomorphic 安全・§1.2）。
     /// 元 lambda: p -> (p#x, p#y)
     pub def posKey(p: {x = Int32, y = Int32}): (Int32, Int32) = (p#x, p#y)
@@ -1436,14 +1436,7 @@ mod World {
         });
         List.append(ps, es)
 
-    /// F7-slice5 検証器: 味方 waited の World/scene 不一致。
-    pub def waitedMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
-        PlayerScene.getAll(scene) |> List.filterMap(d -> {
-            let ww = waitedOf(EntityRef.Player(d#id), world);
-            if (ww != Some(d#waited)) Some((EntityRef.Player(d#id), ww, d#waited)) else None
-        })
-
-    /// S5 検証器: 味方 usedStairs の World/scene 不一致（`waitedMismatches` 同型）。
+    /// S5 検証器: 味方 usedStairs の World/scene 不一致（`alertedMismatches` 同型）。
     pub def usedStairsMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
         PlayerScene.getAll(scene) |> List.filterMap(d -> {
             let wu = usedStairsOf(EntityRef.Player(d#id), world);
@@ -1469,33 +1462,6 @@ mod World {
         EnemyScene.getAll(scene) |> List.filterMap(d -> {
             let wac = actedOf(EntityRef.Enemy(d#id), world);
             if (wac != Some(d#acted)) Some((EntityRef.Enemy(d#id), wac, d#acted)) else None
-        })
-
-    /// F7-slice2 検証器: 敵 bottleUsed の World/scene 不一致（`alertedMismatches` 同型）。
-    pub def bottleUsedMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
-        EnemyScene.getAll(scene) |> List.filterMap(d -> {
-            let wb = bottleUsedOf(EntityRef.Enemy(d#id), world);
-            if (wb != Some(d#bottleUsed)) Some((EntityRef.Enemy(d#id), wb, d#bottleUsed)) else None
-        })
-
-    /// F7-slice4 検証器: followUpUsed の World/scene 不一致（両 faction）。
-    pub def followUpUsedMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
-        let ps = PlayerScene.getAll(scene) |> List.filterMap(d -> {
-            let wf = followUpUsedOf(EntityRef.Player(d#id), world);
-            if (wf != Some(d#followUpUsed)) Some((EntityRef.Player(d#id), wf, d#followUpUsed)) else None
-        });
-        let es = EnemyScene.getAll(scene) |> List.filterMap(d -> {
-            let wf = followUpUsedOf(EntityRef.Enemy(d#id), world);
-            if (wf != Some(d#followUpUsed)) Some((EntityRef.Enemy(d#id), wf, d#followUpUsed)) else None
-        });
-        List.append(ps, es)
-
-    /// F7-slice3 検証器: 敵 prevPos の World/scene 不一致。record は ToString 不可ゆえ (x,y) タプルに畳む。
-    pub def prevPosMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[(Int32, Int32)], Option[(Int32, Int32)])] =
-        EnemyScene.getAll(scene) |> List.filterMap(d -> {
-            let wp = Option.map(posKey, prevPosOf(EntityRef.Enemy(d#id), world));
-            let sp = Option.map(posKey, d#prevPos);
-            if (wp != sp) Some((EntityRef.Enemy(d#id), wp, sp)) else None
         })
 
     /// F6b 検証器: scene の各ユニットについて **World hp（command 由来）と scene hp の不一致**を返す。
@@ -1597,7 +1563,7 @@ mod World {
             else None
         })
 
-    /// D4 検証器: World ringEquipped と scene #ringEquipped の不一致（Bool 直接比較・waitedMismatches 同型）。
+    /// D4 検証器: World ringEquipped と scene #ringEquipped の不一致（Bool 直接比較・alertedMismatches 同型）。
     pub def ringEquippedMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
         PlayerScene.getAll(scene) |> List.filterMap(d -> {
             let ww = ringEquippedOf(EntityRef.Player(d#id), world);
