@@ -1745,9 +1745,16 @@ mod World {
                 case EntityRef.Player(pid) => PlayerScene.mapPlayer(pid, d -> {followUpUsed = f | d}, sc)
                 case EntityRef.Enemy(eid)  => EnemyScene.mapEnemy(eid, e -> {followUpUsed = f | e}, sc)
             }, withBottle, w#followUpUsed);
+        // S6: prevPos も World(enemyPrevPos)由来に derive（敵のみ・sparse Option）。scene 読み手はゼロ(dead-read)だが
+        // refreshMirror が scene #prevPos から re-mirror するため derive 必須（撤去後 None → World clobber 防止）。
+        let withPrevPos = List.foldLeft((sc, d) ->
+            EnemyScene.mapEnemy(d#id, e -> {prevPos = prevPosOf(EntityRef.Enemy(d#id), world) | e}, sc),
+            withFollowUp, EnemyScene.getAll(scene));
+        // 注: attackTargetId は syncTree で derive しない。combat 解決の同期キャリア（startAttack→attack:hit を
+        // scene 経由で同期 thread）ゆえ dual-write 据置が正当。driver の anyAttacking は World 化済(F8-slice1)。
         // progress（level/exp）は player のみ。store key は player id。
         let withLevel = Map.foldLeftWithKey((sc, pid, lvl) ->
-            PlayerScene.mapPlayer(pid, d -> {level = lvl | d}, sc), withFollowUp, w#playerLevel);
+            PlayerScene.mapPlayer(pid, d -> {level = lvl | d}, sc), withPrevPos, w#playerLevel);
         Map.foldLeftWithKey((sc, pid, xp) ->
             PlayerScene.mapPlayer(pid, d -> {exp = xp | d}, sc), withLevel, w#playerExp)
 }

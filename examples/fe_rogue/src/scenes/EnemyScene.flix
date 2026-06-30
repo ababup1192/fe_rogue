@@ -569,12 +569,12 @@ mod EnemyScene {
             |> Option.getWithDefault(scene);
         // 直前位置を記録（徘徊の「来た道へ戻らない」判定に使う）。`d#gridPos` は frame-head の
         // 移動前位置なので正しい（gridPos 自体は frame-end の syncTreeFromWorld で World 由来に derive）。
-        // F7-slice3: prevPos も World へ dual-write（移動前 gridPos）。
+        // S6: prevPos は World 権威。Cmd emit のみ・scene 直書きは撤去（syncTree が derive）。
         match get(id, scene) |> Option.map(d -> d#gridPos) {
             case Some(p) => World.Command.emit(World.Cmd.SetPrevPos(World.EntityRef.Enemy(id), p))
             case None    => ()
         };
-        mapEnemy(id, d -> {prevPos = Some(d#gridPos) | d}, flipped)
+        flipped
 
     /// 子 Sprite2D に flipH を設定する内部ヘルパー (敵スプライトは常に Sprite2D)。
     def setSpriteFlipH(id: Int32, h: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =

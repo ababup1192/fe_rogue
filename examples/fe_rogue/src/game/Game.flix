@@ -1049,10 +1049,7 @@ mod Game {
             // legacy 無音を run 確認済みゆえ旧 DIFF 検出器（F6 HP / ALERTED / DYING / PROGRESS / COMBATVIEW）は撤去した
             // （write 漏れは「hp が動かない / 敵が死なない / exp が増えない」可視バグとして現れる＝位置 P3 WRITE-MISS 撤去と同じ）。
             // S6: bottleUsed を World 権威化（scene 直書き撤去・syncTree derive）したため [BOTTLE DIFF] は撤去。
-            match World.prevPosMismatches(Ref.get(worldRef), next) {
-                case Nil => ()
-                case ms  => println("[PREVPOS DIFF] ${ms}")
-            };
+            // S6: prevPos を World 権威化（scene 直書き撤去・syncTree derive）したため [PREVPOS DIFF] は撤去。
             // S6: followUpUsed を World 権威化（scene 直書き撤去・syncTree derive）したため [FOLLOWUP DIFF] は撤去。
             // S6: waited は World 権威化（scene 直書き撤去・syncTreeFromWorld で derive）したため、
             // pre-sync の dual-write 等値を前提にした [WAITED DIFF] 検出器は撤去（gridPos/hp と同様）。
